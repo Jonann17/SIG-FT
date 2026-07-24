@@ -1,11 +1,15 @@
 """
-Configuração compartilhada dos testes de caracterização (CP 0.1 do plano de
-refatoração — ver docs/refatoracao/PLANO_REFATORACAO.md).
+Configuração compartilhada dos testes de caracterização (CP 0.1) e do smoke
+de importação (CP 0.2) do plano de refatoração — ver
+docs/refatoracao/PLANO_REFATORACAO.md.
 
 Este ambiente de teste NÃO tem as dependências pesadas de produção instaladas
 (pandas, openpyxl, selenium, google-generativeai, langchain*, llama_parse,
-PyPDF2, bs4, xlwings, customtkinter etc.) — só a stdlib, `requests` e (depois
-de instalado só para rodar os testes) `pytest`.
+PyPDF2, bs4, xlwings, deep_translator, unidecode, customtkinter etc.) — só a
+stdlib, `requests` e (depois de instalado só para rodar os testes) `pytest`.
+`customtkinter` é a única exceção deliberada: só `frontend.py` a importa, e
+`frontend.py` fica de fora do smoke de importação do CP 0.2 (ver nota no
+`tests/test_smoke_imports.py`) — por isso não entra em `_HEAVY_MODULES`.
 
 Os módulos `*_backend.py` importam essas dependências pesadas no topo do
 arquivo. Para conseguir importar e testar as funções PURAS (regex/string, sem
@@ -42,6 +46,14 @@ if REPO_ROOT not in sys.path:
 #    upload_ficha_duplicada.py. Lista levantada via grep dos imports de cada
 #    um desses arquivos (`^import \|^from `).
 #
+#    Ampliada no CP 0.2 (smoke de importação) para cobrir os imports de TOPO
+#    dos 12 módulos `*_backend.py` + `upload_ficha_duplicada.py` inteiros
+#    (analyzer, apagar_lmr, autospec, cria_fichas_no_pmib_v1, lmr, pdm,
+#    pmib_manager, search_pmib, translator, upload_conditions,
+#    upload_tech_specs, upload_ficha_duplicada) — ver
+#    tests/test_smoke_imports.py. As entradas novas do CP 0.2 estão marcadas
+#    abaixo; o restante já vinha do CP 0.1.
+#
 #    Inclui cada nível pontilhado (ex.: "selenium", "selenium.webdriver",
 #    "selenium.webdriver.common", "selenium.webdriver.common.by") pelo mesmo
 #    motivo de "from a.b.c import X" precisar resolver "a" e "a.b" durante o
@@ -68,6 +80,9 @@ _HEAVY_MODULES = [
     "selenium.webdriver.common",
     "selenium.webdriver.common.by",
     "selenium.webdriver.common.keys",
+    # [CP 0.2] submódulo ActionChains — usado só por lmr_backend.py
+    # ("from selenium.webdriver.common.action_chains import ActionChains").
+    "selenium.webdriver.common.action_chains",
     "selenium.webdriver.support",
     "selenium.webdriver.support.ui",
     "selenium.common",
@@ -80,6 +95,15 @@ _HEAVY_MODULES = [
     "langchain_core.prompts",
     "langchain_core.output_parsers",
     "llama_parse",
+    # [CP 0.2] translator_backend.py — tradução híbrida PT->ES via Excel COM.
+    # xlwings automatiza o Excel (Windows-only, `import xlwings as xw`);
+    # deep_translator fornece GoogleTranslator/MyMemoryTranslator; unidecode
+    # remove acentos. Nenhum dos três é usado por funções puras testadas —
+    # bastam como stub de importação (não há caso especial funcional, ao
+    # contrário de "pandas.isna" na seção 3 abaixo).
+    "deep_translator",
+    "unidecode",
+    "xlwings",
 ]
 
 for _mod_name in _HEAVY_MODULES:
