@@ -489,7 +489,7 @@ informações necessárias da ficha original; replicar essas informações na fi
 
 | Checkpoint | Status | Data | Observações |
 |---|---|---|---|
-| 0.1 Testes de caracterização | ☐ pendente | | |
+| 0.1 Testes de caracterização | ✅ concluído | 2026-07-24 | 50 testes em `tests/` (6 arquivos) cobrindo `extrair_pdm_id`, `_limpar_texto_parrudo`, `normalizar_texto`/`limpar_pergunta` (2 classes), `extract_pmib_code` (analyzer + autospec, com divergência documentada) e `_blindar_numero_pmib` (normalizador PMIB canônico, 3 casos do plano); imports pesados (pandas/openpyxl/selenium/google-generativeai/langchain*/llama_parse/PyPDF2/bs4) stubados via `unittest.mock` em `tests/conftest.py`; `pytest -q` verde (50 passed); nenhuma linha de produção alterada |
 | 0.2 Smoke de importação | ☐ pendente | | |
 | 1.1 config.py (+ mapa LLM_TASKS) | ☐ pendente | | |
 | 1.2 pmib_codes + headers | ☐ pendente | | |

@@ -1,0 +1,10 @@
+# Dependências de desenvolvimento (testes) — NÃO necessárias em produção.
+# Ver docs/refatoracao/PLANO_REFATORACAO.md, CP 0.1.
+#
+# Uso: python -m pip install -r requirements-dev.txt
+#
+# As dependências de produção continuam em requirements.txt. Este ambiente de
+# teste roda os testes de caracterização SEM as dependências pesadas de
+# produção instaladas (ver tests/conftest.py, que faz stub delas via
+# unittest.mock para permitir importar os módulos *_backend.py).
+pytest
