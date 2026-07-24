@@ -1,0 +1,312 @@
+"""
+sigft/config.py — fonte única da verdade para constantes, planilhas, portal e
+chaves de API do SIG-FT (Checkpoint 1.1 do plano de refatoração).
+
+Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 1 -> CP 1.1.
+
+ESCOPO DESTE CHECKPOINT (aditivo): este módulo nasce aqui, mas NENHUM
+consumidor de produção (`*_backend.py`, `upload_ficha_duplicada.py`,
+`frontend.py`) foi migrado para importar dele — isso é dos CP 1.2, 1.3 e, no
+caso de `LLM_TASKS`, a partir do CP 3.1 em diante. Os valores abaixo foram
+levantados por grep no código de produção hoje; este arquivo CARACTERIZA o
+comportamento atual (mesma string, mesmo número), não muda nada.
+
+Organização:
+  1. Portal PMIB (URL, endpoint de busca web)
+  2. Planilha "Lista de Materiais" (nome canônico + variantes de resiliência)
+  3. Prefixo de contrato
+  4. Valores mágicos de linha (ficha técnica, STATUS_PMIB)
+  5. Colunas-chave mais repetidas entre módulos
+  6. Mapa de tarefas de IA (`LLM_TASKS`) — consumido de fato a partir do CP 3.1
+  7. Carregamento de chaves de API (.env + api_config.json)
+"""
+
+from __future__ import annotations
+
+import json
+import os
+
+# `python-dotenv` é dependência de PRODUÇÃO (requirements.txt) — é assim que
+# frontend.py popula os.environ a partir de um arquivo `.env` hoje
+# (frontend.py:13 `from dotenv import load_dotenv`; frontend.py:4107-4108
+# `env_path = resource_path('.env'); load_dotenv(env_path)`). Mas este
+# ambiente de TESTE não a tem instalada (só stdlib/requests/pytest — ver
+# tests/conftest.py). Import defensivo para que `import sigft.config` nunca
+# quebre por isso: se `dotenv` não estiver disponível, `load_dotenv` fica
+# `None` e simplesmente não é chamado por ninguém aqui dentro — este módulo
+# não precisa dele para nada além de reexportá-lo, porque `carregar_chaves()`
+# abaixo lê `os.environ` diretamente (o `.env` só popula o environ ANTES da
+# chamada; sem dotenv, variáveis de ambiente já presentes no processo
+# continuam funcionando normalmente). Consumidores futuros (ex.: bootstrap da
+# app na Fase 7) podem fazer `from sigft.config import load_dotenv` e chamar
+# com o caminho que precisarem — a resolução de caminho (incluindo o caso
+# PyInstaller `_MEIPASS` de `frontend.resource_path`) é responsabilidade da
+# camada de app/empacotamento (CP 7 / CP 8.3), não deste módulo de config.
+try:
+    from dotenv import load_dotenv  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover - ambiente sem python-dotenv instalado
+    load_dotenv = None
+
+
+# =============================================================================
+# 1. PORTAL PMIB
+# =============================================================================
+
+# URL do portal PMIB (OutSystems). Hoje hardcoded de forma IDÊNTICA em 15+
+# ocorrências: apagar_lmr_backend.py:17, lmr_backend.py:19,
+# upload_conditions_backend.py:507, cria_fichas_no_pmib_v1_backend.py:404,415,
+# upload_tech_specs_backend.py:444,791, upload_ficha_duplicada.py:179,618,
+# frontend.py (4 ocorrências). Seletores/URLs do portal são INTOCÁVEIS nas
+# Fases 1-4 (ver plano, arquitetura-alvo, princípio 5) — este checkpoint só
+# CENTRALIZA o valor; ele continua sendo exatamente o mesmo.
+PORTAL_URL = "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
+
+# Endpoint da Google Custom Search API, usado pela busca web do AutoSpec
+# (`WebSearcher.search_url`, autospec_backend.py:73). Constante separada do
+# portal PMIB porque é uma API externa distinta (não OutSystems/Itaipu).
+GOOGLE_CSE_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
+
+
+# =============================================================================
+# 2. PLANILHA "LISTA DE MATERIAIS"
+# =============================================================================
+
+# Nome "canônico" da aba onde vive a lista de materiais / status PMIB dentro
+# dos arquivos `_STATUS_PMIB`. É também o default de `GerenciadorFilaPMIB` e
+# `AtualizadorStatusPMIB` (`nome_aba="Lista de Materiais"`,
+# upload_ficha_duplicada.py:17 e :673).
+ABA_LISTA_MATERIAIS = "Lista de Materiais"
+
+# Variantes toleradas por resiliência — mesma lista, mesma ordem, de
+# `PMIBSearcher.__init__` (search_pmib_backend.py:11:
+# `self.sheet_names = ["Lista de Materiais", "LISTA DE MATERIAIS",
+# "Lista de materiais"]`), usada para tentar múltiplas grafias da aba.
+ABA_LISTA_MATERIAIS_VARIANTES = (
+    "Lista de Materiais",
+    "LISTA DE MATERIAIS",
+    "Lista de materiais",
+)
+
+
+# =============================================================================
+# 3. PREFIXO DE CONTRATO
+# =============================================================================
+
+# Prefixo fixo dos contratos processados hoje. Hardcoded em regex ao menos em
+# upload_conditions_backend.py:147 (`re.compile(r'(4500063671\.\d{4})')`),
+# usado para validar/extrair código PMIB de nomes de arquivo. "Vira
+# configurável" no sentido em que o plano descreve: passa a existir em UM
+# lugar só (esta constante) em vez de espalhado como literal — nenhum
+# consumidor foi migrado neste checkpoint (aditivo).
+PREFIXO_CONTRATO = "4500063671"
+
+
+# =============================================================================
+# 4. VALORES MÁGICOS DE LINHA (diagnóstico do plano, seção 1.5)
+# =============================================================================
+
+# Linha (1-based, como aparece no Excel) onde começam as "Especificações
+# Técnicas" variáveis (perguntas/respostas) dentro da aba "Ficha Técnica
+# Padrão" de cada ficha individual. Hoje hardcoded como literal em:
+#   - analyzer_backend.py:52  -> VARIAVEIS_SPECS["start_row"]
+#   - analyzer_backend.py:377 -> fallback de _find_variable_specs_start_row
+#     quando o texto "ESPECIFICAÇÕES TÉCNICAS..." não é achado dinamicamente
+#   - autospec_backend.py:60  -> VARIAVEIS_SPECS["start_row"]
+#   - pdm_backend.py:239      -> comentário "Linha 79 fixo" + start_row = 79
+#   - translator_backend.py:111 -> current_row = 79
+#   - frontend.py:1374        -> comentário "a partir da linha 79" (log)
+LINHA_SPECS_FICHA = 79
+
+# "Linha 4 do STATUS" (diagnóstico do plano, seção 1.5): linha (1-based)
+# onde o cabeçalho da aba "Lista de Materiais" do arquivo `_STATUS_PMIB`
+# aparece na variante de leitura FIXA (não dinâmica) usada por
+# `pdm_backend.processar_pastas_fichas`:
+#   - pdm_backend.py:169 -> `pd.read_excel(..., skiprows=3)`: `skiprows` do
+#     pandas é 0-based, então `skiprows=3` pula as 3 primeiras linhas e trata
+#     a 4ª linha do arquivo como cabeçalho.
+#   - pdm_backend.py:176 -> mensagem de erro cita "(linha 4)" explicitamente.
+#   - docs/base-conhecimento/02-pdm-backend.md:9 documenta o mesmo valor.
+# Outros módulos (ex.: `upload_conditions_backend.carregar_lookup_status`,
+# `search_pmib_backend._encontrar_e_formatar_dataframe`) buscam esse
+# cabeçalho DINAMICAMENTE nas primeiras N linhas em vez de fixar a linha 4 —
+# unificar essas buscas é o CP 1.2 (`core/excel/headers.py`); aqui só se
+# nomeia o valor mágico usado pela variante fixa do `pdm_backend`.
+LINHA_STATUS_PMIB = 4
+
+
+# =============================================================================
+# 5. COLUNAS-CHAVE
+# =============================================================================
+# Literais de coluna mais repetidos entre módulos, levantados por grep
+# (não exaustivo — só os que aparecem em 3+ arquivos de produção).
+
+COL_CODIGO_PMIB = "CÓDIGO PMIB"
+# ~10 módulos: cria_fichas_no_pmib_v1_backend, analyzer_backend,
+# autospec_backend, upload_conditions_backend, upload_tech_specs_backend,
+# upload_ficha_duplicada, pdm_backend, pmib_manager_backend, frontend.
+
+COL_DESCRICAO = "DESCRIÇÃO"
+# cria_fichas_no_pmib_v1_backend, analyzer_backend, autospec_backend,
+# upload_conditions_backend, search_pmib_backend, pmib_manager_backend,
+# frontend.
+
+COL_PDM_USADO = "PDM usado"
+# cria_fichas_no_pmib_v1_backend, pdm_backend, upload_tech_specs_backend,
+# upload_ficha_duplicada (também usada como campo do marcador "DUPLICADA").
+
+COL_CONDICOES = "CONDIÇÕES"
+# upload_conditions_backend, upload_ficha_duplicada, pmib_manager_backend
+# (coluna de seção "COMPLETO" do STATUS_PMIB).
+
+COL_CARACT_TECNICAS = "CARACT. TÉCNICAS"
+# upload_tech_specs_backend, upload_ficha_duplicada, pmib_manager_backend
+# (coluna de seção "COMPLETO" do STATUS_PMIB).
+
+COL_INFO_GERAIS = "INFO. GERAIS"
+# upload_ficha_duplicada, pmib_manager_backend (coluna de seção "COMPLETO"
+# do STATUS_PMIB).
+
+
+# =============================================================================
+# 6. MAPA DE TAREFAS DE IA (LLM_TASKS)
+# =============================================================================
+# Consumido "de fato" a partir do CP 3.1 (`core/llm/client.py:get_llm(tarefa)`
+# resolve provider/modelo via `config.LLM_TASKS`, ver plano Fase 3) — nasce
+# aqui porque é config, não lógica de IA. Hoje TODAS as tarefas chamam o
+# Gemini diretamente (`google.generativeai` ou, no caso do autospec, o mesmo
+# modelo via LangChain `ChatGoogleGenerativeAI` — uso que o CP 3.2 remove em
+# favor de `LLMClient` direto, mantendo o MODELO). `provider="gemini"` em
+# todas reflete esse estado atual; strings de modelo são EXATAMENTE as
+# hardcoded em cada módulo hoje (caracterização, não correção).
+
+PROVIDER_GEMINI = "gemini"
+
+LLM_TASKS: dict[str, dict[str, str]] = {
+    # categorizar_pdm: GeminiCategorizer.processar_lote
+    #   (cria_fichas_no_pmib_v1_backend.py:131), instanciado em
+    #   frontend.py:736 (`cat = GeminiCategorizer(self.api_key_gemini)`).
+    "categorizar_pdm": {"provider": PROVIDER_GEMINI, "model": "gemini-3.1-pro-preview"},
+    # validar_ficha: DatasheetAnalyzer._call_gemini_api
+    #   (analyzer_backend.py:451).
+    "validar_ficha": {"provider": PROVIDER_GEMINI, "model": "gemini-3.1-pro-preview"},
+    # condicoes: ConditionsProcessor.processar_ia_lote
+    #   (upload_conditions_backend.py:363).
+    "condicoes": {"provider": PROVIDER_GEMINI, "model": "gemini-3.5-flash"},
+    # tech_specs: TechSpecsProcessor._chamar_gemini_specs
+    #   (upload_tech_specs_backend.py:285-286).
+    "tech_specs": {"provider": PROVIDER_GEMINI, "model": "gemini-3.5-flash"},
+    # autospec: AutoSpecCore.__init__ -> ChatGoogleGenerativeAI
+    #   (autospec_backend.py:173).
+    "autospec": {"provider": PROVIDER_GEMINI, "model": "gemini-3.1-pro-preview"},
+}
+
+
+def get_task_config(tarefa: str) -> dict[str, str]:
+    """Resolve `{provider, model}` para uma tarefa de IA via `LLM_TASKS`.
+
+    Fábrica consumidora real (`core/llm/client.py:get_llm(tarefa)`) chega no
+    CP 3.1 — aqui só nasce a resolução da config, para já existir uma única
+    fonte da verdade quando esse checkpoint vier.
+
+    Fallback CLARO para tarefa desconhecida: levanta `ValueError` com
+    mensagem listando as tarefas configuradas, em vez de (a) devolver um
+    provider/modelo "chute" silenciosamente errado — o que poderia gerar
+    custo ou comportamento incorreto sem aviso — ou (b) deixar vazar um
+    `KeyError` sem contexto.
+
+    Retorna uma CÓPIA do dict (o chamador pode alterá-la livremente sem
+    afetar `LLM_TASKS`).
+    """
+    try:
+        config = LLM_TASKS[tarefa]
+    except KeyError:
+        tarefas_validas = ", ".join(sorted(LLM_TASKS))
+        raise ValueError(
+            f"Tarefa de IA desconhecida: {tarefa!r}. Tarefas configuradas em "
+            f"LLM_TASKS: {tarefas_validas}."
+        ) from None
+    return dict(config)
+
+
+# =============================================================================
+# 7. CARREGAMENTO DE CHAVES DE API (.env + api_config.json)
+# =============================================================================
+# Replica FIELMENTE `SIG_FT_App.load_keys()` / `get_key()`
+# (frontend.py:4254-4282) e `CONFIG_FILE = "api_config.json"`
+# (frontend.py:39).
+
+CONFIG_FILE = "api_config.json"
+
+# Nome da variável de ambiente que popula cada chave lógica — nomes
+# preservados EXATAMENTE por compatibilidade/free-tier (ver
+# docs/refatoracao/PENDENCIAS.md: `API_GEMINI_LUAN_GMAIL` é um nome pessoal,
+# candidato a padronização numa fase futura, fora do escopo deste
+# checkpoint).
+ENV_VAR_POR_CHAVE: dict[str, str] = {
+    "GEMINI": "API_GEMINI_LUAN_GMAIL",
+    "GOOGLE_SEARCH": "GOOGLE_SEARCH_API",
+    "GOOGLE_CSE": "GOOGLE_CSE_API",
+    "LLAMA": "LLAMA_CLOUD_API",
+}
+
+
+def carregar_chaves(config_path: str | os.PathLike[str] = CONFIG_FILE) -> dict[str, str | None]:
+    """Carrega as 4 chaves de API, replicando `SIG_FT_App.load_keys()`.
+
+    Lógica (idêntica à de frontend.py:4254-4274):
+      1. Lê os `defaults` das 4 variáveis de ambiente (`ENV_VAR_POR_CHAVE`);
+         cada valor pode ser `None` se a env var não estiver definida (mesmo
+         comportamento de `os.getenv(...)` sem segundo argumento).
+      2. Se `config_path` existir E for um JSON válido: `{**defaults,
+         **saved}` — os valores salvos em `api_config.json` SOBRESCREVEM os
+         das variáveis de ambiente.
+      3. Se `config_path` NÃO existir OU o JSON estiver corrompido/ilegível:
+         usa só os `defaults`. O código original captura isso com um
+         `except:` nu (frontend.py:4271-4272); aqui usamos `except
+         Exception:` — mesmo resultado observável para os casos reais que
+         este comportamento cobre (JSON corrompido, arquivo sem permissão de
+         leitura), sem engolir `KeyboardInterrupt`/`SystemExit` como o `except:`
+         nu faria.
+
+    Testável por design: `config_path` é parâmetro (testes usam `tmp_path`
+    em vez do `api_config.json` real do cwd) e a leitura das env vars é feita
+    em `os.environ` NO MOMENTO DA CHAMADA (não no import do módulo), então
+    testes usam `monkeypatch.setenv`/`monkeypatch.delenv` normalmente.
+    """
+    defaults: dict[str, str | None] = {
+        chave_id: os.environ.get(env_var_name)
+        for chave_id, env_var_name in ENV_VAR_POR_CHAVE.items()
+    }
+
+    if not os.path.exists(config_path):
+        return defaults
+
+    try:
+        # NOTA: o original abre com `open(CONFIG_FILE, 'r')` (encoding padrão
+        # da plataforma); aqui fixamos `encoding="utf-8"` por robustez
+        # multiplataforma. Não muda o resultado para o conteúdo real hoje
+        # (chaves de API em ASCII) nem o fluxo de fallback caracterizado.
+        #
+        # O merge `{**defaults, **saved}` fica DENTRO do try de propósito —
+        # mesma estrutura de frontend.py:4267-4272 (`self.api_keys =
+        # {**defaults, **saved}` está dentro do `with`/`try`). Isso importa:
+        # se `saved` for um JSON válido mas que não é um objeto (ex.: uma
+        # lista `[1, 2, 3]`), `**saved` levanta `TypeError`, que também deve
+        # cair no fallback para `defaults` — não só falhas de parsing.
+        with open(config_path, "r", encoding="utf-8") as arquivo:
+            saved = json.load(arquivo)
+            return {**defaults, **saved}
+    except Exception:
+        return defaults
+
+
+def get_key(chaves: dict[str, str | None], key_id: str) -> str:
+    """Réplica de `SIG_FT_App.get_key()` (frontend.py:4281-4282).
+
+    `chaves.get(key_id, "")`: string vazia é o default só quando `key_id`
+    está AUSENTE do dicionário. Se a chave existir mas seu valor for `None`
+    (ex.: env var não configurada e sem override em `api_config.json`), o
+    retorno é `None` — mesma peculiaridade do código original, preservada de
+    propósito aqui (não é este checkpoint que decide corrigi-la).
+    """
+    return chaves.get(key_id, "")

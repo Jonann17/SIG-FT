@@ -491,7 +491,7 @@ informações necessárias da ficha original; replicar essas informações na fi
 |---|---|---|---|
 | 0.1 Testes de caracterização | ✅ concluído | 2026-07-24 | 50 testes em `tests/` (6 arquivos) cobrindo `extrair_pdm_id`, `_limpar_texto_parrudo`, `normalizar_texto`/`limpar_pergunta` (2 classes), `extract_pmib_code` (analyzer + autospec, com divergência documentada) e `_blindar_numero_pmib` (normalizador PMIB canônico, 3 casos do plano); imports pesados (pandas/openpyxl/selenium/google-generativeai/langchain*/llama_parse/PyPDF2/bs4) stubados via `unittest.mock` em `tests/conftest.py`; `pytest -q` verde (50 passed); nenhuma linha de produção alterada |
 | 0.2 Smoke de importação | ✅ concluído | 2026-07-24 | smoke importa os 12 módulos backend via conftest stubado; scripts/check.sh roda compileall + pytest; script verde |
-| 1.1 config.py (+ mapa LLM_TASKS) | ☐ pendente | | |
+| 1.1 config.py (+ mapa LLM_TASKS) | ✅ concluído | 2026-07-24 | `sigft/config.py` criado (aditivo — nenhum consumidor `*_backend.py`/`frontend.py` migrado): `PORTAL_URL`, `GOOGLE_CSE_ENDPOINT`, `ABA_LISTA_MATERIAIS`(+3 variantes), `PREFIXO_CONTRATO`, `LINHA_SPECS_FICHA`=79, `LINHA_STATUS_PMIB`=4, 6 colunas-chave (`COL_CODIGO_PMIB` etc.), `LLM_TASKS` (5 tarefas do CP 3.1) + `get_task_config()` (erro claro p/ tarefa desconhecida), `carregar_chaves()`/`get_key()` replicando `SIG_FT_App.load_keys()`; import de `dotenv` defensivo (ausente no ambiente de teste). 35 testes novos em `tests/test_config.py` (97 no total); `scripts/check.sh` verde |
 | 1.2 pmib_codes + headers | ☐ pendente | | |
 | 1.3 locking + status_sheet | ☐ pendente | | |
 | 1.4 callbacks + protocolo de log | ☐ pendente | | |
