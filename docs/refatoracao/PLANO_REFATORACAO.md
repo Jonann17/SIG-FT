@@ -15,9 +15,15 @@ Estas decisões orientam todo o plano e prevalecem sobre qualquer regra genéric
 1. **`ficha_duplicada` será RECONSTRUÍDO, não apenas refatorado.** O módulo atual "não
    funciona como deveria e está muito fraco". Comportamento novo é autorizado (Fase 6), com
    testes interativos junto ao usuário contra o portal real.
-2. **Camada de IA genérica e plugável**: trocar de modelo/provedor por configuração — outros
-   modelos Gemini, ChatGPT/OpenAI, Kimi e, no futuro, a IA interna da empresa do usuário.
-   Inclui **rastreamento de gastos** por chamada, por modelo e por módulo do SIG-FT.
+2. **Camada de IA genérica e plugável, com troca de modelo PELA INTERFACE**: o usuário
+   escolhe na UI qual modelo usar (global e por tarefa). **OpenRouter é o gateway padrão** —
+   uma única chave dá acesso a Gemini, GPT, Kimi, DeepSeek etc., fornece o catálogo de
+   modelos para a UI e devolve o custo REAL de cada chamada. Mantêm-se dois caminhos
+   diretos opcionais: Gemini nativo (preserva comportamento e free tier atuais, sem
+   intermediário — útil para conteúdo sensível) e endpoint OpenAI-compatível genérico
+   (para a futura IA interna da empresa). Estratégia de chaves: todas opcionais, uma
+   necessária — no dia a dia basta `OPENROUTER_API_KEY`; a UI só exibe provedores com
+   chave configurada. Inclui **rastreamento de gastos** por chamada, modelo e módulo.
 3. **UI**: padronizar mantendo o estilo visual já existente (paleta GE Vernova, Roboto,
    layout header/conteúdo/console). Sem redesign.
 4. **Logs de saída**: elevar todos os módulos ao mesmo padrão de riqueza (alguns hoje são
@@ -115,9 +121,11 @@ SIG-FT/
 │   │   ├── llm/                # camada de IA MULTI-PROVEDOR (decisão de produto nº 2)
 │   │   │   ├── client.py       # interface LLMClient + LLMResponse + factory get_llm(tarefa)
 │   │   │   ├── providers/
-│   │   │   │   ├── gemini.py         # provedor Google (google-generativeai)
-│   │   │   │   └── openai_compat.py  # ChatGPT, Kimi/Moonshot, IA da empresa (base_url)
-│   │   │   ├── usage.py        # UsageTracker: tokens, custo, módulo, tarefa → JSONL + relatório
+│   │   │   │   ├── openai_compat.py  # base OpenAI-compatível (chat completions, base_url)
+│   │   │   │   ├── openrouter.py     # GATEWAY PADRÃO: especializa openai_compat com
+│   │   │   │   │                     #   catálogo GET /models + custo real por chamada
+│   │   │   │   └── gemini.py         # caminho direto Google (free tier/comportamento atual)
+│   │   │   ├── usage.py        # UsageTracker: tokens, custo real/estimado, módulo, tarefa
 │   │   │   └── prompts.py      # todos os prompts como constantes nomeadas
 │   │   ├── rpa/
 │   │   │   ├── engine.py       # interface do motor de browser (agnóstica Selenium/Playwright)
@@ -238,39 +246,60 @@ SIG-FT/
 
 ### Fase 3 — Camada de IA multi-provedor + rastreamento de custos
 
-> Objetivo (decisão de produto nº 2): trocar de IA por configuração e saber quanto cada
-> modelo e cada módulo do SIG-FT gasta.
+> Objetivo (decisão de produto nº 2): o usuário troca o modelo **pela interface**; o
+> OpenRouter é o gateway padrão (uma chave, catálogo amplo, custo real por chamada);
+> Gemini direto e endpoint interno da empresa continuam disponíveis por config.
+> Chaves: todas opcionais, uma necessária — `OPENROUTER_API_KEY` basta no dia a dia; a UI
+> exibe apenas provedores com chave configurada.
 
-- **CP 3.1 — `core/llm/client.py` + provedor Gemini.**
+- **CP 3.1 — `core/llm/client.py` + provedor Gemini direto.**
   Interface: `LLMClient.generate(prompt, *, system=None, json_mode=False, tags={}) ->
-  LLMResponse(text, parsed_json, tokens_in, tokens_out, model, provider, duracao_s)`.
-  Fábrica `get_llm(tarefa)` resolve provedor/modelo via `config.LLM_TASKS` (tarefas:
-  `categorizar_pdm`, `validar_ficha`, `condicoes`, `tech_specs`, `autospec`). Retry,
-  rate-limit opcional, parse/limpeza de JSON e safety_settings ficam AQUI, uma vez.
+  LLMResponse(text, parsed_json, tokens_in, tokens_out, custo_usd|None, model, provider,
+  duracao_s)`. Fábrica `get_llm(tarefa)` resolve provedor/modelo via `config.LLM_TASKS`
+  (tarefas: `categorizar_pdm`, `validar_ficha`, `condicoes`, `tech_specs`, `autospec`).
+  Retry, rate-limit opcional, parse/limpeza de JSON e safety_settings ficam AQUI, uma vez.
+  O provedor Gemini direto reproduz o comportamento atual (transport REST, mesmos modelos
+  default) — menor risco na migração e preserva o free tier do AI Studio.
   Migrar os 4 consumidores diretos do `google.generativeai`.
   *Aceite*: `genai.` só aparece em `providers/gemini.py`; nomes de modelo apenas em
   `config.py`; comportamento atual preservado (mesmos modelos default de hoje).
 
-- **CP 3.2 — Provedor OpenAI-compatível (ChatGPT, Kimi, IA da empresa).**
-  `providers/openai_compat.py` usando o pacote `openai` com `base_url` configurável — cobre
-  OpenAI, Moonshot/Kimi e o futuro endpoint interno da empresa com um único adaptador.
-  Config por provedor: `base_url`, `api_key_env`, modelos. Adicionar campos de chave na tela
-  Home (mesmo padrão visual das chaves atuais). `autospec` (LangChain) passa a receber o LLM
-  da mesma fábrica, ou tem o LangChain substituído por chamada direta via `LLMClient`
+- **CP 3.2 — Gateway OpenRouter (padrão) + endpoint OpenAI-compatível genérico.**
+  `providers/openai_compat.py` (pacote `openai`, `base_url` configurável) e
+  `providers/openrouter.py` como especialização: `base_url=https://openrouter.ai/api/v1`,
+  headers de atribuição, catálogo de modelos via `GET /models` (com cache local) e
+  `usage: {include: true}` para receber o CUSTO REAL de cada chamada na resposta.
+  O adaptador genérico cobre a futura IA interna da empresa (`EMPRESA_LLM_BASE_URL` +
+  `EMPRESA_LLM_API_KEY`) e qualquer provedor direto OpenAI-compatível. Campos de chave na
+  Home (mesmo padrão visual das atuais). `autospec` (LangChain) passa a receber o LLM da
+  mesma fábrica, ou tem o LangChain substituído por chamada direta via `LLMClient`
   (decidir na execução; registrar em PENDENCIAS se adiado).
-  *Aceite*: trocar `LLM_TASKS["condicoes"]` de gemini para um endpoint OpenAI-compatível
-  exige APENAS editar config + chave; demonstrado com mock/endpoint de teste.
+  *Aceite*: a mesma tarefa roda em ≥2 modelos distintos via OpenRouter mudando apenas
+  config; recursos usados hoje no Gemini validados no caminho OpenRouter (JSON mode via
+  `response_format`, system prompt, comportamento de safety) com diferenças registradas
+  em PENDENCIAS.
 
-- **CP 3.3 — `core/llm/usage.py` (rastreamento de uso e custos).**
+- **CP 3.3 — Seleção de modelo NA INTERFACE.**
+  Painel "Modelos de IA" na Home (mesmo estilo dos cards existentes): dropdown de
+  provedor/modelo GLOBAL (default para todas as tarefas) + modo avançado com override POR
+  TAREFA (as 5 tarefas de `LLM_TASKS`). Fonte da lista: catálogo do OpenRouter quando a
+  chave existir, filtrado por uma lista curada de favoritos em config (para não exibir
+  400+ modelos), com campo livre para id manual. Persistência em `api_config.json`; efeito
+  imediato, sem reiniciar o app. Provedores sem chave configurada não aparecem.
+  *Aceite*: trocar o modelo na UI muda a próxima chamada (verificável no registro de uso);
+  seleção sobrevive a reinício do app.
+
+- **CP 3.4 — `core/llm/usage.py` (rastreamento de uso e custos).**
   Cada `generate()` grava um registro JSONL em `logs/llm_usage.jsonl`: timestamp, provedor,
-  modelo, módulo (tag), tarefa, tokens de entrada/saída, custo estimado (tabela de preços
-  editável em `config.py` — preços mudam, então são dados, não código), duração, sucesso/erro.
-  Relatório agregado: função `usage_report()` (por módulo, por modelo, por dia) + exibição
-  simples na tela Home ("Gastos de IA") no mesmo estilo dos cards existentes.
-  *Aceite*: rodar qualquer módulo com IA gera registros; `usage_report()` responde "qual
-  modelo gasta mais para a mesma tarefa" e "qual módulo do SIG-FT gasta mais".
+  modelo, módulo (tag), tarefa, tokens de entrada/saída, custo (REAL vindo do OpenRouter
+  quando disponível; senão ESTIMADO pela tabela de preços editável em `config.py`, marcado
+  como estimativa), duração, sucesso/erro. Relatório agregado: `usage_report()` (por
+  módulo, por modelo, por dia) + card "Gastos de IA" na Home.
+  *Aceite*: rodar qualquer módulo com IA gera registros; o relatório responde "qual modelo
+  gasta mais na mesma tarefa" e "qual módulo do SIG-FT gasta mais"; chamadas via OpenRouter
+  registram custo real (não estimado).
 
-- **CP 3.4 — `core/llm/prompts.py`.**
+- **CP 3.5 — `core/llm/prompts.py`.**
   Extrair os 5 prompts gigantes para constantes nomeadas com funções de montagem.
   *Aceite*: nenhum prompt >15 linhas dentro de `services/`; teste de snapshot prova que o
   prompt gerado é idêntico ao antigo.
@@ -434,7 +463,10 @@ informações necessárias da ficha original; replicar essas informações na fi
 | RPA não testável offline (portal OutSystems real) | Fases 1–4 não tocam seletores; Fases 5–6 têm validação assistida pelo usuário como critério de aceite formal de CADA checkpoint |
 | Migração Playwright quebrar módulo em produção | Flag `RPA_ENGINE` por módulo (CP 5.1) permite rollback instantâneo para Selenium até o CP 5.5 |
 | IDs OutSystems (`b10-...`) mudarem em deploy do portal | Seletores centralizados em `portal.py`/serviços facilitam conserto; Playwright trace/screenshot em falha ajuda diagnóstico |
-| Custo estimado de IA divergir do real | Tabela de preços é config editável; tokens reais vêm da resposta da API (fonte da verdade); custo é marcado como "estimado" no relatório |
+| Custo de IA divergir do real | Via OpenRouter o custo REAL vem na resposta de cada chamada; tabela de preços editável só para provedores diretos, com custo marcado como "estimado" |
+| Dados técnicos passando por intermediário (OpenRouter) | Caminhos diretos (Gemini nativo / IA da empresa) continuam disponíveis por config — a escolha por tarefa é do usuário para conteúdo sensível |
+| Recursos do Gemini se comportarem diferente via OpenRouter (JSON mode, safety) | CP 3.2 valida recurso a recurso antes de virar padrão; divergências em PENDENCIAS; rollback por config para o provedor direto |
+| Dependência de disponibilidade do OpenRouter | Provedor direto Gemini permanece implementado como contingência; troca é uma linha de config/UI |
 | Regressão silenciosa no Excel | Testes de caracterização (CP 0.1) antes de mover; fixtures sintéticas |
 | App quebrar no meio da migração | Shims mantêm todos os nomes antigos importáveis até o CP 7.3 |
 
@@ -460,10 +492,11 @@ informações necessárias da ficha original; replicar essas informações na fi
 | 2.2 PMIBPortal | ☐ pendente | | |
 | 2.3 sleeps → waits | ☐ pendente | | |
 | 2.4 ficha_layout unificado | ☐ pendente | | |
-| 3.1 LLMClient + provedor Gemini | ☐ pendente | | |
-| 3.2 provedor OpenAI-compat (ChatGPT/Kimi/empresa) | ☐ pendente | | |
-| 3.3 UsageTracker (custos por modelo/módulo) | ☐ pendente | | |
-| 3.4 prompts.py | ☐ pendente | | |
+| 3.1 LLMClient + Gemini direto | ☐ pendente | | |
+| 3.2 OpenRouter (gateway padrão) + endpoint empresa | ☐ pendente | | |
+| 3.3 seletor de modelo na interface | ☐ pendente | | |
+| 3.4 UsageTracker (custo real/estimado) | ☐ pendente | | |
+| 3.5 prompts.py | ☐ pendente | | |
 | 4.1 services + shims | ☐ pendente | | |
 | 4.2 limpeza de exceções | ☐ pendente | | |
 | 4.3 otimizações pdm | ☐ pendente | | |
