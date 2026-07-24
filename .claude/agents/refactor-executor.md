@@ -21,8 +21,12 @@ implementar, não redesenhar.
   registre em `docs/refatoracao/PENDENCIAS.md` e siga em frente.
 - Refatoração preserva comportamento: mesma UI, mesmos arquivos gerados, mesmos fluxos RPA.
   Mudança de comportamento só quando o plano mandar explicitamente.
-- NUNCA altere XPaths, URLs do portal ou a ordem de interação do Selenium por conta própria —
-  eles foram calibrados contra o portal real (OutSystems) e não são testáveis offline.
+- Nas Fases 0–4: NUNCA altere seletores (XPaths), URLs do portal ou a ordem de interação do
+  RPA por conta própria — foram calibrados contra o portal real (OutSystems) e não são
+  testáveis offline. Nas Fases 5 (Playwright) e 6 (ficha_duplicada) mudanças de seletor/fluxo
+  são permitidas QUANDO o checkpoint autorizar, e o critério de aceite sempre inclui
+  validação assistida pelo usuário contra o portal real — pare no ponto de validação e peça
+  ao usuário para testar antes de marcar o checkpoint como concluído.
 - Após cada mudança: `python -m py_compile` em todos os arquivos tocados e, se existirem
   testes em `tests/`, rode `python -m pytest tests/ -x -q`.
 - Atualize o quadro "Status dos Checkpoints" no PLANO_REFATORACAO.md marcando o checkpoint

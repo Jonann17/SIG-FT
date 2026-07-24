@@ -23,17 +23,34 @@ código e revisada. Um arquivo por módulo:
 
 ## Refatoração (`refatoracao/`)
 
-- `PLANO_REFATORACAO.md` — diagnóstico, arquitetura-alvo e plano em 6 fases / 22 checkpoints,
-  com critérios de aceite e quadro de status. **Documento mestre da refatoração.**
+- `PLANO_REFATORACAO.md` — decisões de produto, diagnóstico, arquitetura-alvo e plano em
+  9 fases (0–8) / 34 checkpoints, com critérios de aceite e quadro de status.
+  **Documento mestre da refatoração.** Destaques: camada de IA multi-provedor com
+  rastreamento de custos (Fase 3), migração Selenium→Playwright (Fase 5) e reconstrução do
+  módulo de fichas duplicadas com testes interativos (Fase 6).
 - `PENDENCIAS.md` — itens fora de escopo descobertos durante a execução.
+- `ESPEC_FICHA_DUPLICADA.md` — criado no CP 6.1 (especificação do módulo reconstruído).
+
+## Agentes e Skills
+
+- `.claude/agents/doc-writer.md` (Haiku) — escreve/atualiza a base de conhecimento.
+- `.claude/agents/refactor-executor.md` (Sonnet) — executa um checkpoint do plano por vez.
+- `.claude/skills/sigft-novo-modulo/` — guia para criar um módulo novo a partir de uma ideia.
+- `.claude/skills/sigft-melhorar-modulo/` — guia para evoluir um módulo existente com segurança.
 
 ## Como executar a refatoração
 
-Em uma nova sessão do Claude Code neste repositório, os agentes de `.claude/agents/` estarão
+Em uma nova sessão do Claude Code neste repositório, os agentes e skills acima estarão
 disponíveis. Peça, por exemplo:
 
 > Use o agente refactor-executor para executar o Checkpoint 0.1 do plano de refatoração.
 
-Um checkpoint por vez, na ordem das fases. Para atualizar a documentação após mudanças:
+Um checkpoint por vez, na ordem das fases (checkpoints das Fases 5 e 6 terminam em validação
+sua contra o portal real). Para atualizar a documentação após mudanças:
 
 > Use o agente doc-writer para atualizar docs/base-conhecimento/02-pdm-backend.md.
+
+Para desenvolvimento fora da refatoração:
+
+> /sigft-novo-modulo — quero um módulo que ...
+> /sigft-melhorar-modulo — o módulo X deveria ...
