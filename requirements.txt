@@ -1,0 +1,25 @@
+# Interface
+customtkinter
+pillow
+
+# Dados / Excel
+pandas
+openpyxl
+xlwings
+
+# Automação Web (RPA)
+selenium
+
+# IA / LLM
+google-generativeai
+langchain-google-genai
+langchain-core
+llama-parse
+
+# Parsing e utilidades
+PyPDF2
+beautifulsoup4
+requests
+python-dotenv
+unidecode
+deep-translator

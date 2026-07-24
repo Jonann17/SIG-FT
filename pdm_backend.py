@@ -1,0 +1,341 @@
+import pandas as pd
+import os
+import glob
+import re
+import shutil
+from copy import copy
+from openpyxl import load_workbook
+from openpyxl.styles import Border, Side, Alignment, Font
+
+
+# =============================================================================
+# FUNÇÕES UTILITÁRIAS
+# =============================================================================
+def listar_arquivos_excel(caminho_pasta):
+    return [arq for arq in glob.glob(os.path.join(caminho_pasta, '*.xls*')) if os.path.isfile(arq)]
+
+
+def extrair_pdm_id(nome_arquivo):
+    match = re.search(r'PDM_\d{4}_\d{3}', nome_arquivo)
+    return match.group() if match else None
+
+
+# =============================================================================
+# LÓGICA DE PROCESSAMENTO DE PDM
+# =============================================================================
+def processar_arquivo_pdm(caminho_arquivo_pdm):
+    try:
+        # Tenta ler ignorando erros de cabeçalho inicial
+        df = pd.read_excel(caminho_arquivo_pdm, sheet_name="TEMPLATE_PDM", skiprows=6, header=None)
+
+        # Validação básica de colunas
+        if df.shape[1] < 19: return None  # Verifica se tem colunas suficientes (S é a 19ª)
+
+        col_q = df.iloc[:, 16]  # Coluna Q (índice 16)
+        col_s = df.iloc[:, 18]  # Coluna S (índice 18)
+
+        nova_tabela = pd.DataFrame({
+            'Descrição': [f"{i+1} - {str(q)} ({str(s)}):" for i, (q, s) in enumerate(zip(col_q, col_s))],
+            'Resposta': ['' for _ in range(len(col_q))]
+        })
+        return nova_tabela
+    except Exception as e:
+        print(f"Erro processar_arquivo_pdm: {e}")
+        return None
+
+
+def salvar_tabela_formatada(nova_tabela, caminho_arquivo_original, pasta_destino, force=False):
+    nome_original = os.path.basename(caminho_arquivo_original)
+    nome_sem_extensao = os.path.splitext(nome_original)[0]
+    novo_nome = nome_sem_extensao + "_formatado.xlsx"
+    caminho_saida = os.path.join(pasta_destino, novo_nome)
+
+    if not force:
+        if any(nome_sem_extensao.upper() in f.upper() for f in os.listdir(pasta_destino)):
+            return False, f"Ignorado (já existe): {nome_original}"
+
+    try:
+        nova_tabela.to_excel(caminho_saida, index=False, header=False)
+        wb = load_workbook(caminho_saida)
+        ws = wb.active
+
+        borda = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
+        estilo = Alignment(wrap_text=True, vertical='top')
+        fonte = Font(size=8)
+
+        for i, row in enumerate(nova_tabela.itertuples(index=False), start=1):
+            ws.row_dimensions[i].height = 32
+
+            # Formatação Coluna 1 (Desc)
+            ws.merge_cells(start_row=i, start_column=1, end_row=i, end_column=10)
+            c1 = ws.cell(row=i, column=1, value=row[0])
+            c1.alignment = estilo; c1.font = fonte
+            for c in range(1, 11): ws.cell(row=i, column=c).border = borda
+
+            # Formatação Coluna 2 (Resp)
+            ws.merge_cells(start_row=i, start_column=11, end_row=i, end_column=20)
+            c2 = ws.cell(row=i, column=11, value=row[1])
+            c2.alignment = estilo; c2.font = fonte
+            for c in range(11, 21): ws.cell(row=i, column=c).border = borda
+
+        wb.save(caminho_saida)
+        return True, f"Salvo: {novo_nome}"
+    except Exception as e:
+        return False, f"Erro ao salvar: {e}"
+
+
+# =============================================================================
+# LÓGICA FROM ITAIPU
+# =============================================================================
+def pdms_fromItaipu_lista_geral(path_lista_geral_pdms, pasta_destino, log_callback=None):
+    if not path_lista_geral_pdms or not pasta_destino:
+        return "Caminhos inválidos."
+
+    arquivos_existentes = {os.path.splitext(f)[0].split(' - ')[0].strip().upper() for f in os.listdir(pasta_destino) if f.endswith(('.xlsx', '.xls'))}
+
+    try:
+        wb_check = load_workbook(path_lista_geral_pdms)
+        ws_check = wb_check["TEMPLATE_PDM"]
+    except Exception as e:
+        return f"Erro ao abrir planilha: {e}"
+
+    # Mapeamento de códigos
+    linhas_por_codigo = {}
+    for i, row in enumerate(ws_check.iter_rows(min_row=7, values_only=False), start=7):
+        cell = row[0]
+        if cell and cell.value:
+            cod = str(cell.value).strip().replace('.', '_').upper()
+            if cod:
+                linhas_por_codigo.setdefault(cod, []).append(i)
+
+    codigos_todos = set(linhas_por_codigo.keys())
+    codigos_novos = codigos_todos - arquivos_existentes
+    criados = []
+
+    if not codigos_novos:
+        return "Nenhum código novo encontrado."
+
+    for codigo in codigos_novos:
+        # Check duplo de segurança
+        if any(codigo in f.upper() for f in os.listdir(pasta_destino)):
+            continue
+
+        linhas = linhas_por_codigo[codigo]
+        # Pega descrição da coluna D (índice 4 no Excel, 3 no python 0-based, mas openpyxl é 1-based)
+        desc_val = (ws_check.cell(row=linhas[0], column=4).value or "sem_descricao").strip()
+        nome_arq = f"{codigo} - {desc_val}.xlsx"
+        caminho_final = os.path.join(pasta_destino, nome_arq)
+
+        # Processo de criação (Reabrindo para limpar)
+        try:
+            wb = load_workbook(path_lista_geral_pdms)
+            for n in wb.sheetnames:
+                if n != "TEMPLATE_PDM":
+                    wb.remove(wb[n])
+
+            ws = wb["TEMPLATE_PDM"]
+            todas = list(ws.iter_rows(values_only=False))
+            cabecalho = todas[:6]
+            linhas_conteudo = [todas[i-1] for i in linhas]
+
+            ws.delete_rows(1, ws.max_row)
+
+            for idx_l, linha in enumerate(cabecalho + linhas_conteudo, start=1):
+                for idx_c, celula in enumerate(linha, start=1):
+                    new_c = ws.cell(row=idx_l, column=idx_c, value=celula.value)
+                    if celula.has_style:
+                        new_c.font = copy(celula.font)
+                        new_c.border = copy(celula.border)
+                        new_c.fill = copy(celula.fill)
+                        new_c.number_format = copy(celula.number_format)
+                        new_c.alignment = copy(celula.alignment)
+
+            wb.save(caminho_final)
+            criados.append(nome_arq)
+            wb.close()
+            if log_callback: log_callback(f"Criado PDM From Itaipu: {nome_arq}")
+        except Exception as e:
+            if log_callback: log_callback(f"Erro ao criar {nome_arq}: {e}")
+
+    return f"Concluído.\nCriados: {len(criados)}\nTotal Analisado: {len(codigos_todos)}"
+
+
+# =============================================================================
+# LÓGICA CRIAÇÃO DE FICHAS (PMIB)
+# =============================================================================
+def processar_pastas_fichas(arquivo_STATUS_PMIB, destino_fichas, lista_selecionados=None, criar_subpastas=True):
+    """Cria a estrutura de pastas (ou apenas lista os caminhos) baseada no Excel STATUS_PMIB"""
+    try:
+        df = pd.read_excel(arquivo_STATUS_PMIB, sheet_name="Lista de Materiais", skiprows=3)
+
+        # Busca dinâmica de colunas
+        c_pmib = next((c for c in df.columns if "CÓDIGO PMIB" in str(c)), None)
+        c_pdm = next((c for c in df.columns if "PDM usado" in str(c)), None)
+
+        if not c_pmib or not c_pdm:
+            return [], "Colunas 'CÓDIGO PMIB' ou 'PDM usado' não encontradas no Excel (linha 4)."
+
+        df = df[[c_pmib, c_pdm]].dropna()
+
+        # PARA: Formata a coluna inteira do DataFrame ANTES de filtrar (Idêntico ao Script 1)
+        df[c_pmib] = df[c_pmib].astype(str).str.strip()
+        df[c_pmib] = df[c_pmib].apply(lambda x: f"{x.split('.')[0]}.{x.split('.')[1].ljust(4, '0')[:4]}" if '.' in x else x)
+
+        # Filtro de seleção manual (se houver)
+        if lista_selecionados:
+            df = df[df[c_pmib].isin(lista_selecionados)]
+
+        criados = []
+        for _, row in df.iterrows():
+            cod_fmt = row[c_pmib]  # Já está com os zeros garantidos!
+            pdm_val = str(row[c_pdm]).strip()
+
+            # PARA: Nova lógica de decisão
+            if criar_subpastas:
+                path_dir = os.path.join(destino_fichas, cod_fmt)
+                if not os.path.exists(path_dir):
+                    os.makedirs(path_dir, exist_ok=True)
+            else:
+                # Se for "Apenas Planilhas", o diretório alvo é a própria raiz!
+                path_dir = destino_fichas
+
+            criados.append((cod_fmt, pdm_val, path_dir))
+
+        tipo_str = "pastas" if criar_subpastas else "itens"
+        return criados, f"{len(criados)} {tipo_str} processados."
+    except Exception as e:
+        return [], f"Erro ao ler Excel: {e}"
+
+
+def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template, log_callback=None):
+    log = []
+
+    # Cache dos arquivos de PDM para não listar disco toda hora
+    pdms_disponiveis = listar_arquivos_excel(pasta_pdms_modificados)
+
+    wb_templ = load_workbook(path_template)
+    # Assume que trabalhamos na memória e salvamos cópias
+
+    count = 0
+    for pmib, pdm_nome, pasta_destino in lista_dados:
+        id_pdm = pdm_nome.split(" - ")[0].replace(".", "_")
+
+        # Achar arquivo fonte
+        src = next((f for f in pdms_disponiveis if id_pdm in os.path.basename(f)), None)
+        if not src:
+            log.append(f"FALHA: PDM fonte não encontrado para {pmib} ({id_pdm})")
+            continue
+
+        try:
+            wb_pdm = load_workbook(src)
+            ws_pdm = wb_pdm.active
+
+            # Reabre o template limpo ou copia na memoria (aqui reabrindo para garantir pureza)
+            # Para performance ideal, deveríamos copiar o objeto workbook, mas I/O é aceitável aqui
+            wb_target = load_workbook(path_template)
+            ws_target = wb_target["Ficha Técnica Padrão"]
+
+            # Lógica de cópia (Linha 79 fixo)
+            start_row = 79
+            borda = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
+            align = Alignment(wrap_text=True, vertical='top')
+            font8 = Font(size=8)
+
+            for i in range(1, ws_pdm.max_row + 1):
+                v_desc = ws_pdm.cell(row=i, column=1).value
+                v_resp = ws_pdm.cell(row=i, column=2).value
+
+                if not v_desc and not v_resp: continue
+
+                row_idx = start_row + i - 1
+
+                # Merge e escrita
+                ws_target.merge_cells(start_row=row_idx, start_column=3, end_row=row_idx, end_column=12)
+                ws_target.merge_cells(start_row=row_idx, start_column=13, end_row=row_idx, end_column=22)
+
+                c_d = ws_target.cell(row=row_idx, column=3, value=v_desc)
+                c_r = ws_target.cell(row=row_idx, column=13, value=v_resp)
+
+                c_d.font = font8; c_d.alignment = align
+                c_r.font = font8; c_r.alignment = align
+
+                # Bordas
+                for c in range(3, 13): ws_target.cell(row=row_idx, column=c).border = borda
+                for c in range(13, 23): ws_target.cell(row=row_idx, column=c).border = borda
+
+                ws_target.row_dimensions[row_idx].height = 32
+
+            out_file = os.path.join(pasta_destino, f"{pmib}.xlsx")
+            wb_target.save(out_file)
+            wb_target.close()
+            wb_pdm.close()
+            count += 1
+            if log_callback: log_callback(f"Ficha PMIB gerada: {pmib}.xlsx")
+
+        except Exception as e:
+            msg_erro = f"ERRO ao gerar ficha {pmib}: {e}"
+            log.append(msg_erro)
+            if log_callback: log_callback(msg_erro)
+
+    wb_templ.close()
+    return f"Fichas geradas: {count}", log
+
+
+def mover_fichas_para_raiz(lista_dados):
+    count = 0
+    if not lista_dados:
+        return "Nada para mover."
+
+    # Pasta raiz é a pasta mãe de onde estão as pastas de PMIB
+    pasta_raiz = os.path.dirname(lista_dados[0][2])
+
+    for pmib, _, pasta_origem in lista_dados:
+        f_origem = os.path.join(pasta_origem, f"{pmib}.xlsx")
+        f_dest = os.path.join(pasta_raiz, f"{pmib}.xlsx")
+
+        if os.path.exists(f_origem):
+            try:
+                shutil.move(f_origem, f_dest)
+                count += 1
+            except: pass
+
+    return f"{count} arquivos movidos para {pasta_raiz}"
+
+
+# =============================================================================
+# EXCLUSÃO DUPLICADOS
+# =============================================================================
+def logica_excluir_duplicados(pasta_alvo, log_callback=None):
+    if not pasta_alvo:
+        return "Pasta inválida."
+
+    files = {}
+    # Agrupa
+    for f in os.listdir(pasta_alvo):
+        if f.endswith(('.xlsx', '.xls', '.xlsm')):
+            pid = extrair_pdm_id(f)
+            if pid: files.setdefault(pid, []).append(os.path.join(pasta_alvo, f))
+
+    deleted = 0
+    log = []
+
+    for pid, paths in files.items():
+        if len(paths) > 1:
+            # Ordena: Maior tamanho primeiro, depois mais recente
+            paths.sort(key=lambda x: (-os.path.getsize(x), os.path.getmtime(x)))
+            # Exclui o primeiro (o "melhor" candidato a duplicata inútil segundo a lógica original?)
+            # NOTA: O script original excluía o PRIMEIRO da lista sorted.
+            # Se sort é (Tamanho DESC), o primeiro é o MAIOR arquivo.
+            # Isso parece contra-intuitivo (excluir o maior?), mas mantive a lógica original.
+            try:
+                os.remove(paths[0])
+                deleted += 1
+                msg = f"Lixeira - Excluído: {os.path.basename(paths[0])}"
+                log.append(msg)
+                if log_callback: log_callback(msg)
+            except Exception as e:
+                msg_erro = f"Erro ao excluir {paths[0]}: {e}"
+                log.append(msg_erro)
+                if log_callback: log_callback(msg_erro)
+
+    return f"Total excluídos: {deleted}\n" + "\n".join(log)

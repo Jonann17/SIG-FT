@@ -1,0 +1,24 @@
+# Segredos e configuração local
+.env
+api_config.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Saídas de execução
+temp_downloads/
+erros_lmr.csv
+erro_web_*.png
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Excel temporários
+~$*.xlsx
+~$*.xls

@@ -1,0 +1,415 @@
+import os
+import re
+import json
+import requests
+import tempfile
+import openpyxl
+from openpyxl.styles import Font
+import PyPDF2
+from bs4 import BeautifulSoup
+
+# Integração LangChain e Google Gemini
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
+
+# Integração LlamaParse
+from llama_parse import LlamaParse
+
+# -----------------------------------------------------------------
+# 1. CONFIGURAÇÕES E MAPAS
+# -----------------------------------------------------------------
+# [REMOVIDO] Constantes de chaves API hardcoded foram removidas daqui.
+# As chaves agora devem ser passadas exclusivamente via __init__ da classe AutoSpecCore.
+
+GENERATIVE_FIELDS = [
+    "empilhamento", "embalagem_transporte", "transporte", "preservacao",
+    "metodo_limpeza", "ferramentas_para_preservacao", "tipo_legislacao",
+    "tipo_descarte", "protecao", "posicao_armazenamento", "unidade", "tipo"
+]
+
+CONFIG_MAP = {
+    "texto_breve_material": {"range": "H6", "type": "cell", "validation": "simple", "weight": 1},
+    "unidade": {"range": "H8", "type": "cell", "validation": "simple", "weight": 1},
+    "tipo_fabricacao": {"cells": ["F10", "F12"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "F10: Série, F12: Especial/Sob Pedido"},
+    "fabricante": {"range": "L10", "type": "cell", "validation": "simple", "weight": 1},
+    "origem": {"cells": ["S6", "S8"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "S6: BR/PY, S8: Outros"},
+    "tipo": {"cells": ["S10", "S12"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "S10: Reparável, S12: Não Reparável"},
+    "comprimento_embalagem": {"range": "H17", "type": "cell", "validation": "simple", "weight": 1, "desc": "cm"},
+    "largura_embalagem": {"range": "H19", "type": "cell", "validation": "simple", "weight": 1, "desc": "cm"},
+    "altura_embalagem": {"range": "H21", "type": "cell", "validation": "simple", "weight": 1, "desc": "cm"},
+    "peso_liquido": {"range": "P17", "type": "cell", "validation": "simple", "weight": 1, "desc": "kg"},
+    "peso_bruto": {"range": "P19", "type": "cell", "validation": "simple", "weight": 1, "desc": "kg"},
+    "sujeito_intemperies": {"cells": ["Q21", "S21"], "type": "checkbox", "validation": "simple", "weight": 1, "desc": "Q21: Sim, S21: Não"},
+    "posicao_armazenamento": {"cells": ["G25", "G27", "G29"], "type": "checkbox", "validation": "simple", "weight": 3, "desc": "G25: Vertical, G27: Horizontal, G29: Indiferente"},
+    "protecao": {"cells": ["S25", "S27", "S29"], "type": "checkbox", "validation": "simple", "weight": 3, "desc": "S25: Nenhuma, S27: UV, S29: Eletrostática"},
+    "nocivo": {"cells": ["E31", "E33"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "E31: Não Nocivo, E33: Nocivo"},
+    "empilhamento": {"range": "J35", "type": "cell", "validation": "simple", "weight": 2, "desc": "Qtd Max Caixas"},
+    "embalagem_transporte": {"range": "M42", "type": "cell", "validation": "ai", "weight": 7, "desc": "Tipo e cuidados embalagem transporte"},
+    "transporte": {"range": "M45", "type": "cell", "validation": "ai", "weight": 3, "desc": "Procedimento elevação/transporte"},
+    "preservacao": {"range": "M52", "type": "cell", "validation": "ai", "weight": 6, "desc": "Cuidados preservação"},
+    "metodo_limpeza": {"range": "M54", "type": "cell", "validation": "ai", "weight": 3, "desc": "Métodos limpeza/secagem"},
+    "ferramentas_para_preservacao": {"range": "M56", "type": "cell", "validation": "ai", "weight": 1, "desc": "Ferramentas recomendadas"},
+    "tipo_legislacao": {"range": "M63", "type": "cell", "validation": "ai", "weight": 4, "desc": "Legislação aplicada"},
+    "tipo_descarte": {"range": "M65", "type": "cell", "validation": "ai", "weight": 2, "desc": "Tipo descarte/Melhores práticas"},
+    "classificacao_periculosidade": {"cells": ["E69", "J69"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "E69: Classe 1 (Perigoso), J69: Classe 2 (Não Perigoso)"},
+    "logistica_reversa": {"cells": ["P69", "T69"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "P69: Não se aplica, T69: Aplica-se"},
+}
+
+VARIAVEIS_SPECS = {
+    "start_row": 79,
+    "pergunta_col_idx": 3,
+    "resposta_col_idx": 13,
+}
+
+
+# -----------------------------------------------------------------
+# 2. CLASSES UTILITÁRIAS (Busca e PDF)
+# -----------------------------------------------------------------
+class WebSearcher:
+    def __init__(self, api_key, cse_id):
+        self.api_key = api_key
+        self.cse_id = cse_id
+        self.search_url = "https://www.googleapis.com/customsearch/v1"
+        self.headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+
+    def search_and_download(self, query, required_terms=[], max_results=3):
+        if not self.api_key or not self.cse_id:
+            return []
+        params = {'key': self.api_key, 'cx': self.cse_id, 'q': query, 'num': max_results, 'gl': 'br', 'hl': 'pt'}
+        try:
+            response = requests.get(self.search_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            items = data.get('items', [])
+            results = []
+            for item in items:
+                link = item.get('link', '').lower()
+                title = item.get('title', '').lower()
+                snippet = item.get('snippet', '').lower()
+                is_relevant = False
+                if not required_terms:
+                    is_relevant = True
+                else:
+                    for term in required_terms:
+                        term_clean = str(term).lower().strip()
+                        if term_clean and (term_clean in title or term_clean in snippet or term_clean in link):
+                            is_relevant = True; break
+                if is_relevant:
+                    filepath = self._download_file(link)
+                    if filepath:
+                        results.append({"path": filepath, "url": link, "title": title})
+            return results
+        except Exception:
+            return []
+
+    def _download_file(self, url):
+        try:
+            response = requests.get(url, headers=self.headers, timeout=15)
+            if response.status_code == 200:
+                suffix = ".pdf" if url.lower().endswith(".pdf") else ".html"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+                    tmp_file.write(response.content)
+                    return tmp_file.name
+        except:
+            return None
+        return None
+
+
+class PDFProcessor:
+    def __init__(self, llama_key):
+        self.llama_key = llama_key
+        if self.llama_key:
+            os.environ["LLAMA_CLOUD_API_KEY"] = self.llama_key
+
+    def extract_text(self, filepath):
+        text_content = ""; method_used = ""; is_pdf = filepath.lower().endswith('.pdf')
+
+        if self.llama_key and is_pdf:
+            try:
+                parser = LlamaParse(result_type="text")
+                documents = parser.load_data(filepath)
+                text_content = "\n".join([doc.text for doc in documents])
+                method_used = "LlamaParse"
+            except Exception:
+                pass
+
+        if not text_content and is_pdf:
+            try:
+                with open(filepath, 'rb') as f:
+                    reader = PyPDF2.PdfReader(f)
+                    for page in reader.pages:
+                        t = page.extract_text()
+                        if t: text_content += t + "\n"
+                method_used = "PyPDF2"
+            except Exception: pass
+
+        if not text_content and not is_pdf:
+            try:
+                with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                    soup = BeautifulSoup(f, 'html.parser')
+                    for script in soup(["script", "style", "nav", "footer", "header"]): script.extract()
+                    text_content = soup.get_text(separator=' ', strip=True)
+                method_used = "WebScrape(BS4)"
+            except Exception: pass
+
+        return text_content, method_used
+
+
+# -----------------------------------------------------------------
+# 3. BACKEND PRINCIPAL
+# -----------------------------------------------------------------
+class AutoSpecCore:
+    def __init__(self, gemini_key, llama_key, google_search_key, google_cse_id):
+        self.gemini_key = gemini_key
+        self.llama_key = llama_key
+        self.google_key = google_search_key
+        self.cse_id = google_cse_id
+
+        # Inicializa componentes
+        if not gemini_key: raise ValueError("Chave Gemini é obrigatória.")
+
+        # Configuração direta do LangChain com a chave fornecida
+        self.llm = ChatGoogleGenerativeAI(model="gemini-3.1-pro-preview", google_api_key=self.gemini_key, temperature=0.1)
+        self.searcher = WebSearcher(self.google_key, self.cse_id)
+        self.pdf_parser = PDFProcessor(self.llama_key)
+
+    # --- Helpers de Excel e Dados ---
+    def extract_pmib_code(self, input_filepath):
+        filename = os.path.basename(input_filepath)
+        match = re.search(r"\d{10}\.(\d{4})", filename)
+        return match.group(1) if match else None
+
+    def find_header_columns(self, pmib_sheet):
+        pmib_col, desc_col, mat_col, start_row = None, None, None, None
+        for row in pmib_sheet.iter_rows(min_row=1, max_row=10):
+            found = False
+            for cell in row:
+                if cell.value:
+                    val = str(cell.value).strip().upper()
+                    if val == "CÓDIGO PMIB": pmib_col = cell.column; found = True
+                    elif val == "DESCRIÇÃO": desc_col = cell.column; found = True
+                    elif val in ["CÓDIGO MATERIAL", "MATERIAL"]:
+                        if "PMIB" not in val: mat_col = cell.column
+            if found: start_row = cell.row
+            if pmib_col and desc_col:
+                if not mat_col: mat_col = 5
+                return pmib_col, desc_col, mat_col, start_row + 1
+        return pmib_col, desc_col, 5, (start_row + 1) if start_row else None
+
+    def get_pmib_data(self, pmib_path, code_suffix):
+        try:
+            wb = openpyxl.load_workbook(pmib_path, data_only=True)
+            ws = wb.active
+            pmib_col, desc_col, mat_col, start_row = self.find_header_columns(ws)
+            if not pmib_col or not desc_col: return "", ""
+
+            for row in ws.iter_rows(min_row=start_row):
+                if len(row) < max(pmib_col, desc_col, mat_col): continue
+                c_pmib = row[pmib_col-1]
+                val_pmib = str(c_pmib.value).strip() if c_pmib.value else ""
+
+                if code_suffix in val_pmib:
+                    desc_val = str(row[desc_col-1].value).strip() if row[desc_col-1].value else ""
+                    mat_val = str(row[mat_col-1].value).strip() if row[mat_col-1].value else ""
+                    return desc_val, mat_val
+            return "", ""
+        except: return "", ""
+
+    def is_empty(self, val):
+        s_val = str(val).strip().upper()
+        return not val or s_val == "" or s_val.startswith("FORNECER")
+
+    # --- Análise da Ficha ---
+    def analyze_sheet(self, filepath, status_pmib_path):
+        wb = openpyxl.load_workbook(filepath)
+        if "Ficha Técnica Padrão" not in wb.sheetnames:
+            raise ValueError("Aba 'Ficha Técnica Padrão' não encontrada.")
+        ws = wb["Ficha Técnica Padrão"]
+
+        pmib_suffix = self.extract_pmib_code(filepath)
+        desc_comp, cod_mat = "", ""
+        if pmib_suffix and status_pmib_path:
+            desc_comp, cod_mat = self.get_pmib_data(status_pmib_path, pmib_suffix)
+
+        # Contexto Base
+        txt_brv = ws[CONFIG_MAP["texto_breve_material"]["range"]].value
+        txt_brv = str(txt_brv).strip() if txt_brv else ""
+        fab = ws[CONFIG_MAP["fabricante"]["range"]].value
+        fab = str(fab).strip() if fab else ""
+
+        missing = {}
+
+        # Mapeamento Estático
+        for key, cfg in CONFIG_MAP.items():
+            if cfg["type"] == "cell":
+                ref = cfg["range"].split(":")[0]
+                if self.is_empty(ws[ref].value):
+                    missing[key] = {"type": "text", "desc": cfg.get("desc", key), "ref": cfg["range"]}
+            elif cfg["type"] == "checkbox":
+                is_filled = any(self.is_empty(ws[c].value) is False for c in cfg["cells"])
+                if not is_filled:
+                    missing[key] = {"type": "checkbox", "options": cfg["cells"], "desc": cfg.get("desc", ""), "ref": cfg["cells"]}
+
+        # Mapeamento Dinâmico (Variáveis)
+        r = VARIAVEIS_SPECS["start_row"]
+        while r <= ws.max_row:
+            p_val = ws.cell(row=r, column=VARIAVEIS_SPECS["pergunta_col_idx"]).value
+            r_val = ws.cell(row=r, column=VARIAVEIS_SPECS["resposta_col_idx"]).value
+            if p_val:
+                if self.is_empty(r_val):
+                    clean_p = str(p_val).strip().replace(":", "")
+                    missing[f"var_row_{r}"] = {"type": "text", "desc": clean_p, "ref": ws.cell(row=r, column=VARIAVEIS_SPECS["resposta_col_idx"]).coordinate}
+            r += 1
+
+        return wb, missing, txt_brv, fab, desc_comp, cod_mat
+
+    # --- RAG: Busca e Contexto ---
+    def retrieve_context(self, txt_brv, fab, cod_mat, refs_locais):
+        # 1. Processar Locais
+        local_txt = self.process_local_documents(refs_locais)
+
+        # 2. Busca Web
+        web_txt = ""
+        sources = []
+
+        if self.google_key and self.cse_id:
+            required = []
+            if fab and len(fab) > 2: required.append(fab)
+            if cod_mat and len(cod_mat) > 2: required.append(cod_mat)
+
+            queries = []
+            if cod_mat: queries.append(f'"{cod_mat}" {fab} datasheet specs')
+            queries.append(f"{txt_brv} {fab} datasheet specs")
+
+            for q in queries:
+                files = self.searcher.search_and_download(q, required_terms=required, max_results=3)
+                if files:
+                    for item in files:
+                        t, m = self.pdf_parser.extract_text(item['path'])
+                        if t and len(t) > 100:
+                            web_txt += f"--- WEB DOC: {item['title']} ---\nURL: {item['url']}\n{t[:50000]}\n\n"
+                            sources.append(item['url'])
+                        try: os.remove(item['path'])
+                        except: pass
+                    break  # Se achou algo, para
+
+        return (local_txt + "\n\n" + web_txt), sources
+
+    def process_local_documents(self, paths):
+        ctx = []
+        for p in paths:
+            try:
+                t, m = self.pdf_parser.extract_text(p)
+                if t: ctx.append(f"--- LOCAL DOC: {os.path.basename(p)} ---\n{t[:60000]}")
+            except: pass
+        return "\n\n".join(ctx)
+
+    # --- Geração IA ---
+    def generate_ai_response(self, txt_brv, fab, desc_comp, missing, context):
+        if not missing: return {}
+
+        prompt = f"""
+        Você é um Assistente Técnico Industrial.
+        DADOS: Nome: {txt_brv} | Descrição: {desc_comp} | Fab: {fab}
+
+        CONTEXTO:
+        {context if context else "Nenhuma informação disponível."}
+
+        INSTRUÇÕES:
+        1. Priorize "LOCAL DOC".
+        2. Verifique se o documento bate com o material.
+        3. Campos [INFO TÉCNICA PADRÃO]: Se não houver dados, GERE com base em boas práticas.
+        4. Campos [ESTRITO]: Se não houver dados, deixe vazio "".
+        5. 'empilhamento': Apenas números inteiros.
+        6. Checkboxes: Deduza a melhor opção se não explícito.
+
+        CAMPOS A PREENCHER (Retorne JSON {{ID: Resposta}}):
+        """
+
+        desc_list = []
+        for k, v in missing.items():
+            info = f"- ID '{k}': {v['desc']}"
+            if k in GENERATIVE_FIELDS: info += " [INFO TÉCNICA PADRÃO]"
+            else: info += " [ESTRITO]"
+            if v['type'] == 'checkbox': info += f" (Opções: {v['options']})"
+            desc_list.append(info)
+
+        prompt += "\n".join(desc_list)
+
+        try:
+            chain = PromptTemplate(template="{q}", input_variables=["q"]) | self.llm | JsonOutputParser()
+            return chain.invoke({"q": prompt})
+        except Exception as e:
+            print(f"Erro IA: {e}")
+            return {}
+
+    def fill_save(self, wb, filepath, ai_data, missing):
+        ws = wb["Ficha Técnica Padrão"]
+        font = Font(color="0000FF")
+
+        for k, val in ai_data.items():
+            if k in missing and val:
+                info = missing[k]
+                if info['type'] == 'text':
+                    ref = info['ref'].split(':')[0]
+                    if k == 'empilhamento':
+                        match = re.search(r'\d+', str(val))
+                        ws[ref].value = int(match.group()) if match else None
+                    else:
+                        ws[ref].value = val
+                    ws[ref].font = font
+                elif info['type'] == 'checkbox':
+                    clean = str(val).strip().upper()
+                    if clean in info['options']:
+                        for o in info['options']: ws[o].value = None
+                        ws[clean].value = "X"
+                        ws[clean].font = font
+
+        base, ext = os.path.splitext(filepath)
+        new_path = f"{base}_completed{ext}"
+        wb.save(new_path)
+        return new_path
+
+    # --- MÉTODOS PÚBLICOS DE FLUXO ---
+    def process_queue(self, queue, status_pmib_path):
+        """
+        Processa a lista de tarefas.
+        Queue Item: {'sheet': path, 'refs': [paths]}
+        Yields: Logs para UI
+        """
+        yield f"--- Iniciando Processamento ({len(queue)} itens) ---"
+
+        for i, task in enumerate(queue):
+            ficha = task['sheet']
+            refs = task['refs']
+            fname = os.path.basename(ficha)
+
+            yield f"\n[{i+1}/{len(queue)}] {fname}..."
+
+            try:
+                # 1. Analisa Ficha
+                wb, missing, txt, fab, desc, cod = self.analyze_sheet(ficha, status_pmib_path)
+
+                if not missing:
+                    yield " -> Ficha já está completa."
+                    continue
+
+                yield f" -> {len(missing)} campos faltantes. Coletando contexto..."
+
+                # 2. Contexto
+                full_ctx, sources = self.retrieve_context(txt, fab, cod, refs)
+                if sources: yield f" -> Fontes Web: {len(sources)}"
+
+                # 3. IA
+                yield " -> Consultando Gemini..."
+                ai_resp = self.generate_ai_response(txt, fab, desc, missing, full_ctx)
+
+                # 4. Salvar
+                out_path = self.fill_save(wb, ficha, ai_resp, missing)
+                yield f" -> Salvo: {os.path.basename(out_path)}"
+
+            except Exception as e:
+                yield f" -> ERRO: {e}"
+
+        yield "\n--- FIM DA FILA ---"
