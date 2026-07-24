@@ -271,9 +271,16 @@ SIG-FT/
   `usage: {include: true}` para receber o CUSTO REAL de cada chamada na resposta.
   O adaptador genérico cobre a futura IA interna da empresa (`EMPRESA_LLM_BASE_URL` +
   `EMPRESA_LLM_API_KEY`) e qualquer provedor direto OpenAI-compatível. Campos de chave na
-  Home (mesmo padrão visual das atuais). `autospec` (LangChain) passa a receber o LLM da
-  mesma fábrica, ou tem o LangChain substituído por chamada direta via `LLMClient`
-  (decidir na execução; registrar em PENDENCIAS se adiado).
+  Home (mesmo padrão visual das atuais).
+  **Decisão (2026-07-24): LangChain foi avaliado como camada central e descartado** — o
+  padrão de uso do SIG-FT é chamada única prompt→JSON (sem chains/agentes/memória); o
+  mapeamento das ações de IA é garantido pelo funil único `LLMClient`+`UsageTracker` (com
+  custo real via OpenRouter, que o LangChain não fornece); e o framework encareceria o
+  empacotamento PyInstaller. Portanto, neste checkpoint o uso residual de LangChain no
+  `autospec` é REMOVIDO (substituído por chamada direta via `LLMClient`), junto com as
+  dependências `langchain-*` do requirements. LangChain/LangGraph fica reservado como
+  opção futura APENAS se surgirem fluxos agênticos multi-etapas — a fábrica `get_llm()`
+  isola essa porta.
   *Aceite*: a mesma tarefa roda em ≥2 modelos distintos via OpenRouter mudando apenas
   config; recursos usados hoje no Gemini validados no caminho OpenRouter (JSON mode via
   `response_format`, system prompt, comportamento de safety) com diferenças registradas
