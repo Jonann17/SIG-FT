@@ -47,6 +47,12 @@ Extraia da conversa (pergunte apenas o que não estiver claro):
   `upload_conditions_backend.carregar_lookup_status`).
 - **Excel**: cabeçalho é dinâmico — nunca assuma linha fixa; trate `PermissionError`
   (arquivo aberto) com retry via callback.
+- **Diálogos de arquivo**: nunca chame `filedialog` direto — use os wrappers com memória de
+  caminho (`sigft/app/file_dialogs.py` + `sigft/core/prefs.py`, CP 1.5 do plano), informando
+  a categoria (`excel`/`pdf`/`json`/`pasta`) e uma chave própria do campo (ex.:
+  `"meumodulo.ficha"`), para que cada seletor reabra na última pasta usada daquele contexto.
+  Se o campo corresponder a uma pasta padrão conhecida (SOBRESSALENTES - PMIB, PDMs
+  modificados, Templates), pré-preencha a partir de `get_default_dir()`.
 - **RPA**: login é manual (pausa aguardando o usuário); botão PARAR via flag
   `solicitar_parada()`; nunca invente seletores sem validar com o usuário no portal real.
 - **IA**: nunca chame SDK de provedor direto se `core/llm/` existir — use `get_llm(tarefa)` e

@@ -17,8 +17,14 @@ Organização:
   3. Prefixo de contrato
   4. Valores mágicos de linha (ficha técnica, STATUS_PMIB)
   5. Colunas-chave mais repetidas entre módulos
-  6. Mapa de tarefas de IA (`LLM_TASKS`) — consumido de fato a partir do CP 3.1
+  6. Mapa de tarefas de IA (`LLM_TASKS`/`LLM_DEFAULT`) + decisão de modelos
   7. Carregamento de chaves de API (.env + api_config.json)
+
+Exceção à regra de caracterização: a seção 6 (modelos de IA) encoda também as
+DECISÕES de `docs/refatoracao/MODELOS_IA.md` (padrão Gemini 3 Flash Preview,
+Grok 4.5 em `categorizar_pdm`) em `LLM_DEFAULT`/`LLM_TASKS`; os modelos que o
+código roda HOJE ficam preservados à parte em `LLM_MODELOS_HOJE` (baseline de
+equivalência do CP 3.1). O resto do arquivo é caracterização pura.
 """
 
 from __future__ import annotations
@@ -168,36 +174,73 @@ COL_INFO_GERAIS = "INFO. GERAIS"
 
 
 # =============================================================================
-# 6. MAPA DE TAREFAS DE IA (LLM_TASKS)
+# 6. MAPA DE TAREFAS DE IA (LLM_TASKS) + DECISÃO DE MODELOS (MODELOS_IA.md)
 # =============================================================================
-# Consumido "de fato" a partir do CP 3.1 (`core/llm/client.py:get_llm(tarefa)`
+# Consumido "de fato" a partir da Fase 3 (`core/llm/client.py:get_llm(tarefa)`
 # resolve provider/modelo via `config.LLM_TASKS`, ver plano Fase 3) — nasce
-# aqui porque é config, não lógica de IA. Hoje TODAS as tarefas chamam o
-# Gemini diretamente (`google.generativeai` ou, no caso do autospec, o mesmo
-# modelo via LangChain `ChatGoogleGenerativeAI` — uso que o CP 3.2 remove em
-# favor de `LLMClient` direto, mantendo o MODELO). `provider="gemini"` em
-# todas reflete esse estado atual; strings de modelo são EXATAMENTE as
-# hardcoded em cada módulo hoje (caracterização, não correção).
+# aqui porque é config, não lógica de IA.
+#
+# DOIS conjuntos de modelos, de propósito (elimina a ambiguidade "hoje" × "alvo"):
+#   - LLM_MODELOS_HOJE  = os modelos EXATOS hardcoded em cada módulo HOJE
+#     (caracterização). É a referência de EQUIVALÊNCIA do CP 3.1 ("comportamento
+#     atual preservado — mesmos modelos default de hoje").
+#   - LLM_DEFAULT / LLM_TASKS = os modelos DECIDIDOS (padrão global + overrides
+#     por tarefa) conforme docs/refatoracao/MODELOS_IA.md. A TROCA para eles NÃO
+#     acontece no CP 3.1; é aplicada e validada (A/B na UI) no CP 3.3, sem
+#     downgrade silencioso. Os slugs são ILUSTRATIVOS — confirmar os ids reais
+#     no catálogo do OpenRouter na implementação (ex.:
+#     `google/gemini-3-flash-preview`, `x-ai/grok-4.5`, `minimax/minimax-m3`).
 
 PROVIDER_GEMINI = "gemini"
+PROVIDER_XAI = "xai"
 
-LLM_TASKS: dict[str, dict[str, str]] = {
-    # categorizar_pdm: GeminiCategorizer.processar_lote
-    #   (cria_fichas_no_pmib_v1_backend.py:131), instanciado em
-    #   frontend.py:736 (`cat = GeminiCategorizer(self.api_key_gemini)`).
+# Modelos que o código roda HOJE, por tarefa (caracterização — strings exatas
+# hardcoded em cada módulo, referências arquivo:linha abaixo). NÃO são o alvo;
+# são o baseline de equivalência do CP 3.1.
+LLM_MODELOS_HOJE: dict[str, dict[str, str]] = {
+    # GeminiCategorizer.processar_lote (cria_fichas_no_pmib_v1_backend.py:131)
     "categorizar_pdm": {"provider": PROVIDER_GEMINI, "model": "gemini-3.1-pro-preview"},
-    # validar_ficha: DatasheetAnalyzer._call_gemini_api
-    #   (analyzer_backend.py:451).
+    # DatasheetAnalyzer._call_gemini_api (analyzer_backend.py:451)
     "validar_ficha": {"provider": PROVIDER_GEMINI, "model": "gemini-3.1-pro-preview"},
-    # condicoes: ConditionsProcessor.processar_ia_lote
-    #   (upload_conditions_backend.py:363).
+    # ConditionsProcessor.processar_ia_lote (upload_conditions_backend.py:363)
     "condicoes": {"provider": PROVIDER_GEMINI, "model": "gemini-3.5-flash"},
-    # tech_specs: TechSpecsProcessor._chamar_gemini_specs
-    #   (upload_tech_specs_backend.py:285-286).
+    # TechSpecsProcessor._chamar_gemini_specs (upload_tech_specs_backend.py:285-286)
     "tech_specs": {"provider": PROVIDER_GEMINI, "model": "gemini-3.5-flash"},
-    # autospec: AutoSpecCore.__init__ -> ChatGoogleGenerativeAI
-    #   (autospec_backend.py:173).
+    # AutoSpecCore.__init__ -> ChatGoogleGenerativeAI (autospec_backend.py:173)
     "autospec": {"provider": PROVIDER_GEMINI, "model": "gemini-3.1-pro-preview"},
+}
+
+# Padrão GLOBAL decidido (MODELOS_IA.md §3): default de todas as tarefas na UI
+# (CP 3.3); overrides por tarefa ficam em LLM_TASKS.
+LLM_DEFAULT: dict[str, str] = {"provider": PROVIDER_GEMINI, "model": "gemini-3-flash-preview"}
+
+# Modelos DECIDIDOS por tarefa (MODELOS_IA.md §3): Gemini 3 Flash Preview em
+# quase tudo; Grok 4.5 em `categorizar_pdm` (raciocínio, lote raro → custo
+# absoluto irrisório).
+LLM_TASKS: dict[str, dict[str, str]] = {
+    # raciocínio (classificar itens contra o vocabulário PDM); lote raro
+    "categorizar_pdm": {"provider": PROVIDER_XAI, "model": "grok-4.5"},
+    # juiz semântico VALIDO/INVALIDO; rate-limit de 60s por design → baixo volume
+    "validar_ficha": {"provider": PROVIDER_GEMINI, "model": "gemini-3-flash-preview"},
+    # alto volume (1 por ficha); PT/ES + JSON são função central do SIG-FT
+    "condicoes": {"provider": PROVIDER_GEMINI, "model": "gemini-3-flash-preview"},
+    # alto volume, mais mecânico; economia máxima opt-in = minimax-m3 (CP 3.3)
+    "tech_specs": {"provider": PROVIDER_GEMINI, "model": "gemini-3-flash-preview"},
+    # RAG (contexto longo); subir p/ modelo forte se a geração exigir
+    "autospec": {"provider": PROVIDER_GEMINI, "model": "gemini-3-flash-preview"},
+}
+
+# Tabela de preços (US$ por 1M tokens) — SEED do UsageTracker (CP 3.4) para
+# ESTIMAR custo dos provedores diretos (via OpenRouter o custo vem REAL na
+# resposta). Fonte: docs/refatoracao/MODELOS_IA.md §2 (aimultiple, jul/2026) —
+# valores EDITÁVEIS, reconfirmar na implementação. Só os modelos que este
+# config referencia (hoje + decididos); a tabela completa está no MODELOS_IA.md.
+LLM_PRECOS_USD_POR_1M: dict[str, dict[str, float]] = {
+    "gemini-3-flash-preview": {"input": 0.50, "output": 3.00},   # padrão global
+    "grok-4.5": {"input": 2.00, "output": 6.00},                 # poder de decisão
+    "minimax-m3": {"input": 0.30, "output": 1.20},               # economia máxima (opt-in)
+    "gemini-3.1-pro-preview": {"input": 2.00, "output": 12.00},  # usado hoje (3 tarefas)
+    "gemini-3.5-flash": {"input": 1.50, "output": 9.00},         # usado hoje (2 tarefas)
 }
 
 

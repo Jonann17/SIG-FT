@@ -24,11 +24,15 @@ código e revisada. Um arquivo por módulo:
 ## Refatoração (`refatoracao/`)
 
 - `PLANO_REFATORACAO.md` — decisões de produto, diagnóstico, arquitetura-alvo e plano em
-  9 fases (0–8) / 35 checkpoints, com critérios de aceite e quadro de status.
+  9 fases (0–8) / 36 checkpoints, com critérios de aceite e quadro de status.
   **Documento mestre da refatoração.** Destaques: camada de IA multi-provedor com OpenRouter
   como gateway padrão, seleção de modelo pela interface e rastreamento de custos reais
   (Fase 3), migração Selenium→Playwright (Fase 5) e reconstrução do módulo de fichas
   duplicadas com testes interativos (Fase 6).
+- `MODELOS_IA.md` — decisão de qual LLM usar: perfil de cada tarefa e tabela score×preço
+  (aimultiple, jul/2026). **Padrão: Gemini 3 Flash Preview; poder de decisão: Grok 4.5;
+  economia máxima opt-in: MiniMax M3.** Alimenta `config.LLM_TASKS`, o seletor da UI (CP 3.3)
+  e a tabela de custos (CP 3.4).
 - `PENDENCIAS.md` — itens fora de escopo descobertos durante a execução.
 - `ESPEC_FICHA_DUPLICADA.md` — criado no CP 6.1 (especificação do módulo reconstruído).
 

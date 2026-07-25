@@ -1,6 +1,8 @@
 # Segredos e configuração local
 .env
 api_config.json
+user_prefs.json
+logs/
 
 # Python
 __pycache__/

@@ -122,30 +122,33 @@ def test_llm_tasks_tem_exatamente_as_5_tarefas_do_cp_3_1():
     }
 
 
-def test_llm_tasks_provider_e_gemini_em_todas_hoje():
-    # Hoje tudo é Gemini direto (google.generativeai ou, no autospec, o mesmo
-    # modelo via LangChain ChatGoogleGenerativeAI) — ver plano, CP 3.1/3.2.
-    for tarefa, cfg in sigft_config.LLM_TASKS.items():
-        assert cfg["provider"] == "gemini", tarefa
-        assert cfg["provider"] == sigft_config.PROVIDER_GEMINI, tarefa
+def test_llm_tasks_provider_por_tarefa_segue_a_decisao():
+    # MODELOS_IA.md §3: Grok 4.5 (xai) em categorizar_pdm; Gemini nas demais.
+    providers = {t: cfg["provider"] for t, cfg in sigft_config.LLM_TASKS.items()}
+    assert providers == {
+        "categorizar_pdm": sigft_config.PROVIDER_XAI,
+        "validar_ficha": sigft_config.PROVIDER_GEMINI,
+        "condicoes": sigft_config.PROVIDER_GEMINI,
+        "tech_specs": sigft_config.PROVIDER_GEMINI,
+        "autospec": sigft_config.PROVIDER_GEMINI,
+    }
+    assert sigft_config.PROVIDER_XAI == "xai"
+    assert sigft_config.PROVIDER_GEMINI == "gemini"
 
 
 @pytest.mark.parametrize(
     "tarefa,modelo_esperado",
     [
-        # cria_fichas_no_pmib_v1_backend.py:131 (GeminiCategorizer.processar_lote)
-        ("categorizar_pdm", "gemini-3.1-pro-preview"),
-        # analyzer_backend.py:451 (DatasheetAnalyzer._call_gemini_api)
-        ("validar_ficha", "gemini-3.1-pro-preview"),
-        # upload_conditions_backend.py:363 (ConditionsProcessor.processar_ia_lote)
-        ("condicoes", "gemini-3.5-flash"),
-        # upload_tech_specs_backend.py:285-286 (TechSpecsProcessor._chamar_gemini_specs)
-        ("tech_specs", "gemini-3.5-flash"),
-        # autospec_backend.py:173 (AutoSpecCore.__init__ -> ChatGoogleGenerativeAI)
-        ("autospec", "gemini-3.1-pro-preview"),
+        # MODELOS_IA.md §3 — modelos DECIDIDOS (alvo), NÃO os de hoje (esses
+        # ficam em LLM_MODELOS_HOJE, testados à parte).
+        ("categorizar_pdm", "grok-4.5"),
+        ("validar_ficha", "gemini-3-flash-preview"),
+        ("condicoes", "gemini-3-flash-preview"),
+        ("tech_specs", "gemini-3-flash-preview"),
+        ("autospec", "gemini-3-flash-preview"),
     ],
 )
-def test_llm_tasks_modelo_exato_por_tarefa(tarefa, modelo_esperado):
+def test_llm_tasks_modelo_decidido_por_tarefa(tarefa, modelo_esperado):
     assert sigft_config.LLM_TASKS[tarefa]["model"] == modelo_esperado
 
 
@@ -157,7 +160,7 @@ def test_llm_tasks_cada_entrada_tem_so_provider_e_model():
 def test_get_task_config_resolve_provider_e_model():
     assert sigft_config.get_task_config("condicoes") == {
         "provider": "gemini",
-        "model": "gemini-3.5-flash",
+        "model": "gemini-3-flash-preview",
     }
 
 
@@ -165,7 +168,7 @@ def test_get_task_config_retorna_copia_independente_do_dict_global():
     resultado = sigft_config.get_task_config("autospec")
     resultado["model"] = "outro-modelo-qualquer"
     # Mutar o retorno não pode afetar LLM_TASKS (get_task_config devolve cópia).
-    assert sigft_config.LLM_TASKS["autospec"]["model"] == "gemini-3.1-pro-preview"
+    assert sigft_config.LLM_TASKS["autospec"]["model"] == "gemini-3-flash-preview"
 
 
 def test_get_task_config_tarefa_desconhecida_levanta_erro_claro():
@@ -179,6 +182,45 @@ def test_get_task_config_erro_lista_as_tarefas_validas():
     mensagem = str(exc_info.value)
     for tarefa in sigft_config.LLM_TASKS:
         assert tarefa in mensagem
+
+
+def test_llm_default_e_gemini_3_flash_preview():
+    # Padrão global decidido em MODELOS_IA.md §3.
+    assert sigft_config.LLM_DEFAULT == {
+        "provider": "gemini",
+        "model": "gemini-3-flash-preview",
+    }
+
+
+def test_llm_modelos_hoje_preserva_os_modelos_atuais_caracterizados():
+    # Baseline de EQUIVALÊNCIA do CP 3.1: os modelos EXATOS que o código roda
+    # hoje, preservados à parte de LLM_TASKS (que já aponta para os alvos).
+    assert sigft_config.LLM_MODELOS_HOJE == {
+        "categorizar_pdm": {"provider": "gemini", "model": "gemini-3.1-pro-preview"},
+        "validar_ficha": {"provider": "gemini", "model": "gemini-3.1-pro-preview"},
+        "condicoes": {"provider": "gemini", "model": "gemini-3.5-flash"},
+        "tech_specs": {"provider": "gemini", "model": "gemini-3.5-flash"},
+        "autospec": {"provider": "gemini", "model": "gemini-3.1-pro-preview"},
+    }
+
+
+def test_llm_modelos_hoje_tem_as_mesmas_5_tarefas_que_llm_tasks():
+    assert set(sigft_config.LLM_MODELOS_HOJE) == set(sigft_config.LLM_TASKS)
+
+
+def test_llm_precos_cobre_os_modelos_referenciados_hoje_e_alvo():
+    # Todo modelo citado em LLM_TASKS/LLM_MODELOS_HOJE precisa ter preço-seed
+    # para o UsageTracker (CP 3.4) estimar custo de provedor direto.
+    modelos = {cfg["model"] for cfg in sigft_config.LLM_TASKS.values()}
+    modelos |= {cfg["model"] for cfg in sigft_config.LLM_MODELOS_HOJE.values()}
+    for modelo in modelos:
+        assert modelo in sigft_config.LLM_PRECOS_USD_POR_1M, modelo
+
+
+def test_llm_precos_valores_de_referencia():
+    # Amostra dos valores de MODELOS_IA.md §2 (US$ por 1M tokens).
+    assert sigft_config.LLM_PRECOS_USD_POR_1M["gemini-3-flash-preview"] == {"input": 0.50, "output": 3.00}
+    assert sigft_config.LLM_PRECOS_USD_POR_1M["grok-4.5"] == {"input": 2.00, "output": 6.00}
 
 
 # =============================================================================

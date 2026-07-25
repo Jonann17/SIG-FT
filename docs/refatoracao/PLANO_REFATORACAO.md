@@ -33,6 +33,15 @@ Estas decisões orientam todo o plano e prevalecem sobre qualquer regra genéric
 6. Duas skills de apoio ao desenvolvimento vivem em `.claude/skills/`:
    `sigft-novo-modulo` (criar módulo a partir de uma ideia) e `sigft-melhorar-modulo`
    (evoluir módulo existente). Mantê-las atualizadas quando a arquitetura mudar.
+7. **Memória de caminhos nos diálogos de arquivo + pastas padrão configuráveis** (definida
+   em 2026-07-24, ver CP 1.5): cada diálogo abre na última pasta usada PARA AQUELE TIPO DE
+   ARQUIVO/CAMPO (ex.: no AutoSpec, o seletor de ficha Excel abre na pasta do último Excel;
+   o de manuais abre na pasta do último PDF — sem vai-e-vem entre pastas). Além disso,
+   pastas de trabalho conhecidas vêm pré-configuradas como padrão, editáveis pela UI:
+   `<home>/Box/CMI - Consórcio Itaipu/11 - Ger. Engenharia/15 - PDM/SOBRESSALENTES - PMIB`
+   (fichas/STATUS), `.../15 - PDM/PDMs modificados` (PDMs modificados) e
+   `.../15 - PDM/Templates` (template da ficha) — armazenadas relativas ao home do usuário
+   para funcionar em qualquer máquina com Box.
 
 ---
 
@@ -135,10 +144,12 @@ SIG-FT/
 │   │   │   │                   #   clicar_salvar_visivel, excluir_linha_com_confirmacao,
 │   │   │   │                   #   stop-flag, espera de login manual
 │   │   │   └── ficha_layout.py # CONFIG_MAP unificado (fonte única do layout da ficha)
-│   │   └── callbacks.py        # protocolo UI↔serviço: log estruturado/pause/ask/progress
+│   │   ├── callbacks.py        # protocolo UI↔serviço: log estruturado/pause/ask/progress
+│   │   └── prefs.py            # user_prefs.json: memória de últimos caminhos + pastas padrão
 │   ├── services/               # lógica de negócio (os atuais backends, magros)
 │   └── app/                    # UI (mesmo estilo visual de hoje)
 │       ├── main.py / splash.py / theme.py
+│       ├── file_dialogs.py     # wrappers do filedialog com memória de caminho (CP 1.5)
 │       ├── widgets/            # console.py, pickers.py, dialogs.py, module_frame.py
 │       └── views/              # 12 telas finas
 ├── tests/                      # pytest para core/ (funções puras)
@@ -186,14 +197,20 @@ SIG-FT/
   Centralizar: URL do portal, aba "Lista de Materiais", linha 79 das specs, prefixo de
   contrato (hoje `4500063671`, vira configurável), colunas-chave, carregamento de chaves
   (.env + api_config.json) **e o mapa de tarefas de IA** (`LLM_TASKS: tarefa → {provider,
-  model}` — consumido de fato na Fase 3, mas já nasce aqui).
+  model}` + `LLM_DEFAULT` — consumido de fato na Fase 3, mas já nasce aqui). Os valores de
+  `LLM_DEFAULT`/`LLM_TASKS` e a tabela de preços seguem **`docs/refatoracao/MODELOS_IA.md`**
+  (padrão global: Gemini 3 Flash Preview; override pré-semeado: `categorizar_pdm` em Grok 4.5).
   *Aceite*: módulo importável + testes de carga de config.
 
 - **CP 1.2 — `core/excel/pmib_codes.py` + `headers.py`.**
   Implementar `normalize_pmib()` e `find_header_row()`/`find_columns()` cobrindo os
-  comportamentos das ~10 variantes. Migrar todos os consumidores.
-  *Aceite*: testes do CP 0.1 passam contra a nova implementação; grep não encontra
-  regex/ljust de PMIB fora de `pmib_codes.py`.
+  comportamentos das ~10 variantes. Migrar todos os consumidores. Inclui a unificação de
+  `extract_pmib_code(caminho)` com **`os.path.basename()` antes do regex** — decisão do
+  arquiteto para o bug latente encontrado no CP 0.1 (o comportamento correto é o do
+  `autospec`; o teste de caracterização do analyzer é atualizado INTENCIONALMENTE aqui,
+  documentando a correção).
+  *Aceite*: testes do CP 0.1 passam contra a nova implementação (com a exceção intencional
+  acima); grep não encontra regex/ljust de PMIB fora de `pmib_codes.py`.
 
 - **CP 1.3 — `core/excel/locking.py` + `status_sheet.py`.**
   `save_with_retry` unifica os 4 laços de PermissionError. `StatusPMIB` unifica: carregar
@@ -208,6 +225,32 @@ SIG-FT/
   nível/contexto ficam disponíveis para o CP 4.4 e para gravação em arquivo. Padronizar a
   assinatura dos serviços (parâmetro único `callbacks`), com aliases retrocompatíveis.
   *Aceite*: 2 serviços migrados como piloto (`lmr`, `apagar_lmr`).
+
+- **CP 1.5 — Memória de caminhos + pastas padrão (decisão de produto nº 7).**
+  Dois módulos novos:
+  1. `sigft/core/prefs.py` (puro, sem tkinter): estado persistido em `user_prefs.json` na
+     raiz (**gitignored** — é por usuário/máquina). API: `get_initial_dir(chave, categoria)`,
+     `remember_dir(chave, categoria, caminho)`, `get_default_dir(nome)`,
+     `set_default_dir(nome, caminho)`. Ordem de resolução do diretório inicial:
+     último da CHAVE específica (ex.: `autospec.manuais`) → último da CATEGORIA
+     (`excel`/`pdf`/`json`/`pasta`) → pasta padrão mapeada para a chave → comportamento
+     atual do sistema. Após seleção bem-sucedida, grava chave + categoria.
+  2. `sigft/app/file_dialogs.py` (lado UI): wrappers `ask_open_file`, `ask_open_files`,
+     `ask_save_file`, `ask_directory` que envelopam o `filedialog` aplicando a resolução
+     acima e o `remember` na saída.
+  Pastas padrão semeadas RELATIVAS AO HOME (`Path.home() / "Box" / "CMI - Consórcio
+  Itaipu" / "11 - Ger. Engenharia" / "15 - PDM" / ...`): `sobressalentes_pmib`
+  (SOBRESSALENTES - PMIB → STATUS/fichas), `pdms_modificados` (PDMs modificados) e
+  `templates_ficha` (Templates). Só são usadas se existirem no disco; editáveis num painel
+  "Pastas padrão" na Home (mesmo estilo dos cards). Aplicação imediata no frontend atual
+  (plano): substituir TODAS as chamadas diretas de `filedialog.*` pelos wrappers, com
+  chave por campo; pré-preencher os campos de pasta do `ModuloPDM` (`caminho_destino` ←
+  `pdms_modificados`; diálogo de template ← `templates_ficha`; STATUS/fichas ←
+  `sobressalentes_pmib`) quando as pastas existirem.
+  *Aceite*: grep de `filedialog.` zerado fora de `file_dialogs.py`; cenário AutoSpec
+  validado (Excel abre na pasta do último Excel, PDF na do último PDF, na mesma sessão e
+  após reiniciar o app); campos do ModuloPDM pré-preenchidos quando os padrões existem;
+  `user_prefs.json` no `.gitignore`; testes de resolução de diretório em `tests/`.
 
 ### Fase 2 — Camada RPA unificada (desenhada para a troca de motor)
 
@@ -262,7 +305,10 @@ SIG-FT/
   default) — menor risco na migração e preserva o free tier do AI Studio.
   Migrar os 4 consumidores diretos do `google.generativeai`.
   *Aceite*: `genai.` só aparece em `providers/gemini.py`; nomes de modelo apenas em
-  `config.py`; comportamento atual preservado (mesmos modelos default de hoje).
+  `config.py`; comportamento atual preservado (mesmos modelos default de hoje —
+  gemini-3.5-flash / gemini-3.1-pro-preview). **A troca para os defaults econômicos de
+  `MODELOS_IA.md` NÃO acontece aqui** — este CP é refatoração pura (equivalência provável);
+  a mudança de modelo é feita e validada no CP 3.3.
 
 - **CP 3.2 — Gateway OpenRouter (padrão) + endpoint OpenAI-compatível genérico.**
   `providers/openai_compat.py` (pacote `openai`, `base_url` configurável) e
@@ -292,15 +338,22 @@ SIG-FT/
   TAREFA (as 5 tarefas de `LLM_TASKS`). Fonte da lista: catálogo do OpenRouter quando a
   chave existir, filtrado por uma lista curada de favoritos em config (para não exibir
   400+ modelos), com campo livre para id manual. Persistência em `api_config.json`; efeito
-  imediato, sem reiniciar o app. Provedores sem chave configurada não aparecem.
+  imediato, sem reiniciar o app. Provedores sem chave configurada não aparecem. **A lista
+  curada de favoritos e os defaults aplicados aqui vêm de `MODELOS_IA.md`** (padrão global
+  Gemini 3 Flash Preview; `categorizar_pdm` em Grok 4.5; MiniMax M3 como economia máxima
+  opt-in). Como isto substitui os modelos premium do
+  CP 3.1 por opções mais baratas, o checkpoint só é dado por concluído após o usuário validar
+  a qualidade num punhado de fichas (A/B contra o modelo anterior) — sem downgrade silencioso.
   *Aceite*: trocar o modelo na UI muda a próxima chamada (verificável no registro de uso);
-  seleção sobrevive a reinício do app.
+  seleção sobrevive a reinício do app; usuário confirmou a qualidade dos defaults econômicos
+  numa amostra.
 
 - **CP 3.4 — `core/llm/usage.py` (rastreamento de uso e custos).**
   Cada `generate()` grava um registro JSONL em `logs/llm_usage.jsonl`: timestamp, provedor,
   modelo, módulo (tag), tarefa, tokens de entrada/saída, custo (REAL vindo do OpenRouter
-  quando disponível; senão ESTIMADO pela tabela de preços editável em `config.py`, marcado
-  como estimativa), duração, sucesso/erro. Relatório agregado: `usage_report()` (por
+  quando disponível; senão ESTIMADO pela tabela de preços editável em `config.py` — seed
+  inicial na seção 2 de `MODELOS_IA.md`, marcado como estimativa), duração, sucesso/erro.
+  Relatório agregado: `usage_report()` (por
   módulo, por modelo, por dia) + card "Gastos de IA" na Home.
   *Aceite*: rodar qualquer módulo com IA gera registros; o relatório responde "qual modelo
   gasta mais na mesma tarefa" e "qual módulo do SIG-FT gasta mais"; chamadas via OpenRouter
@@ -444,9 +497,11 @@ informações necessárias da ficha original; replicar essas informações na fi
 - **CP 7.2 — `widgets/pickers.py` + `widgets/dialogs.py`.**
   `FilePickerRow`, `FolderPickerRow`, `FileQueueList`, `PausaLoginDialog`,
   `RetryLockDialog`, `SelecaoMultiplaDialog`, `DataFrameSelecaoDialog` (substituem as 6
-  `Janela*` e as cópias). Mesmo comportamento e aparência atuais.
+  `Janela*` e as cópias). Mesmo comportamento e aparência atuais. Os pickers usam
+  nativamente a memória de caminhos do CP 1.5 (cada `FilePickerRow` declara sua
+  chave/categoria — a memória vira comportamento embutido, não chamada manual).
   *Aceite*: as 4 cópias da janela de login e as 2 do FileQueueList substituídas; estilo
-  preservado.
+  preservado; nenhuma view chama `file_dialogs` diretamente para campos que usam picker.
 
 - **CP 7.3 — Quebrar `frontend.py` em `app/views/*.py`.**
   Uma view por arquivo; `app/main.py` monta sidebar e registra views; splash simplificada.
@@ -491,10 +546,11 @@ informações necessárias da ficha original; replicar essas informações na fi
 |---|---|---|---|
 | 0.1 Testes de caracterização | ✅ concluído | 2026-07-24 | 50 testes em `tests/` (6 arquivos) cobrindo `extrair_pdm_id`, `_limpar_texto_parrudo`, `normalizar_texto`/`limpar_pergunta` (2 classes), `extract_pmib_code` (analyzer + autospec, com divergência documentada) e `_blindar_numero_pmib` (normalizador PMIB canônico, 3 casos do plano); imports pesados (pandas/openpyxl/selenium/google-generativeai/langchain*/llama_parse/PyPDF2/bs4) stubados via `unittest.mock` em `tests/conftest.py`; `pytest -q` verde (50 passed); nenhuma linha de produção alterada |
 | 0.2 Smoke de importação | ✅ concluído | 2026-07-24 | smoke importa os 12 módulos backend via conftest stubado; scripts/check.sh roda compileall + pytest; script verde |
-| 1.1 config.py (+ mapa LLM_TASKS) | ✅ concluído | 2026-07-24 | `sigft/config.py` criado (aditivo — nenhum consumidor `*_backend.py`/`frontend.py` migrado): `PORTAL_URL`, `GOOGLE_CSE_ENDPOINT`, `ABA_LISTA_MATERIAIS`(+3 variantes), `PREFIXO_CONTRATO`, `LINHA_SPECS_FICHA`=79, `LINHA_STATUS_PMIB`=4, 6 colunas-chave (`COL_CODIGO_PMIB` etc.), `LLM_TASKS` (5 tarefas do CP 3.1) + `get_task_config()` (erro claro p/ tarefa desconhecida), `carregar_chaves()`/`get_key()` replicando `SIG_FT_App.load_keys()`; import de `dotenv` defensivo (ausente no ambiente de teste). 35 testes novos em `tests/test_config.py` (97 no total); `scripts/check.sh` verde |
+| 1.1 config.py (+ mapa LLM_TASKS) | ✅ concluído | 2026-07-24 | `sigft/config.py` criado (aditivo — nenhum consumidor migrado): `PORTAL_URL`, `GOOGLE_CSE_ENDPOINT`, `ABA_LISTA_MATERIAIS`(+3 variantes), `PREFIXO_CONTRATO`, `LINHA_SPECS_FICHA`=79, `LINHA_STATUS_PMIB`=4, 6 colunas-chave (`COL_CODIGO_PMIB` etc.), `carregar_chaves()`/`get_key()` replicando `SIG_FT_App.load_keys()` (.env + api_config.json; `ENV_VAR_POR_CHAVE`), import de `dotenv` defensivo. Modelos de IA reconciliados com `MODELOS_IA.md`: `LLM_DEFAULT` (Gemini 3 Flash Preview) + `LLM_TASKS` decididos (`categorizar_pdm` em Grok 4.5) + `LLM_MODELOS_HOJE` (baseline de equivalência do CP 3.1: gemini-3.5-flash/3.1-pro-preview) + `LLM_PRECOS_USD_POR_1M` (seed do CP 3.4); `get_task_config()` com erro claro p/ tarefa desconhecida. 40 testes em `tests/test_config.py`; `scripts/check.sh` verde. (Reconciliação de 2 sessões: mantido este `config.py` de caracterização + puxadas as decisões/`MODELOS_IA.md`/CP 1.5 da branch `itaipu-delivery-refactor`.) |
 | 1.2 pmib_codes + headers | ☐ pendente | | |
 | 1.3 locking + status_sheet | ☐ pendente | | |
 | 1.4 callbacks + protocolo de log | ☐ pendente | | |
+| 1.5 memória de caminhos + pastas padrão | ☐ pendente | | decisão de produto nº 7 |
 | 2.1 engine + selenium_engine | ☐ pendente | | |
 | 2.2 PMIBPortal | ☐ pendente | | |
 | 2.3 sleeps → waits | ☐ pendente | | |
