@@ -18,7 +18,11 @@ repassado ao `dialog_fn`; seleção bem-sucedida chama `remember_dir` com a
 PASTA certa (não o caminho de arquivo cru) na chave/categoria certas;
 cancelamento (resultado vazio) NÃO chama `remember_dir` e devolve o vazio no
 tipo certo (`""` singular, `()` para `ask_open_files`); `ask_open_files` usa
-o dirname do PRIMEIRO arquivo selecionado.
+o dirname do PRIMEIRO arquivo selecionado; e (seção F, 2ª metade do CP 1.5) o
+parâmetro `initialdir` — override CONTEXTUAL explícito de quem chama, usado
+por `frontend.ModuloPDM._op1_modificados` — vence a resolução via `prefs`
+quando aponta para uma pasta válida, e cai integralmente para a resolução
+normal via `prefs` quando ausente/inválido.
 
 Todos os testes usam `config_path=<tmp_path>/user_prefs.json` — nunca tocam
 no `user_prefs.json` real do repositório.
@@ -320,3 +324,164 @@ def test_dialog_fn_ausente_tenta_importar_tkinter_de_verdade(config_path, metodo
     funcao = getattr(file_dialogs, metodo)
     with pytest.raises(ModuleNotFoundError):
         funcao("chave.x", "cat", config_path=config_path)
+
+
+# =============================================================================
+# F. `initialdir` -- override CONTEXTUAL explícito (2ª metade do CP 1.5).
+#
+# Caso de uso real (único hoje): `frontend.ModuloPDM._op1_modificados` passa
+# `initialdir=origem`, onde `origem` é a pasta que o usuário ACABOU de
+# escolher em OUTRO campo da mesma tela ("Pasta (PDMs From Itaipu)") --
+# informação contextual da sessão atual, não memória de sessões anteriores.
+# =============================================================================
+
+@pytest.mark.parametrize("metodo", _TODAS_AS_FUNCOES)
+def test_initialdir_override_valido_tem_prioridade_sobre_prefs(tmp_path, config_path, metodo):
+    pasta_lembrada = tmp_path / "pasta_lembrada_por_prefs"
+    pasta_lembrada.mkdir()
+    prefs.remember_dir("chave.x", "cat", str(pasta_lembrada), config_path=config_path)
+
+    pasta_override = tmp_path / "pasta_override_contextual"
+    pasta_override.mkdir()
+
+    spy = _DialogSpy(_resultado_cancelado(metodo))
+    funcao = getattr(file_dialogs, metodo)
+    funcao(
+        "chave.x", "cat",
+        initialdir=str(pasta_override),
+        config_path=config_path,
+        dialog_fn=spy,
+    )
+
+    # O override vence -- NÃO é a pasta lembrada por `prefs`.
+    assert spy.kwargs_recebidos["initialdir"] == str(pasta_override)
+
+
+@pytest.mark.parametrize("metodo", _TODAS_AS_FUNCOES)
+def test_initialdir_override_pasta_inexistente_cai_para_resolucao_normal(tmp_path, config_path, metodo):
+    pasta_lembrada = tmp_path / "pasta_lembrada_por_prefs"
+    pasta_lembrada.mkdir()
+    prefs.remember_dir("chave.x", "cat", str(pasta_lembrada), config_path=config_path)
+
+    pasta_override_inexistente = tmp_path / "nunca_foi_criada"  # nunca criada no disco
+
+    spy = _DialogSpy(_resultado_cancelado(metodo))
+    funcao = getattr(file_dialogs, metodo)
+    funcao(
+        "chave.x", "cat",
+        initialdir=str(pasta_override_inexistente),
+        config_path=config_path,
+        dialog_fn=spy,
+    )
+
+    # Override inválido (pasta não existe) é ignorado -- cai para a
+    # resolução normal via prefs, exatamente como se initialdir não tivesse
+    # sido passado.
+    assert spy.kwargs_recebidos["initialdir"] == str(pasta_lembrada)
+
+
+@pytest.mark.parametrize("metodo", _TODAS_AS_FUNCOES)
+def test_initialdir_ausente_resolve_normalmente_via_prefs_sem_mudanca(tmp_path, config_path, metodo):
+    # Sem passar `initialdir` -- comportamento da 1ª metade do CP 1.5,
+    # preservado integralmente: resolve 100% via prefs.get_initial_dir.
+    pasta_lembrada = tmp_path / "pasta_lembrada_sem_override"
+    pasta_lembrada.mkdir()
+    prefs.remember_dir("chave.y", "cat", str(pasta_lembrada), config_path=config_path)
+
+    spy = _DialogSpy(_resultado_cancelado(metodo))
+    funcao = getattr(file_dialogs, metodo)
+    funcao("chave.y", "cat", config_path=config_path, dialog_fn=spy)
+
+    assert spy.kwargs_recebidos["initialdir"] == str(pasta_lembrada)
+
+
+@pytest.mark.parametrize("metodo", _TODAS_AS_FUNCOES)
+def test_initialdir_none_explicito_e_equivalente_a_omitir(tmp_path, config_path, metodo):
+    pasta_lembrada = tmp_path / "pasta_lembrada_none_explicito"
+    pasta_lembrada.mkdir()
+    prefs.remember_dir("chave.z", "cat", str(pasta_lembrada), config_path=config_path)
+
+    spy = _DialogSpy(_resultado_cancelado(metodo))
+    funcao = getattr(file_dialogs, metodo)
+    funcao("chave.z", "cat", initialdir=None, config_path=config_path, dialog_fn=spy)
+
+    assert spy.kwargs_recebidos["initialdir"] == str(pasta_lembrada)
+
+
+@pytest.mark.parametrize("metodo", _TODAS_AS_FUNCOES)
+def test_initialdir_override_string_vazia_e_tratado_como_ausente(config_path, metodo):
+    spy = _DialogSpy(_resultado_cancelado(metodo))
+    funcao = getattr(file_dialogs, metodo)
+    funcao(
+        "chave.nunca.usada", "cat_nunca_usada", initialdir="", config_path=config_path, dialog_fn=spy
+    )
+
+    # Sem nada salvo em prefs e override vazio -- cai para None (mesma
+    # situação da seção A, sem initialdir nenhum).
+    assert spy.kwargs_recebidos["initialdir"] is None
+
+
+@pytest.mark.parametrize("metodo", _TODAS_AS_FUNCOES)
+def test_initialdir_override_apontando_para_arquivo_nao_pasta_e_ignorado(tmp_path, config_path, metodo):
+    # os.path.isdir() de um ARQUIVO (não uma pasta) é False -- tratado como
+    # override inválido, mesma regra de "pasta inexistente".
+    arquivo = tmp_path / "isto_e_um_arquivo.txt"
+    arquivo.write_text("conteudo", encoding="utf-8")
+
+    spy = _DialogSpy(_resultado_cancelado(metodo))
+    funcao = getattr(file_dialogs, metodo)
+    funcao(
+        "chave.arquivo.nao.pasta", "cat", initialdir=str(arquivo), config_path=config_path, dialog_fn=spy
+    )
+
+    assert spy.kwargs_recebidos["initialdir"] is None
+
+
+def test_initialdir_override_nao_afeta_remember_dir_na_saida(tmp_path, config_path):
+    # `remember_dir` continua gravando a pasta REALMENTE escolhida pelo
+    # usuário no diálogo, mesmo quando `initialdir` foi usado para abrir o
+    # diálogo em outro lugar (caso real: o seletor do "PDM específico" abre
+    # na pasta "PDMs From Itaipu", mas o usuário pode navegar e escolher um
+    # arquivo em qualquer outra pasta).
+    pasta_override = tmp_path / "pasta_de_origem_contextual"
+    pasta_override.mkdir()
+
+    pasta_escolhida = tmp_path / "pasta_que_o_usuario_de_fato_escolheu"
+    pasta_escolhida.mkdir()
+    arquivo_escolhido = str(pasta_escolhida / "pdm_especifico.xlsx")
+
+    resultado = file_dialogs.ask_open_file(
+        "pdm.arquivo_especifico",
+        "excel",
+        initialdir=str(pasta_override),
+        config_path=config_path,
+        dialog_fn=_DialogSpy(arquivo_escolhido),
+    )
+
+    assert resultado == arquivo_escolhido
+    # A pasta lembrada é a do ARQUIVO ESCOLHIDO, não a do override contextual.
+    assert prefs.get_initial_dir("pdm.arquivo_especifico", "excel", config_path=config_path) == str(
+        pasta_escolhida
+    )
+
+
+def test_initialdir_override_convive_com_titulo_e_filetypes(tmp_path, config_path):
+    # Confirma que `initialdir` não interfere nos demais kwargs já cobertos
+    # na seção A.
+    pasta_override = tmp_path / "pasta_override_com_outros_kwargs"
+    pasta_override.mkdir()
+
+    spy = _DialogSpy("")
+    file_dialogs.ask_open_file(
+        "chave.x",
+        "excel",
+        titulo="Selecione o arquivo PDM específico",
+        filetypes=[("Excel", "*.xlsx *.xls")],
+        initialdir=str(pasta_override),
+        config_path=config_path,
+        dialog_fn=spy,
+    )
+
+    assert spy.kwargs_recebidos["initialdir"] == str(pasta_override)
+    assert spy.kwargs_recebidos["title"] == "Selecione o arquivo PDM específico"
+    assert spy.kwargs_recebidos["filetypes"] == [("Excel", "*.xlsx *.xls")]

@@ -5,11 +5,15 @@ lado UI de `sigft.core.prefs`).
 
 Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 1 -> CP 1.5.
 
-ESCOPO DESTA ETAPA (1ª metade do CP 1.5, aditiva): este módulo nasce aqui,
-testado de ponta a ponta com um `dialog_fn` falso — mas NENHUM dos ~34 call
-sites de `filedialog.*` em `frontend.py` foi migrado para usá-lo ainda
-(migração é a etapa SEGUINTE; ver docs/refatoracao/PENDENCIAS.md).
-`frontend.py` NÃO é tocado neste checkpoint.
+ESCOPO DA 1ª ETAPA (1ª metade do CP 1.5, aditiva, concluída): este módulo
+nasceu aqui, testado de ponta a ponta com um `dialog_fn` falso, sem que
+nenhum dos ~34 call sites de `filedialog.*` em `frontend.py` fosse migrado
+para usá-lo.
+
+ESCOPO DESTA ETAPA (2ª metade do CP 1.5): os ~34 call sites de `frontend.py`
+foram migrados para as 4 funções abaixo (ver docs/refatoracao/PLANO_REFATORACAO.md,
+quadro de status do CP 1.5) e o parâmetro `initialdir` (override contextual,
+ver seção própria abaixo) foi adicionado às 4 funções.
 
 4 funções, uma por diálogo do `tkinter.filedialog` usado hoje em
 `frontend.py`:
@@ -20,9 +24,11 @@ sites de `filedialog.*` em `frontend.py` foi migrado para usá-lo ainda
   - `ask_directory`  -> `filedialog.askdirectory`      (1 pasta)
 
 Cada wrapper faz 3 coisas em torno do diálogo real:
-  1. resolve `initialdir` via `sigft.core.prefs.get_initial_dir(chave,
-     categoria)` (ordem: chave > categoria > pasta padrão da chave > `None`
-     — ver `core/prefs.py` para o contrato completo);
+  1. resolve `initialdir` — um override CONTEXTUAL explícito (parâmetro
+     `initialdir`, ver seção própria abaixo) se houver e for válido; senão
+     via `sigft.core.prefs.get_initial_dir(chave, categoria)` (ordem: chave
+     > categoria > pasta padrão da chave > `None` — ver `core/prefs.py` para
+     o contrato completo);
   2. chama o diálogo (`dialog_fn` injetado, ou — quando `dialog_fn` não é
      passado — a função REAL correspondente de `tkinter.filedialog`);
   3. se o usuário SELECIONOU algo (resultado não-vazio): grava a PASTA
@@ -30,6 +36,32 @@ Cada wrapper faz 3 coisas em torno do diálogo real:
      e devolve o resultado (normalizado — ver "Contrato de retorno" abaixo);
      se o usuário CANCELOU (resultado vazio): NÃO grava nada, devolve o
      vazio tal qual.
+
+Override contextual de `initialdir` (2ª metade do CP 1.5)
+-----------------------------------------------------------
+Além da resolução via `sigft.core.prefs.get_initial_dir` acima, as 4 funções
+aceitam um parâmetro extra `initialdir` (keyword-only, `str |
+os.PathLike[str] | None = None`) para o caso em que quem CHAMA já sabe qual é
+a pasta certa por CONTEXTO IMEDIATO da própria tela — não por memória entre
+sessões. Caso de uso real, o único hoje: em `frontend.ModuloPDM.
+_op1_modificados`, o seletor do "arquivo PDM específico" deve abrir na pasta
+que o usuário ACABOU de escolher no campo "Pasta (PDMs From Itaipu)" da MESMA
+tela, momentos antes — informação que `prefs` não tem como conhecer (não é
+"o último caminho lembrado de uma sessão anterior", é um valor escolhido
+agora mesmo, na sessão atual, em outro campo).
+
+Regra de prioridade: se `initialdir` for passado E apontar para uma pasta que
+existe DE FATO no disco (`os.path.isdir`), ele VENCE — a resolução de
+`prefs.get_initial_dir` nem chega a ser chamada nesse caso. Se `initialdir`
+for omitido (`None`, o default) OU apontar para algo que não é uma pasta
+válida (inexistente, string vazia, arquivo em vez de pasta), o comportamento
+cai INTEGRALMENTE para a resolução normal via `prefs.get_initial_dir` — ou
+seja, é sempre seguro passar um valor que pode estar vazio/desatualizado
+(nenhuma exceção é levantada). Em AMBOS os casos, o `remember_dir` na SAÍDA
+continua acontecendo normalmente (grava a pasta que o usuário de fato
+escolheu no diálogo, independentemente de `initialdir` ter sido usado para
+abri-lo ou não) — este parâmetro só influencia onde o diálogo ABRE, nunca o
+que é lembrado depois.
 
 Contrato de retorno / cancelamento preservado
 -----------------------------------------------
@@ -140,12 +172,41 @@ def _eh_vazio(resultado: object) -> bool:
         return False
 
 
+def _resolver_initialdir(
+    chave: str,
+    categoria: str,
+    initialdir: str | os.PathLike[str] | None,
+    *,
+    config_path: str | os.PathLike[str],
+) -> str | None:
+    """Resolve o `initialdir` de fato repassado ao diálogo: um override
+    CONTEXTUAL explícito (parâmetro `initialdir` de quem chama) tem
+    PRIORIDADE sobre a memória de `sigft.core.prefs`, mas só quando aponta
+    para uma pasta que existe DE FATO no disco (`os.path.isdir`); caso
+    contrário (`None`, string vazia, caminho inexistente ou que não é uma
+    pasta) cai integralmente para a resolução normal via
+    `prefs.get_initial_dir` (chave > categoria > pasta padrão da chave >
+    `None`) — ver docstring do módulo, seção "Override contextual de
+    `initialdir`". Nunca levanta exceção: um `initialdir` de tipo
+    inesperado (não `str`/`os.PathLike`) é tratado como ausente."""
+    if initialdir is not None:
+        try:
+            candidato = os.fspath(initialdir)
+        except TypeError:
+            candidato = ""
+        if candidato and os.path.isdir(candidato):
+            return candidato
+
+    return prefs.get_initial_dir(chave, categoria, config_path=config_path)
+
+
 def ask_open_file(
     chave: str,
     categoria: str,
     *,
     titulo: str | None = None,
     filetypes: Sequence[tuple[str, str]] | None = None,
+    initialdir: str | os.PathLike[str] | None = None,
     config_path: str | os.PathLike[str] = prefs.CONFIG_FILE,
     dialog_fn: DialogFn | None = None,
 ) -> str:
@@ -153,13 +214,15 @@ def ask_open_file(
     (seleção de 1 arquivo existente para ABRIR/LER).
 
     `chave`/`categoria` identificam o campo/tipo para a memória de pasta (ver
-    `sigft.core.prefs.get_initial_dir`). Devolve o caminho do arquivo
+    `sigft.core.prefs.get_initial_dir`). `initialdir` é um override
+    CONTEXTUAL opcional que vence a memória quando aponta para uma pasta
+    válida (ver docstring do módulo). Devolve o caminho do arquivo
     escolhido, ou `""` se o usuário cancelar — mesmo contrato de retorno do
     `tkinter.filedialog` original, preservado para não quebrar os `if p:` já
     existentes nos call sites de `frontend.py` quando migrarem.
     """
     fn = _resolver_dialog_fn("ask_open_file", dialog_fn)
-    initial = prefs.get_initial_dir(chave, categoria, config_path=config_path)
+    initial = _resolver_initialdir(chave, categoria, initialdir, config_path=config_path)
 
     resultado = fn(initialdir=initial, title=titulo, filetypes=filetypes)
     if _eh_vazio(resultado):
@@ -176,20 +239,23 @@ def ask_open_files(
     *,
     titulo: str | None = None,
     filetypes: Sequence[tuple[str, str]] | None = None,
+    initialdir: str | os.PathLike[str] | None = None,
     config_path: str | os.PathLike[str] = prefs.CONFIG_FILE,
     dialog_fn: DialogFn | None = None,
 ) -> tuple[str, ...]:
     """Wrapper com memória de caminho de
     `tkinter.filedialog.askopenfilenames` (seleção de N arquivos existentes).
 
-    Devolve uma tupla com os caminhos escolhidos, ou `()` se o usuário
-    cancelar. A pasta lembrada é a do PRIMEIRO arquivo selecionado
+    `initialdir` é um override CONTEXTUAL opcional que vence a memória
+    quando aponta para uma pasta válida (ver docstring do módulo). Devolve
+    uma tupla com os caminhos escolhidos, ou `()` se o usuário cancelar. A
+    pasta lembrada é a do PRIMEIRO arquivo selecionado
     (`os.path.dirname(resultado[0])`) — mesmo comportamento observável de uma
     única chamada ao diálogo, presumindo que os demais arquivos estejam na
     mesma pasta (a UI/OS já os apresenta assim, por ser 1 diálogo só).
     """
     fn = _resolver_dialog_fn("ask_open_files", dialog_fn)
-    initial = prefs.get_initial_dir(chave, categoria, config_path=config_path)
+    initial = _resolver_initialdir(chave, categoria, initialdir, config_path=config_path)
 
     resultado = fn(initialdir=initial, title=titulo, filetypes=filetypes)
     if _eh_vazio(resultado):
@@ -214,6 +280,7 @@ def ask_save_file(
     titulo: str | None = None,
     filetypes: Sequence[tuple[str, str]] | None = None,
     defaultextension: str | None = None,
+    initialdir: str | os.PathLike[str] | None = None,
     config_path: str | os.PathLike[str] = prefs.CONFIG_FILE,
     dialog_fn: DialogFn | None = None,
 ) -> str:
@@ -221,10 +288,12 @@ def ask_save_file(
     `tkinter.filedialog.asksaveasfilename` (escolher onde SALVAR 1 arquivo,
     novo ou existente).
 
-    Devolve o caminho escolhido para salvar, ou `""` se o usuário cancelar.
+    `initialdir` é um override CONTEXTUAL opcional que vence a memória
+    quando aponta para uma pasta válida (ver docstring do módulo). Devolve
+    o caminho escolhido para salvar, ou `""` se o usuário cancelar.
     """
     fn = _resolver_dialog_fn("ask_save_file", dialog_fn)
-    initial = prefs.get_initial_dir(chave, categoria, config_path=config_path)
+    initial = _resolver_initialdir(chave, categoria, initialdir, config_path=config_path)
 
     resultado = fn(
         initialdir=initial,
@@ -245,18 +314,21 @@ def ask_directory(
     categoria: str,
     *,
     titulo: str | None = None,
+    initialdir: str | os.PathLike[str] | None = None,
     config_path: str | os.PathLike[str] = prefs.CONFIG_FILE,
     dialog_fn: DialogFn | None = None,
 ) -> str:
     """Wrapper com memória de caminho de `tkinter.filedialog.askdirectory`
     (seleção de 1 pasta).
 
-    Devolve a pasta escolhida, ou `""` se o usuário cancelar. Diferente dos
-    outros 3 wrappers, o resultado JÁ É a pasta a lembrar (sem
-    `os.path.dirname`) — não há arquivo, só diretório.
+    `initialdir` é um override CONTEXTUAL opcional que vence a memória
+    quando aponta para uma pasta válida (ver docstring do módulo). Devolve
+    a pasta escolhida, ou `""` se o usuário cancelar. Diferente dos outros 3
+    wrappers, o resultado JÁ É a pasta a lembrar (sem `os.path.dirname`) —
+    não há arquivo, só diretório.
     """
     fn = _resolver_dialog_fn("ask_directory", dialog_fn)
-    initial = prefs.get_initial_dir(chave, categoria, config_path=config_path)
+    initial = _resolver_initialdir(chave, categoria, initialdir, config_path=config_path)
 
     resultado = fn(initialdir=initial, title=titulo)
     if _eh_vazio(resultado):

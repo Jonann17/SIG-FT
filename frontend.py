@@ -16,6 +16,8 @@ import ast
 import subprocess
 
 from sigft.core.excel.pmib_codes import normalize_pmib
+from sigft.core import prefs
+from sigft.app import file_dialogs
 
 # --- VARIÁVEIS GLOBAIS DOS BACKENDS (Inicialmente None) ---
 # Isso evita erro de "NameError" nas classes antes do carregamento
@@ -639,7 +641,7 @@ class ModuloCriaFichas(ctk.CTkFrame):
             self.btn_run_ai.configure(text="3. Analisar (IA)")
 
     def selecionar_excel_pmib(self):
-        path = filedialog.askopenfilename(filetypes=[("Excel", "*.xlsx")])
+        path = file_dialogs.ask_open_file("cria_fichas.excel_pmib", "excel", filetypes=[("Excel", "*.xlsx")])
         if not path: return
         self.file_path_excel = path
         cols = ["DESCRIÇÃO", "CÓDIGO PMIB"]
@@ -672,7 +674,7 @@ class ModuloCriaFichas(ctk.CTkFrame):
 
     def selecionar_excel_pdm(self):
         # Sugestão 1 já aplicada aqui: Filtro para mostrar apenas arquivos Excel
-        path = filedialog.askopenfilename(filetypes=[("Arquivos Excel", "*.xlsx;*.xls")])
+        path = file_dialogs.ask_open_file("cria_fichas.excel_pdm", "excel", filetypes=[("Arquivos Excel", "*.xlsx;*.xls")])
         if path:
             self.file_path_pdm = path
             self.btn_run_ai.configure(state="normal")
@@ -945,7 +947,7 @@ class ModuloCriaFichas(ctk.CTkFrame):
     # FUNÇÕES DA ABA DE EDIÇÃO
     # ---------------------------------------------------------
     def selecionar_excel_edicao(self):
-        path = filedialog.askopenfilename(filetypes=[("Excel", "*.xlsx")])
+        path = file_dialogs.ask_open_file("cria_fichas.excel_edicao", "excel", filetypes=[("Excel", "*.xlsx")])
         if not path: return
         cols = ["DESCRIÇÃO", "CÓDIGO PMIB"]
         df, cod_sug, erro = DataManager.carregar_planilha_inteligente(path, "Lista de Materiais", cols)
@@ -1045,6 +1047,24 @@ class ModuloPDM(ctk.CTkFrame):
         self.controller = controller
         self.caminho_destino = ctk.StringVar()
 
+        # Pré-preenchimento com a pasta padrão dos "PDMs modificados"
+        # (decisão de produto nº 7 / CP 1.5), quando ela existir de fato no
+        # disco desta máquina -- editável pelo usuário como sempre, é só o
+        # valor inicial do campo. Os campos de ARQUIVO (template,
+        # STATUS_PMIB) NÃO recebem o mesmo tratamento aqui: `get_default_dir`
+        # devolve uma PASTA, e esses dois campos guardam o caminho de um
+        # ARQUIVO Excel específico (sem Entry visível ligado a eles) -- pré-
+        # preencher com uma pasta quebraria a leitura posterior (ex.:
+        # `pd.read_excel(pasta, ...)`). Em vez disso, os DIÁLOGOS desses 2
+        # campos (`_sel_template`/`_sel_status_pmib`) já abrem na pasta
+        # padrão certa via `sigft.core.prefs.get_initial_dir` (chaves
+        # `pdm.template`/`pdm.status_pmib`, migradas para `file_dialogs` no
+        # CP 1.5) -- ver docs/refatoracao/PENDENCIAS.md para o racional
+        # completo desta decisão.
+        pasta_padrao_destino = prefs.get_default_dir("pdms_modificados")
+        if pasta_padrao_destino is not None:
+            self.caminho_destino.set(pasta_padrao_destino)
+
         # Novas variáveis visuais para a Aba 1
         self.path_sam_gm = ctk.StringVar()
         self.path_pdms_itaipu = ctk.StringVar()
@@ -1140,7 +1160,7 @@ class ModuloPDM(ctk.CTkFrame):
         f_dir.pack(fill="x", padx=10, pady=8)
         ctk.CTkLabel(f_dir, text="Pasta (PDMs From Itaipu):", width=240, anchor="w").pack(side="left")
         ctk.CTkEntry(f_dir, textvariable=self.path_pdms_itaipu, width=280).pack(side="left", padx=5)
-        ctk.CTkButton(f_dir, text="Buscar", width=80, command=lambda: self.path_pdms_itaipu.set(filedialog.askdirectory(title="Pasta de Origem dos PDMs"))).pack(side="left")
+        ctk.CTkButton(f_dir, text="Buscar", width=80, command=lambda: self.path_pdms_itaipu.set(file_dialogs.ask_directory("pdm.pdms_itaipu", "pasta", titulo="Pasta de Origem dos PDMs"))).pack(side="left")
 
         ctk.CTkButton(frm_from, text="Executar: Criar PDMs From Itaipu", command=self._op1_from_itaipu, fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"]).pack(pady=10)
 
@@ -1178,7 +1198,7 @@ class ModuloPDM(ctk.CTkFrame):
         f_dest.pack(fill="x", padx=10, pady=8)
         ctk.CTkLabel(f_dest, text="Pasta Destino das Fichas:", width=240, anchor="w").pack(side="left")
         ctk.CTkEntry(f_dest, textvariable=self.path_destino_fichas, width=280).pack(side="left", padx=5)
-        ctk.CTkButton(f_dest, text="Buscar", width=80, command=lambda: self.path_destino_fichas.set(filedialog.askdirectory(title="Pasta onde as fichas serão criadas"))).pack(side="left")
+        ctk.CTkButton(f_dest, text="Buscar", width=80, command=lambda: self.path_destino_fichas.set(file_dialogs.ask_directory("pdm.destino_fichas", "pasta", titulo="Pasta onde as fichas serão criadas"))).pack(side="left")
 
         # Input Template (Estilo Arquivo: Botão + Label)
         f_temp = ctk.CTkFrame(frm_files, fg_color="transparent")
@@ -1217,32 +1237,32 @@ class ModuloPDM(ctk.CTkFrame):
         f_clean.pack(fill="x", padx=10, pady=8)
         ctk.CTkLabel(f_clean, text="Pasta para Limpeza:", width=240, anchor="w").pack(side="left")
         ctk.CTkEntry(f_clean, textvariable=self.path_clean_dir, width=280).pack(side="left", padx=5)
-        ctk.CTkButton(f_clean, text="Buscar", width=80, command=lambda: self.path_clean_dir.set(filedialog.askdirectory(title="Selecione a pasta para limpar duplicatas"))).pack(side="left")
+        ctk.CTkButton(f_clean, text="Buscar", width=80, command=lambda: self.path_clean_dir.set(file_dialogs.ask_directory("pdm.clean_dir", "pasta", titulo="Selecione a pasta para limpar duplicatas"))).pack(side="left")
 
         self.btn_exec_clean = ctk.CTkButton(parent, text="Executar Limpeza", command=self._op3_executar,
                                             fg_color=COLORS["danger"], hover_color="#B71C1C", height=40, width=300)
         self.btn_exec_clean.pack(pady=30)
 
     def _sel_destino(self):
-        p = filedialog.askdirectory()
+        p = file_dialogs.ask_directory("pdm.caminho_destino", "pasta")
         if p: self.caminho_destino.set(p)
 
     def _sel_sam_gm(self):
-        f = filedialog.askopenfilename(title="Selecione o PDM's SAM-GM", filetypes=[("Excel", "*.xlsx *.xls")])
+        f = file_dialogs.ask_open_file("pdm.sam_gm", "excel", titulo="Selecione o PDM's SAM-GM", filetypes=[("Excel", "*.xlsx *.xls")])
         if f:
             self.path_sam_gm.set(f)
             self.lbl_sam_gm_status.configure(text=os.path.basename(f), text_color=COLORS["accent"])
             self.btn_sam_gm.configure(fg_color=COLORS["primary"])
 
     def _sel_status_pmib(self):
-        f = filedialog.askopenfilename(title="Selecione o STATUS_PMIB", filetypes=[("Excel", "*.xlsx *.xls")])
+        f = file_dialogs.ask_open_file("pdm.status_pmib", "excel", titulo="Selecione o STATUS_PMIB", filetypes=[("Excel", "*.xlsx *.xls")])
         if f:
             self.path_status_pmib.set(f)
             self.lbl_pmib_status.configure(text=os.path.basename(f), text_color=COLORS["accent"])
             self.btn_pmib.configure(fg_color=COLORS["primary"])
 
     def _sel_template(self):
-        f = filedialog.askopenfilename(title="Selecione o Template", filetypes=[("Excel", "*.xlsx *.xls")])
+        f = file_dialogs.ask_open_file("pdm.template", "excel", titulo="Selecione o Template", filetypes=[("Excel", "*.xlsx *.xls")])
         if f:
             self.path_template.set(f)
             self.lbl_template_status.configure(text=os.path.basename(f), text_color=COLORS["accent"])
@@ -1284,7 +1304,11 @@ class ModuloPDM(ctk.CTkFrame):
             threading.Thread(target=task, daemon=True).start()
 
         elif modo == "especifico":
-            arq = filedialog.askopenfilename(initialdir=origem, title="Selecione o arquivo PDM específico", filetypes=[("Excel", "*.xlsx *.xls")])
+            # `initialdir=origem`: override CONTEXTUAL -- a pasta que o usuário
+            # ACABOU de escolher em "Pasta (PDMs From Itaipu)" nesta mesma tela,
+            # momentos antes (não é memória entre sessões; ver
+            # sigft.app.file_dialogs._resolver_initialdir).
+            arq = file_dialogs.ask_open_file("pdm.arquivo_especifico", "excel", titulo="Selecione o arquivo PDM específico", filetypes=[("Excel", "*.xlsx *.xls")], initialdir=origem)
             if arq:
                 def task_esp():
                     tbl = pdm_backend.processar_arquivo_pdm(arq)
@@ -1586,21 +1610,21 @@ class ModuloAnalyzer(ctk.CTkFrame):
         self.lbl_score.configure(text=f"Nota Mínima: {int(value)}%")
 
     def _sel_input_files(self):
-        files = filedialog.askopenfilenames(title="Selecione as Fichas Técnicas", filetypes=[("Excel", "*.xlsx")])
+        files = file_dialogs.ask_open_files("analyzer.fichas", "excel", titulo="Selecione as Fichas Técnicas", filetypes=[("Excel", "*.xlsx")])
         if files:
             self.selected_files = list(files)
             self.lbl_files_status.configure(text=f"{len(files)} arquivos selecionados", text_color=COLORS["accent"])
             self.btn_files.configure(fg_color=COLORS["primary"])
 
     def _sel_output_dir(self):
-        d = filedialog.askdirectory(title="Selecione Pasta de Saída")
+        d = file_dialogs.ask_directory("analyzer.saida", "pasta", titulo="Selecione Pasta de Saída")
         if d:
             self.selected_output = d
             self.lbl_out_status.configure(text=os.path.basename(d) if os.path.basename(d) else d, text_color=COLORS["accent"])
             self.btn_out.configure(fg_color=COLORS["primary"])
 
     def _sel_pmib(self):
-        f = filedialog.askopenfilename(title="Selecione STATUS_PMIB", filetypes=[("Excel", "*.xlsx")])
+        f = file_dialogs.ask_open_file("analyzer.status_pmib", "excel", titulo="Selecione STATUS_PMIB", filetypes=[("Excel", "*.xlsx")])
         if f:
             self.selected_pmib = f
             self.lbl_pmib_status.configure(text=os.path.basename(f), text_color=COLORS["accent"])
@@ -1712,7 +1736,7 @@ class ModuloTranslator(ctk.CTkFrame):
         self.btn_stop.pack(pady=(10, 20))
 
     def iniciar_traducao(self):
-        files = filedialog.askopenfilenames(title="Selecione as Fichas (.xlsx)", filetypes=[("Excel", "*.xlsx")])
+        files = file_dialogs.ask_open_files("translator.fichas", "excel", titulo="Selecione as Fichas (.xlsx)", filetypes=[("Excel", "*.xlsx")])
         if not files: return
 
         self.log(f"Iniciando tradução de {len(files)} arquivos...")
@@ -1885,7 +1909,7 @@ class ModuloUploadConditions(ctk.CTkFrame):
     # FUNÇÕES DE SELEÇÃO DE ARQUIVOS
     # =========================================================================
     def _sel_status(self):
-        path = filedialog.askopenfilename(title="Selecione _STATUS_PMIB", filetypes=[("Excel", "*.xlsx;*.xlsm")])
+        path = file_dialogs.ask_open_file("upload_conditions.status_pmib", "excel", titulo="Selecione _STATUS_PMIB", filetypes=[("Excel", "*.xlsx;*.xlsm")])
         if path:
             self.caminho_status.set(path)
             self.lbl_status_status.configure(text=os.path.basename(path), text_color=COLORS["accent"])
@@ -1896,7 +1920,7 @@ class ModuloUploadConditions(ctk.CTkFrame):
         self.lbl_fichas_count.configure(text=f"Planilhas PMIB Selecionadas ({total})")
 
     def _sel_fichas(self):
-        files = filedialog.askopenfilenames(title="Selecione as Fichas PMIB", filetypes=[("Excel", "*.xlsx;*.xls")])
+        files = file_dialogs.ask_open_files("upload_conditions.fichas", "excel", titulo="Selecione as Fichas PMIB", filetypes=[("Excel", "*.xlsx;*.xls")])
         if not files: return
         for f in files:
             if f not in self.lista_fichas_paths:
@@ -2001,11 +2025,11 @@ class ModuloUploadConditions(ctk.CTkFrame):
         msg_salvar = ""
 
         if modo_salvar is True:
-            caminho_final = filedialog.asksaveasfilename(title="Salvar Novo Arquivo", defaultextension=".xlsx", filetypes=[("Excel", "*.xlsx")])
+            caminho_final = file_dialogs.ask_save_file("upload_conditions.salvar_novo", "excel", titulo="Salvar Novo Arquivo", defaultextension=".xlsx", filetypes=[("Excel", "*.xlsx")])
             if caminho_final:
                 sucesso_salvar, msg_salvar = processor.salvar_novo_arquivo(resultados, caminho_final)
         elif modo_salvar is False:
-            caminho_final = filedialog.askopenfilename(title="Selecionar arquivo para ANEXAR", filetypes=[("Excel", "*.xlsx")])
+            caminho_final = file_dialogs.ask_open_file("upload_conditions.anexar", "excel", titulo="Selecionar arquivo para ANEXAR", filetypes=[("Excel", "*.xlsx")])
             if caminho_final:
                 sucesso_salvar, msg_salvar = processor.anexar_a_arquivo_existente(resultados, caminho_final)
 
@@ -2075,7 +2099,7 @@ class ModuloUploadConditions(ctk.CTkFrame):
         ctk.CTkButton(f_btns, text="Confirmar Seleção", command=confirmar, fg_color=COLORS.get("primary", "#1f538d"), width=150).pack(side="left", padx=10)
 
     def _start_web_from_file(self):
-        excel_file = filedialog.askopenfilename(title="Selecione Excel de Resultados", filetypes=[("Excel", "*.xlsx;*.xls")])
+        excel_file = file_dialogs.ask_open_file("upload_conditions.excel_resultados", "excel", titulo="Selecione Excel de Resultados", filetypes=[("Excel", "*.xlsx;*.xls")])
         if not excel_file: return
 
         try:
@@ -2390,14 +2414,14 @@ class ModuloUploadTechSpecs(ctk.CTkFrame):
     # FUNÇÕES DE SELEÇÃO DE ARQUIVOS (Aba 1)
     # =========================================================================
     def _sel_status(self):
-        path = filedialog.askopenfilename(title="Selecione _STATUS_PMIB", filetypes=[("Excel", "*.xlsx;*.xlsm")])
+        path = file_dialogs.ask_open_file("upload_tech_specs.status_pmib", "excel", titulo="Selecione _STATUS_PMIB", filetypes=[("Excel", "*.xlsx;*.xlsm")])
         if path:
             self.caminho_status.set(path)
             self.lbl_status_status.configure(text=os.path.basename(path), text_color=COLORS["accent"])
             self.btn_status.configure(fg_color=COLORS["primary"])
 
     def _sel_master(self):
-        path = filedialog.askopenfilename(title="Selecione Master PDMs (Template)", filetypes=[("Excel", "*.xlsx;*.xlsm")])
+        path = file_dialogs.ask_open_file("upload_tech_specs.master", "excel", titulo="Selecione Master PDMs (Template)", filetypes=[("Excel", "*.xlsx;*.xlsm")])
         if path:
             self.caminho_master.set(path)
             self.lbl_master_status.configure(text=os.path.basename(path), text_color=COLORS["accent"])
@@ -2409,7 +2433,7 @@ class ModuloUploadTechSpecs(ctk.CTkFrame):
         self.lbl_fichas_count.configure(text=f"Fichas Selecionadas ({total})")
 
     def _sel_fichas(self):
-        files = filedialog.askopenfilenames(title="Selecione as Fichas PMIB", filetypes=[("Excel", "*.xlsx;*.xlsm")])
+        files = file_dialogs.ask_open_files("upload_tech_specs.fichas", "excel", titulo="Selecione as Fichas PMIB", filetypes=[("Excel", "*.xlsx;*.xlsm")])
         if not files: return
         for f in files:
             if f not in self.lista_fichas_paths:
@@ -2498,7 +2522,7 @@ class ModuloUploadTechSpecs(ctk.CTkFrame):
         self.log(f"Sucesso! {len(resultados)} fichas geradas prontas para o robô.")
 
         # Lógica de Salvamento e Continuidade
-        save_path = filedialog.asksaveasfilename(title="Salvar JSON de Resultados", defaultextension=".json", filetypes=[("JSON", "*.json")])
+        save_path = file_dialogs.ask_save_file("upload_tech_specs.salvar_json", "json", titulo="Salvar JSON de Resultados", defaultextension=".json", filetypes=[("JSON", "*.json")])
         if save_path:
             sucesso = self.tech_controller.salvar_json(resultados, save_path, callback_log=self.log)
             if sucesso:
@@ -2575,7 +2599,7 @@ class ModuloUploadTechSpecs(ctk.CTkFrame):
             self.tech_controller.cancelar_processo_web()
 
     def _start_web_from_file(self):
-        json_file = filedialog.askopenfilename(title="Selecione JSON de Resultados", filetypes=[("JSON", "*.json")])
+        json_file = file_dialogs.ask_open_file("upload_tech_specs.json_resultados", "json", titulo="Selecione JSON de Resultados", filetypes=[("JSON", "*.json")])
         if not json_file: return
 
         try:
@@ -2741,7 +2765,7 @@ class ModuloCopiaFichas(ctk.CTkFrame):
     # LÓGICA DE INTERFACE
     # =========================================================================
     def selecionar_excel_pmib(self):
-        path = filedialog.askopenfilename(filetypes=[("Excel", "*.xlsx;*.xlsm")])
+        path = file_dialogs.ask_open_file("copia_fichas.status_pmib", "excel", filetypes=[("Excel", "*.xlsx;*.xlsm")])
         if not path: return
         self.caminho_status = path
 
@@ -3008,19 +3032,19 @@ class ModuloAutoSpec(ctk.CTkFrame):
 
     # --- Seletores (Lógica Mantida) ---
     def sel_status(self):
-        p = filedialog.askopenfilename(title="Selecione _STATUS_PMIB", filetypes=[("Excel", "*.xlsx")])
+        p = file_dialogs.ask_open_file("autospec.status_pmib", "excel", titulo="Selecione _STATUS_PMIB", filetypes=[("Excel", "*.xlsx")])
         if p:
             self.status_pmib_path = p
             self.lbl_status.configure(text=os.path.basename(p), text_color=COLORS["text_white"])
 
     def sel_sheet(self):
-        p = filedialog.askopenfilename(title="Selecione a Ficha Técnica", filetypes=[("Excel", "*.xlsx")])
+        p = file_dialogs.ask_open_file("autospec.ficha", "excel", titulo="Selecione a Ficha Técnica", filetypes=[("Excel", "*.xlsx")])
         if p:
             self.temp_sheet = p
             self.lbl_sheet.configure(text=f"Ficha: {os.path.basename(p)}", text_color=COLORS["text_white"])
 
     def sel_refs(self):
-        ps = filedialog.askopenfilenames(title="Selecione Manuais/PDFs", filetypes=[("Docs", "*.pdf *.txt")])
+        ps = file_dialogs.ask_open_files("autospec.manuais", "pdf", titulo="Selecione Manuais/PDFs", filetypes=[("Docs", "*.pdf *.txt")])
         if ps:
             self.temp_refs = list(ps)
             self.lbl_refs.configure(text=f"Manuais: {len(ps)} arquivos", text_color=COLORS["text_white"])
@@ -3141,7 +3165,7 @@ class ModuloLMR(ctk.CTkFrame):
 
     # --- Lógica Mantida ---
     def iniciar_lmr(self):
-        excel_path = filedialog.askopenfilename(title="Selecione o Excel LMR", filetypes=[("Excel", "*.xlsx")])
+        excel_path = file_dialogs.ask_open_file("lmr.excel", "excel", titulo="Selecione o Excel LMR", filetypes=[("Excel", "*.xlsx")])
         if not excel_path: return
         self.log(f"Lendo arquivo: {os.path.basename(excel_path)}...")
         self.btn_run.configure(state="disabled")
@@ -3385,7 +3409,7 @@ class ModuloPMIBManager(ctk.CTkFrame):
         f_root.pack(fill="x", padx=15, pady=8)
         ctk.CTkLabel(f_root, text="2. Pasta Raiz (Arquivos _STATUS_PMIB):", width=280, anchor="w").pack(side="left")
         ctk.CTkEntry(f_root, textvariable=self.path_root, width=300).pack(side="left", padx=5)
-        ctk.CTkButton(f_root, text="Buscar", width=80, command=lambda: self.path_root.set(filedialog.askdirectory(title="Selecione a Pasta Raiz"))).pack(side="left")
+        ctk.CTkButton(f_root, text="Buscar", width=80, command=lambda: self.path_root.set(file_dialogs.ask_directory("pmib_manager.pasta_raiz", "pasta", titulo="Selecione a Pasta Raiz"))).pack(side="left")
 
         # Input Planilha Mestra (Estilo Arquivo: Botão + Label)
         f_master = ctk.CTkFrame(frm_main, fg_color="transparent")
@@ -3405,14 +3429,14 @@ class ModuloPMIBManager(ctk.CTkFrame):
         self.btn_run.pack(pady=20)
 
     def _sel_api(self):
-        f = filedialog.askopenfilename(title="Selecione a Base de Dados API", filetypes=[("Excel", "*.xlsx *.xls")])
+        f = file_dialogs.ask_open_file("pmib_manager.api", "excel", titulo="Selecione a Base de Dados API", filetypes=[("Excel", "*.xlsx *.xls")])
         if f:
             self.path_api.set(f)
             self.lbl_api_status.configure(text=os.path.basename(f), text_color=COLORS["accent"])
             self.btn_api.configure(fg_color=COLORS["primary"])
 
     def _sel_master(self):
-        f = filedialog.askopenfilename(title="Selecione a Planilha Mestra", filetypes=[("Excel", "*.xlsx *.xls")])
+        f = file_dialogs.ask_open_file("pmib_manager.master", "excel", titulo="Selecione a Planilha Mestra", filetypes=[("Excel", "*.xlsx *.xls")])
         if f:
             self.path_master.set(f)
             self.lbl_master_status.configure(text=os.path.basename(f), text_color=COLORS["accent"])
@@ -3657,7 +3681,7 @@ class ModuloBuscaPMIB(ctk.CTkFrame):
             self.opt_coluna.configure(state="normal")
 
     def _selecionar_pasta(self):
-        p = filedialog.askdirectory(title="Selecione a Pasta Raiz de Busca")
+        p = file_dialogs.ask_directory("search.pasta_raiz", "pasta", titulo="Selecione a Pasta Raiz de Busca")
         if p:
             self.path_raiz.set(p)
 
