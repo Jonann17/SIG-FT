@@ -13,6 +13,9 @@ from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
 from selenium.webdriver.common.keys import Keys
 
+from sigft import config
+from sigft.core.excel import headers, pmib_codes
+
 
 # =============================================================================
 # CLASSE 1: PROCESSADOR DE DADOS E IA
@@ -41,21 +44,21 @@ class TechSpecsProcessor:
         return str(texto_pergunta).strip()
 
     def extrair_codigo_pmib_arquivo(self, nome_arquivo):
-        match = re.search(r"(\d{10}\.\d+)", nome_arquivo)
-        return match.group(1) if match else None
+        # CP 1.2: delega para a implementação única (core.excel.pmib_codes).
+        # O chamador já passa o basename (preparar_dados_ia faz
+        # os.path.basename() antes de invocar este método); basename aqui
+        # dentro é idempotente, então o comportamento é preservado.
+        return pmib_codes.extract_pmib_code_full(nome_arquivo)
 
     def formatar_pdm(self, pdm_raw):
         partes = str(pdm_raw).split(' ')
         return partes[0].strip()
 
     def encontrar_header(self, df, coluna_chave, limite_linhas=15):
-        header_idx = -1
-        for idx, row in df.head(limite_linhas).iterrows():
-            if coluna_chave in [str(x).strip() for x in row.values]:
-                header_idx = idx
-                break
+        # CP 1.2: delega para a implementação única (core.excel.headers).
+        header_idx = headers.find_header_row(df.head(limite_linhas).values.tolist(), coluna_chave)
 
-        if header_idx != -1:
+        if header_idx is not None:
             df.columns = df.iloc[header_idx]
             return df.iloc[header_idx + 1:].reset_index(drop=True)
         return pd.DataFrame()
@@ -80,7 +83,7 @@ class TechSpecsProcessor:
 
         try:
             df_status_raw = pd.read_excel(path_status, sheet_name="Lista de Materiais", header=None)
-            status_df = self.encontrar_header(df_status_raw, "CÓDIGO PMIB")
+            status_df = self.encontrar_header(df_status_raw, config.COL_CODIGO_PMIB)
 
             df_master_raw = pd.read_excel(path_master, sheet_name="TEMPLATE_PDM", header=None)
             master_pdm_df = self.encontrar_header(df_master_raw, "CÓDIGO PDM", limite_linhas=10)

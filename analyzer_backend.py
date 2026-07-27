@@ -3,11 +3,13 @@ import json
 import openpyxl
 import time
 import shutil
-import re
 from openpyxl.styles import Font, Color
 from openpyxl.cell.rich_text import CellRichText, TextBlock
 from openpyxl.cell.text import InlineFont
 import google.generativeai as genai
+
+from sigft import config
+from sigft.core.excel import headers, pmib_codes
 
 # -----------------------------------------------------------------
 # CONSTANTES E CONFIGURAÇÕES
@@ -103,8 +105,12 @@ class DatasheetAnalyzer:
             cell.font = FONT_ERRO_VERMELHO
 
     def extract_pmib_code(self, filename):
-        match = re.search(r"\d{10}\.(\d{4})", filename)
-        return match.group(1) if match else None
+        # CP 1.2: delega para a implementação única (core.excel.pmib_codes),
+        # que aplica os.path.basename() ANTES do regex — corrige o bug
+        # latente caracterizado no CP 0.1 (regex podia "vazar" um match do
+        # DIRETÓRIO em vez do arquivo). Ver
+        # tests/test_analyzer_backend_characterization.py.
+        return pmib_codes.extract_pmib_code(filename)
 
     # -----------------------------------------------------------------
     # LÓGICA DE PROCESSO (IDÊNTICA AO ORIGINAL)
@@ -333,20 +339,17 @@ class DatasheetAnalyzer:
     # MÉTODOS INTERNOS (Auxiliares de busca e API)
     # -----------------------------------------------------------------
     def _find_header_columns(self, ws):
-        # Procura colunas CÓDIGO PMIB e DESCRIÇÃO
-        pmib_idx, desc_idx, row_start = None, None, None
-        for row in ws.iter_rows(min_row=1, max_row=10):
-            found = False
-            for cell in row:
-                if cell.value:
-                    v = str(cell.value).strip().upper()
-                    if v == "CÓDIGO PMIB":
-                        pmib_idx = cell.column; found = True
-                    elif v == "DESCRIÇÃO":
-                        desc_idx = cell.column; found = True
-            if found: row_start = cell.row
-            if pmib_idx and desc_idx: return pmib_idx, desc_idx, row_start + 1
-        return None, None, None
+        # Procura colunas CÓDIGO PMIB e DESCRIÇÃO — CP 1.2: delega para a
+        # implementação única (core.excel.headers), mesmo alcance de
+        # varredura do original (10 primeiras linhas, todas as colunas).
+        rows = headers.rows_from_worksheet(ws, max_row=10)
+        col_map, header_row = headers.find_columns(
+            rows,
+            {config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB, config.COL_DESCRICAO: config.COL_DESCRICAO},
+        )
+        if header_row is None:
+            return None, None, None
+        return col_map[config.COL_CODIGO_PMIB], col_map[config.COL_DESCRICAO], header_row + 1
 
     def _find_pmib_description(self, code_4, ws):
         pidx, didx, rstart = self._find_header_columns(ws)

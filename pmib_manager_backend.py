@@ -7,6 +7,8 @@ from openpyxl import load_workbook
 from copy import copy
 import warnings
 
+from sigft.core.excel import headers
+
 # Configurações iniciais
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
@@ -102,15 +104,17 @@ class PMIBManager:
             }
             colunas_desejadas_norm = {str(k).strip().upper(): v for k, v in colunas_desejadas.items()}
 
-            header_row = None
-            for i in range(10):
-                try:
-                    df_temp = pd.read_excel(link, sheet_name='Lista de Materiais', skiprows=i, nrows=1, na_filter=False)
-                    if any(str(col).strip().upper() == 'CÓDIGO DO MATERIAL' for col in df_temp.columns):
-                        header_row = i
-                        break
-                except Exception:
-                    continue
+            # CP 1.2: busca dinâmica de cabeçalho via core.excel.headers. O
+            # original lia o arquivo em ATÉ 10 chamadas separadas de
+            # pd.read_excel (uma por linha candidata, variando skiprows) só
+            # para inspecionar o nome das colunas; aqui lemos as 10
+            # primeiras linhas de UMA vez (header=None, valores brutos) e
+            # delegamos a busca em memória — mesmo resultado (mesma linha
+            # encontrada), muito menos I/O. O try/except externo do método
+            # inteiro continua sendo a rede de segurança para arquivo
+            # ilegível (cai no `except` no fim e retorna (None, None)).
+            df_preview = pd.read_excel(link, sheet_name='Lista de Materiais', header=None, nrows=10, na_filter=False)
+            header_row = headers.find_header_row(df_preview.values.tolist(), 'CÓDIGO DO MATERIAL')
 
             if header_row is None:
                 return None, None

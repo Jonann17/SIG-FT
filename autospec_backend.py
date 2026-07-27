@@ -16,6 +16,9 @@ from langchain_core.output_parsers import JsonOutputParser
 # Integração LlamaParse
 from llama_parse import LlamaParse
 
+from sigft import config
+from sigft.core.excel import headers, pmib_codes
+
 # -----------------------------------------------------------------
 # 1. CONFIGURAÇÕES E MAPAS
 # -----------------------------------------------------------------
@@ -176,26 +179,34 @@ class AutoSpecCore:
 
     # --- Helpers de Excel e Dados ---
     def extract_pmib_code(self, input_filepath):
-        filename = os.path.basename(input_filepath)
-        match = re.search(r"\d{10}\.(\d{4})", filename)
-        return match.group(1) if match else None
+        # CP 1.2: delega para a implementação única (core.excel.pmib_codes).
+        # Já fazia os.path.basename() antes do regex — comportamento
+        # inalterado (era o lado "correto" da divergência com o analyzer,
+        # escolhido como canônico). Ver
+        # tests/test_autospec_backend_characterization.py.
+        return pmib_codes.extract_pmib_code(input_filepath)
 
     def find_header_columns(self, pmib_sheet):
-        pmib_col, desc_col, mat_col, start_row = None, None, None, None
-        for row in pmib_sheet.iter_rows(min_row=1, max_row=10):
-            found = False
-            for cell in row:
-                if cell.value:
-                    val = str(cell.value).strip().upper()
-                    if val == "CÓDIGO PMIB": pmib_col = cell.column; found = True
-                    elif val == "DESCRIÇÃO": desc_col = cell.column; found = True
-                    elif val in ["CÓDIGO MATERIAL", "MATERIAL"]:
-                        if "PMIB" not in val: mat_col = cell.column
-            if found: start_row = cell.row
-            if pmib_col and desc_col:
-                if not mat_col: mat_col = 5
-                return pmib_col, desc_col, mat_col, start_row + 1
-        return pmib_col, desc_col, 5, (start_row + 1) if start_row else None
+        # CP 1.2: delega para a implementação única (core.excel.headers).
+        # "CÓDIGO PMIB"/"DESCRIÇÃO" são obrigatórias; "CÓDIGO MATERIAL" (ou
+        # "MATERIAL") é oportunista, com default de coluna 5 se ausente —
+        # mesmo comportamento do original, incluindo o resultado PARCIAL
+        # (pmib_col/desc_col podem vir None) quando as 10 primeiras linhas
+        # não têm as colunas obrigatórias.
+        rows = headers.rows_from_worksheet(pmib_sheet, max_row=10)
+        keywords = {
+            config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB,
+            config.COL_DESCRICAO: config.COL_DESCRICAO,
+            "CÓDIGO MATERIAL": ["CÓDIGO MATERIAL", "MATERIAL"],
+        }
+        col_map, header_row = headers.find_columns(
+            rows, keywords, required=[config.COL_CODIGO_PMIB, config.COL_DESCRICAO]
+        )
+        pmib_col = col_map.get(config.COL_CODIGO_PMIB)
+        desc_col = col_map.get(config.COL_DESCRICAO)
+        mat_col = col_map.get("CÓDIGO MATERIAL") or 5
+        start_row = header_row + 1 if header_row is not None else None
+        return pmib_col, desc_col, mat_col, start_row
 
     def get_pmib_data(self, pmib_path, code_suffix):
         try:

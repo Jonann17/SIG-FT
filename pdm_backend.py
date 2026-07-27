@@ -7,6 +7,8 @@ from copy import copy
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment, Font
 
+from sigft.core.excel import pmib_codes
+
 
 # =============================================================================
 # FUNÇÕES UTILITÁRIAS
@@ -179,7 +181,13 @@ def processar_pastas_fichas(arquivo_STATUS_PMIB, destino_fichas, lista_seleciona
 
         # PARA: Formata a coluna inteira do DataFrame ANTES de filtrar (Idêntico ao Script 1)
         df[c_pmib] = df[c_pmib].astype(str).str.strip()
-        df[c_pmib] = df[c_pmib].apply(lambda x: f"{x.split('.')[0]}.{x.split('.')[1].ljust(4, '0')[:4]}" if '.' in x else x)
+        # CP 1.2: delega a normalização (zeros à direita) para a
+        # implementação única e canônica (core.excel.pmib_codes.normalize_pmib)
+        # — este código TRUNCAVA a fração para 4 dígitos quando havia mais;
+        # o canônico NÃO trunca (diferença só visível com mais de 4 casas
+        # decimais, que não ocorre em PMIB real) — ver
+        # docs/refatoracao/PENDENCIAS.md.
+        df[c_pmib] = df[c_pmib].apply(pmib_codes.normalize_pmib)
 
         # Filtro de seleção manual (se houver)
         if lista_selecionados:

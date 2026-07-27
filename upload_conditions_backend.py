@@ -5,13 +5,15 @@ import os
 import google.generativeai as genai
 import json
 import ast
-import re
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+
+from sigft import config
+from sigft.core.excel import headers, pmib_codes
 
 
 # =============================================================================
@@ -38,17 +40,17 @@ class ConditionsProcessor:
 
     def carregar_lookup_status(self, caminho_status_pmib):
         sheet_name = 'Lista de Materiais'
-        column_to_find = 'CÓDIGO PMIB'
+        column_to_find = config.COL_CODIGO_PMIB
         try:
             # NOVO: dtype=str força a ler como texto puro, mantendo a precisão exata do Excel
             df = pd.read_excel(caminho_status_pmib, sheet_name=sheet_name, header=None, dtype=str)
-            header_row_index = -1
-            for i in range(min(10, len(df))):
-                row_values = df.iloc[i].astype(str).values
-                if column_to_find in row_values:
-                    header_row_index = i
-                    break
-            if header_row_index == -1:
+
+            # CP 1.2: busca dinâmica de cabeçalho via core.excel.headers
+            # (mesmo alcance do original: até as 10 primeiras linhas; usa
+            # `.head(10)` antes de materializar em lista, como o original,
+            # para não converter o arquivo inteiro à toa).
+            header_row_index = headers.find_header_row(df.head(10).values.tolist(), column_to_find)
+            if header_row_index is None:
                 return None, "Coluna 'CÓDIGO PMIB' não encontrada."
 
             new_header = df.iloc[header_row_index]
@@ -62,13 +64,13 @@ class ConditionsProcessor:
             else:
                 df['CONDIÇÕES'] = df['CONDIÇÕES'].fillna("")
 
-            # --- CORREÇÃO DO CÓDIGO PMIB (Apóstrofos e Zeros perdidos) ---
-            df[column_to_find] = df[column_to_find].astype(str)
-            df[column_to_find] = df[column_to_find].str.replace("'", "").str.strip()
-            df[column_to_find] = df[column_to_find].apply(
-                lambda x: x + '0' if re.match(r'^\d{10}\.\d{3}$', x) else x
-            )
-            # -------------------------------------------------------------
+            # --- CORREÇÃO DO CÓDIGO PMIB (Apóstrofos, vírgula decimal e
+            # zeros perdidos) --- CP 1.2: delega para a normalização única e
+            # canônica (core.excel.pmib_codes.normalize_pmib), que cobre
+            # TODOS os casos que este código só tratava parcialmente (só
+            # completava zero quando faltava EXATAMENTE 1 dígito, e não
+            # tratava vírgula decimal) — ver docs/refatoracao/PENDENCIAS.md.
+            df[column_to_find] = df[column_to_find].apply(pmib_codes.normalize_pmib)
 
             df.set_index(column_to_find, inplace=True)
             return df, f"Carregado: {len(df)} registros."
@@ -144,7 +146,9 @@ class ConditionsProcessor:
 
     def processar_ia_lote(self, lista_caminhos, df_status, callback_log=None):
         fichas_processadas = []
-        pmib_pattern = re.compile(r'(4500063671\.\d{4})')
+        # CP 1.2: prefixo de contrato deriva de config.PREFIXO_CONTRATO (era
+        # hardcoded "4500063671" aqui); ver
+        # core.excel.pmib_codes.extract_contract_pmib_code, usada abaixo.
 
         system_prompt = """
 Você é um assistente especialista em engenharia de materiais e processamento de dados.
@@ -296,12 +300,10 @@ baseadas no conhecimento sobre "DISJUNTOR", e "CLASSE 1" virou "SIM")
                 break  # Sai do loop principal
 
             nome_arquivo = os.path.basename(caminho)
-            match = pmib_pattern.search(nome_arquivo)
-            if not match:
+            pmib_codigo = pmib_codes.extract_contract_pmib_code(caminho)
+            if not pmib_codigo:
                 if callback_log: callback_log(f"Ignorado (Sem PMIB): {nome_arquivo}")
                 continue
-
-            pmib_codigo = match.group(1)
 
             try:
                 status_atual = df_status.loc[pmib_codigo, 'CONDIÇÕES']
@@ -730,21 +732,18 @@ class UploadAutomation:
                 wb = openpyxl.load_workbook(caminho)
                 ws = wb['Lista de Materiais']
 
-                # 1. Busca dinâmica de Cabeçalho (Varre as 15 primeiras linhas)
-                col_pmib, col_status = -1, -1
-                header_row = 1
-                for r_search in range(1, 16):
-                    for c_search in range(1, 50):
-                        val = str(ws.cell(row=r_search, column=c_search).value).strip().upper()
-                        if val == 'CÓDIGO PMIB': col_pmib = c_search
-                        elif val == 'CONDIÇÕES': col_status = c_search
-                    if col_pmib != -1 and col_status != -1:
-                        header_row = r_search
-                        break
+                # 1. Busca dinâmica de Cabeçalho (Varre as 15 primeiras
+                #    linhas, 49 colunas) -- CP 1.2: delega para
+                #    core.excel.headers (mesmo alcance do original).
+                rows = headers.rows_from_worksheet(ws, max_row=15, max_col=49)
+                col_map, header_row_encontrado = headers.find_columns(
+                    rows, {config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB, config.COL_CONDICOES: config.COL_CONDICOES}
+                )
+                header_row = header_row_encontrado if header_row_encontrado is not None else 1
 
                 # Fallback caso não encontre os nomes exatos
-                if col_pmib == -1: col_pmib = 8
-                if col_status == -1: col_status = 10
+                col_pmib = col_map.get(config.COL_CODIGO_PMIB) or 8
+                col_status = col_map.get(config.COL_CONDICOES) or 10
 
                 encontrou = False
                 # 2. Busca varrendo da linha do cabeçalho pra baixo
@@ -752,17 +751,10 @@ class UploadAutomation:
                     cell_raw = ws.cell(row=r, column=col_pmib).value
                     if cell_raw is None: continue
 
-                    # 3. Blindagem contra Perda de Precisão (O segredo do .1165)
-                    if isinstance(cell_raw, (float, int)):
-                        # Se o Excel mandou como número puro, forçamos 4 casas decimais exatas
-                        # Isso conserta o problema do .11649999 e converte pra string cravada
-                        cell_val = f"{float(cell_raw):.4f}"
-                    else:
-                        # Se for string (com apóstrofo ou virgula), limpamos e ajeitamos os zeros
-                        cell_val = str(cell_raw).replace("'", "").replace(",", ".").strip()
-                        partes = cell_val.split('.')
-                        if len(partes) == 2 and len(partes[0]) == 10:
-                            cell_val = f"{partes[0]}.{partes[1].ljust(4, '0')}"
+                    # 3. Blindagem contra Perda de Precisão (O segredo do
+                    #    .1165) -- CP 1.2: delega para a normalização única
+                    #    (core.excel.pmib_codes.normalize_pmib).
+                    cell_val = pmib_codes.normalize_pmib(cell_raw)
 
                     # 4. Grava o status
                     if cell_val == pmib_alvo:

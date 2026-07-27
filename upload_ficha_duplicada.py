@@ -1,5 +1,4 @@
 import pandas as pd
-import re
 import time
 import os
 import glob
@@ -12,6 +11,9 @@ from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import StaleElementReferenceException
 import openpyxl
 
+from sigft import config
+from sigft.core.excel import headers, pmib_codes
+
 
 class GerenciadorFilaPMIB:
     def __init__(self, caminho_excel, nome_aba="Lista de Materiais"):
@@ -20,14 +22,13 @@ class GerenciadorFilaPMIB:
 
     def _encontrar_cabecalho(self, df, limite_linhas=15):
         """Busca dinamicamente a linha de cabeçalho para evitar quebra por linhas vazias no topo."""
-        colunas_chave = ["CÓDIGO PMIB", "PDM usado", "OBSERVAÇÕES"]
-
-        for idx, row in df.head(limite_linhas).iterrows():
-            valores_linha = [str(x).strip().upper() for x in row.values]
-            # Se encontrar pelo menos o CÓDIGO PMIB, assumimos que é o cabeçalho
-            if "CÓDIGO PMIB" in valores_linha:
-                return idx
-        return -1
+        # CP 1.2: delega para a implementação única (core.excel.headers). O
+        # original declarava colunas_chave = ["CÓDIGO PMIB", "PDM usado",
+        # "OBSERVAÇÕES"] mas só verificava "CÓDIGO PMIB" na prática (as
+        # outras duas nunca entravam na condição) — comportamento
+        # preservado, só essa palavra-chave é usada de fato.
+        idx = headers.find_header_row(df.head(limite_linhas).values.tolist(), config.COL_CODIGO_PMIB)
+        return idx if idx is not None else -1
 
     def montar_fila_processamento(self, marcador_duplicada="DUPLICADA"):
         """
@@ -62,19 +63,17 @@ class GerenciadorFilaPMIB:
 
                 # Regra de negócio: Se o PDM indica ser cópia
                 if marcador_duplicada in pdm_status:
-                    # Extrai o PMIB base da observação usando Regex (procura padrão 10 digitos . N digitos)
-                    match_pmib_base = re.search(r'(\d{10}\.\d+)', observacao)
+                    # Extrai o PMIB base da observação (texto livre, NÃO é
+                    # caminho de arquivo) -- CP 1.2: delega para
+                    # core.excel.pmib_codes.find_pmib_code_in_text.
+                    pmib_base = pmib_codes.find_pmib_code_in_text(observacao)
 
-                    if match_pmib_base and pmib_alvo_raw:
-                        pmib_base = match_pmib_base.group(1)
-
-                        # --- BLINDAGEM DO CÓDIGO ALVO (Mantendo Zeros à direita) ---
-                        pmib_alvo = str(pmib_alvo_raw).replace("'", "").strip()
-                        partes = pmib_alvo.split('.')
-                        # Se por acaso o pandas comeu um zero na leitura (ex: .105 em vez de .1050), forçamos 4 casas
-                        if len(partes) == 2 and len(partes[0]) == 10:
-                            pmib_alvo = f"{partes[0]}.{partes[1].ljust(4, '0')}"
-                        # -------------------------------------------------------------
+                    if pmib_base and pmib_alvo_raw:
+                        # --- BLINDAGEM DO CÓDIGO ALVO (Mantendo Zeros à
+                        # direita) --- CP 1.2: delega para a normalização
+                        # única e canônica
+                        # (core.excel.pmib_codes.normalize_pmib).
+                        pmib_alvo = pmib_codes.normalize_pmib(pmib_alvo_raw)
 
                         descricao = str(row.get("DESCRIÇÃO", "Sem Descrição")).strip()
 
@@ -676,18 +675,12 @@ class AtualizadorStatusPMIB:
 
     def _blindar_numero_pmib(self, valor_celula):
         """Garante a precisão das 4 casas decimais para comparação."""
-        if valor_celula is None:
-            return ""
-
-        if isinstance(valor_celula, (float, int)):
-            return f"{float(valor_celula):.4f}"
-
-        texto_limpo = str(valor_celula).replace("'", "").replace(",", ".").strip()
-        partes = texto_limpo.split('.')
-        if len(partes) == 2 and len(partes[0]) == 10:
-            return f"{partes[0]}.{partes[1].ljust(4, '0')}"
-
-        return texto_limpo
+        # CP 1.2: delega para a implementação única e canônica
+        # (core.excel.pmib_codes.normalize_pmib) — este método É a
+        # implementação de referência que originou o canônico (ver
+        # docs/refatoracao/PLANO_REFATORACAO.md, Fase 1 -> CP 1.2, e
+        # tests/test_pmib_normalization_characterization.py).
+        return pmib_codes.normalize_pmib(valor_celula)
 
     def atualizar_ficha_concluida(self, pmib_alvo, secoes_concluidas, callback_log=None):
         """
@@ -701,24 +694,21 @@ class AtualizadorStatusPMIB:
                 wb = openpyxl.load_workbook(self.caminho_excel)
                 ws = wb[self.nome_aba]
 
-                # 1. Busca Dinâmica de Cabeçalho
-                colunas_map = {}
-                linha_cabecalho = 1
+                # 1. Busca Dinâmica de Cabeçalho -- CP 1.2: delega para
+                #    core.excel.headers. "CÓDIGO PMIB" é a única coluna
+                #    obrigatória (âncora, mesmo alcance de 15 linhas do
+                #    original); as colunas de `secoes_concluidas` são
+                #    coletadas de forma oportunista, exatamente como antes.
+                keywords = {config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB}
+                for nome_secao in secoes_concluidas:
+                    secao_upper = nome_secao.upper()
+                    keywords[secao_upper] = secao_upper
+                rows = headers.rows_from_worksheet(ws, max_row=15)
+                colunas_map, linha_cabecalho = headers.find_columns(
+                    rows, keywords, required=[config.COL_CODIGO_PMIB]
+                )
 
-                for r in range(1, 16):
-                    for c in range(1, ws.max_column + 1):
-                        valor_celula = str(ws.cell(row=r, column=c).value).strip().upper()
-
-                        if valor_celula == "CÓDIGO PMIB":
-                            colunas_map["CÓDIGO PMIB"] = c
-                            linha_cabecalho = r
-                        elif valor_celula in [k.upper() for k in secoes_concluidas.keys()]:
-                            colunas_map[valor_celula] = c
-
-                    if "CÓDIGO PMIB" in colunas_map:
-                        break  # Achou a âncora, para de descer as linhas
-
-                if "CÓDIGO PMIB" not in colunas_map:
+                if linha_cabecalho is None:
                     if callback_log: callback_log("Erro: Coluna 'CÓDIGO PMIB' não encontrada para atualização.")
                     wb.close()
                     return False
@@ -726,7 +716,7 @@ class AtualizadorStatusPMIB:
                 # 2. Varredura e Atualização
                 encontrou = False
                 for r in range(linha_cabecalho + 1, ws.max_row + 1):
-                    celula_pmib = ws.cell(row=r, column=colunas_map["CÓDIGO PMIB"]).value
+                    celula_pmib = ws.cell(row=r, column=colunas_map[config.COL_CODIGO_PMIB]).value
                     pmib_planilha = self._blindar_numero_pmib(celula_pmib)
 
                     if pmib_planilha == pmib_formatado:

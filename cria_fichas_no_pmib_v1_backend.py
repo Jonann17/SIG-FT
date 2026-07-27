@@ -10,6 +10,9 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+from sigft import config
+from sigft.core.excel import headers
+
 
 class DataManager:
     @staticmethod
@@ -17,28 +20,27 @@ class DataManager:
         try:
             # Aumentado para 30 para maior segurança
             df_preview = pd.read_excel(arquivo, sheet_name=nome_da_aba, header=None, nrows=30)
-            header_row_index = -1
+
+            # CP 1.2: busca dinâmica da linha de cabeçalho via
+            # core.excel.headers (mesmo alcance do original: até as 30
+            # linhas de df_preview, exige TODAS as colunas_desejadas na
+            # mesma linha).
+            header_row_index = headers.find_header_row(df_preview.values.tolist(), list(colunas_desejadas))
+            if header_row_index is None:
+                return None, "", "Colunas não encontradas."
+
             codigo_projeto_sugerido = ""  # Variável para guardar o código
 
-            for i in range(len(df_preview)):
-                row_values = set(df_preview.iloc[i].dropna().astype(str).str.strip())
-                if set(colunas_desejadas).issubset(row_values):
-                    header_row_index = i
-
-                    # --- Lógica de Auto-Preenchimento do Código do Projeto ---
-                    if i > 0:  # Só podemos olhar pra cima se a linha do cabeçalho não for a primeiríssima (0)
-                        for col_idx in range(len(df_preview.columns)):
-                            cell_value = str(df_preview.iloc[i, col_idx]).strip().upper()
-                            if cell_value == "ITEM":
-                                # Pega a célula da MESMA coluna, mas 1 linha acima
-                                valor_acima = df_preview.iloc[i - 1, col_idx]
-                                if pd.notna(valor_acima):
-                                    codigo_projeto_sugerido = str(valor_acima).strip()
-                                break  # Achou a coluna ITEM, não precisa olhar o resto das colunas
-                    break
-
-            if header_row_index == -1:
-                return None, "", "Colunas não encontradas."
+            # --- Lógica de Auto-Preenchimento do Código do Projeto ---
+            if header_row_index > 0:  # Só podemos olhar pra cima se a linha do cabeçalho não for a primeiríssima (0)
+                for col_idx in range(len(df_preview.columns)):
+                    cell_value = str(df_preview.iloc[header_row_index, col_idx]).strip().upper()
+                    if cell_value == "ITEM":
+                        # Pega a célula da MESMA coluna, mas 1 linha acima
+                        valor_acima = df_preview.iloc[header_row_index - 1, col_idx]
+                        if pd.notna(valor_acima):
+                            codigo_projeto_sugerido = str(valor_acima).strip()
+                        break  # Achou a coluna ITEM, não precisa olhar o resto das colunas
 
             df_final = pd.read_excel(arquivo, sheet_name=nome_da_aba, header=header_row_index, dtype=str)
             # Garante que as colunas sejam strings (evita erro de .strip() em colunas sem nome)
@@ -58,25 +60,18 @@ class DataManager:
             else:
                 ws = wb.active
 
-            col_map = {}
-            header_row = None
-
-            for r_idx in range(1, 21):
-                for c_idx in range(1, ws.max_column + 1):
-                    cell_val = ws.cell(row=r_idx, column=c_idx).value
-                    if cell_val:
-                        val_str = str(cell_val).strip().upper()
-
-                        if val_str == "DESCRIÇÃO":
-                            col_map["DESCRIÇÃO"] = c_idx
-                        elif val_str == "CÓDIGO PMIB":
-                            col_map["CÓDIGO PMIB"] = c_idx
-                        elif val_str == "PDM USADO" or val_str == "PDM":
-                            col_map["PDM usado"] = c_idx
-
-                if "DESCRIÇÃO" in col_map and "CÓDIGO PMIB" in col_map and "PDM usado" in col_map:
-                    header_row = r_idx
-                    break
+            # CP 1.2: busca dinâmica de cabeçalho via core.excel.headers
+            # (mesmo alcance do original: até as 20 primeiras linhas).
+            # "PDM USADO" e "PDM" são grafias alternativas para a MESMA
+            # coluna de saída "PDM usado" (mantida com essa grafia mista,
+            # igual ao original).
+            keywords = {
+                config.COL_DESCRICAO: config.COL_DESCRICAO,
+                config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB,
+                config.COL_PDM_USADO: ["PDM USADO", "PDM"],
+            }
+            rows = headers.rows_from_worksheet(ws, max_row=20)
+            col_map, header_row = headers.find_columns(rows, keywords)
 
             if header_row is None:
                 return False, "Erro: Colunas não encontradas no Excel."
@@ -86,11 +81,11 @@ class DataManager:
                 desc_search = str(desc_original).strip()
 
                 for row_num in range(header_row + 1, ws.max_row + 1):
-                    cell_desc = ws.cell(row=row_num, column=col_map["DESCRIÇÃO"]).value
+                    cell_desc = ws.cell(row=row_num, column=col_map[config.COL_DESCRICAO]).value
 
                     if cell_desc and str(cell_desc).strip() == desc_search:
-                        ws.cell(row=row_num, column=col_map["CÓDIGO PMIB"]).value = pmib_criado
-                        ws.cell(row=row_num, column=col_map["PDM usado"]).value = pdm_revisao
+                        ws.cell(row=row_num, column=col_map[config.COL_CODIGO_PMIB]).value = pmib_criado
+                        ws.cell(row=row_num, column=col_map[config.COL_PDM_USADO]).value = pdm_revisao
                         linhas_atualizadas += 1
                         break
 

@@ -15,6 +15,8 @@ import sys
 import ast
 import subprocess
 
+from sigft.core.excel.pmib_codes import normalize_pmib
+
 # --- VARIÁVEIS GLOBAIS DOS BACKENDS (Inicialmente None) ---
 # Isso evita erro de "NameError" nas classes antes do carregamento
 DataManager = None
@@ -1317,10 +1319,15 @@ class ModuloPDM(ctk.CTkFrame):
                 codigos_raw = df[col_c].dropna().unique().tolist()
                 codigos_formatados = []
                 for c in codigos_raw:
-                    c_str = str(c).strip()
-                    if '.' in c_str:
-                        p1, p2 = c_str.split('.', 1)
-                        c_str = f"{p1}.{p2.ljust(4, '0')[:4]}"
+                    # CP 1.2: delega para a normalização única e canônica
+                    # (core.excel.pmib_codes.normalize_pmib) — o código
+                    # original TRUNCAVA a fração para 4 dígitos quando havia
+                    # mais; o canônico NÃO trunca (diferença só visível com
+                    # mais de 4 casas decimais, que não ocorre em PMIB
+                    # real). Mantém o `str(c).strip()` explícito antes, para
+                    # que a normalização sempre veja uma string (mesmo
+                    # caminho de código exercido pelo original).
+                    c_str = normalize_pmib(str(c).strip())
                     codigos_formatados.append(c_str)
                 codigos = sorted(list(set(codigos_formatados)))
 
@@ -2078,11 +2085,12 @@ class ModuloUploadConditions(ctk.CTkFrame):
 
             # Aplica a mesma correção caso o Excel já tenha salvo sem o zero ou com apóstrofo
             if 'pmib_codigo' in df.columns:
-                import re
-                df['pmib_codigo'] = df['pmib_codigo'].astype(str).str.replace("'", "").str.strip()
-                df['pmib_codigo'] = df['pmib_codigo'].apply(
-                    lambda x: x + '0' if re.match(r'^\d{10}\.\d{3}$', x) else x
-                )
+                # CP 1.2: delega para a normalização única e canônica
+                # (core.excel.pmib_codes.normalize_pmib), que cobre TODOS os
+                # casos que este código só tratava parcialmente (só
+                # completava zero quando faltava EXATAMENTE 1 dígito, sem
+                # tratar vírgula decimal) — ver docs/refatoracao/PENDENCIAS.md.
+                df['pmib_codigo'] = df['pmib_codigo'].apply(normalize_pmib)
 
             cols_para_converter = ['dimensoes', 'controle_temperatura', 'nocivo', 'peso', 'protecao', 'outros_cuidados', 'logistica_reversa']
             for c in cols_para_converter:

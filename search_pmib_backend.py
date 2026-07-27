@@ -4,6 +4,9 @@ import traceback
 import unicodedata
 import re
 
+from sigft import config
+from sigft.core.excel import headers
+
 
 class PMIBSearcher:
     def __init__(self):
@@ -58,15 +61,18 @@ class PMIBSearcher:
         except Exception as e:
             return None, f"Erro ao ler arquivo: {str(e)}"
 
-        # Procura a palavra 'DESCRIÇÃO' nas primeiras 10 linhas
-        header_idx = -1
-        for idx, row in df_bruto.head(10).iterrows():
-            linha_str = " ".join(row.fillna('').astype(str).str.upper())
-            if "DESCRIÇÃO" in linha_str or "DESCRICAO" in linha_str:
-                header_idx = idx
-                break
+        # Procura a palavra 'DESCRIÇÃO' nas primeiras 10 linhas -- CP 1.2:
+        # delega para core.excel.headers (mode="text": substring na linha
+        # inteira concatenada; require="any": aceita as duas grafias
+        # (com/sem acento), igual ao original).
+        header_idx = headers.find_header_row(
+            df_bruto.head(10).values.tolist(),
+            [config.COL_DESCRICAO, "DESCRICAO"],
+            mode="text",
+            require="any",
+        )
 
-        if header_idx == -1:
+        if header_idx is None:
             return None, "Cabeçalho com a coluna 'DESCRIÇÃO' não encontrado nas primeiras 10 linhas."
 
         # Lê o arquivo completo agora usando a linha correta como cabeçalho
