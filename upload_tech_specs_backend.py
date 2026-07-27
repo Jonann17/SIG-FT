@@ -15,6 +15,13 @@ from selenium.webdriver.common.keys import Keys
 
 from sigft import config
 from sigft.core.excel import headers, pmib_codes, status_sheet
+# CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
+# driver Chrome, substitui `webdriver.Chrome()` cru em
+# `TechSpecsAutomation.iniciar` abaixo. Escopo estrito deste checkpoint: SÓ
+# a criação do driver muda — `safe_click`/`safe_send_keys_elem`/
+# `_preencher_input_com_auditoria`/`processar_lista` continuam usando
+# `self.driver`/`self.wait` crus, sem nenhuma alteração.
+from sigft.core.rpa.selenium_engine import create_chrome_driver
 
 
 # =============================================================================
@@ -324,9 +331,12 @@ class TechSpecsAutomation:
         self.cancel_requested = True
 
     def iniciar(self):
-        self.driver = webdriver.Chrome()
-        self.driver.maximize_window()
-        self.wait = WebDriverWait(self.driver, 20)
+        """CP 2.1: a criação em si (Chrome + maximize + WebDriverWait(20s))
+        agora vem de `create_chrome_driver` (única fábrica, ver
+        core/rpa/selenium_engine.py) — timeout preservado EXATAMENTE como
+        antes (20s). Nada mais deste método/classe muda (inclusive: este
+        método nunca teve `return self.driver` — preservado sem retorno)."""
+        self.driver, self.wait = create_chrome_driver(wait_timeout=20)
 
     def fechar(self):
         if self.driver: self.driver.quit()

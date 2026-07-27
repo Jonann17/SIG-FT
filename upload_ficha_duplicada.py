@@ -16,6 +16,15 @@ from selenium.common.exceptions import StaleElementReferenceException
 
 from sigft import config
 from sigft.core.excel import headers, pmib_codes, status_sheet
+# CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
+# driver Chrome, substitui `webdriver.Chrome(options=...)` cru em
+# `ExtratorFichaBase.iniciar_driver_silencioso` abaixo (a ÚNICA das 6
+# inicializações que já configurava `download_dir` via ChromeOptions/prefs
+# — mecânica preservada intacta dentro da fábrica). Escopo estrito deste
+# checkpoint: SÓ a criação do driver muda — todo o resto (extração,
+# `InjetorFichaAlvo.safe_click` etc.) continua usando `self.driver`/
+# `self.wait` crus, sem nenhuma alteração.
+from sigft.core.rpa.selenium_engine import create_chrome_driver
 
 
 class GerenciadorFilaPMIB:
@@ -120,19 +129,16 @@ class ExtratorFichaBase:
                 except: pass
 
     def iniciar_driver_silencioso(self):
-        """Inicia o Chrome com preferências para download automático."""
-        options = webdriver.ChromeOptions()
-        prefs = {
-            "download.default_directory": self.dir_download,
-            "download.prompt_for_download": False,
-            "download.directory_upgrade": True,
-            "safebrowsing.enabled": True
-        }
-        options.add_experimental_option("prefs", prefs)
+        """Inicia o Chrome com preferências para download automático.
 
-        self.driver = webdriver.Chrome(options=options)
-        self.driver.maximize_window()
-        self.wait = WebDriverWait(self.driver, 15)
+        CP 2.1: a criação em si (ChromeOptions/prefs de download + Chrome +
+        maximize + WebDriverWait(15s)) agora vem de `create_chrome_driver`
+        (única fábrica, ver core/rpa/selenium_engine.py) — mesma mecânica
+        de `options`/prefs, mesmo timeout (15s, preservado EXATAMENTE como
+        antes) e `download_dir=self.dir_download` repassado tal qual. Nada
+        mais deste método/classe muda.
+        """
+        self.driver, self.wait = create_chrome_driver(wait_timeout=15, download_dir=self.dir_download)
         return self.driver
 
     # --- HELPERS DE LEITURA (SCRAPING) ---

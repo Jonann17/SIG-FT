@@ -16,6 +16,13 @@ from selenium.webdriver.common.action_chains import ActionChains
 # docstring de core/callbacks.py e docs/refatoracao/PENDENCIAS.md.
 from sigft.core.callbacks import UICallbacks, from_legacy
 
+# CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
+# driver Chrome, substitui `webdriver.Chrome()` cru em `iniciar_driver`
+# abaixo. Escopo estrito deste checkpoint: SÓ a criação do driver muda — o
+# resto da classe (24 TABs, `_processar_ficha_lmr_interna` etc.) continua
+# usando `self.driver`/`self.wait` crus, sem nenhuma alteração.
+from sigft.core.rpa.selenium_engine import create_chrome_driver
+
 
 # =============================================================================
 # CLASSE DE AUTOMAÇÃO LMR (BACKEND)
@@ -27,10 +34,14 @@ class LMRAutomation:
         self.url_inicial = 'https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList'
 
     def iniciar_driver(self):
-        """Inicia o navegador Chrome."""
-        self.driver = webdriver.Chrome()
-        self.driver.maximize_window()
-        self.wait = WebDriverWait(self.driver, 20)
+        """Inicia o navegador Chrome.
+
+        CP 2.1: a criação em si (Chrome + maximize + WebDriverWait(20s))
+        agora vem de `create_chrome_driver` (única fábrica, ver
+        core/rpa/selenium_engine.py) — timeout preservado EXATAMENTE como
+        antes (20s). Nada mais deste método/classe muda.
+        """
+        self.driver, self.wait = create_chrome_driver(wait_timeout=20)
         return self.driver
 
     def fechar_driver(self):
