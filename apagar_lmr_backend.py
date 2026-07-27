@@ -6,6 +6,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
 
+# CP 1.4 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 1): protocolo único
+# UI<->serviço. `executar_limpeza` aceita o novo parâmetro `callbacks`
+# preservando o `callback_log` antigo como alias retrocompatível (via
+# `from_legacy`) — ver core/callbacks.py.
+from sigft.core.callbacks import UICallbacks, from_legacy
+
 
 # =============================================================================
 # CLASSE DE AUTOMAÇÃO - APAGAR LMR
@@ -80,31 +86,41 @@ class ApagarLMRAutomation:
             return False, f"Ficha {pmib} não encontrada ou não editável."
 
     # --- LÓGICA PRINCIPAL DE EXCLUSÃO (DO SCRIPT ORIGINAL) ---
-    def executar_limpeza(self, pmib_codigo, callback_log=None):
+    def executar_limpeza(self, pmib_codigo, callbacks: UICallbacks | None = None, callback_log=None):
         """
         Abre a ficha e apaga todas as LMRs em loop.
+
+        CP 1.4: `callbacks` (novo, `core.callbacks.UICallbacks`) substitui o
+        parâmetro único `callback_log` antigo, que continua aceito como
+        alias retrocompatível — `frontend.py` chama
+        `auto.executar_limpeza(pmib, callback_log=cb_log)` hoje e continua
+        funcionando sem nenhuma mudança. Se `callbacks` for passado
+        diretamente por um chamador novo, ele tem prioridade; senão é
+        construído a partir de `callback_log` via `from_legacy`.
         """
-        if callback_log: callback_log(f"Iniciando processo para PMIB: {pmib_codigo}")
+        callbacks = callbacks or from_legacy(callback_log=callback_log)
+
+        callbacks.log(f"Iniciando processo para PMIB: {pmib_codigo}")
 
         # 1. Abre a Ficha
         sucesso, msg = self._pesquisar_e_abrir(pmib_codigo)
         if not sucesso:
-            if callback_log: callback_log(msg)
+            callbacks.log(msg)
             return
 
         # 2. Acessa Aba LMR
         try:
-            if callback_log: callback_log("Acessando aba 'Aplicação - LMR'...")
+            callbacks.log("Acessando aba 'Aplicação - LMR'...")
             # XPath do script original
             botao_lmr = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="b10-ApplicationMRL"]/button')))
             botao_lmr.click()
             time.sleep(2)
         except Exception as e:
-            if callback_log: callback_log(f"Erro ao abrir aba LMR (pode já estar aberta): {e}")
+            callbacks.log(f"Erro ao abrir aba LMR (pode já estar aberta): {e}")
 
         # 3. Loop de Exclusão (Original)
         count = 0
-        if callback_log: callback_log("Iniciando varredura de exclusão...")
+        callbacks.log("Iniciando varredura de exclusão...")
 
         while True:
             try:
@@ -131,19 +147,19 @@ class ApagarLMRAutomation:
 
                 # Espera a exclusão processar
                 count += 1
-                if callback_log: callback_log(f" -> Item {count} apagado.")
+                callbacks.log(f" -> Item {count} apagado.")
                 time.sleep(1.5)  # Pausa para refresh da tabela
 
             except TimeoutException:
                 # Não achou mais lixeiras -> Fim
-                if callback_log: callback_log("✅ Todas as aplicações visíveis foram apagadas.")
+                callbacks.log("✅ Todas as aplicações visíveis foram apagadas.")
                 break
             except StaleElementReferenceException:
                 # Tabela atualizou enquanto tentava clicar -> Tenta loop de novo
                 continue
             except Exception as e:
                 # Outro erro -> Para
-                if callback_log: callback_log(f"Parada ou Erro: {e}")
+                callbacks.log(f"Parada ou Erro: {e}")
                 break
 
         # Voltar para lista (opcional, bom para fluxo continuo)
