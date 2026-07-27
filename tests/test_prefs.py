@@ -1,0 +1,483 @@
+r"""
+Testes da 1ª metade do Checkpoint 1.5 — `sigft/core/prefs.py` (ver
+docs/refatoracao/PLANO_REFATORACAO.md, Fase 1 -> CP 1.5, e decisão de produto
+nº 7 na seção 0).
+
+Cobre: as 4 camadas de resolução de `get_initial_dir` (chave > categoria >
+pasta padrão da chave > `None`) com validação `os.path.isdir` real em cada
+camada (pastas criadas/removidas de verdade em `tmp_path`); `remember_dir`
+gravando em `ultimos` E `categorias`; `get_default_dir`/`set_default_dir`
+(override do usuário > pasta semeada > `None`); tolerância a
+ausência/corrupção do `user_prefs.json` (sem exceção); persistência real
+(escreve, relê, confirma); e os valores/estrutura de `PASTAS_PADRAO_SEED` /
+`PASTAS_PADRAO_POR_CHAVE`.
+
+Todos os testes usam `config_path=<tmp_path>/user_prefs.json` — nunca tocam
+no `user_prefs.json` real do repositório. Camadas que dependem de
+`PASTAS_PADRAO_SEED`/`PASTAS_PADRAO_POR_CHAVE` "de mentira" usam
+`monkeypatch.setitem` (revertido automaticamente ao fim do teste) para não
+depender da pasta real do Box existir na máquina que roda os testes.
+"""
+from __future__ import annotations
+
+import json
+import shutil
+from pathlib import Path
+
+import pytest
+
+from sigft.core import prefs
+
+
+@pytest.fixture()
+def config_path(tmp_path) -> Path:
+    """`user_prefs.json` de teste — nunca criado automaticamente (os testes
+    de "arquivo ausente" dependem disso); só o CAMINHO, dentro de `tmp_path`
+    (que sempre existe, então `_salvar_estado` nunca falha por pasta-mãe
+    ausente)."""
+    return tmp_path / "user_prefs.json"
+
+
+# =============================================================================
+# A. PASTAS_PADRAO_SEED / PASTAS_PADRAO_POR_CHAVE (decisão de produto nº 7)
+# =============================================================================
+
+def test_pastas_padrao_seed_tem_exatamente_as_3_chaves_da_decisao_7():
+    assert set(prefs.PASTAS_PADRAO_SEED) == {
+        "sobressalentes_pmib",
+        "pdms_modificados",
+        "templates_ficha",
+    }
+
+
+def test_pastas_padrao_seed_valores_sao_path_relativos_ao_home():
+    for caminho in prefs.PASTAS_PADRAO_SEED.values():
+        assert isinstance(caminho, Path)
+        assert caminho.is_relative_to(Path.home())
+
+
+def test_pastas_padrao_seed_base_box_e_a_estrutura_da_decisao_7():
+    # "<home>/Box/CMI - Consórcio Itaipu/11 - Ger. Engenharia/15 - PDM/..."
+    assert prefs.BASE_BOX == (
+        Path.home() / "Box" / "CMI - Consórcio Itaipu" / "11 - Ger. Engenharia" / "15 - PDM"
+    )
+
+
+def test_pastas_padrao_seed_subpastas_literais_da_decisao_7():
+    # Nomes copiados literalmente do texto da decisão nº 7 / CP 1.5.
+    assert prefs.PASTAS_PADRAO_SEED["sobressalentes_pmib"] == prefs.BASE_BOX / "SOBRESSALENTES - PMIB"
+    assert prefs.PASTAS_PADRAO_SEED["pdms_modificados"] == prefs.BASE_BOX / "PDMs modificados"
+    assert prefs.PASTAS_PADRAO_SEED["templates_ficha"] == prefs.BASE_BOX / "Templates"
+
+
+def test_pastas_padrao_por_chave_tem_as_3_chaves_do_modulo_pdm():
+    assert set(prefs.PASTAS_PADRAO_POR_CHAVE) == {
+        "pdm.caminho_destino",
+        "pdm.template",
+        "pdm.status_pmib",
+    }
+
+
+def test_pastas_padrao_por_chave_aponta_so_para_nomes_existentes_no_seed():
+    for nome_logico in prefs.PASTAS_PADRAO_POR_CHAVE.values():
+        assert nome_logico in prefs.PASTAS_PADRAO_SEED
+
+
+def test_pastas_padrao_por_chave_mapeamento_exato():
+    assert prefs.PASTAS_PADRAO_POR_CHAVE == {
+        "pdm.caminho_destino": "pdms_modificados",
+        "pdm.template": "templates_ficha",
+        "pdm.status_pmib": "sobressalentes_pmib",
+    }
+
+
+def test_pastas_padrao_seed_reais_nao_existentes_nesta_maquina_nao_quebram(config_path):
+    # Nesta máquina de teste o Box não está sincronizado -- get_default_dir
+    # para os 3 nomes REAIS (sem monkeypatch nenhum) deve devolver None sem
+    # levantar exceção (comportamento "só usa se existir no disco").
+    for nome_logico in prefs.PASTAS_PADRAO_SEED:
+        assert prefs.get_default_dir(nome_logico, config_path=config_path) is None
+
+
+# =============================================================================
+# B. get_initial_dir — as 4 camadas de resolução
+# =============================================================================
+
+def test_get_initial_dir_sem_nada_salvo_e_sem_pasta_padrao_retorna_none(config_path):
+    assert prefs.get_initial_dir("chave.nunca.usada", "excel", config_path=config_path) is None
+
+
+def test_get_initial_dir_usa_ultimo_da_chave_especifica(tmp_path, config_path):
+    pasta = tmp_path / "pasta_excel"
+    pasta.mkdir()
+
+    prefs.remember_dir("autospec.ficha", "excel", str(pasta), config_path=config_path)
+
+    assert prefs.get_initial_dir("autospec.ficha", "excel", config_path=config_path) == str(pasta)
+
+
+def test_get_initial_dir_prioriza_chave_especifica_sobre_categoria(tmp_path, config_path):
+    pasta_a = tmp_path / "pasta_a"
+    pasta_a.mkdir()
+    pasta_b = tmp_path / "pasta_b"
+    pasta_b.mkdir()
+
+    # 1ª chamada: chave "autospec.ficha" e categoria "excel" -> pasta_a.
+    prefs.remember_dir("autospec.ficha", "excel", str(pasta_a), config_path=config_path)
+    # 2ª chamada: OUTRA chave, MESMA categoria "excel" -> sobrescreve
+    # categorias["excel"] para pasta_b, mas NÃO mexe em ultimos["autospec.ficha"].
+    prefs.remember_dir("cria_fichas.status", "excel", str(pasta_b), config_path=config_path)
+
+    # A chave original continua vendo a PRÓPRIA última pasta (pasta_a),
+    # mesmo com a categoria "excel" agora apontando para pasta_b.
+    assert prefs.get_initial_dir("autospec.ficha", "excel", config_path=config_path) == str(pasta_a)
+    assert prefs.get_initial_dir("cria_fichas.status", "excel", config_path=config_path) == str(pasta_b)
+
+
+def test_get_initial_dir_cai_para_categoria_quando_chave_nunca_foi_usada(tmp_path, config_path):
+    pasta = tmp_path / "pasta_pdf"
+    pasta.mkdir()
+
+    prefs.remember_dir("autospec.manuais", "pdf", str(pasta), config_path=config_path)
+
+    # Uma chave DIFERENTE, nunca usada, mas da MESMA categoria "pdf", herda
+    # a última pasta da categoria.
+    assert prefs.get_initial_dir("outro_modulo.pdf_qualquer", "pdf", config_path=config_path) == str(pasta)
+
+
+def test_get_initial_dir_pula_ultimo_da_chave_se_pasta_foi_removida_cai_para_categoria(
+    tmp_path, config_path
+):
+    pasta_morta = tmp_path / "pasta_removida"
+    pasta_morta.mkdir()
+    pasta_viva = tmp_path / "pasta_viva"
+    pasta_viva.mkdir()
+
+    # Grava ultimos["k"] = categorias["cat"] = pasta_morta.
+    prefs.remember_dir("k", "cat", str(pasta_morta), config_path=config_path)
+    # Remove a pasta de fato do disco -- ultimos["k"] fica "morto" (aponta
+    # para algo que não existe mais), mas o VALOR continua salvo no JSON.
+    shutil.rmtree(pasta_morta)
+    # Atualiza categorias["cat"] (via outra chave) para uma pasta que EXISTE.
+    prefs.remember_dir("k2", "cat", str(pasta_viva), config_path=config_path)
+
+    # ultimos["k"] é candidato mas isdir falha -> PULA para categorias["cat"].
+    assert prefs.get_initial_dir("k", "cat", config_path=config_path) == str(pasta_viva)
+
+
+def test_get_initial_dir_pula_categoria_morta_cai_para_pasta_padrao_da_chave(
+    tmp_path, config_path, monkeypatch
+):
+    pasta_padrao = tmp_path / "pasta_padrao_seed"
+    pasta_padrao.mkdir()
+    pasta_morta = tmp_path / "categoria_removida"
+    pasta_morta.mkdir()
+
+    monkeypatch.setitem(prefs.PASTAS_PADRAO_POR_CHAVE, "modulo.campo_teste", "nome_logico_teste")
+    monkeypatch.setitem(prefs.PASTAS_PADRAO_SEED, "nome_logico_teste", pasta_padrao)
+
+    # categorias["cat_teste"] aponta para uma pasta que existia mas foi
+    # removida -- nenhuma chave própria para "modulo.campo_teste" ainda.
+    prefs.remember_dir("outra.chave", "cat_teste", str(pasta_morta), config_path=config_path)
+    shutil.rmtree(pasta_morta)
+
+    assert prefs.get_initial_dir("modulo.campo_teste", "cat_teste", config_path=config_path) == str(
+        pasta_padrao
+    )
+
+
+def test_get_initial_dir_usa_pasta_padrao_quando_nada_foi_usado_ainda(tmp_path, config_path, monkeypatch):
+    pasta_padrao = tmp_path / "pasta_padrao_seed"
+    pasta_padrao.mkdir()
+
+    monkeypatch.setitem(prefs.PASTAS_PADRAO_POR_CHAVE, "modulo.campo_teste", "nome_logico_teste")
+    monkeypatch.setitem(prefs.PASTAS_PADRAO_SEED, "nome_logico_teste", pasta_padrao)
+
+    assert prefs.get_initial_dir("modulo.campo_teste", "cat_nunca_usada", config_path=config_path) == str(
+        pasta_padrao
+    )
+
+
+def test_get_initial_dir_pasta_padrao_da_chave_nao_existe_no_disco_cai_para_none(
+    tmp_path, config_path, monkeypatch
+):
+    pasta_padrao_inexistente = tmp_path / "nao_criada"  # nunca criada
+
+    monkeypatch.setitem(prefs.PASTAS_PADRAO_POR_CHAVE, "modulo.campo_teste", "nome_logico_teste")
+    monkeypatch.setitem(prefs.PASTAS_PADRAO_SEED, "nome_logico_teste", pasta_padrao_inexistente)
+
+    assert prefs.get_initial_dir("modulo.campo_teste", "cat_qualquer", config_path=config_path) is None
+
+
+def test_get_initial_dir_chave_sem_mapeamento_de_pasta_padrao_vai_direto_para_none(config_path):
+    # "chave.totalmente.desconhecida" não está em PASTAS_PADRAO_POR_CHAVE.
+    assert "chave.totalmente.desconhecida" not in prefs.PASTAS_PADRAO_POR_CHAVE
+    assert prefs.get_initial_dir("chave.totalmente.desconhecida", "cat_qualquer", config_path=config_path) is None
+
+
+def test_get_initial_dir_camada_3_usa_override_do_usuario_sobre_seed(tmp_path, config_path, monkeypatch):
+    pasta_seed = tmp_path / "seed"
+    pasta_seed.mkdir()
+    pasta_override = tmp_path / "override_do_usuario"
+    pasta_override.mkdir()
+
+    monkeypatch.setitem(prefs.PASTAS_PADRAO_POR_CHAVE, "modulo.campo_teste", "nome_logico_teste")
+    monkeypatch.setitem(prefs.PASTAS_PADRAO_SEED, "nome_logico_teste", pasta_seed)
+    prefs.set_default_dir("nome_logico_teste", str(pasta_override), config_path=config_path)
+
+    assert prefs.get_initial_dir("modulo.campo_teste", "cat_qualquer", config_path=config_path) == str(
+        pasta_override
+    )
+
+
+# =============================================================================
+# C. remember_dir
+# =============================================================================
+
+def test_remember_dir_grava_em_ultimos_e_categorias(tmp_path, config_path):
+    pasta = tmp_path / "pasta"
+    pasta.mkdir()
+
+    prefs.remember_dir("chave.x", "categoria.y", str(pasta), config_path=config_path)
+
+    bruto = json.loads(config_path.read_text(encoding="utf-8"))
+    assert bruto["ultimos"]["chave.x"] == str(pasta)
+    assert bruto["categorias"]["categoria.y"] == str(pasta)
+
+
+def test_remember_dir_nao_exige_que_a_pasta_exista_no_momento_da_gravacao(tmp_path, config_path):
+    # remember_dir não valida isdir -- só get_initial_dir/get_default_dir
+    # validam, na LEITURA (ver docstring do módulo).
+    pasta_que_nao_existe = str(tmp_path / "pasta_fantasma")
+
+    prefs.remember_dir("chave.x", "categoria.y", pasta_que_nao_existe, config_path=config_path)
+
+    bruto = json.loads(config_path.read_text(encoding="utf-8"))
+    assert bruto["ultimos"]["chave.x"] == pasta_que_nao_existe
+
+
+def test_remember_dir_sobrescreve_valor_anterior_da_mesma_chave(tmp_path, config_path):
+    pasta_1 = tmp_path / "pasta_1"
+    pasta_1.mkdir()
+    pasta_2 = tmp_path / "pasta_2"
+    pasta_2.mkdir()
+
+    prefs.remember_dir("chave.x", "categoria.y", str(pasta_1), config_path=config_path)
+    prefs.remember_dir("chave.x", "categoria.y", str(pasta_2), config_path=config_path)
+
+    assert prefs.get_initial_dir("chave.x", "categoria.y", config_path=config_path) == str(pasta_2)
+
+
+def test_remember_dir_funciona_de_primeira_sem_arquivo_previo(tmp_path, config_path):
+    assert not config_path.exists()
+    pasta = tmp_path / "pasta"
+    pasta.mkdir()
+
+    prefs.remember_dir("chave.x", "categoria.y", str(pasta), config_path=config_path)
+
+    assert config_path.exists()
+    assert prefs.get_initial_dir("chave.x", "categoria.y", config_path=config_path) == str(pasta)
+
+
+def test_remember_dir_aceita_objeto_path_alem_de_string(tmp_path, config_path):
+    pasta = tmp_path / "pasta_path_obj"
+    pasta.mkdir()
+
+    prefs.remember_dir("chave.x", "categoria.y", pasta, config_path=config_path)  # Path, não str
+
+    # Persistido como string (JSON não serializa Path diretamente).
+    bruto = json.loads(config_path.read_text(encoding="utf-8"))
+    assert bruto["ultimos"]["chave.x"] == str(pasta)
+    assert isinstance(bruto["ultimos"]["chave.x"], str)
+
+
+def test_remember_dir_nao_afeta_outras_chaves_categorias_ja_salvas(tmp_path, config_path):
+    pasta_1 = tmp_path / "pasta_1"
+    pasta_1.mkdir()
+    pasta_2 = tmp_path / "pasta_2"
+    pasta_2.mkdir()
+
+    prefs.remember_dir("chave.a", "categoria.a", str(pasta_1), config_path=config_path)
+    prefs.remember_dir("chave.b", "categoria.b", str(pasta_2), config_path=config_path)
+
+    assert prefs.get_initial_dir("chave.a", "categoria.a", config_path=config_path) == str(pasta_1)
+    assert prefs.get_initial_dir("chave.b", "categoria.b", config_path=config_path) == str(pasta_2)
+
+
+# =============================================================================
+# D. get_default_dir / set_default_dir
+# =============================================================================
+
+def test_get_default_dir_nome_totalmente_desconhecido_retorna_none(config_path):
+    assert prefs.get_default_dir("nome_que_nao_existe_em_lugar_nenhum", config_path=config_path) is None
+
+
+def test_get_default_dir_usa_seed_quando_existe_no_disco(tmp_path, config_path, monkeypatch):
+    pasta_seed = tmp_path / "seed_existente"
+    pasta_seed.mkdir()
+    monkeypatch.setitem(prefs.PASTAS_PADRAO_SEED, "nome_logico_teste", pasta_seed)
+
+    assert prefs.get_default_dir("nome_logico_teste", config_path=config_path) == str(pasta_seed)
+
+
+def test_get_default_dir_seed_nao_existe_no_disco_retorna_none(tmp_path, config_path, monkeypatch):
+    pasta_seed_inexistente = tmp_path / "seed_nunca_criada"
+    monkeypatch.setitem(prefs.PASTAS_PADRAO_SEED, "nome_logico_teste", pasta_seed_inexistente)
+
+    assert prefs.get_default_dir("nome_logico_teste", config_path=config_path) is None
+
+
+def test_set_default_dir_grava_override_que_get_default_dir_passa_a_devolver(
+    tmp_path, config_path, monkeypatch
+):
+    pasta_override = tmp_path / "override"
+    pasta_override.mkdir()
+    monkeypatch.setitem(prefs.PASTAS_PADRAO_SEED, "nome_logico_teste", tmp_path / "seed_nao_criada")
+
+    assert prefs.get_default_dir("nome_logico_teste", config_path=config_path) is None
+
+    prefs.set_default_dir("nome_logico_teste", str(pasta_override), config_path=config_path)
+
+    assert prefs.get_default_dir("nome_logico_teste", config_path=config_path) == str(pasta_override)
+
+
+def test_override_do_usuario_tem_prioridade_sobre_seed_quando_ambos_existem(
+    tmp_path, config_path, monkeypatch
+):
+    pasta_seed = tmp_path / "seed_valida"
+    pasta_seed.mkdir()
+    pasta_override = tmp_path / "override_valida"
+    pasta_override.mkdir()
+    monkeypatch.setitem(prefs.PASTAS_PADRAO_SEED, "nome_logico_teste", pasta_seed)
+
+    prefs.set_default_dir("nome_logico_teste", str(pasta_override), config_path=config_path)
+
+    # Override vence, mesmo com a pasta semeada também existindo de fato.
+    assert prefs.get_default_dir("nome_logico_teste", config_path=config_path) == str(pasta_override)
+
+
+def test_set_default_dir_nao_valida_isdir_na_escrita_mas_get_valida_na_leitura(
+    tmp_path, config_path, monkeypatch
+):
+    pasta_ainda_nao_criada = tmp_path / "sera_criada_depois"
+    monkeypatch.setitem(prefs.PASTAS_PADRAO_SEED, "nome_logico_teste", tmp_path / "seed_nao_criada")
+
+    # Grava o override ANTES da pasta existir -- não levanta exceção.
+    prefs.set_default_dir("nome_logico_teste", str(pasta_ainda_nao_criada), config_path=config_path)
+    # Como a pasta ainda não existe, get_default_dir não a usa (nem o seed,
+    # também inexistente) -> None.
+    assert prefs.get_default_dir("nome_logico_teste", config_path=config_path) is None
+
+    # Cria a pasta agora -- get_default_dir passa a enxergá-la, sem precisar
+    # chamar set_default_dir de novo.
+    pasta_ainda_nao_criada.mkdir()
+    assert prefs.get_default_dir("nome_logico_teste", config_path=config_path) == str(
+        pasta_ainda_nao_criada
+    )
+
+
+def test_set_default_dir_persiste_estrutura_pastas_padrao_no_json(tmp_path, config_path):
+    pasta = tmp_path / "pasta"
+    pasta.mkdir()
+
+    prefs.set_default_dir("meu_nome", str(pasta), config_path=config_path)
+
+    bruto = json.loads(config_path.read_text(encoding="utf-8"))
+    assert bruto["pastas_padrao"]["meu_nome"] == str(pasta)
+
+
+# =============================================================================
+# E. Tolerância a ausência/corrupção do arquivo (mesmo espírito de
+#    sigft.config.carregar_chaves)
+# =============================================================================
+
+def test_arquivo_ausente_get_initial_dir_nao_levanta_excecao(config_path):
+    assert not config_path.exists()
+    assert prefs.get_initial_dir("qualquer.chave", "qualquer.cat", config_path=config_path) is None
+
+
+def test_arquivo_ausente_get_default_dir_nao_levanta_excecao(config_path):
+    assert not config_path.exists()
+    assert prefs.get_default_dir("qualquer_nome", config_path=config_path) is None
+
+
+def test_json_corrompido_nao_levanta_excecao_e_cai_para_estado_vazio(tmp_path, config_path):
+    config_path.write_text("{isso nao é json valido!!!", encoding="utf-8")
+
+    assert prefs.get_initial_dir("qualquer.chave", "qualquer.cat", config_path=config_path) is None
+    assert prefs.get_default_dir("qualquer_nome", config_path=config_path) is None
+
+
+def test_json_vazio_tambem_e_tratado_como_corrompido(config_path):
+    config_path.write_text("", encoding="utf-8")
+
+    assert prefs.get_initial_dir("qualquer.chave", "qualquer.cat", config_path=config_path) is None
+
+
+def test_json_valido_mas_nao_e_objeto_cai_para_estado_vazio(config_path):
+    config_path.write_text(json.dumps([1, 2, 3]), encoding="utf-8")
+
+    assert prefs.get_initial_dir("qualquer.chave", "qualquer.cat", config_path=config_path) is None
+
+
+def test_secao_com_tipo_inesperado_e_ignorada_sem_derrubar_as_outras(tmp_path, config_path):
+    pasta = tmp_path / "pasta_valida"
+    pasta.mkdir()
+
+    # "ultimos" corrompido (string em vez de dict); "categorias" continua
+    # válido -- get_initial_dir não pode quebrar, e a camada "categorias"
+    # continua funcionando normalmente.
+    config_path.write_text(
+        json.dumps({"ultimos": "isto deveria ser um dict", "categorias": {"cat": str(pasta)}}),
+        encoding="utf-8",
+    )
+
+    assert prefs.get_initial_dir("chave.qualquer", "cat", config_path=config_path) == str(pasta)
+
+
+def test_remember_dir_apos_arquivo_corrompido_reescreve_com_estrutura_valida(tmp_path, config_path):
+    config_path.write_text("{ json quebrado", encoding="utf-8")
+    pasta = tmp_path / "pasta"
+    pasta.mkdir()
+
+    prefs.remember_dir("chave.x", "categoria.y", str(pasta), config_path=config_path)
+
+    bruto = json.loads(config_path.read_text(encoding="utf-8"))
+    assert bruto["ultimos"]["chave.x"] == str(pasta)
+
+
+# =============================================================================
+# F. Persistência real através de "sessões" (nenhuma função de prefs.py
+#    mantém estado em memória entre chamadas -- cada chamada relê o disco,
+#    o que já simula naturalmente "reiniciar o app").
+# =============================================================================
+
+def test_persistencia_sobrevive_a_nova_leitura_simulando_reinicio_do_app(tmp_path, config_path):
+    pasta = tmp_path / "pasta_persistente"
+    pasta.mkdir()
+
+    # "Sessão 1": salva.
+    prefs.remember_dir("autospec.ficha", "excel", str(pasta), config_path=config_path)
+
+    # "Sessão 2" (chamada independente, nenhum estado compartilhado em
+    # memória além do arquivo em disco -- equivalente a reiniciar o app):
+    resultado = prefs.get_initial_dir("autospec.ficha", "excel", config_path=config_path)
+    assert resultado == str(pasta)
+
+
+def test_persistencia_estrutura_completa_do_json_apos_uso_combinado(tmp_path, config_path):
+    pasta_ultimo = tmp_path / "pasta_ultimo"
+    pasta_ultimo.mkdir()
+    pasta_padrao = tmp_path / "pasta_padrao_custom"
+    pasta_padrao.mkdir()
+
+    prefs.remember_dir("autospec.ficha", "excel", str(pasta_ultimo), config_path=config_path)
+    prefs.set_default_dir("pdms_modificados", str(pasta_padrao), config_path=config_path)
+
+    bruto = json.loads(config_path.read_text(encoding="utf-8"))
+    assert set(bruto.keys()) == {"ultimos", "categorias", "pastas_padrao"}
+    assert bruto == {
+        "ultimos": {"autospec.ficha": str(pasta_ultimo)},
+        "categorias": {"excel": str(pasta_ultimo)},
+        "pastas_padrao": {"pdms_modificados": str(pasta_padrao)},
+    }
