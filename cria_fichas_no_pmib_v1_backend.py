@@ -11,7 +11,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from sigft import config
-from sigft.core.excel import headers
+from sigft.core.excel import headers, locking
 
 
 class DataManager:
@@ -89,7 +89,12 @@ class DataManager:
                         linhas_atualizadas += 1
                         break
 
-            wb.save(filepath)
+            # CP 1.3: delega o retry de PermissionError para
+            # locking.save_with_retry (única implementação). `max_attempts=1`
+            # preserva o comportamento ORIGINAL desta variante (log + sai):
+            # nenhuma retentativa, aborta na 1ª PermissionError (relevantada
+            # e capturada pelo `except` abaixo, exatamente como antes).
+            locking.save_with_retry(wb, filepath, max_attempts=1)
             return True, f"{linhas_atualizadas} linhas atualizadas."
 
         except PermissionError:

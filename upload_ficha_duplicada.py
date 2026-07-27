@@ -9,10 +9,13 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import StaleElementReferenceException
-import openpyxl
+# CP 1.3: `openpyxl` deixou de ser importado diretamente aqui -- o único
+# consumidor (AtualizadorStatusPMIB.atualizar_ficha_concluida) agora delega
+# para core.excel.status_sheet.StatusPMIB, que importa openpyxl de forma
+# preguiçosa só quando precisa (ver docstring de status_sheet.py).
 
 from sigft import config
-from sigft.core.excel import headers, pmib_codes
+from sigft.core.excel import headers, pmib_codes, status_sheet
 
 
 class GerenciadorFilaPMIB:
@@ -85,6 +88,15 @@ class GerenciadorFilaPMIB:
 
             return True, fila_processamento
 
+        # CP 1.3: este `except PermissionError` NÃO foi migrado para
+        # `core.excel.locking.save_with_retry` -- ele protege uma LEITURA
+        # (`pd.read_excel` acima), não um `wb.save(path)`. `save_with_retry`
+        # envolve só a chamada de salvamento (onde o lock do Excel de fato
+        # morde); abrir/ler um arquivo já aberto no Excel normalmente
+        # FUNCIONA (ver docstring de `locking.py`), então não há um "laço de
+        # retry" aqui para unificar -- é só uma mensagem amigável para o
+        # caso raro de leitura falhar por permissão. Documentado em
+        # docs/refatoracao/PENDENCIAS.md.
         except PermissionError:
             return False, "Erro de Permissão: O arquivo Excel de STATUS está aberto. Feche-o e tente novamente."
         except Exception as e:
@@ -686,61 +698,63 @@ class AtualizadorStatusPMIB:
         """
         Atualiza as colunas especificadas com 'COMPLETO'.
         secoes_concluidas: dicionário bool -> {"INFO. GERAIS": True, "CONDIÇÕES": True, ...}
+
+        CP 1.3: cabeçalho/linha/marcação delegam para
+        `core.excel.status_sheet.StatusPMIB`; o retry de `PermissionError`
+        (variante AUTO-RETRY do diagnóstico: sleep fixo de 5s, sem limite
+        de tentativas -- ver `core.excel.locking`) delega para
+        `locking.save_with_retry` via `StatusPMIB.salvar`.
+
+        NOTA DE COMPORTAMENTO (ver docs/refatoracao/PENDENCIAS.md): o laço
+        original recarregava o workbook INTEIRO (e reaplicava a busca de
+        cabeçalho/edição de célula, incluindo o log "Planilha atualizada
+        para PMIB...") a cada retentativa, dentro do próprio `while True`.
+        Aqui o workbook é carregado e a célula marcada UMA única vez; só o
+        `wb.save(...)` retenta (e o log "Planilha atualizada..." também
+        acontece só 1x, não 1x por retentativa). Equivalente no cenário
+        real (usuário fecha o Excel e a próxima tentativa de save
+        sucede); a diferença é só teórica.
         """
         pmib_formatado = self._blindar_numero_pmib(pmib_alvo)
 
-        while True:
-            try:
-                wb = openpyxl.load_workbook(self.caminho_excel)
-                ws = wb[self.nome_aba]
+        painel = status_sheet.StatusPMIB(self.caminho_excel, self.nome_aba)
+        try:
+            # 1. Busca Dinâmica de Cabeçalho. "CÓDIGO PMIB" é a única
+            #    coluna obrigatória (âncora, mesmo alcance de 15 linhas do
+            #    original); as colunas de `secoes_concluidas` são
+            #    coletadas de forma oportunista, exatamente como antes.
+            keywords = {config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB}
+            for nome_secao in secoes_concluidas:
+                secao_upper = nome_secao.upper()
+                keywords[secao_upper] = secao_upper
+            painel.abrir(keywords=keywords, required=[config.COL_CODIGO_PMIB], max_row=15)
 
-                # 1. Busca Dinâmica de Cabeçalho -- CP 1.2: delega para
-                #    core.excel.headers. "CÓDIGO PMIB" é a única coluna
-                #    obrigatória (âncora, mesmo alcance de 15 linhas do
-                #    original); as colunas de `secoes_concluidas` são
-                #    coletadas de forma oportunista, exatamente como antes.
-                keywords = {config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB}
-                for nome_secao in secoes_concluidas:
-                    secao_upper = nome_secao.upper()
-                    keywords[secao_upper] = secao_upper
-                rows = headers.rows_from_worksheet(ws, max_row=15)
-                colunas_map, linha_cabecalho = headers.find_columns(
-                    rows, keywords, required=[config.COL_CODIGO_PMIB]
-                )
-
-                if linha_cabecalho is None:
-                    if callback_log: callback_log("Erro: Coluna 'CÓDIGO PMIB' não encontrada para atualização.")
-                    wb.close()
-                    return False
-
-                # 2. Varredura e Atualização
-                encontrou = False
-                for r in range(linha_cabecalho + 1, ws.max_row + 1):
-                    celula_pmib = ws.cell(row=r, column=colunas_map[config.COL_CODIGO_PMIB]).value
-                    pmib_planilha = self._blindar_numero_pmib(celula_pmib)
-
-                    if pmib_planilha == pmib_formatado:
-                        encontrou = True
-                        # Preenche apenas as seções que vieram como True no dicionário
-                        for nome_secao, foi_sucesso in secoes_concluidas.items():
-                            chave_secao = nome_secao.upper()
-                            if foi_sucesso and chave_secao in colunas_map:
-                                ws.cell(row=r, column=colunas_map[chave_secao]).value = "COMPLETO"
-
-                        if callback_log: callback_log(f"Planilha atualizada para PMIB {pmib_formatado}.")
-                        break
-
-                if encontrou:
-                    wb.save(self.caminho_excel)
-                else:
-                    if callback_log: callback_log(f"Aviso: PMIB {pmib_formatado} não localizado no arquivo para atualização.")
-
-                wb.close()
-                return True
-
-            except PermissionError:
-                if callback_log: callback_log("Arquivo aberto. Aguardando 5 segundos para tentar novamente...")
-                time.sleep(5)
-            except Exception as e:
-                if callback_log: callback_log(f"Erro ao salvar Excel: {e}")
+            if painel.header_row is None:
+                if callback_log: callback_log("Erro: Coluna 'CÓDIGO PMIB' não encontrada para atualização.")
+                painel.fechar()
                 return False
+
+            # 2. Varredura e Atualização.
+            linha = painel.buscar_linha(pmib_formatado)
+
+            if linha is not None:
+                # Preenche apenas as seções que vieram como True no dicionário.
+                painel.marcar_linha(linha, secoes_concluidas)
+                if callback_log: callback_log(f"Planilha atualizada para PMIB {pmib_formatado}.")
+
+                def _on_locked(attempt, exc):
+                    if callback_log:
+                        callback_log("Arquivo aberto. Aguardando 5 segundos para tentar novamente...")
+                    time.sleep(5)
+                    return True  # retenta indefinidamente (sem limite, igual ao `while True` original)
+
+                painel.salvar(on_locked=_on_locked)
+            else:
+                if callback_log: callback_log(f"Aviso: PMIB {pmib_formatado} não localizado no arquivo para atualização.")
+
+            painel.fechar()
+            return True
+
+        except Exception as e:
+            if callback_log: callback_log(f"Erro ao salvar Excel: {e}")
+            return False

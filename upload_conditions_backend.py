@@ -5,6 +5,7 @@ import os
 import google.generativeai as genai
 import json
 import ast
+from types import SimpleNamespace
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -13,7 +14,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
 from sigft import config
-from sigft.core.excel import headers, pmib_codes
+from sigft.core.excel import headers, locking, pmib_codes, status_sheet
 
 
 # =============================================================================
@@ -432,8 +433,15 @@ baseadas no conhecimento sobre "DISJUNTOR", e "CLASSE 1" virou "SIM")
             if 'pmib_codigo' in df_final.columns:
                 df_final.drop_duplicates(subset=['pmib_codigo'], keep='last', inplace=True)
 
-            # 5. Salvar
-            df_final.to_excel(caminho_existente, index=False)
+            # 5. Salvar -- CP 1.3: delega para locking.save_with_retry (única
+            # implementação de retry de PermissionError). `pandas.DataFrame`
+            # não tem `.save(path)`; adapta com um objeto duck-typed mínimo.
+            # `max_attempts=1` preserva o comportamento ORIGINAL desta
+            # variante (log + sai): nenhuma retentativa, aborta na 1ª
+            # PermissionError (relevantada e capturada pelo `except`
+            # abaixo, exatamente como antes).
+            _adaptador_save = SimpleNamespace(save=lambda caminho: df_final.to_excel(caminho, index=False))
+            locking.save_with_retry(_adaptador_save, caminho_existente, max_attempts=1)
 
             return True, f"Dados anexados com sucesso!\nTotal de registros agora: {len(df_final)}"
 
@@ -724,64 +732,77 @@ class UploadAutomation:
                 time.sleep(5)  # Fallback caso falte o callback
 
     def atualizar_status_excel(self, caminho, pmib, status, callback_log=None, callback_ask=None):
-        """Atualiza o Excel com loop de retentativa caso esteja aberto."""
+        """Atualiza o Excel com loop de retentativa caso esteja aberto.
+
+        CP 1.3: cabeçalho/linha/marcação delegam para
+        `core.excel.status_sheet.StatusPMIB`; o retry de `PermissionError`
+        (variante INTERATIVA do diagnóstico -- ver `core.excel.locking`)
+        delega para `locking.save_with_retry` via `StatusPMIB.salvar`.
+
+        NOTA DE COMPORTAMENTO (ver docs/refatoracao/PENDENCIAS.md): o laço
+        original recarregava o workbook INTEIRO (e reaplicava a busca de
+        cabeçalho/edição de célula) a cada retentativa, dentro do próprio
+        `while True`. Aqui o workbook é carregado e a célula marcada UMA
+        única vez; só o `wb.save(caminho)` retenta. Equivalente no cenário
+        real (usuário fecha o Excel e clica "tentar novamente"); a
+        diferença é só teórica.
+        """
         pmib_alvo = str(pmib).strip()
 
-        while True:
-            try:
-                wb = openpyxl.load_workbook(caminho)
-                ws = wb['Lista de Materiais']
+        try:
+            painel = status_sheet.StatusPMIB(caminho, config.ABA_LISTA_MATERIAIS)
+            # 1. Busca dinâmica de Cabeçalho (Varre as 15 primeiras linhas,
+            #    49 colunas) -- mesmo alcance do original.
+            painel.abrir(
+                keywords={config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB, config.COL_CONDICOES: config.COL_CONDICOES},
+                max_row=15,
+                max_col=49,
+            )
 
-                # 1. Busca dinâmica de Cabeçalho (Varre as 15 primeiras
-                #    linhas, 49 colunas) -- CP 1.2: delega para
-                #    core.excel.headers (mesmo alcance do original).
-                rows = headers.rows_from_worksheet(ws, max_row=15, max_col=49)
-                col_map, header_row_encontrado = headers.find_columns(
-                    rows, {config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB, config.COL_CONDICOES: config.COL_CONDICOES}
-                )
-                header_row = header_row_encontrado if header_row_encontrado is not None else 1
+            # Fallback caso não encontre os nomes exatos (mesmas colunas
+            # fixas 8/10 do original).
+            painel.col_map.setdefault(config.COL_CODIGO_PMIB, 8)
+            painel.col_map.setdefault(config.COL_CONDICOES, 10)
+            header_row = painel.header_row if painel.header_row is not None else 1
 
-                # Fallback caso não encontre os nomes exatos
-                col_pmib = col_map.get(config.COL_CODIGO_PMIB) or 8
-                col_status = col_map.get(config.COL_CONDICOES) or 10
+            # 2. Busca varrendo da linha do cabeçalho pra baixo -- 3.
+            #    Blindagem contra Perda de Precisão (o segredo do .1165)
+            #    via `pmib_codes.normalize_pmib` (dentro de `buscar_linha`).
+            linha = painel.buscar_linha(pmib_alvo, header_row=header_row)
 
-                encontrou = False
-                # 2. Busca varrendo da linha do cabeçalho pra baixo
-                for r in range(header_row + 1, ws.max_row + 1):
-                    cell_raw = ws.cell(row=r, column=col_pmib).value
-                    if cell_raw is None: continue
+            if linha is not None:
+                # 4. Grava o status.
+                painel.marcar_linha(linha, {config.COL_CONDICOES: True}, valor=status)
 
-                    # 3. Blindagem contra Perda de Precisão (O segredo do
-                    #    .1165) -- CP 1.2: delega para a normalização única
-                    #    (core.excel.pmib_codes.normalize_pmib).
-                    cell_val = pmib_codes.normalize_pmib(cell_raw)
+                def _on_locked(attempt, exc):
+                    if callback_log:
+                        callback_log("Erro: Arquivo Excel aberto.")
+                    if callback_ask:
+                        # Envia a requisição para a UI perguntando o que
+                        # fazer e aguarda resposta.
+                        resposta_retry = callback_ask("ARQUIVO_BLOQUEADO")
+                        if not resposta_retry:
+                            if callback_log:
+                                callback_log("Salvamento ignorado pelo usuário.")
+                        return bool(resposta_retry)
+                    return False  # Fallback: sem callback_ask, não retenta.
 
-                    # 4. Grava o status
-                    if cell_val == pmib_alvo:
-                        ws.cell(row=r, column=col_status).value = status
-                        encontrou = True
-                        break
+                try:
+                    painel.salvar(on_locked=_on_locked)
+                except PermissionError:
+                    # Usuário optou por não retentar (ou não havia
+                    # callback_ask) -- já logado em `_on_locked` acima.
+                    painel.fechar()
+                    return
 
-                # Auditoria para o usuário saber o que ocorreu
-                if encontrou:
-                    wb.save(caminho)
-                    if callback_log: callback_log(f"Excel atualizado para COMPLETO: {pmib_alvo}")
-                else:
-                    if callback_log: callback_log(f"Aviso Crítico: PMIB {pmib_alvo} NÃO encontrado na planilha _STATUS. (Não pôde salvar).")
+                if callback_log:
+                    callback_log(f"Excel atualizado para COMPLETO: {pmib_alvo}")
+            else:
+                if callback_log:
+                    callback_log(f"Aviso Crítico: PMIB {pmib_alvo} NÃO encontrado na planilha _STATUS. (Não pôde salvar).")
 
-                wb.close()
-                break  # Sai do loop em caso de sucesso
+            painel.fechar()
 
-            except PermissionError:
-                if callback_log: callback_log("Erro: Arquivo Excel aberto.")
-                if callback_ask:
-                    # Envia a requisição para a UI perguntando o que fazer e aguarda resposta
-                    resposta_retry = callback_ask("ARQUIVO_BLOQUEADO")
-                    if not resposta_retry:
-                        if callback_log: callback_log("Salvamento ignorado pelo usuário.")
-                        break  # O usuário escolheu cancelar
-                else:
-                    break  # Fallback
-            except Exception as e:
-                if callback_log: callback_log(f"Erro ao atualizar Excel: {e}")
-                break
+        except Exception as e:
+            if callback_log:
+                callback_log(f"Erro ao atualizar Excel: {e}")

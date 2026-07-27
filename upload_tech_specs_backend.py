@@ -14,7 +14,7 @@ from selenium.common.exceptions import TimeoutException, StaleElementReferenceEx
 from selenium.webdriver.common.keys import Keys
 
 from sigft import config
-from sigft.core.excel import headers, pmib_codes
+from sigft.core.excel import headers, pmib_codes, status_sheet
 
 
 # =============================================================================
@@ -801,50 +801,46 @@ class TechSpecsController:
             pmibs_finalizados = self.automacao_ativa.processar_lista(dados_json, callback_log, callback_pause)
 
             # --- ATUALIZAÇÃO DO FICHEIRO DE STATUS ---
+            # CP 1.3: cabeçalho/linha/marcação delegam para
+            # `core.excel.status_sheet.StatusPMIB` (única implementação,
+            # compartilhada com `upload_conditions`/`upload_ficha_duplicada`
+            # -- ver docs/refatoracao/PLANO_REFATORACAO.md Fase 1 -> CP 1.3).
+            # `save_with_retry` dá a este bloco a PRIMEIRA retentativa de
+            # `PermissionError` que ele já teve: o original não tratava
+            # arquivo aberto (caía direto no `except Exception` genérico
+            # abaixo, sem tentar de novo). `max_attempts`/`sleep_seconds`
+            # finitos evitam travar o robô para sempre se o usuário nunca
+            # fechar o Excel (não há callback interativo disponível aqui).
             if caminho_status and pmibs_finalizados:
-                import openpyxl
                 try:
                     if callback_log: callback_log("A atualizar ficheiro _STATUS_PMIB...")
-                    # Abre mantendo formatações e fórmulas (importante para não corromper o Master)
-                    wb = openpyxl.load_workbook(caminho_status)
-                    ws = wb["Lista de Materiais"]
+                    # Abre mantendo formatações e fórmulas (importante para
+                    # não corromper o Master) -- mesmo `openpyxl.load_workbook`
+                    # sem `data_only`, agora dentro de `StatusPMIB.abrir()`.
+                    painel = status_sheet.StatusPMIB(caminho_status, config.ABA_LISTA_MATERIAIS)
+                    painel.abrir(
+                        keywords={
+                            config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB,
+                            config.COL_CARACT_TECNICAS: config.COL_CARACT_TECNICAS,
+                        },
+                        max_row=15,
+                    )
 
-                    # 1. Encontrar as colunas chaves
-                    col_codigo = None
-                    col_status = None
-                    header_row = 1
-
-                    # Procura o cabeçalho nas primeiras 15 linhas
-                    for row_idx in range(1, 16):
-                        for col_idx in range(1, ws.max_column + 1):
-                            cell_val = str(ws.cell(row=row_idx, column=col_idx).value).strip()
-                            if cell_val == "CÓDIGO PMIB":
-                                col_codigo = col_idx
-                                header_row = row_idx
-                            elif cell_val == "CARACT. TÉCNICAS":
-                                col_status = col_idx
-                        if col_codigo and col_status:
-                            break
-
-                    if col_codigo and col_status:
-                        # 2. Marcar cada PMIB concluído
+                    if painel.header_row is not None:
+                        # 2. Marcar cada PMIB concluído (só a 1ª ocorrência
+                        #    de cada um, igual ao original).
                         for pmib in pmibs_finalizados:
-                            # Trata a possibilidade de o Excel ter ' na frente do número
-                            alvo_busca = [str(pmib), f"'{pmib}"]
+                            linha = painel.buscar_linha(pmib)
+                            if linha is not None:
+                                painel.marcar_linha(linha, [config.COL_CARACT_TECNICAS])
+                                if callback_log: callback_log(f"   -> {pmib} marcado como COMPLETO.")
 
-                            for row_idx in range(header_row + 1, ws.max_row + 1):
-                                cell_codigo = str(ws.cell(row=row_idx, column=col_codigo).value).strip()
-
-                                if cell_codigo in alvo_busca:
-                                    # Encontrou o primeiro match! Atualiza e sai do loop interno (só a 1ª ocorrência).
-                                    ws.cell(row=row_idx, column=col_status).value = "COMPLETO"
-                                    if callback_log: callback_log(f"   -> {pmib} marcado como COMPLETO.")
-                                    break
-
-                        wb.save(caminho_status)
+                        painel.salvar(max_attempts=3, sleep_seconds=5, logger=callback_log)
                         if callback_log: callback_log("✅ Ficheiro _STATUS_PMIB salvo com sucesso!")
                     else:
                         if callback_log: callback_log("Aviso: Não encontrei as colunas 'CÓDIGO PMIB' ou 'CARACT. TÉCNICAS' para atualizar.")
+
+                    painel.fechar()
                 except Exception as ex:
                     if callback_log: callback_log(f"Erro ao tentar escrever no Excel de status: {ex}")
 

@@ -7,7 +7,7 @@ from openpyxl import load_workbook
 from copy import copy
 import warnings
 
-from sigft.core.excel import headers
+from sigft.core.excel import headers, locking
 
 # Configurações iniciais
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
@@ -43,6 +43,34 @@ def copiar_estilo_seguro(celula_origem, celula_destino):
 class PMIBManager:
     def __init__(self):
         pass
+
+    # --- SALVAMENTO COM RETRY (CP 1.3) ---
+    @staticmethod
+    def _salvar_com_retry_interativo(wb, caminho, callback_retry_lock):
+        """Salva `wb` em `caminho`, usando `callback_retry_lock()` (SEM
+        argumentos, retorna bool) para decidir se retenta a cada
+        `PermissionError` -- mesmo contrato dos 2 laços `while not salvo`
+        originais de `executar_fluxo` (planilha mestra/gerenciadora),
+        agora unificados aqui e delegando para
+        `core.excel.locking.save_with_retry` (única implementação de
+        retry de `PermissionError` -- ver
+        docs/refatoracao/PLANO_REFATORACAO.md, Fase 1 -> CP 1.3).
+
+        Retorna `True` se salvou; `False` se o usuário optou por não
+        retentar (ou não havia `callback_retry_lock`) -- o arquivo
+        permaneceu bloqueado. Nunca levanta `PermissionError` (é
+        capturada aqui, ao contrário do contrato "cru" de
+        `save_with_retry`), para que os 2 call sites continuem só
+        checando um booleano, como antes.
+        """
+        def _on_locked(attempt, exc):
+            return bool(callback_retry_lock()) if callback_retry_lock else False
+
+        try:
+            locking.save_with_retry(wb, caminho, on_locked=_on_locked)
+            return True
+        except PermissionError:
+            return False
 
     # --- MÉTODOS DE LÓGICA PURA (Helpers) ---
     def _buscar_rdspp_mais_recente(self, codigo_arquivo_fisico, df_api):
@@ -405,18 +433,12 @@ class PMIBManager:
                                 ws.cell(row=row_idx, column=col_indices[col_mestra] + 1).value = val
                         count_update += 1
 
-            # Substitui o salvamento simples por um laço de segurança
-            salvo = False
-            while not salvo:
-                try:
-                    wb.save(caminho_gerenciadora)
-                    salvo = True
-                except PermissionError:
-                    if callback_retry_lock and callback_retry_lock():
-                        continue  # Usuário clicou em Repetir
-                    else:
-                        yield "[ERRO] Processo cancelado. A Planilha Mestra está aberta no Excel."
-                        return  # Aborta o fluxo
+            # CP 1.3: retry de PermissionError unificado via
+            # `_salvar_com_retry_interativo` (delega para
+            # core.excel.locking.save_with_retry).
+            if not self._salvar_com_retry_interativo(wb, caminho_gerenciadora, callback_retry_lock):
+                yield "[ERRO] Processo cancelado. A Planilha Mestra está aberta no Excel."
+                return  # Aborta o fluxo
 
             yield f" -> Metadados atualizados ({count_update} linhas)."
 
@@ -573,18 +595,12 @@ class PMIBManager:
 
                                 ws.cell(row=row_idx, column=situacao_col + 1).value = situacao
 
-                    # Substitui o salvamento simples por um laço de segurança
-                    salvo = False
-                    while not salvo:
-                        try:
-                            wb.save(caminho_gerenciadora)
-                            salvo = True
-                        except PermissionError:
-                            if callback_retry_lock and callback_retry_lock():
-                                continue  # Usuário clicou em Repetir
-                            else:
-                                yield "[ERRO] Processo cancelado. A Planilha Mestra está aberta no Excel."
-                                return  # Aborta o fluxo
+                    # CP 1.3: retry de PermissionError unificado via
+                    # `_salvar_com_retry_interativo` (delega para
+                    # core.excel.locking.save_with_retry).
+                    if not self._salvar_com_retry_interativo(wb, caminho_gerenciadora, callback_retry_lock):
+                        yield "[ERRO] Processo cancelado. A Planilha Mestra está aberta no Excel."
+                        return  # Aborta o fluxo
 
                     yield " -> Estatísticas gravadas com sucesso."
 
