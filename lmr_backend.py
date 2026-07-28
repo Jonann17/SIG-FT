@@ -28,7 +28,17 @@ from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
 # continua usando `self.driver`/`self.wait` crus, sem nenhuma alteração
 # (não tem safe_click/safe_send_keys pra delegar -- ver
 # docs/refatoracao/PENDENCIAS.md).
-from sigft.core.rpa.portal import PMIBPortal
+#
+# CP 2.3 (Fase 2): os 5 `time.sleep(<literal>)` do arquivo viram constantes
+# nomeadas (`PAUSA_ANIMACAO`, `PAUSA_SALVAMENTO`, `PAUSA_ABERTURA_ABA`,
+# `PAUSA_RETORNO_LISTA` x2) -- nenhum eliminado.
+from sigft.core.rpa.portal import (
+    PMIBPortal,
+    PAUSA_ABERTURA_ABA,
+    PAUSA_ANIMACAO,
+    PAUSA_RETORNO_LISTA,
+    PAUSA_SALVAMENTO,
+)
 
 
 # =============================================================================
@@ -190,12 +200,12 @@ class LMRAutomation:
                     campo_tag.send_keys(tag_pmib)
                     actions = ActionChains(self.driver)
                     actions.send_keys(Keys.TAB).pause(0.5).send_keys(Keys.ENTER).perform()
-                    time.sleep(0.5)
+                    time.sleep(PAUSA_ANIMACAO)
 
                 # Salvar e confirmar
                 self.driver.find_element(By.XPATH, '//*[@id="b10-b19-Form"]/div[2]/button[1]').click()
                 self.wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="b10-b19-b22-b1-Footer"]/div/button[1]'))).click()
-                time.sleep(1)
+                time.sleep(PAUSA_SALVAMENTO)
 
                 processados_ok.append(codigo_pmib_item)
                 callbacks.log(f' -> Código {codigo_pmib_item} inserido ✔️')
@@ -285,7 +295,7 @@ class LMRAutomation:
                 callbacks.log("Abrindo aba LMR...")
                 locator_aba_lmr = (By.XPATH, '//*[@id="b10-ApplicationMRL"]/button')
                 self.wait.until(EC.element_to_be_clickable(locator_aba_lmr)).click()
-                time.sleep(2)
+                time.sleep(PAUSA_ABERTURA_ABA)
 
                 # 4.4. Filtrar DataFrame
                 df_filtrado = df_completo[df_completo['PMIB'] == pmib_atual].reset_index(drop=True)
@@ -299,10 +309,10 @@ class LMRAutomation:
 
                 # 4.6. Voltar
                 callbacks.log("Voltando para lista...")
-                time.sleep(1)
+                time.sleep(PAUSA_RETORNO_LISTA)
                 locator_voltar = (By.XPATH, '//*[@id="b9-Content"]')  # Botão de voltar do breadcrumb ou similar
                 self.wait.until(EC.element_to_be_clickable(locator_voltar)).click()
-                time.sleep(1)
+                time.sleep(PAUSA_RETORNO_LISTA)
 
             except Exception as e:
                 msg = f"ERRO FATAL em {pmib_atual}: {e}"
