@@ -24,7 +24,11 @@ from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
 # INTEIRA via um XPath específico deste módulo, sem uma "linha" localizada
 # pra passar para `PMIBPortal.excluir_linha_com_confirmacao(row)`) — ver
 # docs/refatoracao/PENDENCIAS.md.
-from sigft.core.rpa.portal import PMIBPortal
+#
+# CP 2.3 (Fase 2): os 3 `time.sleep(<literal>)` do loop de exclusão viram 2
+# constantes nomeadas (`PAUSA_ABERTURA_ABA`, `PAUSA_POS_EXCLUSAO`) + 1
+# ELIMINADO (ver comentário no local, dentro de `executar_limpeza`).
+from sigft.core.rpa.portal import PMIBPortal, PAUSA_ABERTURA_ABA, PAUSA_POS_EXCLUSAO
 
 
 # =============================================================================
@@ -120,7 +124,7 @@ class ApagarLMRAutomation:
             # XPath do script original
             botao_lmr = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="b10-ApplicationMRL"]/button')))
             botao_lmr.click()
-            time.sleep(2)
+            time.sleep(PAUSA_ABERTURA_ABA)
         except Exception as e:
             callbacks.log(f"Erro ao abrir aba LMR (pode já estar aberta): {e}")
 
@@ -130,8 +134,19 @@ class ApagarLMRAutomation:
 
         while True:
             try:
-                # Espera a tabela estabilizar
-                time.sleep(1)
+                # CP 2.3: o sleep fixo de 1 segundo ("Espera a tabela
+                # estabilizar") que existia aqui foi ELIMINADO (não virou
+                # constante) --
+                # critério (B) do checkpoint: a busca imediatamente abaixo
+                # já é um `wait.until(EC.element_to_be_clickable(...))` para
+                # a PRÓPRIA lixeira que o sleep tentava dar tempo de
+                # (re)aparecer, com retry/timeout PRÓPRIOS (até o timeout
+                # global do `WebDriverWait`) -- o loop inteiro já depende de
+                # `TimeoutException` (abaixo) para decidir "acabou", ou seja,
+                # a sincronização REAL já é feita por este `wait.until`; o
+                # sleep fixo era redundante ("cinto e suspensório"). Ver
+                # docs/refatoracao/PLANO_REFATORACAO.md Fase 2 -> CP 2.3 e
+                # docs/refatoracao/PENDENCIAS.md.
 
                 # Tenta localizar a primeira lixeira (ícone de exclusão)
                 # XPath original: //*[@id="b10-b19-$b17"]/table/tbody/tr[2]/td[8]/a[2]/i
@@ -154,7 +169,7 @@ class ApagarLMRAutomation:
                 # Espera a exclusão processar
                 count += 1
                 callbacks.log(f" -> Item {count} apagado.")
-                time.sleep(1.5)  # Pausa para refresh da tabela
+                time.sleep(PAUSA_POS_EXCLUSAO)  # Pausa para refresh da tabela
 
             except TimeoutException:
                 # Não achou mais lixeiras -> Fim
