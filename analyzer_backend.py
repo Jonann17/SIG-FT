@@ -10,6 +10,7 @@ import google.generativeai as genai
 
 from sigft import config
 from sigft.core.excel import headers, pmib_codes
+from sigft.core.rpa.ficha_layout import CONFIG_MAP, VARIAVEIS_SPECS
 
 # -----------------------------------------------------------------
 # CONSTANTES E CONFIGURAÇÕES
@@ -21,40 +22,10 @@ FONT_ERRO_VERMELHO = Font(color="FF0000", bold=True)
 INLINE_FONT_ERRO_VERMELHO = InlineFont(color="FF0000", b=True)
 INLINE_FONT_ERRO_TACHADO = InlineFont(color="FF0000", strike=True)
 
-# Mapeamento Completo (Idêntico ao original)
-CONFIG_MAP = {
-    "texto_breve_material": {"range": "H6:P6", "type": "cell", "validation": "simple", "weight": 1},
-    "unidade": {"range": "H8:J8", "type": "cell", "validation": "simple", "weight": 1},
-    "tipo_fabricacao": {"cells": ["F10", "F12"], "type": "checkbox", "validation": "simple", "weight": 2, "error_target": ["F10", "F12"]},
-    "fabricante": {"range": "L10:N10", "type": "cell", "validation": "simple", "weight": 1},
-    "origem": {"cells": ["S6", "S8"], "type": "checkbox", "validation": "simple", "weight": 2, "error_target": ["S6", "S8"]},
-    "tipo": {"cells": ["S10", "S12"], "type": "checkbox", "validation": "simple", "weight": 2, "error_target": ["S10", "S12"]},
-    "comprimento_embalagem": {"range": "H17:K17", "type": "cell", "validation": "simple", "weight": 1},
-    "largura_embalagem": {"range": "H19:K19", "type": "cell", "validation": "simple", "weight": 1},
-    "altura_embalagem": {"range": "H21:K21", "type": "cell", "validation": "simple", "weight": 1},
-    "peso_liquido": {"range": "P17:Q17", "type": "cell", "validation": "simple", "weight": 1},
-    "peso_bruto": {"range": "P19:Q19", "type": "cell", "validation": "simple", "weight": 1},
-    "sujeito_intemperies": {"cells": ["Q21", "S21"], "type": "checkbox", "validation": "simple", "weight": 1, "error_target": "U21"},
-    "posicao_armazenamento": {"cells": ["G25", "G27", "G29"], "type": "checkbox", "validation": "simple", "weight": 3, "error_target": "J27"},
-    "protecao": {"cells": ["S25", "S27", "S29"], "type": "checkbox", "validation": "simple", "weight": 3, "error_target": "O27"},
-    "nocivo": {"cells": ["E31", "E33"], "type": "checkbox", "validation": "simple", "weight": 2, "error_target": "L31"},
-    "empilhamento": {"range": "J35:L35", "type": "cell", "validation": "simple", "weight": 2},
-    "embalagem_transporte": {"range": "M42:V44", "type": "cell", "validation": "ai", "weight": 7},
-    "transporte": {"range": "M45:V47", "type": "cell", "validation": "ai", "weight": 3},
-    "preservacao": {"range": "M52:V53", "type": "cell", "validation": "ai", "weight": 6},
-    "metodo_limpeza": {"range": "M54:V55", "type": "cell", "validation": "ai", "weight": 3},
-    "ferramentas_para_preservacao": {"range": "M56:V58", "type": "cell", "validation": "ai", "weight": 1},
-    "tipo_legislacao": {"range": "M63:V64", "type": "cell", "validation": "ai", "weight": 4},
-    "tipo_descarte": {"range": "M65:V66", "type": "cell", "validation": "ai", "weight": 2},
-    "classificacao_periculosidade": {"cells": ["E69", "J69"], "type": "checkbox", "validation": "simple", "weight": 2},
-    "logistica_reversa": {"cells": ["P69", "T69"], "type": "checkbox", "validation": "simple", "weight": 2},
-}
-
-VARIAVEIS_SPECS = {
-    "start_row": 79,
-    "pergunta_range": "C:L",
-    "resposta_range": "M:V",
-}
+# CP 2.4: CONFIG_MAP/VARIAVEIS_SPECS deixaram de ser definidos aqui — agora
+# importados de sigft.core.rpa.ficha_layout (fonte única, compartilhada com
+# autospec_backend.py). Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 2 ->
+# CP 2.4, e o docstring de ficha_layout.py para o histórico da unificação.
 
 
 # -----------------------------------------------------------------
@@ -377,7 +348,9 @@ class DatasheetAnalyzer:
         for row in ws.iter_rows(min_row=50, max_row=150, min_col=2, max_col=2):
             if row[0].value and tgt in str(row[0].value).strip().upper():
                 return row[0].row + 4
-        return 79
+        # CP 2.4: fallback nomeado via config.LINHA_SPECS_FICHA (mesmo valor
+        # numérico de sempre, 79 — só deixa de ser um literal solto).
+        return config.LINHA_SPECS_FICHA
 
     def _build_gemini_prompt(self, context, fixed, variable):
         # Constrói o prompt exatamente como o original

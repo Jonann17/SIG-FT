@@ -18,6 +18,7 @@ from llama_parse import LlamaParse
 
 from sigft import config
 from sigft.core.excel import headers, pmib_codes
+from sigft.core.rpa.ficha_layout import CONFIG_MAP, VARIAVEIS_SPECS
 
 # -----------------------------------------------------------------
 # 1. CONFIGURAÇÕES E MAPAS
@@ -31,39 +32,18 @@ GENERATIVE_FIELDS = [
     "tipo_descarte", "protecao", "posicao_armazenamento", "unidade", "tipo"
 ]
 
-CONFIG_MAP = {
-    "texto_breve_material": {"range": "H6", "type": "cell", "validation": "simple", "weight": 1},
-    "unidade": {"range": "H8", "type": "cell", "validation": "simple", "weight": 1},
-    "tipo_fabricacao": {"cells": ["F10", "F12"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "F10: Série, F12: Especial/Sob Pedido"},
-    "fabricante": {"range": "L10", "type": "cell", "validation": "simple", "weight": 1},
-    "origem": {"cells": ["S6", "S8"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "S6: BR/PY, S8: Outros"},
-    "tipo": {"cells": ["S10", "S12"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "S10: Reparável, S12: Não Reparável"},
-    "comprimento_embalagem": {"range": "H17", "type": "cell", "validation": "simple", "weight": 1, "desc": "cm"},
-    "largura_embalagem": {"range": "H19", "type": "cell", "validation": "simple", "weight": 1, "desc": "cm"},
-    "altura_embalagem": {"range": "H21", "type": "cell", "validation": "simple", "weight": 1, "desc": "cm"},
-    "peso_liquido": {"range": "P17", "type": "cell", "validation": "simple", "weight": 1, "desc": "kg"},
-    "peso_bruto": {"range": "P19", "type": "cell", "validation": "simple", "weight": 1, "desc": "kg"},
-    "sujeito_intemperies": {"cells": ["Q21", "S21"], "type": "checkbox", "validation": "simple", "weight": 1, "desc": "Q21: Sim, S21: Não"},
-    "posicao_armazenamento": {"cells": ["G25", "G27", "G29"], "type": "checkbox", "validation": "simple", "weight": 3, "desc": "G25: Vertical, G27: Horizontal, G29: Indiferente"},
-    "protecao": {"cells": ["S25", "S27", "S29"], "type": "checkbox", "validation": "simple", "weight": 3, "desc": "S25: Nenhuma, S27: UV, S29: Eletrostática"},
-    "nocivo": {"cells": ["E31", "E33"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "E31: Não Nocivo, E33: Nocivo"},
-    "empilhamento": {"range": "J35", "type": "cell", "validation": "simple", "weight": 2, "desc": "Qtd Max Caixas"},
-    "embalagem_transporte": {"range": "M42", "type": "cell", "validation": "ai", "weight": 7, "desc": "Tipo e cuidados embalagem transporte"},
-    "transporte": {"range": "M45", "type": "cell", "validation": "ai", "weight": 3, "desc": "Procedimento elevação/transporte"},
-    "preservacao": {"range": "M52", "type": "cell", "validation": "ai", "weight": 6, "desc": "Cuidados preservação"},
-    "metodo_limpeza": {"range": "M54", "type": "cell", "validation": "ai", "weight": 3, "desc": "Métodos limpeza/secagem"},
-    "ferramentas_para_preservacao": {"range": "M56", "type": "cell", "validation": "ai", "weight": 1, "desc": "Ferramentas recomendadas"},
-    "tipo_legislacao": {"range": "M63", "type": "cell", "validation": "ai", "weight": 4, "desc": "Legislação aplicada"},
-    "tipo_descarte": {"range": "M65", "type": "cell", "validation": "ai", "weight": 2, "desc": "Tipo descarte/Melhores práticas"},
-    "classificacao_periculosidade": {"cells": ["E69", "J69"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "E69: Classe 1 (Perigoso), J69: Classe 2 (Não Perigoso)"},
-    "logistica_reversa": {"cells": ["P69", "T69"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "P69: Não se aplica, T69: Aplica-se"},
-}
-
-VARIAVEIS_SPECS = {
-    "start_row": 79,
-    "pergunta_col_idx": 3,
-    "resposta_col_idx": 13,
-}
+# CP 2.4: CONFIG_MAP/VARIAVEIS_SPECS deixaram de ser definidos aqui — agora
+# importados de sigft.core.rpa.ficha_layout (fonte única, compartilhada com
+# analyzer_backend.py). Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 2 ->
+# CP 2.4, e o docstring de ficha_layout.py para o histórico da unificação.
+#
+# ATENÇÃO: o "range" canônico agora é o range COMPLETO da célula mesclada
+# (ex.: "H6:P6", herdado do analyzer_backend) em vez de só a primeira célula
+# (ex.: "H6", como este arquivo guardava antes). Os acessos que já faziam
+# `.split(":")[0]` (ex.: dentro de `analyze_sheet`, mapeamento estático, e
+# `fill_save`) continuam corretos sem alteração; os 2 acessos DIRETOS de
+# `analyze_sheet` (txt_brv/fab, logo abaixo) precisaram do mesmo split — ver
+# docs/refatoracao/PENDENCIAS.md, entrada do CP 2.4.
 
 
 # -----------------------------------------------------------------
@@ -244,9 +224,14 @@ class AutoSpecCore:
             desc_comp, cod_mat = self.get_pmib_data(status_pmib_path, pmib_suffix)
 
         # Contexto Base
-        txt_brv = ws[CONFIG_MAP["texto_breve_material"]["range"]].value
+        # CP 2.4: CONFIG_MAP["...]["range"] agora guarda o range COMPLETO da
+        # célula mesclada (ex. "H6:P6", não mais só "H6") — acesso direto
+        # `ws[range]` devolveria uma tupla de tuplas de células (não um
+        # `Cell`), quebrando `.value`. `.split(":")[0]` resolve para a
+        # primeira célula, igual ao comportamento anterior à unificação.
+        txt_brv = ws[CONFIG_MAP["texto_breve_material"]["range"].split(":")[0]].value
         txt_brv = str(txt_brv).strip() if txt_brv else ""
-        fab = ws[CONFIG_MAP["fabricante"]["range"]].value
+        fab = ws[CONFIG_MAP["fabricante"]["range"].split(":")[0]].value
         fab = str(fab).strip() if fab else ""
 
         missing = {}
