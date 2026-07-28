@@ -17,11 +17,15 @@ from sigft import config
 from sigft.core.excel import headers, pmib_codes, status_sheet
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em
-# `TechSpecsAutomation.iniciar` abaixo. Escopo estrito deste checkpoint: SÓ
-# a criação do driver muda — `safe_click`/`safe_send_keys_elem`/
-# `_preencher_input_com_auditoria`/`processar_lista` continuam usando
-# `self.driver`/`self.wait` crus, sem nenhuma alteração.
-from sigft.core.rpa.selenium_engine import create_chrome_driver
+# `TechSpecsAutomation.iniciar` abaixo.
+from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
+# CP 2.2 (Fase 2): `safe_click`/`_pesquisar_e_abrir`/`_excluir_linha_segura`/
+# o stop-flag de `TechSpecsProcessor`/`TechSpecsAutomation` passam a delegar
+# para `PMIBPortal`. `safe_send_keys_elem`/`safe_send_keys_locator`/
+# `_preencher_input_com_auditoria`/`_preencher_linha` continuam usando
+# `self.driver`/`self.wait` crus, sem nenhuma alteração (não fazem parte do
+# escopo deste checkpoint -- ver docs/refatoracao/PENDENCIAS.md).
+from sigft.core.rpa.portal import PMIBPortal
 
 
 # =============================================================================
@@ -30,12 +34,17 @@ from sigft.core.rpa.selenium_engine import create_chrome_driver
 class TechSpecsProcessor:
     def __init__(self, api_key):
         self.api_key = api_key
-        self.cancel_requested = False  # <--- NOVA FLAG DE PARADA
+        # CP 2.2: stop-flag delega para `PMIBPortal` -- construído SEM
+        # engine, porque esta classe só chama a API do Gemini (não tem
+        # driver/browser nenhum) -- mesmo padrão de `ConditionsProcessor`
+        # (upload_conditions_backend.py); ver docstring de
+        # `PMIBPortal.__init__` e docs/refatoracao/PENDENCIAS.md.
+        self.portal = PMIBPortal()
         if self.api_key:
             genai.configure(api_key=self.api_key, transport='rest')
 
     def solicitar_parada(self):
-        self.cancel_requested = True
+        self.portal.solicitar_parada()
 
     # --- HELPERS DE TEXTO E EXCEL ---
 
@@ -103,7 +112,7 @@ class TechSpecsProcessor:
         # 2. Loop Arquivos
         for arquivo in lista_arquivos:
             # --- VERIFICAÇÃO DE PARADA ---
-            if self.cancel_requested:
+            if self.portal.deve_parar():
                 if callback_log: callback_log("Processamento IA interrompido pelo usuário! Salvando o que já foi processado...")
                 break
 
@@ -325,18 +334,34 @@ class TechSpecsAutomation:
     def __init__(self):
         self.driver = None
         self.wait = None
-        self.cancel_requested = False
+        # CP 2.2: `self.portal` (SEM engine ainda) já nasce aqui -- não só em
+        # `iniciar()` -- para que `solicitar_parada()` continue seguro de
+        # chamar a QUALQUER momento, inclusive ANTES de `iniciar()` rodar
+        # (mesmo racional de `UploadAutomation` em
+        # upload_conditions_backend.py: o botão "Parar" do frontend pode
+        # disparar entre a atribuição a `self.automacao_ativa` e a thread de
+        # trabalho chegar a `iniciar()`). `iniciar()` abaixo só ANEXA o
+        # engine à MESMA instância de `PMIBPortal` -- ver
+        # docs/refatoracao/PENDENCIAS.md.
+        self.portal = PMIBPortal()
 
     def solicitar_parada(self):
-        self.cancel_requested = True
+        self.portal.solicitar_parada()
 
     def iniciar(self):
         """CP 2.1: a criação em si (Chrome + maximize + WebDriverWait(20s))
         agora vem de `create_chrome_driver` (única fábrica, ver
         core/rpa/selenium_engine.py) — timeout preservado EXATAMENTE como
-        antes (20s). Nada mais deste método/classe muda (inclusive: este
-        método nunca teve `return self.driver` — preservado sem retorno)."""
+        antes (20s) (inclusive: este método nunca teve `return self.driver`
+        — preservado sem retorno).
+
+        CP 2.2: `self.portal` (já existente desde `__init__`, ver acima)
+        ganha o `engine` de verdade (`SeleniumEngine` sobre o MESMO
+        `driver`/`wait`) -- `safe_click`/`_pesquisar_e_abrir`/
+        `_excluir_linha_segura` abaixo passam a delegar para ele.
+        """
         self.driver, self.wait = create_chrome_driver(wait_timeout=20)
+        self.portal.engine = SeleniumEngine(self.driver, self.wait)
 
     def fechar(self):
         if self.driver: self.driver.quit()
@@ -346,16 +371,15 @@ class TechSpecsAutomation:
 
     # --- HELPERS DE INTERAÇÃO SEGURA ---
     def safe_click(self, locator):
-        """Clica com Scroll + JS para evitar interceptação."""
-        try:
-            el = self.wait.until(EC.presence_of_element_located(locator))
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
-            time.sleep(0.5)
-            self.wait.until(EC.element_to_be_clickable(locator))
-            self.driver.execute_script("arguments[0].click();", el)
-        except Exception as e:
-            # Em produção, pode-se logar o erro, aqui passamos para manter fluxo
-            pass
+        """Clica com Scroll + JS para evitar interceptação.
+
+        CP 2.2: DELEGADOR FINO -- a mecânica real agora vive em
+        `PMIBPortal.safe_click`/`SeleniumEngine.click` (um único lugar).
+        `locator` continua aceito como tupla `(By.XPATH, xpath)` -- é assim
+        que os MUITOS call sites internos desta classe já chamam hoje; a
+        string XPath é extraída aqui antes de repassar."""
+        seletor = locator[1] if isinstance(locator, tuple) else locator
+        self.portal.safe_click(seletor)
 
     def safe_send_keys_elem(self, element, text):
         """Preenche inputs limpando antes e enviando TAB no final."""
@@ -453,49 +477,16 @@ class TechSpecsAutomation:
         return True
 
     def _pesquisar_e_abrir(self, pmib):
-        """Navega, Pesquisa e Clica no Lápis com tratamento de StaleElement."""
-        url_lista = "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
+        """Navega, Pesquisa e Clica no Lápis com tratamento de StaleElement.
 
-        # 1. Garantir URL
-        if self.driver.current_url != url_lista:
-            self.driver.get(url_lista)
-            time.sleep(3)
-
-        # 2. Pesquisar (com Retry)
-        locator_pesquisa = (By.XPATH, "//input[contains(@placeholder, 'Código')]")
-
-        for i in range(3):
-            try:
-                campo = self.wait.until(EC.element_to_be_clickable(locator_pesquisa))
-                campo.clear()
-                time.sleep(0.5)
-                campo.send_keys(pmib)
-                time.sleep(0.5)
-                campo.send_keys(Keys.ENTER)
-                time.sleep(4)  # Espera tabela recarregar
-                break
-            except StaleElementReferenceException:
-                time.sleep(1)
-            except Exception:
-                return False
-
-        # 3. Clicar no Editar (com Retry)
-        xpath_lapis = f"//span[text()='{pmib}']/ancestor::tr//i[contains(@class, 'fa-pencil')]/parent::a"
-
-        for i in range(3):
-            try:
-                botao = self.wait.until(EC.presence_of_element_located((By.XPATH, xpath_lapis)))
-                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", botao)
-                time.sleep(1)
-                self.driver.execute_script("arguments[0].click();", botao)
-                time.sleep(4)  # Espera abrir
-                return True
-            except StaleElementReferenceException:
-                time.sleep(2)
-            except TimeoutException:
-                time.sleep(2)
-
-        return False
+        CP 2.2: o corpo passa a delegar para `PMIBPortal.pesquisar_e_abrir`
+        com os seletores DEFAULT -- esta classe é justamente a FONTE da
+        estrutura de robustez (retry 3x, tratamento de
+        `StaleElementReferenceException`/`TimeoutException`, retorno bool)
+        que `PMIBPortal.pesquisar_e_abrir` adota para TODOS os módulos; ver
+        sua docstring para o levantamento completo dos seletores por
+        módulo."""
+        return self.portal.pesquisar_e_abrir(pmib)
 
     # --- FLUXO PRINCIPAL ---
     def processar_lista(self, lista_fichas, callback_log=None, callback_pause=None):
@@ -503,7 +494,7 @@ class TechSpecsAutomation:
 
         for item in lista_fichas:
             # --- VERIFICAÇÃO DE PARADA ---
-            if self.cancel_requested:
+            if self.portal.deve_parar():
                 if callback_log: callback_log("Robô Web interrompido pelo usuário!")
                 break
 
@@ -631,25 +622,27 @@ class TechSpecsAutomation:
         return pmibs_finalizados  # <--- NOVO: Devolve a lista de sucesso para o Controller
 
     def _excluir_linha_segura(self, row, chave_limpa, callback_log=None):
-        """Tenta clicar na lixeira e confirmar a exclusão. Retorna True se der certo, False se falhar."""
-        try:
-            # Encontra e clica na lixeira da linha atual
-            btn_lixo = row.find_element(By.XPATH, './/i[contains(@class, "fa-trash")]/parent::a')
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn_lixo)
-            time.sleep(0.5)
-            self.driver.execute_script("arguments[0].click();", btn_lixo)
+        """Tenta clicar na lixeira e confirmar a exclusão. Retorna True se der certo, False se falhar.
 
-            # Clica no botão CONFIRMAR do Popup
-            loc_conf = (By.XPATH, '//button[@type="button" and text()="CONFIRMAR"]')
-            self.safe_click(loc_conf)
-
-            time.sleep(2.5)  # Pausa crucial para o site reconstruir a tabela HTML
-            if callback_log: callback_log(f"Sucesso ao excluir item: {chave_limpa}")
-            return True
-
-        except Exception as e:
-            if callback_log: callback_log(f"Falha ao excluir item {chave_limpa}: {e}")
-            return False
+        CP 2.2: o corpo passa a delegar para
+        `PMIBPortal.excluir_linha_com_confirmacao(row)` -- esta classe é a
+        fonte da mecânica adotada pelo portal (sleep de 0,5s antes do
+        clique na lixeira, 2,5s após confirmar; mesma mecânica também usada
+        pelo ramo de exclusão de
+        `upload_ficha_duplicada.InjetorFichaAlvo._limpar_caracteristicas_tecnicas`).
+        `chave_limpa`/`callback_log` são só para o LOG desta classe (o
+        portal não conhece esse vocabulário); a mensagem de falha perde o
+        texto da exceção original (`{e}`) porque o portal engole a exceção
+        internamente antes de devolver `False` -- ver
+        docs/refatoracao/PENDENCIAS.md.
+        """
+        sucesso = self.portal.excluir_linha_com_confirmacao(row)
+        if callback_log:
+            if sucesso:
+                callback_log(f"Sucesso ao excluir item: {chave_limpa}")
+            else:
+                callback_log(f"Falha ao excluir item {chave_limpa}.")
+        return sucesso
 
     def _preencher_linha(self, row, dado, callback_log=None):
         """

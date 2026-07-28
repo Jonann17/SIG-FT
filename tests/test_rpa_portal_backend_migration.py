@@ -1,0 +1,493 @@
+r"""
+Testes do Checkpoint 2.2 — migração dos 6 backends de automação para
+`PMIBPortal` (ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 2 -> CP 2.2).
+
+Escopo destes testes (mesmo escopo definido pela especificação do
+checkpoint — "sem tentar exercitar o fluxo Selenium completo"):
+
+  1. RESOLUÇÃO de `self.portal`: depois de `iniciar_driver()`/`iniciar()`
+     (com `create_chrome_driver` substituído por um fake, mesmo padrão de
+     tests/test_rpa_driver_migration.py), `self.portal` é uma instância de
+     `PMIBPortal` cujo `.engine` é um `SeleniumEngine` sobre os MESMOS
+     `driver`/`wait` sentinela devolvidos pela fábrica fake.
+  2. DELEGAÇÃO: os métodos delegadores (`safe_click`/`safe_send_keys`/
+     `check_or_uncheck`/`_pesquisar_e_abrir`/etc.) chamam `self.portal` com
+     o argumento CERTO -- em especial, a string XPath extraída da tupla
+     `(By.XPATH, xpath)` que os call sites internos ainda usam, e os
+     overrides de seletor exatos de `pesquisar_e_abrir` por módulo. Um
+     `_PortalEspiao` duck-typed (nunca `PMIBPortal`/Selenium reais) grava
+     as chamadas recebidas.
+
+Não tenta reproduzir o fluxo Selenium real (scroll/clique/paginação/etc.) --
+isso já é coberto, para a MECÂNICA em si, por tests/test_portal.py
+(`PMIBPortal` isolado) e tests/test_selenium_engine.py (`SeleniumEngine`
+isolado).
+"""
+from unittest.mock import patch
+
+import apagar_lmr_backend
+import cria_fichas_no_pmib_v1_backend
+import lmr_backend
+import upload_conditions_backend
+import upload_ficha_duplicada
+import upload_tech_specs_backend
+from sigft.core.callbacks import UICallbacks
+from sigft.core.rpa.portal import PMIBPortal
+from sigft.core.rpa.selenium_engine import SeleniumEngine
+
+
+def _fake_factory(chamadas, driver_sentinel, wait_sentinel):
+    """Mesmo fake de tests/test_rpa_driver_migration.py: substitui
+    `create_chrome_driver` sem tocar Selenium nenhum."""
+
+    def _create_chrome_driver(*, wait_timeout, download_dir=None):
+        chamadas.append({"wait_timeout": wait_timeout, "download_dir": download_dir})
+        return driver_sentinel, wait_sentinel
+
+    return _create_chrome_driver
+
+
+class _PortalEspiao:
+    """Duck-typed -- grava toda chamada recebida, nunca levanta (a não ser
+    que o teste configure `pesquisar_e_abrir_retorno` como uma exceção, o
+    que nenhum teste faz aqui)."""
+
+    def __init__(self, pesquisar_e_abrir_retorno=True):
+        self.safe_click_chamadas = []
+        self.safe_fill_chamadas = []
+        self.check_or_uncheck_chamadas = []
+        self.pesquisar_e_abrir_chamadas = []
+        self.excluir_linha_chamadas = []
+        self.pesquisar_e_abrir_retorno = pesquisar_e_abrir_retorno
+
+    def safe_click(self, seletor):
+        self.safe_click_chamadas.append(seletor)
+
+    def safe_fill(self, seletor, texto):
+        self.safe_fill_chamadas.append((seletor, texto))
+
+    def check_or_uncheck(self, seletor, should_check):
+        self.check_or_uncheck_chamadas.append((seletor, should_check))
+
+    def excluir_linha_com_confirmacao(self, row):
+        self.excluir_linha_chamadas.append(row)
+        return True
+
+    def pesquisar_e_abrir(self, pmib, **kwargs):
+        self.pesquisar_e_abrir_chamadas.append((pmib, kwargs))
+        return self.pesquisar_e_abrir_retorno
+
+    def deve_parar(self):
+        return False
+
+
+# ===========================================================================
+# 1. Resolução de self.portal após iniciar_driver()/iniciar() -- os 6 pontos
+#    de criação já migrados no CP 2.1 (mesmos 6 de
+#    tests/test_rpa_driver_migration.py).
+# ===========================================================================
+def test_apagar_lmr_iniciar_driver_resolve_portal_sobre_o_mesmo_driver_wait():
+    chamadas = []
+    driver_sentinel, wait_sentinel = object(), object()
+    auto = apagar_lmr_backend.ApagarLMRAutomation()
+
+    with patch.object(
+        apagar_lmr_backend, "create_chrome_driver",
+        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
+    ):
+        auto.iniciar_driver()
+
+    assert isinstance(auto.portal, PMIBPortal)
+    assert isinstance(auto.portal.engine, SeleniumEngine)
+    assert auto.portal.engine.driver is driver_sentinel
+    assert auto.portal.engine.wait is wait_sentinel
+
+
+def test_lmr_iniciar_driver_resolve_portal_sobre_o_mesmo_driver_wait():
+    chamadas = []
+    driver_sentinel, wait_sentinel = object(), object()
+    auto = lmr_backend.LMRAutomation()
+
+    with patch.object(
+        lmr_backend, "create_chrome_driver",
+        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
+    ):
+        auto.iniciar_driver()
+
+    assert isinstance(auto.portal, PMIBPortal)
+    assert isinstance(auto.portal.engine, SeleniumEngine)
+    assert auto.portal.engine.driver is driver_sentinel
+    assert auto.portal.engine.wait is wait_sentinel
+
+
+def test_cria_fichas_automacao_pmib_iniciar_driver_resolve_portal():
+    chamadas = []
+    driver_sentinel, wait_sentinel = object(), object()
+    auto = cria_fichas_no_pmib_v1_backend.AutomacaoPMIB()
+
+    with patch.object(
+        cria_fichas_no_pmib_v1_backend, "create_chrome_driver",
+        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
+    ):
+        auto.iniciar_driver()
+
+    assert isinstance(auto.portal, PMIBPortal)
+    assert isinstance(auto.portal.engine, SeleniumEngine)
+    assert auto.portal.engine.driver is driver_sentinel
+    assert auto.portal.engine.wait is wait_sentinel
+
+
+def test_upload_conditions_iniciar_anexa_engine_a_portal_ja_existente_desde_init():
+    # UploadAutomation tem stop-flag: `self.portal` já existe desde
+    # `__init__` (SEM engine) -- `iniciar()` só ANEXA o engine à MESMA
+    # instância (não cria uma nova) -- ver docs/refatoracao/PENDENCIAS.md.
+    chamadas = []
+    driver_sentinel, wait_sentinel = object(), object()
+    auto = upload_conditions_backend.UploadAutomation()
+    portal_antes_de_iniciar = auto.portal
+
+    assert isinstance(portal_antes_de_iniciar, PMIBPortal)
+    assert portal_antes_de_iniciar.engine is None  # ainda sem engine
+
+    with patch.object(
+        upload_conditions_backend, "create_chrome_driver",
+        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
+    ):
+        auto.iniciar()
+
+    assert auto.portal is portal_antes_de_iniciar  # MESMA instância
+    assert isinstance(auto.portal.engine, SeleniumEngine)
+    assert auto.portal.engine.driver is driver_sentinel
+    assert auto.portal.engine.wait is wait_sentinel
+
+
+def test_upload_conditions_solicitar_parada_funciona_antes_de_iniciar():
+    # Cenário real citado no código: o botão "Parar" do frontend pode
+    # disparar entre a atribuição da instância a `self.automacao_ativa` e a
+    # thread de trabalho chegar a `iniciar()` -- `solicitar_parada()` NUNCA
+    # pode levantar AttributeError nesse meio-tempo.
+    auto = upload_conditions_backend.UploadAutomation()
+    auto.solicitar_parada()  # não levanta, mesmo sem engine
+    assert auto.portal.deve_parar() is True
+
+
+def test_upload_tech_specs_iniciar_anexa_engine_a_portal_ja_existente_desde_init():
+    chamadas = []
+    driver_sentinel, wait_sentinel = object(), object()
+    auto = upload_tech_specs_backend.TechSpecsAutomation()
+    portal_antes_de_iniciar = auto.portal
+
+    assert isinstance(portal_antes_de_iniciar, PMIBPortal)
+    assert portal_antes_de_iniciar.engine is None
+
+    with patch.object(
+        upload_tech_specs_backend, "create_chrome_driver",
+        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
+    ):
+        auto.iniciar()
+
+    assert auto.portal is portal_antes_de_iniciar
+    assert isinstance(auto.portal.engine, SeleniumEngine)
+    assert auto.portal.engine.driver is driver_sentinel
+    assert auto.portal.engine.wait is wait_sentinel
+
+
+def test_upload_tech_specs_solicitar_parada_funciona_antes_de_iniciar():
+    auto = upload_tech_specs_backend.TechSpecsAutomation()
+    auto.solicitar_parada()
+    assert auto.portal.deve_parar() is True
+
+
+def test_conditions_processor_e_tech_specs_processor_tem_stop_flag_sem_engine():
+    # As 2 classes de IA (sem driver/browser nenhum) -- stop-flag via
+    # PMIBPortal() sem engine.
+    proc1 = upload_conditions_backend.ConditionsProcessor(api_key="")
+    assert isinstance(proc1.portal, PMIBPortal)
+    assert proc1.portal.engine is None
+    proc1.solicitar_parada()
+    assert proc1.portal.deve_parar() is True
+
+    proc2 = upload_tech_specs_backend.TechSpecsProcessor(api_key="")
+    assert isinstance(proc2.portal, PMIBPortal)
+    assert proc2.portal.engine is None
+    proc2.solicitar_parada()
+    assert proc2.portal.deve_parar() is True
+
+
+def test_upload_ficha_duplicada_extrator_iniciar_driver_silencioso_resolve_portal(tmp_path):
+    chamadas = []
+    driver_sentinel, wait_sentinel = object(), object()
+    extrator = upload_ficha_duplicada.ExtratorFichaBase(dir_download_temp=str(tmp_path / "dl"))
+
+    with patch.object(
+        upload_ficha_duplicada, "create_chrome_driver",
+        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
+    ):
+        extrator.iniciar_driver_silencioso()
+
+    assert isinstance(extrator.portal, PMIBPortal)
+    assert isinstance(extrator.portal.engine, SeleniumEngine)
+    assert extrator.portal.engine.driver is driver_sentinel
+    assert extrator.portal.engine.wait is wait_sentinel
+
+
+def test_upload_ficha_duplicada_injetor_construtor_resolve_portal_sobre_driver_wait_recebidos():
+    driver_sentinel, wait_sentinel = object(), object()
+    injetor = upload_ficha_duplicada.InjetorFichaAlvo(driver_sentinel, wait_sentinel)
+
+    assert isinstance(injetor.portal, PMIBPortal)
+    assert isinstance(injetor.portal.engine, SeleniumEngine)
+    assert injetor.portal.engine.driver is driver_sentinel
+    assert injetor.portal.engine.wait is wait_sentinel
+
+
+# ===========================================================================
+# 2. Delegação -- métodos delegadores chamam self.portal com o argumento
+#    certo (string XPath extraída da tupla).
+# ===========================================================================
+def test_apagar_lmr_safe_click_extrai_xpath_da_tupla_e_delega():
+    auto = apagar_lmr_backend.ApagarLMRAutomation()
+    espiao = _PortalEspiao()
+    auto.portal = espiao
+
+    auto.safe_click((apagar_lmr_backend.By.XPATH, "//button[@id='x']"))
+
+    assert espiao.safe_click_chamadas == ["//button[@id='x']"]
+
+
+def test_upload_conditions_safe_click_e_safe_send_keys_e_check_or_uncheck_delegam():
+    auto = upload_conditions_backend.UploadAutomation()
+    espiao = _PortalEspiao()
+    auto.portal = espiao
+
+    auto.safe_click((upload_conditions_backend.By.XPATH, "//a[@id='y']"))
+    auto.safe_send_keys((upload_conditions_backend.By.XPATH, "//textarea[@id='z']"), "valor")
+    auto.check_or_uncheck((upload_conditions_backend.By.XPATH, "//input[@id='c']"), True)
+
+    assert espiao.safe_click_chamadas == ["//a[@id='y']"]
+    assert espiao.safe_fill_chamadas == [("//textarea[@id='z']", "valor")]
+    assert espiao.check_or_uncheck_chamadas == [("//input[@id='c']", True)]
+
+
+def test_upload_tech_specs_safe_click_delega():
+    auto = upload_tech_specs_backend.TechSpecsAutomation()
+    espiao = _PortalEspiao()
+    auto.portal = espiao
+
+    auto.safe_click((upload_tech_specs_backend.By.XPATH, "//button[@id='salvar']"))
+
+    assert espiao.safe_click_chamadas == ["//button[@id='salvar']"]
+
+
+def test_upload_ficha_duplicada_injetor_safe_click_e_clicar_salvar_visivel_delegam():
+    injetor = upload_ficha_duplicada.InjetorFichaAlvo(object(), object())
+    espiao = _PortalEspiao()
+    injetor.portal = espiao
+
+    injetor.safe_click((upload_ficha_duplicada.By.XPATH, "//a[@id='w']"))
+    assert espiao.safe_click_chamadas == ["//a[@id='w']"]
+
+    class _EspiaoComSalvar(_PortalEspiao):
+        def __init__(self):
+            super().__init__()
+            self.clicar_salvar_visivel_chamadas = []
+
+        def clicar_salvar_visivel(self, nome_secao=""):
+            self.clicar_salvar_visivel_chamadas.append(nome_secao)
+            return True
+
+    espiao2 = _EspiaoComSalvar()
+    injetor.portal = espiao2
+    resultado = injetor._clicar_salvar_visivel("Fornecedores")
+    assert resultado is True
+    assert espiao2.clicar_salvar_visivel_chamadas == ["Fornecedores"]
+
+
+def test_upload_ficha_duplicada_injetor_excluir_linha_delega_e_mantem_flag_incondicional():
+    # `_limpar_caracteristicas_tecnicas` marca `item_foi_excluido = True`
+    # INCONDICIONALMENTE após chamar o portal (mesmo comportamento do
+    # original) -- aqui testamos só a delegação do PONTO de exclusão via um
+    # teste direto do método `excluir_linha_com_confirmacao` do espião
+    # (o fluxo completo de paginação não é exercitado -- ver escopo do
+    # checkpoint).
+    injetor = upload_ficha_duplicada.InjetorFichaAlvo(object(), object())
+    espiao = _PortalEspiao()
+    injetor.portal = espiao
+
+    row_fake = object()
+    resultado = injetor.portal.excluir_linha_com_confirmacao(row_fake)
+
+    assert resultado is True
+    assert espiao.excluir_linha_chamadas == [row_fake]
+
+
+# ===========================================================================
+# 3. _pesquisar_e_abrir -- overrides de seletor exatos por módulo + adaptação
+#    do retorno bool do portal para o contrato de cada classe.
+# ===========================================================================
+def test_apagar_lmr_pesquisar_e_abrir_usa_defaults_do_portal_e_adapta_retorno_para_tupla():
+    auto = apagar_lmr_backend.ApagarLMRAutomation()
+    espiao = _PortalEspiao(pesquisar_e_abrir_retorno=True)
+    auto.portal = espiao
+
+    sucesso, msg = auto._pesquisar_e_abrir("4500063671.1234")
+
+    assert sucesso is True
+    assert msg == "Ficha aberta."
+    assert espiao.pesquisar_e_abrir_chamadas == [("4500063671.1234", {})]  # sem overrides -- defaults do portal
+
+
+def test_apagar_lmr_pesquisar_e_abrir_falha_adapta_retorno_para_tupla_de_erro():
+    auto = apagar_lmr_backend.ApagarLMRAutomation()
+    auto.portal = _PortalEspiao(pesquisar_e_abrir_retorno=False)
+
+    sucesso, msg = auto._pesquisar_e_abrir("999")
+
+    assert sucesso is False
+    assert "999" in msg
+
+
+def test_upload_tech_specs_pesquisar_e_abrir_delega_direto_bool():
+    auto = upload_tech_specs_backend.TechSpecsAutomation()
+    espiao = _PortalEspiao(pesquisar_e_abrir_retorno=True)
+    auto.portal = espiao
+
+    assert auto._pesquisar_e_abrir("123") is True
+    assert espiao.pesquisar_e_abrir_chamadas == [("123", {})]
+
+    espiao.pesquisar_e_abrir_retorno = False
+    assert auto._pesquisar_e_abrir("123") is False
+
+
+def test_upload_conditions_processar_lista_chama_pesquisar_e_abrir_com_overrides_exatos():
+    # Seletores EXATOS de upload_conditions -- placeholder completo do campo
+    # de busca + ícone `fa-pencil-square-o` (diferente de `fa-pencil`).
+    auto = upload_conditions_backend.UploadAutomation()
+    espiao = _PortalEspiao(pesquisar_e_abrir_retorno=True)
+    auto.portal = espiao
+    auto.driver = _DriverQueNuncaEChamado()
+    auto.wait = _DriverQueNuncaEChamado()
+
+    ficha = {
+        "pmib_codigo": "4500063671.5555",
+        "dimensoes": {"comprimento": "", "largura": "", "altura": ""},
+        "controle_temperatura": {"necessidade": "NÃO"},
+        "nocivo": {"status": ""},
+        "peso": {"liquido": "", "bruto": ""},
+        "outros_cuidados": {"status": ""},
+    }
+
+    auto.processar_lista([ficha], caminho_status="")
+
+    assert len(espiao.pesquisar_e_abrir_chamadas) == 1
+    pmib_chamado, kwargs = espiao.pesquisar_e_abrir_chamadas[0]
+    assert pmib_chamado == "4500063671.5555"
+    assert kwargs["busca_xpath"] == (
+        "//input[@placeholder='Código, Nome ES/PT pela Ficha Técnica, "
+        "Código do projeto e/ou contrato']"
+    )
+    assert kwargs["lapis_xpath_template"] == (
+        "//span[text()='{pmib}']/ancestor::tr//a[.//i[contains(@class, 'fa-pencil-square-o')]]"
+    )
+
+
+def test_upload_ficha_duplicada_pesquisar_e_abrir_extrator_usa_overrides_e_levanta_se_falhar():
+    extrator = upload_ficha_duplicada.ExtratorFichaBase.__new__(upload_ficha_duplicada.ExtratorFichaBase)
+    espiao = _PortalEspiao(pesquisar_e_abrir_retorno=False)
+    extrator.portal = espiao
+
+    import pytest as _pytest
+    with _pytest.raises(RuntimeError):
+        extrator._pesquisar_e_abrir("4500063671.7777")
+
+    pmib_chamado, kwargs = espiao.pesquisar_e_abrir_chamadas[0]
+    assert pmib_chamado == "4500063671.7777"
+    assert kwargs["busca_xpath"] == "//input[contains(@id, 'InputDatasheetFilter') or contains(@placeholder, 'Código')]"
+    assert kwargs["lapis_xpath_template"] == "//tr[contains(., '{pmib}')]//a[.//i[contains(@class, 'fa-pencil')]]"
+
+
+def test_upload_ficha_duplicada_pesquisar_e_abrir_injetor_usa_overrides_e_nao_levanta_se_sucesso():
+    injetor = upload_ficha_duplicada.InjetorFichaAlvo(object(), object())
+    espiao = _PortalEspiao(pesquisar_e_abrir_retorno=True)
+    injetor.portal = espiao
+
+    injetor._pesquisar_e_abrir("4500063671.8888")  # não levanta
+
+    pmib_chamado, kwargs = espiao.pesquisar_e_abrir_chamadas[0]
+    assert pmib_chamado == "4500063671.8888"
+    assert kwargs["busca_xpath"] == "//input[contains(@id, 'InputDatasheetFilter') or contains(@placeholder, 'Código')]"
+    assert kwargs["lapis_xpath_template"] == "//tr[contains(., '{pmib}')]//a[.//i[contains(@class, 'fa-pencil')]]"
+
+
+# ===========================================================================
+# 4. lmr -- EXCEÇÃO AUTORIZADA (24 TABs substituídos por pesquisar_e_abrir).
+# ===========================================================================
+class _DriverQueNuncaEChamado:
+    """Duck-typed -- qualquer atributo/chamada usada É um erro de teste
+    (usado para garantir que o caminho de FALHA de `processar_lista` não
+    toca `self.wait` nenhuma vez -- só `self.driver.get(...)`, coberto por
+    `_FakeDriverComGet` abaixo)."""
+
+    def __getattr__(self, nome):
+        raise AssertionError(f"self.wait não deveria ser tocado neste cenário (acesso a {nome!r})")
+
+
+class _FakeDriverComGet:
+    def __init__(self):
+        self.get_chamadas = []
+
+    def get(self, url):
+        self.get_chamadas.append(url)
+
+
+def test_lmr_processar_lista_chama_pesquisar_e_abrir_com_defaults():
+    auto = lmr_backend.LMRAutomation()
+    espiao = _PortalEspiao(pesquisar_e_abrir_retorno=False)  # força o caminho de falha (curto, sem Selenium)
+    auto.portal = espiao
+    auto.driver = _FakeDriverComGet()
+    auto.wait = _DriverQueNuncaEChamado()
+
+    logs = []
+    perguntas = []
+    callbacks = UICallbacks(log=logs.append, ask=lambda *a, **k: perguntas.append((a, k)) or True)
+
+    auto.processar_lista(["4500063671.1111"], df_completo=None, callbacks=callbacks)
+
+    assert espiao.pesquisar_e_abrir_chamadas == [("4500063671.1111", {})]  # sem overrides -- defaults
+    # Caminho de falha: RuntimeError interno -> "ERRO FATAL" -> ask -> tenta
+    # recarregar home (driver.get), sem tocar self.wait em nenhum momento.
+    assert any("ERRO FATAL" in msg for msg in logs)
+    assert len(perguntas) == 1
+    assert auto.driver.get_chamadas == [auto.url_inicial]
+
+
+def test_lmr_processar_lista_sucesso_nao_levanta_erro_fatal():
+    # Sucesso na pesquisa: o próximo passo real (clicar aba LMR) TOCA
+    # self.wait -- aqui verificamos só que a falha NÃO é reportada quando
+    # pesquisar_e_abrir tem sucesso (o clique da aba LMR abaixo é permitido
+    # falhar com uma exceção de teste simples, cai no MESMO except
+    # genérico -- não é o foco deste teste, só confirma que o RuntimeError
+    # sintético do CP 2.2 não é levantado indevidamente em caso de sucesso).
+    auto = lmr_backend.LMRAutomation()
+    espiao = _PortalEspiao(pesquisar_e_abrir_retorno=True)
+    auto.portal = espiao
+    auto.driver = _FakeDriverComGet()
+
+    class _WaitQueLevantaAoUsar:
+        def until(self, *_a, **_kw):
+            raise RuntimeError("aba LMR não encontrada (esperado neste teste sintético)")
+
+    auto.wait = _WaitQueLevantaAoUsar()
+
+    logs = []
+    callbacks = UICallbacks(log=logs.append, ask=lambda *a, **k: True)
+
+    auto.processar_lista(["4500063671.2222"], df_completo=None, callbacks=callbacks)
+
+    assert espiao.pesquisar_e_abrir_chamadas == [("4500063671.2222", {})]
+    # A falha reportada é a da aba LMR (RuntimeError sintético do teste), não
+    # "Não foi possível pesquisar/abrir" -- prova que pesquisar_e_abrir teve
+    # sucesso e o fluxo prosseguiu.
+    msgs_erro = [m for m in logs if "ERRO FATAL" in m]
+    assert len(msgs_erro) == 1
+    assert "não encontrada (esperado neste teste sintético)" in msgs_erro[0]

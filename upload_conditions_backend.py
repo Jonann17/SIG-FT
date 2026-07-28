@@ -17,11 +17,12 @@ from sigft import config
 from sigft.core.excel import headers, locking, pmib_codes, status_sheet
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em
-# `UploadAutomation.iniciar` abaixo. Escopo estrito deste checkpoint: SÓ a
-# criação do driver muda — `safe_click`/`safe_send_keys`/
-# `check_or_uncheck`/`processar_lista` continuam usando `self.driver`/
-# `self.wait` crus, sem nenhuma alteração.
-from sigft.core.rpa.selenium_engine import create_chrome_driver
+# `UploadAutomation.iniciar` abaixo.
+from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
+# CP 2.2 (Fase 2): `safe_click`/`safe_send_keys`/`check_or_uncheck`/a busca-e-
+# abertura inline de `processar_lista`/o stop-flag de `ConditionsProcessor` e
+# `UploadAutomation` passam a delegar para `PMIBPortal`.
+from sigft.core.rpa.portal import PMIBPortal
 
 
 # =============================================================================
@@ -30,12 +31,18 @@ from sigft.core.rpa.selenium_engine import create_chrome_driver
 class ConditionsProcessor:
     def __init__(self, api_key):
         self.api_key = api_key
-        self.cancel_requested = False  # Flag de parada
+        # CP 2.2: stop-flag delega para `PMIBPortal` -- construído SEM
+        # engine, porque esta classe só chama a API do Gemini (não tem
+        # driver/browser nenhum). `solicitar_parada`/`deve_parar` são os
+        # únicos métodos de `PMIBPortal` que nunca tocam `self.engine`, então
+        # isso é seguro -- ver docstring de `PMIBPortal.__init__` e
+        # docs/refatoracao/PENDENCIAS.md.
+        self.portal = PMIBPortal()
         if self.api_key:
             genai.configure(api_key=self.api_key, transport='rest')
 
     def solicitar_parada(self):
-        self.cancel_requested = True
+        self.portal.solicitar_parada()
 
     def _limpar_resposta_json(self, texto_bruto):
         if not texto_bruto: return None
@@ -303,7 +310,7 @@ baseadas no conhecimento sobre "DISJUNTOR", e "CLASSE 1" virou "SIM")
         }
 
         for caminho in lista_caminhos:
-            if self.cancel_requested:
+            if self.portal.deve_parar():
                 if callback_log: callback_log("Processamento de IA interrompido pelo usuário.")
                 break  # Sai do loop principal
 
@@ -465,17 +472,33 @@ class UploadAutomation:
     def __init__(self):
         self.driver = None
         self.wait = None
-        self.cancel_requested = False  # Flag de parada
+        # CP 2.2: `self.portal` (SEM engine ainda) já nasce aqui -- não só em
+        # `iniciar()` -- para que `solicitar_parada()` continue seguro de
+        # chamar a QUALQUER momento, inclusive ANTES de `iniciar()` rodar
+        # (cenário real: `frontend.py` atribui a instância a
+        # `self.automacao_ativa` e só DEPOIS a thread de trabalho chega a
+        # `iniciar()`; o botão "Parar" pode disparar nesse meio-tempo).
+        # `iniciar()` abaixo só ANEXA o engine à MESMA instância de
+        # `PMIBPortal` (preserva um stop-flag já setado, se houver) -- ver
+        # docs/refatoracao/PENDENCIAS.md.
+        self.portal = PMIBPortal()
 
     def solicitar_parada(self):
-        self.cancel_requested = True
+        self.portal.solicitar_parada()
 
     def iniciar(self):
         """CP 2.1: a criação em si (Chrome + maximize + WebDriverWait(20s))
         agora vem de `create_chrome_driver` (única fábrica, ver
         core/rpa/selenium_engine.py) — timeout preservado EXATAMENTE como
-        antes (20s). Nada mais deste método/classe muda."""
+        antes (20s).
+
+        CP 2.2: `self.portal` (já existente desde `__init__`, ver acima)
+        ganha o `engine` de verdade (`SeleniumEngine` sobre o MESMO
+        `driver`/`wait`) -- `safe_click`/`safe_send_keys`/`check_or_uncheck`/
+        `processar_lista` abaixo passam a delegar para ele.
+        """
         self.driver, self.wait = create_chrome_driver(wait_timeout=20)
+        self.portal.engine = SeleniumEngine(self.driver, self.wait)
         return self.driver
 
     # --- NOVO MÉTODO PARA CORRIGIR O ERRO DA URL DATA:, ---
@@ -490,37 +513,26 @@ class UploadAutomation:
             self.driver.quit()
 
     def safe_click(self, locator):
-        try:
-            el = self.wait.until(EC.presence_of_element_located(locator))
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
-            time.sleep(0.5)
-            self.wait.until(EC.element_to_be_clickable(locator))
-            self.driver.execute_script("arguments[0].click();", el)
-        except Exception:
-            pass
+        """CP 2.2: DELEGADOR FINO -- a mecânica real agora vive em
+        `PMIBPortal.safe_click`/`SeleniumEngine.click` (um único lugar).
+        `locator` continua aceito como tupla `(By.XPATH, xpath)` -- é assim
+        que os MUITOS call sites internos desta classe já chamam hoje; a
+        string XPath é extraída aqui antes de repassar."""
+        seletor = locator[1] if isinstance(locator, tuple) else locator
+        self.portal.safe_click(seletor)
 
     def safe_send_keys(self, locator, text):
-        try:
-            el = self.wait.until(EC.presence_of_element_located(locator))
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
-            time.sleep(0.5)
-            self.wait.until(EC.visibility_of_element_located(locator))
-            self.driver.execute_script("arguments[0].click();", el)
-            el.send_keys(Keys.CONTROL, "a")
-            el.send_keys(Keys.BACKSPACE)
-            el.send_keys(str(text))
-        except Exception:
-            pass
+        """CP 2.2: DELEGADOR FINO para `PMIBPortal.safe_fill`/
+        `SeleniumEngine.fill` -- mesma extração de XPath de `safe_click`
+        acima."""
+        seletor = locator[1] if isinstance(locator, tuple) else locator
+        self.portal.safe_fill(seletor, text)
 
     def check_or_uncheck(self, locator, should_check):
-        try:
-            el = self.wait.until(EC.presence_of_element_located(locator))
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
-            is_checked = el.get_attribute('checked') == 'true'
-            if is_checked != should_check:
-                self.safe_click(locator)
-        except Exception:
-            pass
+        """CP 2.2: DELEGADOR FINO para `PMIBPortal.check_or_uncheck` --
+        mesma extração de XPath de `safe_click`/`safe_send_keys` acima."""
+        seletor = locator[1] if isinstance(locator, tuple) else locator
+        self.portal.check_or_uncheck(seletor, should_check)
 
     def processar_lista(self, lista_fichas, caminho_status, callback_ask=None, callback_log=None, callback_pause=None):
         url = "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
@@ -528,7 +540,7 @@ class UploadAutomation:
         # o App chama 'abrir_portal' ANTES de pedir o login.
 
         for ficha in lista_fichas:
-            if self.cancel_requested:
+            if self.portal.deve_parar():
                 if callback_log: callback_log("Automação Web interrompida pelo usuário.")
                 break  # Quebra o loop principal e vai para o finally de fechamento
 
@@ -536,16 +548,25 @@ class UploadAutomation:
             if callback_log: callback_log(f"Processando {pmib}...")
 
             try:
-                # 1. Busca
-                self.driver.get(url)
-                time.sleep(2)
-                loc_search = (By.XPATH, "//input[@placeholder='Código, Nome ES/PT pela Ficha Técnica, Código do projeto e/ou contrato']")
-                self.safe_send_keys(loc_search, pmib)
-                self.wait.until(EC.visibility_of_element_located(loc_search)).send_keys(Keys.ENTER)
-
-                time.sleep(4)
-                loc_edit = (By.XPATH, f"//span[text()='{pmib}']/ancestor::tr//a[.//i[contains(@class, 'fa-pencil-square-o')]]")
-                self.safe_click(loc_edit)
+                # 1. Busca e abre a ficha em modo de edição.
+                #
+                # CP 2.2: delega para `PMIBPortal.pesquisar_e_abrir` com os
+                # seletores EXATOS que este módulo já usava (placeholder
+                # completo do campo de busca; ícone `fa-pencil-square-o`,
+                # DIFERENTE de `fa-pencil` usado por `apagar_lmr`/
+                # `upload_tech_specs`) -- ver docstring de `PMIBPortal.
+                # pesquisar_e_abrir`. O retorno `bool` é intencionalmente
+                # DESCARTADO aqui: o ORIGINAL não tinha NENHUM sinal de
+                # sucesso/falha nesta etapa (`safe_click`/`safe_send_keys`
+                # sempre engoliam exceção silenciosamente; `driver.get(url)`
+                # não falha por si só) -- preservado tal qual (mesmo silêncio
+                # de antes, não uma correção deste checkpoint); ver
+                # docs/refatoracao/PENDENCIAS.md.
+                self.portal.pesquisar_e_abrir(
+                    pmib,
+                    busca_xpath="//input[@placeholder='Código, Nome ES/PT pela Ficha Técnica, Código do projeto e/ou contrato']",
+                    lapis_xpath_template="//span[text()='{pmib}']/ancestor::tr//a[.//i[contains(@class, 'fa-pencil-square-o')]]",
+                )
 
                 # --- ABA 1: CONDIÇÕES (ARMAZENAMENTO) ---
                 try:

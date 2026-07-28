@@ -20,11 +20,16 @@ from sigft.core.excel import headers, pmib_codes, status_sheet
 # driver Chrome, substitui `webdriver.Chrome(options=...)` cru em
 # `ExtratorFichaBase.iniciar_driver_silencioso` abaixo (a ÚNICA das 6
 # inicializações que já configurava `download_dir` via ChromeOptions/prefs
-# — mecânica preservada intacta dentro da fábrica). Escopo estrito deste
-# checkpoint: SÓ a criação do driver muda — todo o resto (extração,
-# `InjetorFichaAlvo.safe_click` etc.) continua usando `self.driver`/
-# `self.wait` crus, sem nenhuma alteração.
-from sigft.core.rpa.selenium_engine import create_chrome_driver
+# — mecânica preservada intacta dentro da fábrica).
+from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
+# CP 2.2 (Fase 2): `ExtratorFichaBase._pesquisar_e_abrir` e
+# `InjetorFichaAlvo.safe_click`/`_clicar_salvar_visivel`/
+# `_pesquisar_e_abrir`/o ramo de exclusão de
+# `_limpar_caracteristicas_tecnicas` passam a delegar para `PMIBPortal`.
+# `_ler_condicoes`/`_preencher_condicoes`/`_adicionar_fornecedores`/
+# `_associar_documentos`/`_upload_imagens` continuam usando `self.driver`/
+# `self.wait` crus, sem nenhuma alteração (fora do escopo deste checkpoint).
+from sigft.core.rpa.portal import PMIBPortal
 
 
 class GerenciadorFilaPMIB:
@@ -112,10 +117,21 @@ class GerenciadorFilaPMIB:
             return False, f"Erro ao montar fila: {e}"
 
 
+# Seletores EXATOS de busca/lápis usados por `ExtratorFichaBase.
+# _pesquisar_e_abrir` e `InjetorFichaAlvo._pesquisar_e_abrir` -- IDÊNTICOS
+# entre as duas classes (já eram cópias literais uma da outra antes deste
+# checkpoint) -- overrides passados a `PMIBPortal.pesquisar_e_abrir` (ver
+# docstring do método). Constantes de MÓDULO (não de classe) para não
+# duplicar as strings entre as 2 classes que as usam.
+_BUSCA_XPATH_FICHA_DUPLICADA = "//input[contains(@id, 'InputDatasheetFilter') or contains(@placeholder, 'Código')]"
+_LAPIS_XPATH_TEMPLATE_FICHA_DUPLICADA = "//tr[contains(., '{pmib}')]//a[.//i[contains(@class, 'fa-pencil')]]"
+
+
 class ExtratorFichaBase:
     def __init__(self, dir_download_temp="./temp_downloads"):
         self.driver = None
         self.wait = None
+        self.portal = None
         self.dir_download = os.path.abspath(dir_download_temp)
         self._preparar_pasta_temp()
 
@@ -135,10 +151,14 @@ class ExtratorFichaBase:
         maximize + WebDriverWait(15s)) agora vem de `create_chrome_driver`
         (única fábrica, ver core/rpa/selenium_engine.py) — mesma mecânica
         de `options`/prefs, mesmo timeout (15s, preservado EXATAMENTE como
-        antes) e `download_dir=self.dir_download` repassado tal qual. Nada
-        mais deste método/classe muda.
+        antes) e `download_dir=self.dir_download` repassado tal qual.
+
+        CP 2.2: logo em seguida, `self.portal` passa a existir (`PMIBPortal`
+        sobre um `SeleniumEngine` construído com o MESMO `driver`/`wait`) --
+        `_pesquisar_e_abrir` abaixo passa a delegar para ele.
         """
         self.driver, self.wait = create_chrome_driver(wait_timeout=15, download_dir=self.dir_download)
+        self.portal = PMIBPortal(SeleniumEngine(self.driver, self.wait))
         return self.driver
 
     # --- HELPERS DE LEITURA (SCRAPING) ---
@@ -192,34 +212,33 @@ class ExtratorFichaBase:
         return None
 
     def _pesquisar_e_abrir(self, pmib):
-        """Navega, pesquisa o PMIB e clica no lápis de edição."""
-        url_lista = "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
+        """Navega, pesquisa o PMIB e clica no lápis de edição.
 
-        if self.driver.current_url != url_lista:
-            self.driver.get(url_lista)
-            time.sleep(2)
+        CP 2.2: o corpo passa a delegar para
+        `PMIBPortal.pesquisar_e_abrir` com os seletores EXATOS que esta
+        classe já usava (`_BUSCA_XPATH_FICHA_DUPLICADA`/
+        `_LAPIS_XPATH_TEMPLATE_FICHA_DUPLICADA`, no topo do módulo) --
+        ver docstring do método para o levantamento completo.
 
-        # Barra de pesquisa
-        locator_pesquisa = (By.XPATH, "//input[contains(@id, 'InputDatasheetFilter') or contains(@placeholder, 'Código')]")
-        campo_pesquisa = self.wait.until(EC.element_to_be_clickable(locator_pesquisa))
-        campo_pesquisa.send_keys(Keys.CONTROL + "a")
-        campo_pesquisa.send_keys(Keys.DELETE)
-        campo_pesquisa.send_keys(pmib)
-        campo_pesquisa.send_keys(Keys.ENTER)
-
-        # Espera a linha correta aparecer na tabela
-        locator_linha = (By.XPATH, f"//tr[contains(., '{pmib}')]")
-        self.wait.until(EC.presence_of_element_located(locator_linha))
-
-        # Clica no lápis de edição
-        locator_lapis = (By.XPATH, f"//tr[contains(., '{pmib}')]//a[.//i[contains(@class, 'fa-pencil')]]")
-        botao_lapis = self.wait.until(EC.element_to_be_clickable(locator_lapis))
-        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", botao_lapis)
-        time.sleep(0.5)
-        self.driver.execute_script("arguments[0].click();", botao_lapis)
-
-        # Aguarda a ficha carregar
-        time.sleep(3)
+        O ORIGINAL não tinha NENHUM try/except aqui: qualquer falha
+        Selenium propagava (barulhenta) para quem chamasse
+        `extrair_dados_ficha`. O portal agora ENGOLE exceções internamente
+        durante o retry (3x) e devolve `False` em vez de deixar propagar --
+        para preservar a característica "falha alta" do original em vez de
+        prosseguir silenciosamente com a ficha errada aberta (ou nenhuma
+        ficha aberta), este delegador levanta `RuntimeError` explicitamente
+        quando o portal devolve `False` (o único chamador,
+        `frontend.py._bot_worker`, já usa `except Exception as e:` genérico
+        -- confirmado por leitura -- então a troca de tipo de exceção não
+        tem efeito observável) -- ver docs/refatoracao/PENDENCIAS.md.
+        """
+        sucesso = self.portal.pesquisar_e_abrir(
+            pmib,
+            busca_xpath=_BUSCA_XPATH_FICHA_DUPLICADA,
+            lapis_xpath_template=_LAPIS_XPATH_TEMPLATE_FICHA_DUPLICADA,
+        )
+        if not sucesso:
+            raise RuntimeError(f"Não foi possível pesquisar/abrir a ficha {pmib}.")
 
     # --- MÉTODO PRINCIPAL DE EXTRAÇÃO ---
     def extrair_dados_ficha(self, pmib_original):
@@ -389,33 +408,38 @@ class InjetorFichaAlvo:
         # Recebe o driver e o wait já instanciados e logados da Fase 2
         self.driver = driver
         self.wait = wait
+        # CP 2.2: `self.portal` (`PMIBPortal` sobre um `SeleniumEngine` do
+        # MESMO `driver`/`wait` recebidos acima -- nada de novo é criado) --
+        # `safe_click`/`_clicar_salvar_visivel`/`_pesquisar_e_abrir`/o ramo
+        # de exclusão de `_limpar_caracteristicas_tecnicas` passam a
+        # delegar para ele.
+        self.portal = PMIBPortal(SeleniumEngine(driver, wait))
 
     def safe_click(self, locator):
-        """Helper para clicar com segurança via JavaScript (evita interceptações)."""
-        try:
-            el = self.wait.until(EC.presence_of_element_located(locator))
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
-            time.sleep(0.5)
-            self.wait.until(EC.element_to_be_clickable(locator))
-            self.driver.execute_script("arguments[0].click();", el)
-        except Exception as e:
-            print(f"Erro no safe_click: {e}")
+        """Helper para clicar com segurança via JavaScript (evita interceptações).
+
+        CP 2.2: DELEGADOR FINO -- a mecânica real agora vive em
+        `PMIBPortal.safe_click`/`SeleniumEngine.click` (um único lugar).
+        `locator` continua aceito como tupla `(By.XPATH, xpath)` -- é assim
+        que os call sites internos desta classe já chamam hoje; a string
+        XPath é extraída aqui antes de repassar. NOTA DE COMPORTAMENTO: o
+        ORIGINAL logava `print(f"Erro no safe_click: {e}")` quando a
+        mecânica falhava; `SeleniumEngine.click` (CP 2.1) engole a exceção
+        SEM logar nada (mesmo `except Exception: pass` das outras 3 cópias
+        históricas de `safe_click` no diagnóstico) -- este `print` específico
+        de `upload_ficha_duplicada` deixa de acontecer; ver
+        docs/refatoracao/PENDENCIAS.md.
+        """
+        seletor = locator[1] if isinstance(locator, tuple) else locator
+        self.portal.safe_click(seletor)
 
     def _clicar_salvar_visivel(self, nome_secao=""):
-        """Procura na tela o botão SALVAR que está ativo/visível no momento e clica nele."""
-        if nome_secao: print(f"      [Injetor] Salvando {nome_secao}...")
+        """Procura na tela o botão SALVAR que está ativo/visível no momento e clica nele.
 
-        botoes_salvar = self.driver.find_elements(By.XPATH, "//button[contains(@class, 'btn-primary') and normalize-space(text())='SALVAR']")
-        for btn in botoes_salvar:
-            if btn.is_displayed() and btn.is_enabled():
-                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
-                time.sleep(0.5)
-                self.driver.execute_script("arguments[0].click();", btn)
-                time.sleep(2.5)  # Aguarda a requisição do servidor OutSystems
-                return True
-
-        print(f"      [Aviso] Botão SALVAR não encontrado/visível para {nome_secao}.")
-        return False
+        CP 2.2: DELEGADOR FINO para `PMIBPortal.clicar_salvar_visivel`
+        (mecânica idêntica, incluindo os `print()` de progresso/aviso, que
+        vivem agora no portal)."""
+        return self.portal.clicar_salvar_visivel(nome_secao)
 
     # --- 1. FORNECEDORES ---
     def _adicionar_fornecedores(self, fornecedores):
@@ -484,14 +508,22 @@ class InjetorFichaAlvo:
                         # Clica fora para disparar o evento onBlur
                         col_desc.click()
                     else:
-                        # Exclui a característica (código aproveitado do script 2)
-                        btn_lixo = row.find_element(By.XPATH, './/i[contains(@class, "fa-trash")]/parent::a')
-                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn_lixo)
-                        self.driver.execute_script("arguments[0].click();", btn_lixo)
-
-                        # Confirma popup
-                        self.safe_click((By.XPATH, '//button[@type="button" and text()="CONFIRMAR"]'))
-                        time.sleep(2)
+                        # Exclui a característica.
+                        #
+                        # CP 2.2: delega para
+                        # `PMIBPortal.excluir_linha_com_confirmacao(row)` --
+                        # mesma mecânica CENTRAL agora compartilhada com
+                        # `upload_tech_specs_backend.TechSpecsAutomation.
+                        # _excluir_linha_segura` (sleep de 0,5s antes do
+                        # clique na lixeira -- NOVO aqui -- e 2,5s após
+                        # confirmar -- era 2s -- ver
+                        # docs/refatoracao/PENDENCIAS.md). `item_foi_excluido`
+                        # continua `True` INCONDICIONALMENTE após a
+                        # tentativa -- o ORIGINAL também não checava sucesso
+                        # aqui (só setava a flag direto após o clique) --
+                        # comportamento preservado tal qual, mesmo agora que
+                        # o portal devolve um `bool` real.
+                        self.portal.excluir_linha_com_confirmacao(row)
                         item_foi_excluido = True
 
                 except StaleElementReferenceException:
@@ -631,34 +663,24 @@ class InjetorFichaAlvo:
                     break
 
     def _pesquisar_e_abrir(self, pmib):
-        """Navega, pesquisa o PMIB e clica no lápis de edição."""
-        url_lista = "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
+        """Navega, pesquisa o PMIB e clica no lápis de edição.
 
-        if self.driver.current_url != url_lista:
-            self.driver.get(url_lista)
-            time.sleep(2)
-
-        # Barra de pesquisa
-        locator_pesquisa = (By.XPATH, "//input[contains(@id, 'InputDatasheetFilter') or contains(@placeholder, 'Código')]")
-        campo_pesquisa = self.wait.until(EC.element_to_be_clickable(locator_pesquisa))
-        campo_pesquisa.send_keys(Keys.CONTROL + "a")
-        campo_pesquisa.send_keys(Keys.DELETE)
-        campo_pesquisa.send_keys(pmib)
-        campo_pesquisa.send_keys(Keys.ENTER)
-
-        # Espera a linha correta aparecer na tabela
-        locator_linha = (By.XPATH, f"//tr[contains(., '{pmib}')]")
-        self.wait.until(EC.presence_of_element_located(locator_linha))
-
-        # Clica no lápis de edição
-        locator_lapis = (By.XPATH, f"//tr[contains(., '{pmib}')]//a[.//i[contains(@class, 'fa-pencil')]]")
-        botao_lapis = self.wait.until(EC.element_to_be_clickable(locator_lapis))
-        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", botao_lapis)
-        time.sleep(0.5)
-        self.driver.execute_script("arguments[0].click();", botao_lapis)
-
-        # Aguarda a ficha carregar
-        time.sleep(3)
+        CP 2.2: mesma migração de `ExtratorFichaBase._pesquisar_e_abrir`
+        (cópia idêntica antes deste checkpoint) -- delega para
+        `PMIBPortal.pesquisar_e_abrir` com os mesmos seletores
+        (`_BUSCA_XPATH_FICHA_DUPLICADA`/`_LAPIS_XPATH_TEMPLATE_FICHA_DUPLICADA`,
+        no topo do módulo) e levanta `RuntimeError` em caso de falha, pela
+        MESMA razão (preservar a característica "falha alta" do original,
+        que não tinha try/except nenhum aqui) -- ver docstring do método
+        irmão e docs/refatoracao/PENDENCIAS.md.
+        """
+        sucesso = self.portal.pesquisar_e_abrir(
+            pmib,
+            busca_xpath=_BUSCA_XPATH_FICHA_DUPLICADA,
+            lapis_xpath_template=_LAPIS_XPATH_TEMPLATE_FICHA_DUPLICADA,
+        )
+        if not sucesso:
+            raise RuntimeError(f"Não foi possível pesquisar/abrir a ficha {pmib}.")
 
     # --- ORQUESTRADOR PRINCIPAL DA FASE 3 ---
     def clonar_ficha(self, dados_colhidos):

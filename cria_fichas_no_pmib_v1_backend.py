@@ -14,11 +14,20 @@ from sigft import config
 from sigft.core.excel import headers, locking
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em
-# `AutomacaoPMIB.iniciar_driver` abaixo. Escopo estrito deste checkpoint: SÓ
-# a criação do driver muda — `processar_item_individual`/
-# `atualizar_projeto_em_massa` continuam usando `self.driver`/`self.wait`
-# crus, sem nenhuma alteração.
-from sigft.core.rpa.selenium_engine import create_chrome_driver
+# `AutomacaoPMIB.iniciar_driver` abaixo.
+from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
+# CP 2.2 (Fase 2): `self.portal` passa a existir por consistência estrutural
+# com os outros 5 backends (`AutomacaoPMIB` é uma das "6 classes de
+# automação" do aceite do checkpoint), mas NENHUM call site desta classe foi
+# migrado -- `AutomacaoPMIB` não tem `safe_click`/`safe_send_keys`/
+# `check_or_uncheck` (não é um dos 4 arquivos do diagnóstico que os têm) e
+# `atualizar_projeto_em_massa` tem uma 6ª variante de "pesquisar + clicar no
+# lápis" com seletores NÃO cobertos pelo levantamento deste checkpoint
+# (busca só por `contains(@id, 'InputDatasheetFilter')`, lápis por substring
+# de linha inteira + classe de ícone `fa-pencil-square-o`) -- migrar isso
+# exigiria autorizar um seletor não revisado, fora do escopo conservador
+# deste checkpoint; ver docs/refatoracao/PENDENCIAS.md.
+from sigft.core.rpa.portal import PMIBPortal
 
 
 class DataManager:
@@ -259,14 +268,22 @@ class AutomacaoPMIB:
     def __init__(self):
         self.driver = None
         self.wait = None
+        self.portal = None
 
     def iniciar_driver(self):
         """CP 2.1: a criação em si (Chrome + maximize + WebDriverWait(10s))
         agora vem de `create_chrome_driver` (única fábrica, ver
         core/rpa/selenium_engine.py) — timeout preservado EXATAMENTE como
-        antes (10s, o único dos 6 pontos originais com esse valor). Nada
-        mais deste método/classe muda."""
+        antes (10s, o único dos 6 pontos originais com esse valor).
+
+        CP 2.2: logo em seguida, `self.portal` passa a existir (`PMIBPortal`
+        sobre um `SeleniumEngine` construído com o MESMO `driver`/`wait`) --
+        por consistência estrutural com os outros 5 backends, SEM nenhum
+        call site desta classe migrado ainda (ver comentário de import no
+        topo do arquivo e docs/refatoracao/PENDENCIAS.md).
+        """
         self.driver, self.wait = create_chrome_driver(wait_timeout=10)
+        self.portal = PMIBPortal(SeleniumEngine(self.driver, self.wait))
         return self.driver
 
     def abrir_portal(self, url):

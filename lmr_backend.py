@@ -18,10 +18,17 @@ from sigft.core.callbacks import UICallbacks, from_legacy
 
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em `iniciar_driver`
-# abaixo. Escopo estrito deste checkpoint: SÓ a criação do driver muda — o
-# resto da classe (24 TABs, `_processar_ficha_lmr_interna` etc.) continua
-# usando `self.driver`/`self.wait` crus, sem nenhuma alteração.
-from sigft.core.rpa.selenium_engine import create_chrome_driver
+# abaixo.
+from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
+# CP 2.2 (Fase 2): EXCEÇÃO AUTORIZADA pelo plano -- o fluxo de 24 TABs cegos
+# de `processar_lista` (ver abaixo) é substituído por uma chamada a
+# `PMIBPortal.pesquisar_e_abrir` (mesmo alvo final: abrir a ficha em modo de
+# edição) -- única classe onde o plano autoriza essa mudança de MECANISMO
+# (não só reorganização) nas Fases 1-4. `_processar_ficha_lmr_interna`
+# continua usando `self.driver`/`self.wait` crus, sem nenhuma alteração
+# (não tem safe_click/safe_send_keys pra delegar -- ver
+# docs/refatoracao/PENDENCIAS.md).
+from sigft.core.rpa.portal import PMIBPortal
 
 
 # =============================================================================
@@ -31,6 +38,7 @@ class LMRAutomation:
     def __init__(self):
         self.driver = None
         self.wait = None
+        self.portal = None
         self.url_inicial = 'https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList'
 
     def iniciar_driver(self):
@@ -39,9 +47,15 @@ class LMRAutomation:
         CP 2.1: a criação em si (Chrome + maximize + WebDriverWait(20s))
         agora vem de `create_chrome_driver` (única fábrica, ver
         core/rpa/selenium_engine.py) — timeout preservado EXATAMENTE como
-        antes (20s). Nada mais deste método/classe muda.
+        antes (20s).
+
+        CP 2.2: logo em seguida, `self.portal` passa a existir (`PMIBPortal`
+        sobre um `SeleniumEngine` construído com o MESMO `driver`/`wait`) --
+        `processar_lista` abaixo passa a chamar `self.portal.
+        pesquisar_e_abrir` no lugar do fluxo de 24 TABs cegos.
         """
         self.driver, self.wait = create_chrome_driver(wait_timeout=20)
+        self.portal = PMIBPortal(SeleniumEngine(self.driver, self.wait))
         return self.driver
 
     def fechar_driver(self):
@@ -247,37 +261,25 @@ class LMRAutomation:
             callbacks.log(f"\n--- Ficha {i+1}/{total}: {pmib_atual} ---")
 
             try:
-                # 4.1. Pesquisar
+                # 4.1/4.2. Pesquisar e abrir a ficha em modo de edição.
+                #
+                # CP 2.2: EXCEÇÃO AUTORIZADA pelo plano -- o fluxo original
+                # (campo de busca por ID fixo `b7-InputDatasheetFilter` +
+                # Ctrl+A/Backspace/digitar/ENTER + 24 TABs cegos + ENTER no
+                # `active_element`) é substituído por uma chamada a
+                # `PMIBPortal.pesquisar_e_abrir`, com os seletores DEFAULT
+                # (mesmos de `apagar_lmr`/`upload_tech_specs`) -- `lmr` nunca
+                # teve um seletor de busca/lápis próprio para "preservar"
+                # aqui (a abertura da ficha sempre foi via TABs cegos, não um
+                # lápis clicado diretamente); mesmo alvo final: abrir a ficha
+                # em modo de edição. Se falhar, levanta para cair no MESMO
+                # tratamento de "ERRO FATAL" do `except` abaixo (log + ask +
+                # tentativa de recarregar a home), preservando o
+                # comportamento observável de uma falha na etapa de
+                # pesquisa/abertura.
                 callbacks.log(f"Pesquisando: {pmib_atual}")
-                time.sleep(0.2)
-
-                # Volta para home se necessário (garantia)
-                if self.driver.current_url != self.url_inicial:
-                    self.driver.get(self.url_inicial)
-                    time.sleep(2)
-
-                locator_pesquisa = (By.XPATH, '//*[@id="b7-InputDatasheetFilter"]')
-                campo_pesquisa = self.wait.until(EC.visibility_of_element_located(locator_pesquisa))
-                campo_pesquisa.click()
-                time.sleep(0.2)
-                campo_pesquisa.send_keys(Keys.CONTROL, "a")
-                time.sleep(0.2)
-                campo_pesquisa.send_keys(Keys.BACKSPACE)
-                time.sleep(0.2)
-                campo_pesquisa.send_keys(pmib_atual)
-                campo_pesquisa.send_keys(Keys.ENTER)
-                time.sleep(3)
-
-                # 4.2. Clicar em "Editar" (Sequência de TABs original mantida)
-                callbacks.log("Navegando até editar (TABs)...")
-
-                # Sequência exata do script original
-                campo_pesquisa.send_keys(Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB,
-                                         Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB)
-
-                locator_editar = self.driver.switch_to.active_element
-                locator_editar.send_keys(Keys.ENTER)
-                time.sleep(3)
+                if not self.portal.pesquisar_e_abrir(pmib_atual):
+                    raise RuntimeError(f"Não foi possível pesquisar/abrir a ficha {pmib_atual}.")
 
                 # 4.3. Clicar na aba "Aplicação - LMR"
                 callbacks.log("Abrindo aba LMR...")

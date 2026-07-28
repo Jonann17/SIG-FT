@@ -14,11 +14,17 @@ from sigft.core.callbacks import UICallbacks, from_legacy
 
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em `iniciar_driver`
-# abaixo. Escopo estrito deste checkpoint: SÓ a criação do driver muda —
-# `safe_click`/`_pesquisar_e_abrir`/o loop de exclusão continuam usando
-# `self.driver`/`self.wait` crus, sem nenhuma alteração (migrá-los para
-# `SeleniumEngine`/`PMIBPortal` é trabalho do CP 2.2).
-from sigft.core.rpa.selenium_engine import create_chrome_driver
+# abaixo.
+from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
+# CP 2.2 (Fase 2): `safe_click`/`_pesquisar_e_abrir` passam a delegar para
+# `PMIBPortal` (construído logo após o driver, em `iniciar_driver`). O loop
+# de exclusão de `executar_limpeza` CONTINUA usando `self.driver`/
+# `self.wait` crus -- é estruturalmente diferente das 2 outras variantes de
+# "excluir linha" do diagnóstico (busca a 1ª lixeira visível da TABELA
+# INTEIRA via um XPath específico deste módulo, sem uma "linha" localizada
+# pra passar para `PMIBPortal.excluir_linha_com_confirmacao(row)`) — ver
+# docs/refatoracao/PENDENCIAS.md.
+from sigft.core.rpa.portal import PMIBPortal
 
 
 # =============================================================================
@@ -28,6 +34,7 @@ class ApagarLMRAutomation:
     def __init__(self):
         self.driver = None
         self.wait = None
+        self.portal = None
         self.url_inicial = 'https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList'
 
     def iniciar_driver(self):
@@ -36,9 +43,15 @@ class ApagarLMRAutomation:
         CP 2.1: a criação em si (Chrome + maximize + WebDriverWait(20s))
         agora vem de `create_chrome_driver` (única fábrica, ver
         core/rpa/selenium_engine.py) — timeout preservado EXATAMENTE como
-        antes (20s). Nada mais deste método/classe muda.
+        antes (20s).
+
+        CP 2.2: logo em seguida, `self.portal` passa a existir
+        (`PMIBPortal` sobre um `SeleniumEngine` construído com o MESMO
+        `driver`/`wait` — nada de novo é criado) — `safe_click`/
+        `_pesquisar_e_abrir` abaixo passam a delegar para ele.
         """
         self.driver, self.wait = create_chrome_driver(wait_timeout=20)
+        self.portal = PMIBPortal(SeleniumEngine(self.driver, self.wait))
         return self.driver
 
     def fechar_driver(self):
@@ -51,51 +64,32 @@ class ApagarLMRAutomation:
 
     # --- HELPERS DE NAVEGAÇÃO ---
     def safe_click(self, locator):
-        try:
-            el = self.wait.until(EC.presence_of_element_located(locator))
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
-            time.sleep(0.5)
-            self.wait.until(EC.element_to_be_clickable(locator))
-            self.driver.execute_script("arguments[0].click();", el)
-        except Exception:
-            pass
+        """CP 2.2: DELEGADOR FINO -- a mecânica real (scroll + espera +
+        clique via JS) agora vive em `PMIBPortal.safe_click`/
+        `SeleniumEngine.click` (um único lugar). `locator` continua sendo
+        aceito como tupla `(By.XPATH, xpath)` -- é assim que os MUITOS call
+        sites internos desta classe já chamam hoje; a string XPath é
+        extraída aqui antes de repassar (o portal só entende XPath puro).
+        """
+        seletor = locator[1] if isinstance(locator, tuple) else locator
+        self.portal.safe_click(seletor)
 
     def _pesquisar_e_abrir(self, pmib):
         """
         Navega, Pesquisa e Clica no Lápis (Edição) para abrir a ficha.
+
+        CP 2.2: o corpo passa a delegar para `PMIBPortal.pesquisar_e_abrir`
+        com os seletores DEFAULT (apagar_lmr é um dos 2 módulos -- junto
+        com `upload_tech_specs` -- que já usava exatamente esses seletores;
+        ver docstring de `PMIBPortal.pesquisar_e_abrir`). O retorno `bool`
+        do portal é adaptado para a tupla `(bool, mensagem)` que o único
+        chamador desta classe (`executar_limpeza`) espera -- mesmo
+        contrato externo de antes.
         """
-        # 1. Garantir URL
-        if self.driver.current_url != self.url_inicial:
-            self.driver.get(self.url_inicial)
-            time.sleep(2)
-
-        # 2. Pesquisar
-        locator_pesquisa = (By.XPATH, "//input[contains(@placeholder, 'Código')]")
-        try:
-            campo = self.wait.until(EC.element_to_be_clickable(locator_pesquisa))
-            campo.clear()
-            time.sleep(0.2)
-            campo.send_keys(pmib)
-            time.sleep(0.5)
-            campo.send_keys(Keys.ENTER)
-            time.sleep(3)  # Espera tabela recarregar
-        except Exception as e:
-            return False, f"Erro na pesquisa: {e}"
-
-        # 3. Clicar no Editar (Lápis)
-        # Usa a sequência de TABs ou busca direta. Vamos usar busca direta por ser mais robusta.
-        xpath_lapis = f"//span[text()='{pmib}']/ancestor::tr//i[contains(@class, 'fa-pencil')]/parent::a"
-
-        try:
-            # Tenta clicar
-            botao = self.wait.until(EC.presence_of_element_located((By.XPATH, xpath_lapis)))
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center', inline: 'center'});", botao)
-            time.sleep(1)
-            self.driver.execute_script("arguments[0].click();", botao)
-            time.sleep(4)  # Espera abrir a edição
+        sucesso = self.portal.pesquisar_e_abrir(pmib)
+        if sucesso:
             return True, "Ficha aberta."
-        except Exception as e:
-            return False, f"Ficha {pmib} não encontrada ou não editável."
+        return False, f"Ficha {pmib} não encontrada ou não editável."
 
     # --- LÓGICA PRINCIPAL DE EXCLUSÃO (DO SCRIPT ORIGINAL) ---
     def executar_limpeza(self, pmib_codigo, callbacks: UICallbacks | None = None, callback_log=None):
