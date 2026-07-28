@@ -29,7 +29,29 @@ from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
 # `_ler_condicoes`/`_preencher_condicoes`/`_adicionar_fornecedores`/
 # `_associar_documentos`/`_upload_imagens` continuam usando `self.driver`/
 # `self.wait` crus, sem nenhuma alteração (fora do escopo deste checkpoint).
-from sigft.core.rpa.portal import PMIBPortal
+#
+# CP 2.3 (Fase 2): os 17 `time.sleep(<literal>)` ATIVOS do arquivo viram
+# constantes nomeadas (nenhum eliminado); o comentário desabilitado dentro
+# de `_upload_imagens` (já morto antes deste checkpoint) também teve seu
+# sleep fixo de exemplo (1 segundo) trocado por `PAUSA_ABERTURA_MODAL` só
+# por consistência (não é código ativo) -- ver
+# docs/refatoracao/PLANO_REFATORACAO.md Fase 2 -> CP 2.3.
+from sigft.core.rpa.portal import (
+    PMIBPortal,
+    PAUSA_ABERTURA_MODAL,
+    PAUSA_ABERTURA_SECAO,
+    PAUSA_ANIMACAO,
+    PAUSA_CARGA_TABELA,
+    PAUSA_FILTRO_FORNECEDOR,
+    PAUSA_PAGINACAO,
+    PAUSA_POLL_DOWNLOAD,
+    PAUSA_RECARGA_TABELA,
+    PAUSA_RETRY_ARQUIVO_BLOQUEADO,
+    PAUSA_SALVAMENTO,
+    PAUSA_SALVAMENTO_LONGA,
+    PAUSA_TROCA_SUBABA,
+    PAUSA_UPLOAD_ARQUIVO,
+)
 
 
 class GerenciadorFilaPMIB:
@@ -206,7 +228,7 @@ class ExtratorFichaBase:
                 except:
                     pass
 
-            time.sleep(1)
+            time.sleep(PAUSA_POLL_DOWNLOAD)
             tempo_decorrido += 1
 
         return None
@@ -327,9 +349,9 @@ class ExtratorFichaBase:
         # Abre a seção de Condições ignorando o prefixo dinâmico
         btn_cond = self.wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(@id, 'Conditions_Header')]//button")))
         self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn_cond)
-        time.sleep(0.5)
+        time.sleep(PAUSA_ANIMACAO)
         self.driver.execute_script("arguments[0].click();", btn_cond)
-        time.sleep(1.5)  # Tempo para a sanfona abrir completamente
+        time.sleep(PAUSA_ABERTURA_SECAO)  # Tempo para a sanfona abrir completamente
 
         condicoes_por_aba = {}
 
@@ -383,9 +405,9 @@ class ExtratorFichaBase:
             if dados["tab_xpath"]:
                 aba_btn = self.wait.until(EC.presence_of_element_located((By.XPATH, dados["tab_xpath"])))
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", aba_btn)
-                time.sleep(0.5)
+                time.sleep(PAUSA_ANIMACAO)
                 self.driver.execute_script("arguments[0].click();", aba_btn)
-                time.sleep(1)
+                time.sleep(PAUSA_TROCA_SUBABA)
 
             campos_aba = {}
             for xpath in dados["textos"]:
@@ -463,7 +485,7 @@ class InjetorFichaAlvo:
                 input_fab = self.wait.until(EC.visibility_of_element_located((By.XPATH, "//input[contains(@class, 'vscomp-search-input')]")))
                 input_fab.send_keys(Keys.CONTROL + "a", Keys.DELETE)
                 input_fab.send_keys(fabricante)
-                time.sleep(1.5)  # Pausa levemente maior para dar tempo de o OutSystems filtrar os resultados AJAX
+                time.sleep(PAUSA_FILTRO_FORNECEDOR)  # Pausa levemente maior para dar tempo de o OutSystems filtrar os resultados AJAX
                 input_fab.send_keys(Keys.ENTER)
 
                 # 3. Insere Referência e clica no (+)
@@ -474,7 +496,7 @@ class InjetorFichaAlvo:
 
                     # Clica no ícone de mais (fa-plus-circle)
                     self.safe_click((By.XPATH, "//a[.//i[contains(@class, 'fa-plus-circle')]]"))
-                    time.sleep(1)
+                    time.sleep(PAUSA_SALVAMENTO)
 
             except Exception as e:
                 print(f"        -> ❌ Falha ao inserir o fornecedor {fabricante}: {e}")
@@ -484,7 +506,7 @@ class InjetorFichaAlvo:
         """Varre as páginas apagando tudo, exceto o CODIGO PMIB (que recebe o valor original)."""
         # Clica na aba (assumindo que o ID ou role tab seja mapeado aqui)
         self.safe_click((By.XPATH, "//button[@role='tab' and contains(., 'Características técnicas')]"))
-        time.sleep(2)
+        time.sleep(PAUSA_CARGA_TABELA)
 
         while True:
             row_index = 0
@@ -539,7 +561,7 @@ class InjetorFichaAlvo:
                 btn_proximo = self.driver.find_element(By.XPATH, "//button[@aria-label='Ir para a página seguinte']")
                 if btn_proximo.is_enabled():
                     self.driver.execute_script("arguments[0].click();", btn_proximo)
-                    time.sleep(3)
+                    time.sleep(PAUSA_PAGINACAO)
                 else:
                     break
             except:
@@ -554,7 +576,7 @@ class InjetorFichaAlvo:
         for doc in documentos:
             # 1. Clicar em "Associar documentos"
             self.safe_click((By.XPATH, "//a[.//i[contains(@class, 'fa-plus-square')]]"))
-            time.sleep(1)
+            time.sleep(PAUSA_ABERTURA_MODAL)
 
             # 2. Pesquisar documento
             input_search = self.wait.until(EC.visibility_of_element_located((By.XPATH, "//input[contains(@id, 'Input_SearchFilter')]")))
@@ -563,7 +585,7 @@ class InjetorFichaAlvo:
             input_search.send_keys(Keys.ENTER)
 
             # Aguarda a tabela recarregar com o resultado (espera explícita de 2s costuma ser útil em AJAX)
-            time.sleep(2)
+            time.sleep(PAUSA_RECARGA_TABELA)
 
             # 3. Marcar Checkbox (procura o input do tipo checkbox dentro da tabela visível)
             try:
@@ -580,7 +602,8 @@ class InjetorFichaAlvo:
         for img in imagens:
             # 1. Clicar em "Adicionar imagens" (Assumindo que seja um botão similar aos outros)
             # self.safe_click((By.XPATH, "//span[text()='Adicionar imagens']/parent::a"))
-            # time.sleep(1)
+            # time.sleep(PAUSA_ABERTURA_MODAL)  -- código já desabilitado antes do CP 2.3; comentário
+            # só atualizado por consistência (ver docs/refatoracao/PLANO_REFATORACAO.md Fase 2 -> CP 2.3)
 
             # 2. Preencher Descrições PT/ES
             desc_es = self.wait.until(EC.presence_of_element_located((By.XPATH, "//input[contains(@id, 'Input_DescriptionES')]")))
@@ -597,7 +620,7 @@ class InjetorFichaAlvo:
             input_file.send_keys(img["caminho"])
 
             # Aguarda a barra de progresso do FilePond processar o arquivo
-            time.sleep(3)
+            time.sleep(PAUSA_UPLOAD_ARQUIVO)
 
     def _preencher_info_gerais(self, info_gerais):
         """Despeja os dados de Origem, Tipo, Unidade e Fabricação."""
@@ -626,14 +649,14 @@ class InjetorFichaAlvo:
         """Varre o dicionário estruturado por aba e aplica o estado, clicando no botão SALVAR visível a cada etapa."""
         # Abre a seção de Condições
         self.safe_click((By.XPATH, "//*[contains(@id, 'Conditions_Header')]//button"))
-        time.sleep(1.5)
+        time.sleep(PAUSA_ABERTURA_SECAO)
 
         for aba, campos in condicoes_por_aba.items():
             # Navega para a aba correta
             if aba == "TRANSPORTE": self.safe_click((By.XPATH, "//*[contains(@id, 'Title')]/div[3]"))
             elif aba == "MANUTENCAO": self.safe_click((By.XPATH, "//*[contains(@id, 'Title')]/div[4]"))
             elif aba == "DESCARTE": self.safe_click((By.XPATH, "//*[contains(@id, 'Title')]/div[5]"))
-            time.sleep(1)
+            time.sleep(PAUSA_TROCA_SUBABA)
 
             # Preenche os campos
             for xpath, valor in campos.items():
@@ -657,9 +680,9 @@ class InjetorFichaAlvo:
             for btn in botoes_salvar:
                 if btn.is_displayed() and btn.is_enabled():
                     self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
-                    time.sleep(0.5)
+                    time.sleep(PAUSA_ANIMACAO)
                     self.driver.execute_script("arguments[0].click();", btn)
-                    time.sleep(1.5)  # Aguarda o salvamento processar
+                    time.sleep(PAUSA_SALVAMENTO_LONGA)  # Aguarda o salvamento processar
                     break
 
     def _pesquisar_e_abrir(self, pmib):
@@ -773,7 +796,7 @@ class AtualizadorStatusPMIB:
                 def _on_locked(attempt, exc):
                     if callback_log:
                         callback_log("Arquivo aberto. Aguardando 5 segundos para tentar novamente...")
-                    time.sleep(5)
+                    time.sleep(PAUSA_RETRY_ARQUIVO_BLOQUEADO)
                     return True  # retenta indefinidamente (sem limite, igual ao `while True` original)
 
                 painel.salvar(on_locked=_on_locked)
