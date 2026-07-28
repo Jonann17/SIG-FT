@@ -94,6 +94,13 @@ engine, usado SÓ para `solicitar_parada`/`deve_parar` (que nunca tocam
 chamado num `PMIBPortal` sem engine falha com `AttributeError` óbvio
 (`self.engine` é `None`), o que é aceitável: essas 2 classes nunca chamam
 outra coisa.
+
+CP 2.3 (Fase 2 -> CP 2.3, "Sincronização: sleeps -> waits"): as constantes
+`PAUSA_*` logo abaixo (módulo, não atributos de `PMIBPortal`) nomeiam os 72
+`time.sleep(<literal numérico>)` que ainda viviam CRUS nos 6 `*_backend.py`/
+`upload_ficha_duplicada.py` -- ver o bloco de comentários acima da primeira
+constante para o racional completo e docs/refatoracao/PENDENCIAS.md para os
+casos limítrofes.
 """
 
 from __future__ import annotations
@@ -115,6 +122,295 @@ from sigft.core.rpa.engine import RPAEngine
 # `pesquisar_e_abrir` abaixo para a lista completa de overrides por módulo).
 DEFAULT_BUSCA_XPATH = "//input[contains(@placeholder, 'Código')]"
 DEFAULT_LAPIS_XPATH_TEMPLATE = "//span[text()='{pmib}']/ancestor::tr//i[contains(@class, 'fa-pencil')]/parent::a"
+
+
+# =============================================================================
+# CP 2.3 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2 -> CP 2.3): sleeps
+# CRUS -> constantes NOMEADAS. Migra os 72 `time.sleep(<literal numérico>)`
+# levantados nos 6 arquivos-alvo (`apagar_lmr_backend.py`, `lmr_backend.py`,
+# `upload_tech_specs_backend.py`, `upload_conditions_backend.py`,
+# `upload_ficha_duplicada.py`, `cria_fichas_no_pmib_v1_backend.py`) -- TODOS
+# fora do engine/deste módulo (o próprio corpo de `PMIBPortal`, acima e
+# abaixo, e o `time.sleep(0.5)` interno de `SeleniumEngine.click`/`.fill`
+# (CP 2.1) já eram sleeps CENTRALIZADOS antes deste checkpoint -- por
+# decisão explícita do checkpoint, permanecem intocados aqui).
+#
+# Nomeadas por CONTEXTO/PROPÓSITO, não pelo valor numérico -- dois sleeps
+# do mesmo valor podem ter propósitos bem diferentes (ex.: `PAUSA_ANIMACAO`
+# e `PAUSA_AUDITORIA` são ambas 0.5s, mas uma é o "deixa a tela assentar"
+# genérico e a outra existe especificamente para que a LEITURA de auditoria
+# seguinte veja o valor já assentado) -- e reaproveitadas ENTRE arquivos só
+# quando o PROPÓSITO (e o valor) são genuinamente os mesmos (ex.:
+# `PAUSA_ABERTURA_ABA` -- mesmo XPath, mesma ação, mesmo valor -- em
+# `apagar_lmr_backend.py` e `lmr_backend.py`).
+#
+# Das 72 ocorrências, só 1 foi ELIMINADA (não virou constante): o
+# `time.sleep(1)` que antecedia a busca da lixeira, dentro do loop de
+# exclusão de `apagar_lmr_backend.ApagarLMRAutomation.executar_limpeza` --
+# a busca imediatamente seguinte já é um
+# `wait.until(EC.element_to_be_clickable(xpath_lixeira))` para o MESMO
+# elemento (a próxima lixeira a excluir) que o sleep tentava dar tempo de
+# (re)aparecer, com retry/timeout PRÓPRIOS (o loop inteiro já depende de
+# `TimeoutException` para decidir "acabou"); ver o comentário no local
+# (`executar_limpeza`). As demais 71 (nenhuma outra) não tinham, na MESMA
+# função, uma espera explícita adjacente da qual se pudesse ter CERTEZA de
+# que cobria a MESMA transição de estado -- viraram constante (critério
+# conservador do checkpoint; casos limítrofes considerados e descartados
+# estão documentados em docs/refatoracao/PENDENCIAS.md).
+# =============================================================================
+
+# --- Família "genérica" (sem elemento novo e específico a localizar) --------
+# Depois de um clique/tecla, sem elemento novo a localizar -- só dar tempo
+# da tela/transição do OutSystems assentar. É o tratamento DEFAULT do
+# checkpoint (citado literalmente pelo plano) para sleeps de 0.5s sem
+# propósito mais específico. Usada por: lmr_backend.py (entre TAGs
+# digitadas em `_processar_ficha_lmr_interna`), upload_tech_specs_backend.py
+# (`_preencher_linha`, tipos LISTA/INT, depois de escolher opção do
+# dropdown), upload_ficha_duplicada.py (scroll->clique em 3 pontos de
+# `ExtratorFichaBase._ler_condicoes`/`InjetorFichaAlvo._preencher_condicoes`)
+# e cria_fichas_no_pmib_v1_backend.py (11 pontos do "TAB dance" de
+# `processar_item_individual`/`atualizar_projeto_em_massa` -- INCLUI o caso
+# com comentário ORIGINAL explícito "o OutSystems tem uma animação de
+# 'deslizar' a tela que às vezes rouba o foco do clique", que confirma
+# textualmente ser exatamente esta a pausa que o plano nomeou).
+PAUSA_ANIMACAO = 0.5
+
+# Variante mais longa (~1s) da pausa genérica acima -- usada onde o
+# cria_fichas_no_pmib_v1_backend.py original já ajustava 1s em vez de 0.5s
+# para o mesmo tipo de propósito (assentar antes do próximo passo de
+# teclado, sem elemento novo a localizar). Usada só por
+# `processar_item_individual`/`atualizar_projeto_em_massa`.
+PAUSA_FOCO = 1
+
+# Variante ainda mais longa (~1.5s) da mesma família, usada quando o
+# elemento que ganha foco é um widget mais pesado (dropdown/campo de
+# busca), não um TAB simples. Usada só por
+# cria_fichas_no_pmib_v1_backend.processar_item_individual (abrir a busca
+# de PDM e o dropdown de Unidade).
+PAUSA_MUDANCA_FOCO = 1.5
+
+# Pausa curta depois de um `scrollIntoView`, antes do clique -- variante da
+# família genérica para um valor menor (0.2s) já usado assim no original.
+# Usada só por upload_tech_specs_backend.TechSpecsAutomation.
+# safe_send_keys_elem.
+PAUSA_SCROLL = 0.2
+
+# --- Família "digitação" (entre teclas) -------------------------------------
+# Pausa entre ações de teclado numa sequência (depois de TAB, antes de ler o
+# novo foco; depois de digitar um valor, antes do TAB seguinte) -- nome
+# citado literalmente pelo prompt do checkpoint. Usada por
+# upload_tech_specs_backend.TechSpecsAutomation.safe_send_keys_elem e
+# upload_conditions_backend.UploadAutomation.processar_lista (dança de TABs
+# de Temperatura/Umidade, 4 ocorrências).
+PAUSA_DIGITACAO = 0.2
+
+# Pausa um pouco maior que PAUSA_DIGITACAO, usada especificamente depois de
+# enviar o VALOR numérico (temperatura/umidade) e antes do próximo TAB --
+# valor sempre 0.3s no original, distinto do 0.2s de PAUSA_DIGITACAO. Usada
+# só por upload_conditions_backend.UploadAutomation.processar_lista (4
+# ocorrências).
+PAUSA_ENTRE_CAMPOS = 0.3
+
+# --- Família "tabela/lista" --------------------------------------------------
+# Depois de pesquisar/ENTER num campo de busca, a tabela/lista de
+# resultados recarrega -- nome citado literalmente pelo prompt do
+# checkpoint. Usada só por
+# upload_ficha_duplicada.InjetorFichaAlvo._associar_documentos (depois de
+# pesquisar o nome do documento a associar).
+PAUSA_RECARGA_TABELA = 2
+
+# Depois de entrar numa aba/seção pela primeira vez, as LINHAS da tabela
+# ainda estão carregando (o container pode já estar visível antes das
+# linhas existirem) -- distinto de PAUSA_RECARGA_TABELA (que é depois de
+# uma BUSCA, não da abertura inicial da aba). Usada por
+# upload_tech_specs_backend.TechSpecsAutomation.processar_lista e
+# upload_ficha_duplicada.InjetorFichaAlvo._limpar_caracteristicas_tecnicas
+# -- mesma aba "Características técnicas", mesmo valor no original.
+PAUSA_CARGA_TABELA = 2
+
+# Depois de clicar no botão "página seguinte", antes de ler as novas
+# linhas. Usada por upload_tech_specs_backend.TechSpecsAutomation.
+# processar_lista e upload_ficha_duplicada.InjetorFichaAlvo.
+# _limpar_caracteristicas_tecnicas -- mesma tabela de características
+# técnicas, mesmo valor no original.
+PAUSA_PAGINACAO = 3
+
+# Depois de navegar (via `driver.get`) direto para a lista de fichas, antes
+# de localizar o campo de pesquisa -- equivalente ao `time.sleep(3)` de
+# `PMIBPortal.ir_para_lista` (CP 2.2, fora de escopo aqui), mas para o
+# único fluxo que NÃO passa por `pesquisar_e_abrir`/`ir_para_lista`:
+# cria_fichas_no_pmib_v1_backend.AutomacaoPMIB.atualizar_projeto_em_massa
+# (a "6ª variante" de pesquisar+lápis não migrada para `PMIBPortal`, ver
+# docs/refatoracao/PENDENCIAS.md do CP 2.2).
+PAUSA_CARGA_LISTA = 2
+
+# --- Família "abertura de aba/seção/modal/ficha" ----------------------------
+# Depois de clicar no BOTÃO de uma aba de nível superior (ex.: "Aplicação -
+# LMR"), espera o conteúdo da aba renderizar. Usada por
+# apagar_lmr_backend.ApagarLMRAutomation.executar_limpeza e
+# lmr_backend.LMRAutomation.processar_lista -- MESMO XPath
+# (`//*[@id="b10-ApplicationMRL"]/button`), mesma ação, mesmo valor.
+PAUSA_ABERTURA_ABA = 2
+
+# Depois de clicar no cabeçalho de uma seção "sanfona" (Condições), espera
+# ela abrir/expandir completamente -- comentário ORIGINAL: "Tempo para a
+# sanfona abrir completamente". Usada só por upload_ficha_duplicada.py, nos
+# dois sentidos (leitura em ExtratorFichaBase._ler_condicoes e escrita em
+# InjetorFichaAlvo._preencher_condicoes).
+PAUSA_ABERTURA_SECAO = 1.5
+
+# Depois de trocar para uma SUB-aba já dentro de uma seção aberta
+# (Transporte/Manutenção/Descarte dentro de Condições), espera os campos
+# daquela sub-aba renderizarem -- distinto de PAUSA_ABERTURA_SECAO (que é
+# abrir a seção inteira pela 1ª vez). Usada só por
+# upload_ficha_duplicada.py, nos dois sentidos (leitura e escrita).
+PAUSA_TROCA_SUBABA = 1
+
+# Depois de clicar num botão que abre um modal/painel novo (ex.: "Associar
+# documentos"), espera ele aparecer antes de pesquisar dentro dele. Usada
+# só por upload_ficha_duplicada.InjetorFichaAlvo._associar_documentos --
+# também referenciada (só em comentário, sem efeito funcional) no trecho
+# desabilitado de `_upload_imagens`, já comentado ANTES deste checkpoint
+# (ver docs/refatoracao/PENDENCIAS.md).
+PAUSA_ABERTURA_MODAL = 1
+
+# Depois de clicar em "Nova Ficha", espera o formulário novo (modal
+# completo, mais pesado que uma aba simples) terminar de renderizar --
+# mesma família de evento citada como exemplo pelo prompt do checkpoint
+# ("depois de clicar no lápis, ficha abre"; aqui o gatilho é "Nova Ficha",
+# não o lápis de edição, mas o propósito -- esperar uma ficha/formulário
+# abrir -- é o mesmo). Usada só por cria_fichas_no_pmib_v1_backend.
+# AutomacaoPMIB.processar_item_individual. Valor grande (5s) sem
+# comentário original explicando o motivo exato -- ver
+# docs/refatoracao/PENDENCIAS.md para validação futura contra o portal
+# real.
+PAUSA_ABERTURA_FICHA = 5
+
+# Antes de clicar em "Nova Ficha", ao iniciar o processamento de CADA item
+# do lote -- dá tempo da lista (para onde o item anterior navegou de
+# volta, via `driver.get` sem nenhuma espera) ficar pronta para a próxima
+# interação. Usada só por cria_fichas_no_pmib_v1_backend.AutomacaoPMIB.
+# processar_item_individual (início da função).
+PAUSA_INICIO_ITEM = 1.5
+
+# --- Família "salvar/confirmar" ---------------------------------------------
+# Depois de confirmar/salvar (clique em Salvar/Confirmar/"+"), servidor
+# processa -- nome citado literalmente pelo prompt do checkpoint. Usada por
+# lmr_backend.py (Salvar + Confirmar do formulário de TAGs em
+# `_processar_ficha_lmr_interna`), upload_conditions_backend.
+# UploadAutomation.safe_save_with_pause (Salvar de cada uma das 4 abas de
+# Condições) e upload_ficha_duplicada.InjetorFichaAlvo.
+# _adicionar_fornecedores (clique no "+" que insere cada fornecedor).
+PAUSA_SALVAMENTO = 1
+
+# Variante mais longa de PAUSA_SALVAMENTO, para o Salvar de cada sub-aba de
+# Condições ao INJETAR dados na ficha alvo -- valor já era 1,5s (não 1s) no
+# original. Usada só por
+# upload_ficha_duplicada.InjetorFichaAlvo._preencher_condicoes (comentário
+# original: "Aguarda o salvamento processar").
+PAUSA_SALVAMENTO_LONGA = 1.5
+
+# Variante mais longa ainda, para o Salvar FINAL/definitivo de
+# `atualizar_projeto_em_massa` (aguarda mensagem de sucesso) -- comentário
+# original: "Aguarda a mensagem de sucesso ou salvamento processar". Usada
+# só por cria_fichas_no_pmib_v1_backend.AutomacaoPMIB.
+# atualizar_projeto_em_massa.
+PAUSA_SALVAMENTO_FINAL = 3
+
+# Pausa de segurança usada SÓ quando um clique de Salvar falha e não há
+# `callback_pause` disponível para travar a execução interativamente (sem
+# esse callback, não há como pedir intervenção do usuário) -- comentário
+# original: "Fallback caso falte o callback". Usada só por
+# upload_conditions_backend.UploadAutomation.safe_save_with_pause.
+PAUSA_FALLBACK_SALVAMENTO = 5
+
+# Depois de excluir e confirmar uma linha (lixeira + CONFIRMAR), espera a
+# tabela atualizar -- comentário original: "Pausa para refresh da tabela".
+# Usada só por apagar_lmr_backend.ApagarLMRAutomation.executar_limpeza
+# (distinto do sleep ELIMINADO na mesma função -- ver nota no topo desta
+# seção -- e de `PMIBPortal.excluir_linha_com_confirmacao`, que já usa
+# 2,5s, fora de escopo do CP 2.3).
+PAUSA_POS_EXCLUSAO = 1.5
+
+# --- Família "busca/filtro (autocomplete)" ----------------------------------
+# Depois de digitar o texto de busca do PDM, antes de confirmar com ENTER
+# -- dá tempo do autocomplete filtrar. Usada só por
+# cria_fichas_no_pmib_v1_backend.AutomacaoPMIB.processar_item_individual.
+PAUSA_FILTRO_PDM = 1
+
+# Mesma ideia de PAUSA_FILTRO_PDM (autocomplete/AJAX), mas para o campo de
+# busca de Fabricante (componente VSComp) -- comentário original: "Pausa
+# levemente maior para dar tempo de o OutSystems filtrar os resultados
+# AJAX". Usada só por
+# upload_ficha_duplicada.InjetorFichaAlvo._adicionar_fornecedores.
+PAUSA_FILTRO_FORNECEDOR = 1.5
+
+# --- Família "auditoria/injeção JS" (upload_tech_specs) ---------------------
+# Depois de preencher e clicar fora (blur) de um campo numérico, antes de
+# ler o valor de volta para auditar se o site aceitou -- propósito
+# ESPECÍFICO (a leitura seguinte depende deste tempo), não a pausa
+# genérica de PAUSA_ANIMACAO (mesmo valor, propósito diferente). Usada só
+# por upload_tech_specs_backend.TechSpecsAutomation.
+# _preencher_input_com_auditoria.
+PAUSA_AUDITORIA = 0.5
+
+# Depois que a auditoria acima detecta que o site rejeitou o valor, antes
+# de tentar a injeção forçada via JavaScript -- comentário original: "Dá
+# tempo para o usuário ver na tela e o JS do site assentar". Usada só por
+# upload_tech_specs_backend.TechSpecsAutomation._preencher_input_com_auditoria.
+PAUSA_INJECAO_JS = 1.5
+
+# Depois da injeção forçada via JavaScript, antes de auditar o resultado
+# pela 2ª vez -- comentário original: "Pausa maior após a injeção para
+# validar o resultado". Usada só por upload_tech_specs_backend.
+# TechSpecsAutomation._preencher_input_com_auditoria.
+PAUSA_POS_INJECAO_JS = 1.0
+
+# --- Família "download/upload de arquivo" -----------------------------------
+# Intervalo de cada iteração do polling manual que espera um arquivo
+# baixado pelo Chrome aparecer na pasta temporária (não é um elemento DOM;
+# não dá pra usar `wait.until` do engine aqui). Usada só por
+# upload_ficha_duplicada.ExtratorFichaBase._esperar_download_e_renomear.
+PAUSA_POLL_DOWNLOAD = 1
+
+# Depois de enviar o caminho do arquivo para o input do FilePond, espera a
+# barra de progresso do upload processar. Usada só por
+# upload_ficha_duplicada.InjetorFichaAlvo._upload_imagens.
+PAUSA_UPLOAD_ARQUIVO = 3
+
+# --- Família "retry" (IA e arquivo bloqueado -- NÃO é sincronização de
+#     RPA/navegador, mas o sleep vive dentro de um dos 6 arquivos-alvo) ----
+# Espera entre tentativas de retry de uma chamada de IA (Gemini) que
+# falhou. Variante CURTA (2s). Usada só por upload_tech_specs_backend.
+# TechSpecsProcessor._chamar_gemini_specs.
+PAUSA_RETRY_IA_CURTA = 2
+
+# Mesma ideia de PAUSA_RETRY_IA_CURTA, variante LONGA (30s, backoff
+# deliberado) -- comentário original: "Aguardando 30 segundos antes da
+# próxima tentativa...". Usada só por upload_conditions_backend.
+# ConditionsProcessor.processar_ia_lote.
+PAUSA_RETRY_IA_LONGA = 30
+
+# Espera antes de tentar salvar de novo um Excel de status bloqueado
+# (arquivo aberto) -- retry AUTOMÁTICO sem limite de tentativas; é I/O de
+# Excel, não sincronização de navegador. Usada só por
+# upload_ficha_duplicada.AtualizadorStatusPMIB.atualizar_ficha_concluida
+# (via `locking.save_with_retry`).
+PAUSA_RETRY_ARQUIVO_BLOQUEADO = 5
+
+# Depois do 1º Salvar da ficha nova, espera o portal gerar e exibir o novo
+# CÓDIGO PMIB -- comentário original: "Aumentado de 3 para 6 segundos para
+# cobrir a latência da 1ª ficha" (valor empírico; ver
+# docs/refatoracao/PENDENCIAS.md para validação futura contra o portal
+# real). Usada só por cria_fichas_no_pmib_v1_backend.AutomacaoPMIB.
+# processar_item_individual.
+PAUSA_GERACAO_PMIB = 6
+
+# --- Família "navegação de retorno" (lmr) -----------------------------------
+# Antes e depois de clicar no controle de "voltar para a lista" ao fim do
+# processamento de uma ficha. Usada só por lmr_backend.LMRAutomation.
+# processar_lista (2 ocorrências: antes e depois do clique).
+PAUSA_RETORNO_LISTA = 1
 
 
 class PMIBPortal:
