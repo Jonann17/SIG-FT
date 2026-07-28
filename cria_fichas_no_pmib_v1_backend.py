@@ -27,7 +27,23 @@ from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
 # de linha inteira + classe de ícone `fa-pencil-square-o`) -- migrar isso
 # exigiria autorizar um seletor não revisado, fora do escopo conservador
 # deste checkpoint; ver docs/refatoracao/PENDENCIAS.md.
-from sigft.core.rpa.portal import PMIBPortal
+#
+# CP 2.3 (Fase 2): os 25 `time.sleep(<literal>)` do arquivo (o "TAB dance"
+# de `processar_item_individual` e os sleeps de
+# `atualizar_projeto_em_massa`) viram constantes nomeadas (nenhum
+# eliminado) -- ver docs/refatoracao/PLANO_REFATORACAO.md Fase 2 -> CP 2.3.
+from sigft.core.rpa.portal import (
+    PMIBPortal,
+    PAUSA_ABERTURA_FICHA,
+    PAUSA_ANIMACAO,
+    PAUSA_CARGA_LISTA,
+    PAUSA_FILTRO_PDM,
+    PAUSA_FOCO,
+    PAUSA_GERACAO_PMIB,
+    PAUSA_INICIO_ITEM,
+    PAUSA_MUDANCA_FOCO,
+    PAUSA_SALVAMENTO_FINAL,
+)
 
 
 class DataManager:
@@ -310,33 +326,33 @@ class AutomacaoPMIB:
 
         try:
             # 1. Clicar em Nova Ficha
-            time.sleep(1.5)
+            time.sleep(PAUSA_INICIO_ITEM)
             locator_nova_ficha = (By.XPATH, '//*[@id="b1-Actions"]/button')
             self.wait.until(EC.element_to_be_clickable(locator_nova_ficha)).click()
 
             # 2. Preencher PDM (LÓGICA ATUALIZADA - CLIQUE NA DIV)
-            time.sleep(5)
+            time.sleep(PAUSA_ABERTURA_FICHA)
             # Clica na div container, não no input direto
             locator_div_pdm = (By.XPATH, '//div[@data-tooltip="Pesquisar PDM"]')
             div_pdm = self.wait.until(EC.element_to_be_clickable(locator_div_pdm))
             div_pdm.click()
 
-            time.sleep(1.5)  # Espera foco mudar
+            time.sleep(PAUSA_MUDANCA_FOCO)  # Espera foco mudar
 
             # Pega o input que ganhou o foco automaticamente
             campo_pdm_input = self.driver.switch_to.active_element
             campo_pdm_input.send_keys(pdm)
-            time.sleep(1)
+            time.sleep(PAUSA_FILTRO_PDM)
             campo_pdm_input.send_keys(Keys.ENTER)
 
             # 3. Preencher Contrato
             locator_contrato = (By.XPATH, '//*[@id="b10-ContractDropdownSearch"]')
             self.wait.until(EC.element_to_be_clickable(locator_contrato)).click()
-            time.sleep(1)
+            time.sleep(PAUSA_FOCO)
 
             elm_ativo = self.driver.switch_to.active_element
             elm_ativo.send_keys(Keys.TAB)
-            time.sleep(0.5)
+            time.sleep(PAUSA_ANIMACAO)
 
             elm_ativo_final = self.driver.switch_to.active_element
             elm_ativo_final.send_keys(Keys.ENTER)
@@ -346,7 +362,7 @@ class AutomacaoPMIB:
             self.wait.until(EC.element_to_be_clickable(locator_salvar_1)).click()
 
             # 5. Capturar Código PMIB
-            time.sleep(6)  # Aumentado de 3 para 6 segundos para cobrir a latência da 1ª ficha
+            time.sleep(PAUSA_GERACAO_PMIB)  # Aumentado de 3 para 6 segundos para cobrir a latência da 1ª ficha
             locator_cod = (By.XPATH, '//*[@id="b8-b1-Content"]/span')
             elemento_pmib = self.wait.until(EC.visibility_of_element_located(locator_cod))
             codigo_pmib = str(elemento_pmib.text).strip().split(" ")[0]
@@ -355,40 +371,40 @@ class AutomacaoPMIB:
             locator_proj = (By.XPATH, '//*[@id="b10-b9-TextArea_ProjectCode"]')
             # Mudado para esperar o campo ficar clicável, não apenas visível
             campo_proj = self.wait.until(EC.element_to_be_clickable(locator_proj))
-            time.sleep(1)  # Pausa extra estabilizadora
+            time.sleep(PAUSA_FOCO)  # Pausa extra estabilizadora
             campo_proj.click()  # Crava o foco no campo antes de digitar
             campo_proj.send_keys(cod_projeto)
 
             # 7. Descrição Breve (Via TAB)
             campo_proj.send_keys(Keys.TAB)
-            time.sleep(0.5)
+            time.sleep(PAUSA_ANIMACAO)
             self.driver.switch_to.active_element.send_keys(desc_curta)
 
             # 8. Origem (3 Tabs)
             self.driver.switch_to.active_element.send_keys(Keys.TAB, Keys.TAB, Keys.TAB)
-            time.sleep(0.5)
+            time.sleep(PAUSA_ANIMACAO)
             campo_origem = self.driver.switch_to.active_element
             campo_origem.send_keys(Keys.ENTER)
-            time.sleep(0.5)
+            time.sleep(PAUSA_ANIMACAO)
             char_origem = "i" if origem and origem.lower() == 'importado' else "n"
             campo_origem.send_keys(char_origem, Keys.ENTER)
 
             # 9. Tipo (1 Tab)
             self.driver.switch_to.active_element.send_keys(Keys.TAB)
-            time.sleep(0.5)
+            time.sleep(PAUSA_ANIMACAO)
             campo_tipo = self.driver.switch_to.active_element
             campo_tipo.send_keys(Keys.ENTER)
-            time.sleep(0.5)
+            time.sleep(PAUSA_ANIMACAO)
             char_tipo = "n" if tipo and tipo.lower() == 'não reparável' else "r"
             campo_tipo.send_keys(char_tipo, Keys.ENTER)
 
             # 10. Unidade (1 Tab)
             self.driver.switch_to.active_element.send_keys(Keys.TAB)
-            time.sleep(1.5)
+            time.sleep(PAUSA_MUDANCA_FOCO)
 
             div_unidade = self.driver.switch_to.active_element
             div_unidade.send_keys(Keys.ENTER)
-            time.sleep(1.5)
+            time.sleep(PAUSA_MUDANCA_FOCO)
 
             campo_unidade = self.driver.switch_to.active_element
             u_l = unidade.lower() if unidade else "unidade"
@@ -399,19 +415,19 @@ class AutomacaoPMIB:
             elif u_l in ('conjunto', 'cj'): u_keys = 'cj'
 
             campo_unidade.send_keys(u_keys, Keys.ENTER)
-            time.sleep(1)
+            time.sleep(PAUSA_FOCO)
 
             # 11. Fabricação (5 Tabs)
             self.driver.switch_to.active_element.send_keys(Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB)
-            time.sleep(0.5)
+            time.sleep(PAUSA_ANIMACAO)
             campo_fab = self.driver.switch_to.active_element
             campo_fab.send_keys(Keys.ENTER)
-            time.sleep(1.0)
+            time.sleep(PAUSA_FOCO)
 
             campo_fab_in = self.driver.switch_to.active_element
             char_fab = "e" if tipo_fabricacao and tipo_fabricacao.lower() == 'especial' else "s"
             campo_fab_in.send_keys(char_fab, Keys.ENTER)
-            time.sleep(0.5)
+            time.sleep(PAUSA_ANIMACAO)
 
             # 12. Salvar Final
             locator_salvar_2 = (By.XPATH, '//*[@id="b10-b9-Form1"]/div[6]/button[1]')
@@ -440,7 +456,7 @@ class AutomacaoPMIB:
         try:
             # 1. Garante que está na tela inicial da lista
             self.driver.get('https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList')
-            time.sleep(2)
+            time.sleep(PAUSA_CARGA_LISTA)
 
             # 2. Localiza a barra de pesquisa principal (usando contains para ignorar prefixos dinâmicos do OutSystems)
             locator_pesquisa = (By.XPATH, "//input[contains(@id, 'InputDatasheetFilter')]")
@@ -449,7 +465,7 @@ class AutomacaoPMIB:
             # Limpa o campo de forma mais agressiva (OutSystems às vezes ignora o .clear() simples)
             campo_pesquisa.send_keys(Keys.CONTROL + "a")
             campo_pesquisa.send_keys(Keys.DELETE)
-            time.sleep(0.5)
+            time.sleep(PAUSA_ANIMACAO)
 
             campo_pesquisa.send_keys(pmib)
             campo_pesquisa.send_keys(Keys.ENTER)
@@ -470,24 +486,24 @@ class AutomacaoPMIB:
 
             # Mantemos apenas essa micro-pausa de 0.5s porque o OutSystems tem
             # uma animação de "deslizar" a tela que às vezes rouba o foco do clique
-            time.sleep(0.5)
+            time.sleep(PAUSA_ANIMACAO)
             campo_proj.click()
 
             # Como o campo já tem texto, precisamos limpá-lo antes de digitar
             # (O send_keys(Keys.CONTROL + "a") seguido de DELETE é mais robusto que o .clear() no Selenium em campos Textarea)
             campo_proj.send_keys(Keys.CONTROL + "a")
             campo_proj.send_keys(Keys.DELETE)
-            time.sleep(0.5)
+            time.sleep(PAUSA_ANIMACAO)
 
             campo_proj.send_keys(novo_codigo_projeto)
 
             # 5. Clicar em Salvar (Mesmo XPath do salvar final da criação)
-            time.sleep(1)
+            time.sleep(PAUSA_FOCO)
             locator_salvar_2 = (By.XPATH, '//*[@id="b10-b9-Form1"]/div[6]/button[1]')
             self.wait.until(EC.element_to_be_clickable(locator_salvar_2)).click()
 
             # Aguarda a mensagem de sucesso ou salvamento processar (adapte se tiver um popup)
-            time.sleep(3)
+            time.sleep(PAUSA_SALVAMENTO_FINAL)
             return "SUCESSO", "Salvo."
 
         except Exception as e:
