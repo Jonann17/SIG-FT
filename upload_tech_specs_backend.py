@@ -3,7 +3,6 @@ import re
 import json
 import time
 import pandas as pd
-import google.generativeai as genai
 import unicodedata
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -29,6 +28,10 @@ from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
 # CP 2.3 (Fase 2): os 10 `time.sleep(<literal>)` do arquivo viram
 # constantes nomeadas (nenhum eliminado) -- ver
 # docs/refatoracao/PLANO_REFATORACAO.md Fase 2 -> CP 2.3.
+# CP 3.1 (Fase 3): `PAUSA_RETRY_IA_CURTA` REMOVIDA deste import -- o retry de
+# IA (e o sleep entre tentativas) agora vive dentro de `LLMClient` (ver
+# `sigft.core.llm.client.get_llm`); a constante continua existindo em
+# `portal.py` (intocada), só este import é que fica sem uso dela.
 from sigft.core.rpa.portal import (
     PMIBPortal,
     PAUSA_ANIMACAO,
@@ -38,9 +41,12 @@ from sigft.core.rpa.portal import (
     PAUSA_INJECAO_JS,
     PAUSA_PAGINACAO,
     PAUSA_POS_INJECAO_JS,
-    PAUSA_RETRY_IA_CURTA,
     PAUSA_SCROLL,
 )
+# CP 3.1 (Fase 3): `google.generativeai` deixou de ser importado aqui --
+# `TechSpecsProcessor._chamar_gemini_specs` abaixo delega para `LLMClient`/
+# `GeminiProvider` (ÚNICO lugar do projeto que importa `genai`).
+from sigft.core.llm.client import get_llm
 
 
 # =============================================================================
@@ -55,8 +61,10 @@ class TechSpecsProcessor:
         # (upload_conditions_backend.py); ver docstring de
         # `PMIBPortal.__init__` e docs/refatoracao/PENDENCIAS.md.
         self.portal = PMIBPortal()
-        if self.api_key:
-            genai.configure(api_key=self.api_key, transport='rest')
+        # CP 3.1: `genai.configure(...)` sai daqui -- agora vive dentro de
+        # `GeminiProvider` (chamado por `get_llm`), com o MESMO guard ("só
+        # configura se api_key for truthy").
+        self._llm = get_llm("tech_specs", api_key)
 
     def solicitar_parada(self):
         self.portal.solicitar_parada()
@@ -94,16 +102,10 @@ class TechSpecsProcessor:
             return df.iloc[header_idx + 1:].reset_index(drop=True)
         return pd.DataFrame()
 
-    def _limpar_json_ia(self, texto):
-        if not texto: return None
-        # Remove marcadores de código e espaços
-        texto = texto.replace("```json", "").replace("```", "").strip()
-        # Garante que começa e termina com colchetes (lista JSON)
-        inicio = texto.find('[')
-        fim = texto.rfind(']')
-        if inicio != -1 and fim != -1:
-            return texto[inicio: fim + 1]
-        return texto
+    # CP 3.1: `_limpar_json_ia` REMOVIDO -- a limpeza/parse do JSON da
+    # resposta agora é responsabilidade única de
+    # `sigft.core.llm.client._limpar_e_parsear_json` (chamada internamente
+    # por `LLMClient.generate()`, usado em `_chamar_gemini_specs` abaixo).
 
     # --- LÓGICA PRINCIPAL DE PREPARAÇÃO ---
     def preparar_dados_ia(self, lista_arquivos, path_status, path_master, processar_completos=False, callback_log=None):
@@ -305,41 +307,28 @@ class TechSpecsProcessor:
         {json.dumps(contexto_json, indent=2, ensure_ascii=False)}
         """
 
-        safety_settings = {
-            'HATE_SPEECH': 'BLOCK_NONE',
-            'HARASSMENT': 'BLOCK_NONE',
-            'SEXUALLY_EXPLICIT': 'BLOCK_NONE',
-            'DANGEROUS': 'BLOCK_NONE'
-        }
-
-        # Lógica de Retry
-        for i in range(3):
-            try:
-                # --- CORREÇÃO IMPORTANTE: generation_config PARA JSON ---
-                model = genai.GenerativeModel(
-                    'gemini-3.5-flash',
-                    system_instruction=system_instruction,
-                    safety_settings=safety_settings,
-                    generation_config={"response_mime_type": "application/json"},
-                )
-
-                resp = model.generate_content(prompt_user)
-
-                # Debug do texto bruto se falhar
-                clean_json = self._limpar_json_ia(resp.text)
-
-                if not clean_json:
-                    if callback_log: callback_log(f"Retry {i+1}: IA retornou texto vazio.")
-                    continue
-
-                return json.loads(clean_json)
-
-            except Exception as e:
-                # Loga o erro real (400, 403, 429, 500)
-                if callback_log: callback_log(f"Retry {i+1} Error: {e}")
-                time.sleep(PAUSA_RETRY_IA_CURTA)
-
-        return None
+        # CP 3.1: `safety_settings` (BLOCK_NONE) e o laço de retry (3
+        # tentativas, 2s entre elas) saem daqui -- `safety_settings` agora
+        # vive dentro de `GeminiProvider` (aplicado a TODA chamada, ver
+        # docs/refatoracao/PENDENCIAS.md); retry + limpeza/parse do JSON
+        # (`generation_config={"response_mime_type": "application/json"}`
+        # via `json_mode=True`) agora vivem dentro de `LLMClient.generate()`
+        # (`self._llm`, resolvido em `__init__` via
+        # `get_llm("tech_specs", ...)`). Preserva o `return None` em falha
+        # total -- só os logs GRANULARES por tentativa ("Retry N: IA
+        # retornou texto vazio.", "Retry N Error: ...") deixam de existir
+        # (perda de granularidade aceita, ver PENDENCIAS.md).
+        try:
+            resp = self._llm.generate(
+                prompt_user,
+                system=system_instruction,
+                json_mode=True,
+                tags={"modulo": "upload_tech_specs_backend", "tarefa": "tech_specs"},
+            )
+            return resp.parsed_json
+        except Exception as e:
+            if callback_log: callback_log(f"Erro ao chamar IA: {e}")
+            return None
 
 
 # =============================================================================

@@ -1,6 +1,5 @@
 import pandas as pd
 import openpyxl
-import google.generativeai as genai
 import json
 import time
 import re
@@ -12,6 +11,11 @@ from selenium.webdriver.support import expected_conditions as EC
 
 from sigft import config
 from sigft.core.excel import headers, locking
+# CP 3.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 3): `google.generativeai`
+# deixou de ser importado aqui -- `GeminiCategorizer.processar_lote` abaixo
+# delega para `LLMClient`/`GeminiProvider` (ÚNICO lugar do projeto que
+# importa `genai`).
+from sigft.core.llm.client import get_llm
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em
 # `AutomacaoPMIB.iniciar_driver` abaixo.
@@ -138,9 +142,13 @@ class DataManager:
 class GeminiCategorizer:
     def __init__(self, api_key):
         self.api_key = api_key
-        if self.api_key:
-            genai.configure(api_key=self.api_key, transport='rest')
-        else:
+        # CP 3.1: genai.configure(...) sai daqui -- agora vive dentro de
+        # GeminiProvider (chamado por get_llm), com o MESMO guard ("só
+        # configura se api_key for truthy"). O aviso em stdout continua
+        # (é só um print, não chama genai) -- mesmo comportamento
+        # observável de hoje quando a chave está ausente.
+        self._llm = get_llm("categorizar_pdm", api_key)
+        if not self.api_key:
             print("AVISO: Nenhuma API Key fornecida.")
 
     def _formatar_itens(self, df):
@@ -159,8 +167,10 @@ class GeminiCategorizer:
         return texto
 
     def processar_lote(self, df_itens, lista_pdms, instrucoes):
+        # CP 3.1: `model = genai.GenerativeModel(...)` sai daqui -- a
+        # resolução de modelo/provider agora é responsabilidade de
+        # `self._llm` (`get_llm("categorizar_pdm", ...)`, ver `__init__`).
         if not self.api_key: raise ValueError("API Key não configurada.")
-        model = genai.GenerativeModel('gemini-3.1-pro-preview')
         itens_texto = self._formatar_itens(df_itens)
 
         prompt_template = f"""
@@ -265,17 +275,18 @@ class GeminiCategorizer:
 
         Responda APENAS com a lista JSON. Não inclua texto antes ou depois.
         """
+        # CP 3.1: SEM retry (política de `categorizar_pdm`: `max_retries=0`,
+        # 1 tentativa só -- mesmo comportamento de hoje) e limpeza/parse do
+        # JSON delegados a `LLMClient.generate()` (`_limpar_e_parsear_json`,
+        # que substitui a busca de `[`...`]` + fallback frágil de slice
+        # deste método). Preserva o `raise Exception(f"Erro na IA: {e}")`
+        # (wrapping) em qualquer falha, exatamente como hoje.
         try:
-            response = model.generate_content(prompt_template)
-            texto_bruto = response.text
-            inicio = texto_bruto.find('[')
-            fim = texto_bruto.rfind(']')
-            if inicio != -1 and fim != -1:
-                return json.loads(texto_bruto[inicio: fim + 1])
-            else:
-                clean = texto_bruto.strip()
-                if clean.startswith("```json"): clean = clean[7:-3].strip()
-                return json.loads(clean)
+            resp = self._llm.generate(
+                prompt_template,
+                tags={"modulo": "cria_fichas_no_pmib_v1_backend", "tarefa": "categorizar_pdm"},
+            )
+            return resp.parsed_json
         except Exception as e:
             raise Exception(f"Erro na IA: {e}")
 

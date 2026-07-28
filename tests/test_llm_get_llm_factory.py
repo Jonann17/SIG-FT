@@ -1,0 +1,147 @@
+r"""
+Testes do Checkpoint 3.1 — `sigft.core.llm.client.get_llm()` (fábrica).
+
+Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.1. Cobre
+especificamente a DECISÃO deste checkpoint (registrada em
+docs/refatoracao/PENDENCIAS.md): `get_llm(tarefa, api_key)` resolve o modelo
+via `config.LLM_MODELOS_HOJE` — NÃO via `config.LLM_TASKS` (que contém os
+modelos DECIDIDOS/alvo, reservados para o CP 3.3) — e a política de
+retry/rate-limit resultante bate com a tabela do checkpoint (`max_retries`,
+`retry_sleep_seconds`, `min_interval_seconds` por tarefa).
+"""
+import pytest
+
+from sigft import config
+from sigft.core.llm.client import LLMClient, get_llm
+from sigft.core.llm.providers.gemini import GeminiProvider
+
+
+# =============================================================================
+# Resolução de modelo/provider -- via LLM_MODELOS_HOJE, NÃO via LLM_TASKS.
+# =============================================================================
+@pytest.mark.parametrize(
+    "tarefa,provider_esperado,modelo_esperado",
+    [
+        # Valores == config.LLM_MODELOS_HOJE (baseline de equivalência do
+        # CP 3.1 -- ver test_config.py:test_llm_modelos_hoje_preserva_os_...).
+        ("categorizar_pdm", "gemini", "gemini-3.1-pro-preview"),
+        ("validar_ficha", "gemini", "gemini-3.1-pro-preview"),
+        ("condicoes", "gemini", "gemini-3.5-flash"),
+        ("tech_specs", "gemini", "gemini-3.5-flash"),
+        ("autospec", "gemini", "gemini-3.1-pro-preview"),
+    ],
+)
+def test_get_llm_resolve_modelo_das_5_tarefas_via_llm_modelos_hoje(
+    tarefa, provider_esperado, modelo_esperado
+):
+    llm = get_llm(tarefa, None)
+
+    assert isinstance(llm, LLMClient)
+    assert llm.provider_name == provider_esperado
+    assert llm.model == modelo_esperado
+    # Prova DECISIVA de que a fonte é LLM_MODELOS_HOJE, não LLM_TASKS: os 2
+    # dicts concordam em provider/model para estas 5 tarefas (ver
+    # `config.py`), então também confirmamos aqui que bate com
+    # LLM_MODELOS_HOJE literalmente (não é coincidência de valor igual).
+    assert llm.model == config.LLM_MODELOS_HOJE[tarefa]["model"]
+    assert llm.provider_name == config.LLM_MODELOS_HOJE[tarefa]["provider"]
+
+
+def test_get_llm_categorizar_pdm_nao_usa_llm_tasks_grok(monkeypatch):
+    # `config.LLM_TASKS["categorizar_pdm"]` aponta para provider "xai"
+    # (Grok 4.5) -- NÃO implementado neste checkpoint. Se `get_llm` lesse
+    # `LLM_TASKS` em vez de `LLM_MODELOS_HOJE`, esta chamada levantaria
+    # `NotImplementedError` (só PROVIDER_GEMINI está implementado no CP
+    # 3.1). O fato de ter SUCESSO, com o modelo Gemini de hoje, é a prova
+    # decisiva de que a fonte é `LLM_MODELOS_HOJE`.
+    assert config.LLM_TASKS["categorizar_pdm"]["provider"] == "xai"  # pré-condição do teste
+
+    llm = get_llm("categorizar_pdm", None)
+
+    assert llm.provider_name == "gemini"
+    assert llm.model == "gemini-3.1-pro-preview"
+
+
+def test_get_llm_le_llm_modelos_hoje_ao_vivo_nao_llm_tasks(monkeypatch):
+    # Monkeypatch de UM valor dentro de LLM_MODELOS_HOJE (restaurado
+    # automaticamente ao fim do teste) -- confirma que `get_llm` lê o dict
+    # DE VERDADE (não uma cópia congelada em import-time), e que o valor
+    # (propositalmente diferente do que está em LLM_TASKS) se reflete no
+    # `LLMClient` resolvido.
+    monkeypatch.setitem(config.LLM_MODELOS_HOJE["condicoes"], "model", "modelo-fake-de-teste")
+
+    llm = get_llm("condicoes", None)
+
+    assert llm.model == "modelo-fake-de-teste"
+    assert config.LLM_TASKS["condicoes"]["model"] != "modelo-fake-de-teste"  # LLM_TASKS intocado
+
+
+def test_get_llm_provider_resolvido_e_uma_instancia_de_geminiprovider():
+    llm = get_llm("condicoes", None)
+
+    # Acesso ao atributo "privado" só para confirmar QUAL classe de
+    # provider foi instanciada por dentro de get_llm() -- não faz parte do
+    # contrato público de LLMClient, só uma checagem de integração.
+    assert isinstance(llm._provider, GeminiProvider)  # noqa: SLF001
+
+
+# =============================================================================
+# Tarefa desconhecida -- ValueError claro.
+# =============================================================================
+def test_get_llm_tarefa_desconhecida_levanta_value_error_claro():
+    with pytest.raises(ValueError, match="tarefa_que_nao_existe"):
+        get_llm("tarefa_que_nao_existe", None)
+
+
+def test_get_llm_erro_lista_as_tarefas_validas_de_llm_modelos_hoje():
+    with pytest.raises(ValueError) as exc_info:
+        get_llm("bogus", None)
+
+    mensagem = str(exc_info.value)
+    for tarefa in config.LLM_MODELOS_HOJE:
+        assert tarefa in mensagem
+
+
+# =============================================================================
+# Política de retry/rate-limit por tarefa (tabela do checkpoint).
+# =============================================================================
+@pytest.mark.parametrize(
+    "tarefa,max_retries,retry_sleep_seconds,min_interval_seconds",
+    [
+        ("categorizar_pdm", 0, 0, None),
+        ("validar_ficha", 2, 5, 60),
+        ("condicoes", 2, 30, None),
+        ("tech_specs", 2, 2, None),
+        ("autospec", 2, 5, 60),
+    ],
+)
+def test_get_llm_politica_de_retry_por_tarefa(
+    tarefa, max_retries, retry_sleep_seconds, min_interval_seconds
+):
+    llm = get_llm(tarefa, None)
+
+    assert llm.max_retries == max_retries
+    assert llm.retry_sleep_seconds == retry_sleep_seconds
+    assert llm.min_interval_seconds == min_interval_seconds
+
+
+def test_get_llm_todas_as_tarefas_de_llm_modelos_hoje_tem_politica_definida():
+    # Invariante: nenhuma tarefa de LLM_MODELOS_HOJE pode ficar sem política
+    # de retry (get_llm quebraria com KeyError ao tentar resolver).
+    for tarefa in config.LLM_MODELOS_HOJE:
+        get_llm(tarefa, None)  # não deve levantar
+
+
+def test_get_llm_api_key_e_repassada_tal_qual_sem_ler_outra_fonte(monkeypatch):
+    # get_llm NÃO lê nenhuma fonte de chave por conta própria -- só repassa
+    # o `api_key` recebido para o provider. Confirmamos indiretamente: uma
+    # `api_key` vazia/None não deveria configurar o SDK (comportamento já
+    # coberto por test_llm_gemini_provider.py); aqui só garantimos que
+    # `get_llm(tarefa, api_key=None)` não levanta por causa da ausência de
+    # chave (a validação de "API key ausente" é responsabilidade dos
+    # CONSUMIDORES, não de get_llm/LLMClient/GeminiProvider).
+    llm = get_llm("condicoes", None)
+    assert isinstance(llm, LLMClient)
+
+    llm2 = get_llm("condicoes", "uma-chave-qualquer")
+    assert isinstance(llm2, LLMClient)

@@ -2,7 +2,6 @@ import time
 import openpyxl
 import pandas as pd
 import os
-import google.generativeai as genai
 import json
 import ast
 from types import SimpleNamespace
@@ -26,14 +25,22 @@ from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
 # CP 2.3 (Fase 2): os 11 `time.sleep(<literal>)` do arquivo viram
 # constantes nomeadas (nenhum eliminado) -- ver
 # docs/refatoracao/PLANO_REFATORACAO.md Fase 2 -> CP 2.3.
+#
+# CP 3.1 (Fase 3): `PAUSA_RETRY_IA_LONGA` REMOVIDA deste import -- o retry de
+# IA (e o sleep entre tentativas) agora vive dentro de `LLMClient` (ver
+# `sigft.core.llm.client.get_llm`); a constante continua existindo em
+# `portal.py` (intocada), só este import é que fica sem uso dela.
 from sigft.core.rpa.portal import (
     PMIBPortal,
     PAUSA_DIGITACAO,
     PAUSA_ENTRE_CAMPOS,
     PAUSA_FALLBACK_SALVAMENTO,
-    PAUSA_RETRY_IA_LONGA,
     PAUSA_SALVAMENTO,
 )
+# CP 3.1 (Fase 3): `google.generativeai` deixou de ser importado aqui --
+# `ConditionsProcessor.processar_ia_lote` abaixo delega para `LLMClient`/
+# `GeminiProvider` (ÚNICO lugar do projeto que importa `genai`).
+from sigft.core.llm.client import get_llm
 
 
 # =============================================================================
@@ -49,20 +56,13 @@ class ConditionsProcessor:
         # isso é seguro -- ver docstring de `PMIBPortal.__init__` e
         # docs/refatoracao/PENDENCIAS.md.
         self.portal = PMIBPortal()
-        if self.api_key:
-            genai.configure(api_key=self.api_key, transport='rest')
+        # CP 3.1: `genai.configure(...)` sai daqui -- agora vive dentro de
+        # `GeminiProvider` (chamado por `get_llm`), com o MESMO guard ("só
+        # configura se api_key for truthy").
+        self._llm = get_llm("condicoes", api_key)
 
     def solicitar_parada(self):
         self.portal.solicitar_parada()
-
-    def _limpar_resposta_json(self, texto_bruto):
-        if not texto_bruto: return None
-        texto = texto_bruto.replace("```json", "").replace("```", "").strip()
-        inicio = texto.find('{')
-        fim = texto.rfind('}')
-        if inicio != -1 and fim != -1:
-            texto = texto[inicio: fim + 1]
-        return texto
 
     def carregar_lookup_status(self, caminho_status_pmib):
         sheet_name = 'Lista de Materiais'
@@ -313,12 +313,9 @@ baseadas no conhecimento sobre "DISJUNTOR", e "CLASSE 1" virou "SIM")
 --- FIM DO EXEMPLO ---
 """
 
-        safety_settings = {
-            'HATE_SPEECH': 'BLOCK_NONE',
-            'HARASSMENT': 'BLOCK_NONE',
-            'SEXUALLY_EXPLICIT': 'BLOCK_NONE',
-            'DANGEROUS': 'BLOCK_NONE'
-        }
+        # CP 3.1: `safety_settings` (BLOCK_NONE) sai daqui -- agora vive
+        # dentro de `GeminiProvider` (aplicado a TODA chamada, não só a
+        # `condicoes`/`tech_specs` -- ver docs/refatoracao/PENDENCIAS.md).
 
         for caminho in lista_caminhos:
             if self.portal.deve_parar():
@@ -382,36 +379,30 @@ baseadas no conhecimento sobre "DISJUNTOR", e "CLASSE 1" virou "SIM")
 
             user_prompt = f"Processar: {json.dumps(dados_api_input, indent=2, ensure_ascii=False)}"
 
-            MAX_TENTATIVAS = 3
-
-            # Loop de retentativa para a ficha atual
-            for tentativa in range(MAX_TENTATIVAS):
-                try:
-                    if callback_log: callback_log(f"Enviando {pmib_codigo} para API (Tentativa {tentativa + 1}/{MAX_TENTATIVAS})...")
-                    model = genai.GenerativeModel('gemini-3.5-flash', system_instruction=system_prompt, safety_settings=safety_settings)
-                    resp = model.generate_content(user_prompt)
-
-                    texto_limpo = self._limpar_resposta_json(resp.text)
-                    if not texto_limpo:
-                        # Levanta um erro forçado para cair no except e acionar a retentativa
-                        raise ValueError("Resposta da IA retornou vazia ou fora do formato.")
-
-                    res_json = json.loads(texto_limpo)
-                    res_json["pmib_codigo"] = pmib_codigo
-                    fichas_processadas.append(res_json)
-                    if callback_log: callback_log(f"Sucesso API: {pmib_codigo}")
-
-                    break  # SUCESSO! Quebra o loop de tentativas e vai para a próxima ficha
-
-                except Exception as e:
-                    if callback_log: callback_log(f"Erro na tentativa {tentativa + 1} para {pmib_codigo}: {e}")
-
-                    if tentativa < MAX_TENTATIVAS - 1:
-                        if callback_log: callback_log("Aguardando 30 segundos antes da próxima tentativa...")
-                        time.sleep(PAUSA_RETRY_IA_LONGA)
-                    else:
-                        if callback_log: callback_log(f"Falha definitiva no PMIB {pmib_codigo} após {MAX_TENTATIVAS} tentativas. Pulando ficha.")
-                        # O loop de tentativas acaba e o código segue naturalmente para o próximo arquivo no for 'lista_caminhos'
+            # CP 3.1: retry (3 tentativas, 30s entre elas) + limpeza/parse do
+            # JSON da resposta agora vivem dentro de `LLMClient.generate()`
+            # (`self._llm`, resolvido em `__init__` via
+            # `get_llm("condicoes", ...)`) -- este bloco vira uma única
+            # chamada com um try/except fino. Preserva os logs POR FICHA
+            # ("Enviando ... para API", "Sucesso API", "Falha definitiva no
+            # PMIB ...") -- só os logs GRANULARES por TENTATIVA ("Tentativa
+            # N/3...", "Aguardando 30 segundos...", "Erro na tentativa
+            # N...") deixam de existir, já que o retry passa a acontecer
+            # dentro do `LLMClient`, sem hook de log por tentativa -- ver
+            # docs/refatoracao/PENDENCIAS.md.
+            try:
+                if callback_log: callback_log(f"Enviando {pmib_codigo} para API...")
+                resp = self._llm.generate(
+                    user_prompt,
+                    system=system_prompt,
+                    tags={"modulo": "upload_conditions_backend", "tarefa": "condicoes"},
+                )
+                res_json = resp.parsed_json
+                res_json["pmib_codigo"] = pmib_codigo
+                fichas_processadas.append(res_json)
+                if callback_log: callback_log(f"Sucesso API: {pmib_codigo}")
+            except Exception as e:
+                if callback_log: callback_log(f"Falha definitiva no PMIB {pmib_codigo}: {e}")
 
         return fichas_processadas
 

@@ -6,11 +6,19 @@ import shutil
 from openpyxl.styles import Font, Color
 from openpyxl.cell.rich_text import CellRichText, TextBlock
 from openpyxl.cell.text import InlineFont
-import google.generativeai as genai
 
 from sigft import config
 from sigft.core.excel import headers, pmib_codes
 from sigft.core.rpa.ficha_layout import CONFIG_MAP, VARIAVEIS_SPECS
+# CP 3.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 3): `google.generativeai`
+# deixou de ser importado aqui -- `_call_gemini_api` abaixo delega para
+# `LLMClient`/`GeminiProvider` (ÚNICO lugar do projeto que importa `genai`).
+# `import time` acima fica SEM uso neste arquivo (só existia para o
+# rate-limit/retry que morava em `_call_gemini_api`, agora dentro do
+# `LLMClient`) -- deixado intacto por disciplina de "só o call site de IA
+# muda" (mesmo precedente já registrado em PENDENCIAS.md para imports mortos
+# de checkpoints anteriores), candidato a limpeza no CP 8.1 (ruff).
+from sigft.core.llm.client import get_llm
 
 # -----------------------------------------------------------------
 # CONSTANTES E CONFIGURAÇÕES
@@ -34,12 +42,12 @@ INLINE_FONT_ERRO_TACHADO = InlineFont(color="FF0000", strike=True)
 class DatasheetAnalyzer:
     def __init__(self, api_key):
         self.api_key = api_key
-        self.last_api_call_time = 0
-        self.min_seconds_between_calls = 60
-
-        if self.api_key:
-            # Configuração padrão com transport REST para redes corporativas
-            genai.configure(api_key=self.api_key, transport='rest')
+        # CP 3.1: rate-limit (60s entre chamadas) e configuração do cliente
+        # Gemini (transport REST) agora vivem dentro de `LLMClient`/
+        # `GeminiProvider`, resolvidos aqui via `get_llm("validar_ficha",
+        # api_key)` -- `self.last_api_call_time`/`self.min_seconds_between_calls`
+        # REMOVIDOS (não são mais lidos por ninguém; ver `_call_gemini_api`).
+        self._llm = get_llm("validar_ficha", api_key)
 
     # -----------------------------------------------------------------
     # HELPERS DE EXCEL (Modificam a célula diretamente)
@@ -416,19 +424,16 @@ REGRAS DE VALIDAÇÃO:
 """
 
     def _call_gemini_api(self, prompt):
-        now = time.time()
-        if (now - self.last_api_call_time) < self.min_seconds_between_calls:
-            time.sleep(self.min_seconds_between_calls - (now - self.last_api_call_time))
-
-        self.last_api_call_time = time.time()
-
-        for _ in range(3):
-            try:
-                model = genai.GenerativeModel('gemini-3.1-pro-preview')  # Modelo atualizado
-                resp = model.generate_content(prompt)
-                txt = resp.text.replace("```json", "").replace("```", "").strip()
-                return json.loads(txt)
-            except Exception as e:
-                print(f"API Error: {e}")
-                time.sleep(5)
-        return None
+        # CP 3.1: rate-limit (60s) + retry (3 tentativas, 5s entre elas) +
+        # limpeza/parse do JSON da resposta agora vivem dentro de
+        # `LLMClient.generate()` (`self._llm`, resolvido em `__init__` via
+        # `get_llm("validar_ficha", ...)`) -- este método vira um
+        # try/except fino, preservando o `return None` em falha total e o
+        # `print` de erro (só perde o detalhe de QUAL das 3 tentativas
+        # falhou -- ver docs/refatoracao/PENDENCIAS.md).
+        try:
+            resp = self._llm.generate(prompt, tags={"modulo": "analyzer_backend", "tarefa": "validar_ficha"})
+            return resp.parsed_json
+        except Exception as e:
+            print(f"API Error: {e}")
+            return None
