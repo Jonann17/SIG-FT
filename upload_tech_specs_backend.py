@@ -25,7 +25,22 @@ from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
 # `_preencher_input_com_auditoria`/`_preencher_linha` continuam usando
 # `self.driver`/`self.wait` crus, sem nenhuma alteração (não fazem parte do
 # escopo deste checkpoint -- ver docs/refatoracao/PENDENCIAS.md).
-from sigft.core.rpa.portal import PMIBPortal
+#
+# CP 2.3 (Fase 2): os 10 `time.sleep(<literal>)` do arquivo viram
+# constantes nomeadas (nenhum eliminado) -- ver
+# docs/refatoracao/PLANO_REFATORACAO.md Fase 2 -> CP 2.3.
+from sigft.core.rpa.portal import (
+    PMIBPortal,
+    PAUSA_ANIMACAO,
+    PAUSA_AUDITORIA,
+    PAUSA_CARGA_TABELA,
+    PAUSA_DIGITACAO,
+    PAUSA_INJECAO_JS,
+    PAUSA_PAGINACAO,
+    PAUSA_POS_INJECAO_JS,
+    PAUSA_RETRY_IA_CURTA,
+    PAUSA_SCROLL,
+)
 
 
 # =============================================================================
@@ -322,7 +337,7 @@ class TechSpecsProcessor:
             except Exception as e:
                 # Loga o erro real (400, 403, 429, 500)
                 if callback_log: callback_log(f"Retry {i+1} Error: {e}")
-                time.sleep(2)
+                time.sleep(PAUSA_RETRY_IA_CURTA)
 
         return None
 
@@ -386,12 +401,12 @@ class TechSpecsAutomation:
         try:
             # Garante visibilidade
             self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-            time.sleep(0.2)
+            time.sleep(PAUSA_SCROLL)
             element.click()  # Foco
             element.send_keys(Keys.CONTROL, "a")
             element.send_keys(Keys.BACKSPACE)
             element.send_keys(str(text))
-            time.sleep(0.2)
+            time.sleep(PAUSA_DIGITACAO)
             element.send_keys(Keys.TAB)
         except: pass
 
@@ -447,7 +462,7 @@ class TechSpecsAutomation:
         element.clear()
         self.safe_send_keys_elem(element, valor_alvo)
         if elem_neutro: elem_neutro.click()
-        time.sleep(0.5)
+        time.sleep(PAUSA_AUDITORIA)
 
         # Auditoria
         valor_atual = str(element.get_attribute("value")).strip()
@@ -458,7 +473,7 @@ class TechSpecsAutomation:
             # --- MENSAGEM VISUAL E PAUSA ESTRATÉGICA ---
             if callback_log:
                 callback_log(f"   [!] O site rejeitou '{nome_campo}'. Tentando injeção forçada (JavaScript)...")
-            time.sleep(1.5)  # Dá tempo para o usuário ver na tela e o JS do site assentar
+            time.sleep(PAUSA_INJECAO_JS)  # Dá tempo para o usuário ver na tela e o JS do site assentar
 
             # 2ª Tentativa: Injeção Direta no DOM (Força Bruta)
             self.driver.execute_script(f"arguments[0].value = '{valor_alvo}';", element)
@@ -467,7 +482,7 @@ class TechSpecsAutomation:
             self.driver.execute_script("arguments[0].dispatchEvent(new Event('blur', { bubbles: true }));", element)
             if elem_neutro: elem_neutro.click()
 
-            time.sleep(1.0)  # Pausa maior após a injeção para validar o resultado
+            time.sleep(PAUSA_POS_INJECAO_JS)  # Pausa maior após a injeção para validar o resultado
 
             # Auditoria Final
             valor_atual_2 = str(element.get_attribute("value")).strip()
@@ -524,7 +539,7 @@ class TechSpecsAutomation:
                     if callback_log: callback_log("Erro: Tabela de características não carregou.")
                     continue
 
-                time.sleep(2)
+                time.sleep(PAUSA_CARGA_TABELA)
 
                 # Dicionário de dados para acesso rápido O(1)
                 dict_dados = {self.normalizar_texto(d['CARACTERISTICA_CHAVE']): d for d in dados}
@@ -592,7 +607,7 @@ class TechSpecsAutomation:
                         # Verifica se está habilitado (em alguns frameworks é class disabled, aqui assumimos is_enabled)
                         if btn_proximo.is_enabled():
                             self.driver.execute_script("arguments[0].click();", btn_proximo)
-                            time.sleep(3)
+                            time.sleep(PAUSA_PAGINACAO)
                             self.wait.until(EC.visibility_of_element_located(locator_tabela))
                             pagina_atual += 1
                         else:
@@ -680,7 +695,7 @@ class TechSpecsAutomation:
             elif tipo == "LISTA":
                 sel = row.find_element(By.XPATH, './/select[contains(@id, "Dropdown1")]')
                 self.selecionar_dropdown_lista(sel, val_pt)
-                time.sleep(0.5)
+                time.sleep(PAUSA_ANIMACAO)
                 if elem_neutro: elem_neutro.click()
                 # Em Listas vamos assumir que não zera por bug numérico, então sucesso.
 
@@ -688,7 +703,7 @@ class TechSpecsAutomation:
                 subtipo = dado.get("SUBTIPO_INTERVALO", "MINIMO / MAXIMO")
                 sel_int = row.find_element(By.XPATH, './/select[contains(@id, "Dropdown_IntervalOptions")]')
                 self.selecionar_dropdown_lista(sel_int, subtipo)
-                time.sleep(0.5)
+                time.sleep(PAUSA_ANIMACAO)
 
                 vals = val_pt.split('/')
                 v1 = vals[0].strip()
