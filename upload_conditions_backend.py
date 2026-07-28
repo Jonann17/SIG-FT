@@ -22,7 +22,18 @@ from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
 # CP 2.2 (Fase 2): `safe_click`/`safe_send_keys`/`check_or_uncheck`/a busca-e-
 # abertura inline de `processar_lista`/o stop-flag de `ConditionsProcessor` e
 # `UploadAutomation` passam a delegar para `PMIBPortal`.
-from sigft.core.rpa.portal import PMIBPortal
+#
+# CP 2.3 (Fase 2): os 11 `time.sleep(<literal>)` do arquivo viram
+# constantes nomeadas (nenhum eliminado) -- ver
+# docs/refatoracao/PLANO_REFATORACAO.md Fase 2 -> CP 2.3.
+from sigft.core.rpa.portal import (
+    PMIBPortal,
+    PAUSA_DIGITACAO,
+    PAUSA_ENTRE_CAMPOS,
+    PAUSA_FALLBACK_SALVAMENTO,
+    PAUSA_RETRY_IA_LONGA,
+    PAUSA_SALVAMENTO,
+)
 
 
 # =============================================================================
@@ -397,7 +408,7 @@ baseadas no conhecimento sobre "DISJUNTOR", e "CLASSE 1" virou "SIM")
 
                     if tentativa < MAX_TENTATIVAS - 1:
                         if callback_log: callback_log("Aguardando 30 segundos antes da próxima tentativa...")
-                        time.sleep(30)
+                        time.sleep(PAUSA_RETRY_IA_LONGA)
                     else:
                         if callback_log: callback_log(f"Falha definitiva no PMIB {pmib_codigo} após {MAX_TENTATIVAS} tentativas. Pulando ficha.")
                         # O loop de tentativas acaba e o código segue naturalmente para o próximo arquivo no for 'lista_caminhos'
@@ -591,29 +602,29 @@ class UploadAutomation:
                             self.check_or_uncheck(loc_check_clima, True)
                             check_clima = self.wait.until(EC.element_to_be_clickable(loc_check_clima))
                             check_clima.send_keys(Keys.TAB)
-                            time.sleep(0.2)
+                            time.sleep(PAUSA_DIGITACAO)
                             campo_temp_max = self.driver.switch_to.active_element
                             campo_temp_max.send_keys(controle_temp_data["climatizacao"]["temp_max"])
-                            time.sleep(0.3)
+                            time.sleep(PAUSA_ENTRE_CAMPOS)
                             campo_temp_max.send_keys(Keys.TAB)
-                            time.sleep(0.2)
+                            time.sleep(PAUSA_DIGITACAO)
                             campo_temp_min = self.driver.switch_to.active_element
                             campo_temp_min.send_keys(controle_temp_data["climatizacao"]["temp_min"])
-                            time.sleep(0.3)
+                            time.sleep(PAUSA_ENTRE_CAMPOS)
                         if controle_temp_data["umidade"]["ativo"]:
                             loc_check_umid = (By.XPATH, '//*[@id="b10-b17-b1-Checkbox5"]')
                             self.check_or_uncheck(loc_check_umid, True)
                             check_umid = self.wait.until(EC.element_to_be_clickable(loc_check_umid))
                             check_umid.send_keys(Keys.TAB)
-                            time.sleep(0.2)
+                            time.sleep(PAUSA_DIGITACAO)
                             campo_hr_max = self.driver.switch_to.active_element
                             campo_hr_max.send_keys(controle_temp_data["umidade"]["hr_max"])
-                            time.sleep(0.3)
+                            time.sleep(PAUSA_ENTRE_CAMPOS)
                             campo_hr_max.send_keys(Keys.TAB)
-                            time.sleep(0.2)
+                            time.sleep(PAUSA_DIGITACAO)
                             campo_hr_min = self.driver.switch_to.active_element
                             campo_hr_min.send_keys(controle_temp_data["umidade"]["hr_min"])
-                            time.sleep(0.3)
+                            time.sleep(PAUSA_ENTRE_CAMPOS)
                     else:
                         self.safe_click((By.XPATH, '//*[@id="b10-b17-b1-RadioButton4-input"]'))
                 except Exception as e:
@@ -753,13 +764,13 @@ class UploadAutomation:
         try:
             if callback_log: callback_log(f"Salvando {section_name}...")
             self.safe_click(locator)
-            time.sleep(1)
+            time.sleep(PAUSA_SALVAMENTO)
         except Exception as e:
             if callback_log: callback_log(f"Falha ao salvar {section_name}. Aguardando intervenção manual.")
             if callback_pause:
                 callback_pause(section_name)  # Chama o Frontend para mostrar a janela e pausar
             else:
-                time.sleep(5)  # Fallback caso falte o callback
+                time.sleep(PAUSA_FALLBACK_SALVAMENTO)  # Fallback caso falte o callback
 
     def atualizar_status_excel(self, caminho, pmib, status, callback_log=None, callback_ask=None):
         """Atualiza o Excel com loop de retentativa caso esteja aberto.
