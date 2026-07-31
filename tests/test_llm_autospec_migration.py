@@ -8,8 +8,23 @@ generativeai` já está stubado como `MagicMock` em `tests/conftest.py`, então
 `__new__` como em `tests/test_ficha_layout.py`) -- `get_llm("autospec", ...)`
 por baixo cria um `GeminiProvider` de verdade, sobre o `MagicMock`.
 """
+import pytest
+
 import autospec_backend
+from sigft import config
 from sigft.core.llm.client import LLMClient, LLMResponse
+
+
+@pytest.fixture(autouse=True)
+def _isola_config_file_do_cwd_real(monkeypatch, tmp_path):
+    """CP 3.3 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.3):
+    `get_llm()` (chamado por dentro de `AutoSpecCore.__init__`) passou a
+    consultar `config.CONFIG_FILE` para resolver a seleção de modelo do
+    usuário -- isola estes testes de um `api_config.json` REAL que
+    porventura exista no cwd de quem roda a suíte, apontando para um
+    caminho garantidamente inexistente. Ver mesma fixture em
+    tests/test_llm_backend_migration.py/tests/test_llm_get_llm_factory.py."""
+    monkeypatch.setattr(config, "CONFIG_FILE", str(tmp_path / "api_config_isolado_test.json"))
 
 
 def _make_autospec_core(gemini_key="chave-fake-de-teste"):

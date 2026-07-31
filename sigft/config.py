@@ -272,6 +272,105 @@ OPENROUTER_HEADERS_ATRIBUICAO: dict[str, str] = {
 OPENROUTER_CATALOGO_CACHE = "openrouter_models_cache.json"
 
 
+# =============================================================================
+# 6c. LLM_FAVORITOS — lista CURADA para o seletor de modelo na UI (CP 3.3)
+# =============================================================================
+# Fonte: docs/refatoracao/MODELOS_IA.md §2/§3 (tabela aimultiple, jul/2026).
+# Consumida pelo painel "Modelos de IA" da Home (`frontend.py`) para montar
+# as opções dos `CTkOptionMenu` (modo simples/avançado) — é a lista "curada"
+# que o *Aceite* do CP 3.3 pede ("filtrado por uma lista curada de favoritos
+# em config, para não exibir 400+ modelos [do catálogo do OpenRouter]").
+# `aditivo` — nenhuma constante/função existente deste arquivo foi alterada.
+#
+# `provider`/`model`: SEMPRE um dos 3 providers que `core/llm/client.py:
+# get_llm()` de fato IMPLEMENTA (`PROVIDER_GEMINI`/`PROVIDER_OPENROUTER`/
+# `PROVIDER_OPENAI_COMPAT`) — nunca um provider "nativo" não implementado
+# (ex.: `PROVIDER_XAI`, usado só por `LLM_TASKS["categorizar_pdm"]` — ver
+# docs/refatoracao/PENDENCIAS.md, gap pré-existente desde o CP 1.1/3.1/3.2).
+# Por isso Grok 4.5/MiniMax M3 entram aqui via `PROVIDER_OPENROUTER` (o
+# único caminho REAL até esses modelos hoje — decisão de produto nº 2:
+# "OpenRouter é o gateway padrão... dá acesso a Gemini, GPT, Kimi, DeepSeek
+# etc."), enquanto os 2 modelos Gemini usam o provider NATIVO
+# (`PROVIDER_GEMINI`), preservando o caminho direto/free tier — MESMO
+# provider+model já usados por `LLM_DEFAULT`/`LLM_MODELOS_HOJE` (nenhum
+# valor inventado para esses 3).
+#
+# `model` dos 2 favoritos NÃO-Gemini é um SLUG ILUSTRATIVO no formato
+# `vendor/modelo` do catálogo OpenRouter (mesmo formato de exemplo do
+# MODELOS_IA.md §3: "google/gemini-3-flash-preview", "x-ai/grok-4.5",
+# "minimax/minimax-m3") — RECONFIRMAR o id EXATO no catálogo real do
+# OpenRouter (`core/llm/providers/openrouter.py:listar_modelos`) antes do
+# uso em produção; ver PENDENCIAS.md.
+#
+# `tier`: um de `"economia"`, `"padrao"`, `"poder"` (MODELOS_IA.md §3:
+# "Três posições, todas trocáveis na UI"). Os 2 modelos "usados hoje" não
+# fazem parte da decisão de 3 tiers, mas GANHAM um tier aqui (exigido pela
+# forma da entrada) por proximidade de papel: `gemini-3.1-pro-preview`
+# (score 77, caro) ~ "poder" (era o tier de "poder" antes do Grok 4.5
+# dominá-lo, MODELOS_IA.md §3); `gemini-3.5-flash` (workhorse de
+# `condicoes`/`tech_specs` hoje) ~ "padrao" (papel que `gemini-3-flash-
+# preview` assume daqui pra frente). Julgamento do executor, sem
+# consequência funcional (`tier` só orienta o texto exibido na UI).
+#
+# `score`/`preco_input`/`preco_output` (US$/1M): só para EXIBIÇÃO no painel
+# (não usados por nenhuma lógica de negócio) — mesma fonte/seed de
+# `LLM_PRECOS_USD_POR_1M` acima para os 3 modelos novos (Gemini 3 Flash
+# Preview/Grok 4.5/MiniMax M3) e para os 2 já existentes lá.
+#
+# Escopo deliberadamente MÍNIMO: só os 5 exigidos pelo checkpoint (os 3 da
+# decisão + os 2 modelos de hoje, "para que o usuário consiga voltar atrás
+# pela UI") — a tabela completa de MODELOS_IA.md §2 tem mais candidatos
+# (ex.: GPT-5 Mini, Claude Sonnet 5, Kimi K3 — citados em §3 "Espectro na
+# interface") que podem entrar aqui numa iteração futura; ver PENDENCIAS.md.
+LLM_FAVORITOS: list[dict[str, object]] = [
+    {
+        "provider": PROVIDER_GEMINI,
+        "model": "gemini-3-flash-preview",
+        "rotulo": "Gemini 3 Flash Preview",
+        "score": 67,
+        "preco_input": 0.50,
+        "preco_output": 3.00,
+        "tier": "padrao",
+    },
+    {
+        "provider": PROVIDER_OPENROUTER,
+        "model": "minimax/minimax-m3",
+        "rotulo": "MiniMax M3",
+        "score": 66,
+        "preco_input": 0.30,
+        "preco_output": 1.20,
+        "tier": "economia",
+    },
+    {
+        "provider": PROVIDER_OPENROUTER,
+        "model": "x-ai/grok-4.5",
+        "rotulo": "Grok 4.5",
+        "score": 86,
+        "preco_input": 2.00,
+        "preco_output": 6.00,
+        "tier": "poder",
+    },
+    {
+        "provider": PROVIDER_GEMINI,
+        "model": "gemini-3.1-pro-preview",
+        "rotulo": "Gemini 3.1 Pro Preview (usado hoje)",
+        "score": 77,
+        "preco_input": 2.00,
+        "preco_output": 12.00,
+        "tier": "poder",
+    },
+    {
+        "provider": PROVIDER_GEMINI,
+        "model": "gemini-3.5-flash",
+        "rotulo": "Gemini 3.5 Flash (usado hoje)",
+        "score": 59,
+        "preco_input": 1.50,
+        "preco_output": 9.00,
+        "tier": "padrao",
+    },
+]
+
+
 def get_task_config(tarefa: str) -> dict[str, str]:
     """Resolve `{provider, model}` para uma tarefa de IA via `LLM_TASKS`.
 
@@ -335,6 +434,27 @@ CHAVE_POR_PROVIDER: dict[str, str] = {
     PROVIDER_GEMINI: "GEMINI",
     PROVIDER_OPENROUTER: "OPENROUTER",
     PROVIDER_OPENAI_COMPAT: "EMPRESA_LLM_API_KEY",
+}
+
+# CP 3.3: `LLM_DEFAULT`/`LLM_TASKS` (a decisão de produto do MODELOS_IA.md)
+# citam modelos por PROVIDER NATIVO, e um deles — Grok 4.5, em
+# `categorizar_pdm` — usa `PROVIDER_XAI`, que `core/llm/client.py:get_llm()`
+# NÃO roteia (só os 3 de `CHAVE_POR_PROVIDER` existem; ver CP 3.2). O
+# OpenRouter é exatamente o gateway para esses casos (decisão de produto
+# nº 2: "uma chave, catálogo amplo"), e é assim que `LLM_FAVORITOS` acima já
+# expõe o Grok 4.5 na UI.
+#
+# Este mapa traduz um par (provider nativo, modelo) recomendado para a forma
+# ROTEÁVEL equivalente. É consumido por
+# `core/llm/selecao.py:aplicar_recomendados()`, para que o botão "Aplicar
+# recomendados" da Home NUNCA grave uma seleção que `get_llm()` não consegue
+# construir — sem isto, um clique no botão fazia `categorizar_pdm` levantar
+# `NotImplementedError` na execução seguinte do módulo "Criar Fichas".
+# Modelo recomendado sem provider roteável e sem entrada aqui é um erro de
+# configuração: `aplicar_recomendados()` levanta `ValueError` na hora do
+# clique, em vez de deixar a falha para o meio de um lote.
+MODELO_RECOMENDADO_ROTEAVEL: dict[tuple[str, str], dict[str, str]] = {
+    (PROVIDER_XAI, "grok-4.5"): {"provider": PROVIDER_OPENROUTER, "model": "x-ai/grok-4.5"},
 }
 
 

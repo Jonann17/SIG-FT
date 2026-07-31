@@ -18,6 +18,8 @@ import subprocess
 from sigft.core.excel.pmib_codes import normalize_pmib
 from sigft.core import prefs
 from sigft.app import file_dialogs
+from sigft import config as sigft_config
+from sigft.core.llm import selecao
 
 # --- VARIÁVEIS GLOBAIS DOS BACKENDS (Inicialmente None) ---
 # Isso evita erro de "NameError" nas classes antes do carregamento
@@ -3848,11 +3850,14 @@ class HomeView(ctk.CTkScrollableFrame):
         # --- ÁREA DE CONFIGURAÇÃO DE APIs (NOVA) ---
         self.criar_area_config_api(row=3)
 
+        # --- PAINEL DE MODELOS DE IA (CP 3.3) ---
+        self.criar_painel_modelos_ia(row=4)
+
         # --- SEÇÕES (CARDS) ---
 
         # 1. Criação e PDM
         self.criar_card_instrucao(
-            row=4,
+            row=5,
             titulo="1 & 2. Criação e Estruturação",
             descricao="Etapas iniciais para geração da ficha técnica e processamento de PDMs em massa.",
             inputs="- Excel _STATUS_PMIB\n- Lista de PDMs",
@@ -3861,7 +3866,7 @@ class HomeView(ctk.CTkScrollableFrame):
 
         # 2. Análise e Qualidade
         self.criar_card_instrucao(
-            row=5,
+            row=6,
             titulo="3. Análise de Qualidade (IA)",
             descricao="Módulo 'Analyzer': Verifica a consistência dos dados preenchidos nas fichas antes do upload.",
             inputs="- Planilhas PMIB (.xlsx)",
@@ -3874,7 +3879,7 @@ class HomeView(ctk.CTkScrollableFrame):
                        "• Upload Caract. Técnicas: Preenche as especificações técnicas.\n"
                        "• Tradutor: Traduz PT <-> ES automaticamente.")
         self.criar_card_instrucao(
-            row=6,
+            row=7,
             titulo="4. Dados Técnicos e Upload",
             descricao=desc_upload,
             inputs="- Planilhas PMIB\n- Credenciais Portal",
@@ -3883,7 +3888,7 @@ class HomeView(ctk.CTkScrollableFrame):
 
         # 4. AutoSpec AI
         self.criar_card_instrucao(
-            row=7,
+            row=8,
             titulo="5. AutoSpec AI (RAG)",
             descricao="Inteligência Artificial avançada que lê manuais em PDF e busca na web para preencher fichas técnicas vazias automaticamente.",
             inputs="- Ficha Técnica vazia\n- PDFs dos Manuais (Opcional)",
@@ -3892,7 +3897,7 @@ class HomeView(ctk.CTkScrollableFrame):
 
         # 5. Gestão LMR
         self.criar_card_instrucao(
-            row=8,
+            row=9,
             titulo="6. Gestão LMR (Aplicações)",
             descricao="Automação para inserir ou apagar listas de materiais de reposição (Aplicações) no portal.",
             inputs="- Planilha de Aplicações LMR",
@@ -3901,7 +3906,7 @@ class HomeView(ctk.CTkScrollableFrame):
 
         # 6. Gerenciamento Geral
         self.criar_card_instrucao(
-            row=9,
+            row=10,
             titulo="7. PMIB Manager",
             descricao="Gestão macro do processo: Renomeia arquivos, atualiza planilha mestra e calcula KPIs de avanço.",
             inputs="- Base de Dados API\n- Pasta Raiz de Arquivos",
@@ -3909,7 +3914,7 @@ class HomeView(ctk.CTkScrollableFrame):
         )
 
         # Espaço final
-        ctk.CTkLabel(self, text="").grid(row=10, column=0, pady=20)
+        ctk.CTkLabel(self, text="").grid(row=11, column=0, pady=20)
 
     def criar_area_config_api(self, row):
         """Cria o painel de configuração de chaves API."""
@@ -3957,6 +3962,302 @@ class HomeView(ctk.CTkScrollableFrame):
         new_keys = {k: e.get() for k, e in self.entries.items()}
         self.controller.save_keys(new_keys)
         messagebox.showinfo("Sucesso", "Chaves API salvas com sucesso!\nTodos os módulos usarão as novas chaves.")
+
+    # =========================================================================
+    # PAINEL "MODELOS DE IA" (Checkpoint 3.3 do plano de refatoração)
+    # =========================================================================
+    # Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.3, e
+    # docs/refatoracao/MODELOS_IA.md. Persistência via `sigft.core.llm.
+    # selecao` (mesmo arquivo das chaves de API, api_config.json, sob a
+    # chave reservada "_modelos_ia") -- efeito imediato, sem reiniciar o
+    # app: os 5 módulos de IA constroem o `LLMClient` de novo a cada
+    # execução (via `get_llm()`, CP 3.1/3.3), então a próxima execução já lê
+    # a seleção salva aqui.
+    def criar_painel_modelos_ia(self, row):
+        """Painel "Modelos de IA": seleção GLOBAL (modo simples) + override
+        por tarefa (modo avançado, as 5 tarefas de `config.LLM_MODELOS_HOJE`)
+        + campo livre para id manual + botões "Aplicar recomendados"/
+        "Salvar seleção". Provedores sem chave configurada não aparecem."""
+        self._row_modelos_ia = row
+        frame = ctk.CTkFrame(self, fg_color=("gray90", "gray16"), corner_radius=10)
+        frame.grid(row=row, column=0, sticky="ew", padx=20, pady=10)
+        self.frame_modelos_ia = frame
+
+        ctk.CTkLabel(frame, text="🤖 Modelos de IA", font=("Arial", 16, "bold")).pack(pady=10, padx=10, anchor="w")
+        ctk.CTkLabel(
+            frame,
+            text="Escolha o modelo de IA usado pelos módulos (Cria Fichas, Analyzer, Upload Condições/Specs, "
+                 "AutoSpec). \"Aplicar recomendados\" usa os modelos sugeridos em "
+                 "docs/refatoracao/MODELOS_IA.md — mais econômicos; valide a qualidade numa amostra antes "
+                 "de rodar em lote.",
+            font=("Roboto", 12), text_color="gray70", justify="left", wraplength=800,
+        ).pack(anchor="w", padx=10, pady=(0, 10))
+
+        # Filtro por chave configurada (*Aceite* do plano: "provedores sem
+        # chave configurada não aparecem"). Um favorito só entra na lista se
+        # o provedor dele tiver uma chave configurada AGORA (mesmo mecanismo
+        # que os módulos de IA usam: `controller.get_key`).
+        providers_com_chave = sorted(
+            provider_id
+            for provider_id, chave_id in sigft_config.CHAVE_POR_PROVIDER.items()
+            if self.controller.get_key(chave_id)
+        )
+
+        if not providers_com_chave:
+            ctk.CTkLabel(
+                frame,
+                text="Nenhum provedor de IA tem chave configurada acima — configure ao menos uma "
+                     "chave (ex.: Gemini ou OpenRouter) para escolher o modelo aqui.",
+                font=("Roboto", 12), text_color=COLORS["danger"], justify="left", wraplength=800,
+            ).pack(anchor="w", padx=10, pady=(0, 15))
+            return
+
+        favoritos_disponiveis = [
+            fav for fav in sigft_config.LLM_FAVORITOS if fav["provider"] in providers_com_chave
+        ]
+        estado_atual = selecao.carregar(config_path=sigft_config.CONFIG_FILE)
+
+        # --- Modo simples: seleção GLOBAL ---
+        f_global = ctk.CTkFrame(frame, fg_color="transparent")
+        f_global.pack(fill="x", padx=10, pady=(0, 5))
+        ctk.CTkLabel(f_global, text="Modelo padrão (todas as tarefas):", width=220, anchor="w").pack(side="left")
+        opcoes_globais, self._fav_por_rotulo_global, rotulo_global_atual = self._montar_opcoes_modelo_ia(
+            favoritos_disponiveis, estado_atual["global"], self._rotulo_padrao_sistema_ia(),
+        )
+        self.var_modelo_ia_global = ctk.StringVar(value=rotulo_global_atual)
+        ctk.CTkOptionMenu(
+            f_global, values=opcoes_globais, variable=self.var_modelo_ia_global,
+            fg_color="#3A3A3A", button_color="#454545", width=420,
+        ).pack(side="left", padx=5)
+
+        # --- Modo avançado: override por tarefa ---
+        self.var_modelos_ia_modo_avancado = ctk.BooleanVar(value=bool(estado_atual["por_tarefa"]))
+        ctk.CTkCheckBox(
+            frame, text="Configurar por tarefa (modo avançado)",
+            variable=self.var_modelos_ia_modo_avancado,
+            command=self._toggle_modelos_ia_modo_avancado,
+            fg_color=COLORS["primary"],
+        ).pack(anchor="w", padx=10, pady=(5, 5))
+
+        self.frame_modelos_ia_avancado = ctk.CTkFrame(frame, fg_color="transparent")
+
+        rotulos_tarefa = {
+            "categorizar_pdm": "Categorizar PDM (Cria Fichas):",
+            "validar_ficha": "Validar ficha (Analyzer):",
+            "condicoes": "Condições (Upload Condições):",
+            "tech_specs": "Caract. Técnicas (Upload Specs):",
+            "autospec": "AutoSpec (RAG):",
+        }
+        self.vars_modelo_ia_por_tarefa = {}
+        self._fav_por_rotulo_tarefa = {}
+        for tarefa in sorted(sigft_config.LLM_MODELOS_HOJE):
+            f_tarefa = ctk.CTkFrame(self.frame_modelos_ia_avancado, fg_color="transparent")
+            f_tarefa.pack(fill="x", pady=2)
+            ctk.CTkLabel(f_tarefa, text=rotulos_tarefa.get(tarefa, tarefa), width=220, anchor="w").pack(side="left")
+            opcoes_tarefa, fav_por_rotulo_tarefa, rotulo_tarefa_atual = self._montar_opcoes_modelo_ia(
+                favoritos_disponiveis, estado_atual["por_tarefa"].get(tarefa), "Usar o global",
+            )
+            var_tarefa = ctk.StringVar(value=rotulo_tarefa_atual)
+            ctk.CTkOptionMenu(
+                f_tarefa, values=opcoes_tarefa, variable=var_tarefa,
+                fg_color="#3A3A3A", button_color="#454545", width=420,
+            ).pack(side="left", padx=5)
+            self.vars_modelo_ia_por_tarefa[tarefa] = var_tarefa
+            self._fav_por_rotulo_tarefa[tarefa] = fav_por_rotulo_tarefa
+
+        if self.var_modelos_ia_modo_avancado.get():
+            self.frame_modelos_ia_avancado.pack(fill="x", padx=10, pady=(0, 10))
+
+        # --- Campo livre (id manual, fora da lista curada) ---
+        f_livre = ctk.CTkFrame(frame, fg_color="transparent")
+        f_livre.pack(fill="x", padx=10, pady=(10, 5))
+        ctk.CTkLabel(f_livre, text="Modelo manual (opcional, sobrepõe o padrão acima):", width=220, anchor="w").pack(side="left")
+        self.var_provider_ia_livre = ctk.StringVar(value=providers_com_chave[0])
+        ctk.CTkOptionMenu(
+            f_livre, values=providers_com_chave, variable=self.var_provider_ia_livre,
+            fg_color="#3A3A3A", button_color="#454545", width=140,
+        ).pack(side="left", padx=(0, 5))
+        self.entry_modelo_ia_livre = ctk.CTkEntry(f_livre, placeholder_text="ex.: meta-llama/llama-4", width=260)
+        self.entry_modelo_ia_livre.pack(side="left", padx=5)
+
+        # --- Catálogo OpenRouter (opcional -- só com chave OpenRouter) ---
+        if self.controller.get_key("OPENROUTER"):
+            f_catalogo = ctk.CTkFrame(frame, fg_color="transparent")
+            f_catalogo.pack(fill="x", padx=10, pady=(0, 5))
+            ctk.CTkLabel(f_catalogo, text="", width=220).pack(side="left")
+            self.var_catalogo_ia_openrouter = ctk.StringVar(value="(clique em Atualizar catálogo)")
+            self.opt_catalogo_ia_openrouter = ctk.CTkOptionMenu(
+                f_catalogo, values=["(clique em Atualizar catálogo)"],
+                variable=self.var_catalogo_ia_openrouter,
+                command=self._selecionar_modelo_do_catalogo_ia,
+                fg_color="#3A3A3A", button_color="#454545", width=260,
+            )
+            self.opt_catalogo_ia_openrouter.pack(side="left", padx=5)
+            ctk.CTkButton(
+                f_catalogo, text="Atualizar catálogo (OpenRouter)", command=self._atualizar_catalogo_ia_openrouter,
+                fg_color="#3A3A3A", hover_color="#454545",
+            ).pack(side="left", padx=5)
+
+        # --- Botões ---
+        f_botoes = ctk.CTkFrame(frame, fg_color="transparent")
+        f_botoes.pack(fill="x", padx=10, pady=(10, 15))
+        ctk.CTkButton(
+            f_botoes, text="✨ Aplicar recomendados", command=self._aplicar_recomendados_ia,
+            fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"],
+        ).pack(side="left", padx=(0, 10))
+        ctk.CTkButton(
+            f_botoes, text="Salvar seleção", command=self._salvar_selecao_modelos_ia, fg_color="green",
+        ).pack(side="left")
+
+    def _rotulo_padrao_sistema_ia(self):
+        return "Padrão do sistema (modelos atuais)"
+
+    def _rotulo_modelo_ia(self, fav):
+        """Formata o rótulo de um favorito (`config.LLM_FAVORITOS`) para
+        exibição no `CTkOptionMenu`, ex.: "Gemini 3 Flash Preview — Padrão
+        ($0.50 / $3.00 por 1M tokens)"."""
+        tier_legivel = {"padrao": "Padrão", "economia": "Economia", "poder": "Poder"}.get(fav["tier"], fav["tier"])
+        return (
+            f"{fav['rotulo']} — {tier_legivel} "
+            f"(${fav['preco_input']:.2f} / ${fav['preco_output']:.2f} por 1M tokens)"
+        )
+
+    def _montar_opcoes_modelo_ia(self, favoritos, selecao_atual, rotulo_sem_override):
+        """Monta as opções de um `CTkOptionMenu` de modelo de IA a partir de
+        `favoritos` (já filtrada por chave configurada). Devolve (lista de
+        rótulos, {rótulo: favorito ou None}, rótulo pré-selecionado).
+        `rotulo_sem_override` é a 1ª opção da lista, mapeada para `None`
+        (representa "Padrão do sistema"/"Usar o global"). Se `selecao_atual`
+        (já resolvido, ex.: vindo de `selecao.carregar()`) não bater com
+        nenhum favorito disponível (ex.: foi salvo por id manual, ou o
+        provedor perdeu a chave configurada), uma opção extra "(seleção
+        salva) provider/model" é acrescentada e pré-selecionada, para não
+        esconder do usuário o que já está configurado."""
+        opcoes = [rotulo_sem_override]
+        fav_por_rotulo = {rotulo_sem_override: None}
+        for fav in favoritos:
+            rotulo = self._rotulo_modelo_ia(fav)
+            opcoes.append(rotulo)
+            fav_por_rotulo[rotulo] = fav
+
+        rotulo_selecionado = rotulo_sem_override
+        if selecao_atual is not None:
+            encontrado = next(
+                (
+                    rotulo
+                    for rotulo, fav in fav_por_rotulo.items()
+                    if fav is not None
+                    and fav["provider"] == selecao_atual["provider"]
+                    and fav["model"] == selecao_atual["model"]
+                ),
+                None,
+            )
+            if encontrado is None:
+                encontrado = f"(seleção salva) {selecao_atual['provider']}/{selecao_atual['model']}"
+                opcoes.append(encontrado)
+                fav_por_rotulo[encontrado] = dict(selecao_atual)
+            rotulo_selecionado = encontrado
+
+        return opcoes, fav_por_rotulo, rotulo_selecionado
+
+    def _toggle_modelos_ia_modo_avancado(self):
+        if self.var_modelos_ia_modo_avancado.get():
+            self.frame_modelos_ia_avancado.pack(fill="x", padx=10, pady=(0, 10))
+        else:
+            self.frame_modelos_ia_avancado.pack_forget()
+
+    def _recarregar_painel_modelos_ia(self):
+        self.frame_modelos_ia.destroy()
+        self.criar_painel_modelos_ia(row=self._row_modelos_ia)
+
+    def _selecionar_modelo_do_catalogo_ia(self, escolha):
+        if escolha and not escolha.startswith("("):
+            self.entry_modelo_ia_livre.delete(0, "end")
+            self.entry_modelo_ia_livre.insert(0, escolha)
+
+    def _atualizar_catalogo_ia_openrouter(self):
+        """Busca o catálogo de modelos do OpenRouter (CP 3.2, com cache) e
+        popula o `CTkOptionMenu` secundário -- em thread, para não travar a
+        UI; falha de rede degrada em silêncio (o painel nunca pode quebrar a
+        Home)."""
+        chave = self.controller.get_key("OPENROUTER")
+        if not chave:
+            return
+        threading.Thread(target=self._worker_catalogo_ia_openrouter, args=(chave,), daemon=True).start()
+
+    def _worker_catalogo_ia_openrouter(self, chave):
+        try:
+            from sigft.core.llm.providers import openrouter
+            modelos = openrouter.listar_modelos(chave)
+            ids = sorted({m.get("id") for m in modelos if isinstance(m, dict) and m.get("id")})
+        except Exception as e:
+            ids = []
+            print(f"Aviso: não foi possível atualizar o catálogo do OpenRouter: {e}")
+        if not ids:
+            ids = ["(catálogo indisponível — tente novamente mais tarde)"]
+        self.after(0, lambda: self.opt_catalogo_ia_openrouter.configure(values=ids))
+        self.after(0, lambda: self.var_catalogo_ia_openrouter.set(ids[0]))
+
+    def _aplicar_recomendados_ia(self):
+        # Adotar os recomendados pode levar alguma tarefa para um provider
+        # diferente do usado hoje (ex.: Grok 4.5 só é alcançável via
+        # OpenRouter). Sem a chave desse provider, a troca só falharia no meio
+        # da próxima execução — então avisamos ANTES de gravar.
+        faltando = sorted(
+            provider
+            for provider in selecao.providers_exigidos_pelos_recomendados()
+            if not self.controller.get_key(sigft_config.CHAVE_POR_PROVIDER[provider])
+        )
+        if faltando:
+            chaves = ", ".join(sigft_config.CHAVE_POR_PROVIDER[p] for p in faltando)
+            if not messagebox.askyesno(
+                "Chave de API faltando",
+                f"Os modelos recomendados exigem {chaves}, que ainda não está configurada "
+                "no painel de chaves acima.\n\nSe aplicar assim, os módulos que dependem "
+                "desse provedor vão falhar até a chave ser preenchida.\n\nAplicar mesmo assim?",
+            ):
+                return
+
+        selecao.aplicar_recomendados(config_path=sigft_config.CONFIG_FILE)
+        self._recarregar_painel_modelos_ia()
+        messagebox.showinfo(
+            "Recomendados aplicados",
+            "Os modelos recomendados (docs/refatoracao/MODELOS_IA.md) foram aplicados: Gemini 3 Flash "
+            "Preview como padrão global, com Grok 4.5 para a classificação de PDM.\n\n"
+            "São modelos mais econômicos que os usados até agora — recomendamos validar a qualidade "
+            "num punhado de fichas (comparando com o resultado anterior) antes de rodar em lote.",
+        )
+
+    def _salvar_selecao_modelos_ia(self):
+        modelo_livre = self.entry_modelo_ia_livre.get().strip()
+        if modelo_livre:
+            selecao.definir_global(
+                self.var_provider_ia_livre.get(), modelo_livre, config_path=sigft_config.CONFIG_FILE,
+            )
+        else:
+            fav_global = self._fav_por_rotulo_global.get(self.var_modelo_ia_global.get())
+            if fav_global is None:
+                selecao.limpar_global(config_path=sigft_config.CONFIG_FILE)
+            else:
+                selecao.definir_global(
+                    fav_global["provider"], fav_global["model"], config_path=sigft_config.CONFIG_FILE,
+                )
+
+        for tarefa, var_tarefa in self.vars_modelo_ia_por_tarefa.items():
+            fav_tarefa = self._fav_por_rotulo_tarefa[tarefa].get(var_tarefa.get())
+            if fav_tarefa is None:
+                selecao.limpar_por_tarefa(tarefa, config_path=sigft_config.CONFIG_FILE)
+            else:
+                selecao.definir_por_tarefa(
+                    tarefa, fav_tarefa["provider"], fav_tarefa["model"], config_path=sigft_config.CONFIG_FILE,
+                )
+
+        self._recarregar_painel_modelos_ia()
+        messagebox.showinfo(
+            "Seleção salva",
+            "Seleção de modelos de IA salva. A próxima execução de cada módulo já usa o modelo "
+            "escolhido — não é preciso reiniciar o SIG-FT.",
+        )
 
     def criar_texto_simples(self, texto, row):
         label = ctk.CTkLabel(self, text=texto, font=("Arial", 14), justify="left", wraplength=800)
@@ -4321,9 +4622,30 @@ class SIG_FT_App(ctk.CTk):
             self.api_keys = defaults
 
     def save_keys(self, new_keys):
+        # [CP 3.3] read-modify-write do JSON INTEIRO: antes, este método
+        # sobrescrevia CONFIG_FILE só com `new_keys` (as chaves de API do
+        # painel "Configuração de Chaves API"), o que APAGARIA a sub-árvore
+        # reservada "_modelos_ia" gravada por `sigft.core.llm.selecao`
+        # (seleção de modelo de IA do painel "Modelos de IA" da Home) toda
+        # vez que o usuário salvasse as chaves de API depois de escolher um
+        # modelo. Mesma disciplina de
+        # `sigft.core.llm.selecao._salvar_secao`: lê o que já está no
+        # arquivo, atualiza só as chaves de API recebidas, regrava tudo.
+        dados_no_arquivo = {}
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, 'r') as f:
+                    carregado = json.load(f)
+                if isinstance(carregado, dict):
+                    dados_no_arquivo = carregado
+            except Exception:
+                dados_no_arquivo = {}
+
+        dados_no_arquivo.update(new_keys)
         self.api_keys = new_keys
+
         with open(CONFIG_FILE, 'w') as f:
-            json.dump(self.api_keys, f, indent=4)
+            json.dump(dados_no_arquivo, f, indent=4)
 
     def get_key(self, key_id):
         return self.api_keys.get(key_id, "")

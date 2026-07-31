@@ -1,19 +1,40 @@
 r"""
 Testes do Checkpoint 3.1 — `sigft.core.llm.client.get_llm()` (fábrica).
+Estendido no Checkpoint 3.3 (seção final deste arquivo) com a CADEIA DE
+RESOLUÇÃO do modelo (seleção do usuário via `core/llm/selecao.py` vencendo
+o fallback embutido).
 
 Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.1. Cobre
 especificamente a DECISÃO deste checkpoint (registrada em
 docs/refatoracao/PENDENCIAS.md): `get_llm(tarefa, api_key)` resolve o modelo
 via `config.LLM_MODELOS_HOJE` — NÃO via `config.LLM_TASKS` (que contém os
-modelos DECIDIDOS/alvo, reservados para o CP 3.3) — e a política de
+modelos DECIDIDOS/alvo, consumidos só INDIRETAMENTE a partir do CP 3.3, via
+`selecao.aplicar_recomendados()` — ver seção final) — e a política de
 retry/rate-limit resultante bate com a tabela do checkpoint (`max_retries`,
 `retry_sleep_seconds`, `min_interval_seconds` por tarefa).
 """
+import json
+
 import pytest
 
 from sigft import config
 from sigft.core.llm.client import LLMClient, get_llm
 from sigft.core.llm.providers.gemini import GeminiProvider
+
+
+@pytest.fixture(autouse=True)
+def _isola_config_file_do_cwd_real(monkeypatch, tmp_path):
+    """CP 3.3: `get_llm()` passa a consultar `config.CONFIG_FILE` (via
+    `sigft.core.llm.selecao.resolver`, quando `selecao_resolvida` não é
+    passado) para resolver a seleção de modelo do usuário -- isola TODOS os
+    testes deste módulo de um `api_config.json` REAL que porventura exista
+    no cwd de quem roda a suíte (ex.: uma máquina de dev que já usou o app
+    de verdade e tem uma seleção salva), apontando por padrão para um
+    caminho garantidamente inexistente dentro de `tmp_path`. Os testes que
+    exercitam a seleção de propósito (seção final deste arquivo) reapontam
+    `config.CONFIG_FILE` para um arquivo seu, ainda dentro de um `tmp_path`
+    isolado -- nunca o `api_config.json` real do repositório."""
+    monkeypatch.setattr(config, "CONFIG_FILE", str(tmp_path / "api_config_isolado_test.json"))
 
 
 # =============================================================================
@@ -307,3 +328,189 @@ def test_aceite_mesma_tarefa_roda_em_2_modelos_distintos_via_openrouter_mudando_
     # Só o `model` mudou entre as 2 chamadas -- provider/tarefa/prompt idênticos.
     assert http_post_a.chamadas[0]["json"]["messages"] == http_post_b.chamadas[0]["json"]["messages"]
     assert llm_a.provider_name == llm_b.provider_name == config.PROVIDER_OPENROUTER
+
+
+# =============================================================================
+# CP 3.3 — cadeia de resolução: seleção do usuário (`core/llm/selecao.py`)
+# vence `LLM_MODELOS_HOJE`. Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase
+# 3 -> CP 3.3, *Aceite*: "trocar o modelo na UI muda a próxima chamada".
+# =============================================================================
+from sigft.core.llm import selecao
+
+
+def test_sem_selecao_alguma_continua_resolvendo_via_llm_modelos_hoje_nada_mudou_em_producao():
+    # Mesmo teste "de sempre" (topo do arquivo), repetido aqui de propósito
+    # para deixar explícito, ao lado dos testes de seleção abaixo, que o
+    # caminho DEFAULT (sem `config.CONFIG_FILE` apontando pra nada real, sem
+    # `selecao_resolvida`) continua batendo com LLM_MODELOS_HOJE nas 5
+    # tarefas -- prova de que instalar o CP 3.3 não troca modelo nenhum.
+    for tarefa, cfg_hoje in config.LLM_MODELOS_HOJE.items():
+        llm = get_llm(tarefa, None)
+        assert llm.provider_name == cfg_hoje["provider"]
+        assert llm.model == cfg_hoje["model"]
+
+
+def test_get_llm_selecao_resolvida_injetada_e_usada_sem_tocar_o_disco(monkeypatch, tmp_path):
+    # Aponta CONFIG_FILE para um arquivo que, se fosse lido, devolveria um
+    # modelo DIFERENTE do injetado -- prova que `selecao_resolvida` realmente
+    # pula a leitura de disco (não é só "o disco concorda por acaso").
+    caminho = tmp_path / "api_config.json"
+    selecao.definir_global("gemini", "modelo-do-disco-nao-deveria-ser-usado", config_path=str(caminho))
+    monkeypatch.setattr(config, "CONFIG_FILE", str(caminho))
+
+    llm = get_llm(
+        "condicoes",
+        None,
+        chaves={},
+        selecao_resolvida={"provider": "openrouter", "model": "modelo-injetado-no-teste"},
+    )
+
+    assert llm.provider_name == "openrouter"
+    assert llm.model == "modelo-injetado-no-teste"
+
+
+def test_get_llm_selecao_global_no_disco_e_usada_quando_nao_ha_override_de_tarefa(monkeypatch, tmp_path):
+    caminho = tmp_path / "api_config.json"
+    selecao.definir_global("openrouter", "modelo-global-da-ui", config_path=str(caminho))
+    monkeypatch.setattr(config, "CONFIG_FILE", str(caminho))
+
+    llm = get_llm("condicoes", None, chaves={"OPENROUTER": "chave"})
+
+    assert llm.provider_name == "openrouter"
+    assert llm.model == "modelo-global-da-ui"
+
+
+def test_get_llm_override_de_tarefa_no_disco_vence_a_selecao_global(monkeypatch, tmp_path):
+    caminho = tmp_path / "api_config.json"
+    selecao.definir_global("gemini", "modelo-global", config_path=str(caminho))
+    selecao.definir_por_tarefa(
+        "tech_specs", "openrouter", "modelo-so-de-tech-specs", config_path=str(caminho)
+    )
+    monkeypatch.setattr(config, "CONFIG_FILE", str(caminho))
+
+    llm_tech_specs = get_llm("tech_specs", None, chaves={})
+    llm_condicoes = get_llm("condicoes", None, chaves={})
+
+    assert llm_tech_specs.provider_name == "openrouter"
+    assert llm_tech_specs.model == "modelo-so-de-tech-specs"
+    # "condicoes" não tem override -- cai para o GLOBAL.
+    assert llm_condicoes.provider_name == "gemini"
+    assert llm_condicoes.model == "modelo-global"
+
+
+def test_get_llm_selecao_malformada_no_disco_e_ignorada_cai_no_llm_modelos_hoje(monkeypatch, tmp_path):
+    caminho = tmp_path / "api_config.json"
+    caminho.write_text(
+        json.dumps({"_modelos_ia": {"global": {"provider": "openrouter"}}}),  # falta "model"
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config, "CONFIG_FILE", str(caminho))
+
+    llm = get_llm("condicoes", None, chaves={})
+
+    assert llm.provider_name == config.LLM_MODELOS_HOJE["condicoes"]["provider"]
+    assert llm.model == config.LLM_MODELOS_HOJE["condicoes"]["model"]
+
+
+def test_get_llm_politica_de_retry_e_temperature_continuam_da_tarefa_mesmo_com_selecao(
+    monkeypatch, tmp_path
+):
+    caminho = tmp_path / "api_config.json"
+    selecao.definir_por_tarefa("autospec", "openrouter", "outro-modelo-qualquer", config_path=str(caminho))
+    monkeypatch.setattr(config, "CONFIG_FILE", str(caminho))
+
+    llm = get_llm("autospec", None, chaves={})
+
+    assert llm.model == "outro-modelo-qualquer"  # o modelo mudou...
+    # ...mas a política continua sendo a de "autospec" (tabela por TAREFA,
+    # nunca por modelo/seleção) -- mesmos valores de
+    # test_get_llm_politica_de_retry_por_tarefa acima.
+    assert llm.max_retries == 2
+    assert llm.retry_sleep_seconds == 5
+    assert llm.min_interval_seconds == 60
+    assert llm._provider._temperature == 0.1  # noqa: SLF001
+
+
+def test_aceite_selecao_via_definir_global_muda_a_proxima_chamada_de_get_llm(monkeypatch, tmp_path):
+    # *Aceite* literal do CP 3.3: "trocar o modelo na UI muda a próxima
+    # chamada (verificável no registro de uso)". `selecao.definir_global` é
+    # o que o botão "Salvar seleção" do painel "Modelos de IA" chama por
+    # baixo (Parte C do checkpoint).
+    caminho = tmp_path / "api_config.json"
+    monkeypatch.setattr(config, "CONFIG_FILE", str(caminho))
+
+    # ANTES de qualquer seleção: get_llm resolve o modelo de hoje (nenhum
+    # arquivo em `caminho` existe ainda).
+    antes = get_llm("validar_ficha", "uma-chave")
+    assert antes.provider_name == "gemini"
+    assert antes.model == config.LLM_MODELOS_HOJE["validar_ficha"]["model"]
+
+    # Usuário troca o modelo pela UI -- sem reiniciar o app, sem passar
+    # `selecao_resolvida` (o caminho de PRODUÇÃO, não o de teste).
+    selecao.definir_global("openrouter", "novo-modelo-escolhido-na-ui", config_path=str(caminho))
+
+    depois = get_llm("validar_ficha", None, chaves={"OPENROUTER": "chave-openrouter"})
+    assert depois.provider_name == "openrouter"
+    assert depois.model == "novo-modelo-escolhido-na-ui"
+    # Política continua vindo da TAREFA (validar_ficha), idêntica antes/depois.
+    assert depois.max_retries == antes.max_retries == 2
+    assert depois.retry_sleep_seconds == antes.retry_sleep_seconds == 5
+    assert depois.min_interval_seconds == antes.min_interval_seconds == 60
+
+
+def test_aceite_selecao_sobrevive_a_releitura_simulando_reinicio_do_app(monkeypatch, tmp_path):
+    # "seleção sobrevive a reinício do app" (*Aceite* do CP 3.3): já que
+    # `get_llm()` lê o disco do zero em toda chamada (sem cache em memória
+    # entre chamadas), 2 chamadas independentes -- simulando "antes" e
+    # "depois de reiniciar o app" -- devem concordar.
+    caminho = tmp_path / "api_config.json"
+    selecao.definir_por_tarefa("condicoes", "gemini", "modelo-persistente", config_path=str(caminho))
+    monkeypatch.setattr(config, "CONFIG_FILE", str(caminho))
+
+    llm_sessao_1 = get_llm("condicoes", "uma-chave")
+    llm_sessao_2 = get_llm("condicoes", "uma-chave")  # "reinício" simulado
+
+    assert llm_sessao_1.model == llm_sessao_2.model == "modelo-persistente"
+
+
+@pytest.mark.parametrize("tarefa", sorted(config.LLM_MODELOS_HOJE))
+def test_aplicar_recomendados_deixa_todas_as_5_tarefas_construiveis_por_get_llm(
+    monkeypatch, tmp_path, tarefa
+):
+    # REGRESSÃO (corrigida durante a revisão do CP 3.3): "Aplicar
+    # recomendados" gravava `config.LLM_TASKS` VERBATIM, e
+    # `LLM_TASKS["categorizar_pdm"]["provider"]` é "xai" (Grok 4.5 nativo),
+    # que `get_llm()` não roteia -- um clique no botão da Home fazia o módulo
+    # "Criar Fichas" levantar NotImplementedError na execução seguinte.
+    # `selecao.tornar_roteavel()` passou a traduzir esses casos para o
+    # equivalente via OpenRouter (config.MODELO_RECOMENDADO_ROTEAVEL).
+    # Este teste trava o INVARIANTE geral: depois de aplicar os recomendados,
+    # NENHUMA das 5 tarefas pode ficar inconstruível.
+    caminho = tmp_path / "api_config.json"
+    selecao.aplicar_recomendados(config_path=str(caminho))
+    monkeypatch.setattr(config, "CONFIG_FILE", str(caminho))
+
+    llm = get_llm(tarefa, "chave-qualquer")  # não deve levantar
+
+    assert llm.provider_name in config.CHAVE_POR_PROVIDER
+
+
+def test_aplicar_recomendados_traduz_grok_nativo_para_o_equivalente_via_openrouter(
+    monkeypatch, tmp_path
+):
+    # O caso concreto que motivou a correção acima: a decisão de produto
+    # (MODELOS_IA.md §3) pede Grok 4.5 em `categorizar_pdm`, e o único
+    # caminho real até ele hoje é o OpenRouter (mesma forma que
+    # `config.LLM_FAVORITOS` já expõe na UI).
+    assert config.LLM_TASKS["categorizar_pdm"]["provider"] == "xai"  # pré-condição
+
+    caminho = tmp_path / "api_config.json"
+    selecao.aplicar_recomendados(config_path=str(caminho))
+    monkeypatch.setattr(config, "CONFIG_FILE", str(caminho))
+
+    llm = get_llm("categorizar_pdm", "chave-qualquer")
+
+    assert llm.provider_name == config.PROVIDER_OPENROUTER
+    assert llm.model == "x-ai/grok-4.5"
+    # A política de retry continua vindo da TAREFA, não do modelo.
+    assert llm.max_retries == 0

@@ -1,16 +1,37 @@
 r"""
 sigft/core/llm/client.py — `LLMClient`/`LLMResponse` + fábrica `get_llm()`
-(Checkpoint 3.1 do plano de refatoração; estendido no Checkpoint 3.2).
+(Checkpoint 3.1 do plano de refatoração; estendido nos Checkpoints 3.2 e 3.3).
 
-NOTA DO CP 3.2 (o restante deste docstring é histórico do CP 3.1, mantido
-intacto abaixo): o contrato de provider foi GENERALIZADO de uma tupla crua
-`(texto, tokens_in, tokens_out)` para `ProviderResult` (`NamedTuple` com
-`custo_usd` adicional, default `None`) — ver classe `ProviderResult` abaixo
-e `providers/openrouter.py` (único provider que preenche `custo_usd` com
-valor REAL). `get_llm()` também passou a rotear 3 providers
-(`gemini`/`openrouter`/`openai_compat`) e a repassar `temperature` por
-tarefa — ver docstring de `get_llm()` e `_POLITICA_RETRY_POR_TAREFA` mais
-abaixo, e docs/refatoracao/PENDENCIAS.md.
+NOTA DO CP 3.3 (o restante deste docstring é histórico dos CP 3.1/3.2,
+mantido intacto abaixo): `get_llm(tarefa, ...)` ganha uma CADEIA DE
+RESOLUÇÃO de provider/modelo — a seleção do usuário, persistida por
+`core/llm/selecao.py` (painel "Modelos de IA" da Home), agora VENCE o
+fallback embutido `config.LLM_MODELOS_HOJE` quando existir: (1) override da
+TAREFA > (2) seleção GLOBAL > (3) `config.LLM_MODELOS_HOJE[tarefa]` — o
+MESMO fallback de antes, preservado por decisão explícita do arquiteto ("sem
+downgrade silencioso", docs/refatoracao/MODELOS_IA.md §5): instalar esta
+versão NÃO troca o modelo de ninguém que nunca abriu o painel novo. Novo
+parâmetro keyword-only `selecao_resolvida: dict | None = None` permite
+injetar o resultado já resolvido em teste, pulando a leitura de disco;
+quando ausente, lê `config.CONFIG_FILE` — o MESMO arquivo das chaves de
+API — via `selecao.resolver(tarefa, config_path=config.CONFIG_FILE)`, ao
+vivo, uma vez por chamada (é o que dá o efeito "imediato, sem reiniciar o
+app": os 5 consumidores de IA constroem um `LLMClient` novo, via `get_llm`,
+a cada execução de módulo — ver docstring de `get_llm()` mais abaixo).
+`config.LLM_TASKS`/`LLM_DEFAULT` continuam SEM leitura direta aqui — só
+entram em jogo quando o usuário aciona "Aplicar recomendados" na UI, que os
+GRAVA como seleção via `selecao.aplicar_recomendados()`; a partir daí passam
+a ser lidos pelo passo (2) acima, como qualquer outra seleção salva. Ver
+docs/refatoracao/PENDENCIAS.md.
+
+NOTA DO CP 3.2 (histórico, mantido intacto): o contrato de provider foi
+GENERALIZADO de uma tupla crua `(texto, tokens_in, tokens_out)` para
+`ProviderResult` (`NamedTuple` com `custo_usd` adicional, default `None`) —
+ver classe `ProviderResult` abaixo e `providers/openrouter.py` (único
+provider que preenche `custo_usd` com valor REAL). `get_llm()` também passou
+a rotear 3 providers (`gemini`/`openrouter`/`openai_compat`) e a repassar
+`temperature` por tarefa — ver docstring de `get_llm()` e
+`_POLITICA_RETRY_POR_TAREFA` mais abaixo, e docs/refatoracao/PENDENCIAS.md.
 
 Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.1, diagnóstico
 seção 1.3 ("Duplicação e rigidez de IA"): "`genai.configure(transport=
@@ -61,6 +82,16 @@ migrados, violando o Aceite. `config.LLM_MODELOS_HOJE` existe especificamente
 como "a referência de EQUIVALÊNCIA do CP 3.1" (ver `sigft/config.py`, seção
 6) — é o que este módulo lê. `LLM_TASKS`/`LLM_DEFAULT` ficam RESERVADOS para
 o CP 3.3 (seleção de modelo na interface, com validação do usuário).
+
+ATUALIZAÇÃO CP 3.3 — o CP 3.3 chegou: `config.LLM_MODELOS_HOJE` CONTINUA
+sendo o fallback embutido (ver "NOTA DO CP 3.3" no topo do docstring —
+decisão explícita "sem downgrade silencioso" do arquiteto, não uma
+reinterpretação do Aceite deste CP 3.1). `config.LLM_TASKS`/`LLM_DEFAULT`
+passam a ser lidos, mas nunca DIRETAMENTE por este módulo — só
+indiretamente, através de `selecao.aplicar_recomendados()` (que os GRAVA
+como seleção quando o usuário clica "Aplicar recomendados" na UI); a partir
+daí eles chegam a `get_llm()` pelo MESMO caminho de qualquer seleção salva
+manualmente (`selecao.resolver()`), sem tratamento especial.
 
 DECISÃO — `get_llm(tarefa, api_key)` recebe `api_key` como parâmetro
 explícito (a assinatura de UM argumento sugerida pelo texto do plano seria
@@ -452,13 +483,23 @@ def _limpar_e_parsear_json(texto: str | None) -> object:
 # get_llm() -- fábrica citada pelo plano ("Fábrica `get_llm(tarefa)` resolve
 # provedor/modelo via `config.LLM_TASKS`" no texto do checkpoint; ver
 # docstring do módulo para a decisão de usar `config.LLM_MODELOS_HOJE` em vez
-# disso, exigida pelo próprio Aceite deste checkpoint).
+# disso, exigida pelo próprio Aceite do CP 3.1).
 #
 # CP 3.2: `get_llm` passa a rotear 3 providers (`gemini`/`openrouter`/
 # `openai_compat`) -- ver `providers/openrouter.py`/`providers/
 # openai_compat.py`. `LLM_MODELOS_HOJE` continua intocado (todas as 5
 # tarefas continuam em `gemini` em produção -- ver PENDENCIAS.md); os
 # providers novos existem e são testáveis, mas sem consumidor real ainda.
+#
+# CP 3.3: `get_llm` ganha a CADEIA DE RESOLUÇÃO descrita na "NOTA DO CP 3.3"
+# no topo do docstring do módulo -- seleção do usuário (via
+# `core/llm/selecao.py`, keyword-only `selecao_resolvida` injetável em
+# teste) VENCE `LLM_MODELOS_HOJE[tarefa]` quando existir. `LLM_MODELOS_HOJE`
+# continua sendo o FALLBACK (não muda de fonte); a validação de `tarefa`
+# continua feita contra `LLM_MODELOS_HOJE` ANTES de qualquer leitura de
+# seleção; a política de retry/rate-limit/temperature continua vindo de
+# `_POLITICA_RETRY_POR_TAREFA[tarefa]` -- por TAREFA, nunca pela seleção/
+# modelo -- ver docstring de `get_llm()` abaixo.
 # =============================================================================
 
 # Política de retry/rate-limit/temperature por tarefa -- ver tabela no
@@ -518,13 +559,43 @@ _POLITICA_RETRY_POR_TAREFA: dict[str, dict[str, object]] = {
 
 
 def get_llm(
-    tarefa: str, api_key: str | None = None, *, chaves: dict[str, str | None] | None = None
+    tarefa: str,
+    api_key: str | None = None,
+    *,
+    chaves: dict[str, str | None] | None = None,
+    selecao_resolvida: dict[str, str] | None = None,
 ) -> LLMClient:
     """Resolve provider/modelo/política de retry/temperature para `tarefa` e
     devolve um `LLMClient` pronto para uso.
 
-    Fonte do modelo: `config.LLM_MODELOS_HOJE` (NÃO `config.LLM_TASKS` — ver
-    decisão registrada no docstring do módulo e em PENDENCIAS.md).
+    CADEIA DE RESOLUÇÃO DO MODELO (CP 3.3 — *Aceite* do checkpoint: "trocar
+    o modelo na UI muda a próxima chamada"):
+      1. `selecao_resolvida`, se passado (não `None`) -- injeção de teste,
+         pula a leitura de disco (ver item 2). Deve ter a mesma forma que
+         `sigft.core.llm.selecao.resolver()` devolve: `{"provider": ...,
+         "model": ...}`.
+      2. Senão, `sigft.core.llm.selecao.resolver(tarefa, config_path=
+         config.CONFIG_FILE)` -- a seleção que o usuário salvou no painel
+         "Modelos de IA" da Home (override da TAREFA > seleção GLOBAL),
+         lida do MESMO arquivo das chaves de API (`config.CONFIG_FILE`),
+         AO VIVO a cada chamada -- é o que dá o efeito "imediato, sem
+         reiniciar o app" (os 5 consumidores de IA constroem um `LLMClient`
+         novo, via `get_llm`, a cada execução de módulo).
+      3. Se nem 1 nem 2 tiverem nada: `config.LLM_MODELOS_HOJE[tarefa]` --
+         o MESMO fallback de antes do CP 3.3 (fonte de equivalência do
+         CP 3.1), decisão explícita "sem downgrade silencioso"
+         (docs/refatoracao/MODELOS_IA.md §5): quem nunca abriu o painel
+         novo continua exatamente no modelo de hoje.
+
+    `config.LLM_TASKS`/`LLM_DEFAULT` (os modelos RECOMENDADOS) não são lidos
+    diretamente por esta função -- só entram em jogo quando o usuário aciona
+    "Aplicar recomendados" na UI, que os GRAVA como seleção via
+    `selecao.aplicar_recomendados()`; a partir daí passam a ser lidos pelo
+    passo 2 acima, como qualquer outra seleção salva.
+
+    Política de retry/rate-limit/temperature continua vindo de
+    `_POLITICA_RETRY_POR_TAREFA[tarefa]` -- por TAREFA, nunca por modelo/
+    seleção (não muda com a cadeia acima).
 
     Resolução da CHAVE (CP 3.2 — preserva o comportamento exato dos 4/5
     consumidores diretos de hoje, que passam a chave via
@@ -532,7 +603,9 @@ def get_llm(
       - se o provider resolvido for `config.PROVIDER_GEMINI` E `api_key` foi
         passado (não `None`): usa `api_key` TAL QUAL, sem consultar `chaves`
         nem `config.carregar_chaves()` -- é o caminho dos 5 consumidores
-        migrados no CP 3.1 (`__init__(self, api_key)`).
+        migrados no CP 3.1 (`__init__(self, api_key)`); vale mesmo quando o
+        provider "gemini" veio de uma SELEÇÃO (não só do fallback), porque
+        os 5 consumidores continuam passando a MESMA chave Gemini de sempre.
       - caso contrário (provider não-Gemini, ou Gemini sem `api_key`
         explícito): resolve a chave do provider via `chaves` (default:
         `config.carregar_chaves()`), usando `config.CHAVE_POR_PROVIDER` para
@@ -542,20 +615,34 @@ def get_llm(
         explicando que essa variável precisa estar configurada.
 
     Levanta `ValueError` (mensagem lista as tarefas válidas) para `tarefa`
-    desconhecida -- mesmo padrão de `config.get_task_config()`. Levanta
-    `NotImplementedError` se o provider resolvido não for um dos 3
-    suportados (`gemini`/`openrouter`/`openai_compat`) -- ex.: `"xai"`, que
-    `config.LLM_TASKS` ainda usa (`categorizar_pdm`) mas que nenhuma tarefa
-    de `LLM_MODELOS_HOJE` aponta hoje.
+    desconhecida -- mesmo padrão de `config.get_task_config()` -- SEMPRE
+    verificado contra `config.LLM_MODELOS_HOJE` ANTES de qualquer leitura de
+    seleção (uma tarefa inválida não pode ser "salva" só por existir numa
+    seleção malformada). Levanta `NotImplementedError` se o provider
+    resolvido não for um dos 3 suportados (`gemini`/`openrouter`/
+    `openai_compat`) -- ex.: `"xai"`, que `config.LLM_TASKS` ainda usa
+    (`categorizar_pdm`) e que agora É alcançável em produção se o usuário
+    clicar "Aplicar recomendados" (o provider nativo `xai`/Grok 4.5 ainda
+    não tem implementação real -- gap pré-existente, ver PENDENCIAS.md; a
+    lista curada da UI, `config.LLM_FAVORITOS`, evita esse gap oferecendo
+    Grok 4.5 via `openrouter`, que É implementado).
     """
     try:
-        cfg = config.LLM_MODELOS_HOJE[tarefa]
+        cfg_hoje = config.LLM_MODELOS_HOJE[tarefa]
     except KeyError:
         tarefas_validas = ", ".join(sorted(config.LLM_MODELOS_HOJE))
         raise ValueError(
             f"Tarefa de IA desconhecida: {tarefa!r}. Tarefas configuradas em "
             f"LLM_MODELOS_HOJE: {tarefas_validas}."
         ) from None
+
+    if selecao_resolvida is not None:
+        resolvido = selecao_resolvida
+    else:
+        from sigft.core.llm import selecao  # import local -- só usado aqui
+
+        resolvido = selecao.resolver(tarefa, config_path=config.CONFIG_FILE)
+    cfg = resolvido if resolvido is not None else cfg_hoje
 
     provider_id = cfg["provider"]
     politica = dict(_POLITICA_RETRY_POR_TAREFA[tarefa])

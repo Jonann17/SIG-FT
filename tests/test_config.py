@@ -269,6 +269,125 @@ def test_llm_precos_valores_de_referencia():
 
 
 # =============================================================================
+# B2. LLM_FAVORITOS (CP 3.3 — lista curada para o seletor de modelo na UI)
+# =============================================================================
+
+_TIERS_VALIDOS = {"economia", "padrao", "poder"}
+_CHAVES_MINIMAS_FAVORITO = {"provider", "model", "rotulo", "score", "preco_input", "preco_output", "tier"}
+_PROVIDERS_IMPLEMENTADOS = {
+    sigft_config.PROVIDER_GEMINI,
+    sigft_config.PROVIDER_OPENROUTER,
+    sigft_config.PROVIDER_OPENAI_COMPAT,
+}
+
+
+def test_llm_favoritos_e_uma_lista_nao_vazia():
+    assert isinstance(sigft_config.LLM_FAVORITOS, list)
+    assert len(sigft_config.LLM_FAVORITOS) >= 5  # os 3 da decisão + os 2 usados hoje
+
+
+def test_llm_favoritos_cada_entrada_tem_as_chaves_minimas_exigidas_pelo_checkpoint():
+    for fav in sigft_config.LLM_FAVORITOS:
+        assert _CHAVES_MINIMAS_FAVORITO.issubset(set(fav))
+
+
+def test_llm_favoritos_provider_e_model_sao_strings_nao_vazias():
+    for fav in sigft_config.LLM_FAVORITOS:
+        assert isinstance(fav["provider"], str) and fav["provider"]
+        assert isinstance(fav["model"], str) and fav["model"]
+        assert isinstance(fav["rotulo"], str) and fav["rotulo"]
+
+
+def test_llm_favoritos_provider_e_sempre_um_dos_3_providers_implementados_por_get_llm():
+    # `get_llm()` (core/llm/client.py) só roteia gemini/openrouter/
+    # openai_compat -- um favorito com outro provider (ex.: "xai", usado só
+    # por LLM_TASKS["categorizar_pdm"], gap pré-existente) apareceria na UI
+    # mas quebraria com NotImplementedError na primeira chamada real.
+    for fav in sigft_config.LLM_FAVORITOS:
+        assert fav["provider"] in _PROVIDERS_IMPLEMENTADOS, fav
+
+
+def test_llm_favoritos_tiers_sao_validos():
+    for fav in sigft_config.LLM_FAVORITOS:
+        assert fav["tier"] in _TIERS_VALIDOS, fav
+
+
+def test_llm_favoritos_score_e_precos_sao_numericos_e_nao_negativos():
+    for fav in sigft_config.LLM_FAVORITOS:
+        assert isinstance(fav["score"], (int, float))
+        assert isinstance(fav["preco_input"], (int, float))
+        assert isinstance(fav["preco_output"], (int, float))
+        assert fav["score"] >= 0
+        assert fav["preco_input"] >= 0
+        assert fav["preco_output"] >= 0
+
+
+def test_llm_favoritos_contem_os_3_tiers_da_decisao_do_modelos_ia():
+    tiers_presentes = {fav["tier"] for fav in sigft_config.LLM_FAVORITOS}
+    assert _TIERS_VALIDOS.issubset(tiers_presentes)
+
+
+def test_llm_favoritos_contem_gemini_3_flash_preview_como_padrao_global():
+    # MODELOS_IA.md §3: padrão global -- MESMO provider+model de LLM_DEFAULT.
+    candidatos = [
+        fav
+        for fav in sigft_config.LLM_FAVORITOS
+        if fav["provider"] == sigft_config.PROVIDER_GEMINI and fav["model"] == "gemini-3-flash-preview"
+    ]
+    assert len(candidatos) == 1
+    assert candidatos[0]["tier"] == "padrao"
+    assert (candidatos[0]["provider"], candidatos[0]["model"]) == (
+        sigft_config.LLM_DEFAULT["provider"],
+        sigft_config.LLM_DEFAULT["model"],
+    )
+
+
+def test_llm_favoritos_contem_minimax_m3_como_economia_via_openrouter():
+    candidatos = [fav for fav in sigft_config.LLM_FAVORITOS if "minimax" in fav["model"].lower()]
+    assert len(candidatos) == 1
+    assert candidatos[0]["provider"] == sigft_config.PROVIDER_OPENROUTER
+    assert candidatos[0]["tier"] == "economia"
+
+
+def test_llm_favoritos_contem_grok_4_5_como_poder_via_openrouter():
+    candidatos = [fav for fav in sigft_config.LLM_FAVORITOS if "grok" in fav["model"].lower()]
+    assert len(candidatos) == 1
+    assert candidatos[0]["provider"] == sigft_config.PROVIDER_OPENROUTER
+    assert candidatos[0]["tier"] == "poder"
+    # MODELOS_IA.md §3: mesmo modelo (Grok 4.5) que LLM_TASKS["categorizar_pdm"]
+    # decide, ainda que por um provider DIFERENTE (openrouter, implementado,
+    # em vez de xai, gap pré-existente -- ver PENDENCIAS.md).
+    assert sigft_config.LLM_TASKS["categorizar_pdm"]["provider"] == sigft_config.PROVIDER_XAI
+
+
+def test_llm_favoritos_contem_os_2_modelos_usados_hoje_para_o_usuario_poder_reverter():
+    # "para que o usuário consiga voltar atrás pela UI" -- exigência
+    # explícita do checkpoint: os 2 modelos de LLM_MODELOS_HOJE devem
+    # aparecer como favoritos, com o provider NATIVO (gemini), do jeito que
+    # rodam em produção hoje.
+    modelos_hoje = {cfg["model"] for cfg in sigft_config.LLM_MODELOS_HOJE.values()}
+    modelos_favoritos = {
+        fav["model"] for fav in sigft_config.LLM_FAVORITOS if fav["provider"] == sigft_config.PROVIDER_GEMINI
+    }
+    assert modelos_hoje.issubset(modelos_favoritos)
+
+
+def test_llm_favoritos_precos_batem_com_llm_precos_usd_por_1m():
+    # Mesma fonte/seed -- nenhum valor de preço inventado à parte da tabela.
+    for fav in sigft_config.LLM_FAVORITOS:
+        preco_seed = sigft_config.LLM_PRECOS_USD_POR_1M.get(fav["model"])
+        if preco_seed is None:
+            continue  # modelo fora da tabela LLM_PRECOS_USD_POR_1M (ex.: slug OpenRouter "vendor/modelo")
+        assert fav["preco_input"] == preco_seed["input"]
+        assert fav["preco_output"] == preco_seed["output"]
+
+
+def test_llm_favoritos_sem_entradas_duplicadas_de_provider_model():
+    pares = [(fav["provider"], fav["model"]) for fav in sigft_config.LLM_FAVORITOS]
+    assert len(pares) == len(set(pares))
+
+
+# =============================================================================
 # C. Carregamento de chaves (carregar_chaves / get_key)
 # =============================================================================
 

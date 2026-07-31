@@ -25,15 +25,31 @@ isolado).
 """
 from unittest.mock import patch
 
+import pytest
+
 import apagar_lmr_backend
 import cria_fichas_no_pmib_v1_backend
 import lmr_backend
 import upload_conditions_backend
 import upload_ficha_duplicada
 import upload_tech_specs_backend
+from sigft import config
 from sigft.core.callbacks import UICallbacks
 from sigft.core.rpa.portal import PMIBPortal
 from sigft.core.rpa.selenium_engine import SeleniumEngine
+
+
+@pytest.fixture(autouse=True)
+def _isola_config_file_do_cwd_real(monkeypatch, tmp_path):
+    """CP 3.3 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.3):
+    `ConditionsProcessor.__init__`/`TechSpecsProcessor.__init__` (abaixo)
+    chamam `get_llm()`, que agora consulta `config.CONFIG_FILE` -- isola
+    estes testes de um `api_config.json` REAL que porventura exista no cwd
+    de quem roda a suíte (com uma seleção apontando para um provider não
+    implementado, por exemplo, o que faria a construção destas 2 classes
+    levantar `NotImplementedError` em vez de só testar o wiring do
+    `PMIBPortal`, que é o que este arquivo cobre)."""
+    monkeypatch.setattr(config, "CONFIG_FILE", str(tmp_path / "api_config_isolado_test.json"))
 
 
 def _fake_factory(chamadas, driver_sentinel, wait_sentinel):

@@ -20,11 +20,28 @@ escopo deste checkpoint -- `extrair_dados_brutos_excel` é monkeypatchado
 onde precisa, para não depender de pandas/openpyxl reais neste ambiente de
 teste, que os tem stubados como MagicMock).
 """
+import pytest
+
 import analyzer_backend
 import cria_fichas_no_pmib_v1_backend
 import upload_conditions_backend
 import upload_tech_specs_backend
+from sigft import config
 from sigft.core.llm.client import LLMClient, LLMResponse
+
+
+@pytest.fixture(autouse=True)
+def _isola_config_file_do_cwd_real(monkeypatch, tmp_path):
+    """CP 3.3 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.3):
+    `get_llm()` (chamado por dentro do `__init__` das 4 classes abaixo)
+    passou a consultar `config.CONFIG_FILE` para resolver a seleção de
+    modelo do usuário -- isola estes testes de um `api_config.json` REAL
+    que porventura exista no cwd de quem roda a suíte (ex.: máquina de dev
+    que já usou o app de verdade e tem uma seleção salva), apontando para um
+    caminho garantidamente inexistente. Sem isto, as asserções abaixo (que
+    assumem os modelos de `LLM_MODELOS_HOJE`) ficariam sujeitas ao estado
+    local da máquina que roda a suíte."""
+    monkeypatch.setattr(config, "CONFIG_FILE", str(tmp_path / "api_config_isolado_test.json"))
 
 
 # =============================================================================
