@@ -145,3 +145,165 @@ def test_get_llm_api_key_e_repassada_tal_qual_sem_ler_outra_fonte(monkeypatch):
 
     llm2 = get_llm("condicoes", "uma-chave-qualquer")
     assert isinstance(llm2, LLMClient)
+
+
+# =============================================================================
+# CP 3.2 — roteamento de 3 providers, resolução de chave por provider,
+# `EMPRESA_LLM_BASE_URL` ausente e `NotImplementedError` de provider
+# desconhecido (ex.: "xai", que `config.LLM_TASKS` ainda usa).
+# =============================================================================
+from sigft.core.llm.providers.openai_compat import OpenAICompatProvider
+from sigft.core.llm.providers.openrouter import OpenRouterProvider
+
+
+def _fixar_tarefa_bogus(monkeypatch, provider, model="modelo-de-teste"):
+    """Monkeypatch de uma tarefa NOVA em `LLM_MODELOS_HOJE` (restaurado
+    automaticamente ao fim do teste) -- evita tocar nas 5 tarefas reais."""
+    monkeypatch.setitem(config.LLM_MODELOS_HOJE, "_bogus", {"provider": provider, "model": model})
+    monkeypatch.setitem(
+        __import__("sigft.core.llm.client", fromlist=["_POLITICA_RETRY_POR_TAREFA"])
+        ._POLITICA_RETRY_POR_TAREFA,
+        "_bogus",
+        {"max_retries": 0, "retry_sleep_seconds": 0, "min_interval_seconds": None, "temperature": None},
+    )
+
+
+def test_get_llm_roteia_para_geminiprovider(monkeypatch):
+    _fixar_tarefa_bogus(monkeypatch, config.PROVIDER_GEMINI)
+
+    llm = get_llm("_bogus", "chave-explicita")
+
+    assert isinstance(llm._provider, GeminiProvider)  # noqa: SLF001
+
+
+def test_get_llm_roteia_para_openrouterprovider(monkeypatch):
+    _fixar_tarefa_bogus(monkeypatch, config.PROVIDER_OPENROUTER)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "chave-openrouter")
+
+    llm = get_llm("_bogus")
+
+    assert isinstance(llm._provider, OpenRouterProvider)  # noqa: SLF001
+
+
+def test_get_llm_roteia_para_openaicompatprovider(monkeypatch):
+    _fixar_tarefa_bogus(monkeypatch, config.PROVIDER_OPENAI_COMPAT)
+    monkeypatch.setenv("EMPRESA_LLM_API_KEY", "chave-empresa")
+    monkeypatch.setenv("EMPRESA_LLM_BASE_URL", "https://ia.empresa.exemplo/v1")
+
+    llm = get_llm("_bogus")
+
+    assert isinstance(llm._provider, OpenAICompatProvider)  # noqa: SLF001
+    assert llm._provider._base_url == "https://ia.empresa.exemplo/v1"  # noqa: SLF001
+
+
+def test_get_llm_gemini_com_api_key_explicito_nao_consulta_chaves(monkeypatch):
+    _fixar_tarefa_bogus(monkeypatch, config.PROVIDER_GEMINI)
+
+    chamou_carregar_chaves = {"valor": False}
+
+    def _carregar_chaves_espiao(*args, **kwargs):
+        chamou_carregar_chaves["valor"] = True
+        return config.carregar_chaves(*args, **kwargs)
+
+    monkeypatch.setattr(config, "carregar_chaves", _carregar_chaves_espiao)
+
+    get_llm("_bogus", "chave-explicita")
+
+    assert chamou_carregar_chaves["valor"] is False
+
+
+def test_get_llm_gemini_sem_api_key_explicito_resolve_via_chaves(monkeypatch):
+    _fixar_tarefa_bogus(monkeypatch, config.PROVIDER_GEMINI)
+
+    chaves = {"GEMINI": "chave-vinda-de-chaves"}
+    llm = get_llm("_bogus", None, chaves=chaves)
+
+    assert isinstance(llm._provider, GeminiProvider)  # noqa: SLF001
+
+
+def test_get_llm_openrouter_resolve_chave_via_chaves_por_config_chave_por_provider(monkeypatch):
+    _fixar_tarefa_bogus(monkeypatch, config.PROVIDER_OPENROUTER)
+
+    chaves = {"OPENROUTER": "chave-openrouter-de-teste"}
+    llm = get_llm("_bogus", None, chaves=chaves)
+
+    assert isinstance(llm._provider, OpenRouterProvider)  # noqa: SLF001
+
+
+def test_get_llm_openai_compat_sem_empresa_llm_base_url_levanta_value_error(monkeypatch):
+    _fixar_tarefa_bogus(monkeypatch, config.PROVIDER_OPENAI_COMPAT)
+
+    chaves = {"EMPRESA_LLM_API_KEY": "chave", "EMPRESA_LLM_BASE_URL": ""}
+
+    with pytest.raises(ValueError, match="EMPRESA_LLM_BASE_URL"):
+        get_llm("_bogus", None, chaves=chaves)
+
+
+def test_get_llm_openai_compat_sem_empresa_llm_base_url_ausente_do_dict_levanta_value_error(monkeypatch):
+    _fixar_tarefa_bogus(monkeypatch, config.PROVIDER_OPENAI_COMPAT)
+
+    chaves = {"EMPRESA_LLM_API_KEY": "chave"}  # sem a chave "EMPRESA_LLM_BASE_URL" nenhuma
+
+    with pytest.raises(ValueError, match="EMPRESA_LLM_BASE_URL"):
+        get_llm("_bogus", None, chaves=chaves)
+
+
+def test_get_llm_provider_desconhecido_levanta_not_implemented_error(monkeypatch):
+    # "xai" -- provider que `config.LLM_TASKS["categorizar_pdm"]` ainda usa
+    # (Grok 4.5), mas que nenhuma tarefa de LLM_MODELOS_HOJE aponta hoje, e
+    # que não é um dos 3 providers implementados neste checkpoint.
+    _fixar_tarefa_bogus(monkeypatch, "xai")
+
+    with pytest.raises(NotImplementedError) as exc_info:
+        get_llm("_bogus", "chave-qualquer")
+
+    mensagem = str(exc_info.value)
+    assert "xai" in mensagem
+    assert "gemini" in mensagem
+    assert "openrouter" in mensagem
+    assert "openai_compat" in mensagem
+
+
+# =============================================================================
+# Aceite do CP 3.2: "a mesma tarefa roda em ≥2 modelos distintos via
+# OpenRouter mudando apenas config". Prova via `http_post` fake injetado
+# DEPOIS que `get_llm()` já resolveu o provider -- só o `model` de
+# `LLM_MODELOS_HOJE` muda entre as 2 chamadas, nada mais no código.
+# =============================================================================
+class _FakeHttpPostRespostaFixa:
+    def __init__(self):
+        self.chamadas = []
+
+    def __call__(self, url, *, headers, json, timeout):
+        self.chamadas.append({"url": url, "headers": headers, "json": json, "timeout": timeout})
+
+        class _Resp:
+            def raise_for_status(self_inner):
+                pass
+
+            def json(self_inner):
+                return {"choices": [{"message": {"content": '{"ok": true}'}}]}
+
+        return _Resp()
+
+
+def test_aceite_mesma_tarefa_roda_em_2_modelos_distintos_via_openrouter_mudando_so_config(
+    monkeypatch,
+):
+    _fixar_tarefa_bogus(monkeypatch, config.PROVIDER_OPENROUTER, model="modelo-a")
+    llm_a = get_llm("_bogus", None, chaves={"OPENROUTER": "chave"})
+    http_post_a = _FakeHttpPostRespostaFixa()
+    llm_a._provider._http_post = http_post_a  # noqa: SLF001
+    llm_a.generate("mesmo prompt")
+    assert http_post_a.chamadas[0]["json"]["model"] == "modelo-a"
+
+    _fixar_tarefa_bogus(monkeypatch, config.PROVIDER_OPENROUTER, model="modelo-b")
+    llm_b = get_llm("_bogus", None, chaves={"OPENROUTER": "chave"})
+    http_post_b = _FakeHttpPostRespostaFixa()
+    llm_b._provider._http_post = http_post_b  # noqa: SLF001
+    llm_b.generate("mesmo prompt")
+    assert http_post_b.chamadas[0]["json"]["model"] == "modelo-b"
+
+    # Só o `model` mudou entre as 2 chamadas -- provider/tarefa/prompt idênticos.
+    assert http_post_a.chamadas[0]["json"]["messages"] == http_post_b.chamadas[0]["json"]["messages"]
+    assert llm_a.provider_name == llm_b.provider_name == config.PROVIDER_OPENROUTER

@@ -142,6 +142,52 @@ def test_json_mode_true_passa_generation_config_response_mime_type_json():
 
 
 # =============================================================================
+# temperature (CP 3.2) -- 4 combinações com/sem temperature x com/sem
+# json_mode, cobrindo em especial a MESCLA de generation_config (nenhuma das
+# 2 chaves pode sobrescrever a outra).
+# =============================================================================
+def test_sem_temperature_e_sem_json_mode_nao_passa_generation_config():
+    fake = _FakeGenaiModule()
+    provider = GeminiProvider("chave", "modelo-x", genai_module=fake, temperature=None)
+
+    provider.generate_raw("prompt", json_mode=False)
+
+    assert "generation_config" not in fake.generative_model_chamadas[0]
+
+
+def test_com_temperature_e_sem_json_mode_passa_so_temperature():
+    fake = _FakeGenaiModule()
+    provider = GeminiProvider("chave", "modelo-x", genai_module=fake, temperature=0.1)
+
+    provider.generate_raw("prompt", json_mode=False)
+
+    assert fake.generative_model_chamadas[0]["generation_config"] == {"temperature": 0.1}
+
+
+def test_sem_temperature_e_com_json_mode_passa_so_response_mime_type():
+    fake = _FakeGenaiModule()
+    provider = GeminiProvider("chave", "modelo-x", genai_module=fake, temperature=None)
+
+    provider.generate_raw("prompt", json_mode=True)
+
+    assert fake.generative_model_chamadas[0]["generation_config"] == {
+        "response_mime_type": "application/json"
+    }
+
+
+def test_com_temperature_e_com_json_mode_mescla_as_duas_chaves():
+    fake = _FakeGenaiModule()
+    provider = GeminiProvider("chave", "modelo-x", genai_module=fake, temperature=0.1)
+
+    provider.generate_raw("prompt", json_mode=True)
+
+    assert fake.generative_model_chamadas[0]["generation_config"] == {
+        "response_mime_type": "application/json",
+        "temperature": 0.1,
+    }
+
+
+# =============================================================================
 # safety_settings -- SEMPRE presente, igual ao dict BLOCK_NONE, em qualquer
 # combinação de system/json_mode.
 # =============================================================================
@@ -191,9 +237,20 @@ def test_generate_raw_devolve_texto_da_resposta():
     fake = _FakeGenaiModule(resposta_texto="texto da resposta")
     provider = GeminiProvider("chave", "modelo-x", genai_module=fake)
 
-    texto, _, _ = provider.generate_raw("prompt")
+    resultado = provider.generate_raw("prompt")
 
-    assert texto == "texto da resposta"
+    assert resultado.text == "texto da resposta"
+
+
+def test_custo_usd_sempre_none_gemini_nao_informa_custo_real():
+    # CP 3.2: `ProviderResult.custo_usd` só é preenchido por providers que
+    # informam custo REAL (OpenRouter) -- Gemini direto sempre `None`.
+    fake = _FakeGenaiModule()
+    provider = GeminiProvider("chave", "modelo-x", genai_module=fake)
+
+    resultado = provider.generate_raw("prompt")
+
+    assert resultado.custo_usd is None
 
 
 # =============================================================================
@@ -206,18 +263,18 @@ def test_extracao_de_tokens_quando_usage_metadata_existe():
     )
     provider = GeminiProvider("chave", "modelo-x", genai_module=fake)
 
-    texto, tokens_in, tokens_out = provider.generate_raw("prompt")
+    resultado = provider.generate_raw("prompt")
 
-    assert texto == "{}"
-    assert tokens_in == 42
-    assert tokens_out == 7
+    assert resultado.text == "{}"
+    assert resultado.tokens_in == 42
+    assert resultado.tokens_out == 7
 
 
 def test_extracao_de_tokens_none_quando_usage_metadata_ausente():
     fake = _FakeGenaiModule(resposta_texto="{}", usage_metadata=None)
     provider = GeminiProvider("chave", "modelo-x", genai_module=fake)
 
-    _, tokens_in, tokens_out = provider.generate_raw("prompt")
+    resultado = provider.generate_raw("prompt")
 
-    assert tokens_in is None
-    assert tokens_out is None
+    assert resultado.tokens_in is None
+    assert resultado.tokens_out is None

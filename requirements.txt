@@ -12,8 +12,6 @@ selenium
 
 # IA / LLM
 google-generativeai
-langchain-google-genai
-langchain-core
 llama-parse
 
 # Parsing e utilidades

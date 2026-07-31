@@ -1,6 +1,16 @@
 r"""
 sigft/core/llm/client.py — `LLMClient`/`LLMResponse` + fábrica `get_llm()`
-(Checkpoint 3.1 do plano de refatoração).
+(Checkpoint 3.1 do plano de refatoração; estendido no Checkpoint 3.2).
+
+NOTA DO CP 3.2 (o restante deste docstring é histórico do CP 3.1, mantido
+intacto abaixo): o contrato de provider foi GENERALIZADO de uma tupla crua
+`(texto, tokens_in, tokens_out)` para `ProviderResult` (`NamedTuple` com
+`custo_usd` adicional, default `None`) — ver classe `ProviderResult` abaixo
+e `providers/openrouter.py` (único provider que preenche `custo_usd` com
+valor REAL). `get_llm()` também passou a rotear 3 providers
+(`gemini`/`openrouter`/`openai_compat`) e a repassar `temperature` por
+tarefa — ver docstring de `get_llm()` e `_POLITICA_RETRY_POR_TAREFA` mais
+abaixo, e docs/refatoracao/PENDENCIAS.md.
 
 Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.1, diagnóstico
 seção 1.3 ("Duplicação e rigidez de IA"): "`genai.configure(transport=
@@ -109,12 +119,38 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, NamedTuple
 
 from sigft import config
 
 SleepFn = Callable[[float], None]
 TimeFn = Callable[[], float]
+
+
+class ProviderResult(NamedTuple):
+    """Retorno de `provider.generate_raw(...)` (Checkpoint 3.2 — generaliza o
+    contrato que nascia como tupla crua `(texto, tokens_in, tokens_out)` no
+    CP 3.1).
+
+    `custo_usd` só é preenchido por providers que informam custo REAL na
+    própria resposta da API (`providers/openrouter.py`, via `usage.cost` —
+    ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.2); os demais
+    providers (`providers/gemini.py`, `providers/openai_compat.py`) deixam
+    `None` — ESTIMAR custo por tabela de preços é capacidade do CP 3.4
+    (`core/llm/usage.py`), fora de escopo aqui.
+
+    É um `NamedTuple` (não uma `@dataclass`) de propósito: os 3 primeiros
+    campos têm defaults `None`, então qualquer código/teste que já construía
+    uma tupla de 3 elementos `(texto, tokens_in, tokens_out)` continua
+    funcionando via `ProviderResult(*tupla_antiga)` sem precisar nomear
+    `custo_usd` — ver `tests/test_llm_client.py::_FakeProvider` e
+    `tests/test_llm_gemini_provider.py`.
+    """
+
+    text: str
+    tokens_in: int | None = None
+    tokens_out: int | None = None
+    custo_usd: float | None = None
 
 
 @dataclass
@@ -135,8 +171,12 @@ class LLMResponse:
       tokens_in / tokens_out: contagem de tokens de entrada/saída, quando o
         provider expuser (capacidade NOVA — nenhum dos 4 consumidores lê
         tokens hoje). `None` quando o provider não souber informar.
-      custo_usd: SEMPRE `None` neste checkpoint — estimativa/custo real é
-        capacidade do CP 3.4 (`core/llm/usage.py`), fora de escopo aqui.
+      custo_usd: custo REAL da chamada em USD quando o provider informar
+        (`ProviderResult.custo_usd`, ver `providers/openrouter.py` — CP 3.2);
+        `None` para providers que não expõem custo real (`gemini`,
+        `openai_compat`). ESTIMAR custo por tabela de preços para esses
+        casos é capacidade do CP 3.4 (`core/llm/usage.py`), fora de escopo
+        aqui.
       model / provider: nome do modelo (ex.: `"gemini-3.1-pro-preview"`) e
         do provedor (ex.: `"gemini"`) que de fato atenderam esta chamada —
         ecoam o que `get_llm()` resolveu, para quem só tem o `LLMResponse`
@@ -163,7 +203,8 @@ class LLMClient:
     o paralelo com `PMIBPortal(engine)` da Fase 2).
 
     `provider` é DUCK-TYPED: só precisa responder a `generate_raw(prompt, *,
-    system=None, json_mode=False) -> (texto, tokens_in, tokens_out)` — sem
+    system=None, json_mode=False) -> ProviderResult` (CP 3.2 — generaliza a
+    tupla `(texto, tokens_in, tokens_out)` do CP 3.1) — sem
     fazer NENHUM retry/parse por conta própria (essas responsabilidades são
     exclusivamente deste `LLMClient`). Ver `providers/gemini.py` para a
     única implementação real que existe neste checkpoint.
@@ -323,17 +364,17 @@ class LLMClient:
         for tentativa in range(self._max_retries + 1):
             inicio = self._time_fn()
             try:
-                texto, tokens_in, tokens_out = self._provider.generate_raw(
+                resultado = self._provider.generate_raw(
                     prompt, system=system, json_mode=json_mode,
                 )
-                parsed = _limpar_e_parsear_json(texto)
+                parsed = _limpar_e_parsear_json(resultado.text)
                 duracao = self._time_fn() - inicio
                 return LLMResponse(
-                    text=texto,
+                    text=resultado.text,
                     parsed_json=parsed,
-                    tokens_in=tokens_in,
-                    tokens_out=tokens_out,
-                    custo_usd=None,
+                    tokens_in=resultado.tokens_in,
+                    tokens_out=resultado.tokens_out,
+                    custo_usd=resultado.custo_usd,
                     model=self._model,
                     provider=self._provider_name,
                     duracao_s=duracao,
@@ -412,66 +453,100 @@ def _limpar_e_parsear_json(texto: str | None) -> object:
 # provedor/modelo via `config.LLM_TASKS`" no texto do checkpoint; ver
 # docstring do módulo para a decisão de usar `config.LLM_MODELOS_HOJE` em vez
 # disso, exigida pelo próprio Aceite deste checkpoint).
+#
+# CP 3.2: `get_llm` passa a rotear 3 providers (`gemini`/`openrouter`/
+# `openai_compat`) -- ver `providers/openrouter.py`/`providers/
+# openai_compat.py`. `LLM_MODELOS_HOJE` continua intocado (todas as 5
+# tarefas continuam em `gemini` em produção -- ver PENDENCIAS.md); os
+# providers novos existem e são testáveis, mas sem consumidor real ainda.
 # =============================================================================
 
-# Política de retry/rate-limit por tarefa -- ver tabela no docstring do
-# módulo. Hardcoded AQUI (não em `sigft/config.py`): é uma decisão de
-# ORQUESTRAÇÃO da camada de IA (quantas vezes retentar, quanto dormir), não
-# um dado de configuração de negócio como modelo/preço/provider (que SIM
-# vivem em `config.py`). Uma entrada por tarefa de `config.LLM_MODELOS_HOJE`
-# (as mesmas 5: `categorizar_pdm`, `validar_ficha`, `condicoes`,
-# `tech_specs`, `autospec`) -- ver `test_llm_get_llm_factory.py`/
-# `test_llm_client.py` para o teste que trava esse invariante.
+# Política de retry/rate-limit/temperature por tarefa -- ver tabela no
+# docstring do módulo. Hardcoded AQUI (não em `sigft/config.py`): é uma
+# decisão de ORQUESTRAÇÃO da camada de IA (quantas vezes retentar, quanto
+# dormir, com que temperatura), não um dado de configuração de negócio como
+# modelo/preço/provider (que SIM vivem em `config.py`). Uma entrada por
+# tarefa de `config.LLM_MODELOS_HOJE` (as mesmas 5: `categorizar_pdm`,
+# `validar_ficha`, `condicoes`, `tech_specs`, `autospec`) -- ver
+# `test_llm_get_llm_factory.py`/`test_llm_client.py` para o teste que trava
+# esse invariante.
+#
+# `temperature` (CP 3.2): preserva o `temperature=0.1` que
+# `ChatGoogleGenerativeAI(..., temperature=0.1)` aplicava em
+# `autospec_backend.AutoSpecCore.__init__` ANTES da remoção do LangChain
+# (extração estruturada, baixa aleatoriedade -- escolha deliberada, seria
+# PERDIDA numa migração ingênua). `None` nas outras 4 tarefas = não enviar
+# nada ao provider (default do SDK/API) -- preserva exatamente o
+# comportamento de hoje, que nunca setava temperature. É retirado do dict de
+# política ANTES de construir o `LLMClient` (que não aceita esse parâmetro)
+# e passado ao construtor do provider.
 _POLITICA_RETRY_POR_TAREFA: dict[str, dict[str, object]] = {
     "categorizar_pdm": {
         "max_retries": 0,
         "retry_sleep_seconds": 0,
         "min_interval_seconds": None,
+        "temperature": None,
     },
     "validar_ficha": {
         "max_retries": 2,
         "retry_sleep_seconds": 5,
         "min_interval_seconds": 60,
+        "temperature": None,
     },
     "condicoes": {
         "max_retries": 2,
         "retry_sleep_seconds": 30,
         "min_interval_seconds": None,
+        "temperature": None,
     },
     "tech_specs": {
         "max_retries": 2,
         "retry_sleep_seconds": 2,
         "min_interval_seconds": None,
+        "temperature": None,
     },
-    # Sem consumidor real neste checkpoint (autospec usa LangChain hoje,
-    # migração é CP 3.2) -- política escolhida IGUAL à de `validar_ficha`
-    # por falta de informação melhor; só para `get_llm("autospec", ...)` não
-    # quebrar se chamado. Ver docs/refatoracao/PENDENCIAS.md.
+    # `autospec` (CP 3.2): agora COM consumidor real (`AutoSpecCore.__init__`
+    # -- ver autospec_backend.py). `temperature=0.1` preserva o valor
+    # deliberado que o LangChain aplicava antes da migração (ver acima).
     "autospec": {
         "max_retries": 2,
         "retry_sleep_seconds": 5,
         "min_interval_seconds": 60,
+        "temperature": 0.1,
     },
 }
 
 
-def get_llm(tarefa: str, api_key: str | None) -> LLMClient:
-    """Resolve provider/modelo/política de retry para `tarefa` e devolve um
-    `LLMClient` pronto para uso.
+def get_llm(
+    tarefa: str, api_key: str | None = None, *, chaves: dict[str, str | None] | None = None
+) -> LLMClient:
+    """Resolve provider/modelo/política de retry/temperature para `tarefa` e
+    devolve um `LLMClient` pronto para uso.
 
     Fonte do modelo: `config.LLM_MODELOS_HOJE` (NÃO `config.LLM_TASKS` — ver
-    decisão registrada no docstring do módulo e em PENDENCIAS.md). `api_key`
-    é repassado tal qual ao provider (`GeminiProvider` no caso de hoje) --
-    esta função não lê nenhuma fonte de chave por conta própria (ver
-    decisão registrada no docstring do módulo).
+    decisão registrada no docstring do módulo e em PENDENCIAS.md).
+
+    Resolução da CHAVE (CP 3.2 — preserva o comportamento exato dos 4/5
+    consumidores diretos de hoje, que passam a chave via
+    `self.controller.get_key("GEMINI")` em `frontend.py`):
+      - se o provider resolvido for `config.PROVIDER_GEMINI` E `api_key` foi
+        passado (não `None`): usa `api_key` TAL QUAL, sem consultar `chaves`
+        nem `config.carregar_chaves()` -- é o caminho dos 5 consumidores
+        migrados no CP 3.1 (`__init__(self, api_key)`).
+      - caso contrário (provider não-Gemini, ou Gemini sem `api_key`
+        explícito): resolve a chave do provider via `chaves` (default:
+        `config.carregar_chaves()`), usando `config.CHAVE_POR_PROVIDER` para
+        saber qual chave lógica ler.
+      - `PROVIDER_OPENAI_COMPAT` exige também `base_url`, lida de
+        `chaves["EMPRESA_LLM_BASE_URL"]`; ausente/vazia levanta `ValueError`
+        explicando que essa variável precisa estar configurada.
 
     Levanta `ValueError` (mensagem lista as tarefas válidas) para `tarefa`
     desconhecida -- mesmo padrão de `config.get_task_config()`. Levanta
-    `NotImplementedError` se o provider resolvido não for
-    `config.PROVIDER_GEMINI` -- o único provider implementado neste
-    checkpoint (CP 3.2 adiciona OpenRouter/OpenAI-compatível; nenhuma tarefa
-    de `LLM_MODELOS_HOJE` aponta para outro provider hoje, então este ramo
-    é só uma salvaguarda, não um caminho alcançado na prática).
+    `NotImplementedError` se o provider resolvido não for um dos 3
+    suportados (`gemini`/`openrouter`/`openai_compat`) -- ex.: `"xai"`, que
+    `config.LLM_TASKS` ainda usa (`categorizar_pdm`) mas que nenhuma tarefa
+    de `LLM_MODELOS_HOJE` aponta hoje.
     """
     try:
         cfg = config.LLM_MODELOS_HOJE[tarefa]
@@ -482,22 +557,55 @@ def get_llm(tarefa: str, api_key: str | None) -> LLMClient:
             f"LLM_MODELOS_HOJE: {tarefas_validas}."
         ) from None
 
-    if cfg["provider"] != config.PROVIDER_GEMINI:
-        raise NotImplementedError(
-            f"Provider {cfg['provider']!r} ainda não implementado "
-            f"(só {config.PROVIDER_GEMINI!r} no CP 3.1)."
+    provider_id = cfg["provider"]
+    politica = dict(_POLITICA_RETRY_POR_TAREFA[tarefa])
+    temperature = politica.pop("temperature")
+
+    if provider_id == config.PROVIDER_GEMINI:
+        from sigft.core.llm.providers.gemini import GeminiProvider  # import local
+        # -- ver docstring do módulo ("nenhum provider concreto é importado
+        # no TOPO deste módulo") e o mesmo padrão de import preguiçoso já
+        # usado por `core/excel/status_sheet.py` para `openpyxl`.
+
+        if api_key is not None:
+            chave = api_key
+        else:
+            chaves_resolvidas = chaves if chaves is not None else config.carregar_chaves()
+            chave = chaves_resolvidas.get(config.CHAVE_POR_PROVIDER[provider_id])
+        provider = GeminiProvider(chave, cfg["model"], temperature=temperature)
+
+    elif provider_id == config.PROVIDER_OPENROUTER:
+        from sigft.core.llm.providers.openrouter import OpenRouterProvider  # import local
+
+        chaves_resolvidas = chaves if chaves is not None else config.carregar_chaves()
+        chave = chaves_resolvidas.get(config.CHAVE_POR_PROVIDER[provider_id])
+        provider = OpenRouterProvider(chave, cfg["model"], temperature=temperature)
+
+    elif provider_id == config.PROVIDER_OPENAI_COMPAT:
+        from sigft.core.llm.providers.openai_compat import OpenAICompatProvider  # import local
+
+        chaves_resolvidas = chaves if chaves is not None else config.carregar_chaves()
+        chave = chaves_resolvidas.get(config.CHAVE_POR_PROVIDER[provider_id])
+        base_url = chaves_resolvidas.get("EMPRESA_LLM_BASE_URL")
+        if not base_url:
+            raise ValueError(
+                "Provider 'openai_compat' requer EMPRESA_LLM_BASE_URL configurada "
+                "(chave ausente/vazia em `chaves`)."
+            )
+        provider = OpenAICompatProvider(
+            chave, cfg["model"], base_url=base_url, temperature=temperature
         )
 
-    from sigft.core.llm.providers.gemini import GeminiProvider  # import local
-    # -- ver docstring do módulo ("nenhum provider concreto é importado no
-    # TOPO deste módulo") e o mesmo padrão de import preguiçoso já usado por
-    # `core/excel/status_sheet.py` para `openpyxl`.
+    else:
+        raise NotImplementedError(
+            f"Provider {provider_id!r} ainda não implementado "
+            f"(suportados: {config.PROVIDER_GEMINI!r}, {config.PROVIDER_OPENROUTER!r}, "
+            f"{config.PROVIDER_OPENAI_COMPAT!r})."
+        )
 
-    provider = GeminiProvider(api_key, cfg["model"])
-    politica = _POLITICA_RETRY_POR_TAREFA[tarefa]
     return LLMClient(
         provider,
-        provider_name=cfg["provider"],
+        provider_name=provider_id,
         model=cfg["model"],
         **politica,
     )

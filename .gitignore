@@ -2,6 +2,7 @@
 .env
 api_config.json
 user_prefs.json
+openrouter_models_cache.json
 logs/
 
 # Python

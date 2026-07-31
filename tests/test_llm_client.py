@@ -25,7 +25,7 @@ import json
 
 import pytest
 
-from sigft.core.llm.client import LLMClient, LLMResponse, _limpar_e_parsear_json
+from sigft.core.llm.client import LLMClient, LLMResponse, ProviderResult, _limpar_e_parsear_json
 
 
 # =============================================================================
@@ -48,7 +48,11 @@ class _FakeProvider:
         resultado = self.respostas.pop(0)
         if isinstance(resultado, BaseException):
             raise resultado
-        return resultado
+        # CP 3.2: contrato do provider generalizado para `ProviderResult`
+        # (`NamedTuple` com `custo_usd` adicional, default `None`) -- as
+        # tuplas de 3 elementos que os testes deste arquivo já usavam
+        # continuam funcionando tal qual, sem precisar nomear `custo_usd`.
+        return ProviderResult(*resultado)
 
 
 class _Relogio:

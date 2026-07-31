@@ -3926,7 +3926,13 @@ class HomeView(ctk.CTkScrollableFrame):
             ("GEMINI", "Gemini API Key:", ""),
             ("GOOGLE_SEARCH", "Google Search API:", ""),
             ("GOOGLE_CSE", "Google CSE ID:", ""),
-            ("LLAMA", "LlamaCloud API:", "")
+            ("LLAMA", "LlamaCloud API:", ""),
+            # [CP 3.2] Gateway OpenRouter (padrão) + endpoint OpenAI-
+            # compatível genérico da futura IA interna da empresa — ver
+            # docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.2.
+            ("OPENROUTER", "OpenRouter API Key:", ""),
+            ("EMPRESA_LLM_BASE_URL", "IA Empresa (Base URL):", ""),
+            ("EMPRESA_LLM_API_KEY", "IA Empresa (API Key):", "")
         ]
 
         for key_id, label_text, default_val in keys_info:
@@ -4288,12 +4294,21 @@ class SIG_FT_App(ctk.CTk):
         google_search_api = os.getenv('GOOGLE_SEARCH_API')
         google_cse_api = os.getenv('GOOGLE_CSE_API')
         llama_api = os.getenv('LLAMA_CLOUD_API')
+        # [CP 3.2] Gateway OpenRouter (padrão) + endpoint OpenAI-compatível
+        # genérico da futura IA interna da empresa — nomes de env var
+        # idênticos aos de `sigft.config.ENV_VAR_POR_CHAVE`.
+        openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
+        empresa_llm_base_url = os.getenv('EMPRESA_LLM_BASE_URL')
+        empresa_llm_api_key = os.getenv('EMPRESA_LLM_API_KEY')
 
         defaults = {
             "GEMINI": gemini_api_key,
             "GOOGLE_SEARCH": google_search_api,
             "GOOGLE_CSE": google_cse_api,
-            "LLAMA": llama_api
+            "LLAMA": llama_api,
+            "OPENROUTER": openrouter_api_key,
+            "EMPRESA_LLM_BASE_URL": empresa_llm_base_url,
+            "EMPRESA_LLM_API_KEY": empresa_llm_api_key
         }
         if os.path.exists(CONFIG_FILE):
             try:

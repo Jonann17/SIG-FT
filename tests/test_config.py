@@ -99,13 +99,58 @@ def test_config_file_e_api_config_json():
 
 def test_env_var_por_chave_usa_os_nomes_atuais_exatos():
     # Nomes de env var preservados por compatibilidade/free-tier — ver
-    # frontend.py:4255-4258 e docs/refatoracao/PENDENCIAS.md.
+    # frontend.py:4255-4258 e docs/refatoracao/PENDENCIAS.md. As 3 últimas
+    # entradas são do CP 3.2 (gateway OpenRouter + endpoint OpenAI-
+    # compatível genérico da futura IA interna da empresa).
     assert sigft_config.ENV_VAR_POR_CHAVE == {
         "GEMINI": "API_GEMINI_LUAN_GMAIL",
         "GOOGLE_SEARCH": "GOOGLE_SEARCH_API",
         "GOOGLE_CSE": "GOOGLE_CSE_API",
         "LLAMA": "LLAMA_CLOUD_API",
+        "OPENROUTER": "OPENROUTER_API_KEY",
+        "EMPRESA_LLM_BASE_URL": "EMPRESA_LLM_BASE_URL",
+        "EMPRESA_LLM_API_KEY": "EMPRESA_LLM_API_KEY",
     }
+
+
+# =============================================================================
+# A2. CP 3.2 — providers novos (OpenRouter/OpenAI-compatível) + CHAVE_POR_PROVIDER
+# =============================================================================
+
+def test_provider_openrouter_e_openai_compat():
+    assert sigft_config.PROVIDER_OPENROUTER == "openrouter"
+    assert sigft_config.PROVIDER_OPENAI_COMPAT == "openai_compat"
+
+
+def test_openrouter_base_url():
+    assert sigft_config.OPENROUTER_BASE_URL == "https://openrouter.ai/api/v1"
+
+
+def test_openrouter_headers_atribuicao():
+    assert sigft_config.OPENROUTER_HEADERS_ATRIBUICAO == {
+        "HTTP-Referer": "https://github.com/luanccozer/SIG-FT",
+        "X-Title": "SIG-FT",
+    }
+
+
+def test_openrouter_catalogo_cache_e_caminho_relativo():
+    assert sigft_config.OPENROUTER_CATALOGO_CACHE == "openrouter_models_cache.json"
+
+
+def test_chave_por_provider_mapeia_os_3_providers():
+    assert sigft_config.CHAVE_POR_PROVIDER == {
+        sigft_config.PROVIDER_GEMINI: "GEMINI",
+        sigft_config.PROVIDER_OPENROUTER: "OPENROUTER",
+        sigft_config.PROVIDER_OPENAI_COMPAT: "EMPRESA_LLM_API_KEY",
+    }
+
+
+def test_chave_por_provider_todas_as_chaves_existem_em_env_var_por_chave():
+    # Invariante: toda chave lógica citada em CHAVE_POR_PROVIDER precisa
+    # existir em ENV_VAR_POR_CHAVE (senão `carregar_chaves()` nunca a
+    # popularia) -- `core/llm/client.py:get_llm()` depende disso.
+    for chave_logica in sigft_config.CHAVE_POR_PROVIDER.values():
+        assert chave_logica in sigft_config.ENV_VAR_POR_CHAVE
 
 
 # =============================================================================
@@ -235,6 +280,10 @@ def test_carregar_chaves_le_das_variaveis_de_ambiente(monkeypatch):
     monkeypatch.setenv("GOOGLE_SEARCH_API", "chave-search-env")
     monkeypatch.setenv("GOOGLE_CSE_API", "chave-cse-env")
     monkeypatch.setenv("LLAMA_CLOUD_API", "chave-llama-env")
+    # CP 3.2: gateway OpenRouter + endpoint OpenAI-compatível genérico.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "chave-openrouter-env")
+    monkeypatch.setenv("EMPRESA_LLM_BASE_URL", "https://ia.empresa.exemplo/v1")
+    monkeypatch.setenv("EMPRESA_LLM_API_KEY", "chave-empresa-env")
 
     chaves = sigft_config.carregar_chaves(CAMINHO_INEXISTENTE)
 
@@ -243,6 +292,9 @@ def test_carregar_chaves_le_das_variaveis_de_ambiente(monkeypatch):
         "GOOGLE_SEARCH": "chave-search-env",
         "GOOGLE_CSE": "chave-cse-env",
         "LLAMA": "chave-llama-env",
+        "OPENROUTER": "chave-openrouter-env",
+        "EMPRESA_LLM_BASE_URL": "https://ia.empresa.exemplo/v1",
+        "EMPRESA_LLM_API_KEY": "chave-empresa-env",
     }
 
 
@@ -256,6 +308,9 @@ def test_carregar_chaves_sem_env_e_sem_arquivo_retorna_none_em_todas():
         "GOOGLE_SEARCH": None,
         "GOOGLE_CSE": None,
         "LLAMA": None,
+        "OPENROUTER": None,
+        "EMPRESA_LLM_BASE_URL": None,
+        "EMPRESA_LLM_API_KEY": None,
     }
 
 
@@ -318,6 +373,9 @@ def test_json_corrompido_retorna_apenas_defaults_do_env(monkeypatch, tmp_path):
         "GOOGLE_SEARCH": None,
         "GOOGLE_CSE": None,
         "LLAMA": None,
+        "OPENROUTER": None,
+        "EMPRESA_LLM_BASE_URL": None,
+        "EMPRESA_LLM_API_KEY": None,
     }
 
 
@@ -339,6 +397,9 @@ def test_json_valido_mas_nao_e_objeto_tambem_cai_para_defaults(monkeypatch, tmp_
         "GOOGLE_SEARCH": None,
         "GOOGLE_CSE": None,
         "LLAMA": None,
+        "OPENROUTER": None,
+        "EMPRESA_LLM_BASE_URL": None,
+        "EMPRESA_LLM_API_KEY": None,
     }
 
 
@@ -349,7 +410,15 @@ def test_json_vazio_tambem_e_tratado_como_corrompido(tmp_path):
     # Arquivo existe mas está vazio -> json.load levanta JSONDecodeError,
     # cai no mesmo except -> defaults (todas None, sem env setada).
     chaves = sigft_config.carregar_chaves(caminho_config)
-    assert chaves == {"GEMINI": None, "GOOGLE_SEARCH": None, "GOOGLE_CSE": None, "LLAMA": None}
+    assert chaves == {
+        "GEMINI": None,
+        "GOOGLE_SEARCH": None,
+        "GOOGLE_CSE": None,
+        "LLAMA": None,
+        "OPENROUTER": None,
+        "EMPRESA_LLM_BASE_URL": None,
+        "EMPRESA_LLM_API_KEY": None,
+    }
 
 
 def test_get_key_de_chave_ausente_retorna_string_vazia():

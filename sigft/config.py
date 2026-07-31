@@ -193,6 +193,12 @@ COL_INFO_GERAIS = "INFO. GERAIS"
 
 PROVIDER_GEMINI = "gemini"
 PROVIDER_XAI = "xai"
+# CP 3.2: 2 providers novos (`core/llm/providers/openrouter.py`/
+# `openai_compat.py`) -- ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 3
+# -> CP 3.2. `LLM_MODELOS_HOJE` continua intocado (nenhuma tarefa aponta
+# para eles em produção ainda -- ver PENDENCIAS.md).
+PROVIDER_OPENROUTER = "openrouter"
+PROVIDER_OPENAI_COMPAT = "openai_compat"
 
 # Modelos que o código roda HOJE, por tarefa (caracterização — strings exatas
 # hardcoded em cada módulo, referências arquivo:linha abaixo). NÃO são o alvo;
@@ -244,6 +250,28 @@ LLM_PRECOS_USD_POR_1M: dict[str, dict[str, float]] = {
 }
 
 
+# =============================================================================
+# 6b. OPENROUTER (gateway padrão de IA — CP 3.2)
+# =============================================================================
+# Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.2 e decisão de
+# produto nº 2. Consumido por `core/llm/providers/openrouter.py`.
+
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+# Headers de "atribuição" recomendados pelo OpenRouter (aparecem no
+# dashboard de uso do OpenRouter, não são segredo). `HTTP-Referer` aponta
+# para o repositório do projeto (neutro e honesto — não é um site do
+# produto, só a origem do código).
+OPENROUTER_HEADERS_ATRIBUICAO: dict[str, str] = {
+    "HTTP-Referer": "https://github.com/luanccozer/SIG-FT",
+    "X-Title": "SIG-FT",
+}
+
+# Caminho do cache local do catálogo `GET /models` — relativo, mesmo padrão
+# de `CONFIG_FILE` (resolvido a partir do cwd do processo).
+OPENROUTER_CATALOGO_CACHE = "openrouter_models_cache.json"
+
+
 def get_task_config(tarefa: str) -> dict[str, str]:
     """Resolve `{provider, model}` para uma tarefa de IA via `LLM_TASKS`.
 
@@ -290,6 +318,23 @@ ENV_VAR_POR_CHAVE: dict[str, str] = {
     "GOOGLE_SEARCH": "GOOGLE_SEARCH_API",
     "GOOGLE_CSE": "GOOGLE_CSE_API",
     "LLAMA": "LLAMA_CLOUD_API",
+    # CP 3.2 (gateway OpenRouter + endpoint OpenAI-compatível genérico da
+    # futura IA interna da empresa) — ver PLANO_REFATORACAO.md, Fase 3 -> CP
+    # 3.2 e decisão de produto nº 2 ("todas opcionais, uma necessária — no
+    # dia a dia basta OPENROUTER_API_KEY").
+    "OPENROUTER": "OPENROUTER_API_KEY",
+    "EMPRESA_LLM_BASE_URL": "EMPRESA_LLM_BASE_URL",
+    "EMPRESA_LLM_API_KEY": "EMPRESA_LLM_API_KEY",
+}
+
+# CP 3.2: mapa provider -> chave LÓGICA de `ENV_VAR_POR_CHAVE` (consumido por
+# `core/llm/client.py:get_llm()` para resolver a chave certa por provider,
+# quando `api_key` não é passado explicitamente — ver decisão de resolução
+# de chave no docstring de `get_llm()`).
+CHAVE_POR_PROVIDER: dict[str, str] = {
+    PROVIDER_GEMINI: "GEMINI",
+    PROVIDER_OPENROUTER: "OPENROUTER",
+    PROVIDER_OPENAI_COMPAT: "EMPRESA_LLM_API_KEY",
 }
 
 

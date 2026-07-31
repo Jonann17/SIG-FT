@@ -4,9 +4,12 @@ de importação (CP 0.2) do plano de refatoração — ver
 docs/refatoracao/PLANO_REFATORACAO.md.
 
 Este ambiente de teste NÃO tem as dependências pesadas de produção instaladas
-(pandas, openpyxl, selenium, google-generativeai, langchain*, llama_parse,
-PyPDF2, bs4, xlwings, deep_translator, unidecode, customtkinter etc.) — só a
-stdlib, `requests` e (depois de instalado só para rodar os testes) `pytest`.
+(pandas, openpyxl, selenium, google-generativeai, llama_parse, PyPDF2, bs4,
+xlwings, deep_translator, unidecode, customtkinter etc.) — só a stdlib,
+`requests` e (depois de instalado só para rodar os testes) `pytest`.
+[CP 3.2] `langchain-google-genai`/`langchain-core` foram REMOVIDOS de
+`requirements.txt` (o uso residual em `autospec_backend.py` foi migrado para
+`LLMClient`) — não há mais nada a stubar para elas.
 `customtkinter` é a única exceção deliberada: só `frontend.py` a importa, e
 `frontend.py` fica de fora do smoke de importação do CP 0.2 (ver nota no
 `tests/test_smoke_imports.py`) — por isso não entra em `_HEAVY_MODULES`.
@@ -88,12 +91,16 @@ _HEAVY_MODULES = [
     "selenium.common",
     "selenium.common.exceptions",
     # autospec_backend.py — extração de PDF/HTML e pipeline RAG
+    # [CP 3.2] langchain_google_genai/langchain_core(.prompts/.
+    # output_parsers) removidos daqui: nenhum arquivo de produção importa
+    # langchain_* mais (confirmado por grep) — o uso residual em
+    # `autospec_backend.py` foi substituído por `LLMClient` (via `get_llm`).
+    # `requests` NÃO é stubado aqui de propósito (é dependência REAL neste
+    # ambiente de teste — `providers/openai_compat.py`/`openrouter.py`
+    # dependem disso para os testes injetarem `http_post`/`http_get` fakes
+    # sem precisar do pacote de verdade em produção).
     "PyPDF2",
     "bs4",
-    "langchain_google_genai",
-    "langchain_core",
-    "langchain_core.prompts",
-    "langchain_core.output_parsers",
     "llama_parse",
     # [CP 0.2] translator_backend.py — tradução híbrida PT->ES via Excel COM.
     # xlwings automatiza o Excel (Windows-only, `import xlwings as xw`);

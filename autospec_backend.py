@@ -8,17 +8,13 @@ from openpyxl.styles import Font
 import PyPDF2
 from bs4 import BeautifulSoup
 
-# Integração LangChain e Google Gemini
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
-
 # Integração LlamaParse
 from llama_parse import LlamaParse
 
 from sigft import config
 from sigft.core.excel import headers, pmib_codes
 from sigft.core.rpa.ficha_layout import CONFIG_MAP, VARIAVEIS_SPECS
+from sigft.core.llm.client import get_llm
 
 # -----------------------------------------------------------------
 # 1. CONFIGURAÇÕES E MAPAS
@@ -150,10 +146,18 @@ class AutoSpecCore:
         self.cse_id = google_cse_id
 
         # Inicializa componentes
+        # [CP 3.2] Guard mantido EXATAMENTE como antes -- só fala de Gemini
+        # num mundo agora multi-provedor porque `LLM_MODELOS_HOJE["autospec"]`
+        # ainda aponta para o Gemini em produção (ver
+        # docs/refatoracao/PENDENCIAS.md).
         if not gemini_key: raise ValueError("Chave Gemini é obrigatória.")
 
-        # Configuração direta do LangChain com a chave fornecida
-        self.llm = ChatGoogleGenerativeAI(model="gemini-3.1-pro-preview", google_api_key=self.gemini_key, temperature=0.1)
+        # [CP 3.2] LangChain removido -- `self._llm` é um `LLMClient` (via
+        # `get_llm`), que já resolve o mesmo modelo
+        # (`gemini-3.1-pro-preview`, idêntico ao que o LangChain usava) e a
+        # mesma `temperature=0.1` (via `_POLITICA_RETRY_POR_TAREFA["autospec"]`
+        # em `core/llm/client.py`) -- ver PENDENCIAS.md.
+        self._llm = get_llm("autospec", self.gemini_key)
         self.searcher = WebSearcher(self.google_key, self.cse_id)
         self.pdf_parser = PDFProcessor(self.llama_key)
 
@@ -334,8 +338,15 @@ class AutoSpecCore:
         prompt += "\n".join(desc_list)
 
         try:
-            chain = PromptTemplate(template="{q}", input_variables=["q"]) | self.llm | JsonOutputParser()
-            return chain.invoke({"q": prompt})
+            # [CP 3.2] LangChain removido -- `_limpar_e_parsear_json` do
+            # `LLMClient` substitui `JsonOutputParser()` (implementação
+            # única, mais robusta: cobre objeto E lista, tolera prosa/fences
+            # ao redor do JSON -- ver docs/refatoracao/PENDENCIAS.md).
+            # `autospec` GANHA retry (2 retentativas) que antes não tinha.
+            resp = self._llm.generate(
+                prompt, tags={"modulo": "autospec_backend", "tarefa": "autospec"}
+            )
+            return resp.parsed_json
         except Exception as e:
             print(f"Erro IA: {e}")
             return {}

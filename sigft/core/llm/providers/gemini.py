@@ -1,7 +1,10 @@
 r"""
 sigft/core/llm/providers/gemini.py — `GeminiProvider`: ÚNICA classe do
 projeto que importa `google.generativeai` (Checkpoint 3.1 do plano de
-refatoração).
+refatoração; estendido no Checkpoint 3.2 — `ProviderResult` no lugar de
+tupla crua + `temperature` opcional, preservando o `temperature=0.1` que o
+LangChain aplicava em `autospec_backend` antes de ser removido — ver
+docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.2 e PENDENCIAS.md).
 
 Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.1: "O provedor
 Gemini direto reproduz o comportamento atual (transport REST, mesmos
@@ -49,6 +52,8 @@ dela, não no topo do módulo) + `genai_module` INJETÁVEL (mesmo padrão de
 
 from __future__ import annotations
 
+from sigft.core.llm.client import ProviderResult
+
 # Dict ÚNICO de safety_settings, aplicado a TODA chamada -- ver decisão no
 # docstring do módulo. Réplica EXATA do dict já usado hoje em
 # `upload_conditions_backend.processar_ia_lote`/
@@ -70,7 +75,14 @@ class GeminiProvider:
     classes reaproveitava a instância de `GenerativeModel` entre chamadas).
     """
 
-    def __init__(self, api_key: str | None, model: str, *, genai_module: object | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str | None,
+        model: str,
+        *,
+        genai_module: object | None = None,
+        temperature: float | None = None,
+    ) -> None:
         """
         Parâmetros:
           api_key: chave da API Gemini. Réplica do guard já usado hoje nas 4
@@ -86,6 +98,15 @@ class GeminiProvider:
             (default, uso real), importa `google.generativeai` de forma
             PREGUIÇOSA (só neste `__init__`, nunca no topo do módulo -- ver
             docstring do módulo).
+          temperature (CP 3.2, keyword-only): quando não `None`, entra em
+            `generation_config` de TODA chamada de `generate_raw` (mesclado
+            com `response_mime_type` quando `json_mode=True` -- ver
+            `generate_raw` abaixo). `None` (default) = não enviar nada,
+            preservando o comportamento de hoje das 4 tarefas que nunca
+            setavam temperature; só `autospec` passa `0.1` (via
+            `get_llm`/`_POLITICA_RETRY_POR_TAREFA`), reproduzindo o
+            `temperature=0.1` que `ChatGoogleGenerativeAI` aplicava antes da
+            remoção do LangChain (ver docs/refatoracao/PENDENCIAS.md).
         """
         if genai_module is not None:
             self._genai = genai_module
@@ -94,27 +115,35 @@ class GeminiProvider:
 
             self._genai = genai
         self._model = model
+        self._temperature = temperature
         if api_key:
             self._genai.configure(api_key=api_key, transport="rest")
 
     def generate_raw(
         self, prompt: str, *, system: str | None = None, json_mode: bool = False
-    ) -> tuple[str, int | None, int | None]:
+    ) -> ProviderResult:
         """Chama `GenerativeModel(...).generate_content(prompt)` uma única
         vez (SEM retry -- responsabilidade do `LLMClient` chamador) e
-        devolve `(texto, tokens_in, tokens_out)`.
+        devolve um `ProviderResult` (CP 3.2 -- `custo_usd` sempre `None`
+        aqui: Gemini direto não informa custo por chamada).
 
         `system_instruction` só é passado ao `GenerativeModel` quando
         `system` não é `None` (nenhuma das 4 chamadas de hoje passa uma
         system instruction "vazia" propositalmente -- `analyzer_backend`/
         `cria_fichas_no_pmib_v1_backend` nunca passavam nenhuma;
         `upload_conditions_backend`/`upload_tech_specs_backend` sempre
-        passavam a sua). `generation_config={"response_mime_type":
-        "application/json"}` só é passado quando `json_mode=True` (réplica
-        exata de `upload_tech_specs_backend._chamar_gemini_specs`, a única
-        das 4 chamadas que usa JSON mode nativo hoje). `safety_settings`
-        (`SAFETY_SETTINGS_BLOCK_NONE`) é SEMPRE passado -- ver decisão no
-        docstring do módulo.
+        passavam a sua). `safety_settings` (`SAFETY_SETTINGS_BLOCK_NONE`) é
+        SEMPRE passado -- ver decisão no docstring do módulo.
+
+        `generation_config` (CP 3.2 -- MESCLADO, nunca sobrescrito): recebe
+        `{"response_mime_type": "application/json"}` quando `json_mode=True`
+        (réplica exata de `upload_tech_specs_backend._chamar_gemini_specs`,
+        a única das 4 chamadas que usa JSON mode nativo hoje) e/ou
+        `{"temperature": self._temperature}` quando `self._temperature` não
+        é `None` -- as 4 combinações (com/sem temperature × com/sem
+        json_mode) são cobertas em `tests/test_llm_gemini_provider.py`.
+        `generation_config` só é passado ao `GenerativeModel` se pelo menos
+        uma das 2 chaves estiver presente (dict vazio nunca é enviado).
 
         `tokens_in`/`tokens_out`: capacidade NOVA (nenhum dos 4 consumidores
         de hoje lê tokens) -- lidos de forma DEFENSIVA via
@@ -127,8 +156,14 @@ class GeminiProvider:
         kwargs: dict[str, object] = {"safety_settings": SAFETY_SETTINGS_BLOCK_NONE}
         if system is not None:
             kwargs["system_instruction"] = system
+
+        generation_config: dict[str, object] = {}
         if json_mode:
-            kwargs["generation_config"] = {"response_mime_type": "application/json"}
+            generation_config["response_mime_type"] = "application/json"
+        if self._temperature is not None:
+            generation_config["temperature"] = self._temperature
+        if generation_config:
+            kwargs["generation_config"] = generation_config
 
         modelo = self._genai.GenerativeModel(self._model, **kwargs)
         resp = modelo.generate_content(prompt)
@@ -137,4 +172,4 @@ class GeminiProvider:
         usage = getattr(resp, "usage_metadata", None)
         tokens_in = getattr(usage, "prompt_token_count", None) if usage is not None else None
         tokens_out = getattr(usage, "candidates_token_count", None) if usage is not None else None
-        return texto, tokens_in, tokens_out
+        return ProviderResult(texto, tokens_in, tokens_out)
