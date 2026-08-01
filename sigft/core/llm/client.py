@@ -147,12 +147,24 @@ módulo (só dentro de `get_llm()`, e só quando o provider resolvido for
 
 from __future__ import annotations
 
+import itertools
 import json
+import os
 import time
 from dataclasses import dataclass
 from typing import Callable, NamedTuple
 
 from sigft import config
+
+# Nome da variável de ambiente que liga a CAPTURA DE PROMPTS para o A/B de
+# modelos (ver `scripts/ab_modelos.py` e `core/llm/comparacao.py`). Quando
+# aponta para uma pasta, cada chamada de `LLMClient.generate()` grava ali um
+# JSON com o prompt REAL enviado — é assim que se obtém material de teste
+# fiel sem remontar à mão os prompts gigantes de cada módulo. Desligado por
+# padrão (variável ausente = nenhuma escrita, custo zero).
+ENV_DUMP_PROMPTS = "SIGFT_DUMP_PROMPTS"
+
+_contador_dump = itertools.count(1)
 
 SleepFn = Callable[[float], None]
 TimeFn = Callable[[], float]
@@ -389,6 +401,14 @@ class LLMClient:
              de cada um -- ver os 4 arquivos migrados).
         """
         tags = tags or {}
+        _capturar_prompt_se_pedido(
+            prompt,
+            system=system,
+            json_mode=json_mode,
+            tags=tags,
+            provider=self._provider_name,
+            model=self._model,
+        )
         self._aplicar_rate_limit()
 
         ultimo_erro: Exception | None = None
@@ -447,6 +467,52 @@ class LLMClient:
 # correspondente (`}`/`]`) via `rfind` a partir dali. Cobre objeto E lista
 # com a MESMA lógica, sem fallback frágil de slice fixo.
 # =============================================================================
+def _capturar_prompt_se_pedido(
+    prompt: str,
+    *,
+    system: str | None,
+    json_mode: bool,
+    tags: dict[str, str],
+    provider: str,
+    model: str,
+) -> None:
+    """Grava o prompt REAL desta chamada em disco, se `SIGFT_DUMP_PROMPTS`
+    apontar para uma pasta (ver `ENV_DUMP_PROMPTS` no topo do módulo).
+
+    Existe para viabilizar o A/B de modelos exigido pelo Aceite do CP 3.3
+    ("o usuário valida a qualidade num punhado de fichas... A/B contra o
+    modelo anterior"): rodando um módulo UMA vez com a variável ligada, os
+    prompts de verdade — que são gigantes e dependem de ler Excel/PDF —
+    ficam salvos e podem ser reexecutados em vários modelos por
+    `scripts/ab_modelos.py`, sem remontar nada à mão.
+
+    NUNCA quebra a chamada real: qualquer falha ao gravar (pasta inválida,
+    disco cheio, permissão) é engolida de propósito. Uma ferramenta de
+    diagnóstico não pode derrubar um lote de fichas em produção.
+    """
+    pasta = os.environ.get(ENV_DUMP_PROMPTS)
+    if not pasta:
+        return
+    try:
+        os.makedirs(pasta, exist_ok=True)
+        tarefa = tags.get("tarefa", "sem_tarefa")
+        sequencial = next(_contador_dump)
+        nome = f"{time.strftime('%Y%m%d-%H%M%S')}_{tarefa}_{sequencial:03d}.json"
+        conteudo = {
+            "tarefa": tarefa,
+            "modulo": tags.get("modulo"),
+            "provider_na_captura": provider,
+            "model_na_captura": model,
+            "json_mode": json_mode,
+            "system": system,
+            "prompt": prompt,
+        }
+        with open(os.path.join(pasta, nome), "w", encoding="utf-8") as arquivo:
+            json.dump(conteudo, arquivo, ensure_ascii=False, indent=2)
+    except Exception:  # noqa: BLE001 - diagnóstico nunca derruba produção
+        pass
+
+
 def _limpar_e_parsear_json(texto: str | None) -> object:
     """Limpa fences markdown (```` ```json ````/````` ``` `````) e recorta o
     primeiro objeto/lista JSON top-level do texto, depois faz `json.loads`.

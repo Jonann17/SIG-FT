@@ -25,3 +25,8 @@ dist/
 # Excel temporários
 ~$*.xlsx
 ~$*.xls
+
+# Saídas do A/B de modelos (scripts/ab_modelos.py) — prompts capturados via
+# SIGFT_DUMP_PROMPTS e relatórios comparativos. Podem conter dados de ficha.
+prompts_ab/
+relatorio_ab*.md
