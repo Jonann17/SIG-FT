@@ -36,6 +36,8 @@ import os
 import sys
 from unittest.mock import MagicMock
 
+import pytest
+
 # 1. Garante a raiz do repositório no sys.path, para "import pdm_backend",
 #    "import search_pmib_backend" etc. (os módulos *_backend.py vivem na raiz
 #    do repositório, não dentro de um pacote instalável).
@@ -126,3 +128,40 @@ for _mod_name in _HEAVY_MODULES:
 #    qualquer outra coisa -> False) para que a caracterização capture o
 #    comportamento verdadeiro da função de produção.
 sys.modules["pandas"].isna = lambda x: x is None or (isinstance(x, float) and x != x)
+
+# 4. [CP 3.4] Rastreamento de uso/custo de IA (`sigft/core/llm/usage.py`) fica
+#    LIGADO por padrão em PRODUÇÃO — é o ponto daquele checkpoint. Isso
+#    significa que TODA chamada de `LLMClient.generate()` (ver
+#    `sigft/core/llm/client.py`) tenta gravar um registro em
+#    `config.ARQUIVO_USO_LLM` ("logs/llm_usage.jsonl", caminho relativo ao
+#    cwd do processo — a raiz REAL do repositório quando `pytest` roda a
+#    partir daqui). Dezenas de testes espalhados por vários arquivos
+#    constroem um `LLMClient` de verdade e chamam `.generate()`
+#    (`tests/test_llm_client.py`, `tests/test_llm_comparacao.py`,
+#    `tests/test_llm_get_llm_factory.py` etc.) — a maioria escrita ANTES do
+#    CP 3.4, sem nenhuma ideia de que esta instrumentação existiria.
+#
+#    Esta fixture `autouse` religa `SIGFT_DESABILITAR_USAGE=1` por padrão
+#    para TODA a suíte, protegendo qualquer teste (passado ou futuro) que
+#    nunca ouviu falar deste checkpoint — sem exigir que cada um seja
+#    tocado individualmente. É importável sem nenhuma dependência pesada
+#    (`sigft.core.llm.usage` só usa stdlib + `sigft.config`).
+#
+#    Os testes DEDICADOS a este checkpoint (`tests/test_llm_usage.py` e a
+#    extensão de `tests/test_llm_client.py` que exercita a instrumentação de
+#    verdade) fazem `monkeypatch.delenv(usage.ENV_DESABILITAR_USAGE,
+#    raising=False)` explicitamente, como a PRIMEIRA linha do próprio corpo
+#    do teste (nunca dentro de uma fixture) — evita depender da ordem de
+#    instanciação entre esta fixture (deste conftest.py raiz) e qualquer
+#    outra: o corpo do teste roda sempre DEPOIS que todas as fixtures já
+#    terminaram o setup, então a chamada explícita ali é 100% determinística
+#    — combinada com um `caminho=`/`tmp_path` próprio, nunca o `logs/` real.
+from sigft.core.llm import usage as _llm_usage  # noqa: E402 - depende do sys.path ajustado acima
+
+
+@pytest.fixture(autouse=True)
+def _desliga_rastreamento_de_uso_de_ia_por_padrao(monkeypatch):
+    """Ver nota 4 acima: desliga `sigft.core.llm.usage` por padrão para toda
+    a suíte, protegendo qualquer teste que construa um `LLMClient` real e
+    chame `.generate()` sem saber do CP 3.4."""
+    monkeypatch.setenv(_llm_usage.ENV_DESABILITAR_USAGE, "1")

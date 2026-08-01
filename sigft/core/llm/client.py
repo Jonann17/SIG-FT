@@ -1,6 +1,33 @@
 r"""
 sigft/core/llm/client.py — `LLMClient`/`LLMResponse` + fábrica `get_llm()`
-(Checkpoint 3.1 do plano de refatoração; estendido nos Checkpoints 3.2 e 3.3).
+(Checkpoint 3.1 do plano de refatoração; estendido nos Checkpoints 3.2, 3.3
+e 3.4).
+
+NOTA DO CP 3.4 (o restante deste docstring é histórico dos CP 3.1/3.2/3.3,
+mantido intacto abaixo): `LLMClient.generate()` passa a gravar UM registro
+de uso/custo (`sigft.core.llm.usage.registrar()`, `core/llm/usage.py`) em
+CADA UM dos 2 pontos de saída do método — o `return LLMResponse(...)` de
+sucesso (dentro do `try`) e o `raise ultimo_erro` de falha total (depois de
+esgotar as retentativas) — NUNCA por tentativa de retry interna. `tarefa`/
+`modulo` saem de `tags` (mesmo dict já repassado desde o CP 3.1, agora com
+consumidor real — fallback `"sem_tarefa"`/`None`, mesmo espírito de
+`_capturar_prompt_se_pedido` abaixo); os demais campos (`provider`/`model`/
+tokens/`custo_usd`/`duracao_s`) vêm do `LLMResponse`/da política de retry já
+resolvidos por este módulo — `LLMClient` NÃO conhece a tarefa por nenhum
+outro caminho, só via `tags`. A chamada a `usage.registrar(...)` é feita SEM
+nenhum `try/except` extra ao redor aqui: a garantia de "nunca levanta" é
+INTEIRAMENTE de `registrar()` (Decisão 1 do CP 3.4, ver `core/llm/usage.py`)
+— o mesmo padrão de confiança já usado para `_capturar_prompt_se_pedido`
+(chamada "nua", sem wrapper, porque a função chamada já se protege
+sozinha). Nenhuma mudança de comportamento observável para quem só olha
+`LLMResponse`/exceções/retry: mesma resposta, mesma exceção, mesma política
+de retry — só um efeito colateral NOVO (gravação em `logs/llm_usage.jsonl`,
+desligável via `SIGFT_DESABILITAR_USAGE=1`) some em paralelo. Import de
+`sigft.core.llm.usage` no TOPO deste módulo (não preguiçoso, ao contrário
+dos providers concretos) — `usage.py` é só stdlib (`json`/`os`/`datetime`)
++ `config`, sem SDK pesado nem import de volta para `client.py` (sem
+ciclo). Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.4, e
+docs/refatoracao/PENDENCIAS.md.
 
 NOTA DO CP 3.3 (o restante deste docstring é histórico dos CP 3.1/3.2,
 mantido intacto abaixo): `get_llm(tarefa, ...)` ganha uma CADEIA DE
@@ -155,6 +182,7 @@ from dataclasses import dataclass
 from typing import Callable, NamedTuple
 
 from sigft import config
+from sigft.core.llm import usage
 
 # Nome da variável de ambiente que liga a CAPTURA DE PROMPTS para o A/B de
 # modelos (ver `scripts/ab_modelos.py` e `core/llm/comparacao.py`). Quando
@@ -377,11 +405,15 @@ class LLMClient:
             Não substitui `_limpar_e_parsear_json` (que roda sempre, JSON
             mode ligado ou não — resposta em JSON mode também pode vir com
             espaço/formatação ao redor).
-          tags: metadados livres (ex.: `{"modulo": ..., "tarefa": ...}`) —
-            REPASSADO mas ainda SEM consumidor nesta versão (aceito só para
-            já fixar a assinatura pedida pelo plano); o CP 3.4 (`usage.py`)
-            é quem vai LER `tags` para gravar módulo/tarefa no registro de
-            uso JSONL.
+          tags: metadados livres (ex.: `{"modulo": ..., "tarefa": ...}`) --
+            desde o CP 3.4, é DAQUI que saem `tarefa`/`modulo` do registro
+            de uso gravado por `usage.registrar()` (ver "Fluxo" item 5,
+            abaixo, e `sigft/core/llm/usage.py`): `tags.get("tarefa",
+            "sem_tarefa")` / `tags.get("modulo")` -- MESMO fallback de
+            `_capturar_prompt_se_pedido` (`tarefa` nunca fica `None` no
+            registro; `modulo` fica `None`/`null` quando o chamador não
+            informou). `LLMClient` não conhece a tarefa por nenhum outro
+            caminho -- depende inteiramente de `tags`.
 
         Fluxo:
           1. `_aplicar_rate_limit()` -- uma vez, ANTES de qualquer
@@ -399,8 +431,25 @@ class LLMClient:
              decidir o que fazer (os 4 consumidores migrados capturam isso
              com `except Exception` fino, preservando as mensagens de erro
              de cada um -- ver os 4 arquivos migrados).
+          5. [CP 3.4] EM AMBOS os desfechos (retorno de sucesso no item 2,
+             ou exceção re-levantada no item 4) -- e SÓ nesses 2 pontos,
+             nunca por tentativa de retry interna --, grava UM registro de
+             uso via `usage.registrar()` ANTES de retornar/re-levantar:
+             sucesso leva os campos do `LLMResponse` recém-montado (mesmos
+             tokens/custo/duração que o CHAMADOR também recebe -- nenhum
+             valor novo inventado aqui) + `sucesso=True`; falha total leva
+             `tokens_in=tokens_out=custo_usd=None` (não há resposta de onde
+             tirar isso), a duração decorrida desde o INÍCIO deste
+             `generate()` (soma de todas as tentativas + sleeps de retry,
+             já que não existe uma "tentativa que teve sucesso" para medir
+             como no item 2) e `erro=f"{type(ultimo_erro).__name__}:
+             {ultimo_erro}"` + `sucesso=False`. `usage.registrar()` NUNCA
+             levanta (Decisão 1 do CP 3.4) -- chamada aqui sem `try/except`
+             extra, mesmo padrão de confiança de `_capturar_prompt_se_pedido`.
         """
         tags = tags or {}
+        usage_tarefa = tags.get("tarefa", "sem_tarefa")
+        usage_modulo = tags.get("modulo")
         _capturar_prompt_se_pedido(
             prompt,
             system=system,
@@ -412,6 +461,7 @@ class LLMClient:
         self._aplicar_rate_limit()
 
         ultimo_erro: Exception | None = None
+        inicio_chamada = self._time_fn()
         for tentativa in range(self._max_retries + 1):
             inicio = self._time_fn()
             try:
@@ -420,6 +470,18 @@ class LLMClient:
                 )
                 parsed = _limpar_e_parsear_json(resultado.text)
                 duracao = self._time_fn() - inicio
+                usage.registrar(
+                    provider=self._provider_name,
+                    model=self._model,
+                    tarefa=usage_tarefa,
+                    modulo=usage_modulo,
+                    tokens_in=resultado.tokens_in,
+                    tokens_out=resultado.tokens_out,
+                    custo_usd=resultado.custo_usd,
+                    duracao_s=duracao,
+                    sucesso=True,
+                    caminho=config.ARQUIVO_USO_LLM,
+                )
                 return LLMResponse(
                     text=resultado.text,
                     parsed_json=parsed,
@@ -438,6 +500,19 @@ class LLMClient:
                     self._sleep_fn(self._retry_sleep_seconds)
 
         assert ultimo_erro is not None  # max_retries >= 0 => loop roda >= 1x
+        usage.registrar(
+            provider=self._provider_name,
+            model=self._model,
+            tarefa=usage_tarefa,
+            modulo=usage_modulo,
+            tokens_in=None,
+            tokens_out=None,
+            custo_usd=None,
+            duracao_s=self._time_fn() - inicio_chamada,
+            sucesso=False,
+            erro=f"{type(ultimo_erro).__name__}: {ultimo_erro}",
+            caminho=config.ARQUIVO_USO_LLM,
+        )
         raise ultimo_erro
 
 

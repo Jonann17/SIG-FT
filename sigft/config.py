@@ -518,3 +518,20 @@ def get_key(chaves: dict[str, str | None], key_id: str) -> str:
     propósito aqui (não é este checkpoint que decide corrigi-la).
     """
     return chaves.get(key_id, "")
+
+
+# =============================================================================
+# 8. LOGS / RASTREAMENTO DE USO DE IA (Checkpoint 3.4)
+# =============================================================================
+# Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.4, e
+# `sigft/core/llm/usage.py` (UsageTracker: cada `LLMClient.generate()` grava
+# um registro JSONL aqui — tokens, custo real/estimado, módulo, tarefa,
+# duração, sucesso/erro). `logs/` já está listado no `.gitignore` (saída de
+# execução por máquina, não versionada — mesmo espírito de `user_prefs.json`/
+# `api_config.json`).
+
+PASTA_LOGS = "logs"
+
+# Caminho relativo (resolvido a partir do cwd do processo — raiz do
+# repo/instalação), mesma convenção de `CONFIG_FILE`/`prefs.CONFIG_FILE`.
+ARQUIVO_USO_LLM = os.path.join(PASTA_LOGS, "llm_usage.jsonl")

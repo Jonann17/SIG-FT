@@ -20,6 +20,7 @@ from sigft.core import prefs
 from sigft.app import file_dialogs
 from sigft import config as sigft_config
 from sigft.core.llm import selecao
+from sigft.core.llm import usage as llm_usage
 
 # --- VARIÁVEIS GLOBAIS DOS BACKENDS (Inicialmente None) ---
 # Isso evita erro de "NameError" nas classes antes do carregamento
@@ -3853,11 +3854,14 @@ class HomeView(ctk.CTkScrollableFrame):
         # --- PAINEL DE MODELOS DE IA (CP 3.3) ---
         self.criar_painel_modelos_ia(row=4)
 
+        # --- PAINEL DE GASTOS DE IA (CP 3.4) ---
+        self.criar_painel_gastos_ia(row=5)
+
         # --- SEÇÕES (CARDS) ---
 
         # 1. Criação e PDM
         self.criar_card_instrucao(
-            row=5,
+            row=6,
             titulo="1 & 2. Criação e Estruturação",
             descricao="Etapas iniciais para geração da ficha técnica e processamento de PDMs em massa.",
             inputs="- Excel _STATUS_PMIB\n- Lista de PDMs",
@@ -3866,7 +3870,7 @@ class HomeView(ctk.CTkScrollableFrame):
 
         # 2. Análise e Qualidade
         self.criar_card_instrucao(
-            row=6,
+            row=7,
             titulo="3. Análise de Qualidade (IA)",
             descricao="Módulo 'Analyzer': Verifica a consistência dos dados preenchidos nas fichas antes do upload.",
             inputs="- Planilhas PMIB (.xlsx)",
@@ -3879,7 +3883,7 @@ class HomeView(ctk.CTkScrollableFrame):
                        "• Upload Caract. Técnicas: Preenche as especificações técnicas.\n"
                        "• Tradutor: Traduz PT <-> ES automaticamente.")
         self.criar_card_instrucao(
-            row=7,
+            row=8,
             titulo="4. Dados Técnicos e Upload",
             descricao=desc_upload,
             inputs="- Planilhas PMIB\n- Credenciais Portal",
@@ -3888,7 +3892,7 @@ class HomeView(ctk.CTkScrollableFrame):
 
         # 4. AutoSpec AI
         self.criar_card_instrucao(
-            row=8,
+            row=9,
             titulo="5. AutoSpec AI (RAG)",
             descricao="Inteligência Artificial avançada que lê manuais em PDF e busca na web para preencher fichas técnicas vazias automaticamente.",
             inputs="- Ficha Técnica vazia\n- PDFs dos Manuais (Opcional)",
@@ -3897,7 +3901,7 @@ class HomeView(ctk.CTkScrollableFrame):
 
         # 5. Gestão LMR
         self.criar_card_instrucao(
-            row=9,
+            row=10,
             titulo="6. Gestão LMR (Aplicações)",
             descricao="Automação para inserir ou apagar listas de materiais de reposição (Aplicações) no portal.",
             inputs="- Planilha de Aplicações LMR",
@@ -3906,7 +3910,7 @@ class HomeView(ctk.CTkScrollableFrame):
 
         # 6. Gerenciamento Geral
         self.criar_card_instrucao(
-            row=10,
+            row=11,
             titulo="7. PMIB Manager",
             descricao="Gestão macro do processo: Renomeia arquivos, atualiza planilha mestra e calcula KPIs de avanço.",
             inputs="- Base de Dados API\n- Pasta Raiz de Arquivos",
@@ -3914,7 +3918,7 @@ class HomeView(ctk.CTkScrollableFrame):
         )
 
         # Espaço final
-        ctk.CTkLabel(self, text="").grid(row=11, column=0, pady=20)
+        ctk.CTkLabel(self, text="").grid(row=12, column=0, pady=20)
 
     def criar_area_config_api(self, row):
         """Cria o painel de configuração de chaves API."""
@@ -4258,6 +4262,84 @@ class HomeView(ctk.CTkScrollableFrame):
             "Seleção de modelos de IA salva. A próxima execução de cada módulo já usa o modelo "
             "escolhido — não é preciso reiniciar o SIG-FT.",
         )
+
+    # =========================================================================
+    # PAINEL "GASTOS DE IA" (Checkpoint 3.4 do plano de refatoração)
+    # =========================================================================
+    # Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.4. Resumo do
+    # "UsageTracker" (`sigft.core.llm.usage`): cada `LLMClient.generate()`
+    # grava um registro em `logs/llm_usage.jsonl` (ver `core/llm/client.py`/
+    # `core/llm/usage.py`). Mesmo padrão visual dos 2 painéis acima
+    # (`criar_area_config_api`/`criar_painel_modelos_ia`: `CTkFrame`,
+    # `fg_color=("gray90","gray16")`, `corner_radius=10`, título em negrito
+    # com emoji). A leitura fica inteiramente dentro de
+    # `_atualizar_texto_gastos_ia` (try/except) -- o painel NUNCA pode
+    # impedir a Home de abrir, mesmo se `logs/` estiver corrompido/
+    # inacessível.
+    def criar_painel_gastos_ia(self, row):
+        """Painel "Gastos de IA": resumo em texto (total gasto, nº de
+        chamadas, período coberto) + gasto por módulo e por modelo (via
+        `usage.formatar_relatorio_texto` -- CP 3.4), botão "Atualizar" e
+        botão "Abrir pasta de logs". Sem registros ainda -> mensagem
+        amigável ("Nenhuma chamada de IA registrada ainda.", já produzida
+        por `formatar_relatorio_texto`), nunca uma tabela vazia ou erro."""
+        self._row_gastos_ia = row
+        frame = ctk.CTkFrame(self, fg_color=("gray90", "gray16"), corner_radius=10)
+        frame.grid(row=row, column=0, sticky="ew", padx=20, pady=10)
+        self.frame_gastos_ia = frame
+
+        ctk.CTkLabel(frame, text="💰 Gastos de IA", font=("Arial", 16, "bold")).pack(pady=10, padx=10, anchor="w")
+
+        self.lbl_gastos_ia = ctk.CTkLabel(
+            frame, text="Carregando...", font=("Roboto", 12), justify="left", anchor="w", wraplength=800,
+        )
+        self.lbl_gastos_ia.pack(anchor="w", padx=10, pady=(0, 10), fill="x")
+        self._atualizar_texto_gastos_ia()
+
+        f_botoes_gastos = ctk.CTkFrame(frame, fg_color="transparent")
+        f_botoes_gastos.pack(fill="x", padx=10, pady=(0, 15))
+        ctk.CTkButton(
+            f_botoes_gastos, text="Atualizar", command=self._atualizar_texto_gastos_ia,
+            fg_color="#3A3A3A", hover_color="#454545",
+        ).pack(side="left", padx=(0, 10))
+        ctk.CTkButton(
+            f_botoes_gastos, text="Abrir pasta de logs", command=self._abrir_pasta_logs_gastos_ia,
+            fg_color="#3A3A3A", hover_color="#454545",
+        ).pack(side="left")
+
+    def _atualizar_texto_gastos_ia(self):
+        """Recalcula o texto do painel a partir de `logs/llm_usage.jsonl`.
+        Leitura local (rápida) -- síncrona, sem thread (ao contrário do
+        catálogo do OpenRouter, que é rede -- ver
+        `_atualizar_catalogo_ia_openrouter`). NUNCA levanta: qualquer falha
+        (ex.: arquivo sem permissão de leitura, JSON corrompido além do que
+        `ler_registros` já tolera) degrada para uma mensagem amigável, sem
+        impedir a Home de abrir/continuar funcionando."""
+        try:
+            relatorio = llm_usage.usage_report()
+            texto = llm_usage.formatar_relatorio_texto(relatorio)
+        except Exception as e:
+            texto = f"Não foi possível carregar os gastos de IA agora ({e})."
+        self.lbl_gastos_ia.configure(text=texto)
+
+    def _abrir_pasta_logs_gastos_ia(self):
+        """Abre `logs/` no explorador de arquivos do SO. `os.startfile` no
+        Windows -- mesmo precedente já usado em `_mostrar_janela_resultados`
+        (`abrir_arquivo`/`abrir_pasta`) deste arquivo --, com
+        `subprocess.call(['open', ...])` como fallback fora do Windows.
+        Cria a pasta se ainda não existir (nenhuma tarefa de IA rodou ainda)
+        para não confrontar o usuário com "pasta não encontrada" por algo
+        que é responsabilidade do próprio app criar. Tudo dentro de
+        try/except: nunca deixa uma exceção do SO subir até travar a UI."""
+        pasta = sigft_config.PASTA_LOGS
+        try:
+            os.makedirs(pasta, exist_ok=True)
+            try:
+                os.startfile(pasta)
+            except AttributeError:
+                subprocess.call(['open', pasta])
+        except Exception as e:
+            messagebox.showerror("Erro", f"Não foi possível abrir a pasta de logs: {e}")
 
     def criar_texto_simples(self, texto, row):
         label = ctk.CTkLabel(self, text=texto, font=("Arial", 14), justify="left", wraplength=800)

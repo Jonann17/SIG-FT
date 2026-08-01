@@ -22,16 +22,23 @@ abstração de provedor).
     usuário no painel "Modelos de IA" da Home (`carregar`/`resolver`/
     `definir_global`/`definir_por_tarefa`/`aplicar_recomendados`) — o que
     `get_llm()` consulta ANTES do fallback embutido `config.LLM_MODELOS_HOJE`.
+  - `usage.py` (CP 3.4): "UsageTracker" — `registrar()`/`ler_registros()`/
+    `usage_report()`/`formatar_relatorio_texto()`. `LLMClient.generate()`
+    grava um registro JSONL por chamada (`logs/llm_usage.jsonl`, via
+    `config.ARQUIVO_USO_LLM`) nos 2 pontos de saída (sucesso/falha total);
+    custo REAL do provider (hoje só OpenRouter) ou ESTIMADO pela tabela de
+    preços `config.LLM_PRECOS_USD_POR_1M`. Rastreamento nunca derruba uma
+    execução (qualquer falha de escrita é engolida) — desligável via
+    `SIGFT_DESABILITAR_USAGE=1`.
 
-Só stdlib em `client.py`/`selecao.py` (`time`, `json`, `dataclasses`,
-`os`) — importáveis no ambiente de teste sem `google-generativeai`
-instalado (ver tests/conftest.py); o SDK pesado fica isolado em
-`providers/gemini.py`, via import preguiçoso (mesma convenção de
+Só stdlib em `client.py`/`selecao.py`/`usage.py` (`time`, `json`,
+`dataclasses`, `os`, `datetime`) — importáveis no ambiente de teste sem
+`google-generativeai` instalado (ver tests/conftest.py); o SDK pesado fica
+isolado em `providers/gemini.py`, via import preguiçoso (mesma convenção de
 `core/excel/status_sheet.py` para `openpyxl`).
 
-Módulos futuros, fora do escopo do CP 3.3 (ver
-docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.4+, e
-docs/refatoracao/PENDENCIAS.md): `usage.py` (rastreamento de custo
-real/estimado, CP 3.4) e `prompts.py` (extração dos 5 prompts gigantes,
-CP 3.5).
+Módulo futuro, fora do escopo do CP 3.4 (ver
+docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.5, e
+docs/refatoracao/PENDENCIAS.md): `prompts.py` (extração dos 5 prompts
+gigantes, CP 3.5).
 """

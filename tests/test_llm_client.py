@@ -17,6 +17,19 @@ de MAIOR prioridade da suíte deste checkpoint (código novo, maior risco):
      propagação da exceção ORIGINAL em falha total, preenchimento de
      `LLMResponse`. `sleep_fn`/`time_fn` SEMPRE injetados como fakes -- nenhum
      teste usa `time.sleep`/`time.time` reais (rodam em milissegundos).
+  C. [Checkpoint 3.4] Instrumentação de uso/custo -- `LLMClient.generate()`
+     grava um registro via `sigft.core.llm.usage.registrar()` nos MESMOS 2
+     pontos de saída cobertos na seção B: 1 registro por `generate()` mesmo
+     com retry; registro de falha após esgotar as retentativas; `tarefa`/
+     `modulo` vindos de `tags`; custo REAL preservado quando o provider
+     informa; e o teste mais importante da Decisão 1 do CP 3.4 -- falha ao
+     GRAVAR o registro de uso não impede `generate()` de devolver a
+     resposta normalmente. `tests/conftest.py` religa
+     `SIGFT_DESABILITAR_USAGE=1` por padrão para TODA a suíte (protegendo
+     as seções A/B acima, que nunca ouviram falar deste checkpoint); os
+     testes da seção C reabilitam explicitamente (primeira linha do corpo
+     do teste) e sempre redirecionam `sigft.config.ARQUIVO_USO_LLM` para
+     dentro de `tmp_path` -- nunca escrevem no `logs/` real.
 
 `get_llm()` (fábrica) é testada à parte, em `test_llm_get_llm_factory.py`.
 `GeminiProvider` é testado à parte, em `test_llm_gemini_provider.py`.
@@ -25,6 +38,8 @@ import json
 
 import pytest
 
+from sigft import config
+from sigft.core.llm import usage
 from sigft.core.llm.client import LLMClient, LLMResponse, ProviderResult, _limpar_e_parsear_json
 
 
@@ -469,3 +484,189 @@ def test_propriedades_read_only_refletem_o_construtor():
     assert client.max_retries == 2
     assert client.retry_sleep_seconds == 30
     assert client.min_interval_seconds is None
+
+
+# =============================================================================
+# C. Instrumentação de uso/custo (Checkpoint 3.4) -- ver docstring do módulo.
+# =============================================================================
+def test_generate_sucesso_grava_exatamente_1_registro_de_uso(tmp_path, monkeypatch):
+    monkeypatch.delenv(usage.ENV_DESABILITAR_USAGE, raising=False)
+    caminho = tmp_path / "llm_usage.jsonl"
+    monkeypatch.setattr(config, "ARQUIVO_USO_LLM", str(caminho))
+
+    provider = _FakeProvider([('{"ok": true}', 10, 20)])
+    relogio = _Relogio()
+    client = LLMClient(
+        provider, provider_name="gemini", model="gemini-3-flash-preview",
+        sleep_fn=relogio.sleep_fn, time_fn=relogio.time_fn,
+    )
+
+    client.generate("prompt", tags={"modulo": "upload_conditions_backend", "tarefa": "condicoes"})
+
+    registros = usage.ler_registros(caminho=caminho)
+    assert len(registros) == 1
+    registro = registros[0]
+    assert registro["provider"] == "gemini"
+    assert registro["model"] == "gemini-3-flash-preview"
+    assert registro["tarefa"] == "condicoes"
+    assert registro["modulo"] == "upload_conditions_backend"
+    assert registro["tokens_in"] == 10
+    assert registro["tokens_out"] == 20
+    assert registro["sucesso"] is True
+    assert registro["erro"] is None
+    assert registro["custo_estimado"] is True  # sem custo_usd do provider -> estimado pela tabela
+
+
+def test_generate_com_retry_e_sucesso_na_ultima_tentativa_grava_1_registro_so(tmp_path, monkeypatch):
+    monkeypatch.delenv(usage.ENV_DESABILITAR_USAGE, raising=False)
+    caminho = tmp_path / "llm_usage.jsonl"
+    monkeypatch.setattr(config, "ARQUIVO_USO_LLM", str(caminho))
+
+    # Falha 2x, acerta na 3ª -- "UM registro por generate(), não por
+    # tentativa de retry" (texto explícito do checkpoint).
+    provider = _FakeProvider(
+        [RuntimeError("falha 1"), RuntimeError("falha 2"), ('{"ok": 1}', 5, 5)]
+    )
+    relogio = _Relogio()
+    client = LLMClient(
+        provider, provider_name="gemini", model="m",
+        max_retries=2, retry_sleep_seconds=0,
+        sleep_fn=relogio.sleep_fn, time_fn=relogio.time_fn,
+    )
+
+    client.generate("prompt")
+
+    registros = usage.ler_registros(caminho=caminho)
+    assert len(registros) == 1
+    assert registros[0]["sucesso"] is True
+
+
+def test_generate_falha_total_apos_retentativas_grava_1_registro_de_falha(tmp_path, monkeypatch):
+    monkeypatch.delenv(usage.ENV_DESABILITAR_USAGE, raising=False)
+    caminho = tmp_path / "llm_usage.jsonl"
+    monkeypatch.setattr(config, "ARQUIVO_USO_LLM", str(caminho))
+
+    erro = RuntimeError("indisponível")
+    provider = _FakeProvider([erro, erro])
+    relogio = _Relogio()
+    client = LLMClient(
+        provider, provider_name="gemini", model="m",
+        max_retries=1, retry_sleep_seconds=0,
+        sleep_fn=relogio.sleep_fn, time_fn=relogio.time_fn,
+    )
+
+    with pytest.raises(RuntimeError):
+        client.generate("prompt", tags={"tarefa": "tech_specs", "modulo": "upload_tech_specs_backend"})
+
+    registros = usage.ler_registros(caminho=caminho)
+    assert len(registros) == 1
+    registro = registros[0]
+    assert registro["sucesso"] is False
+    assert registro["erro"] == "RuntimeError: indisponível"
+    assert registro["tokens_in"] is None
+    assert registro["tokens_out"] is None
+    assert registro["custo_usd"] is None
+    assert registro["custo_estimado"] is None
+    assert registro["tarefa"] == "tech_specs"
+    assert registro["modulo"] == "upload_tech_specs_backend"
+
+
+def test_generate_sem_tags_usa_fallback_sem_tarefa_e_modulo_none(tmp_path, monkeypatch):
+    monkeypatch.delenv(usage.ENV_DESABILITAR_USAGE, raising=False)
+    caminho = tmp_path / "llm_usage.jsonl"
+    monkeypatch.setattr(config, "ARQUIVO_USO_LLM", str(caminho))
+
+    provider = _FakeProvider([("{}", None, None)])
+    relogio = _Relogio()
+    client = LLMClient(
+        provider, provider_name="gemini", model="m",
+        sleep_fn=relogio.sleep_fn, time_fn=relogio.time_fn,
+    )
+
+    client.generate("prompt")  # sem tags=
+
+    registro = usage.ler_registros(caminho=caminho)[0]
+    assert registro["tarefa"] == "sem_tarefa"
+    assert registro["modulo"] is None
+
+
+def test_generate_preserva_custo_real_do_provider_sem_estimar(tmp_path, monkeypatch):
+    monkeypatch.delenv(usage.ENV_DESABILITAR_USAGE, raising=False)
+    caminho = tmp_path / "llm_usage.jsonl"
+    monkeypatch.setattr(config, "ARQUIVO_USO_LLM", str(caminho))
+
+    provider = _FakeProvider([('{"ok": true}', 100, 200, 0.0042)])
+    relogio = _Relogio()
+    client = LLMClient(
+        provider, provider_name="openrouter", model="x-ai/grok-4.5",
+        sleep_fn=relogio.sleep_fn, time_fn=relogio.time_fn,
+    )
+
+    client.generate("prompt")
+
+    registro = usage.ler_registros(caminho=caminho)[0]
+    assert registro["custo_usd"] == 0.0042
+    assert registro["custo_estimado"] is False
+
+
+def test_generate_com_usage_desabilitado_nao_grava_nada(tmp_path, monkeypatch):
+    monkeypatch.setenv(usage.ENV_DESABILITAR_USAGE, "1")
+    caminho = tmp_path / "llm_usage.jsonl"
+    monkeypatch.setattr(config, "ARQUIVO_USO_LLM", str(caminho))
+
+    provider = _FakeProvider([("{}", None, None)])
+    relogio = _Relogio()
+    client = LLMClient(
+        provider, provider_name="gemini", model="m",
+        sleep_fn=relogio.sleep_fn, time_fn=relogio.time_fn,
+    )
+
+    resp = client.generate("prompt")
+
+    assert resp.parsed_json == {}  # generate() continua funcionando normalmente
+    assert usage.ler_registros(caminho=caminho) == []
+
+
+def test_generate_falha_ao_gravar_registro_de_uso_nao_impede_resposta_normal(tmp_path, monkeypatch):
+    # O teste MAIS IMPORTANTE da extensão deste arquivo (Decisão 1 do
+    # CP 3.4): mesmo se a ESCRITA do registro de uso falhar de VERDADE (aqui,
+    # `ARQUIVO_USO_LLM` aponta para uma PASTA existente -- `open(pasta, "a")`
+    # levanta `IsADirectoryError` de verdade) -- `usage.registrar()` engole
+    # a exceção e `generate()` continua intocado: mesma resposta, sem
+    # levantar nada por causa do rastreamento de uso.
+    monkeypatch.delenv(usage.ENV_DESABILITAR_USAGE, raising=False)
+    monkeypatch.setattr(config, "ARQUIVO_USO_LLM", str(tmp_path))  # pasta, não arquivo
+
+    provider = _FakeProvider([('{"ok": true}', 1, 1)])
+    relogio = _Relogio()
+    client = LLMClient(
+        provider, provider_name="gemini", model="m",
+        sleep_fn=relogio.sleep_fn, time_fn=relogio.time_fn,
+    )
+
+    resp = client.generate("prompt")  # não deve levantar por causa do usage
+
+    assert isinstance(resp, LLMResponse)
+    assert resp.parsed_json == {"ok": True}
+
+
+def test_generate_falha_total_com_falha_ao_gravar_uso_ainda_relevanta_a_excecao_original(tmp_path, monkeypatch):
+    # Mesma ideia do teste anterior, mas no caminho de FALHA TOTAL: a falha
+    # de escrita do registro de uso não pode mascarar/trocar a exceção
+    # ORIGINAL que `generate()` deveria relevantar.
+    monkeypatch.delenv(usage.ENV_DESABILITAR_USAGE, raising=False)
+    monkeypatch.setattr(config, "ARQUIVO_USO_LLM", str(tmp_path))  # pasta, não arquivo
+
+    erro = RuntimeError("indisponível de verdade")
+    provider = _FakeProvider([erro])
+    relogio = _Relogio()
+    client = LLMClient(
+        provider, provider_name="gemini", model="m",
+        max_retries=0,
+        sleep_fn=relogio.sleep_fn, time_fn=relogio.time_fn,
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        client.generate("prompt")
+
+    assert exc_info.value is erro
