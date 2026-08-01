@@ -16,6 +16,18 @@ neste ambiente) — o que é testável e importa aqui:
      têm mais NENHUM `time.sleep(<literal numérico>)` cru — só chamadas
      via constante nomeada (grep de verificação, mesmo padrão dos testes de
      smoke doutros checkpoints).
+
+CP 4.1 (Fase 4, 1ª metade — docs/refatoracao/PLANO_REFATORACAO.md): o
+CÓDIGO REAL de `apagar_lmr_backend.py`/`lmr_backend.py` mudou de arquivo —
+mora agora em `sigft/services/apagar_lmr.py`/`sigft/services/lmr.py`; no
+lugar antigo ficou só um shim de compatibilidade de poucas linhas (sem
+nenhum `time.sleep`). Sem este ajuste, o teste nº 3 acima passaria de forma
+VAZIA para esses 2 arquivos (o shim também não tem `time.sleep` cru, então
+"achados == []" seria verdade por um motivo errado) — `ARQUIVOS_ALVO` abaixo
+aponta para o caminho FÍSICO real de cada um dos 6, para continuar
+verificando o código que de fato roda. Os outros 4 (`upload_tech_specs`,
+`upload_conditions`, `upload_ficha_duplicada`, `cria_fichas`) ainda não
+foram movidos (2ª metade do CP 4.1, tarefa separada) — continuam na raiz.
 """
 import re
 from pathlib import Path
@@ -27,8 +39,8 @@ import sigft.core.rpa.portal as portal
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 ARQUIVOS_ALVO = [
-    "apagar_lmr_backend.py",
-    "lmr_backend.py",
+    "sigft/services/apagar_lmr.py",  # CP 4.1: movido de apagar_lmr_backend.py
+    "sigft/services/lmr.py",  # CP 4.1: movido de lmr_backend.py
     "upload_tech_specs_backend.py",
     "upload_conditions_backend.py",
     "upload_ficha_duplicada.py",
