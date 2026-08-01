@@ -17,14 +17,26 @@ frentes pedidas pelo checkpoint:
   (c) o invariante do *Aceite* do checkpoint ("nenhum prompt >15 linhas
       dentro de `services/`", lido aqui como "nenhum literal de string com
       mais de 15 quebras de linha dentro dos 5 arquivos `*_backend.py`
-      migrados" -- os backends ainda estão na raiz, a mudança para
-      `sigft/services/` é o CP 4.1): percorre a AST de cada um dos 5
-      arquivos, acha todo `ast.Constant` de `str` (inclusive os pedaços de
-      texto literal DENTRO de f-strings -- `ast.walk` visita os nós
-      `Constant` aninhados em `JoinedStr.values`) e falha se algum tiver
+      migrados" -- na época do CP 3.5 os backends ainda estavam na raiz, a
+      mudança para `sigft/services/` é o CP 4.1): percorre a AST de cada um
+      dos 5 arquivos, acha todo `ast.Constant` de `str` (inclusive os
+      pedaços de texto literal DENTRO de f-strings -- `ast.walk` visita os
+      nós `Constant` aninhados em `JoinedStr.values`) e falha se algum tiver
       mais de 15 quebras de linha. `sigft/core/llm/prompts.py` em si NÃO
       entra nesse invariante -- é justamente para onde o texto grande foi
       migrado, por design.
+
+CP 4.1 (Fase 4, 1ª metade -- docs/refatoracao/PLANO_REFATORACAO.md):
+`analyzer_backend.py` já foi movido -- o código real mora agora em
+`sigft/services/analyzer.py`; o que sobrou na raiz é um shim de
+compatibilidade cuja PRÓPRIA docstring (explicando o aliasing) passou a ter
+mais de 15 quebras de linha. Sem apontar `ARQUIVOS_MIGRADOS` para o caminho
+físico novo, o teste (c) abaixo FALHARIA contra o texto do shim -- um
+literal que nada tem a ver com o invariante de prompts que este teste
+audita; `sigft/services/analyzer.py` é o arquivo correto a auditar (maior
+literal real: 2 quebras de linha). Os outros 4 (`cria_fichas`,
+`upload_conditions`, `upload_tech_specs`, `autospec`) ainda não foram
+movidos (2ª metade do CP 4.1, tarefa separada) -- continuam na raiz.
 """
 import ast
 import os
@@ -129,7 +141,7 @@ def test_montar_autospec_context_falsy_cai_no_texto_padrao():
 #     arquivos *_backend.py migrados.
 # =============================================================================
 ARQUIVOS_MIGRADOS = [
-    "analyzer_backend.py",
+    "sigft/services/analyzer.py",  # CP 4.1: movido de analyzer_backend.py
     "cria_fichas_no_pmib_v1_backend.py",
     "upload_conditions_backend.py",
     "upload_tech_specs_backend.py",
