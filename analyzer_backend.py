@@ -19,6 +19,10 @@ from sigft.core.rpa.ficha_layout import CONFIG_MAP, VARIAVEIS_SPECS
 # muda" (mesmo precedente já registrado em PENDENCIAS.md para imports mortos
 # de checkpoints anteriores), candidato a limpeza no CP 8.1 (ruff).
 from sigft.core.llm.client import get_llm
+# CP 3.5 (Fase 3): o TEXTO do prompt de `_build_gemini_prompt` abaixo mora em
+# `sigft.core.llm.prompts.montar_validar_ficha` -- só o pré-processamento
+# (extrair mat/fab, montar str_fixed/str_vars) continua aqui.
+from sigft.core.llm import prompts
 
 # -----------------------------------------------------------------
 # CONSTANTES E CONFIGURAÇÕES
@@ -375,53 +379,12 @@ class DatasheetAnalyzer:
             str_vars += f'"{item["pergunta"]}": "{item["resposta"]}"\n'
         if not str_vars: str_vars = "[Vazio]"
 
-        return f"""
-#System message: Você é uma IA especialista na análise de informações (informações gerais, condições de armazenamento, transporte, movimentação, manutenção e descarte, e caracteristicas técnicas) de materiais utilizados em usinas hidrelétricas.
-#Context: Você não deve julgar se a informação é tecnicamente verídica ou 100% correta para o equipamento. Seu objetivo é realizar uma validação de formato, relevância e aplicabilidade. Abaixo são dadas regras que devem seguidas e tomadas como exemplo:
-
-REGRAS DE VALIDAÇÃO:
-
-1. Regra de Relevância (Faz Sentido?):
-   * A informação é VALIDA se ela pertencer à categoria da pergunta.
-   * A informação é INVALIDA apenas se for completamente absurda ou não tiver nada a ver com o que foi pedido.
-   * Exemplo 1: Pergunta="Peso Líquido", Resposta="100kg" -> VALIDO.
-   * Exemplo 2: Pergunta="Peso Líquido", Resposta="50g" -> VALIDO (Mesmo que o peso real seja outro, a categoria 'peso' está correta).
-   * Exemplo 3: Pergunta="Peso Líquido", Resposta="Vermelho" -> INVALIDO (A resposta é uma cor, não um peso).
-   * Exemplo 4: Pergunta="Material", Resposta="Aço Inox" -> VALIDO.
-   * Exemplo 5: Pergunta="Material", Resposta="140x50mm" -> INVALIDO (A resposta é uma dimensão, não um material).
-
-2. Regra de Aplicabilidade da informação:
-   * A resposta pode ser informada como "Não aplicável" (e suas variações "N/A", "NA", "Não se aplica", etc.) desde que a pergunta realmente não se faça necessária (não exista ou não tenha relevância) para uma posterior aplicação do material.
-   * Exemplo 6: Material="Válvula", Pergunta="Tensão de isolamento", Resposta="N/A" -> VALIDO (Válvulas não apresentam tensão de isolamento).
-   * Exemplo 7: Material="Válvula", Pergunta="Vazão", Resposta="N/A" -> INVALIDO (A vazão de uma válvula é uma informação importante, e portanto, deve ser fornecida).
-   * Exemplo 8: Material="Válvula", Pergunta="Caracteristicas adicionais", Resposta="N/A" -> VALIDO (As caracteristicas adicionais não são necessárias para uma posterior aplicação do material).
-   * Exemplo 9: Material="Sensor de temperatura", Pergunta="Faixa de Medição", Resposta="Não informado" -> INVALIDO (A faixa de medição de um sensor de temperatura é uma informação importante, e portanto, deve ser fornecida, mesmo que não foi informado).
-
-3. Regra de fornecimento de informações:
-   * Todas informações devem ser fornecidas (exceto quando não aplicaveis) e não referenciadas.
-   * Exemplo 10: Pergunta="Componentes", Resposta="Item 20 conforme catálogo " -> INVALIDO (A resposta deve ser dada, e não direcionada para outra fonte).
-
-4. REGRA DE OURO:
-   * Na dúvida, considere a informação como VALIDO. Seu objetivo é filtrar apenas os erros óbvios de preenchimento, não os erros técnicos sutis.
-
-#Task: Com base nas REGRAS DE VALIDAÇÃO acima, analise os seguintes campos do material "{mat}", do fornecedor "{fab}" a partir de dados coletados sobre o material na internet.
-
-{str_fixed}
-
-{str_vars}
-
-#Notes: Retorne sua resposta APENAS no formato JSON. Não inclua ```json ou qualquer outro texto antes ou depois. O JSON deve ter duas chaves: "campos_fixos" e "campos_variaveis". Para "campos_fixos", use as chaves exatas que eu forneci (ex: "embalagem_transporte"). Para "campos_variaveis", retorne uma lista, na mesma ordem em que foram fornecidos. Para cada campo, indique um status "VALIDO" ou "INVALIDO". Exemplo de formato de resposta JSON:
-
-{{
-  "campos_fixos": {{
-    "embalagem_transporte": {{ "status": "VALIDO" }},
-    "transporte": {{ "status": "INVALIDO" }}
-  }},
-  "campos_variaveis": [
-    {{ "status": "INVALIDO" }}
-  ]
-}}
-"""
+        # CP 3.5 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 3): o TEXTO do
+        # prompt (antes embutido aqui como f-string gigante) agora mora em
+        # `sigft.core.llm.prompts.montar_validar_ficha` -- só o
+        # pré-processamento acima (extrair mat/fab, montar str_fixed/
+        # str_vars) continua neste método.
+        return prompts.montar_validar_ficha(mat, fab, str_fixed, str_vars)
 
     def _call_gemini_api(self, prompt):
         # CP 3.1: rate-limit (60s) + retry (3 tentativas, 5s entre elas) +

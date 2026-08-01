@@ -15,6 +15,11 @@ from sigft import config
 from sigft.core.excel import headers, pmib_codes
 from sigft.core.rpa.ficha_layout import CONFIG_MAP, VARIAVEIS_SPECS
 from sigft.core.llm.client import get_llm
+# CP 3.5 (Fase 3): o TEXTO do preâmbulo do prompt de
+# `generate_ai_response` abaixo mora em
+# `sigft.core.llm.prompts.montar_autospec` -- o laço que monta `desc_list`
+# (consulta GENERATIVE_FIELDS, logo abaixo) continua neste módulo.
+from sigft.core.llm import prompts
 
 # -----------------------------------------------------------------
 # 1. CONFIGURAÇÕES E MAPAS
@@ -309,24 +314,11 @@ class AutoSpecCore:
     def generate_ai_response(self, txt_brv, fab, desc_comp, missing, context):
         if not missing: return {}
 
-        prompt = f"""
-        Você é um Assistente Técnico Industrial.
-        DADOS: Nome: {txt_brv} | Descrição: {desc_comp} | Fab: {fab}
-
-        CONTEXTO:
-        {context if context else "Nenhuma informação disponível."}
-
-        INSTRUÇÕES:
-        1. Priorize "LOCAL DOC".
-        2. Verifique se o documento bate com o material.
-        3. Campos [INFO TÉCNICA PADRÃO]: Se não houver dados, GERE com base em boas práticas.
-        4. Campos [ESTRITO]: Se não houver dados, deixe vazio "".
-        5. 'empilhamento': Apenas números inteiros.
-        6. Checkboxes: Deduza a melhor opção se não explícito.
-
-        CAMPOS A PREENCHER (Retorne JSON {{ID: Resposta}}):
-        """
-
+        # CP 3.5 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 3): o laço que
+        # monta `desc_list` continua aqui (consulta GENERATIVE_FIELDS, constante
+        # deste módulo) -- só o TEXTO do preâmbulo do prompt saiu daqui, para
+        # `sigft.core.llm.prompts.montar_autospec`, que recebe o resultado já
+        # concatenado.
         desc_list = []
         for k, v in missing.items():
             info = f"- ID '{k}': {v['desc']}"
@@ -335,7 +327,7 @@ class AutoSpecCore:
             if v['type'] == 'checkbox': info += f" (Opções: {v['options']})"
             desc_list.append(info)
 
-        prompt += "\n".join(desc_list)
+        prompt = prompts.montar_autospec(txt_brv, fab, desc_comp, context, "\n".join(desc_list))
 
         try:
             # [CP 3.2] LangChain removido -- `_limpar_e_parsear_json` do

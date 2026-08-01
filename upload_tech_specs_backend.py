@@ -47,6 +47,10 @@ from sigft.core.rpa.portal import (
 # `TechSpecsProcessor._chamar_gemini_specs` abaixo delega para `LLMClient`/
 # `GeminiProvider` (ÚNICO lugar do projeto que importa `genai`).
 from sigft.core.llm.client import get_llm
+# CP 3.5 (Fase 3): o TEXTO do `system_instruction`/`prompt_user` de
+# `_chamar_gemini_specs` abaixo mora em `sigft.core.llm.prompts`
+# (`SYSTEM_TECH_SPECS`/`montar_tech_specs_user`).
+from sigft.core.llm import prompts
 
 
 # =============================================================================
@@ -229,83 +233,17 @@ class TechSpecsProcessor:
         return resultados_processados
 
     def _chamar_gemini_specs(self, contexto_json, callback_log=None):
-        system_instruction = """
-        Você é um assistente especialista em normalização de dados técnicos de engenharia.
-        Sua tarefa é analisar características técnicas de materiais, comparar com definições de um padrão (PDM) e validar/corrigir as respostas, sem jamais utilizar acentuação nas respostas.
+        # CP 3.5 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 3): o TEXTO
+        # deste system prompt (estático -- antes embutido aqui) agora mora em
+        # `sigft.core.llm.prompts.SYSTEM_TECH_SPECS`.
+        system_instruction = prompts.SYSTEM_TECH_SPECS
 
-        === REGRAS DE INTEGRIDADE (PROIBIDO DUPLICAR E ALTERAR TIPOS) ===
-        1. CHAVES ÚNICAS: O JSON final NÃO PODE, sob nenhuma hipótese, conter características duplicadas. Cada 'CARACTERISTICA_CHAVE' deve aparecer EXATAMENTE UMA VEZ na lista final. Se houver redundância, consolide os dados e mantenha apenas um item.
-        2. OBEDIÊNCIA ESTRITA AO TIPO DE DADO: Respeite rigorosamente o 'TIPO_DADO' fornecido na entrada. Se o sistema informou que "VAZAO MAXIMA" é 'NUM', você NUNCA deve alterar para 'CHAR' no JSON. Se a entrada bruta for "max. 80 l/min", como o tipo é 'NUM', você deve extrair APENAS O NÚMERO ("80") e retornar o TIPO intacto como 'NUM'.
-
-        === REGRAS DE FORMATAÇÃO (DECIMAIS E LISTAS) - MUITO IMPORTANTE ===
-        1. SEPARADOR DECIMAL: Para valores numéricos (NUM ou INT) com casas decimais, você DEVE utilizar OBRIGATORIAMENTE a VÍRGULA (,) como separador decimal, e NUNCA o ponto (.).
-           - Exemplo Correto: "0,86" | "10,26".
-           - Exemplo Incorreto: "0.86" | "10.26".
-        2. SEPARADOR DE LISTA: Se a resposta pertencer ao tipo LISTA e contiver múltiplos itens selecionados, você DEVE usar PONTO E VÍRGULA (;) para separá-los. NUNCA use vírgula para separar itens, pois a vírgula é exclusiva para decimais.
-           - Exemplo Correto: "A; B; E; F".
-
-        === REGRA DE CONVERSÃO DE UNIDADES (SÍMBOLOS) ===
-        Para campos do tipo 'NUM' ou 'INT', o sistema fornece as unidades aceitas no campo 'SIMBOLO_UNIDADE' (ex: "AD, m³/h, m³/s").
-        - Compare a unidade de medida informada na 'RESPOSTA_CRUA_PT' com as opções válidas.
-        - Se a unidade for diferente, você DEVE realizar a conversão matemática correta para uma das unidades válidas (Ex: se a entrada for "171 l/min" e o sistema aceitar "m³/h", você fará o cálculo e retornará "10,26").
-        - Coloque APENAS O NÚMERO convertido em 'RESPOSTA_PT_FINAL'.
-        - Coloque a UNIDADE VÁLIDA correspondente no campo 'SIMBOLO'.
-
-        === REGRA GLOBAL DE RETENÇÃO E EXCLUSÃO ===
-        Sua prioridade MÁXIMA é NÃO perder dados técnicos. Leia o 'TEXTO_AJUDA' fornecido para entender o contexto da característica. Se a 'RESPOSTA_CRUA_PT' contiver qualquer informação que responda ao que é pedido (ex: "classe H", "aço", "NBR"), você DEVE adequar o dado e definir ACAO = "PREENCHER".
-
-        POR OUTRO LADO, se a resposta indicar CLARAMENTE que a característica NÃO SE APLICA, é inexistente ou totalmente vazia, você DEVE definir ACAO = "REMOVER".
-        Termos considerados como "Não Aplicável":
-        - "NA", "N/A", "N.A", "N.A.", "N/D"
-        - "Não aplicável", "Não se aplica", "Sem aplicação"
-        - "Inexistente", "Não possui"
-        - Traços simples ou duplos: "-", "--", "---"
-        - "Idem", "Vide X" (Se não for possível resolver)
-
-        Se a resposta cair na regra de exclusão acima, ignore as regras de tipo abaixo e force a remoção.
-
-        REGRAS DE PROCESSAMENTO POR TIPO:
-        1. CHAR (Texto):
-           - Verifique se não está em branco. Se estiver vazio, ACAO = "REMOVER".
-           - O campo RESPOSTA_ES é obrigatório apenas aqui.
-           - SÍMBOLO deve ser sempre "AD".
-
-        2. INT (Intervalo):
-           - O campo 'SUBTIPO_INTERVALO' é OBRIGATÓRIO.
-           - Analise o contexto (Pergunta e Texto de Ajuda) para escolher EXATAMENTE uma das opções: ["MINIMO / MAXIMO", "DE / PARA", "INICIO / FIM", "LIMITE INFERIOR / LIMITE SUPERIOR", "LIMITE BAIXO / LIMITE ALTO", "MARGEM INFERIOR / MARGEM SUPERIOR", "MAIOR A / MENOR A", "DESDE / ATE"]. Use "MINIMO / MAXIMO" como padrão.
-           - RESPOSTA_PT_FINAL deve conter os dois valores separados por barra "/" (ex: "10,5 / 20,8"). E o valor menor deve ser indicado como MINIMO, DE, LIMITE INFERIOR, LIMITE BAIXO, MARGEM INFERIOR, MAIOR A, DESDE e o valor maior como MAXIMO, LIMITE ALTO, LIMITE SUPERIOR, MENOR A, MARGEM SUPERIOR, ATE e outras palavras que indiquem que é quantitativamente maior.
-
-        3. NUM (Numérico Único):
-           - Aceita apenas um valor (Lembre-se da regra da vírgula para decimais).
-           - Se a resposta tiver múltiplos valores, escolha o mais representativo (pior caso ou nominal). Não adicione textos descritivos (como "max", "min", "ate") na resposta, apenas o valor numérico.
-
-        4. LISTA (Seleção):
-           - A resposta DEVE ser baseada nos valores presentes no campo 'VALORES_POSSIVEIS_MASTER'.
-           - Lembre-se: múltiplos valores devem ser separados por ponto e vírgula (;).
-
-        SAÍDA ESPERADA (JSON):
-        Retorne um JSON puro contendo uma lista de objetos:
-        [
-            {
-                "CARACTERISTICA_CHAVE": "Nome da característica (limpo)",
-                "TIPO": "CHAR" | "INT" | "NUM" | "LISTA",
-                "VALORES_PT": "...", (Preenchido se tipo LISTA)
-                "SUBTIPO_INTERVALO": "MINIMO / MAXIMO" (ou null),
-                "RESPOSTA_PT_FINAL": "...",
-                "RESPOSTA_ES_FINAL": "...",
-                "SIMBOLO": "Unidade (Ex: V, A, mm, m³/h)",
-                "ACAO": "PREENCHER" ou "REMOVER"
-            }
-        ]
-        """
-
-        prompt_user = f"""
-        Analise os dados abaixo referentes a um material técnico.
-        Execute as regras de normalização e retorne o JSON solicitado.
-
-        DADOS DE ENTRADA:
-        {json.dumps(contexto_json, indent=2, ensure_ascii=False)}
-        """
+        # CP 3.5: o TEXTO deste prompt de usuário agora mora em
+        # `sigft.core.llm.prompts.montar_tech_specs_user` -- a
+        # serialização do JSON continua aqui (só o texto muda de arquivo,
+        # resultado em runtime é byte-idêntico).
+        contexto_json_serializado = json.dumps(contexto_json, indent=2, ensure_ascii=False)
+        prompt_user = prompts.montar_tech_specs_user(contexto_json_serializado)
 
         # CP 3.1: `safety_settings` (BLOCK_NONE) e o laço de retry (3
         # tentativas, 2s entre elas) saem daqui -- `safety_settings` agora

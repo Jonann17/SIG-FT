@@ -1,0 +1,26 @@
+
+        Analise os dados abaixo referentes a um material técnico.
+        Execute as regras de normalização e retorne o JSON solicitado.
+
+        DADOS DE ENTRADA:
+        {
+  "CODIGO_PMIB": "4500063671.1234",
+  "PDM": "PDM.4020.001",
+  "CARACTERISTICAS": [
+    {
+      "CARACTERISTICA_CHAVE": "Vazão máxima",
+      "TIPO_DADO": "NUM",
+      "RESPOSTA_CRUA_PT": "80 l/min",
+      "TEXTO_AJUDA": "Vazão nominal em regime contínuo",
+      "SIMBOLO_UNIDADE": "AD, m³/h, m³/s"
+    },
+    {
+      "CARACTERISTICA_CHAVE": "Material da carcaça",
+      "TIPO_DADO": "CHAR",
+      "RESPOSTA_CRUA_PT": "Ferro fundido",
+      "TEXTO_AJUDA": "Material predominante da carcaça",
+      "SIMBOLO_UNIDADE": "AD"
+    }
+  ]
+}
+        

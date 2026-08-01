@@ -1,0 +1,29 @@
+Processar: {
+  "pmib_codigo": "4500063671.1234",
+  "Descrição do material": "Disjuntor Tripolar 250A",
+  "dimensoes": {
+    "comprimento": "30",
+    "largura": "20",
+    "altura": "15"
+  },
+  "controle_temperatura": "SIM, manter de 15 a 30 graus",
+  "posicao_armazenamento": "Vertical",
+  "nocivo": "Não contém",
+  "peso": "12,5 kg",
+  "sujeito_intemperie": "NÃO",
+  "protecao": "SN, UV",
+  "empilhamento": "5 unidades",
+  "outros_cuidados": "Manter em local seco",
+  "embalagem_transp": "Caixa de papelão reforçada",
+  "posicao_icagem": "Içar pelas alças laterais",
+  "cuidad_preserv": "Aplicar óleo protetivo mensalmente",
+  "limpeza_secagem": "Pano seco, sem produtos abrasivos",
+  "ferramentas": "Nenhuma ferramenta especial",
+  "legislacao": "N/A",
+  "perigoso_10004": "CLASSE 1: PERIGOSO",
+  "descarte": "Conforme legislação",
+  "logistica_reversa": {
+    "status": "SIM",
+    "logistica_reversa": "Verificar com fabricante."
+  }
+}

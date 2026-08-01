@@ -16,6 +16,10 @@ from sigft.core.excel import headers, locking
 # delega para `LLMClient`/`GeminiProvider` (ÚNICO lugar do projeto que
 # importa `genai`).
 from sigft.core.llm.client import get_llm
+# CP 3.5 (Fase 3): o TEXTO do prompt de `processar_lote` abaixo mora em
+# `sigft.core.llm.prompts.montar_categorizar_pdm` -- só o pré-processamento
+# (`_formatar_itens`) continua aqui.
+from sigft.core.llm import prompts
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em
 # `AutomacaoPMIB.iniciar_driver` abaixo.
@@ -173,108 +177,11 @@ class GeminiCategorizer:
         if not self.api_key: raise ValueError("API Key não configurada.")
         itens_texto = self._formatar_itens(df_itens)
 
-        prompt_template = f"""
-        Você é um especialista em catalogação de materiais (PDM) altamente preciso.
-        Sua tarefa é classificar uma *lista de itens* usando um manual de regras,
-        uma lista de PDMs e um conjunto de exemplos.
-
-        ### PROCESSO (Para cada item):
-        1. Analise o "ITEM" (Descrição, Marca, etc.).
-        2. Use o "MANUAL DE REGRAS" e os "EXEMPLOS" para achar a CLASSE correta.
-        3. Use a "LISTA DE PDMS FINAIS" para escolher o PDM exato daquela classe.
-
-        ---
-        ### MANUAL DE REGRAS (GRUPOS E CLASSES)
-        {instrucoes}
-        ---
-        ### LISTA DE PDMS FINAIS (ESCOLHA UM DESTES)
-        {lista_pdms}
-        ---
-        ### EXEMPLOS DE CLASSIFICAÇÃO CORRETA
-        (Estes exemplos são apenas guias de lógica. A sua escolha de PDM
-        DEVE vir da "LISTA DE PDMS FINAIS" acima.)
-
-        Exemplo 1 (Mecânico):
-        - Descrição: Bomba KSB 123-ABC
-        - PDM: PDM.4020.001 - BOMBA CENTRIFUGA
-        - Descrição breve: BOMBA - KSB 123-ABC
-
-        Exemplo 2 (Câmera):
-        - Descrição original: CAMERAS DOME FIZ AXIS P1375-E
-        - PDM: PDM.6720.001 - CAMERA
-        - Descrição breve: CAMERA - P1375-E
-
-        Exemplo 3 (Rede):
-        - Descrição original: Cisco Analog Voice Gateway VG420 - 144FXS
-        - PDM: PDM.5895.016 - VOIP GATEWAY
-        - Descrição breve: VOICE GATEWAY - VG420-144FXS
-
-        Exemplo 4 (Rede):
-        - Descrição original: IE4010 w/ 12GE SFP, 12GE Copper PoE+ & 4GE SFP uplink ports
-        - PDM: PDM.5895.003 - SWITCH
-        - Descrição breve: SWITCH - IE-4010-16S12P
-
-        Exemplo 5 (Cabo):
-        - Descrição original: 5 ft LOW LOSS CABLE ASSEMBLY W/N CONNECTORS
-        - PDM: PDM.6145.011 - CABO, TRANSMISSAO DADOS
-        - Descrição breve: CABO ACCESS POINT - AIR-CAB005LL-N
-
-        Exemplo 6 (Rede):
-        - Descrição original: PATCH PANEL DESCARREGADO 24P BLINDADO - DATAWAVE READY
-        - PDM: PDM.5895.006 - PATCH PANEL
-        - Descrição breve: PATCH PANEL 24P - DATAWAVE READY
-
-        Exemplo 7 (TI):
-        - Descrição original: Servidor Dell PowerEdge C6600 ...
-        - PDM: PDM.7010.018 - SERVIDOR
-        - Descrição Breve: SERVIDOR - POWEREDGE C6600
-
-        Exemplo 8 (Rede):
-        - Descrição original: Wi-Fi 6 Outdoor AP, External Ant, -ROW Regulatory Domain
-        - PDM: PDM.5895.015 - ACCESS POINT
-        - Descrição Breve: ACCESS POINT - C9124AXE-ROW
-
-        ---
-        ### ITENS PARA ANALISAR (EM LOTE):
-        {itens_texto}
-        ---
-        ### SUA TAREFA:
-        Analise CADA UM dos itens da lista "ITENS PARA ANALISAR".
-        Retorne um JSON contendo UMA LISTA de objetos. Cada objeto deve
-        corresponder a UM item, na MESMA ORDEM.
-
-        Formato da Resposta (Lista de JSON):
-        [
-        {{
-            "item_processado": 1,
-            "pdm_escolhido": "...",
-            "descricao_curta": "...",
-            "origem": "Importado" | "Nacional",
-            "tipo de fabricação": "Catálogo" | "Especial",
-            "tipo": "Reparável" | "Não Reparável",
-            "unidade": "Unidade" | "Peça" | "Conjunto" | "metro - (m)" | "litro - (l)"
-        }},
-        {{
-            "item_processado": 2,
-            "pdm_escolhido": "...",
-            "descricao_curta": "...",
-            "origem": "...",
-            "tipo de fabricação": "...",
-            "tipo": "...",
-            "unidade": "..."
-        }}
-        ]
-
-        Regras para o JSON (para cada item):
-        1. 'pdm_escolhido': O PDM COMPLETO (ex: "PDM.1650.001 - ACUMULADOR"). Se NENHUM for adequado, retorne "NENHUM".
-        2. 'descricao_curta': Uma descrição de até 40 caracteres, sem acentuação.
-        3. 'origem': 'Importado' ou 'Nacional'.
-        4. 'tipo de fabricação': 'Catálogo' ou 'Especial'.
-        5. 'tipo': 'Reparável' ou 'Não Reparável'.
-        6. 'unidade': 'Unidade', 'Peça', 'Conjunto', 'metro - (m)' ou 'litro - (l)'. Se inconclusivo ou "NÃO ESPECIFICADA", use "Unidade".
-
-        Responda APENAS com a lista JSON. Não inclua texto antes ou depois.
-        """
+        # CP 3.5 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 3): o TEXTO do
+        # prompt (antes embutido aqui como f-string gigante) agora mora em
+        # `sigft.core.llm.prompts.montar_categorizar_pdm` -- só o
+        # pré-processamento acima (`_formatar_itens`) continua neste método.
+        prompt_template = prompts.montar_categorizar_pdm(instrucoes, lista_pdms, itens_texto)
         # CP 3.1: SEM retry (política de `categorizar_pdm`: `max_retries=0`,
         # 1 tentativa só -- mesmo comportamento de hoje) e limpeza/parse do
         # JSON delegados a `LLMClient.generate()` (`_limpar_e_parsear_json`,

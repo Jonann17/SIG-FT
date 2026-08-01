@@ -1,0 +1,20 @@
+
+        Você é um Assistente Técnico Industrial.
+        DADOS: Nome: Bomba Centrífuga Multiestágio | Descrição: Bomba centrífuga multiestágio, corpo em ferro fundido | Fab: KSB
+
+        CONTEXTO:
+        --- LOCAL DOC: manual.pdf ---
+Especificações técnicas do fabricante...
+
+        INSTRUÇÕES:
+        1. Priorize "LOCAL DOC".
+        2. Verifique se o documento bate com o material.
+        3. Campos [INFO TÉCNICA PADRÃO]: Se não houver dados, GERE com base em boas práticas.
+        4. Campos [ESTRITO]: Se não houver dados, deixe vazio "".
+        5. 'empilhamento': Apenas números inteiros.
+        6. Checkboxes: Deduza a melhor opção se não explícito.
+
+        CAMPOS A PREENCHER (Retorne JSON {ID: Resposta}):
+        - ID 'empilhamento': Empilhamento máximo (unidades) [INFO TÉCNICA PADRÃO]
+- ID 'texto_breve_material': Texto breve do material [ESTRITO]
+- ID 'posicao_armazenamento': Posição de armazenamento [INFO TÉCNICA PADRÃO] (Opções: ['G25', 'G27', 'G29'])
