@@ -4,6 +4,11 @@ import glob
 import re
 import shutil
 from copy import copy
+# CP 4.3: `BytesIO` permite reabrir uma planilha já lida para memória sem
+# tocar o disco de novo -- ver `pdms_fromItaipu_lista_geral` e
+# `aplicar_templates_fichas`.
+from io import BytesIO
+
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment, Font
 
@@ -95,8 +100,18 @@ def pdms_fromItaipu_lista_geral(path_lista_geral_pdms, pasta_destino, log_callba
 
     arquivos_existentes = {os.path.splitext(f)[0].split(' - ')[0].strip().upper() for f in os.listdir(pasta_destino) if f.endswith(('.xlsx', '.xls'))}
 
+    # CP 4.3 (otimização de I/O): a planilha de origem é lida do disco UMA
+    # única vez, para memória. Antes, o laço abaixo fazia
+    # `load_workbook(path_lista_geral_pdms)` a cada código novo — a origem
+    # inteira relida do disco N vezes (o O(n·m) de I/O apontado no
+    # diagnóstico do plano, seção 1.5). Não dá para reaproveitar UM objeto
+    # workbook entre iterações porque cada volta o MUTILA (`wb.remove`,
+    # `ws.delete_rows`); então o que se guarda são os BYTES, e cada iteração
+    # abre um `BytesIO` novo — mesmo resultado, sem tocar o disco de novo.
     try:
-        wb_check = load_workbook(path_lista_geral_pdms)
+        with open(path_lista_geral_pdms, "rb") as arquivo_origem:
+            bytes_origem = arquivo_origem.read()
+        wb_check = load_workbook(BytesIO(bytes_origem))
         ws_check = wb_check["TEMPLATE_PDM"]
     except Exception as e:
         return f"Erro ao abrir planilha: {e}"
@@ -128,9 +143,13 @@ def pdms_fromItaipu_lista_geral(path_lista_geral_pdms, pasta_destino, log_callba
         nome_arq = f"{codigo} - {desc_val}.xlsx"
         caminho_final = os.path.join(pasta_destino, nome_arq)
 
-        # Processo de criação (Reabrindo para limpar)
+        # Processo de criação (reabre uma cópia LIMPA da origem)
         try:
-            wb = load_workbook(path_lista_geral_pdms)
+            # CP 4.3: `BytesIO(bytes_origem)` em vez de reler o arquivo do
+            # disco. Cada iteração ainda precisa de um workbook novo (o corpo
+            # abaixo remove abas e apaga linhas), mas agora a cópia sai da
+            # memória.
+            wb = load_workbook(BytesIO(bytes_origem))
             for n in wb.sheetnames:
                 if n != "TEMPLATE_PDM":
                     wb.remove(wb[n])
@@ -221,8 +240,22 @@ def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,
     # Cache dos arquivos de PDM para não listar disco toda hora
     pdms_disponiveis = listar_arquivos_excel(pasta_pdms_modificados)
 
-    wb_templ = load_workbook(path_template)
-    # Assume que trabalhamos na memória e salvamos cópias
+    # CP 4.3 (otimização de I/O): o template é lido do disco UMA única vez,
+    # para memória. Antes, `load_workbook(path_template)` acontecia DENTRO do
+    # laço, uma vez por ficha gerada (o próprio comentário original admitia:
+    # "Para performance ideal, deveríamos copiar o objeto workbook, mas I/O é
+    # aceitável aqui"). Cada ficha continua precisando de um template LIMPO
+    # (o laço escreve nele antes de salvar), então a cópia agora vem de um
+    # `BytesIO` — mesmo isolamento, sem I/O repetido.
+    #
+    # Some junto um desperdício puro que existia aqui: o `wb_templ =
+    # load_workbook(path_template)` original era carregado e NUNCA usado —
+    # só fechado no fim da função. Ler os bytes substitui os dois papéis.
+    try:
+        with open(path_template, "rb") as arquivo_template:
+            bytes_template = arquivo_template.read()
+    except Exception as e:
+        return f"Erro ao abrir template: {e}", [f"Erro ao abrir template: {e}"]
 
     count = 0
     for pmib, pdm_nome, pasta_destino in lista_dados:
@@ -238,9 +271,9 @@ def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,
             wb_pdm = load_workbook(src)
             ws_pdm = wb_pdm.active
 
-            # Reabre o template limpo ou copia na memoria (aqui reabrindo para garantir pureza)
-            # Para performance ideal, deveríamos copiar o objeto workbook, mas I/O é aceitável aqui
-            wb_target = load_workbook(path_template)
+            # CP 4.3: cópia limpa do template vinda da MEMÓRIA (antes era
+            # um `load_workbook(path_template)` por ficha).
+            wb_target = load_workbook(BytesIO(bytes_template))
             ws_target = wb_target["Ficha Técnica Padrão"]
 
             # Lógica de cópia (Linha 79 fixo)
@@ -285,7 +318,8 @@ def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,
             log.append(msg_erro)
             if log_callback: log_callback(msg_erro)
 
-    wb_templ.close()
+    # CP 4.3: não há mais `wb_templ` para fechar — o template vive como
+    # bytes em memória (ver o início da função).
     return f"Fichas geradas: {count}", log
 
 
