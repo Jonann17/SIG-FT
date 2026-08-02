@@ -38,6 +38,7 @@ estes 6, pelos nomes antigos) e continua passando sem edição — este arquivo
 smoke de importação não verifica.
 """
 import importlib
+import pathlib
 
 import pytest
 
@@ -76,6 +77,15 @@ MODULOS_SHIM = [
     ("translator_backend", "translator", "TechnicalTranslator"),
     ("analyzer_backend", "analyzer", "DatasheetAnalyzer"),
     ("analyzer_backend", "analyzer", "CONFIG_MAP"),
+    # --- 2ª metade do CP 4.1 ---
+    ("autospec_backend", "autospec", "AutoSpecCore"),
+    ("cria_fichas_no_pmib_v1_backend", "cria_fichas", "GeminiCategorizer"),
+    ("cria_fichas_no_pmib_v1_backend", "cria_fichas", "AutomacaoPMIB"),
+    ("cria_fichas_no_pmib_v1_backend", "cria_fichas", "DataManager"),
+    ("upload_conditions_backend", "upload_conditions", "ConditionsProcessor"),
+    ("upload_tech_specs_backend", "tech_specs", "TechSpecsProcessor"),
+    ("upload_ficha_duplicada", "ficha_duplicada", "GerenciadorFilaPMIB"),
+    ("pmib_manager_backend", "pmib_manager", "PMIBManager"),
 ]
 
 # Módulos únicos desta 1ª metade (sem repetição), na ordem do checkpoint —
@@ -88,6 +98,19 @@ _MODULOS_UNICOS_1A_METADE = [
     "translator_backend",
     "analyzer_backend",
 ]
+
+# 2ª metade do CP 4.1 — completa os 12 módulos do checkpoint.
+_MODULOS_UNICOS_2A_METADE = [
+    "autospec_backend",
+    "cria_fichas_no_pmib_v1_backend",
+    "upload_conditions_backend",
+    "upload_tech_specs_backend",
+    "upload_ficha_duplicada",
+    "pmib_manager_backend",
+]
+
+# Os 12 do checkpoint, na ordem em que o plano os lista.
+_MODULOS_UNICOS = _MODULOS_UNICOS_1A_METADE + _MODULOS_UNICOS_2A_METADE
 
 
 def _ids(tabela):
@@ -138,13 +161,33 @@ def test_modulo_novo_importavel_diretamente_por_sigft_services(nome_antigo, nome
 
 
 # =============================================================================
-# Honestidade: garante que MODULOS_SHIM cobre exatamente os 6 módulos desta
-# 1ª metade (nem a mais, nem a menos) -- mesmo padrão de
+# Honestidade: garante que MODULOS_SHIM cobre exatamente os 12 módulos do
+# checkpoint (nem a mais, nem a menos) -- mesmo padrão de
 # tests/test_rpa_sleep_constants.py::test_todas_as_constantes_pausa_de_portal_estao_cobertas_pelo_teste.
 # =============================================================================
-def test_modulos_desta_1a_metade_estao_todos_cobertos_pela_tabela():
+def test_os_12_modulos_do_checkpoint_estao_todos_cobertos_pela_tabela():
     nomes_na_tabela = {nome_antigo for nome_antigo, _nome_novo, _atributo in MODULOS_SHIM}
-    assert nomes_na_tabela == set(_MODULOS_UNICOS_1A_METADE)
+    assert nomes_na_tabela == set(_MODULOS_UNICOS)
+    assert len(_MODULOS_UNICOS) == 12
+
+
+def test_nenhum_backend_pesado_sobrou_na_raiz_fora_dos_shims():
+    """Aceite do CP 4.1: depois dos 12 módulos migrados, o único `.py` de
+    peso que resta na raiz é `frontend.py` (a quebra dele em views é a Fase
+    7). Todo o resto tem que ser shim de poucas linhas -- se um arquivo da
+    raiz voltar a ter código de verdade, este teste denuncia."""
+    raiz = pathlib.Path(__file__).resolve().parent.parent
+    for nome_antigo in _MODULOS_UNICOS:
+        caminho = raiz / f"{nome_antigo}.py"
+        assert caminho.is_file(), f"{caminho} sumiu -- o shim precisa existir"
+        linhas = caminho.read_text(encoding="utf-8").splitlines()
+        codigo = [
+            linha for linha in linhas
+            if linha.strip() and not linha.lstrip().startswith("#")
+        ]
+        # docstring + 3 linhas de aliasing; folga generosa, mas longe das
+        # centenas de linhas que cada backend tinha antes.
+        assert len(codigo) < 40, f"{caminho} tem {len(codigo)} linhas de código -- virou shim mesmo?"
 
 
 def test_modulos_desta_1a_metade_nao_reaparecem_como_backend_pesado_na_raiz_sem_shim():
