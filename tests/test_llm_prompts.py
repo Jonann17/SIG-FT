@@ -34,9 +34,11 @@ mais de 15 quebras de linha. Sem apontar `ARQUIVOS_MIGRADOS` para o caminho
 físico novo, o teste (c) abaixo FALHARIA contra o texto do shim -- um
 literal que nada tem a ver com o invariante de prompts que este teste
 audita; `sigft/services/analyzer.py` é o arquivo correto a auditar (maior
-literal real: 2 quebras de linha). Os outros 4 (`cria_fichas`,
-`upload_conditions`, `upload_tech_specs`, `autospec`) ainda não foram
-movidos (2ª metade do CP 4.1, tarefa separada) -- continuam na raiz.
+literal real: 2 quebras de linha). Na 2ª metade do CP 4.1 os outros 4 também foram
+movidos -- os 5 caminhos abaixo apontam todos para `sigft/services/`. O
+motivo vale para todos: a docstring de cada shim explica o aliasing e passa
+de 15 quebras de linha, então auditar a raiz faria este teste FALHAR contra
+um texto que nada tem a ver com prompts.
 """
 import ast
 import os
@@ -142,10 +144,10 @@ def test_montar_autospec_context_falsy_cai_no_texto_padrao():
 # =============================================================================
 ARQUIVOS_MIGRADOS = [
     "sigft/services/analyzer.py",  # CP 4.1: movido de analyzer_backend.py
-    "cria_fichas_no_pmib_v1_backend.py",
-    "upload_conditions_backend.py",
-    "upload_tech_specs_backend.py",
-    "autospec_backend.py",
+    "sigft/services/cria_fichas.py",  # CP 4.1: movido
+    "sigft/services/upload_conditions.py",  # CP 4.1: movido
+    "sigft/services/tech_specs.py",  # CP 4.1: movido
+    "sigft/services/autospec.py",  # CP 4.1: movido
 ]
 
 LIMITE_LINHAS = 15

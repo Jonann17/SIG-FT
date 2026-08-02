@@ -41,10 +41,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ARQUIVOS_ALVO = [
     "sigft/services/apagar_lmr.py",  # CP 4.1: movido de apagar_lmr_backend.py
     "sigft/services/lmr.py",  # CP 4.1: movido de lmr_backend.py
-    "upload_tech_specs_backend.py",
-    "upload_conditions_backend.py",
-    "upload_ficha_duplicada.py",
-    "cria_fichas_no_pmib_v1_backend.py",
+    "sigft/services/tech_specs.py",  # CP 4.1: movido de upload_tech_specs_backend.py
+    "sigft/services/upload_conditions.py",  # CP 4.1: movido de upload_conditions_backend.py
+    "sigft/services/ficha_duplicada.py",  # CP 4.1: movido de upload_ficha_duplicada.py
+    "sigft/services/cria_fichas.py",  # CP 4.1: movido de cria_fichas_no_pmib_v1_backend.py
 ]
 
 # Valor NUMÉRICO exato que cada constante tinha como `time.sleep(N)` cru
