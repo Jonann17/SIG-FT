@@ -13,6 +13,17 @@ from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment, Font
 
 from sigft.core.excel import pmib_codes
+# CP 4.4 (Fase 4, docs/refatoracao/PLANO_REFATORACAO.md): padrão único de log
+# de lote. `pdm_backend` era um dos "módulos hoje pobres" do diagnóstico
+# (sem resumo final, sem contexto do item) -- as 3 funções de LOTE deste
+# módulo (`pdms_fromItaipu_lista_geral`, `aplicar_templates_fichas`,
+# `logica_excluir_duplicados`) já recebiam `log_callback` (assinatura
+# ANTIGA, um único callable posicional) -- `from_legacy` adapta isso para
+# `UICallbacks` sem mudar a assinatura pública de nenhuma das 3 funções.
+# `processar_pastas_fichas`/`mover_fichas_para_raiz` NÃO têm nenhum canal de
+# log hoje -- fora de escopo deste checkpoint (ver PENDENCIAS.md).
+from sigft.core.callbacks import from_legacy
+from sigft.core.relatorio_lote import RelatorioLote
 
 
 # =============================================================================
@@ -95,6 +106,14 @@ def salvar_tabela_formatada(nova_tabela, caminho_arquivo_original, pasta_destino
 # LÓGICA FROM ITAIPU
 # =============================================================================
 def pdms_fromItaipu_lista_geral(path_lista_geral_pdms, pasta_destino, log_callback=None):
+    # CP 4.4: `from_legacy` adapta o `log_callback` de assinatura ANTIGA
+    # (1 callable posicional) para `UICallbacks` -- a assinatura pública da
+    # função NÃO muda (continua `log_callback=None`, aceitando o mesmo
+    # callable de sempre); `callbacks` é só uma variável LOCAL usada daqui
+    # pra baixo. Sem `log_callback`, `callbacks.log` vira no-op (mesmo
+    # comportamento de hoje: `if log_callback: ...` nunca disparava).
+    callbacks = from_legacy(callback_log=log_callback)
+
     if not path_lista_geral_pdms or not pasta_destino:
         return "Caminhos inválidos."
 
@@ -132,51 +151,62 @@ def pdms_fromItaipu_lista_geral(path_lista_geral_pdms, pasta_destino, log_callba
     if not codigos_novos:
         return "Nenhum código novo encontrado."
 
-    for codigo in codigos_novos:
-        # Check duplo de segurança
-        if any(codigo in f.upper() for f in os.listdir(pasta_destino)):
-            continue
+    # CP 4.4: `RelatorioLote` substitui os `if log_callback: log_callback(...)`
+    # soltos do laço pelo padrão único (início com total/contexto, por item,
+    # resumo final com falhas listadas) -- nenhuma condição/ordem do laço
+    # muda, só o que é logado.
+    with RelatorioLote(
+        callbacks,
+        titulo="Fatiando lista geral de PDMs (From Itaipu)",
+        total=len(codigos_novos),
+        contexto={"origem": path_lista_geral_pdms, "destino": pasta_destino},
+    ) as lote:
+        for codigo in codigos_novos:
+            # Check duplo de segurança
+            if any(codigo in f.upper() for f in os.listdir(pasta_destino)):
+                lote.pulado(codigo, "já existe em pasta_destino (checagem dupla)")
+                continue
 
-        linhas = linhas_por_codigo[codigo]
-        # Pega descrição da coluna D (índice 4 no Excel, 3 no python 0-based, mas openpyxl é 1-based)
-        desc_val = (ws_check.cell(row=linhas[0], column=4).value or "sem_descricao").strip()
-        nome_arq = f"{codigo} - {desc_val}.xlsx"
-        caminho_final = os.path.join(pasta_destino, nome_arq)
+            linhas = linhas_por_codigo[codigo]
+            # Pega descrição da coluna D (índice 4 no Excel, 3 no python 0-based, mas openpyxl é 1-based)
+            desc_val = (ws_check.cell(row=linhas[0], column=4).value or "sem_descricao").strip()
+            nome_arq = f"{codigo} - {desc_val}.xlsx"
+            caminho_final = os.path.join(pasta_destino, nome_arq)
 
-        # Processo de criação (reabre uma cópia LIMPA da origem)
-        try:
-            # CP 4.3: `BytesIO(bytes_origem)` em vez de reler o arquivo do
-            # disco. Cada iteração ainda precisa de um workbook novo (o corpo
-            # abaixo remove abas e apaga linhas), mas agora a cópia sai da
-            # memória.
-            wb = load_workbook(BytesIO(bytes_origem))
-            for n in wb.sheetnames:
-                if n != "TEMPLATE_PDM":
-                    wb.remove(wb[n])
+            # Processo de criação (reabre uma cópia LIMPA da origem)
+            try:
+                # CP 4.3: `BytesIO(bytes_origem)` em vez de reler o arquivo do
+                # disco. Cada iteração ainda precisa de um workbook novo (o corpo
+                # abaixo remove abas e apaga linhas), mas agora a cópia sai da
+                # memória.
+                wb = load_workbook(BytesIO(bytes_origem))
+                for n in wb.sheetnames:
+                    if n != "TEMPLATE_PDM":
+                        wb.remove(wb[n])
 
-            ws = wb["TEMPLATE_PDM"]
-            todas = list(ws.iter_rows(values_only=False))
-            cabecalho = todas[:6]
-            linhas_conteudo = [todas[i-1] for i in linhas]
+                ws = wb["TEMPLATE_PDM"]
+                todas = list(ws.iter_rows(values_only=False))
+                cabecalho = todas[:6]
+                linhas_conteudo = [todas[i-1] for i in linhas]
 
-            ws.delete_rows(1, ws.max_row)
+                ws.delete_rows(1, ws.max_row)
 
-            for idx_l, linha in enumerate(cabecalho + linhas_conteudo, start=1):
-                for idx_c, celula in enumerate(linha, start=1):
-                    new_c = ws.cell(row=idx_l, column=idx_c, value=celula.value)
-                    if celula.has_style:
-                        new_c.font = copy(celula.font)
-                        new_c.border = copy(celula.border)
-                        new_c.fill = copy(celula.fill)
-                        new_c.number_format = copy(celula.number_format)
-                        new_c.alignment = copy(celula.alignment)
+                for idx_l, linha in enumerate(cabecalho + linhas_conteudo, start=1):
+                    for idx_c, celula in enumerate(linha, start=1):
+                        new_c = ws.cell(row=idx_l, column=idx_c, value=celula.value)
+                        if celula.has_style:
+                            new_c.font = copy(celula.font)
+                            new_c.border = copy(celula.border)
+                            new_c.fill = copy(celula.fill)
+                            new_c.number_format = copy(celula.number_format)
+                            new_c.alignment = copy(celula.alignment)
 
-            wb.save(caminho_final)
-            criados.append(nome_arq)
-            wb.close()
-            if log_callback: log_callback(f"Criado PDM From Itaipu: {nome_arq}")
-        except Exception as e:
-            if log_callback: log_callback(f"Erro ao criar {nome_arq}: {e}")
+                wb.save(caminho_final)
+                criados.append(nome_arq)
+                wb.close()
+                lote.sucesso(codigo, f"criado {nome_arq}")
+            except Exception as e:
+                lote.falha(codigo, f"{type(e).__name__}: {e}")
 
     return f"Concluído.\nCriados: {len(criados)}\nTotal Analisado: {len(codigos_todos)}"
 
@@ -235,6 +265,9 @@ def processar_pastas_fichas(arquivo_STATUS_PMIB, destino_fichas, lista_seleciona
 
 
 def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template, log_callback=None):
+    # CP 4.4: mesma adaptação de `pdms_fromItaipu_lista_geral` acima --
+    # `callbacks` é local, a assinatura pública não muda.
+    callbacks = from_legacy(callback_log=log_callback)
     log = []
 
     # Cache dos arquivos de PDM para não listar disco toda hora
@@ -258,65 +291,79 @@ def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,
         return f"Erro ao abrir template: {e}", [f"Erro ao abrir template: {e}"]
 
     count = 0
-    for pmib, pdm_nome, pasta_destino in lista_dados:
-        id_pdm = pdm_nome.split(" - ")[0].replace(".", "_")
+    # CP 4.4: mesma troca de `pdms_fromItaipu_lista_geral` -- o
+    # `if log_callback: log_callback(...)` de cada branch vira uma chamada de
+    # `RelatorioLote`; a lista `log` (parte do retorno público da função,
+    # consumida hoje só por `frontend.py` e por
+    # `tests/test_pdm_io.py::test_templates_fichas_reporta_erro_se_o_template_nao_abrir`)
+    # continua recebendo EXATAMENTE as mesmas strings de antes.
+    with RelatorioLote(
+        callbacks,
+        titulo="Aplicando templates de PDM nas fichas técnicas",
+        total=len(lista_dados),
+        contexto={"pasta_pdms_modificados": pasta_pdms_modificados, "template": path_template},
+    ) as lote:
+        for pmib, pdm_nome, pasta_destino in lista_dados:
+            id_pdm = pdm_nome.split(" - ")[0].replace(".", "_")
 
-        # Achar arquivo fonte
-        src = next((f for f in pdms_disponiveis if id_pdm in os.path.basename(f)), None)
-        if not src:
-            log.append(f"FALHA: PDM fonte não encontrado para {pmib} ({id_pdm})")
-            continue
+            # Achar arquivo fonte
+            src = next((f for f in pdms_disponiveis if id_pdm in os.path.basename(f)), None)
+            if not src:
+                msg_falha = f"PDM fonte não encontrado para {pmib} ({id_pdm})"
+                log.append(f"FALHA: {msg_falha}")
+                lote.falha(pmib, msg_falha)
+                continue
 
-        try:
-            wb_pdm = load_workbook(src)
-            ws_pdm = wb_pdm.active
+            try:
+                wb_pdm = load_workbook(src)
+                ws_pdm = wb_pdm.active
 
-            # CP 4.3: cópia limpa do template vinda da MEMÓRIA (antes era
-            # um `load_workbook(path_template)` por ficha).
-            wb_target = load_workbook(BytesIO(bytes_template))
-            ws_target = wb_target["Ficha Técnica Padrão"]
+                # CP 4.3: cópia limpa do template vinda da MEMÓRIA (antes era
+                # um `load_workbook(path_template)` por ficha).
+                wb_target = load_workbook(BytesIO(bytes_template))
+                ws_target = wb_target["Ficha Técnica Padrão"]
 
-            # Lógica de cópia (Linha 79 fixo)
-            start_row = 79
-            borda = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
-            align = Alignment(wrap_text=True, vertical='top')
-            font8 = Font(size=8)
+                # Lógica de cópia (Linha 79 fixo)
+                start_row = 79
+                borda = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
+                align = Alignment(wrap_text=True, vertical='top')
+                font8 = Font(size=8)
 
-            for i in range(1, ws_pdm.max_row + 1):
-                v_desc = ws_pdm.cell(row=i, column=1).value
-                v_resp = ws_pdm.cell(row=i, column=2).value
+                for i in range(1, ws_pdm.max_row + 1):
+                    v_desc = ws_pdm.cell(row=i, column=1).value
+                    v_resp = ws_pdm.cell(row=i, column=2).value
 
-                if not v_desc and not v_resp: continue
+                    if not v_desc and not v_resp: continue
 
-                row_idx = start_row + i - 1
+                    row_idx = start_row + i - 1
 
-                # Merge e escrita
-                ws_target.merge_cells(start_row=row_idx, start_column=3, end_row=row_idx, end_column=12)
-                ws_target.merge_cells(start_row=row_idx, start_column=13, end_row=row_idx, end_column=22)
+                    # Merge e escrita
+                    ws_target.merge_cells(start_row=row_idx, start_column=3, end_row=row_idx, end_column=12)
+                    ws_target.merge_cells(start_row=row_idx, start_column=13, end_row=row_idx, end_column=22)
 
-                c_d = ws_target.cell(row=row_idx, column=3, value=v_desc)
-                c_r = ws_target.cell(row=row_idx, column=13, value=v_resp)
+                    c_d = ws_target.cell(row=row_idx, column=3, value=v_desc)
+                    c_r = ws_target.cell(row=row_idx, column=13, value=v_resp)
 
-                c_d.font = font8; c_d.alignment = align
-                c_r.font = font8; c_r.alignment = align
+                    c_d.font = font8; c_d.alignment = align
+                    c_r.font = font8; c_r.alignment = align
 
-                # Bordas
-                for c in range(3, 13): ws_target.cell(row=row_idx, column=c).border = borda
-                for c in range(13, 23): ws_target.cell(row=row_idx, column=c).border = borda
+                    # Bordas
+                    for c in range(3, 13): ws_target.cell(row=row_idx, column=c).border = borda
+                    for c in range(13, 23): ws_target.cell(row=row_idx, column=c).border = borda
 
-                ws_target.row_dimensions[row_idx].height = 32
+                    ws_target.row_dimensions[row_idx].height = 32
 
-            out_file = os.path.join(pasta_destino, f"{pmib}.xlsx")
-            wb_target.save(out_file)
-            wb_target.close()
-            wb_pdm.close()
-            count += 1
-            if log_callback: log_callback(f"Ficha PMIB gerada: {pmib}.xlsx")
+                out_file = os.path.join(pasta_destino, f"{pmib}.xlsx")
+                wb_target.save(out_file)
+                wb_target.close()
+                wb_pdm.close()
+                count += 1
+                lote.sucesso(pmib, f"ficha gerada: {os.path.basename(out_file)}")
 
-        except Exception as e:
-            msg_erro = f"ERRO ao gerar ficha {pmib}: {e}"
-            log.append(msg_erro)
-            if log_callback: log_callback(msg_erro)
+            except Exception as e:
+                msg_erro = f"ERRO ao gerar ficha {pmib}: {e}"
+                log.append(msg_erro)
+                lote.falha(pmib, f"{type(e).__name__}: {e}")
 
     # CP 4.3: não há mais `wb_templ` para fechar — o template vive como
     # bytes em memória (ver o início da função).
@@ -351,6 +398,10 @@ def logica_excluir_duplicados(pasta_alvo, log_callback=None):
     if not pasta_alvo:
         return "Pasta inválida."
 
+    # CP 4.4: mesma adaptação das 2 funções acima -- `callbacks` local, sem
+    # tocar na assinatura pública.
+    callbacks = from_legacy(callback_log=log_callback)
+
     files = {}
     # Agrupa
     for f in os.listdir(pasta_alvo):
@@ -360,24 +411,34 @@ def logica_excluir_duplicados(pasta_alvo, log_callback=None):
 
     deleted = 0
     log = []
+    # `total` do lote = só os grupos que TÊM duplicata (os únicos que o laço
+    # abaixo de fato processa) -- grupos com 1 arquivo só continuam
+    # silenciosos, como sempre foram (nunca houve log pra eles).
+    total_com_duplicata = sum(1 for paths in files.values() if len(paths) > 1)
 
-    for pid, paths in files.items():
-        if len(paths) > 1:
-            # Ordena: Maior tamanho primeiro, depois mais recente
-            paths.sort(key=lambda x: (-os.path.getsize(x), os.path.getmtime(x)))
-            # Exclui o primeiro (o "melhor" candidato a duplicata inútil segundo a lógica original?)
-            # NOTA: O script original excluía o PRIMEIRO da lista sorted.
-            # Se sort é (Tamanho DESC), o primeiro é o MAIOR arquivo.
-            # Isso parece contra-intuitivo (excluir o maior?), mas mantive a lógica original.
-            try:
-                os.remove(paths[0])
-                deleted += 1
-                msg = f"Lixeira - Excluído: {os.path.basename(paths[0])}"
-                log.append(msg)
-                if log_callback: log_callback(msg)
-            except Exception as e:
-                msg_erro = f"Erro ao excluir {paths[0]}: {e}"
-                log.append(msg_erro)
-                if log_callback: log_callback(msg_erro)
+    with RelatorioLote(
+        callbacks,
+        titulo="Excluindo PDMs duplicados",
+        total=total_com_duplicata,
+        contexto={"pasta": pasta_alvo},
+    ) as lote:
+        for pid, paths in files.items():
+            if len(paths) > 1:
+                # Ordena: Maior tamanho primeiro, depois mais recente
+                paths.sort(key=lambda x: (-os.path.getsize(x), os.path.getmtime(x)))
+                # Exclui o primeiro (o "melhor" candidato a duplicata inútil segundo a lógica original?)
+                # NOTA: O script original excluía o PRIMEIRO da lista sorted.
+                # Se sort é (Tamanho DESC), o primeiro é o MAIOR arquivo.
+                # Isso parece contra-intuitivo (excluir o maior?), mas mantive a lógica original.
+                try:
+                    os.remove(paths[0])
+                    deleted += 1
+                    msg = f"Lixeira - Excluído: {os.path.basename(paths[0])}"
+                    log.append(msg)
+                    lote.sucesso(pid, os.path.basename(paths[0]))
+                except Exception as e:
+                    msg_erro = f"Erro ao excluir {paths[0]}: {e}"
+                    log.append(msg_erro)
+                    lote.falha(pid, f"{type(e).__name__}: {e}")
 
     return f"Total excluídos: {deleted}\n" + "\n".join(log)

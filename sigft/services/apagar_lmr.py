@@ -30,6 +30,12 @@ from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
 # ELIMINADO (ver comentário no local, dentro de `executar_limpeza`).
 from sigft.core.rpa.portal import PMIBPortal, PAUSA_ABERTURA_ABA, PAUSA_POS_EXCLUSAO
 
+# CP 4.4 (Fase 4, docs/refatoracao/PLANO_REFATORACAO.md): padrão único de log
+# de lote. O loop de exclusão é o único "lote" deste módulo -- cada aplicação
+# LMR apagada é um item (não há um loop externo de várias fichas aqui: uma
+# chamada de `executar_limpeza` já é sobre UM PMIB só).
+from sigft.core.relatorio_lote import RelatorioLote
+
 
 # =============================================================================
 # CLASSE DE AUTOMAÇÃO - APAGAR LMR
@@ -129,59 +135,77 @@ class ApagarLMRAutomation:
             callbacks.log(f"Erro ao abrir aba LMR (pode já estar aberta): {e}")
 
         # 3. Loop de Exclusão (Original)
-        count = 0
-        callbacks.log("Iniciando varredura de exclusão...")
+        #
+        # CP 4.4: envolvido por `RelatorioLote` -- cada aplicação LMR apagada
+        # vira um "item" do lote (identificador "Aplicação N"), com o resumo
+        # final (contagem + tempo total) saindo automaticamente ao fim do
+        # `with`. NADA da lógica original muda: mesmos seletores, mesma
+        # ordem, mesmos `time.sleep` (`PAUSA_ABERTURA_ABA`/
+        # `PAUSA_POS_EXCLUSAO`, intocados), mesmo tratamento por tipo de
+        # exceção (`TimeoutException` = fim normal; `StaleElementReference`
+        # = tenta de novo; outra exceção = para). Usa a forma DIRETA
+        # (`lote.sucesso`/`falha`, não `lote.item()`) porque o try/except já
+        # existente tem 3 ramos com semânticas DIFERENTES (fim normal / retry
+        # / erro real) que `lote.item()` (que trata QUALQUER exceção como
+        # falha) confundiria.
+        with RelatorioLote(
+            callbacks,
+            titulo=f"Apagando aplicações LMR do PMIB {pmib_codigo}",
+            contexto={"pmib": pmib_codigo},
+        ) as lote:
+            count = 0
 
-        while True:
-            try:
-                # CP 2.3: o sleep fixo de 1 segundo ("Espera a tabela
-                # estabilizar") que existia aqui foi ELIMINADO (não virou
-                # constante) --
-                # critério (B) do checkpoint: a busca imediatamente abaixo
-                # já é um `wait.until(EC.element_to_be_clickable(...))` para
-                # a PRÓPRIA lixeira que o sleep tentava dar tempo de
-                # (re)aparecer, com retry/timeout PRÓPRIOS (até o timeout
-                # global do `WebDriverWait`) -- o loop inteiro já depende de
-                # `TimeoutException` (abaixo) para decidir "acabou", ou seja,
-                # a sincronização REAL já é feita por este `wait.until`; o
-                # sleep fixo era redundante ("cinto e suspensório"). Ver
-                # docs/refatoracao/PLANO_REFATORACAO.md Fase 2 -> CP 2.3 e
-                # docs/refatoracao/PENDENCIAS.md.
+            while True:
+                inicio_item = time.time()
+                try:
+                    # CP 2.3: o sleep fixo de 1 segundo ("Espera a tabela
+                    # estabilizar") que existia aqui foi ELIMINADO (não virou
+                    # constante) --
+                    # critério (B) do checkpoint: a busca imediatamente abaixo
+                    # já é um `wait.until(EC.element_to_be_clickable(...))` para
+                    # a PRÓPRIA lixeira que o sleep tentava dar tempo de
+                    # (re)aparecer, com retry/timeout PRÓPRIOS (até o timeout
+                    # global do `WebDriverWait`) -- o loop inteiro já depende de
+                    # `TimeoutException` (abaixo) para decidir "acabou", ou seja,
+                    # a sincronização REAL já é feita por este `wait.until`; o
+                    # sleep fixo era redundante ("cinto e suspensório"). Ver
+                    # docs/refatoracao/PLANO_REFATORACAO.md Fase 2 -> CP 2.3 e
+                    # docs/refatoracao/PENDENCIAS.md.
 
-                # Tenta localizar a primeira lixeira (ícone de exclusão)
-                # XPath original: //*[@id="b10-b19-$b17"]/table/tbody/tr[2]/td[8]/a[2]/i
-                # Nota: tr[2] geralmente é a primeira linha de dados (tr[1] é header)
-                xpath_lixeira = '//*[@id="b10-b19-$b17"]/table/tbody/tr[2]//i[contains(@class, "fa-trash")]/parent::a'
+                    # Tenta localizar a primeira lixeira (ícone de exclusão)
+                    # XPath original: //*[@id="b10-b19-$b17"]/table/tbody/tr[2]/td[8]/a[2]/i
+                    # Nota: tr[2] geralmente é a primeira linha de dados (tr[1] é header)
+                    xpath_lixeira = '//*[@id="b10-b19-$b17"]/table/tbody/tr[2]//i[contains(@class, "fa-trash")]/parent::a'
 
-                lixeira = self.wait.until(EC.element_to_be_clickable((By.XPATH, xpath_lixeira)))
+                    lixeira = self.wait.until(EC.element_to_be_clickable((By.XPATH, xpath_lixeira)))
 
-                # Scroll para garantir que está visível e clicável
-                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", lixeira)
-                lixeira.click()
+                    # Scroll para garantir que está visível e clicável
+                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", lixeira)
+                    lixeira.click()
 
-                # Espera o botão de confirmação da exclusão e clica
-                # XPath original: //*[@id="b10-b19-b17-b10-b1-Footer"]/div/button[1]
-                xpath_confirmar = '//button[@type="button" and text()="CONFIRMAR"]'  # Mais genérico/seguro ou usar o ID original
+                    # Espera o botão de confirmação da exclusão e clica
+                    # XPath original: //*[@id="b10-b19-b17-b10-b1-Footer"]/div/button[1]
+                    xpath_confirmar = '//button[@type="button" and text()="CONFIRMAR"]'  # Mais genérico/seguro ou usar o ID original
 
-                confirmar = self.wait.until(EC.element_to_be_clickable((By.XPATH, xpath_confirmar)))
-                confirmar.click()
+                    confirmar = self.wait.until(EC.element_to_be_clickable((By.XPATH, xpath_confirmar)))
+                    confirmar.click()
 
-                # Espera a exclusão processar
-                count += 1
-                callbacks.log(f" -> Item {count} apagado.")
-                time.sleep(PAUSA_POS_EXCLUSAO)  # Pausa para refresh da tabela
+                    # Espera a exclusão processar
+                    count += 1
+                    lote.sucesso(f"Aplicação {count}", duracao_s=time.time() - inicio_item)
+                    time.sleep(PAUSA_POS_EXCLUSAO)  # Pausa para refresh da tabela
 
-            except TimeoutException:
-                # Não achou mais lixeiras -> Fim
-                callbacks.log("✅ Todas as aplicações visíveis foram apagadas.")
-                break
-            except StaleElementReferenceException:
-                # Tabela atualizou enquanto tentava clicar -> Tenta loop de novo
-                continue
-            except Exception as e:
-                # Outro erro -> Para
-                callbacks.log(f"Parada ou Erro: {e}")
-                break
+                except TimeoutException:
+                    # Não achou mais lixeiras -> Fim
+                    callbacks.log("✅ Todas as aplicações visíveis foram apagadas.")
+                    break
+                except StaleElementReferenceException:
+                    # Tabela atualizou enquanto tentava clicar -> Tenta loop de novo
+                    continue
+                except Exception as e:
+                    # Outro erro -> Para
+                    lote.falha(f"Aplicação {count + 1}", f"{type(e).__name__}: {e}")
+                    break
 
         # Voltar para lista (opcional, bom para fluxo continuo)
         try:

@@ -6,6 +6,12 @@ import re
 
 from sigft import config
 from sigft.core.excel import headers
+# CP 4.4 (Fase 4, docs/refatoracao/PLANO_REFATORACAO.md): padrão único de log
+# de lote. `executar_busca` já recebia `callback_log` (assinatura ANTIGA, um
+# callable posicional) -- `from_legacy` adapta isso para `UICallbacks` sem
+# mudar a assinatura pública da função.
+from sigft.core.callbacks import from_legacy
+from sigft.core.relatorio_lote import RelatorioLote
 
 
 class PMIBSearcher:
@@ -90,12 +96,21 @@ class PMIBSearcher:
     def executar_busca(self, pasta_raiz, tipo_busca, termo_busca, coluna_especifica=None, callback_log=None):
         """
         Varre a pasta raiz buscando por arquivos _STATUS_PMIB e aplica a busca.
+
+        CP 4.4 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 4): `callbacks`
+        é uma variável LOCAL adaptada de `callback_log` via `from_legacy` --
+        a assinatura pública da função não muda. O laço de "2. Processamento
+        dos arquivos" (a única parte desta função que é de fato um LOTE)
+        passa a usar `RelatorioLote`; a lógica de busca em si (item 3, abaixo)
+        não é tocada.
         """
+        callbacks = from_legacy(callback_log=callback_log)
+
         resultados = []
         arquivos_para_processar = []
         termo_busca = str(termo_busca).strip().upper()
 
-        if callback_log: callback_log("Iniciando mapeamento de diretórios...")
+        callbacks.log("Iniciando mapeamento de diretórios...")
 
         # 1. Varredura da pasta raiz
         for root, dirs, files in os.walk(pasta_raiz):
@@ -105,92 +120,102 @@ class PMIBSearcher:
 
         total_arquivos = len(arquivos_para_processar)
         if total_arquivos == 0:
-            if callback_log: callback_log("Nenhum arquivo _STATUS_PMIB encontrado na pasta selecionada.")
+            callbacks.log("Nenhum arquivo _STATUS_PMIB encontrado na pasta selecionada.")
             return resultados
 
-        if callback_log: callback_log(f"{total_arquivos} arquivos encontrados. Iniciando varredura interna...")
-
         # 2. Processamento dos arquivos
-        for idx, caminho_completo in enumerate(arquivos_para_processar):
-            nome_arquivo = os.path.basename(caminho_completo)
-            pasta_arquivo = os.path.dirname(caminho_completo)
-            codigo_itaipu = self._extrair_codigo_itaipu(nome_arquivo)
+        with RelatorioLote(
+            callbacks,
+            titulo=f"Buscando '{termo_busca}' em arquivos _STATUS_PMIB",
+            total=total_arquivos,
+            contexto={"pasta_raiz": pasta_raiz, "tipo_busca": tipo_busca},
+        ) as lote:
+            for idx, caminho_completo in enumerate(arquivos_para_processar):
+                nome_arquivo = os.path.basename(caminho_completo)
+                pasta_arquivo = os.path.dirname(caminho_completo)
+                codigo_itaipu = self._extrair_codigo_itaipu(nome_arquivo)
 
-            if callback_log: callback_log(f"[{idx+1}/{total_arquivos}] Analisando: {nome_arquivo}...")
+                lote.etapa(nome_arquivo, f"analisando ({idx+1}/{total_arquivos})")
 
-            df, status_msg = self._encontrar_e_formatar_dataframe(caminho_completo)
+                df, status_msg = self._encontrar_e_formatar_dataframe(caminho_completo)
 
-            if df is None:
-                if callback_log: callback_log(f" -> IGNORADO: {status_msg}")
-                continue
+                if df is None:
+                    lote.pulado(nome_arquivo, status_msg)
+                    continue
 
-            match_encontrado = False
+                match_encontrado = False
 
-            # 3. Lógica de Busca
-            try:
-                if tipo_busca == 'direcionada' and coluna_especifica:
-                    col_real = next((c for c in df.columns if coluna_especifica.upper() in str(c).upper()), None)
+                # 3. Lógica de Busca
+                try:
+                    if tipo_busca == 'direcionada' and coluna_especifica:
+                        col_real = next((c for c in df.columns if coluna_especifica.upper() in str(c).upper()), None)
 
-                    if col_real:
-                        mascara = df[col_real].fillna('').astype(str).str.upper().str.contains(termo_busca, regex=False)
-                        linhas_match = df[mascara]
+                        if col_real:
+                            mascara = df[col_real].fillna('').astype(str).str.upper().str.contains(termo_busca, regex=False)
+                            linhas_match = df[mascara]
 
-                        if not linhas_match.empty:
-                            match_encontrado = True
-                            amostras = linhas_match[col_real].head(3).tolist()
-                            amostra_str = " | ".join(map(str, amostras))
+                            if not linhas_match.empty:
+                                match_encontrado = True
+                                amostras = linhas_match[col_real].head(3).tolist()
+                                amostra_str = " | ".join(map(str, amostras))
 
-                            resultados.append({
-                                'codigo_itaipu': codigo_itaipu,
-                                'arquivo_nome': nome_arquivo,
-                                'caminho_arquivo': caminho_completo,
-                                'caminho_pasta': pasta_arquivo,
-                                'coluna_match': col_real,
-                                'amostra': amostra_str
-                            })
+                                resultados.append({
+                                    'codigo_itaipu': codigo_itaipu,
+                                    'arquivo_nome': nome_arquivo,
+                                    'caminho_arquivo': caminho_completo,
+                                    'caminho_pasta': pasta_arquivo,
+                                    'coluna_match': col_real,
+                                    'amostra': amostra_str
+                                })
+                        else:
+                            lote.aviso(
+                                nome_arquivo,
+                                f"coluna '{coluna_especifica}' não existe neste arquivo",
+                                "arquivo pesquisado sem essa coluna (sem correspondência possível por ela)",
+                            )
+
+                    elif tipo_busca == 'generalista':
+                        # =========================================================
+                        # BUSCA PARRUDA (Generalista)
+                        # =========================================================
+                        termo_normalizado = self._limpar_texto_parrudo(termo_busca)
+
+                        if termo_normalizado:
+                            # 2. Junta todas as colunas da linha em uma única grande string
+                            linhas_em_texto = df.fillna('').astype(str).agg(' '.join, axis=1)
+
+                            # 3. OTIMIZAÇÃO: Usando métodos nativos do Pandas para remover acentos (muito mais rápido que .apply lambda)
+                            linhas_limpas = (
+                                linhas_em_texto.str.upper()
+                                .str.normalize('NFKD')
+                                .str.encode('ascii', errors='ignore')
+                                .str.decode('utf-8')
+                            )
+                            linhas_limpas = linhas_limpas.str.replace(r'[^A-Z0-9]', '', regex=True)
+
+                            # 4. Busca exata dentro da string "amassada"
+                            mascara_geral = linhas_limpas.str.contains(termo_normalizado, regex=False)
+                            linhas_match = df[mascara_geral]
+
+                            if not linhas_match.empty:
+                                match_encontrado = True
+                                resultados.append({
+                                    'codigo_itaipu': codigo_itaipu,
+                                    'arquivo_nome': nome_arquivo,
+                                    'caminho_arquivo': caminho_completo,
+                                    'caminho_pasta': pasta_arquivo,
+                                    'coluna_match': "Múltiplas (Busca Super Geral)",
+                                    'amostra': f"{len(linhas_match)} linha(s) encontrada(s)."
+                                })
+
+                    if match_encontrado:
+                        lote.sucesso(nome_arquivo, f"match encontrado no PMIB {codigo_itaipu}")
                     else:
-                        if callback_log: callback_log(f" -> Coluna '{coluna_especifica}' não existe neste arquivo.")
+                        lote.sucesso(nome_arquivo, "sem correspondência")
 
-                elif tipo_busca == 'generalista':
-                    # =========================================================
-                    # BUSCA PARRUDA (Generalista)
-                    # =========================================================
-                    termo_normalizado = self._limpar_texto_parrudo(termo_busca)
+                except Exception as e:
+                    lote.falha(nome_arquivo, f"{type(e).__name__}: {e}")
+                    traceback.print_exc()  # Útil para ver o erro no console caso aconteça
 
-                    if termo_normalizado:
-                        # 2. Junta todas as colunas da linha em uma única grande string
-                        linhas_em_texto = df.fillna('').astype(str).agg(' '.join, axis=1)
-
-                        # 3. OTIMIZAÇÃO: Usando métodos nativos do Pandas para remover acentos (muito mais rápido que .apply lambda)
-                        linhas_limpas = (
-                            linhas_em_texto.str.upper()
-                            .str.normalize('NFKD')
-                            .str.encode('ascii', errors='ignore')
-                            .str.decode('utf-8')
-                        )
-                        linhas_limpas = linhas_limpas.str.replace(r'[^A-Z0-9]', '', regex=True)
-
-                        # 4. Busca exata dentro da string "amassada"
-                        mascara_geral = linhas_limpas.str.contains(termo_normalizado, regex=False)
-                        linhas_match = df[mascara_geral]
-
-                        if not linhas_match.empty:
-                            match_encontrado = True
-                            resultados.append({
-                                'codigo_itaipu': codigo_itaipu,
-                                'arquivo_nome': nome_arquivo,
-                                'caminho_arquivo': caminho_completo,
-                                'caminho_pasta': pasta_arquivo,
-                                'coluna_match': "Múltiplas (Busca Super Geral)",
-                                'amostra': f"{len(linhas_match)} linha(s) encontrada(s)."
-                            })
-
-                if match_encontrado and callback_log:
-                    callback_log(f" -> ✅ Match Encontrado no PMIB {codigo_itaipu}!")
-
-            except Exception as e:
-                if callback_log: callback_log(f" -> Erro ao processar busca: {str(e)}")
-                traceback.print_exc()  # Útil para ver o erro no console caso aconteça
-
-        if callback_log: callback_log(f"Busca finalizada! {len(resultados)} correspondência(s) encontrada(s).")
+        callbacks.log(f"Busca finalizada! {len(resultados)} correspondência(s) encontrada(s).")
         return resultados

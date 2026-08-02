@@ -20,6 +20,13 @@ from sigft.core.llm.client import get_llm
 # `sigft.core.llm.prompts.montar_autospec` -- o laço que monta `desc_list`
 # (consulta GENERATIVE_FIELDS, logo abaixo) continua neste módulo.
 from sigft.core.llm import prompts
+# CP 4.4 (Fase 4, docs/refatoracao/PLANO_REFATORACAO.md): `process_queue` é a
+# única função de LOTE deste módulo (os demais métodos de `AutoSpecCore` são
+# helpers de UM item) -- passa a emitir o padrão único de log via
+# `RelatorioLote`. Ver docstring de `process_queue` para como isso convive
+# com o contrato de generator que `frontend.py` já consome.
+from sigft.core.callbacks import UICallbacks
+from sigft.core.relatorio_lote import RelatorioLote
 
 # -----------------------------------------------------------------
 # 1. CONFIGURAÇÕES E MAPAS
@@ -373,42 +380,70 @@ class AutoSpecCore:
     # --- MÉTODOS PÚBLICOS DE FLUXO ---
     def process_queue(self, queue, status_pmib_path):
         """
-        Processa a lista de tarefas.
-        Queue Item: {'sheet': path, 'refs': [paths]}
-        Yields: Logs para UI
+        Processa a lista de tarefas. Queue Item: {'sheet': path, 'refs':
+        [paths]}. Yields: Logs para UI -- continua generator, mesmo
+        contrato que `frontend.py` já consome, sem pattern-match em valor
+        sentinela.
+
+        CP 4.4 (Fase 4): por dentro usa `RelatorioLote` (início com
+        total/contexto, por item, resumo com falhas listadas). Um generator
+        não loga direto por `callbacks`, então um `UICallbacks` interno
+        acumula cada linha num buffer drenado via `yield from _flush()` logo
+        em seguida -- ordem das mensagens antigas preservada, só ganham
+        vizinhas novas (as linhas de abertura/fechamento viram as
+        equivalentes, mais ricas, de `RelatorioLote`).
         """
-        yield f"--- Iniciando Processamento ({len(queue)} itens) ---"
+        buffer: list[str] = []
+        callbacks = UICallbacks(log=lambda msg, nivel="info", contexto=None: buffer.append(str(msg)))
 
-        for i, task in enumerate(queue):
-            ficha = task['sheet']
-            refs = task['refs']
-            fname = os.path.basename(ficha)
+        def _flush():
+            while buffer:
+                yield buffer.pop(0)
 
-            yield f"\n[{i+1}/{len(queue)}] {fname}..."
+        with RelatorioLote(
+            callbacks,
+            titulo="AutoSpec — preenchendo fichas técnicas",
+            total=len(queue),
+            contexto={"status_pmib": status_pmib_path},
+        ) as lote:
+            yield from _flush()
 
-            try:
-                # 1. Analisa Ficha
-                wb, missing, txt, fab, desc, cod = self.analyze_sheet(ficha, status_pmib_path)
+            for i, task in enumerate(queue):
+                ficha = task['sheet']
+                refs = task['refs']
+                fname = os.path.basename(ficha)
 
-                if not missing:
-                    yield " -> Ficha já está completa."
-                    continue
+                yield f"\n[{i+1}/{len(queue)}] {fname}..."
 
-                yield f" -> {len(missing)} campos faltantes. Coletando contexto..."
+                try:
+                    # 1. Analisa Ficha
+                    wb, missing, txt, fab, desc, cod = self.analyze_sheet(ficha, status_pmib_path)
 
-                # 2. Contexto
-                full_ctx, sources = self.retrieve_context(txt, fab, cod, refs)
-                if sources: yield f" -> Fontes Web: {len(sources)}"
+                    if not missing:
+                        yield " -> Ficha já está completa."
+                        lote.pulado(fname, "ficha já completa (sem campos faltantes)")
+                        yield from _flush()
+                        continue
 
-                # 3. IA
-                yield " -> Consultando Gemini..."
-                ai_resp = self.generate_ai_response(txt, fab, desc, missing, full_ctx)
+                    yield f" -> {len(missing)} campos faltantes. Coletando contexto..."
 
-                # 4. Salvar
-                out_path = self.fill_save(wb, ficha, ai_resp, missing)
-                yield f" -> Salvo: {os.path.basename(out_path)}"
+                    # 2. Contexto
+                    full_ctx, sources = self.retrieve_context(txt, fab, cod, refs)
+                    if sources: yield f" -> Fontes Web: {len(sources)}"
 
-            except Exception as e:
-                yield f" -> ERRO: {e}"
+                    # 3. IA
+                    yield " -> Consultando Gemini..."
+                    ai_resp = self.generate_ai_response(txt, fab, desc, missing, full_ctx)
 
-        yield "\n--- FIM DA FILA ---"
+                    # 4. Salvar
+                    out_path = self.fill_save(wb, ficha, ai_resp, missing)
+                    yield f" -> Salvo: {os.path.basename(out_path)}"
+                    lote.sucesso(fname, f"salvo como {os.path.basename(out_path)}")
+                    yield from _flush()
+
+                except Exception as e:
+                    yield f" -> ERRO: {e}"
+                    lote.falha(fname, f"{type(e).__name__}: {e}")
+                    yield from _flush()
+
+        yield from _flush()
