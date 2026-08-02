@@ -162,7 +162,7 @@ class TechSpecsProcessor:
             try:
                 pdm_usado = row_status.iloc[0]['PDM usado']
                 pdm_fmt = self.formatar_pdm(pdm_usado)
-            except:
+            except Exception:
                 if callback_log: callback_log(f"Erro ao ler PDM usado para {codigo_pmib}.")
                 continue
 
@@ -335,14 +335,14 @@ class TechSpecsAutomation:
             element.send_keys(str(text))
             time.sleep(PAUSA_DIGITACAO)
             element.send_keys(Keys.TAB)
-        except: pass
+        except Exception: pass
 
     def safe_send_keys_locator(self, locator, text):
         """Versão que recebe locator em vez de elemento."""
         try:
             el = self.wait.until(EC.presence_of_element_located(locator))
             self.safe_send_keys_elem(el, text)
-        except: pass
+        except Exception: pass
 
     # --- HELPERS DE DADOS ---
     def normalizar_texto(self, texto):
@@ -361,14 +361,14 @@ class TechSpecsAutomation:
             try:
                 sel.select_by_visible_text(texto)
                 return
-            except: pass
+            except Exception: pass
 
             # 2. Tentativa Normalizada
             for opt in sel.options:
                 if alvo in self.normalizar_texto(opt.text):
                     opt.click()
                     return
-        except: pass
+        except Exception: pass
 
     def selecionar_dropdown_unidade(self, element, texto):
         if not texto: return
@@ -379,7 +379,7 @@ class TechSpecsAutomation:
                 if target in opt.text.upper():
                     opt.click()
                     return
-        except: pass
+        except Exception: pass
 
     def _preencher_input_com_auditoria(self, element, valor_alvo, elem_neutro, nome_campo="", callback_log=None):
         """Tenta preencher, audita se o site zerou o valor e usa JS Forçado como 2ª tentativa."""
@@ -462,7 +462,7 @@ class TechSpecsAutomation:
                 locator_tabela = (By.XPATH, "//div[contains(@id, 'TechnicalCharacteristics')]//table")
                 try:
                     self.wait.until(EC.visibility_of_element_located(locator_tabela))
-                except:
+                except Exception:
                     if callback_log: callback_log("Erro: Tabela de características não carregou.")
                     continue
 
@@ -539,7 +539,7 @@ class TechSpecsAutomation:
                             pagina_atual += 1
                         else:
                             break  # Última página
-                    except:
+                    except Exception:
                         break  # Botão não existe
 
                 # 4. Relatório de Pendências da Auditoria
@@ -599,7 +599,7 @@ class TechSpecsAutomation:
         # Elemento Neutro para clicar fora
         try:
             elem_neutro = row.find_element(By.XPATH, ".//td[contains(@data-header, 'Descrição')]")
-        except:
+        except Exception:
             elem_neutro = None
 
         try:

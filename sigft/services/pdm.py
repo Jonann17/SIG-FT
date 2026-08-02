@@ -305,7 +305,7 @@ def mover_fichas_para_raiz(lista_dados):
             try:
                 shutil.move(f_origem, f_dest)
                 count += 1
-            except: pass
+            except Exception: pass
 
     return f"{count} arquivos movidos para {pasta_raiz}"
 

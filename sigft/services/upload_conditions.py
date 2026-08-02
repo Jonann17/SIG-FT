@@ -223,7 +223,7 @@ class ConditionsProcessor:
                 # Mesma proteção contra duplicatas para a descrição não ir "suja" para a IA
                 if isinstance(descricao, pd.Series):
                     descricao = descricao.iloc[0]
-            except:
+            except Exception:
                 descricao = dados_brutos.get('descricao_breve', 'N/A')
 
             dados_api_input = {
@@ -624,7 +624,7 @@ class UploadAutomation:
                 try:
                     self.driver.save_screenshot(f"erro_web_{pmib}.png")
                     if callback_log: callback_log(f"Evidência salva: erro_web_{pmib}.png")
-                except:
+                except Exception:
                     pass
 
     def safe_save_with_pause(self, locator, section_name, callback_log=None, callback_pause=None):

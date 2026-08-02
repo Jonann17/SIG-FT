@@ -90,7 +90,7 @@ class TechnicalTranslator:
                 wb.close()
                 if usando_temp and os.path.exists(caminho_trabalho):
                     try: os.remove(caminho_trabalho)
-                    except: pass
+                    except Exception: pass
                 yield "ERRO"
                 return
 
@@ -120,7 +120,7 @@ class TechnicalTranslator:
                     wb.close()
                     if usando_temp and os.path.exists(caminho_trabalho):
                         try: os.remove(caminho_trabalho)
-                        except: pass
+                        except Exception: pass
                     yield "PARADO"  # ENVIA SINAL PARA O APP ABORTAR O LOOP
                     return
 
@@ -191,7 +191,7 @@ class TechnicalTranslator:
                 try:
                     row_range.api.Borders.LineStyle = 1
                     row_range.api.Borders.Weight = 2
-                except: pass
+                except Exception: pass
 
                 if i % 2 == 0:
                     row_range.color = (221, 235, 247)  # Azul muito claro
@@ -220,10 +220,10 @@ class TechnicalTranslator:
         except Exception as e:
             yield f"[ERRO FATAL] {e}"
             try: wb.close()
-            except: pass
+            except Exception: pass
             if usando_temp and os.path.exists(caminho_trabalho):
                 try: os.remove(caminho_trabalho)
-                except: pass
+                except Exception: pass
             yield "ERRO"
 
         finally:

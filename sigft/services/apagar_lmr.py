@@ -186,5 +186,5 @@ class ApagarLMRAutomation:
         # Voltar para lista (opcional, bom para fluxo continuo)
         try:
             self.driver.get(self.url_inicial)
-        except:
+        except Exception:
             pass

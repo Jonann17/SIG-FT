@@ -131,7 +131,7 @@ class LMRAutomation:
                 try:
                     val = callback_input("Linha Inicial", f"Digite o número da linha (0 a {len(df_filtrado)-1}):")
                     linha_inicio = int(val)
-                except:
+                except Exception:
                     callbacks.log("Entrada inválida. Começando do 0.")
                     linha_inicio = 0
 
@@ -169,6 +169,12 @@ class LMRAutomation:
         index = linha_inicio
         while index < len(df_filtrado):
             codigo_pmib_item = ""
+            # CP 4.2: guarda o índice de ENTRADA desta iteração. É o que
+            # permite distinguir, no `except` abaixo, se o agrupamento chegou
+            # a avançar `index` (linha `index += 1` dentro do try) ou não --
+            # a diferença entre "o laço segue sozinho" e "o laço repete este
+            # mesmo item para sempre". Ver o `except` para o racional.
+            index_no_inicio = index
             try:
                 row = df_filtrado.loc[index]
                 codigo_pmib_item = str(row['Código_PMIB'])
@@ -222,15 +228,44 @@ class LMRAutomation:
                     'erro': str(e)
                 })
 
-                # Pausa manual para correção (Substitui o input())
-                callbacks.ask(
-                    f"Erro no item {codigo_pmib_item}.\nCorrija manualmente no navegador e clique OK para continuar.",
-                    titulo="Erro LMR",
-                )
-
-                # O loop 'while' tentará o mesmo item novamente ou o próximo dependendo de onde quebrou.
-                # No script original, ele NÃO incrementava o index no except, então repetia.
-                # Mantendo comportamento original.
+                # CP 4.2 -- correção do não-incremento de índice (apontada no
+                # diagnóstico do plano, seção 1.5: "no `except` do loop interno
+                # o índice não avança -> risco de loop infinito").
+                #
+                # `index` só avança DENTRO do try, no laço de agrupamento de
+                # TAGs. Então há 2 situações bem diferentes aqui:
+                if index > index_no_inicio:
+                    # (a) O agrupamento concluiu e a falha veio depois, na
+                    # interação com o portal. `index` JÁ passou deste código,
+                    # então o laço segue sozinho para o próximo -- só avisa.
+                    # NÃO oferecemos "tentar de novo": o item pode ter sido
+                    # salvo parcialmente no portal, e repetir cegamente
+                    # duplicaria TAGs. Rebobinar o índice seria pior que o
+                    # problema que este checkpoint conserta.
+                    callbacks.ask(
+                        f"Erro no item {codigo_pmib_item} durante o preenchimento.\n"
+                        "Confira/corrija manualmente no navegador e clique OK — "
+                        "o processamento segue para o próximo código.",
+                        titulo="Erro LMR",
+                    )
+                else:
+                    # (b) A falha veio ANTES de o índice avançar (ex.: erro ao
+                    # ler a linha do DataFrame). Sem intervenção, o `while`
+                    # externo repetiria EXATAMENTE este item para sempre --
+                    # um modal atrás do outro, sem saída a não ser matar o app.
+                    # Como nada chegou a ser enviado ao portal, aqui "tentar de
+                    # novo" É seguro, e a escolha fica com o usuário.
+                    tentar_de_novo = callbacks.ask(
+                        f"Erro no item {codigo_pmib_item} ANTES do envio ao portal:\n{e}\n\n"
+                        "SIM = corrigi o problema, tentar este item de novo.\n"
+                        "NÃO = pular este item e seguir para o próximo.",
+                        titulo="Erro LMR",
+                    )
+                    if not tentar_de_novo:
+                        index = index_no_inicio + 1
+                    # Sem provedor de `ask` (execução sem UI), `UICallbacks.ask`
+                    # devolve False por contrato (CP 1.4) -> pula. É o default
+                    # SEGURO: garante progresso e nunca trava num laço infinito.
 
         return processados_erro_ficha
 
@@ -328,7 +363,7 @@ class LMRAutomation:
 
                 try:
                     self.driver.get(self.url_inicial)
-                except:
+                except Exception:
                     break
 
         # Relatório Final
@@ -336,6 +371,6 @@ class LMRAutomation:
             callbacks.log("Salvando relatório de erros (erros_lmr.csv)...")
             try:
                 pd.DataFrame(erros_totais).to_csv("erros_lmr.csv", index=False)
-            except: pass
+            except Exception: pass
 
         callbacks.log("Processo Finalizado.")

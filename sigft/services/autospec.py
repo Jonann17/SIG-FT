@@ -95,7 +95,7 @@ class WebSearcher:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
                     tmp_file.write(response.content)
                     return tmp_file.name
-        except:
+        except Exception:
             return None
         return None
 
@@ -214,7 +214,7 @@ class AutoSpecCore:
                     mat_val = str(row[mat_col-1].value).strip() if row[mat_col-1].value else ""
                     return desc_val, mat_val
             return "", ""
-        except: return "", ""
+        except Exception: return "", ""
 
     def is_empty(self, val):
         s_val = str(val).strip().upper()
@@ -296,7 +296,7 @@ class AutoSpecCore:
                             web_txt += f"--- WEB DOC: {item['title']} ---\nURL: {item['url']}\n{t[:50000]}\n\n"
                             sources.append(item['url'])
                         try: os.remove(item['path'])
-                        except: pass
+                        except Exception: pass
                     break  # Se achou algo, para
 
         return (local_txt + "\n\n" + web_txt), sources
@@ -307,7 +307,7 @@ class AutoSpecCore:
             try:
                 t, m = self.pdf_parser.extract_text(p)
                 if t: ctx.append(f"--- LOCAL DOC: {os.path.basename(p)} ---\n{t[:60000]}")
-            except: pass
+            except Exception: pass
         return "\n\n".join(ctx)
 
     # --- Geração IA ---

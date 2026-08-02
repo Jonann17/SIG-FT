@@ -164,7 +164,7 @@ class ExtratorFichaBase:
         else:
             for f in glob.glob(os.path.join(self.dir_download, "*")):
                 try: os.remove(f)
-                except: pass
+                except Exception: pass
 
     def iniciar_driver_silencioso(self):
         """Inicia o Chrome com preferências para download automático.
@@ -189,7 +189,7 @@ class ExtratorFichaBase:
         try:
             el = self.wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
             return el.get_attribute("value").strip()
-        except:
+        except Exception:
             return ""
 
     def _ler_tabela_outsystems(self, data_header):
@@ -202,7 +202,7 @@ class ExtratorFichaBase:
                 texto = cel.get_attribute("textContent").strip()
                 if texto: textos.append(texto)
             return textos
-        except:
+        except Exception:
             return []
 
     def _esperar_download_e_renomear(self, nome_descritivo):
@@ -225,7 +225,7 @@ class ExtratorFichaBase:
                 try:
                     shutil.move(arquivo_baixado, novo_caminho)
                     return novo_caminho
-                except:
+                except Exception:
                     pass
 
             time.sleep(PAUSA_POLL_DOWNLOAD)
@@ -332,7 +332,7 @@ class ExtratorFichaBase:
             xpath = f"//label[contains(text(), '{texto_label}')]/following::select[1]"
             elemento = self.driver.find_element(By.XPATH, xpath)
             return Select(elemento).first_selected_option.text.strip()
-        except:
+        except Exception:
             return ""
 
     def _ler_info_gerais(self):
@@ -417,7 +417,7 @@ class ExtratorFichaBase:
                 try:
                     el = self.wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
                     campos_aba[xpath] = el.is_selected()
-                except:
+                except Exception:
                     campos_aba[xpath] = False
 
             condicoes_por_aba[aba] = campos_aba
@@ -564,7 +564,7 @@ class InjetorFichaAlvo:
                     time.sleep(PAUSA_PAGINACAO)
                 else:
                     break
-            except:
+            except Exception:
                 break
 
         # CLIQUE SEGURO DO BOTÃO SALVAR DA ABA
