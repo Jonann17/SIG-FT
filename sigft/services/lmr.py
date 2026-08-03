@@ -15,6 +15,13 @@ from selenium.webdriver.common.action_chains import ActionChains
 # `callback_input` (texto livre) NÃO faz parte de `UICallbacks` — ver
 # docstring de core/callbacks.py e docs/refatoracao/PENDENCIAS.md.
 from sigft.core.callbacks import UICallbacks, from_legacy
+# CP 4.4 (Fase 4): `processar_lista` passa a emitir o padrão único de log
+# (início com total/contexto, linha por ficha, resumo com falhas listadas).
+# Forma DIRETA (`lote.sucesso/falha`), sem `with lote.item(...)`: o laço já
+# tem um `try/except` próprio com semântica particular (`ask` ao usuário +
+# tentativa de recarregar a home, com `break` se nem isso funcionar), que
+# não vale a pena reescrever só para trocar o mecanismo de contagem.
+from sigft.core.relatorio_lote import RelatorioLote
 
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em `iniciar_driver`
@@ -302,6 +309,14 @@ class LMRAutomation:
 
         total = len(lista_pmibs)
 
+        lote = RelatorioLote(
+            callbacks,
+            titulo="LMR — aplicando TAGs nas fichas",
+            total=total,
+            contexto={"fichas selecionadas": total},
+        )
+        lote.iniciar()
+
         for i, pmib_atual in enumerate(lista_pmibs):
             callbacks.log(f"\n--- Ficha {i+1}/{total}: {pmib_atual} ---")
 
@@ -349,12 +364,26 @@ class LMRAutomation:
                 self.wait.until(EC.element_to_be_clickable(locator_voltar)).click()
                 time.sleep(PAUSA_RETORNO_LISTA)
 
+                # CP 4.4: a ficha CONCLUIU o fluxo. Se algum item interno
+                # falhou, isso é um aviso (causa → consequência), não uma
+                # falha da ficha inteira -- o comportamento de hoje já
+                # segue para a próxima ficha nesse caso.
+                if erros:
+                    lote.aviso(
+                        pmib_atual,
+                        f"{len(erros)} item(ns) da LMR não foram inseridos",
+                        "conferir/lançar manualmente no portal (detalhes em erros_lmr.csv)",
+                    )
+                lote.sucesso(pmib_atual)
+
             except Exception as e:
                 msg = f"ERRO FATAL em {pmib_atual}: {e}"
                 callbacks.log(msg)
 
                 fichas_com_erro.append(pmib_atual)
                 erros_totais.append({'ficha': pmib_atual, 'erro_fatal': str(e)})
+
+                lote.falha(pmib_atual, f"{type(e).__name__}: {e}")
 
                 callbacks.ask(
                     f"{msg}\nPressione OK para tentar recarregar a home e seguir.",
@@ -373,4 +402,5 @@ class LMRAutomation:
                 pd.DataFrame(erros_totais).to_csv("erros_lmr.csv", index=False)
             except Exception: pass
 
+        lote.finalizar()
         callbacks.log("Processo Finalizado.")

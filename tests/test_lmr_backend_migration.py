@@ -93,7 +93,12 @@ def test_processar_lista_aceita_callbacks_novo_sem_tocar_selenium():
     # Comportamento ORIGINAL preservado: método não tinha `return` (devolve
     # None implicitamente) -- CP 1.4 não pode mudar isso.
     assert resultado is None
-    assert logs == ["Processo Finalizado."]
+    # CP 4.4: `processar_lista` passou a emitir o padrão de lote (início +
+    # resumo) em volta das mensagens que já existiam. Com lista VAZIA não há
+    # linha de item nenhuma; o que importa aqui (contrato do CP 1.4) é que a
+    # mensagem final continua chegando pelo callback recebido.
+    assert "Processo Finalizado." in logs
+    assert any("Resumo" in linha for linha in logs)
 
 
 def test_processar_lista_aceita_kwargs_legados_sem_tocar_selenium():
@@ -110,7 +115,12 @@ def test_processar_lista_aceita_kwargs_legados_sem_tocar_selenium():
     )
 
     assert resultado is None
-    assert logs == ["Processo Finalizado."]
+    # CP 4.4: `processar_lista` passou a emitir o padrão de lote (início +
+    # resumo) em volta das mensagens que já existiam. Com lista VAZIA não há
+    # linha de item nenhuma; o que importa aqui (contrato do CP 1.4) é que a
+    # mensagem final continua chegando pelo callback recebido.
+    assert "Processo Finalizado." in logs
+    assert any("Resumo" in linha for linha in logs)
     assert perguntas == []  # lista vazia -> nenhuma ficha processada, nunca pergunta nada
 
 
@@ -134,7 +144,10 @@ def test_processar_lista_callbacks_explicito_tem_prioridade_sobre_legado():
         callback_log=logs_legado.append,
     )
 
-    assert logs_novo == ["Processo Finalizado."]
+    # CP 4.4: idem ao teste acima -- o padrão de lote (início + resumo)
+    # envolve as mensagens antigas. O ponto DESTE teste continua sendo que
+    # tudo saiu pelo `callbacks` explícito e NADA pelo kwarg legado.
+    assert "Processo Finalizado." in logs_novo
     assert logs_legado == []  # callback_log legado é ignorado quando `callbacks` é passado
 
 

@@ -76,6 +76,8 @@ serviço a uma UI concreta — ver tests/test_callbacks.py.
 
 from __future__ import annotations
 
+import inspect
+
 from dataclasses import dataclass
 from typing import Callable
 
@@ -109,6 +111,20 @@ class UICallbacks:
             self.ask = _noop_ask
         if self.progress is None:
             self.progress = _noop_progress
+        # CP 4.4: normaliza `log` para que ele SEMPRE possa ser chamado na
+        # forma completa do protocolo, `log(msg, nivel, contexto)`.
+        #
+        # Motivo: o protocolo documenta 3 parâmetros, mas nada obrigava o
+        # callable passado a aceitá-los — e, até este checkpoint, NENHUM
+        # chamador de produção usava `nivel`/`contexto`, então uma função de
+        # 1 argumento (`logs.append`, `self.log` da UI) funcionava por
+        # acidente. `RelatorioLote` (core/relatorio_lote.py) passou a usar
+        # `nivel` de verdade (para distinguir warn/error), e isso quebraria
+        # esses chamadores com `TypeError`. Adaptar aqui, no construtor,
+        # conserta para TODO consumidor de uma vez — e é o mesmo trabalho que
+        # `from_legacy()` já fazia para os callbacks antigos, agora
+        # disponível também para quem constrói `UICallbacks` direto.
+        self.log = _normalizar_log(self.log)
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +134,42 @@ class UICallbacks:
 # aceitar QUALQUER forma de chamada que o protocolo documentado permitir,
 # sem levantar `TypeError`.
 # ---------------------------------------------------------------------------
+def _normalizar_log(log: Callable[..., None]) -> Callable[..., None]:
+    """Devolve um `log` que aceita `(msg, nivel, contexto)` sempre, repassando
+    ao original só o que ele de fato souber receber.
+
+    Um callable de 1 argumento (`logs.append`, um `self.log(txt)` da UI)
+    passa a ser chamável como `log(msg, "warn")` sem `TypeError`; um que já
+    siga o protocolo completo recebe os 3 normalmente. A decisão é tomada UMA
+    vez, na construção, inspecionando a assinatura — não a cada chamada, e
+    sem `try/except TypeError` em volta da chamada (que mascararia um
+    `TypeError` legítimo vindo de DENTRO do callback do usuário).
+
+    Assinatura inspecionável falha para alguns builtins (`list.append`, por
+    exemplo, dependendo da versão do Python) — nesse caso assume-se a forma
+    mínima de 1 argumento, que é a suposição segura.
+    """
+    try:
+        parametros = inspect.signature(log).parameters.values()
+    except (TypeError, ValueError):  # builtins sem assinatura introspectável
+        return lambda msg, nivel="info", contexto=None: log(msg)
+
+    if any(p.kind is inspect.Parameter.VAR_POSITIONAL for p in parametros):
+        return log  # aceita *args -> já engole qualquer forma
+
+    posicionais = [
+        p for p in parametros
+        if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    ]
+    if len(posicionais) >= 3:
+        return log
+
+    if len(posicionais) == 2:
+        return lambda msg, nivel="info", contexto=None: log(msg, nivel)
+
+    return lambda msg, nivel="info", contexto=None: log(msg)
+
+
 def _noop_log(*_args: object, **_kwargs: object) -> None:
     return None
 

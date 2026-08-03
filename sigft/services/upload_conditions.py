@@ -41,6 +41,13 @@ from sigft.core.rpa.portal import (
 # `ConditionsProcessor.processar_ia_lote` abaixo delega para `LLMClient`/
 # `GeminiProvider` (ÚNICO lugar do projeto que importa `genai`).
 from sigft.core.llm.client import get_llm
+# CP 4.4 (Fase 4): `processar_ia_lote` emite o padrão único de log (início
+# com total/contexto, linha por ficha, resumo com falhas e pulados listados).
+# Forma DIRETA (`lote.sucesso/falha/pulado`), somando ao que já existia: as
+# mensagens específicas por ficha ("Enviando ... para API", "Sucesso API")
+# têm valor de diagnóstico e foram PRESERVADAS.
+from sigft.core.callbacks import from_legacy
+from sigft.core.relatorio_lote import RelatorioLote
 # CP 3.5 (Fase 3): o TEXTO do `system_prompt`/`user_prompt` de
 # `processar_ia_lote` abaixo mora em `sigft.core.llm.prompts`
 # (`SYSTEM_CONDICOES`/`montar_condicoes_user`).
@@ -176,6 +183,15 @@ class ConditionsProcessor:
 
     def processar_ia_lote(self, lista_caminhos, df_status, callback_log=None):
         fichas_processadas = []
+        # CP 4.4: `from_legacy` adapta o `callback_log` antigo sem mudar a
+        # assinatura pública desta função (o frontend segue chamando igual).
+        lote = RelatorioLote(
+            from_legacy(callback_log=callback_log),
+            titulo="Condições — gerando conteúdo por IA",
+            total=len(lista_caminhos),
+            contexto={"fichas": len(lista_caminhos)},
+        )
+        lote.iniciar()
         # CP 1.2: prefixo de contrato deriva de config.PREFIXO_CONTRATO (era
         # hardcoded "4500063671" aqui); ver
         # core.excel.pmib_codes.extract_contract_pmib_code, usada abaixo.
@@ -198,6 +214,7 @@ class ConditionsProcessor:
             pmib_codigo = pmib_codes.extract_contract_pmib_code(caminho)
             if not pmib_codigo:
                 if callback_log: callback_log(f"Ignorado (Sem PMIB): {nome_arquivo}")
+                lote.pulado(nome_arquivo, "nome do arquivo não contém código PMIB do contrato")
                 continue
 
             try:
@@ -210,12 +227,15 @@ class ConditionsProcessor:
 
                 if str(status_atual).strip().upper() == "COMPLETO":
                     if callback_log: callback_log(f"PMIB {pmib_codigo} já COMPLETO.")
+                    lote.pulado(pmib_codigo, "já marcado como COMPLETO no STATUS_PMIB")
                     continue
             except KeyError:
                 pass
 
             dados_brutos = self.extrair_dados_brutos_excel(caminho)
-            if not dados_brutos: continue
+            if not dados_brutos:
+                lote.pulado(pmib_codigo, "não foi possível extrair dados da planilha")
+                continue
 
             try:
                 descricao = df_status.loc[pmib_codigo, 'DESCRIÇÃO']
@@ -278,9 +298,12 @@ class ConditionsProcessor:
                 res_json["pmib_codigo"] = pmib_codigo
                 fichas_processadas.append(res_json)
                 if callback_log: callback_log(f"Sucesso API: {pmib_codigo}")
+                lote.sucesso(pmib_codigo)
             except Exception as e:
                 if callback_log: callback_log(f"Falha definitiva no PMIB {pmib_codigo}: {e}")
+                lote.falha(pmib_codigo, f"{type(e).__name__}: {e}")
 
+        lote.finalizar()
         return fichas_processadas
 
     def salvar_excel_intermediario(self, fichas, caminho_salvar):
