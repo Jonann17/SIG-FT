@@ -1,10 +1,6 @@
 import time
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
+
+from sigft import config
 
 # CP 1.4 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 1): protocolo único
 # UI<->serviço. `executar_limpeza` aceita o novo parâmetro `callbacks`
@@ -12,10 +8,19 @@ from selenium.common.exceptions import TimeoutException, StaleElementReferenceEx
 # `from_legacy`) — ver core/callbacks.py.
 from sigft.core.callbacks import UICallbacks, from_legacy
 
-# CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
-# driver Chrome, substitui `webdriver.Chrome()` cru em `iniciar_driver`
-# abaixo.
-from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
+# CP 5.1 (Fase 5): este é o módulo PILOTO da migração para Playwright. O
+# `selenium` sumiu dos imports daqui: quem decide o motor é
+# `factory.criar_engine("apagar_lmr")`, lendo `config.RPA_ENGINE`. Trocar de
+# motor (ou voltar atrás) é editar uma linha de config ou exportar
+# `SIGFT_RPA_ENGINE` -- nenhuma linha deste arquivo muda.
+#
+# As exceções que o laço de exclusão discrimina por tipo (fim normal x tabela
+# reconstruída) passam a ser as NEUTRAS de `engine.py`, traduzidas por cada
+# motor. Sem isso, o laço rodaria para sempre no Playwright: um
+# `except TimeoutException` do Selenium não enxerga o `TimeoutError` do
+# Playwright.
+from sigft.core.rpa.engine import ElementoObsoleto, TempoEsgotado
+from sigft.core.rpa.factory import criar_engine
 # CP 2.2 (Fase 2): `safe_click`/`_pesquisar_e_abrir` passam a delegar para
 # `PMIBPortal` (construído logo após o driver, em `iniciar_driver`). O loop
 # de exclusão de `executar_limpeza` CONTINUA usando `self.driver`/
@@ -42,35 +47,43 @@ from sigft.core.relatorio_lote import RelatorioLote
 # =============================================================================
 class ApagarLMRAutomation:
     def __init__(self):
-        self.driver = None
-        self.wait = None
+        self.engine = None
         self.portal = None
-        self.url_inicial = 'https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList'
+        self.url_inicial = config.PORTAL_URL
 
     def iniciar_driver(self):
-        """Inicia o navegador Chrome.
+        """Inicia o navegador.
 
         CP 2.1: a criação em si (Chrome + maximize + WebDriverWait(20s))
-        agora vem de `create_chrome_driver` (única fábrica, ver
-        core/rpa/selenium_engine.py) — timeout preservado EXATAMENTE como
-        antes (20s).
+        veio de `create_chrome_driver` (única fábrica) — timeout preservado
+        EXATAMENTE como antes (20s).
 
         CP 2.2: logo em seguida, `self.portal` passa a existir
-        (`PMIBPortal` sobre um `SeleniumEngine` construído com o MESMO
-        `driver`/`wait` — nada de novo é criado) — `safe_click`/
-        `_pesquisar_e_abrir` abaixo passam a delegar para ele.
+        (`PMIBPortal` sobre o engine) — `safe_click`/`_pesquisar_e_abrir`
+        abaixo delegam para ele.
+
+        CP 5.1: quem escolhe o motor agora é `criar_engine`, pelo
+        `config.RPA_ENGINE["apagar_lmr"]`. O timeout de 20s continua o
+        mesmo nos dois motores.
+
+        Continua devolvendo algo verdadeiro para não quebrar chamadores que
+        testem o retorno — mas o que volta é o ENGINE, não um driver
+        Selenium. `frontend.py` não usa o valor (só chama
+        `iniciar_driver()`), e é de propósito que um consumidor que tentasse
+        usá-lo como driver falhe alto: seria justamente um ponto ainda não
+        migrado.
         """
-        self.driver, self.wait = create_chrome_driver(wait_timeout=20)
-        self.portal = PMIBPortal(SeleniumEngine(self.driver, self.wait))
-        return self.driver
+        self.engine = criar_engine("apagar_lmr", wait_timeout=20)
+        self.portal = PMIBPortal(self.engine)
+        return self.engine
 
     def fechar_driver(self):
-        if self.driver:
-            self.driver.quit()
+        if self.engine:
+            self.engine.fechar()
 
     def abrir_portal(self):
-        if self.driver:
-            self.driver.get(self.url_inicial)
+        if self.engine:
+            self.engine.goto(self.url_inicial)
 
     # --- HELPERS DE NAVEGAÇÃO ---
     def safe_click(self, locator):
@@ -128,8 +141,14 @@ class ApagarLMRAutomation:
         try:
             callbacks.log("Acessando aba 'Aplicação - LMR'...")
             # XPath do script original
-            botao_lmr = self.wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="b10-ApplicationMRL"]/button')))
-            botao_lmr.click()
+            # CP 5.1: `wait.until(element_to_be_clickable(...)).click()` virou
+            # `wait_clickable` + `click_raw` -- mesma sequência (esperar
+            # clicável, depois clicar), agora sem tocar em Selenium. O
+            # `except` de baixo continua tratando qualquer falha como "a aba
+            # pode já estar aberta", igual a antes.
+            xpath_aba_lmr = '//*[@id="b10-ApplicationMRL"]/button'
+            self.engine.wait_clickable(xpath_aba_lmr)
+            self.engine.click_raw(xpath_aba_lmr)
             time.sleep(PAUSA_ABERTURA_ABA)
         except Exception as e:
             callbacks.log(f"Erro ao abrir aba LMR (pode já estar aberta): {e}")
@@ -177,29 +196,39 @@ class ApagarLMRAutomation:
                     # Nota: tr[2] geralmente é a primeira linha de dados (tr[1] é header)
                     xpath_lixeira = '//*[@id="b10-b19-$b17"]/table/tbody/tr[2]//i[contains(@class, "fa-trash")]/parent::a'
 
-                    lixeira = self.wait.until(EC.element_to_be_clickable((By.XPATH, xpath_lixeira)))
-
-                    # Scroll para garantir que está visível e clicável
-                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", lixeira)
-                    lixeira.click()
+                    # CP 5.1: a mesma sequência de antes -- esperar a lixeira
+                    # ficar clicável, rolar até ela, clicar -- agora pelas
+                    # primitivas do engine. É esta espera que serve de SINAL
+                    # DE FIM do lote: quando não há mais lixeira, ela estoura
+                    # o tempo e cai no `except TempoEsgotado` lá embaixo.
+                    #
+                    # Único desvio do original, deliberado: o clique era
+                    # `lixeira.click()` NATIVO e passa a ser via JS
+                    # (`click_raw`, a mecânica canônica do projeto -- ver
+                    # `selenium_engine.click_raw` e PENDENCIAS.md). Efeito
+                    # prático: um overlay que interceptasse o clique deixa de
+                    # derrubar o laço.
+                    self.engine.wait_clickable(xpath_lixeira)
+                    self.engine.scroll_to(xpath_lixeira)
+                    self.engine.click_raw(xpath_lixeira)
 
                     # Espera o botão de confirmação da exclusão e clica
                     # XPath original: //*[@id="b10-b19-b17-b10-b1-Footer"]/div/button[1]
                     xpath_confirmar = '//button[@type="button" and text()="CONFIRMAR"]'  # Mais genérico/seguro ou usar o ID original
 
-                    confirmar = self.wait.until(EC.element_to_be_clickable((By.XPATH, xpath_confirmar)))
-                    confirmar.click()
+                    self.engine.wait_clickable(xpath_confirmar)
+                    self.engine.click_raw(xpath_confirmar)
 
                     # Espera a exclusão processar
                     count += 1
                     lote.sucesso(f"Aplicação {count}", duracao_s=time.time() - inicio_item)
                     time.sleep(PAUSA_POS_EXCLUSAO)  # Pausa para refresh da tabela
 
-                except TimeoutException:
+                except TempoEsgotado:
                     # Não achou mais lixeiras -> Fim
                     callbacks.log("✅ Todas as aplicações visíveis foram apagadas.")
                     break
-                except StaleElementReferenceException:
+                except ElementoObsoleto:
                     # Tabela atualizou enquanto tentava clicar -> Tenta loop de novo
                     continue
                 except Exception as e:
@@ -209,6 +238,6 @@ class ApagarLMRAutomation:
 
         # Voltar para lista (opcional, bom para fluxo continuo)
         try:
-            self.driver.get(self.url_inicial)
+            self.engine.goto(self.url_inicial)
         except Exception:
             pass

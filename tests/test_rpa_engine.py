@@ -3,18 +3,25 @@ Testes do Checkpoint 2.1 — `sigft/core/rpa/engine.py` (`RPAEngine`).
 
 `RPAEngine` é uma classe abstrata (`abc.ABC`), só stdlib -- estes testes
 confirmam o CONTRATO (não pode ser instanciada diretamente; uma subclasse só
-pode ser instanciada quando implementa TODOS os 10 métodos exigidos pelo
-CP 2.1: `goto`, `click`, `fill`, `press`, `wait_visible`, `wait_clickable`,
-`element_exists`, `get_value`, `screenshot`, `set_download_dir`) sem
+pode ser instanciada quando implementa TODOS os métodos exigidos) sem
 depender de Selenium/Playwright nenhum -- por isso este arquivo importa só
-`sigft.core.rpa.engine`, nunca `selenium`. A implementação concreta de
-produção (`SeleniumEngine`) é testada em tests/test_selenium_engine.py.
+`sigft.core.rpa.engine`, nunca `selenium`. As implementações concretas são
+testadas em tests/test_selenium_engine.py e tests/test_playwright_engine.py.
+
+O contrato tem duas gerações, e os testes separam as duas:
+  - os 10 métodos do CP 2.1, que descrevem a INTENÇÃO do serviço;
+  - as 8 primitivas do CP 5.1, acrescentadas para o `PMIBPortal` largar o
+    `self.engine.driver`/`.wait` cru -- sem elas, trocar de motor é
+    impossível, porque um `PlaywrightEngine` não tem driver nenhum.
+
+Manter as duas listas explícitas (em vez de uma só, somada) é o que faz este
+arquivo documentar de onde veio cada exigência.
 """
 import pytest
 
 from sigft.core.rpa.engine import RPAEngine
 
-METODOS_OBRIGATORIOS = (
+METODOS_CP_2_1 = (
     "goto",
     "click",
     "fill",
@@ -27,10 +34,35 @@ METODOS_OBRIGATORIOS = (
     "set_download_dir",
 )
 
+METODOS_CP_5_1 = (
+    "click_estrito",
+    "scroll_to",
+    "click_raw",
+    "wait_present",
+    "clear",
+    "type_text",
+    "current_url",
+    "fechar",
+)
 
-def test_rpaengine_declara_os_10_metodos_do_checkpoint():
-    for nome in METODOS_OBRIGATORIOS:
+METODOS_OBRIGATORIOS = METODOS_CP_2_1 + METODOS_CP_5_1
+
+
+def test_rpaengine_declara_os_10_metodos_do_cp_2_1():
+    for nome in METODOS_CP_2_1:
         assert nome in RPAEngine.__abstractmethods__
+
+
+def test_rpaengine_declara_as_primitivas_do_cp_5_1():
+    for nome in METODOS_CP_5_1:
+        assert nome in RPAEngine.__abstractmethods__
+
+
+def test_o_contrato_nao_tem_metodo_a_mais_sem_teste():
+    # Trava contra crescimento silencioso: um método abstrato novo obriga a
+    # atualizar as listas acima -- e, portanto, a pensar em qual checkpoint o
+    # exigiu e o que o motor Playwright vai fazer com ele.
+    assert set(RPAEngine.__abstractmethods__) == set(METODOS_OBRIGATORIOS)
 
 
 def test_nao_pode_instanciar_rpaengine_diretamente():
@@ -50,6 +82,15 @@ def _implementacoes_completas():
         "get_value": lambda self, seletor: "",
         "screenshot": lambda self, caminho: None,
         "set_download_dir": lambda self, caminho: None,
+        # CP 5.1
+        "click_estrito": lambda self, seletor: None,
+        "scroll_to": lambda self, seletor: None,
+        "click_raw": lambda self, seletor: None,
+        "wait_present": lambda self, seletor: None,
+        "clear": lambda self, seletor: None,
+        "type_text": lambda self, seletor, texto: None,
+        "current_url": lambda self: "",
+        "fechar": lambda self: None,
     }
 
 

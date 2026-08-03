@@ -102,21 +102,19 @@ class _PortalEspiao:
 #    de criação já migrados no CP 2.1 (mesmos 6 de
 #    tests/test_rpa_driver_migration.py).
 # ===========================================================================
-def test_apagar_lmr_iniciar_driver_resolve_portal_sobre_o_mesmo_driver_wait():
-    chamadas = []
-    driver_sentinel, wait_sentinel = object(), object()
+def test_apagar_lmr_iniciar_driver_resolve_portal_sobre_o_engine_da_fabrica():
+    """CP 5.1: o piloto da Fase 5 monta o `PMIBPortal` sobre o motor que a
+    fábrica devolver -- Selenium ou Playwright, conforme `config.RPA_ENGINE`.
+    O que se garante aqui é o mesmo de antes: o portal fica sobre EXATAMENTE
+    o motor criado, sem construir um segundo browser por baixo."""
+    engine_sentinel = object()
     auto = apagar_lmr_backend.ApagarLMRAutomation()
 
-    with patch.object(
-        apagar_lmr_backend, "create_chrome_driver",
-        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
-    ):
+    with patch.object(apagar_lmr_backend, "criar_engine", lambda *a, **k: engine_sentinel):
         auto.iniciar_driver()
 
     assert isinstance(auto.portal, PMIBPortal)
-    assert isinstance(auto.portal.engine, SeleniumEngine)
-    assert auto.portal.engine.driver is driver_sentinel
-    assert auto.portal.engine.wait is wait_sentinel
+    assert auto.portal.engine is engine_sentinel
 
 
 def test_lmr_iniciar_driver_resolve_portal_sobre_o_mesmo_driver_wait():
@@ -266,7 +264,11 @@ def test_apagar_lmr_safe_click_extrai_xpath_da_tupla_e_delega():
     espiao = _PortalEspiao()
     auto.portal = espiao
 
-    auto.safe_click((apagar_lmr_backend.By.XPATH, "//button[@id='x']"))
+    # CP 5.1: `By` saiu dos imports de `apagar_lmr` (o piloto não fala mais
+    # Selenium). O delegador continua aceitando a tupla `(By, xpath)` que os
+    # call sites internos usam -- só o 1º elemento é ignorado, então qualquer
+    # sentinela serve para o teste.
+    auto.safe_click(("xpath", "//button[@id='x']"))
 
     assert espiao.safe_click_chamadas == ["//button[@id='x']"]
 

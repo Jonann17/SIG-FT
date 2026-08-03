@@ -535,3 +535,70 @@ PASTA_LOGS = "logs"
 # Caminho relativo (resolvido a partir do cwd do processo — raiz do
 # repo/instalação), mesma convenção de `CONFIG_FILE`/`prefs.CONFIG_FILE`.
 ARQUIVO_USO_LLM = os.path.join(PASTA_LOGS, "llm_usage.jsonl")
+
+
+# =============================================================================
+# 9. MOTOR DE RPA POR MÓDULO (Checkpoint 5.1)
+# =============================================================================
+# Ver docs/refatoracao/PLANO_REFATORACAO.md, decisão de produto nº 5 e Fase 5 ->
+# CP 5.1: "Config `RPA_ENGINE = "selenium" | "playwright"` por módulo (permite
+# migração gradual e rollback imediato)".
+#
+# A migração para Playwright é validada MÓDULO A MÓDULO contra o portal real
+# (não há como testar offline). Uma chave por módulo é o que permite promover
+# um módulo de cada vez e, se ele se comportar mal na sessão de validação,
+# voltar o valor para "selenium" -- sem tocar em código, sem reverter commit.
+
+ENGINE_SELENIUM = "selenium"
+ENGINE_PLAYWRIGHT = "playwright"
+
+# Enquanto a Fase 5 não termina (CP 5.5 descomissiona o Selenium), o padrão é o
+# motor que já roda em produção há tempo. Um módulo ausente do mapa abaixo
+# resolve por aqui.
+RPA_ENGINE_PADRAO = ENGINE_SELENIUM
+
+# Chave = nome do módulo em `sigft/services/`. Trocar para ENGINE_PLAYWRIGHT
+# depois que o módulo for validado com o usuário no portal real.
+RPA_ENGINE: dict[str, str] = {
+    "apagar_lmr": ENGINE_SELENIUM,      # piloto do CP 5.1
+    "lmr": ENGINE_SELENIUM,             # CP 5.2
+    "cria_fichas": ENGINE_SELENIUM,     # CP 5.2 / 5.4
+    "upload_conditions": ENGINE_SELENIUM,  # CP 5.3
+    "tech_specs": ENGINE_SELENIUM,      # CP 5.3
+    "ficha_duplicada": ENGINE_SELENIUM,  # Fase 6 (reconstruído já em Playwright)
+}
+
+# Override global por variável de ambiente, para o usuário experimentar o motor
+# novo (ou voltar atrás) sem editar arquivo nenhum:
+#
+#     set SIGFT_RPA_ENGINE=playwright   &&  SIG-FT.bat
+#
+# Vence o mapa acima em TODOS os módulos -- é a alavanca de rollback imediato
+# que o CP 5.1 pede, e também a forma mais rápida de rodar a sessão de
+# validação de um checkpoint.
+ENV_RPA_ENGINE = "SIGFT_RPA_ENGINE"
+
+
+def get_rpa_engine(modulo: str) -> str:
+    """Motor de RPA a usar em `modulo` — `ENGINE_SELENIUM` ou
+    `ENGINE_PLAYWRIGHT`.
+
+    Ordem de resolução: variável de ambiente `SIGFT_RPA_ENGINE` (global) ->
+    `RPA_ENGINE[modulo]` -> `RPA_ENGINE_PADRAO`.
+
+    Um valor desconhecido (erro de digitação na variável de ambiente, por
+    exemplo) levanta `ValueError` em vez de cair no padrão em silêncio: um
+    `SIGFT_RPA_ENGINE=playwrigth` que silenciosamente rodasse Selenium faria o
+    usuário reportar como resultado do motor novo o que na verdade é o antigo
+    — e é justamente esse tipo de confusão que invalidaria a sessão de
+    validação de um checkpoint da Fase 5.
+    """
+    escolhido = os.environ.get(ENV_RPA_ENGINE) or RPA_ENGINE.get(modulo, RPA_ENGINE_PADRAO)
+    escolhido = escolhido.strip().lower()
+    if escolhido not in (ENGINE_SELENIUM, ENGINE_PLAYWRIGHT):
+        raise ValueError(
+            f"Motor de RPA desconhecido: {escolhido!r}. "
+            f"Use {ENGINE_SELENIUM!r} ou {ENGINE_PLAYWRIGHT!r} "
+            f"(verifique a variável de ambiente {ENV_RPA_ENGINE})."
+        )
+    return escolhido

@@ -52,21 +52,27 @@ def _fake_factory(chamadas, driver_sentinel, wait_sentinel):
     return _create_chrome_driver
 
 
-def test_apagar_lmr_iniciar_driver_usa_create_chrome_driver_timeout_20():
+def test_apagar_lmr_iniciar_driver_pede_o_engine_do_modulo_com_timeout_20():
+    """CP 5.1: `apagar_lmr` é o piloto da Fase 5 e não chama mais
+    `create_chrome_driver` direto -- pede o motor a `factory.criar_engine`,
+    que consulta `config.RPA_ENGINE`. O que este teste continua garantindo é
+    o que garantia antes: o timeout de 20s ORIGINAL da classe atravessa
+    intacto (e agora vale nos dois motores)."""
     chamadas = []
-    driver_sentinel, wait_sentinel = object(), object()
+    engine_sentinel = object()
+
+    def _fake_criar_engine(modulo, *, wait_timeout=20, download_dir=None):
+        chamadas.append({"modulo": modulo, "wait_timeout": wait_timeout, "download_dir": download_dir})
+        return engine_sentinel
+
     auto = apagar_lmr_backend.ApagarLMRAutomation()
 
-    with patch.object(
-        apagar_lmr_backend, "create_chrome_driver",
-        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
-    ):
+    with patch.object(apagar_lmr_backend, "criar_engine", _fake_criar_engine):
         retorno = auto.iniciar_driver()
 
-    assert chamadas == [{"wait_timeout": 20, "download_dir": None}]
-    assert auto.driver is driver_sentinel
-    assert auto.wait is wait_sentinel
-    assert retorno is driver_sentinel  # `return self.driver` preservado
+    assert chamadas == [{"modulo": "apagar_lmr", "wait_timeout": 20, "download_dir": None}]
+    assert auto.engine is engine_sentinel
+    assert retorno is engine_sentinel
 
 
 def test_lmr_iniciar_driver_usa_create_chrome_driver_timeout_20():

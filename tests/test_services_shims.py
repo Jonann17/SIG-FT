@@ -239,8 +239,12 @@ def test_canario_instancia_classe_trivial_pelo_nome_antigo():
 
     auto = apagar_lmr_backend.ApagarLMRAutomation()
 
-    assert auto.driver is None
-    assert auto.wait is None
+    # CP 5.1: `driver`/`wait` deram lugar a `engine` -- `apagar_lmr` é o
+    # piloto da migração para Playwright e não fala mais Selenium. A URL
+    # continua idêntica, agora vinda de `config.PORTAL_URL` em vez de um
+    # literal local.
+    assert auto.engine is None
+    assert auto.portal is None
     assert auto.url_inicial == "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
 
 

@@ -43,6 +43,30 @@ python frontend.py
 - **Windows**: os módulos Tradutor (`xlwings`, exige Excel instalado) e alguns recursos (`os.startfile`) só funcionam em Windows.
 - **Logo**: coloque `assets/logo.png` (não versionado) para exibir a marca na splash e sidebar. O app funciona sem ela.
 
+## Motor de RPA (Selenium ou Playwright)
+
+A automação do portal PMIB está migrando de Selenium para Playwright (Fase 5 da
+refatoração). Os dois motores convivem, e **quem escolhe é a configuração, por
+módulo** — `sigft/config.py`, dicionário `RPA_ENGINE`. O padrão continua sendo
+`selenium`, que é o que roda em produção hoje.
+
+Para experimentar o motor novo sem editar nada:
+
+```bat
+Instalar-Playwright.bat          REM uma vez só — baixa o navegador (~150 MB)
+set SIGFT_RPA_ENGINE=playwright
+SIG-FT.bat
+```
+
+A variável vale para todos os módulos e some quando você fecha a janela — é o
+caminho de volta imediato se algo se comportar mal. Um valor com erro de
+digitação (`playwrigth`) faz o app parar com mensagem clara em vez de rodar o
+motor antigo em silêncio.
+
+Um ganho prático do motor novo: ele usa um **perfil de navegador persistente**
+(em `%LOCALAPPDATA%\SIG-FT\perfil-navegador`), então o login manual no PMIB
+continua valendo na execução seguinte, em vez de recomeçar do zero toda vez.
+
 ## Rede corporativa (Zscaler)
 
 Redes com inspeção SSL (Zscaler, Netskope, Blue Coat…) substituem o certificado
@@ -83,6 +107,16 @@ type C:\certs\zscaler-root.pem >> C:\certs\bundle.pem
 ```
 
 e aponte as duas variáveis para `C:\certs\bundle.pem`.
+
+**3. No download do navegador do Playwright.** Esse download não passa pelo
+`pip`: quem baixa é o processo Node do Playwright, que ignora
+`REQUESTS_CA_BUNDLE`/`SSL_CERT_FILE`. A variável que ele respeita é
+`NODE_EXTRA_CA_CERTS`. O `Instalar-Playwright.bat` já reaproveita seu
+`SSL_CERT_FILE` quando ele existe; se ainda falhar:
+
+```bat
+setx NODE_EXTRA_CA_CERTS C:\certs\zscaler-root.pem
+```
 
 ## Configuração de chaves API
 

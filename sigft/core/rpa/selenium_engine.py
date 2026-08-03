@@ -86,6 +86,7 @@ fábrica (quando `options`/prefs são montados, o que é passado para
 from __future__ import annotations
 
 import time
+from contextlib import contextmanager
 
 from selenium import webdriver
 from selenium.webdriver.common.action_chains import ActionChains
@@ -94,7 +95,61 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from sigft.core.rpa.engine import RPAEngine
+from sigft.core.rpa.engine import (
+    ElementoObsoleto,
+    RPAEngine,
+    TempoEsgotado,
+)
+
+# Nome da classe de exceção do Selenium -> exceção NEUTRA de `engine.py`
+# (CP 5.1). Só as falhas que algum laço de produção DISCRIMINA POR TIPO
+# entram aqui (ver o comentário sobre exceções neutras em `engine.py`);
+# qualquer outra sobe como veio, preservando o diagnóstico original.
+_TRADUCAO_POR_NOME = {
+    "TimeoutException": TempoEsgotado,
+    "StaleElementReferenceException": ElementoObsoleto,
+}
+
+
+def _traduzir(excecao: BaseException) -> BaseException:
+    """Converte uma exceção do SDK do Selenium na exceção neutra equivalente.
+
+    O casamento é pelo NOME da classe ao longo da MRO, não por `isinstance`,
+    de propósito. Duas razões, nesta ordem:
+
+      1. `tests/conftest.py` stuba `selenium` inteiro com `MagicMock` -- e
+         `selenium.common.exceptions.TimeoutException` vira então um
+         MagicMock, não uma classe. `isinstance(e, <MagicMock>)` levanta
+         `TypeError: isinstance() arg 2 must be a type`, ou seja: a tradução
+         quebraria justamente no ambiente onde ela é testada.
+      2. Não é preciso importar `selenium.common.exceptions` aqui só para
+         comparar tipos.
+
+    Percorrer a MRO (não só `type(e).__name__`) faz subclasses das exceções
+    do Selenium traduzirem igual às classes-base.
+    """
+    for classe in type(excecao).__mro__:
+        neutra = _TRADUCAO_POR_NOME.get(classe.__name__)
+        if neutra is not None:
+            return neutra(str(excecao) or classe.__name__)
+    return excecao
+
+
+@contextmanager
+def _traduzindo():
+    """Roda o bloco e, se ele falhar, relança a exceção já traduzida.
+
+    `raise ... from excecao` preserva a exceção do Selenium encadeada
+    (`__cause__`): o consumidor decide o fluxo pelo tipo NEUTRO, mas o
+    traceback continua mostrando qual falha do SDK originou tudo.
+    """
+    try:
+        yield
+    except BaseException as excecao:  # noqa: BLE001 -- relançamos sempre
+        traduzida = _traduzir(excecao)
+        if traduzida is excecao:
+            raise
+        raise traduzida from excecao
 
 
 def create_chrome_driver(*, wait_timeout: int = 20, download_dir: str | None = None):
@@ -191,17 +246,20 @@ class SeleniumEngine(RPAEngine):
 
     # -- Espera (NÃO engole exceção -- ver docstring do módulo) ---------
     def wait_visible(self, seletor: str) -> None:
-        self.wait.until(EC.visibility_of_element_located((By.XPATH, seletor)))
+        with _traduzindo():
+            self.wait.until(EC.visibility_of_element_located((By.XPATH, seletor)))
 
     def wait_clickable(self, seletor: str) -> None:
-        self.wait.until(EC.element_to_be_clickable((By.XPATH, seletor)))
+        with _traduzindo():
+            self.wait.until(EC.element_to_be_clickable((By.XPATH, seletor)))
 
     # -- Leitura ---------------------------------------------------------
     def element_exists(self, seletor: str) -> bool:
         return len(self.driver.find_elements(By.XPATH, seletor)) > 0
 
     def get_value(self, seletor: str) -> str:
-        el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
+        with _traduzindo():
+            el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
         return el.get_attribute("value")
 
     # -- Diagnóstico / configuração ---------------------------------------
@@ -213,3 +271,80 @@ class SeleniumEngine(RPAEngine):
             "Page.setDownloadBehavior",
             {"behavior": "allow", "downloadPath": caminho},
         )
+
+    # =====================================================================
+    # Primitivas do CP 5.1 -- linhas MOVIDAS de portal.py/apagar_lmr.py
+    # =====================================================================
+    # Cada corpo abaixo é a operação Selenium que já existia escrita à mão no
+    # consumidor, transplantada sem alteração de mecânica nem de `time.sleep`
+    # (os sleeps ficaram no consumidor, que é onde eles significam alguma
+    # coisa). É isso que mantém o motor Selenium idêntico ao de antes deste
+    # checkpoint -- o caminho de rollback exigido pelo CP 5.1.
+
+    def click_estrito(self, seletor: str) -> None:
+        """Mesma mecânica de `click` (scroll + espera + clique via JS), mas
+        propagando a falha traduzida. Ver `engine.py` para por que as duas
+        variantes precisam coexistir."""
+        locator = (By.XPATH, seletor)
+        with _traduzindo():
+            el = self.wait.until(EC.presence_of_element_located(locator))
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+            time.sleep(0.5)
+            self.wait.until(EC.element_to_be_clickable(locator))
+            self.driver.execute_script("arguments[0].click();", el)
+
+    def scroll_to(self, seletor: str) -> None:
+        with _traduzindo():
+            el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+
+    def click_raw(self, seletor: str) -> None:
+        """Clique via JS, sem espera de "clicável" e sem rolar antes.
+
+        JS (`arguments[0].click()`) e não `el.click()` nativo: é a mecânica
+        canônica do projeto -- `safe_click`, `clicar_salvar_visivel`,
+        `excluir_linha_com_confirmacao` e o clique no lápis de
+        `pesquisar_e_abrir` já usam todos essa forma. O único ponto que
+        clicava nativamente é o laço de exclusão de `apagar_lmr`; ao ser
+        portado neste checkpoint ele passa a usar esta -- mudança
+        DELIBERADA e registrada em docs/refatoracao/PENDENCIAS.md (o clique
+        via JS não é interceptado por overlay, então o ramo
+        `ElementClickIntercepted -> falha + break` daquele laço deixa de
+        disparar; é o piloto do CP 5.1, validado com o usuário no portal
+        real)."""
+        with _traduzindo():
+            el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
+            self.driver.execute_script("arguments[0].click();", el)
+
+    def wait_present(self, seletor: str) -> None:
+        with _traduzindo():
+            self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
+
+    def clear(self, seletor: str) -> None:
+        """`wait.until(element_to_be_clickable(...))` + `.clear()` -- o par
+        que abria a etapa de busca de `PMIBPortal.pesquisar_e_abrir`."""
+        with _traduzindo():
+            el = self.wait.until(EC.element_to_be_clickable((By.XPATH, seletor)))
+            el.clear()
+
+    def type_text(self, seletor: str, texto: str) -> None:
+        """`.send_keys(texto)` SEM limpar antes -- o `campo.send_keys(pmib)`
+        de `pesquisar_e_abrir`. Deixa o campo com o foco, que é o que faz o
+        `press("ENTER")` seguinte chegar nele."""
+        with _traduzindo():
+            el = self.wait.until(EC.element_to_be_clickable((By.XPATH, seletor)))
+            el.send_keys(str(texto))
+
+    def current_url(self) -> str:
+        return self.driver.current_url
+
+    def fechar(self) -> None:
+        """`driver.quit()`, tolerando browser já fechado -- o `try/except`
+        que os chamadores de `fechar_driver` faziam por fora."""
+        if self.driver is None:
+            return
+        try:
+            self.driver.quit()
+        except Exception:
+            pass
+        self.driver = None

@@ -31,6 +31,7 @@ import pytest
 
 import sigft.core.rpa.portal as portal_mod
 from sigft import config
+from sigft.core.rpa.engine import ElementoObsoleto, TempoEsgotado
 from sigft.core.rpa.portal import PMIBPortal
 
 
@@ -112,20 +113,72 @@ class _FakeDriver:
 
 
 class _FakeEngine:
-    """Duck-typed -- expõe só o que `PMIBPortal` usa (`driver`/`wait`
-    diretamente, ou `goto`/`click`/`fill` via delegação)."""
+    """Duck-typed -- expõe só o que `PMIBPortal` usa.
 
-    def __init__(self, driver=None, wait=None):
+    CP 5.1: além de `driver`/`wait` (ainda alcançados por `check_or_uncheck`,
+    `clicar_salvar_visivel` e `excluir_linha_com_confirmacao`, que a Fase 5
+    migra nos CP 5.3/Fase 6), agora registra as PRIMITIVAS de `RPAEngine`
+    usadas por `ir_para_lista`/`pesquisar_e_abrir`.
+
+    `passos` guarda a sequência inteira, na ordem, como tuplas
+    `(nome_da_primitiva, *argumentos)`. É isso que os testes de
+    `pesquisar_e_abrir` passam a verificar -- o CONTRATO do portal ("quais
+    primitivas, em que ordem, com que seletor"). A mecânica Selenium de cada
+    primitiva (que `wait.until` com que `EC`, que `execute_script`) continua
+    verificada, mas no lugar certo: tests/test_selenium_engine.py.
+
+    `falhas` injeta exceção por primitiva: `{"clear": [Erro(), None]}` faz a
+    1ª chamada de `clear` levantar e a 2ª passar. Uma lista mais curta que o
+    número de chamadas continua com `None` (sucesso).
+    """
+
+    def __init__(self, driver=None, wait=None, *, url_atual="", falhas=None):
         self.driver = driver if driver is not None else _FakeDriver()
         self.wait = wait if wait is not None else _FakeWait()
         self.goto_chamadas = []
         self.click_chamadas = []
         self.fill_chamadas = []
+        self.passos = []
+        self._url_atual = url_atual or getattr(self.driver, "current_url", "")
+        self._falhas = {nome: list(seq) for nome, seq in (falhas or {}).items()}
+
+    def _registrar(self, nome, *args):
+        self.passos.append((nome, *args))
+        fila = self._falhas.get(nome)
+        if fila:
+            problema = fila.pop(0)
+            if problema is not None:
+                raise problema
+
+    # -- primitivas usadas por ir_para_lista / pesquisar_e_abrir -----------
+    def current_url(self):
+        return self._url_atual
 
     def goto(self, url):
         self.goto_chamadas.append(url)
+        self._registrar("goto", url)
+        self._url_atual = url
         self.driver.current_url = url
 
+    def clear(self, seletor):
+        self._registrar("clear", seletor)
+
+    def type_text(self, seletor, texto):
+        self._registrar("type_text", seletor, texto)
+
+    def press(self, teclas):
+        self._registrar("press", teclas)
+
+    def wait_present(self, seletor):
+        self._registrar("wait_present", seletor)
+
+    def scroll_to(self, seletor):
+        self._registrar("scroll_to", seletor)
+
+    def click_raw(self, seletor):
+        self._registrar("click_raw", seletor)
+
+    # -- delegação fina (CP 2.2) -------------------------------------------
     def click(self, seletor):
         self.click_chamadas.append(seletor)
 
@@ -192,16 +245,36 @@ def test_aguardar_login_manual_sem_callback_nao_levanta():
 # ir_para_lista -- usa config.PORTAL_URL, não um literal local.
 # ===========================================================================
 def test_ir_para_lista_navega_quando_url_atual_e_diferente():
-    engine = _FakeEngine(driver=_FakeDriver(current_url="https://outro-lugar"))
+    engine = _FakeEngine(url_atual="https://outro-lugar")
     PMIBPortal(engine).ir_para_lista()
     assert engine.goto_chamadas == [config.PORTAL_URL]
-    assert engine.driver.current_url == config.PORTAL_URL
+    assert engine.current_url() == config.PORTAL_URL
 
 
 def test_ir_para_lista_nao_navega_quando_ja_esta_na_url():
-    engine = _FakeEngine(driver=_FakeDriver(current_url=config.PORTAL_URL))
+    engine = _FakeEngine(url_atual=config.PORTAL_URL)
     PMIBPortal(engine).ir_para_lista()
     assert engine.goto_chamadas == []
+
+
+def test_ir_para_lista_le_a_url_pelo_engine_e_nao_por_um_driver():
+    # CP 5.1: contraprova da migração. Antes, `ir_para_lista` fazia
+    # `self.engine.driver.current_url` -- um engine SEM `.driver` (que é o
+    # caso do PlaywrightEngine) estouraria aqui. Este engine não tem `driver`
+    # nenhum de propósito: se alguém reintroduzir o acesso, este teste falha.
+    class _EngineSemDriver:
+        def __init__(self):
+            self.navegou_para = []
+
+        def current_url(self):
+            return "https://outro-lugar"
+
+        def goto(self, url):
+            self.navegou_para.append(url)
+
+    engine = _EngineSemDriver()
+    PMIBPortal(engine).ir_para_lista()
+    assert engine.navegou_para == [config.PORTAL_URL]
 
 
 # ===========================================================================
@@ -320,48 +393,53 @@ def test_excluir_linha_com_confirmacao_devolve_false_se_lixeira_nao_existe():
 # ===========================================================================
 # pesquisar_e_abrir -- estrutura de robustez de tech_specs, seletores
 # parametrizados (default = apagar_lmr/tech_specs).
+#
+# CP 5.1: estes testes passaram a verificar o CONTRATO do portal -- quais
+# primitivas de `RPAEngine` ele chama, em que ordem, com que seletor -- em vez
+# da mecânica Selenium interna (`wait.until(EC...)`, `execute_script`). A
+# mecânica não deixou de ser testada: ela migrou para
+# tests/test_selenium_engine.py, que verifica, primitiva por primitiva, que
+# `SeleniumEngine` faz exatamente as mesmas chamadas de antes. A divisão é
+# essa mesma que torna a Fase 5 possível: portal descreve a INTENÇÃO, engine
+# executa no motor.
 # ===========================================================================
+def _passos_esperados(pmib, busca_xpath, lapis_xpath):
+    """A sequência EXATA que `pesquisar_e_abrir` executa num caminho feliz --
+    espelha, passo a passo, o que o corpo Selenium fazia antes do CP 5.1:
+    `clear()` / `send_keys(pmib)` / `send_keys(ENTER)` na busca, e
+    `presence_of_element_located` + `scrollIntoView` + `click` no lápis."""
+    return [
+        ("clear", busca_xpath),
+        ("type_text", busca_xpath, pmib),
+        ("press", "ENTER"),
+        ("wait_present", lapis_xpath),
+        ("scroll_to", lapis_xpath),
+        ("click_raw", lapis_xpath),
+    ]
+
+
 def test_pesquisar_e_abrir_usa_seletores_default_e_ir_para_lista_por_padrao():
-    campo = _FakeElemento()
-    lapis = _FakeElemento()
-    driver = _FakeDriver(current_url="https://outro-lugar")
-    wait = _FakeWait(respostas=[campo, lapis])
-    engine = _FakeEngine(driver=driver, wait=wait)
+    engine = _FakeEngine(url_atual="https://outro-lugar")
 
     resultado = PMIBPortal(engine).pesquisar_e_abrir("4500063671.1234")
 
     assert resultado is True
     assert engine.goto_chamadas == [config.PORTAL_URL]  # ir_para_lista chamado
 
-    assert campo.clear_chamadas == 1
-    assert campo.send_keys_chamadas == [("4500063671.1234",), (portal_mod.Keys.ENTER,)]
-
-    locator_busca_esperado = (portal_mod.By.XPATH, portal_mod.DEFAULT_BUSCA_XPATH)
-    locator_lapis_esperado = (
-        portal_mod.By.XPATH,
-        portal_mod.DEFAULT_LAPIS_XPATH_TEMPLATE.format(pmib="4500063671.1234"),
-    )
-    assert wait.chamadas == [
-        ("clickable", locator_busca_esperado),
-        ("presence", locator_lapis_esperado),
-    ]
-
-    # scroll + click no lápis, nesta ordem.
-    assert driver.execute_script_chamadas == [
-        ("arguments[0].scrollIntoView({block: 'center'});", lapis),
-        ("arguments[0].click();", lapis),
+    lapis = portal_mod.DEFAULT_LAPIS_XPATH_TEMPLATE.format(pmib="4500063671.1234")
+    assert engine.passos == [
+        ("goto", config.PORTAL_URL),
+        *_passos_esperados("4500063671.1234", portal_mod.DEFAULT_BUSCA_XPATH, lapis),
     ]
 
 
 def test_pesquisar_e_abrir_ir_para_lista_false_pula_navegacao():
-    engine = _FakeEngine(
-        driver=_FakeDriver(current_url="https://outro-lugar"),
-        wait=_FakeWait(respostas=[_FakeElemento(), _FakeElemento()]),
-    )
+    engine = _FakeEngine(url_atual="https://outro-lugar")
 
     PMIBPortal(engine).pesquisar_e_abrir("123", ir_para_lista=False)
 
     assert engine.goto_chamadas == []
+    assert engine.passos[0][0] == "clear"  # começa direto na busca
 
 
 def test_pesquisar_e_abrir_aceita_overrides_de_busca_e_lapis_upload_conditions():
@@ -372,10 +450,7 @@ def test_pesquisar_e_abrir_aceita_overrides_de_busca_e_lapis_upload_conditions()
     )
     lapis_upload_conditions = "//span[text()='{pmib}']/ancestor::tr//a[.//i[contains(@class, 'fa-pencil-square-o')]]"
 
-    campo = _FakeElemento()
-    lapis = _FakeElemento()
-    wait = _FakeWait(respostas=[campo, lapis])
-    engine = _FakeEngine(driver=_FakeDriver(current_url=config.PORTAL_URL), wait=wait)
+    engine = _FakeEngine(url_atual=config.PORTAL_URL)
 
     resultado = PMIBPortal(engine).pesquisar_e_abrir(
         "4500063671.9999",
@@ -384,10 +459,10 @@ def test_pesquisar_e_abrir_aceita_overrides_de_busca_e_lapis_upload_conditions()
     )
 
     assert resultado is True
-    assert wait.chamadas[0] == ("clickable", (portal_mod.By.XPATH, busca_upload_conditions))
-    assert wait.chamadas[1] == (
-        "presence",
-        (portal_mod.By.XPATH, "//span[text()='4500063671.9999']/ancestor::tr//a[.//i[contains(@class, 'fa-pencil-square-o')]]"),
+    assert engine.passos == _passos_esperados(
+        "4500063671.9999",
+        busca_upload_conditions,
+        "//span[text()='4500063671.9999']/ancestor::tr//a[.//i[contains(@class, 'fa-pencil-square-o')]]",
     )
 
 
@@ -396,83 +471,120 @@ def test_pesquisar_e_abrir_aceita_overrides_ficha_duplicada():
     busca_fd = "//input[contains(@id, 'InputDatasheetFilter') or contains(@placeholder, 'Código')]"
     lapis_fd = "//tr[contains(., '{pmib}')]//a[.//i[contains(@class, 'fa-pencil')]]"
 
-    wait = _FakeWait(respostas=[_FakeElemento(), _FakeElemento()])
-    engine = _FakeEngine(driver=_FakeDriver(current_url=config.PORTAL_URL), wait=wait)
+    engine = _FakeEngine(url_atual=config.PORTAL_URL)
 
     PMIBPortal(engine).pesquisar_e_abrir("77", busca_xpath=busca_fd, lapis_xpath_template=lapis_fd)
 
-    assert wait.chamadas[0] == ("clickable", (portal_mod.By.XPATH, busca_fd))
-    assert wait.chamadas[1] == ("presence", (portal_mod.By.XPATH, "//tr[contains(., '77')]//a[.//i[contains(@class, 'fa-pencil')]]"))
+    assert engine.passos == _passos_esperados(
+        "77", busca_fd, "//tr[contains(., '77')]//a[.//i[contains(@class, 'fa-pencil')]]"
+    )
 
 
 def test_pesquisar_e_abrir_retenta_apos_stale_element_na_busca_e_depois_sucede():
-    campo = _FakeElemento()
-    lapis = _FakeElemento()
-    wait = _FakeWait(respostas=[StaleElementReferenceExceptionFake(), campo, lapis])
-    engine = _FakeEngine(driver=_FakeDriver(current_url=config.PORTAL_URL), wait=wait)
+    engine = _FakeEngine(
+        url_atual=config.PORTAL_URL,
+        falhas={"clear": [StaleElementReferenceExceptionFake()]},
+    )
 
     resultado = PMIBPortal(engine).pesquisar_e_abrir("1")
 
     assert resultado is True
-    assert len(wait.chamadas) == 3  # 1 stale + 1 sucesso na busca + 1 sucesso no lápis
+    # 1 tentativa de busca que morreu no `clear` + 1 busca inteira + lápis.
+    nomes = [passo[0] for passo in engine.passos]
+    assert nomes == ["clear", "clear", "type_text", "press", "wait_present", "scroll_to", "click_raw"]
 
 
 def test_pesquisar_e_abrir_excecao_generica_na_busca_devolve_false_sem_tentar_lapis():
-    wait = _FakeWait(respostas=[RuntimeError("falha genérica")])
-    engine = _FakeEngine(driver=_FakeDriver(current_url=config.PORTAL_URL), wait=wait)
+    engine = _FakeEngine(
+        url_atual=config.PORTAL_URL,
+        falhas={"clear": [RuntimeError("falha genérica")]},
+    )
 
     resultado = PMIBPortal(engine).pesquisar_e_abrir("1")
 
     assert resultado is False
-    assert len(wait.chamadas) == 1  # nunca tentou o lápis
+    assert engine.passos == [("clear", portal_mod.DEFAULT_BUSCA_XPATH)]  # nunca tentou o lápis
 
 
 def test_pesquisar_e_abrir_stale_esgota_3x_na_busca_mas_prossegue_pro_lapis():
     # Quirk preservado do original de tech_specs: 3 StaleElement seguidos na
     # busca NÃO retornam False -- a função segue para a etapa do lápis.
-    lapis = _FakeElemento()
-    wait = _FakeWait(
-        respostas=[
-            StaleElementReferenceExceptionFake(),
-            StaleElementReferenceExceptionFake(),
-            StaleElementReferenceExceptionFake(),
-            lapis,
-        ]
+    engine = _FakeEngine(
+        url_atual=config.PORTAL_URL,
+        falhas={
+            "clear": [
+                StaleElementReferenceExceptionFake(),
+                StaleElementReferenceExceptionFake(),
+                StaleElementReferenceExceptionFake(),
+            ]
+        },
     )
-    engine = _FakeEngine(driver=_FakeDriver(current_url=config.PORTAL_URL), wait=wait)
 
     resultado = PMIBPortal(engine).pesquisar_e_abrir("1")
 
     assert resultado is True
-    assert len(wait.chamadas) == 4  # 3 tentativas de busca (todas stale) + 1 sucesso no lápis
+    nomes = [passo[0] for passo in engine.passos]
+    assert nomes == ["clear", "clear", "clear", "wait_present", "scroll_to", "click_raw"]
 
 
 def test_pesquisar_e_abrir_retenta_apos_timeout_no_lapis_e_depois_sucede():
-    campo = _FakeElemento()
-    lapis = _FakeElemento()
-    wait = _FakeWait(respostas=[campo, TimeoutExceptionFake(), lapis])
-    engine = _FakeEngine(driver=_FakeDriver(current_url=config.PORTAL_URL), wait=wait)
+    engine = _FakeEngine(
+        url_atual=config.PORTAL_URL,
+        falhas={"wait_present": [TimeoutExceptionFake()]},
+    )
 
     resultado = PMIBPortal(engine).pesquisar_e_abrir("1")
 
     assert resultado is True
+    nomes = [passo[0] for passo in engine.passos]
+    assert nomes.count("wait_present") == 2
 
 
 def test_pesquisar_e_abrir_lapis_esgota_3_tentativas_devolve_false():
-    campo = _FakeElemento()
-    wait = _FakeWait(
-        respostas=[
-            campo,
-            TimeoutExceptionFake(),
-            TimeoutExceptionFake(),
-            TimeoutExceptionFake(),
-        ]
+    engine = _FakeEngine(
+        url_atual=config.PORTAL_URL,
+        falhas={
+            "wait_present": [
+                TimeoutExceptionFake(),
+                TimeoutExceptionFake(),
+                TimeoutExceptionFake(),
+            ]
+        },
     )
-    engine = _FakeEngine(driver=_FakeDriver(current_url=config.PORTAL_URL), wait=wait)
 
     resultado = PMIBPortal(engine).pesquisar_e_abrir("1")
 
     assert resultado is False
+
+
+def test_pesquisar_e_abrir_nao_toca_em_driver_nem_wait():
+    # CP 5.1: contraprova estrutural. Este engine implementa SÓ as primitivas
+    # neutras -- nada de `.driver`/`.wait`. Se `pesquisar_e_abrir` voltar a
+    # alcançar o driver cru, o `AttributeError` derruba este teste (o
+    # `except Exception` do laço de busca converteria em `False`, e o assert
+    # de `True` pega).
+    class _EngineNeutro:
+        def __init__(self):
+            self.passos = []
+
+        def current_url(self):
+            return config.PORTAL_URL
+
+        def __getattr__(self, nome):
+            if nome in ("driver", "wait"):
+                raise AttributeError(nome)
+            def _registrar(*args):
+                self.passos.append((nome, *args))
+            return _registrar
+
+    engine = _EngineNeutro()
+
+    assert PMIBPortal(engine).pesquisar_e_abrir("9") is True
+    assert [p[0] for p in engine.passos] == [
+        "clear", "type_text", "press", "wait_present", "scroll_to", "click_raw",
+    ]
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -486,15 +598,12 @@ def test_pesquisar_e_abrir_lapis_esgota_3_tentativas_devolve_false():
 # por portal.py, dentro deste módulo de teste, para exceções Python de
 # verdade equivalentes -- ver fixture `_excecoes_selenium_de_verdade` abaixo.
 # ---------------------------------------------------------------------------
-class StaleElementReferenceExceptionFake(Exception):
-    pass
-
-
-class TimeoutExceptionFake(Exception):
-    pass
-
-
-@pytest.fixture(autouse=True)
-def _excecoes_selenium_de_verdade(monkeypatch):
-    monkeypatch.setattr(portal_mod, "StaleElementReferenceException", StaleElementReferenceExceptionFake)
-    monkeypatch.setattr(portal_mod, "TimeoutException", TimeoutExceptionFake)
+# CP 5.1: as exceções que `pesquisar_e_abrir` discrimina deixaram de ser as do
+# SDK do Selenium e passaram a ser as NEUTRAS de `core/rpa/engine.py` -- que
+# são exceções Python de verdade, definidas por nós. Com isso o `monkeypatch`
+# que existia aqui (apontar os nomes `StaleElementReferenceException`/
+# `TimeoutException` de portal.py para fakes, porque os originais viram
+# MagicMock neste ambiente) deixou de ser necessário: basta levantar as
+# neutras. Esses aliases mantêm os nomes que os testes abaixo já usavam.
+StaleElementReferenceExceptionFake = ElementoObsoleto
+TimeoutExceptionFake = TempoEsgotado

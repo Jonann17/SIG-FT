@@ -35,7 +35,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import sigft.core.rpa.selenium_engine as se
-from sigft.core.rpa.engine import RPAEngine
+from sigft.core.rpa.engine import ElementoObsoleto, RPAEngine, TempoEsgotado
 
 
 # ===========================================================================
@@ -432,3 +432,233 @@ def test_set_download_dir_chama_cdp_page_set_download_behavior():
     assert driver.cdp_chamadas == [
         ("Page.setDownloadBehavior", {"behavior": "allow", "downloadPath": "/tmp/downloads"}),
     ]
+
+
+# ===========================================================================
+# CP 5.1 — primitivas novas (`click_estrito`, `scroll_to`, `click_raw`,
+# `wait_present`, `clear`, `type_text`, `current_url`, `fechar`) e a
+# TRADUÇÃO de exceção do SDK para as neutras de `engine.py`.
+#
+# Estes testes são a outra metade da mudança feita em `portal.py`: a mecânica
+# Selenium que vivia dentro de `PMIBPortal.pesquisar_e_abrir`
+# (`wait.until(EC...)`, `execute_script("scrollIntoView")`,
+# `execute_script("click")`, `clear()`, `send_keys()`) saiu de lá e desceu
+# para cá. Se estas asserções não existissem, a cobertura daquela mecânica
+# teria simplesmente sumido junto com o refactor -- e a promessa de que o
+# motor Selenium continua se comportando IGUAL ficaria sem prova.
+# ===========================================================================
+
+class _TimeoutExceptionFalsa(Exception):
+    """Nome IDÊNTICO ao da classe real do Selenium é o que importa: a
+    tradução casa por nome ao longo da MRO, justamente porque neste ambiente
+    `selenium.common.exceptions` é um MagicMock (ver `_traduzir`)."""
+    __name__ = "TimeoutException"
+
+
+_TimeoutExceptionFalsa.__name__ = "TimeoutException"
+
+
+class _StaleFalsa(Exception):
+    pass
+
+
+_StaleFalsa.__name__ = "StaleElementReferenceException"
+
+
+class _SubclasseDeTimeout(_TimeoutExceptionFalsa):
+    pass
+
+
+# --- scroll_to --------------------------------------------------------------
+
+def test_scroll_to_faz_scroll_into_view_no_elemento_e_nao_clica():
+    elemento = _FakeElement()
+    driver = _FakeDriver()
+    engine = se.SeleniumEngine(driver, _FakeWait(elemento=elemento))
+
+    engine.scroll_to("//a[@id='lapis']")
+
+    assert driver.execute_script_chamadas == [
+        ("arguments[0].scrollIntoView({block: 'center'});", elemento),
+    ]
+
+
+# --- click_raw --------------------------------------------------------------
+
+def test_click_raw_clica_via_js_sem_rolar_e_sem_esperar_clicavel():
+    # É EXATAMENTE o que `pesquisar_e_abrir` fazia no lápis depois do scroll:
+    # `driver.execute_script("arguments[0].click();", botao)`. Nada de
+    # `element_to_be_clickable` -- acrescentar essa espera aqui mudaria o
+    # comportamento de 4 módulos que seguem no Selenium.
+    elemento = _FakeElement()
+    driver = _FakeDriver()
+    wait = _FakeWait(elemento=elemento)
+    engine = se.SeleniumEngine(driver, wait)
+
+    engine.click_raw("//a[@id='lapis']")
+
+    assert driver.execute_script_chamadas == [("arguments[0].click();", elemento)]
+    assert len(wait.chamadas) == 1  # só a espera de presença
+
+
+def test_scroll_to_mais_click_raw_reproduzem_a_sequencia_original_do_lapis():
+    # Contraprova de ordem: scroll ANTES do clique, no mesmo elemento.
+    elemento = _FakeElement()
+    driver = _FakeDriver()
+    engine = se.SeleniumEngine(driver, _FakeWait(elemento=elemento))
+
+    engine.scroll_to("//a")
+    engine.click_raw("//a")
+
+    assert driver.execute_script_chamadas == [
+        ("arguments[0].scrollIntoView({block: 'center'});", elemento),
+        ("arguments[0].click();", elemento),
+    ]
+
+
+# --- click_estrito ----------------------------------------------------------
+
+def test_click_estrito_tem_a_mesma_mecanica_de_click():
+    elemento = _FakeElement()
+    driver = _FakeDriver()
+    engine = se.SeleniumEngine(driver, _FakeWait(elemento=elemento))
+
+    engine.click_estrito("//button")
+
+    assert driver.execute_script_chamadas == [
+        ("arguments[0].scrollIntoView({block: 'center'});", elemento),
+        ("arguments[0].click();", elemento),
+    ]
+
+
+def test_click_estrito_propaga_enquanto_click_engole():
+    # A diferença INTEIRA entre os dois -- e a razão de `click_estrito`
+    # existir: num laço, um clique que falha em silêncio vira giro infinito.
+    driver = _FakeDriver()
+    engine_estrito = se.SeleniumEngine(driver, _FakeWait(excecao=_TimeoutExceptionFalsa("sumiu")))
+    engine_tolerante = se.SeleniumEngine(driver, _FakeWait(excecao=_TimeoutExceptionFalsa("sumiu")))
+
+    with pytest.raises(TempoEsgotado):
+        engine_estrito.click_estrito("//button")
+
+    engine_tolerante.click("//button")  # não levanta
+
+
+# --- wait_present -----------------------------------------------------------
+
+def test_wait_present_espera_presenca_e_nao_devolve_nada():
+    wait = _FakeWait(elemento=_FakeElement())
+    engine = se.SeleniumEngine(_FakeDriver(), wait)
+
+    assert engine.wait_present("//tr") is None
+    assert len(wait.chamadas) == 1
+
+
+def test_wait_present_traduz_timeout_para_tempo_esgotado():
+    engine = se.SeleniumEngine(_FakeDriver(), _FakeWait(excecao=_TimeoutExceptionFalsa("nada")))
+
+    with pytest.raises(TempoEsgotado):
+        engine.wait_present("//tr")
+
+
+# --- clear / type_text ------------------------------------------------------
+
+def test_clear_chama_clear_do_elemento_sem_digitar_nada():
+    elemento = _FakeElement()
+    elemento.clear_chamadas = 0
+    elemento.clear = lambda: setattr(elemento, "clear_chamadas", elemento.clear_chamadas + 1)
+    engine = se.SeleniumEngine(_FakeDriver(), _FakeWait(elemento=elemento))
+
+    engine.clear("//input")
+
+    assert elemento.clear_chamadas == 1
+    assert elemento.send_keys_chamadas == []
+
+
+def test_type_text_digita_sem_limpar_antes():
+    # `campo.send_keys(pmib)` do original -- SEM o Ctrl+A/Backspace que o
+    # `fill` faz. A limpeza, quando o consumidor quer, é o `clear` separado.
+    elemento = _FakeElement()
+    elemento.clear = lambda: pytest.fail("type_text não pode limpar o campo")
+    engine = se.SeleniumEngine(_FakeDriver(), _FakeWait(elemento=elemento))
+
+    engine.type_text("//input", "4500063671.1234")
+
+    assert elemento.send_keys_chamadas == [("4500063671.1234",)]
+
+
+def test_type_text_converte_valor_nao_string():
+    # `pesquisar_e_abrir` recebe `pmib` de planilha, que às vezes chega como
+    # número -- `send_keys` de um int estouraria no Selenium real.
+    elemento = _FakeElement()
+    engine = se.SeleniumEngine(_FakeDriver(), _FakeWait(elemento=elemento))
+
+    engine.type_text("//input", 4500063671)
+
+    assert elemento.send_keys_chamadas == [("4500063671",)]
+
+
+# --- current_url / fechar ---------------------------------------------------
+
+def test_current_url_le_do_driver():
+    driver = _FakeDriver()
+    driver.current_url = "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
+    engine = se.SeleniumEngine(driver, _FakeWait())
+
+    assert engine.current_url() == "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
+
+
+def test_fechar_chama_quit_uma_vez_e_e_idempotente():
+    quits = []
+    driver = _FakeDriver()
+    driver.quit = lambda: quits.append(1)
+    engine = se.SeleniumEngine(driver, _FakeWait())
+
+    engine.fechar()
+    engine.fechar()  # contrato de engine.py: idempotente
+
+    assert quits == [1]
+
+
+def test_fechar_engole_falha_do_quit():
+    # Chamado do `finally` de quem usa -- estourar aqui mascararia o erro
+    # real que levou ao fechamento.
+    driver = _FakeDriver()
+    driver.quit = lambda: (_ for _ in ()).throw(RuntimeError("browser já morreu"))
+    engine = se.SeleniumEngine(driver, _FakeWait())
+
+    engine.fechar()  # não levanta
+
+
+# --- tradução de exceção ----------------------------------------------------
+
+def test_traduz_timeout_e_stale_e_deixa_o_resto_passar():
+    assert isinstance(se._traduzir(_TimeoutExceptionFalsa("x")), TempoEsgotado)
+    assert isinstance(se._traduzir(_StaleFalsa("x")), ElementoObsoleto)
+
+    original = ValueError("outra coisa")
+    assert se._traduzir(original) is original
+
+
+def test_traduz_subclasse_das_excecoes_do_selenium():
+    # Selenium tem subclasses (ex.: exceções específicas que herdam de
+    # TimeoutException); casar só `type(e).__name__` deixaria essas passarem
+    # sem tradução, e o laço que decide por tipo quebraria.
+    assert isinstance(se._traduzir(_SubclasseDeTimeout("x")), TempoEsgotado)
+
+
+def test_excecao_traduzida_preserva_a_original_encadeada():
+    engine = se.SeleniumEngine(_FakeDriver(), _FakeWait(excecao=_TimeoutExceptionFalsa("detalhe")))
+
+    with pytest.raises(TempoEsgotado) as capturado:
+        engine.wait_present("//x")
+
+    assert isinstance(capturado.value.__cause__, _TimeoutExceptionFalsa)
+    assert "detalhe" in str(capturado.value)
+
+
+def test_traducao_nao_toca_excecao_generica_das_esperas():
+    engine = se.SeleniumEngine(_FakeDriver(), _FakeWait(excecao=RuntimeError("boom")))
+
+    with pytest.raises(RuntimeError):
+        engine.wait_clickable("//x")

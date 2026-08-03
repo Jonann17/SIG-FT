@@ -107,13 +107,17 @@ from __future__ import annotations
 
 import time
 
-from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
+# CP 5.1: `Keys` e as exceções do Selenium saíram daqui -- `pesquisar_e_abrir`
+# passou a usar as primitivas de `RPAEngine` e as exceções NEUTRAS de
+# `engine.py`. `By`/`EC` continuam porque `check_or_uncheck`,
+# `clicar_salvar_visivel` e `excluir_linha_com_confirmacao` ainda alcançam
+# `self.engine.driver`/`.wait` crus: só rodam nos módulos que a Fase 5 migra
+# nos CP 5.3 / Fase 6 (ver docs/refatoracao/PENDENCIAS.md).
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 
 from sigft import config
-from sigft.core.rpa.engine import RPAEngine
+from sigft.core.rpa.engine import ElementoObsoleto, RPAEngine, TempoEsgotado
 
 # Seletores DEFAULT de `pesquisar_e_abrir` -- IDÊNTICOS aos de
 # `apagar_lmr_backend.ApagarLMRAutomation._pesquisar_e_abrir` e
@@ -477,7 +481,10 @@ class PMIBPortal:
         docs/refatoracao/PENDENCIAS.md sobre a consolidação do sleep em 3s
         para todos os chamadores via `pesquisar_e_abrir`).
         """
-        if self.engine.driver.current_url != config.PORTAL_URL:
+        # CP 5.1: `self.engine.driver.current_url` virou `engine.current_url()`
+        # -- um `PlaywrightEngine` não tem `.driver` nenhum. Mesma leitura,
+        # mesmo `!=`, mesmo sleep.
+        if self.engine.current_url() != config.PORTAL_URL:
             self.engine.goto(config.PORTAL_URL)
             time.sleep(3)
 
@@ -689,25 +696,34 @@ class PMIBPortal:
         explicitamente uma mudança de MECANISMO (não só reorganização) nas
         Fases 1-4.
         """
-        driver = self.engine.driver
-        wait = self.engine.wait
-
+        # CP 5.1: as 6 operações Selenium cruas deste corpo viraram chamadas às
+        # primitivas de `RPAEngine` (`clear`/`type_text`/`press`/`wait_present`/
+        # `click_estrito`), e as duas exceções capturadas viraram as neutras de
+        # `engine.py`. As primitivas do `SeleniumEngine` são as MESMAS linhas
+        # movidas -- este método continua fazendo exatamente o que fazia no
+        # motor Selenium; agora ele também roda no de Playwright.
+        #
+        # A única troca de mecânica é `campo.send_keys(Keys.ENTER)` ->
+        # `engine.press("ENTER")`: o `send_keys` do Selenium é sempre no
+        # elemento, o `press` do contrato é no elemento COM FOCO. Dá no mesmo
+        # aqui porque o `type_text` imediatamente anterior deixa o foco no
+        # campo de busca -- é o que ambos os motores garantem (Selenium pelo
+        # próprio `send_keys`, Playwright pelo `click()` que abre o
+        # `type_text`).
         if ir_para_lista:
             self.ir_para_lista()
 
         # 2. Pesquisar (com retry) -- estrutura de tech_specs.
-        locator_pesquisa = (By.XPATH, busca_xpath)
         for _tentativa in range(3):
             try:
-                campo = wait.until(EC.element_to_be_clickable(locator_pesquisa))
-                campo.clear()
+                self.engine.clear(busca_xpath)
                 time.sleep(0.5)
-                campo.send_keys(pmib)
+                self.engine.type_text(busca_xpath, pmib)
                 time.sleep(0.5)
-                campo.send_keys(Keys.ENTER)
+                self.engine.press("ENTER")
                 time.sleep(4)  # Espera tabela recarregar
                 break
-            except StaleElementReferenceException:
+            except ElementoObsoleto:
                 time.sleep(1)
             except Exception:
                 return False
@@ -716,15 +732,15 @@ class PMIBPortal:
         xpath_lapis = lapis_xpath_template.format(pmib=pmib)
         for _tentativa in range(3):
             try:
-                botao = wait.until(EC.presence_of_element_located((By.XPATH, xpath_lapis)))
-                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", botao)
+                self.engine.wait_present(xpath_lapis)
+                self.engine.scroll_to(xpath_lapis)
                 time.sleep(1)
-                driver.execute_script("arguments[0].click();", botao)
+                self.engine.click_raw(xpath_lapis)
                 time.sleep(4)  # Espera abrir a edição
                 return True
-            except StaleElementReferenceException:
+            except ElementoObsoleto:
                 time.sleep(2)
-            except TimeoutException:
+            except TempoEsgotado:
                 time.sleep(2)
 
         return False
