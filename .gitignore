@@ -16,6 +16,9 @@ __pycache__/
 venv/
 
 # Saídas de execução
+# Planilhas sintéticas do Gerar-Dados-de-Teste.bat — geradas por máquina, não
+# versionadas (o gerador está em scripts/gerar_dados_de_teste.py, ESSE é).
+dados_de_teste/
 temp_downloads/
 erros_lmr.csv
 erro_web_*.png

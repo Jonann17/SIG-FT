@@ -22,7 +22,26 @@ Para conferir se a instalação está sã, `Testar-SIG-FT.bat` roda a suíte de
 testes automatizados: é offline, não abre navegador, não chama IA e não toca no
 portal PMIB.
 
-Detalhes de comportamento dos dois `.bat`:
+### Testar sem ter dados reais em mãos
+
+`Gerar-Dados-de-Teste.bat` cria a pasta `dados_de_teste/` com planilhas
+**sintéticas** — duas fichas técnicas, dois `_STATUS_PMIB` e uma planilha de
+aplicações LMR. Com elas dá para abrir o app e rodar de ponta a ponta os módulos
+que só mexem em Excel: **Buscar Material, PDM, Analyzer, AutoSpec e Gestão
+PMIB**.
+
+O que essas planilhas **não** provam: a estrutura delas vem de `sigft/config.py`
+e `sigft/core/rpa/ficha_layout.py`, ou seja, do que o *código* espera. Se a
+ficha real da Itaipu divergir disso em algum ponto, o gerador reproduz a
+expectativa do código e a divergência continua invisível. Servem para *"o módulo
+roda e a tela funciona"*, não para *"o layout está certo"* — para isso, só uma
+ficha real.
+
+Os módulos de RPA (Criar Fichas, LMR, Condições, Características Técnicas,
+Apagar LMR, Ficha Duplicada) continuam precisando do portal PMIB, que só é
+acessível da rede da empresa.
+
+Detalhes de comportamento dos `.bat`:
 
 | Situação | O que acontece |
 |---|---|
