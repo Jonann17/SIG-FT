@@ -460,6 +460,76 @@ def test_perfil_padrao_tem_fallback_fora_do_windows(monkeypatch):
     assert "SIG-FT" in caminho
 
 
+def _playwright_falso(monkeypatch, registro):
+    """Substitui `playwright.sync_api` por um duplo que registra os kwargs do
+    `launch_persistent_context`, sem subir navegador nenhum."""
+    import sys as _sys
+
+    class _Contexto:
+        pages = []
+
+        def set_default_timeout(self, ms):
+            registro["timeout_ms"] = ms
+
+        def new_page(self):
+            return object()
+
+    class _Chromium:
+        def launch_persistent_context(self, perfil, **kwargs):
+            registro["perfil"] = perfil
+            registro["kwargs"] = kwargs
+            return _Contexto()
+
+    class _Playwright:
+        chromium = _Chromium()
+
+        def stop(self):
+            pass
+
+    modulo = type("_m", (), {"sync_playwright": lambda: type("_s", (), {"start": lambda self: _Playwright()})()})
+    monkeypatch.setitem(_sys.modules, "playwright", type("_p", (), {})())
+    monkeypatch.setitem(_sys.modules, "playwright.sync_api", modulo)
+
+
+def test_criar_usa_o_navegador_apontado_por_variavel_de_ambiente(monkeypatch):
+    # Escape hatch de rede corporativa: quando o download do Chromium é
+    # bloqueado, aponta-se um Chrome/Edge que a TI já mantém na máquina. Sem
+    # ele, um Zscaler mais rígido impede usar o motor novo -- e não há
+    # alternativa, porque o download do Playwright não passa pelo Python.
+    registro = {}
+    _playwright_falso(monkeypatch, registro)
+    monkeypatch.setenv(pe._ENV_EXECUTAVEL, r"C:\Program Files\Google\Chrome\chrome.exe")
+
+    PlaywrightEngine.criar(perfil="/tmp/perfil-de-teste")
+
+    assert registro["kwargs"]["executable_path"] == r"C:\Program Files\Google\Chrome\chrome.exe"
+
+
+def test_criar_sem_a_variavel_nao_passa_executable_path(monkeypatch):
+    # Sem a variável, o Playwright resolve o navegador sozinho -- passar
+    # `executable_path=None` explicitamente faria o SDK reclamar.
+    registro = {}
+    _playwright_falso(monkeypatch, registro)
+    monkeypatch.delenv(pe._ENV_EXECUTAVEL, raising=False)
+
+    PlaywrightEngine.criar(perfil="/tmp/perfil-de-teste")
+
+    assert "executable_path" not in registro["kwargs"]
+
+
+def test_criar_repassa_perfil_headless_e_timeout(monkeypatch):
+    registro = {}
+    _playwright_falso(monkeypatch, registro)
+    monkeypatch.delenv(pe._ENV_EXECUTAVEL, raising=False)
+
+    PlaywrightEngine.criar(perfil="/tmp/meu-perfil", headless=True, wait_timeout=15)
+
+    assert registro["perfil"] == "/tmp/meu-perfil"
+    assert registro["kwargs"]["headless"] is True
+    assert registro["kwargs"]["accept_downloads"] is True
+    assert registro["timeout_ms"] == 15_000  # segundos -> ms
+
+
 def test_criar_para_o_playwright_quando_o_browser_nao_sobe(monkeypatch):
     # Sem isso, uma falha ao subir o Chromium (não instalado, perfil travado
     # por outra instância) deixaria o processo-nó do Playwright rodando órfão.

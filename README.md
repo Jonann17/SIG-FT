@@ -80,6 +80,28 @@ Um ganho prático do motor novo: ele usa um **perfil de navegador persistente**
 (em `%LOCALAPPDATA%\SIG-FT\perfil-navegador`), então o login manual no PMIB
 continua valendo na execução seguinte, em vez de recomeçar do zero toda vez.
 
+### Conferir o motor sem o portal
+
+`Smoke-Playwright.bat` abre um navegador e exercita as mesmas operações que os
+módulos usam no PMIB — digitar, ler de volta, teclar, clicar, rolar, print de
+tela — mas **contra uma página local, offline**. Serve para separar duas
+perguntas que juntas viram uma depuração confusa:
+
+- *"O Playwright funciona nesta máquina?"* — o smoke responde, em **qualquer**
+  computador, sem ficha e sem acesso ao portal.
+- *"O portal PMIB responde bem a ele?"* — só a sessão real, na máquina da
+  empresa, responde.
+
+Se o smoke passar em casa e falhar no trabalho, o dedo já aponta para a
+rede/Zscaler em vez de para o código.
+
+Se a rede bloquear o download do Chromium e a TI mantiver um Chrome ou Edge
+instalado, dá para usar esse:
+
+```bat
+set SIGFT_PLAYWRIGHT_EXECUTABLE=C:\Program Files\Google\Chrome\Application\chrome.exe
+```
+
 ## Rede corporativa (Zscaler)
 
 Redes com inspeção SSL (Zscaler, Netskope, Blue Coat…) substituem o certificado

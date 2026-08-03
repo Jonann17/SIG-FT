@@ -75,6 +75,9 @@ from sigft.core.rpa.engine import (
 # dúvida para os que não começam com `/` -- ex.: `(//button)[1]`.
 _PREFIXO_XPATH = "xpath="
 
+# Escape hatch para rede que bloqueia o download do Chromium -- ver `criar()`.
+_ENV_EXECUTAVEL = "SIGFT_PLAYWRIGHT_EXECUTABLE"
+
 
 def _sel(seletor: str) -> str:
     """Normaliza um seletor XPath do projeto para a sintaxe do Playwright."""
@@ -122,6 +125,7 @@ class PlaywrightEngine(RPAEngine):
         download_dir: str | None = None,
         perfil: str | None = None,
         headless: bool = False,
+        executable_path: str | None = None,
     ) -> "PlaywrightEngine":
         """Sobe um Chromium com contexto persistente e devolve o engine.
 
@@ -133,8 +137,19 @@ class PlaywrightEngine(RPAEngine):
         `headless=False` é o default por decisão do CP 5.1 ("modo headed"):
         o fluxo do PMIB tem login manual e validação visual pelo usuário --
         um robô invisível aqui atrapalharia em vez de ajudar.
+
+        `executable_path` (ou a variável de ambiente
+        `SIGFT_PLAYWRIGHT_EXECUTABLE`) aponta um navegador JÁ INSTALADO em vez
+        do que o `playwright install` baixaria. Existe para o caso corporativo
+        real: rede que bloqueia o download do Chromium (o processo Node do
+        Playwright não respeita as variáveis de certificado do Python -- ver
+        README, "Rede corporativa"), mas onde a TI já mantém um Chrome/Edge na
+        máquina. Sem essa saída, um Zscaler mais rígido simplesmente impede
+        usar o motor novo.
         """
         from playwright.sync_api import sync_playwright  # import preguiçoso -- ver docstring
+
+        binario = executable_path or os.environ.get(_ENV_EXECUTAVEL) or None
 
         playwright = sync_playwright().start()
         try:
@@ -143,6 +158,7 @@ class PlaywrightEngine(RPAEngine):
                 headless=headless,
                 accept_downloads=True,
                 no_viewport=True,  # equivalente ao `.maximize_window()` do Selenium
+                **({"executable_path": binario} if binario else {}),
             )
         except BaseException:
             # Sem isto, uma falha ao subir o browser (Chromium não instalado,
