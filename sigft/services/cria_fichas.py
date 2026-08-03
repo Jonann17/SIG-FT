@@ -23,7 +23,13 @@ from sigft.core.llm import prompts
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em
 # `AutomacaoPMIB.iniciar_driver` abaixo.
-from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
+# CP 5.2 (Fase 5): `atualizar_projeto_em_massa` migrado para as primitivas de
+# `RPAEngine`; quem escolhe o motor é `config.RPA_ENGINE["cria_fichas"]`.
+# `processar_item_individual` (fluxo por TAB/`active_element`) segue em
+# Selenium cru -- é o CP 5.4, que exige os seletores confirmados com o usuário
+# na tela real. Enquanto isso, `self.driver`/`self.wait` continuam existindo
+# quando o motor é o Selenium.
+from sigft.core.rpa.factory import criar_engine
 # CP 2.2 (Fase 2): `self.portal` passa a existir por consistência estrutural
 # com os outros 5 backends (`AutomacaoPMIB` é uma das "6 classes de
 # automação" do aceite do checkpoint), mas NENHUM call site desta classe foi
@@ -198,8 +204,23 @@ class GeminiCategorizer:
             raise Exception(f"Erro na IA: {e}")
 
 
+# =============================================================================
+# CP 5.2 (Fase 5) — seletores XPath de `atualizar_projeto_em_massa`.
+# Ver a nota equivalente em `services/lmr.py`: as primitivas de `RPAEngine`
+# recebem seletor, não elemento, então cada XPath aparece 2x (esperar/agir) --
+# com o literal solto isso viraria duplicação convidando a divergência.
+# Valores idênticos aos de antes, verbatim.
+# =============================================================================
+XPATH_BUSCA_MASSA = "//input[contains(@id, 'InputDatasheetFilter')]"
+XPATH_LINHA_RESULTADO = "//tr[contains(., '{pmib}')]"
+XPATH_LAPIS_MASSA = "//tr[contains(., '{pmib}')]//a[.//i[contains(@class, 'fa-pencil-square-o')]]"
+XPATH_CAMPO_PROJETO = '//*[@id="b10-b9-TextArea_ProjectCode"]'
+XPATH_SALVAR_PROJETO = '//*[@id="b10-b9-Form1"]/div[6]/button[1]'
+
+
 class AutomacaoPMIB:
     def __init__(self):
+        self.engine = None
         self.driver = None
         self.wait = None
         self.portal = None
@@ -211,25 +232,49 @@ class AutomacaoPMIB:
         antes (10s, o único dos 6 pontos originais com esse valor).
 
         CP 2.2: logo em seguida, `self.portal` passa a existir (`PMIBPortal`
-        sobre um `SeleniumEngine` construído com o MESMO `driver`/`wait`) --
-        por consistência estrutural com os outros 5 backends, SEM nenhum
-        call site desta classe migrado ainda (ver comentário de import no
-        topo do arquivo e docs/refatoracao/PENDENCIAS.md).
+        sobre o engine).
+
+        CP 5.2: quem escolhe o motor agora é `criar_engine`, por
+        `config.RPA_ENGINE["cria_fichas"]`. Timeout de 10s preservado.
+
+        `self.driver`/`self.wait` continuam sendo expostos QUANDO o motor é o
+        Selenium, porque `processar_item_individual` ainda depende deles --
+        esse fluxo é o CP 5.4. Com o motor Playwright eles ficam `None`, e
+        `processar_item_individual` avisa disso de forma explícita em vez de
+        estourar um `AttributeError` obscuro.
         """
-        self.driver, self.wait = create_chrome_driver(wait_timeout=10)
-        self.portal = PMIBPortal(SeleniumEngine(self.driver, self.wait))
-        return self.driver
+        self.engine = criar_engine("cria_fichas", wait_timeout=10)
+        self.driver = getattr(self.engine, "driver", None)
+        self.wait = getattr(self.engine, "wait", None)
+        self.portal = PMIBPortal(self.engine)
+        return self.engine
 
     def abrir_portal(self, url):
         url_limpa = str(url).strip()
         if not url_limpa.lower().startswith("http"):
             url_limpa = "https://" + url_limpa
-        self.driver.get(url_limpa)
+        self.engine.goto(url_limpa)
 
     def processar_item_individual(self, dados_item):
         """
         Lógica atualizada com correções de foco e espera.
+
+        CP 5.2: este fluxo NÃO foi migrado -- ele é o CP 5.4 ("o fluxo por
+        TAB/active_element é o mais frágil do sistema; reimplementar com
+        seletores diretos onde o usuário confirmar que o alvo é estável").
+        Por isso ele ainda fala Selenium direto, e a guarda abaixo falha com
+        uma mensagem que diz o que fazer, em vez de deixar um
+        `AttributeError: 'NoneType' object has no attribute 'find_element'`
+        aparecer no meio da criação de uma ficha real.
         """
+        if self.driver is None:
+            raise RuntimeError(
+                "Criar Fichas (item individual) ainda roda só no motor Selenium "
+                "-- a migração desse fluxo é o CP 5.4 do plano de refatoração. "
+                "Rode este módulo com SIGFT_RPA_ENGINE=selenium (ou remova a "
+                "variável de ambiente). A opção 'atualizar projeto em massa' já "
+                "funciona nos dois motores."
+            )
         pdm = dados_item.get('pdm_escolhido')
         desc_curta = dados_item.get('descricao_curta')
         origem = dados_item.get('origem')
@@ -371,56 +416,72 @@ class AutomacaoPMIB:
             return "ERRO", str(e)
 
     def atualizar_projeto_em_massa(self, pmib, novo_codigo_projeto):
+        """Abre a ficha `pmib` e troca o Código do Projeto.
+
+        CP 5.2 (Fase 5): migrado para as primitivas de `RPAEngine` -- roda em
+        Selenium ou Playwright conforme `config.RPA_ENGINE["cria_fichas"]`.
+        Mesmos seletores, mesma ordem, mesmos `time.sleep`.
+
+        Duas notas sobre fidelidade:
+
+        - O preenchimento usa `fill_estrito`, não `fill`: esta função REPORTA
+          o resultado (`("SUCESSO", ...)` / `("ERRO", ...)`). Com o `fill`
+          tolerante, uma falha ao escrever o código passaria batida, a ficha
+          seria salva sem o valor novo e a função devolveria SUCESSO -- pior
+          que um erro, porque ninguém confere.
+        - `fill_estrito` faz Ctrl+A + BACKSPACE + digitar; o original fazia
+          Ctrl+A + DELETE. Depois do Ctrl+A o conteúdo inteiro está
+          selecionado e as duas teclas apagam a seleção igualmente. O que o
+          comentário original defendia -- Ctrl+A no lugar do `.clear()`, não
+          confiável em textarea do OutSystems -- está preservado.
+
+        `processar_item_individual` NÃO foi migrado aqui: o fluxo por
+        TAB/`active_element` é o mais frágil do sistema e o plano reserva o
+        CP 5.4 para ele, com os seletores confirmados pelo usuário na tela
+        real.
+        """
         try:
             # 1. Garante que está na tela inicial da lista
-            self.driver.get('https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList')
+            self.engine.goto(config.PORTAL_URL)
             time.sleep(PAUSA_CARGA_LISTA)
 
-            # 2. Localiza a barra de pesquisa principal (usando contains para ignorar prefixos dinâmicos do OutSystems)
-            locator_pesquisa = (By.XPATH, "//input[contains(@id, 'InputDatasheetFilter')]")
-            campo_pesquisa = self.wait.until(EC.element_to_be_clickable(locator_pesquisa))
+            # 2. Localiza a barra de pesquisa principal (usando contains para
+            #    ignorar prefixos dinâmicos do OutSystems).
+            #
+            #    A limpeza agressiva (Ctrl+A + apagar) que o original fazia à
+            #    mão é exatamente a mecânica de `fill_estrito` -- por isso
+            #    limpar e digitar viraram uma chamada só.
+            self.engine.wait_clickable(XPATH_BUSCA_MASSA)
+            self.engine.fill_estrito(XPATH_BUSCA_MASSA, pmib)
+            self.engine.press("ENTER")
 
-            # Limpa o campo de forma mais agressiva (OutSystems às vezes ignora o .clear() simples)
-            campo_pesquisa.send_keys(Keys.CONTROL + "a")
-            campo_pesquisa.send_keys(Keys.DELETE)
+            # 3. Espera INTELIGENTE: aguarda até que uma linha da tabela
+            #    contenha o texto do PMIB pesquisado -- garante que a tabela
+            #    já filtrou antes de tentar clicar.
+            self.engine.wait_present(XPATH_LINHA_RESULTADO.format(pmib=pmib))
+
+            # Agora sim, procura o ícone de lápis DENTRO dessa linha
+            # específica e clica.
+            xpath_ficha = XPATH_LAPIS_MASSA.format(pmib=pmib)
+            self.engine.wait_clickable(xpath_ficha)
+            self.engine.click_raw(xpath_ficha)
+
+            # 4. Inserir o NOVO Código do Projeto.
+            # A espera do motor já cobre o carregamento da nova página e o
+            # campo ficar disponível -- não precisamos de sleep(4).
+            self.engine.wait_clickable(XPATH_CAMPO_PROJETO)
+
+            # Micro-pausa mantida porque o OutSystems tem uma animação de
+            # "deslizar" a tela que às vezes rouba o foco do clique.
             time.sleep(PAUSA_ANIMACAO)
+            self.engine.fill_estrito(XPATH_CAMPO_PROJETO, novo_codigo_projeto)
 
-            campo_pesquisa.send_keys(pmib)
-            campo_pesquisa.send_keys(Keys.ENTER)
-
-            # 3. Espera INTELIGENTE: Aguarda até que uma linha da tabela contenha o texto do PMIB pesquisado
-            # Isso garante que a tabela já filtrou os resultados antes de tentar clicar
-            locator_linha_resultado = (By.XPATH, f"//tr[contains(., '{pmib}')]")
-            self.wait.until(EC.presence_of_element_located(locator_linha_resultado))
-
-            # Agora sim, procura o ícone de lápis DENTRO dessa linha específica e clica
-            locator_ficha = (By.XPATH, f"//tr[contains(., '{pmib}')]//a[.//i[contains(@class, 'fa-pencil-square-o')]]")
-            self.wait.until(EC.element_to_be_clickable(locator_ficha)).click()
-
-            # 4. Inserir o NOVO Código do Projeto
-            # O próprio WebDriverWait já vai esperar a nova página carregar e o campo ficar disponível. Não precisamos de sleep(4).
-            locator_proj = (By.XPATH, '//*[@id="b10-b9-TextArea_ProjectCode"]')
-            campo_proj = self.wait.until(EC.element_to_be_clickable(locator_proj))
-
-            # Mantemos apenas essa micro-pausa de 0.5s porque o OutSystems tem
-            # uma animação de "deslizar" a tela que às vezes rouba o foco do clique
-            time.sleep(PAUSA_ANIMACAO)
-            campo_proj.click()
-
-            # Como o campo já tem texto, precisamos limpá-lo antes de digitar
-            # (O send_keys(Keys.CONTROL + "a") seguido de DELETE é mais robusto que o .clear() no Selenium em campos Textarea)
-            campo_proj.send_keys(Keys.CONTROL + "a")
-            campo_proj.send_keys(Keys.DELETE)
-            time.sleep(PAUSA_ANIMACAO)
-
-            campo_proj.send_keys(novo_codigo_projeto)
-
-            # 5. Clicar em Salvar (Mesmo XPath do salvar final da criação)
+            # 5. Clicar em Salvar (mesmo XPath do salvar final da criação)
             time.sleep(PAUSA_FOCO)
-            locator_salvar_2 = (By.XPATH, '//*[@id="b10-b9-Form1"]/div[6]/button[1]')
-            self.wait.until(EC.element_to_be_clickable(locator_salvar_2)).click()
+            self.engine.wait_clickable(XPATH_SALVAR_PROJETO)
+            self.engine.click_raw(XPATH_SALVAR_PROJETO)
 
-            # Aguarda a mensagem de sucesso ou salvamento processar (adapte se tiver um popup)
+            # Aguarda a mensagem de sucesso ou salvamento processar
             time.sleep(PAUSA_SALVAMENTO_FINAL)
             return "SUCESSO", "Salvo."
 

@@ -63,6 +63,19 @@ caminho de volta imediato se algo se comportar mal. Um valor com erro de
 digitação (`playwrigth`) faz o app parar com mensagem clara em vez de rodar o
 motor antigo em silêncio.
 
+O que já roda no motor novo:
+
+| Módulo | Estado |
+|---|---|
+| Apagar LMR | migrado, fluxo completo |
+| Cadastro LMR | migrado, fluxo completo |
+| Criar Fichas — atualizar projeto em massa | migrado |
+| Criar Fichas — criação de ficha individual | **só Selenium** (avisa e para se você forçar o motor novo) |
+| Condições, Características Técnicas, Ficha Duplicada | só Selenium |
+
+Nada disso foi validado contra o portal real ainda — é justamente o que a
+sessão de teste vai dizer.
+
 Um ganho prático do motor novo: ele usa um **perfil de navegador persistente**
 (em `%LOCALAPPDATA%\SIG-FT\perfil-navegador`), então o login manual no PMIB
 continua valendo na execução seguinte, em vez de recomeçar do zero toda vez.

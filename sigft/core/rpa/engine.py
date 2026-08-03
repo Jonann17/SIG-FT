@@ -178,6 +178,18 @@ class RPAEngine(ABC):
         que fazer a partir do resultado do clique."""
 
     @abstractmethod
+    def fill_estrito(self, seletor: str, texto: str) -> None:
+        """Igual a `fill` (limpa e preenche), mas PROPAGA a falha em vez de
+        engoli-la -- o mesmo par que `click`/`click_estrito` forma.
+
+        Necessário onde o chamador REPORTA o resultado:
+        `cria_fichas.atualizar_projeto_em_massa` devolve `("SUCESSO", ...)` /
+        `("ERRO", ...)`. Se o preenchimento falhasse em silêncio, a função
+        seguiria para o botão salvar, salvaria a ficha sem o novo código de
+        projeto e devolveria SUCESSO -- um resultado errado, e pior que um
+        erro, porque ninguém vai conferir."""
+
+    @abstractmethod
     def scroll_to(self, seletor: str) -> None:
         """Rola a página até o elemento ficar centralizado na viewport, sem
         clicar nem esperar por condição nenhuma."""

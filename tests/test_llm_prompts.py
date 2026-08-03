@@ -153,18 +153,50 @@ ARQUIVOS_MIGRADOS = [
 LIMITE_LINHAS = 15
 
 
+def _docstrings(arvore):
+    """Todos os nós `Constant` que são DOCSTRING (do módulo, de classe ou de
+    função) -- identificados pela posição: primeira instrução do corpo, e essa
+    instrução é uma expressão de string solta.
+
+    CP 5.2: docstrings são excluídas da checagem abaixo. Elas são
+    DOCUMENTAÇÃO, nunca prompt -- e o que o CP 3.5 quer garantir é que texto
+    de prompt more só em `prompts.py`. Sem essa distinção, o guarda pune
+    justamente o que se quer estimular: explicar bem uma decisão de migração
+    dentro do método que ela afeta."""
+    encontradas = set()
+    for node in ast.walk(arvore):
+        corpo = getattr(node, "body", None)
+        if not isinstance(corpo, list) or not corpo:
+            continue
+        if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        primeira = corpo[0]
+        if (
+            isinstance(primeira, ast.Expr)
+            and isinstance(primeira.value, ast.Constant)
+            and isinstance(primeira.value.value, str)
+        ):
+            encontradas.add(id(primeira.value))
+    return encontradas
+
+
 def _maior_literal_de_string_em_linhas(caminho):
     """Percorre a AST do arquivo e devolve o maior número de quebras de
     linha (`\n`) dentro de um único literal `str` (`ast.Constant`) --
     inclusive os pedaços de texto literal dentro de f-strings, que `ast`
     representa como `Constant`s aninhados em `JoinedStr.values` (visitados
-    normalmente por `ast.walk`)."""
+    normalmente por `ast.walk`).
+
+    Docstrings ficam de fora (ver `_docstrings`)."""
     with open(caminho, "r", encoding="utf-8") as f:
         arvore = ast.parse(f.read(), filename=caminho)
 
+    ignorar = _docstrings(arvore)
     maior = 0
     for node in ast.walk(arvore):
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if id(node) in ignorar:
+                continue
             n_linhas = node.value.count("\n")
             if n_linhas > maior:
                 maior = n_linhas

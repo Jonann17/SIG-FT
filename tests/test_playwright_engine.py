@@ -230,17 +230,16 @@ def test_clear_esvazia_o_campo():
     assert engine.page.acoes == [("fill", "xpath=//input", "")]
 
 
-def test_type_text_foca_e_digita_tecla_a_tecla_sem_limpar():
+def test_type_text_digita_tecla_a_tecla_sem_limpar_e_sem_clicar():
     # `press_sequentially` (e não `fill`) porque os campos OutSystems do PMIB
-    # reagem aos eventos de teclado -- é o equivalente do `send_keys`.
+    # reagem aos eventos de teclado -- é o equivalente do `send_keys`. E SEM
+    # `click()` antes: `press_sequentially` já foca sozinho, e um clique extra
+    # que o motor Selenium não dá poderia abrir dropdown no portal.
     engine = _engine()
 
     engine.type_text("//input", "4500063671.1234")
 
-    assert engine.page.acoes == [
-        ("click", "xpath=//input"),
-        ("type", "xpath=//input", "4500063671.1234"),
-    ]
+    assert engine.page.acoes == [("type", "xpath=//input", "4500063671.1234")]
 
 
 def test_type_text_converte_valor_nao_string():

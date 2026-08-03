@@ -244,9 +244,14 @@ class PlaywrightEngine(RPAEngine):
         versão Selenium, que aqui é o próprio `Locator.fill`. Engole a falha,
         igual à versão Selenium."""
         try:
-            self._executar(lambda: self._loc(seletor).fill(str(texto)))
+            self.fill_estrito(seletor, texto)
         except Exception:
             pass
+
+    def fill_estrito(self, seletor: str, texto: str) -> None:
+        """`fill` sem engolir a falha -- ver `engine.py` para por que as duas
+        variantes precisam coexistir."""
+        self._executar(lambda: self._loc(seletor).fill(str(texto)))
 
     def clear(self, seletor: str) -> None:
         self._executar(lambda: self._loc(seletor).fill(""))
@@ -256,15 +261,17 @@ class PlaywrightEngine(RPAEngine):
 
         `press_sequentially` emite os eventos de teclado tecla a tecla, que é
         o que o `send_keys` do Selenium faz -- e o que os campos do
-        OutSystems no PMIB precisam para disparar a busca. Um `fill` aqui
-        seria um atalho que troca o comportamento.
-        """
-        def _acao():
-            alvo = self._loc(seletor)
-            alvo.click()  # garante o foco, como o send_keys do Selenium
-            alvo.press_sequentially(str(texto))
+        OutSystems no PMIB precisam para disparar a busca/autocomplete. Um
+        `fill` aqui seria um atalho que troca o comportamento.
 
-        self._executar(_acao)
+        Não há `click()` antes: `press_sequentially` já foca o elemento por
+        conta própria, então clicar seria uma interação A MAIS que o motor
+        Selenium não faz -- e num portal cheio de dropdown, um clique extra
+        não é neutro. É também o que deixa o `press("ENTER")` seguinte
+        chegar no campo certo nos dois motores, pelo mesmo caminho: quem
+        digitou por último está com o foco.
+        """
+        self._executar(lambda: self._loc(seletor).press_sequentially(str(texto)))
 
     def press(self, teclas: str | list[str]) -> None:
         """Envia tecla(s) ao elemento com foco -- sem seletor, igual ao

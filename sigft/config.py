@@ -560,9 +560,16 @@ RPA_ENGINE_PADRAO = ENGINE_SELENIUM
 # Chave = nome do módulo em `sigft/services/`. Trocar para ENGINE_PLAYWRIGHT
 # depois que o módulo for validado com o usuário no portal real.
 RPA_ENGINE: dict[str, str] = {
-    "apagar_lmr": ENGINE_SELENIUM,      # piloto do CP 5.1
-    "lmr": ENGINE_SELENIUM,             # CP 5.2
-    "cria_fichas": ENGINE_SELENIUM,     # CP 5.2 / 5.4
+    # Migrados (código pronto, aguardando a sessão de validação com o usuário):
+    "apagar_lmr": ENGINE_SELENIUM,      # piloto do CP 5.1 -- fluxo completo
+    "lmr": ENGINE_SELENIUM,             # CP 5.2 -- fluxo completo
+    # PARCIAL: `atualizar_projeto_em_massa` roda nos dois motores (CP 5.2), mas
+    # `processar_item_individual` (fluxo por TAB/active_element) ainda é só
+    # Selenium -- é o CP 5.4. Com o motor Playwright, esse fluxo falha com uma
+    # mensagem explícita em vez de erro obscuro. Por isso este módulo NÃO deve
+    # ser promovido a "playwright" antes do CP 5.4.
+    "cria_fichas": ENGINE_SELENIUM,
+    # Ainda não migrados:
     "upload_conditions": ENGINE_SELENIUM,  # CP 5.3
     "tech_specs": ENGINE_SELENIUM,      # CP 5.3
     "ficha_duplicada": ENGINE_SELENIUM,  # Fase 6 (reconstruído já em Playwright)

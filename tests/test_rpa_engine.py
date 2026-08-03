@@ -36,6 +36,7 @@ METODOS_CP_2_1 = (
 
 METODOS_CP_5_1 = (
     "click_estrito",
+    "fill_estrito",
     "scroll_to",
     "click_raw",
     "wait_present",
@@ -84,6 +85,7 @@ def _implementacoes_completas():
         "set_download_dir": lambda self, caminho: None,
         # CP 5.1
         "click_estrito": lambda self, seletor: None,
+        "fill_estrito": lambda self, seletor, texto: None,
         "scroll_to": lambda self, seletor: None,
         "click_raw": lambda self, seletor: None,
         "wait_present": lambda self, seletor: None,

@@ -293,6 +293,28 @@ class SeleniumEngine(RPAEngine):
             self.wait.until(EC.element_to_be_clickable(locator))
             self.driver.execute_script("arguments[0].click();", el)
 
+    def fill_estrito(self, seletor: str, texto: str) -> None:
+        """Mesma mecânica de `fill` (scroll + Ctrl+A + Backspace + digitar),
+        propagando a falha traduzida.
+
+        `cria_fichas.atualizar_projeto_em_massa` limpava com
+        `Keys.CONTROL + "a"` seguido de `Keys.DELETE`; aqui a limpeza é a
+        canônica do projeto (Ctrl+A + BACKSPACE). Depois do Ctrl+A o texto
+        inteiro está selecionado, e as duas teclas apagam a seleção
+        igualmente -- o que o comentário original defendia era o Ctrl+A no
+        lugar do `.clear()` (não confiável em textarea do OutSystems), e isso
+        está preservado."""
+        locator = (By.XPATH, seletor)
+        with _traduzindo():
+            el = self.wait.until(EC.presence_of_element_located(locator))
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+            time.sleep(0.5)
+            self.wait.until(EC.visibility_of_element_located(locator))
+            self.driver.execute_script("arguments[0].click();", el)
+            el.send_keys(Keys.CONTROL, "a")
+            el.send_keys(Keys.BACKSPACE)
+            el.send_keys(str(texto))
+
     def scroll_to(self, seletor: str) -> None:
         with _traduzindo():
             el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))

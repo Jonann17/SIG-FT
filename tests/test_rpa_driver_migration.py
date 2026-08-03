@@ -31,6 +31,7 @@ função Python pura, então roda igual com ou sem o pacote `selenium`
 instalado (aqui, stubado via tests/conftest.py).
 """
 import os
+import pytest
 from unittest.mock import patch
 
 import apagar_lmr_backend
@@ -75,41 +76,76 @@ def test_apagar_lmr_iniciar_driver_pede_o_engine_do_modulo_com_timeout_20():
     assert retorno is engine_sentinel
 
 
-def test_lmr_iniciar_driver_usa_create_chrome_driver_timeout_20():
+def test_lmr_iniciar_driver_pede_o_engine_do_modulo_com_timeout_20():
+    """CP 5.2: `lmr` migrado para a fábrica de motor. O timeout de 20s
+    ORIGINAL da classe continua atravessando intacto."""
     chamadas = []
-    driver_sentinel, wait_sentinel = object(), object()
+    engine_sentinel = object()
+
+    def _fake_criar_engine(modulo, *, wait_timeout=20, download_dir=None):
+        chamadas.append({"modulo": modulo, "wait_timeout": wait_timeout, "download_dir": download_dir})
+        return engine_sentinel
+
     auto = lmr_backend.LMRAutomation()
 
-    with patch.object(
-        lmr_backend, "create_chrome_driver",
-        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
-    ):
+    with patch.object(lmr_backend, "criar_engine", _fake_criar_engine):
         retorno = auto.iniciar_driver()
 
-    assert chamadas == [{"wait_timeout": 20, "download_dir": None}]
-    assert auto.driver is driver_sentinel
-    assert auto.wait is wait_sentinel
-    assert retorno is driver_sentinel
+    assert chamadas == [{"modulo": "lmr", "wait_timeout": 20, "download_dir": None}]
+    assert auto.engine is engine_sentinel
+    assert retorno is engine_sentinel
 
 
-def test_cria_fichas_automacao_pmib_iniciar_driver_usa_create_chrome_driver_timeout_10():
-    # O único dos 6 pontos originais com wait_timeout=10 (os outros 5 usam
-    # 15 ou 20) -- classe real é `AutomacaoPMIB` (o prompt do checkpoint
-    # sinalizava "DataManager?" com incerteza; confirmado lendo o arquivo).
+def test_cria_fichas_automacao_pmib_iniciar_driver_pede_o_engine_do_modulo_com_timeout_10():
+    """CP 5.2: `cria_fichas` migrado para a fábrica. Timeout de 10s (o único
+    dos 6 pontos originais com esse valor) preservado."""
     chamadas = []
-    driver_sentinel, wait_sentinel = object(), object()
+
+    class _EngineSelenium:
+        driver = object()
+        wait = object()
+
+    engine = _EngineSelenium()
+
+    def _fake_criar_engine(modulo, *, wait_timeout=20, download_dir=None):
+        chamadas.append({"modulo": modulo, "wait_timeout": wait_timeout, "download_dir": download_dir})
+        return engine
+
     auto = cria_fichas_no_pmib_v1_backend.AutomacaoPMIB()
 
-    with patch.object(
-        cria_fichas_no_pmib_v1_backend, "create_chrome_driver",
-        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
-    ):
+    with patch.object(cria_fichas_no_pmib_v1_backend, "criar_engine", _fake_criar_engine):
         retorno = auto.iniciar_driver()
 
-    assert chamadas == [{"wait_timeout": 10, "download_dir": None}]
-    assert auto.driver is driver_sentinel
-    assert auto.wait is wait_sentinel
-    assert retorno is driver_sentinel
+    assert chamadas == [{"modulo": "cria_fichas", "wait_timeout": 10, "download_dir": None}]
+    assert auto.engine is engine
+    assert retorno is engine
+    # `processar_item_individual` (CP 5.4) ainda depende destes -- ficam
+    # expostos enquanto o motor for o Selenium.
+    assert auto.driver is engine.driver
+    assert auto.wait is engine.wait
+
+
+def test_cria_fichas_com_motor_sem_driver_avisa_em_vez_de_estourar_obscuro():
+    """Guarda do CP 5.2: rodando em Playwright, o fluxo de criação individual
+    (que é o CP 5.4) explica o que fazer em vez de deixar um
+    `AttributeError: 'NoneType' object has no attribute ...` aparecer no meio
+    da criação de uma ficha real."""
+    class _EnginePlaywright:
+        pass  # sem `driver`/`wait` -- é o ponto
+
+    auto = cria_fichas_no_pmib_v1_backend.AutomacaoPMIB()
+
+    with patch.object(cria_fichas_no_pmib_v1_backend, "criar_engine", lambda *a, **k: _EnginePlaywright()):
+        auto.iniciar_driver()
+
+    assert auto.driver is None
+
+    with pytest.raises(RuntimeError) as capturado:
+        auto.processar_item_individual({})
+
+    mensagem = str(capturado.value)
+    assert "CP 5.4" in mensagem
+    assert "SIGFT_RPA_ENGINE=selenium" in mensagem
 
 
 def test_upload_conditions_iniciar_usa_create_chrome_driver_timeout_20():

@@ -1,12 +1,6 @@
 import pandas as pd
 import time
 import os
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.action_chains import ActionChains
 
 # CP 1.4 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 1): protocolo único
 # UI<->serviço. `processar_lista` aceita o novo parâmetro `callbacks`
@@ -26,7 +20,10 @@ from sigft.core.relatorio_lote import RelatorioLote
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em `iniciar_driver`
 # abaixo.
-from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
+# CP 5.2 (Fase 5): `lmr` migrado para o motor escolhido por
+# `config.RPA_ENGINE["lmr"]` -- o `selenium` sumiu dos imports deste arquivo.
+# Ver `core/rpa/factory.py` e a nota do CP 5.1 em `apagar_lmr.py`.
+from sigft.core.rpa.factory import criar_engine
 # CP 2.2 (Fase 2): EXCEÇÃO AUTORIZADA pelo plano -- o fluxo de 24 TABs cegos
 # de `processar_lista` (ver abaixo) é substituído por uma chamada a
 # `PMIBPortal.pesquisar_e_abrir` (mesmo alvo final: abrir a ficha em modo de
@@ -40,6 +37,7 @@ from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
 # nomeadas (`PAUSA_ANIMACAO`, `PAUSA_SALVAMENTO`, `PAUSA_ABERTURA_ABA`,
 # `PAUSA_RETORNO_LISTA` x2) -- nenhum eliminado.
 from sigft.core.rpa.portal import (
+    PAUSA_ANIMACAO as PAUSA_TAB_ANTES_DO_ENTER,  # ver comentário no uso, em _processar_ficha_lmr_interna
     PMIBPortal,
     PAUSA_ABERTURA_ABA,
     PAUSA_ANIMACAO,
@@ -51,10 +49,28 @@ from sigft.core.rpa.portal import (
 # =============================================================================
 # CLASSE DE AUTOMAÇÃO LMR (BACKEND)
 # =============================================================================
+# CP 5.2 (Fase 5) — seletores XPath do formulário de LMR.
+#
+# Eram literais repetidos no meio do fluxo. Extraí-los é pré-requisito da
+# migração: as primitivas de `RPAEngine` recebem SELETOR (string XPath), não um
+# elemento já localizado, então cada XPath passa a aparecer 2x no código
+# (esperar/agir). Com o literal solto, isso viraria duplicação convidando a
+# divergência -- o problema nº 1 do diagnóstico. Valores idênticos aos de
+# antes, verbatim.
+# =============================================================================
+XPATH_CAMPO_CODIGO = '//*[@id="b10-b19-Input_EquipmentCode"]'
+XPATH_CAMPO_QUANTIDADE = '//*[@id="b10-b19-Input_QuantityInstalled"]'
+XPATH_CAMPO_TAG = '//*[@id="b10-b19-Input_Tag"]'
+XPATH_BOTAO_SALVAR = '//*[@id="b10-b19-Form"]/div[2]/button[1]'
+XPATH_BOTAO_CONFIRMAR = '//*[@id="b10-b19-b22-b1-Footer"]/div/button[1]'
+XPATH_ABA_LMR = '//*[@id="b10-ApplicationMRL"]/button'
+XPATH_VOLTAR = '//*[@id="b9-Content"]'
+
+
+# =============================================================================
 class LMRAutomation:
     def __init__(self):
-        self.driver = None
-        self.wait = None
+        self.engine = None
         self.portal = None
         self.url_inicial = 'https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList'
 
@@ -67,22 +83,26 @@ class LMRAutomation:
         antes (20s).
 
         CP 2.2: logo em seguida, `self.portal` passa a existir (`PMIBPortal`
-        sobre um `SeleniumEngine` construído com o MESMO `driver`/`wait`) --
-        `processar_lista` abaixo passa a chamar `self.portal.
-        pesquisar_e_abrir` no lugar do fluxo de 24 TABs cegos.
+        sobre o engine) -- `processar_lista` abaixo passa a chamar
+        `self.portal.pesquisar_e_abrir` no lugar do fluxo de 24 TABs cegos.
+
+        CP 5.2: quem escolhe o motor agora é `criar_engine`, por
+        `config.RPA_ENGINE["lmr"]`. Timeout de 20s preservado nos dois
+        motores. Devolve o ENGINE (não um driver Selenium) -- `frontend.py`
+        não usa o valor de retorno.
         """
-        self.driver, self.wait = create_chrome_driver(wait_timeout=20)
-        self.portal = PMIBPortal(SeleniumEngine(self.driver, self.wait))
-        return self.driver
+        self.engine = criar_engine("lmr", wait_timeout=20)
+        self.portal = PMIBPortal(self.engine)
+        return self.engine
 
     def fechar_driver(self):
-        if self.driver:
-            self.driver.quit()
+        if self.engine:
+            self.engine.fechar()
 
     def abrir_portal(self, url=None):
         target = url if url else self.url_inicial
-        if self.driver:
-            self.driver.get(target)
+        if self.engine:
+            self.engine.goto(target)
 
     # --- MÉTODOS DE DADOS ---
     def carregar_dados_excel(self, caminho_excel):
@@ -198,26 +218,44 @@ class LMRAutomation:
                 callbacks.log(f"Processando Cód {codigo_pmib_item} com {quantidade} TAG(s)")
 
                 # Preenche campos
-                campo_codigo = self.wait.until(EC.presence_of_element_located((By.XPATH, '//*[@id="b10-b19-Input_EquipmentCode"]')))
-                campo_codigo.clear()
-                campo_codigo.send_keys(codigo_pmib_item)
+                #
+                # CP 5.2: `clear()` + `send_keys()` de cada campo viraram
+                # `engine.clear` + `engine.type_text` -- mesmos seletores,
+                # mesma ordem, mesmo par limpar-depois-digitar. Dois desvios
+                # deliberados, ambos no sentido de MAIS tolerância (registrados
+                # em docs/refatoracao/PENDENCIAS.md):
+                #   - quantidade e TAG usavam `driver.find_element`, que não
+                #     espera nada e estoura na hora se o campo ainda não
+                #     renderizou; as primitivas esperam até o timeout do motor.
+                #     Como o `except Exception` deste laço trata qualquer falha
+                #     igual, o efeito é só deixar de perder uma ficha por causa
+                #     de meio segundo de renderização.
+                #   - os cliques de salvar/confirmar eram nativos e passam a ser
+                #     via JS (mecânica canônica do projeto).
+                self.engine.clear(XPATH_CAMPO_CODIGO)
+                self.engine.type_text(XPATH_CAMPO_CODIGO, codigo_pmib_item)
 
-                campo_quantidade = self.driver.find_element(By.XPATH, '//*[@id="b10-b19-Input_QuantityInstalled"]')
-                campo_quantidade.clear()
-                campo_quantidade.send_keys(str(quantidade))
+                self.engine.clear(XPATH_CAMPO_QUANTIDADE)
+                self.engine.type_text(XPATH_CAMPO_QUANTIDADE, str(quantidade))
 
                 # Insere todas as TAGs com TAB + ENTER após cada uma
                 for tag_pmib in grupo_tags:
-                    campo_tag = self.driver.find_element(By.XPATH, '//*[@id="b10-b19-Input_Tag"]')
-                    campo_tag.clear()
-                    campo_tag.send_keys(tag_pmib)
-                    actions = ActionChains(self.driver)
-                    actions.send_keys(Keys.TAB).pause(0.5).send_keys(Keys.ENTER).perform()
+                    self.engine.clear(XPATH_CAMPO_TAG)
+                    self.engine.type_text(XPATH_CAMPO_TAG, tag_pmib)
+                    # Era `ActionChains(...).send_keys(TAB).pause(0.5).
+                    # send_keys(ENTER).perform()`: o `.pause(0.5)` dava tempo do
+                    # autocomplete do OutSystems reagir ao TAB antes do ENTER.
+                    # Vira TAB + sleep + ENTER, com a pausa VISÍVEL aqui, no
+                    # consumidor, em vez de escondida dentro da cadeia.
+                    self.engine.press("TAB")
+                    time.sleep(PAUSA_TAB_ANTES_DO_ENTER)
+                    self.engine.press("ENTER")
                     time.sleep(PAUSA_ANIMACAO)
 
                 # Salvar e confirmar
-                self.driver.find_element(By.XPATH, '//*[@id="b10-b19-Form"]/div[2]/button[1]').click()
-                self.wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="b10-b19-b22-b1-Footer"]/div/button[1]'))).click()
+                self.engine.click_raw(XPATH_BOTAO_SALVAR)
+                self.engine.wait_clickable(XPATH_BOTAO_CONFIRMAR)
+                self.engine.click_raw(XPATH_BOTAO_CONFIRMAR)
                 time.sleep(PAUSA_SALVAMENTO)
 
                 processados_ok.append(codigo_pmib_item)
@@ -343,8 +381,8 @@ class LMRAutomation:
 
                 # 4.3. Clicar na aba "Aplicação - LMR"
                 callbacks.log("Abrindo aba LMR...")
-                locator_aba_lmr = (By.XPATH, '//*[@id="b10-ApplicationMRL"]/button')
-                self.wait.until(EC.element_to_be_clickable(locator_aba_lmr)).click()
+                self.engine.wait_clickable(XPATH_ABA_LMR)
+                self.engine.click_raw(XPATH_ABA_LMR)
                 time.sleep(PAUSA_ABERTURA_ABA)
 
                 # 4.4. Filtrar DataFrame
@@ -360,8 +398,9 @@ class LMRAutomation:
                 # 4.6. Voltar
                 callbacks.log("Voltando para lista...")
                 time.sleep(PAUSA_RETORNO_LISTA)
-                locator_voltar = (By.XPATH, '//*[@id="b9-Content"]')  # Botão de voltar do breadcrumb ou similar
-                self.wait.until(EC.element_to_be_clickable(locator_voltar)).click()
+                # Botão de voltar do breadcrumb ou similar
+                self.engine.wait_clickable(XPATH_VOLTAR)
+                self.engine.click_raw(XPATH_VOLTAR)
                 time.sleep(PAUSA_RETORNO_LISTA)
 
                 # CP 4.4: a ficha CONCLUIU o fluxo. Se algum item interno
@@ -391,7 +430,7 @@ class LMRAutomation:
                 )
 
                 try:
-                    self.driver.get(self.url_inicial)
+                    self.engine.goto(self.url_inicial)
                 except Exception:
                     break
 

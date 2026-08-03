@@ -708,8 +708,8 @@ class PMIBPortal:
         # elemento, o `press` do contrato é no elemento COM FOCO. Dá no mesmo
         # aqui porque o `type_text` imediatamente anterior deixa o foco no
         # campo de busca -- é o que ambos os motores garantem (Selenium pelo
-        # próprio `send_keys`, Playwright pelo `click()` que abre o
-        # `type_text`).
+        # próprio `send_keys`, Playwright pelo `press_sequentially`, que foca
+        # o elemento antes de digitar).
         if ir_para_lista:
             self.ir_para_lista()
 

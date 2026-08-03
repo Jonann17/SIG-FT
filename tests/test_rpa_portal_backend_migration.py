@@ -102,6 +102,25 @@ class _PortalEspiao:
 #    de criação já migrados no CP 2.1 (mesmos 6 de
 #    tests/test_rpa_driver_migration.py).
 # ===========================================================================
+class _EngineFalso:
+    """CP 5.2: substitui o par `_FakeDriverComGet`/`_WaitQueLevantaAoUsar`.
+    `goto` registra a URL (é como o serviço volta para a home depois de um
+    ERRO FATAL); qualquer outra primitiva levanta `erro`, o que faz o fluxo
+    parar no ponto observado por cada teste."""
+
+    def __init__(self, erro=None):
+        self.urls = []
+        self._erro = erro or RuntimeError("engine falso: primitiva não configurada")
+
+    def goto(self, url):
+        self.urls.append(url)
+
+    def __getattr__(self, nome):
+        def _levanta(*_a, **_kw):
+            raise self._erro
+        return _levanta
+
+
 def test_apagar_lmr_iniciar_driver_resolve_portal_sobre_o_engine_da_fabrica():
     """CP 5.1: o piloto da Fase 5 monta o `PMIBPortal` sobre o motor que a
     fábrica devolver -- Selenium ou Playwright, conforme `config.RPA_ENGINE`.
@@ -117,38 +136,29 @@ def test_apagar_lmr_iniciar_driver_resolve_portal_sobre_o_engine_da_fabrica():
     assert auto.portal.engine is engine_sentinel
 
 
-def test_lmr_iniciar_driver_resolve_portal_sobre_o_mesmo_driver_wait():
-    chamadas = []
-    driver_sentinel, wait_sentinel = object(), object()
+def test_lmr_iniciar_driver_resolve_portal_sobre_o_engine_da_fabrica():
+    """CP 5.2: `lmr` migrado -- pede o motor a `criar_engine("lmr")` e monta o
+    portal sobre ele, sem construir um segundo browser por baixo."""
+    engine_sentinel = object()
     auto = lmr_backend.LMRAutomation()
 
-    with patch.object(
-        lmr_backend, "create_chrome_driver",
-        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
-    ):
+    with patch.object(lmr_backend, "criar_engine", lambda *a, **k: engine_sentinel):
         auto.iniciar_driver()
 
     assert isinstance(auto.portal, PMIBPortal)
-    assert isinstance(auto.portal.engine, SeleniumEngine)
-    assert auto.portal.engine.driver is driver_sentinel
-    assert auto.portal.engine.wait is wait_sentinel
+    assert auto.portal.engine is engine_sentinel
 
 
 def test_cria_fichas_automacao_pmib_iniciar_driver_resolve_portal():
-    chamadas = []
-    driver_sentinel, wait_sentinel = object(), object()
+    """CP 5.2: o portal é montado sobre o motor que a fábrica devolver."""
+    engine_sentinel = object()
     auto = cria_fichas_no_pmib_v1_backend.AutomacaoPMIB()
 
-    with patch.object(
-        cria_fichas_no_pmib_v1_backend, "create_chrome_driver",
-        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
-    ):
+    with patch.object(cria_fichas_no_pmib_v1_backend, "criar_engine", lambda *a, **k: engine_sentinel):
         auto.iniciar_driver()
 
     assert isinstance(auto.portal, PMIBPortal)
-    assert isinstance(auto.portal.engine, SeleniumEngine)
-    assert auto.portal.engine.driver is driver_sentinel
-    assert auto.portal.engine.wait is wait_sentinel
+    assert auto.portal.engine is engine_sentinel
 
 
 def test_upload_conditions_iniciar_anexa_engine_a_portal_ja_existente_desde_init():
@@ -459,11 +469,13 @@ class _FakeDriverComGet:
 
 
 def test_lmr_processar_lista_chama_pesquisar_e_abrir_com_defaults():
+    # CP 5.2: `self.driver`/`self.wait` deram lugar a `self.engine`. O engine
+    # falso abaixo levanta em QUALQUER primitiva de interação -- assim o fluxo
+    # para logo depois da pesquisa, que é o que este teste observa.
     auto = lmr_backend.LMRAutomation()
-    espiao = _PortalEspiao(pesquisar_e_abrir_retorno=False)  # força o caminho de falha (curto, sem Selenium)
+    espiao = _PortalEspiao(pesquisar_e_abrir_retorno=False)
     auto.portal = espiao
-    auto.driver = _FakeDriverComGet()
-    auto.wait = _DriverQueNuncaEChamado()
+    auto.engine = _EngineFalso()
 
     logs = []
     perguntas = []
@@ -473,29 +485,23 @@ def test_lmr_processar_lista_chama_pesquisar_e_abrir_com_defaults():
 
     assert espiao.pesquisar_e_abrir_chamadas == [("4500063671.1111", {})]  # sem overrides -- defaults
     # Caminho de falha: RuntimeError interno -> "ERRO FATAL" -> ask -> tenta
-    # recarregar home (driver.get), sem tocar self.wait em nenhum momento.
+    # recarregar a home pelo engine.
     assert any("ERRO FATAL" in msg for msg in logs)
     assert len(perguntas) == 1
-    assert auto.driver.get_chamadas == [auto.url_inicial]
+    assert auto.engine.urls == [auto.url_inicial]
 
 
 def test_lmr_processar_lista_sucesso_nao_levanta_erro_fatal():
-    # Sucesso na pesquisa: o próximo passo real (clicar aba LMR) TOCA
-    # self.wait -- aqui verificamos só que a falha NÃO é reportada quando
-    # pesquisar_e_abrir tem sucesso (o clique da aba LMR abaixo é permitido
-    # falhar com uma exceção de teste simples, cai no MESMO except
-    # genérico -- não é o foco deste teste, só confirma que o RuntimeError
-    # sintético do CP 2.2 não é levantado indevidamente em caso de sucesso).
+    # Sucesso na pesquisa: o próximo passo real (clicar na aba LMR) usa o
+    # engine -- aqui verificamos só que a falha NÃO é reportada quando
+    # pesquisar_e_abrir tem sucesso (o clique da aba pode falhar com uma
+    # exceção sintética, que cai no MESMO except genérico -- não é o foco
+    # deste teste, só confirma que o RuntimeError do CP 2.2 não é levantado
+    # indevidamente em caso de sucesso).
     auto = lmr_backend.LMRAutomation()
     espiao = _PortalEspiao(pesquisar_e_abrir_retorno=True)
     auto.portal = espiao
-    auto.driver = _FakeDriverComGet()
-
-    class _WaitQueLevantaAoUsar:
-        def until(self, *_a, **_kw):
-            raise RuntimeError("aba LMR não encontrada (esperado neste teste sintético)")
-
-    auto.wait = _WaitQueLevantaAoUsar()
+    auto.engine = _EngineFalso(erro=RuntimeError("aba LMR não encontrada (esperado neste teste sintético)"))
 
     logs = []
     callbacks = UICallbacks(log=logs.append, ask=lambda *a, **k: True)
