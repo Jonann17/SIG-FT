@@ -1,0 +1,32 @@
+# Argumentos extras do pip para rede corporativa (Zscaler, proxy, indice interno).
+#
+# COMO USAR
+#   1. copie este arquivo para  pip_corporativo.txt  (sem o ".exemplo")
+#   2. deixe UMA linha nao-comentada com os argumentos
+#   3. rode SIG-FT.bat de novo
+#
+# O arquivo pip_corporativo.txt e ignorado pelo git: e configuracao da SUA
+# maquina, nao do projeto. Linhas iniciadas por "#" sao comentario; vale a
+# primeira linha nao-comentada. A variavel de ambiente SIGFT_PIP_ARGS, se
+# existir, tem prioridade sobre este arquivo.
+#
+# ---------------------------------------------------------------------------
+# PADRAO usado quando este arquivo nao existe (funciona na maioria dos casos):
+#
+# --isolated --index-url https://pypi.org/simple --trusted-host pypi.org --trusted-host files.pythonhosted.org
+#
+# ---------------------------------------------------------------------------
+# EXEMPLOS
+#
+# a) Zscaler quebrando o SSL do PyPI publico -- confia nos hosts do PyPI:
+# --isolated --index-url https://pypi.org/simple --trusted-host pypi.org --trusted-host files.pythonhosted.org
+#
+# b) O certificado raiz da empresa exportado em .pem (opcao mais correta que
+#    --trusted-host, porque mantem a verificacao ligada):
+# --isolated --cert C:\certs\zscaler-root.pem --index-url https://pypi.org/simple
+#
+# c) Indice interno da empresa (Artifactory, Nexus e afins):
+# --isolated --index-url https://artifactory.empresa.com/api/pypi/pypi/simple --trusted-host artifactory.empresa.com
+#
+# d) Proxy autenticado:
+# --isolated --proxy http://usuario:senha@proxy.empresa:8080 --index-url https://pypi.org/simple

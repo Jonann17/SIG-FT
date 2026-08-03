@@ -1,0 +1,8 @@
+# Scripts de linha de comando do Windows precisam de CRLF: o `cmd.exe` lê o
+# .bat linha a linha durante a execução e, com terminador só LF, blocos entre
+# parênteses e `goto :label` podem se comportar de forma imprevisível.
+#
+# `text eol=crlf` guarda o arquivo com LF no repositório (diffs limpos) e
+# entrega CRLF tanto no checkout quanto no `git archive` — que é o que o botão
+# "Download ZIP" do GitHub usa. Verificado: o ZIP sai com CRLF.
+*.bat text eol=crlf

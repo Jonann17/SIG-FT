@@ -21,3 +21,12 @@ requests
 python-dotenv
 unidecode
 deep-translator
+
+# Rede corporativa (Zscaler e afins)
+# Faz o Python usar o repositório de certificados do WINDOWS em vez do bundle
+# fixo do `certifi`. Sem isso, em rede com inspeção SSL toda chamada HTTPS do
+# app (Gemini, OpenRouter, Google CSE) falha com CERTIFICATE_VERIFY_FAILED,
+# porque o certificado raiz do proxy corporativo não está no `certifi`.
+# Fora de rede corporativa é inofensivo (o repositório do Windows já traz as
+# mesmas raízes públicas). Ver README.md, seção "Rede corporativa (Zscaler)".
+pip-system-certs; sys_platform == "win32"
