@@ -47,6 +47,13 @@ from sigft.core.rpa.portal import (
 # `TechSpecsProcessor._chamar_gemini_specs` abaixo delega para `LLMClient`/
 # `GeminiProvider` (ÚNICO lugar do projeto que importa `genai`).
 from sigft.core.llm.client import get_llm
+# CP 4.4 (Fase 4): `processar_lista` (o lote de RPA) emite o padrão único de
+# log. Forma DIRETA, somando ao que já existia -- este módulo é um dos que o
+# diagnóstico do plano cita como "loga bem", então as mensagens por etapa
+# foram todas PRESERVADAS; o ganho aqui é início, resumo e o aviso de
+# pendências virando causa→consequência formal.
+from sigft.core.callbacks import from_legacy
+from sigft.core.relatorio_lote import RelatorioLote
 # CP 3.5 (Fase 3): o TEXTO do `system_instruction`/`prompt_user` de
 # `_chamar_gemini_specs` abaixo mora em `sigft.core.llm.prompts`
 # (`SYSTEM_TECH_SPECS`/`montar_tech_specs_user`).
@@ -434,6 +441,16 @@ class TechSpecsAutomation:
     def processar_lista(self, lista_fichas, callback_log=None, callback_pause=None):
         pmibs_finalizados = []  # <--- NOVO: Lista para tracking
 
+        # CP 4.4: `from_legacy` adapta o `callback_log` antigo sem mudar a
+        # assinatura pública (o controller segue chamando igual).
+        lote = RelatorioLote(
+            from_legacy(callback_log=callback_log),
+            titulo="Características Técnicas — preenchendo no portal",
+            total=len(lista_fichas),
+            contexto={"fichas": len(lista_fichas)},
+        )
+        lote.iniciar()
+
         for item in lista_fichas:
             # --- VERIFICAÇÃO DE PARADA ---
             if self.portal.deve_parar():
@@ -555,12 +572,22 @@ class TechSpecsAutomation:
                 if callback_pause:
                     callback_pause(pmib)
 
+                if pendencias_manuais:
+                    lote.aviso(
+                        pmib,
+                        f"{len(pendencias_manuais)} campo(s) rejeitado(s) pela digitação do site",
+                        "preencher MANUALMENTE antes de salvar (listados acima)",
+                    )
+
                 if callback_log: callback_log(f"Fim {pmib}.")
                 pmibs_finalizados.append(pmib)  # <--- NOVO: Adiciona a ficha na lista de sucesso
+                lote.sucesso(pmib)
 
             except Exception as e:
                 if callback_log: callback_log(f"Erro geral {pmib}: {e}")
+                lote.falha(pmib, f"{type(e).__name__}: {e}")
 
+        lote.finalizar()
         return pmibs_finalizados  # <--- NOVO: Devolve a lista de sucesso para o Controller
 
     def _excluir_linha_segura(self, row, chave_limpa, callback_log=None):

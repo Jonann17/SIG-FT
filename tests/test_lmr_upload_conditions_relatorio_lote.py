@@ -164,3 +164,55 @@ def test_upload_conditions_sucesso_conta_no_resumo():
     assert "1 sucesso(s)" in texto
     assert "✅ 4500063671.0001" in texto
     assert any("Sucesso API" in linha for linha in logs)
+
+
+# =============================================================================
+# tech_specs.processar_lista (lote de RPA)
+# =============================================================================
+
+def _automacao_tech_specs():
+    from sigft.services import tech_specs as ts
+
+    auto = ts.TechSpecsAutomation.__new__(ts.TechSpecsAutomation)
+    auto.driver = None
+    auto.wait = None
+    auto.portal = ts.PMIBPortal()  # sem engine: `deve_parar()` funciona, o resto estoura
+    return auto
+
+
+def test_tech_specs_emite_inicio_e_resumo_com_falhas_listadas():
+    # Sem driver, a 1ª interação de cada ficha estoura -- é o caminho de
+    # "Erro geral {pmib}" do serviço, que NÃO aborta o lote.
+    logs = []
+    auto = _automacao_tech_specs()
+
+    finalizados = auto.processar_lista(
+        [
+            {"METADATA": {"PMIB": "4500063671.0001"}, "DADOS_TRATADOS": []},
+            {"METADATA": {"PMIB": "4500063671.0002"}, "DADOS_TRATADOS": []},
+        ],
+        callback_log=logs.append,
+    )
+
+    texto = "\n".join(logs)
+    assert finalizados == []  # nenhuma concluiu
+    assert "Características Técnicas — preenchendo no portal" in texto
+    assert "2 item(ns)" in texto
+    assert "❌ 4500063671.0001" in texto
+    assert "❌ 4500063671.0002" in texto, "uma ficha com erro não aborta as seguintes"
+    assert "2 falha(s)" in texto
+    assert "Falhas:" in texto
+    # Mensagens específicas que já existiam continuam saindo.
+    assert any("Iniciando 4500063671.0001" in linha for linha in logs)
+    assert any("Erro geral" in linha for linha in logs)
+
+
+def test_tech_specs_lista_vazia_ainda_emite_inicio_e_resumo():
+    logs = []
+    auto = _automacao_tech_specs()
+
+    assert auto.processar_lista([], callback_log=logs.append) == []
+
+    texto = "\n".join(logs)
+    assert "Características Técnicas" in texto
+    assert "Resumo" in texto
