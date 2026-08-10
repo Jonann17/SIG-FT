@@ -350,6 +350,64 @@ class PlaywrightEngine(RPAEngine):
         return self._executar(lambda: self._loc(seletor).input_value())
 
     # =====================================================================
+    # Primitivas do CP 5.3 -- ver `engine.py` para o racional de cada uma
+    # =====================================================================
+    def contar(self, seletor: str) -> int:
+        return self.page.locator(_sel(seletor)).count()
+
+    def esta_visivel(self, seletor: str) -> bool:
+        # `is_visible()` não espera -- é a checagem imediata que o contrato
+        # pede, ao contrário de `wait_for(state="visible")`.
+        return self.contar(seletor) > 0 and self._loc(seletor).is_visible()
+
+    def esta_habilitado(self, seletor: str) -> bool:
+        return self.contar(seletor) > 0 and self._loc(seletor).is_enabled()
+
+    def esta_marcado(self, seletor: str) -> bool:
+        return self.contar(seletor) > 0 and self._loc(seletor).is_checked()
+
+    def forcar_valor(self, seletor: str, texto: str) -> None:
+        """Aqui é só `fill` -- exatamente o que o CP 5.3 pede ("em Playwright
+        usar `fill` + verificação de valor").
+
+        `Locator.fill` já dispara os eventos de `input`/`change` que a versão
+        Selenium precisa emitir à mão, então não há injeção de JavaScript
+        nenhuma neste motor. A "verificação de valor" continua no serviço,
+        que relê com `get_value` -- é ele quem sabe o que fazer quando o site
+        recusa duas vezes.
+        """
+        self._executar(lambda: self._loc(seletor).fill(str(texto)))
+
+    def focar(self, seletor: str) -> None:
+        self._executar(lambda: self._loc(seletor).focus())
+
+    def digitar_no_foco(self, texto: str) -> None:
+        """`keyboard.type` digita no que estiver com foco, tecla a tecla --
+        o par de `press`, e o equivalente do `active_element.send_keys` da
+        versão Selenium."""
+        self._executar(lambda: self.page.keyboard.type(str(texto)))
+
+    def texto(self, seletor: str) -> str:
+        """`text_content()` é o `textContent` do DOM -- inclui o que está
+        oculto por CSS, ao contrário de `inner_text()`. É o que a versão
+        Selenium lê, e o contrato exige a mesma coisa."""
+        return self._executar(lambda: self._loc(seletor).text_content() or "")
+
+    def opcoes(self, seletor: str) -> list[str]:
+        return self._executar(
+            lambda: [
+                (texto or "").strip()
+                for texto in self._loc(seletor).locator("option").all_text_contents()
+            ]
+        )
+
+    def selecionar_por_texto(self, seletor: str, texto: str) -> None:
+        self._executar(lambda: self._loc(seletor).select_option(label=texto))
+
+    def selecionar_por_indice(self, seletor: str, indice: int) -> None:
+        self._executar(lambda: self._loc(seletor).select_option(index=indice))
+
+    # =====================================================================
     # Diagnóstico / configuração
     # =====================================================================
     def screenshot(self, caminho: str) -> None:

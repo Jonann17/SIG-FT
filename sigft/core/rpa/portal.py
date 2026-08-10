@@ -107,15 +107,11 @@ from __future__ import annotations
 
 import time
 
-# CP 5.1: `Keys` e as exceções do Selenium saíram daqui -- `pesquisar_e_abrir`
-# passou a usar as primitivas de `RPAEngine` e as exceções NEUTRAS de
-# `engine.py`. `By`/`EC` continuam porque `check_or_uncheck`,
-# `clicar_salvar_visivel` e `excluir_linha_com_confirmacao` ainda alcançam
-# `self.engine.driver`/`.wait` crus: só rodam nos módulos que a Fase 5 migra
-# nos CP 5.3 / Fase 6 (ver docs/refatoracao/PENDENCIAS.md).
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-
+# CP 5.3: este arquivo não importa mais NADA do Selenium. Os últimos 3 métodos
+# que alcançavam `self.engine.driver`/`.wait` crus (`check_or_uncheck`,
+# `clicar_salvar_visivel`, `excluir_linha_com_confirmacao`) foram portados para
+# as primitivas de `RPAEngine` -- `PMIBPortal` inteiro passa a ser
+# motor-agnóstico, que era o que faltava para os uploads rodarem em Playwright.
 from sigft import config
 from sigft.core.rpa.engine import ElementoObsoleto, RPAEngine, TempoEsgotado
 
@@ -124,6 +120,14 @@ from sigft.core.rpa.engine import ElementoObsoleto, RPAEngine, TempoEsgotado
 # `upload_tech_specs_backend.TechSpecsAutomation._pesquisar_e_abrir` (2 dos 4
 # sites reais já usam exatamente isso hoje -- ver docstring de
 # `pesquisar_e_abrir` abaixo para a lista completa de overrides por módulo).
+# CP 5.3: os XPaths que `clicar_salvar_visivel`/`excluir_linha_com_confirmacao`
+# tinham embutidos viram constantes -- as primitivas os usam 2x (contar/agir,
+# esperar/agir), e literal repetido convida divergência.
+XPATH_BOTAO_SALVAR = (
+    "//button[contains(@class, 'btn-primary') and normalize-space(text())='SALVAR']"
+)
+XPATH_CONFIRMAR = '//button[@type="button" and text()="CONFIRMAR"]'
+
 DEFAULT_BUSCA_XPATH = "//input[contains(@placeholder, 'Código')]"
 DEFAULT_LAPIS_XPATH_TEMPLATE = "//span[text()='{pmib}']/ancestor::tr//i[contains(@class, 'fa-pencil')]/parent::a"
 
@@ -514,16 +518,16 @@ class PMIBPortal:
     # =========================================================================
     def check_or_uncheck(self, seletor: str, should_check: bool) -> None:
         """Marca/desmarca um checkbox/radio localizado por `seletor` (XPath)
-        só se o estado atual (`get_attribute('checked')`) divergir de
-        `should_check` -- mecânica idêntica à original de
-        `upload_conditions_backend.UploadAutomation.check_or_uncheck`."""
-        driver = self.engine.driver
-        wait = self.engine.wait
+        só se o estado atual divergir de `should_check` -- mecânica idêntica
+        à original de `upload_conditions.UploadAutomation.check_or_uncheck`.
+
+        CP 5.3: portado para as primitivas. O `scrollIntoView` que o original
+        fazia antes de LER o estado sumiu -- ele não influencia a leitura, e o
+        clique que vem depois (`safe_click`) já rola por conta própria. Ler
+        `checked` não exige o elemento na viewport.
+        """
         try:
-            el = wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
-            is_checked = el.get_attribute("checked") == "true"
-            if is_checked != should_check:
+            if self.engine.esta_marcado(seletor) != should_check:
                 self.safe_click(seletor)
         except Exception:
             pass
@@ -538,19 +542,24 @@ class PMIBPortal:
         "SALVAR") que estiver visível/habilitado no momento e clica nele.
         Mecânica idêntica à original de
         `upload_ficha_duplicada.InjetorFichaAlvo._clicar_salvar_visivel`
-        (incluindo os `print()` de progresso/aviso, preservados tal qual)."""
-        driver = self.engine.driver
+        (incluindo os `print()` de progresso/aviso, preservados tal qual).
+
+        CP 5.3: o `find_elements` + laço sobre ELEMENTOS virou `contar` + laço
+        sobre ÍNDICES, com o XPath indexado `(...)[i]`. É a mesma varredura,
+        na mesma ordem, com os mesmos testes de visível/habilitado -- o que
+        muda é só como cada botão é endereçado.
+        """
         if nome_secao:
             print(f"      [Injetor] Salvando {nome_secao}...")
 
-        botoes_salvar = driver.find_elements(
-            By.XPATH, "//button[contains(@class, 'btn-primary') and normalize-space(text())='SALVAR']"
-        )
-        for btn in botoes_salvar:
-            if btn.is_displayed() and btn.is_enabled():
-                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+        total = self.engine.contar(XPATH_BOTAO_SALVAR)
+        for posicao in range(1, total + 1):
+            # XPath é base 1, daí o range começar em 1.
+            seletor = f"({XPATH_BOTAO_SALVAR})[{posicao}]"
+            if self.engine.esta_visivel(seletor) and self.engine.esta_habilitado(seletor):
+                self.engine.scroll_to(seletor)
                 time.sleep(0.5)
-                driver.execute_script("arguments[0].click();", btn)
+                self.engine.click_raw(seletor)
                 time.sleep(2.5)  # Aguarda a requisição do servidor OutSystems
                 return True
 
@@ -571,20 +580,38 @@ class PMIBPortal:
     # via um XPath específico desse módulo -- não tem uma "linha" para
     # passar) -- NÃO usa este método; ver PENDENCIAS.md.
     # =========================================================================
-    def excluir_linha_com_confirmacao(self, row) -> bool:
-        """Clica na lixeira DENTRO de `row` (elemento de linha já
-        localizado, via `.//i[contains(@class,"fa-trash")]/parent::a`) e
-        confirma o popup (`//button[@type="button" and text()="CONFIRMAR"]`).
-        Retorna `True` em sucesso, `False` em qualquer falha (mesmo contrato
-        de retorno de `TechSpecsAutomation._excluir_linha_segura`)."""
-        driver = self.engine.driver
-        try:
-            btn_lixo = row.find_element(By.XPATH, './/i[contains(@class, "fa-trash")]/parent::a')
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn_lixo)
-            time.sleep(0.5)
-            driver.execute_script("arguments[0].click();", btn_lixo)
+    def excluir_linha_com_confirmacao(self, seletor_linha: str) -> bool:
+        """Clica na lixeira DENTRO da linha `seletor_linha` e confirma o
+        popup. Retorna `True` em sucesso, `False` em qualquer falha (mesmo
+        contrato de retorno de `TechSpecsAutomation._excluir_linha_segura`).
 
-            self.safe_click('//button[@type="button" and text()="CONFIRMAR"]')
+        CP 5.3 -- MUDANÇA DE ASSINATURA: o parâmetro era um ELEMENTO Selenium
+        de linha (`row`), e passou a ser o SELETOR XPath dessa linha. Foi o
+        que destravou o checkpoint: um elemento é um objeto do motor, e passá-lo
+        por aí é o que impedia `tech_specs`/`ficha_duplicada` de rodarem em
+        Playwright. Com seletor, a busca da lixeira "dentro da linha" vira
+        concatenação de XPath -- mesmo alvo, sem objeto de motor no meio.
+
+        Os 2 chamadores foram atualizados junto. Quem chamava com um elemento
+        recebe `False` com aviso, em vez de um erro obscuro (ver abaixo).
+        """
+        if not isinstance(seletor_linha, str):
+            # Rede de segurança para um chamador não migrado: falhar aqui com
+            # mensagem é muito melhor do que deixar a concatenação produzir um
+            # XPath inválido e o motor reclamar de sintaxe.
+            print(
+                "      [Aviso] excluir_linha_com_confirmacao passou a receber o "
+                "SELETOR da linha (str), não o elemento -- ver CP 5.3."
+            )
+            return False
+
+        seletor_lixeira = f'{seletor_linha}//i[contains(@class, "fa-trash")]/parent::a'
+        try:
+            self.engine.scroll_to(seletor_lixeira)
+            time.sleep(0.5)
+            self.engine.click_raw(seletor_lixeira)
+
+            self.safe_click(XPATH_CONFIRMAR)
 
             time.sleep(2.5)  # Pausa crucial para o site reconstruir a tabela HTML
             return True

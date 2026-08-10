@@ -5,19 +5,15 @@ import os
 import json
 import ast
 from types import SimpleNamespace
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
 
 from sigft import config
 from sigft.core.excel import headers, locking, pmib_codes, status_sheet
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em
 # `UploadAutomation.iniciar` abaixo.
-from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
+# CP 5.3 (Fase 5): `upload_conditions` migrado -- o `selenium` sumiu dos
+# imports. Quem decide o motor é `config.RPA_ENGINE["upload_conditions"]`.
+from sigft.core.rpa.factory import criar_engine
 # CP 2.2 (Fase 2): `safe_click`/`safe_send_keys`/`check_or_uncheck`/a busca-e-
 # abertura inline de `processar_lista`/o stop-flag de `ConditionsProcessor` e
 # `UploadAutomation` passam a delegar para `PMIBPortal`.
@@ -370,10 +366,16 @@ class ConditionsProcessor:
 # =============================================================================
 # CLASSE DE AUTOMAÇÃO (SELENIUM)
 # =============================================================================
+# CP 5.3: os 2 checkboxes que servem de âncora para a navegação por TAB dos
+# campos de temperatura/umidade. Aparecem 2x cada (marcar + focar), então
+# viram constantes em vez de literal repetido.
+XPATH_CHECK_CLIMATIZACAO = '//*[@id="b10-b17-b1-Checkbox4"]'
+XPATH_CHECK_UMIDADE = '//*[@id="b10-b17-b1-Checkbox5"]'
+
+
 class UploadAutomation:
     def __init__(self):
-        self.driver = None
-        self.wait = None
+        self.engine = None
         # CP 2.2: `self.portal` (SEM engine ainda) já nasce aqui -- não só em
         # `iniciar()` -- para que `solicitar_parada()` continue seguro de
         # chamar a QUALQUER momento, inclusive ANTES de `iniciar()` rodar
@@ -399,20 +401,20 @@ class UploadAutomation:
         `driver`/`wait`) -- `safe_click`/`safe_send_keys`/`check_or_uncheck`/
         `processar_lista` abaixo passam a delegar para ele.
         """
-        self.driver, self.wait = create_chrome_driver(wait_timeout=20)
-        self.portal.engine = SeleniumEngine(self.driver, self.wait)
-        return self.driver
+        self.engine = criar_engine("upload_conditions", wait_timeout=20)
+        self.portal.engine = self.engine
+        return self.engine
 
     # --- NOVO MÉTODO PARA CORRIGIR O ERRO DA URL DATA:, ---
     def abrir_portal(self, url):
         """Carrega a URL fornecida no navegador já aberto."""
-        if self.driver:
-            self.driver.get(url)
+        if self.engine:
+            self.engine.goto(url)
     # ------------------------------------------------------
 
     def fechar(self):
-        if self.driver:
-            self.driver.quit()
+        if self.engine:
+            self.engine.fechar()
 
     def safe_click(self, locator):
         """CP 2.2: DELEGADOR FINO -- a mecânica real agora vive em
@@ -472,60 +474,62 @@ class UploadAutomation:
 
                 # --- ABA 1: CONDIÇÕES (ARMAZENAMENTO) ---
                 try:
-                    self.safe_click((By.XPATH, '//*[@id="b10-Conditions_Header"]/button'))
+                    self.safe_click('//*[@id="b10-Conditions_Header"]/button')
                 except Exception as e:
                     if callback_log: callback_log(f"ERRO: Não abriu aba Condições. {e}")
                     continue  # Pula ficha se falhar a aba principal
 
                 try:
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b1-Input_PackingLength"]'), ficha["dimensoes"]["comprimento"])
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b1-Input_PackagingWidth"]'), ficha["dimensoes"]["largura"])
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b1-Input_PackagingHeight"]'), ficha["dimensoes"]["altura"])
+                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_PackingLength"]', ficha["dimensoes"]["comprimento"])
+                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_PackagingWidth"]', ficha["dimensoes"]["largura"])
+                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_PackagingHeight"]', ficha["dimensoes"]["altura"])
                 except Exception as e:
                     if callback_log: callback_log(f"Aviso: Falha nas Dimensões. {e}")
 
                 try:
                     controle_temp_data = ficha["controle_temperatura"]
                     if controle_temp_data["necessidade"] == "SIM":
-                        self.safe_click((By.XPATH, '//*[@id="b10-b17-b1-RadioButton5-input"]'))
+                        self.safe_click('//*[@id="b10-b17-b1-RadioButton5-input"]')
                         if controle_temp_data["climatizacao"]["ativo"]:
-                            loc_check_clima = (By.XPATH, '//*[@id="b10-b17-b1-Checkbox4"]')
-                            self.check_or_uncheck(loc_check_clima, True)
-                            check_clima = self.wait.until(EC.element_to_be_clickable(loc_check_clima))
-                            check_clima.send_keys(Keys.TAB)
+                            # CP 5.3: `wait.until(clickable).send_keys(TAB)` +
+                            # `driver.switch_to.active_element.send_keys(...)`
+                            # viraram `focar` + `press` + `digitar_no_foco`.
+                            # A navegação por TAB é preservada porque os campos
+                            # de temperatura não têm seletor próprio validado --
+                            # trocar isso por seletor direto é o tipo de
+                            # mudança que o plano reserva para depois do módulo
+                            # estar estável no motor novo.
+                            self.check_or_uncheck(XPATH_CHECK_CLIMATIZACAO, True)
+                            self.engine.focar(XPATH_CHECK_CLIMATIZACAO)
+                            self.engine.press("TAB")
                             time.sleep(PAUSA_DIGITACAO)
-                            campo_temp_max = self.driver.switch_to.active_element
-                            campo_temp_max.send_keys(controle_temp_data["climatizacao"]["temp_max"])
+                            self.engine.digitar_no_foco(controle_temp_data["climatizacao"]["temp_max"])
                             time.sleep(PAUSA_ENTRE_CAMPOS)
-                            campo_temp_max.send_keys(Keys.TAB)
+                            self.engine.press("TAB")
                             time.sleep(PAUSA_DIGITACAO)
-                            campo_temp_min = self.driver.switch_to.active_element
-                            campo_temp_min.send_keys(controle_temp_data["climatizacao"]["temp_min"])
+                            self.engine.digitar_no_foco(controle_temp_data["climatizacao"]["temp_min"])
                             time.sleep(PAUSA_ENTRE_CAMPOS)
                         if controle_temp_data["umidade"]["ativo"]:
-                            loc_check_umid = (By.XPATH, '//*[@id="b10-b17-b1-Checkbox5"]')
-                            self.check_or_uncheck(loc_check_umid, True)
-                            check_umid = self.wait.until(EC.element_to_be_clickable(loc_check_umid))
-                            check_umid.send_keys(Keys.TAB)
+                            self.check_or_uncheck(XPATH_CHECK_UMIDADE, True)
+                            self.engine.focar(XPATH_CHECK_UMIDADE)
+                            self.engine.press("TAB")
                             time.sleep(PAUSA_DIGITACAO)
-                            campo_hr_max = self.driver.switch_to.active_element
-                            campo_hr_max.send_keys(controle_temp_data["umidade"]["hr_max"])
+                            self.engine.digitar_no_foco(controle_temp_data["umidade"]["hr_max"])
                             time.sleep(PAUSA_ENTRE_CAMPOS)
-                            campo_hr_max.send_keys(Keys.TAB)
+                            self.engine.press("TAB")
                             time.sleep(PAUSA_DIGITACAO)
-                            campo_hr_min = self.driver.switch_to.active_element
-                            campo_hr_min.send_keys(controle_temp_data["umidade"]["hr_min"])
+                            self.engine.digitar_no_foco(controle_temp_data["umidade"]["hr_min"])
                             time.sleep(PAUSA_ENTRE_CAMPOS)
                     else:
-                        self.safe_click((By.XPATH, '//*[@id="b10-b17-b1-RadioButton4-input"]'))
+                        self.safe_click('//*[@id="b10-b17-b1-RadioButton4-input"]')
                 except Exception as e:
                     if callback_log: callback_log(f"Aviso: Falha em Temperatura. {e}")
 
                 try:
                     posicoes = {
-                        "Vertical": (By.XPATH, '//*[@id="b10-b17-b1-RadioButton-input"]'),
-                        "Horizontal": (By.XPATH, '//*[@id="b10-b17-b1-RadioButton7-input"]'),
-                        "Indiferente": (By.XPATH, '//*[@id="b10-b17-b1-RadioButton8-input"]')
+                        "Vertical": '//*[@id="b10-b17-b1-RadioButton-input"]',
+                        "Horizontal": '//*[@id="b10-b17-b1-RadioButton7-input"]',
+                        "Indiferente": '//*[@id="b10-b17-b1-RadioButton8-input"]'
                     }
                     if ficha.get("posicao_armazenamento") in posicoes:
                         self.safe_click(posicoes[ficha["posicao_armazenamento"]])
@@ -535,31 +539,31 @@ class UploadAutomation:
                 try:
                     nocivo_data = ficha["nocivo"]
                     if nocivo_data["status"] == "Nocivo":
-                        self.safe_click((By.XPATH, '//*[@id="b10-b17-b1-RadioButton2-input"]'))
-                        self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b1-TextArea_StorageCareES"]'), nocivo_data["cuidado_es"])
-                        self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b1-TextArea_StorageCarePT"]'), nocivo_data["cuidado_pt"])
+                        self.safe_click('//*[@id="b10-b17-b1-RadioButton2-input"]')
+                        self.safe_send_keys('//*[@id="b10-b17-b1-TextArea_StorageCareES"]', nocivo_data["cuidado_es"])
+                        self.safe_send_keys('//*[@id="b10-b17-b1-TextArea_StorageCarePT"]', nocivo_data["cuidado_pt"])
                     else:
-                        self.safe_click((By.XPATH, '//*[@id="b10-b17-b1-RadioButton1-input"]'))
+                        self.safe_click('//*[@id="b10-b17-b1-RadioButton1-input"]')
                 except Exception as e:
                     if callback_log: callback_log(f"Aviso: Falha em Nocivo. {e}")
 
                 try:
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b1-Input_LiquidWeight"]'), ficha["peso"]["liquido"])
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b1-Input_GrossWeight"]'), ficha["peso"]["bruto"])
+                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_LiquidWeight"]', ficha["peso"]["liquido"])
+                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_GrossWeight"]', ficha["peso"]["bruto"])
                 except Exception as e:
                     if callback_log: callback_log(f"Aviso: Falha nos Pesos. {e}")
 
                 if ficha["controle_temperatura"]["necessidade"] == "NÃO":
                     try:
-                        self.check_or_uncheck((By.XPATH, '//*[@id="b10-b17-b1-Checkbox3"]'), ficha.get("sujeito_intemperie") == "SIM")
+                        self.check_or_uncheck('//*[@id="b10-b17-b1-Checkbox3"]', ficha.get("sujeito_intemperie") == "SIM")
                     except Exception as e:
                         if callback_log: callback_log(f"Aviso: Falha em Intempérie. {e}")
 
                 try:
                     mapa_protecao = {
-                        "SN": (By.XPATH, '//*[@id="b10-b17-b1-Checkbox6"]'),
-                        "UV": (By.XPATH, '//*[@id="b10-b17-b1-Checkbox7"]'),
-                        "EL": (By.XPATH, '//*[@id="b10-b17-b1-Checkbox8"]')
+                        "SN": '//*[@id="b10-b17-b1-Checkbox6"]',
+                        "UV": '//*[@id="b10-b17-b1-Checkbox7"]',
+                        "EL": '//*[@id="b10-b17-b1-Checkbox8"]'
                     }
                     for loc in mapa_protecao.values():
                         self.check_or_uncheck(loc, False)
@@ -570,74 +574,74 @@ class UploadAutomation:
                     if callback_log: callback_log(f"Aviso: Falha na Proteção. {e}")
 
                 try:
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b1-Input_Stacking"]'), ficha.get("empilhamento", ""))
+                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_Stacking"]', ficha.get("empilhamento", ""))
                 except Exception as e:
                     if callback_log: callback_log(f"Aviso: Falha no Empilhamento. {e}")
 
                 try:
                     cuidados_data = ficha["outros_cuidados"]
                     if cuidados_data["status"] == "SIM":
-                        self.safe_click((By.XPATH, '//*[@id="b10-b17-b1-RadioButton6-input"]'))
-                        self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b1-TextArea_OtherCareES"]'), cuidados_data["cuidado_es"])
-                        self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b1-TextArea_OtherCarePT"]'), cuidados_data["cuidado_pt"])
+                        self.safe_click('//*[@id="b10-b17-b1-RadioButton6-input"]')
+                        self.safe_send_keys('//*[@id="b10-b17-b1-TextArea_OtherCareES"]', cuidados_data["cuidado_es"])
+                        self.safe_send_keys('//*[@id="b10-b17-b1-TextArea_OtherCarePT"]', cuidados_data["cuidado_pt"])
                     else:
-                        self.safe_click((By.XPATH, '//*[@id="b10-b17-b1-RadioButton3-input"]'))
+                        self.safe_click('//*[@id="b10-b17-b1-RadioButton3-input"]')
                 except Exception as e:
                     if callback_log: callback_log(f"Aviso: Falha em Outros Cuidados. {e}")
 
-                self.safe_save_with_pause((By.XPATH, '//*[@id="b10-b17-b1-b35-Button"]/button'), "Armazenamento", callback_log, callback_pause)
+                self.safe_save_with_pause('//*[@id="b10-b17-b1-b35-Button"]/button', "Armazenamento", callback_log, callback_pause)
 
                 # --- ABA 2: TRANSPORTE ---
                 try:
-                    self.safe_click((By.XPATH, '//*[@id="b10-b17-Title"]/div[3]'))
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b3-TextArea_TransportPackagingES"]'), ficha.get("embalagem_transp_es", ""))
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b3-TextArea_TransportPackagingPT"]'), ficha.get("embalagem_transp_pt", ""))
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b3-TextArea_PositionCareES"]'), ficha.get("posicao_icagem_es", ""))
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b3-TextArea_PositionCarePT"]'), ficha.get("posicao_icagem_pt", ""))
+                    self.safe_click('//*[@id="b10-b17-Title"]/div[3]')
+                    self.safe_send_keys('//*[@id="b10-b17-b3-TextArea_TransportPackagingES"]', ficha.get("embalagem_transp_es", ""))
+                    self.safe_send_keys('//*[@id="b10-b17-b3-TextArea_TransportPackagingPT"]', ficha.get("embalagem_transp_pt", ""))
+                    self.safe_send_keys('//*[@id="b10-b17-b3-TextArea_PositionCareES"]', ficha.get("posicao_icagem_es", ""))
+                    self.safe_send_keys('//*[@id="b10-b17-b3-TextArea_PositionCarePT"]', ficha.get("posicao_icagem_pt", ""))
                 except Exception as e:
                     if callback_log: callback_log(f"Aviso: Falha na aba Transporte. {e}")
 
-                self.safe_save_with_pause((By.XPATH, '//*[@id="b10-b17-$b3"]/div[3]/button'), "Transporte", callback_log, callback_pause)
+                self.safe_save_with_pause('//*[@id="b10-b17-$b3"]/div[3]/button', "Transporte", callback_log, callback_pause)
 
                 # --- ABA 3: MANUTENÇÃO ---
                 try:
-                    self.safe_click((By.XPATH, '//*[@id="b10-b17-Title"]/div[4]'))
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b4-TextArea_PreservationCareES"]'), ficha.get("cuidad_preserv_es", ""))
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b4-TextArea_PreservationCarePT"]'), ficha.get("cuidad_preserv_pt", ""))
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b4-TextArea_CleaningMethodES"]'), ficha.get("limpeza_secagem_es", ""))
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b4-TextArea_CleaningMethodPT"]'), ficha.get("limpeza_secagem_pt", ""))
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b4-TextArea_ToolPreservationES"]'), ficha.get("ferramentas_es", ""))
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b4-TextArea_ToolPreservationPT"]'), ficha.get("ferramentas_pt", ""))
+                    self.safe_click('//*[@id="b10-b17-Title"]/div[4]')
+                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_PreservationCareES"]', ficha.get("cuidad_preserv_es", ""))
+                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_PreservationCarePT"]', ficha.get("cuidad_preserv_pt", ""))
+                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_CleaningMethodES"]', ficha.get("limpeza_secagem_es", ""))
+                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_CleaningMethodPT"]', ficha.get("limpeza_secagem_pt", ""))
+                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_ToolPreservationES"]', ficha.get("ferramentas_es", ""))
+                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_ToolPreservationPT"]', ficha.get("ferramentas_pt", ""))
                 except Exception as e:
                     if callback_log: callback_log(f"Aviso: Falha na aba Manutenção. {e}")
 
-                self.safe_save_with_pause((By.XPATH, '//*[@id="b10-b17-$b4"]/div[4]/button'), "Manutenção", callback_log, callback_pause)
+                self.safe_save_with_pause('//*[@id="b10-b17-$b4"]/div[4]/button', "Manutenção", callback_log, callback_pause)
 
                 # --- ABA 4: DESCARTE ---
                 try:
-                    self.safe_click((By.XPATH, '//*[@id="b10-b17-Title"]/div[5]'))
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b5-TextArea_TypeLegislationES"]'), ficha.get("legislacao_es", ""))
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b5-TextArea_TypeLegislationPT"]'), ficha.get("legislacao_pt", ""))
+                    self.safe_click('//*[@id="b10-b17-Title"]/div[5]')
+                    self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_TypeLegislationES"]', ficha.get("legislacao_es", ""))
+                    self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_TypeLegislationPT"]', ficha.get("legislacao_pt", ""))
 
                     if ficha.get("perigoso_10004") == "SIM":
-                        self.safe_click((By.XPATH, '//*[@id="b10-b17-b5-RadioButton1-input"]'))
+                        self.safe_click('//*[@id="b10-b17-b5-RadioButton1-input"]')
                     else:
-                        self.safe_click((By.XPATH, '//*[@id="b10-b17-b5-RadioButton2-input"]'))
+                        self.safe_click('//*[@id="b10-b17-b5-RadioButton2-input"]')
 
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b5-TextArea_DiscardTypeES"]'), ficha.get("descarte_es", ""))
-                    self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b5-TextArea_DiscardTypePT"]'), ficha.get("descarte_pt", ""))
+                    self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_DiscardTypeES"]', ficha.get("descarte_es", ""))
+                    self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_DiscardTypePT"]', ficha.get("descarte_pt", ""))
 
                     logistica_rev = ficha.get("logistica_reversa", {})
                     if logistica_rev.get("status") == "SIM":
-                        self.safe_click((By.XPATH, '//*[@id="b10-b17-b5-Applies-input"]'))
-                        self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b5-TextArea_ReserveLogisticES"]'), logistica_rev.get("logistica_reversa_es", ""))
-                        self.safe_send_keys((By.XPATH, '//*[@id="b10-b17-b5-TextArea_ReserveLogisticPT"]'), logistica_rev.get("logistica_reversa_pt", ""))
+                        self.safe_click('//*[@id="b10-b17-b5-Applies-input"]')
+                        self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_ReserveLogisticES"]', logistica_rev.get("logistica_reversa_es", ""))
+                        self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_ReserveLogisticPT"]', logistica_rev.get("logistica_reversa_pt", ""))
                     else:
-                        self.safe_click((By.XPATH, '//*[@id="b10-b17-b5-DoesNotApply-input"]'))
+                        self.safe_click('//*[@id="b10-b17-b5-DoesNotApply-input"]')
                 except Exception as e:
                     if callback_log: callback_log(f"Aviso: Falha na aba Descarte. {e}")
 
-                self.safe_save_with_pause((By.XPATH, '//*[@id="b10-b17-$b5"]/div[5]/button'), "Descarte", callback_log, callback_pause)
+                self.safe_save_with_pause('//*[@id="b10-b17-$b5"]/div[5]/button', "Descarte", callback_log, callback_pause)
 
                 if callback_log: callback_log(f"{pmib} concluído no portal.")
                 self.atualizar_status_excel(caminho_status, pmib, "COMPLETO", callback_log, callback_ask)
@@ -645,7 +649,7 @@ class UploadAutomation:
             except Exception as e:
                 if callback_log: callback_log(f"!!! ERRO CRÍTICO processando {pmib}: {e} !!!")
                 try:
-                    self.driver.save_screenshot(f"erro_web_{pmib}.png")
+                    self.engine.screenshot(f"erro_web_{pmib}.png")
                     if callback_log: callback_log(f"Evidência salva: erro_web_{pmib}.png")
                 except Exception:
                     pass

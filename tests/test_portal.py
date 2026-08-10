@@ -141,6 +141,12 @@ class _FakeEngine:
         self.passos = []
         self._url_atual = url_atual or getattr(self.driver, "current_url", "")
         self._falhas = {nome: list(seq) for nome, seq in (falhas or {}).items()}
+        # Estado para as primitivas do CP 5.3.
+        self.marcado = False
+        self.marcado_levanta = False
+        self.botoes_total = 0
+        self.visiveis = {}
+        self.habilitados = {}
 
     def _registrar(self, nome, *args):
         self.passos.append((nome, *args))
@@ -178,23 +184,28 @@ class _FakeEngine:
     def click_raw(self, seletor):
         self._registrar("click_raw", seletor)
 
+    # -- primitivas do CP 5.3 ---------------------------------------------
+    def contar(self, seletor):
+        self._registrar("contar", seletor)
+        return self.botoes_total
+
+    def esta_visivel(self, seletor):
+        return self.visiveis.get(seletor, True)
+
+    def esta_habilitado(self, seletor):
+        return self.habilitados.get(seletor, True)
+
+    def esta_marcado(self, seletor):
+        if self.marcado_levanta:
+            raise RuntimeError("falha ao ler o estado do checkbox")
+        return self.marcado
+
     # -- delegação fina (CP 2.2) -------------------------------------------
     def click(self, seletor):
         self.click_chamadas.append(seletor)
 
     def fill(self, seletor, texto):
         self.fill_chamadas.append((seletor, texto))
-
-
-@pytest.fixture(autouse=True)
-def _ec_transparente(monkeypatch):
-    """Substitui `EC.element_to_be_clickable`/`presence_of_element_located`
-    (opacos, MagicMock, via tests/conftest.py) por wrappers que devolvem o
-    PRÓPRIO locator -- assim `_FakeWait.chamadas` registra exatamente qual
-    `(By.XPATH, xpath)` foi pedido, sem depender da semântica real do
-    Selenium (indisponível neste ambiente de teste)."""
-    monkeypatch.setattr(portal_mod.EC, "element_to_be_clickable", lambda locator: ("clickable", locator))
-    monkeypatch.setattr(portal_mod.EC, "presence_of_element_located", lambda locator: ("presence", locator))
 
 
 # ===========================================================================
@@ -297,9 +308,8 @@ def test_safe_fill_delega_para_engine_fill_com_seletor_e_texto():
 # check_or_uncheck -- só existia em upload_conditions_backend.py.
 # ===========================================================================
 def test_check_or_uncheck_clica_quando_desmarcado_e_deveria_estar_marcado():
-    elemento = _FakeElemento(checked=None)  # get_attribute('checked') != 'true' -> desmarcado
-    driver = _FakeDriver()
-    engine = _FakeEngine(driver=driver, wait=_FakeWait(respostas=[elemento]))
+    engine = _FakeEngine()
+    engine.marcado = False
 
     PMIBPortal(engine).check_or_uncheck("//input[@id='chk']", True)
 
@@ -307,8 +317,8 @@ def test_check_or_uncheck_clica_quando_desmarcado_e_deveria_estar_marcado():
 
 
 def test_check_or_uncheck_nao_clica_quando_ja_no_estado_esperado():
-    elemento = _FakeElemento(checked="true")
-    engine = _FakeEngine(wait=_FakeWait(respostas=[elemento]))
+    engine = _FakeEngine()
+    engine.marcado = True
 
     PMIBPortal(engine).check_or_uncheck("//input[@id='chk']", True)
 
@@ -316,8 +326,8 @@ def test_check_or_uncheck_nao_clica_quando_ja_no_estado_esperado():
 
 
 def test_check_or_uncheck_desmarca_quando_marcado_e_deveria_estar_desmarcado():
-    elemento = _FakeElemento(checked="true")
-    engine = _FakeEngine(wait=_FakeWait(respostas=[elemento]))
+    engine = _FakeEngine()
+    engine.marcado = True
 
     PMIBPortal(engine).check_or_uncheck("//input[@id='chk']", False)
 
@@ -325,69 +335,98 @@ def test_check_or_uncheck_desmarca_quando_marcado_e_deveria_estar_desmarcado():
 
 
 def test_check_or_uncheck_engole_excecao_silenciosamente():
-    engine = _FakeEngine(wait=_FakeWait(respostas=[TimeoutError("sumiu")]))
-    PMIBPortal(engine).check_or_uncheck("//input[@id='nao-existe']", True)  # não levanta
+    engine = _FakeEngine()
+    engine.marcado_levanta = True
+
+    PMIBPortal(engine).check_or_uncheck("//input[@id='chk']", True)  # não levanta
+
+    assert engine.click_chamadas == []
 
 
 # ===========================================================================
-# clicar_salvar_visivel -- só existia em upload_ficha_duplicada.py.
+# clicar_salvar_visivel -- CP 5.3: varre por ÍNDICE (XPath `(...)[i]`) em vez
+# de iterar sobre elementos Selenium.
 # ===========================================================================
+def _seletor_botao(posicao):
+    return f"({portal_mod.XPATH_BOTAO_SALVAR})[{posicao}]"
+
+
 def test_clicar_salvar_visivel_clica_no_primeiro_botao_visivel_e_habilitado():
-    btn_invisivel = _FakeElemento(displayed=False, enabled=True)
-    btn_desabilitado = _FakeElemento(displayed=True, enabled=False)
-    btn_alvo = _FakeElemento(displayed=True, enabled=True)
-    driver = _FakeDriver()
-    driver.find_elements_retorno = [btn_invisivel, btn_desabilitado, btn_alvo]
-    engine = _FakeEngine(driver=driver)
+    engine = _FakeEngine()
+    engine.botoes_total = 3
+    # 1º invisível, 2º desabilitado, 3º é o alvo.
+    engine.visiveis = {_seletor_botao(1): False}
+    engine.habilitados = {_seletor_botao(2): False}
 
-    resultado = PMIBPortal(engine).clicar_salvar_visivel("Armazenamento")
+    assert PMIBPortal(engine).clicar_salvar_visivel("Condições") is True
 
-    assert resultado is True
-    # scroll + click, nesta ordem, no elemento certo.
-    assert len(driver.execute_script_chamadas) == 2
-    assert driver.execute_script_chamadas[0][1] is btn_alvo
-    assert driver.execute_script_chamadas[1][1] is btn_alvo
+    assert engine.passos[-2:] == [
+        ("scroll_to", _seletor_botao(3)),
+        ("click_raw", _seletor_botao(3)),
+    ]
 
 
 def test_clicar_salvar_visivel_devolve_false_quando_nenhum_botao_visivel():
-    driver = _FakeDriver()
-    driver.find_elements_retorno = [_FakeElemento(displayed=False)]
-    engine = _FakeEngine(driver=driver)
+    engine = _FakeEngine()
+    engine.botoes_total = 2
+    engine.visiveis = {_seletor_botao(1): False, _seletor_botao(2): False}
 
-    assert PMIBPortal(engine).clicar_salvar_visivel() is False
+    assert PMIBPortal(engine).clicar_salvar_visivel("Seção") is False
+    assert not any(passo[0] == "click_raw" for passo in engine.passos)
 
 
 def test_clicar_salvar_visivel_devolve_false_quando_lista_vazia():
     engine = _FakeEngine()
+    engine.botoes_total = 0
+
     assert PMIBPortal(engine).clicar_salvar_visivel() is False
 
 
+def test_clicar_salvar_visivel_indexa_xpath_a_partir_de_1():
+    # XPath é base 1. Um `range(total)` cru geraria `(...)[0]`, que NUNCA
+    # casa -- o botão certo jamais seria clicado, em silêncio.
+    engine = _FakeEngine()
+    engine.botoes_total = 1
+
+    PMIBPortal(engine).clicar_salvar_visivel()
+
+    assert ("click_raw", _seletor_botao(1)) in engine.passos
+
+
 # ===========================================================================
-# excluir_linha_com_confirmacao -- recebe uma LINHA já localizada.
+# excluir_linha_com_confirmacao -- CP 5.3: recebe o SELETOR da linha, não um
+# elemento Selenium. Foi essa troca de assinatura que destravou o checkpoint.
 # ===========================================================================
 def test_excluir_linha_com_confirmacao_sucesso():
-    lixeira = _FakeElemento()
-    row = _FakeElemento(filhos={'.//i[contains(@class, "fa-trash")]/parent::a': lixeira})
-    driver = _FakeDriver()
-    engine = _FakeEngine(driver=driver)
+    engine = _FakeEngine()
+    seletor_linha = "//table/tbody/tr[3]"
 
-    resultado = PMIBPortal(engine).excluir_linha_com_confirmacao(row)
+    assert PMIBPortal(engine).excluir_linha_com_confirmacao(seletor_linha) is True
 
-    assert resultado is True
-    assert driver.execute_script_chamadas == [
-        ("arguments[0].scrollIntoView({block: 'center'});", lixeira),
-        ("arguments[0].click();", lixeira),
-    ]
-    # Confirma via safe_click -> engine.click, com o XPath genérico do popup.
-    assert engine.click_chamadas == ['//button[@type="button" and text()="CONFIRMAR"]']
+    lixeira = f'{seletor_linha}//i[contains(@class, "fa-trash")]/parent::a'
+    assert engine.passos == [("scroll_to", lixeira), ("click_raw", lixeira)]
+    # O CONFIRMAR vai por `safe_click` (tolerante), como no original.
+    assert engine.click_chamadas == [portal_mod.XPATH_CONFIRMAR]
 
 
 def test_excluir_linha_com_confirmacao_devolve_false_se_lixeira_nao_existe():
-    row = _FakeElemento(filhos={})  # find_element levanta (sem lixeira configurada)
+    engine = _FakeEngine(falhas={"scroll_to": [RuntimeError("sem lixeira")]})
+
+    assert PMIBPortal(engine).excluir_linha_com_confirmacao("//tr[9]") is False
+    assert engine.click_chamadas == []  # nunca chegou a tentar confirmar
+
+
+def test_excluir_linha_com_confirmacao_avisa_quando_recebe_elemento_em_vez_de_seletor():
+    # Rede de segurança da troca de assinatura: um chamador não migrado
+    # recebe False com aviso, em vez de um XPath sem sentido montado por
+    # concatenação com um objeto.
     engine = _FakeEngine()
 
-    assert PMIBPortal(engine).excluir_linha_com_confirmacao(row) is False
-    assert engine.click_chamadas == []  # nunca chegou a tentar confirmar
+    class _ElementoQualquer:
+        pass
+
+    assert PMIBPortal(engine).excluir_linha_com_confirmacao(_ElementoQualquer()) is False
+    assert engine.passos == []
 
 
 # ===========================================================================

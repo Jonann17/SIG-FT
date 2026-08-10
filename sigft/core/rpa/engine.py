@@ -222,6 +222,106 @@ class RPAEngine(ABC):
         """Digita `texto` NO FIM do conteúdo atual do campo (não limpa
         antes) -- diferente de `fill`, que limpa. Propaga falhas."""
 
+    # =====================================================================
+    # Primitivas acrescentadas pelo Checkpoint 5.3 (uploads)
+    # =====================================================================
+    # `upload_conditions` e `tech_specs` trouxeram três necessidades que as
+    # primitivas anteriores não cobriam:
+    #
+    #   1. TABELA COM VÁRIAS LINHAS. `tech_specs` coletava `find_elements(...)`
+    #      e depois fazia `linha.find_element(".//input")` -- busca RELATIVA a
+    #      um elemento. O contrato aqui é todo por seletor, e continua sendo:
+    #      a mesma intenção vira `contar(xpath_das_linhas)` + um XPath composto
+    #      com índice, `(//linhas)[3]//input`. Mesmo XPath do pai, mesmo XPath
+    #      relativo, só concatenados -- não é troca de estratégia de seletor
+    #      (que o plano só autoriza depois do módulo estável no motor novo).
+    #      É também o que evita introduzir um objeto de elemento no contrato,
+    #      que vazaria o motor de volta para os serviços.
+    #
+    #   2. CAMPO QUE REJEITA A DIGITAÇÃO. `_preencher_input_com_auditoria`
+    #      escrevia, relia, e quando o site zerava o valor, forçava via JS
+    #      (`arguments[0].value = ...` + 3 `dispatchEvent`). `forcar_valor` é
+    #      essa intenção; cada motor a cumpre do seu jeito -- é literalmente o
+    #      que o CP 5.3 pede ("em Playwright usar `fill` + verificação de
+    #      valor").
+    #
+    #   3. `<select>`. Vinha do `Select` do Selenium. As três primitivas de
+    #      opção expõem só a MECÂNICA; a regra de casamento (texto exato,
+    #      depois substring normalizada, e o `(SÍMBOLO)` das unidades) fica no
+    #      serviço, que é onde ela é regra de negócio.
+
+    @abstractmethod
+    def contar(self, seletor: str) -> int:
+        """Quantos elementos casam com `seletor` AGORA (sem esperar)."""
+
+    @abstractmethod
+    def esta_visivel(self, seletor: str) -> bool:
+        """O elemento está visível na tela agora? Checagem imediata."""
+
+    @abstractmethod
+    def esta_habilitado(self, seletor: str) -> bool:
+        """O elemento está habilitado agora? Checagem imediata."""
+
+    @abstractmethod
+    def esta_marcado(self, seletor: str) -> bool:
+        """O checkbox/radio está marcado agora? Checagem imediata."""
+
+    @abstractmethod
+    def forcar_valor(self, seletor: str, texto: str) -> None:
+        """Escreve `texto` no campo CONTORNANDO a digitação normal, para o
+        caso em que o site rejeita/zera o valor digitado.
+
+        Disparar os eventos de `input`/`change`/`blur` faz parte do
+        contrato: sem eles o framework da página não percebe a mudança e o
+        valor some no próximo redesenho."""
+
+    @abstractmethod
+    def focar(self, seletor: str) -> None:
+        """Põe o foco no elemento SEM clicar nele.
+
+        Sem clique de propósito: em `upload_conditions`, o alvo é um checkbox
+        que já está no estado certo -- clicar o desmarcaria. O original
+        conseguia o mesmo mandando a tecla direto ao elemento; aqui o foco é
+        explícito, e o `press` seguinte continua indo para quem tem o foco.
+        """
+
+    @abstractmethod
+    def digitar_no_foco(self, texto: str) -> None:
+        """Digita `texto` no elemento que estiver com foco -- sem seletor,
+        mesmo espírito de `press`.
+
+        `upload_conditions` navega por TAB entre campos que não têm seletor
+        estável ("o campo DEPOIS do checkbox de climatização"), então digitar
+        no foco é a única forma de reproduzir o fluxo sem inventar seletores
+        que ninguém validou.
+        """
+
+    @abstractmethod
+    def texto(self, seletor: str) -> str:
+        """Texto do elemento (o `textContent` do DOM), não o `value` de um
+        campo -- é `get_value` quem lê campo de formulário.
+
+        `textContent` e não o "texto visível": é o que
+        `tech_specs.processar_lista` já lia para descobrir o nome da
+        característica na linha da tabela, e ele traz também o que está
+        oculto por CSS. Trocar por texto visível mudaria silenciosamente
+        quais linhas casam com o JSON da IA.
+        """
+
+    @abstractmethod
+    def opcoes(self, seletor: str) -> list[str]:
+        """Textos visíveis das opções do `<select>` em `seletor`, na ordem."""
+
+    @abstractmethod
+    def selecionar_por_texto(self, seletor: str, texto: str) -> None:
+        """Seleciona a opção cujo texto visível é EXATAMENTE `texto`.
+        Levanta se não houver."""
+
+    @abstractmethod
+    def selecionar_por_indice(self, seletor: str, indice: int) -> None:
+        """Seleciona a opção na posição `indice` (base 0) -- o par de
+        `opcoes()`, para quando o casamento é por regra do serviço."""
+
     @abstractmethod
     def current_url(self) -> str:
         """URL da página aberta agora."""

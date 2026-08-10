@@ -197,8 +197,10 @@ class _FakeDriver:
     def get(self, url):
         self.get_chamadas.append(url)
 
-    def execute_script(self, script, elemento):
-        self.execute_script_chamadas.append((script, elemento))
+    def execute_script(self, script, *args):
+        # CP 5.3: `forcar_valor` passa o VALOR como 2º argumento do script
+        # (`arguments[1]`), então o fake precisa aceitar mais de um.
+        self.execute_script_chamadas.append((script, *args))
 
     def find_elements(self, by, seletor):
         self.find_elements_chamadas.append((by, seletor))
@@ -662,3 +664,205 @@ def test_traducao_nao_toca_excecao_generica_das_esperas():
 
     with pytest.raises(RuntimeError):
         engine.wait_clickable("//x")
+
+
+# ===========================================================================
+# CP 5.3 — primitivas dos uploads
+# ===========================================================================
+
+def _driver_com(elementos):
+    driver = _FakeDriver()
+    driver.find_elements_retorno = elementos
+    return driver
+
+
+class _ElementoRico:
+    def __init__(self, *, displayed=True, enabled=True, checked=None, texto=""):
+        self.displayed = displayed
+        self.enabled = enabled
+        self.checked = checked
+        self._texto = texto
+
+    def is_displayed(self):
+        return self.displayed
+
+    def is_enabled(self):
+        return self.enabled
+
+    def get_attribute(self, nome):
+        if nome == "checked":
+            return self.checked
+        if nome == "textContent":
+            return self._texto
+        raise AssertionError(f"atributo inesperado: {nome}")
+
+
+# --- contar / estados -------------------------------------------------------
+
+def test_contar_devolve_quantos_elementos_casam():
+    engine = se.SeleniumEngine(_driver_com([object(), object(), object()]), _FakeWait())
+    assert engine.contar("//tr") == 3
+
+
+def test_contar_zero_quando_nada_casa():
+    assert se.SeleniumEngine(_driver_com([]), _FakeWait()).contar("//tr") == 0
+
+
+def test_esta_visivel_e_habilitado_olham_o_primeiro_casamento():
+    driver = _driver_com([_ElementoRico(displayed=False, enabled=True)])
+    engine = se.SeleniumEngine(driver, _FakeWait())
+    assert engine.esta_visivel("//button") is False
+    assert engine.esta_habilitado("//button") is True
+
+
+def test_estados_devolvem_false_quando_o_elemento_nao_existe():
+    # Sem isto, `clicar_salvar_visivel` estouraria com IndexError em vez de
+    # simplesmente não achar botão.
+    engine = se.SeleniumEngine(_driver_com([]), _FakeWait())
+    assert engine.esta_visivel("//x") is False
+    assert engine.esta_habilitado("//x") is False
+    assert engine.esta_marcado("//x") is False
+
+
+def test_esta_marcado_compara_com_a_string_true():
+    # O Selenium devolve a STRING "true" no atributo `checked`, não um bool --
+    # é a comparação do original de `upload_conditions.check_or_uncheck`.
+    marcado = se.SeleniumEngine(_driver_com([_ElementoRico(checked="true")]), _FakeWait())
+    desmarcado = se.SeleniumEngine(_driver_com([_ElementoRico(checked=None)]), _FakeWait())
+    assert marcado.esta_marcado("//input") is True
+    assert desmarcado.esta_marcado("//input") is False
+
+
+# --- forcar_valor -----------------------------------------------------------
+
+def test_forcar_valor_escreve_e_dispara_os_tres_eventos_nesta_ordem():
+    # Os eventos NÃO são adorno: sem eles o OutSystems não percebe a mudança e
+    # devolve o campo ao valor antigo no próximo redesenho -- e a "2ª
+    # tentativa" de `_preencher_input_com_auditoria` viraria teatro.
+    elemento = _FakeElement()
+    driver = _FakeDriver()
+    engine = se.SeleniumEngine(driver, _FakeWait(elemento=elemento))
+
+    engine.forcar_valor("//input", "42")
+
+    scripts = [chamada[0] for chamada in driver.execute_script_chamadas]
+    assert scripts[0] == "arguments[0].value = arguments[1];"
+    assert "input" in scripts[1] and "dispatchEvent" in scripts[1]
+    assert "change" in scripts[2]
+    assert "blur" in scripts[3]
+    assert len(scripts) == 4
+
+
+def test_forcar_valor_passa_o_texto_por_argumento_e_nao_interpolado():
+    # O original interpolava o valor DENTRO da string do script. Um valor com
+    # aspas simples (medidas como `5' 1/2"` aparecem em ficha técnica)
+    # quebrava o JavaScript e a injeção falhava em silêncio -- justamente no
+    # caminho que existe para salvar um campo que já estava dando problema.
+    driver = _FakeDriver()
+    driver.execute_script_chamadas = []
+
+    def _execute_script(script, *args):
+        driver.execute_script_chamadas.append((script, args))
+
+    driver.execute_script = _execute_script
+    engine = se.SeleniumEngine(driver, _FakeWait(elemento=_FakeElement()))
+
+    engine.forcar_valor("//input", "5' 1/2\"")
+
+    script, args = driver.execute_script_chamadas[0]
+    assert "5'" not in script  # o valor NÃO entrou na string do script
+    assert args[1] == "5' 1/2\""
+
+
+# --- texto ------------------------------------------------------------------
+
+def test_texto_le_o_textcontent_e_nao_o_value():
+    engine = se.SeleniumEngine(_FakeDriver(), _FakeWait(elemento=_ElementoRico(texto=" 12 - Tensão ")))
+    assert engine.texto("//td") == " 12 - Tensão "
+
+
+def test_texto_devolve_string_vazia_quando_o_atributo_e_none():
+    engine = se.SeleniumEngine(_FakeDriver(), _FakeWait(elemento=_ElementoRico(texto=None)))
+    assert engine.texto("//td") == ""
+
+
+# --- foco -------------------------------------------------------------------
+
+class _SwitchTo:
+    def __init__(self, elemento):
+        self.active_element = elemento
+
+
+def test_focar_usa_js_e_nao_clica():
+    # Clicar desmarcaria o checkbox que `upload_conditions` usa como âncora
+    # da navegação por TAB -- por isso foco por JS, não clique.
+    elemento = _FakeElement()
+    driver = _FakeDriver()
+    engine = se.SeleniumEngine(driver, _FakeWait(elemento=elemento))
+
+    engine.focar("//input[@id='chk']")
+
+    assert driver.execute_script_chamadas == [("arguments[0].focus();", elemento)]
+
+
+def test_digitar_no_foco_envia_ao_elemento_ativo():
+    ativo = _FakeElement()
+    driver = _FakeDriver()
+    driver.switch_to = _SwitchTo(ativo)
+    engine = se.SeleniumEngine(driver, _FakeWait())
+
+    engine.digitar_no_foco(25)
+
+    assert ativo.send_keys_chamadas == [("25",)]  # converte para string
+
+
+# --- dropdowns --------------------------------------------------------------
+
+class _OpcaoFalsa:
+    def __init__(self, texto):
+        self.text = texto
+
+
+class _SelectFalso:
+    def __init__(self, opcoes):
+        self.options = [_OpcaoFalsa(t) for t in opcoes]
+        self.por_texto = []
+        self.por_indice = []
+
+    def select_by_visible_text(self, texto):
+        if texto not in [o.text for o in self.options]:
+            raise ValueError("sem opção com esse texto")
+        self.por_texto.append(texto)
+
+    def select_by_index(self, indice):
+        self.por_indice.append(indice)
+
+
+def test_opcoes_devolve_os_textos_na_ordem(monkeypatch):
+    engine = se.SeleniumEngine(_FakeDriver(), _FakeWait(elemento=_FakeElement()))
+    falso = _SelectFalso(["Milímetro (MM)", "Metro (M)"])
+    monkeypatch.setattr(engine, "_select", lambda seletor: falso)
+
+    assert engine.opcoes("//select") == ["Milímetro (MM)", "Metro (M)"]
+
+
+def test_selecionar_por_texto_e_por_indice(monkeypatch):
+    engine = se.SeleniumEngine(_FakeDriver(), _FakeWait(elemento=_FakeElement()))
+    falso = _SelectFalso(["A", "B"])
+    monkeypatch.setattr(engine, "_select", lambda seletor: falso)
+
+    engine.selecionar_por_texto("//select", "B")
+    engine.selecionar_por_indice("//select", 0)
+
+    assert falso.por_texto == ["B"]
+    assert falso.por_indice == [0]
+
+
+def test_selecionar_por_texto_propaga_quando_nao_ha_a_opcao(monkeypatch):
+    # `selecionar_dropdown_lista` DEPENDE dessa falha para cair na 2ª
+    # tentativa (casamento normalizado). Engolir aqui mataria o fallback.
+    engine = se.SeleniumEngine(_FakeDriver(), _FakeWait(elemento=_FakeElement()))
+    monkeypatch.setattr(engine, "_select", lambda seletor: _SelectFalso(["A"]))
+
+    with pytest.raises(Exception):
+        engine.selecionar_por_texto("//select", "Z")

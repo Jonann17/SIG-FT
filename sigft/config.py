@@ -569,9 +569,9 @@ RPA_ENGINE: dict[str, str] = {
     # mensagem explícita em vez de erro obscuro. Por isso este módulo NÃO deve
     # ser promovido a "playwright" antes do CP 5.4.
     "cria_fichas": ENGINE_SELENIUM,
-    # Ainda não migrados:
-    "upload_conditions": ENGINE_SELENIUM,  # CP 5.3
-    "tech_specs": ENGINE_SELENIUM,      # CP 5.3
+    "upload_conditions": ENGINE_SELENIUM,  # CP 5.3 -- fluxo completo
+    "tech_specs": ENGINE_SELENIUM,      # CP 5.3 -- fluxo completo
+    # Ainda não migrado:
     "ficha_duplicada": ENGINE_SELENIUM,  # Fase 6 (reconstruído já em Playwright)
 }
 

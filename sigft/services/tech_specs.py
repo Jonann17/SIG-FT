@@ -4,20 +4,19 @@ import json
 import time
 import pandas as pd
 import unicodedata
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import Select
-from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
-from selenium.webdriver.common.keys import Keys
 
 from sigft import config
 from sigft.core.excel import headers, pmib_codes, status_sheet
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em
 # `TechSpecsAutomation.iniciar` abaixo.
-from sigft.core.rpa.selenium_engine import create_chrome_driver, SeleniumEngine
+# CP 5.3 (Fase 5): `tech_specs` migrado -- o `selenium` sumiu dos imports.
+# Quem decide o motor é `config.RPA_ENGINE["tech_specs"]`; a exceção que o laço
+# de linhas discrimina passou a ser a NEUTRA de `core/rpa/engine.py` (no motor
+# Playwright ela simplesmente nunca ocorre, porque o seletor é reavaliado a
+# cada ação em vez de guardar uma referência que envelhece).
+from sigft.core.rpa.engine import ElementoObsoleto
+from sigft.core.rpa.factory import criar_engine
 # CP 2.2 (Fase 2): `safe_click`/`_pesquisar_e_abrir`/`_excluir_linha_segura`/
 # o stop-flag de `TechSpecsProcessor`/`TechSpecsAutomation` passam a delegar
 # para `PMIBPortal`. `safe_send_keys_elem`/`safe_send_keys_locator`/
@@ -277,12 +276,35 @@ class TechSpecsProcessor:
 
 
 # =============================================================================
+# CP 5.3 (Fase 5) — seletores XPath da aba "Características técnicas".
+#
+# Os `XPATH_REL_*` são RELATIVOS a uma linha da tabela: antes eram usados como
+# `linha.find_element(By.XPATH, ".//textarea[...]")`; agora são concatenados ao
+# seletor da linha (`(//linhas)[3]` + `.//textarea[...]`). Mesmos XPaths,
+# mesmo alvo — o que muda é o endereçamento, não a estratégia de seletor.
+# =============================================================================
+XPATH_ABA_CARACTERISTICAS = "//button[@role='tab' and contains(., 'Características técnicas')]"
+XPATH_TABELA_CARACTERISTICAS = "//div[contains(@id, 'TechnicalCharacteristics')]//table"
+XPATH_LINHAS_TABELA = "//div[contains(@id, 'TechnicalCharacteristics')]//table/tbody/tr"
+XPATH_BOTAO_PROXIMA_PAGINA = "//button[@aria-label='Ir para a página seguinte']"
+
+XPATH_REL_COL_DESCRICAO = "//td[contains(@data-header, 'Descrição')]"
+XPATH_REL_TEXTAREA_PT = '//textarea[contains(@id, "TextArea_ValuePT")]'
+XPATH_REL_TEXTAREA_ES = '//textarea[contains(@id, "TextArea_ValueES")]'
+XPATH_REL_INPUT_NUM = '//input[contains(@id, "NumberValue_Input")]'
+XPATH_REL_INPUT_MIN = '//input[contains(@id, "MinValue_Input")]'
+XPATH_REL_INPUT_MAX = '//input[contains(@id, "MaxValue_Input")]'
+XPATH_REL_SELECT_LISTA = '//select[contains(@id, "Dropdown1")]'
+XPATH_REL_SELECT_INTERVALO = '//select[contains(@id, "Dropdown_IntervalOptions")]'
+XPATH_REL_SELECT_UNIDADE = '//select[contains(@id, "DropdownTCUnitsOfMeasurement")]'
+
+
+# =============================================================================
 # CLASSE 2: AUTOMAÇÃO WEB (SELENIUM) - VERSÃO FINAL BLINDADA
 # =============================================================================
 class TechSpecsAutomation:
     def __init__(self):
-        self.driver = None
-        self.wait = None
+        self.engine = None
         # CP 2.2: `self.portal` (SEM engine ainda) já nasce aqui -- não só em
         # `iniciar()` -- para que `solicitar_parada()` continue seguro de
         # chamar a QUALQUER momento, inclusive ANTES de `iniciar()` rodar
@@ -305,18 +327,23 @@ class TechSpecsAutomation:
         — preservado sem retorno).
 
         CP 2.2: `self.portal` (já existente desde `__init__`, ver acima)
-        ganha o `engine` de verdade (`SeleniumEngine` sobre o MESMO
-        `driver`/`wait`) -- `safe_click`/`_pesquisar_e_abrir`/
-        `_excluir_linha_segura` abaixo passam a delegar para ele.
+        ganha o `engine` de verdade.
+
+        CP 5.3: quem escolhe o motor é `criar_engine`, por
+        `config.RPA_ENGINE["tech_specs"]`. Timeout de 20s preservado nos dois
+        motores; `self.engine` é agora a única referência ao browser nesta
+        classe (`self.driver`/`self.wait` deixaram de existir).
         """
-        self.driver, self.wait = create_chrome_driver(wait_timeout=20)
-        self.portal.engine = SeleniumEngine(self.driver, self.wait)
+        self.engine = criar_engine("tech_specs", wait_timeout=20)
+        self.portal.engine = self.engine
 
     def fechar(self):
-        if self.driver: self.driver.quit()
+        if self.engine:
+            self.engine.fechar()
 
     def abrir_portal(self, url):
-        if self.driver: self.driver.get(url)
+        if self.engine:
+            self.engine.goto(url)
 
     # --- HELPERS DE INTERAÇÃO SEGURA ---
     def safe_click(self, locator):
@@ -330,26 +357,31 @@ class TechSpecsAutomation:
         seletor = locator[1] if isinstance(locator, tuple) else locator
         self.portal.safe_click(seletor)
 
-    def safe_send_keys_elem(self, element, text):
-        """Preenche inputs limpando antes e enviando TAB no final."""
+    def safe_send_keys_elem(self, seletor, text):
+        """Preenche inputs limpando antes e enviando TAB no final.
+
+        CP 5.3: passou a receber o SELETOR em vez do elemento Selenium -- era
+        justamente esse elemento circulando entre métodos que impedia o
+        módulo de rodar em Playwright. A mecânica é a mesma:
+        `engine.fill` já faz scroll + clique de foco + Ctrl+A + Backspace +
+        digitar (a versão TOLERANTE, que engole falha, igual ao
+        `except Exception: pass` do original); o TAB do fim continua aqui,
+        depois da pausa de digitação.
+        """
         try:
-            # Garante visibilidade
-            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+            self.engine.scroll_to(seletor)
             time.sleep(PAUSA_SCROLL)
-            element.click()  # Foco
-            element.send_keys(Keys.CONTROL, "a")
-            element.send_keys(Keys.BACKSPACE)
-            element.send_keys(str(text))
+            self.engine.fill(seletor, str(text))
             time.sleep(PAUSA_DIGITACAO)
-            element.send_keys(Keys.TAB)
-        except Exception: pass
+            self.engine.press("TAB")
+        except Exception:
+            pass
 
     def safe_send_keys_locator(self, locator, text):
-        """Versão que recebe locator em vez de elemento."""
-        try:
-            el = self.wait.until(EC.presence_of_element_located(locator))
-            self.safe_send_keys_elem(el, text)
-        except Exception: pass
+        """Alias retrocompatível: aceita a tupla `(By.XPATH, xpath)` que os
+        call sites antigos usavam e repassa só o XPath."""
+        seletor = locator[1] if isinstance(locator, tuple) else locator
+        self.safe_send_keys_elem(seletor, text)
 
     # --- HELPERS DE DADOS ---
     def normalizar_texto(self, texto):
@@ -358,68 +390,90 @@ class TechSpecsAutomation:
         sem_acento = "".join(c for c in norm if unicodedata.category(c) != 'Mn')
         return " ".join(sem_acento.upper().split())
 
-    def selecionar_dropdown_lista(self, element, texto):
-        if not texto: return
+    def selecionar_dropdown_lista(self, seletor, texto):
+        """CP 5.3: recebe SELETOR em vez de elemento; o `Select` do Selenium
+        saiu daqui e virou as primitivas `opcoes`/`selecionar_por_texto`/
+        `selecionar_por_indice`. A REGRA de casamento (exato primeiro,
+        substring normalizada depois) fica aqui, que é onde ela é regra de
+        negócio -- o motor só sabe mexer no `<select>`."""
+        if not texto:
+            return
         try:
-            sel = Select(element)
-            alvo = self.normalizar_texto(texto)
-
             # 1. Tentativa Exata Visível
             try:
-                sel.select_by_visible_text(texto)
+                self.engine.selecionar_por_texto(seletor, texto)
                 return
-            except Exception: pass
+            except Exception:
+                pass
 
             # 2. Tentativa Normalizada
-            for opt in sel.options:
-                if alvo in self.normalizar_texto(opt.text):
-                    opt.click()
+            alvo = self.normalizar_texto(texto)
+            for indice, opcao in enumerate(self.engine.opcoes(seletor)):
+                if alvo in self.normalizar_texto(opcao):
+                    self.engine.selecionar_por_indice(seletor, indice)
                     return
-        except Exception: pass
+        except Exception:
+            pass
 
-    def selecionar_dropdown_unidade(self, element, texto):
-        if not texto: return
+    def selecionar_dropdown_unidade(self, seletor, texto):
+        """Idem, com a regra própria das unidades: casa o símbolo entre
+        parênteses no texto da opção (ex.: "Milímetro (MM)")."""
+        if not texto:
+            return
         try:
-            sel = Select(element)
-            target = f"({texto.strip().upper()})"
-            for opt in sel.options:
-                if target in opt.text.upper():
-                    opt.click()
+            alvo = f"({texto.strip().upper()})"
+            for indice, opcao in enumerate(self.engine.opcoes(seletor)):
+                if alvo in opcao.upper():
+                    self.engine.selecionar_por_indice(seletor, indice)
                     return
-        except Exception: pass
+        except Exception:
+            pass
 
-    def _preencher_input_com_auditoria(self, element, valor_alvo, elem_neutro, nome_campo="", callback_log=None):
-        """Tenta preencher, audita se o site zerou o valor e usa JS Forçado como 2ª tentativa."""
-        if not valor_alvo: return True
+    def _preencher_input_com_auditoria(self, seletor, valor_alvo, seletor_neutro, nome_campo="", callback_log=None):
+        """Tenta preencher, audita se o site zerou o valor e força o valor
+        como 2ª tentativa.
+
+        CP 5.3: recebe SELETORES (o campo e o "elemento neutro" para clicar
+        fora) em vez de elementos Selenium. A 2ª tentativa -- que era injeção
+        de JavaScript escrita à mão aqui -- virou `engine.forcar_valor`, que
+        cada motor cumpre do seu jeito: no Selenium, a MESMA injeção com os 3
+        `dispatchEvent`; no Playwright, um `fill` (que já emite os eventos).
+        É exatamente o que o checkpoint pede, e o "fallback de aviso de
+        pendência manual" continua sendo o `return False` daqui, que o
+        chamador transforma em pendência.
+        """
+        if not valor_alvo:
+            return True
+
+        def _clicar_fora():
+            if seletor_neutro and self.engine.element_exists(seletor_neutro):
+                self.engine.click_raw(seletor_neutro)
 
         # 1ª Tentativa: Digitação normal
-        element.clear()
-        self.safe_send_keys_elem(element, valor_alvo)
-        if elem_neutro: elem_neutro.click()
+        self.engine.clear(seletor)
+        self.safe_send_keys_elem(seletor, valor_alvo)
+        _clicar_fora()
         time.sleep(PAUSA_AUDITORIA)
 
         # Auditoria
-        valor_atual = str(element.get_attribute("value")).strip()
+        valor_atual = str(self.engine.get_value(seletor)).strip()
 
         # Se o site rejeitou a primeira tentativa
         if (valor_atual == "0" or valor_atual == "") and str(valor_alvo).strip() != "0":
 
             # --- MENSAGEM VISUAL E PAUSA ESTRATÉGICA ---
             if callback_log:
-                callback_log(f"   [!] O site rejeitou '{nome_campo}'. Tentando injeção forçada (JavaScript)...")
+                callback_log(f"   [!] O site rejeitou '{nome_campo}'. Tentando injeção forçada...")
             time.sleep(PAUSA_INJECAO_JS)  # Dá tempo para o usuário ver na tela e o JS do site assentar
 
-            # 2ª Tentativa: Injeção Direta no DOM (Força Bruta)
-            self.driver.execute_script(f"arguments[0].value = '{valor_alvo}';", element)
-            self.driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", element)
-            self.driver.execute_script("arguments[0].dispatchEvent(new Event('change', { bubbles: true }));", element)
-            self.driver.execute_script("arguments[0].dispatchEvent(new Event('blur', { bubbles: true }));", element)
-            if elem_neutro: elem_neutro.click()
+            # 2ª Tentativa: força o valor por baixo da digitação
+            self.engine.forcar_valor(seletor, valor_alvo)
+            _clicar_fora()
 
             time.sleep(PAUSA_POS_INJECAO_JS)  # Pausa maior após a injeção para validar o resultado
 
             # Auditoria Final
-            valor_atual_2 = str(element.get_attribute("value")).strip()
+            valor_atual_2 = str(self.engine.get_value(seletor)).strip()
             if (valor_atual_2 == "0" or valor_atual_2 == "") and str(valor_alvo).strip() != "0":
                 return False  # Desiste de vez
 
@@ -473,12 +527,10 @@ class TechSpecsAutomation:
                     continue
 
                 # 2. Entrar na Aba Specs
-                loc_aba = (By.XPATH, "//button[@role='tab' and contains(., 'Características técnicas')]")
-                self.safe_click(loc_aba)
+                self.safe_click(XPATH_ABA_CARACTERISTICAS)
 
-                locator_tabela = (By.XPATH, "//div[contains(@id, 'TechnicalCharacteristics')]//table")
                 try:
-                    self.wait.until(EC.visibility_of_element_located(locator_tabela))
+                    self.engine.wait_visible(XPATH_TABELA_CARACTERISTICAS)
                 except Exception:
                     if callback_log: callback_log("Erro: Tabela de características não carregou.")
                     continue
@@ -495,19 +547,27 @@ class TechSpecsAutomation:
 
                     row_index = 0
                     while True:
-                        # Recarrega a lista a cada iteração (CRÍTICO para evitar StaleElement)
-                        rows = self.driver.find_elements(By.XPATH, "//div[contains(@id, 'TechnicalCharacteristics')]//table/tbody/tr")
+                        # Reconta a cada iteração (CRÍTICO para evitar StaleElement)
+                        #
+                        # CP 5.3: era `find_elements` + `rows[row_index]`, ou
+                        # seja, um ELEMENTO Selenium guardado e usado depois.
+                        # Virou `contar` + XPath indexado -- o MESMO XPath de
+                        # linha, endereçado por posição. E o efeito colateral é
+                        # bom: como o seletor é reavaliado a cada uso, o
+                        # elemento nunca "envelhece", que era a razão de o laço
+                        # recarregar a lista inteira toda vez.
+                        total_linhas = self.engine.contar(XPATH_LINHAS_TABELA)
 
-                        if row_index >= len(rows):
+                        if row_index >= total_linhas:
                             break  # Fim da página atual
 
-                        row = rows[row_index]
+                        # XPath é base 1; `row_index` é base 0.
+                        seletor_linha = f"({XPATH_LINHAS_TABELA})[{row_index + 1}]"
                         item_foi_excluido = False
 
                         try:
                             # Extrair nome da característica na tela
-                            col_desc = row.find_element(By.XPATH, ".//td[contains(@data-header, 'Descrição')]")
-                            txt_tela = col_desc.get_attribute("textContent")
+                            txt_tela = self.engine.texto(seletor_linha + XPATH_REL_COL_DESCRICAO)
                             match = re.search(r"^\s*\d+\s*-\s*(.*)", txt_tela)
                             chave_limpa = self.normalizar_texto(match.group(1) if match else txt_tela)
 
@@ -518,7 +578,7 @@ class TechSpecsAutomation:
 
                                 # --- CASO: REMOVER ---
                                 if acao == "REMOVER":
-                                    sucesso_exclusao = self._excluir_linha_segura(row, chave_limpa, callback_log)
+                                    sucesso_exclusao = self._excluir_linha_segura(seletor_linha, chave_limpa, callback_log)
                                     if sucesso_exclusao:
                                         item_foi_excluido = True
                                     # Se falhar, item_foi_excluido continua False e o iterador (row_index) será incrementado.
@@ -527,7 +587,7 @@ class TechSpecsAutomation:
                                 # --- CASO: PREENCHER ---
                                 else:
                                     # Agora passamos o callback_log para a função poder avisar da 2ª tentativa
-                                    sucesso_preenchimento = self._preencher_linha(row, dado, callback_log)
+                                    sucesso_preenchimento = self._preencher_linha(seletor_linha, dado, callback_log)
                                     if not sucesso_preenchimento:
                                         # Se a auditoria falhou, guarda os dados para avisar o usuário
                                         pendencias_manuais.append({
@@ -536,7 +596,7 @@ class TechSpecsAutomation:
                                             "UNIDADE": dado.get("SIMBOLO", "AD")
                                         })
 
-                        except StaleElementReferenceException:
+                        except ElementoObsoleto:
                             continue  # Tenta pegar a linha de novo
                         except Exception:
                             pass
@@ -547,12 +607,17 @@ class TechSpecsAutomation:
 
                     # --- PAGINAÇÃO ---
                     try:
-                        btn_proximo = self.driver.find_element(By.XPATH, "//button[@aria-label='Ir para a página seguinte']")
-                        # Verifica se está habilitado (em alguns frameworks é class disabled, aqui assumimos is_enabled)
-                        if btn_proximo.is_enabled():
-                            self.driver.execute_script("arguments[0].click();", btn_proximo)
+                        # CP 5.3: `find_element` + `is_enabled` + `execute_script`
+                        # viraram `element_exists` + `esta_habilitado` +
+                        # `click_raw`. O `except` de fora continua sendo o
+                        # "botão não existe -> última página".
+                        if not self.engine.element_exists(XPATH_BOTAO_PROXIMA_PAGINA):
+                            break  # Botão não existe
+                        # Verifica se está habilitado (em alguns frameworks é class disabled)
+                        if self.engine.esta_habilitado(XPATH_BOTAO_PROXIMA_PAGINA):
+                            self.engine.click_raw(XPATH_BOTAO_PROXIMA_PAGINA)
                             time.sleep(PAUSA_PAGINACAO)
-                            self.wait.until(EC.visibility_of_element_located(locator_tabela))
+                            self.engine.wait_visible(XPATH_TABELA_CARACTERISTICAS)
                             pagina_atual += 1
                         else:
                             break  # Última página
@@ -590,7 +655,7 @@ class TechSpecsAutomation:
         lote.finalizar()
         return pmibs_finalizados  # <--- NOVO: Devolve a lista de sucesso para o Controller
 
-    def _excluir_linha_segura(self, row, chave_limpa, callback_log=None):
+    def _excluir_linha_segura(self, seletor_linha, chave_limpa, callback_log=None):
         """Tenta clicar na lixeira e confirmar a exclusão. Retorna True se der certo, False se falhar.
 
         CP 2.2: o corpo passa a delegar para
@@ -605,7 +670,7 @@ class TechSpecsAutomation:
         internamente antes de devolver `False` -- ver
         docs/refatoracao/PENDENCIAS.md.
         """
-        sucesso = self.portal.excluir_linha_com_confirmacao(row)
+        sucesso = self.portal.excluir_linha_com_confirmacao(seletor_linha)
         if callback_log:
             if sucesso:
                 callback_log(f"Sucesso ao excluir item: {chave_limpa}")
@@ -613,61 +678,73 @@ class TechSpecsAutomation:
                 callback_log(f"Falha ao excluir item {chave_limpa}.")
         return sucesso
 
-    def _preencher_linha(self, row, dado, callback_log=None):
+    def _preencher_linha(self, seletor_linha, dado, callback_log=None):
         """
         Preenche os campos e audita o resultado.
         Retorna True se sucesso, ou False se a inserção foi rejeitada pelo site.
+
+        CP 5.3: recebe o SELETOR da linha em vez do elemento. Cada campo
+        "dentro da linha" vira concatenação de XPath (`<linha>` + `.//input`)
+        -- os MESMOS XPaths relativos de antes, só endereçados de outro jeito.
         """
         tipo = dado.get("TIPO", "")
         val_pt = dado.get("RESPOSTA_PT_FINAL", "")
         nome_campo = dado.get("CARACTERISTICA_CHAVE", "Valor")  # Pega o nome para o Log
         sucesso_auditoria = True
 
+        def _campo(xpath_relativo):
+            return seletor_linha + xpath_relativo
+
         # Elemento Neutro para clicar fora
-        try:
-            elem_neutro = row.find_element(By.XPATH, ".//td[contains(@data-header, 'Descrição')]")
-        except Exception:
-            elem_neutro = None
+        seletor_neutro = _campo(XPATH_REL_COL_DESCRICAO)
+        if not self.engine.element_exists(seletor_neutro):
+            seletor_neutro = None
+
+        def _clicar_fora():
+            if seletor_neutro:
+                self.engine.click_raw(seletor_neutro)
 
         try:
             if tipo == "CHAR":
                 # PT (Sem auditoria pesada, campos textuais raramente dão problema)
-                txt_pt = row.find_element(By.XPATH, './/textarea[contains(@id, "TextArea_ValuePT")]')
-                txt_pt.clear(); self.safe_send_keys_elem(txt_pt, val_pt)
-                if elem_neutro: elem_neutro.click()
+                sel_pt = _campo(XPATH_REL_TEXTAREA_PT)
+                self.engine.clear(sel_pt)
+                self.safe_send_keys_elem(sel_pt, val_pt)
+                _clicar_fora()
 
                 # ES
                 val_es = dado.get("RESPOSTA_ES_FINAL", "")
-                txt_es = row.find_element(By.XPATH, './/textarea[contains(@id, "TextArea_ValueES")]')
-                txt_es.clear(); self.safe_send_keys_elem(txt_es, val_es)
-                if elem_neutro: elem_neutro.click()
+                sel_es = _campo(XPATH_REL_TEXTAREA_ES)
+                self.engine.clear(sel_es)
+                self.safe_send_keys_elem(sel_es, val_es)
+                _clicar_fora()
 
             elif tipo == "NUM":
-                inp = row.find_element(By.XPATH, './/input[contains(@id, "NumberValue_Input")]')
-                sucesso_auditoria = self._preencher_input_com_auditoria(inp, val_pt, elem_neutro, nome_campo, callback_log)
+                sucesso_auditoria = self._preencher_input_com_auditoria(
+                    _campo(XPATH_REL_INPUT_NUM), val_pt, seletor_neutro, nome_campo, callback_log
+                )
 
             elif tipo == "LISTA":
-                sel = row.find_element(By.XPATH, './/select[contains(@id, "Dropdown1")]')
-                self.selecionar_dropdown_lista(sel, val_pt)
+                self.selecionar_dropdown_lista(_campo(XPATH_REL_SELECT_LISTA), val_pt)
                 time.sleep(PAUSA_ANIMACAO)
-                if elem_neutro: elem_neutro.click()
+                _clicar_fora()
                 # Em Listas vamos assumir que não zera por bug numérico, então sucesso.
 
             elif tipo == "INT":
                 subtipo = dado.get("SUBTIPO_INTERVALO", "MINIMO / MAXIMO")
-                sel_int = row.find_element(By.XPATH, './/select[contains(@id, "Dropdown_IntervalOptions")]')
-                self.selecionar_dropdown_lista(sel_int, subtipo)
+                self.selecionar_dropdown_lista(_campo(XPATH_REL_SELECT_INTERVALO), subtipo)
                 time.sleep(PAUSA_ANIMACAO)
 
                 vals = val_pt.split('/')
                 v1 = vals[0].strip()
                 v2 = vals[1].strip() if len(vals) > 1 else ""
 
-                i_min = row.find_element(By.XPATH, './/input[contains(@id, "MinValue_Input")]')
-                s1 = self._preencher_input_com_auditoria(i_min, v1, elem_neutro, f"{nome_campo} (Mín)", callback_log)
-
-                i_max = row.find_element(By.XPATH, './/input[contains(@id, "MaxValue_Input")]')
-                s2 = self._preencher_input_com_auditoria(i_max, v2, elem_neutro, f"{nome_campo} (Máx)", callback_log)
+                s1 = self._preencher_input_com_auditoria(
+                    _campo(XPATH_REL_INPUT_MIN), v1, seletor_neutro, f"{nome_campo} (Mín)", callback_log
+                )
+                s2 = self._preencher_input_com_auditoria(
+                    _campo(XPATH_REL_INPUT_MAX), v2, seletor_neutro, f"{nome_campo} (Máx)", callback_log
+                )
 
                 # Se qualquer um dos dois (min/max) falhou, marca o item como falha
                 if not s1 or not s2:
@@ -676,10 +753,9 @@ class TechSpecsAutomation:
             # Unidade
             simb = dado.get("SIMBOLO")
             if simb:
-                sel_unit = row.find_element(By.XPATH, './/select[contains(@id, "DropdownTCUnitsOfMeasurement")]')
-                self.selecionar_dropdown_unidade(sel_unit, simb)
+                self.selecionar_dropdown_unidade(_campo(XPATH_REL_SELECT_UNIDADE), simb)
 
-        except Exception as e:
+        except Exception:
             # Avisa no log que o tipo esperado pelo JSON não bateu com a tela real
             if callback_log:
                 callback_log(f"   [Erro Estrutural] Não foi possível preencher '{nome_campo}' como {tipo}. O campo na tela é diferente.")

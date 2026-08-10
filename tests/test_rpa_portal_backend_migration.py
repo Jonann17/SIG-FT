@@ -162,27 +162,18 @@ def test_cria_fichas_automacao_pmib_iniciar_driver_resolve_portal():
 
 
 def test_upload_conditions_iniciar_anexa_engine_a_portal_ja_existente_desde_init():
-    # UploadAutomation tem stop-flag: `self.portal` já existe desde
-    # `__init__` (SEM engine) -- `iniciar()` só ANEXA o engine à MESMA
-    # instância (não cria uma nova) -- ver docs/refatoracao/PENDENCIAS.md.
-    chamadas = []
-    driver_sentinel, wait_sentinel = object(), object()
+    """CP 5.3: o portal ja existe desde o `__init__` (por causa da stop-flag);
+    `iniciar()` so anexa a ele o motor que a fabrica devolver -- sem trocar a
+    INSTANCIA do portal, senao a flag de parada ja setada se perderia."""
+    engine_sentinel = object()
     auto = upload_conditions_backend.UploadAutomation()
-    portal_antes_de_iniciar = auto.portal
+    portal_antes = auto.portal
 
-    assert isinstance(portal_antes_de_iniciar, PMIBPortal)
-    assert portal_antes_de_iniciar.engine is None  # ainda sem engine
-
-    with patch.object(
-        upload_conditions_backend, "create_chrome_driver",
-        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
-    ):
+    with patch.object(upload_conditions_backend, "criar_engine", lambda *a, **k: engine_sentinel):
         auto.iniciar()
 
-    assert auto.portal is portal_antes_de_iniciar  # MESMA instância
-    assert isinstance(auto.portal.engine, SeleniumEngine)
-    assert auto.portal.engine.driver is driver_sentinel
-    assert auto.portal.engine.wait is wait_sentinel
+    assert auto.portal is portal_antes  # MESMA instancia
+    assert auto.portal.engine is engine_sentinel
 
 
 def test_upload_conditions_solicitar_parada_funciona_antes_de_iniciar():
@@ -196,24 +187,18 @@ def test_upload_conditions_solicitar_parada_funciona_antes_de_iniciar():
 
 
 def test_upload_tech_specs_iniciar_anexa_engine_a_portal_ja_existente_desde_init():
-    chamadas = []
-    driver_sentinel, wait_sentinel = object(), object()
+    """CP 5.3: o portal ja existe desde o `__init__` (por causa da stop-flag);
+    `iniciar()` so anexa a ele o motor que a fabrica devolver -- sem trocar a
+    INSTANCIA do portal, senao a flag de parada ja setada se perderia."""
+    engine_sentinel = object()
     auto = upload_tech_specs_backend.TechSpecsAutomation()
-    portal_antes_de_iniciar = auto.portal
+    portal_antes = auto.portal
 
-    assert isinstance(portal_antes_de_iniciar, PMIBPortal)
-    assert portal_antes_de_iniciar.engine is None
-
-    with patch.object(
-        upload_tech_specs_backend, "create_chrome_driver",
-        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
-    ):
+    with patch.object(upload_tech_specs_backend, "criar_engine", lambda *a, **k: engine_sentinel):
         auto.iniciar()
 
-    assert auto.portal is portal_antes_de_iniciar
-    assert isinstance(auto.portal.engine, SeleniumEngine)
-    assert auto.portal.engine.driver is driver_sentinel
-    assert auto.portal.engine.wait is wait_sentinel
+    assert auto.portal is portal_antes  # MESMA instancia
+    assert auto.portal.engine is engine_sentinel
 
 
 def test_upload_tech_specs_solicitar_parada_funciona_antes_de_iniciar():
@@ -288,9 +273,9 @@ def test_upload_conditions_safe_click_e_safe_send_keys_e_check_or_uncheck_delega
     espiao = _PortalEspiao()
     auto.portal = espiao
 
-    auto.safe_click((upload_conditions_backend.By.XPATH, "//a[@id='y']"))
-    auto.safe_send_keys((upload_conditions_backend.By.XPATH, "//textarea[@id='z']"), "valor")
-    auto.check_or_uncheck((upload_conditions_backend.By.XPATH, "//input[@id='c']"), True)
+    auto.safe_click("//a[@id='y']")
+    auto.safe_send_keys("//textarea[@id='z']", "valor")
+    auto.check_or_uncheck("//input[@id='c']", True)
 
     assert espiao.safe_click_chamadas == ["//a[@id='y']"]
     assert espiao.safe_fill_chamadas == [("//textarea[@id='z']", "valor")]
@@ -302,7 +287,7 @@ def test_upload_tech_specs_safe_click_delega():
     espiao = _PortalEspiao()
     auto.portal = espiao
 
-    auto.safe_click((upload_tech_specs_backend.By.XPATH, "//button[@id='salvar']"))
+    auto.safe_click("//button[@id='salvar']")
 
     assert espiao.safe_click_chamadas == ["//button[@id='salvar']"]
 

@@ -46,7 +46,21 @@ METODOS_CP_5_1 = (
     "fechar",
 )
 
-METODOS_OBRIGATORIOS = METODOS_CP_2_1 + METODOS_CP_5_1
+METODOS_CP_5_3 = (
+    "contar",
+    "esta_visivel",
+    "esta_habilitado",
+    "esta_marcado",
+    "forcar_valor",
+    "focar",
+    "digitar_no_foco",
+    "texto",
+    "opcoes",
+    "selecionar_por_texto",
+    "selecionar_por_indice",
+)
+
+METODOS_OBRIGATORIOS = METODOS_CP_2_1 + METODOS_CP_5_1 + METODOS_CP_5_3
 
 
 def test_rpaengine_declara_os_10_metodos_do_cp_2_1():
@@ -56,6 +70,11 @@ def test_rpaengine_declara_os_10_metodos_do_cp_2_1():
 
 def test_rpaengine_declara_as_primitivas_do_cp_5_1():
     for nome in METODOS_CP_5_1:
+        assert nome in RPAEngine.__abstractmethods__
+
+
+def test_rpaengine_declara_as_primitivas_do_cp_5_3():
+    for nome in METODOS_CP_5_3:
         assert nome in RPAEngine.__abstractmethods__
 
 
@@ -93,6 +112,18 @@ def _implementacoes_completas():
         "type_text": lambda self, seletor, texto: None,
         "current_url": lambda self: "",
         "fechar": lambda self: None,
+        # CP 5.3
+        "contar": lambda self, seletor: 0,
+        "esta_visivel": lambda self, seletor: True,
+        "esta_habilitado": lambda self, seletor: True,
+        "esta_marcado": lambda self, seletor: False,
+        "forcar_valor": lambda self, seletor, texto: None,
+        "focar": lambda self, seletor: None,
+        "digitar_no_foco": lambda self, texto: None,
+        "texto": lambda self, seletor: "",
+        "opcoes": lambda self, seletor: [],
+        "selecionar_por_texto": lambda self, seletor, texto: None,
+        "selecionar_por_indice": lambda self, seletor, indice: None,
     }
 
 

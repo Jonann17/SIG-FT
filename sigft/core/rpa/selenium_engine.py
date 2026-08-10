@@ -357,6 +357,83 @@ class SeleniumEngine(RPAEngine):
             el = self.wait.until(EC.element_to_be_clickable((By.XPATH, seletor)))
             el.send_keys(str(texto))
 
+    # =====================================================================
+    # Primitivas do CP 5.3 -- ver `engine.py` para o racional de cada uma
+    # =====================================================================
+    def contar(self, seletor: str) -> int:
+        return len(self.driver.find_elements(By.XPATH, seletor))
+
+    def esta_visivel(self, seletor: str) -> bool:
+        elementos = self.driver.find_elements(By.XPATH, seletor)
+        return bool(elementos) and elementos[0].is_displayed()
+
+    def esta_habilitado(self, seletor: str) -> bool:
+        elementos = self.driver.find_elements(By.XPATH, seletor)
+        return bool(elementos) and elementos[0].is_enabled()
+
+    def esta_marcado(self, seletor: str) -> bool:
+        """`get_attribute("checked") == "true"` -- a comparação com a STRING
+        é do original de `upload_conditions.check_or_uncheck`, preservada:
+        o Selenium devolve a string `"true"` para o atributo, não um bool."""
+        elementos = self.driver.find_elements(By.XPATH, seletor)
+        if not elementos:
+            return False
+        return elementos[0].get_attribute("checked") == "true"
+
+    def forcar_valor(self, seletor: str, texto: str) -> None:
+        """Injeção direta no DOM + os 3 eventos -- a "2ª tentativa" de
+        `tech_specs._preencher_input_com_auditoria`, movida para cá.
+
+        Os `dispatchEvent` não são adorno: sem eles o OutSystems não percebe
+        a mudança e devolve o campo ao valor antigo no próximo redesenho.
+
+        O valor vai por ARGUMENTO (`arguments[1]`), não interpolado na
+        string do script como no original -- lá, um valor com aspas
+        simples (ex.: `5' 1/2"`) quebrava o JavaScript e a injeção falhava
+        em silêncio. Mesma mecânica, sem o buraco.
+        """
+        with _traduzindo():
+            el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
+            self.driver.execute_script("arguments[0].value = arguments[1];", el, str(texto))
+            for evento in ("input", "change", "blur"):
+                self.driver.execute_script(
+                    f"arguments[0].dispatchEvent(new Event('{evento}', {{ bubbles: true }}));", el
+                )
+
+    def focar(self, seletor: str) -> None:
+        with _traduzindo():
+            el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
+            self.driver.execute_script("arguments[0].focus();", el)
+
+    def digitar_no_foco(self, texto: str) -> None:
+        """`driver.switch_to.active_element.send_keys(...)` -- exatamente o
+        que `upload_conditions` fazia."""
+        with _traduzindo():
+            self.driver.switch_to.active_element.send_keys(str(texto))
+
+    def texto(self, seletor: str) -> str:
+        with _traduzindo():
+            el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
+            return el.get_attribute("textContent") or ""
+
+    def _select(self, seletor: str):
+        from selenium.webdriver.support.ui import Select  # import local -- só os dropdowns usam
+
+        el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
+        return Select(el)
+
+    def opcoes(self, seletor: str) -> list[str]:
+        with _traduzindo():
+            return [opcao.text for opcao in self._select(seletor).options]
+
+    def selecionar_por_texto(self, seletor: str, texto: str) -> None:
+        with _traduzindo():
+            self._select(seletor).select_by_visible_text(texto)
+
+    def selecionar_por_indice(self, seletor: str, indice: int) -> None:
+        with _traduzindo():
+            self._select(seletor).select_by_index(indice)
+
     def current_url(self) -> str:
         return self.driver.current_url
 

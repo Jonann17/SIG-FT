@@ -557,3 +557,105 @@ def test_criar_para_o_playwright_quando_o_browser_nao_sobe(monkeypatch):
         PlaywrightEngine.criar()
 
     assert paradas == [1]
+
+
+# ===========================================================================
+# CP 5.3 — primitivas dos uploads
+# ===========================================================================
+def test_contar_usa_count_sem_esperar():
+    assert _engine(quantidade=4).contar("//tr") == 4
+    assert _engine(quantidade=0).contar("//tr") == 0
+
+
+def test_estados_devolvem_false_quando_nao_existe_elemento():
+    # Mesmo contrato da versão Selenium: `clicar_salvar_visivel` conta com
+    # isso para "não achei botão" em vez de estourar.
+    engine = _engine(quantidade=0)
+    assert engine.esta_visivel("//x") is False
+    assert engine.esta_habilitado("//x") is False
+    assert engine.esta_marcado("//x") is False
+
+
+def test_forcar_valor_e_um_fill_sem_javascript():
+    # É o que o CP 5.3 pede: "em Playwright usar `fill`". O `fill` já dispara
+    # os eventos de input/change que a versão Selenium precisa emitir à mão.
+    engine = _engine()
+
+    engine.forcar_valor("//input", 42)
+
+    assert engine.page.acoes == [("fill", "xpath=//input", "42")]
+
+
+def test_texto_le_o_textcontent():
+    class _Loc(_FakeLocator):
+        def text_content(self):
+            self._registrar("text_content")
+            return " 12 - Tensão "
+
+    pagina = _FakePage()
+    pagina.locator = lambda seletor: _Loc(pagina, seletor)
+    engine = PlaywrightEngine(pagina)
+
+    assert engine.texto("//td") == " 12 - Tensão "
+
+
+def test_focar_nao_clica():
+    focados = []
+
+    class _Loc(_FakeLocator):
+        def focus(self):
+            focados.append(self.seletor)
+
+    pagina = _FakePage()
+    pagina.locator = lambda seletor: _Loc(pagina, seletor)
+    engine = PlaywrightEngine(pagina)
+
+    engine.focar("//input[@id='chk']")
+
+    assert focados == ["xpath=//input[@id='chk']"]
+    assert not any(acao[0] == "click" for acao in pagina.acoes)
+
+
+def test_digitar_no_foco_usa_o_teclado_da_pagina():
+    digitados = []
+    pagina = _FakePage()
+    pagina.keyboard.type = lambda texto: digitados.append(texto)
+    engine = PlaywrightEngine(pagina)
+
+    engine.digitar_no_foco(25)
+
+    assert digitados == ["25"]  # converte para string
+
+
+def test_dropdown_seleciona_por_rotulo_e_por_indice():
+    escolhas = []
+
+    class _Loc(_FakeLocator):
+        def select_option(self, **kwargs):
+            escolhas.append(kwargs)
+
+    pagina = _FakePage()
+    pagina.locator = lambda seletor: _Loc(pagina, seletor)
+    engine = PlaywrightEngine(pagina)
+
+    engine.selecionar_por_texto("//select", "Metro (M)")
+    engine.selecionar_por_indice("//select", 2)
+
+    assert escolhas == [{"label": "Metro (M)"}, {"index": 2}]
+
+
+def test_opcoes_devolve_os_textos_limpos():
+    class _Opcoes:
+        def all_text_contents(self):
+            return ["  Milímetro (MM) ", "Metro (M)"]
+
+    class _Loc(_FakeLocator):
+        def locator(self, seletor):
+            assert seletor == "option"
+            return _Opcoes()
+
+    pagina = _FakePage()
+    pagina.locator = lambda seletor: _Loc(pagina, seletor)
+    engine = PlaywrightEngine(pagina)
+
+    assert engine.opcoes("//select") == ["Milímetro (MM)", "Metro (M)"]

@@ -148,40 +148,48 @@ def test_cria_fichas_com_motor_sem_driver_avisa_em_vez_de_estourar_obscuro():
     assert "SIGFT_RPA_ENGINE=selenium" in mensagem
 
 
-def test_upload_conditions_iniciar_usa_create_chrome_driver_timeout_20():
+def test_upload_conditions_iniciar_pede_o_engine_do_modulo_com_timeout_20():
+    """CP 5.3: migrado para a fabrica de motor. O timeout de 20s ORIGINAL
+    da classe continua atravessando intacto, e o portal (que ja existia desde
+    o `__init__`) recebe o engine."""
     chamadas = []
-    driver_sentinel, wait_sentinel = object(), object()
+    engine_sentinel = object()
+
+    def _fake_criar_engine(modulo, *, wait_timeout=20, download_dir=None):
+        chamadas.append({"modulo": modulo, "wait_timeout": wait_timeout, "download_dir": download_dir})
+        return engine_sentinel
+
     auto = upload_conditions_backend.UploadAutomation()
 
-    with patch.object(
-        upload_conditions_backend, "create_chrome_driver",
-        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
-    ):
+    with patch.object(upload_conditions_backend, "criar_engine", _fake_criar_engine):
         retorno = auto.iniciar()
 
-    assert chamadas == [{"wait_timeout": 20, "download_dir": None}]
-    assert auto.driver is driver_sentinel
-    assert auto.wait is wait_sentinel
-    assert retorno is driver_sentinel
+    assert chamadas == [{"modulo": "upload_conditions", "wait_timeout": 20, "download_dir": None}]
+    assert auto.engine is engine_sentinel
+    assert auto.portal.engine is engine_sentinel
+    assert retorno is engine_sentinel
 
 
-def test_upload_tech_specs_iniciar_usa_create_chrome_driver_timeout_20_sem_retorno():
-    # `TechSpecsAutomation.iniciar` NUNCA teve `return self.driver` no
-    # original -- preservado sem retorno (None implícito).
+def test_tech_specs_iniciar_pede_o_engine_do_modulo_com_timeout_20():
+    """CP 5.3: migrado para a fabrica de motor. O timeout de 20s ORIGINAL
+    da classe continua atravessando intacto, e o portal (que ja existia desde
+    o `__init__`) recebe o engine."""
     chamadas = []
-    driver_sentinel, wait_sentinel = object(), object()
+    engine_sentinel = object()
+
+    def _fake_criar_engine(modulo, *, wait_timeout=20, download_dir=None):
+        chamadas.append({"modulo": modulo, "wait_timeout": wait_timeout, "download_dir": download_dir})
+        return engine_sentinel
+
     auto = upload_tech_specs_backend.TechSpecsAutomation()
 
-    with patch.object(
-        upload_tech_specs_backend, "create_chrome_driver",
-        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
-    ):
+    with patch.object(upload_tech_specs_backend, "criar_engine", _fake_criar_engine):
         retorno = auto.iniciar()
 
-    assert chamadas == [{"wait_timeout": 20, "download_dir": None}]
-    assert auto.driver is driver_sentinel
-    assert auto.wait is wait_sentinel
-    assert retorno is None
+    assert chamadas == [{"modulo": "tech_specs", "wait_timeout": 20, "download_dir": None}]
+    assert auto.engine is engine_sentinel
+    assert auto.portal.engine is engine_sentinel
+    assert retorno is None  # este metodo nunca teve `return`
 
 
 def test_upload_ficha_duplicada_iniciar_driver_silencioso_usa_download_dir_timeout_15(tmp_path):
