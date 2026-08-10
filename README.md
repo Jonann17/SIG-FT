@@ -5,6 +5,10 @@ sobressalentes do projeto de Itaipu: criação de fichas técnicas no Portal PMI
 planilhas para fornecedores, automação RPA (Selenium) no portal oficial e gestão do processo
 por planilhas Excel.
 
+> **Vai validar a refatoração?** Siga o roteiro passo a passo em
+> [`docs/ROTEIRO_DE_TESTE.md`](docs/ROTEIRO_DE_TESTE.md) — do download do ZIP
+> até os módulos no portal, com o que conferir em cada etapa.
+
 ## Como executar
 
 ### Windows (uso normal)
@@ -88,9 +92,10 @@ O que já roda no motor novo:
 |---|---|
 | Apagar LMR | migrado, fluxo completo |
 | Cadastro LMR | migrado, fluxo completo |
-| Criar Fichas — atualizar projeto em massa | migrado |
-| Criar Fichas — criação de ficha individual | **só Selenium** (avisa e para se você forçar o motor novo) |
-| Condições, Características Técnicas, Ficha Duplicada | só Selenium |
+| Criar Fichas (criação individual e atualização em massa) | migrado, fluxo completo |
+| Upload Condições | migrado, fluxo completo |
+| Upload Specs (Características Técnicas) | migrado, fluxo completo |
+| Upload duplicadas (Ficha Duplicada) | **só Selenium** — será reconstruído na Fase 6 |
 
 Nada disso foi validado contra o portal real ainda — é justamente o que a
 sessão de teste vai dizer.
