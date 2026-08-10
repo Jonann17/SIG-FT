@@ -297,6 +297,16 @@ class RPAEngine(ABC):
         """
 
     @abstractmethod
+    def atributo(self, seletor: str, nome: str) -> str:
+        """Lê um atributo HTML qualquer do elemento (ex.: `data-tooltip`).
+
+        `get_value` cobre só o `value` de campo e `texto` só o conteúdo;
+        `cria_fichas` precisa do `data-tooltip` de uma div para capturar o
+        "PDM Final" depois de salvar a ficha. Devolve `""` quando o atributo
+        não existe, para o chamador não ter de tratar `None`.
+        """
+
+    @abstractmethod
     def texto(self, seletor: str) -> str:
         """Texto do elemento (o `textContent` do DOM), não o `value` de um
         campo -- é `get_value` quem lê campo de formulário.

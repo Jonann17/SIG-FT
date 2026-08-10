@@ -563,11 +563,8 @@ RPA_ENGINE: dict[str, str] = {
     # Migrados (código pronto, aguardando a sessão de validação com o usuário):
     "apagar_lmr": ENGINE_SELENIUM,      # piloto do CP 5.1 -- fluxo completo
     "lmr": ENGINE_SELENIUM,             # CP 5.2 -- fluxo completo
-    # PARCIAL: `atualizar_projeto_em_massa` roda nos dois motores (CP 5.2), mas
-    # `processar_item_individual` (fluxo por TAB/active_element) ainda é só
-    # Selenium -- é o CP 5.4. Com o motor Playwright, esse fluxo falha com uma
-    # mensagem explícita em vez de erro obscuro. Por isso este módulo NÃO deve
-    # ser promovido a "playwright" antes do CP 5.4.
+    # CP 5.2 (atualização em massa) + CP 5.4 (criação de ficha individual):
+    # o módulo inteiro roda nos dois motores.
     "cria_fichas": ENGINE_SELENIUM,
     "upload_conditions": ENGINE_SELENIUM,  # CP 5.3 -- fluxo completo
     "tech_specs": ENGINE_SELENIUM,      # CP 5.3 -- fluxo completo

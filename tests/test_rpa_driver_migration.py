@@ -97,19 +97,18 @@ def test_lmr_iniciar_driver_pede_o_engine_do_modulo_com_timeout_20():
 
 
 def test_cria_fichas_automacao_pmib_iniciar_driver_pede_o_engine_do_modulo_com_timeout_10():
-    """CP 5.2: `cria_fichas` migrado para a fábrica. Timeout de 10s (o único
-    dos 6 pontos originais com esse valor) preservado."""
+    """CP 5.2/5.4: `cria_fichas` migrado por inteiro. Timeout de 10s (o único
+    dos 6 pontos originais com esse valor) preservado.
+
+    CP 5.4 tirou o `self.driver`/`self.wait` que ainda existiam para o fluxo
+    de criação individual -- junto com a guarda que avisava que aquele fluxo
+    só rodava em Selenium, agora desnecessária."""
     chamadas = []
-
-    class _EngineSelenium:
-        driver = object()
-        wait = object()
-
-    engine = _EngineSelenium()
+    engine_sentinel = object()
 
     def _fake_criar_engine(modulo, *, wait_timeout=20, download_dir=None):
         chamadas.append({"modulo": modulo, "wait_timeout": wait_timeout, "download_dir": download_dir})
-        return engine
+        return engine_sentinel
 
     auto = cria_fichas_no_pmib_v1_backend.AutomacaoPMIB()
 
@@ -117,35 +116,49 @@ def test_cria_fichas_automacao_pmib_iniciar_driver_pede_o_engine_do_modulo_com_t
         retorno = auto.iniciar_driver()
 
     assert chamadas == [{"modulo": "cria_fichas", "wait_timeout": 10, "download_dir": None}]
-    assert auto.engine is engine
-    assert retorno is engine
-    # `processar_item_individual` (CP 5.4) ainda depende destes -- ficam
-    # expostos enquanto o motor for o Selenium.
-    assert auto.driver is engine.driver
-    assert auto.wait is engine.wait
+    assert auto.engine is engine_sentinel
+    assert retorno is engine_sentinel
+    assert not hasattr(auto, "driver"), "CP 5.4: `driver` nao existe mais nesta classe"
 
 
-def test_cria_fichas_com_motor_sem_driver_avisa_em_vez_de_estourar_obscuro():
-    """Guarda do CP 5.2: rodando em Playwright, o fluxo de criação individual
-    (que é o CP 5.4) explica o que fazer em vez de deixar um
-    `AttributeError: 'NoneType' object has no attribute ...` aparecer no meio
-    da criação de uma ficha real."""
-    class _EnginePlaywright:
-        pass  # sem `driver`/`wait` -- é o ponto
+def test_cria_fichas_roda_o_fluxo_de_criacao_em_qualquer_motor():
+    """Substitui o teste da guarda do CP 5.2.
 
+    Aquele teste garantia que, com um motor SEM `.driver` (Playwright), a
+    criação de ficha individual falhava com mensagem explicando que o fluxo
+    ainda era só Selenium. O CP 5.4 portou o fluxo, então a guarda saiu -- e
+    o que se garante agora é o oposto: um motor sem `.driver` roda o fluxo
+    normalmente, sem AttributeError e sem a mensagem antiga.
+    """
+    class _EngineNeutro:
+        """Sem `driver`/`wait` -- como o PlaywrightEngine."""
+
+        def __init__(self):
+            self.chamadas = []
+
+        def __getattr__(self, nome):
+            if nome in ("driver", "wait"):
+                raise AttributeError(nome)
+
+            def _registrar(*args):
+                self.chamadas.append((nome, *args))
+                return ""
+
+            return _registrar
+
+    engine = _EngineNeutro()
     auto = cria_fichas_no_pmib_v1_backend.AutomacaoPMIB()
 
-    with patch.object(cria_fichas_no_pmib_v1_backend, "criar_engine", lambda *a, **k: _EnginePlaywright()):
+    with patch.object(cria_fichas_no_pmib_v1_backend, "criar_engine", lambda *a, **k: engine):
         auto.iniciar_driver()
 
-    assert auto.driver is None
+    with patch.object(cria_fichas_no_pmib_v1_backend.time, "sleep", lambda *a, **k: None):
+        estado, _ = auto.processar_item_individual({"pdm_escolhido": "PDM.1234"})
 
-    with pytest.raises(RuntimeError) as capturado:
-        auto.processar_item_individual({})
-
-    mensagem = str(capturado.value)
-    assert "CP 5.4" in mensagem
-    assert "SIGFT_RPA_ENGINE=selenium" in mensagem
+    assert estado == "SUCESSO"
+    # E de fato tocou o browser pelas primitivas neutras.
+    nomes = {chamada[0] for chamada in engine.chamadas}
+    assert {"wait_clickable", "click_raw", "digitar_no_foco", "press"} <= nomes
 
 
 def test_upload_conditions_iniciar_pede_o_engine_do_modulo_com_timeout_20():

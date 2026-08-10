@@ -387,6 +387,9 @@ class PlaywrightEngine(RPAEngine):
         versão Selenium."""
         self._executar(lambda: self.page.keyboard.type(str(texto)))
 
+    def atributo(self, seletor: str, nome: str) -> str:
+        return self._executar(lambda: self._loc(seletor).get_attribute(nome) or "")
+
     def texto(self, seletor: str) -> str:
         """`text_content()` é o `textContent` do DOM -- inclui o que está
         oculto por CSS, ao contrário de `inner_text()`. É o que a versão

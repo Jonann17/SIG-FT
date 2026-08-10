@@ -3,11 +3,6 @@ import openpyxl
 import json
 import time
 import re
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 
 from sigft import config
 from sigft.core.excel import headers, locking
@@ -217,12 +212,43 @@ XPATH_LAPIS_MASSA = "//tr[contains(., '{pmib}')]//a[.//i[contains(@class, 'fa-pe
 XPATH_CAMPO_PROJETO = '//*[@id="b10-b9-TextArea_ProjectCode"]'
 XPATH_SALVAR_PROJETO = '//*[@id="b10-b9-Form1"]/div[6]/button[1]'
 
+# CP 5.4 — seletores do fluxo de criação de ficha individual.
+XPATH_BOTAO_NOVA_FICHA = '//*[@id="b1-Actions"]/button'
+XPATH_DIV_PESQUISAR_PDM = '//div[@data-tooltip="Pesquisar PDM"]'
+XPATH_DROPDOWN_CONTRATO = '//*[@id="b10-ContractDropdownSearch"]'
+XPATH_SALVAR_1 = '//*[@id="b10-b7-Button"]/button'
+XPATH_CODIGO_PMIB = '//*[@id="b8-b1-Content"]/span'
+
+# ÚNICO seletor CSS que restava no projeto (levantado já no CP 2.1: "139 dos
+# 140 usos de `By.*` são XPATH"). Traduzido para XPath aqui, porque o contrato
+# de `RPAEngine` é só XPath. Equivalência: `div.vscomp-value[data-tooltip^=
+# 'PDM']` -> div com a classe na lista de classes E tooltip começando por PDM.
+# O `concat(' ', @class, ' ')` é o jeito canônico de casar UMA classe em XPath
+# sem pegar `vscomp-value-outra` por engano.
+XPATH_PDM_FINAL = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-value ')"
+    " and starts-with(@data-tooltip, 'PDM')]"
+)
+
+
+def _teclas_da_unidade(unidade):
+    """Texto a digitar no combo de unidade -- extraído do meio do fluxo para
+    ficar testável sem browser nenhum. Mesmas equivalências de antes."""
+    u_l = unidade.lower() if unidade else "unidade"
+    if u_l in ('peça', 'pç', 'peca'):
+        return "pç"
+    if u_l in ('metro', 'm'):
+        return 'metro - (m)'
+    if u_l in ('litro', 'l'):
+        return 'litro - (l)'
+    if u_l in ('conjunto', 'cj'):
+        return 'cj'
+    return "un"
+
 
 class AutomacaoPMIB:
     def __init__(self):
         self.engine = None
-        self.driver = None
-        self.wait = None
         self.portal = None
 
     def iniciar_driver(self):
@@ -237,15 +263,11 @@ class AutomacaoPMIB:
         CP 5.2: quem escolhe o motor agora é `criar_engine`, por
         `config.RPA_ENGINE["cria_fichas"]`. Timeout de 10s preservado.
 
-        `self.driver`/`self.wait` continuam sendo expostos QUANDO o motor é o
-        Selenium, porque `processar_item_individual` ainda depende deles --
-        esse fluxo é o CP 5.4. Com o motor Playwright eles ficam `None`, e
-        `processar_item_individual` avisa disso de forma explícita em vez de
-        estourar um `AttributeError` obscuro.
+        CP 5.4: `processar_item_individual` foi portado, então `self.driver`/
+        `self.wait` deixaram de existir -- o módulo inteiro roda nos dois
+        motores e a guarda que avisava sobre isso saiu junto.
         """
         self.engine = criar_engine("cria_fichas", wait_timeout=10)
-        self.driver = getattr(self.engine, "driver", None)
-        self.wait = getattr(self.engine, "wait", None)
         self.portal = PMIBPortal(self.engine)
         return self.engine
 
@@ -259,22 +281,25 @@ class AutomacaoPMIB:
         """
         Lógica atualizada com correções de foco e espera.
 
-        CP 5.2: este fluxo NÃO foi migrado -- ele é o CP 5.4 ("o fluxo por
-        TAB/active_element é o mais frágil do sistema; reimplementar com
-        seletores diretos onde o usuário confirmar que o alvo é estável").
-        Por isso ele ainda fala Selenium direto, e a guarda abaixo falha com
-        uma mensagem que diz o que fazer, em vez de deixar um
-        `AttributeError: 'NoneType' object has no attribute 'find_element'`
-        aparecer no meio da criação de uma ficha real.
+        CP 5.4 (Fase 5): PORTE FIEL para as primitivas de `RPAEngine`. O
+        mecanismo NÃO mudou -- continua sendo o fluxo por TAB/foco, com os
+        mesmos seletores, a mesma contagem de TABs e os mesmos `time.sleep`.
+
+        O que o checkpoint pede além disso ("reimplementar com seletores
+        diretos ONDE O USUÁRIO CONFIRMAR que o alvo é estável") NÃO foi feito,
+        e de propósito: escolher seletor direto para um campo que hoje só é
+        alcançado por "3 TABs depois da descrição" exige olhar a tela real. O
+        porte tira o módulo do Selenium sem inventar nada; a troca de
+        mecanismo fica para a sessão com o usuário.
+
+        UM PONTO A CONFERIR NA VALIDAÇÃO (registrado em PENDENCIAS.md): o
+        original capturava o elemento ativo numa variável e mandava as teclas
+        seguintes para AQUELA referência, mesmo que o foco tivesse mudado. Um
+        `active_element` não tem seletor, então aqui as teclas vão para quem
+        estiver com o foco NA HORA. Nos combos do OutSystems isso costuma dar
+        no mesmo (o elemento externo repassa as teclas ao input interno), mas
+        é a diferença mais sutil desta migração e só o portal responde.
         """
-        if self.driver is None:
-            raise RuntimeError(
-                "Criar Fichas (item individual) ainda roda só no motor Selenium "
-                "-- a migração desse fluxo é o CP 5.4 do plano de refatoração. "
-                "Rode este módulo com SIGFT_RPA_ENGINE=selenium (ou remova a "
-                "variável de ambiente). A opção 'atualizar projeto em massa' já "
-                "funciona nos dois motores."
-            )
         pdm = dados_item.get('pdm_escolhido')
         desc_curta = dados_item.get('descricao_curta')
         origem = dados_item.get('origem')
@@ -287,127 +312,112 @@ class AutomacaoPMIB:
         if pdm == "NENHUM":
             return "PULAR", ("VERIFICAR (PULADO)", "VERIFICAR (PULADO)")
 
+        def _clicar(seletor):
+            """`wait.until(element_to_be_clickable(...)).click()` -- o par que
+            se repete 4x neste fluxo."""
+            self.engine.wait_clickable(seletor)
+            self.engine.click_raw(seletor)
+
         try:
             # 1. Clicar em Nova Ficha
             time.sleep(PAUSA_INICIO_ITEM)
-            locator_nova_ficha = (By.XPATH, '//*[@id="b1-Actions"]/button')
-            self.wait.until(EC.element_to_be_clickable(locator_nova_ficha)).click()
+            _clicar(XPATH_BOTAO_NOVA_FICHA)
 
             # 2. Preencher PDM (LÓGICA ATUALIZADA - CLIQUE NA DIV)
             time.sleep(PAUSA_ABERTURA_FICHA)
             # Clica na div container, não no input direto
-            locator_div_pdm = (By.XPATH, '//div[@data-tooltip="Pesquisar PDM"]')
-            div_pdm = self.wait.until(EC.element_to_be_clickable(locator_div_pdm))
-            div_pdm.click()
+            _clicar(XPATH_DIV_PESQUISAR_PDM)
 
             time.sleep(PAUSA_MUDANCA_FOCO)  # Espera foco mudar
 
-            # Pega o input que ganhou o foco automaticamente
-            campo_pdm_input = self.driver.switch_to.active_element
-            campo_pdm_input.send_keys(pdm)
+            # Digita no input que ganhou o foco automaticamente
+            self.engine.digitar_no_foco(pdm)
             time.sleep(PAUSA_FILTRO_PDM)
-            campo_pdm_input.send_keys(Keys.ENTER)
+            self.engine.press("ENTER")
 
             # 3. Preencher Contrato
-            locator_contrato = (By.XPATH, '//*[@id="b10-ContractDropdownSearch"]')
-            self.wait.until(EC.element_to_be_clickable(locator_contrato)).click()
+            _clicar(XPATH_DROPDOWN_CONTRATO)
             time.sleep(PAUSA_FOCO)
 
-            elm_ativo = self.driver.switch_to.active_element
-            elm_ativo.send_keys(Keys.TAB)
+            self.engine.press("TAB")
             time.sleep(PAUSA_ANIMACAO)
 
-            elm_ativo_final = self.driver.switch_to.active_element
-            elm_ativo_final.send_keys(Keys.ENTER)
+            self.engine.press("ENTER")
 
             # 4. Clicar em Salvar (1º)
-            locator_salvar_1 = (By.XPATH, '//*[@id="b10-b7-Button"]/button')
-            self.wait.until(EC.element_to_be_clickable(locator_salvar_1)).click()
+            _clicar(XPATH_SALVAR_1)
 
             # 5. Capturar Código PMIB
-            time.sleep(PAUSA_GERACAO_PMIB)  # Aumentado de 3 para 6 segundos para cobrir a latência da 1ª ficha
-            locator_cod = (By.XPATH, '//*[@id="b8-b1-Content"]/span')
-            elemento_pmib = self.wait.until(EC.visibility_of_element_located(locator_cod))
-            codigo_pmib = str(elemento_pmib.text).strip().split(" ")[0]
+            time.sleep(PAUSA_GERACAO_PMIB)  # Cobre a latência da 1ª ficha
+            self.engine.wait_visible(XPATH_CODIGO_PMIB)
+            codigo_pmib = str(self.engine.texto(XPATH_CODIGO_PMIB)).strip().split(" ")[0]
 
             # 6. Inserir Código do Projeto
-            locator_proj = (By.XPATH, '//*[@id="b10-b9-TextArea_ProjectCode"]')
-            # Mudado para esperar o campo ficar clicável, não apenas visível
-            campo_proj = self.wait.until(EC.element_to_be_clickable(locator_proj))
+            # Espera o campo ficar CLICÁVEL, não apenas visível
+            self.engine.wait_clickable(XPATH_CAMPO_PROJETO)
             time.sleep(PAUSA_FOCO)  # Pausa extra estabilizadora
-            campo_proj.click()  # Crava o foco no campo antes de digitar
-            campo_proj.send_keys(cod_projeto)
+            self.engine.click_raw(XPATH_CAMPO_PROJETO)  # Crava o foco antes de digitar
+            self.engine.digitar_no_foco(cod_projeto)
 
             # 7. Descrição Breve (Via TAB)
-            campo_proj.send_keys(Keys.TAB)
+            self.engine.press("TAB")
             time.sleep(PAUSA_ANIMACAO)
-            self.driver.switch_to.active_element.send_keys(desc_curta)
+            self.engine.digitar_no_foco(desc_curta)
 
             # 8. Origem (3 Tabs)
-            self.driver.switch_to.active_element.send_keys(Keys.TAB, Keys.TAB, Keys.TAB)
+            self.engine.press(["TAB", "TAB", "TAB"])
             time.sleep(PAUSA_ANIMACAO)
-            campo_origem = self.driver.switch_to.active_element
-            campo_origem.send_keys(Keys.ENTER)
+            self.engine.press("ENTER")
             time.sleep(PAUSA_ANIMACAO)
             char_origem = "i" if origem and origem.lower() == 'importado' else "n"
-            campo_origem.send_keys(char_origem, Keys.ENTER)
+            self.engine.digitar_no_foco(char_origem)
+            self.engine.press("ENTER")
 
             # 9. Tipo (1 Tab)
-            self.driver.switch_to.active_element.send_keys(Keys.TAB)
+            self.engine.press("TAB")
             time.sleep(PAUSA_ANIMACAO)
-            campo_tipo = self.driver.switch_to.active_element
-            campo_tipo.send_keys(Keys.ENTER)
+            self.engine.press("ENTER")
             time.sleep(PAUSA_ANIMACAO)
             char_tipo = "n" if tipo and tipo.lower() == 'não reparável' else "r"
-            campo_tipo.send_keys(char_tipo, Keys.ENTER)
+            self.engine.digitar_no_foco(char_tipo)
+            self.engine.press("ENTER")
 
             # 10. Unidade (1 Tab)
-            self.driver.switch_to.active_element.send_keys(Keys.TAB)
+            self.engine.press("TAB")
             time.sleep(PAUSA_MUDANCA_FOCO)
 
-            div_unidade = self.driver.switch_to.active_element
-            div_unidade.send_keys(Keys.ENTER)
+            self.engine.press("ENTER")
             time.sleep(PAUSA_MUDANCA_FOCO)
 
-            campo_unidade = self.driver.switch_to.active_element
-            u_l = unidade.lower() if unidade else "unidade"
-            u_keys = "un"
-            if u_l in ('peça', 'pç', 'peca'): u_keys = "pç"
-            elif u_l in ('metro', 'm'): u_keys = 'metro - (m)'
-            elif u_l in ('litro', 'l'): u_keys = 'litro - (l)'
-            elif u_l in ('conjunto', 'cj'): u_keys = 'cj'
-
-            campo_unidade.send_keys(u_keys, Keys.ENTER)
+            self.engine.digitar_no_foco(_teclas_da_unidade(unidade))
+            self.engine.press("ENTER")
             time.sleep(PAUSA_FOCO)
 
             # 11. Fabricação (5 Tabs)
-            self.driver.switch_to.active_element.send_keys(Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB, Keys.TAB)
+            self.engine.press(["TAB", "TAB", "TAB", "TAB", "TAB"])
             time.sleep(PAUSA_ANIMACAO)
-            campo_fab = self.driver.switch_to.active_element
-            campo_fab.send_keys(Keys.ENTER)
+            self.engine.press("ENTER")
             time.sleep(PAUSA_FOCO)
 
-            campo_fab_in = self.driver.switch_to.active_element
             char_fab = "e" if tipo_fabricacao and tipo_fabricacao.lower() == 'especial' else "s"
-            campo_fab_in.send_keys(char_fab, Keys.ENTER)
+            self.engine.digitar_no_foco(char_fab)
+            self.engine.press("ENTER")
             time.sleep(PAUSA_ANIMACAO)
 
             # 12. Salvar Final
-            locator_salvar_2 = (By.XPATH, '//*[@id="b10-b9-Form1"]/div[6]/button[1]')
-            self.wait.until(EC.element_to_be_clickable(locator_salvar_2)).click()
+            _clicar(XPATH_SALVAR_PROJETO)
 
             # --- ATUALIZAÇÃO 2: Captura Robusta do PDM Final ---
             print("Aguardando PDM Final...")
             # Procura div com tooltip começando com PDM
-            locator_pdm_final = (By.CSS_SELECTOR, "div.vscomp-value[data-tooltip^='PDM']")
-            elemento_pdm_final = self.wait.until(EC.visibility_of_element_located(locator_pdm_final))
-            texto_tooltip = elemento_pdm_final.get_attribute("data-tooltip")
+            self.engine.wait_visible(XPATH_PDM_FINAL)
+            texto_tooltip = self.engine.atributo(XPATH_PDM_FINAL, "data-tooltip")
 
-            # Pegando a string inteira, removendo apenas espaços em branco das pontas
+            # Pegando a string inteira, removendo apenas espaços das pontas
             pdm_revisao = texto_tooltip.strip()
 
             # 13. Voltar para lista (URL Reset para garantir limpeza)
-            self.driver.get('https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList')
+            self.engine.goto(config.PORTAL_URL)
 
             return "SUCESSO", (codigo_pmib, pdm_revisao)
 

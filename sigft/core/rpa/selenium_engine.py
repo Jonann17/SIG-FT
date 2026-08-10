@@ -411,6 +411,11 @@ class SeleniumEngine(RPAEngine):
         with _traduzindo():
             self.driver.switch_to.active_element.send_keys(str(texto))
 
+    def atributo(self, seletor: str, nome: str) -> str:
+        with _traduzindo():
+            el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
+            return el.get_attribute(nome) or ""
+
     def texto(self, seletor: str) -> str:
         with _traduzindo():
             el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
