@@ -71,6 +71,45 @@ _CONTENT_TYPE_PARA_SUFIXO = {
 }
 
 
+# P-01: todas as células que são MARCAÇÃO de algum grupo de checkbox.
+# Usado para não confundir a marca de um grupo com o rótulo do vizinho ao
+# varrer a planilha (`J69` fica a 6 colunas de `P69`).
+_CELULAS_DE_MARCACAO = {
+    celula
+    for cfg in CONFIG_MAP.values()
+    if cfg.get("type") == "checkbox"
+    for celula in cfg.get("cells", [])
+}
+
+
+def _indice_da_coluna(letras):
+    """`"A"` -> 1, `"H"` -> 8, `"AA"` -> 27. Equivale a
+    `openpyxl.utils.column_index_from_string`, reimplementado em stdlib de
+    propósito: `tests/conftest.py` stuba `openpyxl` como um `MagicMock`, que
+    não é pacote, então `from openpyxl.utils import ...` quebraria a coleta
+    da suíte inteira. Mesmo espírito de `core/excel/headers.py`, que também
+    é stdlib-only para poder ser testado sem as dependências pesadas."""
+    indice = 0
+    for caractere in str(letras).upper():
+        if not ("A" <= caractere <= "Z"):
+            raise ValueError(f"Letra de coluna invalida: {letras!r}")
+        indice = indice * 26 + (ord(caractere) - ord("A") + 1)
+    if indice <= 0:
+        raise ValueError(f"Letra de coluna invalida: {letras!r}")
+    return indice
+
+
+def _chave_comparacao(texto):
+    """Forma canônica para casar resposta da IA com rótulo da planilha:
+    sem acento, sem caixa, sem espaço sobrando e sem pontuação de borda.
+    "Não reparável", "NAO REPARAVEL" e "nao reparavel." casam entre si."""
+    import unicodedata
+
+    s = unicodedata.normalize("NFKD", str(texto or ""))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return " ".join(s.lower().strip(" .:;\t\n").split())
+
+
 def _callbacks_silenciosos():
     """`UICallbacks` que engole tudo — default de quem chama sem passar
     callbacks (testes antigos, uso programático). Mantém a assinatura
@@ -466,12 +505,119 @@ class AutoSpecCore:
         s_val = str(val).strip().upper()
         return not val or s_val == "" or s_val.startswith("FORNECER")
 
+    # P-01: alcance da varredura em busca do rótulo de um checkbox.
+    ALCANCE_ROTULO_CHECKBOX = 4
+
+    @staticmethod
+    def _texto_util_para_rotulo(ws, linha, coluna):
+        """Valor de célula que serve como rótulo, ou `None`.
+
+        Descarta o que não é rótulo: célula vazia, a marca `"x"` solta, e
+        qualquer célula que seja a MARCAÇÃO de um grupo de checkbox (sem
+        isso, varrer à direita de `J69` alcança o `P69` do grupo vizinho e
+        devolve `"x"` como se fosse rótulo — erro observado na ficha real).
+        """
+        if coluna < 1 or linha < 1:
+            return None
+        cel = ws.cell(row=linha, column=coluna)
+        if cel.coordinate in _CELULAS_DE_MARCACAO:
+            return None
+        valor = cel.value
+        if valor in (None, ""):
+            return None
+        texto = str(valor).strip()
+        if not texto or texto.lower() in ("x", "×"):
+            return None
+        return texto
+
+    @classmethod
+    def _rotulos_checkbox_seguro(cls, ws, celulas):
+        """`_rotulos_do_checkbox` que nunca levanta. Rótulo é enriquecimento
+        opcional -- uma planilha atípica não pode impedir a ficha de ser
+        analisada."""
+        try:
+            return cls._rotulos_do_checkbox(ws, celulas)
+        except Exception:
+            return {}
+
+    @classmethod
+    def _rotulos_do_checkbox(cls, ws, celulas):
+        """Mapa `{célula: rótulo legível}` lido da PRÓPRIA planilha.
+
+        O `CONFIG_MAP` guarda só endereços (`['G25','G27','G29']`), e era
+        isso que o prompt oferecia à IA — endereços não dizem nada a um
+        modelo de linguagem, então mesmo um acerto era chute entre 3
+        opções. O rótulo, porém, está na planilha, ao lado da marcação.
+
+        Duas disposições, ambas confirmadas na ficha real 4500063671.0662
+        (ver Anexo B de docs/base-conhecimento/08b-autospec-contexto-negocio.md):
+
+          - **à direita, mesma linha** — 7 dos 9 grupos
+            (`G27` → `H27` = "Horizontal");
+          - **na linha de cabeçalho acima**, varrendo para a esquerda a
+            partir da coluna da marca — os 2 grupos da linha 69
+            (`E69` → `D68` = "Classe I - Perigoso").
+
+        Célula sem rótulo encontrável simplesmente não entra no mapa; quem
+        chama continua tendo o endereço como alternativa.
+        """
+        rotulos = {}
+        for celula in celulas:
+            try:
+                col = _indice_da_coluna(
+                    "".join(c for c in celula if c.isalpha())
+                )
+                lin = int("".join(c for c in celula if c.isdigit()))
+            except (ValueError, TypeError):
+                continue
+
+            achado = None
+            # A leitura de rótulo é um BÔNUS: se a worksheet não suportar o
+            # acesso por `.cell(row=, column=)` (fakes de teste antigos, um
+            # objeto duck-typed mais magro), o campo simplesmente segue sem
+            # rótulo e `fill_save` continua aceitando o endereço da célula —
+            # exatamente o comportamento anterior a esta melhoria. Um extra
+            # não pode derrubar a análise da ficha.
+            if not hasattr(ws, "cell"):
+                return rotulos
+            for d in range(1, cls.ALCANCE_ROTULO_CHECKBOX + 1):
+                achado = cls._texto_util_para_rotulo(ws, lin, col + d)
+                if achado:
+                    break
+            if not achado:
+                for d in range(0, cls.ALCANCE_ROTULO_CHECKBOX + 1):
+                    achado = cls._texto_util_para_rotulo(ws, lin - 1, col - d)
+                    if achado:
+                        break
+            if achado:
+                rotulos[celula] = achado
+        return rotulos
+
     # --- Análise da Ficha ---
     def analyze_sheet(self, filepath, status_pmib_path):
+        # P-07: DUAS aberturas do mesmo arquivo, de propósito.
+        #
+        # `wb` (sem `data_only`) é o que sai daqui e é salvo por `fill_save`
+        # — precisa manter as FÓRMULAS, que `data_only=True` descartaria na
+        # gravação. `ws_valores` (com `data_only=True`) é só para LEITURA:
+        # sem ele, `is_empty` enxergaria o texto da fórmula (`"=A1"`) e
+        # trataria a célula como preenchida quando o valor calculado é
+        # vazio. Ler de um e escrever no outro é o que concilia as duas
+        # necessidades.
         wb = openpyxl.load_workbook(filepath)
         if "Ficha Técnica Padrão" not in wb.sheetnames:
             raise ValueError("Aba 'Ficha Técnica Padrão' não encontrada.")
-        ws = wb["Ficha Técnica Padrão"]
+        ws_escrita = wb["Ficha Técnica Padrão"]
+
+        try:
+            wb_valores = openpyxl.load_workbook(filepath, data_only=True)
+            ws = wb_valores["Ficha Técnica Padrão"]
+        except Exception:
+            # Planilha nunca aberta no Excel não tem valor calculado em
+            # cache; nesse caso `data_only=True` devolve `None` em toda
+            # célula com fórmula. Cair para a leitura direta é melhor que
+            # tratar a ficha inteira como vazia.
+            ws = ws_escrita
 
         pmib_suffix = self.extract_pmib_code(filepath)
         desc_comp, cod_mat = "", ""
@@ -500,7 +646,16 @@ class AutoSpecCore:
             elif cfg["type"] == "checkbox":
                 is_filled = any(self.is_empty(ws[c].value) is False for c in cfg["cells"])
                 if not is_filled:
-                    missing[key] = {"type": "checkbox", "options": cfg["cells"], "desc": cfg.get("desc", ""), "ref": cfg["cells"]}
+                    missing[key] = {
+                        "type": "checkbox",
+                        "options": cfg["cells"],
+                        "desc": cfg.get("desc", ""),
+                        "ref": cfg["cells"],
+                        # P-01: rótulos lidos da própria planilha, para o
+                        # prompt poder oferecer "Vertical" em vez de "G25".
+                        # Best-effort: sem rótulo, cai no endereço de célula.
+                        "rotulos": self._rotulos_checkbox_seguro(ws, cfg["cells"]),
+                    }
 
         # Mapeamento Dinâmico (Variáveis)
         #
@@ -690,7 +845,19 @@ class AutoSpecCore:
             info = f"- ID '{k}': {v['desc']}"
             if k in GENERATIVE_FIELDS: info += " [INFO TÉCNICA PADRÃO]"
             else: info += " [ESTRITO]"
-            if v['type'] == 'checkbox': info += f" (Opções: {v['options']})"
+            if v['type'] == 'checkbox':
+                # P-01: oferece os RÓTULOS legíveis quando a planilha os
+                # tiver. Antes ia `(Opções: ['G25','G27','G29'])` — endereços
+                # de célula, que não significam nada para um modelo de
+                # linguagem: mesmo um acerto era chute entre 3. Com rótulo, a
+                # pergunta vira respondível ("Vertical/Horizontal/
+                # Indiferente"), e `fill_save` traduz de volta para a célula.
+                rotulos = v.get('rotulos') or {}
+                legiveis = [rotulos.get(c) for c in v['options'] if rotulos.get(c)]
+                if len(legiveis) == len(v['options']):
+                    info += f" (Escolha UMA: {legiveis})"
+                else:
+                    info += f" (Opções: {v['options']})"
             desc_list.append(info)
 
         prompt = prompts.montar_autospec(txt_brv, fab, desc_comp, context, "\n".join(desc_list))
@@ -746,9 +913,61 @@ class AutoSpecCore:
                 achatado[campo] = bruto
         return achatado
 
-    def fill_save(self, wb, filepath, ai_data, missing):
+    @staticmethod
+    def _resolver_celula_checkbox(resposta, info):
+        """Traduz a resposta da IA para a CÉLULA que deve receber o "X".
+
+        Aceita, nesta ordem:
+          1. o **endereço** da célula (`"G25"`, `"g25"`) — a única forma que
+             funcionava antes de 2026-08-11, preservada;
+          2. o **rótulo** lido da planilha (`"Horizontal"`, `"NAO REPARAVEL"`)
+             — comparação sem acento e sem caixa;
+          3. rótulo **contido** na resposta, ou vice-versa, para o caso de o
+             modelo responder por extenso ("Armazenar na posição horizontal")
+             — só quando um ÚNICO rótulo casa, para não escolher no chute.
+
+        Devolve `None` quando nada casa; quem chama registra o descarte.
+        """
+        opcoes = info.get('options') or []
+        rotulos = info.get('rotulos') or {}
+        if resposta is None:
+            return None
+
+        bruto = str(resposta).strip()
+        if not bruto:
+            return None
+
+        # 1. endereço de célula
+        if bruto.upper() in opcoes:
+            return bruto.upper()
+
+        chave = _chave_comparacao(bruto)
+        if not chave:
+            return None
+
+        # 2. rótulo exato (normalizado)
+        for celula in opcoes:
+            if celula in rotulos and _chave_comparacao(rotulos[celula]) == chave:
+                return celula
+
+        # 3. contenção, só se for inequívoca
+        candidatos = []
+        for celula in opcoes:
+            rotulo = rotulos.get(celula)
+            if not rotulo:
+                continue
+            chave_rotulo = _chave_comparacao(rotulo)
+            if not chave_rotulo:
+                continue
+            if chave_rotulo in chave or chave in chave_rotulo:
+                candidatos.append(celula)
+        return candidatos[0] if len(candidatos) == 1 else None
+
+    def fill_save(self, wb, filepath, ai_data, missing, callbacks=None):
+        cb = callbacks or _callbacks_silenciosos()
         ws = wb["Ficha Técnica Padrão"]
         font = Font(color="0000FF")
+        nao_casados = []
 
         for k, val in ai_data.items():
             if k in missing and val:
@@ -762,11 +981,30 @@ class AutoSpecCore:
                         ws[ref].value = val
                     ws[ref].font = font
                 elif info['type'] == 'checkbox':
-                    clean = str(val).strip().upper()
-                    if clean in info['options']:
+                    alvo = self._resolver_celula_checkbox(val, info)
+                    if alvo:
                         for o in info['options']: ws[o].value = None
-                        ws[clean].value = "X"
-                        ws[clean].font = font
+                        ws[alvo].value = "X"
+                        ws[alvo].font = font
+                    else:
+                        # P-01: antes o `else` não existia — resposta fora das
+                        # opções era descartada em SILÊNCIO e a ficha voltava
+                        # com o campo vazio, sem nada indicando que a IA havia
+                        # respondido. Falhar calado é pior que falhar.
+                        cb.log(
+                            f"Checkbox '{k}': resposta {str(val)!r} não casou com "
+                            f"nenhuma opção {info['options']} — campo deixado em "
+                            f"branco para preenchimento manual.",
+                            nivel="warn",
+                        )
+                        nao_casados.append(k)
+
+        if nao_casados:
+            cb.log(
+                f"{len(nao_casados)} checkbox(es) ficaram em branco por resposta "
+                f"nao reconhecida: {', '.join(nao_casados)}.",
+                nivel="warn",
+            )
 
         base, ext = os.path.splitext(filepath)
         new_path = f"{base}_completed{ext}"
@@ -857,7 +1095,7 @@ class AutoSpecCore:
                         )
 
                     # 4. Salvar
-                    out_path = self.fill_save(wb, ficha, ai_resp, missing)
+                    out_path = self.fill_save(wb, ficha, ai_resp, missing, callbacks=callbacks)
                     yield f" -> Salvo: {os.path.basename(out_path)}"
                     lote.sucesso(fname, f"salvo como {os.path.basename(out_path)}")
                     yield from _flush()

@@ -43,7 +43,10 @@ def _core_fake(comportamentos):
     core.analyze_sheet = _analyze_sheet
     core.retrieve_context = lambda *a, **k: ("contexto", [])
     core.generate_ai_response = lambda *a, **k: {"campo_x": "valor"}
-    core.fill_save = lambda wb, ficha, ai_data, missing: ficha.replace(".xlsx", "_completed.xlsx")
+    # `**k` tolera os kwargs que os métodos reais ganharam em 2026-08-11
+    # (`callbacks=`, para os logs pararem de sumir no stdout) — o stub não
+    # precisa usá-los, só não pode recusá-los.
+    core.fill_save = lambda wb, ficha, ai_data, missing, **k: ficha.replace(".xlsx", "_completed.xlsx")
     return core
 
 

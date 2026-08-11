@@ -13,9 +13,7 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 > Checklist obrigatório. Antes de declarar o AutoSpecAI concluído, passar por cada item.
 
-- [ ] **Checkbox: `fill_save` falha em silêncio quando a IA não devolve o endereço da célula.**
-      *Adiado a pedido do usuário em 2026-08-11 — precisa de execução real para decidir.*
-      Detalhe em [P-01](#p-01) abaixo. **Este é o lembrete que o usuário pediu explicitamente.**
+- [x] ~~Checkbox: `fill_save` falha em silêncio~~ — **RESOLVIDO em 2026-08-11**, ver R-09.
 - [ ] Rodar o roteiro de `docs/ROTEIRO_DE_TESTE.md` na parte do AutoSpec
 - [ ] `bash scripts/check.sh` verde
 - [ ] Merge na linha oficial seguindo `TRABALHO_PARALELO.md` §6
@@ -24,57 +22,44 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Achados em aberto
 
-### <a id="p-01"></a>P-01 🔴 `fill_save`: checkbox falha em silêncio — **ADIADO, não esquecer**
-
-`sigft/services/autospec.py`, em `fill_save`:
-
-```python
-clean = str(val).strip().upper()
-if clean in info['options']:      # options = ["G25", "G27", "G29"]
-    for o in info['options']: ws[o].value = None
-    ws[clean].value = "X"
-```
-
-`val` é a **resposta da IA**. O código a trata como endereço de célula. Comportamento real,
-verificado:
-
-| A IA devolve | Acontece |
-|---|---|
-| `"G25"` | ✅ marca a célula certa |
-| `"g25"` | ✅ marca (o `.upper()` cobre) |
-| `"Vertical"` | ❌ **nada** — campo fica vazio, **sem aviso nenhum** |
-| `"Sim"` | ❌ **nada**, sem aviso |
-
-**Correção do diagnóstico original:** a pendência registrada no bootstrap dizia que isso
-"quebraria". Não quebra — o `if clean in info['options']` protege. **Falha em silêncio**, que
-para o usuário é pior: a ficha volta com o campo vazio e nada indica que a IA respondeu e a
-resposta foi descartada.
-
-**Por que não corrigi:** depende de saber o que o modelo devolve **hoje**, de verdade, para os
-9 campos checkbox. Se ele já devolve `"G25"`, o conserto é só logar o descarte; se devolve o
-rótulo (`"Vertical"`), é preciso mapear rótulo→célula, e esse mapa não existe (o `CONFIG_MAP`
-guarda só as células). Chutar aqui troca um bug por outro.
-
-**O que preciso de você:** rodar o AutoSpec numa ficha real que tenha checkbox pendente e me
-mandar o log (ou o JSON que a IA devolveu). Com isso o conserto é direto.
-
-> Zona: 🟢 `sigft/services/autospec.py`. Não encosta em nada do Luan.
-
----
-
-### P-07 🔵 `analyze_sheet` abre o workbook sem `data_only=True`
-
-`get_pmib_data` usa `data_only=True`; `analyze_sheet` não. Se a ficha tiver célula com
-fórmula, `is_empty` enxerga o texto da fórmula (`"=A1"`) e considera preenchida.
-
-**Cuidado:** não é um bug de uma linha. O `wb` de `analyze_sheet` é o mesmo que o `fill_save`
-salva — e `data_only=True` faz o openpyxl **descartar as fórmulas ao salvar**. Corrigir exige
-abrir duas vezes (uma para ler valores, outra para escrever) ou aceitar a limitação. Precisa
-de decisão antes de código.
-
----
+> Nenhum achado em aberto no momento. Os 8 mapeados na revisão de 2026-08-11 foram
+> resolvidos — ver abaixo.
 
 ## Resolvido
+
+### ✅ R-09 🔴 P-01: checkbox por RÓTULO, e descarte deixou de ser mudo *(2026-08-11)*
+
+**O diagnóstico mudou depois de olhar a ficha real.** A pergunta não era "o que a IA
+responde?" — era por que o prompt oferecia `['G25','G27','G29']`. Endereço de célula não diz
+nada a um modelo de linguagem: mesmo um acerto era **chute entre 3 opções**. Não é um problema
+de qualidade a ser medido, é defeito de projeto — e por isso deu para corrigir sem a execução
+real que eu tinha pedido.
+
+O rótulo legível está na própria planilha, ao lado da marcação. `_rotulos_do_checkbox` o lê nas
+duas disposições existentes (à direita na mesma linha; na linha de cabeçalho acima, para os 2
+grupos da linha 69), ignorando células que são marcação de OUTRO grupo — sem isso, varrer à
+direita de `J69` alcança `P69` e devolve `"x"` como rótulo.
+
+**Validado na ficha real: 20/20 rótulos extraídos, 0 falhas.** O prompt passou de
+`(Opções: ['G25','G27','G29'])` para `(Escolha UMA: ['Vertical','Horizontal','Indiferente'])`.
+
+`_resolver_celula_checkbox` aceita **endereço** (forma antiga, preservada), **rótulo** (sem
+acento, sem caixa) e **rótulo dentro de frase** — só quando um único rótulo casa, para não
+escolher no chute. E o que não casar agora **gera aviso**, com resumo no fim: a falha
+silenciosa que era o coração do P-01 deixou de existir.
+
+Ficha sem rótulo encontrável continua funcionando pelo endereço — compatibilidade total.
+
+### ✅ R-10 🔵 P-07: leitura com `data_only`, escrita sem *(2026-08-11)*
+
+Decisão do usuário: abrir o arquivo duas vezes. `analyze_sheet` mantém o workbook SEM
+`data_only` (é o que `fill_save` salva — `data_only=True` descartaria as fórmulas na gravação)
+e abre um segundo, COM `data_only=True`, só para leitura. Sem isso, `is_empty` enxergava o
+texto da fórmula (`"=A1"`) e tratava como preenchida uma célula cujo valor calculado é vazio.
+
+Fallback: planilha nunca aberta no Excel não tem valor em cache e `data_only=True` devolve
+`None` em toda fórmula — nesse caso volta à leitura direta, melhor que tratar a ficha inteira
+como vazia.
 
 ### ✅ R-04 🟡 P-02: cascata de busca web ganhou o passo 3 *(2026-08-11)*
 
