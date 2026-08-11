@@ -568,3 +568,54 @@ def test_modulo_e_importavel_mesmo_sem_python_dotenv_instalado():
     # `import sigft.config` não quebra por isso. Se dotenv não estiver
     # instalado, `load_dotenv` fica None; se estiver, é a função real.
     assert sigft_config.load_dotenv is None or callable(sigft_config.load_dotenv)
+
+
+# ===========================================================================
+# Limpeza das chaves (2026-08-11) — descoberto num teste real do usuário
+# ===========================================================================
+# Sintoma: `400 API_KEY_INVALID` em TODAS as tarefas de IA, com uma chave que
+# o usuário conferiu e estava certa. Causa provável: um espaço ou `\n` colado
+# junto (copiar do Google AI Studio, de um e-mail, de um `.env` editado à mão)
+# — invisível na tela, fatal no cabeçalho HTTP.
+
+def test_chave_do_env_perde_espaco_e_quebra_de_linha(monkeypatch, tmp_path):
+    monkeypatch.setenv("API_GEMINI_LUAN_GMAIL", "  AIzaSyChaveDeTeste123  \n")
+
+    chaves = sigft_config.carregar_chaves(config_path=tmp_path / "nao-existe.json")
+
+    assert chaves["GEMINI"] == "AIzaSyChaveDeTeste123"
+
+
+def test_chave_do_arquivo_perde_espaco_e_quebra_de_linha(tmp_path):
+    caminho = tmp_path / "api_config.json"
+    caminho.write_text(json.dumps({"GEMINI": "\tAIzaSyChaveDeTeste123\n"}), encoding="utf-8")
+
+    chaves = sigft_config.carregar_chaves(config_path=caminho)
+
+    assert chaves["GEMINI"] == "AIzaSyChaveDeTeste123"
+
+
+def test_limpeza_nao_transforma_ausente_em_vazia(monkeypatch, tmp_path):
+    # `None` (env var ausente) tem de continuar `None`: o resto do código usa
+    # essa diferença para distinguir "não configurada" de "configurada vazia".
+    monkeypatch.delenv("API_GEMINI_LUAN_GMAIL", raising=False)
+
+    chaves = sigft_config.carregar_chaves(config_path=tmp_path / "nao-existe.json")
+
+    assert chaves["GEMINI"] is None
+
+
+def test_limpeza_nao_toca_na_selecao_de_modelos(tmp_path):
+    # A chave reservada `_modelos_ia` (CP 3.3) guarda um DICIONÁRIO, não uma
+    # string. Um `.strip()` cego ali estouraria com AttributeError e derrubaria
+    # o carregamento inteiro das chaves.
+    caminho = tmp_path / "api_config.json"
+    caminho.write_text(
+        json.dumps({"GEMINI": " k ", "_modelos_ia": {"global": {"provider": "gemini", "model": "x"}}}),
+        encoding="utf-8",
+    )
+
+    chaves = sigft_config.carregar_chaves(config_path=caminho)
+
+    assert chaves["GEMINI"] == "k"
+    assert chaves["_modelos_ia"] == {"global": {"provider": "gemini", "model": "x"}}

@@ -3983,7 +3983,11 @@ class HomeView(ctk.CTkScrollableFrame):
         btn_save.pack(pady=10)
 
     def salvar_chaves_api(self):
-        new_keys = {k: e.get() for k, e in self.entries.items()}
+        # `.strip()`: uma chave colada com espaço/quebra de linha no fim vira
+        # `400 API_KEY_INVALID` no Google, e a mensagem culpa a chave -- que
+        # está certa. Limpar aqui (além de em `config.carregar_chaves`) evita
+        # gravar o lixo no api_config.json em primeiro lugar.
+        new_keys = {k: e.get().strip() for k, e in self.entries.items()}
         self.controller.save_keys(new_keys)
         messagebox.showinfo("Sucesso", "Chaves API salvas com sucesso!\nTodos os módulos usarão as novas chaves.")
 

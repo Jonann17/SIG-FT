@@ -256,6 +256,26 @@ class DatasheetAnalyzer:
         ai_valid_fixed = {k: True for k in dados_ia_validar}
         ai_valid_vars = [True] * len(vars_para_ia)
 
+        if not ai_res:
+            # A IA NÃO respondeu (chave inválida, rede, cota...). O código
+            # abaixo deixa `ai_valid_*` todo `True`, ou seja: a ficha ganha
+            # 100% dos pontos que a IA deveria julgar, SEM que a IA tenha
+            # julgado nada. A nota final sai INFLADA e nada na tela dizia
+            # isso -- o único sinal era um `print` na janela preta.
+            #
+            # Comportamento PRÉ-EXISTENTE (está no código original); este
+            # aviso não muda a pontuação, só para de escondê-la. Mudar a
+            # forma de pontuar é decisão de produto (contar como válido x
+            # abortar a ficha x pontuar só o que não é IA), registrada em
+            # docs/refatoracao/PENDENCIAS.md.
+            yield "=" * 60
+            yield "⚠️  ATENÇÃO: a IA NÃO respondeu para esta ficha."
+            yield "   Os campos que dependem da IA foram contados como VÁLIDOS,"
+            yield "   então a nota abaixo está INFLADA e não pode ser usada"
+            yield "   como aprovação. Confira o erro no log de IA"
+            yield "   (logs/llm_usage.jsonl) e rode de novo."
+            yield "=" * 60
+
         if ai_res:
             yield "Aplicando retorno do processamento..."
 
