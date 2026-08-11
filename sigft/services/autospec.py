@@ -151,27 +151,111 @@ class PDFProcessor:
 # 3. BACKEND PRINCIPAL
 # -----------------------------------------------------------------
 class AutoSpecCore:
-    def __init__(self, gemini_key, llama_key, google_search_key, google_cse_id):
+    def __init__(
+        self,
+        gemini_key,
+        llama_key,
+        google_search_key,
+        google_cse_id,
+        *,
+        chaves=None,
+        selecao_resolvida=None,
+    ):
+        """
+        `gemini_key` continua sendo a chave do GEMINI (o `frontend.py` passa
+        `self.controller.get_key("GEMINI")`), e segue valendo tal qual quando
+        o provedor resolvido é o Gemini -- é o mesmo caminho que `get_llm`
+        usa para os 5 consumidores desde o CP 3.1.
+
+        `chaves`/`selecao_resolvida` (keyword-only) são pontos de injeção
+        para teste, com o MESMO contrato de `core/llm/client.py:get_llm()`:
+        `chaves` substitui `config.carregar_chaves()`; `selecao_resolvida`
+        substitui a leitura de `sigft.core.llm.selecao.resolver()`. Em uso
+        real ficam `None` e tudo é lido do disco.
+        """
         self.gemini_key = gemini_key
         self.llama_key = llama_key
         self.google_key = google_search_key
         self.cse_id = google_cse_id
 
-        # Inicializa componentes
-        # [CP 3.2] Guard mantido EXATAMENTE como antes -- só fala de Gemini
-        # num mundo agora multi-provedor porque `LLM_MODELOS_HOJE["autospec"]`
-        # ainda aponta para o Gemini em produção (ver
-        # docs/refatoracao/PENDENCIAS.md).
-        if not gemini_key: raise ValueError("Chave Gemini é obrigatória.")
+        # Resolve o provedor UMA vez e reaproveita: o guard abaixo e o
+        # `get_llm` no fim precisam concordar sobre qual provedor vai rodar.
+        # Se cada um resolvesse por conta, uma seleção mudando no disco entre
+        # as duas leituras produziria o pior dos mundos -- guard checando a
+        # chave de um provedor e cliente construído com outro.
+        self._selecao_autospec = self._resolver_selecao(selecao_resolvida)
+        self._validar_chave_do_provedor(
+            self._selecao_autospec["provider"], gemini_key, chaves
+        )
 
         # [CP 3.2] LangChain removido -- `self._llm` é um `LLMClient` (via
-        # `get_llm`), que já resolve o mesmo modelo
-        # (`gemini-3.1-pro-preview`, idêntico ao que o LangChain usava) e a
-        # mesma `temperature=0.1` (via `_POLITICA_RETRY_POR_TAREFA["autospec"]`
-        # em `core/llm/client.py`) -- ver PENDENCIAS.md.
-        self._llm = get_llm("autospec", self.gemini_key)
+        # `get_llm`), que já resolve o modelo e a `temperature=0.1` (via
+        # `_POLITICA_RETRY_POR_TAREFA["autospec"]` em `core/llm/client.py`).
+        self._llm = get_llm(
+            "autospec",
+            self.gemini_key,
+            chaves=chaves,
+            selecao_resolvida=self._selecao_autospec,
+        )
         self.searcher = WebSearcher(self.google_key, self.cse_id)
         self.pdf_parser = PDFProcessor(self.llama_key)
+
+    @staticmethod
+    def _resolver_selecao(selecao_resolvida):
+        """Mesma cadeia de `get_llm`: seleção injetada > seleção salva pelo
+        usuário no painel "Modelos de IA" > `config.LLM_MODELOS_HOJE`.
+
+        Devolve SEMPRE um dict concreto `{"provider", "model"}` -- nunca
+        `None` -- porque o resultado é repassado a `get_llm` como
+        `selecao_resolvida`, onde `None` significaria "vá ler o disco de
+        novo" e reabriria a janela de divergência que este método fecha.
+        """
+        if selecao_resolvida is not None:
+            return selecao_resolvida
+
+        from sigft.core.llm import selecao  # import local -- mesmo padrão de get_llm
+
+        resolvido = selecao.resolver("autospec", config_path=config.CONFIG_FILE)
+        return resolvido if resolvido is not None else config.LLM_MODELOS_HOJE["autospec"]
+
+    @staticmethod
+    def _validar_chave_do_provedor(provider_id, gemini_key, chaves):
+        """Falha cedo, e com o nome do provedor REALMENTE em uso.
+
+        Antes desta correção o guard era `if not gemini_key: raise
+        ValueError("Chave Gemini é obrigatória.")`, escrito quando o módulo
+        só sabia falar com o Gemini. Depois do CP 3.2 o AutoSpec roda por
+        `LLMClient` e o provedor sai da seleção do usuário -- então quem
+        configurava apenas `OPENROUTER_API_KEY` levava um erro pedindo uma
+        chave do Gemini que o fluxo nem usaria. Ver
+        docs/refatoracao/PENDENCIAS.md (2026-08-11).
+
+        O caminho Gemini preserva o comportamento anterior byte a byte,
+        mensagem inclusive: é o provedor de produção hoje
+        (`LLM_MODELOS_HOJE["autospec"]`), e essa mensagem já é o que o
+        usuário conhece.
+        """
+        if provider_id == config.PROVIDER_GEMINI:
+            if not gemini_key:
+                raise ValueError("Chave Gemini é obrigatória.")
+            return
+
+        nome_chave = config.CHAVE_POR_PROVIDER.get(provider_id)
+        if nome_chave is None:
+            # Provedor sem chave mapeada: não há o que validar aqui. Deixa
+            # seguir para `get_llm`, que levanta o `NotImplementedError` com
+            # a lista de provedores suportados -- erro melhor que qualquer
+            # um que este guard saberia inventar.
+            return
+
+        chaves_resolvidas = chaves if chaves is not None else config.carregar_chaves()
+        if not chaves_resolvidas.get(nome_chave):
+            raise ValueError(
+                f"O AutoSpec está configurado para o provedor {provider_id!r}, "
+                f"que precisa da chave {nome_chave!r} — e ela não está "
+                f"configurada. Configure-a na Home ou escolha outro provedor "
+                f"no painel 'Modelos de IA'."
+            )
 
     # --- Helpers de Excel e Dados ---
     def extract_pmib_code(self, input_filepath):
