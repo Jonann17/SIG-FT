@@ -28,6 +28,22 @@ As duas frentes rodam **ao mesmo tempo**, em branches separadas, partindo de
   contra o portal; CP 5.5 ⛔ bloqueado de propósito
 - Fases 6, 7 e 8: ☐ pendentes ← **é aqui que mora o risco de colisão**
 
+### Branches
+
+| Branch | Para quê |
+|---|---|
+| `claude/checkpoint-01-refactor-executor-5lawtu` | **a linha de verdade.** Todo trabalho sai dela e volta para ela |
+| `claude/autospec-*` | frente do Rafael. Uma branch por frente de trabalho, sempre saindo da linha oficial atualizada |
+| `claude/itaipu-delivery-refactor-vh0n67` | ⚠️ **abandonada.** Ver abaixo |
+
+**Sobre a `itaipu-delivery-refactor`:** ela ainda é a branch **default do GitHub**, mas está
+51 commits atrás da linha oficial. Auditado em 2026-08-11: o conteúdo dos 4 commits que ela
+tem a mais (config.py central, `LLM_TASKS`, decisões de modelos de IA, CP 1.5) **já foi
+reconciliado** na linha oficial pelo commit `4b139f7`; o único arquivo exclusivo dela é
+`tests/test_config_load.py`, superseded por `tests/test_config.py`. **Não saia dela para
+começar nada.** Trocar a default exige permissão de admin — é ação do Luan, em
+*Settings → General → Default branch*.
+
 ---
 
 ## 2. Mapa de propriedade
@@ -38,7 +54,7 @@ As duas frentes rodam **ao mesmo tempo**, em branches separadas, partindo de
 |---|---|
 | `sigft/services/autospec.py` | o serviço AutoSpec (a lógica de verdade, 449 linhas) |
 | `autospec_backend.py` | shim de compatibilidade do AutoSpec (23 linhas) |
-| `frontend.py`, **linhas ~2947–3122** | `class ModuloAutoSpec` — a tela do módulo |
+| `frontend.py`, **linhas ~2971–3146** | `class ModuloAutoSpec` — a tela do módulo. **Localize pela linha `class ModuloAutoSpec` até a `class` seguinte, não pelo número** — em 2026-08-11 o intervalo já andou de 2947–3122 para 2971–3146 por causa de um commit no mesmo arquivo, em questão de horas |
 | `tests/test_autospec_*.py`, `tests/test_llm_autospec_migration.py` | testes do módulo |
 | `tests/fixtures/prompts/autospec_prompt.txt` | fixture do prompt |
 | `docs/base-conhecimento/08-autospec-backend.md` | doc do módulo |

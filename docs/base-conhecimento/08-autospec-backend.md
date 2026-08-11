@@ -1,7 +1,21 @@
-# AutoSpec Backend (`autospec_backend.py`)
+# AutoSpec Backend (`sigft/services/autospec.py`)
+
+> **Onde o código mora:** `sigft/services/autospec.py` (449 linhas) desde o CP 4.1.
+> `autospec_backend.py` na raiz é só um **shim** que faz `sys.modules[__name__] = _modulo` —
+> os dois nomes apontam para o MESMO objeto de módulo, então `monkeypatch` por qualquer um
+> dos dois funciona. Não coloque lógica no shim.
+>
+> **Atualizado em 2026-08-11** para refletir os CP 3.1/3.2/4.1/4.4. Os números de linha
+> citados abaixo são de `sigft/services/autospec.py` e envelhecem rápido — use-os como pista,
+> confirme pelo nome do símbolo.
 
 ## Propósito
-Automatiza o preenchimento de fichas técnicas padrão via RAG (Retrieval-Augmented Generation) com o Gemini. O módulo analisa campos vazios na ficha, recupera contexto de documentos locais e web, consulta o Gemini 3.1 Pro Preview para gerar respostas técnicas inteligentes e preenche a planilha com fonte azul e sufixo `_completed`.
+Automatiza o preenchimento de fichas técnicas padrão via RAG (Retrieval-Augmented Generation). O módulo analisa campos vazios na ficha, recupera contexto de documentos locais e web, consulta um modelo de IA para gerar respostas técnicas inteligentes e preenche a planilha com fonte azul e sufixo `_completed`.
+
+**Qual modelo:** não está mais no código. Vem de `sigft/config.py` → `LLM_TASKS["autospec"]`
+(hoje `gemini-3-flash-preview`), com `LLM_MODELOS_HOJE["autospec"]` (`gemini-3.1-pro-preview`)
+guardado como baseline de equivalência do CP 3.1. Trocar o modelo é editar config ou usar o
+seletor da Home — nunca editar este módulo.
 
 ## Entradas e Saídas
 - **Entradas**: 
@@ -15,10 +29,20 @@ Automatiza o preenchimento de fichas técnicas padrão via RAG (Retrieval-Augmen
 
 ## Classes e Funções
 
-### `GENERATIVE_FIELDS` (constante, linha 25-29)
+### `GENERATIVE_FIELDS` (constante, linha 37)
 Lista de campos que podem ser gerados por IA com base em boas práticas quando não há dados explícitos. Inclui: empilhamento, embalagem_transporte, transporte, preservacao, metodo_limpeza, ferramentas_para_preservacao, tipo_legislacao, tipo_descarte, protecao, posicao_armazenamento, unidade, tipo.
 
-### `CONFIG_MAP` (constante, linha 31-57)
+### `CONFIG_MAP` — ⚠️ **não é mais definido aqui**
+Desde o CP 2.4 vem de `sigft/core/rpa/ficha_layout.py` (linha 16:
+`from sigft.core.rpa.ficha_layout import CONFIG_MAP, VARIAVEIS_SPECS`). É **fonte única
+compartilhada com o `analyzer`** — mexer nele muda os dois módulos ao mesmo tempo. Ver
+`docs/refatoracao/TRABALHO_PARALELO.md` §4 antes de alterar; só ACRESCENTE chave, nunca
+remova nem renomeie (119 testes de equivalência em `tests/test_ficha_layout.py` guardam isso).
+
+Uma pegadinha do CP 2.4: `range` agora guarda o span COMPLETO da célula mesclada (`"H6:P6"`),
+não a primeira célula (`"H6"`). Quem precisa só da primeira faz `.split(":")[0]` — sem isso,
+`ws["H6:P6"]` devolve tupla de tuplas e `.value` quebra.
+
 Dicionário de configuração por campo. Cada entrada contém:
 - `range` ou `cells`: localização na planilha (ex: H6, ou lista [F10, F12])
 - `type`: "cell" (texto) ou "checkbox" (múltiplas opções)
@@ -28,18 +52,18 @@ Dicionário de configuração por campo. Cada entrada contém:
 
 Exemplos: `texto_breve_material` em H6, `embalagem_transporte` em M42 (tipo "ai"), `posicao_armazenamento` em G25/G27/G29 (checkboxes).
 
-### `WebSearcher` (linha 69-116)
+### `WebSearcher` (linha 60-108)
 Realiza buscas na web via Google Custom Search API.
 - `__init__(api_key, cse_id)`: inicializa com credenciais
 - `search_and_download(query, required_terms=[], max_results=3)`: busca com termos obrigatórios, retorna lista de dicts `{path, url, title}` com PDFs/HTMLs baixados em temp
 - `_download_file(url)`: baixa arquivo com timeout de 15s, detecta .pdf ou .html, retorna caminho temp
 
-### `PDFProcessor` (linha 119-156)
+### `PDFProcessor` (linha 110-151)
 Extrai texto de documentos com fallback em cascata.
 - `__init__(llama_key)`: configura LlamaParse se chave fornecida
 - `extract_text(filepath)`: tenta LlamaParse → PyPDF2 → BeautifulSoup (HTML), retorna tupla `(texto, metodo_usado)`
 
-### `AutoSpecCore` (linha 162-415)
+### `AutoSpecCore` (linha 153-449)
 Orquestra o pipeline RAG completo.
 - `__init__(gemini_key, llama_key, google_search_key, google_cse_id)`: valida Gemini (obrigatório), instancia LLM, WebSearcher, PDFProcessor
 - `extract_pmib_code(input_filepath)`: regex sobre nome arquivo, busca padrão `\d{10}\.(\d{4})`, retorna sufixo de 4 dígitos
@@ -49,7 +73,7 @@ Orquestra o pipeline RAG completo.
 - `analyze_sheet(filepath, status_pmib_path)`: lê ficha, detecta campos vazios (estáticos via CONFIG_MAP e dinâmicos na linha 79+), retorna tupla `(workbook, missing_dict, txt_breve, fabricante, desc_comp, cod_mat)` onde `missing_dict` mapeia campo → `{type, desc, ref}`
 - `retrieve_context(txt_brv, fab, cod_mat, refs_locais)`: pipeline RAG de 2 etapas: processa documentos locais via PDFProcessor, depois busca web com 2 queries (por código material + por descrição breve), limita resultado a 50k caracteres por doc, retorna tupla `(contexto_completo, lista_urls)`
 - `process_local_documents(paths)`: aplica PDFProcessor a cada caminho, limita a 60k chars/doc
-- `generate_ai_response(txt_brv, fab, desc_comp, missing, context)`: monta prompt JSON com nome/descrição/fabricante/contexto e instruções (prioriza LOCAL DOC, gera padrão para GENERATIVE_FIELDS, deixa vazio para ESTRITO, checkboxes deduzem melhor opção), invoca `gemini-3.1-pro-preview` via LangChain JsonOutputParser, retorna dict `{field_id: resposta}`
+- `generate_ai_response(txt_brv, fab, desc_comp, missing, context)` (linha 321): monta prompt JSON com nome/descrição/fabricante/contexto e instruções (prioriza LOCAL DOC, gera padrão para GENERATIVE_FIELDS, deixa vazio para ESTRITO, checkboxes deduzem melhor opção), chama `self._llm.generate(...)` e retorna dict `{field_id: resposta}`. **LangChain foi removido no CP 3.2** — `self._llm` é um `LLMClient` obtido por `get_llm("autospec", ...)`; o parse de JSON é o `_limpar_e_parsear_json` único do client (tolera fences/prosa ao redor, cobre objeto e lista), e a política de retry (2 retentativas, 5s, rate-limit 60s) passou a valer aqui pela primeira vez — o LangChain não tinha retry nenhum. `temperature=0.1` foi preservada via `_POLITICA_RETRY_POR_TAREFA["autospec"]`
 - `fill_save(wb, filepath, ai_data, missing)`: preenche células com fonte azul (0000FF), para checkboxes marca célula com "X", salva com sufixo `_completed`, retorna novo caminho
 - `process_queue(queue, status_pmib_path)`: generator que yields logs para UI, processa lista de tarefas `{sheet: path, refs: [paths]}` em sequência (1 a N), chamando analyze_sheet → retrieve_context → generate_ai_response → fill_save
 
@@ -73,7 +97,8 @@ Orquestra o pipeline RAG completo.
 3. **Geração IA** (generate_ai_response)
    - Monta prompt com: dados (nome, descrição, fabricante), contexto, instruções
    - Para cada campo faltante, adiciona linha com ID, descrição, tipo (INFO TÉCNICA PADRÃO vs ESTRITO)
-   - Envia via LangChain → Gemini 3.1 Pro Preview com JsonOutputParser
+   - Envia via `LLMClient.generate()` (`get_llm("autospec", ...)`) — provedor e modelo vêm de `config.LLM_TASKS`
+   - Parse do JSON pelo `_limpar_e_parsear_json` do client; retry conforme a política da tarefa
    - Retorna dict: `{field_id: valor_gerado}`
 
 4. **Preenchimento e Salvamento** (fill_save)
@@ -89,11 +114,42 @@ Orquestra o pipeline RAG completo.
 
 ## Integrações
 - **Planilhas**: arquivo ficha técnica (aba "Ficha Técnica Padrão"), arquivo _STATUS_PMIB.xlsx (opcional, para enriquecimento de contexto)
-- **APIs**: Gemini 3.1 Pro Preview (LangChain), Google Custom Search, LlamaParse (PDF parsing)
+- **IA**: sempre via `sigft/core/llm/` (`LLMClient` + provider). O módulo **não conhece SDK de provedor** — modelo/provedor vêm de `config.LLM_TASKS["autospec"]`, e cada chamada é registrada pelo `UsageTracker` em `logs/llm_usage.jsonl` (CP 3.4)
+- **APIs externas diretas**: Google Custom Search (`WebSearcher`), LlamaParse (parsing de PDF)
 - **Frontend**: chamado via `process_queue()` com callbacks de UI para logs
 - **Documentos**: PDFs/HTMLs locais referenciados em fila, baixados da web dinamicamente
 
 ## Pontos de atenção
+
+> ### 🔴 Duas pendências REAIS e ainda abertas (confirmadas no código em 2026-08-11)
+>
+> As duas foram registradas em `PENDENCIAS.md`, endereçadas a um checkpoint que **fechou sem
+> resolvê-las**. Quem for evoluir o AutoSpecAI encosta nelas — são os primeiros candidatos a
+> trabalho no módulo:
+>
+> **1. `fill_save` — checkbox depende da IA devolver uma referência de célula.**
+> Em `sigft/services/autospec.py:369-372`:
+> ```python
+> clean = str(val).strip().upper()
+> ...
+> ws[clean].value = "X"
+> ```
+> `val` é a **resposta da IA**. O código a usa direto como endereço de célula, então só
+> funciona se o modelo devolver literalmente `"G25"`. Qualquer outra coisa (`"Sim"`,
+> `"Vertical"`, `"g25 "`) vira um endereço inválido. Registrada no bootstrap com destino
+> "Fase 3"; a Fase 3 fechou e ela continua lá. **Precisa de validação contra execução real**
+> antes de qualquer conserto — não dá para adivinhar o que o modelo devolve hoje.
+>
+> **2. `__init__` ainda exige chave do Gemini num mundo multi-provedor.**
+> Em `sigft/services/autospec.py:165`:
+> ```python
+> if not gemini_key: raise ValueError("Chave Gemini é obrigatória.")
+> ```
+> Depois do CP 3.2 o módulo roda por `LLMClient`, e o provedor pode ser OpenRouter ou o
+> endpoint interno da empresa. O guard não acompanhou: quem configurar só
+> `OPENROUTER_API_KEY` leva um erro dizendo que falta uma chave do Gemini. A pendência do
+> CP 3.2 endereçou isso ao CP 3.3, que fechou sem tratar.
+
 - Chaves de API devem ser passadas exclusivamente via `__init__`, não hardcoded (linha 22-23 menciona remoção)
 - WebSearcher ignora silenciosamente erros de rede (linha 103-104, except genérico)
 - PDFProcessor cascata de fallback sem logging — se LlamaParse falha, tenta PyPDF2 silenciosamente (linha 134-135)

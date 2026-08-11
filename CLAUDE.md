@@ -23,7 +23,8 @@ O resumo que não pode ser esquecido:
   AutoSpecAI não estiver mergeado. É o merge mais caro do plano inteiro.
 - ⛔ **Não use o AutoSpec como tela piloto** de nenhum checkpoint da Fase 7.
 - 🟢 **São do Rafael:** `sigft/services/autospec.py`, `autospec_backend.py`,
-  `class ModuloAutoSpec` no `frontend.py` (~linhas 2947–3122), `tests/test_autospec_*.py`,
+  `class ModuloAutoSpec` no `frontend.py` (~linhas 2971–3146 — **confirme pelo nome da
+  classe, o número anda**), `tests/test_autospec_*.py`,
   `docs/base-conhecimento/08-autospec-backend.md`.
 - 🔴 **Zonas compartilhadas** (`ficha_layout.py` → `CONFIG_MAP`, `config.LLM_TASKS`,
   `core/llm/prompts.py`, tabelas de status): commit isolado + mensagem explícita.
