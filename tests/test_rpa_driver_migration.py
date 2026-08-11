@@ -158,7 +158,12 @@ def test_cria_fichas_roda_o_fluxo_de_criacao_em_qualquer_motor():
     assert estado == "SUCESSO"
     # E de fato tocou o browser pelas primitivas neutras.
     nomes = {chamada[0] for chamada in engine.chamadas}
-    assert {"wait_clickable", "click_raw", "digitar_no_foco", "press"} <= nomes
+    # `click_nativo`, não `click_raw`: depois do 1º teste real da Fase 5 os
+    # cliques deste fluxo voltaram a ser nativos, porque aqui o clique existe
+    # para LEVAR O FOCO ao campo (ver `engine.click_nativo`). O que este
+    # teste garante continua sendo o mesmo: o fluxo roda inteiro por
+    # primitivas neutras, num motor sem `.driver`.
+    assert {"wait_clickable", "click_nativo", "digitar_no_foco", "press"} <= nomes
 
 
 def test_upload_conditions_iniciar_pede_o_engine_do_modulo_com_timeout_20():

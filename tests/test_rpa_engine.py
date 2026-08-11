@@ -61,7 +61,16 @@ METODOS_CP_5_3 = (
     "selecionar_por_indice",
 )
 
-METODOS_OBRIGATORIOS = METODOS_CP_2_1 + METODOS_CP_5_1 + METODOS_CP_5_3
+# Acrescentado DEPOIS do 1º teste da Fase 5 no portal real, não por um
+# checkpoint: `cria_fichas` precisa de um clique que leve o FOCO junto, e as
+# três primitivas de clique do CP 5.1 clicam por JavaScript no motor
+# Selenium (o que dispara o evento sem mover o foco). Ver a docstring de
+# `click_nativo` em engine.py.
+METODOS_DO_TESTE_REAL = ("click_nativo",)
+
+METODOS_OBRIGATORIOS = (
+    METODOS_CP_2_1 + METODOS_CP_5_1 + METODOS_CP_5_3 + METODOS_DO_TESTE_REAL
+)
 
 
 def test_rpaengine_declara_os_10_metodos_do_cp_2_1():
@@ -76,6 +85,11 @@ def test_rpaengine_declara_as_primitivas_do_cp_5_1():
 
 def test_rpaengine_declara_as_primitivas_do_cp_5_3():
     for nome in METODOS_CP_5_3:
+        assert nome in RPAEngine.__abstractmethods__
+
+
+def test_rpaengine_declara_o_clique_nativo():
+    for nome in METODOS_DO_TESTE_REAL:
         assert nome in RPAEngine.__abstractmethods__
 
 
@@ -108,6 +122,7 @@ def _implementacoes_completas():
         "fill_estrito": lambda self, seletor, texto: None,
         "scroll_to": lambda self, seletor: None,
         "click_raw": lambda self, seletor: None,
+        "click_nativo": lambda self, seletor: None,
         "wait_present": lambda self, seletor: None,
         "clear": lambda self, seletor: None,
         "type_text": lambda self, seletor, texto: None,

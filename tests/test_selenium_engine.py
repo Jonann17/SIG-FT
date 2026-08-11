@@ -163,6 +163,7 @@ class _FakeElement:
     def __init__(self, valor=None):
         self.valor = valor
         self.send_keys_chamadas = []
+        self.click_chamadas = 0
 
     def get_attribute(self, nome):
         assert nome == "value"
@@ -170,6 +171,11 @@ class _FakeElement:
 
     def send_keys(self, *args):
         self.send_keys_chamadas.append(args)
+
+    def click(self):
+        """Clique NATIVO do WebDriver -- o que `click_nativo` usa e que
+        nenhuma outra primitiva de clique deste motor usa."""
+        self.click_chamadas += 1
 
 
 class _FakeWait:
@@ -501,6 +507,39 @@ def test_click_raw_clica_via_js_sem_rolar_e_sem_esperar_clicavel():
 
     assert driver.execute_script_chamadas == [("arguments[0].click();", elemento)]
     assert len(wait.chamadas) == 1  # só a espera de presença
+
+
+# --- click_nativo -----------------------------------------------------------
+
+def test_click_nativo_usa_o_clique_do_webdriver_e_nao_javascript():
+    """A distinção que este método existe para fazer.
+
+    `execute_script("arguments[0].click()")` dispara o evento de clique mas
+    NÃO move o foco do navegador; o clique nativo move. Em `cria_fichas` tudo
+    o que vem depois de um clique é `press("TAB")`/`digitar_no_foco(...)`, ou
+    seja, relativo ao foco -- com clique por JS as teclas caem no elemento
+    errado, em silêncio (foi o Contrato em branco do 1º teste real).
+    """
+    elemento = _FakeElement()
+    driver = _FakeDriver()
+    wait = _FakeWait(elemento=elemento)
+    engine = se.SeleniumEngine(driver, wait)
+
+    engine.click_nativo("//button[@id='salvar']")
+
+    assert elemento.click_chamadas == 1
+    # A asserção que importa: NENHUM JavaScript. Se algum dia alguém
+    # "unificar" isto com `click_raw`, este teste cai.
+    assert driver.execute_script_chamadas == []
+    assert len(wait.chamadas) == 1  # a espera de "clicável"
+
+
+def test_click_nativo_traduz_o_timeout_da_espera_de_clicavel():
+    driver = _FakeDriver()
+    engine = se.SeleniumEngine(driver, _FakeWait(excecao=_TimeoutExceptionFalsa("sumiu")))
+
+    with pytest.raises(TempoEsgotado):
+        engine.click_nativo("//button")
 
 
 def test_scroll_to_mais_click_raw_reproduzem_a_sequencia_original_do_lapis():

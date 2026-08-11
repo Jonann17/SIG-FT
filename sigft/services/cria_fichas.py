@@ -292,6 +292,17 @@ class AutomacaoPMIB:
         porte tira o módulo do Selenium sem inventar nada; a troca de
         mecanismo fica para a sessão com o usuário.
 
+        CLIQUE NATIVO, NÃO POR JAVASCRIPT (corrigido após o 1º teste real).
+        Todo clique deste fluxo é `click_nativo`, porque todo clique deste
+        fluxo existe para LEVAR O FOCO a um campo -- o que vem depois dele é
+        sempre `digitar_no_foco(...)` ou `press("TAB")`. O clique por JS
+        (`click`/`click_estrito`/`click_raw`, a mecânica canônica do resto do
+        projeto) dispara o evento mas não move o foco, e o sintoma é mudo: o
+        campo fica vazio, as teclas caem no vizinho e o erro só aparece
+        páginas depois, como timeout. Foi assim que o Contrato ficou em
+        branco no primeiro teste da Fase 5. O original usava clique nativo em
+        todos os 5 pontos; este porte voltou a usar.
+
         UM PONTO A CONFERIR NA VALIDAÇÃO (registrado em PENDENCIAS.md): o
         original capturava o elemento ativo numa variável e mandava as teclas
         seguintes para AQUELA referência, mesmo que o foco tivesse mudado. Um
@@ -314,9 +325,16 @@ class AutomacaoPMIB:
 
         def _clicar(seletor):
             """`wait.until(element_to_be_clickable(...)).click()` -- o par que
-            se repete 4x neste fluxo."""
+            se repete 4x neste fluxo.
+
+            `click_nativo` e não `click_raw`: aqui o clique tem que levar o
+            foco junto (ver a docstring da função). `click_nativo` já embute a
+            espera de "clicável", mas o `wait_clickable` explícito fica: ele
+            é o que faz a espera valer também no motor Playwright do jeito
+            que o original esperava, e custa nada quando o alvo já está
+            pronto."""
             self.engine.wait_clickable(seletor)
-            self.engine.click_raw(seletor)
+            self.engine.click_nativo(seletor)
 
         try:
             # 1. Clicar em Nova Ficha
@@ -356,7 +374,9 @@ class AutomacaoPMIB:
             # Espera o campo ficar CLICÁVEL, não apenas visível
             self.engine.wait_clickable(XPATH_CAMPO_PROJETO)
             time.sleep(PAUSA_FOCO)  # Pausa extra estabilizadora
-            self.engine.click_raw(XPATH_CAMPO_PROJETO)  # Crava o foco antes de digitar
+            # Clique NATIVO: "cravar o foco" é o propósito inteiro desta
+            # linha, e um clique por JS não crava foco nenhum.
+            self.engine.click_nativo(XPATH_CAMPO_PROJETO)
             self.engine.digitar_no_foco(cod_projeto)
 
             # 7. Descrição Breve (Via TAB)

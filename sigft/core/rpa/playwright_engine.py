@@ -255,6 +255,19 @@ class PlaywrightEngine(RPAEngine):
         ela substitui os `time.sleep` fixos, não os acumula."""
         self._executar(lambda: self._loc(seletor).click())
 
+    def click_nativo(self, seletor: str) -> None:
+        """Em Playwright, `Locator.click()` JÁ é um clique de mouse real
+        (o Playwright injeta o evento pelo CDP, não por `element.click()`),
+        e portanto já leva o foco para o alvo -- que é exatamente o que o
+        contrato pede aqui. A espera de acionabilidade também é embutida,
+        cobrindo o `element_to_be_clickable` do lado Selenium.
+
+        Ou seja: neste motor `click_nativo` e `click_raw` fazem a mesma
+        coisa. A duplicação é deliberada -- é no Selenium que os dois
+        divergem, e o consumidor precisa poder declarar qual dos dois
+        comportamentos ele depende, sem saber qual motor está montado."""
+        self._executar(lambda: self._loc(seletor).click())
+
     def fill(self, seletor: str, texto: str) -> None:
         """Limpa e preenche -- equivalente ao Ctrl+A/Backspace/digitar da
         versão Selenium, que aqui é o próprio `Locator.fill`. Engole a falha,

@@ -319,3 +319,116 @@ def test_o_xpath_do_pdm_final_casa_a_classe_inteira_e_nao_um_prefixo():
     assert "concat(' ', normalize-space(@class), ' ')" in cf.XPATH_PDM_FINAL
     assert "' vscomp-value '" in cf.XPATH_PDM_FINAL
     assert "starts-with(@data-tooltip, 'PDM')" in cf.XPATH_PDM_FINAL
+
+
+# ===========================================================================
+# O clique tem que levar o FOCO junto (regressão do 1º teste real)
+# ===========================================================================
+#
+# No primeiro teste da Fase 5 contra o PMIB de verdade, a ficha era criada
+# até o PDM e MORRIA no Contrato: o campo ficava em branco, o portal marcava
+# "Campo obrigatório!" e o robô caía num TimeoutException de mensagem vazia
+# (`ERRO no Selenium: Message:`) esperando o Código PMIB que nunca ia
+# aparecer, porque o Salvar tinha sido recusado.
+#
+# Causa: o porte do CP 5.4 trocou os cliques NATIVOS do fluxo original por
+# `click_raw`, que no motor Selenium clica por JavaScript
+# (`arguments[0].click()`). Um clique sintético dispara o evento mas não
+# executa os "focusing steps" do navegador -- o foco não sai do lugar. E
+# neste fluxo o clique existe justamente para levar o foco: o que vem depois
+# é sempre `digitar_no_foco(...)` ou `press("TAB")`.
+#
+# Nada disso aparece nos testes de Playwright acima: naquele motor
+# `Locator.click()` já é um clique de mouse real. Por isso a regressão só se
+# tranca aqui, montando o fluxo sobre o `SeleniumEngine`.
+import sigft.core.rpa.selenium_engine as se  # noqa: E402
+
+
+class _ElSelenium:
+    """Elemento do WebDriver: sabe ser clicado nativamente e devolver
+    atributos. Registra o clique numa lista COMPARTILHADA, para o teste poder
+    contar cliques sem depender de qual instância foi devolvida."""
+
+    def __init__(self, cliques, atributos):
+        self._cliques = cliques
+        self._atributos = atributos
+
+    def click(self):
+        self._cliques.append("nativo")
+
+    def get_attribute(self, nome):
+        return self._atributos.get(nome, "")
+
+    def send_keys(self, *args):
+        pass
+
+
+class _WaitSelenium:
+    def __init__(self, elemento):
+        self.elemento = elemento
+
+    def until(self, condicao):
+        return self.elemento
+
+
+class _DriverSelenium:
+    def __init__(self, elemento):
+        self.elemento = elemento
+        self.scripts = []
+        self.urls = []
+        self.switch_to = type("_SwitchTo", (), {"active_element": elemento})()
+
+    def execute_script(self, script, *args):
+        self.scripts.append(script)
+
+    def get(self, url):
+        self.urls.append(url)
+
+
+def _automacao_selenium():
+    cliques = []
+    elemento = _ElSelenium(
+        cliques,
+        {
+            "textContent": "4500063671.0042 - Bomba centrífuga",
+            "data-tooltip": "  PDM.1234.005  ",
+        },
+    )
+    driver = _DriverSelenium(elemento)
+    auto = cf.AutomacaoPMIB()
+    auto.engine = se.SeleniumEngine(driver, _WaitSelenium(elemento))
+    return auto, driver, cliques
+
+
+def test_no_selenium_nenhum_clique_do_fluxo_e_feito_por_javascript():
+    """A asserção que teria pego o Contrato em branco antes do teste real.
+
+    O fluxo feliz inteiro não tem UM `execute_script` sequer: ler texto e
+    atributo é `get_attribute`, digitar é `send_keys` no elemento com foco,
+    teclar é `ActionChains`, navegar é `driver.get`. Então qualquer script
+    que apareça aqui só pode ser um clique por JS -- e um clique por JS neste
+    fluxo é o bug.
+    """
+    auto, driver, _cliques = _automacao_selenium()
+
+    estado, _ = auto.processar_item_individual(dict(_ITEM))
+
+    assert estado == "SUCESSO"
+    assert driver.scripts == [], (
+        "clique por JavaScript no fluxo de criação de ficha: o foco não vai "
+        f"junto e os TAB/digitação seguintes caem no campo errado -- {driver.scripts}"
+    )
+
+
+def test_no_selenium_os_seis_cliques_do_fluxo_sao_nativos():
+    """Contraparte da asserção acima: não basta não ter JS -- os cliques têm
+    que ter ACONTECIDO. Sem esta, apagar os cliques passaria no teste
+    anterior."""
+    auto, _driver, cliques = _automacao_selenium()
+
+    auto.processar_item_individual(dict(_ITEM))
+
+    # Nova Ficha, div do PDM, dropdown do Contrato, Salvar (1º), campo do
+    # Código do Projeto, Salvar final -- os mesmos 6 do teste de ordem em
+    # Playwright, todos nativos.
+    assert cliques == ["nativo"] * 6

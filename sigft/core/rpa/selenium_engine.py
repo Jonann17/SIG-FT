@@ -338,6 +338,21 @@ class SeleniumEngine(RPAEngine):
             el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
             self.driver.execute_script("arguments[0].click();", el)
 
+    def click_nativo(self, seletor: str) -> None:
+        """`wait.until(EC.element_to_be_clickable(...)).click()` -- o clique
+        NATIVO do WebDriver, e não `execute_script("arguments[0].click()")`.
+
+        A diferença é o foco, e ela é o motivo de este método existir (ver a
+        docstring do contrato em `engine.py`): o clique nativo é um evento de
+        ponteiro de verdade, então o navegador roda os "focusing steps" e o
+        alvo fica com o foco; o clique por JS dispara só o evento. Esta é
+        LITERALMENTE a linha que `cria_fichas.processar_item_individual`
+        rodava em produção antes do CP 5.4 -- todos os cliques daquele fluxo
+        eram nativos."""
+        with _traduzindo():
+            el = self.wait.until(EC.element_to_be_clickable((By.XPATH, seletor)))
+            el.click()
+
     def wait_present(self, seletor: str) -> None:
         with _traduzindo():
             self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
