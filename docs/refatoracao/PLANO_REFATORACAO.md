@@ -6,6 +6,31 @@
 > conhecimento (`docs/base-conhecimento/`) e implementa. O quadro de status no final registra
 > o progresso. **A ordem das fases importa** — não pule fases (exceções indicadas no texto).
 
+> ## ⚠️ Trabalho paralelo em curso — leia antes de executar qualquer checkpoint
+>
+> Desde **2026-08-11** este plano **não é a única frente de trabalho no repositório**. O
+> Rafael (`rafhagmm`) está evoluindo o módulo **AutoSpecAI** em paralelo, numa branch
+> separada. O contrato de fronteiras está em
+> [`TRABALHO_PARALELO.md`](TRABALHO_PARALELO.md) e **tem precedência sobre a ordem natural
+> dos checkpoints deste plano**.
+>
+> O que muda na prática para quem executa:
+>
+> - ⛔ **CP 7.3 está CONGELADO** (quebrar `frontend.py` em `app/views/*.py`) até o
+>   AutoSpecAI ser mergeado. É o merge mais caro do plano inteiro: move as 12 telas de
+>   arquivo e faz o trabalho aberto do outro lado virar conflito linha a linha.
+> - ⛔ **O AutoSpec não é piloto de nada** na Fase 7. Use as telas que o plano já indica.
+> - 🟢 São do Rafael: `sigft/services/autospec.py`, `autospec_backend.py`,
+>   `class ModuloAutoSpec` no `frontend.py`, `tests/test_autospec_*.py`,
+>   `docs/base-conhecimento/08-autospec-backend.md`.
+> - 🔴 Zonas compartilhadas que pedem commit isolado: `core/rpa/ficha_layout.py`
+>   (`CONFIG_MAP` serve `analyzer` **e** `autospec`), `config.LLM_TASKS`,
+>   `core/llm/prompts.py`.
+> - ✅ Livres: Fase 5 inteira (o AutoSpec não usa RPA), Fase 6 e Fase 8.
+>
+> **Se o checkpoint que você recebeu colide com uma dessas regras: pare e pergunte ao
+> usuário.** Não conclua sozinho que o conflito é pequeno.
+
 ---
 
 ## 0. Decisões de produto (definidas pelo usuário em 2026-07-24)
@@ -487,6 +512,11 @@ informações necessárias da ficha original; replicar essas informações na fi
 > fonte Roboto, módulos com header + conteúdo + console, botões de arquivo que ficam verdes
 > quando selecionados. Onde houver variação entre módulos, padronizar para o padrão
 > dominante — não inventar um novo.
+>
+> ⚠️ **Fase mais sensível ao trabalho paralelo** (ver [`TRABALHO_PARALELO.md`](TRABALHO_PARALELO.md)):
+> os três checkpoints mexem no `frontend.py`, o mesmo arquivo onde vive o `ModuloAutoSpec`.
+> CP 7.1 e CP 7.2 podem rodar — desde que os pilotos NÃO sejam o AutoSpec. **CP 7.3 está
+> congelado** até o AutoSpecAI ser mergeado.
 
 - **CP 7.1 — `app/theme.py` + `widgets/console.py` + `module_frame.py`.**
   `ConsoleFrame` com `log()` thread-safe único (conectado ao protocolo do CP 1.4);
@@ -503,9 +533,15 @@ informações necessárias da ficha original; replicar essas informações na fi
   *Aceite*: as 4 cópias da janela de login e as 2 do FileQueueList substituídas; estilo
   preservado; nenhuma view chama `file_dialogs` diretamente para campos que usam picker.
 
-- **CP 7.3 — Quebrar `frontend.py` em `app/views/*.py`.**
+- **CP 7.3 — Quebrar `frontend.py` em `app/views/*.py`.** ⛔ **CONGELADO desde 2026-08-11.**
   Uma view por arquivo; `app/main.py` monta sidebar e registra views; splash simplificada.
   *Aceite*: `python -m sigft.app.main` abre o app idêntico ao atual; `frontend.py` vira shim.
+
+  > **Pré-requisito novo, que não é técnico:** o AutoSpecAI precisa estar mergeado antes.
+  > Este checkpoint move as 12 telas para arquivos novos; qualquer trabalho aberto no
+  > `frontend.py` do outro lado deixa de ter um arquivo com que casar, e o merge passa a ser
+  > manual tela por tela. Não execute sem confirmar com o usuário que a frente do AutoSpecAI
+  > fechou — ver [`TRABALHO_PARALELO.md`](TRABALHO_PARALELO.md) §3.1 e §6.
 
 ### Fase 8 — Qualidade contínua
 
@@ -573,9 +609,9 @@ informações necessárias da ficha original; replicar essas informações na fi
 | 6.2 extração robusta | ☐ pendente | | sessão com usuário |
 | 6.3 injeção com read-back | ☐ pendente | | sessão com usuário |
 | 6.4 documentos/imagens + conclusão | ☐ pendente | | sessão com usuário |
-| 7.1 theme/console/module_frame | ☐ pendente | | estilo atual preservado |
-| 7.2 pickers + dialogs | ☐ pendente | | estilo atual preservado |
-| 7.3 views + main | ☐ pendente | | |
+| 7.1 theme/console/module_frame | ☐ pendente | | estilo atual preservado; pilotos = `ApagarLMR`/`Translator` — **não usar o AutoSpec** enquanto durar o trabalho paralelo |
+| 7.2 pickers + dialogs | ☐ pendente | | estilo atual preservado; idem 7.1 quanto ao AutoSpec |
+| 7.3 views + main | ⛔ congelado (trabalho paralelo) | 2026-08-11 | Move as 12 telas do `frontend.py` para arquivos novos — faria o trabalho aberto no AutoSpecAI virar conflito linha a linha. Liberado só depois do merge do AutoSpecAI. Ver `TRABALHO_PARALELO.md`. |
 | 8.1 ruff | ☐ pendente | | |
 | 8.2 type hints | ☐ pendente | | |
 | 8.3 PyInstaller (+ Playwright no bundle) | ☐ pendente | | |
