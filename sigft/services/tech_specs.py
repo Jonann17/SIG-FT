@@ -60,6 +60,86 @@ from sigft.core.llm import prompts
 
 
 # =============================================================================
+# CONTRATO DA RESPOSTA DA IA — validado, não confiado
+# =============================================================================
+# Acrescentado em 2026-08-11, depois do 1º lote rodado num modelo que não é o
+# Gemini. O prompt pede uma LISTA de objetos no nível raiz; o MiniMax M3
+# devolveu `{"items": [...]}` e trocou o nome de quase todo campo
+# (`RESPOSTA_NORMALIZADA_PT` no lugar de `RESPOSTA_PT_FINAL`, `SIMBOLO_UNIDADE`
+# no lugar de `SIMBOLO`, `TIPO_DADO` no lugar de `TIPO`).
+#
+# O estrago tinha DOIS níveis, e o segundo é o perigoso:
+#
+#   1. O envelope `{"items": ...}` fazia `for d in dados` iterar as CHAVES do
+#      dicionário, então `d` virava a string "items" e o acesso
+#      `d['CARACTERISTICA_CHAVE']` estourava
+#      `TypeError: string indices must be integers` -- 13 segundos depois de o
+#      robô já estar no portal, com uma mensagem que não diz nada sobre IA.
+#
+#   2. Se só o envelope fosse corrigido, a lista passaria e o RPA leria os
+#      campos com `dado.get("RESPOSTA_PT_FINAL", "")` -- que, com o nome
+#      trocado, devolve STRING VAZIA. O robô preencheria a ficha inteira com
+#      valores em branco e reportaria SUCESSO. Falhar alto é melhor.
+#
+# Por isso aqui NÃO se traduz nome de campo: renomear
+# `RESPOSTA_NORMALIZADA_PT` seria adivinhar o sinônimo de UM modelo, e o
+# próximo inventa outro. O envelope, sim, é desembrulhado -- é ambiguidade de
+# formatação, não de significado.
+CHAVES_ITEM_SEMPRE = ("CARACTERISTICA_CHAVE", "ACAO")
+CHAVES_ITEM_PREENCHER = ("TIPO", "RESPOSTA_PT_FINAL", "SIMBOLO")
+
+
+def normalizar_resposta_specs(bruto):
+    """Devolve a lista de características da resposta da IA, ou levanta
+    `ValueError` dizendo o que veio no lugar.
+
+    Aceita o envelope de um único par (`{"items": [...]}`, `{"dados": [...]}`,
+    o nome não importa) e devolve a lista de dentro. Qualquer outra coisa é
+    erro -- inclusive uma lista cujos itens não tenham as chaves que o RPA lê.
+    """
+    if bruto is None:
+        raise ValueError("A IA não devolveu resposta nenhuma.")
+
+    # Desembrulha envelopes de 1 chave, aninhados ou não (`{"resultado":
+    # {"items": [...]}}` já foi visto na natureza). O teto de 3 evita laço
+    # infinito num JSON malformado auto-referente.
+    for _ in range(3):
+        if isinstance(bruto, dict) and len(bruto) == 1:
+            unico = next(iter(bruto.values()))
+            if isinstance(unico, (list, dict)):
+                bruto = unico
+                continue
+        break
+
+    if not isinstance(bruto, list):
+        raise ValueError(
+            f"A IA devolveu {type(bruto).__name__}, e o formato exigido é uma LISTA de "
+            f"características no nível raiz. Conteúdo recebido: {str(bruto)[:200]}"
+        )
+
+    for posicao, item in enumerate(bruto, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(
+                f"O item {posicao} da resposta da IA é {type(item).__name__}, não um objeto JSON."
+            )
+
+        faltando = [c for c in CHAVES_ITEM_SEMPRE if c not in item]
+        if str(item.get("ACAO", "")).strip().upper() == "PREENCHER":
+            faltando += [c for c in CHAVES_ITEM_PREENCHER if c not in item]
+
+        if faltando:
+            raise ValueError(
+                f"O item {posicao} da resposta da IA não tem {', '.join(faltando)}. "
+                f"Chaves que vieram: {', '.join(sorted(item)) or '(nenhuma)'}. "
+                "O modelo escolhido não está seguindo o formato pedido no prompt -- "
+                "troque o modelo da tarefa 'Caract. Técnicas' no painel 'Modelos de IA' "
+                "da Home."
+            )
+
+    return bruto
+
+
+# =============================================================================
 # CLASSE 1: PROCESSADOR DE DADOS E IA
 # =============================================================================
 class TechSpecsProcessor:
@@ -269,7 +349,10 @@ class TechSpecsProcessor:
                 json_mode=True,
                 tags={"modulo": "upload_tech_specs_backend", "tarefa": "tech_specs"},
             )
-            return resp.parsed_json
+            # Valida ANTES de virar arquivo: um JSON fora do contrato só
+            # explodiria lá na frente, com o robô já dentro do portal (ou,
+            # pior, preencheria a ficha com campos vazios em silêncio).
+            return normalizar_resposta_specs(resp.parsed_json)
         except Exception as e:
             if callback_log: callback_log(f"Erro ao chamar IA: {e}")
             return None
@@ -513,7 +596,20 @@ class TechSpecsAutomation:
 
             meta = item.get("METADATA", {})
             pmib = meta.get("PMIB")
-            dados = item.get("DADOS_TRATADOS", [])
+            # 2ª camada de defesa: o JSON pode ter sido gerado ANTES da
+            # validação existir (o do 1º teste real está assim no disco do
+            # usuário) ou editado à mão. Sem isto, um `DADOS_TRATADOS` fora do
+            # formato vira `TypeError: string indices must be integers` lá
+            # embaixo, no meio do RPA -- mensagem que não aponta para o JSON.
+            try:
+                dados = normalizar_resposta_specs(item.get("DADOS_TRATADOS"))
+            except ValueError as erro_formato:
+                # Mesma dupla do `except` geral lá embaixo: a linha crua no
+                # log e a contabilizada no resumo (o ❌ quem põe é o lote).
+                if callback_log:
+                    callback_log(f"JSON fora do formato em {pmib}: {erro_formato}")
+                lote.falha(str(pmib), f"JSON fora do formato: {erro_formato}")
+                continue
 
             # ---> NOVA VARIÁVEL: Guarda o que falhou na auditoria
             pendencias_manuais = []
