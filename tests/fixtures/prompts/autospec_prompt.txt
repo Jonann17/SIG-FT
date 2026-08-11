@@ -13,8 +13,11 @@ Especificações técnicas do fabricante...
         4. Campos [ESTRITO]: Se não houver dados, deixe vazio "".
         5. 'empilhamento': Apenas números inteiros.
         6. Checkboxes: Deduza a melhor opção se não explícito.
+        7. Para CADA campo, informe de onde tirou a resposta em "fonte":
+           o nome do arquivo em "LOCAL DOC", a URL em "WEB DOC", ou
+           "conhecimento tecnico" quando deduziu por boas praticas.
 
-        CAMPOS A PREENCHER (Retorne JSON {ID: Resposta}):
+        CAMPOS A PREENCHER (Retorne JSON {ID: {"valor": Resposta, "fonte": Origem}}):
         - ID 'empilhamento': Empilhamento máximo (unidades) [INFO TÉCNICA PADRÃO]
 - ID 'texto_breve_material': Texto breve do material [ESTRITO]
 - ID 'posicao_armazenamento': Posição de armazenamento [INFO TÉCNICA PADRÃO] (Opções: ['G25', 'G27', 'G29'])

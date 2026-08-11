@@ -39,7 +39,7 @@ O resumo que não pode ser esquecido:
 bash scripts/check.sh        # compileall (sintaxe, cobre frontend.py) + pytest
 ```
 
-**Verde é pré-requisito de qualquer commit.** A suíte tem 1.278 testes (+10 skipped) e é a
+**Verde é pré-requisito de qualquer commit.** A suíte tem 1327 testes (+10 skipped) e é a
 rede de segurança da refatoração — as dependências pesadas (pandas, openpyxl, selenium,
 google-generativeai, tkinter…) são stubadas em `tests/conftest.py`, então a suíte roda em
 ambiente sem elas.
@@ -119,4 +119,6 @@ origem, a licença e o modo de atualizar estão em [`.claude/skills/VENDOR.md`](
 | `docs/refatoracao/PENDENCIAS.md` | achados fora de escopo, à espera de uma fase |
 | `docs/refatoracao/MODELOS_IA.md` | modelos de IA, preços, defaults |
 | `docs/base-conhecimento/` | um doc por módulo, descrevendo o comportamento atual |
+| `docs/base-conhecimento/08b-autospec-contexto-negocio.md` | regras de negócio do AutoSpecAI (o "porquê") + anexo de divergências |
+| `docs/AUTOSPEC_MELHORIAS.md` | **caderno da frente do AutoSpecAI** — achados abertos e o checklist de "não fechar sem" |
 | `docs/ROTEIRO_DE_TESTE.md` | roteiro de validação manual, do ZIP até o portal |

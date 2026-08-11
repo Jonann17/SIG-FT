@@ -1,9 +1,11 @@
 # AutoSpec Backend (`sigft/services/autospec.py`)
 
-> **Onde o código mora:** `sigft/services/autospec.py` (449 linhas) desde o CP 4.1.
+> **Onde o código mora:** `sigft/services/autospec.py` (580 linhas) desde o CP 4.1.
 > `autospec_backend.py` na raiz é só um **shim** que faz `sys.modules[__name__] = _modulo` —
 > os dois nomes apontam para o MESMO objeto de módulo, então `monkeypatch` por qualquer um
 > dos dois funciona. Não coloque lógica no shim.
+>
+> **Regras de negócio e o "porquê" do módulo:** [`08b-autospec-contexto-negocio.md`](08b-autospec-contexto-negocio.md).
 >
 > **Atualizado em 2026-08-11** para refletir os CP 3.1/3.2/4.1/4.4. Os números de linha
 > citados abaixo são de `sigft/services/autospec.py` e envelhecem rápido — use-os como pista,
@@ -63,13 +65,14 @@ Extrai texto de documentos com fallback em cascata.
 - `__init__(llama_key)`: configura LlamaParse se chave fornecida
 - `extract_text(filepath)`: tenta LlamaParse → PyPDF2 → BeautifulSoup (HTML), retorna tupla `(texto, metodo_usado)`
 
-### `AutoSpecCore` (linha 153-449)
+### `AutoSpecCore` (linha 153-580)
 Orquestra o pipeline RAG completo.
-- `__init__(gemini_key, llama_key, google_search_key, google_cse_id)`: valida Gemini (obrigatório), instancia LLM, WebSearcher, PDFProcessor
+- `__init__(gemini_key, llama_key, google_search_key, google_cse_id, *, chaves=None, selecao_resolvida=None)`: valida a chave **do provedor resolvido** (ver "Guard de chave" abaixo), instancia LLM, WebSearcher, PDFProcessor. `chaves`/`selecao_resolvida` são keyword-only com default `None` — pontos de injeção para teste, mesmo contrato de `get_llm`; nenhum call site existente precisou mudar
+- `_resolver_selecao(selecao_resolvida)` / `_validar_chave_do_provedor(provider_id, gemini_key, chaves)` (estáticos): a resolução de provedor e o guard, separados para serem testáveis isoladamente
 - `extract_pmib_code(input_filepath)`: regex sobre nome arquivo, busca padrão `\d{10}\.(\d{4})`, retorna sufixo de 4 dígitos
 - `find_header_columns(pmib_sheet)`: varredura linha 1-10 procurando por "CÓDIGO PMIB", "DESCRIÇÃO", "CÓDIGO MATERIAL", retorna tupla `(pmib_col_idx, desc_col_idx, mat_col_idx, start_row)`
 - `get_pmib_data(pmib_path, code_suffix)`: lê planilha _STATUS_PMIB, procura código com sufixo, retorna tupla `(descrição_completa, código_material)` ou `("", "")`
-- `is_empty(val)`: verifica se célula está vazia ou contém "FORNECER"
+- `is_empty(val)`: célula vazia, em branco, ou cujo texto **INICIA COM** "FORNECER" (`.startswith`, não "contém") — a instrução do formulário conta como pendente, um valor real não
 - `analyze_sheet(filepath, status_pmib_path)`: lê ficha, detecta campos vazios (estáticos via CONFIG_MAP e dinâmicos na linha 79+), retorna tupla `(workbook, missing_dict, txt_breve, fabricante, desc_comp, cod_mat)` onde `missing_dict` mapeia campo → `{type, desc, ref}`
 - `retrieve_context(txt_brv, fab, cod_mat, refs_locais)`: pipeline RAG de 2 etapas: processa documentos locais via PDFProcessor, depois busca web com 2 queries (por código material + por descrição breve), limita resultado a 50k caracteres por doc, retorna tupla `(contexto_completo, lista_urls)`
 - `process_local_documents(paths)`: aplica PDFProcessor a cada caminho, limita a 60k chars/doc
@@ -85,7 +88,7 @@ Orquestra o pipeline RAG completo.
    - Se status_pmib_path fornecido, busca descrição completa e código material nele
    - Verifica células fixas em CONFIG_MAP: se vazia, adiciona a `missing`
    - Verifica checkboxes: se todas vazias, adiciona a `missing`
-   - Itera linhas 79+ procurando perguntas na coluna D (idx 3), respostas na coluna M (idx 13)
+   - Itera linhas 79+ procurando perguntas na coluna C (idx 3), respostas na coluna M (idx 13)
 
 2. **Recuperação de Contexto** (retrieve_context)
    - Processa documentos locais: PDFProcessor extrai texto (max 60k chars cada)
@@ -140,15 +143,25 @@ Orquestra o pipeline RAG completo.
 > "Fase 3"; a Fase 3 fechou e ela continua lá. **Precisa de validação contra execução real**
 > antes de qualquer conserto — não dá para adivinhar o que o modelo devolve hoje.
 >
-> **2. `__init__` ainda exige chave do Gemini num mundo multi-provedor.**
-> Em `sigft/services/autospec.py:165`:
-> ```python
-> if not gemini_key: raise ValueError("Chave Gemini é obrigatória.")
-> ```
-> Depois do CP 3.2 o módulo roda por `LLMClient`, e o provedor pode ser OpenRouter ou o
-> endpoint interno da empresa. O guard não acompanhou: quem configurar só
-> `OPENROUTER_API_KEY` leva um erro dizendo que falta uma chave do Gemini. A pendência do
-> CP 3.2 endereçou isso ao CP 3.3, que fechou sem tratar.
+> **2. ~~`__init__` exigia chave do Gemini num mundo multi-provedor.~~ ✅ CORRIGIDO em
+> 2026-08-11.** Ver "Guard de chave" abaixo.
+
+### Guard de chave (corrigido em 2026-08-11)
+
+`__init__` falha cedo quando a IA não tem como rodar — mas agora cobra a chave **do provedor
+que vai de fato ser usado**, não a do Gemini sempre:
+
+| Provedor resolvido | O que é exigido |
+|---|---|
+| `gemini` | o argumento `gemini_key`. Mensagem inalterada: `"Chave Gemini é obrigatória."` |
+| `openrouter` / `openai_compat` | a chave correspondente em `config.CHAVE_POR_PROVIDER`, lida de `config.carregar_chaves()`. A mensagem nomeia o provedor e a chave que falta |
+| qualquer outro (ex.: `xai`) | nada — deixa `get_llm` levantar o `NotImplementedError` dele, que lista os provedores suportados |
+
+A cadeia de resolução é a mesma de `get_llm` (seleção por tarefa → seleção global →
+`config.LLM_MODELOS_HOJE["autospec"]`), e é executada **uma única vez**: o resultado vai para
+o guard e é repassado ao `get_llm` como `selecao_resolvida`. Resolver duas vezes abriria uma
+janela para o guard validar a chave de um provedor e o cliente sair com outro, se a seleção
+mudasse no disco no meio. Coberto por `tests/test_autospec_guard_chave.py` (15 testes).
 
 - Chaves de API devem ser passadas exclusivamente via `__init__`, não hardcoded (linha 22-23 menciona remoção)
 - WebSearcher ignora silenciosamente erros de rede (linha 103-104, except genérico)
