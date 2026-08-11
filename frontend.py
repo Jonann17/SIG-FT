@@ -45,6 +45,30 @@ ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("dark-blue")
 CONFIG_FILE = "api_config.json"
 
+
+def _altura_do_textbox(texto, largura_em_caracteres=90, altura_da_linha=20, folga=12):
+    """Altura em pixels para um `CTkTextbox` caber `texto` sem cortar.
+
+    Conta as quebras de linha reais mais as que o `wrap="word"` vai fazer, e
+    soma uma FOLGA para o padding interno do widget.
+
+    A folga é o conserto: a versão anterior usava 18px por linha e nenhuma
+    folga, e cortava a última linha justamente no caso mais comum — um caminho
+    de arquivo longo, que ocupa 2 linhas. Sobrava altura para o texto e faltava
+    para a margem que o próprio textbox reserva.
+
+    `largura_em_caracteres=90` é a estimativa de quantos caracteres cabem numa
+    linha do card. Subestimar é o lado seguro: sobra altura, não falta.
+
+    Também elimina a duplicação — a fórmula estava copiada nos dois textboxes
+    do card (caminho e amostra), com os mesmos números mágicos nos dois.
+    """
+    linhas = texto.split("\n")
+    # `-(-a // b)` é divisão para cima: uma linha de 91 caracteres ocupa 2.
+    total = sum(max(1, -(-len(linha) // largura_em_caracteres)) for linha in linhas)
+    return max(35, total * altura_da_linha + folga)
+
+
 # --- PALETA GE VERNOVA (Mantida) ---
 COLORS = {
     "primary": "#035D67",
@@ -3784,11 +3808,8 @@ class ModuloBuscaPMIB(ctk.CTkFrame):
 
             ctk.CTkLabel(f_top, text=f"| Match na coluna: {coluna}", font=("Roboto", 12), text_color="gray").pack(side="left", padx=5)
 
-            # Lógica para calcular altura dinâmica do Textbox baseada no tamanho do texto
             texto_caminho = f"📂 Caminho:\n{caminho_arq}"
-            # Conta quebras de linha reais (\n) + quebras virtuais (a cada ~100 caracteres)
-            linhas_estimadas_cam = texto_caminho.count('\n') + sum([len(linha) // 100 for linha in texto_caminho.split('\n')]) + 1
-            altura_dinamica_cam = max(35, linhas_estimadas_cam * 18)  # 18px por linha (mínimo de 35px)
+            altura_dinamica_cam = _altura_do_textbox(texto_caminho)
 
             # Linha 2: Caminho Completo (Textbox com altura dinâmica)
             txt_caminho = ctk.CTkTextbox(card, font=("Consolas", 11), text_color="#A0A0A0", fg_color="transparent", border_width=0, height=altura_dinamica_cam, wrap="word")
@@ -3799,8 +3820,7 @@ class ModuloBuscaPMIB(ctk.CTkFrame):
             # Linha 3: Amostra (Textbox com altura dinâmica)
             if amostra:
                 texto_amostra = f"🔎 Amostra: {amostra}"
-                linhas_estimadas_amo = texto_amostra.count('\n') + sum([len(linha) // 100 for linha in texto_amostra.split('\n')]) + 1
-                altura_dinamica_amo = max(35, linhas_estimadas_amo * 18)
+                altura_dinamica_amo = _altura_do_textbox(texto_amostra)
 
                 txt_amostra = ctk.CTkTextbox(card, font=("Roboto", 12), text_color="#E0E0E0", fg_color="transparent", border_width=0, height=altura_dinamica_amo, wrap="word")
                 txt_amostra.insert("0.0", texto_amostra)
@@ -3963,7 +3983,11 @@ class HomeView(ctk.CTkScrollableFrame):
         btn_save.pack(pady=10)
 
     def salvar_chaves_api(self):
-        new_keys = {k: e.get() for k, e in self.entries.items()}
+        # `.strip()`: uma chave colada com espaço/quebra de linha no fim vira
+        # `400 API_KEY_INVALID` no Google, e a mensagem culpa a chave -- que
+        # está certa. Limpar aqui (além de em `config.carregar_chaves`) evita
+        # gravar o lixo no api_config.json em primeiro lugar.
+        new_keys = {k: e.get().strip() for k, e in self.entries.items()}
         self.controller.save_keys(new_keys)
         messagebox.showinfo("Sucesso", "Chaves API salvas com sucesso!\nTodos os módulos usarão as novas chaves.")
 

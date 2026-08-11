@@ -481,10 +481,10 @@ def carregar_chaves(config_path: str | os.PathLike[str] = CONFIG_FILE) -> dict[s
     em `os.environ` NO MOMENTO DA CHAMADA (não no import do módulo), então
     testes usam `monkeypatch.setenv`/`monkeypatch.delenv` normalmente.
     """
-    defaults: dict[str, str | None] = {
+    defaults: dict[str, str | None] = _limpar_chaves({
         chave_id: os.environ.get(env_var_name)
         for chave_id, env_var_name in ENV_VAR_POR_CHAVE.items()
-    }
+    })
 
     if not os.path.exists(config_path):
         return defaults
@@ -503,9 +503,30 @@ def carregar_chaves(config_path: str | os.PathLike[str] = CONFIG_FILE) -> dict[s
         # cair no fallback para `defaults` — não só falhas de parsing.
         with open(config_path, "r", encoding="utf-8") as arquivo:
             saved = json.load(arquivo)
-            return {**defaults, **saved}
+            return _limpar_chaves({**defaults, **saved})
     except Exception:
         return defaults
+
+
+def _limpar_chaves(chaves: dict) -> dict:
+    """Tira espaço/quebra de linha das pontas de cada chave.
+
+    Parece detalhe e não é. Uma chave colada com um espaço ou um `\n` no fim
+    -- o que acontece o tempo todo ao copiar do Google AI Studio, de um e-mail
+    ou de um `.env` editado à mão -- chega ao Google TAL QUAL e volta como
+    `400 API_KEY_INVALID`. A mensagem culpa a chave, o usuário confere e a
+    chave está certa; o que está errado é invisível. Custou uma sessão inteira
+    de diagnóstico para aparecer.
+
+    Só mexe em `str`: um valor `None` (env var ausente) continua `None`, que é
+    o que o resto do código espera para distinguir "não configurada" de
+    "configurada vazia". A chave reservada `_modelos_ia` (CP 3.3) guarda um
+    dicionário, não uma string, e por isso passa intacta.
+    """
+    return {
+        nome: (valor.strip() if isinstance(valor, str) else valor)
+        for nome, valor in chaves.items()
+    }
 
 
 def get_key(chaves: dict[str, str | None], key_id: str) -> str:

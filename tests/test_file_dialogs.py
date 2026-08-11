@@ -317,13 +317,54 @@ def test_modulo_e_importavel_sem_tkinter_instalado():
 
 
 @pytest.mark.parametrize("metodo", _TODAS_AS_FUNCOES)
-def test_dialog_fn_ausente_tenta_importar_tkinter_de_verdade(config_path, metodo):
-    # Ambiente de teste não tem tkinter -- confirma que, SEM dialog_fn
-    # injetado, cada wrapper tenta (e falha, aqui) importar o tkinter real,
-    # em vez de silenciosamente pular o diálogo ou devolver um valor "chute".
-    funcao = getattr(file_dialogs, metodo)
-    with pytest.raises(ModuleNotFoundError):
-        funcao("chave.x", "cat", config_path=config_path)
+def test_sem_dialog_fn_resolve_a_funcao_real_do_tkinter(metodo):
+    """SEM `dialog_fn` injetado, cada wrapper tem de resolver a função REAL do
+    `tkinter.filedialog` -- nunca pular o diálogo em silêncio nem devolver um
+    valor "chute".
+
+    Este teste verifica a RESOLUÇÃO, não chega a abrir diálogo nenhum. A
+    versão anterior fazia `pytest.raises(ModuleNotFoundError)` chamando o
+    wrapper de verdade, e isso estava errado por dois motivos que só
+    apareceram quando o usuário rodou a suíte na máquina dele:
+
+      1. transformava um ACIDENTE do ambiente de CI ("aqui não tem tkinter")
+         numa regra do código -- em qualquer Windows com Python padrão o
+         tkinter existe, o import funciona, e o teste falhava;
+      2. no `ask_directory` ele chegava a ABRIR um seletor de pastas de
+         verdade na tela de quem rodava a suíte. Um teste não pode fazer
+         isso.
+
+    Agora funciona nos dois ambientes: com tkinter, confere que a função
+    resolvida é exatamente a do `filedialog`; sem tkinter, confere que a
+    tentativa de import acontece (e falha alto) em vez de ser engolida.
+    """
+    nome_tk = file_dialogs._NOME_TK_POR_WRAPPER[metodo]
+
+    try:
+        from tkinter import filedialog
+    except ImportError:
+        with pytest.raises(ModuleNotFoundError):
+            file_dialogs._resolver_dialog_fn(metodo, None)
+        return
+
+    resolvida = file_dialogs._resolver_dialog_fn(metodo, None)
+
+    assert resolvida is getattr(filedialog, nome_tk)
+
+
+@pytest.mark.parametrize("metodo", _TODAS_AS_FUNCOES)
+def test_dialog_fn_injetado_vence_o_tkinter(metodo):
+    # O outro lado do contrato: quando o teste (ou a UI) injeta a função, o
+    # tkinter não entra na jogada.
+    sentinela = object()
+
+    assert file_dialogs._resolver_dialog_fn(metodo, sentinela) is sentinela
+
+
+def test_todos_os_wrappers_estao_mapeados_para_o_tkinter():
+    # Trava contra wrapper novo sem mapeamento: `_resolver_dialog_fn` faria
+    # `KeyError` só na hora de abrir o diálogo, na frente do usuário.
+    assert set(file_dialogs._NOME_TK_POR_WRAPPER) == set(_TODAS_AS_FUNCOES)
 
 
 # =============================================================================
