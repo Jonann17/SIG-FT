@@ -123,19 +123,39 @@ def test_generate_ai_response_devolve_parsed_json_no_sucesso():
     assert fake.chamadas[0]["tags"] == {"modulo": "autospec_backend", "tarefa": "autospec"}
 
 
-def test_generate_ai_response_devolve_dict_vazio_e_printa_erro_na_falha(capsys):
+def test_generate_ai_response_devolve_dict_vazio_e_loga_erro_na_falha(capsys):
+    """P-05 (2026-08-11): o erro ia para `print`, ou seja, o stdout — a janela
+    preta que ninguém olha. Agora vai pelos `callbacks`, que no `process_queue`
+    viram linha no console da UI. O contrato de RETORNO (`{}`) não mudou."""
     core = _make_autospec_core()
     fake = _FakeLLM(excecao=RuntimeError("IA indisponível"))
     core._llm = fake  # noqa: SLF001
 
+    from sigft.core.callbacks import UICallbacks
+    linhas = []
+
     resultado = core.generate_ai_response(
         "Motor X", "Fabricante Y", "Descrição completa", {"empilhamento": {"type": "text", "desc": "Empilhamento", "ref": "M42"}}, "contexto qualquer",
+        callbacks=UICallbacks(log=lambda msg, nivel="info", contexto=None: linhas.append((str(msg), nivel))),
     )
 
     assert resultado == {}
-    saida = capsys.readouterr().out
-    assert "Erro IA:" in saida
-    assert "IA indisponível" in saida
+    assert any("IA indisponível" in msg and nivel == "error" for msg, nivel in linhas)
+    assert capsys.readouterr().out == "", "não pode mais escrever no stdout"
+
+
+def test_generate_ai_response_sem_callbacks_nao_quebra_nem_escreve_no_stdout(capsys):
+    """Chamada sem `callbacks` (uso programático, testes antigos) continua
+    válida: cai no UICallbacks silencioso."""
+    core = _make_autospec_core()
+    core._llm = _FakeLLM(excecao=RuntimeError("boom"))  # noqa: SLF001
+
+    resultado = core.generate_ai_response(
+        "Motor X", "Fab", "Desc", {"empilhamento": {"type": "text", "desc": "E", "ref": "M42"}}, "ctx",
+    )
+
+    assert resultado == {}
+    assert capsys.readouterr().out == ""
 
 
 def test_generate_ai_response_sem_missing_nao_chama_a_ia():

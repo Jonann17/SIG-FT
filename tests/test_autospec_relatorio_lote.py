@@ -43,7 +43,10 @@ def _core_fake(comportamentos):
     core.analyze_sheet = _analyze_sheet
     core.retrieve_context = lambda *a, **k: ("contexto", [])
     core.generate_ai_response = lambda *a, **k: {"campo_x": "valor"}
-    core.fill_save = lambda wb, ficha, ai_data, missing: ficha.replace(".xlsx", "_completed.xlsx")
+    # `**k` tolera os kwargs que os métodos reais ganharam em 2026-08-11
+    # (`callbacks=`, para os logs pararem de sumir no stdout) — o stub não
+    # precisa usá-los, só não pode recusá-los.
+    core.fill_save = lambda wb, ficha, ai_data, missing, **k: ficha.replace(".xlsx", "_completed.xlsx")
     return core
 
 
@@ -91,7 +94,11 @@ def test_ficha_processada_com_sucesso_mostra_identificador_e_arquivo_salvo():
     # As mensagens de progresso ORIGINAIS continuam aparecendo (nada foi
     # removido, só ganharam vizinhas).
     assert " -> Salvo: B_completed.xlsx" in texto
-    assert " -> Consultando Gemini..." in texto
+    # 2026-08-11: a mensagem deixou de citar o provedor. O modelo vem de
+    # config.LLM_TASKS/seleção da UI e pode ser OpenRouter ou o endpoint da
+    # empresa — mensagem que nomeia "Gemini" envelhece igual à do guard.
+    assert " -> Consultando a IA..." in texto
+    assert "Gemini" not in texto
 
 
 # =============================================================================
