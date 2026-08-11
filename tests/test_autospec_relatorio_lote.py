@@ -91,7 +91,11 @@ def test_ficha_processada_com_sucesso_mostra_identificador_e_arquivo_salvo():
     # As mensagens de progresso ORIGINAIS continuam aparecendo (nada foi
     # removido, só ganharam vizinhas).
     assert " -> Salvo: B_completed.xlsx" in texto
-    assert " -> Consultando Gemini..." in texto
+    # 2026-08-11: a mensagem deixou de citar o provedor. O modelo vem de
+    # config.LLM_TASKS/seleção da UI e pode ser OpenRouter ou o endpoint da
+    # empresa — mensagem que nomeia "Gemini" envelhece igual à do guard.
+    assert " -> Consultando a IA..." in texto
+    assert "Gemini" not in texto
 
 
 # =============================================================================

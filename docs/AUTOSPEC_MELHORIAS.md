@@ -62,80 +62,6 @@ mandar o log (ou o JSON que a IA devolveu). Com isso o conserto é direto.
 
 ---
 
-### P-02 🟡 Busca web: o passo 3 da cascata não existe
-
-As regras de negócio (§4.2) descrevem **três** passos, sendo o terceiro o truncamento
-progressivo do `texto_breve` (corta 4 caracteres do fim até achar documento ou atingir tamanho
-mínimo). `retrieve_context` implementa só dois:
-
-```python
-queries = []
-if cod_mat: queries.append(f'"{cod_mat}" {fab} datasheet specs')
-queries.append(f"{txt_brv} {fab} datasheet specs")
-```
-
-Efeito: descrições longas e muito específicas ("BOMBA CENTRIFUGA MULTIESTAGIO 5CV 380V IP55")
-tendem a não retornar nada, e o AutoSpec fica sem contexto web — cai só no manual local, ou em
-nada. É provavelmente a causa mais comum de ficha voltando vazia.
-
-**Decisão pendente:** implementar como descrito, ou trocar por uma estratégia melhor? Cortar
-4 caracteres cegos pode partir a descrição no meio de uma palavra. Alternativa: remover o
-último *token* a cada rodada, o que preserva o sentido.
-
----
-
-### P-03 🟡 Formatos de imagem não são tratados (objetivo declarado em §6.1)
-
-`PDFProcessor.extract_text` só distingue `.pdf` de "resto", e o resto vai para o BeautifulSoup
-como se fosse HTML. Um `.tif`/`.png`/`.jpg` (catálogo antigo digitalizado, citado nas regras
-de negócio como caso real) vira texto-lixo silenciosamente — ou nada.
-
-O LlamaParse já faz OCR de imagem; hoje ele só é chamado quando `is_pdf` é verdadeiro.
-
----
-
-### P-04 🟡 Rastreabilidade campo→fonte não existe
-
-As regras (§3.4) pedem que a interface mostre **de onde cada dado veio**. Hoje o módulo junta
-todo o contexto num blob (`--- WEB DOC ---` / `--- LOCAL DOC ---`), e a IA devolve só
-`{campo: valor}`. O engenheiro vê a lista de fontes do lote, não a origem de cada valor —
-então a revisão antes da homologação é mais cara do que precisaria.
-
-Caminho possível: pedir à IA um campo `fonte` junto de cada resposta, e logar/gravar isso.
-Mexe no prompt (`core/llm/prompts.py` → 🔴 **zona compartilhada**, exige commit isolado).
-
----
-
-### P-05 🟡 Silêncio em falha de rede e de parsing
-
-- `WebSearcher.search_and_download`: `except Exception: return []` — busca web que falhou é
-  indistinguível de busca que não achou nada.
-- `PDFProcessor.extract_text`: três `except ... pass` em cascata. Se o LlamaParse falhar por
-  chave inválida, cai no PyPDF2 sem dizer nada; se o PDF for escaneado, o PyPDF2 devolve vazio
-  e o documento some do contexto sem aviso.
-- `generate_ai_response`: `except Exception as e: print(f"Erro IA: {e}")` — vai para o
-  **stdout**, ou seja, a janela preta que ninguém olha. O CP 4.4 padronizou os logs pelo
-  console da UI; este ponto ficou de fora.
-
-O último é o mais barato de consertar e o de maior retorno.
-
----
-
-### P-06 🔵 `analyze_sheet` varre até `ws.max_row`
-
-```python
-r = VARIAVEIS_SPECS["start_row"]     # 79
-while r <= ws.max_row:
-```
-
-`max_row` no openpyxl conta linhas com **formatação**, não só com conteúdo. Numa ficha cujo
-template tenha estilo aplicado até o fim, isso vira dezenas de milhares de iterações inúteis
-por ficha. As regras de negócio dizem "linha 79 até a **última linha preenchida**".
-
-Conserto natural: parar após N linhas consecutivas sem pergunta na coluna C.
-
----
-
 ### P-07 🔵 `analyze_sheet` abre o workbook sem `data_only=True`
 
 `get_pmib_data` usa `data_only=True`; `analyze_sheet` não. Se a ficha tiver célula com
@@ -149,6 +75,77 @@ de decisão antes de código.
 ---
 
 ## Resolvido
+
+### ✅ R-04 🟡 P-02: cascata de busca web ganhou o passo 3 *(2026-08-11)*
+
+As regras de negócio (§4.2) descrevem 3 passos; o código tinha 2. Descrição longa e específica
+não retorna nada no Google, e a ficha ficava sem contexto web — provável causa nº 1 de ficha
+voltando vazia. `_montar_queries_busca` implementa o truncamento progressivo **por PALAVRA**
+(decisão do usuário; cortar 4 caracteres, como o texto original sugeria, parte o token no meio
+— `"PVF100-4"` → `"PVF10"` — e produz query pior que a anterior), com piso de 2 tokens e o
+fabricante preservado em todas as rodadas (é ele que ancora o filtro anti-intruso).
+
+Validado contra a ficha real `4500063671.0662`, que gera 6 queries degradando bem:
+
+```
+1. CONJUNTO REPARO PARA BOMBA 3527528 PVF100-4 NBR Hydac datasheet specs
+2. CONJUNTO REPARO PARA BOMBA 3527528 PVF100-4 Hydac datasheet specs
+...
+6. CONJUNTO REPARO Hydac datasheet specs
+```
+
+Corrigido junto um defeito que só apareceu ao mexer aqui: o `break` da cascata disparava
+quando a busca **devolvia arquivos**, não quando algum arquivo **virava contexto**. Três PDFs
+ilegíveis encerravam a cascata e as queries mais genéricas nunca eram tentadas.
+
+### ✅ R-05 🟡 P-03: imagens vão para o OCR *(2026-08-11)*
+
+`.tif/.tiff/.png/.jpg/.jpeg/.bmp/.webp` passam pelo LlamaParse (que faz OCR) em vez de caírem
+no BeautifulSoup como se fossem HTML. Sem chave do LlamaParse, o documento é ignorado **com
+aviso**, em vez de virar texto-lixo em silêncio. O `_sufixo_para_url` também deixou de errar
+com URL de PDF com query string (`.../datasheet.pdf?download=1`) e passou a olhar o
+`Content-Type` da resposta.
+
+### ✅ R-06 🟡 P-04: rastreabilidade campo→fonte *(2026-08-11)*
+
+O prompt passou a pedir `{ID: {"valor": ..., "fonte": ...}}`, e o `process_queue` lista a
+origem de cada campo no console — as regras §3.4 pedem isso para o engenheiro revisar antes de
+homologar.
+
+**Compatibilidade, que era o risco real desta mudança:** `_normalizar_resposta_ia` aceita as
+DUAS formas. Se o modelo ignorar a instrução (modelo mais fraco, prompt truncado), a resposta
+antiga `{campo: valor}` continua funcionando e só a fonte se perde. O **contrato de retorno de
+`generate_ai_response` não mudou** — `fill_save` recebe o mesmo dicionário achatado de sempre e
+não foi tocado.
+
+Dependentes atualizados junto (era o cuidado pedido): a fixture congelada
+`tests/fixtures/prompts/autospec_prompt.txt` (regenerada a partir da saída real, diff conferido
+linha a linha), `tests/test_llm_prompts_snapshot.py`, `tests/test_llm_prompts.py`.
+
+> ⚠️ `core/llm/prompts.py` é **zona compartilhada** — a mudança foi num commit isolado, com
+> mensagem explícita e registro em `PENDENCIAS.md`, conforme `TRABALHO_PARALELO.md` §4.
+
+### ✅ R-07 🟡 P-05: falhas deixaram de ser silenciosas *(2026-08-11)*
+
+- Busca web: `except Exception: return []` mudo → log de erro com tipo e query. Cota diária do
+  CSE estourada era indistinguível de "não achei nada".
+- `PDFProcessor`: os três `except ... pass` agora dizem qual etapa falhou e por quê; PDF sem
+  camada de texto (escaneado) é avisado explicitamente.
+- `generate_ai_response`: `print(f"Erro IA: {e}")` ia para o **stdout** — a janela preta que
+  ninguém olha. Agora vai pelos callbacks, como o CP 4.4 padronizou.
+- Documento web descartado por texto insuficiente e resultado barrado pelo filtro anti-intruso
+  passaram a aparecer no console.
+- `" -> Consultando Gemini..."` virou `" -> Consultando a IA..."`: o provedor vem da seleção do
+  usuário e a mensagem envelheceria igual à do guard de chave.
+
+### ✅ R-08 🔵 P-06: varredura para na última linha preenchida *(2026-08-11)*
+
+O laço ia até `ws.max_row`, que no openpyxl conta linha com **formatação**. Na ficha real as
+perguntas acabam na 103 e `max_row` é 132; num template formatado até o fim, dezenas de
+milhares de iterações inúteis por ficha. Agora encerra após
+`MAX_LINHAS_VAZIAS_SEGUIDAS = 25` linhas sem pergunta — folgado para atravessar um bloco de
+layout no meio da lista, curto para não varrer a planilha inteira. Seguro porque as perguntas
+são numeradas em sequência (ver Anexo B do doc de contexto de negócio).
 
 ### ✅ R-01 🔴 `get_pmib_data` casava com o material errado *(2026-08-11)*
 

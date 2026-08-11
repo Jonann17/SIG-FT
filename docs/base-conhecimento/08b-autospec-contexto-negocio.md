@@ -222,3 +222,89 @@ como se fosse descrição do código de hoje.
 | §3.4 | Fonte azul, clone `_completed`, nunca salva no original | ✅ Confere | OK |
 | §3.4 | "Logs de transparência: a interface exibe a URL exata ou o nome do arquivo local de onde cada dado foi recuperado" | Parcial: `retrieve_context` coleta `sources` (URLs) e o contexto marca `--- WEB DOC ---` / `--- LOCAL DOC ---`, mas **não há vínculo campo→fonte**. O engenheiro vê a lista de fontes do lote, não de onde saiu cada valor | **Divergência de grau** — ver `docs/AUTOSPEC_MELHORIAS.md` |
 | §4.3 | Filtro anti-intruso valida título, URL e snippet | ✅ Confere — mas basta **um** dos termos casar em **um** dos três campos (`break` no primeiro match) | OK, com ressalva de rigor |
+
+---
+
+# Anexo B — O que a ficha real ensinou (`4500063671.0662`, POWER PACKS / Hydac)
+
+Levantado em 2026-08-11 a partir de uma ficha real fornecida pelo usuário. Segundo ele,
+**todas as fichas seguem este mesmo formato** — o que varia é a quantidade e o tipo das
+características técnicas do bloco final, conforme o **PDM** (grupo do material no PMIB).
+
+## B.1 Geometria confirmada
+
+| | |
+|---|---|
+| Abas | `Ficha Técnica Padrão` (alvo) + `Planilha1` |
+| Extensão da planilha | `max_row=132`, `max_column=23`, **129 células mescladas** |
+| Cabeçalho fixo | linhas 2 a 76 |
+| Especificações variáveis | **linhas 79 a 103** nesta ficha (25 perguntas) |
+| Depois da última pergunta | **29 linhas vazias até `max_row`** ← origem do P-06 |
+
+`max_row` maior que a última linha preenchida é a **regra, não a exceção**: o template
+carrega formatação além do conteúdo. Por isso a varredura precisa parar por contagem de
+linhas sem pergunta, e não em `ws.max_row`.
+
+## B.2 As perguntas são numeradas e auto-descritivas
+
+```
+79   1 - APLICACAO (Indicar a aplicação do item ex.: Fixação...)
+80   2 - MATERIAL (Indicar o material do item (ex.: Borracha...))
+...
+103  25 - CERTIFICADO (Indicar o tipo de certificado necessá...)
+```
+
+Duas consequências boas:
+
+- A numeração sequencial confirma que um vão grande significa **fim da lista**, não lacuna —
+  é o que torna o critério do P-06 seguro.
+- O texto da pergunta **já traz a instrução e um exemplo**, e é ele que vai para o prompt
+  como `desc`. O modelo recebe um enunciado rico sem que o código precise construir nada.
+
+## B.3 Estrutura de checkbox — marca numa célula, rótulo na vizinha
+
+**Este é o achado que resolve o P-01 no papel.** Em 7 dos 9 grupos, o rótulo legível está na
+célula imediatamente à direita da célula de marcação:
+
+| Campo | Célula da marca → rótulo |
+|---|---|
+| `tipo_fabricacao` | `F10`→"Série", `F12`→"Especial" |
+| `origem` | `S6`→"Brasil ou Paraguai", `S8`→"Outros" |
+| `tipo` | `S10`→"Reparável", `S12`→"Não reparável" |
+| `sujeito_intemperies` | `Q21`→"Sim", `S21`→"Não" |
+| `posicao_armazenamento` | `G25`→"Vertical", `G27`→"Horizontal", `G29`→"Indiferente" |
+| `protecao` | `S25`→"Sem necessidade", `S27`→"Raios Ultravioletas", `S29`→"Eletrostática" |
+| `nocivo` | `E31`→"Não contém agentes nocivos", `E33`→"Prejudicial…" |
+
+Os **2 restantes** têm o rótulo na linha **68**, acima da linha de marcação (69):
+
+| Célula da marca | Rótulo |
+|---|---|
+| `E69` | `D68` = "Classe I - Perigoso" |
+| `J69` | `H68` = "Classe II – Não perigoso" |
+| `P69` | `O68` = "Não se aplica" |
+| `T69` | `S68` = "Aplica" |
+
+**Por que importa:** hoje o prompt manda a IA escolher entre `['G25','G27','G29']` — endereços
+de célula, que não significam nada para um modelo de linguagem. O natural é ele responder
+`"Horizontal"`. Com este mapa, dá para oferecer os RÓTULOS no prompt e traduzir a resposta de
+volta para a célula. Ver P-01 em `docs/AUTOSPEC_MELHORIAS.md`.
+
+## B.4 Convenção de nome de arquivo
+
+`4500063671.0662__POWER_PACKS_98.xlsx` — prefixo de contrato, ponto, sufixo de 4 dígitos, dois
+underscores, descrição. Confirmado que `pmib_codes.extract_pmib_code` extrai `'0662'` deste e
+das variantes (`… - POWER PACKS.xlsx`, `…_completed.xlsx`, `….xlsx`).
+
+## B.5 Outras observações
+
+- **`empilhamento` (`J35`) pode conter TEXTO.** Nesta ficha, um humano escreveu
+  `"não empilhar"`. As regras dizem que o campo é numérico e o código extrai o inteiro com
+  regex — mas como a célula já está preenchida, `is_empty` a considera preenchida e o módulo
+  não encosta. Comportamento correto; vale saber que o dado real nem sempre é número.
+- **`texto_breve_material` (`H6`) vem com espaço duplo e sobra no fim**
+  (`'CONJUNTO REPARO PARA BOMBA 3527528  PVF100-4 NBR  '`). A montagem de query normaliza via
+  `.split()` desde o P-02 — antes isso ia cru para o Google.
+- **A ficha de exemplo está 100% preenchida**: `analyze_sheet` detectou **0 campos faltantes**.
+  Boa contraprova de que o `is_empty` não gera falso positivo (nada foi marcado como pendente
+  numa ficha completa).

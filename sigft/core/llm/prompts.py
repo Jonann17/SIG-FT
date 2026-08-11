@@ -553,6 +553,9 @@ def montar_autospec(txt_brv, fab, desc_comp, context, desc_list_texto):
         4. Campos [ESTRITO]: Se não houver dados, deixe vazio "".
         5. 'empilhamento': Apenas números inteiros.
         6. Checkboxes: Deduza a melhor opção se não explícito.
+        7. Para CADA campo, informe de onde tirou a resposta em "fonte":
+           o nome do arquivo em "LOCAL DOC", a URL em "WEB DOC", ou
+           "conhecimento tecnico" quando deduziu por boas praticas.
 
-        CAMPOS A PREENCHER (Retorne JSON {{ID: Resposta}}):
+        CAMPOS A PREENCHER (Retorne JSON {{ID: {{"valor": Resposta, "fonte": Origem}}}}):
         """ + desc_list_texto

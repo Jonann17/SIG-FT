@@ -54,6 +54,51 @@ GENERATIVE_FIELDS = [
 # docs/refatoracao/PENDENCIAS.md, entrada do CP 2.4.
 
 
+# Extensões que o LlamaParse consegue OCRar. Regras de negócio §2.3/§6.1:
+# catálogos antigos digitalizados chegam como TIFF/PNG/JPG. Até 2026-08-11 o
+# `PDFProcessor` só distinguia ".pdf" de "resto", e o resto ia para o
+# BeautifulSoup como se fosse HTML -- uma imagem virava texto-lixo, em
+# silêncio.
+EXTENSOES_IMAGEM = (".tif", ".tiff", ".png", ".jpg", ".jpeg", ".bmp", ".webp")
+EXTENSOES_OCR = (".pdf",) + EXTENSOES_IMAGEM
+
+_CONTENT_TYPE_PARA_SUFIXO = {
+    "application/pdf": ".pdf",
+    "image/tiff": ".tif",
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "text/plain": ".txt",
+}
+
+
+def _callbacks_silenciosos():
+    """`UICallbacks` que engole tudo — default de quem chama sem passar
+    callbacks (testes antigos, uso programático). Mantém a assinatura
+    retrocompatível sem espalhar `if callbacks:` pelo módulo."""
+    return UICallbacks(log=lambda *a, **k: None)
+
+
+def _sufixo_para_url(url, content_type=None):
+    """Sufixo de arquivo temporário para um download.
+
+    Antes de 2026-08-11 era `".pdf" if url.lower().endswith(".pdf") else
+    ".html"` — o que erra em dois casos comuns em site de fabricante:
+    URL de PDF com query string (`.../datasheet.pdf?download=1`, que não
+    termina em ".pdf") e imagem digitalizada (vira ".html" e é lida como
+    HTML). Agora olha o caminho da URL sem a query e, quando disponível, o
+    `Content-Type` da resposta, que é a fonte mais confiável.
+    """
+    caminho = str(url or "").split("?")[0].split("#")[0].lower()
+    for ext in EXTENSOES_OCR + (".txt",):
+        if caminho.endswith(ext):
+            return ext
+    if content_type:
+        base = str(content_type).split(";")[0].strip().lower()
+        if base in _CONTENT_TYPE_PARA_SUFIXO:
+            return _CONTENT_TYPE_PARA_SUFIXO[base]
+    return ".html"
+
+
 # -----------------------------------------------------------------
 # 2. CLASSES UTILITÁRIAS (Busca e PDF)
 # -----------------------------------------------------------------
@@ -64,7 +109,8 @@ class WebSearcher:
         self.search_url = "https://www.googleapis.com/customsearch/v1"
         self.headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
 
-    def search_and_download(self, query, required_terms=[], max_results=3):
+    def search_and_download(self, query, required_terms=[], max_results=3, callbacks=None):
+        cb = callbacks or _callbacks_silenciosos()
         if not self.api_key or not self.cse_id:
             return []
         params = {'key': self.api_key, 'cx': self.cse_id, 'q': query, 'num': max_results, 'gl': 'br', 'hl': 'pt'}
@@ -77,38 +123,62 @@ class WebSearcher:
             response.raise_for_status()
             data = response.json()
             items = data.get('items', [])
-            results = []
-            for item in items:
-                link = item.get('link', '').lower()
-                title = item.get('title', '').lower()
-                snippet = item.get('snippet', '').lower()
-                is_relevant = False
-                if not required_terms:
-                    is_relevant = True
-                else:
-                    for term in required_terms:
-                        term_clean = str(term).lower().strip()
-                        if term_clean and (term_clean in title or term_clean in snippet or term_clean in link):
-                            is_relevant = True; break
-                if is_relevant:
-                    filepath = self._download_file(link)
-                    if filepath:
-                        results.append({"path": filepath, "url": link, "title": title})
-            return results
-        except Exception:
+        except Exception as e:
+            # Até 2026-08-11 era `except Exception: return []` mudo: falha de
+            # rede, cota estourada e "não achei nada" ficavam indistinguíveis
+            # para quem olhava o console. A cota diária do CSE free tier (100
+            # queries) é justamente o caso que mais confunde na prática.
+            cb.log(
+                f"Busca web falhou ({type(e).__name__}: {e}). Query: {query}",
+                nivel="error",
+            )
             return []
 
-    def _download_file(self, url):
+        results = []
+        descartados = 0
+        for item in items:
+            link = item.get('link', '').lower()
+            title = item.get('title', '').lower()
+            snippet = item.get('snippet', '').lower()
+            is_relevant = False
+            if not required_terms:
+                is_relevant = True
+            else:
+                for term in required_terms:
+                    term_clean = str(term).lower().strip()
+                    if term_clean and (term_clean in title or term_clean in snippet or term_clean in link):
+                        is_relevant = True; break
+            if not is_relevant:
+                # Filtro anti-intruso (regras de negócio §4.3): catálogo de
+                # concorrente barrado por não citar fabricante nem código.
+                descartados += 1
+                continue
+            filepath = self._download_file(link, callbacks=cb)
+            if filepath:
+                results.append({"path": filepath, "url": link, "title": title})
+
+        if descartados:
+            cb.log(
+                f"Filtro anti-intruso descartou {descartados} de {len(items)} resultado(s) "
+                f"(nao citam fabricante nem codigo do material).",
+                nivel="info",
+            )
+        return results
+
+    def _download_file(self, url, callbacks=None):
+        cb = callbacks or _callbacks_silenciosos()
         try:
             response = requests.get(url, headers=self.headers, timeout=15)
-            if response.status_code == 200:
-                suffix = ".pdf" if url.lower().endswith(".pdf") else ".html"
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
-                    tmp_file.write(response.content)
-                    return tmp_file.name
-        except Exception:
+            if response.status_code != 200:
+                cb.log(f"Download recusado (HTTP {response.status_code}): {url}", nivel="warn")
+                return None
+            suffix = _sufixo_para_url(url, response.headers.get("Content-Type"))
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+                tmp_file.write(response.content)
+                return tmp_file.name
+        except Exception as e:
+            cb.log(f"Download falhou ({type(e).__name__}): {url}", nivel="warn")
             return None
-        return None
 
 
 class PDFProcessor:
@@ -117,17 +187,37 @@ class PDFProcessor:
         if self.llama_key:
             os.environ["LLAMA_CLOUD_API_KEY"] = self.llama_key
 
-    def extract_text(self, filepath):
-        text_content = ""; method_used = ""; is_pdf = filepath.lower().endswith('.pdf')
+    def extract_text(self, filepath, callbacks=None):
+        cb = callbacks or _callbacks_silenciosos()
+        text_content = ""
+        method_used = ""
+        nome = os.path.basename(str(filepath))
+        alvo = str(filepath).lower()
+        is_pdf = alvo.endswith('.pdf')
+        # P-03: imagem também vai para o LlamaParse, que faz OCR. Antes só o
+        # PDF entrava nesse caminho e o TIFF/PNG/JPG caía no BeautifulSoup.
+        is_imagem = alvo.endswith(EXTENSOES_IMAGEM)
+        ocr_possivel = is_pdf or is_imagem
 
-        if self.llama_key and is_pdf:
+        if self.llama_key and ocr_possivel:
             try:
                 parser = LlamaParse(result_type="text")
                 documents = parser.load_data(filepath)
                 text_content = "\n".join([doc.text for doc in documents])
                 method_used = "LlamaParse"
-            except Exception:
-                pass
+            except Exception as e:
+                cb.log(
+                    f"LlamaParse falhou em {nome} ({type(e).__name__}: {e}) "
+                    f"— tentando o fallback local.",
+                    nivel="warn",
+                )
+        elif is_imagem and not self.llama_key:
+            cb.log(
+                f"{nome} é imagem e exige OCR, mas não há chave do LlamaParse "
+                f"configurada — documento ignorado.",
+                nivel="warn",
+            )
+            return "", ""
 
         if not text_content and is_pdf:
             try:
@@ -137,16 +227,24 @@ class PDFProcessor:
                         t = page.extract_text()
                         if t: text_content += t + "\n"
                 method_used = "PyPDF2"
-            except Exception: pass
+                if not text_content:
+                    cb.log(
+                        f"{nome}: PDF sem camada de texto (provavelmente escaneado). "
+                        f"Só o LlamaParse leria — documento ignorado.",
+                        nivel="warn",
+                    )
+            except Exception as e:
+                cb.log(f"PyPDF2 falhou em {nome} ({type(e).__name__}: {e}).", nivel="warn")
 
-        if not text_content and not is_pdf:
+        if not text_content and not ocr_possivel:
             try:
                 with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
                     soup = BeautifulSoup(f, 'html.parser')
                     for script in soup(["script", "style", "nav", "footer", "header"]): script.extract()
                     text_content = soup.get_text(separator=' ', strip=True)
                 method_used = "WebScrape(BS4)"
-            except Exception: pass
+            except Exception as e:
+                cb.log(f"Leitura HTML falhou em {nome} ({type(e).__name__}: {e}).", nivel="warn")
 
         return text_content, method_used
 
@@ -203,6 +301,10 @@ class AutoSpecCore:
         )
         self.searcher = WebSearcher(self.google_key, self.cse_id)
         self.pdf_parser = PDFProcessor(self.llama_key)
+        # P-04: preenchido por `generate_ai_response` a cada chamada (sempre
+        # zerado antes). Vale só para a ÚLTIMA ficha processada -- leia logo
+        # depois da chamada, como `process_queue` faz.
+        self.ultimas_fontes_por_campo = {}
 
     @staticmethod
     def _resolver_selecao(selecao_resolvida):
@@ -268,6 +370,12 @@ class AutoSpecCore:
                 f"na Home, ou escolha no painel 'Modelos de IA' um provedor "
                 f"cuja chave você já tenha."
             )
+
+    # P-06: quantas linhas seguidas SEM pergunta encerram a varredura das
+    # especificações variáveis. 25 é folgado o suficiente para atravessar um
+    # bloco de linhas de layout no meio da lista e curto o suficiente para
+    # não varrer planilha formatada até o fim.
+    MAX_LINHAS_VAZIAS_SEGUIDAS = 25
 
     # --- Helpers de Excel e Dados ---
     def extract_pmib_code(self, input_filepath):
@@ -395,61 +503,181 @@ class AutoSpecCore:
                     missing[key] = {"type": "checkbox", "options": cfg["cells"], "desc": cfg.get("desc", ""), "ref": cfg["cells"]}
 
         # Mapeamento Dinâmico (Variáveis)
+        #
+        # P-06: as regras de negócio dizem "linha 79 até a última linha
+        # PREENCHIDA", mas o laço ia até `ws.max_row` -- que no openpyxl conta
+        # linha com FORMATAÇÃO, não com conteúdo. Na ficha real
+        # 4500063671.0662 as perguntas acabam na linha 103 e `max_row` é 132;
+        # num template com estilo aplicado até o fim da planilha isso vira
+        # dezenas de milhares de iterações inúteis por ficha.
+        #
+        # Para parar sem arriscar perder pergunta depois de um buraco, exige
+        # uma SEQUÊNCIA de linhas sem pergunta (as fichas numeram as
+        # perguntas em ordem — "1 - APLICACAO", "2 - MATERIAL" ... —, então
+        # um vão maior que isso significa fim da lista, não lacuna).
         r = VARIAVEIS_SPECS["start_row"]
-        while r <= ws.max_row:
+        vazias_seguidas = 0
+        while r <= ws.max_row and vazias_seguidas < self.MAX_LINHAS_VAZIAS_SEGUIDAS:
             p_val = ws.cell(row=r, column=VARIAVEIS_SPECS["pergunta_col_idx"]).value
             r_val = ws.cell(row=r, column=VARIAVEIS_SPECS["resposta_col_idx"]).value
             if p_val:
+                vazias_seguidas = 0
                 if self.is_empty(r_val):
                     clean_p = str(p_val).strip().replace(":", "")
                     missing[f"var_row_{r}"] = {"type": "text", "desc": clean_p, "ref": ws.cell(row=r, column=VARIAVEIS_SPECS["resposta_col_idx"]).coordinate}
+            else:
+                vazias_seguidas += 1
             r += 1
 
         return wb, missing, txt_brv, fab, desc_comp, cod_mat
 
     # --- RAG: Busca e Contexto ---
-    def retrieve_context(self, txt_brv, fab, cod_mat, refs_locais):
+    # Piso do truncamento progressivo (passo 3 da cascata): abaixo disso a
+    # query vira genérica demais para valer a chamada -- "CONJUNTO Hydac
+    # datasheet specs" traz catálogo de qualquer coisa.
+    MIN_TOKENS_BUSCA = 2
+
+    @classmethod
+    def _montar_queries_busca(cls, txt_brv, fab, cod_mat):
+        """Cascata de busca web, do mais específico ao mais genérico
+        (regras de negócio §4.2).
+
+        1. `"{cod_mat}" {fab} datasheet specs` -- aspas = busca exata;
+        2. `{txt_brv} {fab} datasheet specs`;
+        3. o mesmo, largando **a última PALAVRA** do `txt_brv` a cada
+           rodada, até sobrarem `MIN_TOKENS_BUSCA` tokens.
+
+        O passo 3 estava descrito nas regras de negócio e não existia no
+        código até 2026-08-11 -- descrições longas e específicas ("CONJUNTO
+        REPARO PARA BOMBA 3527528 PVF100-4 NBR") não retornam nada no
+        Google, e a ficha ficava sem contexto web nenhum.
+
+        Corta por PALAVRA, não pelos 4 caracteres que o texto original das
+        regras sugeria: cortar por caractere parte o token no meio
+        ("PVF100-4" -> "PVF10") e produz query pior que a anterior. O
+        fabricante fica SEMPRE na query -- é ele que ancora o filtro
+        anti-intruso (§4.3).
+
+        Devolve lista sem repetição, preservando a ordem.
+        """
+        # O texto vem da planilha e costuma trazer espaço duplo e sobra no
+        # fim (visto na ficha real 4500063671.0662): `.split()` normaliza.
+        tokens = str(txt_brv or "").split()
+        fab_txt = str(fab or "").strip()
+
+        queries = []
+        if cod_mat:
+            queries.append(f'"{cod_mat}" {fab_txt} datasheet specs'.strip())
+
+        for corte in range(len(tokens), cls.MIN_TOKENS_BUSCA - 1, -1):
+            if corte <= 0:
+                break
+            trecho = " ".join(tokens[:corte])
+            queries.append(f"{trecho} {fab_txt} datasheet specs".strip())
+
+        vistas = set()
+        unicas = []
+        for q in queries:
+            if q not in vistas:
+                vistas.add(q)
+                unicas.append(q)
+        return unicas
+
+    def retrieve_context(self, txt_brv, fab, cod_mat, refs_locais, callbacks=None):
+        cb = callbacks or _callbacks_silenciosos()
+
         # 1. Processar Locais
-        local_txt = self.process_local_documents(refs_locais)
+        local_txt = self.process_local_documents(refs_locais, callbacks=cb)
 
         # 2. Busca Web
         web_txt = ""
         sources = []
 
-        if self.google_key and self.cse_id:
-            required = []
-            if fab and len(fab) > 2: required.append(fab)
-            if cod_mat and len(cod_mat) > 2: required.append(cod_mat)
+        if not (self.google_key and self.cse_id):
+            cb.log(
+                "Busca web desativada (chave do Google Search ou CSE ID ausente) "
+                "— o contexto virá só dos documentos locais.",
+                nivel="warn",
+            )
+            return (local_txt + "\n\n" + web_txt), sources
 
-            queries = []
-            if cod_mat: queries.append(f'"{cod_mat}" {fab} datasheet specs')
-            queries.append(f"{txt_brv} {fab} datasheet specs")
+        required = []
+        if fab and len(fab) > 2: required.append(fab)
+        if cod_mat and len(cod_mat) > 2: required.append(cod_mat)
 
-            for q in queries:
-                files = self.searcher.search_and_download(q, required_terms=required, max_results=3)
-                if files:
-                    for item in files:
-                        t, m = self.pdf_parser.extract_text(item['path'])
-                        if t and len(t) > 100:
-                            web_txt += f"--- WEB DOC: {item['title']} ---\nURL: {item['url']}\n{t[:50000]}\n\n"
-                            sources.append(item['url'])
-                        try: os.remove(item['path'])
-                        except Exception: pass
-                    break  # Se achou algo, para
+        queries = self._montar_queries_busca(txt_brv, fab, cod_mat)
+
+        for i, q in enumerate(queries, start=1):
+            files = self.searcher.search_and_download(
+                q, required_terms=required, max_results=3, callbacks=cb
+            )
+            if not files:
+                cb.log(f"Busca {i}/{len(queries)} sem resultado util: {q}", nivel="info")
+                continue
+
+            aproveitados = 0
+            for item in files:
+                t, m = self.pdf_parser.extract_text(item['path'], callbacks=cb)
+                if t and len(t) > 100:
+                    web_txt += f"--- WEB DOC: {item['title']} ---\nURL: {item['url']}\n{t[:50000]}\n\n"
+                    sources.append(item['url'])
+                    aproveitados += 1
+                    cb.log(f"Documento web aproveitado ({m}, {len(t)} chars): {item['url']}")
+                else:
+                    cb.log(
+                        f"Documento web descartado (texto insuficiente): {item['url']}",
+                        nivel="warn",
+                    )
+                try: os.remove(item['path'])
+                except Exception: pass
+
+            # Só encerra a cascata se algum documento REALMENTE virou
+            # contexto. Antes bastava a busca devolver arquivos: 3 PDFs
+            # ilegíveis paravam a cascata e a ficha seguia sem contexto web,
+            # com as queries mais genéricas nunca tentadas.
+            if aproveitados:
+                cb.log(f"Busca {i}/{len(queries)} rendeu {aproveitados} documento(s): {q}")
+                break
+            cb.log(
+                f"Busca {i}/{len(queries)} achou {len(files)} arquivo(s), nenhum legivel "
+                f"— seguindo para a proxima query.",
+                nivel="warn",
+            )
+
+        if not sources:
+            cb.log(
+                f"Nenhum documento web aproveitavel apos {len(queries)} tentativa(s). "
+                f"O contexto virá só dos documentos locais.",
+                nivel="warn",
+            )
 
         return (local_txt + "\n\n" + web_txt), sources
 
-    def process_local_documents(self, paths):
+    def process_local_documents(self, paths, callbacks=None):
+        cb = callbacks or _callbacks_silenciosos()
         ctx = []
         for p in paths:
+            nome = os.path.basename(str(p))
             try:
-                t, m = self.pdf_parser.extract_text(p)
-                if t: ctx.append(f"--- LOCAL DOC: {os.path.basename(p)} ---\n{t[:60000]}")
-            except Exception: pass
+                t, m = self.pdf_parser.extract_text(p, callbacks=cb)
+                if t:
+                    ctx.append(f"--- LOCAL DOC: {nome} ---\n{t[:60000]}")
+                    cb.log(f"Manual local lido ({m}, {len(t)} chars): {nome}")
+                else:
+                    cb.log(
+                        f"Manual local nao rendeu texto: {nome} — nao entra no contexto.",
+                        nivel="warn",
+                    )
+            except Exception as e:
+                cb.log(
+                    f"Falha ao processar manual local {nome} ({type(e).__name__}: {e}).",
+                    nivel="error",
+                )
         return "\n\n".join(ctx)
 
     # --- Geração IA ---
-    def generate_ai_response(self, txt_brv, fab, desc_comp, missing, context):
+    def generate_ai_response(self, txt_brv, fab, desc_comp, missing, context, callbacks=None):
+        cb = callbacks or _callbacks_silenciosos()
         if not missing: return {}
 
         # CP 3.5 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 3): o laço que
@@ -476,10 +704,47 @@ class AutoSpecCore:
             resp = self._llm.generate(
                 prompt, tags={"modulo": "autospec_backend", "tarefa": "autospec"}
             )
-            return resp.parsed_json
+            return self._normalizar_resposta_ia(resp.parsed_json)
         except Exception as e:
-            print(f"Erro IA: {e}")
+            # Até 2026-08-11 isto era `print(f"Erro IA: {e}")` -- ia para o
+            # stdout, ou seja, a janela preta que ninguém olha. O CP 4.4
+            # padronizou os logs pelo console da UI e este ponto ficou de
+            # fora: a ficha voltava vazia sem nenhuma explicação visível.
+            cb.log(f"Chamada de IA falhou ({type(e).__name__}: {e}).", nivel="error")
             return {}
+
+    def _normalizar_resposta_ia(self, parsed):
+        """Achata a resposta da IA para `{campo: valor}` e guarda as fontes
+        em `self.ultimas_fontes_por_campo`.
+
+        **Aceita as DUAS formas de propósito** (P-04, 2026-08-11):
+
+          - `{"campo": "valor"}` — a forma de antes. Continua valendo, e é
+            o que um modelo mais fraco devolve mesmo com a instrução nova
+            no prompt;
+          - `{"campo": {"valor": ..., "fonte": ...}}` — a forma que o
+            prompt passou a pedir.
+
+        Tolerar as duas é o que impede que a rastreabilidade vire uma
+        regressão: se o modelo ignorar a instrução 7, o preenchimento
+        continua funcionando exatamente como antes, só sem a fonte. O
+        contrato de RETORNO não mudou — `fill_save` recebe o mesmo
+        `{campo: valor}` de sempre.
+        """
+        self.ultimas_fontes_por_campo = {}
+        if not isinstance(parsed, dict):
+            return parsed
+
+        achatado = {}
+        for campo, bruto in parsed.items():
+            if isinstance(bruto, dict) and "valor" in bruto:
+                achatado[campo] = bruto.get("valor")
+                fonte = bruto.get("fonte")
+                if fonte:
+                    self.ultimas_fontes_por_campo[campo] = str(fonte)
+            else:
+                achatado[campo] = bruto
+        return achatado
 
     def fill_save(self, wb, filepath, ai_data, missing):
         ws = wb["Ficha Técnica Padrão"]
@@ -559,12 +824,37 @@ class AutoSpecCore:
                     yield f" -> {len(missing)} campos faltantes. Coletando contexto..."
 
                     # 2. Contexto
-                    full_ctx, sources = self.retrieve_context(txt, fab, cod, refs)
+                    full_ctx, sources = self.retrieve_context(
+                        txt, fab, cod, refs, callbacks=callbacks
+                    )
+                    yield from _flush()
                     if sources: yield f" -> Fontes Web: {len(sources)}"
 
                     # 3. IA
-                    yield " -> Consultando Gemini..."
-                    ai_resp = self.generate_ai_response(txt, fab, desc, missing, full_ctx)
+                    # Nada de citar provedor aqui: o modelo vem de
+                    # `config.LLM_TASKS`/seleção da UI e pode ser OpenRouter
+                    # ou o endpoint da empresa. Mensagem que nomeia "Gemini"
+                    # envelhece igual à do guard de chave.
+                    yield " -> Consultando a IA..."
+                    ai_resp = self.generate_ai_response(
+                        txt, fab, desc, missing, full_ctx, callbacks=callbacks
+                    )
+                    yield from _flush()
+
+                    # P-04: rastreabilidade campo->fonte. As regras de negócio
+                    # (§3.4) pedem que o engenheiro veja de onde saiu cada
+                    # dado antes de homologar; até aqui ele via só a lista de
+                    # fontes do lote.
+                    fontes = getattr(self, "ultimas_fontes_por_campo", {}) or {}
+                    if fontes:
+                        yield f" -> Origem dos dados ({len(fontes)} campo(s)):"
+                        for campo, fonte in fontes.items():
+                            yield f"      · {campo}: {fonte}"
+                    elif ai_resp:
+                        yield (
+                            "      (a IA não informou a origem dos dados — "
+                            "confira manualmente antes de homologar)"
+                        )
 
                     # 4. Salvar
                     out_path = self.fill_save(wb, ficha, ai_resp, missing)
