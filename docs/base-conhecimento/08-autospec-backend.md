@@ -1,9 +1,11 @@
 # AutoSpec Backend (`sigft/services/autospec.py`)
 
-> **Onde o código mora:** `sigft/services/autospec.py` (449 linhas) desde o CP 4.1.
+> **Onde o código mora:** `sigft/services/autospec.py` (580 linhas) desde o CP 4.1.
 > `autospec_backend.py` na raiz é só um **shim** que faz `sys.modules[__name__] = _modulo` —
 > os dois nomes apontam para o MESMO objeto de módulo, então `monkeypatch` por qualquer um
 > dos dois funciona. Não coloque lógica no shim.
+>
+> **Regras de negócio e o "porquê" do módulo:** [`08b-autospec-contexto-negocio.md`](08b-autospec-contexto-negocio.md).
 >
 > **Atualizado em 2026-08-11** para refletir os CP 3.1/3.2/4.1/4.4. Os números de linha
 > citados abaixo são de `sigft/services/autospec.py` e envelhecem rápido — use-os como pista,
@@ -63,14 +65,14 @@ Extrai texto de documentos com fallback em cascata.
 - `__init__(llama_key)`: configura LlamaParse se chave fornecida
 - `extract_text(filepath)`: tenta LlamaParse → PyPDF2 → BeautifulSoup (HTML), retorna tupla `(texto, metodo_usado)`
 
-### `AutoSpecCore` (linha 153-449)
+### `AutoSpecCore` (linha 153-580)
 Orquestra o pipeline RAG completo.
 - `__init__(gemini_key, llama_key, google_search_key, google_cse_id, *, chaves=None, selecao_resolvida=None)`: valida a chave **do provedor resolvido** (ver "Guard de chave" abaixo), instancia LLM, WebSearcher, PDFProcessor. `chaves`/`selecao_resolvida` são keyword-only com default `None` — pontos de injeção para teste, mesmo contrato de `get_llm`; nenhum call site existente precisou mudar
 - `_resolver_selecao(selecao_resolvida)` / `_validar_chave_do_provedor(provider_id, gemini_key, chaves)` (estáticos): a resolução de provedor e o guard, separados para serem testáveis isoladamente
 - `extract_pmib_code(input_filepath)`: regex sobre nome arquivo, busca padrão `\d{10}\.(\d{4})`, retorna sufixo de 4 dígitos
 - `find_header_columns(pmib_sheet)`: varredura linha 1-10 procurando por "CÓDIGO PMIB", "DESCRIÇÃO", "CÓDIGO MATERIAL", retorna tupla `(pmib_col_idx, desc_col_idx, mat_col_idx, start_row)`
 - `get_pmib_data(pmib_path, code_suffix)`: lê planilha _STATUS_PMIB, procura código com sufixo, retorna tupla `(descrição_completa, código_material)` ou `("", "")`
-- `is_empty(val)`: verifica se célula está vazia ou contém "FORNECER"
+- `is_empty(val)`: célula vazia, em branco, ou cujo texto **INICIA COM** "FORNECER" (`.startswith`, não "contém") — a instrução do formulário conta como pendente, um valor real não
 - `analyze_sheet(filepath, status_pmib_path)`: lê ficha, detecta campos vazios (estáticos via CONFIG_MAP e dinâmicos na linha 79+), retorna tupla `(workbook, missing_dict, txt_breve, fabricante, desc_comp, cod_mat)` onde `missing_dict` mapeia campo → `{type, desc, ref}`
 - `retrieve_context(txt_brv, fab, cod_mat, refs_locais)`: pipeline RAG de 2 etapas: processa documentos locais via PDFProcessor, depois busca web com 2 queries (por código material + por descrição breve), limita resultado a 50k caracteres por doc, retorna tupla `(contexto_completo, lista_urls)`
 - `process_local_documents(paths)`: aplica PDFProcessor a cada caminho, limita a 60k chars/doc
@@ -86,7 +88,7 @@ Orquestra o pipeline RAG completo.
    - Se status_pmib_path fornecido, busca descrição completa e código material nele
    - Verifica células fixas em CONFIG_MAP: se vazia, adiciona a `missing`
    - Verifica checkboxes: se todas vazias, adiciona a `missing`
-   - Itera linhas 79+ procurando perguntas na coluna D (idx 3), respostas na coluna M (idx 13)
+   - Itera linhas 79+ procurando perguntas na coluna C (idx 3), respostas na coluna M (idx 13)
 
 2. **Recuperação de Contexto** (retrieve_context)
    - Processa documentos locais: PDFProcessor extrai texto (max 60k chars cada)

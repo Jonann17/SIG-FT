@@ -9,10 +9,13 @@ do usuário — então quem tinha só `OPENROUTER_API_KEY` era barrado por falta
 de uma chave que o fluxo nem usaria.
 
 Contrato depois da correção:
-  - provedor Gemini  -> exige `gemini_key`, com a MESMA mensagem de antes
-    (é o provedor de produção; não mudar o que o usuário já conhece);
-  - outro provedor   -> exige a chave DAQUELE provedor
-    (`config.CHAVE_POR_PROVIDER`), e a mensagem nomeia provedor e chave;
+  - a chave exigida é sempre a DO PROVEDOR RESOLVIDO
+    (`config.CHAVE_POR_PROVIDER`); só a ORIGEM muda (Gemini vem do argumento
+    `gemini_key`, os demais de `config.carregar_chaves()`);
+  - a MENSAGEM é uma só, com provedor e chave interpolados -- nenhum
+    provedor é caso especial no texto (decisão de 2026-08-11, olhando para
+    a migração para OpenRouter: mensagem que cita "Gemini" envelhece no dia
+    em que o provedor padrão mudar);
   - provedor sem chave mapeada -> não valida nada aqui, deixa `get_llm`
     levantar o `NotImplementedError` dele.
 
@@ -51,17 +54,33 @@ def _sel(provider, model="modelo-qualquer"):
 
 
 # =============================================================================
-# A. Caminho Gemini — comportamento de ANTES preservado byte a byte
+# A. Caminho Gemini — a chave do argumento continua valendo
 # =============================================================================
-def test_gemini_sem_chave_levanta_com_a_mensagem_historica():
+def test_gemini_sem_chave_levanta_citando_provedor_e_chave():
     with pytest.raises(ValueError) as exc:
         _core(gemini_key="", selecao=_sel(config.PROVIDER_GEMINI))
-    assert str(exc.value) == "Chave Gemini é obrigatória."
+    msg = str(exc.value)
+    assert config.PROVIDER_GEMINI in msg
+    assert "GEMINI" in msg
+
+
+def test_mensagem_nao_trata_nenhum_provedor_como_especial():
+    """A mensagem tem a MESMA forma para Gemini e para OpenRouter — só o
+    provedor e o nome da chave mudam. É o que impede o texto de envelhecer
+    quando o provedor padrão virar OpenRouter."""
+    with pytest.raises(ValueError) as exc_gemini:
+        _core(gemini_key="", selecao=_sel(config.PROVIDER_GEMINI))
+    with pytest.raises(ValueError) as exc_or:
+        _core(gemini_key="", chaves={}, selecao=_sel(config.PROVIDER_OPENROUTER))
+
+    molde_gemini = str(exc_gemini.value).replace(config.PROVIDER_GEMINI, "«P»").replace("GEMINI", "«K»")
+    molde_or = str(exc_or.value).replace(config.PROVIDER_OPENROUTER, "«P»").replace("OPENROUTER", "«K»")
+    assert molde_gemini == molde_or
 
 
 @pytest.mark.parametrize("vazio", ["", None])
 def test_gemini_trata_vazio_e_none_igual(vazio):
-    with pytest.raises(ValueError, match="Chave Gemini é obrigatória."):
+    with pytest.raises(ValueError, match="GEMINI"):
         _core(gemini_key=vazio, selecao=_sel(config.PROVIDER_GEMINI))
 
 
@@ -76,7 +95,7 @@ def test_gemini_e_o_provedor_do_fallback_quando_nao_ha_selecao_salva():
     resolução cai em `LLM_MODELOS_HOJE["autospec"]` — que é Gemini em
     produção. É o que garante que o comportamento default não mudou."""
     assert config.LLM_MODELOS_HOJE["autospec"]["provider"] == config.PROVIDER_GEMINI
-    with pytest.raises(ValueError, match="Chave Gemini é obrigatória."):
+    with pytest.raises(ValueError, match="GEMINI"):
         _core(gemini_key="")
 
 
@@ -100,6 +119,7 @@ def test_openrouter_sem_a_propria_chave_levanta_citando_openrouter():
     assert config.PROVIDER_OPENROUTER in msg
     assert "OPENROUTER" in msg
     assert "Gemini" not in msg  # o erro antigo não pode reaparecer aqui
+    assert "GEMINI" not in msg
 
 
 def test_openrouter_ignora_chave_gemini_presente_mas_inutil():

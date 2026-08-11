@@ -69,7 +69,11 @@ class WebSearcher:
             return []
         params = {'key': self.api_key, 'cx': self.cse_id, 'q': query, 'num': max_results, 'gl': 'br', 'hl': 'pt'}
         try:
-            response = requests.get(self.search_url, params=params)
+            # timeout adicionado em 2026-08-11: sem ele, uma chamada pendurada
+            # à Google CSE travava o módulo INTEIRO por tempo indefinido --
+            # `_download_file` logo abaixo já usava timeout=15, esta não usava
+            # nenhum. Mesmo valor, pelo mesmo motivo.
+            response = requests.get(self.search_url, params=params, timeout=15)
             response.raise_for_status()
             data = response.json()
             items = data.get('items', [])
@@ -230,16 +234,19 @@ class AutoSpecCore:
         chave do Gemini que o fluxo nem usaria. Ver
         docs/refatoracao/PENDENCIAS.md (2026-08-11).
 
-        O caminho Gemini preserva o comportamento anterior byte a byte,
-        mensagem inclusive: é o provedor de produção hoje
-        (`LLM_MODELOS_HOJE["autospec"]`), e essa mensagem já é o que o
-        usuário conhece.
-        """
-        if provider_id == config.PROVIDER_GEMINI:
-            if not gemini_key:
-                raise ValueError("Chave Gemini é obrigatória.")
-            return
+        A mensagem é a MESMA para todo provedor, com o provedor e a chave
+        esperada interpolados. Nenhum provedor é caso especial no texto --
+        decisão de 2026-08-11, olhando para a migração para OpenRouter que
+        já está no horizonte: uma mensagem que diz "Gemini" envelhece no dia
+        em que o provedor padrão mudar, e ninguém lembra de trocá-la.
 
+        O que continua diferente entre os provedores é só DE ONDE a chave
+        vem, não o texto do erro:
+          - Gemini: do argumento `gemini_key` (o `frontend.py` passa
+            `get_key("GEMINI")`), que `get_llm` usa tal qual;
+          - demais: de `config.carregar_chaves()`, pelo nome lógico em
+            `config.CHAVE_POR_PROVIDER`.
+        """
         nome_chave = config.CHAVE_POR_PROVIDER.get(provider_id)
         if nome_chave is None:
             # Provedor sem chave mapeada: não há o que validar aqui. Deixa
@@ -248,13 +255,18 @@ class AutoSpecCore:
             # um que este guard saberia inventar.
             return
 
-        chaves_resolvidas = chaves if chaves is not None else config.carregar_chaves()
-        if not chaves_resolvidas.get(nome_chave):
+        if provider_id == config.PROVIDER_GEMINI:
+            tem_chave = bool(gemini_key)
+        else:
+            chaves_resolvidas = chaves if chaves is not None else config.carregar_chaves()
+            tem_chave = bool(chaves_resolvidas.get(nome_chave))
+
+        if not tem_chave:
             raise ValueError(
-                f"O AutoSpec está configurado para o provedor {provider_id!r}, "
-                f"que precisa da chave {nome_chave!r} — e ela não está "
-                f"configurada. Configure-a na Home ou escolha outro provedor "
-                f"no painel 'Modelos de IA'."
+                f"O AutoSpec não tem chave de IA configurada para o provedor "
+                f"'{provider_id}' (chave esperada: '{nome_chave}'). Configure-a "
+                f"na Home, ou escolha no painel 'Modelos de IA' um provedor "
+                f"cuja chave você já tenha."
             )
 
     # --- Helpers de Excel e Dados ---
@@ -288,6 +300,42 @@ class AutoSpecCore:
         start_row = header_row + 1 if header_row is not None else None
         return pmib_col, desc_col, mat_col, start_row
 
+    @staticmethod
+    def _sufixo_pmib_da_celula(valor):
+        """Sufixo PMIB canônico da célula (`"0105"`), ou `""` se não houver.
+
+        Existe para que `get_pmib_data` compare sufixo COM sufixo. Até
+        2026-08-11 a comparação era `if code_suffix in val_pmib` -- substring
+        contra o código inteiro, prefixo de contrato incluído. Como o prefixo
+        (`config.PREFIXO_CONTRATO`, hoje `"4500063671"`) contém ele mesmo
+        sequências de 4 dígitos, 7 sufixos (`0006`, `0063`, `0636`, `3671`,
+        `4500`, `5000`, `6367`) casavam com QUALQUER linha da planilha, e a
+        função devolvia a descrição e o código de material da PRIMEIRA linha
+        -- de um material completamente diferente. O erro é silencioso e
+        contamina o contexto RAG e as queries de busca web, ou seja, a IA
+        pesquisa e preenche a ficha com base no material errado. Ver
+        docs/refatoracao/PENDENCIAS.md (2026-08-11).
+
+        A normalização passa por `core.excel.pmib_codes` (implementação
+        única, CP 1.2), o que de quebra conserta um FALSO NEGATIVO: quando o
+        Excel guarda o código como número, `4500063671.1050` vira o float
+        `4500063671.105` e a comparação de hoje falha -- `normalize_pmib`
+        restaura o zero à direita.
+        """
+        if valor is None:
+            return ""
+        texto = str(valor).strip()
+        if not texto:
+            return ""
+        # A célula pode trazer o código no meio de texto livre
+        # ("4500063671.0105 - BOMBA"), caso que a substring de antes cobria
+        # e que precisa continuar casando.
+        completo = pmib_codes.find_pmib_code_in_text(texto)
+        norm = pmib_codes.normalize_pmib(completo if completo else valor)
+        if not norm:
+            return ""
+        return norm.split(".")[-1] if "." in norm else norm
+
     def get_pmib_data(self, pmib_path, code_suffix):
         try:
             wb = openpyxl.load_workbook(pmib_path, data_only=True)
@@ -298,9 +346,8 @@ class AutoSpecCore:
             for row in ws.iter_rows(min_row=start_row):
                 if len(row) < max(pmib_col, desc_col, mat_col): continue
                 c_pmib = row[pmib_col-1]
-                val_pmib = str(c_pmib.value).strip() if c_pmib.value else ""
 
-                if code_suffix in val_pmib:
+                if self._sufixo_pmib_da_celula(c_pmib.value) == code_suffix:
                     desc_val = str(row[desc_col-1].value).strip() if row[desc_col-1].value else ""
                     mat_val = str(row[mat_col-1].value).strip() if row[mat_col-1].value else ""
                     return desc_val, mat_val
