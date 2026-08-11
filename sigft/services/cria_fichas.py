@@ -219,6 +219,23 @@ XPATH_DROPDOWN_CONTRATO = '//*[@id="b10-ContractDropdownSearch"]'
 XPATH_SALVAR_1 = '//*[@id="b10-b7-Button"]/button'
 XPATH_CODIGO_PMIB = '//*[@id="b8-b1-Content"]/span'
 
+# Marcador de validação do OutSystems ("Campo obrigatório!" em vermelho embaixo
+# do campo em branco). NÃO é um seletor de fluxo -- nada é clicado nem lido a
+# partir dele; serve só para transformar uma falha MUDA em uma frase.
+#
+# Quando o Salvar é recusado, o portal não navega: o Código PMIB nunca aparece,
+# o `wait_visible` estoura e o usuário recebe `ERRO no Selenium: Message:` --
+# um `TimeoutException` do Selenium tem a mensagem VAZIA, então a tela do app
+# não diz absolutamente nada sobre o que houve. Foi exatamente o que aconteceu
+# no 1º teste real (2026-08-11), e custou uma sessão inteira de diagnóstico
+# para descobrir que o campo em branco era o Contrato.
+#
+# `text()` casa só o nó de texto direto; `contains(., ...)` casaria também
+# qualquer ancestral (inclusive o `<body>`), o que daria "campo obrigatório"
+# como resposta para toda ficha. Sem acento no fim ("obrigatóri") para não
+# depender de "obrigatório!"/"obrigatória"/"obrigatorio".
+XPATH_CAMPO_OBRIGATORIO = "//*[contains(text(), 'obrigat')]"
+
 # ÚNICO seletor CSS que restava no projeto (levantado já no CP 2.1: "139 dos
 # 140 usos de `By.*` são XPATH"). Traduzido para XPath aqui, porque o contrato
 # de `RPAEngine` é só XPath. Equivalência: `div.vscomp-value[data-tooltip^=
@@ -367,7 +384,28 @@ class AutomacaoPMIB:
 
             # 5. Capturar Código PMIB
             time.sleep(PAUSA_GERACAO_PMIB)  # Cobre a latência da 1ª ficha
-            self.engine.wait_visible(XPATH_CODIGO_PMIB)
+            try:
+                self.engine.wait_visible(XPATH_CODIGO_PMIB)
+            except Exception:
+                # O Código PMIB não apareceu. A causa MAIS COMUM não é o
+                # portal estar lento -- é o Salvar ter sido RECUSADO, com
+                # algum campo em branco marcado em vermelho. Sem isto aqui, o
+                # usuário vê `ERRO no Selenium: Message:` (mensagem vazia) e
+                # não tem como saber disso.
+                try:
+                    recusado = self.engine.element_exists(XPATH_CAMPO_OBRIGATORIO)
+                except Exception:
+                    # A sonda é um EXTRA. Se ela própria falhar (página caiu,
+                    # sessão morreu), o erro que vale é o de cima, não o dela.
+                    recusado = False
+                if recusado:
+                    raise RuntimeError(
+                        "A ficha nao foi salva: o portal marcou campo obrigatorio em "
+                        "branco. O suspeito n. 1 e o CONTRATO, que este fluxo escolhe "
+                        "por TAB+ENTER no dropdown -- confira a tela, que ficou parada "
+                        "no erro de proposito."
+                    ) from None
+                raise
             codigo_pmib = str(self.engine.texto(XPATH_CODIGO_PMIB)).strip().split(" ")[0]
 
             # 6. Inserir Código do Projeto

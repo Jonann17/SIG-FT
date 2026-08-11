@@ -432,3 +432,72 @@ def test_no_selenium_os_seis_cliques_do_fluxo_sao_nativos():
     # Código do Projeto, Salvar final -- os mesmos 6 do teste de ordem em
     # Playwright, todos nativos.
     assert cliques == ["nativo"] * 6
+
+
+# ===========================================================================
+# Falha muda vira frase (regressão do 1º teste real)
+# ===========================================================================
+def _automacao_com_salvar_recusado(tem_marcador_de_obrigatorio):
+    """Fluxo onde o Código PMIB NUNCA aparece -- é o que o portal faz quando
+    recusa o Salvar por campo em branco."""
+
+    class _LocatorRecusa(_Locator):
+        def wait_for(self, state):
+            if self.seletor == f"xpath={cf.XPATH_CODIGO_PMIB}":
+                # Mensagem VAZIA de propósito: é a assinatura do
+                # TimeoutException do Selenium, que foi o que o usuário viu
+                # na tela ("ERRO no Selenium: Message:" e mais nada).
+                raise RuntimeError("")
+
+        def count(self):
+            if self.seletor == f"xpath={cf.XPATH_CAMPO_OBRIGATORIO}":
+                return 1 if tem_marcador_de_obrigatorio else 0
+            return 1
+
+    class _PaginaRecusa(_Pagina):
+        def locator(self, seletor):
+            return _LocatorRecusa(self, seletor)
+
+    auto = cf.AutomacaoPMIB()
+    auto.engine = PlaywrightEngine(_PaginaRecusa())
+    return auto
+
+
+def test_salvar_recusado_por_campo_obrigatorio_explica_o_que_houve():
+    auto = _automacao_com_salvar_recusado(tem_marcador_de_obrigatorio=True)
+
+    estado, mensagem = auto.processar_item_individual(dict(_ITEM))
+
+    assert estado == "ERRO"
+    # A frase tem que dizer as duas coisas que faltavam na tela do usuário:
+    # que a ficha NÃO foi salva, e onde olhar primeiro.
+    assert "nao foi salva" in mensagem
+    assert "CONTRATO" in mensagem
+
+
+def test_sem_marcador_de_obrigatorio_o_erro_original_atravessa_intacto():
+    """A sonda é um EXTRA, não um sequestro do erro.
+
+    Se o Código PMIB não apareceu por outro motivo (portal lento, sessão
+    caída), quem tem que chegar ao usuário é a falha de verdade -- inventar
+    "campo obrigatório" ali mandaria ele procurar no lugar errado.
+    """
+    auto = _automacao_com_salvar_recusado(tem_marcador_de_obrigatorio=False)
+
+    estado, mensagem = auto.processar_item_individual(dict(_ITEM))
+
+    assert estado == "ERRO"
+    assert "obrigat" not in mensagem.lower()
+
+
+def test_a_sonda_nao_casa_ancestral_e_por_isso_nao_acusa_toda_ficha():
+    # `contains(., 'obrigat')` casaria QUALQUER ancestral do texto --
+    # inclusive o <body> --, e aí toda ficha que falhasse por qualquer motivo
+    # seria diagnosticada como campo obrigatório. `text()` casa só o nó de
+    # texto direto.
+    assert "text()" in cf.XPATH_CAMPO_OBRIGATORIO
+    assert "contains(., " not in cf.XPATH_CAMPO_OBRIGATORIO
+    # Sem acento e sem o final da palavra: serve para "obrigatório!",
+    # "obrigatória" e "obrigatorio".
+    assert "obrigat" in cf.XPATH_CAMPO_OBRIGATORIO
+    assert "obrigatório" not in cf.XPATH_CAMPO_OBRIGATORIO
