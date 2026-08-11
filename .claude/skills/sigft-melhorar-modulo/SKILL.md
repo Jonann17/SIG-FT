@@ -7,6 +7,12 @@ description: Melhorar/evoluir um módulo existente do SIG-FT (nova opção, corr
 
 ## Passo 1 — Situar-se (sempre, nesta ordem)
 
+0. Leia `docs/refatoracao/TRABALHO_PARALELO.md`. Há duas pessoas mexendo no repositório ao
+   mesmo tempo — o documento diz quais arquivos são de quem e o que está congelado.
+   **Se o módulo-alvo for o AutoSpecAI**, você está na frente do Rafael: fique dentro das
+   zonas 🟢 dele, trate as zonas 🔴 (`ficha_layout.py` → `CONFIG_MAP`, `config.LLM_TASKS`,
+   `core/llm/prompts.py`) com commit isolado, e **não escreva no quadro de status do
+   `PLANO_REFATORACAO.md`** — esse quadro é da frente de refatoração.
 1. Identifique o módulo-alvo e leia o doc dele em `docs/base-conhecimento/` — é o mapa do
    comportamento atual (células, colunas, seletores, fluxo, pontos de atenção).
 2. Leia `docs/refatoracao/PLANO_REFATORACAO.md` §6 (quadro de status) e
