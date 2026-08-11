@@ -90,7 +90,7 @@ def test_a_resposta_real_do_minimax_e_recusada_com_mensagem_acionavel():
 
     mensagem = str(erro.value)
     # Diz o que falta...
-    assert "TIPO" in mensagem and "RESPOSTA_PT_FINAL" in mensagem and "SIMBOLO" in mensagem
+    assert "TIPO" in mensagem and "RESPOSTA_PT_FINAL" in mensagem
     # ...o que veio no lugar (é isso que faz o usuário entender na hora)...
     assert "RESPOSTA_NORMALIZADA_PT" in mensagem
     # ...e o que fazer a respeito.
@@ -150,3 +150,31 @@ def test_a_mensagem_de_erro_nao_despeja_o_json_inteiro_no_log():
         normalizar_resposta_specs(gigante)
 
     assert len(str(erro.value)) < 400
+
+
+def test_simbolo_ausente_e_legitimo_e_nao_reprova():
+    """Característica sem unidade é caso NORMAL, não erro.
+
+    O RPA faz `simb = dado.get("SIMBOLO"); if simb:` -- ausência significa
+    "não mexe no dropdown de unidade". A 1ª versão desta validação exigia
+    `SIMBOLO` e reprovou 4 testes de `processar_lista` que estavam certos;
+    este teste é a marca daquele erro, para ele não voltar.
+    """
+    sem_simbolo = [{"CARACTERISTICA_CHAVE": "MATERIAL", "TIPO": "CHAR",
+                    "RESPOSTA_PT_FINAL": "ACO INOX", "ACAO": "PREENCHER"}]
+
+    assert normalizar_resposta_specs(sem_simbolo) == sem_simbolo
+
+
+def test_tipo_ausente_reprova_porque_o_rpa_pularia_a_linha_calado():
+    with pytest.raises(ValueError, match="TIPO"):
+        normalizar_resposta_specs(
+            [{"CARACTERISTICA_CHAVE": "X", "RESPOSTA_PT_FINAL": "1", "ACAO": "PREENCHER"}]
+        )
+
+
+def test_resposta_ausente_reprova_porque_o_rpa_escreveria_vazio_no_portal():
+    with pytest.raises(ValueError, match="RESPOSTA_PT_FINAL"):
+        normalizar_resposta_specs(
+            [{"CARACTERISTICA_CHAVE": "X", "TIPO": "NUM", "ACAO": "PREENCHER"}]
+        )

@@ -85,8 +85,18 @@ from sigft.core.llm import prompts
 # `RESPOSTA_NORMALIZADA_PT` seria adivinhar o sinônimo de UM modelo, e o
 # próximo inventa outro. O envelope, sim, é desembrulhado -- é ambiguidade de
 # formatação, não de significado.
+# O conjunto exigido é o que o RPA lê com defaults PERIGOSOS -- nada além
+# disso. `TIPO` ausente vira `""`, que não casa com nenhum ramo de
+# `_preencher_linha` e faz a linha ser pulada em silêncio; `RESPOSTA_PT_FINAL`
+# ausente vira `""` e é ESCRITO no portal, apagando o que estava lá.
+#
+# `SIMBOLO`, `RESPOSTA_ES_FINAL` e `SUBTIPO_INTERVALO` ficam de FORA de
+# propósito: o código já trata a ausência dos três como caso legítimo
+# (`simb = dado.get("SIMBOLO"); if simb:` -- característica sem unidade é
+# normal). Exigi-los na 1ª versão desta validação reprovou 4 testes de
+# `processar_lista` que estavam certos.
 CHAVES_ITEM_SEMPRE = ("CARACTERISTICA_CHAVE", "ACAO")
-CHAVES_ITEM_PREENCHER = ("TIPO", "RESPOSTA_PT_FINAL", "SIMBOLO")
+CHAVES_ITEM_PREENCHER = ("TIPO", "RESPOSTA_PT_FINAL")
 
 
 def normalizar_resposta_specs(bruto):

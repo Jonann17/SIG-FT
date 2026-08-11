@@ -275,13 +275,21 @@ def test_tech_specs_processor_init_resolve_llm_client_via_get_llm():
 
 
 def test_chamar_gemini_specs_sucesso_devolve_parsed_json_com_json_mode():
+    # A carga é um item COMPLETO (chave + ação + tipo + resposta) porque
+    # desde 2026-08-11 `_chamar_gemini_specs` valida o contrato antes de
+    # devolver (`normalizar_resposta_specs`). O que este teste do CP 3.1
+    # afere continua sendo a FIAÇÃO -- json_mode, system, tags --, e para
+    # isso o conteúdo do item é indiferente; o que não pode é ser um item
+    # que o RPA aceitaria e depois preencheria a ficha em branco.
+    item = {"CARACTERISTICA_CHAVE": "Vazão", "ACAO": "PREENCHER",
+            "TIPO": "NUM", "RESPOSTA_PT_FINAL": "80"}
     processor = upload_tech_specs_backend.TechSpecsProcessor("uma-chave")
-    fake_llm = _FakeLLM(retorno=_resposta_ok([{"CARACTERISTICA_CHAVE": "Vazão"}]))
+    fake_llm = _FakeLLM(retorno=_resposta_ok([item]))
     processor._llm = fake_llm
 
     resultado = processor._chamar_gemini_specs({"CODIGO_PMIB": "1234"})
 
-    assert resultado == [{"CARACTERISTICA_CHAVE": "Vazão"}]
+    assert resultado == [item]
     assert len(fake_llm.chamadas) == 1
     assert fake_llm.chamadas[0]["json_mode"] is True
     assert fake_llm.chamadas[0]["system"]  # system_instruction (4 regras) foi passado
