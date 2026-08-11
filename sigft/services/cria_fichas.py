@@ -156,6 +156,21 @@ class GeminiCategorizer:
         if not self.api_key:
             print("AVISO: Nenhuma API Key fornecida.")
 
+    @property
+    def modelo_em_uso(self) -> str:
+        """`provider/model` REALMENTE resolvido para esta execução, no
+        formato de uma linha de log.
+
+        Existe porque a UI escrevia "Processando com IA (Gemini)..." fixo no
+        console -- e desde o CP 3.3 o modelo vem do painel "Modelos de IA"
+        da Home, que pode apontar para OpenRouter ou para o endpoint interno
+        da empresa. O usuário rodou um lote inteiro no MiniMax lendo
+        "Gemini" na tela; a única forma de descobrir o que de fato rodou era
+        abrir `logs/llm_usage.jsonl` depois. Quem sabe a resposta é o
+        `LLMClient` já construído -- perguntar a ele é o que garante que o
+        log não pode divergir da chamada."""
+        return f"{self._llm.provider_name}/{self._llm.model}"
+
     def _formatar_itens(self, df):
         texto = ""
         for index, row in df.iterrows():
@@ -218,6 +233,23 @@ XPATH_DIV_PESQUISAR_PDM = '//div[@data-tooltip="Pesquisar PDM"]'
 XPATH_DROPDOWN_CONTRATO = '//*[@id="b10-ContractDropdownSearch"]'
 XPATH_SALVAR_1 = '//*[@id="b10-b7-Button"]/button'
 XPATH_CODIGO_PMIB = '//*[@id="b8-b1-Content"]/span'
+
+# Marcador de validação do OutSystems ("Campo obrigatório!" em vermelho embaixo
+# do campo em branco). NÃO é um seletor de fluxo -- nada é clicado nem lido a
+# partir dele; serve só para transformar uma falha MUDA em uma frase.
+#
+# Quando o Salvar é recusado, o portal não navega: o Código PMIB nunca aparece,
+# o `wait_visible` estoura e o usuário recebe `ERRO no Selenium: Message:` --
+# um `TimeoutException` do Selenium tem a mensagem VAZIA, então a tela do app
+# não diz absolutamente nada sobre o que houve. Foi exatamente o que aconteceu
+# no 1º teste real (2026-08-11), e custou uma sessão inteira de diagnóstico
+# para descobrir que o campo em branco era o Contrato.
+#
+# `text()` casa só o nó de texto direto; `contains(., ...)` casaria também
+# qualquer ancestral (inclusive o `<body>`), o que daria "campo obrigatório"
+# como resposta para toda ficha. Sem acento no fim ("obrigatóri") para não
+# depender de "obrigatório!"/"obrigatória"/"obrigatorio".
+XPATH_CAMPO_OBRIGATORIO = "//*[contains(text(), 'obrigat')]"
 
 # ÚNICO seletor CSS que restava no projeto (levantado já no CP 2.1: "139 dos
 # 140 usos de `By.*` são XPATH"). Traduzido para XPath aqui, porque o contrato
@@ -292,6 +324,17 @@ class AutomacaoPMIB:
         porte tira o módulo do Selenium sem inventar nada; a troca de
         mecanismo fica para a sessão com o usuário.
 
+        CLIQUE NATIVO, NÃO POR JAVASCRIPT (corrigido após o 1º teste real).
+        Todo clique deste fluxo é `click_nativo`, porque todo clique deste
+        fluxo existe para LEVAR O FOCO a um campo -- o que vem depois dele é
+        sempre `digitar_no_foco(...)` ou `press("TAB")`. O clique por JS
+        (`click`/`click_estrito`/`click_raw`, a mecânica canônica do resto do
+        projeto) dispara o evento mas não move o foco, e o sintoma é mudo: o
+        campo fica vazio, as teclas caem no vizinho e o erro só aparece
+        páginas depois, como timeout. Foi assim que o Contrato ficou em
+        branco no primeiro teste da Fase 5. O original usava clique nativo em
+        todos os 5 pontos; este porte voltou a usar.
+
         UM PONTO A CONFERIR NA VALIDAÇÃO (registrado em PENDENCIAS.md): o
         original capturava o elemento ativo numa variável e mandava as teclas
         seguintes para AQUELA referência, mesmo que o foco tivesse mudado. Um
@@ -314,9 +357,16 @@ class AutomacaoPMIB:
 
         def _clicar(seletor):
             """`wait.until(element_to_be_clickable(...)).click()` -- o par que
-            se repete 4x neste fluxo."""
+            se repete 4x neste fluxo.
+
+            `click_nativo` e não `click_raw`: aqui o clique tem que levar o
+            foco junto (ver a docstring da função). `click_nativo` já embute a
+            espera de "clicável", mas o `wait_clickable` explícito fica: ele
+            é o que faz a espera valer também no motor Playwright do jeito
+            que o original esperava, e custa nada quando o alvo já está
+            pronto."""
             self.engine.wait_clickable(seletor)
-            self.engine.click_raw(seletor)
+            self.engine.click_nativo(seletor)
 
         try:
             # 1. Clicar em Nova Ficha
@@ -349,14 +399,37 @@ class AutomacaoPMIB:
 
             # 5. Capturar Código PMIB
             time.sleep(PAUSA_GERACAO_PMIB)  # Cobre a latência da 1ª ficha
-            self.engine.wait_visible(XPATH_CODIGO_PMIB)
+            try:
+                self.engine.wait_visible(XPATH_CODIGO_PMIB)
+            except Exception:
+                # O Código PMIB não apareceu. A causa MAIS COMUM não é o
+                # portal estar lento -- é o Salvar ter sido RECUSADO, com
+                # algum campo em branco marcado em vermelho. Sem isto aqui, o
+                # usuário vê `ERRO no Selenium: Message:` (mensagem vazia) e
+                # não tem como saber disso.
+                try:
+                    recusado = self.engine.element_exists(XPATH_CAMPO_OBRIGATORIO)
+                except Exception:
+                    # A sonda é um EXTRA. Se ela própria falhar (página caiu,
+                    # sessão morreu), o erro que vale é o de cima, não o dela.
+                    recusado = False
+                if recusado:
+                    raise RuntimeError(
+                        "A ficha nao foi salva: o portal marcou campo obrigatorio em "
+                        "branco. O suspeito n. 1 e o CONTRATO, que este fluxo escolhe "
+                        "por TAB+ENTER no dropdown -- confira a tela, que ficou parada "
+                        "no erro de proposito."
+                    ) from None
+                raise
             codigo_pmib = str(self.engine.texto(XPATH_CODIGO_PMIB)).strip().split(" ")[0]
 
             # 6. Inserir Código do Projeto
             # Espera o campo ficar CLICÁVEL, não apenas visível
             self.engine.wait_clickable(XPATH_CAMPO_PROJETO)
             time.sleep(PAUSA_FOCO)  # Pausa extra estabilizadora
-            self.engine.click_raw(XPATH_CAMPO_PROJETO)  # Crava o foco antes de digitar
+            # Clique NATIVO: "cravar o foco" é o propósito inteiro desta
+            # linha, e um clique por JS não crava foco nenhum.
+            self.engine.click_nativo(XPATH_CAMPO_PROJETO)
             self.engine.digitar_no_foco(cod_projeto)
 
             # 7. Descrição Breve (Via TAB)

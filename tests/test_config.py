@@ -619,3 +619,70 @@ def test_limpeza_nao_toca_na_selecao_de_modelos(tmp_path):
 
     assert chaves["GEMINI"] == "k"
     assert chaves["_modelos_ia"] == {"global": {"provider": "gemini", "model": "x"}}
+
+
+# =============================================================================
+# B3. O filtro do painel "Modelos de IA" — provedor sem chave não aparece
+# =============================================================================
+# A regra vive em `frontend.py:criar_painel_modelos_ia` ("Provedores sem chave
+# configurada não aparecem"), que NÃO é importável neste ambiente (abre janela
+# real). O que dá para travar aqui é a outra metade da regra, que mora em
+# `config`: que a lista curada TENHA o que oferecer a cada provedor. Sem isso,
+# quem configura só o OpenRouter abre o painel e vê um dropdown vazio, sem
+# entender por quê.
+#
+# Contexto: em 2026-08-11 o usuário colou a chave do OpenRouter, salvou, e o
+# painel continuou só com Gemini -- o filtro era calculado uma vez, na
+# construção da Home, e "Salvar Chaves" não remontava o painel. Corrigido no
+# `frontend.py`; este teste guarda o lado dos dados.
+
+def _favoritos_visiveis(chaves_configuradas):
+    """Reproduz o filtro do painel: um favorito só entra se o provedor dele
+    tiver chave AGORA."""
+    providers_com_chave = {
+        provider
+        for provider, chave in sigft_config.CHAVE_POR_PROVIDER.items()
+        if chave in chaves_configuradas
+    }
+    return [f for f in sigft_config.LLM_FAVORITOS if f["provider"] in providers_com_chave]
+
+
+def test_quem_tem_so_a_chave_do_openrouter_tem_modelos_para_escolher():
+    visiveis = _favoritos_visiveis({"OPENROUTER"})
+
+    assert visiveis, "painel ficaria vazio para quem só configurou o OpenRouter"
+    assert all(f["provider"] == sigft_config.PROVIDER_OPENROUTER for f in visiveis)
+
+
+def test_quem_tem_so_a_chave_do_gemini_nao_ve_modelo_de_provedor_sem_chave():
+    visiveis = _favoritos_visiveis({"GEMINI"})
+
+    assert visiveis
+    assert all(f["provider"] == sigft_config.PROVIDER_GEMINI for f in visiveis)
+
+
+def test_sem_chave_nenhuma_nao_sobra_favorito():
+    assert _favoritos_visiveis(set()) == []
+
+
+def test_com_as_duas_chaves_o_painel_mostra_os_dois_provedores():
+    providers = {f["provider"] for f in _favoritos_visiveis({"GEMINI", "OPENROUTER"})}
+
+    assert providers == {sigft_config.PROVIDER_GEMINI, sigft_config.PROVIDER_OPENROUTER}
+
+
+def test_existe_favorito_openrouter_mais_barato_que_todo_favorito_gemini():
+    """O motivo de o usuário ter ido atrás do OpenRouter foi preço.
+
+    Se a lista curada só oferecesse OpenRouter caro, configurar a chave não
+    resolveria o problema dele -- e o painel estaria dando uma escolha que não
+    é escolha.
+    """
+    por_provider = {}
+    for fav in sigft_config.LLM_FAVORITOS:
+        por_provider.setdefault(fav["provider"], []).append(fav["preco_input"])
+
+    mais_barato_openrouter = min(por_provider[sigft_config.PROVIDER_OPENROUTER])
+    mais_barato_gemini = min(por_provider[sigft_config.PROVIDER_GEMINI])
+
+    assert mais_barato_openrouter < mais_barato_gemini

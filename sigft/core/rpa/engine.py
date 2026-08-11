@@ -209,6 +209,33 @@ class RPAEngine(ABC):
         orquestração (e os sleeps) no consumidor, onde ela sempre esteve."""
 
     @abstractmethod
+    def click_nativo(self, seletor: str) -> None:
+        """Clique de MOUSE DE VERDADE: espera "clicável" e clica como um
+        usuário clicaria -- **movendo o foco do navegador para o alvo**.
+
+        É a única primitiva de clique com essa garantia, e ela não é um
+        detalhe: `click`, `click_estrito` e `click_raw` clicam por JavaScript
+        (`arguments[0].click()`) no motor Selenium, e um clique sintético
+        dispara o evento de clique mas NÃO executa os "focusing steps" que o
+        navegador roda num clique real. O foco fica onde estava.
+
+        Isso é invisível em quase todo o sistema -- clicar num botão de
+        Salvar não depende de foco nenhum. Mas em `cria_fichas` o fluxo
+        inteiro de preenchimento da ficha é *relativo ao foco*: clica num
+        campo e a partir dali só há `press("TAB")` e `digitar_no_foco(...)`.
+        Se o clique não leva o foco junto, as teclas seguintes vão para o
+        elemento errado -- sem erro, sem log, com o campo simplesmente
+        vazio. Foi o que aconteceu no primeiro teste real da Fase 5
+        (Contrato em branco, "Campo obrigatório!"); ver
+        docs/refatoracao/PENDENCIAS.md.
+
+        Em Playwright todo `Locator.click()` já é um clique real via CDP, o
+        que torna esta primitiva idêntica a `click_raw` naquele motor. Ela
+        existe para o contrato poder DIZER "aqui o foco importa", em vez de
+        depender de qual motor está montado.
+        """
+
+    @abstractmethod
     def wait_present(self, seletor: str) -> None:
         """Bloqueia até o elemento existir no DOM -- sem exigir que esteja
         visível ou clicável. Levanta `TempoEsgotado` no timeout."""
