@@ -300,3 +300,51 @@ def test_chamar_gemini_specs_falha_total_devolve_none_e_loga():
 
     assert resultado is None
     assert any("Erro ao chamar IA" in msg for msg in logs)
+
+
+# =============================================================================
+# 2b. `modelo_em_uso` — o log da UI tem que dizer o modelo que de fato rodou
+# =============================================================================
+# Em 2026-08-11 o usuário selecionou MiniMax M3 no painel "Modelos de IA",
+# rodou um lote inteiro, e o console do módulo escreveu "Processando com IA
+# (Gemini)..." -- texto fixo, escrito antes do CP 3.3 existir. O lote saiu
+# certo e barato (o log de custos provou: `minimax/minimax-m3`), mas a tela
+# afirmava outra coisa. A única forma de descobrir o que rodou era abrir
+# `logs/llm_usage.jsonl` depois.
+#
+# `modelo_em_uso` pergunta ao `LLMClient` JÁ CONSTRUÍDO -- o mesmo objeto que
+# vai fazer a chamada. É o que torna impossível o log divergir da chamada.
+
+def test_modelo_em_uso_descreve_o_provider_e_o_modelo_resolvidos():
+    cat = cria_fichas_no_pmib_v1_backend.GeminiCategorizer("uma-chave")
+
+    assert cat.modelo_em_uso == f"{cat._llm.provider_name}/{cat._llm.model}"
+
+
+def test_modelo_em_uso_acompanha_a_selecao_salva_no_painel(tmp_path, monkeypatch):
+    """O caso REAL: painel apontando para OpenRouter/MiniMax.
+
+    Se `modelo_em_uso` fosse texto fixo (ou lesse `LLM_MODELOS_HOJE` em vez
+    do cliente), este teste passaria mostrando "gemini" -- exatamente o bug
+    que ele existe para impedir.
+    """
+    from sigft.core.llm import selecao
+
+    config_path = tmp_path / "api_config.json"
+    selecao.definir_global("openrouter", "minimax/minimax-m3", config_path=str(config_path))
+    monkeypatch.setattr(config, "CONFIG_FILE", str(config_path))
+
+    cat = cria_fichas_no_pmib_v1_backend.GeminiCategorizer("uma-chave")
+
+    assert cat.modelo_em_uso == "openrouter/minimax/minimax-m3"
+    assert "gemini" not in cat.modelo_em_uso
+
+
+def test_modelo_em_uso_sem_selecao_mostra_o_padrao_do_sistema(tmp_path, monkeypatch):
+    # Contraste do teste acima: sem nada salvo no painel, continua valendo o
+    # modelo de hoje -- e o log passa a dizer QUAL é, o que antes ninguém via.
+    monkeypatch.setattr(config, "CONFIG_FILE", str(tmp_path / "vazio.json"))
+
+    cat = cria_fichas_no_pmib_v1_backend.GeminiCategorizer("uma-chave")
+
+    assert cat.modelo_em_uso == "gemini/gemini-3.1-pro-preview"

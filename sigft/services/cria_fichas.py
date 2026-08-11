@@ -156,6 +156,21 @@ class GeminiCategorizer:
         if not self.api_key:
             print("AVISO: Nenhuma API Key fornecida.")
 
+    @property
+    def modelo_em_uso(self) -> str:
+        """`provider/model` REALMENTE resolvido para esta execução, no
+        formato de uma linha de log.
+
+        Existe porque a UI escrevia "Processando com IA (Gemini)..." fixo no
+        console -- e desde o CP 3.3 o modelo vem do painel "Modelos de IA"
+        da Home, que pode apontar para OpenRouter ou para o endpoint interno
+        da empresa. O usuário rodou um lote inteiro no MiniMax lendo
+        "Gemini" na tela; a única forma de descobrir o que de fato rodou era
+        abrir `logs/llm_usage.jsonl` depois. Quem sabe a resposta é o
+        `LLMClient` já construído -- perguntar a ele é o que garante que o
+        log não pode divergir da chamada."""
+        return f"{self._llm.provider_name}/{self._llm.model}"
+
     def _formatar_itens(self, df):
         texto = ""
         for index, row in df.iterrows():

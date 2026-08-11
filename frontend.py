@@ -741,7 +741,13 @@ class ModuloCriaFichas(ctk.CTkFrame):
                     final_data.append(item_json)
                 self.log(f"Processados {len(final_data)} itens.")
             else:
-                self.log("Processando com IA (Gemini)...")
+                # O modelo sai do painel "Modelos de IA" (CP 3.3) e pode não
+                # ser Gemini -- construir o categorizador ANTES de montar o
+                # prompt é o que permite logar o modelo de verdade em vez de
+                # "Gemini" fixo. O construtor só resolve config, não chama a
+                # API, então nada é gasto por adiantá-lo.
+                cat = GeminiCategorizer(self.api_key_gemini)
+                self.log(f"Processando com IA ({cat.modelo_em_uso})...")
                 df_pdms = pd.read_excel(self.file_path_pdm, sheet_name="PDMs")
                 lista_pdms = "\n".join("- " + df_pdms['PDM COMPLETO'].dropna().astype(str))
 
@@ -764,7 +770,6 @@ class ModuloCriaFichas(ctk.CTkFrame):
                             if pd.notna(row_inst['CLASSE NOTAS PT']): instrucoes += f"      - Notas da Classe: {row_inst['CLASSE NOTAS PT']}\n"
                 instrucoes += "\nFIM DO MANUAL DE REGRAS."
 
-                cat = GeminiCategorizer(self.api_key_gemini)
                 res_json = cat.processar_lote(self.df_data_selecionado, lista_pdms, instrucoes)
                 for i, item_json in enumerate(res_json):
                     row = self.df_data_selecionado.iloc[i]
@@ -4025,6 +4030,12 @@ class HomeView(ctk.CTkScrollableFrame):
         + campo livre para id manual + botões "Aplicar recomendados"/
         "Salvar seleção". Provedores sem chave configurada não aparecem."""
         self._row_modelos_ia = row
+        # O painel é DESTRUÍDO e remontado (ao salvar chaves, ao salvar
+        # seleção, ao aplicar recomendados). Zerar a referência do resumo
+        # aqui garante que, se esta montagem sair pelo caminho curto (nenhuma
+        # chave configurada), ninguém fique com um ponteiro para o widget
+        # antigo, já destruído.
+        self.lbl_resumo_modelo_ia = None
         frame = ctk.CTkFrame(self, fg_color=("gray90", "gray16"), corner_radius=10)
         frame.grid(row=row, column=0, sticky="ew", padx=20, pady=10)
         self.frame_modelos_ia = frame
@@ -4073,6 +4084,12 @@ class HomeView(ctk.CTkScrollableFrame):
         self.var_modelo_ia_global = ctk.StringVar(value=rotulo_global_atual)
         ctk.CTkOptionMenu(
             f_global, values=opcoes_globais, variable=self.var_modelo_ia_global,
+            # Escolher um favorito aqui LIMPA o campo "modelo manual" abaixo.
+            # Sem isso, quem tivesse pinçado um id do catálogo do OpenRouter
+            # ficava preso nele: o campo manual vence o dropdown na hora de
+            # salvar, então voltar para um modelo Gemini pelo dropdown não
+            # tinha efeito nenhum -- e nada na tela explicava por quê.
+            command=self._escolheu_favorito_global_ia,
             fg_color="#3A3A3A", button_color="#454545", width=420,
         ).pack(side="left", padx=5)
 
@@ -4106,6 +4123,7 @@ class HomeView(ctk.CTkScrollableFrame):
             var_tarefa = ctk.StringVar(value=rotulo_tarefa_atual)
             ctk.CTkOptionMenu(
                 f_tarefa, values=opcoes_tarefa, variable=var_tarefa,
+                command=lambda _escolha: self._atualizar_resumo_modelo_ia(),
                 fg_color="#3A3A3A", button_color="#454545", width=420,
             ).pack(side="left", padx=5)
             self.vars_modelo_ia_por_tarefa[tarefa] = var_tarefa
@@ -4117,14 +4135,30 @@ class HomeView(ctk.CTkScrollableFrame):
         # --- Campo livre (id manual, fora da lista curada) ---
         f_livre = ctk.CTkFrame(frame, fg_color="transparent")
         f_livre.pack(fill="x", padx=10, pady=(10, 5))
+        # Âncora de posição para o bloco "por tarefa": `pack()` sem `before`
+        # joga o widget para o FIM do frame, então marcar a caixa "modo
+        # avançado" com o painel já montado fazia as 5 linhas de tarefa
+        # pularem para baixo dos botões. Guardando a âncora, elas voltam
+        # sempre para o lugar certo.
+        self._ancora_apos_avancado_ia = f_livre
         ctk.CTkLabel(f_livre, text="Modelo manual (opcional, sobrepõe o padrão acima):", width=220, anchor="w").pack(side="left")
         self.var_provider_ia_livre = ctk.StringVar(value=providers_com_chave[0])
         ctk.CTkOptionMenu(
             f_livre, values=providers_com_chave, variable=self.var_provider_ia_livre,
+            command=lambda _escolha: self._atualizar_resumo_modelo_ia(),
             fg_color="#3A3A3A", button_color="#454545", width=140,
         ).pack(side="left", padx=(0, 5))
         self.entry_modelo_ia_livre = ctk.CTkEntry(f_livre, placeholder_text="ex.: meta-llama/llama-4", width=260)
         self.entry_modelo_ia_livre.pack(side="left", padx=5)
+        # `<KeyRelease>` e não `textvariable`+`trace`: o CTkEntry gerencia o
+        # placeholder mexendo no próprio conteúdo, e amarrar uma variável a
+        # ele é justamente onde essa mecânica escorrega. As escritas por
+        # CÓDIGO (catálogo, botão Limpar) chamam o resumo explicitamente.
+        self.entry_modelo_ia_livre.bind("<KeyRelease>", lambda _e: self._atualizar_resumo_modelo_ia())
+        ctk.CTkButton(
+            f_livre, text="Limpar", width=70, command=self._limpar_modelo_ia_livre,
+            fg_color="#3A3A3A", hover_color="#454545",
+        ).pack(side="left", padx=(0, 5))
 
         # --- Catálogo OpenRouter (opcional -- só com chave OpenRouter) ---
         if self.controller.get_key("OPENROUTER"):
@@ -4143,6 +4177,17 @@ class HomeView(ctk.CTkScrollableFrame):
                 f_catalogo, text="Atualizar catálogo (OpenRouter)", command=self._atualizar_catalogo_ia_openrouter,
                 fg_color="#3A3A3A", hover_color="#454545",
             ).pack(side="left", padx=5)
+
+        # --- Resumo: o que REALMENTE vai valer ao salvar ---
+        # O painel tem três controles que disputam a mesma decisão (dropdown
+        # global, overrides por tarefa, campo manual) e a precedência entre
+        # eles era invisível. Esta linha diz, ao vivo, quem ganhou.
+        self.lbl_resumo_modelo_ia = ctk.CTkLabel(
+            frame, text="", font=("Roboto", 12), text_color="gray70",
+            justify="left", wraplength=800, anchor="w",
+        )
+        self.lbl_resumo_modelo_ia.pack(anchor="w", padx=10, pady=(8, 0))
+        self._atualizar_resumo_modelo_ia()
 
         # --- Botões ---
         f_botoes = ctk.CTkFrame(frame, fg_color="transparent")
@@ -4208,18 +4253,84 @@ class HomeView(ctk.CTkScrollableFrame):
 
     def _toggle_modelos_ia_modo_avancado(self):
         if self.var_modelos_ia_modo_avancado.get():
-            self.frame_modelos_ia_avancado.pack(fill="x", padx=10, pady=(0, 10))
+            self.frame_modelos_ia_avancado.pack(
+                fill="x", padx=10, pady=(0, 10), before=self._ancora_apos_avancado_ia,
+            )
         else:
             self.frame_modelos_ia_avancado.pack_forget()
+        self._atualizar_resumo_modelo_ia()
 
     def _recarregar_painel_modelos_ia(self):
         self.frame_modelos_ia.destroy()
         self.criar_painel_modelos_ia(row=self._row_modelos_ia)
 
+    def _escolheu_favorito_global_ia(self, _escolha):
+        """Escolher um favorito no dropdown global DESISTE do modelo manual.
+
+        A regra de salvamento é "campo manual vence o dropdown". Sem limpar o
+        campo aqui, quem tivesse pinçado um id do catálogo do OpenRouter
+        ficava preso: trocar o dropdown de volta para um Gemini não mudava
+        nada ao salvar, e a tela não dava pista nenhuma. Agora vale sempre o
+        último controle que a pessoa mexeu.
+        """
+        self._limpar_modelo_ia_livre()
+
+    def _limpar_modelo_ia_livre(self):
+        self.entry_modelo_ia_livre.delete(0, "end")
+        self._atualizar_resumo_modelo_ia()
+
+    def _modelo_ia_global_efetivo(self):
+        """(provider, model, origem) que "Salvar seleção" vai gravar como
+        global -- a MESMA precedência de `_salvar_selecao_modelos_ia`, num só
+        lugar, para o resumo na tela não poder divergir do que é gravado.
+        `(None, None, origem)` = nenhum override, vale o padrão do sistema."""
+        manual = self.entry_modelo_ia_livre.get().strip()
+        if manual:
+            return self.var_provider_ia_livre.get(), manual, "campo manual"
+        fav = self._fav_por_rotulo_global.get(self.var_modelo_ia_global.get())
+        if fav is None:
+            return None, None, "padrão do sistema"
+        return fav["provider"], fav["model"], "lista de modelos"
+
+    def _atualizar_resumo_modelo_ia(self):
+        """Mostra, ao vivo, o que vai valer -- incluindo QUAL dos três
+        controles ganhou."""
+        if getattr(self, "lbl_resumo_modelo_ia", None) is None:
+            return  # painel ainda montando (ou sem chave nenhuma): nada a dizer
+
+        provider, model, origem = self._modelo_ia_global_efetivo()
+        if provider is None:
+            linha = "Ao salvar: todas as tarefas voltam ao padrão do sistema (modelos atuais)."
+        else:
+            linha = f"Ao salvar: {provider} / {model}  (veio do {origem})"
+
+        # Overrides por tarefa vencem o global -- se houver algum, o número
+        # sozinho já evita a pergunta "por que a tarefa X não mudou?".
+        if getattr(self, "vars_modelo_ia_por_tarefa", None) and self.var_modelos_ia_modo_avancado.get():
+            com_override = [
+                tarefa
+                for tarefa, var in self.vars_modelo_ia_por_tarefa.items()
+                if self._fav_por_rotulo_tarefa[tarefa].get(var.get()) is not None
+            ]
+            if com_override:
+                linha += (
+                    f"  |  {len(com_override)} tarefa(s) com modelo próprio "
+                    f"({', '.join(sorted(com_override))}), que vence o padrão acima."
+                )
+
+        self.lbl_resumo_modelo_ia.configure(text=linha)
+
     def _selecionar_modelo_do_catalogo_ia(self, escolha):
         if escolha and not escolha.startswith("("):
             self.entry_modelo_ia_livre.delete(0, "end")
             self.entry_modelo_ia_livre.insert(0, escolha)
+            # O catálogo é do OpenRouter -- então o provedor do campo manual
+            # TEM que acompanhar. Sem isto, o id vinha do OpenRouter mas o
+            # dropdown de provedor continuava em "gemini" (o 1º da lista em
+            # ordem alfabética), e salvava-se `gemini/minimax-m3`: uma
+            # combinação que não existe e que só falharia na 1ª chamada real.
+            self.var_provider_ia_livre.set(sigft_config.PROVIDER_OPENROUTER)
+            self._atualizar_resumo_modelo_ia()
 
     def _atualizar_catalogo_ia_openrouter(self):
         """Busca o catálogo de modelos do OpenRouter (CP 3.2, com cache) e
@@ -4275,19 +4386,17 @@ class HomeView(ctk.CTkScrollableFrame):
         )
 
     def _salvar_selecao_modelos_ia(self):
-        modelo_livre = self.entry_modelo_ia_livre.get().strip()
-        if modelo_livre:
-            selecao.definir_global(
-                self.var_provider_ia_livre.get(), modelo_livre, config_path=sigft_config.CONFIG_FILE,
-            )
+        # A precedência (campo manual > dropdown > padrão) vive em
+        # `_modelo_ia_global_efetivo`, que é a MESMA fonte do resumo na tela.
+        # Duplicar a regra aqui era o caminho para a tela dizer uma coisa e o
+        # arquivo guardar outra.
+        provider_global, model_global, _origem = self._modelo_ia_global_efetivo()
+        if provider_global is None:
+            selecao.limpar_global(config_path=sigft_config.CONFIG_FILE)
         else:
-            fav_global = self._fav_por_rotulo_global.get(self.var_modelo_ia_global.get())
-            if fav_global is None:
-                selecao.limpar_global(config_path=sigft_config.CONFIG_FILE)
-            else:
-                selecao.definir_global(
-                    fav_global["provider"], fav_global["model"], config_path=sigft_config.CONFIG_FILE,
-                )
+            selecao.definir_global(
+                provider_global, model_global, config_path=sigft_config.CONFIG_FILE,
+            )
 
         for tarefa, var_tarefa in self.vars_modelo_ia_por_tarefa.items():
             fav_tarefa = self._fav_por_rotulo_tarefa[tarefa].get(var_tarefa.get())
