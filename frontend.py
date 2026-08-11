@@ -3989,6 +3989,24 @@ class HomeView(ctk.CTkScrollableFrame):
         # gravar o lixo no api_config.json em primeiro lugar.
         new_keys = {k: e.get().strip() for k, e in self.entries.items()}
         self.controller.save_keys(new_keys)
+
+        # O painel "Modelos de IA" abaixo filtra os modelos pelos provedores
+        # que TÊM chave -- e esse filtro era calculado uma única vez, quando a
+        # Home foi construída. Sem esta linha, quem colava a chave do
+        # OpenRouter aqui e clicava em Salvar continuava vendo só os modelos
+        # Gemini, e o botão "Atualizar catálogo (OpenRouter)" nem aparecia: a
+        # chave estava salva, o painel é que não sabia. A única saída era
+        # fechar e reabrir o app -- e nada na tela dizia isso.
+        # `save_keys` já atualizou `controller.api_keys`, então o painel
+        # reconstruído aqui enxerga a chave nova na hora.
+        try:
+            self._recarregar_painel_modelos_ia()
+        except Exception:
+            # Salvar a chave é mais importante que redesenhar o painel: se o
+            # painel não existir (Home construída pela metade) ou falhar ao
+            # remontar, a chave JÁ foi gravada e não se perde por causa disso.
+            pass
+
         messagebox.showinfo("Sucesso", "Chaves API salvas com sucesso!\nTodos os módulos usarão as novas chaves.")
 
     # =========================================================================
