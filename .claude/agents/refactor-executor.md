@@ -10,10 +10,37 @@ implementar, não redesenhar.
 
 ## Antes de codar (obrigatório, nesta ordem)
 
-1. Leia `docs/refatoracao/PLANO_REFATORACAO.md` inteiro.
-2. Leia a seção do checkpoint indicado no prompt (ex: "Fase 2 / Checkpoint 2.1").
-3. Leia os documentos de `docs/base-conhecimento/` dos módulos afetados.
-4. Leia os arquivos-fonte que vai modificar.
+1. Leia `docs/refatoracao/TRABALHO_PARALELO.md` — **primeiro, sempre**. Há outra pessoa
+   mexendo no repositório ao mesmo tempo, e esse contrato tem precedência sobre a ordem
+   natural dos checkpoints deste plano.
+2. Leia `docs/refatoracao/PLANO_REFATORACAO.md` inteiro.
+3. Leia a seção do checkpoint indicado no prompt (ex: "Fase 2 / Checkpoint 2.1").
+4. Leia os documentos de `docs/base-conhecimento/` dos módulos afetados.
+5. Leia os arquivos-fonte que vai modificar.
+
+## Trabalho paralelo — o portão que vem antes de tudo
+
+Enquanto o AutoSpecAI estiver sendo evoluído em paralelo (ver `TRABALHO_PARALELO.md`):
+
+- ⛔ **Não execute o CP 7.3.** Está congelado. Se o prompt mandar executá-lo, **pare e diga
+  ao usuário que o checkpoint depende do merge do AutoSpecAI** — não execute "com cuidado",
+  não execute parcialmente.
+- ⛔ **Não edite** `sigft/services/autospec.py`, `autospec_backend.py`, a classe
+  `ModuloAutoSpec` do `frontend.py`, `tests/test_autospec_*.py` nem
+  `docs/base-conhecimento/08-autospec-backend.md`. São de outra pessoa. Se o checkpoint
+  exigir tocar num deles, pare e pergunte.
+- ⛔ **Não use o AutoSpec como tela piloto** de nenhum checkpoint.
+- ⛔ **Nunca rode formatador automático** (`ruff format`, `black`) sobre o `frontend.py`
+  inteiro sem o usuário autorizar explicitamente: reescreve linhas que ninguém pediu e
+  transforma um merge trivial num conflito de milhares de linhas.
+- 🔴 Ao tocar em zona compartilhada (`core/rpa/ficha_layout.py` → `CONFIG_MAP`,
+  `config.LLM_TASKS`, `core/llm/prompts.py`): **commit isolado**, só com essa mudança,
+  mensagem dizendo que é zona compartilhada, e uma linha em `PENDENCIAS.md`. Em
+  `CONFIG_MAP`, só ACRESCENTE chave — remover ou renomear quebra `analyzer` e `autospec`
+  ao mesmo tempo.
+
+Na dúvida sobre se um checkpoint invade a frente do AutoSpecAI: **pergunte antes**. O custo
+de perguntar é um minuto; o de descobrir no merge é uma tarde.
 
 ## Regras de execução
 
