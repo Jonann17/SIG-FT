@@ -208,12 +208,66 @@ def test_resposta_mista_e_tratada_campo_a_campo():
     assert core.ultimas_fontes_por_campo == {"a": "x.pdf"}
 
 
-def test_dict_sem_chave_valor_nao_e_confundido_com_a_forma_nova():
-    """Um campo cujo VALOR seja legitimamente um dict não pode ser achatado
-    por engano."""
+def test_dict_sem_chave_valor_e_DESCARTADO_com_aviso(registro):
+    """MUDOU em 2026-08-11 (validação do contrato): antes o dict passava
+    intacto e ia parar em `ws[ref].value`, virando lixo dentro da célula da
+    ficha. Célula de ficha guarda texto ou número, nunca estrutura — então o
+    campo é descartado, com aviso, e os campos bons seguem."""
     core = _core()
-    valor_dict = {"largura": 10, "altura": 20}
-    assert core._normalizar_resposta_ia({"dims": valor_dict}) == {"dims": valor_dict}
+    saida = core._normalizar_resposta_ia(
+        {"dims": {"largura": 10, "altura": 20}, "peso": "11 kg"},
+        campos_pedidos=["dims", "peso"],
+        callbacks=registro,
+    )
+    assert saida == {"peso": "11 kg"}, "o campo bom não pode ser perdido junto"
+    assert "dims" in registro.texto()
+    assert "warn" in registro.niveis()
+
+
+def test_resposta_toda_inaproveitavel_RECUSA_ALTO():
+    """Descarte parcial avisa e segue. Descarte TOTAL é formato errado do
+    modelo — falha alto, com a instrução de trocar o modelo."""
+    core = _core()
+    with pytest.raises(ValueError, match="formato aproveitável"):
+        core._normalizar_resposta_ia(
+            {"a": {"x": 1}, "b": ["lista"]}, campos_pedidos=["a", "b"]
+        )
+
+
+def test_resposta_vazia_NAO_e_erro_de_formato(registro):
+    """`{}` é resultado legítimo: pelas regras §3.2, campo [ESTRITO] sem
+    evidência DEVE ficar em branco. Avisa, mas não levanta."""
+    core = _core()
+    assert core._normalizar_resposta_ia({}, campos_pedidos=["a"], callbacks=registro) == {}
+    assert "warn" in registro.niveis()
+
+
+def test_campo_inventado_pela_IA_e_ignorado_COM_aviso(registro):
+    """Antes, `if k in missing` descartava em silêncio — a IA respondia algo
+    e ninguém ficava sabendo que foi jogado fora."""
+    core = _core()
+    saida = core._normalizar_resposta_ia(
+        {"peso": "11 kg", "campo_que_nao_existe": "algo"},
+        campos_pedidos=["peso"],
+        callbacks=registro,
+    )
+    assert saida == {"peso": "11 kg"}
+    assert "campo_que_nao_existe" in registro.texto()
+
+
+def test_envelope_e_desembrulhado_sem_engolir_resposta_de_campo_unico(registro):
+    """`{"campos": {...}}` é envelope. Mas `{"empilhamento": 5}` é resposta
+    LEGÍTIMA de campo único — a diferença é a chave estar entre os pedidos."""
+    core = _core()
+    envelope = core._normalizar_resposta_ia(
+        {"campos": {"peso": "11 kg"}}, campos_pedidos=["peso"], callbacks=registro
+    )
+    assert envelope == {"peso": "11 kg"}
+
+    unico = core._normalizar_resposta_ia(
+        {"empilhamento": 5}, campos_pedidos=["empilhamento"], callbacks=registro
+    )
+    assert unico == {"empilhamento": 5}, "campo único não pode ser confundido com envelope"
 
 
 def test_fontes_sao_zeradas_a_cada_chamada():
@@ -225,10 +279,16 @@ def test_fontes_sao_zeradas_a_cada_chamada():
     assert core.ultimas_fontes_por_campo == {}
 
 
-def test_resposta_nao_dict_passa_intacta():
+def test_resposta_nao_dict_RECUSA_ALTO():
+    """MUDOU em 2026-08-11: antes passava intacta e estourava lá na frente,
+    dentro do `fill_save`, com `AttributeError: 'list' object has no attribute
+    'items'` — mensagem que não diz nada sobre IA. Agora falha aqui, dizendo o
+    que veio e o que fazer. É a metade que faltava da pendência do Luan."""
     core = _core()
-    assert core._normalizar_resposta_ia([1, 2]) == [1, 2]
-    assert core._normalizar_resposta_ia(None) is None
+    with pytest.raises(ValueError, match="OBJETO JSON"):
+        core._normalizar_resposta_ia([1, 2])
+    with pytest.raises(ValueError, match="não devolveu resposta"):
+        core._normalizar_resposta_ia(None)
 
 
 # =============================================================================

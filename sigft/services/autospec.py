@@ -110,6 +110,155 @@ def _chave_comparacao(texto):
     return " ".join(s.lower().strip(" .:;\t\n").split())
 
 
+# =============================================================================
+# CONTRATO DA RESPOSTA DA IA — validado, não confiado
+# =============================================================================
+# Acrescentado em 2026-08-11, fechando a metade que faltava da pendência que o
+# Luan abriu depois do 1º lote rodado num modelo que não é o Gemini (ver
+# PENDENCIAS.md): "todos consomem `resp.parsed_json` e indexam o resultado
+# assumindo o formato do prompt; nenhum valida". O desenho é o MESMO de
+# `services/tech_specs.py:normalizar_resposta_specs` -- de propósito, para que
+# o checkpoint que unificar os 4 consumidores tenha duas peças já iguais.
+#
+# Os defaults PERIGOSOS deste módulo, que é o que esta validação protege:
+#
+#   1. `fill_save` faz `for k, val in ai_data.items()`. Se a IA devolver uma
+#      LISTA (ou o envelope `{"campos": {...}}`), `.items()` estoura
+#      `AttributeError` com uma mensagem que não diz nada sobre IA -- ou, pior,
+#      itera as chaves erradas.
+#   2. `if k in missing` DESCARTA em silêncio todo campo que a IA inventou. O
+#      engenheiro não fica sabendo que a IA respondeu algo que foi jogado fora.
+#   3. Um valor que seja `dict`/`list` iria para `ws[ref].value` e viraria
+#      lixo dentro da célula da ficha.
+#
+# O que NÃO se faz aqui, seguindo a lição do tech_specs: traduzir nome de
+# campo. Renomear a chave que um modelo inventou é adivinhar o sinônimo DAQUELE
+# modelo, e o próximo inventa outro. Envelope, sim, é desembrulhado -- é
+# ambiguidade de formatação, não de significado.
+
+CHAVE_VALOR = "valor"
+CHAVE_FONTE = "fonte"
+
+
+def normalizar_resposta_autospec(bruto, campos_pedidos=None, callbacks=None):
+    """Devolve `(valores, fontes)` da resposta da IA, ou levanta `ValueError`
+    dizendo o que veio no lugar.
+
+    `valores` é o `{campo: valor}` achatado que `fill_save` consome —
+    contrato inalterado. `fontes` é `{campo: origem}` (P-04), vazio quando o
+    modelo não informou.
+
+    Aceita as DUAS formas de valor, de propósito:
+      - `{"campo": "resposta"}` — a forma anterior ao P-04, que um modelo
+        mais fraco devolve mesmo com a instrução nova no prompt;
+      - `{"campo": {"valor": ..., "fonte": ...}}` — a forma que o prompt pede.
+
+    **Desembrulhar envelope aqui é mais delicado que no `tech_specs`.** Lá o
+    formato exigido é uma LISTA na raiz, então um dict de 1 chave é
+    inequivocamente envelope. Aqui a raiz JÁ É um dict de campos, e
+    `{"empilhamento": 5}` é resposta LEGÍTIMA quando só um campo faltava.
+    A desambiguação usa `campos_pedidos`: só é envelope quando a chave única
+    NÃO é um campo pedido e o valor de dentro é um dict. Sem
+    `campos_pedidos`, não desembrulha nada — melhor deixar passar um envelope
+    do que engolir uma resposta de campo único.
+    """
+    cb = callbacks or _callbacks_silenciosos()
+    pedidos = set(campos_pedidos or ())
+
+    if bruto is None:
+        raise ValueError(
+            "A IA não devolveu resposta nenhuma (parse do JSON falhou ou veio vazio)."
+        )
+
+    if pedidos:
+        for _ in range(3):  # teto contra JSON auto-referente, igual ao tech_specs
+            if (
+                isinstance(bruto, dict)
+                and len(bruto) == 1
+                and next(iter(bruto)) not in pedidos
+            ):
+                unico = next(iter(bruto.values()))
+                if isinstance(unico, dict):
+                    cb.log(
+                        f"Resposta da IA veio embrulhada em {next(iter(bruto))!r} — "
+                        f"desembrulhando.",
+                        nivel="warn",
+                    )
+                    bruto = unico
+                    continue
+            break
+
+    if not isinstance(bruto, dict):
+        raise ValueError(
+            f"A IA devolveu {type(bruto).__name__}, e o formato exigido é um OBJETO JSON "
+            f"{{campo: resposta}} no nível raiz. Conteúdo recebido: {str(bruto)[:200]}. "
+            "O modelo escolhido não está seguindo o formato pedido no prompt — troque o "
+            "modelo da tarefa 'AutoSpec (RAG)' no painel 'Modelos de IA' da Home."
+        )
+
+    valores = {}
+    fontes = {}
+    inventados = []
+    descartados = []
+
+    for campo, conteudo in bruto.items():
+        if pedidos and campo not in pedidos:
+            # Não é fatal: campo inventado só polui. Mas o silêncio de antes
+            # escondia que a IA respondeu algo que foi jogado fora.
+            inventados.append(str(campo))
+            continue
+
+        if isinstance(conteudo, dict) and CHAVE_VALOR in conteudo:
+            valor = conteudo.get(CHAVE_VALOR)
+            fonte = conteudo.get(CHAVE_FONTE)
+            if fonte:
+                fontes[campo] = str(fonte)
+        else:
+            valor = conteudo
+
+        if isinstance(valor, (dict, list)):
+            # Iria para `ws[ref].value` e viraria lixo na célula. Campo vazio
+            # é melhor que campo errado (regras de negócio §1.3).
+            descartados.append(str(campo))
+            continue
+
+        valores[campo] = valor
+
+    if inventados:
+        cb.log(
+            f"A IA respondeu {len(inventados)} campo(s) que não foram pedidos e serão "
+            f"ignorados: {', '.join(sorted(inventados)[:10])}.",
+            nivel="warn",
+        )
+    if descartados:
+        cb.log(
+            f"{len(descartados)} campo(s) vieram com estrutura aninhada em vez de um "
+            f"valor simples e ficarão em branco: {', '.join(sorted(descartados))}.",
+            nivel="warn",
+        )
+    if not bruto:
+        # `{}` não é erro de formato: pelas regras de negócio §3.2, campo
+        # [ESTRITO] sem evidência DEVE ficar vazio. A IA não ter o que
+        # responder é resultado legítimo — só não pode passar despercebido.
+        cb.log(
+            "A IA não preencheu nenhum campo (resposta vazia). Pelas regras, campo sem "
+            "evidência fica em branco — confira se o contexto chegou até ela.",
+            nivel="warn",
+        )
+    elif pedidos and not valores:
+        # Veio conteúdo, e NADA dele era aproveitável: aí é formato errado,
+        # não ausência de evidência. Falhar alto.
+        raise ValueError(
+            f"A IA respondeu, mas nenhum dos {len(pedidos)} campos pedidos veio num "
+            f"formato aproveitável. Chaves recebidas: "
+            f"{', '.join(sorted(str(c) for c in bruto)[:10]) or '(nenhuma)'}. "
+            "O modelo escolhido não está seguindo o formato pedido no prompt — troque o "
+            "modelo da tarefa 'AutoSpec (RAG)' no painel 'Modelos de IA' da Home."
+        )
+
+    return valores, fontes
+
+
 def _callbacks_silenciosos():
     """`UICallbacks` que engole tudo — default de quem chama sem passar
     callbacks (testes antigos, uso programático). Mantém a assinatura
@@ -871,7 +1020,9 @@ class AutoSpecCore:
             resp = self._llm.generate(
                 prompt, tags={"modulo": "autospec_backend", "tarefa": "autospec"}
             )
-            return self._normalizar_resposta_ia(resp.parsed_json)
+            return self._normalizar_resposta_ia(
+                resp.parsed_json, campos_pedidos=missing.keys(), callbacks=cb
+            )
         except Exception as e:
             # Até 2026-08-11 isto era `print(f"Erro IA: {e}")` -- ia para o
             # stdout, ou seja, a janela preta que ninguém olha. O CP 4.4
@@ -880,38 +1031,22 @@ class AutoSpecCore:
             cb.log(f"Chamada de IA falhou ({type(e).__name__}: {e}).", nivel="error")
             return {}
 
-    def _normalizar_resposta_ia(self, parsed):
-        """Achata a resposta da IA para `{campo: valor}` e guarda as fontes
-        em `self.ultimas_fontes_por_campo`.
+    def _normalizar_resposta_ia(self, parsed, campos_pedidos=None, callbacks=None):
+        """Adapta `normalizar_resposta_autospec` ao formato que o resto da
+        classe usa: devolve só o `{campo: valor}` e guarda as fontes em
+        `self.ultimas_fontes_por_campo`.
 
-        **Aceita as DUAS formas de propósito** (P-04, 2026-08-11):
-
-          - `{"campo": "valor"}` — a forma de antes. Continua valendo, e é
-            o que um modelo mais fraco devolve mesmo com a instrução nova
-            no prompt;
-          - `{"campo": {"valor": ..., "fonte": ...}}` — a forma que o
-            prompt passou a pedir.
-
-        Tolerar as duas é o que impede que a rastreabilidade vire uma
-        regressão: se o modelo ignorar a instrução 7, o preenchimento
-        continua funcionando exatamente como antes, só sem a fonte. O
-        contrato de RETORNO não mudou — `fill_save` recebe o mesmo
-        `{campo: valor}` de sempre.
+        A validação de verdade mora na função de módulo — ver o bloco
+        "CONTRATO DA RESPOSTA DA IA" no topo do arquivo. Aqui só fica a
+        adaptação de forma, para que `fill_save` continue recebendo o mesmo
+        dicionário de sempre.
         """
         self.ultimas_fontes_por_campo = {}
-        if not isinstance(parsed, dict):
-            return parsed
-
-        achatado = {}
-        for campo, bruto in parsed.items():
-            if isinstance(bruto, dict) and "valor" in bruto:
-                achatado[campo] = bruto.get("valor")
-                fonte = bruto.get("fonte")
-                if fonte:
-                    self.ultimas_fontes_por_campo[campo] = str(fonte)
-            else:
-                achatado[campo] = bruto
-        return achatado
+        valores, fontes = normalizar_resposta_autospec(
+            parsed, campos_pedidos=campos_pedidos, callbacks=callbacks
+        )
+        self.ultimas_fontes_por_campo = fontes
+        return valores
 
     @staticmethod
     def _resolver_celula_checkbox(resposta, info):

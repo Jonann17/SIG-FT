@@ -15,8 +15,8 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 - [x] ~~Checkbox: `fill_save` falha em silêncio~~ — **RESOLVIDO em 2026-08-11**, ver R-09.
 - [ ] Rodar o roteiro de `docs/ROTEIRO_DE_TESTE.md` na parte do AutoSpec
-- [ ] `bash scripts/check.sh` verde
-- [ ] Merge na linha oficial seguindo `TRABALHO_PARALELO.md` §6
+- [x] ~~`bash scripts/check.sh` verde~~ — verde desde 2026-08-11
+- [x] ~~Merge na linha oficial~~ — feito em 2026-08-11 (commit `75e0988`)
 
 ---
 
@@ -164,3 +164,51 @@ provedor da tarefa (mesma cadeia do `get_llm`, resolvida uma vez só) e cobra a 
 provedor. A mensagem é uma só, com provedor e chave interpolados, sem nenhum provedor
 hardcoded no texto — decisão tomada olhando para a migração para OpenRouter.
 16 testes em `tests/test_autospec_guard_chave.py`.
+
+---
+
+## 🔒 Decisão de arquitetura — postura de privacidade (2026-08-11)
+
+**Decidido pelo usuário (Rafael).** Vale para todo o trabalho de melhoria daqui em diante.
+
+### Alvo: cenário 2 — só a IA interna da empresa
+
+Nenhum conteúdo de datasheet vai para Google, OpenRouter, Anthropic ou qualquer provedor
+público. A IA usada é exclusivamente o endpoint OpenAI-compatível da empresa, já previsto em
+`config.PROVIDER_OPENAI_COMPAT` (`EMPRESA_LLM_BASE_URL` + `EMPRESA_LLM_API_KEY`).
+
+### Realidade de hoje: a chave ainda não existe
+
+Por isso o cenário 2 **não pode ser o único caminho** — o módulo ficaria inutilizável até a
+empresa liberar a chave. O combinado é uma **cadeia com degradação automática**:
+
+```
+1. IA interna da empresa (openai_compat)          ← alvo, preferido sempre que der
+       │  falha: chave ausente, base_url ausente, endpoint fora do ar, erro na chamada
+       ▼
+2. OCR local + só os TRECHOS relevantes para a nuvem   ← fallback automático
+```
+
+**O que "falha" significa, explicitamente:** `EMPRESA_LLM_API_KEY` ausente ou vazia,
+`EMPRESA_LLM_BASE_URL` ausente ou vazia, endpoint inalcançável, ou qualquer erro na chamada
+depois dos retries da política da tarefa.
+
+**Regras que o fallback tem de respeitar:**
+
+1. **Nunca silencioso.** Cair para o cenário 3 muda para onde o dado vai — o usuário precisa
+   ver no console, em `nivel="warn"`, qual caminho está sendo usado e por quê.
+2. **Mesmo no fallback, o mínimo sai.** O cenário 3 pressupõe OCR local (sem LlamaCloud) e
+   envio apenas dos trechos recuperados, nunca do documento inteiro. O fallback reduz a
+   proteção, não a abandona.
+3. **A escolha é registrada por ficha**, junto da rastreabilidade campo→fonte do P-04, para
+   auditoria posterior.
+
+### Consequências para o desenho das melhorias
+
+- O **OCR tem de ser local** nos dois cenários — é o que elimina o LlamaCloud, que hoje é a
+  maior exposição (recebe o arquivo inteiro).
+- **Embeddings/seleção de trechos também locais** — no cenário 2 por coerência, no cenário 3
+  por necessidade.
+- A busca web (Google CSE) é assunto separado: ela expõe a *query*, não o datasheet. Fica
+  fora desta decisão, mas vale confirmar com a empresa se a descrição do material pode ir
+  para o Google.
