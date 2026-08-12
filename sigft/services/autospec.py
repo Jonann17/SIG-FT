@@ -110,6 +110,223 @@ def _chave_comparacao(texto):
     return " ".join(s.lower().strip(" .:;\t\n").split())
 
 
+# =============================================================================
+# CONTRATO DA RESPOSTA DA IA — validado, não confiado
+# =============================================================================
+# Acrescentado em 2026-08-11, fechando a metade que faltava da pendência que o
+# Luan abriu depois do 1º lote rodado num modelo que não é o Gemini (ver
+# PENDENCIAS.md): "todos consomem `resp.parsed_json` e indexam o resultado
+# assumindo o formato do prompt; nenhum valida". O desenho é o MESMO de
+# `services/tech_specs.py:normalizar_resposta_specs` -- de propósito, para que
+# o checkpoint que unificar os 4 consumidores tenha duas peças já iguais.
+#
+# Os defaults PERIGOSOS deste módulo, que é o que esta validação protege:
+#
+#   1. `fill_save` faz `for k, val in ai_data.items()`. Se a IA devolver uma
+#      LISTA (ou o envelope `{"campos": {...}}`), `.items()` estoura
+#      `AttributeError` com uma mensagem que não diz nada sobre IA -- ou, pior,
+#      itera as chaves erradas.
+#   2. `if k in missing` DESCARTA em silêncio todo campo que a IA inventou. O
+#      engenheiro não fica sabendo que a IA respondeu algo que foi jogado fora.
+#   3. Um valor que seja `dict`/`list` iria para `ws[ref].value` e viraria
+#      lixo dentro da célula da ficha.
+#
+# O que NÃO se faz aqui, seguindo a lição do tech_specs: traduzir nome de
+# campo. Renomear a chave que um modelo inventou é adivinhar o sinônimo DAQUELE
+# modelo, e o próximo inventa outro. Envelope, sim, é desembrulhado -- é
+# ambiguidade de formatação, não de significado.
+
+CHAVE_VALOR = "valor"
+CHAVE_FONTE = "fonte"
+
+
+def normalizar_resposta_autospec(bruto, campos_pedidos=None, callbacks=None):
+    """Devolve `(valores, fontes)` da resposta da IA, ou levanta `ValueError`
+    dizendo o que veio no lugar.
+
+    `valores` é o `{campo: valor}` achatado que `fill_save` consome —
+    contrato inalterado. `fontes` é `{campo: origem}` (P-04), vazio quando o
+    modelo não informou.
+
+    Aceita as DUAS formas de valor, de propósito:
+      - `{"campo": "resposta"}` — a forma anterior ao P-04, que um modelo
+        mais fraco devolve mesmo com a instrução nova no prompt;
+      - `{"campo": {"valor": ..., "fonte": ...}}` — a forma que o prompt pede.
+
+    **Desembrulhar envelope aqui é mais delicado que no `tech_specs`.** Lá o
+    formato exigido é uma LISTA na raiz, então um dict de 1 chave é
+    inequivocamente envelope. Aqui a raiz JÁ É um dict de campos, e
+    `{"empilhamento": 5}` é resposta LEGÍTIMA quando só um campo faltava.
+    A desambiguação usa `campos_pedidos`: só é envelope quando a chave única
+    NÃO é um campo pedido e o valor de dentro é um dict. Sem
+    `campos_pedidos`, não desembrulha nada — melhor deixar passar um envelope
+    do que engolir uma resposta de campo único.
+    """
+    cb = callbacks or _callbacks_silenciosos()
+    pedidos = set(campos_pedidos or ())
+
+    if bruto is None:
+        raise ValueError(
+            "A IA não devolveu resposta nenhuma (parse do JSON falhou ou veio vazio)."
+        )
+
+    if pedidos:
+        for _ in range(3):  # teto contra JSON auto-referente, igual ao tech_specs
+            if (
+                isinstance(bruto, dict)
+                and len(bruto) == 1
+                and next(iter(bruto)) not in pedidos
+            ):
+                unico = next(iter(bruto.values()))
+                if isinstance(unico, dict):
+                    cb.log(
+                        f"Resposta da IA veio embrulhada em {next(iter(bruto))!r} — "
+                        f"desembrulhando.",
+                        nivel="warn",
+                    )
+                    bruto = unico
+                    continue
+            break
+
+    if not isinstance(bruto, dict):
+        raise ValueError(
+            f"A IA devolveu {type(bruto).__name__}, e o formato exigido é um OBJETO JSON "
+            f"{{campo: resposta}} no nível raiz. Conteúdo recebido: {str(bruto)[:200]}. "
+            "O modelo escolhido não está seguindo o formato pedido no prompt — troque o "
+            "modelo da tarefa 'AutoSpec (RAG)' no painel 'Modelos de IA' da Home."
+        )
+
+    valores = {}
+    fontes = {}
+    inventados = []
+    descartados = []
+
+    for campo, conteudo in bruto.items():
+        if pedidos and campo not in pedidos:
+            # Não é fatal: campo inventado só polui. Mas o silêncio de antes
+            # escondia que a IA respondeu algo que foi jogado fora.
+            inventados.append(str(campo))
+            continue
+
+        if isinstance(conteudo, dict) and CHAVE_VALOR in conteudo:
+            valor = conteudo.get(CHAVE_VALOR)
+            fonte = conteudo.get(CHAVE_FONTE)
+            if fonte:
+                fontes[campo] = str(fonte)
+        else:
+            valor = conteudo
+
+        if isinstance(valor, (dict, list)):
+            # Iria para `ws[ref].value` e viraria lixo na célula. Campo vazio
+            # é melhor que campo errado (regras de negócio §1.3).
+            descartados.append(str(campo))
+            continue
+
+        valores[campo] = valor
+
+    if inventados:
+        cb.log(
+            f"A IA respondeu {len(inventados)} campo(s) que não foram pedidos e serão "
+            f"ignorados: {', '.join(sorted(inventados)[:10])}.",
+            nivel="warn",
+        )
+    if descartados:
+        cb.log(
+            f"{len(descartados)} campo(s) vieram com estrutura aninhada em vez de um "
+            f"valor simples e ficarão em branco: {', '.join(sorted(descartados))}.",
+            nivel="warn",
+        )
+    if not bruto:
+        # `{}` não é erro de formato: pelas regras de negócio §3.2, campo
+        # [ESTRITO] sem evidência DEVE ficar vazio. A IA não ter o que
+        # responder é resultado legítimo — só não pode passar despercebido.
+        cb.log(
+            "A IA não preencheu nenhum campo (resposta vazia). Pelas regras, campo sem "
+            "evidência fica em branco — confira se o contexto chegou até ela.",
+            nivel="warn",
+        )
+    elif pedidos and not valores:
+        # Veio conteúdo, e NADA dele era aproveitável: aí é formato errado,
+        # não ausência de evidência. Falhar alto.
+        raise ValueError(
+            f"A IA respondeu, mas nenhum dos {len(pedidos)} campos pedidos veio num "
+            f"formato aproveitável. Chaves recebidas: "
+            f"{', '.join(sorted(str(c) for c in bruto)[:10]) or '(nenhuma)'}. "
+            "O modelo escolhido não está seguindo o formato pedido no prompt — troque o "
+            "modelo da tarefa 'AutoSpec (RAG)' no painel 'Modelos de IA' da Home."
+        )
+
+    return valores, fontes
+
+
+# Quantos resultados pedir por busca. O CSE aceita ate 10 e cobra a MESMA
+# cota (1 query) para 3 ou para 10 -- pedir 3, como era ate 2026-08-11, jogava
+# fora 70% do que ja estava pago.
+RESULTADOS_POR_BUSCA = 10
+
+# Cache de busca web: query -> resposta crua da CSE. Mesmo padrao dos caches de
+# catalogo de modelo (`core/llm/catalogo.py`): JSON na raiz, com carimbo de
+# tempo e TTL, gitignored.
+#
+# Existe por causa da cota: o free tier da Google CSE da 100 queries/DIA, e a
+# cascata gasta varias por ficha. Sem cache, reprocessar o mesmo lote (que e o
+# normal quando se ajusta um manual e roda de novo) queimava a cota inteira de
+# novo. O que se guarda e a lista de URLs, nao os arquivos -- caminho de
+# temporario nao sobrevive a execucao, mas a URL sim, e e ela que custou cota.
+BUSCA_WEB_CACHE = "busca_web_cache.json"
+BUSCA_WEB_CACHE_TTL_S = 7 * 24 * 3600  # datasheet de fabricante muda devagar
+
+
+def _caminho_cache_busca():
+    """Ao lado do `api_config.json`, seguindo `core/llm/catalogo.py`."""
+    return os.path.join(os.path.dirname(os.path.abspath(config.CONFIG_FILE)), BUSCA_WEB_CACHE)
+
+
+def _cache_busca_ler(query, agora=None):
+    """Resposta guardada para `query`, ou `None` se ausente/expirada."""
+    import time
+
+    agora = time.time() if agora is None else agora
+    try:
+        with open(_caminho_cache_busca(), encoding="utf-8") as arquivo:
+            dados = json.load(arquivo)
+    except Exception:
+        return None
+    if not isinstance(dados, dict):
+        return None
+    entrada = dados.get(query)
+    if not isinstance(entrada, dict):
+        return None
+    gravado_em = entrada.get("gravado_em")
+    items = entrada.get("items")
+    if not isinstance(items, list) or not isinstance(gravado_em, (int, float)):
+        return None
+    if agora - gravado_em > BUSCA_WEB_CACHE_TTL_S:
+        return None
+    return items
+
+
+def _cache_busca_gravar(query, items, agora=None):
+    """Guarda a resposta de `query`. Falhar aqui nao e erro do usuario."""
+    import time
+
+    agora = time.time() if agora is None else agora
+    caminho = _caminho_cache_busca()
+    try:
+        try:
+            with open(caminho, encoding="utf-8") as arquivo:
+                dados = json.load(arquivo)
+            if not isinstance(dados, dict):
+                dados = {}
+        except Exception:
+            dados = {}
+        dados[query] = {"gravado_em": agora, "items": items}
+        with open(caminho, "w", encoding="utf-8") as arquivo:
+            json.dump(dados, arquivo, indent=2, ensure_ascii=False)
+    except Exception:
+        pass  # cache e conveniencia; nao poder gravar nao quebra a execucao
+
+
 def _callbacks_silenciosos():
     """`UICallbacks` que engole tudo — default de quem chama sem passar
     callbacks (testes antigos, uso programático). Mantém a assinatura
@@ -148,11 +365,22 @@ class WebSearcher:
         self.search_url = "https://www.googleapis.com/customsearch/v1"
         self.headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
 
-    def search_and_download(self, query, required_terms=[], max_results=3, callbacks=None):
+    def search_and_download(self, query, required_terms=[], max_results=RESULTADOS_POR_BUSCA, callbacks=None):
         cb = callbacks or _callbacks_silenciosos()
         if not self.api_key or not self.cse_id:
             return []
-        params = {'key': self.api_key, 'cx': self.cse_id, 'q': query, 'num': max_results, 'gl': 'br', 'hl': 'pt'}
+        # `gl`/`hl` removidos em 2026-08-11 (decisão do usuário): eles pediam
+        # ao Google resultados BRASILEIROS em PORTUGUÊS. Datasheet de Hydac,
+        # KSB, Parker e afins é documento em INGLÊS, em site estrangeiro — o
+        # viés derrubava exatamente o que se procura. O navegador do usuário,
+        # onde ele acha em 5 segundos, não tem esse viés.
+        params = {'key': self.api_key, 'cx': self.cse_id, 'q': query, 'num': max_results}
+
+        em_cache = _cache_busca_ler(query)
+        if em_cache is not None:
+            cb.log(f"Busca em cache (nao gastou cota da CSE): {query}")
+            return self._baixar_resultados(em_cache, required_terms=required_terms, callbacks=cb)
+
         try:
             # timeout adicionado em 2026-08-11: sem ele, uma chamada pendurada
             # à Google CSE travava o módulo INTEIRO por tempo indefinido --
@@ -173,6 +401,17 @@ class WebSearcher:
             )
             return []
 
+        # Guarda a resposta CRUA da CSE, nao os arquivos baixados: caminho de
+        # temporario nao sobrevive a execucao, mas a lista de URLs sim -- e e
+        # ela que custa cota.
+        _cache_busca_gravar(query, items)
+        return self._baixar_resultados(items, required_terms=required_terms, callbacks=cb)
+
+    def _baixar_resultados(self, items, required_terms=(), callbacks=None):
+        """Aplica o filtro anti-intruso (regras de negocio 4.3) e baixa o que
+        passar. Separado de `search_and_download` para que o caminho de CACHE
+        use exatamente a mesma logica do caminho de rede."""
+        cb = callbacks or _callbacks_silenciosos()
         results = []
         descartados = 0
         for item in items:
@@ -692,25 +931,54 @@ class AutoSpecCore:
     # datasheet specs" traz catálogo de qualquer coisa.
     MIN_TOKENS_BUSCA = 2
 
+    @staticmethod
+    def _identificadores(texto):
+        """Tokens da descrição que parecem CÓDIGO DE PEÇA ou MODELO.
+
+        Critério: contém pelo menos um dígito e tem 3+ caracteres. Em
+        `"CONJUNTO REPARO PARA BOMBA 3527528  PVF100-4 NBR"` isso isola
+        `["3527528", "PVF100-4"]` e descarta a prosa.
+
+        É a peça central da correção de 2026-08-11 — ver
+        `_montar_queries_busca` para o porquê.
+        """
+        achados = []
+        for bruto in str(texto or "").split():
+            token = bruto.strip(".,;:()[]{}\"'").strip()
+            if len(token) >= 3 and any(c.isdigit() for c in token):
+                achados.append(token)
+        return achados
+
     @classmethod
     def _montar_queries_busca(cls, txt_brv, fab, cod_mat):
-        """Cascata de busca web, do mais específico ao mais genérico
-        (regras de negócio §4.2).
+        """Cascata de busca web, do mais específico ao mais genérico.
 
-        1. `"{cod_mat}" {fab} datasheet specs` -- aspas = busca exata;
-        2. `{txt_brv} {fab} datasheet specs`;
-        3. o mesmo, largando **a última PALAVRA** do `txt_brv` a cada
-           rodada, até sobrarem `MIN_TOKENS_BUSCA` tokens.
+        **Reescrita em 2026-08-11, depois de achar a causa raiz de "o script
+        não acha o que eu acho no Google em 5 segundos".**
 
-        O passo 3 estava descrito nas regras de negócio e não existia no
-        código até 2026-08-11 -- descrições longas e específicas ("CONJUNTO
-        REPARO PARA BOMBA 3527528 PVF100-4 NBR") não retornam nada no
-        Google, e a ficha ficava sem contexto web nenhum.
+        A cascata anterior mandava a DESCRIÇÃO INTEIRA como query:
 
-        Corta por PALAVRA, não pelos 4 caracteres que o texto original das
-        regras sugeria: cortar por caractere parte o token no meio
-        ("PVF100-4" -> "PVF10") e produz query pior que a anterior. O
-        fabricante fica SEMPRE na query -- é ele que ancora o filtro
+            "CONJUNTO REPARO PARA BOMBA 3527528 PVF100-4 NBR Hydac datasheet specs"
+
+        O Google trata cada palavra como termo. `CONJUNTO`, `REPARO`, `PARA`,
+        `BOMBA` e `NBR` são prosa em português e **não existem num datasheet
+        da Hydac, escrito em inglês** — cada uma empurra o documento certo
+        para baixo. A query se auto-sabotava. Pior: o truncamento
+        progressivo cortava do FIM, ou seja, descartava primeiro `PVF100-4` e
+        `3527528` — justamente os tokens que valem — e preservava a prosa.
+
+        O que uma pessoa digita à mão é `"Hydac PVF100-4 datasheet"`:
+        fabricante + identificador, curto. A cascata agora faz isso:
+
+        1. `"{cod_mat}" {fab} datasheet` — código exato entre aspas;
+        2. `{fab} {todos os identificadores} datasheet` — a query "humana";
+        3. `{fab} {identificador mais longo} datasheet` — o mais distintivo
+           sozinho, para o caso de a combinação ser específica demais;
+        4+. **fallback**: a prosa truncada por palavra, comportamento
+           anterior — cobre material cuja descrição não tem identificador
+           nenhum, que é quando a prosa é tudo que existe.
+
+        O fabricante fica SEMPRE na query: é ele que ancora o filtro
         anti-intruso (§4.3).
 
         Devolve lista sem repetição, preservando a ordem.
@@ -719,11 +987,23 @@ class AutoSpecCore:
         # fim (visto na ficha real 4500063671.0662): `.split()` normaliza.
         tokens = str(txt_brv or "").split()
         fab_txt = str(fab or "").strip()
+        ids = cls._identificadores(txt_brv)
 
         queries = []
         if cod_mat:
-            queries.append(f'"{cod_mat}" {fab_txt} datasheet specs'.strip())
+            queries.append(f'"{cod_mat}" {fab_txt} datasheet'.strip())
 
+        if ids:
+            queries.append(f"{fab_txt} {' '.join(ids)} datasheet".strip())
+            if len(ids) > 1:
+                # O identificador mais longo costuma ser o modelo
+                # ("PVF100-4"), mais reconhecível que o código interno.
+                principal = max(ids, key=len)
+                queries.append(f"{fab_txt} {principal} datasheet".strip())
+
+        # Fallback: a cascata de prosa de antes. Só é alcançada se as queries
+        # por identificador não renderem — e é a ÚNICA opção quando a
+        # descrição não tem identificador nenhum.
         for corte in range(len(tokens), cls.MIN_TOKENS_BUSCA - 1, -1):
             if corte <= 0:
                 break
@@ -871,7 +1151,9 @@ class AutoSpecCore:
             resp = self._llm.generate(
                 prompt, tags={"modulo": "autospec_backend", "tarefa": "autospec"}
             )
-            return self._normalizar_resposta_ia(resp.parsed_json)
+            return self._normalizar_resposta_ia(
+                resp.parsed_json, campos_pedidos=missing.keys(), callbacks=cb
+            )
         except Exception as e:
             # Até 2026-08-11 isto era `print(f"Erro IA: {e}")` -- ia para o
             # stdout, ou seja, a janela preta que ninguém olha. O CP 4.4
@@ -880,38 +1162,22 @@ class AutoSpecCore:
             cb.log(f"Chamada de IA falhou ({type(e).__name__}: {e}).", nivel="error")
             return {}
 
-    def _normalizar_resposta_ia(self, parsed):
-        """Achata a resposta da IA para `{campo: valor}` e guarda as fontes
-        em `self.ultimas_fontes_por_campo`.
+    def _normalizar_resposta_ia(self, parsed, campos_pedidos=None, callbacks=None):
+        """Adapta `normalizar_resposta_autospec` ao formato que o resto da
+        classe usa: devolve só o `{campo: valor}` e guarda as fontes em
+        `self.ultimas_fontes_por_campo`.
 
-        **Aceita as DUAS formas de propósito** (P-04, 2026-08-11):
-
-          - `{"campo": "valor"}` — a forma de antes. Continua valendo, e é
-            o que um modelo mais fraco devolve mesmo com a instrução nova
-            no prompt;
-          - `{"campo": {"valor": ..., "fonte": ...}}` — a forma que o
-            prompt passou a pedir.
-
-        Tolerar as duas é o que impede que a rastreabilidade vire uma
-        regressão: se o modelo ignorar a instrução 7, o preenchimento
-        continua funcionando exatamente como antes, só sem a fonte. O
-        contrato de RETORNO não mudou — `fill_save` recebe o mesmo
-        `{campo: valor}` de sempre.
+        A validação de verdade mora na função de módulo — ver o bloco
+        "CONTRATO DA RESPOSTA DA IA" no topo do arquivo. Aqui só fica a
+        adaptação de forma, para que `fill_save` continue recebendo o mesmo
+        dicionário de sempre.
         """
         self.ultimas_fontes_por_campo = {}
-        if not isinstance(parsed, dict):
-            return parsed
-
-        achatado = {}
-        for campo, bruto in parsed.items():
-            if isinstance(bruto, dict) and "valor" in bruto:
-                achatado[campo] = bruto.get("valor")
-                fonte = bruto.get("fonte")
-                if fonte:
-                    self.ultimas_fontes_por_campo[campo] = str(fonte)
-            else:
-                achatado[campo] = bruto
-        return achatado
+        valores, fontes = normalizar_resposta_autospec(
+            parsed, campos_pedidos=campos_pedidos, callbacks=callbacks
+        )
+        self.ultimas_fontes_por_campo = fontes
+        return valores
 
     @staticmethod
     def _resolver_celula_checkbox(resposta, info):
