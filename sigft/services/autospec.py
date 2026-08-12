@@ -327,6 +327,128 @@ def _cache_busca_gravar(query, items, agora=None):
         pass  # cache e conveniencia; nao poder gravar nao quebra a execucao
 
 
+# =============================================================================
+# LEITURA DE PDF — local primeiro, e com prova de que foi lido INTEIRO
+# =============================================================================
+# Acrescentado em 2026-08-11. Até aqui a única aferição de "consegui ler" era:
+#
+#     if t and len(t) > 100:
+#
+# Cem caracteres. Um datasheet de 40 páginas do qual se leu UMA LINHA da capa
+# passava nesse teste e entrava no contexto como se fosse o documento inteiro.
+# A IA respondia "não encontrei" para tudo, e ninguém ficava sabendo que o
+# problema tinha sido a LEITURA, não o documento.
+#
+# O PyMuPDF entrega o texto página a página, então dá para medir cobertura de
+# verdade e dizer QUAIS páginas ficaram de fora. Decisão do usuário
+# (2026-08-11): leitura incompleta AVISA e SEGUE com o que leu -- coerente com
+# a regra de negócio §3.2 (campo sem evidência fica vazio) e com o fato de que
+# 37 páginas boas valem mais que o descarte por causa de 3 ruins.
+
+# Abaixo disto a página é tratada como "sem texto útil". Página técnica de
+# datasheet tem tipicamente 1.000-3.000 caracteres; 40 é capa, número de
+# página ou cabeçalho solto.
+MIN_CHARS_PAGINA_UTIL = 40
+
+# Cobertura abaixo disto marca o documento como leitura INCOMPLETA no log.
+COBERTURA_MINIMA_ACEITAVEL = 0.80
+
+
+class RelatorioLeitura:
+    """Quanto de um PDF foi realmente lido, e o que ficou de fora."""
+
+    def __init__(self, metodo, paginas_total, paginas_lidas, chars, paginas_sem_texto):
+        self.metodo = metodo
+        self.paginas_total = paginas_total
+        self.paginas_lidas = paginas_lidas
+        self.chars = chars
+        self.paginas_sem_texto = paginas_sem_texto
+
+    @property
+    def cobertura(self):
+        if not self.paginas_total:
+            return 0.0
+        return self.paginas_lidas / self.paginas_total
+
+    @property
+    def completa(self):
+        return self.paginas_total > 0 and self.cobertura >= COBERTURA_MINIMA_ACEITAVEL
+
+    def nivel_log(self):
+        return "info" if self.completa else "warn"
+
+    def resumo(self, nome):
+        base = (
+            f"{nome}: {self.paginas_total} pagina(s), {self.paginas_lidas} lida(s) "
+            f"({self.cobertura:.0%}), {self.chars} chars [{self.metodo}]"
+        )
+        if self.completa:
+            return base
+        faltantes = ", ".join(str(p) for p in self.paginas_sem_texto[:12])
+        reticencias = "..." if len(self.paginas_sem_texto) > 12 else ""
+        return (
+            f"{base} — LEITURA INCOMPLETA. Sem texto nas paginas: "
+            f"{faltantes}{reticencias}. Provavelmente escaneadas; precisariam de OCR. "
+            f"Seguindo com o que foi lido — confira os campos que dependiam dessas paginas."
+        )
+
+
+def _ler_pdf_local(filepath):
+    """Lê o PDF na PRÓPRIA MÁQUINA, página a página, via PyMuPDF.
+
+    Devolve `(texto, RelatorioLeitura)` ou `("", None)` quando o PyMuPDF não
+    está instalado ou não conseguiu abrir o arquivo — nesse caso quem chama
+    cai para o PyPDF2.
+
+    Por que PyMuPDF e não PyPDF2 como primeira opção: o PyPDF2 entrega texto
+    corrido e **desmancha tabelas**, e datasheet é quase só tabela. O PyMuPDF
+    preserva a ordem de leitura do layout e ainda informa, por página, se há
+    imagem — que é o sinal de "esta página aqui é digitalizada".
+    """
+    try:
+        import pymupdf  # import preguiçoso: o módulo importa sem a dependência
+    except ImportError:
+        try:
+            import fitz as pymupdf  # nome antigo do mesmo pacote
+        except ImportError:
+            return "", None
+
+    try:
+        documento = pymupdf.open(filepath)
+    except Exception:
+        return "", None
+
+    partes = []
+    paginas_sem_texto = []
+    lidas = 0
+    try:
+        total = documento.page_count
+        for indice in range(total):
+            try:
+                texto = documento[indice].get_text() or ""
+            except Exception:
+                texto = ""
+            if len(texto.strip()) >= MIN_CHARS_PAGINA_UTIL:
+                partes.append(texto)
+                lidas += 1
+            else:
+                paginas_sem_texto.append(indice + 1)  # 1-based, como o usuário conta
+    finally:
+        try:
+            documento.close()
+        except Exception:
+            pass
+
+    conteudo = "\n".join(partes)
+    return conteudo, RelatorioLeitura(
+        metodo="PyMuPDF",
+        paginas_total=total,
+        paginas_lidas=lidas,
+        chars=len(conteudo),
+        paginas_sem_texto=paginas_sem_texto,
+    )
+
+
 def _callbacks_silenciosos():
     """`UICallbacks` que engole tudo — default de quem chama sem passar
     callbacks (testes antigos, uso programático). Mantém a assinatura
@@ -477,7 +599,40 @@ class PDFProcessor:
         is_imagem = alvo.endswith(EXTENSOES_IMAGEM)
         ocr_possivel = is_pdf or is_imagem
 
-        if self.llama_key and ocr_possivel:
+        # ORDEM: local primeiro, nuvem por último.
+        #
+        # Até 2026-08-11 o LlamaParse (nuvem) era tentado PRIMEIRO sempre que
+        # houvesse chave — o arquivo inteiro subia para a LlamaCloud mesmo
+        # quando o PDF tinha camada de texto e podia ser lido aqui, de graça e
+        # sem sair da máquina. Invertido pela decisão de privacidade
+        # (docs/AUTOSPEC_MELHORIAS.md): a nuvem é último recurso.
+        if is_pdf:
+            text_content, relatorio = _ler_pdf_local(filepath)
+            if relatorio is not None:
+                method_used = relatorio.metodo
+                cb.log(relatorio.resumo(nome), nivel=relatorio.nivel_log())
+
+        if not text_content and is_pdf:
+            # PyMuPDF ausente/falhou: PyPDF2 continua como rede de segurança.
+            try:
+                with open(filepath, 'rb') as f:
+                    reader = PyPDF2.PdfReader(f)
+                    for page in reader.pages:
+                        t = page.extract_text()
+                        if t: text_content += t + "\n"
+                if text_content:
+                    method_used = "PyPDF2"
+            except Exception as e:
+                cb.log(f"PyPDF2 falhou em {nome} ({type(e).__name__}: {e}).", nivel="warn")
+
+        if not text_content and ocr_possivel and self.llama_key:
+            # Última camada: nuvem. Só quando NADA local funcionou — PDF
+            # escaneado ou imagem, que exigem OCR de verdade.
+            cb.log(
+                f"{nome}: nenhuma camada local leu o documento; recorrendo ao "
+                f"LlamaParse (o arquivo SAI da rede).",
+                nivel="warn",
+            )
             try:
                 parser = LlamaParse(result_type="text")
                 documents = parser.load_data(filepath)
@@ -485,34 +640,17 @@ class PDFProcessor:
                 method_used = "LlamaParse"
             except Exception as e:
                 cb.log(
-                    f"LlamaParse falhou em {nome} ({type(e).__name__}: {e}) "
-                    f"— tentando o fallback local.",
+                    f"LlamaParse falhou em {nome} ({type(e).__name__}: {e}).",
                     nivel="warn",
                 )
-        elif is_imagem and not self.llama_key:
+
+        if not text_content and ocr_possivel and not self.llama_key:
             cb.log(
-                f"{nome} é imagem e exige OCR, mas não há chave do LlamaParse "
-                f"configurada — documento ignorado.",
+                f"{nome} precisa de OCR (PDF escaneado ou imagem) e não há OCR local "
+                f"instalado nem chave do LlamaParse — documento ignorado.",
                 nivel="warn",
             )
             return "", ""
-
-        if not text_content and is_pdf:
-            try:
-                with open(filepath, 'rb') as f:
-                    reader = PyPDF2.PdfReader(f)
-                    for page in reader.pages:
-                        t = page.extract_text()
-                        if t: text_content += t + "\n"
-                method_used = "PyPDF2"
-                if not text_content:
-                    cb.log(
-                        f"{nome}: PDF sem camada de texto (provavelmente escaneado). "
-                        f"Só o LlamaParse leria — documento ignorado.",
-                        nivel="warn",
-                    )
-            except Exception as e:
-                cb.log(f"PyPDF2 falhou em {nome} ({type(e).__name__}: {e}).", nivel="warn")
 
         if not text_content and not ocr_possivel:
             try:

@@ -21,6 +21,14 @@ google-generativeai
 llama-parse
 
 # Parsing e utilidades
+# pymupdf: leitura LOCAL de PDF, PRIMEIRA camada da cascata de documentos.
+# Preferido ao PyPDF2 porque preserva a ordem de leitura do layout (datasheet
+# e quase so tabela, e o PyPDF2 desmancha tabela) e porque entrega o texto
+# PAGINA A PAGINA -- e isso que permite provar que o documento foi lido
+# inteiro, em vez de aceitar a capa como se fosse o manual.
+# Wheel pura: instala pelo pip sem binario de sistema (ao contrario do
+# Tesseract), o que importa porque o SIG-FT.bat so resolve o que o pip resolve.
+pymupdf
 PyPDF2
 beautifulsoup4
 requests

@@ -27,6 +27,52 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-12 🔴 Frente 2 (camada 1): leitura local de PDF, com prova de que foi lido inteiro *(2026-08-11)*
+
+**Decisões do usuário:** `1a` — só a camada local por enquanto; `2a` — leitura incompleta
+avisa e segue.
+
+**O problema que isto fecha.** A única aferição de "consegui ler" era:
+
+```python
+if t and len(t) > 100:
+```
+
+Cem caracteres. Um datasheet de 40 páginas do qual se leu **uma linha da capa** passava nesse
+teste e entrava no contexto como se fosse o documento inteiro. A IA respondia "não encontrei"
+para tudo, e nada no log dizia que o problema tinha sido a **leitura**, não o documento.
+
+**PyMuPDF como primeira camada** (`_ler_pdf_local`). Preferido ao PyPDF2 por dois motivos:
+preserva a ordem de leitura do layout — o PyPDF2 entrega texto corrido e **desmancha tabelas**,
+e datasheet é quase só tabela — e entrega o texto **página a página**, que é o que permite
+medir cobertura. Wheel pura, instala pelo `pip` sem binário de sistema, o que importa porque o
+`SIG-FT.bat` só resolve o que o `pip` resolve.
+
+**`RelatorioLeitura`** mede e o console mostra:
+
+```
+manual.pdf: 5 pagina(s), 5 lida(s) (100%), 594 chars [PyMuPDF]
+
+misto.pdf: 5 pagina(s), 3 lida(s) (60%) — LEITURA INCOMPLETA. Sem texto nas
+paginas: 3, 5. Provavelmente escaneadas; precisariam de OCR. Seguindo com o
+que foi lido — confira os campos que dependiam dessas paginas.
+```
+
+Página com menos de 40 caracteres não conta como lida (número de página solto não é
+conteúdo); cobertura abaixo de 80% marca o documento como incompleto. As páginas faltantes são
+numeradas **1-based**, como o usuário conta.
+
+**Inversão de privacidade, de brinde:** a nuvem (LlamaParse) era tentada **primeiro** sempre
+que houvesse chave — o arquivo inteiro subia para a LlamaCloud mesmo quando o PDF tinha camada
+de texto e podia ser lido aqui, de graça e sem sair da máquina. Agora a ordem é
+**PyMuPDF → PyPDF2 → LlamaParse**, e ao recorrer à nuvem o log diz explicitamente que
+*"o arquivo SAI da rede"*. Alinhado à decisão de privacidade registrada acima.
+
+**O que continua faltando (consciente):** página realmente escaneada não é lida sem OCR. O
+relatório diz quais são — é com esse número na mão que se decide se vale pagar o custo de
+implantação do Tesseract (binário de sistema) ou do Docling (~500 MB + torch). 11 testes,
+com os PDFs construídos no próprio teste pelo PyMuPDF (nenhum binário entra no repositório).
+
 ### ✅ R-11 🔴 Frente 1: a query se auto-sabotava *(2026-08-11)*
 
 **Causa raiz de "o script não acha o que eu acho no Google em 5 segundos".**
