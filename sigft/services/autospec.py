@@ -27,6 +27,10 @@ from sigft.core.llm import prompts
 # com o contrato de generator que `frontend.py` já consome.
 from sigft.core.callbacks import UICallbacks
 from sigft.core.relatorio_lote import RelatorioLote
+# Retrieval (2026-08-11): recorta o contexto antes de mandar para a IA. Modulo
+# separado porque este arquivo ja passou de 1.500 linhas -- e porque o
+# algoritmo (BM25) nao sabe nada sobre ficha tecnica nem sobre Excel.
+from sigft.services import autospec_rag
 
 # -----------------------------------------------------------------
 # 1. CONFIGURAÇÕES E MAPAS
@@ -721,6 +725,13 @@ class AutoSpecCore:
         # zerado antes). Vale só para a ÚLTIMA ficha processada -- leia logo
         # depois da chamada, como `process_queue` faz.
         self.ultimas_fontes_por_campo = {}
+        # Retrieval ligado por padrão. Desligar devolve o comportamento de
+        # context stuffing anterior a 2026-08-11 -- existe como escape se
+        # alguma ficha mostrar que o recorte perdeu informação.
+        self.usar_retrieval = True
+        # O diagnostico do reforco semantico e emitido uma vez so por
+        # instancia -- repeti-lo a cada ficha do lote seria ruido.
+        self._diagnostico_rag_emitido = False
 
     @staticmethod
     def _resolver_selecao(selecao_resolvida):
@@ -1278,7 +1289,45 @@ class AutoSpecCore:
                     info += f" (Opções: {v['options']})"
             desc_list.append(info)
 
-        prompt = prompts.montar_autospec(txt_brv, fab, desc_comp, context, "\n".join(desc_list))
+        # RETRIEVAL (2026-08-11): manda só os trechos que interessam, não o
+        # documento inteiro. O enunciado de cada campo faltante É a consulta —
+        # "16 - DIMENSOES (Indicar as dimensões do item...)" já é uma boa
+        # busca, sem precisar reescrever nada.
+        #
+        # Antes daqui o prompt levava até 220.000 caracteres (~55 mil tokens)
+        # para responder campos que precisam de umas 20 linhas do documento.
+        contexto_final = context
+        if self.usar_retrieval and context:
+            consultas = [v.get("desc") or k for k, v in missing.items()]
+            recortado, estatisticas = autospec_rag.montar_contexto_relevante(
+                context, consultas, reordenador=self._reordenador_semantico()
+            )
+            if recortado:
+                contexto_final = recortado
+                cb.log(autospec_rag.resumo_estatisticas(estatisticas))
+                # Uma vez por instancia: diz se o recorte teve reforco
+                # semantico ou foi so BM25 + glossario. Sem isto, "o embedding
+                # esta ligado?" viraria adivinhacao -- e a resposta muda a
+                # qualidade do recorte. Fica AQUI, e nao na abertura do lote,
+                # para nao tentar carregar modelo antes de haver o que recortar.
+                if not self._diagnostico_rag_emitido:
+                    self._diagnostico_rag_emitido = True
+                    try:
+                        from sigft.services import autospec_embeddings
+                        cb.log(autospec_embeddings.diagnostico())
+                    except ImportError:
+                        pass
+            else:
+                # Nenhum trecho casou com nenhum campo. Melhor mandar o
+                # contexto inteiro do que mandar nada: recortar não pode
+                # transformar "achei pouco" em "não achei".
+                cb.log(
+                    "Nenhum trecho do contexto casou com os campos pedidos — "
+                    "enviando o contexto completo.",
+                    nivel="warn",
+                )
+
+        prompt = prompts.montar_autospec(txt_brv, fab, desc_comp, contexto_final, "\n".join(desc_list))
 
         try:
             # [CP 3.2] LangChain removido -- `_limpar_e_parsear_json` do
@@ -1299,6 +1348,20 @@ class AutoSpecCore:
             # fora: a ficha voltava vazia sem nenhuma explicação visível.
             cb.log(f"Chamada de IA falhou ({type(e).__name__}: {e}).", nivel="error")
             return {}
+
+    def _reordenador_semantico(self):
+        """Gancho do reforço semântico OPCIONAL (`autospec_embeddings.py`).
+
+        Devolve `None` quando a biblioteca de embeddings não está disponível —
+        e nesse caso o BM25 decide sozinho, que é o caminho padrão. Ver o
+        docstring de `autospec_rag` para por que lexical vem primeiro neste
+        domínio.
+        """
+        try:
+            from sigft.services import autospec_embeddings
+        except ImportError:
+            return None
+        return autospec_embeddings.obter_reordenador()
 
     def _normalizar_resposta_ia(self, parsed, campos_pedidos=None, callbacks=None):
         """Adapta `normalizar_resposta_autospec` ao formato que o resto da
@@ -1445,6 +1508,7 @@ class AutoSpecCore:
             contexto={"status_pmib": status_pmib_path},
         ) as lote:
             yield from _flush()
+
 
             for i, task in enumerate(queue):
                 ficha = task['sheet']

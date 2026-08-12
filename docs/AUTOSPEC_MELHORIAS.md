@@ -27,6 +27,75 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-13 🔴 Frente 3: retrieval de verdade — 85% menos token *(2026-08-11)*
+
+O módulo não fazia RAG, fazia **context stuffing**: concatenava os documentos inteiros
+(60.000 chars/manual, 50.000/doc web) e mandava tudo para responder campos que precisam de
+umas 20 linhas.
+
+`sigft/services/autospec_rag.py` (novo) quebra o contexto em trechos, indexa com **BM25** e
+manda só o que responde os campos pedidos. **Medido num datasheet de 40 páginas: 23.524 →
+3.628 tokens (85% a menos), com 7/7 dos dados procurados preservados.**
+
+**O furo que a medição encontrou — e que teria passado despercebido.** A primeira versão usava
+BM25 puro, e a verificação mostrou:
+
+```
+consulta : "6 - PRESSAO DE TRABALHO (Indicar a pressao de trabalho)"
+secao    : "Maximum operating pressure 175 bar. Peak pressure 210 bar."
+em comum : NENHUM TOKEN
+```
+
+**A ficha pergunta em português; o datasheet responde em inglês.** `pressao` não casa com
+`pressure`. Dois de cinco dados sumiam do contexto — exatamente o risco de "recorte que perde
+informação". Pior: `peso` "funcionava" por acidente, casando em `kg`.
+
+Meu argumento original de que "lexical ganha neste domínio" estava **incompleto**: vale para
+código de peça (`PVF100-4`), não para o vocabulário técnico traduzido. Corrigido com um
+**glossário PT→EN** (~55 pares) aplicado como expansão **aditiva** de consulta — o termo
+original continua valendo, então código de peça e unidade seguem casando direto. As perguntas
+da ficha são um conjunto fechado, o que torna o glossário determinístico e auditável.
+
+**Duas travas contra o recorte piorar as coisas:**
+
+- **Proveniência sobrevive.** O marcador `--- LOCAL DOC: x ---` / `--- WEB DOC: y ---` é
+  reemitido em cada trecho, e LOCAL vem antes de WEB. Sem isso a instrução 1 do prompt
+  (`Priorize "LOCAL DOC"`) viraria letra morta em silêncio.
+- **Documento pequeno vai inteiro.** Medido: um contexto de 11.302 chars virava 12.171 depois
+  do recorte, porque quase todo trecho era selecionado e cada um repetia o marcador. Abaixo de
+  10% de ganho, o recorte é dispensado.
+
+24 testes.
+
+### ✅ R-14 🟡 Frente 3b: reforço semântico OPCIONAL *(2026-08-11)*
+
+`sigft/services/autospec_embeddings.py` (novo) reordena os candidatos do BM25 por similaridade
+de embedding, num arranjo **híbrido** (peso 0.5 — descartar o lexical entregaria o casamento de
+código de peça ao modelo, que é onde ele erra) e no padrão *"recupera largo, reordena
+estreito"*.
+
+**É complemento, nunca requisito — e isso não é teórico.** Ao construir o módulo, o download do
+modelo multilíngue falhou com **`ProxyError: 403 Forbidden`** no próprio ambiente de
+desenvolvimento. Se o caminho semântico fosse obrigatório, o AutoSpec teria parado ali. Por
+isso `fastembed` **não** entra no `requirements.txt`: uma dependência que pode falhar no
+download não pode estar no caminho crítico da instalação pelo `.bat`.
+
+Verificado nos três caminhos, todos preservando 5/5 dos dados e economizando 77%:
+
+| Caminho | Resultado |
+|---|---|
+| Só BM25 + glossário (o que roda hoje) | 5/5 |
+| Com reforço semântico | 5/5 |
+| Reforço **quebrando no meio** | 5/5 — degradou sem perder nada |
+
+O que o semântico acrescenta quando está disponível é o termo que ninguém cadastrou no
+glossário: "vida útil" casando com "service life expectancy". Para ligar, na máquina de quem
+quiser: `pip install fastembed`. O console diz, uma vez por lote, se está ativo ou não — sem
+isso, "o embedding está ligado?" viraria adivinhação.
+
+17 testes, com codificador injetado. **Ressalva honesta:** eles cobrem a lógica deste módulo,
+não a biblioteca real — que não pôde ser exercitada aqui por causa do proxy.
+
 ### ✅ R-12 🔴 Frente 2 (camada 1): leitura local de PDF, com prova de que foi lido inteiro *(2026-08-11)*
 
 **Decisões do usuário:** `1a` — só a camada local por enquanto; `2a` — leitura incompleta
