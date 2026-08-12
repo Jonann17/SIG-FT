@@ -3,6 +3,8 @@
 api_config.json
 user_prefs.json
 openrouter_models_cache.json
+gemini_models_cache.json
+empresa_models_cache.json
 logs/
 # Argumentos de pip específicos da máquina (rede corporativa) — ver
 # pip_corporativo.txt.exemplo, que ESTE é versionado.
