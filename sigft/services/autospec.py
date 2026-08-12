@@ -27,6 +27,10 @@ from sigft.core.llm import prompts
 # com o contrato de generator que `frontend.py` já consome.
 from sigft.core.callbacks import UICallbacks
 from sigft.core.relatorio_lote import RelatorioLote
+# Retrieval (2026-08-11): recorta o contexto antes de mandar para a IA. Modulo
+# separado porque este arquivo ja passou de 1.500 linhas -- e porque o
+# algoritmo (BM25) nao sabe nada sobre ficha tecnica nem sobre Excel.
+from sigft.services import autospec_rag
 
 # -----------------------------------------------------------------
 # 1. CONFIGURAÇÕES E MAPAS
@@ -327,6 +331,128 @@ def _cache_busca_gravar(query, items, agora=None):
         pass  # cache e conveniencia; nao poder gravar nao quebra a execucao
 
 
+# =============================================================================
+# LEITURA DE PDF — local primeiro, e com prova de que foi lido INTEIRO
+# =============================================================================
+# Acrescentado em 2026-08-11. Até aqui a única aferição de "consegui ler" era:
+#
+#     if t and len(t) > 100:
+#
+# Cem caracteres. Um datasheet de 40 páginas do qual se leu UMA LINHA da capa
+# passava nesse teste e entrava no contexto como se fosse o documento inteiro.
+# A IA respondia "não encontrei" para tudo, e ninguém ficava sabendo que o
+# problema tinha sido a LEITURA, não o documento.
+#
+# O PyMuPDF entrega o texto página a página, então dá para medir cobertura de
+# verdade e dizer QUAIS páginas ficaram de fora. Decisão do usuário
+# (2026-08-11): leitura incompleta AVISA e SEGUE com o que leu -- coerente com
+# a regra de negócio §3.2 (campo sem evidência fica vazio) e com o fato de que
+# 37 páginas boas valem mais que o descarte por causa de 3 ruins.
+
+# Abaixo disto a página é tratada como "sem texto útil". Página técnica de
+# datasheet tem tipicamente 1.000-3.000 caracteres; 40 é capa, número de
+# página ou cabeçalho solto.
+MIN_CHARS_PAGINA_UTIL = 40
+
+# Cobertura abaixo disto marca o documento como leitura INCOMPLETA no log.
+COBERTURA_MINIMA_ACEITAVEL = 0.80
+
+
+class RelatorioLeitura:
+    """Quanto de um PDF foi realmente lido, e o que ficou de fora."""
+
+    def __init__(self, metodo, paginas_total, paginas_lidas, chars, paginas_sem_texto):
+        self.metodo = metodo
+        self.paginas_total = paginas_total
+        self.paginas_lidas = paginas_lidas
+        self.chars = chars
+        self.paginas_sem_texto = paginas_sem_texto
+
+    @property
+    def cobertura(self):
+        if not self.paginas_total:
+            return 0.0
+        return self.paginas_lidas / self.paginas_total
+
+    @property
+    def completa(self):
+        return self.paginas_total > 0 and self.cobertura >= COBERTURA_MINIMA_ACEITAVEL
+
+    def nivel_log(self):
+        return "info" if self.completa else "warn"
+
+    def resumo(self, nome):
+        base = (
+            f"{nome}: {self.paginas_total} pagina(s), {self.paginas_lidas} lida(s) "
+            f"({self.cobertura:.0%}), {self.chars} chars [{self.metodo}]"
+        )
+        if self.completa:
+            return base
+        faltantes = ", ".join(str(p) for p in self.paginas_sem_texto[:12])
+        reticencias = "..." if len(self.paginas_sem_texto) > 12 else ""
+        return (
+            f"{base} — LEITURA INCOMPLETA. Sem texto nas paginas: "
+            f"{faltantes}{reticencias}. Provavelmente escaneadas; precisariam de OCR. "
+            f"Seguindo com o que foi lido — confira os campos que dependiam dessas paginas."
+        )
+
+
+def _ler_pdf_local(filepath):
+    """Lê o PDF na PRÓPRIA MÁQUINA, página a página, via PyMuPDF.
+
+    Devolve `(texto, RelatorioLeitura)` ou `("", None)` quando o PyMuPDF não
+    está instalado ou não conseguiu abrir o arquivo — nesse caso quem chama
+    cai para o PyPDF2.
+
+    Por que PyMuPDF e não PyPDF2 como primeira opção: o PyPDF2 entrega texto
+    corrido e **desmancha tabelas**, e datasheet é quase só tabela. O PyMuPDF
+    preserva a ordem de leitura do layout e ainda informa, por página, se há
+    imagem — que é o sinal de "esta página aqui é digitalizada".
+    """
+    try:
+        import pymupdf  # import preguiçoso: o módulo importa sem a dependência
+    except ImportError:
+        try:
+            import fitz as pymupdf  # nome antigo do mesmo pacote
+        except ImportError:
+            return "", None
+
+    try:
+        documento = pymupdf.open(filepath)
+    except Exception:
+        return "", None
+
+    partes = []
+    paginas_sem_texto = []
+    lidas = 0
+    try:
+        total = documento.page_count
+        for indice in range(total):
+            try:
+                texto = documento[indice].get_text() or ""
+            except Exception:
+                texto = ""
+            if len(texto.strip()) >= MIN_CHARS_PAGINA_UTIL:
+                partes.append(texto)
+                lidas += 1
+            else:
+                paginas_sem_texto.append(indice + 1)  # 1-based, como o usuário conta
+    finally:
+        try:
+            documento.close()
+        except Exception:
+            pass
+
+    conteudo = "\n".join(partes)
+    return conteudo, RelatorioLeitura(
+        metodo="PyMuPDF",
+        paginas_total=total,
+        paginas_lidas=lidas,
+        chars=len(conteudo),
+        paginas_sem_texto=paginas_sem_texto,
+    )
+
+
 def _callbacks_silenciosos():
     """`UICallbacks` que engole tudo — default de quem chama sem passar
     callbacks (testes antigos, uso programático). Mantém a assinatura
@@ -477,7 +603,40 @@ class PDFProcessor:
         is_imagem = alvo.endswith(EXTENSOES_IMAGEM)
         ocr_possivel = is_pdf or is_imagem
 
-        if self.llama_key and ocr_possivel:
+        # ORDEM: local primeiro, nuvem por último.
+        #
+        # Até 2026-08-11 o LlamaParse (nuvem) era tentado PRIMEIRO sempre que
+        # houvesse chave — o arquivo inteiro subia para a LlamaCloud mesmo
+        # quando o PDF tinha camada de texto e podia ser lido aqui, de graça e
+        # sem sair da máquina. Invertido pela decisão de privacidade
+        # (docs/AUTOSPEC_MELHORIAS.md): a nuvem é último recurso.
+        if is_pdf:
+            text_content, relatorio = _ler_pdf_local(filepath)
+            if relatorio is not None:
+                method_used = relatorio.metodo
+                cb.log(relatorio.resumo(nome), nivel=relatorio.nivel_log())
+
+        if not text_content and is_pdf:
+            # PyMuPDF ausente/falhou: PyPDF2 continua como rede de segurança.
+            try:
+                with open(filepath, 'rb') as f:
+                    reader = PyPDF2.PdfReader(f)
+                    for page in reader.pages:
+                        t = page.extract_text()
+                        if t: text_content += t + "\n"
+                if text_content:
+                    method_used = "PyPDF2"
+            except Exception as e:
+                cb.log(f"PyPDF2 falhou em {nome} ({type(e).__name__}: {e}).", nivel="warn")
+
+        if not text_content and ocr_possivel and self.llama_key:
+            # Última camada: nuvem. Só quando NADA local funcionou — PDF
+            # escaneado ou imagem, que exigem OCR de verdade.
+            cb.log(
+                f"{nome}: nenhuma camada local leu o documento; recorrendo ao "
+                f"LlamaParse (o arquivo SAI da rede).",
+                nivel="warn",
+            )
             try:
                 parser = LlamaParse(result_type="text")
                 documents = parser.load_data(filepath)
@@ -485,34 +644,17 @@ class PDFProcessor:
                 method_used = "LlamaParse"
             except Exception as e:
                 cb.log(
-                    f"LlamaParse falhou em {nome} ({type(e).__name__}: {e}) "
-                    f"— tentando o fallback local.",
+                    f"LlamaParse falhou em {nome} ({type(e).__name__}: {e}).",
                     nivel="warn",
                 )
-        elif is_imagem and not self.llama_key:
+
+        if not text_content and ocr_possivel and not self.llama_key:
             cb.log(
-                f"{nome} é imagem e exige OCR, mas não há chave do LlamaParse "
-                f"configurada — documento ignorado.",
+                f"{nome} precisa de OCR (PDF escaneado ou imagem) e não há OCR local "
+                f"instalado nem chave do LlamaParse — documento ignorado.",
                 nivel="warn",
             )
             return "", ""
-
-        if not text_content and is_pdf:
-            try:
-                with open(filepath, 'rb') as f:
-                    reader = PyPDF2.PdfReader(f)
-                    for page in reader.pages:
-                        t = page.extract_text()
-                        if t: text_content += t + "\n"
-                method_used = "PyPDF2"
-                if not text_content:
-                    cb.log(
-                        f"{nome}: PDF sem camada de texto (provavelmente escaneado). "
-                        f"Só o LlamaParse leria — documento ignorado.",
-                        nivel="warn",
-                    )
-            except Exception as e:
-                cb.log(f"PyPDF2 falhou em {nome} ({type(e).__name__}: {e}).", nivel="warn")
 
         if not text_content and not ocr_possivel:
             try:
@@ -583,6 +725,13 @@ class AutoSpecCore:
         # zerado antes). Vale só para a ÚLTIMA ficha processada -- leia logo
         # depois da chamada, como `process_queue` faz.
         self.ultimas_fontes_por_campo = {}
+        # Retrieval ligado por padrão. Desligar devolve o comportamento de
+        # context stuffing anterior a 2026-08-11 -- existe como escape se
+        # alguma ficha mostrar que o recorte perdeu informação.
+        self.usar_retrieval = True
+        # O diagnostico do reforco semantico e emitido uma vez so por
+        # instancia -- repeti-lo a cada ficha do lote seria ruido.
+        self._diagnostico_rag_emitido = False
 
     @staticmethod
     def _resolver_selecao(selecao_resolvida):
@@ -1140,7 +1289,45 @@ class AutoSpecCore:
                     info += f" (Opções: {v['options']})"
             desc_list.append(info)
 
-        prompt = prompts.montar_autospec(txt_brv, fab, desc_comp, context, "\n".join(desc_list))
+        # RETRIEVAL (2026-08-11): manda só os trechos que interessam, não o
+        # documento inteiro. O enunciado de cada campo faltante É a consulta —
+        # "16 - DIMENSOES (Indicar as dimensões do item...)" já é uma boa
+        # busca, sem precisar reescrever nada.
+        #
+        # Antes daqui o prompt levava até 220.000 caracteres (~55 mil tokens)
+        # para responder campos que precisam de umas 20 linhas do documento.
+        contexto_final = context
+        if self.usar_retrieval and context:
+            consultas = [v.get("desc") or k for k, v in missing.items()]
+            recortado, estatisticas = autospec_rag.montar_contexto_relevante(
+                context, consultas, reordenador=self._reordenador_semantico()
+            )
+            if recortado:
+                contexto_final = recortado
+                cb.log(autospec_rag.resumo_estatisticas(estatisticas))
+                # Uma vez por instancia: diz se o recorte teve reforco
+                # semantico ou foi so BM25 + glossario. Sem isto, "o embedding
+                # esta ligado?" viraria adivinhacao -- e a resposta muda a
+                # qualidade do recorte. Fica AQUI, e nao na abertura do lote,
+                # para nao tentar carregar modelo antes de haver o que recortar.
+                if not self._diagnostico_rag_emitido:
+                    self._diagnostico_rag_emitido = True
+                    try:
+                        from sigft.services import autospec_embeddings
+                        cb.log(autospec_embeddings.diagnostico())
+                    except ImportError:
+                        pass
+            else:
+                # Nenhum trecho casou com nenhum campo. Melhor mandar o
+                # contexto inteiro do que mandar nada: recortar não pode
+                # transformar "achei pouco" em "não achei".
+                cb.log(
+                    "Nenhum trecho do contexto casou com os campos pedidos — "
+                    "enviando o contexto completo.",
+                    nivel="warn",
+                )
+
+        prompt = prompts.montar_autospec(txt_brv, fab, desc_comp, contexto_final, "\n".join(desc_list))
 
         try:
             # [CP 3.2] LangChain removido -- `_limpar_e_parsear_json` do
@@ -1161,6 +1348,20 @@ class AutoSpecCore:
             # fora: a ficha voltava vazia sem nenhuma explicação visível.
             cb.log(f"Chamada de IA falhou ({type(e).__name__}: {e}).", nivel="error")
             return {}
+
+    def _reordenador_semantico(self):
+        """Gancho do reforço semântico OPCIONAL (`autospec_embeddings.py`).
+
+        Devolve `None` quando a biblioteca de embeddings não está disponível —
+        e nesse caso o BM25 decide sozinho, que é o caminho padrão. Ver o
+        docstring de `autospec_rag` para por que lexical vem primeiro neste
+        domínio.
+        """
+        try:
+            from sigft.services import autospec_embeddings
+        except ImportError:
+            return None
+        return autospec_embeddings.obter_reordenador()
 
     def _normalizar_resposta_ia(self, parsed, campos_pedidos=None, callbacks=None):
         """Adapta `normalizar_resposta_autospec` ao formato que o resto da
@@ -1307,6 +1508,7 @@ class AutoSpecCore:
             contexto={"status_pmib": status_pmib_path},
         ) as lote:
             yield from _flush()
+
 
             for i, task in enumerate(queue):
                 ficha = task['sheet']

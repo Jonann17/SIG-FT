@@ -27,6 +27,121 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-13 🔴 Frente 3: retrieval de verdade — 85% menos token *(2026-08-11)*
+
+O módulo não fazia RAG, fazia **context stuffing**: concatenava os documentos inteiros
+(60.000 chars/manual, 50.000/doc web) e mandava tudo para responder campos que precisam de
+umas 20 linhas.
+
+`sigft/services/autospec_rag.py` (novo) quebra o contexto em trechos, indexa com **BM25** e
+manda só o que responde os campos pedidos. **Medido num datasheet de 40 páginas: 23.524 →
+3.628 tokens (85% a menos), com 7/7 dos dados procurados preservados.**
+
+**O furo que a medição encontrou — e que teria passado despercebido.** A primeira versão usava
+BM25 puro, e a verificação mostrou:
+
+```
+consulta : "6 - PRESSAO DE TRABALHO (Indicar a pressao de trabalho)"
+secao    : "Maximum operating pressure 175 bar. Peak pressure 210 bar."
+em comum : NENHUM TOKEN
+```
+
+**A ficha pergunta em português; o datasheet responde em inglês.** `pressao` não casa com
+`pressure`. Dois de cinco dados sumiam do contexto — exatamente o risco de "recorte que perde
+informação". Pior: `peso` "funcionava" por acidente, casando em `kg`.
+
+Meu argumento original de que "lexical ganha neste domínio" estava **incompleto**: vale para
+código de peça (`PVF100-4`), não para o vocabulário técnico traduzido. Corrigido com um
+**glossário PT→EN** (~55 pares) aplicado como expansão **aditiva** de consulta — o termo
+original continua valendo, então código de peça e unidade seguem casando direto. As perguntas
+da ficha são um conjunto fechado, o que torna o glossário determinístico e auditável.
+
+**Duas travas contra o recorte piorar as coisas:**
+
+- **Proveniência sobrevive.** O marcador `--- LOCAL DOC: x ---` / `--- WEB DOC: y ---` é
+  reemitido em cada trecho, e LOCAL vem antes de WEB. Sem isso a instrução 1 do prompt
+  (`Priorize "LOCAL DOC"`) viraria letra morta em silêncio.
+- **Documento pequeno vai inteiro.** Medido: um contexto de 11.302 chars virava 12.171 depois
+  do recorte, porque quase todo trecho era selecionado e cada um repetia o marcador. Abaixo de
+  10% de ganho, o recorte é dispensado.
+
+24 testes.
+
+### ✅ R-14 🟡 Frente 3b: reforço semântico OPCIONAL *(2026-08-11)*
+
+`sigft/services/autospec_embeddings.py` (novo) reordena os candidatos do BM25 por similaridade
+de embedding, num arranjo **híbrido** (peso 0.5 — descartar o lexical entregaria o casamento de
+código de peça ao modelo, que é onde ele erra) e no padrão *"recupera largo, reordena
+estreito"*.
+
+**É complemento, nunca requisito — e isso não é teórico.** Ao construir o módulo, o download do
+modelo multilíngue falhou com **`ProxyError: 403 Forbidden`** no próprio ambiente de
+desenvolvimento. Se o caminho semântico fosse obrigatório, o AutoSpec teria parado ali. Por
+isso `fastembed` **não** entra no `requirements.txt`: uma dependência que pode falhar no
+download não pode estar no caminho crítico da instalação pelo `.bat`.
+
+Verificado nos três caminhos, todos preservando 5/5 dos dados e economizando 77%:
+
+| Caminho | Resultado |
+|---|---|
+| Só BM25 + glossário (o que roda hoje) | 5/5 |
+| Com reforço semântico | 5/5 |
+| Reforço **quebrando no meio** | 5/5 — degradou sem perder nada |
+
+O que o semântico acrescenta quando está disponível é o termo que ninguém cadastrou no
+glossário: "vida útil" casando com "service life expectancy". Para ligar, na máquina de quem
+quiser: `pip install fastembed`. O console diz, uma vez por lote, se está ativo ou não — sem
+isso, "o embedding está ligado?" viraria adivinhação.
+
+17 testes, com codificador injetado. **Ressalva honesta:** eles cobrem a lógica deste módulo,
+não a biblioteca real — que não pôde ser exercitada aqui por causa do proxy.
+
+### ✅ R-12 🔴 Frente 2 (camada 1): leitura local de PDF, com prova de que foi lido inteiro *(2026-08-11)*
+
+**Decisões do usuário:** `1a` — só a camada local por enquanto; `2a` — leitura incompleta
+avisa e segue.
+
+**O problema que isto fecha.** A única aferição de "consegui ler" era:
+
+```python
+if t and len(t) > 100:
+```
+
+Cem caracteres. Um datasheet de 40 páginas do qual se leu **uma linha da capa** passava nesse
+teste e entrava no contexto como se fosse o documento inteiro. A IA respondia "não encontrei"
+para tudo, e nada no log dizia que o problema tinha sido a **leitura**, não o documento.
+
+**PyMuPDF como primeira camada** (`_ler_pdf_local`). Preferido ao PyPDF2 por dois motivos:
+preserva a ordem de leitura do layout — o PyPDF2 entrega texto corrido e **desmancha tabelas**,
+e datasheet é quase só tabela — e entrega o texto **página a página**, que é o que permite
+medir cobertura. Wheel pura, instala pelo `pip` sem binário de sistema, o que importa porque o
+`SIG-FT.bat` só resolve o que o `pip` resolve.
+
+**`RelatorioLeitura`** mede e o console mostra:
+
+```
+manual.pdf: 5 pagina(s), 5 lida(s) (100%), 594 chars [PyMuPDF]
+
+misto.pdf: 5 pagina(s), 3 lida(s) (60%) — LEITURA INCOMPLETA. Sem texto nas
+paginas: 3, 5. Provavelmente escaneadas; precisariam de OCR. Seguindo com o
+que foi lido — confira os campos que dependiam dessas paginas.
+```
+
+Página com menos de 40 caracteres não conta como lida (número de página solto não é
+conteúdo); cobertura abaixo de 80% marca o documento como incompleto. As páginas faltantes são
+numeradas **1-based**, como o usuário conta.
+
+**Inversão de privacidade, de brinde:** a nuvem (LlamaParse) era tentada **primeiro** sempre
+que houvesse chave — o arquivo inteiro subia para a LlamaCloud mesmo quando o PDF tinha camada
+de texto e podia ser lido aqui, de graça e sem sair da máquina. Agora a ordem é
+**PyMuPDF → PyPDF2 → LlamaParse**, e ao recorrer à nuvem o log diz explicitamente que
+*"o arquivo SAI da rede"*. Alinhado à decisão de privacidade registrada acima.
+
+**O que continua faltando (consciente):** página realmente escaneada não é lida sem OCR. O
+relatório diz quais são — é com esse número na mão que se decide se vale pagar o custo de
+implantação do Tesseract (binário de sistema) ou do Docling (~500 MB + torch). 11 testes,
+com os PDFs construídos no próprio teste pelo PyMuPDF (nenhum binário entra no repositório).
+
 ### ✅ R-11 🔴 Frente 1: a query se auto-sabotava *(2026-08-11)*
 
 **Causa raiz de "o script não acha o que eu acho no Google em 5 segundos".**
