@@ -23,4 +23,53 @@
     }
   ]
 }
+
+        ===============================================================
+        FORMATO DA RESPOSTA — ESTA PARTE NAO E NEGOCIAVEL
+        ===============================================================
+        Responda com um ARRAY JSON no nivel raiz. Comece com [ e termine
+        com ]. Nada antes, nada depois.
+
+        PROIBIDO:
+          - Envolver o array em um objeto. NAO use {"items": [...]},
+            {"resultado": [...]}, {"caracteristicas": [...]} nem nada
+            parecido. A resposta COMECA com [.
+          - Cercas de markdown (```json ou ```).
+          - Qualquer texto explicativo antes ou depois do array.
+
+        CHAVES: use EXATAMENTE estes nomes, sem traduzir, sem abreviar e
+        sem inventar variantes:
+          CARACTERISTICA_CHAVE, TIPO, VALORES_PT, SUBTIPO_INTERVALO,
+          RESPOSTA_PT_FINAL, RESPOSTA_ES_FINAL, SIMBOLO, ACAO
+
+        Nomes como RESPOSTA_NORMALIZADA_PT, SIMBOLO_UNIDADE ou TIPO_DADO
+        estao ERRADOS na saida: TIPO_DADO e nome de campo da ENTRADA, e
+        na saida ele se chama TIPO.
+
+        ACAO aceita exatamente dois valores: "PREENCHER" ou "REMOVER".
+          - "PREENCHER" exige CARACTERISTICA_CHAVE, TIPO, RESPOSTA_PT_FINAL,
+            RESPOSTA_ES_FINAL e SIMBOLO preenchidos.
+          - "REMOVER" exige so CARACTERISTICA_CHAVE e ACAO.
+
+        CONTAGEM: cada caracteristica de CARACTERISTICAS na entrada gera
+        UM item na saida, na mesma ordem. Nao omita nenhuma. Se nao souber
+        o que fazer com uma, devolva ACAO "REMOVER".
+
+        EXEMPLO COMPLETO DE RESPOSTA VALIDA (copie a forma, nao o conteudo):
+        [
+          {
+            "CARACTERISTICA_CHAVE": "TENSAO NOMINAL",
+            "TIPO": "NUM",
+            "VALORES_PT": "",
+            "SUBTIPO_INTERVALO": null,
+            "RESPOSTA_PT_FINAL": "440",
+            "RESPOSTA_ES_FINAL": "440",
+            "SIMBOLO": "V",
+            "ACAO": "PREENCHER"
+          },
+          {
+            "CARACTERISTICA_CHAVE": "NORMAS TECNICAS APLICAVEIS",
+            "ACAO": "REMOVER"
+          }
+        ]
         

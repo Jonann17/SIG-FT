@@ -518,7 +518,115 @@ def montar_tech_specs_user(contexto_json_serializado):
 
         DADOS DE ENTRADA:
         {contexto_json_serializado}
+{CONTRATO_SAIDA_TECH_SPECS}"""
+
+
+# -----------------------------------------------------------------------------
+# Reforço de contrato de saída — acrescentado em 2026-08-11
+# -----------------------------------------------------------------------------
+# Motivo: até aqui o formato de saída era descrito UMA vez, no meio do
+# `SYSTEM_TECH_SPECS`, e o prompt de usuário terminava nos dados. Isso bastava
+# enquanto todo o sistema rodava em Gemini; assim que o primeiro lote rodou em
+# outro modelo, a resposta veio embrulhada em `{"items": [...]}` e com quase
+# todo campo renomeado (`RESPOSTA_NORMALIZADA_PT` em vez de
+# `RESPOSTA_PT_FINAL`), quebrando o RPA.
+#
+# O que este bloco faz, e por que cada parte existe:
+#
+#  - fica no FIM do prompt de usuário, que é a posição de maior peso para a
+#    maioria dos modelos -- o schema deixa de competir com 60 linhas de regras
+#    de negócio pela atenção do modelo;
+#  - PROÍBE explicitamente o envelope e as cercas de markdown. "Retorne um
+#    JSON puro contendo uma lista" era lido por alguns modelos como permissão
+#    para embrulhar; agora o caso está nomeado;
+#  - lista os nomes de chave como uma lista literal, e diz que são os únicos
+#    aceitos. O bloco de exemplo do system prompt usa `|` e comentários entre
+#    parênteses (não é JSON válido), o que convida o modelo a "melhorar" os
+#    nomes;
+#  - traz um exemplo COMPLETO e VÁLIDO, com um item de cada ação -- exemplo
+#    executável vale mais que descrição;
+#  - fixa a invariante de contagem (uma característica de entrada -> um item
+#    de saída), que é também um ganho de QUALIDADE: era comum o modelo omitir
+#    características que não soube tratar, e omissão silenciosa é
+#    indistinguível de "não precisava mexer".
+CONTRATO_SAIDA_TECH_SPECS = """
+        ===============================================================
+        FORMATO DA RESPOSTA — ESTA PARTE NAO E NEGOCIAVEL
+        ===============================================================
+        Responda com um ARRAY JSON no nivel raiz. Comece com [ e termine
+        com ]. Nada antes, nada depois.
+
+        PROIBIDO:
+          - Envolver o array em um objeto. NAO use {"items": [...]},
+            {"resultado": [...]}, {"caracteristicas": [...]} nem nada
+            parecido. A resposta COMECA com [.
+          - Cercas de markdown (```json ou ```).
+          - Qualquer texto explicativo antes ou depois do array.
+
+        CHAVES: use EXATAMENTE estes nomes, sem traduzir, sem abreviar e
+        sem inventar variantes:
+          CARACTERISTICA_CHAVE, TIPO, VALORES_PT, SUBTIPO_INTERVALO,
+          RESPOSTA_PT_FINAL, RESPOSTA_ES_FINAL, SIMBOLO, ACAO
+
+        Nomes como RESPOSTA_NORMALIZADA_PT, SIMBOLO_UNIDADE ou TIPO_DADO
+        estao ERRADOS na saida: TIPO_DADO e nome de campo da ENTRADA, e
+        na saida ele se chama TIPO.
+
+        ACAO aceita exatamente dois valores: "PREENCHER" ou "REMOVER".
+          - "PREENCHER" exige CARACTERISTICA_CHAVE, TIPO, RESPOSTA_PT_FINAL,
+            RESPOSTA_ES_FINAL e SIMBOLO preenchidos.
+          - "REMOVER" exige so CARACTERISTICA_CHAVE e ACAO.
+
+        CONTAGEM: cada caracteristica de CARACTERISTICAS na entrada gera
+        UM item na saida, na mesma ordem. Nao omita nenhuma. Se nao souber
+        o que fazer com uma, devolva ACAO "REMOVER".
+
+        EXEMPLO COMPLETO DE RESPOSTA VALIDA (copie a forma, nao o conteudo):
+        [
+          {
+            "CARACTERISTICA_CHAVE": "TENSAO NOMINAL",
+            "TIPO": "NUM",
+            "VALORES_PT": "",
+            "SUBTIPO_INTERVALO": null,
+            "RESPOSTA_PT_FINAL": "440",
+            "RESPOSTA_ES_FINAL": "440",
+            "SIMBOLO": "V",
+            "ACAO": "PREENCHER"
+          },
+          {
+            "CARACTERISTICA_CHAVE": "NORMAS TECNICAS APLICAVEIS",
+            "ACAO": "REMOVER"
+          }
+        ]
         """
+
+
+def montar_tech_specs_correcao(mensagem_de_erro, contexto_json_serializado):
+    """Prompt da SEGUNDA tentativa, quando a 1ª resposta não passou na
+    validação de `tech_specs.normalizar_resposta_specs`.
+
+    Reapresentar o mesmo prompt não adiantaria -- o modelo tende a repetir a
+    mesma interpretação. O que muda o resultado é mostrar o ERRO CONCRETO:
+    modelos corrigem formato com facilidade quando sabem exatamente o que
+    saiu errado, e isso vale para qualquer provedor, o que é justamente o
+    ponto (o app não pode depender de um modelo específico acertar de
+    primeira).
+
+    O contexto vai junto de novo porque a chamada é sem estado: o provedor
+    não guarda a conversa anterior.
+    """
+    return f"""
+        Sua resposta anterior foi RECUSADA pelo sistema que a consome.
+
+        Motivo exato da recusa:
+        {mensagem_de_erro}
+
+        Corrija e responda de novo, com os MESMOS dados de entrada abaixo.
+        Nao peca desculpas, nao explique: devolva apenas o array JSON.
+
+        DADOS DE ENTRADA:
+        {contexto_json_serializado}
+{CONTRATO_SAIDA_TECH_SPECS}"""
 
 
 # =============================================================================

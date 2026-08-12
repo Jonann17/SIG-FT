@@ -352,9 +352,9 @@ class TechSpecsProcessor:
         # total -- só os logs GRANULARES por tentativa ("Retry N: IA
         # retornou texto vazio.", "Retry N Error: ...") deixam de existir
         # (perda de granularidade aceita, ver PENDENCIAS.md).
-        try:
+        def _pedir(prompt):
             resp = self._llm.generate(
-                prompt_user,
+                prompt,
                 system=system_instruction,
                 json_mode=True,
                 tags={"modulo": "upload_tech_specs_backend", "tarefa": "tech_specs"},
@@ -363,6 +363,33 @@ class TechSpecsProcessor:
             # explodiria lá na frente, com o robô já dentro do portal (ou,
             # pior, preencheria a ficha com campos vazios em silêncio).
             return normalizar_resposta_specs(resp.parsed_json)
+
+        try:
+            return _pedir(prompt_user)
+        except ValueError as erro_formato:
+            # SEGUNDA CHANCE com o erro na mão. Repetir o mesmo prompt não
+            # adiantaria (o modelo repete a interpretação); mostrar o motivo
+            # exato da recusa, sim -- modelos corrigem formato com facilidade
+            # quando sabem o que saiu errado. É model-agnóstico de propósito:
+            # o app não pode depender de um provedor acertar de primeira.
+            #
+            # Só `ValueError` (formato). Erro de rede/cota vem como outra
+            # exceção e cai no `except` de baixo, sem gastar uma 2ª chamada
+            # que falharia igual.
+            if callback_log:
+                callback_log(f"   [Formato] A IA respondeu fora do contrato: {erro_formato}")
+                callback_log("   [Formato] Pedindo correção (2ª e última tentativa)...")
+            try:
+                dados = _pedir(prompts.montar_tech_specs_correcao(
+                    str(erro_formato), contexto_json_serializado,
+                ))
+            except Exception as erro_segunda:
+                if callback_log:
+                    callback_log(f"   [Formato] A correção também falhou: {erro_segunda}")
+                return None
+            if callback_log:
+                callback_log("   [Formato] Corrigido na 2ª tentativa.")
+            return dados
         except Exception as e:
             if callback_log: callback_log(f"Erro ao chamar IA: {e}")
             return None
