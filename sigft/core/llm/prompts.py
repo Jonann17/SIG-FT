@@ -563,6 +563,36 @@ CONTRATO_SAIDA_TECH_SPECS = """
           - Cercas de markdown (```json ou ```).
           - Qualquer texto explicativo antes ou depois do array.
 
+        REGRAS DE VALOR QUE JA FALHARAM NA PRATICA -- leia antes de
+        preencher qualquer campo:
+
+        1. PORCENTAGEM CONTINUA PORCENTAGEM. Se a ficha diz "56%" e o campo
+           tem SIMBOLO "%", a resposta e "56", NAO "0,56". Nunca converta
+           porcentagem em fracao: o portal ja mostra o simbolo % ao lado.
+
+        2. O SIMBOLO E UMA LISTA FECHADA. Use SOMENTE um dos simbolos que
+           vierem em SIMBOLO_UNIDADE daquela caracteristica. Se o valor da
+           ficha estiver em outra unidade, CONVERTA o numero para uma das
+           unidades permitidas (ex.: campo aceita "AD, kPa" e a ficha diz
+           "3 MPa" -> resposta "3000", SIMBOLO "kPa"). Se nao houver
+           conversao possivel para nenhuma unidade da lista, devolve o valor
+           como esta e usa o primeiro simbolo da lista -- nunca invente um
+           simbolo fora dela.
+
+        3. CASAS DECIMAIS. CASAS_DECIMAIS diz quantas casas o campo aceita.
+           Nao devolva mais casas que isso.
+
+        4. LISTA: a resposta TEM de ser uma das opcoes de
+           VALORES_POSSIVEIS_MASTER (PT) e, no campo ES, a opcao
+           correspondente de VALORES_POSSIVEIS_ES -- na MESMA posicao da
+           lista. Nao traduza a opcao por conta propria: o portal so aceita o
+           texto exato de uma das opcoes, e um texto proximo nao seleciona
+           nada.
+
+        5. NA DUVIDA ENTRE PREENCHER E REMOVER, PREENCHA. Uma linha
+           preenchida a mais o revisor apaga em 5 segundos; um dado do
+           fornecedor que virou REMOVER some sem deixar rastro.
+
         CHAVES: use EXATAMENTE estes nomes, sem traduzir, sem abreviar e
         sem inventar variantes:
           CARACTERISTICA_CHAVE, TIPO, VALORES_PT, SUBTIPO_INTERVALO,

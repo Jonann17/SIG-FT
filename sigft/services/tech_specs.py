@@ -361,11 +361,24 @@ class TechSpecsProcessor:
                 desc_pt = str(row_m['CARACTERÍSTICA - DESCRIPCIÓN PT']).strip()
                 dados_resp = respostas_pmib.get(desc_pt, {"pt": None, "es": None})
 
+                # Três colunas do Master que SEMPRE existiram e nunca eram
+                # enviadas à IA -- e cada uma corresponde a um erro medido no
+                # 1º lote real:
+                #   VALORES ES  -> o `<select>` do portal pode estar em ES; sem
+                #                  a opção ES, o casamento falha e o campo fica
+                #                  em branco;
+                #   CANTIDAD DE DECIMALES -> "56%" virou "0,56" porque nada
+                #                  dizia à IA quantas casas o campo aceita;
+                #   SÍMBOLO (já ia) -> agora o prompt diz que é lista FECHADA,
+                #                  depois de a IA devolver "kW" num campo que
+                #                  só admite "CV, HP".
                 lista_contexto.append({
                     "CARACTERISTICA_DESC_PT": desc_pt,
                     "TEXTO_AJUDA": str(row_m.get('TEXTO DE AYUDA PT', '')),
                     "TIPO_DADO": str(row_m.get('TIPO DE CARACTERÍSTICA', '')),
                     "VALORES_POSSIVEIS_MASTER": str(row_m.get('VALORES PT', '')),
+                    "VALORES_POSSIVEIS_ES": str(row_m.get('VALORES ES', '')),
+                    "CASAS_DECIMAIS": str(row_m.get('CANTIDAD DE DECIMALES', '')),
                     "SIMBOLO_UNIDADE": str(row_m.get('SÍMBOLO', '')),
                     "RESPOSTA_CRUA_PT": str(dados_resp['pt']),
                     "RESPOSTA_CRUA_ES": str(dados_resp['es'])
@@ -592,44 +605,125 @@ class TechSpecsAutomation:
         sem_acento = "".join(c for c in norm if unicodedata.category(c) != 'Mn')
         return " ".join(sem_acento.upper().split())
 
-    def selecionar_dropdown_lista(self, seletor, texto):
-        """CP 5.3: recebe SELETOR em vez de elemento; o `Select` do Selenium
-        saiu daqui e virou as primitivas `opcoes`/`selecionar_por_texto`/
-        `selecionar_por_indice`. A REGRA de casamento (exato primeiro,
-        substring normalizada depois) fica aqui, que é onde ela é regra de
-        negócio -- o motor só sabe mexer no `<select>`."""
-        if not texto:
-            return
+    def selecionar_dropdown_lista(self, seletor, texto, alternativas=(), nome_campo="", callback_log=None):
+        """Seleciona no `<select>`, tentando PT e ES, e DEVOLVE se conseguiu.
+
+        CP 5.3: recebe SELETOR em vez de elemento; o `Select` do Selenium
+        virou as primitivas `opcoes`/`selecionar_por_texto`/
+        `selecionar_por_indice`. A REGRA de casamento fica aqui, que é onde
+        ela é regra de negócio -- o motor só sabe mexer no `<select>`.
+
+        Reescrito em 2026-08-11 por dois motivos relatados no uso real:
+
+        1. **A lista falhava calada.** Toda a função vivia dentro de um
+           `except Exception: pass`, e quando nenhum casamento dava certo ela
+           voltava como se tivesse selecionado. A característica ficava em
+           branco no portal e ninguém sabia -- justamente o campo em que
+           "vazio" é indistinguível de "não se aplica". Agora devolve
+           `True`/`False`, e o chamador transforma `False` em pendência
+           manual, do mesmo jeito que o campo numérico já fazia.
+
+        2. **O portal fala UMA língua por vez.** O `<select>` da linha é um
+           só (`Dropdown1`), e as opções vêm ora em português ora em
+           espanhol; mandar só o texto PT fazia o casamento falhar sempre que
+           a tela estava em ES -- o problema que o usuário descreve como "ele
+           tenta a opção espanhol na caixa de português". Passar a resposta ES
+           como ALTERNATIVA resolve sem adivinhar em que língua a tela está:
+           tenta-se uma, tenta-se a outra.
+
+        A ordem é deliberada: TODOS os candidatos por casamento exato antes de
+        qualquer casamento por substring. Substring é mais frouxo -- "60" casa
+        "50/60" --, então deixá-la competir cedo trocaria um acerto exato de
+        outro candidato por um acerto aproximado deste.
+        """
+        candidatos = [c for c in [texto, *alternativas] if str(c or "").strip()]
+        if not candidatos:
+            return True  # nada a selecionar não é falha
+
+        opcoes = []
         try:
-            # 1. Tentativa Exata Visível
+            opcoes = list(self.engine.opcoes(seletor))
+        except Exception:
+            pass
+
+        # 1. Exato, para todos os candidatos.
+        for candidato in candidatos:
             try:
-                self.engine.selecionar_por_texto(seletor, texto)
-                return
+                self.engine.selecionar_por_texto(seletor, candidato)
+                return True
             except Exception:
                 pass
 
-            # 2. Tentativa Normalizada
-            alvo = self.normalizar_texto(texto)
-            for indice, opcao in enumerate(self.engine.opcoes(seletor)):
-                if alvo in self.normalizar_texto(opcao):
-                    self.engine.selecionar_por_indice(seletor, indice)
-                    return
+        # 2. Substring normalizada, para todos os candidatos.
+        for candidato in candidatos:
+            alvo = self.normalizar_texto(candidato)
+            for indice, opcao in enumerate(opcoes):
+                if alvo and alvo in self.normalizar_texto(opcao):
+                    try:
+                        self.engine.selecionar_por_indice(seletor, indice)
+                        return True
+                    except Exception:
+                        pass
+
+        # 3. Desistiu -- e diz o que tentou E o que havia. As duas metades
+        # importam: sem as opções reais, quem lê o log não sabe se o problema
+        # foi a resposta da IA ou a tela.
+        if callback_log:
+            callback_log(
+                f"   [!] Lista '{nome_campo}': nenhuma opção casou. "
+                f"Tentado: {', '.join(repr(c) for c in candidatos)}. "
+                f"Disponível na tela: {', '.join(repr(o) for o in opcoes) or '(nenhuma opção lida)'}"
+            )
+        return False
+
+    def selecionar_dropdown_unidade(self, seletor, texto, nome_campo="", callback_log=None):
+        """Idem, com a regra própria das unidades: casa o símbolo entre
+        parênteses no texto da opção (ex.: "Milímetro (MM)").
+
+        Também devolve `True`/`False` desde 2026-08-11. A unidade errada (ou
+        ausente) é o tipo de defeito que passa despercebido na revisão: o
+        número aparece certo na tela, e só quem confere a coluna de unidade
+        nota que "3000" está em bar em vez de kPa. E ela falha com
+        regularidade, porque a IA pode devolver um símbolo que o PDM não
+        admite (medido: `POTENCIA BOMBA` recebeu "kW", mas o Master só aceita
+        "CV, HP" para essa característica).
+        """
+        if not str(texto or "").strip():
+            return True
+
+        opcoes = []
+        try:
+            opcoes = list(self.engine.opcoes(seletor))
         except Exception:
             pass
 
-    def selecionar_dropdown_unidade(self, seletor, texto):
-        """Idem, com a regra própria das unidades: casa o símbolo entre
-        parênteses no texto da opção (ex.: "Milímetro (MM)")."""
-        if not texto:
-            return
-        try:
-            alvo = f"({texto.strip().upper()})"
-            for indice, opcao in enumerate(self.engine.opcoes(seletor)):
-                if alvo in opcao.upper():
+        alvo_parenteses = f"({str(texto).strip().upper()})"
+        for indice, opcao in enumerate(opcoes):
+            if alvo_parenteses in opcao.upper():
+                try:
                     self.engine.selecionar_por_indice(seletor, indice)
-                    return
-        except Exception:
-            pass
+                    return True
+                except Exception:
+                    pass
+
+        # Fallback: símbolo solto, sem os parênteses (algumas opções do portal
+        # vêm só com a sigla). Depois dos parênteses, nunca antes -- "(V)" é
+        # inequívoco, "V" casaria "kV" e "mV".
+        alvo = self.normalizar_texto(texto)
+        for indice, opcao in enumerate(opcoes):
+            if alvo and self.normalizar_texto(opcao) == alvo:
+                try:
+                    self.engine.selecionar_por_indice(seletor, indice)
+                    return True
+                except Exception:
+                    pass
+
+        if callback_log:
+            callback_log(
+                f"   [!] Unidade '{nome_campo}': símbolo {texto!r} não existe no dropdown. "
+                f"Disponível: {', '.join(repr(o) for o in opcoes) or '(nenhuma opção lida)'}"
+            )
+        return False
 
     def _preencher_input_com_auditoria(self, seletor, valor_alvo, seletor_neutro, nome_campo="", callback_log=None):
         """Tenta preencher, audita se o site zerou o valor e força o valor
@@ -943,14 +1037,29 @@ class TechSpecsAutomation:
                 )
 
             elif tipo == "LISTA":
-                self.selecionar_dropdown_lista(_campo(XPATH_REL_SELECT_LISTA), val_pt)
+                # A resposta ES entra como ALTERNATIVA: o `<select>` da linha é
+                # um só e as opções vêm ora em PT ora em ES -- tentar as duas
+                # línguas é o que resolve o "ele tenta a opção espanhol na
+                # caixa de português" sem adivinhar em que idioma a tela está.
+                if not self.selecionar_dropdown_lista(
+                    _campo(XPATH_REL_SELECT_LISTA), val_pt,
+                    alternativas=(dado.get("RESPOSTA_ES_FINAL", ""),),
+                    nome_campo=nome_campo, callback_log=callback_log,
+                ):
+                    # Antes isto era "vamos assumir que lista não falha". Falha,
+                    # e falhava calado -- a característica ficava em branco no
+                    # portal, que é onde "vazio" se confunde com "não se aplica".
+                    sucesso_auditoria = False
                 time.sleep(PAUSA_ANIMACAO)
                 _clicar_fora()
-                # Em Listas vamos assumir que não zera por bug numérico, então sucesso.
 
             elif tipo == "INT":
                 subtipo = dado.get("SUBTIPO_INTERVALO", "MINIMO / MAXIMO")
-                self.selecionar_dropdown_lista(_campo(XPATH_REL_SELECT_INTERVALO), subtipo)
+                if not self.selecionar_dropdown_lista(
+                    _campo(XPATH_REL_SELECT_INTERVALO), subtipo,
+                    nome_campo=f"{nome_campo} (intervalo)", callback_log=callback_log,
+                ):
+                    sucesso_auditoria = False
                 time.sleep(PAUSA_ANIMACAO)
 
                 vals = val_pt.split('/')
@@ -971,7 +1080,14 @@ class TechSpecsAutomation:
             # Unidade
             simb = dado.get("SIMBOLO")
             if simb:
-                self.selecionar_dropdown_unidade(_campo(XPATH_REL_SELECT_UNIDADE), simb)
+                # Unidade errada é o defeito mais fácil de passar batido numa
+                # revisão visual: o número aparece certo e só a coluna de
+                # unidade denuncia. Vira pendência como qualquer outra falha.
+                if not self.selecionar_dropdown_unidade(
+                    _campo(XPATH_REL_SELECT_UNIDADE), simb,
+                    nome_campo=nome_campo, callback_log=callback_log,
+                ):
+                    sucesso_auditoria = False
 
         except Exception:
             # Avisa no log que o tipo esperado pelo JSON não bateu com a tela real

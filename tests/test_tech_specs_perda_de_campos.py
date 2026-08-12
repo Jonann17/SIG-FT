@@ -158,3 +158,129 @@ def test_entrada_sem_nome_nao_derruba_a_deduplicacao(faltando):
     # Master com célula vazia existe; virar exceção aqui mataria a ficha
     # inteira por causa de uma linha.
     assert len(deduplicar_contexto([faltando, _linha("A")])) == 2
+
+
+# ===========================================================================
+# Falha de dropdown deixa de ser silenciosa
+# ===========================================================================
+# Pedido do usuário: "quando o campo estava PREENCHER e no portal não
+# conseguiu colocar a unidade, ou não conseguiu colocar o valor, que apareça
+# no log de saída, pois antes de salvar poderia ser preenchido na mão".
+#
+# Os três dropdowns da linha (lista, intervalo, unidade) viviam dentro de um
+# `except Exception: pass` e voltavam como se tivessem selecionado. O campo
+# ficava em branco no portal -- e "em branco" numa lista é indistinguível de
+# "não se aplica".
+from sigft.services.tech_specs import TechSpecsAutomation  # noqa: E402
+
+
+class _EngineDropdown:
+    def __init__(self, opcoes, aceita_exato=()):
+        self._opcoes = list(opcoes)
+        self._aceita_exato = set(aceita_exato)
+        self.selecionado = None
+
+    def opcoes(self, _seletor):
+        return list(self._opcoes)
+
+    def selecionar_por_texto(self, _seletor, texto):
+        if texto not in self._aceita_exato:
+            raise RuntimeError("opção inexistente")
+        self.selecionado = texto
+
+    def selecionar_por_indice(self, _seletor, indice):
+        self.selecionado = self._opcoes[indice]
+
+
+def _proc(engine):
+    """Os dropdowns são da classe de RPA (`TechSpecsAutomation`), não da de
+    IA -- é ela que mexe no `<select>` da tela."""
+    proc = TechSpecsAutomation()
+    proc.engine = engine
+    return proc
+
+
+def test_lista_encontra_a_opcao_em_espanhol_quando_a_tela_esta_em_espanhol():
+    """O `<select>` da linha é UM só e as opções vêm ora em PT ora em ES.
+    Mandar só o texto PT fazia o casamento falhar -- o "ele tenta a opção
+    espanhol na caixa de português" que o usuário relatou."""
+    engine = _EngineDropdown(["Cerrado", "Abierto"], aceita_exato=["Cerrado", "Abierto"])
+    proc = _proc(engine)
+
+    assert proc.selecionar_dropdown_lista("//sel", "Fechado", alternativas=("Cerrado",)) is True
+    assert engine.selecionado == "Cerrado"
+
+
+def test_lista_prefere_o_portugues_quando_as_duas_linguas_servem():
+    engine = _EngineDropdown(["Fechado", "Cerrado"], aceita_exato=["Fechado", "Cerrado"])
+    proc = _proc(engine)
+
+    proc.selecionar_dropdown_lista("//sel", "Fechado", alternativas=("Cerrado",))
+
+    assert engine.selecionado == "Fechado"
+
+
+def test_lista_tenta_exato_de_todos_antes_de_substring_de_qualquer_um():
+    """Substring é frouxa: "60" casa "50/60". Se ela competisse cedo,
+    trocaria o acerto exato de um candidato pelo aproximado de outro."""
+    engine = _EngineDropdown(["50/60", "60"], aceita_exato=["60"])
+    proc = _proc(engine)
+
+    proc.selecionar_dropdown_lista("//sel", "60", alternativas=("50/60",))
+
+    assert engine.selecionado == "60"
+
+
+def test_lista_sem_casamento_devolve_false_e_diz_o_que_havia_na_tela():
+    logs = []
+    engine = _EngineDropdown(["Horizontal", "Vertical"])
+    proc = _proc(engine)
+
+    ok = proc.selecionar_dropdown_lista(
+        "//sel", "Inclinado", nome_campo="POSICAO", callback_log=logs.append,
+    )
+
+    assert ok is False
+    texto = " ".join(logs)
+    assert "POSICAO" in texto
+    assert "Inclinado" in texto      # o que tentou...
+    assert "Horizontal" in texto     # ...e o que existia. Sem os dois, o log não resolve nada.
+
+
+def test_lista_vazia_nao_e_considerada_falha():
+    # Característica sem valor de lista é caso normal; virar pendência
+    # encheria o relatório de ruído e escondia as falhas reais.
+    assert _proc(_EngineDropdown([])).selecionar_dropdown_lista("//sel", "") is True
+
+
+def test_unidade_fora_do_dropdown_devolve_false_e_lista_as_opcoes():
+    """Medido no lote real: a IA devolveu SIMBOLO "kW" para POTENCIA BOMBA,
+    característica que o Master só admite em "CV, HP"."""
+    logs = []
+    engine = _EngineDropdown(["Cavalo-vapor (CV)", "Horsepower (HP)"])
+    proc = _proc(engine)
+
+    ok = proc.selecionar_dropdown_unidade(
+        "//sel", "kW", nome_campo="POTENCIA BOMBA", callback_log=logs.append,
+    )
+
+    assert ok is False
+    assert "kW" in " ".join(logs) and "CV" in " ".join(logs)
+
+
+def test_unidade_casa_o_simbolo_entre_parenteses():
+    engine = _EngineDropdown(["Milímetro (MM)", "Metro (M)"])
+    proc = _proc(engine)
+
+    assert proc.selecionar_dropdown_unidade("//sel", "mm") is True
+    assert engine.selecionado == "Milímetro (MM)"
+
+
+def test_unidade_nao_casa_prefixo_por_engano():
+    """"V" não pode selecionar "kV": o parêntese é o que torna o casamento
+    inequívoco, e o fallback sem parênteses exige igualdade EXATA."""
+    engine = _EngineDropdown(["Quilovolt (KV)", "Milivolt (MV)"])
+    proc = _proc(engine)
+
+    assert proc.selecionar_dropdown_unidade("//sel", "V") is False
+    assert engine.selecionado is None
