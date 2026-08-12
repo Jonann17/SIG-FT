@@ -51,12 +51,52 @@ FAB_REAL = "Hydac"
 
 def test_cascata_comeca_pelo_codigo_do_material_entre_aspas():
     qs = AutoSpecCore._montar_queries_busca(TXT_BRV_REAL, FAB_REAL, "MAT-123")
-    assert qs[0] == '"MAT-123" Hydac datasheet specs'
+    assert qs[0] == '"MAT-123" Hydac datasheet'
 
 
-def test_sem_codigo_do_material_a_cascata_comeca_pelo_texto_breve():
+def test_sem_codigo_do_material_a_cascata_comeca_pelos_IDENTIFICADORES(): 
+    """MUDOU em 2026-08-11 (causa raiz de "nao acha o que eu acho no Google"):
+    a 1a query deixou de ser a descricao inteira em portugues e passou a ser
+    fabricante + identificador, que e o que uma pessoa digita a mao."""
     qs = AutoSpecCore._montar_queries_busca(TXT_BRV_REAL, FAB_REAL, "")
-    assert qs[0].startswith("CONJUNTO REPARO PARA BOMBA 3527528 PVF100-4 NBR")
+    assert qs[0] == "Hydac 3527528 PVF100-4 datasheet"
+
+
+def test_prosa_em_portugues_NAO_vem_primeiro():
+    """O nucleo do bug: CONJUNTO/REPARO/PARA/BOMBA nao existem num datasheet
+    em ingles e derrubavam o resultado certo."""
+    qs = AutoSpecCore._montar_queries_busca(TXT_BRV_REAL, FAB_REAL, "")
+    assert "CONJUNTO" not in qs[0]
+    assert any("CONJUNTO" in q for q in qs), "a prosa continua como fallback"
+
+
+def test_identificador_isolado_vira_a_3a_tentativa():
+    """Se a combinacao de todos os identificadores for especifica demais,
+    tenta o mais longo sozinho (costuma ser o modelo)."""
+    qs = AutoSpecCore._montar_queries_busca(TXT_BRV_REAL, FAB_REAL, "")
+    assert "Hydac PVF100-4 datasheet" in qs
+
+
+@pytest.mark.parametrize(
+    "texto,esperado,caso",
+    [
+        ("CONJUNTO REPARO PARA BOMBA 3527528  PVF100-4 NBR", ["3527528", "PVF100-4"], "ficha real"),
+        ("VALVULA GAVETA DN50", ["DN50"], "so um identificador"),
+        ("PARAFUSO SEXTAVADO", [], "descricao sem identificador"),
+        ("MOTOR 5CV 380V IP55", ["5CV", "380V", "IP55"], "varios"),
+        ("BOMBA 12", [], "token de 2 caracteres e curto demais"),
+    ],
+)
+def test_extracao_de_identificadores(texto, esperado, caso):
+    assert AutoSpecCore._identificadores(texto) == esperado, caso
+
+
+def test_descricao_sem_identificador_cai_na_prosa():
+    """Material cuja descricao nao tem codigo nenhum: a prosa e tudo que
+    existe, e continua sendo tentada."""
+    qs = AutoSpecCore._montar_queries_busca("PARAFUSO SEXTAVADO INOX", "Fab", "")
+    assert qs and all("datasheet" in q for q in qs)
+    assert "PARAFUSO" in qs[0]
 
 
 def test_espaco_duplo_e_sobra_no_fim_sao_normalizados():
@@ -342,3 +382,78 @@ def test_a_ficha_real_cabe_com_folga_no_limite():
     maior que qualquer vão interno observado."""
     vazias_no_fim_da_ficha_real = 132 - 103
     assert AutoSpecCore.MAX_LINHAS_VAZIAS_SEGUIDAS < vazias_no_fim_da_ficha_real
+
+
+# =============================================================================
+# Cache de busca web — a cota do CSE free tier é 100 queries/DIA
+# =============================================================================
+def test_cache_guarda_e_devolve_a_resposta_da_cse(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "CONFIG_FILE", str(tmp_path / "api_config.json"))
+    items = [{"link": "https://x.com/a.pdf", "title": "A", "snippet": "s"}]
+
+    assert autospec_backend._cache_busca_ler("q1") is None
+    autospec_backend._cache_busca_gravar("q1", items)
+    assert autospec_backend._cache_busca_ler("q1") == items
+
+
+def test_cache_expira_pelo_ttl(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "CONFIG_FILE", str(tmp_path / "api_config.json"))
+    autospec_backend._cache_busca_gravar("q", [{"link": "x"}], agora=1000)
+
+    dentro = 1000 + autospec_backend.BUSCA_WEB_CACHE_TTL_S - 1
+    fora = 1000 + autospec_backend.BUSCA_WEB_CACHE_TTL_S + 1
+    assert autospec_backend._cache_busca_ler("q", agora=dentro) is not None
+    assert autospec_backend._cache_busca_ler("q", agora=fora) is None
+
+
+def test_cache_separa_queries_diferentes(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "CONFIG_FILE", str(tmp_path / "api_config.json"))
+    autospec_backend._cache_busca_gravar("q1", [{"link": "um"}])
+    autospec_backend._cache_busca_gravar("q2", [{"link": "dois"}])
+    assert autospec_backend._cache_busca_ler("q1") == [{"link": "um"}]
+    assert autospec_backend._cache_busca_ler("q2") == [{"link": "dois"}]
+
+
+def test_cache_corrompido_nao_derruba_a_execucao(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "CONFIG_FILE", str(tmp_path / "api_config.json"))
+    (tmp_path / autospec_backend.BUSCA_WEB_CACHE).write_text("{ isso nao e json", encoding="utf-8")
+    assert autospec_backend._cache_busca_ler("q") is None
+    autospec_backend._cache_busca_gravar("q", [{"link": "x"}])  # sobrescreve, sem levantar
+    assert autospec_backend._cache_busca_ler("q") == [{"link": "x"}]
+
+
+def test_busca_com_cache_quente_NAO_chama_a_rede(monkeypatch, tmp_path, registro):
+    """O ponto do cache: reprocessar o mesmo lote não pode queimar a cota."""
+    monkeypatch.setattr(config, "CONFIG_FILE", str(tmp_path / "api_config.json"))
+    autospec_backend._cache_busca_gravar("minha query", [])
+
+    def _explode(*a, **k):
+        raise AssertionError("nao pode chamar a CSE com o cache quente")
+
+    monkeypatch.setattr(autospec_backend.requests, "get", _explode)
+    s = autospec_backend.WebSearcher("chave", "cse")
+    assert s.search_and_download("minha query", callbacks=registro) == []
+    assert "cache" in registro.texto()
+
+
+def test_parametros_da_cse_sem_vies_de_idioma_e_regiao(monkeypatch, tmp_path):
+    """Decisão do usuário (2026-08-11): `gl=br`/`hl=pt` pediam resultado
+    BRASILEIRO em PORTUGUÊS, e datasheet de fabricante é inglês em site
+    estrangeiro. E `num` sobe para 10 — o CSE cobra a mesma cota por 3 ou 10."""
+    monkeypatch.setattr(config, "CONFIG_FILE", str(tmp_path / "api_config.json"))
+    capturado = {}
+
+    class _Resp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return {"items": []}
+
+    def _fake_get(url, params=None, **k):
+        capturado.update(params or {})
+        return _Resp()
+
+    monkeypatch.setattr(autospec_backend.requests, "get", _fake_get)
+    autospec_backend.WebSearcher("chave", "cse").search_and_download("q")
+
+    assert "gl" not in capturado and "hl" not in capturado
+    assert capturado["num"] == autospec_backend.RESULTADOS_POR_BUSCA == 10

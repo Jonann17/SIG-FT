@@ -38,3 +38,4 @@ dist/
 # SIGFT_DUMP_PROMPTS e relatórios comparativos. Podem conter dados de ficha.
 prompts_ab/
 relatorio_ab*.md
+busca_web_cache.json

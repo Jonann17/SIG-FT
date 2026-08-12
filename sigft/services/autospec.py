@@ -259,6 +259,74 @@ def normalizar_resposta_autospec(bruto, campos_pedidos=None, callbacks=None):
     return valores, fontes
 
 
+# Quantos resultados pedir por busca. O CSE aceita ate 10 e cobra a MESMA
+# cota (1 query) para 3 ou para 10 -- pedir 3, como era ate 2026-08-11, jogava
+# fora 70% do que ja estava pago.
+RESULTADOS_POR_BUSCA = 10
+
+# Cache de busca web: query -> resposta crua da CSE. Mesmo padrao dos caches de
+# catalogo de modelo (`core/llm/catalogo.py`): JSON na raiz, com carimbo de
+# tempo e TTL, gitignored.
+#
+# Existe por causa da cota: o free tier da Google CSE da 100 queries/DIA, e a
+# cascata gasta varias por ficha. Sem cache, reprocessar o mesmo lote (que e o
+# normal quando se ajusta um manual e roda de novo) queimava a cota inteira de
+# novo. O que se guarda e a lista de URLs, nao os arquivos -- caminho de
+# temporario nao sobrevive a execucao, mas a URL sim, e e ela que custou cota.
+BUSCA_WEB_CACHE = "busca_web_cache.json"
+BUSCA_WEB_CACHE_TTL_S = 7 * 24 * 3600  # datasheet de fabricante muda devagar
+
+
+def _caminho_cache_busca():
+    """Ao lado do `api_config.json`, seguindo `core/llm/catalogo.py`."""
+    return os.path.join(os.path.dirname(os.path.abspath(config.CONFIG_FILE)), BUSCA_WEB_CACHE)
+
+
+def _cache_busca_ler(query, agora=None):
+    """Resposta guardada para `query`, ou `None` se ausente/expirada."""
+    import time
+
+    agora = time.time() if agora is None else agora
+    try:
+        with open(_caminho_cache_busca(), encoding="utf-8") as arquivo:
+            dados = json.load(arquivo)
+    except Exception:
+        return None
+    if not isinstance(dados, dict):
+        return None
+    entrada = dados.get(query)
+    if not isinstance(entrada, dict):
+        return None
+    gravado_em = entrada.get("gravado_em")
+    items = entrada.get("items")
+    if not isinstance(items, list) or not isinstance(gravado_em, (int, float)):
+        return None
+    if agora - gravado_em > BUSCA_WEB_CACHE_TTL_S:
+        return None
+    return items
+
+
+def _cache_busca_gravar(query, items, agora=None):
+    """Guarda a resposta de `query`. Falhar aqui nao e erro do usuario."""
+    import time
+
+    agora = time.time() if agora is None else agora
+    caminho = _caminho_cache_busca()
+    try:
+        try:
+            with open(caminho, encoding="utf-8") as arquivo:
+                dados = json.load(arquivo)
+            if not isinstance(dados, dict):
+                dados = {}
+        except Exception:
+            dados = {}
+        dados[query] = {"gravado_em": agora, "items": items}
+        with open(caminho, "w", encoding="utf-8") as arquivo:
+            json.dump(dados, arquivo, indent=2, ensure_ascii=False)
+    except Exception:
+        pass  # cache e conveniencia; nao poder gravar nao quebra a execucao
+
+
 def _callbacks_silenciosos():
     """`UICallbacks` que engole tudo — default de quem chama sem passar
     callbacks (testes antigos, uso programático). Mantém a assinatura
@@ -297,11 +365,22 @@ class WebSearcher:
         self.search_url = "https://www.googleapis.com/customsearch/v1"
         self.headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
 
-    def search_and_download(self, query, required_terms=[], max_results=3, callbacks=None):
+    def search_and_download(self, query, required_terms=[], max_results=RESULTADOS_POR_BUSCA, callbacks=None):
         cb = callbacks or _callbacks_silenciosos()
         if not self.api_key or not self.cse_id:
             return []
-        params = {'key': self.api_key, 'cx': self.cse_id, 'q': query, 'num': max_results, 'gl': 'br', 'hl': 'pt'}
+        # `gl`/`hl` removidos em 2026-08-11 (decisão do usuário): eles pediam
+        # ao Google resultados BRASILEIROS em PORTUGUÊS. Datasheet de Hydac,
+        # KSB, Parker e afins é documento em INGLÊS, em site estrangeiro — o
+        # viés derrubava exatamente o que se procura. O navegador do usuário,
+        # onde ele acha em 5 segundos, não tem esse viés.
+        params = {'key': self.api_key, 'cx': self.cse_id, 'q': query, 'num': max_results}
+
+        em_cache = _cache_busca_ler(query)
+        if em_cache is not None:
+            cb.log(f"Busca em cache (nao gastou cota da CSE): {query}")
+            return self._baixar_resultados(em_cache, required_terms=required_terms, callbacks=cb)
+
         try:
             # timeout adicionado em 2026-08-11: sem ele, uma chamada pendurada
             # à Google CSE travava o módulo INTEIRO por tempo indefinido --
@@ -322,6 +401,17 @@ class WebSearcher:
             )
             return []
 
+        # Guarda a resposta CRUA da CSE, nao os arquivos baixados: caminho de
+        # temporario nao sobrevive a execucao, mas a lista de URLs sim -- e e
+        # ela que custa cota.
+        _cache_busca_gravar(query, items)
+        return self._baixar_resultados(items, required_terms=required_terms, callbacks=cb)
+
+    def _baixar_resultados(self, items, required_terms=(), callbacks=None):
+        """Aplica o filtro anti-intruso (regras de negocio 4.3) e baixa o que
+        passar. Separado de `search_and_download` para que o caminho de CACHE
+        use exatamente a mesma logica do caminho de rede."""
+        cb = callbacks or _callbacks_silenciosos()
         results = []
         descartados = 0
         for item in items:
@@ -841,25 +931,54 @@ class AutoSpecCore:
     # datasheet specs" traz catálogo de qualquer coisa.
     MIN_TOKENS_BUSCA = 2
 
+    @staticmethod
+    def _identificadores(texto):
+        """Tokens da descrição que parecem CÓDIGO DE PEÇA ou MODELO.
+
+        Critério: contém pelo menos um dígito e tem 3+ caracteres. Em
+        `"CONJUNTO REPARO PARA BOMBA 3527528  PVF100-4 NBR"` isso isola
+        `["3527528", "PVF100-4"]` e descarta a prosa.
+
+        É a peça central da correção de 2026-08-11 — ver
+        `_montar_queries_busca` para o porquê.
+        """
+        achados = []
+        for bruto in str(texto or "").split():
+            token = bruto.strip(".,;:()[]{}\"'").strip()
+            if len(token) >= 3 and any(c.isdigit() for c in token):
+                achados.append(token)
+        return achados
+
     @classmethod
     def _montar_queries_busca(cls, txt_brv, fab, cod_mat):
-        """Cascata de busca web, do mais específico ao mais genérico
-        (regras de negócio §4.2).
+        """Cascata de busca web, do mais específico ao mais genérico.
 
-        1. `"{cod_mat}" {fab} datasheet specs` -- aspas = busca exata;
-        2. `{txt_brv} {fab} datasheet specs`;
-        3. o mesmo, largando **a última PALAVRA** do `txt_brv` a cada
-           rodada, até sobrarem `MIN_TOKENS_BUSCA` tokens.
+        **Reescrita em 2026-08-11, depois de achar a causa raiz de "o script
+        não acha o que eu acho no Google em 5 segundos".**
 
-        O passo 3 estava descrito nas regras de negócio e não existia no
-        código até 2026-08-11 -- descrições longas e específicas ("CONJUNTO
-        REPARO PARA BOMBA 3527528 PVF100-4 NBR") não retornam nada no
-        Google, e a ficha ficava sem contexto web nenhum.
+        A cascata anterior mandava a DESCRIÇÃO INTEIRA como query:
 
-        Corta por PALAVRA, não pelos 4 caracteres que o texto original das
-        regras sugeria: cortar por caractere parte o token no meio
-        ("PVF100-4" -> "PVF10") e produz query pior que a anterior. O
-        fabricante fica SEMPRE na query -- é ele que ancora o filtro
+            "CONJUNTO REPARO PARA BOMBA 3527528 PVF100-4 NBR Hydac datasheet specs"
+
+        O Google trata cada palavra como termo. `CONJUNTO`, `REPARO`, `PARA`,
+        `BOMBA` e `NBR` são prosa em português e **não existem num datasheet
+        da Hydac, escrito em inglês** — cada uma empurra o documento certo
+        para baixo. A query se auto-sabotava. Pior: o truncamento
+        progressivo cortava do FIM, ou seja, descartava primeiro `PVF100-4` e
+        `3527528` — justamente os tokens que valem — e preservava a prosa.
+
+        O que uma pessoa digita à mão é `"Hydac PVF100-4 datasheet"`:
+        fabricante + identificador, curto. A cascata agora faz isso:
+
+        1. `"{cod_mat}" {fab} datasheet` — código exato entre aspas;
+        2. `{fab} {todos os identificadores} datasheet` — a query "humana";
+        3. `{fab} {identificador mais longo} datasheet` — o mais distintivo
+           sozinho, para o caso de a combinação ser específica demais;
+        4+. **fallback**: a prosa truncada por palavra, comportamento
+           anterior — cobre material cuja descrição não tem identificador
+           nenhum, que é quando a prosa é tudo que existe.
+
+        O fabricante fica SEMPRE na query: é ele que ancora o filtro
         anti-intruso (§4.3).
 
         Devolve lista sem repetição, preservando a ordem.
@@ -868,11 +987,23 @@ class AutoSpecCore:
         # fim (visto na ficha real 4500063671.0662): `.split()` normaliza.
         tokens = str(txt_brv or "").split()
         fab_txt = str(fab or "").strip()
+        ids = cls._identificadores(txt_brv)
 
         queries = []
         if cod_mat:
-            queries.append(f'"{cod_mat}" {fab_txt} datasheet specs'.strip())
+            queries.append(f'"{cod_mat}" {fab_txt} datasheet'.strip())
 
+        if ids:
+            queries.append(f"{fab_txt} {' '.join(ids)} datasheet".strip())
+            if len(ids) > 1:
+                # O identificador mais longo costuma ser o modelo
+                # ("PVF100-4"), mais reconhecível que o código interno.
+                principal = max(ids, key=len)
+                queries.append(f"{fab_txt} {principal} datasheet".strip())
+
+        # Fallback: a cascata de prosa de antes. Só é alcançada se as queries
+        # por identificador não renderem — e é a ÚNICA opção quando a
+        # descrição não tem identificador nenhum.
         for corte in range(len(tokens), cls.MIN_TOKENS_BUSCA - 1, -1):
             if corte <= 0:
                 break

@@ -27,6 +27,49 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-11 🔴 Frente 1: a query se auto-sabotava *(2026-08-11)*
+
+**Causa raiz de "o script não acha o que eu acho no Google em 5 segundos".**
+O CSE do usuário estava correto (web inteira, sem sites) — o problema era a query.
+
+O script mandava a **descrição inteira, em português**:
+
+```
+CONJUNTO REPARO PARA BOMBA 3527528 PVF100-4 NBR Hydac datasheet specs
+```
+
+O Google trata cada palavra como termo. `CONJUNTO`, `REPARO`, `PARA`, `BOMBA`, `NBR` são
+prosa PT-BR e **não existem num datasheet da Hydac, escrito em inglês** — cada uma empurrava o
+documento certo para baixo. E o truncamento do P-02 cortava do FIM, descartando primeiro
+`PVF100-4` e `3527528`, os tokens que valem, e preservando a prosa.
+
+`_identificadores` isola os tokens que parecem código de peça ou modelo (contêm dígito, 3+
+caracteres) e a cascata passou a começar por eles — fabricante + identificador, curto, igual
+ao que uma pessoa digita à mão. A prosa virou **fallback**, não a primeira tentativa:
+
+```
+1. Hydac 3527528 PVF100-4 datasheet     <- a query "humana"
+2. Hydac PVF100-4 datasheet             <- só o modelo, mais reconhecível
+3+. a prosa truncada (comportamento antigo, para descrição sem identificador)
+```
+
+Junto, duas decisões do usuário:
+
+- **`gl=br`/`hl=pt` removidos.** Pediam ao Google resultado BRASILEIRO em PORTUGUÊS —
+  exatamente o viés que derruba datasheet estrangeiro. O navegador dele, onde acha em 5
+  segundos, não tem esse viés.
+- **`num` de 3 para 10.** O CSE cobra a MESMA cota (1 query) para 3 ou 10 resultados; pedir 3
+  jogava fora 70% do que já estava pago.
+
+**Cache de busca** (`busca_web_cache.json`, TTL 7 dias, gitignored, mesmo padrão dos caches de
+catálogo de modelo): guarda query → resposta crua da CSE. Reprocessar o mesmo lote — o normal
+quando se ajusta um manual e roda de novo — deixou de queimar a cota inteira. Guarda as URLs,
+não os arquivos: caminho de temporário não sobrevive à execução, mas a URL sim, e é ela que
+custou cota.
+
+24 testes novos. Fica em aberto medir, com o usuário, se a taxa de acerto subiu de fato —
+é o próximo passo de validação real.
+
 ### ✅ R-09 🔴 P-01: checkbox por RÓTULO, e descarte deixou de ser mudo *(2026-08-11)*
 
 **O diagnóstico mudou depois de olhar a ficha real.** A pergunta não era "o que a IA
