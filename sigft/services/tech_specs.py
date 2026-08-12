@@ -99,6 +99,75 @@ CHAVES_ITEM_SEMPRE = ("CARACTERISTICA_CHAVE", "ACAO")
 CHAVES_ITEM_PREENCHER = ("TIPO", "RESPOSTA_PT_FINAL")
 
 
+def indexar_por_caracteristica(dados, normalizar):
+    """Índice `chave normalizada -> item` para o RPA, com PREENCHER vencendo
+    REMOVER.
+
+    Era um dict comprehension (`{normalizar(d['CARACTERISTICA_CHAVE']): d for
+    d in dados}`), onde o ÚLTIMO item de cada chave vencia. Parecia inofensivo
+    porque o prompt manda a IA não repetir chave -- mas o Master (SAM) traz a
+    mesma característica UMA VEZ POR REVISÃO do PDM, então o contexto enviado
+    à IA tem a característica repetida, e a IA responde na mesma ordem: a
+    linha da revisão atual PREENCHIDA e as das revisões antigas como REMOVER.
+    Com "o último vence", a REMOVER da revisão velha apagava a resposta boa.
+
+    Medido no 1º lote real (ficha 4500063671.1471, PDM.4320.002 com 3
+    revisões no Master): a IA devolveu 37 PREENCHER -- exatamente os 37
+    campos que o fornecedor preencheu na ficha --, e só 21 chegaram ao
+    portal. Os outros 16 viraram exclusão de linha. Não era qualidade do
+    modelo: era este dicionário.
+
+    PREENCHER vence porque a assimetria de dano é enorme: apagar uma linha
+    para a qual existe resposta é perda de informação que ninguém percebe;
+    manter uma linha que poderia ser apagada é, no pior caso, uma linha a
+    mais para revisar. Entre dois itens do mesmo tipo, vence o PRIMEIRO --
+    no Master a revisão vigente vem antes das antigas.
+    """
+    indice = {}
+    for item in dados:
+        chave = normalizar(item['CARACTERISTICA_CHAVE'])
+        atual = indice.get(chave)
+        if atual is None:
+            indice[chave] = item
+            continue
+        if str(atual.get("ACAO", "")).strip().upper() == "PREENCHER":
+            continue  # já temos o bom; nada supera um PREENCHER
+        if str(item.get("ACAO", "")).strip().upper() == "PREENCHER":
+            indice[chave] = item
+    return indice
+
+
+def deduplicar_contexto(lista_contexto):
+    """Uma característica por nome no contexto enviado à IA.
+
+    O Master (SAM) é filtrado só por CÓDIGO PDM, e guarda uma linha por
+    característica POR REVISÃO -- PDM.4320.002 tem 106 linhas em 3 revisões
+    para 51 características reais. Mandar as 106 tem três custos, e nenhum é
+    teórico:
+
+      1. a IA recebe a mesma característica 2-3 vezes e responde 2-3 vezes,
+         com instruções que se contradizem (PREENCHER e REMOVER para a mesma
+         chave) -- a origem do bug dos 16 campos perdidos;
+      2. o prompt dobra de tamanho, e o custo com ele;
+      3. as revisões antigas trazem TIPO_DADO e texto de ajuda DEGRADADOS
+         (na revisão 0 deste PDM, tudo é "CHAR" e a ajuda é vazia), o que
+         empurra a IA para o tipo errado.
+
+    Fica a PRIMEIRA ocorrência: o Master vem ordenado com a revisão vigente
+    à frente das antigas. E a tela do portal mostra cada característica uma
+    vez só, então nada se perde -- o que sobrava não tinha para onde ir.
+    """
+    vistos = set()
+    unicos = []
+    for entrada in lista_contexto:
+        chave = str(entrada.get("CARACTERISTICA_DESC_PT", "")).strip().upper()
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        unicos.append(entrada)
+    return unicos
+
+
 def normalizar_resposta_specs(bruto):
     """Devolve a lista de características da resposta da IA, ou levanta
     `ValueError` dizendo o que veio no lugar.
@@ -301,6 +370,19 @@ class TechSpecsProcessor:
                     "RESPOSTA_CRUA_PT": str(dados_resp['pt']),
                     "RESPOSTA_CRUA_ES": str(dados_resp['es'])
                 })
+
+            # O Master traz uma linha por característica POR REVISÃO do PDM;
+            # a tela do portal mostra cada uma UMA vez. Mandar as repetidas
+            # fazia a IA responder instruções contraditórias para a mesma
+            # chave -- ver `deduplicar_contexto`.
+            total_bruto = len(lista_contexto)
+            lista_contexto = deduplicar_contexto(lista_contexto)
+            if callback_log and total_bruto != len(lista_contexto):
+                callback_log(
+                    f"   [Contexto] {total_bruto} linhas no Master para este PDM "
+                    f"(revisões antigas incluídas) -> {len(lista_contexto)} características "
+                    "únicas enviadas à IA."
+                )
 
             pacote_envio = {
                 "CODIGO_PMIB": codigo_pmib,
@@ -671,7 +753,10 @@ class TechSpecsAutomation:
                 time.sleep(PAUSA_CARGA_TABELA)
 
                 # Dicionário de dados para acesso rápido O(1)
-                dict_dados = {self.normalizar_texto(d['CARACTERISTICA_CHAVE']): d for d in dados}
+                # PREENCHER vence REMOVER na mesma chave -- ver
+                # `indexar_por_caracteristica`. Um dict comprehension aqui
+                # (o último vence) custou 16 dos 37 campos do 1º lote real.
+                dict_dados = indexar_por_caracteristica(dados, self.normalizar_texto)
 
                 # --- LOOP DE PAGINAÇÃO E LINHAS (Restaurado do Original) ---
                 pagina_atual = 1

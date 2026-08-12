@@ -4105,7 +4105,13 @@ class HomeView(ctk.CTkScrollableFrame):
         # --- 1. PROVEDOR ---------------------------------------------------
         # Pré-seleciona o provedor da seleção já salva: reabrir a Home tem de
         # mostrar o que está valendo, não recomeçar do primeiro da lista.
-        provider_salvo = (estado_atual["global"] or {}).get("provider")
+        # A seleção GLOBAL pode estar vazia e mesmo assim haver provedor
+        # escolhido -- é o caso de quem usa só overrides por tarefa (global em
+        # "Padrão do sistema" e as 5 tarefas apontando para o OpenRouter).
+        # Olhar só o global fazia o painel voltar para "gemini" (o 1º da lista
+        # em ordem alfabética) depois de Salvar, desfazendo na cara do usuário
+        # a escolha que ele acabou de fazer.
+        provider_salvo = self._provider_ia_da_selecao(estado_atual)
         if provider_salvo not in providers_com_chave:
             provider_salvo = providers_com_chave[0]
         self.var_provider_ia = ctk.StringVar(value=self._rotulo_provider_ia(provider_salvo))
@@ -4238,6 +4244,31 @@ class HomeView(ctk.CTkScrollableFrame):
 
     def _rotulo_provider_ia(self, provider):
         return self.ROTULO_PROVIDER_IA.get(provider, provider)
+
+    @staticmethod
+    def _provider_ia_da_selecao(estado_atual):
+        """Provedor que a seleção salva usa: o do global, ou -- se o global
+        estiver vazio -- o da maioria dos overrides por tarefa.
+
+        "Maioria" e não "o primeiro" porque `aplicar_recomendados` grava
+        provedores MISTOS de propósito (Grok/OpenRouter só para o PDM, Gemini
+        para o resto); reabrir o painel no provedor de uma única tarefa
+        mostraria a exceção como se fosse a regra.
+        """
+        if not estado_atual:
+            return None
+        global_salvo = estado_atual.get("global") or {}
+        if global_salvo.get("provider"):
+            return global_salvo["provider"]
+
+        contagem = {}
+        for cfg in (estado_atual.get("por_tarefa") or {}).values():
+            provider = (cfg or {}).get("provider")
+            if provider:
+                contagem[provider] = contagem.get(provider, 0) + 1
+        if not contagem:
+            return None
+        return max(sorted(contagem), key=contagem.get)
 
     def _rotulo_modelo_ia(self, fav):
         """Rótulo de um favorito curado -- com preço, que é o que ele
