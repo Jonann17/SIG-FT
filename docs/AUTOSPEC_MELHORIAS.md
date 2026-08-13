@@ -35,6 +35,49 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-17 🔴 Busca web achava, e o próprio código jogava fora *(2026-08-12)*
+
+Falha real, ficha 4500063671.1188 (sensor HYDAC `CS1320-A-0-0-0-1/-000`), **sem PDF anexado**:
+minimax preencheu 3 de 22 especificações, grok preencheu **0 de 22**.
+
+O grok preencher zero foi **obediência, não burrice** — o prompt manda não inventar e ele não
+recebeu contexto nenhum. Os 3 do minimax vieram do conhecimento dele, sem fonte conferível, o
+que é pior que vazio. Trocar de modelo nunca resolveria: o erro estava antes da IA.
+
+Desenho completo, com todas as medições: [`docs/superpowers/specs/2026-08-12-busca-web-datasheet-design.md`](superpowers/specs/2026-08-12-busca-web-datasheet-design.md).
+
+**A hipótese que caiu primeiro.** Suspeita inicial: a razão social `HYDAC TECNOLOGIA LTDA`
+poluía a query. Testado contra busca real — **a query funcionava**, a página certa vinha em 1º
+e 3º lugar. Sem esse teste, a "correção óbvia" teria sido implementada sem resolver nada.
+
+**D1 — o filtro anti-intruso era uma guilhotina.** Exigia a razão social INTEIRA como substring
+do título/link. As páginas dizem `HYDAC`; nenhuma diz `HYDAC TECNOLOGIA LTDA`. O segundo termo
+era o código interno do PMIB, que não existe na internet. **Medido: 0 de 4 resultados corretos
+sobreviviam.** Nada era baixado.
+
+**D2 — a cascata procurava o SKU, não o datasheet.** Buscava só `CS1320-A-0-0-0-1/-000`, que é
+código de configuração de loja. O datasheet é publicado para a FAMÍLIA (`CS 1000 Series`).
+Medido: código completo → páginas de e-commerce; família + `filetype:pdf` → **10 datasheets**.
+
+**Colateral, também medido:** a razão social degrada o ranking (1 relevante de 7, contra 10 de
+10 sem ela). A hipótese inicial não estava errada — estava **incompleta**.
+
+| | Antes | Depois |
+|---|---|---|
+| Resultados corretos que passam o filtro | 0/4 | 3/4 |
+| Concorrente (Parker) barrado | sim | sim |
+| Queries que pedem PDF | 0 | 2 |
+| Busca pela família do produto | não | sim |
+
+Descartar 100% dos resultados virou `warn` listando os termos — era linha `info` no meio das
+outras, e foi ela que escondeu a falha.
+
+24 testes com os resultados **reais** do Google como fixture; red-green conferido revertendo o
+código (22 failed → 24 passed).
+
+> **Não resolvido:** seguir o link do PDF dentro da página do produto (mini-crawler), e página
+> de fabricante em JavaScript, cujo HTML estático é magro. Ver §6 do desenho.
+
 ### ✅ R-16 🔴 Cache de resposta da IA — 100% de economia no rerun *(2026-08-12)*
 
 Reprocessar um lote é o **normal**, não a exceção: se um campo saiu errado, o usuário ajusta a

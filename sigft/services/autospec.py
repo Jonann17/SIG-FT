@@ -2,6 +2,7 @@ import os
 import re
 import json
 import hashlib
+import unicodedata
 import requests
 import tempfile
 import openpyxl
@@ -592,6 +593,87 @@ def _sufixo_para_url(url, content_type=None):
     return ".html"
 
 
+# =============================================================================
+# CASAMENTO DE TERMO — o que o fabricante ESCREVE vs. o que a planilha GUARDA
+# =============================================================================
+# A planilha do PMIB guarda a RAZÃO SOCIAL brasileira (`HYDAC TECNOLOGIA
+# LTDA`); o datasheet e o site do fabricante dizem `HYDAC`, `HYDAC Technology
+# Corporation`, `HYDAC International`. Esta distância entre os dois mundos foi
+# a causa raiz da falha de 2026-08-12 (ficha 4500063671.1188, 0 de 22 campos
+# preenchidos) — ver `tests/test_autospec_busca_web_falha_real.py`.
+#
+# Palavras que compõem razão social e NÃO aparecem em documento técnico.
+# `TECNOLOGIA` está aqui de propósito: é parte do nome jurídico da Hydac no
+# Brasil, não do nome pelo qual o produto é publicado.
+_RUIDO_RAZAO_SOCIAL = frozenset({
+    "ltda", "ltda.", "sa", "s.a", "s.a.", "s/a", "eireli", "me", "epp",
+    "cia", "cia.", "companhia", "industria", "industrias", "ind", "ind.",
+    "comercio", "com", "com.", "comercial", "tecnologia", "tecnologias",
+    "do", "da", "de", "dos", "das", "e", "brasil", "brazil",
+    "gmbh", "inc", "inc.", "corp", "corp.", "corporation", "co", "co.",
+    "llc", "ag", "kg", "bv", "nv", "spa", "srl", "plc", "sas",
+    "group", "grupo", "sistemas", "equipamentos", "servicos",
+    "importacao", "exportacao", "distribuidora", "representacoes",
+})
+
+
+def _sem_acento(texto):
+    """`válvula` -> `valvula`. A planilha tem acento; URL e título, não."""
+    normalizado = unicodedata.normalize("NFD", str(texto or ""))
+    return "".join(c for c in normalizado if unicodedata.category(c) != "Mn")
+
+
+def _normalizar_texto_busca(texto):
+    """Minúsculas, sem acento — a forma em que dois textos são comparáveis."""
+    return _sem_acento(texto).lower()
+
+
+def _compactar_codigo(texto):
+    """Só letras e dígitos: `CS 1000 Series` e `CS-1000` viram `cs1000series`
+    e `cs1000`.
+
+    Existe porque fabricante escreve o mesmo código de três jeitos —
+    `CS1320`, `CS 1320`, `CS-1320` — e o casamento por substring falharia em
+    dois deles. Aplicado só a código de peça, nunca a texto corrido.
+    """
+    return re.sub(r"[^a-z0-9]", "", _normalizar_texto_busca(texto))
+
+
+def _resultado_e_relevante(termos, title, snippet, link):
+    """Filtro anti-intruso (regras de negócio §4.3): o resultado cita o
+    fabricante ou o código do material?
+
+    Sem termo nenhum, tudo passa — filtrar por nada barraria tudo, e material
+    sem fabricante nem código existe.
+
+    **Por que não é mais `termo in titulo`.** Era, até 2026-08-12, e por isso
+    descartava 4 de 4 resultados corretos: o termo era a razão social inteira
+    (`hydac tecnologia ltda`), que não aparece em página nenhuma. Agora cada
+    termo casa de duas formas, e basta UMA:
+
+      1. como texto normalizado (sem acento, sem caixa);
+      2. como código compactado (sem separador), o que faz `CS1320` casar com
+         `CS 1320` e com `CS-1320`.
+
+    O casamento compactado exige 3+ caracteres para não transformar um termo
+    curto (`SA`, `GE`) em coringa que aprova qualquer página.
+    """
+    if not termos:
+        return True
+
+    alvo = _normalizar_texto_busca(f"{title} {snippet} {link}")
+    alvo_compacto = _compactar_codigo(alvo)
+
+    for termo in termos:
+        limpo = _normalizar_texto_busca(termo).strip()
+        if limpo and limpo in alvo:
+            return True
+        compacto = _compactar_codigo(termo)
+        if len(compacto) >= 3 and compacto in alvo_compacto:
+            return True
+    return False
+
+
 # -----------------------------------------------------------------
 # 2. CLASSES UTILITÁRIAS (Busca e PDF)
 # -----------------------------------------------------------------
@@ -652,18 +734,14 @@ class WebSearcher:
         results = []
         descartados = 0
         for item in items:
-            link = item.get('link', '').lower()
-            title = item.get('title', '').lower()
-            snippet = item.get('snippet', '').lower()
-            is_relevant = False
-            if not required_terms:
-                is_relevant = True
-            else:
-                for term in required_terms:
-                    term_clean = str(term).lower().strip()
-                    if term_clean and (term_clean in title or term_clean in snippet or term_clean in link):
-                        is_relevant = True; break
-            if not is_relevant:
+            # A URL vai para o download SEM `.lower()` (2026-08-12): caminho
+            # de URL é sensível a caixa em boa parte dos servidores, e
+            # baixar a versão minúscula devolvia 404 em arquivo cujo nome
+            # tinha maiúscula. A comparação é que normaliza, não o dado.
+            link = item.get('link', '') or ''
+            title = item.get('title', '') or ''
+            snippet = item.get('snippet', '') or ''
+            if not _resultado_e_relevante(required_terms, title, snippet, link):
                 # Filtro anti-intruso (regras de negócio §4.3): catálogo de
                 # concorrente barrado por não citar fabricante nem código.
                 descartados += 1
@@ -672,7 +750,20 @@ class WebSearcher:
             if filepath:
                 results.append({"path": filepath, "url": link, "title": title})
 
-        if descartados:
+        if descartados and descartados == len(items):
+            # Descartar TUDO nunca é rotina — é sintoma de termo de filtro
+            # errado, e foi exatamente o que escondeu a falha de 2026-08-12
+            # (a linha antiga dizia "descartou 10 de 10" em nível `info`, no
+            # meio de outras, como se fosse normal). Agora grita, e diz por
+            # quais termos, que é o que permite diagnosticar em 5 segundos.
+            cb.log(
+                f"Filtro anti-intruso descartou TODOS os {len(items)} resultado(s) desta "
+                f"busca. Nenhum cita: {', '.join(str(t) for t in required_terms)}. "
+                f"Se o documento certo estava entre eles, o termo do filtro e que esta "
+                f"errado — confira o nome do fabricante e o codigo na planilha.",
+                nivel="warn",
+            )
+        elif descartados:
             cb.log(
                 f"Filtro anti-intruso descartou {descartados} de {len(items)} resultado(s) "
                 f"(nao citam fabricante nem codigo do material).",
@@ -1214,6 +1305,86 @@ class AutoSpecCore:
                 achados.append(token)
         return achados
 
+    @staticmethod
+    def _nome_curto_fabricante(fab):
+        """`HYDAC TECNOLOGIA LTDA` -> `HYDAC`. O nome pelo qual o produto é
+        PUBLICADO, não o nome jurídico pelo qual ele é comprado.
+
+        Medido em 2026-08-12, na mesma busca com e sem a razão social:
+        `HYDAC TECNOLOGIA LTDA CS1320 datasheet filetype:pdf` devolveu **1
+        resultado relevante de 7** (o primeiro era um datasheet de bateria de
+        lítio); trocando por `HYDAC`, **10 de 10** eram datasheets do CS1000.
+        A razão social não quebra a busca — degrada o ranking, e o bastante
+        para o documento certo cair fora das primeiras posições.
+
+        Devolve o nome ORIGINAL quando a limpeza não sobra nada (empresa cujo
+        nome é só termo genérico). Ficar sem fabricante seria pior: é ele que
+        ancora o filtro anti-intruso.
+        """
+        bruto = str(fab or "").strip()
+        if not bruto:
+            return ""
+        mantidas = [
+            palavra for palavra in bruto.split()
+            if _normalizar_texto_busca(palavra).strip(".,") not in _RUIDO_RAZAO_SOCIAL
+        ]
+        return " ".join(mantidas) if mantidas else bruto
+
+    @staticmethod
+    def _familia_do_identificador(identificador):
+        """`CS1320-A-0-0-0-1/-000` -> `CS1320`. String vazia quando não há
+        família distinta a procurar.
+
+        **Por que isto existe.** `CS1320-A-0-0-0-1/-000` é o código de
+        CONFIGURAÇÃO: identifica um SKU de loja. O datasheet não é publicado
+        por SKU, é publicado pela FAMÍLIA (`ContaminationSensor CS 1000
+        Series`). Medido em 2026-08-12: procurar o código completo devolve
+        página de e-commerce em HTML; procurar a família com `filetype:pdf`
+        devolve 10 datasheets de verdade.
+
+        Corta no primeiro separador (`-` ou `/`). Exige dígito e 3+ caracteres
+        na sobra — `ABC-1` não é código de peça, e devolver `ABC` como família
+        traria qualquer coisa.
+        """
+        bruto = str(identificador or "").strip()
+        base = re.split(r"[-/]", bruto)[0]
+        if base == bruto:
+            return ""  # não havia separador: a família seria o próprio termo
+        if len(base) < 3 or not any(c.isdigit() for c in base):
+            return ""
+        return base
+
+    @classmethod
+    def _termos_do_filtro(cls, fab, cod_mat, txt_brv):
+        """Termos que um resultado precisa citar para não ser descartado.
+
+        Antes de 2026-08-12 era `[fab, cod_mat]` — a razão social inteira e o
+        código INTERNO do PMIB. Nenhum dos dois aparece em página de
+        fabricante, e o filtro descartava 100% dos resultados corretos.
+        Agora entram também os identificadores da descrição e suas famílias,
+        que são o que a página realmente cita.
+        """
+        termos = []
+        curto = cls._nome_curto_fabricante(fab)
+        if curto and len(curto) > 2:
+            termos.extend(p for p in curto.split() if len(p) > 2)
+        if cod_mat and len(str(cod_mat)) > 2:
+            termos.append(str(cod_mat))
+        for ident in cls._identificadores(txt_brv):
+            termos.append(ident)
+            familia = cls._familia_do_identificador(ident)
+            if familia:
+                termos.append(familia)
+
+        vistos = set()
+        unicos = []
+        for t in termos:
+            chave = _normalizar_texto_busca(t)
+            if chave not in vistos:
+                vistos.add(chave)
+                unicos.append(t)
+        return unicos
+
     @classmethod
     def _montar_queries_busca(cls, txt_brv, fab, cod_mat):
         """Cascata de busca web, do mais específico ao mais genérico.
@@ -1251,20 +1422,35 @@ class AutoSpecCore:
         # O texto vem da planilha e costuma trazer espaço duplo e sobra no
         # fim (visto na ficha real 4500063671.0662): `.split()` normaliza.
         tokens = str(txt_brv or "").split()
-        fab_txt = str(fab or "").strip()
+        # 2026-08-12: nome CURTO, não a razão social — ver
+        # `_nome_curto_fabricante` para os números que motivaram a troca.
+        fab_txt = cls._nome_curto_fabricante(fab)
         ids = cls._identificadores(txt_brv)
+        familias = [f for f in (cls._familia_do_identificador(i) for i in ids) if f]
 
         queries = []
         if cod_mat:
             queries.append(f'"{cod_mat}" {fab_txt} datasheet'.strip())
 
         if ids:
-            queries.append(f"{fab_txt} {' '.join(ids)} datasheet".strip())
-            if len(ids) > 1:
-                # O identificador mais longo costuma ser o modelo
-                # ("PVF100-4"), mais reconhecível que o código interno.
-                principal = max(ids, key=len)
-                queries.append(f"{fab_txt} {principal} datasheet".strip())
+            todos = " ".join(ids)
+            # PDF antes de HTML, com o código EXATO: o datasheet é o que se
+            # quer; página de loja é o consolo.
+            queries.append(f"{fab_txt} {todos} datasheet filetype:pdf".strip())
+            queries.append(f"{fab_txt} {todos} datasheet".strip())
+
+        # A FAMÍLIA vem depois do código exato, nunca antes: a cascata para na
+        # primeira query que rende documento, e o datasheet da família certa
+        # com a configuração errada é melhor que nada — mas pior que o exato.
+        for familia in familias:
+            queries.append(f"{fab_txt} {familia} datasheet filetype:pdf".strip())
+            queries.append(f"{fab_txt} {familia} datasheet".strip())
+
+        if len(ids) > 1:
+            # O identificador mais longo costuma ser o modelo
+            # ("PVF100-4"), mais reconhecível que o código interno.
+            principal = max(ids, key=len)
+            queries.append(f"{fab_txt} {principal} datasheet".strip())
 
         # Fallback: a cascata de prosa de antes. Só é alcançada se as queries
         # por identificador não renderem — e é a ÚNICA opção quando a
@@ -1301,9 +1487,12 @@ class AutoSpecCore:
             )
             return (local_txt + "\n\n" + web_txt), sources
 
-        required = []
-        if fab and len(fab) > 2: required.append(fab)
-        if cod_mat and len(cod_mat) > 2: required.append(cod_mat)
+        # 2026-08-12: era `[fab, cod_mat]` — a razão social inteira e o código
+        # interno do PMIB, nenhum dos dois presente em página de fabricante.
+        # O filtro descartava 100% dos resultados certos. Ver
+        # `_termos_do_filtro` e a regressão em
+        # `tests/test_autospec_busca_web_falha_real.py`.
+        required = self._termos_do_filtro(fab, cod_mat, txt_brv)
 
         queries = self._montar_queries_busca(txt_brv, fab, cod_mat)
 
