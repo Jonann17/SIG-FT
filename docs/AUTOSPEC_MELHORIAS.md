@@ -35,6 +35,59 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-19 🔴 Lastro documental + glossário em 5 idiomas *(2026-08-13)*
+
+Pedido do usuário: *"não gostei do ato de aceitar uma informação errada. Isto não deve
+acontecer."*
+
+Desenho completo: [`docs/superpowers/specs/2026-08-13-lastro-documental-design.md`](superpowers/specs/2026-08-13-lastro-documental-design.md).
+
+**A resposta honesta primeiro.** "Correto" não é verificável por código — se o datasheet do
+fabricante estiver errado, nenhuma verificação automática descobre. **"Rastreável ao documento"
+é 100% verificável**, e é a garantia mais forte que existe aqui. Agora são três camadas:
+
+| Camada | Pergunta |
+|---|---|
+| 1. Filtro anti-intruso (§4.3) | o documento é **deste material**? |
+| 2. **Lastro documental** (novo) | o valor **saiu mesmo do documento**? |
+| 3. Conferência humana | o documento **está certo**? |
+
+**A regra:** se o valor tem número, **todos** os números precisam estar no contexto — basta um
+inventado para o campo ficar vazio. `"entre 175 e 999 bar"` cai mesmo com o `175` correto:
+meia verdade num campo técnico é pior que campo vazio, porque passa na conferência por parecer
+certa. Números são normalizados (`25,4` = `25.40` = `25.4`) para não descartar valor certo por
+pontuação.
+
+**Consequência assumida:** conversão de unidade reprova. `0,4 MPa` quando o documento diz
+`4 bar` fica vazio, e o console diz. Na dúvida, vazio.
+
+**Isento:** os 12 `GENERATIVE_FIELDS` (embalagem, transporte, descarte…), que as regras §3.2
+mandam gerar de conhecimento técnico e não têm datasheet de onde sair.
+
+Demonstrado contra um documento que diz `IP67`:
+
+```
+[warn] 3 campo(s) ficaram VAZIOS porque o valor respondido nao aparece no documento:
+       · 13 - GRAU DE PROTECAO      -> a IA respondeu 'IP65'
+       · 17 - FAIXA DE TENSAO (CC)  -> a IA respondeu '35 MPa'
+[warn] 1 campo(s) citam uma fonte que NAO esta entre os documentos lidos
+```
+
+`IP65` contra `IP67` é o erro que passaria na conferência humana por ser plausível. Não chega
+à célula.
+
+**Rastreabilidade já existia** (P-04, a lista `-> Origem dos dados` do console). Agora tem duas
+vizinhas — campos não respondidos e campos bloqueados — e as três descrevem o destino de
+**todo** campo que faltava.
+
+**Glossário multilíngue (PT/EN/DE/ES/FR/IT), 318 equivalentes.** O parque de Itaipu é Voith,
+Siemens, HYDAC, Andritz (alemão), Alstom/GE Hydro (francês), e a entidade é **binacional** —
+espanhol é idioma oficial. Antes, datasheet alemão não casava termo nenhum (`pressao` ≠
+`Druck`) e o trecho com a resposta era recortado fora. Verificado nos 4 idiomas: 6/6 dados
+preservados em cada um.
+
+54 testes novos.
+
 ### ✅ R-18 🔴 Fichas difíceis — o que ia quebrar depois que a 1188 passou *(2026-08-12)*
 
 A 1188 passou (28 de 29 campos, 21 com URL de origem). Ela é o caso **fácil**. Este item cobre

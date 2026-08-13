@@ -334,6 +334,98 @@ def _cache_busca_gravar(query, items, agora=None):
 
 
 # =============================================================================
+# LASTRO DOCUMENTAL — o valor respondido está mesmo no documento?
+# =============================================================================
+# Pedido do usuário em 2026-08-13: "não gostei do ato de aceitar uma
+# informação errada. Isto não deve acontecer."
+#
+# O QUE ISTO GARANTE, E O QUE NÃO GARANTE — a distinção importa.
+#
+# Garante: todo valor escrito num campo TÉCNICO aparece literalmente no
+# documento que foi lido. Número que a IA respondeu e que não existe em lugar
+# nenhum do contexto não chega à célula; o campo fica vazio e o console diz
+# qual foi. Isso é verificável por código, sem probabilidade envolvida.
+#
+# NÃO garante "correto" no sentido de engenharia. Se o próprio datasheet
+# estiver errado, ou for de outra peça, o valor tem lastro e mesmo assim está
+# errado. Por isso o lastro é a SEGUNDA camada de três:
+#
+#   1. filtro anti-intruso (§4.3) — o documento é deste material?
+#   2. lastro documental (aqui)   — o valor saiu mesmo do documento?
+#   3. conferência humana         — a lista de origens por campo, no console
+#
+# Nenhuma das três sozinha basta. Juntas, o caminho para um dado errado
+# entrar na ficha exige que o documento seja do material certo E que o valor
+# esteja escrito nele.
+_RE_NUMERO = re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def _numeros_normalizados(texto):
+    """Números de um texto, comparáveis: `25,4` e `25.40` viram ambos `25.4`.
+
+    Fabricante escreve decimal com ponto, planilha brasileira com vírgula, e
+    a IA copia ora um ora outro. Sem normalizar, o valor certo seria
+    descartado por diferença de pontuação.
+    """
+    achados = set()
+    for bruto in _RE_NUMERO.findall(str(texto or "")):
+        n = bruto.replace(",", ".")
+        if "." in n:
+            n = n.rstrip("0").rstrip(".")
+        achados.add(n or "0")
+    return achados
+
+
+def valor_tem_lastro(valor, contexto):
+    """O valor respondido é rastreável ao contexto que foi enviado?
+
+    Duas regras, nesta ordem:
+
+    1. **Se o valor tem número, TODOS os números precisam estar no contexto.**
+       Basta um inventado para reprovar — `"entre 175 e 999 bar"` cai mesmo
+       com o 175 correto. Meia verdade num campo técnico é pior que campo
+       vazio, porque passa na conferência por parecer certa.
+
+    2. **Se não tem número**, exige que alguma palavra de 4+ letras apareça
+       no contexto (`NBR`, `Nitrile`). Valor curto sem palavra longa
+       (`"N/A"`, `"X"`) passa: não há o que verificar, e não é dado técnico.
+
+    Consequência ASSUMIDA: conversão de unidade reprova. `0,4 MPa` quando o
+    documento diz `4 bar` não tem o `0.4` escrito em lugar nenhum, então o
+    campo fica vazio e o console avisa. É o comportamento pedido — na dúvida,
+    vazio, e o engenheiro preenche à mão.
+    """
+    texto = str(valor if valor is not None else "").strip()
+    if not texto:
+        return True  # vazio não precisa de lastro; não vai escrever nada
+
+    ctx = _normalizar_texto_busca(contexto)
+    numeros_valor = _numeros_normalizados(texto)
+    if numeros_valor:
+        return numeros_valor <= _numeros_normalizados(ctx)
+
+    palavras = re.findall(r"[a-z]{4,}", _normalizar_texto_busca(texto))
+    if not palavras:
+        return True
+    return any(p in ctx for p in palavras)
+
+
+def origens_do_contexto(contexto):
+    """Nomes/URLs que aparecem nos marcadores `--- LOCAL DOC: x ---`.
+
+    São os documentos que REALMENTE foram lidos. Uma fonte citada pela IA que
+    não esteja aqui é sinal de invenção — e o engenheiro precisa saber disso
+    antes de homologar.
+    """
+    return set(re.findall(r"---\s*(?:LOCAL|WEB) DOC:\s*(.+?)\s*---", str(contexto or "")))
+
+
+# Fontes que NÃO são documento e são legítimas: os campos gerativos
+# (embalagem, transporte, descarte) saem de conhecimento técnico por desenho.
+_FONTES_SEM_DOCUMENTO = ("conhecimento", "tecnico", "técnico", "padrao", "padrão", "boa pratica")
+
+
+# =============================================================================
 # CACHE DE RESPOSTA DA IA — 100% de economia ao reprocessar a mesma ficha
 # =============================================================================
 # O cache de busca (acima) poupa COTA da CSE; este poupa TOKEN, que e o custo
@@ -1027,6 +1119,11 @@ class AutoSpecCore:
         # querer comparar dois modelos na MESMA ficha, em que servir a
         # resposta guardada mascararia justamente o que se quer medir.
         self.usar_cache_resposta = True
+        # Lastro documental LIGADO por padrão (2026-08-13, pedido do
+        # usuário): campo técnico só é preenchido quando o valor aparece no
+        # documento lido. Desligar existe para diagnóstico — ver
+        # `valor_tem_lastro` para o que isto garante e o que não garante.
+        self.exigir_lastro = True
         # O diagnostico do reforco semantico e emitido uma vez so por
         # instancia -- repeti-lo a cada ficha do lote seria ruido.
         self._diagnostico_rag_emitido = False
@@ -1816,9 +1913,10 @@ class AutoSpecCore:
                     f"Resposta da IA reaproveitada do cache — nenhum token gasto "
                     f"nesta ficha ({txt_brv})."
                 )
-                return self._normalizar_resposta_ia(
+                valores = self._normalizar_resposta_ia(
                     guardada, campos_pedidos=missing.keys(), callbacks=cb
                 )
+                return self._conferir_e_filtrar(valores, missing, contexto_final, cb)
 
         try:
             # [CP 3.2] LangChain removido -- `_limpar_e_parsear_json` do
@@ -1844,9 +1942,10 @@ class AutoSpecCore:
             )
             if self.usar_cache_resposta:
                 _cache_resposta_gravar(chave_cache, resp.parsed_json)
-            return self._normalizar_resposta_ia(
+            valores = self._normalizar_resposta_ia(
                 resp.parsed_json, campos_pedidos=missing.keys(), callbacks=cb
             )
+            return self._conferir_e_filtrar(valores, missing, contexto_final, cb)
         except Exception as e:
             # Até 2026-08-11 isto era `print(f"Erro IA: {e}")` -- ia para o
             # stdout, ou seja, a janela preta que ninguém olha. O CP 4.4
@@ -1854,6 +1953,80 @@ class AutoSpecCore:
             # fora: a ficha voltava vazia sem nenhuma explicação visível.
             cb.log(f"Chamada de IA falhou ({type(e).__name__}: {e}).", nivel="error")
             return {}
+
+    def _conferir_e_filtrar(self, valores, missing, contexto, callbacks=None):
+        """As duas conferências pós-resposta, num ponto só.
+
+        Existe para que o caminho VIVO e o caminho do CACHE não possam
+        divergir: um acerto de cache não pode virar porta de entrada para
+        valor sem lastro.
+        """
+        self._conferir_fontes_citadas(contexto, callbacks)
+        if not getattr(self, "exigir_lastro", True):
+            return valores
+        return self._filtrar_por_lastro(valores, missing, contexto, callbacks)
+
+    def _filtrar_por_lastro(self, valores, missing, contexto, callbacks=None):
+        """Deixa passar só o que está no documento. Ver `valor_tem_lastro`.
+
+        Os 12 `GENERATIVE_FIELDS` são isentos: as regras de negócio §3.2
+        pedem que eles sejam GERADOS de conhecimento técnico (embalagem,
+        transporte, descarte), e não há datasheet de onde saírem. Exigir
+        lastro deles esvaziaria metade da ficha por desenho.
+        """
+        cb = callbacks or _callbacks_silenciosos()
+        aprovados = {}
+        reprovados = []
+
+        for campo, valor in (valores or {}).items():
+            if campo in GENERATIVE_FIELDS:
+                aprovados[campo] = valor
+                continue
+            if valor_tem_lastro(valor, contexto):
+                aprovados[campo] = valor
+                continue
+            descricao = (missing.get(campo) or {}).get("desc") or campo
+            reprovados.append((str(descricao), str(valor)))
+
+        if reprovados:
+            cb.log(
+                f"{len(reprovados)} campo(s) ficaram VAZIOS porque o valor respondido nao "
+                f"aparece no documento lido. Preencha a mao, conferindo na fonte:",
+                nivel="warn",
+            )
+            for descricao, valor in reprovados:
+                cb.log(f"      · {descricao[:70]} -> a IA respondeu {valor[:40]!r}", nivel="warn")
+        return aprovados
+
+    def _conferir_fontes_citadas(self, contexto, callbacks=None):
+        """Denuncia fonte citada que não corresponde a documento lido.
+
+        Não descarta o valor: se ele tem lastro, o dado está no documento e a
+        etiqueta é que veio errada. Mas citar um documento que nunca existiu
+        é sinal de invenção, e quem vai homologar precisa saber.
+        """
+        cb = callbacks or _callbacks_silenciosos()
+        reais = origens_do_contexto(contexto)
+        suspeitas = []
+        for campo, fonte in (getattr(self, "ultimas_fontes_por_campo", {}) or {}).items():
+            texto = str(fonte or "").strip()
+            if not texto:
+                continue
+            normal = _normalizar_texto_busca(texto)
+            if any(marca in normal for marca in _FONTES_SEM_DOCUMENTO):
+                continue
+            if any(real and (real in texto or texto in real) for real in reais):
+                continue
+            suspeitas.append((campo, texto))
+
+        if suspeitas:
+            cb.log(
+                f"{len(suspeitas)} campo(s) citam uma fonte que NAO esta entre os "
+                f"documentos lidos — confira estes com atencao redobrada:",
+                nivel="warn",
+            )
+            for campo, fonte in suspeitas[:10]:
+                cb.log(f"      · {campo}: {fonte[:80]}", nivel="warn")
 
     def _reordenador_semantico(self):
         """Gancho do reforço semântico OPCIONAL (`autospec_embeddings.py`).

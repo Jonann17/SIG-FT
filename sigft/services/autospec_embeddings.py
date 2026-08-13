@@ -26,8 +26,8 @@ Três razões, na ordem em que pesam:
 
 O QUE ELE ACRESCENTA, QUANDO ESTÁ DISPONÍVEL
 ------------------------------------------------------------------------
-O glossário PT->EN de `autospec_rag` cobre o vocabulário técnico previsto —
-`pressao`->`pressure`, `peso`->`weight`. O que ele NÃO cobre é o termo que
+O glossário multilíngue de `autospec_rag` (PT/EN/DE/ES/FR/IT) cobre o
+vocabulário técnico previsto — `pressao`->`pressure`/`druck`/`presion`. O que ele NÃO cobre é o termo que
 ninguém pensou em cadastrar: uma pergunta sobre "resistência à corrosão"
 casando com uma seção "Corrosion resistance / salt spray test", ou "vida útil"
 com "service life expectancy". É aí que o semântico ganha, e é por isso que
@@ -166,6 +166,7 @@ def diagnostico(modelo=MODELO_PADRAO):
         return f"Reforco semantico ATIVO (modelo {modelo})."
     return (
         "Reforco semantico INATIVO — retrieval rodando so com BM25 + glossario "
-        "PT/EN, que e o caminho padrao. Para ligar: `pip install fastembed` "
+        "multilingue (PT/EN/DE/ES/FR/IT), que e o caminho padrao. Para ligar: "
+        "`pip install fastembed` "
         "(baixa ~100 MB no 1o uso; pode ser bloqueado por proxy corporativo)."
     )
