@@ -390,10 +390,13 @@ def valor_tem_lastro(valor, contexto):
        no contexto (`NBR`, `Nitrile`). Valor curto sem palavra longa
        (`"N/A"`, `"X"`) passa: não há o que verificar, e não é dado técnico.
 
-    Consequência ASSUMIDA: conversão de unidade reprova. `0,4 MPa` quando o
-    documento diz `4 bar` não tem o `0.4` escrito em lugar nenhum, então o
-    campo fica vazio e o console avisa. É o comportamento pedido — na dúvida,
-    vazio, e o engenheiro preenche à mão.
+    **Conversão de unidade é CONFERIDA, não reprovada** (2026-08-13, ajuste
+    pedido pelo usuário). `35 MPa` a partir de `350 bar` não tem o `35`
+    escrito em lugar nenhum, mas é conversão correta e não pode ser
+    descartada. Quem confere é `autospec_unidades.conferir_texto`, que
+    **refaz a conta** a partir do número do documento — não confia no cálculo
+    da IA. `3,5 MPa` a partir de `350 bar` continua reprovando, e é justamente
+    o erro de ordem de grandeza que ninguém percebe olhando.
     """
     texto = str(valor if valor is not None else "").strip()
     if not texto:
@@ -402,12 +405,31 @@ def valor_tem_lastro(valor, contexto):
     ctx = _normalizar_texto_busca(contexto)
     numeros_valor = _numeros_normalizados(texto)
     if numeros_valor:
-        return numeros_valor <= _numeros_normalizados(ctx)
+        if numeros_valor <= _numeros_normalizados(ctx):
+            return True
+        return bool(explicar_conversao(texto, contexto))
 
     palavras = re.findall(r"[a-z]{4,}", _normalizar_texto_busca(texto))
     if not palavras:
         return True
     return any(p in ctx for p in palavras)
+
+
+def explicar_conversao(valor, contexto):
+    """Explicações da conversão, ou lista vazia se não for conversão válida.
+
+    Fica aqui, e não dentro de `valor_tem_lastro`, porque quem filtra precisa
+    do MESMO resultado duas vezes: para decidir se aprova e para dizer no
+    console de onde veio o número. Calcular uma vez e passar adiante evitaria
+    a segunda chamada, mas custaria clareza no ponto de uso — e são dezenas
+    de campos, não milhões.
+    """
+    try:
+        from sigft.services import autospec_unidades
+    except ImportError:
+        return []
+    ok, explicacoes = autospec_unidades.conferir_texto(valor, contexto)
+    return explicacoes if ok else []
 
 
 def origens_do_contexto(contexto):
@@ -803,6 +825,66 @@ def _resultado_e_relevante(termos, title, snippet, link):
     return False
 
 
+def tentar_navegador(url, callbacks=None, ligado=True, _robots=None, _navegador=None):
+    """Último recurso: renderiza a página num navegador de verdade.
+
+    **A ordem é a política.** Só chega aqui depois de o download simples
+    falhar, e só prossegue se o `robots.txt` do domínio permitir. Um site
+    que diz "não" continua recebendo "está bem" — isto não é um
+    contornador de bloqueio, é uma forma de ler página que só existe
+    depois do JavaScript (ver `core/web/navegador.py`).
+
+    Devolve o caminho de um `.txt` temporário com o texto renderizado, ou
+    `None`. `.txt` e não `.html` de propósito: o conteúdo já é texto
+    extraído, e passá-lo pelo BeautifulSoup de novo não acrescenta nada.
+    """
+    cb = callbacks or _callbacks_silenciosos()
+    if not ligado:
+        return None
+
+    try:
+        if _robots is None:
+            from sigft.core.web import robots as _robots
+        if _navegador is None:
+            from sigft.core.web import navegador as _navegador
+    except ImportError:
+        return None
+
+    if not _robots.pode_acessar(url):
+        cb.log(
+            f"Nao vou insistir com navegador: o robots.txt do site nao permite (ou nao "
+            f"pode ser lido). Respeitar isso e decisao de projeto: {url}",
+            nivel="info",
+        )
+        return None
+
+    if not _navegador.disponivel():
+        cb.log(
+            "Playwright nao instalado — sem ele nao da para ler pagina que so existe "
+            "depois do JavaScript. Rode o Instalar-Playwright.bat se quiser esse "
+            "recurso.",
+            nivel="info",
+        )
+        return None
+
+    cb.log(f"Tentando com navegador (ultimo recurso, pode demorar): {url}")
+    texto = _navegador.texto_da_pagina(url)
+    if not texto:
+        cb.log(f"O navegador tambem nao trouxe conteudo util: {url}", nivel="warn")
+        return None
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=".txt", mode="w", encoding="utf-8"
+        ) as arquivo:
+            arquivo.write(texto)
+            cb.log(f"Navegador leu {len(texto)} chars que o download simples nao via.")
+            return arquivo.name
+    except Exception as e:
+        cb.log(f"Nao consegui salvar o texto do navegador ({type(e).__name__}).", nivel="warn")
+        return None
+
+
 # -----------------------------------------------------------------
 # 2. CLASSES UTILITÁRIAS (Busca e PDF)
 # -----------------------------------------------------------------
@@ -811,6 +893,9 @@ class WebSearcher:
         self.api_key = api_key
         self.cse_id = cse_id
         self.search_url = "https://www.googleapis.com/customsearch/v1"
+        # Espelha `AutoSpecCore.usar_navegador_ultimo_recurso`; o core
+        # sincroniza no `__init__` dele.
+        self.usar_navegador_ultimo_recurso = True
         self.headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
 
     def search_and_download(self, query, required_terms=[], max_results=RESULTADOS_POR_BUSCA, callbacks=None):
@@ -921,11 +1006,12 @@ class WebSearcher:
                 # repetir: site de fabricante bloqueia robô. Dizer "recusado"
                 # sem mais nada parece defeito do app, e não é.
                 cb.log(
-                    f"Site bloqueou o download automatico (HTTP 403) — e o site que "
-                    f"recusa robo, nao um erro do SIG-FT: {url}",
+                    f"Site bloqueou o download automatico (HTTP 403): {url}",
                     nivel="warn",
                 )
-                return None
+                return tentar_navegador(
+                    url, callbacks=cb, ligado=self.usar_navegador_ultimo_recurso
+                )
             if response.status_code != 200:
                 cb.log(f"Download recusado (HTTP {response.status_code}): {url}", nivel="warn")
                 return None
@@ -1124,6 +1210,13 @@ class AutoSpecCore:
         # documento lido. Desligar existe para diagnóstico — ver
         # `valor_tem_lastro` para o que isto garante e o que não garante.
         self.exigir_lastro = True
+        # Navegador como ÚLTIMO recurso (2026-08-13): só depois de o download
+        # simples falhar, e só se o robots.txt do domínio permitir. Ver
+        # `_tentar_navegador` — a ordem é a política.
+        self.usar_navegador_ultimo_recurso = True
+        # O buscador tem a mesma chave; sincronizadas aqui para que desligar
+        # num lugar desligue nos dois caminhos (403 e pagina vazia).
+        self.searcher.usar_navegador_ultimo_recurso = self.usar_navegador_ultimo_recurso
         # O diagnostico do reforco semantico e emitido uma vez so por
         # instancia -- repeti-lo a cada ficha do lote seria ruido.
         self._diagnostico_rag_emitido = False
@@ -1772,10 +1865,35 @@ class AutoSpecCore:
                     aproveitados += 1
                     cb.log(f"Documento web aproveitado ({m}, {len(t)} chars): {item['url']}")
                 else:
+                    # Baixou, mas veio quase vazio — é a assinatura de página
+                    # que só existe depois do JavaScript (`hydac.com/shop` é
+                    # assim). Pior que o 403, porque o documento "chegou" e
+                    # não parece falha. Aqui também vale o último recurso.
                     cb.log(
-                        f"Documento web descartado (texto insuficiente): {item['url']}",
+                        f"Documento web veio quase vazio ({len(t or '')} chars) — pode ser "
+                        f"pagina que so monta com JavaScript: {item['url']}",
                         nivel="warn",
                     )
+                    renderizado = self._tentar_navegador(item['url'], callbacks=cb)
+                    if renderizado:
+                        t2, m2 = self.pdf_parser.extract_text(
+                            renderizado, callbacks=cb, nome_exibicao=item.get('url')
+                        )
+                        try:
+                            os.remove(renderizado)
+                        except Exception:
+                            pass
+                        if t2 and len(t2) > 100:
+                            web_txt += (
+                                f"--- WEB DOC: {item['title']} ---\nURL: {item['url']}\n"
+                                f"{t2[:50000]}\n\n"
+                            )
+                            sources.append(item['url'])
+                            aproveitados += 1
+                            cb.log(
+                                f"Documento web aproveitado via navegador ({len(t2)} chars): "
+                                f"{item['url']}"
+                            )
                 try: os.remove(item['path'])
                 except Exception: pass
 
@@ -1954,6 +2072,18 @@ class AutoSpecCore:
             cb.log(f"Chamada de IA falhou ({type(e).__name__}: {e}).", nivel="error")
             return {}
 
+    def _tentar_navegador(self, url, callbacks=None, _robots=None, _navegador=None):
+        """Delega para `tentar_navegador`, aplicando o interruptor desta
+        instancia. Existe como metodo para o ponto de uso ficar legivel e
+        para o interruptor morar num lugar so."""
+        return tentar_navegador(
+            url,
+            callbacks=callbacks,
+            ligado=getattr(self, "usar_navegador_ultimo_recurso", True),
+            _robots=_robots,
+            _navegador=_navegador,
+        )
+
     def _conferir_e_filtrar(self, valores, missing, contexto, callbacks=None):
         """As duas conferências pós-resposta, num ponto só.
 
@@ -1977,16 +2107,36 @@ class AutoSpecCore:
         cb = callbacks or _callbacks_silenciosos()
         aprovados = {}
         reprovados = []
+        convertidos = []
 
         for campo, valor in (valores or {}).items():
+            descricao = str((missing.get(campo) or {}).get("desc") or campo)
             if campo in GENERATIVE_FIELDS:
                 aprovados[campo] = valor
                 continue
             if valor_tem_lastro(valor, contexto):
                 aprovados[campo] = valor
+                # Número que passou por CONVERSÃO não foi copiado do
+                # documento — foi calculado. Aprovar em silêncio seria pior
+                # que reprovar: quem homologa precisa saber que aquele valor
+                # não está escrito lá, e poder refazer a conta.
+                explicacoes = explicar_conversao(valor, contexto)
+                if explicacoes:
+                    convertidos.append((descricao, str(valor), explicacoes))
                 continue
-            descricao = (missing.get(campo) or {}).get("desc") or campo
-            reprovados.append((str(descricao), str(valor)))
+            reprovados.append((descricao, str(valor)))
+
+        if convertidos:
+            cb.log(
+                f"{len(convertidos)} campo(s) vieram de CONVERSAO de unidade, nao copiados "
+                f"do documento. A conta foi refeita e confere — confira mesmo assim:",
+                nivel="warn",
+            )
+            for descricao, valor, explicacoes in convertidos:
+                cb.log(
+                    f"      · {descricao[:60]} = {valor[:30]}  ({'; '.join(explicacoes)[:60]})",
+                    nivel="warn",
+                )
 
         if reprovados:
             cb.log(

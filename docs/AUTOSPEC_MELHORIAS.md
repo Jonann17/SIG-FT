@@ -35,6 +35,49 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-20 🔴 Conversão de unidade CONFERIDA + navegador como último recurso *(2026-08-13)*
+
+**Conversão.** O lastro (R-19) reprovava `35 MPa` a partir de `350 bar` — conversão correta,
+descartada. Decisão do usuário: conferir em vez de reprovar. `sigft/services/autospec_unidades.py`
+(novo) **refaz a conta** a partir do número do documento — não confia no cálculo da IA:
+
+```
+  35 mpa    -> 350 bar        0.4 l/min  -> 400 ml/min      158 f  -> 70 c
+  3.5 mpa   -> REPROVADO      9.9 l/min  -> REPROVADO
+```
+
+`3,5 MPa` a partir de `350 bar` é 10× errado e é exatamente o que ninguém percebe olhando.
+9 grandezas (pressão, comprimento, massa, temperatura, vazão, potência, torque, rotação, área),
+só stdlib. Toda conversão aprovada é **anunciada no console** com a conta — aprovar em silêncio
+seria pior que reprovar.
+
+**Dois bugs meus, achados pelos próprios testes:**
+
+- *Herança de unidade em intervalo.* `0 a +70 C` — só o segundo número tem unidade, e sem
+  herança o `0` escapava da conferência: num intervalo convertido bastaria acertar um limite.
+  A 1ª versão herdava de qualquer distância, e o `1000` de `cs1000.pdf` herdou o `bar` de
+  `350 bar` sete palavras adiante — `999 bar` passou a casar dentro de 1%. A herança agora só
+  atravessa conector de intervalo.
+- *Comparação na unidade base.* A base da vazão é m³/s, onde `0,4 l/min` e `50 ml/min` valem
+  6,7e-6 e 8,3e-7 — pequenos o bastante para a tolerância absoluta aprovar **qualquer** par.
+  Apareceu na saída como `0,4 l/min = 50 ml/min` (o certo é 400). A comparação passou a ser
+  feita na unidade da resposta, que é como uma pessoa confere.
+
+**Navegador (403 e página JavaScript).** `sigft/core/web/navegador.py` + `robots.py` (novos),
+fora de `services/` porque a arquitetura proíbe serviço conhecer Playwright.
+
+**A ordem é a política:** tenta o download simples → só se falhar → só se o `robots.txt`
+permitir → abre o navegador. Um site que diz "não" continua recebendo "está bem". O `robots.txt`
+falha **fechada** (não deu para ler = não), ao contrário do resto do módulo — a dúvida aqui é
+sobre permissão.
+
+404/500 **não** acionam o navegador: "não existe" não é "não quero". O gatilho real é o 403 e,
+mais importante, a página que baixa quase vazia — assinatura de aplicação JavaScript, pior que
+o 403 porque o documento "chega" e não parece falha.
+
+Playwright ausente = segue sem, como o reforço semântico. 53 testes novos.
+
+
 ### ✅ R-19 🔴 Lastro documental + glossário em 5 idiomas *(2026-08-13)*
 
 Pedido do usuário: *"não gostei do ato de aceitar uma informação errada. Isto não deve
@@ -58,8 +101,9 @@ meia verdade num campo técnico é pior que campo vazio, porque passa na confer�
 certa. Números são normalizados (`25,4` = `25.40` = `25.4`) para não descartar valor certo por
 pontuação.
 
-**Consequência assumida:** conversão de unidade reprova. `0,4 MPa` quando o documento diz
-`4 bar` fica vazio, e o console diz. Na dúvida, vazio.
+> **Revisto no mesmo dia (R-20):** esta versão reprovava conversão de unidade — `35 MPa` a
+> partir de `350 bar` ficava vazio. Passou a ser **conferida** em vez de reprovada: a conta é
+> refeita a partir do número do documento. Conversão errada continua reprovando.
 
 **Isento:** os 12 `GENERATIVE_FIELDS` (embalagem, transporte, descarte…), que as regras §3.2
 mandam gerar de conhecimento técnico e não têm datasheet de onde sair.
