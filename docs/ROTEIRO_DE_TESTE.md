@@ -1,7 +1,7 @@
 # Roteiro de teste — Fases 1 a 5 da refatoração
 
 Este roteiro existe porque **nada do que foi refatorado nas Fases 1 a 5 jamais
-rodou contra o portal PMIB real**. Os testes automatizados (1550 em 2026-08-12)
+rodou contra o portal PMIB real**. Os testes automatizados (1559 em 2026-08-12)
 provam que a lógica está coerente e que os dois motores de RPA fazem a mesma
 sequência de ações — não provam que o portal responde bem a elas.
 
@@ -76,12 +76,12 @@ a janela preta mostrando o progresso). Depois roda os testes.
 
 **Resultado esperado:**
 ```
-1550 passed, 3 skipped
+1559 passed, 3 skipped
 [SIG-FT] Tudo passou.
 ```
 
 > O número cresce a cada checkpoint (era 1288 quando este roteiro foi escrito;
-> são 1550 em 2026-08-12). **Ver um número maior é bom sinal, não erro** — o que
+> são 1559 em 2026-08-12). **Ver um número maior é bom sinal, não erro** — o que
 > importa é `[SIG-FT] Tudo passou.` e nenhum `failed`. Os `skipped` são testes
 > que dependem de pacote que o ambiente não tem; podem variar.
 
