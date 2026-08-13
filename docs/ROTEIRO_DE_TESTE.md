@@ -165,7 +165,7 @@ esta etapa existe para descobrir:
 
 ### Os passos
 
-1. Abra o app (`SIG-FT.bat`) e vá em **7. AutoSpec AI**.
+1. Abra o app (`SIG-FT.bat`) e vá em **6. AutoSpec AI (RAG)** no menu da esquerda.
 2. *1. Arquivo de Referência* → selecione o `_STATUS_PMIB.xlsx`.
 3. *2. Adicionar Tarefa à Fila* → selecione a ficha, depois **Adic. Manuais
    (.pdf)** e escolha o manual.
