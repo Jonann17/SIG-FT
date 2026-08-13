@@ -14,9 +14,17 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 > Checklist obrigatório. Antes de declarar o AutoSpecAI concluído, passar por cada item.
 
 - [x] ~~Checkbox: `fill_save` falha em silêncio~~ — **RESOLVIDO em 2026-08-11**, ver R-09.
-- [ ] Rodar o roteiro de `docs/ROTEIRO_DE_TESTE.md` na parte do AutoSpec
-- [x] ~~`bash scripts/check.sh` verde~~ — verde desde 2026-08-11
-- [x] ~~Merge na linha oficial~~ — feito em 2026-08-11 (commit `75e0988`)
+- [x] ~~Escrever a parte do AutoSpec no roteiro de teste~~ — feito em 2026-08-12:
+      `docs/ROTEIRO_DE_TESTE.md`, **Etapa 3b**. Ela não existia; o item abaixo
+      mandava rodar uma etapa que não estava escrita.
+- [ ] **Rodar a Etapa 3b** numa ficha real, com manual anexado — é o único item
+      que sobra, e ele não é meu: precisa de máquina com o app, chave de IA e
+      um PDF de fabricante. O que volta de lá (páginas lidas, qual busca rendeu,
+      % de recorte) é o que destrava as duas decisões ainda abertas: instalar ou
+      não OCR local, e reescrever ou não as queries de busca.
+- [x] ~~`bash scripts/check.sh` verde~~ — verde desde 2026-08-11 (1550 testes em 2026-08-12)
+- [x] ~~Merge na linha oficial~~ — feito em 2026-08-11 (commit `75e0988`); tudo
+      que veio depois foi commitado direto nela.
 
 ---
 
