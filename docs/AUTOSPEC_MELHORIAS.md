@@ -35,6 +35,45 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-18 🔴 Fichas difíceis — o que ia quebrar depois que a 1188 passou *(2026-08-12)*
+
+A 1188 passou (28 de 29 campos, 21 com URL de origem). Ela é o caso **fácil**. Este item cobre
+o que o `_STATUS_PMIB` real também tem. Cada falha foi **reproduzida rodando o código**.
+
+Desenho completo: [`docs/superpowers/specs/2026-08-12-fichas-dificeis-design.md`](superpowers/specs/2026-08-12-fichas-dificeis-design.md).
+
+**A mais grave — o filtro falhava ABERTO.** Ficha sem fabricante e sem código dava
+`_termos_do_filtro() == []`, e lista vazia significa "não filtre". A proteção §4.3 aceitava
+qualquer documento justamente na ficha em que menos se pode confiar no resultado. Agora, sem
+âncora, **a busca web não acontece** e o console diz o que fazer. Basta uma das duas âncoras.
+
+| # | Falha reproduzida | Correção |
+|---|---|---|
+| F-1 | sem âncora, filtro aceita tudo | busca web pulada, com explicação |
+| F-2 | `DIVERSOS`/`N/A`/`SEM MARCA` viravam fabricante | reconhecidos como ausência de fabricante |
+| F-3 | `INDUSTRIA E COMERCIO LTDA` virava âncora | `_tokens_ancora_fabricante` separada de `_nome_curto_fabricante` |
+| F-4 | `1/2` e `110` viravam código de peça (e `1/2` virou a 1ª query!) | letra+dígito, ou numérico com 4+ dígitos |
+| F-5 | `123` casava dentro de `123456` | fronteira de palavra para termo curto/numérico |
+| F-6 | download sem teto de tamanho | `stream=True`, corte em 40 MB |
+
+**F-3 era defeito meu**, introduzido na correção anterior: o fallback "se limpar tudo, use o
+original" é certo para BUSCAR e errado para FILTRAR. São decisões diferentes e agora são funções
+diferentes.
+
+**E uma tensão que o teste resolveu melhor que eu.** Minha 1ª tentativa contra F-5 descartava
+tokens de até 2 caracteres — e apagou `3M` inteiro. Marca curta legítima (`3M`, `GE`, `NSK`) não
+pode ser jogada fora por ser curta. Fronteira de palavra resolve os dois lados.
+
+**Três coisas que o console do teste bem-sucedido denunciou:**
+
+- `tmp1wgju9r5.pdf: 6 pagina(s)` — nome do temporário. Agora mostra a URL.
+- `Download recusado (HTTP 403)` — era o site do fabricante bloqueando robô, e parecia defeito
+  do app. Agora diz isso.
+- 29 faltantes → 28 origens: o 29º (`var_row_88`, "10 - PRECISAO") sumia em silêncio. Agora há
+  uma lista de "campos que a IA não respondeu, preencha à mão".
+
+30 testes; red-green conferido (22 falharam antes, 30 passam depois).
+
 ### ✅ R-17 🔴 Busca web achava, e o próprio código jogava fora *(2026-08-12)*
 
 Falha real, ficha 4500063671.1188 (sensor HYDAC `CS1320-A-0-0-0-1/-000`), **sem PDF anexado**:

@@ -639,6 +639,29 @@ def _compactar_codigo(texto):
     return re.sub(r"[^a-z0-9]", "", _normalizar_texto_busca(texto))
 
 
+# Valores que a planilha põe no lugar do fabricante quando NÃO HÁ fabricante.
+# Ancorar o filtro anti-intruso em `DIVERSOS` aprovaria qualquer página que
+# diga "diversos" — pior que não ter âncora, porque parece que tem.
+_FABRICANTE_GENERICO = frozenset({
+    "diversos", "diverso", "varios", "varias", "generico", "generica",
+    "n/a", "na", "n.a.", "nd", "n/d", "nao aplicavel", "nao informado",
+    "sem marca", "sem fabricante", "nacional", "importado", "similar",
+    "-", "--", "?", "xxx", "0",
+})
+
+# Teto de download. Catálogo de fabricante de centenas de MB existe, e
+# `response.content` carregava o corpo INTEIRO na memória: numa máquina de
+# usuário isso é o app travando sem mensagem nenhuma.
+TETO_DOWNLOAD_BYTES = 40 * 1024 * 1024
+
+
+def _e_termo_puramente_numerico(termo):
+    """`3332066` sim; `CS1320` não. Muda a REGRA de casamento: número solto
+    casando por substring vira coringa (`123` dentro de `123456`)."""
+    compacto = _compactar_codigo(termo)
+    return bool(compacto) and compacto.isdigit()
+
+
 def _resultado_e_relevante(termos, title, snippet, link):
     """Filtro anti-intruso (regras de negócio §4.3): o resultado cita o
     fabricante ou o código do material?
@@ -666,10 +689,24 @@ def _resultado_e_relevante(termos, title, snippet, link):
 
     for termo in termos:
         limpo = _normalizar_texto_busca(termo).strip()
-        if limpo and limpo in alvo:
-            return True
         compacto = _compactar_codigo(termo)
-        if len(compacto) >= 3 and compacto in alvo_compacto:
+        if not limpo:
+            continue
+
+        # Termo CURTO ou puramente NUMÉRICO exige fronteira de palavra.
+        # Casar por substring transformava `123` em coringa (casava dentro
+        # de `123456`) e `GE` em coringa maior ainda (casaria em
+        # "generico"). Marcas curtas legítimas — `3M`, `GE`, `NSK` — não
+        # podem ser descartadas por serem curtas: são o nome da empresa.
+        # Fronteira resolve os dois lados.
+        if _e_termo_puramente_numerico(termo) or len(compacto) < 4:
+            if re.search(rf"(?<![a-z0-9]){re.escape(compacto)}(?![a-z0-9])", alvo):
+                return True
+            continue
+
+        if limpo in alvo:
+            return True
+        if compacto in alvo_compacto:
             return True
     return False
 
@@ -771,20 +808,66 @@ class WebSearcher:
             )
         return results
 
-    def _download_file(self, url, callbacks=None):
+    def _download_file(self, url, callbacks=None, _get=None):
+        """Baixa em pedaços, com TETO de tamanho.
+
+        Até 2026-08-12 era `response.content`, que carrega o corpo inteiro na
+        memória. Catálogo de fabricante de centenas de MB existe, e numa
+        máquina de usuário isso é o app travando sem mensagem nenhuma — o
+        `timeout=15` não protege, porque o download avança, só não acaba.
+
+        `_get` é ponto de injeção para teste; em produção fica `None` e usa
+        o `requests`.
+        """
         cb = callbacks or _callbacks_silenciosos()
+        get = _get or (lambda u, **kw: requests.get(u, **kw))
+        response = None
         try:
-            response = requests.get(url, headers=self.headers, timeout=15)
+            response = get(url, headers=self.headers, timeout=15, stream=True)
+            if response.status_code == 403:
+                # Aconteceu com `hydac.com/shop` no 1o teste real. Vai se
+                # repetir: site de fabricante bloqueia robô. Dizer "recusado"
+                # sem mais nada parece defeito do app, e não é.
+                cb.log(
+                    f"Site bloqueou o download automatico (HTTP 403) — e o site que "
+                    f"recusa robo, nao um erro do SIG-FT: {url}",
+                    nivel="warn",
+                )
+                return None
             if response.status_code != 200:
                 cb.log(f"Download recusado (HTTP {response.status_code}): {url}", nivel="warn")
                 return None
-            suffix = _sufixo_para_url(url, response.headers.get("Content-Type"))
+
+            suffix = _sufixo_para_url(url, (response.headers or {}).get("Content-Type"))
+            total = 0
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
-                tmp_file.write(response.content)
+                for pedaco in response.iter_content(chunk_size=64 * 1024):
+                    if not pedaco:
+                        continue
+                    total += len(pedaco)
+                    if total > TETO_DOWNLOAD_BYTES:
+                        cb.log(
+                            f"Documento grande demais (passou do teto de "
+                            f"{TETO_DOWNLOAD_BYTES // (1024 * 1024)} MB) — download "
+                            f"abortado: {url}",
+                            nivel="warn",
+                        )
+                        try:
+                            os.remove(tmp_file.name)
+                        except Exception:
+                            pass
+                        return None
+                    tmp_file.write(pedaco)
                 return tmp_file.name
         except Exception as e:
             cb.log(f"Download falhou ({type(e).__name__}): {url}", nivel="warn")
             return None
+        finally:
+            try:
+                if response is not None:
+                    response.close()
+            except Exception:
+                pass
 
 
 class PDFProcessor:
@@ -793,11 +876,19 @@ class PDFProcessor:
         if self.llama_key:
             os.environ["LLAMA_CLOUD_API_KEY"] = self.llama_key
 
-    def extract_text(self, filepath, callbacks=None):
+    def extract_text(self, filepath, callbacks=None, nome_exibicao=None):
+        """`nome_exibicao` (2026-08-12): o que aparece NO CONSOLE.
+
+        Documento vindo da web mora num `NamedTemporaryFile`, e o log saía
+        como `tmp1wgju9r5.pdf: 6 pagina(s), 6 lida(s)` — visto no 1o teste
+        real. O usuário não tem como saber a que documento aquilo se refere,
+        e é justamente a linha que ele precisa ler para decidir se confia no
+        resultado. Quem chama passa a URL; sem isso, cai no nome do arquivo.
+        """
         cb = callbacks or _callbacks_silenciosos()
         text_content = ""
         method_used = ""
-        nome = os.path.basename(str(filepath))
+        nome = nome_exibicao or os.path.basename(str(filepath))
         alvo = str(filepath).lower()
         is_pdf = alvo.endswith('.pdf')
         # P-03: imagem também vai para o LlamaParse, que faz OCR. Antes só o
@@ -1301,12 +1392,26 @@ class AutoSpecCore:
         achados = []
         for bruto in str(texto or "").split():
             token = bruto.strip(".,;:()[]{}\"'").strip()
-            if len(token) >= 3 and any(c.isdigit() for c in token):
+            if len(token) < 3 or not any(c.isdigit() for c in token):
+                continue
+            # 2026-08-12: só "tem dígito" não bastava — `1/2` (polegada) e
+            # `110` (tensão) entravam como se fossem código de peça, e o
+            # `1/2` chegou a virar a PRIMEIRA query da cascata, gastando
+            # cota da CSE numa busca que não significa nada.
+            #
+            # Código de peça é uma de duas coisas:
+            #   - mistura letra e dígito (`PVF100-4`, `DN50`, `IP55`); ou
+            #   - é numérico e LONGO (`3527528`, `6205`) -- medida solta
+            #     raramente passa de 3 dígitos.
+            if any(c.isalpha() for c in token):
+                achados.append(token)
+                continue
+            if len(re.sub(r"\D", "", token)) >= 4:
                 achados.append(token)
         return achados
 
-    @staticmethod
-    def _nome_curto_fabricante(fab):
+    @classmethod
+    def _nome_curto_fabricante(cls, fab):
         """`HYDAC TECNOLOGIA LTDA` -> `HYDAC`. O nome pelo qual o produto é
         PUBLICADO, não o nome jurídico pelo qual ele é comprado.
 
@@ -1324,11 +1429,37 @@ class AutoSpecCore:
         bruto = str(fab or "").strip()
         if not bruto:
             return ""
-        mantidas = [
+        # 2026-08-12: o `_STATUS_PMIB` real usa `DIVERSOS`, `N/A`, `SEM
+        # MARCA` no lugar do fabricante. Isso não é um fabricante ruim, é a
+        # AUSÊNCIA de fabricante — e tratá-lo como nome produz query inútil
+        # e, pior, uma âncora de filtro que aprova qualquer coisa.
+        if _normalizar_texto_busca(bruto) in _FABRICANTE_GENERICO:
+            return ""
+        return " ".join(cls._tokens_ancora_fabricante(bruto)) or bruto
+
+    @staticmethod
+    def _tokens_ancora_fabricante(fab):
+        """Só as palavras que servem de ÂNCORA — lista vazia é resposta
+        legítima.
+
+        Separado de `_nome_curto_fabricante` porque as duas decisões são
+        diferentes, e confundi-las causou o defeito de `INDUSTRIA E COMERCIO
+        LTDA`: para BUSCAR, um nome ruim é melhor que nome nenhum (por isso
+        aquele método cai de volta no original); para FILTRAR, ancorar em
+        `INDUSTRIA` aprova qualquer página industrial brasileira.
+        """
+        bruto = str(fab or "").strip()
+        if not bruto or _normalizar_texto_busca(bruto) in _FABRICANTE_GENERICO:
+            return []
+        # Sem corte por tamanho: `3M`, `GE`, `NSK` e `FAG` são nomes de
+        # empresa, não ruído. Cortar por 2 caracteres apagava a marca inteira
+        # e fazia o método cair de volta na razão social completa. O risco de
+        # termo curto virar coringa é tratado onde é o lugar dele — em
+        # `_resultado_e_relevante`, exigindo fronteira de palavra.
+        return [
             palavra for palavra in bruto.split()
             if _normalizar_texto_busca(palavra).strip(".,") not in _RUIDO_RAZAO_SOCIAL
         ]
-        return " ".join(mantidas) if mantidas else bruto
 
     @staticmethod
     def _familia_do_identificador(identificador):
@@ -1365,9 +1496,7 @@ class AutoSpecCore:
         que são o que a página realmente cita.
         """
         termos = []
-        curto = cls._nome_curto_fabricante(fab)
-        if curto and len(curto) > 2:
-            termos.extend(p for p in curto.split() if len(p) > 2)
+        termos.extend(cls._tokens_ancora_fabricante(fab))
         if cod_mat and len(str(cod_mat)) > 2:
             termos.append(str(cod_mat))
         for ident in cls._identificadores(txt_brv):
@@ -1384,6 +1513,22 @@ class AutoSpecCore:
                 vistos.add(chave)
                 unicos.append(t)
         return unicos
+
+    @classmethod
+    def _tem_ancora_confiavel(cls, fab, cod_mat, txt_brv):
+        """Dá para VERIFICAR se um documento é deste material?
+
+        Sem fabricante e sem código, não dá — e `_termos_do_filtro` devolvia
+        `[]`, que o filtro lê como "aceita tudo". A proteção §4.3 falhava
+        ABERTA justamente na ficha em que menos se pode confiar no
+        resultado: qualquer catálogo de qualquer concorrente entraria como
+        contexto, e o engenheiro homologaria dado de outra peça.
+
+        Quando isto é `False`, a busca web não acontece. Campo vazio é ruim;
+        campo preenchido com dado de outro material é pior — é o princípio
+        que a regra §4.3 já dizia, agora aplicado também ao caso degenerado.
+        """
+        return bool(cls._termos_do_filtro(fab, cod_mat, txt_brv))
 
     @classmethod
     def _montar_queries_busca(cls, txt_brv, fab, cod_mat):
@@ -1494,6 +1639,19 @@ class AutoSpecCore:
         # `tests/test_autospec_busca_web_falha_real.py`.
         required = self._termos_do_filtro(fab, cod_mat, txt_brv)
 
+        if not required:
+            # Sem âncora não há como conferir se o documento é deste
+            # material — e lista de termos vazia fazia o filtro aceitar
+            # TUDO. Ver `_tem_ancora_confiavel`.
+            cb.log(
+                "Busca web pulada: a ficha não tem fabricante reconhecível nem código "
+                "de peça, e sem uma dessas duas âncoras não há como verificar se o "
+                "documento encontrado é deste material. Preencha o fabricante na "
+                "planilha, ou anexe o manual — o contexto virá só dos documentos locais.",
+                nivel="warn",
+            )
+            return (local_txt + "\n\n" + web_txt), sources
+
         queries = self._montar_queries_busca(txt_brv, fab, cod_mat)
 
         for i, q in enumerate(queries, start=1):
@@ -1506,7 +1664,11 @@ class AutoSpecCore:
 
             aproveitados = 0
             for item in files:
-                t, m = self.pdf_parser.extract_text(item['path'], callbacks=cb)
+                # `nome_exibicao=URL`: o arquivo é um temporário, e o nome
+                # dele no log não diz nada a quem lê. Ver `extract_text`.
+                t, m = self.pdf_parser.extract_text(
+                    item['path'], callbacks=cb, nome_exibicao=item.get('url')
+                )
                 if t and len(t) > 100:
                     web_txt += f"--- WEB DOC: {item['title']} ---\nURL: {item['url']}\n{t[:50000]}\n\n"
                     sources.append(item['url'])
@@ -1900,6 +2062,26 @@ class AutoSpecCore:
                         yield f" -> Origem dos dados ({len(fontes)} campo(s)):"
                         for campo, fonte in fontes.items():
                             yield f"      · {campo}: {fonte}"
+
+                        # 2026-08-12: no 1o teste real, 29 campos faltavam e
+                        # 28 vieram com origem. O 29o (`var_row_88`, "10 -
+                        # PRECISAO") simplesmente não aparecia em lugar
+                        # nenhum do console -- a IA não respondeu e ninguém
+                        # ficou sabendo. Campo que continua vazio é
+                        # informação, não silêncio: é o que o engenheiro
+                        # precisa ir buscar à mão.
+                        sem_resposta = [
+                            (k, (v or {}).get("desc") or k)
+                            for k, v in missing.items()
+                            if not str(ai_resp.get(k) or "").strip()
+                        ]
+                        if sem_resposta:
+                            yield (
+                                f" -> {len(sem_resposta)} campo(s) a IA nao respondeu "
+                                f"(continuam vazios, preencha a mao):"
+                            )
+                            for _chave, descricao in sem_resposta:
+                                yield f"      · {str(descricao)[:90]}"
                     elif ai_resp:
                         yield (
                             "      (a IA não informou a origem dos dados — "
