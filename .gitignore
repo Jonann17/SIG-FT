@@ -39,3 +39,8 @@ dist/
 prompts_ab/
 relatorio_ab*.md
 busca_web_cache.json
+
+# Cache de resposta da IA do AutoSpec (sigft/services/autospec.py). Guarda o
+# HASH do prompt, nunca o prompt — mas guarda o VALOR TÉCNICO respondido, que
+# é dado de ficha. Não pode ir para o repositório.
+autospec_resposta_cache.json

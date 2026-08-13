@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import hashlib
 import requests
 import tempfile
 import openpyxl
@@ -327,6 +328,116 @@ def _cache_busca_gravar(query, items, agora=None):
         dados[query] = {"gravado_em": agora, "items": items}
         with open(caminho, "w", encoding="utf-8") as arquivo:
             json.dump(dados, arquivo, indent=2, ensure_ascii=False)
+    except Exception:
+        pass  # cache e conveniencia; nao poder gravar nao quebra a execucao
+
+
+# =============================================================================
+# CACHE DE RESPOSTA DA IA — 100% de economia ao reprocessar a mesma ficha
+# =============================================================================
+# O cache de busca (acima) poupa COTA da CSE; este poupa TOKEN, que e o custo
+# dominante. Reprocessar um lote e o normal, nao a excecao: se um campo saiu
+# errado, o usuario ajusta a planilha e roda tudo de novo -- e ate 2026-08-12
+# cada rerun pagava a conta inteira da IA outra vez, incluindo as fichas que
+# ja tinham vindo certas.
+#
+# A CHAVE E O PROMPT INTEIRO, nao o nome do arquivo. E o unico jeito de o
+# acerto ser seguro: o prompt ja contem material, fabricante, contexto
+# recortado e a lista de campos faltantes, entao qualquer coisa que mudaria a
+# resposta ja muda a chave. Consequencias, todas desejadas:
+#   - editou a ficha (mudou o que falta preencher) -> chave nova, IA roda;
+#   - trocou/adicionou manual -> contexto muda -> chave nova, IA roda;
+#   - renomeou o arquivo sem mudar nada -> MESMA chave, acerto;
+#   - trocou de modelo -> chave nova (provider+modelo entram no hash), porque
+#     a resposta de outro modelo nao pode ser servida como se fosse deste.
+#
+# PRIVACIDADE: o que vai para o disco e o HASH do prompt, nunca o prompt. O
+# arquivo guarda o valor tecnico respondido (que e o que precisa ser servido
+# de volta) mas nao o trecho do datasheet que o originou. Fica gitignored, ao
+# lado do `api_config.json`, como os demais caches do projeto.
+RESPOSTA_IA_CACHE = "autospec_resposta_cache.json"
+# 30 dias: as entradas do prompt ja estao na chave, entao o TTL nao existe
+# para corrigir resposta velha -- existe para o arquivo nao crescer para
+# sempre com ficha que ninguem vai reprocessar.
+RESPOSTA_IA_CACHE_TTL_S = 30 * 24 * 3600
+RESPOSTA_IA_CACHE_MAX_ENTRADAS = 500
+
+
+def _caminho_cache_resposta():
+    """Ao lado do `api_config.json`, igual ao cache de busca."""
+    return os.path.join(os.path.dirname(os.path.abspath(config.CONFIG_FILE)), RESPOSTA_IA_CACHE)
+
+
+def _chave_cache_resposta(prompt, provider=None, model=None):
+    """Hash de (provider, modelo, prompt). Ver o bloco acima para por que o
+    prompt inteiro entra, e por que o modelo tambem."""
+    bruto = f"{provider or ''}|{model or ''}|{prompt or ''}"
+    return hashlib.sha256(bruto.encode("utf-8")).hexdigest()
+
+
+def _cache_resposta_ler(chave, agora=None):
+    """Resposta guardada para `chave`, ou `None` se ausente/expirada."""
+    import time
+
+    agora = time.time() if agora is None else agora
+    try:
+        with open(_caminho_cache_resposta(), encoding="utf-8") as arquivo:
+            dados = json.load(arquivo)
+    except Exception:
+        return None
+    if not isinstance(dados, dict):
+        return None
+    entrada = dados.get(chave)
+    if not isinstance(entrada, dict):
+        return None
+    gravado_em = entrada.get("gravado_em")
+    if not isinstance(gravado_em, (int, float)):
+        return None
+    if agora - gravado_em > RESPOSTA_IA_CACHE_TTL_S:
+        return None
+    resposta = entrada.get("resposta")
+    # Só dict/list são respostas legítimas da IA aqui; qualquer outra coisa é
+    # arquivo corrompido ou de uma versão anterior do formato.
+    if not isinstance(resposta, (dict, list)):
+        return None
+    return resposta
+
+
+def _cache_resposta_gravar(chave, resposta, agora=None):
+    """Guarda `resposta` sob `chave`, podando o que expirou. Falhar aqui nao e
+    erro do usuario -- ele so paga a IA de novo no proximo rerun."""
+    import time
+
+    agora = time.time() if agora is None else agora
+    if not isinstance(resposta, (dict, list)) or not resposta:
+        return  # resposta vazia nao vale a pena servir de volta
+    try:
+        try:
+            with open(_caminho_cache_resposta(), encoding="utf-8") as arquivo:
+                dados = json.load(arquivo)
+            if not isinstance(dados, dict):
+                dados = {}
+        except Exception:
+            dados = {}
+
+        dados[chave] = {"gravado_em": agora, "resposta": resposta}
+
+        # Poda: primeiro o que expirou, depois o excedente mais antigo. Sem
+        # isto o arquivo cresceria sem limite e o cache viraria um problema
+        # em vez de uma economia.
+        vivas = {
+            k: v
+            for k, v in dados.items()
+            if isinstance(v, dict)
+            and isinstance(v.get("gravado_em"), (int, float))
+            and agora - v["gravado_em"] <= RESPOSTA_IA_CACHE_TTL_S
+        }
+        if len(vivas) > RESPOSTA_IA_CACHE_MAX_ENTRADAS:
+            recentes = sorted(vivas.items(), key=lambda kv: kv[1]["gravado_em"], reverse=True)
+            vivas = dict(recentes[:RESPOSTA_IA_CACHE_MAX_ENTRADAS])
+
+        with open(_caminho_cache_resposta(), "w", encoding="utf-8") as arquivo:
+            json.dump(vivas, arquivo, indent=2, ensure_ascii=False)
     except Exception:
         pass  # cache e conveniencia; nao poder gravar nao quebra a execucao
 
@@ -729,6 +840,11 @@ class AutoSpecCore:
         # context stuffing anterior a 2026-08-11 -- existe como escape se
         # alguma ficha mostrar que o recorte perdeu informação.
         self.usar_retrieval = True
+        # Cache de resposta ligado por padrão (2026-08-12). Desligar força a
+        # IA a responder de novo — existe como escape para o caso de se
+        # querer comparar dois modelos na MESMA ficha, em que servir a
+        # resposta guardada mascararia justamente o que se quer medir.
+        self.usar_cache_resposta = True
         # O diagnostico do reforco semantico e emitido uma vez so por
         # instancia -- repeti-lo a cada ficha do lote seria ruido.
         self._diagnostico_rag_emitido = False
@@ -1329,15 +1445,54 @@ class AutoSpecCore:
 
         prompt = prompts.montar_autospec(txt_brv, fab, desc_comp, contexto_final, "\n".join(desc_list))
 
+        # CACHE (2026-08-12): reprocessar o mesmo lote é o normal, não a
+        # exceção — e até aqui cada rerun repagava a IA por ficha que já tinha
+        # vindo certa. Ver o bloco `RESPOSTA_IA_CACHE` para por que a chave é o
+        # prompt inteiro, e não o nome do arquivo.
+        selecao = getattr(self, "_selecao_autospec", None) or {}
+        chave_cache = _chave_cache_resposta(
+            prompt, selecao.get("provider"), selecao.get("model")
+        )
+        if self.usar_cache_resposta:
+            guardada = _cache_resposta_ler(chave_cache)
+            if guardada is not None:
+                # A resposta CRUA volta pela MESMA normalização do caminho
+                # vivo. Guardar o resultado já normalizado pareceria mais
+                # simples e seria pior: a normalização descarta campo não
+                # pedido e preenche `ultimas_fontes_por_campo`, e um acerto de
+                # cache tem de produzir os dois efeitos igual à chamada real.
+                cb.log(
+                    f"Resposta da IA reaproveitada do cache — nenhum token gasto "
+                    f"nesta ficha ({txt_brv})."
+                )
+                return self._normalizar_resposta_ia(
+                    guardada, campos_pedidos=missing.keys(), callbacks=cb
+                )
+
         try:
             # [CP 3.2] LangChain removido -- `_limpar_e_parsear_json` do
             # `LLMClient` substitui `JsonOutputParser()` (implementação
             # única, mais robusta: cobre objeto E lista, tolera prosa/fences
             # ao redor do JSON -- ver docs/refatoracao/PENDENCIAS.md).
             # `autospec` GANHA retry (2 retentativas) que antes não tinha.
+            #
+            # `json_mode=True` (2026-08-12): o prompt PEDE JSON em texto
+            # ("Retorne JSON {ID: ...}"), e até aqui era só isso -- o formato
+            # dependia da boa vontade do modelo, e o `_limpar_e_parsear_json`
+            # existia para raspar as cercas ```json quando ele resolvia
+            # embrulhar. Com o flag, os 3 providers pedem JSON NATIVO ao
+            # servidor (`response_mime_type` no Gemini, `response_format` no
+            # OpenRouter/compat), e a limpeza vira rede de segurança em vez de
+            # caminho principal. Importa mais agora que o provedor é
+            # trocável: confiabilidade de formato varia muito entre modelos, e
+            # falha de parse aqui devolve a ficha VAZIA.
             resp = self._llm.generate(
-                prompt, tags={"modulo": "autospec_backend", "tarefa": "autospec"}
+                prompt,
+                json_mode=True,
+                tags={"modulo": "autospec_backend", "tarefa": "autospec"},
             )
+            if self.usar_cache_resposta:
+                _cache_resposta_gravar(chave_cache, resp.parsed_json)
             return self._normalizar_resposta_ia(
                 resp.parsed_json, campos_pedidos=missing.keys(), callbacks=cb
             )

@@ -35,6 +35,63 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-16 🔴 Cache de resposta da IA — 100% de economia no rerun *(2026-08-12)*
+
+Reprocessar um lote é o **normal**, não a exceção: se um campo saiu errado, o usuário ajusta a
+planilha e roda tudo de novo. Até aqui cada rerun repagava a IA por ficha inteira, incluindo as
+que já tinham vindo certas.
+
+**A chave é o prompt inteiro** (hash SHA-256 de `provider|modelo|prompt`), não o nome do
+arquivo. É o que torna o acerto seguro: o prompt já contém material, fabricante, contexto
+recortado e a lista de campos faltantes, então tudo que mudaria a resposta já muda a chave.
+
+| Situação | Comportamento | Por quê |
+|---|---|---|
+| Rodou de novo, nada mudou | **acerto** — 0 token | é a economia |
+| Renomeou o arquivo, nada mudou | acerto | o nome não entra na chave |
+| Editou a ficha / trocou o manual | chamada nova | contexto mudou |
+| Trocou de modelo | chamada nova | servir a resposta do modelo A como se fosse do B tornaria a comparação entre modelos uma mentira |
+| A IA falhou | **não guarda** | congelar a falha faria o rerun devolver o mesmo vazio para sempre |
+
+**Duas decisões que não são óbvias:**
+
+- **O que volta do cache é a resposta CRUA, replicada pela mesma normalização** do caminho
+  vivo. Guardar o resultado já normalizado pareceria mais simples e perderia em silêncio o
+  `ultimas_fontes_por_campo` — de que o `fill_save` depende.
+- **O disco guarda o hash, nunca o prompt.** Medido num PDF real: o arquivo de cache tem 498
+  chars contra 7.000 do prompt, e não contém nem o texto do datasheet nem o preâmbulo. Guardar
+  o datasheet num `.json` ao lado do app contradiria em casa a decisão de mandar o mínimo para
+  fora. Gitignored.
+
+Medido, encadeado com o retrieval, num PDF real de 30 páginas lido inteiro pelo PyMuPDF:
+
+```
+1a execucao: 1 chamada,  ~1750 tokens de entrada   (o retrieval ja tinha cortado)
+2a execucao: 0 chamadas,    ~0 tokens
+respostas identicas: True   ·   fontes preservadas: True
+```
+
+31 testes.
+
+### ✅ R-15 🟡 `json_mode=True` na chamada do AutoSpec *(2026-08-12)*
+
+O prompt **pedia** JSON em texto (`Retorne JSON {ID: ...}`) e era só isso — o formato dependia
+da boa vontade do modelo, e o `_limpar_e_parsear_json` (que raspa cercas ```` ```json ````) era
+o único anteparo. Falha de parse ali devolve a ficha **vazia**.
+
+Com o flag, os três providers pedem JSON nativo ao servidor (`response_mime_type` no Gemini,
+`response_format` no OpenRouter/compat) e a limpeza vira rede de segurança em vez de caminho
+principal. Passou a importar mais agora que o provedor é trocável: confiabilidade de formato
+varia muito entre modelos.
+
+Tem teste percorrendo a corrente inteira (`generate_ai_response` → `LLMClient` → provider),
+porque um elo que engolisse o argumento no meio não apareceria de outro jeito.
+
+> **Fora desta frente:** outros 3 dos 5 consumidores de IA do projeto (`analyzer`,
+> `cria_fichas`, `upload_conditions`) estão sem o flag e no mesmo risco. Registrado em
+> `docs/refatoracao/PENDENCIAS.md` e **não corrigido de carona** — são arquivos da refatoração
+> do Luan.
+
 ### ✅ R-13 🔴 Frente 3: retrieval de verdade — 85% menos token *(2026-08-11)*
 
 O módulo não fazia RAG, fazia **context stuffing**: concatenava os documentos inteiros
