@@ -35,6 +35,57 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-22 🔴 Desempate pelo enunciado, precisão completa e mais 1 bug *(2026-08-13)*
+
+**O enunciado do campo desempata.** Você perguntou se esse processamento já existia: **não**. A
+IA lê o documento inteiro, mas o *recálculo* não usava o enunciado — com duas pressões no
+documento, descartava. Agora usa, e reaproveita o **glossário multilíngue do retrieval**, que já
+sabe que `trabalho` vale `operating`/`betriebs`:
+
+```
+documento: "Maximum operating pressure 350 bar. Peak pressure 210 bar. Burst pressure 700 bar."
+
+6 - PRESSAO DE TRABALHO  ->  35 MPa   (de 350 bar)
+8 - PRESSAO DE PICO      ->  21 MPa   (de 210 bar)
+9 - PRESSAO DE RUPTURA   ->  70 MPa   (de 700 bar)
+PRESSAO (sem qualificar)  ->  vazio, e lista as 3
+```
+
+Entraram 15 termos **discriminantes** no glossário (`pico`, `ruptura`, `teste`, `contínuo`,
+`estático`, `entrada`, `saída`, `ambiente`, `partida`, `carga`…): não servem para *achar* o
+trecho, servem para distinguir duas medidas da mesma grandeza. 71 termos, 390 equivalentes.
+
+> **Um detalhe que quase passou:** a 1ª versão olhava 90 caracteres antes da medida, e as duas
+> pressões enxergavam a palavra `operating` — empatavam e o desempate nunca acontecia. A janela
+> tem de ser a **frase**, um limite semântico, não métrico.
+
+**Precisão completa** (sua decisão): `41 kg` → `90,3895275 lb`, não `90,4 lb`. Arredondar
+descarta informação, e quem lê pode arredondar depois — o caminho inverso é impossível. O teto de
+10 algarismos existe só para matar ruído de ponto flutuante (`90.38950000000001`).
+
+### Mais um bug, da mesma família dos outros
+
+Você previu certo. A varredura de 7 frentes achou **um a mais**, e do mesmo tipo:
+
+> **`41 g` era APROVADO contra um documento que diz `41 kg`.** O caminho literal conferia só o
+> NÚMERO, nunca a unidade. Mil vezes de diferença. Vale para todo par prefixo/grandeza:
+> `350 kPa` contra `350 bar`, `25,4 cm` contra `25,4 mm`.
+
+Agora número com unidade é conferido como **medida** (número e unidade juntos, literal ou por
+conversão). Número sem unidade conhecida segue pelo caminho literal.
+
+As outras 6 frentes da varredura (temperatura afim com negativos e Kelvin, unidade fora da
+tabela, percentagem e razão, valor já correto não ser mexido, texto misto certo+inventado, campos
+gerativos isentos) passaram sem achado.
+
+**O padrão dos 4 bugs desta camada é o mesmo**: conferir uma parte do valor e concluir sobre o
+todo — os dígitos sem o código (`IP65`), os dígitos sem a unidade (`41 g`), o número sem a
+convenção de separador (`2.500`), a origem sem checar se houve conversão (`0 bar`). Anotado
+porque é o que se deve procurar na próxima auditoria.
+
+19 testes novos.
+
+
 ### ✅ R-21 🔴 Conta refeita em vez de descarte + auditoria da conversão *(2026-08-13)*
 
 **A conta é refeita, não descartada.** Pedido do usuário: quando a IA converte errado, o dado de

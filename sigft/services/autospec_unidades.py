@@ -298,32 +298,91 @@ def _medidas_agrupadas(texto):
     return grupos
 
 
-def _algarismos_significativos(texto):
-    digitos = re.sub(r"[^0-9]", "", str(texto).split(" ")[0]).lstrip("0")
-    return max(len(digitos.rstrip("0")) or 1, 1)
+# Quantos algarismos significativos manter no valor recalculado.
+#
+# Decisão do usuário em 2026-08-13: **preferir a informação mais completa**.
+# A versão anterior arredondava pela precisão da fonte (`41 kg` -> `90,4 lb`),
+# pelo argumento de não inventar exatidão. O usuário decidiu o contrário, e a
+# decisão se defende: arredondar DESCARTA informação, e quem lê a ficha pode
+# arredondar depois — o caminho inverso é impossível.
+#
+# 10 algarismos existe só para matar o ruído de ponto flutuante
+# (`90.38950000000001`), não para limitar a precisão real.
+ALGARISMOS_MAXIMOS = 10
 
 
-def _arredondar_como_a_fonte(valor, origem_texto):
-    """`41 kg` -> `90,39 lb`, não `90,3895 lb`.
-
-    A precisão do resultado não pode ser maior que a do dado de onde ele
-    saiu: escrever `90,3895 lb` a partir de `41 kg` inventa quatro
-    algarismos que o fabricante nunca publicou, e num documento técnico isso
-    é uma afirmação falsa sobre a exatidão da medida.
-
-    Mínimo de 3 algarismos para não empobrecer valor pequeno (`0,05 l/min`).
-    """
+def _formatar(valor):
+    """Número no formato da planilha: vírgula decimal, sem ruído de float."""
     if valor == 0:
-        return 0.0
+        return "0"
     import math
 
-    significativos = max(_algarismos_significativos(origem_texto), 3)
     expoente = math.floor(math.log10(abs(valor)))
-    casas = significativos - 1 - expoente
-    return round(valor, max(casas, 0)) if casas >= 0 else round(valor, casas)
+    arredondado = round(valor, ALGARISMOS_MAXIMOS - 1 - expoente)
+    if arredondado == int(arredondado):
+        return str(int(arredondado))
+    return repr(arredondado).replace(".", ",")
 
 
-def corrigir_conversao(texto, contexto):
+# Fim de frase que NÃO é ponto decimal nem separador de milhar: o `.` de
+# `25.4` e o `,` de `41,5` têm dígito dos dois lados e não separam nada.
+_RE_FIM_DE_FRASE = re.compile(r"(?<!\d)[.;:\n\r|](?!\d)")
+
+
+def _medidas_com_janela(contexto):
+    """`[(valor, unidade, frase_em_que_a_medida_aparece)]`.
+
+    A frase é o que permite responder "qual das duas pressões?": no
+    documento, `350 bar` está em "Maximum **operating** pressure" e `210 bar`
+    em "**Peak** pressure". A pergunta da ficha diz "pressão de **trabalho**",
+    e o glossário multilíngue já sabe que `trabalho` vale `operating`.
+
+    **FRASE, e não uma janela de N caracteres.** A primeira versão pegava 90
+    caracteres para trás, e com isso as duas medidas enxergavam a palavra
+    `operating` — as duas pontuavam igual e o desempate nunca acontecia. O
+    limite tem de ser semântico, não métrico.
+    """
+    normalizado = _normalizar(contexto)
+    cortes = [0] + [m.end() for m in _RE_FIM_DE_FRASE.finditer(normalizado)] + [len(normalizado)]
+
+    def _frase(posicao):
+        for i in range(len(cortes) - 1):
+            if cortes[i] <= posicao < cortes[i + 1]:
+                return normalizado[cortes[i]:cortes[i + 1]]
+        return normalizado
+
+    saida = []
+    for m in _RE_NUMERO_SOLTO.finditer(normalizado):
+        adiante = _RE_UNIDADE_ADIANTE.match(normalizado[m.end():])
+        unidade = _unidade_valida(adiante.group(1)) if adiante else None
+        if unidade is None:
+            continue
+        frase = _frase(m.start())
+        for valor in leituras(m.group()):
+            saida.append((valor, unidade, frase))
+    return saida
+
+
+def _pontuar_pela_pergunta(trecho, pergunta):
+    """Quantos termos da pergunta aparecem no trecho ao redor da medida.
+
+    Usa a MESMA expansão multilíngue do retrieval (`autospec_rag`), que já
+    sabe que `trabalho` vale `working`/`operating`/`betriebs`. Não há
+    vocabulário novo a manter: é o glossário que já existe, aplicado a uma
+    segunda pergunta.
+    """
+    if not pergunta:
+        return 0
+    try:
+        from sigft.services.autospec_rag import expandir_consulta, tokenizar
+    except ImportError:
+        return 0
+    alvo = set(tokenizar(trecho))
+    # `set` na consulta expandida para um termo repetido não pesar duas vezes.
+    return sum(1 for termo in set(expandir_consulta(pergunta)) if termo in alvo)
+
+
+def corrigir_conversao(texto, contexto, pergunta=None):
     """Refaz a conta que a IA errou e devolve `(valor_corrigido, explicação)`.
 
     Pedido do usuário em 2026-08-13: quando a IA converte errado, o dado de
@@ -344,7 +403,7 @@ def corrigir_conversao(texto, contexto):
     if not grupos:
         return None, "nao ha medida para recalcular"
 
-    medidas_ctx = extrair_medidas(contexto)
+    medidas_ctx = _medidas_com_janela(contexto)
     corrigido = str(texto)
     explicacoes = []
 
@@ -358,7 +417,7 @@ def corrigir_conversao(texto, contexto):
             return None, f"unidade desconhecida: {unidade}"
 
         candidatos = []
-        for valor_ctx, unidade_ctx in medidas_ctx:
+        for valor_ctx, unidade_ctx, trecho in medidas_ctx:
             # SÓ corrige quando há de fato uma CONVERSÃO — unidades
             # diferentes. Se a resposta está na mesma unidade do documento e
             # o número não bate, não houve erro de conta: o número está
@@ -373,19 +432,35 @@ def corrigir_conversao(texto, contexto):
             if grandeza_ctx == grandeza and base_ctx is not None:
                 certo = _da_base(base_ctx, unidade)
                 if certo is not None and not any(_proximos(certo, c[0]) for c in candidatos):
-                    candidatos.append((certo, f"{valor_ctx:g} {unidade_ctx}"))
+                    candidatos.append(
+                        (certo, f"{valor_ctx:g} {unidade_ctx}",
+                         _pontuar_pela_pergunta(trecho, pergunta))
+                    )
 
         if not candidatos:
             return None, f"o documento nao tem nenhuma medida de {grandeza}"
-        if len(candidatos) > 1:
-            opcoes = ", ".join(origem for _c, origem in candidatos[:4])
-            return None, (
-                f"o documento tem {len(candidatos)} medidas de {grandeza} ({opcoes}) — "
-                f"nao da para saber qual o campo pedia"
-            )
 
-        certo, origem = candidatos[0]
-        texto_certo = f"{_arredondar_como_a_fonte(certo, origem):g}".replace(".", ",")
+        if len(candidatos) > 1:
+            # DESEMPATE PELA PERGUNTA (2026-08-13, pedido do usuário).
+            #
+            # Duas pressões no documento não é motivo para descartar: o campo
+            # DIZ qual quer. "6 - PRESSAO DE TRABALHO" casa com "Maximum
+            # OPERATING pressure" e não com "PEAK pressure" — e o glossário
+            # multilíngue do retrieval já sabe que `trabalho` vale
+            # `operating`. Só desiste quando a pergunta não desempata, que é
+            # quando escolher seria chute.
+            candidatos.sort(key=lambda c: -c[2])
+            melhor, segundo = candidatos[0], candidatos[1]
+            if melhor[2] == 0 or melhor[2] == segundo[2]:
+                opcoes = ", ".join(origem for _c, origem, _p in candidatos[:4])
+                return None, (
+                    f"o documento tem {len(candidatos)} medidas de {grandeza} ({opcoes}) e o "
+                    f"enunciado do campo nao diz qual — preencha a mao"
+                )
+            candidatos = [melhor]
+
+        certo, origem, _pontos = candidatos[0]
+        texto_certo = _formatar(certo)
         corrigido = re.sub(
             rf"(?<![\d.,]){re.escape(f'{valor:g}'.replace('.', ','))}(?![\d.,])",
             texto_certo,
@@ -399,6 +474,22 @@ def corrigir_conversao(texto, contexto):
     if not explicacoes:
         return None, "nada a corrigir"
     return corrigido, "; ".join(explicacoes)
+
+
+def numeros_sem_unidade(texto):
+    """Os números do texto que NÃO carregam unidade conhecida.
+
+    Existe para o lastro saber o que ainda precisa ser conferido pelo caminho
+    literal: um número com unidade é conferido como MEDIDA (número e unidade
+    juntos), um número solto só pode ser conferido por presença.
+    """
+    com_unidade = {valor for valor, _u in extrair_medidas(texto)}
+    soltos = set()
+    for m in _RE_NUMERO_SOLTO.finditer(_normalizar(texto)):
+        for valor in leituras(m.group()):
+            if valor not in com_unidade:
+                soltos.add(valor)
+    return soltos
 
 
 def conferir_texto(texto, contexto):

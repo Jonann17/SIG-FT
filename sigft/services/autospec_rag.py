@@ -188,6 +188,29 @@ GLOSSARIO_MULTILINGUE = {
                 "arbeits", "trabajo", "service", "esercizio"],
     "maxima": ["maximum", "max", "maximal", "maxima", "maximale", "massima"],
     "minima": ["minimum", "min", "minimal", "minima", "minimale"],
+    # --- DISCRIMINANTES (2026-08-13) -------------------------------------
+    # Estes não servem só para ACHAR o trecho: servem para distinguir duas
+    # medidas da MESMA grandeza no mesmo documento. `pressao de trabalho` e
+    # `pressao de pico` casam com o mesmo `pressure`; o que separa as duas é
+    # `operating` vs `peak`. Usado por
+    # `autospec_unidades.corrigir_conversao` para decidir de qual valor do
+    # documento a resposta saiu -- sem isso, o campo era descartado por
+    # "ambiguidade" que o enunciado, na verdade, resolvia.
+    "pico": ["peak", "spitze", "punta", "pointe", "picco"],
+    "ruptura": ["burst", "berstdruck", "rotura", "rupture", "rottura"],
+    "teste": ["test", "proof", "prufdruck", "prueba", "essai", "prova"],
+    "continuo": ["continuous", "dauer", "continuo", "continu"],
+    "intermitente": ["intermittent", "aussetz", "intermitente"],
+    "estatico": ["static", "statisch", "estatico", "statique", "statico"],
+    "dinamico": ["dynamic", "dynamisch", "dinamico", "dynamique"],
+    "entrada": ["inlet", "input", "eingang", "entrada", "entree", "ingresso"],
+    "saida": ["outlet", "output", "ausgang", "salida", "sortie", "uscita"],
+    "ambiente": ["ambient", "umgebung", "ambiente", "ambiante"],
+    "armazenagem": ["storage", "lager", "almacenaje", "stockage"],
+    "partida": ["starting", "anlauf", "arranque", "demarrage", "avviamento"],
+    "vazio": ["idle", "leerlauf", "vacio", "vide", "vuoto"],
+    "plena": ["full", "voll", "plena", "pleine", "piena"],
+    "carga": ["load", "last", "carga", "charge", "carico"],
     "nominal": ["nominal", "rated", "nenn", "nennwert", "nominale"],
 }
 

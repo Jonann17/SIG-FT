@@ -217,12 +217,20 @@ def test_grandeza_ausente_no_documento_nao_e_inventada():
     assert "torque" in motivo
 
 
-def test_a_precisao_nao_e_inflada():
-    """`41 kg` tem 2 algarismos; escrever `90,3895 lb` inventa quatro que o
-    fabricante nunca publicou — num documento técnico isso é uma afirmação
-    falsa sobre a exatidão da medida."""
-    valor, _ = un.corrigir_conversao("100 lb", CTX_UMA_PRESSAO)
-    assert valor == "90,4 lb", valor
+def test_a_precisao_e_a_MAIS_COMPLETA_possivel():
+    """Decisão do usuário (2026-08-13): preferir a informação mais completa.
+
+    A versão anterior arredondava pela precisão da fonte (`41 kg` -> `90,4
+    lb`). Arredondar DESCARTA informação, e quem lê a ficha pode arredondar
+    depois — o caminho inverso é impossível."""
+    valor, _ = un.corrigir_conversao("100 lb", CTX_UMA_PRESSAO, pergunta="Peso")
+    assert valor == "90,3895275 lb", valor
+
+
+def test_nao_sobra_ruido_de_ponto_flutuante():
+    """`90.38950000000001` seria precisão falsa de outro tipo."""
+    valor, _ = un.corrigir_conversao("100 lb", CTX_UMA_PRESSAO, pergunta="Peso")
+    assert "0000000" not in valor
 
 
 def test_valor_ja_correto_nao_e_mexido():
@@ -259,7 +267,7 @@ def test_quando_nao_da_para_corrigir_o_motivo_aparece_no_console():
     valores = core._filtrar_por_lastro({"c1": "3,5 MPa"}, campos, CTX_DUAS_PRESSOES, _CB())
 
     assert valores == {}
-    assert any("nao da para saber qual" in m for m in registro)
+    assert any("nao diz qual" in m for m in registro)
 
 
 # =============================================================================
@@ -312,3 +320,79 @@ def test_entrada_estranha_nao_quebra(entrada):
 def test_contexto_estranho_nao_quebra(ctx):
     assert autospec.valor_tem_lastro("35 MPa", ctx) is False
     assert un.corrigir_conversao("35 MPa", ctx)[0] is None
+
+
+# =============================================================================
+# G. Varredura de 2026-08-13 (pedido do usuário: "abre a possibilidade de mais
+#    bugs estarem possibilitados")
+# =============================================================================
+CTX_UNIDADES = "Weight 41 kg. Pressure 350 bar. Shaft 25.4 mm."
+
+
+@pytest.mark.parametrize(
+    "valor,esperado,caso",
+    [
+        ("41 kg", True, "literal"),
+        ("41 g", False, "MESMO numero, unidade MIL VEZES menor"),
+        ("41000 g", True, "conversao correta"),
+        ("0,041 t", True, "conversao correta para cima"),
+        ("350 bar", True, "literal"),
+        ("350 kPa", False, "mesmo numero, prefixo errado"),
+        ("35 MPa", True, "conversao correta"),
+        ("25,4 mm", True, "literal"),
+        ("25,4 cm", False, "mesmo numero, ordem de grandeza errada"),
+        ("1 in", True, "25,4 mm = 1 polegada"),
+    ],
+)
+def test_numero_com_unidade_e_conferido_como_MEDIDA(valor, esperado, caso):
+    """Bug real da varredura: `41 g` era APROVADO contra um documento que diz
+    `41 kg`, porque o `41` estava lá e o caminho literal nunca olhava a
+    unidade. Mil vezes de diferença — o mesmo tipo de erro do separador de
+    milhar, por outro caminho."""
+    assert autospec.valor_tem_lastro(valor, CTX_UNIDADES) is esperado, caso
+
+
+# --- desempate pela pergunta -------------------------------------------------
+CTX_TRES_PRESSOES = (
+    "Maximum operating pressure 350 bar. Peak pressure 210 bar. "
+    "Burst pressure 700 bar."
+)
+
+
+@pytest.mark.parametrize(
+    "pergunta,esperado",
+    [
+        ("6 - PRESSAO DE TRABALHO", "35 MPa"),
+        ("8 - PRESSAO DE PICO", "21 MPa"),
+        ("9 - PRESSAO DE RUPTURA", "70 MPa"),
+    ],
+)
+def test_o_enunciado_do_campo_desempata(pergunta, esperado):
+    """Pedido do usuário: duas medidas da mesma grandeza não é motivo para
+    descartar — o campo DIZ qual quer. `PRESSAO DE TRABALHO` casa com
+    "Maximum **operating** pressure" pelo glossário multilíngue que o
+    retrieval já usa."""
+    valor, _motivo = un.corrigir_conversao("3,5 MPa", CTX_TRES_PRESSOES, pergunta=pergunta)
+    assert valor == esperado
+
+
+def test_pergunta_que_NAO_desempata_continua_devolvendo_vazio():
+    """Escolher sem ter como saber seria trocar erro visível por invisível."""
+    valor, motivo = un.corrigir_conversao("3,5 MPa", CTX_TRES_PRESSOES, pergunta="PRESSAO")
+    assert valor is None
+    assert "350 bar" in motivo and "210 bar" in motivo
+
+
+def test_empate_na_pontuacao_tambem_devolve_vazio():
+    ctx = "Operating pressure 350 bar. Operating pressure 210 bar."
+    valor, _m = un.corrigir_conversao("3,5 MPa", ctx, pergunta="PRESSAO DE TRABALHO")
+    assert valor is None
+
+
+def test_a_janela_e_a_FRASE_e_nao_um_numero_de_caracteres():
+    """A 1ª versão pegava 90 caracteres para trás, e as duas medidas
+    enxergavam a palavra `operating` — pontuavam igual e o desempate nunca
+    acontecia. O limite tem de ser semântico, não métrico."""
+    janelas = {v: j for v, _u, j in un._medidas_com_janela(CTX_TRES_PRESSOES)}
+    assert "peak" not in janelas[350.0]
+    assert "operating" not in janelas[210.0]

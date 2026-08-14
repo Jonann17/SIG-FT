@@ -417,16 +417,55 @@ def valor_tem_lastro(valor, contexto):
         if _compactar_codigo(codigo) not in ctx_compacto:
             return False
 
-    numeros_valor = _numeros_normalizados(texto)
+    # NÚMERO COM UNIDADE é conferido como MEDIDA, nunca só pelo número.
+    #
+    # Bug real, achado na varredura de 2026-08-13: `41 g` era APROVADO contra
+    # um documento que diz `41 kg`, porque o `41` estava lá. Mil vezes de
+    # diferença, e o caminho literal nunca olhava a unidade. Vale para todo
+    # par grandeza/prefixo: `350 kPa` contra `350 bar`, `25,4 cm` contra
+    # `25,4 mm`.
+    medida_ok, numeros_soltos = _conferir_medidas(texto, contexto)
+    if medida_ok is False:
+        return False
+
+    numeros_valor = numeros_soltos if medida_ok else _numeros_normalizados(texto)
     if numeros_valor:
         if numeros_valor <= _numeros_normalizados(ctx):
             return True
         return bool(explicar_conversao(texto, contexto))
+    if medida_ok:
+        return True  # tudo que havia eram medidas, e todas conferiram
 
     palavras = re.findall(r"[a-z]{4,}", _normalizar_texto_busca(texto))
     if not palavras:
         return True
     return any(p in ctx for p in palavras)
+
+
+def _conferir_medidas(texto, contexto):
+    """`(resultado, numeros_sem_unidade)` para o lastro.
+
+    `resultado` é `True` quando havia medidas e TODAS conferiram (literal ou
+    por conversão), `False` quando alguma não conferiu, e `None` quando não
+    havia medida nenhuma — aí o caminho literal decide sozinho.
+    """
+    try:
+        from sigft.services import autospec_unidades
+    except ImportError:
+        return None, set()
+    try:
+        if not autospec_unidades.extrair_medidas(texto):
+            return None, set()
+        ok, _explicacoes = autospec_unidades.conferir_texto(texto, contexto)
+        if not ok:
+            return False, set()
+        soltos = {
+            f"{v:g}".rstrip("0").rstrip(".") if "." in f"{v:g}" else f"{v:g}"
+            for v in autospec_unidades.numeros_sem_unidade(texto)
+        }
+        return True, soltos
+    except Exception:
+        return None, set()
 
 
 def explicar_conversao(valor, contexto):
@@ -446,15 +485,20 @@ def explicar_conversao(valor, contexto):
     return explicacoes if ok else []
 
 
-def _corrigir_conversao(valor, contexto):
+def _corrigir_conversao(valor, contexto, pergunta=None):
     """Ponte para `autospec_unidades.corrigir_conversao`, tolerante à ausência
-    do módulo — mesmo padrão de `explicar_conversao`."""
+    do módulo — mesmo padrão de `explicar_conversao`.
+
+    `pergunta` é o ENUNCIADO do campo, e é o que desempata quando o documento
+    tem duas medidas da mesma grandeza: "6 - PRESSAO DE TRABALHO" aponta para
+    "Maximum operating pressure" e não para "Peak pressure".
+    """
     try:
         from sigft.services import autospec_unidades
     except ImportError:
         return None, ""
     try:
-        return autospec_unidades.corrigir_conversao(valor, contexto)
+        return autospec_unidades.corrigir_conversao(valor, contexto, pergunta=pergunta)
     except Exception:
         return None, ""
 
@@ -2146,7 +2190,7 @@ class AutoSpecCore:
                 # Antes de descartar: a IA pode ter lido o número CERTO e
                 # errado só a conta. Aí o dado é bom e a aritmética é do
                 # computador — ver `autospec_unidades.corrigir_conversao`.
-                certo, motivo = _corrigir_conversao(valor, contexto)
+                certo, motivo = _corrigir_conversao(valor, contexto, pergunta=descricao)
                 if certo is not None:
                     aprovados[campo] = certo
                     corrigidos.append((descricao, str(valor), certo, motivo))
