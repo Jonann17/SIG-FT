@@ -47,7 +47,7 @@ _FATORES = {
     "pressao": {
         "pa": 1.0, "kpa": 1e3, "mpa": 1e6, "gpa": 1e9,
         "bar": 1e5, "mbar": 1e2, "kgf/cm2": 98066.5, "kgf/cm²": 98066.5,
-        "psi": 6894.757, "atm": 101325.0,
+        "psi": 6894.757, "psig": 6894.757, "atm": 101325.0,
     },
     # ---- comprimento (base: metro) ----------------------------------
     "comprimento": {
@@ -134,8 +134,14 @@ _RE_CONECTOR_INTERVALO = re.compile(
 )
 
 _RE_NUMERO_SOLTO = re.compile(r"[+-]?\d+(?:[.,]\d+)?")
+# Ate 6 letras, e nao 3. Achado na varredura de 2026-08-13: `2,05 kgfm` num
+# datasheet brasileiro de motor era INVISIVEL -- `kgfm` tem 4 letras e o
+# limite era 3, entao o torque nunca chegava a ser validado nem corrigido.
+# Mesmo caso de `psig`, `mbar` e `min-1`. Ampliar o regex e seguro porque
+# `_unidade_valida` so aceita o que esta na tabela: o que entra a mais aqui
+# e descartado logo depois.
 _RE_UNIDADE_ADIANTE = re.compile(
-    r"^\s*(kgf/cm[²2]|°?[a-zµ]{1,3}(?:[./][a-z0-9]{1,4})?|\")", re.IGNORECASE
+    r"^\s*(kgf/cm[²2]|kgf\.?m|°?[a-zµ]{1,6}(?:[./-][a-z0-9]{1,4})?|\")", re.IGNORECASE
 )
 
 

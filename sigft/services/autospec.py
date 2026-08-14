@@ -482,7 +482,20 @@ def explicar_conversao(valor, contexto):
     except ImportError:
         return []
     ok, explicacoes = autospec_unidades.conferir_texto(valor, contexto)
-    return explicacoes if ok else []
+    if not ok:
+        return []
+
+    # Só é CONVERSÃO quando o valor mudou de forma. `30,3 kg = 30.3 kg` foi
+    # copiado do documento, não calculado — anunciá-lo como conversão é
+    # factualmente falso e faz o engenheiro desconfiar de um valor correto.
+    # Achado na varredura de 2026-08-13, olhando o console de uma ficha real
+    # de motor: 2 dos 4 "convertidos" eram literais.
+    reais = []
+    for explicacao in explicacoes:
+        esquerda, _, direita = explicacao.partition(" = ")
+        if _compactar_codigo(esquerda) != _compactar_codigo(direita):
+            reais.append(explicacao)
+    return reais
 
 
 def _corrigir_conversao(valor, contexto, pergunta=None):
@@ -799,6 +812,14 @@ _RUIDO_RAZAO_SOCIAL = frozenset({
     "llc", "ag", "kg", "bv", "nv", "spa", "srl", "plc", "sas",
     "group", "grupo", "sistemas", "equipamentos", "servicos",
     "importacao", "exportacao", "distribuidora", "representacoes",
+    # 2026-08-13, varredura: `WEG EQUIPAMENTOS ELETRICOS SA` virava
+    # `WEG ELETRICOS`. Ancorar em `eletricos` aprova qualquer catálogo
+    # elétrico brasileiro, e polui a query com uma palavra que o fabricante
+    # não usa no nome do produto.
+    "eletricos", "eletricas", "eletrico", "eletrica", "eletronica",
+    "mecanica", "hidraulica", "pneumatica", "automacao", "industrial",
+    "industriais", "motores", "maquinas", "produtos", "solucoes",
+    "engenharia", "componentes", "pecas", "materiais", "instrumentacao",
 })
 
 
@@ -832,6 +853,12 @@ _FABRICANTE_GENERICO = frozenset({
     "n/a", "na", "n.a.", "nd", "n/d", "nao aplicavel", "nao informado",
     "sem marca", "sem fabricante", "nacional", "importado", "similar",
     "-", "--", "?", "xxx", "0",
+})
+
+# Preposições e artigos que não podem SOBRAR no fim de uma query truncada.
+_LIGACAO_SOLTA = frozenset({
+    "de", "da", "do", "das", "dos", "para", "por", "com", "sem", "em",
+    "no", "na", "nos", "nas", "a", "o", "as", "os", "e", "ou", "ao", "aos",
 })
 
 # Teto de download. Catálogo de fabricante de centenas de MB existe, e
@@ -1746,6 +1773,33 @@ class AutoSpecCore:
             return ""
         return base
 
+    @staticmethod
+    def _identificador_distintivo(identificador):
+        """O identificador aponta para ESTE fabricante, ou é da indústria toda?
+
+        **Achado na varredura de 2026-08-13, com resultado real do Google.**
+        `6205` é designação ISO de rolamento: SKF, NSK, FAG e todo mundo
+        fabrica "o 6205". Uma página da NSK sobre o 6205 passava pelo filtro
+        anti-intruso — o catálogo do concorrente virava contexto, que é
+        exatamente o que a regra §4.3 existe para impedir. Mesmo caso de
+        `380V` e `5CV` num motor: são ESPECIFICAÇÃO, não identidade.
+
+        Distintivo = mistura letra e dígito **e** tem 5+ caracteres:
+
+            CS1320-A-0-0-0-1/-000  sim    6205      nao (so digito)
+            6205-2RS               sim    380V      nao (4 chars)
+            4WRPEH                 sim    W22       nao (3 chars)
+            PVF100-4               sim    2-214     nao (sem letra)
+
+        O corte em 5 não é arbitrário: abaixo disso o token é curto demais
+        para ser um código de catálogo e longo demais para ser só ruído —
+        na prática é sempre uma medida (`380V`, `100L`, `5CV`).
+        """
+        texto = str(identificador or "")
+        if len(texto) < 5:
+            return False
+        return any(c.isalpha() for c in texto) and any(c.isdigit() for c in texto)
+
     @classmethod
     def _termos_do_filtro(cls, fab, cod_mat, txt_brv):
         """Termos que um resultado precisa citar para não ser descartado.
@@ -1756,14 +1810,22 @@ class AutoSpecCore:
         Agora entram também os identificadores da descrição e suas famílias,
         que são o que a página realmente cita.
         """
+        # ORDEM IMPORTA: o fabricante é a âncora FORTE. Os identificadores
+        # entram como reforço, e só os DISTINTIVOS — ver
+        # `_identificador_distintivo`.
         termos = []
         termos.extend(cls._tokens_ancora_fabricante(fab))
         if cod_mat and len(str(cod_mat)) > 2:
             termos.append(str(cod_mat))
         for ident in cls._identificadores(txt_brv):
-            termos.append(ident)
+            # O identificador E a família entram, cada um se for distintivo.
+            # A 1ª versão parava no identificador (`continue`) e perdia a
+            # família — e `CS1320` é justamente o que o datasheet de
+            # distribuidor cita, não o código de configuração completo.
+            if cls._identificador_distintivo(ident):
+                termos.append(ident)
             familia = cls._familia_do_identificador(ident)
-            if familia:
+            if familia and cls._identificador_distintivo(familia):
                 termos.append(familia)
 
         vistos = set()
@@ -1864,7 +1926,16 @@ class AutoSpecCore:
         for corte in range(len(tokens), cls.MIN_TOKENS_BUSCA - 1, -1):
             if corte <= 0:
                 break
-            trecho = " ".join(tokens[:corte])
+            # 2026-08-13, varredura: cortar palavra a palavra deixava
+            # preposição pendurada — `CONJUNTO DE REPARO PARA BOMBA DE KSB
+            # datasheet specs`. O `DE` solto não filtra nada, e ainda cola no
+            # nome do fabricante como se fosse parte dele. Corta junto.
+            restantes = list(tokens[:corte])
+            while restantes and _normalizar_texto_busca(restantes[-1]) in _LIGACAO_SOLTA:
+                restantes.pop()
+            if not restantes:
+                continue
+            trecho = " ".join(restantes)
             queries.append(f"{trecho} {fab_txt} datasheet specs".strip())
 
         vistas = set()

@@ -35,6 +35,48 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-23 🔴 Varredura com 7 tipos de material real — 5 achados *(2026-08-13)*
+
+Sete materiais típicos do parque de Itaipu passados pelo pipeline inteiro: sensor HYDAC,
+rolamento SKF, anel Parker, motor WEG, válvula Swagelok em polegadas, servoválvula Bosch Rexroth
+e um item sem código (Voith). Resultados de busca **reais do Google** como fixture; datasheets
+escritos como fabricante escreve — vírgula decimal em português, ponto em inglês, alemão,
+polegadas.
+
+| # | Achado | Gravidade |
+|---|---|---|
+| **1** | **`6205` é designação ISO** — SKF, NSK e FAG fabricam todos "o 6205", e o catálogo do **concorrente passava** pelo filtro citando só isso. Mesmo caso de `380V`/`5CV` num motor: são **especificação, não identidade** | **grave** — §4.3 furada |
+| **2** | **`2,05 kgfm` era INVISÍVEL** — o regex de unidade aceitava 3 letras e `kgfm` tem 4. Torque em kgf·m nunca era validado nem corrigido. Idem `psig`, `mbar`, `min-1` | **grave** — campo inteiro sem validação |
+| **3** | `WEG EQUIPAMENTOS ELETRICOS SA` → `WEG ELETRICOS`; ancorar em `eletricos` aprova qualquer catálogo elétrico brasileiro | média |
+| **4** | Valor **literal** anunciado como conversão (`30,3 kg = 30.3 kg`) — factualmente falso, e faz desconfiar de valor correto | média |
+| **5** | Query truncada com preposição pendurada: `CONJUNTO DE REPARO PARA BOMBA DE KSB datasheet specs` | baixa |
+
+**Como o #1 foi resolvido sem reabrir o furo de 12/08.** Identificador só ancora o filtro se for
+**distintivo**: mistura letra e dígito **e** tem 5+ caracteres. Os três casos convivem:
+
+```
+HYDAC : ['HYDAC', '3332066', 'CS1320-A-0-0-0-1/-000', 'CS1320']   <- familia mantida
+SKF   : ['SKF', '6205-2RS']                                       <- `6205` fora
+WEG   : ['WEG']                                                   <- `380V`/`W22` fora
+```
+
+> **Um erro meu no caminho:** a 1ª versão parava no identificador e não acrescentava a família —
+> e `CS1320` é justamente o que o datasheet de distribuidor cita. O teste de regressão da falha
+> de 12/08 pegou na hora.
+
+### Pipeline completo, ficha de motor WEG
+
+```
+[warn] 2 campo(s) vieram de CONVERSAO: 3,6775 kW (de 5 cv) · 104 F (de 40 C)
+[warn] 1 campo(s) tiveram a CONTA REFEITA:
+       · 5 - CONJUGADO NOMINAL (Nm): a IA disse '2,01 Nm', gravei '20,1036325 Nm'
+         (de 2,05 kgfm)                                    <- erro de 10x, corrigido
+[warn] 1 campo(s) ficaram VAZIOS: 7 - TENSAO DE ISOLAMENTO -> '600 V' (inventado)
+```
+
+47 testes novos.
+
+
 ### ✅ R-22 🔴 Desempate pelo enunciado, precisão completa e mais 1 bug *(2026-08-13)*
 
 **O enunciado do campo desempata.** Você perguntou se esse processamento já existia: **não**. A
