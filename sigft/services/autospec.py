@@ -403,16 +403,69 @@ def valor_tem_lastro(valor, contexto):
         return True  # vazio não precisa de lastro; não vai escrever nada
 
     ctx = _normalizar_texto_busca(contexto)
-    numeros_valor = _numeros_normalizados(texto)
+
+    # CÓDIGO ALFANUMÉRICO tem de aparecer INTEIRO, não só os dígitos dele.
+    #
+    # Bug real, encontrado auditando este próprio módulo em 2026-08-13:
+    # `IP65` era APROVADO contra um documento que dizia `IP67`, porque o
+    # `65` aparecia noutro lugar (`65 mm`). O grau de proteção errado entrava
+    # na ficha exatamente pelo caminho que existe para impedir isso. Vale
+    # para `IP67`, `DN50`, `G1/2`, `M8` — tudo que mistura letra e dígito.
+    ctx_compacto = _compactar_codigo(ctx)
+    for codigo in re.findall(r"[a-z]+\d[a-z0-9]*|\d+[a-z]+[a-z0-9]*",
+                             _normalizar_texto_busca(texto)):
+        if _compactar_codigo(codigo) not in ctx_compacto:
+            return False
+
+    # NÚMERO COM UNIDADE é conferido como MEDIDA, nunca só pelo número.
+    #
+    # Bug real, achado na varredura de 2026-08-13: `41 g` era APROVADO contra
+    # um documento que diz `41 kg`, porque o `41` estava lá. Mil vezes de
+    # diferença, e o caminho literal nunca olhava a unidade. Vale para todo
+    # par grandeza/prefixo: `350 kPa` contra `350 bar`, `25,4 cm` contra
+    # `25,4 mm`.
+    medida_ok, numeros_soltos = _conferir_medidas(texto, contexto)
+    if medida_ok is False:
+        return False
+
+    numeros_valor = numeros_soltos if medida_ok else _numeros_normalizados(texto)
     if numeros_valor:
         if numeros_valor <= _numeros_normalizados(ctx):
             return True
         return bool(explicar_conversao(texto, contexto))
+    if medida_ok:
+        return True  # tudo que havia eram medidas, e todas conferiram
 
     palavras = re.findall(r"[a-z]{4,}", _normalizar_texto_busca(texto))
     if not palavras:
         return True
     return any(p in ctx for p in palavras)
+
+
+def _conferir_medidas(texto, contexto):
+    """`(resultado, numeros_sem_unidade)` para o lastro.
+
+    `resultado` é `True` quando havia medidas e TODAS conferiram (literal ou
+    por conversão), `False` quando alguma não conferiu, e `None` quando não
+    havia medida nenhuma — aí o caminho literal decide sozinho.
+    """
+    try:
+        from sigft.services import autospec_unidades
+    except ImportError:
+        return None, set()
+    try:
+        if not autospec_unidades.extrair_medidas(texto):
+            return None, set()
+        ok, _explicacoes = autospec_unidades.conferir_texto(texto, contexto)
+        if not ok:
+            return False, set()
+        soltos = {
+            f"{v:g}".rstrip("0").rstrip(".") if "." in f"{v:g}" else f"{v:g}"
+            for v in autospec_unidades.numeros_sem_unidade(texto)
+        }
+        return True, soltos
+    except Exception:
+        return None, set()
 
 
 def explicar_conversao(valor, contexto):
@@ -429,7 +482,38 @@ def explicar_conversao(valor, contexto):
     except ImportError:
         return []
     ok, explicacoes = autospec_unidades.conferir_texto(valor, contexto)
-    return explicacoes if ok else []
+    if not ok:
+        return []
+
+    # Só é CONVERSÃO quando o valor mudou de forma. `30,3 kg = 30.3 kg` foi
+    # copiado do documento, não calculado — anunciá-lo como conversão é
+    # factualmente falso e faz o engenheiro desconfiar de um valor correto.
+    # Achado na varredura de 2026-08-13, olhando o console de uma ficha real
+    # de motor: 2 dos 4 "convertidos" eram literais.
+    reais = []
+    for explicacao in explicacoes:
+        esquerda, _, direita = explicacao.partition(" = ")
+        if _compactar_codigo(esquerda) != _compactar_codigo(direita):
+            reais.append(explicacao)
+    return reais
+
+
+def _corrigir_conversao(valor, contexto, pergunta=None):
+    """Ponte para `autospec_unidades.corrigir_conversao`, tolerante à ausência
+    do módulo — mesmo padrão de `explicar_conversao`.
+
+    `pergunta` é o ENUNCIADO do campo, e é o que desempata quando o documento
+    tem duas medidas da mesma grandeza: "6 - PRESSAO DE TRABALHO" aponta para
+    "Maximum operating pressure" e não para "Peak pressure".
+    """
+    try:
+        from sigft.services import autospec_unidades
+    except ImportError:
+        return None, ""
+    try:
+        return autospec_unidades.corrigir_conversao(valor, contexto, pergunta=pergunta)
+    except Exception:
+        return None, ""
 
 
 def origens_do_contexto(contexto):
@@ -728,6 +812,14 @@ _RUIDO_RAZAO_SOCIAL = frozenset({
     "llc", "ag", "kg", "bv", "nv", "spa", "srl", "plc", "sas",
     "group", "grupo", "sistemas", "equipamentos", "servicos",
     "importacao", "exportacao", "distribuidora", "representacoes",
+    # 2026-08-13, varredura: `WEG EQUIPAMENTOS ELETRICOS SA` virava
+    # `WEG ELETRICOS`. Ancorar em `eletricos` aprova qualquer catálogo
+    # elétrico brasileiro, e polui a query com uma palavra que o fabricante
+    # não usa no nome do produto.
+    "eletricos", "eletricas", "eletrico", "eletrica", "eletronica",
+    "mecanica", "hidraulica", "pneumatica", "automacao", "industrial",
+    "industriais", "motores", "maquinas", "produtos", "solucoes",
+    "engenharia", "componentes", "pecas", "materiais", "instrumentacao",
 })
 
 
@@ -761,6 +853,12 @@ _FABRICANTE_GENERICO = frozenset({
     "n/a", "na", "n.a.", "nd", "n/d", "nao aplicavel", "nao informado",
     "sem marca", "sem fabricante", "nacional", "importado", "similar",
     "-", "--", "?", "xxx", "0",
+})
+
+# Preposições e artigos que não podem SOBRAR no fim de uma query truncada.
+_LIGACAO_SOLTA = frozenset({
+    "de", "da", "do", "das", "dos", "para", "por", "com", "sem", "em",
+    "no", "na", "nos", "nas", "a", "o", "as", "os", "e", "ou", "ao", "aos",
 })
 
 # Teto de download. Catálogo de fabricante de centenas de MB existe, e
@@ -1675,6 +1773,33 @@ class AutoSpecCore:
             return ""
         return base
 
+    @staticmethod
+    def _identificador_distintivo(identificador):
+        """O identificador aponta para ESTE fabricante, ou é da indústria toda?
+
+        **Achado na varredura de 2026-08-13, com resultado real do Google.**
+        `6205` é designação ISO de rolamento: SKF, NSK, FAG e todo mundo
+        fabrica "o 6205". Uma página da NSK sobre o 6205 passava pelo filtro
+        anti-intruso — o catálogo do concorrente virava contexto, que é
+        exatamente o que a regra §4.3 existe para impedir. Mesmo caso de
+        `380V` e `5CV` num motor: são ESPECIFICAÇÃO, não identidade.
+
+        Distintivo = mistura letra e dígito **e** tem 5+ caracteres:
+
+            CS1320-A-0-0-0-1/-000  sim    6205      nao (so digito)
+            6205-2RS               sim    380V      nao (4 chars)
+            4WRPEH                 sim    W22       nao (3 chars)
+            PVF100-4               sim    2-214     nao (sem letra)
+
+        O corte em 5 não é arbitrário: abaixo disso o token é curto demais
+        para ser um código de catálogo e longo demais para ser só ruído —
+        na prática é sempre uma medida (`380V`, `100L`, `5CV`).
+        """
+        texto = str(identificador or "")
+        if len(texto) < 5:
+            return False
+        return any(c.isalpha() for c in texto) and any(c.isdigit() for c in texto)
+
     @classmethod
     def _termos_do_filtro(cls, fab, cod_mat, txt_brv):
         """Termos que um resultado precisa citar para não ser descartado.
@@ -1685,14 +1810,22 @@ class AutoSpecCore:
         Agora entram também os identificadores da descrição e suas famílias,
         que são o que a página realmente cita.
         """
+        # ORDEM IMPORTA: o fabricante é a âncora FORTE. Os identificadores
+        # entram como reforço, e só os DISTINTIVOS — ver
+        # `_identificador_distintivo`.
         termos = []
         termos.extend(cls._tokens_ancora_fabricante(fab))
         if cod_mat and len(str(cod_mat)) > 2:
             termos.append(str(cod_mat))
         for ident in cls._identificadores(txt_brv):
-            termos.append(ident)
+            # O identificador E a família entram, cada um se for distintivo.
+            # A 1ª versão parava no identificador (`continue`) e perdia a
+            # família — e `CS1320` é justamente o que o datasheet de
+            # distribuidor cita, não o código de configuração completo.
+            if cls._identificador_distintivo(ident):
+                termos.append(ident)
             familia = cls._familia_do_identificador(ident)
-            if familia:
+            if familia and cls._identificador_distintivo(familia):
                 termos.append(familia)
 
         vistos = set()
@@ -1793,7 +1926,16 @@ class AutoSpecCore:
         for corte in range(len(tokens), cls.MIN_TOKENS_BUSCA - 1, -1):
             if corte <= 0:
                 break
-            trecho = " ".join(tokens[:corte])
+            # 2026-08-13, varredura: cortar palavra a palavra deixava
+            # preposição pendurada — `CONJUNTO DE REPARO PARA BOMBA DE KSB
+            # datasheet specs`. O `DE` solto não filtra nada, e ainda cola no
+            # nome do fabricante como se fosse parte dele. Corta junto.
+            restantes = list(tokens[:corte])
+            while restantes and _normalizar_texto_busca(restantes[-1]) in _LIGACAO_SOLTA:
+                restantes.pop()
+            if not restantes:
+                continue
+            trecho = " ".join(restantes)
             queries.append(f"{trecho} {fab_txt} datasheet specs".strip())
 
         vistas = set()
@@ -2108,23 +2250,33 @@ class AutoSpecCore:
         aprovados = {}
         reprovados = []
         convertidos = []
+        corrigidos = []
 
         for campo, valor in (valores or {}).items():
             descricao = str((missing.get(campo) or {}).get("desc") or campo)
             if campo in GENERATIVE_FIELDS:
                 aprovados[campo] = valor
                 continue
-            if valor_tem_lastro(valor, contexto):
-                aprovados[campo] = valor
-                # Número que passou por CONVERSÃO não foi copiado do
-                # documento — foi calculado. Aprovar em silêncio seria pior
-                # que reprovar: quem homologa precisa saber que aquele valor
-                # não está escrito lá, e poder refazer a conta.
-                explicacoes = explicar_conversao(valor, contexto)
-                if explicacoes:
-                    convertidos.append((descricao, str(valor), explicacoes))
+            if not valor_tem_lastro(valor, contexto):
+                # Antes de descartar: a IA pode ter lido o número CERTO e
+                # errado só a conta. Aí o dado é bom e a aritmética é do
+                # computador — ver `autospec_unidades.corrigir_conversao`.
+                certo, motivo = _corrigir_conversao(valor, contexto, pergunta=descricao)
+                if certo is not None:
+                    aprovados[campo] = certo
+                    corrigidos.append((descricao, str(valor), certo, motivo))
+                    continue
+                reprovados.append((descricao, str(valor), motivo))
                 continue
-            reprovados.append((descricao, str(valor)))
+
+            aprovados[campo] = valor
+            # Número que passou por CONVERSÃO não foi copiado do documento —
+            # foi calculado. Aprovar em silêncio seria pior que reprovar: quem
+            # homologa precisa saber que aquele valor não está escrito lá, e
+            # poder refazer a conta.
+            explicacoes = explicar_conversao(valor, contexto)
+            if explicacoes:
+                convertidos.append((descricao, str(valor), explicacoes))
 
         if convertidos:
             cb.log(
@@ -2138,14 +2290,36 @@ class AutoSpecCore:
                     nivel="warn",
                 )
 
+        if corrigidos:
+            cb.log(
+                f"{len(corrigidos)} campo(s) tiveram a CONTA REFEITA: a IA leu o numero certo "
+                f"do documento e converteu errado. O valor gravado e o recalculado:",
+                nivel="warn",
+            )
+            for descricao, antes, depois, motivo in corrigidos:
+                cb.log(
+                    f"      · {descricao[:56]}: a IA disse {antes[:22]!r}, gravei "
+                    f"{depois[:22]!r} — {motivo[:70]}",
+                    nivel="warn",
+                )
+
         if reprovados:
             cb.log(
                 f"{len(reprovados)} campo(s) ficaram VAZIOS porque o valor respondido nao "
                 f"aparece no documento lido. Preencha a mao, conferindo na fonte:",
                 nivel="warn",
             )
-            for descricao, valor in reprovados:
-                cb.log(f"      · {descricao[:70]} -> a IA respondeu {valor[:40]!r}", nivel="warn")
+            for descricao, valor, motivo in reprovados:
+                # O MOTIVO é a parte que o engenheiro usa: dizer "não achei"
+                # não ajuda; dizer "o documento tem duas pressões e não dá
+                # para saber qual" diz exatamente o que ele precisa decidir.
+                # Por isso ele não é truncado junto com o resto.
+                cb.log(
+                    f"      · {descricao[:60]} -> a IA respondeu {valor[:30]!r}",
+                    nivel="warn",
+                )
+                if motivo:
+                    cb.log(f"        motivo: {motivo}", nivel="warn")
         return aprovados
 
     def _conferir_fontes_citadas(self, contexto, callbacks=None):

@@ -46,6 +46,18 @@ if defined SIGFT_DEV (
     if errorlevel 1 exit /b 1
 )
 
+rem --- 4. navegador do Playwright -------------------------------------------
+rem Por que isto NAO vem junto com o `pip install`: o pacote `playwright` do
+rem PyPI traz so a biblioteca Python. O navegador (Chromium, ~150 MB) e um
+rem binario baixado a parte, pelo processo Node do Playwright -- nao existe
+rem wheel que o carregue. Por isso precisa de um passo proprio.
+rem
+rem Roda UMA vez (carimbo no venv) e NUNCA derruba a instalacao: em rede
+rem corporativa este download e o que mais falha, e o SIG-FT funciona sem ele
+rem -- o motor de RPA padrao e o Selenium, e a leitura de pagina por navegador
+rem no AutoSpec e um recurso de ultimo recurso, opcional por desenho.
+call :_instalar_navegador
+
 exit /b 0
 
 
@@ -165,6 +177,49 @@ if errorlevel 1 (
 )
 >"%_stamp%" echo %_hash%
 echo [SIG-FT] Dependencias de %~nx1 instaladas.
+echo.
+exit /b 0
+
+:_instalar_navegador
+rem Pula se ja foi feito, se o usuario desligou, ou se nao ha playwright.
+if defined SIGFT_SEM_NAVEGADOR exit /b 0
+set "_stamp_nav=%SIGFT_VENV_DIR%\.sigft-playwright.stamp"
+if exist "%_stamp_nav%" exit /b 0
+"%SIGFT_PY%" -c "import playwright" >nul 2>&1
+if errorlevel 1 exit /b 0
+
+rem Ja instalado por fora (Instalar-Playwright.bat, ou outro projeto)? Entao
+rem so carimba, sem baixar 150 MB de novo.
+"%SIGFT_PY%" -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); b=p.chromium.launch(); b.close(); p.stop()" >nul 2>&1
+if not errorlevel 1 (
+    >"%_stamp_nav%" echo ok
+    exit /b 0
+)
+
+echo.
+echo [SIG-FT] Baixando o navegador Chromium ^(~150 MB, so na primeira vez^).
+echo          Ele serve para dois recursos OPCIONAIS: o motor novo de RPA e a
+echo          leitura de paginas de fabricante que so montam com JavaScript.
+echo          Se falhar, o aplicativo funciona do mesmo jeito.
+echo.
+rem Rede com inspecao SSL: o download nao passa pelo pip, e sim pelo processo
+rem Node do Playwright, que ignora as variaveis do Python. Quem manda nele e
+rem NODE_EXTRA_CA_CERTS -- ver Instalar-Playwright.bat e o README.
+if not defined NODE_EXTRA_CA_CERTS if defined SSL_CERT_FILE (
+    set "NODE_EXTRA_CA_CERTS=%SSL_CERT_FILE%"
+)
+"%SIGFT_PY%" -m playwright install chromium
+if errorlevel 1 (
+    echo.
+    echo [SIG-FT] Nao consegui baixar o navegador -- SEGUINDO ASSIM MESMO.
+    echo          Os dois recursos que dependem dele ficam indisponiveis; todo
+    echo          o resto funciona. Para tentar de novo com as dicas de rede
+    echo          corporativa, rode o Instalar-Playwright.bat.
+    echo.
+    exit /b 0
+)
+>"%_stamp_nav%" echo ok
+echo [SIG-FT] Navegador instalado.
 echo.
 exit /b 0
 

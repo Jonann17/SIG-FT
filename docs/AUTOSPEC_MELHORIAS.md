@@ -35,6 +35,152 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-23 🔴 Varredura com 7 tipos de material real — 5 achados *(2026-08-13)*
+
+Sete materiais típicos do parque de Itaipu passados pelo pipeline inteiro: sensor HYDAC,
+rolamento SKF, anel Parker, motor WEG, válvula Swagelok em polegadas, servoválvula Bosch Rexroth
+e um item sem código (Voith). Resultados de busca **reais do Google** como fixture; datasheets
+escritos como fabricante escreve — vírgula decimal em português, ponto em inglês, alemão,
+polegadas.
+
+| # | Achado | Gravidade |
+|---|---|---|
+| **1** | **`6205` é designação ISO** — SKF, NSK e FAG fabricam todos "o 6205", e o catálogo do **concorrente passava** pelo filtro citando só isso. Mesmo caso de `380V`/`5CV` num motor: são **especificação, não identidade** | **grave** — §4.3 furada |
+| **2** | **`2,05 kgfm` era INVISÍVEL** — o regex de unidade aceitava 3 letras e `kgfm` tem 4. Torque em kgf·m nunca era validado nem corrigido. Idem `psig`, `mbar`, `min-1` | **grave** — campo inteiro sem validação |
+| **3** | `WEG EQUIPAMENTOS ELETRICOS SA` → `WEG ELETRICOS`; ancorar em `eletricos` aprova qualquer catálogo elétrico brasileiro | média |
+| **4** | Valor **literal** anunciado como conversão (`30,3 kg = 30.3 kg`) — factualmente falso, e faz desconfiar de valor correto | média |
+| **5** | Query truncada com preposição pendurada: `CONJUNTO DE REPARO PARA BOMBA DE KSB datasheet specs` | baixa |
+
+**Como o #1 foi resolvido sem reabrir o furo de 12/08.** Identificador só ancora o filtro se for
+**distintivo**: mistura letra e dígito **e** tem 5+ caracteres. Os três casos convivem:
+
+```
+HYDAC : ['HYDAC', '3332066', 'CS1320-A-0-0-0-1/-000', 'CS1320']   <- familia mantida
+SKF   : ['SKF', '6205-2RS']                                       <- `6205` fora
+WEG   : ['WEG']                                                   <- `380V`/`W22` fora
+```
+
+> **Um erro meu no caminho:** a 1ª versão parava no identificador e não acrescentava a família —
+> e `CS1320` é justamente o que o datasheet de distribuidor cita. O teste de regressão da falha
+> de 12/08 pegou na hora.
+
+### Pipeline completo, ficha de motor WEG
+
+```
+[warn] 2 campo(s) vieram de CONVERSAO: 3,6775 kW (de 5 cv) · 104 F (de 40 C)
+[warn] 1 campo(s) tiveram a CONTA REFEITA:
+       · 5 - CONJUGADO NOMINAL (Nm): a IA disse '2,01 Nm', gravei '20,1036325 Nm'
+         (de 2,05 kgfm)                                    <- erro de 10x, corrigido
+[warn] 1 campo(s) ficaram VAZIOS: 7 - TENSAO DE ISOLAMENTO -> '600 V' (inventado)
+```
+
+47 testes novos.
+
+
+### ✅ R-22 🔴 Desempate pelo enunciado, precisão completa e mais 1 bug *(2026-08-13)*
+
+**O enunciado do campo desempata.** Você perguntou se esse processamento já existia: **não**. A
+IA lê o documento inteiro, mas o *recálculo* não usava o enunciado — com duas pressões no
+documento, descartava. Agora usa, e reaproveita o **glossário multilíngue do retrieval**, que já
+sabe que `trabalho` vale `operating`/`betriebs`:
+
+```
+documento: "Maximum operating pressure 350 bar. Peak pressure 210 bar. Burst pressure 700 bar."
+
+6 - PRESSAO DE TRABALHO  ->  35 MPa   (de 350 bar)
+8 - PRESSAO DE PICO      ->  21 MPa   (de 210 bar)
+9 - PRESSAO DE RUPTURA   ->  70 MPa   (de 700 bar)
+PRESSAO (sem qualificar)  ->  vazio, e lista as 3
+```
+
+Entraram 15 termos **discriminantes** no glossário (`pico`, `ruptura`, `teste`, `contínuo`,
+`estático`, `entrada`, `saída`, `ambiente`, `partida`, `carga`…): não servem para *achar* o
+trecho, servem para distinguir duas medidas da mesma grandeza. 71 termos, 390 equivalentes.
+
+> **Um detalhe que quase passou:** a 1ª versão olhava 90 caracteres antes da medida, e as duas
+> pressões enxergavam a palavra `operating` — empatavam e o desempate nunca acontecia. A janela
+> tem de ser a **frase**, um limite semântico, não métrico.
+
+**Precisão completa** (sua decisão): `41 kg` → `90,3895275 lb`, não `90,4 lb`. Arredondar
+descarta informação, e quem lê pode arredondar depois — o caminho inverso é impossível. O teto de
+10 algarismos existe só para matar ruído de ponto flutuante (`90.38950000000001`).
+
+### Mais um bug, da mesma família dos outros
+
+Você previu certo. A varredura de 7 frentes achou **um a mais**, e do mesmo tipo:
+
+> **`41 g` era APROVADO contra um documento que diz `41 kg`.** O caminho literal conferia só o
+> NÚMERO, nunca a unidade. Mil vezes de diferença. Vale para todo par prefixo/grandeza:
+> `350 kPa` contra `350 bar`, `25,4 cm` contra `25,4 mm`.
+
+Agora número com unidade é conferido como **medida** (número e unidade juntos, literal ou por
+conversão). Número sem unidade conhecida segue pelo caminho literal.
+
+As outras 6 frentes da varredura (temperatura afim com negativos e Kelvin, unidade fora da
+tabela, percentagem e razão, valor já correto não ser mexido, texto misto certo+inventado, campos
+gerativos isentos) passaram sem achado.
+
+**O padrão dos 4 bugs desta camada é o mesmo**: conferir uma parte do valor e concluir sobre o
+todo — os dígitos sem o código (`IP65`), os dígitos sem a unidade (`41 g`), o número sem a
+convenção de separador (`2.500`), a origem sem checar se houve conversão (`0 bar`). Anotado
+porque é o que se deve procurar na próxima auditoria.
+
+19 testes novos.
+
+
+### ✅ R-21 🔴 Conta refeita em vez de descarte + auditoria da conversão *(2026-08-13)*
+
+**A conta é refeita, não descartada.** Pedido do usuário: quando a IA converte errado, o dado de
+origem é REAL — o errado é só a aritmética, e aritmética é o que computador faz sem errar.
+
+```
+[warn] 1 campo(s) tiveram a CONTA REFEITA: a IA leu o numero certo do documento
+       e converteu errado. O valor gravado e o recalculado:
+       · 6 - PRESSAO (MPa): a IA disse '3,5 MPa', gravei '35 MPa' — 3.5 -> 35 mpa (de 350 bar)
+```
+
+**Só quando não há dúvida sobre a origem.** Com duas pressões no documento (`350 bar` de
+trabalho, `210 bar` de pico), o erro deixa de ser aritmético e vira de LEITURA — qual o campo
+pedia? Aí o campo fica vazio e o console lista as opções. Chutar trocaria erro visível por erro
+invisível.
+
+**Não usei IA para revalidar**, e a preocupação que você levantou é o motivo: perguntar "está
+certo?" convida concordância, e a conta é justamente o que o modelo já errou uma vez. O
+recálculo determinístico não tem esse problema — e não gasta token.
+
+> **Revistos no mesmo dia (R-22):** (1) a origem ambígua deixou de ser descarte — o **enunciado
+> do campo** desempata; (2) o arredondamento pela precisão da fonte foi revertido a pedido do
+> usuário: prevalece a informação **mais completa**.
+
+### A auditoria — 3 bugs, um deles grave
+
+Você pediu para conferir se havia mais bugs. Havia. Os 20 fatores de conversão e a ida-e-volta
+de todas as unidades estão íntegros (conferidos numericamente); os furos estavam no parsing:
+
+| # | Bug | Gravidade |
+|---|---|---|
+| **1** | **`IP65` era APROVADO contra documento que diz `IP67`** — o `65` aparecia em "65 mm" e a conferência olhava só os dígitos | **grave**: grau de proteção errado entrava na ficha pelo caminho que existe para impedir isso |
+| **2** | `2.500` lido sempre como 2,5 — em documento PT é 2500 | erro de **mil vezes**, grande demais para parecer erro de digitação |
+| **3** | **`0 bar` era "corrigido" para `350 bar`** | a correção virava invenção: nenhuma aritmética leva de 0 a 350 |
+
+Correções: código alfanumérico agora tem de aparecer **inteiro** no documento; número ambíguo
+gera as **duas leituras** e o documento decide; correção só dispara quando as unidades diferem
+(houve de fato conversão).
+
+### Navegador
+
+- **`robots.txt` ilegível agora LIBERA** (sua decisão). Não conseguir ler a regra não é a regra
+  dizer não — e proxy corporativo derruba `robots.txt` com frequência. `Disallow` explícito
+  continua barrando.
+- **Playwright entrou no `_bootstrap_venv.bat`.** O `pip install playwright` traz só a
+  biblioteca Python; o navegador é um binário de ~150 MB baixado pelo processo Node, sem wheel
+  que o carregue — por isso precisava de passo próprio. Agora roda sozinho na primeira vez, com
+  carimbo, e **nunca derruba a instalação**: se falhar (comum atrás de Zscaler), o app abre
+  igual e só os dois recursos opcionais ficam de fora.
+
+23 testes novos.
+
+
 ### ✅ R-20 🔴 Conversão de unidade CONFERIDA + navegador como último recurso *(2026-08-13)*
 
 **Conversão.** O lastro (R-19) reprovava `35 MPa` a partir de `350 bar` — conversão correta,
@@ -67,9 +213,10 @@ seria pior que reprovar.
 fora de `services/` porque a arquitetura proíbe serviço conhecer Playwright.
 
 **A ordem é a política:** tenta o download simples → só se falhar → só se o `robots.txt`
-permitir → abre o navegador. Um site que diz "não" continua recebendo "está bem". O `robots.txt`
-falha **fechada** (não deu para ler = não), ao contrário do resto do módulo — a dúvida aqui é
-sobre permissão.
+permitir → abre o navegador. Um site que diz "não" continua recebendo "está bem".
+
+> **Revisto no mesmo dia (R-21):** o `robots.txt` falhava **fechada** aqui. Por decisão do
+> usuário, passou a falhar **aberta** — não conseguir ler a regra não é a regra dizer não.
 
 404/500 **não** acionam o navegador: "não existe" não é "não quero". O gatilho real é o 403 e,
 mais importante, a página que baixa quase vazia — assinatura de aplicação JavaScript, pior que
