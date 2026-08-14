@@ -580,17 +580,30 @@ RPA_ENGINE_PADRAO = ENGINE_SELENIUM
 
 # Chave = nome do módulo em `sigft/services/`. Trocar para ENGINE_PLAYWRIGHT
 # depois que o módulo for validado com o usuário no portal real.
+# VALIDADO CONTRA O PORTAL REAL em 2026-08-11 e promovido a padrão. Até aqui
+# o padrão era Selenium e o Playwright só rodava com a variável de ambiente;
+# a sessão de validação cobriu Cria Fichas, Upload Specs e Upload Condições no
+# motor novo, com o mesmo resultado do antigo.
+#
+# `ficha_duplicada` FICA no Selenium, e não é conservadorismo: ele é o único
+# módulo que nunca foi portado (usa `webdriver`/`By`/`Select` direto) e a
+# Fase 6 vai reconstruí-lo já em Playwright. Portá-lo agora seria trabalho
+# jogado fora na reescrita.
+#
+# O caminho de volta continua existindo, e é isso que torna esta troca
+# barata: `SIGFT_RPA_ENGINE=selenium` devolve TUDO ao motor antigo sem
+# tocar em código. Ele só desaparece no CP 5.5, que por sua vez só faz
+# sentido depois da Fase 6 -- enquanto `ficha_duplicada` importar Selenium,
+# "remover o Selenium" é impossível de qualquer forma.
 RPA_ENGINE: dict[str, str] = {
-    # Migrados (código pronto, aguardando a sessão de validação com o usuário):
-    "apagar_lmr": ENGINE_SELENIUM,      # piloto do CP 5.1 -- fluxo completo
-    "lmr": ENGINE_SELENIUM,             # CP 5.2 -- fluxo completo
-    # CP 5.2 (atualização em massa) + CP 5.4 (criação de ficha individual):
-    # o módulo inteiro roda nos dois motores.
-    "cria_fichas": ENGINE_SELENIUM,
-    "upload_conditions": ENGINE_SELENIUM,  # CP 5.3 -- fluxo completo
-    "tech_specs": ENGINE_SELENIUM,      # CP 5.3 -- fluxo completo
-    # Ainda não migrado:
-    "ficha_duplicada": ENGINE_SELENIUM,  # Fase 6 (reconstruído já em Playwright)
+    "apagar_lmr": ENGINE_PLAYWRIGHT,      # CP 5.1
+    "lmr": ENGINE_PLAYWRIGHT,             # CP 5.2
+    # CP 5.2 (atualização em massa) + CP 5.4 (criação de ficha individual).
+    "cria_fichas": ENGINE_PLAYWRIGHT,
+    "upload_conditions": ENGINE_PLAYWRIGHT,  # CP 5.3
+    "tech_specs": ENGINE_PLAYWRIGHT,      # CP 5.3
+    # Único não portado -- reconstruído na Fase 6, já no motor novo.
+    "ficha_duplicada": ENGINE_SELENIUM,
 }
 
 # Override global por variável de ambiente, para o usuário experimentar o motor
