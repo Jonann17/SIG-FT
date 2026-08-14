@@ -318,15 +318,33 @@ remoto, então anote: pode ser preciso configurar proxy para o Chromium.
 
 ### 5.3 Rodar os módulos no motor novo
 
-Abra o **Prompt de Comando** na pasta do projeto e digite:
+**Dois cliques em `SIG-FT-Playwright.bat`.** É o mesmo aplicativo; só a
+automação do portal muda de motor. A janela preta confirma na primeira linha:
+`Motor de automacao: PLAYWRIGHT`.
 
-```bat
-set SIGFT_RPA_ENGINE=playwright
-SIG-FT.bat
+> **Caminho de volta:** feche e abra o `SIG-FT.bat` de sempre. Nada fica
+> gravado — não há o que desfazer.
+
+⚠️ **Não use `set SIGFT_RPA_ENGINE=playwright` no PowerShell.** No **Prompt de
+Comando (cmd)** funciona; no **PowerShell** — o terminal que o Windows abre por
+padrão hoje — `set` é outro comando (`Set-Variable`) e **não define variável de
+ambiente**. O app abre no motor ANTIGO, sem nenhum aviso, e o teste inteiro
+mede a coisa errada. Aconteceu na validação de 2026-08-11. Se ainda assim
+quiser fazer pela linha de comando no PowerShell:
+
+```powershell
+$env:SIGFT_RPA_ENGINE = "playwright"
+.\SIG-FT.bat
 ```
 
-> A variável vale só para essa janela. Fechou o Prompt, voltou ao Selenium.
-> **É este o caminho de volta se algo der errado** — não precisa desfazer nada.
+(o `.\` é obrigatório: o PowerShell não roda arquivo da pasta atual sem ele —
+foi o segundo erro daquela sessão.)
+
+**Como confirmar que está mesmo no motor novo**, sem depender da janela preta:
+a primeira execução de qualquer módulo de RPA abre um navegador que **pede
+login** e, a partir da segunda, **não pede mais** (o Playwright usa perfil
+persistente; o Selenium não). Se o login for pedido toda vez, você está no
+motor antigo.
 
 Repita **as mesmas 5 tarefas da Etapa 4**, na mesma ordem. O que comparar:
 

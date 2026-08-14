@@ -77,9 +77,20 @@ Para experimentar o motor novo sem editar nada:
 
 ```bat
 Instalar-Playwright.bat          REM uma vez só — baixa o navegador (~150 MB)
-set SIGFT_RPA_ENGINE=playwright
-SIG-FT.bat
 ```
+
+Depois disso, **dois cliques em `SIG-FT-Playwright.bat`**. É o mesmo aplicativo;
+só a automação do portal muda de motor. Para voltar ao antigo, feche e abra o
+`SIG-FT.bat` de sempre — nada fica gravado.
+
+> **Por que um arquivo próprio, e não "defina uma variável".** A instrução
+> `set SIGFT_RPA_ENGINE=playwright` só funciona no **Prompt de Comando
+> (cmd)**. No **PowerShell** — o terminal que o Windows abre por padrão hoje —
+> `set` é outro comando (`Set-Variable`) e **não define variável de
+> ambiente**: o app abria no motor antigo sem nenhum aviso, e o teste do motor
+> novo media a coisa errada. No PowerShell, o equivalente seria
+> `$env:SIGFT_RPA_ENGINE = "playwright"` seguido de `.\SIG-FT.bat` (com o
+> `.\`, que o PowerShell exige para rodar arquivo da pasta atual).
 
 A variável vale para todos os módulos e some quando você fecha a janela — é o
 caminho de volta imediato se algo se comportar mal. Um valor com erro de
