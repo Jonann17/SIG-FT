@@ -1,6 +1,8 @@
 import os
 import re
 import json
+import hashlib
+import unicodedata
 import requests
 import tempfile
 import openpyxl
@@ -332,6 +334,230 @@ def _cache_busca_gravar(query, items, agora=None):
 
 
 # =============================================================================
+# LASTRO DOCUMENTAL — o valor respondido está mesmo no documento?
+# =============================================================================
+# Pedido do usuário em 2026-08-13: "não gostei do ato de aceitar uma
+# informação errada. Isto não deve acontecer."
+#
+# O QUE ISTO GARANTE, E O QUE NÃO GARANTE — a distinção importa.
+#
+# Garante: todo valor escrito num campo TÉCNICO aparece literalmente no
+# documento que foi lido. Número que a IA respondeu e que não existe em lugar
+# nenhum do contexto não chega à célula; o campo fica vazio e o console diz
+# qual foi. Isso é verificável por código, sem probabilidade envolvida.
+#
+# NÃO garante "correto" no sentido de engenharia. Se o próprio datasheet
+# estiver errado, ou for de outra peça, o valor tem lastro e mesmo assim está
+# errado. Por isso o lastro é a SEGUNDA camada de três:
+#
+#   1. filtro anti-intruso (§4.3) — o documento é deste material?
+#   2. lastro documental (aqui)   — o valor saiu mesmo do documento?
+#   3. conferência humana         — a lista de origens por campo, no console
+#
+# Nenhuma das três sozinha basta. Juntas, o caminho para um dado errado
+# entrar na ficha exige que o documento seja do material certo E que o valor
+# esteja escrito nele.
+_RE_NUMERO = re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def _numeros_normalizados(texto):
+    """Números de um texto, comparáveis: `25,4` e `25.40` viram ambos `25.4`.
+
+    Fabricante escreve decimal com ponto, planilha brasileira com vírgula, e
+    a IA copia ora um ora outro. Sem normalizar, o valor certo seria
+    descartado por diferença de pontuação.
+    """
+    achados = set()
+    for bruto in _RE_NUMERO.findall(str(texto or "")):
+        n = bruto.replace(",", ".")
+        if "." in n:
+            n = n.rstrip("0").rstrip(".")
+        achados.add(n or "0")
+    return achados
+
+
+def valor_tem_lastro(valor, contexto):
+    """O valor respondido é rastreável ao contexto que foi enviado?
+
+    Duas regras, nesta ordem:
+
+    1. **Se o valor tem número, TODOS os números precisam estar no contexto.**
+       Basta um inventado para reprovar — `"entre 175 e 999 bar"` cai mesmo
+       com o 175 correto. Meia verdade num campo técnico é pior que campo
+       vazio, porque passa na conferência por parecer certa.
+
+    2. **Se não tem número**, exige que alguma palavra de 4+ letras apareça
+       no contexto (`NBR`, `Nitrile`). Valor curto sem palavra longa
+       (`"N/A"`, `"X"`) passa: não há o que verificar, e não é dado técnico.
+
+    **Conversão de unidade é CONFERIDA, não reprovada** (2026-08-13, ajuste
+    pedido pelo usuário). `35 MPa` a partir de `350 bar` não tem o `35`
+    escrito em lugar nenhum, mas é conversão correta e não pode ser
+    descartada. Quem confere é `autospec_unidades.conferir_texto`, que
+    **refaz a conta** a partir do número do documento — não confia no cálculo
+    da IA. `3,5 MPa` a partir de `350 bar` continua reprovando, e é justamente
+    o erro de ordem de grandeza que ninguém percebe olhando.
+    """
+    texto = str(valor if valor is not None else "").strip()
+    if not texto:
+        return True  # vazio não precisa de lastro; não vai escrever nada
+
+    ctx = _normalizar_texto_busca(contexto)
+    numeros_valor = _numeros_normalizados(texto)
+    if numeros_valor:
+        if numeros_valor <= _numeros_normalizados(ctx):
+            return True
+        return bool(explicar_conversao(texto, contexto))
+
+    palavras = re.findall(r"[a-z]{4,}", _normalizar_texto_busca(texto))
+    if not palavras:
+        return True
+    return any(p in ctx for p in palavras)
+
+
+def explicar_conversao(valor, contexto):
+    """Explicações da conversão, ou lista vazia se não for conversão válida.
+
+    Fica aqui, e não dentro de `valor_tem_lastro`, porque quem filtra precisa
+    do MESMO resultado duas vezes: para decidir se aprova e para dizer no
+    console de onde veio o número. Calcular uma vez e passar adiante evitaria
+    a segunda chamada, mas custaria clareza no ponto de uso — e são dezenas
+    de campos, não milhões.
+    """
+    try:
+        from sigft.services import autospec_unidades
+    except ImportError:
+        return []
+    ok, explicacoes = autospec_unidades.conferir_texto(valor, contexto)
+    return explicacoes if ok else []
+
+
+def origens_do_contexto(contexto):
+    """Nomes/URLs que aparecem nos marcadores `--- LOCAL DOC: x ---`.
+
+    São os documentos que REALMENTE foram lidos. Uma fonte citada pela IA que
+    não esteja aqui é sinal de invenção — e o engenheiro precisa saber disso
+    antes de homologar.
+    """
+    return set(re.findall(r"---\s*(?:LOCAL|WEB) DOC:\s*(.+?)\s*---", str(contexto or "")))
+
+
+# Fontes que NÃO são documento e são legítimas: os campos gerativos
+# (embalagem, transporte, descarte) saem de conhecimento técnico por desenho.
+_FONTES_SEM_DOCUMENTO = ("conhecimento", "tecnico", "técnico", "padrao", "padrão", "boa pratica")
+
+
+# =============================================================================
+# CACHE DE RESPOSTA DA IA — 100% de economia ao reprocessar a mesma ficha
+# =============================================================================
+# O cache de busca (acima) poupa COTA da CSE; este poupa TOKEN, que e o custo
+# dominante. Reprocessar um lote e o normal, nao a excecao: se um campo saiu
+# errado, o usuario ajusta a planilha e roda tudo de novo -- e ate 2026-08-12
+# cada rerun pagava a conta inteira da IA outra vez, incluindo as fichas que
+# ja tinham vindo certas.
+#
+# A CHAVE E O PROMPT INTEIRO, nao o nome do arquivo. E o unico jeito de o
+# acerto ser seguro: o prompt ja contem material, fabricante, contexto
+# recortado e a lista de campos faltantes, entao qualquer coisa que mudaria a
+# resposta ja muda a chave. Consequencias, todas desejadas:
+#   - editou a ficha (mudou o que falta preencher) -> chave nova, IA roda;
+#   - trocou/adicionou manual -> contexto muda -> chave nova, IA roda;
+#   - renomeou o arquivo sem mudar nada -> MESMA chave, acerto;
+#   - trocou de modelo -> chave nova (provider+modelo entram no hash), porque
+#     a resposta de outro modelo nao pode ser servida como se fosse deste.
+#
+# PRIVACIDADE: o que vai para o disco e o HASH do prompt, nunca o prompt. O
+# arquivo guarda o valor tecnico respondido (que e o que precisa ser servido
+# de volta) mas nao o trecho do datasheet que o originou. Fica gitignored, ao
+# lado do `api_config.json`, como os demais caches do projeto.
+RESPOSTA_IA_CACHE = "autospec_resposta_cache.json"
+# 30 dias: as entradas do prompt ja estao na chave, entao o TTL nao existe
+# para corrigir resposta velha -- existe para o arquivo nao crescer para
+# sempre com ficha que ninguem vai reprocessar.
+RESPOSTA_IA_CACHE_TTL_S = 30 * 24 * 3600
+RESPOSTA_IA_CACHE_MAX_ENTRADAS = 500
+
+
+def _caminho_cache_resposta():
+    """Ao lado do `api_config.json`, igual ao cache de busca."""
+    return os.path.join(os.path.dirname(os.path.abspath(config.CONFIG_FILE)), RESPOSTA_IA_CACHE)
+
+
+def _chave_cache_resposta(prompt, provider=None, model=None):
+    """Hash de (provider, modelo, prompt). Ver o bloco acima para por que o
+    prompt inteiro entra, e por que o modelo tambem."""
+    bruto = f"{provider or ''}|{model or ''}|{prompt or ''}"
+    return hashlib.sha256(bruto.encode("utf-8")).hexdigest()
+
+
+def _cache_resposta_ler(chave, agora=None):
+    """Resposta guardada para `chave`, ou `None` se ausente/expirada."""
+    import time
+
+    agora = time.time() if agora is None else agora
+    try:
+        with open(_caminho_cache_resposta(), encoding="utf-8") as arquivo:
+            dados = json.load(arquivo)
+    except Exception:
+        return None
+    if not isinstance(dados, dict):
+        return None
+    entrada = dados.get(chave)
+    if not isinstance(entrada, dict):
+        return None
+    gravado_em = entrada.get("gravado_em")
+    if not isinstance(gravado_em, (int, float)):
+        return None
+    if agora - gravado_em > RESPOSTA_IA_CACHE_TTL_S:
+        return None
+    resposta = entrada.get("resposta")
+    # Só dict/list são respostas legítimas da IA aqui; qualquer outra coisa é
+    # arquivo corrompido ou de uma versão anterior do formato.
+    if not isinstance(resposta, (dict, list)):
+        return None
+    return resposta
+
+
+def _cache_resposta_gravar(chave, resposta, agora=None):
+    """Guarda `resposta` sob `chave`, podando o que expirou. Falhar aqui nao e
+    erro do usuario -- ele so paga a IA de novo no proximo rerun."""
+    import time
+
+    agora = time.time() if agora is None else agora
+    if not isinstance(resposta, (dict, list)) or not resposta:
+        return  # resposta vazia nao vale a pena servir de volta
+    try:
+        try:
+            with open(_caminho_cache_resposta(), encoding="utf-8") as arquivo:
+                dados = json.load(arquivo)
+            if not isinstance(dados, dict):
+                dados = {}
+        except Exception:
+            dados = {}
+
+        dados[chave] = {"gravado_em": agora, "resposta": resposta}
+
+        # Poda: primeiro o que expirou, depois o excedente mais antigo. Sem
+        # isto o arquivo cresceria sem limite e o cache viraria um problema
+        # em vez de uma economia.
+        vivas = {
+            k: v
+            for k, v in dados.items()
+            if isinstance(v, dict)
+            and isinstance(v.get("gravado_em"), (int, float))
+            and agora - v["gravado_em"] <= RESPOSTA_IA_CACHE_TTL_S
+        }
+        if len(vivas) > RESPOSTA_IA_CACHE_MAX_ENTRADAS:
+            recentes = sorted(vivas.items(), key=lambda kv: kv[1]["gravado_em"], reverse=True)
+            vivas = dict(recentes[:RESPOSTA_IA_CACHE_MAX_ENTRADAS])
+
+        with open(_caminho_cache_resposta(), "w", encoding="utf-8") as arquivo:
+            json.dump(vivas, arquivo, indent=2, ensure_ascii=False)
+    except Exception:
+        pass  # cache e conveniencia; nao poder gravar nao quebra a execucao
+
+
+# =============================================================================
 # LEITURA DE PDF — local primeiro, e com prova de que foi lido INTEIRO
 # =============================================================================
 # Acrescentado em 2026-08-11. Até aqui a única aferição de "consegui ler" era:
@@ -481,6 +707,184 @@ def _sufixo_para_url(url, content_type=None):
     return ".html"
 
 
+# =============================================================================
+# CASAMENTO DE TERMO — o que o fabricante ESCREVE vs. o que a planilha GUARDA
+# =============================================================================
+# A planilha do PMIB guarda a RAZÃO SOCIAL brasileira (`HYDAC TECNOLOGIA
+# LTDA`); o datasheet e o site do fabricante dizem `HYDAC`, `HYDAC Technology
+# Corporation`, `HYDAC International`. Esta distância entre os dois mundos foi
+# a causa raiz da falha de 2026-08-12 (ficha 4500063671.1188, 0 de 22 campos
+# preenchidos) — ver `tests/test_autospec_busca_web_falha_real.py`.
+#
+# Palavras que compõem razão social e NÃO aparecem em documento técnico.
+# `TECNOLOGIA` está aqui de propósito: é parte do nome jurídico da Hydac no
+# Brasil, não do nome pelo qual o produto é publicado.
+_RUIDO_RAZAO_SOCIAL = frozenset({
+    "ltda", "ltda.", "sa", "s.a", "s.a.", "s/a", "eireli", "me", "epp",
+    "cia", "cia.", "companhia", "industria", "industrias", "ind", "ind.",
+    "comercio", "com", "com.", "comercial", "tecnologia", "tecnologias",
+    "do", "da", "de", "dos", "das", "e", "brasil", "brazil",
+    "gmbh", "inc", "inc.", "corp", "corp.", "corporation", "co", "co.",
+    "llc", "ag", "kg", "bv", "nv", "spa", "srl", "plc", "sas",
+    "group", "grupo", "sistemas", "equipamentos", "servicos",
+    "importacao", "exportacao", "distribuidora", "representacoes",
+})
+
+
+def _sem_acento(texto):
+    """`válvula` -> `valvula`. A planilha tem acento; URL e título, não."""
+    normalizado = unicodedata.normalize("NFD", str(texto or ""))
+    return "".join(c for c in normalizado if unicodedata.category(c) != "Mn")
+
+
+def _normalizar_texto_busca(texto):
+    """Minúsculas, sem acento — a forma em que dois textos são comparáveis."""
+    return _sem_acento(texto).lower()
+
+
+def _compactar_codigo(texto):
+    """Só letras e dígitos: `CS 1000 Series` e `CS-1000` viram `cs1000series`
+    e `cs1000`.
+
+    Existe porque fabricante escreve o mesmo código de três jeitos —
+    `CS1320`, `CS 1320`, `CS-1320` — e o casamento por substring falharia em
+    dois deles. Aplicado só a código de peça, nunca a texto corrido.
+    """
+    return re.sub(r"[^a-z0-9]", "", _normalizar_texto_busca(texto))
+
+
+# Valores que a planilha põe no lugar do fabricante quando NÃO HÁ fabricante.
+# Ancorar o filtro anti-intruso em `DIVERSOS` aprovaria qualquer página que
+# diga "diversos" — pior que não ter âncora, porque parece que tem.
+_FABRICANTE_GENERICO = frozenset({
+    "diversos", "diverso", "varios", "varias", "generico", "generica",
+    "n/a", "na", "n.a.", "nd", "n/d", "nao aplicavel", "nao informado",
+    "sem marca", "sem fabricante", "nacional", "importado", "similar",
+    "-", "--", "?", "xxx", "0",
+})
+
+# Teto de download. Catálogo de fabricante de centenas de MB existe, e
+# `response.content` carregava o corpo INTEIRO na memória: numa máquina de
+# usuário isso é o app travando sem mensagem nenhuma.
+TETO_DOWNLOAD_BYTES = 40 * 1024 * 1024
+
+
+def _e_termo_puramente_numerico(termo):
+    """`3332066` sim; `CS1320` não. Muda a REGRA de casamento: número solto
+    casando por substring vira coringa (`123` dentro de `123456`)."""
+    compacto = _compactar_codigo(termo)
+    return bool(compacto) and compacto.isdigit()
+
+
+def _resultado_e_relevante(termos, title, snippet, link):
+    """Filtro anti-intruso (regras de negócio §4.3): o resultado cita o
+    fabricante ou o código do material?
+
+    Sem termo nenhum, tudo passa — filtrar por nada barraria tudo, e material
+    sem fabricante nem código existe.
+
+    **Por que não é mais `termo in titulo`.** Era, até 2026-08-12, e por isso
+    descartava 4 de 4 resultados corretos: o termo era a razão social inteira
+    (`hydac tecnologia ltda`), que não aparece em página nenhuma. Agora cada
+    termo casa de duas formas, e basta UMA:
+
+      1. como texto normalizado (sem acento, sem caixa);
+      2. como código compactado (sem separador), o que faz `CS1320` casar com
+         `CS 1320` e com `CS-1320`.
+
+    O casamento compactado exige 3+ caracteres para não transformar um termo
+    curto (`SA`, `GE`) em coringa que aprova qualquer página.
+    """
+    if not termos:
+        return True
+
+    alvo = _normalizar_texto_busca(f"{title} {snippet} {link}")
+    alvo_compacto = _compactar_codigo(alvo)
+
+    for termo in termos:
+        limpo = _normalizar_texto_busca(termo).strip()
+        compacto = _compactar_codigo(termo)
+        if not limpo:
+            continue
+
+        # Termo CURTO ou puramente NUMÉRICO exige fronteira de palavra.
+        # Casar por substring transformava `123` em coringa (casava dentro
+        # de `123456`) e `GE` em coringa maior ainda (casaria em
+        # "generico"). Marcas curtas legítimas — `3M`, `GE`, `NSK` — não
+        # podem ser descartadas por serem curtas: são o nome da empresa.
+        # Fronteira resolve os dois lados.
+        if _e_termo_puramente_numerico(termo) or len(compacto) < 4:
+            if re.search(rf"(?<![a-z0-9]){re.escape(compacto)}(?![a-z0-9])", alvo):
+                return True
+            continue
+
+        if limpo in alvo:
+            return True
+        if compacto in alvo_compacto:
+            return True
+    return False
+
+
+def tentar_navegador(url, callbacks=None, ligado=True, _robots=None, _navegador=None):
+    """Último recurso: renderiza a página num navegador de verdade.
+
+    **A ordem é a política.** Só chega aqui depois de o download simples
+    falhar, e só prossegue se o `robots.txt` do domínio permitir. Um site
+    que diz "não" continua recebendo "está bem" — isto não é um
+    contornador de bloqueio, é uma forma de ler página que só existe
+    depois do JavaScript (ver `core/web/navegador.py`).
+
+    Devolve o caminho de um `.txt` temporário com o texto renderizado, ou
+    `None`. `.txt` e não `.html` de propósito: o conteúdo já é texto
+    extraído, e passá-lo pelo BeautifulSoup de novo não acrescenta nada.
+    """
+    cb = callbacks or _callbacks_silenciosos()
+    if not ligado:
+        return None
+
+    try:
+        if _robots is None:
+            from sigft.core.web import robots as _robots
+        if _navegador is None:
+            from sigft.core.web import navegador as _navegador
+    except ImportError:
+        return None
+
+    if not _robots.pode_acessar(url):
+        cb.log(
+            f"Nao vou insistir com navegador: o robots.txt do site nao permite (ou nao "
+            f"pode ser lido). Respeitar isso e decisao de projeto: {url}",
+            nivel="info",
+        )
+        return None
+
+    if not _navegador.disponivel():
+        cb.log(
+            "Playwright nao instalado — sem ele nao da para ler pagina que so existe "
+            "depois do JavaScript. Rode o Instalar-Playwright.bat se quiser esse "
+            "recurso.",
+            nivel="info",
+        )
+        return None
+
+    cb.log(f"Tentando com navegador (ultimo recurso, pode demorar): {url}")
+    texto = _navegador.texto_da_pagina(url)
+    if not texto:
+        cb.log(f"O navegador tambem nao trouxe conteudo util: {url}", nivel="warn")
+        return None
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=".txt", mode="w", encoding="utf-8"
+        ) as arquivo:
+            arquivo.write(texto)
+            cb.log(f"Navegador leu {len(texto)} chars que o download simples nao via.")
+            return arquivo.name
+    except Exception as e:
+        cb.log(f"Nao consegui salvar o texto do navegador ({type(e).__name__}).", nivel="warn")
+        return None
+
+
 # -----------------------------------------------------------------
 # 2. CLASSES UTILITÁRIAS (Busca e PDF)
 # -----------------------------------------------------------------
@@ -489,6 +893,9 @@ class WebSearcher:
         self.api_key = api_key
         self.cse_id = cse_id
         self.search_url = "https://www.googleapis.com/customsearch/v1"
+        # Espelha `AutoSpecCore.usar_navegador_ultimo_recurso`; o core
+        # sincroniza no `__init__` dele.
+        self.usar_navegador_ultimo_recurso = True
         self.headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
 
     def search_and_download(self, query, required_terms=[], max_results=RESULTADOS_POR_BUSCA, callbacks=None):
@@ -541,18 +948,14 @@ class WebSearcher:
         results = []
         descartados = 0
         for item in items:
-            link = item.get('link', '').lower()
-            title = item.get('title', '').lower()
-            snippet = item.get('snippet', '').lower()
-            is_relevant = False
-            if not required_terms:
-                is_relevant = True
-            else:
-                for term in required_terms:
-                    term_clean = str(term).lower().strip()
-                    if term_clean and (term_clean in title or term_clean in snippet or term_clean in link):
-                        is_relevant = True; break
-            if not is_relevant:
+            # A URL vai para o download SEM `.lower()` (2026-08-12): caminho
+            # de URL é sensível a caixa em boa parte dos servidores, e
+            # baixar a versão minúscula devolvia 404 em arquivo cujo nome
+            # tinha maiúscula. A comparação é que normaliza, não o dado.
+            link = item.get('link', '') or ''
+            title = item.get('title', '') or ''
+            snippet = item.get('snippet', '') or ''
+            if not _resultado_e_relevante(required_terms, title, snippet, link):
                 # Filtro anti-intruso (regras de negócio §4.3): catálogo de
                 # concorrente barrado por não citar fabricante nem código.
                 descartados += 1
@@ -561,7 +964,20 @@ class WebSearcher:
             if filepath:
                 results.append({"path": filepath, "url": link, "title": title})
 
-        if descartados:
+        if descartados and descartados == len(items):
+            # Descartar TUDO nunca é rotina — é sintoma de termo de filtro
+            # errado, e foi exatamente o que escondeu a falha de 2026-08-12
+            # (a linha antiga dizia "descartou 10 de 10" em nível `info`, no
+            # meio de outras, como se fosse normal). Agora grita, e diz por
+            # quais termos, que é o que permite diagnosticar em 5 segundos.
+            cb.log(
+                f"Filtro anti-intruso descartou TODOS os {len(items)} resultado(s) desta "
+                f"busca. Nenhum cita: {', '.join(str(t) for t in required_terms)}. "
+                f"Se o documento certo estava entre eles, o termo do filtro e que esta "
+                f"errado — confira o nome do fabricante e o codigo na planilha.",
+                nivel="warn",
+            )
+        elif descartados:
             cb.log(
                 f"Filtro anti-intruso descartou {descartados} de {len(items)} resultado(s) "
                 f"(nao citam fabricante nem codigo do material).",
@@ -569,20 +985,67 @@ class WebSearcher:
             )
         return results
 
-    def _download_file(self, url, callbacks=None):
+    def _download_file(self, url, callbacks=None, _get=None):
+        """Baixa em pedaços, com TETO de tamanho.
+
+        Até 2026-08-12 era `response.content`, que carrega o corpo inteiro na
+        memória. Catálogo de fabricante de centenas de MB existe, e numa
+        máquina de usuário isso é o app travando sem mensagem nenhuma — o
+        `timeout=15` não protege, porque o download avança, só não acaba.
+
+        `_get` é ponto de injeção para teste; em produção fica `None` e usa
+        o `requests`.
+        """
         cb = callbacks or _callbacks_silenciosos()
+        get = _get or (lambda u, **kw: requests.get(u, **kw))
+        response = None
         try:
-            response = requests.get(url, headers=self.headers, timeout=15)
+            response = get(url, headers=self.headers, timeout=15, stream=True)
+            if response.status_code == 403:
+                # Aconteceu com `hydac.com/shop` no 1o teste real. Vai se
+                # repetir: site de fabricante bloqueia robô. Dizer "recusado"
+                # sem mais nada parece defeito do app, e não é.
+                cb.log(
+                    f"Site bloqueou o download automatico (HTTP 403): {url}",
+                    nivel="warn",
+                )
+                return tentar_navegador(
+                    url, callbacks=cb, ligado=self.usar_navegador_ultimo_recurso
+                )
             if response.status_code != 200:
                 cb.log(f"Download recusado (HTTP {response.status_code}): {url}", nivel="warn")
                 return None
-            suffix = _sufixo_para_url(url, response.headers.get("Content-Type"))
+
+            suffix = _sufixo_para_url(url, (response.headers or {}).get("Content-Type"))
+            total = 0
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
-                tmp_file.write(response.content)
+                for pedaco in response.iter_content(chunk_size=64 * 1024):
+                    if not pedaco:
+                        continue
+                    total += len(pedaco)
+                    if total > TETO_DOWNLOAD_BYTES:
+                        cb.log(
+                            f"Documento grande demais (passou do teto de "
+                            f"{TETO_DOWNLOAD_BYTES // (1024 * 1024)} MB) — download "
+                            f"abortado: {url}",
+                            nivel="warn",
+                        )
+                        try:
+                            os.remove(tmp_file.name)
+                        except Exception:
+                            pass
+                        return None
+                    tmp_file.write(pedaco)
                 return tmp_file.name
         except Exception as e:
             cb.log(f"Download falhou ({type(e).__name__}): {url}", nivel="warn")
             return None
+        finally:
+            try:
+                if response is not None:
+                    response.close()
+            except Exception:
+                pass
 
 
 class PDFProcessor:
@@ -591,11 +1054,19 @@ class PDFProcessor:
         if self.llama_key:
             os.environ["LLAMA_CLOUD_API_KEY"] = self.llama_key
 
-    def extract_text(self, filepath, callbacks=None):
+    def extract_text(self, filepath, callbacks=None, nome_exibicao=None):
+        """`nome_exibicao` (2026-08-12): o que aparece NO CONSOLE.
+
+        Documento vindo da web mora num `NamedTemporaryFile`, e o log saía
+        como `tmp1wgju9r5.pdf: 6 pagina(s), 6 lida(s)` — visto no 1o teste
+        real. O usuário não tem como saber a que documento aquilo se refere,
+        e é justamente a linha que ele precisa ler para decidir se confia no
+        resultado. Quem chama passa a URL; sem isso, cai no nome do arquivo.
+        """
         cb = callbacks or _callbacks_silenciosos()
         text_content = ""
         method_used = ""
-        nome = os.path.basename(str(filepath))
+        nome = nome_exibicao or os.path.basename(str(filepath))
         alvo = str(filepath).lower()
         is_pdf = alvo.endswith('.pdf')
         # P-03: imagem também vai para o LlamaParse, que faz OCR. Antes só o
@@ -729,6 +1200,23 @@ class AutoSpecCore:
         # context stuffing anterior a 2026-08-11 -- existe como escape se
         # alguma ficha mostrar que o recorte perdeu informação.
         self.usar_retrieval = True
+        # Cache de resposta ligado por padrão (2026-08-12). Desligar força a
+        # IA a responder de novo — existe como escape para o caso de se
+        # querer comparar dois modelos na MESMA ficha, em que servir a
+        # resposta guardada mascararia justamente o que se quer medir.
+        self.usar_cache_resposta = True
+        # Lastro documental LIGADO por padrão (2026-08-13, pedido do
+        # usuário): campo técnico só é preenchido quando o valor aparece no
+        # documento lido. Desligar existe para diagnóstico — ver
+        # `valor_tem_lastro` para o que isto garante e o que não garante.
+        self.exigir_lastro = True
+        # Navegador como ÚLTIMO recurso (2026-08-13): só depois de o download
+        # simples falhar, e só se o robots.txt do domínio permitir. Ver
+        # `_tentar_navegador` — a ordem é a política.
+        self.usar_navegador_ultimo_recurso = True
+        # O buscador tem a mesma chave; sincronizadas aqui para que desligar
+        # num lugar desligue nos dois caminhos (403 e pagina vazia).
+        self.searcher.usar_navegador_ultimo_recurso = self.usar_navegador_ultimo_recurso
         # O diagnostico do reforco semantico e emitido uma vez so por
         # instancia -- repeti-lo a cada ficha do lote seria ruido.
         self._diagnostico_rag_emitido = False
@@ -1094,9 +1582,143 @@ class AutoSpecCore:
         achados = []
         for bruto in str(texto or "").split():
             token = bruto.strip(".,;:()[]{}\"'").strip()
-            if len(token) >= 3 and any(c.isdigit() for c in token):
+            if len(token) < 3 or not any(c.isdigit() for c in token):
+                continue
+            # 2026-08-12: só "tem dígito" não bastava — `1/2` (polegada) e
+            # `110` (tensão) entravam como se fossem código de peça, e o
+            # `1/2` chegou a virar a PRIMEIRA query da cascata, gastando
+            # cota da CSE numa busca que não significa nada.
+            #
+            # Código de peça é uma de duas coisas:
+            #   - mistura letra e dígito (`PVF100-4`, `DN50`, `IP55`); ou
+            #   - é numérico e LONGO (`3527528`, `6205`) -- medida solta
+            #     raramente passa de 3 dígitos.
+            if any(c.isalpha() for c in token):
+                achados.append(token)
+                continue
+            if len(re.sub(r"\D", "", token)) >= 4:
                 achados.append(token)
         return achados
+
+    @classmethod
+    def _nome_curto_fabricante(cls, fab):
+        """`HYDAC TECNOLOGIA LTDA` -> `HYDAC`. O nome pelo qual o produto é
+        PUBLICADO, não o nome jurídico pelo qual ele é comprado.
+
+        Medido em 2026-08-12, na mesma busca com e sem a razão social:
+        `HYDAC TECNOLOGIA LTDA CS1320 datasheet filetype:pdf` devolveu **1
+        resultado relevante de 7** (o primeiro era um datasheet de bateria de
+        lítio); trocando por `HYDAC`, **10 de 10** eram datasheets do CS1000.
+        A razão social não quebra a busca — degrada o ranking, e o bastante
+        para o documento certo cair fora das primeiras posições.
+
+        Devolve o nome ORIGINAL quando a limpeza não sobra nada (empresa cujo
+        nome é só termo genérico). Ficar sem fabricante seria pior: é ele que
+        ancora o filtro anti-intruso.
+        """
+        bruto = str(fab or "").strip()
+        if not bruto:
+            return ""
+        # 2026-08-12: o `_STATUS_PMIB` real usa `DIVERSOS`, `N/A`, `SEM
+        # MARCA` no lugar do fabricante. Isso não é um fabricante ruim, é a
+        # AUSÊNCIA de fabricante — e tratá-lo como nome produz query inútil
+        # e, pior, uma âncora de filtro que aprova qualquer coisa.
+        if _normalizar_texto_busca(bruto) in _FABRICANTE_GENERICO:
+            return ""
+        return " ".join(cls._tokens_ancora_fabricante(bruto)) or bruto
+
+    @staticmethod
+    def _tokens_ancora_fabricante(fab):
+        """Só as palavras que servem de ÂNCORA — lista vazia é resposta
+        legítima.
+
+        Separado de `_nome_curto_fabricante` porque as duas decisões são
+        diferentes, e confundi-las causou o defeito de `INDUSTRIA E COMERCIO
+        LTDA`: para BUSCAR, um nome ruim é melhor que nome nenhum (por isso
+        aquele método cai de volta no original); para FILTRAR, ancorar em
+        `INDUSTRIA` aprova qualquer página industrial brasileira.
+        """
+        bruto = str(fab or "").strip()
+        if not bruto or _normalizar_texto_busca(bruto) in _FABRICANTE_GENERICO:
+            return []
+        # Sem corte por tamanho: `3M`, `GE`, `NSK` e `FAG` são nomes de
+        # empresa, não ruído. Cortar por 2 caracteres apagava a marca inteira
+        # e fazia o método cair de volta na razão social completa. O risco de
+        # termo curto virar coringa é tratado onde é o lugar dele — em
+        # `_resultado_e_relevante`, exigindo fronteira de palavra.
+        return [
+            palavra for palavra in bruto.split()
+            if _normalizar_texto_busca(palavra).strip(".,") not in _RUIDO_RAZAO_SOCIAL
+        ]
+
+    @staticmethod
+    def _familia_do_identificador(identificador):
+        """`CS1320-A-0-0-0-1/-000` -> `CS1320`. String vazia quando não há
+        família distinta a procurar.
+
+        **Por que isto existe.** `CS1320-A-0-0-0-1/-000` é o código de
+        CONFIGURAÇÃO: identifica um SKU de loja. O datasheet não é publicado
+        por SKU, é publicado pela FAMÍLIA (`ContaminationSensor CS 1000
+        Series`). Medido em 2026-08-12: procurar o código completo devolve
+        página de e-commerce em HTML; procurar a família com `filetype:pdf`
+        devolve 10 datasheets de verdade.
+
+        Corta no primeiro separador (`-` ou `/`). Exige dígito e 3+ caracteres
+        na sobra — `ABC-1` não é código de peça, e devolver `ABC` como família
+        traria qualquer coisa.
+        """
+        bruto = str(identificador or "").strip()
+        base = re.split(r"[-/]", bruto)[0]
+        if base == bruto:
+            return ""  # não havia separador: a família seria o próprio termo
+        if len(base) < 3 or not any(c.isdigit() for c in base):
+            return ""
+        return base
+
+    @classmethod
+    def _termos_do_filtro(cls, fab, cod_mat, txt_brv):
+        """Termos que um resultado precisa citar para não ser descartado.
+
+        Antes de 2026-08-12 era `[fab, cod_mat]` — a razão social inteira e o
+        código INTERNO do PMIB. Nenhum dos dois aparece em página de
+        fabricante, e o filtro descartava 100% dos resultados corretos.
+        Agora entram também os identificadores da descrição e suas famílias,
+        que são o que a página realmente cita.
+        """
+        termos = []
+        termos.extend(cls._tokens_ancora_fabricante(fab))
+        if cod_mat and len(str(cod_mat)) > 2:
+            termos.append(str(cod_mat))
+        for ident in cls._identificadores(txt_brv):
+            termos.append(ident)
+            familia = cls._familia_do_identificador(ident)
+            if familia:
+                termos.append(familia)
+
+        vistos = set()
+        unicos = []
+        for t in termos:
+            chave = _normalizar_texto_busca(t)
+            if chave not in vistos:
+                vistos.add(chave)
+                unicos.append(t)
+        return unicos
+
+    @classmethod
+    def _tem_ancora_confiavel(cls, fab, cod_mat, txt_brv):
+        """Dá para VERIFICAR se um documento é deste material?
+
+        Sem fabricante e sem código, não dá — e `_termos_do_filtro` devolvia
+        `[]`, que o filtro lê como "aceita tudo". A proteção §4.3 falhava
+        ABERTA justamente na ficha em que menos se pode confiar no
+        resultado: qualquer catálogo de qualquer concorrente entraria como
+        contexto, e o engenheiro homologaria dado de outra peça.
+
+        Quando isto é `False`, a busca web não acontece. Campo vazio é ruim;
+        campo preenchido com dado de outro material é pior — é o princípio
+        que a regra §4.3 já dizia, agora aplicado também ao caso degenerado.
+        """
+        return bool(cls._termos_do_filtro(fab, cod_mat, txt_brv))
 
     @classmethod
     def _montar_queries_busca(cls, txt_brv, fab, cod_mat):
@@ -1135,20 +1757,35 @@ class AutoSpecCore:
         # O texto vem da planilha e costuma trazer espaço duplo e sobra no
         # fim (visto na ficha real 4500063671.0662): `.split()` normaliza.
         tokens = str(txt_brv or "").split()
-        fab_txt = str(fab or "").strip()
+        # 2026-08-12: nome CURTO, não a razão social — ver
+        # `_nome_curto_fabricante` para os números que motivaram a troca.
+        fab_txt = cls._nome_curto_fabricante(fab)
         ids = cls._identificadores(txt_brv)
+        familias = [f for f in (cls._familia_do_identificador(i) for i in ids) if f]
 
         queries = []
         if cod_mat:
             queries.append(f'"{cod_mat}" {fab_txt} datasheet'.strip())
 
         if ids:
-            queries.append(f"{fab_txt} {' '.join(ids)} datasheet".strip())
-            if len(ids) > 1:
-                # O identificador mais longo costuma ser o modelo
-                # ("PVF100-4"), mais reconhecível que o código interno.
-                principal = max(ids, key=len)
-                queries.append(f"{fab_txt} {principal} datasheet".strip())
+            todos = " ".join(ids)
+            # PDF antes de HTML, com o código EXATO: o datasheet é o que se
+            # quer; página de loja é o consolo.
+            queries.append(f"{fab_txt} {todos} datasheet filetype:pdf".strip())
+            queries.append(f"{fab_txt} {todos} datasheet".strip())
+
+        # A FAMÍLIA vem depois do código exato, nunca antes: a cascata para na
+        # primeira query que rende documento, e o datasheet da família certa
+        # com a configuração errada é melhor que nada — mas pior que o exato.
+        for familia in familias:
+            queries.append(f"{fab_txt} {familia} datasheet filetype:pdf".strip())
+            queries.append(f"{fab_txt} {familia} datasheet".strip())
+
+        if len(ids) > 1:
+            # O identificador mais longo costuma ser o modelo
+            # ("PVF100-4"), mais reconhecível que o código interno.
+            principal = max(ids, key=len)
+            queries.append(f"{fab_txt} {principal} datasheet".strip())
 
         # Fallback: a cascata de prosa de antes. Só é alcançada se as queries
         # por identificador não renderem — e é a ÚNICA opção quando a
@@ -1185,9 +1822,25 @@ class AutoSpecCore:
             )
             return (local_txt + "\n\n" + web_txt), sources
 
-        required = []
-        if fab and len(fab) > 2: required.append(fab)
-        if cod_mat and len(cod_mat) > 2: required.append(cod_mat)
+        # 2026-08-12: era `[fab, cod_mat]` — a razão social inteira e o código
+        # interno do PMIB, nenhum dos dois presente em página de fabricante.
+        # O filtro descartava 100% dos resultados certos. Ver
+        # `_termos_do_filtro` e a regressão em
+        # `tests/test_autospec_busca_web_falha_real.py`.
+        required = self._termos_do_filtro(fab, cod_mat, txt_brv)
+
+        if not required:
+            # Sem âncora não há como conferir se o documento é deste
+            # material — e lista de termos vazia fazia o filtro aceitar
+            # TUDO. Ver `_tem_ancora_confiavel`.
+            cb.log(
+                "Busca web pulada: a ficha não tem fabricante reconhecível nem código "
+                "de peça, e sem uma dessas duas âncoras não há como verificar se o "
+                "documento encontrado é deste material. Preencha o fabricante na "
+                "planilha, ou anexe o manual — o contexto virá só dos documentos locais.",
+                nivel="warn",
+            )
+            return (local_txt + "\n\n" + web_txt), sources
 
         queries = self._montar_queries_busca(txt_brv, fab, cod_mat)
 
@@ -1201,17 +1854,46 @@ class AutoSpecCore:
 
             aproveitados = 0
             for item in files:
-                t, m = self.pdf_parser.extract_text(item['path'], callbacks=cb)
+                # `nome_exibicao=URL`: o arquivo é um temporário, e o nome
+                # dele no log não diz nada a quem lê. Ver `extract_text`.
+                t, m = self.pdf_parser.extract_text(
+                    item['path'], callbacks=cb, nome_exibicao=item.get('url')
+                )
                 if t and len(t) > 100:
                     web_txt += f"--- WEB DOC: {item['title']} ---\nURL: {item['url']}\n{t[:50000]}\n\n"
                     sources.append(item['url'])
                     aproveitados += 1
                     cb.log(f"Documento web aproveitado ({m}, {len(t)} chars): {item['url']}")
                 else:
+                    # Baixou, mas veio quase vazio — é a assinatura de página
+                    # que só existe depois do JavaScript (`hydac.com/shop` é
+                    # assim). Pior que o 403, porque o documento "chegou" e
+                    # não parece falha. Aqui também vale o último recurso.
                     cb.log(
-                        f"Documento web descartado (texto insuficiente): {item['url']}",
+                        f"Documento web veio quase vazio ({len(t or '')} chars) — pode ser "
+                        f"pagina que so monta com JavaScript: {item['url']}",
                         nivel="warn",
                     )
+                    renderizado = self._tentar_navegador(item['url'], callbacks=cb)
+                    if renderizado:
+                        t2, m2 = self.pdf_parser.extract_text(
+                            renderizado, callbacks=cb, nome_exibicao=item.get('url')
+                        )
+                        try:
+                            os.remove(renderizado)
+                        except Exception:
+                            pass
+                        if t2 and len(t2) > 100:
+                            web_txt += (
+                                f"--- WEB DOC: {item['title']} ---\nURL: {item['url']}\n"
+                                f"{t2[:50000]}\n\n"
+                            )
+                            sources.append(item['url'])
+                            aproveitados += 1
+                            cb.log(
+                                f"Documento web aproveitado via navegador ({len(t2)} chars): "
+                                f"{item['url']}"
+                            )
                 try: os.remove(item['path'])
                 except Exception: pass
 
@@ -1329,18 +2011,59 @@ class AutoSpecCore:
 
         prompt = prompts.montar_autospec(txt_brv, fab, desc_comp, contexto_final, "\n".join(desc_list))
 
+        # CACHE (2026-08-12): reprocessar o mesmo lote é o normal, não a
+        # exceção — e até aqui cada rerun repagava a IA por ficha que já tinha
+        # vindo certa. Ver o bloco `RESPOSTA_IA_CACHE` para por que a chave é o
+        # prompt inteiro, e não o nome do arquivo.
+        selecao = getattr(self, "_selecao_autospec", None) or {}
+        chave_cache = _chave_cache_resposta(
+            prompt, selecao.get("provider"), selecao.get("model")
+        )
+        if self.usar_cache_resposta:
+            guardada = _cache_resposta_ler(chave_cache)
+            if guardada is not None:
+                # A resposta CRUA volta pela MESMA normalização do caminho
+                # vivo. Guardar o resultado já normalizado pareceria mais
+                # simples e seria pior: a normalização descarta campo não
+                # pedido e preenche `ultimas_fontes_por_campo`, e um acerto de
+                # cache tem de produzir os dois efeitos igual à chamada real.
+                cb.log(
+                    f"Resposta da IA reaproveitada do cache — nenhum token gasto "
+                    f"nesta ficha ({txt_brv})."
+                )
+                valores = self._normalizar_resposta_ia(
+                    guardada, campos_pedidos=missing.keys(), callbacks=cb
+                )
+                return self._conferir_e_filtrar(valores, missing, contexto_final, cb)
+
         try:
             # [CP 3.2] LangChain removido -- `_limpar_e_parsear_json` do
             # `LLMClient` substitui `JsonOutputParser()` (implementação
             # única, mais robusta: cobre objeto E lista, tolera prosa/fences
             # ao redor do JSON -- ver docs/refatoracao/PENDENCIAS.md).
             # `autospec` GANHA retry (2 retentativas) que antes não tinha.
+            #
+            # `json_mode=True` (2026-08-12): o prompt PEDE JSON em texto
+            # ("Retorne JSON {ID: ...}"), e até aqui era só isso -- o formato
+            # dependia da boa vontade do modelo, e o `_limpar_e_parsear_json`
+            # existia para raspar as cercas ```json quando ele resolvia
+            # embrulhar. Com o flag, os 3 providers pedem JSON NATIVO ao
+            # servidor (`response_mime_type` no Gemini, `response_format` no
+            # OpenRouter/compat), e a limpeza vira rede de segurança em vez de
+            # caminho principal. Importa mais agora que o provedor é
+            # trocável: confiabilidade de formato varia muito entre modelos, e
+            # falha de parse aqui devolve a ficha VAZIA.
             resp = self._llm.generate(
-                prompt, tags={"modulo": "autospec_backend", "tarefa": "autospec"}
+                prompt,
+                json_mode=True,
+                tags={"modulo": "autospec_backend", "tarefa": "autospec"},
             )
-            return self._normalizar_resposta_ia(
+            if self.usar_cache_resposta:
+                _cache_resposta_gravar(chave_cache, resp.parsed_json)
+            valores = self._normalizar_resposta_ia(
                 resp.parsed_json, campos_pedidos=missing.keys(), callbacks=cb
             )
+            return self._conferir_e_filtrar(valores, missing, contexto_final, cb)
         except Exception as e:
             # Até 2026-08-11 isto era `print(f"Erro IA: {e}")` -- ia para o
             # stdout, ou seja, a janela preta que ninguém olha. O CP 4.4
@@ -1348,6 +2071,112 @@ class AutoSpecCore:
             # fora: a ficha voltava vazia sem nenhuma explicação visível.
             cb.log(f"Chamada de IA falhou ({type(e).__name__}: {e}).", nivel="error")
             return {}
+
+    def _tentar_navegador(self, url, callbacks=None, _robots=None, _navegador=None):
+        """Delega para `tentar_navegador`, aplicando o interruptor desta
+        instancia. Existe como metodo para o ponto de uso ficar legivel e
+        para o interruptor morar num lugar so."""
+        return tentar_navegador(
+            url,
+            callbacks=callbacks,
+            ligado=getattr(self, "usar_navegador_ultimo_recurso", True),
+            _robots=_robots,
+            _navegador=_navegador,
+        )
+
+    def _conferir_e_filtrar(self, valores, missing, contexto, callbacks=None):
+        """As duas conferências pós-resposta, num ponto só.
+
+        Existe para que o caminho VIVO e o caminho do CACHE não possam
+        divergir: um acerto de cache não pode virar porta de entrada para
+        valor sem lastro.
+        """
+        self._conferir_fontes_citadas(contexto, callbacks)
+        if not getattr(self, "exigir_lastro", True):
+            return valores
+        return self._filtrar_por_lastro(valores, missing, contexto, callbacks)
+
+    def _filtrar_por_lastro(self, valores, missing, contexto, callbacks=None):
+        """Deixa passar só o que está no documento. Ver `valor_tem_lastro`.
+
+        Os 12 `GENERATIVE_FIELDS` são isentos: as regras de negócio §3.2
+        pedem que eles sejam GERADOS de conhecimento técnico (embalagem,
+        transporte, descarte), e não há datasheet de onde saírem. Exigir
+        lastro deles esvaziaria metade da ficha por desenho.
+        """
+        cb = callbacks or _callbacks_silenciosos()
+        aprovados = {}
+        reprovados = []
+        convertidos = []
+
+        for campo, valor in (valores or {}).items():
+            descricao = str((missing.get(campo) or {}).get("desc") or campo)
+            if campo in GENERATIVE_FIELDS:
+                aprovados[campo] = valor
+                continue
+            if valor_tem_lastro(valor, contexto):
+                aprovados[campo] = valor
+                # Número que passou por CONVERSÃO não foi copiado do
+                # documento — foi calculado. Aprovar em silêncio seria pior
+                # que reprovar: quem homologa precisa saber que aquele valor
+                # não está escrito lá, e poder refazer a conta.
+                explicacoes = explicar_conversao(valor, contexto)
+                if explicacoes:
+                    convertidos.append((descricao, str(valor), explicacoes))
+                continue
+            reprovados.append((descricao, str(valor)))
+
+        if convertidos:
+            cb.log(
+                f"{len(convertidos)} campo(s) vieram de CONVERSAO de unidade, nao copiados "
+                f"do documento. A conta foi refeita e confere — confira mesmo assim:",
+                nivel="warn",
+            )
+            for descricao, valor, explicacoes in convertidos:
+                cb.log(
+                    f"      · {descricao[:60]} = {valor[:30]}  ({'; '.join(explicacoes)[:60]})",
+                    nivel="warn",
+                )
+
+        if reprovados:
+            cb.log(
+                f"{len(reprovados)} campo(s) ficaram VAZIOS porque o valor respondido nao "
+                f"aparece no documento lido. Preencha a mao, conferindo na fonte:",
+                nivel="warn",
+            )
+            for descricao, valor in reprovados:
+                cb.log(f"      · {descricao[:70]} -> a IA respondeu {valor[:40]!r}", nivel="warn")
+        return aprovados
+
+    def _conferir_fontes_citadas(self, contexto, callbacks=None):
+        """Denuncia fonte citada que não corresponde a documento lido.
+
+        Não descarta o valor: se ele tem lastro, o dado está no documento e a
+        etiqueta é que veio errada. Mas citar um documento que nunca existiu
+        é sinal de invenção, e quem vai homologar precisa saber.
+        """
+        cb = callbacks or _callbacks_silenciosos()
+        reais = origens_do_contexto(contexto)
+        suspeitas = []
+        for campo, fonte in (getattr(self, "ultimas_fontes_por_campo", {}) or {}).items():
+            texto = str(fonte or "").strip()
+            if not texto:
+                continue
+            normal = _normalizar_texto_busca(texto)
+            if any(marca in normal for marca in _FONTES_SEM_DOCUMENTO):
+                continue
+            if any(real and (real in texto or texto in real) for real in reais):
+                continue
+            suspeitas.append((campo, texto))
+
+        if suspeitas:
+            cb.log(
+                f"{len(suspeitas)} campo(s) citam uma fonte que NAO esta entre os "
+                f"documentos lidos — confira estes com atencao redobrada:",
+                nivel="warn",
+            )
+            for campo, fonte in suspeitas[:10]:
+                cb.log(f"      · {campo}: {fonte[:80]}", nivel="warn")
 
     def _reordenador_semantico(self):
         """Gancho do reforço semântico OPCIONAL (`autospec_embeddings.py`).
@@ -1556,6 +2385,26 @@ class AutoSpecCore:
                         yield f" -> Origem dos dados ({len(fontes)} campo(s)):"
                         for campo, fonte in fontes.items():
                             yield f"      · {campo}: {fonte}"
+
+                        # 2026-08-12: no 1o teste real, 29 campos faltavam e
+                        # 28 vieram com origem. O 29o (`var_row_88`, "10 -
+                        # PRECISAO") simplesmente não aparecia em lugar
+                        # nenhum do console -- a IA não respondeu e ninguém
+                        # ficou sabendo. Campo que continua vazio é
+                        # informação, não silêncio: é o que o engenheiro
+                        # precisa ir buscar à mão.
+                        sem_resposta = [
+                            (k, (v or {}).get("desc") or k)
+                            for k, v in missing.items()
+                            if not str(ai_resp.get(k) or "").strip()
+                        ]
+                        if sem_resposta:
+                            yield (
+                                f" -> {len(sem_resposta)} campo(s) a IA nao respondeu "
+                                f"(continuam vazios, preencha a mao):"
+                            )
+                            for _chave, descricao in sem_resposta:
+                                yield f"      · {str(descricao)[:90]}"
                     elif ai_resp:
                         yield (
                             "      (a IA não informou a origem dos dados — "

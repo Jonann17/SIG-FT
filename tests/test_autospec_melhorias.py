@@ -54,12 +54,18 @@ def test_cascata_comeca_pelo_codigo_do_material_entre_aspas():
     assert qs[0] == '"MAT-123" Hydac datasheet'
 
 
-def test_sem_codigo_do_material_a_cascata_comeca_pelos_IDENTIFICADORES(): 
+def test_sem_codigo_do_material_a_cascata_comeca_pelos_IDENTIFICADORES():
     """MUDOU em 2026-08-11 (causa raiz de "nao acha o que eu acho no Google"):
     a 1a query deixou de ser a descricao inteira em portugues e passou a ser
-    fabricante + identificador, que e o que uma pessoa digita a mao."""
+    fabricante + identificador, que e o que uma pessoa digita a mao.
+
+    AJUSTADO em 2026-08-12: a 1a query passou a pedir `filetype:pdf`, e a
+    versao sem o filtro virou a 2a. A intencao original do teste --
+    "fabricante + identificador vem primeiro, prosa nao" -- continua valendo
+    e continua sendo o que se afirma aqui."""
     qs = AutoSpecCore._montar_queries_busca(TXT_BRV_REAL, FAB_REAL, "")
-    assert qs[0] == "Hydac 3527528 PVF100-4 datasheet"
+    assert qs[0] == "Hydac 3527528 PVF100-4 datasheet filetype:pdf"
+    assert qs[1] == "Hydac 3527528 PVF100-4 datasheet"
 
 
 def test_prosa_em_portugues_NAO_vem_primeiro():

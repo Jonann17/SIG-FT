@@ -97,6 +97,42 @@ sigft/
 
 ## Skills e agentes
 
+### 🎯 Regra Skill-First — vale para toda tarefa neste repositório
+
+**Antes de responder ou executar qualquer coisa, avalie as skills disponíveis** (em especial o
+ecossistema **Superpowers**, em `.claude/skills/`). Se houver *qualquer* chance de uma skill se
+aplicar, **invoque-a** — e só então comece. Descobrir no meio do caminho que existia uma skill
+melhor custa mais caro do que ler a skill antes.
+
+Isto vale inclusive quando a tarefa parece pequena. "É só uma pergunta", "é só uma linha" e "eu
+já sei fazer isso" são exatamente os momentos em que se pula a etapa e se retrabalha depois.
+
+**Skills de processo vêm primeiro** (definem *como* atacar), skills de implementação vêm depois:
+
+| Situação | Skill que abre o trabalho |
+|---|---|
+| Algo não funciona como devia — bug, teste vermelho, busca que não acha, resultado estranho | `systematic-debugging` — **causa raiz antes de qualquer correção** |
+| Ideia nova, melhoria, "e se a gente..." | `brainstorming` |
+| Vai escrever código de feature ou correção | `test-driven-development` |
+| Tem um plano escrito para executar | `executing-plans` |
+| Vai dizer "está pronto / funcionando / passou" | `verification-before-completion` — evidência antes da afirmação |
+| Terminou uma frente e vai integrar | `finishing-a-development-branch` |
+| Mexer num módulo do SIG-FT | `sigft-melhorar-modulo` (ou `sigft-novo-modulo`) |
+
+Anuncie qual skill está usando e para quê. Se a skill tiver checklist, vire tarefas.
+
+**Por que esta regra existe, com um caso concreto:** em 2026-08-12, investigando por que a busca
+web do AutoSpec não achava datasheets, a primeira hipótese (o nome do fabricante poluindo a
+query) era plausível, convincente — e **errada**. O `systematic-debugging` obriga a testar a
+hipótese antes de corrigir; o teste mostrou que a query funcionava e que o problema estava no
+filtro, três camadas adiante. Sem o skill, a "correção óbvia" teria sido implementada, não
+resolveria nada, e o tempo perdido só apareceria no próximo teste do usuário.
+
+**Exceção:** instrução direta do usuário ganha da skill. Se ele disser "pula o processo, faz
+direto", faça — e diga que está pulando.
+
+### O que existe
+
 `.claude/agents/` — `doc-writer` (Haiku, escreve a base de conhecimento) e `refactor-executor`
 (Sonnet, executa um checkpoint por vez).
 

@@ -94,67 +94,107 @@ _TOKEN = re.compile(r"[a-z0-9]+(?:[.\-/][a-z0-9]+)*")
 # auditável e sem dependência nenhuma — e continua valendo quando o reforço
 # semântico opcional não estiver instalado.
 #
-# A expansão é ADITIVA: os termos em inglês entram JUNTO dos originais, nunca
-# no lugar. Código de peça (`PVF100-4`) e unidade (`kg`, `mm`, `bar`) seguem
-# casando direto, que é onde o lexical é imbatível.
-GLOSSARIO_PT_EN = {
-    "pressao": ["pressure"],
-    "temperatura": ["temperature"],
-    "faixa": ["range"],
-    "peso": ["weight"],
-    "liquido": ["net"],
-    "bruto": ["gross"],
-    "dimensao": ["dimension", "size"],
-    "dimensoes": ["dimensions", "size"],
-    "comprimento": ["length"],
-    "largura": ["width"],
-    "altura": ["height"],
-    "espessura": ["thickness"],
-    "diametro": ["diameter"],
-    "interno": ["inner", "inside", "internal"],
-    "externo": ["outer", "outside", "external"],
-    "material": ["material"],
-    "dureza": ["hardness", "shore"],
-    "componentes": ["components", "parts", "kit"],
-    "composicao": ["composition", "assembly"],
-    "aplicacao": ["application", "use"],
-    "tipo": ["type"],
-    "construtivo": ["construction", "design"],
-    "normas": ["standard", "standards", "norm"],
-    "norma": ["standard"],
-    "certificado": ["certificate", "certification"],
-    "caracteristicas": ["characteristics", "features", "specifications", "specs"],
-    "embalagem": ["packaging", "package"],
-    "transporte": ["transport", "shipping", "handling"],
-    "armazenamento": ["storage"],
-    "preservacao": ["preservation", "storage"],
-    "limpeza": ["cleaning"],
-    "protecao": ["protection", "enclosure", "rating"],
-    "empilhamento": ["stacking"],
-    "unidade": ["unit"],
-    "fabricante": ["manufacturer", "brand"],
-    "vedacao": ["seal", "sealing", "gasket"],
-    "eixo": ["shaft"],
-    "rolamento": ["bearing"],
-    "tensao": ["voltage"],
-    "corrente": ["current"],
-    "potencia": ["power", "rating"],
-    "rotacao": ["speed", "rpm"],
-    "vazao": ["flow"],
-    "velocidade": ["speed"],
-    "torque": ["torque"],
-    "rosca": ["thread"],
-    "conexao": ["connection", "port"],
-    "descarte": ["disposal", "waste"],
-    "legislacao": ["regulation", "legislation"],
-    "periculosidade": ["hazard", "hazardous"],
-    "nocivo": ["hazardous", "harmful"],
-    "operacao": ["operating", "operation"],
-    "trabalho": ["working", "operating"],
-    "maxima": ["maximum", "max"],
-    "minima": ["minimum", "min"],
-    "nominal": ["nominal", "rated"],
+# A expansão é ADITIVA: os termos estrangeiros entram JUNTO dos originais,
+# nunca no lugar. Código de peça (`PVF100-4`) e unidade (`kg`, `mm`, `bar`)
+# seguem casando direto, que é onde o lexical é imbatível.
+#
+# POR QUE CINCO IDIOMAS, E NÃO SÓ INGLÊS (2026-08-13)
+# ---------------------------------------------------------------------------
+# O parque gerador de Itaipu não é abastecido por fornecedores de língua
+# inglesa. Levantando quem realmente assina os equipamentos:
+#
+#   ALEMÃO    Voith Hydro (turbinas e reguladores), Siemens (geradores e
+#             elétrica), HYDAC, Bosch Rexroth, Andritz, SEW, Festo, FAG.
+#             É o idioma mais frequente depois do inglês neste domínio, e
+#             muitos catálogos alemães são bilíngues DE/EN — mas as TABELAS,
+#             que é onde estão os valores, costumam ficar só em alemão.
+#   ESPANHOL  Itaipu é BINACIONAL: o espanhol é idioma oficial da entidade,
+#             e a metade paraguaia documenta nele. Somam-se os fornecedores
+#             latino-americanos e espanhóis.
+#   FRANCÊS   Alstom (turbinas e geradores, hoje GE Hydro), Schneider.
+#   ITALIANO  fabricantes de válvulas, bombas e hidráulica.
+#
+# Os valores são escritos SEM ACENTO de propósito: `tokenizar` normaliza por
+# NFKD antes de comparar, então `Länge` no documento vira `lange`, e é assim
+# que o glossário precisa guardar o termo para casar.
+GLOSSARIO_MULTILINGUE = {
+    "pressao": ["pressure", "druck", "presion", "pression", "pressione"],
+    "temperatura": ["temperature", "temperatur", "temperatura"],
+    "faixa": ["range", "bereich", "rango", "plage", "intervallo", "campo"],
+    "peso": ["weight", "gewicht", "poids", "peso"],
+    "liquido": ["net", "netto", "neto"],
+    "bruto": ["gross", "brutto", "bruto", "brut", "lordo"],
+    "dimensao": ["dimension", "size", "abmessung", "masse", "dimensione"],
+    "dimensoes": ["dimensions", "size", "abmessungen", "masse", "medidas", "dimensioni"],
+    "comprimento": ["length", "lange", "laenge", "longitud", "longueur", "lunghezza"],
+    "largura": ["width", "breite", "ancho", "largeur", "larghezza"],
+    "altura": ["height", "hohe", "hoehe", "altura", "hauteur", "altezza"],
+    "espessura": ["thickness", "dicke", "starke", "espesor", "epaisseur", "spessore"],
+    "diametro": ["diameter", "durchmesser", "diametre", "diametro"],
+    "interno": ["inner", "inside", "internal", "innen",
+               "innere", "interior", "interne", "interno"],
+    "externo": ["outer", "outside", "external", "aussen",
+               "aeussere", "exterior", "externe", "esterno"],
+    "material": ["material", "werkstoff", "materiau", "matiere", "materiale"],
+    "dureza": ["hardness", "shore", "harte", "haerte", "durete", "durezza"],
+    "componentes": ["components", "parts", "kit",
+                   "bauteile", "komponenten", "composants", "componenti"],
+    "composicao": ["composition", "assembly", "zusammensetzung", "composicion", "composizione"],
+    "aplicacao": ["application", "use", "anwendung", "einsatz", "aplicacion", "applicazione"],
+    "tipo": ["type", "typ", "tipo"],
+    "construtivo": ["construction", "design", "bauart",
+                   "ausfuhrung", "construccion", "costruzione"],
+    "normas": ["standard", "standards", "norm", "normen", "normas", "normes", "norme"],
+    "norma": ["standard", "norm", "norma"],
+    "certificado": ["certificate", "certification", "zertifikat",
+                   "zulassung", "certificat", "certificato"],
+    "caracteristicas": ["characteristics", "features", "specifications", "specs",
+                       "merkmale", "kenndaten", "caracteristicas", "caracteristiques", "caratteristiche"],
+    "embalagem": ["packaging", "package", "verpackung", "embalaje", "emballage", "imballaggio"],
+    "transporte": ["transport", "shipping", "handling", "versand", "transporte", "trasporto"],
+    "armazenamento": ["storage", "lagerung", "almacenamiento", "stockage", "stoccaggio"],
+    "preservacao": ["preservation", "storage", "konservierung",
+                   "conservacion", "conservation", "conservazione"],
+    "limpeza": ["cleaning", "reinigung", "limpieza", "nettoyage", "pulizia"],
+    "protecao": ["protection", "enclosure", "rating",
+                "schutz", "schutzart", "proteccion", "protezione"],
+    "empilhamento": ["stacking", "stapelung", "apilamiento", "empilage", "impilamento"],
+    "unidade": ["unit", "einheit", "unidad", "unite", "unita"],
+    "fabricante": ["manufacturer", "brand", "hersteller", "fabricant", "produttore"],
+    "vedacao": ["seal", "sealing", "gasket", "dichtung",
+               "junta", "sello", "joint", "guarnizione"],
+    "eixo": ["shaft", "welle", "eje", "arbre", "albero"],
+    "rolamento": ["bearing", "lager", "walzlager", "rodamiento", "roulement", "cuscinetto"],
+    "tensao": ["voltage", "spannung", "voltaje", "tension", "tensione"],
+    "corrente": ["current", "strom", "corriente", "courant", "corrente"],
+    "potencia": ["power", "rating", "leistung", "potencia", "puissance", "potenza"],
+    "rotacao": ["speed", "rpm", "drehzahl", "revoluciones", "vitesse", "giri"],
+    "vazao": ["flow", "durchfluss", "volumenstrom", "caudal", "debit", "portata"],
+    "velocidade": ["speed", "geschwindigkeit", "velocidad", "vitesse", "velocita"],
+    "torque": ["torque", "drehmoment", "par", "couple", "coppia"],
+    "rosca": ["thread", "gewinde", "rosca", "filetage", "filetto"],
+    "conexao": ["connection", "port", "anschluss",
+               "conexion", "raccordement", "connessione", "attacco"],
+    "descarte": ["disposal", "waste", "entsorgung",
+                "eliminacion", "desecho", "elimination", "smaltimento"],
+    "legislacao": ["regulation", "legislation", "vorschrift",
+                  "richtlinie", "legislacion", "reglementation", "normativa"],
+    "periculosidade": ["hazard", "hazardous", "gefahr",
+                      "gefahrstoff", "peligrosidad", "danger", "pericolosita"],
+    "nocivo": ["hazardous", "harmful", "schadlich", "gefahrlich", "nocif", "nocivo"],
+    "operacao": ["operating", "operation", "betrieb",
+                "funcionamiento", "fonctionnement", "funzionamento"],
+    "trabalho": ["working", "operating", "betriebs",
+                "arbeits", "trabajo", "service", "esercizio"],
+    "maxima": ["maximum", "max", "maximal", "maxima", "maximale", "massima"],
+    "minima": ["minimum", "min", "minimal", "minima", "minimale"],
+    "nominal": ["nominal", "rated", "nenn", "nennwert", "nominale"],
 }
+
+
+# Nome antigo, de quando o glossario era so PT->EN. Mantido porque o modulo
+# e importado por nome em teste e em log.
+GLOSSARIO_PT_EN = GLOSSARIO_MULTILINGUE
 
 
 def expandir_consulta(consulta):
@@ -166,7 +206,7 @@ def expandir_consulta(consulta):
     tokens = tokenizar(consulta)
     expandido = list(tokens)
     for token in tokens:
-        expandido.extend(GLOSSARIO_PT_EN.get(token, ()))
+        expandido.extend(GLOSSARIO_MULTILINGUE.get(token, ()))
     return expandido
 
 

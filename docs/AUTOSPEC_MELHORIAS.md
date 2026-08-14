@@ -14,9 +14,17 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 > Checklist obrigatório. Antes de declarar o AutoSpecAI concluído, passar por cada item.
 
 - [x] ~~Checkbox: `fill_save` falha em silêncio~~ — **RESOLVIDO em 2026-08-11**, ver R-09.
-- [ ] Rodar o roteiro de `docs/ROTEIRO_DE_TESTE.md` na parte do AutoSpec
-- [x] ~~`bash scripts/check.sh` verde~~ — verde desde 2026-08-11
-- [x] ~~Merge na linha oficial~~ — feito em 2026-08-11 (commit `75e0988`)
+- [x] ~~Escrever a parte do AutoSpec no roteiro de teste~~ — feito em 2026-08-12:
+      `docs/ROTEIRO_DE_TESTE.md`, **Etapa 3b**. Ela não existia; o item abaixo
+      mandava rodar uma etapa que não estava escrita.
+- [ ] **Rodar a Etapa 3b** numa ficha real, com manual anexado — é o único item
+      que sobra, e ele não é meu: precisa de máquina com o app, chave de IA e
+      um PDF de fabricante. O que volta de lá (páginas lidas, qual busca rendeu,
+      % de recorte) é o que destrava as duas decisões ainda abertas: instalar ou
+      não OCR local, e reescrever ou não as queries de busca.
+- [x] ~~`bash scripts/check.sh` verde~~ — verde desde 2026-08-11 (1550 testes em 2026-08-12)
+- [x] ~~Merge na linha oficial~~ — feito em 2026-08-11 (commit `75e0988`); tudo
+      que veio depois foi commitado direto nela.
 
 ---
 
@@ -26,6 +34,242 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 > resolvidos — ver abaixo.
 
 ## Resolvido
+
+### ✅ R-20 🔴 Conversão de unidade CONFERIDA + navegador como último recurso *(2026-08-13)*
+
+**Conversão.** O lastro (R-19) reprovava `35 MPa` a partir de `350 bar` — conversão correta,
+descartada. Decisão do usuário: conferir em vez de reprovar. `sigft/services/autospec_unidades.py`
+(novo) **refaz a conta** a partir do número do documento — não confia no cálculo da IA:
+
+```
+  35 mpa    -> 350 bar        0.4 l/min  -> 400 ml/min      158 f  -> 70 c
+  3.5 mpa   -> REPROVADO      9.9 l/min  -> REPROVADO
+```
+
+`3,5 MPa` a partir de `350 bar` é 10× errado e é exatamente o que ninguém percebe olhando.
+9 grandezas (pressão, comprimento, massa, temperatura, vazão, potência, torque, rotação, área),
+só stdlib. Toda conversão aprovada é **anunciada no console** com a conta — aprovar em silêncio
+seria pior que reprovar.
+
+**Dois bugs meus, achados pelos próprios testes:**
+
+- *Herança de unidade em intervalo.* `0 a +70 C` — só o segundo número tem unidade, e sem
+  herança o `0` escapava da conferência: num intervalo convertido bastaria acertar um limite.
+  A 1ª versão herdava de qualquer distância, e o `1000` de `cs1000.pdf` herdou o `bar` de
+  `350 bar` sete palavras adiante — `999 bar` passou a casar dentro de 1%. A herança agora só
+  atravessa conector de intervalo.
+- *Comparação na unidade base.* A base da vazão é m³/s, onde `0,4 l/min` e `50 ml/min` valem
+  6,7e-6 e 8,3e-7 — pequenos o bastante para a tolerância absoluta aprovar **qualquer** par.
+  Apareceu na saída como `0,4 l/min = 50 ml/min` (o certo é 400). A comparação passou a ser
+  feita na unidade da resposta, que é como uma pessoa confere.
+
+**Navegador (403 e página JavaScript).** `sigft/core/web/navegador.py` + `robots.py` (novos),
+fora de `services/` porque a arquitetura proíbe serviço conhecer Playwright.
+
+**A ordem é a política:** tenta o download simples → só se falhar → só se o `robots.txt`
+permitir → abre o navegador. Um site que diz "não" continua recebendo "está bem". O `robots.txt`
+falha **fechada** (não deu para ler = não), ao contrário do resto do módulo — a dúvida aqui é
+sobre permissão.
+
+404/500 **não** acionam o navegador: "não existe" não é "não quero". O gatilho real é o 403 e,
+mais importante, a página que baixa quase vazia — assinatura de aplicação JavaScript, pior que
+o 403 porque o documento "chega" e não parece falha.
+
+Playwright ausente = segue sem, como o reforço semântico. 53 testes novos.
+
+
+### ✅ R-19 🔴 Lastro documental + glossário em 5 idiomas *(2026-08-13)*
+
+Pedido do usuário: *"não gostei do ato de aceitar uma informação errada. Isto não deve
+acontecer."*
+
+Desenho completo: [`docs/superpowers/specs/2026-08-13-lastro-documental-design.md`](superpowers/specs/2026-08-13-lastro-documental-design.md).
+
+**A resposta honesta primeiro.** "Correto" não é verificável por código — se o datasheet do
+fabricante estiver errado, nenhuma verificação automática descobre. **"Rastreável ao documento"
+é 100% verificável**, e é a garantia mais forte que existe aqui. Agora são três camadas:
+
+| Camada | Pergunta |
+|---|---|
+| 1. Filtro anti-intruso (§4.3) | o documento é **deste material**? |
+| 2. **Lastro documental** (novo) | o valor **saiu mesmo do documento**? |
+| 3. Conferência humana | o documento **está certo**? |
+
+**A regra:** se o valor tem número, **todos** os números precisam estar no contexto — basta um
+inventado para o campo ficar vazio. `"entre 175 e 999 bar"` cai mesmo com o `175` correto:
+meia verdade num campo técnico é pior que campo vazio, porque passa na conferência por parecer
+certa. Números são normalizados (`25,4` = `25.40` = `25.4`) para não descartar valor certo por
+pontuação.
+
+> **Revisto no mesmo dia (R-20):** esta versão reprovava conversão de unidade — `35 MPa` a
+> partir de `350 bar` ficava vazio. Passou a ser **conferida** em vez de reprovada: a conta é
+> refeita a partir do número do documento. Conversão errada continua reprovando.
+
+**Isento:** os 12 `GENERATIVE_FIELDS` (embalagem, transporte, descarte…), que as regras §3.2
+mandam gerar de conhecimento técnico e não têm datasheet de onde sair.
+
+Demonstrado contra um documento que diz `IP67`:
+
+```
+[warn] 3 campo(s) ficaram VAZIOS porque o valor respondido nao aparece no documento:
+       · 13 - GRAU DE PROTECAO      -> a IA respondeu 'IP65'
+       · 17 - FAIXA DE TENSAO (CC)  -> a IA respondeu '35 MPa'
+[warn] 1 campo(s) citam uma fonte que NAO esta entre os documentos lidos
+```
+
+`IP65` contra `IP67` é o erro que passaria na conferência humana por ser plausível. Não chega
+à célula.
+
+**Rastreabilidade já existia** (P-04, a lista `-> Origem dos dados` do console). Agora tem duas
+vizinhas — campos não respondidos e campos bloqueados — e as três descrevem o destino de
+**todo** campo que faltava.
+
+**Glossário multilíngue (PT/EN/DE/ES/FR/IT), 318 equivalentes.** O parque de Itaipu é Voith,
+Siemens, HYDAC, Andritz (alemão), Alstom/GE Hydro (francês), e a entidade é **binacional** —
+espanhol é idioma oficial. Antes, datasheet alemão não casava termo nenhum (`pressao` ≠
+`Druck`) e o trecho com a resposta era recortado fora. Verificado nos 4 idiomas: 6/6 dados
+preservados em cada um.
+
+54 testes novos.
+
+### ✅ R-18 🔴 Fichas difíceis — o que ia quebrar depois que a 1188 passou *(2026-08-12)*
+
+A 1188 passou (28 de 29 campos, 21 com URL de origem). Ela é o caso **fácil**. Este item cobre
+o que o `_STATUS_PMIB` real também tem. Cada falha foi **reproduzida rodando o código**.
+
+Desenho completo: [`docs/superpowers/specs/2026-08-12-fichas-dificeis-design.md`](superpowers/specs/2026-08-12-fichas-dificeis-design.md).
+
+**A mais grave — o filtro falhava ABERTO.** Ficha sem fabricante e sem código dava
+`_termos_do_filtro() == []`, e lista vazia significa "não filtre". A proteção §4.3 aceitava
+qualquer documento justamente na ficha em que menos se pode confiar no resultado. Agora, sem
+âncora, **a busca web não acontece** e o console diz o que fazer. Basta uma das duas âncoras.
+
+| # | Falha reproduzida | Correção |
+|---|---|---|
+| F-1 | sem âncora, filtro aceita tudo | busca web pulada, com explicação |
+| F-2 | `DIVERSOS`/`N/A`/`SEM MARCA` viravam fabricante | reconhecidos como ausência de fabricante |
+| F-3 | `INDUSTRIA E COMERCIO LTDA` virava âncora | `_tokens_ancora_fabricante` separada de `_nome_curto_fabricante` |
+| F-4 | `1/2` e `110` viravam código de peça (e `1/2` virou a 1ª query!) | letra+dígito, ou numérico com 4+ dígitos |
+| F-5 | `123` casava dentro de `123456` | fronteira de palavra para termo curto/numérico |
+| F-6 | download sem teto de tamanho | `stream=True`, corte em 40 MB |
+
+**F-3 era defeito meu**, introduzido na correção anterior: o fallback "se limpar tudo, use o
+original" é certo para BUSCAR e errado para FILTRAR. São decisões diferentes e agora são funções
+diferentes.
+
+**E uma tensão que o teste resolveu melhor que eu.** Minha 1ª tentativa contra F-5 descartava
+tokens de até 2 caracteres — e apagou `3M` inteiro. Marca curta legítima (`3M`, `GE`, `NSK`) não
+pode ser jogada fora por ser curta. Fronteira de palavra resolve os dois lados.
+
+**Três coisas que o console do teste bem-sucedido denunciou:**
+
+- `tmp1wgju9r5.pdf: 6 pagina(s)` — nome do temporário. Agora mostra a URL.
+- `Download recusado (HTTP 403)` — era o site do fabricante bloqueando robô, e parecia defeito
+  do app. Agora diz isso.
+- 29 faltantes → 28 origens: o 29º (`var_row_88`, "10 - PRECISAO") sumia em silêncio. Agora há
+  uma lista de "campos que a IA não respondeu, preencha à mão".
+
+30 testes; red-green conferido (22 falharam antes, 30 passam depois).
+
+### ✅ R-17 🔴 Busca web achava, e o próprio código jogava fora *(2026-08-12)*
+
+Falha real, ficha 4500063671.1188 (sensor HYDAC `CS1320-A-0-0-0-1/-000`), **sem PDF anexado**:
+minimax preencheu 3 de 22 especificações, grok preencheu **0 de 22**.
+
+O grok preencher zero foi **obediência, não burrice** — o prompt manda não inventar e ele não
+recebeu contexto nenhum. Os 3 do minimax vieram do conhecimento dele, sem fonte conferível, o
+que é pior que vazio. Trocar de modelo nunca resolveria: o erro estava antes da IA.
+
+Desenho completo, com todas as medições: [`docs/superpowers/specs/2026-08-12-busca-web-datasheet-design.md`](superpowers/specs/2026-08-12-busca-web-datasheet-design.md).
+
+**A hipótese que caiu primeiro.** Suspeita inicial: a razão social `HYDAC TECNOLOGIA LTDA`
+poluía a query. Testado contra busca real — **a query funcionava**, a página certa vinha em 1º
+e 3º lugar. Sem esse teste, a "correção óbvia" teria sido implementada sem resolver nada.
+
+**D1 — o filtro anti-intruso era uma guilhotina.** Exigia a razão social INTEIRA como substring
+do título/link. As páginas dizem `HYDAC`; nenhuma diz `HYDAC TECNOLOGIA LTDA`. O segundo termo
+era o código interno do PMIB, que não existe na internet. **Medido: 0 de 4 resultados corretos
+sobreviviam.** Nada era baixado.
+
+**D2 — a cascata procurava o SKU, não o datasheet.** Buscava só `CS1320-A-0-0-0-1/-000`, que é
+código de configuração de loja. O datasheet é publicado para a FAMÍLIA (`CS 1000 Series`).
+Medido: código completo → páginas de e-commerce; família + `filetype:pdf` → **10 datasheets**.
+
+**Colateral, também medido:** a razão social degrada o ranking (1 relevante de 7, contra 10 de
+10 sem ela). A hipótese inicial não estava errada — estava **incompleta**.
+
+| | Antes | Depois |
+|---|---|---|
+| Resultados corretos que passam o filtro | 0/4 | 3/4 |
+| Concorrente (Parker) barrado | sim | sim |
+| Queries que pedem PDF | 0 | 2 |
+| Busca pela família do produto | não | sim |
+
+Descartar 100% dos resultados virou `warn` listando os termos — era linha `info` no meio das
+outras, e foi ela que escondeu a falha.
+
+24 testes com os resultados **reais** do Google como fixture; red-green conferido revertendo o
+código (22 failed → 24 passed).
+
+> **Não resolvido:** seguir o link do PDF dentro da página do produto (mini-crawler), e página
+> de fabricante em JavaScript, cujo HTML estático é magro. Ver §6 do desenho.
+
+### ✅ R-16 🔴 Cache de resposta da IA — 100% de economia no rerun *(2026-08-12)*
+
+Reprocessar um lote é o **normal**, não a exceção: se um campo saiu errado, o usuário ajusta a
+planilha e roda tudo de novo. Até aqui cada rerun repagava a IA por ficha inteira, incluindo as
+que já tinham vindo certas.
+
+**A chave é o prompt inteiro** (hash SHA-256 de `provider|modelo|prompt`), não o nome do
+arquivo. É o que torna o acerto seguro: o prompt já contém material, fabricante, contexto
+recortado e a lista de campos faltantes, então tudo que mudaria a resposta já muda a chave.
+
+| Situação | Comportamento | Por quê |
+|---|---|---|
+| Rodou de novo, nada mudou | **acerto** — 0 token | é a economia |
+| Renomeou o arquivo, nada mudou | acerto | o nome não entra na chave |
+| Editou a ficha / trocou o manual | chamada nova | contexto mudou |
+| Trocou de modelo | chamada nova | servir a resposta do modelo A como se fosse do B tornaria a comparação entre modelos uma mentira |
+| A IA falhou | **não guarda** | congelar a falha faria o rerun devolver o mesmo vazio para sempre |
+
+**Duas decisões que não são óbvias:**
+
+- **O que volta do cache é a resposta CRUA, replicada pela mesma normalização** do caminho
+  vivo. Guardar o resultado já normalizado pareceria mais simples e perderia em silêncio o
+  `ultimas_fontes_por_campo` — de que o `fill_save` depende.
+- **O disco guarda o hash, nunca o prompt.** Medido num PDF real: o arquivo de cache tem 498
+  chars contra 7.000 do prompt, e não contém nem o texto do datasheet nem o preâmbulo. Guardar
+  o datasheet num `.json` ao lado do app contradiria em casa a decisão de mandar o mínimo para
+  fora. Gitignored.
+
+Medido, encadeado com o retrieval, num PDF real de 30 páginas lido inteiro pelo PyMuPDF:
+
+```
+1a execucao: 1 chamada,  ~1750 tokens de entrada   (o retrieval ja tinha cortado)
+2a execucao: 0 chamadas,    ~0 tokens
+respostas identicas: True   ·   fontes preservadas: True
+```
+
+31 testes.
+
+### ✅ R-15 🟡 `json_mode=True` na chamada do AutoSpec *(2026-08-12)*
+
+O prompt **pedia** JSON em texto (`Retorne JSON {ID: ...}`) e era só isso — o formato dependia
+da boa vontade do modelo, e o `_limpar_e_parsear_json` (que raspa cercas ```` ```json ````) era
+o único anteparo. Falha de parse ali devolve a ficha **vazia**.
+
+Com o flag, os três providers pedem JSON nativo ao servidor (`response_mime_type` no Gemini,
+`response_format` no OpenRouter/compat) e a limpeza vira rede de segurança em vez de caminho
+principal. Passou a importar mais agora que o provedor é trocável: confiabilidade de formato
+varia muito entre modelos.
+
+Tem teste percorrendo a corrente inteira (`generate_ai_response` → `LLMClient` → provider),
+porque um elo que engolisse o argumento no meio não apareceria de outro jeito.
+
+> **Fora desta frente:** outros 3 dos 5 consumidores de IA do projeto (`analyzer`,
+> `cria_fichas`, `upload_conditions`) estão sem o flag e no mesmo risco. Registrado em
+> `docs/refatoracao/PENDENCIAS.md` e **não corrigido de carona** — são arquivos da refatoração
+> do Luan.
 
 ### ✅ R-13 🔴 Frente 3: retrieval de verdade — 85% menos token *(2026-08-11)*
 

@@ -165,3 +165,31 @@ def _desliga_rastreamento_de_uso_de_ia_por_padrao(monkeypatch):
     a suíte, protegendo qualquer teste que construa um `LLMClient` real e
     chame `.generate()` sem saber do CP 3.4."""
     monkeypatch.setenv(_llm_usage.ENV_DESABILITAR_USAGE, "1")
+
+
+# 5. [2026-08-12] Caches do AutoSpec (busca web e resposta da IA) resolvem o
+#    caminho a partir de `config.CONFIG_FILE`, ou seja, a RAIZ DO REPOSITÓRIO.
+#    Sem esta fixture, qualquer teste que chame `generate_ai_response` ou
+#    `search_and_download` escreveria um `.json` na pasta do projeto — e, pior
+#    que a sujeira, o teste seguinte poderia LER o que o anterior gravou:
+#    um acerto de cache faz o código pular a chamada de IA, e uma asserção do
+#    tipo "o modelo foi chamado 1 vez" passaria ou falharia dependendo da
+#    ORDEM dos testes. Mesmo espírito da nota 4: teste nunca toca artefato
+#    real do usuário.
+#    Usa `tmp_path_factory` e NÃO `tmp_path`: a pasta precisa ficar FORA do
+#    `tmp_path` do teste, senão testes que afirmam "não escrevi nada" (ex.:
+#    `test_relatorio_lote.py::test_espelho_e_opcional...`) veem a pasta do
+#    cache e falham. Aprendido quebrando os dois.
+@pytest.fixture(autouse=True)
+def _isola_os_caches_do_autospec(monkeypatch, tmp_path_factory):
+    try:
+        from sigft.services import autospec as _autospec
+    except Exception:
+        return  # suíte que não importa o AutoSpec não precisa da proteção
+    pasta = tmp_path_factory.mktemp("caches_autospec")
+    monkeypatch.setattr(
+        _autospec, "_caminho_cache_resposta", lambda: str(pasta / "resposta.json")
+    )
+    monkeypatch.setattr(
+        _autospec, "_caminho_cache_busca", lambda: str(pasta / "busca.json")
+    )

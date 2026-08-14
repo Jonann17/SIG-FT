@@ -1,12 +1,16 @@
 # Roteiro de teste — Fases 1 a 5 da refatoração
 
 Este roteiro existe porque **nada do que foi refatorado nas Fases 1 a 5 jamais
-rodou contra o portal PMIB real**. Os 1288 testes automatizados provam que a
-lógica está coerente e que os dois motores de RPA fazem a mesma sequência de
-ações — não provam que o portal responde bem a elas.
+rodou contra o portal PMIB real**. Os testes automatizados (1559 em 2026-08-12)
+provam que a lógica está coerente e que os dois motores de RPA fazem a mesma
+sequência de ações — não provam que o portal responde bem a elas.
 
-Tempo estimado: **40 a 60 minutos** para o roteiro inteiro. Dá para parar em
-qualquer etapa; cada uma tem valor sozinha.
+A **Etapa 3b** entra pelo mesmo motivo, para outra frente: o AutoSpec passou a
+ler PDF na própria máquina e a recortar o contexto antes de mandar para a IA, e
+nada disso rodou contra um PDF de verdade nem contra a internet de verdade.
+
+Tempo estimado: **40 a 60 minutos** para o roteiro inteiro (75 com a Etapa 3b).
+Dá para parar em qualquer etapa; cada uma tem valor sozinha.
 
 > **Antes de tudo**: use uma **ficha de teste**, não uma ficha real de trabalho.
 > Três módulos deste roteiro escrevem no portal e um APAGA dados. Se você não
@@ -72,13 +76,18 @@ a janela preta mostrando o progresso). Depois roda os testes.
 
 **Resultado esperado:**
 ```
-1288 passed
+1559 passed, 3 skipped
 [SIG-FT] Tudo passou.
 ```
 
+> O número cresce a cada checkpoint (era 1288 quando este roteiro foi escrito;
+> são 1559 em 2026-08-12). **Ver um número maior é bom sinal, não erro** — o que
+> importa é `[SIG-FT] Tudo passou.` e nenhum `failed`. Os `skipped` são testes
+> que dependem de pacote que o ambiente não tem; podem variar.
+
 | O que aconteceu | O que significa | O que fazer |
 |---|---|---|
-| `1288 passed` | Instalação sã | Siga para a Etapa 3 |
+| `... passed` e nenhum `failed` | Instalação sã | Siga para a Etapa 3 |
 | Alguns testes falharam | Bug real ou diferença de ambiente | Copie a saída inteira e me mande — **não siga adiante** |
 | Erro `SSLError` / `CERTIFICATE_VERIFY_FAILED` durante a instalação | Zscaler bloqueando o `pip` | Ver **Etapa 2b** |
 | `Python 3 nao foi encontrado` | Python ausente ou fora do PATH | Reinstale marcando *"Add python.exe to PATH"* |
@@ -124,6 +133,100 @@ Dois cliques em **`Gerar-Dados-de-Teste.bat`** — ele cria a pasta
 **O que anotar:** qualquer erro de "coluna não encontrada", "cabeçalho não
 localizado" ou código PMIB saindo diferente do esperado. Esses três são
 justamente o que as Fases 1 e 2 unificaram.
+
+---
+
+## Etapa 3b — AutoSpec AI (15 min, sem portal)
+
+Etapa separada porque o AutoSpec **não é refatoração**: é a frente paralela do
+Rafael (ver `docs/AUTOSPEC_MELHORIAS.md`). Ele lê a ficha, procura o que falta
+em manuais e na web, pergunta para a IA e escreve de volta no `.xlsx`. Não toca
+o portal — dá para rodar sem estar logado.
+
+Entre 2026-08-11 e 12 o módulo mudou em três pontos que **nunca rodaram contra
+um PDF de verdade nem contra a internet de verdade**, e é exatamente isso que
+esta etapa existe para descobrir:
+
+| Mudou | Antes | Agora |
+|---|---|---|
+| Leitura de PDF | subia o arquivo para a nuvem (LlamaParse) | lê **na sua máquina** (PyMuPDF); a nuvem virou último recurso |
+| Prova de leitura | nenhuma — meia leitura passava por completa | informa quantas páginas de quantas foram lidas |
+| Contexto para a IA | mandava o documento inteiro | manda só os trechos que respondem os campos |
+
+### O que você precisa antes
+
+| | |
+|---|---|
+| **Chave de IA** | configure na tela Home. O erro, se faltar, diz o nome do provedor e da chave — leia a mensagem, ela é literal |
+| **Chave do Google Search + CSE ID** | opcional. Sem elas o módulo avisa e segue só com os documentos locais |
+| **Um `_STATUS_PMIB.xlsx`** | serve o de `dados_de_teste\` |
+| **Uma ficha com campos EM BRANCO** | se estiver toda preenchida não há o que a IA responder, e a etapa não testa nada |
+| **Um manual em PDF** | o do fabricante do item da ficha. **É a parte mais importante desta etapa** |
+
+### Os passos
+
+1. Abra o app (`SIG-FT.bat`) e vá em **6. AutoSpec AI (RAG)** no menu da esquerda.
+2. *1. Arquivo de Referência* → selecione o `_STATUS_PMIB.xlsx`.
+3. *2. Adicionar Tarefa à Fila* → selecione a ficha, depois **Adic. Manuais
+   (.pdf)** e escolha o manual.
+4. **⬇ Adicionar à Fila ⬇** e então **INICIAR PROCESSAMENTO DA FILA**.
+5. Acompanhe o **console dentro do app** (a caixa preta na parte de baixo da
+   tela, não a janela do Windows).
+
+### As 4 linhas que interessam no console
+
+Estas quatro linhas são novas. Elas são o resultado do teste — mais do que o
+"deu certo / deu errado".
+
+**1. Leitura do PDF** — quantas páginas o computador conseguiu ler:
+```
+manual_hydac.pdf: 30 pagina(s), 30 lida(s) (100%), 11381 chars [PyMuPDF]
+```
+| Se aparecer | Significa | O que fazer |
+|---|---|---|
+| `(100%)` e `[PyMuPDF]` | Leu inteiro, **sem sair da sua máquina** | Perfeito, é o caso esperado |
+| `LEITURA INCOMPLETA` + lista de páginas | O PDF tem páginas digitalizadas (foto de papel) | **Anote quantas** — é o número que decide se vale instalar OCR |
+| `recorrendo ao LlamaParse (o arquivo SAI da rede)` | Nada local leu; o PDF foi para a nuvem | Anote **qual arquivo**. Era justamente o que se queria evitar |
+| `precisa de OCR ... documento ignorado` | PDF só de imagem e sem chave LlamaParse | Anote o nome do arquivo |
+
+**2. Busca na web** — qual pergunta rendeu documento:
+```
+Busca 3/7 rendeu 2 documento(s): "PVF100-4" HYDAC datasheet pdf
+```
+| Se aparecer | Significa | O que fazer |
+|---|---|---|
+| `rendeu N documento(s)` | Achou. **Anote o número da busca** (o `3/7`) | Se for sempre 4, 5 ou mais, as primeiras queries estão erradas e dá para consertar |
+| `sem resultado util` em todas | Nenhuma query funcionou | Copie **as 7 linhas** e mande. É o dado que faltava para atacar a busca |
+| `Busca em cache (nao gastou cota da CSE)` | Repetiu uma busca já feita | Normal, e é economia de cota |
+| `Busca web desativada` | Faltou chave do Google/CSE | Só configure se quiser testar a busca |
+
+**3. Recorte do contexto** — quanto foi economizado de token:
+```
+Contexto recortado: 5 de 12 trecho(s), 5955 de 11411 chars (48% a menos enviado a IA)
+```
+| Se aparecer | Significa |
+|---|---|
+| `N% a menos` | Funcionou — esse é o dinheiro economizado por ficha |
+| `recortar nao economizaria` | Documento pequeno, mandado inteiro de propósito |
+| `Nenhum trecho ... casou com os campos pedidos` | **Me avise.** Quer dizer que o vocabulário da sua ficha não está no glossário |
+
+**4. Reforço semântico** — aparece uma vez só:
+```
+Reforco semantico INATIVO — retrieval rodando so com BM25 + glossario PT/EN
+```
+`INATIVO` é o **esperado** e não é defeito: é o caminho padrão, e ele é que foi
+medido. Não instale nada para mudar isso.
+
+### Depois que terminar
+
+Abra a ficha `.xlsx` e confira, nessa ordem:
+
+1. **Os campos preenchidos estão nas células certas?** É o único jeito de pegar
+   valor escrito na linha errada.
+2. **Os valores batem com o manual?** Pegue 3 ou 4 e confira no PDF. Valor
+   plausível e errado é pior que campo vazio.
+3. **Algum campo que estava preenchido foi apagado?** Não pode acontecer.
+4. **Os dropdowns** (Origem, Tipo, Unidade) ficaram com opção válida?
 
 ---
 
@@ -253,6 +356,22 @@ ETAPA 3 — Excel (sem portal)
   3.2 PMIB Manager ........................ [ OK / falhou: ______ ]
   3.3 Analyzer ............................ [ OK / falhou: ______ ]
   3.4 Planilhas PMIB ...................... [ OK / não testei / falhou: ______ ]
+
+ETAPA 3b — AutoSpec AI (sem portal)
+  rodou até o fim? ........................ [ OK / falhou: ______ ]
+  LEITURA DO PDF
+    páginas lidas / total ................. [ ____ / ____  = ____% ]
+    algum arquivo foi para o LlamaParse? .. [ não / sim: ______ ]
+  BUSCA WEB
+    qual busca rendeu documento? .......... [ ____ de ____ / nenhuma ]
+    se nenhuma, colei as linhas abaixo ..... [ sim / não usei chave de busca ]
+  RECORTE
+    quanto economizou? .................... [ ____% / recorte dispensado ]
+  FICHA DEPOIS DE PREENCHIDA
+    valores nas células certas? ........... [ sim / não: ______ ]
+    valores batem com o manual? ........... [ ___ de ___ conferidos ]
+    apagou algum campo já preenchido? ..... [ não / SIM: ______ ]
+    dropdowns com opção válida? ........... [ sim / não: ______ ]
 
 ETAPA 4 — Portal, motor Selenium
   4.1 Upload Specs ........................ [ OK / falhou: ______ ]
