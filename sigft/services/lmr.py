@@ -95,30 +95,20 @@ def _mapear_colunas_lmr(colunas_da_aba):
     return mapa
 
 
-def localizar_aba_lmr(caminho_excel):
-    """(abas do arquivo, aba escolhida, mapa de colunas) -- a "leitura
-    automática" pedida em 2026-08-11.
+def listar_abas(caminho_excel):
+    """Nomes das abas do arquivo, na ordem em que aparecem nele.
 
-    Antes, a aba era a string fixa `'GERAL'` e as colunas eram exigidas com
-    grafia exata; renomear a aba (ou receber a planilha de outra pessoa) fazia
-    o módulo falhar com um `KeyError` do pandas, que não diz o que fazer.
-
-    A ordem é: primeiro as abas de `config.LMR_ABAS`, na preferência
-    declarada; depois QUALQUER aba do arquivo. Assim o nome esperado ainda
-    vence quando existe -- uma planilha com duas abas parecidas não passa a
-    depender da ordem interna do arquivo --, mas um nome inesperado deixa de
-    ser um impedimento.
+    É o que popula o seletor de aba da tela. QUEM ESCOLHE É O USUÁRIO: a
+    primeira versão disto adivinhava a aba (tentava `LMR`, `GERAL` e depois
+    qualquer uma que tivesse as colunas), e o usuário recusou -- com razão.
+    Adivinhar aba é o tipo de "ajuda" que funciona nove vezes e, na décima,
+    cadastra o lote inteiro a partir da planilha errada sem ninguém notar.
     """
-    xls = pd.ExcelFile(caminho_excel)
-    abas = list(xls.sheet_names)
+    return list(pd.ExcelFile(caminho_excel).sheet_names)
 
-    preferidas = [a for a in config.LMR_ABAS if a in abas]
-    for aba in preferidas + [a for a in abas if a not in preferidas]:
-        colunas = pd.read_excel(caminho_excel, sheet_name=aba, nrows=0).columns
-        mapa = _mapear_colunas_lmr(colunas)
-        if mapa is not None:
-            return abas, aba, mapa
-    return abas, None, None
+
+def _colunas_da_aba(caminho_excel, aba):
+    return list(pd.read_excel(caminho_excel, sheet_name=aba, nrows=0).columns)
 
 
 class LMRAutomation:
@@ -158,23 +148,31 @@ class LMRAutomation:
             self.engine.goto(target)
 
     # --- MÉTODOS DE DADOS ---
-    def carregar_dados_excel(self, caminho_excel):
+    def carregar_dados_excel(self, caminho_excel, aba=None):
         """
         Lê o Excel, filtra e retorna:
         1. O DataFrame completo limpo.
         2. A lista de PMIBs únicos para seleção.
         """
         try:
-            abas, aba_usada, mapa = localizar_aba_lmr(caminho_excel)
+            if not aba:
+                return False, None, None, (
+                    "Nenhuma aba escolhida. Selecione a aba da planilha que contém "
+                    "as aplicações de LMR. Abas do arquivo: "
+                    + (", ".join(listar_abas(caminho_excel)) or "(nenhuma)")
+                )
+
+            aba_usada = aba
+            mapa = _mapear_colunas_lmr(_colunas_da_aba(caminho_excel, aba_usada))
             if mapa is None:
                 return False, None, None, (
-                    "Não encontrei as colunas da planilha de LMR em nenhuma aba. "
-                    f"Abas do arquivo: {', '.join(abas) or '(nenhuma)'}. "
+                    f"A aba '{aba_usada}' não tem as colunas da planilha de LMR. "
                     "Esperado (qualquer uma das grafias): "
                     + " | ".join(
                         f"{papel}: {' / '.join(nomes)}"
                         for papel, nomes in config.LMR_COLUNAS.items()
                     )
+                    + ". Escolha outra aba no seletor."
                 )
 
             df_bruto = pd.read_excel(caminho_excel, sheet_name=aba_usada, dtype=str)

@@ -14,7 +14,7 @@ O que gera, e o que cada arquivo destrava
     4500063671.0002_STATUS_PMIB.xlsx      Características Técnicas (leitura do status)
     fichas/4500063671.0001.xlsx        -> Analyzer, AutoSpec (a ficha em si)
     fichas/4500063671.0002.xlsx
-    LMR_aplicacoes.xlsx                -> Cadastro LMR (aba GERAL)
+    LMR_aplicacoes.xlsx                -> Cadastro LMR (aba LMR)
 
 --------------------------------------------------------------------------
 O que estes arquivos NÃO provam
@@ -164,15 +164,18 @@ def gerar_status_pmib(caminho, pmib, itens):
 
 
 def gerar_lmr(caminho, registros):
-    """Planilha de aplicações LMR: aba GERAL com PMIB / Código_PMIB / TAG_PMIB
+    """Planilha de aplicações LMR: aba LMR com FICHA PMIB / CÓDIGO LMR / TAG LMR
     -- as 3 colunas que `lmr.carregar_dados_excel` exige."""
     from openpyxl import Workbook
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "GERAL"
+    ws.title = "LMR"
 
-    for indice, nome in enumerate(["PMIB", "Código_PMIB", "TAG_PMIB"], start=1):
+    # Cabeçalho NOVO (2026-08-11): é o que a tela e a documentação ensinam
+    # agora. O leitor aceita os antigos também, mas o dado de teste tem de
+    # mostrar o formato recomendado -- senão ninguém descobre qual é.
+    for indice, nome in enumerate(["FICHA PMIB", "CÓDIGO LMR", "TAG LMR"], start=1):
         ws.cell(row=1, column=indice, value=nome)
 
     for linha, (pmib, codigo, tag) in enumerate(registros, start=2):

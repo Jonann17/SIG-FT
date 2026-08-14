@@ -178,7 +178,7 @@ def test_search_monta_o_dataframe_do_arquivo_gerado(gerados, pandas_real):
 def test_lmr_carrega_a_planilha_gerada_e_agrupa_tags(gerados, pandas_real):
     from sigft.services.lmr import LMRAutomation
 
-    ok, df, pmibs, msg = LMRAutomation().carregar_dados_excel(str(gerados / "LMR_aplicacoes.xlsx"))
+    ok, df, pmibs, msg = LMRAutomation().carregar_dados_excel(str(gerados / "LMR_aplicacoes.xlsx"), "LMR")
 
     assert ok, msg
     assert len(pmibs) == 2
@@ -244,6 +244,6 @@ def test_gerador_e_deterministico(tmp_path, gerador, openpyxl_real, pandas_real,
     # tem de bater é o CONTEÚDO.
     from sigft.services.lmr import LMRAutomation
 
-    _, df_a, _, _ = LMRAutomation().carregar_dados_excel(str(tmp_path / "a" / "LMR_aplicacoes.xlsx"))
-    _, df_b, _, _ = LMRAutomation().carregar_dados_excel(str(tmp_path / "b" / "LMR_aplicacoes.xlsx"))
+    _, df_a, _, _ = LMRAutomation().carregar_dados_excel(str(tmp_path / "a" / "LMR_aplicacoes.xlsx"), "LMR")
+    _, df_b, _, _ = LMRAutomation().carregar_dados_excel(str(tmp_path / "b" / "LMR_aplicacoes.xlsx"), "LMR")
     assert list(df_a["TAG_PMIB"]) == list(df_b["TAG_PMIB"])
