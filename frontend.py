@@ -4865,10 +4865,18 @@ class SIG_FT_App(ctk.CTk):
         self.logo_image = None
         try:
             if os.path.exists(image_path):
+                # Altura CALCULADA a partir da proporção real do arquivo, não
+                # fixada: `size=(180, 60)` impunha 3:1 a uma imagem que não é
+                # 3:1, e o logo aparecia esticado na horizontal. A splash já
+                # fazia a conta certa (`w_percent`); a sidebar não.
+                pil_logo = Image.open(image_path)
+                largura_alvo = 180
+                proporcao = largura_alvo / float(pil_logo.size[0])
+                altura_alvo = max(1, int(pil_logo.size[1] * proporcao))
                 self.logo_image = ctk.CTkImage(
-                    light_image=Image.open(image_path),
-                    dark_image=Image.open(image_path),
-                    size=(180, 60)
+                    light_image=pil_logo,
+                    dark_image=pil_logo,
+                    size=(largura_alvo, altura_alvo)
                 )
         except Exception as e:
             print(f"Aviso: Não foi possível carregar a logo do menu. Detalhe: {e}")
@@ -4889,6 +4897,13 @@ class SIG_FT_App(ctk.CTk):
 
         # O frame rolável empilha os itens automaticamente; configuração de peso
         # em linha vazia pode bugar a rolagem, por isso não usamos grid_rowconfigure aqui.
+        #
+        # A COLUNA, sim, precisa de peso. Sem isto ela fica só com a largura do
+        # widget mais largo, e os botões (que usam `sticky="ew"`) param antes
+        # da borda: sobrava uma faixa vazia entre o texto e a barra de
+        # rolagem, com cara de menu mal alinhado. `grid_columnconfigure` não
+        # mexe na rolagem, que é vertical.
+        self.sidebar.grid_columnconfigure(0, weight=1)
 
         # --- LOGO E TÍTULO ---
         # Alteração: Texto removido, apenas a imagem é exibida
@@ -4897,7 +4912,7 @@ class SIG_FT_App(ctk.CTk):
             text="",  # Texto vazio
             image=self.logo_image  # A imagem já contém o texto "GE Vernova"
         )
-        self.logo_label.grid(row=0, column=0, padx=20, pady=(30, 10))
+        self.logo_label.grid(row=0, column=0, padx=20, pady=(30, 10), sticky="ew")
 
         self.lbl_app = ctk.CTkLabel(self.sidebar, text="SIG-FT System", font=ctk.CTkFont(family="Roboto", size=13), text_color="gray60")
         self.lbl_app.grid(row=1, column=0, padx=20, pady=(0, 20))

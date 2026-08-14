@@ -853,6 +853,15 @@ class TechSpecsAutomation:
                 dict_dados = indexar_por_caracteristica(dados, self.normalizar_texto)
 
                 # --- LOOP DE PAGINAÇÃO E LINHAS (Restaurado do Original) ---
+                # Conjuntos da auditoria: o que a tela mostrou, o que foi
+                # efetivamente preenchido e removido. Servem para a
+                # RECONCILIAÇÃO no fim -- comparar o que o JSON pedia com o
+                # que o portal recebeu é a única forma de "37 viraram 21"
+                # aparecer numa execução em vez de numa conferência manual.
+                vistas_na_tela = set()
+                preenchidas = set()
+                removidas = set()
+
                 pagina_atual = 1
                 while True:
                     if callback_log: callback_log(f"Processando Página {pagina_atual}...")
@@ -885,6 +894,16 @@ class TechSpecsAutomation:
 
                             dado = dict_dados.get(chave_limpa)
 
+                            # AUDITORIA POR LINHA. Toda característica que
+                            # aparece na tela é registrada com o que foi feito
+                            # nela -- pedido do usuário depois de o portal
+                            # receber 21 dos 37 campos sem nenhuma mensagem de
+                            # erro no terminal. Sem esta linha, "o que o robô
+                            # fez" só era observável abrindo a ficha no portal
+                            # e conferindo campo a campo.
+                            vistas_na_tela.add(chave_limpa)
+                            dado = dict_dados.get(chave_limpa)
+
                             if dado:
                                 acao = dado.get("ACAO")
 
@@ -893,6 +912,11 @@ class TechSpecsAutomation:
                                     sucesso_exclusao = self._excluir_linha_segura(seletor_linha, chave_limpa, callback_log)
                                     if sucesso_exclusao:
                                         item_foi_excluido = True
+                                        removidas.add(chave_limpa)
+                                        if callback_log:
+                                            callback_log(f"   🗑️  removido: {chave_limpa}")
+                                    elif callback_log:
+                                        callback_log(f"   ⚠️  NÃO removido (exclusão falhou): {chave_limpa}")
                                     # Se falhar, item_foi_excluido continua False e o iterador (row_index) será incrementado.
                                     # Isso impede que o robô trave eternamente tentando excluir a mesma linha com erro.
 
@@ -900,18 +924,39 @@ class TechSpecsAutomation:
                                 else:
                                     # Agora passamos o callback_log para a função poder avisar da 2ª tentativa
                                     sucesso_preenchimento = self._preencher_linha(seletor_linha, dado, callback_log)
-                                    if not sucesso_preenchimento:
+                                    preenchidas.add(chave_limpa)
+                                    valor_log = str(dado.get("RESPOSTA_PT_FINAL", ""))[:60]
+                                    if sucesso_preenchimento:
+                                        if callback_log:
+                                            callback_log(f"   ✏️  preenchido: {chave_limpa} = {valor_log!r}")
+                                    else:
+                                        if callback_log:
+                                            callback_log(f"   ⚠️  preenchimento REJEITADO pelo portal: {chave_limpa}")
                                         # Se a auditoria falhou, guarda os dados para avisar o usuário
                                         pendencias_manuais.append({
                                             "CHAVE": chave_limpa,
                                             "VALOR": dado.get("RESPOSTA_PT_FINAL", "N/A"),
                                             "UNIDADE": dado.get("SIMBOLO", "AD")
                                         })
+                            elif callback_log:
+                                # Linha na tela que a IA não mencionou. Não é
+                                # erro, mas é informação: se aparecerem muitas,
+                                # o casamento por NOME está falhando.
+                                callback_log(f"   ·  ignorada (não veio no JSON): {chave_limpa}")
 
                         except ElementoObsoleto:
                             continue  # Tenta pegar a linha de novo
-                        except Exception:
-                            pass
+                        except Exception as erro_linha:
+                            # Era `pass`. Uma linha que estoura aqui é uma
+                            # característica que NÃO foi preenchida nem
+                            # removida, e o silêncio fazia isso desaparecer:
+                            # o lote terminava com "✅ sucesso" e a ficha
+                            # incompleta no portal.
+                            if callback_log:
+                                callback_log(
+                                    f"   ⚠️  linha {row_index + 1} da página {pagina_atual} falhou: "
+                                    f"{type(erro_linha).__name__}: {erro_linha}"
+                                )
 
                         # Se excluiu, NÃO incrementa (o item de baixo subiu). Se preencheu, incrementa.
                         if not item_foi_excluido:
@@ -944,6 +989,42 @@ class TechSpecsAutomation:
                     for pendencia in pendencias_manuais:
                         callback_log(f" -> {pendencia['CHAVE']}: {pendencia['VALOR']} ({pendencia['UNIDADE']})")
                     callback_log("=========================================")
+
+                # --- RECONCILIAÇÃO: o que o JSON pedia x o que o portal
+                # recebeu. É a peça que faltava para "37 viraram 21" aparecer
+                # numa EXECUÇÃO, em vez de só numa conferência campo a campo
+                # dentro do portal. Sem ela, o lote fechava com "✅ sucesso"
+                # e a ficha incompleta.
+                if callback_log:
+                    pedidos_preencher = {
+                        c for c, d in dict_dados.items()
+                        if str(d.get("ACAO", "")).strip().upper() != "REMOVER"
+                    }
+                    pedidos_remover = set(dict_dados) - pedidos_preencher
+                    # Só conta o que EXISTE na tela: o JSON traz também
+                    # características de revisões antigas do PDM, que não têm
+                    # linha nenhuma na ficha e nunca poderiam ser tocadas.
+                    alcancaveis_preencher = pedidos_preencher & vistas_na_tela
+                    alcancaveis_remover = pedidos_remover & vistas_na_tela
+
+                    callback_log(
+                        f"   ── Auditoria {pmib}: {len(vistas_na_tela)} linha(s) vistas na tela | "
+                        f"preenchidas {len(preenchidas)}/{len(alcancaveis_preencher)} | "
+                        f"removidas {len(removidas)}/{len(alcancaveis_remover)}"
+                    )
+                    nao_alcancadas = sorted(pedidos_preencher - vistas_na_tela)
+                    if nao_alcancadas:
+                        callback_log(
+                            f"   ⚠️  {len(nao_alcancadas)} característica(s) com resposta no JSON NUNCA "
+                            "apareceram na tela (o robô não passou por elas): "
+                            + ", ".join(nao_alcancadas)
+                        )
+                        lote.aviso(
+                            pmib,
+                            f"{len(nao_alcancadas)} característica(s) preenchida(s) pela IA não foram "
+                            "alcançadas no portal",
+                            "conferir a ficha antes de salvar",
+                        )
 
                 # 5. Pausa Manual (Obrigatória)
                 if callback_pause:
