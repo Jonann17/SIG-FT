@@ -106,8 +106,9 @@ invisível.
 certo?" convida concordância, e a conta é justamente o que o modelo já errou uma vez. O
 recálculo determinístico não tem esse problema — e não gasta token.
 
-**A precisão não é inflada:** `41 kg` → `90,4 lb`, não `90,3895 lb`. Escrever quatro algarismos
-que o fabricante nunca publicou é uma afirmação falsa sobre a exatidão da medida.
+> **Revistos no mesmo dia (R-22):** (1) a origem ambígua deixou de ser descarte — o **enunciado
+> do campo** desempata; (2) o arredondamento pela precisão da fonte foi revertido a pedido do
+> usuário: prevalece a informação **mais completa**.
 
 ### A auditoria — 3 bugs, um deles grave
 
