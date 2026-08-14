@@ -183,3 +183,132 @@ def test_a_conversao_e_ANUNCIADA_no_console():
     assert valores == {"var_row_84": "35 MPa"}, "conversao correta tinha de passar"
     assert any("convers" in m.lower() for m in registro), "a conversao passou calada"
     assert any("350 bar" in m for m in registro), "precisa dizer de onde veio"
+
+
+# =============================================================================
+# E. Correção da conta errada, em vez de descarte (2026-08-13)
+# =============================================================================
+r"""Pedido do usuário: quando a IA converte errado, o dado de origem é REAL —
+o que está errado é só a aritmética, e aritmética é o que um computador faz
+sem errar. Descartar joga fora informação boa."""
+
+CTX_UMA_PRESSAO = "Maximum operating pressure 350 bar. Weight 41 kg."
+CTX_DUAS_PRESSOES = "Maximum operating pressure 350 bar. Peak pressure 210 bar."
+
+
+def test_conta_errada_e_REFEITA_quando_a_origem_e_unica():
+    valor, motivo = un.corrigir_conversao("3,5 MPa", CTX_UMA_PRESSAO)
+    assert valor == "35 MPa"
+    assert "350 bar" in motivo
+
+
+def test_origem_AMBIGUA_nao_e_chutada():
+    """Com duas pressões no documento, o erro deixa de ser aritmético e passa
+    a ser de LEITURA: qual delas o campo pedia? Chutar trocaria um erro
+    visível por um invisível."""
+    valor, motivo = un.corrigir_conversao("3,5 MPa", CTX_DUAS_PRESSOES)
+    assert valor is None
+    assert "350 bar" in motivo and "210 bar" in motivo, "precisa listar as opcoes"
+
+
+def test_grandeza_ausente_no_documento_nao_e_inventada():
+    valor, motivo = un.corrigir_conversao("50 Nm", CTX_UMA_PRESSAO)
+    assert valor is None
+    assert "torque" in motivo
+
+
+def test_a_precisao_nao_e_inflada():
+    """`41 kg` tem 2 algarismos; escrever `90,3895 lb` inventa quatro que o
+    fabricante nunca publicou — num documento técnico isso é uma afirmação
+    falsa sobre a exatidão da medida."""
+    valor, _ = un.corrigir_conversao("100 lb", CTX_UMA_PRESSAO)
+    assert valor == "90,4 lb", valor
+
+
+def test_valor_ja_correto_nao_e_mexido():
+    assert un.corrigir_conversao("35 MPa", CTX_UMA_PRESSAO)[0] is None
+
+
+def test_o_lastro_grava_o_valor_CORRIGIDO():
+    registro = []
+
+    class _CB:
+        def log(self, msg, nivel="info", contexto=None):
+            registro.append(str(msg))
+
+    core = autospec.AutoSpecCore.__new__(autospec.AutoSpecCore)
+    core.ultimas_fontes_por_campo = {}
+    campos = {"c1": {"type": "text", "desc": "6 - PRESSAO (MPa)", "ref": "M1"}}
+    valores = core._filtrar_por_lastro({"c1": "3,5 MPa"}, campos, CTX_UMA_PRESSAO, _CB())
+
+    assert valores == {"c1": "35 MPa"}, "devia ter gravado o valor recalculado"
+    assert any("CONTA REFEITA" in m for m in registro)
+    assert any("3,5" in m and "35 MPa" in m for m in registro), "precisa mostrar antes e depois"
+
+
+def test_quando_nao_da_para_corrigir_o_motivo_aparece_no_console():
+    registro = []
+
+    class _CB:
+        def log(self, msg, nivel="info", contexto=None):
+            registro.append(str(msg))
+
+    core = autospec.AutoSpecCore.__new__(autospec.AutoSpecCore)
+    core.ultimas_fontes_por_campo = {}
+    campos = {"c1": {"type": "text", "desc": "6 - PRESSAO (MPa)", "ref": "M1"}}
+    valores = core._filtrar_por_lastro({"c1": "3,5 MPa"}, campos, CTX_DUAS_PRESSOES, _CB())
+
+    assert valores == {}
+    assert any("nao da para saber qual" in m for m in registro)
+
+
+# =============================================================================
+# F. Bugs achados auditando este módulo (2026-08-13)
+# =============================================================================
+def test_codigo_alfanumerico_NAO_e_conferido_so_pelos_digitos():
+    """Bug real e grave: `IP65` era APROVADO contra um documento que dizia
+    `IP67`, porque o `65` aparecia noutro lugar (`65 mm`). O grau de proteção
+    errado entrava na ficha pelo caminho que existe para impedir isso."""
+    ctx = "Protection class IP67. Cable length 65 mm."
+    assert autospec.valor_tem_lastro("IP67", ctx) is True
+    assert autospec.valor_tem_lastro("IP65", ctx) is False
+
+
+def test_separador_de_milhar_e_ambiguo_e_as_DUAS_leituras_valem():
+    """`2.500` vale 2,5 em datasheet inglês e 2500 em documento português.
+    Adivinhar errado aqui é um erro de MIL VEZES."""
+    assert un.leituras("2.500") == [2.5, 2500.0]
+    assert un.leituras("25.4") == [25.4], "3 digitos e o gatilho; 1 nao"
+    assert autospec.valor_tem_lastro("2.500 mm", "Overall length 2500 mm.") is True
+    assert autospec.valor_tem_lastro("2.500 mm", "Cable 2.5 mm.") is True
+    assert autospec.valor_tem_lastro("2.500 mm", "Length 900 mm.") is False
+
+
+def test_numero_errado_na_MESMA_unidade_nao_e_corrigido():
+    """Bug real, achado na varredura de 2026-08-13: a IA respondeu `0 bar` e
+    o código devolvia `350 bar`. Nenhuma aritmética leva de 0 a 350 — aquilo
+    era um palpite ruim virando dado.
+
+    Correção só vale quando houve de fato uma CONVERSÃO. Mesma unidade e
+    número diferente não é erro de conta: é número errado, e "corrigir"
+    seria inventar."""
+    valor, _motivo = un.corrigir_conversao("0 bar", "Pressure 350 bar.")
+    assert valor is None
+    valor, _motivo = un.corrigir_conversao("999 bar", "Pressure 350 bar.")
+    assert valor is None
+
+
+def test_mas_a_conversao_entre_unidades_continua_sendo_corrigida():
+    assert un.corrigir_conversao("3,5 MPa", "Pressure 350 bar.")[0] == "35 MPa"
+
+
+@pytest.mark.parametrize("entrada", [None, "", "   ", "\x00\x01", "a" * 3000])
+def test_entrada_estranha_nao_quebra(entrada):
+    autospec.valor_tem_lastro(entrada, CONTEXTO)
+    un.corrigir_conversao(entrada, CONTEXTO)
+
+
+@pytest.mark.parametrize("ctx", [None, "", "sem numero nenhum"])
+def test_contexto_estranho_nao_quebra(ctx):
+    assert autospec.valor_tem_lastro("35 MPa", ctx) is False
+    assert un.corrigir_conversao("35 MPa", ctx)[0] is None

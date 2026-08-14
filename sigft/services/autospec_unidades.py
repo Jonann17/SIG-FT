@@ -100,6 +100,33 @@ def _numero(bruto):
         return None
 
 
+# `2.500` é 2,5 num datasheet em inglês e 2500 num documento em português.
+# Casa `1.234`, `12,345`: separador seguido de EXATAMENTE 3 dígitos.
+_RE_AMBIGUO_MILHAR = re.compile(r"^[+-]?\d{1,3}[.,]\d{3}$")
+
+
+def leituras(bruto):
+    """Todos os valores que um número escrito assim pode significar.
+
+    Quase sempre um só. Dois quando há ambiguidade de separador de milhar:
+    `2.500` vale 2,5 (leitura inglesa) **ou** 2500 (leitura brasileira), e o
+    documento é que decide qual. Devolver as duas e deixar o casamento
+    escolher é mais honesto que adivinhar — e adivinhar errado aqui é um erro
+    de **mil vezes**, que passa despercebido justamente por ser grande demais
+    para parecer erro de digitação.
+    """
+    texto = str(bruto or "").strip()
+    principal = _numero(texto)
+    if principal is None:
+        return []
+    if not _RE_AMBIGUO_MILHAR.match(texto):
+        return [principal]
+    sem_separador = _numero(re.sub(r"[.,]", "", texto))
+    if sem_separador is None or sem_separador == principal:
+        return [principal]
+    return [principal, sem_separador]
+
+
 # O que pode existir ENTRE os dois números de um intervalo, e nada mais:
 # `0 a +70 C`, `0 to +70 C`, `0...70`, `0 bis 70`, `-20 até +70`.
 _RE_CONECTOR_INTERVALO = re.compile(
@@ -133,14 +160,17 @@ def extrair_medidas(texto):
     """
     normalizado = _normalizar(texto)
     brutos = []
-    for m in _RE_NUMERO_SOLTO.finditer(normalizado):
-        valor = _numero(m.group())
-        if valor is None:
+    for indice, m in enumerate(_RE_NUMERO_SOLTO.finditer(normalizado)):
+        candidatos = leituras(m.group())
+        if not candidatos:
             continue
         adiante = _RE_UNIDADE_ADIANTE.match(normalizado[m.end():])
-        brutos.append(
-            [valor, _unidade_valida(adiante.group(1)) if adiante else None, m.start(), m.end()]
-        )
+        unidade = _unidade_valida(adiante.group(1)) if adiante else None
+        for valor in candidatos:
+            # Cada leitura possível vira uma entrada; `indice` amarra as que
+            # vieram do MESMO número escrito, para `conferir_texto` tratá-las
+            # como alternativas (OU) e não como exigências (E).
+            brutos.append([valor, unidade, m.start(), m.end(), indice])
 
     # A herança é ESTRITAMENTE LOCAL: só atravessa um conector de intervalo.
     #
@@ -161,7 +191,7 @@ def extrair_medidas(texto):
                 item[1] = vizinho[1]
                 break
 
-    return [(valor, unidade) for valor, unidade, _i, _f in brutos if unidade is not None]
+    return [(valor, unidade) for valor, unidade, _i, _f, _n in brutos if unidade is not None]
 
 
 def _para_base(valor, unidade):
@@ -244,21 +274,157 @@ def conferir_conversao(valor, unidade, contexto):
     return None
 
 
+def _medidas_agrupadas(texto):
+    """`{indice_do_numero_escrito: [(valor, unidade), ...]}`.
+
+    O agrupamento é o que faz `2.500 mm` ser tratado como "2,5 OU 2500", em
+    vez de "2,5 E 2500" — que nunca poderia ser satisfeito.
+    """
+    grupos = {}
+    normalizado = _normalizar(texto)
+    brutos = []
+    for indice, m in enumerate(_RE_NUMERO_SOLTO.finditer(normalizado)):
+        for valor in leituras(m.group()):
+            adiante = _RE_UNIDADE_ADIANTE.match(normalizado[m.end():])
+            brutos.append((indice, valor, _unidade_valida(adiante.group(1)) if adiante else None))
+    # Reaproveita a herança de unidade já resolvida por `extrair_medidas`.
+    unidades = {u for _v, u in extrair_medidas(texto)}
+    unidade_unica = next(iter(unidades)) if len(unidades) == 1 else None
+    for indice, valor, unidade in brutos:
+        efetiva = unidade or unidade_unica
+        if efetiva is None:
+            continue
+        grupos.setdefault(indice, []).append((valor, efetiva))
+    return grupos
+
+
+def _algarismos_significativos(texto):
+    digitos = re.sub(r"[^0-9]", "", str(texto).split(" ")[0]).lstrip("0")
+    return max(len(digitos.rstrip("0")) or 1, 1)
+
+
+def _arredondar_como_a_fonte(valor, origem_texto):
+    """`41 kg` -> `90,39 lb`, não `90,3895 lb`.
+
+    A precisão do resultado não pode ser maior que a do dado de onde ele
+    saiu: escrever `90,3895 lb` a partir de `41 kg` inventa quatro
+    algarismos que o fabricante nunca publicou, e num documento técnico isso
+    é uma afirmação falsa sobre a exatidão da medida.
+
+    Mínimo de 3 algarismos para não empobrecer valor pequeno (`0,05 l/min`).
+    """
+    if valor == 0:
+        return 0.0
+    import math
+
+    significativos = max(_algarismos_significativos(origem_texto), 3)
+    expoente = math.floor(math.log10(abs(valor)))
+    casas = significativos - 1 - expoente
+    return round(valor, max(casas, 0)) if casas >= 0 else round(valor, casas)
+
+
+def corrigir_conversao(texto, contexto):
+    """Refaz a conta que a IA errou e devolve `(valor_corrigido, explicação)`.
+
+    Pedido do usuário em 2026-08-13: quando a IA converte errado, o dado de
+    origem é REAL — o que está errado é só a aritmética, e aritmética é o que
+    um computador faz sem errar. Descartar joga fora informação boa.
+
+    **Só corrige quando não há dúvida sobre a origem.** Se o documento tem uma
+    única medida daquela grandeza, ela é a origem e a conta é determinística.
+    Se tem várias (`350 bar` de trabalho e `210 bar` de pico), o erro deixa de
+    ser aritmético e passa a ser de LEITURA — qual das duas o campo pedia? Aí
+    o código não tem como saber, e chutar seria trocar um erro visível por um
+    invisível. Nesse caso devolve `(None, motivo)` e o campo fica vazio.
+
+    Não usa IA de propósito. Perguntar ao modelo "está certo?" convida a
+    concordância; e a conta em si é exatamente o que ele já errou uma vez.
+    """
+    grupos = _medidas_agrupadas(texto)
+    if not grupos:
+        return None, "nao ha medida para recalcular"
+
+    medidas_ctx = extrair_medidas(contexto)
+    corrigido = str(texto)
+    explicacoes = []
+
+    for _indice, alternativas in sorted(grupos.items()):
+        valor, unidade = alternativas[0]
+        if conferir_conversao(valor, unidade, contexto) is not None:
+            continue  # esta medida já estava certa
+
+        _base, grandeza = _para_base(valor, unidade)
+        if grandeza is None:
+            return None, f"unidade desconhecida: {unidade}"
+
+        candidatos = []
+        for valor_ctx, unidade_ctx in medidas_ctx:
+            # SÓ corrige quando há de fato uma CONVERSÃO — unidades
+            # diferentes. Se a resposta está na mesma unidade do documento e
+            # o número não bate, não houve erro de conta: o número está
+            # simplesmente errado, e "corrigi-lo" seria inventar o valor.
+            #
+            # Bug real, achado na varredura de 2026-08-13: a IA respondeu
+            # `0 bar` e o código devolvia `350 bar`. Nenhuma aritmética leva
+            # de 0 a 350 — aquilo era um palpite ruim virando dado.
+            if _normalizar(unidade_ctx) == _normalizar(unidade):
+                continue
+            base_ctx, grandeza_ctx = _para_base(valor_ctx, unidade_ctx)
+            if grandeza_ctx == grandeza and base_ctx is not None:
+                certo = _da_base(base_ctx, unidade)
+                if certo is not None and not any(_proximos(certo, c[0]) for c in candidatos):
+                    candidatos.append((certo, f"{valor_ctx:g} {unidade_ctx}"))
+
+        if not candidatos:
+            return None, f"o documento nao tem nenhuma medida de {grandeza}"
+        if len(candidatos) > 1:
+            opcoes = ", ".join(origem for _c, origem in candidatos[:4])
+            return None, (
+                f"o documento tem {len(candidatos)} medidas de {grandeza} ({opcoes}) — "
+                f"nao da para saber qual o campo pedia"
+            )
+
+        certo, origem = candidatos[0]
+        texto_certo = f"{_arredondar_como_a_fonte(certo, origem):g}".replace(".", ",")
+        corrigido = re.sub(
+            rf"(?<![\d.,]){re.escape(f'{valor:g}'.replace('.', ','))}(?![\d.,])",
+            texto_certo,
+            corrigido.replace(f"{valor:g}", f"{valor:g}".replace(".", ",")),
+            count=1,
+        )
+        if texto_certo not in corrigido:
+            return None, "nao consegui reescrever o valor com seguranca"
+        explicacoes.append(f"{valor:g} -> {texto_certo} {unidade} (de {origem})")
+
+    if not explicacoes:
+        return None, "nada a corrigir"
+    return corrigido, "; ".join(explicacoes)
+
+
 def conferir_texto(texto, contexto):
     """`(tudo_confere, [explicações])` para um valor de campo inteiro.
 
-    Toda medida do texto precisa ser conversão correta de algo do contexto.
-    Basta uma não bater para devolver `False` — mesma regra do lastro
-    literal: meia verdade num campo técnico é pior que campo vazio.
+    Todo número escrito precisa ser conversão correta de algo do contexto —
+    basta um não bater para devolver `False`, mesma regra do lastro literal:
+    meia verdade num campo técnico é pior que campo vazio.
+
+    "Todo NÚMERO ESCRITO", e não "toda medida": um número ambíguo produz duas
+    leituras, e basta UMA delas conferir. As leituras são alternativas do
+    mesmo número, não números diferentes.
     """
-    medidas = extrair_medidas(texto)
-    if not medidas:
+    grupos = _medidas_agrupadas(texto)
+    if not grupos:
         return False, []
 
     explicacoes = []
-    for valor, unidade in medidas:
-        origem = conferir_conversao(valor, unidade, contexto)
-        if origem is None:
+    for _indice, alternativas in sorted(grupos.items()):
+        achou = None
+        for valor, unidade in alternativas:
+            origem = conferir_conversao(valor, unidade, contexto)
+            if origem is not None:
+                achou = f"{valor:g} {unidade} = {origem}"
+                break
+        if achou is None:
             return False, []
-        explicacoes.append(f"{valor:g} {unidade} = {origem}")
+        explicacoes.append(achou)
     return True, explicacoes

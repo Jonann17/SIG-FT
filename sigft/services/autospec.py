@@ -403,6 +403,20 @@ def valor_tem_lastro(valor, contexto):
         return True  # vazio não precisa de lastro; não vai escrever nada
 
     ctx = _normalizar_texto_busca(contexto)
+
+    # CÓDIGO ALFANUMÉRICO tem de aparecer INTEIRO, não só os dígitos dele.
+    #
+    # Bug real, encontrado auditando este próprio módulo em 2026-08-13:
+    # `IP65` era APROVADO contra um documento que dizia `IP67`, porque o
+    # `65` aparecia noutro lugar (`65 mm`). O grau de proteção errado entrava
+    # na ficha exatamente pelo caminho que existe para impedir isso. Vale
+    # para `IP67`, `DN50`, `G1/2`, `M8` — tudo que mistura letra e dígito.
+    ctx_compacto = _compactar_codigo(ctx)
+    for codigo in re.findall(r"[a-z]+\d[a-z0-9]*|\d+[a-z]+[a-z0-9]*",
+                             _normalizar_texto_busca(texto)):
+        if _compactar_codigo(codigo) not in ctx_compacto:
+            return False
+
     numeros_valor = _numeros_normalizados(texto)
     if numeros_valor:
         if numeros_valor <= _numeros_normalizados(ctx):
@@ -430,6 +444,19 @@ def explicar_conversao(valor, contexto):
         return []
     ok, explicacoes = autospec_unidades.conferir_texto(valor, contexto)
     return explicacoes if ok else []
+
+
+def _corrigir_conversao(valor, contexto):
+    """Ponte para `autospec_unidades.corrigir_conversao`, tolerante à ausência
+    do módulo — mesmo padrão de `explicar_conversao`."""
+    try:
+        from sigft.services import autospec_unidades
+    except ImportError:
+        return None, ""
+    try:
+        return autospec_unidades.corrigir_conversao(valor, contexto)
+    except Exception:
+        return None, ""
 
 
 def origens_do_contexto(contexto):
@@ -2108,23 +2135,33 @@ class AutoSpecCore:
         aprovados = {}
         reprovados = []
         convertidos = []
+        corrigidos = []
 
         for campo, valor in (valores or {}).items():
             descricao = str((missing.get(campo) or {}).get("desc") or campo)
             if campo in GENERATIVE_FIELDS:
                 aprovados[campo] = valor
                 continue
-            if valor_tem_lastro(valor, contexto):
-                aprovados[campo] = valor
-                # Número que passou por CONVERSÃO não foi copiado do
-                # documento — foi calculado. Aprovar em silêncio seria pior
-                # que reprovar: quem homologa precisa saber que aquele valor
-                # não está escrito lá, e poder refazer a conta.
-                explicacoes = explicar_conversao(valor, contexto)
-                if explicacoes:
-                    convertidos.append((descricao, str(valor), explicacoes))
+            if not valor_tem_lastro(valor, contexto):
+                # Antes de descartar: a IA pode ter lido o número CERTO e
+                # errado só a conta. Aí o dado é bom e a aritmética é do
+                # computador — ver `autospec_unidades.corrigir_conversao`.
+                certo, motivo = _corrigir_conversao(valor, contexto)
+                if certo is not None:
+                    aprovados[campo] = certo
+                    corrigidos.append((descricao, str(valor), certo, motivo))
+                    continue
+                reprovados.append((descricao, str(valor), motivo))
                 continue
-            reprovados.append((descricao, str(valor)))
+
+            aprovados[campo] = valor
+            # Número que passou por CONVERSÃO não foi copiado do documento —
+            # foi calculado. Aprovar em silêncio seria pior que reprovar: quem
+            # homologa precisa saber que aquele valor não está escrito lá, e
+            # poder refazer a conta.
+            explicacoes = explicar_conversao(valor, contexto)
+            if explicacoes:
+                convertidos.append((descricao, str(valor), explicacoes))
 
         if convertidos:
             cb.log(
@@ -2138,14 +2175,36 @@ class AutoSpecCore:
                     nivel="warn",
                 )
 
+        if corrigidos:
+            cb.log(
+                f"{len(corrigidos)} campo(s) tiveram a CONTA REFEITA: a IA leu o numero certo "
+                f"do documento e converteu errado. O valor gravado e o recalculado:",
+                nivel="warn",
+            )
+            for descricao, antes, depois, motivo in corrigidos:
+                cb.log(
+                    f"      · {descricao[:56]}: a IA disse {antes[:22]!r}, gravei "
+                    f"{depois[:22]!r} — {motivo[:70]}",
+                    nivel="warn",
+                )
+
         if reprovados:
             cb.log(
                 f"{len(reprovados)} campo(s) ficaram VAZIOS porque o valor respondido nao "
                 f"aparece no documento lido. Preencha a mao, conferindo na fonte:",
                 nivel="warn",
             )
-            for descricao, valor in reprovados:
-                cb.log(f"      · {descricao[:70]} -> a IA respondeu {valor[:40]!r}", nivel="warn")
+            for descricao, valor, motivo in reprovados:
+                # O MOTIVO é a parte que o engenheiro usa: dizer "não achei"
+                # não ajuda; dizer "o documento tem duas pressões e não dá
+                # para saber qual" diz exatamente o que ele precisa decidir.
+                # Por isso ele não é truncado junto com o resto.
+                cb.log(
+                    f"      · {descricao[:60]} -> a IA respondeu {valor[:30]!r}",
+                    nivel="warn",
+                )
+                if motivo:
+                    cb.log(f"        motivo: {motivo}", nivel="warn")
         return aprovados
 
     def _conferir_fontes_citadas(self, contexto, callbacks=None):

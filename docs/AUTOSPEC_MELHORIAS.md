@@ -35,6 +35,58 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-21 🔴 Conta refeita em vez de descarte + auditoria da conversão *(2026-08-13)*
+
+**A conta é refeita, não descartada.** Pedido do usuário: quando a IA converte errado, o dado de
+origem é REAL — o errado é só a aritmética, e aritmética é o que computador faz sem errar.
+
+```
+[warn] 1 campo(s) tiveram a CONTA REFEITA: a IA leu o numero certo do documento
+       e converteu errado. O valor gravado e o recalculado:
+       · 6 - PRESSAO (MPa): a IA disse '3,5 MPa', gravei '35 MPa' — 3.5 -> 35 mpa (de 350 bar)
+```
+
+**Só quando não há dúvida sobre a origem.** Com duas pressões no documento (`350 bar` de
+trabalho, `210 bar` de pico), o erro deixa de ser aritmético e vira de LEITURA — qual o campo
+pedia? Aí o campo fica vazio e o console lista as opções. Chutar trocaria erro visível por erro
+invisível.
+
+**Não usei IA para revalidar**, e a preocupação que você levantou é o motivo: perguntar "está
+certo?" convida concordância, e a conta é justamente o que o modelo já errou uma vez. O
+recálculo determinístico não tem esse problema — e não gasta token.
+
+**A precisão não é inflada:** `41 kg` → `90,4 lb`, não `90,3895 lb`. Escrever quatro algarismos
+que o fabricante nunca publicou é uma afirmação falsa sobre a exatidão da medida.
+
+### A auditoria — 3 bugs, um deles grave
+
+Você pediu para conferir se havia mais bugs. Havia. Os 20 fatores de conversão e a ida-e-volta
+de todas as unidades estão íntegros (conferidos numericamente); os furos estavam no parsing:
+
+| # | Bug | Gravidade |
+|---|---|---|
+| **1** | **`IP65` era APROVADO contra documento que diz `IP67`** — o `65` aparecia em "65 mm" e a conferência olhava só os dígitos | **grave**: grau de proteção errado entrava na ficha pelo caminho que existe para impedir isso |
+| **2** | `2.500` lido sempre como 2,5 — em documento PT é 2500 | erro de **mil vezes**, grande demais para parecer erro de digitação |
+| **3** | **`0 bar` era "corrigido" para `350 bar`** | a correção virava invenção: nenhuma aritmética leva de 0 a 350 |
+
+Correções: código alfanumérico agora tem de aparecer **inteiro** no documento; número ambíguo
+gera as **duas leituras** e o documento decide; correção só dispara quando as unidades diferem
+(houve de fato conversão).
+
+### Navegador
+
+- **`robots.txt` ilegível agora LIBERA** (sua decisão). Não conseguir ler a regra não é a regra
+  dizer não — e proxy corporativo derruba `robots.txt` com frequência. `Disallow` explícito
+  continua barrando.
+- **Playwright entrou no `_bootstrap_venv.bat`.** O `pip install playwright` traz só a
+  biblioteca Python; o navegador é um binário de ~150 MB baixado pelo processo Node, sem wheel
+  que o carregue — por isso precisava de passo próprio. Agora roda sozinho na primeira vez, com
+  carimbo, e **nunca derruba a instalação**: se falhar (comum atrás de Zscaler), o app abre
+  igual e só os dois recursos opcionais ficam de fora.
+
+23 testes novos.
+
+
 ### ✅ R-20 🔴 Conversão de unidade CONFERIDA + navegador como último recurso *(2026-08-13)*
 
 **Conversão.** O lastro (R-19) reprovava `35 MPa` a partir de `350 bar` — conversão correta,
@@ -67,9 +119,10 @@ seria pior que reprovar.
 fora de `services/` porque a arquitetura proíbe serviço conhecer Playwright.
 
 **A ordem é a política:** tenta o download simples → só se falhar → só se o `robots.txt`
-permitir → abre o navegador. Um site que diz "não" continua recebendo "está bem". O `robots.txt`
-falha **fechada** (não deu para ler = não), ao contrário do resto do módulo — a dúvida aqui é
-sobre permissão.
+permitir → abre o navegador. Um site que diz "não" continua recebendo "está bem".
+
+> **Revisto no mesmo dia (R-21):** o `robots.txt` falhava **fechada** aqui. Por decisão do
+> usuário, passou a falhar **aberta** — não conseguir ler a regra não é a regra dizer não.
 
 404/500 **não** acionam o navegador: "não existe" não é "não quero". O gatilho real é o 403 e,
 mais importante, a página que baixa quase vazia — assinatura de aplicação JavaScript, pior que

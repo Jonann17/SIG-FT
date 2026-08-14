@@ -85,15 +85,35 @@ def test_robots_permitindo_o_navegador_e_usado(tmp_path):
         assert "especificacao tecnica" in arquivo.read()
 
 
-def test_robots_ilegivel_e_tratado_como_PROIBIDO(monkeypatch):
-    """Falha FECHADA, ao contrário do resto do módulo: a dúvida aqui é sobre
-    permissão, e agir sem permissão é o que se quer evitar."""
+def test_robots_ilegivel_LIBERA(monkeypatch):
+    """Falha ABERTA (decisão do usuário, 2026-08-13). Não conseguir LER a
+    regra não é o mesmo que a regra dizer não — e rede corporativa com proxy
+    derruba `robots.txt` com frequência. Falhar fechada ali transformaria um
+    problema de rede numa recusa silenciosa."""
     robots.limpar_cache()
     monkeypatch.setattr(
         robots.urllib.request, "urlopen",
         lambda *a, **k: (_ for _ in ()).throw(OSError("rede fora")),
     )
-    assert robots.pode_acessar("https://x.com/p") is False
+    assert robots.pode_acessar("https://x.com/p") is True
+
+
+def test_o_DISALLOW_explicito_continua_barrando(monkeypatch):
+    """O que mudou foi o tratamento do SILÊNCIO, não o do 'não'."""
+    robots.limpar_cache()
+
+    class _Resposta:
+        def read(self):
+            return b"User-agent: *\nDisallow: /\n"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(robots.urllib.request, "urlopen", lambda *a, **k: _Resposta())
+    assert robots.pode_acessar("https://x.com/qualquer") is False
 
 
 def test_robots_404_libera(monkeypatch):
