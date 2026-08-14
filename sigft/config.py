@@ -627,3 +627,25 @@ def get_rpa_engine(modulo: str) -> str:
             f"(verifique a variável de ambiente {ENV_RPA_ENGINE})."
         )
     return escolhido
+
+# =============================================================================
+# PLANILHA DE APLICAÇÕES LMR
+# =============================================================================
+# Nomes NOVOS, pedidos pelo usuário em 2026-08-11 -- "FICHA PMIB",
+# "CÓDIGO LMR" e "TAG LMR" dizem o que a coluna é; os antigos (`PMIB`,
+# `Código_PMIB`, `TAG_PMIB`) confundiam código de ficha com código de LMR.
+#
+# Os antigos continuam ACEITOS, e isso não é zelo excessivo: existem
+# planilhas em uso hoje com o cabeçalho velho, e uma renomeação que quebra
+# o arquivo de quem está no meio de um lote é pior do que não renomear. A
+# lista é ordenada por preferência -- o primeiro nome encontrado vence.
+LMR_COLUNAS = {
+    "pmib": ("FICHA PMIB", "PMIB"),
+    "codigo": ("CÓDIGO LMR", "CODIGO LMR", "Código_PMIB", "Codigo_PMIB"),
+    "tag": ("TAG LMR", "TAG_PMIB", "TAG PMIB"),
+}
+
+# Abas candidatas, na ordem de preferência. Se nenhuma existir, a leitura
+# procura em TODAS as abas do arquivo qual tem as colunas -- é o que o
+# usuário chamou de "leitura automática": não ter de acertar o nome da aba.
+LMR_ABAS = ("LMR", "GERAL", "Aplicações", "Aplicacoes")
