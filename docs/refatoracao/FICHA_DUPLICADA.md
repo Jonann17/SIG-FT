@@ -36,6 +36,35 @@ vezes. O módulo preenche a ficha duplicada a partir da original, no portal.
   módulo parar de achar fichas depois de uma revisão do PDM;
 - a coluna é procurada por várias grafias (`PDM usado`, `PDMs usados`, …).
 
+### Divergência com o módulo antigo — e por que ela ficou visível
+
+O módulo antigo (`ficha_duplicada.montar_fila_processamento`) **não olhava o
+código do PDM**: procurava a palavra `DUPLICADA` em qualquer posição do texto
+(`marcador_duplicada="DUPLICADA"`). As duas regras concordam na planilha real
+— o valor é `PDM.9900.000 - FICHA PMIB, DUPLICADA, R0`, que casa nas duas —
+mas divergem nas bordas, e **cada uma erra para um lado**:
+
+| Célula | Regra antiga | Regra nova (do usuário) |
+|---|---|---|
+| `PDM.9900.000 - FICHA PMIB, DUPLICADA, R0` | duplicada | duplicada |
+| `PDM.4320.002 - MOTOBOMBA DUPLICADA` | duplicada ❌ pega demais | não |
+| `FICHA PMIB, DUPLICADA, R0` (sem o código) | duplicada | não ❌ pega de menos |
+
+A regra que vale é a do usuário. Mas **"pegar de menos" é o erro caro**: a
+ficha some da lista sem sintoma nenhum, e ninguém procura o que não apareceu.
+Por isso `localizar_duplicadas` passa as linhas NÃO casadas por
+`parece_duplicada_sem_o_pdm` e **avisa no log**, com número de linha e o valor
+lido, sem mudar a regra. A decisão continua sendo do usuário — agora com a
+informação na tela.
+
+Duas outras diferenças, ambas a favor do módulo novo:
+
+- o antigo aceitava só os cabeçalhos `PDM USADO` e `PDM`; `PDMs usados` (a
+  variação que o próprio usuário citou) fazia o módulo achar **zero** fichas;
+- o antigo **descartava em silêncio** a ficha sem PMIB base ou sem alvo
+  (`if pmib_base and pmib_alvo_raw`); o novo a mantém marcada como impedida,
+  com o motivo, para a tela de seleção mostrar.
+
 ### Seleção pelo usuário
 
 > *"Poderia aparecer a telinha de todos que achou e quais queremos selecionar
@@ -203,6 +232,8 @@ Nenhuma impede começar; todas impedem **rodar em lote sem conferir**.
 | Identificação por PDM + colunas | `services/duplicadas_spec.py` | ✅ CP 6.1, 58 testes |
 | Sequência `'D` + detecção de colisão | `services/duplicadas_spec.py` | ✅ CP 6.1 |
 | Código da ficha original | `services/duplicadas_spec.py` | ✅ CP 6.1 |
+| Leitura do `_STATUS_PMIB` (quais fichas, com que dados) | `services/duplicadas.py` | ✅ CP 6.2, 22 testes |
+| Listagem para conferência sem portal | `scripts/listar_duplicadas.py` | ✅ CP 6.2 |
 | Tela de seleção das fichas | `frontend.py` | ☐ CP 6.2 |
 | Extração da ficha original | novo serviço | ☐ CP 6.2 |
 | Injeção (fabricante, características) | novo serviço | ☐ CP 6.3 |

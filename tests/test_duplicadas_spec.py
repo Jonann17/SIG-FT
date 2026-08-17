@@ -153,6 +153,50 @@ def test_texto_sem_codigo_atravessa_para_o_rpa_tentar():
     assert spec.extrair_ficha_original("ver ficha do motor") == "ver ficha do motor"
 
 
+def test_fracao_com_mais_de_4_digitos_e_encontrada():
+    r"""CONTRAPROVA DE UM DEFEITO MEU, corrigido em 2026-08-17.
+
+    A primeira versão de `extrair_ficha_original` tinha `re.search` próprio,
+    com o padrão `\d{10}\.\d{4}` -- fração de EXATAMENTE 4 dígitos. O extrator
+    canônico do projeto (`pmib_codes.find_pmib_code_in_text`, CP 1.2, réplica
+    do `montar_fila_processamento` do módulo antigo) aceita `\d{10}\.\d+`.
+
+    Com o meu, `4500063671.11651` casaria os 4 primeiros dígitos da fração e
+    devolveria `4500063671.1165` -- uma ficha DIFERENTE e EXISTENTE. O robô
+    copiaria da ficha errada sem nenhum sintoma. Este teste falha se alguém
+    reintroduzir a implementação própria.
+    """
+    assert spec.extrair_ficha_original(
+        "Duplicada da 4500063671.11651"
+    ) == "4500063671.11651"
+
+
+def test_extracao_delega_no_extrator_canonico():
+    """Uma implementação por conceito (princípio nº 1): "achar código PMIB em
+    texto livre" é um conceito só, e ele já existe em `core.excel.pmib_codes`.
+
+    O teste é de DELEGAÇÃO, não de resultado: troca o canônico por um duplo e
+    exige que o resultado dele apareça. Uma reimplementação passa nos testes
+    de resultado acima e falha neste.
+    """
+    chamadas = []
+
+    class _CanonicoFalso:
+        @staticmethod
+        def find_pmib_code_in_text(texto):
+            chamadas.append(texto)
+            return "SENTINELA"
+
+    original = spec.pmib_codes
+    spec.pmib_codes = _CanonicoFalso
+    try:
+        assert spec.extrair_ficha_original("qualquer coisa") == "SENTINELA"
+    finally:
+        spec.pmib_codes = original
+
+    assert chamadas == ["qualquer coisa"]
+
+
 # ===========================================================================
 # Condições: a exclusão é uma ABA, não uma lista de campos
 # ===========================================================================
@@ -258,3 +302,38 @@ def test_a_descricao_da_imagem_e_a_mesma_nos_dois_idiomas():
 def test_descricao_vazia_devolve_none():
     for vazio in ("", "   ", None, "nan"):
         assert spec.descricao_das_imagens(vazio) is None
+
+
+# ===========================================================================
+# Divergência com a regra do módulo antigo
+# ===========================================================================
+# O antigo procurava a palavra "DUPLICADA" em qualquer posição; o novo casa o
+# prefixo `PDM.9900.000`, como o usuário pediu. Concordam na planilha real, e
+# a diferença só aparece nas bordas -- que é exatamente onde tem de aparecer,
+# em vez de sumir.
+
+def test_pdm_correto_nao_e_suspeito():
+    """Já entrou na lista pela regra boa; avisar de novo seria ruído."""
+    assert spec.parece_duplicada_sem_o_pdm(
+        "PDM.9900.000 - FICHA PMIB, DUPLICADA, R0") is False
+
+
+def test_texto_duplicada_sem_o_codigo_do_pdm_e_suspeito():
+    """A regra antiga pegaria; a nova não. Ficar de fora em silêncio é o erro
+    caro -- ninguém procura o que não apareceu na lista."""
+    assert spec.parece_duplicada_sem_o_pdm("FICHA PMIB, DUPLICADA, R0") is True
+
+
+def test_outro_pdm_com_duplicada_na_descricao_e_suspeito():
+    """Aqui a regra antiga é que erra (pega demais). O aviso deixa o usuário
+    ver que a divergência existe, sem mudar a regra dele."""
+    assert spec.parece_duplicada_sem_o_pdm("PDM.4320.002 - MOTOBOMBA DUPLICADA") is True
+
+
+def test_suspeita_tolera_acento_e_caixa():
+    assert spec.parece_duplicada_sem_o_pdm("ficha duplicáda") is True
+
+
+@pytest.mark.parametrize("valor", ["PDM.4320.002 - MOTOBOMBA", "", "   ", None, "nan"])
+def test_pdm_normal_nao_e_suspeito(valor):
+    assert spec.parece_duplicada_sem_o_pdm(valor) is False

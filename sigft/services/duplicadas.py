@@ -15,7 +15,7 @@ from __future__ import annotations
 import pandas as pd
 
 from sigft import config
-from sigft.core.excel import headers
+from sigft.core.excel import headers, pmib_codes
 from sigft.services import duplicadas_spec as spec
 
 
@@ -146,11 +146,23 @@ def localizar_duplicadas(caminho_excel, callback_log=None):
             _log(f"   [Aviso] Coluna de {nome} não encontrada ({' / '.join(candidatas)}).")
 
     encontradas = []
+    suspeitas = []  # dizem "DUPLICADA" mas não começam com o código do PDM
     for indice, linha in df.iterrows():
         if not spec.e_ficha_duplicada(linha.get(col_pdm)):
+            if spec.parece_duplicada_sem_o_pdm(linha.get(col_pdm)):
+                suspeitas.append((int(indice) + linha_cabecalho + 2,
+                                  _texto(linha.get(col_pdm))))
             continue
         encontradas.append(FichaDuplicada(
-            pmib=_texto(linha.get(config.COL_CODIGO_PMIB)),
+            # `normalize_pmib` e não `_texto`: o módulo antigo tinha aqui um
+            # bloco rotulado "BLINDAGEM DO CÓDIGO ALVO (mantendo zeros à
+            # direita)", e o motivo é real -- `4500063671.1000` chega como
+            # número e `str()` devolve `4500063671.1`, código que não existe
+            # no portal. (São os zeros à DIREITA que somem: o `.0922` sobrevive
+            # ao `str()`, e essa distinção custou uma contraprova.) O
+            # normalizador canônico do CP 1.2 também limpa o apóstrofo que o
+            # Excel põe à frente do texto e a vírgula decimal PT-BR.
+            pmib=pmib_codes.normalize_pmib(linha.get(config.COL_CODIGO_PMIB)),
             descricao=_texto(linha.get(config.COL_DESCRICAO)),
             pdm_usado=_texto(linha.get(col_pdm)),
             codigo_material=_texto(linha.get(col_material)) if col_material else "",
@@ -163,9 +175,23 @@ def localizar_duplicadas(caminho_excel, callback_log=None):
             linha=int(indice) + linha_cabecalho + 2,
         ))
 
+    # O erro caro aqui é pegar DE MENOS: a ficha some da lista sem sintoma, e
+    # ninguém procura o que não apareceu. Estas linhas seriam duplicadas pela
+    # regra do módulo antigo (palavra "DUPLICADA" em qualquer posição) e não
+    # são pela regra que o usuário definiu (prefixo do código do PDM). Não
+    # entram na lista -- a regra é a dele -- mas também não somem em silêncio.
+    if suspeitas:
+        _log(f"   [Atenção] {len(suspeitas)} linha(s) dizem 'DUPLICADA' mas o PDM "
+             f"não começa com {spec.PDM_DUPLICADA}, então FICARAM DE FORA:")
+        for numero_linha, valor in suspeitas:
+            _log(f"      linha {numero_linha}: PDM usado = {valor!r}")
+        _log("      Se alguma dessas deveria entrar, corrija o PDM na planilha.")
+
     prontas = [f for f in encontradas if f.pronta_para_duplicar]
     mensagem = (
         f"Aba '{aba}': {len(encontradas)} ficha(s) marcada(s) como duplicada "
         f"({spec.PDM_DUPLICADA}); {len(prontas)} pronta(s) para o robô."
     )
+    if suspeitas:
+        mensagem += f" ({len(suspeitas)} linha(s) suspeita(s) ficaram de fora -- ver aviso acima.)"
     return encontradas, mensagem

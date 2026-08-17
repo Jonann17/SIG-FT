@@ -248,3 +248,86 @@ def test_as_grafias_da_coluna_do_pdm_sao_aceitas(monkeypatch, variante):
     fichas, _m = duplicadas.localizar_duplicadas("x.xlsx")
 
     assert len(fichas) == 1
+
+
+# ===========================================================================
+# Blindagem do código alvo
+# ===========================================================================
+# CONTRAPROVA DE UM DEFEITO MEU, corrigido em 2026-08-17: a primeira versão
+# lia o PMIB alvo com o `_texto()` local. O módulo antigo tinha aqui um bloco
+# rotulado "BLINDAGEM DO CÓDIGO ALVO (mantendo zeros à direita)" -- e o motivo
+# é real: o Excel entrega a célula como NÚMERO e `str(4500063671.1)` devolve
+# `"4500063671.1"`, código que não existe no portal. A ficha entraria na lista
+# com um alvo inválido e só falharia com o navegador aberto.
+#
+# São os zeros à DIREITA que somem. `str(4500063671.0922)` devolve os quatro
+# dígitos (o `repr` de float em Python é o mais curto que faz round-trip), e
+# testar com esse valor daria falsa segurança: passa com e sem a correção.
+
+def test_pmib_alvo_numerico_nao_perde_os_zeros_a_direita(monkeypatch):
+    _com_planilha(monkeypatch, _COLUNAS, [_linha(4500063671.1000, _PDM_DUP)])
+
+    ficha = duplicadas.localizar_duplicadas("x.xlsx")[0][0]
+
+    assert ficha.pmib == "4500063671.1000"
+
+
+def test_pmib_alvo_textual_e_completado_ate_4_casas(monkeypatch):
+    """`4500063671.100` -> `4500063671.1000`: a fração do PMIB tem 4 casas e o
+    portal casa o texto inteiro."""
+    _com_planilha(monkeypatch, _COLUNAS, [_linha("4500063671.100", _PDM_DUP)])
+
+    ficha = duplicadas.localizar_duplicadas("x.xlsx")[0][0]
+
+    assert ficha.pmib == "4500063671.1000"
+
+
+def test_pmib_alvo_com_fracao_de_cinco_digitos_nao_e_truncado(monkeypatch):
+    """O `.ljust(4)` do normalizador completa, mas nunca corta -- a planilha
+    real tem códigos como `4500063671.11651`."""
+    _com_planilha(monkeypatch, _COLUNAS, [_linha("4500063671.11651", _PDM_DUP)])
+
+    ficha = duplicadas.localizar_duplicadas("x.xlsx")[0][0]
+
+    assert ficha.pmib == "4500063671.11651"
+
+
+def test_pmib_alvo_com_apostrofo_do_excel_e_limpo(monkeypatch):
+    """O Excel força texto com apóstrofo à frente; ele não pode ir para o
+    campo de busca do portal."""
+    _com_planilha(monkeypatch, _COLUNAS, [_linha("'4500063671.1418", _PDM_DUP)])
+
+    ficha = duplicadas.localizar_duplicadas("x.xlsx")[0][0]
+
+    assert ficha.pmib == "4500063671.1418"
+
+
+# ===========================================================================
+# As que a regra antiga pegaria e a nova não
+# ===========================================================================
+def test_linha_com_duplicada_sem_o_pdm_fica_de_fora_mas_aparece_no_log(monkeypatch):
+    _com_planilha(monkeypatch, _COLUNAS, [
+        _linha("4500063671.1418", _PDM_DUP),
+        _linha("4500063671.1419", "FICHA PMIB, DUPLICADA, R0"),
+    ])
+    logs = []
+
+    fichas, mensagem = duplicadas.localizar_duplicadas("x.xlsx", callback_log=logs.append)
+
+    assert [f.pmib for f in fichas] == ["4500063671.1418"]  # a regra é a do usuário
+    juntos = "\n".join(logs)
+    assert "linha 3" in juntos and "DUPLICADA" in juntos  # mas não some calada
+    assert "suspeita(s)" in mensagem
+
+
+def test_sem_suspeitas_o_log_nao_ganha_ruido(monkeypatch):
+    _com_planilha(monkeypatch, _COLUNAS, [
+        _linha("4500063671.1418", _PDM_DUP),
+        _linha("4500063671.0001", _PDM_NORMAL),
+    ])
+    logs = []
+
+    _fichas, mensagem = duplicadas.localizar_duplicadas("x.xlsx", callback_log=logs.append)
+
+    assert not any("Atenção" in linha_log for linha_log in logs)
+    assert "suspeita" not in mensagem
