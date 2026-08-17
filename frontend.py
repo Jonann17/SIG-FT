@@ -5435,6 +5435,18 @@ class SIG_FT_App(ctk.CTk):
 
 
 if __name__ == "__main__":
+    # Qual motor de RPA está valendo, na janela preta, antes de tudo.
+    #
+    # Existe porque o usuário rodou dois atalhos diferentes (SIG-FT.bat e o
+    # antigo SIG-FT-Playwright.bat), obteve o MESMO resultado nos dois e não
+    # tinha como saber por quê -- a resposta certa era "porque o Playwright já
+    # é o padrão", mas ela só estava no código. Impresso aqui, e não escrito no
+    # `.bat`, o texto não tem como divergir do `config.RPA_ENGINE`: ele é
+    # derivado do mapa.
+    for _linha_motor in sigft_config.resumo_dos_motores():
+        print(f"[SIG-FT] {_linha_motor}")
+    print()
+
     # O loop principal agora começa pela Splash Screen
     # Ela, por sua vez, chamará o SIG_FT_App ao terminar
     splash = SplashScreen()

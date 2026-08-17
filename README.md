@@ -68,34 +68,52 @@ python frontend.py
 
 ## Motor de RPA (Selenium ou Playwright)
 
-A automação do portal PMIB está migrando de Selenium para Playwright (Fase 5 da
-refatoração). Os dois motores convivem, e **quem escolhe é a configuração, por
-módulo** — `sigft/config.py`, dicionário `RPA_ENGINE`. O padrão continua sendo
-`selenium`, que é o que roda em produção hoje.
+**Use sempre o `SIG-FT.bat`.** Ele é o único atalho do dia a dia.
 
-Para experimentar o motor novo sem editar nada:
+Quem escolhe o motor é a configuração, por módulo — `sigft/config.py`,
+dicionário `RPA_ENGINE`. Desde a validação de **2026-08-11 o Playwright é o
+padrão** dos cinco módulos portados; só `ficha_duplicada` continua em Selenium,
+e ele nem consulta a configuração (constrói o driver direto) — some quando a
+Fase 6 o reconstruir.
 
-```bat
-Instalar-Playwright.bat          REM uma vez só — baixa o navegador (~150 MB)
+Ao abrir, a janela preta imprime qual motor cada módulo está usando. O texto é
+**derivado do `RPA_ENGINE`**, não escrito à mão, então não tem como divergir:
+
+```
+[SIG-FT] Motor de automacao do portal:
+[SIG-FT]    playwright: apagar_lmr, cria_fichas, lmr, tech_specs, upload_conditions
+[SIG-FT]    selenium: ficha_duplicada (modulo antigo -- ignora esta configuracao)
 ```
 
-Depois disso, **dois cliques em `SIG-FT-Playwright.bat`**. É o mesmo aplicativo;
-só a automação do portal muda de motor. Para voltar ao antigo, feche e abra o
-`SIG-FT.bat` de sempre — nada fica gravado.
+Uma vez só, antes do primeiro uso do motor novo:
+
+```bat
+Instalar-Playwright.bat          REM baixa o navegador (~150 MB)
+```
+
+### Se o motor novo se comportar mal
+
+**Dois cliques em `SIG-FT-Motor-Antigo.bat`.** Volta tudo para o Selenium, que
+rodou em produção por meses. A janela preta avisa em letras claras que você
+está no motor antigo, e nada fica gravado: fechou, acabou.
+
+> Ele substituiu o antigo `SIG-FT-Playwright.bat`, que **não fazia diferença
+> nenhuma** depois que o Playwright virou padrão — abria exatamente o mesmo
+> aplicativo que o `SIG-FT.bat`, dando a impressão de ser uma escolha quando
+> não era. Descoberto em 2026-08-17, quando o usuário rodou os dois na mesma
+> planilha e obteve o mesmo resultado, sem saber se era coincidência.
 
 > **Por que um arquivo próprio, e não "defina uma variável".** A instrução
-> `set SIGFT_RPA_ENGINE=playwright` só funciona no **Prompt de Comando
-> (cmd)**. No **PowerShell** — o terminal que o Windows abre por padrão hoje —
-> `set` é outro comando (`Set-Variable`) e **não define variável de
-> ambiente**: o app abria no motor antigo sem nenhum aviso, e o teste do motor
-> novo media a coisa errada. No PowerShell, o equivalente seria
-> `$env:SIGFT_RPA_ENGINE = "playwright"` seguido de `.\SIG-FT.bat` (com o
-> `.\`, que o PowerShell exige para rodar arquivo da pasta atual).
+> `set SIGFT_RPA_ENGINE=selenium` só funciona no **Prompt de Comando (cmd)**.
+> No **PowerShell** — o terminal que o Windows abre por padrão hoje — `set` é
+> outro comando (`Set-Variable`) e **não define variável de ambiente**: o app
+> abriria no motor errado sem nenhum aviso. No PowerShell, o equivalente seria
+> `$env:SIGFT_RPA_ENGINE = "selenium"` seguido de `.\SIG-FT.bat` (com o `.\`,
+> que o PowerShell exige para rodar arquivo da pasta atual).
 
-A variável vale para todos os módulos e some quando você fecha a janela — é o
-caminho de volta imediato se algo se comportar mal. Um valor com erro de
-digitação (`playwrigth`) faz o app parar com mensagem clara em vez de rodar o
-motor antigo em silêncio.
+A variável vale para todos os módulos que aceitam a configuração e some quando
+você fecha a janela. Um valor com erro de digitação (`playwrigth`) faz o app
+parar com mensagem clara em vez de rodar o motor errado em silêncio.
 
 O que já roda no motor novo:
 

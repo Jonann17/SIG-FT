@@ -652,6 +652,49 @@ def get_rpa_engine(modulo: str) -> str:
         )
     return escolhido
 
+
+# Módulos que NÃO passam por `core/rpa/factory.criar_engine` -- constroem o
+# Selenium direto. Para eles, `RPA_ENGINE` e `SIGFT_RPA_ENGINE` são letra
+# morta: mudar o valor não muda nada, e dizer o contrário faria o usuário
+# atribuir ao motor um resultado que o motor não produziu.
+#
+# Hoje é um só, e ele some quando a Fase 6 reconstruir `ficha_duplicada` já em
+# Playwright.
+MODULOS_SEM_SELETOR_DE_MOTOR = ("ficha_duplicada",)
+
+
+def resumo_dos_motores() -> list[str]:
+    """Linhas de texto dizendo qual motor cada módulo usa AGORA.
+
+    Existe para responder, sem abrir código, à pergunta "estou rodando no motor
+    novo ou no antigo?" -- que o usuário fez depois de rodar dois atalhos
+    diferentes e obter o mesmo resultado nos dois. Obter o mesmo resultado era
+    o correto (ver `MODULOS_SEM_SELETOR_DE_MOTOR` e o mapa acima), mas não
+    havia como saber disso pela tela.
+
+    Derivado do mapa, nunca escrito à mão: um texto fixo no atalho `.bat`
+    envelheceria em silêncio na primeira promoção de módulo -- e um aviso que
+    mente sobre o motor é pior do que aviso nenhum.
+    """
+    forcado = (os.environ.get(ENV_RPA_ENGINE) or "").strip().lower()
+
+    por_motor: dict[str, list[str]] = {}
+    for modulo in sorted(RPA_ENGINE):
+        if modulo in MODULOS_SEM_SELETOR_DE_MOTOR:
+            continue
+        por_motor.setdefault(get_rpa_engine(modulo), []).append(modulo)
+
+    linhas = ["Motor de automacao do portal:"]
+    for motor in sorted(por_motor):
+        linhas.append(f"   {motor}: {', '.join(por_motor[motor])}")
+    for modulo in MODULOS_SEM_SELETOR_DE_MOTOR:
+        linhas.append(f"   selenium: {modulo} (modulo antigo -- ignora esta configuracao)")
+    if forcado:
+        linhas.append(f"   [{ENV_RPA_ENGINE}={forcado}] forcando o motor em todos os "
+                      "modulos que aceitam a configuracao.")
+    return linhas
+
+
 # =============================================================================
 # PLANILHA DE APLICAÇÕES LMR
 # =============================================================================

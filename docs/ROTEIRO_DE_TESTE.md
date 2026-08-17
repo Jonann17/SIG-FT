@@ -346,22 +346,32 @@ remoto, então anote: pode ser preciso configurar proxy para o Chromium.
 
 ### 5.3 Rodar os módulos no motor novo
 
-**Dois cliques em `SIG-FT-Playwright.bat`.** É o mesmo aplicativo; só a
-automação do portal muda de motor. A janela preta confirma na primeira linha:
-`Motor de automacao: PLAYWRIGHT`.
+**Dois cliques em `SIG-FT.bat`** — o de sempre. Desde 2026-08-11 o Playwright
+é o **padrão** dos módulos portados; não há atalho especial a usar. A janela
+preta confirma, logo na abertura, qual motor cada módulo está usando:
 
-> **Caminho de volta:** feche e abra o `SIG-FT.bat` de sempre. Nada fica
-> gravado — não há o que desfazer.
+```
+[SIG-FT] Motor de automacao do portal:
+[SIG-FT]    playwright: apagar_lmr, cria_fichas, lmr, tech_specs, upload_conditions
+[SIG-FT]    selenium: ficha_duplicada (modulo antigo -- ignora esta configuracao)
+```
 
-⚠️ **Não use `set SIGFT_RPA_ENGINE=playwright` no PowerShell.** No **Prompt de
+> **Caminho de volta:** `SIG-FT-Motor-Antigo.bat`, que força tudo em Selenium.
+> Nada fica gravado — fechou, acabou.
+
+> O antigo `SIG-FT-Playwright.bat` **foi removido**: depois que o Playwright
+> virou padrão, ele abria exatamente o mesmo aplicativo que o `SIG-FT.bat`.
+> Parecia uma escolha e não era.
+
+⚠️ **Não use `set SIGFT_RPA_ENGINE=...` no PowerShell.** No **Prompt de
 Comando (cmd)** funciona; no **PowerShell** — o terminal que o Windows abre por
 padrão hoje — `set` é outro comando (`Set-Variable`) e **não define variável de
-ambiente**. O app abre no motor ANTIGO, sem nenhum aviso, e o teste inteiro
+ambiente**. O app abre no motor errado, sem nenhum aviso, e o teste inteiro
 mede a coisa errada. Aconteceu na validação de 2026-08-11. Se ainda assim
 quiser fazer pela linha de comando no PowerShell:
 
 ```powershell
-$env:SIGFT_RPA_ENGINE = "playwright"
+$env:SIGFT_RPA_ENGINE = "selenium"
 .\SIG-FT.bat
 ```
 
