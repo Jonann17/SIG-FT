@@ -1411,6 +1411,9 @@ class AutoSpecCore:
             config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB,
             config.COL_DESCRICAO: config.COL_DESCRICAO,
             "CÓDIGO MATERIAL": ["CÓDIGO MATERIAL", "MATERIAL"],
+            # 2026-08-13: oportunista como o "CÓDIGO MATERIAL" — planilha
+            # antiga sem esta coluna continua funcionando, só sem o ganho.
+            config.COL_MARCA_MODELO: ["MARCA/MODELO", "MARCA / MODELO", "MARCA"],
         }
         col_map, header_row = headers.find_columns(
             rows, keywords, required=[config.COL_CODIGO_PMIB, config.COL_DESCRICAO]
@@ -1418,8 +1421,9 @@ class AutoSpecCore:
         pmib_col = col_map.get(config.COL_CODIGO_PMIB)
         desc_col = col_map.get(config.COL_DESCRICAO)
         mat_col = col_map.get("CÓDIGO MATERIAL") or 5
+        marca_col = col_map.get(config.COL_MARCA_MODELO)
         start_row = header_row + 1 if header_row is not None else None
-        return pmib_col, desc_col, mat_col, start_row
+        return pmib_col, desc_col, mat_col, start_row, marca_col
 
     @staticmethod
     def _sufixo_pmib_da_celula(valor):
@@ -1458,11 +1462,16 @@ class AutoSpecCore:
         return norm.split(".")[-1] if "." in norm else norm
 
     def get_pmib_data(self, pmib_path, code_suffix):
+        """`(descricao, codigo_material, marca_modelo)` da linha do material.
+
+        `marca_modelo` (2026-08-13) é a coluna G — `WAGO / 750-362`. Terceiro
+        elemento acrescentado à tupla; quem chamava com dois desempacota
+        errado, e por isso o único chamador foi ajustado junto.
+        """
         try:
             wb = openpyxl.load_workbook(pmib_path, data_only=True)
-            ws = wb.active
-            pmib_col, desc_col, mat_col, start_row = self.find_header_columns(ws)
-            if not pmib_col or not desc_col: return "", ""
+            ws, pmib_col, desc_col, mat_col, start_row, marca_col = self._aba_com_os_materiais(wb)
+            if not pmib_col or not desc_col: return "", "", ""
 
             for row in ws.iter_rows(min_row=start_row):
                 if len(row) < max(pmib_col, desc_col, mat_col): continue
@@ -1471,9 +1480,62 @@ class AutoSpecCore:
                 if self._sufixo_pmib_da_celula(c_pmib.value) == code_suffix:
                     desc_val = str(row[desc_col-1].value).strip() if row[desc_col-1].value else ""
                     mat_val = str(row[mat_col-1].value).strip() if row[mat_col-1].value else ""
-                    return desc_val, mat_val
+                    marca_val = ""
+                    if marca_col and len(row) >= marca_col and row[marca_col-1].value:
+                        marca_val = str(row[marca_col-1].value).strip()
+                    return desc_val, mat_val, marca_val
+            return "", "", ""
+        except Exception: return "", "", ""
+
+    def _aba_com_os_materiais(self, wb):
+        """A aba que TEM o cabeçalho, e não a que estava aberta.
+
+        Achado no `_STATUS_PMIB` real de 2026-08-13: a planilha tem duas abas
+        (`Lista de Materiais` e `Checklist`), e o código usava `wb.active` —
+        a que estava selecionada quando alguém salvou. Se o colega fechar o
+        arquivo com o `Checklist` à frente, `get_pmib_data` devolve vazio para
+        TODA ficha, em silêncio, e a busca web perde a marca.
+
+        Mesmo padrão dos outros achados desta camada: **assumir em vez de
+        verificar**. Procurar o cabeçalho custa uma varredura de 10 linhas por
+        aba e elimina a suposição.
+        """
+        # `worksheets` pode não existir (workbook falso de teste, versão
+        # diferente do openpyxl): a aba ativa sozinha é o comportamento
+        # anterior, e continua sendo o mínimo garantido.
+        try:
+            outras = [aba for aba in wb.worksheets if aba is not wb.active]
+        except Exception:
+            outras = []
+        candidatas = [wb.active] + outras
+        for aba in candidatas:
+            try:
+                pmib_col, desc_col, mat_col, start_row, marca_col = self.find_header_columns(aba)
+            except Exception:
+                continue
+            if pmib_col and desc_col:
+                return aba, pmib_col, desc_col, mat_col, start_row, marca_col
+        return wb.active, None, None, 5, None, None
+
+    @staticmethod
+    def separar_marca_modelo(bruto):
+        """`"WAGO / 750-362"` -> `("WAGO", "750-362")`.
+
+        A coluna G junta os dois com barra, e é assim em toda a planilha:
+        `NIDEC / MOD SVTN 3K6 W`, `CISCO / IE-3200-8T2S-E`. Sem barra, o texto
+        inteiro é tratado como marca — é o caso de quem só anotou o
+        fabricante.
+
+        Quebra na PRIMEIRA barra: `WAGO / 750-362/000-001` tem barra dentro do
+        modelo, e quebrar em todas partiria o código de peça ao meio.
+        """
+        texto = str(bruto or "").strip()
+        if not texto:
             return "", ""
-        except Exception: return "", ""
+        if "/" not in texto:
+            return texto, ""
+        marca, _, modelo = texto.partition("/")
+        return marca.strip(), modelo.strip()
 
     def is_empty(self, val):
         s_val = str(val).strip().upper()
@@ -1594,9 +1656,9 @@ class AutoSpecCore:
             ws = ws_escrita
 
         pmib_suffix = self.extract_pmib_code(filepath)
-        desc_comp, cod_mat = "", ""
+        desc_comp, cod_mat, marca_modelo = "", "", ""
         if pmib_suffix and status_pmib_path:
-            desc_comp, cod_mat = self.get_pmib_data(status_pmib_path, pmib_suffix)
+            desc_comp, cod_mat, marca_modelo = self.get_pmib_data(status_pmib_path, pmib_suffix)
 
         # Contexto Base
         # CP 2.4: CONFIG_MAP["...]["range"] agora guarda o range COMPLETO da
@@ -1608,6 +1670,29 @@ class AutoSpecCore:
         txt_brv = str(txt_brv).strip() if txt_brv else ""
         fab = ws[CONFIG_MAP["fabricante"]["range"].split(":")[0]].value
         fab = str(fab).strip() if fab else ""
+
+        # A COLUNA G DO _STATUS_PMIB COMO REDE (2026-08-13).
+        #
+        # Causa raiz das fichas WAGO que o Luan processou e voltaram com ZERO
+        # características técnicas: a ficha ainda NÃO TINHA fabricante nem
+        # texto breve preenchidos -- é o AutoSpec que vai preenchê-los -- e a
+        # busca web ia com o código interno da Itaipu (`1000325606`), que não
+        # existe na internet. Ia buscar com a única coisa que ninguém publica.
+        #
+        # A planilha sabia a resposta o tempo todo, na coluna `MARCA/MODELO`:
+        # `WAGO / 750-362`. Medido: `WAGO 750-362 datasheet` devolve 10
+        # datasheets reais, incluindo o oficial do fabricante.
+        #
+        # A ficha continua tendo PRECEDÊNCIA: se o engenheiro já escreveu o
+        # fabricante nela, é ele que vale. A planilha só entra no vazio.
+        marca_status, modelo_status = self.separar_marca_modelo(marca_modelo)
+        if not fab and marca_status:
+            fab = marca_status
+        if not txt_brv:
+            # Modelo primeiro: é o que identifica a peça. A descrição entra
+            # atrás porque é prosa em português, e a cascata de busca já sabe
+            # separar identificador de prosa.
+            txt_brv = " ".join(p for p in (modelo_status, desc_comp) if p).strip()
 
         missing = {}
 
@@ -1658,7 +1743,11 @@ class AutoSpecCore:
                 vazias_seguidas += 1
             r += 1
 
-        return wb, missing, txt_brv, fab, desc_comp, cod_mat
+        # 7o elemento (2026-08-13): o MODELO da coluna G. Devolvido à parte
+        # mesmo já estando no início de `txt_brv`, porque a busca precisa
+        # saber que aquilo É um identificador -- `GAAPA` não tem dígito e a
+        # heurística de `_identificadores` nunca o reconheceria.
+        return wb, missing, txt_brv, fab, desc_comp, cod_mat, modelo_status
 
     # --- RAG: Busca e Contexto ---
     # Piso do truncamento progressivo (passo 3 da cascata): abaixo disso a
@@ -1801,7 +1890,7 @@ class AutoSpecCore:
         return any(c.isalpha() for c in texto) and any(c.isdigit() for c in texto)
 
     @classmethod
-    def _termos_do_filtro(cls, fab, cod_mat, txt_brv):
+    def _termos_do_filtro(cls, fab, cod_mat, txt_brv, modelo=""):
         """Termos que um resultado precisa citar para não ser descartado.
 
         Antes de 2026-08-12 era `[fab, cod_mat]` — a razão social inteira e o
@@ -1815,6 +1904,13 @@ class AutoSpecCore:
         # `_identificador_distintivo`.
         termos = []
         termos.extend(cls._tokens_ancora_fabricante(fab))
+        # O MODELO DA COLUNA G é identificador POR DEFINIÇÃO -- a planilha o
+        # declara como tal. Não passa pela regra do dígito, senão `NIDEC /
+        # GAAPA` ficaria sem âncora nenhuma: `GAAPA` é o nome do cartão, e
+        # não tem número. Achado com o _STATUS_PMIB real de 2026-08-13.
+        modelo_txt = str(modelo or "").strip()
+        if len(modelo_txt) > 2:
+            termos.append(modelo_txt)
         if cod_mat and len(str(cod_mat)) > 2:
             termos.append(str(cod_mat))
         for ident in cls._identificadores(txt_brv):
@@ -1854,7 +1950,7 @@ class AutoSpecCore:
         return bool(cls._termos_do_filtro(fab, cod_mat, txt_brv))
 
     @classmethod
-    def _montar_queries_busca(cls, txt_brv, fab, cod_mat):
+    def _montar_queries_busca(cls, txt_brv, fab, cod_mat, modelo=""):
         """Cascata de busca web, do mais específico ao mais genérico.
 
         **Reescrita em 2026-08-11, depois de achar a causa raiz de "o script
@@ -1897,6 +1993,15 @@ class AutoSpecCore:
         familias = [f for f in (cls._familia_do_identificador(i) for i in ids) if f]
 
         queries = []
+        # O MODELO DO FABRICANTE VEM PRIMEIRO (2026-08-13). O `cod_mat` da
+        # coluna E costuma ser o código INTERNO da Itaipu (`1000325606`, 10
+        # dígitos) -- não existe na internet, e gastava a primeira consulta
+        # da cascata garantidamente à toa. O modelo da coluna G é o que o
+        # fabricante publica: `WAGO 750-362` devolve 10 datasheets.
+        modelo_txt = str(modelo or "").strip()
+        if modelo_txt:
+            queries.append(f"{fab_txt} {modelo_txt} datasheet filetype:pdf".strip())
+            queries.append(f"{fab_txt} {modelo_txt} datasheet".strip())
         if cod_mat:
             queries.append(f'"{cod_mat}" {fab_txt} datasheet'.strip())
 
@@ -1946,7 +2051,7 @@ class AutoSpecCore:
                 unicas.append(q)
         return unicas
 
-    def retrieve_context(self, txt_brv, fab, cod_mat, refs_locais, callbacks=None):
+    def retrieve_context(self, txt_brv, fab, cod_mat, refs_locais, callbacks=None, modelo=""):
         cb = callbacks or _callbacks_silenciosos()
 
         # 1. Processar Locais
@@ -1969,7 +2074,7 @@ class AutoSpecCore:
         # O filtro descartava 100% dos resultados certos. Ver
         # `_termos_do_filtro` e a regressão em
         # `tests/test_autospec_busca_web_falha_real.py`.
-        required = self._termos_do_filtro(fab, cod_mat, txt_brv)
+        required = self._termos_do_filtro(fab, cod_mat, txt_brv, modelo=modelo)
 
         if not required:
             # Sem âncora não há como conferir se o documento é deste
@@ -1984,7 +2089,7 @@ class AutoSpecCore:
             )
             return (local_txt + "\n\n" + web_txt), sources
 
-        queries = self._montar_queries_busca(txt_brv, fab, cod_mat)
+        queries = self._montar_queries_busca(txt_brv, fab, cod_mat, modelo=modelo)
 
         for i, q in enumerate(queries, start=1):
             files = self.searcher.search_and_download(
@@ -2522,7 +2627,12 @@ class AutoSpecCore:
 
                 try:
                     # 1. Analisa Ficha
-                    wb, missing, txt, fab, desc, cod = self.analyze_sheet(ficha, status_pmib_path)
+                    analise = self.analyze_sheet(ficha, status_pmib_path)
+                    # Tolera o contrato de 6 elementos: `process_queue` é
+                    # substituído por fake em teste, e um fake antigo devolve
+                    # a tupla curta.
+                    wb, missing, txt, fab, desc, cod = analise[:6]
+                    modelo = analise[6] if len(analise) > 6 else ""
 
                     if not missing:
                         yield " -> Ficha já está completa."
@@ -2534,7 +2644,7 @@ class AutoSpecCore:
 
                     # 2. Contexto
                     full_ctx, sources = self.retrieve_context(
-                        txt, fab, cod, refs, callbacks=callbacks
+                        txt, fab, cod, refs, callbacks=callbacks, modelo=modelo
                     )
                     yield from _flush()
                     if sources: yield f" -> Fontes Web: {len(sources)}"
