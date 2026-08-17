@@ -89,10 +89,10 @@ def localizar_aba_da_ficha(portal, pmib, callback_log=None):
         _buscar_na_aba_atual(portal, pmib)
         tentadas.append(nome)
         if portal.engine.element_exists(alvo):
-            _log(f"   Ficha original {pmib} encontrada na aba '{nome}'.")
+            _log(f"   Ficha {pmib} encontrada na aba '{nome}'.")
             return nome
 
-    _log(f"   [Erro] Ficha original {pmib} não encontrada. Abas tentadas: "
+    _log(f"   [Erro] Ficha {pmib} não encontrada. Abas tentadas: "
          f"{', '.join(tentadas) or '(nenhuma aba de status na tela)'}.")
     return None
 

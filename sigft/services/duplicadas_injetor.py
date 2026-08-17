@@ -65,6 +65,59 @@ def _log_de(callback_log):
     return _log
 
 
+# O fornecedor é FIXO e é a própria empresa: "no campo do fornecedor, GE
+# ENERGIAS RENOVÁVEIS, como o fornecedor é a gente, que é sempre fixo (tipo
+# intermediador)". Serve para DISTINGUIR os dois combos da seção -- ver
+# `escolher_fabricante`.
+FORNECEDOR_FIXO = "GE ENERGIAS RENOVÁVEIS"
+
+
+def _confirmar_escrita(portal, seletor, esperado, nome_do_campo, callback_log=None):
+    """Releu o campo e ele tem o que escrevemos? (read-back do CP 6.3)
+
+    `engine.fill` ENGOLE a falha por contrato (`except Exception: pass`), então
+    sem reler não há como distinguir "escreveu" de "não escreveu": as duas
+    coisas são silenciosas e a tela parece igual. O plano pede read-back neste
+    checkpoint justamente por isso, e a primeira versão deste módulo não fazia.
+    """
+    _log = _log_de(callback_log)
+    try:
+        lido = (portal.engine.get_value(seletor) or "").strip()
+    except Exception as erro:  # noqa: BLE001 -- campo pode nem existir
+        _log(f"      [Erro] Não consegui reler {nome_do_campo}: "
+             f"{type(erro).__name__}: {erro}")
+        return False
+
+    if lido == str(esperado).strip():
+        return True
+
+    _log(f"      [Erro] {nome_do_campo}: escrevi {esperado!r} e o campo ficou "
+         f"com {lido!r}.")
+    return False
+
+
+def texto_do_aviso_de_colisao(portal):
+    """Texto do bloco de aviso de referência repetida — `""` se não há aviso.
+
+    ⚠️ A pergunta é "este bloco tem CONTEÚDO?", **não** "este bloco existe?".
+    O `div#…CoincidenceReference` fica no DOM o tempo todo, vazio, e só ganha
+    texto quando há colisão -- dá para ver isso no próprio HTML que o usuário
+    inspecionou, colhido numa ficha sem colisão nenhuma.
+
+    A primeira versão perguntou "existe?" e o resultado foi exatamente o que se
+    espera: **as 21 tentativas de referência foram recusadas**, incluindo a
+    primeira, numa ficha que provavelmente aceitaria o código cru. A
+    documentação deste projeto já dizia a frase certa ("a pergunta vira 'este
+    bloco tem conteúdo?'") -- eu implementei a outra.
+    """
+    if not portal.engine.element_exists(sel.XPATH_REFERENCIA_AVISO_COLISAO):
+        return ""
+    try:
+        return " ".join((portal.engine.texto(sel.XPATH_REFERENCIA_AVISO_COLISAO) or "").split())
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 # ===========================================================================
 # 1. Fabricante e referência
 # ===========================================================================
@@ -81,7 +134,11 @@ def escolher_fabricante(portal, nome_fabricante, callback_log=None):
         _log("      Fabricante não informado na ficha original -- pulando.")
         return ResultadoDaSecao("fabricante", False, "sem nome na origem")
 
-    portal.safe_click(sel.XPATH_FABRICANTE_TOGGLE)
+    seletor_toggle = achar_combo_do_fabricante(portal, callback_log)
+    if seletor_toggle is None:
+        return ResultadoDaSecao("fabricante", False, "combo ambíguo na tela")
+
+    portal.safe_click(seletor_toggle)
     portal.safe_fill(sel.XPATH_FABRICANTE_BUSCA, nome_fabricante)
     time.sleep(PAUSA_APOS_DIGITAR)
 
@@ -97,6 +154,61 @@ def escolher_fabricante(portal, nome_fabricante, callback_log=None):
     portal.safe_click(alvo)
     _log(f"      Fabricante: {nome_fabricante}")
     return ResultadoDaSecao("fabricante", True, nome_fabricante)
+
+
+def achar_combo_do_fabricante(portal, callback_log=None):
+    """Seletor do combo do FABRICANTE, ou `None` se não der para ter certeza.
+
+    ⚠️ CONSERTO DE 2026-08-17, relatado pelo usuário na primeira sessão real:
+    *"ele entrou no campo de fabricantes, mas tentou preencher o errado, o campo
+    que é da GE"*. `XPATH_FABRICANTE_TOGGLE` casa **qualquer**
+    `.vscomp-toggle-button` da página, e a seção tem mais de um -- XPath devolve
+    o primeiro em ordem de documento, que não é necessariamente o do fabricante.
+
+    O que distingue os dois é informação que o usuário já deu: o fornecedor é
+    **fixo** e é a própria empresa (`FORNECEDOR_FIXO`). Então o combo do
+    fabricante é o que NÃO está preenchido com ela.
+
+    Devolver `None` em vez de "chutar o primeiro" é a decisão central aqui:
+    escrever no combo errado põe dado errado numa ficha real e **não dá sintoma
+    nenhum na tela** -- o robô seguiria dizendo que deu certo. Não escrever
+    custa uma pendência manual, que aparece no log.
+    """
+    _log = _log_de(callback_log)
+    total = portal.engine.contar(sel.XPATH_FABRICANTE_TOGGLE)
+
+    if total == 0:
+        _log("      [Erro] Nenhum combo de fabricante/fornecedor na tela.")
+        return None
+    if total == 1:
+        return f"({sel.XPATH_FABRICANTE_TOGGLE})[1]"
+
+    candidatos = []
+    for posicao in range(1, total + 1):
+        seletor = f"({sel.XPATH_FABRICANTE_TOGGLE})[{posicao}]"
+        try:
+            conteudo = " ".join((portal.engine.texto(seletor) or "").split())
+        except Exception:  # noqa: BLE001
+            conteudo = ""
+        e_o_fornecedor = _sem_acento(FORNECEDOR_FIXO) in _sem_acento(conteudo)
+        _log(f"      [Combo {posicao}/{total}] {conteudo or '(vazio)'}"
+             f"{'  <- fornecedor fixo' if e_o_fornecedor else ''}")
+        if not e_o_fornecedor:
+            candidatos.append(seletor)
+
+    if len(candidatos) == 1:
+        return candidatos[0]
+
+    _log(f"      [Erro] Não consigo distinguir o combo do FABRICANTE: {total} combos "
+         f"na tela e {len(candidatos)} não são o fornecedor fixo "
+         f"({FORNECEDOR_FIXO}). NÃO escrevi nada -- escolher errado poria dado "
+         f"errado na ficha sem nenhum sintoma. Preencha à mão.")
+    return None
+
+
+def _sem_acento(texto):
+    from unicodedata import normalize
+    return normalize("NFKD", str(texto or "")).encode("ascii", "ignore").decode().upper()
 
 
 def _literal(texto):
@@ -132,15 +244,42 @@ def escrever_referencia(portal, codigo_material, callback_log=None):
         _log("      [Erro] Sem CÓDIGO DO MATERIAL -- nenhuma referência a escrever.")
         return ResultadoDaSecao("referencia", False, "sem código do material")
 
+    # Mesmo problema do combo: a seção tem mais de um campo "Referência" (o do
+    # fabricante e o do fornecedor), e o XPath sem índice pega o primeiro em
+    # ordem de documento. Escrever a referência do fabricante na linha do
+    # fornecedor é dado errado em ficha real, sem sintoma na tela.
+    total_de_campos = portal.engine.contar(sel.XPATH_REFERENCIA_INPUT)
+    if total_de_campos == 0:
+        _log("      [Erro] Nenhum campo de Referência na tela.")
+        return ResultadoDaSecao("referencia", False, "campo não encontrado")
+    if total_de_campos > 1:
+        _log(f"      [Erro] {total_de_campos} campos de Referência na tela e nenhum "
+             f"jeito seguro de saber qual é o do fabricante. NÃO escrevi nada -- "
+             f"preencha à mão. (Mande o HTML dessa seção e eu ancoro o seletor.)")
+        return ResultadoDaSecao("referencia", False,
+                                f"{total_de_campos} campos de Referência ambíguos")
+
+    avisos_vistos = []
     for tentativa, referencia in enumerate(candidatos, start=1):
         portal.safe_fill(sel.XPATH_REFERENCIA_INPUT, referencia)
         time.sleep(PAUSA_APOS_DIGITAR)
-        if portal.engine.element_exists(sel.XPATH_REFERENCIA_AVISO_COLISAO):
+
+        if not _confirmar_escrita(portal, sel.XPATH_REFERENCIA_INPUT, referencia,
+                                  "campo de Referência", callback_log):
+            # Não adianta tentar mais 20 sufixos num campo que não recebe o que
+            # se digita -- é outro problema, e insistir esconderia ele.
+            return ResultadoDaSecao("referencia", False, "campo não aceitou o texto")
+
+        aviso = texto_do_aviso_de_colisao(portal)
+        if aviso:
+            avisos_vistos.append(aviso)
             continue
 
         portal.safe_click(sel.XPATH_REFERENCIA_ADICIONAR)
         time.sleep(PAUSA_APOS_DIGITAR)
-        if portal.engine.element_exists(sel.XPATH_REFERENCIA_AVISO_COLISAO):
+        aviso = texto_do_aviso_de_colisao(portal)
+        if aviso:
+            avisos_vistos.append(aviso)
             continue
 
         if tentativa > 1:
@@ -156,6 +295,13 @@ def escrever_referencia(portal, codigo_material, callback_log=None):
     _log(f"      [Erro] Não consegui gravar a referência: as "
          f"{len(candidatos)} tentativas ({candidatos[0]} … {candidatos[-1]}) "
          f"foram recusadas. Preencha à mão antes de salvar.")
+    if avisos_vistos:
+        # TODAS recusadas é resultado suspeito -- inclusive a primeira, que na
+        # maioria das fichas passa. Mostrar o texto que o portal exibiu é o que
+        # permite decidir, em uma olhada, se era mesmo colisão ou se estamos
+        # lendo como colisão um aviso que é outra coisa.
+        _log(f"      [Diagnóstico] O portal exibiu: {avisos_vistos[0]!r}. Se isso "
+             f"não é 'a referência já existe', o robô está lendo o aviso errado.")
     return ResultadoDaSecao("referencia", False, "todas as tentativas recusadas")
 
 
@@ -190,6 +336,7 @@ def limpar_caracteristicas(portal, pmib_original, callback_log=None):
 
     apagadas = 0
     preenchidas = 0
+    falhas_de_escrita = []
     for pagina in range(1, MAX_PAGINAS_CARACTERISTICAS + 1):
         indice = 1
         while indice <= portal.engine.contar(sel.XPATH_CARACTERISTICAS_LINHAS):
@@ -198,9 +345,34 @@ def limpar_caracteristicas(portal, pmib_original, callback_log=None):
 
             if _e_a_linha_do_codigo_pmib(descricao):
                 seletor_valor = linha + sel.XPATH_REL_CARACTERISTICA_VALOR_PT[1:]
+                seletor_descricao = linha + sel.XPATH_REL_CARACTERISTICA_DESCRICAO[1:]
                 portal.safe_fill(seletor_valor, pmib_original)
-                preenchidas += 1
-                _log(f"      Mantida: {' '.join(descricao.split())} = {pmib_original}")
+
+                # CLIQUE FORA PARA DISPARAR O onBlur -- e é o conserto do
+                # relato "eu até vi ele colocando mas não conseguiu salvar".
+                #
+                # Nem o `fill` do Playwright nem o `send_keys` do Selenium
+                # disparam `change`: esse evento nasce do BLUR, no navegador
+                # real. O OutSystems liga a variável do servidor ao `change`,
+                # então sem o blur o texto fica na caixa e o servidor nunca
+                # soube dele -- o SALVAR salva o valor ANTIGO, sem erro nenhum.
+                # O módulo antigo já fazia isso, com o comentário "Clica fora
+                # para disparar o evento onBlur"; eu não portei a linha.
+                #
+                # `click_nativo` e não `click_raw`: o clique por JavaScript
+                # dispara o evento de clique mas NÃO executa os passos de foco
+                # do navegador -- ou seja, não tira o foco do textarea, que é
+                # justamente a única coisa que precisamos aqui. É a mesma
+                # distinção que quebrou o campo de Contrato no CP 5.4.
+                portal.engine.click_nativo(seletor_descricao)
+                time.sleep(PAUSA_APOS_DIGITAR)
+
+                if not _confirmar_escrita(portal, seletor_valor, pmib_original,
+                                          "valor do CÓDIGO PMIB", callback_log):
+                    falhas_de_escrita.append(indice)
+                else:
+                    preenchidas += 1
+                    _log(f"      Mantida: {' '.join(descricao.split())} = {pmib_original}")
                 indice += 1  # preservada: a linha continua onde estava
                 continue
 
@@ -228,8 +400,23 @@ def limpar_caracteristicas(portal, pmib_original, callback_log=None):
              f"páginas. Parei por segurança -- confira a ficha à mão.")
         return ResultadoDaSecao("caracteristicas", False, "paginação sem fim")
 
-    portal.clicar_salvar_visivel("Características Técnicas")
+    # O retorno do SALVAR não pode ser ignorado: `clicar_salvar_visivel`
+    # devolve `False` quando nenhum botão SALVAR estava visível e habilitado --
+    # que é exatamente o sintoma de "o portal não registrou a mudança". Sem
+    # olhar, a seção fechava como sucesso com a ficha inalterada.
+    salvou = portal.clicar_salvar_visivel("Características Técnicas")
     _log(f"      Características: {apagadas} apagada(s), {preenchidas} preservada(s).")
+
+    if falhas_de_escrita:
+        _log(f"      [Erro] O valor do CÓDIGO PMIB não ficou gravado em "
+             f"{len(falhas_de_escrita)} linha(s). Preencha à mão antes de salvar.")
+        return ResultadoDaSecao("caracteristicas", False, "valor não gravado")
+
+    if not salvou:
+        _log("      [Erro] Não achei botão SALVAR visível e habilitado nesta aba. "
+             "Se o portal não habilitou o botão, é sinal de que ele não registrou "
+             "nenhuma mudança -- confira a ficha antes de seguir.")
+        return ResultadoDaSecao("caracteristicas", False, "não salvou")
 
     if preenchidas == 0:
         # Sem a linha do CÓDIGO PMIB a ficha duplicada perde a ÚNICA
