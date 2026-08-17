@@ -334,6 +334,19 @@ def parear_rotulos_e_valores(tokens):
         entre abas (ex.: "Peso líquido"), e o extrator é chamado por aba --
         dentro de uma aba, repetição é sinal de estrutura inesperada, e
         sobrescrever esconderia isso.
+
+    A regra vale para os DOIS padrões de campo da tela, que são estruturalmente
+    opostos (ver `seletores_duplicada`, §7 e §7b):
+
+      - campo de texto: rótulo em `<label><span>`, valor em
+        `Block_Expression > span[@data-expression]`;
+      - opção marcada (rádio): rótulo em `<span class="text-primary">`, valor
+        DENTRO de um `<label data-label>`.
+
+    Quem classifica cada token é o extrator, pelos seletores. Aqui só chega
+    `("rotulo"|"valor", texto)` em ordem de documento -- e é justamente por
+    isso que a mesma regra atende os dois: a ordem é a mesma, só a origem
+    muda.
     """
     pares = {}
     rotulo_atual = None

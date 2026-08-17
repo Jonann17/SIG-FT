@@ -301,3 +301,61 @@ XPATH_VIEW_ROTULOS_E_VALORES = (
     " | "
     ".//div[@data-block='PMIB_DataSheetView.Block_Expression']//span[@data-expression]"
 )
+
+# ---------------------------------------------------------------------------
+# 7b. Modo de visualização: o SEGUNDO padrão (opções marcadas)
+# ---------------------------------------------------------------------------
+# Levantado depois, e ele INVERTE o padrão de cima -- é a razão de ter valido
+# a pena pedir o HTML em vez de generalizar a partir de um exemplo só.
+#
+#   <fieldset><legend>…<span class="text-primary font-size-base">
+#       Nocivos ou Outros Cuidados</span></legend>
+#     <div>
+#       <span class="text-primary font-size-base">Nocivo</span>   <-- RÓTULO
+#       <div class="custom">
+#         <span><input class="radio-button" disabled type="checkbox" checked
+#                      id="b12-b20-b1-Checkbox1"></span>
+#         <label data-label="">Não contém agentes nocivos</label> <-- VALOR
+#       </div>
+#     </div>
+#     …repete para "Outros cuidados"…
+#   </fieldset>
+#
+# As duas inversões, e as duas quebrariam a leitura em silêncio:
+#
+#   1. o RÓTULO do campo não é um `<label>`: é um `<span class="text-primary">`
+#      -- a MESMA classe da legenda do fieldset;
+#   2. o VALOR está DENTRO de um `<label data-label>` -- ou seja, exatamente o
+#      seletor que no padrão de cima significa "rótulo". Sem discriminar, o
+#      extrator leria "Não contém agentes nocivos" como um rótulo de campo, com
+#      valor vazio, e o campo "Nocivo" sumiria da ficha copiada.
+#
+# O que discrimina é a presença de `<span>` DENTRO do label:
+#   - `label[@data-label]/span`      -> rótulo   (padrão do Volume)
+#   - `label[@data-label]` sem span  -> valor    (padrão da opção marcada)
+#
+# `checked` no input é o que diz qual opção está selecionada; `disabled` é só o
+# modo de leitura. Na tela levantada o portal renderiza apenas a opção marcada,
+# mas o seletor exige `@checked` de qualquer forma -- se um dia renderizar
+# todas, ler a errada seria pior que não ler nenhuma.
+XPATH_VIEW_ROTULO_DE_SECAO = (
+    ".//span[contains(concat(' ', normalize-space(@class), ' '), ' text-primary ')]"
+    "[not(ancestor::label)][not(ancestor::legend)]"
+)
+XPATH_VIEW_OPCAO_MARCADA = (
+    ".//div[.//input[@type='checkbox'][@checked]]/label[@data-label][not(span)]"
+)
+
+# ⚠️ ARMADILHA que o bloco "Logística de reversa" revelou: o contador de anexos
+# (clipe de papel) também é um `<span data-expression>`:
+#
+#   <div data-block="Numbers.Badge">…<span data-expression="" class="OSFillParent">0</span>
+#
+# Ele NÃO é valor de campo -- é a quantidade de anexos. Só não é lido por
+# acidente: `XPATH_VIEW_VALOR` exige o ancestral
+# `data-block='PMIB_DataSheetView.Block_Expression'`, e o badge está sob
+# `Numbers.Badge`. Ou seja, o namespace do bloco não é preciosismo: é o que
+# separa valor de contador. Sem ele, "Logística de reversa" viria como "0".
+XPATH_VIEW_BADGE_DE_ANEXO = (
+    ".//div[@data-block='Numbers.Badge']//span[@data-expression]"
+)

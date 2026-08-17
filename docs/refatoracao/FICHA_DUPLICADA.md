@@ -378,9 +378,59 @@ Regras do pareamento, cada uma de um caso da tela real:
 "inspecionar elemento" produz exatamente os três campos da tela, e a legenda
 "Volume (cm3)" não vira par.
 
-### O que ainda não foi visto
+### 8.1 O segundo padrão — opções marcadas, e ele é INVERTIDO
 
-Os **radio buttons** ("Não contém agentes nocivos", "Classe II – Não perigoso")
-aparecem na tela de visualização com um ícone antes do texto. Se eles não usarem
-`Block_Expression`, o extrator não os enxerga — e são campos reais das Condições.
-**Um bloco desses no HTML fecha o CP 6.2.**
+Levantado depois, e foi o que justificou pedir o HTML em vez de generalizar a
+partir de um exemplo só:
+
+```html
+<span class="text-primary font-size-base">Nocivo</span>          <!-- RÓTULO -->
+<div class="custom">
+  <span><input class="radio-button" disabled type="checkbox" checked></span>
+  <label data-label="">Não contém agentes nocivos</label>          <!-- VALOR -->
+</div>
+```
+
+**Duas inversões, e as duas quebrariam a leitura em silêncio:**
+
+1. o **rótulo** do campo não é um `<label>` — é um `<span class="text-primary">`,
+   a **mesma classe da legenda** do fieldset;
+2. o **valor** está **dentro de um `<label data-label>`** — exatamente o seletor
+   que no outro padrão significa *rótulo*.
+
+Sem discriminar, o extrator leria "Não contém agentes nocivos" como rótulo de
+campo com valor vazio, e **o campo "Nocivo" sumiria** da ficha copiada.
+
+O discriminador é a presença de `<span>` **dentro** do label:
+
+| Estrutura | Papel |
+|---|---|
+| `label[@data-label]/span` | rótulo (padrão do Volume) |
+| `label[@data-label]` sem span | valor (opção marcada) |
+| `span.text-primary` fora de `label` e de `legend` | rótulo de seção |
+
+O `@checked` do input é o que diz qual opção está selecionada (`disabled` é só o
+modo de leitura). A tela levantada renderiza apenas a marcada, mas o seletor
+exige `@checked` de qualquer forma — se um dia renderizar todas, ler a errada
+seria pior que não ler nenhuma.
+
+### 8.2 A armadilha do contador de anexos
+
+O bloco "Logística de reversa" revelou que o **clipe de papel** também tem um
+`<span data-expression>0</span>` — o mesmo seletor do valor de campo:
+
+```html
+<div data-block="Numbers.Badge">…<span data-expression="">0</span>
+```
+
+Só não é lido **por causa do namespace**: `XPATH_VIEW_VALOR` exige o ancestral
+`data-block='PMIB_DataSheetView.Block_Expression'`, e o badge está sob
+`Numbers.Badge`. Ou seja, exigir o nome completo do bloco não é preciosismo — é
+o que separa **valor** de **contador**. Sem ele, "Logística de reversa" viria
+como `"0"`: plausível, errado e sem erro nenhum.
+
+Também confirmado: `&nbsp;` (`Não se&nbsp;aplica`) é normalizado — `str.split()`
+do Python trata `\xa0` como espaço.
+
+**O CP 6.2 está fechado do lado da leitura.** Os dois padrões de campo estão
+cobertos e testados contra markup real.

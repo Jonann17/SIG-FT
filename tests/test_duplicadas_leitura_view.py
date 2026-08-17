@@ -196,3 +196,160 @@ def test_sequencia_vazia_devolve_dicionario_vazio():
 @pytest.mark.parametrize("valor_bruto", [None, ""])
 def test_valor_nulo_nao_derruba(valor_bruto):
     assert parear_rotulos_e_valores([("rotulo", "X"), ("valor", valor_bruto)]) == {"X": ""}
+
+
+# ===========================================================================
+# O SEGUNDO padrão: opções marcadas (rádio) — estruturalmente INVERTIDO
+# ===========================================================================
+# Levantado depois do bloco "Volume", e foi o que justificou pedir o HTML em
+# vez de generalizar a partir de um exemplo só: aqui o rótulo do campo NÃO é um
+# `<label>` (é um `<span class="text-primary">`) e o VALOR está dentro de um
+# `<label data-label>` — exatamente o seletor que no outro padrão significa
+# "rótulo".
+#
+# Sem discriminar, o extrator leria "Não contém agentes nocivos" como rótulo de
+# campo com valor vazio, e o campo "Nocivo" sumiria da ficha copiada. Silencioso.
+
+HTML_NOCIVO = '''
+<fieldset data-advancedhtml=""><legend data-advancedhtml=""><div id="b12-b20-b1-b20-Legend"><span
+ class="text-primary font-size-base">Nocivos ou Outros Cuidados </span></div></legend><div
+ id="b12-b20-b1-b20-Content"><span class="text-primary font-size-base">Nocivo</span><div
+ data-container="" class="margin-left-m margin-bottom-m"><div data-container=""
+ class="margin-top-s"><div data-container="" class="custom"><span><input data-checkbox=""
+ class="radio-button" disabled="" type="checkbox" checked="" id="b12-b20-b1-Checkbox1"></span><label
+ data-label="" class="margin-left-s ThemeGrid_Width8">Não contém agentes nocivos</label></div></div></div><span
+ class="text-primary font-size-base">Outros cuidados</span><div data-container=""
+ class="margin-left-m"><div data-container="" class="margin-top-s"><div data-container=""
+ class="custom"><span><input data-checkbox="" class="radio-button" disabled="" type="checkbox"
+ checked="" id="b12-b20-b1-Checkbox2"></span><label data-label=""
+ class="margin-left-s ThemeGrid_Width8">Sem necessidade</label></div></div></div></div></fieldset>
+'''
+
+
+class _LeitorComOpcoes(_LeitorDaTela):
+    """Acrescenta os dois padrões que o bloco "Nocivo" revelou.
+
+    O discriminador é a presença de `<span>` DENTRO do `<label>`:
+      - `label[@data-label]/span`     -> rótulo (padrão do Volume);
+      - `label[@data-label]` sem span -> valor  (padrão da opção marcada).
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._label_tem_span = False
+        self._texto_do_label = []
+
+    def handle_starttag(self, tag, atributos):
+        attrs = dict(atributos)
+        if tag == "span" and self._dentro_de_label:
+            self._label_tem_span = True
+        if tag == "span" and not self._dentro_de_label and not self._dentro_de_expressao:
+            classes = attrs.get("class", "")
+            if "text-primary" in classes and not self._dentro_de_legend:
+                self._coletando = "rotulo"
+                return
+        super().handle_starttag(tag, atributos)
+
+    def handle_endtag(self, tag):
+        if tag == "label" and self._dentro_de_label:
+            # Label SEM span dentro = valor de opção marcada.
+            if not self._label_tem_span:
+                texto = "".join(self._texto_do_label)
+                if texto.strip():
+                    self.tokens.append(("valor", texto))
+            self._label_tem_span = False
+            self._texto_do_label = []
+        super().handle_endtag(tag)
+
+    def handle_data(self, dados):
+        if self._dentro_de_label and self._coletando != "rotulo":
+            self._texto_do_label.append(dados)
+        super().handle_data(dados)
+
+
+def _ler_com_opcoes(html):
+    leitor = _LeitorComOpcoes()
+    leitor.feed(html)
+    return leitor
+
+
+def test_o_bloco_de_opcoes_marcadas_vira_pares_corretos():
+    """A prova de que os dois padrões convivem: markup real do "Nocivo",
+    sem adaptação."""
+    leitor = _ler_com_opcoes(HTML_NOCIVO)
+
+    assert parear_rotulos_e_valores(leitor.tokens) == {
+        "Nocivo": "Não contém agentes nocivos",
+        "Outros cuidados": "Sem necessidade",
+    }
+
+
+def test_a_legenda_do_bloco_de_opcoes_nao_vira_campo():
+    """"Nocivos ou Outros Cuidados" tem a MESMA classe (`text-primary
+    font-size-base`) que os rótulos "Nocivo" e "Outros cuidados". O que a
+    separa é estar dentro de `<legend>` -- daí o `not(ancestor::legend)` no
+    seletor."""
+    tokens = _ler_com_opcoes(HTML_NOCIVO).tokens
+
+    assert not any("Nocivos ou Outros" in texto for _t, texto in tokens)
+    assert "not(ancestor::legend)" in sel.XPATH_VIEW_ROTULO_DE_SECAO
+
+
+def test_o_seletor_de_rotulo_de_secao_exclui_o_que_esta_dentro_de_label():
+    """Sem `not(ancestor::label)`, o `<span>` interno do padrão do Volume
+    (`<label><span>Comprimento…</span></label>`) seria contado DUAS vezes --
+    uma como rótulo de campo e outra como rótulo de seção."""
+    assert "not(ancestor::label)" in sel.XPATH_VIEW_ROTULO_DE_SECAO
+
+
+def test_o_seletor_de_opcao_exige_o_input_marcado():
+    """`checked` diz qual opção está selecionada. Na tela levantada o portal
+    renderiza só a marcada, mas se um dia renderizar todas, ler a errada seria
+    pior que não ler nenhuma."""
+    valor = sel.XPATH_VIEW_OPCAO_MARCADA
+
+    assert "@checked" in valor
+    assert "not(span)" in valor  # o discriminador entre rótulo e valor
+
+
+# ===========================================================================
+# A armadilha do contador de anexos
+# ===========================================================================
+HTML_LOGISTICA = '''
+<div data-container="" class="margin-top-m" id="b12-b20-b4-Reserve"><span
+ class="text-primary margin-bottom-s  margin-right-s">Logística de reversa</span><div
+ data-container="" class="OSInline"><div data-block="PMIB_DataSheetView.ViewAttachmentByDataSheetAndSection"
+ class="OSBlockWidget" id="b12-b20-b4-$b6"><div data-block="Numbers.Badge" class="OSBlockWidget"
+ id="b12-b20-b4-b6-b2-$b1"><div data-container="" class="badge"><span data-expression=""
+ class="OSFillParent">0</span></div></div></div></div><div data-container=""><div
+ data-container="" class="custom"><span><input data-checkbox="" class="radio-button" disabled=""
+ type="checkbox" checked="" id="b12-b20-b4-Checkbox4"></span><label data-label=""
+ class="margin-left-s ThemeGrid_Width10">Não se&nbsp;aplica</label></div></div></div>
+'''
+
+
+def test_o_contador_de_anexos_nao_e_lido_como_valor():
+    """⚠️ O clipe de papel tem um `<span data-expression>0</span>` -- o MESMO
+    seletor do valor de campo. Só não é lido porque `XPATH_VIEW_VALOR` exige o
+    ancestral `PMIB_DataSheetView.Block_Expression`, e o badge está sob
+    `Numbers.Badge`.
+
+    Sem essa exigência de namespace, "Logística de reversa" viria como "0" --
+    plausível, errado e sem erro nenhum."""
+    pares = parear_rotulos_e_valores(_ler_com_opcoes(HTML_LOGISTICA).tokens)
+
+    assert pares == {"Logística de reversa": "Não se aplica"}
+    assert "0" not in pares.values()
+
+
+def test_o_namespace_do_bloco_e_exigido_no_seletor_de_valor():
+    assert "PMIB_DataSheetView.Block_Expression" in sel.XPATH_VIEW_VALOR
+
+
+def test_espaco_inquebravel_do_html_e_normalizado():
+    """`Não se&nbsp;aplica` chega como `Não se\\xa0aplica`. Sem normalizar, o
+    valor gravado teria um caractere invisível que não casa com nada."""
+    pares = parear_rotulos_e_valores([("rotulo", "X"), ("valor", "Não se\xa0aplica")])
+
+    assert pares["X"] == "Não se aplica"
+    assert "\xa0" not in pares["X"]
