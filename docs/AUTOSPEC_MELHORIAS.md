@@ -35,6 +35,66 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-26 🔴 Conferência humana dos documentos duvidosos — a tela e a 2ª passada *(2026-08-13)*
+
+O R-25 criou o destino `duvidoso` e não tinha para onde mandá-lo: o documento saía do contexto
+e sumia. Esta é a outra metade — **o duvidoso vira uma pergunta para o engenheiro**, em vez de
+uma decisão que o programa não tem como tomar.
+
+#### O desenho, com as três decisões do usuário
+
+| Pergunta | Decisão *(2026-08-13)* |
+|---|---|
+| Interromper a fila em cada dúvida, ou juntar tudo? | **Processa a fila inteira**, e no fim mostra a lista agrupada por ficha |
+| O que basta para um resultado ser `certo` sozinho? | Citar **fabricante E modelo** — uma das duas não basta, vai para conferência |
+| Onde a lista aparece? | **Seção nova na tela do AutoSpec**, não janela separada |
+
+#### Como ficou
+
+```
+[fila roda inteira]  ->  ⚠️ 6 documento(s) em 3 ficha(s) precisam da SUA conferencia.
+                              · 1188.xlsx: 2 link(s)
+   ↓
+Seção 5 da tela:  📄 1188.xlsx — WAGO / 750-362
+                    ☐ 🔗 750-362 Modbus TCP coupler — Farnell      (abre no navegador)
+                    ☐ 🔗 Minnie Mouse t-shirt — Target
+   ↓
+[PROCESSAR OS DOCUMENTOS MARCADOS]  ->  2ª passada, só com o que foi marcado
+```
+
+O link é clicável (`webbrowser.open`) porque conferir sem abrir o documento não é conferir.
+
+#### O que a 2ª passada faz de diferente
+
+`processar_conferidos` **não é** `process_queue` com outra entrada. A diferença é o contexto:
+os documentos vêm de uma lista fechada de URLs **já julgadas por uma pessoa** e, por isso,
+`contexto_das_urls` **não aplica o filtro anti-intruso**. Passar de novo desfaria a conferência
+— o filtro existe justamente para decidir o que o engenheiro acabou de decidir. É a única porta
+do módulo em que um documento entra sem passar pela §4.3, e ela existe porque alguém olhou.
+
+Fora isso, o caminho é o mesmo de sempre: `analyze_sheet` → contexto → IA → `fill_save`, com
+`RelatorioLote` e o mesmo contrato de generator, para a tela consumir do mesmo jeito. Os PDFs
+locais da ficha original vão junto (guardados em `Pendencia.refs_locais`) — o engenheiro aprovou
+links, não desistiu dos manuais.
+
+#### Onde a lógica mora, e por quê
+
+Tudo o que decide alguma coisa está em **`sigft/services/autospec_conferencia.py`**
+(`Pendencia`, `Conferencia`, `resumo_para_console`), que **não importa tkinter** — um teste
+verifica isso por AST, não por convenção. A tela ficou com 4 métodos de desenho de widget e
+nenhuma regra. Isso é o princípio nº 2 da arquitetura, e é o que permite testar a conferência
+inteira sem abrir janela: **16 testes** cobrem agrupamento, seleção por checkbox, índices
+inválidos vindos da grade, e ficha sem pendência.
+
+#### O aviso para o CP 7.3 (frente do Luan)
+
+A seção é autocontida de propósito e está sob um comentário-cabeçalho que diz isso em voz alta.
+`docs/refatoracao/TRABALHO_PARALELO.md` §3.1 e a entrada do CP 7.3 no
+`PLANO_REFATORACAO.md` listam o que precisa viajar junto quando `frontend.py` for quebrado:
+o bloco inteiro, o `_novo_core()` (compartilhado pelos dois workers), `import webbrowser` e a
+chave aditiva `COLORS["warning"]`.
+
+
 ### ✅ R-25 🔴 Console de 10 fichas reais — 1 regressão minha e 3 bugs *(2026-08-13)*
 
 O Luan mandou o terminal inteiro de 10 fichas do SFC. Ele mostrou o que nenhum teste sintético

@@ -2718,6 +2718,123 @@ class AutoSpecCore:
         return new_path
 
     # --- MÉTODOS PÚBLICOS DE FLUXO ---
+    def processar_conferidos(self, selecao, status_pmib_path):
+        """SEGUNDA PASSADA: reprocessa só com os documentos que o engenheiro
+        aprovou na conferência.
+
+        `selecao` é `{caminho_da_ficha: [urls aprovadas]}` — o que
+        `Conferencia.selecao_por_ficha` devolve.
+
+        **Por que não é um `process_queue` com outra entrada.** A diferença
+        está no contexto: aqui os documentos vêm de uma lista fechada de URLs
+        já julgadas por uma pessoa, e por isso **não passam pelo filtro
+        anti-intruso** — o filtro existe para decidir o que a pessoa acabou
+        de decidir. Passar de novo seria desfazer a conferência.
+
+        Mesmo contrato de generator do `process_queue`, para a tela consumir
+        do mesmo jeito.
+        """
+        buffer: list[str] = []
+        callbacks = UICallbacks(
+            log=lambda msg, nivel="info", contexto=None: buffer.append(str(msg))
+        )
+
+        def _flush():
+            while buffer:
+                yield buffer.pop(0)
+
+        itens = [(f, urls) for f, urls in (selecao or {}).items() if urls]
+        if not itens:
+            yield "Nenhum documento aprovado — nada a reprocessar."
+            return
+
+        with RelatorioLote(
+            callbacks,
+            titulo="AutoSpec — 2a passada com os documentos conferidos",
+            total=len(itens),
+            contexto={"status_pmib": status_pmib_path},
+        ) as lote:
+            yield from _flush()
+
+            for indice, (ficha, urls) in enumerate(itens, start=1):
+                fname = os.path.basename(ficha)
+                yield f"[{indice}/{len(itens)}] {fname} — {len(urls)} documento(s) aprovado(s)..."
+                try:
+                    analise = self.analyze_sheet(ficha, status_pmib_path)
+                    wb, missing, txt, fab, desc, cod = analise[:6]
+                    if not missing:
+                        yield " -> Ficha já está completa."
+                        lote.pulado(fname, "sem campos faltantes")
+                        yield from _flush()
+                        continue
+
+                    pendencia = None
+                    if getattr(self, "conferencia", None) is not None:
+                        pendencia = self.conferencia.pendencia_da_ficha(ficha)
+                    refs = pendencia.refs_locais if pendencia else []
+
+                    contexto = self.contexto_das_urls(urls, refs, callbacks=callbacks)
+                    yield from _flush()
+                    if not contexto.strip():
+                        yield " -> Nenhum dos documentos aprovados rendeu texto."
+                        lote.pulado(fname, "documentos aprovados sem texto legível")
+                        yield from _flush()
+                        continue
+
+                    yield f" -> {len(missing)} campos faltantes. Consultando a IA..."
+                    ai_resp = self.generate_ai_response(
+                        txt, fab, desc, missing, contexto, callbacks=callbacks
+                    )
+                    yield from _flush()
+
+                    out_path = self.fill_save(wb, ficha, ai_resp, missing, callbacks=callbacks)
+                    yield f" -> Salvo: {os.path.basename(out_path)}"
+                    lote.sucesso(fname, f"salvo como {os.path.basename(out_path)}")
+                    yield from _flush()
+                except Exception as e:
+                    yield f" -> ERRO: {e}"
+                    lote.falha(fname, f"{type(e).__name__}: {e}")
+                    yield from _flush()
+
+        yield from _flush()
+
+    def contexto_das_urls(self, urls, refs_locais=(), callbacks=None):
+        """Baixa e extrai texto de uma lista FECHADA de URLs.
+
+        Sem filtro anti-intruso e sem busca: a lista já é o resultado de uma
+        decisão humana. É a única porta do módulo em que um documento entra
+        sem passar pela §4.3, e ela existe justamente porque alguém olhou.
+        """
+        cb = callbacks or _callbacks_silenciosos()
+        partes = []
+        local = self.process_local_documents(refs_locais, callbacks=cb)
+        if local:
+            partes.append(local)
+
+        for url in urls or []:
+            caminho = self.searcher._download_file(url, callbacks=cb)
+            if not caminho:
+                caminho = tentar_navegador(
+                    url, callbacks=cb,
+                    ligado=getattr(self, "usar_navegador_ultimo_recurso", True),
+                )
+            if not caminho:
+                cb.log(f"Nao consegui ler o documento aprovado: {url}", nivel="warn")
+                continue
+            texto, metodo = self.pdf_parser.extract_text(
+                caminho, callbacks=cb, nome_exibicao=url
+            )
+            try:
+                os.remove(caminho)
+            except Exception:
+                pass
+            if texto and len(texto) > 100:
+                partes.append(f"--- WEB DOC: {url} ---\nURL: {url}\n{texto[:50000]}\n")
+                cb.log(f"Documento aprovado lido ({metodo}, {len(texto)} chars): {url}")
+            else:
+                cb.log(f"Documento aprovado veio quase vazio: {url}", nivel="warn")
+        return "\n\n".join(partes)
+
     def process_queue(self, queue, status_pmib_path):
         """
         Processa a lista de tarefas. Queue Item: {'sheet': path, 'refs':
@@ -2735,6 +2852,14 @@ class AutoSpecCore:
         """
         buffer: list[str] = []
         callbacks = UICallbacks(log=lambda msg, nivel="info", contexto=None: buffer.append(str(msg)))
+
+        # CONFERÊNCIA HUMANA (2026-08-13): os documentos DUVIDOSOS de cada
+        # ficha ficam guardados aqui e são apresentados no fim do lote. Ver
+        # `autospec_conferencia.py` para por que a dúvida é entregue em vez
+        # de descartada.
+        from sigft.services import autospec_conferencia
+
+        self.conferencia = autospec_conferencia.Conferencia()
 
         def _flush():
             while buffer:
@@ -2830,6 +2955,15 @@ class AutoSpecCore:
                     out_path = self.fill_save(wb, ficha, ai_resp, missing, callbacks=callbacks)
                     yield f" -> Salvo: {os.path.basename(out_path)}"
                     lote.sucesso(fname, f"salvo como {os.path.basename(out_path)}")
+                    # `getattr`: teste substitui `analyze_sheet`/`retrieve_context`
+                    # por fake e o atributo pode nunca ter sido criado. A
+                    # conferência é um EXTRA -- não pode transformar uma ficha
+                    # que deu certo em falha.
+                    if getattr(self, "duvidosos", None):
+                        self.conferencia.registrar(
+                            ficha, material=txt or fname,
+                            documentos=self.duvidosos, refs_locais=refs,
+                        )
                     yield from _flush()
 
                 except Exception as e:
@@ -2838,3 +2972,5 @@ class AutoSpecCore:
                     yield from _flush()
 
         yield from _flush()
+        for linha in autospec_conferencia.resumo_para_console(self.conferencia):
+            yield linha
