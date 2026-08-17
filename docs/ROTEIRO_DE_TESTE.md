@@ -228,6 +228,34 @@ Abra a ficha `.xlsx` e confira, nessa ordem:
 3. **Algum campo que estava preenchido foi apagado?** Não pode acontecer.
 4. **Os dropdowns** (Origem, Tipo, Unidade) ficaram com opção válida?
 
+### 3b.2 — A conferência de documentos, e o `.txt` que a salva
+
+A seção **5. Conferência de documentos** lista os links que citam o fabricante
+**ou** o código, mas não os dois. O programa não tem como decidir: pode ser o
+datasheet certo num distribuidor, pode ser outro produto. Quem decide é você,
+abrindo o link.
+
+**O que testar** (é o que mudou em 2026-08-17, depois do seu relato de que
+fechar o app perdia a conferência):
+
+| # | O que fazer | Esperado |
+|---|---|---|
+| 1 | Terminar um lote que gere duvidosos | No console: `Conferencia salva em: ...\CONFERENCIA_AUTOSPEC_<data>_<hora>.txt` — **ele salva sozinho**, sem você clicar |
+| 2 | Abrir esse `.txt` (fica na pasta do `_STATUS_PMIB`) | Cabeçalho explicando o uso, e um bloco por ficha com `FICHA:`, `MATERIAL:` e os links em `[ ]` |
+| 3 | Marcar alguns com `[x]` no Bloco de Notas e salvar | — |
+| 4 | **Fechar o aplicativo inteiro** e abrir de novo | A seção 5 aparece vazia, dizendo para importar |
+| 5 | Seção 1 → escolher o `_STATUS_PMIB`; seção 5 → **IMPORTAR CONFERÊNCIA (.txt)** | Os links voltam **já com as suas marcações** |
+| 6 | **PROCESSAR OS DOCUMENTOS MARCADOS** | Só os marcados são baixados; a ficha é preenchida e salva |
+
+**Erros que valem anotar:**
+
+| Se aparecer | Significa |
+|---|---|
+| `AVISO: nao encontrei a ficha ...` | O `.txt` é de outra máquina, ou a planilha mudou de pasta |
+| `Selecione o arquivo _STATUS_PMIB (seção 1)` ao processar | Esperado depois de reabrir o app — o `.txt` traz os links, não a planilha de status |
+| Marcações voltando **desmarcadas** na importação | **Me avise**: é o bug que este recurso existe para não ter |
+| Um `.txt` sobrescrevendo o anterior | **Me avise**: o nome leva data e hora justamente para não acontecer |
+
 ---
 
 ## Etapa 4 — Portal, motor ATUAL (Selenium) — 15 min

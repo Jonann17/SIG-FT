@@ -968,6 +968,13 @@ def _resultado_e_relevante(termos, title, snippet, link):
     """
     if not termos:
         return True
+    # Uma string e iteravel, e iterar "WAGO" da 'W','A','G','O' — termos de 1
+    # caractere nunca casam, entao o fabricante "sumia" e TODO resultado caia
+    # em `duvidoso`, em silencio. Nenhum chamador de hoje passa string (ver
+    # `_tokens_ancora_fabricante`); isto e blindagem, e apareceu justamente
+    # quando eu mesmo escrevi a chamada errada num roteiro de verificacao.
+    if isinstance(termos, str):
+        termos = [termos]
 
     alvo = _normalizar_texto_busca(f"{title} {snippet} {link}")
     alvo_compacto = _compactar_codigo(alvo)

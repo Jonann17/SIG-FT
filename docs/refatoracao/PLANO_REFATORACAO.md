@@ -536,13 +536,15 @@ informações necessárias da ficha original; replicar essas informações na fi
 - **CP 7.3 — Quebrar `frontend.py` em `app/views/*.py`.** ⛔ **CONGELADO desde 2026-08-11.**
 >
 > 🆕 **2026-08-13 — o `ModuloAutoSpec` cresceu.** Ganhou a seção *Conferência de documentos*:
-> 4 métodos com prefixo `_conferencia`/`_build_conferencia` e 5 atributos, sob um
+> 6 métodos com prefixo `_conferencia`/`_build_conferencia` e 7 atributos, sob um
 > comentário-cabeçalho que explica o contrato. **Mova o bloco inteiro junto com a classe** — ele
 > não é reaproveitável por outra tela. A lógica está fora, em
 > `sigft/services/autospec_conferencia.py`, justamente para que este checkpoint só precise mover
-> widget. Leve junto o `_novo_core()`, que os dois workers da tela compartilham, e as duas linhas
-> fora da classe: `import webbrowser` e a chave `COLORS["warning"]`.
-> Detalhes em `docs/refatoracao/TRABALHO_PARALELO.md` §3.1.
+> widget. Leve junto o `_novo_core()`, que os dois workers da tela compartilham, e as três linhas
+> fora da classe: `import webbrowser`, o import de `autospec_conferencia` e a chave
+> `COLORS["warning"]`. Dois invariantes da seção têm teste por AST
+> (`tests/test_autospec_conferencia_tela.py`) e quebram se a ordem das chamadas do `_worker`
+> mudar. Detalhes em `docs/refatoracao/TRABALHO_PARALELO.md` §3.1.
   Uma view por arquivo; `app/main.py` monta sidebar e registra views; splash simplificada.
   *Aceite*: `python -m sigft.app.main` abre o app idêntico ao atual; `frontend.py` vira shim.
 

@@ -23,6 +23,10 @@ from sigft import config as sigft_config
 from sigft.core.llm import catalogo
 from sigft.core.llm import selecao
 from sigft.core.llm import usage as llm_usage
+# Conferencia de documentos duvidosos (AutoSpec). Fora do carregamento
+# preguicoso do splash de proposito: o modulo so usa `os`, `re` e `datetime`,
+# nao puxa pandas/selenium/IA, e a secao precisa dele ja na montagem da tela.
+from sigft.services import autospec_conferencia as conferencia_txt
 
 # --- VARIÁVEIS GLOBAIS DOS BACKENDS (Inicialmente None) ---
 # Isso evita erro de "NameError" nas classes antes do carregamento
@@ -3076,13 +3080,14 @@ class ModuloAutoSpec(ctk.CTkFrame):
     # =========================================================================
     # ⚠️ LEIA ANTES DE MEXER — CP 7.3 (quebrar frontend.py em app/views/*.py)
     #
-    # Este bloco é AUTOCONTIDO de propósito: são 4 métodos com prefixo
-    # `_conferencia`/`_build_conferencia` + 5 atributos (`self.conferencia`,
+    # Este bloco é AUTOCONTIDO de propósito: são 6 métodos com prefixo
+    # `_conferencia`/`_build_conferencia` + 7 atributos (`self.conferencia`,
     # `self.marcados_conf`, `self.frm_conf`, `self.lista_conf`,
-    # `self.btn_conf`). Nada fora daqui depende deles, e eles não dependem de
-    # nada fora da própria classe — a única amarração com o resto de
-    # `ModuloAutoSpec` é a chamada de `_conferencia_mostrar` no fim do
-    # `_worker` e o `_novo_core()`, que os dois workers compartilham.
+    # `self.btn_conf`, `self.btn_conf_salvar`, `self.btn_conf_importar`).
+    # Nada fora daqui depende deles, e eles não dependem de nada fora da
+    # própria classe — a única amarração com o resto de `ModuloAutoSpec` é a
+    # chamada de `_conferencia_mostrar` no fim do `_worker` e o
+    # `_novo_core()`, que os dois workers compartilham.
     #
     # Para o CP 7.3: mova o bloco INTEIRO junto com `ModuloAutoSpec`, sem
     # tentar separar. A lógica já está fora daqui, em
@@ -3095,10 +3100,17 @@ class ModuloAutoSpec(ctk.CTkFrame):
     # porque a URL continha o código do material; no mesmo lote um datasheet
     # legítimo foi barrado por não citar a marca no título. Indistinguíveis
     # para o programa, triviais para quem abre o link.
+    #
+    # POR QUE ELA NÃO SE ESCONDE MAIS (2026-08-17): a lista morria junto com
+    # o aplicativo, e foi exatamente o que o Luan relatou — conferir 20 links
+    # não cabe numa sessão. Salvar/importar `.txt` resolve, mas o botão de
+    # IMPORTAR precisa estar visível ANTES de existir conferência nenhuma,
+    # que é a situação de quem reabriu o app no dia seguinte. Por isso a
+    # seção fica sempre montada, com um estado vazio no lugar da lista.
     # =========================================================================
     def _build_conferencia(self):
-        """Monta a seção, inicialmente escondida. Só aparece quando o lote
-        termina com documentos duvidosos."""
+        """Monta a seção. Fica sempre visível: sem nada a conferir, mostra o
+        estado vazio e só o botão de importar funciona."""
         self.conferencia = None
         self.marcados_conf = {}
 
@@ -3116,7 +3128,9 @@ class ModuloAutoSpec(ctk.CTkFrame):
             text=(
                 "Estes documentos citam o fabricante OU o código, mas não os dois — "
                 "podem ser o datasheet certo num distribuidor, ou a página de outro "
-                "produto. Abra o link, confira, e marque os que são deste material."
+                "produto. Abra o link, confira, e marque os que são deste material.\n"
+                "Não precisa terminar agora: salve em .txt e importe depois para "
+                "continuar de onde parou."
             ),
         ).pack(anchor="w", padx=15, pady=(0, 8))
 
@@ -3124,6 +3138,21 @@ class ModuloAutoSpec(ctk.CTkFrame):
             self.frm_conf, height=190, fg_color="#1E1E1E"
         )
         self.lista_conf.pack(fill="x", padx=15, pady=(0, 10))
+
+        linha_btns = ctk.CTkFrame(self.frm_conf, fg_color="transparent")
+        linha_btns.pack(fill="x", padx=20, pady=(0, 8))
+        self.btn_conf_salvar = ctk.CTkButton(
+            linha_btns, text="SALVAR CONFERÊNCIA (.txt)", height=32,
+            command=self._conferencia_salvar, font=("Roboto", 12),
+            fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"],
+        )
+        self.btn_conf_salvar.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        self.btn_conf_importar = ctk.CTkButton(
+            linha_btns, text="IMPORTAR CONFERÊNCIA (.txt)", height=32,
+            command=self._conferencia_importar, font=("Roboto", 12),
+            fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"],
+        )
+        self.btn_conf_importar.pack(side="left", fill="x", expand=True, padx=(5, 0))
 
         self.btn_conf = ctk.CTkButton(
             self.frm_conf, text="PROCESSAR OS DOCUMENTOS MARCADOS",
@@ -3133,21 +3162,32 @@ class ModuloAutoSpec(ctk.CTkFrame):
             text_color="#FFFFFF",
         )
         self.btn_conf.pack(fill="x", padx=20, pady=(0, 15))
-        # `pack_forget` e não `destroy`: a seção volta a aparecer no próximo
-        # lote sem precisar ser reconstruída.
-        self.frm_conf.pack_forget()
+        self.frm_conf.pack(fill="x", pady=10)
+        self._conferencia_mostrar(None)
 
-    def _conferencia_mostrar(self, conferencia):
-        """Preenche a lista com as pendências do lote que acabou."""
+    def _conferencia_mostrar(self, conferencia, marcados=None):
+        """Preenche a lista. `marcados` vem do `.txt` importado — é o que faz
+        a conferência retomada nascer com o que já tinha sido conferido."""
         self.conferencia = conferencia
         self.marcados_conf = {}
         for w in self.lista_conf.winfo_children():
             w.destroy()
 
+        estado = "normal" if conferencia else "disabled"
+        self.btn_conf.configure(state=estado)
+        self.btn_conf_salvar.configure(state=estado)
+
         if not conferencia:
-            self.frm_conf.pack_forget()
+            ctk.CTkLabel(
+                self.lista_conf, justify="left", anchor="w", text_color="gray",
+                font=("Roboto", 11), wraplength=650,
+                text=("Nenhuma conferência pendente.\n\n"
+                      "Se você salvou uma conferência anterior em .txt, use "
+                      "IMPORTAR CONFERÊNCIA para continuar de onde parou."),
+            ).pack(anchor="w", padx=10, pady=10)
             return
 
+        marcados = marcados or {}
         for i_pend, pendencia in enumerate(conferencia.pendencias):
             ctk.CTkLabel(
                 self.lista_conf, text=f"📄 {pendencia.nome_curto}  —  {pendencia.material[:60]}",
@@ -3158,7 +3198,7 @@ class ModuloAutoSpec(ctk.CTkFrame):
                 linha = ctk.CTkFrame(self.lista_conf, fg_color="transparent")
                 linha.pack(fill="x", padx=6, pady=1)
 
-                var = ctk.BooleanVar(value=False)
+                var = ctk.BooleanVar(value=bool(marcados.get((i_pend, i_doc))))
                 self.marcados_conf[(i_pend, i_doc)] = var
                 ctk.CTkCheckBox(
                     linha, text="", variable=var, width=24,
@@ -3176,11 +3216,78 @@ class ModuloAutoSpec(ctk.CTkFrame):
                     command=lambda u=url: webbrowser.open(u),
                 ).pack(side="left", fill="x", expand=True)
 
-        self.frm_conf.pack(fill="x", pady=10)
+    def _conferencia_salvar(self, automatico=False):
+        """Grava a aba num `.txt` na pasta do `_STATUS_PMIB`.
+
+        `automatico=True` é a gravação que acontece sozinha quando o lote
+        termina. O botão só protege quem lembra de clicar nele, e o relato
+        que originou isto foi de alguém que precisou fechar o aplicativo no
+        meio da conferência.
+        """
+        if not self.conferencia:
+            if not automatico:
+                messagebox.showinfo("Conferência", "Não há conferência para salvar.")
+            return None
+        marcados = {chave: var.get() for chave, var in self.marcados_conf.items()}
+        try:
+            caminho = conferencia_txt.salvar_txt(
+                self.conferencia, self.status_pmib_path, marcados
+            )
+        except Exception as e:
+            self.log(f"Nao consegui salvar o .txt da conferencia: {e}")
+            if not automatico:
+                messagebox.showerror("Conferência", f"Não consegui salvar:\n{e}")
+            return None
+        self.log(f"Conferencia salva em: {caminho}")
+        if not automatico:
+            messagebox.showinfo("Conferência", f"Conferência salva em:\n{caminho}")
+        return caminho
+
+    def _conferencia_importar(self):
+        """Retoma uma conferência salva — inclusive de outra sessão do app."""
+        caminho = file_dialogs.ask_open_file(
+            "autospec.conferencia", "txt",
+            titulo="Selecione o .txt da conferência",
+            filetypes=[("Texto", "*.txt"), ("Todos", "*.*")],
+        )
+        if not caminho:
+            return
+        try:
+            conferencia, marcados = conferencia_txt.carregar_txt(caminho)
+        except Exception as e:
+            return messagebox.showerror("Conferência", f"Não consegui ler o arquivo:\n{e}")
+        if not conferencia:
+            return messagebox.showwarning(
+                "Conferência",
+                "Não encontrei nenhum documento neste arquivo.\n\n"
+                "Ele precisa ter as linhas 'FICHA:' e os links marcados com [ ] ou [x].",
+            )
+
+        self._conferencia_mostrar(conferencia, marcados)
+        self.log(f"Conferencia importada de: {caminho}")
+        self.log(f" -> {conferencia.total_documentos} documento(s) em "
+                 f"{len(conferencia.pendencias)} ficha(s).")
+        ausentes = conferencia_txt.fichas_ausentes(conferencia)
+        for ficha in ausentes:
+            self.log(f" -> AVISO: nao encontrei a ficha {ficha}")
+        if ausentes:
+            messagebox.showwarning(
+                "Conferência",
+                f"{len(ausentes)} ficha(s) não estão mais no caminho gravado no "
+                "arquivo.\nElas vão falhar no processamento — veja o console.",
+            )
 
     def _conferencia_processar(self):
         if not self.conferencia:
             return
+        # Guard que vale sobretudo para a conferência IMPORTADA: quem reabriu
+        # o aplicativo tem a lista de links, mas ainda não escolheu o
+        # _STATUS_PMIB — e a 2ª passada lê a planilha de status ficha a ficha.
+        if not self.status_pmib_path:
+            return messagebox.showerror(
+                "Erro", "Selecione o arquivo _STATUS_PMIB (seção 1) antes de "
+                        "processar a conferência."
+            )
         marcados = {chave: var.get() for chave, var in self.marcados_conf.items()}
         selecao = self.conferencia.selecao_por_ficha(marcados)
         if not selecao:
@@ -3198,8 +3305,11 @@ class ModuloAutoSpec(ctk.CTkFrame):
             for msg in core.processar_conferidos(selecao, self.status_pmib_path):
                 self.log(msg)
             self.log("Conferência processada!")
+            # A lista FICA na tela: o que não foi marcado continua duvidoso, e
+            # limpar aqui repetiria a perda que o .txt veio consertar.
+            self.log("Os documentos nao marcados continuam na lista. Se for parar "
+                     "agora, use SALVAR CONFERENCIA (.txt).")
             messagebox.showinfo("Sucesso", "Documentos conferidos processados.")
-            self.frm_conf.pack_forget()
         except Exception as e:
             self.log(f"ERRO na conferência: {e}")
         finally:
@@ -3291,8 +3401,14 @@ class ModuloAutoSpec(ctk.CTkFrame):
             messagebox.showinfo("Sucesso", "Todas as tarefas da fila foram processadas.")
             self.queue = []
             self.update_queue_ui()  # Nota: idealmente via callback seguro, mas ctk aguenta na maioria dos casos
-            # Conferência humana: só aparece se sobrou dúvida (2026-08-13).
-            self._conferencia_mostrar(getattr(core, "conferencia", None))
+            # Conferência humana: só lista se sobrou dúvida (2026-08-13).
+            conferencia = getattr(core, "conferencia", None)
+            self._conferencia_mostrar(conferencia)
+            # Salva sozinho (2026-08-17). A ordem importa: `_mostrar` acima
+            # zera as marcações, então o .txt sai coerente com a lista nova, e
+            # não com as marcas do lote anterior.
+            if conferencia:
+                self._conferencia_salvar(automatico=True)
 
         except Exception as e:
             self.log(f"ERRO FATAL: {e}")

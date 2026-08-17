@@ -114,7 +114,7 @@ legítimo foi barrado por não citar a marca no título. Indistinguíveis para o
 | | |
 |---|---|
 | **Onde está** | `frontend.py`, dentro de `class ModuloAutoSpec`, sob o comentário-cabeçalho `CONFERÊNCIA DE DOCUMENTOS DUVIDOSOS` |
-| **O que é** | 4 métodos (`_build_conferencia`, `_conferencia_mostrar`, `_conferencia_processar`, `_conferencia_worker`) + 5 atributos (`self.conferencia`, `self.marcados_conf`, `self.frm_conf`, `self.lista_conf`, `self.btn_conf`) |
+| **O que é** | 6 métodos (`_build_conferencia`, `_conferencia_mostrar`, `_conferencia_salvar`, `_conferencia_importar`, `_conferencia_processar`, `_conferencia_worker`) + 7 atributos (`self.conferencia`, `self.marcados_conf`, `self.frm_conf`, `self.lista_conf`, `self.btn_conf`, `self.btn_conf_salvar`, `self.btn_conf_importar`) |
 | **Acoplamento com o resto do arquivo** | **nenhum.** Nada fora da classe usa esses nomes. Dentro da classe são dois pontos só: `_build_conferencia()` no fim do `setup_ui` e `_conferencia_mostrar(...)` na última linha do `_worker` |
 | **`_novo_core()`** | método novo, extraído do `_worker`: monta o `AutoSpecCore` com as chaves e opções da tela. Os **dois** workers (fila e conferência) chamam ele. Se você mover só um, quebra o outro |
 | **Como mover** | **em bloco, junto com a classe.** Não tente separar o bloco da tela — ele não é reaproveitável, é desenho de widget desta tela específica |
@@ -124,13 +124,27 @@ Isso foi feito de propósito para o CP 7.3: quando você mover `ModuloAutoSpec`,
 só construção de widget, que é exatamente o que o checkpoint quer mover. Nenhuma regra de
 negócio viaja com ele.
 
-**Duas coisas fora da classe** que a seção precisa, e que você pode encontrar no diff:
+**Três coisas fora da classe** que a seção precisa, e que você pode encontrar no diff:
 
 1. `import webbrowser` no topo do `frontend.py` — o link da conferência abre no navegador.
-2. `COLORS["warning"] = "#FFA726"` — **aditivo**, nenhuma cor existente mudou.
+2. `from sigft.services import autospec_conferencia as conferencia_txt` — o serviço que
+   salva/lê o `.txt`. **Fora do carregamento preguiçoso do splash de propósito:** o módulo só
+   usa `os`/`re`/`datetime`, não puxa pandas nem selenium, e a seção precisa dele já na
+   montagem da tela.
+3. `COLORS["warning"] = "#FFA726"` — **aditivo**, nenhuma cor existente mudou.
 
-Se o CP 7.3 for executado antes do merge desta frente, estas são as duas linhas que também
+Se o CP 7.3 for executado antes do merge desta frente, estas são as três linhas que também
 precisam viajar (ou ser reintroduzidas no arquivo novo).
+
+**Dois invariantes da seção têm teste** (`tests/test_autospec_conferencia_tela.py`, por AST
+sobre o fonte, já que `frontend.py` não é importável). Se você mover o bloco e eles ficarem
+vermelhos, não é o teste que está errado:
+
+- **`_worker` chama `_conferencia_mostrar` ANTES de `_conferencia_salvar`.** O salvamento lê
+  `self.marcados_conf`, e é `_mostrar` quem recria a grade; invertido, o `.txt` automático sai
+  com as marcações do lote anterior — arquivo plausível e errado.
+- **A seção nunca faz `pack_forget`.** O botão IMPORTAR precisa existir na tela de quem acabou
+  de abrir o aplicativo e ainda não processou nada — é justamente quem mais precisa dele.
 
 ⚠️ **CP 7.1 e CP 7.2** — `theme.py`/`console.py`/`module_frame.py` e `pickers.py`/`dialogs.py`.
 Reescrevem widgets que o `ModuloAutoSpec` usa (console, seletores de arquivo). Podem ser
