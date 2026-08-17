@@ -74,7 +74,10 @@ sufixo passa, então:
   como colisão — se o portal reclamar de outra coisa, tentar mais 20 sufixos
   esconde o erro de verdade e deixa lixo no campo;
 - há **teto de 20 tentativas** (⚠️ **decisão minha**, não do usuário): sem
-  teto, um portal que rejeite tudo faz o robô tentar para sempre.
+  teto, um portal que rejeite tudo faz o robô tentar para sempre;
+- **esgotado o teto**: *"apenas notificar que não foi possível colocar a
+  referência"* — não aborta a ficha nem desfaz o que já foi preenchido; vira
+  pendência manual, como os campos rejeitados de `tech_specs`.
 
 **Fornecedor:**
 
@@ -96,11 +99,10 @@ sufixo passa, então:
 - manter só **`3626 - CODIGO PMIB`**, apagar as outras 3;
 - preencher com o código da ficha **original**, lido de `OBSERVAÇÕES`.
 
-⚠️ **Leitura minha:** o usuário não disse se a célula de `OBSERVAÇÕES` contém
-**só** o código ou um texto com o código no meio. `extrair_ficha_original()`
-aceita os dois (procura o padrão `##########.####` em qualquer posição) porque
-o primeiro caso é subconjunto do segundo. **Se a célula puder ter dois
-códigos, a função devolve o primeiro** — confirmar antes de rodar em lote.
+✅ **Confirmado:** *"Haverá sempre só um código nessa estrutura; às vezes pode
+ter mais texto, mas haverá apenas um código se o PDM for o correto."*
+`extrair_ficha_original()` procura o padrão `##########.####` em qualquer
+posição do texto, que é exatamente esse caso.
 
 ### 3.3 Documentos e imagens
 
@@ -110,8 +112,19 @@ códigos, a função devolve o primeiro** — confirmar antes de rodar em lote.
 > associar os documentos e digitar exatamente o que foi anexado na ficha
 > original."*
 
-- **imagens**: copiar da original e colar (⚠️ o mecanismo — download/upload ou
-  clipboard — precisa ser visto na tela; muda completamente a implementação);
+- **imagens** — mecanismo confirmado: *"clicar na figura, dar copiar na figura,
+  ir na ficha que você quer, clicar em adicionar imagem e colar no campo que
+  abre"*. Descrição (ES e PT): a **descrição do item**, do `_STATUS_PMIB`, a
+  mesma nos dois idiomas.
+
+  ⚠️ **Para o robô a recomendação é OUTRA, e o motivo é técnico.** Colar imagem
+  da área de transferência num campo de upload é a operação menos confiável de
+  automação de navegador — depende do sistema operacional, do foco da janela e
+  de o navegador aceitar `paste` sintético. O diálogo "Adicionar Imagens" aceita
+  **arquivo** (*"Arraste e solte arquivos aqui ou Adicione"*) e toda imagem no
+  portal tem URL. Então: **baixar da original e subir na duplicada** — mesmo
+  resultado, sem clipboard no caminho. Limite declarado pelo próprio diálogo:
+  **10 arquivos por envio**;
 - **documentos**: não se sobe arquivo. O documento **já existe** como objeto
   no portal; associa-se pelo diálogo *"Selecionar Documentos"*, buscando pela
   descrição exata da original. A busca é textual e o diálogo é paginado (809
@@ -120,15 +133,48 @@ códigos, a função devolve o primeiro** — confirmar antes de rodar em lote.
 
 ### 3.4 Condições
 
-> *"Na seção de condições, copiar todos os dados em todas as seções, com
-> exceção da parte financeira."*
+> *"Copiar todos os dados em todas as seções, com exceção da parte
+> financeira."* + *"Condições financeira é uma seção interna dentro das
+> condições."*
 
-🔴 **BLOQUEADA até especificação campo a campo.** O usuário disse o que **não**
-copiar, mas não disse **quais campos** compõem "a parte financeira" na tela de
-Condições. Copiar dado financeiro de uma ficha para outra é erro caro e
-**silencioso** — a ficha fica plausível e errada.
+✅ **Desbloqueada.** A segunda frase mudou tudo: "Financeira" é uma **aba**, não
+um conjunto de campos espalhados. A exclusão é nomeável e verificável — o robô
+simplesmente não entra naquela aba, e não existe lista para levantar.
 
-`SECOES_BLOQUEADAS_ATE_CONFIRMACAO` mantém isso explícito no código, com teste.
+**As abas têm nomes e CONTAGEM diferentes nos dois modos**, e isso não é
+detalhe de levantamento:
+
+| Modo | Abas |
+|---|---|
+| **Edição** (5) | Condições de armazenamento · **Condições financeiras** · Condições de transporte e movimentação · Condições de manutenção · Condições de descarte |
+| **Visualização** (3) | Armazenamento e transporte · **Financeira** · Manutenção e descarte |
+
+O extrator lê do modo **visualização** (§3.5) e o injetor escreve no modo
+**edição**, então os dois conjuntos existem no código. `e_aba_financeira()`
+reconhece as duas grafias por substring (`financeir`), porque errar para o lado
+de reconhecer é o lado seguro: um falso positivo deixa de copiar uma aba; um
+falso negativo **copia dado financeiro** — e esse erro fica plausível na tela.
+
+### 3.5 De onde se LÊ a ficha original — decisão de arquitetura
+
+> *"A ficha original é sempre encontrável, mas pode variar dentro do portal se
+> ela está em Elaboração, ou se está em Análise, ou demais campos."* +
+> *"acho que é melhor sempre fazermos o webscraping de como abrimos a ficha no
+> modo de visualização (pq nem sempre estará em Em Elaboração)."*
+
+**É o que separa este módulo do `upload_conditions`.** Aquele lê e escreve na
+ficha em **edição**, com `<input>`/`<textarea>`/`<select>`. A ficha original de
+uma duplicação raramente está em elaboração — na tela levantada estava *"Em
+Análise ITAIPU"* — e nesse estado o portal mostra os valores como **texto**.
+
+Um extrator que procure `input[value]` **não acha nada e devolve ficha vazia,
+sem erro**. Por isso `MODO_LEITURA_ORIGINAL = "visualizacao"` está no código,
+com teste — é uma armadilha silenciosa e barata de cair.
+
+A busca da original também **não pode assumir aba de status**: o portal separa
+a lista em 7 (`Em Elaboração`, `Para enviar à ITAIPU`, `Em Análise ITAIPU`,
+`Rejeitado pela ITAIPU`, `Aprovado parcialmente IB`, `Aprovado pela ITAIPU`,
+`Cancelado`) e a original pode estar em qualquer uma.
 
 ---
 
@@ -136,16 +182,26 @@ Condições. Copiar dado financeiro de uma ficha para outra é erro caro e
 
 Nenhuma impede começar; todas impedem **rodar em lote sem conferir**.
 
-1. **Condições — quais campos são "a parte financeira"?** Lista campo a campo,
-   contra a tela. É a única que bloqueia uma seção inteira.
-2. **Imagens — como se copia?** Baixar da original e subir na duplicada, ou
-   existe "copiar/colar" no portal? Muda a implementação inteira do 6.4.
-3. **`OBSERVAÇÕES` pode ter mais de um código?** Se sim, qual vale.
-4. **O que fazer quando as 20 tentativas de referência se esgotam?** Hoje o
-   plano é: parar, registrar pendência manual e seguir para a próxima ficha —
-   nunca salvar com referência errada. Confirmar.
-5. **A ficha original é sempre encontrável pelo código de `OBSERVAÇÕES`?**
-   E se ela não existir mais no portal?
+**As 5 de 2026-08-11 foram respondidas** e estão incorporadas acima:
+
+| # | Pergunta | Resposta |
+|---|---|---|
+| 1 | Quais campos são "a parte financeira"? | É uma **aba** — §3.4 |
+| 2 | Como se copiam as imagens? | Copiar/colar a figura; para o robô, baixar+subir — §3.3 |
+| 3 | `OBSERVAÇÕES` pode ter mais de um código? | *"Haverá sempre só um código nessa estrutura"* |
+| 4 | Esgotadas as 20 tentativas? | *"Apenas notificar que não foi possível colocar a referência"* — não aborta |
+| 5 | A original é sempre encontrável? | Sim, mas em **qualquer status** — §3.5 |
+
+Ficam duas, agora técnicas e não de negócio:
+
+1. **O `<input type=file>` do diálogo "Adicionar Imagens" é alcançável?** Se
+   sim, o Playwright preenche direto com `set_input_files`, sem simular
+   arraste. Se estiver escondido atrás de um componente próprio, o CP 6.4
+   precisa de outra abordagem.
+2. **Os seletores do combo de fabricante e do diálogo de documentos.** São os
+   dois componentes com comportamento próprio (busca embutida, paginação de
+   162 páginas). `playwright codegen` no fluxo real resolve em minutos e vale
+   mais que qualquer descrição.
 
 ---
 
@@ -153,14 +209,16 @@ Nenhuma impede começar; todas impedem **rodar em lote sem conferir**.
 
 | Parte | Onde | Estado |
 |---|---|---|
-| Identificação por PDM + colunas | `services/duplicadas_spec.py` | ✅ CP 6.1, 24 testes |
+| Identificação por PDM + colunas | `services/duplicadas_spec.py` | ✅ CP 6.1, 58 testes |
 | Sequência `'D` + detecção de colisão | `services/duplicadas_spec.py` | ✅ CP 6.1 |
 | Código da ficha original | `services/duplicadas_spec.py` | ✅ CP 6.1 |
 | Tela de seleção das fichas | `frontend.py` | ☐ CP 6.2 |
 | Extração da ficha original | novo serviço | ☐ CP 6.2 |
 | Injeção (fabricante, características) | novo serviço | ☐ CP 6.3 |
 | Documentos e imagens | novo serviço | ☐ CP 6.4 |
-| Condições | — | 🔴 bloqueada (pergunta 1) |
+| Abas de Condições (exclui a Financeira) | `services/duplicadas_spec.py` | ✅ CP 6.1 |
+| Modo de leitura + abas de status | `services/duplicadas_spec.py` | ✅ CP 6.1 |
+| Descrição/limite das imagens | `services/duplicadas_spec.py` | ✅ CP 6.1 |
 
 O módulo antigo (`services/ficha_duplicada.py`) continua **intocado e
 funcionando em Selenium** até a reconstrução terminar. É também o último

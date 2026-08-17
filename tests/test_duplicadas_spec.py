@@ -154,18 +154,107 @@ def test_texto_sem_codigo_atravessa_para_o_rpa_tentar():
 
 
 # ===========================================================================
-# O bloqueio das Condições
+# Condições: a exclusão é uma ABA, não uma lista de campos
 # ===========================================================================
-def test_condicoes_esta_bloqueada_ate_a_lista_financeira_ser_confirmada():
-    """O usuário disse "copiar tudo, exceto a parte financeira" -- mas não
-    disse QUAIS campos são a parte financeira. Copiar dado financeiro de uma
-    ficha para outra é erro caro e silencioso; até a lista existir campo a
-    campo, esta seção não roda sozinha."""
-    assert "condicoes" in spec.SECOES_BLOQUEADAS_ATE_CONFIRMACAO
-    assert "condicoes" in spec.SECOES_A_REPLICAR  # continua no escopo, só não liberada
+# Esclarecido em 2026-08-11: "Condições financeira é uma seção interna dentro
+# das condições". Isso desbloqueou a seção -- a primeira leitura era "existe
+# uma lista de campos financeiros espalhados", que exigiria levantamento campo
+# a campo.
+
+@pytest.mark.parametrize("nome", [
+    "Condições financeiras",   # nome no modo EDIÇÃO
+    "Financeira",              # nome no modo VISUALIZAÇÃO
+    "financeiras", "FINANCEIRA", "Condicoes financeiras",  # sem acento, caixa
+])
+def test_reconhece_a_aba_financeira_nos_dois_modos(nome):
+    assert spec.e_aba_financeira(nome) is True
 
 
-def test_as_outras_tres_secoes_nao_estao_bloqueadas():
-    liberadas = set(spec.SECOES_A_REPLICAR) - set(spec.SECOES_BLOQUEADAS_ATE_CONFIRMACAO)
+@pytest.mark.parametrize("nome", [
+    "Condições de armazenamento", "Armazenamento e transporte",
+    "Condições de manutenção", "Manutenção e descarte",
+    "Condições de descarte", "", None,
+])
+def test_nao_confunde_as_outras_abas_com_a_financeira(nome):
+    """Um falso positivo deixa de copiar uma aba; um falso NEGATIVO copia dado
+    financeiro de uma ficha para outra -- e esse fica plausível na tela e
+    ninguém confere. Por isso a lista das outras abas é testada nominalmente."""
+    assert spec.e_aba_financeira(nome) is False
 
-    assert liberadas == {"fabricantes_fornecedores", "caracteristicas_tecnicas", "documentos_imagens"}
+
+def test_a_financeira_fica_fora_da_copia_no_modo_visualizacao():
+    copiar = spec.abas_de_condicoes_a_copiar("visualizacao")
+
+    assert copiar == ("Armazenamento e transporte", "Manutenção e descarte")
+    assert spec.ABA_CONDICOES_FINANCEIRA_VISUALIZACAO not in copiar
+
+
+def test_a_financeira_fica_fora_da_copia_no_modo_edicao():
+    copiar = spec.abas_de_condicoes_a_copiar("edicao")
+
+    assert len(copiar) == 4
+    assert spec.ABA_CONDICOES_FINANCEIRA_EDICAO not in copiar
+
+
+def test_os_dois_modos_tem_contagem_de_abas_DIFERENTE():
+    """Não é erro de levantamento: o portal agrupa as Condições em 5 abas na
+    edição e em 3 na visualização. O extrator lê de um lado e o injetor
+    escreve no outro, então confundir os dois conjuntos daria "aba não
+    encontrada" no meio do fluxo."""
+    assert len(spec.ABAS_CONDICOES_EDICAO) == 5
+    assert len(spec.ABAS_CONDICOES_VISUALIZACAO) == 3
+
+
+def test_condicoes_nao_esta_mais_bloqueada():
+    assert spec.SECOES_BLOQUEADAS_ATE_CONFIRMACAO == ()
+    assert "condicoes" in spec.SECOES_A_REPLICAR
+
+
+# ===========================================================================
+# Ler a original em modo VISUALIZAÇÃO
+# ===========================================================================
+def test_a_leitura_da_original_e_no_modo_visualizacao():
+    """Decisão de arquitetura, não conveniência: a ficha original raramente
+    está "Em Elaboração" (na tela levantada estava "Em Análise ITAIPU"), e
+    nesse estado o portal mostra os valores como TEXTO, não como campo. Um
+    extrator que procure `input[value]`, como faz o `upload_conditions`, não
+    acha nada e devolve ficha vazia SEM ERRO."""
+    assert spec.MODO_LEITURA_ORIGINAL == "visualizacao"
+
+
+def test_a_busca_nao_pode_assumir_uma_aba_de_status():
+    # A original pode estar em qualquer um dos 7 status da lista.
+    assert len(spec.ABAS_DE_STATUS_DA_LISTA) == 7
+    for status in ("Em Elaboração", "Em Análise ITAIPU", "Aprovado pela ITAIPU", "Cancelado"):
+        assert status in spec.ABAS_DE_STATUS_DA_LISTA
+
+
+# ===========================================================================
+# Imagens
+# ===========================================================================
+def test_imagens_vao_por_ARQUIVO_e_nao_por_area_de_transferencia():
+    """O fluxo manual é copiar/colar a figura. Para o robô a recomendação é
+    outra, e o motivo é técnico: colar imagem da área de transferência num
+    campo de upload depende do sistema operacional, do foco da janela e de o
+    navegador aceitar `paste` sintético. O diálogo aceita arquivo e toda imagem
+    do portal tem URL -- baixar e subir dá o mesmo resultado sem clipboard no
+    caminho."""
+    assert spec.IMAGENS_VIA_ARQUIVO is True
+
+
+def test_o_limite_de_arquivos_por_envio_e_o_que_o_dialogo_declara():
+    assert spec.MAX_IMAGENS_POR_ENVIO == 10
+
+
+def test_a_descricao_da_imagem_e_a_mesma_nos_dois_idiomas():
+    """Foi o que o usuário especificou: a descrição do item, que no
+    `_STATUS_PMIB` é UMA coluna. Traduzir por conta própria seria inventar
+    dado."""
+    assert spec.descricao_das_imagens("FONTE, ALIMENTACAO") == {
+        "es": "FONTE, ALIMENTACAO", "pt": "FONTE, ALIMENTACAO",
+    }
+
+
+def test_descricao_vazia_devolve_none():
+    for vazio in ("", "   ", None, "nan"):
+        assert spec.descricao_das_imagens(vazio) is None

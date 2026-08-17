@@ -147,16 +147,132 @@ SECOES_A_REPLICAR = (
 )
 
 # "Na seção de condições, copiar todos os dados em todas as seções, com
-# exceção da parte financeira."
+# exceção da parte financeira." + esclarecimento de 2026-08-11: "Condições
+# financeira é uma seção interna dentro das condições."
 #
-# ⚠️ ESTA É A REGRA MAIS PERIGOSA DO MÓDULO e a que está menos especificada:
-# o usuário disse o que NÃO copiar, mas não disse quais campos compõem "a
-# parte financeira" na tela de Condições. Copiar dado financeiro de uma ficha
-# para outra é erro caro e silencioso. Enquanto a lista não for confirmada
-# CAMPO A CAMPO contra a tela real, `condicoes` NÃO deve ser replicada
-# automaticamente -- ver `docs/refatoracao/FICHA_DUPLICADA.md`, seção
-# "Perguntas abertas".
-SECOES_BLOQUEADAS_ATE_CONFIRMACAO = ("condicoes",)
+# ISSO SIMPLIFICOU MUITO a regra, e vale registrar por quê: a primeira leitura
+# era "existe uma lista de campos financeiros espalhados pelas Condições", o
+# que exigiria enumerar campo a campo e deixaria a seção bloqueada até alguém
+# fazer esse levantamento. Não é isso: "Financeira" é uma ABA. A exclusão é
+# nomeável, verificável e não depende de nenhuma lista -- o robô simplesmente
+# não entra naquela aba.
+#
+# As abas têm nomes DIFERENTES nos dois modos da ficha, e isso não é detalhe:
+#   - modo EDIÇÃO (5 abas):     Condições de armazenamento | Condições
+#     financeiras | Condições de transporte e movimentação | Condições de
+#     manutenção | Condições de descarte
+#   - modo VISUALIZAÇÃO (3 abas): Armazenamento e transporte | Financeira |
+#     Manutenção e descarte
+# O extrator lê do modo VISUALIZAÇÃO (ver `MODO_LEITURA_*` abaixo) e o injetor
+# escreve no modo EDIÇÃO, então os dois conjuntos precisam existir.
+ABA_CONDICOES_FINANCEIRA_EDICAO = "Condições financeiras"
+ABA_CONDICOES_FINANCEIRA_VISUALIZACAO = "Financeira"
+
+ABAS_CONDICOES_EDICAO = (
+    "Condições de armazenamento",
+    ABA_CONDICOES_FINANCEIRA_EDICAO,
+    "Condições de transporte e movimentação",
+    "Condições de manutenção",
+    "Condições de descarte",
+)
+ABAS_CONDICOES_VISUALIZACAO = (
+    "Armazenamento e transporte",
+    ABA_CONDICOES_FINANCEIRA_VISUALIZACAO,
+    "Manutenção e descarte",
+)
+
+# Nada mais bloqueado: com a exclusão virando "não entre nesta aba", a seção
+# de Condições saiu do limbo. Mantido como tupla vazia (e não removido) porque
+# o mecanismo continua útil -- se aparecer outra regra com especificação
+# incompleta, é aqui que ela fica visível em vez de virar comportamento.
+SECOES_BLOQUEADAS_ATE_CONFIRMACAO = ()
+
+
+def e_aba_financeira(nome_da_aba):
+    """A aba é a financeira -- em qualquer um dos dois modos da ficha?
+
+    Comparação por SUBSTRING normalizada ("financeir" cobre "Condições
+    financeiras" e "Financeira", singular e plural, com e sem acento). Errar
+    para o lado de reconhecer é o lado seguro: um falso positivo deixa de
+    copiar uma aba, um falso negativo COPIA dado financeiro de uma ficha para
+    outra -- e esse erro fica plausível na tela e ninguém confere.
+    """
+    return "financeir" in _sem_acento(nome_da_aba or "").lower()
+
+
+def abas_de_condicoes_a_copiar(modo="visualizacao"):
+    """Abas de Condições que entram na duplicação, na ordem da tela."""
+    todas = ABAS_CONDICOES_VISUALIZACAO if modo == "visualizacao" else ABAS_CONDICOES_EDICAO
+    return tuple(aba for aba in todas if not e_aba_financeira(aba))
+
+
+# ---------------------------------------------------------------------------
+# 4. De onde se LÊ a ficha original
+# ---------------------------------------------------------------------------
+# "A ficha original é sempre encontrável, mas pode variar dentro do portal se
+# ela está em Elaboração, ou se está em Análise, ou demais campos." +
+# "acho que é melhor sempre fazermos o webscraping de como abrimos a ficha no
+# modo de visualização (pq nem sempre estará em Em Elaboração)".
+#
+# É uma decisão de ARQUITETURA, não de conveniência, e é o que separa este
+# módulo do `upload_conditions`: aquele lê e escreve na ficha em EDIÇÃO, com
+# `<input>`/`<textarea>`/`<select>`. A ficha ORIGINAL de uma duplicação
+# raramente está em elaboração -- na tela levantada ela estava "Em Análise
+# ITAIPU" --, e nesse estado o portal mostra os valores como TEXTO, não como
+# campo. Um extrator que procure `input[value]` não acha nada e devolve ficha
+# vazia, sem erro.
+MODO_LEITURA_ORIGINAL = "visualizacao"
+
+# A busca da ficha original NÃO pode assumir aba de status: o portal separa
+# por "Em Elaboração", "Para enviar à ITAIPU", "Em Análise ITAIPU",
+# "Rejeitado pela ITAIPU", "Aprovado parcialmente IB", "Aprovado pela
+# ITAIPU" e "Cancelado", e a original pode estar em qualquer uma.
+ABAS_DE_STATUS_DA_LISTA = (
+    "Em Elaboração",
+    "Para enviar à ITAIPU",
+    "Em Análise ITAIPU",
+    "Rejeitado pela ITAIPU",
+    "Aprovado parcialmente IB",
+    "Aprovado pela ITAIPU",
+    "Cancelado",
+)
+
+# ---------------------------------------------------------------------------
+# 5. Imagens: como se copia
+# ---------------------------------------------------------------------------
+# "Basta entrar na imagem do portal, clicar na figura, dar copiar na figura,
+# ir na ficha que você quer, clicar em adicionar imagem e colar no campo que
+# abre. Daí de descrição em espanhol e português podemos colocar a descrição
+# do item que está no próprio STATUS PMIB."
+#
+# É o fluxo MANUAL, e ele passa pela área de transferência. Para o robô, a
+# recomendação é OUTRA e o motivo é técnico: colar imagem da área de
+# transferência dentro de um campo de upload é a operação menos confiável que
+# existe em automação de navegador -- depende do sistema operacional, do foco
+# da janela e de o navegador aceitar `paste` sintético. O diálogo "Adicionar
+# Imagens" aceita ARQUIVO ("Arraste e solte arquivos aqui ou Adicione"), e
+# toda imagem no portal tem URL. Então: BAIXAR da original e SUBIR na
+# duplicada -- mesmo resultado, sem clipboard no caminho.
+#
+# ⚠️ A confirmar na tela: se o `<input type=file>` do diálogo é alcançável
+# (Playwright preenche isso direto com `set_input_files`, sem simular arraste).
+IMAGENS_VIA_ARQUIVO = True
+MAX_IMAGENS_POR_ENVIO = 10  # "Máximo 10 arquivos", dito pelo próprio diálogo
+
+
+def descricao_das_imagens(descricao_do_material):
+    """Descrição (ES e PT) a usar nas imagens: a descrição do material, do
+    `_STATUS_PMIB`.
+
+    Devolve o MESMO texto para os dois idiomas -- foi o que o usuário
+    especificou ("podemos colocar a descrição do item que está no próprio
+    STATUS PMIB", que é uma coluna só). Traduzir por conta própria seria
+    inventar dado.
+    """
+    texto = str(descricao_do_material or "").strip()
+    if not texto or texto.lower() == "nan":
+        return None
+    return {"es": texto, "pt": texto}
 
 # "No campo de Características técnicas vai haver 4 seções, devemos apagar 3 e
 # deixar somente a da imagem anexa" -- a característica `3626 - CODIGO PMIB`,
