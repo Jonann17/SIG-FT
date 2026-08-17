@@ -342,6 +342,12 @@ XPATH_VIEW_ROTULO_DE_SECAO = (
     ".//span[contains(concat(' ', normalize-space(@class), ' '), ' text-primary ')]"
     "[not(ancestor::label)][not(ancestor::legend)]"
 )
+# ⚠️ CORREÇÃO DE 2026-08-17: das duas metades do discriminador acima, só uma é
+# load-bearing. Quem impede a inversão é o ramo do RÓTULO exigir `//span` -- o
+# label da opção marcada não tem nenhum, então nunca entra como rótulo. O
+# `[not(span)]` daqui é a segunda tranca da mesma porta: sabotá-lo não quebra
+# nenhum teste contra o HTML real. Fica porque custa zero, mas está registrado
+# que ninguém deve contar com ele (ver `test_duplicadas_xpath_real.py`).
 XPATH_VIEW_OPCAO_MARCADA = (
     ".//div[.//input[@type='checkbox'][@checked]]/label[@data-label][not(span)]"
 )
@@ -359,3 +365,64 @@ XPATH_VIEW_OPCAO_MARCADA = (
 XPATH_VIEW_BADGE_DE_ANEXO = (
     ".//div[@data-block='Numbers.Badge']//span[@data-expression]"
 )
+
+
+# ---------------------------------------------------------------------------
+# 7c. A linha da lista, ancorada no PMIB — para ABRIR a ficha original
+# ---------------------------------------------------------------------------
+# `XPATH_ACAO_VISUALIZAR`/`XPATH_ACAO_EDITAR` acima são RELATIVOS a uma linha
+# (`.//`). Para `portal.pesquisar_e_abrir`, que recebe um XPath absoluto com
+# `{pmib}` interpolado, é preciso a versão ancorada -- e é ela que decide em
+# qual das duas portas da ficha o robô entra.
+#
+# `contains(., '{pmib}')` na `<tr>` inteira, e não `span[text()='{pmib}']`
+# (o default do portal): é a MESMA estratégia que o módulo antigo de ficha
+# duplicada já usava (`_LAPIS_XPATH_TEMPLATE_FICHA_DUPLICADA`), e ela é a certa
+# aqui porque o código da original vem das OBSERVAÇÕES -- pode estar numa
+# célula que não é o `<span>` do código, e o texto exato da célula não é
+# garantido.
+XPATH_LINHA_ACAO_VISUALIZAR = (
+    "//tr[contains(., '{pmib}')]"
+    "//div[contains(@id, '-View')]"
+    "//a[.//i[contains(concat(' ', normalize-space(@class), ' '), ' fa-file-o ')]]"
+)
+XPATH_LINHA_ACAO_EDITAR = (
+    "//tr[contains(., '{pmib}')]"
+    "//div[contains(@id, '-Edit')]"
+    "//a[.//i[contains(concat(' ', normalize-space(@class), ' '), ' fa-pencil-square-o ')]]"
+)
+
+# Campo de busca da lista. Mesma string que o módulo antigo de ficha duplicada
+# usa (`_BUSCA_XPATH_FICHA_DUPLICADA`): aceita id OU placeholder, porque as
+# telas de lista do portal não concordam entre si sobre qual dos dois existe.
+XPATH_BUSCA_DA_LISTA = (
+    "//input[contains(@id, 'InputDatasheetFilter') or contains(@placeholder, 'Código')]"
+)
+
+# ---------------------------------------------------------------------------
+# 7d. A varredura de um bloco em modo de visualização
+# ---------------------------------------------------------------------------
+# União dos QUATRO seletores dos dois padrões (§7 e §7b), em ordem de
+# documento. É o que permite ler a seção inteira numa passada só, em vez de
+# quatro varreduras que depois teriam de ser casadas por posição -- e bastaria
+# um campo vazio para desalinhar tudo dali para baixo.
+#
+# A ordem dos ramos da união é irrelevante: XPath devolve nó em ordem de
+# DOCUMENTO, não na ordem em que os ramos foram escritos. É justamente disso
+# que o pareamento depende.
+XPATH_VIEW_VARREDURA = " | ".join((
+    ".//label[@data-label]//span",                       # rótulo, padrão A
+    ".//div[@data-block='PMIB_DataSheetView.Block_Expression']//span[@data-expression]",
+    XPATH_VIEW_ROTULO_DE_SECAO.lstrip(),                 # rótulo, padrão B
+    XPATH_VIEW_OPCAO_MARCADA.lstrip(),                   # valor, padrão B
+))
+
+# Predicado que separa VALOR de RÓTULO dentro da varredura, aplicado ao nó de
+# índice `i` da união. Um `<span data-expression>` é valor do padrão A; um
+# `<label>` (que só entra na união pelo ramo `[not(span)]`) é valor do padrão
+# B. Todo o resto é rótulo.
+#
+# Uma pergunta por nó, e não três: o extrator só precisa saber "isto é valor?"
+# -- `parear_rotulos_e_valores` não distingue os dois padrões, e é de propósito
+# (a ordem é a mesma nos dois; só a origem muda).
+PREDICADO_VIEW_E_VALOR = "self::span[@data-expression] or self::label"

@@ -36,6 +36,35 @@ vezes. O módulo preenche a ficha duplicada a partir da original, no portal.
   módulo parar de achar fichas depois de uma revisão do PDM;
 - a coluna é procurada por várias grafias (`PDM usado`, `PDMs usados`, …).
 
+### Divergência com o módulo antigo — e por que ela ficou visível
+
+O módulo antigo (`ficha_duplicada.montar_fila_processamento`) **não olhava o
+código do PDM**: procurava a palavra `DUPLICADA` em qualquer posição do texto
+(`marcador_duplicada="DUPLICADA"`). As duas regras concordam na planilha real
+— o valor é `PDM.9900.000 - FICHA PMIB, DUPLICADA, R0`, que casa nas duas —
+mas divergem nas bordas, e **cada uma erra para um lado**:
+
+| Célula | Regra antiga | Regra nova (do usuário) |
+|---|---|---|
+| `PDM.9900.000 - FICHA PMIB, DUPLICADA, R0` | duplicada | duplicada |
+| `PDM.4320.002 - MOTOBOMBA DUPLICADA` | duplicada ❌ pega demais | não |
+| `FICHA PMIB, DUPLICADA, R0` (sem o código) | duplicada | não ❌ pega de menos |
+
+A regra que vale é a do usuário. Mas **"pegar de menos" é o erro caro**: a
+ficha some da lista sem sintoma nenhum, e ninguém procura o que não apareceu.
+Por isso `localizar_duplicadas` passa as linhas NÃO casadas por
+`parece_duplicada_sem_o_pdm` e **avisa no log**, com número de linha e o valor
+lido, sem mudar a regra. A decisão continua sendo do usuário — agora com a
+informação na tela.
+
+Duas outras diferenças, ambas a favor do módulo novo:
+
+- o antigo aceitava só os cabeçalhos `PDM USADO` e `PDM`; `PDMs usados` (a
+  variação que o próprio usuário citou) fazia o módulo achar **zero** fichas;
+- o antigo **descartava em silêncio** a ficha sem PMIB base ou sem alvo
+  (`if pmib_base and pmib_alvo_raw`); o novo a mantém marcada como impedida,
+  com o motivo, para a tela de seleção mostrar.
+
 ### Seleção pelo usuário
 
 > *"Poderia aparecer a telinha de todos que achou e quais queremos selecionar
@@ -203,8 +232,12 @@ Nenhuma impede começar; todas impedem **rodar em lote sem conferir**.
 | Identificação por PDM + colunas | `services/duplicadas_spec.py` | ✅ CP 6.1, 58 testes |
 | Sequência `'D` + detecção de colisão | `services/duplicadas_spec.py` | ✅ CP 6.1 |
 | Código da ficha original | `services/duplicadas_spec.py` | ✅ CP 6.1 |
+| Leitura do `_STATUS_PMIB` (quais fichas, com que dados) | `services/duplicadas.py` | ✅ CP 6.2, 22 testes |
+| Listagem para conferência sem portal | `scripts/listar_duplicadas.py` | ✅ CP 6.2 |
+| Abrir a original em visualização (varre as 7 abas) | `services/duplicadas_extrator.py` | ✅ CP 6.2, 13 testes |
+| Ler a tela como pares rótulo→valor | `services/duplicadas_extrator.py` | ✅ CP 6.2, 16 testes com XPath real |
+| Navegar entre as SEÇÕES internas da ficha | `services/duplicadas_extrator.py` | ☐ falta HTML das abas internas |
 | Tela de seleção das fichas | `frontend.py` | ☐ CP 6.2 |
-| Extração da ficha original | novo serviço | ☐ CP 6.2 |
 | Injeção (fabricante, características) | novo serviço | ☐ CP 6.3 |
 | Documentos e imagens | novo serviço | ☐ CP 6.4 |
 | Abas de Condições (exclui a Financeira) | `services/duplicadas_spec.py` | ✅ CP 6.1 |
@@ -408,6 +441,14 @@ O discriminador é a presença de `<span>` **dentro** do label:
 | `label[@data-label]/span` | rótulo (padrão do Volume) |
 | `label[@data-label]` sem span | valor (opção marcada) |
 | `span.text-primary` fora de `label` e de `legend` | rótulo de seção |
+
+⚠️ **Correção de 2026-08-17, achada tentando sabotar o próprio seletor:** das
+duas primeiras linhas, **só a primeira é load-bearing**. Quem impede a inversão
+é o ramo do rótulo exigir `//span` — o `<label>` da opção marcada não tem
+nenhum, logo nunca entra como rótulo. O `[not(span)]` de
+`XPATH_VIEW_OPCAO_MARCADA` é a segunda tranca da mesma porta: removê-lo não
+quebra nenhum teste contra o HTML real. Ficou (custa zero), mas está registrado
+que **ninguém deve contar com ele**.
 
 O `@checked` do input é o que diz qual opção está selecionada (`disabled` é só o
 modo de leitura). A tela levantada renderiza apenas a marcada, mas o seletor

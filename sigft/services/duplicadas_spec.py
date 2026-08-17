@@ -15,8 +15,9 @@ diz isso.
 """
 from __future__ import annotations
 
-import re
 import unicodedata
+
+from sigft.core.excel import pmib_codes
 
 # ---------------------------------------------------------------------------
 # 1. Identificação: o que é uma ficha duplicada
@@ -75,6 +76,36 @@ def e_ficha_duplicada(valor_pdm_usado):
     if not texto or texto.lower() == "nan":
         return False
     return texto.upper().startswith(PDM_DUPLICADA.upper())
+
+
+# O módulo ANTIGO (`ficha_duplicada.montar_fila_processamento`) não usava o
+# código do PDM: procurava a palavra "DUPLICADA" em qualquer posição do texto.
+# As duas regras concordam na planilha real do usuário -- ela tem
+# "PDM.9900.000 - FICHA PMIB, DUPLICADA, R0", que casa nas duas -- mas divergem
+# em dois casos, e cada um erra para um lado:
+#
+#   - a palavra aparece na descrição de OUTRO PDM  -> o antigo pega demais;
+#   - a célula perde o prefixo do código           -> o novo pega de menos.
+#
+# A regra que vale é a do usuário (prefixo, ver acima). Mas "pegar de menos" é
+# o erro caro: a ficha some da lista sem nenhum sintoma, e ninguém procura o
+# que não apareceu. Por isso o serviço também passa as NÃO casadas por aqui e
+# avisa -- a decisão continua sendo do usuário, agora com a informação na tela.
+MARCADOR_DUPLICADA_LEGADO = "DUPLICADA"
+
+
+def parece_duplicada_sem_o_pdm(valor_pdm_usado):
+    """A linha diz "DUPLICADA" mas NÃO começa com o código do PDM?
+
+    É o que a regra antiga pegaria e a nova não. Serve só para avisar; quem
+    decide é o usuário.
+    """
+    if e_ficha_duplicada(valor_pdm_usado) or valor_pdm_usado is None:
+        return False
+    texto = str(valor_pdm_usado).strip()
+    if not texto or texto.lower() == "nan":
+        return False
+    return MARCADOR_DUPLICADA_LEGADO in _sem_acento(texto).upper()
 
 
 # ---------------------------------------------------------------------------
@@ -282,21 +313,31 @@ CODIGO_CARACTERISTICA_DUPLICADA = "3626"
 
 
 def extrair_ficha_original(observacoes):
-    """Código PMIB da ficha ORIGINAL, lido da coluna OBSERVAÇÕES.
+    r"""Código PMIB da ficha ORIGINAL, lido da coluna OBSERVAÇÕES.
 
-    ⚠️ LEITURA MINHA, NÃO AFIRMAÇÃO DO USUÁRIO: ele disse que o código "vem da
-    coluna de OBSERVAÇÕES", mas não disse se a célula contém SÓ o código ou um
-    texto com o código no meio. Esta função aceita os dois -- procura o padrão
-    de código PMIB em qualquer posição -- porque o caso "só o código" é
-    subconjunto do outro. Se a coluna tiver DOIS códigos, devolve o primeiro,
-    e isso precisa ser confirmado antes de rodar em lote.
+    Confirmado pelo usuário: *"haverá sempre só um código nessa estrutura; às
+    vezes pode ter mais texto, mas haverá apenas um código se o PDM for o
+    correto"*.
+
+    DELEGA para `core.excel.pmib_codes.find_pmib_code_in_text`, e essa correção
+    tem história: a primeira versão desta função tinha um `re.search` PRÓPRIO,
+    com o padrão `\d{10}\.\d{4}`. Era reimplementação -- o projeto já tem o
+    extrator canônico desde o CP 1.2, criado exatamente a partir desta mesma
+    coluna do `_STATUS_PMIB` (a réplica do `montar_fila_processamento` do
+    módulo antigo). E não era só redundância: o canônico aceita fração de
+    QUALQUER número de dígitos (`\d{10}\.\d+`), enquanto o meu exigia
+    exatamente 4 -- um código como `4500063671.11651` seria ignorado pelo meu e
+    achado pelo dele.
+
+    O princípio nº 1 da arquitetura-alvo é "uma implementação por conceito", e
+    "achar código PMIB em texto livre" é um conceito só.
     """
     texto = str(observacoes or "").strip()
     if not texto or texto.lower() == "nan":
         return None
-    achado = re.search(r"\d{10}\.\d{4}", texto)
+    achado = pmib_codes.find_pmib_code_in_text(texto)
     if achado:
-        return achado.group(0)
+        return achado
     # Sem o formato canônico: devolve o texto limpo, para o RPA ao menos
     # tentar -- e o log dirá o que foi digitado.
     return texto or None
