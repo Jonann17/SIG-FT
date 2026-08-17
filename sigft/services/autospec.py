@@ -376,6 +376,29 @@ def _numeros_normalizados(texto):
     return achados
 
 
+def _exige_lastro(campo):
+    """Este campo precisa de prova documental?
+
+    **Só a TABELA DE ESPECIFICAÇÕES (`var_row_*`).** Regressão corrigida em
+    2026-08-13, olhando o console de 10 fichas reais que o Luan processou: o
+    lastro estava bloqueando `fabricante`, `texto_breve_material` e os
+    checkbox de origem, periculosidade e logística reversa — 7 dos 9 campos
+    barrados numa ficha, e todos eles campos que **funcionavam antes**.
+
+    O erro de raciocínio foi meu: apliquei a tudo uma regra que só faz
+    sentido para dado técnico. `fabricante = WAGO` não sai de datasheet, sai
+    da planilha; `logística reversa = Aplica-se` não sai de documento
+    nenhum, sai de julgamento sobre a legislação. Exigir prova documental
+    deles é exigir prova de algo que nunca foi para ser provado assim.
+
+    O risco que o lastro existe para cobrir é outro: um valor técnico
+    plausível e errado (`IP65` onde o documento diz `IP67`) escrito numa
+    ficha que vai para a Itaipu. Esse risco mora inteiro na tabela de
+    especificações.
+    """
+    return str(campo or "").startswith("var_row_")
+
+
 def valor_tem_lastro(valor, contexto):
     """O valor respondido é rastreável ao contexto que foi enviado?
 
@@ -868,10 +891,60 @@ TETO_DOWNLOAD_BYTES = 40 * 1024 * 1024
 
 
 def _e_termo_puramente_numerico(termo):
-    """`3332066` sim; `CS1320` não. Muda a REGRA de casamento: número solto
-    casando por substring vira coringa (`123` dentro de `123456`)."""
-    compacto = _compactar_codigo(termo)
-    return bool(compacto) and compacto.isdigit()
+    """`3332066` sim; `750-362` e `CS1320` NÃO.
+
+    Muda a REGRA de casamento: número solto casando por substring vira
+    coringa (`123` dentro de `123456`), e por isso exige fronteira de
+    palavra.
+
+    **O hífen tira o termo desta categoria**, e a distinção não é cosmética.
+    Bug real de 2026-08-13: `750-362` (o código WAGO) compactava para
+    `750362`, era classificado como numérico puro, e então a busca por
+    fronteira procurava `750362` no alvo **não compactado** — onde está
+    escrito `750-362`. Nunca casava. Todos os códigos WAGO, CISCO e NIDEC da
+    planilha do SFC têm hífen: nenhum deles seria reconhecido.
+
+    Um termo com separador é código de peça, não número solto — e código de
+    peça casa pelo caminho compactado, que é onde `750-362` e `750362` se
+    encontram.
+    """
+    texto = str(termo or "").strip()
+    if not texto.isdigit():
+        return False
+    return True
+
+
+def classificar_resultado(fabricante, identificadores, title, snippet, link):
+    """`"certo"`, `"duvidoso"` ou `"descartado"` para um resultado de busca.
+
+    **Por que três destinos e não dois** (decisão do usuário, 2026-08-13). O
+    filtro binário deixou entrar, numa ficha real do Luan, uma **camiseta da
+    Minnie no site do Target** — a URL continha o código do material
+    (`.../A-1000326972`) e isso bastava. Também entraram uma resenha de fone
+    de ouvido e 220 mil caracteres de um site chinês de componentes.
+
+    A regra agora é a que o usuário definiu:
+
+      certo      cita o FABRICANTE **e** um identificador (modelo/código).
+                 Duas evidências independentes; vira contexto direto.
+      duvidoso   cita só uma das duas. Pode ser o datasheet certo num
+                 distribuidor que não nomeia a marca, ou pode ser a camiseta.
+                 Não dá para o código decidir — vai para conferência humana.
+      descartado não cita nenhuma. Continua sendo jogado fora sem cerimônia.
+
+    Sem fabricante conhecido (ficha sem marca na planilha), o identificador
+    sozinho é o melhor que existe: aí ele vale como `duvidoso`, nunca como
+    `certo` — não há segunda evidência para cruzar.
+    """
+    tem_fab = bool(fabricante) and _resultado_e_relevante(fabricante, title, snippet, link)
+    tem_id = bool(identificadores) and _resultado_e_relevante(
+        identificadores, title, snippet, link
+    )
+    if tem_fab and tem_id:
+        return "certo"
+    if tem_fab or tem_id:
+        return "duvidoso"
+    return "descartado"
 
 
 def _resultado_e_relevante(termos, title, snippet, link):
@@ -994,9 +1067,14 @@ class WebSearcher:
         # Espelha `AutoSpecCore.usar_navegador_ultimo_recurso`; o core
         # sincroniza no `__init__` dele.
         self.usar_navegador_ultimo_recurso = True
+        # Resultados que citam UMA das duas evidencias (fabricante OU codigo).
+        # Nao viram contexto: vao para a conferencia humana. O `AutoSpecCore`
+        # substitui esta lista pela dele a cada ficha.
+        self.duvidosos = []
         self.headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
 
-    def search_and_download(self, query, required_terms=[], max_results=RESULTADOS_POR_BUSCA, callbacks=None):
+    def search_and_download(self, query, required_terms=[], max_results=RESULTADOS_POR_BUSCA,
+                            callbacks=None, fabricante=(), identificadores=()):
         cb = callbacks or _callbacks_silenciosos()
         if not self.api_key or not self.cse_id:
             return []
@@ -1010,7 +1088,10 @@ class WebSearcher:
         em_cache = _cache_busca_ler(query)
         if em_cache is not None:
             cb.log(f"Busca em cache (nao gastou cota da CSE): {query}")
-            return self._baixar_resultados(em_cache, required_terms=required_terms, callbacks=cb)
+            return self._baixar_resultados(
+                em_cache, required_terms=required_terms, callbacks=cb,
+                fabricante=fabricante, identificadores=identificadores,
+            )
 
         try:
             # timeout adicionado em 2026-08-11: sem ele, uma chamada pendurada
@@ -1036,9 +1117,13 @@ class WebSearcher:
         # temporario nao sobrevive a execucao, mas a lista de URLs sim -- e e
         # ela que custa cota.
         _cache_busca_gravar(query, items)
-        return self._baixar_resultados(items, required_terms=required_terms, callbacks=cb)
+        return self._baixar_resultados(
+            items, required_terms=required_terms, callbacks=cb,
+            fabricante=fabricante, identificadores=identificadores,
+        )
 
-    def _baixar_resultados(self, items, required_terms=(), callbacks=None):
+    def _baixar_resultados(self, items, required_terms=(), callbacks=None,
+                           fabricante=(), identificadores=()):
         """Aplica o filtro anti-intruso (regras de negocio 4.3) e baixa o que
         passar. Separado de `search_and_download` para que o caminho de CACHE
         use exatamente a mesma logica do caminho de rede."""
@@ -1053,14 +1138,40 @@ class WebSearcher:
             link = item.get('link', '') or ''
             title = item.get('title', '') or ''
             snippet = item.get('snippet', '') or ''
-            if not _resultado_e_relevante(required_terms, title, snippet, link):
-                # Filtro anti-intruso (regras de negócio §4.3): catálogo de
-                # concorrente barrado por não citar fabricante nem código.
+
+            # TRÊS DESTINOS (2026-08-13). Ver `classificar_resultado`: o
+            # binário deixou entrar uma camiseta da Minnie no Target porque a
+            # URL continha o código do material.
+            if fabricante or identificadores:
+                destino = classificar_resultado(
+                    fabricante, identificadores, title, snippet, link
+                )
+            else:
+                destino = "certo" if _resultado_e_relevante(
+                    required_terms, title, snippet, link
+                ) else "descartado"
+
+            if destino == "descartado":
                 descartados += 1
+                continue
+            if destino == "duvidoso":
+                # NÃO vira contexto agora. Fica guardado para a conferência
+                # humana -- é melhor um campo vazio que o engenheiro preenche
+                # do que um campo preenchido com a camiseta.
+                self.duvidosos.append({"url": link, "title": title, "snippet": snippet})
                 continue
             filepath = self._download_file(link, callbacks=cb)
             if filepath:
                 results.append({"path": filepath, "url": link, "title": title})
+
+        if self.duvidosos:
+            cb.log(
+                f"{len(self.duvidosos)} resultado(s) DUVIDOSOS: citam o fabricante ou o "
+                f"codigo, mas nao os dois. Nao foram usados -- vao para conferencia:",
+                nivel="warn",
+            )
+            for d in self.duvidosos[-6:]:
+                cb.log(f"      · {d['url'][:100]}", nivel="warn")
 
         if descartados and descartados == len(items):
             # Descartar TUDO nunca é rotina — é sintoma de termo de filtro
@@ -2075,6 +2186,13 @@ class AutoSpecCore:
         # `_termos_do_filtro` e a regressão em
         # `tests/test_autospec_busca_web_falha_real.py`.
         required = self._termos_do_filtro(fab, cod_mat, txt_brv, modelo=modelo)
+        # As duas evidencias, separadas: o filtro de tres destinos precisa
+        # saber QUAL delas casou (ver `classificar_resultado`).
+        ancora_fab = self._tokens_ancora_fabricante(fab)
+        ancora_ids = [t for t in required if t not in ancora_fab]
+        self.duvidosos = []
+        if getattr(self, "searcher", None) is not None:
+            self.searcher.duvidosos = self.duvidosos
 
         if not required:
             # Sem âncora não há como conferir se o documento é deste
@@ -2093,7 +2211,8 @@ class AutoSpecCore:
 
         for i, q in enumerate(queries, start=1):
             files = self.searcher.search_and_download(
-                q, required_terms=required, max_results=3, callbacks=cb
+                q, required_terms=required, max_results=3, callbacks=cb,
+                fabricante=ancora_fab, identificadores=ancora_ids,
             )
             if not files:
                 cb.log(f"Busca {i}/{len(queries)} sem resultado util: {q}", nivel="info")
@@ -2341,7 +2460,19 @@ class AutoSpecCore:
         self._conferir_fontes_citadas(contexto, callbacks)
         if not getattr(self, "exigir_lastro", True):
             return valores
-        return self._filtrar_por_lastro(valores, missing, contexto, callbacks)
+        aprovados = self._filtrar_por_lastro(valores, missing, contexto, callbacks)
+
+        # As listas do console têm de contar a MESMA história. Sem esta poda,
+        # um campo bloqueado pelo lastro aparecia ao mesmo tempo em "Origem
+        # dos dados" (porque a normalização já tinha registrado a fonte) e em
+        # "a IA não respondeu" — visto no console das 10 fichas do Luan, e é
+        # o tipo de contradição que faz o usuário parar de ler o log.
+        fontes = getattr(self, "ultimas_fontes_por_campo", None)
+        if isinstance(fontes, dict):
+            self.ultimas_fontes_por_campo = {
+                campo: fonte for campo, fonte in fontes.items() if campo in aprovados
+            }
+        return aprovados
 
     def _filtrar_por_lastro(self, valores, missing, contexto, callbacks=None):
         """Deixa passar só o que está no documento. Ver `valor_tem_lastro`.
@@ -2359,7 +2490,7 @@ class AutoSpecCore:
 
         for campo, valor in (valores or {}).items():
             descricao = str((missing.get(campo) or {}).get("desc") or campo)
-            if campo in GENERATIVE_FIELDS:
+            if not _exige_lastro(campo):
                 aprovados[campo] = valor
                 continue
             if not valor_tem_lastro(valor, contexto):

@@ -246,10 +246,10 @@ def test_o_lastro_grava_o_valor_CORRIGIDO():
 
     core = autospec.AutoSpecCore.__new__(autospec.AutoSpecCore)
     core.ultimas_fontes_por_campo = {}
-    campos = {"c1": {"type": "text", "desc": "6 - PRESSAO (MPa)", "ref": "M1"}}
-    valores = core._filtrar_por_lastro({"c1": "3,5 MPa"}, campos, CTX_UMA_PRESSAO, _CB())
+    campos = {"var_row_84": {"type": "text", "desc": "6 - PRESSAO (MPa)", "ref": "M84"}}
+    valores = core._filtrar_por_lastro({"var_row_84": "3,5 MPa"}, campos, CTX_UMA_PRESSAO, _CB())
 
-    assert valores == {"c1": "35 MPa"}, "devia ter gravado o valor recalculado"
+    assert valores == {"var_row_84": "35 MPa"}, "devia ter gravado o valor recalculado"
     assert any("CONTA REFEITA" in m for m in registro)
     assert any("3,5" in m and "35 MPa" in m for m in registro), "precisa mostrar antes e depois"
 
@@ -263,8 +263,8 @@ def test_quando_nao_da_para_corrigir_o_motivo_aparece_no_console():
 
     core = autospec.AutoSpecCore.__new__(autospec.AutoSpecCore)
     core.ultimas_fontes_por_campo = {}
-    campos = {"c1": {"type": "text", "desc": "6 - PRESSAO (MPa)", "ref": "M1"}}
-    valores = core._filtrar_por_lastro({"c1": "3,5 MPa"}, campos, CTX_DUAS_PRESSOES, _CB())
+    campos = {"var_row_84": {"type": "text", "desc": "6 - PRESSAO (MPa)", "ref": "M84"}}
+    valores = core._filtrar_por_lastro({"var_row_84": "3,5 MPa"}, campos, CTX_DUAS_PRESSOES, _CB())
 
     assert valores == {}
     assert any("nao diz qual" in m for m in registro)

@@ -35,6 +35,70 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-25 🔴 Console de 10 fichas reais — 1 regressão minha e 3 bugs *(2026-08-13)*
+
+O Luan mandou o terminal inteiro de 10 fichas do SFC. Ele mostrou o que nenhum teste sintético
+pegaria.
+
+#### A regressão que eu causei
+
+**O lastro documental estava bloqueando campos que funcionavam.** Numa ficha, 7 dos 9 campos
+barrados eram **identificação e classificação**, não especificação:
+
+```
+· fabricante                     -> a IA respondeu 'WAGO'
+· texto_breve_material           -> 'WAGO – Acoplador Modbus TCP'
+· S6: BR/PY, S8: Outros          -> 'Outros'
+· E69: Classe 1, J69: Classe 2   -> 'Classe II – Não perigoso'
+   motivo: nao ha medida para recalcular
+```
+
+O erro de raciocínio foi meu: apliquei a tudo uma regra que só faz sentido para dado técnico.
+`fabricante = WAGO` não sai de datasheet, sai da planilha; `logística reversa = Aplica-se` sai de
+julgamento sobre a legislação. **Exigir prova documental deles é exigir prova de algo que nunca
+foi para ser provado assim.**
+
+O lastro agora vale só para a **tabela de especificações** (`var_row_*`) — que é onde mora o
+risco de um valor plausível e errado (`IP65` onde o documento diz `IP67`).
+
+#### A camiseta da Minnie
+
+O filtro binário deixou entrar, numa ficha real, **uma camiseta da Minnie no site do Target**:
+
+```
+Documento web aproveitado (WebScrape(BS4), 2266 chars):
+  https://www.target.com/p/women-s-disney-minnie-mouse-oversized-graphic-t-shirt.../A-1000326972
+```
+
+A URL continha o código do material, e isso bastava. Junto entraram uma resenha de fone de
+ouvido e **220.182 caracteres** de um site chinês de componentes.
+
+**Três destinos agora** (desenho aprovado pelo usuário):
+
+| | Regra | Destino |
+|---|---|---|
+| **certo** | cita o fabricante **e** um identificador | vira contexto |
+| **duvidoso** | cita só uma das duas | **não** vira contexto; vai para conferência humana |
+| **descartado** | nenhuma | jogado fora |
+
+Verificado com os resultados reais: datasheet oficial → certo; **outro** produto WAGO → duvidoso;
+camiseta → duvidoso; lixo → descartado.
+
+#### Código com hífen não é número puro
+
+Bug encontrado ao validar o acima: `750-362` compactava para `750362`, era classificado como
+numérico puro, e a busca por fronteira procurava `750362` no alvo **não compactado** — onde está
+escrito `750-362`. Nunca casava. **Todos** os códigos WAGO, CISCO e NIDEC da planilha têm hífen.
+
+#### As listas do console se contradiziam
+
+`texto_breve_material` aparecia ao mesmo tempo em "Origem dos dados" e em "a IA não respondeu" —
+o tipo de contradição que faz o usuário parar de ler o log. As origens agora são podadas junto
+com os campos bloqueados.
+
+27 testes com os dados literais do console.
+
+
 ### ✅ R-24 🔴 A coluna G do STATUS_PMIB — causa raiz das fichas WAGO vazias *(2026-08-13)*
 
 **O caso.** O Luan processou 4 fichas do escopo SFC HF-01/HF-02 e **nenhuma** teve a tabela de
