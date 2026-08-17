@@ -313,7 +313,74 @@ valor abaixo**, um padrão uniforme; um extrator que leia pares
 rótulo→valor cobre a seção inteira sem enumerar campo nenhum, e não quebra
 quando o portal acrescentar um campo.
 
-O que resolveria isso de vez é **o HTML de UM bloco** do modo de visualização —
-por exemplo o "Volume (cm3)" com os três valores, ou o "Peso (kg)" com dois.
-Com um exemplo dá para escrever o extrator genérico; com cinquenta, escreve-se
-cinquenta seletores que envelhecem juntos.
+✅ **Resolvido** — o bloco "Volume (cm3)" foi levantado e confirmou a
+estrutura. Ver §8.
+
+---
+
+## 8. Modo de visualização: a estrutura que dispensa mapear campo a campo
+
+HTML real de um bloco:
+
+```html
+<fieldset>
+  <legend>…<span class="text-primary font-size-base">Volume (cm3)</span></legend>
+  <div>
+    <div data-container="">
+      <label data-label=""><span class="text-primary">Comprimento da embalagem unitária</span></label>
+      <div data-container="">
+        <div data-block="PMIB_DataSheetView.Block_Expression" id="b12-b20-b1-$b3">
+          <span data-expression="">6</span>
+        </div>
+      </div>
+    </div>
+    …repete…
+  </div>
+</fieldset>
+```
+
+**`data-block="PMIB_DataSheetView.Block_Expression"` é a peça central**: marcador
+semântico de *"aqui há um valor exibido em modo de leitura"*, namespaceado pelo
+módulo OutSystems. Distingue o valor de qualquer outro `<span>` da página sem
+depender de classe de layout.
+
+| Papel | Onde |
+|---|---|
+| nome do agrupamento | `fieldset > legend > span` |
+| rótulo do campo | `label[@data-label] > span` |
+| valor do campo | `div[@data-block='PMIB_DataSheetView.Block_Expression'] > span[@data-expression]` |
+
+⚠️ `id="b12-b20-b1-$b3"` é gerado e **sequencial** (`$b3`, `$b4`, `$b5`) — o `$`
+já denuncia. É o 5º tipo catalogado em `IDS_GERADOS_NAO_USAR`.
+
+### Por que UMA varredura e não duas
+
+Não há id ligando rótulo a valor — **o que liga é a ordem de documento**. Então
+o extrator pede os dois na mesma consulta (`XPATH_VIEW_ROTULOS_E_VALORES`, um
+`|` de XPath, que devolve em ordem de documento) e pareia em
+`parear_rotulos_e_valores()`.
+
+Duas varreduras separadas obrigariam a casar **por índice**, e bastaria um campo
+sem valor para desalinhar tudo dali para baixo — erro que produz ficha
+**plausível e errada**, o pior tipo.
+
+Regras do pareamento, cada uma de um caso da tela real:
+
+- cada valor pertence ao rótulo **imediatamente anterior**;
+- **rótulo sem valor** vira `""` e não some — sumir impediria o injetor de
+  distinguir "não existe esse campo" de "existe e está vazio";
+- **valor sem rótulo antes** é descartado — atribuí-lo ao rótulo *seguinte*
+  inverteria o pareamento da aba inteira;
+- **rótulo repetido** fica com o primeiro valor.
+
+**Testado contra o HTML real do portal**, não contra markup inventado
+(`tests/test_duplicadas_leitura_view.py`, 14 testes): o bloco colado do
+"inspecionar elemento" produz exatamente os três campos da tela, e a legenda
+"Volume (cm3)" não vira par.
+
+### O que ainda não foi visto
+
+Os **radio buttons** ("Não contém agentes nocivos", "Classe II – Não perigoso")
+aparecem na tela de visualização com um ícone antes do texto. Se eles não usarem
+`Block_Expression`, o extrator não os enxerga — e são campos reais das Condições.
+**Um bloco desses no HTML fecha o CP 6.2.**

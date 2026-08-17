@@ -300,3 +300,53 @@ def extrair_ficha_original(observacoes):
     # Sem o formato canônico: devolve o texto limpo, para o RPA ao menos
     # tentar -- e o log dirá o que foi digitado.
     return texto or None
+
+
+# ---------------------------------------------------------------------------
+# 6. Leitura do modo de visualização: parear rótulo com valor
+# ---------------------------------------------------------------------------
+# A tela de visualização repete a mesma estrutura para todo campo: um
+# `<label>` e, logo depois, um bloco `PMIB_DataSheetView.Block_Expression` com
+# o valor. Não há id útil ligando os dois -- o que liga é a ORDEM DE DOCUMENTO.
+#
+# Daí a estratégia: uma varredura só, pedindo rótulos e valores na mesma
+# consulta (`XPATH_VIEW_ROTULOS_E_VALORES`, um `|` de XPath, que devolve em
+# ordem de documento) e pareando aqui. Duas varreduras separadas obrigariam a
+# casar por índice, e bastaria um campo sem valor para desalinhar tudo dali
+# para baixo -- o tipo de erro que produz ficha plausível e errada.
+
+
+def parear_rotulos_e_valores(tokens):
+    """{rótulo: valor} a partir da sequência `("rotulo"|"valor", texto)` em
+    ordem de documento.
+
+    Regras, e cada uma existe por um caso da tela real:
+
+      - **cada valor pertence ao rótulo imediatamente anterior.** É o que a
+        estrutura garante;
+      - **rótulo sem valor** (campo em branco na ficha) vira `""`, e NÃO some.
+        Sumir seria pior: o injetor não saberia distinguir "não existe esse
+        campo" de "existe e está vazio", e o segundo caso é informação;
+      - **valor sem rótulo antes** é descartado. Acontece com texto solto no
+        bloco (o título do fieldset, por exemplo); atribuí-lo ao rótulo
+        seguinte inverteria o pareamento de toda a aba;
+      - **rótulo repetido** fica com o PRIMEIRO valor. O portal repete rótulo
+        entre abas (ex.: "Peso líquido"), e o extrator é chamado por aba --
+        dentro de uma aba, repetição é sinal de estrutura inesperada, e
+        sobrescrever esconderia isso.
+    """
+    pares = {}
+    rotulo_atual = None
+    for tipo, texto in tokens:
+        limpo = " ".join(str(texto or "").split())
+        if tipo == "rotulo":
+            if not limpo:
+                continue
+            rotulo_atual = limpo
+            pares.setdefault(rotulo_atual, "")
+        elif tipo == "valor":
+            if rotulo_atual is None:
+                continue
+            if not pares.get(rotulo_atual):
+                pares[rotulo_atual] = limpo
+    return pares

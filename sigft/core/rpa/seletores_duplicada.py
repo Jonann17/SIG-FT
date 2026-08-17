@@ -158,6 +158,9 @@ IDS_GERADOS_NAO_USAR = (
     # `…-l1_0-535_0-View`). Muda a cada busca -- nem entre duas execuções da
     # mesma pesquisa se repete.
     "-l1_0-",
+    # Sequencial de bloco do OutSystems no modo de visualização
+    # (`b12-b20-b1-$b3`, `$b4`, `$b5`). O `$` já denuncia que é gerado.
+    "-$b",
 )
 
 # ===========================================================================
@@ -246,4 +249,55 @@ XPATH_ACAO_VISUALIZAR = (
 XPATH_ACAO_EDITAR = (
     ".//div[contains(@id, '-Edit')]"
     "//a[.//i[contains(concat(' ', normalize-space(@class), ' '), ' fa-pencil-square-o ')]]"
+)
+
+# ===========================================================================
+# 7. Modo de VISUALIZAÇÃO — o padrão que dispensa mapear campo a campo
+# ===========================================================================
+# HTML levantado de um bloco (Volume, na aba de armazenamento):
+#
+#   <fieldset>
+#     <legend><div id="…-Legend">
+#       <span class="text-primary font-size-base">Volume (cm3)</span>
+#     </div></legend>
+#     <div id="…-Content">
+#       <div data-container="">
+#         <label data-label=""><span class="text-primary">Comprimento…</span></label>
+#         <div data-container="" class="margin-top-s">
+#           <div data-block="PMIB_DataSheetView.Block_Expression" id="b12-b20-b1-$b3">
+#             <span data-expression="">6</span>
+#           </div>
+#         </div>
+#       </div>
+#       …repete para Largura e Altura…
+#     </div>
+#   </fieldset>
+#
+# É por isso que NÃO se mapeia campo a campo: a estrutura é uniforme. Um
+# extrator que leia pares rótulo→valor cobre as três abas inteiras, e continua
+# funcionando quando o portal acrescentar um campo -- ao contrário de cinquenta
+# seletores nomeados, que envelheceriam juntos.
+#
+# `data-block="PMIB_DataSheetView.Block_Expression"` é a peça central: é o
+# marcador semântico de "aqui há um valor exibido em modo de leitura", e vem
+# namespaceado pelo módulo OutSystems (`PMIB_DataSheetView`). Distingue o valor
+# de qualquer outro `<span>` da página sem depender de classe de layout.
+#
+# ⚠️ `id="b12-b20-b1-$b3"` é gerado e sequencial (`$b3`, `$b4`, `$b5`) -- mais um
+# para a lista de proibidos.
+XPATH_VIEW_BLOCO = "//fieldset"
+XPATH_VIEW_TITULO_DO_BLOCO = ".//legend//span"
+# Rótulo e valor, em ordem de documento. O pareamento é "cada valor pertence ao
+# rótulo imediatamente anterior" -- ver `duplicadas_spec.parear_rotulos_e_valores`,
+# que é onde a regra está testada contra o HTML real.
+XPATH_VIEW_ROTULO = ".//label[@data-label]//span"
+XPATH_VIEW_VALOR = (
+    ".//div[@data-block='PMIB_DataSheetView.Block_Expression']//span[@data-expression]"
+)
+# Os dois juntos, em ordem de documento -- é assim que o extrator lê a aba de
+# uma vez só, em vez de fazer duas varreduras e tentar casá-las por posição.
+XPATH_VIEW_ROTULOS_E_VALORES = (
+    ".//label[@data-label]//span"
+    " | "
+    ".//div[@data-block='PMIB_DataSheetView.Block_Expression']//span[@data-expression]"
 )
