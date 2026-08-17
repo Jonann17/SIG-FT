@@ -161,16 +161,38 @@ def test_o_inventario_enxerga_estes_seletores():
     assert "sigft.core.rpa.seletores_duplicada" in modulos
 
 
-def test_estes_seletores_nao_sao_relativos():
-    # Nenhum é fragmento de linha de tabela, então todos podem ser conferidos
-    # sozinhos contra a página pela auditoria.
+def test_os_seletores_relativos_estao_todos_marcados_no_nome():
+    """Um seletor RELATIVO a uma linha (`.//td[...]`) não pode ser conferido
+    sozinho contra a página: sem a linha na frente, ele casa a célula de
+    QUALQUER linha e devolve um "existe" que não prova nada.
+
+    Até 2026-08-17 este arquivo não tinha nenhum, e o teste dizia justamente
+    isso. A purga das características (CP 6.3) trouxe os primeiros, e a
+    proteção mudou de forma junto: o que se exige agora é que relativo e
+    absoluto sejam distinguíveis PELO NOME (`XPATH_REL_`), que é como a
+    auditoria os separa.
+    """
     achados = [
         (n, r) for m, n, _s, r in inventario.coletar()
         if m == "sigft.core.rpa.seletores_duplicada"
     ]
 
     assert achados
-    assert not any(relativo for _nome, relativo in achados)
+    for nome, relativo in achados:
+        assert relativo == nome.startswith(inventario.PREFIXO_RELATIVO), nome
+
+
+def test_os_seletores_de_linha_da_caracteristica_sao_relativos():
+    """Contraprova do teste acima: se alguém "consertar" o nome tirando o
+    prefixo, a auditoria passaria a conferi-los sozinhos contra o portal e
+    reportaria "existe" para qualquer ficha com tabela."""
+    relativos = {
+        n for m, n, _s, r in inventario.coletar()
+        if m == "sigft.core.rpa.seletores_duplicada" and r
+    }
+
+    assert "XPATH_REL_CARACTERISTICA_DESCRICAO" in relativos
+    assert "XPATH_REL_CARACTERISTICA_VALOR_PT" in relativos
 
 
 # ===========================================================================

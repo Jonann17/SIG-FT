@@ -426,3 +426,44 @@ XPATH_VIEW_VARREDURA = " | ".join((
 # -- `parear_rotulos_e_valores` não distingue os dois padrões, e é de propósito
 # (a ordem é a mesma nos dois; só a origem muda).
 PREDICADO_VIEW_E_VALOR = "self::span[@data-expression] or self::label"
+
+
+# ---------------------------------------------------------------------------
+# 8. Características técnicas — a purga que preserva o CÓDIGO PMIB
+# ---------------------------------------------------------------------------
+# "Vai haver 4 seções; devemos apagar 3 e deixar somente a da imagem anexa.
+# Nesse campo devemos preencher o código da ficha original."
+#
+# Estes seletores NÃO foram inventados: são os do módulo antigo
+# (`ficha_duplicada.InjetorFichaAlvo._limpar_caracteristicas_tecnicas`), que
+# roda contra o portal real há meses. Copiá-los é a decisão certa mesmo na
+# reconstrução -- seletor que funciona é conhecimento caro, e a Fase 6 está
+# trocando o MOTOR e a ESTRUTURA, não redescobrindo o DOM.
+XPATH_CARACTERISTICAS_ABA = (
+    "//button[@role='tab' and contains(., 'Características técnicas')]"
+)
+XPATH_CARACTERISTICAS_LINHAS = (
+    "//div[contains(@id, 'TechnicalCharacteristics')]//table/tbody/tr"
+)
+# Relativos à linha (ver `PREFIXO_RELATIVO` no inventário): sozinhos casariam
+# a célula de QUALQUER linha, e um "existe" desses não prova nada.
+XPATH_REL_CARACTERISTICA_DESCRICAO = ".//td[contains(@data-header, 'Descrição')]"
+XPATH_REL_CARACTERISTICA_VALOR_PT = ".//textarea[contains(@id, 'TextArea_ValuePT')]"
+
+# A tabela é PAGINADA, e o módulo antigo já tratava isso: apagar a página 1 não
+# apaga a ficha: as características das páginas seguintes continuariam lá.
+XPATH_CARACTERISTICAS_PROXIMA_PAGINA = (
+    "//button[@aria-label='Ir para a página seguinte']"
+)
+
+# ⚠️ A leitura da descrição TEM de ser por `textContent`, não pelo texto
+# visível. O módulo antigo usa `get_attribute("textContent")` e o motivo é
+# concreto: numa tabela paginada e rolável, a célula da linha que está fora da
+# viewport devolve string VAZIA em `.text`. Se a descrição vier vazia, nenhuma
+# linha casa "CODIGO PMIB" -- e a purga apaga JUSTAMENTE a linha que deveria
+# preservar, deixando a ficha sem a única característica que ela precisa ter.
+#
+# O contrato de `RPAEngine.texto()` já garante isso nos dois motores (Selenium
+# lê `get_attribute("textContent")`, Playwright lê `text_content()`), então
+# aqui é só o registro de por que isso importa -- se alguém "otimizar" o
+# contrato para texto visível, este comentário é o aviso.

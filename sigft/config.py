@@ -613,8 +613,15 @@ RPA_ENGINE: dict[str, str] = {
     "cria_fichas": ENGINE_PLAYWRIGHT,
     "upload_conditions": ENGINE_PLAYWRIGHT,  # CP 5.3
     "tech_specs": ENGINE_PLAYWRIGHT,      # CP 5.3
-    # Único não portado -- reconstruído na Fase 6, já no motor novo.
+    # Módulo ANTIGO de ficha duplicada. Não passa por `criar_engine` (constrói
+    # o Selenium direto), então este valor é decorativo -- fica só para o mapa
+    # não mentir sobre o que ele usa. Ver `MODULOS_SEM_SELETOR_DE_MOTOR`.
     "ficha_duplicada": ENGINE_SELENIUM,
+    # Ficha duplicada RECONSTRUÍDA (Fase 6). Nasce em Playwright, a pedido do
+    # usuário em 2026-08-17: "o ficha duplicada podemos fazer direto em
+    # Playwright, pois o de antes não funcionava muito bem". É o primeiro
+    # módulo do projeto que nunca teve versão Selenium.
+    "duplicadas": ENGINE_PLAYWRIGHT,
 }
 
 # Override global por variável de ambiente, para o usuário experimentar o motor

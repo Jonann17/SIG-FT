@@ -2804,6 +2804,26 @@ class ModuloCopiaFichas(ctk.CTkFrame):
                                         fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"], height=40, state="disabled")
         self.btn_salvar.grid(row=0, column=2, sticky="ew", padx=(5, 0))
 
+        # Robô NOVO (Fase 6), numa linha própria e com o escopo escrito no
+        # botão. Fica ao LADO do antigo, e não no lugar dele, porque o antigo
+        # funciona hoje: se o novo se comportar mal na sessão de validação, o
+        # trabalho do dia não para. O botão sai quando a Fase 6 fechar.
+        f_novo = ctk.CTkFrame(frm_action, fg_color="transparent")
+        f_novo.pack(fill="x", padx=15, pady=(0, 10))
+
+        self.btn_robo_novo = ctk.CTkButton(
+            f_novo, text="2b. Robô NOVO (Playwright) — fabricante, referência e características",
+            command=self.run_robo_novo_thread,
+            fg_color="#3A3A3A", hover_color="#454545", height=40, state="disabled")
+        self.btn_robo_novo.pack(fill="x")
+
+        ctk.CTkLabel(
+            f_novo,
+            text=("Reconstrução da Fase 6. AINDA NÃO faz documentos, imagens nem Condições "
+                  "— essas seções continuam com o botão 2."),
+            font=("Roboto", 11), text_color="gray", anchor="w", justify="left",
+        ).pack(fill="x", pady=(4, 0))
+
         # Progresso
         self.progress = ctk.CTkProgressBar(frm_action, progress_color=COLORS["accent"])
         self.progress.pack(fill="x", padx=15, pady=15)
@@ -2898,16 +2918,98 @@ class ModuloCopiaFichas(ctk.CTkFrame):
         self.lbl_status.configure(text=f"{len(self.fila_selecionada)} fichas na fila para processar.")
         self.log(f"Fila final configurada com {len(self.fila_selecionada)} fichas.")
 
-        if self.fila_selecionada:
-            self.btn_resumo.configure(state="normal")
-            self.btn_robo.configure(state="normal")
-        else:
-            self.btn_resumo.configure(state="disabled")
-            self.btn_robo.configure(state="disabled")
+        estado = "normal" if self.fila_selecionada else "disabled"
+        self.btn_resumo.configure(state=estado)
+        self.btn_robo.configure(state=estado)
+        self.btn_robo_novo.configure(state=estado)
 
     def abrir_revisao(self):
         if self.fila_selecionada:
             JanelaRevisaoEdicao(self, self.fila_selecionada)
+
+    # =========================================================================
+    # ROBÔ NOVO (Fase 6) — Playwright, sem uma linha de Selenium
+    # =========================================================================
+    def run_robo_novo_thread(self):
+        if not self.fila_selecionada:
+            return
+        # Os botões são desligados AQUI, na thread da UI, e não lá dentro: o
+        # tkinter não é seguro fora da thread principal. O robô antigo faz isso
+        # de dentro do worker -- funciona na prática e é o tipo de coisa que
+        # falha um dia, sem padrão. Código novo não repete.
+        for botao in (self.btn_robo, self.btn_robo_novo, self.btn_resumo, self.btn_status):
+            botao.configure(state="disabled")
+        threading.Thread(target=self._worker_robo_novo, daemon=True).start()
+
+    def _fichas_para_o_robo_novo(self):
+        """Os dicts da fila viram `FichaDuplicada` de novo.
+
+        Reconstruir do DICT, e não guardar o objeto original, é o que faz a
+        edição manual valer: `JanelaRevisaoEdicao` altera `pmib_original` e
+        `pmib_alvo` direto no dicionário, e é justamente para consertar o caso
+        em que a leitura da planilha errou. Ignorar isso aqui mandaria o robô
+        buscar de novo o código que o usuário acabou de corrigir.
+        """
+        return [
+            duplicadas.FichaDuplicada(
+                pmib=item["pmib_alvo"],
+                descricao=item.get("descricao", ""),
+                pdm_usado="",
+                codigo_material=item.get("codigo_material", ""),
+                codigo_fornecedor=item.get("codigo_fornecedor", ""),
+                ficha_original=item["pmib_original"],
+                linha=item.get("linha_excel", 0),
+            )
+            for item in self.fila_selecionada
+        ]
+
+    def _worker_robo_novo(self):
+        # Import tardio de propósito: puxa o Playwright, e quem nunca clica
+        # neste botão não deve pagar por isso na abertura do aplicativo.
+        from sigft.services import duplicadas_robo
+
+        engine = None
+        try:
+            fichas = self._fichas_para_o_robo_novo()
+            self.log(f"[Robô novo] {len(fichas)} ficha(s) na fila. Abrindo o navegador...")
+            engine, portal = duplicadas_robo.iniciar()
+            engine.goto(sigft_config.PORTAL_URL)
+
+            # Mesma pausa de login do robô antigo: o portal exige login manual
+            # e não há como automatizá-lo.
+            evento_espera = threading.Event()
+            self.after(0, lambda: self._mostrar_janela_pausa(evento_espera))
+            evento_espera.wait()
+
+            resultados = duplicadas_robo.processar_lote(
+                fichas,
+                callback_log=self.log,
+                callback_progresso=lambda fracao: self.after(
+                    0, lambda f=fracao: self.progress.set(f)),
+                portal=portal,
+            )
+
+            # O robô novo NÃO grava "COMPLETO" na planilha, e é deliberado:
+            # ele ainda não faz documentos, imagens nem Condições, então a
+            # ficha não está completa. Marcar como completa esconderia
+            # justamente o que falta fazer à mão.
+            concluidas = [r for r in resultados if r.ok]
+            self.log(f"[Robô novo] {len(concluidas)} de {len(resultados)} sem pendência. "
+                     f"Documentos, imagens e Condições continuam a fazer (botão 2 ou à mão).")
+        except Exception as erro:
+            self.log(f"[Robô novo] Falha: {type(erro).__name__}: {erro}")
+        finally:
+            if engine is not None:
+                try:
+                    engine.fechar()
+                except Exception:
+                    pass
+            self.after(0, lambda: [
+                self.btn_robo.configure(state="normal"),
+                self.btn_robo_novo.configure(state="normal"),
+                self.btn_resumo.configure(state="normal"),
+                self.btn_status.configure(state="normal"),
+            ])
 
     # =========================================================================
     # LÓGICA DO ROBÔ WEB

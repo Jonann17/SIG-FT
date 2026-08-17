@@ -240,8 +240,14 @@ Nenhuma impede começar; todas impedem **rodar em lote sem conferir**.
 | Ler a tela como pares rótulo→valor | `services/duplicadas_extrator.py` | ✅ CP 6.2, 16 testes com XPath real |
 | Navegar entre as SEÇÕES internas da ficha | `services/duplicadas_extrator.py` | ☐ falta HTML das abas internas |
 | Tela de seleção das fichas | `frontend.py` (`ModuloCopiaFichas`) | ✅ CP 6.2 — usa a identificação nova |
-| Injeção (fabricante, características) | novo serviço | ☐ CP 6.3 |
+| Fabricante (combo com busca) | `services/duplicadas_injetor.py` | ✅ CP 6.3 |
+| Referência com a regra do `'D` | `services/duplicadas_injetor.py` | ✅ CP 6.3 |
+| Purga das características (preserva CÓDIGO PMIB) | `services/duplicadas_injetor.py` | ✅ CP 6.3, 18 testes |
+| Robô: amarra ler-original → escrever-alvo | `services/duplicadas_robo.py` | ✅ CP 6.3, 15 testes |
+| Botão na tela ("2b. Robô NOVO") | `frontend.py` (`ModuloCopiaFichas`) | ✅ CP 6.3 |
+| Fornecedor (referência CMI/GE) | `services/duplicadas_injetor.py` | ☐ CP 6.4 |
 | Documentos e imagens | novo serviço | ☐ CP 6.4 |
+| Condições (todas as abas menos a Financeira) | novo serviço | ☐ CP 6.4 |
 | Abas de Condições (exclui a Financeira) | `services/duplicadas_spec.py` | ✅ CP 6.1 |
 | Modo de leitura + abas de status | `services/duplicadas_spec.py` | ✅ CP 6.1 |
 | Descrição/limite das imagens | `services/duplicadas_spec.py` | ✅ CP 6.1 |
@@ -250,6 +256,17 @@ O módulo antigo (`services/ficha_duplicada.py`) continua **intocado e
 funcionando em Selenium** até a reconstrução terminar. É também o último
 consumidor de Selenium do projeto — por isso o CP 5.5 só acontece depois desta
 fase.
+
+**O módulo novo nasceu direto em Playwright**, a pedido do usuário em
+2026-08-17: *"o ficha duplicada podemos fazer direto em Playwright, pois o de
+antes não funcionava muito bem"*. É o primeiro módulo do projeto que nunca teve
+versão Selenium — `config.RPA_ENGINE["duplicadas"] = playwright`, e um teste de
+AST garante que nenhum dos três arquivos novos importe Selenium.
+
+Na tela os dois convivem: o botão **2** é o robô antigo (fluxo completo) e o
+**2b** é o novo (fabricante, referência e características). Lado a lado porque
+o antigo funciona hoje — se o novo se comportar mal na validação, o trabalho do
+dia não para. O botão 2 sai quando o CP 6.4 fechar.
 
 ---
 

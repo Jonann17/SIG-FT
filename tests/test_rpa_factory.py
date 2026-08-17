@@ -88,8 +88,15 @@ def test_todo_modulo_do_mapa_tem_motor_valido():
         assert motor in (config.ENGINE_SELENIUM, config.ENGINE_PLAYWRIGHT), modulo
 
 
-def test_o_mapa_cobre_os_seis_modulos_de_rpa():
-    # Os 6 pontos de criação de driver levantados no diagnóstico (seção 1.1).
+def test_o_mapa_cobre_os_modulos_de_rpa():
+    """Os 6 pontos de criação de driver do diagnóstico (seção 1.1), mais o
+    módulo NOVO da Fase 6.
+
+    `duplicadas` entrou em 2026-08-17 e é diferente dos outros seis: não migrou
+    de nada. Nasceu em Playwright, a pedido do usuário -- *"o ficha duplicada
+    podemos fazer direto em Playwright, pois o de antes não funcionava muito
+    bem"*. `ficha_duplicada` (o antigo) continua no mapa até ser removido.
+    """
     assert set(config.RPA_ENGINE) == {
         "apagar_lmr",
         "lmr",
@@ -97,7 +104,12 @@ def test_o_mapa_cobre_os_seis_modulos_de_rpa():
         "upload_conditions",
         "tech_specs",
         "ficha_duplicada",
+        "duplicadas",
     }
+
+
+def test_o_modulo_novo_da_fase_6_nasce_em_playwright():
+    assert config.RPA_ENGINE["duplicadas"] == config.ENGINE_PLAYWRIGHT
 
 
 # ===========================================================================
