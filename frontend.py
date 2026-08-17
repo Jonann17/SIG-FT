@@ -3182,7 +3182,9 @@ class ModuloLMR(ctk.CTkFrame):
 
         ctk.CTkLabel(frm_main, text="Preenchimento Automático de LMR (Aplicações)", font=("Roboto", 16, "bold"), text_color=COLORS["accent"]).pack(pady=(20, 10))
 
-        info_text = ("Este módulo lê a aba 'GERAL' de um arquivo Excel e cadastra as aplicações no Portal PMIB.\n"
+        info_text = ("Este módulo lê uma aba de um arquivo Excel e cadastra as aplicações no Portal PMIB.\n"
+                     "Você escolhe a aba depois de selecionar o arquivo.\n"
+                     "Colunas esperadas: FICHA PMIB, CÓDIGO LMR e TAG LMR.\n"
                      "Será solicitado login no navegador durante o processo.")
         ctk.CTkLabel(frm_main, text=info_text, font=("Roboto", 13), text_color="gray").pack(pady=(0, 20))
 
@@ -3200,14 +3202,58 @@ class ModuloLMR(ctk.CTkFrame):
     def iniciar_lmr(self):
         excel_path = file_dialogs.ask_open_file("lmr.excel", "excel", titulo="Selecione o Excel LMR", filetypes=[("Excel", "*.xlsx")])
         if not excel_path: return
-        self.log(f"Lendo arquivo: {os.path.basename(excel_path)}...")
-        self.btn_run.configure(state="disabled")
-        threading.Thread(target=self._pre_processamento, args=(excel_path,)).start()
+        # QUEM ESCOLHE A ABA É O USUÁRIO. A primeira versão disto adivinhava
+        # (tentava 'LMR', 'GERAL' e depois qualquer aba com as colunas), e o
+        # usuário recusou -- adivinhar aba funciona nove vezes e, na décima,
+        # cadastra o lote a partir da planilha errada sem ninguém notar.
+        try:
+            abas = lmr_backend.listar_abas(excel_path)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Não consegui ler as abas do arquivo:\n{e}")
+            return
+        if not abas:
+            messagebox.showerror("Erro", "O arquivo não tem nenhuma aba.")
+            return
 
-    def _pre_processamento(self, excel_path):
+        self._escolher_aba_lmr(excel_path, abas)
+
+    def _escolher_aba_lmr(self, excel_path, abas):
+        """Diálogo de uma pergunta só: qual aba ler."""
+        janela = ctk.CTkToplevel(self)
+        janela.title("Escolha a aba")
+        janela.geometry("420x220")
+        janela.transient(self.winfo_toplevel())
+        janela.grab_set()
+
+        ctk.CTkLabel(janela, text=os.path.basename(excel_path), font=("Roboto", 12, "bold")).pack(pady=(20, 4))
+        ctk.CTkLabel(
+            janela, text="Qual aba contém as aplicações de LMR?",
+            font=("Roboto", 12), text_color="gray70",
+        ).pack(pady=(0, 12))
+
+        var_aba = ctk.StringVar(value=abas[0])
+        ctk.CTkOptionMenu(janela, values=abas, variable=var_aba, width=300).pack(pady=5)
+
+        def confirmar():
+            aba = var_aba.get()
+            janela.destroy()
+            self.log(f"Lendo {os.path.basename(excel_path)} (aba '{aba}')...")
+            self.btn_run.configure(state="disabled")
+            threading.Thread(target=self._pre_processamento, args=(excel_path, aba)).start()
+
+        ctk.CTkButton(
+            janela, text="Ler esta aba", command=confirmar, width=300,
+            fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"],
+        ).pack(pady=(15, 5))
+        ctk.CTkButton(
+            janela, text="Cancelar", command=janela.destroy, width=300,
+            fg_color="#3A3A3A", hover_color="#454545",
+        ).pack(pady=5)
+
+    def _pre_processamento(self, excel_path, aba):
         try:
             automator = lmr_backend.LMRAutomation()
-            ok, df_completo, pmibs_unicos, msg = automator.carregar_dados_excel(excel_path)
+            ok, df_completo, pmibs_unicos, msg = automator.carregar_dados_excel(excel_path, aba)
 
             self.log(msg)
             if not ok:

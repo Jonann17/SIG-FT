@@ -697,6 +697,21 @@ class TechSpecsAutomation:
         except Exception:
             pass
 
+        if not opcoes:
+            # NADA lido: ou a característica não tem dropdown de unidade
+            # (comum em LISTA e CHAR), ou ele ainda não carregou. Nos dois
+            # casos NÃO é "a IA errou o símbolo", e tratar como falha
+            # transformava um caso normal em pendência manual -- foi o que
+            # aconteceu com FREQUENCIA NOMINAL no 2º lote real, onde o valor
+            # tinha sido selecionado corretamente e mesmo assim a ficha saiu
+            # marcada com campo rejeitado.
+            if callback_log:
+                callback_log(
+                    f"   ·  '{nome_campo}': sem dropdown de unidade nesta linha "
+                    f"(símbolo {texto!r} não aplicado)"
+                )
+            return True
+
         alvo_parenteses = f"({str(texto).strip().upper()})"
         for indice, opcao in enumerate(opcoes):
             if alvo_parenteses in opcao.upper():
@@ -887,6 +902,18 @@ class TechSpecsAutomation:
                         item_foi_excluido = False
 
                         try:
+                            # Traz a linha para a vista ANTES de tocá-la. Sem
+                            # isto, uma linha abaixo da dobra não é
+                            # "interactable" para o WebDriver e o preenchimento
+                            # engasga -- o usuário relatou ter de rolar a tela
+                            # à mão para o robô destravar. `scroll_to` não
+                            # clica nem espera nada; é barato e vale para as
+                            # 51 linhas.
+                            try:
+                                self.engine.scroll_to(seletor_linha)
+                            except Exception:
+                                pass  # rolar é conveniência, não pode matar a linha
+
                             # Extrair nome da característica na tela
                             txt_tela = self.engine.texto(seletor_linha + XPATH_REL_COL_DESCRICAO)
                             match = re.search(r"^\s*\d+\s*-\s*(.*)", txt_tela)

@@ -284,3 +284,38 @@ def test_unidade_nao_casa_prefixo_por_engano():
 
     assert proc.selecionar_dropdown_unidade("//sel", "V") is False
     assert engine.selecionado is None
+
+
+def test_sem_dropdown_de_unidade_nao_vira_pendencia():
+    """Caso REAL do 2º lote: FREQUENCIA NOMINAL (tipo LISTA) teve o valor
+    selecionado corretamente e mesmo assim saiu como "campo rejeitado", só
+    porque a linha não tem dropdown de unidade.
+
+    Nenhuma opção lida significa "não há dropdown aqui" ou "ainda não
+    carregou" -- nunca "a IA errou o símbolo". Tratar isso como falha manda o
+    usuário conferir à mão um campo que está certo, e o ruído mata a
+    utilidade da lista de pendências.
+    """
+    logs = []
+    proc = _proc(_EngineDropdown([]))
+
+    ok = proc.selecionar_dropdown_unidade(
+        "//sel", "Hz", nome_campo="FREQUENCIA NOMINAL", callback_log=logs.append,
+    )
+
+    assert ok is True
+    assert "sem dropdown de unidade" in " ".join(logs)
+
+
+def test_simbolo_errado_com_dropdown_presente_continua_sendo_falha():
+    """Contraste do teste acima: quando o dropdown EXISTE e o símbolo não
+    está nele, é falha de verdade e tem de virar pendência."""
+    logs = []
+    proc = _proc(_EngineDropdown(["Cavalo-vapor (CV)", "Horsepower (HP)"]))
+
+    ok = proc.selecionar_dropdown_unidade(
+        "//sel", "kW", nome_campo="POTENCIA BOMBA", callback_log=logs.append,
+    )
+
+    assert ok is False
+    assert "não existe no dropdown" in " ".join(logs)

@@ -1,4 +1,7 @@
 import pandas as pd
+import unicodedata
+
+from sigft import config
 import time
 import os
 
@@ -68,6 +71,46 @@ XPATH_VOLTAR = '//*[@id="b9-Content"]'
 
 
 # =============================================================================
+def _mapear_colunas_lmr(colunas_da_aba):
+    """{papel: nome real da coluna} ou `None` se faltar algum papel.
+
+    A comparação ignora caixa, acento e espaço em volta: uma planilha
+    preenchida à mão traz "Tag LMR", "TAG LMR " e "tag lmr" com igual
+    frequência, e reprovar por isso seria implicância.
+    """
+    normalizados = {}
+    for coluna in colunas_da_aba:
+        chave = unicodedata.normalize("NFKD", str(coluna)).encode("ascii", "ignore")
+        normalizados[chave.decode().strip().upper()] = coluna
+
+    mapa = {}
+    for papel, candidatos in config.LMR_COLUNAS.items():
+        for nome in candidatos:
+            alvo = unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode().upper()
+            if alvo in normalizados:
+                mapa[papel] = normalizados[alvo]
+                break
+        else:
+            return None
+    return mapa
+
+
+def listar_abas(caminho_excel):
+    """Nomes das abas do arquivo, na ordem em que aparecem nele.
+
+    É o que popula o seletor de aba da tela. QUEM ESCOLHE É O USUÁRIO: a
+    primeira versão disto adivinhava a aba (tentava `LMR`, `GERAL` e depois
+    qualquer uma que tivesse as colunas), e o usuário recusou -- com razão.
+    Adivinhar aba é o tipo de "ajuda" que funciona nove vezes e, na décima,
+    cadastra o lote inteiro a partir da planilha errada sem ninguém notar.
+    """
+    return list(pd.ExcelFile(caminho_excel).sheet_names)
+
+
+def _colunas_da_aba(caminho_excel, aba):
+    return list(pd.read_excel(caminho_excel, sheet_name=aba, nrows=0).columns)
+
+
 class LMRAutomation:
     def __init__(self):
         self.engine = None
@@ -105,25 +148,49 @@ class LMRAutomation:
             self.engine.goto(target)
 
     # --- MÉTODOS DE DADOS ---
-    def carregar_dados_excel(self, caminho_excel):
+    def carregar_dados_excel(self, caminho_excel, aba=None):
         """
         Lê o Excel, filtra e retorna:
         1. O DataFrame completo limpo.
         2. A lista de PMIBs únicos para seleção.
         """
         try:
-            df_completo = pd.read_excel(
-                caminho_excel,
-                sheet_name='GERAL',
-                usecols=['PMIB', 'Código_PMIB', 'TAG_PMIB'],
-                dtype={'PMIB': str, 'Código_PMIB': str, 'TAG_PMIB': str}
-            )
+            if not aba:
+                return False, None, None, (
+                    "Nenhuma aba escolhida. Selecione a aba da planilha que contém "
+                    "as aplicações de LMR. Abas do arquivo: "
+                    + (", ".join(listar_abas(caminho_excel)) or "(nenhuma)")
+                )
+
+            aba_usada = aba
+            mapa = _mapear_colunas_lmr(_colunas_da_aba(caminho_excel, aba_usada))
+            if mapa is None:
+                return False, None, None, (
+                    f"A aba '{aba_usada}' não tem as colunas da planilha de LMR. "
+                    "Esperado (qualquer uma das grafias): "
+                    + " | ".join(
+                        f"{papel}: {' / '.join(nomes)}"
+                        for papel, nomes in config.LMR_COLUNAS.items()
+                    )
+                    + ". Escolha outra aba no seletor."
+                )
+
+            df_bruto = pd.read_excel(caminho_excel, sheet_name=aba_usada, dtype=str)
+            # Renomeia para os nomes INTERNOS ('PMIB'/'Código_PMIB'/'TAG_PMIB'),
+            # que é o que o resto do módulo já usa. Assim a planilha pode ter
+            # o cabeçalho novo ou o antigo sem que nada mais mude.
+            df_completo = df_bruto[[mapa["pmib"], mapa["codigo"], mapa["tag"]]].copy()
+            df_completo.columns = ['PMIB', 'Código_PMIB', 'TAG_PMIB']
+
             # Limpeza
             df_completo['PMIB'] = df_completo['PMIB'].str.strip()
             df_completo.dropna(subset=['PMIB'], inplace=True)
 
             pmibs_unicos = df_completo['PMIB'].unique().tolist()
-            return True, df_completo, pmibs_unicos, f"Carregados {len(df_completo)} registros e {len(pmibs_unicos)} PMIBs únicos."
+            return True, df_completo, pmibs_unicos, (
+                f"Aba '{aba_usada}': {len(df_completo)} registros e "
+                f"{len(pmibs_unicos)} PMIBs únicos."
+            )
         except Exception as e:
             return False, None, None, str(e)
 
