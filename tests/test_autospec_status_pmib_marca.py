@@ -118,3 +118,48 @@ def test_a_ficha_tem_PRECEDENCIA_sobre_a_planilha():
     fonte = inspect.getsource(autospec.AutoSpecCore.analyze_sheet)
     assert "if not fab and marca_status" in fonte
     assert "if not txt_brv" in fonte
+
+
+# =============================================================================
+# E. A aba certa, e não a que estava aberta
+# =============================================================================
+def test_a_aba_e_escolhida_PELO_CABECALHO_e_nao_por_estar_ativa():
+    """Achado no `_STATUS_PMIB` real: a planilha tem `Lista de Materiais` e
+    `Checklist`, e o código usava `wb.active` — a aba que estava selecionada
+    quando alguém salvou. Fechar o arquivo com o `Checklist` à frente fazia
+    `get_pmib_data` devolver vazio para TODA ficha, em silêncio.
+
+    Mesmo padrão dos outros achados: **assumir em vez de verificar**."""
+    class _Aba:
+        def __init__(self, titulo, linhas):
+            self.title = titulo
+            self._linhas = linhas
+            self.max_row = len(linhas)
+            self.max_column = max((len(l) for l in linhas), default=0)
+
+        def cell(self, row, column):
+            class _C:
+                pass
+            c = _C()
+            linha = self._linhas[row - 1] if row <= len(self._linhas) else []
+            c.value = linha[column - 1] if column <= len(linha) else None
+            return c
+
+        def iter_rows(self, min_row=1):
+            for i in range(min_row, len(self._linhas) + 1):
+                yield [self.cell(i, c) for c in range(1, self.max_column + 1)]
+
+    checklist = _Aba("Checklist", [["Item", "Conferido"], ["a", "sim"]])
+    materiais = _Aba("Lista de Materiais", [
+        ["ITEM", "DESCRIÇÃO", "CÓDIGO DO MATERIAL", "MARCA/MODELO", "CÓDIGO PMIB"],
+        [1, "Acoplador Modbus", "1000325606", "WAGO / 750-362", "4500063671.0071"],
+    ])
+
+    class _WB:
+        active = checklist
+        worksheets = [checklist, materiais]
+
+    core = Core.__new__(Core)
+    aba, pmib_col, desc_col, _mat, _ini, marca_col = core._aba_com_os_materiais(_WB())
+    assert aba.title == "Lista de Materiais", "escolheu a aba errada"
+    assert pmib_col and desc_col and marca_col

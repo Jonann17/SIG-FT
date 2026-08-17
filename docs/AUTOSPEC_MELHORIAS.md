@@ -68,7 +68,13 @@ fabricante. Vale igual para `CISCO / IE-3200-8T2S-E` e `NIDEC / GAAPA`.
 **A ficha continua tendo precedência:** se o engenheiro já escreveu o fabricante nela, é ele que
 vale. O `_STATUS_PMIB` só entra no vazio — a ficha é a fonte, a planilha é a rede.
 
-19 testes, com as linhas reais da planilha do SFC como fixture.
+**Mais um do mesmo padrão, achado olhando a planilha real:** ela tem duas abas (`Lista de
+Materiais` e `Checklist`) e o código usava `wb.active` — a aba que estava **selecionada quando
+alguém salvou**. Fechar o arquivo com o `Checklist` à frente fazia `get_pmib_data` devolver vazio
+para **toda** ficha, em silêncio. Agora a aba é escolhida por **ter o cabeçalho**, não por estar
+aberta. É o mesmo "assumir em vez de verificar" dos achados anteriores.
+
+20 testes, com as linhas reais da planilha do SFC como fixture.
 
 
 ### ✅ R-23 🔴 Varredura com 7 tipos de material real — 5 achados *(2026-08-13)*

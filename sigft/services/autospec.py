@@ -1470,8 +1470,7 @@ class AutoSpecCore:
         """
         try:
             wb = openpyxl.load_workbook(pmib_path, data_only=True)
-            ws = wb.active
-            pmib_col, desc_col, mat_col, start_row, marca_col = self.find_header_columns(ws)
+            ws, pmib_col, desc_col, mat_col, start_row, marca_col = self._aba_com_os_materiais(wb)
             if not pmib_col or not desc_col: return "", "", ""
 
             for row in ws.iter_rows(min_row=start_row):
@@ -1487,6 +1486,36 @@ class AutoSpecCore:
                     return desc_val, mat_val, marca_val
             return "", "", ""
         except Exception: return "", "", ""
+
+    def _aba_com_os_materiais(self, wb):
+        """A aba que TEM o cabeçalho, e não a que estava aberta.
+
+        Achado no `_STATUS_PMIB` real de 2026-08-13: a planilha tem duas abas
+        (`Lista de Materiais` e `Checklist`), e o código usava `wb.active` —
+        a que estava selecionada quando alguém salvou. Se o colega fechar o
+        arquivo com o `Checklist` à frente, `get_pmib_data` devolve vazio para
+        TODA ficha, em silêncio, e a busca web perde a marca.
+
+        Mesmo padrão dos outros achados desta camada: **assumir em vez de
+        verificar**. Procurar o cabeçalho custa uma varredura de 10 linhas por
+        aba e elimina a suposição.
+        """
+        # `worksheets` pode não existir (workbook falso de teste, versão
+        # diferente do openpyxl): a aba ativa sozinha é o comportamento
+        # anterior, e continua sendo o mínimo garantido.
+        try:
+            outras = [aba for aba in wb.worksheets if aba is not wb.active]
+        except Exception:
+            outras = []
+        candidatas = [wb.active] + outras
+        for aba in candidatas:
+            try:
+                pmib_col, desc_col, mat_col, start_row, marca_col = self.find_header_columns(aba)
+            except Exception:
+                continue
+            if pmib_col and desc_col:
+                return aba, pmib_col, desc_col, mat_col, start_row, marca_col
+        return wb.active, None, None, 5, None, None
 
     @staticmethod
     def separar_marca_modelo(bruto):
