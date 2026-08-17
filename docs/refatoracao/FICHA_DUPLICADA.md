@@ -38,17 +38,19 @@ vezes. O módulo preenche a ficha duplicada a partir da original, no portal.
 
 ### Divergência com o módulo antigo — e por que ela ficou visível
 
-O módulo antigo (`ficha_duplicada.montar_fila_processamento`) **não olhava o
-código do PDM**: procurava a palavra `DUPLICADA` em qualquer posição do texto
-(`marcador_duplicada="DUPLICADA"`). As duas regras concordam na planilha real
-— o valor é `PDM.9900.000 - FICHA PMIB, DUPLICADA, R0`, que casa nas duas —
-mas divergem nas bordas, e **cada uma erra para um lado**:
+⚠️ **Corrigido em 2026-08-17, depois de ler a TELA e não só a função.**
+`ficha_duplicada.montar_fila_processamento` tem `marcador_duplicada` como
+parâmetro, com default `"DUPLICADA"` — mas `ModuloCopiaFichas` **sempre passou
+`"PDM.9900.000"`**. Ou seja, o default nunca rodou em produção: a regra antiga
+real é **substring do código**, não a palavra. A primeira versão desta seção
+comparava contra o default e exagerava a divergência.
 
-| Célula | Regra antiga | Regra nova (do usuário) |
+| Célula | Regra antiga (a que rodava) | Regra nova (do usuário) |
 |---|---|---|
 | `PDM.9900.000 - FICHA PMIB, DUPLICADA, R0` | duplicada | duplicada |
-| `PDM.4320.002 - MOTOBOMBA DUPLICADA` | duplicada ❌ pega demais | não |
-| `FICHA PMIB, DUPLICADA, R0` (sem o código) | duplicada | não ❌ pega de menos |
+| `PDM.4320.002 - MOTOBOMBA DUPLICADA` | não | não |
+| `FICHA PMIB, DUPLICADA, R0` (sem o código) | não | não |
+| `usado PDM.9900.000 - R0` (código no meio) | duplicada | **não** ❌ única divergência |
 
 A regra que vale é a do usuário. Mas **"pegar de menos" é o erro caro**: a
 ficha some da lista sem sintoma nenhum, e ninguém procura o que não apareceu.
@@ -237,7 +239,7 @@ Nenhuma impede começar; todas impedem **rodar em lote sem conferir**.
 | Abrir a original em visualização (varre as 7 abas) | `services/duplicadas_extrator.py` | ✅ CP 6.2, 13 testes |
 | Ler a tela como pares rótulo→valor | `services/duplicadas_extrator.py` | ✅ CP 6.2, 16 testes com XPath real |
 | Navegar entre as SEÇÕES internas da ficha | `services/duplicadas_extrator.py` | ☐ falta HTML das abas internas |
-| Tela de seleção das fichas | `frontend.py` | ☐ CP 6.2 |
+| Tela de seleção das fichas | `frontend.py` (`ModuloCopiaFichas`) | ✅ CP 6.2 — usa a identificação nova |
 | Injeção (fabricante, características) | novo serviço | ☐ CP 6.3 |
 | Documentos e imagens | novo serviço | ☐ CP 6.4 |
 | Abas de Condições (exclui a Financeira) | `services/duplicadas_spec.py` | ✅ CP 6.1 |

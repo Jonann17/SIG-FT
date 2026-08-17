@@ -337,3 +337,11 @@ def test_suspeita_tolera_acento_e_caixa():
 @pytest.mark.parametrize("valor", ["PDM.4320.002 - MOTOBOMBA", "", "   ", None, "nan"])
 def test_pdm_normal_nao_e_suspeito(valor):
     assert spec.parece_duplicada_sem_o_pdm(valor) is False
+
+
+def test_codigo_no_meio_do_texto_e_suspeito():
+    """ESTE é o caso que de fato diverge do módulo antigo em produção: a tela
+    sempre passou `marcador_duplicada="PDM.9900.000"` e a checagem dele é
+    SUBSTRING, então "usado PDM.9900.000" entrava na fila lá e não entra aqui.
+    O default `"DUPLICADA"` da função antiga nunca rodou."""
+    assert spec.parece_duplicada_sem_o_pdm("usado PDM.9900.000 - R0") is True

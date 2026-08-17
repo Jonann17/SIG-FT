@@ -17,6 +17,35 @@ Clona fichas técnicas completas (informações gerais, fornecedores, condiçõe
 
 ## Classes e Funções
 
+### ⚠️ Quem identifica as duplicadas mudou (CP 6.2, 2026-08-17)
+
+A tela (`ModuloCopiaFichas._worker_leitura_excel`) **não chama mais**
+`GerenciadorFilaPMIB.montar_fila_processamento`. Quem monta a fila agora é
+`sigft/services/duplicadas.py` (`localizar_duplicadas`). O robô continua sendo
+o desta página — `ExtratorFichaBase` / `InjetorFichaAlvo`; o que mudou é só
+quem decide **quais** fichas entram.
+
+O que a troca corrige, e nada disso é teórico:
+
+| Situação | `GerenciadorFilaPMIB` | `duplicadas.localizar_duplicadas` |
+|---|---|---|
+| Cabeçalho `PDMs usados` | acha **zero** fichas (só aceita `PDM USADO`/`PDM`) | acha |
+| Cabeçalho em caixa mista | funciona (`.str.upper()` nas colunas) | funciona (`achar_coluna`) |
+| Ficha sem original/sem material | **descartada em silêncio** | fica na lista, com o motivo no log |
+| `OBSERVAÇÕES` sem código PMIB | descartada em silêncio | entra com aviso, editável em "Revisar" |
+| Regra de identificação | substring do que a tela passar | prefixo `PDM.9900.000` |
+
+A tela sempre passou `marcador_duplicada="PDM.9900.000"`, então o default
+`"DUPLICADA"` documentado abaixo **nunca rodou em produção** — a comparação
+real sempre foi com o código, por substring. A única divergência de resultado
+é a linha em que o código não está no começo do texto; essas saem como aviso
+no log em vez de sumirem.
+
+`GerenciadorFilaPMIB` continua no código e sem uso pela tela, até a Fase 6
+fechar.
+
+---
+
 ### GerenciadorFilaPMIB
 **`__init__(caminho_excel, nome_aba="Lista de Materiais")`**: Armazena caminho e nome da aba.
 

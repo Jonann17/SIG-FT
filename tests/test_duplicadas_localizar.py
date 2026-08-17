@@ -331,3 +331,63 @@ def test_sem_suspeitas_o_log_nao_ganha_ruido(monkeypatch):
 
     assert not any("Atenção" in linha_log for linha_log in logs)
     assert "suspeita" not in mensagem
+
+
+# ===========================================================================
+# OBSERVAÇÕES sem código PMIB — entra na fila, mas avisada
+# ===========================================================================
+# O módulo antigo DESCARTAVA a linha cujo OBSERVAÇÕES não casasse o padrão do
+# código (`if pmib_base and pmib_alvo_raw`). Aqui ela entra, porque o texto
+# pode ser o código em outra grafia -- mas a tela precisa poder distinguir os
+# dois casos, senão a diferença vira uma busca no portal por "ver ficha do
+# motor" no meio do lote, em vez de um aviso antes de começar.
+
+def test_original_com_codigo_e_reconhecida_como_codigo(monkeypatch):
+    _com_planilha(monkeypatch, _COLUNAS, [
+        _linha("4500063671.1418", _PDM_DUP, obs="Duplicada da 4500063671.1471"),
+    ])
+
+    ficha = duplicadas.localizar_duplicadas("x.xlsx")[0][0]
+
+    assert ficha.original_e_codigo_pmib is True
+
+
+def test_original_sem_codigo_entra_na_fila_mas_nao_se_diz_codigo(monkeypatch):
+    _com_planilha(monkeypatch, _COLUNAS, [
+        _linha("4500063671.1418", _PDM_DUP, obs="ver ficha do motor"),
+    ])
+
+    ficha = duplicadas.localizar_duplicadas("x.xlsx")[0][0]
+
+    assert ficha.pronta_para_duplicar is True      # o robô ainda pode tentar
+    assert ficha.original_e_codigo_pmib is False   # mas a tela avisa antes
+
+
+def test_sem_original_nenhuma_a_pergunta_do_codigo_e_falsa(monkeypatch):
+    """Impedida por falta de original não deve gerar TAMBÉM o aviso de "não é
+    código" -- seria dizer duas coisas sobre a mesma falta."""
+    _com_planilha(monkeypatch, _COLUNAS, [_linha("4500063671.1418", _PDM_DUP, obs="")])
+
+    ficha = duplicadas.localizar_duplicadas("x.xlsx")[0][0]
+
+    assert ficha.pronta_para_duplicar is False
+    assert ficha.original_e_codigo_pmib is False
+
+
+def test_cabecalho_em_caixa_mista_ainda_acha_o_pmib(monkeypatch):
+    """O módulo antigo fazia `df.columns.str.upper()`, então "Código PMIB"
+    funcionava lá. Ler exato aqui devolveria PMIB vazio para a ficha inteira --
+    e `find_header_row` é insensível a caixa, então a LINHA certa seria achada
+    e as CÉLULAS não: lista cheia de fichas sem código, sem erro nenhum."""
+    colunas = ["Código PMIB", "Descrição", "PDM usado",
+               "Código do Material", "Código CMI", "Observações"]
+    linha = {"Código PMIB": "4500063671.1418", "Descrição": "FONTE",
+             "PDM usado": _PDM_DUP, "Código do Material": "2904616",
+             "Código CMI": "CMI-1", "Observações": "4500063671.1471"}
+    _com_planilha(monkeypatch, colunas, [linha])
+
+    ficha = duplicadas.localizar_duplicadas("x.xlsx")[0][0]
+
+    assert ficha.pmib == "4500063671.1418"
+    assert ficha.descricao == "FONTE"
+    assert ficha.pronta_para_duplicar is True

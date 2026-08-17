@@ -78,34 +78,44 @@ def e_ficha_duplicada(valor_pdm_usado):
     return texto.upper().startswith(PDM_DUPLICADA.upper())
 
 
-# O módulo ANTIGO (`ficha_duplicada.montar_fila_processamento`) não usava o
-# código do PDM: procurava a palavra "DUPLICADA" em qualquer posição do texto.
-# As duas regras concordam na planilha real do usuário -- ela tem
-# "PDM.9900.000 - FICHA PMIB, DUPLICADA, R0", que casa nas duas -- mas divergem
-# em dois casos, e cada um erra para um lado:
+# Como o módulo ANTIGO decide, e a resposta mudou depois de ler a TELA:
+# `ficha_duplicada.montar_fila_processamento` tem `marcador_duplicada` como
+# PARÂMETRO, com default `"DUPLICADA"` -- mas a tela (`ModuloCopiaFichas.
+# _worker_leitura_excel`) sempre passou `"PDM.9900.000"`. Ou seja, o default
+# nunca rodou em produção: o que roda é SUBSTRING do código, e a diferença
+# para a regra nova é só uma:
 #
-#   - a palavra aparece na descrição de OUTRO PDM  -> o antigo pega demais;
-#   - a célula perde o prefixo do código           -> o novo pega de menos.
+#   - código presente mas NÃO no começo ("usado PDM.9900.000") -> o antigo
+#     pega, o novo não;
+#   - só a palavra "DUPLICADA", sem o código -> NENHUM dos dois pega (o
+#     antigo tampouco, apesar do nome do parâmetro sugerir que sim).
 #
 # A regra que vale é a do usuário (prefixo, ver acima). Mas "pegar de menos" é
 # o erro caro: a ficha some da lista sem nenhum sintoma, e ninguém procura o
-# que não apareceu. Por isso o serviço também passa as NÃO casadas por aqui e
-# avisa -- a decisão continua sendo do usuário, agora com a informação na tela.
+# que não apareceu. Por isso o serviço passa as NÃO casadas por aqui e avisa --
+# a decisão continua sendo do usuário, agora com a informação na tela.
 MARCADOR_DUPLICADA_LEGADO = "DUPLICADA"
 
 
 def parece_duplicada_sem_o_pdm(valor_pdm_usado):
-    """A linha diz "DUPLICADA" mas NÃO começa com o código do PDM?
+    """A linha cheira a duplicada mas não casa a regra? (só para AVISAR)
 
-    É o que a regra antiga pegaria e a nova não. Serve só para avisar; quem
-    decide é o usuário.
+    Dois casos, e o primeiro é o que de fato diverge do módulo antigo:
+
+      1. o código `PDM.9900.000` está no texto mas NÃO no começo -- a regra
+         antiga (substring) pega, a nova (prefixo) não;
+      2. a palavra "DUPLICADA" sem o código -- nenhuma das duas pega, mas é
+         justamente o caso em que a planilha pode estar mal preenchida, e vale
+         o aviso.
     """
     if e_ficha_duplicada(valor_pdm_usado) or valor_pdm_usado is None:
         return False
     texto = str(valor_pdm_usado).strip()
     if not texto or texto.lower() == "nan":
         return False
-    return MARCADOR_DUPLICADA_LEGADO in _sem_acento(texto).upper()
+    maiusculo = _sem_acento(texto).upper()
+    return (PDM_DUPLICADA.upper() in maiusculo
+            or MARCADOR_DUPLICADA_LEGADO in maiusculo)
 
 
 # ---------------------------------------------------------------------------

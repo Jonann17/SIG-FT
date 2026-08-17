@@ -53,6 +53,24 @@ class FichaDuplicada:
         return bool(self.ficha_original) and bool(self.codigo_material)
 
     @property
+    def original_e_codigo_pmib(self):
+        """A ficha original é um código PMIB de verdade, ou texto solto?
+
+        `extrair_ficha_original` devolve o TEXTO da célula quando não acha o
+        padrão do código -- de propósito: pode ser o código em outra grafia, e
+        deixar o robô tentar (com o log dizendo o que foi digitado) é melhor do
+        que descartar em silêncio. Só que o módulo antigo simplesmente NÃO
+        punha essa ficha na fila, e agora ela entra. Sem um jeito de perguntar
+        "isto é código?", a diferença viraria uma busca no portal por
+        "ver ficha do motor" -- que falha no meio do lote em vez de na tela.
+
+        Quem responde é o extrator canônico do CP 1.2, o mesmo da identificação.
+        """
+        if not self.ficha_original:
+            return False
+        return pmib_codes.find_pmib_code_in_text(self.ficha_original) is not None
+
+    @property
     def motivo_de_impedimento(self):
         faltas = []
         if not self.ficha_original:
@@ -131,6 +149,16 @@ def localizar_duplicadas(caminho_excel, callback_log=None):
             + f". Colunas encontradas: {', '.join(df.columns)}"
         )
 
+    # Também por `achar_coluna`, e não `linha.get(config.COL_...)` direto: o
+    # módulo antigo fazia `df.columns.str.upper()` antes de ler, então uma
+    # planilha com "Código PMIB" em caixa mista funcionava lá. Ler exato aqui
+    # devolveria PMIB vazio para a ficha INTEIRA -- e a busca de cabeçalho
+    # (`find_header_row`) já é insensível a caixa, então a linha certa seria
+    # achada e as células, não. Cair só no `.get()` seria trocar um erro
+    # visível por uma lista de fichas sem código.
+    col_pmib = spec.achar_coluna(df.columns, (config.COL_CODIGO_PMIB,)) or config.COL_CODIGO_PMIB
+    col_descricao = spec.achar_coluna(df.columns, (config.COL_DESCRICAO,)) or config.COL_DESCRICAO
+
     col_material = spec.achar_coluna(df.columns, spec.COLUNAS_REFERENCIA_FABRICANTE)
     col_fornecedor = spec.achar_coluna(df.columns, spec.COLUNAS_REFERENCIA_FORNECEDOR)
     col_original = spec.achar_coluna(df.columns, spec.COLUNAS_FICHA_ORIGINAL)
@@ -162,8 +190,8 @@ def localizar_duplicadas(caminho_excel, callback_log=None):
             # ao `str()`, e essa distinção custou uma contraprova.) O
             # normalizador canônico do CP 1.2 também limpa o apóstrofo que o
             # Excel põe à frente do texto e a vírgula decimal PT-BR.
-            pmib=pmib_codes.normalize_pmib(linha.get(config.COL_CODIGO_PMIB)),
-            descricao=_texto(linha.get(config.COL_DESCRICAO)),
+            pmib=pmib_codes.normalize_pmib(linha.get(col_pmib)),
+            descricao=_texto(linha.get(col_descricao)),
             pdm_usado=_texto(linha.get(col_pdm)),
             codigo_material=_texto(linha.get(col_material)) if col_material else "",
             codigo_fornecedor=_texto(linha.get(col_fornecedor)) if col_fornecedor else "",

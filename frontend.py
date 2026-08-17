@@ -23,6 +23,7 @@ from sigft import config as sigft_config
 from sigft.core.llm import catalogo
 from sigft.core.llm import selecao
 from sigft.core.llm import usage as llm_usage
+from sigft.services import duplicadas
 
 # --- VARIÁVEIS GLOBAIS DOS BACKENDS (Inicialmente None) ---
 # Isso evita erro de "NameError" nas classes antes do carregamento
@@ -2729,6 +2730,10 @@ class ModuloCopiaFichas(ctk.CTkFrame):
         self.caminho_status = None
         self.fila_completa = []
         self.fila_selecionada = []
+        # Duplicadas encontradas que o robô NÃO consegue processar (sem ficha
+        # original ou sem código do material). Ficam fora da fila, mas contadas
+        # e explicadas -- ver `_worker_leitura_excel`.
+        self.impedidas = []
         self.sucessos = []
         self.extrator_ativo = None
 
@@ -2813,24 +2818,69 @@ class ModuloCopiaFichas(ctk.CTkFrame):
         threading.Thread(target=self._worker_leitura_excel).start()
 
     def _worker_leitura_excel(self):
+        # CP 6.2: quem identifica as duplicadas passou a ser
+        # `sigft/services/duplicadas.py` -- a implementação testada (22 testes)
+        # e a que segue a regra que o usuário definiu: prefixo `PDM.9900.000`
+        # na coluna do PDM usado. O robô continua sendo o antigo
+        # (`backend.ExtratorFichaBase`/`InjetorFichaAlvo`); o que mudou aqui é
+        # só QUEM decide quais fichas entram na fila.
+        #
+        # Três ganhos concretos sobre o `GerenciadorFilaPMIB`, e todos aparecem
+        # nesta tela: a coluna do PDM é aceita em mais grafias (com `PDMs
+        # usados` o antigo achava ZERO fichas); as impedidas viram log em vez
+        # de sumirem caladas; e as linhas que a regra antiga pegaria e esta não
+        # saem como aviso, em vez de simplesmente não aparecerem.
         try:
-            gerenciador = backend.GerenciadorFilaPMIB(self.caminho_status)
-            # O marcador confirmado anteriormente
-            status, resultado = gerenciador.montar_fila_processamento(marcador_duplicada="PDM.9900.000")
+            fichas, mensagem = duplicadas.localizar_duplicadas(
+                self.caminho_status, callback_log=self.log)
+            self.log(mensagem)
 
-            if status:
-                self.fila_completa = resultado
-                self.after(0, self._pos_leitura_sucesso)
-            else:
-                self.log(f"Erro: {resultado}")
-                self.after(0, lambda: self.btn_status.configure(state="normal"))
+            self.impedidas = [f for f in fichas if not f.pronta_para_duplicar]
+            for ficha in self.impedidas:
+                self.log(f"   [Fora da fila] linha {ficha.linha} "
+                         f"({ficha.pmib or 'sem código PMIB'}): falta "
+                         f"{ficha.motivo_de_impedimento}.")
+
+            # OBSERVAÇÕES sem código PMIB: a ficha ENTRA na fila (o texto pode
+            # ser o código em outra grafia), mas com aviso -- o módulo antigo
+            # descartava essas linhas, e sem o aviso a diferença apareceria
+            # como uma busca no portal por "ver ficha do motor", no meio do
+            # lote. O botão "1. Revisar / Editar Fichas" corrige à mão.
+            for ficha in fichas:
+                if ficha.pronta_para_duplicar and not ficha.original_e_codigo_pmib:
+                    self.log(f"   [Atenção] linha {ficha.linha} ({ficha.pmib}): "
+                             f"OBSERVAÇÕES não tem código PMIB -- o robô vai tentar "
+                             f"com {ficha.ficha_original!r}. Confira em 'Revisar / Editar'.")
+
+            # O robô precisa das duas pontas -- original e alvo. Sem elas não
+            # há de onde copiar, então a ficha fica fora da fila; mas saiu no
+            # log acima, com a linha do Excel e o motivo. O módulo antigo a
+            # descartava em silêncio, e ficha que some sem explicação é o erro
+            # que ninguém vai procurar.
+            self.fila_completa = [
+                {
+                    "descricao": ficha.descricao or "Sem Descrição",
+                    "pmib_original": ficha.ficha_original,
+                    "pmib_alvo": ficha.pmib,
+                    # Guardados para o CP 6.3 (referência do fabricante e do
+                    # fornecedor). A janela de seleção ignora chaves extras.
+                    "codigo_material": ficha.codigo_material,
+                    "codigo_fornecedor": ficha.codigo_fornecedor,
+                    "linha_excel": ficha.linha,
+                }
+                for ficha in fichas if ficha.pronta_para_duplicar
+            ]
+            self.after(0, self._pos_leitura_sucesso)
         except Exception as e:
             self.log(f"Falha na leitura: {e}")
             self.after(0, lambda: self.btn_status.configure(state="normal"))
 
     def _pos_leitura_sucesso(self):
         self.btn_status.configure(state="normal", fg_color=COLORS["primary"])
-        self.lbl_status.configure(text=f"Planilha carregada. Encontradas {len(self.fila_completa)} duplicadas.", text_color=COLORS["accent"])
+        texto = f"Planilha carregada. Encontradas {len(self.fila_completa)} duplicadas."
+        if self.impedidas:
+            texto += f" ({len(self.impedidas)} sem dados para o robô — ver log.)"
+        self.lbl_status.configure(text=texto, text_color=COLORS["accent"])
         self.log(f"{len(self.fila_completa)} fichas identificadas como cópia.")
 
         if self.fila_completa:
