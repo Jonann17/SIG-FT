@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 import sys
 import ast
 import subprocess
+import webbrowser  # conferencia de documentos duvidosos (AutoSpec)
 
 from sigft.core.excel.pmib_codes import normalize_pmib
 from sigft.core import prefs
@@ -77,6 +78,9 @@ COLORS = {
     "accent": "#00C975",
     "accent_hover": "#00E085",
     "danger": "#D32F2F",
+    # Acrescentada em 2026-08-13 para a secao de conferencia do AutoSpec.
+    # Aditiva: nenhuma cor existente mudou.
+    "warning": "#FFA726",
     "sidebar": "#161616",
     "background": "#212121",
     "text_light": "#E0E0E0",
@@ -3063,6 +3067,144 @@ class ModuloAutoSpec(ctk.CTkFrame):
                                      fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"], text_color="#FFFFFF")  # Texto escuro no verde
         self.btn_run.pack(fill="x", padx=30, pady=20)
 
+        # --- SEÇÃO 5: CONFERÊNCIA DE DOCUMENTOS ---
+        # Bloco AUTOCONTIDO (2026-08-13). Ver `_build_conferencia`.
+        self._build_conferencia()
+
+    # =========================================================================
+    # CONFERÊNCIA DE DOCUMENTOS DUVIDOSOS  (frente AutoSpecAI — Rafael)
+    # =========================================================================
+    # ⚠️ LEIA ANTES DE MEXER — CP 7.3 (quebrar frontend.py em app/views/*.py)
+    #
+    # Este bloco é AUTOCONTIDO de propósito: são 4 métodos com prefixo
+    # `_conferencia`/`_build_conferencia` + 5 atributos (`self.conferencia`,
+    # `self.marcados_conf`, `self.frm_conf`, `self.lista_conf`,
+    # `self.btn_conf`). Nada fora daqui depende deles, e eles não dependem de
+    # nada fora da própria classe — a única amarração com o resto de
+    # `ModuloAutoSpec` é a chamada de `_conferencia_mostrar` no fim do
+    # `_worker` e o `_novo_core()`, que os dois workers compartilham.
+    #
+    # Para o CP 7.3: mova o bloco INTEIRO junto com `ModuloAutoSpec`, sem
+    # tentar separar. A lógica já está fora daqui, em
+    # `sigft/services/autospec_conferencia.py` — o que sobrou é só desenho de
+    # widget, que é exatamente o que o checkpoint quer mover.
+    #
+    # POR QUE ESTA TELA EXISTE: o filtro anti-intruso (§4.3) tem três
+    # destinos, e o do meio (`duvidoso`) não tem como ser resolvido por
+    # código. Numa ficha real entrou uma camiseta da Minnie do site do Target
+    # porque a URL continha o código do material; no mesmo lote um datasheet
+    # legítimo foi barrado por não citar a marca no título. Indistinguíveis
+    # para o programa, triviais para quem abre o link.
+    # =========================================================================
+    def _build_conferencia(self):
+        """Monta a seção, inicialmente escondida. Só aparece quando o lote
+        termina com documentos duvidosos."""
+        self.conferencia = None
+        self.marcados_conf = {}
+
+        self.frm_conf = ctk.CTkFrame(
+            self.content, fg_color="#2B2B2B", corner_radius=8,
+            border_width=1, border_color=COLORS["warning"],
+        )
+        ctk.CTkLabel(
+            self.frm_conf, text="5. Conferência de documentos",
+            font=("Roboto", 14, "bold"), text_color=COLORS["warning"],
+        ).pack(anchor="w", padx=15, pady=(10, 2))
+        ctk.CTkLabel(
+            self.frm_conf, justify="left", anchor="w", text_color="#CCCCCC",
+            font=("Roboto", 11), wraplength=680,
+            text=(
+                "Estes documentos citam o fabricante OU o código, mas não os dois — "
+                "podem ser o datasheet certo num distribuidor, ou a página de outro "
+                "produto. Abra o link, confira, e marque os que são deste material."
+            ),
+        ).pack(anchor="w", padx=15, pady=(0, 8))
+
+        self.lista_conf = ctk.CTkScrollableFrame(
+            self.frm_conf, height=190, fg_color="#1E1E1E"
+        )
+        self.lista_conf.pack(fill="x", padx=15, pady=(0, 10))
+
+        self.btn_conf = ctk.CTkButton(
+            self.frm_conf, text="PROCESSAR OS DOCUMENTOS MARCADOS",
+            height=40, command=self._conferencia_processar,
+            font=("Roboto", 13, "bold"),
+            fg_color=COLORS["accent"], hover_color=COLORS["accent_hover"],
+            text_color="#FFFFFF",
+        )
+        self.btn_conf.pack(fill="x", padx=20, pady=(0, 15))
+        # `pack_forget` e não `destroy`: a seção volta a aparecer no próximo
+        # lote sem precisar ser reconstruída.
+        self.frm_conf.pack_forget()
+
+    def _conferencia_mostrar(self, conferencia):
+        """Preenche a lista com as pendências do lote que acabou."""
+        self.conferencia = conferencia
+        self.marcados_conf = {}
+        for w in self.lista_conf.winfo_children():
+            w.destroy()
+
+        if not conferencia:
+            self.frm_conf.pack_forget()
+            return
+
+        for i_pend, pendencia in enumerate(conferencia.pendencias):
+            ctk.CTkLabel(
+                self.lista_conf, text=f"📄 {pendencia.nome_curto}  —  {pendencia.material[:60]}",
+                font=("Roboto", 12, "bold"), anchor="w", text_color=COLORS["accent"],
+            ).pack(fill="x", padx=6, pady=(8, 2))
+
+            for i_doc, doc in enumerate(pendencia.documentos):
+                linha = ctk.CTkFrame(self.lista_conf, fg_color="transparent")
+                linha.pack(fill="x", padx=6, pady=1)
+
+                var = ctk.BooleanVar(value=False)
+                self.marcados_conf[(i_pend, i_doc)] = var
+                ctk.CTkCheckBox(
+                    linha, text="", variable=var, width=24,
+                    checkbox_width=18, checkbox_height=18,
+                ).pack(side="left")
+
+                url = doc.get("url", "")
+                titulo = (doc.get("title") or url)[:70]
+                # O link é um botão porque CTkLabel não tem clique nativo; o
+                # visual de link é feito à mão.
+                ctk.CTkButton(
+                    linha, text=f"🔗 {titulo}", anchor="w", height=22,
+                    fg_color="transparent", hover_color="#333333",
+                    text_color="#6FB3FF", font=("Roboto", 11, "underline"),
+                    command=lambda u=url: webbrowser.open(u),
+                ).pack(side="left", fill="x", expand=True)
+
+        self.frm_conf.pack(fill="x", pady=10)
+
+    def _conferencia_processar(self):
+        if not self.conferencia:
+            return
+        marcados = {chave: var.get() for chave, var in self.marcados_conf.items()}
+        selecao = self.conferencia.selecao_por_ficha(marcados)
+        if not selecao:
+            messagebox.showinfo(
+                "Conferência", "Marque ao menos um documento antes de processar."
+            )
+            return
+        self.btn_conf.configure(state="disabled")
+        threading.Thread(target=self._conferencia_worker, args=(selecao,)).start()
+
+    def _conferencia_worker(self, selecao):
+        try:
+            core = self._novo_core()
+            core.conferencia = self.conferencia
+            for msg in core.processar_conferidos(selecao, self.status_pmib_path):
+                self.log(msg)
+            self.log("Conferência processada!")
+            messagebox.showinfo("Sucesso", "Documentos conferidos processados.")
+            self.frm_conf.pack_forget()
+        except Exception as e:
+            self.log(f"ERRO na conferência: {e}")
+        finally:
+            self.btn_conf.configure(state="normal")
+
     # --- Seletores (Lógica Mantida) ---
     def sel_status(self):
         p = file_dialogs.ask_open_file("autospec.status_pmib", "excel", titulo="Selecione _STATUS_PMIB", filetypes=[("Excel", "*.xlsx")])
@@ -3125,14 +3267,23 @@ class ModuloAutoSpec(ctk.CTkFrame):
         self.btn_run.configure(state="disabled")
         threading.Thread(target=self._worker).start()
 
+    def _novo_core(self):
+        """Uma instância do backend com as chaves da tela Home.
+
+        Extraído de `_worker` em 2026-08-13 porque a conferência precisa da
+        MESMA construção — duplicar as 4 chaves em dois lugares é como uma
+        delas fica para trás quando um provedor novo entra.
+        """
+        return autospec_backend.AutoSpecCore(
+            gemini_key=self.controller.get_key("GEMINI"),
+            llama_key=self.controller.get_key("LLAMA"),
+            google_search_key=self.controller.get_key("GOOGLE_SEARCH"),
+            google_cse_id=self.controller.get_key("GOOGLE_CSE")
+        )
+
     def _worker(self):
         try:
-            core = autospec_backend.AutoSpecCore(
-                gemini_key=self.controller.get_key("GEMINI"),
-                llama_key=self.controller.get_key("LLAMA"),
-                google_search_key=self.controller.get_key("GOOGLE_SEARCH"),
-                google_cse_id=self.controller.get_key("GOOGLE_CSE")
-            )
+            core = self._novo_core()
             for msg in core.process_queue(self.queue, self.status_pmib_path):
                 self.log(msg)
 
@@ -3140,6 +3291,8 @@ class ModuloAutoSpec(ctk.CTkFrame):
             messagebox.showinfo("Sucesso", "Todas as tarefas da fila foram processadas.")
             self.queue = []
             self.update_queue_ui()  # Nota: idealmente via callback seguro, mas ctk aguenta na maioria dos casos
+            # Conferência humana: só aparece se sobrou dúvida (2026-08-13).
+            self._conferencia_mostrar(getattr(core, "conferencia", None))
 
         except Exception as e:
             self.log(f"ERRO FATAL: {e}")

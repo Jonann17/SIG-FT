@@ -52,7 +52,12 @@ começar nada.** Trocar a default exige permissão de admin — é ação do Lua
 
 | Arquivo | O que é |
 |---|---|
-| `sigft/services/autospec.py` | o serviço AutoSpec (a lógica de verdade, 449 linhas) |
+| `sigft/services/autospec.py` | o serviço AutoSpec (a lógica de verdade) |
+| `sigft/services/autospec_rag.py` | retrieval (BM25 + glossário multilíngue) |
+| `sigft/services/autospec_embeddings.py` | reforço semântico opcional |
+| `sigft/services/autospec_unidades.py` | conversão de unidade conferida |
+| `sigft/services/autospec_conferencia.py` | conferência humana dos documentos duvidosos |
+| `sigft/core/web/` (`navegador.py`, `robots.py`) | leitura de página por navegador, último recurso |
 | `autospec_backend.py` | shim de compatibilidade do AutoSpec (23 linhas) |
 | `frontend.py`, **linhas ~2971–3146** | `class ModuloAutoSpec` — a tela do módulo. **Localize pela linha `class ModuloAutoSpec` até a `class` seguinte, não pelo número** — em 2026-08-11 o intervalo já andou de 2947–3122 para 2971–3146 por causa de um commit no mesmo arquivo, em questão de horas |
 | `tests/test_autospec_*.py`, `tests/test_llm_autospec_migration.py` | testes do módulo |
@@ -95,6 +100,37 @@ vira conflito** — o Git não tem como casar "linha 3000 do `frontend.py`" com 
 tela.
 → **Só execute o CP 7.3 depois que o AutoSpecAI estiver mergeado.** Se o plano mandar
 executá-lo antes, pare e pergunte.
+
+#### 🆕 2026-08-13 — o `ModuloAutoSpec` cresceu: leia isto antes do CP 7.3
+
+A tela ganhou uma **seção nova**, a *Conferência de documentos*. Ela é o desfecho de uma
+decisão de produto: o filtro anti-intruso passou a ter três destinos (`certo`, `duvidoso`,
+`descartado`), e o do meio **precisa de uma pessoa**. Numa ficha real entrou uma camiseta da
+Minnie do site do Target porque a URL continha o código do material; no mesmo lote, um datasheet
+legítimo foi barrado por não citar a marca no título. Indistinguíveis para o código.
+
+**O que isso muda para você, que vai executar o CP 7.3:**
+
+| | |
+|---|---|
+| **Onde está** | `frontend.py`, dentro de `class ModuloAutoSpec`, sob o comentário-cabeçalho `CONFERÊNCIA DE DOCUMENTOS DUVIDOSOS` |
+| **O que é** | 4 métodos (`_build_conferencia`, `_conferencia_mostrar`, `_conferencia_processar`, `_conferencia_worker`) + 5 atributos (`self.conferencia`, `self.marcados_conf`, `self.frm_conf`, `self.lista_conf`, `self.btn_conf`) |
+| **Acoplamento com o resto do arquivo** | **nenhum.** Nada fora da classe usa esses nomes. Dentro da classe são dois pontos só: `_build_conferencia()` no fim do `setup_ui` e `_conferencia_mostrar(...)` na última linha do `_worker` |
+| **`_novo_core()`** | método novo, extraído do `_worker`: monta o `AutoSpecCore` com as chaves e opções da tela. Os **dois** workers (fila e conferência) chamam ele. Se você mover só um, quebra o outro |
+| **Como mover** | **em bloco, junto com a classe.** Não tente separar o bloco da tela — ele não é reaproveitável, é desenho de widget desta tela específica |
+
+**A lógica não está na tela** — está em `sigft/services/autospec_conferencia.py`, com 16 testes.
+Isso foi feito de propósito para o CP 7.3: quando você mover `ModuloAutoSpec`, o que vai junto é
+só construção de widget, que é exatamente o que o checkpoint quer mover. Nenhuma regra de
+negócio viaja com ele.
+
+**Duas coisas fora da classe** que a seção precisa, e que você pode encontrar no diff:
+
+1. `import webbrowser` no topo do `frontend.py` — o link da conferência abre no navegador.
+2. `COLORS["warning"] = "#FFA726"` — **aditivo**, nenhuma cor existente mudou.
+
+Se o CP 7.3 for executado antes do merge desta frente, estas são as duas linhas que também
+precisam viajar (ou ser reintroduzidas no arquivo novo).
 
 ⚠️ **CP 7.1 e CP 7.2** — `theme.py`/`console.py`/`module_frame.py` e `pickers.py`/`dialogs.py`.
 Reescrevem widgets que o `ModuloAutoSpec` usa (console, seletores de arquivo). Podem ser
