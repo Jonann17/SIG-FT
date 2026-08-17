@@ -35,6 +35,69 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-27 🔴 A conferência deixou de morrer junto com o aplicativo *(2026-08-17)*
+
+**Relato do Luan, usando a ferramenta:** o lote roda, a lista de duvidosos aparece — e conferir
+link por link leva tempo. Se ele precisa fechar o aplicativo antes de terminar, **perde o
+processamento inteiro**: os links, o agrupamento por ficha e o que já tinha conferido. Rodar de
+novo custa cota de CSE e tempo de IA, e o R-26 tinha acabado de criar essa lista justamente
+para não jogar informação fora.
+
+#### O que passou a existir
+
+```
+lote termina  ->  ⚠️ 6 documentos em 3 fichas para conferir
+                  Conferencia salva em: ...\CONFERENCIA_AUTOSPEC_2026-08-17_1841.txt   ← sozinho
+   ↓ (fecha o app, vai almoçar, volta no dia seguinte)
+Seção 5 vazia  ->  [IMPORTAR CONFERÊNCIA (.txt)]  ->  links de volta, COM as marcações
+   ↓
+[PROCESSAR OS DOCUMENTOS MARCADOS]  ->  2ª passada normal
+```
+
+**Três decisões que não eram óbvias:**
+
+| Decisão | Por quê |
+|---|---|
+| `.txt`, não JSON | O arquivo é para ser **lido e editado por uma pessoa**: abre no Bloco de Notas, clica no link, marca `[x]`. Um `JSONDecodeError` por uma vírgula seria a mesma perda que o recurso veio evitar. O parser aceita `[X]`, `[ x ]`, `[*]`, comentário no meio e linha em branco sobrando |
+| **Salva sozinho** no fim do lote, além do botão | O botão só protege quem lembra de clicar. O relato foi de alguém que precisou fechar o app — e quem fecha às pressas não clica em nada |
+| A seção **não se esconde mais** | O botão IMPORTAR precisa estar visível para quem acabou de abrir o aplicativo e ainda não processou nada. Escondida, o recurso não existiria para o caso que o motivou |
+
+Onde salva: **pasta do `_STATUS_PMIB`** (pedido do usuário — é a pasta que ele já tem aberta).
+Sem status utilizável, cai na pasta da ficha. O nome leva data e hora e **nunca sobrescreve**:
+perder a conferência de ontem ao exportar a de hoje seria repetir o bug.
+
+#### O que a verificação pegou
+
+A suíte passou de primeira; o que achou problema foram as **mutações** e o **roteiro de ponta a
+ponta**.
+
+- **Mutação sobrevivente nº 1 — um guard meu era código morto.** Desliguei o `if not
+  atual["ficha"]: continue` do parser e o teste continuou verde: quem realmente descarta link
+  sem `FICHA:` acima é o `_fechar()`. Guard redundante que *parece* carregar peso engana quem
+  ler depois — removido, com comentário dizendo onde a regra mora de verdade.
+- **Mutação sobrevivente nº 2 — um teste meu não testava nada.** O teste de ordem do `_worker`
+  usava `ast.walk`, que percorre em **largura**: trocando as duas chamadas de lugar ele
+  continuava passando. Ordenado por `(lineno, col_offset)`, pega.
+- **`classificar_resultado` com fabricante em string.** Achado escrevendo o roteiro, onde eu
+  mesmo passei `"WAGO"` em vez de `["WAGO"]`: iterar a string dá `'W','A','G','O'`, termo de 1
+  caractere nunca casa, o fabricante "some" e **todo** resultado vira `duvidoso` — em silêncio.
+  Nenhum chamador de hoje passa string (`_tokens_ancora_fabricante` devolve lista), então é
+  blindagem, não bug vivo. Uma linha, com teste.
+
+**Ponta a ponta, com o filtro real e arquivo real no disco:** os 4 resultados do console da
+ficha WAGO separados nos três destinos (oficial → `certo`, distribuidor e camiseta →
+`duvidoso`, resenha de fone → `descartado`), `.txt` gravado, editado como uma pessoa editaria
+(`[ X ]` com espaço, comentário escrito no fim, **salvo em ANSI**), reimportado, e a 2ª passada
+baixando **só** a URL aprovada — a camiseta nunca foi baixada, o manual local foi junto.
+
+**Ordem que virou teste:** `_conferencia_mostrar` **antes** de `_conferencia_salvar` no
+`_worker`. O salvamento lê `self.marcados_conf` e é o `_mostrar` quem recria a grade;
+invertido, o `.txt` automático sairia com as marcações do **lote anterior** — arquivo plausível
+e errado, a pior categoria de bug deste módulo.
+
+43 testes novos (35 no serviço, 8 na tela por AST — `frontend.py` não é importável).
+
+
 ### ✅ R-26 🔴 Conferência humana dos documentos duvidosos — a tela e a 2ª passada *(2026-08-13)*
 
 O R-25 criou o destino `duvidoso` e não tinha para onde mandá-lo: o documento saía do contexto
