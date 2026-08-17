@@ -35,6 +35,42 @@ o que já foi feito e o que **não pode ser esquecido antes de dar a frente por 
 
 ## Resolvido
 
+### ✅ R-24 🔴 A coluna G do STATUS_PMIB — causa raiz das fichas WAGO vazias *(2026-08-13)*
+
+**O caso.** O Luan processou 4 fichas do escopo SFC HF-01/HF-02 e **nenhuma** teve a tabela de
+características técnicas preenchida — 0/23, 0/16, 0/16, 0/6 — apesar de o site da WAGO com o
+datasheet ser achável à mão em segundos.
+
+**Causa raiz, medida nas fichas reais:** `texto_breve_material` e `fabricante` estavam **vazios
+na própria ficha** — é o AutoSpec que vai preenchê-los. Sem eles a busca ia com o `cod_mat` da
+coluna E, que é o código **interno da Itaipu** (`1000325606`, 10 dígitos) e **não existe na
+internet**. O programa buscava com a única informação que ninguém publica.
+
+**A planilha sabia a resposta o tempo todo**, na coluna **G — `MARCA/MODELO`**: `WAGO / 750-362`.
+O AutoSpec lia só as colunas D e E; a G nunca era lida.
+
+| | Antes | Depois |
+|---|---|---|
+| 1ª query (0071) | `"1000325606"  datasheet` | `WAGO 750-362 datasheet filetype:pdf` |
+| Termos do filtro | `['1000325606']` | `['WAGO', '750-362', '1000325606']` |
+
+Medido: `WAGO 750-362 datasheet` devolve **10 datasheets reais**, incluindo o oficial do
+fabricante. Vale igual para `CISCO / IE-3200-8T2S-E` e `NIDEC / GAAPA`.
+
+**Duas correções que vieram junto:**
+
+- **O modelo da coluna G é identificador POR DEFINIÇÃO.** `NIDEC / GAAPA` não tem dígito, e a
+  heurística de `_identificadores` exige um — `GAAPA` nunca seria âncora. A planilha, porém, o
+  **declara** como modelo, e declaração vence heurística.
+- **O modelo vem ANTES do código interno na cascata.** A query do `cod_mat` gastava a primeira
+  consulta da CSE garantidamente à toa quando o código era o da Itaipu.
+
+**A ficha continua tendo precedência:** se o engenheiro já escreveu o fabricante nela, é ele que
+vale. O `_STATUS_PMIB` só entra no vazio — a ficha é a fonte, a planilha é a rede.
+
+19 testes, com as linhas reais da planilha do SFC como fixture.
+
+
 ### ✅ R-23 🔴 Varredura com 7 tipos de material real — 5 achados *(2026-08-13)*
 
 Sete materiais típicos do parque de Itaipu passados pelo pipeline inteiro: sensor HYDAC,

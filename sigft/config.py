@@ -152,6 +152,17 @@ COL_CODIGO_PMIB = "CÓDIGO PMIB"
 # upload_ficha_duplicada, pdm_backend, pmib_manager_backend, frontend.
 
 COL_DESCRICAO = "DESCRIÇÃO"
+
+# Coluna MARCA/MODELO do `_STATUS_PMIB` (2026-08-13). Guarda os dois juntos,
+# separados por barra: `WAGO / 750-362`, `NIDEC / MOD SVTN 3K6 W`.
+#
+# É a informação MAIS VALIOSA da planilha para a busca web, e o AutoSpec a
+# ignorava: as fichas WAGO processadas pelo Luan tinham `fabricante` e
+# `texto breve` VAZIOS na própria ficha, então a busca ia com o código
+# interno da Itaipu (`1000325606`) -- que não existe na internet -- e voltava
+# sem nada. Medido: `WAGO 750-362 datasheet` devolve 10 datasheets reais,
+# incluindo o oficial do fabricante.
+COL_MARCA_MODELO = "MARCA/MODELO"
 # cria_fichas_no_pmib_v1_backend, analyzer_backend, autospec_backend,
 # upload_conditions_backend, search_pmib_backend, pmib_manager_backend,
 # frontend.

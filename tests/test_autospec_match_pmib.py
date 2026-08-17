@@ -168,7 +168,7 @@ def test_get_pmib_data_nao_devolve_material_errado(monkeypatch):
         ],
     )
     core = _core(monkeypatch)
-    desc, mat = core.get_pmib_data("qualquer.xlsx", "0006")
+    desc, mat, _marca = core.get_pmib_data("qualquer.xlsx", "0006")
     assert (desc, mat) == ("VALVULA GAVETA", "MAT-VALVULA")
 
 
@@ -179,4 +179,4 @@ def test_get_pmib_data_devolve_vazio_quando_o_material_nao_esta_na_planilha(monk
         [[f"{config.PREFIXO_CONTRATO}.0105", "BOMBA CENTRIFUGA", "MAT-BOMBA"]],
     )
     core = _core(monkeypatch)
-    assert core.get_pmib_data("qualquer.xlsx", "0006") == ("", "")
+    assert core.get_pmib_data("qualquer.xlsx", "0006") == ("", "", "")

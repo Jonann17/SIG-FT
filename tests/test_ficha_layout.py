@@ -400,7 +400,7 @@ def test_analyze_sheet_le_texto_breve_material_e_fabricante_com_range_completo(m
     monkeypatch.setattr(autospec_backend.openpyxl, "load_workbook", _fake_load_workbook)
 
     core = _make_autospec_core()
-    wb_retornado, missing, txt_brv, fab, desc_comp, cod_mat = core.analyze_sheet(
+    wb_retornado, missing, txt_brv, fab, desc_comp, cod_mat, _modelo = core.analyze_sheet(
         "qualquer/pasta/4500063671.1234_ficha.xlsx", status_pmib_path=None
     )
 
@@ -418,7 +418,7 @@ def test_analyze_sheet_trata_texto_breve_e_fabricante_vazios_como_faltantes(monk
     monkeypatch.setattr(autospec_backend.openpyxl, "load_workbook", lambda caminho, **kw: wb)
 
     core = _make_autospec_core()
-    _, missing, txt_brv, fab, _, _ = core.analyze_sheet("ficha_sem_dados.xlsx", status_pmib_path=None)
+    _, missing, txt_brv, fab, _, _, _ = core.analyze_sheet("ficha_sem_dados.xlsx", status_pmib_path=None)
 
     assert txt_brv == "" and fab == ""
     assert "texto_breve_material" in missing
