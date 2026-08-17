@@ -277,3 +277,43 @@ contra o portal em outro módulo, o que reduz o risco do CP 6.3.
 `Associar documentos` → `Input_SearchFilter` → `button.search-button` (a lupa)
 → marcar a linha → `ASSOCIAR`. A busca textual é obrigatória: 809 itens em 162
 páginas.
+
+### 6.5 Segunda rodada de HTML — o que ela acrescentou
+
+| Componente | Achado |
+|---|---|
+| **Opção do combo** | casar por `@data-tooltip` do `span.vscomp-option-text`, não pelo texto do `<div>` (que vem com quebras de linha em volta). `role="option"` como âncora semântica. `data-value="1533"` seria o casamento mais forte, mas não temos o id interno — a ficha original dá o **nome** |
+| **Checkbox do documento** | `id="…-l1_0-521_0-Checkbox1"` traz o **índice da linha**, que muda a cada busca. Âncora boa: `@data-header='Selecionar'` — o mesmo atributo que `tech_specs` já usa |
+| **Campo de Referência** | `Input_TextVar` é nome **genérico**; o seletor ancora no **rótulo** "Referência" |
+| **Aviso de colisão** | 🎯 tem bloco próprio, com id semântico `CoincidenceReference` — não é texto solto na página |
+| **Abas de status** | `role="tab"` + texto; o **badge** permite pular direto para a aba com contagem > 0 em vez de abrir as 7 |
+| **Coluna Ações** | sufixos `-View` / `-Edit` / `-Delete` são semânticos; os ícones `fa-file-o` (visualizar) e `fa-pencil-square-o` (editar) confirmam. O seletor exige **os dois** |
+
+**O `CoincidenceReference` melhora a detecção de colisão.** A alternativa era
+varrer a tela atrás da frase *"A referência já existe!"*, frágil em três
+frentes: **idioma** (a tela alterna PT/ES), **redação** (o portal pode
+reescrever) e **escopo** (outra mensagem parecida daria falso positivo — e
+falso positivo aqui gasta as 20 tentativas de sufixo escondendo o erro real).
+Com o bloco, a pergunta vira *"este bloco tem conteúdo?"*. As duas checagens
+**se somam**, não se substituem.
+
+**Quatro tipos de id gerado** já catalogados em `IDS_GERADOS_NAO_USAR`:
+sufixo aleatório do FilePond, número de instância do `vscomp`, índice de opção
+do `vscomp` e **índice de linha do OutSystems** (`-l1_0-`) — este último
+apareceu em **duas telas diferentes**, então é padrão da plataforma, não
+coincidência.
+
+---
+
+## 7. O que ainda falta levantar
+
+**Não é preciso mapear todos os campos do modo de visualização** — seria
+trabalho grande e frágil. A tela de visualização renderiza **rótulo acima,
+valor abaixo**, um padrão uniforme; um extrator que leia pares
+rótulo→valor cobre a seção inteira sem enumerar campo nenhum, e não quebra
+quando o portal acrescentar um campo.
+
+O que resolveria isso de vez é **o HTML de UM bloco** do modo de visualização —
+por exemplo o "Volume (cm3)" com os três valores, ou o "Peso (kg)" com dois.
+Com um exemplo dá para escrever o extrator genérico; com cinquenta, escreve-se
+cinquenta seletores que envelhecem juntos.

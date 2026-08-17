@@ -46,10 +46,27 @@ XPATH_FABRICANTE_VALOR = (
 XPATH_FABRICANTE_BUSCA = (
     "//input[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-search-input ')]"
 )
-# A opção filtrada, casada pelo texto. `{texto}` é preenchido pelo consumidor.
+# A opção filtrada. HTML levantado:
+#   <div role="option" aria-selected="false" id="vscomp-option-3940-1625"
+#        class="vscomp-option focused" data-value="1533" data-index="1625">
+#     <span class="vscomp-option-text" data-tooltip="SCHNEIDER">SCHNEIDER</span>
+#   </div>
+#
+# O casamento é pelo `@data-tooltip` do span, e não pelo texto do `<div>`:
+#   - o `data-tooltip` traz o nome EXATO, sem os espaços e quebras de linha que
+#     o HTML tem em volta do texto (`\n            SCHNEIDER\n          `);
+#   - `id="vscomp-option-3940-1625"` é gerado nas DUAS metades (3940 = instância
+#     do widget, 1625 = índice da opção na lista completa) -- inútil;
+#   - `data-value="1533"` é o id interno do fabricante no portal. Seria o
+#     casamento mais forte de todos, mas não temos esse número em lugar nenhum:
+#     a ficha original dá o NOME, não o id.
+#
+# `role="option"` entra como âncora semântica: sobrevive a mudança de classe do
+# widget, que é o tipo de coisa que uma atualização de biblioteca faz.
 XPATH_FABRICANTE_OPCAO = (
-    "//div[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-option ')]"
-    "[normalize-space(.)={texto}]"
+    "//div[@role='option']"
+    "//span[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-option-text ')]"
+    "[@data-tooltip={texto}]"
 )
 
 # ===========================================================================
@@ -110,7 +127,19 @@ XPATH_DOCUMENTOS_LUPA = (
 )
 # A linha do resultado, casada pela descrição. `{texto}` é do consumidor.
 XPATH_DOCUMENTOS_LINHA = "//tr[.//td[contains(normalize-space(.), {texto})]]"
-XPATH_DOCUMENTOS_CHECKBOX_DA_LINHA = ".//input[@type='checkbox']"
+
+# O checkbox da linha. HTML levantado:
+#   <td data-header="Selecionar">…<input class="checkbox" type="checkbox"
+#       id="b10-b15-b19-l1_0-521_0-Checkbox1"></td>
+#
+# ⚠️ Mais um id gerado, e de um tipo novo: `l1_0-521_0` é o índice da LINHA na
+# lista do OutSystems. Muda a cada busca (é a posição no resultado), então nem
+# entre duas execuções da mesma pesquisa ele se repete.
+#
+# `@data-header='Selecionar'` é a âncora boa: é o cabeçalho da coluna, escrito
+# por quem desenhou a tela, e o mesmo atributo que `tech_specs` já usa para
+# achar a coluna de descrição (`XPATH_REL_COL_DESCRICAO`).
+XPATH_DOCUMENTOS_CHECKBOX_DA_LINHA = ".//td[@data-header='Selecionar']//input[@type='checkbox']"
 XPATH_DOCUMENTOS_ASSOCIAR = "//button[normalize-space()='ASSOCIAR']"
 
 # ===========================================================================
@@ -124,4 +153,97 @@ IDS_GERADOS_NAO_USAR = (
     "filepond--drop-label-",  # mesmo sufixo
     "filepond--assistant-",   # mesmo sufixo
     "vscomp-search-input-",   # número sequencial do widget
+    "vscomp-option-",         # instância do widget + índice da opção
+    # Índice de LINHA das listas do OutSystems (`…-l1_0-521_0-Checkbox1`,
+    # `…-l1_0-535_0-View`). Muda a cada busca -- nem entre duas execuções da
+    # mesma pesquisa se repete.
+    "-l1_0-",
+)
+
+# ===========================================================================
+# 5. Campo de REFERÊNCIA e o aviso de colisão
+# ===========================================================================
+# HTML levantado:
+#   <div class="vertical-align flex-direction-row" id="b10-b11-b4-b3-Content">
+#     <label><span class="text-primary…">Referência</span></label>
+#     <input class="form-control OSFillParent" required type="text"
+#            maxlength="100" id="b10-b11-b4-Input_TextVar">
+#     <div data-block="PMIB_DataSheet_Forms.Block_ReferenceCoincidence"
+#          id="b10-b11-b4-CoincidenceReference">…</div>
+#     …<a href="#"><i class="icon fa fa-plus-circle fa-2x"></i></a>
+#   </div>
+#
+# ⚠️ `Input_TextVar` é um nome GENÉRICO -- "input de variável de texto". Não
+# identifica o campo de Referência coisa nenhuma, e provavelmente existe em
+# outros pontos da tela. Por isso o seletor ancora no RÓTULO: é o que a pessoa
+# lê na tela, e o que muda junto se o campo mudar de sentido.
+XPATH_REFERENCIA_INPUT = (
+    "//div[.//span[normalize-space()='Referência']]"
+    "//input[contains(@id, 'Input_TextVar')]"
+)
+
+# O ACHADO desta rodada: o aviso "A referência já existe!" não é texto solto na
+# página -- tem um bloco próprio, com id SEMÂNTICO (`CoincidenceReference`) e
+# nome de bloco declarado (`Block_ReferenceCoincidence`).
+#
+# Isso muda a qualidade da detecção de colisão. A alternativa era varrer a tela
+# atrás da frase, o que é frágil em três frentes: idioma (a tela alterna PT/ES),
+# redação (o portal pode reescrever a mensagem) e escopo (outra mensagem
+# parecida em outro ponto da página daria falso positivo, e falso positivo aqui
+# gasta as 20 tentativas de sufixo escondendo o erro real).
+#
+# Com este seletor, a pergunta vira "este bloco tem conteúdo?", que é estável.
+# `e_erro_de_referencia_repetida()` continua existindo para o caso de a
+# mensagem vir por outro caminho -- as duas checagens se somam, não se
+# substituem.
+XPATH_REFERENCIA_AVISO_COLISAO = "//div[contains(@id, 'CoincidenceReference')]"
+
+# O "+" que adiciona a linha de fabricante/referência à tabela.
+XPATH_REFERENCIA_ADICIONAR = (
+    "//a[.//i[contains(concat(' ', normalize-space(@class), ' '), ' fa-plus-circle ')]]"
+)
+
+# ===========================================================================
+# 6. Lista de fichas: achar a original e ABRIR EM VISUALIZAÇÃO
+# ===========================================================================
+# A original pode estar em qualquer um dos 7 status, e o portal separa a lista
+# em abas. HTML da aba:
+#   <button class="osui-tabs__header-item osui-tabs--is-active" role="tab"
+#           data-tab="0" aria-selected="true">
+#     …<span data-expression="">Em Elaboração</span>
+#     …<div class="badge…"><span class="OSFillParent">1</span></div>
+#   </button>
+#
+# `role="tab"` + o texto é o casamento; `data-tab="0"` é posicional e
+# `name="0.22zxs6p0948"` é gerado. O BADGE é útil: dá para pular direto para a
+# aba que tem contagem > 0 em vez de abrir as 7.
+XPATH_ABA_STATUS = "//button[@role='tab'][.//span[normalize-space()={texto}]]"
+XPATH_ABA_STATUS_CONTAGEM = (
+    "//button[@role='tab'][.//span[normalize-space()={texto}]]"
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' badge ')]"
+)
+
+# A coluna "Ações" de cada linha da lista. HTML levantado:
+#   <td data-header="Ações">
+#     <div id="b7-b23-l1_0-535_0-View">   …<i class="icon fa fa-file-o fa-1x">
+#     <div id="b7-b23-l1_0-535_0-Edit">   …<i class="icon fa fa-pencil-square-o">
+#     <div id="b7-b23-l1_0-535_0-Delete"> …<i class="icon fa fa-trash">
+#
+# De novo `l1_0-535_0` gerado, mas os SUFIXOS `-View`/`-Edit`/`-Delete` são
+# semânticos e é neles que se ancora. Confirmam também, no HTML, a distinção
+# que a especificação já tinha feito: são DUAS portas para a mesma ficha, e o
+# extrator usa a primeira.
+#
+# `fa-file-o` (folha) = visualizar; `fa-pencil-square-o` (lápis) = editar. O
+# seletor exige as duas coisas -- o sufixo do id E o ícone -- porque cada um
+# sozinho já apareceu como armadilha: o id é parcialmente gerado, e o ícone
+# `fa-pencil-square-o` é o MESMO do lápis de `cria_fichas.XPATH_LAPIS_MASSA`,
+# em outra tela.
+XPATH_ACAO_VISUALIZAR = (
+    ".//div[contains(@id, '-View')]"
+    "//a[.//i[contains(concat(' ', normalize-space(@class), ' '), ' fa-file-o ')]]"
+)
+XPATH_ACAO_EDITAR = (
+    ".//div[contains(@id, '-Edit')]"
+    "//a[.//i[contains(concat(' ', normalize-space(@class), ' '), ' fa-pencil-square-o ')]]"
 )

@@ -9,6 +9,8 @@ não encontrado" que parece mudança de portal e não é.
 
 É o tipo de erro que só se evita antes de acontecer.
 """
+import re
+
 import pytest
 
 from sigft.core.rpa import inventario, seletores_duplicada as sel
@@ -24,14 +26,53 @@ def _todos_os_seletores():
     ]
 
 
+def _literais_de_id(seletor):
+    """Os textos com que o seletor compara `@id`.
+
+    Casa as duas formas que aparecem aqui: `@id='x'` e `contains(@id, 'x')`.
+    Olhar SÓ para comparações de id (em vez de procurar o fragmento no seletor
+    inteiro) é o que evita um falso positivo real: a classe
+    `vscomp-option-text` contém o prefixo de id proibido `vscomp-option-`, e é
+    uma classe perfeitamente legítima. A primeira versão deste teste reprovou
+    justamente por isso -- o guarda tem de ser tão preciso quanto a regra que
+    ele defende.
+    """
+    return re.findall(r"@id\s*(?:=|,)\s*'([^']*)'", seletor)
+
+
 @pytest.mark.parametrize("fragmento", sel.IDS_GERADOS_NAO_USAR)
-def test_nenhum_seletor_usa_id_gerado(fragmento):
-    """`filepond--browser-h1d4zvekk` e `vscomp-search-input-3940` têm sufixo
+def test_nenhum_seletor_compara_id_com_fragmento_gerado(fragmento):
+    """`filepond--browser-h1d4zvekk`, `vscomp-search-input-3940`,
+    `vscomp-option-3940-1625` e `…-l1_0-521_0-…` têm sufixo
     aleatório/sequencial. O id aparece no inspecionar elemento, parece o
     seletor mais preciso possível, e funciona na primeira tentativa -- a falha
-    vem depois."""
+    vem depois, noutra sessão, parecendo mudança de portal."""
     for nome, valor in _todos_os_seletores():
-        assert fragmento not in valor, f"{nome} amarra um id gerado: {valor}"
+        for literal in _literais_de_id(valor):
+            assert fragmento not in literal, (
+                f"{nome} compara @id com {literal!r}, que contém o fragmento "
+                f"gerado {fragmento!r}"
+            )
+
+
+def test_o_guarda_de_id_gerado_realmente_pega_uma_violacao():
+    """Contraprova do teste acima: sem ela, um guarda que não encontrasse nada
+    passaria por vácuo e ninguém saberia."""
+    violacao = "//input[contains(@id, 'vscomp-search-input-3940')]"
+
+    assert "vscomp-search-input-3940" in _literais_de_id(violacao)
+
+
+def test_o_guarda_nao_confunde_classe_com_id():
+    """A classe `vscomp-option-text` contém o prefixo de id proibido. Se o
+    guarda olhasse o seletor inteiro, reprovaria um seletor correto -- foi o
+    que aconteceu na primeira versão."""
+    por_classe = (
+        "//span[contains(concat(' ', normalize-space(@class), ' '), "
+        "' vscomp-option-text ')]"
+    )
+
+    assert _literais_de_id(por_classe) == []
 
 
 def test_a_lista_de_ids_gerados_cobre_os_dois_widgets():
@@ -130,3 +171,100 @@ def test_estes_seletores_nao_sao_relativos():
 
     assert achados
     assert not any(relativo for _nome, relativo in achados)
+
+
+# ===========================================================================
+# Segunda rodada de HTML real (2026-08-11): opção do combo, checkbox da linha,
+# campo de referência, abas de status e a coluna Ações
+# ===========================================================================
+def test_a_opcao_do_combo_casa_pelo_data_tooltip_e_nao_pelo_texto():
+    """O HTML da opção tem quebras de linha e espaços em volta do nome
+    (`\\n            SCHNEIDER\\n          `). O `data-tooltip` traz o nome
+    EXATO, sem isso."""
+    valor = sel.XPATH_FABRICANTE_OPCAO
+
+    assert "@data-tooltip={texto}" in valor
+    assert "normalize-space(.)={texto}" not in valor
+
+
+def test_a_opcao_do_combo_ancora_no_role_option():
+    """Âncora semântica: sobrevive a mudança de classe do widget, que é o que
+    uma atualização de biblioteca faz."""
+    assert "@role='option'" in sel.XPATH_FABRICANTE_OPCAO
+
+
+def test_o_checkbox_do_documento_ancora_no_cabecalho_da_coluna():
+    """`id="b10-b15-b19-l1_0-521_0-Checkbox1"` traz o índice da LINHA, que muda
+    a cada busca. `@data-header='Selecionar'` é escrito por quem desenhou a
+    tela -- e é o mesmo atributo que `tech_specs` já usa."""
+    valor = sel.XPATH_DOCUMENTOS_CHECKBOX_DA_LINHA
+
+    assert "@data-header='Selecionar'" in valor
+    assert "521" not in valor
+
+
+def test_o_indice_de_linha_do_outsystems_esta_na_lista_de_ids_proibidos():
+    # `-l1_0-` aparece em DUAS telas diferentes (checkbox do documento e coluna
+    # Ações da lista de fichas), então é padrão, não coincidência.
+    assert "-l1_0-" in sel.IDS_GERADOS_NAO_USAR
+
+
+def test_o_campo_de_referencia_ancora_no_rotulo_e_nao_so_no_id():
+    """`Input_TextVar` é nome GENÉRICO -- "input de variável de texto" --, não
+    identifica o campo de Referência e provavelmente existe em outros pontos da
+    tela. O rótulo é o que a pessoa lê e o que muda junto se o campo mudar de
+    sentido."""
+    valor = sel.XPATH_REFERENCIA_INPUT
+
+    assert "Referência" in valor
+    assert "Input_TextVar" in valor
+
+
+def test_o_aviso_de_colisao_tem_seletor_proprio():
+    """O achado da rodada: a mensagem "A referência já existe!" não é texto
+    solto -- tem bloco com id semântico (`CoincidenceReference`). Varrer a tela
+    atrás da frase seria frágil em idioma, redação e escopo."""
+    assert "CoincidenceReference" in sel.XPATH_REFERENCIA_AVISO_COLISAO
+
+
+def test_a_deteccao_por_bloco_nao_substitui_a_deteccao_por_texto():
+    """As duas se somam: o bloco é o caminho estável, a frase é a rede para o
+    caso de a mensagem vir por outro caminho. Se um dia só uma existir, a
+    colisão passa despercebida e a referência sai errada."""
+    from sigft.services import duplicadas_spec
+
+    assert hasattr(duplicadas_spec, "e_erro_de_referencia_repetida")
+    assert hasattr(sel, "XPATH_REFERENCIA_AVISO_COLISAO")
+
+
+@pytest.mark.parametrize("nome", ["XPATH_ACAO_VISUALIZAR", "XPATH_ACAO_EDITAR"])
+def test_as_acoes_exigem_o_sufixo_do_id_E_o_icone(nome):
+    """Cada um sozinho já apareceu como armadilha: o id é parcialmente gerado,
+    e `fa-pencil-square-o` é o MESMO ícone do lápis de `cria_fichas`, em outra
+    tela. Exigir os dois torna o casamento inequívoco."""
+    valor = getattr(sel, nome)
+
+    assert "contains(@id," in valor
+    assert "fa-" in valor
+
+
+def test_visualizar_e_editar_sao_seletores_distintos():
+    # Confundi-los abriria a ficha em EDIÇÃO, onde os valores são campos e não
+    # texto -- o extrator não acharia nada e devolveria ficha vazia sem erro.
+    assert sel.XPATH_ACAO_VISUALIZAR != sel.XPATH_ACAO_EDITAR
+    assert "fa-file-o" in sel.XPATH_ACAO_VISUALIZAR
+    assert "fa-pencil-square-o" in sel.XPATH_ACAO_EDITAR
+
+
+def test_as_acoes_sao_relativas_a_linha():
+    # Começam com `.` porque são concatenadas ao seletor da linha -- a lista
+    # tem uma coluna Ações por ficha, e um `//` pegaria a primeira da tela.
+    assert sel.XPATH_ACAO_VISUALIZAR.startswith(".")
+    assert sel.XPATH_ACAO_EDITAR.startswith(".")
+
+
+def test_a_aba_de_status_tem_seletor_de_contagem():
+    """O badge permite pular direto para a aba com contagem > 0, em vez de
+    abrir as 7 atrás da ficha."""
+    assert "{texto}" in sel.XPATH_ABA_STATUS
+    assert "badge" in sel.XPATH_ABA_STATUS_CONTAGEM
