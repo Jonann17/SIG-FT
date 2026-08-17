@@ -106,9 +106,15 @@ características técnicas preenchida — 0/23, 0/16, 0/16, 0/6 — apesar de o 
 datasheet ser achável à mão em segundos.
 
 **Causa raiz, medida nas fichas reais:** `texto_breve_material` e `fabricante` estavam **vazios
-na própria ficha** — é o AutoSpec que vai preenchê-los. Sem eles a busca ia com o `cod_mat` da
-coluna E, que é o código **interno da Itaipu** (`1000325606`, 10 dígitos) e **não existe na
-internet**. O programa buscava com a única informação que ninguém publica.
+na própria ficha** — é o AutoSpec que vai preenchê-los. Sem eles a busca ia **só** com o `cod_mat` da
+coluna E (`1000325606`) e **sem nome de fabricante nenhum** — a query saía literalmente como
+`"1000325606"  datasheet`, com o espaço duplo onde o fabricante deveria estar.
+
+> **Correção do usuário:** eu tinha escrito que esse código é interno da Itaipu. **Não é** — é o
+> código interno da MARCA que produz o material (NIDEC, WAGO…), e serve sim como base de busca.
+> O que faltava não era o código: era o **fabricante ao lado dele**. Sozinho e sem marca, um
+> número de 10 dígitos casa com qualquer coisa — foi assim que uma camiseta do Target entrou
+> (ver R-25).
 
 **A planilha sabia a resposta o tempo todo**, na coluna **G — `MARCA/MODELO`**: `WAGO / 750-362`.
 O AutoSpec lia só as colunas D e E; a G nunca era lida.
