@@ -8,3 +8,16 @@
 # produção instaladas (ver tests/conftest.py, que faz stub delas via
 # unittest.mock para permitir importar os módulos *_backend.py).
 pytest
+
+# lxml — OPCIONAL, e de propósito.
+#
+# Um único arquivo de teste o usa (`tests/test_duplicadas_xpath_real.py`), para
+# avaliar os XPath da ficha duplicada DE VERDADE contra o HTML que o usuário
+# colou do portal. É o único lugar do projeto onde um erro dentro da string de
+# um seletor aparece — todo o resto testa a regra, com os tokens já
+# classificados.
+#
+# Sem ele o arquivo é PULADO (`pytest.importorskip`) e a suíte continua verde:
+# nenhuma proteção do projeto pode depender de um pacote opcional. Instale se
+# for mexer em seletor:  python -m pip install lxml
+lxml
