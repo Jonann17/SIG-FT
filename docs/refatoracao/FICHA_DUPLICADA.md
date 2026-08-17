@@ -192,16 +192,7 @@ Nenhuma impede começar; todas impedem **rodar em lote sem conferir**.
 | 4 | Esgotadas as 20 tentativas? | *"Apenas notificar que não foi possível colocar a referência"* — não aborta |
 | 5 | A original é sempre encontrável? | Sim, mas em **qualquer status** — §3.5 |
 
-Ficam duas, agora técnicas e não de negócio:
-
-1. **O `<input type=file>` do diálogo "Adicionar Imagens" é alcançável?** Se
-   sim, o Playwright preenche direto com `set_input_files`, sem simular
-   arraste. Se estiver escondido atrás de um componente próprio, o CP 6.4
-   precisa de outra abordagem.
-2. **Os seletores do combo de fabricante e do diálogo de documentos.** São os
-   dois componentes com comportamento próprio (busca embutida, paginação de
-   162 páginas). `playwright codegen` no fluxo real resolve em minutos e vale
-   mais que qualquer descrição.
+**As duas técnicas também foram respondidas**, com HTML do DOM real — ver §6.
 
 ---
 
@@ -224,3 +215,65 @@ O módulo antigo (`services/ficha_duplicada.py`) continua **intocado e
 funcionando em Selenium** até a reconstrução terminar. É também o último
 consumidor de Selenium do projeto — por isso o CP 5.5 só acontece depois desta
 fase.
+
+---
+
+## 6. Seletores levantados do DOM real
+
+O usuário inspecionou os três componentes no portal. Estão em
+`sigft/core/rpa/seletores_duplicada.py`, no inventário de auditoria, com
+15 constantes e 13 testes.
+
+### 6.1 O `<input type=file>` das imagens **é** alcançável
+
+```html
+<input class="filepond--browser" type="file" id="filepond--browser-h1d4zvekk"
+       accept="image/jpeg,image/png" multiple="">
+```
+
+É **FilePond**, e a resposta muda o CP 6.4 para o caminho fácil:
+
+- **existe input de arquivo de verdade** → `set_input_files` (Playwright) ou
+  `send_keys(caminho)` (Selenium). **Confirmada** a recomendação de baixar da
+  original e subir na duplicada, em vez de reproduzir o copiar/colar humano;
+- o input é **escondido** pelo FilePond, e isso não é problema: preencher input
+  de arquivo escondido é exatamente o que essas APIs fazem. ⚠️ **Não clique no
+  rótulo "Adicione"** — abriria o diálogo de arquivo do sistema operacional,
+  que o navegador não controla e que travaria o robô;
+- `accept="image/jpeg,image/png"` → **só JPEG e PNG**. Imagem baixada em webp
+  ou gif é recusada no envio;
+- `multiple` + "Máximo 10 arquivos" → até 10 por vez.
+
+### 6.2 Duas armadilhas de id, e é o achado mais valioso deste levantamento
+
+| Id no DOM | Por que **não** usar |
+|---|---|
+| `filepond--browser-h1d4zvekk` | sufixo **aleatório por renderização** (o mesmo aparece em `filepond--drop-label-…` e `filepond--assistant-…`) |
+| `vscomp-search-input-3940` | número **sequencial do widget** |
+
+O erro é atraente: o id aparece no inspecionar elemento, parece o seletor mais
+preciso possível e **funciona na primeira tentativa**. A falha vem noutra
+sessão, parecendo mudança de portal. Os seletores casam por **classe**
+(`filepond--browser`, `vscomp-search-input`), e `IDS_GERADOS_NAO_USAR` +
+teste impedem que alguém volte a amarrá-los.
+
+Já `Input_DescriptionES` / `Input_DescriptionPT` / `Input_SearchFilter` são
+nomes de campo — estáveis. O que se descarta ali é o **prefixo** `b10-b15-`,
+que é o caminho do bloco no OutSystems e muda se o formulário for
+reorganizado. Daí `contains(@id, 'Input_DescriptionES')`.
+
+### 6.3 Combo de fabricante — `virtual-select`
+
+Confirmado pelo usuário: *"é melhor por digitando texto, que daí filtra"*.
+Fluxo: clicar em `.vscomp-toggle-button` → digitar em `.vscomp-search-input` →
+escolher a opção filtrada.
+
+É a **mesma família de widget** que `cria_fichas.XPATH_PDM_FINAL` já usa
+(`div.vscomp-value[data-tooltip^='PDM']`) — o padrão de seletor já foi validado
+contra o portal em outro módulo, o que reduz o risco do CP 6.3.
+
+### 6.4 Documentos
+
+`Associar documentos` → `Input_SearchFilter` → `button.search-button` (a lupa)
+→ marcar a linha → `ASSOCIAR`. A busca textual é obrigatória: 809 itens em 162
+páginas.

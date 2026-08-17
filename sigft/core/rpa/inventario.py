@@ -35,6 +35,9 @@ import importlib
 # o inventário serve para dimensionar isso.
 MODULOS_COM_SELETOR = (
     "sigft.core.rpa.portal",
+    # Fase 6: seletores levantados do DOM real, com a justificativa de cada um
+    # e o registro dos ids gerados que NÃO se deve usar.
+    "sigft.core.rpa.seletores_duplicada",
     "sigft.services.apagar_lmr",
     "sigft.services.cria_fichas",
     "sigft.services.ficha_duplicada",
