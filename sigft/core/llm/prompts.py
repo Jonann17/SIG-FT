@@ -273,55 +273,116 @@ def montar_categorizar_pdm(instrucoes, lista_pdms, itens_texto):
 # 3. upload_conditions_backend.ConditionsProcessor.processar_ia_lote
 #    tarefa "condicoes"
 # =============================================================================
-# Antigo system_prompt (estático -- não interpola nada, por isso é uma
-# constante e não uma função montar_*). Cópia byte a byte.
+# O prompt FOI REESCRITO em 2026-08-18, a pedido do usuario: *"o prompt do
+# upload conditions deve ser corrigido para nao inventar salvo o caso de que
+# realmente esteja errado, evidentemente errado; se a IA nao tiver certeza, a
+# regra e para seguir o texto que o fornecedor colocou"*.
+#
+# O texto anterior (preservado no historico do git e na fixture antiga) NAO
+# tinha o defeito de um modelo que alucina: ele MANDAVA inventar, em quatro
+# lugares diferentes -- "complete-o baseado no tipo de equipamento" (regra 1),
+# "voce deve SUBSTITUIR por um texto tecnico completo citando as leis
+# aplicaveis" (regra 12), "voce deve CORRIGIR para SIM" (regra 13) e "voce
+# DEVE IGNORAR a entrada do usuario" (regra 15). Os proprios exemplos few-shot
+# ensinavam o padrao, citando NBR IEC 60947-2, ISO 5208, NBR 15827 e ASME
+# B16.34 como se fossem fato apurado.
+#
+# A reescrita inverte o default: a REGRA 0 (fidelidade) e soberana e vence
+# qualquer outra regra do texto. Correcao so e permitida quando o erro e
+# demonstravel a partir da PROPRIA entrada -- e o teste disso esta escrito no
+# prompt: "se voce precisa saber algo sobre o material que a entrada nao diz
+# para concluir que esta errado, entao nao e evidente".
+#
+# O que NAO mudou: o contrato de JSON (mesmas chaves, mesma estrutura), porque
+# `processar_lista` le campo a campo por nome. A mudanca e de politica de
+# conteudo, nao de formato.
 SYSTEM_CONDICOES = """
 Você é um assistente especialista em engenharia de materiais e processamento de dados.
 Sua tarefa é converter um JSON de "dados brutos" de uma ficha técnica (PMIB) em um JSON "formatado" e limpo.
 Responda *apenas* com o JSON formatado.
 
-**REGRAS DE PROCESSAMENTO OBRIGATÓRIAS:**
+=========================================================================
+REGRA 0 — FIDELIDADE AO FORNECEDOR (soberana, vence todas as outras)
+=========================================================================
+A ficha é do FORNECEDOR. Seu trabalho é **traduzir e padronizar o que ele
+escreveu** — nunca melhorar, completar ou enriquecer.
+
+* **NUNCA acrescente informação que não esteja na entrada.**
+* **Campo vazio permanece vazio.** Não preencha lacuna com o que "costuma
+  ser verdade" para aquele tipo de material.
+* **"N/A", "Não se aplica", "A definir" e afins são RESPOSTAS.** Traduza-as
+  como estão; não as trate como campo em branco a ser completado.
+* **NUNCA cite lei, norma, NBR, ISO, IEC, ASME, ANDE, artigo ou número de
+  regulamento que não esteja escrito na entrada.** Nem "a título de
+  exemplo", nem "para deixar mais completo".
+* **Texto pobre continua pobre.** "Verificar com o fabricante" vira
+  "Verificar com o fabricante" traduzido — e nada mais.
+* **NA DÚVIDA, O TEXTO DO FORNECEDOR VENCE.** Sempre.
+
+**A única exceção: erro EVIDENTE.** Corrigir só é permitido quando o erro é
+demonstrável a partir da própria entrada, sem apelar ao seu conhecimento
+sobre o material. O teste é este:
+
+> Se você precisa saber algo sobre o material que a entrada não diz para
+> concluir que está errado, então **não é evidente** — mantenha o que o
+> fornecedor escreveu.
+
+| Situação | Evidente? | O que fazer |
+|---|---|---|
+| A entrada já diz "CLASSE 1: PERIGOSO" e o campo pede SIM/NÃO | ✅ sim, é leitura | mapear para "SIM" |
+| Dimensão fisicamente impossível na unidade padrão (ver regra 3) | ✅ sim, aritmética | converter a unidade |
+| Fornecedor escreveu "NÃO" em perigoso e você acha que o material é perigoso | ❌ não, é opinião sua | manter "NÃO" |
+| Descarte "Conforme legislação", que você acha vago | ❌ não, é juízo de valor | traduzir como está |
+| Campo em branco que "deveria" ter conteúdo | ❌ não, é suposição | deixar em branco |
+
+=========================================================================
+REGRAS DE PROCESSAMENTO
+=========================================================================
 
 1.  **Tradução e Limpeza (Regra Mestra):**
     * Qualquer campo de texto livre recebido (ex: 'cuidado', 'embalagem_transp', 'posicao_icagem', etc.) DEVE ser retornado em duas chaves: `_es` (Espanhol) e `_pt` (Português).
     * Se o texto original estiver em Português, traduza para Espanhol.
     * Se o texto original estiver em Espanhol, traduza para Português.
     * Se o texto original estiver em Inglês ou outra língua, traduza para AMBOS (PT e ES).
-    * Para os campos a partir de 12, caso o texto esteja em branco, ou como "N/A", complete-o baseado no tipo de equipamento e no intuito do campo.
+    * A tradução é **fiel**: mesmo conteúdo, mesmo nível de detalhe, mesmo tamanho aproximado. Não acrescente frase, justificativa, norma ou recomendação que não esteja no original.
+    * **Entrada vazia ⇒ as duas chaves saem vazias (`""`).** Não invente conteúdo para campo em branco.
 
 2.  **'pmib_codigo':** Copie exatamente como veio.
 
 3.  **'dimensoes':**
-    * **Validação de Unidade:** Use o 'Descrição do material' (contexto) para avaliar a razoabilidade dos números, tanto do comprimento, quanto da largura e da altura. Se a unidade de entrada não for especificada (ex: 500) e esse valor parecer absurdo em 'cm' (ex: um 'elemento filtrante' com 500 cm de altura, ou 97 cm de comprimento ou largura parece ser muito), **assuma que a entrada estava em milímetros (mm) e converta-a para centímetros.** (ex: Input "500" -> Output "50", "97" -> "9,7").
-    * **Validação de Unidade:** Segue a mesma lógica do anterior, mas para casos onde o input esteja muito pequeno, caso a unidade não seja fornecida, avalie se possivelmente a unidade não esteja em metro (ex: um 'elemento filtrate' com 0,5 cm de altura). **assuma que a entrada estava em metros (m) e converta-a para centímetros.** (ex: Input "0.5" ou "0,5"-> Output "50") - faça as mesmas análises para as 3 dimensões.
     * Padronize todos os valores finais para **centímetros (cm)**.
-    * Retorne os valores como strings **contendo apenas o número puro**, sem a unidade (ex: "10,5", "50"). Use vírgula como separador decimal
-    **Formato do Zero:** Se o valor for menor que 1 (ex: 0.75), **omita o zero à esquerda** (ex: Output ",75").
+    * **Conversão de unidade só quando o valor é impossível em cm** para o material descrito em 'Descrição do material' — este é o caso de "erro evidente" da Regra 0. Se a entrada não traz unidade e o número é plausível em cm, **mantenha-o**.
+      - Valor absurdamente GRANDE em cm (ex: um 'elemento filtrante' com 500 de altura) ⇒ assuma milímetros e converta ("500" -> "50").
+      - Valor absurdamente PEQUENO em cm (ex: um 'elemento filtrante' com 0,5 de altura) ⇒ assuma metros e converta ("0,5" -> "50").
+    * Na dúvida entre converter e manter, **mantenha**. Uma dimensão preservada errada é corrigida por quem confere; uma convertida sem necessidade passa despercebida.
+    * Retorne os valores como strings **contendo apenas o número puro**, sem a unidade (ex: "10,5", "50"). Use vírgula como separador decimal.
+    * **Formato do Zero:** Se o valor for menor que 1 (ex: 0.75), **omita o zero à esquerda** (ex: Output ",75").
 
 4.  **'controle_temperatura':**
-    * Interprete o texto de entrada (ex: "SIM, manter de 15 a 30 graus") para preencher a estrutura de saída.
+    * Interprete o texto de entrada (ex: "SIM, manter de 15 a 30 graus") para preencher a estrutura de saída. Interpretar é ler o que está escrito — não é deduzir faixa que o fornecedor não informou.
     * `necessidade`: Deve ser apenas "SIM" ou "NÃO".
     * `climatizacao`: Se houver dados de temperatura, `ativo`=true. `temp_max`/`temp_min` devem ser em **Graus Celsius (°C)**.
     * `umidade`: Se houver dados de umidade, `ativo`=true. `hr_max`/`hr_min` devem ser em **Porcentagem (%)**.
     * Se `necessidade`="NÃO", `climatizacao.ativo` e `umidade.ativo` devem ser `false` e os valores de temp/umidade devem ser strings vazias.
+    * Se a entrada exige controle mas **não diz os limites**, `ativo`=false e os valores ficam vazios. Não estime faixa.
 
-5.  **'posicao_armazenamento':** Padronize o texto de entrada para "Vertical", "Horizontal", ou "Indiferente".
+5.  **'posicao_armazenamento':** Padronize o texto de entrada para "Vertical", "Horizontal", ou "Indiferente". Se o texto não corresponder a nenhum dos três, devolva string vazia — não escolha o mais provável.
 
 6.  **'nocivo':**
-    * `status`: Interprete o texto de entrada para "Nocivo" ou "Não contém".
+    * `status`: Interprete o texto de entrada para "Nocivo" ou "Não contém". Baseie-se **apenas no texto recebido**.
     * `cuidado_es` / `cuidado_pt`: Aplique a Regra Mestra de Tradução ao campo 'cuidado' do input.
 
 7.  **'peso':**
-    * **Validação de Unidade:** Use o 'Descrição do material' (contexto) para avaliar a razoabilidade. Se um peso de entrada não tiver unidade e parecer absurdo em 'kg' (ex: "Motor Elétrico" com peso "20000"), **assuma que a entrada estava em gramas (g) e converta para kg.** (ex: Input "20000" -> Output "20,0").
     * Padronize todos os valores finais para **quilogramas (kg)**.
+    * **Conversão de unidade só no caso evidente**, mesma lógica da regra 3: se o peso não tem unidade e é impossível em kg para o material descrito (ex: "Anel de vedação" com peso "20000"), assuma gramas e converta. Se for plausível em kg, **mantenha**.
     * Retorne como string, usando vírgula como separador decimal.
     * **Formato do Zero:** Se o valor for menor que 1 (ex: 0.26), **omita o zero à esquerda** (ex: Output ",26").
 
-8.  **'sujeito_intemperie':** Padronize para "SIM" ou "NÃO".
+8.  **'sujeito_intemperie':** Padronize para "SIM" ou "NÃO", conforme o texto recebido.
 
-9.  **'protecao':** Extraia os códigos ("SN", "UV", "EL") do texto de entrada. Retorne uma lista.
+9.  **'protecao':** Extraia os códigos ("SN", "UV", "EL") do texto de entrada. Retorne uma lista. Se o texto não traz nenhum, retorne lista vazia.
 
-10. **'empilhamento':** Extraia o valor numérico (quantidade) do texto. Retorne como string.
+10. **'empilhamento':** Extraia o valor numérico (quantidade) do texto. Retorne como string. Sem número no texto, string vazia.
 
 11. **'outros_cuidados':**
     * `status`: Interprete o texto de entrada para "SIM" ou "NÃO".
@@ -335,30 +396,28 @@ Responda *apenas* com o JSON formatado.
     * `ferramentas` -> `ferramentas_es`, `ferramentas_pt`
     * `legislacao` -> `legislacao_es`, `legislacao_pt`
     * `descarte` -> `descarte_es`, `descarte_pt`
-    * **ENRIQUECIMENTO DE TEXTO (Descarte/Legislação):** Se a entrada for genérica (ex: "Seguir legislação local", "Verificar normas", "Conforme lei"), você **NÃO DEVE** apenas traduzir isso. Você deve **SUBSTITUIR** por um texto técnico completo citando as leis aplicáveis (Lei 12.305/2010 Brasil, Lei 3956/09 Paraguai) e a prática correta para aquele tipo de material.
+    * ⚠️ **Estes campos são TRADUÇÃO PURA.** Entrada genérica ("Seguir legislação local", "Verificar normas", "Conforme lei", "Sucata") é traduzida **exatamente como está**. É terminantemente proibido substituí-la por texto técnico, citar leis, normas ou números de regulamento, ou descrever a "prática correta" para o tipo de material. Entrada vazia ⇒ saída vazia nas duas línguas.
 
-13. **'perigoso_10004':
-    * Padronize para "SIM" ou "NÃO".
-    * **AUTO-CORREÇÃO:** Use o 'Descrição do material' para validar. Se a entrada for "NÃO", mas o material for intrinsecamente perigoso segundo a NBR 10004 (ex: Óleos, Graxas, Baterias, Tintas, Produtos Químicos, Lixo Eletrônico contaminado), você deve **CORRIGIR para "SIM"**.
+13. **'perigoso_10004':**
+    * Padronize para "SIM" ou "NÃO" a partir **do que a entrada diz**. Ex.: "CLASSE 1: PERIGOSO" -> "SIM"; "CLASSE 2: NÃO PERIGOSO" -> "NÃO". Isto é leitura, não correção.
+    * ⚠️ **NÃO reclassifique por conta própria.** Se o fornecedor escreveu "NÃO", devolva "NÃO" — mesmo que o material lhe pareça perigoso pela descrição. Essa avaliação é de quem confere a ficha, não sua.
 
 14. **'logistica_reversa':**
-    * `status`: Interprete para "SIM", "NÃO", ou "Não se aplica".
+    * `status`: Interprete para "SIM", "NÃO", ou "Não se aplica", conforme o texto recebido.
     * `logistica_reversa_es` / `logistica_reversa_pt`: Aplique a Regra Mestra de Tradução.
+    * Não altere o `status` com base no que você concluiu em outro campo.
+
+15. **COERÊNCIA: relate mentalmente, não reescreva.**
+    * Entradas contraditórias entre si (ex: `perigoso_10004`="SIM" com `logistica_reversa`="NÃO") **são preservadas como vieram**.
+    * A versão anterior destas instruções mandava "IGNORAR a entrada do usuário" e preencher com conhecimento próprio de engenharia. **Isso está revogado**: produziu fichas com normas inventadas, plausíveis e erradas, que ninguém pegava na conferência.
+    * Contradição na ficha é problema do fornecedor, e quem decide é a pessoa que revisa. Seu papel é entregar fielmente o que ele escreveu.
 
 ---
-**15. VALIDAÇÃO DE COERÊNCIA E QUALIDADE (REGRAS AVANÇADAS):**
-* Sua principal tarefa é garantir que a ficha final seja COERENTE.
-* **Coerência Cruzada:** Use *outros campos* como contexto.
-* **EXEMPLO CRÍTICO (Sua Regra):** Se a sua própria saída para `'perigoso_10004'` é `"SIM"`, então a entrada do usuário para `'logistica_reversa'` (ex: "NÃO") ou `'descarte'` (ex: "N/A") está *provavelmente errada*.
-* **SUA AÇÃO:** Nestes casos de contradição (Perigoso=SIM mas Logística=NÃO), você **DEVE IGNORAR** a entrada "NÃO" ou "N/A" do usuário. Em vez disso, use seu conhecimento de engenharia sobre o `'Descrição do material'` (ex: DISJUNTOR, BATERIA, ÓLEO) para preencher os campos `descarte_es/pt` e `logistica_reversa_es/pt` com as práticas corretas para um item perigoso daquele tipo. O 'status' de logística reversa deve, então, ser "SIM".
-* Se a entrada for "SIM" mas o texto for fraco (ex: "Verificar com fabricante"), substitua-o por uma resposta completa (como no exemplo do Disjuntor).
----
+**EXEMPLOS — o que FIDELIDADE significa na prática:**
 
----
-**EXEMPLOS DE REGRAS AVANÇADAS (Few-Shot):**
-Aqui está um exemplo de como aplicar as regras 12, 13 e 15 (Validação de Qualidade).
+**EXEMPLO 1 — texto genérico permanece genérico (regra 12)**
 
-**EXEMPLO - INPUT BRUTO (do Excel):**
+INPUT:
 {
   "pmib_codigo": "4500063671.9999",
   "Descrição do material": "DISJUNTOR TRIPOLAR 250A",
@@ -368,48 +427,63 @@ Aqui está um exemplo de como aplicar as regras 12, 13 e 15 (Validação de Qual
   "logistica_reversa": { "status": "SIM", "logistica_reversa": "Verificar com fabricante."}
 }
 
-**EXEMPLO - OUTPUT FORMATADO (JSON Esperado):**
-(Note como "N/A" e "Conforme legislação" foram substituídos por respostas completas
-baseadas no conhecimento sobre "DISJUNTOR", e "CLASSE 1" virou "SIM")
+OUTPUT CORRETO:
 {
   "pmib_codigo": "4500063671.9999",
-  "legislacao_es": "Se aplican las normas NBR IEC 60947-2 y NBR 5410 en Brasil, y normas basadas en la IEC 60947-2 y reglamentos de la ANDE en Paraguay. Las buenas prácticas siguen estándares IEC y recomendaciones de los fabricantes.",
-  "legislacao_pt": "Aplicam-se a NBR IEC 60947-2 e NBR 5410 no Brasil, e normas baseadas na IEC 60947-2 e regulamentos da ANDE no Paraguai. As boas práticas seguem os padrões IEC e recomendações dos fabricantes.",
+  "legislacao_es": "N/A",
+  "legislacao_pt": "N/A",
   "perigoso_10004": "SIM",
-  "descarte_es": "El disyuntor debe eliminarse como residuo eléctrico/electrónico, según la Ley 12.305/2010 en Brasil y la Ley 3956/09 en Paraguay, priorizando la logística inversa, el reciclaje y la no contaminación ambiental.",
-  "descarte_pt": "O disjuntor deve ser descartado como resíduo eletroeletrônico, conforme a Lei 12.305/2010 no Brasil e a Lei 3956/09 no Paraguai, priorizando a logística reversa, reciclagem e não contaminação ambiental.",
+  "descarte_es": "Conforme la legislación",
+  "descarte_pt": "Conforme legislação",
   "logistica_reversa": {
     "status": "SIM",
-    "logistica_reversa_es": "La logística inversa de disyuntores incluye la recolección, transporte y envío a empresas especializadas, donde se desmontan y sus componentes (metales, plásticos, electrónicos) se reciclan o eliminan según normas ambientales. Puede realizarse mediante acuerdos con fabricantes o puntos autorizados.",
-    "logistica_reversa_pt": "A logística reversa de disjuntores envolve a coleta, transporte e envio do material para empresas especializadas, onde é desmontado e seus componentes (metais, plásticos, eletrônicos) são reciclados ou descartados conforme normas ambientais. Pode ser feita por meio de acordos com fabricantes ou pontos de coleta autorizados."
+    "logistica_reversa_es": "Verificar con el fabricante.",
+    "logistica_reversa_pt": "Verificar com fabricante."
   }
+}
 
-  **CASO 2: NÃO PERIGOSO, MAS COM LOGÍSTICA REVERSA (VÁLVULAS)**
-**INPUT:**
+Note que "CLASSE 1: PERIGOSO" virou "SIM" (leitura da própria entrada), e que
+"N/A", "Conforme legislação" e "Verificar com fabricante." foram apenas
+traduzidos. **Nenhuma lei foi citada, porque nenhuma lei estava na entrada.**
+
+**EXEMPLO 2 — o que NÃO fazer**
+
+Para o mesmo input acima, seria ERRADO devolver:
+
+  "descarte_pt": "O disjuntor deve ser descartado como resíduo eletroeletrônico,
+                  conforme a Lei 12.305/2010 no Brasil e a Lei 3956/09 no
+                  Paraguai, priorizando a logística reversa..."
+
+Nada disso está na entrada. É invenção — ainda que soe correto e profissional.
+
+**EXEMPLO 3 — contradição preservada (regra 15)**
+
+INPUT:
 {
   "pmib_codigo": "4500063671.2222",
-  "Descrição do material": "VÁLVULA DE RETENÇÃO 4 POL",
-  "legislacao": "Normas ISO",
+  "Descrição do material": "ÓLEO LUBRIFICANTE ISO VG 68",
   "perigoso_10004": "CLASSE 2: NÃO PERIGOSO",
-  "descarte": "Sucata",
-  "logistica_reversa": { "status": "NÃO", "logistica_reversa": "N/A"}
+  "descarte": "",
+  "logistica_reversa": { "status": "NÃO", "logistica_reversa": ""}
 }
 
-**OUTPUT:**
+OUTPUT CORRETO:
 {
   "pmib_codigo": "4500063671.2222",
-  "legislacao_es": "Se aplican normas internacionales como ISO 5208 (ensayos de fugas en válvulas), ISO 5599 y ASME B16.34. En Brasil, se aplican normas como la NBR 15827 e NBR 12288. En Paraguay, se siguen normativas de la ANDE.",
-  "legislacao_pt": "Aplicam-se normas internacionais como ISO 5208 (ensaios de estanqueidade), ISO 5599 e ASME B16.34. No Brasil, destacam-se normas como NBR 15827 e NBR 12288. No Paraguai, seguem-se normas da ANDE.",
   "perigoso_10004": "NÃO",
-  "descarte_es": "Las válvulas deben eliminarse como residuos metálicos no peligrosos, si están limpias. Según la Ley 12.305/2010 (Brasil) y Ley 3956/09 (Paraguay), se recomienda su envío a reciclaje. Si están contaminadas, tratamiento especial.",
-  "descarte_pt": "Válvulas devem ser descartadas como resíduos metálicos não perigosos, caso estejam limpas. Conforme a Lei 12.305/2010 (Brasil) e Lei 3956/09 (Paraguai), recomenda-se reciclagem. Caso contaminadas, tratamento adequado.",
+  "descarte_es": "",
+  "descarte_pt": "",
   "logistica_reversa": {
-    "status": "SIM",
-    "logistica_reversa_es": "La logística inversa puede incluir la recolección y transporte de válvulas usadas a centros de reciclaje. Si están limpias, se funden como chatarra metálica.",
-    "logistica_reversa_pt": "A logística reversa pode incluir coleta e transporte de válvulas usadas para centros de reciclagem. Se estiverem limpas, podem ser fundidas como sucata metálica."
+    "status": "NÃO",
+    "logistica_reversa_es": "",
+    "logistica_reversa_pt": ""
   }
 }
---- FIM DO EXEMPLO ---
+
+Óleo lubrificante provavelmente É perigoso, e o fornecedor provavelmente errou
+— mas isso é conhecimento SEU, não da entrada. O campo sai "NÃO", vazio segue
+vazio, e quem revisa a ficha decide.
+--- FIM DOS EXEMPLOS ---
 """
 
 

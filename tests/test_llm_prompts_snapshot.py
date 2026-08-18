@@ -21,6 +21,17 @@ editar a fixture (ver docs/refatoracao/PENDENCIAS.md, entrada do CP 3.5,
 para o racional completo e para como regenerar caso um dia seja
 legitimamente necessário).
 
+⚠️ EXCEÇÃO REGISTRADA -- `upload_conditions_system` foi REGERADA em
+2026-08-18. É o caso que a regra acima prevê como "legitimamente
+necessário": o usuário pediu que o prompt de Condições parasse de inventar
+conteúdo, então o TEXTO mudou de propósito. A fixture continua valendo como
+trava contra mudança ACIDENTAL -- o que ela não prova mais, para esta
+tarefa, é "idêntico ao pré-refatoração", porque não é mais esse o objetivo.
+A propriedade que passou a importar (o prompt não manda inventar) é testada
+em tests/test_prompt_condicoes_fidelidade.py, que checa CONTEÚDO e não
+igualdade -- uma fixture regerada não pode se auto-aprovar. As outras 4
+fixtures seguem intocadas desde a captura original.
+
 Técnica de captura (idêntica a tests/test_llm_backend_migration.py e
 tests/test_llm_autospec_migration.py, já usada nos CPs 3.1-3.4): cada
 consumidor é construído normalmente e `instancia._llm` é substituído por um

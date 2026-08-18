@@ -58,6 +58,11 @@ def _ler_fixture(nome):
 # =============================================================================
 # (a) Constantes estáticas batem exatamente com a fixture.
 # =============================================================================
+# ⚠️ `upload_conditions_system.txt` foi REGERADA em 2026-08-18 (reescrita
+# deliberada do prompt -- ver `prompts.SYSTEM_CONDICOES`). Este teste segue
+# valendo como trava contra mudança ACIDENTAL do texto; o que ele NÃO prova
+# mais é "igual ao de antes da refatoração". A propriedade de conteúdo está
+# em tests/test_prompt_condicoes_fidelidade.py.
 def test_system_condicoes_bate_byte_a_byte_com_a_fixture():
     assert prompts.SYSTEM_CONDICOES == _ler_fixture("upload_conditions_system")
 
