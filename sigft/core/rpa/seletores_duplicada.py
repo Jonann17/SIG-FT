@@ -161,6 +161,25 @@ IDS_GERADOS_NAO_USAR = (
     # Sequencial de bloco do OutSystems no modo de visualização
     # (`b12-b20-b1-$b3`, `$b4`, `$b5`). O `$` já denuncia que é gerado.
     "-$b",
+    # 6º tipo, das abas INTERNAS da ficha (2026-08-18): o `aria-controls` do
+    # botão de aba aponta um id gerado (`aria-controls="b12-$b12"`). Cai no
+    # padrão do `-$b` acima, e está listado à parte porque o atributo é
+    # OUTRO -- quem for amarrar a navegação pelas abas olha o `aria-controls`
+    # antes de olhar o `id`.
+    "aria-controls=",
+)
+
+# Atributos que NÃO são ids gerados, mas que também não servem de âncora --
+# e que enganam mais, justamente por parecerem estáveis.
+ATRIBUTOS_INSTAVEIS_NAO_USAR = (
+    # `name="0.4z9qbl6cvoj"` / `name="0.22zxs6p0948"`: aleatório por
+    # renderização. Aparece nas abas de status E nas abas internas da ficha --
+    # duas telas, então é padrão da plataforma.
+    "name",
+    # `data-tab="1"`: ORDINAL da aba. Não é gerado, é POSIÇÃO -- e posição
+    # muda quando o portal reordena a tela, fazendo o robô abrir a aba errada
+    # sem nenhum aviso. Mesmo raciocínio de §6.5c.
+    "data-tab",
 )
 
 # ===========================================================================
@@ -577,3 +596,131 @@ XPATH_REFERENCIA_INPUT_SEM_GE = (
     "[ancestor::div[.//span[normalize-space()='Referência']][1]"
     "[not(.//i[contains(concat(' ', normalize-space(@class), ' '), ' fa-info-circle ')])]]"
 )
+
+# ---------------------------------------------------------------------------
+# 11. Navegação DENTRO da ficha, no modo de visualização
+# ---------------------------------------------------------------------------
+# HTML levantado pelo usuário em 2026-08-18. Era o que faltava para o CP 6.2
+# fechar: até aqui `ler_secao_visivel` lia a seção que estivesse ABERTA, e
+# ninguém sabia como trocar de seção.
+#
+#   <button data-advancedhtml="" class="osui-tabs__header-item"
+#           name="0.4z9qbl6cvoj" data-tab="1" role="tab" tabindex="-1"
+#           aria-selected="false" aria-controls="b12-$b12">
+#     <div class="display-contents ph" id="b12-b5-Title">Fabricantes e fornecedores</div>
+#   </button>
+#
+# ⚠️ TRÊS atributos deste botão são armadilha, e os três parecem bons no
+# inspecionar elemento:
+#
+#   `name="0.4z9qbl6cvoj"`   aleatório por renderização (mesmo padrão do
+#                            `name="0.22zxs6p0948"` das abas de status, §6.5)
+#   `aria-controls="b12-$b12"` id gerado -- o `$` denuncia
+#   `data-tab="1"`           ORDINAL. Não é gerado, mas é POSIÇÃO: se o portal
+#                            reordenar as abas, o robô abre a errada em
+#                            silêncio. O projeto já decidiu esse trade-off em
+#                            §6.5c ("casar pelo ícone é melhor do que casar
+#                            por posição") -- aqui vale igual.
+#
+# O que sobra de estável é o TEXTO do `<div>` interno. O `id="b12-b5-Title"`
+# tem sufixo semântico (`-Title`) mas prefixo gerado, então serve como
+# reforço, nunca como âncora.
+XPATH_ABA_DA_FICHA = (
+    "//button[contains(concat(' ', normalize-space(@class), ' '), ' osui-tabs__header-item ')]"
+    "[.//div[normalize-space()={texto}]]"
+)
+
+# `aria-selected` é o que diz se o clique PEGOU. Sem conferir, um clique que
+# não trocou de aba faria o extrator ler a seção anterior e devolver dados da
+# aba errada -- plausíveis e errados, o pior tipo.
+XPATH_ABA_DA_FICHA_ATIVA = (
+    "//button[contains(concat(' ', normalize-space(@class), ' '), ' osui-tabs__header-item ')]"
+    "[@aria-selected='true'][.//div[normalize-space()={texto}]]"
+)
+
+# Nomes das abas, como aparecem na tela. `data-tab` observado: 1 =
+# Fabricantes e fornecedores, 3 = Documentos, 4 = Condições. O 2 não foi
+# levantado (provavelmente Características técnicas) -- não está aqui porque
+# não foi visto, e a lista não deve conter suposição.
+ABA_FICHA_FABRICANTES = "Fabricantes e fornecedores"
+ABA_FICHA_DOCUMENTOS = "Documentos"
+ABA_FICHA_CONDICOES = "Condições"
+
+
+# --- Sub-abas DENTRO de Condições (modo visualização) -----------------------
+# Aqui a estrutura é OUTRA, e confundir as duas quebraria a navegação:
+#
+#   <div data-container="" class="dummy-active OSInline"
+#        style="text-align: center; cursor: pointer; width: 20%; padding: 8px;"
+#   >Armazenamento e transporte</div>
+#
+#   <div data-container="" class="OSInline" style="...">Manutenção e descarte</div>
+#
+# NÃO são `<button role="tab">` -- são `<div>` com `cursor: pointer`. Um
+# seletor escrito por analogia com as abas de cima não acharia nada.
+#
+# `dummy-active` marca a aba ABERTA. O nome é do portal, não nosso.
+XPATH_SUBABA_CONDICOES = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' OSInline ')]"
+    "[@data-container][normalize-space()={texto}]"
+)
+XPATH_SUBABA_CONDICOES_ATIVA = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' dummy-active ')]"
+    "[normalize-space()={texto}]"
+)
+
+
+# ---------------------------------------------------------------------------
+# 12. Fabricantes e fornecedores no modo de VISUALIZAÇÃO — são duas TABELAS
+# ---------------------------------------------------------------------------
+# ⚠️ ESTE ACHADO DERRUBA UMA SUPOSIÇÃO DO EXTRATOR. `ler_secao_visivel` lê
+# pares rótulo→valor (`label[@data-label]` + `PMIB_DataSheetView.Block_Expression`,
+# §8). A seção de Fabricantes/Fornecedores **não usa esse padrão**: são duas
+# `<table>`, e as células são `td[@data-header]/span[@data-expression]` --
+# fora do bloco `PMIB_DataSheetView.Block_Expression`. Ou seja, a varredura de
+# rótulo→valor **não enxerga nada aqui** e devolveria fabricante e fornecedor
+# vazios, sem erro.
+#
+#   <div class="full-fieldset" id="b12-b13-ManufacturerAndProvider">
+#     <table><thead><tr><th>Nome do Fabricante</th><th>Referência</th></tr></thead>
+#       <tbody>
+#         <tr><td data-header="Nome do Fabricante"><span data-expression>ENERSYS</span></td>
+#             <td data-header="Referência"><span data-expression>E24-256-10</span></td></tr>
+#         <tr><td data-header="Nome do Fabricante"><span data-expression>SASSI</span></td>
+#             <td data-header="Referência"><span data-expression>DGA 0-300V DC</span></td></tr>
+#
+#   <div class="full-fieldset" id="b12-b14-ManufacturerAndProvider">
+#     <table><thead><tr><th>Nome do Fornecedor</th><th>Referência</th></tr></thead>
+#       <tbody>
+#         <tr><td data-header="Nome do Fornecedor"><span data-expression>GE ENERGIAS RENOVAVEIS LTDA</span></td>
+#             <td data-header="Referência"><span data-expression>08934120BTM99-064F</span></td></tr>
+#
+# 🎯 **As duas `<div>` têm o MESMO sufixo de id** (`-ManufacturerAndProvider`),
+# só mudando o prefixo gerado (`b12-b13-` x `b12-b14-`). Quem distingue é o
+# cabeçalho da tabela -- e ele vem repetido em CADA célula, no atributo
+# `data-header`. É a mesma âncora que `tech_specs` já usa (`@data-header=
+# 'Selecionar'`), agora confirmada numa segunda tela: é padrão da plataforma.
+#
+# Casar pelo id seria escolher entre `b13` e `b14`, que são gerados. Casar por
+# ordem ("a primeira tabela é a do fabricante") funcionaria hoje e quebraria
+# em silêncio numa reordenação.
+COLUNA_NOME_DO_FABRICANTE = "Nome do Fabricante"
+COLUNA_NOME_DO_FORNECEDOR = "Nome do Fornecedor"
+COLUNA_REFERENCIA = "Referência"
+
+# Linhas da tabela que contém a coluna {coluna}. A âncora é a LINHA (`tr`), e
+# não a célula, porque nome e referência precisam sair pareados -- é o mesmo
+# cuidado de `parear_rotulos_e_valores` (§8): duas varreduras independentes
+# casariam por índice, e uma linha a mais numa delas desalinharia tudo.
+XPATH_LINHAS_DA_TABELA = "//tr[td[@data-header={coluna}]]"
+
+# Valor de uma célula, DENTRO de uma linha já localizada. `span[@data-expression]`
+# é o mesmo marcador de "valor exibido" do modo de leitura (§8).
+XPATH_CELULA_NA_LINHA = "/td[@data-header={coluna}]//span[@data-expression]"
+
+# ⚠️ O usuário observou que a tabela de FABRICANTES pode ter mais de uma
+# linha: *"nesse caso ele tem 2 fornecedores (a gente comprou de um que
+# comprou do fabricante)"* -- ENERSYS (o fabricante de fato) e SASSI (o
+# intermediário). As duas moram na tabela "Nome do Fabricante". Quem consome
+# precisa decidir o que fazer com N linhas; o leitor devolve todas, na ordem
+# da tela, em vez de escolher por conta própria.
