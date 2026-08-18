@@ -128,6 +128,93 @@ XPATH_BOTAO_SALVAR = (
 )
 XPATH_CONFIRMAR = '//button[@type="button" and text()="CONFIRMAR"]'
 
+# --- Confirmação de salvamento (2026-08-18) ---------------------------------
+# O portal avisa, em toast, quando gravou uma seção:
+#
+#     <div class="feedback-message-text">As condições de armazenamento foram
+#      modificadas com sucesso!</div>
+#
+# Levantado pelo usuário com a tela à vista. Até aqui NADA no projeto lia essa
+# mensagem: `upload_conditions` clicava em SALVAR, dormia e marcava a ficha
+# como COMPLETO na planilha -- sem uma única evidência de que o portal tivesse
+# gravado. Uma ficha em que todos os campos falharam saía marcada como pronta,
+# e ninguém volta para conferir o que está marcado como pronto.
+#
+# ⚠️ CASAR SÓ POR "sucesso" NÃO SERVE, e o motivo é a mecânica do toast: ele
+# aparece rápido, FICA UM TEMPO e some. Ou seja, quando o robô salva a 2ª
+# seção, o toast da 1ª pode ainda estar na tela. Uma checagem de "existe
+# mensagem de sucesso?" leria o toast VELHO e daria seção gravada sem ter
+# sido -- exatamente o erro que este código existe para impedir.
+#
+# Por isso o casamento exige a PALAVRA DA SEÇÃO. Um toast remanescente de
+# outra seção não casa, o laço continua esperando, e o erro cai para o lado
+# seguro (falso negativo: pendência a conferir, em vez de COMPLETO mentiroso).
+XPATH_MENSAGEM_DE_FEEDBACK = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' feedback-message-text ')]"
+)
+
+# A tela do PMIB alterna PT/ES (ver docs/refatoracao/FICHA_DUPLICADA.md §6.5),
+# então o marcador de sucesso é aceito nos dois idiomas.
+MARCADORES_DE_SUCESSO = ("sucesso", "exito")
+
+# Palavra que identifica cada seção dentro da mensagem. Uma só por seção, e
+# nenhuma aparece na mensagem de outra ("As condições de transporte e
+# movimentação..." x "As condições de armazenamento...").
+#
+# ⚠️ SÓ PORTUGUÊS, DE PROPÓSITO. As mensagens que temos vieram do usuário, com
+# a tela à vista, e são estas:
+#
+#     "As condições de armazenamento foram modificadas com sucesso!"
+#     "As condições de transporte e movimentação foram modificadas com sucesso!"
+#
+# Não temos a versão em espanhol de nenhuma delas. Escrever aqui um palpite
+# ("manutención"? "mantenimiento"?) seria repetir o erro que já custou uma
+# sessão de teste neste projeto -- e um palpite ERRADO é invisível, porque a
+# consequência dele é silenciosa.
+#
+# O que acontece se o portal renderizar em espanhol: nenhuma palavra casa, a
+# seção não é confirmada e a ficha vira INCOMPLETO com a mensagem lida no log
+# -- pendência a conferir, nunca COMPLETO mentiroso. É o lado seguro do erro,
+# e o log traz o texto real, que é justamente o que falta para completar esta
+# tabela numa sessão.
+PALAVRA_DA_SECAO = {
+    "Armazenamento": "armazenamento",
+    "Transporte": "transporte",
+    "Manutenção": "manutencao",
+    "Descarte": "descarte",
+}
+
+# Quanto se espera pelo toast. O usuário descreve que ele aparece
+# "relativamente rápido"; a folga é para o portal sob carga. Não é tempo
+# perdido no caso bom: o laço devolve assim que a mensagem casa.
+TIMEOUT_CONFIRMACAO_S = 8.0
+INTERVALO_POLL_CONFIRMACAO_S = 0.25
+
+
+def _sem_acento(texto):
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", str(texto or ""))
+                   if unicodedata.category(c) != "Mn")
+
+
+def mensagem_confirma_secao(mensagem, secao):
+    """A mensagem do portal confirma o salvamento DESTA seção?
+
+    Exige as duas coisas -- o marcador de sucesso E a palavra da seção. Ver o
+    comentário acima para por que a palavra da seção não é redundante.
+
+    Seção desconhecida devolve False: inventar um casamento para um nome que
+    não está na tabela seria adivinhar, e adivinhar aqui produz COMPLETO.
+    """
+    palavra = PALAVRA_DA_SECAO.get(secao)
+    if not palavra:
+        return False
+    texto = _sem_acento(mensagem).lower()
+    if not any(m in texto for m in MARCADORES_DE_SUCESSO):
+        return False
+    return palavra in texto
+
+
 DEFAULT_BUSCA_XPATH = "//input[contains(@placeholder, 'Código')]"
 DEFAULT_LAPIS_XPATH_TEMPLATE = "//span[text()='{pmib}']/ancestor::tr//i[contains(@class, 'fa-pencil')]/parent::a"
 
@@ -509,6 +596,76 @@ class PMIBPortal:
         """Preenche `seletor` (XPath) com `texto` via a mecânica canônica
         Ctrl+A/Backspace/digitar (`SeleniumEngine.fill`) -- ex-`safe_send_keys`."""
         self.engine.fill(seletor, texto)
+
+    # =========================================================================
+    # Confirmação de salvamento -- lê o toast que o portal emite ao gravar.
+    # =========================================================================
+    def esperar_confirmacao_de_salvamento(
+        self, secao, timeout_s=None, callback_log=None,
+        sleep_fn=None, agora_fn=None,
+    ):
+        """Espera o toast de "modificadas com sucesso" DESTA seção.
+
+        Devolve `(confirmou: bool, mensagem_lida: str)`. `mensagem_lida` é o
+        texto que estava na tela quando o tempo acabou -- é ele que permite
+        descobrir a redação real (idioma, texto novo do portal) a partir do
+        log, em vez de adivinhar. Ver `mensagem_confirma_secao`.
+
+        Não levanta: um toast que não aparece é pendência, não erro fatal. A
+        ficha continua, e quem decide o que fazer com a pendência é o
+        chamador.
+
+        `sleep_fn`/`agora_fn` existem para o teste poder rodar sem esperar 8
+        segundos de verdade -- mesmo padrão de `core.excel.locking.
+        save_with_retry`.
+        """
+        limite = TIMEOUT_CONFIRMACAO_S if timeout_s is None else timeout_s
+        dormir = sleep_fn or time.sleep
+        agora = agora_fn or time.monotonic
+
+        fim = agora() + limite
+        ultima = ""
+        while True:
+            for mensagem in self._mensagens_de_feedback():
+                if mensagem:
+                    ultima = mensagem
+                if mensagem_confirma_secao(mensagem, secao):
+                    return True, mensagem
+            if agora() >= fim:
+                break
+            dormir(INTERVALO_POLL_CONFIRMACAO_S)
+
+        if callback_log:
+            if ultima:
+                callback_log(
+                    f"      [!] Não vi a confirmação de '{secao}'. A última mensagem "
+                    f"na tela foi: {ultima!r}"
+                )
+            else:
+                callback_log(
+                    f"      [!] Não vi nenhuma mensagem de confirmação ao salvar '{secao}'."
+                )
+        return False, ultima
+
+    def _mensagens_de_feedback(self):
+        """Textos dos toasts visíveis agora. Nunca levanta -- ler a tela não
+        pode ser o que derruba a ficha.
+
+        Percorre por ÍNDICE (`(xpath)[i]`) e não por elemento, pelo mesmo
+        motivo de `clicar_salvar_visivel`: é o que funciona igual nos dois
+        motores.
+        """
+        try:
+            total = self.engine.contar(XPATH_MENSAGEM_DE_FEEDBACK)
+        except Exception:  # noqa: BLE001
+            return []
+        textos = []
+        for posicao in range(1, (total or 0) + 1):
+            try:
+                textos.append(self.engine.texto(f"({XPATH_MENSAGEM_DE_FEEDBACK})[{posicao}]"))
+            except Exception:  # noqa: BLE001
+                continue
+        return textos
 
     # =========================================================================
     # check_or_uncheck -- só existia em upload_conditions_backend.py (não

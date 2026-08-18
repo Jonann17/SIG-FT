@@ -405,6 +405,37 @@ XPATH_CHECK_CLIMATIZACAO = '//*[@id="b10-b17-b1-Checkbox4"]'
 XPATH_CHECK_UMIDADE = '//*[@id="b10-b17-b1-Checkbox5"]'
 
 
+# ---------------------------------------------------------------------------
+# Pendências de uma ficha (2026-08-18)
+# ---------------------------------------------------------------------------
+# Antes, cada bloco de campos terminava em
+#
+#     except Exception as e:
+#         if callback_log: callback_log(f"Aviso: Falha nas Dimensões. {e}")
+#
+# e o laço seguia. No fim, `processar_lista` marcava a ficha como COMPLETO no
+# `_STATUS_PMIB` INCONDICIONALMENTE -- ou seja, uma ficha em que os 12 blocos
+# falharam saía marcada como pronta. A informação existia, na tela, e era
+# jogada fora na linha seguinte.
+#
+# A mensagem de log é a MESMA de antes, byte a byte: o objetivo aqui não é
+# melhorar o texto, é parar de perder o fato.
+# As quatro seções de Condições que ESTE módulo preenche, na ordem da tela.
+#
+# A quinta ("Valorização" / financeira) fica FORA de propósito: o módulo não a
+# preenche, então exigir confirmação dela deixaria toda ficha INCOMPLETO para
+# sempre. É o "salvo a parte da valorização" do pedido do usuário -- e é
+# também a mesma exclusão que `duplicadas_spec.e_aba_financeira` faz do outro
+# lado do sistema, por outro motivo (não copiar dado financeiro entre fichas).
+SECOES_DE_CONDICOES = ("Armazenamento", "Transporte", "Manutenção", "Descarte")
+
+
+def _registrar_pendencia(pendencias, onde, erro, callback_log=None):
+    pendencias.append(f"{onde}: {type(erro).__name__}: {erro}")
+    if callback_log:
+        callback_log(f"Aviso: Falha {onde}. {erro}")
+
+
 class UploadAutomation:
     def __init__(self):
         self.engine = None
@@ -471,9 +502,20 @@ class UploadAutomation:
         self.portal.check_or_uncheck(seletor, should_check)
 
     def processar_lista(self, lista_fichas, caminho_status, callback_ask=None, callback_log=None, callback_pause=None):
+        """Preenche as Condições de cada ficha no portal.
+
+        Devolve `(completas, incompletas)` -- as listas de PMIB. O retorno é
+        novo (2026-08-18) e aditivo: a tela ignorava o `None` de antes.
+
+        Uma ficha só é marcada COMPLETO no `_STATUS_PMIB` quando NENHUM bloco
+        de campos falhou E o portal confirmou o salvamento das 4 seções. Ver
+        `SECOES_DE_CONDICOES` e `_registrar_pendencia`.
+        """
         url = "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
         # O 'driver.get(url)' foi removido do início daqui porque agora
         # o App chama 'abrir_portal' ANTES de pedir o login.
+        lote_completas = []
+        lote_incompletas = []
 
         for ficha in lista_fichas:
             if self.portal.deve_parar():
@@ -482,6 +524,13 @@ class UploadAutomation:
 
             pmib = ficha['pmib_codigo']
             if callback_log: callback_log(f"Processando {pmib}...")
+
+            # Placar desta ficha. `pendencias` junta os blocos de campos que
+            # falharam; `salvas` diz quais das 4 seções o PORTAL confirmou ter
+            # gravado. Juntos são o que decide o COMPLETO lá embaixo -- ver
+            # `_secoes_todas_confirmadas`.
+            pendencias = []
+            salvas = {}
 
             try:
                 # 1. Busca e abre a ficha em modo de edição.
@@ -516,7 +565,7 @@ class UploadAutomation:
                     self.safe_send_keys('//*[@id="b10-b17-b1-Input_PackagingWidth"]', ficha["dimensoes"]["largura"])
                     self.safe_send_keys('//*[@id="b10-b17-b1-Input_PackagingHeight"]', ficha["dimensoes"]["altura"])
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha nas Dimensões. {e}")
+                    _registrar_pendencia(pendencias, "nas Dimensões", e, callback_log)
 
                 try:
                     controle_temp_data = ficha["controle_temperatura"]
@@ -555,7 +604,7 @@ class UploadAutomation:
                     else:
                         self.safe_click('//*[@id="b10-b17-b1-RadioButton4-input"]')
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha em Temperatura. {e}")
+                    _registrar_pendencia(pendencias, "em Temperatura", e, callback_log)
 
                 try:
                     posicoes = {
@@ -566,7 +615,7 @@ class UploadAutomation:
                     if ficha.get("posicao_armazenamento") in posicoes:
                         self.safe_click(posicoes[ficha["posicao_armazenamento"]])
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha na Posição. {e}")
+                    _registrar_pendencia(pendencias, "na Posição", e, callback_log)
 
                 try:
                     nocivo_data = ficha["nocivo"]
@@ -577,19 +626,19 @@ class UploadAutomation:
                     else:
                         self.safe_click('//*[@id="b10-b17-b1-RadioButton1-input"]')
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha em Nocivo. {e}")
+                    _registrar_pendencia(pendencias, "em Nocivo", e, callback_log)
 
                 try:
                     self.safe_send_keys('//*[@id="b10-b17-b1-Input_LiquidWeight"]', ficha["peso"]["liquido"])
                     self.safe_send_keys('//*[@id="b10-b17-b1-Input_GrossWeight"]', ficha["peso"]["bruto"])
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha nos Pesos. {e}")
+                    _registrar_pendencia(pendencias, "nos Pesos", e, callback_log)
 
                 if ficha["controle_temperatura"]["necessidade"] == "NÃO":
                     try:
                         self.check_or_uncheck('//*[@id="b10-b17-b1-Checkbox3"]', ficha.get("sujeito_intemperie") == "SIM")
                     except Exception as e:
-                        if callback_log: callback_log(f"Aviso: Falha em Intempérie. {e}")
+                        _registrar_pendencia(pendencias, "em Intempérie", e, callback_log)
 
                 try:
                     mapa_protecao = {
@@ -603,12 +652,12 @@ class UploadAutomation:
                         if prot in mapa_protecao:
                             self.check_or_uncheck(mapa_protecao[prot], True)
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha na Proteção. {e}")
+                    _registrar_pendencia(pendencias, "na Proteção", e, callback_log)
 
                 try:
                     self.safe_send_keys('//*[@id="b10-b17-b1-Input_Stacking"]', ficha.get("empilhamento", ""))
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha no Empilhamento. {e}")
+                    _registrar_pendencia(pendencias, "no Empilhamento", e, callback_log)
 
                 try:
                     cuidados_data = ficha["outros_cuidados"]
@@ -619,9 +668,9 @@ class UploadAutomation:
                     else:
                         self.safe_click('//*[@id="b10-b17-b1-RadioButton3-input"]')
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha em Outros Cuidados. {e}")
+                    _registrar_pendencia(pendencias, "em Outros Cuidados", e, callback_log)
 
-                self.safe_save_with_pause('//*[@id="b10-b17-b1-b35-Button"]/button', "Armazenamento", callback_log, callback_pause)
+                salvas["Armazenamento"] = self.safe_save_with_pause('//*[@id="b10-b17-b1-b35-Button"]/button', "Armazenamento", callback_log, callback_pause)
 
                 # --- ABA 2: TRANSPORTE ---
                 try:
@@ -631,9 +680,9 @@ class UploadAutomation:
                     self.safe_send_keys('//*[@id="b10-b17-b3-TextArea_PositionCareES"]', ficha.get("posicao_icagem_es", ""))
                     self.safe_send_keys('//*[@id="b10-b17-b3-TextArea_PositionCarePT"]', ficha.get("posicao_icagem_pt", ""))
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha na aba Transporte. {e}")
+                    _registrar_pendencia(pendencias, "na aba Transporte", e, callback_log)
 
-                self.safe_save_with_pause('//*[@id="b10-b17-$b3"]/div[3]/button', "Transporte", callback_log, callback_pause)
+                salvas["Transporte"] = self.safe_save_with_pause('//*[@id="b10-b17-$b3"]/div[3]/button', "Transporte", callback_log, callback_pause)
 
                 # --- ABA 3: MANUTENÇÃO ---
                 try:
@@ -645,9 +694,9 @@ class UploadAutomation:
                     self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_ToolPreservationES"]', ficha.get("ferramentas_es", ""))
                     self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_ToolPreservationPT"]', ficha.get("ferramentas_pt", ""))
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha na aba Manutenção. {e}")
+                    _registrar_pendencia(pendencias, "na aba Manutenção", e, callback_log)
 
-                self.safe_save_with_pause('//*[@id="b10-b17-$b4"]/div[4]/button', "Manutenção", callback_log, callback_pause)
+                salvas["Manutenção"] = self.safe_save_with_pause('//*[@id="b10-b17-$b4"]/div[4]/button', "Manutenção", callback_log, callback_pause)
 
                 # --- ABA 4: DESCARTE ---
                 try:
@@ -671,12 +720,39 @@ class UploadAutomation:
                     else:
                         self.safe_click('//*[@id="b10-b17-b5-DoesNotApply-input"]')
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha na aba Descarte. {e}")
+                    _registrar_pendencia(pendencias, "na aba Descarte", e, callback_log)
 
-                self.safe_save_with_pause('//*[@id="b10-b17-$b5"]/div[5]/button', "Descarte", callback_log, callback_pause)
+                salvas["Descarte"] = self.safe_save_with_pause('//*[@id="b10-b17-$b5"]/div[5]/button', "Descarte", callback_log, callback_pause)
 
-                if callback_log: callback_log(f"{pmib} concluído no portal.")
-                self.atualizar_status_excel(caminho_status, pmib, "COMPLETO", callback_log, callback_ask)
+                # --- COMPLETO só com prova ------------------------------
+                # "Ele só deve fazer isso se tiver certeza que preencheu os
+                # campos de condições (salvo a parte da valorização)" -- pedido
+                # do usuário, 2026-08-18.
+                #
+                # Antes esta linha era incondicional: bastava não estourar
+                # exceção FATAL. Todos os 12 blocos de campos podiam ter
+                # falhado, as 4 seções podiam não ter gravado, e a ficha saía
+                # marcada como pronta. Planilha que diz COMPLETO no que ficou
+                # pela metade é pior do que planilha vazia -- ninguém volta
+                # para conferir o que está marcado como pronto.
+                #
+                # A Valorização fica de fora por definição: é seção de
+                # Condições que este módulo não preenche, então não entra no
+                # critério (é o "salvo a parte da valorização" do pedido).
+                faltou_salvar = [s for s in SECOES_DE_CONDICOES if not salvas.get(s)]
+
+                if pendencias or faltou_salvar:
+                    if callback_log:
+                        callback_log(f"{pmib}: INCOMPLETO -- o _STATUS_PMIB NÃO foi marcado.")
+                        for item in pendencias:
+                            callback_log(f"      - campo com falha: {item}")
+                        for secao in faltou_salvar:
+                            callback_log(f"      - seção sem confirmação de salvamento: {secao}")
+                    lote_incompletas.append(pmib)
+                else:
+                    if callback_log: callback_log(f"{pmib} concluído no portal.")
+                    self.atualizar_status_excel(caminho_status, pmib, "COMPLETO", callback_log, callback_ask)
+                    lote_completas.append(pmib)
 
             except Exception as e:
                 if callback_log: callback_log(f"!!! ERRO CRÍTICO processando {pmib}: {e} !!!")
@@ -685,19 +761,52 @@ class UploadAutomation:
                     if callback_log: callback_log(f"Evidência salva: erro_web_{pmib}.png")
                 except Exception:
                     pass
+                lote_incompletas.append(pmib)
+
+        if callback_log:
+            callback_log(
+                f"\n=== Fim do lote: {len(lote_completas)} ficha(s) marcada(s) COMPLETO, "
+                f"{len(lote_incompletas)} com pendência."
+            )
+            if lote_incompletas:
+                callback_log("    Sem marcação no _STATUS_PMIB: " + ", ".join(lote_incompletas))
+        return lote_completas, lote_incompletas
 
     def safe_save_with_pause(self, locator, section_name, callback_log=None, callback_pause=None):
-        """Tenta salvar. Se der erro, usa o callback_pause para travar a execução até o usuário intervir na UI."""
+        """Salva a seção e **confere se o portal confirmou**. Devolve bool.
+
+        O clique é o que sempre foi. O que muda (2026-08-18) é o que vem
+        depois: em vez de um `time.sleep` fixo e fé, espera o toast do próprio
+        portal ("As condições de armazenamento foram modificadas com
+        sucesso!") e confere se ele é DESTA seção.
+
+        Também é mais rápido no caso bom: a espera devolve assim que a
+        mensagem casa, em vez de dormir o tempo cheio.
+
+        O `PAUSA_SALVAMENTO` de sempre CONTINUA, e continua incondicional. A
+        tentação era pulá-lo quando o toast confirma -- economizaria 4 s por
+        ficha. Mas isso seria empacotar uma mudança de ritmo do RPA dentro de
+        uma correção de correção: se o robô ficasse instável depois, não
+        haveria como saber qual das duas mudanças causou. A conferência é
+        aditiva; a velocidade se discute noutro dia, com o portal na frente.
+        """
         try:
             if callback_log: callback_log(f"Salvando {section_name}...")
             self.safe_click(locator)
-            time.sleep(PAUSA_SALVAMENTO)
-        except Exception as e:
+        except Exception:
             if callback_log: callback_log(f"Falha ao salvar {section_name}. Aguardando intervenção manual.")
             if callback_pause:
                 callback_pause(section_name)  # Chama o Frontend para mostrar a janela e pausar
             else:
                 time.sleep(PAUSA_FALLBACK_SALVAMENTO)  # Fallback caso falte o callback
+            return False
+
+        # A conferência vem ANTES da pausa: o toast "aparece relativamente
+        # rápido" e some depois, então dormir primeiro é arriscar perdê-lo.
+        confirmou, _mensagem = self.portal.esperar_confirmacao_de_salvamento(
+            section_name, callback_log=callback_log)
+        time.sleep(PAUSA_SALVAMENTO)
+        return confirmou
 
     def atualizar_status_excel(self, caminho, pmib, status, callback_log=None, callback_ask=None):
         """Atualiza o Excel com loop de retentativa caso esteja aberto.
