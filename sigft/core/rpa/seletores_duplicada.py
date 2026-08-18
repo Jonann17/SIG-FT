@@ -722,3 +722,61 @@ XPATH_LINHAS_DA_TABELA_DE = (
 )
 # Célula de uma coluna dentro de UMA linha já endereçada por índice.
 XPATH_REL_CELULA = "/td[@data-header={coluna}]//span[@data-expression]"
+
+
+# ---------------------------------------------------------------------------
+# 14. Documentos — o TERCEIRO padrão de aninhamento do valor
+# ---------------------------------------------------------------------------
+# HTML levantado pelo usuário em 2026-08-18, nos DOIS modos. A descrição do
+# documento não é `span` solto nem valor de bloco de leitura: vem dentro de um
+# TOOLTIP.
+#
+#   <td data-header="Descrição">
+#     <div data-block="Content.Tooltip" id="…-l1_0-227_0-$b6">
+#       <div class="osui-tooltip osui-tooltip--is-hover" name="0.2r2d7ttp763" …>
+#         <div class="osui-tooltip__content" role="button" tabindex="0">
+#           <span data-expression="">1188 web replaced</span>
+#
+# ⚠️ CONSEQUÊNCIA, e ela repete a lição das tabelas (§13): `XPATH_VIEW_VALOR`
+# exige o ancestral `data-block='PMIB_DataSheetView.Block_Expression'`, e aqui
+# o bloco é `Content.Tooltip`. A varredura de rótulo→valor **também não
+# enxerga os documentos**. Já são três seções que ela não cobre -- o padrão de
+# §8 vale para os campos de formulário, não para tabelas.
+#
+# 🎯 O que salva é o `//span` de `XPATH_REL_CELULA` (§13) ser DESCENDENTE em
+# qualquer profundidade: o mesmo seletor que lê a célula rasa do fabricante lê
+# a célula aninhada do documento. Isso não foi sorte -- `/td[…]/span` teria
+# funcionado no fabricante e falhado aqui, em silêncio. Tem teste com os dois
+# markups para o `//` não virar `/` numa "simplificação" futura.
+#
+# Os dois modos usam a MESMA estrutura, mudando só o prefixo gerado:
+#   edição:       b10-b15-b19-l1_0-227_0-…
+#   visualização: b12-b18-l1_0-452_0-…
+# `-l1_0-` já está em `IDS_GERADOS_NAO_USAR` (índice de linha do OutSystems).
+COLUNA_DESCRICAO = "Descrição"
+
+# Linha do documento, casada pela descrição EXATA na coluna certa.
+#
+# Substitui o casamento por substring em qualquer `<td>` que
+# `XPATH_DOCUMENTOS_LINHA` faz: uma descrição curta ("1188") apareceria também
+# numa coluna de data ou de código, e associar o documento errado é do tipo de
+# erro que ninguém percebe -- o diálogo fecha igual.
+XPATH_DOCUMENTO_LINHA_POR_DESCRICAO = (
+    "//td[@data-header='Descrição'][.//span[@data-expression][normalize-space()={texto}]]"
+    "/ancestor::tr[1]"
+)
+
+# Checkbox DENTRO de uma linha já endereçada.
+#
+# `XPATH_DOCUMENTOS_CHECKBOX_DA_LINHA` (§6.5) ancora em
+# `td[@data-header='Selecionar']`, que foi levantado do DOM e continua sendo a
+# 1ª escolha. Este é o plano B: o HTML de 2026-08-18 mostra o input dentro de
+# `<div class="display-flex justify-content-center">`, sem que a captura
+# revele o `<td>` em volta -- então não dá para AFIRMAR que a coluna se chama
+# "Selecionar" em toda tela. Procurar o checkbox na própria linha é verdadeiro
+# nos dois casos, e a linha já foi escolhida pela descrição.
+XPATH_DOCUMENTO_CHECKBOX_QUALQUER = ".//input[@type='checkbox']"
+
+# `data-checkbox` é o marcador semântico do widget (o `id` traz `-l1_0-`, que
+# é índice de linha e muda a cada busca).
+XPATH_DOCUMENTO_CHECKBOX_SEMANTICO = ".//input[@data-checkbox][@type='checkbox']"

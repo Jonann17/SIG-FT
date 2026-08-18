@@ -799,3 +799,187 @@ def test_a_secao_nao_lida_devolve_vazio_e_nao_levanta(portal_real):
     tabelas = extrator.ler_fabricantes_e_fornecedores(portal_vazio)
 
     assert tabelas == {"fabricantes": [], "fornecedores": []}
+
+
+# ===========================================================================
+# Documentos e Condições — HTML colado pelo usuário em 2026-08-18 (2ª rodada)
+# ===========================================================================
+# A descrição do documento vem dentro de um TOOLTIP -- terceiro padrão de
+# aninhamento do valor, depois do bloco de leitura (§8) e da célula rasa da
+# tabela (§13).
+_HTML_DOCUMENTOS_EDICAO = """
+<div id="dialogo">
+  <table class="table" role="grid">
+    <tbody>
+      <tr class="table-row">
+        <td data-header="Selecionar">
+          <div data-container="" class="display-flex justify-content-center" style="text-align: right;">
+            <span><input data-checkbox="" class="checkbox" type="checkbox"
+                         id="b10-b15-b19-l1_0-227_0-Checkbox1"></span>
+          </div>
+        </td>
+        <td data-header="Descrição">
+          <div data-block="Content.Tooltip" class="OSBlockWidget" id="b10-b15-b19-l1_0-227_0-$b6">
+            <div data-container="" class="osui-tooltip osui-tooltip--is-hover" name="0.2r2d7ttp763"
+                 id="b10-b15-b19-l1_0-227_0-b6-TooltipWrapper">
+              <div class="osui-tooltip__content" id="b10-b15-b19-l1_0-227_0-b6-Content"
+                   role="button" aria-describedby="b10-b15-b19-l1_0-227_0-b6-Tooltip" tabindex="0">
+                <span data-expression="">1188 web replaced</span>
+              </div></div></div>
+        </td>
+      </tr>
+      <tr class="table-row">
+        <td data-header="Selecionar">
+          <div data-container="" class="display-flex justify-content-center">
+            <span><input data-checkbox="" class="checkbox" type="checkbox"
+                         id="b10-b15-b19-l1_0-228_0-Checkbox1"></span>
+          </div>
+        </td>
+        <td data-header="Descrição">
+          <div data-block="Content.Tooltip" class="OSBlockWidget">
+            <div class="osui-tooltip"><div class="osui-tooltip__content">
+              <span data-expression="">1188 web replaced v2</span>
+            </div></div></div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <button data-button="" class="btn btn-primary" type="button">ASSOCIAR</button>
+</div>
+"""
+
+_HTML_DOCUMENTOS_VISUALIZACAO = """
+<div id="ficha">
+  <table class="table" role="grid"><tbody><tr class="table-row">
+    <td data-header="Descrição">
+      <div data-block="Content.Tooltip" class="OSBlockWidget" id="b12-b18-l1_0-452_0-$b2">
+        <div data-container="" class="osui-tooltip osui-tooltip--is-hover" name="0.fucvq6a3y4"
+             id="b12-b18-l1_0-452_0-b2-TooltipWrapper">
+          <div class="osui-tooltip__content" id="b12-b18-l1_0-452_0-b2-Content"
+               role="button" aria-describedby="b12-b18-l1_0-452_0-b2-Tooltip" tabindex="0">
+            <span data-expression="">4500063671.1469 e 4500063671.1470</span>
+          </div></div></div>
+    </td>
+  </tr></tbody></table>
+</div>
+"""
+
+# Captura NOVA do mesmo bloco "Volume (cm3)" que a §8 já cobria -- com ids
+# diferentes e `class="OSFillParent"` no label. Serve de regressão: prova que
+# o leitor de Condições continua valendo numa tela recapturada, e não só no
+# markup que existia quando ele foi escrito.
+_HTML_CONDICOES_RECAPTURA = """
+<fieldset data-advancedhtml=""><legend data-advancedhtml=""><div id="b12-b20-b1-b2-Legend">
+<span class="text-primary font-size-base">Volume (cm3)</span></div></legend>
+<div id="b12-b20-b1-b2-Content"><div data-container="" id="b12-b20-b1-Volume">
+<div data-container="" class="margin-top-s">
+<div data-container=""><label data-label="" class="OSFillParent"><span class="text-primary">Comprimento da embalagem unitária</span></label>
+<div data-container="" class="margin-top-s"><div data-block="PMIB_DataSheetView.Block_Expression" class="OSBlockWidget" id="b12-b20-b1-$b3"><span data-expression="">6</span></div></div></div>
+<div data-container=""><label data-label="" class="OSFillParent"><span class="text-primary">Largura da embalagem unitária</span></label>
+<div data-container="" class="margin-top-s"><div data-block="PMIB_DataSheetView.Block_Expression" class="OSBlockWidget" id="b12-b20-b1-$b4"><span data-expression="">6</span></div></div></div>
+<div data-container=""><label data-label="" class="OSFillParent"><span class="text-primary">Altura da embalagem unitária</span></label>
+<div data-container="" class="margin-top-s"><div data-block="PMIB_DataSheetView.Block_Expression" class="OSBlockWidget" id="b12-b20-b1-$b5"><span data-expression="">5</span></div></div></div>
+</div></div></div></fieldset>
+"""
+
+
+# --- documentos, modo de edição --------------------------------------------
+
+def test_a_linha_do_documento_e_achada_pela_descricao_exata():
+    arvore = etree.HTML(_HTML_DOCUMENTOS_EDICAO)
+
+    linhas = arvore.xpath(sel.XPATH_DOCUMENTO_LINHA_POR_DESCRICAO.format(
+        texto=_lit("1188 web replaced")))
+
+    assert len(linhas) == 1, "a descrição exata tem de casar UMA linha"
+
+
+def test_descricao_parecida_nao_arrasta_a_linha_errada():
+    """"1188 web replaced" x "1188 web replaced v2": o casamento por SUBSTRING
+    de `XPATH_DOCUMENTOS_LINHA` pegaria as duas, e associar o documento errado
+    não dá sintoma -- o diálogo fecha igual."""
+    arvore = etree.HTML(_HTML_DOCUMENTOS_EDICAO)
+
+    exato = arvore.xpath(sel.XPATH_DOCUMENTO_LINHA_POR_DESCRICAO.format(
+        texto=_lit("1188 web replaced")))
+    por_substring = arvore.xpath(sel.XPATH_DOCUMENTOS_LINHA.format(
+        texto=_lit("1188 web replaced")))
+
+    assert len(exato) == 1
+    assert len(por_substring) == 2, (
+        "se o seletor antigo deixar de ser ambíguo, esta nota pode sair"
+    )
+
+
+def test_o_checkbox_sai_da_linha_ja_escolhida():
+    arvore = etree.HTML(_HTML_DOCUMENTOS_EDICAO)
+    linha = arvore.xpath(sel.XPATH_DOCUMENTO_LINHA_POR_DESCRICAO.format(
+        texto=_lit("1188 web replaced")))[0]
+
+    pelo_cabecalho = linha.xpath(sel.XPATH_DOCUMENTOS_CHECKBOX_DA_LINHA)
+    semantico = linha.xpath(sel.XPATH_DOCUMENTO_CHECKBOX_SEMANTICO)
+    qualquer = linha.xpath(sel.XPATH_DOCUMENTO_CHECKBOX_QUALQUER)
+
+    assert len(pelo_cabecalho) == 1, "a âncora de §6.5 continua valendo"
+    assert len(semantico) == 1
+    assert len(qualquer) == 1
+    assert pelo_cabecalho[0] is semantico[0] is qualquer[0], "os três acham o MESMO input"
+
+
+def test_o_id_do_checkbox_nao_entra_em_seletor_nenhum():
+    """`b10-b15-b19-l1_0-227_0-Checkbox1` traz `-l1_0-`, que é índice de linha
+    e muda a cada busca -- já catalogado."""
+    assert any("-l1_0-" in f for f in sel.IDS_GERADOS_NAO_USAR)
+    for nome, valor in vars(sel).items():
+        if nome.startswith("XPATH") and isinstance(valor, str):
+            assert "-l1_0-" not in valor, nome
+
+
+def test_o_botao_associar_e_achado_pelo_texto():
+    arvore = etree.HTML(_HTML_DOCUMENTOS_EDICAO)
+
+    assert len(arvore.xpath(sel.XPATH_DOCUMENTOS_ASSOCIAR)) == 1
+
+
+# --- documentos, modo de visualização --------------------------------------
+
+def test_a_varredura_de_rotulo_e_valor_TAMBEM_nao_enxerga_documentos():
+    """Terceira seção que o padrão de §8 não cobre (depois de Fabricantes e
+    Fornecedores). O bloco aqui é `Content.Tooltip`, não
+    `PMIB_DataSheetView.Block_Expression`."""
+    arvore = etree.HTML(_HTML_DOCUMENTOS_VISUALIZACAO)
+
+    assert arvore.xpath(sel.XPATH_VIEW_VALOR) == []
+
+
+def test_a_MESMA_celula_le_o_valor_raso_e_o_aninhado_em_tooltip():
+    """🎯 O `//span` de `XPATH_REL_CELULA` é o que faz um seletor só servir
+    para os dois. `/td[…]/span` funcionaria no fabricante (raso) e falharia no
+    documento (dentro de 3 divs) -- em silêncio. Este teste existe para o `//`
+    não virar `/` numa "simplificação"."""
+    celula = sel.XPATH_REL_CELULA.format(coluna=_lit(sel.COLUNA_DESCRICAO))
+
+    doc = etree.HTML(_HTML_DOCUMENTOS_VISUALIZACAO)
+    aninhado = doc.xpath("//tr" + celula)
+    assert [n.text for n in aninhado] == ["4500063671.1469 e 4500063671.1470"]
+
+    raso = etree.HTML(_HTML_NAVEGACAO).xpath(
+        "//tr" + sel.XPATH_REL_CELULA.format(coluna=_lit(sel.COLUNA_REFERENCIA)))
+    assert "E24-256-10" in [n.text for n in raso]
+
+
+# --- Condições: a recaptura não quebrou o leitor ---------------------------
+
+def test_o_leitor_de_condicoes_continua_valendo_na_recaptura():
+    """Regressão contra tela recapturada: mesmos três campos, ids diferentes,
+    `class="OSFillParent"` a mais no label. Se o leitor dependesse de id ou de
+    classe de layout, quebraria aqui."""
+    engine = _EngineLxml(_HTML_CONDICOES_RECAPTURA)
+
+    blocos = extrator.ler_secao_visivel(engine)
+
+    assert blocos == [("Volume (cm3)", {
+        "Comprimento da embalagem unitária": "6",
+        "Largura da embalagem unitária": "6",
+        "Altura da embalagem unitária": "5",
+    })]
