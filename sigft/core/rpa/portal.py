@@ -516,21 +516,82 @@ class PMIBPortal:
     # tem equivalente na interface de intenção de `RPAEngine` -- acessa
     # `self.engine.driver`/`.wait` diretamente (ver docstring do módulo).
     # =========================================================================
-    def check_or_uncheck(self, seletor: str, should_check: bool) -> None:
-        """Marca/desmarca um checkbox/radio localizado por `seletor` (XPath)
-        só se o estado atual divergir de `should_check` -- mecânica idêntica
-        à original de `upload_conditions.UploadAutomation.check_or_uncheck`.
+    def check_or_uncheck(self, seletor: str, should_check: bool,
+                         callback_log=None) -> bool:
+        """Marca/desmarca um checkbox/radio e **confere se pegou**.
+
+        Devolve `True` quando o estado final é o pedido. O retorno é novo
+        (2026-08-18) e aditivo -- quem ignora continua funcionando.
 
         CP 5.3: portado para as primitivas. O `scrollIntoView` que o original
         fazia antes de LER o estado sumiu -- ele não influencia a leitura, e o
         clique que vem depois (`safe_click`) já rola por conta própria. Ler
         `checked` não exige o elemento na viewport.
+
+        **Por que a releitura (2026-08-18).** A versão anterior clicava e ia
+        embora, dentro de um `except Exception: pass`. Num checkbox isso é
+        pior do que em qualquer outro elemento, porque o estado é observável e
+        barato de ler: dava para saber, e não se olhava. Em Condições, onde há
+        19 controles desses, uma ficha inteira podia sair vazia sem uma linha
+        de log -- e depois ser marcada COMPLETO na planilha.
+
+        As duas tentativas não são "tentar de novo até dar certo", são
+        mecanismos DIFERENTES: `safe_click` clica como um usuário; `click_dom`
+        dispara o `click()` do próprio elemento, alcançando o `<input>`
+        coberto pelo rótulo estilizado do OutSystems. Se a primeira já
+        resolveu, a segunda nem acontece -- clicar de novo num checkbox que já
+        está certo o DESmarcaria.
         """
+        def _log(mensagem):
+            if callback_log:
+                callback_log(mensagem)
+
         try:
-            if self.engine.esta_marcado(seletor) != should_check:
-                self.safe_click(seletor)
-        except Exception:
+            if self.engine.esta_marcado(seletor) == should_check:
+                return True  # já estava como se queria
+        except Exception as erro:  # noqa: BLE001
+            # Não dá para LER o estado -- e aí não se clica. `esta_marcado`
+            # levanta quando o elemento não existe e também quando ele existe
+            # mas não é um controle marcável; nos dois casos, clicar seria um
+            # palpite sobre um alvo que não entendemos. É o comportamento da
+            # versão anterior, PRESERVADO de propósito.
+            #
+            # O que muda é só o silêncio: antes isto era `except: pass` e o
+            # campo sumia sem deixar rastro. A correção deste ponto é o log,
+            # não um clique a mais.
+            _log(f"      [!] Não consigo ler o estado do controle {seletor}: {erro}. "
+                 f"Não cliquei -- preencher à mão.")
+            return False
+
+        try:
+            self.safe_click(seletor)
+        except Exception:  # noqa: BLE001
             pass
+
+        try:
+            if self.engine.esta_marcado(seletor) == should_check:
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+
+        # 2ª tentativa por outro mecanismo.
+        try:
+            self.engine.click_dom(seletor)
+        except Exception as erro:  # noqa: BLE001
+            _log(f"      [!] Não consegui alcançar o controle {seletor}: {erro}")
+            return False
+
+        try:
+            final = self.engine.esta_marcado(seletor)
+        except Exception as erro:  # noqa: BLE001
+            _log(f"      [!] Cliquei em {seletor} mas não consigo ler o estado: {erro}")
+            return False
+
+        if final != should_check:
+            _log(f"      [!] O controle {seletor} continuou em {final!r} depois de "
+                 f"duas tentativas (esperado {should_check!r}) -- preencher à mão.")
+            return False
+        return True
 
     # =========================================================================
     # clicar_salvar_visivel -- só existia em upload_ficha_duplicada.py

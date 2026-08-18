@@ -41,13 +41,19 @@ _PlaywrightTimeoutErrorFalso.__name__ = "TimeoutError"
 
 
 class _FakeLocator:
-    def __init__(self, dono, seletor, *, valor="", quantidade=1, habilitado=True, erro=None):
+    def __init__(self, dono, seletor, *, valor="", quantidade=1, habilitado=True,
+                 erro=None, erro_no_clique_real=None):
         self.dono = dono
         self.seletor = seletor
         self.valor = valor
         self.quantidade = quantidade
         self.habilitado = habilitado
         self.erro = erro
+        # `erro_no_clique_real` falha SÓ o `Locator.click()`, deixando o resto
+        # passar. É o cenário do controle customizado do OutSystems: o
+        # elemento existe e rola normalmente, mas o clique de mouse real não o
+        # alcança porque o rótulo estilizado recebe o evento no lugar dele.
+        self.erro_no_clique_real = erro_no_clique_real
 
     @property
     def first(self):
@@ -58,10 +64,15 @@ class _FakeLocator:
         if self.erro is not None:
             raise self.erro
 
-    def click(self):
-        self._registrar("click")
+    def click(self, timeout=None):
+        self._registrar("click", timeout)
+        if self.erro_no_clique_real is not None:
+            raise self.erro_no_clique_real
 
-    def scroll_into_view_if_needed(self):
+    def evaluate(self, expressao):
+        self._registrar("evaluate", expressao)
+
+    def scroll_into_view_if_needed(self, timeout=None):
         self._registrar("scroll")
 
     def fill(self, texto):
@@ -70,7 +81,7 @@ class _FakeLocator:
     def press_sequentially(self, texto):
         self._registrar("type", texto)
 
-    def wait_for(self, state):
+    def wait_for(self, state, timeout=None):
         self._registrar("wait_for", state)
 
     def input_value(self):
@@ -94,7 +105,8 @@ class _FakeKeyboard:
 
 
 class _FakePage:
-    def __init__(self, *, url="", valor="", quantidade=1, habilitado=True, erro=None):
+    def __init__(self, *, url="", valor="", quantidade=1, habilitado=True, erro=None,
+                 erro_no_clique_real=None):
         self.url = url
         self.acoes = []
         self.handlers = {}
@@ -102,6 +114,7 @@ class _FakePage:
         self._quantidade = quantidade
         self._habilitado = habilitado
         self._erro = erro
+        self._erro_no_clique_real = erro_no_clique_real
         self.keyboard = _FakeKeyboard(self)
 
     def locator(self, seletor):
@@ -112,6 +125,7 @@ class _FakePage:
             quantidade=self._quantidade,
             habilitado=self._habilitado,
             erro=self._erro,
+            erro_no_clique_real=self._erro_no_clique_real,
         )
 
     def goto(self, url):
@@ -174,15 +188,97 @@ def test_goto_navega_e_current_url_le_a_pagina():
 # ===========================================================================
 # Interação
 # ===========================================================================
-def test_click_estrito_rola_antes_de_clicar():
+def test_click_estrito_espera_presenca_rola_e_clica_de_verdade():
+    """Caminho feliz: o clique de MOUSE REAL é sempre a primeira tentativa.
+
+    A ordem importa. O clique real roda a checagem de hit target, que denuncia
+    seletor errado e elemento coberto por modal -- coisas que o clique por DOM
+    esconde ao "funcionar" no lugar errado. Se algum dia ele deixar de vir
+    primeiro, o motor passa a acertar por sorte.
+    """
     engine = _engine()
 
     engine.click_estrito("//button")
 
     assert engine.page.acoes == [
+        ("wait_for", "xpath=//button", "attached"),
         ("scroll", "xpath=//button"),
-        ("click", "xpath=//button"),
+        ("click", "xpath=//button", pe.TIMEOUT_CLIQUE_REAL_MS),
     ]
+    assert ("evaluate", "xpath=//button", pe._JS_CLICK) not in engine.page.acoes
+
+
+def test_click_estrito_espera_a_PRESENCA_com_o_timeout_cheio():
+    """O que encurta é a insistência no clique, não a espera pelo elemento.
+
+    Se a espera de presença também usasse o timeout curto, um portal lento
+    faria o robô desistir de campos que iriam aparecer -- trocando um defeito
+    por outro.
+    """
+    engine = _engine()
+    engine.timeout_ms = 20_000
+
+    engine.click_estrito("//button")
+
+    assert pe.TIMEOUT_CLIQUE_REAL_MS < engine.timeout_ms
+
+
+def test_clique_real_que_nao_alcanca_o_alvo_recua_para_o_clique_por_DOM():
+    """O caso que quebrou `upload_conditions` na migração para Playwright.
+
+    O `<input class="radio-button">` do OutSystems existe e rola normalmente,
+    mas fica coberto pelo `<label>` estilizado -- o clique de mouse real não o
+    alcança e estoura. No Selenium isso nunca aconteceu, porque lá o clique
+    SEMPRE foi por JavaScript. O recuo restaura a equivalência.
+    """
+    engine = _engine(erro_no_clique_real=_PlaywrightTimeoutErrorFalso("intercepted"))
+
+    engine.click_estrito("//input[@id='b10-b17-b1-RadioButton1-input']")
+
+    seletor = "xpath=//input[@id='b10-b17-b1-RadioButton1-input']"
+    assert ("click", seletor, pe.TIMEOUT_CLIQUE_REAL_MS) in engine.page.acoes
+    assert ("evaluate", seletor, pe._JS_CLICK) in engine.page.acoes
+
+
+def test_o_recuo_usa_click_nativo_do_elemento_e_nao_evento_sintetico():
+    """`el.click()` executa o comportamento PADRÃO do elemento (marca o
+    checkbox, alterna o radio, emite `change`). `dispatch_event("click")`
+    dispararia o evento sem mudar o estado -- a pior falha possível aqui,
+    porque parece ter funcionado."""
+    assert pe._JS_CLICK == "el => el.click()"
+
+    engine = _engine(erro_no_clique_real=_PlaywrightTimeoutErrorFalso("intercepted"))
+    engine.click_estrito("//input")
+
+    assert not any(acao[0] == "dispatch_event" for acao in engine.page.acoes)
+
+
+def test_click_dom_nao_tenta_o_clique_real_nem_rola():
+    """A primitiva crua: só presença e clique. Quem a chama já sabe que o alvo
+    não é acionável -- insistir no clique real seria gastar o timeout à toa."""
+    engine = _engine()
+
+    engine.click_dom("//input")
+
+    assert engine.page.acoes == [
+        ("wait_for", "xpath=//input", "attached"),
+        ("evaluate", "xpath=//input", pe._JS_CLICK),
+    ]
+
+
+def test_elemento_que_nunca_aparece_estoura_e_NAO_vira_clique_por_DOM():
+    """O recuo não pode transformar "seletor errado" em sucesso silencioso.
+
+    Se o elemento não existe, `wait_for` estoura antes de qualquer tentativa
+    de clique -- e o erro chega ao consumidor como `TempoEsgotado`, não como
+    um clique em nada.
+    """
+    engine = _engine(erro=_PlaywrightTimeoutErrorFalso("nunca apareceu"))
+
+    with pytest.raises(TempoEsgotado):
+        engine.click_estrito("//nao-existe")
+
+    assert not any(acao[0] == "evaluate" for acao in engine.page.acoes)
 
 
 def test_click_engole_a_falha_e_click_estrito_propaga():
@@ -202,7 +298,7 @@ def test_click_raw_clica_sem_rolar():
 
     engine.click_raw("//a")
 
-    assert engine.page.acoes == [("click", "xpath=//a")]
+    assert engine.page.acoes == [("click", "xpath=//a", None)]
 
 
 def test_scroll_to_so_rola():

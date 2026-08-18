@@ -236,6 +236,40 @@ class RPAEngine(ABC):
         """
 
     @abstractmethod
+    def click_dom(self, seletor: str) -> None:
+        """Clique disparado pelo DOM (`elemento.click()`), SEM checagem de
+        acionabilidade -- sem exigir que o alvo esteja visível, estável ou
+        desobstruído. Exige apenas que ele exista.
+
+        **Por que esta primitiva precisou existir (2026-08-18).** Ela é o que
+        `click`/`click_estrito` sempre fizeram no motor Selenium
+        (`execute_script("arguments[0].click()")`) e o que o motor Playwright
+        NÃO tinha: lá `Locator.click()` é um clique de mouse real e roda a
+        checagem de "hit target" -- se qualquer outro elemento receber o
+        evento no ponto do clique, ele espera até o timeout e falha.
+
+        Isso quebrou `upload_conditions` na migração, e a assimetria explica
+        exatamente qual módulo quebrou. O controle customizado do OutSystems é
+
+            <div class="custom"><span><input class="radio-button" ...></span>
+                                <label>Não contém agentes nocivos</label></div>
+
+        -- o `<input>` real fica coberto pelo rótulo estilizado, que é o que o
+        usuário enxerga e clica. O clique por JavaScript passa por cima disso;
+        o clique de mouse real, não. `upload_conditions` tem 19 seletores de
+        radio/checkbox; `tech_specs` tem ZERO. Foi por isso que um quebrou e o
+        outro não, e não por instabilidade do motor novo.
+
+        Pior: `click` ENGOLE a falha por contrato, então cada campo perdido
+        custava o timeout inteiro (20 s) e não deixava uma linha de log.
+
+        Use quando o alvo é um controle que o navegador considera não
+        acionável mas que a página trata como clicável. Para tudo o mais,
+        `click`/`click_estrito` continuam melhores: a checagem de
+        acionabilidade pega erro de seletor que o clique por DOM esconde.
+        """
+
+    @abstractmethod
     def wait_present(self, seletor: str) -> None:
         """Bloqueia até o elemento existir no DOM -- sem exigir que esteja
         visível ou clicável. Levanta `TempoEsgotado` no timeout."""

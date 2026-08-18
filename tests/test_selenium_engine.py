@@ -585,6 +585,37 @@ def test_click_estrito_propaga_enquanto_click_engole():
     engine_tolerante.click("//button")  # não levanta
 
 
+# --- click_dom --------------------------------------------------------------
+
+def test_click_dom_clica_por_javascript_sem_rolar_nem_esperar_clicavel():
+    """No Selenium `click_dom` não é capacidade nova -- é o mesmo
+    `arguments[0].click()` que `click_estrito` já fazia. O que muda é o
+    contrato ficar explícito, para o motor Playwright poder oferecer o
+    equivalente (lá `Locator.click()` roda checagem de hit target e NÃO
+    alcança o `<input>` coberto pelo rótulo do OutSystems).
+
+    A diferença para `click_estrito` é o que NÃO acontece: sem scroll e sem
+    espera de "clicável" -- `element_to_be_clickable` exige visibilidade, e
+    quem chama esta primitiva já sabe que o alvo não é acionável.
+    """
+    elemento = _FakeElement()
+    driver = _FakeDriver()
+    engine = se.SeleniumEngine(driver, _FakeWait(elemento=elemento))
+
+    engine.click_dom("//input[@id='b10-b17-b1-RadioButton1-input']")
+
+    assert driver.execute_script_chamadas == [("arguments[0].click();", elemento)]
+
+
+def test_click_dom_propaga_a_falha_traduzida_quando_o_elemento_nao_existe():
+    """Presença continua obrigatória: clicar por DOM em nada não pode virar
+    sucesso silencioso."""
+    engine = se.SeleniumEngine(_FakeDriver(), _FakeWait(excecao=_TimeoutExceptionFalsa("sumiu")))
+
+    with pytest.raises(TempoEsgotado):
+        engine.click_dom("//nao-existe")
+
+
 # --- wait_present -----------------------------------------------------------
 
 def test_wait_present_espera_presenca_e_nao_devolve_nada():

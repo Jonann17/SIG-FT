@@ -315,6 +315,22 @@ class SeleniumEngine(RPAEngine):
             el.send_keys(Keys.BACKSPACE)
             el.send_keys(str(texto))
 
+    def click_dom(self, seletor: str) -> None:
+        """Clique por JavaScript, sem checagem de acionabilidade -- ver
+        `engine.py`.
+
+        No Selenium isto NÃO é uma capacidade nova: é a mesma
+        `execute_script("arguments[0].click()")` que `click_estrito` já faz.
+        O que muda é o contrato ficar explícito, para o motor Playwright poder
+        oferecer o equivalente. A diferença para `click_estrito` é o que NÃO
+        se faz aqui: não espera "clicável" (`element_to_be_clickable` exige
+        visibilidade) e não rola a tela. Só presença.
+        """
+        locator = (By.XPATH, seletor)
+        with _traduzindo():
+            el = self.wait.until(EC.presence_of_element_located(locator))
+            self.driver.execute_script("arguments[0].click();", el)
+
     def scroll_to(self, seletor: str) -> None:
         with _traduzindo():
             el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))

@@ -144,6 +144,10 @@ class _FakeEngine:
         # Estado para as primitivas do CP 5.3.
         self.marcado = False
         self.marcado_levanta = False
+        self.click_dom_chamadas = []
+        self.clique_real_pega = True
+        self.click_dom_pega = True
+        self.click_dom_levanta = False
         self.botoes_total = 0
         self.visiveis = {}
         self.habilitados = {}
@@ -203,6 +207,20 @@ class _FakeEngine:
     # -- delegação fina (CP 2.2) -------------------------------------------
     def click(self, seletor):
         self.click_chamadas.append(seletor)
+        # Um checkbox de verdade MUDA de estado quando clicado. Sem isso o
+        # duplo não consegue distinguir "cliquei e pegou" de "cliquei e não
+        # pegou" -- que é exatamente a diferença que `check_or_uncheck` passou
+        # a conferir. `clique_real_pega=False` reproduz o controle customizado
+        # do OutSystems, onde o clique de mouse não alcança o `<input>`.
+        if self.clique_real_pega:
+            self.marcado = not self.marcado
+
+    def click_dom(self, seletor):
+        self.click_dom_chamadas.append(seletor)
+        if self.click_dom_levanta:
+            raise RuntimeError("elemento não existe")
+        if self.click_dom_pega:
+            self.marcado = not self.marcado
 
     def fill(self, seletor, texto):
         self.fill_chamadas.append((seletor, texto))
@@ -334,13 +352,89 @@ def test_check_or_uncheck_desmarca_quando_marcado_e_deveria_estar_desmarcado():
     assert engine.click_chamadas == ["//input[@id='chk']"]
 
 
-def test_check_or_uncheck_engole_excecao_silenciosamente():
+def test_check_or_uncheck_nao_levanta_quando_nao_consegue_ler_o_estado():
+    """Não levantar continua sendo contrato -- uma ficha não pode morrer por
+    causa de um checkbox. O que mudou (2026-08-18) é que também não CLICA:
+    `esta_marcado` levanta quando o elemento não existe e quando existe mas
+    não é marcável, e nos dois casos clicar seria palpite sobre um alvo que
+    não se entende."""
     engine = _FakeEngine()
     engine.marcado_levanta = True
 
-    PMIBPortal(engine).check_or_uncheck("//input[@id='chk']", True)  # não levanta
+    resultado = PMIBPortal(engine).check_or_uncheck("//input[@id='chk']", True)  # não levanta
 
     assert engine.click_chamadas == []
+    assert resultado is False
+
+
+def test_check_or_uncheck_avisa_em_vez_de_falhar_em_silencio():
+    """O defeito real de Condições não era o `except`, era o `pass`.
+
+    19 controles podiam falhar numa ficha sem produzir uma linha de log -- e a
+    ficha ainda era marcada COMPLETO na planilha depois. Estado de checkbox é
+    observável e barato de ler: dava para saber, e não se olhava.
+    """
+    engine = _FakeEngine()
+    engine.marcado_levanta = True
+    linhas = []
+
+    PMIBPortal(engine).check_or_uncheck("//input[@id='chk']", True, callback_log=linhas.append)
+
+    assert any("//input[@id='chk']" in l for l in linhas), (
+        "o controle falhou e não saiu nada no log"
+    )
+
+
+def test_check_or_uncheck_recua_para_click_dom_quando_o_clique_nao_pega():
+    """O caso do OutSystems: o clique de mouse não alcança o `<input>` porque
+    o `<label>` estilizado o cobre. A releitura percebe que o estado não mudou
+    e tenta pelo outro mecanismo."""
+    engine = _FakeEngine()
+    engine.marcado = False
+    engine.clique_real_pega = False  # o clique acontece e não muda nada
+
+    resultado = PMIBPortal(engine).check_or_uncheck("//input[@id='chk']", True)
+
+    assert engine.click_chamadas == ["//input[@id='chk']"]
+    assert engine.click_dom_chamadas == ["//input[@id='chk']"]
+    assert resultado is True
+
+
+def test_check_or_uncheck_nao_clica_duas_vezes_quando_a_primeira_ja_pegou():
+    """Clicar de novo num checkbox que já está certo o DESmarcaria -- a 2ª
+    tentativa não pode ser incondicional."""
+    engine = _FakeEngine()
+    engine.marcado = False
+
+    PMIBPortal(engine).check_or_uncheck("//input[@id='chk']", True)
+
+    assert engine.click_dom_chamadas == []
+    assert engine.marcado is True
+
+
+def test_check_or_uncheck_reporta_quando_nenhum_dos_dois_mecanismos_pega():
+    """Duas tentativas e o controle não mudou: vira pendência com log, não
+    silêncio. É o que separa "o robô não conseguiu" de "a ficha está pronta"."""
+    engine = _FakeEngine()
+    engine.marcado = False
+    engine.clique_real_pega = False
+    engine.click_dom_pega = False
+    linhas = []
+
+    resultado = PMIBPortal(engine).check_or_uncheck(
+        "//input[@id='chk']", True, callback_log=linhas.append)
+
+    assert resultado is False
+    assert any("duas tentativas" in l for l in linhas)
+
+
+def test_check_or_uncheck_devolve_True_quando_ja_estava_certo():
+    engine = _FakeEngine()
+    engine.marcado = True
+
+    assert PMIBPortal(engine).check_or_uncheck("//input[@id='chk']", True) is True
+    assert engine.click_chamadas == []
+    assert engine.click_dom_chamadas == []
 
 
 # ===========================================================================

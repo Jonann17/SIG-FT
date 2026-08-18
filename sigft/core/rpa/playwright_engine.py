@@ -98,6 +98,24 @@ def perfil_padrao() -> str:
     return os.path.join(base, "SIG-FT", "perfil-navegador")
 
 
+# Quanto se espera pelo clique de MOUSE REAL antes de cair no clique por DOM
+# (`click_dom`). Não é o timeout do elemento EXISTIR -- esse continua sendo o
+# `timeout_ms` cheio; é só quanto se insiste no clique real depois que o alvo
+# já está no DOM.
+#
+# O número importa porque a falha aqui é cara e silenciosa: `click` engole a
+# exceção por contrato, então cada radio inalcançável de `upload_conditions`
+# custava os 20 s inteiros e não deixava rastro -- uma ficha com 19 controles
+# gastava minutos para terminar vazia. 3 s é folgado para um clique que vai
+# dar certo (o Playwright reavalia a acionabilidade em laço) e barato para um
+# que não vai.
+TIMEOUT_CLIQUE_REAL_MS = 3_000
+
+# O clique nativo do elemento. Contrapartida exata do
+# `arguments[0].click()` do motor Selenium.
+_JS_CLICK = "el => el.click()"
+
+
 class PlaywrightEngine(RPAEngine):
     """Implementação de `RPAEngine` sobre Playwright (motor-alvo da Fase 5).
 
@@ -236,10 +254,64 @@ class PlaywrightEngine(RPAEngine):
             pass
 
     def click_estrito(self, seletor: str) -> None:
+        """Clica propagando a falha -- tentando primeiro como um usuário
+        clicaria e recuando para o clique por DOM quando o alvo não é
+        acionável.
+
+        **A ordem é deliberada e não é "tentar de novo até dar certo".** O
+        clique real é melhor quando funciona: ele roda a checagem de hit
+        target, que denuncia seletor errado e elemento coberto por modal --
+        coisas que o clique por DOM esconde ao "funcionar" no lugar errado.
+        Por isso ele vem primeiro, e o recuo só acontece quando ele falha.
+
+        O recuo restaura a equivalência com o motor Selenium, onde
+        `click_estrito` SEMPRE foi um `execute_script("arguments[0].click()")`
+        -- ou seja, sempre teve o comportamento do recuo, e nunca o da
+        checagem. Sem ele, os controles customizados do OutSystems (o
+        `<input>` coberto pelo `<label>` estilizado) ficavam inalcançáveis no
+        motor novo. Ver `engine.click_dom` para o diagnóstico completo.
+
+        A espera pelo elemento EXISTIR continua com o timeout cheio; o que
+        encurta é só a insistência no clique real (`TIMEOUT_CLIQUE_REAL_MS`).
+        """
         def _acao():
             alvo = self._loc(seletor)
-            alvo.scroll_into_view_if_needed()
-            alvo.click()
+            # Presença com o timeout cheio -- equivale ao
+            # `presence_of_element_located` que a versão Selenium espera antes
+            # de qualquer coisa. Um elemento que nunca aparece tem de estourar
+            # aqui, como TempoEsgotado, e NÃO virar um clique por DOM em nada.
+            alvo.wait_for(state="attached", timeout=self.timeout_ms)
+            try:
+                alvo.scroll_into_view_if_needed(timeout=TIMEOUT_CLIQUE_REAL_MS)
+            except Exception:  # noqa: BLE001
+                # Rolar é conveniência; um alvo que não rola (escondido, dentro
+                # de container com overflow travado) ainda pode ser clicado
+                # pelo DOM. Falhar aqui seria desistir antes da tentativa.
+                pass
+            try:
+                alvo.click(timeout=TIMEOUT_CLIQUE_REAL_MS)
+            except Exception:  # noqa: BLE001 -- qualquer não-acionabilidade
+                alvo.evaluate(_JS_CLICK)
+
+        self._executar(_acao)
+
+    def click_dom(self, seletor: str) -> None:
+        """Clique por DOM, sem checagem de acionabilidade -- ver `engine.py`.
+
+        `evaluate("el => el.click()")` chama o `HTMLElement.click()` nativo,
+        que é exatamente o que `execute_script("arguments[0].click()")` faz no
+        Selenium: dispara o evento E executa o comportamento padrão do
+        elemento (marcar o checkbox, alternar o radio, emitir `change`).
+
+        Não é `dispatch_event("click")`: aquele monta um `MouseEvent`
+        sintético e NÃO executa o comportamento padrão -- um checkbox
+        receberia o evento sem mudar de estado, que é a pior falha possível
+        aqui (parece que funcionou).
+        """
+        def _acao():
+            alvo = self._loc(seletor)
+            alvo.wait_for(state="attached", timeout=self.timeout_ms)
+            alvo.evaluate(_JS_CLICK)
 
         self._executar(_acao)
 

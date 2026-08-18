@@ -68,8 +68,18 @@ METODOS_CP_5_3 = (
 # `click_nativo` em engine.py.
 METODOS_DO_TESTE_REAL = ("click_nativo",)
 
+# Acrescentado em 2026-08-18 pelo mesmo motivo do anterior -- uma sessão real,
+# não um checkpoint. `upload_conditions` deixou de preencher os controles de
+# Condições ao migrar para Playwright: lá `Locator.click()` roda a checagem de
+# hit target, e o `<input class="radio-button">` do OutSystems fica coberto
+# pelo `<label>` estilizado. No Selenium o clique SEMPRE foi por JavaScript e
+# passava por cima disso. `click_dom` devolve essa capacidade ao contrato, em
+# vez de deixá-la implícita num motor só. Ver a docstring em engine.py.
+METODOS_DA_REGRESSAO_DO_PLAYWRIGHT = ("click_dom",)
+
 METODOS_OBRIGATORIOS = (
     METODOS_CP_2_1 + METODOS_CP_5_1 + METODOS_CP_5_3 + METODOS_DO_TESTE_REAL
+    + METODOS_DA_REGRESSAO_DO_PLAYWRIGHT
 )
 
 
@@ -123,6 +133,7 @@ def _implementacoes_completas():
         "scroll_to": lambda self, seletor: None,
         "click_raw": lambda self, seletor: None,
         "click_nativo": lambda self, seletor: None,
+        "click_dom": lambda self, seletor: None,
         "wait_present": lambda self, seletor: None,
         "clear": lambda self, seletor: None,
         "type_text": lambda self, seletor, texto: None,
