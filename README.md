@@ -155,6 +155,22 @@ instalado, dá para usar esse:
 set SIGFT_PLAYWRIGHT_EXECUTABLE=C:\Program Files\Google\Chrome\Application\chrome.exe
 ```
 
+### Capturar o HTML de uma tela do portal
+
+`Capturar-Tela-do-Portal.bat` abre o navegador **com o seu login já valendo**
+(perfil persistente), você navega até a tela e o HTML sai na janela preta,
+pronto para colar. Substitui o "inspecionar elemento e copiar caixa por
+caixa".
+
+```bat
+Capturar-Tela-do-Portal.bat                  REM captura os <fieldset> da tela
+Capturar-Tela-do-Portal.bat "//table"        REM captura as tabelas
+```
+
+É **somente-leitura**: não clica, não digita, não salva nada no portal — dá
+para rodar numa ficha real. Por baixo é `scripts/auditar_seletores.py
+--capturar`, o mesmo script que confere os seletores contra a tela.
+
 ## Rede corporativa (Zscaler)
 
 Redes com inspeção SSL (Zscaler, Netskope, Blue Coat…) substituem o certificado
