@@ -298,3 +298,133 @@ def test_o_discriminador_da_inversao_e_o_span_exigido_no_ramo_do_rotulo():
     # ...e no bloco de opções marcadas (padrão B), NENHUM. É aqui que a
     # inversão morre: os labels do padrão B não entram como rótulo.
     assert len(engine._nos(f"(//fieldset)[2]{ramo_rotulo[1:]}")) == 0
+
+
+# ===========================================================================
+# Fabricante x fornecedor — HTML real da seção em EDIÇÃO (2026-08-17)
+# ===========================================================================
+# Colado pelo usuário depois que o robô escreveu na linha da GE. É o markup que
+# decide se a referência vai para a linha certa.
+_HTML_FABRICANTE = """
+<div id="secao">
+  <div data-container="" class="linha-do-fornecedor">
+    <div class="vscomp-toggle-button">
+      <div class="vscomp-value" data-tooltip="Selecione um fornecedor">Selecione um fornecedor</div>
+      <div class="vscomp-arrow"></div>
+    </div>
+    <div data-container="" class="margin-left-base ThemeGrid_Width9">
+      <label data-label=""><span class="text-primary margin-right-s">Refer&#234;ncia</span></label>
+      <span class="input-text">
+        <input data-input="" class="form-control OSFillParent" required="" type="text"
+               maxlength="100" value="" id="b10-b11-b2-Input_TextVar">
+      </span>
+    </div>
+    <div data-container="" class="margin-left-base ThemeGrid_Width2">
+      <div data-block="Content.Tooltip" class="OSBlockWidget" id="b10-b11-b2-$b6">
+        <div data-container="" class="text-align-center">
+          <a data-link="" href="#"><i data-icon="" class="icon fa fa-plus-circle fa-2x"></i></a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div data-container="" class="linha-do-fabricante">
+    <div class="vscomp-toggle-button">
+      <div class="vscomp-value" data-tooltip="Selecione um fabricante">Selecione um fabricante</div>
+      <div class="vscomp-arrow"></div>
+      <div class="vscomp-clear-button toggle-button-child" data-tooltip="Clear">
+        <i class="vscomp-clear-icon"></i>
+      </div>
+    </div>
+    <div class="vscomp-search-container">
+      <label for="vscomp-search-input-4614" class="vscomp-search-label">Search</label>
+      <input type="text" class="vscomp-search-input"
+             placeholder="Pesquisar um fabricante " id="vscomp-search-input-4614">
+      <span class="vscomp-search-clear">&#215;</span>
+    </div>
+    <div role="option" aria-selected="false" id="vscomp-option-4614-2"
+         class="vscomp-option focused" data-value="7" data-index="2">
+      <span class="vscomp-option-text" data-tooltip="3D SYSTEMS">3D SYSTEMS</span>
+    </div>
+    <div data-container="" class="margin-left-base ThemeGrid_Width9">
+      <label data-label=""><span class="text-primary margin-right-s">Refer&#234;ncia</span></label>
+      <span class="input-text">
+        <input data-input="" class="form-control OSFillParent" required="" type="text"
+               maxlength="100" value="" id="b10-b11-b4-Input_TextVar">
+      </span>
+    </div>
+    <div data-container="" class="margin-left-base ThemeGrid_Width2">
+      <div data-block="Content.Tooltip" class="OSBlockWidget" id="b10-b11-b4-$b6">
+        <div data-container="" class="text-align-center">
+          <a data-link="" href="#"><i data-icon="" class="icon fa fa-plus-circle fa-2x"></i></a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+"""
+
+
+def _secao():
+    return _EngineLxml(_HTML_FABRICANTE)
+
+
+def test_o_placeholder_separa_o_combo_do_fabricante_do_de_fornecedor():
+    """Os dois combos são `.vscomp-toggle-button` idênticos em classe. O que os
+    distingue é o `data-tooltip` do `.vscomp-value`, que NOMEIA o campo."""
+    engine = _secao()
+    todos = sel.XPATH_FABRICANTE_TOGGLE
+    so_fabricante = sel.XPATH_COMBO_POR_PLACEHOLDER.format(texto="'fabricante'")
+
+    assert engine.contar(todos) == 2
+    assert engine.contar(so_fabricante) == 1
+    assert "fabricante" in engine.texto(f"({so_fabricante})[1]")
+
+
+def test_a_caixa_de_busca_tambem_se_identifica_pelo_placeholder():
+    """`placeholder="Pesquisar um fabricante "` -- com espaço no fim, daí
+    `contains` em vez de igualdade."""
+    engine = _secao()
+    seletor = sel.XPATH_BUSCA_POR_PLACEHOLDER.format(texto="'fabricante'")
+
+    assert engine.contar(seletor) == 1
+
+
+def test_ha_DOIS_campos_de_referencia_e_o_generico_pega_o_da_GE():
+    """CONTRAPROVA DO DEFEITO DA 1ª SESSÃO: sem âncora, o XPath devolve o
+    primeiro em ordem de documento -- que é o do FORNECEDOR."""
+    engine = _secao()
+
+    assert engine.contar(sel.XPATH_REFERENCIA_INPUT) == 2
+    primeiro = engine._nos(f"({sel.XPATH_REFERENCIA_INPUT})[1]")[0]
+    assert primeiro.get("id") == "b10-b11-b2-Input_TextVar"  # a linha do fornecedor
+
+
+def test_com_o_id_do_campo_a_escrita_vai_para_a_linha_certa():
+    engine = _secao()
+    seletor = sel.XPATH_POR_ID.format(id="'b10-b11-b4-Input_TextVar'")
+
+    nos = engine._nos(seletor)
+
+    assert len(nos) == 1 and nos[0].get("id") == "b10-b11-b4-Input_TextVar"
+
+
+def test_o_mais_da_mesma_linha_sai_do_prefixo_do_bloco():
+    """`b10-b11-b4-Input_TextVar` e `b10-b11-b4-$b6` compartilham o caminho do
+    bloco. É o que amarra o "+" ao campo sem depender da estrutura de `<div>`
+    em volta, que não conhecemos."""
+    engine = _secao()
+    seletor = sel.XPATH_ADICIONAR_DO_BLOCO.format(prefixo="'b10-b11-b4-'")
+
+    nos = engine._nos(seletor)
+
+    assert len(nos) == 1
+    # e o "+" da OUTRA linha existe, mas não foi casado
+    assert engine.contar("//a[.//i[contains(@class, 'fa-plus-circle')]]") == 2
+
+
+def test_a_opcao_do_combo_casa_pelo_data_tooltip():
+    engine = _secao()
+    seletor = sel.XPATH_FABRICANTE_OPCAO.format(texto="'3D SYSTEMS'")
+
+    assert engine.contar(seletor) == 1

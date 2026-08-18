@@ -33,10 +33,20 @@ def _indice_do_seletor(seletor):
 
 class _EngineFalso:
     def __init__(self, linhas=(), combos=(), campos_referencia=1,
-                 existentes=(), habilitados=(), exige_blur=False):
+                 existentes=(), habilitados=(), exige_blur=False,
+                 ids_referencia=None, id_que_nasce=None, opcoes=None):
         self.linhas = list(linhas)
         self.combos = list(combos)
         self.campos_referencia = campos_referencia
+        # Ids dos campos de Referência hoje na tela. `id_que_nasce` é o campo
+        # que o portal RENDERIZA quando o fabricante é escolhido -- é o
+        # comportamento que o usuário descreveu e o que torna a linha certa
+        # descobrível em vez de adivinhada.
+        self.ids_referencia = list(
+            ids_referencia if ids_referencia is not None
+            else [f"b1-b2-b{n}-Input_TextVar" for n in range(1, campos_referencia + 1)])
+        self.id_que_nasce = id_que_nasce
+        self.opcoes = list(opcoes or [])
         self.existentes = list(existentes)
         self.habilitados = list(habilitados)
         self.exige_blur = exige_blur      # o portal real só grava no blur
@@ -70,10 +80,22 @@ class _EngineFalso:
         if "TechnicalCharacteristics" in seletor:
             return len(self.linhas)
         if "vscomp-toggle-button" in seletor:
+            # O seletor por PLACEHOLDER filtra pelo `data-tooltip`; o genérico
+            # não. Se o duplo devolvesse o mesmo para os dois, o teste da
+            # estratégia 1 não provaria nada.
+            alvo = re.search(r"@data-tooltip,\s*'([^']*)'", seletor)
+            if alvo:
+                return sum(1 for c in self.combos if alvo.group(1) in c)
             return len(self.combos)
-        if "Input_TextVar" in seletor:
-            return self.campos_referencia
+        if "Input_TextVar" in seletor and "@id=" not in seletor:
+            return len(self.ids_referencia)
         return 0
+
+    def atributo(self, seletor, nome):
+        indice = _indice_do_seletor(seletor)
+        if nome == "id" and indice and indice <= len(self.ids_referencia):
+            return self.ids_referencia[indice - 1]
+        return ""
 
     def texto(self, seletor):
         if "CoincidenceReference" in seletor:
@@ -88,6 +110,11 @@ class _EngineFalso:
     def element_exists(self, seletor):
         if "CoincidenceReference" in seletor:
             return True  # o bloco EXISTE sempre -- é o texto que muda
+        if "role='option'" in seletor:
+            # A opção só "existe" se o nome estiver na lista do dropdown --
+            # senão o duplo aprovaria clicar em opção que não está lá, que é
+            # justamente o erro de escolher fabricante parecido.
+            return any(f"'{nome}'" in seletor for nome in self.opcoes)
         return any(marca in seletor for marca in self.existentes)
 
     def esta_habilitado(self, seletor):
@@ -106,6 +133,9 @@ class _PortalFalso:
 
     def safe_click(self, seletor):
         self.cliques.append(seletor)
+        # Escolher o fabricante RENDERIZA o campo de Referência dele.
+        if "role='option'" in seletor and self.engine.id_que_nasce:
+            self.engine.ids_referencia.append(self.engine.id_que_nasce)
 
     def safe_fill(self, seletor, texto):
         self.preenchidos.append((seletor, texto))
@@ -138,8 +168,23 @@ def _com_combos(*nomes, campos_referencia=1):
 # tentou preencher o errado, o campo que é da GE". O XPath sem índice casa
 # QUALQUER `.vscomp-toggle-button` e devolve o primeiro do documento.
 
+def test_o_combo_se_identifica_pelo_proprio_placeholder():
+    """ACHADO DE 2026-08-17, do HTML que o usuário levantou: enquanto está
+    vazio, o combo diz `data-tooltip="Selecione um fabricante"`. O placeholder
+    NOMEIA o campo -- e vale exatamente no momento em que precisamos dele,
+    antes de escolher. É a estratégia 1, e ela dispensa a eliminação."""
+    portal, _e = _com_combos("Selecione um fornecedor", "Selecione um fabricante")
+
+    escolhido = injetor.achar_combo_do_fabricante(portal, callback_log=lambda _m: None)
+
+    assert "data-tooltip" in escolhido
+    assert escolhido.endswith(")[1]")  # o único que casa o placeholder
+
+
 def test_com_um_combo_so_usa_ele():
-    portal, _e = _com_combos("")
+    """Sem placeholder que case (ficha já com fabricante escolhido), cai na
+    eliminação -- e com um combo só não há o que eliminar."""
+    portal, _e = _com_combos("SCHNEIDER")
 
     assert injetor.achar_combo_do_fabricante(portal) == \
         f"({sel.XPATH_FABRICANTE_TOGGLE})[1]"
@@ -185,7 +230,7 @@ def test_combo_ambiguo_reprova_a_secao_sem_clicar():
 
 def test_fabricante_filtra_por_texto_e_clica_na_opcao():
     portal, engine = _com_combos("GE ENERGIAS RENOVÁVEIS", "Selecione")
-    engine.existentes.append("data-tooltip='SCHNEIDER'")
+    engine.opcoes.append("SCHNEIDER")
 
     resultado = injetor.escolher_fabricante(portal, "SCHNEIDER", callback_log=lambda _m: None)
 
@@ -504,3 +549,146 @@ def test_salva_a_secao_no_fim():
     injetor.limpar_caracteristicas(portal, "X", callback_log=lambda _m: None)
 
     assert portal.salvou == ["Características Técnicas"]
+
+
+# ===========================================================================
+# O campo de Referência é O QUE NASCEU
+# ===========================================================================
+# *"Daí quando seleciona uma caixa do dropdown aparece o campo de referência à
+# direita."* É o achado que resolve a pergunta que não tinha resposta boa pelo
+# DOM -- "qual dos campos de Referência é o do fabricante?" vira "qual apareceu
+# agora?", que é objetiva.
+
+def _com_combo_que_faz_nascer(id_novo="b10-b11-b4-Input_TextVar",
+                              ids_existentes=("b10-b11-b2-Input_TextVar",)):
+    engine = _EngineFalso(
+        combos=("Selecione um fabricante",),
+        opcoes=["SCHNEIDER"],
+        ids_referencia=list(ids_existentes),
+        id_que_nasce=id_novo,
+    )
+    return _PortalFalso(engine), engine
+
+
+def test_o_campo_que_nasce_ao_escolher_e_o_do_fabricante():
+    portal, _e = _com_combo_que_faz_nascer()
+
+    resultado = injetor.escolher_fabricante(portal, "SCHNEIDER",
+                                            callback_log=lambda _m: None)
+
+    assert resultado.ok is True
+    assert resultado.id_do_campo_de_referencia == "b10-b11-b4-Input_TextVar"
+
+
+def test_nenhum_campo_novo_nao_vira_chute():
+    """Zero campos novos = o portal não renderizou (ou a ficha já tinha
+    fabricante). Devolver um id qualquer aqui reintroduziria o defeito que
+    escreveu na linha da GE."""
+    portal, _e = _com_combo_que_faz_nascer(id_novo=None)
+    logs = []
+
+    resultado = injetor.escolher_fabricante(portal, "SCHNEIDER", callback_log=logs.append)
+
+    assert resultado.id_do_campo_de_referencia == ""
+    assert "esperava 1" in "\n".join(logs)
+
+
+def test_com_o_id_escreve_no_campo_certo_mesmo_havendo_outros():
+    """O caso exato da 1ª sessão: dois campos de Referência na tela, e o
+    primeiro em ordem de documento é o da GE."""
+    engine = _EngineFalso(ids_referencia=["b10-b11-b2-Input_TextVar",
+                                          "b10-b11-b4-Input_TextVar"])
+    portal = _PortalFalso(engine)
+
+    resultado = injetor.escrever_referencia(
+        portal, "2904616", callback_log=lambda _m: None,
+        id_do_campo="b10-b11-b4-Input_TextVar")
+
+    assert resultado.ok is True
+    seletores = [s for s, _t in portal.preenchidos]
+    assert all("b10-b11-b4-Input_TextVar" in s for s in seletores)
+
+
+def test_o_mais_clicado_e_o_da_MESMA_linha():
+    """O "+" e o campo compartilham o caminho do bloco no OutSystems
+    (`b10-b11-b4-`). Sem essa âncora, `//a[.//i[fa-plus-circle]]` clicaria o
+    "+" da outra linha -- adicionando a referência no lugar errado."""
+    engine = _EngineFalso(ids_referencia=["b10-b11-b4-Input_TextVar"])
+    portal = _PortalFalso(engine)
+
+    injetor.escrever_referencia(portal, "2904616", callback_log=lambda _m: None,
+                                id_do_campo="b10-b11-b4-Input_TextVar")
+
+    cliques_no_mais = [c for c in portal.cliques if "fa-plus-circle" in c]
+    assert cliques_no_mais and all("b10-b11-b4-" in c for c in cliques_no_mais)
+
+
+@pytest.mark.parametrize("id_bruto, esperado", [
+    ("b10-b11-b4-Input_TextVar", "b10-b11-b4-"),
+    ("b1-Input_TextVar", "b1-"),
+    ("Input_TextVar", ""),          # sem prefixo nenhum
+    ("b10-b11-b4-Outra_Coisa", ""),  # não é campo de referência
+    ("", ""),
+    (None, ""),
+])
+def test_prefixo_do_bloco(id_bruto, esperado):
+    assert injetor.prefixo_do_bloco(id_bruto) == esperado
+
+
+# ===========================================================================
+# Fornecedor — mesma mecânica, mesma garantia
+# ===========================================================================
+def test_referencia_do_fornecedor_vazia_e_pulada_sem_erro():
+    """"Se estiver vazio, só ignorar" -- palavra do usuário. Tratar como falha
+    tiraria da conta fichas perfeitamente processadas."""
+    portal, _e = _com_combos("Selecione um fornecedor")
+
+    resultado = injetor.escrever_referencia_do_fornecedor(
+        portal, "", callback_log=lambda _m: None)
+
+    assert resultado.ok is True
+    assert portal.cliques == []
+
+
+def test_fornecedor_escreve_no_campo_que_nasceu():
+    engine = _EngineFalso(
+        combos=("Selecione um fornecedor",),
+        opcoes=[injetor.FORNECEDOR_FIXO],
+        ids_referencia=[],
+        id_que_nasce="b10-b11-b2-Input_TextVar",
+    )
+    portal = _PortalFalso(engine)
+
+    resultado = injetor.escrever_referencia_do_fornecedor(
+        portal, "CMI-99", callback_log=lambda _m: None)
+
+    assert resultado.ok is True
+    assert resultado.nome == "fornecedor"   # é o nome que a planilha usa
+    seletores = [s for s, t in portal.preenchidos if t == "CMI-99"]
+    assert seletores and all("b10-b11-b2-Input_TextVar" in s for s in seletores)
+
+
+def test_sem_combo_de_fornecedor_vazio_NAO_escreve_nada():
+    """Combo já preenchido (o placeholder some quando há valor) => o campo de
+    Referência não vai nascer e não há como saber qual é o dele."""
+    portal, _e = _com_combos("GE ENERGIAS RENOVÁVEIS")  # sem placeholder
+    logs = []
+
+    resultado = injetor.escrever_referencia_do_fornecedor(
+        portal, "CMI-99", callback_log=logs.append)
+
+    assert resultado.ok is False
+    assert portal.preenchidos == []
+    assert "à mão" in "\n".join(logs)
+
+
+def test_fornecedor_fixo_ausente_do_combo_nao_seleciona_qualquer_um():
+    engine = _EngineFalso(combos=("Selecione um fornecedor",), opcoes=[],
+                          ids_referencia=[], id_que_nasce="X-Input_TextVar")
+    portal = _PortalFalso(engine)
+
+    resultado = injetor.escrever_referencia_do_fornecedor(
+        portal, "CMI-99", callback_log=lambda _m: None)
+
+    assert resultado.ok is False
+    assert "não encontrado" in resultado.detalhe

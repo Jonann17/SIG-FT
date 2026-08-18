@@ -245,7 +245,7 @@ Nenhuma impede começar; todas impedem **rodar em lote sem conferir**.
 | Purga das características (preserva CÓDIGO PMIB) | `services/duplicadas_injetor.py` | ✅ CP 6.3, 18 testes |
 | Robô: amarra ler-original → escrever-alvo | `services/duplicadas_robo.py` | ✅ CP 6.3, 15 testes |
 | Botão na tela ("2b. Robô NOVO") | `frontend.py` (`ModuloCopiaFichas`) | ✅ CP 6.3 |
-| Fornecedor (referência CMI/GE) | `services/duplicadas_injetor.py` | ☐ CP 6.4 |
+| Fornecedor (referência CMI/GE) | `services/duplicadas_injetor.py` | ✅ CP 6.3 |
 | Documentos e imagens | novo serviço | ☐ CP 6.4 |
 | Condições (todas as abas menos a Financeira) | novo serviço | ☐ CP 6.4 |
 | Abas de Condições (exclui a Financeira) | `services/duplicadas_spec.py` | ✅ CP 6.1 |
@@ -329,6 +329,38 @@ contra o portal em outro módulo, o que reduz o risco do CP 6.3.
 `Associar documentos` → `Input_SearchFilter` → `button.search-button` (a lupa)
 → marcar a linha → `ASSOCIAR`. A busca textual é obrigatória: 809 itens em 162
 páginas.
+
+### 6.5b Terceira rodada — como separar fabricante de fornecedor (2026-08-17)
+
+Levantada depois que o robô escreveu a referência **na linha da GE**. São três
+achados, e o terceiro é o que resolve de verdade:
+
+| Achado | Onde | Por que resolve |
+|---|---|---|
+| O combo se identifica sozinho | `<div class="vscomp-value" data-tooltip="Selecione um fabricante">` | Enquanto vazio, o **placeholder nomeia o campo**. O do fornecedor diz "fornecedor" no mesmo lugar |
+| A busca também nomeia | `placeholder="Pesquisar um fabricante "` | (com espaço no fim — daí `contains`, não igualdade) |
+| 🎯 **O campo de Referência SÓ NASCE ao escolher o fabricante** | *"daí quando seleciona uma caixa do dropdown aparece o campo de referência à direita"* | Transforma *"qual dos campos é o certo?"* — que não tem resposta boa pelo DOM — em *"qual apareceu agora?"*, que é objetiva |
+
+O terceiro é o mais valioso porque **não depende de estrutura**: o robô tira uma
+foto dos ids de `Input_TextVar` antes de escolher, outra depois, e o que
+apareceu é o campo daquela linha. Nenhum `ancestor::`, nenhum índice, nenhuma
+suposição sobre `<div>` que não vimos.
+
+E o `+` da mesma linha sai do **prefixo do bloco**, lido em tempo de execução:
+
+```
+<input id="b10-b11-b4-Input_TextVar">              (referência)
+<div data-block="Content.Tooltip" id="b10-b11-b4-$b6">   (o "+")
+```
+
+`b10-b11-b4-` é id gerado e **não é escrito no código** — é *lido* do campo que
+acabou de nascer e usado para achar o irmão. É a diferença entre depender de um
+id e usar a estrutura que ele revela.
+
+A mesma mecânica vale para o **fornecedor**, do outro lado da seção. E a
+garantia é simétrica: se o combo não for identificado, ou se o campo não
+nascer, o robô **não escreve** — pendência manual é barata, referência na linha
+errada não é.
 
 ### 6.5 Segunda rodada de HTML — o que ela acrescentou
 

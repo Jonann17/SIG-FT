@@ -74,6 +74,7 @@ def _com_etapas(monkeypatch, *, blocos=(("Fabricantes", {"Fabricante": "SCHNEIDE
 
     monkeypatch.setattr(robo.injetor, "escolher_fabricante", _secao("fabricante"))
     monkeypatch.setattr(robo.injetor, "escrever_referencia", _secao("referencia"))
+    monkeypatch.setattr(robo.injetor, "escrever_referencia_do_fornecedor", _secao("fornecedor"))
     monkeypatch.setattr(robo.injetor, "limpar_caracteristicas", _secao("caracteristicas"))
     return portal
 
@@ -158,10 +159,6 @@ def test_todas_as_secoes_ok_e_ficha_ok(monkeypatch):
     assert resultado.ok is True
     assert [s.nome for s in resultado.secoes] == [
         "fabricante", "referencia", "fornecedor", "caracteristicas"]
-    # A do fornecedor entra PENDENTE (falta ancorar o seletor -- CP 6.4), e
-    # pendente não é falha: um resumo que dissesse "0 de 15" em todo lote
-    # deixaria de ser lido, escondendo a falha de verdade quando viesse.
-    assert [s.nome for s in resultado.secoes if s.pendente] == ["fornecedor"]
 
 
 def test_uma_secao_falha_e_a_ficha_NAO_e_sucesso(monkeypatch):
@@ -329,20 +326,23 @@ def test_fornecedor_vazio_nos_dois_devolve_vazio():
     assert robo.achar_referencia_do_fornecedor([], _FichaComMarca(codigo_fornecedor="")) == ""
 
 
-def test_a_secao_do_fornecedor_e_registrada_como_NAO_concluida(monkeypatch):
-    """O campo do fornecedor e o do fabricante são indistinguíveis com os
-    seletores de hoje -- foi o que fez o robô escrever na linha da GE. Enquanto
-    não for escrito, a seção não pode contar como feita, senão o `_STATUS_PMIB`
-    recebe COMPLETO no que ninguém preencheu."""
-    portal = _com_etapas(monkeypatch)
+def test_o_fornecedor_recebe_a_referencia_resolvida_pela_ordem_do_usuario(monkeypatch):
+    """A ficha original tem precedência sobre a planilha para o FORNECEDOR --
+    ordem invertida em relação ao fabricante, e é decisão do usuário."""
+    portal = _com_etapas(
+        monkeypatch,
+        blocos=[("Fornecedores", {"Referência do fornecedor": "DA ORIGINAL"})])
+    recebidos = []
+    monkeypatch.setattr(
+        robo.injetor, "escrever_referencia_do_fornecedor",
+        lambda _p, referencia, _log=None: recebidos.append(referencia)
+        or injetor.ResultadoDaSecao("fornecedor", True, ""))
 
-    resultado = robo.processar_ficha(portal, _FichaComMarca(fabricante="WAGO"),
-                                     callback_log=lambda _m: None)
+    robo.processar_ficha(portal, _FichaComMarca(fabricante="WAGO",
+                                                codigo_fornecedor="DA PLANILHA"),
+                         callback_log=lambda _m: None)
 
-    fornecedor = [s for s in resultado.secoes if s.nome == "fornecedor"]
-    assert len(fornecedor) == 1
-    assert fornecedor[0].ok is False
-    assert "CP 6.4" in fornecedor[0].detalhe
+    assert recebidos == ["DA ORIGINAL"]
 
 
 def test_log_com_atributo_ausente_nao_derruba_a_ficha(monkeypatch):

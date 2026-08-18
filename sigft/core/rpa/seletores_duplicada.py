@@ -467,3 +467,65 @@ XPATH_CARACTERISTICAS_PROXIMA_PAGINA = (
 # lê `get_attribute("textContent")`, Playwright lê `text_content()`), então
 # aqui é só o registro de por que isso importa -- se alguém "otimizar" o
 # contrato para texto visível, este comentário é o aviso.
+
+
+# ---------------------------------------------------------------------------
+# 9. Fabricante x fornecedor: como distinguir as duas linhas
+# ---------------------------------------------------------------------------
+# HTML levantado pelo usuário em 2026-08-17, depois de o robô escrever na linha
+# errada. São três achados, e cada um resolve um pedaço:
+#
+# 1. O COMBO SE IDENTIFICA SOZINHO enquanto está vazio:
+#
+#      <div class="vscomp-toggle-button">
+#        <div class="vscomp-value" data-tooltip="Selecione um fabricante">
+#          Selecione um fabricante</div>
+#
+#    O placeholder NOMEIA o campo. O combo do fornecedor diz "fornecedor" no
+#    mesmo lugar. É um discriminador direto -- e vale exatamente no momento em
+#    que precisamos dele, antes de escolher. Depois de escolhido, o tooltip
+#    vira o nome do fabricante e o discriminador se perde; por isso ele é a
+#    PRIMEIRA estratégia, não a única.
+#
+# 2. A CAIXA DE BUSCA também nomeia:
+#
+#      <input class="vscomp-search-input" placeholder="Pesquisar um fabricante ">
+#
+#    (com espaço no fim -- daí `contains`, e não igualdade).
+#
+# 3. O CAMPO DE REFERÊNCIA SÓ APARECE DEPOIS DE ESCOLHER O FABRICANTE:
+#    *"daí quando seleciona uma caixa do dropdown aparece o campo de referência
+#    à direita"*. É o achado mais útil dos três, porque transforma "qual dos
+#    campos de Referência é o certo?" numa pergunta com resposta objetiva:
+#    **é o que não existia antes**. Ver `duplicadas_injetor.escolher_fabricante`.
+PLACEHOLDER_COMBO_FABRICANTE = "fabricante"
+# O combo do fornecedor diz "fornecedor" no mesmo lugar -- é o que separa
+# as duas linhas da seção, e é a mesma mecânica dos dois lados.
+PLACEHOLDER_COMBO_FORNECEDOR = "fornecedor"
+
+XPATH_COMBO_POR_PLACEHOLDER = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-toggle-button ')]"
+    "[.//div[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-value ')]"
+    "[contains(@data-tooltip, {texto})]]"
+)
+XPATH_BUSCA_POR_PLACEHOLDER = (
+    "//input[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-search-input ')]"
+    "[contains(@placeholder, {texto})]"
+)
+
+# O campo de Referência e o "+" da MESMA linha compartilham o caminho do bloco
+# no OutSystems:
+#
+#      <input id="b10-b11-b4-Input_TextVar">          (referência)
+#      <div data-block="Content.Tooltip" id="b10-b11-b4-$b6">  (o "+")
+#
+# O prefixo `b10-b11-b4-` é gerado e NÃO deve ser escrito no código (ver
+# `IDS_GERADOS_NAO_USAR`) -- mas pode ser LIDO em tempo de execução e usado
+# para amarrar os dois. É a diferença entre depender de um id e usar a
+# estrutura que ele revela.
+XPATH_POR_ID = "//*[@id={id}]"
+XPATH_ADICIONAR_DO_BLOCO = (
+    "//*[starts-with(@id, {prefixo})]"
+    "//a[.//i[contains(concat(' ', normalize-space(@class), ' '), ' fa-plus-circle ')]]"
+)
+SUFIXO_ID_REFERENCIA = "Input_TextVar"

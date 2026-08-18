@@ -243,21 +243,20 @@ def processar_ficha(portal, ficha, callback_log=None):
             _log(f"   [Erro] {resultado.erro_fatal}")
             return resultado
 
-        resultado.registrar(injetor.escolher_fabricante(portal, fabricante, callback_log))
-        resultado.registrar(
-            injetor.escrever_referencia(portal, ficha.codigo_material, callback_log))
+        secao_fabricante = resultado.registrar(
+            injetor.escolher_fabricante(portal, fabricante, callback_log))
+        # O id do campo de Referência que NASCEU ao escolher o fabricante vai
+        # junto: é ele que diz em qual linha escrever, em vez de o injetor
+        # pegar a primeira "Referência" da tela -- que é a da GE.
+        resultado.registrar(injetor.escrever_referencia(
+            portal, ficha.codigo_material, callback_log,
+            id_do_campo=secao_fabricante.id_do_campo_de_referencia))
 
-        # A referência do FORNECEDOR ainda não é escrita: o campo dela e o do
-        # fabricante são indistinguíveis com os seletores de hoje (foi o que
-        # fez o robô escrever na linha da GE na 1ª sessão), e escrever no lugar
-        # errado é pior do que não escrever. O valor JÁ é resolvido acima, pela
-        # ordem que o usuário definiu, então quando o seletor for ancorado só
-        # falta a chamada. Fica registrado como seção NÃO concluída para o
-        # `_STATUS_PMIB` não receber COMPLETO no que não foi feito.
-        resultado.registrar(injetor.ResultadoDaSecao(
-            "fornecedor", False, pendente=True,
-            detalhe=f"valor pronto ({referencia_fornecedor or 'vazio'}), "
-                    f"falta ancorar o seletor -- CP 6.4"))
+        # A referência do FORNECEDOR usa a MESMA mecânica do fabricante: o
+        # combo se identifica pelo placeholder e o campo certo é o que NASCE
+        # quando ele é escolhido. Se qualquer um dos dois falhar, não escreve.
+        resultado.registrar(injetor.escrever_referencia_do_fornecedor(
+            portal, referencia_fornecedor, callback_log))
 
         portal.clicar_salvar_visivel("Fabricantes e Fornecedores")
         resultado.registrar(
