@@ -529,3 +529,51 @@ XPATH_ADICIONAR_DO_BLOCO = (
     "//a[.//i[contains(concat(' ', normalize-space(@class), ' '), ' fa-plus-circle ')]]"
 )
 SUFIXO_ID_REFERENCIA = "Input_TextVar"
+
+
+# ---------------------------------------------------------------------------
+# 10. A referência da GE Vernova — o terceiro campo da seção
+# ---------------------------------------------------------------------------
+# Levantado pelo usuário em 2026-08-17: *"outro botão que eu havia esquecido, é
+# o de referência da GE Vernova; quando a coluna CÓDIGO CMI ou CÓDIGO GE
+# estiver preenchida no _STATUS_PMIB vale a pena preencher esse campo, com o
+# valor da coluna"*.
+#
+# ⚠️ ELE CORRIGE UMA SUPOSIÇÃO MINHA. Eu havia implementado a referência do
+# fornecedor como "seleciona GE no combo e escreve no campo que nascer" -- por
+# simetria com o fabricante. O HTML mostra que **não há combo**: a linha da GE
+# Vernova é um campo FIXO, que já está na tela, com um "+" próprio. Simetria é
+# hipótese, não evidência.
+#
+# O que a distingue da linha do fabricante é estrutural e visível no markup: o
+# container dela tem um ÍCONE DE INFORMAÇÃO entre o rótulo e o campo.
+#
+#   fabricante:   <label>Referência</label><span class="input-text"><input …>
+#   GE Vernova:   <label>Referência</label>
+#                 <div data-block="Content.Tooltip"><i class="fa fa-info-circle">…
+#                 <span class="input-text"><input …>
+#
+# Casar pelo ícone é melhor do que casar por posição ("o terceiro campo"):
+# posição muda quando o portal reordena a tela, e um campo a mais na seção
+# faria o robô escrever no lugar errado sem nenhum aviso.
+# ⚠️ A ÂNCORA É O CONTAINER IMEDIATO, e a primeira versão errou isso: escrita
+# como `//div[tem Referência][tem ícone]//input[...]`, ela casava QUALQUER div
+# ancestral que contivesse as duas coisas em qualquer lugar -- inclusive o
+# `<div>` da seção inteira, que contém as três linhas. O resultado eram 3
+# "campos da GE" em vez de 1. `ancestor::div[…][1]` é o que diz "o container
+# MAIS PRÓXIMO", e é ele que representa a linha.
+XPATH_REFERENCIA_GE_INPUT = (
+    "//input[contains(@id, 'Input_TextVar')]"
+    "[ancestor::div[.//span[normalize-space()='Referência']][1]"
+    "[.//i[contains(concat(' ', normalize-space(@class), ' '), ' fa-info-circle ')]]]"
+)
+
+# Contraparte: os campos de Referência que NÃO são o da GE Vernova (fabricante
+# e fornecedor). Necessário porque `XPATH_REFERENCIA_INPUT` casa os três, e o
+# "campo que nasceu" do fabricante seria confundido com este se um dia ele
+# passasse a ser renderizado junto.
+XPATH_REFERENCIA_INPUT_SEM_GE = (
+    "//input[contains(@id, 'Input_TextVar')]"
+    "[ancestor::div[.//span[normalize-space()='Referência']][1]"
+    "[not(.//i[contains(concat(' ', normalize-space(@class), ' '), ' fa-info-circle ')])]]"
+)

@@ -362,6 +362,37 @@ garantia é simétrica: se o combo não for identificado, ou se o campo não
 nascer, o robô **não escreve** — pendência manual é barata, referência na linha
 errada não é.
 
+### 6.5c Quarta rodada — a referência da GE Vernova (2026-08-17)
+
+> *"Outro botão que eu havia esquecido, é o de referência da GE Vernova; quando
+> a coluna CÓDIGO CMI ou CÓDIGO GE estiver preenchida no _STATUS_PMIB vale a
+> pena preencher esse campo, com o valor da coluna."*
+
+⚠️ **Corrige uma suposição minha.** Eu tinha implementado a referência do
+fornecedor como *"seleciona a GE num combo e escreve no campo que nascer"* —
+por **simetria** com o fabricante. O HTML mostra que **não há combo** nessa
+linha: o campo é fixo e já está na tela, com um `+` próprio. Simetria é
+hipótese, não evidência.
+
+A seção tem **três** campos de Referência, com o mesmo rótulo e a mesma classe:
+
+| Linha | Bloco | Como se distingue |
+|---|---|---|
+| Fabricante | `b10-b11-b4-` | **nasce** quando o fabricante é escolhido |
+| GE Vernova | `b10-b11-b6-` | tem **ícone de informação** (`fa-info-circle`) entre o rótulo e o campo |
+| (outra) | `b10-b11-b2-` | o que sobra |
+
+Casar pelo ícone é melhor do que casar por posição (*"o terceiro campo"*):
+posição muda quando o portal reordena a tela, e um campo a mais na seção faria
+o robô escrever no lugar errado **sem nenhum aviso**.
+
+**Uma armadilha de XPath, pega pelo teste contra o HTML real:** escrito como
+`//div[tem Referência][tem ícone]//input`, o seletor casa **qualquer `<div>`
+ancestral** que contenha as duas coisas em qualquer lugar — inclusive o da
+seção inteira, que contém as três linhas. Resultado: 3 "campos da GE" em vez de
+1. O certo é `ancestor::div[…][1]`, que diz *"o container mais próximo"* — e é
+esse que representa a linha.
+
 ### 6.5 Segunda rodada de HTML — o que ela acrescentou
 
 | Componente | Achado |

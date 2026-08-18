@@ -307,7 +307,11 @@ def test_o_discriminador_da_inversao_e_o_span_exigido_no_ramo_do_rotulo():
 # decide se a referência vai para a linha certa.
 _HTML_FABRICANTE = """
 <div id="secao">
-  <div data-container="" class="linha-do-fornecedor">
+  <!-- ⚠️ LINHA HIPOTÉTICA: o usuário nunca mostrou um combo de fornecedor.
+       Ela fica porque os testes de "não escolher o combo errado" precisam de
+       um segundo combo na tela, e essa propriedade tem de valer exista ela ou
+       não. Está marcada para ninguém a confundir com markup observado. -->
+  <div data-container="" class="linha-do-fornecedor-HIPOTETICA">
     <div class="vscomp-toggle-button">
       <div class="vscomp-value" data-tooltip="Selecione um fornecedor">Selecione um fornecedor</div>
       <div class="vscomp-arrow"></div>
@@ -323,6 +327,34 @@ _HTML_FABRICANTE = """
       <div data-block="Content.Tooltip" class="OSBlockWidget" id="b10-b11-b2-$b6">
         <div data-container="" class="text-align-center">
           <a data-link="" href="#"><i data-icon="" class="icon fa fa-plus-circle fa-2x"></i></a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div data-container="" class="linha-da-ge-vernova">
+    <div data-container="" class="margin-left-base ThemeGrid_Width9">
+      <label data-label=""><span class="text-primary margin-right-s">Refer&#234;ncia</span></label>
+      <div data-block="Content.Tooltip" class="OSBlockWidget" id="b10-b11-b6-$b4">
+        <div data-container="" class="osui-tooltip osui-tooltip--is-hover">
+          <div class="osui-tooltip__content" role="button">
+            <i data-icon="" class="icon icon-info-yellow fa fa-info-circle fa-1x"></i>
+          </div>
+        </div>
+      </div>
+      <span class="input-text">
+        <input data-input="" class="form-control OSFillParent" required="" type="text"
+               maxlength="100" value="" id="b10-b11-b6-Input_TextVar">
+      </span>
+    </div>
+    <div data-container="" class="margin-left-base ThemeGrid_Width2">
+      <div data-block="Content.Tooltip" class="OSBlockWidget" id="b10-b11-b6-$b6">
+        <div data-container="" class="osui-tooltip osui-tooltip--is-hover">
+          <div class="osui-tooltip__content" role="button">
+            <div data-container="" class="text-align-center">
+              <a data-link="" href="#"><i data-icon="" class="icon fa fa-plus-circle fa-2x"></i></a>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -390,12 +422,12 @@ def test_a_caixa_de_busca_tambem_se_identifica_pelo_placeholder():
     assert engine.contar(seletor) == 1
 
 
-def test_ha_DOIS_campos_de_referencia_e_o_generico_pega_o_da_GE():
+def test_ha_TRES_campos_de_referencia_e_o_generico_pega_o_primeiro():
     """CONTRAPROVA DO DEFEITO DA 1ª SESSÃO: sem âncora, o XPath devolve o
-    primeiro em ordem de documento -- que é o do FORNECEDOR."""
+    primeiro em ordem de documento -- que NÃO é o do fabricante."""
     engine = _secao()
 
-    assert engine.contar(sel.XPATH_REFERENCIA_INPUT) == 2
+    assert engine.contar(sel.XPATH_REFERENCIA_INPUT) == 3
     primeiro = engine._nos(f"({sel.XPATH_REFERENCIA_INPUT})[1]")[0]
     assert primeiro.get("id") == "b10-b11-b2-Input_TextVar"  # a linha do fornecedor
 
@@ -419,8 +451,8 @@ def test_o_mais_da_mesma_linha_sai_do_prefixo_do_bloco():
     nos = engine._nos(seletor)
 
     assert len(nos) == 1
-    # e o "+" da OUTRA linha existe, mas não foi casado
-    assert engine.contar("//a[.//i[contains(@class, 'fa-plus-circle')]]") == 2
+    # e os "+" das OUTRAS linhas existem, mas não foram casados
+    assert engine.contar("//a[.//i[contains(@class, 'fa-plus-circle')]]") == 3
 
 
 def test_a_opcao_do_combo_casa_pelo_data_tooltip():
@@ -428,3 +460,46 @@ def test_a_opcao_do_combo_casa_pelo_data_tooltip():
     seletor = sel.XPATH_FABRICANTE_OPCAO.format(texto="'3D SYSTEMS'")
 
     assert engine.contar(seletor) == 1
+
+
+# ===========================================================================
+# A referência da GE Vernova — o terceiro campo
+# ===========================================================================
+# *"Quando a coluna CÓDIGO CMI ou CÓDIGO GE estiver preenchida no _STATUS_PMIB
+# vale a pena preencher esse campo, com o valor da coluna."*
+
+def test_o_campo_da_GE_se_distingue_pelo_icone_de_informacao():
+    """Os três campos de Referência têm o MESMO rótulo e a mesma classe. O que
+    separa o da GE Vernova é o ícone de informação entre o rótulo e o campo --
+    estrutural, e melhor do que "o terceiro", que muda se o portal reordenar."""
+    engine = _secao()
+
+    assert engine.contar(sel.XPATH_REFERENCIA_INPUT) == 3
+    assert engine.contar(sel.XPATH_REFERENCIA_GE_INPUT) == 1
+
+    nos = engine._nos(sel.XPATH_REFERENCIA_GE_INPUT)
+    assert nos[0].get("id") == "b10-b11-b6-Input_TextVar"
+
+
+def test_os_campos_sem_o_icone_sao_os_outros_dois():
+    """É essa a lista que o "antes e depois" do fabricante compara. Se o campo
+    da GE entrasse nela, ele apareceria como "nascido" numa tela em que fosse
+    renderizado depois -- e a referência do fabricante iria para a linha da GE,
+    que é exatamente o defeito que estamos consertando."""
+    engine = _secao()
+
+    ids = [n.get("id") for n in engine._nos(sel.XPATH_REFERENCIA_INPUT_SEM_GE)]
+
+    assert ids == ["b10-b11-b2-Input_TextVar", "b10-b11-b4-Input_TextVar"]
+
+
+def test_o_mais_da_GE_sai_do_prefixo_dela_e_nao_do_fabricante():
+    engine = _secao()
+
+    da_ge = engine._nos(sel.XPATH_ADICIONAR_DO_BLOCO.format(prefixo="'b10-b11-b6-'"))
+    do_fab = engine._nos(sel.XPATH_ADICIONAR_DO_BLOCO.format(prefixo="'b10-b11-b4-'"))
+
+    assert len(da_ge) == 1 and len(do_fab) == 1
+    assert da_ge[0] is not do_fab[0]
+    # e existem TRÊS "+" na tela: sem a âncora, qualquer um seria clicado
+    assert engine.contar("//a[.//i[contains(@class, 'fa-plus-circle')]]") == 3

@@ -31,10 +31,23 @@ def _indice_do_seletor(seletor):
     return int(achado.group(1)) if achado else None
 
 
+def _e_seletor_da_ge(seletor):
+    """O seletor pede o campo da GE Vernova, ou justamente os OUTROS?
+
+    Os dois mencionam `fa-info-circle` -- um exigindo, o outro dentro de um
+    `not(...)`. Um duplo que olhasse só a presença do texto trataria os dois
+    como iguais, e foi o que aconteceu: o "antes e depois" do fabricante passou
+    a ler a lista da GE e devolveu campo nenhum.
+    """
+    if "fa-info-circle" not in seletor:
+        return False
+    return "not(" not in seletor
+
+
 class _EngineFalso:
     def __init__(self, linhas=(), combos=(), campos_referencia=1,
                  existentes=(), habilitados=(), exige_blur=False,
-                 ids_referencia=None, id_que_nasce=None, opcoes=None):
+                 ids_referencia=None, id_que_nasce=None, opcoes=None, ids_da_ge=None):
         self.linhas = list(linhas)
         self.combos = list(combos)
         self.campos_referencia = campos_referencia
@@ -47,6 +60,9 @@ class _EngineFalso:
             else [f"b1-b2-b{n}-Input_TextVar" for n in range(1, campos_referencia + 1)])
         self.id_que_nasce = id_que_nasce
         self.opcoes = list(opcoes or [])
+        # Campos de Referência com ÍCONE DE INFORMAÇÃO: é o da GE Vernova,
+        # que é fixo na tela e não nasce de combo nenhum.
+        self.ids_da_ge = list(ids_da_ge or [])
         self.existentes = list(existentes)
         self.habilitados = list(habilitados)
         self.exige_blur = exige_blur      # o portal real só grava no blur
@@ -87,15 +103,18 @@ class _EngineFalso:
             if alvo:
                 return sum(1 for c in self.combos if alvo.group(1) in c)
             return len(self.combos)
+        if _e_seletor_da_ge(seletor):
+            return len(self.ids_da_ge)
         if "Input_TextVar" in seletor and "@id=" not in seletor:
             return len(self.ids_referencia)
         return 0
 
     def atributo(self, seletor, nome):
         indice = _indice_do_seletor(seletor)
-        if nome == "id" and indice and indice <= len(self.ids_referencia):
-            return self.ids_referencia[indice - 1]
-        return ""
+        if nome != "id" or not indice:
+            return ""
+        fonte = self.ids_da_ge if _e_seletor_da_ge(seletor) else self.ids_referencia
+        return fonte[indice - 1] if indice <= len(fonte) else ""
 
     def texto(self, seletor):
         if "CoincidenceReference" in seletor:
@@ -638,24 +657,26 @@ def test_prefixo_do_bloco(id_bruto, esperado):
 # ===========================================================================
 # Fornecedor — mesma mecânica, mesma garantia
 # ===========================================================================
-def test_referencia_do_fornecedor_vazia_e_pulada_sem_erro():
-    """"Se estiver vazio, só ignorar" -- palavra do usuário. Tratar como falha
-    tiraria da conta fichas perfeitamente processadas."""
-    portal, _e = _com_combos("Selecione um fornecedor")
+def test_referencia_da_GE_vazia_e_pulada_sem_erro():
+    """"Se estiver vazio, só ignorar" -- palavra do usuário."""
+    engine = _EngineFalso(ids_da_ge=["b10-b11-b6-Input_TextVar"])
+    portal = _PortalFalso(engine)
 
     resultado = injetor.escrever_referencia_do_fornecedor(
         portal, "", callback_log=lambda _m: None)
 
     assert resultado.ok is True
-    assert portal.cliques == []
+    assert portal.preenchidos == []
 
 
-def test_fornecedor_escreve_no_campo_que_nasceu():
+def test_a_referencia_da_GE_vai_para_o_campo_com_icone_de_informacao():
+    """⚠️ CORREÇÃO DE UMA SUPOSIÇÃO MINHA: a primeira versão desta função
+    selecionava a GE num COMBO, por simetria com o fabricante. O HTML que o
+    usuário levantou mostra que não há combo -- o campo é fixo e já está na
+    tela. Simetria é hipótese, não evidência."""
     engine = _EngineFalso(
-        combos=("Selecione um fornecedor",),
-        opcoes=[injetor.FORNECEDOR_FIXO],
-        ids_referencia=[],
-        id_que_nasce="b10-b11-b2-Input_TextVar",
+        ids_referencia=["b10-b11-b4-Input_TextVar"],
+        ids_da_ge=["b10-b11-b6-Input_TextVar"],
     )
     portal = _PortalFalso(engine)
 
@@ -665,13 +686,15 @@ def test_fornecedor_escreve_no_campo_que_nasceu():
     assert resultado.ok is True
     assert resultado.nome == "fornecedor"   # é o nome que a planilha usa
     seletores = [s for s, t in portal.preenchidos if t == "CMI-99"]
-    assert seletores and all("b10-b11-b2-Input_TextVar" in s for s in seletores)
+    assert seletores and all("b10-b11-b6-Input_TextVar" in s for s in seletores)
+    assert portal.cliques == [] or all("b10-b11-b6-" in c for c in portal.cliques)
 
 
-def test_sem_combo_de_fornecedor_vazio_NAO_escreve_nada():
-    """Combo já preenchido (o placeholder some quando há valor) => o campo de
-    Referência não vai nascer e não há como saber qual é o dele."""
-    portal, _e = _com_combos("GE ENERGIAS RENOVÁVEIS")  # sem placeholder
+def test_sem_campo_com_o_icone_NAO_escreve_nada():
+    """Zero ou mais de um significa que a tela não é a que conhecemos --
+    escrever no palpite poria a referência da GE numa linha de fabricante."""
+    engine = _EngineFalso(ids_referencia=["b10-b11-b4-Input_TextVar"], ids_da_ge=[])
+    portal = _PortalFalso(engine)
     logs = []
 
     resultado = injetor.escrever_referencia_do_fornecedor(
@@ -682,13 +705,18 @@ def test_sem_combo_de_fornecedor_vazio_NAO_escreve_nada():
     assert "à mão" in "\n".join(logs)
 
 
-def test_fornecedor_fixo_ausente_do_combo_nao_seleciona_qualquer_um():
-    engine = _EngineFalso(combos=("Selecione um fornecedor",), opcoes=[],
-                          ids_referencia=[], id_que_nasce="X-Input_TextVar")
+def test_o_campo_da_GE_nao_entra_na_conta_do_que_NASCEU():
+    """Ele está na tela o tempo todo. Se entrasse na lista comparada pelo
+    "antes e depois", um dia em que fosse renderizado depois ele apareceria
+    como "nascido" -- e a referência do FABRICANTE iria para a linha da GE."""
+    engine = _EngineFalso(
+        combos=("Selecione um fabricante",), opcoes=["SCHNEIDER"],
+        ids_referencia=[], ids_da_ge=["b10-b11-b6-Input_TextVar"],
+        id_que_nasce="b10-b11-b4-Input_TextVar",
+    )
     portal = _PortalFalso(engine)
 
-    resultado = injetor.escrever_referencia_do_fornecedor(
-        portal, "CMI-99", callback_log=lambda _m: None)
+    resultado = injetor.escolher_fabricante(portal, "SCHNEIDER",
+                                            callback_log=lambda _m: None)
 
-    assert resultado.ok is False
-    assert "não encontrado" in resultado.detalhe
+    assert resultado.id_do_campo_de_referencia == "b10-b11-b4-Input_TextVar"
