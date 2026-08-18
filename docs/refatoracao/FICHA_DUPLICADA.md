@@ -110,16 +110,47 @@ sufixo passa, então:
   referência"* — não aborta a ficha nem desfaz o que já foi preenchido; vira
   pendência manual, como os campos rejeitados de `tech_specs`.
 
-**Fornecedor:**
+**Fornecedor e GE Vernova — são DUAS linhas, e confundi-las foi o defeito
+mais caro do módulo (corrigido em 2026-08-18).**
 
-> *"No campo do fornecedor, GE ENERGIAS RENOVÁVEIS, como o fornecedor é a
-> gente, que é sempre fixo (tipo intermediador), nós colocamos a informação
-> que está no STATUS PMIB na coluna `CÓDIGO CMI` ou por vezes `CÓDIGO GE`. Se
-> estiver vazio, só ignorar."*
+A seção tem **três** linhas de Referência, com **três valores diferentes**:
 
-- o fornecedor em si é **fixo** — não se escolhe;
-- a referência vem de `CÓDIGO CMI` / `CÓDIGO GE`;
-- **vazio ⇒ pular**, sem erro e sem pendência.
+| Linha | Como se chega nela | O que recebe |
+|---|---|---|
+| **Fabricante** | combo (`placeholder` diz "fabricante"); o campo **nasce** ao escolher | `CÓDIGO DO MATERIAL` (regra do `'D`) |
+| **Fornecedor** | combo (`placeholder` diz "fornecedor"); o campo **nasce** ao escolher | `CÓDIGO DO MATERIAL` — o **mesmo** valor |
+| **GE Vernova** | campo **fixo**, já na tela, com ícone `fa-info-circle` | `CÓDIGO CMI` / `CÓDIGO GE`, só se preenchido |
+
+> *"O CÓDIGO DO MATERIAL deve ser preenchido no campo de fornecedor que
+> devemos selecionar. E qual fornecedor? Vem da ficha original, lendo qual
+> fornecedor foi preenchido. O CÓDIGO CMI / CÓDIGO GE deve ser preenchido
+> somente se tiver no `_STATUS_PMIB`, e deve ser preenchido no campo do
+> fornecimento da GE, que é fixo."* (2026-08-18)
+
+⚠️ **O que estava errado.** A leitura anterior — construída sobre a frase
+*"no campo do fornecedor, GE ENERGIAS RENOVÁVEIS (…) é sempre fixo"* —
+tratava **Fornecedor** e **GE Vernova** como a mesma linha. Consequência
+observada pelo usuário: *"ele não está conseguindo nem colocar a referência
+correta do fornecedor correto, ele está fazendo no campo de fornecimento da
+GE"*. O combo do fornecedor estava mapeado desde 2026-08-17
+(`PLACEHOLDER_COMBO_FORNECEDOR`) e **nunca era usado por ninguém**.
+
+O nome da função era parte da causa, não um detalhe dela:
+`escrever_referencia_do_fornecedor` escrevia no campo da GE — chamar aquela
+linha de "fornecedor" fazia o valor errado parecer que ia para o lugar certo.
+Hoje são `escolher_fornecedor` + `escrever_referencia_da_ge`.
+
+**O fornecedor não é fixo.** Ele vem da ficha original. Quem é fixo é a linha
+da GE Vernova — e ela sequer tem combo. Por isso a 2ª estratégia de
+`achar_combo_do_fabricante` ("elimine o combo que contém o fornecedor fixo")
+se apoia numa premissa hoje sabidamente falsa; o lado do fornecedor **não** a
+repete: sem o placeholder, recusa e vira pendência manual.
+
+**Escrever o mesmo `CÓDIGO DO MATERIAL` em duas linhas** parece estranho e não
+é: a regra do sufixo `'D` é resolvida pelo **portal**, uma linha de cada vez.
+Se ele considerar as duas uma colisão, a segunda recebe `'D1` —
+`escrever_referencia` lê a resposta da tela e se adapta, em vez de o código
+supor qual das duas deve mudar.
 
 ### 3.2 Características técnicas
 
@@ -245,7 +276,8 @@ Nenhuma impede começar; todas impedem **rodar em lote sem conferir**.
 | Purga das características (preserva CÓDIGO PMIB) | `services/duplicadas_injetor.py` | ✅ CP 6.3, 18 testes |
 | Robô: amarra ler-original → escrever-alvo | `services/duplicadas_robo.py` | ✅ CP 6.3, 15 testes |
 | Botão na tela ("2b. Robô NOVO") | `frontend.py` (`ModuloCopiaFichas`) | ✅ CP 6.3 |
-| Fornecedor (referência CMI/GE) | `services/duplicadas_injetor.py` | ✅ CP 6.3 |
+| Fornecedor (combo + referência) | `services/duplicadas_injetor.py` | ✅ CP 6.3 (corrigido 2026-08-18) |
+| GE Vernova (referência CMI/GE) | `services/duplicadas_injetor.py` | ✅ CP 6.3 |
 | Documentos e imagens | novo serviço | ☐ CP 6.4 |
 | Condições (todas as abas menos a Financeira) | novo serviço | ☐ CP 6.4 |
 | Abas de Condições (exclui a Financeira) | `services/duplicadas_spec.py` | ✅ CP 6.1 |

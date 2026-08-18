@@ -39,9 +39,20 @@ PAUSA_APOS_ABRIR_FICHA = 3.0
 # chutar um nome só faria a leitura devolver vazio sem dizer por quê.
 ROTULOS_DE_FABRICANTE = ("Fabricante", "Fabricantes", "Fabricante/Fornecedor")
 
-# Rótulos que trazem a REFERÊNCIA DO FORNECEDOR na ficha original.
-ROTULOS_DE_REFERENCIA_FORNECEDOR = (
-    "Referência do fornecedor", "Referencia do fornecedor", "Referência", "Referencia",
+# Rótulos que trazem o NOME DO FORNECEDOR na ficha original.
+#
+# ⚠️ Antes daqui saía uma REFERÊNCIA, e era o erro. *"Vem da ficha original,
+# lendo qual fornecedor foi preenchido"* (usuário, 2026-08-18): o que se lê da
+# original é QUEM é o fornecedor, para escolhê-lo no combo da ficha nova. A
+# referência que vai na linha dele é o CÓDIGO DO MATERIAL, o mesmo do
+# fabricante -- não um valor lido do portal.
+#
+# Lista e não constante pelo mesmo motivo de `ROTULOS_DE_FABRICANTE`: não
+# sabemos como o portal nomeia esse bloco, e chutar um nome só faria a leitura
+# devolver vazio sem dizer por quê. Vazio => não escolhe nada, e a ficha sai
+# INCOMPLETO com o motivo no log.
+ROTULOS_DE_FORNECEDOR = (
+    "Fornecedor", "Fornecedores", "Nome do fornecedor", "Razão social do fornecedor",
 )
 
 # ---------------------------------------------------------------------------
@@ -66,8 +77,18 @@ ROTULOS_DE_REFERENCIA_FORNECEDOR = (
 # resultados entram em cada uma. As de Condições e Documentos/Imagens ficam de
 # fora até o CP 6.4 -- marcar como COMPLETO uma seção que o robô nem tentou
 # seria mentir na planilha, que é onde a mentira dura mais.
+#
+# 2026-08-18: a seção de Fabricantes/Fornecedores passou de três resultados
+# para cinco, porque o que era UMA linha ("fornecedor") virou três com valores
+# diferentes -- combo do fornecedor, referência dele, e a referência da GE
+# Vernova. Todas alimentam a mesma coluna: a ficha só está com as Informações
+# Gerais completas quando as três linhas ficaram certas.
 SECOES_DA_PLANILHA = {
-    config.COL_INFO_GERAIS: ("fabricante", "referencia", "fornecedor"),
+    config.COL_INFO_GERAIS: (
+        "fabricante", "referencia",
+        "fornecedor", "referencia_fornecedor",
+        "ge_vernova",
+    ),
     config.COL_CARACT_TECNICAS: ("caracteristicas",),
 }
 
@@ -157,20 +178,23 @@ def achar_fabricante(blocos, ficha=None):
     return _valor_por_rotulo(blocos, ROTULOS_DE_FABRICANTE)
 
 
-def achar_referencia_do_fornecedor(blocos, ficha=None):
-    """Referência do fornecedor: a FICHA ORIGINAL primeiro, planilha depois.
+def achar_fornecedor(blocos, ficha=None):
+    """Nome do fornecedor a escolher no combo -- lido da FICHA ORIGINAL.
 
-    Ordem invertida em relação ao fabricante, e é decisão do usuário: *"o
-    fornecedor você pode tirar da ficha original, acho que seria mais correto,
-    só caso lá estiver vazio"* -- aí a coluna CÓDIGO CMI / CÓDIGO GE.
+    *"O fornecedor você pode tirar da ficha original, acho que seria mais
+    correto"* + *"vem da ficha original, lendo qual fornecedor foi
+    preenchido"*.
 
-    Vazio nos dois ⇒ `""`, e a ficha vira INCOMPLETO na planilha. É melhor do
-    que escrever o código de outra ficha por parecer plausível.
+    Só a original: a planilha NÃO tem o nome do fornecedor (as colunas CÓDIGO
+    CMI / CÓDIGO GE trazem a referência da GE Vernova, que é outra linha da
+    tela). Vazio ⇒ `""`, o combo não é tocado, e a ficha sai INCOMPLETO com o
+    motivo no log -- melhor do que escolher um fornecedor por parecer
+    plausível.
+
+    O parâmetro `ficha` não é usado hoje; fica na assinatura por simetria com
+    `achar_fabricante` e para o caso de a planilha vir a trazer a coluna.
     """
-    da_original = _valor_por_rotulo(blocos, ROTULOS_DE_REFERENCIA_FORNECEDOR)
-    if da_original:
-        return da_original
-    return getattr(ficha, "codigo_fornecedor", "") or ""
+    return _valor_por_rotulo(blocos, ROTULOS_DE_FORNECEDOR)
 
 
 def ler_ficha_original(portal, pmib_original, callback_log=None):
@@ -236,7 +260,12 @@ def processar_ficha(portal, ficha, callback_log=None):
         else:
             _log(f"   Fabricante (planilha): {fabricante}")
 
-        referencia_fornecedor = achar_referencia_do_fornecedor(blocos, ficha)
+        fornecedor = achar_fornecedor(blocos, ficha)
+        if not fornecedor:
+            _log("   [Aviso] Não achei o fornecedor na ficha original -- a linha de "
+                 "Fornecedor não será preenchida.")
+        else:
+            _log(f"   Fornecedor (ficha original): {fornecedor}")
 
         if not abrir_alvo_para_edicao(portal, ficha.pmib, callback_log):
             resultado.erro_fatal = f"não achei a ficha alvo {ficha.pmib} em nenhuma aba"
@@ -252,11 +281,36 @@ def processar_ficha(portal, ficha, callback_log=None):
             portal, ficha.codigo_material, callback_log,
             id_do_campo=secao_fabricante.id_do_campo_de_referencia))
 
-        # A referência do FORNECEDOR usa a MESMA mecânica do fabricante: o
-        # combo se identifica pelo placeholder e o campo certo é o que NASCE
-        # quando ele é escolhido. Se qualquer um dos dois falhar, não escreve.
-        resultado.registrar(injetor.escrever_referencia_do_fornecedor(
-            portal, referencia_fornecedor, callback_log))
+        # --- Linha do FORNECEDOR ---------------------------------------
+        # Mesma mecânica do fabricante -- combo, e o campo certo é o que NASCE
+        # quando a opção é escolhida. A referência que vai aqui é o CÓDIGO DO
+        # MATERIAL, o MESMO do fabricante: *"o código do material deve ser
+        # preenchido no campo de fornecedor que devemos selecionar"* (usuário,
+        # 2026-08-18).
+        #
+        # Escrever o mesmo código em duas linhas parece estranho e não é: a
+        # regra do sufixo `'D` é resolvida pelo PORTAL, uma linha de cada vez.
+        # Se ele considerar as duas uma colisão, a segunda recebe `'D1` --
+        # `escrever_referencia` lê a resposta da tela e se adapta, em vez de o
+        # código supor qual das duas deve mudar.
+        secao_fornecedor = resultado.registrar(
+            injetor.escolher_fornecedor(portal, fornecedor, callback_log))
+        resultado.registrar(injetor.escrever_referencia(
+            portal, ficha.codigo_material, callback_log,
+            id_do_campo=secao_fornecedor.id_do_campo_de_referencia,
+            nome_da_secao="referencia_fornecedor"))
+
+        # --- Linha da GE VERNOVA ---------------------------------------
+        # Campo FIXO (o do ícone ⓘ), e o único que recebe CÓDIGO CMI /
+        # CÓDIGO GE: *"deve ser preenchido somente se tiver no _STATUS_PMIB, e
+        # deve ser preenchido no campo do fornecimento da GE, que é fixo"*.
+        # Vazio ⇒ pula sem erro e sem pendência.
+        # `getattr` e não acesso direto: um atributo ausente na ficha viraria
+        # AttributeError, seria engolido pelo `except` lá embaixo e apareceria
+        # como "erro fatal" -- a ficha morreria por causa de um campo
+        # OPCIONAL. Mesma lição do log do fabricante, em 2026-08-17.
+        resultado.registrar(injetor.escrever_referencia_da_ge(
+            portal, getattr(ficha, "codigo_fornecedor", ""), callback_log))
 
         portal.clicar_salvar_visivel("Fabricantes e Fornecedores")
         resultado.registrar(

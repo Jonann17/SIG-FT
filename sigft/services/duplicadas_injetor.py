@@ -144,58 +144,134 @@ def escolher_fabricante(portal, nome_fabricante, callback_log=None):
     e frágil. O usuário mesmo indicou o caminho: *"esse aqui é melhor por
     digitando texto, que daí filtra"*.
     """
+    return _escolher_no_combo(
+        portal, "fabricante", nome_fabricante,
+        achar_combo_do_fabricante(portal, callback_log),
+        sel.PLACEHOLDER_COMBO_FABRICANTE, callback_log,
+    )
+
+
+def escolher_fornecedor(portal, nome_fornecedor, callback_log=None):
+    """Abre o combo de FORNECEDOR, filtra por texto e escolhe a opção.
+
+    ⚠️ ESTA FUNÇÃO NÃO EXISTIA, e a falta dela é o defeito que o usuário
+    relatou em 2026-08-18: *"ele não está conseguindo nem colocar a referência
+    correta do fornecedor correto, ele está fazendo no campo de fornecimento
+    da GE"*.
+
+    O combo do fornecedor estava mapeado (`PLACEHOLDER_COMBO_FORNECEDOR`,
+    levantado do DOM em 2026-08-17) e **nunca era usado por ninguém**: o robô
+    ia direto escrever no campo da GE Vernova. A seção tem TRÊS linhas, com
+    três valores diferentes, e o código tratava duas delas como uma:
+
+        Fabricante   combo -> Referência = CÓDIGO DO MATERIAL
+        Fornecedor   combo -> Referência = CÓDIGO DO MATERIAL   <- faltava
+        GE Vernova   campo fixo (ícone ⓘ) = CÓDIGO CMI / CÓDIGO GE
+
+    Qual fornecedor escolher vem da FICHA ORIGINAL -- *"vem da ficha original,
+    lendo qual fornecedor foi preenchido"*. Não é fixo (a leitura anterior, de
+    que o fornecedor era sempre a própria empresa, confundia esta linha com a
+    da GE Vernova).
+    """
+    return _escolher_no_combo(
+        portal, "fornecedor", nome_fornecedor,
+        achar_combo_do_fornecedor(portal, callback_log),
+        sel.PLACEHOLDER_COMBO_FORNECEDOR, callback_log,
+    )
+
+
+def _escolher_no_combo(portal, papel, nome, seletor_toggle, placeholder, callback_log=None):
+    """Mecânica comum aos combos de fabricante e de fornecedor.
+
+    São o MESMO widget (`virtual-select`) com a mesma sequência: abrir,
+    digitar para filtrar, escolher a opção, e descobrir qual campo de
+    Referência nasceu. O que difere entre os dois é só qual combo e qual
+    placeholder -- por isso os dois entram aqui em vez de virarem duas cópias
+    que envelhecem separadas.
+    """
     _log = _log_de(callback_log)
-    if not nome_fabricante:
-        _log("      Fabricante não informado na ficha original -- pulando.")
-        return ResultadoDaSecao("fabricante", False, "sem nome na origem")
+    if not nome:
+        _log(f"      {papel.capitalize()} não informado -- pulando.")
+        return ResultadoDaSecao(papel, False, "sem nome na origem")
 
-    seletor_toggle = achar_combo_do_fabricante(portal, callback_log)
     if seletor_toggle is None:
-        return ResultadoDaSecao("fabricante", False, "combo ambíguo na tela")
+        return ResultadoDaSecao(papel, False, "combo ambíguo na tela")
 
-    # FOTO DE ANTES. O campo de Referência do fabricante só nasce quando o
-    # fabricante é escolhido, então o que aparecer entre esta linha e a de
-    # baixo é dele -- e é assim que a linha certa deixa de ser adivinhação.
+    # FOTO DE ANTES. O campo de Referência da linha só nasce quando a opção é
+    # escolhida, então o que aparecer entre esta linha e a de baixo é dele --
+    # e é assim que a linha certa deixa de ser adivinhação.
     antes = set(ids_dos_campos_de_referencia(portal))
 
     portal.safe_click(seletor_toggle)
-    busca = sel.XPATH_BUSCA_POR_PLACEHOLDER.format(
-        texto=_literal(sel.PLACEHOLDER_COMBO_FABRICANTE))
+    busca = sel.XPATH_BUSCA_POR_PLACEHOLDER.format(texto=_literal(placeholder))
     if not portal.engine.element_exists(busca):
         # A caixa de busca do dropdown ABERTO é a única na tela; se o
         # placeholder não bater, cai no seletor genérico em vez de travar.
         busca = sel.XPATH_FABRICANTE_BUSCA
-    portal.safe_fill(busca, nome_fabricante)
+    portal.safe_fill(busca, nome)
     time.sleep(PAUSA_APOS_DIGITAR)
 
-    alvo = sel.XPATH_FABRICANTE_OPCAO.format(texto=_literal(nome_fabricante))
+    alvo = sel.XPATH_FABRICANTE_OPCAO.format(texto=_literal(nome))
     if not portal.engine.element_exists(alvo):
         # Não clicar em "a primeira opção que sobrou" é deliberado: o filtro
-        # textual pode deixar uma opção PARECIDA, e escolher fabricante errado
-        # é exatamente o erro que não dá sintoma nenhum na tela.
-        _log(f"      [Erro] Fabricante {nome_fabricante!r} não apareceu no combo "
+        # textual pode deixar uma opção PARECIDA, e escolher errado aqui é
+        # exatamente o erro que não dá sintoma nenhum na tela.
+        _log(f"      [Erro] {papel.capitalize()} {nome!r} não apareceu no combo "
              f"depois de filtrar. Nada foi selecionado.")
-        return ResultadoDaSecao("fabricante", False, "não encontrado no combo")
+        return ResultadoDaSecao(papel, False, "não encontrado no combo")
 
     portal.safe_click(alvo)
     time.sleep(PAUSA_APOS_DIGITAR)
 
     # FOTO DE DEPOIS.
     novos = [i for i in ids_dos_campos_de_referencia(portal) if i not in antes]
-    resultado = ResultadoDaSecao("fabricante", True, nome_fabricante)
+    resultado = ResultadoDaSecao(papel, True, nome)
     if len(novos) == 1:
         resultado.id_do_campo_de_referencia = novos[0]
-        _log(f"      Fabricante: {nome_fabricante} (campo de referência: {novos[0]})")
+        _log(f"      {papel.capitalize()}: {nome} (campo de referência: {novos[0]})")
     else:
         # Zero: o campo não apareceu (ou já existia, numa ficha reprocessada).
         # Mais de um: a tela renderizou coisa demais e não dá para saber qual.
         # Nos dois casos, escrever seria chute -- e `escrever_referencia`
         # sabe recusar quando não recebe o alvo.
         resultado.id_do_campo_de_referencia = ""
-        _log(f"      Fabricante: {nome_fabricante} "
+        _log(f"      {papel.capitalize()}: {nome} "
              f"([Aviso] {len(novos)} campos de referência novos após a escolha; "
              f"esperava 1)")
     return resultado
+
+
+def achar_combo_do_fornecedor(portal, callback_log=None):
+    """Seletor do combo do FORNECEDOR, ou `None` se não der para ter certeza.
+
+    Só a estratégia do placeholder (`data-tooltip` diz "fornecedor" enquanto o
+    combo está vazio). A eliminação que `achar_combo_do_fabricante` usa como
+    2ª estratégia NÃO serve aqui, e o motivo vale registrar: ela se apoia em
+    "o outro combo é o fornecedor fixo, a própria empresa" -- premissa que a
+    resposta do usuário de 2026-08-18 derrubou. O fornecedor varia (vem da
+    ficha original); quem é fixo é a linha da GE Vernova, que sequer tem
+    combo.
+
+    Sem uma 2ª estratégia com evidência, esta função recusa. Pendência manual
+    é barata; referência na linha errada não é -- e foi justamente o que
+    aconteceu.
+    """
+    _log = _log_de(callback_log)
+    por_placeholder = sel.XPATH_COMBO_POR_PLACEHOLDER.format(
+        texto=_literal(sel.PLACEHOLDER_COMBO_FORNECEDOR))
+    quantos = portal.engine.contar(por_placeholder)
+    if quantos == 1:
+        return f"({por_placeholder})[1]"
+    if quantos == 0:
+        _log(f"      [Erro] Nenhum combo diz '{sel.PLACEHOLDER_COMBO_FORNECEDOR}' na "
+             f"tela. Pode ser que o fornecedor já esteja escolhido nesta ficha -- "
+             f"nesse caso o tooltip virou o nome dele e não dá para reconhecê-lo "
+             f"assim. NÃO escrevi nada.")
+    else:
+        _log(f"      [Erro] {quantos} combos dizem "
+             f"'{sel.PLACEHOLDER_COMBO_FORNECEDOR}' -- não dá para saber qual é a "
+             f"linha do fornecedor. NÃO escrevi nada.")
+    return None
 
 
 def ids_dos_campos_de_referencia(portal):
@@ -312,12 +388,18 @@ def _literal(texto):
     return "concat('" + "', \"'\", '".join(texto.split("'")) + "')"
 
 
-def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=""):
+def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo="",
+                        nome_da_secao="referencia"):
     """A regra do `'D`: tenta o código cru, depois `'D1`, `'D2`… até o portal
     aceitar.
 
     > *"Se aparecer 'a referência já existe', devemos colocar o partnumber dele
     > 2904616 com o 'D1 no final (…) até ele conseguir."*
+
+    `nome_da_secao` existe porque DUAS linhas da tela passam por aqui -- a do
+    fabricante e a do fornecedor (2026-08-18) --, e ambas recebem o mesmo
+    CÓDIGO DO MATERIAL. Com um nome fixo, o segundo resultado sobrescreveria o
+    primeiro no placar da ficha e uma falha ficaria invisível.
 
     Quem decide se parou é o PORTAL. O código não tem como saber de antemão
     qual sufixo passa, então a sequência é consumida uma a uma, **conferindo a
@@ -333,7 +415,7 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
     candidatos = spec.sequencia_de_referencias(codigo_material)
     if not candidatos:
         _log("      [Erro] Sem CÓDIGO DO MATERIAL -- nenhuma referência a escrever.")
-        return ResultadoDaSecao("referencia", False, "sem código do material")
+        return ResultadoDaSecao(nome_da_secao, False, "sem código do material")
 
     # QUAL campo, e QUAL "+". O id vem de `escolher_fabricante`, que sabe qual
     # campo NASCEU quando o fabricante foi escolhido -- a linha certa deixou de
@@ -349,7 +431,7 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
         total_de_campos = portal.engine.contar(sel.XPATH_REFERENCIA_INPUT)
         if total_de_campos == 0:
             _log("      [Erro] Nenhum campo de Referência na tela.")
-            return ResultadoDaSecao("referencia", False, "campo não encontrado")
+            return ResultadoDaSecao(nome_da_secao, False, "campo não encontrado")
         if total_de_campos > 1:
             # Sem o id, o XPath sem índice pega o primeiro em ordem de
             # documento -- foi assim que a referência do fabricante foi parar
@@ -358,7 +440,7 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
             _log(f"      [Erro] {total_de_campos} campos de Referência na tela e o "
                  f"fabricante não indicou qual é o dele. NÃO escrevi nada -- "
                  f"preencha à mão.")
-            return ResultadoDaSecao("referencia", False,
+            return ResultadoDaSecao(nome_da_secao, False,
                                     f"{total_de_campos} campos ambíguos")
 
     avisos_vistos = []
@@ -370,7 +452,7 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
                                   "campo de Referência", callback_log):
             # Não adianta tentar mais 20 sufixos num campo que não recebe o que
             # se digita -- é outro problema, e insistir esconderia ele.
-            return ResultadoDaSecao("referencia", False, "campo não aceitou o texto")
+            return ResultadoDaSecao(nome_da_secao, False, "campo não aceitou o texto")
 
         aviso = texto_do_aviso_de_colisao(portal)
         if aviso:
@@ -389,7 +471,7 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
                  f"já existiam no portal)")
         else:
             _log(f"      Referência: {referencia}")
-        return ResultadoDaSecao("referencia", True, referencia)
+        return ResultadoDaSecao(nome_da_secao, True, referencia)
 
     # "Apenas notificar que não foi possível colocar a referência" -- palavra
     # do usuário. NÃO aborta a ficha nem desfaz o que já foi preenchido: vira
@@ -404,7 +486,7 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
         # lendo como colisão um aviso que é outra coisa.
         _log(f"      [Diagnóstico] O portal exibiu: {avisos_vistos[0]!r}. Se isso "
              f"não é 'a referência já existe', o robô está lendo o aviso errado.")
-    return ResultadoDaSecao("referencia", False, "todas as tentativas recusadas")
+    return ResultadoDaSecao(nome_da_secao, False, "todas as tentativas recusadas")
 
 
 # ===========================================================================
@@ -532,20 +614,26 @@ def limpar_caracteristicas(portal, pmib_original, callback_log=None):
 
 
 # ===========================================================================
-# 3. Fornecedor — a mesma mecânica, do outro lado da seção
+# 3. A referência da GE Vernova — a TERCEIRA linha da seção
 # ===========================================================================
-# "No campo do fornecedor, GE ENERGIAS RENOVÁVEIS, como o fornecedor é a gente,
-# que é sempre fixo (tipo intermediador), nós colocamos a informação que está
-# no STATUS PMIB na coluna CÓDIGO CMI ou por vezes CÓDIGO GE. Se estiver vazio,
-# só ignorar."
+# "O CÓDIGO CMI / CÓDIGO GE deve ser preenchido somente se tiver no
+# _STATUS_PMIB, e deve ser preenchido no campo do fornecimento da GE, que é
+# fixo." (usuário, 2026-08-18)
 #
-# O fornecedor em si não se ESCOLHE no sentido de decidir -- é sempre o mesmo.
-# Mas a tela pede que ele seja selecionado no combo, e é a seleção que faz
-# nascer o campo de Referência dele. Mesma mecânica do fabricante, mesmo
-# discriminador (o placeholder), mesma garantia: se não der para saber em qual
-# campo escrever, NÃO escreve.
+# ⚠️ ESTA FUNÇÃO SE CHAMAVA `escrever_referencia_do_fornecedor` E RECEBIA O
+# VALOR ERRADO. A leitura anterior tratava "fornecedor" e "GE Vernova" como a
+# mesma linha -- daí o defeito relatado: *"ele está fazendo no campo de
+# fornecimento da GE"*. São três linhas, com três valores:
+#
+#     Fabricante   combo -> Referência = CÓDIGO DO MATERIAL
+#     Fornecedor   combo -> Referência = CÓDIGO DO MATERIAL  (escolher_fornecedor)
+#     GE Vernova   campo fixo, ícone ⓘ  = CÓDIGO CMI / CÓDIGO GE  (aqui)
+#
+# O nome antigo era a causa do erro, não um detalhe dele: chamar de
+# "fornecedor" a linha da GE fazia o valor do fornecedor parecer que ia para o
+# lugar certo.
 
-def escrever_referencia_do_fornecedor(portal, referencia, callback_log=None):
+def escrever_referencia_da_ge(portal, referencia, callback_log=None):
     """Escreve a referência da GE Vernova (`CÓDIGO CMI` / `CÓDIGO GE`).
 
     *"Quando a coluna CÓDIGO CMI ou CÓDIGO GE estiver preenchida no
@@ -562,7 +650,7 @@ def escrever_referencia_do_fornecedor(portal, referencia, callback_log=None):
     _log = _log_de(callback_log)
     if not str(referencia or "").strip():
         _log("      Referência da GE Vernova vazia -- pulando, como combinado.")
-        return ResultadoDaSecao("fornecedor", True, "vazia (ignorada)")
+        return ResultadoDaSecao("ge_vernova", True, "vazia (ignorada)")
 
     quantos = portal.engine.contar(sel.XPATH_REFERENCIA_GE_INPUT)
     if quantos != 1:
@@ -572,7 +660,7 @@ def escrever_referencia_do_fornecedor(portal, referencia, callback_log=None):
         _log(f"      [Erro] Achei {quantos} campos de Referência com ícone de "
              f"informação (esperava 1, o da GE Vernova). NÃO escrevi -- "
              f"preencha {referencia!r} à mão.")
-        return ResultadoDaSecao("fornecedor", False,
+        return ResultadoDaSecao("ge_vernova", False,
                                 f"{quantos} campos com o ícone (esperava 1)")
 
     id_do_campo = ""
@@ -586,5 +674,5 @@ def escrever_referencia_do_fornecedor(portal, referencia, callback_log=None):
                                     id_do_campo=id_do_campo)
     # `escrever_referencia` nomeia a seção como "referencia"; aqui ela é a da
     # GE Vernova, e o nome é o que a planilha usa para decidir a coluna.
-    resultado.nome = "fornecedor"
+    resultado.nome = "ge_vernova"
     return resultado

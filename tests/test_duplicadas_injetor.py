@@ -662,7 +662,7 @@ def test_referencia_da_GE_vazia_e_pulada_sem_erro():
     engine = _EngineFalso(ids_da_ge=["b10-b11-b6-Input_TextVar"])
     portal = _PortalFalso(engine)
 
-    resultado = injetor.escrever_referencia_do_fornecedor(
+    resultado = injetor.escrever_referencia_da_ge(
         portal, "", callback_log=lambda _m: None)
 
     assert resultado.ok is True
@@ -680,11 +680,11 @@ def test_a_referencia_da_GE_vai_para_o_campo_com_icone_de_informacao():
     )
     portal = _PortalFalso(engine)
 
-    resultado = injetor.escrever_referencia_do_fornecedor(
+    resultado = injetor.escrever_referencia_da_ge(
         portal, "CMI-99", callback_log=lambda _m: None)
 
     assert resultado.ok is True
-    assert resultado.nome == "fornecedor"   # é o nome que a planilha usa
+    assert resultado.nome == "ge_vernova"   # é o nome que a planilha usa
     seletores = [s for s, t in portal.preenchidos if t == "CMI-99"]
     assert seletores and all("b10-b11-b6-Input_TextVar" in s for s in seletores)
     assert portal.cliques == [] or all("b10-b11-b6-" in c for c in portal.cliques)
@@ -697,7 +697,7 @@ def test_sem_campo_com_o_icone_NAO_escreve_nada():
     portal = _PortalFalso(engine)
     logs = []
 
-    resultado = injetor.escrever_referencia_do_fornecedor(
+    resultado = injetor.escrever_referencia_da_ge(
         portal, "CMI-99", callback_log=logs.append)
 
     assert resultado.ok is False
@@ -720,3 +720,129 @@ def test_o_campo_da_GE_nao_entra_na_conta_do_que_NASCEU():
                                             callback_log=lambda _m: None)
 
     assert resultado.id_do_campo_de_referencia == "b10-b11-b4-Input_TextVar"
+
+
+# ===========================================================================
+# A linha do FORNECEDOR — corrigida em 2026-08-18
+# ===========================================================================
+# Relato do usuário: *"ele não está conseguindo nem colocar a referência
+# correta do fornecedor correto, ele está fazendo no campo de fornecimento da
+# GE"*.
+#
+# A causa não era um seletor errado, era o MODELO: o código tratava
+# "Fornecedor" e "GE Vernova" como a mesma linha. `PLACEHOLDER_COMBO_FORNECEDOR`
+# estava mapeado desde 2026-08-17 e não era usado por ninguém -- o robô ia
+# direto escrever no campo do ícone ⓘ.
+#
+#     Fabricante   combo  -> Referência = CÓDIGO DO MATERIAL
+#     Fornecedor   combo  -> Referência = CÓDIGO DO MATERIAL
+#     GE Vernova   fixo ⓘ -> Referência = CÓDIGO CMI / CÓDIGO GE
+
+def test_o_combo_do_fornecedor_se_identifica_pelo_proprio_placeholder():
+    portal, _engine = _com_combos("Selecione um fabricante", "Selecione um fornecedor")
+
+    seletor = injetor.achar_combo_do_fornecedor(portal)
+
+    assert seletor is not None
+    assert sel.PLACEHOLDER_COMBO_FORNECEDOR in seletor
+
+
+def test_sem_combo_de_fornecedor_na_tela_NAO_escreve_nada():
+    """Recusar é a decisão central deste módulo: escrever no combo errado põe
+    dado errado numa ficha real e não dá sintoma nenhum na tela."""
+    portal, _engine = _com_combos("Selecione um fabricante")
+    logs = []
+
+    assert injetor.achar_combo_do_fornecedor(portal, logs.append) is None
+    assert any("NÃO escrevi nada" in l for l in logs)
+
+
+def test_dois_combos_de_fornecedor_tambem_recusam():
+    portal, _engine = _com_combos("Selecione um fornecedor", "Selecione um fornecedor")
+    logs = []
+
+    assert injetor.achar_combo_do_fornecedor(portal, logs.append) is None
+    assert any("não dá para saber qual" in l for l in logs)
+
+
+def test_o_fornecedor_ausente_nao_e_confundido_com_o_fabricante():
+    """O combo do FABRICANTE não pode virar o do fornecedor por eliminação.
+
+    A 2ª estratégia de `achar_combo_do_fabricante` (eliminar "o que é o
+    fornecedor fixo") se apoiava em premissa que a resposta do usuário de
+    2026-08-18 derrubou -- o fornecedor VARIA. Por isso o lado do fornecedor
+    não tem eliminação: sem o placeholder, recusa.
+    """
+    portal, _engine = _com_combos("Selecione um fabricante")
+
+    assert injetor.achar_combo_do_fornecedor(portal) is None
+
+
+def test_escolher_fornecedor_usa_o_campo_que_NASCEU_da_escolha():
+    """Mesma mecânica do fabricante: a foto de antes/depois é o que diz em qual
+    linha escrever, em vez de pegar a primeira "Referência" da tela."""
+    engine = _EngineFalso(
+        combos=("Selecione um fabricante", "Selecione um fornecedor"),
+        existentes=["data-tooltip=", "vscomp-search-input"],
+        opcoes=["SIEMENS DO BRASIL"],
+        ids_referencia=["b10-b11-b2-Input_TextVar"],
+        id_que_nasce="b10-b11-b8-Input_TextVar",
+    )
+    portal = _PortalFalso(engine)
+
+    resultado = injetor.escolher_fornecedor(portal, "SIEMENS DO BRASIL")
+
+    assert resultado.ok
+    assert resultado.nome == "fornecedor"
+    assert resultado.id_do_campo_de_referencia == "b10-b11-b8-Input_TextVar"
+
+
+def test_fornecedor_sem_nome_nao_abre_combo_nenhum():
+    portal, _engine = _com_combos("Selecione um fornecedor")
+
+    resultado = injetor.escolher_fornecedor(portal, "")
+
+    assert not resultado.ok
+    assert portal.cliques == []
+
+
+def test_fornecedor_que_nao_aparece_no_filtro_nao_seleciona_nada():
+    """Não clicar em "a primeira opção que sobrou": o filtro textual pode
+    deixar uma opção PARECIDA, e fornecedor errado não dá sintoma na tela."""
+    engine = _EngineFalso(
+        combos=("Selecione um fornecedor",),
+        existentes=["data-tooltip=", "vscomp-search-input"],  # sem `role='option'`
+    )
+    portal = _PortalFalso(engine)
+    logs = []
+
+    resultado = injetor.escolher_fornecedor(portal, "FORNECEDOR INEXISTENTE", logs.append)
+
+    assert not resultado.ok
+    assert any("não apareceu no combo" in l for l in logs)
+
+
+def test_a_funcao_da_GE_nao_se_chama_mais_fornecedor():
+    """O nome antigo (`escrever_referencia_do_fornecedor`) ERA a causa do erro,
+    não um detalhe dele: chamar de "fornecedor" a linha da GE fazia o valor do
+    fornecedor parecer que ia para o lugar certo."""
+    assert not hasattr(injetor, "escrever_referencia_do_fornecedor")
+    assert hasattr(injetor, "escrever_referencia_da_ge")
+    assert hasattr(injetor, "escolher_fornecedor")
+
+
+def test_as_duas_referencias_nao_se_sobrescrevem_no_placar():
+    """As duas linhas passam por `escrever_referencia`; com um nome fixo, o
+    segundo resultado apagaria o primeiro e uma falha ficaria invisível."""
+    engine = _EngineFalso(existentes=["Input_TextVar"],
+                          ids_referencia=["b10-b11-b4-Input_TextVar"])
+    portal = _PortalFalso(engine)
+
+    do_fabricante = injetor.escrever_referencia(
+        portal, "2904616", id_do_campo="b10-b11-b4-Input_TextVar")
+    do_fornecedor = injetor.escrever_referencia(
+        portal, "2904616", id_do_campo="b10-b11-b4-Input_TextVar",
+        nome_da_secao="referencia_fornecedor")
+
+    assert do_fabricante.nome == "referencia"
+    assert do_fornecedor.nome == "referencia_fornecedor"
