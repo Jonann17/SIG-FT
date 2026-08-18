@@ -331,6 +331,18 @@ class SeleniumEngine(RPAEngine):
             el = self.wait.until(EC.presence_of_element_located(locator))
             self.driver.execute_script("arguments[0].click();", el)
 
+    def html_do_elemento(self, seletor: str) -> str:
+        """`outerHTML` via atributo -- ver `engine.py`. Sem espera: o modo de
+        auditoria fotografa o que está na tela AGORA, e esperar por um
+        elemento ausente só atrasaria a foto."""
+        try:
+            elementos = self.driver.find_elements(By.XPATH, seletor)
+            if not elementos:
+                return ""
+            return elementos[0].get_attribute("outerHTML") or ""
+        except Exception:  # noqa: BLE001 -- ver docstring do contrato
+            return ""
+
     def scroll_to(self, seletor: str) -> None:
         with _traduzindo():
             el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))

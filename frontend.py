@@ -2822,6 +2822,17 @@ class ModuloCopiaFichas(ctk.CTkFrame):
             fg_color="#3A3A3A", hover_color="#454545", height=40, state="disabled")
         self.btn_robo_novo.pack(fill="x")
 
+        # Log de auditoria (2026-08-18, pedido do usuário: "trabalhar com os
+        # logs de saída do que está acontecendo pra eventual auditoria do
+        # processo"). Ligado, grava em `logs/` TUDO que aparece no console
+        # mais o HTML de cada seção que o robô visita -- que é o que permite
+        # mapear uma seção nova do portal sem abrir o "inspecionar elemento".
+        # O HTML vai só para o arquivo; o console continua legível.
+        self.var_log_auditoria = ctk.BooleanVar(value=True)
+        ctk.CTkSwitch(f_novo, text="Gravar log de auditoria (com a estrutura das telas)",
+                      variable=self.var_log_auditoria, onvalue=True, offvalue=False,
+                      progress_color=COLORS["primary"]).pack(anchor="w", pady=(8, 0))
+
         ctk.CTkLabel(
             f_novo,
             text=("Reconstrução da Fase 6. AINDA NÃO faz documentos, imagens nem Condições "
@@ -2973,10 +2984,24 @@ class ModuloCopiaFichas(ctk.CTkFrame):
         # neste botão não deve pagar por isso na abertura do aplicativo.
         from sigft.services import duplicadas_robo
 
+        from sigft.core.log_execucao import LogDeExecucao
+
         engine = None
+        log_auditoria = None
+        registrar = self.log
         try:
             fichas = self._fichas_para_o_robo_novo()
-            self.log(f"[Robô novo] {len(fichas)} ficha(s) na fila. Abrindo o navegador...")
+
+            if self.var_log_auditoria.get():
+                log_auditoria = LogDeExecucao(
+                    "duplicadas", contexto={"fichas": len(fichas)})
+                # `envolver` devolve um callback que grava no arquivo E repassa
+                # para o console -- o serviço continua sem saber onde o log
+                # para (mesmo princípio de `core/callbacks.py`).
+                registrar = log_auditoria.envolver(self.log)
+                self.log(f"[Auditoria] Gravando em: {log_auditoria.caminho}")
+
+            registrar(f"[Robô novo] {len(fichas)} ficha(s) na fila. Abrindo o navegador...")
             engine, portal = duplicadas_robo.iniciar()
             engine.goto(sigft_config.PORTAL_URL)
 
@@ -2988,10 +3013,11 @@ class ModuloCopiaFichas(ctk.CTkFrame):
 
             resultados = duplicadas_robo.processar_lote(
                 fichas,
-                callback_log=self.log,
+                callback_log=registrar,
                 callback_progresso=lambda fracao: self.after(
                     0, lambda f=fracao: self.progress.set(f)),
                 portal=portal,
+                log_auditoria=log_auditoria,
             )
 
             # Marca o `_STATUS_PMIB` seção a seção: COMPLETO só onde TUDO deu
@@ -3000,19 +3026,26 @@ class ModuloCopiaFichas(ctk.CTkFrame):
             # COMPLETO para toda ficha que não tivesse estourado -- planilha
             # que diz COMPLETO no que ficou pela metade é pior do que planilha
             # vazia, porque ninguém volta a conferir o que está marcado.
-            self.log("[Robô novo] Marcando o _STATUS_PMIB...")
+            registrar("[Robô novo] Marcando o _STATUS_PMIB...")
             marcadas, falhas = duplicadas_robo.marcar_status_na_planilha(
-                self.caminho_status, resultados, callback_log=self.log)
+                self.caminho_status, resultados, callback_log=registrar)
 
             concluidas = [r for r in resultados if r.ok]
-            self.log(f"[Robô novo] {len(concluidas)} de {len(resultados)} sem pendência; "
+            registrar(f"[Robô novo] {len(concluidas)} de {len(resultados)} sem pendência; "
                      f"{marcadas} linha(s) marcada(s) na planilha"
                      + (f", {len(falhas)} falha(s)." if falhas else "."))
-            self.log("[Robô novo] Documentos, imagens e Condições continuam a fazer "
+            registrar("[Robô novo] Documentos, imagens e Condições continuam a fazer "
                      "(botão 2 ou à mão).")
         except Exception as erro:
-            self.log(f"[Robô novo] Falha: {type(erro).__name__}: {erro}")
+            registrar(f"[Robô novo] Falha: {type(erro).__name__}: {erro}")
         finally:
+            # Fecha o log ANTES de mexer no navegador: se `engine.fechar()`
+            # travar, o arquivo já está íntegro no disco -- e é justamente
+            # a execução que morre no meio a que mais interessa auditar.
+            if log_auditoria is not None:
+                log_auditoria.fechar()
+                self.after(0, lambda c=log_auditoria.caminho: self.log(
+                    f"[Auditoria] Log salvo: {c}"))
             if engine is not None:
                 try:
                     engine.fechar()

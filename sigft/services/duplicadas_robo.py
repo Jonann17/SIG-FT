@@ -275,7 +275,7 @@ def abrir_alvo_para_edicao(portal, pmib_alvo, callback_log=None):
     return True
 
 
-def processar_ficha(portal, ficha, callback_log=None):
+def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
     """Duplica UMA ficha. Devolve `ResultadoDaFicha`.
 
     Nunca levanta por falha de seção: uma ficha que dá errado não pode derrubar
@@ -299,7 +299,8 @@ def processar_ficha(portal, ficha, callback_log=None):
         # de 2026-08-18 o robô procurava esses dois nomes na varredura de
         # rótulo→valor, que não enxerga a seção: o fornecedor vinha sempre
         # vazio, sem erro.
-        tabelas = extrator.ler_fabricantes_e_fornecedores(portal, callback_log)
+        tabelas = extrator.ler_fabricantes_e_fornecedores(
+            portal, callback_log, log_auditoria)
 
         fabricante = achar_fabricante_na_tabela(tabelas, blocos, ficha)
         if not fabricante:
@@ -381,7 +382,7 @@ def processar_ficha(portal, ficha, callback_log=None):
 
 
 def processar_lote(fichas, callback_log=None, callback_progresso=None,
-                   portal=None, deve_parar=None):
+                   portal=None, deve_parar=None, log_auditoria=None):
     """Duplica cada ficha de `fichas`. Devolve a lista de `ResultadoDaFicha`.
 
     `portal` injetável para teste; em produção vem de `iniciar()`.
@@ -394,7 +395,9 @@ def processar_lote(fichas, callback_log=None, callback_progresso=None,
         if deve_parar and deve_parar():
             _log(f"\n[Parado pelo usuário] {posicao - 1} de {total} processada(s).")
             break
-        resultados.append(processar_ficha(portal, ficha, callback_log))
+        resultados.append(
+            processar_ficha(portal, ficha, callback_log,
+                            log_auditoria=log_auditoria))
         if callback_progresso:
             callback_progresso(posicao / total if total else 1)
 

@@ -295,6 +295,21 @@ class PlaywrightEngine(RPAEngine):
 
         self._executar(_acao)
 
+    def html_do_elemento(self, seletor: str) -> str:
+        """`outerHTML` via `evaluate` -- ver `engine.py`.
+
+        Sem `wait_for`: o modo de auditoria fotografa o que está na tela
+        AGORA. Esperar por um elemento ausente gastaria o timeout inteiro para
+        devolver a mesma string vazia.
+        """
+        try:
+            alvo = self._loc(seletor)
+            if alvo.count() == 0:
+                return ""
+            return alvo.evaluate("el => el.outerHTML") or ""
+        except Exception:  # noqa: BLE001 -- ver docstring do contrato
+            return ""
+
     def click_dom(self, seletor: str) -> None:
         """Clique por DOM, sem checagem de acionabilidade -- ver `engine.py`.
 

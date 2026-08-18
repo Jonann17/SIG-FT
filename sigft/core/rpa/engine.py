@@ -270,6 +270,20 @@ class RPAEngine(ABC):
         """
 
     @abstractmethod
+    def html_do_elemento(self, seletor: str) -> str:
+        """`outerHTML` do primeiro elemento que casar -- `""` se não casar nada.
+
+        Existe para o MODO DE AUDITORIA (2026-08-18): quando o robô visita uma
+        seção, o log de execução guarda a estrutura real da tela. Isso troca
+        "abra o inspecionar elemento e copie caixa por caixa" por "rode uma
+        vez e me mande o arquivo de log" -- e é a única forma de mapear uma
+        seção do portal sem acesso a ele.
+
+        NÃO levanta quando o seletor não casa: auditar é observar, e um modo
+        de observação que derruba o lote observado não serve para nada.
+        """
+
+    @abstractmethod
     def wait_present(self, seletor: str) -> None:
         """Bloqueia até o elemento existir no DOM -- sem exigir que esteja
         visível ou clicável. Levanta `TempoEsgotado` no timeout."""

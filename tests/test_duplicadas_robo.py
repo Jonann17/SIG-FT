@@ -236,7 +236,7 @@ def test_o_lote_segue_depois_de_uma_ficha_ruim(monkeypatch):
     chamadas = {"n": 0}
     original = robo.processar_ficha
 
-    def processar_ficha(p, ficha, callback_log=None):
+    def processar_ficha(p, ficha, callback_log=None, **_kwargs):
         chamadas["n"] += 1
         if chamadas["n"] == 1:
             resultado = robo.ResultadoDaFicha(ficha.pmib, ficha.ficha_original)

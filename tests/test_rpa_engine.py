@@ -77,9 +77,14 @@ METODOS_DO_TESTE_REAL = ("click_nativo",)
 # vez de deixá-la implícita num motor só. Ver a docstring em engine.py.
 METODOS_DA_REGRESSAO_DO_PLAYWRIGHT = ("click_dom",)
 
+# Modo de auditoria (2026-08-18): o robo fotografa a tela para o log de
+# execucao, e e assim que uma secao nova do portal e mapeada sem acesso a
+# ele. Ver a docstring de `html_do_elemento` em engine.py.
+METODOS_DA_AUDITORIA = ("html_do_elemento",)
+
 METODOS_OBRIGATORIOS = (
     METODOS_CP_2_1 + METODOS_CP_5_1 + METODOS_CP_5_3 + METODOS_DO_TESTE_REAL
-    + METODOS_DA_REGRESSAO_DO_PLAYWRIGHT
+    + METODOS_DA_REGRESSAO_DO_PLAYWRIGHT + METODOS_DA_AUDITORIA
 )
 
 
@@ -134,6 +139,7 @@ def _implementacoes_completas():
         "click_raw": lambda self, seletor: None,
         "click_nativo": lambda self, seletor: None,
         "click_dom": lambda self, seletor: None,
+        "html_do_elemento": lambda self, seletor: "",
         "wait_present": lambda self, seletor: None,
         "clear": lambda self, seletor: None,
         "type_text": lambda self, seletor, texto: None,

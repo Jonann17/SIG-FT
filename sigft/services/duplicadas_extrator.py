@@ -246,7 +246,43 @@ def _sem_acento(texto):
     return normalize("NFKD", str(texto or "")).encode("ascii", "ignore").decode().lower()
 
 
-def abrir_secao(portal, nome, callback_log=None):
+# XPath da raiz de uma seção aberta. Amplo de propósito: a foto de auditoria
+# quer o CONTEXTO em volta, não o campo exato -- é justamente o que não se sabe
+# ainda quando uma seção é nova.
+XPATH_CONTEUDO_DA_SECAO = "//div[contains(@class, 'osui-tabs__content')]"
+XPATH_FICHA_INTEIRA = "//form | //div[@id='b12']"
+
+
+def fotografar(portal, titulo, log_auditoria=None, seletor=None):
+    """Guarda no log de execução o HTML do que está na tela.
+
+    É o coração do MODO DE AUDITORIA, e existe por um motivo concreto: mapear
+    uma seção do portal custava, até aqui, o usuário abrir o "inspecionar
+    elemento" e copiar caixa por caixa. Com isto, uma execução normal deixa a
+    estrutura registrada no arquivo -- e quem for consertar o seletor lê o
+    markup real em vez de adivinhar.
+
+    Vai só para o ARQUIVO (`LogDeExecucao.bloco`), nunca para o console: HTML
+    de OutSystems tornaria ilegível a tela que o usuário está acompanhando.
+
+    `log_auditoria=None` desliga tudo -- é o caminho normal, sem custo.
+    """
+    if log_auditoria is None:
+        return ""
+    alvos = [seletor] if seletor else [XPATH_CONTEUDO_DA_SECAO, XPATH_FICHA_INTEIRA]
+    for alvo in alvos:
+        try:
+            html = portal.engine.html_do_elemento(alvo)
+        except Exception:  # noqa: BLE001 -- observar não pode derrubar o lote
+            html = ""
+        if html:
+            log_auditoria.bloco(f"{titulo}  [{alvo}]", html)
+            return html
+    log_auditoria.bloco(titulo, f"(nada casou para: {', '.join(alvos)})")
+    return ""
+
+
+def abrir_secao(portal, nome, callback_log=None, log_auditoria=None):
     """Abre uma das abas da ficha ("Fabricantes e fornecedores", "Documentos",
     "Condições"). Devolve `True` se o portal confirmou que ela ficou ativa.
 
@@ -265,14 +301,18 @@ def abrir_secao(portal, nome, callback_log=None):
     ativa = sel.XPATH_ABA_DA_FICHA_ATIVA.format(texto=_literal_xpath(nome))
     if portal.engine.contar(ativa):
         _log(f"   Seção aberta: {nome}")
+        fotografar(portal, f"Seção «{nome}» (aberta)", log_auditoria)
         return True
 
     _log(f"   [Erro] Cliquei em {nome!r} e o portal não marcou a aba como ativa. "
          f"NÃO vou ler -- leria a seção anterior achando que era esta.")
+    # Foto do FRACASSO: é o caso em que o markup real vale mais, porque quem
+    # for consertar precisa ver por que o clique não pegou.
+    fotografar(portal, f"Seção «{nome}» (o clique NÃO pegou)", log_auditoria)
     return False
 
 
-def abrir_subaba_de_condicoes(portal, nome, callback_log=None):
+def abrir_subaba_de_condicoes(portal, nome, callback_log=None, log_auditoria=None):
     """Abre uma sub-aba DENTRO de Condições. Devolve `True` se ficou ativa.
 
     As sub-abas NÃO são o mesmo componente das abas de cima: são `<div
@@ -292,10 +332,12 @@ def abrir_subaba_de_condicoes(portal, nome, callback_log=None):
     ativa = sel.XPATH_SUBABA_CONDICOES_ATIVA.format(texto=_literal_xpath(nome))
     if portal.engine.contar(ativa):
         _log(f"      Sub-aba aberta: {nome}")
+        fotografar(portal, f"Sub-aba de Condições «{nome}» (aberta)", log_auditoria)
         return True
 
     _log(f"      [Erro] Cliquei em {nome!r} e ela não ficou com '{sel.CLASSE_SUBABA_ATIVA}'. "
          f"NÃO vou ler.")
+    fotografar(portal, f"Sub-aba «{nome}» (o clique NÃO pegou)", log_auditoria)
     return False
 
 
@@ -350,14 +392,15 @@ def _celula(portal, base_da_linha, coluna):
     return " ".join(str(bruto or "").split())
 
 
-def ler_fabricantes_e_fornecedores(portal, callback_log=None):
+def ler_fabricantes_e_fornecedores(portal, callback_log=None, log_auditoria=None):
     """Abre a aba e devolve `{"fabricantes": [...], "fornecedores": [...]}`.
 
     Cada item é `(nome, referência)`. Aba que não abre devolve as duas listas
     vazias -- e quem chama trata isso como "não sei", nunca como "não tem".
     """
     _log = _log_de(callback_log)
-    if not abrir_secao(portal, sel.ABA_FABRICANTES_E_FORNECEDORES, callback_log):
+    if not abrir_secao(portal, sel.ABA_FABRICANTES_E_FORNECEDORES,
+                       callback_log, log_auditoria):
         return {"fabricantes": [], "fornecedores": []}
 
     fabricantes = ler_tabela_de(portal, sel.COLUNA_NOME_FABRICANTE, callback_log)
