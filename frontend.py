@@ -2018,10 +2018,11 @@ class ModuloUploadConditions(ctk.CTkFrame):
         self.btn_ia.configure(state="disabled")
         self.btn_parar_ia.configure(state="normal")  # Liga o botão parar
         self.api_key = self.controller.get_key("GEMINI")
+        processar_completos = self.var_processar_completos.get()
 
-        threading.Thread(target=self._worker_ia, args=(files, status_file), daemon=True).start()
+        threading.Thread(target=self._worker_ia, args=(files, status_file, processar_completos), daemon=True).start()
 
-    def _worker_ia(self, files, status_file):
+    def _worker_ia(self, files, status_file, processar_completos=False):
         try:
             # Instancia o backend
             processor = upload_conditions_backend.ConditionsProcessor(self.api_key)
@@ -2035,13 +2036,17 @@ class ModuloUploadConditions(ctk.CTkFrame):
                 return
             self.log(msg)
 
-            # Para aplicar a lógica de "Forçar Processamento", faríamos uma filtragem prévia aqui
-            # Como a lógica original já verifica se está completo, podemos passar o df_status modificado
-            # ou simplesmente deixar o backend ler como está (no backend original de condições ele lê e pula).
-            # Para manter simples, vamos rodar. Se o usuário quiser forçar, ele deveria alterar o Excel,
-            # ou precisaremos adicionar essa lógica no backend no futuro.
+            # 2026-08-18: o interruptor "Forçar processamento" agora CHEGA no
+            # backend. Antes ele existia só na tela -- este bloco era um
+            # comentário dizendo que a lógica ficaria "para o futuro", e o
+            # usuário via um controle que não controlava nada.
+            if processar_completos:
+                self.log("Forçar processamento LIGADO: fichas já COMPLETO também serão reprocessadas.")
 
-            resultados = processor.processar_ia_lote(files, df_status, callback_log=self.log)
+            resultados = processor.processar_ia_lote(
+                files, df_status, callback_log=self.log,
+                processar_completos=processar_completos,
+            )
 
             self.after(0, self._on_ia_finished, resultados, processor)
 

@@ -315,13 +315,36 @@ class TechSpecsProcessor:
                 if callback_log: callback_log(f"PMIB {codigo_pmib} não encontrado no Status.")
                 continue
 
-            # --- NOVA VERIFICAÇÃO DE STATUS COMPLETO ---
-            coluna_status = "CARACT. TÉCNICAS"
+            # --- VERIFICAÇÃO DE STATUS COMPLETO ---
+            # `processar_completos` vem do interruptor "Forçar processamento
+            # de fichas 'COMPLETO'" da tela, e AQUI ele sempre funcionou (o
+            # gêmeo em `upload_conditions` é que estava solto -- corrigido em
+            # 2026-08-18).
+            coluna_status = config.COL_CARACT_TECNICAS
             if coluna_status in row_status.columns:
                 status_atual = str(row_status.iloc[0][coluna_status]).strip().upper()
-                if status_atual == "COMPLETO" and not processar_completos:
-                    if callback_log: callback_log(f"PULADO: PMIB {codigo_pmib} já está COMPLETO. (Economizando API)")
-                    continue
+                if status_atual == "COMPLETO":
+                    if processar_completos:
+                        # Sinal VISÍVEL de que o interruptor pegou. Sem ele, a
+                        # única evidência seria a ausência da linha "PULADO",
+                        # e ausência de mensagem não é algo que o usuário veja.
+                        if callback_log:
+                            callback_log(f"PMIB {codigo_pmib} está COMPLETO, mas o "
+                                         f"'Forçar processamento' está ligado -- reprocessando.")
+                    else:
+                        if callback_log: callback_log(f"PULADO: PMIB {codigo_pmib} já está COMPLETO. (Economizando API)")
+                        continue
+            else:
+                # A coluna não existe com esse nome. O código antigo apenas
+                # não fazia a checagem -- em silêncio, e com a consequência
+                # invertida: TODA ficha era mandada para a IA, inclusive as
+                # completas, gastando API justamente onde o objetivo era
+                # economizar. Quem visse o gasto não teria como ligar uma
+                # coisa à outra.
+                if callback_log:
+                    callback_log(f"   [!] Coluna {coluna_status!r} não existe no _STATUS_PMIB -- "
+                                 f"não dá para saber se {codigo_pmib} já está COMPLETO. "
+                                 f"Processando (pode gastar API à toa).")
             # -------------------------------------------
 
             try:

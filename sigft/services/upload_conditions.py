@@ -177,7 +177,27 @@ class ConditionsProcessor:
             wb.close()
             return None
 
-    def processar_ia_lote(self, lista_caminhos, df_status, callback_log=None):
+    def processar_ia_lote(self, lista_caminhos, df_status, callback_log=None,
+                          processar_completos=False):
+        """Gera o conteudo das Condicoes por IA, ficha a ficha.
+
+        `processar_completos` (2026-08-18): quando True, reprocessa tambem as
+        fichas ja marcadas como COMPLETO na coluna CONDICOES do
+        `_STATUS_PMIB`. E o que o interruptor "Forcar processamento de fichas
+        com status 'COMPLETO'" da tela sempre prometeu.
+
+        O interruptor existia na UI desde o inicio (`ModuloUploadConditions.
+        var_processar_completos`), mas NUNCA foi lido: nem `_start_ia_process`
+        chamava `.get()`, nem esta funcao tinha o parametro. O proprio
+        frontend registrava a divida por escrito -- "para manter simples,
+        vamos rodar; se o usuario quiser forcar, ele deveria alterar o Excel,
+        ou precisaremos adicionar essa logica no backend no futuro". Ou seja:
+        um controle que nao controlava nada, e que dava ao usuario a
+        impressao contraria da verdade.
+
+        O default e False para preservar o comportamento de quem chama sem o
+        argumento (economia de API continua sendo o padrao).
+        """
         fichas_processadas = []
         # CP 4.4: `from_legacy` adapta o `callback_log` antigo sem mudar a
         # assinatura pública desta função (o frontend segue chamando igual).
@@ -185,7 +205,10 @@ class ConditionsProcessor:
             from_legacy(callback_log=callback_log),
             titulo="Condições — gerando conteúdo por IA",
             total=len(lista_caminhos),
-            contexto={"fichas": len(lista_caminhos)},
+            contexto={
+                "fichas": len(lista_caminhos),
+                "forçar COMPLETO": "sim" if processar_completos else "não",
+            },
         )
         lote.iniciar()
         # CP 1.2: prefixo de contrato deriva de config.PREFIXO_CONTRATO (era
@@ -222,9 +245,18 @@ class ConditionsProcessor:
                     status_atual = status_atual.iloc[0]
 
                 if str(status_atual).strip().upper() == "COMPLETO":
-                    if callback_log: callback_log(f"PMIB {pmib_codigo} já COMPLETO.")
-                    lote.pulado(pmib_codigo, "já marcado como COMPLETO no STATUS_PMIB")
-                    continue
+                    if processar_completos:
+                        # Reprocessa. A linha de log e deliberada: sem ela, o
+                        # unico sinal de que o interruptor funcionou seria a
+                        # AUSENCIA da mensagem "ja COMPLETO" -- e ausencia de
+                        # mensagem nao e evidencia que o usuario consiga ver.
+                        if callback_log:
+                            callback_log(f"PMIB {pmib_codigo} está COMPLETO, mas o "
+                                         f"'Forçar processamento' está ligado -- reprocessando.")
+                    else:
+                        if callback_log: callback_log(f"PMIB {pmib_codigo} já COMPLETO.")
+                        lote.pulado(pmib_codigo, "já marcado como COMPLETO no STATUS_PMIB")
+                        continue
             except KeyError:
                 pass
 
