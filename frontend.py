@@ -2989,13 +2989,22 @@ class ModuloCopiaFichas(ctk.CTkFrame):
                 portal=portal,
             )
 
-            # O robô novo NÃO grava "COMPLETO" na planilha, e é deliberado:
-            # ele ainda não faz documentos, imagens nem Condições, então a
-            # ficha não está completa. Marcar como completa esconderia
-            # justamente o que falta fazer à mão.
+            # Marca o `_STATUS_PMIB` seção a seção: COMPLETO só onde TUDO deu
+            # certo, INCOMPLETO no resto. É o pedido do usuário e o conserto de
+            # um hábito do fluxo antigo, que marcava as quatro colunas como
+            # COMPLETO para toda ficha que não tivesse estourado -- planilha
+            # que diz COMPLETO no que ficou pela metade é pior do que planilha
+            # vazia, porque ninguém volta a conferir o que está marcado.
+            self.log("[Robô novo] Marcando o _STATUS_PMIB...")
+            marcadas, falhas = duplicadas_robo.marcar_status_na_planilha(
+                self.caminho_status, resultados, callback_log=self.log)
+
             concluidas = [r for r in resultados if r.ok]
-            self.log(f"[Robô novo] {len(concluidas)} de {len(resultados)} sem pendência. "
-                     f"Documentos, imagens e Condições continuam a fazer (botão 2 ou à mão).")
+            self.log(f"[Robô novo] {len(concluidas)} de {len(resultados)} sem pendência; "
+                     f"{marcadas} linha(s) marcada(s) na planilha"
+                     + (f", {len(falhas)} falha(s)." if falhas else "."))
+            self.log("[Robô novo] Documentos, imagens e Condições continuam a fazer "
+                     "(botão 2 ou à mão).")
         except Exception as erro:
             self.log(f"[Robô novo] Falha: {type(erro).__name__}: {erro}")
         finally:

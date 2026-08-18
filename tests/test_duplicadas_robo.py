@@ -26,6 +26,7 @@ class _Ficha:
         self.codigo_material = material
         self.codigo_fornecedor = "CMI-1"
         self.descricao = descricao
+        self.linha = 12
 
 
 class _PortalFalso:
@@ -156,7 +157,11 @@ def test_todas_as_secoes_ok_e_ficha_ok(monkeypatch):
 
     assert resultado.ok is True
     assert [s.nome for s in resultado.secoes] == [
-        "fabricante", "referencia", "caracteristicas"]
+        "fabricante", "referencia", "fornecedor", "caracteristicas"]
+    # A do fornecedor entra PENDENTE (falta ancorar o seletor -- CP 6.4), e
+    # pendente não é falha: um resumo que dissesse "0 de 15" em todo lote
+    # deixaria de ser lido, escondendo a falha de verdade quando viesse.
+    assert [s.nome for s in resultado.secoes if s.pendente] == ["fornecedor"]
 
 
 def test_uma_secao_falha_e_a_ficha_NAO_e_sucesso(monkeypatch):
@@ -206,7 +211,7 @@ def test_fabricante_ausente_NAO_impede_o_resto(monkeypatch):
 
     resultado = robo.processar_ficha(portal, _Ficha(), callback_log=logs.append)
 
-    assert len(resultado.secoes) == 3
+    assert len(resultado.secoes) == 4
     assert any("fabricante" in linha for linha in logs)
 
 
@@ -265,3 +270,96 @@ def test_o_progresso_e_reportado_por_ficha(monkeypatch):
                         portal=portal, callback_progresso=progresso.append)
 
     assert progresso == [0.5, 1.0]
+
+
+# ===========================================================================
+# De onde vem cada dado — a ordem de precedência que o usuário definiu
+# ===========================================================================
+class _FichaComMarca(_Ficha):
+    def __init__(self, fabricante="", codigo_fornecedor="CMI-1", **kwargs):
+        super().__init__(**kwargs)
+        self.fabricante = fabricante
+        self.codigo_fornecedor = codigo_fornecedor
+        self.linha = 12
+
+
+def test_o_fabricante_vem_da_PLANILHA_e_nao_do_portal():
+    """"Você sabe que tem, já te pedi para mapear no conhecimento do
+    _STATUS_PMIB todas as informações que temos hoje." A coluna MARCA/MODELO
+    está mapeada desde 2026-08-13; raspar o portal para descobrir o que ela já
+    diz seria trabalho a mais para resultado igual ou pior."""
+    blocos = [("Fabricantes", {"Fabricante": "DO PORTAL"})]
+
+    assert robo.achar_fabricante(blocos, _FichaComMarca(fabricante="WAGO")) == "WAGO"
+
+
+def test_sem_marca_na_planilha_a_ficha_original_entra_como_reserva():
+    blocos = [("Fabricantes", {"Fabricante": "DO PORTAL"})]
+
+    assert robo.achar_fabricante(blocos, _FichaComMarca(fabricante="")) == "DO PORTAL"
+
+
+def test_sem_fabricante_em_lugar_nenhum_devolve_vazio_e_nao_chuta():
+    assert robo.achar_fabricante([], _FichaComMarca(fabricante="")) == ""
+
+
+def test_a_referencia_do_fornecedor_vem_da_FICHA_ORIGINAL_primeiro():
+    """Ordem INVERTIDA em relação ao fabricante, e é decisão do usuário: "o
+    fornecedor você pode tirar da ficha original, acho que seria mais
+    correto"."""
+    blocos = [("Fornecedores", {"Referência do fornecedor": "DA ORIGINAL"})]
+
+    achada = robo.achar_referencia_do_fornecedor(
+        blocos, _FichaComMarca(codigo_fornecedor="DA PLANILHA"))
+
+    assert achada == "DA ORIGINAL"
+
+
+def test_fornecedor_vazio_na_original_cai_para_a_planilha():
+    """"...só caso lá estiver vazio" -- aí a coluna CÓDIGO CMI / CÓDIGO GE."""
+    achada = robo.achar_referencia_do_fornecedor(
+        [], _FichaComMarca(codigo_fornecedor="CMI-99"))
+
+    assert achada == "CMI-99"
+
+
+def test_fornecedor_vazio_nos_dois_devolve_vazio():
+    """"Se por fim você não conseguir, deixa em branco" -- e a ficha vira
+    INCOMPLETO na planilha, em vez de receber o código de outra."""
+    assert robo.achar_referencia_do_fornecedor([], _FichaComMarca(codigo_fornecedor="")) == ""
+
+
+def test_a_secao_do_fornecedor_e_registrada_como_NAO_concluida(monkeypatch):
+    """O campo do fornecedor e o do fabricante são indistinguíveis com os
+    seletores de hoje -- foi o que fez o robô escrever na linha da GE. Enquanto
+    não for escrito, a seção não pode contar como feita, senão o `_STATUS_PMIB`
+    recebe COMPLETO no que ninguém preencheu."""
+    portal = _com_etapas(monkeypatch)
+
+    resultado = robo.processar_ficha(portal, _FichaComMarca(fabricante="WAGO"),
+                                     callback_log=lambda _m: None)
+
+    fornecedor = [s for s in resultado.secoes if s.nome == "fornecedor"]
+    assert len(fornecedor) == 1
+    assert fornecedor[0].ok is False
+    assert "CP 6.4" in fornecedor[0].detalhe
+
+
+def test_log_com_atributo_ausente_nao_derruba_a_ficha(monkeypatch):
+    """CONTRAPROVA: a mensagem de aviso do fabricante lia `ficha.linha` direto.
+    Num objeto sem esse atributo, o `AttributeError` era engolido pelo `except`
+    do processamento e a ficha morria com "erro fatal" -- por causa de uma
+    linha que existia só para avisar."""
+    portal = _com_etapas(monkeypatch, blocos=[("Volume", {"Altura": "3"})])
+
+    class _FichaCrua:
+        pmib = "A"
+        ficha_original = "B"
+        codigo_material = "C"
+        descricao = "D"
+        # sem `linha`, sem `fabricante`, sem `codigo_fornecedor`
+
+    resultado = robo.processar_ficha(portal, _FichaCrua(), callback_log=lambda _m: None)
+
+    assert resultado.erro_fatal == ""
+    assert len(resultado.secoes) == 4

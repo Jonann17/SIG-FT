@@ -414,3 +414,11 @@ def parear_rotulos_e_valores(tokens):
             if not pares.get(rotulo_atual):
                 pares[rotulo_atual] = limpo
     return pares
+
+
+# A coluna que guarda "MARCA / MODELO" juntos. O FABRICANTE da ficha duplicada
+# sai daqui -- confirmado pelo usuário em 2026-08-17: *"você sabe que tem, já
+# te pedi para mapear no conhecimento do _STATUS_PMIB todas as informações que
+# temos hoje"*. Estava mapeado em `config.COL_MARCA_MODELO` desde 2026-08-13,
+# e eu perguntei em vez de olhar.
+COLUNAS_MARCA_MODELO = ("MARCA/MODELO", "MARCA / MODELO", "MARCA")

@@ -49,13 +49,24 @@ class ResultadoDaSecao:
     relatório nenhum, porque parece certo.
     """
 
-    def __init__(self, nome, ok, detalhe=""):
+    def __init__(self, nome, ok, detalhe="", pendente=False):
         self.nome = nome
         self.ok = ok
         self.detalhe = detalhe
+        # `pendente` separa "TENTEI e não consegui" de "AINDA NÃO EXISTE".
+        # Sem essa distinção, uma seção que o checkpoint ainda não implementou
+        # faria TODA ficha aparecer como falha no resumo do lote -- e um resumo
+        # que diz "0 de 15" toda vez para de ser lido, escondendo a falha de
+        # verdade quando ela vier. Para a PLANILHA os dois casos são iguais: a
+        # seção não está completa, então não recebe COMPLETO.
+        self.pendente = pendente
 
     def __repr__(self):
-        return f"<{self.nome}: {'ok' if self.ok else 'FALHOU'} {self.detalhe}>".strip()
+        if self.pendente:
+            estado = "pendente"
+        else:
+            estado = "ok" if self.ok else "FALHOU"
+        return f"<{self.nome}: {estado} {self.detalhe}>".strip()
 
 
 def _log_de(callback_log):

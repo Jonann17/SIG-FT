@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import time
 
+from sigft import config
+from sigft.core.excel import status_sheet
 from sigft.core.rpa import seletores_duplicada as sel
 from sigft.core.rpa.factory import criar_engine
 from sigft.core.rpa.portal import PMIBPortal
@@ -36,6 +38,38 @@ PAUSA_APOS_ABRIR_FICHA = 3.0
 # não constante porque não sabemos ainda como o portal nomeia esse bloco -- e
 # chutar um nome só faria a leitura devolver vazio sem dizer por quê.
 ROTULOS_DE_FABRICANTE = ("Fabricante", "Fabricantes", "Fabricante/Fornecedor")
+
+# Rótulos que trazem a REFERÊNCIA DO FORNECEDOR na ficha original.
+ROTULOS_DE_REFERENCIA_FORNECEDOR = (
+    "Referência do fornecedor", "Referencia do fornecedor", "Referência", "Referencia",
+)
+
+# ---------------------------------------------------------------------------
+# De onde vem cada dado — a ordem de precedência, decidida pelo usuário
+# ---------------------------------------------------------------------------
+# 2026-08-17, depois da 1ª sessão real:
+#
+#   FABRICANTE  -> da PLANILHA (coluna MARCA/MODELO). *"Você sabe que tem, já
+#                  te pedi para mapear no conhecimento do _STATUS_PMIB todas as
+#                  informações que temos hoje."* Estava mapeado em
+#                  `config.COL_MARCA_MODELO` desde 2026-08-13 e eu perguntei em
+#                  vez de olhar. A ficha original entra só como reserva.
+#
+#   FORNECEDOR  -> da FICHA ORIGINAL. *"O fornecedor você pode tirar da ficha
+#                  original, acho que seria mais correto, só caso lá estiver
+#                  vazio"* -- aí sim a planilha (CÓDIGO CMI / CÓDIGO GE).
+#
+#   Não achou em nenhum dos dois -> deixa EM BRANCO e a ficha vira INCOMPLETO
+#   no `_STATUS_PMIB`. Nunca chuta.
+
+# Colunas de seção do `_STATUS_PMIB` que este robô preenche, e quais
+# resultados entram em cada uma. As de Condições e Documentos/Imagens ficam de
+# fora até o CP 6.4 -- marcar como COMPLETO uma seção que o robô nem tentou
+# seria mentir na planilha, que é onde a mentira dura mais.
+SECOES_DA_PLANILHA = {
+    config.COL_INFO_GERAIS: ("fabricante", "referencia", "fornecedor"),
+    config.COL_CARACT_TECNICAS: ("caracteristicas",),
+}
 
 
 class ResultadoDaFicha:
@@ -60,16 +94,25 @@ class ResultadoDaFicha:
 
     @property
     def ok(self):
-        return not self.erro_fatal and bool(self.secoes) and all(s.ok for s in self.secoes)
+        """Nada FALHOU. Seção pendente (que o checkpoint ainda não implementou)
+        não conta como falha aqui -- ver `ResultadoDaSecao.pendente`. Para a
+        PLANILHA a conta é outra: pendente também não é completo."""
+        return (not self.erro_fatal and bool(self.secoes)
+                and all(s.ok or s.pendente for s in self.secoes))
 
     @property
     def resumo(self):
         if self.erro_fatal:
             return f"{self.pmib_alvo}: {self.erro_fatal}"
-        falhas = [s.nome for s in self.secoes if not s.ok]
+        falhas = [s.nome for s in self.secoes if not s.ok and not s.pendente]
+        pendentes = [s.nome for s in self.secoes if s.pendente]
         if falhas:
-            return f"{self.pmib_alvo}: falhou em {', '.join(falhas)}"
-        return f"{self.pmib_alvo}: ok ({len(self.secoes)} seção(ões))"
+            texto = f"{self.pmib_alvo}: falhou em {', '.join(falhas)}"
+        else:
+            texto = f"{self.pmib_alvo}: ok ({len(self.secoes)} seção(ões))"
+        if pendentes:
+            texto += f"; pendente(s) do checkpoint: {', '.join(pendentes)}"
+        return texto
 
 
 def iniciar(wait_timeout=20):
@@ -85,20 +128,49 @@ def _log_de(callback_log):
     return _log
 
 
-def achar_fabricante(blocos):
-    """Nome do fabricante nos blocos lidos da ficha original, ou `""`.
+def _valor_por_rotulo(blocos, rotulos):
+    """Primeiro valor não vazio, nos blocos lidos, cujo rótulo esteja em
+    `rotulos`. `""` se nenhum bater.
 
-    Procura entre os RÓTULOS conhecidos, em qualquer bloco. Devolver `""` em
-    vez de adivinhar é o ponto: `escolher_fabricante` já trata vazio como
-    "pular com aviso", e um chute aqui viraria fabricante errado na ficha --
-    que não dá sintoma nenhum na tela.
+    Devolver `""` em vez de adivinhar é o ponto: um chute aqui vira dado errado
+    numa ficha real, e a tela não reclama de nada.
     """
+    alvos = {r.strip().lower() for r in rotulos}
     for _titulo, campos in blocos:
         for rotulo, valor in campos.items():
-            if any(alvo.lower() == rotulo.strip().lower() for alvo in ROTULOS_DE_FABRICANTE):
-                if valor:
-                    return valor
+            if rotulo.strip().lower() in alvos and valor:
+                return valor
     return ""
+
+
+def achar_fabricante(blocos, ficha=None):
+    """Fabricante a usar: a PLANILHA primeiro, a ficha original como reserva.
+
+    A coluna `MARCA/MODELO` guarda "MARCA / MODELO" juntos e já está mapeada
+    desde 2026-08-13; `duplicadas.localizar_duplicadas` a separa e entrega o
+    fabricante pronto. Raspar o portal para descobrir o que a planilha já diz
+    seria trabalho a mais para um resultado igual ou pior -- e a seção de
+    Fabricantes fica numa aba interna que o extrator ainda não navega.
+    """
+    if ficha is not None and getattr(ficha, "fabricante", ""):
+        return ficha.fabricante
+    return _valor_por_rotulo(blocos, ROTULOS_DE_FABRICANTE)
+
+
+def achar_referencia_do_fornecedor(blocos, ficha=None):
+    """Referência do fornecedor: a FICHA ORIGINAL primeiro, planilha depois.
+
+    Ordem invertida em relação ao fabricante, e é decisão do usuário: *"o
+    fornecedor você pode tirar da ficha original, acho que seria mais correto,
+    só caso lá estiver vazio"* -- aí a coluna CÓDIGO CMI / CÓDIGO GE.
+
+    Vazio nos dois ⇒ `""`, e a ficha vira INCOMPLETO na planilha. É melhor do
+    que escrever o código de outra ficha por parecer plausível.
+    """
+    da_original = _valor_por_rotulo(blocos, ROTULOS_DE_REFERENCIA_FORNECEDOR)
+    if da_original:
+        return da_original
+    return getattr(ficha, "codigo_fornecedor", "") or ""
 
 
 def ler_ficha_original(portal, pmib_original, callback_log=None):
@@ -149,12 +221,22 @@ def processar_ficha(portal, ficha, callback_log=None):
             _log(f"   [Erro] {resultado.erro_fatal}")
             return resultado
 
-        fabricante = achar_fabricante(blocos)
+        fabricante = achar_fabricante(blocos, ficha)
         if not fabricante:
             # Não é fatal: as outras seções continuam valendo, e o usuário
             # preenche o fabricante à mão. Fatal seria perder também a purga.
-            _log("   [Aviso] Não achei o fabricante na ficha original "
-                 f"(rótulos procurados: {', '.join(ROTULOS_DE_FABRICANTE)}).")
+            # `getattr` e não `ficha.linha`: uma linha de LOG não pode ser o
+            # que derruba a ficha. Escrita como acesso direto, um atributo
+            # ausente virava `AttributeError`, era engolido pelo `except` lá
+            # embaixo e aparecia como "erro fatal" -- a ficha morria por causa
+            # da mensagem que existia só para avisar.
+            _log(f"   [Aviso] Sem fabricante: a coluna MARCA/MODELO da linha "
+                 f"{getattr(ficha, 'linha', '?')} está vazia e a ficha original "
+                 f"também não trouxe.")
+        else:
+            _log(f"   Fabricante (planilha): {fabricante}")
+
+        referencia_fornecedor = achar_referencia_do_fornecedor(blocos, ficha)
 
         if not abrir_alvo_para_edicao(portal, ficha.pmib, callback_log):
             resultado.erro_fatal = f"não achei a ficha alvo {ficha.pmib} em nenhuma aba"
@@ -164,6 +246,19 @@ def processar_ficha(portal, ficha, callback_log=None):
         resultado.registrar(injetor.escolher_fabricante(portal, fabricante, callback_log))
         resultado.registrar(
             injetor.escrever_referencia(portal, ficha.codigo_material, callback_log))
+
+        # A referência do FORNECEDOR ainda não é escrita: o campo dela e o do
+        # fabricante são indistinguíveis com os seletores de hoje (foi o que
+        # fez o robô escrever na linha da GE na 1ª sessão), e escrever no lugar
+        # errado é pior do que não escrever. O valor JÁ é resolvido acima, pela
+        # ordem que o usuário definiu, então quando o seletor for ancorado só
+        # falta a chamada. Fica registrado como seção NÃO concluída para o
+        # `_STATUS_PMIB` não receber COMPLETO no que não foi feito.
+        resultado.registrar(injetor.ResultadoDaSecao(
+            "fornecedor", False, pendente=True,
+            detalhe=f"valor pronto ({referencia_fornecedor or 'vazio'}), "
+                    f"falta ancorar o seletor -- CP 6.4"))
+
         portal.clicar_salvar_visivel("Fabricantes e Fornecedores")
         resultado.registrar(
             injetor.limpar_caracteristicas(portal, ficha.ficha_original, callback_log))
@@ -200,3 +295,94 @@ def processar_lote(fichas, callback_log=None, callback_progresso=None,
         if not resultado.ok:
             _log(f"    - {resultado.resumo}")
     return resultados
+
+
+# ===========================================================================
+# Marcar o `_STATUS_PMIB`: COMPLETO por seção, INCOMPLETO no que faltou
+# ===========================================================================
+# "Se por fim você não conseguir, deixa em branco e daí na hora de completar o
+# _STATUS_PMIB você coloca na coluna de Informações Gerais como INCOMPLETO para
+# a ficha. Para as colunas que você conseguir preencher tudo, você coloca como
+# COMPLETO."
+#
+# É a correção de um hábito do fluxo antigo: ele marcava as QUATRO colunas como
+# COMPLETO para toda ficha que não tivesse estourado, sem olhar seção nenhuma
+# (`frontend._worker_salvar`, dicionário com quatro `True` fixos). Uma planilha
+# que diz COMPLETO no que ficou pela metade é pior do que uma planilha vazia:
+# ninguém volta para conferir o que está marcado como pronto.
+
+def status_por_secao(resultado_da_ficha):
+    """{coluna do `_STATUS_PMIB`: "COMPLETO" | "INCOMPLETO"} para UMA ficha.
+
+    Uma coluna só recebe COMPLETO se TODAS as seções que a alimentam deram
+    certo. Seção que o robô nem tentou (Condições, Documentos) não aparece:
+    escrever INCOMPLETO nelas seria correto mas ruidoso -- a ficha ainda vai
+    passar pelo robô antigo ou pela mão -- e escrever COMPLETO seria mentira.
+    """
+    # Pendente conta como NÃO completo: a seção não foi preenchida, e é
+    # exatamente isso que a coluna do `_STATUS_PMIB` precisa dizer.
+    por_nome = {secao.nome: (secao.ok and not secao.pendente)
+                for secao in resultado_da_ficha.secoes}
+    marcas = {}
+    for coluna, nomes in SECOES_DA_PLANILHA.items():
+        relevantes = [por_nome[nome] for nome in nomes if nome in por_nome]
+        if not relevantes:
+            continue
+        marcas[coluna] = (status_sheet.VALOR_COMPLETO if all(relevantes)
+                          else status_sheet.VALOR_INCOMPLETO)
+    return marcas
+
+
+def marcar_status_na_planilha(caminho_excel, resultados, callback_log=None):
+    """Escreve COMPLETO/INCOMPLETO nas colunas de seção, ficha a ficha.
+
+    Devolve (marcadas, falhas). Erro numa ficha não impede as outras: o robô
+    já rodou, e perder o registro de 14 fichas porque a 15ª não foi encontrada
+    na planilha seria trocar um problema pequeno por um grande.
+    """
+    _log = _log_de(callback_log)
+    marcadas = 0
+    falhas = []
+
+    for resultado in resultados:
+        marcas = status_por_secao(resultado)
+        if not marcas:
+            continue
+        painel = status_sheet.StatusPMIB(caminho_excel)
+        try:
+            chaves = {config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB}
+            for coluna in marcas:
+                chaves[coluna.upper()] = coluna.upper()
+            painel.abrir(keywords=chaves, required=[config.COL_CODIGO_PMIB], max_row=15)
+
+            linha = painel.buscar_linha(resultado.pmib_alvo)
+            if linha is None:
+                falhas.append(f"{resultado.pmib_alvo}: não achei a linha na planilha")
+                continue
+
+            # Uma chamada por VALOR: `marcar_linha` escreve o mesmo valor em
+            # todas as colunas que recebe, e aqui os valores podem diferir --
+            # INFO. GERAIS incompleta e CARACT. TÉCNICAS completa é o caso
+            # normal enquanto o CP 6.4 não fecha.
+            for valor in (status_sheet.VALOR_COMPLETO, status_sheet.VALOR_INCOMPLETO):
+                colunas = [c for c, v in marcas.items() if v == valor]
+                if colunas:
+                    painel.marcar_linha(linha, colunas, valor=valor)
+
+            painel.salvar()
+            marcadas += 1
+            _log(f"   Planilha: {resultado.pmib_alvo} -> "
+                 + ", ".join(f"{c} = {v}" for c, v in marcas.items()))
+        except Exception as erro:  # noqa: BLE001 -- ver docstring
+            falhas.append(f"{resultado.pmib_alvo}: {type(erro).__name__}: {erro}")
+        finally:
+            try:
+                painel.fechar()
+            except Exception:  # noqa: BLE001
+                pass
+
+    if falhas:
+        _log(f"   [Aviso] {len(falhas)} ficha(s) não foram marcadas na planilha:")
+        for falha in falhas:
+            _log(f"      - {falha}")
+    return marcadas, falhas

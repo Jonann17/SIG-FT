@@ -15,7 +15,7 @@ from __future__ import annotations
 import pandas as pd
 
 from sigft import config
-from sigft.core.excel import headers, pmib_codes
+from sigft.core.excel import headers, marca_modelo, pmib_codes
 from sigft.services import duplicadas_spec as spec
 
 
@@ -29,10 +29,15 @@ class FichaDuplicada:
     """
 
     def __init__(self, pmib, descricao, pdm_usado, codigo_material,
-                 codigo_fornecedor, ficha_original, linha):
+                 codigo_fornecedor, ficha_original, linha, fabricante=""):
         self.pmib = pmib
         self.descricao = descricao
         self.pdm_usado = pdm_usado
+        # Fabricante, da coluna MARCA/MODELO (que guarda "MARCA / MODELO"
+        # juntos). Vem da PLANILHA e não da ficha original porque a planilha
+        # já tem o dado -- e raspar o portal para descobrir o que a coluna G
+        # diz seria trabalho a mais para um resultado igual ou pior.
+        self.fabricante = fabricante
         # Referência do FABRICANTE (coluna CÓDIGO DO MATERIAL).
         self.codigo_material = codigo_material
         # Referência do FORNECEDOR (CÓDIGO CMI / CÓDIGO GE). Vazio => pular.
@@ -159,6 +164,8 @@ def localizar_duplicadas(caminho_excel, callback_log=None):
     col_pmib = spec.achar_coluna(df.columns, (config.COL_CODIGO_PMIB,)) or config.COL_CODIGO_PMIB
     col_descricao = spec.achar_coluna(df.columns, (config.COL_DESCRICAO,)) or config.COL_DESCRICAO
 
+    col_marca = spec.achar_coluna(df.columns, spec.COLUNAS_MARCA_MODELO)
+
     col_material = spec.achar_coluna(df.columns, spec.COLUNAS_REFERENCIA_FABRICANTE)
     col_fornecedor = spec.achar_coluna(df.columns, spec.COLUNAS_REFERENCIA_FORNECEDOR)
     col_original = spec.achar_coluna(df.columns, spec.COLUNAS_FICHA_ORIGINAL)
@@ -198,6 +205,8 @@ def localizar_duplicadas(caminho_excel, callback_log=None):
             ficha_original=spec.extrair_ficha_original(
                 linha.get(col_original) if col_original else None
             ) or "",
+            fabricante=marca_modelo.fabricante(
+                linha.get(col_marca) if col_marca else None),
             # +2: o pandas conta de 0 e o cabeçalho ocupa uma linha, então
             # este número é o que o usuário vê na barra lateral do Excel.
             linha=int(indice) + linha_cabecalho + 2,

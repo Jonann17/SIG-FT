@@ -56,6 +56,17 @@ from sigft.core.excel import headers, locking, pmib_codes
 # (`ws.cell(...).value = "COMPLETO"`).
 VALOR_COMPLETO = "COMPLETO"
 
+# O contrário, pedido pelo usuário em 2026-08-17 para a ficha duplicada: *"se
+# por fim você não conseguir, deixa em branco e daí na hora de completar o
+# _STATUS_PMIB você coloca na coluna de Informações Gerais como INCOMPLETO
+# para a ficha. Para as colunas que você conseguir preencher tudo, você coloca
+# como COMPLETO"*.
+#
+# Vive aqui, ao lado do irmão, porque é a MESMA decisão: o que se escreve na
+# célula de seção do `_STATUS_PMIB`. Deixar um em cada módulo é como nasce a
+# planilha com "INCOMPLETO" numa coluna e "Incompleto" na outra.
+VALOR_INCOMPLETO = "INCOMPLETO"
+
 
 class StatusPMIB:
     """Acesso unificado à linha de um PMIB dentro da aba
