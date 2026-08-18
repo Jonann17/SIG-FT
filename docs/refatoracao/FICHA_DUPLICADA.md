@@ -269,7 +269,8 @@ Nenhuma impede começar; todas impedem **rodar em lote sem conferir**.
 | Listagem para conferência sem portal | `scripts/listar_duplicadas.py` | ✅ CP 6.2 |
 | Abrir a original em visualização (varre as 7 abas) | `services/duplicadas_extrator.py` | ✅ CP 6.2, 13 testes |
 | Ler a tela como pares rótulo→valor | `services/duplicadas_extrator.py` | ✅ CP 6.2, 16 testes com XPath real |
-| Navegar entre as SEÇÕES internas da ficha | `services/duplicadas_extrator.py` | ☐ falta HTML das abas internas |
+| Navegar entre as SEÇÕES internas da ficha | `services/duplicadas_extrator.py` | ✅ 2026-08-18 (HTML real) |
+| Ler Fabricantes/Fornecedores (duas TABELAS) | `services/duplicadas_extrator.py` | ✅ 2026-08-18 (HTML real) |
 | Tela de seleção das fichas | `frontend.py` (`ModuloCopiaFichas`) | ✅ CP 6.2 — usa a identificação nova |
 | Fabricante (combo com busca) | `services/duplicadas_injetor.py` | ✅ CP 6.3 |
 | Referência com a regra do `'D` | `services/duplicadas_injetor.py` | ✅ CP 6.3 |
@@ -449,6 +450,72 @@ sufixo aleatório do FilePond, número de instância do `vscomp`, índice de op�
 do `vscomp` e **índice de linha do OutSystems** (`-l1_0-`) — este último
 apareceu em **duas telas diferentes**, então é padrão da plataforma, não
 coincidência.
+
+---
+
+## 6.6 Quinta rodada — navegação e as duas tabelas (2026-08-18)
+
+Levantada a pedido, e trouxe **uma correção de modelo** junto.
+
+### Abas da ficha (visualização)
+
+```html
+<button class="osui-tabs__header-item" name="0.4z9qbl6cvoj" data-tab="1"
+        role="tab" aria-selected="false" aria-controls="b12-$b12">
+  <div class="display-contents ph" id="b12-b5-Title">Fabricantes e fornecedores</div>
+</button>
+```
+
+Três atributos desse markup **parecem** âncora e não são: `name` é aleatório
+(o `0.` denuncia), `aria-controls` é id gerado com `$`, e `data-tab` é
+**ordinal** — posição é o que muda quando o portal reordena a tela, e §6.5c já
+decidiu contra posição. Sobra o **texto** do `<div>`, que é o que a pessoa lê.
+
+`aria-selected="true"` confirma que o clique pegou. Sem a conferência, um
+clique que falhou deixa o extrator lendo a seção **anterior** e devolvendo
+dados plausíveis da seção errada.
+
+### Sub-abas de Condições — outro componente
+
+```html
+<div data-container="" class="dummy-active OSInline" style="cursor: pointer">Armazenamento e transporte</div>
+<div data-container="" class="OSInline" style="cursor: pointer">Manutenção e descarte</div>
+```
+
+**Não são `role="tab"`** — são `<div>` clicáveis, e a aberta ganha
+`dummy-active`. Supor que fossem o mesmo componente das abas de cima era
+plausível e estava errado; há teste contra o HTML real para a suposição não
+voltar. Confirma a tabela de §3.4: visualização tem 3 sub-abas, edição tem 5.
+
+### 🎯 Fabricantes e fornecedores são duas TABELAS, não pares rótulo→valor
+
+```html
+<div class="full-fieldset" id="b12-b13-ManufacturerAndProvider">
+  <table><thead><tr><th>Nome do Fabricante</th><th>Referência</th></tr></thead>
+  <tbody><tr><td data-header="Nome do Fabricante"><span data-expression>ENERSYS</span></td>
+             <td data-header="Referência"><span data-expression>E24-256-10</span></td></tr>
+         <tr><td data-header="Nome do Fabricante"><span data-expression>SASSI</span></td>…
+<div class="full-fieldset" id="b12-b14-ManufacturerAndProvider">
+  <table><thead><tr><th>Nome do Fornecedor</th>…
+    <td data-header="Nome do Fornecedor"><span data-expression>GE ENERGIAS RENOVAVEIS LTDA</span></td>
+    <td data-header="Referência"><span data-expression>08934120BTM99-064F</span></td>
+```
+
+**Isto derruba uma suposição do extrator.** `XPATH_VIEW_VALOR` (§8) exige o
+ancestral `PMIB_DataSheetView.Block_Expression`; estas células **não o têm**.
+Ou seja, a varredura de rótulo→valor **não enxerga esta seção**, e
+`achar_fornecedor` lendo dela devolvia `""` para uma ficha real, sem erro
+nenhum. Provado em `tests/test_duplicadas_xpath_real.py`, avaliando o XPath
+contra este markup.
+
+Os dois contêineres têm o **mesmo sufixo de id** (`-ManufacturerAndProvider`),
+mudando só o prefixo gerado — então o id não separa fabricante de fornecedor.
+Quem separa é `@data-header`, o mesmo atributo que `tech_specs` já usa: é
+padrão da plataforma, agora confirmado numa segunda tela.
+
+E a tabela do fabricante tem **duas linhas** nesta ficha: *"a gente comprou de
+um que comprou do fabricante"* — ENERSYS fabrica, SASSI revende. Ler só a
+primeira perderia a segunda em silêncio.
 
 ---
 

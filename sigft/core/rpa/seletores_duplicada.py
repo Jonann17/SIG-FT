@@ -598,11 +598,10 @@ XPATH_REFERENCIA_INPUT_SEM_GE = (
 )
 
 # ---------------------------------------------------------------------------
-# 11. Navegação DENTRO da ficha, no modo de visualização
+# 11. Navegação entre as SEÇÕES da ficha, no modo de visualização
 # ---------------------------------------------------------------------------
-# HTML levantado pelo usuário em 2026-08-18. Era o que faltava para o CP 6.2
-# fechar: até aqui `ler_secao_visivel` lia a seção que estivesse ABERTA, e
-# ninguém sabia como trocar de seção.
+# HTML levantado pelo usuário em 2026-08-18. Era o que faltava para o CP 6.4:
+# até aqui o extrator só sabia ler a seção que já estivesse aberta.
 #
 #   <button data-advancedhtml="" class="osui-tabs__header-item"
 #           name="0.4z9qbl6cvoj" data-tab="1" role="tab" tabindex="-1"
@@ -610,59 +609,62 @@ XPATH_REFERENCIA_INPUT_SEM_GE = (
 #     <div class="display-contents ph" id="b12-b5-Title">Fabricantes e fornecedores</div>
 #   </button>
 #
-# ⚠️ TRÊS atributos deste botão são armadilha, e os três parecem bons no
-# inspecionar elemento:
+# ⚠️ TRÊS coisas nesse markup NÃO servem de âncora, e as três parecem servir:
 #
-#   `name="0.4z9qbl6cvoj"`   aleatório por renderização (mesmo padrão do
-#                            `name="0.22zxs6p0948"` das abas de status, §6.5)
-#   `aria-controls="b12-$b12"` id gerado -- o `$` denuncia
-#   `data-tab="1"`           ORDINAL. Não é gerado, mas é POSIÇÃO: se o portal
-#                            reordenar as abas, o robô abre a errada em
-#                            silêncio. O projeto já decidiu esse trade-off em
-#                            §6.5c ("casar pelo ícone é melhor do que casar
-#                            por posição") -- aqui vale igual.
+#   name="0.4z9qbl6cvoj"   aleatório por renderização (o `0.` denuncia)
+#   aria-controls="b12-$b12"  id gerado, com o `$` que já catalogamos
+#   data-tab="1"           ORDINAL. Não é gerado, é a posição -- e posição é
+#                          justamente o que muda quando o portal reordena a
+#                          tela. O projeto já decidiu contra isso em §6.5c
+#                          ("casar pelo ícone é melhor do que casar por
+#                          posição"); vale igual aqui.
 #
-# O que sobra de estável é o TEXTO do `<div>` interno. O `id="b12-b5-Title"`
-# tem sufixo semântico (`-Title`) mas prefixo gerado, então serve como
-# reforço, nunca como âncora.
+# O que resta, e é o que se usa: o TEXTO do `<div>` interno. É o mesmo que o
+# usuário lê na tela, e é o que ele nos passou.
+ABA_FABRICANTES_E_FORNECEDORES = "Fabricantes e fornecedores"
+ABA_DOCUMENTOS = "Documentos"
+ABA_CONDICOES = "Condições"
+
 XPATH_ABA_DA_FICHA = (
     "//button[contains(concat(' ', normalize-space(@class), ' '), ' osui-tabs__header-item ')]"
     "[.//div[normalize-space()={texto}]]"
 )
-
-# `aria-selected` é o que diz se o clique PEGOU. Sem conferir, um clique que
-# não trocou de aba faria o extrator ler a seção anterior e devolver dados da
-# aba errada -- plausíveis e errados, o pior tipo.
+# Conferência pós-clique: `aria-selected` vira "true" na aba aberta. Sem ela,
+# um clique que não pegou (aba coberta, render em andamento) faria o extrator
+# ler a seção ANTERIOR e devolver dados plausíveis da seção errada -- que é o
+# pior tipo de falha, porque não parece falha.
 XPATH_ABA_DA_FICHA_ATIVA = (
     "//button[contains(concat(' ', normalize-space(@class), ' '), ' osui-tabs__header-item ')]"
     "[@aria-selected='true'][.//div[normalize-space()={texto}]]"
 )
 
-# Nomes das abas, como aparecem na tela. `data-tab` observado: 1 =
-# Fabricantes e fornecedores, 3 = Documentos, 4 = Condições. O 2 não foi
-# levantado (provavelmente Características técnicas) -- não está aqui porque
-# não foi visto, e a lista não deve conter suposição.
-ABA_FICHA_FABRICANTES = "Fabricantes e fornecedores"
-ABA_FICHA_DOCUMENTOS = "Documentos"
-ABA_FICHA_CONDICOES = "Condições"
 
-
-# --- Sub-abas DENTRO de Condições (modo visualização) -----------------------
-# Aqui a estrutura é OUTRA, e confundir as duas quebraria a navegação:
-#
+# ---------------------------------------------------------------------------
+# 12. As sub-abas DENTRO de Condições (modo de visualização)
+# ---------------------------------------------------------------------------
 #   <div data-container="" class="dummy-active OSInline"
-#        style="text-align: center; cursor: pointer; width: 20%; padding: 8px;"
-#   >Armazenamento e transporte</div>
-#
+#        style="text-align: center; cursor: pointer; width: 20%; padding: 8px;">
+#     Armazenamento e transporte</div>
 #   <div data-container="" class="OSInline" style="...">Manutenção e descarte</div>
 #
-# NÃO são `<button role="tab">` -- são `<div>` com `cursor: pointer`. Um
-# seletor escrito por analogia com as abas de cima não acharia nada.
+# Não são `role="tab"` -- são `<div>` com `cursor: pointer`. Ou seja, o seletor
+# das abas de cima (§11) NÃO serve aqui, e supor que servisse era plausível:
+# é exatamente o tipo de generalização que a §7 dos seletores manda não fazer
+# sem HTML na mão.
 #
-# `dummy-active` marca a aba ABERTA. O nome é do portal, não nosso.
+# 🎯 `dummy-active` marca a sub-aba ABERTA. É o par da conferência de
+# `aria-selected` -- e aqui ela vale mais ainda, porque as três sub-abas ficam
+# todas no DOM: sem checar qual está ativa, o extrator lê a primeira e acha
+# que leu a que pediu.
+#
+# Confirma a tabela de §3.4 da especificação: visualização tem 3 sub-abas
+# (Armazenamento e transporte | Financeira | Manutenção e descarte), contra 5
+# no modo de edição. A Financeira é a que `e_aba_financeira` exclui.
+CLASSE_SUBABA_ATIVA = "dummy-active"
+
 XPATH_SUBABA_CONDICOES = (
     "//div[contains(concat(' ', normalize-space(@class), ' '), ' OSInline ')]"
-    "[@data-container][normalize-space()={texto}]"
+    "[normalize-space()={texto}]"
 )
 XPATH_SUBABA_CONDICOES_ATIVA = (
     "//div[contains(concat(' ', normalize-space(@class), ' '), ' dummy-active ')]"
@@ -671,56 +673,52 @@ XPATH_SUBABA_CONDICOES_ATIVA = (
 
 
 # ---------------------------------------------------------------------------
-# 12. Fabricantes e fornecedores no modo de VISUALIZAÇÃO — são duas TABELAS
+# 13. Fabricantes e fornecedores em VISUALIZAÇÃO — são DUAS TABELAS
 # ---------------------------------------------------------------------------
-# ⚠️ ESTE ACHADO DERRUBA UMA SUPOSIÇÃO DO EXTRATOR. `ler_secao_visivel` lê
-# pares rótulo→valor (`label[@data-label]` + `PMIB_DataSheetView.Block_Expression`,
-# §8). A seção de Fabricantes/Fornecedores **não usa esse padrão**: são duas
-# `<table>`, e as células são `td[@data-header]/span[@data-expression]` --
-# fora do bloco `PMIB_DataSheetView.Block_Expression`. Ou seja, a varredura de
-# rótulo→valor **não enxerga nada aqui** e devolveria fabricante e fornecedor
-# vazios, sem erro.
+# ⚠️ ESTE ACHADO DERRUBA UMA SUPOSIÇÃO DO EXTRATOR, e é o mais importante do
+# levantamento de 2026-08-18.
+#
+# A seção NÃO é um bloco de pares rótulo→valor. São duas tabelas irmãs:
 #
 #   <div class="full-fieldset" id="b12-b13-ManufacturerAndProvider">
 #     <table><thead><tr><th>Nome do Fabricante</th><th>Referência</th></tr></thead>
-#       <tbody>
-#         <tr><td data-header="Nome do Fabricante"><span data-expression>ENERSYS</span></td>
-#             <td data-header="Referência"><span data-expression>E24-256-10</span></td></tr>
-#         <tr><td data-header="Nome do Fabricante"><span data-expression>SASSI</span></td>
-#             <td data-header="Referência"><span data-expression>DGA 0-300V DC</span></td></tr>
+#     <tbody>
+#       <tr><td data-header="Nome do Fabricante"><span data-expression>ENERSYS</span></td>
+#           <td data-header="Referência"><span data-expression>E24-256-10</span></td></tr>
+#       <tr><td data-header="Nome do Fabricante"><span data-expression>SASSI</span></td>
+#           <td data-header="Referência"><span data-expression>DGA 0-300V DC</span></td></tr>
 #
 #   <div class="full-fieldset" id="b12-b14-ManufacturerAndProvider">
 #     <table><thead><tr><th>Nome do Fornecedor</th><th>Referência</th></tr></thead>
-#       <tbody>
-#         <tr><td data-header="Nome do Fornecedor"><span data-expression>GE ENERGIAS RENOVAVEIS LTDA</span></td>
-#             <td data-header="Referência"><span data-expression>08934120BTM99-064F</span></td></tr>
+#     <tbody>
+#       <tr><td data-header="Nome do Fornecedor"><span data-expression>GE ENERGIAS RENOVAVEIS LTDA</span></td>
+#           <td data-header="Referência"><span data-expression>08934120BTM99-064F</span></td></tr>
 #
-# 🎯 **As duas `<div>` têm o MESMO sufixo de id** (`-ManufacturerAndProvider`),
-# só mudando o prefixo gerado (`b12-b13-` x `b12-b14-`). Quem distingue é o
-# cabeçalho da tabela -- e ele vem repetido em CADA célula, no atributo
-# `data-header`. É a mesma âncora que `tech_specs` já usa (`@data-header=
-# 'Selecionar'`), agora confirmada numa segunda tela: é padrão da plataforma.
+# Consequência prática, e ela explica um sintoma: `XPATH_VIEW_VALOR` exige o
+# ancestral `data-block='PMIB_DataSheetView.Block_Expression'`, e estas células
+# NÃO o têm. Ou seja, a varredura de rótulo→valor **não enxerga esta seção**
+# -- `achar_fabricante`/`achar_fornecedor` lendo de `blocos` devolveriam vazio
+# para esta ficha. A seção precisa de leitor próprio.
 #
-# Casar pelo id seria escolher entre `b13` e `b14`, que são gerados. Casar por
-# ordem ("a primeira tabela é a do fabricante") funcionaria hoje e quebraria
-# em silêncio numa reordenação.
-COLUNA_NOME_DO_FABRICANTE = "Nome do Fabricante"
-COLUNA_NOME_DO_FORNECEDOR = "Nome do Fornecedor"
+# 🎯 OS DOIS CONTÊINERES TÊM O MESMO SUFIXO DE id (`-ManufacturerAndProvider`),
+# só mudando o prefixo gerado (`b12-b13-` x `b12-b14-`). Então o id NÃO
+# distingue fabricante de fornecedor -- quem distingue é o `@data-header` da
+# célula, que é o MESMO atributo semântico que `tech_specs` já usa para achar
+# coluna de tabela do OutSystems.
+#
+# E o `<tbody>` pode ter VÁRIAS linhas: nesta ficha o fabricante tem duas
+# ("a gente comprou de um que comprou do fabricante" -- ENERSYS fabrica, SASSI
+# revende). Ler só a primeira perderia a segunda sem avisar.
+COLUNA_NOME_FABRICANTE = "Nome do Fabricante"
+COLUNA_NOME_FORNECEDOR = "Nome do Fornecedor"
 COLUNA_REFERENCIA = "Referência"
 
-# Linhas da tabela que contém a coluna {coluna}. A âncora é a LINHA (`tr`), e
-# não a célula, porque nome e referência precisam sair pareados -- é o mesmo
-# cuidado de `parear_rotulos_e_valores` (§8): duas varreduras independentes
-# casariam por índice, e uma linha a mais numa delas desalinharia tudo.
-XPATH_LINHAS_DA_TABELA = "//tr[td[@data-header={coluna}]]"
-
-# Valor de uma célula, DENTRO de uma linha já localizada. `span[@data-expression]`
-# é o mesmo marcador de "valor exibido" do modo de leitura (§8).
-XPATH_CELULA_NA_LINHA = "/td[@data-header={coluna}]//span[@data-expression]"
-
-# ⚠️ O usuário observou que a tabela de FABRICANTES pode ter mais de uma
-# linha: *"nesse caso ele tem 2 fornecedores (a gente comprou de um que
-# comprou do fabricante)"* -- ENERSYS (o fabricante de fato) e SASSI (o
-# intermediário). As duas moram na tabela "Nome do Fabricante". Quem consome
-# precisa decidir o que fazer com N linhas; o leitor devolve todas, na ordem
-# da tela, em vez de escolher por conta própria.
+# Linhas de uma das tabelas, escolhida pelo texto do cabeçalho da 1ª coluna.
+# `ancestor::table[1]` é o container MAIS PRÓXIMO -- a mesma armadilha de §6.5c
+# vale aqui: sem o `[1]`, um ancestral que contenha as duas tabelas casaria as
+# duas e o fabricante viria com a linha da GE junto.
+XPATH_LINHAS_DA_TABELA_DE = (
+    "//td[@data-header={coluna}]/ancestor::table[1]//tr[td[@data-header={coluna}]]"
+)
+# Célula de uma coluna dentro de UMA linha já endereçada por índice.
+XPATH_REL_CELULA = "/td[@data-header={coluna}]//span[@data-expression]"

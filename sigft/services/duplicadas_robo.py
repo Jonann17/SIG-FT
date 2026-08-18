@@ -193,8 +193,57 @@ def achar_fornecedor(blocos, ficha=None):
 
     O parâmetro `ficha` não é usado hoje; fica na assinatura por simetria com
     `achar_fabricante` e para o caso de a planilha vir a trazer a coluna.
+
+    ⚠️ **`blocos` NÃO CONTÉM ESTA SEÇÃO, e é por isso que existe
+    `achar_fornecedor_na_tabela` abaixo.** O HTML de 2026-08-18 mostrou que
+    Fabricantes/Fornecedores em modo de visualização são duas TABELAS, cujas
+    células não têm o ancestral `PMIB_DataSheetView.Block_Expression` que a
+    varredura de rótulo→valor exige. Ou seja: esta função devolve `""` para
+    uma ficha real, sem erro nenhum. Ela fica como reserva -- se um dia o
+    portal renderizar o fornecedor como par rótulo→valor, ela acha.
     """
     return _valor_por_rotulo(blocos, ROTULOS_DE_FORNECEDOR)
+
+
+def _primeiro_nome(itens):
+    for nome, _referencia in itens or ():
+        if nome:
+            return nome
+    return ""
+
+
+def achar_fornecedor_na_tabela(tabelas, blocos=(), ficha=None):
+    """Nome do fornecedor a escolher no combo, lido da TABELA da original.
+
+    `tabelas` vem de `extrator.ler_fabricantes_e_fornecedores`.
+
+    Fica com o PRIMEIRO da tabela. A ficha levantada tem um só fornecedor
+    (GE ENERGIAS RENOVAVEIS LTDA); se um dia tiver mais de um, o combo da
+    ficha nova aceita um por vez e escolher "todos" não é uma opção -- então
+    o log avisa em vez de o robô decidir sozinho.
+
+    Cai para a varredura de rótulo→valor se a tabela vier vazia: custa nada e
+    cobre um portal que mude de layout.
+    """
+    da_tabela = _primeiro_nome((tabelas or {}).get("fornecedores"))
+    if da_tabela:
+        return da_tabela
+    return achar_fornecedor(blocos, ficha)
+
+
+def achar_fabricante_na_tabela(tabelas, blocos=(), ficha=None):
+    """Fabricante a usar: a PLANILHA primeiro, a TABELA da original depois.
+
+    Mesma precedência que `achar_fabricante` já tinha (decisão do usuário em
+    2026-08-17: a coluna MARCA/MODELO manda). O que muda é a reserva, que
+    agora lê a tabela em vez de uma varredura que não enxerga a seção.
+    """
+    if ficha is not None and getattr(ficha, "fabricante", ""):
+        return ficha.fabricante
+    da_tabela = _primeiro_nome((tabelas or {}).get("fabricantes"))
+    if da_tabela:
+        return da_tabela
+    return achar_fabricante(blocos, ficha)
 
 
 def ler_ficha_original(portal, pmib_original, callback_log=None):
@@ -245,7 +294,14 @@ def processar_ficha(portal, ficha, callback_log=None):
             _log(f"   [Erro] {resultado.erro_fatal}")
             return resultado
 
-        fabricante = achar_fabricante(blocos, ficha)
+        # A seção de Fabricantes/Fornecedores mora numa ABA própria e é
+        # TABELA, não par rótulo→valor -- por isso tem leitura separada. Antes
+        # de 2026-08-18 o robô procurava esses dois nomes na varredura de
+        # rótulo→valor, que não enxerga a seção: o fornecedor vinha sempre
+        # vazio, sem erro.
+        tabelas = extrator.ler_fabricantes_e_fornecedores(portal, callback_log)
+
+        fabricante = achar_fabricante_na_tabela(tabelas, blocos, ficha)
         if not fabricante:
             # Não é fatal: as outras seções continuam valendo, e o usuário
             # preenche o fabricante à mão. Fatal seria perder também a purga.
@@ -260,7 +316,7 @@ def processar_ficha(portal, ficha, callback_log=None):
         else:
             _log(f"   Fabricante (planilha): {fabricante}")
 
-        fornecedor = achar_fornecedor(blocos, ficha)
+        fornecedor = achar_fornecedor_na_tabela(tabelas, blocos, ficha)
         if not fornecedor:
             _log("   [Aviso] Não achei o fornecedor na ficha original -- a linha de "
                  "Fornecedor não será preenchida.")

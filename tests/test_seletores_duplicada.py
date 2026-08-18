@@ -83,7 +83,20 @@ def test_a_lista_de_ids_gerados_cobre_os_dois_widgets():
 
 
 def test_todo_seletor_e_um_xpath():
+    """Todo `XPATH_*` tem de começar como XPath.
+
+    Exceção nomeada: os `XPATH_REL_*` são FRAGMENTOS relativos, concatenados
+    depois de uma base já endereçada (`f"({linhas})[{i}]" + XPATH_REL_CELULA`)
+    -- mesma convenção que `tech_specs` usa desde o CP 5.3. Eles podem começar
+    com `/`, e um deles começa de propósito: `/td[...]` casa só FILHO DIRETO
+    da linha, enquanto `//td[...]` casaria também a célula de uma tabela
+    aninhada dentro de uma célula. Numa tela de OutSystems cheia de `<div>`
+    encaixado, a diferença deixa de ser teórica.
+    """
     for nome, valor in _todos_os_seletores():
+        if nome.startswith("XPATH_REL_"):
+            assert valor.startswith(("/", "(", ".")), f"{nome} não parece XPath: {valor}"
+            continue
         assert valor.startswith(("//", "(", ".")), f"{nome} não parece XPath: {valor}"
 
 
