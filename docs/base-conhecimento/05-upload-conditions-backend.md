@@ -2,7 +2,9 @@
 
 ## Propósito
 
-Processa as fichas de condições de armazenamento, transporte, manutenção e descarte via IA (Gemini 3.5-flash) com sistema prompt de 15 regras obrigatórias (tradução PT/ES, validação de unidades, enriquecimento com legislação). Automatiza o preenchimento das 4 abas de condições no portal PMIB via Selenium com retry de arquivo aberto.
+Processa as fichas de condições de armazenamento, transporte, manutenção e descarte via IA e automatiza o preenchimento das 4 abas de condições no portal PMIB.
+
+> ⚠️ **A política do prompt MUDOU em 2026-08-18/19 e este doc descrevia a antiga.** O texto > antigo mandava "enriquecer com legislação" e auto-corrigir `perigoso_10004` — foi > exatamente isso que fez a IA inventar norma que o fornecedor não escreveu. Hoje vale a > **REGRA 0 (fidelidade ao fornecedor)**, soberana. Ver a seção *Política do prompt* abaixo, > e `sigft/core/llm/prompts.py` → `SYSTEM_CONDICOES` como fonte de verdade.
 
 ## Entradas e Saídas
 
@@ -68,11 +70,10 @@ Processa as fichas de condições de armazenamento, transporte, manutenção e d
    - Lê células fixas de "Ficha Técnica Padrão" (H6, H17-H21, P17-P19, M23, G25-G29, S25/27/29, E31/33, J35-J36, M42/45/52/54/56/63/65, E69/J69/T69, N71)
    - Extrai lista de proteção (SN/UV/EL) via checkboxes
 
-3. **Processamento IA com 15 Regras**:
-   - System prompt obrigatório com tradução PT/ES, validação de unidades (cm, kg, °C), enriquecimento legislativo (Lei 12.305/2010, Lei 3956/09), auto-correção perigoso_10004 por contexto
-   - Entrada: JSON com PMIB, Descrição, dimensões, temperatura, etc.
-   - Saída: JSON normalizado com campos `*_pt` / `*_es`, auto-geração de textos técnicos para descarte/legislação se genéricos
-   - Retry 3 tentativas com sleep 30s se falha
+3. **Processamento IA** (ver *Política do prompt*):
+   - Entrada: JSON com PMIB, **duas descrições do material** (a do `_STATUS_PMIB`, melhor, e a da célula H6 da ficha), dimensões, peso, temperatura, e os campos de texto livre
+   - Saída: JSON normalizado com campos `*_pt` / `*_es`
+   - Retry 3 tentativas com sleep 30s se falha (hoje dentro de `LLMClient`)
 
 4. **Preenchimento Web (RPA Selenium)**:
    - Busca PMIB via XPath input + Enter
@@ -94,10 +95,71 @@ Processa as fichas de condições de armazenamento, transporte, manutenção e d
 
 5. **Atualização Status**: Abre `_STATUS_PMIB`, busca dinâmico de coluna "CONDIÇÕES", encontra PMIB com blindagem .4f, marca "COMPLETO", retry se arquivo aberto.
 
+## Política do prompt (`SYSTEM_CONDICOES`)
+
+Duas decisões do usuário, ambas de 2026-08, governam o texto. Elas parecem
+opostas e não são — é importante entender por quê antes de mexer.
+
+### 1. REGRA 0 — fidelidade ao fornecedor (soberana)
+
+A ficha é do fornecedor; a IA **traduz e padroniza**, nunca melhora. Nada de
+citar norma, lei ou cuidado que não esteja na entrada. Correção só quando o
+erro é demonstrável **a partir da própria entrada** — o teste está escrito no
+prompt: *"se você precisa saber algo sobre o material que a entrada não diz
+para concluir que está errado, então não é evidente"*.
+
+Campo em branco não pode ficar em branco (o portal recusa a gravação), então
+sai `No aplicable` / `Não aplicável` — por extenso e em cada idioma, não a
+sigla. Campo de escolha sem informação recebe a opção **negativa/neutra**.
+
+Testes: `tests/test_prompt_condicoes_fidelidade.py`.
+
+### 2. A UNIDADE DE MEDIDA é a exceção declarada
+
+Cinco campos numéricos — comprimento, largura, altura, peso líquido, peso
+bruto — são o **único** lugar onde a IA deve usar o que sabe sobre o material.
+Pedido do usuário: *"a maioria das fichas não virá unidade, mas sabendo o tipo
+de material (...) se a embalagem está 400 e estamos falando de um equipamento
+que não é muito grande, então a sugestão é que seja 40 cm"*.
+
+A razão de não ser contradição: **a fidelidade é ao tamanho real da coisa, não
+ao dígito.** Uma caixa de relé anotada "400" e gravada como 400 cm não é fiel a
+nada — é uma caixa de 4 metros que não existe.
+
+Como a dedução é ancorada (regra 3 do prompt):
+
+| | |
+|---|---|
+| unidade declarada | vence sempre; e uma unidade declarada em UMA das três medidas vale para as três |
+| instrumento (a) | o que é o material — `Descrição do material` (do `_STATUS_PMIB`) e `Descrição breve da ficha` (H6) |
+| instrumento (b) | o peso, como aferidor: `densidade = peso_kg ÷ (C × L × A em cm) × 1000` |
+| faixa plausível | 0,1 a 2 g/cm³ numa caixa embalada; nada real abaixo de ~0,02 nem acima de ~8 |
+| densidade baixa demais | a caixa suposta é grande demais ⇒ era **mm**, dividir por 10 |
+| densidade alta demais | a caixa é pequena demais ⇒ era **m**, multiplicar por 100 |
+| densidade na faixa | já estava em cm — **não mexer** |
+
+Limites, que são a parte que se esquece: a licença é **só da unidade** e só
+desses cinco campos; número que não veio não se inventa (dimensão vazia
+continua vazia); o mesmo fator vale para as três medidas; peso líquido nunca
+passa do bruto; na dúvida genuína, fica como veio. E **não arredondar** — o
+campo do portal não tem limite de casas decimais (`maxlength="30"`, sem
+máscara: `data-os-pattern=""`).
+
+Testes: `tests/test_prompt_condicoes_unidades.py`.
+
+### Fixtures
+
+`tests/fixtures/prompts/upload_conditions_{system,user}.txt` travam o texto
+contra mudança **acidental**. Elas já foram regeneradas duas vezes de
+propósito (2026-08-18 e 2026-08-19), e por isso não provam mais "igual ao de
+antes da refatoração" — quem prova a política é o par de arquivos de teste
+acima, que checa conteúdo. Uma fixture regerada não se auto-aprova.
+
+
 ## Integrações
 
 - **Planilhas**: `_STATUS_PMIB`, arquivos individuais de fichas (aba "Ficha Técnica Padrão")
-- **IA**: Gemini 3.5-flash com system prompt de 15 regras customizado
+- **IA**: `LLMClient` (provedor e modelo vêm de `config.LLM_TASKS`, tarefa `condicoes`); o texto do prompt está em `sigft/core/llm/prompts.py` → `SYSTEM_CONDICOES`
 - **Portal**: PMIB (https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList)
 - **Frontend**: Callbacks `callback_log`, `callback_ask` (PermissionError), `callback_pause` (manual intervention)
 - **Módulos relacionados**: `frontend.py` dispara via botão, `upload_tech_specs_backend.py` segue fluxo similar

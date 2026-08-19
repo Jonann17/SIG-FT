@@ -285,7 +285,17 @@ class ConditionsProcessor:
 
             dados_api_input = {
                 "pmib_codigo": pmib_codigo,
+                # As DUAS descrições vão juntas, e isso é deliberado: desde
+                # 2026-08-19 a IA precisa saber O QUE é o material para deduzir
+                # a unidade das medidas (ver regra 3 do SYSTEM_CONDICOES, e o
+                # pedido do usuário: *"a maioria das fichas não virá unidade,
+                # mas sabendo o tipo de material..."*). Quanto mais sinal sobre
+                # o material, melhor a dedução -- e as duas fontes falham em
+                # situações diferentes: a do `_STATUS_PMIB` é a melhor quando
+                # existe, mas o código pode não estar na planilha; o H6 é da
+                # própria ficha e está sempre lá, ainda que mais pobre.
                 'Descrição do material': descricao,
+                'Descrição breve da ficha': dados_brutos.get('descricao_breve', ''),
                 "dimensoes": dados_brutos.get("dimensoes"),
                 'controle_temperatura': dados_brutos.get("controle_temperatura"),
                 "posicao_armazenamento": dados_brutos.get("posicao_armazenamento"),
