@@ -354,7 +354,7 @@ def test_a_linha_do_fornecedor_recebe_o_CODIGO_DO_MATERIAL(monkeypatch):
     escritas = []
     monkeypatch.setattr(
         robo.injetor, "escrever_referencia",
-        lambda _p, codigo, _log=None, id_do_campo="", nome_da_secao="referencia":
+        lambda _p, codigo, _log=None, id_do_campo="", nome_da_secao="referencia", log_auditoria=None:
             escritas.append((nome_da_secao, codigo))
             or injetor.ResultadoDaSecao(nome_da_secao, True, ""))
 
@@ -396,7 +396,7 @@ def test_so_a_GE_recebe_o_CODIGO_CMI(monkeypatch):
     na_ge = []
     monkeypatch.setattr(
         robo.injetor, "escrever_referencia_da_ge",
-        lambda _p, referencia, _log=None: na_ge.append(referencia)
+        lambda _p, referencia, _log=None, log_auditoria=None: na_ge.append(referencia)
         or injetor.ResultadoDaSecao("ge_vernova", True, ""))
 
     robo.processar_ficha(

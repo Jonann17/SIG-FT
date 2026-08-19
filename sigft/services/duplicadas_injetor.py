@@ -64,6 +64,13 @@ class ResultadoDaSecao:
         # verdade quando ela vier. Para a PLANILHA os dois casos são iguais: a
         # seção não está completa, então não recebe COMPLETO.
         self.pendente = pendente
+        # A linha EXISTE nesta ficha? (2026-08-19) Nem toda ficha tem as três
+        # linhas da seção: no print do usuário, a de Fornecedor é FIXA -- não
+        # tem combo a escolher, e o campo de Referência dela é o do ícone ⓘ.
+        # Sem esta distinção, "a ficha não tem essa linha" era reportado como
+        # falha e o passo seguinte ainda tentava escrever nela, batendo na
+        # ambiguidade de campos. Ausência não é falha.
+        self.tem_linha = True
 
     def __repr__(self):
         if self.pendente:
@@ -161,18 +168,48 @@ def escolher_fornecedor(portal, nome_fornecedor, callback_log=None):
 
     O combo do fornecedor estava mapeado (`PLACEHOLDER_COMBO_FORNECEDOR`,
     levantado do DOM em 2026-08-17) e **nunca era usado por ninguém**: o robô
-    ia direto escrever no campo da GE Vernova. A seção tem TRÊS linhas, com
-    três valores diferentes, e o código tratava duas delas como uma:
+    ia direto escrever no campo da linha fixa.
 
-        Fabricante   combo -> Referência = CÓDIGO DO MATERIAL
-        Fornecedor   combo -> Referência = CÓDIGO DO MATERIAL   <- faltava
-        GE Vernova   campo fixo (ícone ⓘ) = CÓDIGO CMI / CÓDIGO GE
+    ⚠️ QUANTAS LINHAS A SEÇÃO TEM DEPENDE DA FICHA -- corrigido em 2026-08-19,
+    com o print da tela na mão. Não é constante, e supor que fosse é o que
+    produziu os dois `[Erro]` da sessão real:
+
+        Fabricante   combo -> Referência = CÓDIGO DO MATERIAL   (sempre existe)
+        Fornecedor   combo -> Referência = CÓDIGO DO MATERIAL   (nem sempre)
+        Linha FIXA   campo com ícone ⓘ   = CÓDIGO CMI / CÓDIGO GE
+
+    Na 4500063671.1418 a do meio NÃO EXISTE: o fornecedor é texto fixo e a
+    linha dele é a do ícone ⓘ. Quem decide é a TELA -- zero combos devolve
+    `tem_linha=False`, e o robô não escreve numa linha que não está lá.
 
     Qual fornecedor escolher vem da FICHA ORIGINAL -- *"vem da ficha original,
     lendo qual fornecedor foi preenchido"*. Não é fixo (a leitura anterior, de
     que o fornecedor era sempre a própria empresa, confundia esta linha com a
     da GE Vernova).
     """
+    _log = _log_de(callback_log)
+
+    # ⚠️ ANTES DE PROCURAR O COMBO: esta ficha TEM a linha de fornecedor com
+    # combo? No print de 2026-08-19 (ficha 4500063671.1418) não tem -- o bloco
+    # "Adicionar Fornecedor / Referência" traz o fornecedor como TEXTO FIXO
+    # ("GE ENERGIAS RENOVAVEIS LTDA") e um campo de Referência marcado com o
+    # ícone ⓘ, que é justamente o que este módulo cataloga como "a linha da GE
+    # Vernova". Ou seja: nessa ficha as duas são a MESMA linha.
+    #
+    # Zero combos não é erro: é uma seção de DUAS linhas em vez de três.
+    # Tratar como erro custava caro -- a ficha saía "0 de 1" por causa de uma
+    # linha que ela não tem, e o passo seguinte ainda tentava escrever,
+    # caindo na ambiguidade de "2 campos de Referência na tela".
+    quantos = portal.engine.contar(sel.XPATH_COMBO_POR_PLACEHOLDER.format(
+        texto=_literal(sel.PLACEHOLDER_COMBO_FORNECEDOR)))
+    if quantos == 0:
+        _log("      Sem combo de fornecedor nesta ficha: a linha de Fornecedor é "
+             "FIXA (a do ícone ⓘ) e recebe o CÓDIGO CMI/GE da planilha. "
+             "Nada a escolher aqui.")
+        resultado = ResultadoDaSecao("fornecedor", True, "linha fixa (sem combo)")
+        resultado.tem_linha = False
+        return resultado
+
     return _escolher_no_combo(
         portal, "fornecedor", nome_fornecedor,
         achar_combo_do_fornecedor(portal, callback_log),
@@ -388,8 +425,68 @@ def _literal(texto):
     return "concat('" + "', \"'\", '".join(texto.split("'")) + "')"
 
 
+def _clicar_no_mais(portal, seletor_mais, callback_log=None):
+    """Clica no "+" DIZENDO por que falhou, em vez de engolir.
+
+    `safe_click` delega para `engine.click`, que engole a exceção por
+    contrato -- e foi exatamente isso que transformou um "+" que não funcionou
+    em log de sucesso na sessão de 2026-08-19. O caminho estrito não conserta
+    o clique; conserta o SILÊNCIO, que é o que impedia diagnosticar.
+    """
+    _log = _log_de(callback_log)
+    try:
+        portal.engine.click_estrito(seletor_mais)
+        return True
+    except Exception as erro:  # noqa: BLE001 -- ver docstring
+        _log(f"      [!] O '+' não aceitou o clique: {type(erro).__name__}: {erro}")
+        return False
+
+
+def linha_entrou_na_tabela(portal, seletor_input, referencia):
+    """O "+" levou mesmo a linha para a tabela?
+
+    A pergunta parece precisar do DOM da tabela e não precisa: o que prova o
+    commit é o **formulário de adicionar largar o valor**. São dois desfechos,
+    e os dois valem:
+
+      - linha do FABRICANTE: o campo de Referência é renderizado ao escolher
+        o fabricante e some quando a linha entra -- é a mecânica do "campo que
+        nasce", ao contrário;
+      - linha FIXA (fornecedor/GE): o campo continua na tela, mas esvazia.
+
+    Se o valor digitado AINDA está lá, nada foi comitado. Foi o caso real: no
+    passo seguinte o robô contou DOIS campos de Referência em vez de um,
+    porque o do fabricante seguia na tela com "2904616" dentro.
+    """
+    try:
+        atual = portal.engine.get_value(seletor_input)
+    except Exception:  # noqa: BLE001 -- campo sumiu da tela; é o desfecho bom
+        return True
+    return str(atual or "").strip() != str(referencia or "").strip()
+
+
+def fotografar_bloco_da_linha(portal, seletor_mais, seletor_input,
+                              nome_da_secao, log_auditoria=None):
+    """Despeja no log de AUDITORIA o HTML do campo e do "+" desta linha.
+
+    Só é chamada quando a linha não entrou -- ou seja, no único momento em que
+    o HTML tem informação nova. Falha em silêncio de propósito: uma foto que
+    não sai não pode derrubar a ficha, e o que ela documenta já está dito em
+    texto no console.
+    """
+    if log_auditoria is None:
+        return
+    for titulo, seletor in ((f"{nome_da_secao}: campo de Referência", seletor_input),
+                            (f"{nome_da_secao}: o '+'", seletor_mais)):
+        try:
+            html = portal.engine.html_do_elemento(seletor)
+        except Exception:  # noqa: BLE001 -- ver docstring
+            html = ""
+        log_auditoria.bloco(titulo, html or f"(nada casou {seletor})")
+
+
 def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo="",
-                        nome_da_secao="referencia"):
+                        nome_da_secao="referencia", log_auditoria=None):
     """A regra do `'D`: tenta o código cru, depois `'D1`, `'D2`… até o portal
     aceitar.
 
@@ -459,12 +556,28 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
             avisos_vistos.append(aviso)
             continue
 
-        portal.safe_click(seletor_mais)
+        clicou = _clicar_no_mais(portal, seletor_mais, callback_log)
         time.sleep(PAUSA_APOS_DIGITAR)
         aviso = texto_do_aviso_de_colisao(portal)
         if aviso:
             avisos_vistos.append(aviso)
             continue
+
+        # ⚠️ A PROVA. Até 2026-08-19 bastava "cliquei e o portal não reclamou"
+        # para reportar sucesso -- e o usuário só descobriu que a tabela estava
+        # vazia ao abrir a ficha. Escrever no campo não é adicionar a linha.
+        if not linha_entrou_na_tabela(portal, seletor_input, referencia):
+            _log(f"      [Erro] A linha NÃO ENTROU na tabela: escrevi "
+                 f"{referencia!r}, cliquei no '+' e o campo continua com o "
+                 f"valor. Adicione à mão antes de salvar."
+                 + ("" if clicou else " (o clique já havia falhado, acima)"))
+            # O HTML do bloco vai para o ARQUIVO de auditoria (nunca para o
+            # console). Sem ele, a próxima rodada devolve a mesma mensagem e a
+            # pergunta "por que o '+' não comitou?" continua aberta -- e a
+            # resposta só existe no DOM daquele instante.
+            fotografar_bloco_da_linha(portal, seletor_mais, seletor_input,
+                                      nome_da_secao, log_auditoria)
+            return ResultadoDaSecao(nome_da_secao, False, "a linha não entrou")
 
         if tentativa > 1:
             _log(f"      Referência: {referencia} (as {tentativa - 1} anteriores "
@@ -621,19 +734,23 @@ def limpar_caracteristicas(portal, pmib_original, callback_log=None):
 # fixo." (usuário, 2026-08-18)
 #
 # ⚠️ ESTA FUNÇÃO SE CHAMAVA `escrever_referencia_do_fornecedor` E RECEBIA O
-# VALOR ERRADO. A leitura anterior tratava "fornecedor" e "GE Vernova" como a
-# mesma linha -- daí o defeito relatado: *"ele está fazendo no campo de
-# fornecimento da GE"*. São três linhas, com três valores:
-#
-#     Fabricante   combo -> Referência = CÓDIGO DO MATERIAL
-#     Fornecedor   combo -> Referência = CÓDIGO DO MATERIAL  (escolher_fornecedor)
-#     GE Vernova   campo fixo, ícone ⓘ  = CÓDIGO CMI / CÓDIGO GE  (aqui)
-#
-# O nome antigo era a causa do erro, não um detalhe dele: chamar de
-# "fornecedor" a linha da GE fazia o valor do fornecedor parecer que ia para o
+# VALOR ERRADO -- daí o defeito relatado: *"ele está fazendo no campo de
+# fornecimento da GE"*. O nome antigo era a causa, não um detalhe dela: chamar
+# de "fornecedor" esta linha fazia o valor do fornecedor parecer que ia para o
 # lugar certo.
+#
+# ⚠️ E O QUE ESTA LINHA É, afinal, depende da ficha (2026-08-19). No print da
+# 4500063671.1418 ela É a linha de Fornecedor -- o bloco "Adicionar Fornecedor
+# / Referência" traz o fornecedor como texto fixo e o campo de Referência com
+# o ícone ⓘ. Noutra ficha pode haver um combo de fornecedor ANTES dela.
+#
+# O que NÃO depende da ficha: **o valor aqui vem sempre da planilha**. *"Não
+# devemos copiar e colar [a referência da ficha original], pois esse número
+# muda quando estamos trabalhando para outro sistema; essa informação deve vir
+# exclusivamente da planilha _STATUS_PMIB"* (usuário, 2026-08-19).
 
-def escrever_referencia_da_ge(portal, referencia, callback_log=None):
+def escrever_referencia_da_ge(portal, referencia, callback_log=None,
+                              log_auditoria=None):
     """Escreve a referência da GE Vernova (`CÓDIGO CMI` / `CÓDIGO GE`).
 
     *"Quando a coluna CÓDIGO CMI ou CÓDIGO GE estiver preenchida no
@@ -671,7 +788,8 @@ def escrever_referencia_da_ge(portal, referencia, callback_log=None):
         pass
 
     resultado = escrever_referencia(portal, referencia, callback_log,
-                                    id_do_campo=id_do_campo)
+                                    id_do_campo=id_do_campo,
+                                    log_auditoria=log_auditoria)
     # `escrever_referencia` nomeia a seção como "referencia"; aqui ela é a da
     # GE Vernova, e o nome é o que a planilha usa para decidir a coluna.
     resultado.nome = "ge_vernova"

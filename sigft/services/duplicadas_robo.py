@@ -60,11 +60,18 @@ ROTULOS_DE_FORNECEDOR = (
 # ---------------------------------------------------------------------------
 # 2026-08-17, depois da 1ª sessão real:
 #
-#   FABRICANTE  -> da PLANILHA (coluna MARCA/MODELO). *"Você sabe que tem, já
-#                  te pedi para mapear no conhecimento do _STATUS_PMIB todas as
-#                  informações que temos hoje."* Estava mapeado em
-#                  `config.COL_MARCA_MODELO` desde 2026-08-13 e eu perguntei em
-#                  vez de olhar. A ficha original entra só como reserva.
+#   FABRICANTE (nome) -> da FICHA ORIGINAL, com a planilha (MARCA/MODELO) de
+#                  reserva. ⚠️ INVERTIDO EM 2026-08-19, a pedido do usuário:
+#                  *"o código do material do fabricante deve vir da
+#                  _STATUS_PMIB, mas o nome do fabricante vem da ficha
+#                  original"*. Até então mandava a planilha (decisão dele em
+#                  2026-08-17). Divergência entre as duas vai para o log.
+#
+#   REFERÊNCIAS -> SEMPRE da PLANILHA, nunca copiadas da ficha original:
+#                  *"esse número muda quando estamos trabalhando para outro
+#                  sistema"* (2026-08-19). CÓDIGO DO MATERIAL na linha do
+#                  fabricante; CÓDIGO CMI/GE na linha fixa. O que se lê da
+#                  original é NOME, jamais referência.
 #
 #   FORNECEDOR  -> da FICHA ORIGINAL. *"O fornecedor você pode tirar da ficha
 #                  original, acho que seria mais correto, só caso lá estiver
@@ -79,10 +86,17 @@ ROTULOS_DE_FORNECEDOR = (
 # seria mentir na planilha, que é onde a mentira dura mais.
 #
 # 2026-08-18: a seção de Fabricantes/Fornecedores passou de três resultados
-# para cinco, porque o que era UMA linha ("fornecedor") virou três com valores
-# diferentes -- combo do fornecedor, referência dele, e a referência da GE
-# Vernova. Todas alimentam a mesma coluna: a ficha só está com as Informações
-# Gerais completas quando as três linhas ficaram certas.
+# para cinco -- combo do fornecedor, referência dele, e a referência da linha
+# fixa. Todas alimentam a mesma coluna.
+#
+# ⚠️ 2026-08-19: QUANTAS linhas a seção tem depende da FICHA, não é constante.
+# No print da 4500063671.1418 são DUAS -- o fornecedor é texto fixo (GE
+# ENERGIAS RENOVAVEIS LTDA) e o campo de Referência dele é o do ícone ⓘ, a
+# mesma linha que aqui se chama "ge_vernova". As chaves abaixo continuam as
+# cinco de propósito: `escolher_fornecedor` devolve `tem_linha=False` quando
+# não há combo, e aí "fornecedor" sai ok sem que nada seja escrito. Reduzir a
+# lista faria a ficha de TRÊS linhas (a com dois fornecedores, que o usuário
+# mostrou em 2026-08-18) deixar de ser conferida.
 SECOES_DA_PLANILHA = {
     config.COL_INFO_GERAIS: (
         "fabricante", "referencia",
@@ -231,18 +245,34 @@ def achar_fornecedor_na_tabela(tabelas, blocos=(), ficha=None):
     return achar_fornecedor(blocos, ficha)
 
 
-def achar_fabricante_na_tabela(tabelas, blocos=(), ficha=None):
-    """Fabricante a usar: a PLANILHA primeiro, a TABELA da original depois.
+def achar_fabricante_na_tabela(tabelas, blocos=(), ficha=None, callback_log=None):
+    """Fabricante a usar: a FICHA ORIGINAL primeiro, a planilha como reserva.
 
-    Mesma precedência que `achar_fabricante` já tinha (decisão do usuário em
-    2026-08-17: a coluna MARCA/MODELO manda). O que muda é a reserva, que
-    agora lê a tabela em vez de uma varredura que não enxerga a seção.
+    ⚠️ A PRECEDÊNCIA INVERTEU EM 2026-08-19, e a inversão é do usuário:
+    *"o código do material do fabricante deve vir da _STATUS_PMIB, mas o NOME
+    do fabricante vem da ficha original"*. Antes mandava a coluna MARCA/MODELO
+    (decisão dele em 2026-08-17).
+
+    A divisão faz sentido: o nome do fabricante é um fato da peça, e a ficha
+    original é onde ele foi conferido; o código do material é do CONTRATO, e
+    esse só a planilha conhece.
+
+    Quando as duas fontes DIVERGEM, as duas vão para o log. Divergência aqui é
+    quase sempre grafia ("PHOENIX CONTACT" x "PHOENIX CONTACTS S.A."), mas
+    pode ser a planilha desatualizada -- e a escolha silenciosa esconderia as
+    duas.
     """
-    if ficha is not None and getattr(ficha, "fabricante", ""):
-        return ficha.fabricante
+    _log = _log_de(callback_log)
     da_tabela = _primeiro_nome((tabelas or {}).get("fabricantes"))
+    da_planilha = getattr(ficha, "fabricante", "") if ficha is not None else ""
+
     if da_tabela:
+        if da_planilha and da_planilha.strip().upper() != da_tabela.strip().upper():
+            _log(f"   [i] Fabricante diverge: ficha original {da_tabela!r} x "
+                 f"planilha {da_planilha!r}. Uso o da ficha original, como combinado.")
         return da_tabela
+    if da_planilha:
+        return da_planilha
     return achar_fabricante(blocos, ficha)
 
 
@@ -302,7 +332,8 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
         tabelas = extrator.ler_fabricantes_e_fornecedores(
             portal, callback_log, log_auditoria)
 
-        fabricante = achar_fabricante_na_tabela(tabelas, blocos, ficha)
+        fabricante = achar_fabricante_na_tabela(tabelas, blocos, ficha,
+                                                callback_log)
         if not fabricante:
             # Não é fatal: as outras seções continuam valendo, e o usuário
             # preenche o fabricante à mão. Fatal seria perder também a purga.
@@ -336,7 +367,8 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
         # pegar a primeira "Referência" da tela -- que é a da GE.
         resultado.registrar(injetor.escrever_referencia(
             portal, ficha.codigo_material, callback_log,
-            id_do_campo=secao_fabricante.id_do_campo_de_referencia))
+            id_do_campo=secao_fabricante.id_do_campo_de_referencia,
+            log_auditoria=log_auditoria))
 
         # --- Linha do FORNECEDOR ---------------------------------------
         # Mesma mecânica do fabricante -- combo, e o campo certo é o que NASCE
@@ -352,10 +384,19 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
         # código supor qual das duas deve mudar.
         secao_fornecedor = resultado.registrar(
             injetor.escolher_fornecedor(portal, fornecedor, callback_log))
-        resultado.registrar(injetor.escrever_referencia(
-            portal, ficha.codigo_material, callback_log,
-            id_do_campo=secao_fornecedor.id_do_campo_de_referencia,
-            nome_da_secao="referencia_fornecedor"))
+        # ⚠️ SÓ ESCREVE SE A LINHA EXISTIR (2026-08-19). Nem toda ficha tem a
+        # linha de fornecedor com combo: no print da 4500063671.1418 o
+        # fornecedor é TEXTO FIXO e o campo de Referência dela é o do ícone ⓘ
+        # -- a mesma linha que este módulo chama de "GE Vernova". Escrever
+        # assim mesmo era o que produzia `2 campos de Referência na tela e o
+        # fabricante não indicou qual é o dele`, e sem a recusa poria o código
+        # do material na linha da GE.
+        if secao_fornecedor.tem_linha:
+            resultado.registrar(injetor.escrever_referencia(
+                portal, ficha.codigo_material, callback_log,
+                id_do_campo=secao_fornecedor.id_do_campo_de_referencia,
+                nome_da_secao="referencia_fornecedor",
+                log_auditoria=log_auditoria))
 
         # --- Linha da GE VERNOVA ---------------------------------------
         # Campo FIXO (o do ícone ⓘ), e o único que recebe CÓDIGO CMI /
@@ -367,7 +408,8 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
         # como "erro fatal" -- a ficha morreria por causa de um campo
         # OPCIONAL. Mesma lição do log do fabricante, em 2026-08-17.
         resultado.registrar(injetor.escrever_referencia_da_ge(
-            portal, getattr(ficha, "codigo_fornecedor", ""), callback_log))
+            portal, getattr(ficha, "codigo_fornecedor", ""), callback_log,
+            log_auditoria=log_auditoria))
 
         portal.clicar_salvar_visivel("Fabricantes e Fornecedores")
         resultado.registrar(

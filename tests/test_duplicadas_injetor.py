@@ -70,6 +70,10 @@ class _EngineFalso:
         self.valores = {}                 # o que o campo REALMENTE guardou
         self.pendentes = {}               # digitado, ainda sem blur
         self.cliques = []
+        # Preenchido por `_PortalFalso.__init__`: o "+" é do portal, mas quem
+        # o recebe é o engine (caminho estrito). Sem esse elo, o duplo não
+        # consegue reproduzir "cliquei e a linha entrou".
+        self._portal = None
 
     # -- escrita
     def registrar_fill(self, seletor, texto):
@@ -87,6 +91,26 @@ class _EngineFalso:
     def click_raw(self, seletor):
         # Clique por JavaScript NÃO move o foco -- nada de blur aqui.
         self.cliques.append(seletor)
+
+    def click_estrito(self, seletor):
+        """O caminho do "+": levanta em vez de engolir (2026-08-19).
+
+        `portal.erro_no_clique_estrito`, quando setado, é o que o duplo
+        levanta -- reproduz o clique que não pega no elemento.
+        """
+        erro = getattr(self._portal, "erro_no_clique_estrito", None) if self._portal else None
+        if erro is not None:
+            raise erro
+        if self._portal is None:
+            self.click_nativo(seletor)
+            return
+        # Passa pelo PORTAL, e não direto: é lá que moram as observações
+        # (`portal.cliques`) e os ganchos que os outros testes usam -- o
+        # `_PortalQueRecusa`, por exemplo, liga o aviso de colisão no clique do
+        # "+". Em produção `click_estrito` é o mesmo clique, só que estrito;
+        # desviar do portal no duplo criaria uma diferença que não existe.
+        self._portal.safe_click(seletor)
+        self._portal.aplicar_efeito_do_mais(seletor)
 
     # -- leitura
     def get_value(self, seletor):
@@ -143,6 +167,20 @@ class _EngineFalso:
 class _PortalFalso:
     def __init__(self, engine):
         self.engine = engine
+        engine._portal = self
+        # Efeito do "+" quando a linha ENTRA na tabela. São os dois desfechos
+        # observados no portal, e os dois provam a mesma coisa -- o formulário
+        # largou o valor: o campo do fabricante SOME (o de adicionar se
+        # recolhe) e o campo fixo da GE ESVAZIA.
+        #
+        # O default é o desfecho BOM, e de propósito: o normal do portal é o
+        # "+" funcionar. Fosse o contrário, todo teste que não fala do "+"
+        # teria de carregar um remendo, e o duplo passaria a ensinar que o
+        # normal é falhar. Quem reproduz o defeito de 2026-08-19 desliga os
+        # dois explicitamente -- ver test_duplicadas_linha_do_fornecedor.py.
+        self.comita_no_mais = False   # o campo some (linha do fabricante)
+        self.limpa_no_mais = True     # o campo esvazia (linha fixa) -- default
+        self.erro_no_clique_estrito = None
         self.cliques = []
         self.preenchidos = []
         self.excluidas = []
@@ -168,6 +206,21 @@ class _PortalFalso:
         self.excluidas.append(descricao)
         self.engine.linhas.pop(indice - 1)
         return True
+
+    def aplicar_efeito_do_mais(self, seletor):
+        if "fa-plus-circle" not in seletor:
+            return
+        if str(self.engine.aviso_colisao or "").strip():
+            # Colisão de verdade: o portal recusa e a linha NÃO entra.
+            # `.strip()` e não truthiness -- o bloco de aviso fica no DOM o
+            # tempo todo, vazio ou com espaços, e foi confundir "presente" com
+            # "tem conteúdo" que quebrou a 1ª sessão real.
+            return
+        if self.comita_no_mais:
+            self.engine.ids_referencia = []
+            self.engine.valores.clear()
+        elif self.limpa_no_mais:
+            self.engine.valores.clear()
 
     def clicar_salvar_visivel(self, nome_secao=""):
         self.salvou.append(nome_secao)
