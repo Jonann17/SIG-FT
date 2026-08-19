@@ -470,6 +470,24 @@ def campos_em_branco_na_origem(dados_brutos):
     return vazios
 
 
+# Quanto se espera a aba de Condições assentar depois do clique.
+#
+# ⚠️ Esta constante existe por causa de um defeito MEDIDO em 2026-08-19, no
+# primeiro lote real depois da migração: em cada seção, o PRIMEIRO campo --
+# sempre o de espanhol, sempre a linha logo após o clique da aba -- chegava
+# vazio ao portal, e a gravação morria com "Por favor, verifique os campos".
+#
+# O que provou que o defeito é do ROBÔ e não da IA: o Excel gerado no mesmo
+# lote (31 fichas) tem ZERO células de texto vazias. `legislacao_es`,
+# `cuidad_preserv_es` e `embalagem_transp_es` estavam todos preenchidos. O
+# valor existia e não chegava na tela.
+#
+# A aba do OutSystems RE-RENDERIZA o conteúdo ao ser ativada. O robô escrevia
+# no campo antes de a renderização assentar, e o re-render limpava o que ele
+# tinha acabado de escrever -- por isso só o primeiro campo se perdia: quando
+# chegava no segundo, a tela já tinha assentado.
+PAUSA_ABA_ASSENTAR = 1.0
+
 SECOES_DE_CONDICOES = ("Armazenamento", "Transporte", "Manutenção", "Descarte")
 
 
@@ -544,6 +562,65 @@ class UploadAutomation:
         seletor = locator[1] if isinstance(locator, tuple) else locator
         self.portal.check_or_uncheck(seletor, should_check)
 
+    def abrir_aba(self, seletor_aba, seletor_primeiro_campo, nome, callback_log=None):
+        """Clica na aba e ESPERA ela assentar antes de devolver.
+
+        A espera é pelo primeiro campo ficar visível, e não um `sleep` cego: o
+        campo visível é a evidência de que a re-renderização terminou. O
+        `sleep` fica como piso mínimo depois disso, porque "visível" e
+        "estável" não são a mesma coisa num widget que anima.
+
+        Ver `PAUSA_ABA_ASSENTAR` para o defeito que motivou isto.
+        """
+        self.safe_click(seletor_aba)
+        try:
+            self.engine.wait_visible(seletor_primeiro_campo)
+        except Exception:  # noqa: BLE001
+            if callback_log:
+                callback_log(f"      [!] A aba '{nome}' não mostrou o primeiro campo a tempo. "
+                             f"Vou tentar preencher assim mesmo.")
+        time.sleep(PAUSA_ABA_ASSENTAR)
+
+    def preencher_conferindo(self, seletor, texto, nome_campo,
+                             callback_log=None, pendencias=None):
+        """Escreve, RELÊ e reescreve uma vez se o portal engoliu o valor.
+
+        É o mesmo remédio que `tech_specs._preencher_input_com_auditoria` já
+        usava ("o site zerou o valor"), agora em Condições -- onde ele faltava
+        e custou um lote inteiro.
+
+        Devolve `True` se o campo terminou com o texto pedido. Texto vazio não
+        é conferido: o portal exige campo preenchido, mas quem decide o que vai
+        nele é a IA (ver `SYSTEM_CONDICOES`), e um campo que o JSON mandou
+        vazio é problema de outra camada -- reclamar dele aqui só criaria
+        ruído em cima de um defeito que já tem dono.
+        """
+        alvo = str(texto or "")
+        self.safe_send_keys(seletor, alvo)
+        if not alvo.strip():
+            return True
+
+        for tentativa in (1, 2):
+            try:
+                atual = str(self.engine.get_value(seletor) or "")
+            except Exception:  # noqa: BLE001
+                return True  # não dá para conferir; não inventa pendência
+            if atual.strip() == alvo.strip():
+                return True
+            if tentativa == 1:
+                if callback_log:
+                    callback_log(f"      [!] '{nome_campo}' ficou {atual.strip()[:20]!r} "
+                                 f"depois de escrito. Reescrevendo.")
+                time.sleep(PAUSA_ENTRE_CAMPOS)
+                self.safe_send_keys(seletor, alvo)
+
+        if callback_log:
+            callback_log(f"      [!] '{nome_campo}' NÃO aceitou o valor em duas tentativas "
+                         f"-- preencher à mão.")
+        if pendencias is not None:
+            pendencias.append(f"campo '{nome_campo}' não aceitou o valor")
+        return False
+
     def processar_lista(self, lista_fichas, caminho_status, callback_ask=None, callback_log=None, callback_pause=None):
         """Preenche as Condições de cada ficha no portal.
 
@@ -604,9 +681,12 @@ class UploadAutomation:
                     continue  # Pula ficha se falhar a aba principal
 
                 try:
-                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_PackingLength"]', ficha["dimensoes"]["comprimento"])
-                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_PackagingWidth"]', ficha["dimensoes"]["largura"])
-                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_PackagingHeight"]', ficha["dimensoes"]["altura"])
+                    self.preencher_conferindo('//*[@id="b10-b17-b1-Input_PackingLength"]', ficha["dimensoes"]["comprimento"],
+                                              "Input_PackingLength", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b1-Input_PackagingWidth"]', ficha["dimensoes"]["largura"],
+                                              "Input_PackagingWidth", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b1-Input_PackagingHeight"]', ficha["dimensoes"]["altura"],
+                                              "Input_PackagingHeight", callback_log, pendencias)
                 except Exception as e:
                     _registrar_pendencia(pendencias, "nas Dimensões", e, callback_log)
 
@@ -664,16 +744,20 @@ class UploadAutomation:
                     nocivo_data = ficha["nocivo"]
                     if nocivo_data["status"] == "Nocivo":
                         self.safe_click('//*[@id="b10-b17-b1-RadioButton2-input"]')
-                        self.safe_send_keys('//*[@id="b10-b17-b1-TextArea_StorageCareES"]', nocivo_data["cuidado_es"])
-                        self.safe_send_keys('//*[@id="b10-b17-b1-TextArea_StorageCarePT"]', nocivo_data["cuidado_pt"])
+                        self.preencher_conferindo('//*[@id="b10-b17-b1-TextArea_StorageCareES"]', nocivo_data["cuidado_es"],
+                                                  "TextArea_StorageCareES", callback_log, pendencias)
+                        self.preencher_conferindo('//*[@id="b10-b17-b1-TextArea_StorageCarePT"]', nocivo_data["cuidado_pt"],
+                                                  "TextArea_StorageCarePT", callback_log, pendencias)
                     else:
                         self.safe_click('//*[@id="b10-b17-b1-RadioButton1-input"]')
                 except Exception as e:
                     _registrar_pendencia(pendencias, "em Nocivo", e, callback_log)
 
                 try:
-                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_LiquidWeight"]', ficha["peso"]["liquido"])
-                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_GrossWeight"]', ficha["peso"]["bruto"])
+                    self.preencher_conferindo('//*[@id="b10-b17-b1-Input_LiquidWeight"]', ficha["peso"]["liquido"],
+                                              "Input_LiquidWeight", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b1-Input_GrossWeight"]', ficha["peso"]["bruto"],
+                                              "Input_GrossWeight", callback_log, pendencias)
                 except Exception as e:
                     _registrar_pendencia(pendencias, "nos Pesos", e, callback_log)
 
@@ -698,7 +782,8 @@ class UploadAutomation:
                     _registrar_pendencia(pendencias, "na Proteção", e, callback_log)
 
                 try:
-                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_Stacking"]', ficha.get("empilhamento", ""))
+                    self.preencher_conferindo('//*[@id="b10-b17-b1-Input_Stacking"]', ficha.get("empilhamento", ""),
+                                              "Input_Stacking", callback_log, pendencias)
                 except Exception as e:
                     _registrar_pendencia(pendencias, "no Empilhamento", e, callback_log)
 
@@ -706,8 +791,10 @@ class UploadAutomation:
                     cuidados_data = ficha["outros_cuidados"]
                     if cuidados_data["status"] == "SIM":
                         self.safe_click('//*[@id="b10-b17-b1-RadioButton6-input"]')
-                        self.safe_send_keys('//*[@id="b10-b17-b1-TextArea_OtherCareES"]', cuidados_data["cuidado_es"])
-                        self.safe_send_keys('//*[@id="b10-b17-b1-TextArea_OtherCarePT"]', cuidados_data["cuidado_pt"])
+                        self.preencher_conferindo('//*[@id="b10-b17-b1-TextArea_OtherCareES"]', cuidados_data["cuidado_es"],
+                                                  "TextArea_OtherCareES", callback_log, pendencias)
+                        self.preencher_conferindo('//*[@id="b10-b17-b1-TextArea_OtherCarePT"]', cuidados_data["cuidado_pt"],
+                                                  "TextArea_OtherCarePT", callback_log, pendencias)
                     else:
                         self.safe_click('//*[@id="b10-b17-b1-RadioButton3-input"]')
                 except Exception as e:
@@ -717,11 +804,17 @@ class UploadAutomation:
 
                 # --- ABA 2: TRANSPORTE ---
                 try:
-                    self.safe_click('//*[@id="b10-b17-Title"]/div[3]')
-                    self.safe_send_keys('//*[@id="b10-b17-b3-TextArea_TransportPackagingES"]', ficha.get("embalagem_transp_es", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b3-TextArea_TransportPackagingPT"]', ficha.get("embalagem_transp_pt", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b3-TextArea_PositionCareES"]', ficha.get("posicao_icagem_es", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b3-TextArea_PositionCarePT"]', ficha.get("posicao_icagem_pt", ""))
+                    # A aba re-renderiza ao abrir e limpava o 1º campo escrito.
+                    self.abrir_aba('//*[@id="b10-b17-Title"]/div[3]',
+                                   '//*[@id="b10-b17-b3-TextArea_TransportPackagingES"]', "Transporte", callback_log)
+                    self.preencher_conferindo('//*[@id="b10-b17-b3-TextArea_TransportPackagingES"]', ficha.get("embalagem_transp_es", ""),
+                                              "TextArea_TransportPackagingES", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b3-TextArea_TransportPackagingPT"]', ficha.get("embalagem_transp_pt", ""),
+                                              "TextArea_TransportPackagingPT", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b3-TextArea_PositionCareES"]', ficha.get("posicao_icagem_es", ""),
+                                              "TextArea_PositionCareES", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b3-TextArea_PositionCarePT"]', ficha.get("posicao_icagem_pt", ""),
+                                              "TextArea_PositionCarePT", callback_log, pendencias)
                 except Exception as e:
                     _registrar_pendencia(pendencias, "na aba Transporte", e, callback_log)
 
@@ -729,13 +822,21 @@ class UploadAutomation:
 
                 # --- ABA 3: MANUTENÇÃO ---
                 try:
-                    self.safe_click('//*[@id="b10-b17-Title"]/div[4]')
-                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_PreservationCareES"]', ficha.get("cuidad_preserv_es", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_PreservationCarePT"]', ficha.get("cuidad_preserv_pt", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_CleaningMethodES"]', ficha.get("limpeza_secagem_es", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_CleaningMethodPT"]', ficha.get("limpeza_secagem_pt", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_ToolPreservationES"]', ficha.get("ferramentas_es", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_ToolPreservationPT"]', ficha.get("ferramentas_pt", ""))
+                    # A aba re-renderiza ao abrir e limpava o 1º campo escrito.
+                    self.abrir_aba('//*[@id="b10-b17-Title"]/div[4]',
+                                   '//*[@id="b10-b17-b4-TextArea_PreservationCareES"]', "Manutenção", callback_log)
+                    self.preencher_conferindo('//*[@id="b10-b17-b4-TextArea_PreservationCareES"]', ficha.get("cuidad_preserv_es", ""),
+                                              "TextArea_PreservationCareES", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b4-TextArea_PreservationCarePT"]', ficha.get("cuidad_preserv_pt", ""),
+                                              "TextArea_PreservationCarePT", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b4-TextArea_CleaningMethodES"]', ficha.get("limpeza_secagem_es", ""),
+                                              "TextArea_CleaningMethodES", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b4-TextArea_CleaningMethodPT"]', ficha.get("limpeza_secagem_pt", ""),
+                                              "TextArea_CleaningMethodPT", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b4-TextArea_ToolPreservationES"]', ficha.get("ferramentas_es", ""),
+                                              "TextArea_ToolPreservationES", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b4-TextArea_ToolPreservationPT"]', ficha.get("ferramentas_pt", ""),
+                                              "TextArea_ToolPreservationPT", callback_log, pendencias)
                 except Exception as e:
                     _registrar_pendencia(pendencias, "na aba Manutenção", e, callback_log)
 
@@ -743,23 +844,32 @@ class UploadAutomation:
 
                 # --- ABA 4: DESCARTE ---
                 try:
-                    self.safe_click('//*[@id="b10-b17-Title"]/div[5]')
-                    self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_TypeLegislationES"]', ficha.get("legislacao_es", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_TypeLegislationPT"]', ficha.get("legislacao_pt", ""))
+                    # A aba re-renderiza ao abrir e limpava o 1º campo escrito.
+                    self.abrir_aba('//*[@id="b10-b17-Title"]/div[5]',
+                                   '//*[@id="b10-b17-b5-TextArea_TypeLegislationES"]', "Descarte", callback_log)
+                    self.preencher_conferindo('//*[@id="b10-b17-b5-TextArea_TypeLegislationES"]', ficha.get("legislacao_es", ""),
+                                              "TextArea_TypeLegislationES", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b5-TextArea_TypeLegislationPT"]', ficha.get("legislacao_pt", ""),
+                                              "TextArea_TypeLegislationPT", callback_log, pendencias)
 
                     if ficha.get("perigoso_10004") == "SIM":
                         self.safe_click('//*[@id="b10-b17-b5-RadioButton1-input"]')
                     else:
                         self.safe_click('//*[@id="b10-b17-b5-RadioButton2-input"]')
 
-                    self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_DiscardTypeES"]', ficha.get("descarte_es", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_DiscardTypePT"]', ficha.get("descarte_pt", ""))
+                    self.preencher_conferindo('//*[@id="b10-b17-b5-TextArea_DiscardTypeES"]', ficha.get("descarte_es", ""),
+
+                                              "TextArea_DiscardTypeES", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b5-TextArea_DiscardTypePT"]', ficha.get("descarte_pt", ""),
+                                              "TextArea_DiscardTypePT", callback_log, pendencias)
 
                     logistica_rev = ficha.get("logistica_reversa", {})
                     if logistica_rev.get("status") == "SIM":
                         self.safe_click('//*[@id="b10-b17-b5-Applies-input"]')
-                        self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_ReserveLogisticES"]', logistica_rev.get("logistica_reversa_es", ""))
-                        self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_ReserveLogisticPT"]', logistica_rev.get("logistica_reversa_pt", ""))
+                        self.preencher_conferindo('//*[@id="b10-b17-b5-TextArea_ReserveLogisticES"]', logistica_rev.get("logistica_reversa_es", ""),
+                                                  "TextArea_ReserveLogisticES", callback_log, pendencias)
+                        self.preencher_conferindo('//*[@id="b10-b17-b5-TextArea_ReserveLogisticPT"]', logistica_rev.get("logistica_reversa_pt", ""),
+                                                  "TextArea_ReserveLogisticPT", callback_log, pendencias)
                     else:
                         self.safe_click('//*[@id="b10-b17-b5-DoesNotApply-input"]')
                 except Exception as e:
