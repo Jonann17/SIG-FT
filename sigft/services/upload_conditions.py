@@ -437,8 +437,9 @@ XPATH_CHECK_UMIDADE = '//*[@id="b10-b17-b1-Checkbox5"]'
 # também a mesma exclusão que `duplicadas_spec.e_aba_financeira` faz do outro
 # lado do sistema, por outro motivo (não copiar dado financeiro entre fichas).
 # Campos que o fornecedor pode deixar em branco na ficha e que o PORTAL exige
-# preenchidos. O prompt manda a IA devolver "N/A" neles (ver `SYSTEM_CONDICOES`,
-# REGRA 0) -- senão a gravação falha e a ficha inteira não salva.
+# preenchidos. O prompt manda a IA devolver "No aplicable" (ES) / "Não
+# aplicável" (PT) neles (ver `SYSTEM_CONDICOES`, REGRA 0) -- senão a gravação
+# falha e a ficha inteira não salva.
 #
 # Esta lista NÃO muda o que é enviado: serve para o LOG dizer quais vieram
 # vazios da planilha. Sem isso, "N/A" no portal fica indistinguível de "o
@@ -449,12 +450,22 @@ CAMPOS_QUE_O_PORTAL_EXIGE = (
 )
 
 
+def _sem_acento(texto):
+    from unicodedata import normalize
+    return normalize("NFKD", str(texto or "")).encode("ascii", "ignore").decode()
+
+
 def campos_em_branco_na_origem(dados_brutos):
     """Quais dos campos exigidos vieram vazios da planilha do fornecedor."""
     vazios = []
     for campo in CAMPOS_QUE_O_PORTAL_EXIGE:
         valor = str((dados_brutos or {}).get(campo) or "").strip()
-        if not valor or valor.lower() in ("n/a", "na", "nan", "none", "-"):
+        # As formas por extenso entram junto das abreviações: o fornecedor que
+        # escreve "não aplicável" está dizendo a MESMA coisa que o que escreve
+        # "N/A", e quem revisa precisa saber que nenhum dos dois é informação.
+        if not valor or _sem_acento(valor).lower() in (
+                "n/a", "na", "nan", "none", "-",
+                "nao aplicavel", "no aplicable", "nao se aplica", "no se aplica"):
             vazios.append(campo)
     return vazios
 

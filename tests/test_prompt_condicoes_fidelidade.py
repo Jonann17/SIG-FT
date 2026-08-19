@@ -129,16 +129,13 @@ def test_o_prompt_proibe_acrescentar_informacao_que_nao_esta_na_entrada():
     assert "nunca acrescente informação que não esteja na entrada" in texto
 
 
-def test_campo_vazio_vira_NA_porque_o_portal_recusa_vazio():
+def test_campo_vazio_e_preenchido_porque_o_portal_recusa_vazio():
     """⚠️ MUDOU EM 2026-08-18, e a mudança é do usuário: *"todos os campos do
     portal precisam ser preenchidos; se um campo não tiver preenchido, ele não
     poderá ser salvo, dará erro"*.
 
     A regra anterior ("campo vazio permanece vazio") estava certa como
     princípio e ERRADA como comportamento: deixava a ficha inteira sem gravar.
-    A saída não é inventar — é `"N/A"`, que é o que os próprios fornecedores
-    escrevem (visto na ficha real 4500063671.1453, várias respostas são "N/A").
-    Honesto E preenchível.
     """
     texto = prompts.SYSTEM_CONDICOES.lower()
 
@@ -148,13 +145,43 @@ def test_campo_vazio_vira_NA_porque_o_portal_recusa_vazio():
     )
 
 
-def test_o_prompt_diz_que_NA_nao_autoriza_inventar():
-    """As duas coisas precisam conviver: preencher sempre, inventar nunca. Se
-    só a primeira sobrevivesse, voltaríamos ao texto técnico plausível."""
+def test_o_preenchimento_e_POR_IDIOMA_e_por_extenso():
+    """Decisão do usuário: *"em vez de N/A podemos preencher para espanhol No
+    aplicable e para português o Não aplicável"*.
+
+    Por extenso e em cada idioma porque é o texto que aparece na ficha para
+    quem a lê no portal, e a ficha é bilíngue — a sigla serve ao fornecedor
+    que preenche a planilha, não ao leitor da ficha.
+    """
     texto = prompts.SYSTEM_CONDICOES
 
-    assert "N/A" in texto
-    assert "NUNCA acrescente informação que não esteja na entrada" in texto
+    assert "No aplicable" in texto
+    assert "Não aplicável" in texto
+
+
+def test_a_sigla_NA_sobrevive_so_como_ENTRADA_do_fornecedor():
+    """"N/A" continua sendo reconhecido no que CHEGA (é o que o fornecedor
+    escreve), mas não é mais o que SAI."""
+    texto = prompts.SYSTEM_CONDICOES
+    depois_dos_exemplos = texto.split("EXEMPLOS")[-1]
+
+    assert '"legislacao_es": "No aplicable"' in texto
+    assert '"legislacao_pt": "N/A"' not in depois_dos_exemplos, (
+        "a saída de exemplo voltou a usar a sigla"
+    )
+
+
+def test_preencher_sempre_nao_autoriza_inventar():
+    """As duas coisas precisam conviver: preencher sempre, inventar nunca. Se
+    só a primeira sobrevivesse, voltaríamos ao texto técnico plausível."""
+    # Compara com o texto de linhas COLADAS: a frase quebra no meio no prompt,
+    # e um teste que dependa de ONDE cai a quebra reprova uma reformatação
+    # inofensiva -- e passa a ser sobre o layout, não sobre a regra.
+    texto = prompts.SYSTEM_CONDICOES
+    corrido = " ".join(texto.split())
+
+    assert "NUNCA acrescente informação que não esteja na entrada" in corrido
+    assert "um texto técnico plausível é invenção" in corrido
 
 
 def test_campo_de_escolha_recebe_a_opcao_NEGATIVA_quando_nao_ha_informacao():

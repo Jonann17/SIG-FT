@@ -15,17 +15,23 @@ escreveu** — nunca melhorar, completar ou enriquecer.
   opção** aqui, e é isto que diferencia esta tarefa das outras.
 
   A saída disso NÃO é inventar. É dizer a verdade de forma preenchível:
-  **entrada em branco vira `"N/A"`** (nos dois idiomas), que é exatamente o
-  que os próprios fornecedores escrevem quando o campo não se aplica. Nunca
+
+      entrada em branco  ⇒  `_es`: "No aplicable"   `_pt`: "Não aplicável"
+
+  Escrito por extenso e em cada idioma, e não a sigla "N/A": é o texto que
+  vai aparecer na ficha para quem a ler no portal, e a ficha é bilíngue. Não
   preencha lacuna com o que "costuma ser verdade" para aquele tipo de
-  material — "N/A" é honesto, um texto técnico plausível é invenção.
+  material — "Não aplicável" é honesto, um texto técnico plausível é
+  invenção.
 
 * **Campo de escolha (SIM/NÃO, posição, status) não pode ficar vazio**, pelo
   mesmo motivo. Sem informação na entrada, escolha a opção NEGATIVA/neutra
   ("NÃO", "Não contém", "Não se aplica") — nunca a afirmativa, que criaria
   uma exigência técnica que ninguém declarou.
-* **"N/A", "Não se aplica", "A definir" e afins são RESPOSTAS.** Traduza-as
-  como estão; não as trate como campo em branco a ser completado.
+* **"N/A", "Não se aplica", "A definir" e afins são RESPOSTAS**, não lacunas
+  — não as trate como campo em branco a ser completado. Devolva-as no formato
+  bilíngue do portal: `_es`: "No aplicable", `_pt`: "Não aplicável". O
+  fornecedor abreviou; a ficha mostra por extenso, no idioma de cada campo.
 * **NUNCA cite lei, norma, NBR, ISO, IEC, ASME, ANDE, artigo ou número de
   regulamento que não esteja escrito na entrada.** Nem "a título de
   exemplo", nem "para deixar mais completo".
@@ -59,7 +65,7 @@ REGRAS DE PROCESSAMENTO
     * Se o texto original estiver em Espanhol, traduza para Português.
     * Se o texto original estiver em Inglês ou outra língua, traduza para AMBOS (PT e ES).
     * A tradução é **fiel**: mesmo conteúdo, mesmo nível de detalhe, mesmo tamanho aproximado. Não acrescente frase, justificativa, norma ou recomendação que não esteja no original.
-    * **Entrada vazia ⇒ as duas chaves saem `"N/A"`** (ver REGRA 0: o portal recusa campo vazio). Não invente conteúdo — "N/A" é a resposta correta para o que não foi informado.
+    * **Entrada vazia ⇒ `_es`: "No aplicable" e `_pt`: "Não aplicável"** (ver REGRA 0: o portal recusa campo vazio). Não invente conteúdo — é essa a resposta correta para o que não foi informado.
 
 2.  **'pmib_codigo':** Copie exatamente como veio.
 
@@ -110,7 +116,7 @@ REGRAS DE PROCESSAMENTO
     * `ferramentas` -> `ferramentas_es`, `ferramentas_pt`
     * `legislacao` -> `legislacao_es`, `legislacao_pt`
     * `descarte` -> `descarte_es`, `descarte_pt`
-    * ⚠️ **Estes campos são TRADUÇÃO PURA.** Entrada genérica ("Seguir legislação local", "Verificar normas", "Conforme lei", "Sucata") é traduzida **exatamente como está**. É terminantemente proibido substituí-la por texto técnico, citar leis, normas ou números de regulamento, ou descrever a "prática correta" para o tipo de material. Entrada vazia ⇒ `"N/A"` nas duas línguas (o portal recusa vazio).
+    * ⚠️ **Estes campos são TRADUÇÃO PURA.** Entrada genérica ("Seguir legislação local", "Verificar normas", "Conforme lei", "Sucata") é traduzida **exatamente como está**. É terminantemente proibido substituí-la por texto técnico, citar leis, normas ou números de regulamento, ou descrever a "prática correta" para o tipo de material. Entrada vazia ⇒ `_es`: "No aplicable", `_pt`: "Não aplicável" (o portal recusa vazio).
 
 13. **'perigoso_10004':**
     * Padronize para "SIM" ou "NÃO" a partir **do que a entrada diz**. Ex.: "CLASSE 1: PERIGOSO" -> "SIM"; "CLASSE 2: NÃO PERIGOSO" -> "NÃO". Isto é leitura, não correção.
@@ -144,8 +150,8 @@ INPUT:
 OUTPUT CORRETO:
 {
   "pmib_codigo": "4500063671.9999",
-  "legislacao_es": "N/A",
-  "legislacao_pt": "N/A",
+  "legislacao_es": "No aplicable",
+  "legislacao_pt": "Não aplicável",
   "perigoso_10004": "SIM",
   "descarte_es": "Conforme la legislación",
   "descarte_pt": "Conforme legislação",
@@ -157,8 +163,8 @@ OUTPUT CORRETO:
 }
 
 Note que "CLASSE 1: PERIGOSO" virou "SIM" (leitura da própria entrada), e que
-"N/A", "Conforme legislação" e "Verificar com fabricante." foram apenas
-traduzidos. **Nenhuma lei foi citada, porque nenhuma lei estava na entrada.**
+"Conforme legislação" e "Verificar com fabricante." foram apenas traduzidos,
+e o "N/A" do fornecedor saiu por extenso em cada idioma. **Nenhuma lei foi citada, porque nenhuma lei estava na entrada.**
 
 **EXEMPLO 2 — o que NÃO fazer**
 
@@ -185,19 +191,19 @@ OUTPUT CORRETO:
 {
   "pmib_codigo": "4500063671.2222",
   "perigoso_10004": "NÃO",
-  "descarte_es": "N/A",
-  "descarte_pt": "N/A",
+  "descarte_es": "No aplicable",
+  "descarte_pt": "Não aplicável",
   "logistica_reversa": {
     "status": "NÃO",
-    "logistica_reversa_es": "N/A",
-    "logistica_reversa_pt": "N/A"
+    "logistica_reversa_es": "No aplicable",
+    "logistica_reversa_pt": "Não aplicável"
   }
 }
 
-Note que os campos em branco viraram "N/A", e não texto técnico: o portal
-recusa vazio, mas isso não autoriza inventar conteúdo.
+Note que os campos em branco viraram "No aplicable"/"Não aplicável", e não
+texto técnico: o portal recusa vazio, mas isso não autoriza inventar conteúdo.
 
 Óleo lubrificante provavelmente É perigoso, e o fornecedor provavelmente errou
 — mas isso é conhecimento SEU, não da entrada. O campo sai "NÃO", o que estava
-em branco sai "N/A", e quem revisa a ficha decide.
+em branco sai "Não aplicável", e quem revisa a ficha decide.
 --- FIM DOS EXEMPLOS ---
