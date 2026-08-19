@@ -129,9 +129,42 @@ def test_o_prompt_proibe_acrescentar_informacao_que_nao_esta_na_entrada():
     assert "nunca acrescente informação que não esteja na entrada" in texto
 
 
-def test_campo_vazio_permanece_vazio():
+def test_campo_vazio_vira_NA_porque_o_portal_recusa_vazio():
+    """⚠️ MUDOU EM 2026-08-18, e a mudança é do usuário: *"todos os campos do
+    portal precisam ser preenchidos; se um campo não tiver preenchido, ele não
+    poderá ser salvo, dará erro"*.
+
+    A regra anterior ("campo vazio permanece vazio") estava certa como
+    princípio e ERRADA como comportamento: deixava a ficha inteira sem gravar.
+    A saída não é inventar — é `"N/A"`, que é o que os próprios fornecedores
+    escrevem (visto na ficha real 4500063671.1453, várias respostas são "N/A").
+    Honesto E preenchível.
+    """
     texto = prompts.SYSTEM_CONDICOES.lower()
-    assert "campo vazio permanece vazio" in texto
+
+    assert "o portal exige todos os campos" in texto
+    assert "campo vazio permanece vazio" not in texto, (
+        "a regra antiga voltou -- e com ela a ficha que não salva"
+    )
+
+
+def test_o_prompt_diz_que_NA_nao_autoriza_inventar():
+    """As duas coisas precisam conviver: preencher sempre, inventar nunca. Se
+    só a primeira sobrevivesse, voltaríamos ao texto técnico plausível."""
+    texto = prompts.SYSTEM_CONDICOES
+
+    assert "N/A" in texto
+    assert "NUNCA acrescente informação que não esteja na entrada" in texto
+
+
+def test_campo_de_escolha_recebe_a_opcao_NEGATIVA_quando_nao_ha_informacao():
+    """Radio vazio também impede a gravação. Sem informação, a opção neutra --
+    nunca a afirmativa, que criaria uma exigência técnica que ninguém
+    declarou."""
+    texto = prompts.SYSTEM_CONDICOES
+
+    assert "opção NEGATIVA/neutra" in texto
+    assert "nunca a afirmativa" in texto
 
 
 def test_o_prompt_proibe_citar_norma_que_nao_veio_na_entrada():

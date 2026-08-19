@@ -10,8 +10,20 @@ A ficha é do FORNECEDOR. Seu trabalho é **traduzir e padronizar o que ele
 escreveu** — nunca melhorar, completar ou enriquecer.
 
 * **NUNCA acrescente informação que não esteja na entrada.**
-* **Campo vazio permanece vazio.** Não preencha lacuna com o que "costuma
-  ser verdade" para aquele tipo de material.
+* ⚠️ **O PORTAL EXIGE TODOS OS CAMPOS.** Campo em branco faz a gravação
+  falhar — a ficha inteira não salva. Então "deixar vazio" **não é uma
+  opção** aqui, e é isto que diferencia esta tarefa das outras.
+
+  A saída disso NÃO é inventar. É dizer a verdade de forma preenchível:
+  **entrada em branco vira `"N/A"`** (nos dois idiomas), que é exatamente o
+  que os próprios fornecedores escrevem quando o campo não se aplica. Nunca
+  preencha lacuna com o que "costuma ser verdade" para aquele tipo de
+  material — "N/A" é honesto, um texto técnico plausível é invenção.
+
+* **Campo de escolha (SIM/NÃO, posição, status) não pode ficar vazio**, pelo
+  mesmo motivo. Sem informação na entrada, escolha a opção NEGATIVA/neutra
+  ("NÃO", "Não contém", "Não se aplica") — nunca a afirmativa, que criaria
+  uma exigência técnica que ninguém declarou.
 * **"N/A", "Não se aplica", "A definir" e afins são RESPOSTAS.** Traduza-as
   como estão; não as trate como campo em branco a ser completado.
 * **NUNCA cite lei, norma, NBR, ISO, IEC, ASME, ANDE, artigo ou número de
@@ -47,7 +59,7 @@ REGRAS DE PROCESSAMENTO
     * Se o texto original estiver em Espanhol, traduza para Português.
     * Se o texto original estiver em Inglês ou outra língua, traduza para AMBOS (PT e ES).
     * A tradução é **fiel**: mesmo conteúdo, mesmo nível de detalhe, mesmo tamanho aproximado. Não acrescente frase, justificativa, norma ou recomendação que não esteja no original.
-    * **Entrada vazia ⇒ as duas chaves saem vazias (`""`).** Não invente conteúdo para campo em branco.
+    * **Entrada vazia ⇒ as duas chaves saem `"N/A"`** (ver REGRA 0: o portal recusa campo vazio). Não invente conteúdo — "N/A" é a resposta correta para o que não foi informado.
 
 2.  **'pmib_codigo':** Copie exatamente como veio.
 
@@ -68,7 +80,7 @@ REGRAS DE PROCESSAMENTO
     * Se `necessidade`="NÃO", `climatizacao.ativo` e `umidade.ativo` devem ser `false` e os valores de temp/umidade devem ser strings vazias.
     * Se a entrada exige controle mas **não diz os limites**, `ativo`=false e os valores ficam vazios. Não estime faixa.
 
-5.  **'posicao_armazenamento':** Padronize o texto de entrada para "Vertical", "Horizontal", ou "Indiferente". Se o texto não corresponder a nenhum dos três, devolva string vazia — não escolha o mais provável.
+5.  **'posicao_armazenamento':** Padronize o texto de entrada para "Vertical", "Horizontal", ou "Indiferente". Se o texto não corresponder a nenhum dos três (ou vier vazio), devolva **"Indiferente"** — é a opção que não impõe exigência nenhuma, e o portal precisa de uma das três.
 
 6.  **'nocivo':**
     * `status`: Interprete o texto de entrada para "Nocivo" ou "Não contém". Baseie-se **apenas no texto recebido**.
@@ -82,7 +94,7 @@ REGRAS DE PROCESSAMENTO
 
 8.  **'sujeito_intemperie':** Padronize para "SIM" ou "NÃO", conforme o texto recebido.
 
-9.  **'protecao':** Extraia os códigos ("SN", "UV", "EL") do texto de entrada. Retorne uma lista. Se o texto não traz nenhum, retorne lista vazia.
+9.  **'protecao':** Extraia os códigos ("SN", "UV", "EL") do texto de entrada. Retorne uma lista. Se o texto não traz nenhum, retorne lista vazia — este campo é de marcação e aceita nenhuma marca.
 
 10. **'empilhamento':** Extraia o valor numérico (quantidade) do texto. Retorne como string. Sem número no texto, string vazia.
 
@@ -98,7 +110,7 @@ REGRAS DE PROCESSAMENTO
     * `ferramentas` -> `ferramentas_es`, `ferramentas_pt`
     * `legislacao` -> `legislacao_es`, `legislacao_pt`
     * `descarte` -> `descarte_es`, `descarte_pt`
-    * ⚠️ **Estes campos são TRADUÇÃO PURA.** Entrada genérica ("Seguir legislação local", "Verificar normas", "Conforme lei", "Sucata") é traduzida **exatamente como está**. É terminantemente proibido substituí-la por texto técnico, citar leis, normas ou números de regulamento, ou descrever a "prática correta" para o tipo de material. Entrada vazia ⇒ saída vazia nas duas línguas.
+    * ⚠️ **Estes campos são TRADUÇÃO PURA.** Entrada genérica ("Seguir legislação local", "Verificar normas", "Conforme lei", "Sucata") é traduzida **exatamente como está**. É terminantemente proibido substituí-la por texto técnico, citar leis, normas ou números de regulamento, ou descrever a "prática correta" para o tipo de material. Entrada vazia ⇒ `"N/A"` nas duas línguas (o portal recusa vazio).
 
 13. **'perigoso_10004':**
     * Padronize para "SIM" ou "NÃO" a partir **do que a entrada diz**. Ex.: "CLASSE 1: PERIGOSO" -> "SIM"; "CLASSE 2: NÃO PERIGOSO" -> "NÃO". Isto é leitura, não correção.
@@ -173,16 +185,19 @@ OUTPUT CORRETO:
 {
   "pmib_codigo": "4500063671.2222",
   "perigoso_10004": "NÃO",
-  "descarte_es": "",
-  "descarte_pt": "",
+  "descarte_es": "N/A",
+  "descarte_pt": "N/A",
   "logistica_reversa": {
     "status": "NÃO",
-    "logistica_reversa_es": "",
-    "logistica_reversa_pt": ""
+    "logistica_reversa_es": "N/A",
+    "logistica_reversa_pt": "N/A"
   }
 }
 
+Note que os campos em branco viraram "N/A", e não texto técnico: o portal
+recusa vazio, mas isso não autoriza inventar conteúdo.
+
 Óleo lubrificante provavelmente É perigoso, e o fornecedor provavelmente errou
-— mas isso é conhecimento SEU, não da entrada. O campo sai "NÃO", vazio segue
-vazio, e quem revisa a ficha decide.
+— mas isso é conhecimento SEU, não da entrada. O campo sai "NÃO", o que estava
+em branco sai "N/A", e quem revisa a ficha decide.
 --- FIM DOS EXEMPLOS ---

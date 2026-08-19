@@ -265,6 +265,15 @@ class ConditionsProcessor:
                 lote.pulado(pmib_codigo, "não foi possível extrair dados da planilha")
                 continue
 
+            # O portal recusa campo vazio, então a IA preenche esses com "N/A"
+            # (ver SYSTEM_CONDICOES, REGRA 0). Dizer QUAIS vieram vazios é o
+            # que separa "o fornecedor respondeu N/A" de "o fornecedor não
+            # respondeu" -- no portal os dois ficam idênticos.
+            vazios = campos_em_branco_na_origem(dados_brutos)
+            if vazios and callback_log:
+                callback_log(f"   [i] {pmib_codigo}: {len(vazios)} campo(s) sem resposta do "
+                             f"fornecedor, irão como 'N/A': {', '.join(vazios)}")
+
             try:
                 descricao = df_status.loc[pmib_codigo, 'DESCRIÇÃO']
 
@@ -427,6 +436,29 @@ XPATH_CHECK_UMIDADE = '//*[@id="b10-b17-b1-Checkbox5"]'
 # sempre. É o "salvo a parte da valorização" do pedido do usuário -- e é
 # também a mesma exclusão que `duplicadas_spec.e_aba_financeira` faz do outro
 # lado do sistema, por outro motivo (não copiar dado financeiro entre fichas).
+# Campos que o fornecedor pode deixar em branco na ficha e que o PORTAL exige
+# preenchidos. O prompt manda a IA devolver "N/A" neles (ver `SYSTEM_CONDICOES`,
+# REGRA 0) -- senão a gravação falha e a ficha inteira não salva.
+#
+# Esta lista NÃO muda o que é enviado: serve para o LOG dizer quais vieram
+# vazios da planilha. Sem isso, "N/A" no portal fica indistinguível de "o
+# fornecedor respondeu N/A", e quem revisa não sabe o que conferir.
+CAMPOS_QUE_O_PORTAL_EXIGE = (
+    "embalagem_transp", "posicao_icagem", "cuidad_preserv", "limpeza_secagem",
+    "ferramentas", "legislacao", "descarte",
+)
+
+
+def campos_em_branco_na_origem(dados_brutos):
+    """Quais dos campos exigidos vieram vazios da planilha do fornecedor."""
+    vazios = []
+    for campo in CAMPOS_QUE_O_PORTAL_EXIGE:
+        valor = str((dados_brutos or {}).get(campo) or "").strip()
+        if not valor or valor.lower() in ("n/a", "na", "nan", "none", "-"):
+            vazios.append(campo)
+    return vazios
+
+
 SECOES_DE_CONDICOES = ("Armazenamento", "Transporte", "Manutenção", "Descarte")
 
 

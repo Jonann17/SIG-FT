@@ -137,6 +137,189 @@ def indexar_por_caracteristica(dados, normalizar):
     return indice
 
 
+# ---------------------------------------------------------------------------
+# Transbordo de casas decimais -> CARACTERISTICAS ADICIONAIS (2026-08-18)
+# ---------------------------------------------------------------------------
+# Relato do usuário: *"um erro que costuma dar é quando eu tenho que colocar
+# 0,002 e o campo aceita apenas 2 unidades após a vírgula"*.
+#
+# Medido no Master real: das 6.085 linhas `NUM`, **6.060 aceitam exatamente 2
+# casas**. Ou seja, não é caso de canto -- é a regra do portal, e todo valor
+# mais preciso que centésimo bate nela.
+#
+# A saída, proposta pelo usuário: mover para o campo de texto livre
+# ("CARACTERISTICAS ADICIONAIS"), escrevendo nome e valor. Várias, uma por
+# linha. Isso preserva a informação em vez de arredondá-la -- e arredondar
+# 0,002 para 0,00 seria pior do que não preencher, porque vira um número
+# plausível e errado.
+#
+# ⚠️ Feito em CÓDIGO e não só no prompt, de propósito. É uma regra aritmética
+# com resposta única; depender do modelo lembrar dela a cada ficha é escolher
+# a fonte menos confiável para algo que não tem ambiguidade nenhuma.
+def juntar_para_char(dado):
+    """Junta valor + unidade (+ subtipo, se intervalo) num texto único.
+
+    É o recuo pedido pelo usuário em 2026-08-18: *"quando der erro de colocar
+    em uma int, uma lista ou um intervalo, devemos tentar juntar as duas
+    informações e colocar em CHAR e selecionar a unidade como adimensional"*.
+
+    Por que isso é seguro: 32.578 das 32.655 linhas do Master aceitam `AD`
+    entre os símbolos (99,8%) -- medido. Então "cair para CHAR + AD" quase
+    sempre tem para onde ir.
+
+    E por que é MELHOR do que falhar: o tipo do portal e o tipo do Master
+    divergem quando a ficha foi gerada numa revisão e o portal já está noutra
+    (8 características do PDM.4820.015 trocaram de tipo entre r0 e r1, todas
+    CHAR->NUM). Nesses casos o dado existe e é correto; só não cabe na caixa
+    que o JSON esperava. Perder a informação por causa da caixa seria o pior
+    dos dois mundos.
+    """
+    valor = str(dado.get("RESPOSTA_PT_FINAL", "") or "").strip()
+    simbolo = str(dado.get("SIMBOLO", "") or "").strip()
+    if simbolo and simbolo.upper() != "AD":
+        valor = f"{valor} {simbolo}".strip()
+    subtipo = str(dado.get("SUBTIPO_INTERVALO", "") or "").strip()
+    if subtipo and subtipo.upper() not in ("NONE", "NULL"):
+        valor = f"{valor} ({subtipo})".strip()
+    return valor
+
+
+CARACTERISTICA_TEXTO_LIVRE = "CARACTERISTICAS ADICIONAIS"
+TIPOS_NUMERICOS = ("NUM", "INT")
+
+
+def casas_decimais_de(valor):
+    """Quantas casas decimais o texto tem. Aceita vírgula ou ponto."""
+    texto = str(valor if valor is not None else "").strip()
+    for separador in (",", "."):
+        if separador in texto:
+            depois = texto.rsplit(separador, 1)[1]
+            if depois.isdigit():
+                return len(depois)
+    return 0
+
+
+def cabe_nas_casas(valor, casas_permitidas):
+    """O valor cabe no campo? Limite ausente/ilegível ⇒ assume que cabe.
+
+    Assumir que cabe é o lado seguro: um limite que não conseguimos ler não
+    pode virar motivo para mover uma característica de lugar.
+    """
+    texto = str(casas_permitidas if casas_permitidas is not None else "").strip()
+    if not texto.isdigit():
+        return True
+    return casas_decimais_de(valor) <= int(texto)
+
+
+def _linha_de_transbordo(dado):
+    nome = str(dado.get("CARACTERISTICA_CHAVE", "")).strip()
+    valor = str(dado.get("RESPOSTA_PT_FINAL", "")).strip()
+    simbolo = str(dado.get("SIMBOLO", "") or "").strip()
+    if simbolo and simbolo.upper() != "AD":
+        valor = f"{valor} {simbolo}"
+    return f"{nome}: {valor}"
+
+
+def realocar_por_casas_decimais(dados, casas_por_caracteristica):
+    """Move para o texto livre os valores que não cabem no campo numérico.
+
+    Devolve `(dados_ajustados, movidas)`. `movidas` é a lista de nomes -- o
+    chamador loga, porque mover característica de lugar em silêncio esconderia
+    do usuário exatamente a informação que ele precisa conferir.
+
+    A característica de origem vira `REMOVER`: deixá-la como `PREENCHER` faria
+    o robô tentar de novo e falhar de novo, e deixá-la em branco no portal
+    confundiria "não coube" com "não se aplica".
+    """
+    linhas_extras = []
+    movidas = []
+    ajustados = []
+
+    for dado in dados:
+        nome = str(dado.get("CARACTERISTICA_CHAVE", "")).strip()
+        tipo = str(dado.get("TIPO", "")).strip().upper()
+        acao = str(dado.get("ACAO", "")).strip().upper()
+        if (acao == "PREENCHER" and tipo in TIPOS_NUMERICOS
+                and not cabe_nas_casas(dado.get("RESPOSTA_PT_FINAL"),
+                                       casas_por_caracteristica.get(nome))):
+            linhas_extras.append(_linha_de_transbordo(dado))
+            movidas.append(nome)
+            ajustados.append({"CARACTERISTICA_CHAVE": nome, "ACAO": "REMOVER"})
+            continue
+        ajustados.append(dado)
+
+    if not linhas_extras:
+        return ajustados, []
+
+    for dado in ajustados:
+        if str(dado.get("CARACTERISTICA_CHAVE", "")).strip().upper() != CARACTERISTICA_TEXTO_LIVRE:
+            continue
+        for chave in ("RESPOSTA_PT_FINAL", "RESPOSTA_ES_FINAL"):
+            atual = str(dado.get(chave, "") or "").strip()
+            # "N/A" é resposta de "não há", e o que estamos acrescentando É
+            # conteúdo -- mantê-lo faria a ficha dizer as duas coisas.
+            if atual.upper() in ("N/A", "NA", "-"):
+                atual = ""
+            dado[chave] = "\n".join([p for p in (atual, *linhas_extras) if p])
+        dado["ACAO"] = "PREENCHER"
+        return ajustados, movidas
+
+    # O PDM não tem o campo de texto livre: não dá para mover. Melhor devolver
+    # tudo como estava e avisar do que apagar a característica sem destino.
+    return dados, []
+
+
+COLUNA_REVISAO_DO_MASTER = "REVISIÓN"
+
+
+def revisao_como_numero(valor):
+    """`"1"` -> 1.0; lixo -> -1.0 (perde para qualquer revisão de verdade)."""
+    texto = str(valor if valor is not None else "").strip().replace(",", ".")
+    try:
+        return float(texto)
+    except ValueError:
+        return -1.0
+
+
+def filtrar_revisao_vigente(df_do_pdm, coluna=COLUNA_REVISAO_DO_MASTER):
+    """Fica só com as linhas da MAIOR revisão do PDM.
+
+    ⚠️ Este filtro é o conserto do "lixo" que o usuário relatou em 2026-08-18,
+    e ele só existe porque o Master REAL foi finalmente lido. A entrada
+    anterior de PENDENCIAS dizia que a revisão era irrecuperável -- estava
+    errada: `TEMPLATE_PDM` tem a coluna `REVISIÓN` (coluna 10), e o cabeçalho
+    de verdade está na LINHA 6, não na 3.
+
+    Medido no arquivo do usuário (`PDMs SAM-GM`, 32.655 linhas, 1.194 PDMs):
+
+        PDM.4820.015   revisão 0: 42 características
+                       revisão 1: 20  <- vigente
+                       união:     44  <- o que entrava no JSON
+                       lixo:      24  (CONTINUACAO 1..4, COR, COMPRIMENTO…)
+
+    Os 24 batem, nome por nome, com os `REMOVER` que o usuário não reconheceu.
+    E 1.023 dos 1.194 PDMs têm mais de uma revisão, então isto não é um caso
+    isolado deste PDM.
+
+    Por que não bastava a deduplicação: ela colapsa nomes REPETIDOS entre
+    revisões, mas característica que existiu SÓ na revisão antiga tem nome
+    único, passa pelo filtro e chega ao JSON. As duas coisas são
+    complementares -- este filtro continua antes dela.
+
+    Coluna ausente ⇒ devolve tudo. Um Master exportado sem `REVISIÓN` é raro,
+    mas descartar o PDM inteiro por causa disso trocaria um problema visível
+    por um mudo.
+    """
+    if coluna not in getattr(df_do_pdm, "columns", []):
+        return df_do_pdm
+    revisoes = [revisao_como_numero(v) for v in df_do_pdm[coluna]]
+    if not revisoes:
+        return df_do_pdm
+    vigente = max(revisoes)
+    manter = [r == vigente for r in revisoes]
+    return df_do_pdm[manter]
+
+
 def deduplicar_contexto(lista_contexto):
     """Uma característica por nome no contexto enviado à IA.
 
@@ -360,6 +543,16 @@ class TechSpecsProcessor:
                 if callback_log: callback_log(f"PDM {pdm_fmt} não encontrado no Master.")
                 continue
 
+            # Só a revisão VIGENTE. Ver `filtrar_revisao_vigente`: o Master
+            # guarda todas as revisões, e as antigas traziam características
+            # que não existem mais na ficha -- o "lixo" de REMOVER.
+            antes_da_revisao = len(df_master_filt)
+            df_master_filt = filtrar_revisao_vigente(df_master_filt)
+            if callback_log and len(df_master_filt) != antes_da_revisao:
+                callback_log(
+                    f"   [Revisão] {pdm_fmt}: {antes_da_revisao} linha(s) no Master "
+                    f"(todas as revisões) -> {len(df_master_filt)} da revisão vigente.")
+
             # Ler Ficha Individual
             try:
                 df_ficha = pd.read_excel(arquivo, sheet_name="Especificações técnicas copiar", header=0)
@@ -432,6 +625,20 @@ class TechSpecsProcessor:
             dados_tratados = self._chamar_gemini_specs(pacote_envio, callback_log)
 
             if dados_tratados:
+                # Transbordo de casas decimais -> texto livre. Em CÓDIGO e não
+                # só no prompt: é aritmética com resposta única, e das 6.085
+                # linhas NUM do Master 6.060 aceitam 2 casas -- depender do
+                # modelo lembrar disso a cada ficha seria escolher a fonte
+                # menos confiável para algo sem ambiguidade.
+                casas = {c["CARACTERISTICA_DESC_PT"]: c.get("CASAS_DECIMAIS")
+                         for c in lista_contexto}
+                dados_tratados, movidas = realocar_por_casas_decimais(dados_tratados, casas)
+                if movidas and callback_log:
+                    callback_log(
+                        f"   [Decimais] {len(movidas)} característica(s) não cabem no campo "
+                        f"numérico e foram para '{CARACTERISTICA_TEXTO_LIVRE}': "
+                        + ", ".join(movidas))
+
                 resultados_processados.append({
                     "METADATA": {
                         "PMIB": codigo_pmib,
@@ -1121,6 +1328,61 @@ class TechSpecsAutomation:
                 callback_log(f"Falha ao excluir item {chave_limpa}.")
         return sucesso
 
+    # Campo que identifica cada tipo dentro de uma linha da tabela.
+    CAMPO_CARACTERISTICO_DO_TIPO = {
+        "CHAR": ("//textarea[contains(@id, \"TextArea_ValuePT\")]",),
+        "NUM": ('//input[contains(@id, "NumberValue_Input")]',),
+        "LISTA": ('//select[contains(@id, "Dropdown1")]',),
+        "INT": ('//select[contains(@id, "Dropdown_IntervalOptions")]',),
+    }
+
+    def _linha_oferece(self, seletor_linha, tipo):
+        """A linha tem o campo do tipo declarado? Tipo desconhecido ⇒ `True`.
+
+        Devolver `True` para o que não se conhece é deliberado: o recuo existe
+        para consertar divergência OBSERVADA, e um tipo novo do portal não
+        pode virar motivo para o robô mudar de comportamento sozinho.
+        """
+        relativos = self.CAMPO_CARACTERISTICO_DO_TIPO.get(str(tipo).strip().upper())
+        if not relativos:
+            return True
+        for relativo in relativos:
+            try:
+                if self.engine.element_exists(seletor_linha + relativo):
+                    return True
+            except Exception:  # noqa: BLE001 -- observar não derruba nada
+                return True
+        return False
+
+    def _tipo_da_linha(self, seletor_linha):
+        """Que tipo de campo ESTA LINHA do portal oferece? `""` se não der para saber.
+
+        O portal renderiza a linha conforme o tipo QUE ELE conhece. Perguntar à
+        tela, em vez de confiar no JSON, é o que transforma "o campo na tela é
+        diferente" (exceção, campo em branco) em "então preencho do jeito que a
+        tela aceita".
+
+        A ordem importa: `INT` é testado antes de `NUM` porque a linha de
+        intervalo tem DOIS inputs numéricos e casaria como NUM por engano.
+        `""` (não sei) faz o chamador seguir o JSON, como antes -- não saber
+        não pode virar motivo para mudar de comportamento.
+        """
+        def existe(relativo):
+            try:
+                return self.engine.element_exists(seletor_linha + relativo)
+            except Exception:  # noqa: BLE001 -- observar não derruba nada
+                return False
+
+        if existe(XPATH_REL_TEXTAREA_PT):
+            return "CHAR"
+        if existe(XPATH_REL_SELECT_INTERVALO) and existe(XPATH_REL_INPUT_MIN):
+            return "INT"
+        if existe(XPATH_REL_SELECT_LISTA):
+            return "LISTA"
+        if existe(XPATH_REL_INPUT_NUM):
+            return "NUM"
+        return ""
+
     def _preencher_linha(self, seletor_linha, dado, callback_log=None):
         """
         Preenche os campos e audita o resultado.
@@ -1146,6 +1408,37 @@ class TechSpecsAutomation:
         def _clicar_fora():
             if seletor_neutro:
                 self.engine.click_raw(seletor_neutro)
+
+        # RECUO DE TIPO (2026-08-18). O `TIPO` do JSON vem do Master; o portal
+        # renderiza a linha conforme o tipo QUE ELE conhece. Os dois divergem
+        # quando a ficha foi gerada numa revisão do PDM e o portal já está
+        # noutra -- medido no Master do usuário: 8 características do
+        # PDM.4820.015 trocaram de tipo entre r0 e r1.
+        #
+        # ⚠️ O JSON CONTINUA MANDANDO enquanto o campo dele existir na linha.
+        # A primeira versão disto deixava a tela SOBREPOR o JSON, e derrubou 5
+        # testes: numa linha que oferece mais de um tipo de campo, "o que a
+        # tela tem" não identifica o campo certo -- só "o que a tela NÃO tem"
+        # identifica. Por isso o recuo só acontece quando o campo do tipo
+        # declarado está ausente, que é exatamente o caso que antes virava
+        # exceção, "[Erro Estrutural]" e campo em branco no portal.
+        if tipo and not self._linha_oferece(seletor_linha, tipo):
+            alternativo = self._tipo_da_linha(seletor_linha)
+            if alternativo and alternativo != tipo:
+                if callback_log:
+                    callback_log(f"   [Tipo] '{nome_campo}': o JSON diz {tipo} e a linha não "
+                                 f"tem esse campo; a tela oferece {alternativo}. Recuando.")
+                if alternativo == "CHAR":
+                    # "Juntar as duas informações e colocar em CHAR e
+                    # selecionar a unidade como adimensional" -- pedido do
+                    # usuário. `AD` é aceito em 99,8% das linhas do Master.
+                    dado = dict(dado)
+                    dado["RESPOSTA_ES_FINAL"] = juntar_para_char(
+                        {**dado, "RESPOSTA_PT_FINAL": dado.get("RESPOSTA_ES_FINAL", "")})
+                    dado["RESPOSTA_PT_FINAL"] = juntar_para_char(dado)
+                    dado["SIMBOLO"] = "AD"
+                    val_pt = dado["RESPOSTA_PT_FINAL"]
+                tipo = alternativo
 
         try:
             if tipo == "CHAR":
