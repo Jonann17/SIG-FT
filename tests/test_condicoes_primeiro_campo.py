@@ -46,6 +46,11 @@ class _EngineQueEsquece:
         self.ja_escreveu = set()
         self.esperou = []
 
+    def fill_estrito(self, seletor, texto):
+        """`preencher_conferindo` escreve pelo caminho ESTRITO, para a falha
+        virar mensagem em vez de sumir. O duplo delega no `fill` de sempre."""
+        self.fill(seletor, texto)
+
     def fill(self, seletor, texto):
         self.escritas.append((seletor, texto))
         if seletor in self.nunca_aceita:

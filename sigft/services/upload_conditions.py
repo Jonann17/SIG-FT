@@ -531,10 +531,23 @@ def mesmo_valor(escrito, na_tela):
 
         pedimos ",55"   o portal guardou "0,55"   -> texto difere, número não
 
-    O portal NORMALIZA o que recebe (repõe o zero à esquerda). Comparar texto
-    fazia toda dimensão e todo peso menor que 1 virar pendência -- e um alarme
-    que dispara sempre é igual a alarme nenhum: some no meio do log, e o real
-    some junto.
+    ⚠️ ONDE a normalização acontece, corrigido em 2026-08-19 com o HTML do
+    campo na mão:
+
+        <input type="text" maxlength="30" data-os-type="text"
+               data-os-pattern="" inputmode="decimal">
+
+    `data-os-pattern` VAZIO e `data-os-type="text"`: o campo **não tem
+    máscara** e não reformata nada na digitação. `inputmode="decimal"` é só
+    dica de teclado de celular. Então o zero à esquerda NÃO é reposto quando
+    se escreve -- ele aparece depois de SALVAR, quando o servidor grava o
+    número e re-renderiza a tela.
+
+    Isso importa para quem for mexer aqui: numa ficha já salva antes, o campo
+    chega com "0,55" e o que a gente escreve é ",55". Comparar texto fazia
+    toda dimensão e todo peso menor que 1 virar pendência -- e um alarme que
+    dispara sempre é igual a alarme nenhum: some no meio do log, e o real some
+    junto.
 
     Um valor REALMENTE perdido continua sendo pego, porque aí o número muda
     mesmo: ",003" virando "0,0" é perda de precisão de verdade, e "10" virando
@@ -642,6 +655,34 @@ class UploadAutomation:
                              f"Vou tentar preencher assim mesmo.")
         time.sleep(PAUSA_ABA_ASSENTAR)
 
+    def _escrever(self, seletor, texto, nome_campo, callback_log=None):
+        """Escreve DIZENDO por que falhou, em vez de engolir.
+
+        `safe_send_keys` delega para `engine.fill`, que engole a exceção por
+        contrato. Isso é o certo em quase todo lugar -- e é péssimo aqui: sem
+        máscara no campo (ver `mesmo_valor`), uma releitura que discorda do que
+        se escreveu só pode significar que **a escrita não aconteceu**. Saber
+        POR QUE ela não aconteceu é a diferença entre "conserto isto amanhã" e
+        "abro o portal e vou adivinhando".
+
+        Ele **não engole** a falha: loga o motivo e repassa, para o bloco da
+        seção continuar registrando a pendência como sempre registrou.
+        """
+        try:
+            self.engine.fill_estrito(seletor, str(texto))
+        except Exception as erro:  # noqa: BLE001 -- ver docstring
+            if callback_log:
+                callback_log(f"      [!] Não consegui escrever em '{nome_campo}': "
+                             f"{type(erro).__name__}: {erro}")
+            # ⚠️ REPASSA. A primeira versão disto só logava, e com isso tirou a
+            # falha do caminho que a registrava: o bloco da seção deixava de
+            # cair no `except`, nenhuma pendência era criada e a ficha saía
+            # COMPLETO com o campo vazio -- ou seja, eu tinha reaberto o
+            # próprio defeito que o COMPLETO-com-prova existe para fechar.
+            # Um teste pegou. O que este método acrescenta é o MOTIVO no log,
+            # não a supressão da falha.
+            raise
+
     def preencher_conferindo(self, seletor, texto, nome_campo,
                              callback_log=None, pendencias=None):
         """Escreve, RELÊ e reescreve uma vez se o portal engoliu o valor.
@@ -657,7 +698,7 @@ class UploadAutomation:
         ruído em cima de um defeito que já tem dono.
         """
         alvo = str(texto or "")
-        self.safe_send_keys(seletor, alvo)
+        self._escrever(seletor, alvo, nome_campo, callback_log)
         if not alvo.strip():
             return True
 
@@ -676,7 +717,7 @@ class UploadAutomation:
                 if callback_log:
                     callback_log(f"      [!] '{nome_campo}': pedi {alvo.strip()[:20]!r} e "
                                  f"ficou {atual.strip()[:20]!r}. Reescrevendo.")
-                self.safe_send_keys(seletor, alvo)
+                self._escrever(seletor, alvo, nome_campo, callback_log)
 
         if callback_log:
             callback_log(f"      [!] '{nome_campo}' NÃO aceitou {alvo.strip()[:20]!r} em duas "

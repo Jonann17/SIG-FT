@@ -81,6 +81,11 @@ class _EngineFake:
             # tempo". Acumular reproduz isso.
             self.toasts.append(MENSAGEM[secao])
 
+    def fill_estrito(self, seletor, texto):
+        """`preencher_conferindo` escreve pelo caminho ESTRITO, para a falha
+        virar mensagem em vez de sumir. O duplo delega no `fill` de sempre."""
+        self.fill(seletor, texto)
+
     def fill(self, seletor, texto):
         if seletor in self.campos_que_falham:
             raise RuntimeError("o site recusou o valor")
