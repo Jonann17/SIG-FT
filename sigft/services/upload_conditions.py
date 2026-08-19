@@ -498,9 +498,23 @@ PAUSA_CAMPO_ASSENTAR = 0.35
 
 
 def _para_numero(texto):
-    """`",55"` / `"0,55"` / `"0.55"` -> `0.55`. Não numérico -> `None`."""
-    bruto = str(texto if texto is not None else "").strip().replace(".", "").replace(",", ".")
-    if not bruto or bruto in (".", "-"):
+    """`",55"` / `"0,55"` / `"0.55"` / `"1.234,56"` -> float. Não numérico -> `None`.
+
+    ⚠️ A VÍRGULA DECIDE quem é separador decimal, e a primeira versão disto
+    errava: ela removia todo ponto antes de converter, então `"0.5"` virava
+    `"05"` = **5,0** -- dez vezes o valor. Passaria despercebido justamente no
+    caso em que o portal devolvesse o número com ponto, e a conferência
+    aprovaria um valor errado ou reprovaria um certo.
+
+    A regra que vale nos dois formatos do domínio:
+
+        tem vírgula  -> vírgula é o decimal, ponto é milhar ("1.234,56")
+        sem vírgula  -> ponto é o decimal ("0.5")
+    """
+    bruto = str(texto if texto is not None else "").strip()
+    if "," in bruto:
+        bruto = bruto.replace(".", "").replace(",", ".")
+    if not bruto or bruto in (".", "-", "-."):
         return None
     try:
         return float(bruto)

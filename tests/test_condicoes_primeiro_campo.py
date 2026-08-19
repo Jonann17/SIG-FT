@@ -272,3 +272,75 @@ def test_o_campo_numerico_ganha_um_tempo_antes_da_releitura():
     """"10" foi lido como "1" -- o primeiro caractere. Só acontece se a leitura
     chega antes de a máscara do portal terminar de reformatar."""
     assert upload_conditions.PAUSA_CAMPO_ASSENTAR > 0
+
+
+# =============================================================================
+# Fidelidade ao que veio da ficha (2026-08-19)
+# =============================================================================
+# Correção do usuário: *"nenhum campo da parte de condições tem restrição de
+# caracteres, então se for 0,0000000001 ele vai aceitar. Devemos ser
+# estritamente fiel à informação que veio da ficha, fazendo a conversão para
+# cm — se veio 0,1mm a informação será 0,01 cm"*.
+#
+# Isso desfaz duas suposições minhas: (a) que o campo tinha limite de casas, e
+# (b) que valia adivinhar a unidade quando o número "parecesse absurdo".
+
+@pytest.mark.parametrize("proibido", [
+    "assuma milímetros", "assuma gramas", "assuma que a entrada estava em",
+])
+def test_o_prompt_nao_manda_mais_SUPOR_unidade(proibido):
+    """Supor unidade é inventar dado: o número muda, fica plausível, e ninguém
+    percebe."""
+    from sigft.core.llm import prompts
+
+    assert proibido not in prompts.SYSTEM_CONDICOES
+
+
+def test_o_prompt_manda_converter_pela_unidade_DECLARADA():
+    from sigft.core.llm import prompts
+    corrido = " ".join(prompts.SYSTEM_CONDICOES.split())
+
+    assert "Converta a partir da unidade DECLARADA na ficha, e só dela" in corrido
+    assert '"0,1 mm" -> "0,01"' in corrido, "o exemplo do usuário tem de estar lá"
+
+
+def test_o_prompt_proibe_arredondar():
+    """"Se for 0,0000000001 ele vai aceitar." Cortar casas é perder informação
+    que a ficha trouxe."""
+    from sigft.core.llm import prompts
+    corrido = " ".join(prompts.SYSTEM_CONDICOES.split())
+
+    assert "NÃO ARREDONDE" in corrido
+    assert "0,0000000001" in corrido
+
+
+def test_valor_com_muitas_casas_e_conferido_normalmente():
+    """A conferência não pode ser o que impede um valor legítimo de passar."""
+    assert upload_conditions.mesmo_valor("0,0000000001", "0,0000000001") is True
+
+
+# --- o separador decimal, e o defeito que ele quase escondeu ---------------
+
+@pytest.mark.parametrize("texto,esperado", [
+    ("0,5", 0.5),
+    ("0.5", 0.5),          # ⚠️ virava 5.0 na 1ª versão -- dez vezes o valor
+    ("1.234,56", 1234.56),  # ponto como milhar, só quando há vírgula
+    ("10", 10.0),
+    ("0,0000000001", 1e-10),
+])
+def test_o_separador_decimal_e_lido_nos_dois_formatos(texto, esperado):
+    assert upload_conditions._para_numero(texto) == esperado
+
+
+def test_ponto_decimal_nao_e_confundido_com_milhar():
+    """A 1ª versão removia TODO ponto antes de converter, então "0.5" virava
+    "05" = 5,0. Passaria despercebido justamente quando o portal devolvesse o
+    número com ponto -- e aí a conferência aprovaria um valor errado ou
+    reprovaria um certo."""
+    assert upload_conditions.mesmo_valor("0,5", "0.5") is True
+    assert upload_conditions.mesmo_valor("0,05", "0.5") is False
+
+
+@pytest.mark.parametrize("lixo", ["abc", "", "   ", "-", "."])
+def test_texto_nao_numerico_nao_vira_numero(lixo):
+    assert upload_conditions._para_numero(lixo) is None

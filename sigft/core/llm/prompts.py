@@ -348,7 +348,8 @@ sobre o material. O teste é este:
 | Situação | Evidente? | O que fazer |
 |---|---|---|
 | A entrada já diz "CLASSE 1: PERIGOSO" e o campo pede SIM/NÃO | ✅ sim, é leitura | mapear para "SIM" |
-| Dimensão fisicamente impossível na unidade padrão (ver regra 3) | ✅ sim, aritmética | converter a unidade |
+| Ficha declara "0,1 mm" e o campo é em cm | ✅ sim, é conversão declarada | converter: "0,01" |
+| Número SEM unidade que "parece absurdo" em cm | ❌ não, a unidade é suposta | devolver o número como veio |
 | Fornecedor escreveu "NÃO" em perigoso e você acha que o material é perigoso | ❌ não, é opinião sua | manter "NÃO" |
 | Descarte "Conforme legislação", que você acha vago | ❌ não, é juízo de valor | traduzir como está |
 | Campo em branco que "deveria" ter conteúdo | ❌ não, é suposição | deixar em branco |
@@ -369,10 +370,23 @@ REGRAS DE PROCESSAMENTO
 
 3.  **'dimensoes':**
     * Padronize todos os valores finais para **centímetros (cm)**.
-    * **Conversão de unidade só quando o valor é impossível em cm** para o material descrito em 'Descrição do material' — este é o caso de "erro evidente" da Regra 0. Se a entrada não traz unidade e o número é plausível em cm, **mantenha-o**.
-      - Valor absurdamente GRANDE em cm (ex: um 'elemento filtrante' com 500 de altura) ⇒ assuma milímetros e converta ("500" -> "50").
-      - Valor absurdamente PEQUENO em cm (ex: um 'elemento filtrante' com 0,5 de altura) ⇒ assuma metros e converta ("0,5" -> "50").
-    * Na dúvida entre converter e manter, **mantenha**. Uma dimensão preservada errada é corrigida por quem confere; uma convertida sem necessidade passa despercebida.
+    * **Converta a partir da unidade DECLARADA na ficha, e só dela.**
+
+          "0,1 mm"  ->  "0,01"      (mm -> cm: dividir por 10)
+          "500 mm"  ->  "50"
+          "1,2 m"   ->  "120"       (m -> cm: multiplicar por 100)
+          "10,5 cm" ->  "10,5"      (já está em cm)
+
+    * ⚠️ **SEM UNIDADE DECLARADA, NÃO ADIVINHE.** Devolva o número como veio.
+      A regra anterior mandava supor a unidade quando o valor "parecesse
+      absurdo em cm" — foi removida em 2026-08-19, a pedido do usuário:
+      *"devemos ser estritamente fiel à informação que veio da ficha, fazendo
+      a conversão para cm"*. Supor unidade é inventar dado: o número muda,
+      fica plausível, e ninguém percebe.
+    * ⚠️ **NÃO ARREDONDE. O campo do portal não tem limite de casas decimais**
+      (confirmado pelo usuário em 2026-08-19) — se a conversão der
+      "0,0000000001", é isso que vai. Cortar casas é perder informação que a
+      ficha trouxe.
     * Retorne os valores como strings **contendo apenas o número puro**, sem a unidade (ex: "10,5", "50"). Use vírgula como separador decimal.
     * **Formato do Zero:** valor menor que 1 vai **COM o zero à esquerda** (ex: 0.75 -> "0,75"). ⚠️ A regra anterior mandava OMITIR o zero, e ela foi removida em 2026-08-19: o portal repõe o zero sozinho, então o que ele guarda é "0,75" de qualquer jeito — mandar ",75" só criava diferença entre o que se pede e o que se lê de volta.
 
@@ -392,7 +406,15 @@ REGRAS DE PROCESSAMENTO
 
 7.  **'peso':**
     * Padronize todos os valores finais para **quilogramas (kg)**.
-    * **Conversão de unidade só no caso evidente**, mesma lógica da regra 3: se o peso não tem unidade e é impossível em kg para o material descrito (ex: "Anel de vedação" com peso "20000"), assuma gramas e converta. Se for plausível em kg, **mantenha**.
+    * **Converta a partir da unidade DECLARADA na ficha, e só dela.**
+
+          "210 g"    ->  "0,21"     (g -> kg: dividir por 1000)
+          "0,210 kg" ->  "0,21"
+          "12,5 kg"  ->  "12,5"
+
+    * ⚠️ **SEM UNIDADE DECLARADA, NÃO ADIVINHE** — mesma regra da 3, e pelo
+      mesmo motivo. Devolva o número como veio.
+    * ⚠️ **NÃO ARREDONDE**: o campo não tem limite de casas decimais.
     * Retorne como string, usando vírgula como separador decimal.
     * **Formato do Zero:** valor menor que 1 vai **COM o zero à esquerda** (ex: 0.26 -> "0,26"). ⚠️ A regra anterior mandava OMITIR o zero, e ela foi removida em 2026-08-19: o portal repõe o zero sozinho, então o que ele guarda é "0,26" de qualquer jeito — mandar ",26" só criava diferença entre o que se pede e o que se lê de volta.
 
