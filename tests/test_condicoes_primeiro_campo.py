@@ -129,7 +129,11 @@ def test_campo_que_nunca_aceita_vira_PENDENCIA_com_log():
         CAMPO, "texto", "legislacao_es", linhas.append, pendencias)
 
     assert ok is False
-    assert any("NÃO aceitou o valor" in l for l in linhas)
+    assert any("NÃO aceitou" in l for l in linhas)
+    assert any("texto" in l for l in linhas), (
+        "a mensagem tem de dizer o que foi PEDIDO -- sem isso, quem lê o log "
+        "não sabe o que digitar à mão"
+    )
     assert pendencias and "legislacao_es" in pendencias[0]
 
 
@@ -208,3 +212,63 @@ def test_nenhum_campo_de_texto_ficou_sem_conferencia():
     assert cruas == [], (
         f"{len(cruas)} campo(s) ainda escrevem sem conferir o que ficou na tela"
     )
+
+
+# =============================================================================
+# O falso positivo que reprovou 28 fichas que o portal tinha aceitado
+# =============================================================================
+# Lote de 2026-08-19: 28 de 31 fichas saíram INCOMPLETO. O log dizia, por
+# exemplo, `'Input_LiquidWeight' ficou '0,55'` -- um valor PLAUSÍVEL, não
+# vazio. Cruzando com o Excel do mesmo lote:
+#
+#     Excel manda ',55'   ->   portal guarda '0,55'
+#
+# O portal NORMALIZA (repõe o zero à esquerda). A comparação era de TEXTO,
+# então toda dimensão e todo peso menor que 1 virava pendência. E a origem de
+# ',55' era uma regra do PRÓPRIO prompt -- "omita o zero à esquerda" --,
+# herdada da versão antiga e mantida por mim na reescrita.
+#
+# Um alarme que dispara sempre é igual a alarme nenhum: some no meio do log, e
+# o real some junto. Foi o que aconteceu -- havia perdas de verdade (',003'
+# virando '0,0') afogadas em 20 falsos positivos.
+
+@pytest.mark.parametrize("pedido,na_tela", [
+    (",55", "0,55"),     # o caso do lote, dimensão e peso
+    ("0,70", ",70"),     # e o inverso, se um dia o portal devolver sem o zero
+    (",215", "0,215"),
+    ("5", "5"),
+])
+def test_normalizacao_do_portal_NAO_e_falha(pedido, na_tela):
+    assert upload_conditions.mesmo_valor(pedido, na_tela) is True
+
+
+@pytest.mark.parametrize("pedido,na_tela", [
+    ("10", "1"),         # perdeu um dígito -- valor errado no portal
+    (",003", "0,0"),     # perdeu precisão -- limite de casas do campo
+    (",005", "0,"),
+    (",011", "0,"),
+])
+def test_perda_de_valor_de_verdade_CONTINUA_sendo_pega(pedido, na_tela):
+    """O conserto do falso positivo não podia cegar o alarme real."""
+    assert upload_conditions.mesmo_valor(pedido, na_tela) is False
+
+
+def test_texto_livre_compara_como_TEXTO():
+    """Só valor numérico dos dois lados vira comparação de número; o resto
+    continua exigindo igualdade literal."""
+    assert upload_conditions.mesmo_valor("Caixa de papelão", "Caixa de papelão") is True
+    assert upload_conditions.mesmo_valor("Caixa de papelão", "Caixa") is False
+
+
+def test_o_prompt_nao_manda_mais_omitir_o_zero():
+    """A raiz do descasamento. O portal repõe o zero sozinho, então mandar
+    ",55" só criava diferença entre o que se pede e o que se lê de volta."""
+    from sigft.core.llm import prompts
+
+    assert "omita o zero à esquerda" not in prompts.SYSTEM_CONDICOES
+
+
+def test_o_campo_numerico_ganha_um_tempo_antes_da_releitura():
+    """"10" foi lido como "1" -- o primeiro caractere. Só acontece se a leitura
+    chega antes de a máscara do portal terminar de reformatar."""
+    assert upload_conditions.PAUSA_CAMPO_ASSENTAR > 0

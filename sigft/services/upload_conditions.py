@@ -488,6 +488,53 @@ def campos_em_branco_na_origem(dados_brutos):
 # chegava no segundo, a tela já tinha assentado.
 PAUSA_ABA_ASSENTAR = 1.0
 
+# Quanto se espera o campo numérico assentar antes de RELER.
+#
+# O portal reformata o que recebe (máscara de decimal), e a releitura imediata
+# pega o campo no meio da reformatação. Medido no lote de 2026-08-19: o alvo
+# "10" foi lido como "1" -- o primeiro caractere --, o que só acontece se a
+# leitura chega antes de a máscara terminar.
+PAUSA_CAMPO_ASSENTAR = 0.35
+
+
+def _para_numero(texto):
+    """`",55"` / `"0,55"` / `"0.55"` -> `0.55`. Não numérico -> `None`."""
+    bruto = str(texto if texto is not None else "").strip().replace(".", "").replace(",", ".")
+    if not bruto or bruto in (".", "-"):
+        return None
+    try:
+        return float(bruto)
+    except ValueError:
+        return None
+
+
+def mesmo_valor(escrito, na_tela):
+    """O que ficou na tela é o MESMO valor que pedimos?
+
+    ⚠️ COMPARAÇÃO NUMÉRICA, e não de texto. É o conserto de um falso positivo
+    que gerou 28 fichas "INCOMPLETO" num lote em que o portal tinha aceitado
+    tudo (2026-08-19):
+
+        pedimos ",55"   o portal guardou "0,55"   -> texto difere, número não
+
+    O portal NORMALIZA o que recebe (repõe o zero à esquerda). Comparar texto
+    fazia toda dimensão e todo peso menor que 1 virar pendência -- e um alarme
+    que dispara sempre é igual a alarme nenhum: some no meio do log, e o real
+    some junto.
+
+    Um valor REALMENTE perdido continua sendo pego, porque aí o número muda
+    mesmo: ",003" virando "0,0" é perda de precisão de verdade, e "10" virando
+    "1" também.
+
+    Sem número dos dois lados (texto livre), cai para a comparação de texto,
+    que é o comportamento correto ali.
+    """
+    a, b = _para_numero(escrito), _para_numero(na_tela)
+    if a is None or b is None:
+        return str(escrito or "").strip() == str(na_tela or "").strip()
+    return a == b
+
+
 SECOES_DE_CONDICOES = ("Armazenamento", "Transporte", "Manutenção", "Descarte")
 
 
@@ -601,22 +648,25 @@ class UploadAutomation:
             return True
 
         for tentativa in (1, 2):
+            # Dá um tempo para a máscara do portal terminar antes de ler. Sem
+            # isto a leitura pega o campo no meio da reformatação -- foi assim
+            # que "10" apareceu como "1" no lote de 2026-08-19.
+            time.sleep(PAUSA_CAMPO_ASSENTAR)
             try:
                 atual = str(self.engine.get_value(seletor) or "")
             except Exception:  # noqa: BLE001
                 return True  # não dá para conferir; não inventa pendência
-            if atual.strip() == alvo.strip():
+            if mesmo_valor(alvo, atual):
                 return True
             if tentativa == 1:
                 if callback_log:
-                    callback_log(f"      [!] '{nome_campo}' ficou {atual.strip()[:20]!r} "
-                                 f"depois de escrito. Reescrevendo.")
-                time.sleep(PAUSA_ENTRE_CAMPOS)
+                    callback_log(f"      [!] '{nome_campo}': pedi {alvo.strip()[:20]!r} e "
+                                 f"ficou {atual.strip()[:20]!r}. Reescrevendo.")
                 self.safe_send_keys(seletor, alvo)
 
         if callback_log:
-            callback_log(f"      [!] '{nome_campo}' NÃO aceitou o valor em duas tentativas "
-                         f"-- preencher à mão.")
+            callback_log(f"      [!] '{nome_campo}' NÃO aceitou {alvo.strip()[:20]!r} em duas "
+                         f"tentativas (ficou {atual.strip()[:20]!r}) -- preencher à mão.")
         if pendencias is not None:
             pendencias.append(f"campo '{nome_campo}' não aceitou o valor")
         return False

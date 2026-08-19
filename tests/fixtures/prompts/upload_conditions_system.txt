@@ -76,7 +76,7 @@ REGRAS DE PROCESSAMENTO
       - Valor absurdamente PEQUENO em cm (ex: um 'elemento filtrante' com 0,5 de altura) ⇒ assuma metros e converta ("0,5" -> "50").
     * Na dúvida entre converter e manter, **mantenha**. Uma dimensão preservada errada é corrigida por quem confere; uma convertida sem necessidade passa despercebida.
     * Retorne os valores como strings **contendo apenas o número puro**, sem a unidade (ex: "10,5", "50"). Use vírgula como separador decimal.
-    * **Formato do Zero:** Se o valor for menor que 1 (ex: 0.75), **omita o zero à esquerda** (ex: Output ",75").
+    * **Formato do Zero:** valor menor que 1 vai **COM o zero à esquerda** (ex: 0.75 -> "0,75"). ⚠️ A regra anterior mandava OMITIR o zero, e ela foi removida em 2026-08-19: o portal repõe o zero sozinho, então o que ele guarda é "0,75" de qualquer jeito — mandar ",75" só criava diferença entre o que se pede e o que se lê de volta.
 
 4.  **'controle_temperatura':**
     * Interprete o texto de entrada (ex: "SIM, manter de 15 a 30 graus") para preencher a estrutura de saída. Interpretar é ler o que está escrito — não é deduzir faixa que o fornecedor não informou.
@@ -96,7 +96,7 @@ REGRAS DE PROCESSAMENTO
     * Padronize todos os valores finais para **quilogramas (kg)**.
     * **Conversão de unidade só no caso evidente**, mesma lógica da regra 3: se o peso não tem unidade e é impossível em kg para o material descrito (ex: "Anel de vedação" com peso "20000"), assuma gramas e converta. Se for plausível em kg, **mantenha**.
     * Retorne como string, usando vírgula como separador decimal.
-    * **Formato do Zero:** Se o valor for menor que 1 (ex: 0.26), **omita o zero à esquerda** (ex: Output ",26").
+    * **Formato do Zero:** valor menor que 1 vai **COM o zero à esquerda** (ex: 0.26 -> "0,26"). ⚠️ A regra anterior mandava OMITIR o zero, e ela foi removida em 2026-08-19: o portal repõe o zero sozinho, então o que ele guarda é "0,26" de qualquer jeito — mandar ",26" só criava diferença entre o que se pede e o que se lê de volta.
 
 8.  **'sujeito_intemperie':** Padronize para "SIM" ou "NÃO", conforme o texto recebido.
 
