@@ -285,27 +285,29 @@ def test_o_campo_numerico_ganha_um_tempo_antes_da_releitura():
 # Correção do usuário: *"nenhum campo da parte de condições tem restrição de
 # caracteres, então se for 0,0000000001 ele vai aceitar. Devemos ser
 # estritamente fiel à informação que veio da ficha, fazendo a conversão para
-# cm — se veio 0,1mm a informação será 0,01 cm"*.
+# cm -- se veio 0,1mm a informação será 0,01 cm"*.
 #
-# Isso desfaz duas suposições minhas: (a) que o campo tinha limite de casas, e
-# (b) que valia adivinhar a unidade quando o número "parecesse absurdo".
+# ⚠️ SEGUNDA correção do usuário, no mesmo dia, e ela DESFAZ metade do que
+# estava escrito aqui: *"eu preciso que a IA adivinhe sim com base no tipo de
+# equipamento (...) a maioria das fichas não virá unidade"*.
+#
+# O que sobreviveu: o campo não tem limite de casas -- nada de arredondar.
+# O que caiu: os testes que proibiam a IA de DEDUZIR a unidade ausente. Eles
+# passaram a pinar a política oposta à que o usuário quer, e passavam só por
+# acidente de redação (o texto novo diz "deduza", não "assuma"). Um teste
+# verde defendendo a regra errada é pior que teste nenhum: ele convence.
+#
+# A política vigente e os seus limites estão em
+# tests/test_prompt_condicoes_unidades.py -- inclusive a fronteira que impede
+# a licença de vazar da unidade para o conteúdo dos campos de texto.
 
-@pytest.mark.parametrize("proibido", [
-    "assuma milímetros", "assuma gramas", "assuma que a entrada estava em",
-])
-def test_o_prompt_nao_manda_mais_SUPOR_unidade(proibido):
-    """Supor unidade é inventar dado: o número muda, fica plausível, e ninguém
-    percebe."""
-    from sigft.core.llm import prompts
-
-    assert proibido not in prompts.SYSTEM_CONDICOES
-
-
-def test_o_prompt_manda_converter_pela_unidade_DECLARADA():
+def test_o_prompt_manda_converter_pela_unidade_DECLARADA_quando_ela_existe():
+    """A unidade escrita na ficha continua vencendo tudo: só se deduz o que
+    não foi dito. O exemplo do usuário ("0,1mm -> 0,01 cm") segue no texto."""
     from sigft.core.llm import prompts
     corrido = " ".join(prompts.SYSTEM_CONDICOES.split())
 
-    assert "Converta a partir da unidade DECLARADA na ficha, e só dela" in corrido
+    assert "Unidade DECLARADA vence sempre" in corrido
     assert '"0,1 mm" -> "0,01"' in corrido, "o exemplo do usuário tem de estar lá"
 
 

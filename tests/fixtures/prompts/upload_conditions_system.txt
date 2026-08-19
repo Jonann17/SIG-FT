@@ -51,10 +51,18 @@ sobre o material. O teste é este:
 |---|---|---|
 | A entrada já diz "CLASSE 1: PERIGOSO" e o campo pede SIM/NÃO | ✅ sim, é leitura | mapear para "SIM" |
 | Ficha declara "0,1 mm" e o campo é em cm | ✅ sim, é conversão declarada | converter: "0,01" |
-| Número SEM unidade que "parece absurdo" em cm | ❌ não, a unidade é suposta | devolver o número como veio |
+| Número SEM unidade, e o material mostra que a escala está errada | ✅ sim, e é obrigatório — ver regra 3 | deduzir a unidade e converter |
 | Fornecedor escreveu "NÃO" em perigoso e você acha que o material é perigoso | ❌ não, é opinião sua | manter "NÃO" |
 | Descarte "Conforme legislação", que você acha vago | ❌ não, é juízo de valor | traduzir como está |
 | Campo em branco que "deveria" ter conteúdo | ❌ não, é suposição | deixar em branco |
+
+⚠️ **A UNIDADE DE MEDIDA é a exceção declarada a este teste.** Ela é o único
+lugar do prompt onde você DEVE usar o que sabe sobre o material — e a razão é
+que a fidelidade aqui é ao **tamanho real da coisa**, não ao dígito escrito.
+Uma caixa de relé anotada "400" e gravada como 400 cm não é fiel a nada: é uma
+caixa de 4 metros que não existe. A regra 3 diz como deduzir; ela vale só para
+os cinco campos numéricos (comprimento, largura, altura, peso líquido, peso
+bruto) e não abre exceção para mais nada.
 
 =========================================================================
 REGRAS DE PROCESSAMENTO
@@ -71,26 +79,133 @@ REGRAS DE PROCESSAMENTO
 2.  **'pmib_codigo':** Copie exatamente como veio.
 
 3.  **'dimensoes':**
-    * Padronize todos os valores finais para **centímetros (cm)**.
-    * **Converta a partir da unidade DECLARADA na ficha, e só dela.**
+
+    O portal grava em **centímetros (cm)**. A ficha quase nunca declara a
+    unidade — o fornecedor escreve só o número, e o formulário dele não
+    obriga a dizer qual é. Sua tarefa é **decidir em que unidade ele escreveu
+    e converter para cm**.
+
+    **3.1 — Unidade DECLARADA vence sempre.** Se a ficha escreve a unidade,
+    converta a partir dela e pare por aqui — não reinterprete:
 
           "0,1 mm"  ->  "0,01"      (mm -> cm: dividir por 10)
           "500 mm"  ->  "50"
           "1,2 m"   ->  "120"       (m -> cm: multiplicar por 100)
           "10,5 cm" ->  "10,5"      (já está em cm)
 
-    * ⚠️ **SEM UNIDADE DECLARADA, NÃO ADIVINHE.** Devolva o número como veio.
-      A regra anterior mandava supor a unidade quando o valor "parecesse
-      absurdo em cm" — foi removida em 2026-08-19, a pedido do usuário:
-      *"devemos ser estritamente fiel à informação que veio da ficha, fazendo
-      a conversão para cm"*. Supor unidade é inventar dado: o número muda,
-      fica plausível, e ninguém percebe.
+    Se UMA das três medidas traz unidade e as outras não, a unidade declarada
+    **vale para as três**: o fornecedor preencheu a mesma linha do formulário.
+
+    **3.2 — Unidade AUSENTE: deduza qual é.** Você tem dois instrumentos, e
+    deve usar os dois juntos:
+
+    (a) **O que é o material.** A chave `Descrição do material` (e, como
+        reforço, `Descrição breve da ficha`) diz o que está sendo embalado.
+        Um relé de proteção não vem numa caixa de 4 metros; um rotor de
+        turbina não vem numa de 40 centímetros.
+
+    (b) **O peso, como aferidor.** É o instrumento mais forte, porque é um
+        número contra outro número, e não uma impressão. Calcule a densidade
+        aparente que cada hipótese produz:
+
+            densidade (g/cm³) = peso_bruto_em_kg ÷ (C × L × A em cm) × 1000
+
+        Uma caixa embalada — equipamento + calço + vazio — fica quase sempre
+        entre **0,1 e 2 g/cm³**. Máquina pesada bem calçada chega a 3–5. Para
+        referência: aço maciço 7,8; cobre 8,9; alumínio 2,7; plástico e
+        madeira perto de 1; isopor 0,02. **Nada que se transporte fica abaixo
+        de ~0,02 nem acima de ~8.**
+
+    **3.3 — O veredito de cada faixa** (é o que fecha a decisão):
+
+    - densidade **absurdamente BAIXA** (muito abaixo de 0,1) ⇒ a caixa que
+      você supôs é grande demais ⇒ o número estava em **mm**: divida por 10.
+    - densidade **absurdamente ALTA** (acima de ~8) ⇒ a caixa é pequena
+      demais ⇒ o número estava em **m**: multiplique por 100.
+    - densidade **dentro da faixa** ⇒ o número **já estava em cm**: não mexa.
+
+    Teste as hipóteses e fique com a que dá densidade plausível. Se nenhuma
+    for perfeita, fique com a MENOS absurda — a diferença entre a hipótese
+    certa e a errada é de mil vezes, não de dez por cento.
+
+    **EXEMPLO A — o caso mais comum: veio em mm**
+
+        Descrição: "RELÉ DE PROTEÇÃO DIFERENCIAL"
+        Entrada:   comprimento "400", largura "300", altura "200"
+                   peso bruto "8"
+
+        hipótese cm: 400 × 300 × 200 = 24.000.000 cm³  (24 m³, uma sala)
+                     8 ÷ 24.000.000 × 1000 = 0,0003 g/cm³
+                     ← absurdo: 60× mais leve que isopor, e um relé não
+                       ocupa 24 m³
+        hipótese mm: 40 × 30 × 20 = 24.000 cm³  (24 litros, uma caixa)
+                     8 ÷ 24.000 × 1000 = 0,33 g/cm³   ← plausível ✅
+
+        Saída: comprimento "40", largura "30", altura "20"
+
+    **EXEMPLO B — já estava em cm: NÃO MEXER**
+
+        Descrição: "BOBINA DE CABO DE POTÊNCIA 500 M"
+        Entrada:   comprimento "120", largura "120", altura "90"
+                   peso bruto "250"
+
+        hipótese cm: 120 × 120 × 90 = 1.296.000 cm³  (1,3 m³)
+                     250 ÷ 1.296.000 × 1000 = 0,19 g/cm³   ← plausível ✅
+        hipótese mm: 12 × 12 × 9 = 1.296 cm³  (1,3 litro)
+                     250 ÷ 1.296 × 1000 = 193 g/cm³
+                     ← impossível: 25× a densidade do aço
+
+        Saída: comprimento "120", largura "120", altura "90"  (INALTERADO)
+
+    **EXEMPLO C — o caso raro: veio em m**
+
+        Descrição: "TRANSFORMADOR DE POTÊNCIA 30 MVA"
+        Entrada:   comprimento "3", largura "2", altura "2,5"
+                   peso bruto "42000"
+
+        hipótese cm: 3 × 2 × 2,5 = 15 cm³ para 42 toneladas   ← impossível
+        hipótese m:  300 × 200 × 250 = 15.000.000 cm³  (15 m³)
+                     42.000 ÷ 15.000.000 × 1000 = 2,8 g/cm³
+                     ← plausível: ferro, cobre e óleo, com pouco vazio ✅
+
+        Saída: comprimento "300", largura "200", altura "250"
+
+    **EXEMPLO D — sem peso: decide o material sozinho**
+
+        Descrição: "PARAFUSO SEXTAVADO M10 X 40"
+        Entrada:   comprimento "60", largura "25", altura "25"
+                   peso bruto vazio
+
+        Sem peso não há aferidor, então decide o instrumento (a): um parafuso
+        M10 x 40 tem 4 cm de corpo. Uma embalagem de 60 × 25 × 25 cm para ele
+        é desproporcional; 6 × 2,5 × 2,5 cm é o tamanho da peça.
+
+        Saída: comprimento "6", largura "2,5", altura "2,5"
+
+    **3.4 — Os limites da dedução (é aqui que se erra):**
+
+    * A dedução é **só da UNIDADE**, e só destes cinco campos numéricos
+      (comprimento, largura, altura, peso líquido, peso bruto). Fora deles a
+      **REGRA 0 continua soberana**: deduzir unidade é ler uma medida na
+      escala certa; escrever uma norma, um cuidado ou uma lei que o
+      fornecedor não citou é inventar um fato. Não são a mesma coisa, e a
+      licença de fazer a primeira não é licença de fazer a segunda.
+    * **Nunca invente um número que não veio.** Dimensão em branco continua
+      em branco — não estime o tamanho da caixa a partir do tipo de material.
+      Deduzir a escala de um número existente é permitido; criar o número não.
+    * **Aplique o MESMO fator às três medidas.** Comprimento em mm e largura
+      em cm na mesma caixa é sinal de que você errou a leitura, não de que o
+      fornecedor misturou unidades no mesmo campo.
+    * **Na dúvida genuína entre duas hipóteses plausíveis,
+      fique com o número como veio.** A dedução existe contra o absurdo, não
+      contra o meramente incerto — e "absurdo" aqui é ordem de grandeza, e
+      não gosto pessoal.
     * ⚠️ **NÃO ARREDONDE. O campo do portal não tem limite de casas decimais**
-      (confirmado pelo usuário em 2026-08-19) — se a conversão der
-      "0,0000000001", é isso que vai. Cortar casas é perder informação que a
-      ficha trouxe.
+      (confirmado pelo usuário e pelo HTML do campo em 2026-08-19:
+      `maxlength="30"`, sem máscara) — se a conversão der "0,0000000001", é
+      isso que vai. Cortar casas é perder informação que a ficha trouxe.
     * Retorne os valores como strings **contendo apenas o número puro**, sem a unidade (ex: "10,5", "50"). Use vírgula como separador decimal.
-    * **Formato do Zero:** valor menor que 1 vai **COM o zero à esquerda** (ex: 0.75 -> "0,75"). ⚠️ A regra anterior mandava OMITIR o zero, e ela foi removida em 2026-08-19: o portal repõe o zero sozinho, então o que ele guarda é "0,75" de qualquer jeito — mandar ",75" só criava diferença entre o que se pede e o que se lê de volta.
+    * **Formato do Zero:** valor menor que 1 vai **COM o zero à esquerda** (ex: 0.75 -> "0,75"). ⚠️ A regra anterior mandava OMITIR o zero, e ela foi removida em 2026-08-19: o portal repõe o zero sozinho ao salvar, então o que ele guarda é "0,75" de qualquer jeito — mandar ",75" só criava diferença entre o que se pede e o que se lê de volta.
 
 4.  **'controle_temperatura':**
     * Interprete o texto de entrada (ex: "SIM, manter de 15 a 30 graus") para preencher a estrutura de saída. Interpretar é ler o que está escrito — não é deduzir faixa que o fornecedor não informou.
@@ -107,18 +222,53 @@ REGRAS DE PROCESSAMENTO
     * `cuidado_es` / `cuidado_pt`: Aplique a Regra Mestra de Tradução ao campo 'cuidado' do input.
 
 7.  **'peso':**
-    * Padronize todos os valores finais para **quilogramas (kg)**.
-    * **Converta a partir da unidade DECLARADA na ficha, e só dela.**
+
+    O portal grava em **quilogramas (kg)**. Mesma estrutura da regra 3:
+    unidade declarada vence; unidade ausente, deduza.
+
+    **7.1 — Unidade DECLARADA:**
 
           "210 g"    ->  "0,21"     (g -> kg: dividir por 1000)
           "0,210 kg" ->  "0,21"
           "12,5 kg"  ->  "12,5"
+          "1,4 t"    ->  "1400"     (t -> kg: multiplicar por 1000)
 
-    * ⚠️ **SEM UNIDADE DECLARADA, NÃO ADIVINHE** — mesma regra da 3, e pelo
-      mesmo motivo. Devolva o número como veio.
+    **7.2 — Unidade AUSENTE:** o aferidor é o mesmo da regra 3, invertido —
+    agora as dimensões são o lado firme e o peso é o que está sendo julgado.
+    Calcule a densidade tratando o número como kg:
+
+    - saiu **absurdamente ALTA** (acima de ~8 g/cm³) ⇒ o número estava em
+      **gramas**: divida por 1000.
+    - saiu **absurdamente BAIXA** para um equipamento de metal ⇒ considere
+      **tonelada**: multiplique por 1000.
+    - saiu na faixa ⇒ já estava em kg, não mexa.
+
+    O tipo de material fecha a decisão: um relé não pesa 250 kg, e uma bobina
+    de cabo de 500 m não pesa 250 g.
+
+    **EXEMPLO — veio em gramas**
+
+        Descrição: "DISJUNTOR CAIXA MOLDADA 100 A"
+        Entrada:   peso líquido "2000"
+                   caixa já deduzida: 30 × 20 × 15 cm = 9.000 cm³
+
+        hipótese kg: 2.000 ÷ 9.000 × 1000 = 222 g/cm³
+                     ← impossível: 28× a densidade do aço
+        hipótese g:  2 ÷ 9.000 × 1000 = 0,22 g/cm³      ← plausível ✅
+
+        Saída: peso líquido "2"
+
+    **7.3 — Coerência entre os dois pesos:** o peso líquido **nunca** é
+    maior que o bruto — o bruto inclui a embalagem. Se a sua conversão
+    produzir isso, você trocou a unidade de um dos dois: refaça. Se a ficha
+    traz só um deles, converta o que existe e deixe o outro vazio; não
+    estime o que falta.
+
+    * Vale aqui tudo da regra 3.4: a dedução é só da unidade, número que não
+      veio não se inventa, e na dúvida genuína fica como veio.
     * ⚠️ **NÃO ARREDONDE**: o campo não tem limite de casas decimais.
     * Retorne como string, usando vírgula como separador decimal.
-    * **Formato do Zero:** valor menor que 1 vai **COM o zero à esquerda** (ex: 0.26 -> "0,26"). ⚠️ A regra anterior mandava OMITIR o zero, e ela foi removida em 2026-08-19: o portal repõe o zero sozinho, então o que ele guarda é "0,26" de qualquer jeito — mandar ",26" só criava diferença entre o que se pede e o que se lê de volta.
+    * **Formato do Zero:** valor menor que 1 vai **COM o zero à esquerda** (ex: 0.26 -> "0,26"). ⚠️ A regra anterior mandava OMITIR o zero, e ela foi removida em 2026-08-19: o portal repõe o zero sozinho ao salvar, então o que ele guarda é "0,26" de qualquer jeito — mandar ",26" só criava diferença entre o que se pede e o que se lê de volta.
 
 8.  **'sujeito_intemperie':** Padronize para "SIM" ou "NÃO", conforme o texto recebido.
 

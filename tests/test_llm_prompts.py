@@ -63,6 +63,9 @@ def _ler_fixture(nome):
 # valendo como trava contra mudança ACIDENTAL do texto; o que ele NÃO prova
 # mais é "igual ao de antes da refatoração". A propriedade de conteúdo está
 # em tests/test_prompt_condicoes_fidelidade.py.
+# ⚠️ REGERADA DE NOVO em 2026-08-19: as regras 3 e 7 passaram a mandar DEDUZIR
+# a unidade ausente (pedido do usuário). Propriedades de conteúdo em
+# tests/test_prompt_condicoes_unidades.py.
 def test_system_condicoes_bate_byte_a_byte_com_a_fixture():
     assert prompts.SYSTEM_CONDICOES == _ler_fixture("upload_conditions_system")
 
