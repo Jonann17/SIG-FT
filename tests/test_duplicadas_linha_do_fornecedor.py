@@ -289,3 +289,28 @@ def _montar_robo_de_mentira(monkeypatch, com_combo_de_fornecedor):
                         _secao("ge_vernova"))
     monkeypatch.setattr(robo.injetor, "limpar_caracteristicas",
                         _secao("caracteristicas"))
+
+
+# =============================================================================
+# 4. O SALVAR da seção também precisa ser conferido
+# =============================================================================
+def test_salvar_da_secao_que_falha_vira_pendencia(monkeypatch):
+    """`clicar_salvar_visivel` DEVOLVE se conseguiu, e o retorno estava sendo
+    descartado nesta seção -- enquanto o das Características já era checado.
+
+    Importa porque é a outra explicação possível para a tabela vazia do print:
+    mesmo com o "+" funcionando, um salvar que não pega deixa a ficha do jeito
+    que estava e ninguém fica sabendo.
+    """
+    _montar_robo_de_mentira(monkeypatch, com_combo_de_fornecedor=False)
+    monkeypatch.setattr(robo.injetor, "escrever_referencia",
+                        lambda *a, **k: injetor.ResultadoDaSecao("referencia", True, ""))
+
+    portal = _PortalFalso(_EngineFalso())
+    portal.salvar_devolve = False
+    linhas = []
+
+    resultado = robo.processar_ficha(portal, _FichaFalsa(), linhas.append)
+
+    assert resultado.ok is False, "salvar que não pegou não pode sair como sucesso"
+    assert any("salvar" in l.lower() for l in linhas)

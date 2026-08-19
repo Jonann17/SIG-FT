@@ -101,7 +101,7 @@ SECOES_DA_PLANILHA = {
     config.COL_INFO_GERAIS: (
         "fabricante", "referencia",
         "fornecedor", "referencia_fornecedor",
-        "ge_vernova",
+        "ge_vernova", "salvar_fabricantes",
     ),
     config.COL_CARACT_TECNICAS: ("caracteristicas",),
 }
@@ -411,7 +411,16 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
             portal, getattr(ficha, "codigo_fornecedor", ""), callback_log,
             log_auditoria=log_auditoria))
 
-        portal.clicar_salvar_visivel("Fabricantes e Fornecedores")
+        # ⚠️ O RETORNO NÃO PODE SER DESCARTADO (2026-08-19). `limpar_
+        # caracteristicas` já checava o seu; aqui o valor era jogado fora, e
+        # essa é a OUTRA explicação possível para a tabela vazia do print da
+        # 4500063671.1418: com o "+" funcionando, um salvar que não pega deixa
+        # a ficha como estava e o log segue dizendo que deu certo.
+        if not portal.clicar_salvar_visivel("Fabricantes e Fornecedores"):
+            resultado.registrar(injetor.ResultadoDaSecao(
+                "salvar_fabricantes", False, "o salvar da seção não pegou"))
+            _log("   [Erro] Não consegui salvar a seção de Fabricantes e "
+                 "Fornecedores. O que foi preenchido pode não ter ficado.")
         resultado.registrar(
             injetor.limpar_caracteristicas(portal, ficha.ficha_original, callback_log))
 
