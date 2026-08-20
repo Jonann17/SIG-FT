@@ -59,12 +59,16 @@ class _EngineComToast:
     """
 
     def __init__(self, botoes=1, visiveis=None, habilitados=None,
-                 toasts=(), toast_ao_salvar=None):
+                 toasts=(), toast_ao_salvar=None, classe_do_toast=None):
         self.botoes = botoes
         self.visiveis = set(range(1, botoes + 1)) if visiveis is None else set(visiveis)
         self.habilitados = set(range(1, botoes + 1)) if habilitados is None else set(habilitados)
         self.toasts = list(toasts)
         self.toast_ao_salvar = toast_ao_salvar
+        # Classe do CONTAINER do toast que o salvamento produz. `None` = o
+        # duplo não sabe a classe (é o caso das telas cujo HTML ainda não
+        # levantamos), e aí só a palavra pode decidir.
+        self.classe_do_toast = classe_do_toast
         self.cliques = []
 
     def _indice(self, seletor):
@@ -73,6 +77,11 @@ class _EngineComToast:
         return int(achado.group(1)) if achado else None
 
     def contar(self, seletor):
+        if "feedback-message-success" in seletor:
+            # Só o toast que o SALVAMENTO produziu tem classe conhecida; os
+            # que já estavam na tela entraram sem ela.
+            return 1 if (self.classe_do_toast == "feedback-message-success"
+                         and self.toast_ao_salvar in self.toasts) else 0
         if "feedback-message-text" in seletor:
             return len(self.toasts)
         if "SALVAR" in seletor:
@@ -80,6 +89,8 @@ class _EngineComToast:
         return 0
 
     def texto(self, seletor):
+        if "feedback-message-success" in seletor:
+            return self.toast_ao_salvar or ""
         if "feedback-message-text" in seletor:
             i = self._indice(seletor)
             return self.toasts[i - 1] if i and i <= len(self.toasts) else ""
@@ -246,4 +257,89 @@ def test_tabela_com_so_o_CODIGO_PMIB_depois_de_salvar_passa():
     resultado = injetor.limpar_caracteristicas(portal, "4500063671.1263",
                                                callback_log=lambda _m: None)
 
+    assert resultado.ok is True
+
+
+# =============================================================================
+# 4. A classe do toast diz "sucesso" melhor do que a palavra
+# =============================================================================
+# HTML que o usuário mandou em 2026-08-19:
+#
+#   <div class="feedback-message feedback-message-success feedback-message-autoclose"
+#        role="alert"><i></i>
+#     <div class="feedback-message-text">As características técnicas foram
+#      salvas com sucesso!</div>
+#   </div>
+#
+# `feedback-message-success` é um marcador SEMÂNTICO, escrito pelo portal, e
+# não depende de idioma. Até aqui o projeto casava as palavras "sucesso"/
+# "exito" -- que funcionam em PT/ES e falhariam num terceiro idioma ou numa
+# reescrita da mensagem. A classe resolve isso na raiz.
+#
+# As duas checagens se SOMAM, não se substituem: se a classe mudar, a palavra
+# ainda pega. É o mesmo princípio já usado para o aviso de colisão.
+
+def test_toast_com_a_CLASSE_de_sucesso_confirma():
+    engine = _EngineComToast(toast_ao_salvar="Mensagem em idioma que não conhecemos",
+                             classe_do_toast="feedback-message-success")
+    dormir, agora = _sem_esperar()
+
+    ok = _portal(engine).salvar_e_confirmar("Características Técnicas",
+                                            sleep_fn=dormir, agora_fn=agora)
+
+    assert ok is True, (
+        "a classe do portal basta. Exigir TAMBÉM a palavra da seção faria a "
+        "confirmação depender do idioma -- que é justamente o que a classe "
+        "resolve. Quem cobre o toast remanescente é a foto de ANTES."
+    )
+
+
+def test_toast_de_ERRO_com_a_palavra_sucesso_no_texto_nao_confirma():
+    """Um erro que mencione "sucesso" ("não foi possível concluir com
+    sucesso") passaria pela checagem por palavra. Pela classe, não."""
+    engine = _EngineComToast(
+        toast_ao_salvar="Não foi possível concluir com sucesso: campos obrigatórios.",
+        classe_do_toast="feedback-message-error")
+    dormir, agora = _sem_esperar()
+
+    ok = _portal(engine).salvar_e_confirmar("Características Técnicas",
+                                            sleep_fn=dormir, agora_fn=agora)
+
+    assert ok is False
+
+
+def test_a_palavra_da_secao_de_caracteristicas_esta_mapeada():
+    """Com a redação em mãos, a seção passa a ser identificável -- é o que
+    impede um toast de OUTRA seção de confirmar esta."""
+    from sigft.core.rpa import portal as portal_mod
+
+    assert portal_mod.PALAVRA_DA_SECAO.get("Características Técnicas") == "caracteristicas"
+    assert portal_mod.mensagem_confirma_secao(
+        "As características técnicas foram salvas com sucesso!",
+        "Características Técnicas") is True
+
+
+# =============================================================================
+# 5. Fabricantes e fornecedores NÃO TEM botão de salvar
+# =============================================================================
+def test_a_secao_de_fabricantes_nao_tenta_salvar(monkeypatch):
+    """*"O único campo que não precisa salvar é o de fabricantes e
+    fornecedores, esse não tem botão de salvar."* (usuário, 2026-08-19)
+
+    Faz sentido com o que já sabíamos: quem comita a linha ali é o "+", e é
+    por isso que a prova daquela seção é a linha entrar na tabela.
+
+    Sem este teste o defeito seria silencioso e universal: `salvar_e_confirmar`
+    não acharia botão, devolveria `False`, e TODA ficha sairia com a pendência
+    `salvar_fabricantes`.
+    """
+    from sigft.services import duplicadas_robo as robo
+    from tests.test_duplicadas_robo import _com_etapas, _Ficha
+
+    portal = _com_etapas(monkeypatch)
+
+    resultado = robo.processar_ficha(portal, _Ficha(), callback_log=lambda _m: None)
+
+    assert "Fabricantes e Fornecedores" not in portal.salvou
+    assert "salvar_fabricantes" not in [s.nome for s in resultado.secoes]
     assert resultado.ok is True

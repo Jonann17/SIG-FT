@@ -168,7 +168,11 @@ def escrever(portal, condicoes, callback_log=None):
         if falhas:
             problemas.append(f"{nome}: não escrevi {', '.join(falhas[:4])}")
 
-        if not portal.salvar_e_confirmar(f"Condições / {nome}", callback_log):
+        # O nome da sub-aba VAI CRU (e não "Condições / Armazenamento") porque
+        # é a chave de `PALAVRA_DA_SECAO` no portal: com ela, o toast é
+        # casado pela palavra da seção e um toast remanescente de OUTRA
+        # sub-aba não confirma esta.
+        if not portal.salvar_e_confirmar(nome, callback_log):
             problemas.append(f"{nome}: o portal não confirmou o salvamento")
             continue
 

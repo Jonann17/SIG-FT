@@ -292,25 +292,19 @@ def _montar_robo_de_mentira(monkeypatch, com_combo_de_fornecedor):
 
 
 # =============================================================================
-# 4. O SALVAR da seção também precisa ser conferido
+# 4. O SALVAR da seção de Fabricantes — REMOVIDO em 2026-08-19
 # =============================================================================
-def test_salvar_da_secao_que_falha_vira_pendencia(monkeypatch):
-    """`clicar_salvar_visivel` DEVOLVE se conseguiu, e o retorno estava sendo
-    descartado nesta seção -- enquanto o das Características já era checado.
-
-    Importa porque é a outra explicação possível para a tabela vazia do print:
-    mesmo com o "+" funcionando, um salvar que não pega deixa a ficha do jeito
-    que estava e ninguém fica sabendo.
-    """
-    _montar_robo_de_mentira(monkeypatch, com_combo_de_fornecedor=False)
-    monkeypatch.setattr(robo.injetor, "escrever_referencia",
-                        lambda *a, **k: injetor.ResultadoDaSecao("referencia", True, ""))
-
-    portal = _PortalFalso(_EngineFalso())
-    portal.salvar_devolve = False
-    linhas = []
-
-    resultado = robo.processar_ficha(portal, _FichaFalsa(), linhas.append)
-
-    assert resultado.ok is False, "salvar que não pegou não pode sair como sucesso"
-    assert any("salvar" in l.lower() for l in linhas)
+# Havia aqui um `test_salvar_da_secao_que_falha_vira_pendencia`, escrito no
+# mesmo dia, provando que o retorno de `clicar_salvar_visivel` não podia ser
+# descartado nesta seção. A premissa estava errada e quem a corrigiu foi o
+# usuário: *"o único campo que não precisa salvar é o de fabricantes e
+# fornecedores, esse não tem botão de salvar."*
+#
+# Bate com o resto do que se sabe da tela: quem comita a linha ali é o "+",
+# e é por isso que a prova daquela seção é a linha ENTRAR NA TABELA -- testada
+# em `test_referencia_falha_quando_a_linha_NAO_entra_na_tabela`, acima.
+#
+# O teste ficou aqui como registro porque o erro é atraente: toda seção do
+# portal tem SALVAR, menos esta. Quem for "corrigir a inconsistência" no
+# futuro vai reintroduzir uma pendência inventada em TODA ficha -- que é
+# exatamente o que a versão anterior fazia, e durou um commit.

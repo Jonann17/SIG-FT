@@ -153,6 +153,26 @@ XPATH_MENSAGEM_DE_FEEDBACK = (
     "//div[contains(concat(' ', normalize-space(@class), ' '), ' feedback-message-text ')]"
 )
 
+# ⚠️ O MARCADOR BOM É A CLASSE, não a palavra (2026-08-19). HTML completo do
+# toast, mandado pelo usuário:
+#
+#   <div class="feedback-message feedback-message-success feedback-message-autoclose"
+#        role="alert"><i></i>
+#     <div class="feedback-message-text">As características técnicas foram
+#      salvas com sucesso!</div>
+#   </div>
+#
+# `feedback-message-success` é semântico e escrito pelo portal: não depende de
+# idioma nem de redação. A checagem por palavra ("sucesso"/"exito") continua
+# como RESERVA -- as duas se somam, e é o mesmo princípio já aplicado ao aviso
+# de colisão de referência. Ganha-se também o caso perverso que a palavra não
+# cobre: uma mensagem de ERRO que contenha "sucesso" ("não foi possível
+# concluir com sucesso") passaria pela palavra e não passa pela classe.
+XPATH_MENSAGEM_DE_SUCESSO = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' feedback-message-success ')]"
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' feedback-message-text ')]"
+)
+
 # A tela do PMIB alterna PT/ES (ver docs/refatoracao/FICHA_DUPLICADA.md §6.5),
 # então o marcador de sucesso é aceito nos dois idiomas.
 MARCADORES_DE_SUCESSO = ("sucesso", "exito")
@@ -182,6 +202,9 @@ PALAVRA_DA_SECAO = {
     "Transporte": "transporte",
     "Manutenção": "manutencao",
     "Descarte": "descarte",
+    # 2026-08-19, com a redação vinda do usuário: "As características técnicas
+    # foram salvas com sucesso!"
+    "Características Técnicas": "caracteristicas",
 }
 
 # Quanto se espera pelo toast. O usuário descreve que ele aparece
@@ -647,7 +670,7 @@ class PMIBPortal:
                 )
         return False, ultima
 
-    def _mensagens_de_feedback(self):
+    def _mensagens_de_feedback(self, so_sucesso=False):
         """Textos dos toasts visíveis agora. Nunca levanta -- ler a tela não
         pode ser o que derruba a ficha.
 
@@ -655,14 +678,15 @@ class PMIBPortal:
         motivo de `clicar_salvar_visivel`: é o que funciona igual nos dois
         motores.
         """
+        seletor = XPATH_MENSAGEM_DE_SUCESSO if so_sucesso else XPATH_MENSAGEM_DE_FEEDBACK
         try:
-            total = self.engine.contar(XPATH_MENSAGEM_DE_FEEDBACK)
+            total = self.engine.contar(seletor)
         except Exception:  # noqa: BLE001
             return []
         textos = []
         for posicao in range(1, (total or 0) + 1):
             try:
-                textos.append(self.engine.texto(f"({XPATH_MENSAGEM_DE_FEEDBACK})[{posicao}]"))
+                textos.append(self.engine.texto(f"({seletor})[{posicao}]"))
             except Exception:  # noqa: BLE001
                 continue
         return textos
@@ -864,16 +888,39 @@ class PMIBPortal:
         fim = agora() + limite
         ultima = ""
         while True:
-            for mensagem in self._mensagens_de_feedback():
-                if not mensagem:
-                    continue
-                ultima = mensagem
+            # A CLASSE primeiro: `feedback-message-success` é o marcador que o
+            # portal escreve, e não depende de idioma. A palavra
+            # ("sucesso"/"exito") entra só quando a classe não casa nada -- se
+            # o portal mudar o markup, a reserva ainda pega. As duas se somam.
+            por_classe = [m for m in self._mensagens_de_feedback(so_sucesso=True) if m]
+            todas = [m for m in self._mensagens_de_feedback() if m]
+            if todas:
+                ultima = todas[-1]
+
+            # ⚠️ A EXIGÊNCIA DA PALAVRA DA SEÇÃO ACOMPANHA A FORÇA DA
+            # EVIDÊNCIA, e isto é deliberado:
+            #
+            #   veio pela CLASSE  -> o portal marcou como sucesso. "Novo" já
+            #                        basta: exigir também a palavra faria a
+            #                        confirmação depender do idioma, que é
+            #                        justamente o que a classe resolve.
+            #   veio pela PALAVRA -> heurística. Aí a palavra da seção volta a
+            #                        ser necessária, porque "sucesso" sozinho
+            #                        não diz de QUAL seção é a mensagem.
+            #
+            # A foto de ANTES (`vistas`) cobre o toast remanescente nos dois
+            # casos -- é ela, e não a palavra, a defesa principal.
+            for mensagem in por_classe:
+                if mensagem not in vistas:
+                    return True, mensagem
+
+            palavra = PALAVRA_DA_SECAO.get(secao)
+            for mensagem in todas:
                 if mensagem in vistas:
                     continue          # estava lá antes do clique
                 texto = _sem_acento(mensagem).lower()
-                if not any(m in texto for m in MARCADORES_DE_SUCESSO):
+                if not any(x in texto for x in MARCADORES_DE_SUCESSO):
                     continue
-                palavra = PALAVRA_DA_SECAO.get(secao)
                 if palavra and palavra not in texto:
                     continue
                 return True, mensagem

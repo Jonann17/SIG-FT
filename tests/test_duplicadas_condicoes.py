@@ -158,8 +158,12 @@ def test_cada_subaba_e_salva_separadamente():
 
     cond.escrever(portal, UM_CAMPO_DE_CADA)
 
-    assert portal.salvos == ["Condições / Armazenamento", "Condições / Transporte",
-                             "Condições / Manutenção", "Condições / Descarte"]
+    # O nome vai CRU (e não "Condições / Armazenamento") porque é a chave de
+    # `PALAVRA_DA_SECAO` no portal -- é com ela que o toast é casado pela
+    # palavra da seção, e um toast remanescente de outra sub-aba não confirma
+    # esta.
+    assert portal.salvos == ["Armazenamento", "Transporte",
+                             "Manutenção", "Descarte"]
 
 
 def test_texto_vazio_nao_e_escrito():

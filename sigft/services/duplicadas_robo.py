@@ -108,7 +108,7 @@ SECOES_DA_PLANILHA = {
     config.COL_INFO_GERAIS: (
         "fabricante", "referencia",
         "fornecedor", "referencia_fornecedor",
-        "ge_vernova", "salvar_fabricantes",
+        "ge_vernova",
         # CP 6.4: os documentos moram na mesma coluna -- o `_STATUS_PMIB` não
         # tem uma para eles, e associar datasheet é parte de "a ficha está
         # com as informações gerais prontas".
@@ -476,17 +476,18 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
             portal, getattr(ficha, "codigo_fornecedor", ""), callback_log,
             log_auditoria=log_auditoria))
 
-        # ⚠️ O RETORNO NÃO PODE SER DESCARTADO (2026-08-19). `limpar_
-        # caracteristicas` já checava o seu; aqui o valor era jogado fora, e
-        # essa é a OUTRA explicação possível para a tabela vazia do print da
-        # 4500063671.1418: com o "+" funcionando, um salvar que não pega deixa
-        # a ficha como estava e o log segue dizendo que deu certo.
-        if not portal.salvar_e_confirmar("Fabricantes e Fornecedores",
-                                       callback_log):
-            resultado.registrar(injetor.ResultadoDaSecao(
-                "salvar_fabricantes", False, "o salvar da seção não pegou"))
-            _log("   [Erro] Não consegui salvar a seção de Fabricantes e "
-                 "Fornecedores. O que foi preenchido pode não ter ficado.")
+        # ⚠️ FABRICANTES E FORNECEDORES NÃO TEM BOTÃO DE SALVAR. *"O único
+        # campo que não precisa salvar é o de fabricantes e fornecedores, esse
+        # não tem botão de salvar"* (usuário, 2026-08-19).
+        #
+        # Bate com o que já sabíamos: quem comita a linha ali é o "+", e é por
+        # isso que a prova daquela seção é a linha ENTRAR NA TABELA
+        # (`linha_entrou_na_tabela`), não um toast.
+        #
+        # A tentativa de salvar aqui durou um commit e teria sido pior do que
+        # inútil: sem botão na tela, `salvar_e_confirmar` devolveria `False` e
+        # TODA ficha sairia com uma pendência inventada -- o mesmo tipo de
+        # falso alarme que as linhas fantasma de fornecedor produziam.
         resultado.registrar(
             injetor.limpar_caracteristicas(portal, ficha.ficha_original, callback_log))
 
