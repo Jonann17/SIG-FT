@@ -348,46 +348,37 @@ def ler_documentos_da_original(portal, callback_log=None, log_auditoria=None):
     return descricoes
 
 
-def ler_condicoes_da_original(portal, pmib_original, callback_log=None):
-    """Condições da ficha original, lidas com ela aberta em EDIÇÃO.
+def ler_condicoes_da_original(portal, callback_log=None, log_auditoria=None):
+    """Condições da ficha original, lidas em VISUALIZAÇÃO.
 
-    ⚠️ ABRIR A ORIGINAL PARA EDIÇÃO é deliberado e tem um motivo só: os campos
-    de Condições só existem como `input`/`textarea` nesse modo, e a cópia
-    deste módulo é POR XPATH (ver `duplicadas_condicoes`, e o porquê de não
-    ser por rótulo). O módulo antigo faz o mesmo.
+    ⚠️ ESTA FUNÇÃO ABRIA A ORIGINAL EM EDIÇÃO, e a decisão errada foi minha.
+    O usuário fechou a porta em 2026-08-20: *"TUDO é para pegar do modo de
+    visualização. Somente a ficha ALVO é para entrar no modo de edição."*
 
-    **Nada é salvo na original.** Este caminho só lê -- nenhum SALVAR é
-    clicado entre abrir e sair.
+    Por que eu tinha feito assim: a cópia das Condições é POR XPATH
+    (`Input_PackingLength` da original → `Input_PackingLength` da alvo), e
+    esses campos só existem como `input` no modo de EDIÇÃO. Documentei o
+    trade-off no código em vez de levá-lo ao usuário -- documentar não é
+    combinar. E o custo apareceu no primeiro lote: original em "Em Análise
+    ITAIPU" não tem lápis, 20 s de timeout e as Condições perdidas.
 
-    Dicionário vazio quando a ficha não abre: a alvo fica sem condições e o
-    log diz por quê, em vez de a ficha inteira morrer por causa desta seção.
+    O que falta para a leitura por VISUALIZAÇÃO funcionar: o casamento
+    RÓTULO → campo. Lá a seção é par rótulo→valor ("Comprimento: 40"), não
+    `input`, e o mapa de rótulos ainda não foi levantado -- a seção de
+    Condições não aparece no HTML que a auditoria capturou até aqui, porque o
+    OutSystems só renderiza o painel da aba aberta.
+
+    Por isso esta função hoje faz DUAS coisas: devolve vazio (nada de abrir a
+    original para editar) e, com a auditoria ligada, ABRE a aba de Condições
+    em visualização e FOTOGRAFA. É a rodada que entrega os rótulos.
     """
     _log = _log_de(callback_log)
-
-    # ⚠️ NEM TODA FICHA PODE SER EDITADA, e isso derrubou uma ficha inteira em
-    # 2026-08-20. A 4500063671.1263 está em "Em Análise ITAIPU", status em que
-    # o portal NÃO mostra o lápis -- o clique esperou os 20 s e levantou
-    # `TempoEsgotado`, que subiu até o `except` de `processar_ficha` e virou
-    # erro fatal. A ficha alvo não recebeu NADA, nem o fabricante, por causa
-    # de uma seção opcional.
-    #
-    # Condições é um bônus da duplicação, não o objetivo dela. Falhar aqui
-    # custa as condições; nunca a ficha.
-    try:
-        abriu = abrir_alvo_para_edicao(portal, pmib_original, callback_log)
-    except Exception as erro:  # noqa: BLE001 -- ver comentário acima
-        _log(f"   [Aviso] Não consegui abrir {pmib_original} em edição "
-             f"({type(erro).__name__}). Provavelmente o status dela não permite "
-             f"editar -- só 'Em Elaboração' mostra o lápis. A ficha alvo ficará "
-             f"sem as Condições; o resto continua.")
-        return {}
-
-    if not abriu:
-        _log(f"   [Aviso] Não consegui abrir {pmib_original} em edição para ler as "
-             f"Condições. A ficha alvo ficará sem elas.")
-        return {}
-    time.sleep(PAUSA_APOS_ABRIR_FICHA)
-    return condicoes.ler(portal, callback_log)
+    if extrator.abrir_secao(portal, sel.ABA_CONDICOES, callback_log, log_auditoria):
+        _log("      [i] Condições: seção aberta em visualização apenas para "
+             "registrar o markup no log de auditoria.")
+    _log("      [i] Condições NÃO serão copiadas: falta o mapa RÓTULO→campo do "
+         "modo de visualização. A original nunca é aberta em edição.")
+    return {}
 
 
 def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
@@ -452,11 +443,9 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
         # daquela página.
         imagens_da_original = imagens.ler_da_original(portal, callback_log)
 
-        # Condições exigem a original em EDIÇÃO -- é o único modo em que os
-        # campos existem como input/textarea, e a cópia é POR XPATH (ver
-        # `duplicadas_condicoes`). ⚠️ Nada é salvo na original: só se lê.
+        # Condições: SÓ visualização, como todo o resto da original.
         condicoes_da_original = ler_condicoes_da_original(
-            portal, ficha.ficha_original, callback_log)
+            portal, callback_log, log_auditoria)
 
         if not abrir_alvo_para_edicao(portal, ficha.pmib, callback_log):
             resultado.erro_fatal = f"não achei a ficha alvo {ficha.pmib} em nenhuma aba"

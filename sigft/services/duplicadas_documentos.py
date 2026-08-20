@@ -38,6 +38,17 @@ PAUSA_ABERTURA_DIALOGO = 2.0
 PAUSA_RECARGA_DA_BUSCA = 2.0
 PAUSA_APOS_ASSOCIAR = 2.0
 
+# ⚠️ A CONFERÊNCIA PRECISA ESPERAR A TABELA RECARREGAR. Log de 2026-08-20, duas
+# linhas seguidas no mesmo segundo:
+#
+#     Associado: 2904616
+#     [Erro] 1 documento(s) NÃO ficaram associados: 2904616.
+#
+# O portal fecha o diálogo e recarrega a tabela da ficha; ler antes disso
+# devolve o estado ANTERIOR, e o robô acusa de falha o que acabou de dar certo
+# -- a pior espécie de falso alarme, porque some a confiança no log inteiro.
+PAUSA_ANTES_DE_CONFERIR = 3.0
+
 # ⚠️ DESISTIR CEDO. *"Eu fechei porque eu não aguentei esperar ele errar todas
 # as características da ficha original tentando buscar na seção de
 # documentos."* (usuário, 2026-08-20)
@@ -178,6 +189,7 @@ def associar(portal, descricoes, callback_log=None, escopo=None):
                                 f"desisti após {falhas_seguidas} falhas seguidas")
 
     # A CONFERÊNCIA: relê a tabela da ficha, não o que o diálogo mostrou.
+    time.sleep(PAUSA_ANTES_DE_CONFERIR)
     agora = set(ja_associados(portal, escopo))
     nao_entraram = [d for d in desejados if d not in agora]
     if nao_entraram:

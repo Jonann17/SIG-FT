@@ -323,9 +323,16 @@ def test_a_palavra_da_secao_de_caracteristicas_esta_mapeada():
     impede um toast de OUTRA seção de confirmar esta."""
     from sigft.core.rpa import portal as portal_mod
 
-    assert portal_mod.PALAVRA_DA_SECAO.get("Características Técnicas") == "caracteristicas"
+    # ⚠️ NO SINGULAR desde 2026-08-20: o portal escreveu "A característica
+    # técnica foi salva com sucesso!" na rodada real, e o plural que eu tinha
+    # mapeado não casava. O radical singular casa as DUAS redações -- é o que
+    # as duas asserções abaixo guardam.
+    assert portal_mod.PALAVRA_DA_SECAO.get("Características Técnicas") == "caracteristica"
     assert portal_mod.mensagem_confirma_secao(
         "As características técnicas foram salvas com sucesso!",
+        "Características Técnicas") is True
+    assert portal_mod.mensagem_confirma_secao(
+        "A característica técnica foi salva com sucesso!",
         "Características Técnicas") is True
 
 

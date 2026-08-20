@@ -237,9 +237,17 @@ PALAVRA_DA_SECAO = {
     "Transporte": "transporte",
     "Manutenção": "manutencao",
     "Descarte": "descarte",
-    # 2026-08-19, com a redação vinda do usuário: "As características técnicas
-    # foram salvas com sucesso!"
-    "Características Técnicas": "caracteristicas",
+    # ⚠️ NO SINGULAR, e a diferença é de UMA LETRA (2026-08-20). A redação que
+    # o usuário tinha mandado é plural -- "As características técnicas foram
+    # salvas com sucesso!" -- e eu mapeei "caracteristicas". O portal, na
+    # rodada real, escreveu:
+    #
+    #     "A característica técnica foi salva com sucesso!. A característica
+    #      técnica não está marcada como breve descrição"
+    #
+    # A seção GRAVOU; quem falhou foi a checagem, e a ficha saiu marcada como
+    # incompleta por causa de um "s". O radical no singular casa as duas.
+    "Características Técnicas": "caracteristica",
     # 2026-08-20: "A Ficha Técnica 4500063671.0922 foi modificada com sucesso."
     # É genérica -- não nomeia a seção --, e foi exatamente ela que passou por
     # confirmação das OUTRAS quatro seções na rodada em que o robô clicava o
@@ -950,9 +958,22 @@ class PMIBPortal:
             return self.clicar_salvar_visivel(nome_secao, callback_log)
 
         alvo = f"({seletor})[1]"
-        self.engine.scroll_to(alvo)
-        time.sleep(0.5)
-        self.engine.click_raw(alvo)
+        try:
+            self.engine.scroll_to(alvo)
+            time.sleep(0.5)
+            self.engine.click_raw(alvo)
+        except Exception as erro:  # noqa: BLE001 -- ver abaixo
+            # ⚠️ SALVAR QUE NÃO DÁ PARA CLICAR É PENDÊNCIA, NÃO QUEDA DA FICHA.
+            # Em 2026-08-20 o botão da seção de imagens resolveu, estava
+            # "visible, enabled and stable", rolou para a tela -- e o clique
+            # nunca completou (algo o cobria; o `tabindex="-1"` sugere painel
+            # inativo). A exceção subiu até `processar_ficha` e virou ERRO
+            # FATAL, apagando do placar tudo o que já tinha dado certo na
+            # ficha. Salvar é UMA etapa.
+            _diga(f"      [Erro] Não consegui clicar no SALVAR de "
+                  f"{nome_secao!r} ({como}): {type(erro).__name__}. Algo pode "
+                  f"estar cobrindo o botão -- salve à mão.")
+            return False
         _diga(f"      [Injetor] SALVAR da seção {nome_secao} ({como}).")
         time.sleep(2.5)  # requisição do servidor OutSystems
         return True

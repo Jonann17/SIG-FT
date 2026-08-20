@@ -253,3 +253,28 @@ def test_o_robo_usa_o_nome_da_EDICAO_na_ficha_alvo():
     assert "ABA_DOCUMENTOS_EDICAO" not in leitura, (
         "a ficha original é lida em VISUALIZAÇÃO -- lá o nome é o outro"
     )
+
+
+# =============================================================================
+# A conferência precisa esperar a tabela recarregar
+# =============================================================================
+def test_a_conferencia_rele_a_tabela_DEPOIS_de_uma_pausa(monkeypatch):
+    """Log de 2026-08-20, 14h32 -- as duas linhas seguidas:
+
+        Associado: 2904616
+        [Erro] 1 documento(s) NÃO ficaram associados: 2904616.
+
+    Ele associou e, no mesmo segundo, releu e não achou. O portal fecha o
+    diálogo e recarrega a tabela da ficha; ler antes disso devolve o estado
+    ANTERIOR -- e o robô acusa de falha o que acabou de dar certo, que é a
+    pior espécie de falso alarme: some a confiança no log inteiro.
+    """
+    dormiu = []
+    monkeypatch.setattr(docs.time, "sleep", dormiu.append)
+
+    portal, engine = _tela(catalogo=["A"])
+    docs.associar(portal, ["A"], lambda _m: None)
+
+    assert docs.PAUSA_ANTES_DE_CONFERIR in dormiu, (
+        "sem a pausa, a releitura pega a tabela ainda não recarregada"
+    )
