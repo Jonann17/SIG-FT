@@ -734,6 +734,28 @@ COLUNA_REFERENCIA = "Referência"
 XPATH_LINHAS_DA_TABELA_DE = (
     "//td[@data-header={coluna}]/ancestor::table[1]//tr[td[@data-header={coluna}]]"
 )
+
+# ⚠️ "Descrição" NÃO É EXCLUSIVA DOS DOCUMENTOS -- e isso fez o robô, em
+# 2026-08-20, ler as CARACTERÍSTICAS e sair procurando "TENSÃO DE ENTRADA" no
+# catálogo de documentos. As duas tabelas têm a coluna:
+#
+#     características:  Ordem | Código | Descrição | Valor
+#     documentos:                      | Descrição | …
+#
+# Sem escopo, `//td[@data-header='Descrição']` casa a página inteira e
+# `ancestor::table[1]` fica com a primeira em ordem de documento.
+#
+# O discriminador "óbvio" não serve: a célula do documento vem aninhada em
+# `Content.Tooltip`, mas o dump prova que a de CARACTERÍSTICA tem o mesmo
+# aninhamento. O que discrimina é semântico e está no HTML das abas:
+#
+#     <button role="tab" aria-controls="b12-$b15">Características Técnicas</button>
+#     <button role="tab" aria-controls="b12-$b17">Documentos</button>
+#
+# `aria-controls` aponta o PAINEL da seção. O id é gerado (não se escreve no
+# código), mas pode ser LIDO em tempo de execução -- a mesma técnica do
+# prefixo do campo de referência.
+XPATH_PAINEL_POR_ID = "//*[@id={id}]"
 # Célula de uma coluna dentro de UMA linha já endereçada por índice.
 XPATH_REL_CELULA = "/td[@data-header={coluna}]//span[@data-expression]"
 

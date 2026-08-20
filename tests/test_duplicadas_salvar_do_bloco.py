@@ -74,7 +74,13 @@ class _TelaComQuatroSalvar:
         return 0
 
     def _secao_da_ancora(self, seletor):
-        if "ancestor-or-self" not in seletor:
+        """Reconhece as DUAS fórmulas de âncora -- a que desce e a que sobe.
+
+        Desde 2026-08-20 o portal é consultado primeiro por
+        `{ancora}//button[SALVAR]`; um duplo que só entendesse a subida diria
+        "sem âncora" no caminho novo e mandaria clicar o primeiro da tela.
+        """
+        if "SALVAR" not in seletor:
             return None
         for secao in self.SECOES:
             if secao in seletor:
@@ -201,7 +207,8 @@ def test_ancora_que_nao_acha_botao_avisa_antes_de_cair_no_generico():
     deixar rastro. Se a âncora falhar, o log diz."""
     class _SemBotaoAncorado(_TelaComQuatroSalvar):
         def contar(self, seletor):
-            if "ancestor-or-self" in seletor:
+            # Nenhuma das duas fórmulas de âncora acha nada.
+            if self._secao_da_ancora(seletor):
                 return 0
             return super().contar(seletor)
 
@@ -214,3 +221,111 @@ def test_ancora_que_nao_acha_botao_avisa_antes_de_cair_no_generico():
 
     assert any("âncora" in l.lower() for l in linhas)
     assert engine.cliques == ["GeneralInformations"], "caiu na varredura antiga"
+
+
+# =============================================================================
+# 4. A âncora tem de olhar PARA DENTRO antes de subir
+# =============================================================================
+# Log de 2026-08-20, 14h08 -- com a âncora já implementada:
+#
+#     [Injetor] SALVAR da seção Características Técnicas (ancorado, não o 1º
+#               da tela).
+#     [!] Não vi a confirmação de 'Características Técnicas'. A última
+#         mensagem na tela foi: 'A Ficha Técnica 4500063671.1418 foi
+#         modificada com sucesso.'
+#
+# A mensagem genérica de novo -- ou seja, o botão clicado continuou sendo o de
+# Informações Gerais, apesar da âncora. A explicação está na fórmula:
+#
+#     {ancora}/ancestor-or-self::*[.//button[SALVAR]][1]//button[SALVAR]
+#
+# Ela SOBE até achar um ancestral que contenha um SALVAR. Se a `div` da âncora
+# não contém o seu (por ser uma div interna, ou por o botão ficar num rodapé
+# irmão), a subida não para na seção: vai até o container que contém TODOS os
+# botões, e `//button[SALVAR]` de lá devolve o primeiro do documento.
+#
+# O conserto é olhar PARA DENTRO primeiro. Quando o container da seção tem o
+# seu próprio SALVAR -- o caso normal --, `{ancora}//button[SALVAR]` é exato e
+# não há subida nenhuma. A subida vira o plano B, e a varredura da tela o C.
+
+class _SecaoComSalvarDentro:
+    """A seção CONTÉM o seu SALVAR. Subir daqui erra; descer acerta."""
+
+    def __init__(self):
+        self.cliques = []
+        self.toasts = []
+
+    def contar(self, seletor):
+        if "feedback-message-success" in seletor:
+            return len(self.toasts)
+        if "feedback-message-text" in seletor:
+            return len(self.toasts)
+        if "SALVAR" not in seletor:
+            return 0
+        if "ancestor-or-self" in seletor:
+            # A subida encontra o container de TODOS os botões.
+            return 4
+        if "TechnicalCharacteristics" in seletor:
+            return 1        # o SALVAR de dentro da seção
+        return 4
+
+    def texto(self, seletor):
+        if "feedback-message" in seletor:
+            import re
+            achado = re.search(r"\)\[(\d+)\]", seletor)
+            i = int(achado.group(1)) if achado else 1
+            return self.toasts[i - 1] if i <= len(self.toasts) else ""
+        return ""
+
+    def esta_visivel(self, _s):
+        return True
+
+    def esta_habilitado(self, _s):
+        return True
+
+    def scroll_to(self, _s):
+        pass
+
+    def click_raw(self, seletor):
+        subiu = "ancestor-or-self" in seletor
+        self.cliques.append("GeneralInformations" if subiu else "TechnicalCharacteristics")
+        self.toasts = [MENSAGEM_DE[self.cliques[-1]]]
+
+
+def test_a_ancora_desce_antes_de_subir():
+    engine = _SecaoComSalvarDentro()
+    dormir, agora = _relogio()
+
+    ok = PMIBPortal(engine).salvar_e_confirmar(
+        "Características Técnicas",
+        ancora="//div[contains(@id, 'TechnicalCharacteristics')]",
+        sleep_fn=dormir, agora_fn=agora)
+
+    assert engine.cliques == ["TechnicalCharacteristics"], (
+        "subir a partir da âncora encontra o container de TODOS os botões e "
+        "clica o primeiro -- foi o que manteve o defeito depois da 1ª correção"
+    )
+    assert ok is True
+
+
+def test_sem_SALVAR_dentro_da_secao_a_subida_continua_valendo():
+    """O plano B não some: seção cujo botão fica fora do container ainda é
+    salva, e o log diz que foi por subida."""
+    class _SemSalvarDentro(_SecaoComSalvarDentro):
+        def contar(self, seletor):
+            if "SALVAR" in seletor and "TechnicalCharacteristics" in seletor \
+                    and "ancestor-or-self" not in seletor:
+                return 0
+            return super().contar(seletor)
+
+    engine = _SemSalvarDentro()
+    dormir, agora = _relogio()
+    linhas = []
+
+    PMIBPortal(engine).salvar_e_confirmar(
+        "Fabricantes e Fornecedores",
+        ancora="//div[contains(@id, 'TechnicalCharacteristics')]",
+        callback_log=linhas.append, sleep_fn=dormir, agora_fn=agora)
+
+    assert engine.cliques == ["GeneralInformations"]
+    assert any("subindo" in l.lower() for l in linhas)

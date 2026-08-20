@@ -38,6 +38,22 @@ PAUSA_ABERTURA_DIALOGO = 2.0
 PAUSA_RECARGA_DA_BUSCA = 2.0
 PAUSA_APOS_ASSOCIAR = 2.0
 
+# ⚠️ DESISTIR CEDO. *"Eu fechei porque eu não aguentei esperar ele errar todas
+# as características da ficha original tentando buscar na seção de
+# documentos."* (usuário, 2026-08-20)
+#
+# Foram 38 buscas fracassadas, ~47 s cada: meia hora para chegar a uma
+# conclusão que a TERCEIRA falha seguida já entregava -- a lista está errada.
+# Nenhuma ficha real tem 38 documentos que o catálogo desconhece um a um.
+#
+# E insistir custava também na TELA: cada tentativa abre o diálogo de
+# associação, e diálogos empilhados são o *"a página fica metade da tela,
+# parecendo colapsar"* do mesmo relato.
+#
+# Três é o número: uma falha é um documento que sumiu do catálogo, duas ainda
+# é azar, três seguidas é padrão.
+MAX_FALHAS_SEGUIDAS = 3
+
 
 def _marcar_checkbox_da_linha(portal, linha, callback_log=None):
     """Marca o checkbox DENTRO da linha já endereçada pela descrição.
@@ -97,7 +113,7 @@ def associar_um(portal, descricao, callback_log=None):
     return True
 
 
-def ja_associados(portal):
+def ja_associados(portal, escopo=None):
     """Descrições dos documentos que a ficha ABERTA já tem.
 
     É a releitura que fecha a seção -- *"antes de sair de cada uma das
@@ -106,6 +122,10 @@ def ja_associados(portal):
     """
     seletor = sel.XPATH_LINHAS_DA_TABELA_DE.format(
         coluna=_literal(sel.COLUNA_DESCRICAO))
+    # Mesmo motivo de `extrator.ler_tabela_de`: "Descrição" é coluna de
+    # características TAMBÉM, e sem escopo a leitura pega a tabela errada.
+    if escopo:
+        seletor = sel.XPATH_PAINEL_POR_ID.format(id=_literal(escopo)) + seletor
     try:
         total = portal.engine.contar(seletor)
     except Exception:  # noqa: BLE001
@@ -123,7 +143,7 @@ def ja_associados(portal):
     return descricoes
 
 
-def associar(portal, descricoes, callback_log=None):
+def associar(portal, descricoes, callback_log=None, escopo=None):
     """Associa todos os documentos da original e CONFERE o resultado."""
     _log = _log_de(callback_log)
     desejados = [" ".join(str(d).split()) for d in (descricoes or []) if str(d).strip()]
@@ -131,17 +151,34 @@ def associar(portal, descricoes, callback_log=None):
         _log("      Documentos: a ficha original não tem nenhum -- pulando.")
         return ResultadoDaSecao("documentos", True, "nenhum na origem")
 
-    ja_tem = set(ja_associados(portal))
+    ja_tem = set(ja_associados(portal, escopo))
     faltando = [d for d in desejados if d not in ja_tem]
     if ja_tem:
         _log(f"      Documentos: {len(ja_tem)} já estavam na ficha.")
 
+    falhas_seguidas = 0
+    desistiu = False
     for descricao in faltando:
         if associar_um(portal, descricao, callback_log):
             _log(f"      Associado: {descricao[:60]}")
+            falhas_seguidas = 0
+            continue
+        falhas_seguidas += 1
+        if falhas_seguidas >= MAX_FALHAS_SEGUIDAS:
+            _log(f"      [Erro] {falhas_seguidas} documentos seguidos não "
+                 f"apareceram na busca -- desisti da seção. O provável é que a "
+                 f"LISTA esteja errada (lida da seção errada da ficha original), "
+                 f"não que o catálogo tenha perdido {len(faltando)} documentos. "
+                 f"Confira e associe à mão.")
+            desistiu = True
+            break
+
+    if desistiu:
+        return ResultadoDaSecao("documentos", False,
+                                f"desisti após {falhas_seguidas} falhas seguidas")
 
     # A CONFERÊNCIA: relê a tabela da ficha, não o que o diálogo mostrou.
-    agora = set(ja_associados(portal))
+    agora = set(ja_associados(portal, escopo))
     nao_entraram = [d for d in desejados if d not in agora]
     if nao_entraram:
         _log(f"      [Erro] {len(nao_entraram)} documento(s) NÃO ficaram "

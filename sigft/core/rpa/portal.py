@@ -144,7 +144,21 @@ XPATH_CONFIRMAR = '//button[@type="button" and text()="CONFIRMAR"]'
 # `ancestor-or-self` e não `ancestor`: assim a âncora pode ser o próprio
 # container (`//div[contains(@id,'TechnicalCharacteristics')]`) ou um campo
 # dentro dele, e os dois funcionam.
-XPATH_SALVAR_DO_BLOCO = (
+#
+# ⚠️ SÃO DUAS FÓRMULAS, E A ORDEM ENTRE ELAS É O SEGUNDO CONSERTO (2026-08-20,
+# 14h). Com só a subida, o defeito continuou:
+#
+#     [Injetor] SALVAR da seção Características Técnicas (ancorado…)
+#     [!] Não vi a confirmação. A última mensagem foi: 'A Ficha Técnica … foi
+#         modificada com sucesso.'   <- genérica, de Informações Gerais
+#
+# A subida para no primeiro ancestral que CONTENHA um SALVAR. Se a div da
+# âncora não contém o seu, ela não para na seção: sobe até o container de
+# TODOS os botões, e `//button[SALVAR]` de lá devolve o primeiro do documento.
+#
+# Olhar PARA DENTRO primeiro resolve o caso normal sem subida nenhuma.
+XPATH_SALVAR_DENTRO_DO_BLOCO = "{ancora}//button[normalize-space()='SALVAR']"
+XPATH_SALVAR_SUBINDO_DO_BLOCO = (
     "{ancora}/ancestor-or-self::*[.//button[normalize-space()='SALVAR']][1]"
     "//button[normalize-space()='SALVAR']"
 )
@@ -914,13 +928,22 @@ class PMIBPortal:
             else:
                 print(mensagem)
 
-        seletor = XPATH_SALVAR_DO_BLOCO.format(ancora=ancora)
-        try:
-            quantos = self.engine.contar(seletor)
-        except Exception:  # noqa: BLE001
-            quantos = 0
+        # DENTRO primeiro, SUBINDO depois -- ver `XPATH_SALVAR_DENTRO_DO_BLOCO`.
+        tentativas = (
+            ("dentro da seção", XPATH_SALVAR_DENTRO_DO_BLOCO),
+            ("subindo da seção", XPATH_SALVAR_SUBINDO_DO_BLOCO),
+        )
+        seletor = como = ""
+        for descricao, formula in tentativas:
+            candidato = formula.format(ancora=ancora)
+            try:
+                if self.engine.contar(candidato):
+                    seletor, como = candidato, descricao
+                    break
+            except Exception:  # noqa: BLE001
+                continue
 
-        if not quantos:
+        if not seletor:
             _diga(f"      [Aviso] A âncora da seção {nome_secao!r} não achou "
                   f"botão SALVAR. Caindo na varredura da tela -- confira se a "
                   f"seção certa foi gravada.")
@@ -930,8 +953,7 @@ class PMIBPortal:
         self.engine.scroll_to(alvo)
         time.sleep(0.5)
         self.engine.click_raw(alvo)
-        _diga(f"      [Injetor] SALVAR da seção {nome_secao} (ancorado, não o "
-              f"1º da tela).")
+        _diga(f"      [Injetor] SALVAR da seção {nome_secao} ({como}).")
         time.sleep(2.5)  # requisição do servidor OutSystems
         return True
 

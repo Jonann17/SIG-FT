@@ -330,14 +330,19 @@ def ler_documentos_da_original(portal, callback_log=None, log_auditoria=None):
     uma pendência falsa nas fichas que legitimamente não têm datasheet.
     """
     _log = _log_de(callback_log)
-    if not extrator.abrir_secao(portal, sel.ABA_DOCUMENTOS, callback_log,
-                                log_auditoria):
+    aba = sel.ABA_DOCUMENTOS
+    if not extrator.abrir_secao(portal, aba, callback_log, log_auditoria):
         return []
     # `coluna_referencia=None`: a tabela de Documentos NÃO TEM segunda coluna.
     # Pedir "Referência" aqui era o travamento de 2026-08-20 -- ver
     # `ler_tabela_de`.
+    #
+    # `escopo`: prende a leitura ao PAINEL da aba. Sem ele, "Descrição" casa
+    # também a tabela de características, e o robô passou minutos procurando
+    # "TENSÃO DE ENTRADA" no catálogo de documentos.
     linhas = extrator.ler_tabela_de(portal, sel.COLUNA_DESCRICAO, callback_log,
-                                    coluna_referencia=None)
+                                    coluna_referencia=None,
+                                    escopo=extrator.id_do_painel(portal, aba))
     descricoes = [nome for nome, _ref in linhas if nome]
     _log(f"      {len(descricoes)} documento(s) na ficha original.")
     return descricoes
@@ -548,8 +553,9 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
         # visualização foi o `[Erro] A aba 'Documentos' não existe nesta tela`
         # de 2026-08-20.
         if extrator.abrir_secao(portal, sel.ABA_DOCUMENTOS_EDICAO, callback_log):
-            resultado.registrar(
-                documentos.associar(portal, docs_da_original, callback_log))
+            resultado.registrar(documentos.associar(
+                portal, docs_da_original, callback_log,
+                escopo=extrator.id_do_painel(portal, sel.ABA_DOCUMENTOS_EDICAO)))
             resultado.registrar(imagens.copiar(
                 portal, imagens_da_original, ficha.pmib, callback_log))
         else:

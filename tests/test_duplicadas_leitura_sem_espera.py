@@ -138,9 +138,10 @@ def test_documentos_da_original_nao_pede_a_coluna_de_referencia(monkeypatch):
     multiplicava o timeout por linha."""
     pedidos = []
     monkeypatch.setattr(robo.extrator, "abrir_secao", lambda *_a, **_k: True)
+    monkeypatch.setattr(robo.extrator, "id_do_painel", lambda *_a, **_k: "")
     monkeypatch.setattr(
         robo.extrator, "ler_tabela_de",
-        lambda _p, coluna, _log=None, coluna_referencia="?": (
+        lambda _p, coluna, _log=None, coluna_referencia="?", escopo=None: (
             pedidos.append(coluna_referencia) or []))
 
     robo.ler_documentos_da_original(_PortalQueEspera(_EngineQueEspera()),

@@ -275,6 +275,16 @@ XPATH_CONTEUDO_POR_ID = "//div[contains(@id, '_Content')]"
 # "(nada casou)", porque pelo menos contém a resposta.
 XPATH_FICHA_INTEIRA = "//form | //body"
 
+# ⚠️ O ÚLTIMO RECURSO PRECISA DE COLEIRA. Com `//body` valendo, o log de
+# 2026-08-20 saiu com 121 KB para 56 linhas de texto: o arquivo que o usuário
+# manda para eu ler virou ilegível para ele.
+#
+# 20 000 caracteres foram o suficiente, naquele mesmo log, para achar as duas
+# tabelas com coluna "Descrição" e o `aria-controls` das abas -- que era tudo o
+# que faltava. `recortar` avisa quanto ficou de fora, então nada some em
+# silêncio.
+LIMITE_DA_FOTO_DA_PAGINA = 20_000
+
 
 def fotografar(portal, titulo, log_auditoria=None, seletor=None):
     """Guarda no log de execução o HTML do que está na tela.
@@ -300,10 +310,35 @@ def fotografar(portal, titulo, log_auditoria=None, seletor=None):
         except Exception:  # noqa: BLE001 -- observar não pode derrubar o lote
             html = ""
         if html:
-            log_auditoria.bloco(f"{titulo}  [{alvo}]", html)
+            # A foto da PÁGINA INTEIRA é o último recurso e a maior: leva
+            # limite próprio, senão inunda o arquivo (ver
+            # `LIMITE_DA_FOTO_DA_PAGINA`).
+            if alvo == XPATH_FICHA_INTEIRA:
+                log_auditoria.bloco(f"{titulo}  [{alvo}]", html,
+                                    limite=LIMITE_DA_FOTO_DA_PAGINA)
+            else:
+                log_auditoria.bloco(f"{titulo}  [{alvo}]", html)
             return html
     log_auditoria.bloco(titulo, f"(nada casou para: {', '.join(alvos)})")
     return ""
+
+
+def id_do_painel(portal, nome):
+    """Id do PAINEL da seção `nome`, lido do `aria-controls` da aba.
+
+    É o escopo que impede a leitura de uma seção pegar a tabela de outra. O id
+    é gerado (`b12-$b17`) e por isso NÃO pode ser escrito no código -- mas
+    pode ser lido em tempo de execução, que é a mesma técnica usada para achar
+    o "+" da linha do fabricante pelo prefixo do campo.
+
+    `""` quando a aba não existe: quem chama trata como "sem escopo" e o
+    comportamento volta a ser o antigo, com o risco declarado.
+    """
+    alvo = sel.XPATH_ABA_DA_FICHA.format(texto=_literal_xpath(nome))
+    try:
+        return portal.engine.atributo(f"({alvo})[1]", "aria-controls") or ""
+    except Exception:  # noqa: BLE001 -- ler a tela não derruba a ficha
+        return ""
 
 
 def abrir_secao(portal, nome, callback_log=None, log_auditoria=None):
@@ -379,7 +414,7 @@ def abrir_subaba_de_condicoes(portal, nome, callback_log=None, log_auditoria=Non
 # `@data-header` da célula -- o mesmo atributo que `tech_specs` já usa.
 
 def ler_tabela_de(portal, coluna_nome, callback_log=None,
-                  coluna_referencia=sel.COLUNA_REFERENCIA):
+                  coluna_referencia=sel.COLUNA_REFERENCIA, escopo=None):
     """Linhas de uma das tabelas, como lista de `(nome, referência)`.
 
     `coluna_nome` é `COLUNA_NOME_FABRICANTE`, `COLUNA_NOME_FORNECEDOR` ou
@@ -399,6 +434,12 @@ def ler_tabela_de(portal, coluna_nome, callback_log=None,
     _log = _log_de(callback_log)
     linhas_xpath = sel.XPATH_LINHAS_DA_TABELA_DE.format(
         coluna=_literal_xpath(coluna_nome))
+    # ⚠️ SEM ESCOPO A LEITURA VAZA PARA OUTRA SEÇÃO. "Descrição" é coluna de
+    # características E de documentos; sem prender a busca ao painel, o XPath
+    # fica com a primeira tabela da página. Ver `XPATH_PAINEL_POR_ID`.
+    if escopo:
+        linhas_xpath = (sel.XPATH_PAINEL_POR_ID.format(id=_literal_xpath(escopo))
+                        + linhas_xpath)
     total = portal.engine.contar(linhas_xpath)
 
     itens = []
