@@ -221,3 +221,35 @@ def test_ficha_original_sem_documentos_nao_e_falha():
 
     assert resultado.ok is True
     assert "nenhum" in resultado.detalhe
+
+
+# =============================================================================
+# A aba tem NOMES DIFERENTES nos dois modos
+# =============================================================================
+def test_a_aba_de_documentos_tem_nome_proprio_na_edicao():
+    """Log de 2026-08-20: `[Erro] A aba 'Documentos' não existe nesta tela`.
+
+    Não era a aba que sumiu -- era o nome. Na visualização ela é "Documentos"
+    (as imagens ficam sempre visíveis, num carrossel); na edição é "Documentos
+    e imagens" (`aria-controls="b10-DocumentsandImages_Content"`).
+    """
+    assert sel.ABA_DOCUMENTOS == "Documentos"
+    assert sel.ABA_DOCUMENTOS_EDICAO == "Documentos e imagens"
+
+
+def test_o_robo_usa_o_nome_da_EDICAO_na_ficha_alvo():
+    """Contrato entre o modo e o nome: a alvo é sempre aberta para editar."""
+    import inspect
+
+    from sigft.services import duplicadas_robo as robo
+
+    fonte = inspect.getsource(robo.processar_ficha)
+    assert "ABA_DOCUMENTOS_EDICAO" in fonte, (
+        "a ficha alvo está em EDIÇÃO -- usar o nome da visualização faz a aba "
+        "'não existir' e a seção inteira ser pulada"
+    )
+
+    leitura = inspect.getsource(robo.ler_documentos_da_original)
+    assert "ABA_DOCUMENTOS_EDICAO" not in leitura, (
+        "a ficha original é lida em VISUALIZAÇÃO -- lá o nome é o outro"
+    )

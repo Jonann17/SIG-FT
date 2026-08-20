@@ -3034,9 +3034,8 @@ class ModuloCopiaFichas(ctk.CTkFrame):
             registrar(f"[Robô novo] {len(concluidas)} de {len(resultados)} sem pendência; "
                      f"{marcadas} linha(s) marcada(s) na planilha"
                      + (f", {len(falhas)} falha(s)." if falhas else "."))
-            registrar("[Robô novo] IMAGENS continuam a fazer (botão 2 ou à mão): "
-                     "elas exigem baixar o arquivo da ficha original e subir na "
-                     "nova, e o motor novo ainda não baixa arquivo.")
+            registrar("[Robô novo] Confira no portal o que o log marcou como "
+                     "pendência antes de mudar o status das fichas.")
         except Exception as erro:
             registrar(f"[Robô novo] Falha: {type(erro).__name__}: {erro}")
         finally:

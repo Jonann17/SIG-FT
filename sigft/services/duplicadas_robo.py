@@ -16,12 +16,11 @@ Cobre hoje: fabricante, referência (com a regra do `'D`), a linha fixa da
 GE/fornecedor, a purga das características técnicas, as quatro sub-abas de
 **Condições** e a associação de **documentos/datasheets** (CP 6.4).
 
-**O que AINDA NÃO faz**, e está dito aqui porque a diferença importa na hora
-de conferir a ficha: as **IMAGENS**. Elas não se associam como o documento --
-o arquivo tem de ser BAIXADO da ficha original e SUBIDO na alvo (FilePond), e
-o `RPAEngine` ainda não tem download. O módulo antigo (`ficha_duplicada.py`)
-faz isso via pasta de downloads do Chrome e continua inteiro e disponível --
-por isso a tela tem os dois botões.
+As **imagens** entraram em 2026-08-20 e fecham o CP 6.4. Elas não se associam
+como o documento -- o arquivo sai da original e entra na nova --, e o `src`
+delas é um `blob:`, que só se lê de dentro do navegador
+(`RPAEngine.bytes_da_imagem`). O módulo antigo (`ficha_duplicada.py`) continua
+inteiro e disponível, por isso a tela tem os dois botões.
 """
 from __future__ import annotations
 
@@ -35,6 +34,7 @@ from sigft.core.rpa.portal import PMIBPortal
 from sigft.services import duplicadas_condicoes as condicoes
 from sigft.services import duplicadas_documentos as documentos
 from sigft.services import duplicadas_extrator as extrator
+from sigft.services import duplicadas_imagens as imagens
 from sigft.services import duplicadas_injetor as injetor
 from sigft.services import duplicadas_pdm as pdm
 
@@ -113,7 +113,7 @@ SECOES_DA_PLANILHA = {
         # CP 6.4: os documentos moram na mesma coluna -- o `_STATUS_PMIB` não
         # tem uma para eles, e associar datasheet é parte de "a ficha está
         # com as informações gerais prontas".
-        "documentos",
+        "documentos", "imagens",
     ),
     # CP 6.4: o PDM entra aqui porque é ele que decide quais características a
     # ficha tem -- ficha no PDM errado tem a lista errada, por mais que a purga
@@ -441,6 +441,12 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
         docs_da_original = ler_documentos_da_original(portal, callback_log,
                                                       log_auditoria)
 
+        # Imagens também saem da VISUALIZAÇÃO, e daqui mesmo: *"a imagem está
+        # sempre visível"* -- o carrossel não depende de qual aba está aberta.
+        # Precisa ser ANTES de abrir a alvo, porque os bytes vêm do `blob:`
+        # daquela página.
+        imagens_da_original = imagens.ler_da_original(portal, callback_log)
+
         # Condições exigem a original em EDIÇÃO -- é o único modo em que os
         # campos existem como input/textarea, e a cópia é POR XPATH (ver
         # `duplicadas_condicoes`). ⚠️ Nada é salvo na original: só se lê.
@@ -537,12 +543,20 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
         # --- CP 6.4 ----------------------------------------------------
         resultado.registrar(
             condicoes.escrever(portal, condicoes_da_original, callback_log))
-        if extrator.abrir_secao(portal, sel.ABA_DOCUMENTOS, callback_log):
+        # `ABA_DOCUMENTOS_EDICAO`: aqui a ficha ALVO está aberta para editar, e
+        # nesse modo a aba se chama "Documentos e imagens". Passar o nome da
+        # visualização foi o `[Erro] A aba 'Documentos' não existe nesta tela`
+        # de 2026-08-20.
+        if extrator.abrir_secao(portal, sel.ABA_DOCUMENTOS_EDICAO, callback_log):
             resultado.registrar(
                 documentos.associar(portal, docs_da_original, callback_log))
+            resultado.registrar(imagens.copiar(
+                portal, imagens_da_original, ficha.pmib, callback_log))
         else:
             resultado.registrar(injetor.ResultadoDaSecao(
-                "documentos", False, "não abri a aba de Documentos"))
+                "documentos", False, "não abri a aba de Documentos e imagens"))
+            resultado.registrar(injetor.ResultadoDaSecao(
+                "imagens", False, "não abri a aba de Documentos e imagens"))
 
     except Exception as erro:  # noqa: BLE001 -- ver docstring
         resultado.erro_fatal = f"{type(erro).__name__}: {erro}"

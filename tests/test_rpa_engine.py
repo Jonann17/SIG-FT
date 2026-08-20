@@ -82,9 +82,30 @@ METODOS_DA_REGRESSAO_DO_PLAYWRIGHT = ("click_dom",)
 # ele. Ver a docstring de `html_do_elemento` em engine.py.
 METODOS_DA_AUDITORIA = ("html_do_elemento",)
 
+# CP 6.4 -- COPIAR IMAGEM entre fichas (2026-08-20).
+#
+# Documento se ASSOCIA (o objeto já existe no portal); imagem não: o arquivo
+# tem de sair da ficha original e entrar na nova. E o `src` da imagem no PMIB é
+# um `blob:`:
+#
+#   <img class="custom-img" src="blob:https://apps.itaipu.gov.br/29077935-…">
+#
+# `blob:` NÃO é endereço HTTP -- é um identificador de objeto válido só dentro
+# daquela página, naquela sessão. Não há servidor do outro lado para o
+# `requests` conversar; a imagem só pode ser lida de dentro do navegador.
+#
+# Por que duas primitivas de CONCEITO e não um `executar_js` genérico: a
+# mecânica difere de verdade entre os motores (o Playwright espera uma promessa
+# sozinho; o Selenium precisa de `execute_async_script` com callback). Expor
+# "rode este JS" obrigaria o serviço a escrever os dois scripts e a saber qual
+# motor está rodando -- que é exatamente o que o `RPAEngine` existe para
+# evitar.
+METODOS_DA_COPIA_DE_IMAGEM = ("bytes_da_imagem", "enviar_arquivo")
+
 METODOS_OBRIGATORIOS = (
     METODOS_CP_2_1 + METODOS_CP_5_1 + METODOS_CP_5_3 + METODOS_DO_TESTE_REAL
     + METODOS_DA_REGRESSAO_DO_PLAYWRIGHT + METODOS_DA_AUDITORIA
+    + METODOS_DA_COPIA_DE_IMAGEM
 )
 
 
@@ -108,6 +129,11 @@ def test_rpaengine_declara_o_clique_nativo():
         assert nome in RPAEngine.__abstractmethods__
 
 
+def test_rpaengine_declara_as_primitivas_da_copia_de_imagem():
+    for nome in METODOS_DA_COPIA_DE_IMAGEM:
+        assert nome in RPAEngine.__abstractmethods__
+
+
 def test_o_contrato_nao_tem_metodo_a_mais_sem_teste():
     # Trava contra crescimento silencioso: um método abstrato novo obriga a
     # atualizar as listas acima -- e, portanto, a pensar em qual checkpoint o
@@ -124,6 +150,8 @@ def _implementacoes_completas():
     return {
         "goto": lambda self, url: None,
         "click": lambda self, seletor: None,
+        "bytes_da_imagem": lambda self, seletor: b"",
+        "enviar_arquivo": lambda self, seletor, caminho: None,
         "fill": lambda self, seletor, texto: None,
         "press": lambda self, teclas: None,
         "wait_visible": lambda self, seletor: None,

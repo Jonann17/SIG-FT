@@ -625,7 +625,18 @@ XPATH_REFERENCIA_INPUT_SEM_GE = (
 # O que resta, e é o que se usa: o TEXTO do `<div>` interno. É o mesmo que o
 # usuário lê na tela, e é o que ele nos passou.
 ABA_FABRICANTES_E_FORNECEDORES = "Fabricantes e fornecedores"
+# ⚠️ A ABA TEM NOMES DIFERENTES NOS DOIS MODOS, e foi o que produziu
+# `[Erro] A aba 'Documentos' não existe nesta tela` na rodada de 2026-08-20.
+#
+#   visualização: "Documentos"            -- só documentos; as imagens ficam
+#                                            sempre visíveis, num carrossel
+#   edição:       "Documentos e imagens"  -- aria-controls="…-DocumentsandImages_Content"
+#
+# Não dá para unificar num nome só: o texto é o que o usuário lê na tela, e é
+# ele o casamento (`XPATH_ABA_DA_FICHA`). Duas constantes, e cada chamador diz
+# em que modo está -- que é informação que ele tem e o seletor não.
 ABA_DOCUMENTOS = "Documentos"
+ABA_DOCUMENTOS_EDICAO = "Documentos e imagens"
 ABA_CONDICOES = "Condições"
 
 XPATH_ABA_DA_FICHA = (
@@ -950,3 +961,54 @@ XPATH_REL_CARACTERISTICA_UNIDADE = (
 # O símbolo da unidade adimensional no Master de PDMs. `tech_specs` já usa
 # exatamente este ("AD") como o valor que significa "sem unidade".
 SIMBOLO_ADIMENSIONAL = "AD"
+
+
+# ---------------------------------------------------------------------------
+# 18. IMAGENS — copiar (baixar da original, subir na alvo)
+# ---------------------------------------------------------------------------
+# HTML levantado pelo usuário em 2026-08-20. É a última seção do CP 6.4, e a
+# única que NÃO se resolve associando: documento já existe como objeto no
+# portal; imagem é arquivo, e tem de sair de uma ficha e entrar na outra.
+#
+# VISUALIZAÇÃO -- as imagens ficam sempre visíveis, num carrossel `splide`:
+#
+#   <div class="splide__slide is-active is-visible" aria-label="1 of 3">
+#     …<img data-image="" class="custom-img"
+#           src="blob:https://apps.itaipu.gov.br/29077935-75a6-…">
+#     …<figcaption><span data-expression="">Botão</span></figcaption>
+#
+# ⚠️ `splide` CLONA slides para o laço infinito. Contar `.splide__slide` sem
+# filtrar clone faria a mesma imagem ser copiada duas ou três vezes -- e o
+# portal aceitaria as três, porque para ele são uploads distintos.
+XPATH_IMAGENS_SLIDES = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' splide__slide ')]"
+    "[not(contains(@class, 'clone'))]"
+)
+XPATH_REL_IMAGEM_DO_SLIDE = (
+    ".//img[contains(concat(' ', normalize-space(@class), ' '), ' custom-img ')]"
+)
+# A legenda da imagem na original. Quando existe, é ela que vai para a ficha
+# nova -- é mais fiel do que qualquer texto que a gente invente.
+XPATH_REL_LEGENDA_DO_SLIDE = ".//figcaption//span[@data-expression]"
+
+# EDIÇÃO -- o formulário de adicionar. Os três campos são preenchidos por
+# imagem: descrição em espanhol, em português, e o arquivo.
+#
+# `XPATH_IMAGENS_ABRIR` casa o `<a>` que envolve o rótulo; a variante do span
+# existe porque a captura do usuário mostra só o `<span class="margin-left-s">
+# Adicionar imagens</span>`, sem revelar o que há em volta.
+XPATH_IMAGENS_ABRIR_SPAN = "//span[normalize-space()='Adicionar imagens']"
+
+# O `<li>` que o FilePond cria quando ACEITA o arquivo. É a prova de que o
+# upload entrou -- sem ela, "enviei o arquivo" é só "chamei a função".
+XPATH_IMAGENS_ITEM_NA_LISTA = (
+    "//ul[contains(concat(' ', normalize-space(@class), ' '), ' filepond--list ')]/li"
+)
+
+# Assinaturas de arquivo. O `<input>` declara `accept="image/jpeg,image/png"`,
+# então o portal recusa qualquer outra coisa -- e o nome do arquivo temporário
+# precisa da extensão certa para o navegador anunciar o MIME certo.
+ASSINATURAS_DE_IMAGEM = (
+    (b"\x89PNG\r\n\x1a\n", ".png"),
+    (b"\xff\xd8\xff", ".jpg"),
+)

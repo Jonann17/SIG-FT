@@ -411,6 +411,35 @@ class PlaywrightEngine(RPAEngine):
     def wait_visible(self, seletor: str) -> None:
         self._executar(lambda: self._loc(seletor).wait_for(state="visible"))
 
+    def bytes_da_imagem(self, seletor: str) -> bytes:
+        """Lê o `blob:` de dentro da página -- ver `engine.py`.
+
+        `evaluate` com função assíncrona: o Playwright espera a promessa
+        sozinho. O `fetch` de um `blob:` é resolvido pelo próprio navegador,
+        sem rede, porque o objeto já está na memória da página.
+
+        Devolve os bytes; `b""` em qualquer falha (imagem não carregada,
+        `src` que não é blob, CSP). Auditar/copiar não pode derrubar a ficha.
+        """
+        script = """
+            async (el) => {
+                const resposta = await fetch(el.src);
+                const buffer = await resposta.arrayBuffer();
+                return Array.from(new Uint8Array(buffer));
+            }
+        """
+        try:
+            if not self.contar(seletor):
+                return b""
+            numeros = self._loc(seletor).evaluate(script)
+            return bytes(numeros or [])
+        except Exception:  # noqa: BLE001 -- ver docstring
+            return b""
+
+    def enviar_arquivo(self, seletor: str, caminho: str) -> None:
+        """`set_input_files` -- ver `engine.py`."""
+        self._executar(lambda: self._loc(seletor).set_input_files(caminho))
+
     def wait_present(self, seletor: str) -> None:
         self._executar(lambda: self._loc(seletor).wait_for(state="attached"))
 

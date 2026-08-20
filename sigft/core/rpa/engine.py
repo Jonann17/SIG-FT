@@ -284,6 +284,42 @@ class RPAEngine(ABC):
         """
 
     @abstractmethod
+    def bytes_da_imagem(self, seletor: str) -> bytes:
+        """Bytes da imagem apontada por `seletor` (um `<img>`). `b""` se não
+        der para ler.
+
+        ⚠️ EXISTE POR CAUSA DO `blob:`. As imagens da ficha no PMIB são
+        servidas assim:
+
+            <img class="custom-img" src="blob:https://apps.itaipu.gov.br/29077935-…">
+
+        Um `blob:` **não é um endereço HTTP**: é um identificador de objeto que
+        só vale DENTRO daquela página, naquela sessão. Baixá-lo com `requests`
+        não funciona -- não existe servidor do outro lado. Ele só pode ser lido
+        de dentro do navegador.
+
+        Por que uma primitiva de CONCEITO e não um `executar_js` genérico: a
+        mecânica difere de verdade entre os motores (o Playwright espera uma
+        promessa naturalmente; o Selenium precisa de `execute_async_script` com
+        callback). Expor "rode este JS" obrigaria o serviço a escrever os dois
+        scripts e a saber qual motor está rodando -- exatamente o que o
+        `RPAEngine` existe para evitar. Expor "me dê os bytes" mantém o serviço
+        ignorante e deixa cada motor resolver do seu jeito.
+
+        NÃO levanta: imagem que não se consegue ler vira pendência no log, não
+        derruba a ficha.
+        """
+
+    @abstractmethod
+    def enviar_arquivo(self, seletor: str, caminho: str) -> None:
+        """Entrega `caminho` ao `<input type="file">` de `seletor`.
+
+        É o par de `bytes_da_imagem`: um lê a imagem da ficha original, o outro
+        a sobe na ficha nova. Propaga falhas -- upload que não acontece tem de
+        aparecer.
+        """
+
+    @abstractmethod
     def wait_present(self, seletor: str) -> None:
         """Bloqueia até o elemento existir no DOM -- sem exigir que esteja
         visível ou clicável. Levanta `TempoEsgotado` no timeout."""

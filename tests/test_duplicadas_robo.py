@@ -105,6 +105,8 @@ def _com_etapas(monkeypatch, *, blocos=(("Fabricantes", {"Fabricante": "SCHNEIDE
     # errado tem a lista de características errada. Neutralizado aqui como as
     # demais; a mecânica está em test_duplicadas_pdm.py.
     monkeypatch.setattr(robo.pdm, "garantir_pdm", _secao("pdm"))
+    monkeypatch.setattr(robo.imagens, "ler_da_original", lambda *_a, **_k: [])
+    monkeypatch.setattr(robo.imagens, "copiar", _secao("imagens"))
     return portal
 
 
@@ -199,7 +201,7 @@ def test_todas_as_secoes_ok_e_ficha_ok(monkeypatch):
         # CP 6.4: Condições e Documentos entram DEPOIS das
         # características -- a purga mexe na mesma ficha e o
         # portal recarrega a tela a cada salvamento.
-        "condicoes", "documentos"]
+        "condicoes", "documentos", "imagens"]
 
 
 def test_uma_secao_falha_e_a_ficha_NAO_e_sucesso(monkeypatch):
@@ -253,7 +255,7 @@ def test_fabricante_ausente_NAO_impede_o_resto(monkeypatch):
     # referência do fornecedor, referência da GE Vernova e características.
     # Eram quatro quando "fornecedor" e "GE Vernova" eram tratados como a
     # mesma linha -- que era o defeito.
-    assert len(resultado.secoes) == 9   # + pdm, condicoes e documentos (CP 6.4)
+    assert len(resultado.secoes) == 10  # + pdm, condicoes, documentos, imagens
     assert any("fabricante" in linha for linha in logs)
 
 
@@ -472,4 +474,4 @@ def test_log_com_atributo_ausente_nao_derruba_a_ficha(monkeypatch):
     # referência do fornecedor, referência da GE Vernova e características.
     # Eram quatro quando "fornecedor" e "GE Vernova" eram tratados como a
     # mesma linha -- que era o defeito.
-    assert len(resultado.secoes) == 9   # + pdm, condicoes e documentos (CP 6.4)
+    assert len(resultado.secoes) == 10  # + pdm, condicoes, documentos, imagens

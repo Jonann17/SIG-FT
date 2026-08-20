@@ -381,6 +381,35 @@ class SeleniumEngine(RPAEngine):
             el = self.wait.until(EC.element_to_be_clickable((By.XPATH, seletor)))
             el.click()
 
+    def bytes_da_imagem(self, seletor: str) -> bytes:
+        """Lê o `blob:` de dentro da página -- ver `engine.py`.
+
+        `execute_async_script` porque o `fetch` é assíncrono e o Selenium não
+        espera promessa sozinho: o último argumento que o WebDriver injeta no
+        script é o CALLBACK, e é chamá-lo que devolve o valor.
+        """
+        script = """
+            const el = arguments[0];
+            const pronto = arguments[arguments.length - 1];
+            fetch(el.src)
+                .then(r => r.arrayBuffer())
+                .then(b => pronto(Array.from(new Uint8Array(b))))
+                .catch(() => pronto([]));
+        """
+        try:
+            elementos = self.driver.find_elements(By.XPATH, seletor)
+            if not elementos:
+                return b""
+            numeros = self.driver.execute_async_script(script, elementos[0])
+            return bytes(numeros or [])
+        except Exception:  # noqa: BLE001 -- ver docstring
+            return b""
+
+    def enviar_arquivo(self, seletor: str, caminho: str) -> None:
+        """`send_keys` com o caminho -- é como o Selenium sobe arquivo. Ver
+        `engine.py`."""
+        self.wait.until(EC.presence_of_element_located((By.XPATH, seletor))).send_keys(caminho)
+
     def wait_present(self, seletor: str) -> None:
         with _traduzindo():
             self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
