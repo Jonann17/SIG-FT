@@ -875,3 +875,78 @@ CONDICOES_POR_SUBABA = {
 }
 
 XPATH_CONDICOES_CAMPO = "//*[contains(@id, {sufixo})]"
+
+
+# ---------------------------------------------------------------------------
+# 16. O PDM da ficha ALVO — conferir ANTES de mexer nas características
+# ---------------------------------------------------------------------------
+# Achado do usuário em 2026-08-20, depois da rodada real: *"a ficha 922 estava
+# com um PDM diferente, então as características técnicas não estavam corretas
+# na ficha. Devemos primeiro ver que tipo de PDM é a ficha alvo."*
+#
+# 🎯 POR QUE ISSO É PRÉ-REQUISITO, E NÃO UM DETALHE: **o PDM determina QUAIS
+# características a ficha tem.** A 4500063671.0922 estava com
+# `PDM.4820.010 - REGULADOR, PRESSAO` e o robô apagou as 26 características
+# daquele PDM procurando uma linha `CODIGO PMIB` que ali não existe -- saiu
+# com "26 apagada(s), 0 preservada(s)" e a ficha sem a característica da
+# duplicação. Trocar o PDM DEPOIS não desfaz isso.
+#
+# A ordem certa é: trocar o PDM para o da duplicada, SALVAR (aí o portal
+# renderiza as características do PDM novo), e só então purgar.
+#
+# HTML do combo, levantado pelo usuário:
+#
+#   <div class="vscomp-toggle-button">
+#     <div class="vscomp-value" data-tooltip="PDM.4820.010 - REGULADOR, PRESSAO, R1"
+#          …>PDM.4820.010 - REGULADOR, PRESSAO, R1</div>
+#     <div class="vscomp-arrow"></div>
+#     …
+#
+# É o MESMO widget `virtual-select` do fabricante -- muda só o que o
+# `data-tooltip` diz. Por isso o combo se identifica pelo prefixo "PDM.": ele
+# está lá com o PDM que for, e nenhum outro combo da tela começa assim.
+PDM_DA_DUPLICADA = "PDM.9900.000"
+# ⚠️ SÓ O PREFIXO. O texto completo é "PDM.9900.000 - FICHA PMIB, DUPLICADA,
+# R0" e *"a revisão R0 pode mudar"* (usuário). Casar o texto inteiro faria o
+# robô parar de achar o PDM no dia em que a revisão virasse R1 -- e o sintoma
+# seria "não achei no combo", que ninguém liga a uma revisão nova.
+NOME_DA_ABA_INFO_GERAIS = "Informações gerais"
+
+XPATH_PDM_COMBO = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-toggle-button ')]"
+    "[.//div[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-value ')]"
+    "[starts-with(@data-tooltip, 'PDM.')]]"
+)
+XPATH_PDM_VALOR = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-value ')]"
+    "[starts-with(@data-tooltip, 'PDM.')]"
+)
+# A opção casada pelo PREFIXO, pelo motivo da revisão acima.
+XPATH_PDM_OPCAO_POR_PREFIXO = (
+    "//div[@role='option']"
+    "//span[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-option-text ')]"
+    "[starts-with(@data-tooltip, {texto})]"
+)
+
+# Âncora para achar o SALVAR **desta** seção (ver `XPATH_SALVAR_DO_BLOCO` e o
+# defeito de 2026-08-20). O id vem do `aria-controls` da aba, que o usuário
+# mandou: `aria-controls="b10-GeneralInformations_Content"`.
+XPATH_INFO_GERAIS_SECAO = "//*[contains(@id, 'GeneralInformations')]"
+
+# ---------------------------------------------------------------------------
+# 17. A linha do CÓDIGO PMIB — os TRÊS campos, não só o português
+# ---------------------------------------------------------------------------
+# *"A 3626 - CODIGO PMIB deve ser preenchida com a ficha original, tanto no
+# campo de espanhol quanto no de português, e colocar a unidade adimensional."*
+# (usuário, 2026-08-20)
+#
+# Até aqui só o português era preenchido. Os sufixos são os mesmos que
+# `tech_specs` usa há meses para preencher característica -- não é
+# levantamento novo.
+XPATH_REL_CARACTERISTICA_VALOR_ES = './/textarea[contains(@id, "TextArea_ValueES")]'
+XPATH_REL_CARACTERISTICA_UNIDADE = (
+    './/select[contains(@id, "DropdownTCUnitsOfMeasurement")]'
+)
+# O símbolo da unidade adimensional no Master de PDMs. `tech_specs` já usa
+# exatamente este ("AD") como o valor que significa "sem unidade".
+SIMBOLO_ADIMENSIONAL = "AD"

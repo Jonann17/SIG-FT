@@ -36,6 +36,7 @@ from sigft.services import duplicadas_condicoes as condicoes
 from sigft.services import duplicadas_documentos as documentos
 from sigft.services import duplicadas_extrator as extrator
 from sigft.services import duplicadas_injetor as injetor
+from sigft.services import duplicadas_pdm as pdm
 
 NOME_DO_MODULO = "duplicadas"  # chave em `config.RPA_ENGINE`
 
@@ -114,7 +115,10 @@ SECOES_DA_PLANILHA = {
         # com as informações gerais prontas".
         "documentos",
     ),
-    config.COL_CARACT_TECNICAS: ("caracteristicas",),
+    # CP 6.4: o PDM entra aqui porque é ele que decide quais características a
+    # ficha tem -- ficha no PDM errado tem a lista errada, por mais que a purga
+    # tenha corrido bem.
+    config.COL_CARACT_TECNICAS: ("pdm", "caracteristicas"),
     # CP 6.4: a coluna CONDIÇÕES deixa de ficar sempre em branco.
     config.COL_CONDICOES: ("condicoes",),
 }
@@ -511,8 +515,24 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
         # inútil: sem botão na tela, `salvar_e_confirmar` devolveria `False` e
         # TODA ficha sairia com uma pendência inventada -- o mesmo tipo de
         # falso alarme que as linhas fantasma de fornecedor produziam.
-        resultado.registrar(
-            injetor.limpar_caracteristicas(portal, ficha.ficha_original, callback_log))
+        # ⚠️ O PDM VEM ANTES DAS CARACTERÍSTICAS, e a ordem é o conserto
+        # (2026-08-20). O PDM decide QUAIS características a ficha tem: na
+        # 4500063671.0922, que estava em `PDM.4820.010 - REGULADOR, PRESSAO`,
+        # o robô apagou as 26 características daquele PDM procurando uma linha
+        # `CODIGO PMIB` que ali não existe. Trocar o PDM depois não desfaz o
+        # que foi apagado.
+        secao_pdm = resultado.registrar(pdm.garantir_pdm(portal, callback_log))
+        if secao_pdm.ok:
+            resultado.registrar(injetor.limpar_caracteristicas(
+                portal, ficha.ficha_original, callback_log))
+        else:
+            # Purgar sem saber o PDM apaga a ficha de outro PDM. A recusa é o
+            # comportamento certo, e vira pendência como qualquer outra.
+            _log("   [Erro] Não purguei as características: o PDM da ficha não "
+                 "está garantido, e purgar o PDM errado apaga o que não é para "
+                 "apagar.")
+            resultado.registrar(injetor.ResultadoDaSecao(
+                "caracteristicas", False, "PDM não garantido"))
 
         # --- CP 6.4 ----------------------------------------------------
         resultado.registrar(

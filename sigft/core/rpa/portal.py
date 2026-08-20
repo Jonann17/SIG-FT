@@ -226,6 +226,12 @@ PALAVRA_DA_SECAO = {
     # 2026-08-19, com a redação vinda do usuário: "As características técnicas
     # foram salvas com sucesso!"
     "Características Técnicas": "caracteristicas",
+    # 2026-08-20: "A Ficha Técnica 4500063671.0922 foi modificada com sucesso."
+    # É genérica -- não nomeia a seção --, e foi exatamente ela que passou por
+    # confirmação das OUTRAS quatro seções na rodada em que o robô clicava o
+    # SALVAR errado. Mapeá-la aqui faz o contrário do que parece: agora ela
+    # confirma SÓ Informações Gerais, e deixa de servir para as demais.
+    "Informações gerais": "ficha tecnica",
 }
 
 # Quanto se espera pelo toast. O usuário descreve que ele aparece

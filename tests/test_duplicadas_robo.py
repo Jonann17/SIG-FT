@@ -101,6 +101,10 @@ def _com_etapas(monkeypatch, *, blocos=(("Fabricantes", {"Fabricante": "SCHNEIDE
     monkeypatch.setattr(robo.condicoes, "ler", lambda *_a, **_k: {})
     monkeypatch.setattr(robo.condicoes, "escrever", _secao("condicoes"))
     monkeypatch.setattr(robo.documentos, "associar", _secao("documentos"))
+    # CP 6.4: o PDM roda ANTES das características e as GATEIA -- ficha no PDM
+    # errado tem a lista de características errada. Neutralizado aqui como as
+    # demais; a mecânica está em test_duplicadas_pdm.py.
+    monkeypatch.setattr(robo.pdm, "garantir_pdm", _secao("pdm"))
     return portal
 
 
@@ -188,7 +192,10 @@ def test_todas_as_secoes_ok_e_ficha_ok(monkeypatch):
     assert [s.nome for s in resultado.secoes] == [
         "fabricante", "referencia",
         "fornecedor", "referencia_fornecedor",
-        "ge_vernova", "caracteristicas",
+        "ge_vernova",
+        # CP 6.4: o PDM vem ANTES das características e as gateia -- ele
+        # decide QUAIS características a ficha tem.
+        "pdm", "caracteristicas",
         # CP 6.4: Condições e Documentos entram DEPOIS das
         # características -- a purga mexe na mesma ficha e o
         # portal recarrega a tela a cada salvamento.
@@ -246,7 +253,7 @@ def test_fabricante_ausente_NAO_impede_o_resto(monkeypatch):
     # referência do fornecedor, referência da GE Vernova e características.
     # Eram quatro quando "fornecedor" e "GE Vernova" eram tratados como a
     # mesma linha -- que era o defeito.
-    assert len(resultado.secoes) == 8   # + condicoes e documentos (CP 6.4)
+    assert len(resultado.secoes) == 9   # + pdm, condicoes e documentos (CP 6.4)
     assert any("fabricante" in linha for linha in logs)
 
 
@@ -465,4 +472,4 @@ def test_log_com_atributo_ausente_nao_derruba_a_ficha(monkeypatch):
     # referência do fornecedor, referência da GE Vernova e características.
     # Eram quatro quando "fornecedor" e "GE Vernova" eram tratados como a
     # mesma linha -- que era o defeito.
-    assert len(resultado.secoes) == 8   # + condicoes e documentos (CP 6.4)
+    assert len(resultado.secoes) == 9   # + pdm, condicoes e documentos (CP 6.4)

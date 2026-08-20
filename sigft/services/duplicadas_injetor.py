@@ -623,6 +623,59 @@ def _e_a_linha_do_codigo_pmib(texto_da_descricao):
     return spec.CARACTERISTICA_UNICA_DUPLICADA in limpo.upper()
 
 
+def selecionar_unidade_adimensional(portal, linha, callback_log=None):
+    """Põe a unidade da linha em ADIMENSIONAL. `True` se conseguiu.
+
+    *"…e colocar a unidade adimensional."* (usuário, 2026-08-20)
+
+    ⚠️ NÃO SABEMOS O TEXTO EXATO DA OPÇÃO. `tech_specs` trabalha com o SÍMBOLO
+    ("AD"), que é o que vem do Master de PDMs; o que o `<select>` do portal
+    mostra pode ser "AD", "Adimensional", "(AD) Adimensional"… Em vez de
+    chutar um e falhar em silêncio, tentamos os casamentos plausíveis e, se
+    nenhum servir, **listamos as opções no log** -- que é o que permite acertar
+    o texto na próxima rodada sem ninguém inspecionar a tela.
+    """
+    _log = _log_de(callback_log)
+    seletor = linha + sel.XPATH_REL_CARACTERISTICA_UNIDADE[1:]
+    try:
+        if not portal.engine.contar(seletor):
+            return False           # linha sem dropdown de unidade: normal
+        opcoes = list(portal.engine.opcoes(seletor) or [])
+    except Exception:  # noqa: BLE001
+        return False
+
+    escolhida = _opcao_adimensional(opcoes)
+    if not escolhida:
+        _log(f"      [Aviso] Não achei a unidade adimensional no dropdown. "
+             f"Opções: {', '.join(o[:20] for o in opcoes[:8])}"
+             f"{' …' if len(opcoes) > 8 else ''}. Ajuste à mão.")
+        return False
+
+    try:
+        portal.engine.selecionar_por_texto(seletor, escolhida)
+    except Exception as erro:  # noqa: BLE001
+        _log(f"      [Aviso] Não consegui selecionar {escolhida!r} como unidade: "
+             f"{type(erro).__name__}.")
+        return False
+    return True
+
+
+def _opcao_adimensional(opcoes):
+    """A opção que representa "sem unidade", entre as do dropdown."""
+    simbolo = sel.SIMBOLO_ADIMENSIONAL.upper()
+    limpas = [(o, _sem_acento(o)) for o in opcoes]
+    for original, limpa in limpas:
+        if limpa.strip() == simbolo:
+            return original
+    for original, limpa in limpas:
+        if "ADIMENSIONAL" in limpa:
+            return original
+    for original, limpa in limpas:
+        if f"({simbolo})" in limpa:
+            return original
+    return ""
+
+
 def limpar_caracteristicas(portal, pmib_original, callback_log=None):
     """Apaga todas as características menos `CODIGO PMIB`, que recebe o código
     da ficha ORIGINAL.
@@ -647,8 +700,17 @@ def limpar_caracteristicas(portal, pmib_original, callback_log=None):
 
             if _e_a_linha_do_codigo_pmib(descricao):
                 seletor_valor = linha + sel.XPATH_REL_CARACTERISTICA_VALOR_PT[1:]
+                seletor_es = linha + sel.XPATH_REL_CARACTERISTICA_VALOR_ES[1:]
                 seletor_descricao = linha + sel.XPATH_REL_CARACTERISTICA_DESCRICAO[1:]
                 portal.safe_fill(seletor_valor, pmib_original)
+                # ⚠️ O ESPANHOL TAMBÉM (2026-08-20). *"A 3626 - CODIGO PMIB
+                # deve ser preenchida com a ficha original, tanto no campo de
+                # espanhol quanto no de português."* Até aqui só o português
+                # era preenchido -- e a ficha é bilíngue, então metade dela
+                # saía vazia sem que nada reclamasse.
+                if portal.engine.contar(seletor_es):
+                    portal.safe_fill(seletor_es, pmib_original)
+                selecionar_unidade_adimensional(portal, linha, callback_log)
 
                 # CLIQUE FORA PARA DISPARAR O onBlur -- e é o conserto do
                 # relato "eu até vi ele colocando mas não conseguiu salvar".
