@@ -697,11 +697,14 @@ def limpar_caracteristicas(portal, pmib_original, callback_log=None):
              f"páginas. Parei por segurança -- confira a ficha à mão.")
         return ResultadoDaSecao("caracteristicas", False, "paginação sem fim")
 
-    # O retorno do SALVAR não pode ser ignorado: `clicar_salvar_visivel`
-    # devolve `False` quando nenhum botão SALVAR estava visível e habilitado --
-    # que é exatamente o sintoma de "o portal não registrou a mudança". Sem
-    # olhar, a seção fechava como sucesso com a ficha inalterada.
-    salvou = portal.clicar_salvar_visivel("Características Técnicas")
+    # ⚠️ `salvar_e_confirmar` e não `clicar_salvar_visivel`: o segundo devolve
+    # `True` por ter ACHADO um botão e clicado nele, sem ler nada da tela
+    # depois -- e a ficha tem um SALVAR por seção, então "cliquei" nem sequer
+    # garante que foi o desta. O usuário viu o efeito disso em 2026-08-19:
+    # *"ele não conseguiu salvar a seção de características técnicas"*, com o
+    # log dizendo que tinha salvado. Agora só passa com o toast de sucesso NOVO
+    # na tela.
+    salvou = portal.salvar_e_confirmar("Características Técnicas", callback_log)
     _log(f"      Características: {apagadas} apagada(s), {preenchidas} preservada(s).")
 
     if falhas_de_escrita:
@@ -710,9 +713,9 @@ def limpar_caracteristicas(portal, pmib_original, callback_log=None):
         return ResultadoDaSecao("caracteristicas", False, "valor não gravado")
 
     if not salvou:
-        _log("      [Erro] Não achei botão SALVAR visível e habilitado nesta aba. "
-             "Se o portal não habilitou o botão, é sinal de que ele não registrou "
-             "nenhuma mudança -- confira a ficha antes de seguir.")
+        _log("      [Erro] A seção de Características Técnicas NÃO foi confirmada "
+             "pelo portal. O motivo está na linha acima (botão ausente ou toast "
+             "que não veio) -- confira a ficha antes de seguir.")
         return ResultadoDaSecao("caracteristicas", False, "não salvou")
 
     if preenchidas == 0:
@@ -722,8 +725,55 @@ def limpar_caracteristicas(portal, pmib_original, callback_log=None):
              "ficou sem a característica da duplicação.")
         return ResultadoDaSecao("caracteristicas", False, "CODIGO PMIB ausente")
 
+    # ⚠️ A CONFERÊNCIA DEPOIS DO SAVE (2026-08-19). *"Antes de sair de cada uma
+    # das páginas, quero que você valide se de fato conseguiu colocar os
+    # dados."*
+    #
+    # O toast prova que o portal ACEITOU o salvamento; não prova que a tabela
+    # ficou como se queria. Uma exclusão que falhou, uma linha que volta na
+    # recarga, uma página que o laço não visitou -- tudo isso convive com um
+    # toast de sucesso. E a consequência é concreta: *"se tiver mais
+    # características, estas devem ser excluídas, pois se não, não vai
+    # conseguir salvar"*.
+    sobraram = sobrou_caracteristica_alem_do_codigo(portal)
+    if sobraram:
+        _log(f"      [Erro] Depois de salvar, ainda sobraram {len(sobraram)} "
+             f"característica(s) além do CÓDIGO PMIB: "
+             f"{', '.join(sobraram[:5])}"
+             f"{' …' if len(sobraram) > 5 else ''}. Apague à mão -- com elas "
+             f"a ficha não fecha.")
+        return ResultadoDaSecao("caracteristicas", False,
+                                f"{len(sobraram)} sobraram após salvar")
+
     return ResultadoDaSecao(
         "caracteristicas", True, f"{apagadas} apagadas, {preenchidas} preservada")
+
+
+def sobrou_caracteristica_alem_do_codigo(portal):
+    """Descrições que ainda estão na tabela e NÃO são a do CÓDIGO PMIB.
+
+    Relê a tela depois do salvamento -- é a única leitura que enxerga o que o
+    portal realmente gravou, porque a seção recarrega ao gravar. Lista vazia é
+    o resultado bom.
+
+    Não pagina: depois da purga a tabela tem uma linha. Se tiver mais de uma
+    página, a primeira já basta para reprovar -- e reprovar é o objetivo.
+    """
+    sobraram = []
+    try:
+        total = portal.engine.contar(sel.XPATH_CARACTERISTICAS_LINHAS)
+    except Exception:  # noqa: BLE001 -- ler a tela não derruba a ficha
+        return []
+    for indice in range(1, (total or 0) + 1):
+        linha = f"({sel.XPATH_CARACTERISTICAS_LINHAS})[{indice}]"
+        try:
+            descricao = portal.engine.texto(
+                linha + sel.XPATH_REL_CARACTERISTICA_DESCRICAO[1:])
+        except Exception:  # noqa: BLE001
+            continue
+        if descricao and not _e_a_linha_do_codigo_pmib(descricao):
+            sobraram.append(" ".join(descricao.split())[:40])
+    return sobraram
 
 
 # ===========================================================================

@@ -416,7 +416,8 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
         # essa é a OUTRA explicação possível para a tabela vazia do print da
         # 4500063671.1418: com o "+" funcionando, um salvar que não pega deixa
         # a ficha como estava e o log segue dizendo que deu certo.
-        if not portal.clicar_salvar_visivel("Fabricantes e Fornecedores"):
+        if not portal.salvar_e_confirmar("Fabricantes e Fornecedores",
+                                       callback_log):
             resultado.registrar(injetor.ResultadoDaSecao(
                 "salvar_fabricantes", False, "o salvar da seção não pegou"))
             _log("   [Erro] Não consegui salvar a seção de Fabricantes e "

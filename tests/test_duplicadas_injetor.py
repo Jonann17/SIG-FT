@@ -181,6 +181,11 @@ class _PortalFalso:
         self.comita_no_mais = False   # o campo some (linha do fabricante)
         self.limpa_no_mais = True     # o campo esvazia (linha fixa) -- default
         self.erro_no_clique_estrito = None
+        # Como a tabela fica DEPOIS do salvamento. `None` = igual a antes.
+        # Existe porque o portal recarrega a seção ao gravar, e o que volta
+        # nem sempre é o que se deixou -- é justamente essa diferença que a
+        # releitura de `limpar_caracteristicas` existe para pegar.
+        self.linhas_apos_salvar = None
         self.cliques = []
         self.preenchidos = []
         self.excluidas = []
@@ -222,8 +227,18 @@ class _PortalFalso:
         elif self.limpa_no_mais:
             self.engine.valores.clear()
 
+    def salvar_e_confirmar(self, nome_secao="", callback_log=None, **_kwargs):
+        """Passa a ser o caminho do módulo novo (2026-08-19): SALVAR + toast
+        de sucesso NOVO na tela. O duplo delega no `clicar_salvar_visivel`
+        de sempre -- a mecânica do toast é testada contra o `PMIBPortal`
+        real em tests/test_duplicadas_salvar_com_prova.py, e reimplementá-la
+        aqui só criaria uma segunda verdade para envelhecer sozinha."""
+        return self.clicar_salvar_visivel(nome_secao)
+
     def clicar_salvar_visivel(self, nome_secao=""):
         self.salvou.append(nome_secao)
+        if self.linhas_apos_salvar is not None:
+            self.engine.linhas = list(self.linhas_apos_salvar)
         return self.salvar_devolve
 
 
@@ -533,8 +548,15 @@ def test_valor_que_nao_ficou_gravado_reprova_a_secao():
 
 
 def test_salvar_que_nao_acha_botao_reprova_a_secao():
-    """`clicar_salvar_visivel` devolve `False` quando nenhum SALVAR está
-    visível e habilitado -- que é o sintoma de "o portal não registrou nada"."""
+    """Salvar que não confirma reprova a seção.
+
+    ⚠️ A mensagem MUDOU em 2026-08-19 e o motivo importa: o injetor passou a
+    chamar `salvar_e_confirmar`, e o "não achei o botão SALVAR" virou uma
+    linha do PRÓPRIO portal (que o duplo substitui). O que o injetor diz agora
+    é o veredito -- a seção não foi confirmada --, apontando para a linha
+    acima. Continuar exigindo a palavra "SALVAR" aqui testaria o duplo, não o
+    código.
+    """
     portal, _engine = _com_tabela(list(_LINHAS))
     portal.salvar_devolve = False
     logs = []
@@ -542,7 +564,8 @@ def test_salvar_que_nao_acha_botao_reprova_a_secao():
     resultado = injetor.limpar_caracteristicas(portal, "X", callback_log=logs.append)
 
     assert resultado.ok is False
-    assert "SALVAR" in "\n".join(logs)
+    assert resultado.detalhe == "não salvou"
+    assert "NÃO foi confirmada" in "\n".join(logs)
 
 
 def test_o_indice_NAO_avanca_depois_de_apagar():
@@ -574,15 +597,28 @@ def test_sem_a_linha_do_codigo_pmib_o_resultado_e_erro():
 
 
 def test_exclusao_que_falha_avanca_em_vez_de_travar():
+    """O laço não pode travar na linha que resistiu -- ele avança e avisa.
+
+    ⚠️ O VEREDITO MUDOU EM 2026-08-19. Antes a seção saía `ok=True`: o aviso
+    ia para o log e a ficha era dada por pronta com a característica teimosa
+    ainda lá. O usuário fechou essa porta: *"se tiver mais características,
+    estas devem ser excluídas, pois se não, não vai conseguir salvar"*. Uma
+    linha que sobrou não é um detalhe cosmético -- ela impede a ficha de
+    fechar, e a releitura depois do save agora reprova a seção.
+
+    O que este teste continua provando é o que ele sempre provou: o laço
+    AVANÇA (não fica tentando a mesma linha para sempre) e diz qual falhou.
+    """
     portal, engine = _com_tabela(["TEIMOSA", "CODIGO PMIB"])
     portal.exclusao_falha_em = ("TEIMOSA",)
     logs = []
 
     resultado = injetor.limpar_caracteristicas(portal, "X", callback_log=logs.append)
 
-    assert resultado.ok is True
-    assert engine.linhas == ["TEIMOSA", "CODIGO PMIB"]
+    assert engine.linhas == ["TEIMOSA", "CODIGO PMIB"], "o laço avançou, não travou"
     assert any("Não consegui excluir" in linha for linha in logs)
+    assert resultado.ok is False, "linha que sobrou impede a ficha de fechar"
+    assert "sobraram" in resultado.detalhe
 
 
 def test_a_tabela_paginada_e_percorrida_ate_o_fim():

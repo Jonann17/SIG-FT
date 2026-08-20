@@ -755,7 +755,7 @@ class PMIBPortal:
     # (InjetorFichaAlvo._clicar_salvar_visivel, não duplicado, só "movido").
     # Preserva os `print()` originais tal qual (mover != melhorar).
     # =========================================================================
-    def clicar_salvar_visivel(self, nome_secao: str = "") -> bool:
+    def clicar_salvar_visivel(self, nome_secao: str = "", callback_log=None) -> bool:
         """Procura na tela o botão SALVAR (`btn-primary`, texto exato
         "SALVAR") que estiver visível/habilitado no momento e clica nele.
         Mecânica idêntica à original de
@@ -767,8 +767,20 @@ class PMIBPortal:
         na mesma ordem, com os mesmos testes de visível/habilitado -- o que
         muda é só como cada botão é endereçado.
         """
+        # ⚠️ `print` NÃO SERVE, e isso escondeu um defeito inteiro em
+        # 2026-08-19: no app empacotado não há console, então estas linhas
+        # simplesmente não existiam para quem estava lendo o log. O `print`
+        # continua como RESERVA (o módulo antigo chama sem callback), mas
+        # quem passa `callback_log` recebe tudo no log e no arquivo de
+        # auditoria.
+        def _diga(mensagem):
+            if callback_log:
+                callback_log(mensagem)
+            else:
+                print(mensagem)
+
         if nome_secao:
-            print(f"      [Injetor] Salvando {nome_secao}...")
+            _diga(f"      [Injetor] Salvando {nome_secao}...")
 
         total = self.engine.contar(XPATH_BOTAO_SALVAR)
         for posicao in range(1, total + 1):
@@ -778,11 +790,107 @@ class PMIBPortal:
                 self.engine.scroll_to(seletor)
                 time.sleep(0.5)
                 self.engine.click_raw(seletor)
+                # QUAL botão, de quantos. A ficha tem um SALVAR por seção, e
+                # este método clica o PRIMEIRO visível -- que nem sempre é o
+                # da seção que se quer gravar. Sem o índice no log, "salvei a
+                # seção errada" e "não salvei" produzem o mesmo silêncio.
+                _diga(f"      [Injetor] Cliquei no botão SALVAR {posicao} de "
+                      f"{total} da tela.")
                 time.sleep(2.5)  # Aguarda a requisição do servidor OutSystems
                 return True
 
-        print(f"      [Aviso] Botão SALVAR não encontrado/visível para {nome_secao}.")
+        _diga(f"      [Aviso] Botão SALVAR não encontrado/visível para "
+              f"{nome_secao}. Se o portal não habilitou o botão, é sinal de "
+              f"que ele não registrou nenhuma mudança.")
         return False
+
+    def salvar_e_confirmar(self, nome_secao: str = "", callback_log=None,
+                           timeout_s=None, sleep_fn=None, agora_fn=None) -> bool:
+        """SALVA e só devolve `True` com o toast de sucesso NOVO na tela.
+
+        Pedido do usuário em 2026-08-19: *"tal como fizemos para upload
+        característica, devemos esperar a mensagem de salvo com sucesso"*.
+
+        ⚠️ POR QUE "NOVO", E NÃO SÓ "DE SUCESSO". O toast *"aparece
+        relativamente rápido, fica um tempo e depois some"*. Quando o robô
+        salva a 2ª seção, o toast da 1ª ainda pode estar na tela -- e uma
+        checagem de "existe mensagem de sucesso?" leria o toast VELHO e daria
+        a 2ª seção por gravada sem ter sido. Em Condições isso é resolvido
+        exigindo a PALAVRA DA SEÇÃO (`PALAVRA_DA_SECAO`); aqui não dá, porque
+        não sabemos a redação do toast de Fabricantes nem do de
+        Características.
+
+        A saída é a foto de ANTES, a mesma mecânica que este módulo já usa
+        para achar o campo que nasce ao escolher o fabricante: vale o toast
+        que for de sucesso **e não estava na tela antes do clique**. Funciona
+        sem conhecer a redação.
+
+        Limite conhecido e declarado: salvar DUAS VEZES a mesma seção, na
+        mesma tela, produziria um toast de texto idêntico ao anterior e este
+        método não o reconheceria como novo. No fluxo da ficha duplicada cada
+        seção é salva uma vez; se um dia deixar de ser, esta é a linha a
+        rever.
+
+        O texto lido vai para o log mesmo quando não confirma -- é assim que a
+        redação real aparece, sem ninguém precisar inspecionar a tela.
+        """
+        antes = {m for m in self._mensagens_de_feedback() if m}
+
+        if not self.clicar_salvar_visivel(nome_secao, callback_log):
+            return False
+
+        confirmou, mensagem = self.esperar_confirmacao_nova(
+            nome_secao, antes, timeout_s=timeout_s, callback_log=callback_log,
+            sleep_fn=sleep_fn, agora_fn=agora_fn)
+        if confirmou and callback_log:
+            callback_log(f"      Portal confirmou: {' '.join(mensagem.split())[:90]}")
+        return confirmou
+
+    def esperar_confirmacao_nova(self, secao, ja_na_tela=(), timeout_s=None,
+                                 callback_log=None, sleep_fn=None, agora_fn=None):
+        """Espera um toast de sucesso que NÃO estava em `ja_na_tela`.
+
+        Devolve `(confirmou, mensagem_lida)`, como
+        `esperar_confirmacao_de_salvamento` -- de que é a variante para as
+        seções cuja redação o projeto ainda não conhece. Quando a seção TEM
+        palavra mapeada, ela continua sendo exigida: a checagem nova se soma à
+        antiga, não a substitui.
+        """
+        limite = TIMEOUT_CONFIRMACAO_S if timeout_s is None else timeout_s
+        dormir = sleep_fn or time.sleep
+        agora = agora_fn or time.monotonic
+        vistas = {m for m in (ja_na_tela or ()) if m}
+
+        fim = agora() + limite
+        ultima = ""
+        while True:
+            for mensagem in self._mensagens_de_feedback():
+                if not mensagem:
+                    continue
+                ultima = mensagem
+                if mensagem in vistas:
+                    continue          # estava lá antes do clique
+                texto = _sem_acento(mensagem).lower()
+                if not any(m in texto for m in MARCADORES_DE_SUCESSO):
+                    continue
+                palavra = PALAVRA_DA_SECAO.get(secao)
+                if palavra and palavra not in texto:
+                    continue
+                return True, mensagem
+            if agora() >= fim:
+                break
+            dormir(INTERVALO_POLL_CONFIRMACAO_S)
+
+        if callback_log:
+            if ultima:
+                callback_log(
+                    f"      [!] Não vi a confirmação de '{secao}'. A última mensagem "
+                    f"na tela foi: {ultima!r}")
+            else:
+                callback_log(
+                    f"      [!] Não vi nenhuma mensagem de confirmação ao salvar "
+                    f"'{secao}'. Confira a ficha antes de seguir.")
+        return False, ultima
 
     # =========================================================================
     # excluir_linha_com_confirmacao -- mecânica CENTRAL comum a

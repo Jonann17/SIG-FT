@@ -55,6 +55,14 @@ class _PortalFalso:
     def safe_fill(self, _seletor, _texto):
         pass
 
+    def salvar_e_confirmar(self, nome="", callback_log=None, **_kwargs):
+        """Passa a ser o caminho do módulo novo (2026-08-19): SALVAR + toast
+        de sucesso NOVO na tela. O duplo delega no `clicar_salvar_visivel`
+        de sempre -- a mecânica do toast é testada contra o `PMIBPortal`
+        real em tests/test_duplicadas_salvar_com_prova.py, e reimplementá-la
+        aqui só criaria uma segunda verdade para envelhecer sozinha."""
+        return self.clicar_salvar_visivel(nome)
+
     def clicar_salvar_visivel(self, nome=""):
         self.salvou.append(nome)
         return True
