@@ -250,7 +250,30 @@ def _sem_acento(texto):
 # quer o CONTEXTO em volta, não o campo exato -- é justamente o que não se sabe
 # ainda quando uma seção é nova.
 XPATH_CONTEUDO_DA_SECAO = "//div[contains(@class, 'osui-tabs__content')]"
-XPATH_FICHA_INTEIRA = "//form | //div[@id='b12']"
+
+# ⚠️ A FOTO SAIU VAZIA NAS QUATRO SEÇÕES do log de 2026-08-20:
+#
+#     (nada casou para: //div[contains(@class, 'osui-tabs__content')],
+#                       //form | //div[@id='b12'])
+#
+# Ou seja, o modo de auditoria estava ligado e não fotografava nada -- a
+# ferramenta que existe para mapear o portal sem acesso a ele não mapeava.
+#
+# O que os HTMLs que o usuário mandou revelam é o padrão do container: as abas
+# apontam para ele por `aria-controls`, e o id sempre termina em `_Content`:
+#
+#     aria-controls="b10-GeneralInformations_Content"
+#     aria-controls="b10-DocumentsandImages_Content"
+#
+# `_Content` é semântico (nomeado por quem desenhou a tela) e o prefixo `b10-`
+# é gerado -- daí o `contains`, não a igualdade.
+XPATH_CONTEUDO_POR_ID = "//div[contains(@id, '_Content')]"
+
+# `//div[@id='b12']` era um id GERADO, o que este projeto proíbe: ele mudou e a
+# foto passou a devolver vazio. Fica só `//form`, mais o `<body>` como último
+# recurso -- uma foto grande demais ainda é infinitamente melhor do que
+# "(nada casou)", porque pelo menos contém a resposta.
+XPATH_FICHA_INTEIRA = "//form | //body"
 
 
 def fotografar(portal, titulo, log_auditoria=None, seletor=None):
@@ -269,7 +292,8 @@ def fotografar(portal, titulo, log_auditoria=None, seletor=None):
     """
     if log_auditoria is None:
         return ""
-    alvos = [seletor] if seletor else [XPATH_CONTEUDO_DA_SECAO, XPATH_FICHA_INTEIRA]
+    alvos = [seletor] if seletor else [
+        XPATH_CONTEUDO_DA_SECAO, XPATH_CONTEUDO_POR_ID, XPATH_FICHA_INTEIRA]
     for alvo in alvos:
         try:
             html = portal.engine.html_do_elemento(alvo)

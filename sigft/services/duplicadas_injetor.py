@@ -118,7 +118,77 @@ def _confirmar_escrita(portal, seletor, esperado, nome_do_campo, callback_log=No
     return False
 
 
-def texto_do_aviso_de_colisao(portal):
+# ---------------------------------------------------------------------------
+# O que o portal escreveu NO CAMPO -- descoberto pelo log de 2026-08-20
+# ---------------------------------------------------------------------------
+# Três rodadas com "a linha NÃO ENTROU na tabela" e nenhuma explicação. O dump
+# que o robô passou a gravar quando isso acontece resolveu em duas linhas:
+#
+#   <input class="form-control OSFillParent not-valid" required=""
+#          value="FM-9222" id="b10-b11-b4-Input_TextVar"
+#          aria-describedby="b10-b11-b4-Input_TextVar_DescribedBy">
+#
+#   <a href="#"><i class="icon fa fa-plus-circle fa-2x"></i></a>
+#
+# O "+" está lá, é um `<a>` normal, e o clique chega nele. Quem trava é o
+# CAMPO: `not-valid` é a classe que o OutSystems põe num campo que FALHOU a
+# validação, e enquanto ela está lá o "+" não adiciona nada. Nunca foi clique
+# perdido nem seletor errado -- era o formulário recusando, em silêncio.
+#
+# E o motivo da recusa está escrito: o OutSystems pendura a mensagem num
+# elemento cujo id vem em `aria-describedby`.
+NOT_VALID = "not-valid"
+
+# Marcadores de "esta referência já existe". Sem acento e em minúsculas -- a
+# tela alterna PT/ES e a redação exata varia.
+#
+# `"ja existe"` cobre "já existe" e "já existente"; `"existente"` sozinho NÃO
+# entra de propósito, porque casaria "inexistente", que é o contrário.
+MARCADORES_DE_DUPLICIDADE = ("ja existe", "duplicad", "repetid", "coincid")
+
+
+def mensagem_de_validacao(portal, seletor_input):
+    """Mensagem que o portal pendurou NESTE campo. `""` se não houver.
+
+    O caminho é o `aria-describedby`: ele carrega o id do elemento onde o
+    OutSystems escreve o texto da validação.
+    """
+    try:
+        id_da_mensagem = portal.engine.atributo(seletor_input, "aria-describedby")
+    except Exception:  # noqa: BLE001 -- ler a tela não derruba a ficha
+        return ""
+    if not id_da_mensagem:
+        return ""
+    return " ".join(portal.texto_se_existir(
+        sel.XPATH_POR_ID.format(id=_literal(id_da_mensagem))).split())
+
+
+def campo_recusado(portal, seletor_input):
+    """O portal marcou este campo como inválido (`not-valid`)?
+
+    Comparação por TOKEN, não por substring: `not-validated` não é
+    `not-valid`, e casar por substring transformaria qualquer classe parecida
+    num campo recusado.
+    """
+    try:
+        classe = portal.engine.atributo(seletor_input, "class") or ""
+    except Exception:  # noqa: BLE001
+        return False
+    return f" {NOT_VALID} " in f" {' '.join(str(classe).split())} "
+
+
+def e_mensagem_de_duplicidade(mensagem):
+    """A recusa do portal é "esta referência já existe"?
+
+    Só ela justifica gastar a sequência do `'D`. Uma recusa de outro tipo
+    ("campo obrigatório", "máximo de N caracteres") não melhora com sufixo --
+    tentar 20 esconderia o erro real.
+    """
+    texto = _sem_acento(mensagem).lower()
+    return any(marcador in texto for marcador in MARCADORES_DE_DUPLICIDADE)
+
+
+def texto_do_aviso_de_colisao(portal, seletor_input=None):
     """Texto do bloco de aviso de referência repetida — `""` se não há aviso.
 
     ⚠️ A pergunta é "este bloco tem CONTEÚDO?", **não** "este bloco existe?".
@@ -132,12 +202,28 @@ def texto_do_aviso_de_colisao(portal):
     documentação deste projeto já dizia a frase certa ("a pergunta vira 'este
     bloco tem conteúdo?'") -- eu implementei a outra.
     """
-    if not portal.engine.element_exists(sel.XPATH_REFERENCIA_AVISO_COLISAO):
-        return ""
-    try:
-        return " ".join((portal.engine.texto(sel.XPATH_REFERENCIA_AVISO_COLISAO) or "").split())
-    except Exception:  # noqa: BLE001
-        return ""
+    if portal.engine.element_exists(sel.XPATH_REFERENCIA_AVISO_COLISAO):
+        try:
+            do_bloco = " ".join(
+                (portal.engine.texto(sel.XPATH_REFERENCIA_AVISO_COLISAO) or "").split())
+        except Exception:  # noqa: BLE001
+            do_bloco = ""
+        if do_bloco:
+            return do_bloco
+
+    # ⚠️ TERCEIRA FONTE, e a que funcionou na ficha real (2026-08-20). Quando o
+    # portal reporta a colisão NO CAMPO (`not-valid` + `aria-describedby`), o
+    # bloco `CoincidenceReference` fica vazio -- e o robô concluía "não há
+    # colisão", nunca avançava para `'D1` e desistia na primeira tentativa, com
+    # a regra do `'D` inteira implementada e jamais usada.
+    #
+    # Só a mensagem de DUPLICIDADE conta como colisão. Outra recusa devolve ""
+    # aqui e é reportada pelo chamador com o texto do portal.
+    if seletor_input:
+        do_campo = mensagem_de_validacao(portal, seletor_input)
+        if do_campo and e_mensagem_de_duplicidade(do_campo):
+            return do_campo
+    return ""
 
 
 # ===========================================================================
@@ -556,14 +642,14 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
             # se digita -- é outro problema, e insistir esconderia ele.
             return ResultadoDaSecao(nome_da_secao, False, "campo não aceitou o texto")
 
-        aviso = texto_do_aviso_de_colisao(portal)
+        aviso = texto_do_aviso_de_colisao(portal, seletor_input)
         if aviso:
             avisos_vistos.append(aviso)
             continue
 
         clicou = _clicar_no_mais(portal, seletor_mais, callback_log)
         time.sleep(PAUSA_APOS_DIGITAR)
-        aviso = texto_do_aviso_de_colisao(portal)
+        aviso = texto_do_aviso_de_colisao(portal, seletor_input)
         if aviso:
             avisos_vistos.append(aviso)
             continue
@@ -572,9 +658,20 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
         # para reportar sucesso -- e o usuário só descobriu que a tabela estava
         # vazia ao abrir a ficha. Escrever no campo não é adicionar a linha.
         if not linha_entrou_na_tabela(portal, seletor_input, referencia):
+            # ⚠️ DIZER O MOTIVO. Até 2026-08-20 esta mensagem só constatava o
+            # sintoma, e três rodadas se passaram sem ninguém saber por quê. O
+            # portal escreve a recusa NO CAMPO (`not-valid` +
+            # `aria-describedby`); basta ler.
+            recusa = mensagem_de_validacao(portal, seletor_input)
+            motivo = ""
+            if recusa:
+                motivo = f" O portal recusou: {recusa!r}."
+            elif campo_recusado(portal, seletor_input):
+                motivo = (" O campo está marcado como inválido (`not-valid`) e "
+                          "o portal não disse por quê.")
             _log(f"      [Erro] A linha NÃO ENTROU na tabela: escrevi "
-                 f"{referencia!r}, cliquei no '+' e o campo continua com o "
-                 f"valor. Adicione à mão antes de salvar."
+                 f"{referencia!r} e cliquei no '+'.{motivo} "
+                 f"Adicione à mão antes de salvar."
                  + ("" if clicou else " (o clique já havia falhado, acima)"))
             # O HTML do bloco vai para o ARQUIVO de auditoria (nunca para o
             # console). Sem ele, a próxima rodada devolve a mesma mensagem e a
