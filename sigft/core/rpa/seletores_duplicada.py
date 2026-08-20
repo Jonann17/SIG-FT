@@ -1021,6 +1021,17 @@ XPATH_REL_LEGENDA_DO_SLIDE = ".//figcaption//span[@data-expression]"
 # Adicionar imagens</span>`, sem revelar o que há em volta.
 XPATH_IMAGENS_ABRIR_SPAN = "//span[normalize-space()='Adicionar imagens']"
 
+# ⚠️ QUEM GRAVA A IMAGEM É ESTE BOTÃO, não o SALVAR da seção. Levantado pelo
+# usuário em 2026-08-20, depois de o robô gastar 20 s de timeout tentando o
+# SALVAR -- que fica inacessível enquanto o diálogo de imagem está aberto:
+#
+#   <button data-button="" class="btn btn-primary text-uppercase"
+#           type="button">Confirmar</button>
+#
+# E o portal responde com toast próprio: "A imagem foi adicionada com
+# sucesso!" (ver `PALAVRA_DA_SECAO`).
+XPATH_IMAGENS_CONFIRMAR = "//button[normalize-space()='Confirmar']"
+
 # O `<li>` que o FilePond cria quando ACEITA o arquivo. É a prova de que o
 # upload entrou -- sem ela, "enviei o arquivo" é só "chamei a função".
 XPATH_IMAGENS_ITEM_NA_LISTA = (

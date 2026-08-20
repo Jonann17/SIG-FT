@@ -101,9 +101,11 @@ class _PortalDeImagens:
     def safe_fill(self, seletor, texto):
         self.engine.fill(seletor, texto)
 
-    def salvar_e_confirmar(self, nome="", callback_log=None, ancora=None, **_k):
+    def clicar_e_confirmar(self, seletor_botao, nome="", callback_log=None, **_k):
+        """Quem grava a imagem é o "Confirmar" DENTRO do diálogo -- o SALVAR da
+        seção fica inacessível enquanto ele está aberto (log de 2026-08-20)."""
+        self.engine.cliques.append(seletor_botao)
         self.salvos.append(nome)
-        self.ancoras.append(ancora)
         self.engine._staged = False
         return self.confirma
 
@@ -181,13 +183,12 @@ def test_imagem_e_enviada_e_a_secao_salva():
     assert portal.salvos == ["Documentos e imagens"]
 
 
-def test_o_salvamento_da_imagem_vai_ANCORADO():
-    portal, _ = _tela(slides=["Botão"])
-    lidas = imgs.ler_da_original(portal, lambda _m: None)
-
-    imgs.copiar(portal, lidas, "", lambda _m: None)
-
-    assert portal.ancoras == [sel.XPATH_IMAGENS_CONTAINER]
+# ⚠️ Havia aqui um `test_o_salvamento_da_imagem_vai_ANCORADO`, que provava
+# que a imagem era salva pelo SALVAR da seção, ancorado no container. Ele
+# morreu com a descoberta de 2026-08-20: a seção NÃO é quem grava a imagem, e
+# tentar o SALVAR dela custava 20 s de timeout porque o diálogo aberto o
+# cobre. O teste do botão certo está no fim deste arquivo
+# (`test_a_imagem_e_confirmada_pelo_botao_do_DIALOGO`).
 
 
 def test_a_legenda_da_ORIGINAL_vira_a_descricao():
@@ -265,3 +266,47 @@ def test_ficha_original_sem_imagem_nao_e_falha():
 
     assert resultado.ok is True
     assert "nenhuma" in resultado.detalhe
+
+
+# =============================================================================
+# O botão é "Confirmar", dentro do diálogo — não o SALVAR da seção
+# =============================================================================
+# Log de 2026-08-20, 15h04:
+#
+#     [Erro] Não consegui clicar no SALVAR de 'Documentos e imagens'
+#            (subindo da seção): TempoEsgotado. Algo pode estar cobrindo o
+#            botão -- salve à mão.
+#
+# Não era "algo cobrindo": o botão da seção está mesmo inacessível enquanto o
+# diálogo de imagem está aberto, e o botão certo é OUTRO. O usuário mandou os
+# dois pedaços que faltavam:
+#
+#     <button class="btn btn-primary text-uppercase">Confirmar</button>
+#     <div class="feedback-message-text">A imagem foi adicionada com sucesso!</div>
+#
+# Ou seja: confirma-se DENTRO do diálogo, e o portal responde com um toast
+# próprio. A seção não precisa de SALVAR nenhum.
+
+def test_a_imagem_e_confirmada_pelo_botao_do_DIALOGO(monkeypatch):
+    monkeypatch.setattr(imgs.time, "sleep", lambda _s: None)
+    portal, engine = _tela(slides=["Botão"])
+    lidas = imgs.ler_da_original(portal, lambda _m: None)
+
+    imgs.copiar(portal, lidas, "", lambda _m: None)
+
+    assert any("Confirmar" in c for c in engine.cliques), (
+        "o SALVAR da seção fica inacessível com o diálogo aberto -- quem "
+        "confirma a imagem é o botão de dentro dele"
+    )
+
+
+def test_a_palavra_da_secao_de_imagens_esta_mapeada():
+    """"A imagem foi adicionada com sucesso!" -- a redação veio do usuário.
+    Sem a palavra, um toast remanescente de outra seção confirmaria esta."""
+    from sigft.core.rpa import portal as portal_mod
+
+    assert portal_mod.mensagem_confirma_secao(
+        "A imagem foi adicionada com sucesso!", sel.ABA_DOCUMENTOS_EDICAO) is True
+    assert portal_mod.mensagem_confirma_secao(
+        "A característica técnica foi salva com sucesso!",
+        sel.ABA_DOCUMENTOS_EDICAO) is False

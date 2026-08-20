@@ -315,3 +315,31 @@ def test_a_foto_de_uma_secao_NAO_leva_o_limite_reduzido():
     extrator.fotografar(_PortalComSecao(), "Seção X", log)
 
     assert log.limites == [None], "limite padrão do LogDeExecucao"
+
+
+# =============================================================================
+# 6. A foto da seção tem de ser DO PAINEL, não da página
+# =============================================================================
+def test_a_foto_da_secao_usa_o_painel(monkeypatch):
+    """A foto de `//body` começa no topo da página, e a seção de Condições fica
+    lá embaixo: com o teto de 20 000 caracteres que eu mesmo pus, o markup que
+    eu precisava foi cortado antes de aparecer. A rodada de 2026-08-20 15h
+    fotografou a aba certa e mesmo assim não trouxe um único "Comprimento".
+
+    O `aria-controls` já dá o painel exato -- fotografar ELE resolve as duas
+    pontas: cabe no limite e não traz nada de outra seção junto.
+    """
+    fotografados = []
+    monkeypatch.setattr(extrator, "id_do_painel", lambda *_a, **_k: "b12-$b19")
+    monkeypatch.setattr(extrator, "fotografar",
+                        lambda _p, _t, _l=None, seletor=None: fotografados.append(seletor))
+
+    engine = _EngineComAbas()
+    extrator.abrir_secao(_PortalComAbas(engine), "Condições",
+                         callback_log=lambda _m: None, log_auditoria=object())
+
+    assert fotografados, "a seção aberta continua sendo fotografada"
+    assert "b12-$b19" in (fotografados[0] or ""), (
+        "a foto tem de ser do PAINEL da seção -- `//body` começa no topo da "
+        "página e o corte engoliu justamente o que eu precisava ler"
+    )

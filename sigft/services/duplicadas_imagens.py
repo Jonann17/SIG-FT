@@ -138,8 +138,12 @@ def subir_uma(portal, legenda, caminho, callback_log=None):
              f"depois do envio. A imagem não entrou.")
         return False
 
-    return portal.salvar_e_confirmar("Documentos e imagens", callback_log,
-                                     ancora=sel.XPATH_IMAGENS_CONTAINER)
+    # ⚠️ "Confirmar", DENTRO do diálogo -- não o SALVAR da seção, que fica
+    # inacessível enquanto ele está aberto (20 s de timeout no log de
+    # 2026-08-20). O portal responde com toast próprio: "A imagem foi
+    # adicionada com sucesso!".
+    return portal.clicar_e_confirmar(sel.XPATH_IMAGENS_CONFIRMAR,
+                                     sel.ABA_DOCUMENTOS_EDICAO, callback_log)
 
 
 def _abrir_formulario(portal):

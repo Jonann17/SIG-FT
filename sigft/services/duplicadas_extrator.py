@@ -360,7 +360,18 @@ def abrir_secao(portal, nome, callback_log=None, log_auditoria=None):
     ativa = sel.XPATH_ABA_DA_FICHA_ATIVA.format(texto=_literal_xpath(nome))
     if portal.engine.contar(ativa):
         _log(f"   Seção aberta: {nome}")
-        fotografar(portal, f"Seção «{nome}» (aberta)", log_auditoria)
+        # ⚠️ FOTOGRAFA O PAINEL, não a página. `//body` começa no topo, e a
+        # seção de Condições fica lá embaixo: com o teto de 20 000 caracteres
+        # (que existe para o log não virar 121 KB), o markup que eu precisava
+        # ler foi cortado antes de aparecer -- a rodada de 2026-08-20 15h
+        # fotografou a aba certa e não trouxe um único "Comprimento".
+        #
+        # O `aria-controls` dá o painel exato e resolve as duas pontas: cabe
+        # no limite e não traz nada de outra seção junto.
+        painel = id_do_painel(portal, nome)
+        alvo = (sel.XPATH_PAINEL_POR_ID.format(id=_literal_xpath(painel))
+                if painel else None)
+        fotografar(portal, f"Seção «{nome}» (aberta)", log_auditoria, seletor=alvo)
         return True
 
     _log(f"   [Erro] Cliquei em {nome!r} e o portal não marcou a aba como ativa. "

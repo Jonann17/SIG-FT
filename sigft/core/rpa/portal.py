@@ -254,6 +254,10 @@ PALAVRA_DA_SECAO = {
     # SALVAR errado. Mapeá-la aqui faz o contrário do que parece: agora ela
     # confirma SÓ Informações Gerais, e deixa de servir para as demais.
     "Informações gerais": "ficha tecnica",
+    # 2026-08-20, redação do usuário: "A imagem foi adicionada com sucesso!"
+    # A seção se chama "Documentos e imagens" na edição, e é esse o nome que
+    # os chamadores passam.
+    "Documentos e imagens": "imagem",
 }
 
 # Quanto se espera pelo toast. O usuário descreve que ele aparece
@@ -977,6 +981,33 @@ class PMIBPortal:
         _diga(f"      [Injetor] SALVAR da seção {nome_secao} ({como}).")
         time.sleep(2.5)  # requisição do servidor OutSystems
         return True
+
+    def clicar_e_confirmar(self, seletor_botao: str, nome_secao: str = "",
+                           callback_log=None, timeout_s=None,
+                           sleep_fn=None, agora_fn=None) -> bool:
+        """Clica UM botão e só devolve `True` com o toast de sucesso NOVO.
+
+        É a mecânica de `salvar_e_confirmar` sem a parte de ACHAR o SALVAR --
+        existe porque nem toda gravação passa por ele. A imagem, por exemplo,
+        é confirmada pelo botão "Confirmar" DENTRO do diálogo; o SALVAR da
+        seção fica inacessível enquanto ele está aberto, e tentar clicá-lo
+        gastava 20 s de timeout (log de 2026-08-20).
+        """
+        antes = {m for m in self._mensagens_de_feedback() if m}
+        try:
+            self.engine.click_raw(f"({seletor_botao})[1]")
+        except Exception as erro:  # noqa: BLE001 -- clique que não pega é pendência
+            if callback_log:
+                callback_log(f"      [Erro] Não consegui clicar em "
+                             f"{nome_secao!r}: {type(erro).__name__}.")
+            return False
+
+        confirmou, mensagem = self.esperar_confirmacao_nova(
+            nome_secao, antes, timeout_s=timeout_s, callback_log=callback_log,
+            sleep_fn=sleep_fn, agora_fn=agora_fn)
+        if confirmou and callback_log:
+            callback_log(f"      Portal confirmou: {' '.join(mensagem.split())[:90]}")
+        return confirmou
 
     def salvar_e_confirmar(self, nome_secao: str = "", callback_log=None,
                            timeout_s=None, sleep_fn=None, agora_fn=None,
