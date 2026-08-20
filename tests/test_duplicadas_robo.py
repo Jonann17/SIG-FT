@@ -91,6 +91,16 @@ def _com_etapas(monkeypatch, *, blocos=(("Fabricantes", {"Fabricante": "SCHNEIDE
             injetor.ResultadoDaSecao(nome_da_secao, secoes_ok, ""))
     monkeypatch.setattr(robo.injetor, "escrever_referencia_da_ge", _secao("ge_vernova"))
     monkeypatch.setattr(robo.injetor, "limpar_caracteristicas", _secao("caracteristicas"))
+
+    # CP 6.4 -- as duas seções novas. Neutralizadas aqui pelo mesmo motivo das
+    # outras: este arquivo testa a ORQUESTRAÇÃO (quem roda, em que ordem, o que
+    # entra no placar). A mecânica de cada uma tem arquivo próprio
+    # (test_duplicadas_condicoes.py e test_duplicadas_documentos.py).
+    monkeypatch.setattr(robo.extrator, "abrir_secao", lambda *_a, **_k: True)
+    monkeypatch.setattr(robo.extrator, "ler_tabela_de", lambda *_a, **_k: [])
+    monkeypatch.setattr(robo.condicoes, "ler", lambda *_a, **_k: {})
+    monkeypatch.setattr(robo.condicoes, "escrever", _secao("condicoes"))
+    monkeypatch.setattr(robo.documentos, "associar", _secao("documentos"))
     return portal
 
 
@@ -178,7 +188,11 @@ def test_todas_as_secoes_ok_e_ficha_ok(monkeypatch):
     assert [s.nome for s in resultado.secoes] == [
         "fabricante", "referencia",
         "fornecedor", "referencia_fornecedor",
-        "ge_vernova", "caracteristicas"]
+        "ge_vernova", "caracteristicas",
+        # CP 6.4: Condições e Documentos entram DEPOIS das
+        # características -- a purga mexe na mesma ficha e o
+        # portal recarrega a tela a cada salvamento.
+        "condicoes", "documentos"]
 
 
 def test_uma_secao_falha_e_a_ficha_NAO_e_sucesso(monkeypatch):
@@ -232,7 +246,7 @@ def test_fabricante_ausente_NAO_impede_o_resto(monkeypatch):
     # referência do fornecedor, referência da GE Vernova e características.
     # Eram quatro quando "fornecedor" e "GE Vernova" eram tratados como a
     # mesma linha -- que era o defeito.
-    assert len(resultado.secoes) == 6
+    assert len(resultado.secoes) == 8   # + condicoes e documentos (CP 6.4)
     assert any("fabricante" in linha for linha in logs)
 
 
@@ -451,4 +465,4 @@ def test_log_com_atributo_ausente_nao_derruba_a_ficha(monkeypatch):
     # referência do fornecedor, referência da GE Vernova e características.
     # Eram quatro quando "fornecedor" e "GE Vernova" eram tratados como a
     # mesma linha -- que era o defeito.
-    assert len(resultado.secoes) == 6
+    assert len(resultado.secoes) == 8   # + condicoes e documentos (CP 6.4)

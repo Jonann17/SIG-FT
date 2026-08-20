@@ -12,11 +12,16 @@ podemos fazer direto em Playwright, pois o de antes não funcionava muito bem"*.
 Não há uma linha de Selenium neste caminho -- `config.RPA_ENGINE["duplicadas"]`
 decide o motor, e trocar de motor não toca em nenhum destes arquivos.
 
-**O que este robô AINDA NÃO faz**, e está dito aqui porque a diferença importa
-na hora de conferir a ficha: documentos, imagens e as abas de Condições são o
-CP 6.4. Hoje ele cobre fabricante, referência (com a regra do `'D`) e a purga
-das características técnicas. O módulo antigo (`ficha_duplicada.py`) continua
-inteiro e disponível -- por isso a tela tem os dois botões.
+Cobre hoje: fabricante, referência (com a regra do `'D`), a linha fixa da
+GE/fornecedor, a purga das características técnicas, as quatro sub-abas de
+**Condições** e a associação de **documentos/datasheets** (CP 6.4).
+
+**O que AINDA NÃO faz**, e está dito aqui porque a diferença importa na hora
+de conferir a ficha: as **IMAGENS**. Elas não se associam como o documento --
+o arquivo tem de ser BAIXADO da ficha original e SUBIDO na alvo (FilePond), e
+o `RPAEngine` ainda não tem download. O módulo antigo (`ficha_duplicada.py`)
+faz isso via pasta de downloads do Chrome e continua inteiro e disponível --
+por isso a tela tem os dois botões.
 """
 from __future__ import annotations
 
@@ -27,6 +32,8 @@ from sigft.core.excel import status_sheet
 from sigft.core.rpa import seletores_duplicada as sel
 from sigft.core.rpa.factory import criar_engine
 from sigft.core.rpa.portal import PMIBPortal
+from sigft.services import duplicadas_condicoes as condicoes
+from sigft.services import duplicadas_documentos as documentos
 from sigft.services import duplicadas_extrator as extrator
 from sigft.services import duplicadas_injetor as injetor
 
@@ -102,8 +109,14 @@ SECOES_DA_PLANILHA = {
         "fabricante", "referencia",
         "fornecedor", "referencia_fornecedor",
         "ge_vernova", "salvar_fabricantes",
+        # CP 6.4: os documentos moram na mesma coluna -- o `_STATUS_PMIB` não
+        # tem uma para eles, e associar datasheet é parte de "a ficha está
+        # com as informações gerais prontas".
+        "documentos",
     ),
     config.COL_CARACT_TECNICAS: ("caracteristicas",),
+    # CP 6.4: a coluna CONDIÇÕES deixa de ficar sempre em branco.
+    config.COL_CONDICOES: ("condicoes",),
 }
 
 
@@ -305,6 +318,46 @@ def abrir_alvo_para_edicao(portal, pmib_alvo, callback_log=None):
     return True
 
 
+def ler_documentos_da_original(portal, callback_log=None, log_auditoria=None):
+    """Descrições dos documentos da ficha original, lidas na VISUALIZAÇÃO.
+
+    Lista vazia quando a aba não abre ou a ficha não tem documento: as duas
+    coisas levam ao mesmo lugar (nada a associar), e distingui-las custaria
+    uma pendência falsa nas fichas que legitimamente não têm datasheet.
+    """
+    _log = _log_de(callback_log)
+    if not extrator.abrir_secao(portal, sel.ABA_DOCUMENTOS, callback_log,
+                                log_auditoria):
+        return []
+    linhas = extrator.ler_tabela_de(portal, sel.COLUNA_DESCRICAO, callback_log)
+    descricoes = [nome for nome, _ref in linhas if nome]
+    _log(f"      {len(descricoes)} documento(s) na ficha original.")
+    return descricoes
+
+
+def ler_condicoes_da_original(portal, pmib_original, callback_log=None):
+    """Condições da ficha original, lidas com ela aberta em EDIÇÃO.
+
+    ⚠️ ABRIR A ORIGINAL PARA EDIÇÃO é deliberado e tem um motivo só: os campos
+    de Condições só existem como `input`/`textarea` nesse modo, e a cópia
+    deste módulo é POR XPATH (ver `duplicadas_condicoes`, e o porquê de não
+    ser por rótulo). O módulo antigo faz o mesmo.
+
+    **Nada é salvo na original.** Este caminho só lê -- nenhum SALVAR é
+    clicado entre abrir e sair.
+
+    Dicionário vazio quando a ficha não abre: a alvo fica sem condições e o
+    log diz por quê, em vez de a ficha inteira morrer por causa desta seção.
+    """
+    _log = _log_de(callback_log)
+    if not abrir_alvo_para_edicao(portal, pmib_original, callback_log):
+        _log(f"   [Aviso] Não consegui abrir {pmib_original} em edição para ler as "
+             f"Condições. A ficha alvo ficará sem elas.")
+        return {}
+    time.sleep(PAUSA_APOS_ABRIR_FICHA)
+    return condicoes.ler(portal, callback_log)
+
+
 def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
     """Duplica UMA ficha. Devolve `ResultadoDaFicha`.
 
@@ -354,6 +407,18 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
                  "Fornecedor não será preenchida.")
         else:
             _log(f"   Fornecedor (ficha original): {fornecedor}")
+
+        # --- CP 6.4: o que mais precisa vir da ORIGINAL ---------------
+        # Documentos saem da VISUALIZAÇÃO (é tabela de leitura, e a ficha já
+        # está aberta assim).
+        docs_da_original = ler_documentos_da_original(portal, callback_log,
+                                                      log_auditoria)
+
+        # Condições exigem a original em EDIÇÃO -- é o único modo em que os
+        # campos existem como input/textarea, e a cópia é POR XPATH (ver
+        # `duplicadas_condicoes`). ⚠️ Nada é salvo na original: só se lê.
+        condicoes_da_original = ler_condicoes_da_original(
+            portal, ficha.ficha_original, callback_log)
 
         if not abrir_alvo_para_edicao(portal, ficha.pmib, callback_log):
             resultado.erro_fatal = f"não achei a ficha alvo {ficha.pmib} em nenhuma aba"
@@ -424,6 +489,16 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
                  "Fornecedores. O que foi preenchido pode não ter ficado.")
         resultado.registrar(
             injetor.limpar_caracteristicas(portal, ficha.ficha_original, callback_log))
+
+        # --- CP 6.4 ----------------------------------------------------
+        resultado.registrar(
+            condicoes.escrever(portal, condicoes_da_original, callback_log))
+        if extrator.abrir_secao(portal, sel.ABA_DOCUMENTOS, callback_log):
+            resultado.registrar(
+                documentos.associar(portal, docs_da_original, callback_log))
+        else:
+            resultado.registrar(injetor.ResultadoDaSecao(
+                "documentos", False, "não abri a aba de Documentos"))
 
     except Exception as erro:  # noqa: BLE001 -- ver docstring
         resultado.erro_fatal = f"{type(erro).__name__}: {erro}"

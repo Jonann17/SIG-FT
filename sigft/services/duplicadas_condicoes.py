@@ -1,0 +1,187 @@
+r"""
+Ficha duplicada — a seção de CONDIÇÕES (CP 6.4).
+
+Copia as quatro sub-abas (Armazenamento, Transporte, Manutenção, Descarte) da
+ficha ORIGINAL para a ficha ALVO, **campo a campo, por XPath**.
+
+Por que por XPath e não por significado: é uma DUPLICAÇÃO. O valor que está em
+`Input_PackingLength` na original vai para `Input_PackingLength` na alvo, e
+pronto -- nenhum rótulo precisa ser interpretado, nenhuma unidade convertida,
+nenhum radio traduzido. O mapa vive em `seletores_duplicada.CONDICOES_POR_
+SUBABA` e foi portado do módulo antigo, que roda contra o portal real.
+
+A leitura exige a original aberta em EDIÇÃO -- é o único modo em que estes
+campos existem como `input`/`textarea`. **Nada é salvo na original**: este
+módulo só escreve na alvo.
+
+O que ele acrescenta ao módulo antigo, e é o pedido do usuário de 2026-08-19
+(*"antes de sair de cada uma das páginas, quero que você valide se de fato
+conseguiu colocar os dados"*):
+
+  - cada sub-aba é salva com `salvar_e_confirmar` -- só passa com o toast;
+  - depois de salvar, a sub-aba é RELIDA e comparada com o que se pediu;
+  - o que não bateu vira pendência COM O NOME DO CAMPO, em vez de sumir.
+"""
+from __future__ import annotations
+
+import time
+
+from sigft.core.rpa import seletores_duplicada as sel
+from sigft.services.duplicadas_injetor import ResultadoDaSecao, _log_de
+
+# Pausas. Mesmos valores do módulo antigo, que roda contra o portal real.
+PAUSA_ABERTURA_SECAO = 2.0
+PAUSA_TROCA_SUBABA = 1.5
+PAUSA_APOS_ESCREVER = 0.4
+
+
+def _seletor(sufixo):
+    return sel.XPATH_CONDICOES_CAMPO.format(sufixo=f"'{sufixo}'")
+
+
+def abrir_secao(portal, callback_log=None):
+    """Abre a sanfona de Condições. Idempotente do ponto de vista do portal:
+    clicar de novo numa seção aberta não a fecha (é um header, não um toggle
+    de duas posições) -- e mesmo que fechasse, a leitura seguinte falharia
+    alto, com o campo não encontrado no log."""
+    portal.safe_click(sel.XPATH_CONDICOES_ABRIR_SECAO)
+    time.sleep(PAUSA_ABERTURA_SECAO)
+
+
+def abrir_subaba(portal, nome, callback_log=None):
+    """Vai para a sub-aba `nome`. Armazenamento já vem aberta -- posição
+    `None` significa "não clique em nada"."""
+    posicao = sel.CONDICOES_POR_SUBABA[nome]["posicao"]
+    if posicao is None:
+        return
+    portal.safe_click(sel.XPATH_CONDICOES_SUBABA.format(posicao=posicao))
+    time.sleep(PAUSA_TROCA_SUBABA)
+
+
+def ler(portal, callback_log=None):
+    """Lê as 4 sub-abas da ficha aberta. Devolve `{subaba: {sufixo: valor}}`.
+
+    Valor é `str` para texto e `bool` para radio/checkbox -- é o tipo que diz,
+    na hora de escrever, se o campo se digita ou se clica.
+
+    Campo que não existe na tela NÃO entra no dicionário. Entrar com `""`
+    faria a escrita apagar um campo da alvo por causa de uma leitura que
+    falhou, que é o pior desfecho possível numa duplicação.
+    """
+    _log = _log_de(callback_log)
+    abrir_secao(portal, callback_log)
+
+    lido = {}
+    for nome, mapa in sel.CONDICOES_POR_SUBABA.items():
+        abrir_subaba(portal, nome, callback_log)
+        campos = {}
+        for sufixo in mapa["textos"]:
+            try:
+                campos[sufixo] = portal.engine.get_value(_seletor(sufixo)) or ""
+            except Exception:  # noqa: BLE001 -- campo ausente não entra
+                continue
+        for sufixo in mapa["booleanos"]:
+            try:
+                campos[sufixo] = bool(portal.engine.esta_marcado(_seletor(sufixo)))
+            except Exception:  # noqa: BLE001
+                continue
+        lido[nome] = campos
+        _log(f"      [{nome}] li {len(campos)} campo(s).")
+    return lido
+
+
+def escrever_subaba(portal, nome, campos, callback_log=None):
+    """Escreve os campos de UMA sub-aba. Devolve os sufixos que falharam.
+
+    Texto vazio é PULADO de propósito: a ficha alvo nasce vazia, então
+    escrever "" não acrescenta nada -- e um `fill("")` a mais é uma chance a
+    mais de disparar validação do portal sem motivo.
+    """
+    _log = _log_de(callback_log)
+    falhas = []
+    for sufixo, valor in campos.items():
+        seletor = _seletor(sufixo)
+        try:
+            if isinstance(valor, bool):
+                if not portal.check_or_uncheck(seletor, valor, callback_log):
+                    falhas.append(sufixo)
+                continue
+            if not str(valor).strip():
+                continue
+            portal.safe_fill(seletor, str(valor))
+            time.sleep(PAUSA_APOS_ESCREVER)
+        except Exception as erro:  # noqa: BLE001
+            _log(f"      [!] {nome}/{sufixo}: {type(erro).__name__}: {erro}")
+            falhas.append(sufixo)
+    return falhas
+
+
+def conferir_subaba(portal, nome, campos, callback_log=None):
+    """Relê a sub-aba e devolve os sufixos que NÃO ficaram como se pediu.
+
+    É a validação que o usuário pediu antes de sair da página. O toast prova
+    que o portal aceitou o salvamento; só a releitura prova que o VALOR ficou.
+    """
+    divergentes = []
+    for sufixo, esperado in campos.items():
+        seletor = _seletor(sufixo)
+        try:
+            if isinstance(esperado, bool):
+                if bool(portal.engine.esta_marcado(seletor)) != esperado:
+                    divergentes.append(sufixo)
+                continue
+            if not str(esperado).strip():
+                continue
+            atual = portal.engine.get_value(seletor) or ""
+            if str(atual).strip() != str(esperado).strip():
+                divergentes.append(sufixo)
+        except Exception:  # noqa: BLE001 -- não dá para conferir; não inventa falha
+            continue
+    return divergentes
+
+
+def escrever(portal, condicoes, callback_log=None):
+    """Escreve as 4 sub-abas na ficha ALVO, salvando e CONFERINDO cada uma.
+
+    Uma sub-aba por vez, com salvamento próprio -- é como o portal trata a
+    seção (cada aba tem o seu SALVAR) e como o módulo antigo já faz.
+
+    Devolve `ResultadoDaSecao("condicoes", ...)`. Falha em UMA sub-aba não
+    interrompe as outras: a ficha meio preenchida com o log dizendo o que
+    faltou é melhor do que a ficha vazia com um erro genérico.
+    """
+    _log = _log_de(callback_log)
+    if not condicoes:
+        _log("      Condições: a ficha original não trouxe nada -- pulando.")
+        return ResultadoDaSecao("condicoes", True, "origem vazia")
+
+    abrir_secao(portal, callback_log)
+    problemas = []
+
+    for nome in sel.CONDICOES_POR_SUBABA:
+        campos = condicoes.get(nome) or {}
+        if not campos:
+            continue
+        abrir_subaba(portal, nome, callback_log)
+
+        falhas = escrever_subaba(portal, nome, campos, callback_log)
+        if falhas:
+            problemas.append(f"{nome}: não escrevi {', '.join(falhas[:4])}")
+
+        if not portal.salvar_e_confirmar(f"Condições / {nome}", callback_log):
+            problemas.append(f"{nome}: o portal não confirmou o salvamento")
+            continue
+
+        divergentes = conferir_subaba(portal, nome, campos, callback_log)
+        if divergentes:
+            _log(f"      [Erro] {nome}: {len(divergentes)} campo(s) não ficaram "
+                 f"como se pediu: {', '.join(divergentes[:4])}"
+                 f"{' …' if len(divergentes) > 4 else ''}.")
+            problemas.append(f"{nome}: {len(divergentes)} campo(s) divergentes")
+        else:
+            _log(f"      [{nome}] {len(campos)} campo(s), salvo e conferido.")
+
+    if problemas:
+        return ResultadoDaSecao("condicoes", False, "; ".join(problemas))
+    return ResultadoDaSecao("condicoes", True,
+                            f"{len(sel.CONDICOES_POR_SUBABA)} sub-abas")

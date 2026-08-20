@@ -780,3 +780,95 @@ XPATH_DOCUMENTO_CHECKBOX_QUALQUER = ".//input[@type='checkbox']"
 # `data-checkbox` é o marcador semântico do widget (o `id` traz `-l1_0-`, que
 # é índice de linha e muda a cada busca).
 XPATH_DOCUMENTO_CHECKBOX_SEMANTICO = ".//input[@data-checkbox][@type='checkbox']"
+
+
+# ---------------------------------------------------------------------------
+# 15. CONDIÇÕES no modo de EDIÇÃO — a cópia literal, campo a campo
+# ---------------------------------------------------------------------------
+# CP 6.4. O mapa abaixo é portado de `ficha_duplicada.ExtratorFichaBase.
+# _ler_condicoes` / `InjetorFichaAlvo._preencher_condicoes` -- o módulo antigo,
+# que roda contra o portal real. Não é levantamento novo: é o que já funciona.
+#
+# 🎯 A IDEIA QUE FAZ ISTO SER BARATO: a cópia é **por XPath**, não por
+# significado. Lê-se o valor de `Input_PackingLength` na ficha original e
+# escreve-se em `Input_PackingLength` na ficha alvo. Nenhum rótulo precisa ser
+# interpretado, nenhuma unidade convertida, nenhum radio traduzido para "SIM"/
+# "NÃO" -- é uma duplicação, não um preenchimento.
+#
+# A alternativa (ler a ficha original em VISUALIZAÇÃO, casando rótulo→valor, e
+# depois mapear cada rótulo para o campo certo da edição) exigiria conhecer a
+# redação exata de cada rótulo nos dois idiomas, e erraria em silêncio no dia
+# em que o portal mudasse uma palavra. Este mapa erra ALTO: XPath que não casa
+# é campo que não copia, e o log diz qual.
+#
+# ⚠️ CONSEQUÊNCIA: a ficha ORIGINAL precisa ser aberta em modo de EDIÇÃO para a
+# leitura -- é o único modo em que estes `input`/`textarea` existem. Nada é
+# salvo nela; `duplicadas_condicoes.ler` só lê. É o que o módulo antigo já faz.
+#
+# `contains(@id, ...)` e não o id inteiro: o prefixo (`b10-b17-b1-`) é gerado
+# pelo OutSystems e muda de sessão para sessão -- ver `IDS_GERADOS_NAO_USAR`.
+XPATH_CONDICOES_ABRIR_SECAO = "//*[contains(@id, 'Conditions_Header')]//button"
+
+# As sub-abas na EDIÇÃO são divs posicionais dentro do cabeçalho `Title`. É o
+# que o módulo antigo usa e o que `upload_conditions` usa (lá com o id inteiro,
+# que este projeto proíbe). Armazenamento é a aba que já vem aberta.
+XPATH_CONDICOES_SUBABA = "//*[contains(@id, 'Title')]/div[{posicao}]"
+
+# Nome da sub-aba -> (posição no cabeçalho, campos de TEXTO, campos BOOLEANOS).
+# `None` na posição = a aba que já está aberta quando a seção abre.
+CONDICOES_POR_SUBABA = {
+    "Armazenamento": {
+        "posicao": None,
+        "textos": (
+            "Input_PackingLength", "Input_PackagingWidth", "Input_PackagingHeight",
+            "Input_LiquidWeight", "Input_GrossWeight", "Input_Stacking",
+            "TextArea_StorageCareES", "TextArea_StorageCarePT",
+            "TextArea_OtherCareES", "TextArea_OtherCarePT",
+        ),
+        "booleanos": (
+            "RadioButton5-input", "RadioButton4-input",
+            "Checkbox4", "Checkbox5",
+            "RadioButton-input", "RadioButton7-input", "RadioButton8-input",
+            "RadioButton2-input", "RadioButton1-input",
+            "Checkbox3", "Checkbox6", "Checkbox7", "Checkbox8",
+            "RadioButton6-input", "RadioButton3-input",
+        ),
+    },
+    "Transporte": {
+        "posicao": 3,
+        "textos": (
+            "TextArea_TransportPackagingES", "TextArea_TransportPackagingPT",
+            "TextArea_PositionCareES", "TextArea_PositionCarePT",
+        ),
+        "booleanos": (),
+    },
+    "Manutenção": {
+        "posicao": 4,
+        "textos": (
+            "TextArea_PreservationCareES", "TextArea_PreservationCarePT",
+            "TextArea_CleaningMethodES", "TextArea_CleaningMethodPT",
+            "TextArea_ToolPreservationES", "TextArea_ToolPreservationPT",
+        ),
+        "booleanos": (),
+    },
+    "Descarte": {
+        "posicao": 5,
+        "textos": (
+            "TextArea_TypeLegislationES", "TextArea_TypeLegislationPT",
+            "TextArea_DiscardTypeES", "TextArea_DiscardTypePT",
+            "TextArea_ReserveLogisticES", "TextArea_ReserveLogisticPT",
+        ),
+        # ⚠️ Estes quatro aparecem TAMBÉM em Armazenamento no mapa antigo
+        # (`RadioButton1-input`, `RadioButton2-input`). Não é engano de
+        # transcrição: `contains(@id, ...)` casa o campo de QUALQUER sub-aba
+        # que tenha esse sufixo, e cada aba renderiza os seus. Ler e escrever
+        # com a mesma sub-aba aberta mantém a simetria -- é o que torna a
+        # cópia correta apesar do seletor ser ambíguo fora de contexto.
+        "booleanos": (
+            "RadioButton1-input", "RadioButton2-input",
+            "Applies-input", "DoesNotApply-input",
+        ),
+    },
+}
+
+XPATH_CONDICOES_CAMPO = "//*[contains(@id, {sufixo})]"
