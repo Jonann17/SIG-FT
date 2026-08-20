@@ -329,7 +329,11 @@ def ler_documentos_da_original(portal, callback_log=None, log_auditoria=None):
     if not extrator.abrir_secao(portal, sel.ABA_DOCUMENTOS, callback_log,
                                 log_auditoria):
         return []
-    linhas = extrator.ler_tabela_de(portal, sel.COLUNA_DESCRICAO, callback_log)
+    # `coluna_referencia=None`: a tabela de Documentos NÃO TEM segunda coluna.
+    # Pedir "Referência" aqui era o travamento de 2026-08-20 -- ver
+    # `ler_tabela_de`.
+    linhas = extrator.ler_tabela_de(portal, sel.COLUNA_DESCRICAO, callback_log,
+                                    coluna_referencia=None)
     descricoes = [nome for nome, _ref in linhas if nome]
     _log(f"      {len(descricoes)} documento(s) na ficha original.")
     return descricoes

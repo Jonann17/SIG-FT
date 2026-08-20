@@ -354,10 +354,19 @@ def abrir_subaba_de_condicoes(portal, nome, callback_log=None, log_auditoria=Non
 # então o id não separa fabricante de fornecedor. Quem separa é o
 # `@data-header` da célula -- o mesmo atributo que `tech_specs` já usa.
 
-def ler_tabela_de(portal, coluna_nome, callback_log=None):
+def ler_tabela_de(portal, coluna_nome, callback_log=None,
+                  coluna_referencia=sel.COLUNA_REFERENCIA):
     """Linhas de uma das tabelas, como lista de `(nome, referência)`.
 
-    `coluna_nome` é `COLUNA_NOME_FABRICANTE` ou `COLUNA_NOME_FORNECEDOR`.
+    `coluna_nome` é `COLUNA_NOME_FABRICANTE`, `COLUNA_NOME_FORNECEDOR` ou
+    `COLUNA_DESCRICAO`.
+
+    ⚠️ `coluna_referencia=None` para as tabelas que NÃO TÊM segunda coluna --
+    a de Documentos é uma. Passar o default nela foi o travamento de
+    2026-08-20: cada linha esperava o timeout inteiro por uma célula que não
+    existe. O conserto geral (não esperar pelo ausente) está em
+    `PMIBPortal.texto_se_existir`; este parâmetro é o conserto local, e vale
+    por si -- não se pede o que se sabe que não está lá.
 
     Devolve TODAS as linhas de propósito: nesta ficha o fabricante tem duas
     ("a gente comprou de um que comprou do fabricante" -- ENERSYS fabrica,
@@ -372,7 +381,8 @@ def ler_tabela_de(portal, coluna_nome, callback_log=None):
     for posicao in range(1, (total or 0) + 1):
         base = f"({linhas_xpath})[{posicao}]"
         nome = _celula(portal, base, coluna_nome)
-        referencia = _celula(portal, base, sel.COLUNA_REFERENCIA)
+        referencia = (_celula(portal, base, coluna_referencia)
+                      if coluna_referencia else "")
         if nome or referencia:
             itens.append((nome, referencia))
 
@@ -382,11 +392,11 @@ def ler_tabela_de(portal, coluna_nome, callback_log=None):
 
 
 def _celula(portal, base_da_linha, coluna):
-    try:
-        bruto = portal.engine.texto(
-            base_da_linha + sel.XPATH_REL_CELULA.format(coluna=_literal_xpath(coluna)))
-    except Exception:  # noqa: BLE001
-        return ""
+    # `texto_se_existir` e não `engine.texto`: célula ausente é NORMAL aqui
+    # (coluna que aquela tabela não tem), e esperar o timeout por ela foi o
+    # travamento de 2026-08-20. Ver `PMIBPortal.texto_se_existir`.
+    bruto = portal.texto_se_existir(
+        base_da_linha + sel.XPATH_REL_CELULA.format(coluna=_literal_xpath(coluna)))
     # `str.split()` normaliza `&nbsp;` (\xa0) junto com o resto -- mesma
     # decisão de `ler_bloco`.
     return " ".join(str(bruto or "").split())

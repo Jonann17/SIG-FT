@@ -670,6 +670,48 @@ class PMIBPortal:
                 )
         return False, ultima
 
+    # =========================================================================
+    # Ler o que PODE NÃO EXISTIR -- sem pagar o timeout
+    # =========================================================================
+    # ⚠️ O TRAVAMENTO DE 2026-08-20 SAIU DAQUI. `Locator.text_content()` e
+    # `Locator.input_value()` do Playwright AUTO-ESPERAM o elemento: ausente,
+    # esperam o `wait_timeout` inteiro (20 s) antes de levantar. Num laço que
+    # percorre linhas de tabela ou 45 campos de Condições, isso vira minutos
+    # de silêncio -- e de fora é indistinguível de um laço infinito.
+    #
+    # `contar` é IMEDIATO nos dois motores (`Locator.count()` no Playwright,
+    # `find_elements` no Selenium). Perguntar antes custa nada e troca 20 s
+    # por 0.
+    #
+    # Estes dois métodos existem para os casos em que a AUSÊNCIA É NORMAL --
+    # célula de uma coluna que aquela tabela não tem, campo de outra sub-aba.
+    # Onde o elemento DEVE estar, continue usando `engine.texto`/`get_value`
+    # direto: ali a espera é o comportamento certo, porque o elemento pode
+    # estar a caminho.
+    def texto_se_existir(self, seletor: str) -> str:
+        """Texto do elemento, ou `""` na hora se ele não estiver na tela."""
+        try:
+            if not self.engine.contar(seletor):
+                return ""
+            return self.engine.texto(seletor) or ""
+        except Exception:  # noqa: BLE001 -- ler a tela não derruba a ficha
+            return ""
+
+    def valor_se_existir(self, seletor: str):
+        """Valor do campo, ou `None` na hora se ele não estiver na tela.
+
+        `None` e não `""` de propósito: quem lê Condições precisa distinguir
+        "o campo não está nesta sub-aba" de "o campo está vazio". Confundir os
+        dois faria a cópia APAGAR um campo da ficha alvo por causa de uma
+        leitura que falhou.
+        """
+        try:
+            if not self.engine.contar(seletor):
+                return None
+            return self.engine.get_value(seletor) or ""
+        except Exception:  # noqa: BLE001
+            return None
+
     def _mensagens_de_feedback(self, so_sucesso=False):
         """Textos dos toasts visíveis agora. Nunca levanta -- ler a tela não
         pode ser o que derruba a ficha.

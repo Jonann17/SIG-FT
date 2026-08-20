@@ -17,6 +17,7 @@ padrão do "+" da referência e do SALVAR sem toast.
 """
 import pytest
 
+from sigft.core.rpa.portal import PMIBPortal
 from sigft.core.rpa import seletores_duplicada as sel
 from sigft.services import duplicadas_documentos as docs
 
@@ -84,6 +85,13 @@ class _EngineDeDocumentos:
 
 
 class _PortalDeDocumentos:
+    # Emprestados do PMIBPortal REAL: os dois só usam `self.engine`, então
+    # ligá-los aqui testa a implementação de verdade em vez de uma cópia
+    # que envelhece sozinha. São o conserto do travamento de 2026-08-20 --
+    # ler o que pode não existir sem pagar o timeout do motor.
+    texto_se_existir = PMIBPortal.texto_se_existir
+    valor_se_existir = PMIBPortal.valor_se_existir
+
     def __init__(self, engine):
         self.engine = engine
 
@@ -100,7 +108,6 @@ class _PortalDeDocumentos:
         self.engine.marcado = None
 
     def check_or_uncheck(self, seletor, deve_marcar, callback_log=None):
-        from sigft.core.rpa.portal import PMIBPortal
         return PMIBPortal.check_or_uncheck(self, seletor, deve_marcar, callback_log)
 
 

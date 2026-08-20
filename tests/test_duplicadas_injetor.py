@@ -13,6 +13,7 @@ que quebraram na primeira sessão de validação (2026-08-17):
 Um duplo que não faz essas três coisas aprova código que falha no portal, que
 foi exatamente o que aconteceu.
 """
+from sigft.core.rpa.portal import PMIBPortal
 import re
 
 import pytest
@@ -131,6 +132,16 @@ class _EngineFalso:
             return len(self.ids_da_ge)
         if "Input_TextVar" in seletor and "@id=" not in seletor:
             return len(self.ids_referencia)
+        if "@id=" in seletor:
+            # Campo endereçado pelo ID: existe enquanto o id estiver na tela.
+            # `valor_se_existir` (o conserto do travamento de 2026-08-20)
+            # pergunta isto ANTES de ler -- sem esta resposta o duplo diria
+            # que todo campo sumiu, e "a linha entrou" sairia sempre verdade.
+            # (`re` já vem do topo do arquivo -- reimportá-lo AQUI dentro
+            # tornava o nome local e quebrava os outros ramos deste método.)
+            achado = re.search(r"@id='([^']+)'", seletor)
+            alvo = achado.group(1) if achado else None
+            return 1 if alvo and alvo in self.ids_referencia else 0
         return 0
 
     def atributo(self, seletor, nome):
@@ -165,6 +176,13 @@ class _EngineFalso:
 
 
 class _PortalFalso:
+    # Emprestados do PMIBPortal REAL: os dois só usam `self.engine`, então
+    # ligá-los aqui testa a implementação de verdade em vez de uma cópia
+    # que envelhece sozinha. São o conserto do travamento de 2026-08-20 --
+    # ler o que pode não existir sem pagar o timeout do motor.
+    texto_se_existir = PMIBPortal.texto_se_existir
+    valor_se_existir = PMIBPortal.valor_se_existir
+
     def __init__(self, engine):
         self.engine = engine
         engine._portal = self

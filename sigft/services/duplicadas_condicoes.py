@@ -76,10 +76,14 @@ def ler(portal, callback_log=None):
         abrir_subaba(portal, nome, callback_log)
         campos = {}
         for sufixo in mapa["textos"]:
-            try:
-                campos[sufixo] = portal.engine.get_value(_seletor(sufixo)) or ""
-            except Exception:  # noqa: BLE001 -- campo ausente não entra
-                continue
+            # `valor_se_existir` e não `engine.get_value`: são 45 campos por
+            # ficha e nem todos existem em toda uma, e o `get_value` do
+            # Playwright ESPERA o timeout pelo ausente -- 20 s cada. Foi o
+            # travamento de 2026-08-20, na tabela de documentos, e aqui o
+            # risco era maior. `None` = não está na tela: não entra.
+            valor = portal.valor_se_existir(_seletor(sufixo))
+            if valor is not None:
+                campos[sufixo] = valor
         for sufixo in mapa["booleanos"]:
             try:
                 campos[sufixo] = bool(portal.engine.esta_marcado(_seletor(sufixo)))
@@ -132,7 +136,14 @@ def conferir_subaba(portal, nome, campos, callback_log=None):
                 continue
             if not str(esperado).strip():
                 continue
-            atual = portal.engine.get_value(seletor) or ""
+            # Mesma armadilha da leitura, e aqui ela seria pior: a
+            # conferência roda DEPOIS do salvamento, com a tela recarregada.
+            # `None` = o campo sumiu da tela; não dá para conferir, e inventar
+            # divergência a partir de uma leitura que não aconteceu seria
+            # ruído sobre a ficha certa.
+            atual = portal.valor_se_existir(seletor)
+            if atual is None:
+                continue
             if str(atual).strip() != str(esperado).strip():
                 divergentes.append(sufixo)
         except Exception:  # noqa: BLE001 -- não dá para conferir; não inventa falha

@@ -458,11 +458,16 @@ def linha_entrou_na_tabela(portal, seletor_input, referencia):
     passo seguinte o robô contou DOIS campos de Referência em vez de um,
     porque o do fabricante seguia na tela com "2904616" dentro.
     """
-    try:
-        atual = portal.engine.get_value(seletor_input)
-    except Exception:  # noqa: BLE001 -- campo sumiu da tela; é o desfecho bom
-        return True
-    return str(atual or "").strip() != str(referencia or "").strip()
+    # ⚠️ `valor_se_existir` e não `engine.get_value`, e aqui o motivo é
+    # especialmente traiçoeiro: o campo SUMIR é o desfecho BOM desta função.
+    # Com `get_value`, toda referência gravada com sucesso pagava o timeout
+    # inteiro (20 s) esperando um elemento que a gente mesmo esperava não
+    # achar. Não travava -- só ficava lento no caminho certo, que é pior de
+    # diagnosticar: ninguém investiga o que está funcionando.
+    atual = portal.valor_se_existir(seletor_input)
+    if atual is None:
+        return True                # o campo saiu da tela: a linha entrou
+    return str(atual).strip() != str(referencia or "").strip()
 
 
 def fotografar_bloco_da_linha(portal, seletor_mais, seletor_input,
@@ -766,11 +771,10 @@ def sobrou_caracteristica_alem_do_codigo(portal):
         return []
     for indice in range(1, (total or 0) + 1):
         linha = f"({sel.XPATH_CARACTERISTICAS_LINHAS})[{indice}]"
-        try:
-            descricao = portal.engine.texto(
-                linha + sel.XPATH_REL_CARACTERISTICA_DESCRICAO[1:])
-        except Exception:  # noqa: BLE001
-            continue
+        # `texto_se_existir`: não esperar o timeout por uma célula ausente
+        # (ver `PMIBPortal.texto_se_existir` e o travamento de 2026-08-20).
+        descricao = portal.texto_se_existir(
+            linha + sel.XPATH_REL_CARACTERISTICA_DESCRICAO[1:])
         if descricao and not _e_a_linha_do_codigo_pmib(descricao):
             sobraram.append(" ".join(descricao.split())[:40])
     return sobraram

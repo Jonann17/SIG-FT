@@ -11,6 +11,7 @@ sem ele o arquivo inteiro é pulado. Por isso ele COMPLEMENTA os testes de
 regra, nunca os substitui -- o que estes protegem não pode depender de um
 pacote opcional.
 """
+from sigft.core.rpa.portal import PMIBPortal
 import pytest
 
 etree = pytest.importorskip("lxml.etree", reason="lxml e opcional; ver docstring")
@@ -714,6 +715,13 @@ def test_o_contador_de_paginacao_nao_vira_valor_de_celula(nav):
 # construtor. O `pytest` roda o arquivo inteiro num namespace só; nome
 # repetido aqui não é estilo, é bug.
 class _PortalLxml:
+    # Emprestados do PMIBPortal REAL: os dois só usam `self.engine`, então
+    # ligá-los aqui testa a implementação de verdade em vez de uma cópia
+    # que envelhece sozinha. São o conserto do travamento de 2026-08-20 --
+    # ler o que pode não existir sem pagar o timeout do motor.
+    texto_se_existir = PMIBPortal.texto_se_existir
+    valor_se_existir = PMIBPortal.valor_se_existir
+
     """Portal mínimo sobre `_EngineLxml` -- só o que a navegação usa."""
 
     def __init__(self, html):

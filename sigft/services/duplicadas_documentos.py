@@ -115,10 +115,9 @@ def ja_associados(portal):
         celula = (f"({seletor})[{indice}]"
                   + sel.XPATH_REL_CELULA.format(
                       coluna=_literal(sel.COLUNA_DESCRICAO)))
-        try:
-            texto = portal.engine.texto(celula)
-        except Exception:  # noqa: BLE001
-            continue
+        # `texto_se_existir`: linha sem a célula de Descrição é possível, e
+        # esperar o timeout por ela é o travamento de 2026-08-20.
+        texto = portal.texto_se_existir(celula)
         if texto and texto.strip():
             descricoes.append(" ".join(texto.split()))
     return descricoes

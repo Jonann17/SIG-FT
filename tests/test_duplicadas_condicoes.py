@@ -13,6 +13,7 @@ aceitou; só a releitura prova que o valor ficou.
 """
 import pytest
 
+from sigft.core.rpa.portal import PMIBPortal
 from sigft.core.rpa import seletores_duplicada as sel
 from sigft.services import duplicadas_condicoes as cond
 
@@ -72,14 +73,26 @@ class _EngineDeCondicoes:
     def click_dom(self, seletor):
         self.click(seletor)
 
-    def contar(self, _seletor):
-        return 0
+    def contar(self, seletor):
+        """Existe na tela? É o que `valor_se_existir` pergunta ANTES de ler --
+        o conserto do travamento de 2026-08-20. `some_ao_ler` é justamente
+        "não está na tela", então tem de contar zero aqui também; se contasse
+        um, o duplo diria que o campo existe e a leitura seguinte estouraria,
+        que é o comportamento antigo."""
+        return 0 if self._sufixo(seletor) in self.some_ao_ler else 1
 
     def texto(self, _seletor):
         return ""
 
 
 class _PortalDeCondicoes:
+    # Emprestados do PMIBPortal REAL: os dois só usam `self.engine`, então
+    # ligá-los aqui testa a implementação de verdade em vez de uma cópia
+    # que envelhece sozinha. São o conserto do travamento de 2026-08-20 --
+    # ler o que pode não existir sem pagar o timeout do motor.
+    texto_se_existir = PMIBPortal.texto_se_existir
+    valor_se_existir = PMIBPortal.valor_se_existir
+
     def __init__(self, engine, confirma=True):
         self.engine = engine
         self.confirma = confirma
@@ -92,7 +105,6 @@ class _PortalDeCondicoes:
         self.engine.fill(seletor, texto)
 
     def check_or_uncheck(self, seletor, deve_marcar, callback_log=None):
-        from sigft.core.rpa.portal import PMIBPortal
         return PMIBPortal.check_or_uncheck(self, seletor, deve_marcar, callback_log)
 
     def salvar_e_confirmar(self, nome_secao="", callback_log=None, **_kwargs):
