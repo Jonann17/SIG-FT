@@ -128,6 +128,27 @@ XPATH_BOTAO_SALVAR = (
 )
 XPATH_CONFIRMAR = '//button[@type="button" and text()="CONFIRMAR"]'
 
+# ⚠️ O SALVAR **DA SEÇÃO**, e não o primeiro da tela (2026-08-20).
+#
+# A ficha tem QUATRO botões SALVAR -- um por seção. `clicar_salvar_visivel`
+# clica o primeiro visível, e na rodada de 2026-08-20 isso gravou Informações
+# Gerais cinco vezes seguidas enquanto o log dizia "salvo e conferido" para
+# Características e para as quatro sub-abas de Condições. As duas fichas
+# saíram vazias.
+#
+# A fórmula abaixo não precisa saber o id de container nenhum: partindo de um
+# elemento QUALQUER da seção (um campo, a div da tabela), ela sobe até o
+# ancestral MAIS PRÓXIMO que contenha um SALVAR -- que é o container da seção,
+# por construção -- e desce para o botão de lá.
+#
+# `ancestor-or-self` e não `ancestor`: assim a âncora pode ser o próprio
+# container (`//div[contains(@id,'TechnicalCharacteristics')]`) ou um campo
+# dentro dele, e os dois funcionam.
+XPATH_SALVAR_DO_BLOCO = (
+    "{ancora}/ancestor-or-self::*[.//button[normalize-space()='SALVAR']][1]"
+    "//button[normalize-space()='SALVAR']"
+)
+
 # --- Confirmação de salvamento (2026-08-18) ---------------------------------
 # O portal avisa, em toast, quando gravou uma seção:
 #
@@ -870,8 +891,47 @@ class PMIBPortal:
               f"que ele não registrou nenhuma mudança.")
         return False
 
+    def clicar_salvar_do_bloco(self, ancora: str, nome_secao: str = "",
+                               callback_log=None) -> bool:
+        """Clica o SALVAR **da seção** onde `ancora` está.
+
+        `ancora` é qualquer elemento da seção: o container dela ou um campo
+        dentro. Ver `XPATH_SALVAR_DO_BLOCO` para o porquê da fórmula.
+
+        Âncora que não casa botão nenhum cai na varredura antiga -- mas
+        AVISANDO. Cair em silêncio recriaria o defeito de 2026-08-20 sem
+        deixar rastro no log, que é a pior combinação possível.
+        """
+        def _diga(mensagem):
+            if callback_log:
+                callback_log(mensagem)
+            else:
+                print(mensagem)
+
+        seletor = XPATH_SALVAR_DO_BLOCO.format(ancora=ancora)
+        try:
+            quantos = self.engine.contar(seletor)
+        except Exception:  # noqa: BLE001
+            quantos = 0
+
+        if not quantos:
+            _diga(f"      [Aviso] A âncora da seção {nome_secao!r} não achou "
+                  f"botão SALVAR. Caindo na varredura da tela -- confira se a "
+                  f"seção certa foi gravada.")
+            return self.clicar_salvar_visivel(nome_secao, callback_log)
+
+        alvo = f"({seletor})[1]"
+        self.engine.scroll_to(alvo)
+        time.sleep(0.5)
+        self.engine.click_raw(alvo)
+        _diga(f"      [Injetor] SALVAR da seção {nome_secao} (ancorado, não o "
+              f"1º da tela).")
+        time.sleep(2.5)  # requisição do servidor OutSystems
+        return True
+
     def salvar_e_confirmar(self, nome_secao: str = "", callback_log=None,
-                           timeout_s=None, sleep_fn=None, agora_fn=None) -> bool:
+                           timeout_s=None, sleep_fn=None, agora_fn=None,
+                           ancora=None) -> bool:
         """SALVA e só devolve `True` com o toast de sucesso NOVO na tela.
 
         Pedido do usuário em 2026-08-19: *"tal como fizemos para upload
@@ -902,7 +962,14 @@ class PMIBPortal:
         """
         antes = {m for m in self._mensagens_de_feedback() if m}
 
-        if not self.clicar_salvar_visivel(nome_secao, callback_log):
+        # `ancora` decide QUAL botão. Sem ela, cai na varredura da tela -- que
+        # é o caminho do módulo antigo e o defeito de 2026-08-20. Todo
+        # chamador novo passa âncora.
+        if ancora:
+            clicou = self.clicar_salvar_do_bloco(ancora, nome_secao, callback_log)
+        else:
+            clicou = self.clicar_salvar_visivel(nome_secao, callback_log)
+        if not clicou:
             return False
 
         confirmou, mensagem = self.esperar_confirmacao_nova(
@@ -939,33 +1006,42 @@ class PMIBPortal:
             if todas:
                 ultima = todas[-1]
 
-            # ⚠️ A EXIGÊNCIA DA PALAVRA DA SEÇÃO ACOMPANHA A FORÇA DA
-            # EVIDÊNCIA, e isto é deliberado:
+            # ⚠️ A PALAVRA DA SEÇÃO É EXIGIDA SEMPRE QUE CONHECIDA -- e isto
+            # DESFAZ uma decisão minha da véspera.
             #
-            #   veio pela CLASSE  -> o portal marcou como sucesso. "Novo" já
-            #                        basta: exigir também a palavra faria a
-            #                        confirmação depender do idioma, que é
-            #                        justamente o que a classe resolve.
-            #   veio pela PALAVRA -> heurística. Aí a palavra da seção volta a
-            #                        ser necessária, porque "sucesso" sozinho
-            #                        não diz de QUAL seção é a mensagem.
+            # Eu tinha afrouxado: "veio pela classe ⇒ 'novo' já basta", com o
+            # argumento de que exigir a palavra amarraria a confirmação ao
+            # idioma. O argumento era hipotético. A falha foi real: em
+            # 2026-08-20 o robô clicou o SALVAR errado cinco vezes, o portal
+            # respondeu "A Ficha Técnica X foi modificada com sucesso" (classe
+            # de sucesso, mensagem genérica) e as cinco passaram por
+            # confirmadas. As fichas saíram vazias.
             #
-            # A foto de ANTES (`vistas`) cobre o toast remanescente nos dois
-            # casos -- é ela, e não a palavra, a defesa principal.
+            # A classe diz que ALGO foi salvo; a palavra diz que foi ISTO. As
+            # duas são necessárias, e o custo de exigir as duas é uma pendência
+            # a conferir -- barato ao lado de uma ficha gravada pela metade.
+            #
+            # Seção sem palavra mapeada continua aceitando só a classe: não há
+            # o que exigir, e o `ancora` do salvamento já garante o botão certo.
+            palavra = PALAVRA_DA_SECAO.get(secao)
+
+            def _serve(mensagem):
+                if mensagem in vistas:
+                    return False      # estava lá antes do clique
+                if not palavra:
+                    return True
+                return palavra in _sem_acento(mensagem).lower()
+
             for mensagem in por_classe:
-                if mensagem not in vistas:
+                if _serve(mensagem):
                     return True, mensagem
 
-            palavra = PALAVRA_DA_SECAO.get(secao)
             for mensagem in todas:
-                if mensagem in vistas:
-                    continue          # estava lá antes do clique
-                texto = _sem_acento(mensagem).lower()
-                if not any(x in texto for x in MARCADORES_DE_SUCESSO):
+                if not any(x in _sem_acento(mensagem).lower()
+                           for x in MARCADORES_DE_SUCESSO):
                     continue
-                if palavra and palavra not in texto:
-                    continue
-                return True, mensagem
+                if _serve(mensagem):
+                    return True, mensagem
             if agora() >= fim:
                 break
             dormir(INTERVALO_POLL_CONFIRMACAO_S)

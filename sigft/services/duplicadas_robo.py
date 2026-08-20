@@ -354,7 +354,26 @@ def ler_condicoes_da_original(portal, pmib_original, callback_log=None):
     log diz por quê, em vez de a ficha inteira morrer por causa desta seção.
     """
     _log = _log_de(callback_log)
-    if not abrir_alvo_para_edicao(portal, pmib_original, callback_log):
+
+    # ⚠️ NEM TODA FICHA PODE SER EDITADA, e isso derrubou uma ficha inteira em
+    # 2026-08-20. A 4500063671.1263 está em "Em Análise ITAIPU", status em que
+    # o portal NÃO mostra o lápis -- o clique esperou os 20 s e levantou
+    # `TempoEsgotado`, que subiu até o `except` de `processar_ficha` e virou
+    # erro fatal. A ficha alvo não recebeu NADA, nem o fabricante, por causa
+    # de uma seção opcional.
+    #
+    # Condições é um bônus da duplicação, não o objetivo dela. Falhar aqui
+    # custa as condições; nunca a ficha.
+    try:
+        abriu = abrir_alvo_para_edicao(portal, pmib_original, callback_log)
+    except Exception as erro:  # noqa: BLE001 -- ver comentário acima
+        _log(f"   [Aviso] Não consegui abrir {pmib_original} em edição "
+             f"({type(erro).__name__}). Provavelmente o status dela não permite "
+             f"editar -- só 'Em Elaboração' mostra o lápis. A ficha alvo ficará "
+             f"sem as Condições; o resto continua.")
+        return {}
+
+    if not abriu:
         _log(f"   [Aviso] Não consegui abrir {pmib_original} em edição para ler as "
              f"Condições. A ficha alvo ficará sem elas.")
         return {}

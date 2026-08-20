@@ -464,6 +464,9 @@ XPATH_CARACTERISTICAS_ABA = (
 XPATH_CARACTERISTICAS_LINHAS = (
     "//div[contains(@id, 'TechnicalCharacteristics')]//table/tbody/tr"
 )
+# O container da seção -- âncora para achar o SALVAR DELA, e não o primeiro da
+# tela (ver `PMIBPortal.XPATH_SALVAR_DO_BLOCO` e o defeito de 2026-08-20).
+XPATH_CARACTERISTICAS_SECAO = "//div[contains(@id, 'TechnicalCharacteristics')]"
 # Relativos à linha (ver `PREFIXO_RELATIVO` no inventário): sozinhos casariam
 # a célula de QUALQUER linha, e um "existe" desses não prova nada.
 XPATH_REL_CARACTERISTICA_DESCRICAO = ".//td[contains(@data-header, 'Descrição')]"

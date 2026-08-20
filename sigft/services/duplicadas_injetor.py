@@ -709,7 +709,12 @@ def limpar_caracteristicas(portal, pmib_original, callback_log=None):
     # *"ele não conseguiu salvar a seção de características técnicas"*, com o
     # log dizendo que tinha salvado. Agora só passa com o toast de sucesso NOVO
     # na tela.
-    salvou = portal.salvar_e_confirmar("Características Técnicas", callback_log)
+    # `ancora`: o SALVAR DESTA seção, não o primeiro da tela. Sem ela, em
+    # 2026-08-20 o robô gravou Informações Gerais cinco vezes seguidas
+    # enquanto o log dizia "salvo" para as outras seções.
+    salvou = portal.salvar_e_confirmar(
+        "Características Técnicas", callback_log,
+        ancora=sel.XPATH_CARACTERISTICAS_SECAO)
     _log(f"      Características: {apagadas} apagada(s), {preenchidas} preservada(s).")
 
     if falhas_de_escrita:

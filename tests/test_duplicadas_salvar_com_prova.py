@@ -280,18 +280,28 @@ def test_tabela_com_so_o_CODIGO_PMIB_depois_de_salvar_passa():
 # ainda pega. É o mesmo princípio já usado para o aviso de colisão.
 
 def test_toast_com_a_CLASSE_de_sucesso_confirma():
+    """A classe basta para uma seção cuja REDAÇÃO o projeto não conhece.
+
+    ⚠️ ESTE TESTE FOI ESCRITO MAIS FORTE E FOI REDUZIDO EM 2026-08-20, e a
+    redução é o conserto. A versão anterior usava a seção "Características
+    Técnicas" -- que TEM palavra mapeada -- para provar que "a classe basta,
+    não dependemos da redação". Isso pinava exatamente o afrouxamento que
+    deixou cinco salvamentos errados passarem por certos: o portal respondeu
+    "A Ficha Técnica X foi modificada com sucesso" (classe de sucesso,
+    mensagem genérica de OUTRA seção) e a confirmação aceitou.
+
+    A regra vigente: a classe diz que ALGO foi salvo; a palavra diz que foi
+    ISTO. Onde há palavra, exige-se as duas. Onde não há -- como aqui --, a
+    classe sozinha continua valendo, e é o que este teste guarda.
+    """
     engine = _EngineComToast(toast_ao_salvar="Mensagem em idioma que não conhecemos",
                              classe_do_toast="feedback-message-success")
     dormir, agora = _sem_esperar()
 
-    ok = _portal(engine).salvar_e_confirmar("Características Técnicas",
+    ok = _portal(engine).salvar_e_confirmar("Fabricantes e Fornecedores",
                                             sleep_fn=dormir, agora_fn=agora)
 
-    assert ok is True, (
-        "a classe do portal basta. Exigir TAMBÉM a palavra da seção faria a "
-        "confirmação depender do idioma -- que é justamente o que a classe "
-        "resolve. Quem cobre o toast remanescente é a foto de ANTES."
-    )
+    assert ok is True
 
 
 def test_toast_de_ERRO_com_a_palavra_sucesso_no_texto_nao_confirma():

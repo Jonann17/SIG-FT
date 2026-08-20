@@ -94,6 +94,17 @@ def ler(portal, callback_log=None):
     return lido
 
 
+def ancora_da_subaba(nome):
+    """Um campo QUALQUER desta sub-aba, para achar o SALVAR da seção por ele.
+
+    Ver `PMIBPortal.XPATH_SALVAR_DO_BLOCO`: a partir de um elemento da seção,
+    o XPath sobe até o container e desce para o botão de lá. Qualquer campo
+    serve; o primeiro de texto é o mais estável (existe nas quatro sub-abas).
+    """
+    textos = sel.CONDICOES_POR_SUBABA[nome]["textos"]
+    return _seletor(textos[0]) if textos else None
+
+
 def escrever_subaba(portal, nome, campos, callback_log=None):
     """Escreve os campos de UMA sub-aba. Devolve os sufixos que falharam.
 
@@ -183,7 +194,14 @@ def escrever(portal, condicoes, callback_log=None):
         # é a chave de `PALAVRA_DA_SECAO` no portal: com ela, o toast é
         # casado pela palavra da seção e um toast remanescente de OUTRA
         # sub-aba não confirma esta.
-        if not portal.salvar_e_confirmar(nome, callback_log):
+        #
+        # `ancora` = um campo DESTA sub-aba. É o que faz o robô clicar o
+        # SALVAR de Condições em vez do primeiro da tela -- sem isso, em
+        # 2026-08-20 as quatro sub-abas saíram "salvas e conferidas" com a
+        # ficha vazia, porque o botão clicado era o de Informações Gerais e a
+        # releitura via o formulário NÃO GRAVADO.
+        if not portal.salvar_e_confirmar(nome, callback_log,
+                                         ancora=ancora_da_subaba(nome)):
             problemas.append(f"{nome}: o portal não confirmou o salvamento")
             continue
 
