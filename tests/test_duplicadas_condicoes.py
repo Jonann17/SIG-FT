@@ -284,3 +284,65 @@ def test_nenhum_id_gerado_no_mapa():
     for nome, mapa in sel.CONDICOES_POR_SUBABA.items():
         for sufixo in tuple(mapa["textos"]) + tuple(mapa["booleanos"]):
             assert not re.match(r"^b\d+-", sufixo), f"{nome}/{sufixo} é id gerado"
+
+
+# ===========================================================================
+# Conferir a ficha ALVO antes de dizer que falta
+# ===========================================================================
+# *"A condição já estava feita, mas daí o robô deveria dar uma checada se está
+# completa, pois eu havia marcado o Excel como completo e daí agora ele marcou
+# como Incompleto, sendo que tá completo, mas outra pessoa fez."* (2026-08-21)
+#
+# "Eu não copiei" e "não está lá" são coisas diferentes. O módulo só sabia a
+# primeira, e reportava a segunda -- apagando na planilha o trabalho de quem
+# preencheu à mão.
+
+def test_alvo_ja_preenchida_fecha_a_secao_sem_copiar_nada():
+    # A ficha alvo tem conteúdo nos campos de texto das Condições.
+    portal, _engine = _tela(valores={
+        "TextArea_StorageCareES": "Manter na embalagem original",
+        "TextArea_StorageCarePT": "Manter na embalagem original",
+    })
+    logs = []
+
+    resultado = cond.escrever(portal, {}, logs.append)
+
+    assert resultado.ok is True
+    assert resultado.pendente is False
+    assert portal.salvos == []          # NÃO sobrescreve o que já está lá
+    juntos = "\n".join(logs)
+    assert "JÁ preenchidas" in juntos
+    assert "campo(s) de texto com conteúdo" in juntos
+
+
+def test_alvo_vazia_continua_PENDENTE():
+    """Sem conteúdo na alvo, nada mudou: a seção não foi feita por ninguém."""
+    portal, _engine = _tela()
+
+    resultado = cond.escrever(portal, {}, lambda _m: None)
+
+    assert resultado.ok is False
+    assert resultado.pendente is True
+
+
+def test_a_conta_de_campos_vai_para_o_log():
+    """O robô não julga "completa" no sentido do negócio -- ele sabe dizer "tem
+    conteúdo". Mostrar a conta deixa o número suspeito visível em vez de
+    esconder a decisão atrás de um COMPLETO."""
+    portal, _engine = _tela(valores={"TextArea_StorageCareES": "algo"})
+    logs = []
+
+    resultado = cond.escrever(portal, {}, logs.append)
+
+    assert "/" in resultado.detalhe          # "já preenchida (1/N campos)"
+    assert "Armazenamento" in "\n".join(logs)
+
+
+def test_booleano_marcado_NAO_conta_como_preenchido():
+    """Rádio e checkbox sempre têm um estado; contá-los diria "preenchido"
+    para toda ficha em branco."""
+    portal, _engine = _tela(marcados=["Checkbox4", "Checkbox5"])
+
+    resultado = cond.escrever(portal, {}, lambda _m: None)
+
+    assert resultado.pendente is True

@@ -162,6 +162,56 @@ def conferir_subaba(portal, nome, campos, callback_log=None):
     return divergentes
 
 
+def conferir_ja_preenchida(portal, callback_log=None):
+    """A ficha ALVO já tem Condições preenchidas? `ResultadoDaSecao` ou `None`.
+
+    `None` = não achei conteúdo (ou não consegui ler); quem chamou decide.
+
+    Existe porque "o robô não copiou" e "a ficha não tem" são coisas
+    diferentes, e até 2026-08-21 o módulo só sabia a primeira -- então marcava
+    INCOMPLETO no `_STATUS_PMIB` uma seção que outra pessoa já tinha preenchido
+    à mão, apagando o trabalho dela na planilha.
+
+    O critério é CONTEÚDO DE TEXTO, não os booleanos: rádio e checkbox sempre
+    têm um estado (marcado ou não), então contá-los diria "preenchido" para
+    toda ficha em branco. Campo de texto com algo dentro só existe se alguém
+    escreveu.
+
+    ⚠️ **A conta vai para o log de propósito.** O robô não tem como julgar se a
+    seção está COMPLETA no sentido do negócio -- ele sabe dizer "tem conteúdo".
+    Mostrar "12 de 14 campos" deixa o número suspeito visível em vez de
+    esconder a decisão atrás de um COMPLETO.
+    """
+    _log = _log_de(callback_log)
+    try:
+        lido = ler(portal, callback_log=None)
+    except Exception as erro:  # noqa: BLE001
+        _log(f"      [Aviso] Não consegui conferir as Condições da ficha alvo: "
+             f"{type(erro).__name__}: {erro}")
+        return None
+
+    preenchidos = 0
+    total = 0
+    detalhe_por_aba = []
+    for nome, mapa in sel.CONDICOES_POR_SUBABA.items():
+        campos = lido.get(nome, {})
+        textos = [s for s in mapa["textos"] if s in campos]
+        cheios = [s for s in textos if str(campos.get(s) or "").strip()]
+        preenchidos += len(cheios)
+        total += len(textos)
+        if textos:
+            detalhe_por_aba.append(f"{nome} {len(cheios)}/{len(textos)}")
+
+    if not preenchidos:
+        return None
+
+    _log(f"      Condições JÁ preenchidas na ficha alvo: {preenchidos} de {total} "
+         f"campo(s) de texto com conteúdo ({'; '.join(detalhe_por_aba)}).")
+    _log("      Não foram copiadas de novo -- sobrescrever apagaria o que já está lá.")
+    return ResultadoDaSecao("condicoes", True,
+                            f"já preenchida ({preenchidos}/{total} campos)")
+
+
 def escrever(portal, condicoes, callback_log=None):
     """Escreve as 4 sub-abas na ficha ALVO, salvando e CONFERINDO cada uma.
 
@@ -174,6 +224,20 @@ def escrever(portal, condicoes, callback_log=None):
     """
     _log = _log_de(callback_log)
     if not condicoes:
+        # A ORIGEM NÃO TROUXE NADA -- mas a ALVO pode já estar preenchida.
+        #
+        # ⚠️ 2026-08-21, pedido do usuário: *"a condição já estava feita, mas
+        # daí o robô deveria dar uma checada se está completa, pois eu havia
+        # marcado o Excel como completo e daí agora ele marcou como Incompleto,
+        # sendo que tá completo, mas outra pessoa fez"*.
+        #
+        # É a diferença entre "eu não escrevi" e "não está lá". O robô só sabia
+        # a primeira, e reportava a segunda -- e apagava na planilha o trabalho
+        # de quem preencheu à mão.
+        ja_tem = conferir_ja_preenchida(portal, callback_log)
+        if ja_tem is not None:
+            return ja_tem
+
         # ⚠️ PENDENTE, não "ok". Conserto de 2026-08-21, do log do usuário: o
         # extrator ainda NÃO lê as Condições do modo de visualização (ele mesmo
         # diz isso duas linhas acima, no log: "Condições NÃO serão copiadas:

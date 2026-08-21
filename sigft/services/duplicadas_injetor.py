@@ -188,6 +188,36 @@ def e_mensagem_de_duplicidade(mensagem):
     return any(marcador in texto for marcador in MARCADORES_DE_DUPLICIDADE)
 
 
+# Quanto se espera o portal RESPONDER, e de quanto em quanto se olha.
+#
+# ⚠️ 2026-08-21, observação do usuário: *"quando ele faz o fornecedor ele demora
+# muito para a segunda etapa"*. O log mostra 23 s entre o fabricante e a
+# referência gravada -- e a causa não é uma etapa lenta, são QUATRO tentativas
+# do sufixo `'D` (o código cru, `'D1`, `'D2`, `'D3`; as três primeiras já
+# existiam de rodadas anteriores na MESMA ficha de teste). Cada tentativa
+# pagava dois `sleep` cegos, mesmo quando o portal já tinha respondido no
+# primeiro décimo de segundo.
+#
+# Esperar o AVISO aparecer, em vez de dormir, devolve o tempo justamente nas
+# tentativas que colidem -- que são as que se repetem. Sem colisão o custo é o
+# mesmo de antes: a ausência de aviso só se confirma pelo tempo.
+ESPERA_MAXIMA_DO_AVISO = PAUSA_APOS_DIGITAR
+INTERVALO_DO_AVISO = 0.15
+
+
+def esperar_aviso_de_colisao(portal, seletor_input=None,
+                             espera=ESPERA_MAXIMA_DO_AVISO):
+    """Texto do aviso assim que ele aparecer, ou `""` esgotada a espera."""
+    limite = time.monotonic() + espera
+    while True:
+        aviso = texto_do_aviso_de_colisao(portal, seletor_input)
+        if aviso:
+            return aviso
+        if time.monotonic() >= limite:
+            return ""
+        time.sleep(INTERVALO_DO_AVISO)
+
+
 def texto_do_aviso_de_colisao(portal, seletor_input=None):
     """Texto do bloco de aviso de referência repetida — `""` se não há aviso.
 
@@ -634,7 +664,7 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
     avisos_vistos = []
     for tentativa, referencia in enumerate(candidatos, start=1):
         portal.safe_fill(seletor_input, referencia)
-        time.sleep(PAUSA_APOS_DIGITAR)
+        aviso_apos_digitar = esperar_aviso_de_colisao(portal, seletor_input)
 
         if not _confirmar_escrita(portal, seletor_input, referencia,
                                   "campo de Referência", callback_log):
@@ -642,14 +672,12 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
             # se digita -- é outro problema, e insistir esconderia ele.
             return ResultadoDaSecao(nome_da_secao, False, "campo não aceitou o texto")
 
-        aviso = texto_do_aviso_de_colisao(portal, seletor_input)
-        if aviso:
-            avisos_vistos.append(aviso)
+        if aviso_apos_digitar:
+            avisos_vistos.append(aviso_apos_digitar)
             continue
 
         clicou = _clicar_no_mais(portal, seletor_mais, callback_log)
-        time.sleep(PAUSA_APOS_DIGITAR)
-        aviso = texto_do_aviso_de_colisao(portal, seletor_input)
+        aviso = esperar_aviso_de_colisao(portal, seletor_input)
         if aviso:
             avisos_vistos.append(aviso)
             continue
