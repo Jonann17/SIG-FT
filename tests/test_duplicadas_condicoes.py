@@ -221,9 +221,22 @@ def test_campo_que_nao_ficou_gravado_vira_PENDENCIA_com_o_nome():
 
 
 def test_tudo_conferido_devolve_sucesso():
-    portal, _ = _tela()
+    """"Tudo" passou a incluir a metade em ESPANHOL (2026-08-21).
 
-    resultado = cond.escrever(portal, UM_CAMPO_DE_CADA, lambda _m: None)
+    `UM_CAMPO_DE_CADA` traz só os `..._PT` -- é o que a leitura por
+    VISUALIZAÇÃO consegue entregar, e por isso a seção fecha INCOMPLETA quando
+    vem só isso (ver test_duplicadas_condicoes_visualizacao.py, §6). Aqui a
+    pergunta é outra: *escreveu e conferiu tudo* devolve sucesso? Então o
+    dicionário tem os dois idiomas, como numa cópia que veio inteira.
+    """
+    portal, _ = _tela()
+    completo = {
+        aba: dict(campos, **{s[:-2] + "ES": v for s, v in campos.items()
+                             if s.endswith("PT")})
+        for aba, campos in UM_CAMPO_DE_CADA.items()
+    }
+
+    resultado = cond.escrever(portal, completo, lambda _m: None)
 
     assert resultado.ok is True
 

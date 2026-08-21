@@ -924,27 +924,71 @@ XPATH_CONDICOES_CAMPO = "//*[contains(@id, {sufixo})]"
 # o resto da tela (§7). Então a cópia precisa do casamento que a §15 dizia
 # evitar -- RÓTULO VISÍVEL → campo de edição.
 #
-# ⚠️ **A TABELA COMEÇA VAZIA, E ISSO É DELIBERADO.**
+# A tabela nasceu VAZIA em 2026-08-21 de manhã, de propósito: a redação exata
+# dos rótulos não existia em lugar nenhum deste repositório, e escrevê-la de
+# memória criaria a falha silenciosa que o resto deste arquivo combate --
+# "Comprimento", "Comprimento da embalagem" e "Comprimento da embalagem
+# unitária" são três chaves, e a errada não casa sem avisar ninguém.
 #
-# A redação exata dos rótulos não existe em lugar nenhum deste repositório.
-# `upload_conditions.py` dá o SIGNIFICADO de alguns campos (`Input_PackingLength`
-# é o comprimento da embalagem, `Input_LiquidWeight` o peso líquido) e a
-# `docs/base-conhecimento/05-upload-conditions-backend.md` repete o mesmo
-# recorte -- mas significado não é o texto que a tela mostra. "Comprimento",
-# "Comprimento da embalagem" e "Comprimento da embalagem unitária" são três
-# chaves diferentes, e a errada não casa: o campo não copia e NINGUÉM FICA
-# SABENDO. É exatamente a falha silenciosa que o resto deste arquivo combate,
-# e escrever a tabela de memória seria criá-la de propósito.
-#
-# 🎯 COMO ELA SE PREENCHE: `duplicadas_condicoes.converter_da_visualizacao`
-# loga, com o texto integral, TODO rótulo que não achar aqui. Uma rodada real
-# contra o portal devolve a lista exata; preencher isto vira transcrição.
+# 🎯 ELA SE PREENCHEU SOZINHA NA MESMA TARDE. `converter_da_visualizacao` loga
+# o texto integral de todo rótulo que não conhece; a rodada das 16:16 na ficha
+# 4500063671.1257 devolveu os 17 da tela, e o que está abaixo é transcrição
+# daquela lista -- não tradução dos nomes em inglês.
 #
 # Formato: chave NORMALIZADA (ver `chave_de_rotulo`: sem acento, minúscula,
 # espaços colapsados, sem ':' final) -> (sub-aba de EDIÇÃO, sufixo do id).
 # A sub-aba tem de ser uma chave de `CONDICOES_POR_SUBABA` -- é ela que diz em
 # que aba o campo se escreve, e a conversão recusa nome que não esteja lá.
-CONDICOES_ROTULO_PARA_CAMPO = {}
+#
+# ⚠️ O QUE FICOU DE FORA, E POR QUÊ. Dos 17 rótulos, cinco não entram:
+#
+#   Necessidade de controle de temperatura e umidade   -> rádio
+#   Posição de armazenamento                           -> rádio
+#   Nocivo                                             -> checkbox
+#   Outros cuidados                                    -> checkbox
+#   Classificação conforme NBR 10004                   -> sem sufixo conhecido
+#
+# Na visualização os quatro primeiros são TEXTO ("Horizontal", "Sem
+# necessidade"); na edição são `RadioButtonN-input`/`CheckboxN`, e QUAL número
+# corresponde a QUAL pergunta não está documentado em lugar nenhum. Mapear no
+# chute marcaria o rádio errado -- pior do que deixar vazio, porque um rádio
+# errado PARECE resposta. O quinto simplesmente não tem par entre os sufixos
+# de `CONDICOES_POR_SUBABA`. Os cinco continuam saindo no log a cada rodada.
+#
+# ⚠️ SÓ O CAMPO EM PORTUGUÊS. Cada texto longo tem par na edição
+# (`..._PT` e `..._ES`), e a visualização mostra UM valor só -- o bloco é o
+# `Block_ExpressionBothLenguage`, e o que fica visível é o português; o
+# espanhol, se está em algum lugar, está atrás do tooltip. Copiar o texto em
+# português para dentro do campo em espanhol seria inventar uma tradução na
+# ficha de outra pessoa. Então o robô copia o PT e a seção NÃO fecha como
+# completa -- ver `duplicadas_condicoes.SUFIXOS_SEM_LEITURA`.
+CONDICOES_ROTULO_PARA_CAMPO = {
+    # --- Armazenamento: os seis numéricos -------------------------------
+    # Sufixos vindos de `upload_conditions.py`, que roda contra o portal real e
+    # escreve neles a partir de chaves de planilha (`dimensoes.comprimento`,
+    # `peso.liquido`, `empilhamento`). Evidência, não tradução.
+    "comprimento da embalagem unitaria": ("Armazenamento", "Input_PackingLength"),
+    "largura da embalagem unitaria": ("Armazenamento", "Input_PackagingWidth"),
+    "altura da embalagem unitaria": ("Armazenamento", "Input_PackagingHeight"),
+    "peso liquido": ("Armazenamento", "Input_LiquidWeight"),
+    "peso bruto": ("Armazenamento", "Input_GrossWeight"),
+    "empilhamento maximo": ("Armazenamento", "Input_Stacking"),
+
+    # --- Transporte ------------------------------------------------------
+    "embalagem para transporte": ("Transporte", "TextArea_TransportPackagingPT"),
+    "posicoes / cuidados com icagem": ("Transporte", "TextArea_PositionCarePT"),
+
+    # --- Manutenção ------------------------------------------------------
+    "cuidados durante a preservacao e manuseio":
+        ("Manutenção", "TextArea_PreservationCarePT"),
+    "metodos de limpeza ou secagem": ("Manutenção", "TextArea_CleaningMethodPT"),
+
+    # --- Descarte --------------------------------------------------------
+    "tipo de legislacao e/ou norma aplicada (brasileira e paraguaia) ou "
+    "melhores praticas de mercado": ("Descarte", "TextArea_TypeLegislationPT"),
+    "tipo de descarte de acordo com a legislacao aplicada ou com as melhores "
+    "praticas de mercado": ("Descarte", "TextArea_DiscardTypePT"),
+}
 
 
 # As sub-abas de Condições no modo de VISUALIZAÇÃO. São TRÊS (§12), contra as

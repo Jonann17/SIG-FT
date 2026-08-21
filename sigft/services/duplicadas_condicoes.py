@@ -129,6 +129,35 @@ def converter_da_visualizacao(rotulos_e_valores, callback_log=None):
     return convertido
 
 
+def sufixos_em_espanhol_nao_copiados(condicoes):
+    """Os `..._ES` cujos pares `..._PT` foram escritos. Lista, em ordem.
+
+    ⚠️ A METADE QUE A VISUALIZAÇÃO NÃO ENTREGA. Cada texto longo tem par na
+    edição (`TextArea_XxxPT` e `TextArea_XxxES`) e a visualização mostra UM
+    valor só -- o bloco é o `Block_ExpressionBothLenguage`, e o que fica
+    visível é o português; o espanhol, se está em algum lugar, está atrás do
+    tooltip, que a varredura não abre.
+
+    Copiar o texto em português para dentro do campo em espanhol seria
+    INVENTAR uma tradução na ficha de outra pessoa. Então o robô copia o PT e
+    esta função diz o que ficou para trás -- é o que impede a seção de fechar
+    como COMPLETA com metade dos campos em branco.
+
+    Campo numérico não entra: `Input_LiquidWeight` é um só, número é número
+    nos dois idiomas. Recusar a ficha que só tem números seria inventar
+    pendência para o que está certo.
+    """
+    faltando = []
+    for campos in (condicoes or {}).values():
+        for sufixo in campos:
+            if not sufixo.endswith("PT"):
+                continue
+            par = sufixo[:-2] + "ES"
+            if par not in campos and par not in faltando:
+                faltando.append(par)
+    return faltando
+
+
 def abrir_secao(portal, callback_log=None):
     """Abre a sanfona de Condições. Idempotente do ponto de vista do portal:
     clicar de novo numa seção aberta não a fecha (é um header, não um toggle
@@ -395,6 +424,20 @@ def escrever(portal, condicoes, callback_log=None):
             problemas.append(f"{nome}: {len(divergentes)} campo(s) divergentes")
         else:
             _log(f"      [{nome}] {len(campos)} campo(s), salvo e conferido.")
+
+    # ⚠️ O ESPANHOL. Ver `sufixos_em_espanhol_nao_copiados`: a visualização
+    # entrega um texto por campo bilíngue, e é o português. Fechar CONDIÇÕES =
+    # COMPLETO com os `..._ES` em branco seria a mentira de planilha de sempre
+    # -- e a de planilha dura mais do que qualquer erro de tela, porque ninguém
+    # volta para conferir o que já está marcado como pronto.
+    faltando_es = sufixos_em_espanhol_nao_copiados(condicoes)
+    if faltando_es:
+        _log(f"      [i] Condições: {len(faltando_es)} campo(s) em espanhol NÃO "
+             f"foram copiados -- a visualização da ficha original só mostra o "
+             f"texto em português. Preencha à mão: "
+             f"{', '.join(faltando_es[:4])}"
+             f"{' …' if len(faltando_es) > 4 else ''}.")
+        problemas.append(f"{len(faltando_es)} campo(s) em espanhol sem tradução")
 
     if problemas:
         return ResultadoDaSecao("condicoes", False, "; ".join(problemas))
