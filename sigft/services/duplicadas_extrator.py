@@ -77,6 +77,41 @@ def _buscar_na_aba_atual(portal, pmib):
     time.sleep(PAUSA_APOS_BUSCA)
 
 
+# Espera pela LISTA montar. Ver `esperar_abas_da_lista`.
+ESPERA_DAS_ABAS = 10.0      # segundos, teto
+INTERVALO_DAS_ABAS = 0.25
+
+
+def esperar_abas_da_lista(portal, espera=ESPERA_DAS_ABAS):
+    """Espera ALGUMA aba de status aparecer. `True` se apareceu.
+
+    ⚠️ ISTO CONSERTA O DEFEITO DE 2026-08-21, 16:16, e ele é sutil.
+
+    `localizar_aba_da_ficha` pula em silêncio a aba que não está na tela --
+    de propósito, porque o portal não mostra as sete para todo perfil. Só que
+    `element_exists` é `count() > 0`, uma checagem IMEDIATA, e `ir_para_lista`
+    só navega (e só espera) quando a URL é outra. Na PRIMEIRA ficha do lote a
+    URL já era a da lista: ninguém esperou nada, e a tela ainda estava sendo
+    montada pelo React.
+
+    Resultado no log do usuário: `Abas tentadas:` com SEIS abas, faltando
+    exatamente a primeira -- "Em Elaboração", onde a ficha seguinte do mesmo
+    lote foi achada dois segundos depois. "A tela ainda não montou" tinha
+    virado "esta aba não existe", e a ficha inteira se perdeu.
+
+    A espera resolve na raiz: só depois que a lista existe é que "esta aba não
+    está aqui" quer dizer alguma coisa.
+    """
+    tentativas = max(1, int(espera / INTERVALO_DAS_ABAS))
+    for _ in range(tentativas):
+        for nome in spec.ABAS_DE_STATUS_DA_LISTA:
+            if portal.engine.element_exists(
+                    sel.XPATH_ABA_STATUS.format(texto=_literal_xpath(nome))):
+                return True
+        time.sleep(INTERVALO_DAS_ABAS)
+    return False
+
+
 def localizar_aba_da_ficha(portal, pmib, callback_log=None):
     """Nome da aba de status onde `pmib` aparece, ou `None`.
 
@@ -92,6 +127,10 @@ def localizar_aba_da_ficha(portal, pmib, callback_log=None):
     def _log(mensagem):
         if callback_log:
             callback_log(mensagem)
+
+    # A LISTA PRIMEIRO. Sem isto, "a tela ainda não montou" vira "esta aba não
+    # existe" -- ver `esperar_abas_da_lista`.
+    esperar_abas_da_lista(portal)
 
     alvo = sel.XPATH_LINHA_ACAO_VISUALIZAR.format(pmib=pmib)
     tentadas = []

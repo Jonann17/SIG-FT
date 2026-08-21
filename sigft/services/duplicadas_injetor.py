@@ -361,11 +361,33 @@ def _escolher_no_combo(portal, papel, nome, seletor_toggle, placeholder, callbac
         # A caixa de busca do dropdown ABERTO é a única na tela; se o
         # placeholder não bater, cai no seletor genérico em vez de travar.
         busca = sel.XPATH_FABRICANTE_BUSCA
-    portal.safe_fill(busca, nome)
-    time.sleep(PAUSA_APOS_DIGITAR)
+
+    # ⚠️ SÓ FILTRA SE A CAIXA DE BUSCA ESTIVER NA TELA. Conserto de 2026-08-21,
+    # do log das 16:17: `safe_fill` num seletor que não casa escreve no vazio e
+    # paga o timeout de 20 s ENGOLIDO -- `engine.fill` não levanta, por
+    # contrato. Foi o que fez o combo de PDM custar 22 s numa função cujas
+    # pausas somam 1,2 s.
+    #
+    # Pular o filtro em vez de RECUSAR: nem todo dropdown do widget tem caixa
+    # de busca (listas curtas podem vir sem), e transformar "não achei a caixa"
+    # em falha quebraria um caminho que hoje funciona. Sem filtro a lista vem
+    # inteira, e procurar a opção nela é igualmente válido.
+    tem_busca = portal.engine.element_exists(busca)
+    if tem_busca:
+        portal.safe_fill(busca, nome)
+        time.sleep(PAUSA_APOS_DIGITAR)
 
     alvo = sel.XPATH_FABRICANTE_OPCAO.format(texto=_literal(nome))
     if not portal.engine.element_exists(alvo):
+        # ⚠️ E A MENSAGEM DIZ QUAL DOS DOIS PROBLEMAS É. Sem caixa de busca E
+        # sem a opção na tela, o dropdown não abriu -- acusar o CADASTRO ("não
+        # apareceu no combo") mandaria conferir o portal quando o que falhou
+        # foi o clique. Duas investigações diferentes, e a errada custa a tarde.
+        if not tem_busca:
+            _log(f"      [Erro] O combo de {papel} não abriu: não há caixa de "
+                 f"busca nem a opção {nome!r} na tela depois do clique. Nada "
+                 f"foi selecionado -- e o cadastro do portal não é o suspeito.")
+            return ResultadoDaSecao(papel, False, "o combo não abriu")
         # Não clicar em "a primeira opção que sobrou" é deliberado: o filtro
         # textual pode deixar uma opção PARECIDA, e escolher errado aqui é
         # exatamente o erro que não dá sintoma nenhum na tela.
@@ -686,6 +708,30 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
         # entrou. Clicar com um valor que colide é inofensivo -- é justamente
         # aí que o portal recusa, e recusar é a resposta que se quer.
         clicou = _clicar_no_mais(portal, seletor_mais, callback_log)
+
+        # ⚠️ SEM CLIQUE NÃO HÁ O QUE PROVAR. Conserto de 2026-08-21, do log das
+        # 16:17: o '+' estourou 20 s esperando um botão que não estava mais na
+        # tela, e a linha seguinte do log dizia `Referência: 140012'D2`, com a
+        # planilha fechando INFO. GERAIS = COMPLETO.
+        #
+        # Como uma coisa virou a outra: `linha_entrou_na_tabela` trata campo
+        # AUSENTE como prova de commit -- o que é correto quando o '+' foi
+        # clicado (o formulário se recolhe), e é o oposto quando ele NÃO foi:
+        # o bloco inteiro saiu da tela, levando o botão E o campo. Um só evento
+        # explica o timeout e o campo sumido, e a leitura confundiu esse evento
+        # com sucesso.
+        #
+        # `clicou` já era calculado aqui desde 2026-08-19; só não decidia nada,
+        # servia para enfeitar a mensagem de erro lá embaixo. Agora decide:
+        # clicar é o que comita, e sem clique não existe prova possível.
+        if not clicou:
+            _log(f"      [Erro] Não adicionei a referência {referencia!r}: o '+' "
+                 f"não foi clicado (motivo acima). NÃO trate como gravada -- o "
+                 f"campo pode ter sumido junto com o bloco, e sumir não é "
+                 f"sinônimo de adicionar. Adicione à mão.")
+            fotografar_bloco_da_linha(portal, seletor_mais, seletor_input,
+                                      nome_da_secao, log_auditoria)
+            return ResultadoDaSecao(nome_da_secao, False, "o '+' não foi clicado")
 
         # ⚠️ A PROVA. Até 2026-08-19 bastava "cliquei e o portal não reclamou"
         # para reportar sucesso -- e o usuário só descobriu que a tabela estava

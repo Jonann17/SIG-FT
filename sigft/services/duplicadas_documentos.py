@@ -154,6 +154,29 @@ def ja_associados(portal, escopo=None):
     return descricoes
 
 
+TIMEOUT_DA_CONFERENCIA = 15.0   # segundos, teto
+INTERVALO_DA_CONFERENCIA = 0.5
+
+
+def esperar_associacao(portal, desejados, escopo=None,
+                       timeout=TIMEOUT_DA_CONFERENCIA):
+    """Relê a tabela até TODOS os desejados aparecerem. Devolve o que viu.
+
+    Substitui a pausa fixa de 3 s que precedia a conferência. Pausa fixa erra
+    para os dois lados: curta demais reprova a ficha certa (foi o log das
+    16:17 de 2026-08-21), longa demais cobra o atraso de toda ficha que já
+    estava pronta. A espera observável cobra só o que a tela demorar.
+    """
+    tentativas = max(1, int(timeout / INTERVALO_DA_CONFERENCIA))
+    vistos = []
+    for _ in range(tentativas):
+        vistos = ja_associados(portal, escopo)
+        if all(d in vistos for d in desejados):
+            return vistos
+        time.sleep(INTERVALO_DA_CONFERENCIA)
+    return vistos
+
+
 def associar(portal, descricoes, callback_log=None, escopo=None):
     """Associa todos os documentos da original e CONFERE o resultado."""
     _log = _log_de(callback_log)
@@ -189,9 +212,28 @@ def associar(portal, descricoes, callback_log=None, escopo=None):
                                 f"desisti após {falhas_seguidas} falhas seguidas")
 
     # A CONFERÊNCIA: relê a tabela da ficha, não o que o diálogo mostrou.
-    time.sleep(PAUSA_ANTES_DE_CONFERIR)
-    agora = set(ja_associados(portal, escopo))
+    #
+    # ⚠️ ESPERA OBSERVÁVEL, não pausa fixa. Conserto de 2026-08-21: a
+    # conferência acontecia depois de UM `sleep` de 3 s, e no log das 16:17 o
+    # documento saiu como "NÃO ficou associado" três segundos depois de o robô
+    # tê-lo associado. Com pausa fixa, o portal que demora 4 s reprova a ficha
+    # certa. Insistir até ver é a mesma regra do upload de imagem
+    # (`duplicadas_imagens.esperar_processamento`).
+    agora = set(esperar_associacao(portal, desejados, escopo))
     nao_entraram = [d for d in desejados if d not in agora]
+
+    # ⚠️ ZERO LINHA NÃO É PROVA DE NADA. Acabamos de associar; se a tabela lê
+    # vazia, o que falhou foi a LEITURA -- o `escopo` é um id GERADO pelo
+    # OutSystems e o painel pode ter sido remontado com outro. Acusar a
+    # associação (a única das três coisas que sabemos ter acontecido) manda o
+    # usuário conferir o que está certo.
+    if nao_entraram and not agora:
+        _log(f"      [Erro] Não consegui ler a tabela de documentos da ficha "
+             f"(zero linha no painel {escopo or 'sem escopo'}) depois de "
+             f"associar. NÃO sei dizer se a associação pegou -- confira no "
+             f"portal antes de marcar a ficha.")
+        return ResultadoDaSecao("documentos", False, "não li a tabela")
+
     if nao_entraram:
         _log(f"      [Erro] {len(nao_entraram)} documento(s) NÃO ficaram "
              f"associados: {', '.join(d[:40] for d in nao_entraram[:3])}"

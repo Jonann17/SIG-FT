@@ -261,8 +261,15 @@ class _PortalFalso:
 
 
 def _com_combos(*nomes, campos_referencia=1):
+    # `vscomp-search-input` entra aqui em 2026-08-21: o dropdown ABERTO do
+    # widget tem caixa de busca -- está no HTML que o usuário mandou
+    # (`<input class="vscomp-search-input" placeholder="Pesquisar um
+    # fabricante ">`), e o dublê que a omitia descrevia uma tela que não
+    # existe. A omissão só não aparecia porque o código escrevia no seletor de
+    # reserva sem perguntar se ele casava -- que é justamente o defeito
+    # consertado hoje.
     engine = _EngineFalso(combos=nomes, campos_referencia=campos_referencia,
-                          existentes=["data-tooltip="])
+                          existentes=["data-tooltip=", "vscomp-search-input"])
     return _PortalFalso(engine), engine
 
 
@@ -953,3 +960,99 @@ def test_as_duas_referencias_nao_se_sobrescrevem_no_placar():
 
     assert do_fabricante.nome == "referencia"
     assert do_fornecedor.nome == "referencia_fornecedor"
+
+
+# ===========================================================================
+# O '+' QUE NÃO FOI CLICADO NÃO PROVA NADA — defeito de 2026-08-21, 16:17
+# ===========================================================================
+# No log do usuário:
+#
+#   [!] O '+' não aceitou o clique: TempoEsgotado: Locator.evaluate: Timeout
+#       20000ms exceeded.  … waiting for locator("//*[starts-with(@id,
+#       'b10-b11-b4-')]//a[…fa-plus-circle…]")
+#   Referência: 140012'D2 (as 2 anteriores já existiam no portal)
+#
+# As duas linhas no MESMO segundo, e a planilha fechou INFO. GERAIS = COMPLETO.
+#
+# O que aconteceu: o bloco da linha do fabricante saiu da tela (por isso o
+# Playwright esperou 20 s por um "+" que não estava mais lá). `linha_entrou_na_
+# tabela` pergunta "o campo largou o valor?" e trata campo AUSENTE como prova
+# de commit -- o que é certo quando o "+" foi clicado, e é exatamente o
+# contrário quando ele NÃO foi: aí o campo sumiu junto com o bloco, sem nada
+# ter sido adicionado.
+#
+# `clicou` já era calculado; só não decidia nada -- servia para enfeitar a
+# mensagem de erro. Clicar é o que comita: sem clique, não há o que provar.
+
+class _EngineQuePerdeOBloco(_EngineFalso):
+    """O clique estrito falha PORQUE o bloco saiu da tela -- e leva o campo
+    junto. É a sequência real: um só evento explica as duas coisas."""
+
+    def click_estrito(self, seletor):
+        self.ids_referencia.clear()
+        raise TimeoutError("Locator.evaluate: Timeout 20000ms exceeded.")
+
+
+def _com_bloco_que_some():
+    engine = _EngineQuePerdeOBloco(ids_referencia=["b10-b11-b4-Input_TextVar"])
+    return _PortalFalso(engine), engine
+
+
+def test_referencia_falha_quando_o_mais_nao_foi_clicado():
+    portal, _engine = _com_bloco_que_some()
+
+    resultado = injetor.escrever_referencia(
+        portal, "140012", id_do_campo="b10-b11-b4-Input_TextVar")
+
+    assert not resultado.ok
+
+
+def test_referencia_diz_no_log_que_o_clique_e_que_falhou():
+    """A mensagem tem de apontar o '+', não a ficha: quem lê precisa saber que
+    o robô não chegou a adicionar, e não que o portal recusou o valor."""
+    portal, _engine = _com_bloco_que_some()
+    logs = []
+
+    injetor.escrever_referencia(portal, "140012", callback_log=logs.append,
+                               id_do_campo="b10-b11-b4-Input_TextVar")
+
+    assert any("'+'" in linha for linha in logs)
+
+
+def test_combo_do_fabricante_que_nao_abre_diz_isso_em_vez_de_culpar_o_catalogo():
+    """Mesmo defeito do combo de PDM (log de 2026-08-21, 16:17), mesma cura.
+
+    Sem a caixa de busca na tela, `safe_fill` escreve no vazio, paga o timeout
+    de 20 s ENGOLIDO (`engine.fill` não levanta por contrato) e a função
+    termina dizendo que o fabricante *"não apareceu no combo depois de
+    filtrar"* -- o que manda conferir o cadastro quando o problema é a tela.
+    """
+    engine = _EngineFalso(
+        combos=("Selecione um fabricante",),
+        existentes=["data-tooltip="],        # ⚠️ sem `vscomp-search-input`
+        opcoes=[],                           # ⚠️ e sem a opção: o combo não abriu
+        ids_referencia=["b10-b11-b2-Input_TextVar"],
+    )
+    portal = _PortalFalso(engine)
+    logs = []
+
+    resultado = injetor.escolher_fabricante(portal, "ACE SCHMERSAL", logs.append)
+
+    assert not resultado.ok
+    texto = "\n".join(logs)
+    assert "não abriu" in texto
+    assert "não apareceu no combo" not in texto
+
+
+def test_combo_que_nao_abre_nao_escreve_o_filtro():
+    engine = _EngineFalso(
+        combos=("Selecione um fabricante",),
+        existentes=["data-tooltip="],
+        opcoes=[],
+        ids_referencia=["b10-b11-b2-Input_TextVar"],
+    )
+    portal = _PortalFalso(engine)
+
+    injetor.escolher_fabricante(portal, "ACE SCHMERSAL")
+
+    assert portal.preenchidos == []

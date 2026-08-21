@@ -201,3 +201,46 @@ em qual fase/checkpoint cada uma entra.
 | 2026-08-20 | `duplicadas` — CP 6.3 | **O "+" da referência do fabricante continua não comitando a linha.** Terceira rodada com o mesmo sintoma: `A linha NÃO ENTROU na tabela: escrevi 'FM-9222', cliquei no '+' e o campo continua com o valor`. A prova de commit e o clique estrito já estão no lugar, e o HTML do bloco passou a ser despejado no log de auditoria quando isso acontece — mas o arquivo de `logs/` ainda não foi analisado. **É o próximo passo, e ele não precisa de mais uma rodada:** o log da rodada de 2026-08-20 já contém o dump. | ✅ **RESOLVIDO em 2026-08-20** com o log de auditoria, e a causa não era o clique: o CAMPO estava `not-valid` (a classe que o OutSystems põe em campo reprovado na validação) e o motivo estava no elemento apontado por `aria-describedby`, que o robô nunca lia. Explica também por que a regra do `'D` nunca rodou: `texto_do_aviso_de_colisao` só olhava o bloco `CoincidenceReference`, e nesta ficha o portal reporta a colisão NO CAMPO. |
 | 2026-08-20 | `duplicadas` — CP 6.4 | **Condições: falta o mapa RÓTULO→campo do modo de VISUALIZAÇÃO.** A cópia é por XPath (`Input_PackingLength` → `Input_PackingLength`) e esses campos só existem como `input` na EDIÇÃO — por isso eu abria a ficha original para editar. O usuário fechou essa porta: *"TUDO é para pegar do modo de visualização. Somente a ficha ALVO é para entrar no modo de edição."* Na visualização a seção é par rótulo→valor (`ler_secao_visivel` já lê 6 blocos: Volume (cm3) 3 campos, Peso (kg) 2, Temperatura/Umidade 1, Armazenamento e Empilhamento 2, Nocivos 2, Transporte 2), e o que falta é o casamento de cada rótulo com o sufixo do campo da edição. **O markup ainda não foi capturado** porque o OutSystems só renderiza o painel da aba aberta, e a auditoria nunca fotografou a de Condições — `ler_condicoes_da_original` agora ABRE essa aba em visualização e fotografa, então a próxima rodada com auditoria ligada entrega os rótulos. Até lá, as Condições não são copiadas e o log diz por quê. | Fase 6 — próxima rodada com auditoria. ⚠️ A rodada de 15h abriu a aba certa e a foto AINDA saiu sem os rótulos: era de `//body`, que começa no topo da página, e o teto de 20 000 caracteres cortou antes de chegar às Condições. Corrigido — a foto passou a ser do PAINEL (`aria-controls`), que cabe no limite e não traz outra seção junto. |
 | 2026-08-20 | `duplicadas` — CP 6.4 | **O SALVAR da seção de imagens não aceita clique.** Log da rodada: o botão resolve, o Playwright reporta *"element is visible, enabled and stable"*, rola para a tela, e o clique nunca completa até o timeout de 20 s. O `tabindex="-1"` do botão (`<button type="button" tabindex="-1" class="btn btn-primary">SALVAR</button>`) sugere painel inativo/coberto — provavelmente o diálogo do FilePond ainda aberto por cima. Já não derruba a ficha (vira pendência), mas as imagens não sobem. Precisa do HTML da tela **com o formulário de imagem aberto**: se há um botão de confirmar dentro do diálogo, é nele que se clica. | ✅ **RESOLVIDO em 2026-08-20**: não era "algo cobrindo" — o botão da seção não é quem grava a imagem. Quem grava é o `<button class="btn btn-primary text-uppercase">Confirmar</button>` DENTRO do diálogo, e o portal responde com toast próprio ("A imagem foi adicionada com sucesso!"). `PMIBPortal.clicar_e_confirmar` é a mecânica de `salvar_e_confirmar` sem a parte de achar o SALVAR. |
+
+## 2026-08-21 (tarde) — quatro defeitos do log das 16:16, todos da mesma familia
+
+O log `duplicadas_20260821_161607` trouxe a lista de rotulos das Condicoes (o
+que faltava para fechar a Fase 6) e, junto, quatro defeitos. Nenhum deles e um
+seletor errado: os quatro sao **silencio** — o robo nao sabia distinguir "nao
+consegui" de "nao tem".
+
+1. **A primeira ficha do lote perdia a aba "Em Elaboracao".** `element_exists`
+   e imediato (`count() > 0`) e `ir_para_lista` so espera quando NAVEGA; na
+   primeira ficha a URL ja era a da lista, entao ninguem esperou a tela montar.
+   A regra "aba que nao existe e pulada em silencio" (perfis diferentes veem
+   abas diferentes) transformou "ainda nao renderizou" em "nao existe". No log:
+   `Abas tentadas:` com SEIS abas, faltando exatamente a primeira — e a ficha
+   seguinte foi achada nela dois segundos depois.
+   → `extrator.esperar_abas_da_lista`.
+
+2. **Referencia dada como gravada sem o '+' ter sido clicado.** O clique
+   estourou 20 s e a linha seguinte do log dizia `Referencia: 140012'D2`, com a
+   planilha fechando INFO. GERAIS = COMPLETO. `linha_entrou_na_tabela` trata
+   campo AUSENTE como prova de commit — correto quando o '+' foi clicado, o
+   oposto quando nao foi: o bloco saiu da tela levando botao E campo. `clicou`
+   ja existia e so enfeitava a mensagem de erro; agora decide.
+
+3. **Combo que nao abre acusava o CATALOGO.** `safe_fill` num seletor que nao
+   casa escreve no vazio e paga o timeout de 20 s ENGOLIDO (`engine.fill` nao
+   levanta, por contrato). Depois a funcao terminava com "X nao apareceu no
+   combo depois de filtrar", que manda conferir o cadastro quando o problema
+   era a tela. Vale para o combo de PDM e para o de fabricante/fornecedor.
+   O conserto e TOLERANTE: sem caixa de busca, procura a opcao sem filtrar
+   (listas curtas do widget podem vir sem busca) — so acusa o combo quando nao
+   ha nem busca nem opcao.
+
+4. **Documento associado e, 3 s depois, "NAO ficou associado".** A conferencia
+   era uma pausa fixa. Pausa fixa erra dos dois lados. Virou espera observavel
+   (`esperar_associacao`), e ler ZERO linha na tabela onde acabamos de associar
+   passou a ser reportado como "nao consegui LER" — nao como falha da
+   associacao, que e a unica das tres coisas que sabemos ter acontecido.
+
+**E um defeito da propria medicao:** a linha de tempos estreou dizendo
+`fabricante 17.3 s`, cobrando do combo os ~15 s de ler a ficha original e abrir
+a alvo. Medicao que engana dirige o conserto para o lugar errado, que e o
+oposto do que ela existe para fazer. → `ResultadoDaFicha.marcar`.

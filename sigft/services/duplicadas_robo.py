@@ -157,6 +157,23 @@ class ResultadoDaFicha:
         self.tempos = []
         self._marco = time.monotonic()
 
+    def marcar(self, nome):
+        """Fecha o intervalo corrente sob `nome`, SEM criar uma seção.
+
+        ⚠️ Conserto da própria medição, de 2026-08-21: na estreia da linha de
+        tempos saiu `fabricante 17.3 s`, e era mentira. O cronômetro parte do
+        início da ficha, e antes da primeira seção rodam a leitura da ORIGINAL
+        inteira e a abertura da ALVO para edição -- tudo cobrado do combo de
+        fabricante. Medição que engana dirige o conserto para o lugar errado,
+        que é o oposto do que ela existe para fazer.
+
+        Etapa não é seção: não entra no placar, não muda o `ok` da ficha, não
+        vai para a planilha. Só aparece na conta dos tempos.
+        """
+        agora = time.monotonic()
+        self.tempos.append((nome, agora - self._marco))
+        self._marco = agora
+
     def registrar(self, resultado_da_secao):
         agora = time.monotonic()
         self.tempos.append((resultado_da_secao.nome, agora - self._marco))
@@ -510,6 +527,10 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
             resultado.erro_fatal = f"não achei a ficha alvo {ficha.pmib} em nenhuma aba"
             _log(f"   [Erro] {resultado.erro_fatal}")
             return resultado
+
+        # Fecha a pré-obra sob o nome dela. Sem isto, os ~15 s de ler a
+        # original e abrir a alvo apareciam como custo do combo de fabricante.
+        resultado.marcar("leitura da original")
 
         secao_fabricante = resultado.registrar(
             injetor.escolher_fabricante(portal, fabricante, callback_log))

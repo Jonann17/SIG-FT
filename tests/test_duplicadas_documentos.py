@@ -268,13 +268,100 @@ def test_a_conferencia_rele_a_tabela_DEPOIS_de_uma_pausa(monkeypatch):
     diálogo e recarrega a tabela da ficha; ler antes disso devolve o estado
     ANTERIOR -- e o robô acusa de falha o que acabou de dar certo, que é a
     pior espécie de falso alarme: some a confiança no log inteiro.
-    """
-    dormiu = []
-    monkeypatch.setattr(docs.time, "sleep", dormiu.append)
 
+    A cura era uma pausa fixa de 3 s antes da releitura. Em 2026-08-21 o mesmo
+    sintoma voltou COM a pausa (log das 16:17): 3 s não bastaram. Pausa fixa
+    erra dos dois lados -- curta demais reprova a ficha certa, longa demais
+    cobra o atraso de toda ficha que já estava pronta.
+
+    O que se tranca agora é a regra que substituiu a pausa: a conferência
+    INSISTE, e só conclui quando vê ou quando o teto estoura.
+    """
     portal, engine = _tela(catalogo=["A"])
+
+    leituras = {"n": 0}
+    original = engine.contar
+
+    def contar(seletor):
+        if "data-header=" in seletor and "ancestor::table" in seletor:
+            leituras["n"] += 1
+        return original(seletor)
+
+    engine.contar = contar
     docs.associar(portal, ["A"], lambda _m: None)
 
-    assert docs.PAUSA_ANTES_DE_CONFERIR in dormiu, (
-        "sem a pausa, a releitura pega a tabela ainda não recarregada"
+    assert leituras["n"] >= 2, (
+        "a conferência tem de reler a tabela, não confiar no diálogo"
     )
+
+
+# ===========================================================================
+# TABELA ILEGÍVEL ≠ ASSOCIAÇÃO QUE FALHOU — defeito de 2026-08-21, 16:17
+# ===========================================================================
+# No log do usuário, três linhas em seis segundos:
+#
+#   [16:17:43] Associado: BOTÕES ACE SCHMERSAL
+#   [16:17:46] [Erro] 1 documento(s) NÃO ficaram associados: BOTÕES ACE
+#              SCHMERSAL. Associe à mão.
+#
+# O robô associou e, três segundos depois, a releitura não achou. Duas causas
+# possíveis e o log não distinguia: a tabela ainda não tinha recarregado, ou o
+# `escopo` (o id do painel, GERADO pelo OutSystems) mudou no meio e a leitura
+# passou a apontar para o nada.
+#
+# As duas produzem a mesma frase -- e ela acusa a ASSOCIAÇÃO, que é a única das
+# três coisas que a gente sabe ter acontecido. Ler ZERO linha numa tabela onde
+# acabamos de associar não é prova de que a associação falhou: é prova de que
+# não conseguimos ler.
+
+class _EngineComTabelaIlegivel(_EngineDeDocumentos):
+    """A associação funciona, mas a tabela da ficha lê SEMPRE zero linha --
+    é o que o escopo errado (ou o painel ainda não remontado) produz."""
+
+    def contar(self, seletor):
+        if "data-header=" in seletor and "ancestor::table" in seletor:
+            return 0
+        return super().contar(seletor)
+
+
+def test_nao_acusa_a_associacao_quando_a_tabela_nao_foi_lida():
+    engine = _EngineComTabelaIlegivel(catalogo=["BOTÕES ACE SCHMERSAL"])
+    portal = _PortalDeDocumentos(engine)
+    logs = []
+
+    docs.associar(portal, ["BOTÕES ACE SCHMERSAL"], logs.append)
+
+    texto = "\n".join(logs)
+    assert "não consegui ler" in texto.lower()
+    assert "NÃO ficaram associados" not in texto
+
+
+def test_tabela_ilegivel_continua_sendo_pendencia():
+    """Não saber é diferente de estar certo: a coluna não pode fechar."""
+    engine = _EngineComTabelaIlegivel(catalogo=["BOTÕES ACE SCHMERSAL"])
+    portal = _PortalDeDocumentos(engine)
+
+    resultado = docs.associar(portal, ["BOTÕES ACE SCHMERSAL"])
+
+    assert not resultado.ok
+
+
+def test_espera_a_tabela_recarregar_em_vez_de_conferir_uma_vez_so():
+    """A releitura acontecia depois de UMA pausa fixa de 3 s. Se o portal
+    demorasse 4, a ficha certa saía marcada como errada. Agora a conferência
+    insiste até o documento aparecer."""
+    engine = _EngineDeDocumentos(catalogo=["BOTÕES ACE SCHMERSAL"])
+    demora = {"restam": 3}
+    original = engine.contar
+
+    def contar(seletor):
+        if "data-header=" in seletor and "ancestor::table" in seletor:
+            if demora["restam"] > 0:
+                demora["restam"] -= 1
+                return 0
+        return original(seletor)
+
+    engine.contar = contar
+    portal = _PortalDeDocumentos(engine)
+
+    assert docs.associar(portal, ["BOTÕES ACE SCHMERSAL"]).ok

@@ -37,6 +37,14 @@ class _Relogio:
         self.agora += segundos
 
 
+@pytest.fixture(autouse=True)
+def _sem_espera(monkeypatch):
+    """As pausas do robô são reais no portal e inúteis aqui -- 6 s por teste
+    que roda `processar_ficha`. Não conflita com o relógio falso: quem mede é
+    `time.monotonic`, que cada teste avança à mão."""
+    monkeypatch.setattr(robo.time, "sleep", lambda _s: None)
+
+
 @pytest.fixture
 def relogio(monkeypatch):
     falso = _Relogio()
@@ -90,3 +98,40 @@ def test_resumo_de_tempos_sem_secao_nenhuma_e_vazio():
     """Ficha que morreu antes de rodar seção não pode imprimir uma linha de
     tempos vazia no meio do log -- ela já tem o erro fatal para contar."""
     assert robo.ResultadoDaFicha("x", "y").resumo_de_tempos == ""
+
+
+# ===========================================================================
+# A PRÉ-OBRA NÃO É DA PRIMEIRA SEÇÃO — defeito da própria medição
+# ===========================================================================
+# Na estreia da linha de tempos (log de 2026-08-21, 16:17) saiu
+#
+#   tempos: referencia 23.5 s | pdm 21.4 s | fabricante 17.3 s | …
+#
+# e `fabricante 17.3 s` é mentira: o cronômetro parte do início da ficha, e
+# antes da primeira seção rodam a leitura da ficha ORIGINAL inteira (seis
+# blocos, fabricantes, documentos, imagens, condições) e a abertura da ALVO
+# para edição. Tudo isso estava sendo cobrado do combo de fabricante.
+#
+# Uma medição que engana é pior do que nenhuma: ela dirige o conserto para o
+# lugar errado, que é exatamente o que ela existia para evitar.
+
+def test_marcar_fecha_a_etapa_sem_virar_secao(relogio):
+    resultado = robo.ResultadoDaFicha("x", "y")
+    relogio.avancar(12.0)
+    resultado.marcar("leitura da original")
+    relogio.avancar(2.0)
+    resultado.registrar(ResultadoDaSecao("fabricante", True))
+
+    assert resultado.tempos == [("leitura da original", 12.0), ("fabricante", 2.0)]
+    # Etapa não é seção: não entra no placar nem no `ok` da ficha.
+    assert [s.nome for s in resultado.secoes] == ["fabricante"]
+
+
+def test_processar_ficha_separa_a_leitura_da_original(monkeypatch):
+    from tests.test_duplicadas_robo import _com_etapas, _Ficha
+
+    portal = _com_etapas(monkeypatch)
+    logs = []
+    robo.processar_ficha(portal, _Ficha(), callback_log=logs.append)
+
+    assert any("leitura da original" in linha for linha in logs)

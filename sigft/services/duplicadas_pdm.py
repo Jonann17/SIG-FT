@@ -104,6 +104,24 @@ def _escolher_pdm_da_duplicada(portal, callback_log=None):
         # A caixa de busca do dropdown ABERTO é a única na tela; se o
         # placeholder não bater, cai no seletor genérico em vez de travar.
         busca = sel.XPATH_FABRICANTE_BUSCA
+
+    # ⚠️ O COMBO ABRIU MESMO? Conserto de 2026-08-21, do log das 16:17: entre
+    # "trocando para PDM.9900.000" e o erro passaram 22 s, numa função cujas
+    # pausas somam 1,2 s. Os 20 s que faltavam eram o timeout do motor sendo
+    # ENGOLIDO -- `engine.fill` não levanta por contrato, então escrever o
+    # filtro num dropdown que nunca abriu custava o timeout inteiro e não
+    # deixava rastro.
+    #
+    # Pior que o tempo era a MENSAGEM: a função seguia e terminava com
+    # "PDM.9900.000 não apareceu no combo depois de filtrar", que manda
+    # conferir o catálogo. O problema era a tela. Duas investigações
+    # diferentes, e a errada custa a tarde.
+    if not portal.engine.element_exists(busca):
+        _log("      [Erro] O combo de PDM não abriu (nenhuma caixa de busca na "
+             "tela depois do clique). Não cheguei a filtrar nada -- o PDM da "
+             "ficha continua o que era.")
+        return False
+
     portal.safe_fill(busca, sel.PDM_DA_DUPLICADA)
     time.sleep(PAUSA_APOS_DIGITAR)
 

@@ -279,3 +279,55 @@ def test_dropdown_sem_adimensional_LISTA_as_opcoes_no_log():
     assert "mm" in texto and "kg" in texto, (
         "listar o que EXISTE é o que permite acertar o texto certo depois"
     )
+
+
+# ===========================================================================
+# O COMBO QUE NÃO ABRIU — defeito de 2026-08-21, 16:17
+# ===========================================================================
+# No log do usuário:
+#
+#   [16:17:08] PDM atual: PDM.5999.007 - BLOCO, CONTATOS, R1 — trocando para
+#              PDM.9900.000.
+#   [16:17:30] [Erro] PDM.9900.000 não apareceu no combo depois de filtrar.
+#              Nada foi selecionado.
+#
+# VINTE E DOIS SEGUNDOS entre as duas linhas, para uma função cujas pausas
+# somam 1,2 s. Os 20 s que faltam são o timeout do motor sendo ENGOLIDO por
+# `safe_fill` -- `engine.fill` não levanta por contrato. O dropdown nunca
+# abriu, escrevemos o filtro no vazio, e a mensagem final culpou o CATÁLOGO
+# ("não apareceu no combo") por um problema que era da tela.
+#
+# A diferença importa para quem lê: "o PDM não existe na lista" manda conferir
+# o catálogo; "o combo não abriu" manda olhar a tela. Uma das duas faz perder
+# a tarde.
+
+class _EngineComComboQueNaoAbre(_EngineComPDM):
+    """O toggle não responde: nenhuma caixa de busca aparece."""
+
+    def element_exists(self, _seletor):
+        return False
+
+
+def test_diz_que_o_combo_nao_abriu_em_vez_de_culpar_o_catalogo():
+    engine = _EngineComComboQueNaoAbre(
+        pdm_atual="PDM.5999.007 - BLOCO, CONTATOS, R1",
+        opcoes=("PDM.9900.000 - FICHA PMIB, DUPLICADA",))
+    portal = _PortalComPDM(engine)
+    logs = []
+
+    assert pdm._escolher_pdm_da_duplicada(portal, logs.append) is False
+    texto = "\n".join(logs)
+    assert "não abriu" in texto
+    assert "não apareceu no combo" not in texto
+
+
+def test_nao_escreve_o_filtro_quando_o_combo_nao_abriu():
+    """Escrever no vazio é o que custa os 20 s do timeout engolido."""
+    engine = _EngineComComboQueNaoAbre(
+        pdm_atual="PDM.5999.007 - BLOCO, CONTATOS, R1",
+        opcoes=("PDM.9900.000 - FICHA PMIB, DUPLICADA",))
+    portal = _PortalComPDM(engine)
+
+    pdm._escolher_pdm_da_duplicada(portal)
+
+    assert engine.filtro == ""

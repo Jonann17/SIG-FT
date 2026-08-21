@@ -201,3 +201,71 @@ def test_nome_com_apostrofo_nao_quebra_o_xpath():
 
     assert resultado.startswith("concat(") or resultado.startswith('"')
     assert "\\'" not in resultado
+
+
+# ===========================================================================
+# A LISTA AINDA NÃO RENDERIZOU — o defeito de 2026-08-21, 16:16
+# ===========================================================================
+# No log do usuário a primeira ficha do lote saiu com
+#
+#   [Erro] Ficha 4500063671.1256 não encontrada. Abas tentadas: Para enviar à
+#   ITAIPU, Em Análise ITAIPU, Rejeitado pela ITAIPU, Aprovado parcialmente IB,
+#   Aprovado pela ITAIPU, Cancelado.
+#
+# SEIS abas, e falta exatamente a PRIMEIRA -- "Em Elaboração", que é onde a
+# segunda ficha do mesmo lote foi encontrada 2 segundos depois.
+#
+# A causa: `ir_para_lista` só navega se a URL for outra, então na primeira
+# ficha ela não faz nada e não espera; `element_exists` é `count() > 0`, uma
+# checagem IMEDIATA; e a regra "aba que não existe na tela é pulada em
+# silêncio" (perfis diferentes veem abas diferentes) transformou "a tela ainda
+# não montou" em "esta aba não existe". Nos milissegundos seguintes o React
+# terminou e as outras seis apareceram.
+#
+# Ou seja: a primeira ficha de todo lote arrisca perder a aba onde a maioria
+# das originais está.
+
+class _EngineQueDemoraAMontar(_EngineFalso):
+    """A tela só monta depois de `atrasos` consultas -- como o React real."""
+
+    def __init__(self, existentes, atrasos):
+        super().__init__(existentes)
+        self.restam = atrasos
+
+    def element_exists(self, seletor):
+        if self.restam > 0:
+            self.restam -= 1
+            return False
+        return super().element_exists(seletor)
+
+
+def test_espera_a_lista_montar_antes_de_dizer_que_a_aba_nao_existe():
+    """A aba de status só é considerada ausente depois que a LISTA existe."""
+    abas = [f"normalize-space()='{a}'" for a in spec.ABAS_DE_STATUS_DA_LISTA]
+    engine = _EngineQueDemoraAMontar(abas, atrasos=3)
+    portal = _PortalFalso(engine)
+
+    original = engine.element_exists
+
+    def element_exists(seletor):
+        if "-View" in seletor or "-Edit" in seletor:
+            return bool(engine.cliques) and "'Em Elaboração'" in engine.cliques[-1]
+        return original(seletor)
+
+    engine.element_exists = element_exists
+
+    assert extrator.localizar_aba_da_ficha(portal, "4500063671.1256") == \
+        "Em Elaboração"
+
+
+def test_desiste_de_esperar_e_diz_no_log():
+    """Tela que nunca monta não pode travar o lote -- mas tem de sair do
+    silêncio: hoje a mensagem culpa a ficha ("não encontrada"), quando o
+    problema é que nenhuma aba apareceu."""
+    engine = _EngineFalso([])          # nada existe, nunca
+    portal = _PortalFalso(engine)
+    logs = []
+
+    assert extrator.localizar_aba_da_ficha(portal, "4500063671.1256",
+                                           logs.append) is None
+    assert any("nenhuma aba de status" in linha.lower() for linha in logs)
