@@ -290,61 +290,48 @@ Nenhuma impede começar; todas impedem **rodar em lote sem conferir**.
 | Modo de leitura + abas de status | `services/duplicadas_spec.py` | ✅ CP 6.1 |
 | Descrição/limite das imagens | `services/duplicadas_spec.py` | ✅ CP 6.1 |
 
-### O que falta para fechar a Fase 6 (2026-08-21)
+### Fase 6 — o que fechou em 2026-08-21 (tarde)
 
-**Uma coisa só, e ela está isolada:** ler as Condições da ficha ORIGINAL no
-modo de visualização. A escrita já existe e funciona; o que falta é o mapa
-*rótulo visível → campo de edição*.
+A leitura das Condições da ficha ORIGINAL pela **visualização** está pronta, e
+com ela a Fase 6 não tem mais buraco estrutural. O caminho:
 
-O problema é que os dois lados falam línguas diferentes:
-
-| Onde | Como o campo se chama |
+| Peça | Onde |
 |---|---|
-| Original (visualização) | `Comprimento da embalagem unitária` — texto do `<label>` |
-| Alvo (edição) | `Input_PackingLength` — sufixo do id |
+| Abrir a seção e as sub-abas em visualização | `robo.ler_condicoes_da_original` |
+| Varrer os pares rótulo→valor | `extrator.ler_secao_visivel` |
+| Normalizar o rótulo (sem acento, sem `:`, caixa e espaço) | `condicoes.chave_de_rotulo` |
+| Converter para `{sub-aba: {sufixo: valor}}` | `condicoes.converter_da_visualizacao` |
+| **A tabela `rótulo → (sub-aba, sufixo)`** | `seletores_duplicada.CONDICOES_ROTULO_PARA_CAMPO` |
+| Escrever, salvar e conferir na alvo | `condicoes.escrever` |
 
-Enquanto esse mapa não existe, `ler` devolve vazio, o robô não copia e a
-coluna `CONDIÇÕES` só fecha quando **outra pessoa** já preencheu a alvo (é o
-que `conferir_ja_preenchida` detecta desde 2026-08-21).
+**Como a tabela se preencheu:** ela nasceu vazia de manhã, com a conversão
+logando o texto integral de todo rótulo desconhecido. A rodada das 16:16 na
+ficha `4500063671.1257` imprimiu os 17 rótulos da tela, e a tabela é
+transcrição daquela lista — não tradução dos nomes em inglês.
+
+**12 mapeados, 5 fora.** Ficaram de fora dois rádios (`Necessidade de controle
+de temperatura e umidade`, `Posição de armazenamento`), dois checkboxes
+(`Nocivo`, `Outros cuidados`) e `Classificação conforme NBR 10004`. Na
+visualização os quatro primeiros são texto (`Horizontal`, `Sem necessidade`);
+na edição são `RadioButtonN-input`/`CheckboxN`, e **qual número é qual pergunta
+não está documentado em lugar nenhum**. Marcar o rádio errado é pior do que
+deixar vazio — rádio errado parece resposta. Os cinco continuam saindo no log.
+
+#### ⚠️ A metade em espanhol, e por que CONDIÇÕES não fecha COMPLETO
+
+Cada texto longo tem par na edição (`TextArea_XxxPT` / `TextArea_XxxES`) e a
+visualização mostra **um** valor: o bloco é o `Block_ExpressionBothLenguage`, e
+o visível é o português — o espanhol, se existe, está atrás do tooltip.
+
+Copiar o texto português para dentro do campo espanhol seria inventar uma
+tradução na ficha de outra pessoa. Então o robô copia o PT, nomeia no log os
+`..._ES` que ficaram para trás e devolve a seção **incompleta**. É decisão
+reversível: se o usuário disser que o mesmo texto vale nos dois idiomas, muda
+uma regra em `condicoes.sufixos_em_espanhol_nao_copiados` e CONDIÇÕES passa a
+fechar.
 
 Depois disso, o CP 5.5 (remover o Selenium) destrava — `ficha_duplicada.py` é o
 último consumidor.
-
-#### A máquina já está pronta; falta só a tabela (2026-08-21, tarde)
-
-O caminho inteiro foi construído e testado — o que sobrou é **dado**, não código:
-
-| Peça | Onde | Estado |
-|---|---|---|
-| Abrir a seção e as sub-abas em visualização | `robo.ler_condicoes_da_original` | ✅ |
-| Varrer os pares rótulo→valor | `extrator.ler_secao_visivel` (já existia) | ✅ |
-| Normalizar o rótulo (sem acento, sem `:`, caixa e espaço) | `condicoes.chave_de_rotulo` | ✅ |
-| Converter para `{sub-aba: {sufixo: valor}}` | `condicoes.converter_da_visualizacao` | ✅ |
-| Escrever, salvar e conferir na alvo | `condicoes.escrever` (já existia) | ✅ |
-| **A tabela `rótulo → (sub-aba, sufixo)`** | `seletores_duplicada.CONDICOES_ROTULO_PARA_CAMPO` | ⬜ **vazia** |
-
-**A tabela nasceu vazia de propósito.** A redação exata dos rótulos não existe
-em lugar nenhum do repositório: `upload_conditions.py` e a
-`docs/base-conhecimento/05-upload-conditions-backend.md` dão o *significado* de
-alguns campos (`Input_PackingLength` é o comprimento da embalagem), mas
-significado não é o texto que a tela mostra. `Comprimento`, `Comprimento da
-embalagem` e `Comprimento da embalagem unitária` são três chaves diferentes, e
-a errada **não casa em silêncio** — o campo não copia e ninguém fica sabendo.
-
-**Como ela se preenche, em uma rodada:** `converter_da_visualizacao` loga, no
-log normal (não na auditoria), o texto integral de **todo** rótulo que não
-reconhece:
-
-```
-[i] Condições: 23 rótulo(s) da ficha original ainda não estão no mapa
-    RÓTULO→campo. Copie a lista abaixo para fechar a seção:
-    · Comprimento da embalagem unitária
-    · Peso líquido
-    …
-```
-
-Basta rodar o botão **2b** numa ficha com Condições preenchidas e mandar essa
-lista — preencher a tabela vira transcrição, e a seção fecha.
 
 ---
 
