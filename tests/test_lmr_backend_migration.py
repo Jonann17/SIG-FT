@@ -213,76 +213,68 @@ def test_resolver_linha_inicial_ask_recusado_no_op_default_devolve_zero(auto):
     assert resultado == 0
 
 
-def test_resolver_linha_inicial_usuario_recusa_devolve_zero_sem_chamar_input(auto):
+def test_callback_input_nunca_e_chamado(auto):
+    """Sobrou da época do modal, e continua valendo pelo motivo oposto: antes
+    `callback_input` só não era chamado quando o usuário recusava; hoje ele não
+    é chamado NUNCA -- o parâmetro segue na assinatura porque a cadeia de
+    chamadas o repassa, mas não faz nada."""
     resultado = auto._resolver_linha_inicial(
         [0, 1, 2],
-        UICallbacks(log=lambda *a, **k: None, ask=lambda p, *, titulo=None: False),
-        callback_input=_boom,
+        UICallbacks(log=lambda *a, **k: None, ask=lambda p, *, titulo=None: True),
+        callback_input=_boom,   # estoura se for chamado
     )
     assert resultado == 0
 
 
-def test_resolver_linha_inicial_usuario_aceita_e_informa_linha_valida(auto):
+# ===========================================================================
+# Linha inicial: 0 por padrão, sem perguntar (2026-08-21)
+# ===========================================================================
+# *"O default das fichas deve ser começar do 0, e somente quando eu peço para
+# começar de uma linha específica que deve aparecer a mensagem da ficha
+# específica (tipo um toggle pra habilitar/desabilitar)."*
+#
+# Antes, TODA execução abria um Sim/Não e, se sim, um segundo diálogo pedindo o
+# número — duas caixas por ficha para uma resposta que é "não" quase sempre.
+# Quem decide agora é a TELA, pelo toggle, e ela manda o número pronto.
+
+def _cbs(logs=None):
+    return UICallbacks(log=(logs.append if logs is not None else (lambda *a, **k: None)),
+                       ask=lambda p, *, titulo=None: True)
+
+
+def test_sem_linha_inicial_comeca_do_zero_e_NAO_pergunta(auto):
+    perguntou = []
+
     resultado = auto._resolver_linha_inicial(
-        [0, 1, 2, 3],
-        UICallbacks(log=lambda *a, **k: None, ask=lambda p, *, titulo=None: True),
-        callback_input=lambda titulo, msg: "2",
+        [0, 1, 2],
+        UICallbacks(log=lambda *a, **k: None,
+                    ask=lambda p, *, titulo=None: perguntou.append(p) or True),
+        callback_input=lambda *_a: "2",
     )
-    assert resultado == 2
+
+    assert resultado == 0
+    assert perguntou == []   # nenhuma caixa, nem o Sim/Não nem a do número
 
 
-def test_resolver_linha_inicial_entrada_nao_numerica_cai_para_zero_e_loga(auto):
+def test_a_tela_manda_a_linha_e_ela_e_usada(auto):
+    assert auto._resolver_linha_inicial([0, 1, 2, 3], _cbs(), linha_inicio=2) == 2
+
+
+def test_linha_fora_da_faixa_cai_para_zero_COM_aviso(auto):
+    """Silenciar aqui faria o usuário pedir a linha 50 numa ficha de 3 códigos
+    e achar que ela foi processada a partir dali."""
     logs = []
-    resultado = auto._resolver_linha_inicial(
-        [0, 1, 2],
-        UICallbacks(log=logs.append, ask=lambda p, *, titulo=None: True),
-        callback_input=lambda titulo, msg: "não é um número",
-    )
-    assert resultado == 0
-    assert logs == ["Entrada inválida. Começando do 0."]
+
+    assert auto._resolver_linha_inicial([0, 1, 2], _cbs(logs), linha_inicio=50) == 0
+    assert any("fora da faixa" in linha for linha in logs)
 
 
-@pytest.mark.parametrize("valor_fora_do_range", ["-1", "99"])
-def test_resolver_linha_inicial_fora_do_intervalo_e_limitado_a_zero(auto, valor_fora_do_range):
-    resultado = auto._resolver_linha_inicial(
-        [0, 1, 2],
-        UICallbacks(log=lambda *a, **k: None, ask=lambda p, *, titulo=None: True),
-        callback_input=lambda titulo, msg: valor_fora_do_range,
-    )
-    assert resultado == 0
+def test_linha_negativa_tambem_cai_para_zero(auto):
+    assert auto._resolver_linha_inicial([0, 1, 2], _cbs(), linha_inicio=-1) == 0
 
 
-def test_resolver_linha_inicial_chama_ask_com_pergunta_e_titulo_corretos(auto):
-    vistos = {}
+def test_linha_nao_numerica_cai_para_zero_com_aviso(auto):
+    logs = []
 
-    def ask_spy(pergunta, *, titulo=None):
-        vistos["ask"] = (pergunta, titulo)
-        return False
-
-    auto._resolver_linha_inicial(
-        [0, 1, 2],
-        UICallbacks(log=lambda *a, **k: None, ask=ask_spy),
-        callback_input=lambda *a: "0",
-    )
-
-    assert vistos["ask"] == (
-        "Deseja começar de uma linha específica (não do zero)?",
-        "Configuração LMR",
-    )
-
-
-def test_resolver_linha_inicial_chama_callback_input_com_mensagem_original(auto):
-    vistos = {}
-
-    def input_spy(titulo, msg):
-        vistos["input"] = (titulo, msg)
-        return "1"
-
-    resultado = auto._resolver_linha_inicial(
-        [0, 1, 2, 3, 4],
-        UICallbacks(log=lambda *a, **k: None, ask=lambda p, *, titulo=None: True),
-        callback_input=input_spy,
-    )
-
-    assert resultado == 1
-    assert vistos["input"] == ("Linha Inicial", "Digite o número da linha (0 a 4):")
+    assert auto._resolver_linha_inicial([0, 1, 2], _cbs(logs), linha_inicio="abc") == 0
+    assert any("inválida" in linha for linha in logs)

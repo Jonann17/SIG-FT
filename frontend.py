@@ -3665,6 +3665,41 @@ class ModuloLMR(ctk.CTkFrame):
                                      fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"], text_color=COLORS["text_white"])
         self.btn_run.pack(pady=10)
 
+        # COMEÇAR DE UM CÓDIGO ESPECÍFICO — desligado por padrão.
+        #
+        # ⚠️ 2026-08-21, pedido do usuário: *"o default das fichas deve ser
+        # começar do 0, e somente quando eu peço para começar de uma linha
+        # específica que deve aparecer a mensagem (tipo um toggle pra
+        # habilitar/desabilitar)"*. Antes, TODA execução abria um Sim/Não e,
+        # se sim, um segundo diálogo pedindo o número — duas caixas por ficha
+        # para uma resposta que é "não" quase sempre.
+        f_inicio = ctk.CTkFrame(frm_main, fg_color="transparent")
+        f_inicio.pack(pady=(4, 8))
+
+        self.var_linha_inicial = ctk.BooleanVar(value=False)
+        self.entry_linha_inicial = ctk.CTkEntry(f_inicio, width=70, placeholder_text="0",
+                                                justify="center")
+
+        def _alternar():
+            ligado = self.var_linha_inicial.get()
+            self.entry_linha_inicial.configure(state="normal" if ligado else "disabled")
+            if not ligado:
+                self.entry_linha_inicial.delete(0, "end")
+
+        ctk.CTkSwitch(f_inicio, text="Começar de um código específico",
+                      variable=self.var_linha_inicial, command=_alternar,
+                      font=("Roboto", 12), progress_color=COLORS["accent"]).pack(side="left", padx=(0, 10))
+        self.entry_linha_inicial.pack(side="left")
+        self.entry_linha_inicial.configure(state="disabled")
+
+        ctk.CTkLabel(
+            frm_main,
+            text=("Desligado, processa a ficha inteira desde o começo.\n"
+                  "O número conta CÓDIGOS LMR (não linhas do Excel): o mesmo código\n"
+                  "espalhado pela planilha é uma aplicação só."),
+            text_color="gray70", font=("Roboto", 11), justify="center",
+        ).pack(pady=(0, 10))
+
         ctk.CTkLabel(frm_main, text="O script pedirá:\n1. Arquivo Excel LMR\n2. Seleção das Fichas (Checkbox)",
                      text_color="gray70", font=("Roboto", 12)).pack(pady=(10, 20))
 
@@ -3782,6 +3817,28 @@ class ModuloLMR(ctk.CTkFrame):
         ctk.CTkButton(btn_frame, text="Todos", width=80, command=selecionar_todos, fg_color="#3A3A3A", hover_color="#454545").pack(side="left", padx=10)
         ctk.CTkButton(btn_frame, text="CONFIRMAR", width=150, command=confirmar, fg_color=COLORS["accent"], text_color="#161616", hover_color=COLORS["accent_hover"]).pack(side="right", padx=10)
 
+    def _linha_inicial_escolhida(self):
+        """Número do toggle, ou `None` quando ele está desligado.
+
+        `None` e `0` NÃO são a mesma coisa para o serviço: `None` quer dizer
+        "não me pergunte nada, comece do começo"; um número quer dizer "a tela
+        já perguntou, use este". Ler a caixa desligada devolveria `0` e a
+        distinção se perderia -- inofensiva hoje, mas é ela que permite o
+        serviço avisar quando o número está fora da faixa.
+        """
+        if not getattr(self, "var_linha_inicial", None) or not self.var_linha_inicial.get():
+            return None
+        texto = (self.entry_linha_inicial.get() or "").strip()
+        if not texto:
+            return None
+        try:
+            return int(texto)
+        except ValueError:
+            # O serviço também trata, mas avisar aqui é mais cedo e mais perto
+            # de quem digitou.
+            self.log(f"Linha inicial {texto!r} não é um número. Começando do 0.")
+            return None
+
     def _worker_lmr(self, selecionados, df_completo):
         auto = lmr_backend.LMRAutomation()
         try:
@@ -3795,7 +3852,9 @@ class ModuloLMR(ctk.CTkFrame):
             def cb_ask(tit, msg): return messagebox.askyesno(tit, msg)
             def cb_input(tit, msg): return simpledialog.askstring(tit, msg)
 
-            auto.processar_lista(selecionados, df_completo, callback_log=cb_log, callback_ask=cb_ask, callback_input=cb_input)
+            auto.processar_lista(selecionados, df_completo, callback_log=cb_log,
+                                 callback_ask=cb_ask, callback_input=cb_input,
+                                 linha_inicio=self._linha_inicial_escolhida())
 
             self.log("Automação LMR finalizada.")
             messagebox.showinfo("Sucesso", "Processo concluído.")

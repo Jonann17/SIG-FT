@@ -163,16 +163,32 @@ def test_falha_antes_do_indice_avancar_sem_provedor_de_ask_tambem_progride():
     assert len(erros) == 2  # os 2 itens processados (e falhos), sem travar
 
 
-def test_ask_positivo_repete_o_mesmo_item_mas_o_teto_denuncia_se_nunca_sair():
-    # `ask` devolvendo True = "tentar de novo" -> repete de propósito. Como a
-    # falha injetada é permanente, o laço só termina pelo teto de segurança:
-    # é a prova de que "tentar de novo" REALMENTE repete o mesmo item (e de
-    # que o teste detectaria uma regressão para laço infinito).
+def test_nem_com_ask_positivo_o_laco_repete_o_mesmo_item():
+    """⚠️ MUDOU EM 2026-08-21, e para melhor.
+
+    Antes o agrupamento acontecia DENTRO do laço, linha a linha, e uma falha
+    logo na leitura da linha deixava o índice parado -- daí existir um ramo que
+    perguntava "tentar de novo?" e, com "sim", repetia o mesmo item. Este teste
+    provava que o laço realmente repetia, e que um teto detectaria a regressão
+    para laço infinito.
+
+    Com o agrupamento feito ANTES do laço (`agrupar_por_codigo`, para o código
+    espalhado na planilha), não há mais nada que possa falhar antes do índice
+    avançar: os grupos já estão em memória. O ramo de repetição ficou
+    inalcançável, e o comportamento que sobra é o SEGURO -- avisar e seguir --,
+    que é o que o próprio código já dizia preferir: *"o item pode ter sido
+    salvo parcialmente no portal, e repetir cegamente duplicaria TAGs"*.
+
+    O teto de laço infinito continua armado; o que este teste prende agora é
+    que ele NÃO dispara nem com o usuário respondendo "sim" a tudo.
+    """
     registro = {"logs": [], "asks": []}
     df = _FakeDF(_linhas("COD-A", "COD-B"), falhar_em=0)
 
-    with pytest.raises(_LoopInfinitoDetectado):
-        _automacao()._processar_ficha_lmr_interna(df, _callbacks(True, registro))
+    erros = _automacao()._processar_ficha_lmr_interna(df, _callbacks(True, registro))
+
+    assert len(erros) == 2          # os dois itens tentados, nenhum repetido
+    assert len(registro["asks"]) == 2
 
 
 # =============================================================================

@@ -95,6 +95,44 @@ def _mapear_colunas_lmr(colunas_da_aba):
     return mapa
 
 
+def agrupar_por_codigo(linhas):
+    """[(código, [tags…])] — uma entrada por CÓDIGO LMR, na ordem em que ele
+    aparece pela primeira vez.
+
+    ⚠️ CONSERTO DE 2026-08-21, pedido do usuário: *"se o código LMR for X na
+    linha 1 e na linha 2 Y e na linha 3 X, ele tem que identificar que são 1
+    código e 2 tags distintas, contando 2 quantidades instaladas no código X"*.
+
+    A versão anterior agrupava só TAGs **consecutivas** (`while … == código`),
+    o que quer dizer que a planilha precisava estar ORDENADA por código para
+    dar o resultado certo. Espalhado, o mesmo código virava duas aplicações de
+    1 TAG cada -- duas visitas ao portal, cada uma gravando quantidade 1, e a
+    última sobrescrevendo a primeira. A planilha não tem obrigação de estar
+    ordenada, e o robô não avisava nada.
+
+    **Tag repetida CONTA.** *"Se aparece com a mesma tag não tem problema, são
+    2 distintos. Quem manda é o código: o código LMR repetido significa que
+    está em determinado lugar, e daí a quantidade de TAG (independentemente
+    distinta ou não) determina a quantidade instalada naquele código LMR."*
+    Por isso a lista de tags é uma LISTA e não um conjunto -- trocar por `set`
+    aqui perderia unidade instalada em silêncio.
+
+    Linha sem código é descartada: não há aplicação de LMR sem lugar onde ela
+    está instalada, e mandá-la ao portal escreveria num campo em branco.
+    """
+    grupos = {}
+    ordem = []
+    for codigo, tag in linhas:
+        chave = str(codigo or "").strip()
+        if not chave:
+            continue
+        if chave not in grupos:
+            grupos[chave] = []
+            ordem.append(chave)
+        grupos[chave].append(str(tag or "").strip())
+    return [(chave, grupos[chave]) for chave in ordem]
+
+
 def listar_abas(caminho_excel):
     """Nomes das abas do arquivo, na ordem em que aparecem nele.
 
@@ -200,42 +238,49 @@ class LMRAutomation:
     # que só começa em `self.wait.until(...)` depois de resolvida a linha
     # inicial). Mesma lógica do original, só reorganizada num método próprio
     # — ver tests/test_lmr_backend_migration.py.
-    def _resolver_linha_inicial(self, df_filtrado, callbacks: UICallbacks, callback_input=None) -> int:
+    def _resolver_linha_inicial(self, df_filtrado, callbacks: UICallbacks,
+                                callback_input=None, linha_inicio=None) -> int:
+        """Índice do primeiro grupo a processar. Padrão: **0**, sem perguntar.
+
+        ⚠️ MUDOU EM 2026-08-21, a pedido do usuário: *"o default das fichas
+        deve ser começar do 0, e somente quando eu peço para começar de uma
+        linha específica que deve aparecer a mensagem da ficha específica (tipo
+        um toggle pra habilitar/desabilitar)"*.
+
+        Antes, TODA execução abria um Sim/Não ("deseja começar de uma linha
+        específica?") e, se sim, um segundo diálogo pedindo o número -- duas
+        caixas por ficha, para uma resposta que é "não" quase sempre. Agora
+        quem decide é a TELA, pelo toggle, e ela manda o número pronto.
+
+        `callback_input` continua na assinatura porque `_processar_ficha_lmr_
+        interna` o repassa, mas NÃO é mais consultado: manter o parâmetro evita
+        mexer na cadeia de chamadas por causa de um argumento morto, e o
+        docstring diz que ele não faz nada.
+
+        Fora da faixa vira 0 **com aviso no log** -- silenciar aqui faria o
+        usuário pedir a linha 50 numa ficha de 3 códigos e achar que ela foi
+        processada a partir dali.
         """
-        Pergunta opcional ao usuário se deseja começar de uma linha
-        específica (em vez do zero). `callback_input` continua CRU (texto
-        livre, fora de `UICallbacks` — ver core/callbacks.py); só é
-        consultado se foi de fato passado (mesmo gate do original:
-        `if callback_ask and callback_input`). Como `callbacks.ask` agora é
-        SEMPRE chamável (no-op devolve `False` quando não há provedor real —
-        ver `UICallbacks`), o gate `and callback_ask` fica redundante e é
-        substituído por só `if callback_input`: se não houver provedor real
-        de `ask`, `callbacks.ask(...)` devolve `False` e o resultado final
-        (`linha_inicio == 0`, sem chamar `callback_input`) é idêntico ao
-        comportamento original quando `callback_ask` estava ausente.
-        """
-        linha_inicio = 0
-        if callback_input:
-            # Pergunta se quer começar de linha específica (Sim/Não)
-            usar_personalizado = callbacks.ask(
-                "Deseja começar de uma linha específica (não do zero)?",
-                titulo="Configuração LMR",
-            )
-            if usar_personalizado:
-                try:
-                    val = callback_input("Linha Inicial", f"Digite o número da linha (0 a {len(df_filtrado)-1}):")
-                    linha_inicio = int(val)
-                except Exception:
-                    callbacks.log("Entrada inválida. Começando do 0.")
-                    linha_inicio = 0
+        if linha_inicio is None:
+            return 0
+
+        try:
+            linha_inicio = int(linha_inicio)
+        except (TypeError, ValueError):
+            callbacks.log(f"Linha inicial inválida ({linha_inicio!r}). Começando do 0.")
+            return 0
 
         if linha_inicio < 0 or linha_inicio >= len(df_filtrado):
-            linha_inicio = 0
+            callbacks.log(
+                f"Linha inicial {linha_inicio} fora da faixa (0 a "
+                f"{max(len(df_filtrado) - 1, 0)}). Começando do 0.")
+            return 0
 
         return linha_inicio
 
     # --- LÓGICA CORE (MANTIDA DO ORIGINAL) ---
-    def _processar_ficha_lmr_interna(self, df_filtrado, callbacks: UICallbacks, callback_input=None):
+    def _processar_ficha_lmr_interna(self, df_filtrado, callbacks: UICallbacks,
+                                     callback_input=None, linha_inicio=None):
         """
         Executa a lógica interna de preenchimento da LMR para uma ficha.
         Mantém a lógica de agrupamento de TAGs e input de linha inicial.
@@ -254,32 +299,42 @@ class LMRAutomation:
             callbacks.log("Nenhuma aplicação encontrada. Pulando.")
             return []
 
-        linha_inicio = self._resolver_linha_inicial(df_filtrado, callbacks, callback_input)
+        # AGRUPAMENTO POR CÓDIGO, INDEPENDENTE DA ORDEM (2026-08-21).
+        #
+        # Antes o laço andava linha a linha e juntava TAGs CONSECUTIVAS, o que
+        # exigia a planilha ordenada por código. Espalhado (X, Y, X), o mesmo
+        # código virava duas aplicações de 1 TAG cada -- duas visitas ao
+        # portal, a segunda sobrescrevendo a quantidade da primeira, sem aviso
+        # nenhum. Ver `agrupar_por_codigo`.
+        #
+        # A unidade de iteração passou a ser o CÓDIGO, não a linha da planilha:
+        # `linha_inicio` conta grupos, e o log diz quantos são.
+        grupos = agrupar_por_codigo(
+            (df_filtrado.loc[i, 'Código_PMIB'], df_filtrado.loc[i, 'TAG_PMIB'])
+            for i in range(len(df_filtrado))
+        )
+        callbacks.log(
+            f"{len(df_filtrado)} linha(s) -> {len(grupos)} código(s) LMR distinto(s)."
+        )
+
+        # Depois do agrupamento, e não antes: `linha_inicio` conta GRUPOS,
+        # então a faixa válida só existe quando os grupos existem.
+        linha_inicio = self._resolver_linha_inicial(
+            grupos, callbacks, callback_input, linha_inicio)
 
         processados_ok = []
         processados_erro_ficha = []
 
-        # Loop a partir da linha escolhida
         index = linha_inicio
-        while index < len(df_filtrado):
+        while index < len(grupos):
             codigo_pmib_item = ""
-            # CP 4.2: guarda o índice de ENTRADA desta iteração. É o que
-            # permite distinguir, no `except` abaixo, se o agrupamento chegou
-            # a avançar `index` (linha `index += 1` dentro do try) ou não --
-            # a diferença entre "o laço segue sozinho" e "o laço repete este
-            # mesmo item para sempre". Ver o `except` para o racional.
+            # CP 4.2: guarda o índice de ENTRADA desta iteração, para o
+            # `except` distinguir "o laço segue sozinho" de "o laço repete este
+            # mesmo item para sempre".
             index_no_inicio = index
             try:
-                row = df_filtrado.loc[index]
-                codigo_pmib_item = str(row['Código_PMIB'])
-
-                # --- LÓGICA DE AGRUPAMENTO (ORIGINAL) ---
-                grupo_tags = []
-                # Agrupa todas as TAGs consecutivas com o mesmo Código_PMIB
-                while index < len(df_filtrado) and str(df_filtrado.loc[index, 'Código_PMIB']) == codigo_pmib_item:
-                    grupo_tags.append(str(df_filtrado.loc[index, 'TAG_PMIB']))
-                    index += 1  # avança index
-                # ----------------------------------------
+                codigo_pmib_item, grupo_tags = grupos[index]
+                index += 1
 
                 quantidade = len(grupo_tags)
                 callbacks.log(f"Processando Cód {codigo_pmib_item} com {quantidade} TAG(s)")
@@ -390,6 +445,7 @@ class LMRAutomation:
         callback_log=None,
         callback_ask=None,
         callback_input=None,
+        linha_inicio=None,
     ):
         """
         Executa a automação para a lista de PMIBs selecionados.
@@ -456,7 +512,8 @@ class LMRAutomation:
                 df_filtrado = df_completo[df_completo['PMIB'] == pmib_atual].reset_index(drop=True)
 
                 # 4.5. Processamento Interno
-                erros = self._processar_ficha_lmr_interna(df_filtrado, callbacks, callback_input)
+                erros = self._processar_ficha_lmr_interna(
+                    df_filtrado, callbacks, callback_input, linha_inicio)
 
                 if erros:
                     fichas_com_erro.append(pmib_atual)
