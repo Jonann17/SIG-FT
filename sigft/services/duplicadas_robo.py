@@ -69,7 +69,28 @@ ROTULOS_DE_REFERENCIA_FORNECEDOR = (
 SECOES_DA_PLANILHA = {
     config.COL_INFO_GERAIS: ("fabricante", "referencia", "fornecedor"),
     config.COL_CARACT_TECNICAS: ("caracteristicas",),
+    config.COL_CONDICOES: ("condicoes",),
+    config.COL_DOCS_IMAGENS: ("documentos", "imagens"),
 }
+
+# Seções que este robô AINDA NÃO faz. Cada uma vira um resultado `pendente`
+# em toda ficha, o que produz três coisas: uma linha no log, a coluna
+# correspondente marcada INCOMPLETO no `_STATUS_PMIB`, e a ficha NÃO contada
+# como falha no resumo.
+#
+# ⚠️ ISTO REVERTE UMA DECISÃO MINHA, e o motivo é um relato do usuário. Eu
+# tinha escrito que seção não tentada NÃO devia ser escrita na planilha, para
+# não fazer ruído. Em 2026-08-17 ele reportou que "documentos e condições já
+# estão preenchendo" testando pelo botão 2b -- que não tem uma linha de código
+# para nenhum dos dois. O que ele viu era resíduo de uma rodada anterior do
+# robô antigo na mesma ficha. Uma coluna EM BRANCO não diz nada; uma coluna
+# escrita INCOMPLETO teria dito a verdade antes de a ficha ser considerada
+# pronta. O "ruído" que eu quis evitar era exatamente a informação que faltou.
+SECOES_NAO_IMPLEMENTADAS = (
+    ("condicoes", "abas de Condições"),
+    ("documentos", "associar documentos"),
+    ("imagens", "enviar imagens"),
+)
 
 
 class ResultadoDaFicha:
@@ -262,6 +283,14 @@ def processar_ficha(portal, ficha, callback_log=None):
         resultado.registrar(
             injetor.limpar_caracteristicas(portal, ficha.ficha_original, callback_log))
 
+        # O que este robô ainda não faz, dito ficha a ficha em vez de uma vez
+        # no fim do lote: é o que impede alguém olhar a ficha, ver as seções
+        # preenchidas por uma rodada anterior do robô antigo e concluir que
+        # este as fez.
+        for nome, descricao in SECOES_NAO_IMPLEMENTADAS:
+            resultado.registrar(injetor.ResultadoDaSecao(
+                nome, False, pendente=True, detalhe=f"{descricao} -- CP 6.4"))
+
     except Exception as erro:  # noqa: BLE001 -- ver docstring
         resultado.erro_fatal = f"{type(erro).__name__}: {erro}"
         _log(f"   [Erro] {resultado.erro_fatal}")
@@ -314,9 +343,9 @@ def status_por_secao(resultado_da_ficha):
     """{coluna do `_STATUS_PMIB`: "COMPLETO" | "INCOMPLETO"} para UMA ficha.
 
     Uma coluna só recebe COMPLETO se TODAS as seções que a alimentam deram
-    certo. Seção que o robô nem tentou (Condições, Documentos) não aparece:
-    escrever INCOMPLETO nelas seria correto mas ruidoso -- a ficha ainda vai
-    passar pelo robô antigo ou pela mão -- e escrever COMPLETO seria mentira.
+    certo. Seção que o robô ainda não implementou conta como NÃO completa, e a
+    coluna dela recebe INCOMPLETO -- ver `SECOES_NAO_IMPLEMENTADAS` para por que
+    essa decisão foi revertida.
     """
     # Pendente conta como NÃO completo: a seção não foi preenchida, e é
     # exatamente isso que a coluna do `_STATUS_PMIB` precisa dizer.
@@ -327,6 +356,8 @@ def status_por_secao(resultado_da_ficha):
         relevantes = [por_nome[nome] for nome in nomes if nome in por_nome]
         if not relevantes:
             continue
+        # Nota: coluna cujas seções são todas PENDENTES cai aqui como
+        # INCOMPLETO -- e é de propósito. Ver `SECOES_NAO_IMPLEMENTADAS`.
         marcas[coluna] = (status_sheet.VALOR_COMPLETO if all(relevantes)
                           else status_sheet.VALOR_INCOMPLETO)
     return marcas

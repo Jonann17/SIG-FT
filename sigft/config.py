@@ -179,6 +179,11 @@ COL_CARACT_TECNICAS = "CARACT. TÉCNICAS"
 # upload_tech_specs_backend, upload_ficha_duplicada, pmib_manager_backend
 # (coluna de seção "COMPLETO" do STATUS_PMIB).
 
+COL_DOCS_IMAGENS = "DOCUMENTOS E IMAGENS"
+# Era literal solto em `frontend._worker_salvar` -- a única das quatro colunas
+# de seção que não tinha constante. Ganhou uma em 2026-08-17, quando a marcação
+# COMPLETO/INCOMPLETO passou a ser calculada por seção em vez de fixa.
+
 COL_INFO_GERAIS = "INFO. GERAIS"
 # upload_ficha_duplicada, pmib_manager_backend (coluna de seção "COMPLETO"
 # do STATUS_PMIB).

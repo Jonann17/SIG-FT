@@ -157,8 +157,13 @@ def test_todas_as_secoes_ok_e_ficha_ok(monkeypatch):
     resultado = robo.processar_ficha(portal, _Ficha(), callback_log=lambda _m: None)
 
     assert resultado.ok is True
-    assert [s.nome for s in resultado.secoes] == [
-        "fabricante", "referencia", "fornecedor", "caracteristicas"]
+    feitas = [s.nome for s in resultado.secoes if not s.pendente]
+    assert feitas == ["fabricante", "referencia", "fornecedor", "caracteristicas"]
+    # E as que o robô NÃO faz entram declaradas, ficha a ficha. Sem isso, quem
+    # olhasse a ficha veria as seções preenchidas por uma rodada anterior do
+    # robô antigo e concluiria que este as fez -- aconteceu em 2026-08-17.
+    assert [s.nome for s in resultado.secoes if s.pendente] == [
+        "condicoes", "documentos", "imagens"]
 
 
 def test_uma_secao_falha_e_a_ficha_NAO_e_sucesso(monkeypatch):
@@ -208,7 +213,7 @@ def test_fabricante_ausente_NAO_impede_o_resto(monkeypatch):
 
     resultado = robo.processar_ficha(portal, _Ficha(), callback_log=logs.append)
 
-    assert len(resultado.secoes) == 4
+    assert len([s for s in resultado.secoes if not s.pendente]) == 4
     assert any("fabricante" in linha for linha in logs)
 
 
@@ -362,4 +367,4 @@ def test_log_com_atributo_ausente_nao_derruba_a_ficha(monkeypatch):
     resultado = robo.processar_ficha(portal, _FichaCrua(), callback_log=lambda _m: None)
 
     assert resultado.erro_fatal == ""
-    assert len(resultado.secoes) == 4
+    assert len([s for s in resultado.secoes if not s.pendente]) == 4
