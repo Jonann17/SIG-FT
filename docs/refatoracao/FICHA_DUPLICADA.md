@@ -279,11 +279,42 @@ Nenhuma impede começar; todas impedem **rodar em lote sem conferir**.
 | Botão na tela ("2b. Robô NOVO") | `frontend.py` (`ModuloCopiaFichas`) | ✅ CP 6.3 |
 | Fornecedor (combo + referência) | `services/duplicadas_injetor.py` | ✅ CP 6.3 (corrigido 2026-08-18) |
 | GE Vernova (referência CMI/GE) | `services/duplicadas_injetor.py` | ✅ CP 6.3 |
-| Documentos e imagens | novo serviço | ☐ CP 6.4 |
-| Condições (todas as abas menos a Financeira) | novo serviço | ☐ CP 6.4 |
+| Documentos (associar datasheet) | `services/duplicadas_documentos.py` | ✅ CP 6.4 |
+| Imagens (blob → FilePond, espera o upload) | `services/duplicadas_imagens.py` | ✅ CP 6.4 — validado no portal 2026-08-21 |
+| PDM da alvo antes das características | `services/duplicadas_pdm.py` | ✅ CP 6.4 |
+| COMPLETO/INCOMPLETO por coluna no `_STATUS_PMIB` | `services/duplicadas_robo.py` | ✅ CP 6.4 |
+| Condições — ESCREVER na alvo | `services/duplicadas_condicoes.py` | ✅ CP 6.4 (mecânica pronta) |
+| Condições — LER da original em visualização | `services/duplicadas_extrator.py` | ☐ **é o que falta** — sem o mapa RÓTULO→campo, a origem chega vazia |
+| Condições — conferir se a alvo já está preenchida | `services/duplicadas_condicoes.py` | ✅ 2026-08-21 |
 | Abas de Condições (exclui a Financeira) | `services/duplicadas_spec.py` | ✅ CP 6.1 |
 | Modo de leitura + abas de status | `services/duplicadas_spec.py` | ✅ CP 6.1 |
 | Descrição/limite das imagens | `services/duplicadas_spec.py` | ✅ CP 6.1 |
+
+### O que falta para fechar a Fase 6 (2026-08-21)
+
+**Uma coisa só, e ela está isolada:** ler as Condições da ficha ORIGINAL no
+modo de visualização. A escrita já existe e funciona; o que falta é o mapa
+*rótulo visível → campo de edição*.
+
+O problema é que os dois lados falam línguas diferentes:
+
+| Onde | Como o campo se chama |
+|---|---|
+| Original (visualização) | `Comprimento da embalagem unitária` — texto do `<label>` |
+| Alvo (edição) | `Input_PackingLength` — sufixo do id |
+
+Enquanto esse mapa não existe, `ler` devolve vazio, o robô não copia e a
+coluna `CONDIÇÕES` só fecha quando **outra pessoa** já preencheu a alvo (é o
+que `conferir_ja_preenchida` detecta desde 2026-08-21).
+
+O material para montar o mapa **já está no log de auditoria**: o robô grava o
+HTML inteiro da seção Condições em visualização a cada ficha. Os rótulos estão
+lá; falta parear com os ~26 sufixos de `CONDICOES_POR_SUBABA`.
+
+Depois disso, o CP 5.5 (remover o Selenium) destrava — `ficha_duplicada.py` é o
+último consumidor.
+
+---
 
 O módulo antigo (`services/ficha_duplicada.py`) continua **intocado e
 funcionando em Selenium** até a reconstrução terminar. É também o último
