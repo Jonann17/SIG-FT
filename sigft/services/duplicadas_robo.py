@@ -89,9 +89,11 @@ ROTULOS_DE_FORNECEDOR = (
 #   no `_STATUS_PMIB`. Nunca chuta.
 
 # Colunas de seção do `_STATUS_PMIB` que este robô preenche, e quais
-# resultados entram em cada uma. As de Condições e Documentos/Imagens ficam de
-# fora até o CP 6.4 -- marcar como COMPLETO uma seção que o robô nem tentou
-# seria mentir na planilha, que é onde a mentira dura mais.
+# resultados entram em cada uma. Uma coluna só recebe COMPLETO se TODAS as
+# seções que a alimentam derem certo -- marcar como COMPLETO o que ficou pela
+# metade seria mentir na planilha, que é onde a mentira dura mais.
+#
+# As quatro colunas estão cobertas desde o CP 6.4.
 #
 # 2026-08-18: a seção de Fabricantes/Fornecedores passou de três resultados
 # para cinco -- combo do fornecedor, referência dele, e a referência da linha
@@ -110,10 +112,6 @@ SECOES_DA_PLANILHA = {
         "fabricante", "referencia",
         "fornecedor", "referencia_fornecedor",
         "ge_vernova",
-        # CP 6.4: os documentos moram na mesma coluna -- o `_STATUS_PMIB` não
-        # tem uma para eles, e associar datasheet é parte de "a ficha está
-        # com as informações gerais prontas".
-        "documentos", "imagens",
     ),
     # CP 6.4: o PDM entra aqui porque é ele que decide quais características a
     # ficha tem -- ficha no PDM errado tem a lista errada, por mais que a purga
@@ -121,6 +119,20 @@ SECOES_DA_PLANILHA = {
     config.COL_CARACT_TECNICAS: ("pdm", "caracteristicas"),
     # CP 6.4: a coluna CONDIÇÕES deixa de ficar sempre em branco.
     config.COL_CONDICOES: ("condicoes",),
+    # ⚠️ CORREÇÃO DO USUÁRIO, 2026-08-20: *"o STATUS_PMIB tem a coluna de
+    # DOCUMENTOS E IMAGENS justamente para quando ambos estiverem prontos serem
+    # marcados como COMPLETO"*.
+    #
+    # A versão anterior punha os dois em INFO. GERAIS, com a justificativa de
+    # que o `_STATUS_PMIB` "não tem uma coluna para eles". Tem -- e a prova
+    # estava no próprio repositório: `frontend._worker_salvar`, o fluxo antigo,
+    # escreve nas QUATRO colunas, e "DOCUMENTOS E IMAGENS" é uma delas. Bastava
+    # olhar antes de justificar.
+    #
+    # A diferença não é cosmética: com os dois em INFO. GERAIS, uma imagem que
+    # falhasse derrubava para INCOMPLETO uma coluna que fala de fabricante e
+    # referência -- e o usuário iria conferir a linha errada da ficha.
+    config.COL_DOCS_IMAGENS: ("documentos", "imagens"),
 }
 
 

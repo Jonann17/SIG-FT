@@ -202,13 +202,35 @@ def test_secao_pendente_marca_a_coluna_como_INCOMPLETO():
     assert marcas[config.COL_CONDICOES] == status_sheet.VALOR_INCOMPLETO
 
 
-def test_documentos_e_imagens_entram_em_INFO_GERAIS():
-    """O `_STATUS_PMIB` não tem coluna própria para documentos: associar
-    datasheet é parte de "as informações gerais estão prontas". Basta um dos
-    dois faltar para a coluna não fechar."""
+def test_documentos_e_imagens_tem_coluna_PROPRIA():
+    """⚠️ CORREÇÃO DO USUÁRIO (2026-08-20): *"o STATUS_PMIB tem a coluna de
+    DOCUMENTOS E IMAGENS justamente para quando ambos estiverem prontos serem
+    marcados como COMPLETO"*.
+
+    A versão anterior mandava os dois para INFO. GERAIS alegando que a planilha
+    não tinha coluna para eles. Tinha -- e a prova estava no repositório:
+    `frontend._worker_salvar` escreve nas quatro colunas, e essa é uma delas.
+
+    A diferença não é cosmética: com os dois em INFO. GERAIS, uma imagem que
+    falhasse derrubaria para INCOMPLETO uma coluna que fala de fabricante e
+    referência, mandando o usuário conferir a linha errada da ficha.
+    """
     resultado = robo.ResultadoDaFicha("A", "B")
+    resultado.registrar(injetor.ResultadoDaSecao("fabricante", True))
     resultado.registrar(injetor.ResultadoDaSecao("documentos", True))
     resultado.registrar(injetor.ResultadoDaSecao("imagens", False))
 
-    assert robo.status_por_secao(resultado)[config.COL_INFO_GERAIS] == \
-        status_sheet.VALOR_INCOMPLETO
+    marcas = robo.status_por_secao(resultado)
+
+    assert marcas[config.COL_DOCS_IMAGENS] == status_sheet.VALOR_INCOMPLETO
+    # e a coluna do fabricante NÃO é contaminada pela falha da imagem
+    assert marcas[config.COL_INFO_GERAIS] == status_sheet.VALOR_COMPLETO
+
+
+def test_documentos_e_imagens_ok_fecham_a_coluna():
+    resultado = robo.ResultadoDaFicha("A", "B")
+    resultado.registrar(injetor.ResultadoDaSecao("documentos", True))
+    resultado.registrar(injetor.ResultadoDaSecao("imagens", True))
+
+    assert robo.status_por_secao(resultado)[config.COL_DOCS_IMAGENS] == \
+        status_sheet.VALOR_COMPLETO
