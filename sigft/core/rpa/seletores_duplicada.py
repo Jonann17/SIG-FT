@@ -911,6 +911,52 @@ XPATH_CONDICOES_CAMPO = "//*[contains(@id, {sufixo})]"
 
 
 # ---------------------------------------------------------------------------
+# 15b. CONDIÇÕES no modo de VISUALIZAÇÃO — o mapa RÓTULO → campo
+# ---------------------------------------------------------------------------
+# A §15 acima explica por que a cópia POR XPATH é barata, e termina dizendo que
+# a consequência é abrir a ORIGINAL em edição. **Essa porta foi fechada pelo
+# usuário em 2026-08-20:** *"TUDO é para pegar do modo de visualização. Somente
+# a ficha ALVO é para entrar no modo de edição."* O motivo é concreto: original
+# em "Em Análise ITAIPU" não tem lápis, e o robô perdia 20 s de timeout e as
+# Condições inteiras.
+#
+# Na visualização não existem os `input`: a seção é par rótulo→valor, como todo
+# o resto da tela (§7). Então a cópia precisa do casamento que a §15 dizia
+# evitar -- RÓTULO VISÍVEL → campo de edição.
+#
+# ⚠️ **A TABELA COMEÇA VAZIA, E ISSO É DELIBERADO.**
+#
+# A redação exata dos rótulos não existe em lugar nenhum deste repositório.
+# `upload_conditions.py` dá o SIGNIFICADO de alguns campos (`Input_PackingLength`
+# é o comprimento da embalagem, `Input_LiquidWeight` o peso líquido) e a
+# `docs/base-conhecimento/05-upload-conditions-backend.md` repete o mesmo
+# recorte -- mas significado não é o texto que a tela mostra. "Comprimento",
+# "Comprimento da embalagem" e "Comprimento da embalagem unitária" são três
+# chaves diferentes, e a errada não casa: o campo não copia e NINGUÉM FICA
+# SABENDO. É exatamente a falha silenciosa que o resto deste arquivo combate,
+# e escrever a tabela de memória seria criá-la de propósito.
+#
+# 🎯 COMO ELA SE PREENCHE: `duplicadas_condicoes.converter_da_visualizacao`
+# loga, com o texto integral, TODO rótulo que não achar aqui. Uma rodada real
+# contra o portal devolve a lista exata; preencher isto vira transcrição.
+#
+# Formato: chave NORMALIZADA (ver `chave_de_rotulo`: sem acento, minúscula,
+# espaços colapsados, sem ':' final) -> (sub-aba de EDIÇÃO, sufixo do id).
+# A sub-aba tem de ser uma chave de `CONDICOES_POR_SUBABA` -- é ela que diz em
+# que aba o campo se escreve, e a conversão recusa nome que não esteja lá.
+CONDICOES_ROTULO_PARA_CAMPO = {}
+
+
+# As sub-abas de Condições no modo de VISUALIZAÇÃO. São TRÊS (§12), contra as
+# cinco da edição, e a Financeira fica de fora: não é condição de armazenamento
+# nem de descarte, e `e_aba_financeira` já a exclui em todo o resto do módulo.
+SUBABAS_CONDICOES_VISUALIZACAO = (
+    "Armazenamento e transporte",
+    "Manutenção e descarte",
+)
+
+
+# ---------------------------------------------------------------------------
 # 16. O PDM da ficha ALVO — conferir ANTES de mexer nas características
 # ---------------------------------------------------------------------------
 # Achado do usuário em 2026-08-20, depois da rodada real: *"a ficha 922 estava

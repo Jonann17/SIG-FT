@@ -307,12 +307,44 @@ Enquanto esse mapa não existe, `ler` devolve vazio, o robô não copia e a
 coluna `CONDIÇÕES` só fecha quando **outra pessoa** já preencheu a alvo (é o
 que `conferir_ja_preenchida` detecta desde 2026-08-21).
 
-O material para montar o mapa **já está no log de auditoria**: o robô grava o
-HTML inteiro da seção Condições em visualização a cada ficha. Os rótulos estão
-lá; falta parear com os ~26 sufixos de `CONDICOES_POR_SUBABA`.
-
 Depois disso, o CP 5.5 (remover o Selenium) destrava — `ficha_duplicada.py` é o
 último consumidor.
+
+#### A máquina já está pronta; falta só a tabela (2026-08-21, tarde)
+
+O caminho inteiro foi construído e testado — o que sobrou é **dado**, não código:
+
+| Peça | Onde | Estado |
+|---|---|---|
+| Abrir a seção e as sub-abas em visualização | `robo.ler_condicoes_da_original` | ✅ |
+| Varrer os pares rótulo→valor | `extrator.ler_secao_visivel` (já existia) | ✅ |
+| Normalizar o rótulo (sem acento, sem `:`, caixa e espaço) | `condicoes.chave_de_rotulo` | ✅ |
+| Converter para `{sub-aba: {sufixo: valor}}` | `condicoes.converter_da_visualizacao` | ✅ |
+| Escrever, salvar e conferir na alvo | `condicoes.escrever` (já existia) | ✅ |
+| **A tabela `rótulo → (sub-aba, sufixo)`** | `seletores_duplicada.CONDICOES_ROTULO_PARA_CAMPO` | ⬜ **vazia** |
+
+**A tabela nasceu vazia de propósito.** A redação exata dos rótulos não existe
+em lugar nenhum do repositório: `upload_conditions.py` e a
+`docs/base-conhecimento/05-upload-conditions-backend.md` dão o *significado* de
+alguns campos (`Input_PackingLength` é o comprimento da embalagem), mas
+significado não é o texto que a tela mostra. `Comprimento`, `Comprimento da
+embalagem` e `Comprimento da embalagem unitária` são três chaves diferentes, e
+a errada **não casa em silêncio** — o campo não copia e ninguém fica sabendo.
+
+**Como ela se preenche, em uma rodada:** `converter_da_visualizacao` loga, no
+log normal (não na auditoria), o texto integral de **todo** rótulo que não
+reconhece:
+
+```
+[i] Condições: 23 rótulo(s) da ficha original ainda não estão no mapa
+    RÓTULO→campo. Copie a lista abaixo para fechar a seção:
+    · Comprimento da embalagem unitária
+    · Peso líquido
+    …
+```
+
+Basta rodar o botão **2b** numa ficha com Condições preenchidas e mandar essa
+lista — preencher a tabela vira transcrição, e a seção fecha.
 
 ---
 

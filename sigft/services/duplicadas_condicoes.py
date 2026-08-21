@@ -25,6 +25,7 @@ conseguiu colocar os dados"*):
 from __future__ import annotations
 
 import time
+import unicodedata
 
 from sigft.core.rpa import seletores_duplicada as sel
 from sigft.services.duplicadas_injetor import ResultadoDaSecao, _log_de
@@ -37,6 +38,95 @@ PAUSA_APOS_ESCREVER = 0.4
 
 def _seletor(sufixo):
     return sel.XPATH_CONDICOES_CAMPO.format(sufixo=f"'{sufixo}'")
+
+
+# ===========================================================================
+# Leitura pela VISUALIZAÇÃO — rótulo visível → campo de edição
+# ===========================================================================
+# Ver `seletores_duplicada`, §15b, para por que este caminho existe (a original
+# nunca é aberta em edição) e por que a tabela nasce vazia.
+
+def chave_de_rotulo(rotulo):
+    """Rótulo da tela -> chave de busca no mapa.
+
+    Sem acento, minúsculo, espaços colapsados, sem ':' final. O portal escreve
+    o mesmo rótulo de jeitos diferentes conforme a tela, e casar o texto cru
+    transformaria cada variação numa falha silenciosa -- a chave não bate, o
+    campo não copia, o log não diz nada.
+
+    `None` vira `""` em vez de estourar: a varredura devolve `None` quando o
+    `<span>` do rótulo está vazio, e derrubar a leitura inteira por causa de
+    um campo seria trocar uma seção incompleta por nenhuma seção.
+    """
+    texto = unicodedata.normalize("NFKD", str(rotulo or ""))
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    return " ".join(texto.replace(":", " ").split()).lower()
+
+
+def _pares(rotulos_e_valores):
+    """`{rótulo: valor}` ou `[(rótulo, valor)]` -> lista de pares.
+
+    Aceita os dois porque a varredura da tela pode trazer o MESMO rótulo duas
+    vezes com valores diferentes, e um `dict` perderia um deles antes de chegar
+    aqui. Quem chama não deve precisar achatar cedo.
+    """
+    if hasattr(rotulos_e_valores, "items"):
+        return list(rotulos_e_valores.items())
+    return list(rotulos_e_valores or ())
+
+
+def converter_da_visualizacao(rotulos_e_valores, callback_log=None):
+    """Pares rótulo→valor da ORIGINAL -> `{sub-aba: {sufixo: valor}}`.
+
+    A saída é exatamente o que `escrever` já consome, então o injetor não muda:
+    o que muda é de onde os dados vêm.
+
+    ⚠️ **O log dos rótulos DESCONHECIDOS é a parte que importa hoje.** Enquanto
+    `CONDICOES_ROTULO_PARA_CAMPO` estiver vazio isto devolve `{}` e nada é
+    copiado -- e é essa lista, com o texto integral de cada rótulo, que
+    transforma uma rodada real contra o portal na tabela que falta.
+
+    Rótulo desconhecido é logado MESMO com valor vazio: o log serve para
+    construir o mapa, não para relatar esta ficha, e o rótulo é o mesmo em
+    todas elas.
+    """
+    _log = _log_de(callback_log)
+    mapa = sel.CONDICOES_ROTULO_PARA_CAMPO
+    convertido = {}
+    desconhecidos = []
+
+    for rotulo, valor in _pares(rotulos_e_valores):
+        destino = mapa.get(chave_de_rotulo(rotulo))
+        if destino is None:
+            texto = " ".join(str(rotulo or "").split())
+            if texto and texto not in desconhecidos:
+                desconhecidos.append(texto)
+            continue
+
+        subaba, sufixo = destino
+        if subaba not in sel.CONDICOES_POR_SUBABA:
+            # A tabela é preenchida À MÃO. Uma sub-aba com nome errado faria
+            # `escrever` procurar por uma chave que ninguém percorre, e a
+            # escrita sumiria em silêncio -- de novo o mesmo modo de falha.
+            _log(f"      [!] Condições: o mapa manda «{rotulo}» para a sub-aba "
+                 f"«{subaba}», que não existe na edição. Campo ignorado.")
+            continue
+
+        # Valor em branco não vira escrita: `fill(\"\")` é uma chance a mais de
+        # disparar validação do portal sem acrescentar nada, e na ficha que já
+        # tem conteúdo apagaria.
+        if not str(valor or "").strip():
+            continue
+        convertido.setdefault(subaba, {})[sufixo] = valor
+
+    if desconhecidos:
+        _log(f"      [i] Condições: {len(desconhecidos)} rótulo(s) da ficha "
+             f"original ainda não estão no mapa RÓTULO→campo. Copie a lista "
+             f"abaixo para fechar a seção:")
+        for texto in desconhecidos:
+            _log(f"          · {texto}")
+
+    return convertido
 
 
 def abrir_secao(portal, callback_log=None):

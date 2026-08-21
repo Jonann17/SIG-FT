@@ -374,23 +374,42 @@ def ler_condicoes_da_original(portal, callback_log=None, log_auditoria=None):
     combinar. E o custo apareceu no primeiro lote: original em "Em Análise
     ITAIPU" não tem lápis, 20 s de timeout e as Condições perdidas.
 
-    O que falta para a leitura por VISUALIZAÇÃO funcionar: o casamento
-    RÓTULO → campo. Lá a seção é par rótulo→valor ("Comprimento: 40"), não
-    `input`, e o mapa de rótulos ainda não foi levantado -- a seção de
-    Condições não aparece no HTML que a auditoria capturou até aqui, porque o
-    OutSystems só renderiza o painel da aba aberta.
+    O que a leitura por VISUALIZAÇÃO exige: o casamento RÓTULO → campo. Lá a
+    seção é par rótulo→valor ("Comprimento: 40"), não `input`. Esta função
+    percorre as sub-abas da visualização, varre os pares e entrega a
+    `condicoes.converter_da_visualizacao`, que faz o casamento.
 
-    Por isso esta função hoje faz DUAS coisas: devolve vazio (nada de abrir a
-    original para editar) e, com a auditoria ligada, ABRE a aba de Condições
-    em visualização e FOTOGRAFA. É a rodada que entrega os rótulos.
+    ⚠️ **Enquanto `CONDICOES_ROTULO_PARA_CAMPO` estiver vazio, isto devolve
+    `{}` -- e é assim que tem de ser.** A redação exata dos rótulos não está em
+    lugar nenhum do repositório (ver `seletores_duplicada`, §15b), e escrevê-la
+    de memória erraria em silêncio. O que esta rodada entrega é a LISTA DOS
+    RÓTULOS, no log normal e com o texto integral: a conversão loga tudo que
+    não reconhece. Com ela na mão, preencher a tabela vira transcrição.
+
+    Por que no log normal e não só na auditoria: a auditoria guarda o HTML cru,
+    num arquivo separado e cortado em 20 000 caracteres. Os rótulos precisam
+    sair onde o usuário lê e copia.
     """
     _log = _log_de(callback_log)
-    if extrator.abrir_secao(portal, sel.ABA_CONDICOES, callback_log, log_auditoria):
-        _log("      [i] Condições: seção aberta em visualização apenas para "
-             "registrar o markup no log de auditoria.")
-    _log("      [i] Condições NÃO serão copiadas: falta o mapa RÓTULO→campo do "
-         "modo de visualização. A original nunca é aberta em edição.")
-    return {}
+    if not extrator.abrir_secao(portal, sel.ABA_CONDICOES, callback_log,
+                                log_auditoria):
+        _log("      [Aviso] Não consegui abrir a seção de Condições da ficha "
+             "original -- a seção não será copiada.")
+        return {}
+
+    pares = []
+    for nome in sel.SUBABAS_CONDICOES_VISUALIZACAO:
+        if not extrator.abrir_subaba_de_condicoes(portal, nome, callback_log,
+                                                  log_auditoria):
+            # Uma sub-aba que não abre não pode custar a outra: meia seção
+            # copiada, com o log dizendo qual faltou, é melhor do que nenhuma.
+            _log(f"      [Aviso] A sub-aba «{nome}» de Condições não abriu -- "
+                 f"os campos dela não serão copiados.")
+            continue
+        for _titulo, campos in extrator.ler_secao_visivel(portal.engine, callback_log):
+            pares.extend(campos.items())
+
+    return condicoes.converter_da_visualizacao(pares, callback_log)
 
 
 def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
