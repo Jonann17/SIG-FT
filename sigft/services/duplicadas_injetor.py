@@ -664,7 +664,6 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
     avisos_vistos = []
     for tentativa, referencia in enumerate(candidatos, start=1):
         portal.safe_fill(seletor_input, referencia)
-        aviso_apos_digitar = esperar_aviso_de_colisao(portal, seletor_input)
 
         if not _confirmar_escrita(portal, seletor_input, referencia,
                                   "campo de Referência", callback_log):
@@ -672,15 +671,21 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
             # se digita -- é outro problema, e insistir esconderia ele.
             return ResultadoDaSecao(nome_da_secao, False, "campo não aceitou o texto")
 
-        if aviso_apos_digitar:
-            avisos_vistos.append(aviso_apos_digitar)
-            continue
-
+        # ⚠️ SEMPRE CLICA. Conserto de 2026-08-21, de uma observação do
+        # usuário: *"na ficha 1418 foi na tentativa 'D3, mas vendo no portal,
+        # era pra ter sido a 'D2. Por que ele pulou a D2?"*.
+        #
+        # Havia aqui um atalho: se o aviso de colisão estivesse na tela logo
+        # depois de digitar, o candidato era descartado SEM clicar. O problema
+        # é que o aviso da tentativa ANTERIOR continua na tela até o portal
+        # revalidar -- então o `'D2`, que estava livre, era lido como ocupado
+        # por causa do aviso que sobrou do `'D1`. Um candidato bom, pulado por
+        # um resto de tela.
+        #
+        # Agora quem decide é o PORTAL, depois do clique: a linha entrou ou não
+        # entrou. Clicar com um valor que colide é inofensivo -- é justamente
+        # aí que o portal recusa, e recusar é a resposta que se quer.
         clicou = _clicar_no_mais(portal, seletor_mais, callback_log)
-        aviso = esperar_aviso_de_colisao(portal, seletor_input)
-        if aviso:
-            avisos_vistos.append(aviso)
-            continue
 
         # ⚠️ A PROVA. Até 2026-08-19 bastava "cliquei e o portal não reclamou"
         # para reportar sucesso -- e o usuário só descobriu que a tabela estava
@@ -691,6 +696,14 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
             # portal escreve a recusa NO CAMPO (`not-valid` +
             # `aria-describedby`); basta ler.
             recusa = mensagem_de_validacao(portal, seletor_input)
+            aviso = esperar_aviso_de_colisao(portal, seletor_input)
+
+            # DUPLICIDADE => próximo sufixo. Qualquer outra recusa => falha,
+            # porque `'D1`, `'D2`, `'D3`… não conserta "campo obrigatório".
+            if e_mensagem_de_duplicidade(recusa) or e_mensagem_de_duplicidade(aviso):
+                avisos_vistos.append(recusa or aviso)
+                continue
+
             motivo = ""
             if recusa:
                 motivo = f" O portal recusou: {recusa!r}."

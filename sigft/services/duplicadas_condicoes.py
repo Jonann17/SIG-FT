@@ -205,11 +205,29 @@ def conferir_ja_preenchida(portal, callback_log=None):
     if not preenchidos:
         return None
 
-    _log(f"      Condições JÁ preenchidas na ficha alvo: {preenchidos} de {total} "
-         f"campo(s) de texto com conteúdo ({'; '.join(detalhe_por_aba)}).")
+    # ⚠️ TODOS OS CAMPOS, não "algum". Correção do usuário em 2026-08-21:
+    # *"tem que estar completo todos os campos; tem que ter conteúdo, só não
+    # pode estar em branco"*.
+    #
+    # A primeira versão fechava a seção com QUALQUER conteúdo e mandava a conta
+    # para o log, para o usuário julgar. Julgar é trabalho que a planilha
+    # existe para poupar: um `3 de 14` marcado COMPLETO é a mesma mentira que
+    # este módulo inteiro combate, só que com uma nota de rodapé.
+    #
+    # "Todos" quer dizer todos os que ESTÃO NA TELA -- `ler` não devolve campo
+    # que não existe nesta ficha, e exigir campo inexistente reprovaria ficha
+    # correta.
+    if preenchidos < total:
+        _log(f"      Condições da ficha alvo INCOMPLETAS: {preenchidos} de {total} "
+             f"campo(s) de texto com conteúdo ({'; '.join(detalhe_por_aba)}).")
+        _log("      Falta preencher o resto à mão -- o robô não copia por cima do "
+             "que já está lá.")
+        return None
+
+    _log(f"      Condições JÁ preenchidas na ficha alvo: {total} de {total} "
+         f"campo(s) de texto ({'; '.join(detalhe_por_aba)}).")
     _log("      Não foram copiadas de novo -- sobrescrever apagaria o que já está lá.")
-    return ResultadoDaSecao("condicoes", True,
-                            f"já preenchida ({preenchidos}/{total} campos)")
+    return ResultadoDaSecao("condicoes", True, f"já preenchida ({total}/{total} campos)")
 
 
 def escrever(portal, condicoes, callback_log=None):

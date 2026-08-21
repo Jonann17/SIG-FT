@@ -298,11 +298,12 @@ def test_nenhum_id_gerado_no_mapa():
 # preencheu à mão.
 
 def test_alvo_ja_preenchida_fecha_a_secao_sem_copiar_nada():
-    # A ficha alvo tem conteúdo nos campos de texto das Condições.
-    portal, _engine = _tela(valores={
-        "TextArea_StorageCareES": "Manter na embalagem original",
-        "TextArea_StorageCarePT": "Manter na embalagem original",
-    })
+    # A ficha alvo tem TODOS os campos de texto preenchidos.
+    from sigft.core.rpa import seletores_duplicada as _sel
+    todos = {sufixo: "preenchido"
+             for mapa in _sel.CONDICOES_POR_SUBABA.values()
+             for sufixo in mapa["textos"]}
+    portal, _engine = _tela(valores=todos)
     logs = []
 
     resultado = cond.escrever(portal, {}, logs.append)
@@ -312,7 +313,7 @@ def test_alvo_ja_preenchida_fecha_a_secao_sem_copiar_nada():
     assert portal.salvos == []          # NÃO sobrescreve o que já está lá
     juntos = "\n".join(logs)
     assert "JÁ preenchidas" in juntos
-    assert "campo(s) de texto com conteúdo" in juntos
+    assert "26 de 26" in juntos   # todos, e a conta fica no log
 
 
 def test_alvo_vazia_continua_PENDENTE():
@@ -325,17 +326,23 @@ def test_alvo_vazia_continua_PENDENTE():
     assert resultado.pendente is True
 
 
-def test_a_conta_de_campos_vai_para_o_log():
-    """O robô não julga "completa" no sentido do negócio -- ele sabe dizer "tem
-    conteúdo". Mostrar a conta deixa o número suspeito visível em vez de
-    esconder a decisão atrás de um COMPLETO."""
+def test_PARCIALMENTE_preenchida_NAO_fecha():
+    """⚠️ CORREÇÃO DO USUÁRIO (2026-08-21): *"tem que estar completo todos os
+    campos; tem que ter conteúdo, só não pode estar em branco"*.
+
+    A primeira versão fechava com QUALQUER conteúdo e mandava a conta para o
+    log, para ele julgar. Julgar é o trabalho que a planilha existe para
+    poupar: um `3 de 14` marcado COMPLETO é a mesma mentira que este módulo
+    combate, com uma nota de rodapé."""
     portal, _engine = _tela(valores={"TextArea_StorageCareES": "algo"})
     logs = []
 
     resultado = cond.escrever(portal, {}, logs.append)
 
-    assert "/" in resultado.detalhe          # "já preenchida (1/N campos)"
-    assert "Armazenamento" in "\n".join(logs)
+    assert resultado.pendente is True
+    juntos = "\n".join(logs)
+    assert "INCOMPLETAS" in juntos
+    assert "Armazenamento" in juntos   # a conta continua no log, para achar o que falta
 
 
 def test_booleano_marcado_NAO_conta_como_preenchido():
