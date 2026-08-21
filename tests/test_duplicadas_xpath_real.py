@@ -11,6 +11,7 @@ sem ele o arquivo inteiro é pulado. Por isso ele COMPLEMENTA os testes de
 regra, nunca os substitui -- o que estes protegem não pode depender de um
 pacote opcional.
 """
+from sigft.core.rpa.portal import PMIBPortal
 import pytest
 
 etree = pytest.importorskip("lxml.etree", reason="lxml e opcional; ver docstring")
@@ -503,3 +504,490 @@ def test_o_mais_da_GE_sai_do_prefixo_dela_e_nao_do_fabricante():
     assert da_ge[0] is not do_fab[0]
     # e existem TRÊS "+" na tela: sem a âncora, qualquer um seria clicado
     assert engine.contar("//a[.//i[contains(@class, 'fa-plus-circle')]]") == 3
+
+
+# ===========================================================================
+# Navegação e tabelas — HTML colado pelo usuário em 2026-08-18
+# ===========================================================================
+# Foi o levantamento que destravou o CP 6.4: até aqui o extrator só sabia ler
+# a seção que já estivesse aberta. Vem com uma correção de modelo junto -- a
+# seção de Fabricantes/Fornecedores não é bloco de rótulo→valor, são duas
+# TABELAS, e a varredura de rótulo→valor não a enxerga.
+_HTML_NAVEGACAO = """
+<div id="ficha">
+  <div class="osui-tabs__header">
+    <button data-advancedhtml="" class="osui-tabs__header-item" name="0.4z9qbl6cvoj"
+            data-tab="1" role="tab" tabindex="-1" aria-selected="true" aria-controls="b12-$b12">
+      <div class="display-contents ph" id="b12-b5-Title">Fabricantes e fornecedores</div>
+    </button>
+    <button data-advancedhtml="" class="osui-tabs__header-item" name="0.pnxxwyjy3d"
+            data-tab="3" role="tab" tabindex="-1" aria-selected="false" aria-controls="b12-$b17">
+      <div class="display-contents ph" id="b12-b7-Title">Documentos</div>
+    </button>
+    <button data-advancedhtml="" class="osui-tabs__header-item" name="0.1b5s62bmf06"
+            data-tab="4" role="tab" tabindex="-1" aria-selected="false" aria-controls="b12-$b19">
+      <div class="display-contents ph" id="b12-b8-Title">Condições</div>
+    </button>
+  </div>
+
+  <div class="subabas">
+    <div data-container="" class="dummy-active OSInline"
+         style="text-align: center; cursor: pointer; width: 20%; padding: 8px;">Armazenamento e transporte</div>
+    <div data-container="" class="OSInline"
+         style="text-align: center; cursor: pointer; width: 20%; padding: 8px;">Manutenção e descarte</div>
+  </div>
+
+  <div data-container="" class="full-fieldset" id="b12-b13-ManufacturerAndProvider"><div data-container="">
+    <table class="table" role="grid">
+      <thead><tr class="table-header"><th class="" tabindex="0">Nome do Fabricante</th>
+      <th class="half-width" tabindex="0">Referência</th></tr></thead>
+      <tbody>
+        <tr class="table-row">
+          <td data-header="Nome do Fabricante"><span data-expression="" class="description-wrap">ENERSYS</span></td>
+          <td data-header="Referência"><span data-expression="" class="description-wrap">E24-256-10</span></td>
+        </tr>
+        <tr class="table-row">
+          <td data-header="Nome do Fabricante"><span data-expression="" class="description-wrap">SASSI</span></td>
+          <td data-header="Referência"><span data-expression="" class="description-wrap">DGA 0-300V DC</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div data-block="Navigation.Pagination" class="OSBlockWidget" id="b12-b13-$b1">
+      <div data-container="" class="pagination-counter OSInline" id="b12-b13-b1-PaginationRecords">
+        <span data-expression="" data-testid="Pagination.RecordNumberFrom">1</span>
+        <span data-expression="" data-testid="Pagination.RecordsNumber">2</span>
+      </div>
+    </div>
+  </div></div>
+
+  <div data-container="" class="full-fieldset" id="b12-b14-ManufacturerAndProvider"><div data-container="">
+    <table class="table" role="grid">
+      <thead><tr class="table-header"><th class="" tabindex="0">Nome do Fornecedor</th>
+      <th class="half-width" tabindex="0">Referência</th></tr></thead>
+      <tbody>
+        <tr class="table-row">
+          <td data-header="Nome do Fornecedor"><span data-expression="" class="description-wrap">GE ENERGIAS RENOVAVEIS LTDA</span></td>
+          <td data-header="Referência"><span data-expression="" class="description-wrap">08934120BTM99-064F</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div></div>
+</div>
+"""
+
+
+@pytest.fixture(scope="module")
+def nav():
+    return etree.HTML(_HTML_NAVEGACAO)
+
+
+def _lit(texto):
+    return f"'{texto}'"
+
+
+# --- as abas da ficha -------------------------------------------------------
+
+@pytest.mark.parametrize("rotulo", [
+    "Fabricantes e fornecedores", "Documentos", "Condições",
+])
+def test_cada_aba_da_ficha_e_achada_pelo_texto(nav, rotulo):
+    achados = nav.xpath(sel.XPATH_ABA_DA_FICHA.format(texto=_lit(rotulo)))
+
+    assert len(achados) == 1, f"esperava 1 aba {rotulo!r}, achei {len(achados)}"
+
+
+def test_a_aba_ativa_e_distinguida_por_aria_selected(nav):
+    """Sem esta conferência, um clique que não pegou faria o extrator ler a
+    seção ANTERIOR e devolver dados plausíveis da seção errada."""
+    ativa = nav.xpath(sel.XPATH_ABA_DA_FICHA_ATIVA.format(
+        texto=_lit("Fabricantes e fornecedores")))
+    inativa = nav.xpath(sel.XPATH_ABA_DA_FICHA_ATIVA.format(texto=_lit("Condições")))
+
+    assert len(ativa) == 1
+    assert inativa == []
+
+
+def test_os_atributos_gerados_das_abas_nao_entram_no_seletor():
+    """`name="0.4z9qbl6cvoj"` é aleatório, `aria-controls="b12-$b12"` é id
+    gerado, e `data-tab` é ORDINAL -- posição é o que muda quando o portal
+    reordena a tela (§6.5c decidiu contra posição, e vale igual aqui)."""
+    for seletor in (sel.XPATH_ABA_DA_FICHA, sel.XPATH_ABA_DA_FICHA_ATIVA):
+        assert "@name" not in seletor
+        assert "aria-controls" not in seletor
+        assert "data-tab" not in seletor
+
+
+# --- as sub-abas de Condições ----------------------------------------------
+
+def test_as_subabas_de_condicoes_nao_sao_role_tab(nav):
+    """São `<div class="OSInline">` com `cursor: pointer`. Supor que fossem o
+    mesmo componente das abas de cima era plausível -- e errado. Este teste
+    existe para que a suposição não volte."""
+    como_aba = nav.xpath(sel.XPATH_ABA_DA_FICHA.format(
+        texto=_lit("Armazenamento e transporte")))
+
+    assert como_aba == [], "a sub-aba casou como se fosse aba de cima"
+
+
+@pytest.mark.parametrize("rotulo", ["Armazenamento e transporte", "Manutenção e descarte"])
+def test_cada_subaba_de_condicoes_e_achada_pelo_texto(nav, rotulo):
+    assert len(nav.xpath(sel.XPATH_SUBABA_CONDICOES.format(texto=_lit(rotulo)))) == 1
+
+
+def test_a_subaba_aberta_e_a_que_tem_dummy_active(nav):
+    """As três sub-abas ficam TODAS no DOM. Sem checar qual está ativa, o
+    extrator lê a primeira e acha que leu a que pediu."""
+    aberta = sel.XPATH_SUBABA_CONDICOES_ATIVA.format(texto=_lit("Armazenamento e transporte"))
+    fechada = sel.XPATH_SUBABA_CONDICOES_ATIVA.format(texto=_lit("Manutenção e descarte"))
+
+    assert len(nav.xpath(aberta)) == 1
+    assert nav.xpath(fechada) == []
+
+
+# --- as duas tabelas --------------------------------------------------------
+
+def test_a_varredura_de_rotulo_e_valor_NAO_enxerga_estas_tabelas(nav):
+    """O achado que corrige o modelo do extrator.
+
+    `XPATH_VIEW_VALOR` exige o ancestral `PMIB_DataSheetView.Block_Expression`,
+    e as células da tabela não o têm. Ou seja, `achar_fabricante` e
+    `achar_fornecedor` lendo de `blocos` devolvem VAZIO para esta ficha -- a
+    seção precisa de leitor próprio, e é por isso que ele existe.
+    """
+    assert nav.xpath(sel.XPATH_VIEW_VALOR) == []
+
+
+def test_a_tabela_do_fabricante_traz_as_DUAS_linhas(nav):
+    """"Nesse caso ele tem 2 fornecedores (a gente comprou de um que comprou
+    do fabricante)" -- ENERSYS fabrica, SASSI revende. Ler só a primeira
+    perderia a segunda sem avisar."""
+    linhas = nav.xpath(sel.XPATH_LINHAS_DA_TABELA_DE.format(
+        coluna=_lit(sel.COLUNA_NOME_FABRICANTE)))
+
+    assert len(linhas) == 2
+
+
+def test_a_tabela_do_fornecedor_nao_arrasta_as_linhas_do_fabricante(nav):
+    """Os dois contêineres têm o MESMO sufixo de id
+    (`-ManufacturerAndProvider`); quem separa é o `@data-header`. Se o
+    `ancestor::table[1]` perdesse o `[1]`, as duas tabelas viriam juntas."""
+    linhas = nav.xpath(sel.XPATH_LINHAS_DA_TABELA_DE.format(
+        coluna=_lit(sel.COLUNA_NOME_FORNECEDOR)))
+
+    assert len(linhas) == 1
+
+
+def test_os_valores_das_celulas_saem_certos(nav):
+    def _ler(coluna_tabela, indice, coluna_celula):
+        base = f"({sel.XPATH_LINHAS_DA_TABELA_DE.format(coluna=_lit(coluna_tabela))})[{indice}]"
+        return nav.xpath(base + sel.XPATH_REL_CELULA.format(coluna=_lit(coluna_celula)))[0].text
+
+    assert _ler(sel.COLUNA_NOME_FABRICANTE, 1, sel.COLUNA_NOME_FABRICANTE) == "ENERSYS"
+    assert _ler(sel.COLUNA_NOME_FABRICANTE, 1, sel.COLUNA_REFERENCIA) == "E24-256-10"
+    assert _ler(sel.COLUNA_NOME_FABRICANTE, 2, sel.COLUNA_NOME_FABRICANTE) == "SASSI"
+    assert _ler(sel.COLUNA_NOME_FABRICANTE, 2, sel.COLUNA_REFERENCIA) == "DGA 0-300V DC"
+    assert _ler(sel.COLUNA_NOME_FORNECEDOR, 1, sel.COLUNA_NOME_FORNECEDOR) == "GE ENERGIAS RENOVAVEIS LTDA"
+    assert _ler(sel.COLUNA_NOME_FORNECEDOR, 1, sel.COLUNA_REFERENCIA) == "08934120BTM99-064F"
+
+
+def test_o_contador_de_paginacao_nao_vira_valor_de_celula(nav):
+    """Mesma armadilha do badge de anexos (§8.2): o bloco de paginação também
+    tem `<span data-expression>` com número dentro. Aqui o que separa é a
+    exigência de `td[@data-header]` -- o contador não está numa célula."""
+    linhas = nav.xpath(sel.XPATH_LINHAS_DA_TABELA_DE.format(
+        coluna=_lit(sel.COLUNA_NOME_FABRICANTE)))
+    textos = [c.text for l in linhas
+              for c in l.xpath(".//td[@data-header]//span[@data-expression]")]
+
+    assert "1" not in textos and "2" not in textos, f"contador vazou: {textos}"
+
+
+# ===========================================================================
+# O extrator rodando de VERDADE sobre o HTML real
+# ===========================================================================
+# Os testes acima provam os seletores; estes provam o CÓDIGO que os usa, com
+# um engine mínimo por cima do `lxml`. É a diferença entre "o XPath casa" e
+# "a função devolve o que o usuário vê na tela".
+
+# ⚠️ REUSA `_EngineLxml` (definida no topo deste arquivo). A primeira versão
+# deste bloco declarava uma classe com o MESMO NOME, que sobrescrevia a de
+# cima -- e derrubou 25 testes que passavam, todos com `TypeError` no
+# construtor. O `pytest` roda o arquivo inteiro num namespace só; nome
+# repetido aqui não é estilo, é bug.
+class _PortalLxml:
+    # Emprestados do PMIBPortal REAL: os dois só usam `self.engine`, então
+    # ligá-los aqui testa a implementação de verdade em vez de uma cópia
+    # que envelhece sozinha. São o conserto do travamento de 2026-08-20 --
+    # ler o que pode não existir sem pagar o timeout do motor.
+    texto_se_existir = PMIBPortal.texto_se_existir
+    valor_se_existir = PMIBPortal.valor_se_existir
+
+    """Portal mínimo sobre `_EngineLxml` -- só o que a navegação usa."""
+
+    def __init__(self, html):
+        self.engine = _EngineLxml(html)
+        self.cliques = []
+
+    def safe_click(self, seletor):
+        self.cliques.append(seletor)
+
+
+@pytest.fixture
+def portal_real():
+    return _PortalLxml(_HTML_NAVEGACAO)
+
+
+def test_ler_fabricantes_e_fornecedores_devolve_o_que_esta_na_tela(portal_real):
+    """O teste que fecha o CP 6.4 do lado da leitura: as duas tabelas, todas
+    as linhas, com a referência de cada uma."""
+    tabelas = extrator.ler_fabricantes_e_fornecedores(portal_real)
+
+    assert tabelas["fabricantes"] == [
+        ("ENERSYS", "E24-256-10"),
+        ("SASSI", "DGA 0-300V DC"),
+    ]
+    assert tabelas["fornecedores"] == [
+        ("GE ENERGIAS RENOVAVEIS LTDA", "08934120BTM99-064F"),
+    ]
+
+
+def test_o_fabricante_nao_arrasta_a_linha_da_GE(portal_real):
+    """Os dois contêineres têm o mesmo sufixo de id; se o `ancestor::table[1]`
+    perdesse o `[1]`, a GE apareceria como fabricante."""
+    tabelas = extrator.ler_fabricantes_e_fornecedores(portal_real)
+    nomes = [n for n, _r in tabelas["fabricantes"]]
+
+    assert "GE ENERGIAS RENOVAVEIS LTDA" not in nomes
+
+
+def test_abrir_secao_confirma_pelo_aria_selected(portal_real):
+    """No HTML levantado, "Fabricantes e fornecedores" já está ativa."""
+    assert extrator.abrir_secao(portal_real, sel.ABA_FABRICANTES_E_FORNECEDORES) is True
+
+
+def test_abrir_secao_RECUSA_quando_o_portal_nao_marca_a_aba(portal_real):
+    """Clicar em "Condições" neste HTML estático não muda `aria-selected` --
+    é exatamente o cenário de um clique que não pegou. O extrator tem de
+    recusar, e não ler a seção anterior achando que é esta."""
+    linhas = []
+
+    assert extrator.abrir_secao(portal_real, sel.ABA_CONDICOES, linhas.append) is False
+    assert any("não marcou a aba como ativa" in l for l in linhas)
+
+
+def test_secao_inexistente_nao_e_confundida_com_clique_que_falhou(portal_real):
+    linhas = []
+
+    assert extrator.abrir_secao(portal_real, "Aba Que Nao Existe", linhas.append) is False
+    assert any("não existe nesta tela" in l for l in linhas)
+
+
+def test_abrir_subaba_de_condicoes_confirma_pela_classe_dummy_active(portal_real):
+    assert extrator.abrir_subaba_de_condicoes(
+        portal_real, "Armazenamento e transporte") is True
+
+
+def test_subaba_que_nao_fica_ativa_e_recusada(portal_real):
+    """As três sub-abas ficam TODAS no DOM: sem a checagem de `dummy-active`,
+    o extrator leria a aberta e diria que leu a pedida."""
+    linhas = []
+
+    ok = extrator.abrir_subaba_de_condicoes(
+        portal_real, "Manutenção e descarte", linhas.append)
+
+    assert ok is False
+    assert any("dummy-active" in l for l in linhas)
+
+
+def test_a_secao_nao_lida_devolve_vazio_e_nao_levanta(portal_real):
+    """Aba que não abre não pode derrubar a ficha -- vira "não sei", e quem
+    chama decide. Nunca "não tem"."""
+    portal_vazio = _PortalLxml("<div id='ficha'></div>")
+
+    tabelas = extrator.ler_fabricantes_e_fornecedores(portal_vazio)
+
+    assert tabelas == {"fabricantes": [], "fornecedores": []}
+
+
+# ===========================================================================
+# Documentos e Condições — HTML colado pelo usuário em 2026-08-18 (2ª rodada)
+# ===========================================================================
+# A descrição do documento vem dentro de um TOOLTIP -- terceiro padrão de
+# aninhamento do valor, depois do bloco de leitura (§8) e da célula rasa da
+# tabela (§13).
+_HTML_DOCUMENTOS_EDICAO = """
+<div id="dialogo">
+  <table class="table" role="grid">
+    <tbody>
+      <tr class="table-row">
+        <td data-header="Selecionar">
+          <div data-container="" class="display-flex justify-content-center" style="text-align: right;">
+            <span><input data-checkbox="" class="checkbox" type="checkbox"
+                         id="b10-b15-b19-l1_0-227_0-Checkbox1"></span>
+          </div>
+        </td>
+        <td data-header="Descrição">
+          <div data-block="Content.Tooltip" class="OSBlockWidget" id="b10-b15-b19-l1_0-227_0-$b6">
+            <div data-container="" class="osui-tooltip osui-tooltip--is-hover" name="0.2r2d7ttp763"
+                 id="b10-b15-b19-l1_0-227_0-b6-TooltipWrapper">
+              <div class="osui-tooltip__content" id="b10-b15-b19-l1_0-227_0-b6-Content"
+                   role="button" aria-describedby="b10-b15-b19-l1_0-227_0-b6-Tooltip" tabindex="0">
+                <span data-expression="">1188 web replaced</span>
+              </div></div></div>
+        </td>
+      </tr>
+      <tr class="table-row">
+        <td data-header="Selecionar">
+          <div data-container="" class="display-flex justify-content-center">
+            <span><input data-checkbox="" class="checkbox" type="checkbox"
+                         id="b10-b15-b19-l1_0-228_0-Checkbox1"></span>
+          </div>
+        </td>
+        <td data-header="Descrição">
+          <div data-block="Content.Tooltip" class="OSBlockWidget">
+            <div class="osui-tooltip"><div class="osui-tooltip__content">
+              <span data-expression="">1188 web replaced v2</span>
+            </div></div></div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <button data-button="" class="btn btn-primary" type="button">ASSOCIAR</button>
+</div>
+"""
+
+_HTML_DOCUMENTOS_VISUALIZACAO = """
+<div id="ficha">
+  <table class="table" role="grid"><tbody><tr class="table-row">
+    <td data-header="Descrição">
+      <div data-block="Content.Tooltip" class="OSBlockWidget" id="b12-b18-l1_0-452_0-$b2">
+        <div data-container="" class="osui-tooltip osui-tooltip--is-hover" name="0.fucvq6a3y4"
+             id="b12-b18-l1_0-452_0-b2-TooltipWrapper">
+          <div class="osui-tooltip__content" id="b12-b18-l1_0-452_0-b2-Content"
+               role="button" aria-describedby="b12-b18-l1_0-452_0-b2-Tooltip" tabindex="0">
+            <span data-expression="">4500063671.1469 e 4500063671.1470</span>
+          </div></div></div>
+    </td>
+  </tr></tbody></table>
+</div>
+"""
+
+# Captura NOVA do mesmo bloco "Volume (cm3)" que a §8 já cobria -- com ids
+# diferentes e `class="OSFillParent"` no label. Serve de regressão: prova que
+# o leitor de Condições continua valendo numa tela recapturada, e não só no
+# markup que existia quando ele foi escrito.
+_HTML_CONDICOES_RECAPTURA = """
+<fieldset data-advancedhtml=""><legend data-advancedhtml=""><div id="b12-b20-b1-b2-Legend">
+<span class="text-primary font-size-base">Volume (cm3)</span></div></legend>
+<div id="b12-b20-b1-b2-Content"><div data-container="" id="b12-b20-b1-Volume">
+<div data-container="" class="margin-top-s">
+<div data-container=""><label data-label="" class="OSFillParent"><span class="text-primary">Comprimento da embalagem unitária</span></label>
+<div data-container="" class="margin-top-s"><div data-block="PMIB_DataSheetView.Block_Expression" class="OSBlockWidget" id="b12-b20-b1-$b3"><span data-expression="">6</span></div></div></div>
+<div data-container=""><label data-label="" class="OSFillParent"><span class="text-primary">Largura da embalagem unitária</span></label>
+<div data-container="" class="margin-top-s"><div data-block="PMIB_DataSheetView.Block_Expression" class="OSBlockWidget" id="b12-b20-b1-$b4"><span data-expression="">6</span></div></div></div>
+<div data-container=""><label data-label="" class="OSFillParent"><span class="text-primary">Altura da embalagem unitária</span></label>
+<div data-container="" class="margin-top-s"><div data-block="PMIB_DataSheetView.Block_Expression" class="OSBlockWidget" id="b12-b20-b1-$b5"><span data-expression="">5</span></div></div></div>
+</div></div></div></fieldset>
+"""
+
+
+# --- documentos, modo de edição --------------------------------------------
+
+def test_a_linha_do_documento_e_achada_pela_descricao_exata():
+    arvore = etree.HTML(_HTML_DOCUMENTOS_EDICAO)
+
+    linhas = arvore.xpath(sel.XPATH_DOCUMENTO_LINHA_POR_DESCRICAO.format(
+        texto=_lit("1188 web replaced")))
+
+    assert len(linhas) == 1, "a descrição exata tem de casar UMA linha"
+
+
+def test_descricao_parecida_nao_arrasta_a_linha_errada():
+    """"1188 web replaced" x "1188 web replaced v2": o casamento por SUBSTRING
+    de `XPATH_DOCUMENTOS_LINHA` pegaria as duas, e associar o documento errado
+    não dá sintoma -- o diálogo fecha igual."""
+    arvore = etree.HTML(_HTML_DOCUMENTOS_EDICAO)
+
+    exato = arvore.xpath(sel.XPATH_DOCUMENTO_LINHA_POR_DESCRICAO.format(
+        texto=_lit("1188 web replaced")))
+    por_substring = arvore.xpath(sel.XPATH_DOCUMENTOS_LINHA.format(
+        texto=_lit("1188 web replaced")))
+
+    assert len(exato) == 1
+    assert len(por_substring) == 2, (
+        "se o seletor antigo deixar de ser ambíguo, esta nota pode sair"
+    )
+
+
+def test_o_checkbox_sai_da_linha_ja_escolhida():
+    arvore = etree.HTML(_HTML_DOCUMENTOS_EDICAO)
+    linha = arvore.xpath(sel.XPATH_DOCUMENTO_LINHA_POR_DESCRICAO.format(
+        texto=_lit("1188 web replaced")))[0]
+
+    pelo_cabecalho = linha.xpath(sel.XPATH_DOCUMENTOS_CHECKBOX_DA_LINHA)
+    semantico = linha.xpath(sel.XPATH_DOCUMENTO_CHECKBOX_SEMANTICO)
+    qualquer = linha.xpath(sel.XPATH_DOCUMENTO_CHECKBOX_QUALQUER)
+
+    assert len(pelo_cabecalho) == 1, "a âncora de §6.5 continua valendo"
+    assert len(semantico) == 1
+    assert len(qualquer) == 1
+    assert pelo_cabecalho[0] is semantico[0] is qualquer[0], "os três acham o MESMO input"
+
+
+def test_o_id_do_checkbox_nao_entra_em_seletor_nenhum():
+    """`b10-b15-b19-l1_0-227_0-Checkbox1` traz `-l1_0-`, que é índice de linha
+    e muda a cada busca -- já catalogado."""
+    assert any("-l1_0-" in f for f in sel.IDS_GERADOS_NAO_USAR)
+    for nome, valor in vars(sel).items():
+        if nome.startswith("XPATH") and isinstance(valor, str):
+            assert "-l1_0-" not in valor, nome
+
+
+def test_o_botao_associar_e_achado_pelo_texto():
+    arvore = etree.HTML(_HTML_DOCUMENTOS_EDICAO)
+
+    assert len(arvore.xpath(sel.XPATH_DOCUMENTOS_ASSOCIAR)) == 1
+
+
+# --- documentos, modo de visualização --------------------------------------
+
+def test_a_varredura_de_rotulo_e_valor_TAMBEM_nao_enxerga_documentos():
+    """Terceira seção que o padrão de §8 não cobre (depois de Fabricantes e
+    Fornecedores). O bloco aqui é `Content.Tooltip`, não
+    `PMIB_DataSheetView.Block_Expression`."""
+    arvore = etree.HTML(_HTML_DOCUMENTOS_VISUALIZACAO)
+
+    assert arvore.xpath(sel.XPATH_VIEW_VALOR) == []
+
+
+def test_a_MESMA_celula_le_o_valor_raso_e_o_aninhado_em_tooltip():
+    """🎯 O `//span` de `XPATH_REL_CELULA` é o que faz um seletor só servir
+    para os dois. `/td[…]/span` funcionaria no fabricante (raso) e falharia no
+    documento (dentro de 3 divs) -- em silêncio. Este teste existe para o `//`
+    não virar `/` numa "simplificação"."""
+    celula = sel.XPATH_REL_CELULA.format(coluna=_lit(sel.COLUNA_DESCRICAO))
+
+    doc = etree.HTML(_HTML_DOCUMENTOS_VISUALIZACAO)
+    aninhado = doc.xpath("//tr" + celula)
+    assert [n.text for n in aninhado] == ["4500063671.1469 e 4500063671.1470"]
+
+    raso = etree.HTML(_HTML_NAVEGACAO).xpath(
+        "//tr" + sel.XPATH_REL_CELULA.format(coluna=_lit(sel.COLUNA_REFERENCIA)))
+    assert "E24-256-10" in [n.text for n in raso]
+
+
+# --- Condições: a recaptura não quebrou o leitor ---------------------------
+
+def test_o_leitor_de_condicoes_continua_valendo_na_recaptura():
+    """Regressão contra tela recapturada: mesmos três campos, ids diferentes,
+    `class="OSFillParent"` a mais no label. Se o leitor dependesse de id ou de
+    classe de layout, quebraria aqui."""
+    engine = _EngineLxml(_HTML_CONDICOES_RECAPTURA)
+
+    blocos = extrator.ler_secao_visivel(engine)
+
+    assert blocos == [("Volume (cm3)", {
+        "Comprimento da embalagem unitária": "6",
+        "Largura da embalagem unitária": "6",
+        "Altura da embalagem unitária": "5",
+    })]

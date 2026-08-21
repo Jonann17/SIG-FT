@@ -110,16 +110,47 @@ sufixo passa, então:
   referência"* — não aborta a ficha nem desfaz o que já foi preenchido; vira
   pendência manual, como os campos rejeitados de `tech_specs`.
 
-**Fornecedor:**
+**Fornecedor e GE Vernova — são DUAS linhas, e confundi-las foi o defeito
+mais caro do módulo (corrigido em 2026-08-18).**
 
-> *"No campo do fornecedor, GE ENERGIAS RENOVÁVEIS, como o fornecedor é a
-> gente, que é sempre fixo (tipo intermediador), nós colocamos a informação
-> que está no STATUS PMIB na coluna `CÓDIGO CMI` ou por vezes `CÓDIGO GE`. Se
-> estiver vazio, só ignorar."*
+A seção tem **três** linhas de Referência, com **três valores diferentes**:
 
-- o fornecedor em si é **fixo** — não se escolhe;
-- a referência vem de `CÓDIGO CMI` / `CÓDIGO GE`;
-- **vazio ⇒ pular**, sem erro e sem pendência.
+| Linha | Como se chega nela | O que recebe |
+|---|---|---|
+| **Fabricante** | combo (`placeholder` diz "fabricante"); o campo **nasce** ao escolher | `CÓDIGO DO MATERIAL` (regra do `'D`) |
+| **Fornecedor** | combo (`placeholder` diz "fornecedor"); o campo **nasce** ao escolher | `CÓDIGO DO MATERIAL` — o **mesmo** valor |
+| **GE Vernova** | campo **fixo**, já na tela, com ícone `fa-info-circle` | `CÓDIGO CMI` / `CÓDIGO GE`, só se preenchido |
+
+> *"O CÓDIGO DO MATERIAL deve ser preenchido no campo de fornecedor que
+> devemos selecionar. E qual fornecedor? Vem da ficha original, lendo qual
+> fornecedor foi preenchido. O CÓDIGO CMI / CÓDIGO GE deve ser preenchido
+> somente se tiver no `_STATUS_PMIB`, e deve ser preenchido no campo do
+> fornecimento da GE, que é fixo."* (2026-08-18)
+
+⚠️ **O que estava errado.** A leitura anterior — construída sobre a frase
+*"no campo do fornecedor, GE ENERGIAS RENOVÁVEIS (…) é sempre fixo"* —
+tratava **Fornecedor** e **GE Vernova** como a mesma linha. Consequência
+observada pelo usuário: *"ele não está conseguindo nem colocar a referência
+correta do fornecedor correto, ele está fazendo no campo de fornecimento da
+GE"*. O combo do fornecedor estava mapeado desde 2026-08-17
+(`PLACEHOLDER_COMBO_FORNECEDOR`) e **nunca era usado por ninguém**.
+
+O nome da função era parte da causa, não um detalhe dela:
+`escrever_referencia_do_fornecedor` escrevia no campo da GE — chamar aquela
+linha de "fornecedor" fazia o valor errado parecer que ia para o lugar certo.
+Hoje são `escolher_fornecedor` + `escrever_referencia_da_ge`.
+
+**O fornecedor não é fixo.** Ele vem da ficha original. Quem é fixo é a linha
+da GE Vernova — e ela sequer tem combo. Por isso a 2ª estratégia de
+`achar_combo_do_fabricante` ("elimine o combo que contém o fornecedor fixo")
+se apoia numa premissa hoje sabidamente falsa; o lado do fornecedor **não** a
+repete: sem o placeholder, recusa e vira pendência manual.
+
+**Escrever o mesmo `CÓDIGO DO MATERIAL` em duas linhas** parece estranho e não
+é: a regra do sufixo `'D` é resolvida pelo **portal**, uma linha de cada vez.
+Se ele considerar as duas uma colisão, a segunda recebe `'D1` —
+`escrever_referencia` lê a resposta da tela e se adapta, em vez de o código
+supor qual das duas deve mudar.
 
 ### 3.2 Características técnicas
 
@@ -238,14 +269,16 @@ Nenhuma impede começar; todas impedem **rodar em lote sem conferir**.
 | Listagem para conferência sem portal | `scripts/listar_duplicadas.py` | ✅ CP 6.2 |
 | Abrir a original em visualização (varre as 7 abas) | `services/duplicadas_extrator.py` | ✅ CP 6.2, 13 testes |
 | Ler a tela como pares rótulo→valor | `services/duplicadas_extrator.py` | ✅ CP 6.2, 16 testes com XPath real |
-| Navegar entre as SEÇÕES internas da ficha | `services/duplicadas_extrator.py` | ☐ falta HTML das abas internas |
+| Navegar entre as SEÇÕES internas da ficha | `services/duplicadas_extrator.py` | ✅ 2026-08-18 (HTML real) |
+| Ler Fabricantes/Fornecedores (duas TABELAS) | `services/duplicadas_extrator.py` | ✅ 2026-08-18 (HTML real) |
 | Tela de seleção das fichas | `frontend.py` (`ModuloCopiaFichas`) | ✅ CP 6.2 — usa a identificação nova |
 | Fabricante (combo com busca) | `services/duplicadas_injetor.py` | ✅ CP 6.3 |
 | Referência com a regra do `'D` | `services/duplicadas_injetor.py` | ✅ CP 6.3 |
 | Purga das características (preserva CÓDIGO PMIB) | `services/duplicadas_injetor.py` | ✅ CP 6.3, 18 testes |
 | Robô: amarra ler-original → escrever-alvo | `services/duplicadas_robo.py` | ✅ CP 6.3, 15 testes |
 | Botão na tela ("2b. Robô NOVO") | `frontend.py` (`ModuloCopiaFichas`) | ✅ CP 6.3 |
-| Fornecedor (referência CMI/GE) | `services/duplicadas_injetor.py` | ✅ CP 6.3 |
+| Fornecedor (combo + referência) | `services/duplicadas_injetor.py` | ✅ CP 6.3 (corrigido 2026-08-18) |
+| GE Vernova (referência CMI/GE) | `services/duplicadas_injetor.py` | ✅ CP 6.3 |
 | Documentos e imagens | novo serviço | ☐ CP 6.4 |
 | Condições (todas as abas menos a Financeira) | novo serviço | ☐ CP 6.4 |
 | Abas de Condições (exclui a Financeira) | `services/duplicadas_spec.py` | ✅ CP 6.1 |
@@ -417,6 +450,72 @@ sufixo aleatório do FilePond, número de instância do `vscomp`, índice de op�
 do `vscomp` e **índice de linha do OutSystems** (`-l1_0-`) — este último
 apareceu em **duas telas diferentes**, então é padrão da plataforma, não
 coincidência.
+
+---
+
+## 6.6 Quinta rodada — navegação e as duas tabelas (2026-08-18)
+
+Levantada a pedido, e trouxe **uma correção de modelo** junto.
+
+### Abas da ficha (visualização)
+
+```html
+<button class="osui-tabs__header-item" name="0.4z9qbl6cvoj" data-tab="1"
+        role="tab" aria-selected="false" aria-controls="b12-$b12">
+  <div class="display-contents ph" id="b12-b5-Title">Fabricantes e fornecedores</div>
+</button>
+```
+
+Três atributos desse markup **parecem** âncora e não são: `name` é aleatório
+(o `0.` denuncia), `aria-controls` é id gerado com `$`, e `data-tab` é
+**ordinal** — posição é o que muda quando o portal reordena a tela, e §6.5c já
+decidiu contra posição. Sobra o **texto** do `<div>`, que é o que a pessoa lê.
+
+`aria-selected="true"` confirma que o clique pegou. Sem a conferência, um
+clique que falhou deixa o extrator lendo a seção **anterior** e devolvendo
+dados plausíveis da seção errada.
+
+### Sub-abas de Condições — outro componente
+
+```html
+<div data-container="" class="dummy-active OSInline" style="cursor: pointer">Armazenamento e transporte</div>
+<div data-container="" class="OSInline" style="cursor: pointer">Manutenção e descarte</div>
+```
+
+**Não são `role="tab"`** — são `<div>` clicáveis, e a aberta ganha
+`dummy-active`. Supor que fossem o mesmo componente das abas de cima era
+plausível e estava errado; há teste contra o HTML real para a suposição não
+voltar. Confirma a tabela de §3.4: visualização tem 3 sub-abas, edição tem 5.
+
+### 🎯 Fabricantes e fornecedores são duas TABELAS, não pares rótulo→valor
+
+```html
+<div class="full-fieldset" id="b12-b13-ManufacturerAndProvider">
+  <table><thead><tr><th>Nome do Fabricante</th><th>Referência</th></tr></thead>
+  <tbody><tr><td data-header="Nome do Fabricante"><span data-expression>ENERSYS</span></td>
+             <td data-header="Referência"><span data-expression>E24-256-10</span></td></tr>
+         <tr><td data-header="Nome do Fabricante"><span data-expression>SASSI</span></td>…
+<div class="full-fieldset" id="b12-b14-ManufacturerAndProvider">
+  <table><thead><tr><th>Nome do Fornecedor</th>…
+    <td data-header="Nome do Fornecedor"><span data-expression>GE ENERGIAS RENOVAVEIS LTDA</span></td>
+    <td data-header="Referência"><span data-expression>08934120BTM99-064F</span></td>
+```
+
+**Isto derruba uma suposição do extrator.** `XPATH_VIEW_VALOR` (§8) exige o
+ancestral `PMIB_DataSheetView.Block_Expression`; estas células **não o têm**.
+Ou seja, a varredura de rótulo→valor **não enxerga esta seção**, e
+`achar_fornecedor` lendo dela devolvia `""` para uma ficha real, sem erro
+nenhum. Provado em `tests/test_duplicadas_xpath_real.py`, avaliando o XPath
+contra este markup.
+
+Os dois contêineres têm o **mesmo sufixo de id** (`-ManufacturerAndProvider`),
+mudando só o prefixo gerado — então o id não separa fabricante de fornecedor.
+Quem separa é `@data-header`, o mesmo atributo que `tech_specs` já usa: é
+padrão da plataforma, agora confirmado numa segunda tela.
+
+E a tabela do fabricante tem **duas linhas** nesta ficha: *"a gente comprou de
+um que comprou do fabricante"* — ENERSYS fabrica, SASSI revende. Ler só a
+primeira perderia a segunda em silêncio.
 
 ---
 

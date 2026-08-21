@@ -55,6 +55,14 @@ class _PortalFalso:
     def safe_fill(self, _seletor, _texto):
         pass
 
+    def salvar_e_confirmar(self, nome="", callback_log=None, **_kwargs):
+        """Passa a ser o caminho do módulo novo (2026-08-19): SALVAR + toast
+        de sucesso NOVO na tela. O duplo delega no `clicar_salvar_visivel`
+        de sempre -- a mecânica do toast é testada contra o `PMIBPortal`
+        real em tests/test_duplicadas_salvar_com_prova.py, e reimplementá-la
+        aqui só criaria uma segunda verdade para envelhecer sozinha."""
+        return self.clicar_salvar_visivel(nome)
+
     def clicar_salvar_visivel(self, nome=""):
         self.salvou.append(nome)
         return True
@@ -73,9 +81,32 @@ def _com_etapas(monkeypatch, *, blocos=(("Fabricantes", {"Fabricante": "SCHNEIDE
         return lambda *_a, **_k: injetor.ResultadoDaSecao(nome, secoes_ok, "")
 
     monkeypatch.setattr(robo.injetor, "escolher_fabricante", _secao("fabricante"))
-    monkeypatch.setattr(robo.injetor, "escrever_referencia", _secao("referencia"))
-    monkeypatch.setattr(robo.injetor, "escrever_referencia_do_fornecedor", _secao("fornecedor"))
+    monkeypatch.setattr(robo.injetor, "escolher_fornecedor", _secao("fornecedor"))
+    # `escrever_referencia` é chamada DUAS vezes (fabricante e fornecedor) e
+    # nomeia o resultado pelo `nome_da_secao` que recebe -- o duplo respeita
+    # isso, senão os dois resultados viram um só e uma falha some do placar.
+    monkeypatch.setattr(
+        robo.injetor, "escrever_referencia",
+        lambda *_a, nome_da_secao="referencia", **_k:
+            injetor.ResultadoDaSecao(nome_da_secao, secoes_ok, ""))
+    monkeypatch.setattr(robo.injetor, "escrever_referencia_da_ge", _secao("ge_vernova"))
     monkeypatch.setattr(robo.injetor, "limpar_caracteristicas", _secao("caracteristicas"))
+
+    # CP 6.4 -- as duas seções novas. Neutralizadas aqui pelo mesmo motivo das
+    # outras: este arquivo testa a ORQUESTRAÇÃO (quem roda, em que ordem, o que
+    # entra no placar). A mecânica de cada uma tem arquivo próprio
+    # (test_duplicadas_condicoes.py e test_duplicadas_documentos.py).
+    monkeypatch.setattr(robo.extrator, "abrir_secao", lambda *_a, **_k: True)
+    monkeypatch.setattr(robo.extrator, "ler_tabela_de", lambda *_a, **_k: [])
+    monkeypatch.setattr(robo.condicoes, "ler", lambda *_a, **_k: {})
+    monkeypatch.setattr(robo.condicoes, "escrever", _secao("condicoes"))
+    monkeypatch.setattr(robo.documentos, "associar", _secao("documentos"))
+    # CP 6.4: o PDM roda ANTES das características e as GATEIA -- ficha no PDM
+    # errado tem a lista de características errada. Neutralizado aqui como as
+    # demais; a mecânica está em test_duplicadas_pdm.py.
+    monkeypatch.setattr(robo.pdm, "garantir_pdm", _secao("pdm"))
+    monkeypatch.setattr(robo.imagens, "ler_da_original", lambda *_a, **_k: [])
+    monkeypatch.setattr(robo.imagens, "copiar", _secao("imagens"))
     return portal
 
 
@@ -157,12 +188,19 @@ def test_todas_as_secoes_ok_e_ficha_ok(monkeypatch):
     resultado = robo.processar_ficha(portal, _Ficha(), callback_log=lambda _m: None)
 
     assert resultado.ok is True
-    feitas = [s.nome for s in resultado.secoes if not s.pendente]
-    assert feitas == ["fabricante", "referencia", "fornecedor", "caracteristicas"]
-    # E as que o robô NÃO faz entram declaradas, ficha a ficha. Sem isso, quem
-    # olhasse a ficha veria as seções preenchidas por uma rodada anterior do
-    # robô antigo e concluiria que este as fez -- aconteceu em 2026-08-17.
-    assert [s.nome for s in resultado.secoes if s.pendente] == [
+    # A ORDEM é o contrato: cada linha da seção é escolhida e só então tem sua
+    # Referência escrita, porque o campo NASCE da escolha. Inverter dois
+    # nomes aqui significaria escrever antes de saber em qual campo.
+    assert [s.nome for s in resultado.secoes] == [
+        "fabricante", "referencia",
+        "fornecedor", "referencia_fornecedor",
+        "ge_vernova",
+        # CP 6.4: o PDM vem ANTES das características e as gateia -- ele
+        # decide QUAIS características a ficha tem.
+        "pdm", "caracteristicas",
+        # CP 6.4: Condições e Documentos entram DEPOIS das
+        # características -- a purga mexe na mesma ficha e o
+        # portal recarrega a tela a cada salvamento.
         "condicoes", "documentos", "imagens"]
 
 
@@ -213,7 +251,11 @@ def test_fabricante_ausente_NAO_impede_o_resto(monkeypatch):
 
     resultado = robo.processar_ficha(portal, _Ficha(), callback_log=logs.append)
 
-    assert len([s for s in resultado.secoes if not s.pendente]) == 4
+    # Seis desde 2026-08-18: fabricante, referência do fabricante, fornecedor,
+    # referência do fornecedor, referência da GE Vernova e características.
+    # Eram quatro quando "fornecedor" e "GE Vernova" eram tratados como a
+    # mesma linha -- que era o defeito.
+    assert len(resultado.secoes) == 10  # + pdm, condicoes, documentos, imagens
     assert any("fabricante" in linha for linha in logs)
 
 
@@ -225,7 +267,7 @@ def test_o_lote_segue_depois_de_uma_ficha_ruim(monkeypatch):
     chamadas = {"n": 0}
     original = robo.processar_ficha
 
-    def processar_ficha(p, ficha, callback_log=None):
+    def processar_ficha(p, ficha, callback_log=None, **_kwargs):
         chamadas["n"] += 1
         if chamadas["n"] == 1:
             resultado = robo.ResultadoDaFicha(ficha.pmib, ficha.ficha_original)
@@ -305,49 +347,110 @@ def test_sem_fabricante_em_lugar_nenhum_devolve_vazio_e_nao_chuta():
     assert robo.achar_fabricante([], _FichaComMarca(fabricante="")) == ""
 
 
-def test_a_referencia_do_fornecedor_vem_da_FICHA_ORIGINAL_primeiro():
-    """Ordem INVERTIDA em relação ao fabricante, e é decisão do usuário: "o
-    fornecedor você pode tirar da ficha original, acho que seria mais
-    correto"."""
-    blocos = [("Fornecedores", {"Referência do fornecedor": "DA ORIGINAL"})]
+# ===========================================================================
+# As TRÊS linhas da seção — corrigido em 2026-08-18
+# ===========================================================================
+# O usuário relatou: *"ele não está conseguindo nem colocar a referência
+# correta do fornecedor correto, ele está fazendo no campo de fornecimento da
+# GE"*. A causa era o modelo: o código tratava "Fornecedor" e "GE Vernova"
+# como a MESMA linha. São três, com três valores diferentes:
+#
+#     Fabricante   combo  -> Referência = CÓDIGO DO MATERIAL
+#     Fornecedor   combo  -> Referência = CÓDIGO DO MATERIAL
+#     GE Vernova   fixo ⓘ -> Referência = CÓDIGO CMI / CÓDIGO GE
+def test_o_fornecedor_a_escolher_vem_da_FICHA_ORIGINAL():
+    """"Vem da ficha original, lendo qual fornecedor foi preenchido."
 
-    achada = robo.achar_referencia_do_fornecedor(
-        blocos, _FichaComMarca(codigo_fornecedor="DA PLANILHA"))
+    O que se lê da original é QUEM é o fornecedor -- para escolhê-lo no combo
+    da ficha nova. Antes daqui saía uma REFERÊNCIA, e era o erro.
+    """
+    blocos = [("Fornecedores", {"Fornecedor": "SIEMENS DO BRASIL"})]
 
-    assert achada == "DA ORIGINAL"
-
-
-def test_fornecedor_vazio_na_original_cai_para_a_planilha():
-    """"...só caso lá estiver vazio" -- aí a coluna CÓDIGO CMI / CÓDIGO GE."""
-    achada = robo.achar_referencia_do_fornecedor(
-        [], _FichaComMarca(codigo_fornecedor="CMI-99"))
-
-    assert achada == "CMI-99"
-
-
-def test_fornecedor_vazio_nos_dois_devolve_vazio():
-    """"Se por fim você não conseguir, deixa em branco" -- e a ficha vira
-    INCOMPLETO na planilha, em vez de receber o código de outra."""
-    assert robo.achar_referencia_do_fornecedor([], _FichaComMarca(codigo_fornecedor="")) == ""
+    assert robo.achar_fornecedor(blocos, _FichaComMarca()) == "SIEMENS DO BRASIL"
 
 
-def test_o_fornecedor_recebe_a_referencia_resolvida_pela_ordem_do_usuario(monkeypatch):
-    """A ficha original tem precedência sobre a planilha para o FORNECEDOR --
-    ordem invertida em relação ao fabricante, e é decisão do usuário."""
+def test_fornecedor_ausente_na_original_devolve_vazio():
+    """A planilha NÃO tem o nome do fornecedor -- CÓDIGO CMI / CÓDIGO GE é a
+    referência da GE Vernova, que é outra linha. Sem nome, o combo não é
+    tocado: escolher um fornecedor por parecer plausível põe dado errado numa
+    ficha real, sem sintoma na tela."""
+    assert robo.achar_fornecedor([], _FichaComMarca(codigo_fornecedor="CMI-99")) == ""
+
+
+def test_a_linha_do_fornecedor_recebe_o_CODIGO_DO_MATERIAL(monkeypatch):
+    """"O código do material deve ser preenchido no campo de fornecedor que
+    devemos selecionar" -- o MESMO valor do fabricante, em outra linha."""
     portal = _com_etapas(
-        monkeypatch,
-        blocos=[("Fornecedores", {"Referência do fornecedor": "DA ORIGINAL"})])
-    recebidos = []
+        monkeypatch, blocos=[("Fornecedores", {"Fornecedor": "SIEMENS"})])
+    escritas = []
     monkeypatch.setattr(
-        robo.injetor, "escrever_referencia_do_fornecedor",
-        lambda _p, referencia, _log=None: recebidos.append(referencia)
+        robo.injetor, "escrever_referencia",
+        lambda _p, codigo, _log=None, id_do_campo="", nome_da_secao="referencia", log_auditoria=None:
+            escritas.append((nome_da_secao, codigo))
+            or injetor.ResultadoDaSecao(nome_da_secao, True, ""))
+
+    robo.processar_ficha(
+        portal,
+        _FichaComMarca(fabricante="WAGO", material="2904616",
+                       codigo_fornecedor="CMI-99"),
+        callback_log=lambda _m: None)
+
+    assert ("referencia", "2904616") in escritas, "a linha do fabricante"
+    assert ("referencia_fornecedor", "2904616") in escritas, "a linha do fornecedor"
+
+
+def test_o_fornecedor_lido_da_original_e_o_que_vai_para_o_combo(monkeypatch):
+    portal = _com_etapas(
+        monkeypatch, blocos=[("Fornecedores", {"Fornecedor": "SIEMENS DO BRASIL"})])
+    escolhidos = []
+    monkeypatch.setattr(
+        robo.injetor, "escolher_fornecedor",
+        lambda _p, nome, _log=None: escolhidos.append(nome)
         or injetor.ResultadoDaSecao("fornecedor", True, ""))
 
-    robo.processar_ficha(portal, _FichaComMarca(fabricante="WAGO",
-                                                codigo_fornecedor="DA PLANILHA"),
+    robo.processar_ficha(portal, _FichaComMarca(fabricante="WAGO"),
                          callback_log=lambda _m: None)
 
-    assert recebidos == ["DA ORIGINAL"]
+    assert escolhidos == ["SIEMENS DO BRASIL"]
+
+
+def test_so_a_GE_recebe_o_CODIGO_CMI(monkeypatch):
+    """"O CÓDIGO CMI / CÓDIGO GE deve ser preenchido somente se tiver no
+    _STATUS_PMIB, e deve ser preenchido no campo do fornecimento da GE, que é
+    fixo."
+
+    Este é o teste que reprova o comportamento relatado: antes, o valor do
+    fornecedor ia para o campo da GE.
+    """
+    portal = _com_etapas(
+        monkeypatch, blocos=[("Fornecedores", {"Fornecedor": "SIEMENS"})])
+    na_ge = []
+    monkeypatch.setattr(
+        robo.injetor, "escrever_referencia_da_ge",
+        lambda _p, referencia, _log=None, log_auditoria=None: na_ge.append(referencia)
+        or injetor.ResultadoDaSecao("ge_vernova", True, ""))
+
+    robo.processar_ficha(
+        portal,
+        _FichaComMarca(fabricante="WAGO", material="2904616",
+                       codigo_fornecedor="CMI-99"),
+        callback_log=lambda _m: None)
+
+    assert na_ge == ["CMI-99"], (
+        "o campo da GE Vernova tem de receber CÓDIGO CMI/GE -- e só ele"
+    )
+
+
+def test_codigo_cmi_vazio_pula_a_GE_sem_derrubar_a_ficha(monkeypatch):
+    """"Se estiver vazio, só ignorar." """
+    portal = _com_etapas(
+        monkeypatch, blocos=[("Fornecedores", {"Fornecedor": "SIEMENS"})])
+
+    resultado = robo.processar_ficha(
+        portal, _FichaComMarca(fabricante="WAGO", codigo_fornecedor=""),
+        callback_log=lambda _m: None)
+
+    assert resultado.erro_fatal == ""
 
 
 def test_log_com_atributo_ausente_nao_derruba_a_ficha(monkeypatch):
@@ -367,4 +470,8 @@ def test_log_com_atributo_ausente_nao_derruba_a_ficha(monkeypatch):
     resultado = robo.processar_ficha(portal, _FichaCrua(), callback_log=lambda _m: None)
 
     assert resultado.erro_fatal == ""
-    assert len([s for s in resultado.secoes if not s.pendente]) == 4
+    # Seis desde 2026-08-18: fabricante, referência do fabricante, fornecedor,
+    # referência do fornecedor, referência da GE Vernova e características.
+    # Eram quatro quando "fornecedor" e "GE Vernova" eram tratados como a
+    # mesma linha -- que era o defeito.
+    assert len(resultado.secoes) == 10  # + pdm, condicoes, documentos, imagens

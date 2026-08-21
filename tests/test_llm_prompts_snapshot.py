@@ -21,6 +21,31 @@ editar a fixture (ver docs/refatoracao/PENDENCIAS.md, entrada do CP 3.5,
 para o racional completo e para como regenerar caso um dia seja
 legitimamente necessário).
 
+⚠️ EXCEÇÃO REGISTRADA -- `upload_conditions_system` foi REGERADA em
+2026-08-18. É o caso que a regra acima prevê como "legitimamente
+necessário": o usuário pediu que o prompt de Condições parasse de inventar
+conteúdo, então o TEXTO mudou de propósito. A fixture continua valendo como
+trava contra mudança ACIDENTAL -- o que ela não prova mais, para esta
+tarefa, é "idêntico ao pré-refatoração", porque não é mais esse o objetivo.
+A propriedade que passou a importar (o prompt não manda inventar) é testada
+em tests/test_prompt_condicoes_fidelidade.py, que checa CONTEÚDO e não
+igualdade -- uma fixture regerada não pode se auto-aprovar. As outras 4
+fixtures seguem intocadas desde a captura original.
+
+⚠️ SEGUNDA REGERAÇÃO -- `upload_conditions_system` E `upload_conditions_user`,
+em 2026-08-19, pelo mesmo motivo e com o mesmo aval. O usuário pediu que a IA
+DEDUZA a unidade quando a ficha não a declara (*"eu preciso que a IA adivinhe
+sim com base no tipo de equipamento"*), o que reescreveu as regras 3 e 7 do
+prompt; e o payload passou a levar `Descrição breve da ficha` (a célula H6),
+que é o segundo sinal sobre o material -- daí a fixture de USER ter mudado
+também, coisa que não acontecia desde a captura.
+
+O diff foi conferido linha a linha antes de gravar: as 18 linhas removidas
+estão todas dentro das regras 3 e 7 e da linha da tabela da REGRA 0 que
+proibia a dedução. Nenhuma outra parte do prompt foi tocada. As propriedades
+de conteúdo -- que é o que uma fixture regerada não consegue provar sobre si
+mesma -- estão em tests/test_prompt_condicoes_unidades.py.
+
 Técnica de captura (idêntica a tests/test_llm_backend_migration.py e
 tests/test_llm_autospec_migration.py, já usada nos CPs 3.1-3.4): cada
 consumidor é construído normalmente e `instancia._llm` é substituído por um

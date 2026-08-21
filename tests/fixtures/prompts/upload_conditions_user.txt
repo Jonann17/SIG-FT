@@ -1,6 +1,7 @@
 Processar: {
   "pmib_codigo": "4500063671.1234",
   "Descrição do material": "Disjuntor Tripolar 250A",
+  "Descrição breve da ficha": "Disjuntor Tripolar 250A",
   "dimensoes": {
     "comprimento": "30",
     "largura": "20",

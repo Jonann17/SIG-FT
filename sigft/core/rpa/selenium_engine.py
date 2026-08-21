@@ -315,6 +315,34 @@ class SeleniumEngine(RPAEngine):
             el.send_keys(Keys.BACKSPACE)
             el.send_keys(str(texto))
 
+    def click_dom(self, seletor: str) -> None:
+        """Clique por JavaScript, sem checagem de acionabilidade -- ver
+        `engine.py`.
+
+        No Selenium isto NÃO é uma capacidade nova: é a mesma
+        `execute_script("arguments[0].click()")` que `click_estrito` já faz.
+        O que muda é o contrato ficar explícito, para o motor Playwright poder
+        oferecer o equivalente. A diferença para `click_estrito` é o que NÃO
+        se faz aqui: não espera "clicável" (`element_to_be_clickable` exige
+        visibilidade) e não rola a tela. Só presença.
+        """
+        locator = (By.XPATH, seletor)
+        with _traduzindo():
+            el = self.wait.until(EC.presence_of_element_located(locator))
+            self.driver.execute_script("arguments[0].click();", el)
+
+    def html_do_elemento(self, seletor: str) -> str:
+        """`outerHTML` via atributo -- ver `engine.py`. Sem espera: o modo de
+        auditoria fotografa o que está na tela AGORA, e esperar por um
+        elemento ausente só atrasaria a foto."""
+        try:
+            elementos = self.driver.find_elements(By.XPATH, seletor)
+            if not elementos:
+                return ""
+            return elementos[0].get_attribute("outerHTML") or ""
+        except Exception:  # noqa: BLE001 -- ver docstring do contrato
+            return ""
+
     def scroll_to(self, seletor: str) -> None:
         with _traduzindo():
             el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
@@ -352,6 +380,35 @@ class SeleniumEngine(RPAEngine):
         with _traduzindo():
             el = self.wait.until(EC.element_to_be_clickable((By.XPATH, seletor)))
             el.click()
+
+    def bytes_da_imagem(self, seletor: str) -> bytes:
+        """Lê o `blob:` de dentro da página -- ver `engine.py`.
+
+        `execute_async_script` porque o `fetch` é assíncrono e o Selenium não
+        espera promessa sozinho: o último argumento que o WebDriver injeta no
+        script é o CALLBACK, e é chamá-lo que devolve o valor.
+        """
+        script = """
+            const el = arguments[0];
+            const pronto = arguments[arguments.length - 1];
+            fetch(el.src)
+                .then(r => r.arrayBuffer())
+                .then(b => pronto(Array.from(new Uint8Array(b))))
+                .catch(() => pronto([]));
+        """
+        try:
+            elementos = self.driver.find_elements(By.XPATH, seletor)
+            if not elementos:
+                return b""
+            numeros = self.driver.execute_async_script(script, elementos[0])
+            return bytes(numeros or [])
+        except Exception:  # noqa: BLE001 -- ver docstring
+            return b""
+
+    def enviar_arquivo(self, seletor: str, caminho: str) -> None:
+        """`send_keys` com o caminho -- é como o Selenium sobe arquivo. Ver
+        `engine.py`."""
+        self.wait.until(EC.presence_of_element_located((By.XPATH, seletor))).send_keys(caminho)
 
     def wait_present(self, seletor: str) -> None:
         with _traduzindo():

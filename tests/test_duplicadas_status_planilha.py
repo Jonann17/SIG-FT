@@ -180,39 +180,35 @@ def test_ficha_sem_secao_nenhuma_nem_abre_a_planilha():
 
 
 # ===========================================================================
-# As seções que o robô AINDA NÃO faz
+# Seção pendente na planilha
 # ===========================================================================
 def test_secao_pendente_marca_a_coluna_como_INCOMPLETO():
     """⚠️ REVERSÃO DE UMA DECISÃO MINHA, motivada por um relato do usuário.
 
     Eu tinha escrito que seção não tentada NÃO devia ser escrita na planilha,
     "para não fazer ruído". Em 2026-08-17 ele reportou que "documentos e
-    condições já estão preenchendo" testando pelo botão do robô NOVO -- que não
-    tem uma linha de código para nenhum dos dois; o que ele viu era resíduo de
-    uma rodada anterior do robô antigo na mesma ficha.
-
-    Coluna em branco não diz nada. Coluna escrita INCOMPLETO teria dito a
-    verdade antes de a ficha ser considerada pronta. O "ruído" que eu quis
-    evitar era exatamente a informação que faltou.
+    condições já estão preenchendo" e eu afirmei, olhando um checkout
+    DESATUALIZADO, que o robô novo não tinha código para isso. Ele tinha: o CP
+    6.4 já estava no branch. A lição que sobrevive à minha confusão é a da
+    planilha: coluna em branco não diz nada, coluna escrita INCOMPLETO diz.
     """
     resultado = robo.ResultadoDaFicha("A", "B")
     resultado.registrar(injetor.ResultadoDaSecao("caracteristicas", True))
     resultado.registrar(injetor.ResultadoDaSecao("condicoes", False, pendente=True))
-    resultado.registrar(injetor.ResultadoDaSecao("documentos", False, pendente=True))
-    resultado.registrar(injetor.ResultadoDaSecao("imagens", False, pendente=True))
 
     marcas = robo.status_por_secao(resultado)
 
     assert marcas[config.COL_CARACT_TECNICAS] == status_sheet.VALOR_COMPLETO
     assert marcas[config.COL_CONDICOES] == status_sheet.VALOR_INCOMPLETO
-    assert marcas[config.COL_DOCS_IMAGENS] == status_sheet.VALOR_INCOMPLETO
 
 
-def test_documentos_e_imagens_juntos_na_mesma_coluna():
-    """A coluna é uma só; basta um dos dois faltar para ela não estar completa."""
+def test_documentos_e_imagens_entram_em_INFO_GERAIS():
+    """O `_STATUS_PMIB` não tem coluna própria para documentos: associar
+    datasheet é parte de "as informações gerais estão prontas". Basta um dos
+    dois faltar para a coluna não fechar."""
     resultado = robo.ResultadoDaFicha("A", "B")
     resultado.registrar(injetor.ResultadoDaSecao("documentos", True))
     resultado.registrar(injetor.ResultadoDaSecao("imagens", False))
 
-    assert robo.status_por_secao(resultado)[config.COL_DOCS_IMAGENS] == \
+    assert robo.status_por_secao(resultado)[config.COL_INFO_GERAIS] == \
         status_sheet.VALOR_INCOMPLETO

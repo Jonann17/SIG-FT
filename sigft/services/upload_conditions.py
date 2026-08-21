@@ -177,7 +177,27 @@ class ConditionsProcessor:
             wb.close()
             return None
 
-    def processar_ia_lote(self, lista_caminhos, df_status, callback_log=None):
+    def processar_ia_lote(self, lista_caminhos, df_status, callback_log=None,
+                          processar_completos=False):
+        """Gera o conteudo das Condicoes por IA, ficha a ficha.
+
+        `processar_completos` (2026-08-18): quando True, reprocessa tambem as
+        fichas ja marcadas como COMPLETO na coluna CONDICOES do
+        `_STATUS_PMIB`. E o que o interruptor "Forcar processamento de fichas
+        com status 'COMPLETO'" da tela sempre prometeu.
+
+        O interruptor existia na UI desde o inicio (`ModuloUploadConditions.
+        var_processar_completos`), mas NUNCA foi lido: nem `_start_ia_process`
+        chamava `.get()`, nem esta funcao tinha o parametro. O proprio
+        frontend registrava a divida por escrito -- "para manter simples,
+        vamos rodar; se o usuario quiser forcar, ele deveria alterar o Excel,
+        ou precisaremos adicionar essa logica no backend no futuro". Ou seja:
+        um controle que nao controlava nada, e que dava ao usuario a
+        impressao contraria da verdade.
+
+        O default e False para preservar o comportamento de quem chama sem o
+        argumento (economia de API continua sendo o padrao).
+        """
         fichas_processadas = []
         # CP 4.4: `from_legacy` adapta o `callback_log` antigo sem mudar a
         # assinatura pública desta função (o frontend segue chamando igual).
@@ -185,7 +205,10 @@ class ConditionsProcessor:
             from_legacy(callback_log=callback_log),
             titulo="Condições — gerando conteúdo por IA",
             total=len(lista_caminhos),
-            contexto={"fichas": len(lista_caminhos)},
+            contexto={
+                "fichas": len(lista_caminhos),
+                "forçar COMPLETO": "sim" if processar_completos else "não",
+            },
         )
         lote.iniciar()
         # CP 1.2: prefixo de contrato deriva de config.PREFIXO_CONTRATO (era
@@ -222,9 +245,18 @@ class ConditionsProcessor:
                     status_atual = status_atual.iloc[0]
 
                 if str(status_atual).strip().upper() == "COMPLETO":
-                    if callback_log: callback_log(f"PMIB {pmib_codigo} já COMPLETO.")
-                    lote.pulado(pmib_codigo, "já marcado como COMPLETO no STATUS_PMIB")
-                    continue
+                    if processar_completos:
+                        # Reprocessa. A linha de log e deliberada: sem ela, o
+                        # unico sinal de que o interruptor funcionou seria a
+                        # AUSENCIA da mensagem "ja COMPLETO" -- e ausencia de
+                        # mensagem nao e evidencia que o usuario consiga ver.
+                        if callback_log:
+                            callback_log(f"PMIB {pmib_codigo} está COMPLETO, mas o "
+                                         f"'Forçar processamento' está ligado -- reprocessando.")
+                    else:
+                        if callback_log: callback_log(f"PMIB {pmib_codigo} já COMPLETO.")
+                        lote.pulado(pmib_codigo, "já marcado como COMPLETO no STATUS_PMIB")
+                        continue
             except KeyError:
                 pass
 
@@ -232,6 +264,15 @@ class ConditionsProcessor:
             if not dados_brutos:
                 lote.pulado(pmib_codigo, "não foi possível extrair dados da planilha")
                 continue
+
+            # O portal recusa campo vazio, então a IA preenche esses com "N/A"
+            # (ver SYSTEM_CONDICOES, REGRA 0). Dizer QUAIS vieram vazios é o
+            # que separa "o fornecedor respondeu N/A" de "o fornecedor não
+            # respondeu" -- no portal os dois ficam idênticos.
+            vazios = campos_em_branco_na_origem(dados_brutos)
+            if vazios and callback_log:
+                callback_log(f"   [i] {pmib_codigo}: {len(vazios)} campo(s) sem resposta do "
+                             f"fornecedor, irão como 'N/A': {', '.join(vazios)}")
 
             try:
                 descricao = df_status.loc[pmib_codigo, 'DESCRIÇÃO']
@@ -244,7 +285,17 @@ class ConditionsProcessor:
 
             dados_api_input = {
                 "pmib_codigo": pmib_codigo,
+                # As DUAS descrições vão juntas, e isso é deliberado: desde
+                # 2026-08-19 a IA precisa saber O QUE é o material para deduzir
+                # a unidade das medidas (ver regra 3 do SYSTEM_CONDICOES, e o
+                # pedido do usuário: *"a maioria das fichas não virá unidade,
+                # mas sabendo o tipo de material..."*). Quanto mais sinal sobre
+                # o material, melhor a dedução -- e as duas fontes falham em
+                # situações diferentes: a do `_STATUS_PMIB` é a melhor quando
+                # existe, mas o código pode não estar na planilha; o H6 é da
+                # própria ficha e está sempre lá, ainda que mais pobre.
                 'Descrição do material': descricao,
+                'Descrição breve da ficha': dados_brutos.get('descricao_breve', ''),
                 "dimensoes": dados_brutos.get("dimensoes"),
                 'controle_temperatura': dados_brutos.get("controle_temperatura"),
                 "posicao_armazenamento": dados_brutos.get("posicao_armazenamento"),
@@ -373,6 +424,163 @@ XPATH_CHECK_CLIMATIZACAO = '//*[@id="b10-b17-b1-Checkbox4"]'
 XPATH_CHECK_UMIDADE = '//*[@id="b10-b17-b1-Checkbox5"]'
 
 
+# ---------------------------------------------------------------------------
+# Pendências de uma ficha (2026-08-18)
+# ---------------------------------------------------------------------------
+# Antes, cada bloco de campos terminava em
+#
+#     except Exception as e:
+#         if callback_log: callback_log(f"Aviso: Falha nas Dimensões. {e}")
+#
+# e o laço seguia. No fim, `processar_lista` marcava a ficha como COMPLETO no
+# `_STATUS_PMIB` INCONDICIONALMENTE -- ou seja, uma ficha em que os 12 blocos
+# falharam saía marcada como pronta. A informação existia, na tela, e era
+# jogada fora na linha seguinte.
+#
+# A mensagem de log é a MESMA de antes, byte a byte: o objetivo aqui não é
+# melhorar o texto, é parar de perder o fato.
+# As quatro seções de Condições que ESTE módulo preenche, na ordem da tela.
+#
+# A quinta ("Valorização" / financeira) fica FORA de propósito: o módulo não a
+# preenche, então exigir confirmação dela deixaria toda ficha INCOMPLETO para
+# sempre. É o "salvo a parte da valorização" do pedido do usuário -- e é
+# também a mesma exclusão que `duplicadas_spec.e_aba_financeira` faz do outro
+# lado do sistema, por outro motivo (não copiar dado financeiro entre fichas).
+# Campos que o fornecedor pode deixar em branco na ficha e que o PORTAL exige
+# preenchidos. O prompt manda a IA devolver "No aplicable" (ES) / "Não
+# aplicável" (PT) neles (ver `SYSTEM_CONDICOES`, REGRA 0) -- senão a gravação
+# falha e a ficha inteira não salva.
+#
+# Esta lista NÃO muda o que é enviado: serve para o LOG dizer quais vieram
+# vazios da planilha. Sem isso, "N/A" no portal fica indistinguível de "o
+# fornecedor respondeu N/A", e quem revisa não sabe o que conferir.
+CAMPOS_QUE_O_PORTAL_EXIGE = (
+    "embalagem_transp", "posicao_icagem", "cuidad_preserv", "limpeza_secagem",
+    "ferramentas", "legislacao", "descarte",
+)
+
+
+def _sem_acento(texto):
+    from unicodedata import normalize
+    return normalize("NFKD", str(texto or "")).encode("ascii", "ignore").decode()
+
+
+def campos_em_branco_na_origem(dados_brutos):
+    """Quais dos campos exigidos vieram vazios da planilha do fornecedor."""
+    vazios = []
+    for campo in CAMPOS_QUE_O_PORTAL_EXIGE:
+        valor = str((dados_brutos or {}).get(campo) or "").strip()
+        # As formas por extenso entram junto das abreviações: o fornecedor que
+        # escreve "não aplicável" está dizendo a MESMA coisa que o que escreve
+        # "N/A", e quem revisa precisa saber que nenhum dos dois é informação.
+        if not valor or _sem_acento(valor).lower() in (
+                "n/a", "na", "nan", "none", "-",
+                "nao aplicavel", "no aplicable", "nao se aplica", "no se aplica"):
+            vazios.append(campo)
+    return vazios
+
+
+# Quanto se espera a aba de Condições assentar depois do clique.
+#
+# ⚠️ Esta constante existe por causa de um defeito MEDIDO em 2026-08-19, no
+# primeiro lote real depois da migração: em cada seção, o PRIMEIRO campo --
+# sempre o de espanhol, sempre a linha logo após o clique da aba -- chegava
+# vazio ao portal, e a gravação morria com "Por favor, verifique os campos".
+#
+# O que provou que o defeito é do ROBÔ e não da IA: o Excel gerado no mesmo
+# lote (31 fichas) tem ZERO células de texto vazias. `legislacao_es`,
+# `cuidad_preserv_es` e `embalagem_transp_es` estavam todos preenchidos. O
+# valor existia e não chegava na tela.
+#
+# A aba do OutSystems RE-RENDERIZA o conteúdo ao ser ativada. O robô escrevia
+# no campo antes de a renderização assentar, e o re-render limpava o que ele
+# tinha acabado de escrever -- por isso só o primeiro campo se perdia: quando
+# chegava no segundo, a tela já tinha assentado.
+PAUSA_ABA_ASSENTAR = 1.0
+
+# Quanto se espera o campo numérico assentar antes de RELER.
+#
+# O portal reformata o que recebe (máscara de decimal), e a releitura imediata
+# pega o campo no meio da reformatação. Medido no lote de 2026-08-19: o alvo
+# "10" foi lido como "1" -- o primeiro caractere --, o que só acontece se a
+# leitura chega antes de a máscara terminar.
+PAUSA_CAMPO_ASSENTAR = 0.35
+
+
+def _para_numero(texto):
+    """`",55"` / `"0,55"` / `"0.55"` / `"1.234,56"` -> float. Não numérico -> `None`.
+
+    ⚠️ A VÍRGULA DECIDE quem é separador decimal, e a primeira versão disto
+    errava: ela removia todo ponto antes de converter, então `"0.5"` virava
+    `"05"` = **5,0** -- dez vezes o valor. Passaria despercebido justamente no
+    caso em que o portal devolvesse o número com ponto, e a conferência
+    aprovaria um valor errado ou reprovaria um certo.
+
+    A regra que vale nos dois formatos do domínio:
+
+        tem vírgula  -> vírgula é o decimal, ponto é milhar ("1.234,56")
+        sem vírgula  -> ponto é o decimal ("0.5")
+    """
+    bruto = str(texto if texto is not None else "").strip()
+    if "," in bruto:
+        bruto = bruto.replace(".", "").replace(",", ".")
+    if not bruto or bruto in (".", "-", "-."):
+        return None
+    try:
+        return float(bruto)
+    except ValueError:
+        return None
+
+
+def mesmo_valor(escrito, na_tela):
+    """O que ficou na tela é o MESMO valor que pedimos?
+
+    ⚠️ COMPARAÇÃO NUMÉRICA, e não de texto. É o conserto de um falso positivo
+    que gerou 28 fichas "INCOMPLETO" num lote em que o portal tinha aceitado
+    tudo (2026-08-19):
+
+        pedimos ",55"   o portal guardou "0,55"   -> texto difere, número não
+
+    ⚠️ ONDE a normalização acontece, corrigido em 2026-08-19 com o HTML do
+    campo na mão:
+
+        <input type="text" maxlength="30" data-os-type="text"
+               data-os-pattern="" inputmode="decimal">
+
+    `data-os-pattern` VAZIO e `data-os-type="text"`: o campo **não tem
+    máscara** e não reformata nada na digitação. `inputmode="decimal"` é só
+    dica de teclado de celular. Então o zero à esquerda NÃO é reposto quando
+    se escreve -- ele aparece depois de SALVAR, quando o servidor grava o
+    número e re-renderiza a tela.
+
+    Isso importa para quem for mexer aqui: numa ficha já salva antes, o campo
+    chega com "0,55" e o que a gente escreve é ",55". Comparar texto fazia
+    toda dimensão e todo peso menor que 1 virar pendência -- e um alarme que
+    dispara sempre é igual a alarme nenhum: some no meio do log, e o real some
+    junto.
+
+    Um valor REALMENTE perdido continua sendo pego, porque aí o número muda
+    mesmo: ",003" virando "0,0" é perda de precisão de verdade, e "10" virando
+    "1" também.
+
+    Sem número dos dois lados (texto livre), cai para a comparação de texto,
+    que é o comportamento correto ali.
+    """
+    a, b = _para_numero(escrito), _para_numero(na_tela)
+    if a is None or b is None:
+        return str(escrito or "").strip() == str(na_tela or "").strip()
+    return a == b
+
+
+SECOES_DE_CONDICOES = ("Armazenamento", "Transporte", "Manutenção", "Descarte")
+
+
+def _registrar_pendencia(pendencias, onde, erro, callback_log=None):
+    pendencias.append(f"{onde}: {type(erro).__name__}: {erro}")
+    if callback_log:
+        callback_log(f"Aviso: Falha {onde}. {erro}")
+
+
 class UploadAutomation:
     def __init__(self):
         self.engine = None
@@ -438,10 +646,111 @@ class UploadAutomation:
         seletor = locator[1] if isinstance(locator, tuple) else locator
         self.portal.check_or_uncheck(seletor, should_check)
 
+    def abrir_aba(self, seletor_aba, seletor_primeiro_campo, nome, callback_log=None):
+        """Clica na aba e ESPERA ela assentar antes de devolver.
+
+        A espera é pelo primeiro campo ficar visível, e não um `sleep` cego: o
+        campo visível é a evidência de que a re-renderização terminou. O
+        `sleep` fica como piso mínimo depois disso, porque "visível" e
+        "estável" não são a mesma coisa num widget que anima.
+
+        Ver `PAUSA_ABA_ASSENTAR` para o defeito que motivou isto.
+        """
+        self.safe_click(seletor_aba)
+        try:
+            self.engine.wait_visible(seletor_primeiro_campo)
+        except Exception:  # noqa: BLE001
+            if callback_log:
+                callback_log(f"      [!] A aba '{nome}' não mostrou o primeiro campo a tempo. "
+                             f"Vou tentar preencher assim mesmo.")
+        time.sleep(PAUSA_ABA_ASSENTAR)
+
+    def _escrever(self, seletor, texto, nome_campo, callback_log=None):
+        """Escreve DIZENDO por que falhou, em vez de engolir.
+
+        `safe_send_keys` delega para `engine.fill`, que engole a exceção por
+        contrato. Isso é o certo em quase todo lugar -- e é péssimo aqui: sem
+        máscara no campo (ver `mesmo_valor`), uma releitura que discorda do que
+        se escreveu só pode significar que **a escrita não aconteceu**. Saber
+        POR QUE ela não aconteceu é a diferença entre "conserto isto amanhã" e
+        "abro o portal e vou adivinhando".
+
+        Ele **não engole** a falha: loga o motivo e repassa, para o bloco da
+        seção continuar registrando a pendência como sempre registrou.
+        """
+        try:
+            self.engine.fill_estrito(seletor, str(texto))
+        except Exception as erro:  # noqa: BLE001 -- ver docstring
+            if callback_log:
+                callback_log(f"      [!] Não consegui escrever em '{nome_campo}': "
+                             f"{type(erro).__name__}: {erro}")
+            # ⚠️ REPASSA. A primeira versão disto só logava, e com isso tirou a
+            # falha do caminho que a registrava: o bloco da seção deixava de
+            # cair no `except`, nenhuma pendência era criada e a ficha saía
+            # COMPLETO com o campo vazio -- ou seja, eu tinha reaberto o
+            # próprio defeito que o COMPLETO-com-prova existe para fechar.
+            # Um teste pegou. O que este método acrescenta é o MOTIVO no log,
+            # não a supressão da falha.
+            raise
+
+    def preencher_conferindo(self, seletor, texto, nome_campo,
+                             callback_log=None, pendencias=None):
+        """Escreve, RELÊ e reescreve uma vez se o portal engoliu o valor.
+
+        É o mesmo remédio que `tech_specs._preencher_input_com_auditoria` já
+        usava ("o site zerou o valor"), agora em Condições -- onde ele faltava
+        e custou um lote inteiro.
+
+        Devolve `True` se o campo terminou com o texto pedido. Texto vazio não
+        é conferido: o portal exige campo preenchido, mas quem decide o que vai
+        nele é a IA (ver `SYSTEM_CONDICOES`), e um campo que o JSON mandou
+        vazio é problema de outra camada -- reclamar dele aqui só criaria
+        ruído em cima de um defeito que já tem dono.
+        """
+        alvo = str(texto or "")
+        self._escrever(seletor, alvo, nome_campo, callback_log)
+        if not alvo.strip():
+            return True
+
+        for tentativa in (1, 2):
+            # Dá um tempo para a máscara do portal terminar antes de ler. Sem
+            # isto a leitura pega o campo no meio da reformatação -- foi assim
+            # que "10" apareceu como "1" no lote de 2026-08-19.
+            time.sleep(PAUSA_CAMPO_ASSENTAR)
+            try:
+                atual = str(self.engine.get_value(seletor) or "")
+            except Exception:  # noqa: BLE001
+                return True  # não dá para conferir; não inventa pendência
+            if mesmo_valor(alvo, atual):
+                return True
+            if tentativa == 1:
+                if callback_log:
+                    callback_log(f"      [!] '{nome_campo}': pedi {alvo.strip()[:20]!r} e "
+                                 f"ficou {atual.strip()[:20]!r}. Reescrevendo.")
+                self._escrever(seletor, alvo, nome_campo, callback_log)
+
+        if callback_log:
+            callback_log(f"      [!] '{nome_campo}' NÃO aceitou {alvo.strip()[:20]!r} em duas "
+                         f"tentativas (ficou {atual.strip()[:20]!r}) -- preencher à mão.")
+        if pendencias is not None:
+            pendencias.append(f"campo '{nome_campo}' não aceitou o valor")
+        return False
+
     def processar_lista(self, lista_fichas, caminho_status, callback_ask=None, callback_log=None, callback_pause=None):
+        """Preenche as Condições de cada ficha no portal.
+
+        Devolve `(completas, incompletas)` -- as listas de PMIB. O retorno é
+        novo (2026-08-18) e aditivo: a tela ignorava o `None` de antes.
+
+        Uma ficha só é marcada COMPLETO no `_STATUS_PMIB` quando NENHUM bloco
+        de campos falhou E o portal confirmou o salvamento das 4 seções. Ver
+        `SECOES_DE_CONDICOES` e `_registrar_pendencia`.
+        """
         url = "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
         # O 'driver.get(url)' foi removido do início daqui porque agora
         # o App chama 'abrir_portal' ANTES de pedir o login.
+        lote_completas = []
+        lote_incompletas = []
 
         for ficha in lista_fichas:
             if self.portal.deve_parar():
@@ -450,6 +759,13 @@ class UploadAutomation:
 
             pmib = ficha['pmib_codigo']
             if callback_log: callback_log(f"Processando {pmib}...")
+
+            # Placar desta ficha. `pendencias` junta os blocos de campos que
+            # falharam; `salvas` diz quais das 4 seções o PORTAL confirmou ter
+            # gravado. Juntos são o que decide o COMPLETO lá embaixo -- ver
+            # `_secoes_todas_confirmadas`.
+            pendencias = []
+            salvas = {}
 
             try:
                 # 1. Busca e abre a ficha em modo de edição.
@@ -480,11 +796,14 @@ class UploadAutomation:
                     continue  # Pula ficha se falhar a aba principal
 
                 try:
-                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_PackingLength"]', ficha["dimensoes"]["comprimento"])
-                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_PackagingWidth"]', ficha["dimensoes"]["largura"])
-                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_PackagingHeight"]', ficha["dimensoes"]["altura"])
+                    self.preencher_conferindo('//*[@id="b10-b17-b1-Input_PackingLength"]', ficha["dimensoes"]["comprimento"],
+                                              "Input_PackingLength", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b1-Input_PackagingWidth"]', ficha["dimensoes"]["largura"],
+                                              "Input_PackagingWidth", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b1-Input_PackagingHeight"]', ficha["dimensoes"]["altura"],
+                                              "Input_PackagingHeight", callback_log, pendencias)
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha nas Dimensões. {e}")
+                    _registrar_pendencia(pendencias, "nas Dimensões", e, callback_log)
 
                 try:
                     controle_temp_data = ficha["controle_temperatura"]
@@ -523,7 +842,7 @@ class UploadAutomation:
                     else:
                         self.safe_click('//*[@id="b10-b17-b1-RadioButton4-input"]')
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha em Temperatura. {e}")
+                    _registrar_pendencia(pendencias, "em Temperatura", e, callback_log)
 
                 try:
                     posicoes = {
@@ -534,30 +853,34 @@ class UploadAutomation:
                     if ficha.get("posicao_armazenamento") in posicoes:
                         self.safe_click(posicoes[ficha["posicao_armazenamento"]])
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha na Posição. {e}")
+                    _registrar_pendencia(pendencias, "na Posição", e, callback_log)
 
                 try:
                     nocivo_data = ficha["nocivo"]
                     if nocivo_data["status"] == "Nocivo":
                         self.safe_click('//*[@id="b10-b17-b1-RadioButton2-input"]')
-                        self.safe_send_keys('//*[@id="b10-b17-b1-TextArea_StorageCareES"]', nocivo_data["cuidado_es"])
-                        self.safe_send_keys('//*[@id="b10-b17-b1-TextArea_StorageCarePT"]', nocivo_data["cuidado_pt"])
+                        self.preencher_conferindo('//*[@id="b10-b17-b1-TextArea_StorageCareES"]', nocivo_data["cuidado_es"],
+                                                  "TextArea_StorageCareES", callback_log, pendencias)
+                        self.preencher_conferindo('//*[@id="b10-b17-b1-TextArea_StorageCarePT"]', nocivo_data["cuidado_pt"],
+                                                  "TextArea_StorageCarePT", callback_log, pendencias)
                     else:
                         self.safe_click('//*[@id="b10-b17-b1-RadioButton1-input"]')
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha em Nocivo. {e}")
+                    _registrar_pendencia(pendencias, "em Nocivo", e, callback_log)
 
                 try:
-                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_LiquidWeight"]', ficha["peso"]["liquido"])
-                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_GrossWeight"]', ficha["peso"]["bruto"])
+                    self.preencher_conferindo('//*[@id="b10-b17-b1-Input_LiquidWeight"]', ficha["peso"]["liquido"],
+                                              "Input_LiquidWeight", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b1-Input_GrossWeight"]', ficha["peso"]["bruto"],
+                                              "Input_GrossWeight", callback_log, pendencias)
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha nos Pesos. {e}")
+                    _registrar_pendencia(pendencias, "nos Pesos", e, callback_log)
 
                 if ficha["controle_temperatura"]["necessidade"] == "NÃO":
                     try:
                         self.check_or_uncheck('//*[@id="b10-b17-b1-Checkbox3"]', ficha.get("sujeito_intemperie") == "SIM")
                     except Exception as e:
-                        if callback_log: callback_log(f"Aviso: Falha em Intempérie. {e}")
+                        _registrar_pendencia(pendencias, "em Intempérie", e, callback_log)
 
                 try:
                     mapa_protecao = {
@@ -571,80 +894,133 @@ class UploadAutomation:
                         if prot in mapa_protecao:
                             self.check_or_uncheck(mapa_protecao[prot], True)
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha na Proteção. {e}")
+                    _registrar_pendencia(pendencias, "na Proteção", e, callback_log)
 
                 try:
-                    self.safe_send_keys('//*[@id="b10-b17-b1-Input_Stacking"]', ficha.get("empilhamento", ""))
+                    self.preencher_conferindo('//*[@id="b10-b17-b1-Input_Stacking"]', ficha.get("empilhamento", ""),
+                                              "Input_Stacking", callback_log, pendencias)
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha no Empilhamento. {e}")
+                    _registrar_pendencia(pendencias, "no Empilhamento", e, callback_log)
 
                 try:
                     cuidados_data = ficha["outros_cuidados"]
                     if cuidados_data["status"] == "SIM":
                         self.safe_click('//*[@id="b10-b17-b1-RadioButton6-input"]')
-                        self.safe_send_keys('//*[@id="b10-b17-b1-TextArea_OtherCareES"]', cuidados_data["cuidado_es"])
-                        self.safe_send_keys('//*[@id="b10-b17-b1-TextArea_OtherCarePT"]', cuidados_data["cuidado_pt"])
+                        self.preencher_conferindo('//*[@id="b10-b17-b1-TextArea_OtherCareES"]', cuidados_data["cuidado_es"],
+                                                  "TextArea_OtherCareES", callback_log, pendencias)
+                        self.preencher_conferindo('//*[@id="b10-b17-b1-TextArea_OtherCarePT"]', cuidados_data["cuidado_pt"],
+                                                  "TextArea_OtherCarePT", callback_log, pendencias)
                     else:
                         self.safe_click('//*[@id="b10-b17-b1-RadioButton3-input"]')
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha em Outros Cuidados. {e}")
+                    _registrar_pendencia(pendencias, "em Outros Cuidados", e, callback_log)
 
-                self.safe_save_with_pause('//*[@id="b10-b17-b1-b35-Button"]/button', "Armazenamento", callback_log, callback_pause)
+                salvas["Armazenamento"] = self.safe_save_with_pause('//*[@id="b10-b17-b1-b35-Button"]/button', "Armazenamento", callback_log, callback_pause)
 
                 # --- ABA 2: TRANSPORTE ---
                 try:
-                    self.safe_click('//*[@id="b10-b17-Title"]/div[3]')
-                    self.safe_send_keys('//*[@id="b10-b17-b3-TextArea_TransportPackagingES"]', ficha.get("embalagem_transp_es", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b3-TextArea_TransportPackagingPT"]', ficha.get("embalagem_transp_pt", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b3-TextArea_PositionCareES"]', ficha.get("posicao_icagem_es", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b3-TextArea_PositionCarePT"]', ficha.get("posicao_icagem_pt", ""))
+                    # A aba re-renderiza ao abrir e limpava o 1º campo escrito.
+                    self.abrir_aba('//*[@id="b10-b17-Title"]/div[3]',
+                                   '//*[@id="b10-b17-b3-TextArea_TransportPackagingES"]', "Transporte", callback_log)
+                    self.preencher_conferindo('//*[@id="b10-b17-b3-TextArea_TransportPackagingES"]', ficha.get("embalagem_transp_es", ""),
+                                              "TextArea_TransportPackagingES", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b3-TextArea_TransportPackagingPT"]', ficha.get("embalagem_transp_pt", ""),
+                                              "TextArea_TransportPackagingPT", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b3-TextArea_PositionCareES"]', ficha.get("posicao_icagem_es", ""),
+                                              "TextArea_PositionCareES", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b3-TextArea_PositionCarePT"]', ficha.get("posicao_icagem_pt", ""),
+                                              "TextArea_PositionCarePT", callback_log, pendencias)
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha na aba Transporte. {e}")
+                    _registrar_pendencia(pendencias, "na aba Transporte", e, callback_log)
 
-                self.safe_save_with_pause('//*[@id="b10-b17-$b3"]/div[3]/button', "Transporte", callback_log, callback_pause)
+                salvas["Transporte"] = self.safe_save_with_pause('//*[@id="b10-b17-$b3"]/div[3]/button', "Transporte", callback_log, callback_pause)
 
                 # --- ABA 3: MANUTENÇÃO ---
                 try:
-                    self.safe_click('//*[@id="b10-b17-Title"]/div[4]')
-                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_PreservationCareES"]', ficha.get("cuidad_preserv_es", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_PreservationCarePT"]', ficha.get("cuidad_preserv_pt", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_CleaningMethodES"]', ficha.get("limpeza_secagem_es", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_CleaningMethodPT"]', ficha.get("limpeza_secagem_pt", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_ToolPreservationES"]', ficha.get("ferramentas_es", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b4-TextArea_ToolPreservationPT"]', ficha.get("ferramentas_pt", ""))
+                    # A aba re-renderiza ao abrir e limpava o 1º campo escrito.
+                    self.abrir_aba('//*[@id="b10-b17-Title"]/div[4]',
+                                   '//*[@id="b10-b17-b4-TextArea_PreservationCareES"]', "Manutenção", callback_log)
+                    self.preencher_conferindo('//*[@id="b10-b17-b4-TextArea_PreservationCareES"]', ficha.get("cuidad_preserv_es", ""),
+                                              "TextArea_PreservationCareES", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b4-TextArea_PreservationCarePT"]', ficha.get("cuidad_preserv_pt", ""),
+                                              "TextArea_PreservationCarePT", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b4-TextArea_CleaningMethodES"]', ficha.get("limpeza_secagem_es", ""),
+                                              "TextArea_CleaningMethodES", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b4-TextArea_CleaningMethodPT"]', ficha.get("limpeza_secagem_pt", ""),
+                                              "TextArea_CleaningMethodPT", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b4-TextArea_ToolPreservationES"]', ficha.get("ferramentas_es", ""),
+                                              "TextArea_ToolPreservationES", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b4-TextArea_ToolPreservationPT"]', ficha.get("ferramentas_pt", ""),
+                                              "TextArea_ToolPreservationPT", callback_log, pendencias)
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha na aba Manutenção. {e}")
+                    _registrar_pendencia(pendencias, "na aba Manutenção", e, callback_log)
 
-                self.safe_save_with_pause('//*[@id="b10-b17-$b4"]/div[4]/button', "Manutenção", callback_log, callback_pause)
+                salvas["Manutenção"] = self.safe_save_with_pause('//*[@id="b10-b17-$b4"]/div[4]/button', "Manutenção", callback_log, callback_pause)
 
                 # --- ABA 4: DESCARTE ---
                 try:
-                    self.safe_click('//*[@id="b10-b17-Title"]/div[5]')
-                    self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_TypeLegislationES"]', ficha.get("legislacao_es", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_TypeLegislationPT"]', ficha.get("legislacao_pt", ""))
+                    # A aba re-renderiza ao abrir e limpava o 1º campo escrito.
+                    self.abrir_aba('//*[@id="b10-b17-Title"]/div[5]',
+                                   '//*[@id="b10-b17-b5-TextArea_TypeLegislationES"]', "Descarte", callback_log)
+                    self.preencher_conferindo('//*[@id="b10-b17-b5-TextArea_TypeLegislationES"]', ficha.get("legislacao_es", ""),
+                                              "TextArea_TypeLegislationES", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b5-TextArea_TypeLegislationPT"]', ficha.get("legislacao_pt", ""),
+                                              "TextArea_TypeLegislationPT", callback_log, pendencias)
 
                     if ficha.get("perigoso_10004") == "SIM":
                         self.safe_click('//*[@id="b10-b17-b5-RadioButton1-input"]')
                     else:
                         self.safe_click('//*[@id="b10-b17-b5-RadioButton2-input"]')
 
-                    self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_DiscardTypeES"]', ficha.get("descarte_es", ""))
-                    self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_DiscardTypePT"]', ficha.get("descarte_pt", ""))
+                    self.preencher_conferindo('//*[@id="b10-b17-b5-TextArea_DiscardTypeES"]', ficha.get("descarte_es", ""),
+
+                                              "TextArea_DiscardTypeES", callback_log, pendencias)
+                    self.preencher_conferindo('//*[@id="b10-b17-b5-TextArea_DiscardTypePT"]', ficha.get("descarte_pt", ""),
+                                              "TextArea_DiscardTypePT", callback_log, pendencias)
 
                     logistica_rev = ficha.get("logistica_reversa", {})
                     if logistica_rev.get("status") == "SIM":
                         self.safe_click('//*[@id="b10-b17-b5-Applies-input"]')
-                        self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_ReserveLogisticES"]', logistica_rev.get("logistica_reversa_es", ""))
-                        self.safe_send_keys('//*[@id="b10-b17-b5-TextArea_ReserveLogisticPT"]', logistica_rev.get("logistica_reversa_pt", ""))
+                        self.preencher_conferindo('//*[@id="b10-b17-b5-TextArea_ReserveLogisticES"]', logistica_rev.get("logistica_reversa_es", ""),
+                                                  "TextArea_ReserveLogisticES", callback_log, pendencias)
+                        self.preencher_conferindo('//*[@id="b10-b17-b5-TextArea_ReserveLogisticPT"]', logistica_rev.get("logistica_reversa_pt", ""),
+                                                  "TextArea_ReserveLogisticPT", callback_log, pendencias)
                     else:
                         self.safe_click('//*[@id="b10-b17-b5-DoesNotApply-input"]')
                 except Exception as e:
-                    if callback_log: callback_log(f"Aviso: Falha na aba Descarte. {e}")
+                    _registrar_pendencia(pendencias, "na aba Descarte", e, callback_log)
 
-                self.safe_save_with_pause('//*[@id="b10-b17-$b5"]/div[5]/button', "Descarte", callback_log, callback_pause)
+                salvas["Descarte"] = self.safe_save_with_pause('//*[@id="b10-b17-$b5"]/div[5]/button', "Descarte", callback_log, callback_pause)
 
-                if callback_log: callback_log(f"{pmib} concluído no portal.")
-                self.atualizar_status_excel(caminho_status, pmib, "COMPLETO", callback_log, callback_ask)
+                # --- COMPLETO só com prova ------------------------------
+                # "Ele só deve fazer isso se tiver certeza que preencheu os
+                # campos de condições (salvo a parte da valorização)" -- pedido
+                # do usuário, 2026-08-18.
+                #
+                # Antes esta linha era incondicional: bastava não estourar
+                # exceção FATAL. Todos os 12 blocos de campos podiam ter
+                # falhado, as 4 seções podiam não ter gravado, e a ficha saía
+                # marcada como pronta. Planilha que diz COMPLETO no que ficou
+                # pela metade é pior do que planilha vazia -- ninguém volta
+                # para conferir o que está marcado como pronto.
+                #
+                # A Valorização fica de fora por definição: é seção de
+                # Condições que este módulo não preenche, então não entra no
+                # critério (é o "salvo a parte da valorização" do pedido).
+                faltou_salvar = [s for s in SECOES_DE_CONDICOES if not salvas.get(s)]
+
+                if pendencias or faltou_salvar:
+                    if callback_log:
+                        callback_log(f"{pmib}: INCOMPLETO -- o _STATUS_PMIB NÃO foi marcado.")
+                        for item in pendencias:
+                            callback_log(f"      - campo com falha: {item}")
+                        for secao in faltou_salvar:
+                            callback_log(f"      - seção sem confirmação de salvamento: {secao}")
+                    lote_incompletas.append(pmib)
+                else:
+                    if callback_log: callback_log(f"{pmib} concluído no portal.")
+                    self.atualizar_status_excel(caminho_status, pmib, "COMPLETO", callback_log, callback_ask)
+                    lote_completas.append(pmib)
 
             except Exception as e:
                 if callback_log: callback_log(f"!!! ERRO CRÍTICO processando {pmib}: {e} !!!")
@@ -653,19 +1029,52 @@ class UploadAutomation:
                     if callback_log: callback_log(f"Evidência salva: erro_web_{pmib}.png")
                 except Exception:
                     pass
+                lote_incompletas.append(pmib)
+
+        if callback_log:
+            callback_log(
+                f"\n=== Fim do lote: {len(lote_completas)} ficha(s) marcada(s) COMPLETO, "
+                f"{len(lote_incompletas)} com pendência."
+            )
+            if lote_incompletas:
+                callback_log("    Sem marcação no _STATUS_PMIB: " + ", ".join(lote_incompletas))
+        return lote_completas, lote_incompletas
 
     def safe_save_with_pause(self, locator, section_name, callback_log=None, callback_pause=None):
-        """Tenta salvar. Se der erro, usa o callback_pause para travar a execução até o usuário intervir na UI."""
+        """Salva a seção e **confere se o portal confirmou**. Devolve bool.
+
+        O clique é o que sempre foi. O que muda (2026-08-18) é o que vem
+        depois: em vez de um `time.sleep` fixo e fé, espera o toast do próprio
+        portal ("As condições de armazenamento foram modificadas com
+        sucesso!") e confere se ele é DESTA seção.
+
+        Também é mais rápido no caso bom: a espera devolve assim que a
+        mensagem casa, em vez de dormir o tempo cheio.
+
+        O `PAUSA_SALVAMENTO` de sempre CONTINUA, e continua incondicional. A
+        tentação era pulá-lo quando o toast confirma -- economizaria 4 s por
+        ficha. Mas isso seria empacotar uma mudança de ritmo do RPA dentro de
+        uma correção de correção: se o robô ficasse instável depois, não
+        haveria como saber qual das duas mudanças causou. A conferência é
+        aditiva; a velocidade se discute noutro dia, com o portal na frente.
+        """
         try:
             if callback_log: callback_log(f"Salvando {section_name}...")
             self.safe_click(locator)
-            time.sleep(PAUSA_SALVAMENTO)
-        except Exception as e:
+        except Exception:
             if callback_log: callback_log(f"Falha ao salvar {section_name}. Aguardando intervenção manual.")
             if callback_pause:
                 callback_pause(section_name)  # Chama o Frontend para mostrar a janela e pausar
             else:
                 time.sleep(PAUSA_FALLBACK_SALVAMENTO)  # Fallback caso falte o callback
+            return False
+
+        # A conferência vem ANTES da pausa: o toast "aparece relativamente
+        # rápido" e some depois, então dormir primeiro é arriscar perdê-lo.
+        confirmou, _mensagem = self.portal.esperar_confirmacao_de_salvamento(
+            section_name, callback_log=callback_log)
+        time.sleep(PAUSA_SALVAMENTO)
+        return confirmou
 
     def atualizar_status_excel(self, caminho, pmib, status, callback_log=None, callback_ask=None):
         """Atualiza o Excel com loop de retentativa caso esteja aberto.

@@ -13,6 +13,7 @@ que quebraram na primeira sessão de validação (2026-08-17):
 Um duplo que não faz essas três coisas aprova código que falha no portal, que
 foi exatamente o que aconteceu.
 """
+from sigft.core.rpa.portal import PMIBPortal
 import re
 
 import pytest
@@ -70,6 +71,10 @@ class _EngineFalso:
         self.valores = {}                 # o que o campo REALMENTE guardou
         self.pendentes = {}               # digitado, ainda sem blur
         self.cliques = []
+        # Preenchido por `_PortalFalso.__init__`: o "+" é do portal, mas quem
+        # o recebe é o engine (caminho estrito). Sem esse elo, o duplo não
+        # consegue reproduzir "cliquei e a linha entrou".
+        self._portal = None
 
     # -- escrita
     def registrar_fill(self, seletor, texto):
@@ -87,6 +92,26 @@ class _EngineFalso:
     def click_raw(self, seletor):
         # Clique por JavaScript NÃO move o foco -- nada de blur aqui.
         self.cliques.append(seletor)
+
+    def click_estrito(self, seletor):
+        """O caminho do "+": levanta em vez de engolir (2026-08-19).
+
+        `portal.erro_no_clique_estrito`, quando setado, é o que o duplo
+        levanta -- reproduz o clique que não pega no elemento.
+        """
+        erro = getattr(self._portal, "erro_no_clique_estrito", None) if self._portal else None
+        if erro is not None:
+            raise erro
+        if self._portal is None:
+            self.click_nativo(seletor)
+            return
+        # Passa pelo PORTAL, e não direto: é lá que moram as observações
+        # (`portal.cliques`) e os ganchos que os outros testes usam -- o
+        # `_PortalQueRecusa`, por exemplo, liga o aviso de colisão no clique do
+        # "+". Em produção `click_estrito` é o mesmo clique, só que estrito;
+        # desviar do portal no duplo criaria uma diferença que não existe.
+        self._portal.safe_click(seletor)
+        self._portal.aplicar_efeito_do_mais(seletor)
 
     # -- leitura
     def get_value(self, seletor):
@@ -107,6 +132,16 @@ class _EngineFalso:
             return len(self.ids_da_ge)
         if "Input_TextVar" in seletor and "@id=" not in seletor:
             return len(self.ids_referencia)
+        if "@id=" in seletor:
+            # Campo endereçado pelo ID: existe enquanto o id estiver na tela.
+            # `valor_se_existir` (o conserto do travamento de 2026-08-20)
+            # pergunta isto ANTES de ler -- sem esta resposta o duplo diria
+            # que todo campo sumiu, e "a linha entrou" sairia sempre verdade.
+            # (`re` já vem do topo do arquivo -- reimportá-lo AQUI dentro
+            # tornava o nome local e quebrava os outros ramos deste método.)
+            achado = re.search(r"@id='([^']+)'", seletor)
+            alvo = achado.group(1) if achado else None
+            return 1 if alvo and alvo in self.ids_referencia else 0
         return 0
 
     def atributo(self, seletor, nome):
@@ -141,8 +176,34 @@ class _EngineFalso:
 
 
 class _PortalFalso:
+    # Emprestados do PMIBPortal REAL: os dois só usam `self.engine`, então
+    # ligá-los aqui testa a implementação de verdade em vez de uma cópia
+    # que envelhece sozinha. São o conserto do travamento de 2026-08-20 --
+    # ler o que pode não existir sem pagar o timeout do motor.
+    texto_se_existir = PMIBPortal.texto_se_existir
+    valor_se_existir = PMIBPortal.valor_se_existir
+
     def __init__(self, engine):
         self.engine = engine
+        engine._portal = self
+        # Efeito do "+" quando a linha ENTRA na tabela. São os dois desfechos
+        # observados no portal, e os dois provam a mesma coisa -- o formulário
+        # largou o valor: o campo do fabricante SOME (o de adicionar se
+        # recolhe) e o campo fixo da GE ESVAZIA.
+        #
+        # O default é o desfecho BOM, e de propósito: o normal do portal é o
+        # "+" funcionar. Fosse o contrário, todo teste que não fala do "+"
+        # teria de carregar um remendo, e o duplo passaria a ensinar que o
+        # normal é falhar. Quem reproduz o defeito de 2026-08-19 desliga os
+        # dois explicitamente -- ver test_duplicadas_linha_do_fornecedor.py.
+        self.comita_no_mais = False   # o campo some (linha do fabricante)
+        self.limpa_no_mais = True     # o campo esvazia (linha fixa) -- default
+        self.erro_no_clique_estrito = None
+        # Como a tabela fica DEPOIS do salvamento. `None` = igual a antes.
+        # Existe porque o portal recarrega a seção ao gravar, e o que volta
+        # nem sempre é o que se deixou -- é justamente essa diferença que a
+        # releitura de `limpar_caracteristicas` existe para pegar.
+        self.linhas_apos_salvar = None
         self.cliques = []
         self.preenchidos = []
         self.excluidas = []
@@ -169,8 +230,33 @@ class _PortalFalso:
         self.engine.linhas.pop(indice - 1)
         return True
 
+    def aplicar_efeito_do_mais(self, seletor):
+        if "fa-plus-circle" not in seletor:
+            return
+        if str(self.engine.aviso_colisao or "").strip():
+            # Colisão de verdade: o portal recusa e a linha NÃO entra.
+            # `.strip()` e não truthiness -- o bloco de aviso fica no DOM o
+            # tempo todo, vazio ou com espaços, e foi confundir "presente" com
+            # "tem conteúdo" que quebrou a 1ª sessão real.
+            return
+        if self.comita_no_mais:
+            self.engine.ids_referencia = []
+            self.engine.valores.clear()
+        elif self.limpa_no_mais:
+            self.engine.valores.clear()
+
+    def salvar_e_confirmar(self, nome_secao="", callback_log=None, **_kwargs):
+        """Passa a ser o caminho do módulo novo (2026-08-19): SALVAR + toast
+        de sucesso NOVO na tela. O duplo delega no `clicar_salvar_visivel`
+        de sempre -- a mecânica do toast é testada contra o `PMIBPortal`
+        real em tests/test_duplicadas_salvar_com_prova.py, e reimplementá-la
+        aqui só criaria uma segunda verdade para envelhecer sozinha."""
+        return self.clicar_salvar_visivel(nome_secao)
+
     def clicar_salvar_visivel(self, nome_secao=""):
         self.salvou.append(nome_secao)
+        if self.linhas_apos_salvar is not None:
+            self.engine.linhas = list(self.linhas_apos_salvar)
         return self.salvar_devolve
 
 
@@ -480,8 +566,15 @@ def test_valor_que_nao_ficou_gravado_reprova_a_secao():
 
 
 def test_salvar_que_nao_acha_botao_reprova_a_secao():
-    """`clicar_salvar_visivel` devolve `False` quando nenhum SALVAR está
-    visível e habilitado -- que é o sintoma de "o portal não registrou nada"."""
+    """Salvar que não confirma reprova a seção.
+
+    ⚠️ A mensagem MUDOU em 2026-08-19 e o motivo importa: o injetor passou a
+    chamar `salvar_e_confirmar`, e o "não achei o botão SALVAR" virou uma
+    linha do PRÓPRIO portal (que o duplo substitui). O que o injetor diz agora
+    é o veredito -- a seção não foi confirmada --, apontando para a linha
+    acima. Continuar exigindo a palavra "SALVAR" aqui testaria o duplo, não o
+    código.
+    """
     portal, _engine = _com_tabela(list(_LINHAS))
     portal.salvar_devolve = False
     logs = []
@@ -489,7 +582,8 @@ def test_salvar_que_nao_acha_botao_reprova_a_secao():
     resultado = injetor.limpar_caracteristicas(portal, "X", callback_log=logs.append)
 
     assert resultado.ok is False
-    assert "SALVAR" in "\n".join(logs)
+    assert resultado.detalhe == "não salvou"
+    assert "NÃO foi confirmada" in "\n".join(logs)
 
 
 def test_o_indice_NAO_avanca_depois_de_apagar():
@@ -521,15 +615,28 @@ def test_sem_a_linha_do_codigo_pmib_o_resultado_e_erro():
 
 
 def test_exclusao_que_falha_avanca_em_vez_de_travar():
+    """O laço não pode travar na linha que resistiu -- ele avança e avisa.
+
+    ⚠️ O VEREDITO MUDOU EM 2026-08-19. Antes a seção saía `ok=True`: o aviso
+    ia para o log e a ficha era dada por pronta com a característica teimosa
+    ainda lá. O usuário fechou essa porta: *"se tiver mais características,
+    estas devem ser excluídas, pois se não, não vai conseguir salvar"*. Uma
+    linha que sobrou não é um detalhe cosmético -- ela impede a ficha de
+    fechar, e a releitura depois do save agora reprova a seção.
+
+    O que este teste continua provando é o que ele sempre provou: o laço
+    AVANÇA (não fica tentando a mesma linha para sempre) e diz qual falhou.
+    """
     portal, engine = _com_tabela(["TEIMOSA", "CODIGO PMIB"])
     portal.exclusao_falha_em = ("TEIMOSA",)
     logs = []
 
     resultado = injetor.limpar_caracteristicas(portal, "X", callback_log=logs.append)
 
-    assert resultado.ok is True
-    assert engine.linhas == ["TEIMOSA", "CODIGO PMIB"]
+    assert engine.linhas == ["TEIMOSA", "CODIGO PMIB"], "o laço avançou, não travou"
     assert any("Não consegui excluir" in linha for linha in logs)
+    assert resultado.ok is False, "linha que sobrou impede a ficha de fechar"
+    assert "sobraram" in resultado.detalhe
 
 
 def test_a_tabela_paginada_e_percorrida_ate_o_fim():
@@ -662,7 +769,7 @@ def test_referencia_da_GE_vazia_e_pulada_sem_erro():
     engine = _EngineFalso(ids_da_ge=["b10-b11-b6-Input_TextVar"])
     portal = _PortalFalso(engine)
 
-    resultado = injetor.escrever_referencia_do_fornecedor(
+    resultado = injetor.escrever_referencia_da_ge(
         portal, "", callback_log=lambda _m: None)
 
     assert resultado.ok is True
@@ -680,11 +787,11 @@ def test_a_referencia_da_GE_vai_para_o_campo_com_icone_de_informacao():
     )
     portal = _PortalFalso(engine)
 
-    resultado = injetor.escrever_referencia_do_fornecedor(
+    resultado = injetor.escrever_referencia_da_ge(
         portal, "CMI-99", callback_log=lambda _m: None)
 
     assert resultado.ok is True
-    assert resultado.nome == "fornecedor"   # é o nome que a planilha usa
+    assert resultado.nome == "ge_vernova"   # é o nome que a planilha usa
     seletores = [s for s, t in portal.preenchidos if t == "CMI-99"]
     assert seletores and all("b10-b11-b6-Input_TextVar" in s for s in seletores)
     assert portal.cliques == [] or all("b10-b11-b6-" in c for c in portal.cliques)
@@ -697,7 +804,7 @@ def test_sem_campo_com_o_icone_NAO_escreve_nada():
     portal = _PortalFalso(engine)
     logs = []
 
-    resultado = injetor.escrever_referencia_do_fornecedor(
+    resultado = injetor.escrever_referencia_da_ge(
         portal, "CMI-99", callback_log=logs.append)
 
     assert resultado.ok is False
@@ -720,3 +827,129 @@ def test_o_campo_da_GE_nao_entra_na_conta_do_que_NASCEU():
                                             callback_log=lambda _m: None)
 
     assert resultado.id_do_campo_de_referencia == "b10-b11-b4-Input_TextVar"
+
+
+# ===========================================================================
+# A linha do FORNECEDOR — corrigida em 2026-08-18
+# ===========================================================================
+# Relato do usuário: *"ele não está conseguindo nem colocar a referência
+# correta do fornecedor correto, ele está fazendo no campo de fornecimento da
+# GE"*.
+#
+# A causa não era um seletor errado, era o MODELO: o código tratava
+# "Fornecedor" e "GE Vernova" como a mesma linha. `PLACEHOLDER_COMBO_FORNECEDOR`
+# estava mapeado desde 2026-08-17 e não era usado por ninguém -- o robô ia
+# direto escrever no campo do ícone ⓘ.
+#
+#     Fabricante   combo  -> Referência = CÓDIGO DO MATERIAL
+#     Fornecedor   combo  -> Referência = CÓDIGO DO MATERIAL
+#     GE Vernova   fixo ⓘ -> Referência = CÓDIGO CMI / CÓDIGO GE
+
+def test_o_combo_do_fornecedor_se_identifica_pelo_proprio_placeholder():
+    portal, _engine = _com_combos("Selecione um fabricante", "Selecione um fornecedor")
+
+    seletor = injetor.achar_combo_do_fornecedor(portal)
+
+    assert seletor is not None
+    assert sel.PLACEHOLDER_COMBO_FORNECEDOR in seletor
+
+
+def test_sem_combo_de_fornecedor_na_tela_NAO_escreve_nada():
+    """Recusar é a decisão central deste módulo: escrever no combo errado põe
+    dado errado numa ficha real e não dá sintoma nenhum na tela."""
+    portal, _engine = _com_combos("Selecione um fabricante")
+    logs = []
+
+    assert injetor.achar_combo_do_fornecedor(portal, logs.append) is None
+    assert any("NÃO escrevi nada" in l for l in logs)
+
+
+def test_dois_combos_de_fornecedor_tambem_recusam():
+    portal, _engine = _com_combos("Selecione um fornecedor", "Selecione um fornecedor")
+    logs = []
+
+    assert injetor.achar_combo_do_fornecedor(portal, logs.append) is None
+    assert any("não dá para saber qual" in l for l in logs)
+
+
+def test_o_fornecedor_ausente_nao_e_confundido_com_o_fabricante():
+    """O combo do FABRICANTE não pode virar o do fornecedor por eliminação.
+
+    A 2ª estratégia de `achar_combo_do_fabricante` (eliminar "o que é o
+    fornecedor fixo") se apoiava em premissa que a resposta do usuário de
+    2026-08-18 derrubou -- o fornecedor VARIA. Por isso o lado do fornecedor
+    não tem eliminação: sem o placeholder, recusa.
+    """
+    portal, _engine = _com_combos("Selecione um fabricante")
+
+    assert injetor.achar_combo_do_fornecedor(portal) is None
+
+
+def test_escolher_fornecedor_usa_o_campo_que_NASCEU_da_escolha():
+    """Mesma mecânica do fabricante: a foto de antes/depois é o que diz em qual
+    linha escrever, em vez de pegar a primeira "Referência" da tela."""
+    engine = _EngineFalso(
+        combos=("Selecione um fabricante", "Selecione um fornecedor"),
+        existentes=["data-tooltip=", "vscomp-search-input"],
+        opcoes=["SIEMENS DO BRASIL"],
+        ids_referencia=["b10-b11-b2-Input_TextVar"],
+        id_que_nasce="b10-b11-b8-Input_TextVar",
+    )
+    portal = _PortalFalso(engine)
+
+    resultado = injetor.escolher_fornecedor(portal, "SIEMENS DO BRASIL")
+
+    assert resultado.ok
+    assert resultado.nome == "fornecedor"
+    assert resultado.id_do_campo_de_referencia == "b10-b11-b8-Input_TextVar"
+
+
+def test_fornecedor_sem_nome_nao_abre_combo_nenhum():
+    portal, _engine = _com_combos("Selecione um fornecedor")
+
+    resultado = injetor.escolher_fornecedor(portal, "")
+
+    assert not resultado.ok
+    assert portal.cliques == []
+
+
+def test_fornecedor_que_nao_aparece_no_filtro_nao_seleciona_nada():
+    """Não clicar em "a primeira opção que sobrou": o filtro textual pode
+    deixar uma opção PARECIDA, e fornecedor errado não dá sintoma na tela."""
+    engine = _EngineFalso(
+        combos=("Selecione um fornecedor",),
+        existentes=["data-tooltip=", "vscomp-search-input"],  # sem `role='option'`
+    )
+    portal = _PortalFalso(engine)
+    logs = []
+
+    resultado = injetor.escolher_fornecedor(portal, "FORNECEDOR INEXISTENTE", logs.append)
+
+    assert not resultado.ok
+    assert any("não apareceu no combo" in l for l in logs)
+
+
+def test_a_funcao_da_GE_nao_se_chama_mais_fornecedor():
+    """O nome antigo (`escrever_referencia_do_fornecedor`) ERA a causa do erro,
+    não um detalhe dele: chamar de "fornecedor" a linha da GE fazia o valor do
+    fornecedor parecer que ia para o lugar certo."""
+    assert not hasattr(injetor, "escrever_referencia_do_fornecedor")
+    assert hasattr(injetor, "escrever_referencia_da_ge")
+    assert hasattr(injetor, "escolher_fornecedor")
+
+
+def test_as_duas_referencias_nao_se_sobrescrevem_no_placar():
+    """As duas linhas passam por `escrever_referencia`; com um nome fixo, o
+    segundo resultado apagaria o primeiro e uma falha ficaria invisível."""
+    engine = _EngineFalso(existentes=["Input_TextVar"],
+                          ids_referencia=["b10-b11-b4-Input_TextVar"])
+    portal = _PortalFalso(engine)
+
+    do_fabricante = injetor.escrever_referencia(
+        portal, "2904616", id_do_campo="b10-b11-b4-Input_TextVar")
+    do_fornecedor = injetor.escrever_referencia(
+        portal, "2904616", id_do_campo="b10-b11-b4-Input_TextVar",
+        nome_da_secao="referencia_fornecedor")
+
+    assert do_fabricante.nome == "referencia"
+    assert do_fornecedor.nome == "referencia_fornecedor"

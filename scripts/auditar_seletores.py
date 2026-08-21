@@ -3,6 +3,17 @@ Confere os seletores do projeto contra a tela REAL do portal PMIB.
 
     python scripts/auditar_seletores.py                  # audita a página aberta
     python scripts/auditar_seletores.py --url <endereco>  # navega antes de auditar
+    python scripts/auditar_seletores.py --capturar "//fieldset"   # DESPEJA o HTML
+
+O modo `--capturar` existe para uma pergunta prática: mapear uma tela nova do
+portal hoje custa o usuário abrir o "inspecionar elemento", achar o nó certo e
+copiar caixa por caixa, à mão. Com ele, abre-se a tela, roda-se um comando e
+cola-se a saída inteira. Aceita vários `--capturar` na mesma execução e é
+somente-leitura, como o resto do script.
+
+    --capturar "//fieldset"                  todos os fieldsets
+    --capturar "//table" --max 2             só os 2 primeiros
+    --capturar "//div[@data-container]" --capturar "//button"
 
 Para que serve: o portal vai ser atualizado, e hoje a única forma de descobrir
 o que quebrou é rodar um módulo até ele falhar no meio de um lote -- com o
@@ -43,6 +54,60 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sigft.core.rpa import inventario  # noqa: E402
 
 
+LIMITE_PADRAO_DE_CARACTERES = 20_000
+
+
+def recortar_html(texto, limite=LIMITE_PADRAO_DE_CARACTERES):
+    """Corta o HTML no limite, avisando quanto sobrou.
+
+    Existe porque um `--capturar "//div"` numa tela de OutSystems pode devolver
+    megabytes: sem o corte, a saída fica inútil (ninguém cola isso) e o
+    terminal engasga. O aviso no fim é o que impede a armadilha oposta -- um
+    recorte SILENCIOSO faria o leitor concluir que o elemento acaba ali, e
+    procurar o resto de um markup que estava só truncado.
+    """
+    texto = str(texto or "")
+    if limite is None or limite <= 0 or len(texto) <= limite:
+        return texto
+    sobra = len(texto) - limite
+    return texto[:limite] + f"\n… [RECORTADO: faltam {sobra} caracteres deste elemento]"
+
+
+def capturar(engine, xpaths, maximo, limite=LIMITE_PADRAO_DE_CARACTERES):
+    """Imprime o `outerHTML` de cada nó que casar com os XPath pedidos.
+
+    Acessa `engine.page` direto. Num SERVIÇO isso seria violação do princípio
+    nº 3 (nenhum serviço conhece o motor); aqui é um script de diagnóstico, que
+    é justamente onde o acoplamento ao motor é o ponto -- ele existe para
+    olhar o navegador.
+    """
+    for xpath in xpaths:
+        print("\n" + "=" * 78)
+        print(f"CAPTURA: {xpath}")
+        print("=" * 78)
+        try:
+            total = engine.contar(xpath)
+        except Exception as erro:  # noqa: BLE001
+            print(f"   [ERRO] XPath inválido? {type(erro).__name__}: {erro}")
+            continue
+        if not total:
+            print("   (nenhum elemento casou nesta tela)")
+            continue
+        mostrar = min(total, maximo)
+        if mostrar < total:
+            print(f"   {total} elementos casaram; mostrando os {mostrar} primeiros "
+                  f"(use --max para ver mais).\n")
+        for posicao in range(1, mostrar + 1):
+            alvo = engine.page.locator(f"xpath=({xpath})[{posicao}]").first
+            try:
+                html = alvo.evaluate("el => el.outerHTML")
+            except Exception as erro:  # noqa: BLE001
+                print(f"   [{posicao}] [ERRO] {type(erro).__name__}: {erro}")
+                continue
+            print(f"   ----- [{posicao}/{total}] " + "-" * 50)
+            print(recortar_html(html, limite))
+
+
 def _engine(url):
     """Abre o motor Playwright com o PERFIL PERSISTENTE -- é o que faz o
     login manual do PMIB continuar valendo entre execuções. Sem isso, cada
@@ -61,6 +126,14 @@ def main():
     parser.add_argument(
         "--listar", action="store_true",
         help="Só imprime o inventário, sem abrir navegador (offline).",
+    )
+    parser.add_argument(
+        "--capturar", action="append", default=[], metavar="XPATH",
+        help="Despeja o outerHTML dos nós que casarem. Pode repetir.",
+    )
+    parser.add_argument(
+        "--max", type=int, default=3, dest="maximo",
+        help="Quantos nós mostrar por XPath capturado (padrão 3).",
     )
     args = parser.parse_args()
 
@@ -114,6 +187,8 @@ def main():
             else:
                 marca = "OK" if quantos == 1 else f"x{quantos}"
                 print(f"   [{marca:8s}] {nome}")
+        if args.capturar:
+            capturar(engine, args.capturar, args.maximo)
     finally:
         engine.fechar()
 

@@ -236,6 +236,90 @@ class RPAEngine(ABC):
         """
 
     @abstractmethod
+    def click_dom(self, seletor: str) -> None:
+        """Clique disparado pelo DOM (`elemento.click()`), SEM checagem de
+        acionabilidade -- sem exigir que o alvo esteja visível, estável ou
+        desobstruído. Exige apenas que ele exista.
+
+        **Por que esta primitiva precisou existir (2026-08-18).** Ela é o que
+        `click`/`click_estrito` sempre fizeram no motor Selenium
+        (`execute_script("arguments[0].click()")`) e o que o motor Playwright
+        NÃO tinha: lá `Locator.click()` é um clique de mouse real e roda a
+        checagem de "hit target" -- se qualquer outro elemento receber o
+        evento no ponto do clique, ele espera até o timeout e falha.
+
+        Isso quebrou `upload_conditions` na migração, e a assimetria explica
+        exatamente qual módulo quebrou. O controle customizado do OutSystems é
+
+            <div class="custom"><span><input class="radio-button" ...></span>
+                                <label>Não contém agentes nocivos</label></div>
+
+        -- o `<input>` real fica coberto pelo rótulo estilizado, que é o que o
+        usuário enxerga e clica. O clique por JavaScript passa por cima disso;
+        o clique de mouse real, não. `upload_conditions` tem 19 seletores de
+        radio/checkbox; `tech_specs` tem ZERO. Foi por isso que um quebrou e o
+        outro não, e não por instabilidade do motor novo.
+
+        Pior: `click` ENGOLE a falha por contrato, então cada campo perdido
+        custava o timeout inteiro (20 s) e não deixava uma linha de log.
+
+        Use quando o alvo é um controle que o navegador considera não
+        acionável mas que a página trata como clicável. Para tudo o mais,
+        `click`/`click_estrito` continuam melhores: a checagem de
+        acionabilidade pega erro de seletor que o clique por DOM esconde.
+        """
+
+    @abstractmethod
+    def html_do_elemento(self, seletor: str) -> str:
+        """`outerHTML` do primeiro elemento que casar -- `""` se não casar nada.
+
+        Existe para o MODO DE AUDITORIA (2026-08-18): quando o robô visita uma
+        seção, o log de execução guarda a estrutura real da tela. Isso troca
+        "abra o inspecionar elemento e copie caixa por caixa" por "rode uma
+        vez e me mande o arquivo de log" -- e é a única forma de mapear uma
+        seção do portal sem acesso a ele.
+
+        NÃO levanta quando o seletor não casa: auditar é observar, e um modo
+        de observação que derruba o lote observado não serve para nada.
+        """
+
+    @abstractmethod
+    def bytes_da_imagem(self, seletor: str) -> bytes:
+        """Bytes da imagem apontada por `seletor` (um `<img>`). `b""` se não
+        der para ler.
+
+        ⚠️ EXISTE POR CAUSA DO `blob:`. As imagens da ficha no PMIB são
+        servidas assim:
+
+            <img class="custom-img" src="blob:https://apps.itaipu.gov.br/29077935-…">
+
+        Um `blob:` **não é um endereço HTTP**: é um identificador de objeto que
+        só vale DENTRO daquela página, naquela sessão. Baixá-lo com `requests`
+        não funciona -- não existe servidor do outro lado. Ele só pode ser lido
+        de dentro do navegador.
+
+        Por que uma primitiva de CONCEITO e não um `executar_js` genérico: a
+        mecânica difere de verdade entre os motores (o Playwright espera uma
+        promessa naturalmente; o Selenium precisa de `execute_async_script` com
+        callback). Expor "rode este JS" obrigaria o serviço a escrever os dois
+        scripts e a saber qual motor está rodando -- exatamente o que o
+        `RPAEngine` existe para evitar. Expor "me dê os bytes" mantém o serviço
+        ignorante e deixa cada motor resolver do seu jeito.
+
+        NÃO levanta: imagem que não se consegue ler vira pendência no log, não
+        derruba a ficha.
+        """
+
+    @abstractmethod
+    def enviar_arquivo(self, seletor: str, caminho: str) -> None:
+        """Entrega `caminho` ao `<input type="file">` de `seletor`.
+
+        É o par de `bytes_da_imagem`: um lê a imagem da ficha original, o outro
+        a sobe na ficha nova. Propaga falhas -- upload que não acontece tem de
+        aparecer.
+        """
+
+    @abstractmethod
     def wait_present(self, seletor: str) -> None:
         """Bloqueia até o elemento existir no DOM -- sem exigir que esteja
         visível ou clicável. Levanta `TempoEsgotado` no timeout."""

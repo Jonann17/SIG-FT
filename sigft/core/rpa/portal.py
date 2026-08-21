@@ -128,6 +128,169 @@ XPATH_BOTAO_SALVAR = (
 )
 XPATH_CONFIRMAR = '//button[@type="button" and text()="CONFIRMAR"]'
 
+# ⚠️ O SALVAR **DA SEÇÃO**, e não o primeiro da tela (2026-08-20).
+#
+# A ficha tem QUATRO botões SALVAR -- um por seção. `clicar_salvar_visivel`
+# clica o primeiro visível, e na rodada de 2026-08-20 isso gravou Informações
+# Gerais cinco vezes seguidas enquanto o log dizia "salvo e conferido" para
+# Características e para as quatro sub-abas de Condições. As duas fichas
+# saíram vazias.
+#
+# A fórmula abaixo não precisa saber o id de container nenhum: partindo de um
+# elemento QUALQUER da seção (um campo, a div da tabela), ela sobe até o
+# ancestral MAIS PRÓXIMO que contenha um SALVAR -- que é o container da seção,
+# por construção -- e desce para o botão de lá.
+#
+# `ancestor-or-self` e não `ancestor`: assim a âncora pode ser o próprio
+# container (`//div[contains(@id,'TechnicalCharacteristics')]`) ou um campo
+# dentro dele, e os dois funcionam.
+#
+# ⚠️ SÃO DUAS FÓRMULAS, E A ORDEM ENTRE ELAS É O SEGUNDO CONSERTO (2026-08-20,
+# 14h). Com só a subida, o defeito continuou:
+#
+#     [Injetor] SALVAR da seção Características Técnicas (ancorado…)
+#     [!] Não vi a confirmação. A última mensagem foi: 'A Ficha Técnica … foi
+#         modificada com sucesso.'   <- genérica, de Informações Gerais
+#
+# A subida para no primeiro ancestral que CONTENHA um SALVAR. Se a div da
+# âncora não contém o seu, ela não para na seção: sobe até o container de
+# TODOS os botões, e `//button[SALVAR]` de lá devolve o primeiro do documento.
+#
+# Olhar PARA DENTRO primeiro resolve o caso normal sem subida nenhuma.
+XPATH_SALVAR_DENTRO_DO_BLOCO = "{ancora}//button[normalize-space()='SALVAR']"
+XPATH_SALVAR_SUBINDO_DO_BLOCO = (
+    "{ancora}/ancestor-or-self::*[.//button[normalize-space()='SALVAR']][1]"
+    "//button[normalize-space()='SALVAR']"
+)
+
+# --- Confirmação de salvamento (2026-08-18) ---------------------------------
+# O portal avisa, em toast, quando gravou uma seção:
+#
+#     <div class="feedback-message-text">As condições de armazenamento foram
+#      modificadas com sucesso!</div>
+#
+# Levantado pelo usuário com a tela à vista. Até aqui NADA no projeto lia essa
+# mensagem: `upload_conditions` clicava em SALVAR, dormia e marcava a ficha
+# como COMPLETO na planilha -- sem uma única evidência de que o portal tivesse
+# gravado. Uma ficha em que todos os campos falharam saía marcada como pronta,
+# e ninguém volta para conferir o que está marcado como pronto.
+#
+# ⚠️ CASAR SÓ POR "sucesso" NÃO SERVE, e o motivo é a mecânica do toast: ele
+# aparece rápido, FICA UM TEMPO e some. Ou seja, quando o robô salva a 2ª
+# seção, o toast da 1ª pode ainda estar na tela. Uma checagem de "existe
+# mensagem de sucesso?" leria o toast VELHO e daria seção gravada sem ter
+# sido -- exatamente o erro que este código existe para impedir.
+#
+# Por isso o casamento exige a PALAVRA DA SEÇÃO. Um toast remanescente de
+# outra seção não casa, o laço continua esperando, e o erro cai para o lado
+# seguro (falso negativo: pendência a conferir, em vez de COMPLETO mentiroso).
+XPATH_MENSAGEM_DE_FEEDBACK = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' feedback-message-text ')]"
+)
+
+# ⚠️ O MARCADOR BOM É A CLASSE, não a palavra (2026-08-19). HTML completo do
+# toast, mandado pelo usuário:
+#
+#   <div class="feedback-message feedback-message-success feedback-message-autoclose"
+#        role="alert"><i></i>
+#     <div class="feedback-message-text">As características técnicas foram
+#      salvas com sucesso!</div>
+#   </div>
+#
+# `feedback-message-success` é semântico e escrito pelo portal: não depende de
+# idioma nem de redação. A checagem por palavra ("sucesso"/"exito") continua
+# como RESERVA -- as duas se somam, e é o mesmo princípio já aplicado ao aviso
+# de colisão de referência. Ganha-se também o caso perverso que a palavra não
+# cobre: uma mensagem de ERRO que contenha "sucesso" ("não foi possível
+# concluir com sucesso") passaria pela palavra e não passa pela classe.
+XPATH_MENSAGEM_DE_SUCESSO = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' feedback-message-success ')]"
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' feedback-message-text ')]"
+)
+
+# A tela do PMIB alterna PT/ES (ver docs/refatoracao/FICHA_DUPLICADA.md §6.5),
+# então o marcador de sucesso é aceito nos dois idiomas.
+MARCADORES_DE_SUCESSO = ("sucesso", "exito")
+
+# Palavra que identifica cada seção dentro da mensagem. Uma só por seção, e
+# nenhuma aparece na mensagem de outra ("As condições de transporte e
+# movimentação..." x "As condições de armazenamento...").
+#
+# ⚠️ SÓ PORTUGUÊS, DE PROPÓSITO. As mensagens que temos vieram do usuário, com
+# a tela à vista, e são estas:
+#
+#     "As condições de armazenamento foram modificadas com sucesso!"
+#     "As condições de transporte e movimentação foram modificadas com sucesso!"
+#
+# Não temos a versão em espanhol de nenhuma delas. Escrever aqui um palpite
+# ("manutención"? "mantenimiento"?) seria repetir o erro que já custou uma
+# sessão de teste neste projeto -- e um palpite ERRADO é invisível, porque a
+# consequência dele é silenciosa.
+#
+# O que acontece se o portal renderizar em espanhol: nenhuma palavra casa, a
+# seção não é confirmada e a ficha vira INCOMPLETO com a mensagem lida no log
+# -- pendência a conferir, nunca COMPLETO mentiroso. É o lado seguro do erro,
+# e o log traz o texto real, que é justamente o que falta para completar esta
+# tabela numa sessão.
+PALAVRA_DA_SECAO = {
+    "Armazenamento": "armazenamento",
+    "Transporte": "transporte",
+    "Manutenção": "manutencao",
+    "Descarte": "descarte",
+    # ⚠️ NO SINGULAR, e a diferença é de UMA LETRA (2026-08-20). A redação que
+    # o usuário tinha mandado é plural -- "As características técnicas foram
+    # salvas com sucesso!" -- e eu mapeei "caracteristicas". O portal, na
+    # rodada real, escreveu:
+    #
+    #     "A característica técnica foi salva com sucesso!. A característica
+    #      técnica não está marcada como breve descrição"
+    #
+    # A seção GRAVOU; quem falhou foi a checagem, e a ficha saiu marcada como
+    # incompleta por causa de um "s". O radical no singular casa as duas.
+    "Características Técnicas": "caracteristica",
+    # 2026-08-20: "A Ficha Técnica 4500063671.0922 foi modificada com sucesso."
+    # É genérica -- não nomeia a seção --, e foi exatamente ela que passou por
+    # confirmação das OUTRAS quatro seções na rodada em que o robô clicava o
+    # SALVAR errado. Mapeá-la aqui faz o contrário do que parece: agora ela
+    # confirma SÓ Informações Gerais, e deixa de servir para as demais.
+    "Informações gerais": "ficha tecnica",
+    # 2026-08-20, redação do usuário: "A imagem foi adicionada com sucesso!"
+    # A seção se chama "Documentos e imagens" na edição, e é esse o nome que
+    # os chamadores passam.
+    "Documentos e imagens": "imagem",
+}
+
+# Quanto se espera pelo toast. O usuário descreve que ele aparece
+# "relativamente rápido"; a folga é para o portal sob carga. Não é tempo
+# perdido no caso bom: o laço devolve assim que a mensagem casa.
+TIMEOUT_CONFIRMACAO_S = 8.0
+INTERVALO_POLL_CONFIRMACAO_S = 0.25
+
+
+def _sem_acento(texto):
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", str(texto or ""))
+                   if unicodedata.category(c) != "Mn")
+
+
+def mensagem_confirma_secao(mensagem, secao):
+    """A mensagem do portal confirma o salvamento DESTA seção?
+
+    Exige as duas coisas -- o marcador de sucesso E a palavra da seção. Ver o
+    comentário acima para por que a palavra da seção não é redundante.
+
+    Seção desconhecida devolve False: inventar um casamento para um nome que
+    não está na tabela seria adivinhar, e adivinhar aqui produz COMPLETO.
+    """
+    palavra = PALAVRA_DA_SECAO.get(secao)
+    if not palavra:
+        return False
+    texto = _sem_acento(mensagem).lower()
+    if not any(m in texto for m in MARCADORES_DE_SUCESSO):
+        return False
+    return palavra in texto
+
+
 DEFAULT_BUSCA_XPATH = "//input[contains(@placeholder, 'Código')]"
 DEFAULT_LAPIS_XPATH_TEMPLATE = "//span[text()='{pmib}']/ancestor::tr//i[contains(@class, 'fa-pencil')]/parent::a"
 
@@ -511,33 +674,207 @@ class PMIBPortal:
         self.engine.fill(seletor, texto)
 
     # =========================================================================
+    # Confirmação de salvamento -- lê o toast que o portal emite ao gravar.
+    # =========================================================================
+    def esperar_confirmacao_de_salvamento(
+        self, secao, timeout_s=None, callback_log=None,
+        sleep_fn=None, agora_fn=None,
+    ):
+        """Espera o toast de "modificadas com sucesso" DESTA seção.
+
+        Devolve `(confirmou: bool, mensagem_lida: str)`. `mensagem_lida` é o
+        texto que estava na tela quando o tempo acabou -- é ele que permite
+        descobrir a redação real (idioma, texto novo do portal) a partir do
+        log, em vez de adivinhar. Ver `mensagem_confirma_secao`.
+
+        Não levanta: um toast que não aparece é pendência, não erro fatal. A
+        ficha continua, e quem decide o que fazer com a pendência é o
+        chamador.
+
+        `sleep_fn`/`agora_fn` existem para o teste poder rodar sem esperar 8
+        segundos de verdade -- mesmo padrão de `core.excel.locking.
+        save_with_retry`.
+        """
+        limite = TIMEOUT_CONFIRMACAO_S if timeout_s is None else timeout_s
+        dormir = sleep_fn or time.sleep
+        agora = agora_fn or time.monotonic
+
+        fim = agora() + limite
+        ultima = ""
+        while True:
+            for mensagem in self._mensagens_de_feedback():
+                if mensagem:
+                    ultima = mensagem
+                if mensagem_confirma_secao(mensagem, secao):
+                    return True, mensagem
+            if agora() >= fim:
+                break
+            dormir(INTERVALO_POLL_CONFIRMACAO_S)
+
+        if callback_log:
+            if ultima:
+                callback_log(
+                    f"      [!] Não vi a confirmação de '{secao}'. A última mensagem "
+                    f"na tela foi: {ultima!r}"
+                )
+            else:
+                callback_log(
+                    f"      [!] Não vi nenhuma mensagem de confirmação ao salvar '{secao}'."
+                )
+        return False, ultima
+
+    # =========================================================================
+    # Ler o que PODE NÃO EXISTIR -- sem pagar o timeout
+    # =========================================================================
+    # ⚠️ O TRAVAMENTO DE 2026-08-20 SAIU DAQUI. `Locator.text_content()` e
+    # `Locator.input_value()` do Playwright AUTO-ESPERAM o elemento: ausente,
+    # esperam o `wait_timeout` inteiro (20 s) antes de levantar. Num laço que
+    # percorre linhas de tabela ou 45 campos de Condições, isso vira minutos
+    # de silêncio -- e de fora é indistinguível de um laço infinito.
+    #
+    # `contar` é IMEDIATO nos dois motores (`Locator.count()` no Playwright,
+    # `find_elements` no Selenium). Perguntar antes custa nada e troca 20 s
+    # por 0.
+    #
+    # Estes dois métodos existem para os casos em que a AUSÊNCIA É NORMAL --
+    # célula de uma coluna que aquela tabela não tem, campo de outra sub-aba.
+    # Onde o elemento DEVE estar, continue usando `engine.texto`/`get_value`
+    # direto: ali a espera é o comportamento certo, porque o elemento pode
+    # estar a caminho.
+    def texto_se_existir(self, seletor: str) -> str:
+        """Texto do elemento, ou `""` na hora se ele não estiver na tela."""
+        try:
+            if not self.engine.contar(seletor):
+                return ""
+            return self.engine.texto(seletor) or ""
+        except Exception:  # noqa: BLE001 -- ler a tela não derruba a ficha
+            return ""
+
+    def valor_se_existir(self, seletor: str):
+        """Valor do campo, ou `None` na hora se ele não estiver na tela.
+
+        `None` e não `""` de propósito: quem lê Condições precisa distinguir
+        "o campo não está nesta sub-aba" de "o campo está vazio". Confundir os
+        dois faria a cópia APAGAR um campo da ficha alvo por causa de uma
+        leitura que falhou.
+        """
+        try:
+            if not self.engine.contar(seletor):
+                return None
+            return self.engine.get_value(seletor) or ""
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _mensagens_de_feedback(self, so_sucesso=False):
+        """Textos dos toasts visíveis agora. Nunca levanta -- ler a tela não
+        pode ser o que derruba a ficha.
+
+        Percorre por ÍNDICE (`(xpath)[i]`) e não por elemento, pelo mesmo
+        motivo de `clicar_salvar_visivel`: é o que funciona igual nos dois
+        motores.
+        """
+        seletor = XPATH_MENSAGEM_DE_SUCESSO if so_sucesso else XPATH_MENSAGEM_DE_FEEDBACK
+        try:
+            total = self.engine.contar(seletor)
+        except Exception:  # noqa: BLE001
+            return []
+        textos = []
+        for posicao in range(1, (total or 0) + 1):
+            try:
+                textos.append(self.engine.texto(f"({seletor})[{posicao}]"))
+            except Exception:  # noqa: BLE001
+                continue
+        return textos
+
+    # =========================================================================
     # check_or_uncheck -- só existia em upload_conditions_backend.py (não
     # duplicado antes, só "movido"). Precisa do atributo `checked`, que não
     # tem equivalente na interface de intenção de `RPAEngine` -- acessa
     # `self.engine.driver`/`.wait` diretamente (ver docstring do módulo).
     # =========================================================================
-    def check_or_uncheck(self, seletor: str, should_check: bool) -> None:
-        """Marca/desmarca um checkbox/radio localizado por `seletor` (XPath)
-        só se o estado atual divergir de `should_check` -- mecânica idêntica
-        à original de `upload_conditions.UploadAutomation.check_or_uncheck`.
+    def check_or_uncheck(self, seletor: str, should_check: bool,
+                         callback_log=None) -> bool:
+        """Marca/desmarca um checkbox/radio e **confere se pegou**.
+
+        Devolve `True` quando o estado final é o pedido. O retorno é novo
+        (2026-08-18) e aditivo -- quem ignora continua funcionando.
 
         CP 5.3: portado para as primitivas. O `scrollIntoView` que o original
         fazia antes de LER o estado sumiu -- ele não influencia a leitura, e o
         clique que vem depois (`safe_click`) já rola por conta própria. Ler
         `checked` não exige o elemento na viewport.
+
+        **Por que a releitura (2026-08-18).** A versão anterior clicava e ia
+        embora, dentro de um `except Exception: pass`. Num checkbox isso é
+        pior do que em qualquer outro elemento, porque o estado é observável e
+        barato de ler: dava para saber, e não se olhava. Em Condições, onde há
+        19 controles desses, uma ficha inteira podia sair vazia sem uma linha
+        de log -- e depois ser marcada COMPLETO na planilha.
+
+        As duas tentativas não são "tentar de novo até dar certo", são
+        mecanismos DIFERENTES: `safe_click` clica como um usuário; `click_dom`
+        dispara o `click()` do próprio elemento, alcançando o `<input>`
+        coberto pelo rótulo estilizado do OutSystems. Se a primeira já
+        resolveu, a segunda nem acontece -- clicar de novo num checkbox que já
+        está certo o DESmarcaria.
         """
+        def _log(mensagem):
+            if callback_log:
+                callback_log(mensagem)
+
         try:
-            if self.engine.esta_marcado(seletor) != should_check:
-                self.safe_click(seletor)
-        except Exception:
+            if self.engine.esta_marcado(seletor) == should_check:
+                return True  # já estava como se queria
+        except Exception as erro:  # noqa: BLE001
+            # Não dá para LER o estado -- e aí não se clica. `esta_marcado`
+            # levanta quando o elemento não existe e também quando ele existe
+            # mas não é um controle marcável; nos dois casos, clicar seria um
+            # palpite sobre um alvo que não entendemos. É o comportamento da
+            # versão anterior, PRESERVADO de propósito.
+            #
+            # O que muda é só o silêncio: antes isto era `except: pass` e o
+            # campo sumia sem deixar rastro. A correção deste ponto é o log,
+            # não um clique a mais.
+            _log(f"      [!] Não consigo ler o estado do controle {seletor}: {erro}. "
+                 f"Não cliquei -- preencher à mão.")
+            return False
+
+        try:
+            self.safe_click(seletor)
+        except Exception:  # noqa: BLE001
             pass
+
+        try:
+            if self.engine.esta_marcado(seletor) == should_check:
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+
+        # 2ª tentativa por outro mecanismo.
+        try:
+            self.engine.click_dom(seletor)
+        except Exception as erro:  # noqa: BLE001
+            _log(f"      [!] Não consegui alcançar o controle {seletor}: {erro}")
+            return False
+
+        try:
+            final = self.engine.esta_marcado(seletor)
+        except Exception as erro:  # noqa: BLE001
+            _log(f"      [!] Cliquei em {seletor} mas não consigo ler o estado: {erro}")
+            return False
+
+        if final != should_check:
+            _log(f"      [!] O controle {seletor} continuou em {final!r} depois de "
+                 f"duas tentativas (esperado {should_check!r}) -- preencher à mão.")
+            return False
+        return True
 
     # =========================================================================
     # clicar_salvar_visivel -- só existia em upload_ficha_duplicada.py
     # (InjetorFichaAlvo._clicar_salvar_visivel, não duplicado, só "movido").
     # Preserva os `print()` originais tal qual (mover != melhorar).
     # =========================================================================
-    def clicar_salvar_visivel(self, nome_secao: str = "") -> bool:
+    def clicar_salvar_visivel(self, nome_secao: str = "", callback_log=None) -> bool:
         """Procura na tela o botão SALVAR (`btn-primary`, texto exato
         "SALVAR") que estiver visível/habilitado no momento e clica nele.
         Mecânica idêntica à original de
@@ -549,8 +886,20 @@ class PMIBPortal:
         na mesma ordem, com os mesmos testes de visível/habilitado -- o que
         muda é só como cada botão é endereçado.
         """
+        # ⚠️ `print` NÃO SERVE, e isso escondeu um defeito inteiro em
+        # 2026-08-19: no app empacotado não há console, então estas linhas
+        # simplesmente não existiam para quem estava lendo o log. O `print`
+        # continua como RESERVA (o módulo antigo chama sem callback), mas
+        # quem passa `callback_log` recebe tudo no log e no arquivo de
+        # auditoria.
+        def _diga(mensagem):
+            if callback_log:
+                callback_log(mensagem)
+            else:
+                print(mensagem)
+
         if nome_secao:
-            print(f"      [Injetor] Salvando {nome_secao}...")
+            _diga(f"      [Injetor] Salvando {nome_secao}...")
 
         total = self.engine.contar(XPATH_BOTAO_SALVAR)
         for posicao in range(1, total + 1):
@@ -560,11 +909,233 @@ class PMIBPortal:
                 self.engine.scroll_to(seletor)
                 time.sleep(0.5)
                 self.engine.click_raw(seletor)
+                # QUAL botão, de quantos. A ficha tem um SALVAR por seção, e
+                # este método clica o PRIMEIRO visível -- que nem sempre é o
+                # da seção que se quer gravar. Sem o índice no log, "salvei a
+                # seção errada" e "não salvei" produzem o mesmo silêncio.
+                _diga(f"      [Injetor] Cliquei no botão SALVAR {posicao} de "
+                      f"{total} da tela.")
                 time.sleep(2.5)  # Aguarda a requisição do servidor OutSystems
                 return True
 
-        print(f"      [Aviso] Botão SALVAR não encontrado/visível para {nome_secao}.")
+        _diga(f"      [Aviso] Botão SALVAR não encontrado/visível para "
+              f"{nome_secao}. Se o portal não habilitou o botão, é sinal de "
+              f"que ele não registrou nenhuma mudança.")
         return False
+
+    def clicar_salvar_do_bloco(self, ancora: str, nome_secao: str = "",
+                               callback_log=None) -> bool:
+        """Clica o SALVAR **da seção** onde `ancora` está.
+
+        `ancora` é qualquer elemento da seção: o container dela ou um campo
+        dentro. Ver `XPATH_SALVAR_DO_BLOCO` para o porquê da fórmula.
+
+        Âncora que não casa botão nenhum cai na varredura antiga -- mas
+        AVISANDO. Cair em silêncio recriaria o defeito de 2026-08-20 sem
+        deixar rastro no log, que é a pior combinação possível.
+        """
+        def _diga(mensagem):
+            if callback_log:
+                callback_log(mensagem)
+            else:
+                print(mensagem)
+
+        # DENTRO primeiro, SUBINDO depois -- ver `XPATH_SALVAR_DENTRO_DO_BLOCO`.
+        tentativas = (
+            ("dentro da seção", XPATH_SALVAR_DENTRO_DO_BLOCO),
+            ("subindo da seção", XPATH_SALVAR_SUBINDO_DO_BLOCO),
+        )
+        seletor = como = ""
+        for descricao, formula in tentativas:
+            candidato = formula.format(ancora=ancora)
+            try:
+                if self.engine.contar(candidato):
+                    seletor, como = candidato, descricao
+                    break
+            except Exception:  # noqa: BLE001
+                continue
+
+        if not seletor:
+            _diga(f"      [Aviso] A âncora da seção {nome_secao!r} não achou "
+                  f"botão SALVAR. Caindo na varredura da tela -- confira se a "
+                  f"seção certa foi gravada.")
+            return self.clicar_salvar_visivel(nome_secao, callback_log)
+
+        alvo = f"({seletor})[1]"
+        try:
+            self.engine.scroll_to(alvo)
+            time.sleep(0.5)
+            self.engine.click_raw(alvo)
+        except Exception as erro:  # noqa: BLE001 -- ver abaixo
+            # ⚠️ SALVAR QUE NÃO DÁ PARA CLICAR É PENDÊNCIA, NÃO QUEDA DA FICHA.
+            # Em 2026-08-20 o botão da seção de imagens resolveu, estava
+            # "visible, enabled and stable", rolou para a tela -- e o clique
+            # nunca completou (algo o cobria; o `tabindex="-1"` sugere painel
+            # inativo). A exceção subiu até `processar_ficha` e virou ERRO
+            # FATAL, apagando do placar tudo o que já tinha dado certo na
+            # ficha. Salvar é UMA etapa.
+            _diga(f"      [Erro] Não consegui clicar no SALVAR de "
+                  f"{nome_secao!r} ({como}): {type(erro).__name__}. Algo pode "
+                  f"estar cobrindo o botão -- salve à mão.")
+            return False
+        _diga(f"      [Injetor] SALVAR da seção {nome_secao} ({como}).")
+        time.sleep(2.5)  # requisição do servidor OutSystems
+        return True
+
+    def clicar_e_confirmar(self, seletor_botao: str, nome_secao: str = "",
+                           callback_log=None, timeout_s=None,
+                           sleep_fn=None, agora_fn=None) -> bool:
+        """Clica UM botão e só devolve `True` com o toast de sucesso NOVO.
+
+        É a mecânica de `salvar_e_confirmar` sem a parte de ACHAR o SALVAR --
+        existe porque nem toda gravação passa por ele. A imagem, por exemplo,
+        é confirmada pelo botão "Confirmar" DENTRO do diálogo; o SALVAR da
+        seção fica inacessível enquanto ele está aberto, e tentar clicá-lo
+        gastava 20 s de timeout (log de 2026-08-20).
+        """
+        antes = {m for m in self._mensagens_de_feedback() if m}
+        try:
+            self.engine.click_raw(f"({seletor_botao})[1]")
+        except Exception as erro:  # noqa: BLE001 -- clique que não pega é pendência
+            if callback_log:
+                callback_log(f"      [Erro] Não consegui clicar em "
+                             f"{nome_secao!r}: {type(erro).__name__}.")
+            return False
+
+        confirmou, mensagem = self.esperar_confirmacao_nova(
+            nome_secao, antes, timeout_s=timeout_s, callback_log=callback_log,
+            sleep_fn=sleep_fn, agora_fn=agora_fn)
+        if confirmou and callback_log:
+            callback_log(f"      Portal confirmou: {' '.join(mensagem.split())[:90]}")
+        return confirmou
+
+    def salvar_e_confirmar(self, nome_secao: str = "", callback_log=None,
+                           timeout_s=None, sleep_fn=None, agora_fn=None,
+                           ancora=None) -> bool:
+        """SALVA e só devolve `True` com o toast de sucesso NOVO na tela.
+
+        Pedido do usuário em 2026-08-19: *"tal como fizemos para upload
+        característica, devemos esperar a mensagem de salvo com sucesso"*.
+
+        ⚠️ POR QUE "NOVO", E NÃO SÓ "DE SUCESSO". O toast *"aparece
+        relativamente rápido, fica um tempo e depois some"*. Quando o robô
+        salva a 2ª seção, o toast da 1ª ainda pode estar na tela -- e uma
+        checagem de "existe mensagem de sucesso?" leria o toast VELHO e daria
+        a 2ª seção por gravada sem ter sido. Em Condições isso é resolvido
+        exigindo a PALAVRA DA SEÇÃO (`PALAVRA_DA_SECAO`); aqui não dá, porque
+        não sabemos a redação do toast de Fabricantes nem do de
+        Características.
+
+        A saída é a foto de ANTES, a mesma mecânica que este módulo já usa
+        para achar o campo que nasce ao escolher o fabricante: vale o toast
+        que for de sucesso **e não estava na tela antes do clique**. Funciona
+        sem conhecer a redação.
+
+        Limite conhecido e declarado: salvar DUAS VEZES a mesma seção, na
+        mesma tela, produziria um toast de texto idêntico ao anterior e este
+        método não o reconheceria como novo. No fluxo da ficha duplicada cada
+        seção é salva uma vez; se um dia deixar de ser, esta é a linha a
+        rever.
+
+        O texto lido vai para o log mesmo quando não confirma -- é assim que a
+        redação real aparece, sem ninguém precisar inspecionar a tela.
+        """
+        antes = {m for m in self._mensagens_de_feedback() if m}
+
+        # `ancora` decide QUAL botão. Sem ela, cai na varredura da tela -- que
+        # é o caminho do módulo antigo e o defeito de 2026-08-20. Todo
+        # chamador novo passa âncora.
+        if ancora:
+            clicou = self.clicar_salvar_do_bloco(ancora, nome_secao, callback_log)
+        else:
+            clicou = self.clicar_salvar_visivel(nome_secao, callback_log)
+        if not clicou:
+            return False
+
+        confirmou, mensagem = self.esperar_confirmacao_nova(
+            nome_secao, antes, timeout_s=timeout_s, callback_log=callback_log,
+            sleep_fn=sleep_fn, agora_fn=agora_fn)
+        if confirmou and callback_log:
+            callback_log(f"      Portal confirmou: {' '.join(mensagem.split())[:90]}")
+        return confirmou
+
+    def esperar_confirmacao_nova(self, secao, ja_na_tela=(), timeout_s=None,
+                                 callback_log=None, sleep_fn=None, agora_fn=None):
+        """Espera um toast de sucesso que NÃO estava em `ja_na_tela`.
+
+        Devolve `(confirmou, mensagem_lida)`, como
+        `esperar_confirmacao_de_salvamento` -- de que é a variante para as
+        seções cuja redação o projeto ainda não conhece. Quando a seção TEM
+        palavra mapeada, ela continua sendo exigida: a checagem nova se soma à
+        antiga, não a substitui.
+        """
+        limite = TIMEOUT_CONFIRMACAO_S if timeout_s is None else timeout_s
+        dormir = sleep_fn or time.sleep
+        agora = agora_fn or time.monotonic
+        vistas = {m for m in (ja_na_tela or ()) if m}
+
+        fim = agora() + limite
+        ultima = ""
+        while True:
+            # A CLASSE primeiro: `feedback-message-success` é o marcador que o
+            # portal escreve, e não depende de idioma. A palavra
+            # ("sucesso"/"exito") entra só quando a classe não casa nada -- se
+            # o portal mudar o markup, a reserva ainda pega. As duas se somam.
+            por_classe = [m for m in self._mensagens_de_feedback(so_sucesso=True) if m]
+            todas = [m for m in self._mensagens_de_feedback() if m]
+            if todas:
+                ultima = todas[-1]
+
+            # ⚠️ A PALAVRA DA SEÇÃO É EXIGIDA SEMPRE QUE CONHECIDA -- e isto
+            # DESFAZ uma decisão minha da véspera.
+            #
+            # Eu tinha afrouxado: "veio pela classe ⇒ 'novo' já basta", com o
+            # argumento de que exigir a palavra amarraria a confirmação ao
+            # idioma. O argumento era hipotético. A falha foi real: em
+            # 2026-08-20 o robô clicou o SALVAR errado cinco vezes, o portal
+            # respondeu "A Ficha Técnica X foi modificada com sucesso" (classe
+            # de sucesso, mensagem genérica) e as cinco passaram por
+            # confirmadas. As fichas saíram vazias.
+            #
+            # A classe diz que ALGO foi salvo; a palavra diz que foi ISTO. As
+            # duas são necessárias, e o custo de exigir as duas é uma pendência
+            # a conferir -- barato ao lado de uma ficha gravada pela metade.
+            #
+            # Seção sem palavra mapeada continua aceitando só a classe: não há
+            # o que exigir, e o `ancora` do salvamento já garante o botão certo.
+            palavra = PALAVRA_DA_SECAO.get(secao)
+
+            def _serve(mensagem):
+                if mensagem in vistas:
+                    return False      # estava lá antes do clique
+                if not palavra:
+                    return True
+                return palavra in _sem_acento(mensagem).lower()
+
+            for mensagem in por_classe:
+                if _serve(mensagem):
+                    return True, mensagem
+
+            for mensagem in todas:
+                if not any(x in _sem_acento(mensagem).lower()
+                           for x in MARCADORES_DE_SUCESSO):
+                    continue
+                if _serve(mensagem):
+                    return True, mensagem
+            if agora() >= fim:
+                break
+            dormir(INTERVALO_POLL_CONFIRMACAO_S)
+
+        if callback_log:
+            if ultima:
+                callback_log(
+                    f"      [!] Não vi a confirmação de '{secao}'. A última mensagem "
+                    f"na tela foi: {ultima!r}")
+            else:
+                callback_log(
+                    f"      [!] Não vi nenhuma mensagem de confirmação ao salvar "
+                    f"'{secao}'. Confira a ficha antes de seguir.")
+        return False, ultima
 
     # =========================================================================
     # excluir_linha_com_confirmacao -- mecânica CENTRAL comum a

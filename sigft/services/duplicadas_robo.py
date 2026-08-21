@@ -12,11 +12,15 @@ podemos fazer direto em Playwright, pois o de antes não funcionava muito bem"*.
 Não há uma linha de Selenium neste caminho -- `config.RPA_ENGINE["duplicadas"]`
 decide o motor, e trocar de motor não toca em nenhum destes arquivos.
 
-**O que este robô AINDA NÃO faz**, e está dito aqui porque a diferença importa
-na hora de conferir a ficha: documentos, imagens e as abas de Condições são o
-CP 6.4. Hoje ele cobre fabricante, referência (com a regra do `'D`) e a purga
-das características técnicas. O módulo antigo (`ficha_duplicada.py`) continua
-inteiro e disponível -- por isso a tela tem os dois botões.
+Cobre hoje: fabricante, referência (com a regra do `'D`), a linha fixa da
+GE/fornecedor, a purga das características técnicas, as quatro sub-abas de
+**Condições** e a associação de **documentos/datasheets** (CP 6.4).
+
+As **imagens** entraram em 2026-08-20 e fecham o CP 6.4. Elas não se associam
+como o documento -- o arquivo sai da original e entra na nova --, e o `src`
+delas é um `blob:`, que só se lê de dentro do navegador
+(`RPAEngine.bytes_da_imagem`). O módulo antigo (`ficha_duplicada.py`) continua
+inteiro e disponível, por isso a tela tem os dois botões.
 """
 from __future__ import annotations
 
@@ -27,8 +31,12 @@ from sigft.core.excel import status_sheet
 from sigft.core.rpa import seletores_duplicada as sel
 from sigft.core.rpa.factory import criar_engine
 from sigft.core.rpa.portal import PMIBPortal
+from sigft.services import duplicadas_condicoes as condicoes
+from sigft.services import duplicadas_documentos as documentos
 from sigft.services import duplicadas_extrator as extrator
+from sigft.services import duplicadas_imagens as imagens
 from sigft.services import duplicadas_injetor as injetor
+from sigft.services import duplicadas_pdm as pdm
 
 NOME_DO_MODULO = "duplicadas"  # chave em `config.RPA_ENGINE`
 
@@ -39,9 +47,20 @@ PAUSA_APOS_ABRIR_FICHA = 3.0
 # chutar um nome só faria a leitura devolver vazio sem dizer por quê.
 ROTULOS_DE_FABRICANTE = ("Fabricante", "Fabricantes", "Fabricante/Fornecedor")
 
-# Rótulos que trazem a REFERÊNCIA DO FORNECEDOR na ficha original.
-ROTULOS_DE_REFERENCIA_FORNECEDOR = (
-    "Referência do fornecedor", "Referencia do fornecedor", "Referência", "Referencia",
+# Rótulos que trazem o NOME DO FORNECEDOR na ficha original.
+#
+# ⚠️ Antes daqui saía uma REFERÊNCIA, e era o erro. *"Vem da ficha original,
+# lendo qual fornecedor foi preenchido"* (usuário, 2026-08-18): o que se lê da
+# original é QUEM é o fornecedor, para escolhê-lo no combo da ficha nova. A
+# referência que vai na linha dele é o CÓDIGO DO MATERIAL, o mesmo do
+# fabricante -- não um valor lido do portal.
+#
+# Lista e não constante pelo mesmo motivo de `ROTULOS_DE_FABRICANTE`: não
+# sabemos como o portal nomeia esse bloco, e chutar um nome só faria a leitura
+# devolver vazio sem dizer por quê. Vazio => não escolhe nada, e a ficha sai
+# INCOMPLETO com o motivo no log.
+ROTULOS_DE_FORNECEDOR = (
+    "Fornecedor", "Fornecedores", "Nome do fornecedor", "Razão social do fornecedor",
 )
 
 # ---------------------------------------------------------------------------
@@ -49,11 +68,18 @@ ROTULOS_DE_REFERENCIA_FORNECEDOR = (
 # ---------------------------------------------------------------------------
 # 2026-08-17, depois da 1ª sessão real:
 #
-#   FABRICANTE  -> da PLANILHA (coluna MARCA/MODELO). *"Você sabe que tem, já
-#                  te pedi para mapear no conhecimento do _STATUS_PMIB todas as
-#                  informações que temos hoje."* Estava mapeado em
-#                  `config.COL_MARCA_MODELO` desde 2026-08-13 e eu perguntei em
-#                  vez de olhar. A ficha original entra só como reserva.
+#   FABRICANTE (nome) -> da FICHA ORIGINAL, com a planilha (MARCA/MODELO) de
+#                  reserva. ⚠️ INVERTIDO EM 2026-08-19, a pedido do usuário:
+#                  *"o código do material do fabricante deve vir da
+#                  _STATUS_PMIB, mas o nome do fabricante vem da ficha
+#                  original"*. Até então mandava a planilha (decisão dele em
+#                  2026-08-17). Divergência entre as duas vai para o log.
+#
+#   REFERÊNCIAS -> SEMPRE da PLANILHA, nunca copiadas da ficha original:
+#                  *"esse número muda quando estamos trabalhando para outro
+#                  sistema"* (2026-08-19). CÓDIGO DO MATERIAL na linha do
+#                  fabricante; CÓDIGO CMI/GE na linha fixa. O que se lê da
+#                  original é NOME, jamais referência.
 #
 #   FORNECEDOR  -> da FICHA ORIGINAL. *"O fornecedor você pode tirar da ficha
 #                  original, acho que seria mais correto, só caso lá estiver
@@ -66,31 +92,36 @@ ROTULOS_DE_REFERENCIA_FORNECEDOR = (
 # resultados entram em cada uma. As de Condições e Documentos/Imagens ficam de
 # fora até o CP 6.4 -- marcar como COMPLETO uma seção que o robô nem tentou
 # seria mentir na planilha, que é onde a mentira dura mais.
-SECOES_DA_PLANILHA = {
-    config.COL_INFO_GERAIS: ("fabricante", "referencia", "fornecedor"),
-    config.COL_CARACT_TECNICAS: ("caracteristicas",),
-    config.COL_CONDICOES: ("condicoes",),
-    config.COL_DOCS_IMAGENS: ("documentos", "imagens"),
-}
-
-# Seções que este robô AINDA NÃO faz. Cada uma vira um resultado `pendente`
-# em toda ficha, o que produz três coisas: uma linha no log, a coluna
-# correspondente marcada INCOMPLETO no `_STATUS_PMIB`, e a ficha NÃO contada
-# como falha no resumo.
 #
-# ⚠️ ISTO REVERTE UMA DECISÃO MINHA, e o motivo é um relato do usuário. Eu
-# tinha escrito que seção não tentada NÃO devia ser escrita na planilha, para
-# não fazer ruído. Em 2026-08-17 ele reportou que "documentos e condições já
-# estão preenchendo" testando pelo botão 2b -- que não tem uma linha de código
-# para nenhum dos dois. O que ele viu era resíduo de uma rodada anterior do
-# robô antigo na mesma ficha. Uma coluna EM BRANCO não diz nada; uma coluna
-# escrita INCOMPLETO teria dito a verdade antes de a ficha ser considerada
-# pronta. O "ruído" que eu quis evitar era exatamente a informação que faltou.
-SECOES_NAO_IMPLEMENTADAS = (
-    ("condicoes", "abas de Condições"),
-    ("documentos", "associar documentos"),
-    ("imagens", "enviar imagens"),
-)
+# 2026-08-18: a seção de Fabricantes/Fornecedores passou de três resultados
+# para cinco -- combo do fornecedor, referência dele, e a referência da linha
+# fixa. Todas alimentam a mesma coluna.
+#
+# ⚠️ 2026-08-19: QUANTAS linhas a seção tem depende da FICHA, não é constante.
+# No print da 4500063671.1418 são DUAS -- o fornecedor é texto fixo (GE
+# ENERGIAS RENOVAVEIS LTDA) e o campo de Referência dele é o do ícone ⓘ, a
+# mesma linha que aqui se chama "ge_vernova". As chaves abaixo continuam as
+# cinco de propósito: `escolher_fornecedor` devolve `tem_linha=False` quando
+# não há combo, e aí "fornecedor" sai ok sem que nada seja escrito. Reduzir a
+# lista faria a ficha de TRÊS linhas (a com dois fornecedores, que o usuário
+# mostrou em 2026-08-18) deixar de ser conferida.
+SECOES_DA_PLANILHA = {
+    config.COL_INFO_GERAIS: (
+        "fabricante", "referencia",
+        "fornecedor", "referencia_fornecedor",
+        "ge_vernova",
+        # CP 6.4: os documentos moram na mesma coluna -- o `_STATUS_PMIB` não
+        # tem uma para eles, e associar datasheet é parte de "a ficha está
+        # com as informações gerais prontas".
+        "documentos", "imagens",
+    ),
+    # CP 6.4: o PDM entra aqui porque é ele que decide quais características a
+    # ficha tem -- ficha no PDM errado tem a lista errada, por mais que a purga
+    # tenha corrido bem.
+    config.COL_CARACT_TECNICAS: ("pdm", "caracteristicas"),
+    # CP 6.4: a coluna CONDIÇÕES deixa de ficar sempre em branco.
+    config.COL_CONDICOES: ("condicoes",),
+}
 
 
 class ResultadoDaFicha:
@@ -178,20 +209,88 @@ def achar_fabricante(blocos, ficha=None):
     return _valor_por_rotulo(blocos, ROTULOS_DE_FABRICANTE)
 
 
-def achar_referencia_do_fornecedor(blocos, ficha=None):
-    """Referência do fornecedor: a FICHA ORIGINAL primeiro, planilha depois.
+def achar_fornecedor(blocos, ficha=None):
+    """Nome do fornecedor a escolher no combo -- lido da FICHA ORIGINAL.
 
-    Ordem invertida em relação ao fabricante, e é decisão do usuário: *"o
-    fornecedor você pode tirar da ficha original, acho que seria mais correto,
-    só caso lá estiver vazio"* -- aí a coluna CÓDIGO CMI / CÓDIGO GE.
+    *"O fornecedor você pode tirar da ficha original, acho que seria mais
+    correto"* + *"vem da ficha original, lendo qual fornecedor foi
+    preenchido"*.
 
-    Vazio nos dois ⇒ `""`, e a ficha vira INCOMPLETO na planilha. É melhor do
-    que escrever o código de outra ficha por parecer plausível.
+    Só a original: a planilha NÃO tem o nome do fornecedor (as colunas CÓDIGO
+    CMI / CÓDIGO GE trazem a referência da GE Vernova, que é outra linha da
+    tela). Vazio ⇒ `""`, o combo não é tocado, e a ficha sai INCOMPLETO com o
+    motivo no log -- melhor do que escolher um fornecedor por parecer
+    plausível.
+
+    O parâmetro `ficha` não é usado hoje; fica na assinatura por simetria com
+    `achar_fabricante` e para o caso de a planilha vir a trazer a coluna.
+
+    ⚠️ **`blocos` NÃO CONTÉM ESTA SEÇÃO, e é por isso que existe
+    `achar_fornecedor_na_tabela` abaixo.** O HTML de 2026-08-18 mostrou que
+    Fabricantes/Fornecedores em modo de visualização são duas TABELAS, cujas
+    células não têm o ancestral `PMIB_DataSheetView.Block_Expression` que a
+    varredura de rótulo→valor exige. Ou seja: esta função devolve `""` para
+    uma ficha real, sem erro nenhum. Ela fica como reserva -- se um dia o
+    portal renderizar o fornecedor como par rótulo→valor, ela acha.
     """
-    da_original = _valor_por_rotulo(blocos, ROTULOS_DE_REFERENCIA_FORNECEDOR)
-    if da_original:
-        return da_original
-    return getattr(ficha, "codigo_fornecedor", "") or ""
+    return _valor_por_rotulo(blocos, ROTULOS_DE_FORNECEDOR)
+
+
+def _primeiro_nome(itens):
+    for nome, _referencia in itens or ():
+        if nome:
+            return nome
+    return ""
+
+
+def achar_fornecedor_na_tabela(tabelas, blocos=(), ficha=None):
+    """Nome do fornecedor a escolher no combo, lido da TABELA da original.
+
+    `tabelas` vem de `extrator.ler_fabricantes_e_fornecedores`.
+
+    Fica com o PRIMEIRO da tabela. A ficha levantada tem um só fornecedor
+    (GE ENERGIAS RENOVAVEIS LTDA); se um dia tiver mais de um, o combo da
+    ficha nova aceita um por vez e escolher "todos" não é uma opção -- então
+    o log avisa em vez de o robô decidir sozinho.
+
+    Cai para a varredura de rótulo→valor se a tabela vier vazia: custa nada e
+    cobre um portal que mude de layout.
+    """
+    da_tabela = _primeiro_nome((tabelas or {}).get("fornecedores"))
+    if da_tabela:
+        return da_tabela
+    return achar_fornecedor(blocos, ficha)
+
+
+def achar_fabricante_na_tabela(tabelas, blocos=(), ficha=None, callback_log=None):
+    """Fabricante a usar: a FICHA ORIGINAL primeiro, a planilha como reserva.
+
+    ⚠️ A PRECEDÊNCIA INVERTEU EM 2026-08-19, e a inversão é do usuário:
+    *"o código do material do fabricante deve vir da _STATUS_PMIB, mas o NOME
+    do fabricante vem da ficha original"*. Antes mandava a coluna MARCA/MODELO
+    (decisão dele em 2026-08-17).
+
+    A divisão faz sentido: o nome do fabricante é um fato da peça, e a ficha
+    original é onde ele foi conferido; o código do material é do CONTRATO, e
+    esse só a planilha conhece.
+
+    Quando as duas fontes DIVERGEM, as duas vão para o log. Divergência aqui é
+    quase sempre grafia ("PHOENIX CONTACT" x "PHOENIX CONTACTS S.A."), mas
+    pode ser a planilha desatualizada -- e a escolha silenciosa esconderia as
+    duas.
+    """
+    _log = _log_de(callback_log)
+    da_tabela = _primeiro_nome((tabelas or {}).get("fabricantes"))
+    da_planilha = getattr(ficha, "fabricante", "") if ficha is not None else ""
+
+    if da_tabela:
+        if da_planilha and da_planilha.strip().upper() != da_tabela.strip().upper():
+            _log(f"   [i] Fabricante diverge: ficha original {da_tabela!r} x "
+                 f"planilha {da_planilha!r}. Uso o da ficha original, como combinado.")
+        return da_tabela
+    if da_planilha:
+        return da_planilha
+    return achar_fabricante(blocos, ficha)
 
 
 def ler_ficha_original(portal, pmib_original, callback_log=None):
@@ -223,7 +322,66 @@ def abrir_alvo_para_edicao(portal, pmib_alvo, callback_log=None):
     return True
 
 
-def processar_ficha(portal, ficha, callback_log=None):
+def ler_documentos_da_original(portal, callback_log=None, log_auditoria=None):
+    """Descrições dos documentos da ficha original, lidas na VISUALIZAÇÃO.
+
+    Lista vazia quando a aba não abre ou a ficha não tem documento: as duas
+    coisas levam ao mesmo lugar (nada a associar), e distingui-las custaria
+    uma pendência falsa nas fichas que legitimamente não têm datasheet.
+    """
+    _log = _log_de(callback_log)
+    aba = sel.ABA_DOCUMENTOS
+    if not extrator.abrir_secao(portal, aba, callback_log, log_auditoria):
+        return []
+    # `coluna_referencia=None`: a tabela de Documentos NÃO TEM segunda coluna.
+    # Pedir "Referência" aqui era o travamento de 2026-08-20 -- ver
+    # `ler_tabela_de`.
+    #
+    # `escopo`: prende a leitura ao PAINEL da aba. Sem ele, "Descrição" casa
+    # também a tabela de características, e o robô passou minutos procurando
+    # "TENSÃO DE ENTRADA" no catálogo de documentos.
+    linhas = extrator.ler_tabela_de(portal, sel.COLUNA_DESCRICAO, callback_log,
+                                    coluna_referencia=None,
+                                    escopo=extrator.id_do_painel(portal, aba))
+    descricoes = [nome for nome, _ref in linhas if nome]
+    _log(f"      {len(descricoes)} documento(s) na ficha original.")
+    return descricoes
+
+
+def ler_condicoes_da_original(portal, callback_log=None, log_auditoria=None):
+    """Condições da ficha original, lidas em VISUALIZAÇÃO.
+
+    ⚠️ ESTA FUNÇÃO ABRIA A ORIGINAL EM EDIÇÃO, e a decisão errada foi minha.
+    O usuário fechou a porta em 2026-08-20: *"TUDO é para pegar do modo de
+    visualização. Somente a ficha ALVO é para entrar no modo de edição."*
+
+    Por que eu tinha feito assim: a cópia das Condições é POR XPATH
+    (`Input_PackingLength` da original → `Input_PackingLength` da alvo), e
+    esses campos só existem como `input` no modo de EDIÇÃO. Documentei o
+    trade-off no código em vez de levá-lo ao usuário -- documentar não é
+    combinar. E o custo apareceu no primeiro lote: original em "Em Análise
+    ITAIPU" não tem lápis, 20 s de timeout e as Condições perdidas.
+
+    O que falta para a leitura por VISUALIZAÇÃO funcionar: o casamento
+    RÓTULO → campo. Lá a seção é par rótulo→valor ("Comprimento: 40"), não
+    `input`, e o mapa de rótulos ainda não foi levantado -- a seção de
+    Condições não aparece no HTML que a auditoria capturou até aqui, porque o
+    OutSystems só renderiza o painel da aba aberta.
+
+    Por isso esta função hoje faz DUAS coisas: devolve vazio (nada de abrir a
+    original para editar) e, com a auditoria ligada, ABRE a aba de Condições
+    em visualização e FOTOGRAFA. É a rodada que entrega os rótulos.
+    """
+    _log = _log_de(callback_log)
+    if extrator.abrir_secao(portal, sel.ABA_CONDICOES, callback_log, log_auditoria):
+        _log("      [i] Condições: seção aberta em visualização apenas para "
+             "registrar o markup no log de auditoria.")
+    _log("      [i] Condições NÃO serão copiadas: falta o mapa RÓTULO→campo do "
+         "modo de visualização. A original nunca é aberta em edição.")
+    return {}
+
+
+def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
     """Duplica UMA ficha. Devolve `ResultadoDaFicha`.
 
     Nunca levanta por falha de seção: uma ficha que dá errado não pode derrubar
@@ -242,7 +400,16 @@ def processar_ficha(portal, ficha, callback_log=None):
             _log(f"   [Erro] {resultado.erro_fatal}")
             return resultado
 
-        fabricante = achar_fabricante(blocos, ficha)
+        # A seção de Fabricantes/Fornecedores mora numa ABA própria e é
+        # TABELA, não par rótulo→valor -- por isso tem leitura separada. Antes
+        # de 2026-08-18 o robô procurava esses dois nomes na varredura de
+        # rótulo→valor, que não enxerga a seção: o fornecedor vinha sempre
+        # vazio, sem erro.
+        tabelas = extrator.ler_fabricantes_e_fornecedores(
+            portal, callback_log, log_auditoria)
+
+        fabricante = achar_fabricante_na_tabela(tabelas, blocos, ficha,
+                                                callback_log)
         if not fabricante:
             # Não é fatal: as outras seções continuam valendo, e o usuário
             # preenche o fabricante à mão. Fatal seria perder também a purga.
@@ -257,7 +424,28 @@ def processar_ficha(portal, ficha, callback_log=None):
         else:
             _log(f"   Fabricante (planilha): {fabricante}")
 
-        referencia_fornecedor = achar_referencia_do_fornecedor(blocos, ficha)
+        fornecedor = achar_fornecedor_na_tabela(tabelas, blocos, ficha)
+        if not fornecedor:
+            _log("   [Aviso] Não achei o fornecedor na ficha original -- a linha de "
+                 "Fornecedor não será preenchida.")
+        else:
+            _log(f"   Fornecedor (ficha original): {fornecedor}")
+
+        # --- CP 6.4: o que mais precisa vir da ORIGINAL ---------------
+        # Documentos saem da VISUALIZAÇÃO (é tabela de leitura, e a ficha já
+        # está aberta assim).
+        docs_da_original = ler_documentos_da_original(portal, callback_log,
+                                                      log_auditoria)
+
+        # Imagens também saem da VISUALIZAÇÃO, e daqui mesmo: *"a imagem está
+        # sempre visível"* -- o carrossel não depende de qual aba está aberta.
+        # Precisa ser ANTES de abrir a alvo, porque os bytes vêm do `blob:`
+        # daquela página.
+        imagens_da_original = imagens.ler_da_original(portal, callback_log)
+
+        # Condições: SÓ visualização, como todo o resto da original.
+        condicoes_da_original = ler_condicoes_da_original(
+            portal, callback_log, log_auditoria)
 
         if not abrir_alvo_para_edicao(portal, ficha.pmib, callback_log):
             resultado.erro_fatal = f"não achei a ficha alvo {ficha.pmib} em nenhuma aba"
@@ -271,25 +459,99 @@ def processar_ficha(portal, ficha, callback_log=None):
         # pegar a primeira "Referência" da tela -- que é a da GE.
         resultado.registrar(injetor.escrever_referencia(
             portal, ficha.codigo_material, callback_log,
-            id_do_campo=secao_fabricante.id_do_campo_de_referencia))
+            id_do_campo=secao_fabricante.id_do_campo_de_referencia,
+            log_auditoria=log_auditoria))
 
-        # A referência do FORNECEDOR usa a MESMA mecânica do fabricante: o
-        # combo se identifica pelo placeholder e o campo certo é o que NASCE
-        # quando ele é escolhido. Se qualquer um dos dois falhar, não escreve.
-        resultado.registrar(injetor.escrever_referencia_do_fornecedor(
-            portal, referencia_fornecedor, callback_log))
+        # --- Linha do FORNECEDOR ---------------------------------------
+        # Mesma mecânica do fabricante -- combo, e o campo certo é o que NASCE
+        # quando a opção é escolhida. A referência que vai aqui é o CÓDIGO DO
+        # MATERIAL, o MESMO do fabricante: *"o código do material deve ser
+        # preenchido no campo de fornecedor que devemos selecionar"* (usuário,
+        # 2026-08-18).
+        #
+        # Escrever o mesmo código em duas linhas parece estranho e não é: a
+        # regra do sufixo `'D` é resolvida pelo PORTAL, uma linha de cada vez.
+        # Se ele considerar as duas uma colisão, a segunda recebe `'D1` --
+        # `escrever_referencia` lê a resposta da tela e se adapta, em vez de o
+        # código supor qual das duas deve mudar.
+        secao_fornecedor = resultado.registrar(
+            injetor.escolher_fornecedor(portal, fornecedor, callback_log))
+        # ⚠️ SÓ ESCREVE SE A LINHA EXISTIR (2026-08-19). Nem toda ficha tem a
+        # linha de fornecedor com combo: no print da 4500063671.1418 o
+        # fornecedor é TEXTO FIXO e o campo de Referência dela é o do ícone ⓘ
+        # -- a mesma linha que este módulo chama de "GE Vernova". Escrever
+        # assim mesmo era o que produzia `2 campos de Referência na tela e o
+        # fabricante não indicou qual é o dele`, e sem a recusa poria o código
+        # do material na linha da GE.
+        if secao_fornecedor.tem_linha:
+            resultado.registrar(injetor.escrever_referencia(
+                portal, ficha.codigo_material, callback_log,
+                id_do_campo=secao_fornecedor.id_do_campo_de_referencia,
+                nome_da_secao="referencia_fornecedor",
+                log_auditoria=log_auditoria))
 
-        portal.clicar_salvar_visivel("Fabricantes e Fornecedores")
-        resultado.registrar(
-            injetor.limpar_caracteristicas(portal, ficha.ficha_original, callback_log))
+        # --- Linha da GE VERNOVA ---------------------------------------
+        # Campo FIXO (o do ícone ⓘ), e o único que recebe CÓDIGO CMI /
+        # CÓDIGO GE: *"deve ser preenchido somente se tiver no _STATUS_PMIB, e
+        # deve ser preenchido no campo do fornecimento da GE, que é fixo"*.
+        # Vazio ⇒ pula sem erro e sem pendência.
+        # `getattr` e não acesso direto: um atributo ausente na ficha viraria
+        # AttributeError, seria engolido pelo `except` lá embaixo e apareceria
+        # como "erro fatal" -- a ficha morreria por causa de um campo
+        # OPCIONAL. Mesma lição do log do fabricante, em 2026-08-17.
+        resultado.registrar(injetor.escrever_referencia_da_ge(
+            portal, getattr(ficha, "codigo_fornecedor", ""), callback_log,
+            log_auditoria=log_auditoria))
 
-        # O que este robô ainda não faz, dito ficha a ficha em vez de uma vez
-        # no fim do lote: é o que impede alguém olhar a ficha, ver as seções
-        # preenchidas por uma rodada anterior do robô antigo e concluir que
-        # este as fez.
-        for nome, descricao in SECOES_NAO_IMPLEMENTADAS:
+        # ⚠️ FABRICANTES E FORNECEDORES NÃO TEM BOTÃO DE SALVAR. *"O único
+        # campo que não precisa salvar é o de fabricantes e fornecedores, esse
+        # não tem botão de salvar"* (usuário, 2026-08-19).
+        #
+        # Bate com o que já sabíamos: quem comita a linha ali é o "+", e é por
+        # isso que a prova daquela seção é a linha ENTRAR NA TABELA
+        # (`linha_entrou_na_tabela`), não um toast.
+        #
+        # A tentativa de salvar aqui durou um commit e teria sido pior do que
+        # inútil: sem botão na tela, `salvar_e_confirmar` devolveria `False` e
+        # TODA ficha sairia com uma pendência inventada -- o mesmo tipo de
+        # falso alarme que as linhas fantasma de fornecedor produziam.
+        # ⚠️ O PDM VEM ANTES DAS CARACTERÍSTICAS, e a ordem é o conserto
+        # (2026-08-20). O PDM decide QUAIS características a ficha tem: na
+        # 4500063671.0922, que estava em `PDM.4820.010 - REGULADOR, PRESSAO`,
+        # o robô apagou as 26 características daquele PDM procurando uma linha
+        # `CODIGO PMIB` que ali não existe. Trocar o PDM depois não desfaz o
+        # que foi apagado.
+        secao_pdm = resultado.registrar(pdm.garantir_pdm(portal, callback_log))
+        if secao_pdm.ok:
+            resultado.registrar(injetor.limpar_caracteristicas(
+                portal, ficha.ficha_original, callback_log))
+        else:
+            # Purgar sem saber o PDM apaga a ficha de outro PDM. A recusa é o
+            # comportamento certo, e vira pendência como qualquer outra.
+            _log("   [Erro] Não purguei as características: o PDM da ficha não "
+                 "está garantido, e purgar o PDM errado apaga o que não é para "
+                 "apagar.")
             resultado.registrar(injetor.ResultadoDaSecao(
-                nome, False, pendente=True, detalhe=f"{descricao} -- CP 6.4"))
+                "caracteristicas", False, "PDM não garantido"))
+
+        # --- CP 6.4 ----------------------------------------------------
+        resultado.registrar(
+            condicoes.escrever(portal, condicoes_da_original, callback_log))
+        # `ABA_DOCUMENTOS_EDICAO`: aqui a ficha ALVO está aberta para editar, e
+        # nesse modo a aba se chama "Documentos e imagens". Passar o nome da
+        # visualização foi o `[Erro] A aba 'Documentos' não existe nesta tela`
+        # de 2026-08-20.
+        if extrator.abrir_secao(portal, sel.ABA_DOCUMENTOS_EDICAO, callback_log):
+            resultado.registrar(documentos.associar(
+                portal, docs_da_original, callback_log,
+                escopo=extrator.id_do_painel(portal, sel.ABA_DOCUMENTOS_EDICAO)))
+            resultado.registrar(imagens.copiar(
+                portal, imagens_da_original, ficha.pmib, callback_log))
+        else:
+            resultado.registrar(injetor.ResultadoDaSecao(
+                "documentos", False, "não abri a aba de Documentos e imagens"))
+            resultado.registrar(injetor.ResultadoDaSecao(
+                "imagens", False, "não abri a aba de Documentos e imagens"))
 
     except Exception as erro:  # noqa: BLE001 -- ver docstring
         resultado.erro_fatal = f"{type(erro).__name__}: {erro}"
@@ -300,7 +562,7 @@ def processar_ficha(portal, ficha, callback_log=None):
 
 
 def processar_lote(fichas, callback_log=None, callback_progresso=None,
-                   portal=None, deve_parar=None):
+                   portal=None, deve_parar=None, log_auditoria=None):
     """Duplica cada ficha de `fichas`. Devolve a lista de `ResultadoDaFicha`.
 
     `portal` injetável para teste; em produção vem de `iniciar()`.
@@ -313,7 +575,9 @@ def processar_lote(fichas, callback_log=None, callback_progresso=None,
         if deve_parar and deve_parar():
             _log(f"\n[Parado pelo usuário] {posicao - 1} de {total} processada(s).")
             break
-        resultados.append(processar_ficha(portal, ficha, callback_log))
+        resultados.append(
+            processar_ficha(portal, ficha, callback_log,
+                            log_auditoria=log_auditoria))
         if callback_progresso:
             callback_progresso(posicao / total if total else 1)
 
@@ -343,9 +607,9 @@ def status_por_secao(resultado_da_ficha):
     """{coluna do `_STATUS_PMIB`: "COMPLETO" | "INCOMPLETO"} para UMA ficha.
 
     Uma coluna só recebe COMPLETO se TODAS as seções que a alimentam deram
-    certo. Seção que o robô ainda não implementou conta como NÃO completa, e a
-    coluna dela recebe INCOMPLETO -- ver `SECOES_NAO_IMPLEMENTADAS` para por que
-    essa decisão foi revertida.
+    certo. Seção que o robô nem tentou (Condições, Documentos) não aparece:
+    escrever INCOMPLETO nelas seria correto mas ruidoso -- a ficha ainda vai
+    passar pelo robô antigo ou pela mão -- e escrever COMPLETO seria mentira.
     """
     # Pendente conta como NÃO completo: a seção não foi preenchida, e é
     # exatamente isso que a coluna do `_STATUS_PMIB` precisa dizer.
@@ -356,8 +620,6 @@ def status_por_secao(resultado_da_ficha):
         relevantes = [por_nome[nome] for nome in nomes if nome in por_nome]
         if not relevantes:
             continue
-        # Nota: coluna cujas seções são todas PENDENTES cai aqui como
-        # INCOMPLETO -- e é de propósito. Ver `SECOES_NAO_IMPLEMENTADAS`.
         marcas[coluna] = (status_sheet.VALOR_COMPLETO if all(relevantes)
                           else status_sheet.VALOR_INCOMPLETO)
     return marcas

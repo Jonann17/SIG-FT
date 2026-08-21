@@ -25,6 +25,20 @@ from sigft.core.rpa import seletores_duplicada as sel
 from sigft.services import duplicadas_spec as spec
 
 
+def _log_de(callback_log):
+    """Adaptador de log, igual ao de `duplicadas_injetor`/`duplicadas_robo`.
+
+    O idioma antigo deste arquivo era um `def _log` embutido em cada função.
+    As funções do CP 6.4 (abaixo) usam este helper -- mesma semântica, sem a
+    repetição. As antigas ficaram como estavam: reescrevê-las seria mexer em
+    código que roda, de carona.
+    """
+    def _log(mensagem):
+        if callback_log:
+            callback_log(mensagem)
+    return _log
+
+
 def _literal_xpath(texto):
     """`texto` como literal XPath, com aspas escolhidas para não colidir.
 
@@ -213,3 +227,274 @@ def ler_secao_visivel(engine, callback_log=None):
 #
 # Enquanto isso, `ler_secao_visivel` lê a seção que estiver aberta, que é o
 # suficiente para o usuário conferir a extração contra a ficha real.
+
+
+# ===========================================================================
+# 4. Navegar entre as seções da ficha (CP 6.4)
+# ===========================================================================
+# HTML levantado com o usuário em 2026-08-18. Era o que faltava: até aqui
+# `ler_secao_visivel` lia a seção que estivesse aberta, e não havia como abrir
+# outra.
+#
+# As duas funções abaixo CONFEREM o resultado do clique, e isso não é zelo
+# excessivo. As seções todas ficam no DOM; um clique que não pegou deixa o
+# extrator lendo a seção ANTERIOR e devolvendo dados plausíveis da seção
+# errada -- o tipo de falha que não parece falha e chega até a ficha alvo.
+
+def _sem_acento(texto):
+    from unicodedata import normalize
+    return normalize("NFKD", str(texto or "")).encode("ascii", "ignore").decode().lower()
+
+
+# XPath da raiz de uma seção aberta. Amplo de propósito: a foto de auditoria
+# quer o CONTEXTO em volta, não o campo exato -- é justamente o que não se sabe
+# ainda quando uma seção é nova.
+XPATH_CONTEUDO_DA_SECAO = "//div[contains(@class, 'osui-tabs__content')]"
+
+# ⚠️ A FOTO SAIU VAZIA NAS QUATRO SEÇÕES do log de 2026-08-20:
+#
+#     (nada casou para: //div[contains(@class, 'osui-tabs__content')],
+#                       //form | //div[@id='b12'])
+#
+# Ou seja, o modo de auditoria estava ligado e não fotografava nada -- a
+# ferramenta que existe para mapear o portal sem acesso a ele não mapeava.
+#
+# O que os HTMLs que o usuário mandou revelam é o padrão do container: as abas
+# apontam para ele por `aria-controls`, e o id sempre termina em `_Content`:
+#
+#     aria-controls="b10-GeneralInformations_Content"
+#     aria-controls="b10-DocumentsandImages_Content"
+#
+# `_Content` é semântico (nomeado por quem desenhou a tela) e o prefixo `b10-`
+# é gerado -- daí o `contains`, não a igualdade.
+XPATH_CONTEUDO_POR_ID = "//div[contains(@id, '_Content')]"
+
+# `//div[@id='b12']` era um id GERADO, o que este projeto proíbe: ele mudou e a
+# foto passou a devolver vazio. Fica só `//form`, mais o `<body>` como último
+# recurso -- uma foto grande demais ainda é infinitamente melhor do que
+# "(nada casou)", porque pelo menos contém a resposta.
+XPATH_FICHA_INTEIRA = "//form | //body"
+
+# ⚠️ O ÚLTIMO RECURSO PRECISA DE COLEIRA. Com `//body` valendo, o log de
+# 2026-08-20 saiu com 121 KB para 56 linhas de texto: o arquivo que o usuário
+# manda para eu ler virou ilegível para ele.
+#
+# 20 000 caracteres foram o suficiente, naquele mesmo log, para achar as duas
+# tabelas com coluna "Descrição" e o `aria-controls` das abas -- que era tudo o
+# que faltava. `recortar` avisa quanto ficou de fora, então nada some em
+# silêncio.
+LIMITE_DA_FOTO_DA_PAGINA = 20_000
+
+
+def fotografar(portal, titulo, log_auditoria=None, seletor=None):
+    """Guarda no log de execução o HTML do que está na tela.
+
+    É o coração do MODO DE AUDITORIA, e existe por um motivo concreto: mapear
+    uma seção do portal custava, até aqui, o usuário abrir o "inspecionar
+    elemento" e copiar caixa por caixa. Com isto, uma execução normal deixa a
+    estrutura registrada no arquivo -- e quem for consertar o seletor lê o
+    markup real em vez de adivinhar.
+
+    Vai só para o ARQUIVO (`LogDeExecucao.bloco`), nunca para o console: HTML
+    de OutSystems tornaria ilegível a tela que o usuário está acompanhando.
+
+    `log_auditoria=None` desliga tudo -- é o caminho normal, sem custo.
+    """
+    if log_auditoria is None:
+        return ""
+    alvos = [seletor] if seletor else [
+        XPATH_CONTEUDO_DA_SECAO, XPATH_CONTEUDO_POR_ID, XPATH_FICHA_INTEIRA]
+    for alvo in alvos:
+        try:
+            html = portal.engine.html_do_elemento(alvo)
+        except Exception:  # noqa: BLE001 -- observar não pode derrubar o lote
+            html = ""
+        if html:
+            # A foto da PÁGINA INTEIRA é o último recurso e a maior: leva
+            # limite próprio, senão inunda o arquivo (ver
+            # `LIMITE_DA_FOTO_DA_PAGINA`).
+            if alvo == XPATH_FICHA_INTEIRA:
+                log_auditoria.bloco(f"{titulo}  [{alvo}]", html,
+                                    limite=LIMITE_DA_FOTO_DA_PAGINA)
+            else:
+                log_auditoria.bloco(f"{titulo}  [{alvo}]", html)
+            return html
+    log_auditoria.bloco(titulo, f"(nada casou para: {', '.join(alvos)})")
+    return ""
+
+
+def id_do_painel(portal, nome):
+    """Id do PAINEL da seção `nome`, lido do `aria-controls` da aba.
+
+    É o escopo que impede a leitura de uma seção pegar a tabela de outra. O id
+    é gerado (`b12-$b17`) e por isso NÃO pode ser escrito no código -- mas
+    pode ser lido em tempo de execução, que é a mesma técnica usada para achar
+    o "+" da linha do fabricante pelo prefixo do campo.
+
+    `""` quando a aba não existe: quem chama trata como "sem escopo" e o
+    comportamento volta a ser o antigo, com o risco declarado.
+    """
+    alvo = sel.XPATH_ABA_DA_FICHA.format(texto=_literal_xpath(nome))
+    try:
+        return portal.engine.atributo(f"({alvo})[1]", "aria-controls") or ""
+    except Exception:  # noqa: BLE001 -- ler a tela não derruba a ficha
+        return ""
+
+
+def abrir_secao(portal, nome, callback_log=None, log_auditoria=None):
+    """Abre uma das abas da ficha ("Fabricantes e fornecedores", "Documentos",
+    "Condições"). Devolve `True` se o portal confirmou que ela ficou ativa.
+
+    A confirmação é `aria-selected="true"` no próprio botão -- ver
+    `seletores_duplicada` §11.
+    """
+    _log = _log_de(callback_log)
+    alvo = sel.XPATH_ABA_DA_FICHA.format(texto=_literal_xpath(nome))
+
+    if not portal.engine.contar(alvo):
+        _log(f"   [Erro] A aba {nome!r} não existe nesta tela.")
+        return False
+
+    portal.safe_click(f"({alvo})[1]")
+
+    ativa = sel.XPATH_ABA_DA_FICHA_ATIVA.format(texto=_literal_xpath(nome))
+    if portal.engine.contar(ativa):
+        _log(f"   Seção aberta: {nome}")
+        # ⚠️ FOTOGRAFA O PAINEL, não a página. `//body` começa no topo, e a
+        # seção de Condições fica lá embaixo: com o teto de 20 000 caracteres
+        # (que existe para o log não virar 121 KB), o markup que eu precisava
+        # ler foi cortado antes de aparecer -- a rodada de 2026-08-20 15h
+        # fotografou a aba certa e não trouxe um único "Comprimento".
+        #
+        # O `aria-controls` dá o painel exato e resolve as duas pontas: cabe
+        # no limite e não traz nada de outra seção junto.
+        painel = id_do_painel(portal, nome)
+        alvo = (sel.XPATH_PAINEL_POR_ID.format(id=_literal_xpath(painel))
+                if painel else None)
+        fotografar(portal, f"Seção «{nome}» (aberta)", log_auditoria, seletor=alvo)
+        return True
+
+    _log(f"   [Erro] Cliquei em {nome!r} e o portal não marcou a aba como ativa. "
+         f"NÃO vou ler -- leria a seção anterior achando que era esta.")
+    # Foto do FRACASSO: é o caso em que o markup real vale mais, porque quem
+    # for consertar precisa ver por que o clique não pegou.
+    fotografar(portal, f"Seção «{nome}» (o clique NÃO pegou)", log_auditoria)
+    return False
+
+
+def abrir_subaba_de_condicoes(portal, nome, callback_log=None, log_auditoria=None):
+    """Abre uma sub-aba DENTRO de Condições. Devolve `True` se ficou ativa.
+
+    As sub-abas NÃO são o mesmo componente das abas de cima: são `<div
+    class="OSInline">` com `cursor: pointer`, e a aberta ganha a classe
+    `dummy-active`. Supor que fossem `role="tab"` era plausível -- e errado;
+    tem teste contra o HTML real para a suposição não voltar.
+    """
+    _log = _log_de(callback_log)
+    alvo = sel.XPATH_SUBABA_CONDICOES.format(texto=_literal_xpath(nome))
+
+    if not portal.engine.contar(alvo):
+        _log(f"   [Erro] A sub-aba {nome!r} não existe nesta tela.")
+        return False
+
+    portal.safe_click(f"({alvo})[1]")
+
+    ativa = sel.XPATH_SUBABA_CONDICOES_ATIVA.format(texto=_literal_xpath(nome))
+    if portal.engine.contar(ativa):
+        _log(f"      Sub-aba aberta: {nome}")
+        fotografar(portal, f"Sub-aba de Condições «{nome}» (aberta)", log_auditoria)
+        return True
+
+    _log(f"      [Erro] Cliquei em {nome!r} e ela não ficou com '{sel.CLASSE_SUBABA_ATIVA}'. "
+         f"NÃO vou ler.")
+    fotografar(portal, f"Sub-aba «{nome}» (o clique NÃO pegou)", log_auditoria)
+    return False
+
+
+# ===========================================================================
+# 5. Fabricantes e fornecedores — duas TABELAS, não pares rótulo→valor
+# ===========================================================================
+# ⚠️ CORRIGE UMA SUPOSIÇÃO DO EXTRATOR. `ler_secao_visivel` varre pares
+# rótulo→valor exigindo o ancestral `PMIB_DataSheetView.Block_Expression`; as
+# células desta seção NÃO o têm. Ou seja, `achar_fabricante`/`achar_fornecedor`
+# lendo daquela varredura devolvem VAZIO para esta ficha, sem erro nenhum --
+# provado em `tests/test_duplicadas_xpath_real.py` contra o HTML real.
+#
+# Os dois contêineres têm o MESMO sufixo de id (`-ManufacturerAndProvider`),
+# então o id não separa fabricante de fornecedor. Quem separa é o
+# `@data-header` da célula -- o mesmo atributo que `tech_specs` já usa.
+
+def ler_tabela_de(portal, coluna_nome, callback_log=None,
+                  coluna_referencia=sel.COLUNA_REFERENCIA, escopo=None):
+    """Linhas de uma das tabelas, como lista de `(nome, referência)`.
+
+    `coluna_nome` é `COLUNA_NOME_FABRICANTE`, `COLUNA_NOME_FORNECEDOR` ou
+    `COLUNA_DESCRICAO`.
+
+    ⚠️ `coluna_referencia=None` para as tabelas que NÃO TÊM segunda coluna --
+    a de Documentos é uma. Passar o default nela foi o travamento de
+    2026-08-20: cada linha esperava o timeout inteiro por uma célula que não
+    existe. O conserto geral (não esperar pelo ausente) está em
+    `PMIBPortal.texto_se_existir`; este parâmetro é o conserto local, e vale
+    por si -- não se pede o que se sabe que não está lá.
+
+    Devolve TODAS as linhas de propósito: nesta ficha o fabricante tem duas
+    ("a gente comprou de um que comprou do fabricante" -- ENERSYS fabrica,
+    SASSI revende). Ler só a primeira perderia a segunda em silêncio.
+    """
+    _log = _log_de(callback_log)
+    linhas_xpath = sel.XPATH_LINHAS_DA_TABELA_DE.format(
+        coluna=_literal_xpath(coluna_nome))
+    # ⚠️ SEM ESCOPO A LEITURA VAZA PARA OUTRA SEÇÃO. "Descrição" é coluna de
+    # características E de documentos; sem prender a busca ao painel, o XPath
+    # fica com a primeira tabela da página. Ver `XPATH_PAINEL_POR_ID`.
+    if escopo:
+        linhas_xpath = (sel.XPATH_PAINEL_POR_ID.format(id=_literal_xpath(escopo))
+                        + linhas_xpath)
+    total = portal.engine.contar(linhas_xpath)
+
+    itens = []
+    for posicao in range(1, (total or 0) + 1):
+        base = f"({linhas_xpath})[{posicao}]"
+        nome = _celula(portal, base, coluna_nome)
+        referencia = (_celula(portal, base, coluna_referencia)
+                      if coluna_referencia else "")
+        if nome or referencia:
+            itens.append((nome, referencia))
+
+    if not itens:
+        _log(f"   [Aviso] A tabela de '{coluna_nome}' está vazia nesta ficha.")
+    return itens
+
+
+def _celula(portal, base_da_linha, coluna):
+    # `texto_se_existir` e não `engine.texto`: célula ausente é NORMAL aqui
+    # (coluna que aquela tabela não tem), e esperar o timeout por ela foi o
+    # travamento de 2026-08-20. Ver `PMIBPortal.texto_se_existir`.
+    bruto = portal.texto_se_existir(
+        base_da_linha + sel.XPATH_REL_CELULA.format(coluna=_literal_xpath(coluna)))
+    # `str.split()` normaliza `&nbsp;` (\xa0) junto com o resto -- mesma
+    # decisão de `ler_bloco`.
+    return " ".join(str(bruto or "").split())
+
+
+def ler_fabricantes_e_fornecedores(portal, callback_log=None, log_auditoria=None):
+    """Abre a aba e devolve `{"fabricantes": [...], "fornecedores": [...]}`.
+
+    Cada item é `(nome, referência)`. Aba que não abre devolve as duas listas
+    vazias -- e quem chama trata isso como "não sei", nunca como "não tem".
+    """
+    _log = _log_de(callback_log)
+    if not abrir_secao(portal, sel.ABA_FABRICANTES_E_FORNECEDORES,
+                       callback_log, log_auditoria):
+        return {"fabricantes": [], "fornecedores": []}
+
+    fabricantes = ler_tabela_de(portal, sel.COLUNA_NOME_FABRICANTE, callback_log)
+    fornecedores = ler_tabela_de(portal, sel.COLUNA_NOME_FORNECEDOR, callback_log)
+
+    for nome, referencia in fabricantes:
+        _log(f"      Fabricante lido: {nome}  (ref. {referencia})")
+    for nome, referencia in fornecedores:
+        _log(f"      Fornecedor lido: {nome}  (ref. {referencia})")
+
+    return {"fabricantes": fabricantes, "fornecedores": fornecedores}
