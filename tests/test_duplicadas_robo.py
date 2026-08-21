@@ -475,3 +475,14 @@ def test_log_com_atributo_ausente_nao_derruba_a_ficha(monkeypatch):
     # Eram quatro quando "fornecedor" e "GE Vernova" eram tratados como a
     # mesma linha -- que era o defeito.
     assert len(resultado.secoes) == 10  # + pdm, condicoes, documentos, imagens
+
+
+def test_processar_ficha_loga_onde_o_tempo_foi(monkeypatch):
+    """A medição que responde *"ele demora muito para a segunda etapa"* sem
+    adivinhação. Ver tests/test_duplicadas_tempos.py para a mecânica."""
+    portal = _com_etapas(monkeypatch)
+    logs = []
+
+    robo.processar_ficha(portal, _Ficha(), callback_log=logs.append)
+
+    assert any("total" in linha and "s" in linha for linha in logs)

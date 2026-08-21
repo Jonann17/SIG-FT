@@ -151,10 +151,38 @@ class ResultadoDaFicha:
         self.pmib_original = pmib_original
         self.secoes = []
         self.erro_fatal = ""
+        # Cronômetro. Ver `tempos`/`resumo_de_tempos` -- serve para responder
+        # ONDE o robô gasta o tempo, em vez de a gente adivinhar caçando
+        # `time.sleep`.
+        self.tempos = []
+        self._marco = time.monotonic()
 
     def registrar(self, resultado_da_secao):
+        agora = time.monotonic()
+        self.tempos.append((resultado_da_secao.nome, agora - self._marco))
+        self._marco = agora
         self.secoes.append(resultado_da_secao)
         return resultado_da_secao
+
+    @property
+    def resumo_de_tempos(self):
+        """Uma linha com o custo de cada seção, da mais cara para a mais barata.
+
+        ⚠️ O tempo é medido ENTRE registros, não dentro da seção: as seções
+        rodam em sequência, então o intervalo entre o registro da anterior e o
+        desta é o custo desta. Medir por dentro exigiria instrumentar as sete
+        funções do injetor -- estrago grande demais para um número que já sai
+        certo assim.
+
+        Do mais caro para o mais barato porque quem lê o log quer o culpado
+        primeiro; a ordem de execução ele já conhece.
+        """
+        if not self.tempos:
+            return ""
+        caros = sorted(self.tempos, key=lambda par: par[1], reverse=True)
+        partes = " | ".join(f"{nome} {segundos:.1f} s" for nome, segundos in caros)
+        total = sum(segundos for _nome, segundos in self.tempos)
+        return f"{partes}  (total {total:.1f} s)"
 
     @property
     def ok(self):
@@ -589,6 +617,12 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
         _log(f"   [Erro] {resultado.erro_fatal}")
 
     _log(f"   {resultado.resumo}")
+    # ONDE o tempo foi. Sem esta linha, "o robô está lento" só dá para atacar
+    # caçando `time.sleep` -- e as 23 pausas dos módulos de duplicadas somam
+    # bem menos do que uma ficha leva, o que quer dizer que o custo está nas
+    # idas ao servidor que se repetem, não numa espera fixa. Medir primeiro.
+    if resultado.resumo_de_tempos:
+        _log(f"   tempos: {resultado.resumo_de_tempos}")
     return resultado
 
 
