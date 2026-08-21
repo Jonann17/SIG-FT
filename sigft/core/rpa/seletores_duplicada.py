@@ -1045,3 +1045,29 @@ ASSINATURAS_DE_IMAGEM = (
     (b"\x89PNG\r\n\x1a\n", ".png"),
     (b"\xff\xd8\xff", ".jpg"),
 )
+
+
+# O ESTADO do item no FilePond, que é diferente da existência dele.
+#
+# ⚠️ 2026-08-21, do log do usuário: a imagem entrava na lista e o "Confirmar"
+# vinha logo depois, com uma pausa FIXA de 2 s no meio. O portal não devolvia
+# toast nenhum e a seção fechava como falha. Hipótese do usuário, e ela bate
+# com o funcionamento do FilePond: *"quando carregamos uma imagem, pode ser que
+# demore a fazer o upload, e talvez seja esse o erro, tentar clicar antes de
+# esperar dar o upload"*.
+#
+# O `<li>` nasce quando o arquivo é ACEITO; o processamento vem depois, e o
+# FilePond o anuncia em `data-filepond-item-state`. Os estados que interessam:
+#
+#     processing            está subindo AGORA
+#     processing-complete   terminou  (contém "processing" -- daí o `not`)
+#     load-invalid / error  recusado
+#
+# Esperar o estado, em vez de dormir um número fixo, é a diferença entre
+# "confirmei depois que subiu" e "confirmei depois de 2 segundos".
+XPATH_IMAGENS_ITEM_PROCESSANDO = (
+    "//*[@data-filepond-item-state]"
+    "[contains(@data-filepond-item-state, 'processing')]"
+    "[not(contains(@data-filepond-item-state, 'processing-complete'))]"
+)
+XPATH_IMAGENS_ITEM_COM_ESTADO = "//*[@data-filepond-item-state]"

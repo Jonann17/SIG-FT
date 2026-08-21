@@ -310,3 +310,104 @@ def test_a_palavra_da_secao_de_imagens_esta_mapeada():
     assert portal_mod.mensagem_confirma_secao(
         "A característica técnica foi salva com sucesso!",
         sel.ABA_DOCUMENTOS_EDICAO) is False
+
+
+# ===========================================================================
+# Esperar o UPLOAD terminar antes de confirmar
+# ===========================================================================
+# Log do usuário, 2026-08-21: a imagem entrava, o "Confirmar" vinha 2 s depois
+# e o portal não devolvia toast nenhum. Diagnóstico dele: *"quando carregamos
+# uma imagem, pode ser que demore a fazer o upload, e talvez seja esse o erro,
+# tentar clicar antes de esperar dar o upload"*.
+
+class _EngineComEstado:
+    """Motor de mentira que expõe `data-filepond-item-state`, como o FilePond
+    real: o `<li>` nasce ao ACEITAR o arquivo, e o estado muda quando o
+    processamento TERMINA."""
+
+    def __init__(self, ciclos_processando=0):
+        self.restam = ciclos_processando
+        self.consultas = 0
+
+    def contar(self, seletor):
+        self.consultas += 1
+        if "not(contains" in seletor:          # "ainda processando?"
+            if self.restam > 0:
+                self.restam -= 1
+                return 1
+            return 0
+        if "@data-filepond-item-state" in seletor:   # "há item com estado?"
+            return 1
+        return 0
+
+
+class _PortalComEstado:
+    def __init__(self, engine):
+        self.engine = engine
+
+
+def test_espera_ate_o_filepond_terminar(monkeypatch):
+    monkeypatch.setattr(imgs.time, "sleep", lambda _s: None)
+    portal = _PortalComEstado(_EngineComEstado(ciclos_processando=5))
+
+    assert imgs.esperar_processamento(portal, lambda _m: None) is True
+
+
+def test_nao_confirma_se_o_upload_nunca_termina(monkeypatch):
+    """Clicar em Confirmar no meio do processamento é o que fazia o portal não
+    responder nada -- melhor recusar e dizer, do que clicar e não saber."""
+    monkeypatch.setattr(imgs.time, "sleep", lambda _s: None)
+    relogio = {"t": 0.0}
+    monkeypatch.setattr(imgs.time, "monotonic", lambda: relogio.__setitem__("t", relogio["t"] + 10) or relogio["t"])
+    portal = _PortalComEstado(_EngineComEstado(ciclos_processando=10_000))
+    logs = []
+
+    assert imgs.esperar_processamento(portal, logs.append, timeout=30) is False
+    assert "NÃO cliquei em Confirmar" in "\n".join(logs)
+
+
+def test_tela_sem_o_atributo_de_estado_nao_trava(monkeypatch):
+    """Versão de FilePond que não expõe o estado: não há o que observar.
+    Devolver `True` e deixar a checagem do `<li>` decidir é melhor do que
+    fingir que esperou -- ou do que travar até o timeout."""
+    monkeypatch.setattr(imgs.time, "sleep", lambda _s: None)
+
+    class _SemEstado:
+        def contar(self, _seletor):
+            return 0
+
+    assert imgs.esperar_processamento(_PortalComEstado(_SemEstado())) is True
+
+
+def test_subir_uma_NAO_confirma_com_o_upload_em_andamento(monkeypatch, tmp_path):
+    """CONTRAPROVA DA LIGAÇÃO, e não só da função: a espera tem de estar DENTRO
+    de `subir_uma`, antes do "Confirmar".
+
+    Sem este teste, remover a chamada não quebrava nada -- foi o que a
+    sabotagem mostrou em 2026-08-21. `esperar_processamento` sozinha, testada e
+    nunca chamada, é a mesma coisa que não existir.
+    """
+    monkeypatch.setattr(imgs.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(imgs.time, "monotonic",
+                        lambda c=iter(range(0, 10_000, 10)): next(c))
+    portal, engine = _tela()
+
+    contar_original = engine.contar
+
+    def contar(seletor):
+        if "not(contains" in seletor:
+            return 1            # o FilePond NUNCA termina
+        if "@data-filepond-item-state" in seletor:
+            return 1
+        return contar_original(seletor)
+
+    engine.contar = contar
+    arquivo = tmp_path / "imagem.png"
+    arquivo.write_bytes(PNG)
+    logs = []
+
+    entrou = imgs.subir_uma(portal, "legenda", str(arquivo), logs.append)
+
+    assert entrou is False
+    assert portal.salvos == []      # nada de "Confirmar"
+    assert "NÃO cliquei em Confirmar" in "\n".join(logs)

@@ -37,6 +37,46 @@ from sigft.services.duplicadas_injetor import ResultadoDaSecao, _log_de
 PAUSA_ABERTURA_FORM = 2.0
 PAUSA_APOS_UPLOAD = 2.0
 
+# Teto da espera pelo processamento do FilePond, e o intervalo entre olhadas.
+# 60 s é folgado para uma imagem de ficha (as do portal têm dezenas de KB) e
+# curto o bastante para o usuário não achar que travou. Ver
+# `esperar_processamento` para por que a espera é por ESTADO e não por relógio.
+TIMEOUT_PROCESSAMENTO = 60.0
+INTERVALO_DE_POLL = 0.5
+
+
+def esperar_processamento(portal, callback_log=None, timeout=TIMEOUT_PROCESSAMENTO):
+    """Espera o FilePond TERMINAR de subir o arquivo. `True` se terminou.
+
+    ⚠️ CONSERTO DE 2026-08-21, a partir do log e do diagnóstico do usuário:
+    *"quando carregamos uma imagem, pode ser que demore a fazer o upload, e
+    talvez seja esse o erro, tentar clicar antes de esperar dar o upload"*.
+
+    A versão anterior dormia 2 s fixos e clicava em "Confirmar". Dois segundos
+    é uma aposta: acerta na imagem pequena e na rede boa, erra em qualquer
+    outro dia -- e o sintoma não é um erro claro, é o portal não devolver toast
+    nenhum, que foi exatamente o que apareceu no log.
+
+    Se a tela não expõe `data-filepond-item-state` (versão de FilePond
+    diferente, ou item ainda não renderizado), não há o que observar: devolve
+    `True` e deixa a checagem do `<li>` decidir. Fingir que esperou seria pior
+    do que dizer que não deu para ver.
+    """
+    _log = _log_de(callback_log)
+    if not portal.engine.contar(sel.XPATH_IMAGENS_ITEM_COM_ESTADO):
+        return True
+
+    limite = time.monotonic() + timeout
+    while time.monotonic() < limite:
+        if not portal.engine.contar(sel.XPATH_IMAGENS_ITEM_PROCESSANDO):
+            return True
+        time.sleep(INTERVALO_DE_POLL)
+
+    _log(f"      [Erro] O FilePond ainda estava processando depois de "
+         f"{timeout:.0f}s. NÃO cliquei em Confirmar -- confirmar no meio do "
+         f"upload é o que fazia o portal não responder nada.")
+    return False
+
 
 def extensao_de(dados):
     """`.png` / `.jpg` pela ASSINATURA do arquivo, não pelo nome.
@@ -125,6 +165,12 @@ def subir_uma(portal, legenda, caminho, callback_log=None):
              f"{type(erro).__name__}: {erro}")
         return False
     time.sleep(PAUSA_APOS_UPLOAD)
+
+    # ESPERA PELO FIM DO UPLOAD, e não por um relógio. Ver
+    # `esperar_processamento`: clicar em "Confirmar" no meio do processamento é
+    # o que fazia o portal não devolver toast nenhum.
+    if not esperar_processamento(portal, callback_log):
+        return False
 
     # A PROVA de que o arquivo foi ACEITO: o FilePond cria um `<li>` na lista.
     # Sem ela, "enviei o arquivo" é só "chamei a função" -- o mesmo buraco que

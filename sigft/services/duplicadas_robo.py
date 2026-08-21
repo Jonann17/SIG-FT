@@ -618,10 +618,28 @@ def processar_lote(fichas, callback_log=None, callback_progresso=None,
 def status_por_secao(resultado_da_ficha):
     """{coluna do `_STATUS_PMIB`: "COMPLETO" | "INCOMPLETO"} para UMA ficha.
 
-    Uma coluna só recebe COMPLETO se TODAS as seções que a alimentam deram
-    certo. Seção que o robô nem tentou (Condições, Documentos) não aparece:
-    escrever INCOMPLETO nelas seria correto mas ruidoso -- a ficha ainda vai
-    passar pelo robô antigo ou pela mão -- e escrever COMPLETO seria mentira.
+    Uma coluna só recebe COMPLETO quando TODAS as seções que a alimentam
+    ROTARAM e deram certo. Coluna cujas seções nenhuma rodou não é escrita.
+
+    ⚠️ DOIS FALSOS "COMPLETO" CORRIGIDOS EM 2026-08-21, os dois visíveis no log
+    do usuário e nenhum deles denunciado por erro nenhum:
+
+    1. **Ficha que estourou no meio levava COMPLETO.** `erro_fatal` não era
+       consultado. Na 4500063671.0922 o navegador fechou logo depois do PDM
+       (`TargetClosedError`): a purga das características NUNCA rodou, e
+       `CARACT. TÉCNICAS` saiu **COMPLETO** porque "pdm" sozinho tinha dado
+       certo. Quando o navegador cai, nem o que "deu certo" antes está
+       garantido -- o portal pode não ter salvado a última tela.
+
+    2. **Condições fechava COMPLETO sem ninguém copiar nada.** Corrigido do
+       outro lado, em `duplicadas_condicoes`: origem vazia virou `pendente`.
+
+    ⚠️ **Uma regra mais estrita foi TENTADA E DESCARTADA**: exigir que TODAS as
+    seções de uma coluna tenham rodado. Ela quebra num caso real -- nem toda
+    ficha tem linha de fornecedor com combo, e aí `referencia_fornecedor` não é
+    registrada de propósito (ver `processar_ficha`). A coluna INFO. GERAIS
+    ficaria INCOMPLETO em toda ficha assim: trocaria um falso COMPLETO por um
+    falso INCOMPLETO, que manda o usuário conferir o que já está certo.
     """
     # Pendente conta como NÃO completo: a seção não foi preenchida, e é
     # exatamente isso que a coluna do `_STATUS_PMIB` precisa dizer.
@@ -629,10 +647,12 @@ def status_por_secao(resultado_da_ficha):
                 for secao in resultado_da_ficha.secoes}
     marcas = {}
     for coluna, nomes in SECOES_DA_PLANILHA.items():
-        relevantes = [por_nome[nome] for nome in nomes if nome in por_nome]
-        if not relevantes:
+        presentes = [nome for nome in nomes if nome in por_nome]
+        if not presentes:
             continue
-        marcas[coluna] = (status_sheet.VALOR_COMPLETO if all(relevantes)
+        completo = (not resultado_da_ficha.erro_fatal
+                    and all(por_nome[nome] for nome in presentes))
+        marcas[coluna] = (status_sheet.VALOR_COMPLETO if completo
                           else status_sheet.VALOR_INCOMPLETO)
     return marcas
 

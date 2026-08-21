@@ -248,14 +248,24 @@ def test_uma_subaba_ruim_nao_impede_as_outras():
     assert engine.valores.get("TextArea_DiscardTypePT") == "Sucata"
 
 
-def test_origem_vazia_nao_e_falha():
-    """Ficha original sem condições preenchidas não é defeito da duplicação."""
+def test_origem_vazia_e_PENDENTE_e_nao_ok():
+    """⚠️ MUDOU EM 2026-08-21, pelo log do usuário: CONDIÇÕES saía COMPLETO em
+    TODA ficha, para uma seção que ninguém tentou copiar.
+
+    O extrator ainda não lê as Condições do modo de visualização -- ele mesmo
+    escreve isso no log, duas linhas antes ("Condições NÃO serão copiadas:
+    falta o mapa RÓTULO→campo"). Ou seja, a origem chega vazia SEMPRE, e
+    `ok=True` aqui virava COMPLETO na planilha.
+
+    `pendente` diz a verdade nos dois lados: não conta como falha no resumo do
+    lote (não é falha, é etapa que falta) e não deixa a coluna fechar."""
     portal, _ = _tela()
 
     resultado = cond.escrever(portal, {}, lambda _m: None)
 
-    assert resultado.ok is True
-    assert portal.salvos == []
+    assert resultado.ok is False
+    assert resultado.pendente is True
+    assert portal.salvos == []   # e continua sem escrever nada no portal
 
 
 # =============================================================================

@@ -234,3 +234,37 @@ def test_documentos_e_imagens_ok_fecham_a_coluna():
 
     assert robo.status_por_secao(resultado)[config.COL_DOCS_IMAGENS] == \
         status_sheet.VALOR_COMPLETO
+
+
+# ===========================================================================
+# Ficha que estourou no meio
+# ===========================================================================
+def test_ficha_com_erro_fatal_nao_recebe_COMPLETO_em_coluna_nenhuma():
+    """CONTRAPROVA DO LOG DE 2026-08-21. Na 4500063671.0922 o navegador fechou
+    logo depois do PDM (`TargetClosedError`): a purga das características nunca
+    rodou, e a planilha recebeu `CARACT. TÉCNICAS = COMPLETO` porque "pdm"
+    sozinho tinha dado certo.
+
+    Quando o navegador cai, nem o que "deu certo" antes está garantido -- o
+    portal pode não ter salvado a última tela. Nada fecha."""
+    resultado = robo.ResultadoDaFicha("4500063671.0922", "4500063671.1237")
+    resultado.registrar(injetor.ResultadoDaSecao("fabricante", True))
+    resultado.registrar(injetor.ResultadoDaSecao("referencia", True))
+    resultado.registrar(injetor.ResultadoDaSecao("pdm", True))
+    resultado.erro_fatal = "TargetClosedError: Locator.count: Target page ... closed"
+
+    marcas = robo.status_por_secao(resultado)
+
+    assert marcas  # as colunas SÃO escritas -- só que como INCOMPLETO
+    assert set(marcas.values()) == {status_sheet.VALOR_INCOMPLETO}
+
+
+def test_sem_erro_fatal_as_mesmas_secoes_fecham():
+    """Contraprova da contraprova: é o `erro_fatal` que muda o resultado, não
+    as seções."""
+    resultado = robo.ResultadoDaFicha("A", "B")
+    resultado.registrar(injetor.ResultadoDaSecao("pdm", True))
+    resultado.registrar(injetor.ResultadoDaSecao("caracteristicas", True))
+
+    assert robo.status_por_secao(resultado)[config.COL_CARACT_TECNICAS] == \
+        status_sheet.VALOR_COMPLETO

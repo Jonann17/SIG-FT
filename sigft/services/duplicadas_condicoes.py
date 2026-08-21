@@ -174,8 +174,18 @@ def escrever(portal, condicoes, callback_log=None):
     """
     _log = _log_de(callback_log)
     if not condicoes:
+        # ⚠️ PENDENTE, não "ok". Conserto de 2026-08-21, do log do usuário: o
+        # extrator ainda NÃO lê as Condições do modo de visualização (ele mesmo
+        # diz isso duas linhas acima, no log: "Condições NÃO serão copiadas:
+        # falta o mapa RÓTULO→campo"). Ou seja, `condicoes` chega vazio em
+        # TODA ficha -- e devolver `ok=True` aqui marcava CONDIÇÕES = COMPLETO
+        # em todas elas, para uma seção que ninguém sequer tentou copiar.
+        #
+        # `pendente` diz a verdade nos dois lados: não conta como falha no
+        # resumo do lote (não é falha, é etapa que falta) e não deixa a coluna
+        # fechar como completa.
         _log("      Condições: a ficha original não trouxe nada -- pulando.")
-        return ResultadoDaSecao("condicoes", True, "origem vazia")
+        return ResultadoDaSecao("condicoes", False, "origem vazia", pendente=True)
 
     abrir_secao(portal, callback_log)
     problemas = []
