@@ -1017,6 +1017,57 @@ XPATH_CONDICOES_CAMPO = "//*[contains(@id, {sufixo})]"
 # `duplicadas_extrator._rotular_pela_legenda`). ` | ` e não vírgula: os rótulos
 # de opção do portal têm vírgula dentro ("Classe II – Não perigoso" hoje não,
 # mas "FICHA PMIB, DUPLICADA" mostra que o portal não evita o caractere).
+# ---------------------------------------------------------------------------
+# 15c. O ESPANHOL — e ele nunca precisou de `hover`
+# ---------------------------------------------------------------------------
+# Levantado em 2026-08-24, na sessão local. Corrige a conclusão anterior de que
+# "a ficha original não tem espanhol": tem, e a leitura é barata.
+#
+# Cada texto longo da visualização é um `Block_ExpressionBothLenguage`. O que
+# aparece na tela é o PORTUGUÊS; o espanhol está num balão que o portal já
+# renderizou em outro canto do DOM (sob `#reactContainer`), ligado ao campo
+# por `aria-describedby`:
+#
+#   <div data-block="…Block_ExpressionBothLenguage" id="b12-b20-b1-$b25">
+#     …<div class="osui-tooltip__content" id="b12-b20-b1-b25-b2-Content"
+#           aria-describedby="b12-b20-b1-b25-b2-Tooltip">
+#          <span data-expression="">PORTUGUÊS</span>
+#
+#   <div class="osui-tooltip__balloon-wrapper__balloon"
+#        id="b12-b20-b1-b25-b2-Tooltip">
+#     <span data-expression="">ESPANHOL</span>
+#
+# 🎯 MEDIDO NUMA PÁGINA RECÉM-CARREGADA, SEM NENHUM HOVER: 47 balões já no DOM.
+# Isso derruba a premissa do caminho antigo (`condicoes.espanhol_dos_baloes`),
+# que passava o mouse campo a campo e por isso rodava numa segunda passada.
+#
+# ⚠️ E o caminho antigo lia o balão ERRADO. `XPATH_TOOLTIP_DO_ROTULO` sobe do
+# rótulo por `following::div[…osui-tooltip__content][1]` e encontra primeiro o
+# tooltip do CLIPE DE ANEXOS (`ViewAttachmentByDataSheetAndSection`), que o
+# portal renderiza antes do texto. Resultado: `texto_se_existir` devolvia `'0'`
+# (a contagem de anexos) e o balão devolvia "Documentos associados" -- e o
+# módulo concluía "não há espanhol para copiar" e devolvia a seção incompleta.
+XPATH_VIEW_BLOCO_DOIS_IDIOMAS = (
+    "//div[contains(@data-block, 'Block_ExpressionBothLenguage')]"
+)
+XPATH_VIEW_TEXTO_DO_BLOCO = "//span[@data-expression]"
+# O balão DESTE bloco, casado pelo `aria-describedby`. `{base}` é o bloco já
+# indexado (`(…)[3]`).
+#
+# O casamento é por atributo e não por eixo (`following::`) de propósito: o
+# balão não é vizinho nem descendente do bloco -- ele é filho de
+# `…-TooltipBallonWrapper`, pendurado no alto da árvore. Qualquer eixo daria a
+# resposta certa por acidente de posição e erraria na primeira tela em que a
+# ordem mudasse.
+XPATH_VIEW_BALAO_DO_BLOCO = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '), "
+    "' osui-tooltip__balloon-wrapper__balloon ')]"
+    "[@id = {base}//div[contains(concat(' ', normalize-space(@class), ' '), "
+    "' osui-tooltip__content ')]/@aria-describedby]"
+    "//span[@data-expression]"
+)
+
+
 SEPARADOR_DE_OPCOES = " | "
 
 CONDICOES_ROTULO_PARA_CAMPO = {

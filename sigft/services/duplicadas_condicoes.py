@@ -246,6 +246,53 @@ def espanhol_dos_baloes(portal, rotulos_e_valores, callback_log=None,
     return achado
 
 
+def espanhol_por_texto(pares_pt_es, convertido, callback_log=None):
+    """`[(pt, es)]` + `{sub-aba: {sufixo: valor}}` -> `{sub-aba: {..._ES: texto}}`.
+
+    Casa cada espanhol com o campo `..._PT` cujo valor é o mesmo português.
+    Substitui `espanhol_dos_baloes`, que passava o mouse campo a campo e lia o
+    tooltip errado (ver `seletores_duplicada`, §15c).
+
+    ⚠️ **O DESEMPATE É A ORDEM, e ele é necessário.** "não aplicável" é o valor
+    de vários campos da mesma ficha, e o espanhol de cada um pode diferir. As
+    duas listas vêm em ordem de documento, então consumir o primeiro par ainda
+    não usado casa o certo com o certo. Casar só por texto atribuiria o mesmo
+    espanhol a todos e ninguém veria diferença até um deles ter tradução
+    própria -- ficha plausível e errada.
+
+    Campo `..._PT` sem espanhol correspondente é NOMEADO no log. É a única
+    coisa que separa "a original não tinha" de "eu não achei", e a segunda foi
+    exatamente o que travou esta seção por uma semana.
+    """
+    _log = _log_de(callback_log)
+    disponiveis = [[pt, es, False] for pt, es in (pares_pt_es or ())
+                   if str(es or "").strip()]
+    saida = {}
+    sem_par = []
+
+    for subaba in sel.CONDICOES_POR_SUBABA:
+        for sufixo, valor in ((convertido or {}).get(subaba) or {}).items():
+            if not isinstance(sufixo, str) or not sufixo.endswith("PT"):
+                continue
+            alvo = " ".join(str(valor or "").split())
+            if not alvo:
+                continue
+            for item in disponiveis:
+                if item[2] or item[0] != alvo:
+                    continue
+                item[2] = True
+                saida.setdefault(subaba, {})[sufixo[:-2] + "ES"] = item[1]
+                break
+            else:
+                sem_par.append(f"{subaba}/{sufixo}")
+
+    if sem_par:
+        _log(f"      [i] Condições: {len(sem_par)} texto(s) sem espanhol na "
+             f"ficha original: {', '.join(sem_par[:6])}"
+             f"{' …' if len(sem_par) > 6 else ''}.")
+    return saida
+
+
 def fundir(convertido, espanhol):
     """Junta `{sub-aba: {sufixo: valor}}` de duas leituras, sem sobrescrever.
 

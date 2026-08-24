@@ -227,6 +227,25 @@ class _PortalDeLeitura:
         par = self.baloes.get(rotulo)
         return par[1] if par else ""
 
+    # --- o contrato de MOTOR (2026-08-24) --------------------------------
+    # `ler_espanhol_visivel` varre os blocos de dois idiomas pelo motor, e
+    # este dublê é o motor (`self.engine = self`). Sem estes três, a leitura
+    # inteira morria com `AttributeError` -- e morria DEPOIS de ler tudo.
+    #
+    # Devolvem "nenhum bloco" de propósito: os testes desta classe cobrem o
+    # caminho do PORTUGUÊS. O espanhol tem dublê próprio, com HTML de verdade,
+    # em `test_duplicadas_texto_solto.py` -- lá um motor `lxml` avalia os
+    # XPath, que é o único jeito de um erro DENTRO da string do seletor
+    # aparecer.
+    def contar(self, _seletor):
+        return 0
+
+    def element_exists(self, _seletor):
+        return False
+
+    def texto(self, _seletor):
+        return ""
+
 
 @pytest.fixture
 def robo_lendo(monkeypatch):

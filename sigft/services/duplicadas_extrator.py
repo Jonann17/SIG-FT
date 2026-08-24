@@ -324,6 +324,30 @@ def _rotular_pela_legenda(titulo, tokens, campos):
     return {titulo: sel.SEPARADOR_DE_OPCOES.join(valores)}
 
 
+def ler_espanhol_visivel(engine):
+    """`[(português, espanhol)]` dos textos longos da seção aberta.
+
+    Em ORDEM DE DOCUMENTO, que é o que permite casar com os pares
+    rótulo→valor sem depender de id: dois campos podem ter o mesmo português
+    ("não aplicável" aparece várias vezes numa ficha), e nesse caso a ordem é
+    a única coisa que os distingue.
+
+    Uma consulta por bloco, sem `hover` e sem JS -- ver `seletores_duplicada`,
+    §15c. Par sem espanhol sai com `""` em vez de sumir: some seria perder a
+    informação de que o campo existe e está vazio no outro idioma.
+    """
+    pares = []
+    total = engine.contar(sel.XPATH_VIEW_BLOCO_DOIS_IDIOMAS)
+    for indice in range(1, total + 1):
+        base = f"({sel.XPATH_VIEW_BLOCO_DOIS_IDIOMAS})[{indice}]"
+        portugues = engine.texto(base + sel.XPATH_VIEW_TEXTO_DO_BLOCO)
+        alvo = sel.XPATH_VIEW_BALAO_DO_BLOCO.format(base=base)
+        espanhol = engine.texto(alvo) if engine.element_exists(alvo) else ""
+        pares.append((" ".join(str(portugues or "").split()),
+                      " ".join(str(espanhol or "").split())))
+    return pares
+
+
 def ler_secao_visivel(engine, callback_log=None):
     """[(título, {rótulo: valor})] de TODOS os blocos da seção aberta.
 

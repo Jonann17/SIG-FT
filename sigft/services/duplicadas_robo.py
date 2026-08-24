@@ -443,6 +443,7 @@ def ler_condicoes_da_original(portal, callback_log=None, log_auditoria=None):
         return {}
 
     pares = []
+    pares_de_idioma = []
     for nome in sel.SUBABAS_CONDICOES_VISUALIZACAO:
         if not extrator.abrir_subaba_de_condicoes(portal, nome, callback_log,
                                                   log_auditoria):
@@ -453,16 +454,25 @@ def ler_condicoes_da_original(portal, callback_log=None, log_auditoria=None):
             continue
         for _titulo, campos in extrator.ler_secao_visivel(portal.engine, callback_log):
             pares.extend(campos.items())
+        # O espanhol da MESMA sub-aba, colhido enquanto ela está aberta. Tem de
+        # ser aqui dentro: cada sub-aba renderiza os seus blocos, e uma leitura
+        # única no fim veria só a última.
+        pares_de_idioma.extend(extrator.ler_espanhol_visivel(portal.engine))
 
     convertido = condicoes.converter_da_visualizacao(pares, callback_log)
 
-    # O ESPANHOL, que a varredura de pares não vê. Ele está no balão do
-    # tooltip de cada texto longo -- correção do usuário em 2026-08-24, depois
-    # de eu concluir do dump que a visualização não trazia espanhol nenhum.
-    # Segunda passada e não uma leitura só porque o balão custa um hover por
-    # campo: fazer isso na varredura geral cobraria o preço em todo rótulo da
-    # tela, inclusive nos números, que não têm balão nenhum.
-    espanhol = condicoes.espanhol_dos_baloes(portal, pares, callback_log)
+    # O ESPANHOL, que a varredura de pares não vê -- ele está no balão do
+    # tooltip de cada texto longo.
+    #
+    # ⚠️ AQUI HAVIA `espanhol_dos_baloes`, que passava o mouse campo a campo.
+    # Duas coisas erradas, ambas medidas no portal em 2026-08-24: o balão já
+    # está no DOM sem hover nenhum (47 deles numa página recém-aberta), e a
+    # âncora daquele caminho encontrava primeiro o tooltip do CLIPE DE ANEXOS,
+    # devolvendo "Documentos associados" em vez do texto. Era por isso que a
+    # seção saía "incompleta, o original não tem espanhol" -- e o original
+    # tinha. Ver `seletores_duplicada`, §15c.
+    espanhol = condicoes.espanhol_por_texto(pares_de_idioma, convertido,
+                                            callback_log)
     if espanhol:
         quantos = sum(len(campos) for campos in espanhol.values())
         _log(f"      {quantos} campo(s) em espanhol lidos do balão do tooltip.")

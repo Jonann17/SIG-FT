@@ -284,7 +284,7 @@ Nenhuma impede começar; todas impedem **rodar em lote sem conferir**.
 | PDM da alvo antes das características | `services/duplicadas_pdm.py` | ✅ CP 6.4 |
 | COMPLETO/INCOMPLETO por coluna no `_STATUS_PMIB` | `services/duplicadas_robo.py` | ✅ CP 6.4 |
 | Condições — ESCREVER na alvo | `services/duplicadas_condicoes.py` | ✅ CP 6.4 (mecânica pronta) |
-| Condições — LER da original em visualização | `services/duplicadas_extrator.py` | ☐ **é o que falta** — sem o mapa RÓTULO→campo, a origem chega vazia |
+| Condições — LER da original em visualização | `services/duplicadas_extrator.py` | ✅ **2026-08-24, validado no portal** — ver §5.2 e §5.3 |
 | Condições — conferir se a alvo já está preenchida | `services/duplicadas_condicoes.py` | ✅ 2026-08-21 |
 | Abas de Condições (exclui a Financeira) | `services/duplicadas_spec.py` | ✅ CP 6.1 |
 | Modo de leitura + abas de status | `services/duplicadas_spec.py` | ✅ CP 6.1 |
@@ -490,6 +490,51 @@ Todos da mesma família — a função diz que deu certo sem conferir:
 `Armazenamento` salvo e conferido. `Transporte`, `Manutenção` e `Descarte` com
 o texto em português escrito no formulário mas **não salvos** (o portal recusa
 enquanto o `_ES` estiver vazio). Nenhuma outra seção da ficha foi tocada.
+
+
+#### 5.3 ✅ CONDIÇÕES FECHOU — as quatro sub-abas, no portal (2026-08-24)
+
+```
+>>> RESULTADO: <condicoes: ok 4 sub-abas>
+
+[Armazenamento] 11 campo(s), salvo e conferido.
+[Transporte]     4 campo(s), salvo e conferido.
+[Manutenção]     6 campo(s), salvo e conferido.
+[Descarte]       6 campo(s), salvo e conferido.
+```
+
+Ciclo inteiro pelo código do projeto (`robo.ler_condicoes_da_original` +
+`condicoes.escrever`), da original `4500063671.1240` para a alvo
+`4500063671.0928`, com o portal confirmando cada sub-aba e a releitura em
+visualização mostrando português **e** espanhol.
+
+O que faltava era, em ordem: o terceiro padrão de leitura (§5.2), o grupo
+obrigatório «Proteção» (§5.2), o espanhol que estava no balão errado (§5.2) e
+— o último — **esperar a tela em vez do endereço**.
+
+##### ⚠️ A URL do OutSystems não é sinal de navegação
+
+Custou três tentativas silenciosas antes de eu perceber. O portal é uma SPA: o
+clique no ícone de visualizar abre a ficha e **o endereço continua
+`PMIB_DatasheetList`** por tempo indeterminado — às vezes nunca muda. Quem
+espera `"PMIB_DataSheetView" in url` conclui "não abriu" com a ficha aberta na
+frente.
+
+O sinal confiável é a TELA: as abas da própria ficha (`Condições`,
+`Informações gerais`, …) aparecendo, ou `page.title() == "Ficha Técnica"`.
+
+Isto explica, em retrospecto, por que `abrir_original_em_visualizacao` nunca
+esperou nada: não havia sinal óbvio para esperar. A correção é conferir a aba,
+não a URL.
+
+##### O que o `escrever` gravou
+
+| Sub-aba | Campos | Inclui |
+|---|---|---|
+| Armazenamento | 11 | 6 números + 4 rádios + `Checkbox6` (Proteção) |
+| Transporte | 4 | 2 textos PT + 2 ES |
+| Manutenção | 6 | 3 textos PT + 3 ES |
+| Descarte | 6 | 2 textos PT + 2 ES + Classificação NBR + Logística de reversa |
 
 #### ⚠️ A metade em espanhol, e por que CONDIÇÕES não fecha COMPLETO
 

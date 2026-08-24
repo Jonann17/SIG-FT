@@ -328,3 +328,132 @@ def test_o_travessao_e_o_hifen_dao_na_MESMA_chave():
     convertido = condicoes.converter_da_visualizacao(
         [("Classificação conforme NBR 10004", "Classe II – Não perigoso")])
     assert convertido == {"Descarte": {"RadioButton2-input": True}}
+
+
+# ===========================================================================
+# 6. O espanhol — ele estava no DOM o tempo todo
+# ===========================================================================
+
+_HTML_DOIS_IDIOMAS = """
+<div id="raiz">
+  <div id="secao">
+    <div data-block="PMIB_DataSheetView.Block_ExpressionBothLenguage" id="b12-$b25">
+      <div data-block="Content.Tooltip" id="b12-b25-$b2">
+        <div class="osui-tooltip osui-tooltip--is-hover" id="b12-b25-b2-TooltipWrapper">
+          <div class="osui-tooltip__content" id="b12-b25-b2-Content"
+               aria-describedby="b12-b25-b2-Tooltip">
+            <div data-block="PMIB_DataSheetView.Block_Expression">
+              <span data-expression="">Manter na embalagem original</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div data-block="PMIB_DataSheetView.Block_ExpressionBothLenguage" id="b12-$b27">
+      <div data-block="Content.Tooltip" id="b12-b27-$b2">
+        <div class="osui-tooltip" id="b12-b27-b2-TooltipWrapper">
+          <div class="osui-tooltip__content" id="b12-b27-b2-Content"
+               aria-describedby="b12-b27-b2-Tooltip">
+            <div data-block="PMIB_DataSheetView.Block_Expression">
+              <span data-expression="">n&#227;o aplic&#225;vel</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Os balões ficam LONGE do campo, pendurados no alto da árvore. -->
+  <div id="reactContainer">
+    <div class="osui-tooltip__balloon-wrapper" id="b12-b25-b2-TooltipBallonWrapper">
+      <div class="osui-tooltip__balloon-wrapper__balloon OSInline" id="b12-b25-b2-Tooltip">
+        <div data-block="PMIB_DataSheetView.Block_Expression">
+          <span data-expression="">Conservar en el embalaje original</span>
+        </div>
+      </div>
+    </div>
+    <div class="osui-tooltip__balloon-wrapper" id="b12-b27-b2-TooltipBallonWrapper">
+      <div class="osui-tooltip__balloon-wrapper__balloon OSInline" id="b12-b27-b2-Tooltip">
+        <div data-block="PMIB_DataSheetView.Block_Expression">
+          <span data-expression="">no aplicable</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+"""
+
+
+def test_o_espanhol_e_lido_sem_hover_e_sem_js():
+    """O balão já está no DOM (47 deles numa página recém-aberta do portal), e
+    o casamento é por `aria-describedby` -- não por eixo, porque o balão não é
+    vizinho nem descendente do campo."""
+    motor = _EngineLxml(_HTML_DOIS_IDIOMAS)
+    assert extrator.ler_espanhol_visivel(motor) == [
+        ("Manter na embalagem original", "Conservar en el embalaje original"),
+        ("não aplicável", "no aplicable"),
+    ]
+
+
+def test_o_balao_do_CLIPE_DE_ANEXOS_nao_e_confundido_com_o_do_idioma():
+    """O defeito que fez o módulo declarar "a original não tem espanhol".
+
+    O portal põe um tooltip no clipe de anexos ANTES do texto, e o caminho
+    antigo (`following::div[…osui-tooltip__content][1]` a partir do rótulo)
+    caía nele -- devolvia "Documentos associados" e a contagem `0`.
+    """
+    html = _HTML_DOIS_IDIOMAS.replace('<div id="secao">', '''<div id="secao">
+      <div data-block="PMIB_DataSheetView.ViewAttachmentByDataSheetAndSection">
+        <div class="osui-tooltip__content" id="b12-b24-b1-Content"
+             aria-describedby="b12-b24-b1-Tooltip">
+          <span data-expression="">0</span>
+        </div>
+      </div>''')
+    html = html.replace('<div id="reactContainer">', '''<div id="reactContainer">
+      <div class="osui-tooltip__balloon-wrapper__balloon" id="b12-b24-b1-Tooltip">
+        <span data-expression="">Documentos associados</span>
+      </div>''')
+    lidos = extrator.ler_espanhol_visivel(_EngineLxml(html))
+    assert lidos == [
+        ("Manter na embalagem original", "Conservar en el embalaje original"),
+        ("não aplicável", "no aplicable"),
+    ]
+    assert all("Documentos associados" not in es for _pt, es in lidos)
+
+
+def test_portugues_repetido_nao_recebe_o_mesmo_espanhol():
+    """"não aplicável" é o valor de vários campos da mesma ficha, e o espanhol
+    de cada um pode diferir. Quem desempata é a ORDEM de documento."""
+    achado = condicoes.espanhol_por_texto(
+        [("não aplicável", "no aplicable"),
+         ("pano seco", "paño seco"),
+         ("não aplicável", "no aplica")],
+        {"Transporte": {"TextArea_PositionCarePT": "não aplicável"},
+         "Manutenção": {"TextArea_CleaningMethodPT": "pano seco",
+                        "TextArea_ToolPreservationPT": "não aplicável"}})
+    assert achado == {
+        "Transporte": {"TextArea_PositionCareES": "no aplicable"},
+        "Manutenção": {"TextArea_CleaningMethodES": "paño seco",
+                       "TextArea_ToolPreservationES": "no aplica"},
+    }
+
+
+def test_campo_sem_espanhol_e_NOMEADO_no_log():
+    """Separar "a original não tinha" de "eu não achei" é o que faltou por uma
+    semana: o módulo dizia a primeira quando a verdade era a segunda."""
+    mensagens = []
+    achado = condicoes.espanhol_por_texto(
+        [], {"Transporte": {"TextArea_PositionCarePT": "não aplicável"}},
+        mensagens.append)
+    assert achado == {}
+    assert any("TextArea_PositionCarePT" in m for m in mensagens), mensagens
+
+
+def test_o_espanhol_entra_pelo_fundir_sem_pisar_no_portugues():
+    juntos = condicoes.fundir(
+        {"Transporte": {"TextArea_PositionCarePT": "não aplicável"}},
+        {"Transporte": {"TextArea_PositionCareES": "no aplicable"}})
+    assert juntos == {"Transporte": {
+        "TextArea_PositionCarePT": "não aplicável",
+        "TextArea_PositionCareES": "no aplicable",
+    }}
