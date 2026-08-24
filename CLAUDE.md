@@ -33,6 +33,28 @@ O resumo que não pode ser esquecido:
 
 ---
 
+## ⚠️ Trabalho de PORTAL exige sessão LOCAL
+
+A sessão do Claude Code **na web** roda num contêiner que **não alcança o
+portal** (`curl` no PMIB devolve `CONNECT tunnel failed, 403`). Nela, tudo que o
+Claude sabe do portal chega por recorte colado no chat -- e uma rodada sua é
+gasta por hipótese dele. Foi o que travou o módulo de ficha duplicada por uma
+semana em agosto/2026.
+
+**Mexeu em seletor, fluxo do portal ou RPA? Sessão local, com o navegador
+ligado por MCP.** O passo a passo (três comandos) está em
+[`docs/OLHAR_O_PORTAL.md`](docs/OLHAR_O_PORTAL.md).
+
+Sessão na web continua ótima para o que não depende do portal: planilha,
+prompts de IA, refatoração, testes.
+
+⚠️ E o corolário que custou caro: **`scripts/check.sh` verde não é prova de
+portal.** Os 2700 testes rodam contra dublês escritos pelo próprio Claude --
+eles provam a ideia dele do portal, não o portal. Nada de RPA se declara pronto
+sem uma execução real.
+
+---
+
 ## Como verificar o trabalho
 
 ```bash
