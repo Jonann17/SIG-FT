@@ -371,6 +371,52 @@ XPATH_VIEW_OPCAO_MARCADA = (
     ".//div[.//input[@type='checkbox'][@checked]]/label[@data-label][not(span)]"
 )
 
+# ---------------------------------------------------------------------------
+# 7b-bis. O TERCEIRO padrão — valor como TEXTO SOLTO
+# ---------------------------------------------------------------------------
+# Levantado em 2026-08-24, na primeira sessão com o portal à vista, e ele é a
+# CAUSA RAIZ de "Por favor, verifique os campos" — a mensagem que travou o
+# módulo por uma semana. HTML real da ficha 4500063671.1240:
+#
+#   <fieldset><legend>…<span …>Proteção</span></legend>
+#     <div id="b12-b20-b1-b14-Content">
+#       <div data-container="" class="margin-top-s">
+#         <div data-container="" style="…">Sem necessidade</div>   <-- VALOR
+#       </div></div></fieldset>
+#
+#   <div data-container="" id="b12-b20-b1-StoragePosition">
+#     <label data-label=""><span class="text-primary">Posição de armazenamento</span></label>
+#     <div data-container="" class="margin-top-s">Horizontal</div> <-- VALOR
+#   </div>
+#
+# O valor não está em `Block_Expression` (padrão A) nem dentro de um
+# `label[@data-label]` (padrão B): é **texto direto de um `div[@data-container]`
+# folha**. Os dois seletores existentes não o alcançam, e o campo volta `""`
+# SEM ERRO NENHUM.
+#
+# 🎯 A CADEIA QUE ISSO PRODUZIU, e por que ela custou tão caro:
+#
+#   1. o bloco «Proteção» devolvia ZERO campos (nem rótulo sobrava: o rótulo
+#      dele é a própria `<legend>`);
+#   2. o injetor então nunca marcava `Checkbox6/7/8`;
+#   3. mas o portal EXIGE pelo menos um deles -- o grupo carrega um
+#      `<div class="div-not-valid">Selecione pelo menos um elemento!</div>`;
+#   4. e a mensagem que aparece na tela é a genérica "Por favor, verifique os
+#      campos", que não nomeia campo nenhum.
+#
+# Provado por experimento controlado em 2026-08-24 na ficha alvo
+# 4500063671.0928: com os quatro rádios certos e SEM `Checkbox6`, o portal
+# recusou; marcando `Checkbox6` e mais nada, salvou -- "As condições de
+# armazenamento foram adicionadas com sucesso!".
+#
+# ⚠️ `not(*)` (div FOLHA) não é detalhe: sem ele o seletor casaria também o
+# `div` que ENVOLVE o rótulo, e como XPath devolve em ordem de documento, o
+# valor viria ANTES do próprio rótulo -- o pareamento inverteria a aba inteira.
+# Medido na tela real: com `not(*)`, os blocos que já funcionavam (Volume,
+# Peso, Nocivos, Transporte) acrescentam ZERO nós.
+XPATH_VIEW_VALOR_SOLTO = ".//div[@data-container][not(*)][normalize-space(.)]"
+
+
 # ⚠️ ARMADILHA que o bloco "Logística de reversa" revelou: o contador de anexos
 # (clipe de papel) também é um `<span data-expression>`:
 #
@@ -434,6 +480,7 @@ XPATH_VIEW_VARREDURA = " | ".join((
     ".//div[@data-block='PMIB_DataSheetView.Block_Expression']//span[@data-expression]",
     XPATH_VIEW_ROTULO_DE_SECAO.lstrip(),                 # rótulo, padrão B
     XPATH_VIEW_OPCAO_MARCADA.lstrip(),                   # valor, padrão B
+    XPATH_VIEW_VALOR_SOLTO.lstrip(),                     # valor, padrão C
 ))
 
 # Predicado que separa VALOR de RÓTULO dentro da varredura, aplicado ao nó de
@@ -444,7 +491,11 @@ XPATH_VIEW_VARREDURA = " | ".join((
 # Uma pergunta por nó, e não três: o extrator só precisa saber "isto é valor?"
 # -- `parear_rotulos_e_valores` não distingue os dois padrões, e é de propósito
 # (a ordem é a mesma nos dois; só a origem muda).
-PREDICADO_VIEW_E_VALOR = "self::span[@data-expression] or self::label"
+# O ramo `self::div` é o padrão C (§7b-bis): um `div[@data-container]` só entra
+# na união quando é FOLHA e tem texto, então "é div" já significa "é valor".
+PREDICADO_VIEW_E_VALOR = (
+    "self::span[@data-expression] or self::label or self::div"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -962,6 +1013,12 @@ XPATH_CONDICOES_CAMPO = "//*[contains(@id, {sufixo})]"
 # português para dentro do campo em espanhol seria inventar uma tradução na
 # ficha de outra pessoa. Então o robô copia o PT e a seção NÃO fecha como
 # completa -- ver `duplicadas_condicoes.SUFIXOS_SEM_LEITURA`.
+# Junta as opções de um bloco que tem VÁRIAS marcadas (ver
+# `duplicadas_extrator._rotular_pela_legenda`). ` | ` e não vírgula: os rótulos
+# de opção do portal têm vírgula dentro ("Classe II – Não perigoso" hoje não,
+# mas "FICHA PMIB, DUPLICADA" mostra que o portal não evita o caractere).
+SEPARADOR_DE_OPCOES = " | "
+
 CONDICOES_ROTULO_PARA_CAMPO = {
     # --- Armazenamento: os seis numéricos -------------------------------
     # Sufixos vindos de `upload_conditions.py`, que roda contra o portal real e
@@ -988,6 +1045,72 @@ CONDICOES_ROTULO_PARA_CAMPO = {
     "melhores praticas de mercado": ("Descarte", "TextArea_TypeLegislationPT"),
     "tipo de descarte de acordo com a legislacao aplicada ou com as melhores "
     "praticas de mercado": ("Descarte", "TextArea_DiscardTypePT"),
+
+    # --- OPÇÕES (rádio e checkbox) — a segunda FORMA da tabela --------------
+    # Aqui o destino não é um sufixo, é um `dict {valor lido: sufixo}`: o que a
+    # visualização mostra ("Horizontal") não é para digitar, é para ESCOLHER
+    # qual controle marcar. `converter_da_visualizacao` reconhece as duas
+    # formas pelo tipo do segundo elemento.
+    #
+    # 🎯 POR QUE A CHAVE NÃO PODE SER SÓ O VALOR: "Sem necessidade" é resposta
+    # de TRÊS perguntas diferentes desta mesma tela -- controle de temperatura
+    # (`RadioButton4`), outros cuidados (`RadioButton3`) e proteção
+    # (`Checkbox6`). Um mapa indexado pelo valor marcaria o controle errado, e
+    # rádio errado parece resposta certa.
+    #
+    # Sufixos conferidos DUAS vezes, por caminhos independentes:
+    #   1. `upload_conditions.py`, que escreve neles em produção há meses;
+    #   2. o DOM da ficha alvo 4500063671.0928 em edição, lido em 2026-08-24 --
+    #      cada `input` com a legenda do fieldset e o rótulo da opção ao lado.
+    # Os dois bateram em todos os nove rádios e nos três checkboxes.
+    "necessidade de controle de temperatura e umidade": ("Armazenamento", {
+        "sem necessidade": "RadioButton4-input",
+        "com necessidade": "RadioButton5-input",
+    }),
+    "posicao de armazenamento": ("Armazenamento", {
+        "vertical": "RadioButton-input",
+        "horizontal": "RadioButton7-input",
+        "indiferente": "RadioButton8-input",
+    }),
+    "nocivo": ("Armazenamento", {
+        "nao contem agentes nocivos": "RadioButton1-input",
+        "nocivo": "RadioButton2-input",
+    }),
+    "outros cuidados": ("Armazenamento", {
+        "sem necessidade": "RadioButton3-input",
+        "outros cuidados": "RadioButton6-input",
+    }),
+    # ⚠️ O GRUPO OBRIGATÓRIO. É o que recusava a seção inteira com "Por favor,
+    # verifique os campos" enquanto ninguém marcava nada aqui: o portal carrega
+    # um `div-not-valid` com "Selecione pelo menos um elemento!" neste
+    # fieldset. Na visualização o rótulo deste campo é a própria LEGENDA
+    # («Proteção»), e é por isso que `_rotular_pela_legenda` existe.
+    "protecao": ("Armazenamento", {
+        "sem necessidade": "Checkbox6",
+        "raios ultravioleta": "Checkbox7",
+        "eletrostatica": "Checkbox8",
+    }),
+
+    # --- Manutenção: o terceiro texto, que a lista da ficha 1257 não tinha --
+    "ferramentas e equipamentos necessarios para preservacao":
+        ("Manutenção", "TextArea_ToolPreservationPT"),
+
+    # --- Descarte: os dois grupos, ids lidos do DOM em 2026-08-24 -----------
+    # ⚠️ `RadioButton1-input`/`RadioButton2-input` REPETEM os sufixos de
+    # Armazenamento. Não é engano: o id cheio difere no prefixo da sub-aba
+    # (`-b1-` contra `-b5-`), e `XPATH_CONDICOES_CAMPO` casa por
+    # `contains(@id, …)`. Funciona porque o portal REMOVE do DOM a sub-aba que
+    # não está aberta -- medido em 2026-08-24: com Armazenamento aberta, só há
+    # campos `b10-b17-b1-` na página. Ler e escrever com a mesma sub-aba
+    # aberta é o que mantém a simetria.
+    "classificacao conforme nbr 10004": ("Descarte", {
+        "classe i - perigoso": "RadioButton1-input",
+        "classe ii - nao perigoso": "RadioButton2-input",
+    }),
+    "logistica de reversa": ("Descarte", {
+        "nao se aplica": "DoesNotApply-input",
+        "aplica": "Applies-input",
+    }),
 }
 
 

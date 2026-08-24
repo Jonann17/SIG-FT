@@ -369,6 +369,48 @@ ESPERADOS = {
     "melhores práticas de mercado": ("Descarte", "TextArea_TypeLegislationPT"),
     "Tipo de descarte de acordo com a legislação aplicada ou com as melhores "
     "práticas de mercado": ("Descarte", "TextArea_DiscardTypePT"),
+
+    # ⚠️ ATUALIZADO EM 2026-08-24, com o portal à vista. Até aqui este arquivo
+    # afirmava que estes quatro NÃO tinham destino conhecido. Tinham: os
+    # sufixos estavam em `upload_conditions.py` desde sempre, e o DOM da ficha
+    # alvo 4500063671.0928 em edição confirmou cada um, com a legenda do
+    # fieldset e o rótulo da opção ao lado do `input`.
+    #
+    # O destino aqui é um `dict {valor lido: sufixo}` porque o que a
+    # visualização mostra ("Horizontal") não se digita: escolhe o controle.
+    "Necessidade de controle de temperatura e umidade": ("Armazenamento", {
+        "sem necessidade": "RadioButton4-input",
+        "com necessidade": "RadioButton5-input",
+    }),
+    "Posição de armazenamento": ("Armazenamento", {
+        "vertical": "RadioButton-input",
+        "horizontal": "RadioButton7-input",
+        "indiferente": "RadioButton8-input",
+    }),
+    "Nocivo": ("Armazenamento", {
+        "nao contem agentes nocivos": "RadioButton1-input",
+        "nocivo": "RadioButton2-input",
+    }),
+    "Outros cuidados": ("Armazenamento", {
+        "sem necessidade": "RadioButton3-input",
+        "outros cuidados": "RadioButton6-input",
+    }),
+    "Proteção": ("Armazenamento", {
+        "sem necessidade": "Checkbox6",
+        "raios ultravioleta": "Checkbox7",
+        "eletrostatica": "Checkbox8",
+    }),
+    # Ids lidos do DOM da sub-aba Descarte em edição, 2026-08-24.
+    "Classificação conforme NBR 10004": ("Descarte", {
+        "classe i - perigoso": "RadioButton1-input",
+        "classe ii - nao perigoso": "RadioButton2-input",
+    }),
+    "Logística de reversa": ("Descarte", {
+        "nao se aplica": "DoesNotApply-input",
+        "aplica": "Applies-input",
+    }),
+    "Ferramentas e equipamentos necessários para preservação":
+        ("Manutenção", "TextArea_ToolPreservationPT"),
 }
 
 
@@ -377,24 +419,54 @@ def test_a_tabela_resolve_o_rotulo_real(rotulo, destino):
     assert sel.CONDICOES_ROTULO_PARA_CAMPO[cond.chave_de_rotulo(rotulo)] == destino
 
 
-@pytest.mark.parametrize("rotulo", [r for r in ROTULOS_DA_FICHA_1257
-                                    if r not in ESPERADOS])
-def test_o_que_a_visualizacao_nao_entrega_fica_de_fora(rotulo):
-    """Rádio, checkbox e o rótulo sem sufixo conhecido NÃO entram na tabela.
+def test_a_tabela_cobre_TODOS_os_rotulos_que_a_ficha_mostra():
+    """Não sobra rótulo sem destino — e é isto que fecha a seção.
 
-    Na visualização eles são texto ("Horizontal", "Sem necessidade"); na edição
-    são `RadioButtonN-input`/`CheckboxN`, e QUAL deles é qual não está em lugar
-    nenhum. Mapear no chute escreveria no campo errado -- e um radio errado numa
-    ficha de armazenamento é pior do que um campo vazio, porque parece resposta.
+    ⚠️ Este teste afirmava o CONTRÁRIO até 2026-08-24. Ele se chamava
+    `test_o_que_a_visualizacao_nao_entrega_fica_de_fora` e listava cinco
+    rótulos que "não estariam em lugar nenhum". Estavam: quatro em
+    `upload_conditions.py`, e o quinto (`Classificação conforme NBR 10004`) no
+    DOM da sub-aba Descarte em edição. A sessão local conferiu os nove rádios
+    e os cinco checkboxes contra a tela e não sobrou nenhum.
+
+    Guardar a afirmação invertida importa: enquanto ela valia, ela parecia
+    prudência ("sem prova não entra") e era, na prática, o motivo de a seção
+    nunca fechar. Prudência sem procurar é só desconhecimento com boa
+    reputação.
     """
-    assert cond.chave_de_rotulo(rotulo) not in sel.CONDICOES_ROTULO_PARA_CAMPO
+    sem_destino = [r for r in ROTULOS_DA_FICHA_1257
+                   if cond.chave_de_rotulo(r) not in sel.CONDICOES_ROTULO_PARA_CAMPO]
+    assert sem_destino == []
 
 
 def test_todo_destino_da_tabela_existe_no_mapa_de_edicao():
-    """Guarda contra erro de digitação: a tabela é escrita à mão."""
-    for chave, (subaba, sufixo) in sel.CONDICOES_ROTULO_PARA_CAMPO.items():
+    """Guarda contra erro de digitação: a tabela é escrita à mão.
+
+    As duas formas do destino têm de cair no balde certo de
+    `CONDICOES_POR_SUBABA`: texto em `textos`, opção em `booleanos`. Trocar os
+    baldes faria a escrita procurar um campo que aquela sub-aba não percorre --
+    e sumir em silêncio, que é como este módulo costuma falhar.
+    """
+    for chave, (subaba, destino) in sel.CONDICOES_ROTULO_PARA_CAMPO.items():
         assert subaba in sel.CONDICOES_POR_SUBABA, chave
-        assert sufixo in sel.CONDICOES_POR_SUBABA[subaba]["textos"], chave
+        if isinstance(destino, dict):
+            for opcao, sufixo in destino.items():
+                assert sufixo in sel.CONDICOES_POR_SUBABA[subaba]["booleanos"],                     f"{chave} / {opcao}"
+        else:
+            assert destino in sel.CONDICOES_POR_SUBABA[subaba]["textos"], chave
+
+
+def test_protecao_nao_estava_na_lista_da_ficha_1257_e_isso_e_o_sintoma():
+    """`ROTULOS_DA_FICHA_1257` foi transcrita do log de uma rodada real, e
+    «Proteção» NÃO aparece nela.
+
+    Não é esquecimento de quem transcreveu: o extrator daquele dia devolvia
+    zero campos para aquele bloco, então o rótulo nunca chegou ao log. O
+    buraco na lista É a assinatura do defeito -- e o campo que faltava era
+    justamente o obrigatório, o que fazia o portal recusar a seção inteira.
+    """
+    assert "Proteção" not in ROTULOS_DA_FICHA_1257
+    assert cond.chave_de_rotulo("Proteção") in sel.CONDICOES_ROTULO_PARA_CAMPO
 
 
 def test_toda_chave_da_tabela_ja_esta_normalizada():

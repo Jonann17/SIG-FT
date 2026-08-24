@@ -379,6 +379,118 @@ Enquanto as duas não forem lidas no portal com a ficha alvo em edição, a tabe
 acima é **hipótese com evidência**, e não entra em `CONDICOES_ROTULO_PARA_CAMPO`.
 Rádio errado parece resposta certa: é o erro que esta seção mais teme.
 
+
+#### 5.2 A sessão local de 2026-08-24 — o que ficou PROVADO no portal
+
+Tudo abaixo foi medido com o navegador na tela, na ficha original
+`4500063671.1240` e na alvo `4500063671.0928` (HIGROSTATO, Em Elaboração).
+Nada aqui é dedução.
+
+##### ✅ ARMAZENAMENTO FECHOU — a seção inteira, automática
+
+Ler a original → converter → escrever → salvar → conferir, tudo pelo código do
+projeto (`robo.ler_condicoes_da_original` + `condicoes.escrever`). O portal
+respondeu *"As condições de armazenamento foram adicionadas com sucesso!"* e a
+releitura em visualização mostra os **11 campos**, incluindo os três que a
+leitura antiga não enxergava.
+
+##### 🎯 A causa raiz da semana: um TERCEIRO padrão de renderização
+
+Na visualização há valores que são **nó de texto solto** — sem
+`Block_Expression`, sem `label[@data-label]`. Os dois seletores conhecidos não
+os alcançam e o campo volta `""` sem erro. Atinge `Posição de armazenamento`,
+`Necessidade de controle de temperatura e umidade` e — o que importava —
+**`Proteção`**, cujo rótulo é a própria `<legend>`.
+
+E `Proteção` é **obrigatório**: o grupo carrega
+`<div class="div-not-valid">Selecione pelo menos um elemento!</div>`. Sem ele
+marcado, o portal recusa a sub-aba inteira com a mensagem genérica *"Por favor,
+verifique os campos"*, que não nomeia campo nenhum.
+
+**Experimento controlado que prova a cadeia:** com os quatro rádios certos e
+sem `Checkbox6`, recusou. Marcando `Checkbox6` e mais nada, salvou.
+
+Conserto em `seletores_duplicada.XPATH_VIEW_VALOR_SOLTO` (§7b-bis),
+`extrator._resgatar_texto_ao_lado` e `extrator._rotular_pela_legenda`.
+
+##### 🎯 O ESPANHOL EXISTE — era seletor quebrado, não dado ausente
+
+O módulo vinha reportando *"nem a visualização nem o balão do tooltip tinham o
+que copiar"* e devolvendo CONDIÇÕES incompleta por isso. **Falso.** A ficha
+1240 tem o espanhol de todos os textos longos:
+
+| PT (visível) | ES (no balão) |
+|---|---|
+| Manter na embalagem original ou envolto em material protetor… | Conservar en el embalaje original o envuelto en material protector… |
+| não aplicável | no aplicable |
+| Manter em ambiente limpo, seco, livre de poeira… | Mantener en un ambiente limpio, seco, libre de polvo… |
+| pano seco | paño seco |
+
+O defeito é `XPATH_TOOLTIP_DO_ROTULO`: ele sobe do rótulo por
+`following::div[…osui-tooltip__content][1]` e cai no tooltip do **clipe de
+anexos** (`ViewAttachmentByDataSheetAndSection`), que vem um bloco ANTES do
+texto. `texto_se_existir` devolve `'0'` (a contagem de anexos) e o balão devolve
+*"Documentos associados"*.
+
+A estrutura certa, do HTML real:
+
+```html
+<div data-block="…Block_ExpressionBothLenguage" id="b12-b20-b1-$b25">
+  <div data-block="Content.Tooltip">
+    <div class="osui-tooltip" id="…b25-b2-TooltipWrapper">
+      <div class="osui-tooltip__content" id="…b25-b2-Content"
+           aria-describedby="b12-b20-b1-b25-b2-Tooltip">   <!-- aponta o balão -->
+        <span data-expression="">TEXTO EM PORTUGUÊS</span>
+</div></div></div></div>
+
+<div class="osui-tooltip__balloon-wrapper__balloon" id="b12-b20-b1-b25-b2-Tooltip">
+  <span data-expression="">TEXTO EM ESPANHOL</span>       <!-- fora do bloco -->
+</div>
+```
+
+Dois ganhos: **não precisa de `hover`** (o balão já está no DOM), e o id do
+balão é derivável — é o id do `…-Content` com `Content` trocado por `Tooltip`.
+
+⚠️ **Consequência para a decisão registrada acima ("copiar o PT e devolver a
+seção incompleta"):** ela foi tomada sobre uma premissa falsa. Não é preciso
+inventar tradução nenhuma — o espanhol da própria ficha original está lá.
+
+##### ⚠️ O espanhol é OBRIGATÓRIO, e não pelo atributo `required`
+
+Depois de um SALVAR recusado no Transporte, os dois campos aparecem assim:
+
+```
+<textarea id="b10-b17-b3-TextArea_TransportPackagingES" class="… not-valid">
+<textarea id="b10-b17-b3-TextArea_PositionCareES"       class="… not-valid">
+```
+
+`required` é `false` no HTML deles — quem exige é a validação do OutSystems.
+Ou seja, **conferir `el.required` não basta** para saber o que o portal cobra;
+o oráculo é a classe `not-valid` DEPOIS de tentar salvar. (Em Descarte, aí sim,
+`TextArea_TypeLegislationES` e `TextArea_DiscardTypeES` também trazem
+`required=true`.)
+
+Juntando com o achado anterior: com o espanhol lido do balão, **Transporte,
+Manutenção e Descarte passam a ter tudo o que o portal exige.**
+
+##### Defeitos de silêncio encontrados de passagem
+
+Todos da mesma família — a função diz que deu certo sem conferir:
+
+| Onde | O que faz | O que deveria |
+|---|---|---|
+| `extrator.abrir_original_em_visualizacao` | devolve `True` logo após o clique | esperar a navegação; a URL vira `PMIB_DataSheetView?...` |
+| `extrator.abrir_secao` | devolveu `True` para três seções seguidas sem a tela mudar | conferir que a seção pedida é a que está aberta |
+| `portal.ir_para_lista` | não voltou para a lista estando dentro de uma ficha | esperar as abas de status (`//button[@role='tab']`) |
+| `sel.XPATH_CONDICOES_SUBABA` | `contains(@id,'Title')` casa ~20 elementos da página | o container real é `b10-b17-Title`, com exatamente 5 filhas |
+| `condicoes.conferir_subaba` | compara `'3,8'` com o que o portal normalizou para `'3.8'` | comparar por número, não por string |
+
+##### Onde a ficha 0928 ficou
+
+`Armazenamento` salvo e conferido. `Transporte`, `Manutenção` e `Descarte` com
+o texto em português escrito no formulário mas **não salvos** (o portal recusa
+enquanto o `_ES` estiver vazio). Nenhuma outra seção da ficha foi tocada.
+
 #### ⚠️ A metade em espanhol, e por que CONDIÇÕES não fecha COMPLETO
 
 Cada texto longo tem par na edição (`TextArea_XxxPT` / `TextArea_XxxES`) e a

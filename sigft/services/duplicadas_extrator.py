@@ -221,11 +221,107 @@ def ler_bloco(engine, indice_bloco):
     uniao = _ancorar_no_bloco(base)
     total = engine.contar(uniao)
     tokens = []
+    onde_esta_o_rotulo = {}
     for indice in range(1, total + 1):
+        texto = _texto_do_indice(engine, uniao, indice)
         tipo = "valor" if _e_valor(engine, uniao, indice) else "rotulo"
-        tokens.append((tipo, _texto_do_indice(engine, uniao, indice)))
+        tokens.append((tipo, texto))
+        if tipo == "rotulo":
+            limpo = " ".join(str(texto or "").split())
+            if limpo:
+                onde_esta_o_rotulo.setdefault(limpo, indice)
 
-    return " ".join(str(titulo or "").split()), spec.parear_rotulos_e_valores(tokens)
+    titulo_limpo = " ".join(str(titulo or "").split())
+    campos = spec.parear_rotulos_e_valores(tokens)
+    campos = _resgatar_texto_ao_lado(engine, uniao, onde_esta_o_rotulo, campos)
+    campos = _rotular_pela_legenda(titulo_limpo, tokens, campos)
+    return titulo_limpo, campos
+
+
+# A CAIXA de um rótulo do padrão B, quando ela é um invólucro SIMPLES.
+#
+# Os dois predicados negativos são o que impede o resgate de virar invenção:
+# uma caixa que contenha `label[@data-label]` ou `Block_Expression` é um
+# agrupamento de VÁRIOS campos, e o texto dela seria a colagem de todos --
+# atribuir isso a um campo daria valor plausível e errado, que é o erro que
+# este módulo mais teme.
+_CAIXA_SIMPLES_DO_ROTULO = (
+    "/ancestor::div[@data-container][2]"
+    "[not(.//label[@data-label])]"
+    "[not(.//div[@data-block='PMIB_DataSheetView.Block_Expression'])]"
+)
+
+
+def _resgatar_texto_ao_lado(engine, uniao, onde_esta_o_rotulo, campos):
+    """Preenche rótulo que ficou vazio quando o valor é texto solto IRMÃO.
+
+    A terceira variante do padrão C (ver `seletores_duplicada`, §7b-bis). Em
+    «Temperatura, Umidade e Clima» o valor não tem `div` próprio -- é nó de
+    texto direto da mesma caixa que embrulha o rótulo:
+
+        <div data-container="" class="margin-top-s">
+          <div data-container=""><span class="text-primary">Necessidade…</span></div>
+          Sem necessidade                      <-- nem elemento é
+        </div>
+
+    Não dá para alcançá-lo por seletor de ELEMENTO (não há elemento), e pôr a
+    caixa inteira na união inverteria o pareamento: em ordem de documento ela
+    abre ANTES do próprio rótulo. Por isso é um segundo passo, e só sobre
+    rótulo que ficou vazio -- onde hoje não há nada a perder.
+
+    Só substitui quando o texto da caixa COMEÇA pelo rótulo e sobra algo
+    depois. Campo genuinamente vazio tem caixa igual ao rótulo, não sobra
+    resto, e continua `""`.
+    """
+    for rotulo, valor in list(campos.items()):
+        if valor:
+            continue
+        indice = onde_esta_o_rotulo.get(rotulo)
+        if not indice:
+            continue
+        caixa = f"({uniao})[{indice}]" + _CAIXA_SIMPLES_DO_ROTULO
+        try:
+            if not engine.element_exists(caixa):
+                continue
+            inteiro = " ".join(str(engine.texto(caixa) or "").split())
+        except Exception:  # noqa: BLE001 -- não dá para ler; não inventa valor
+            continue
+        cabeca = " ".join(str(rotulo).split())
+        if inteiro.startswith(cabeca) and len(inteiro) > len(cabeca):
+            campos[rotulo] = inteiro[len(cabeca):].strip()
+    return campos
+
+
+def _rotular_pela_legenda(titulo, tokens, campos):
+    """Bloco cujo ÚNICO rótulo é a própria `<legend>`.
+
+    «Proteção» é assim: o valor ("Sem necessidade") não tem rótulo de campo
+    nenhum ao lado -- quem nomeia o campo é a legenda do `<fieldset>`. O
+    pareamento descarta valor sem rótulo anterior (e faz bem: é o que impede
+    texto solto de layout de virar campo), então o bloco saía VAZIO. Foi esse
+    vazio que deixou `Checkbox6/7/8` sem marcar e fez o portal recusar a
+    seção inteira com "Por favor, verifique os campos".
+
+    Só age quando o pareamento não produziu campo NENHUM -- ou seja, onde hoje
+    a saída é vazia. Não pode, por construção, mudar bloco que já funciona.
+
+    O que entra aqui ainda passa pela allowlist `CONDICOES_ROTULO_PARA_CAMPO`:
+    legenda desconhecida (o "Nenhuma aplicação LMR para mostrar…" do bloco de
+    LMR, por exemplo) é registrada no log e ignorada, nunca escrita na ficha.
+    """
+    if campos or not titulo:
+        return campos
+    valores = [" ".join(str(texto or "").split())
+               for tipo, texto in tokens if tipo == "valor"]
+    valores = [v for v in valores if v]
+    if not valores:
+        return campos
+    # VÁRIOS valores viram uma string só, separada por `SEPARADOR_DE_OPCOES`.
+    # «Proteção» aceita mais de uma marca (`Checkbox6/7/8` são checkboxes, não
+    # rádios), e ficar com a primeira perderia as outras em silêncio -- a
+    # mesma classe de erro que este conserto veio corrigir. Quem sabe separar
+    # é `converter_da_visualizacao`, que tem o mapa das opções.
+    return {titulo: sel.SEPARADOR_DE_OPCOES.join(valores)}
 
 
 def ler_secao_visivel(engine, callback_log=None):

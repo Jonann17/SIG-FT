@@ -61,6 +61,13 @@ def chave_de_rotulo(rotulo):
     """
     texto = unicodedata.normalize("NFKD", str(rotulo or ""))
     texto = "".join(c for c in texto if not unicodedata.combining(c))
+    # Todo tipo de traço vira hífen simples. O portal escreve "Classe I -
+    # Perigoso" com hífen e "Classe II – Não perigoso" com travessão, na MESMA
+    # lista de opções -- e `NFKD` não unifica os dois. Sem isto, a chave do
+    # mapa passaria a depender de qual traço o portal usou no dia, e o sintoma
+    # seria "opção desconhecida" numa opção que está escrita certa.
+    for traco in "‐‑‒–—―−":
+        texto = texto.replace(traco, "-")
     return " ".join(texto.replace(":", " ").split()).lower()
 
 
@@ -124,6 +131,33 @@ def converter_da_visualizacao(rotulos_e_valores, callback_log=None):
         # tem conteúdo apagaria.
         if not str(valor or "").strip():
             continue
+
+        # A SEGUNDA FORMA DA TABELA: grupo de opções. O destino é
+        # `{valor lido: sufixo}` e o que se escreve é `True` no controle certo
+        # -- ver `seletores_duplicada.CONDICOES_ROTULO_PARA_CAMPO`.
+        if isinstance(sufixo, dict):
+            opcoes = sufixo
+            marcadas = [
+                pedaco for pedaco in
+                str(valor).split(sel.SEPARADOR_DE_OPCOES)
+                if pedaco.strip()
+            ]
+            for pedaco in marcadas:
+                escolhido = opcoes.get(chave_de_rotulo(pedaco))
+                if escolhido is None:
+                    # ⚠️ NÃO É "pular em silêncio". Opção que o mapa não conhece
+                    # é exatamente o caso em que a ficha sai plausível e errada
+                    # -- pior, o grupo «Proteção» é obrigatório, e deixá-lo
+                    # vazio faz o portal recusar a SEÇÃO INTEIRA com uma
+                    # mensagem que não nomeia campo nenhum.
+                    _log(f"      [!] Condições: «{rotulo}» está como "
+                         f"«{' '.join(str(pedaco).split())}» na original, e o "
+                         f"mapa não conhece essa opção. Conhecidas: "
+                         f"{', '.join(sorted(opcoes)) or '(nenhuma)'}.")
+                    continue
+                convertido.setdefault(subaba, {})[escolhido] = True
+            continue
+
         convertido.setdefault(subaba, {})[sufixo] = valor
 
     if desconhecidos:
@@ -168,6 +202,13 @@ def espanhol_dos_baloes(portal, rotulos_e_valores, callback_log=None,
         if destino is None:
             continue
         subaba, sufixo = destino
+        # GRUPO DE OPÇÕES (`{valor: sufixo}`) não tem par de idioma nenhum: o
+        # portal guarda a escolha, não um texto por idioma. Sai antes do
+        # `endswith`, que só existe para string -- sem esta linha a leitura
+        # inteira morria com `AttributeError` assim que a tabela ganhou a
+        # segunda forma.
+        if isinstance(sufixo, dict):
+            continue
         # Só texto longo tem par de idioma. Número e radio não têm balão.
         if not sufixo.endswith("PT"):
             continue
