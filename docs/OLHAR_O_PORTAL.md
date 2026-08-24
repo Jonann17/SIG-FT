@@ -99,3 +99,60 @@ login:
 Enquanto o trabalho for de **portal**, é sessão local. Sessão na web serve para
 o que não depende do portal: planilha, prompts de IA, refatoração, testes.
 Misturar as duas foi o erro que custou a semana.
+
+---
+
+## ⚠️ Correção de 2026-08-24, feita NA sessão local: o perfil **não** guarda o login
+
+A seção "1. Chrome com depuração remota" acima diz que *"o login sobrevive
+entre sessões"*. **Está errado, e o erro é caro.** A primeira sessão local
+mediu, em vez de supor.
+
+O que foi feito: abriu-se o portal no perfil persistente do projeto
+(`%LOCALAPPDATA%\SIG-FT\perfil-navegador`), o usuário logou, o portal abriu
+(11 linhas na lista), o navegador fechou gravando o perfil. **O script
+seguinte, no mesmo perfil, caiu de volta na tela de login.**
+
+A prova está na tabela de cookies do próprio perfil:
+
+| Cookie | Papel | Tipo |
+|---|---|---|
+| `nr1PMIB_Security`, `nr2PMIB_Security` | sessão OutSystems do PMIB | **de sessão** |
+| `KEYCLOAK_IDENTITY`, `AUTH_SESSION_ID` | identidade no SSO Keycloak | **de sessão** |
+| `KEYCLOAK_SESSION`, `osVisitor`, `NSC_ESNS` | rastreio/roteamento | persistentes |
+
+**Cookie de sessão morre quando o navegador fecha** — é definição, não
+configuração, e nenhum perfil persistente muda isso. Os que sobrevivem não
+autenticam nada. Marcar *"Mantenha-me conectado"* também não salva: o que ele
+prolonga é a sessão no SSO, não o cookie do PMIB.
+
+### As três consequências
+
+1. **O "perfil persistente" do projeto não economiza login no PMIB.** Ele
+   guarda preferências e cache; a autenticação, não. Toda execução de RPA
+   começa por um login manual — e é por isso que o app tem esse passo.
+2. **Script de uma tacada só não serve para explorar o portal.** Cada
+   `python scripts/…` sobe um navegador, cobra um login e o joga fora ao
+   terminar. Mapear 19 rádios assim custaria 19 logins.
+3. **Por isso o MCP não é preferência, é o único caminho que fecha.** O
+   servidor MCP mantém **um** navegador vivo entre todas as chamadas de
+   ferramenta da sessão: você loga uma vez, e o Claude navega a tarde inteira
+   naquela mesma janela.
+
+### O comando que ficou registrado nesta máquina
+
+Aponta para o perfil **do próprio projeto**, e não para `C:\temp\chrome-pmib`,
+para que o navegador que eu dirijo seja o mesmo que o RPA usa — o que eu
+confirmar ali vale para a produção, não para um navegador paralelo:
+
+```bat
+claude mcp add playwright -s local -- npx -y @playwright/mcp@latest ^
+  --user-data-dir "%LOCALAPPDATA%\SIG-FT\perfil-navegador" --caps vision,pdf
+```
+
+Conferir com `claude mcp get playwright`. As ferramentas `browser_*` só
+aparecem **depois de reiniciar** o Claude Code — MCP carrega na abertura da
+sessão.
+
+⚠️ **Um processo por perfil.** Enquanto o MCP segura o perfil, o SIG-FT não
+consegue subir o RPA nele, e vice-versa. Feche um antes de abrir o outro.

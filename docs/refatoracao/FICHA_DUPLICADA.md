@@ -314,8 +314,70 @@ de temperatura e umidade`, `Posição de armazenamento`), dois checkboxes
 (`Nocivo`, `Outros cuidados`) e `Classificação conforme NBR 10004`. Na
 visualização os quatro primeiros são texto (`Horizontal`, `Sem necessidade`);
 na edição são `RadioButtonN-input`/`CheckboxN`, e **qual número é qual pergunta
-não está documentado em lugar nenhum**. Marcar o rádio errado é pior do que
+não está documentado em lugar nenhum** — ⚠️ **contestado em 2026-08-24;
+ver §5.1 abaixo**. Marcar o rádio errado é pior do que
 deixar vazio — rádio errado parece resposta. Os cinco continuam saindo no log.
+
+
+#### 5.1 ⚠️ O mapa dos rádios PODE já estar no repositório (2026-08-24)
+
+A frase acima — *"qual número é qual pergunta não está documentado em lugar
+nenhum"* — foi escrita por uma sessão que **não conseguia olhar o portal** e
+que também não procurou no próprio repositório. A primeira sessão local
+procurou, e achou: `services/upload_conditions.py` escreve nesses mesmos
+rádios, **em produção, contra o portal real**, e sabe o que cada um significa.
+
+| Pergunta da tela | Valor | Sufixo do id | Onde está |
+|---|---|---|---|
+| Necessidade de controle de temperatura e umidade | SIM | `RadioButton5-input` | `upload_conditions.py:811` |
+| | NÃO | `RadioButton4-input` | `:843` |
+| Posição de armazenamento | Vertical | `RadioButton-input` | `:849` |
+| | Horizontal | `RadioButton7-input` | `:850` |
+| | Indiferente | `RadioButton8-input` | `:851` |
+| Nocivo | contém agentes nocivos | `RadioButton2-input` | `:861` |
+| | não contém | `RadioButton1-input` | `:867` |
+| Outros cuidados | SIM | `RadioButton6-input` | `:908` |
+| | NÃO | `RadioButton3-input` | `:914` |
+| Classificação conforme NBR 10004 | perigoso | `b5-RadioButton1-input` | `:971` |
+| | não perigoso | `b5-RadioButton2-input` | `:973` |
+| Climatização / Umidade | marcar | `Checkbox4` / `Checkbox5` | `:423-424` |
+| Sujeito a intempérie | marcar | `Checkbox3` | `:881` |
+| Proteção SN / UV / EL | marcar | `Checkbox6` / `7` / `8` | `:887-889` |
+
+São **os cinco rótulos que faltavam**, e mais os checkboxes.
+`seletores_duplicada.CONDICOES_POR_SUBABA` já lista exatamente esses sufixos em
+`booleanos` — o que faltava lá não era o sufixo, era **a qual pergunta ele
+pertence**. Essa metade estava a um `grep` de distância o tempo todo.
+
+**Por que isto NÃO fecha a seção sozinho — a forma do mapa muda.** Para campo
+de texto, `CONDICOES_ROTULO_PARA_CAMPO` é `rótulo → (sub-aba, sufixo)` e o
+valor é digitado. Para rádio, **o valor lido decide QUAL sufixo clicar**:
+
+```python
+"posicao de armazenamento": ("Armazenamento", {
+    "vertical":    "RadioButton-input",
+    "horizontal":  "RadioButton7-input",
+    "indiferente": "RadioButton8-input",
+}),
+```
+
+Ou seja, a entrada vira `rótulo → (sub-aba, {valor normalizado: sufixo})`, e
+`converter_da_visualizacao` precisa de um ramo novo. Não é preencher tabela; é
+um tipo a mais.
+
+**E o que ainda falta é PROVA, não dedução.** Duas coisas só o portal responde:
+
+1. **O texto exato que a VISUALIZAÇÃO mostra como valor.** A tabela acima liga
+   pergunta → id, mas a chave do mapa novo é o que a tela de leitura escreve
+   (`Horizontal`? `Sem necessidade`? `Não contém agentes nocivos`?). Casar por
+   texto inventado é a falha silenciosa que este arquivo inteiro combate.
+2. **Se `upload_conditions` e as Condições da duplicada são a MESMA tela.**
+   O prefixo `b10-b17-b1-` bate com o que `XPATH_CONDICOES_CAMPO` procura por
+   `contains(@id, …)` — indício forte, mas indício.
+
+Enquanto as duas não forem lidas no portal com a ficha alvo em edição, a tabela
+acima é **hipótese com evidência**, e não entra em `CONDICOES_ROTULO_PARA_CAMPO`.
+Rádio errado parece resposta certa: é o erro que esta seção mais teme.
 
 #### ⚠️ A metade em espanhol, e por que CONDIÇÕES não fecha COMPLETO
 

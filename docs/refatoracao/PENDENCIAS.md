@@ -6,6 +6,8 @@ em qual fase/checkpoint cada uma entra.
 
 | Data | Descoberto em | Descrição | Destino proposto |
 |---|---|---|---|
+| 2026-08-24 | Sessão local (portal) | `tests/test_prefs.py::test_pastas_padrao_seed_reais_nao_existentes_nesta_maquina_nao_quebram` **falha na máquina do Luan** e passa no contêiner. O teste afirma que as 3 pastas do Box NÃO existem (`get_default_dir(...) is None`); na máquina real o Box está sincronizado, as pastas existem, e `get_default_dir` devolve o caminho — que é o comportamento CERTO. O teste codifica o mundo do contêiner, não a regra. Correção: criar as pastas num `tmp_path` e apontar o SEED para lá, em vez de depender do disco. | Fase 7 (higiene de testes) |
+| 2026-08-24 | Sessão local (portal) | `scripts/check.sh` chama `python3`, que no Windows resolve para o atalho da Microsoft Store (sem pytest) em vez do venv do projeto (`%LOCALAPPDATA%/SIG-FT/venv`). O passo 2 então falha por "No module named pytest" — e quem rodar com `| tail` recebe **código de saída 0**, ou seja, verde falso. Correção: o script deve usar o mesmo venv que `_bootstrap_venv.bat` escolhe. | Fase 0 (o portão é dela) |
 | 2026-07-24 | Bootstrap | Chaves API expostas no código original — precisam ser **rotacionadas** pelo usuário | Ação do usuário |
 | 2026-07-24 | Bootstrap | `lmr_backend._processar_ficha_lmr_interna`: no `except`, o índice não avança — risco de loop infinito se o erro persistir | Fase 4 (CP 4.2) |
 | 2026-07-24 | Bootstrap | `pdm_backend.logica_excluir_duplicados` exclui o MAIOR arquivo do grupo (ordenação decrescente por tamanho) — confirmar com o usuário se essa é a intenção antes de manter | Confirmar com usuário |
