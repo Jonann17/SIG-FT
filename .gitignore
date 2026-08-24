@@ -44,3 +44,6 @@ busca_web_cache.json
 # HASH do prompt, nunca o prompt — mas guarda o VALOR TÉCNICO respondido, que
 # é dado de ficha. Não pode ir para o repositório.
 autospec_resposta_cache.json
+
+# Capturas do portal (dados reais de ficha) -- ver scripts/capturar_portal.py
+capturas/
