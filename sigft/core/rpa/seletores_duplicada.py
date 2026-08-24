@@ -1039,6 +1039,35 @@ NOME_DA_ABA_INFO_GERAIS = "Informações gerais"
 # fotos das sub-abas caberem no limite do log (ver `abrir_subaba_de_condicoes`).
 NOME_DA_ABA_CONDICOES = "Condições"
 
+# O GATILHO DO BALÃO — como o espanhol sai da visualização.
+#
+# Correção do usuário em 2026-08-24, depois de eu concluir do dump que a
+# visualização não trazia espanhol nenhum: *"a página tem espanhol sim, só que
+# ele só aparece quando passamos o mouse por cima da versão em português, como
+# um balão"*. Eu tinha procurado pelo padrão errado (um id `..._ES`, um segundo
+# `Block_Expression`); o certo é o par `aria-describedby` → `#...-Tooltip`.
+#
+# O HTML que ele mandou:
+#
+#   <div class="osui-tooltip__content" id="b12-b20-b4-b3-b2-Content"
+#        role="button" aria-describedby="b12-b20-b4-b3-b2-Tooltip" tabindex="0">
+#     <div data-block="PMIB_DataSheetView.Block_Expression" ...>
+#       <span data-expression="">Aplicam-se as normas ...   ← PORTUGUÊS
+#
+# O balão (`...-Tooltip`) NÃO está no DOM até alguém apontar para o gatilho --
+# por isso ele não aparecia na foto da seção. Ver `PMIBPortal.texto_do_balao`.
+#
+# `following::[1]` é o mais próximo em ordem de documento a partir do rótulo.
+# ⚠️ Isso não é seguro sozinho: um campo SEM tooltip faria o `[1]` pegar o
+# balão do campo SEGUINTE, e a ficha alvo receberia o espanhol de outro texto
+# sem ninguém notar. Quem chama CONFERE que o português do gatilho é o mesmo
+# valor que já leu para aquele rótulo, e desiste quando não bate.
+XPATH_TOOLTIP_DO_ROTULO = (
+    "//label[.//span[normalize-space()={texto}]]"
+    "/following::div"
+    "[contains(concat(' ', normalize-space(@class), ' '), ' osui-tooltip__content ')][1]"
+)
+
 # Qualquer opção do dropdown ABERTO, sem filtrar por texto. Serve só para
 # AUDITORIA: quando o casamento por prefixo não acha nada, é a lista real que
 # diz se o item não está no catálogo ou se o filtro foi para o lugar errado.

@@ -472,6 +472,15 @@ class SeleniumEngine(RPAEngine):
                     f"arguments[0].dispatchEvent(new Event('{evento}', {{ bubbles: true }}));", el
                 )
 
+    def passar_o_mouse(self, seletor: str) -> None:
+        with _traduzindo():
+            el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))
+            # `move_to_element` do ActionChains é o hover REAL do Selenium --
+            # disparar `mouseover` por script não acorda o tooltip do OSUI,
+            # que escuta o evento de ponteiro de verdade.
+            from selenium.webdriver.common.action_chains import ActionChains
+            ActionChains(self.driver).move_to_element(el).perform()
+
     def focar(self, seletor: str) -> None:
         with _traduzindo():
             el = self.wait.until(EC.presence_of_element_located((By.XPATH, seletor)))

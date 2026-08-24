@@ -387,6 +387,19 @@ class RPAEngine(ABC):
         valor some no próximo redesenho."""
 
     @abstractmethod
+    def passar_o_mouse(self, seletor: str) -> None:
+        """Leva o ponteiro para cima do elemento, sem clicar.
+
+        Existe por causa do TOOLTIP do portal (`osui-tooltip--is-hover`): o
+        balão que guarda o texto em espanhol das Condições não está no DOM
+        até alguém apontar para o gatilho. Ler o `aria-describedby` e
+        procurar o id devolve vazio enquanto ninguém passou o mouse.
+
+        É a única forma de LER um dado que a tela só entrega na interação --
+        não é conveniência de navegação.
+        """
+
+    @abstractmethod
     def focar(self, seletor: str) -> None:
         """Põe o foco no elemento SEM clicar nele.
 

@@ -195,13 +195,37 @@ class _PortalDeLeitura:
     devolveria ali: `[(título do bloco, {rótulo: valor})]`.
     """
 
-    def __init__(self, blocos_por_subaba, abre_secao=True, subabas_que_falham=()):
+    def __init__(self, blocos_por_subaba, abre_secao=True, subabas_que_falham=(),
+                 baloes=None):
         self.engine = self
         self.blocos_por_subaba = dict(blocos_por_subaba)
         self.abre_secao = abre_secao
         self.subabas_que_falham = set(subabas_que_falham)
         self.subabas_abertas = []
         self.subaba_atual = None
+        # `{rótulo: (português visível no gatilho, espanhol do balão)}`.
+        # Vazio = a ficha não tem balão nenhum, que é o caso de toda ficha só
+        # com números; a leitura do espanhol tem de sair calada.
+        self.baloes = dict(baloes or {})
+        self.hovers = []
+
+    # --- a leitura do balão (2026-08-24) --------------------------------
+    @staticmethod
+    def _rotulo_do_gatilho(seletor):
+        import re
+        achado = re.search(r"normalize-space\(\)='([^']*)'", seletor)
+        return achado.group(1) if achado else None
+
+    def texto_se_existir(self, seletor):
+        rotulo = self._rotulo_do_gatilho(seletor)
+        par = self.baloes.get(rotulo)
+        return par[0] if par else ""
+
+    def texto_do_balao(self, seletor_gatilho, sleep_fn=None):
+        rotulo = self._rotulo_do_gatilho(seletor_gatilho)
+        self.hovers.append(rotulo)
+        par = self.baloes.get(rotulo)
+        return par[1] if par else ""
 
 
 @pytest.fixture

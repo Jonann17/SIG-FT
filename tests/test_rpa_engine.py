@@ -52,6 +52,11 @@ METODOS_CP_5_3 = (
     "esta_habilitado",
     "esta_marcado",
     "forcar_valor",
+    # `passar_o_mouse` entra em 2026-08-24, e não é conveniência de navegação:
+    # é a única forma de LER o espanhol das Condições. O portal guarda o texto
+    # num balão de tooltip (`osui-tooltip--is-hover`) que não existe no DOM até
+    # alguém apontar para o gatilho -- ver `PMIBPortal.texto_do_balao`.
+    "passar_o_mouse",
     "focar",
     "digitar_no_foco",
     "atributo",
@@ -179,6 +184,7 @@ def _implementacoes_completas():
         "esta_habilitado": lambda self, seletor: True,
         "esta_marcado": lambda self, seletor: False,
         "forcar_valor": lambda self, seletor, texto: None,
+        "passar_o_mouse": lambda self, seletor: None,
         "focar": lambda self, seletor: None,
         "digitar_no_foco": lambda self, texto: None,
         "atributo": lambda self, seletor, nome: "",

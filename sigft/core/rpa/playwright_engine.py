@@ -507,6 +507,9 @@ class PlaywrightEngine(RPAEngine):
         """
         self._executar(lambda: self._loc(seletor).fill(str(texto)))
 
+    def passar_o_mouse(self, seletor: str) -> None:
+        self._executar(lambda: self._loc(seletor).hover())
+
     def focar(self, seletor: str) -> None:
         self._executar(lambda: self._loc(seletor).focus())
 

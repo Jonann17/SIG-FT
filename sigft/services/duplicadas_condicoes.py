@@ -29,7 +29,7 @@ import unicodedata
 
 from sigft.core.rpa import seletores_duplicada as sel
 from sigft.services import duplicadas_extrator as extrator
-from sigft.services.duplicadas_injetor import ResultadoDaSecao, _log_de
+from sigft.services.duplicadas_injetor import ResultadoDaSecao, _literal, _log_de
 
 # Pausas. Mesmos valores do módulo antigo, que roda contra o portal real.
 PAUSA_ABERTURA_SECAO = 2.0
@@ -137,19 +137,106 @@ def converter_da_visualizacao(rotulos_e_valores, callback_log=None):
     return convertido
 
 
+def espanhol_dos_baloes(portal, rotulos_e_valores, callback_log=None,
+                        sleep_fn=None):
+    """Os textos em ESPANHOL, lidos dos balões da visualização.
+
+    Devolve `{sub-aba: {sufixo_ES: texto}}`, no mesmo formato de
+    `converter_da_visualizacao`, para o chamador fundir os dois.
+
+    🎯 É O QUE FECHA A SEÇÃO SEM ABRIR A ORIGINAL EM EDIÇÃO. Cada texto longo
+    tem par (`TextArea_XxxPT` e `TextArea_XxxES`) e a visualização mostra um
+    só -- o outro está no balão do tooltip, que o portal só monta quando
+    alguém aponta para o texto. Ver `sel.XPATH_TOOLTIP_DO_ROTULO` e
+    `PMIBPortal.texto_do_balao`.
+
+    ⚠️ **A CONFERÊNCIA DO GATILHO NÃO É PARANOIA.** O gatilho é achado pelo
+    `following::[1]` a partir do rótulo, e um campo sem tooltip faria esse
+    `[1]` cair no balão do campo SEGUINTE -- a ficha alvo receberia o espanhol
+    de outro texto, e nada no log diria. Por isso o português do gatilho é
+    comparado com o valor que já foi lido para aquele rótulo: se não bate, o
+    campo é PULADO e o log diz por quê. Espanhol faltando é uma pendência;
+    espanhol trocado é um erro que ninguém vê.
+    """
+    _log = _log_de(callback_log)
+    mapa = sel.CONDICOES_ROTULO_PARA_CAMPO
+    achado = {}
+    trocados = []
+
+    for rotulo, valor in _pares(rotulos_e_valores):
+        destino = mapa.get(chave_de_rotulo(rotulo))
+        if destino is None:
+            continue
+        subaba, sufixo = destino
+        # Só texto longo tem par de idioma. Número e radio não têm balão.
+        if not sufixo.endswith("PT"):
+            continue
+        if not str(valor or "").strip():
+            continue
+
+        gatilho = sel.XPATH_TOOLTIP_DO_ROTULO.format(texto=_literal(rotulo))
+        visivel = portal.texto_se_existir(gatilho).strip()
+
+        # SEM GATILHO NENHUM é o caso comum, e sai calado: nem todo texto tem
+        # par de idioma, e a ficha só com números não tem um balão sequer.
+        # Avisar aqui encheria o log de alarme falso em toda ficha do lote --
+        # e log que grita sempre é log que ninguém lê quando importa.
+        if not visivel:
+            continue
+
+        # GATILHO COM OUTRO TEXTO, sim, é aviso: significa que o
+        # `following::[1]` pulou para o campo seguinte, e copiar dali poria o
+        # espanhol de outro texto na ficha alvo.
+        if chave_de_rotulo(visivel) != chave_de_rotulo(valor):
+            trocados.append(rotulo)
+            continue
+
+        espanhol = portal.texto_do_balao(gatilho, sleep_fn=sleep_fn)
+        if espanhol:
+            achado.setdefault(subaba, {})[sufixo[:-2] + "ES"] = espanhol
+
+    if trocados:
+        _log(f"      [!] Condições: em {len(trocados)} campo(s) o balão do "
+             f"tooltip não é o do próprio rótulo -- NÃO copiei o espanhol "
+             f"deles para não escrever o texto de outro campo: "
+             f"{', '.join(trocados[:3])}"
+             f"{' …' if len(trocados) > 3 else ''}.")
+
+    return achado
+
+
+def fundir(convertido, espanhol):
+    """Junta `{sub-aba: {sufixo: valor}}` de duas leituras, sem sobrescrever.
+
+    O português vem da varredura de pares e o espanhol dos balões; são
+    conjuntos de sufixos disjuntos (`...PT` × `...ES`), então "sem
+    sobrescrever" é conservador de propósito -- se um dia deixarem de ser, o
+    que já estava lido ganha, e o duplicado aparece como campo faltando em vez
+    de virar sobrescrita silenciosa.
+    """
+    saida = {aba: dict(campos) for aba, campos in (convertido or {}).items()}
+    for aba, campos in (espanhol or {}).items():
+        destino = saida.setdefault(aba, {})
+        for sufixo, valor in campos.items():
+            destino.setdefault(sufixo, valor)
+    return saida
+
+
 def sufixos_em_espanhol_nao_copiados(condicoes):
     """Os `..._ES` cujos pares `..._PT` foram escritos. Lista, em ordem.
 
-    ⚠️ A METADE QUE A VISUALIZAÇÃO NÃO ENTREGA. Cada texto longo tem par na
-    edição (`TextArea_XxxPT` e `TextArea_XxxES`) e a visualização mostra UM
-    valor só -- o bloco é o `Block_ExpressionBothLenguage`, e o que fica
-    visível é o português; o espanhol, se está em algum lugar, está atrás do
-    tooltip, que a varredura não abre.
+    ⚠️ O QUE ESTA FUNÇÃO SIGNIFICA MUDOU EM 2026-08-24. Ela nascia dizendo "a
+    metade que a visualização não entrega", porque eu tinha concluído que o
+    espanhol não estava na tela. **Está**: fica no balão do tooltip, e
+    `espanhol_dos_baloes` o traz. Então a lista deixou de ser "todos os `..._ES`
+    da ficha" e passou a ser o RESÍDUO -- os pares que nem o balão deu.
 
-    Copiar o texto em português para dentro do campo em espanhol seria
-    INVENTAR uma tradução na ficha de outra pessoa. Então o robô copia o PT e
-    esta função diz o que ficou para trás -- é o que impede a seção de fechar
-    como COMPLETA com metade dos campos em branco.
+    Um resíduo é esperado e legítimo (campo que a original tem só em
+    português), e continua impedindo a seção de fechar como COMPLETA: copiar o
+    texto em português para dentro do campo em espanhol seria inventar uma
+    tradução na ficha de outra pessoa. Uma lista GRANDE, essa sim, é sintoma --
+    de gatilho recusado (ver o aviso de `espanhol_dos_baloes`) ou de balão que
+    não nasceu.
 
     Campo numérico não entra: `Input_LiquidWeight` é um só, número é número
     nos dois idiomas. Recusar a ficha que só tem números seria inventar
@@ -473,19 +560,20 @@ def escrever(portal, condicoes, callback_log=None):
         else:
             _log(f"      [{nome}] {len(campos)} campo(s), salvo e conferido.")
 
-    # ⚠️ O ESPANHOL. Ver `sufixos_em_espanhol_nao_copiados`: a visualização
-    # entrega um texto por campo bilíngue, e é o português. Fechar CONDIÇÕES =
-    # COMPLETO com os `..._ES` em branco seria a mentira de planilha de sempre
-    # -- e a de planilha dura mais do que qualquer erro de tela, porque ninguém
-    # volta para conferir o que já está marcado como pronto.
+    # ⚠️ O ESPANHOL QUE SOBROU. Desde 2026-08-24 o espanhol vem do balão do
+    # tooltip (`espanhol_dos_baloes`), então esta lista é RESÍDUO, não regra:
+    # os pares que nem o balão deu. Fechar CONDIÇÕES = COMPLETO com os
+    # `..._ES` em branco continua sendo a mentira de planilha de sempre -- e a
+    # de planilha dura mais do que qualquer erro de tela, porque ninguém volta
+    # para conferir o que já está marcado como pronto.
     faltando_es = sufixos_em_espanhol_nao_copiados(condicoes)
     if faltando_es:
-        _log(f"      [i] Condições: {len(faltando_es)} campo(s) em espanhol NÃO "
-             f"foram copiados -- a visualização da ficha original só mostra o "
-             f"texto em português. Preencha à mão: "
+        _log(f"      [i] Condições: {len(faltando_es)} campo(s) em espanhol "
+             f"ficaram sem texto -- nem a visualização nem o balão do tooltip "
+             f"da ficha original tinham o que copiar. Preencha à mão: "
              f"{', '.join(faltando_es[:4])}"
              f"{' …' if len(faltando_es) > 4 else ''}.")
-        problemas.append(f"{len(faltando_es)} campo(s) em espanhol sem tradução")
+        problemas.append(f"{len(faltando_es)} campo(s) em espanhol sem texto")
 
     if problemas:
         return ResultadoDaSecao("condicoes", False, "; ".join(problemas))

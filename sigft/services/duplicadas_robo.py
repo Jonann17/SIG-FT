@@ -454,7 +454,20 @@ def ler_condicoes_da_original(portal, callback_log=None, log_auditoria=None):
         for _titulo, campos in extrator.ler_secao_visivel(portal.engine, callback_log):
             pares.extend(campos.items())
 
-    return condicoes.converter_da_visualizacao(pares, callback_log)
+    convertido = condicoes.converter_da_visualizacao(pares, callback_log)
+
+    # O ESPANHOL, que a varredura de pares não vê. Ele está no balão do
+    # tooltip de cada texto longo -- correção do usuário em 2026-08-24, depois
+    # de eu concluir do dump que a visualização não trazia espanhol nenhum.
+    # Segunda passada e não uma leitura só porque o balão custa um hover por
+    # campo: fazer isso na varredura geral cobraria o preço em todo rótulo da
+    # tela, inclusive nos números, que não têm balão nenhum.
+    espanhol = condicoes.espanhol_dos_baloes(portal, pares, callback_log)
+    if espanhol:
+        quantos = sum(len(campos) for campos in espanhol.values())
+        _log(f"      {quantos} campo(s) em espanhol lidos do balão do tooltip.")
+
+    return condicoes.fundir(convertido, espanhol)
 
 
 def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):

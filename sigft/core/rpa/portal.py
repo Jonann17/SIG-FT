@@ -750,6 +750,73 @@ class PMIBPortal:
         except Exception:  # noqa: BLE001 -- ler a tela não derruba a ficha
             return ""
 
+    # O balão de tooltip: `aria-describedby` no gatilho aponta para o id do
+    # balão. Formato do portal, mandado pelo usuário em 2026-08-24:
+    #
+    #   <div class="osui-tooltip__content" aria-describedby="b12-...-b2-Tooltip">
+    #     <div data-block="PMIB_DataSheetView.Block_Expression">
+    #       <span data-expression="">Aplicam-se as normas ... (PORTUGUÊS)</span>
+    XPATH_POR_ID = "//*[@id={id}]"
+
+    # Quanto esperar o balão nascer depois do hover. É animação de CSS, não
+    # ida ao servidor -- meio segundo cobre, e o custo é por campo de texto
+    # longo (dois por sub-aba), não por ficha.
+    PAUSA_DO_BALAO = 0.5
+
+    def texto_do_balao(self, seletor_gatilho: str, sleep_fn=None) -> str:
+        """O texto ESCONDIDO atrás do tooltip do gatilho. `""` se não houver.
+
+        🎯 É COMO O ESPANHOL DAS CONDIÇÕES SAI DA VISUALIZAÇÃO. Eu tinha
+        concluído, do dump de 2026-08-24, que a visualização não trazia
+        espanhol nenhum -- não havia um id `..._ES` nem um segundo
+        `Block_Expression` na seção. O usuário corrigiu: *"a página tem
+        espanhol sim, só que ele só aparece quando passamos o mouse por cima
+        da versão em português, como um balão"*. Eu tinha procurado pelo
+        padrão errado; o certo é o par `aria-describedby` → `#...-Tooltip`.
+
+        O balão NÃO está no DOM até alguém apontar para o gatilho
+        (`osui-tooltip--is-hover`), e é por isso que ele não aparecia no dump
+        da seção: a foto é do HTML como está, e naquele momento o elemento
+        não existia. Daí a ordem aqui -- tenta ler direto (barato, e cobre o
+        caso de o balão já estar montado), e só então paga o hover.
+
+        Nunca levanta: ler a tela não pode derrubar a ficha.
+        """
+        sleep_fn = sleep_fn or time.sleep
+        try:
+            id_do_balao = self.engine.atributo(seletor_gatilho, "aria-describedby")
+        except Exception:  # noqa: BLE001
+            return ""
+        if not id_do_balao:
+            return ""
+
+        # Aspas simples bastam: o alvo é um id GERADO pelo OutSystems
+        # (`b12-b20-b4-b3-b2-Tooltip`), e id de HTML não carrega aspas.
+        # Um que carregasse não casaria com elemento nenhum, e a função
+        # devolve "" -- que é o mesmo desfecho de "não há balão".
+        if "'" in id_do_balao:
+            return ""
+        seletor_balao = self.XPATH_POR_ID.format(id=f"'{id_do_balao}'")
+        texto = self.texto_se_existir(seletor_balao).strip()
+        if texto:
+            return texto
+
+        # O balão só nasce na interação. `passar_o_mouse` é o caminho bom (o
+        # tooltip do OSUI escuta evento de ponteiro de verdade); `focar` fica
+        # como reserva porque o gatilho é `role="button" tabindex="0"`, então
+        # ele responde ao teclado também -- e num motor sem ponteiro é a
+        # única porta que sobra.
+        for acordar in (self.engine.passar_o_mouse, self.engine.focar):
+            try:
+                acordar(seletor_gatilho)
+            except Exception:  # noqa: BLE001
+                continue
+            sleep_fn(self.PAUSA_DO_BALAO)
+            texto = self.texto_se_existir(seletor_balao).strip()
+            if texto:
+                return texto
+        return ""
+
     def valor_se_existir(self, seletor: str):
         """Valor do campo, ou `None` na hora se ele não estiver na tela.
 
