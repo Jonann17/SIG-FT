@@ -441,7 +441,18 @@ def abrir_subaba_de_condicoes(portal, nome, callback_log=None, log_auditoria=Non
     ativa = sel.XPATH_SUBABA_CONDICOES_ATIVA.format(texto=_literal_xpath(nome))
     if portal.engine.contar(ativa):
         _log(f"      Sub-aba aberta: {nome}")
-        fotografar(portal, f"Sub-aba de Condições «{nome}» (aberta)", log_auditoria)
+        # ⚠️ MESMA COLEIRA DE `abrir_secao`, e pelo mesmo motivo -- eu tinha
+        # consertado lá e deixado AQUI o defeito. Sem âncora, `fotografar` cai
+        # no último recurso (`//form | //body`), que começa no topo da página;
+        # o teto de 20 000 caracteres então gasta a foto inteira no cabeçalho.
+        # No log de 2026-08-24 as duas fotos de sub-aba saíram com 20 KB de
+        # menu e calendário, e nenhuma linha de Condições -- eu fiquei cego
+        # justamente na seção que estou tentando fechar.
+        painel = id_do_painel(portal, sel.NOME_DA_ABA_CONDICOES)
+        alvo = (sel.XPATH_PAINEL_POR_ID.format(id=_literal_xpath(painel))
+                if painel else None)
+        fotografar(portal, f"Sub-aba de Condições «{nome}» (aberta)",
+                   log_auditoria, seletor=alvo)
         return True
 
     _log(f"      [Erro] Cliquei em {nome!r} e ela não ficou com '{sel.CLASSE_SUBABA_ATIVA}'. "

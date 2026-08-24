@@ -135,6 +135,12 @@ def _escolher_pdm_da_duplicada(portal, callback_log=None):
     if quantas == 0:
         _log(f"      [Erro] {sel.PDM_DA_DUPLICADA} não apareceu no combo depois "
              f"de filtrar. Nada foi selecionado.")
+        # ⚠️ A LISTA REAL, e não mais o meu palpite. Este erro já apareceu em
+        # três rodadas seguidas (0928, 0929, 1277) e a mensagem sozinha não
+        # distingue as duas causas possíveis: ou o PDM.9900.000 não está no
+        # catálogo deste usuário, ou o filtro foi digitado num lugar que não é
+        # a caixa de busca deste dropdown. As duas pedem conserto oposto.
+        _listar_opcoes(portal, callback_log)
         return False
 
     # Mais de uma opção com o mesmo prefixo é possível (revisões diferentes do
@@ -144,3 +150,43 @@ def _escolher_pdm_da_duplicada(portal, callback_log=None):
     portal.safe_click(f"({alvo})[1]")
     time.sleep(PAUSA_APOS_DIGITAR)
     return True
+
+
+LIMITE_DE_OPCOES_NO_LOG = 15
+
+
+def _listar_opcoes(portal, callback_log=None, limite=LIMITE_DE_OPCOES_NO_LOG):
+    """Loga as opções que o dropdown ABERTO está mostrando de fato.
+
+    Só é chamado no fracasso -- é diagnóstico, não caminho normal. Lê pelo
+    índice (`(...)[n]`) com `texto_se_existir`, que devolve `""` para o
+    ausente em vez de pagar o timeout do motor: o dropdown pode ter fechado
+    sozinho entre o filtro e esta leitura, e nesse caso a resposta certa é
+    "nenhuma", na hora, e não vinte segundos de espera por opção.
+    """
+    _log = _log_de(callback_log)
+    try:
+        total = portal.engine.contar(sel.XPATH_OPCAO_QUALQUER)
+    except Exception:  # noqa: BLE001 -- observar não pode derrubar o lote
+        total = 0
+
+    if not total:
+        _log("         [i] O dropdown não está mostrando opção nenhuma agora. "
+             "Ou ele fechou antes desta leitura, ou o texto do filtro nunca "
+             "chegou na caixa de busca dele.")
+        return []
+
+    vistas = []
+    for indice in range(1, min(total, limite) + 1):
+        texto = portal.texto_se_existir(
+            f"({sel.XPATH_OPCAO_QUALQUER})[{indice}]").strip()
+        if texto:
+            vistas.append(texto)
+
+    _log(f"         [i] O combo está listando {total} opção(ões). "
+         f"As {len(vistas)} primeiras:")
+    for texto in vistas:
+        _log(f"             · {texto}")
+    if total > limite:
+        _log(f"             … e mais {total - limite}.")
+    return vistas

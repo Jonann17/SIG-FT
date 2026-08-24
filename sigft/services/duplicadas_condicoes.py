@@ -28,6 +28,7 @@ import time
 import unicodedata
 
 from sigft.core.rpa import seletores_duplicada as sel
+from sigft.services import duplicadas_extrator as extrator
 from sigft.services.duplicadas_injetor import ResultadoDaSecao, _log_de
 
 # Pausas. Mesmos valores do módulo antigo, que roda contra o portal real.
@@ -99,8 +100,14 @@ def converter_da_visualizacao(rotulos_e_valores, callback_log=None):
         destino = mapa.get(chave_de_rotulo(rotulo))
         if destino is None:
             texto = " ".join(str(rotulo or "").split())
-            if texto and texto not in desconhecidos:
-                desconhecidos.append(texto)
+            # ⚠️ O VALOR VAI JUNTO. Conserto de 2026-08-24: a lista saía só com
+            # os nomes, e nome sozinho não fecha o mapa. Para escrever
+            # "Posição de armazenamento" na alvo eu preciso saber QUE opção a
+            # original mostra ("Horizontal"), porque na edição isso é um radio
+            # e o que se escolhe é a opção, não o rótulo.
+            visto = " ".join(str(valor or "").split())
+            if texto and not any(t == texto for t, _ in desconhecidos):
+                desconhecidos.append((texto, visto))
             continue
 
         subaba, sufixo = destino
@@ -123,8 +130,9 @@ def converter_da_visualizacao(rotulos_e_valores, callback_log=None):
         _log(f"      [i] Condições: {len(desconhecidos)} rótulo(s) da ficha "
              f"original ainda não estão no mapa RÓTULO→campo. Copie a lista "
              f"abaixo para fechar a seção:")
-        for texto in desconhecidos:
-            _log(f"          · {texto}")
+        for texto, visto in desconhecidos:
+            _log(f"          · {texto} = {visto!r}" if visto
+                 else f"          · {texto} (vazio nesta ficha)")
 
     return convertido
 
@@ -211,6 +219,46 @@ def ler(portal, callback_log=None):
         lido[nome] = campos
         _log(f"      [{nome}] li {len(campos)} campo(s).")
     return lido
+
+
+def fotografar_edicao(portal, log_auditoria=None, callback_log=None):
+    """Fotografa as 4 sub-abas de Condições da ficha ALVO, **em EDIÇÃO**.
+
+    🎯 É O QUE FALTA PARA FECHAR A SEÇÃO, e não sai de graça em nenhum outro
+    lugar do lote. A ficha ORIGINAL é lida só em visualização (decisão do
+    usuário em 2026-08-20), e lá:
+
+      - os textos longos vêm por `ViewAttachment`, num idioma só -- nenhum id
+        `..._ES` aparece na tela;
+      - dos 19 radios/checkboxes, só 2 são renderizados como `<input>`
+        (`Checkbox1` e `Checkbox2`); os outros viram texto puro ("Horizontal",
+        "Sem necessidade"), sem nada que diga a QUAL campo pertencem.
+
+    A ALVO, essa sim, está aberta em edição -- e é o único lugar onde os 45
+    campos existem com o rótulo visível ao lado. A foto responde duas
+    perguntas de uma vez: qual sufixo corresponde a cada opção de radio, e se
+    os campos em espanhol são `required` (se forem, a seção não fecha sem
+    eles, e ler só a visualização deixa de ser suficiente).
+
+    Só roda com o modo de auditoria ligado, e não escreve nada.
+    """
+    if log_auditoria is None:
+        return
+
+    _log = _log_de(callback_log)
+    abrir_secao(portal, callback_log)
+
+    painel = extrator.id_do_painel(portal, sel.NOME_DA_ABA_CONDICOES)
+    alvo = (sel.XPATH_PAINEL_POR_ID.format(id=extrator._literal_xpath(painel))
+            if painel else None)
+
+    for nome in sel.CONDICOES_POR_SUBABA:
+        abrir_subaba(portal, nome, callback_log)
+        extrator.fotografar(portal, f"ALVO em EDIÇÃO — Condições «{nome}»",
+                            log_auditoria, seletor=alvo)
+
+    _log(f"      [i] Condições: fotografei as {len(sel.CONDICOES_POR_SUBABA)} "
+         f"sub-abas da ficha ALVO em edição (modo de auditoria).")
 
 
 def ancora_da_subaba(nome):

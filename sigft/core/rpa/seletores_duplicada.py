@@ -1035,6 +1035,18 @@ PDM_DA_DUPLICADA = "PDM.9900.000"
 # seria "não achei no combo", que ninguém liga a uma revisão nova.
 NOME_DA_ABA_INFO_GERAIS = "Informações gerais"
 
+# O nome da aba de Condições, para `id_do_painel` achar o painel dela e as
+# fotos das sub-abas caberem no limite do log (ver `abrir_subaba_de_condicoes`).
+NOME_DA_ABA_CONDICOES = "Condições"
+
+# Qualquer opção do dropdown ABERTO, sem filtrar por texto. Serve só para
+# AUDITORIA: quando o casamento por prefixo não acha nada, é a lista real que
+# diz se o item não está no catálogo ou se o filtro foi para o lugar errado.
+XPATH_OPCAO_QUALQUER = (
+    "//div[@role='option']"
+    "//span[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-option-text ')]"
+)
+
 XPATH_PDM_COMBO = (
     "//div[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-toggle-button ')]"
     "[.//div[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-value ')]"

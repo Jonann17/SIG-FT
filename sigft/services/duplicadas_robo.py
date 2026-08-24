@@ -615,6 +615,11 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
                 "caracteristicas", False, "PDM não garantido"))
 
         # --- CP 6.4 ----------------------------------------------------
+        # A foto vem ANTES da escrita: com o modo de auditoria ligado, é ela
+        # que traz os radios e os campos em espanhol da ficha ALVO -- os dois
+        # buracos que impedem a seção de fechar. Depois de escrever, a tela já
+        # não é a que eu preciso ver. Sem auditoria não custa nada.
+        condicoes.fotografar_edicao(portal, log_auditoria, callback_log)
         resultado.registrar(
             condicoes.escrever(portal, condicoes_da_original, callback_log))
         # `ABA_DOCUMENTOS_EDICAO`: aqui a ficha ALVO está aberta para editar, e
