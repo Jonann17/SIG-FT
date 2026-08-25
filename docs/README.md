@@ -1,5 +1,13 @@
 # Documentação do SIG-FT
 
+## Portal PMIB — leia antes de mexer em RPA
+
+| Doc | Para quê |
+|---|---|
+| [`PORTAL_COMO_ELE_SE_COMPORTA.md`](PORTAL_COMO_ELE_SE_COMPORTA.md) | **como o portal se comporta de verdade** — as armadilhas medidas na tela, e o checklist antes do commit |
+| [`OLHAR_O_PORTAL.md`](OLHAR_O_PORTAL.md) | como abrir o navegador e enxergar o portal numa sessão local |
+| [`ROTEIRO_DE_TESTE.md`](ROTEIRO_DE_TESTE.md) | validação manual, do ZIP até o portal |
+
 ## Base de conhecimento (`base-conhecimento/`)
 
 O que cada módulo faz hoje, em detalhe — gerada por agentes (Haiku) a partir da leitura do

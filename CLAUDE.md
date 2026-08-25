@@ -48,6 +48,12 @@ ligado por MCP.** O passo a passo (três comandos) está em
 Sessão na web continua ótima para o que não depende do portal: planilha,
 prompts de IA, refatoração, testes.
 
+**Vai escrever função nova que toca o portal?** Leia primeiro a §0 de
+[`docs/PORTAL_COMO_ELE_SE_COMPORTA.md`](docs/PORTAL_COMO_ELE_SE_COMPORTA.md) —
+sete regras curtas, cada uma paga com pelo menos uma rodada perdida (a URL que
+não muda, o modal que trava tudo, o `required=False` que não é opcional, a
+recusa silenciosa). O checklist do fim do arquivo é o portão antes do commit.
+
 ⚠️ E o corolário que custou caro: **`scripts/check.sh` verde não é prova de
 portal.** Os 2700 testes rodam contra dublês escritos pelo próprio Claude --
 eles provam a ideia dele do portal, não o portal. Nada de RPA se declara pronto
