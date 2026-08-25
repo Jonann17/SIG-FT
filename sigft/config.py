@@ -578,134 +578,20 @@ ARQUIVO_USO_LLM = os.path.join(PASTA_LOGS, "llm_usage.jsonl")
 # 9. MOTOR DE RPA POR MÓDULO (Checkpoint 5.1)
 # =============================================================================
 # Ver docs/refatoracao/PLANO_REFATORACAO.md, decisão de produto nº 5 e Fase 5 ->
-# CP 5.1: "Config `RPA_ENGINE = "selenium" | "playwright"` por módulo (permite
-# migração gradual e rollback imediato)".
+# CP 5.5 (2026-08-25): aqui morava a escolha de motor -- `ENGINE_SELENIUM`, o
+# mapa `RPA_ENGINE` por módulo, a variável `SIGFT_RPA_ENGINE`,
+# `get_rpa_engine()` e `resumo_dos_motores()`. Tudo isso existia para uma
+# coisa só: permitir voltar um módulo para o Selenium se ele se comportasse
+# mal na sessão de validação do checkpoint.
 #
-# A migração para Playwright é validada MÓDULO A MÓDULO contra o portal real
-# (não há como testar offline). Uma chave por módulo é o que permite promover
-# um módulo de cada vez e, se ele se comportar mal na sessão de validação,
-# voltar o valor para "selenium" -- sem tocar em código, sem reverter commit.
-
-ENGINE_SELENIUM = "selenium"
+# A Fase 6 fechou validada no portal real e o Selenium saiu do projeto.
+# Migração terminada não tem rollback -- e uma flag que só aceita um valor
+# não é configuração, é entulho que faz o leitor procurar uma alternativa
+# que não existe.
+#
+# Quem sobe o motor é `core/rpa/factory.criar_engine`, e a regra que ele
+# guarda continua de pé: nenhum serviço importa um motor concreto.
 ENGINE_PLAYWRIGHT = "playwright"
-
-# Enquanto a Fase 5 não termina (CP 5.5 descomissiona o Selenium), o padrão é o
-# motor que já roda em produção há tempo. Um módulo ausente do mapa abaixo
-# resolve por aqui.
-RPA_ENGINE_PADRAO = ENGINE_SELENIUM
-
-# Chave = nome do módulo em `sigft/services/`. Trocar para ENGINE_PLAYWRIGHT
-# depois que o módulo for validado com o usuário no portal real.
-# VALIDADO CONTRA O PORTAL REAL em 2026-08-11 e promovido a padrão. Até aqui
-# o padrão era Selenium e o Playwright só rodava com a variável de ambiente;
-# a sessão de validação cobriu Cria Fichas, Upload Specs e Upload Condições no
-# motor novo, com o mesmo resultado do antigo.
-#
-# `ficha_duplicada` FICA no Selenium, e não é conservadorismo: ele é o único
-# módulo que nunca foi portado (usa `webdriver`/`By`/`Select` direto) e a
-# Fase 6 vai reconstruí-lo já em Playwright. Portá-lo agora seria trabalho
-# jogado fora na reescrita.
-#
-# O caminho de volta continua existindo, e é isso que torna esta troca
-# barata: `SIGFT_RPA_ENGINE=selenium` devolve TUDO ao motor antigo sem
-# tocar em código. Ele só desaparece no CP 5.5, que por sua vez só faz
-# sentido depois da Fase 6 -- enquanto `ficha_duplicada` importar Selenium,
-# "remover o Selenium" é impossível de qualquer forma.
-RPA_ENGINE: dict[str, str] = {
-    "apagar_lmr": ENGINE_PLAYWRIGHT,      # CP 5.1
-    "lmr": ENGINE_PLAYWRIGHT,             # CP 5.2
-    # CP 5.2 (atualização em massa) + CP 5.4 (criação de ficha individual).
-    "cria_fichas": ENGINE_PLAYWRIGHT,
-    "upload_conditions": ENGINE_PLAYWRIGHT,  # CP 5.3
-    "tech_specs": ENGINE_PLAYWRIGHT,      # CP 5.3
-    # Módulo ANTIGO de ficha duplicada. Não passa por `criar_engine` (constrói
-    # o Selenium direto), então este valor é decorativo -- fica só para o mapa
-    # não mentir sobre o que ele usa. Ver `MODULOS_SEM_SELETOR_DE_MOTOR`.
-    "ficha_duplicada": ENGINE_SELENIUM,
-    # Ficha duplicada RECONSTRUÍDA (Fase 6). Nasce em Playwright, a pedido do
-    # usuário em 2026-08-17: "o ficha duplicada podemos fazer direto em
-    # Playwright, pois o de antes não funcionava muito bem". É o primeiro
-    # módulo do projeto que nunca teve versão Selenium.
-    "duplicadas": ENGINE_PLAYWRIGHT,
-}
-
-# Override global por variável de ambiente, para o usuário experimentar o motor
-# novo (ou voltar atrás) sem editar arquivo nenhum:
-#
-#     set SIGFT_RPA_ENGINE=playwright   &&  SIG-FT.bat
-#
-# Vence o mapa acima em TODOS os módulos -- é a alavanca de rollback imediato
-# que o CP 5.1 pede, e também a forma mais rápida de rodar a sessão de
-# validação de um checkpoint.
-ENV_RPA_ENGINE = "SIGFT_RPA_ENGINE"
-
-
-def get_rpa_engine(modulo: str) -> str:
-    """Motor de RPA a usar em `modulo` — `ENGINE_SELENIUM` ou
-    `ENGINE_PLAYWRIGHT`.
-
-    Ordem de resolução: variável de ambiente `SIGFT_RPA_ENGINE` (global) ->
-    `RPA_ENGINE[modulo]` -> `RPA_ENGINE_PADRAO`.
-
-    Um valor desconhecido (erro de digitação na variável de ambiente, por
-    exemplo) levanta `ValueError` em vez de cair no padrão em silêncio: um
-    `SIGFT_RPA_ENGINE=playwrigth` que silenciosamente rodasse Selenium faria o
-    usuário reportar como resultado do motor novo o que na verdade é o antigo
-    — e é justamente esse tipo de confusão que invalidaria a sessão de
-    validação de um checkpoint da Fase 5.
-    """
-    escolhido = os.environ.get(ENV_RPA_ENGINE) or RPA_ENGINE.get(modulo, RPA_ENGINE_PADRAO)
-    escolhido = escolhido.strip().lower()
-    if escolhido not in (ENGINE_SELENIUM, ENGINE_PLAYWRIGHT):
-        raise ValueError(
-            f"Motor de RPA desconhecido: {escolhido!r}. "
-            f"Use {ENGINE_SELENIUM!r} ou {ENGINE_PLAYWRIGHT!r} "
-            f"(verifique a variável de ambiente {ENV_RPA_ENGINE})."
-        )
-    return escolhido
-
-
-# Módulos que NÃO passam por `core/rpa/factory.criar_engine` -- constroem o
-# Selenium direto. Para eles, `RPA_ENGINE` e `SIGFT_RPA_ENGINE` são letra
-# morta: mudar o valor não muda nada, e dizer o contrário faria o usuário
-# atribuir ao motor um resultado que o motor não produziu.
-#
-# Hoje é um só, e ele some quando a Fase 6 reconstruir `ficha_duplicada` já em
-# Playwright.
-MODULOS_SEM_SELETOR_DE_MOTOR = ("ficha_duplicada",)
-
-
-def resumo_dos_motores() -> list[str]:
-    """Linhas de texto dizendo qual motor cada módulo usa AGORA.
-
-    Existe para responder, sem abrir código, à pergunta "estou rodando no motor
-    novo ou no antigo?" -- que o usuário fez depois de rodar dois atalhos
-    diferentes e obter o mesmo resultado nos dois. Obter o mesmo resultado era
-    o correto (ver `MODULOS_SEM_SELETOR_DE_MOTOR` e o mapa acima), mas não
-    havia como saber disso pela tela.
-
-    Derivado do mapa, nunca escrito à mão: um texto fixo no atalho `.bat`
-    envelheceria em silêncio na primeira promoção de módulo -- e um aviso que
-    mente sobre o motor é pior do que aviso nenhum.
-    """
-    forcado = (os.environ.get(ENV_RPA_ENGINE) or "").strip().lower()
-
-    por_motor: dict[str, list[str]] = {}
-    for modulo in sorted(RPA_ENGINE):
-        if modulo in MODULOS_SEM_SELETOR_DE_MOTOR:
-            continue
-        por_motor.setdefault(get_rpa_engine(modulo), []).append(modulo)
-
-    linhas = ["Motor de automacao do portal:"]
-    for motor in sorted(por_motor):
-        linhas.append(f"   {motor}: {', '.join(por_motor[motor])}")
-    for modulo in MODULOS_SEM_SELETOR_DE_MOTOR:
-        linhas.append(f"   selenium: {modulo} (modulo antigo -- ignora esta configuracao)")
-    if forcado:
-        linhas.append(f"   [{ENV_RPA_ENGINE}={forcado}] forcando o motor em todos os "
-                      "modulos que aceitam a configuracao.")
-    return linhas
-
 
 # =============================================================================
 # PLANILHA DE APLICAÇÕES LMR

@@ -54,7 +54,7 @@ rem wheel que o carregue. Por isso precisa de um passo proprio.
 rem
 rem Roda UMA vez (carimbo no venv) e NUNCA derruba a instalacao: em rede
 rem corporativa este download e o que mais falha, e o SIG-FT funciona sem ele
-rem -- o motor de RPA padrao e o Selenium, e a leitura de pagina por navegador
+rem -- o motor de RPA e o Playwright, e a leitura de pagina por navegador
 rem no AutoSpec e um recurso de ultimo recurso, opcional por desenho.
 call :_instalar_navegador
 

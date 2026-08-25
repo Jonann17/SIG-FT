@@ -47,7 +47,6 @@ apagar_lmr_backend = None
 pmib_manager_backend = None
 search_pmib_backend = None
 
-import upload_ficha_duplicada as backend
 
 # Configuração Global
 ctk.set_appearance_mode("Dark")
@@ -2745,8 +2744,6 @@ class ModuloCopiaFichas(ctk.CTkFrame):
         # original ou sem código do material). Ficam fora da fila, mas contadas
         # e explicadas -- ver `_worker_leitura_excel`.
         self.impedidas = []
-        self.sucessos = []
-        self.extrator_ativo = None
 
         # Layout Principal
         self.grid_columnconfigure(0, weight=1)
@@ -2795,32 +2792,29 @@ class ModuloCopiaFichas(ctk.CTkFrame):
 
         f_actions_grid = ctk.CTkFrame(frm_action, fg_color="transparent")
         f_actions_grid.pack(fill="x", padx=15, pady=10)
-        f_actions_grid.grid_columnconfigure((0, 1, 2), weight=1, uniform="cols")
+        f_actions_grid.grid_columnconfigure((0, 1), weight=1, uniform="cols")
 
         self.btn_resumo = ctk.CTkButton(f_actions_grid, text="1. Revisar / Editar Fichas", command=self.abrir_revisao,
                                         fg_color="#3A3A3A", hover_color="#454545", height=40, state="disabled")
         self.btn_resumo.grid(row=0, column=0, sticky="ew", padx=(0, 5))
 
-        self.btn_robo = ctk.CTkButton(f_actions_grid, text="2. Iniciar Robô Web", command=self.run_automation_thread,
-                                      fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"], height=40, state="disabled")
-        self.btn_robo.grid(row=0, column=1, sticky="ew", padx=5)
-
-        self.btn_salvar = ctk.CTkButton(f_actions_grid, text="3. Salvar 'COMPLETO' no Excel", command=self.salvar_excel,
-                                        fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"], height=40, state="disabled")
-        self.btn_salvar.grid(row=0, column=2, sticky="ew", padx=(5, 0))
-
-        # Robô NOVO (Fase 6), numa linha própria e com o escopo escrito no
-        # botão. Fica ao LADO do antigo, e não no lugar dele, porque o antigo
-        # funciona hoje: se o novo se comportar mal na sessão de validação, o
-        # trabalho do dia não para. O botão sai quando a Fase 6 fechar.
-        f_novo = ctk.CTkFrame(frm_action, fg_color="transparent")
-        f_novo.pack(fill="x", padx=15, pady=(0, 10))
-
+        # CP 5.5: aqui havia TRÊS botões -- "2. Iniciar Robô Web" (o robô em
+        # Selenium), "3. Salvar 'COMPLETO' no Excel" e este. Os dois primeiros
+        # saíram com o Selenium.
+        #
+        # O "3. Salvar COMPLETO" foi junto e não por tabela: ele marcava as
+        # QUATRO colunas de seção como COMPLETO para toda ficha que não tivesse
+        # estourado, sem olhar seção nenhuma. Quem faz isso agora é
+        # `duplicadas_robo.marcar_status_na_planilha`, seção por seção e a
+        # partir do resultado real -- e o robô já a chama sozinho no fim do
+        # lote. Planilha que diz COMPLETO no que ficou pela metade é pior do
+        # que planilha vazia.
         self.btn_robo_novo = ctk.CTkButton(
-            f_novo, text="2b. Robô NOVO (Playwright) — fabricante, referência e características",
+            f_actions_grid, text="2. Iniciar Robô Web",
             command=self.run_robo_novo_thread,
-            fg_color="#3A3A3A", hover_color="#454545", height=40, state="disabled")
-        self.btn_robo_novo.pack(fill="x")
+            fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"],
+            height=40, state="disabled")
+        self.btn_robo_novo.grid(row=0, column=1, sticky="ew", padx=(5, 0))
 
         # Log de auditoria (2026-08-18, pedido do usuário: "trabalhar com os
         # logs de saída do que está acontecendo pra eventual auditoria do
@@ -2936,7 +2930,6 @@ class ModuloCopiaFichas(ctk.CTkFrame):
 
         estado = "normal" if self.fila_selecionada else "disabled"
         self.btn_resumo.configure(state=estado)
-        self.btn_robo.configure(state=estado)
         self.btn_robo_novo.configure(state=estado)
 
     def abrir_revisao(self):
@@ -2950,10 +2943,10 @@ class ModuloCopiaFichas(ctk.CTkFrame):
         if not self.fila_selecionada:
             return
         # Os botões são desligados AQUI, na thread da UI, e não lá dentro: o
-        # tkinter não é seguro fora da thread principal. O robô antigo faz isso
-        # de dentro do worker -- funciona na prática e é o tipo de coisa que
-        # falha um dia, sem padrão. Código novo não repete.
-        for botao in (self.btn_robo, self.btn_robo_novo, self.btn_resumo, self.btn_status):
+        # tkinter não é seguro fora da thread principal. O robô antigo fazia
+        # isso de dentro do worker -- funcionava na prática e é o tipo de coisa
+        # que falha um dia, sem padrão. Código novo não repete.
+        for botao in (self.btn_robo_novo, self.btn_resumo, self.btn_status):
             botao.configure(state="disabled")
         threading.Thread(target=self._worker_robo_novo, daemon=True).start()
 
@@ -3052,18 +3045,10 @@ class ModuloCopiaFichas(ctk.CTkFrame):
                 except Exception:
                     pass
             self.after(0, lambda: [
-                self.btn_robo.configure(state="normal"),
                 self.btn_robo_novo.configure(state="normal"),
                 self.btn_resumo.configure(state="normal"),
                 self.btn_status.configure(state="normal"),
             ])
-
-    # =========================================================================
-    # LÓGICA DO ROBÔ WEB
-    # =========================================================================
-    def run_automation_thread(self):
-        if not self.fila_selecionada: return
-        threading.Thread(target=self._bot_worker).start()
 
     def _mostrar_janela_pausa(self, evento_espera):
         """Pausa o robô para o usuário fazer Login e iniciar."""
@@ -3084,100 +3069,6 @@ class ModuloCopiaFichas(ctk.CTkFrame):
         ctk.CTkButton(top, text="CONTINUAR AUTOMAÇÃO", command=liberar_robo,
                       fg_color=COLORS["primary"], height=45, font=("Roboto", 14, "bold")).pack(pady=(0, 20))
 
-    def _bot_worker(self):
-        self.btn_robo.configure(state="disabled")
-        self.btn_resumo.configure(state="disabled")
-        self.btn_status.configure(state="disabled")
-        self.sucessos = []
-
-        try:
-            self.log("Iniciando navegador...")
-            # Instancia as duas classes do backend
-            self.extrator_ativo = backend.ExtratorFichaBase()
-            driver = self.extrator_ativo.iniciar_driver_silencioso()
-            injetor = backend.InjetorFichaAlvo(driver, self.extrator_ativo.wait)
-
-            self.log("Acessando portal PMIB...")
-            driver.get("https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList")
-
-            # Pausa para o Login do Usuário
-            evento_espera = threading.Event()
-            self.after(0, lambda: self._mostrar_janela_pausa(evento_espera))
-            evento_espera.wait()
-
-            total = len(self.fila_selecionada)
-            for idx, item in enumerate(self.fila_selecionada):
-                pmib_orig = item["pmib_original"]
-                pmib_alvo = item["pmib_alvo"]
-                desc = item["descricao"]
-
-                self.progress.set((idx + 1) / total)
-                self.log(f"[{idx+1}/{total}] Processando Ficha:\nAlvo: {pmib_alvo} | Base: {pmib_orig}")
-
-                try:
-                    # 1. Extração
-                    self.log(f" -> Extraindo dados da ficha original...")
-                    dados_memoria = self.extrator_ativo.extrair_dados_ficha(pmib_orig)
-                    dados_memoria["pmib_alvo"] = pmib_alvo  # Anexa o alvo ao dicionário
-
-                    # 2. Injeção
-                    self.log(f" -> Injetando dados na ficha alvo...")
-                    sucesso = injetor.clonar_ficha(dados_memoria)
-
-                    if sucesso:
-                        self.log(f" -> ✅ SUCESSO na clonagem.")
-                        self.sucessos.append(pmib_alvo)
-
-                except Exception as e:
-                    self.log(f" -> ❌ ERRO processando {pmib_alvo}: {e}")
-
-            self.log("Automação Web concluída!")
-            self.after(0, lambda: messagebox.showinfo("Concluído", "Processo web finalizado. Verifique o log e salve no Excel."))
-            self.after(0, lambda: self.btn_salvar.configure(state="normal"))
-
-        except Exception as e:
-            self.log(f"Erro Fatal no Robô: {e}")
-        finally:
-            self.after(0, lambda: self.btn_robo.configure(state="normal"))
-            self.after(0, lambda: self.btn_resumo.configure(state="normal"))
-            self.after(0, lambda: self.btn_status.configure(state="normal"))
-            if self.extrator_ativo and self.extrator_ativo.driver:
-                try: self.extrator_ativo.driver.quit()
-                except: pass
-
-    # =========================================================================
-    # LÓGICA DE SALVAMENTO (Fase 4)
-    # =========================================================================
-    def salvar_excel(self):
-        if not self.sucessos:
-            return messagebox.showwarning("Aviso", "Nenhuma ficha foi clonada com sucesso para atualizar o Excel.")
-
-        self.btn_salvar.configure(state="disabled")
-        self.log("Atualizando Excel _STATUS_PMIB...")
-        threading.Thread(target=self._worker_salvar).start()
-
-    def _worker_salvar(self):
-        atualizador = backend.AtualizadorStatusPMIB(self.caminho_status)
-        secoes = {
-            "INFO. GERAIS": True,
-            "CONDIÇÕES": True,
-            "CARACT. TÉCNICAS": True,
-            sigft_config.COL_DOCS_IMAGENS: True
-        }
-
-        erros = 0
-        for pmib in self.sucessos:
-            ok = atualizador.atualizar_ficha_concluida(pmib, secoes, callback_log=self.log)
-            if not ok: erros += 1
-
-        if erros == 0:
-            self.log("✅ Todas as fichas foram atualizadas no Excel.")
-            self.after(0, lambda: messagebox.showinfo("Sucesso", "Status atualizado no Excel com sucesso!"))
-        else:
-            self.log(f"⚠️ Terminou com {erros} erros ao salvar no Excel.")
-            self.after(0, lambda: messagebox.showwarning("Aviso", "Algumas atualizações falharam. Verifique o log."))
-
-        self.after(0, lambda: self.btn_salvar.configure(state="normal"))
 
 
 # =============================================================================
@@ -5643,17 +5534,10 @@ class SIG_FT_App(ctk.CTk):
 
 
 if __name__ == "__main__":
-    # Qual motor de RPA está valendo, na janela preta, antes de tudo.
-    #
-    # Existe porque o usuário rodou dois atalhos diferentes (SIG-FT.bat e o
-    # antigo SIG-FT-Playwright.bat), obteve o MESMO resultado nos dois e não
-    # tinha como saber por quê -- a resposta certa era "porque o Playwright já
-    # é o padrão", mas ela só estava no código. Impresso aqui, e não escrito no
-    # `.bat`, o texto não tem como divergir do `config.RPA_ENGINE`: ele é
-    # derivado do mapa.
-    for _linha_motor in sigft_config.resumo_dos_motores():
-        print(f"[SIG-FT] {_linha_motor}")
-    print()
+    # CP 5.5: aqui se imprimia qual motor cada módulo estava usando. Fazia
+    # sentido enquanto havia DOIS e o usuário não tinha como saber em qual
+    # estava. Agora só há o Playwright, e um texto que diz sempre a mesma coisa
+    # é ruído que ninguém lê.
 
     # O loop principal agora começa pela Splash Screen
     # Ela, por sua vez, chamará o SIG_FT_App ao terminar

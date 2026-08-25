@@ -4,7 +4,7 @@ de importação (CP 0.2) do plano de refatoração — ver
 docs/refatoracao/PLANO_REFATORACAO.md.
 
 Este ambiente de teste NÃO tem as dependências pesadas de produção instaladas
-(pandas, openpyxl, selenium, google-generativeai, llama_parse, PyPDF2, bs4,
+(pandas, openpyxl, playwright, google-generativeai, llama_parse, PyPDF2, bs4,
 xlwings, deep_translator, unidecode, customtkinter etc.) — só a stdlib,
 `requests` e (depois de instalado só para rodar os testes) `pytest`.
 [CP 3.2] `langchain-google-genai`/`langchain-core` foram REMOVIDOS de
@@ -19,7 +19,7 @@ arquivo. Para conseguir importar e testar as funções PURAS (regex/string, sem
 I/O nem estado) que vivem dentro desses módulos, este conftest injeta um
 `unittest.mock.MagicMock()` em `sys.modules` para cada pacote/submódulo pesado
 ANTES que qualquer teste importe os módulos de produção. Um MagicMock devolve
-qualquer atributo automaticamente, então `from selenium.webdriver.common.by
+qualquer atributo automaticamente, então `from langchain_core.prompts
 import By` funciona sem o pacote real instalado.
 
 O pytest garante que os `conftest.py` de um diretório são carregados antes da
@@ -59,8 +59,8 @@ if REPO_ROOT not in sys.path:
 #    tests/test_smoke_imports.py. As entradas novas do CP 0.2 estão marcadas
 #    abaixo; o restante já vinha do CP 0.1.
 #
-#    Inclui cada nível pontilhado (ex.: "selenium", "selenium.webdriver",
-#    "selenium.webdriver.common", "selenium.webdriver.common.by") pelo mesmo
+#    Inclui cada nível pontilhado (ex.: "google", "google.generativeai";
+#    "langchain_core", "langchain_core.prompts") pelo mesmo
 #    motivo de "from a.b.c import X" precisar resolver "a" e "a.b" durante o
 #    import — um MagicMock resolve atributos ausentes automaticamente, mas
 #    deixamos os níveis intermediários explícitos por clareza/robustez.
@@ -79,19 +79,10 @@ _HEAVY_MODULES = [
     # analyzer_backend
     "google",
     "google.generativeai",
-    # selenium — usado por upload_tech_specs_backend, upload_ficha_duplicada.py
-    "selenium",
-    "selenium.webdriver",
-    "selenium.webdriver.common",
-    "selenium.webdriver.common.by",
-    "selenium.webdriver.common.keys",
-    # [CP 0.2] submódulo ActionChains — usado só por lmr_backend.py
-    # ("from selenium.webdriver.common.action_chains import ActionChains").
-    "selenium.webdriver.common.action_chains",
-    "selenium.webdriver.support",
-    "selenium.webdriver.support.ui",
-    "selenium.common",
-    "selenium.common.exceptions",
+    # CP 5.5 (2026-08-25): aqui havia onze entradas stubando o `selenium` e
+    # seus submódulos. O pacote saiu do projeto com o motor; stub de módulo
+    # que ninguém importa é pior que inútil -- ele faria um `import selenium`
+    # acidental PASSAR no teste e só quebrar na máquina do usuário.
     # autospec_backend.py — extração de PDF/HTML e pipeline RAG
     # [CP 3.2] langchain_google_genai/langchain_core(.prompts/.
     # output_parsers) removidos daqui: nenhum arquivo de produção importa

@@ -31,12 +31,10 @@ import apagar_lmr_backend
 import cria_fichas_no_pmib_v1_backend
 import lmr_backend
 import upload_conditions_backend
-import upload_ficha_duplicada
 import upload_tech_specs_backend
 from sigft import config
 from sigft.core.callbacks import UICallbacks
 from sigft.core.rpa.portal import PMIBPortal
-from sigft.core.rpa.selenium_engine import SeleniumEngine
 
 
 @pytest.fixture(autouse=True)
@@ -223,33 +221,6 @@ def test_conditions_processor_e_tech_specs_processor_tem_stop_flag_sem_engine():
     assert proc2.portal.deve_parar() is True
 
 
-def test_upload_ficha_duplicada_extrator_iniciar_driver_silencioso_resolve_portal(tmp_path):
-    chamadas = []
-    driver_sentinel, wait_sentinel = object(), object()
-    extrator = upload_ficha_duplicada.ExtratorFichaBase(dir_download_temp=str(tmp_path / "dl"))
-
-    with patch.object(
-        upload_ficha_duplicada, "create_chrome_driver",
-        _fake_factory(chamadas, driver_sentinel, wait_sentinel),
-    ):
-        extrator.iniciar_driver_silencioso()
-
-    assert isinstance(extrator.portal, PMIBPortal)
-    assert isinstance(extrator.portal.engine, SeleniumEngine)
-    assert extrator.portal.engine.driver is driver_sentinel
-    assert extrator.portal.engine.wait is wait_sentinel
-
-
-def test_upload_ficha_duplicada_injetor_construtor_resolve_portal_sobre_driver_wait_recebidos():
-    driver_sentinel, wait_sentinel = object(), object()
-    injetor = upload_ficha_duplicada.InjetorFichaAlvo(driver_sentinel, wait_sentinel)
-
-    assert isinstance(injetor.portal, PMIBPortal)
-    assert isinstance(injetor.portal.engine, SeleniumEngine)
-    assert injetor.portal.engine.driver is driver_sentinel
-    assert injetor.portal.engine.wait is wait_sentinel
-
-
 # ===========================================================================
 # 2. Delegação -- métodos delegadores chamam self.portal com o argumento
 #    certo (string XPath extraída da tupla).
@@ -290,48 +261,6 @@ def test_upload_tech_specs_safe_click_delega():
     auto.safe_click("//button[@id='salvar']")
 
     assert espiao.safe_click_chamadas == ["//button[@id='salvar']"]
-
-
-def test_upload_ficha_duplicada_injetor_safe_click_e_clicar_salvar_visivel_delegam():
-    injetor = upload_ficha_duplicada.InjetorFichaAlvo(object(), object())
-    espiao = _PortalEspiao()
-    injetor.portal = espiao
-
-    injetor.safe_click((upload_ficha_duplicada.By.XPATH, "//a[@id='w']"))
-    assert espiao.safe_click_chamadas == ["//a[@id='w']"]
-
-    class _EspiaoComSalvar(_PortalEspiao):
-        def __init__(self):
-            super().__init__()
-            self.clicar_salvar_visivel_chamadas = []
-
-        def clicar_salvar_visivel(self, nome_secao=""):
-            self.clicar_salvar_visivel_chamadas.append(nome_secao)
-            return True
-
-    espiao2 = _EspiaoComSalvar()
-    injetor.portal = espiao2
-    resultado = injetor._clicar_salvar_visivel("Fornecedores")
-    assert resultado is True
-    assert espiao2.clicar_salvar_visivel_chamadas == ["Fornecedores"]
-
-
-def test_upload_ficha_duplicada_injetor_excluir_linha_delega_e_mantem_flag_incondicional():
-    # `_limpar_caracteristicas_tecnicas` marca `item_foi_excluido = True`
-    # INCONDICIONALMENTE após chamar o portal (mesmo comportamento do
-    # original) -- aqui testamos só a delegação do PONTO de exclusão via um
-    # teste direto do método `excluir_linha_com_confirmacao` do espião
-    # (o fluxo completo de paginação não é exercitado -- ver escopo do
-    # checkpoint).
-    injetor = upload_ficha_duplicada.InjetorFichaAlvo(object(), object())
-    espiao = _PortalEspiao()
-    injetor.portal = espiao
-
-    row_fake = object()
-    resultado = injetor.portal.excluir_linha_com_confirmacao(row_fake)
-
-    assert resultado is True
-    assert espiao.excluir_linha_chamadas == [row_fake]
 
 
 # ===========================================================================
@@ -402,34 +331,6 @@ def test_upload_conditions_processar_lista_chama_pesquisar_e_abrir_com_overrides
     assert kwargs["lapis_xpath_template"] == (
         "//span[text()='{pmib}']/ancestor::tr//a[.//i[contains(@class, 'fa-pencil-square-o')]]"
     )
-
-
-def test_upload_ficha_duplicada_pesquisar_e_abrir_extrator_usa_overrides_e_levanta_se_falhar():
-    extrator = upload_ficha_duplicada.ExtratorFichaBase.__new__(upload_ficha_duplicada.ExtratorFichaBase)
-    espiao = _PortalEspiao(pesquisar_e_abrir_retorno=False)
-    extrator.portal = espiao
-
-    import pytest as _pytest
-    with _pytest.raises(RuntimeError):
-        extrator._pesquisar_e_abrir("4500063671.7777")
-
-    pmib_chamado, kwargs = espiao.pesquisar_e_abrir_chamadas[0]
-    assert pmib_chamado == "4500063671.7777"
-    assert kwargs["busca_xpath"] == "//input[contains(@id, 'InputDatasheetFilter') or contains(@placeholder, 'Código')]"
-    assert kwargs["lapis_xpath_template"] == "//tr[contains(., '{pmib}')]//a[.//i[contains(@class, 'fa-pencil')]]"
-
-
-def test_upload_ficha_duplicada_pesquisar_e_abrir_injetor_usa_overrides_e_nao_levanta_se_sucesso():
-    injetor = upload_ficha_duplicada.InjetorFichaAlvo(object(), object())
-    espiao = _PortalEspiao(pesquisar_e_abrir_retorno=True)
-    injetor.portal = espiao
-
-    injetor._pesquisar_e_abrir("4500063671.8888")  # não levanta
-
-    pmib_chamado, kwargs = espiao.pesquisar_e_abrir_chamadas[0]
-    assert pmib_chamado == "4500063671.8888"
-    assert kwargs["busca_xpath"] == "//input[contains(@id, 'InputDatasheetFilter') or contains(@placeholder, 'Código')]"
-    assert kwargs["lapis_xpath_template"] == "//tr[contains(., '{pmib}')]//a[.//i[contains(@class, 'fa-pencil')]]"
 
 
 # ===========================================================================

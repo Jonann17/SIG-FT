@@ -3,10 +3,14 @@ sigft/core/rpa/factory.py — ponto único que decide QUAL motor de browser subi
 (Checkpoint 5.1 do plano de refatoração).
 
 Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 5 -> CP 5.1: "Config
-`RPA_ENGINE = "selenium" | "playwright"` por módulo (permite migração gradual e
+`RPA_ENGINE = "selenium" | "playwright"` por módulo (permitia migração gradual e
 rollback imediato)".
 
-Um serviço migrado NÃO importa `selenium_engine` nem `playwright_engine`: pede
+⚠️ O mapa `RPA_ENGINE` e o Selenium saíram no CP 5.5 (2026-08-25), quando a
+Fase 6 fechou validada no portal. A REGRA abaixo é o que sobreviveu, e é a
+razão de a fábrica continuar existindo com um motor só.
+
+Um serviço NÃO importa `playwright_engine`: pede
 `criar_engine("apagar_lmr")` e recebe um `RPAEngine`. É essa indireção que
 transforma "migrar um módulo" em "trocar uma linha de `config.RPA_ENGINE`" e,
 principalmente, "voltar atrás" em trocar a mesma linha de volta -- que é o que
@@ -44,13 +48,14 @@ def criar_engine(
     motores; cada um preserva o valor que o call site já usava antes da Fase 5
     (10, 15 ou 20 — divergem entre módulos e NÃO são unificados aqui).
     """
-    escolhido = config.get_rpa_engine(modulo)
+    # CP 5.5: havia um `if` aqui, escolhendo entre os dois motores por
+    # `config.RPA_ENGINE`. O Selenium saiu do projeto em 2026-08-25, depois de
+    # a Fase 6 fechar validada no portal -- a flag existia para permitir
+    # rollback durante a migração, e migração terminada não tem rollback.
+    #
+    # A função CONTINUA existindo, e não por inércia: é ela que mantém a regra
+    # "nenhum serviço importa um motor concreto". O dia em que houver um motor
+    # novo, o `if` volta aqui e em lugar nenhum mais.
+    from sigft.core.rpa.playwright_engine import PlaywrightEngine
 
-    if escolhido == config.ENGINE_PLAYWRIGHT:
-        from sigft.core.rpa.playwright_engine import PlaywrightEngine
-
-        return PlaywrightEngine.criar(wait_timeout=wait_timeout, download_dir=download_dir)
-
-    from sigft.core.rpa.selenium_engine import SeleniumEngine
-
-    return SeleniumEngine.create(wait_timeout=wait_timeout, download_dir=download_dir)
+    return PlaywrightEngine.criar(wait_timeout=wait_timeout, download_dir=download_dir)

@@ -40,7 +40,9 @@ Decisões de contrato (ver especificação do CP 2.1):
   - `element_exists(seletor)` é uma checagem IMEDIATA ("existe agora, sem
     esperar?"), DIFERENTE de `wait_visible`/`wait_clickable` (que BLOQUEIAM
     até a condição ser satisfeita ou o timeout do motor estourar). Ver
-    `selenium_engine.py` para a implementação concreta de cada um.
+    `playwright_engine.py` para a implementação concreta de cada um. (Houve um
+    `selenium_engine.py` até o CP 5.5; a abstração nasceu para permitir os dois
+    lado a lado, e é o que tornaria barato um terceiro.)
   - `get_value(seletor)` lê o valor atual de um campo de formulário (mesmo
     papel do `_ler_input`/`get_attribute("value")` de hoje em
     `upload_ficha_duplicada.ExtratorFichaBase`).
@@ -98,7 +100,7 @@ class RPAEngine(ABC):
     """Contrato único que um serviço de automação (hoje `*_backend.py`
     diretamente; `PMIBPortal` a partir do CP 2.2) usa para falar com um
     browser, sem conhecer se por trás roda Selenium
-    (`selenium_engine.SeleniumEngine`, Fases 1-4) ou Playwright
+    (`selenium_engine.SeleniumEngine`, Fases 1-4, removido no CP 5.5) ou Playwright
     (`playwright_engine.PlaywrightEngine`, Fase 5)."""
 
     @abstractmethod

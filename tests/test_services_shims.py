@@ -84,7 +84,6 @@ MODULOS_SHIM = [
     ("cria_fichas_no_pmib_v1_backend", "cria_fichas", "DataManager"),
     ("upload_conditions_backend", "upload_conditions", "ConditionsProcessor"),
     ("upload_tech_specs_backend", "tech_specs", "TechSpecsProcessor"),
-    ("upload_ficha_duplicada", "ficha_duplicada", "GerenciadorFilaPMIB"),
     ("pmib_manager_backend", "pmib_manager", "PMIBManager"),
 ]
 
@@ -105,7 +104,6 @@ _MODULOS_UNICOS_2A_METADE = [
     "cria_fichas_no_pmib_v1_backend",
     "upload_conditions_backend",
     "upload_tech_specs_backend",
-    "upload_ficha_duplicada",
     "pmib_manager_backend",
 ]
 
@@ -161,14 +159,22 @@ def test_modulo_novo_importavel_diretamente_por_sigft_services(nome_antigo, nome
 
 
 # =============================================================================
-# Honestidade: garante que MODULOS_SHIM cobre exatamente os 12 módulos do
-# checkpoint (nem a mais, nem a menos) -- mesmo padrão de
+# Honestidade: garante que MODULOS_SHIM cobre exatamente os módulos que ainda
+# existem (nem a mais, nem a menos) -- mesmo padrão de
 # tests/test_rpa_sleep_constants.py::test_todas_as_constantes_pausa_de_portal_estao_cobertas_pelo_teste.
 # =============================================================================
-def test_os_12_modulos_do_checkpoint_estao_todos_cobertos_pela_tabela():
+def test_todos_os_modulos_do_checkpoint_estao_cobertos_pela_tabela():
+    """Eram 12 no CP 4.1; são 11 desde o CP 5.5.
+
+    `upload_ficha_duplicada` saiu em 2026-08-25 com o Selenium: ele era o
+    shim do módulo ANTIGO de ficha duplicada, que a Fase 6 substituiu por
+    `services/duplicadas*.py`. O número aqui é derivado da tabela, e não
+    escrito à mão, justamente para a próxima remoção não exigir editar dois
+    lugares -- mas o `assert` do total fica, porque é ele que impede alguém
+    apagar uma linha da tabela sem perceber."""
     nomes_na_tabela = {nome_antigo for nome_antigo, _nome_novo, _atributo in MODULOS_SHIM}
     assert nomes_na_tabela == set(_MODULOS_UNICOS)
-    assert len(_MODULOS_UNICOS) == 12
+    assert len(_MODULOS_UNICOS) == 11
 
 
 def test_nenhum_backend_pesado_sobrou_na_raiz_fora_dos_shims():

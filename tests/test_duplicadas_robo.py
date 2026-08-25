@@ -115,8 +115,13 @@ def _com_etapas(monkeypatch, *, blocos=(("Fabricantes", {"Fabricante": "SCHNEIDE
 # ===========================================================================
 def test_o_modulo_novo_roda_em_playwright():
     """"Podemos fazer direto no motor novo" -- palavra do usuário. É o primeiro
-    módulo do projeto que nunca teve versão Selenium."""
-    assert config.get_rpa_engine(robo.NOME_DO_MODULO) == config.ENGINE_PLAYWRIGHT
+    módulo do projeto que nunca teve versão Selenium.
+
+    Desde o CP 5.5 não há mais o que escolher: `config.get_rpa_engine` saiu
+    junto com o Selenium. O que sobrou para afirmar é que o módulo pede o
+    motor à fábrica em vez de construir um, e é o teste abaixo que trava
+    isso."""
+    assert robo.NOME_DO_MODULO == "duplicadas"
 
 
 def test_o_robo_novo_nao_importa_selenium():

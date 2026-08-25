@@ -689,39 +689,13 @@ def test_existe_favorito_openrouter_mais_barato_que_todo_favorito_gemini():
 
 
 # =============================================================================
-# B4. Motor de RPA padrão — promoção do Playwright (2026-08-11)
+# B4. Motor de RPA — CP 5.5 (2026-08-25)
 # =============================================================================
-# Depois da validação contra o portal real, os 5 módulos portados passaram a
-# rodar em Playwright por padrão. Estes testes travam as duas metades da
-# decisão: o que mudou e o que NÃO mudou.
-
-def test_os_cinco_modulos_portados_rodam_em_playwright_por_padrao():
-    for modulo in ("apagar_lmr", "lmr", "cria_fichas", "upload_conditions", "tech_specs"):
-        assert sigft_config.RPA_ENGINE[modulo] == sigft_config.ENGINE_PLAYWRIGHT, modulo
-
-
-def test_ficha_duplicada_continua_em_selenium():
-    """Não é conservadorismo: é o único módulo que nunca foi portado (importa
-    `webdriver`/`By`/`Select` direto) e a Fase 6 vai reconstruí-lo já em
-    Playwright. Portá-lo agora seria trabalho jogado fora na reescrita."""
-    assert sigft_config.RPA_ENGINE["ficha_duplicada"] == sigft_config.ENGINE_SELENIUM
-
-
-def test_a_variavel_de_ambiente_ainda_devolve_tudo_ao_selenium(monkeypatch):
-    """O caminho de volta é o que tornou esta troca barata, e ele tem de
-    sobreviver à promoção do padrão: uma linha no ambiente devolve os 6
-    módulos ao motor antigo, sem tocar em código."""
-    monkeypatch.setenv(sigft_config.ENV_RPA_ENGINE, sigft_config.ENGINE_SELENIUM)
-
-    for modulo in sigft_config.RPA_ENGINE:
-        assert sigft_config.get_rpa_engine(modulo) == sigft_config.ENGINE_SELENIUM
-
-
-def test_erro_de_digitacao_na_variavel_continua_parando_o_app(monkeypatch):
-    # Sem isto, `playwrigth` cairia no padrão em silêncio -- e agora o padrão
-    # é justamente o motor que se queria testar, então o engano ficaria
-    # invisível.
-    monkeypatch.setenv(sigft_config.ENV_RPA_ENGINE, "playwrigth")
-
-    with pytest.raises(ValueError):
-        sigft_config.get_rpa_engine("cria_fichas")
+# Aqui havia cinco testes travando as duas metades da promoção do Playwright:
+# quais módulos rodavam nele, que `ficha_duplicada` continuava em Selenium, e
+# que `SIGFT_RPA_ENGINE=selenium` devolvia tudo ao motor antigo.
+#
+# Os cinco descreviam uma ESCOLHA, e a escolha acabou: o Selenium saiu do
+# projeto quando a Fase 6 fechou validada no portal. O que resta a testar
+# sobre motor não é mais de config -- é de `core/rpa/factory`, e está em
+# `tests/test_rpa_factory.py`.

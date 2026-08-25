@@ -19,6 +19,10 @@ terminando em salvar + confirmar.
 
 O `DataFrame` falso é o mesmo de tests/test_lmr_indice_except.py -- só o que
 o serviço realmente usa (`.empty`, `.shape`, `len()`, `.loc`, `.iloc`).
+
+⚠️ CP 5.5 (2026-08-25): a metade Selenium saiu daqui junto com o motor. O que
+fica vale pelo motivo original -- é o único lugar que exercita a cadeia
+serviço -> portal -> motor com as classes DE VERDADE, trocando só o browser.
 """
 from __future__ import annotations
 
@@ -28,7 +32,6 @@ import sigft.services.lmr as lmr_mod
 from sigft import config
 from sigft.core.callbacks import UICallbacks
 from sigft.core.rpa.playwright_engine import PlaywrightEngine
-from sigft.core.rpa.selenium_engine import SeleniumEngine
 from sigft.services.lmr import LMRAutomation
 
 
@@ -144,94 +147,9 @@ class _PaginaPW:
         pass
 
 
-class _ElementoSel:
-    def __init__(self, driver, seletor):
-        self.driver = driver
-        self.seletor = seletor
-
-    def clear(self):
-        self.driver.registrar("clear", self.seletor, "")
-
-    def send_keys(self, texto):
-        self.driver.registrar("type", self.seletor, texto)
-
-
-class _WaitSel:
-    def __init__(self, driver):
-        self.driver = driver
-
-    def until(self, condicao):
-        _, (_by, seletor) = condicao
-        self.driver.ultimo_seletor = seletor
-        return _ElementoSel(self.driver, seletor)
-
-
-class _DriverSel:
-    def __init__(self):
-        self.acoes = []
-        self.url = ""
-        self.ultimo_seletor = ""
-
-    def registrar(self, *args):
-        self.acoes.append(args)
-
-    def execute_script(self, script, elemento):
-        if "click" in script:
-            self.registrar("click", self.ultimo_seletor)
-
-    def get(self, url):
-        self.url = url
-
-    def quit(self):
-        pass
-
-
-class _ActionsSel:
-    """`SeleniumEngine.press` monta um `ActionChains`; o duplo registra as
-    teclas na mesma lista das demais ações, para a comparação entre motores
-    enxergar TAB/ENTER na posição certa."""
-
-    def __init__(self, driver):
-        self.driver = driver
-        self._teclas = []
-
-    def send_keys(self, tecla):
-        self._teclas.append(tecla)
-        return self
-
-    def perform(self):
-        for tecla in self._teclas:
-            self.driver.registrar("press", tecla)
-        self._teclas = []
-
-
-@pytest.fixture(autouse=True)
-def _selenium_transparente(monkeypatch):
-    """`EC`/`Keys`/`ActionChains` são MagicMock neste ambiente
-    (tests/conftest.py). Aqui viram objetos simples, para o duplo enxergar o
-    XPath pedido e o nome da tecla enviada -- mesma técnica de
-    tests/test_portal.py."""
-    import sigft.core.rpa.selenium_engine as se
-
-    monkeypatch.setattr(se.EC, "element_to_be_clickable", lambda loc: ("clickable", loc))
-    monkeypatch.setattr(se.EC, "presence_of_element_located", lambda loc: ("presence", loc))
-    monkeypatch.setattr(se, "ActionChains", lambda driver: _ActionsSel(driver))
-    for nome in ("TAB", "ENTER"):
-        monkeypatch.setattr(se.Keys, nome, nome, raising=False)
-
-
 def _automacao_playwright():
     auto = LMRAutomation.__new__(LMRAutomation)
     auto.engine = PlaywrightEngine(_PaginaPW())
-    auto.portal = None
-    auto.url_inicial = config.PORTAL_URL
-    return auto
-
-
-def _automacao_selenium():
-    driver = _DriverSel()
-    auto = LMRAutomation.__new__(LMRAutomation)
-    auto.engine = SeleniumEngine(driver, _WaitSel(driver))
     auto.portal = None
     auto.url_inicial = config.PORTAL_URL
     return auto
@@ -252,7 +170,10 @@ def _rodar(auto, df):
 # ===========================================================================
 # Testes
 # ===========================================================================
-@pytest.mark.parametrize("montar", [_automacao_playwright, _automacao_selenium], ids=["playwright", "selenium"])
+# CP 5.5: a parametrização tinha os DOIS motores -- era ela que provava
+# paridade. Ficou com um só quando o Selenium saiu do projeto; a forma
+# parametrizada fica porque é o encaixe do dia em que houver outro motor.
+@pytest.mark.parametrize("montar", [_automacao_playwright], ids=["playwright"])
 def test_preenche_codigo_quantidade_e_cada_tag(montar):
     auto = montar()
 
@@ -273,7 +194,10 @@ def test_preenche_codigo_quantidade_e_cada_tag(montar):
     ]
 
 
-@pytest.mark.parametrize("montar", [_automacao_playwright, _automacao_selenium], ids=["playwright", "selenium"])
+# CP 5.5: a parametrização tinha os DOIS motores -- era ela que provava
+# paridade. Ficou com um só quando o Selenium saiu do projeto; a forma
+# parametrizada fica porque é o encaixe do dia em que houver outro motor.
+@pytest.mark.parametrize("montar", [_automacao_playwright], ids=["playwright"])
 def test_cada_tag_dispara_tab_e_depois_enter(montar):
     # O par TAB/ENTER era um `ActionChains(...).send_keys(TAB).pause(0.5).
     # send_keys(ENTER)`: o autocomplete do OutSystems precisa dos dois, nessa
@@ -291,7 +215,10 @@ def test_cada_tag_dispara_tab_e_depois_enter(montar):
     assert teclas == ["TAB", "ENTER", "TAB", "ENTER"]
 
 
-@pytest.mark.parametrize("montar", [_automacao_playwright, _automacao_selenium], ids=["playwright", "selenium"])
+# CP 5.5: a parametrização tinha os DOIS motores -- era ela que provava
+# paridade. Ficou com um só quando o Selenium saiu do projeto; a forma
+# parametrizada fica porque é o encaixe do dia em que houver outro motor.
+@pytest.mark.parametrize("montar", [_automacao_playwright], ids=["playwright"])
 def test_limpa_cada_campo_antes_de_digitar(montar):
     # `clear()` + `send_keys()` -- sem a limpeza, o valor da TAG anterior fica
     # no campo e a próxima TAG é digitada colada nela.
@@ -310,7 +237,10 @@ def test_limpa_cada_campo_antes_de_digitar(montar):
     ]
 
 
-@pytest.mark.parametrize("montar", [_automacao_playwright, _automacao_selenium], ids=["playwright", "selenium"])
+# CP 5.5: a parametrização tinha os DOIS motores -- era ela que provava
+# paridade. Ficou com um só quando o Selenium saiu do projeto; a forma
+# parametrizada fica porque é o encaixe do dia em que houver outro motor.
+@pytest.mark.parametrize("montar", [_automacao_playwright], ids=["playwright"])
 def test_salva_e_confirma_no_fim_de_cada_codigo(montar):
     auto = montar()
 
@@ -325,7 +255,10 @@ def test_salva_e_confirma_no_fim_de_cada_codigo(montar):
     ]
 
 
-@pytest.mark.parametrize("montar", [_automacao_playwright, _automacao_selenium], ids=["playwright", "selenium"])
+# CP 5.5: a parametrização tinha os DOIS motores -- era ela que provava
+# paridade. Ficou com um só quando o Selenium saiu do projeto; a forma
+# parametrizada fica porque é o encaixe do dia em que houver outro motor.
+@pytest.mark.parametrize("montar", [_automacao_playwright], ids=["playwright"])
 def test_agrupa_tags_consecutivas_do_mesmo_codigo(montar):
     auto = montar()
 
@@ -338,30 +271,3 @@ def test_agrupa_tags_consecutivas_do_mesmo_codigo(montar):
     assert quantidades == ["2", "1"]
 
 
-def test_os_dois_motores_produzem_a_mesma_sequencia_de_acoes():
-    # A promessa central da Fase 5, no módulo do CP 5.2: trocar o motor não
-    # muda o que acontece no portal.
-    dados = (("COD-1", "TAG-A"), ("COD-1", "TAG-B"), ("COD-2", "TAG-C"))
-
-    auto_pw = _automacao_playwright()
-    auto_sel = _automacao_selenium()
-    _rodar(auto_pw, _df(*dados))
-    _rodar(auto_sel, _df(*dados))
-
-    def _normalizar(acoes):
-        # Duas diferenças são do DUPLO, não do comportamento, e são aplainadas
-        # aqui: o `clear` do Playwright carrega o texto vazio junto, e cada
-        # motor escreve o nome da tecla no seu formato ("TAB" x "Tab"). Tudo
-        # o mais -- quais ações, em que ordem, em que seletor, com que texto
-        # -- é comparado tal e qual.
-        normalizadas = []
-        for acao in acoes:
-            if acao[0] == "clear":
-                normalizadas.append((acao[0], acao[1]))
-            elif acao[0] == "press":
-                normalizadas.append((acao[0], acao[1].upper()))
-            else:
-                normalizadas.append(acao)
-        return normalizadas
-
-    assert _normalizar(_acoes(auto_pw)) == _normalizar(_acoes(auto_sel))

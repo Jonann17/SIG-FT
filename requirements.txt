@@ -8,12 +8,12 @@ openpyxl
 xlwings
 
 # Automação Web (RPA)
-# Dois motores convivem durante a Fase 5 da refatoração: `selenium` é o padrão
-# (o que roda em produção hoje) e `playwright` é o alvo. Quem escolhe é
-# `config.RPA_ENGINE`, por módulo — ver README, seção "Motor de RPA".
-# O pacote `playwright` é leve; o navegador dele é baixado à parte, só quando
-# se vai usar o motor novo:  .venv\Scripts\playwright install chromium
-selenium
+# Motor único desde o CP 5.5 (2026-08-25). O `selenium` saiu daqui quando a
+# Fase 6 fechou validada no portal real — ele era o motor de produção até a
+# Fase 5, e conviveu com o Playwright só enquanto a migração precisava de
+# rollback.
+# O pacote `playwright` é leve; o navegador dele é baixado à parte:
+#     .venv\Scripts\playwright install chromium
 playwright
 
 # IA / LLM

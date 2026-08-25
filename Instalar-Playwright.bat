@@ -3,13 +3,13 @@ rem ===========================================================================
 rem  SIG-FT -- baixa o navegador do Playwright (motor novo de RPA).
 rem
 rem  SO E PRECISO RODAR ISTO PARA TESTAR O MOTOR NOVO. O aplicativo funciona
-rem  sem ele: o motor padrao continua sendo o Selenium/Chrome.
+rem  sem ele o RPA nao roda: o Playwright e o unico motor desde o CP 5.5.
 rem
 rem  Depois de instalar, para rodar um modulo no motor novo:
 rem      set SIGFT_RPA_ENGINE=playwright
 rem      SIG-FT.bat
 rem  Para voltar ao motor antigo, feche a janela ou:
-rem      set SIGFT_RPA_ENGINE=selenium
+rem
 rem ===========================================================================
 setlocal
 title SIG-FT - navegador do Playwright

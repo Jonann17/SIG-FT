@@ -58,7 +58,6 @@ MODULOS_BACKEND = [
     "translator_backend",
     "upload_conditions_backend",
     "upload_tech_specs_backend",
-    "upload_ficha_duplicada",
 ]
 
 

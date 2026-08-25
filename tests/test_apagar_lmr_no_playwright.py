@@ -28,6 +28,13 @@ resposta. `test_o_laco_termina_no_motor_playwright` é a prova de que a
 tradução para as exceções neutras fecha esse buraco -- ele tem timeout
 próprio justamente porque a falha que ele vigia é um travamento, não um
 assert quebrado.
+
+⚠️ CP 5.5 (2026-08-25): este arquivo exercitava os DOIS motores lado a lado --
+era essa comparação que dava confiança para migrar. O Selenium saiu do projeto
+depois de a Fase 6 fechar validada no portal, e com ele saiu a metade Selenium
+daqui. O que fica continua valendo pelo motivo original: é o único lugar que
+exercita a cadeia inteira serviço -> portal -> motor com as classes DE VERDADE,
+trocando só o browser por um duplo.
 """
 from __future__ import annotations
 
@@ -37,7 +44,6 @@ import pytest
 
 from sigft.core.callbacks import UICallbacks
 from sigft.core.rpa.playwright_engine import PlaywrightEngine
-from sigft.core.rpa.selenium_engine import SeleniumEngine
 from sigft.services import apagar_lmr
 
 
@@ -108,80 +114,6 @@ class _PaginaPW:
 
     def on(self, evento, handler):
         pass
-
-
-# ===========================================================================
-# Duplo de browser -- lado Selenium
-# ===========================================================================
-class _TimeoutExceptionFalsa(Exception):
-    pass
-
-
-_TimeoutExceptionFalsa.__name__ = "TimeoutException"
-
-
-class _ElementoSel:
-    pass
-
-
-class _WaitSel:
-    """`until(condicao)` recebe o LOCATOR em vez do MagicMock opaco do `EC`
-    graças à fixture `_ec_transparente` abaixo -- mesma técnica de
-    tests/test_portal.py. Com o seletor à vista, o duplo consegue distinguir
-    "esperando a lixeira" de "esperando o CONFIRMAR", que é o que o portal
-    real distingue na tela."""
-
-    def __init__(self, driver):
-        self.driver = driver
-
-    def until(self, condicao):
-        _, (_by, seletor) = condicao
-        self.driver.ultimo_seletor = seletor
-        if "fa-trash" in seletor and self.driver.restantes <= 0:
-            raise _TimeoutExceptionFalsa("nenhuma lixeira na tela")
-        return _ElementoSel()
-
-
-class _DriverSel:
-    def __init__(self, lmrs):
-        self.restantes = lmrs
-        self.current_url = ""
-        self.ultimo_seletor = ""
-        self.cliques = []
-
-    def find_elements(self, by, seletor):
-        return []
-
-    def execute_script(self, script, elemento):
-        if "click" in script:
-            self.cliques.append(self.ultimo_seletor)
-            if "CONFIRMAR" in self.ultimo_seletor:
-                self.restantes -= 1
-
-    def quit(self):
-        pass
-
-    def get(self, url):
-        self.current_url = url
-
-
-@pytest.fixture(autouse=True)
-def _ec_transparente(monkeypatch):
-    """`EC` é MagicMock neste ambiente (tests/conftest.py). Trocando as duas
-    condições usadas pelo engine por wrappers que devolvem o próprio locator,
-    o `_WaitSel` acima consegue ler o XPath pedido."""
-    import sigft.core.rpa.selenium_engine as se
-
-    monkeypatch.setattr(se.EC, "element_to_be_clickable", lambda loc: ("clickable", loc))
-    monkeypatch.setattr(se.EC, "presence_of_element_located", lambda loc: ("presence", loc))
-
-
-def _automacao_selenium(lmrs):
-    driver = _DriverSel(lmrs)
-    auto = apagar_lmr.ApagarLMRAutomation()
-    auto.engine = SeleniumEngine(driver, _WaitSel(driver))
-    auto.portal = apagar_lmr.PMIBPortal(auto.engine)
-    return auto
 
 
 def _papeis(cliques):
@@ -274,39 +206,3 @@ def test_playwright_volta_para_a_lista_no_fim():
     assert auto.engine.page.url == auto.url_inicial
 
 
-def test_o_laco_termina_no_motor_selenium():
-    # O motor antigo continua funcionando pelo mesmo caminho novo -- é isso
-    # que sustenta o rollback por config exigido pelo CP 5.1.
-    auto = _automacao_selenium(lmrs=2)
-
-    resultado = {}
-    thread = threading.Thread(
-        target=lambda: resultado.setdefault("texto", _rodar(auto)), daemon=True
-    )
-    thread.start()
-    thread.join(timeout=10)
-
-    assert not thread.is_alive(), "o laço de exclusão não terminou no motor Selenium"
-    assert "2 sucesso(s)" in resultado["texto"]
-    assert _papeis(auto.engine.driver.cliques) == [
-        "aba", "lixeira", "confirmar", "lixeira", "confirmar",
-    ]
-
-
-def test_os_dois_motores_produzem_o_mesmo_resumo():
-    # A promessa central da Fase 5: trocar o motor não muda o que o usuário vê.
-    texto_sel = _rodar(_automacao_selenium(lmrs=2))
-    texto_pw = _rodar(_automacao_playwright(lmrs=2))
-
-    def _linhas_de_lote(texto):
-        # Fora as durações (que variam entre execuções), o relato tem de ser
-        # o mesmo caractere a caractere.
-        import re
-
-        return [
-            re.sub(r"\(\d+[,.]\d+s\)", "(Xs)", linha)
-            for linha in texto.split("\n")
-            if "Aplicação" in linha or "sucesso(s)" in linha
-        ]
-
-    assert _linhas_de_lote(texto_sel) == _linhas_de_lote(texto_pw)
