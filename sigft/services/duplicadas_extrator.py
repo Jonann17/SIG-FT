@@ -402,6 +402,47 @@ def _rotular_pela_legenda(titulo, tokens, campos):
     return {titulo: sel.SEPARADOR_DE_OPCOES.join(valores)}
 
 
+# A contagem dos blocos de dois idiomas tem de PARAR DE CRESCER antes de ler.
+TENTATIVAS_DOS_BLOCOS_DE_IDIOMA = 12
+INTERVALO_DOS_BLOCOS_DE_IDIOMA = 0.5
+
+
+def _esperar_os_blocos_de_idioma(engine):
+    """Quantos blocos de dois idiomas há, depois que o número estabiliza.
+
+    ⚠️ Sem isto a leitura do espanhol é LOTÉRICA. Medido em 2026-08-25, na
+    mesma sub-aba da mesma ficha, em rodadas diferentes: 7 blocos, depois 3,
+    depois 2, depois 4. Os balões do tooltip entram no DOM um instante depois
+    dos campos, e uma leitura única pega a foto pela metade.
+
+    O custo do sorteio não é "menos espanhol": é `TextArea_TypeLegislationES`
+    chegar vazio, e o Descarte inteiro ser recusado pelo portal com "Por
+    favor, verifique os campos" -- porque lá o `..._ES` é obrigatório. A
+    seção não fecha, e junto com ela ficam sem marcar coisas que nada tinham
+    a ver, como a Logística de reversa.
+
+    Duas leituras iguais seguidas bastam: o DOM cresce de uma vez, não aos
+    poucos.
+    """
+    anterior = -1
+    for _ in range(TENTATIVAS_DOS_BLOCOS_DE_IDIOMA):
+        atual = engine.contar(sel.XPATH_VIEW_BLOCO_DOIS_IDIOMAS)
+        # ⚠️ ZERO NÃO ENCERRA A ESPERA CEDO, e eu já errei isto uma vez: para
+        # deixar a suíte rápida troquei a condição por `atual == anterior`, o
+        # que aceita "0 == 0" na segunda leitura -- ou seja, desiste ANTES de
+        # os balões renderizarem. O sintoma foi a sub-aba «Manutenção e
+        # descarte» devolver 0 espanhóis e o Descarte não fechar.
+        #
+        # Zero só vale como resposta depois de esperar de verdade, e é o
+        # `return` lá embaixo que dá essa resposta. Teste que sofre com a
+        # espera anula `time.sleep`; produção não pode pagar por isso.
+        if atual and atual == anterior:
+            return atual
+        anterior = atual
+        time.sleep(INTERVALO_DOS_BLOCOS_DE_IDIOMA)
+    return max(anterior, 0)
+
+
 def ler_espanhol_visivel(engine):
     """`[(português, espanhol)]` dos textos longos da seção aberta.
 
@@ -415,7 +456,7 @@ def ler_espanhol_visivel(engine):
     informação de que o campo existe e está vazio no outro idioma.
     """
     pares = []
-    total = engine.contar(sel.XPATH_VIEW_BLOCO_DOIS_IDIOMAS)
+    total = _esperar_os_blocos_de_idioma(engine)
     for indice in range(1, total + 1):
         base = f"({sel.XPATH_VIEW_BLOCO_DOIS_IDIOMAS})[{indice}]"
         portugues = engine.texto(base + sel.XPATH_VIEW_TEXTO_DO_BLOCO)

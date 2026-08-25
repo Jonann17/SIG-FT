@@ -286,6 +286,29 @@ def espanhol_por_texto(pares_pt_es, convertido, callback_log=None):
             else:
                 sem_par.append(f"{subaba}/{sufixo}")
 
+    # ⚠️ O CASO INEQUÍVOCO. Sobrou UM campo `..._PT` sem par e UM espanhol sem
+    # dono: não há escolha a fazer, e deixar assim tem preço alto -- em
+    # Descarte o `..._ES` é obrigatório, então um pareamento perdido faz o
+    # portal recusar a sub-aba INTEIRA com "Por favor, verifique os campos", e
+    # junto dela ficam sem gravar campos que nada tinham a ver (a Logística de
+    # reversa, por exemplo).
+    #
+    # Por que o casamento por texto falha às vezes: os balões do tooltip
+    # entram no DOM depois dos campos, e a varredura pega a foto pela metade.
+    # A ordem de documento é a mesma nas duas listas, então com um de cada
+    # lado o par é o que sobrou.
+    #
+    # DOIS OU MAIS sobrando é ambíguo e continua saindo no log sem chute:
+    # espanhol trocado entre campos é ficha plausível e errada.
+    orfaos = [item for item in disponiveis if not item[2]]
+    if len(sem_par) == 1 and len(orfaos) == 1:
+        subaba, sufixo = sem_par[0].split("/", 1)
+        saida.setdefault(subaba, {})[sufixo[:-2] + "ES"] = orfaos[0][1]
+        _log(f"      [i] Condições: {sem_par[0]} ficou sem par por texto e "
+             f"sobrou exatamente um espanhol órfão -- casei os dois pela "
+             f"ordem.")
+        sem_par = []
+
     if sem_par:
         _log(f"      [i] Condições: {len(sem_par)} texto(s) sem espanhol na "
              f"ficha original: {', '.join(sem_par[:6])}"

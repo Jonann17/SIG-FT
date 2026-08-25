@@ -141,6 +141,18 @@ class _EngineLxml:
         return " ".join("".join(nos[0].itertext()).split()) if nos else ""
 
 
+@pytest.fixture(autouse=True)
+def _sem_espera(monkeypatch):
+    """`_esperar_os_blocos_de_idioma` espera os balões renderizarem.
+
+    Isso é necessário no portal e puro custo aqui: o DOM de teste é estático.
+    Anular o `sleep` é o jeito certo -- o contrário (fazer a produção desistir
+    cedo para o teste correr) já foi tentado em 2026-08-25 e quebrou a leitura
+    do espanhol do Descarte.
+    """
+    monkeypatch.setattr(extrator.time, "sleep", lambda _s: None)
+
+
 @pytest.fixture
 def engine():
     return _EngineLxml()
@@ -457,3 +469,30 @@ def test_o_espanhol_entra_pelo_fundir_sem_pisar_no_portugues():
         "TextArea_PositionCarePT": "não aplicável",
         "TextArea_PositionCareES": "no aplicable",
     }}
+
+
+def test_um_PT_sem_par_e_um_espanhol_orfao_sao_casados_pela_ordem():
+    """O caso que travava o Descarte inteiro.
+
+    Os balões entram no DOM depois dos campos e a varredura às vezes pega a
+    foto pela metade; um pareamento perdido deixa `..._ES` vazio, e em
+    Descarte esse campo é obrigatório -- o portal recusa a sub-aba toda.
+    Com um de cada lado não há escolha a fazer.
+    """
+    achado = condicoes.espanhol_por_texto(
+        [("Lei nº 12.305/2010", "Ley nº 12.305/2010")],
+        {"Descarte": {"TextArea_TypeLegislationPT": "Lei n 12.305/2010 /"}})
+    assert achado == {"Descarte": {"TextArea_TypeLegislationES": "Ley nº 12.305/2010"}}
+
+
+def test_dois_sem_par_continuam_sem_chute():
+    """Ambíguo não se resolve por ordem: espanhol trocado entre campos é
+    ficha plausível e errada, que é o erro mais caro deste módulo."""
+    mensagens = []
+    achado = condicoes.espanhol_por_texto(
+        [("outro texto", "otro texto"), ("mais um", "uno mas")],
+        {"Descarte": {"TextArea_TypeLegislationPT": "A",
+                      "TextArea_DiscardTypePT": "B"}},
+        mensagens.append)
+    assert achado == {}
+    assert any("sem espanhol" in m for m in mensagens), mensagens

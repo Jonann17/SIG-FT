@@ -536,6 +536,61 @@ não a URL.
 | Manutenção | 6 | 3 textos PT + 3 ES |
 | Descarte | 6 | 2 textos PT + 2 ES + Classificação NBR + Logística de reversa |
 
+
+#### 5.4 Rodada de ponta a ponta na ficha 0929 (2026-08-25)
+
+Ficha LIMPA (`4500063671.0929` ← `4500063671.1277`), robô inteiro, 78 s:
+
+```
+<fabricante:      ok PRABOX>          <pdm:           ok PDM.9900.000>
+<referencia:      ok RTC-45'D3>       <caracteristicas: ok 1 preservada>
+<fornecedor:      ok linha fixa>      <documentos:    ok 1 associado(s)>
+<ge_vernova:      ok vazia>           <imagens:       ok 1 imagem(ns)>
+<condicoes:  FALHOU Descarte>
+```
+
+Oito das nove seções fecham. O que resta está isolado e descrito abaixo.
+
+##### A regra do `'D`: o portal não diz que colidiu
+
+Levantado escrevendo `RTC-45`, `RTC-45'D1` e `RTC-45'D2` em sequência:
+
+| Referência | Entrou? | `not-valid` | mensagem | `CoincidenceReference` |
+|---|---|---|---|---|
+| `RTC-45` | não | `False` | `''` | **1** |
+| `RTC-45'D1` | não | `False` | `''` | **1** |
+| `RTC-45'D2` | **sim** | `False` | `''` | **0** |
+
+Numa colisão o portal **fica calado** — nem mensagem de validação, nem
+`not-valid`, nem toast. A única coisa que muda é o bloco
+`CoincidenceReference` estar na tela.
+
+`escrever_referencia` decidia a escalada lendo o TEXTO desse aviso, que vem
+vazio: `e_mensagem_de_duplicidade("")` é falso, o laço desistia na segunda
+tentativa e a ficha saía sem referência. Agora quem decide é a **presença**
+do elemento (`injetor.houve_colisao`).
+
+##### ☐ O que ainda falta: `TextArea_TypeLegislationES`
+
+Descarte não fecha porque esse campo chega vazio, e lá o `..._ES` é
+obrigatório — o portal recusa a sub-aba inteira com "Por favor, verifique os
+campos", e junto dela ficam sem gravar campos que nada tinham a ver (a
+**Logística de reversa**, observada pelo usuário).
+
+O espanhol **existe** na original: `ler_espanhol_visivel` lido à mão na 1277
+devolve os cinco pares da sub-aba, incluindo `Lei nº 12.305/2010`. Dentro do
+robô ele devolve dois.
+
+⚠️ **A pista, e ela é boa:** `XPATH_VIEW_BLOCO_DOIS_IDIOMAS` é um seletor de
+PÁGINA (`//div[…BothLenguage]`), não da sub-aba aberta. Ao trocar de sub-aba
+os blocos da anterior ainda estão no DOM, então a leitura "estabiliza" na
+contagem ANTIGA e relê os pares da sub-aba passada. Eles casam com campos já
+casados, e o `TypeLegislation` fica órfão.
+
+**O conserto é escopar a leitura no painel da sub-aba aberta**, como
+`ler_secao_visivel` já faz por `<fieldset>`. Enquanto isso, o robô nomeia o
+campo no log e a seção sai incompleta — não inventa tradução.
+
 #### ⚠️ A metade em espanhol, e por que CONDIÇÕES não fecha COMPLETO
 
 Cada texto longo tem par na edição (`TextArea_XxxPT` / `TextArea_XxxES`) e a

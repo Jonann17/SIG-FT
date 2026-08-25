@@ -205,6 +205,32 @@ ESPERA_MAXIMA_DO_AVISO = PAUSA_APOS_DIGITAR
 INTERVALO_DO_AVISO = 0.15
 
 
+def houve_colisao(portal):
+    """O portal sinalizou "esta referência já existe"? `True`/`False`.
+
+    ⚠️ PELA PRESENÇA DO ELEMENTO, NÃO PELO TEXTO -- e é isso que destrava a
+    regra do `'D`. Medido em 2026-08-25 na ficha 4500063671.0929, escrevendo
+    `RTC-45`, `RTC-45'D1` e `RTC-45'D2` em sequência:
+
+        RTC-45      -> não entrou | not-valid=False | msg='' | Coincidence=1
+        RTC-45'D1   -> não entrou | not-valid=False | msg='' | Coincidence=1
+        RTC-45'D2   -> ENTROU     | not-valid=False | msg='' | Coincidence=0
+
+    Ou seja: numa colisão o portal **não escreve nada** -- nem mensagem de
+    validação, nem `not-valid`, nem toast. A única coisa que muda é o bloco
+    `CoincidenceReference` estar ou não na tela.
+
+    `escrever_referencia` decidia a escalada lendo o TEXTO desse aviso, que
+    vem vazio. `e_mensagem_de_duplicidade("")` é falso, então o laço desistia
+    na segunda tentativa e a ficha saía sem referência -- com a mensagem
+    "adicione à mão", numa referência que só precisava de mais um sufixo.
+    """
+    try:
+        return bool(portal.engine.contar(sel.XPATH_REFERENCIA_AVISO_COLISAO))
+    except Exception:  # noqa: BLE001 -- observar não pode derrubar a escrita
+        return False
+
+
 def esperar_aviso_de_colisao(portal, seletor_input=None,
                              espera=ESPERA_MAXIMA_DO_AVISO):
     """Texto do aviso assim que ele aparecer, ou `""` esgotada a espera."""
@@ -786,8 +812,14 @@ def escrever_referencia(portal, codigo_material, callback_log=None, id_do_campo=
 
             # DUPLICIDADE => próximo sufixo. Qualquer outra recusa => falha,
             # porque `'D1`, `'D2`, `'D3`… não conserta "campo obrigatório".
-            if e_mensagem_de_duplicidade(recusa) or e_mensagem_de_duplicidade(aviso):
-                avisos_vistos.append(recusa or aviso)
+            # A PRESENÇA do aviso conta tanto quanto o texto dele -- ver
+            # `houve_colisao`. Numa colisão o portal fica calado, e exigir
+            # texto fazia a escalada parar na segunda tentativa.
+            if (e_mensagem_de_duplicidade(recusa)
+                    or e_mensagem_de_duplicidade(aviso)
+                    or houve_colisao(portal)):
+                avisos_vistos.append(recusa or aviso or
+                                     f"o portal sinalizou coincidência em {referencia!r}")
                 continue
 
             motivo = ""
