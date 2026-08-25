@@ -1056,3 +1056,50 @@ def test_combo_que_nao_abre_nao_escreve_o_filtro():
     injetor.escolher_fabricante(portal, "ACE SCHMERSAL")
 
     assert portal.preenchidos == []
+
+
+# ===========================================================================
+# A conferência da linha ESPERA (2026-08-25)
+# ===========================================================================
+
+class _PortalQueDemoraAEsvaziar:
+    """O portal recolhe o formulário depois de um instante, não na hora."""
+
+    def __init__(self, valor, leituras_ate_esvaziar):
+        self.valor = valor
+        self.restantes = leituras_ate_esvaziar
+        self.leituras = 0
+
+    def valor_se_existir(self, _seletor):
+        self.leituras += 1
+        if self.restantes > 0:
+            self.restantes -= 1
+            return self.valor
+        return ""
+
+
+def test_linha_entrou_espera_o_campo_esvaziar(monkeypatch):
+    """O defeito que criou linha DUPLICADA na ficha 4500063671.0928.
+
+    A leitura era imediata: um `valor_se_existir` logo após o clique no '+'.
+    O campo ainda tinha o texto, a função dizia "não entrou", o robô mandava
+    adicionar à mão -- e na rodada seguinte escrevia de novo. O portal via
+    colisão e gravava com o sufixo seguinte, deixando `HGM-12'D1` E
+    `HGM-12'D2` para o mesmo material. Um erro de LEITURA virou dado errado
+    na ficha.
+    """
+    monkeypatch.setattr(injetor.time, "sleep", lambda _s: None)
+    portal = _PortalQueDemoraAEsvaziar("HGM-12", leituras_ate_esvaziar=3)
+
+    assert injetor.linha_entrou_na_tabela(portal, "//input", "HGM-12") is True
+    assert portal.leituras == 4, "devia ter relido até o campo esvaziar"
+
+
+def test_linha_que_nunca_esvazia_continua_reprovando(monkeypatch):
+    """A espera não pode virar otimismo: campo que nunca larga o valor é
+    linha que não entrou, e isso tem de continuar sendo `False`."""
+    monkeypatch.setattr(injetor.time, "sleep", lambda _s: None)
+    portal = _PortalQueDemoraAEsvaziar("HGM-12", leituras_ate_esvaziar=999)
+
+    assert injetor.linha_entrou_na_tabela(portal, "//input", "HGM-12") is False
+    assert portal.leituras == injetor.TENTATIVAS_DA_LINHA_NA_TABELA

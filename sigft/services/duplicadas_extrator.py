@@ -70,11 +70,43 @@ def _literal_xpath(texto):
 PAUSA_APOS_BUSCA = 2.5  # segundos; o filtro da lista é assíncrono
 
 
+# Espera pela LINHA depois do ENTER da busca. TENTATIVAS x INTERVALO, e não um
+# teto de relógio: com `time.sleep` anulado (o que os testes fazem, e devem
+# fazer) um teto de relógio vira laço em vazio girando os 10 s inteiros. Assim
+# o teste termina na hora e a produção espera o mesmo tanto.
+TENTATIVAS_DA_LINHA = 20
+INTERVALO_DA_LINHA = 0.5
+
+
 def _buscar_na_aba_atual(portal, pmib):
-    """Digita `pmib` no filtro da lista e espera o resultado assentar."""
+    """Digita `pmib` no filtro da lista e espera a LINHA aparecer.
+
+    ⚠️ Aqui havia `time.sleep(PAUSA_APOS_BUSCA)` e nada mais -- 2,5 s fixos,
+    contra um servidor que às vezes leva mais. Quando levava, a linha ainda
+    não estava no DOM, `localizar_aba_da_ficha` concluía "não está nesta aba"
+    e seguia para a próxima. Com sete abas, o resultado era
+    `não achei a ficha original em nenhuma aba` -- uma ficha que está lá, e
+    que a mesma função acha na tentativa seguinte. Medido em 2026-08-25: a
+    rodada do robô falhou nas sete abas e uma busca manual, com espera maior,
+    achou na primeira.
+
+    A cura não é um sleep maior (que só desloca o limite e cobra o tempo de
+    toda ficha que o portal responde rápido): é esperar a CONDIÇÃO. Quem não
+    tem a ficha sai pelo teto, e aí "não está nesta aba" é verdade.
+    """
     portal.safe_fill(sel.XPATH_BUSCA_DA_LISTA, pmib)
     portal.engine.press("ENTER")
     time.sleep(PAUSA_APOS_BUSCA)
+
+    linha = sel.XPATH_LINHA_ACAO_VISUALIZAR.format(pmib=pmib)
+    for _ in range(TENTATIVAS_DA_LINHA):
+        try:
+            if portal.engine.element_exists(linha):
+                return True
+        except Exception:  # noqa: BLE001 -- tabela remontando; tentar de novo
+            pass
+        time.sleep(INTERVALO_DA_LINHA)
+    return False
 
 
 # Espera pela LISTA montar. Ver `esperar_abas_da_lista`.
@@ -166,8 +198,54 @@ def abrir_original_em_visualizacao(portal, pmib, callback_log=None):
         return False
 
     portal.engine.click_nativo(sel.XPATH_LINHA_ACAO_VISUALIZAR.format(pmib=pmib))
+    if not esperar_a_ficha_abrir(portal):
+        _log(f"   [Erro] Cliquei em visualizar a ficha {pmib} e a tela dela não "
+             f"apareceu em {TENTATIVAS_DA_FICHA}s. Nada foi copiado desta ficha.")
+        return False
     _log(f"   Ficha {pmib} aberta em modo de visualização.")
     return True
+
+
+# Espera pela TELA da ficha depois do clique -- TENTATIVAS x INTERVALO, pelo
+# mesmo motivo de `TENTATIVAS_DA_LINHA`.
+TENTATIVAS_DA_FICHA = 45
+INTERVALO_DA_FICHA = 1.0
+
+
+def esperar_a_ficha_abrir(portal, espera=None):
+    """A ficha abriu? Espera pela TELA, nunca pela URL.
+
+    ⚠️ 2026-08-24, e custou três tentativas silenciosas antes de eu ver. O
+    portal é uma SPA: o clique no ícone de visualizar abre a ficha e o
+    endereço CONTINUA `PMIB_DatasheetList` por tempo indeterminado -- às vezes
+    nunca muda. Quem espera `"PMIB_DataSheetView" in url` conclui "não abriu"
+    com a ficha aberta na frente.
+
+    O sinal é a aba «Condições» da própria ficha: ela não existe na lista e
+    existe em toda ficha, nos dois modos (visualização e edição).
+
+    Antes desta espera a função devolvia `True` no instante do clique. O que
+    vinha depois -- abrir seção, varrer pares -- rodava contra a LISTA ainda na
+    tela, falhava com "a aba 'Condições' não existe nesta tela", e o log
+    culpava o portal por uma corrida do próprio robô.
+    """
+    alvo = sel.XPATH_ABA_DA_FICHA.format(texto=_literal_xpath(sel.ABA_CONDICOES))
+    for _ in range(espera or TENTATIVAS_DA_FICHA):
+        try:
+            if portal.engine.contar(alvo):
+                # O clique pegou; dar tempo do painel montar antes de varrer.
+                time.sleep(PAUSA_APOS_ABRIR_FICHA)
+                return True
+        except Exception:  # noqa: BLE001 -- tela trocando; tentar de novo
+            pass
+        time.sleep(INTERVALO_DA_FICHA)
+    return False
+
+
+# Depois que a aba aparece, o painel ainda está montando. Sem esta pausa a
+# primeira varredura pega a seção meio renderizada e devolve campo a menos --
+# e campo a menos aqui vira campo vazio na ficha copiada, sem erro nenhum.
+PAUSA_APOS_ABRIR_FICHA = 3.0
 
 
 # ===========================================================================

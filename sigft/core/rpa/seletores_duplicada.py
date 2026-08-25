@@ -1260,10 +1260,105 @@ XPATH_PDM_VALOR = (
     "[starts-with(@data-tooltip, 'PDM.')]"
 )
 # A opção casada pelo PREFIXO, pelo motivo da revisão acima.
+# ---------------------------------------------------------------------------
+# O DROPDOWN CERTO — a página tem CINCO `vscomp`, e eles não são irmãos do
+# widget que os abre
+# ---------------------------------------------------------------------------
+# Medido em 2026-08-25, na ficha alvo 4500063671.0928 em edição. Cinco caixas
+# `vscomp-search-input` na tela ao mesmo tempo, uma por widget:
+#
+#   vscomp-search-input-5442   "Pesquisar característica técnica"   escondida
+#   vscomp-search-input-1165   "Pesquisar"                          escondida
+#   vscomp-search-input-4770   "Pesquisar um fabricante "           escondida
+#   vscomp-search-input-5438   "Pesquisar"                          VISÍVEL
+#   vscomp-search-input-2576   "Search"                             escondida
+#
+# 🎯 O QUE ISSO EXPLICA. `_escolher_pdm_da_duplicada` procurava a caixa pelo
+# placeholder "PDM" -- que não existe: a do PDM diz só "Pesquisar" -- e caía
+# num seletor genérico que casa as CINCO. `safe_fill` pega a primeira, que é a
+# de característica técnica, e escondida. O filtro ia para o dropdown errado;
+# o log então listava as opções DAQUELE dropdown ("PEÇA - (PC)", "3M DO BRASIL
+# LTDA.") e concluía que `PDM.9900.000` não estava no catálogo do usuário.
+#
+# **Está.** Com a caixa certa, filtrar por `PDM.9900.000` deixa exatamente uma
+# opção: `PDM.9900.000 - FICHA PMIB, DUPLICADA, R0`. A pergunta aberta nº 4 do
+# `FICHA_DUPLICADA.md` ("o PDM está no catálogo deste usuário?") tinha a
+# premissa errada.
+#
+# ⚠️ E o dropdown NÃO está dentro do widget: o `vscomp-dropbox-wrapper` é
+# filho de `<body>`, teleportado para fora. Não há eixo XPath que ligue um ao
+# outro -- nem `following`, nem `ancestor`.
+#
+# O que liga é o NÚMERO DA INSTÂNCIA, que aparece nos dois ids:
+#
+#   <div id="vscomp-ele-wrapper-5438">   <- o widget, com o valor "PDM...."
+#   <input id="vscomp-search-input-5438">  <- a caixa dele, no body
+#
+# O número é gerado a cada renderização (o `IDS_GERADOS_NAO_USAR` continua
+# valendo: ninguém pode escrever 5438 no código). Mas ele pode ser LIDO do
+# DOM e recomposto, e é o que `_INSTANCIA_DO_PDM` faz -- identifica o widget
+# pelo `data-tooltip` que começa com "PDM." e extrai o sufixo do id dele.
+_INSTANCIA_DO_PDM = (
+    "substring-after("
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-ele-wrapper ')]"
+    "[.//div[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-value ')]"
+    "[starts-with(@data-tooltip, 'PDM.')]]/@id"
+    ", 'vscomp-ele-wrapper-')"
+)
+
+# A caixa de busca DO COMBO DO PDM, e não a primeira da tela.
+XPATH_PDM_BUSCA = (
+    "//input[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-search-input ')]"
+    "[@id = concat('vscomp-search-input-', " + _INSTANCIA_DO_PDM + ")]"
+)
+
+# A lista aberta DO COMBO DO PDM. Escopo obrigatório: sem ele, `_listar_opcoes`
+# fotografa o dropdown de outro widget e o log manda investigar o lugar errado.
+XPATH_PDM_DROPBOX = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-dropbox-wrapper ')]"
+    "[.//input[@id = concat('vscomp-search-input-', " + _INSTANCIA_DO_PDM + ")]]"
+)
+XPATH_PDM_OPCAO_QUALQUER = XPATH_PDM_DROPBOX + "//div[@role='option']"
+
+# ⚠️ "A LISTA ESTÁ ABERTA?" NÃO SE RESPONDE CONTANDO OPÇÃO. Medido em
+# 2026-08-25: depois de escolher o PDM, `XPATH_PDM_OPCAO_QUALQUER` continua
+# devolvendo 10 -- o widget ESCONDE a lista, não a remove do DOM. Um guard
+# baseado em contagem dá falso positivo e aborta uma troca que deu certo.
+#
+# O que muda de verdade é o container: ele ganha `display: none` no `@style`
+# (e o wrapper ganha a classe `closed`, mas essa não aparece em todos os
+# dropboxes escondidos -- o `@style` aparece).
+# ⚠️ O QUE REALMENTE COBRIA A PÁGINA: um MODAL, não o dropdown.
+#
+# Trocar o PDM abre um diálogo de confirmação -- "Trocar PDM / Você tem
+# certeza? Todos os dados de Características Técnicas serão removidos. Deseja
+# continuar?" -- com CONFIRMAR e CANCELAR. Enquanto ele está aberto, nenhum
+# clique da página passa, e todo SALVAR seguinte falha com `TempoEsgotado` e a
+# mensagem "algo pode estar cobrindo o botão". Era esse "algo".
+#
+# Foram três rodadas atrás da hipótese errada (o dropdown do combo) porque o
+# robô nunca olhou para a tela: o log só dizia qual botão falhou, e o modal não
+# aparece em log nenhum. O usuário mandou o print e a causa acabou em um
+# minuto -- que é o argumento inteiro de `docs/OLHAR_O_PORTAL.md`.
+#
+# O `role="dialog"` é o escopo: sem ele, "CONFIRMAR" casaria qualquer botão de
+# confirmação da tela, e clicar o errado numa ficha é pior que não clicar.
+XPATH_DIALOGO = "//*[@role='dialog']"
+XPATH_DIALOGO_CONFIRMAR = XPATH_DIALOGO + "//button[normalize-space()='CONFIRMAR']"
+
+XPATH_PDM_DROPBOX_ABERTO = (
+    XPATH_PDM_DROPBOX
+    + "//div[contains(concat(' ', normalize-space(@class), ' '), "
+      "' vscomp-dropbox-container ')][not(contains(@style, 'display: none'))]"
+)
+
+# O DIV da opção, e não o `<span>` de dentro: quem escuta o clique é o
+# elemento com `role="option"`, e clicar o filho depende do evento borbulhar.
 XPATH_PDM_OPCAO_POR_PREFIXO = (
-    "//div[@role='option']"
-    "//span[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-option-text ')]"
-    "[starts-with(@data-tooltip, {texto})]"
+    XPATH_PDM_DROPBOX
+    + "//div[@role='option']"
+    "[.//span[contains(concat(' ', normalize-space(@class), ' '), ' vscomp-option-text ')]"
+    "[starts-with(@data-tooltip, {texto})]]"
 )
 
 # Âncora para achar o SALVAR **desta** seção (ver `XPATH_SALVAR_DO_BLOCO` e o

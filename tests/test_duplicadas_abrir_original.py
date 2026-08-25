@@ -27,6 +27,18 @@ class _EngineFalso:
     def element_exists(self, seletor):
         return any(marca in seletor for marca in self.existentes)
 
+    def contar(self, seletor):
+        """Quantos casam. Existe por causa de `esperar_a_ficha_abrir`.
+
+        ⚠️ A ABA DA FICHA SÓ APARECE DEPOIS DO CLIQUE NA FOLHA, e o dublê
+        precisa modelar isso -- senão ele afirmaria que a ficha já estava
+        aberta antes de o robô clicar, e a espera que este teste protege
+        passaria mesmo se alguém a removesse.
+        """
+        if "Condições" in seletor:
+            return 1 if any("-View" in c for c in self.cliques) else 0
+        return 1 if self.element_exists(seletor) else 0
+
     def click_nativo(self, seletor):
         self.cliques.append(seletor)
 
@@ -49,8 +61,14 @@ class _PortalFalso:
 
 @pytest.fixture(autouse=True)
 def _sem_espera(monkeypatch):
-    """A pausa pós-busca é real no portal e inútil no teste: 7 abas x 2,5s."""
+    """A pausa pós-busca é real no portal e inútil no teste: 7 abas x 2,5s.
+
+    Vale também para a pausa de `esperar_a_ficha_abrir`, que importa `time`
+    dentro da função -- por isso o patch é no módulo `time`, não no atributo.
+    """
+    import time as _time
     monkeypatch.setattr(extrator.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(_time, "sleep", lambda _s: None)
 
 
 def _com_ficha_na_aba(nome_da_aba, pmib="4500063671.1471", todas_as_abas=True):
@@ -269,3 +287,47 @@ def test_desiste_de_esperar_e_diz_no_log():
     assert extrator.localizar_aba_da_ficha(portal, "4500063671.1256",
                                            logs.append) is None
     assert any("nenhuma aba de status" in linha.lower() for linha in logs)
+
+
+# ===========================================================================
+# A espera pela TELA (2026-08-24)
+# ===========================================================================
+
+def test_clique_que_nao_abre_a_ficha_devolve_False_e_nao_True():
+    """O defeito que fazia o log culpar o portal por uma corrida do robô.
+
+    Antes desta espera a função devolvia `True` no instante do clique. Quem
+    vinha depois -- abrir seção, varrer pares -- rodava contra a LISTA ainda
+    na tela e falhava com "a aba 'Condições' não existe nesta tela". O erro
+    aparecia três chamadas adiante, no lugar errado.
+    """
+    portal, engine, pmib = _com_ficha_na_aba("Em Elaboração")
+    # A aba da ficha NUNCA aparece: modela o clique que não pegou.
+    engine.contar = lambda seletor: 0 if "Condições" in seletor else 1
+
+    mensagens = []
+    assert extrator.abrir_original_em_visualizacao(
+        portal, pmib, mensagens.append) is False
+    assert any("não apareceu" in m for m in mensagens), mensagens
+    # E o motivo tem de nomear a ficha, senão o log do lote não serve.
+    assert any(pmib in m for m in mensagens), mensagens
+
+
+def test_a_espera_olha_a_ABA_DA_FICHA_e_nunca_a_url():
+    """A URL do OutSystems continua `PMIB_DatasheetList` com a ficha aberta.
+
+    Este teste falharia se alguém trocasse o sinal por `page.url`: o dublê não
+    tem URL nenhuma, e o único jeito de `esperar_a_ficha_abrir` responder é
+    perguntando pela aba.
+    """
+    portal, engine, pmib = _com_ficha_na_aba("Em Elaboração")
+    perguntado = []
+    original = engine.contar
+
+    def contar(seletor):
+        perguntado.append(seletor)
+        return original(seletor)
+
+    engine.contar = contar
+    assert extrator.abrir_original_em_visualizacao(portal, pmib) is True
+    assert any("Condições" in s for s in perguntado), perguntado

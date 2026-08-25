@@ -30,14 +30,35 @@ def _sem_espera(monkeypatch):
 
 
 class _EngineComPDM:
-    def __init__(self, pdm_atual="", opcoes=(), troca_pega=True):
+    def __init__(self, pdm_atual="", opcoes=(), troca_pega=True,
+                 dropdown_trava=False):
         self.pdm = pdm_atual
         self.opcoes = list(opcoes)
         self.troca_pega = troca_pega
         self.filtro = ""
         self.cliques = []
+        self.teclas = []
+        # A lista abre quando o combo é clicado e fecha ao escolher/ESC.
+        # `dropdown_trava=True` modela o combo que NÃO fecha -- o caso de
+        # 2026-08-25, em que a lista ficava por cima e todo SALVAR seguinte
+        # falhava com TempoEsgotado.
+        self.dropdown_aberto = False
+        self.dropdown_trava = dropdown_trava
+
+    def press(self, teclas):
+        self.teclas.append(teclas)
+        if teclas == "ESCAPE" and not self.dropdown_trava:
+            self.dropdown_aberto = False
 
     def contar(self, seletor):
+        # A ORDEM DAS PERGUNTAS IMPORTA. O seletor da opção filtrada contém
+        # `role='option'` E `vscomp-option-text`; o de "a lista está aberta?"
+        # é o do CONTAINER. Testar na ordem errada faria o dublê responder
+        # "achei a opção" para a pergunta "a lista fechou?".
+        if "vscomp-dropbox-container" in seletor:
+            return 1 if self.dropdown_aberto else 0
+        if "role='option'" in seletor and "vscomp-option-text" not in seletor:
+            return 3 if self.dropdown_aberto else 0
         if "vscomp-option-text" in seletor:
             alvo = self.filtro
             return sum(1 for o in self.opcoes if alvo and o.startswith(alvo))
@@ -55,6 +76,10 @@ class _EngineComPDM:
 
     def click(self, seletor):
         self.cliques.append(seletor)
+        if "vscomp-toggle-button" in seletor:
+            self.dropdown_aberto = True
+        if "vscomp-option-text" in seletor and not self.dropdown_trava:
+            self.dropdown_aberto = False
         if "vscomp-option-text" in seletor and self.troca_pega:
             escolhida = next((o for o in self.opcoes if o.startswith(self.filtro)), None)
             if escolhida:
@@ -93,10 +118,10 @@ PDM_ERRADO = "PDM.4820.010 - REGULADOR, PRESSAO, R1"
 
 
 def _tela(monkeypatch, pdm_atual, opcoes=(PDM_CERTO,), aba_abre=True,
-          confirma=True, troca_pega=True):
+          confirma=True, troca_pega=True, dropdown_trava=False):
     monkeypatch.setattr(pdm.extrator, "abrir_secao",
                         lambda *_a, **_k: aba_abre)
-    engine = _EngineComPDM(pdm_atual, opcoes, troca_pega)
+    engine = _EngineComPDM(pdm_atual, opcoes, troca_pega, dropdown_trava)
     return _PortalComPDM(engine, aba_abre, confirma), engine
 
 
@@ -331,3 +356,71 @@ def test_nao_escreve_o_filtro_quando_o_combo_nao_abriu():
     pdm._escolher_pdm_da_duplicada(portal)
 
     assert engine.filtro == ""
+
+
+# ===========================================================================
+# A lista que fica aberta cobre a página (2026-08-25)
+# ===========================================================================
+
+def test_dropdown_que_nao_fecha_REPROVA_em_vez_de_seguir(monkeypatch):
+    """O defeito que trocou "o PDM não troca" por "nada mais salva".
+
+    O `vscomp` pendura a lista em `<body>` e ela cobre a página inteira.
+    Com ela aberta, o Playwright recusa clicar em qualquer coisa embaixo --
+    e na rodada de 2026-08-25 isso derrubou CINCO salvamentos seguidos (o de
+    Informações gerais e os quatro de Condições), cada um reclamando do
+    próprio botão, nenhum do combo que ficara aberto seções atrás.
+
+    Reprovar aqui é o que impede o robô de seguir cego e produzir uma ficha
+    meio gravada com cinco mensagens que apontam para o lugar errado.
+    """
+    portal, engine = _tela(monkeypatch, PDM_ERRADO, dropdown_trava=True)
+
+    mensagens = []
+    resultado = pdm.garantir_pdm(portal, mensagens.append)
+
+    assert resultado.ok is False
+    assert any("não fechou" in m for m in mensagens), mensagens
+    # E não pode ter tentado salvar com a lista por cima.
+    assert portal.salvos == [], portal.salvos
+
+
+def test_o_dropdown_e_fechado_com_ESC_antes_de_salvar(monkeypatch):
+    portal, engine = _tela(monkeypatch, PDM_ERRADO)
+
+    resultado = pdm.garantir_pdm(portal)
+
+    assert resultado.ok is True
+    assert engine.dropdown_aberto is False
+
+
+def test_o_dialogo_trocar_pdm_e_CONFIRMADO(monkeypatch):
+    """O modal que cobria a página e derrubava cinco salvamentos.
+
+    Trocar o PDM abre "Trocar PDM / Todos os dados de Características Técnicas
+    serão removidos". Enquanto ele está aberto nenhum clique passa -- e o log
+    só dizia qual BOTÃO falhou, nunca que havia um modal. Três rodadas foram
+    gastas numa hipótese errada (o dropdown do combo) até o usuário mandar um
+    print da tela.
+    """
+    portal, engine = _tela(monkeypatch, PDM_ERRADO)
+    engine.dialogos = 1
+
+    def contar(seletor, _orig=engine.contar):
+        if "CONFIRMAR" in seletor:
+            return engine.dialogos
+        return _orig(seletor)
+
+    def click_estrito(seletor):
+        if "CONFIRMAR" in seletor:
+            engine.dialogos = 0
+            return
+        engine.click(seletor)
+
+    engine.contar = contar
+    engine.click_estrito = click_estrito
+
+    resultado = pdm.garantir_pdm(portal)
+
+    assert resultado.ok is True
+    assert engine.dialogos == 0, "o diálogo tinha de ter sido confirmado"

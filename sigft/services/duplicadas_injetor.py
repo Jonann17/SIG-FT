@@ -580,6 +580,13 @@ def _clicar_no_mais(portal, seletor_mais, callback_log=None):
         return False
 
 
+# Quantas leituras se faz antes de dizer que a linha NÃO entrou. O portal
+# recolhe o formulário de forma assíncrona; uma leitura só pega o estado
+# anterior ao clique com frequência suficiente para virar defeito.
+TENTATIVAS_DA_LINHA_NA_TABELA = 10
+INTERVALO_DA_LINHA_NA_TABELA = 0.6
+
+
 def linha_entrou_na_tabela(portal, seletor_input, referencia):
     """O "+" levou mesmo a linha para a tabela?
 
@@ -602,10 +609,43 @@ def linha_entrou_na_tabela(portal, seletor_input, referencia):
     # inteiro (20 s) esperando um elemento que a gente mesmo esperava não
     # achar. Não travava -- só ficava lento no caminho certo, que é pior de
     # diagnosticar: ninguém investiga o que está funcionando.
-    atual = portal.valor_se_existir(seletor_input)
-    if atual is None:
-        return True                # o campo saiu da tela: a linha entrou
-    return str(atual).strip() != str(referencia or "").strip()
+    #
+    # ⚠️ E ELA ESPERA. Conserto de 2026-08-25, e o defeito era caro de um jeito
+    # que não parecia: a leitura era IMEDIATA, um único `valor_se_existir`
+    # logo depois do clique. O portal leva um instante para recolher o
+    # formulário, então o campo ainda tinha o texto -- e a função concluía
+    # "a linha não entrou" para uma linha que entrou.
+    #
+    # 🎯 O PREÇO NÃO FOI SÓ O FALSO ALARME. O robô mandava adicionar à mão uma
+    # linha que já estava lá; na rodada seguinte ele escrevia de novo, o portal
+    # via colisão e gravava com o sufixo seguinte. Foi assim que a ficha
+    # 4500063671.0928 terminou com PRABOX/HGM-12'D1 E PRABOX/HGM-12'D2 -- duas
+    # linhas para o mesmo material, criadas por um erro de LEITURA.
+    for _ in range(TENTATIVAS_DA_LINHA_NA_TABELA):
+        atual = portal.valor_se_existir(seletor_input)
+        if atual is None:
+            return True            # o campo saiu da tela: a linha entrou
+        if str(atual).strip() != str(referencia or "").strip():
+            return True            # o campo esvaziou/mudou: a linha entrou
+
+        # ⚠️ SAIR CEDO QUANDO O PORTAL JÁ RECUSOU. A espera acima conserta o
+        # falso negativo, mas cria outro problema se for cega: a mensagem de
+        # duplicidade ("A referência já existe!") é TRANSITÓRIA, e quem lê o
+        # motivo é o chamador, DEPOIS desta função. Esperar os 6 s inteiros
+        # fazia a mensagem sumir no caminho -- e sem ela `escrever_referencia`
+        # não reconhece a colisão, não escala para o sufixo seguinte e desiste
+        # na primeira tentativa. Foi o que aconteceu com `HGM-12'D1` em
+        # 2026-08-25, numa ficha em que `'D1` e `'D2` já existiam.
+        #
+        # O `not-valid` no campo é o marcador que PERSISTE. Assim que ele
+        # aparece, a resposta já está dada e a mensagem ainda está fresca.
+        try:
+            if campo_recusado(portal, seletor_input):
+                return False
+        except Exception:  # noqa: BLE001 -- observar não pode derrubar a escrita
+            pass
+        time.sleep(INTERVALO_DA_LINHA_NA_TABELA)
+    return False
 
 
 def fotografar_bloco_da_linha(portal, seletor_mais, seletor_input,
