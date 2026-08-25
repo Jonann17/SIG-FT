@@ -570,7 +570,42 @@ vazio: `e_mensagem_de_duplicidade("")` é falso, o laço desistia na segunda
 tentativa e a ficha saía sem referência. Agora quem decide é a **presença**
 do elemento (`injetor.houve_colisao`).
 
-##### ☐ O que ainda falta: `TextArea_TypeLegislationES`
+##### ✅ FECHOU — 9 de 9 seções, 20 de 20 campos (2026-08-25)
+
+```
+RESULTADO: 4500063671.0929: ok (9 seção(ões))   -- 74 s
+
+fabricante ok | referencia ok RTC-45'D2 | fornecedor ok | ge_vernova ok
+pdm ok        | caracteristicas ok      | condicoes ok  | documentos ok
+imagens ok
+```
+
+Comparação campo a campo da alvo contra a original, relida em visualização:
+**20 campos, 20 iguais, nenhuma divergência** — números, rádios, checkboxes e
+os seis textos longos, em português e espanhol.
+
+##### O último defeito: ABA ATIVA NÃO É ABA MONTADA
+
+`aria-selected` vira `true` no clique; os campos entram no DOM depois.
+`abrir_subaba_de_condicoes` devolvia sucesso nesse intervalo e a varredura
+pegava a tela pela metade. Medido na mesma ficha, mesma sub-aba:
+
+| | leitura com pausa | leitura do robô |
+|---|---|---|
+| `[Manutenção]` | 3 campos | **2** |
+| `[Descarte]` | 4 campos | **3** |
+| espanhol lido | 7 | **2** |
+
+O campo a menos não some sozinho: o `..._ES` dele fica órfão, e como em
+Descarte o espanhol é obrigatório o portal recusa a **sub-aba inteira** — o
+que apagava do resultado até campos que já estavam certos, como a Logística
+de reversa. Um campo perdido na leitura custava uma seção inteira na gravação.
+
+`_esperar_a_subaba_montar` espera duas contagens iguais e positivas dos
+valores na tela antes de varrer. Depois dela: `[Descarte] 4 campos`,
+`7 campos em espanhol`, seção salva e conferida.
+
+##### E o que era `TextArea_TypeLegislationES`
 
 Descarte não fecha porque esse campo chega vazio, e lá o `..._ES` é
 obrigatório — o portal recusa a sub-aba inteira com "Por favor, verifique os
@@ -587,9 +622,13 @@ os blocos da anterior ainda estão no DOM, então a leitura "estabiliza" na
 contagem ANTIGA e relê os pares da sub-aba passada. Eles casam com campos já
 casados, e o `TypeLegislation` fica órfão.
 
-**O conserto é escopar a leitura no painel da sub-aba aberta**, como
-`ler_secao_visivel` já faz por `<fieldset>`. Enquanto isso, o robô nomeia o
-campo no log e a seção sai incompleta — não inventa tradução.
+**Resolvido**, e por duas correções somadas:
+
+1. `XPATH_VIEW_BLOCO_DOIS_IDIOMAS` ancorado em `//fieldset`. Sem a âncora ele
+   era seletor de PÁGINA: ao trocar de sub-aba, contar N e ler o bloco N+1 (já
+   removido) fazia `engine.texto` esperar os 30 s de timeout **e estourar**,
+   derrubando a leitura das Condições inteira.
+2. A espera da sub-aba, acima — que era a causa de fundo.
 
 #### ⚠️ A metade em espanhol, e por que CONDIÇÕES não fecha COMPLETO
 

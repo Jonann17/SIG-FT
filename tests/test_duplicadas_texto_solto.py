@@ -348,6 +348,11 @@ def test_o_travessao_e_o_hifen_dao_na_MESMA_chave():
 
 _HTML_DOIS_IDIOMAS = """
 <div id="raiz">
+  <!-- No portal os blocos de dois idiomas ficam DENTRO de um <fieldset>, e o
+       seletor se ancora nisso de propósito: sem a âncora ele é de página e
+       relê os blocos da sub-aba anterior. O dublê tem de ter o fieldset,
+       senão testa um DOM que não existe. -->
+  <fieldset><legend><span class="text-primary">Transporte</span></legend>
   <div id="secao">
     <div data-block="PMIB_DataSheetView.Block_ExpressionBothLenguage" id="b12-$b25">
       <div data-block="Content.Tooltip" id="b12-b25-$b2">
@@ -374,8 +379,10 @@ _HTML_DOIS_IDIOMAS = """
       </div>
     </div>
   </div>
+  </fieldset>
 
-  <!-- Os balões ficam LONGE do campo, pendurados no alto da árvore. -->
+  <!-- Os balões ficam LONGE do campo, pendurados no alto da árvore.
+       Repare que eles NÃO estão dentro do fieldset -- é assim no portal. -->
   <div id="reactContainer">
     <div class="osui-tooltip__balloon-wrapper" id="b12-b25-b2-TooltipBallonWrapper">
       <div class="osui-tooltip__balloon-wrapper__balloon OSInline" id="b12-b25-b2-Tooltip">

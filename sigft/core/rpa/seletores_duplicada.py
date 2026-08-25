@@ -1047,8 +1047,19 @@ XPATH_CONDICOES_CAMPO = "//*[contains(@id, {sufixo})]"
 # portal renderiza antes do texto. Resultado: `texto_se_existir` devolvia `'0'`
 # (a contagem de anexos) e o balão devolvia "Documentos associados" -- e o
 # módulo concluía "não há espanhol para copiar" e devolvia a seção incompleta.
+# ⚠️ ANCORADO EM `//fieldset`, e o prefixo é o conserto. Sem ele o seletor é
+# de PÁGINA: ao trocar de sub-aba, o que sobrou da anterior entra na contagem,
+# a leitura "estabiliza" no número velho e relê os pares da sub-aba passada.
+# Eles casam com campos já casados e o campo desta sub-aba fica órfão -- foi
+# assim que `TextArea_TypeLegislationES` chegou vazio e o portal recusou o
+# Descarte inteiro, levando junto a Logística de reversa.
+#
+# Pior que o dado errado era o custo: contar N e ler o bloco N+1 que já sumiu
+# faz `engine.texto` esperar os 30 s de timeout e ESTOURAR, derrubando a
+# leitura das Condições inteira. `ler_secao_visivel` já se ancora em
+# `//fieldset` pelo mesmo motivo; aqui faltava.
 XPATH_VIEW_BLOCO_DOIS_IDIOMAS = (
-    "//div[contains(@data-block, 'Block_ExpressionBothLenguage')]"
+    "//fieldset//div[contains(@data-block, 'Block_ExpressionBothLenguage')]"
 )
 XPATH_VIEW_TEXTO_DO_BLOCO = "//span[@data-expression]"
 # O balão DESTE bloco, casado pelo `aria-describedby`. `{base}` é o bloco já

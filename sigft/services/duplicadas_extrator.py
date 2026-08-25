@@ -459,7 +459,14 @@ def ler_espanhol_visivel(engine):
     total = _esperar_os_blocos_de_idioma(engine)
     for indice in range(1, total + 1):
         base = f"({sel.XPATH_VIEW_BLOCO_DOIS_IDIOMAS})[{indice}]"
-        portugues = engine.texto(base + sel.XPATH_VIEW_TEXTO_DO_BLOCO)
+        # ⚠️ CONFERE ANTES DE LER. Entre o `contar` e o `texto` a tela pode ter
+        # remontado; pedir o texto de um nó que sumiu custa os 30 s de timeout
+        # do motor E levanta, derrubando a leitura das Condições inteira.
+        # Bloco que sumiu é bloco a menos, não é erro fatal.
+        pt_alvo = base + sel.XPATH_VIEW_TEXTO_DO_BLOCO
+        if not engine.element_exists(pt_alvo):
+            continue
+        portugues = engine.texto(pt_alvo)
         alvo = sel.XPATH_VIEW_BALAO_DO_BLOCO.format(base=base)
         espanhol = engine.texto(alvo) if engine.element_exists(alvo) else ""
         pares.append((" ".join(str(portugues or "").split()),
@@ -660,6 +667,28 @@ def abrir_secao(portal, nome, callback_log=None, log_auditoria=None):
     return False
 
 
+# Espera a sub-aba TERMINAR de montar: duas contagens iguais e positivas dos
+# valores na tela. Mesmo motivo (e mesma forma) de `_esperar_os_blocos_de_idioma`.
+TENTATIVAS_DA_SUBABA = 14
+INTERVALO_DA_SUBABA = 0.5
+XPATH_VALORES_NA_TELA = "//fieldset//span[@data-expression]"
+
+
+def _esperar_a_subaba_montar(engine):
+    """Espera os valores da sub-aba pararem de aparecer. Devolve quantos há."""
+    anterior = -1
+    for _ in range(TENTATIVAS_DA_SUBABA):
+        try:
+            atual = engine.contar(XPATH_VALORES_NA_TELA)
+        except Exception:  # noqa: BLE001 -- tela remontando
+            atual = -1
+        if atual > 0 and atual == anterior:
+            return atual
+        anterior = atual
+        time.sleep(INTERVALO_DA_SUBABA)
+    return max(anterior, 0)
+
+
 def abrir_subaba_de_condicoes(portal, nome, callback_log=None, log_auditoria=None):
     """Abre uma sub-aba DENTRO de Condições. Devolve `True` se ficou ativa.
 
@@ -679,6 +708,18 @@ def abrir_subaba_de_condicoes(portal, nome, callback_log=None, log_auditoria=Non
 
     ativa = sel.XPATH_SUBABA_CONDICOES_ATIVA.format(texto=_literal_xpath(nome))
     if portal.engine.contar(ativa):
+        # ⚠️ ABA ATIVA NÃO É ABA MONTADA. O `aria-selected` vira `true` no
+        # clique; os campos entram no DOM depois. Varrer nesse intervalo dá
+        # leitura PARCIAL -- e parcial aqui não é "menos dado", é dado que
+        # falta sem ninguém perceber: medido em 2026-08-25 na ficha 1277, a
+        # mesma sub-aba deu [Manutenção] 3 campos numa leitura com pausa e
+        # 2 na leitura do robô; o Descarte deu 4 e 3.
+        #
+        # O que se perde nesse campo a menos: o `..._ES` correspondente fica
+        # órfão, e como em Descarte o espanhol é obrigatório, o portal recusa
+        # a sub-aba INTEIRA -- levando junto campos que já estavam certos,
+        # como a Logística de reversa.
+        _esperar_a_subaba_montar(portal.engine)
         _log(f"      Sub-aba aberta: {nome}")
         # ⚠️ MESMA COLEIRA DE `abrir_secao`, e pelo mesmo motivo -- eu tinha
         # consertado lá e deixado AQUI o defeito. Sem âncora, `fotografar` cai
