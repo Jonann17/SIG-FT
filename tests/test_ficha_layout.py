@@ -126,9 +126,33 @@ _CHAVES_SEM_DESC = sorted(k for k in _OLD_AUTOSPEC_CONFIG_MAP if k not in _CHAVE
 # 1. Estrutura — as 25 chaves batem nos 3 mapas.
 # =============================================================================
 
-def test_25_chaves_sem_perder_nem_inventar_nenhuma():
-    assert set(ficha_layout.CONFIG_MAP) == set(_OLD_ANALYZER_CONFIG_MAP) == set(_OLD_AUTOSPEC_CONFIG_MAP)
-    assert len(ficha_layout.CONFIG_MAP) == 25
+# Acréscimos DELIBERADOS ao CONFIG_MAP depois do CP 2.4. Cada um entra aqui
+# junto com o commit que o adiciona — é o que separa "campo novo, decidido"
+# de "chave inventada por engano", que é o que este teste sempre protegeu.
+#
+#   controle_temp_umidade (2026-08-26, frente Rafael): estava na lista de
+#   campos obrigatórios do usuário e não existia no mapa. A célula (M23) veio
+#   de `services/upload_conditions.py:132`, que já lia esse endereço.
+CHAVES_ACRESCENTADAS_DEPOIS_DO_CP_2_4 = {"controle_temp_umidade"}
+
+
+def test_nenhuma_chave_do_CP_2_4_foi_perdida_nem_inventada():
+    """O CP 2.4 unificou dois mapas divergentes; este teste provava que a
+    união não perdeu nem inventou chave.
+
+    Ele afirmava igualdade EXATA com as 25 congeladas, e por isso quebrava
+    em qualquer acréscimo — inclusive nos deliberados, que o
+    `TRABALHO_PARALELO.md` §4 autoriza expressamente ("nunca remova do
+    CONFIG_MAP; só acrescente"). A garantia que importa é outra, e continua
+    inteira: **nada do CP 2.4 sumiu**, e todo acréscimo é declarado.
+    """
+    congeladas = set(_OLD_ANALYZER_CONFIG_MAP)
+    assert congeladas == set(_OLD_AUTOSPEC_CONFIG_MAP)
+    assert len(congeladas) == 25
+
+    assert congeladas <= set(ficha_layout.CONFIG_MAP), "chave do CP 2.4 sumiu"
+    assert (set(ficha_layout.CONFIG_MAP) - congeladas
+            == CHAVES_ACRESCENTADAS_DEPOIS_DO_CP_2_4), "chave nova nao declarada"
 
 
 def test_9_checkbox_16_cell_conferido_contra_a_fixture():

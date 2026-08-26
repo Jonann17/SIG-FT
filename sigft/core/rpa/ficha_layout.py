@@ -98,31 +98,38 @@ from sigft import config
 #     o prompt de IA e a UI de campos faltantes.
 # -----------------------------------------------------------------------
 CONFIG_MAP = {
-    "texto_breve_material": {"range": "H6:P6", "type": "cell", "validation": "simple", "weight": 1},
-    "unidade": {"range": "H8:J8", "type": "cell", "validation": "simple", "weight": 1},
-    "tipo_fabricacao": {"cells": ["F10", "F12"], "type": "checkbox", "validation": "simple", "weight": 2, "error_target": ["F10", "F12"], "desc": "F10: Série, F12: Especial/Sob Pedido"},
-    "fabricante": {"range": "L10:N10", "type": "cell", "validation": "simple", "weight": 1},
-    "origem": {"cells": ["S6", "S8"], "type": "checkbox", "validation": "simple", "weight": 2, "error_target": ["S6", "S8"], "desc": "S6: BR/PY, S8: Outros"},
-    "tipo": {"cells": ["S10", "S12"], "type": "checkbox", "validation": "simple", "weight": 2, "error_target": ["S10", "S12"], "desc": "S10: Reparável, S12: Não Reparável"},
-    "comprimento_embalagem": {"range": "H17:K17", "type": "cell", "validation": "simple", "weight": 1, "desc": "cm"},
-    "largura_embalagem": {"range": "H19:K19", "type": "cell", "validation": "simple", "weight": 1, "desc": "cm"},
-    "altura_embalagem": {"range": "H21:K21", "type": "cell", "validation": "simple", "weight": 1, "desc": "cm"},
-    "peso_liquido": {"range": "P17:Q17", "type": "cell", "validation": "simple", "weight": 1, "desc": "kg"},
+    "texto_breve_material": {"range": "H6:P6", "type": "cell", "validation": "simple", "weight": 1, "obrigatorio": True},
+    "unidade": {"range": "H8:J8", "type": "cell", "validation": "simple", "weight": 1, "obrigatorio": True},
+    "tipo_fabricacao": {"cells": ["F10", "F12"], "type": "checkbox", "validation": "simple", "weight": 2, "error_target": ["F10", "F12"], "desc": "F10: Série, F12: Especial/Sob Pedido", "obrigatorio": True},
+    "fabricante": {"range": "L10:N10", "type": "cell", "validation": "simple", "weight": 1, "obrigatorio": True},
+    "origem": {"cells": ["S6", "S8"], "type": "checkbox", "validation": "simple", "weight": 2, "error_target": ["S6", "S8"], "desc": "S6: BR/PY, S8: Outros", "obrigatorio": True},
+    "tipo": {"cells": ["S10", "S12"], "type": "checkbox", "validation": "simple", "weight": 2, "error_target": ["S10", "S12"], "desc": "S10: Reparável, S12: Não Reparável", "obrigatorio": True},
+    "comprimento_embalagem": {"range": "H17:K17", "type": "cell", "validation": "simple", "weight": 1, "desc": "cm", "obrigatorio": True},
+    "largura_embalagem": {"range": "H19:K19", "type": "cell", "validation": "simple", "weight": 1, "desc": "cm", "obrigatorio": True},
+    "altura_embalagem": {"range": "H21:K21", "type": "cell", "validation": "simple", "weight": 1, "desc": "cm", "obrigatorio": True},
+    "peso_liquido": {"range": "P17:Q17", "type": "cell", "validation": "simple", "weight": 1, "desc": "kg", "obrigatorio": True},
     "peso_bruto": {"range": "P19:Q19", "type": "cell", "validation": "simple", "weight": 1, "desc": "kg"},
-    "sujeito_intemperies": {"cells": ["Q21", "S21"], "type": "checkbox", "validation": "simple", "weight": 1, "error_target": "U21", "desc": "Q21: Sim, S21: Não"},
-    "posicao_armazenamento": {"cells": ["G25", "G27", "G29"], "type": "checkbox", "validation": "simple", "weight": 3, "error_target": "J27", "desc": "G25: Vertical, G27: Horizontal, G29: Indiferente"},
-    "protecao": {"cells": ["S25", "S27", "S29"], "type": "checkbox", "validation": "simple", "weight": 3, "error_target": "O27", "desc": "S25: Nenhuma, S27: UV, S29: Eletrostática"},
-    "nocivo": {"cells": ["E31", "E33"], "type": "checkbox", "validation": "simple", "weight": 2, "error_target": "L31", "desc": "E31: Não Nocivo, E33: Nocivo"},
+    "sujeito_intemperies": {"cells": ["Q21", "S21"], "type": "checkbox", "validation": "simple", "weight": 1, "error_target": "U21", "desc": "Q21: Sim, S21: Não", "obrigatorio": True},
+    # ACRESCENTADO em 2026-08-26: estava na lista de campos obrigatorios do
+    # usuario e nao existia no CONFIG_MAP. A celula (M23) nao foi chutada --
+    # `services/upload_conditions.py:132` ja lia esse mesmo endereco
+    # (`dados["controle_temperatura"] = get_val("M23")`) desde antes.
+    # `validation: "simple"` e nao "ai": a pergunta e SIM/NAO com valores ao
+    # lado, nao texto livre para a IA julgar.
+    "controle_temp_umidade": {"range": "M23", "type": "cell", "validation": "simple", "weight": 2, "obrigatorio": True, "desc": "Necessidade de controle de temperatura e umidade"},
+    "posicao_armazenamento": {"cells": ["G25", "G27", "G29"], "type": "checkbox", "validation": "simple", "weight": 3, "error_target": "J27", "desc": "G25: Vertical, G27: Horizontal, G29: Indiferente", "obrigatorio": True},
+    "protecao": {"cells": ["S25", "S27", "S29"], "type": "checkbox", "validation": "simple", "weight": 3, "error_target": "O27", "desc": "S25: Nenhuma, S27: UV, S29: Eletrostática", "obrigatorio": True},
+    "nocivo": {"cells": ["E31", "E33"], "type": "checkbox", "validation": "simple", "weight": 2, "error_target": "L31", "desc": "E31: Não Nocivo, E33: Nocivo", "obrigatorio": True},
     "empilhamento": {"range": "J35:L35", "type": "cell", "validation": "simple", "weight": 2, "desc": "Qtd Max Caixas"},
-    "embalagem_transporte": {"range": "M42:V44", "type": "cell", "validation": "ai", "weight": 7, "desc": "Tipo e cuidados embalagem transporte"},
-    "transporte": {"range": "M45:V47", "type": "cell", "validation": "ai", "weight": 3, "desc": "Procedimento elevação/transporte"},
-    "preservacao": {"range": "M52:V53", "type": "cell", "validation": "ai", "weight": 6, "desc": "Cuidados preservação"},
-    "metodo_limpeza": {"range": "M54:V55", "type": "cell", "validation": "ai", "weight": 3, "desc": "Métodos limpeza/secagem"},
-    "ferramentas_para_preservacao": {"range": "M56:V58", "type": "cell", "validation": "ai", "weight": 1, "desc": "Ferramentas recomendadas"},
-    "tipo_legislacao": {"range": "M63:V64", "type": "cell", "validation": "ai", "weight": 4, "desc": "Legislação aplicada"},
-    "tipo_descarte": {"range": "M65:V66", "type": "cell", "validation": "ai", "weight": 2, "desc": "Tipo descarte/Melhores práticas"},
-    "classificacao_periculosidade": {"cells": ["E69", "J69"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "E69: Classe 1 (Perigoso), J69: Classe 2 (Não Perigoso)"},
-    "logistica_reversa": {"cells": ["P69", "T69"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "P69: Não se aplica, T69: Aplica-se"},
+    "embalagem_transporte": {"range": "M42:V44", "type": "cell", "validation": "ai", "weight": 7, "desc": "Tipo e cuidados embalagem transporte", "obrigatorio": True},
+    "transporte": {"range": "M45:V47", "type": "cell", "validation": "ai", "weight": 3, "desc": "Procedimento elevação/transporte", "obrigatorio": True, "aceita_nao_aplicavel": True},
+    "preservacao": {"range": "M52:V53", "type": "cell", "validation": "ai", "weight": 6, "desc": "Cuidados preservação", "obrigatorio": True},
+    "metodo_limpeza": {"range": "M54:V55", "type": "cell", "validation": "ai", "weight": 3, "desc": "Métodos limpeza/secagem", "obrigatorio": True, "aceita_nao_aplicavel": True},
+    "ferramentas_para_preservacao": {"range": "M56:V58", "type": "cell", "validation": "ai", "weight": 1, "desc": "Ferramentas recomendadas", "obrigatorio": True, "aceita_nao_aplicavel": True},
+    "tipo_legislacao": {"range": "M63:V64", "type": "cell", "validation": "ai", "weight": 4, "desc": "Legislação aplicada", "obrigatorio": True},
+    "tipo_descarte": {"range": "M65:V66", "type": "cell", "validation": "ai", "weight": 2, "desc": "Tipo descarte/Melhores práticas", "obrigatorio": True},
+    "classificacao_periculosidade": {"cells": ["E69", "J69"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "E69: Classe 1 (Perigoso), J69: Classe 2 (Não Perigoso)", "obrigatorio": True},
+    "logistica_reversa": {"cells": ["P69", "T69"], "type": "checkbox", "validation": "simple", "weight": 2, "desc": "P69: Não se aplica, T69: Aplica-se", "obrigatorio": True},
 }
 
 # -----------------------------------------------------------------------
