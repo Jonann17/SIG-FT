@@ -142,3 +142,24 @@ VARIAVEIS_SPECS = {
     "pergunta_col_idx": 3,
     "resposta_col_idx": 13,
 }
+
+# -----------------------------------------------------------------------
+# Quantas linhas em branco SEGUIDAS significam "a lista acabou" (2026-08-26).
+#
+# Acréscimo ADITIVO nesta zona compartilhada: nenhum valor existente mudou.
+# Mora aqui porque é uma propriedade do LAYOUT da ficha, e os dois lados
+# precisam dela — o `analyzer` varre as specs para pontuar, o `autospec` para
+# preencher.
+#
+# Por que existe: parar na PRIMEIRA linha vazia é o bug medido em 2026-08-26
+# no analyzer — uma ficha com 5 perguntas em 6 linhas (uma linha de respiro no
+# meio) tinha 2 perguntas analisadas, e as outras 3 sumiam da nota em silêncio.
+# Folgado o bastante para atravessar um bloco de layout, curto o bastante para
+# não varrer a planilha inteira.
+#
+# O valor vem do `AutoSpecCore.MAX_LINHAS_VAZIAS_SEGUIDAS` (R-08, 2026-08-11),
+# que era o mesmo 25 escrito como atributo de classe. A migração do autospec
+# para esta constante está registrada em PENDENCIAS.md — enquanto não
+# acontecer, os dois números são iguais de propósito, não por coincidência.
+# -----------------------------------------------------------------------
+MAX_LINHAS_VAZIAS_SEGUIDAS = 25
