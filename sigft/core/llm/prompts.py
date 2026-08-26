@@ -126,7 +126,12 @@ REGRAS DE VALIDAÇÃO:
    * Todas informações devem ser fornecidas (exceto quando não aplicaveis) e não referenciadas.
    * Exemplo 10: Pergunta="Componentes", Resposta="Item 20 conforme catálogo " -> INVALIDO (A resposta deve ser dada, e não direcionada para outra fonte).
 
-4. REGRA DE OURO:
+4. Regra do campo "embalagem_transporte":
+   * A resposta deve DIZER O TIPO da embalagem usada no transporte, e não apenas remeter a um padrão.
+   * Exemplo 11: Pergunta="embalagem_transporte", Resposta="Caixa de madeira com calços internos" -> VALIDO (diz o tipo).
+   * Exemplo 12: Pergunta="embalagem_transporte", Resposta="Conforme padrão do fabricante" -> INVALIDO (não diz qual é a embalagem).
+
+5. REGRA DE OURO:
    * Na dúvida, considere a informação como VALIDO. Seu objetivo é filtrar apenas os erros óbvios de preenchimento, não os erros técnicos sutis.
 
 #Task: Com base nas REGRAS DE VALIDAÇÃO acima, analise os seguintes campos do material "{mat}", do fornecedor "{fab}" a partir de dados coletados sobre o material na internet.
@@ -135,15 +140,15 @@ REGRAS DE VALIDAÇÃO:
 
 {str_vars}
 
-#Notes: Retorne sua resposta APENAS no formato JSON. Não inclua ```json ou qualquer outro texto antes ou depois. O JSON deve ter duas chaves: "campos_fixos" e "campos_variaveis". Para "campos_fixos", use as chaves exatas que eu forneci (ex: "embalagem_transporte"). Para "campos_variaveis", retorne uma lista, na mesma ordem em que foram fornecidos. Para cada campo, indique um status "VALIDO" ou "INVALIDO". Exemplo de formato de resposta JSON:
+#Notes: Retorne sua resposta APENAS no formato JSON. Não inclua ```json ou qualquer outro texto antes ou depois. O JSON deve ter duas chaves: "campos_fixos" e "campos_variaveis". Para "campos_fixos", use as chaves exatas que eu forneci (ex: "embalagem_transporte"). Para "campos_variaveis", retorne uma lista, na mesma ordem em que foram fornecidos. Para cada campo, indique um status "VALIDO" ou "INVALIDO". SEMPRE que o status for "INVALIDO", inclua também um campo "motivo" com UMA frase curta, em português, dizendo o que está errado e o que deveria ter sido informado — esse texto vai num relatório enviado ao FORNECEDOR para ele corrigir a ficha, então escreva para ele, não para mim. Exemplo de formato de resposta JSON:
 
 {{
   "campos_fixos": {{
     "embalagem_transporte": {{ "status": "VALIDO" }},
-    "transporte": {{ "status": "INVALIDO" }}
+    "transporte": {{ "status": "INVALIDO", "motivo": "A resposta não descreve a posição nem o procedimento de içagem; informe como o material deve ser elevado." }}
   }},
   "campos_variaveis": [
-    {{ "status": "INVALIDO" }}
+    {{ "status": "INVALIDO", "motivo": "Foi informada uma dimensão onde se pedia o material de fabricação." }}
   ]
 }}
 """

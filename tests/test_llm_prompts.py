@@ -88,7 +88,11 @@ def test_montar_validar_ficha_interpola_mat_fab_str_fixed_str_vars():
     assert "<<<STR_VARS>>>" in texto
     # trechos fixos do texto original continuam presentes
     assert "REGRAS DE VALIDAÇÃO:" in texto
-    assert "4. REGRA DE OURO:" in texto
+    # Sem o NÚMERO: em 2026-08-26 entrou uma regra nova antes dela (a do campo
+    # "embalagem_transporte", que passou a exigir o TIPO da embalagem), e a
+    # REGRA DE OURO virou a 5ª. O que este teste guarda é que o texto fixo do
+    # prompt sobrevive à interpolação — a numeração não é contrato de ninguém.
+    assert "REGRA DE OURO:" in texto
     assert "#Notes: Retorne sua resposta APENAS no formato JSON." in texto
     assert '"campos_fixos"' in texto
     assert '"campos_variaveis"' in texto
