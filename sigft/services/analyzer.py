@@ -9,7 +9,11 @@ from openpyxl.cell.text import InlineFont
 
 from sigft import config
 from sigft.core.excel import headers, pmib_codes
-from sigft.core.rpa.ficha_layout import CONFIG_MAP, VARIAVEIS_SPECS
+from sigft.core.rpa.ficha_layout import (
+    CONFIG_MAP,
+    MAX_LINHAS_VAZIAS_SEGUIDAS,
+    VARIAVEIS_SPECS,
+)
 # CP 3.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 3): `google.generativeai`
 # deixou de ser importado aqui -- `_call_gemini_api` abaixo delega para
 # `LLMClient`/`GeminiProvider` (ÚNICO lugar do projeto que importa `genai`).
@@ -40,6 +44,55 @@ INLINE_FONT_ERRO_TACHADO = InlineFont(color="FF0000", strike=True)
 # CP 2.4, e o docstring de ficha_layout.py para o histórico da unificação.
 
 
+def aba_do_status_pmib(wb):
+    """A aba do `_STATUS_PMIB` que tem os cabeçalhos, não a que estava
+    selecionada quando o arquivo foi salvo.
+
+    Mesmo bug do `wb.active` da ficha, do outro lado do fluxo: com a aba
+    errada, `_find_header_columns` não acha as colunas e **todas** as fichas
+    do lote perdem o enriquecimento de descrição, cada uma com um
+    `[AVISO] PMIB não encontrado` que parece defeito da planilha do usuário.
+
+    Sem cabeçalho em aba nenhuma, devolve `wb.active` — o comportamento de
+    hoje. Vive no serviço, e não na tela, porque é regra de negócio
+    (princípio nº 2 da arquitetura).
+    """
+    try:
+        abas = list(wb.worksheets)
+    except Exception:
+        return wb.active
+    if len(abas) <= 1:
+        return abas[0] if abas else wb.active
+
+    for ws in abas:
+        try:
+            linhas = headers.rows_from_worksheet(ws, max_row=10)
+            _, linha_cabecalho = headers.find_columns(
+                linhas,
+                {config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB,
+                 config.COL_DESCRICAO: config.COL_DESCRICAO},
+            )
+        except Exception:
+            continue
+        if linha_cabecalho is not None:
+            return ws
+    return wb.active
+
+
+def nome_com_a_nota(nome_original, nota):
+    """`4500063671.0071.xlsx` + 87 -> `4500063671.0071_87%.xlsx`.
+
+    Era `nome.replace(".xlsx", f"_{nota}%.xlsx")`, e `str.replace` troca
+    TODAS as ocorrências: `ficha.xlsx.revisao.xlsx` saía como
+    `ficha_87%.xlsx.revisao_87%.xlsx` (medido em 2026-08-26). Só a extensão
+    final é extensão.
+    """
+    base, ponto, extensao = str(nome_original).rpartition(".")
+    if ponto and extensao.lower() == "xlsx":
+        return f"{base}_{nota}%.xlsx"
+    return f"{nome_original}_{nota}%.xlsx"
+
+
 # -----------------------------------------------------------------
 # CLASSE PRINCIPAL
 # -----------------------------------------------------------------
@@ -52,6 +105,98 @@ class DatasheetAnalyzer:
         # api_key)` -- `self.last_api_call_time`/`self.min_seconds_between_calls`
         # REMOVIDOS (não são mais lidos por ninguém; ver `_call_gemini_api`).
         self._llm = get_llm("validar_ficha", api_key)
+        # Motivo da última falha de IA. Existe porque o `print` de
+        # `_call_gemini_api` ia para a janela preta -- que no app empacotado
+        # não tem para onde ir. `processar_planilha` publica isto no log da
+        # tela, junto do aviso de nota inflada.
+        self.ultimo_erro_ia = None
+
+    # -----------------------------------------------------------------
+    # LEITURA DA PLANILHA
+    # -----------------------------------------------------------------
+    def _aba_da_ficha(self, wb):
+        """A aba que de fato contém a ficha, e não a que estava selecionada
+        quando o arquivo foi salvo.
+
+        **O bug que isto conserta**, medido em 2026-08-26 com `.xlsx` real: a
+        MESMA ficha caía de **100% para 0%** quando o usuário salvava o
+        arquivo com outra aba em primeiro plano. `wb.active` devolvia a aba
+        errada, todo campo obrigatório era lido como vazio, cada um recebia
+        'FORNECER' numa aba que não é a ficha, e o arquivo ia para `FT_bad`.
+
+        A escolha é por evidência, não por nome de aba: conta quantas âncoras
+        do `CONFIG_MAP` estão preenchidas e se o título das especificações
+        aparece. **Empate ou nenhum sinal -> `wb.active`**, o comportamento de
+        sempre — este método só pode melhorar o resultado, nunca piorar.
+        """
+        try:
+            abas = list(wb.worksheets)
+        except Exception:
+            return wb.active
+        if len(abas) <= 1:
+            return abas[0] if abas else wb.active
+
+        try:
+            ativa = wb.active
+        except Exception:
+            ativa = abas[0]
+
+        melhor, melhor_nota = ativa, self._quanto_parece_ficha(ativa)
+        for ws in abas:
+            if ws is ativa:
+                continue
+            nota = self._quanto_parece_ficha(ws)
+            if nota > melhor_nota:  # `>` e não `>=`: empate fica com a ativa
+                melhor, melhor_nota = ws, nota
+        return melhor if melhor_nota > 0 else ativa
+
+    def _quanto_parece_ficha(self, ws):
+        """Quantas evidências de que esta aba é a ficha. 0 = nenhuma."""
+        pontos = 0
+        for cfg in CONFIG_MAP.values():
+            try:
+                if cfg["type"] == "cell":
+                    alvo = cfg["range"].split(":")[0]
+                else:
+                    alvo = cfg["cells"][0]
+                if ws[alvo].value not in (None, ""):
+                    pontos += 1
+            except Exception:
+                continue
+        return pontos
+
+    def _ler_specs(self, ws, linha_inicial):
+        """As especificações técnicas, da `linha_inicial` até o fim da lista.
+
+        **O bug que isto conserta**, medido em 2026-08-26: o laço antigo era
+        `if not p_val: break`, então **uma linha de respiro no meio da lista
+        encerrava a leitura**. Uma ficha com 5 perguntas em 6 linhas tinha 2
+        analisadas — e as outras 3 sumiam da nota sem nenhum aviso.
+
+        Pior: como os pontos por spec são `max_variable_points / total`, a
+        ficha truncada dava **mais pontos por spec** que a completa. Um
+        buraco na planilha deixava a ficha mais fácil de aprovar.
+
+        A lista acaba de verdade depois de `MAX_LINHAS_VAZIAS_SEGUIDAS`
+        (`ficha_layout`) perguntas em branco — mesma regra do autospec.
+        Pergunta sem resposta CONTINUA na lista: apontar isso é o serviço.
+        """
+        col_p = VARIAVEIS_SPECS["pergunta_range"].split(':')[0]
+        col_r = VARIAVEIS_SPECS["resposta_range"].split(':')[0]
+        specs = []
+        vazias_seguidas = 0
+        linha = linha_inicial
+        while vazias_seguidas < MAX_LINHAS_VAZIAS_SEGUIDAS:
+            pergunta = ws[f"{col_p}{linha}"].value
+            if not pergunta:
+                vazias_seguidas += 1
+                linha += 1
+                continue
+            vazias_seguidas = 0
+            celula = ws[f"{col_r}{linha}"]
+            specs.append({"pergunta": pergunta, "resposta": celula.value, "cell": celula})
+            linha += 1
+        return specs
 
     # -----------------------------------------------------------------
     # HELPERS DE EXCEL (Modificam a célula diretamente)
@@ -110,7 +255,13 @@ class DatasheetAnalyzer:
         # 1. Carregar Excel
         try:
             wb = openpyxl.load_workbook(input_filepath)
-            ws = wb.active
+            # 2026-08-26: era `wb.active`, e a aba ativa é a que estava
+            # selecionada quando o arquivo foi salvo -- não necessariamente a
+            # ficha. Ver `_aba_da_ficha`: a mesma ficha valia 100% ou 0%
+            # dependendo disso.
+            ws = self._aba_da_ficha(wb)
+            if ws is not wb.active:
+                yield f"[INFO] Lendo a aba '{getattr(ws, 'title', '?')}' (a aba ativa nao e a da ficha)."
         except Exception as e:
             yield f"[ERRO] Não foi possível abrir o arquivo. Erro: {e}"
             return False
@@ -206,49 +357,40 @@ class DatasheetAnalyzer:
         # 4. Mapeamento Dinâmico (Variáveis)
         start_row = self._find_variable_specs_start_row(ws)
 
-        # 4a. Contar Total
-        total_vars = 0
-        r = start_row
-        col_p = VARIAVEIS_SPECS["pergunta_range"].split(':')[0]
-        while True:
-            if not ws[f"{col_p}{r}"].value: break
-            total_vars += 1
-            r += 1
-            if r > start_row + 200: break
+        # 4a. Ler a lista INTEIRA numa passada só.
+        # Eram dois laços (contar, depois ler) que precisavam concordar, e os
+        # dois paravam na primeira linha em branco. Ver `_ler_specs`: uma
+        # linha de respiro no meio escondia o resto da lista da nota.
+        specs = self._ler_specs(ws, start_row)
+        total_vars = len(specs)
 
         # Usa o max_variable_points passado no argumento
         points_per_var = (max_variable_points / total_vars) if total_vars > 0 else 0
         yield f"[INFO] {total_vars} variáveis encontradas. ({points_per_var:.2f} pts/cada)"
 
-        # 4b. Ler e Validar Variáveis
+        # 4b. Validar as respostas
         vars_para_ia = []
         vars_map = []
 
-        col_r = VARIAVEIS_SPECS["resposta_range"].split(':')[0]
-        r = start_row
-        while True:
-            p_val = ws[f"{col_p}{r}"].value
-            if not p_val: break
-
-            r_cell = ws[f"{col_r}{r}"]
-            r_val = r_cell.value
+        for spec in specs:
+            r_cell = spec["cell"]
+            r_val = spec["resposta"]
             r_str = str(r_val).strip().lower() if r_val is not None else ""
 
             if r_val is None or r_str == "":
                 self.set_blank_error(r_cell)
             else:
-                vars_para_ia.append({"pergunta": p_val, "resposta": r_val})
+                vars_para_ia.append({"pergunta": spec["pergunta"], "resposta": r_val})
                 vars_map.append({'cell': r_cell, 'weight': points_per_var})
-
-            r += 1
-            if r > start_row + 200: break
 
         # 5. Validação Semântica (IA)
         ai_res = None
+        ia_foi_consultada = False
         if (dados_ia_validar or vars_para_ia):
             yield "Processando dados..."
             prompt = self._build_gemini_prompt(dados_ia_contexto, dados_ia_validar, vars_para_ia)
             ai_res = self._call_gemini_api(prompt)
+            ia_foi_consultada = True
         else:
             yield "Nada para validar via IA."
 
@@ -256,7 +398,11 @@ class DatasheetAnalyzer:
         ai_valid_fixed = {k: True for k in dados_ia_validar}
         ai_valid_vars = [True] * len(vars_para_ia)
 
-        if not ai_res:
+        # `ia_foi_consultada` (2026-08-26): `ai_res` nasce None, então o
+        # `if not ai_res` sozinho disparava o alarme de nota inflada TAMBÉM
+        # na ficha que não tinha nada para a IA validar -- ou seja, um susto
+        # falso justamente na ficha mais bem preenchida.
+        if ia_foi_consultada and not ai_res:
             # A IA NÃO respondeu (chave inválida, rede, cota...). O código
             # abaixo deixa `ai_valid_*` todo `True`, ou seja: a ficha ganha
             # 100% dos pontos que a IA deveria julgar, SEM que a IA tenha
@@ -270,6 +416,14 @@ class DatasheetAnalyzer:
             # docs/refatoracao/PENDENCIAS.md.
             yield "=" * 60
             yield "⚠️  ATENÇÃO: a IA NÃO respondeu para esta ficha."
+            # `getattr` e não `self.ultimo_erro_ia` direto: o repositório
+            # constrói o analyzer com `DatasheetAnalyzer.__new__(...)` em
+            # vários testes (ver test_ficha_layout.py), sem passar pelo
+            # `__init__` -- e o acesso direto rebentava com AttributeError no
+            # MEIO do processamento, com a ficha já marcada.
+            motivo = getattr(self, "ultimo_erro_ia", None)
+            if motivo:
+                yield f"   Motivo: {motivo}"
             yield "   Os campos que dependem da IA foram contados como VÁLIDOS,"
             yield "   então a nota abaixo está INFLADA e não pode ser usada"
             yield "   como aprovação. Confira o erro no log de IA"
@@ -323,7 +477,7 @@ class DatasheetAnalyzer:
         final_path_dir = os.path.join(root_output_dir, folder_status, subfolder_name)
         os.makedirs(final_path_dir, exist_ok=True)
 
-        out_name = original_filename.replace(".xlsx", f"_{final_score}%.xlsx")
+        out_name = nome_com_a_nota(original_filename, final_score)
         out_path = os.path.join(final_path_dir, out_name)
 
         try:
@@ -363,14 +517,34 @@ class DatasheetAnalyzer:
         p_offset = pidx - min_c
         d_offset = didx - min_c
 
+        # Duas correções medidas em 2026-08-26, ambas silenciosas:
+        #
+        # 1. `if not c_desc.value: break` parava na PRIMEIRA linha sem
+        #    descrição. Uma linha de separação no meio da planilha tornava
+        #    invisível todo o resto, e o analyzer dizia "PMIB não encontrado"
+        #    para materiais que estavam lá. Agora a lista só acaba depois de
+        #    `MAX_LINHAS_VAZIAS_SEGUIDAS` linhas em branco.
+        #
+        # 2. `str(c_pmib.value).strip()` não dava conta do código guardado
+        #    como NÚMERO: o Excel devolve `4500063671.1050` como o float
+        #    `4500063671.105` e o zero à direita evapora, então `.endswith
+        #    (".1050")` nunca casava. `normalize_pmib` é a implementação
+        #    única do CP 1.2 -- a mesma que o R-01 do autospec usou para o
+        #    mesmo problema -- e de quebra tira o apóstrofo do Excel.
+        vazias_seguidas = 0
         for row in ws.iter_rows(min_row=rstart, min_col=min_c, max_col=max_c):
             c_desc = row[d_offset]
             c_pmib = row[p_offset]
 
-            if not c_desc.value: break  # Fim da lista
+            if not c_desc.value and not c_pmib.value:
+                vazias_seguidas += 1
+                if vazias_seguidas >= MAX_LINHAS_VAZIAS_SEGUIDAS:
+                    break  # Aqui a lista acabou de verdade
+                continue
+            vazias_seguidas = 0
 
-            if c_pmib.value:
-                val = str(c_pmib.value).strip()
+            if c_pmib.value and c_desc.value:
+                val = pmib_codes.normalize_pmib(c_pmib.value)
                 if val.endswith(f".{code_4}") or val == code_4:
                     return str(c_desc.value).strip()
         return None
@@ -414,9 +588,22 @@ class DatasheetAnalyzer:
         # try/except fino, preservando o `return None` em falha total e o
         # `print` de erro (só perde o detalhe de QUAL das 3 tentativas
         # falhou -- ver docs/refatoracao/PENDENCIAS.md).
+        #
+        # 2026-08-26: o motivo da falha deixou de morrer no `print`. Num app
+        # empacotado a janela preta não existe, e o usuário via só a nota
+        # inflada, sem nenhuma pista de que a IA nem tinha sido consultada.
+        # `ultimo_erro_ia` é publicado no log da tela por `processar_planilha`.
         try:
+            self.ultimo_erro_ia = None
             resp = self._llm.generate(prompt, tags={"modulo": "analyzer_backend", "tarefa": "validar_ficha"})
             return resp.parsed_json
         except Exception as e:
+            self.ultimo_erro_ia = f"{type(e).__name__}: {e}"
+            # O `print` CONTINUA de propósito: `tests/test_llm_backend_
+            # migration.py` (frente do Luan, CP 3.1) o trava como
+            # caracterização -- "preserva o print de erro de hoje". Tirá-lo
+            # aqui obrigaria a reescrever um teste da outra frente às vésperas
+            # do CP 7.3, e o canal que a tela usa agora é `ultimo_erro_ia`.
+            # A redundância está registrada em PENDENCIAS.md para o CP 8.1.
             print(f"API Error: {e}")
             return None

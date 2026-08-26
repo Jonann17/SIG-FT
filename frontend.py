@@ -1697,10 +1697,14 @@ class ModuloAnalyzer(ctk.CTkFrame):
             if self.selected_pmib:
                 try:
                     wb = openpyxl.load_workbook(self.selected_pmib, data_only=True)
-                    pmib_sheet = wb.active
+                    # 2026-08-26: era `wb.active` — a aba selecionada quando o
+                    # arquivo foi salvo, que pode ser uma capa. Aí NENHUMA
+                    # ficha do lote achava descrição. Ver `aba_do_status_pmib`.
+                    pmib_sheet = analyzer_backend.aba_do_status_pmib(wb)
                     self.log("STATUS_PMIB carregada.")
                 except Exception as e: self.log(f"Erro STATUS_PMIB: {e}")
 
+            ok, falhas = 0, []
             for f_path in self.selected_files:
                 fname = os.path.basename(f_path)
                 subfolder = os.path.basename(os.path.dirname(f_path))
@@ -1717,11 +1721,38 @@ class ModuloAnalyzer(ctk.CTkFrame):
                     max_variable_points=self.max_var_points,   # <--- NOVO
                     callback_manual_desc=lambda f, c: None
                 )
-                for log_msg in iterador_logs:
-                    if not isinstance(log_msg, bool): self.log(log_msg)
+                # 2026-08-26, duas correções neste laço:
+                #
+                # 1. `for log in iterador: ...` DESCARTAVA o `return True/False`
+                #    do backend -- num generator ele vai para
+                #    `StopIteration.value`, nunca é "yieldado". O `if not
+                #    isinstance(log_msg, bool)` que estava aqui filtrava um
+                #    bool que nunca chegava. Resultado: a tela dizia "Análise
+                #    finalizada" mesmo com todas as fichas falhando.
+                # 2. Uma exceção numa ficha derrubava o LOTE INTEIRO, e as
+                #    fichas seguintes nem eram tentadas.
+                try:
+                    while True:
+                        try:
+                            self.log(next(iterador_logs))
+                        except StopIteration as fim:
+                            ok += 1 if fim.value else 0
+                            if not fim.value: falhas.append(fname)
+                            break
+                except Exception as e:
+                    self.log(f"[ERRO] {fname}: {e}")
+                    falhas.append(fname)
 
-            self.log("Concluído!")
-            messagebox.showinfo("Sucesso", "Análise finalizada.")
+            self.log(f"Concluído! {ok} de {len(self.selected_files)} ficha(s) processada(s).")
+            if falhas:
+                self.log(f"NAO concluidas ({len(falhas)}): {', '.join(falhas)}")
+                messagebox.showwarning(
+                    "Análise finalizada com pendências",
+                    f"{len(falhas)} de {len(self.selected_files)} ficha(s) não foram "
+                    "processadas.\nVeja o console para o motivo de cada uma."
+                )
+            else:
+                messagebox.showinfo("Sucesso", "Análise finalizada.")
         except Exception as e: self.log(f"Erro Fatal: {e}")
         finally: self.btn_run.configure(state="normal")
 
