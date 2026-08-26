@@ -358,7 +358,11 @@ def test_analyzer_criado_por_new_nao_quebra_no_meio_da_ficha():
     an = _analyzer()
     an._call_gemini_api = lambda prompt: None
     linhas = _rodar(an, _aba_de_ficha())
-    assert any("Nota Normalizada" in l for l in linhas)
+    # O ponto do teste é chegar INTEIRO ao fim do ramo de falha de IA — é lá
+    # que mora o acesso a `ultimo_erro_ia`, que rebentava. Depois da decisão
+    # de 2026-08-26 esse ramo termina abortando a ficha, então o marcador de
+    # "chegou ao fim" é a mensagem de PULADA, não mais a nota.
+    assert any("PULADA" in l for l in linhas)
 
 
 def test_ficha_sem_nada_para_a_IA_nao_leva_susto_de_nota_inflada():
@@ -387,3 +391,252 @@ def test_quando_a_IA_FOI_consultada_e_falhou_o_aviso_continua():
     an._call_gemini_api = lambda prompt: None
     linhas = _rodar(an, _aba_de_ficha())
     assert any("INFLADA" in l for l in linhas)
+
+
+# =============================================================================
+# H. As quatro decisões do usuário (2026-08-26)
+# =============================================================================
+def _rodar2(an, ws_gravavel, ws_valores=None, **kw):
+    """Como `_rodar`, mas devolve workbooks DIFERENTES conforme `data_only` —
+    é assim que o Excel se comporta, e é o ponto da decisão nº 1."""
+    import sigft.services.analyzer as mod
+    wb_grav = FakeWorkbook([ws_gravavel])
+    wb_val = FakeWorkbook([ws_valores if ws_valores is not None else ws_gravavel])
+    original = mod.openpyxl.load_workbook
+    mod.openpyxl.load_workbook = (
+        lambda *a, **k: wb_val if k.get("data_only") else wb_grav)
+    kw.setdefault("pmib_sheet", None)
+    kw.setdefault("callback_manual_desc", None)
+    # 101 de propósito: força o ramo `wb.save`, que o FakeWorkbook registra.
+    # Com threshold baixo o ramo é `shutil.copy2` de um arquivo que não
+    # existe, e o teste "não salvou" passaria pelo motivo errado.
+    kw.setdefault("score_threshold", 101)
+    try:
+        linhas = list(an.processar_planilha(
+            input_filepath="4500063671.0071.xlsx", root_output_dir="/tmp/naosalva",
+            subfolder_name="s", original_filename="4500063671.0071.xlsx",
+            custom_weights=None, max_variable_points=45.0, **kw))
+        return linhas, wb_grav
+    finally:
+        mod.openpyxl.load_workbook = original
+
+
+def _nota(linhas):
+    return next((int(l.split("Nota Normalizada: ")[1].split("%")[0])
+                 for l in linhas if "Nota Normalizada" in l), None)
+
+
+# --- Decisão 1: fórmula lida pelo VALOR -------------------------------------
+def test_formula_chega_a_IA_como_valor_e_nao_como_texto_da_formula():
+    """MEDIDO antes: o campo `fabricante` com `=1+1` fazia a IA receber a
+    string `'=1+1'` como nome do fabricante."""
+    from sigft.core.rpa.ficha_layout import CONFIG_MAP
+    alvo = CONFIG_MAP["fabricante"]["range"].split(":")[0]
+
+    grav = _aba_de_ficha()
+    grav[alvo].value = "=CONCATENAR(A1;B1)"
+    valores = _aba_de_ficha()
+    valores[alvo].value = "WAGO"
+
+    an = _analyzer()
+    visto = {}
+    an._build_gemini_prompt = lambda ctx, f, v: visto.update(ctx=ctx) or "prompt"
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+    _rodar2(an, grav, valores)
+    assert visto["ctx"]["fabricante"] == "WAGO"
+
+
+def test_formula_SEM_valor_calculado_avisa_em_vez_de_decidir_sozinho():
+    """`data_only=True` devolve o valor em CACHE. Ficha nunca aberta no Excel
+    não tem cache, e aí o valor é `None` — tratar como vazio marcaria
+    'FORNECER' por cima de uma fórmula que o usuário escreveu. Avisa, e
+    mantém o comportamento de hoje."""
+    from sigft.core.rpa.ficha_layout import CONFIG_MAP
+    alvo = CONFIG_MAP["fabricante"]["range"].split(":")[0]
+
+    grav = _aba_de_ficha()
+    grav[alvo].value = "=CONCATENAR(A1;B1)"
+    valores = _aba_de_ficha()
+    valores[alvo].value = None            # sem cache
+
+    an = _analyzer()
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+    linhas, _ = _rodar2(an, grav, valores)
+    assert any("formula" in l.lower() and "Excel" in l for l in linhas)
+    assert grav[alvo].value == "=CONCATENAR(A1;B1)", "nao pode escrever por cima"
+
+
+def test_a_marcacao_FORNECER_vai_no_workbook_QUE_SERA_SALVO():
+    """A armadilha da leitura dupla: se 'FORNECER' for escrito no workbook
+    `data_only`, o arquivo salvo sai **sem marcação nenhuma** — e o módulo
+    inteiro perde o sentido."""
+    from sigft.core.rpa.ficha_layout import CONFIG_MAP
+    alvo = next(c["range"].split(":")[0] for c in CONFIG_MAP.values()
+                if c["type"] == "cell" and c.get("validation") == "simple")
+
+    grav, valores = _aba_de_ficha(), _aba_de_ficha()
+    grav[alvo].value = None
+    valores[alvo].value = None
+
+    an = _analyzer()
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+    _rodar2(an, grav, valores)
+    assert grav[alvo].value == "FORNECER"
+
+
+# --- Decisão 2: renormalizar quando não há specs ----------------------------
+def test_ficha_sem_specs_com_tudo_preenchido_chega_a_100():
+    """MEDIDO antes: teto de 55%, porque os 45 pontos das variáveis entravam
+    no denominador mesmo não existindo variável nenhuma."""
+    an = _analyzer()
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+    linhas, _ = _rodar2(an, _aba_de_ficha(n_specs=0))
+    assert _nota(linhas) == 100
+
+
+def test_o_console_avisa_que_renormalizou():
+    an = _analyzer()
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+    linhas, _ = _rodar2(an, _aba_de_ficha(n_specs=0))
+    assert any("sem especificacoes" in l.lower() or "sem especificações" in l.lower()
+               for l in linhas)
+
+
+def test_ficha_COM_specs_continua_normalizando_sobre_o_total_de_sempre():
+    an = _analyzer()
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+    linhas, _ = _rodar2(an, _aba_de_ficha(n_specs=3))
+    assert _nota(linhas) == 100
+    assert any("100.0/100.0" in l for l in linhas)
+
+
+# --- Decisão 3: a IA fora do ar ABORTA a ficha ------------------------------
+def test_ia_fora_do_ar_nao_gera_arquivo_nenhum():
+    """Decisão do usuário: sem julgamento da IA não há nota confiável, e um
+    arquivo com nota que não vale é pior que arquivo nenhum."""
+    an = _analyzer()
+    an._call_gemini_api = lambda p: None
+    linhas, wb = _rodar2(an, _aba_de_ficha())
+    assert not hasattr(wb, "salvo_em")
+    assert not any("Salvo" in l for l in linhas)
+
+
+def test_ia_fora_do_ar_devolve_False_para_quem_chamou():
+    an = _analyzer()
+    an._call_gemini_api = lambda p: None
+    ger = an.processar_planilha  # noqa: F841  (documenta a intenção)
+
+    import sigft.services.analyzer as mod
+    wb = FakeWorkbook([_aba_de_ficha()])
+    original = mod.openpyxl.load_workbook
+    mod.openpyxl.load_workbook = lambda *a, **k: wb
+    try:
+        it = an.processar_planilha(
+            input_filepath="x.xlsx", root_output_dir="/tmp/naosalva",
+            subfolder_name="s", original_filename="x.xlsx", pmib_sheet=None,
+            score_threshold=0, custom_weights=None, max_variable_points=45.0,
+            callback_manual_desc=None)
+        resultado = "nao terminou"
+        while True:
+            try:
+                next(it)
+            except StopIteration as fim:
+                resultado = fim.value
+                break
+    finally:
+        mod.openpyxl.load_workbook = original
+    assert resultado is False
+
+
+def test_ia_fora_do_ar_diz_o_motivo_e_que_a_ficha_foi_pulada():
+    an = _analyzer()
+
+    class LLMQuebrado:
+        def generate(self, *a, **k):
+            raise RuntimeError("429 cota diaria estourada")
+
+    an._llm = LLMQuebrado()
+    an.ultimo_erro_ia = None
+    linhas, _ = _rodar2(an, _aba_de_ficha())
+    texto = "\n".join(linhas)
+    assert "429 cota diaria estourada" in texto
+    assert "pulada" in texto.lower() or "nao foi analisada" in texto.lower()
+
+
+def test_ia_respondendo_continua_salvando_como_sempre():
+    an = _analyzer()
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+    linhas, wb = _rodar2(an, _aba_de_ficha())
+    assert any("Salvo" in l for l in linhas)
+    assert hasattr(wb, "salvo_em")
+
+
+# --- Decisão 4: o callback de descrição manual deixa de ser morto ----------
+def test_callback_manual_desc_e_chamado_quando_o_pmib_nao_esta_na_planilha():
+    an = _analyzer()
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+    perguntado = []
+    linhas, _ = _rodar2(
+        an, _aba_de_ficha(),
+        pmib_sheet=_status_pmib([("4500063671.9999", "OUTRO MATERIAL")]),
+        callback_manual_desc=lambda arquivo, codigo: (
+            perguntado.append((arquivo, codigo)) or "VALVULA INFORMADA A MAO"),
+    )
+    assert perguntado, "o callback existe para ser usado"
+
+
+# =============================================================================
+# I. A caixa de diálogo da descrição manual (tela — por AST)
+# =============================================================================
+import ast
+import pathlib
+
+FRONTEND = pathlib.Path(__file__).resolve().parents[1] / "frontend.py"
+
+
+def _classe_analyzer():
+    arvore = ast.parse(FRONTEND.read_text(encoding="utf-8"))
+    for no in ast.walk(arvore):
+        if isinstance(no, ast.ClassDef) and no.name == "ModuloAnalyzer":
+            return no
+    pytest.fail("class ModuloAnalyzer sumiu do frontend.py")
+
+
+def _metodo_analyzer(nome):
+    for no in _classe_analyzer().body:
+        if isinstance(no, ast.FunctionDef) and no.name == nome:
+            return no
+    pytest.fail(f"metodo {nome} nao existe em ModuloAnalyzer")
+
+
+def test_a_tela_passa_um_callback_de_VERDADE_e_nao_um_lambda_morto():
+    """Era `callback_manual_desc=lambda f, c: None` — o parâmetro existia, era
+    chamado, e nunca fazia nada."""
+    metodo = _metodo_analyzer("_run_backend")
+    assert "_perguntar_descricao" in ast.dump(metodo)
+    # Nenhum lambda que devolve `None` fixo continua sendo passado ali. Olha
+    # a ÁRVORE do método, e não o texto do arquivo: a string
+    # "lambda f, c: None" ainda aparece no docstring de
+    # `_perguntar_descricao`, contando de onde isto veio.
+    for no in ast.walk(metodo):
+        if isinstance(no, ast.Lambda):
+            corpo = no.body
+            assert not (isinstance(corpo, ast.Constant) and corpo.value is None), \
+                "voltou o callback morto"
+
+
+def test_o_dialogo_abre_na_THREAD_DA_UI_e_nao_na_do_processamento():
+    """`_run_backend` roda em `threading.Thread`. Abrir janela tkinter de
+    fora da thread principal é o caminho curto para travar o app. O projeto
+    já tem o padrão certo em `_worker_web`: `self.after(0, ...)` para abrir e
+    um `Event` para esperar."""
+    fonte = ast.dump(_metodo_analyzer("_perguntar_descricao"))
+    assert "'after'" in fonte or '"after"' in fonte, "a janela precisa abrir via self.after"
+    assert "Event" in fonte, "a thread do backend precisa esperar a resposta"
+
+
+def test_cancelar_para_de_perguntar_no_resto_do_lote():
+    """Um lote de 50 fichas com PMIB desconhecido não pode virar 50 caixas de
+    diálogo obrigatórias. Cancelar é a saída."""
+    fonte = ast.dump(_metodo_analyzer("_perguntar_descricao"))
+    assert "_parar_de_perguntar_desc" in fonte

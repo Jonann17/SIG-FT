@@ -1690,8 +1690,59 @@ class ModuloAnalyzer(ctk.CTkFrame):
         self.api_key = self.controller.get_key("GEMINI")
         threading.Thread(target=self._run_backend).start()
 
+    def _perguntar_descricao(self, arquivo, codigo):
+        """Pergunta a descrição do material quando o código PMIB não está no
+        `_STATUS_PMIB`.
+
+        Chamado PELO BACKEND, de dentro da thread de processamento — por isso
+        a janela é aberta com `self.after(0, ...)` (thread da UI) e a thread
+        do backend espera num `Event`. É o mesmo padrão que
+        `ModuloUploadConditions._worker_web` já usa; abrir janela tkinter
+        fora da thread principal é o caminho curto para travar o app.
+
+        **Cancelar para de perguntar no resto do lote.** Um lote de 50 fichas
+        com PMIB desconhecido não pode virar 50 caixas de diálogo
+        obrigatórias — e a saída precisa ser óbvia para quem está com pressa.
+
+        Até 2026-08-26 este callback era `lambda f, c: None`: o backend o
+        chamava, e ele nunca fazia nada.
+        """
+        if getattr(self, "_parar_de_perguntar_desc", False):
+            return None
+
+        evento = threading.Event()
+        resposta = {"texto": None}
+
+        def _abrir():
+            try:
+                resposta["texto"] = simpledialog.askstring(
+                    "Descrição do material",
+                    f"A ficha {arquivo} tem o código PMIB {codigo}, que não está "
+                    "no _STATUS_PMIB.\n\nSe você souber a descrição do material, "
+                    "digite abaixo — ela entra no contexto que vai para a IA.\n\n"
+                    "CANCELAR segue sem descrição e não pergunta mais nesta rodada.",
+                    parent=self,
+                )
+            except Exception:
+                resposta["texto"] = None
+            finally:
+                evento.set()
+
+        self.after(0, _abrir)
+        evento.wait()
+
+        if resposta["texto"] is None:      # Cancelar (≠ de OK com campo vazio)
+            self._parar_de_perguntar_desc = True
+            self.log(" -> Sem descricao manual; nao vou perguntar de novo nesta rodada.")
+            return None
+        texto = resposta["texto"].strip()
+        if texto:
+            self.log(f" -> Descricao informada a mao: {texto}")
+        return texto or None
+
     def _run_backend(self):
         try:
+            self._parar_de_perguntar_desc = False
             analyzer = analyzer_backend.DatasheetAnalyzer(self.api_key)
             pmib_sheet = None
             if self.selected_pmib:
@@ -1719,7 +1770,7 @@ class ModuloAnalyzer(ctk.CTkFrame):
                     score_threshold=int(self.score_value),
                     custom_weights=self.custom_weights,        # <--- NOVO
                     max_variable_points=self.max_var_points,   # <--- NOVO
-                    callback_manual_desc=lambda f, c: None
+                    callback_manual_desc=self._perguntar_descricao
                 )
                 # 2026-08-26, duas correções neste laço:
                 #

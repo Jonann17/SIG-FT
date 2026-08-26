@@ -136,11 +136,32 @@ comportamento. Hoje detecta de verdade (item 1).
   que estava ali filtrava um bool que nunca chegava, e a tela dizia *"Análise finalizada"*
   mesmo com todas as fichas falhando. Agora conta e nomeia as que não concluíram.
 
-### Ainda em aberto (decisão do usuário, em `PENDENCIAS.md`)
+### As 4 decisões do usuário, tomadas em 2026-08-26
 
-| Achado | Por que não foi corrigido de carona |
+Estavam em aberto porque mudavam comportamento de produto, não porque eram difíceis. O
+usuário decidiu as quatro no mesmo dia:
+
+| Decisão | O que passou a acontecer |
 |---|---|
-| **Fórmula conta como preenchida** — `load_workbook` sem `data_only=True` faz `=1+1` valer como valor, e a IA recebe a string `'=1+1'` | O conserto (padrão do R-10 do autospec: ler com `data_only`, escrever sem) custa uma segunda leitura por ficha, e depende de saber se as fichas reais usam fórmula |
-| **Teto de 55%** — os 45 pontos das variáveis entram no denominador mesmo sem nenhuma spec, então a ficha nunca passa de 55% | Pode ser intencional (ficha sem spec É incompleta) ou conta errada — é decisão de produto |
-| **`callback_manual_desc` é recurso morto** — o frontend passa `lambda f, c: None` | Implementar a caixa de diálogo é função nova |
-| **Nota inflada quando a IA não responde** (registrado desde 2026-08-11) | Mudar a pontuação é decisão de produto; o aviso já existe e agora diz o motivo |
+| **Fórmula na célula → corrigir** | O arquivo é aberto DUAS vezes: um workbook gravável (guarda a fórmula, recebe o `FORNECER`, vai para o disco) e um `data_only=True` com os valores calculados. `=1+1` não conta mais como texto |
+| **Teto de 55% → renormalizar** | Sem especificações técnicas, os 45 pontos delas saem do denominador: a nota é calculada só sobre os campos fixos, com aviso no console. Uma ficha sem specs mas completa no resto chega a 100% |
+| **`callback_manual_desc` → implementar** | `ModuloAnalyzer._perguntar_descricao` abre a caixa de diálogo quando o PMIB não está na planilha. **CANCELAR para de perguntar no resto do lote** — 50 fichas desconhecidas não podem virar 50 diálogos obrigatórios |
+| **IA fora do ar → abortar a ficha** | Nada é salvo. Sem o julgamento da IA os campos dela contariam como válidos e a nota sairia inflada; um arquivo com nota que não vale é pior que arquivo nenhum. A ficha entra na lista de "não concluídas", com o motivo |
+
+**A armadilha da leitura dupla, e como ela está travada por teste:** se o `FORNECER` for
+escrito no workbook `data_only`, o arquivo salvo sai **sem marcação nenhuma** e o módulo perde
+o sentido. `test_a_marcacao_FORNECER_vai_no_workbook_QUE_SERA_SALVO` existe só para isso.
+
+**O caso que não dá para resolver sozinho:** `data_only=True` devolve o valor em CACHE, e ficha
+nunca aberta no Excel não tem cache — a fórmula existe e o valor é `None`. Tratar como célula
+vazia escreveria `FORNECER` por cima de uma fórmula do usuário, o que é pior que o problema
+original. Nesse caso o comportamento antigo é mantido (o texto cru) e o console avisa,
+**nomeando as células**: *"1 celula(s) com FORMULA sem valor calculado (L10). Abra a ficha no
+Excel e salve"*.
+
+### Ainda em aberto
+
+| Achado | Destino |
+|---|---|
+| `AutoSpecCore.MAX_LINHAS_VAZIAS_SEGUIDAS` e `ficha_layout.MAX_LINHAS_VAZIAS_SEGUIDAS` são o mesmo 25 em dois lugares (o analyzer já usa o do `ficha_layout`; o autospec ainda não) | CP 8.1 |
+| `_call_gemini_api` grava o erro em `ultimo_erro_ia` **e** ainda faz `print("API Error")`, porque um teste do CP 3.1 trava o print como caracterização | CP 8.1 |

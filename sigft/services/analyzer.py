@@ -165,7 +165,49 @@ class DatasheetAnalyzer:
                 continue
         return pontos
 
-    def _ler_specs(self, ws, linha_inicial):
+    def _aba_de_valores(self, caminho, ws_gravavel):
+        """A mesma aba, aberta com `data_only=True` — valores calculados no
+        lugar do texto das fórmulas.
+
+        Qualquer problema devolve a própria aba gravável: a leitura dupla é
+        uma melhora, e uma melhora não pode ser motivo de falha.
+        """
+        try:
+            wb = openpyxl.load_workbook(caminho, data_only=True)
+        except Exception:
+            return ws_gravavel
+        titulo = getattr(ws_gravavel, "title", None)
+        try:
+            for aba in wb.worksheets:
+                if getattr(aba, "title", None) == titulo:
+                    return aba
+            return wb.active
+        except Exception:
+            return ws_gravavel
+
+    def _valor_calculado(self, ws_valores, ws, ref, formulas_sem_valor):
+        """O valor da célula como o Excel o mostra.
+
+        **A armadilha do `data_only`:** ele devolve o valor em CACHE, e ficha
+        nunca aberta no Excel não tem cache — a fórmula existe e o valor é
+        `None`. Tratar isso como célula vazia escreveria 'FORNECER' por cima
+        de uma fórmula que o usuário escreveu, o que é pior que o problema
+        original. Nesse caso o comportamento de hoje é mantido (o texto cru)
+        e o campo entra em `formulas_sem_valor`, que vira aviso no console.
+        """
+        bruto = ws[ref].value
+        if ws_valores is ws:
+            return bruto
+        try:
+            calculado = ws_valores[ref].value
+        except Exception:
+            return bruto
+        if calculado is None and isinstance(bruto, str) and bruto.startswith("="):
+            formulas_sem_valor.append(ref)
+            return bruto
+        return calculado
+
+    def _ler_specs(self, ws, linha_inicial, ws_valores=None):
         """As especificações técnicas, da `linha_inicial` até o fim da lista.
 
         **O bug que isto conserta**, medido em 2026-08-26: o laço antigo era
@@ -193,8 +235,13 @@ class DatasheetAnalyzer:
                 linha += 1
                 continue
             vazias_seguidas = 0
+            # A célula vem da aba GRAVÁVEL (é nela que 'FORNECER' será
+            # escrito); a resposta, da aba de valores.
             celula = ws[f"{col_r}{linha}"]
-            specs.append({"pergunta": pergunta, "resposta": celula.value, "cell": celula})
+            fonte = ws_valores if ws_valores is not None else ws
+            specs.append({"pergunta": pergunta,
+                          "resposta": fonte[f"{col_r}{linha}"].value,
+                          "cell": celula})
             linha += 1
         return specs
 
@@ -262,9 +309,17 @@ class DatasheetAnalyzer:
             ws = self._aba_da_ficha(wb)
             if ws is not wb.active:
                 yield f"[INFO] Lendo a aba '{getattr(ws, 'title', '?')}' (a aba ativa nao e a da ficha)."
+            # DOIS workbooks de propósito (decisão do usuário, 2026-08-26):
+            # `ws` é o GRAVÁVEL (guarda a fórmula, recebe o 'FORNECER' e é o
+            # que vai para o disco); `ws_valores` traz o valor CALCULADO.
+            # Antes havia um só, sem `data_only`, e uma célula com `=1+1`
+            # contava como preenchida enquanto a IA recebia a string '=1+1'
+            # como valor do campo (medido).
+            ws_valores = self._aba_de_valores(input_filepath, ws)
         except Exception as e:
             yield f"[ERRO] Não foi possível abrir o arquivo. Erro: {e}"
             return False
+        formulas_sem_valor = []
 
         # 2. Enriquecimento de Contexto (PMIB)
         codigo_pmib_4 = self.extract_pmib_code(input_filepath)
@@ -301,8 +356,11 @@ class DatasheetAnalyzer:
 
             # --- TIPO: CÉLULA ÚNICA ---
             if config["type"] == "cell":
+                # `cell` é da aba gravável (recebe a marcação); o VALOR vem da
+                # aba de valores calculados. Ver `_valor_calculado`.
                 cell = self.get_cell_from_range(ws, config["range"])
-                val = cell.value
+                val = self._valor_calculado(
+                    ws_valores, ws, config["range"].split(':')[0], formulas_sem_valor)
                 val_str = str(val).strip().lower() if val is not None else ""
 
                 if config["validation"] == "ai":
@@ -331,7 +389,9 @@ class DatasheetAnalyzer:
 
             # --- TIPO: CHECKBOX ---
             elif config["type"] == "checkbox":
-                is_checked = any(ws[c].value is not None for c in config["cells"])
+                is_checked = any(
+                    self._valor_calculado(ws_valores, ws, c, formulas_sem_valor) is not None
+                    for c in config["cells"])
 
                 if not is_checked:
                     is_valid = False
@@ -361,12 +421,18 @@ class DatasheetAnalyzer:
         # Eram dois laços (contar, depois ler) que precisavam concordar, e os
         # dois paravam na primeira linha em branco. Ver `_ler_specs`: uma
         # linha de respiro no meio escondia o resto da lista da nota.
-        specs = self._ler_specs(ws, start_row)
+        specs = self._ler_specs(ws, start_row, ws_valores)
         total_vars = len(specs)
 
         # Usa o max_variable_points passado no argumento
         points_per_var = (max_variable_points / total_vars) if total_vars > 0 else 0
         yield f"[INFO] {total_vars} variáveis encontradas. ({points_per_var:.2f} pts/cada)"
+
+        if formulas_sem_valor:
+            yield (f"[AVISO] {len(formulas_sem_valor)} celula(s) com FORMULA sem valor "
+                   f"calculado ({', '.join(formulas_sem_valor[:6])}). Abra a ficha no "
+                   "Excel e salve para o valor ser gravado; ate la o texto da formula "
+                   "e o que vai para a analise.")
 
         # 4b. Validar as respostas
         vars_para_ia = []
@@ -415,7 +481,7 @@ class DatasheetAnalyzer:
             # abortar a ficha x pontuar só o que não é IA), registrada em
             # docs/refatoracao/PENDENCIAS.md.
             yield "=" * 60
-            yield "⚠️  ATENÇÃO: a IA NÃO respondeu para esta ficha."
+            yield "⚠️  A IA NÃO respondeu para esta ficha — ficha PULADA."
             # `getattr` e não `self.ultimo_erro_ia` direto: o repositório
             # constrói o analyzer com `DatasheetAnalyzer.__new__(...)` em
             # vários testes (ver test_ficha_layout.py), sem passar pelo
@@ -424,11 +490,13 @@ class DatasheetAnalyzer:
             motivo = getattr(self, "ultimo_erro_ia", None)
             if motivo:
                 yield f"   Motivo: {motivo}"
-            yield "   Os campos que dependem da IA foram contados como VÁLIDOS,"
-            yield "   então a nota abaixo está INFLADA e não pode ser usada"
-            yield "   como aprovação. Confira o erro no log de IA"
-            yield "   (logs/llm_usage.jsonl) e rode de novo."
+            yield "   NADA foi salvo. Sem o julgamento da IA os campos que ela"
+            yield "   deveria avaliar contariam como VÁLIDOS, a nota sairia"
+            yield "   INFLADA, e um arquivo com nota que não vale é pior que"
+            yield "   arquivo nenhum. Confira o log de IA (logs/llm_usage.jsonl)"
+            yield "   e rode esta ficha de novo."
             yield "=" * 60
+            return False
 
         if ai_res:
             yield "Aplicando retorno do processamento..."
@@ -458,7 +526,12 @@ class DatasheetAnalyzer:
 
         # [ALTERAÇÃO 2] Lógica de Normalização (0 a 100%)
         # Soma total possível = Soma dos pesos fixos + Total destinado às variáveis
-        grand_total_possible = total_possible_fixed + max_variable_points
+        # Decisão do usuário (2026-08-26): SEM especificações técnicas, os
+        # pontos delas não entram no denominador. Antes entravam sempre, e a
+        # ficha sem spec tinha teto de 55% -- nunca passava de um limiar
+        # acima disso, por mais completa que estivesse no resto (medido).
+        grand_total_possible = total_possible_fixed + (
+            max_variable_points if total_vars > 0 else 0)
 
         if grand_total_possible > 0:
             final_percentage = (total_score_earned / grand_total_possible) * 100
@@ -471,6 +544,9 @@ class DatasheetAnalyzer:
         folder_status = "FT_good" if final_score >= score_threshold else "FT_bad"
 
         # Log Informativo com detalhes da normalização
+        if total_vars == 0:
+            yield ("[INFO] Ficha sem especificacoes tecnicas: a nota foi calculada "
+                   "so sobre os campos fixos.")
         yield f"Pontos Brutos: {total_score_earned:.1f}/{grand_total_possible:.1f}"
         yield f"Nota Normalizada: {final_score}% ({folder_status})"
 
