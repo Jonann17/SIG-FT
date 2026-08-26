@@ -748,3 +748,105 @@ def test_ficha_COM_especificacoes_continua_sendo_pontuada(tmp_path):
     assert any("Nota Normalizada: 100%" in l for l in linhas)
     assert resultado is True
     assert not any(analyzer_mod.PASTA_NAO_CONCLUIDAS in a for a in _arquivos_em(str(saida)))
+
+
+# =============================================================================
+# K. Campos obrigatorios e o "Nao aplicavel" (2026-08-26, lista do usuario)
+# =============================================================================
+def _sem(ws, chave):
+    from sigft.core.rpa.ficha_layout import CONFIG_MAP
+    cfg = CONFIG_MAP[chave]
+    if cfg["type"] == "cell":
+        ws[cfg["range"].split(":")[0]].value = None
+    else:
+        for c in cfg["cells"]:
+            ws[c].value = None
+    return ws
+
+
+def test_campo_obrigatorio_vazio_impede_a_aprovacao(tmp_path):
+    """Nota alta nao compra campo obrigatorio faltando: a ficha volta para o
+    fornecedor de qualquer jeito."""
+    an = _analyzer()
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+    entrada = tmp_path / "4500063671.0071.xlsx"
+    entrada.write_text("x")
+    ws = _sem(_aba_de_ficha(), "fabricante")
+    linhas, resultado = _rodar3(an, ws, str(tmp_path / "saida"),
+                                entrada=str(entrada), score_threshold=0)
+    texto = "\n".join(linhas)
+    assert "obrigat" in texto.lower()
+    assert "fabricante" in texto
+    assert "FT_bad" in texto or "nao aprovada" in texto.lower()
+
+
+def test_o_console_NOMEIA_os_obrigatorios_que_faltaram(tmp_path):
+    """O engenheiro precisa saber o que pedir ao fornecedor, não só que
+    'faltou alguma coisa'."""
+    an = _analyzer()
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+    entrada = tmp_path / "4500063671.0071.xlsx"
+    entrada.write_text("x")
+    ws = _sem(_sem(_aba_de_ficha(), "fabricante"), "peso_liquido")
+    linhas, _ = _rodar3(an, ws, str(tmp_path / "saida"),
+                        entrada=str(entrada), score_threshold=0)
+    texto = "\n".join(linhas)
+    assert "fabricante" in texto and "peso_liquido" in texto
+
+
+def test_campo_NAO_obrigatorio_vazio_nao_reprova_sozinho(tmp_path):
+    """`peso_bruto` e `empilhamento` continuam valendo pontos, mas não estão
+    na lista de obrigatórios — faltar um deles baixa a nota, não reprova."""
+    an = _analyzer()
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+    entrada = tmp_path / "4500063671.0071.xlsx"
+    entrada.write_text("x")
+    ws = _sem(_aba_de_ficha(), "peso_bruto")
+    linhas, resultado = _rodar3(an, ws, str(tmp_path / "saida"),
+                                entrada=str(entrada), score_threshold=0)
+    texto = "\n".join(linhas)
+    assert "FT_good" in texto
+    assert "obrigat" not in texto.lower()
+
+
+@pytest.mark.parametrize("chave", ["transporte", "metodo_limpeza",
+                                   "ferramentas_para_preservacao"])
+@pytest.mark.parametrize("resposta", ["Não aplicável", "N/A", "nao aplicavel",
+                                      "Não se aplica"])
+def test_nao_aplicavel_e_ACEITO_nos_tres_campos_que_o_usuario_indicou(chave, resposta):
+    """Contradição encontrada em 2026-08-26: a **regra 2 do próprio prompt**
+    diz que "Não aplicável" pode ser válido — e `FORBIDDEN_NA_STRINGS` matava
+    a resposta no código, antes de a IA ver. Para estes três campos o usuário
+    confirmou que a resposta é legítima."""
+    from sigft.core.rpa.ficha_layout import CONFIG_MAP
+    an = _analyzer()
+    visto = {}
+    an._build_gemini_prompt = lambda c, f, v: visto.update(fixos=f) or "p"
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+
+    ws = _aba_de_ficha()
+    ws[CONFIG_MAP[chave]["range"].split(":")[0]].value = resposta
+    _rodar2(an, ws)
+    assert chave in visto["fixos"], f"'{resposta}' foi barrado antes da IA"
+
+
+def test_nao_aplicavel_continua_barrado_onde_o_usuario_NAO_autorizou():
+    """`preservacao` e `embalagem_transporte` não estão na lista dos que
+    aceitam — para eles 'N/A' continua sendo resposta que falta."""
+    from sigft.core.rpa.ficha_layout import CONFIG_MAP
+    an = _analyzer()
+    visto = {}
+    an._build_gemini_prompt = lambda c, f, v: visto.update(fixos=f) or "p"
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+
+    ws = _aba_de_ficha()
+    ws[CONFIG_MAP["preservacao"]["range"].split(":")[0]].value = "N/A"
+    _rodar2(an, ws)
+    assert "preservacao" not in visto["fixos"]
+
+
+def test_o_novo_campo_de_temperatura_e_lido_da_celula_M23():
+    """A célula não foi chutada: `upload_conditions.py:132` já lia M23."""
+    from sigft.core.rpa.ficha_layout import CONFIG_MAP
+    assert CONFIG_MAP["controle_temp_umidade"]["range"].startswith("M23")
+    assert CONFIG_MAP["controle_temp_umidade"]["obrigatorio"] is True

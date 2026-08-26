@@ -368,6 +368,11 @@ class DatasheetAnalyzer:
         dados_ia_validar = {}
         celulas_ai_map = {}
 
+        # Campos OBRIGATÓRIOS que falharam (lista do usuário, 2026-08-26).
+        # Ver a decisão logo antes do salvamento: nota alta não compra campo
+        # obrigatório faltando.
+        obrigatorios_faltando = []
+
         # 3. Validação de Campos Fixos (CONFIG_MAP)
         for key, config in CONFIG_MAP.items():
             is_valid = True
@@ -396,7 +401,20 @@ class DatasheetAnalyzer:
                 if config["validation"] == "ai":
                     celulas_ai_map[key] = {'cell': cell, 'weight': weight}
 
-                    if val_str in FORBIDDEN_NA_STRINGS:
+                    # `aceita_nao_aplicavel` (2026-08-26): três campos --
+                    # içagem, métodos de limpeza e ferramentas de preservação
+                    # -- podem legitimamente ser "Não aplicável", e o usuário
+                    # confirmou isso campo a campo.
+                    #
+                    # A contradição que isto conserta: a REGRA 2 do próprio
+                    # prompt (`montar_validar_ficha`) já dizia que "Não
+                    # aplicável" pode ser VÁLIDO quando a pergunta de fato não
+                    # se aplica ao material -- e `FORBIDDEN_NA_STRINGS` matava
+                    # a resposta aqui, antes de a IA chegar a vê-la. O código
+                    # contrariava o texto que ele mesmo manda para a IA.
+                    if config.get("aceita_nao_aplicavel") and val_str in FORBIDDEN_NA_STRINGS:
+                        dados_ia_validar[key] = val
+                    elif val_str in FORBIDDEN_NA_STRINGS:
                         self.set_invalid_error(cell, val)
                         is_valid = False
                     elif val is None or val_str == "":
@@ -438,6 +456,9 @@ class DatasheetAnalyzer:
             if config.get("validation") == "simple" or config.get("type") == "checkbox":
                 if is_valid:
                     total_score_earned += weight
+
+            if config.get("obrigatorio") and not is_valid:
+                obrigatorios_faltando.append(key)
 
         # Aplica Descrição Complementar
         if desc_complementar:
@@ -566,6 +587,10 @@ class DatasheetAnalyzer:
                     ai_valid_fixed[key] = False
                     c_obj = celulas_ai_map.get(key, {}).get('cell')
                     if c_obj: self.set_invalid_error(c_obj, c_obj.value)
+                    # Obrigatório reprovado PELA IA conta igual a obrigatório
+                    # em branco: a ficha não pode ser aprovada.
+                    if CONFIG_MAP.get(key, {}).get("obrigatorio"):
+                        obrigatorios_faltando.append(key)
 
             # Variáveis
             v_results = ai_res.get("campos_variaveis", [])
@@ -600,11 +625,28 @@ class DatasheetAnalyzer:
         final_score = int(round(final_percentage, 0))
 
         # 8. Decisão e Salvamento
-        folder_status = "FT_good" if final_score >= score_threshold else "FT_bad"
+        #
+        # CAMPO OBRIGATÓRIO FALTANDO REPROVA, qualquer que seja a nota (lista
+        # do usuário, 2026-08-26). Sem eles a ficha não serve para cadastro,
+        # então uma nota acima do limiar não pode aprová-la -- ela vai para
+        # `FT_bad` MARCADA, que é justamente o arquivo que se manda ao
+        # fornecedor mostrando o que falta.
+        #
+        # `FT_bad` e não `FT_nao_concluidas`: aqui a análise ACONTECEU e sabe
+        # dizer o que está errado. A pasta de não concluídas é para quando o
+        # aplicativo não conseguiu analisar.
+        aprovada = final_score >= score_threshold and not obrigatorios_faltando
+        folder_status = "FT_good" if aprovada else "FT_bad"
 
         # Log Informativo com detalhes da normalização
         yield f"Pontos Brutos: {total_score_earned:.1f}/{grand_total_possible:.1f}"
         yield f"Nota Normalizada: {final_score}% ({folder_status})"
+        if obrigatorios_faltando:
+            yield (f"[REPROVADA] {len(obrigatorios_faltando)} campo(s) OBRIGATORIO(s) "
+                   f"faltando ou invalido(s), entao a ficha nao e aprovada mesmo com "
+                   f"nota {final_score}%:")
+            for campo in obrigatorios_faltando:
+                yield f"    · {campo}"
 
         final_path_dir = os.path.join(root_output_dir, folder_status, subfolder_name)
         os.makedirs(final_path_dir, exist_ok=True)
@@ -613,7 +655,10 @@ class DatasheetAnalyzer:
         out_path = os.path.join(final_path_dir, out_name)
 
         try:
-            if final_score >= score_threshold:
+            # `aprovada` e nao `final_score >= score_threshold`: a ficha
+            # reprovada por campo obrigatorio precisa ir MARCADA, senao o
+            # fornecedor recebe o original limpo e nao ve o que falta.
+            if aprovada:
                 shutil.copy2(input_filepath, out_path)
                 yield f"Salvo (Original): {out_name}"
             else:
