@@ -44,6 +44,23 @@ INLINE_FONT_ERRO_TACHADO = InlineFont(color="FF0000", strike=True)
 # CP 2.4, e o docstring de ficha_layout.py para o histórico da unificação.
 
 
+# Terceiro destino, ao lado de FT_good/FT_bad (decisao do usuario, 2026-08-26).
+#
+# NAO e "ficha ruim" -- e ficha que o aplicativo NAO CONSEGUIU analisar, e que
+# por isso nao pode receber nota nenhuma. Duas situacoes caem aqui:
+#
+#   1. a secao de caracteristicas tecnicas nao existe na ficha. Ela TEM de
+#      existir; sem ela nao ha o que pontuar, e a ficha volta para o
+#      fornecedor preencher antes de qualquer analise;
+#   2. a IA nao respondeu (chave, cota, rede). Sem o julgamento dela a nota
+#      sairia inflada.
+#
+# Nos dois casos o que vai para a pasta e o arquivo ORIGINAL, sem marcacao e
+# sem porcentagem no nome: nota que nao existe nao pode aparecer no nome do
+# arquivo que o fornecedor vai receber.
+PASTA_NAO_CONCLUIDAS = "FT_nao_concluidas"
+
+
 def aba_do_status_pmib(wb):
     """A aba do `_STATUS_PMIB` que tem os cabeçalhos, não a que estava
     selecionada quando o arquivo foi salvo.
@@ -164,6 +181,19 @@ class DatasheetAnalyzer:
             except Exception:
                 continue
         return pontos
+
+    def _guardar_nao_concluida(self, input_filepath, root_output_dir,
+                               subfolder_name, original_filename):
+        """Copia o ORIGINAL para `FT_nao_concluidas/`. Devolve o caminho, ou
+        uma string de erro começada por `ERRO:`."""
+        destino = os.path.join(root_output_dir, PASTA_NAO_CONCLUIDAS, subfolder_name)
+        try:
+            os.makedirs(destino, exist_ok=True)
+            caminho = os.path.join(destino, original_filename)
+            shutil.copy2(input_filepath, caminho)
+            return caminho
+        except Exception as e:
+            return f"ERRO: {e}"
 
     def _aba_de_valores(self, caminho, ws_gravavel):
         """A mesma aba, aberta com `data_only=True` — valores calculados no
@@ -428,6 +458,30 @@ class DatasheetAnalyzer:
         points_per_var = (max_variable_points / total_vars) if total_vars > 0 else 0
         yield f"[INFO] {total_vars} variáveis encontradas. ({points_per_var:.2f} pts/cada)"
 
+        # SEM ESPECIFICAÇÕES TÉCNICAS a ficha não é analisável (regra de
+        # negócio do usuário, 2026-08-26). Esta seção TEM de existir; sem ela
+        # não há o que pontuar, e dar nota seria dizer que a ficha foi
+        # avaliada quando metade dela nem estava lá.
+        #
+        # Isto SUBSTITUI a renormalização decidida horas antes (calcular a
+        # nota só sobre os campos fixos): o caso não era "pontuar o que
+        # existe", era "esta ficha ainda não está pronta para ser analisada".
+        if total_vars == 0:
+            yield "=" * 60
+            yield "⚠️  Ficha SEM a secao de especificacoes tecnicas — NAO ANALISADA."
+            yield "   Essa secao e obrigatoria: sem ela nao ha caracteristicas"
+            yield "   para avaliar, e dar nota seria avaliar meia ficha."
+            yield "   A ficha precisa ser corrigida e reenviada ao FORNECEDOR"
+            yield "   para preenchimento antes de passar pelo aplicativo."
+            destino = self._guardar_nao_concluida(
+                input_filepath, root_output_dir, subfolder_name, original_filename)
+            if destino.startswith("ERRO:"):
+                yield f"   [ERRO] Nao consegui guardar em {PASTA_NAO_CONCLUIDAS}: {destino[5:]}"
+            else:
+                yield f"   Guardada em {PASTA_NAO_CONCLUIDAS}/: {os.path.basename(destino)}"
+            yield "=" * 60
+            return False
+
         if formulas_sem_valor:
             yield (f"[AVISO] {len(formulas_sem_valor)} celula(s) com FORMULA sem valor "
                    f"calculado ({', '.join(formulas_sem_valor[:6])}). Abra a ficha no "
@@ -490,11 +544,16 @@ class DatasheetAnalyzer:
             motivo = getattr(self, "ultimo_erro_ia", None)
             if motivo:
                 yield f"   Motivo: {motivo}"
-            yield "   NADA foi salvo. Sem o julgamento da IA os campos que ela"
-            yield "   deveria avaliar contariam como VÁLIDOS, a nota sairia"
-            yield "   INFLADA, e um arquivo com nota que não vale é pior que"
-            yield "   arquivo nenhum. Confira o log de IA (logs/llm_usage.jsonl)"
-            yield "   e rode esta ficha de novo."
+            yield "   Sem o julgamento da IA os campos que ela deveria avaliar"
+            yield "   contariam como VÁLIDOS, a nota sairia INFLADA, e um arquivo"
+            yield "   com nota que não vale é pior que arquivo nenhum."
+            destino = self._guardar_nao_concluida(
+                input_filepath, root_output_dir, subfolder_name, original_filename)
+            if destino.startswith("ERRO:"):
+                yield f"   [ERRO] Nao consegui guardar em {PASTA_NAO_CONCLUIDAS}: {destino[5:]}"
+            else:
+                yield f"   Guardada em {PASTA_NAO_CONCLUIDAS}/: {os.path.basename(destino)}"
+            yield "   Confira o log de IA (logs/llm_usage.jsonl) e rode de novo."
             yield "=" * 60
             return False
 
@@ -526,12 +585,12 @@ class DatasheetAnalyzer:
 
         # [ALTERAÇÃO 2] Lógica de Normalização (0 a 100%)
         # Soma total possível = Soma dos pesos fixos + Total destinado às variáveis
-        # Decisão do usuário (2026-08-26): SEM especificações técnicas, os
-        # pontos delas não entram no denominador. Antes entravam sempre, e a
-        # ficha sem spec tinha teto de 55% -- nunca passava de um limiar
-        # acima disso, por mais completa que estivesse no resto (medido).
-        grand_total_possible = total_possible_fixed + (
-            max_variable_points if total_vars > 0 else 0)
+        # `total_vars` e sempre > 0 aqui: a ficha sem especificacoes tecnicas
+        # nao chega neste ponto (ver o `return False` la em cima). A
+        # renormalizacao que existiu por algumas horas em 2026-08-26 foi
+        # substituida por essa regra -- o caso nao era pontuar o que existe,
+        # era recusar a ficha.
+        grand_total_possible = total_possible_fixed + max_variable_points
 
         if grand_total_possible > 0:
             final_percentage = (total_score_earned / grand_total_possible) * 100
@@ -544,9 +603,6 @@ class DatasheetAnalyzer:
         folder_status = "FT_good" if final_score >= score_threshold else "FT_bad"
 
         # Log Informativo com detalhes da normalização
-        if total_vars == 0:
-            yield ("[INFO] Ficha sem especificacoes tecnicas: a nota foi calculada "
-                   "so sobre os campos fixos.")
         yield f"Pontos Brutos: {total_score_earned:.1f}/{grand_total_possible:.1f}"
         yield f"Nota Normalizada: {final_score}% ({folder_status})"
 

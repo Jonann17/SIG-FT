@@ -104,7 +104,14 @@ TITULO_SPECS = ("ESPECIFICAÇÕES TÉCNICAS - INDIQUE AS ESPECIFICAÇÕES TÉCNI
                 "NO ESPAÇO LIVRE ABAIXO")
 
 
-def _aba_de_ficha(titulo="Ficha", n_specs=3, buraco=None, linha_titulo=60):
+def _aba_de_ficha(titulo="Ficha", n_specs=3, buraco=None, linha_titulo=75):
+    """Geometria REAL da ficha: o titulo das specs em 75 poe as perguntas
+    a partir da 79 (`config.LINHA_SPECS_FICHA`), abaixo do ultimo campo do
+    CONFIG_MAP (linha 69). Com o titulo em 60 -- como este fixture nasceu --
+    as specs caiam em 64-66, EM CIMA de `tipo_legislacao` (M63:V64) e
+    `tipo_descarte` (M65:V66): o analyzer marcava FORNECER num campo fixo e
+    depois lia a propria marcacao como se fosse resposta do fornecedor.
+    Bug do fixture, nao do produto -- mas so aparece com a geometria certa."""
     from sigft.core.rpa.ficha_layout import CONFIG_MAP, VARIAVEIS_SPECS
 
     valores = {}
@@ -240,7 +247,7 @@ def test_pergunta_em_branco_no_meio_nao_trunca_a_lista():
     """MEDIDO: 5 perguntas em 6 linhas viravam 2. As outras 3 sumiam da
     análise — e ninguém era avisado."""
     ws = _aba_de_ficha(n_specs=6, buraco=2)
-    perguntas = _analyzer()._ler_specs(ws, 64)
+    perguntas = _analyzer()._ler_specs(ws, 79)
     assert len(perguntas) == 5
 
 
@@ -248,8 +255,8 @@ def test_os_pontos_por_spec_nao_inflam_por_causa_do_buraco():
     """A metade perversa do bug anterior: com menos specs contadas, cada uma
     valia MAIS. A ficha com buraco ficava mais fácil de aprovar que a
     completa."""
-    completa = _analyzer()._ler_specs(_aba_de_ficha(n_specs=6), 64)
-    com_buraco = _analyzer()._ler_specs(_aba_de_ficha(n_specs=6, buraco=2), 64)
+    completa = _analyzer()._ler_specs(_aba_de_ficha(n_specs=6), 79)
+    com_buraco = _analyzer()._ler_specs(_aba_de_ficha(n_specs=6, buraco=2), 79)
     assert len(completa) == 6
     assert len(com_buraco) == 5
 
@@ -258,7 +265,7 @@ def test_o_fim_da_lista_de_specs_e_respeitado():
     """Depois das specs a planilha continua (rodapé, assinaturas). Tolerar
     buraco não pode fazer o analyzer inventar perguntas."""
     ws = _aba_de_ficha(n_specs=3)
-    assert len(_analyzer()._ler_specs(ws, 64)) == 3
+    assert len(_analyzer()._ler_specs(ws, 79)) == 3
 
 
 def test_spec_sem_resposta_entra_na_lista_marcada_como_vazia():
@@ -267,8 +274,8 @@ def test_spec_sem_resposta_entra_na_lista_marcada_como_vazia():
     from sigft.core.rpa.ficha_layout import VARIAVEIS_SPECS
     col_r = VARIAVEIS_SPECS["resposta_range"].split(":")[0]
     ws = _aba_de_ficha(n_specs=3)
-    ws[f"{col_r}65"].value = None
-    specs = _analyzer()._ler_specs(ws, 64)
+    ws[f"{col_r}80"].value = None
+    specs = _analyzer()._ler_specs(ws, 79)
     assert len(specs) == 3
     assert specs[1]["resposta"] is None
 
@@ -368,18 +375,26 @@ def test_analyzer_criado_por_new_nao_quebra_no_meio_da_ficha():
 def test_ficha_sem_nada_para_a_IA_nao_leva_susto_de_nota_inflada():
     """`ai_res` nasce None. Quando não há NADA para a IA validar, o código
     caía no mesmo `if not ai_res:` e gritava 'a IA NÃO respondeu / nota
-    INFLADA' — um susto falso, na ficha que está mais correta."""
+    INFLADA' — um susto falso.
+
+    A ficha aqui TEM especificações técnicas (senão nem chega a este ponto,
+    desde a regra de 2026-08-26) — o que ela não tem é resposta nenhuma para
+    a IA julgar: os campos de IA estão vazios e as specs estão sem resposta.
+    """
     an = _analyzer()
     chamou = []
     an._call_gemini_api = lambda prompt: chamou.append(1)
 
-    from sigft.core.rpa.ficha_layout import CONFIG_MAP
-    ws = _aba_de_ficha(n_specs=0)
+    from sigft.core.rpa.ficha_layout import CONFIG_MAP, VARIAVEIS_SPECS
+    ws = _aba_de_ficha(n_specs=3)
     for chave, cfg in CONFIG_MAP.items():          # esvazia os campos de IA
         if cfg.get("validation") == "ai":
             ws[cfg["range"].split(":")[0]].value = None
+    col_r = VARIAVEIS_SPECS["resposta_range"].split(":")[0]
+    for linha in (79, 80, 81):                     # e as respostas das specs
+        ws[f"{col_r}{linha}"].value = None
 
-    linhas = _rodar(an, ws)
+    linhas, _ = _rodar2(an, ws)
     assert not chamou, "a IA nem devia ter sido consultada"
     assert any("Nada para validar" in l for l in linhas)
     assert not any("INFLADA" in l for l in linhas)
@@ -484,30 +499,15 @@ def test_a_marcacao_FORNECER_vai_no_workbook_QUE_SERA_SALVO():
     assert grav[alvo].value == "FORNECER"
 
 
-# --- Decisão 2: renormalizar quando não há specs ----------------------------
-def test_ficha_sem_specs_com_tudo_preenchido_chega_a_100():
-    """MEDIDO antes: teto de 55%, porque os 45 pontos das variáveis entravam
-    no denominador mesmo não existindo variável nenhuma."""
-    an = _analyzer()
-    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
-    linhas, _ = _rodar2(an, _aba_de_ficha(n_specs=0))
-    assert _nota(linhas) == 100
-
-
-def test_o_console_avisa_que_renormalizou():
-    an = _analyzer()
-    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
-    linhas, _ = _rodar2(an, _aba_de_ficha(n_specs=0))
-    assert any("sem especificacoes" in l.lower() or "sem especificações" in l.lower()
-               for l in linhas)
-
-
-def test_ficha_COM_specs_continua_normalizando_sobre_o_total_de_sempre():
-    an = _analyzer()
-    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
-    linhas, _ = _rodar2(an, _aba_de_ficha(n_specs=3))
-    assert _nota(linhas) == 100
-    assert any("100.0/100.0" in l for l in linhas)
+# --- Decisão 2 REVERTIDA em 2026-08-26 --------------------------------------
+# A renormalizacao ("sem specs, calcula a nota so sobre os campos fixos")
+# durou algumas horas. A regra de negocio do usuario mostrou que o caso era
+# outro: a secao de caracteristicas tecnicas TEM de existir, e sem ela a
+# ficha nao e analisavel -- volta para o fornecedor, sem nota.
+#
+# Os dois testes que existiam aqui (`..._chega_a_100` e
+# `..._avisa_que_renormalizou`) foram REMOVIDOS junto com o comportamento que
+# descreviam. O que vale agora esta na secao J.
 
 
 # --- Decisão 3: a IA fora do ar ABORTA a ficha ------------------------------
@@ -640,3 +640,111 @@ def test_cancelar_para_de_perguntar_no_resto_do_lote():
     diálogo obrigatórias. Cancelar é a saída."""
     fonte = ast.dump(_metodo_analyzer("_perguntar_descricao"))
     assert "_parar_de_perguntar_desc" in fonte
+
+
+# =============================================================================
+# J. Ficha nao analisavel vai para a pasta de nao concluidas (2026-08-26, 2a rodada)
+# =============================================================================
+# Regra de negocio do usuario: a secao de caracteristicas tecnicas TEM de
+# existir. Sem ela nao ha o que pontuar -- a ficha volta para o fornecedor,
+# nao ganha nota. Isso REVERTE a renormalizacao decidida horas antes: o caso
+# nao era "calcular a nota sobre o que existe", era "esta ficha nao esta
+# pronta para ser analisada".
+def _rodar3(an, ws, saida, **kw):
+    import sigft.services.analyzer as mod
+    wb = FakeWorkbook([ws])
+    original = mod.openpyxl.load_workbook
+    mod.openpyxl.load_workbook = lambda *a, **k: wb
+    kw.setdefault("pmib_sheet", None)
+    kw.setdefault("callback_manual_desc", None)
+    kw.setdefault("score_threshold", 101)
+    try:
+        it = an.processar_planilha(
+            input_filepath=kw.pop("entrada"), root_output_dir=saida,
+            subfolder_name="sub", original_filename="4500063671.0071.xlsx",
+            custom_weights=None, max_variable_points=45.0, **kw)
+        linhas, resultado = [], None
+        while True:
+            try:
+                linhas.append(next(it))
+            except StopIteration as fim:
+                resultado = fim.value
+                break
+        return linhas, resultado
+    finally:
+        mod.openpyxl.load_workbook = original
+
+
+def _arquivos_em(raiz):
+    achados = []
+    for pasta, _, arquivos in __import__("os").walk(raiz):
+        for a in arquivos:
+            achados.append(__import__("os").path.join(pasta, a))
+    return achados
+
+
+def test_ficha_SEM_especificacoes_nao_recebe_nota(tmp_path):
+    """Ela nao e uma ficha ruim: e uma ficha que ainda nao da para analisar."""
+    an = _analyzer()
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+    entrada = tmp_path / "4500063671.0071.xlsx"
+    entrada.write_text("x")
+    saida = tmp_path / "saida"
+    linhas, resultado = _rodar3(an, _aba_de_ficha(n_specs=0), str(saida), entrada=str(entrada))
+    assert not any("Nota Normalizada" in l for l in linhas)
+    assert resultado is False
+
+
+def test_ficha_sem_especificacoes_vai_para_NAO_CONCLUIDAS(tmp_path):
+    an = _analyzer()
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+    entrada = tmp_path / "4500063671.0071.xlsx"
+    entrada.write_text("conteudo original")
+    saida = tmp_path / "saida"
+    _rodar3(an, _aba_de_ficha(n_specs=0), str(saida), entrada=str(entrada))
+
+    salvos = _arquivos_em(str(saida))
+    assert len(salvos) == 1, salvos
+    assert analyzer_mod.PASTA_NAO_CONCLUIDAS in salvos[0]
+    # O ORIGINAL, sem marcacao e sem porcentagem: a ficha vai para o
+    # fornecedor arrumar, e uma nota que nao existe nao pode aparecer no nome.
+    assert "%" not in salvos[0]
+    assert open(salvos[0]).read() == "conteudo original"
+
+
+def test_a_IA_fora_do_ar_usa_a_MESMA_pasta(tmp_path):
+    """Pedido explicito do usuario: as duas situacoes sao 'nao concluida'."""
+    an = _analyzer()
+    an._call_gemini_api = lambda p: None
+    entrada = tmp_path / "4500063671.0071.xlsx"
+    entrada.write_text("conteudo original")
+    saida = tmp_path / "saida"
+    linhas, resultado = _rodar3(an, _aba_de_ficha(), str(saida), entrada=str(entrada))
+
+    salvos = _arquivos_em(str(saida))
+    assert len(salvos) == 1 and analyzer_mod.PASTA_NAO_CONCLUIDAS in salvos[0]
+    assert resultado is False
+
+
+def test_o_console_diz_o_que_o_fornecedor_precisa_arrumar(tmp_path):
+    an = _analyzer()
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+    entrada = tmp_path / "4500063671.0071.xlsx"
+    entrada.write_text("x")
+    linhas, _ = _rodar3(an, _aba_de_ficha(n_specs=0), str(tmp_path / "s"),
+                        entrada=str(entrada))
+    texto = "\n".join(linhas)
+    assert "especificac" in texto.lower() or "especificaç" in texto.lower()
+    assert "fornecedor" in texto.lower()
+
+
+def test_ficha_COM_especificacoes_continua_sendo_pontuada(tmp_path):
+    an = _analyzer()
+    an._call_gemini_api = lambda p: {"campos_fixos": {}, "campos_variaveis": []}
+    entrada = tmp_path / "4500063671.0071.xlsx"
+    entrada.write_text("x")
+    saida = tmp_path / "saida"
+    linhas, resultado = _rodar3(an, _aba_de_ficha(n_specs=3), str(saida), entrada=str(entrada))
+    assert any("Nota Normalizada: 100%" in l for l in linhas)
+    assert resultado is True
+    assert not any(analyzer_mod.PASTA_NAO_CONCLUIDAS in a for a in _arquivos_em(str(saida)))
