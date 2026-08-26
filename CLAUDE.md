@@ -72,8 +72,18 @@ rede de segurança da refatoração — as dependências pesadas (pandas, openpy
 google-generativeai, tkinter…) são stubadas em `tests/conftest.py`, então a suíte roda em
 ambiente sem elas.
 
-`frontend.py` **não pode ser importado** neste ambiente (abre janela real). Para ele, a
-verificação é `compileall` + revisão manual do trecho editado.
+`frontend.py` **não pode ser importado** neste ambiente (abre janela real). Para ele a
+verificação tem TRÊS partes, e as três são necessárias:
+
+1. `compileall` — sintaxe;
+2. `python -m pyflakes frontend.py` — **nome indefinido**, que é o que `compileall` não
+   vê. Já vem na suíte (`tests/test_frontend_nomes_indefinidos.py`);
+3. **abrir o aplicativo.** `python frontend.py` e olhar a janela preta.
+
+⚠️ Por que as três: em 2026-08-25 o CP 5.5 removeu um frame de `ModuloCopiaFichas` e
+deixou um widget filho dele para trás. `compileall` passou, os 2625 testes passaram, e o
+app morria na abertura com `NameError: name 'f_novo' is not defined`. Editou `frontend.py`?
+**Abra o app antes de dizer que está pronto.**
 
 ---
 
