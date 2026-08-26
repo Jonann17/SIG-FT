@@ -92,14 +92,21 @@ não por número (os números andam):
 
 ### 3.1 Checkpoints congelados enquanto o AutoSpecAI estiver aberto
 
-⛔ **CP 7.3 — quebrar `frontend.py` em `app/views/*.py`.** É o mais perigoso do plano inteiro
-para este arranjo. Ele move todas as 12 telas para arquivos novos. Se o Rafael tiver trabalho
-aberto em `ModuloAutoSpec`, o arquivo que ele está editando deixa de existir e **toda linha
-vira conflito** — o Git não tem como casar "linha 3000 do `frontend.py`" com "linha 40 do
-`app/views/autospec.py`". Não é um merge difícil: é um merge que se resolve na mão, tela por
-tela.
-→ **Só execute o CP 7.3 depois que o AutoSpecAI estiver mergeado.** Se o plano mandar
-executá-lo antes, pare e pergunte.
+✅ **CP 7.3 — LIBERADO EM 2026-08-26.** Esteve congelado de 2026-08-11 até esta data.
+
+Por que estava congelado, e por que deixou de estar: o CP 7.3 move as 12 telas para arquivos
+novos. Com trabalho aberto em `ModuloAutoSpec`, o arquivo que o Rafael estava editando deixaria
+de existir e **toda linha viraria conflito** — o Git não casa "linha 3000 do `frontend.py`" com
+"linha 40 do `app/views/autospec.py`". Hoje **não há trabalho aberto**: o AutoSpecAI está
+mergeado na linha oficial e a Etapa 3b do roteiro rodou numa máquina real, com resultado bom.
+
+→ **Pode executar.** Mas leia as duas subseções abaixo antes: `ModuloAutoSpec` e
+`ModuloAnalyzer` ganharam blocos que precisam viajar inteiros junto com as classes, e cada uma
+tem uma armadilha de busca-e-substituição já documentada.
+
+> ⚠️ **Depois do CP 7.3, mudança de tela na frente do Rafael fica mais cara** — ele passa a
+> editar `app/views/*.py` enquanto o histórico dele fala de `frontend.py`. Se ele tiver uma
+> leva grande de mudanças de UI engatilhada, vale combinar a ordem antes.
 
 #### 🆕 2026-08-13 — o `ModuloAutoSpec` cresceu: leia isto antes do CP 7.3
 
@@ -151,6 +158,27 @@ vermelhos, não é o teste que está errado:
 `btn_conf_salvar`, `btn_conf_importar`, `conferencia`, `frm_conf`, `lista_conf`,
 `marcados_conf`) — mas um `sed`/replace em `btn_conf` o corrompe em silêncio, em outra tela.
 Mova o bloco por recorte de texto, não por substituição de prefixo.
+
+#### 🆕 2026-08-26 — o `ModuloAnalyzer` também cresceu
+
+A frente do Rafael passou pelo Analyzer nesta data (7 defeitos medidos + 4 decisões do
+usuário + relatório para o fornecedor). A tela ganhou:
+
+| | |
+|---|---|
+| **Onde está** | `frontend.py`, `class ModuloAnalyzer` (~linhas 1480–1856 — **localize pelo nome da classe**) |
+| **O que é novo** | 2 métodos (`_perguntar_descricao`, `_gerar_relatorio`) + 3 atributos (`relatorio_analise`, `btn_relatorio`, `_parar_de_perguntar_desc`) |
+| **Fora da classe** | `from sigft.services import analyzer_relatorio` no topo — como o import da conferência, fora do splash de propósito (só stdlib + `ficha_layout`) |
+
+**`_perguntar_descricao` é o método delicado do bloco.** Ele é chamado **pelo backend**, de
+dentro da thread de processamento, e abre a janela com `self.after(0, ...)` + `threading.Event`
+— o padrão que `ModuloUploadConditions._worker_web` já usava. Movido para outro arquivo, ele
+continua precisando de um `self` que seja um widget tkinter com `.after()`. Não o transforme
+em função solta.
+
+⚠️ **A mesma armadilha de busca-e-substituição vale aqui**: `self.btn_relatorio` e
+`self.btn_run` convivem com o `self.btn_config` que já existia. Recorte de texto, não replace
+de prefixo.
 
 ⚠️ **CP 7.1 e CP 7.2** — `theme.py`/`console.py`/`module_frame.py` e `pickers.py`/`dialogs.py`.
 Reescrevem widgets que o `ModuloAutoSpec` usa (console, seletores de arquivo). Podem ser

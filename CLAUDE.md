@@ -19,8 +19,10 @@ congelado e como resolver os conflitos previsíveis.
 
 O resumo que não pode ser esquecido:
 
-- ⛔ **Não execute o CP 7.3** (quebrar `frontend.py` em `app/views/*.py`) enquanto o
-  AutoSpecAI não estiver mergeado. É o merge mais caro do plano inteiro.
+- ✅ **CP 7.3 LIBERADO em 2026-08-26.** O AutoSpecAI está mergeado e a Etapa 3b do roteiro
+  rodou numa máquina real. **Leia `TRABALHO_PARALELO.md` §3.1 antes de executar** — as telas
+  `ModuloAutoSpec` e `ModuloAnalyzer` cresceram, e o documento lista o que precisa viajar
+  junto com cada uma.
 - ⛔ **Não use o AutoSpec como tela piloto** de nenhum checkpoint da Fase 7.
 - 🟢 **São do Rafael:** `sigft/services/autospec.py` + `autospec_conferencia.py`,
   `autospec_rag.py`, `autospec_embeddings.py`, `autospec_unidades.py`, `autospec_backend.py`,

@@ -16,9 +16,11 @@
 >
 > O que muda na prática para quem executa:
 >
-> - ⛔ **CP 7.3 está CONGELADO** (quebrar `frontend.py` em `app/views/*.py`) até o
->   AutoSpecAI ser mergeado. É o merge mais caro do plano inteiro: move as 12 telas de
->   arquivo e faz o trabalho aberto do outro lado virar conflito linha a linha.
+>
+> - ✅ **CP 7.3 DESCONGELADO em 2026-08-26.** O AutoSpecAI está mergeado e validado numa
+>   máquina real. Continua sendo o merge mais caro do plano: antes de executar, leia
+>   `TRABALHO_PARALELO.md` §3.1 — `ModuloAutoSpec` e `ModuloAnalyzer` ganharam blocos novos
+>   que precisam viajar inteiros junto com as classes.
 > - ⛔ **O AutoSpec não é piloto de nada** na Fase 7. Use as telas que o plano já indica.
 > - 🟢 São do Rafael: `sigft/services/autospec.py`, `autospec_backend.py`,
 >   `class ModuloAutoSpec` no `frontend.py`, `tests/test_autospec_*.py`,
@@ -533,7 +535,7 @@ informações necessárias da ficha original; replicar essas informações na fi
   *Aceite*: as 4 cópias da janela de login e as 2 do FileQueueList substituídas; estilo
   preservado; nenhuma view chama `file_dialogs` diretamente para campos que usam picker.
 
-- **CP 7.3 — Quebrar `frontend.py` em `app/views/*.py`.** ⛔ **CONGELADO desde 2026-08-11.**
+- **CP 7.3 — Quebrar `frontend.py` em `app/views/*.py`.** ✅ **LIBERADO em 2026-08-26.**
 >
 > 🆕 **2026-08-13 — o `ModuloAutoSpec` cresceu.** Ganhou a seção *Conferência de documentos*:
 > 6 métodos com prefixo `_conferencia`/`_build_conferencia` e 7 atributos, sob um
@@ -622,7 +624,7 @@ informações necessárias da ficha original; replicar essas informações na fi
 | 6.4 documentos/imagens + conclusão | ✅ concluído | 2026-08-25 | **rodada de ponta a ponta na 4500063671.0929: `ok (9 seções)` em 74 s, e a alvo relida em visualização bate com a original em 20 de 20 campos.** Ver `FICHA_DUPLICADA.md` §5.2–5.4 |
 | 7.1 theme/console/module_frame | ☐ pendente | | estilo atual preservado; pilotos = `ApagarLMR`/`Translator` — **não usar o AutoSpec** enquanto durar o trabalho paralelo |
 | 7.2 pickers + dialogs | ☐ pendente | | estilo atual preservado; idem 7.1 quanto ao AutoSpec |
-| 7.3 views + main | ⛔ congelado (trabalho paralelo) | 2026-08-11 | Move as 12 telas do `frontend.py` para arquivos novos — faria o trabalho aberto no AutoSpecAI virar conflito linha a linha. Liberado só depois do merge do AutoSpecAI. Ver `TRABALHO_PARALELO.md`. |
+| 7.3 views + main | ☐ pendente (**descongelado em 2026-08-26**) | 2026-08-26 | Move as 12 telas do `frontend.py` para arquivos novos — faria o trabalho aberto no AutoSpecAI virar conflito linha a linha. Liberado só depois do merge do AutoSpecAI. Ver `TRABALHO_PARALELO.md`. |
 | 8.1 ruff | ☐ pendente | | |
 | 8.2 type hints | ☐ pendente | | |
 | 8.3 PyInstaller (+ Playwright no bundle) | ☐ pendente | | |
