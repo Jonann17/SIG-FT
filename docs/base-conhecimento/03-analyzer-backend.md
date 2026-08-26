@@ -105,3 +105,42 @@ Módulo de análise inteligente de fichas técnicas que valida campos fixos, var
 - **Callback manual_desc opcional**: Se não fornecido e PMIB não encontrado, descrição complementar = None. Prompt Gemini recebe material sem context.
 - **Linha 79 hardcoded** (linha 376): busca por "ESPECIFICAÇÕES TÉCNICAS" como fallback. Se cabeçalho foi traduzido ou editado, volta para linha 79 fixa.
 - **JSON parsing strict** (linha 454): se Gemini retorna JSON inválido (com ```json, espaços), tenta strip de backticks. Se JSON está genuinamente quebrado, retorna None e valida como "tudo válido" (linha 267–268).
+
+---
+
+## Auditoria de 2026-08-26 — 7 defeitos medidos e corrigidos
+
+> Frente do Rafael. Cada item foi **medido** com um `.xlsx` construído e lido (openpyxl real),
+> nunca deduzido da leitura do código. Testes em `tests/test_analyzer_planilha.py`.
+
+**Correção deste documento antes de tudo:** onde acima se lê *"Arquivo Excel com aba
+desconhecida (detecta automaticamente)"*, o código fazia `wb.active`, que **não detecta nada** —
+é a aba que estava selecionada quando o arquivo foi salvo. O doc descrevia a intenção, não o
+comportamento. Hoje detecta de verdade (item 1).
+
+| # | O que estava errado | O que foi medido | Como ficou |
+|---|---|---|---|
+| 1 | `ws = wb.active` na ficha | a MESMA ficha valia **100% ou 0%** conforme a aba salva como ativa | `_aba_da_ficha` escolhe pela evidência (âncoras do `CONFIG_MAP` preenchidas); empate ou nenhum sinal → `wb.active` |
+| 2 | `pmib_sheet = wb.active` (frontend) | com uma capa como aba ativa, **nenhuma** ficha do lote achava descrição | `aba_do_status_pmib` procura a aba que tem os cabeçalhos |
+| 3 | `if not p_val: break` nas specs | 5 perguntas em 6 linhas viravam **2**, e os pontos por spec **inflavam** (22,50 contra 9,00) | `_ler_specs`, uma passada só, tolerando buraco até `MAX_LINHAS_VAZIAS_SEGUIDAS` |
+| 4 | código PMIB comparado como texto cru | `4500063671.1050` volta do Excel como `4500063671.105` e a busca **nunca** casava | delega a `pmib_codes.normalize_pmib` (implementação única do CP 1.2) |
+| 5 | `if not c_desc.value: break` no `_STATUS_PMIB` | uma linha vazia escondia **todo** o resto da planilha | mesma tolerância do item 3 |
+| 6 | `nome.replace(".xlsx", ...)` | `ficha.xlsx.revisao.xlsx` → `ficha_100%.xlsx.revisao_100%.xlsx` | `nome_com_a_nota`, só a extensão final |
+| 7 | `if not ai_res:` | alarme de "nota INFLADA" disparava na ficha que **não tinha nada** para a IA validar | só dispara se a IA foi mesmo consultada, e diz o motivo (`ultimo_erro_ia`) |
+
+**No `frontend.py` (`ModuloAnalyzer._run_backend`)**, ainda:
+
+- Uma exceção numa ficha derrubava o **lote inteiro**; as seguintes nem eram tentadas.
+- O `return True/False` do backend era descartado. Num generator ele vai para
+  `StopIteration.value` e **nunca é "yieldado"** — então o `if not isinstance(log_msg, bool)`
+  que estava ali filtrava um bool que nunca chegava, e a tela dizia *"Análise finalizada"*
+  mesmo com todas as fichas falhando. Agora conta e nomeia as que não concluíram.
+
+### Ainda em aberto (decisão do usuário, em `PENDENCIAS.md`)
+
+| Achado | Por que não foi corrigido de carona |
+|---|---|
+| **Fórmula conta como preenchida** — `load_workbook` sem `data_only=True` faz `=1+1` valer como valor, e a IA recebe a string `'=1+1'` | O conserto (padrão do R-10 do autospec: ler com `data_only`, escrever sem) custa uma segunda leitura por ficha, e depende de saber se as fichas reais usam fórmula |
+| **Teto de 55%** — os 45 pontos das variáveis entram no denominador mesmo sem nenhuma spec, então a ficha nunca passa de 55% | Pode ser intencional (ficha sem spec É incompleta) ou conta errada — é decisão de produto |
+| **`callback_manual_desc` é recurso morto** — o frontend passa `lambda f, c: None` | Implementar a caixa de diálogo é função nova |
+| **Nota inflada quando a IA não responde** (registrado desde 2026-08-11) | Mudar a pontuação é decisão de produto; o aviso já existe e agora diz o motivo |

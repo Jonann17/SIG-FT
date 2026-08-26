@@ -59,7 +59,7 @@ começar nada.** Trocar a default exige permissão de admin — é ação do Lua
 | `sigft/services/autospec_conferencia.py` | conferência humana dos documentos duvidosos |
 | `sigft/core/web/` (`navegador.py`, `robots.py`) | leitura de página por navegador, último recurso |
 | `autospec_backend.py` | shim de compatibilidade do AutoSpec (23 linhas) |
-| `frontend.py`, **linhas ~2971–3146** | `class ModuloAutoSpec` — a tela do módulo. **Localize pela linha `class ModuloAutoSpec` até a `class` seguinte, não pelo número** — em 2026-08-11 o intervalo já andou de 2947–3122 para 2971–3146 por causa de um commit no mesmo arquivo, em questão de horas |
+| `frontend.py`, **linhas ~3077–3508** | `class ModuloAutoSpec` — a tela do módulo. **Localize pela linha `class ModuloAutoSpec` até a `class` seguinte, não pelo número** — o intervalo já andou de 2947–3122 → 2971–3146 (2026-08-11) → 3077–3508 (2026-08-26). O número aqui envelhece a cada commit no arquivo; o nome da classe, não |
 | `tests/test_autospec_*.py`, `tests/test_llm_autospec_migration.py` | testes do módulo |
 | `tests/fixtures/prompts/autospec_prompt.txt` | fixture do prompt |
 | `docs/base-conhecimento/08-autospec-backend.md` | doc do módulo |
@@ -145,6 +145,12 @@ vermelhos, não é o teste que está errado:
   com as marcações do lote anterior — arquivo plausível e errado.
 - **A seção nunca faz `pack_forget`.** O botão IMPORTAR precisa existir na tela de quem acabou
   de abrir o aplicativo e ainda não processou nada — é justamente quem mais precisa dele.
+
+⚠️ **Uma armadilha de busca-e-substituição**, verificada em 2026-08-26: o `ModuloAnalyzer` tem
+`self.btn_config`. Ele **não** colide com nenhum dos 7 nomes do bloco (`btn_conf`,
+`btn_conf_salvar`, `btn_conf_importar`, `conferencia`, `frm_conf`, `lista_conf`,
+`marcados_conf`) — mas um `sed`/replace em `btn_conf` o corrompe em silêncio, em outra tela.
+Mova o bloco por recorte de texto, não por substituição de prefixo.
 
 ⚠️ **CP 7.1 e CP 7.2** — `theme.py`/`console.py`/`module_frame.py` e `pickers.py`/`dialogs.py`.
 Reescrevem widgets que o `ModuloAutoSpec` usa (console, seletores de arquivo). Podem ser

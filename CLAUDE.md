@@ -22,9 +22,10 @@ O resumo que não pode ser esquecido:
 - ⛔ **Não execute o CP 7.3** (quebrar `frontend.py` em `app/views/*.py`) enquanto o
   AutoSpecAI não estiver mergeado. É o merge mais caro do plano inteiro.
 - ⛔ **Não use o AutoSpec como tela piloto** de nenhum checkpoint da Fase 7.
-- 🟢 **São do Rafael:** `sigft/services/autospec.py`, `autospec_backend.py`,
-  `class ModuloAutoSpec` no `frontend.py` (~linhas 2971–3146 — **confirme pelo nome da
-  classe, o número anda**), `tests/test_autospec_*.py`,
+- 🟢 **São do Rafael:** `sigft/services/autospec.py` + `autospec_conferencia.py`,
+  `autospec_rag.py`, `autospec_embeddings.py`, `autospec_unidades.py`, `autospec_backend.py`,
+  `sigft/core/web/`, `class ModuloAutoSpec` no `frontend.py` (~linhas 3077–3508 —
+  **confirme pelo nome da classe, o número anda**), `tests/test_autospec_*.py`,
   `docs/base-conhecimento/08-autospec-backend.md`.
 - 🔴 **Zonas compartilhadas** (`ficha_layout.py` → `CONFIG_MAP`, `config.LLM_TASKS`,
   `core/llm/prompts.py`, tabelas de status): commit isolado + mensagem explícita.
