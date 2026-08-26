@@ -1690,17 +1690,72 @@ class ModuloAnalyzer(ctk.CTkFrame):
         self.api_key = self.controller.get_key("GEMINI")
         threading.Thread(target=self._run_backend).start()
 
+    def _perguntar_descricao(self, arquivo, codigo):
+        """Pergunta a descrição do material quando o código PMIB não está no
+        `_STATUS_PMIB`.
+
+        Chamado PELO BACKEND, de dentro da thread de processamento — por isso
+        a janela é aberta com `self.after(0, ...)` (thread da UI) e a thread
+        do backend espera num `Event`. É o mesmo padrão que
+        `ModuloUploadConditions._worker_web` já usa; abrir janela tkinter
+        fora da thread principal é o caminho curto para travar o app.
+
+        **Cancelar para de perguntar no resto do lote.** Um lote de 50 fichas
+        com PMIB desconhecido não pode virar 50 caixas de diálogo
+        obrigatórias — e a saída precisa ser óbvia para quem está com pressa.
+
+        Até 2026-08-26 este callback era `lambda f, c: None`: o backend o
+        chamava, e ele nunca fazia nada.
+        """
+        if getattr(self, "_parar_de_perguntar_desc", False):
+            return None
+
+        evento = threading.Event()
+        resposta = {"texto": None}
+
+        def _abrir():
+            try:
+                resposta["texto"] = simpledialog.askstring(
+                    "Descrição do material",
+                    f"A ficha {arquivo} tem o código PMIB {codigo}, que não está "
+                    "no _STATUS_PMIB.\n\nSe você souber a descrição do material, "
+                    "digite abaixo — ela entra no contexto que vai para a IA.\n\n"
+                    "CANCELAR segue sem descrição e não pergunta mais nesta rodada.",
+                    parent=self,
+                )
+            except Exception:
+                resposta["texto"] = None
+            finally:
+                evento.set()
+
+        self.after(0, _abrir)
+        evento.wait()
+
+        if resposta["texto"] is None:      # Cancelar (≠ de OK com campo vazio)
+            self._parar_de_perguntar_desc = True
+            self.log(" -> Sem descricao manual; nao vou perguntar de novo nesta rodada.")
+            return None
+        texto = resposta["texto"].strip()
+        if texto:
+            self.log(f" -> Descricao informada a mao: {texto}")
+        return texto or None
+
     def _run_backend(self):
         try:
+            self._parar_de_perguntar_desc = False
             analyzer = analyzer_backend.DatasheetAnalyzer(self.api_key)
             pmib_sheet = None
             if self.selected_pmib:
                 try:
                     wb = openpyxl.load_workbook(self.selected_pmib, data_only=True)
-                    pmib_sheet = wb.active
+                    # 2026-08-26: era `wb.active` — a aba selecionada quando o
+                    # arquivo foi salvo, que pode ser uma capa. Aí NENHUMA
+                    # ficha do lote achava descrição. Ver `aba_do_status_pmib`.
+                    pmib_sheet = analyzer_backend.aba_do_status_pmib(wb)
                     self.log("STATUS_PMIB carregada.")
                 except Exception as e: self.log(f"Erro STATUS_PMIB: {e}")
 
+            ok, falhas = 0, []
             for f_path in self.selected_files:
                 fname = os.path.basename(f_path)
                 subfolder = os.path.basename(os.path.dirname(f_path))
@@ -1715,13 +1770,40 @@ class ModuloAnalyzer(ctk.CTkFrame):
                     score_threshold=int(self.score_value),
                     custom_weights=self.custom_weights,        # <--- NOVO
                     max_variable_points=self.max_var_points,   # <--- NOVO
-                    callback_manual_desc=lambda f, c: None
+                    callback_manual_desc=self._perguntar_descricao
                 )
-                for log_msg in iterador_logs:
-                    if not isinstance(log_msg, bool): self.log(log_msg)
+                # 2026-08-26, duas correções neste laço:
+                #
+                # 1. `for log in iterador: ...` DESCARTAVA o `return True/False`
+                #    do backend -- num generator ele vai para
+                #    `StopIteration.value`, nunca é "yieldado". O `if not
+                #    isinstance(log_msg, bool)` que estava aqui filtrava um
+                #    bool que nunca chegava. Resultado: a tela dizia "Análise
+                #    finalizada" mesmo com todas as fichas falhando.
+                # 2. Uma exceção numa ficha derrubava o LOTE INTEIRO, e as
+                #    fichas seguintes nem eram tentadas.
+                try:
+                    while True:
+                        try:
+                            self.log(next(iterador_logs))
+                        except StopIteration as fim:
+                            ok += 1 if fim.value else 0
+                            if not fim.value: falhas.append(fname)
+                            break
+                except Exception as e:
+                    self.log(f"[ERRO] {fname}: {e}")
+                    falhas.append(fname)
 
-            self.log("Concluído!")
-            messagebox.showinfo("Sucesso", "Análise finalizada.")
+            self.log(f"Concluído! {ok} de {len(self.selected_files)} ficha(s) processada(s).")
+            if falhas:
+                self.log(f"NAO concluidas ({len(falhas)}): {', '.join(falhas)}")
+                messagebox.showwarning(
+                    "Análise finalizada com pendências",
+                    f"{len(falhas)} de {len(self.selected_files)} ficha(s) não foram "
+                    "processadas.\nVeja o console para o motivo de cada uma."
+                )
+            else:
+                messagebox.showinfo("Sucesso", "Análise finalizada.")
         except Exception as e: self.log(f"Erro Fatal: {e}")
         finally: self.btn_run.configure(state="normal")
 

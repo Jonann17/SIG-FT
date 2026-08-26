@@ -28,15 +28,30 @@ import inspect
 from sigft.services import analyzer as analyzer_mod
 
 
+# 2026-08-26: a condição do ramo passou de `if not ai_res:` para
+# `if ia_foi_consultada and not ai_res:`. Motivo: `ai_res` nasce `None`, então
+# a forma antiga disparava o alarme de nota inflada TAMBÉM na ficha que não
+# tinha nada para a IA validar -- um susto falso, na ficha mais bem
+# preenchida do lote.
+#
+# Os dois testes abaixo casavam com o LITERAL `"if not ai_res:"`, e por isso
+# quebraram com a correção. Foram reancorados em `not ai_res`, que é o que
+# realmente importa aqui. O COMPORTAMENTO dos dois lados agora tem teste de
+# verdade, e não estrutural, em tests/test_analyzer_planilha.py:
+#   - test_quando_a_IA_FOI_consultada_e_falhou_o_aviso_continua
+#   - test_ficha_sem_nada_para_a_IA_nao_leva_susto_de_nota_inflada
+_RAMO = "not ai_res:"
+
+
 def test_o_aviso_de_ia_indisponivel_existe_no_codigo():
-    # Verificação estrutural: o serviço tem um ramo `if not ai_res` que avisa
+    # Verificação estrutural: o serviço tem um ramo `not ai_res` que avisa
     # ANTES de somar os pontos. Sem isso, a nota inflada volta a sair calada.
     fonte = inspect.getsource(analyzer_mod.DatasheetAnalyzer.processar_planilha)
 
-    assert "if not ai_res:" in fonte, "sumiu o ramo que detecta IA indisponível"
+    assert _RAMO in fonte, "sumiu o ramo que detecta IA indisponível"
     assert "INFLADA" in fonte, "o aviso precisa dizer que a nota não vale como aprovação"
     # E o aviso vem ANTES da soma dos pontos de IA.
-    assert fonte.index("if not ai_res:") < fonte.index("total_score_earned += celulas_ai_map")
+    assert fonte.index(_RAMO) < fonte.index("total_score_earned += celulas_ai_map")
 
 
 def test_o_aviso_sai_por_yield_e_nao_por_print():
@@ -44,7 +59,7 @@ def test_o_aviso_sai_por_yield_e_nao_por_print():
     # onde o usuário está olhando. Foi exatamente essa diferença que fez o
     # problema passar despercebido.
     fonte = inspect.getsource(analyzer_mod.DatasheetAnalyzer.processar_planilha)
-    trecho = fonte[fonte.index("if not ai_res:"):fonte.index("if ai_res:")]
+    trecho = fonte[fonte.index(_RAMO):fonte.index("if ai_res:")]
 
     assert "yield" in trecho
     assert "print(" not in trecho
