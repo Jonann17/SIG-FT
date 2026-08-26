@@ -27,6 +27,7 @@ from sigft.core.llm.client import get_llm
 # `sigft.core.llm.prompts.montar_validar_ficha` -- só o pré-processamento
 # (extrair mat/fab, montar str_fixed/str_vars) continua aqui.
 from sigft.core.llm import prompts
+from sigft.services import analyzer_relatorio
 
 # -----------------------------------------------------------------
 # CONSTANTES E CONFIGURAÇÕES
@@ -181,6 +182,27 @@ class DatasheetAnalyzer:
             except Exception:
                 continue
         return pontos
+
+
+    def _registrar_no_relatorio(self, codigo_pmib, original_filename, nota, achados):
+        """Publica os achados desta ficha, SE a tela tiver ligado o relatório.
+
+        Opcional de propósito: quem não liga (testes antigos, uso por script)
+        não pode quebrar, e o `getattr` faz isso valer também para instâncias
+        criadas com `__new__`, que e o idioma dos testes deste repositorio.
+        """
+        relatorio = getattr(self, "relatorio", None)
+        if relatorio is None:
+            return
+        try:
+            # Codigo COMPLETO (`4500063671.0071`), nao o sufixo de 4 digitos
+            # que o resto do analyzer usa para casar linha na planilha: quem
+            # recebe o relatorio precisa achar o material, e `0071` sozinho so
+            # identifica dentro do contrato.
+            completo = pmib_codes.extract_pmib_code_full(str(original_filename or ""))
+            relatorio.registrar(completo or codigo_pmib, original_filename, nota, achados)
+        except Exception:
+            pass  # relatorio e conforto; nunca pode derrubar a analise
 
     def _guardar_nao_concluida(self, input_filepath, root_output_dir,
                                subfolder_name, original_filename):
@@ -372,6 +394,14 @@ class DatasheetAnalyzer:
         # Ver a decisão logo antes do salvamento: nota alta não compra campo
         # obrigatório faltando.
         obrigatorios_faltando = []
+        # Achados para o relatorio que vai ao FORNECEDOR (2026-08-26). Sao
+        # acumulados sempre, de graca; so viram arquivo se a tela tiver ligado
+        # `self.relatorio` -- ver `analyzer_relatorio.RelatorioAnalise`.
+        achados = []
+
+        # Campos cujo achado NAO e "em branco" e sim "preenchido de forma que
+        # nao serve" -- hoje so o "Nao aplicavel" onde ele nao e aceito.
+        motivo_do_achado = {}
 
         # 3. Validação de Campos Fixos (CONFIG_MAP)
         for key, config in CONFIG_MAP.items():
@@ -417,6 +447,7 @@ class DatasheetAnalyzer:
                     elif val_str in FORBIDDEN_NA_STRINGS:
                         self.set_invalid_error(cell, val)
                         is_valid = False
+                        motivo_do_achado[key] = "invalido"
                     elif val is None or val_str == "":
                         self.set_blank_error(cell)
                         is_valid = False
@@ -457,6 +488,10 @@ class DatasheetAnalyzer:
                 if is_valid:
                     total_score_earned += weight
 
+            if not is_valid:
+                achados.append(analyzer_relatorio.Achado(
+                    key, motivo_do_achado.get(key, "vazio"),
+                    motivo=None, obrigatorio=bool(config.get("obrigatorio"))))
             if config.get("obrigatorio") and not is_valid:
                 obrigatorios_faltando.append(key)
 
@@ -500,6 +535,13 @@ class DatasheetAnalyzer:
                 yield f"   [ERRO] Nao consegui guardar em {PASTA_NAO_CONCLUIDAS}: {destino[5:]}"
             else:
                 yield f"   Guardada em {PASTA_NAO_CONCLUIDAS}/: {os.path.basename(destino)}"
+            self._registrar_no_relatorio(
+                codigo_pmib_4, original_filename, None,
+                [analyzer_relatorio.Achado(
+                    "", "nao_analisada",
+                    motivo=("A ficha nao tem a secao de ESPECIFICACOES TECNICAS, "
+                            "que e obrigatoria. Preencha as caracteristicas tecnicas "
+                            "do material e reenvie a ficha."))])
             yield "=" * 60
             return False
 
@@ -520,9 +562,12 @@ class DatasheetAnalyzer:
 
             if r_val is None or r_str == "":
                 self.set_blank_error(r_cell)
+                achados.append(analyzer_relatorio.Achado(
+                    spec["pergunta"], "vazio", especificacao=True))
             else:
                 vars_para_ia.append({"pergunta": spec["pergunta"], "resposta": r_val})
-                vars_map.append({'cell': r_cell, 'weight': points_per_var})
+                vars_map.append({'cell': r_cell, 'weight': points_per_var,
+                                 'pergunta': spec["pergunta"]})
 
         # 5. Validação Semântica (IA)
         ai_res = None
@@ -575,6 +620,12 @@ class DatasheetAnalyzer:
             else:
                 yield f"   Guardada em {PASTA_NAO_CONCLUIDAS}/: {os.path.basename(destino)}"
             yield "   Confira o log de IA (logs/llm_usage.jsonl) e rode de novo."
+            self._registrar_no_relatorio(
+                codigo_pmib_4, original_filename, None,
+                [analyzer_relatorio.Achado(
+                    "", "nao_analisada",
+                    motivo=("A analise nao pôde ser concluida: a IA nao respondeu. "
+                            "Esta ficha precisa ser processada de novo."))])
             yield "=" * 60
             return False
 
@@ -589,6 +640,9 @@ class DatasheetAnalyzer:
                     if c_obj: self.set_invalid_error(c_obj, c_obj.value)
                     # Obrigatório reprovado PELA IA conta igual a obrigatório
                     # em branco: a ficha não pode ser aprovada.
+                    achados.append(analyzer_relatorio.Achado(
+                        key, "invalido", motivo=res.get("motivo"),
+                        obrigatorio=bool(CONFIG_MAP.get(key, {}).get("obrigatorio"))))
                     if CONFIG_MAP.get(key, {}).get("obrigatorio"):
                         obrigatorios_faltando.append(key)
 
@@ -600,6 +654,9 @@ class DatasheetAnalyzer:
                         ai_valid_vars[idx] = False
                         c_obj = vars_map[idx]['cell']
                         self.set_invalid_error(c_obj, c_obj.value)
+                        achados.append(analyzer_relatorio.Achado(
+                            vars_map[idx].get('pergunta', ''), "invalido",
+                            motivo=res.get("motivo"), especificacao=True))
 
         # 7. Somar Pontos IA (GANHOS)
         for k, valid in ai_valid_fixed.items():
@@ -647,6 +704,9 @@ class DatasheetAnalyzer:
                    f"nota {final_score}%:")
             for campo in obrigatorios_faltando:
                 yield f"    · {campo}"
+
+        self._registrar_no_relatorio(codigo_pmib_4, original_filename,
+                                     final_score, achados)
 
         final_path_dir = os.path.join(root_output_dir, folder_status, subfolder_name)
         os.makedirs(final_path_dir, exist_ok=True)

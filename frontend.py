@@ -27,6 +27,10 @@ from sigft.core.llm import usage as llm_usage
 # preguicoso do splash de proposito: o modulo so usa `os`, `re` e `datetime`,
 # nao puxa pandas/selenium/IA, e a secao precisa dele ja na montagem da tela.
 from sigft.services import autospec_conferencia as conferencia_txt
+# Relatorio de pendencias do Analyzer, para mandar ao fornecedor. Como o
+# de cima: so stdlib + ficha_layout, nada pesado, e a tela precisa dele
+# na montagem para poder desabilitar o botao.
+from sigft.services import analyzer_relatorio
 # Identificacao das fichas duplicadas (CP 6.2). Puxa pandas, mas o frontend ja
 # o importa no topo deste arquivo -- nao acrescenta peso ao splash.
 from sigft.services import duplicadas
@@ -1577,7 +1581,42 @@ class ModuloAnalyzer(ctk.CTkFrame):
                                      command=self.iniciar_analise,
                                      font=("Roboto", 15, "bold"),
                                      fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"], text_color=COLORS["text_white"])
-        self.btn_run.pack(pady=30)
+        self.btn_run.pack(pady=(30, 8))
+
+        # Relatorio para o FORNECEDOR (2026-08-26). Nasce desabilitado: so
+        # existe relatorio depois de um lote rodar, e botao que promete o que
+        # nao tem e pior que botao ausente.
+        self.relatorio_analise = None
+        self.btn_relatorio = ctk.CTkButton(
+            self.content, text="GERAR RELATÓRIO PARA O FORNECEDOR (.xlsx)",
+            height=36, width=300, command=self._gerar_relatorio,
+            font=("Roboto", 12), state="disabled",
+            fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"])
+        self.btn_relatorio.pack(pady=(0, 25))
+
+    def _gerar_relatorio(self):
+        """Grava o `.xlsx` de pendências na pasta de saída da análise.
+
+        Uma linha por material: código PMIB, o que precisa ser corrigido (com
+        a justificativa que a IA escreveu para o fornecedor) e a nota. É o
+        arquivo que se manda a quem preencheu a ficha.
+        """
+        if not self.relatorio_analise:
+            return messagebox.showinfo(
+                "Relatório", "Rode uma análise primeiro — não há pendências para relatar.")
+        destino = self.selected_output or os.getcwd()
+        try:
+            caminho = self.relatorio_analise.salvar_xlsx(destino)
+        except Exception as e:
+            self.log(f"Nao consegui gerar o relatorio: {e}")
+            return messagebox.showerror("Relatório", f"Não consegui gerar o arquivo:\n{e}")
+        if not caminho:
+            return messagebox.showinfo(
+                "Relatório", "Nenhuma ficha ficou com pendência — não há o que relatar.")
+        self.log(f"Relatorio gerado: {caminho}")
+        messagebox.showinfo(
+            "Relatório", f"{len(self.relatorio_analise)} ficha(s) com pendência.\n\n"
+                         f"Arquivo:\n{caminho}")
 
     # --- Janela de Configuração de Pesos ---
     def abrir_config_pesos(self):
@@ -1744,6 +1783,11 @@ class ModuloAnalyzer(ctk.CTkFrame):
         try:
             self._parar_de_perguntar_desc = False
             analyzer = analyzer_backend.DatasheetAnalyzer(self.api_key)
+            # Relatorio para o fornecedor: o backend acumula os achados de
+            # cada ficha aqui dentro (ver `_registrar_no_relatorio`).
+            self.relatorio_analise = analyzer_relatorio.RelatorioAnalise()
+            analyzer.relatorio = self.relatorio_analise
+            self.btn_relatorio.configure(state="disabled")
             pmib_sheet = None
             if self.selected_pmib:
                 try:
@@ -1795,6 +1839,10 @@ class ModuloAnalyzer(ctk.CTkFrame):
                     falhas.append(fname)
 
             self.log(f"Concluído! {ok} de {len(self.selected_files)} ficha(s) processada(s).")
+            if self.relatorio_analise:
+                self.btn_relatorio.configure(state="normal")
+                self.log(f"{len(self.relatorio_analise)} ficha(s) com pendencia. Use "
+                         "GERAR RELATORIO PARA O FORNECEDOR (.xlsx).")
             if falhas:
                 self.log(f"NAO concluidas ({len(falhas)}): {', '.join(falhas)}")
                 messagebox.showwarning(

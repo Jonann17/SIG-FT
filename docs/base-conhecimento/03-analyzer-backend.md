@@ -136,32 +136,75 @@ comportamento. Hoje detecta de verdade (item 1).
   que estava ali filtrava um bool que nunca chegava, e a tela dizia *"Análise finalizada"*
   mesmo com todas as fichas falhando. Agora conta e nomeia as que não concluíram.
 
-### As 4 decisões do usuário, tomadas em 2026-08-26
-
-Estavam em aberto porque mudavam comportamento de produto, não porque eram difíceis. O
-usuário decidiu as quatro no mesmo dia:
+### 2026-08-26 — as decisões do usuário, e a regra de negócio que corrigiu uma delas
 
 | Decisão | O que passou a acontecer |
 |---|---|
-| **Fórmula na célula → corrigir** | O arquivo é aberto DUAS vezes: um workbook gravável (guarda a fórmula, recebe o `FORNECER`, vai para o disco) e um `data_only=True` com os valores calculados. `=1+1` não conta mais como texto |
-| **Teto de 55% → renormalizar** | Sem especificações técnicas, os 45 pontos delas saem do denominador: a nota é calculada só sobre os campos fixos, com aviso no console. Uma ficha sem specs mas completa no resto chega a 100% |
-| **`callback_manual_desc` → implementar** | `ModuloAnalyzer._perguntar_descricao` abre a caixa de diálogo quando o PMIB não está na planilha. **CANCELAR para de perguntar no resto do lote** — 50 fichas desconhecidas não podem virar 50 diálogos obrigatórios |
-| **IA fora do ar → abortar a ficha** | Nada é salvo. Sem o julgamento da IA os campos dela contariam como válidos e a nota sairia inflada; um arquivo com nota que não vale é pior que arquivo nenhum. A ficha entra na lista de "não concluídas", com o motivo |
+| **Fórmula na célula → corrigir** | O arquivo é aberto DUAS vezes: um workbook gravável (guarda a fórmula, recebe o `FORNECER`, vai para o disco) e um `data_only=True` com os valores calculados |
+| **`callback_manual_desc` → implementar** | `ModuloAnalyzer._perguntar_descricao` abre a caixa quando o PMIB não está na planilha. **CANCELAR para de perguntar no resto do lote** |
+| **IA fora do ar → não gera nota** | A ficha vai para `FT_nao_concluidas/`, com o motivo no console |
+| **Ficha sem especificações técnicas → não gera nota** | *(esta substituiu a renormalização decidida horas antes)* A seção é obrigatória; sem ela a ficha não é analisável e volta ao fornecedor. Mesma pasta do caso acima |
 
-**A armadilha da leitura dupla, e como ela está travada por teste:** se o `FORNECER` for
-escrito no workbook `data_only`, o arquivo salvo sai **sem marcação nenhuma** e o módulo perde
-o sentido. `test_a_marcacao_FORNECER_vai_no_workbook_QUE_SERA_SALVO` existe só para isso.
+**A decisão que foi revertida, e por quê.** Por algumas horas o analyzer renormalizava a nota
+quando a ficha não tinha especificações técnicas — 55 pontos fixos viravam 100%. A regra de
+negócio mostrou que o caso era outro: *"a ficha técnica não ter os campos de características
+técnicas é um problema, já que este deve existir"*. Não era pontuar o que existe; era **recusar
+a ficha**. A renormalização foi removida junto com os testes que a descreviam.
 
-**O caso que não dá para resolver sozinho:** `data_only=True` devolve o valor em CACHE, e ficha
-nunca aberta no Excel não tem cache — a fórmula existe e o valor é `None`. Tratar como célula
-vazia escreveria `FORNECER` por cima de uma fórmula do usuário, o que é pior que o problema
-original. Nesse caso o comportamento antigo é mantido (o texto cru) e o console avisa,
-**nomeando as células**: *"1 celula(s) com FORMULA sem valor calculado (L10). Abra a ficha no
-Excel e salve"*.
+### Três destinos, e a diferença entre eles
+
+| Pasta | Quando | O que vai para lá |
+|---|---|---|
+| `FT_good/` | nota ≥ limiar **e** nenhum obrigatório faltando | o original, com a nota no nome |
+| `FT_bad/` | analisada e reprovada | o arquivo **marcado** — é o que se manda ao fornecedor |
+| `FT_nao_concluidas/` | o aplicativo **não conseguiu** analisar | o **original**, sem marcação e **sem porcentagem** no nome |
+
+A distinção que importa: `FT_bad` é "analisei e está errado"; `FT_nao_concluidas` é "não deu
+para analisar". Nota que não existe não pode aparecer no nome de um arquivo.
+
+### Campos obrigatórios (lista do usuário, 2026-08-26)
+
+24 das 26 entradas do `CONFIG_MAP` têm `"obrigatorio": True`. **Faltar um deles reprova a
+ficha, qualquer que seja a nota** — uma ficha com 98% e sem fabricante vai para `FT_bad`, e o
+console nomeia os campos que faltaram, um por linha.
+
+Fora da lista: `peso_bruto` e `empilhamento`. Continuam valendo peso — faltar um deles baixa a
+nota, não reprova.
+
+**Entrada nova:** `controle_temp_umidade` (M23). A célula não foi chutada —
+`services/upload_conditions.py:132` já lia esse endereço.
+
+**"Não aplicável" passou a ser aceito** em `transporte` (içagem), `metodo_limpeza` e
+`ferramentas_para_preservacao`. Isso conserta uma contradição do próprio código: a **regra 2 do
+prompt** já dizia que "Não aplicável" pode ser VÁLIDO quando a pergunta não se aplica — e
+`FORBIDDEN_NA_STRINGS` matava a resposta no analyzer, antes de a IA vê-la.
+
+### Relatório para o fornecedor
+
+Botão *GERAR RELATÓRIO PARA O FORNECEDOR (.xlsx)* na tela, habilitado quando o lote termina.
+Uma linha por material: **código PMIB completo**, o que precisa ser corrigido, e a nota.
+
+```
+PMIB              | NOTA | O QUE PRECISA SER CORRIGIDO
+4500063671.0002   | 98%  | • Fabricante (obrigatório): em branco, precisa ser preenchido.
+                  |      | • Peso líquido (kg) (obrigatório): em branco, precisa ser preenchido.
+4500063671.0005   | 78%  | • Embalagem para transporte (indicar o TIPO...): Nao diz qual e a
+                  |      |   embalagem: informe o tipo (caixa de madeira, engradado...).
+                  |      | • Pergunta 2?: Foi informada uma dimensao onde se pedia o material.
+```
+
+Duas decisões que atravessam o módulo `analyzer_relatorio.py`, porque **quem lê não é
+engenheiro do SIG-FT**:
+
+1. **Rótulo, nunca a chave interna.** `peso_liquido` não diz nada a quem preencheu a ficha.
+   Um teste garante que todo campo do `CONFIG_MAP` tem rótulo — campo novo sem rótulo reprova.
+2. **A justificativa da IA é repassada literalmente.** O prompt manda escrevê-la *para o
+   fornecedor*; reescrevê-la aqui só a afastaria de quem vai lê-la. Resposta sem `motivo`
+   (modelo mais fraco, ou cache do formato antigo) ainda diz qual campo falhou.
 
 ### Ainda em aberto
 
 | Achado | Destino |
 |---|---|
-| `AutoSpecCore.MAX_LINHAS_VAZIAS_SEGUIDAS` e `ficha_layout.MAX_LINHAS_VAZIAS_SEGUIDAS` são o mesmo 25 em dois lugares (o analyzer já usa o do `ficha_layout`; o autospec ainda não) | CP 8.1 |
-| `_call_gemini_api` grava o erro em `ultimo_erro_ia` **e** ainda faz `print("API Error")`, porque um teste do CP 3.1 trava o print como caracterização | CP 8.1 |
+| `AutoSpecCore.MAX_LINHAS_VAZIAS_SEGUIDAS` e `ficha_layout.MAX_LINHAS_VAZIAS_SEGUIDAS` são o mesmo 25 em dois lugares | CP 8.1 |
+| `_call_gemini_api` grava o erro em `ultimo_erro_ia` **e** ainda faz `print("API Error")`, porque um teste do CP 3.1 trava o print | CP 8.1 |
