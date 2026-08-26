@@ -123,7 +123,7 @@ Dois cliques em **`Gerar-Dados-de-Teste.bat`** — ele cria a pasta
 |---|---|---|---|
 | 3.1 | **9. Search** | Pasta = `dados_de_teste`. Buscar por `Rolamento` | Encontra linhas nos dois `_STATUS_PMIB` |
 | 3.2 | **8. PMIB Manager** | Apontar para `dados_de_teste` e listar/gerar KPIs | Lê os arquivos sem erro |
-| 3.3 | **3. Analyzer (IA)** | Ficha = `dados_de_teste\fichas\4500063671.0001.xlsx` | Roda a análise e devolve pontuação — **precisa de chave Gemini** (configure na tela Home) |
+| 3.3 | **3. Analyzer (IA)** | Ficha = `dados_de_teste\fichas\4500063671.0001.xlsx` | Roda a análise e devolve pontuação — **precisa de chave de IA** (configure na tela Home). Ver **3.3b** logo abaixo: o módulo mudou bastante em 2026-08-26 |
 | 3.4 | **2. Planilhas PMIB** | Um PDM qualquer seu, se tiver | Gera a planilha |
 
 > Se você **tem** uma ficha real à mão, use ela em vez da sintética no 3.3. As
@@ -133,6 +133,30 @@ Dois cliques em **`Gerar-Dados-de-Teste.bat`** — ele cria a pasta
 **O que anotar:** qualquer erro de "coluna não encontrada", "cabeçalho não
 localizado" ou código PMIB saindo diferente do esperado. Esses três são
 justamente o que as Fases 1 e 2 unificaram.
+
+---
+
+### 3.3b — O que mudou no Analyzer em 2026-08-26
+
+Sete defeitos corrigidos e quatro decisões suas. O que vale conferir na prática:
+
+| # | O que fazer | Esperado |
+|---|---|---|
+| 1 | Abrir uma ficha no Excel, **selecionar outra aba** (se houver) e salvar. Analisar | A nota **não** pode mudar. O console diz `Lendo a aba 'X' (a aba ativa nao e a da ficha)`. Antes disso a mesma ficha ia de 100% para 0% |
+| 2 | Analisar uma ficha **apagando o Fabricante** | `[REPROVADA] 1 campo(s) OBRIGATORIO(s)...` seguido de `· fabricante`, e o arquivo vai para `FT_bad` **mesmo com nota alta** |
+| 3 | Analisar uma ficha **sem a seção de especificações técnicas** | Não recebe nota. Vai para a pasta nova **`FT_nao_concluidas/`**, com o original (sem `%` no nome) |
+| 4 | Desligar a internet e analisar | Mesma pasta `FT_nao_concluidas/`, com o motivo da falha da IA no console |
+| 5 | Responder **"Não aplicável"** em *Posições/Cuidados com içagem*, *Métodos de limpeza* ou *Ferramentas para preservação* | Aceito. Nos demais campos continua sendo tratado como falta |
+| 6 | Terminado o lote, clicar em **GERAR RELATÓRIO PARA O FORNECEDOR (.xlsx)** | Arquivo na pasta de saída, uma linha por ficha com pendência: código PMIB completo, o que corrigir (com a justificativa da IA) e a nota |
+| 7 | Analisar uma ficha cujo PMIB **não está** no `_STATUS_PMIB` | Abre uma caixa pedindo a descrição do material. **Cancelar** para de perguntar no resto do lote |
+
+**Erros que valem anotar:**
+
+| Se aparecer | Significa |
+|---|---|
+| `celula(s) com FORMULA sem valor calculado (L10)` | A ficha tem fórmula que o Excel nunca calculou. Abra no Excel e salve |
+| Uma ficha em `FT_good` com campo obrigatório vazio | **Me avise** — é exatamente o que a regra nova existe para impedir |
+| Relatório com nomes como `peso_liquido` em vez de `Peso líquido (kg)` | **Me avise**: o rótulo é o que torna o arquivo utilizável pelo fornecedor |
 
 ---
 
