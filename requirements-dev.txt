@@ -21,3 +21,11 @@ pytest
 # nenhuma proteção do projeto pode depender de um pacote opcional. Instale se
 # for mexer em seletor:  python -m pip install lxml
 lxml
+
+# pyflakes -- a UNICA checagem que consegue olhar `frontend.py` neste ambiente.
+# Ele analisa a arvore sintatica sem executar nada, entao pega `NameError`
+# latente num arquivo que a suite nao pode importar (ele abre janela real) e
+# que `compileall` so compila. Ver tests/test_frontend_nomes_indefinidos.py --
+# e o defeito de 2026-08-25 que originou os dois.
+pyflakes
+

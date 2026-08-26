@@ -2953,16 +2953,16 @@ class ModuloCopiaFichas(ctk.CTkFrame):
         # mapear uma seção nova do portal sem abrir o "inspecionar elemento".
         # O HTML vai só para o arquivo; o console continua legível.
         self.var_log_auditoria = ctk.BooleanVar(value=True)
-        ctk.CTkSwitch(f_novo, text="Gravar log de auditoria (com a estrutura das telas)",
+        ctk.CTkSwitch(frm_action, text="Gravar log de auditoria (com a estrutura das telas)",
                       variable=self.var_log_auditoria, onvalue=True, offvalue=False,
-                      progress_color=COLORS["primary"]).pack(anchor="w", pady=(8, 0))
+                      progress_color=COLORS["primary"]).pack(anchor="w", padx=15, pady=(8, 0))
 
-        ctk.CTkLabel(
-            f_novo,
-            text=("Reconstrução da Fase 6. AINDA NÃO faz documentos, imagens nem Condições "
-                  "— essas seções continuam com o botão 2."),
-            font=("Roboto", 11), text_color="gray", anchor="w", justify="left",
-        ).pack(fill="x", pady=(4, 0))
+        # CP 5.5: aqui havia um rótulo dizendo "Reconstrução da Fase 6. AINDA
+        # NÃO faz documentos, imagens nem Condições -- essas seções continuam
+        # com o botão 2." As duas metades ficaram falsas: a Fase 6 fechou
+        # fazendo as três, e o botão 2 (o robô em Selenium) não existe mais.
+        # Rótulo que mente é pior que rótulo nenhum -- ele manda o usuário
+        # procurar um caminho que sumiu.
 
         # Progresso
         self.progress = ctk.CTkProgressBar(frm_action, progress_color=COLORS["accent"])
