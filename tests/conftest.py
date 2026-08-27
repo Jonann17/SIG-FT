@@ -138,6 +138,33 @@ _ctk_falso = importlib.util.module_from_spec(_spec_ctk)
 _spec_ctk.loader.exec_module(_ctk_falso)
 sys.modules["customtkinter"] = _ctk_falso
 
+# 2c. [CP 7.2] tkinter — dublê pelos mesmos motivos, para a `Listbox`.
+#
+#     `sigft/app/widgets/pickers.py` importa `tkinter` no TOPO, e não tem como
+#     não importar: a `Listbox` das filas de ficha não tem equivalente no
+#     CustomTkinter. (`sigft/app/file_dialogs.py` resolve o mesmo problema com
+#     import preguiçoso dentro da função, porque lá o tkinter só aparece na
+#     hora de abrir o diálogo — num widget que É uma Listbox, isso não serve.)
+#
+#     `tkinter.filedialog` entra no registro junto: sem ele, o
+#     `from tkinter import filedialog` preguiçoso de `file_dialogs` passaria a
+#     falhar por causa do dublê do pacote-pai. Os testes de `file_dialogs`
+#     sempre injetam `dialog_fn`, então na prática não chegam lá — mas o
+#     import não pode quebrar por um efeito colateral nosso.
+_CAMINHO_TK_FALSO = os.path.join(os.path.dirname(__file__), "tk_falso.py")
+_spec_tk = importlib.util.spec_from_file_location("tk_falso", _CAMINHO_TK_FALSO)
+_tk_falso = importlib.util.module_from_spec(_spec_tk)
+_spec_tk.loader.exec_module(_tk_falso)
+sys.modules["tkinter"] = _tk_falso
+# Os submódulos apontam para os MESMOS objetos que são atributos do dublê, e
+# não para MagicMocks separados: `test_file_dialogs.py` compara a função que
+# `_resolver_dialog_fn` devolve com `getattr(filedialog, nome)`. Com dois
+# objetos distintos, a identidade não bateria e o teste falharia por um efeito
+# colateral nosso, não por um defeito de produção.
+sys.modules["tkinter.filedialog"] = _tk_falso.filedialog
+sys.modules["tkinter.messagebox"] = _tk_falso.messagebox
+sys.modules["tkinter.ttk"] = MagicMock(name="tkinter.ttk")
+
 # 3. Caso especial pandas: `PMIBSearcher._limpar_texto_parrudo`
 #    (search_pmib_backend.py) chama `pd.isna(texto)`. Um MagicMock puro faria
 #    `pd.isna(x)` retornar sempre um novo Mock (truthy para QUALQUER x),

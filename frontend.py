@@ -23,6 +23,13 @@ from sigft.app import file_dialogs
 # thread-safe unico. As telas vao migrando para ele uma a uma; enquanto isso,
 # as nao migradas seguem com o bloco antigo -- as duas formas convivem.
 from sigft.app.widgets.module_frame import ModuleFrame
+# [CP 7.2] Dialogos de acao manual: as 3 copias de _mostrar_janela_pausa e a
+# janela de "Excel bloqueado" viraram um lugar so.
+from sigft.app.widgets import dialogs as app_dialogs
+# [CP 7.2] Seletores de arquivo/pasta e a fila de fichas (as 2 copias
+# identicas de listbox+3 botoes). A memoria de caminhos do CP 1.5 virou
+# comportamento embutido dos pickers.
+from sigft.app.widgets import pickers as app_pickers
 from sigft import config as sigft_config
 from sigft.core.llm import catalogo
 from sigft.core.llm import selecao
@@ -1552,32 +1559,51 @@ class ModuloAnalyzer(ctk.CTkFrame):
 
         ctk.CTkLabel(frm_files, text="2. Seleção de Arquivos e Pastas", font=("Roboto", 14, "bold"), text_color=COLORS["accent"]).pack(anchor="w", padx=15, pady=(10, 5))
 
+        # [CP 7.2] Os tres seletores desta tela sao FilePickerRow/Folder/Multi.
+        # Cada um declara a sua chave da memoria de caminhos UMA vez, aqui, e a
+        # tela nunca mais chama file_dialogs -- e o "memoria embutida, nao
+        # chamada manual" que o checkpoint pede. O rotulo em verde E o botao
+        # pintado continuam iguais: os dois estao no widget.
+
         # A) Arquivos de Entrada
-        f_in = ctk.CTkFrame(frm_files, fg_color="transparent")
-        f_in.pack(fill="x", padx=15, pady=5)
-        self.btn_files = ctk.CTkButton(f_in, text="Selecionar Fichas (.xlsx)", width=200, command=self._sel_input_files,
-                                       fg_color="#3A3A3A", hover_color="#454545", font=("Roboto", 12))
-        self.btn_files.pack(side="left")
-        self.lbl_files_status = ctk.CTkLabel(f_in, text="Nenhum arquivo selecionado", text_color="gray")
-        self.lbl_files_status.pack(side="left", padx=10)
+        self.picker_files = app_pickers.MultiFilePickerRow(
+            frm_files,
+            chave="analyzer.fichas",
+            categoria="excel",
+            texto_botao="Selecionar Fichas (.xlsx)",
+            largura_botao=200,
+            titulo="Selecione as Fichas Técnicas",
+            filetypes=[("Excel", "*.xlsx")],
+            ao_escolher=self._ao_escolher_fichas,
+        )
+        self.picker_files.pack(fill="x", padx=15, pady=5)
 
         # B) Pasta de Saída
-        f_out = ctk.CTkFrame(frm_files, fg_color="transparent")
-        f_out.pack(fill="x", padx=15, pady=5)
-        self.btn_out = ctk.CTkButton(f_out, text="Pasta de Saída", width=200, command=self._sel_output_dir,
-                                     fg_color="#3A3A3A", hover_color="#454545", font=("Roboto", 12))
-        self.btn_out.pack(side="left")
-        self.lbl_out_status = ctk.CTkLabel(f_out, text="Nenhuma pasta selecionada", text_color="gray")
-        self.lbl_out_status.pack(side="left", padx=10)
+        self.picker_out = app_pickers.FolderPickerRow(
+            frm_files,
+            chave="analyzer.saida",
+            texto_botao="Pasta de Saída",
+            largura_botao=200,
+            titulo="Selecione Pasta de Saída",
+            ao_escolher=self._ao_escolher_saida,
+        )
+        self.picker_out.pack(fill="x", padx=15, pady=5)
 
         # C) PMIB (Opcional)
-        f_pmib = ctk.CTkFrame(frm_files, fg_color="transparent")
-        f_pmib.pack(fill="x", padx=15, pady=(5, 15))
-        self.btn_pmib = ctk.CTkButton(f_pmib, text="STATUS_PMIB (Opcional)", width=200, command=self._sel_pmib,
-                                      fg_color="#3A3A3A", hover_color="#454545", font=("Roboto", 12))
-        self.btn_pmib.pack(side="left")
-        self.lbl_pmib_status = ctk.CTkLabel(f_pmib, text="Não selecionado (Padrão: sem contexto)", text_color="gray")
-        self.lbl_pmib_status.pack(side="left", padx=10)
+        self.picker_pmib = app_pickers.FilePickerRow(
+            frm_files,
+            chave="analyzer.status_pmib",
+            categoria="excel",
+            texto_botao="STATUS_PMIB (Opcional)",
+            largura_botao=200,
+            titulo="Selecione STATUS_PMIB",
+            filetypes=[("Excel", "*.xlsx")],
+            # Texto proprio desta tela -- ela avisa qual e o padrao quando
+            # nada e escolhido, e isso e informacao util, nao ruido.
+            texto_vazio="Não selecionado (Padrão: sem contexto)",
+            ao_escolher=self._ao_escolher_pmib,
+        )
+        self.picker_pmib.pack(fill="x", padx=15, pady=(5, 15))
 
         # --- AÇÃO ---
         self.btn_run = ctk.CTkButton(self.content, text="INICIAR PROCESSAMENTO",
@@ -1695,26 +1721,17 @@ class ModuloAnalyzer(ctk.CTkFrame):
         self.score_value = value
         self.lbl_score.configure(text=f"Nota Mínima: {int(value)}%")
 
-    def _sel_input_files(self):
-        files = file_dialogs.ask_open_files("analyzer.fichas", "excel", titulo="Selecione as Fichas Técnicas", filetypes=[("Excel", "*.xlsx")])
-        if files:
-            self.selected_files = list(files)
-            self.lbl_files_status.configure(text=f"{len(files)} arquivos selecionados", text_color=COLORS["accent"])
-            self.btn_files.configure(fg_color=COLORS["primary"])
+    # [CP 7.2] Os pickers cuidam do dialogo, da memoria de caminho e das duas
+    # mudancas de cor. Sobra a esta tela so guardar o que foi escolhido, no
+    # formato que `iniciar_analise` ja esperava.
+    def _ao_escolher_fichas(self, caminhos):
+        self.selected_files = list(caminhos)
 
-    def _sel_output_dir(self):
-        d = file_dialogs.ask_directory("analyzer.saida", "pasta", titulo="Selecione Pasta de Saída")
-        if d:
-            self.selected_output = d
-            self.lbl_out_status.configure(text=os.path.basename(d) if os.path.basename(d) else d, text_color=COLORS["accent"])
-            self.btn_out.configure(fg_color=COLORS["primary"])
+    def _ao_escolher_saida(self, pasta):
+        self.selected_output = pasta
 
-    def _sel_pmib(self):
-        f = file_dialogs.ask_open_file("analyzer.status_pmib", "excel", titulo="Selecione STATUS_PMIB", filetypes=[("Excel", "*.xlsx")])
-        if f:
-            self.selected_pmib = f
-            self.lbl_pmib_status.configure(text=os.path.basename(f), text_color=COLORS["accent"])
-            self.btn_pmib.configure(fg_color=COLORS["primary"])
+    def _ao_escolher_pmib(self, caminho):
+        self.selected_pmib = caminho
 
     # --- Lógica ---
     def iniciar_analise(self):
@@ -1943,7 +1960,10 @@ class ModuloUploadConditions(ctk.CTkFrame):
 
         # Variáveis Globais de Arquivo
         self.caminho_status = ctk.StringVar()
-        self.lista_fichas_paths = []
+        # [CP 7.2] `lista_fichas_paths` virou PROPRIEDADE que le do
+        # FileQueueList -- a fila e a dona do estado agora, e manter uma lista
+        # paralela aqui seria a segunda fonte de verdade que a refatoracao
+        # existe para eliminar.
 
         # Referências aos processos ativos (para poder parar)
         self.processor_ativo = None
@@ -2015,29 +2035,21 @@ class ModuloUploadConditions(ctk.CTkFrame):
         frm_fichas = ctk.CTkFrame(scroll_area, fg_color="#2B2B2B", corner_radius=8)
         frm_fichas.pack(fill="both", expand=True, padx=10, pady=10)
 
-        self.lbl_fichas_count = ctk.CTkLabel(frm_fichas, text="Planilhas PMIB Selecionadas (0)", font=("Roboto", 12, "bold"))
-        self.lbl_fichas_count.pack(anchor="w", padx=10, pady=(10, 0))
-
-        list_container = ctk.CTkFrame(frm_fichas, fg_color="transparent")
-        list_container.pack(fill="both", expand=True, padx=10, pady=5)
-
-        self.listbox_fichas = tk.Listbox(
-            list_container, selectmode=tk.EXTENDED, bg="#1E1E1E", fg="#E0E0E0",
-            selectbackground=COLORS.get("primary", "#1f538d"), selectforeground="white",
-            highlightthickness=0, borderwidth=0, font=("Segoe UI", 11), activestyle="none"
+        # [CP 7.2] Uma das 2 copias identicas da fila de fichas. A listbox, a
+        # barra de rolagem, os 3 botoes e o contador vivem agora em
+        # widgets/pickers.FileQueueList -- inclusive a memoria de caminhos, que
+        # deixou de ser chamada manual.
+        self.fila_fichas = app_pickers.FileQueueList(
+            frm_fichas,
+            chave="upload_conditions.fichas",
+            categoria="excel",
+            rotulo="Planilhas PMIB Selecionadas",
+            titulo_dialogo="Selecione as Fichas PMIB",
+            filetypes=[("Excel", "*.xlsx;*.xls")],
+            ao_mudar=self._logar_mudanca_na_fila,
         )
-        self.listbox_fichas.pack(side="left", fill="both", expand=True, padx=(5, 0), pady=5)
-
-        scrollbar_fichas = tk.Scrollbar(list_container, bg="#2B2B2B", troughcolor="#3A3A3A")
-        scrollbar_fichas.pack(side="left", fill="y", pady=5)
-        self.listbox_fichas.config(yscrollcommand=scrollbar_fichas.set)
-        scrollbar_fichas.config(command=self.listbox_fichas.yview)
-
-        f_list_btns = ctk.CTkFrame(list_container, fg_color="transparent", width=120)
-        f_list_btns.pack(side="right", fill="y", padx=(10, 0))
-        ctk.CTkButton(f_list_btns, text="Adicionar Fichas", command=self._sel_fichas, fg_color="#3A3A3A").pack(pady=5)
-        ctk.CTkButton(f_list_btns, text="Remover Seleção", command=self._remover_fichas_selecionadas, fg_color=COLORS.get("danger", "#B71C1C")).pack(pady=5)
-        ctk.CTkButton(f_list_btns, text="Limpar Tudo", command=self._limpar_todas_fichas, fg_color="transparent", border_width=1, border_color="#555").pack(pady=5)
+        self.fila_fichas.label_contador.pack(anchor="w", padx=10, pady=(10, 0))
+        self.fila_fichas.pack(fill="both", expand=True, padx=10, pady=5)
 
         frm_acoes = ctk.CTkFrame(scroll_area, fg_color="transparent")
         frm_acoes.pack(fill="x", padx=10, pady=(5, 15))
@@ -2075,34 +2087,17 @@ class ModuloUploadConditions(ctk.CTkFrame):
             self.lbl_status_status.configure(text=os.path.basename(path), text_color=COLORS["accent"])
             self.btn_status.configure(fg_color=COLORS["primary"])
 
-    def _atualizar_contador_fichas(self):
-        total = len(self.lista_fichas_paths)
-        self.lbl_fichas_count.configure(text=f"Planilhas PMIB Selecionadas ({total})")
+    # [CP 7.2] A fila (listbox + contador + os 3 botoes + memoria de caminho)
+    # e o FileQueueList. Sobra aqui so o texto do console, que e da TELA.
+    @property
+    def lista_fichas_paths(self):
+        """Os caminhos na fila. Continua existindo com este nome porque o
+        `_pre_start_ia` le por ele."""
+        return self.fila_fichas.arquivos
 
-    def _sel_fichas(self):
-        files = file_dialogs.ask_open_files("upload_conditions.fichas", "excel", titulo="Selecione as Fichas PMIB", filetypes=[("Excel", "*.xlsx;*.xls")])
-        if not files: return
-        for f in files:
-            if f not in self.lista_fichas_paths:
-                self.lista_fichas_paths.append(f)
-                nome_formatado = f" 📊  {os.path.basename(f)}"
-                self.listbox_fichas.insert(tk.END, nome_formatado)
-        self._atualizar_contador_fichas()
-        self.log(f"{len(files)} arquivos selecionados. Total na fila: {len(self.lista_fichas_paths)}")
-
-    def _remover_fichas_selecionadas(self):
-        selecionados = list(self.listbox_fichas.curselection())
-        if not selecionados: return
-        selecionados.reverse()
-        for index in selecionados:
-            self.listbox_fichas.delete(index)
-            del self.lista_fichas_paths[index]
-        self._atualizar_contador_fichas()
-
-    def _limpar_todas_fichas(self):
-        self.listbox_fichas.delete(0, tk.END)
-        self.lista_fichas_paths.clear()
-        self._atualizar_contador_fichas()
+    def _logar_mudanca_na_fila(self, acao, quantidade, total):
+        if acao == "adicionou":
+            self.log(f"{quantidade} arquivos selecionados. Total na fila: {total}")
 
     # =========================================================================
     # LÓGICA DE EXECUÇÃO: IA (Aba 1)
@@ -2349,60 +2344,30 @@ class ModuloUploadConditions(ctk.CTkFrame):
             self.after(0, lambda: self.btn_parar_web.configure(state="disabled"))
 
     def _mostrar_janela_pausa(self, section_name, evento_espera):
-        """Janela não bloqueante para lidar com erros de salvamento do portal e Login."""
-        top = ctk.CTkToplevel(self)
-        top.title("Ação Manual Necessária")
-        top.geometry("450x250")
-        top.attributes('-topmost', True)
+        """Janela não bloqueante para lidar com erros de salvamento do portal e Login.
 
-        def liberar_robo():
-            evento_espera.set()
-            top.destroy()
-
-        top.protocol("WM_DELETE_WINDOW", liberar_robo)
-
-        if section_name == "LOGIN_NECESSARIO":
-            msg = "O navegador foi aberto.\n\n1. Faça o LOGIN no site.\n2. Navegue até a tela inicial do PMIB.\n3. Clique abaixo para soltar o robô."
+        [CP 7.2] A janela em si mora em `sigft/app/widgets/dialogs.py`; aqui
+        fica so a escolha da mensagem, que e o unico pedaco especifico desta
+        tela. O metodo continua existindo com a mesma assinatura porque os
+        `self.after(0, self._mostrar_janela_pausa, ...)` do worker chamam por
+        este nome.
+        """
+        if section_name == app_dialogs.LOGIN_NECESSARIO:
+            msg = app_dialogs.MSG_LOGIN_SOLTAR_ROBO
         else:
-            msg = f"Falha ao salvar a aba '{section_name}'. Ocorreu um erro no site.\n\n1. Resolva o problema no navegador.\n2. Clique em SALVAR no site.\n3. Clique no botão abaixo para continuar."
+            msg = app_dialogs.msg_falha_ao_salvar(section_name)
 
-        ctk.CTkLabel(top, text=msg, font=("Roboto", 13), wraplength=400, justify="center").pack(pady=30, padx=20, expand=True)
-
-        btn = ctk.CTkButton(top, text="CONTINUAR AUTOMAÇÃO", command=liberar_robo,
-                            fg_color=COLORS.get("primary", "#1f538d"), hover_color=COLORS.get("primary_hover", "#14375e"),
-                            height=45, font=("Roboto", 14, "bold"))
-        btn.pack(pady=(0, 20))
+        app_dialogs.PausaLoginDialog(self, mensagem=msg, evento_espera=evento_espera)
 
     def _mostrar_janela_retry(self, motivo, evento_espera, resultado_dict):
-        """Janela com botões de decisão (Repetir / Cancelar) para lidar com Excel bloqueado."""
-        top = ctk.CTkToplevel(self)
-        top.title("Arquivo Bloqueado")
-        top.geometry("450x200")
-        top.attributes('-topmost', True)
+        """Janela com botões de decisão (Repetir / Cancelar) para lidar com Excel bloqueado.
 
-        def acao_repetir():
-            resultado_dict["retry"] = True
-            evento_espera.set()
-            top.destroy()
-
-        def acao_cancelar():
-            resultado_dict["retry"] = False
-            evento_espera.set()
-            top.destroy()
-
-        # Se fechar no X, cancela.
-        top.protocol("WM_DELETE_WINDOW", acao_cancelar)
-
-        msg = "O arquivo _STATUS_PMIB está aberto no Excel.\n\nPor favor, FECHE O ARQUIVO e clique em 'Tentar Novamente' para salvar o status da ficha concluída."
-        ctk.CTkLabel(top, text=msg, font=("Roboto", 13), wraplength=400, justify="center").pack(pady=20, padx=20, expand=True)
-
-        f_btns = ctk.CTkFrame(top, fg_color="transparent")
-        f_btns.pack(pady=(0, 20))
-
-        ctk.CTkButton(f_btns, text="Tentar Novamente", command=acao_repetir,
-                      fg_color=COLORS.get("primary", "#1f538d"), width=150, height=40).pack(side="left", padx=10)
-        ctk.CTkButton(f_btns, text="Ignorar e Continuar", command=acao_cancelar,
-                      fg_color="transparent", border_width=1, border_color="#555", text_color="gray", width=150, height=40).pack(side="left", padx=10)
+        [CP 7.2] Delega para `widgets/dialogs.RetryLockDialog`. O contrato com
+        o worker nao mudou: a decisao volta em `resultado_dict["retry"]`.
+        """
+        app_dialogs.RetryLockDialog(
+            self, evento_espera=evento_espera, resultado=resultado_dict
+        )
 
 
 # =============================================================================
@@ -2424,7 +2389,8 @@ class ModuloUploadTechSpecs(ctk.CTkFrame):
         # Variáveis para a Aba 1
         self.caminho_status = ctk.StringVar()
         self.caminho_master = ctk.StringVar()
-        self.lista_fichas_paths = []  # Lista invisível com os caminhos completos
+        # [CP 7.2] `lista_fichas_paths` virou PROPRIEDADE lida do FileQueueList
+        # -- a fila e a dona dos caminhos completos.
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -2513,39 +2479,21 @@ class ModuloUploadTechSpecs(ctk.CTkFrame):
         frm_fichas = ctk.CTkFrame(scroll_area, fg_color="#2B2B2B", corner_radius=8)
         frm_fichas.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # --- NOVO: Variável de classe para o contador ---
-        self.lbl_fichas_count = ctk.CTkLabel(frm_fichas, text="Fichas Selecionadas (0)", font=("Roboto", 12, "bold"))
-        self.lbl_fichas_count.pack(anchor="w", padx=10, pady=(5, 0))
-
-        list_container = ctk.CTkFrame(frm_fichas, fg_color="transparent")
-        list_container.pack(fill="both", expand=True, padx=10, pady=5)
-
-        # --- NOVO: selectmode=tk.EXTENDED permite usar SHIFT e CTRL e arrastar o mouse ---
-        self.listbox_fichas = tk.Listbox(
-            list_container,
-            selectmode=tk.EXTENDED,
-            bg="#1E1E1E",
-            fg="#E0E0E0",
-            selectbackground=COLORS.get("primary", "#1f538d"),
-            selectforeground="white",
-            highlightthickness=0,
-            borderwidth=0,
-            font=("Segoe UI", 11),
-            activestyle="none"
+        # [CP 7.2] A outra copia identica da fila de fichas -- agora e o mesmo
+        # FileQueueList do ModuloUploadConditions. O `selectmode=tk.EXTENDED`
+        # (SHIFT/CTRL e arrastar o mouse) que o comentario antigo destacava
+        # continua ligado: e o padrao do widget.
+        self.fila_fichas = app_pickers.FileQueueList(
+            frm_fichas,
+            chave="upload_tech_specs.fichas",
+            categoria="excel",
+            rotulo="Fichas Selecionadas",
+            titulo_dialogo="Selecione as Fichas PMIB",
+            filetypes=[("Excel", "*.xlsx;*.xlsm")],
+            ao_mudar=self._logar_mudanca_na_fila,
         )
-        self.listbox_fichas.pack(side="left", fill="both", expand=True, padx=(5, 0), pady=5)
-
-        scrollbar_fichas = tk.Scrollbar(list_container, bg="#2B2B2B", troughcolor="#3A3A3A")
-        scrollbar_fichas.pack(side="left", fill="y", pady=5)
-        self.listbox_fichas.config(yscrollcommand=scrollbar_fichas.set)
-        scrollbar_fichas.config(command=self.listbox_fichas.yview)
-
-        # Botões de Ação da Lista
-        f_list_btns = ctk.CTkFrame(list_container, fg_color="transparent", width=120)
-        f_list_btns.pack(side="right", fill="y", padx=(10, 0))
-        ctk.CTkButton(f_list_btns, text="Adicionar Fichas", command=self._sel_fichas, fg_color="#3A3A3A").pack(pady=5)
-        ctk.CTkButton(f_list_btns, text="Remover Seleção", command=self._remover_fichas_selecionadas, fg_color=COLORS.get("danger", "#B71C1C")).pack(pady=5)
-        ctk.CTkButton(f_list_btns, text="Limpar Tudo", command=self._limpar_todas_fichas, fg_color="transparent", border_width=1, border_color="#555").pack(pady=5)
+        self.fila_fichas.label_contador.pack(anchor="w", padx=10, pady=(5, 0))
+        self.fila_fichas.pack(fill="both", expand=True, padx=10, pady=5)
 
         # 3. Botões Principais (Iniciar e Parar)
         frm_acoes = ctk.CTkFrame(scroll_area, fg_color="transparent")
@@ -2592,41 +2540,21 @@ class ModuloUploadTechSpecs(ctk.CTkFrame):
             self.lbl_master_status.configure(text=os.path.basename(path), text_color=COLORS["accent"])
             self.btn_master.configure(fg_color=COLORS["primary"])
 
-    def _atualizar_contador_fichas(self):
-        """Atualiza a label que mostra a quantidade de arquivos na fila"""
-        total = len(self.lista_fichas_paths)
-        self.lbl_fichas_count.configure(text=f"Fichas Selecionadas ({total})")
+    # [CP 7.2] Idem ModuloUploadConditions: a fila e o FileQueueList, e aqui
+    # fica so o texto do console. O contador nao precisa mais de metodo: o
+    # FileQueueList o mantem sozinho. Esta tela loga as TRES acoes; a outra so
+    # loga a adicao -- o comportamento de cada uma foi preservado como estava.
+    @property
+    def lista_fichas_paths(self):
+        return self.fila_fichas.arquivos
 
-    def _sel_fichas(self):
-        files = file_dialogs.ask_open_files("upload_tech_specs.fichas", "excel", titulo="Selecione as Fichas PMIB", filetypes=[("Excel", "*.xlsx;*.xlsm")])
-        if not files: return
-        for f in files:
-            if f not in self.lista_fichas_paths:
-                self.lista_fichas_paths.append(f)
-                nome_formatado = f" 📊  {os.path.basename(f)}"
-                self.listbox_fichas.insert(tk.END, nome_formatado)
-
-        self._atualizar_contador_fichas()
-        self.log(f"{len(files)} arquivos selecionados. Total na fila: {len(self.lista_fichas_paths)}")
-
-    def _remover_fichas_selecionadas(self):
-        selecionados = list(self.listbox_fichas.curselection())
-        if not selecionados: return
-
-        selecionados.reverse()  # Remove de trás pra frente para não bagunçar os índices
-        for index in selecionados:
-            self.listbox_fichas.delete(index)
-            del self.lista_fichas_paths[index]
-
-        self._atualizar_contador_fichas()
-        self.log(f"{len(selecionados)} arquivos removidos da fila. Total na fila: {len(self.lista_fichas_paths)}")
-
-    def _limpar_todas_fichas(self):
-        self.listbox_fichas.delete(0, tk.END)
-        self.lista_fichas_paths.clear()
-
-        self._atualizar_contador_fichas()
-        self.log("Todas as fichas foram removidas da fila.")
+    def _logar_mudanca_na_fila(self, acao, quantidade, total):
+        if acao == "adicionou":
+            self.log(f"{quantidade} arquivos selecionados. Total na fila: {total}")
+        elif acao == "removeu":
+            self.log(f"{quantidade} arquivos removidos da fila. Total na fila: {total}")
+        elif acao == "limpou":
+            self.log("Todas as fichas foram removidas da fila.")
 
     def _stop_ia_process(self):
         """Dispara o sinal de parada no Backend"""
@@ -2817,32 +2745,19 @@ class ModuloUploadTechSpecs(ctk.CTkFrame):
             self.after(0, lambda: self.btn_parar_web.configure(state="disabled"))
 
     def _mostrar_janela_pausa(self, estado_ou_pmib, evento_espera):
-        """Cria um aviso customizado que permite copiar os dados do console do app."""
-        top = ctk.CTkToplevel(self)
-        top.title("Ação Manual Necessária")
-        top.geometry("450x250")
-        top.attributes('-topmost', True)  # Fica sempre no topo, mas permite clicar fora!
-        # DICA: Nós propositalmente NÃO usamos top.grab_set() aqui. É ele que bloqueava tudo!
+        """Cria um aviso customizado que permite copiar os dados do console do app.
 
-        # Função interna para liberar o robô quando clicar no botão ou fechar no "X"
-        def liberar_robo():
-            evento_espera.set()  # Destrava o wait() lá na thread do robô
-            top.destroy()
-
-        # Garante que se o usuário fechar no "X" da janela, o robô também é liberado
-        top.protocol("WM_DELETE_WINDOW", liberar_robo)
-
-        if estado_ou_pmib == "LOGIN_NECESSARIO":
-            msg = "O navegador foi aberto.\n\n1. Faça o LOGIN no site.\n2. Navegue até a tela inicial do PMIB.\n3. Clique abaixo para soltar o robô."
+        [CP 7.2] Delega para `widgets/dialogs.PausaLoginDialog`. A DICA que
+        vivia aqui -- "propositalmente NAO usamos grab_set(), e ele que
+        bloqueava tudo" -- mudou de casa junto com a janela: esta no docstring
+        do modulo `dialogs`, e agora tem teste que prova que ninguem o chama.
+        """
+        if estado_ou_pmib == app_dialogs.LOGIN_NECESSARIO:
+            msg = app_dialogs.MSG_LOGIN_SOLTAR_ROBO
         else:
-            msg = f"Ficha {estado_ou_pmib} preenchida!\n\nVerifique na tela e copie as pendências (se houverem) do painel ao lado.\nApós clicar em SALVAR no site, clique no botão abaixo."
+            msg = app_dialogs.msg_ficha_preenchida(estado_ou_pmib)
 
-        ctk.CTkLabel(top, text=msg, font=("Roboto", 13), wraplength=400, justify="center").pack(pady=30, padx=20, expand=True)
-
-        btn = ctk.CTkButton(top, text="CONTINUAR AUTOMAÇÃO", command=liberar_robo,
-                            fg_color=COLORS.get("primary", "#1f538d"), hover_color=COLORS.get("primary_hover", "#14375e"),
-                            height=45, font=("Roboto", 14, "bold"))
-        btn.pack(pady=(0, 20))
+        app_dialogs.PausaLoginDialog(self, mensagem=msg, evento_espera=evento_espera)
 
 
 # =============================================================================
@@ -3168,23 +3083,13 @@ class ModuloCopiaFichas(ctk.CTkFrame):
             ])
 
     def _mostrar_janela_pausa(self, evento_espera):
-        """Pausa o robô para o usuário fazer Login e iniciar."""
-        top = ctk.CTkToplevel(self)
-        top.title("Ação Manual Necessária")
-        top.geometry("450x250")
-        top.attributes('-topmost', True)
+        """Pausa o robô para o usuário fazer Login e iniciar.
 
-        def liberar_robo():
-            evento_espera.set()
-            top.destroy()
-
-        top.protocol("WM_DELETE_WINDOW", liberar_robo)
-
-        msg = "O navegador foi aberto.\n\n1. Faça o LOGIN no site.\n2. Navegue até a tela inicial do PMIB.\n3. Clique abaixo para iniciar a automação em lote."
-        ctk.CTkLabel(top, text=msg, font=("Roboto", 13), wraplength=400, justify="center").pack(pady=30, padx=20, expand=True)
-
-        ctk.CTkButton(top, text="CONTINUAR AUTOMAÇÃO", command=liberar_robo,
-                      fg_color=COLORS["primary"], height=45, font=("Roboto", 14, "bold")).pack(pady=(0, 20))
+        [CP 7.2] Delega para `widgets/dialogs.PausaLoginDialog`.
+        """
+        app_dialogs.PausaLoginDialog(
+            self, mensagem=app_dialogs.MSG_LOGIN_LOTE, evento_espera=evento_espera
+        )
 
 
 

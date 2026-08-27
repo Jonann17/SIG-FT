@@ -66,6 +66,48 @@ class _Widget:
     def destroy(self):
         self.destruido = True
 
+    # -- janela (Toplevel/CTk) ----------------------------------------------
+    # Registradas em vez de ignoradas: o teste do CP 7.2 precisa afirmar que o
+    # diálogo liga o fechamento no "X" a uma ação que SOLTA o worker. Sem
+    # isso, fechar a janela deixa a thread do robô presa em `wait()` para
+    # sempre -- e esse é o tipo de defeito que só aparece em produção, com o
+    # usuário olhando para um app travado.
+    def title(self, texto=None):
+        if texto is not None:
+            self.titulo = texto
+        return getattr(self, "titulo", "")
+
+    def geometry(self, valor=None):
+        if valor is not None:
+            self.geometria = valor
+        return getattr(self, "geometria", "")
+
+    def attributes(self, *args):
+        self.atributos = getattr(self, "atributos", {})
+        if len(args) >= 2:
+            self.atributos[args[0]] = args[1]
+        return self.atributos
+
+    def protocol(self, nome=None, func=None):
+        self.protocolos = getattr(self, "protocolos", {})
+        if nome is not None and func is not None:
+            self.protocolos[nome] = func
+        return self.protocolos
+
+    def wait_window(self, *args):
+        pass
+
+    def grab_set(self):
+        # Registrado para que o teste possa provar que NINGUÉM o chama: é o
+        # que travava a aplicação inteira, e o comentário original avisava.
+        self.chamou_grab_set = True
+
+    def focus(self):
+        pass
+
+    def lift(self):
+        pass
+
     # -- agendamento --------------------------------------------------------
     def after(self, delay, func=None, *args):
         """Enfileira em vez de executar — é o ponto do dublê.
