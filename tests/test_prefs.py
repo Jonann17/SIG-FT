@@ -21,6 +21,7 @@ depender da pasta real do Box existir na máquina que roda os testes.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -91,12 +92,24 @@ def test_pastas_padrao_por_chave_mapeamento_exato():
     }
 
 
-def test_pastas_padrao_seed_reais_nao_existentes_nesta_maquina_nao_quebram(config_path):
-    # Nesta máquina de teste o Box não está sincronizado -- get_default_dir
-    # para os 3 nomes REAIS (sem monkeypatch nenhum) deve devolver None sem
-    # levantar exceção (comportamento "só usa se existir no disco").
+def test_pastas_padrao_seed_reais_atravessam_get_default_dir_sem_quebrar(config_path):
+    # Os 3 nomes REAIS do seed (sem monkeypatch nenhum) devem atravessar
+    # `get_default_dir` sem levantar exceção, EM QUALQUER MÁQUINA.
+    #
+    # A asserção é de CONTRATO, não de ambiente: o resultado é `None` (Box não
+    # sincronizado aqui) ou o caminho de uma pasta que existe DE FATO no disco
+    # (Box sincronizado) -- nunca um caminho inventado. Ver o comportamento
+    # "só usa se existir no disco" em `prefs.get_default_dir`.
+    #
+    # ⚠️ Não afirme aqui que "o Box não existe nesta máquina": foi o que esta
+    # asserção dizia até 2026-08-27, e ela falhava na máquina de quem TEM o
+    # Box do consórcio sincronizado -- que é o caso do usuário e o da máquina
+    # da empresa. As duas metades do contrato (seed presente -> devolve; seed
+    # ausente -> None) já são testadas na seção D com `monkeypatch`, sem
+    # depender de pasta real nenhuma.
     for nome_logico in prefs.PASTAS_PADRAO_SEED:
-        assert prefs.get_default_dir(nome_logico, config_path=config_path) is None
+        resultado = prefs.get_default_dir(nome_logico, config_path=config_path)
+        assert resultado is None or os.path.isdir(resultado)
 
 
 # =============================================================================
