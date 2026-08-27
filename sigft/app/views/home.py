@@ -8,13 +8,12 @@ em caixas de diálogo.
 """
 from __future__ import annotations
 
-import os
-import subprocess
 import threading
 from tkinter import messagebox
 
 from sigft import config as sigft_config
 from sigft.app.theme import COLORS
+from sigft.core import plataforma
 from sigft.core.llm import catalogo, selecao
 from sigft.core.llm import usage as llm_usage
 
@@ -800,21 +799,17 @@ class HomeView(ctk.CTkScrollableFrame):
         self.lbl_gastos_ia.configure(text=texto)
 
     def _abrir_pasta_logs_gastos_ia(self):
-        """Abre `logs/` no explorador de arquivos do SO. `os.startfile` no
-        Windows -- mesmo precedente já usado em `_mostrar_janela_resultados`
-        (`abrir_arquivo`/`abrir_pasta`) deste arquivo --, com
-        `subprocess.call(['open', ...])` como fallback fora do Windows.
-        Cria a pasta se ainda não existir (nenhuma tarefa de IA rodou ainda)
-        para não confrontar o usuário com "pasta não encontrada" por algo
-        que é responsabilidade do próprio app criar. Tudo dentro de
-        try/except: nunca deixa uma exceção do SO subir até travar a UI."""
+        """Abre `logs/` no explorador de arquivos do sistema.
+
+        [CP 8.4] A mecânica de abrir mudou para `core/plataforma.py`, junto
+        com as outras 2 cópias. Cria a pasta se ainda não existir (nenhuma
+        tarefa de IA rodou ainda) para não confrontar o usuário com "pasta
+        não encontrada" por algo que é responsabilidade do próprio app criar.
+        Tudo dentro de try/except: nunca deixa uma exceção do SO subir até
+        travar a UI."""
         pasta = sigft_config.PASTA_LOGS
         try:
-            os.makedirs(pasta, exist_ok=True)
-            try:
-                os.startfile(pasta)
-            except AttributeError:
-                subprocess.call(['open', pasta])
+            plataforma.abrir_pasta_criando_se_preciso(pasta)
         except Exception as e:
             messagebox.showerror("Erro", f"Não foi possível abrir a pasta de logs: {e}")
 

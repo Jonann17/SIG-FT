@@ -6,11 +6,11 @@ atalho para abrir o arquivo encontrado no Explorer.
 from __future__ import annotations
 
 import os
-import subprocess
 import threading
 from tkinter import messagebox
 
 from sigft.app import backends, file_dialogs
+from sigft.core import plataforma
 from sigft.app.theme import COLORS
 
 import customtkinter as ctk
@@ -191,18 +191,21 @@ class ModuloBuscaPMIB(ctk.CTkFrame):
         scroll.pack(fill="both", expand=True, padx=20, pady=(0, 15))
 
         # Funções internas para os botões dos cards
+        # [CP 8.4] `os.startfile` saiu daqui para `core/plataforma.py`. As duas
+        # copias usavam `except AttributeError` para detectar "nao e Windows" --
+        # detecção pelo SINTOMA, que trataria um AttributeError vindo de outro
+        # lugar como se fosse outro sistema. E o fallback era `open`, comando do
+        # macOS: no Linux nao acontecia nada, sem erro visivel.
         def abrir_arquivo(caminho):
             if os.path.exists(caminho):
                 self.log(f"Abrindo arquivo: {os.path.basename(caminho)}")
-                try: os.startfile(caminho)
-                except AttributeError: subprocess.call(['open', caminho])
+                plataforma.abrir_no_sistema(caminho)
             else: messagebox.showerror("Erro", "Arquivo não encontrado.")
 
         def abrir_pasta(pasta):
             if os.path.exists(pasta):
                 self.log(f"Abrindo pasta: {pasta}")
-                try: os.startfile(pasta)
-                except AttributeError: subprocess.call(['open', pasta])
+                plataforma.abrir_no_sistema(pasta)
             else: messagebox.showerror("Erro", "Pasta não encontrada.")
 
         # Criar um 'Card' para cada resultado encontrado

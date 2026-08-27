@@ -1,0 +1,196 @@
+# Gerar o executável do SIG-FT
+
+> Checkpoint 8.3 do plano de refatoração.
+
+Duas formas de rodar o SIG-FT, e a escolha é sobre a **máquina de destino**:
+
+| | `SIG-FT.bat` | `Gerar-Executavel.bat` |
+|---|---|---|
+| Precisa de Python na máquina | **sim** (3.10+) | não |
+| Precisa rodar `pip` | sim | não |
+| Atualizar para uma versão nova | `git pull` | gerar e copiar de novo |
+| Tamanho | ~poucos MB + venv | ~700 MB (pasta) |
+| Quando usar | seu computador, quem desenvolve | máquina travada, sem Python, sem permissão de instalar |
+
+**Se a máquina de destino permite instalar Python, use o `SIG-FT.bat`.** É mais
+rápido de atualizar e muito menor. O executável existe para o caso em que isso
+não é possível.
+
+---
+
+## Como gerar
+
+```bat
+Gerar-Executavel.bat
+```
+
+**Demora.** São centenas de MB (pandas, playwright, o Chromium). Da primeira
+vez, conte vários minutos.
+
+Sai em `dist\SIG-FT\SIG-FT.exe`.
+
+---
+
+## Como distribuir
+
+**Copie a PASTA `dist\SIG-FT` inteira.** O `.exe` sozinho não funciona — ele
+depende dos arquivos ao lado dele.
+
+### Onde colocar a pasta na máquina de destino
+
+Num lugar onde o usuário tenha **permissão de escrita**: a Área de Trabalho ou
+a pasta Documentos servem. `C:\Program Files` **não serve**.
+
+O motivo é concreto: as chaves de API (`api_config.json`), as preferências de
+pasta (`user_prefs.json`), os logs e os caches de modelo são gravados **ao lado
+do `.exe`**, não dentro dele. Isso é deliberado — dado de usuário precisa ser
+gravável e precisa sobreviver a uma atualização do app.
+
+---
+
+## O navegador do Playwright, e por que ele é o ponto crítico
+
+O RPA (todo módulo que mexe no portal PMIB) precisa do Chromium do Playwright.
+
+O pacote `playwright` do pip **não traz o navegador**: ele baixa depois, de
+`cdn.playwright.dev`. E esse download é feito por um processo **Node**, que
+ignora as variáveis de certificado do Python — ele só respeita
+`NODE_EXTRA_CA_CERTS`. Numa rede com inspeção SSL (Zscaler, Netskope, Blue
+Coat), é o passo que mais falha.
+
+**O build resolve isso embutindo o navegador no pacote.** O
+`Gerar-Executavel.bat` define `PLAYWRIGHT_BROWSERS_PATH=0` antes do
+`playwright install`, o que faz o Chromium ser instalado *dentro* do pacote
+`playwright` em vez de em `%LOCALAPPDATA%\ms-playwright` — e daí o
+`SIG-FT.spec` o leva junto.
+
+Consequência prática: **quem roda o `.exe` não baixa nada.** A rede da empresa
+deixa de ser problema para o RPA.
+
+> ⚠️ Se o download falhar **na máquina onde você GERA o executável**, o build
+> continua e avisa. O `.exe` sai funcionando para tudo, menos o RPA. Isso é de
+> propósito: parar o build deixaria você sem nada, e as outras telas funcionam.
+> Para resolver, veja a seção "Rede corporativa (Zscaler)" do
+> [`README.md`](../README.md), item 3.
+
+---
+
+## Rede corporativa: o que o executável resolve e o que não resolve
+
+| Problema | O `.exe` resolve? |
+|---|---|
+| Não pode instalar Python | ✅ sim |
+| `pip` bloqueado pelo proxy | ✅ sim (nada é instalado no destino) |
+| Download do Chromium bloqueado | ✅ sim (vai embutido) |
+| **Chamadas de IA com `CERTIFICATE_VERIFY_FAILED`** | ⚠️ **provavelmente sim** — ver abaixo |
+| Portal PMIB inacessível pela rede | ❌ não (é questão de acesso, não do app) |
+
+Sobre as chamadas de IA: o `SIG-FT.spec` inclui `pip_system_certs` no bundle.
+Esse pacote não é importado por ninguém — ele age no import do Python e faz o
+SSL usar o **repositório de certificados do Windows**, onde a TI normalmente já
+instalou a raiz do Zscaler. É o que faz Gemini, OpenRouter e Google CSE
+funcionarem atrás do proxy.
+
+Se mesmo assim aparecer `CERTIFICATE_VERIFY_FAILED`, o caminho é o mesmo do
+modo `.bat`: exportar o certificado raiz da empresa e apontar
+`REQUESTS_CA_BUNDLE`/`SSL_CERT_FILE` para ele. Ver
+[`README.md`](../README.md), seção "Rede corporativa (Zscaler)".
+
+---
+
+## Decisões do build, e o porquê de cada uma
+
+Estão comentadas no [`SIG-FT.spec`](../SIG-FT.spec); o resumo:
+
+**Pasta (`--onedir`), não arquivo único (`--onefile`).** O `--onefile`
+descompacta tudo num diretório temporário a cada execução. Aqui isso custaria
+caro em três frentes: a abertura ficaria lenta (o splash existe justamente para
+encurtar a espera), um `.exe` que se descompacta sozinho em `%TEMP%` é o padrão
+que mais dispara heurística de antivírus corporativo, e o Chromium precisa de
+um caminho estável.
+
+**Console ligado (`console=True`), mesmo sendo app de janela.** É o canal de
+diagnóstico real: o splash imprime "Erro ao carregar &lt;módulo&gt;" ali. Numa
+primeira execução em máquina nova — que é o caso da GE Vernova — esconder o
+console troca uma mensagem clara (`CERTIFICATE_VERIFY_FAILED`) por "não
+funciona". Quando o app estiver estável lá, vale reconsiderar.
+
+**Sem UPX.** Compressão de executável é outro gatilho clássico de antivírus.
+
+**`hiddenimports` com os 11 backends.** O splash os importa por NOME
+(`importlib.import_module`, ver `sigft/app/backends.py`), e import dinâmico é
+invisível para a análise estática do PyInstaller. Sem declarar, o `.exe` abre e
+os 11 falham um por um na barra de progresso.
+
+---
+
+## ⚠️ O limite de 260 caracteres do Windows (MAX_PATH)
+
+**Este é o problema que mais provavelmente vai aparecer**, e o
+`Gerar-Executavel.bat` já o contorna — mas vale saber por quê, porque o sintoma
+engana.
+
+O Windows limita caminho a 260 caracteres, e por padrão esse limite está
+**ligado** (`HKLM\SYSTEM\CurrentControlSet\Control\FileSystem` →
+`LongPathsEnabled = 0`; confirmado como `0` na máquina onde isto foi escrito).
+
+A árvore interna do Chromium sozinha gasta ~157 caracteres:
+
+```
+_internal/playwright/driver/package/.local-browsers/chromium_headless_shell-1234/chrome-headless-shell-win64/...
+```
+
+Com o projeto dentro do OneDrive, a raiz já consome ~93. Soma: estoura.
+
+**O sintoma engana:** o PyInstaller morre no meio da cópia com
+
+```
+FileNotFoundError: [WinError 206] O nome do arquivo ou a extensão é muito grande
+```
+
+e deixa uma pasta `dist/` **pela metade, que parece pronta** — o `.exe` está
+lá, abre, e só falha na hora do RPA.
+
+**A solução, já embutida no `.bat`:** o build acontece em
+`%LOCALAPPDATA%\SIG-FT\dist-exe` (caminho curto, onde o venv já mora) e o
+resultado é copiado de volta para `dist\SIG-FT`. Se até a cópia estourar, o
+`.bat` avisa e diz para distribuir direto da pasta curta — o executável está
+pronto de qualquer forma.
+
+**Se você tiver direito de administrador** e quiser resolver de vez na sua
+máquina, dá para liberar caminhos longos:
+
+```bat
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f
+```
+
+Exige reiniciar. Numa máquina corporativa isso normalmente não é permitido — e
+não é preciso, porque o `.bat` já contorna.
+
+---
+
+## Problemas comuns
+
+**"Failed to execute script" ao abrir o `.exe`.**
+Rode pelo terminal (`cd` até a pasta e `SIG-FT.exe`) para ver a mensagem. Quase
+sempre é um módulo faltando em `hiddenimports` no `SIG-FT.spec`.
+
+**O app abre mas todos os módulos falham no splash.**
+Falta de `hiddenimports`. Confira se o backend novo entrou na lista da spec.
+
+**Antivírus apagou o `.exe`.**
+Executável não assinado gerado por PyInstaller é falso positivo frequente. Peça
+à TI para liberar a pasta. Assinar o executável resolve de vez, mas exige um
+certificado de code signing.
+
+**O `.exe` abre sem ícone/logo.**
+`assets/` não entrou no bundle. Confira a linha `("assets", "assets")` em
+`datas` na spec — e veja `tests/test_app_recursos.py`, que existe por causa de
+um defeito exatamente assim.
+
+**O RPA diz que o navegador não foi encontrado.**
+O Chromium não entrou no bundle. Refaça o build garantindo que
+`PLAYWRIGHT_BROWSERS_PATH=0` está definido **antes** do `playwright install` —
+é o que o `Gerar-Executavel.bat` faz. Alternativa na máquina de destino:
+apontar para um Chrome/Edge já instalado, com
+`SIGFT_PLAYWRIGHT_EXECUTABLE=C:\Program Files\Google\Chrome\Application\chrome.exe`.
