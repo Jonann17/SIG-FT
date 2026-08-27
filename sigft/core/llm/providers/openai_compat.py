@@ -36,6 +36,8 @@ precisar de rede nem do pacote `requests` instalado.
 
 from __future__ import annotations
 
+from typing import Any
+
 from sigft.core.llm.client import ProviderResult
 
 
@@ -54,7 +56,7 @@ class OpenAICompatProvider:
         temperature: float | None = None,
         timeout: float = 120,
         extra_headers: dict[str, str] | None = None,
-        http_post: object | None = None,
+        http_post: Any | None = None,
     ) -> None:
         """
         Parâmetros:
@@ -96,14 +98,14 @@ class OpenAICompatProvider:
     # evita que `OpenRouterProvider` precise duplicar `generate_raw` inteiro
     # só para trocar o corpo da requisição/a leitura do custo.
     # ------------------------------------------------------------------
-    def _montar_corpo_extra(self) -> dict[str, object]:
+    def _montar_corpo_extra(self) -> dict[str, Any]:
         """Campos ADICIONAIS mesclados ao corpo da requisição, além de
         `model`/`messages`/`temperature`/`response_format` (que a base já
         monta). Base devolve `{}` (nenhum campo extra); `OpenRouterProvider`
         sobrescreve para incluir `"usage": {"include": True}`."""
         return {}
 
-    def _extrair_custo(self, payload: dict[str, object]) -> float | None:
+    def _extrair_custo(self, payload: dict[str, Any]) -> float | None:
         """Lê o custo REAL (USD) da resposta JSON já decodificada, quando o
         endpoint informar. Base devolve sempre `None` (nenhum endpoint
         OpenAI-compatível genérico garante isso); `OpenRouterProvider`
@@ -142,7 +144,7 @@ class OpenAICompatProvider:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
-        body: dict[str, object] = {"model": self._model, "messages": messages}
+        body: dict[str, Any] = {"model": self._model, "messages": messages}
         if self._temperature is not None:
             body["temperature"] = self._temperature
         if json_mode:

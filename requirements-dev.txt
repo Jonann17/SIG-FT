@@ -29,3 +29,11 @@ lxml
 # e o defeito de 2026-08-25 que originou os dois.
 pyflakes
 
+
+# ruff (CP 8.1) e mypy (CP 8.2) -- as duas checagens de qualidade da Fase 8.
+# A configuracao dos dois vive em pyproject.toml, com o porque de cada
+# regra selecionada e de cada excecao. Uso:
+#     python -m ruff check .
+#     python -m mypy sigft/core/
+ruff
+mypy

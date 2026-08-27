@@ -22,6 +22,8 @@ NENHUM consumidor de produção ainda neste checkpoint.
 
 from __future__ import annotations
 
+from typing import Any
+
 import json
 import os
 import time
@@ -46,7 +48,7 @@ class OpenRouterProvider(OpenAICompatProvider):
         temperature: float | None = None,
         timeout: float = 120,
         extra_headers: dict[str, str] | None = None,
-        http_post: object | None = None,
+        http_post: Any | None = None,
     ) -> None:
         """Mesmos parâmetros de `OpenAICompatProvider.__init__`, com
         `base_url` default `config.OPENROUTER_BASE_URL`. `extra_headers`
@@ -67,13 +69,13 @@ class OpenRouterProvider(OpenAICompatProvider):
             http_post=http_post,
         )
 
-    def _montar_corpo_extra(self) -> dict[str, object]:
+    def _montar_corpo_extra(self) -> dict[str, Any]:
         # `usage: {include: true}` -- pede ao OpenRouter para incluir o
         # custo REAL (USD) da chamada na própria resposta (`usage.cost`) --
         # ver `_extrair_custo` abaixo.
         return {"usage": {"include": True}}
 
-    def _extrair_custo(self, payload: dict[str, object]) -> float | None:
+    def _extrair_custo(self, payload: dict[str, Any]) -> float | None:
         # DEFENSIVO -- `None` se `usage`/`cost` ausente (nunca levanta por
         # causa de metadado de custo, mesma disciplina da extração de
         # tokens na classe base).
@@ -94,9 +96,9 @@ def listar_modelos(
     base_url: str = config.OPENROUTER_BASE_URL,
     cache_path: str | os.PathLike[str] | None = None,
     ttl_segundos: float = 86400,
-    http_get: object | None = None,
-    time_fn: object | None = None,
-) -> list[dict[str, object]]:
+    http_get: Any | None = None,
+    time_fn: Any | None = None,
+) -> list[dict[str, Any]]:
     """Devolve o catálogo de modelos do OpenRouter (`GET {base_url}/models`),
     com cache local em disco.
 
@@ -147,8 +149,8 @@ def listar_modelos(
 
 
 def _buscar_modelos_da_rede(
-    api_key: str | None, base_url: str, http_get: object | None
-) -> list[dict[str, object]]:
+    api_key: str | None, base_url: str, http_get: Any | None
+) -> list[dict[str, Any]]:
     if http_get is not None:
         get = http_get
     else:
@@ -164,7 +166,7 @@ def _buscar_modelos_da_rede(
     return payload.get("data", []) if isinstance(payload, dict) else list(payload)
 
 
-def _ler_cache(caminho: str | os.PathLike[str]) -> dict[str, object] | None:
+def _ler_cache(caminho: str | os.PathLike[str]) -> dict[str, Any] | None:
     if not os.path.exists(caminho):
         return None
     try:
@@ -176,7 +178,7 @@ def _ler_cache(caminho: str | os.PathLike[str]) -> dict[str, object] | None:
 
 
 def _gravar_cache(
-    caminho: str | os.PathLike[str], modelos: list[dict[str, object]], timestamp: float
+    caminho: str | os.PathLike[str], modelos: list[dict[str, Any]], timestamp: float
 ) -> None:
     with open(caminho, "w", encoding="utf-8") as arquivo:
         json.dump({"timestamp": timestamp, "modelos": modelos}, arquivo, ensure_ascii=False)

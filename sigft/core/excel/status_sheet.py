@@ -46,7 +46,7 @@ normalização de PMIB.
 
 from __future__ import annotations
 
-from typing import Iterable, Mapping
+from typing import Any, Iterable, Mapping
 
 from sigft import config
 from sigft.core.excel import headers, locking, pmib_codes
@@ -93,8 +93,8 @@ class StatusPMIB:
         self.nome_aba = nome_aba or config.ABA_LISTA_MATERIAIS
 
         # Estado populado por `abrir()`.
-        self.wb: object | None = None
-        self.ws: object | None = None
+        self.wb: Any | None = None
+        self.ws: Any | None = None
         self.col_map: dict[str, int] = {}
         self.header_row: int | None = None
 
@@ -104,13 +104,13 @@ class StatusPMIB:
     def abrir(
         self,
         *,
-        wb: object | None = None,
-        ws: object | None = None,
+        wb: Any | None = None,
+        ws: Any | None = None,
         keywords: Mapping[str, str | Iterable[str]] | None = None,
         required: Iterable[str] | None = None,
         max_row: int | None = 15,
         max_col: int | None = None,
-        **load_kwargs: object,
+        **load_kwargs: Any,
     ) -> tuple[dict[str, int], int | None]:
         """Abre a planilha (ou reaproveita `wb`/`ws` já abertos — ESSENCIAL
         para testar sem openpyxl real, e para deixar quem chama controlar
@@ -167,7 +167,7 @@ class StatusPMIB:
     # ------------------------------------------------------------------
     def buscar_linha(
         self,
-        pmib: object,
+        pmib: Any,
         *,
         col_pmib: int | None = None,
         header_row: int | None = None,
@@ -200,9 +200,11 @@ class StatusPMIB:
             header_row = self.header_row if self.header_row is not None else 0
 
         alvo = pmib_codes.normalize_pmib(pmib)
-        limite_linha = self.ws.max_row
+        # `self.ws` so e None antes de `abrir()`; estes metodos exigem a
+        # planilha aberta e ja falhariam antes de chegar aqui.
+        limite_linha = self.ws.max_row  # type: ignore[union-attr]
         for linha in range(header_row + 1, limite_linha + 1):
-            valor_bruto = self.ws.cell(row=linha, column=col_pmib).value
+            valor_bruto = self.ws.cell(row=linha, column=col_pmib).value  # type: ignore[union-attr]
             if valor_bruto is None:
                 continue
             if pmib_codes.normalize_pmib(valor_bruto) == alvo:
@@ -217,7 +219,7 @@ class StatusPMIB:
         linha: int,
         secoes: Mapping[str, object] | Iterable[str],
         *,
-        valor: object = VALOR_COMPLETO,
+        valor: Any = VALOR_COMPLETO,
     ) -> list[str]:
         """Escreve `valor` (default `"COMPLETO"`) nas colunas de `secoes`
         para a `linha` dada, EM MEMÓRIA (não salva — ver `salvar()`).
@@ -265,14 +267,14 @@ class StatusPMIB:
                 coluna = self.col_map.get(str(nome_secao).upper())
             if coluna is None:
                 continue
-            self.ws.cell(row=linha, column=coluna).value = valor
+            self.ws.cell(row=linha, column=coluna).value = valor  # type: ignore[union-attr]
             marcadas.append(nome_secao)
         return marcadas
 
     # ------------------------------------------------------------------
     # 4. Salvar (delega inteiramente para locking.save_with_retry)
     # ------------------------------------------------------------------
-    def salvar(self, **kwargs: object) -> bool:
+    def salvar(self, **kwargs: Any) -> bool:
         """`locking.save_with_retry(self.wb, self.caminho_excel, **kwargs)`
         — ver `core.excel.locking` para o contrato completo de
         `on_locked`/`max_attempts`/etc. Requer que `abrir()` (ou a
@@ -292,12 +294,12 @@ class StatusPMIB:
     # ------------------------------------------------------------------
     def marcar_completo(
         self,
-        pmib: object,
+        pmib: Any,
         secoes: Mapping[str, object] | Iterable[str],
         *,
         salvar: bool = True,
         fechar: bool = True,
-        **save_kwargs: object,
+        **save_kwargs: Any,
     ) -> bool:
         """Fluxo completo de conveniência: abre (se `abrir()` ainda não foi
         chamado nesta instância), acha a linha do `pmib`, marca `secoes`

@@ -40,7 +40,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable
+from typing import Literal, Any, Callable
 
 from sigft.core.callbacks import UICallbacks
 
@@ -102,7 +102,7 @@ class RelatorioLote:
         *,
         titulo: str,
         total: int | None = None,
-        contexto: dict[str, object] | None = None,
+        contexto: dict[str, Any] | None = None,
         time_fn: Callable[[], float] = time.time,
     ) -> None:
         """
@@ -137,7 +137,11 @@ class RelatorioLote:
         self.iniciar()
         return self
 
-    def __exit__(self, exc_tipo, exc_valor, _tb) -> bool:
+    # `Literal[False]` e nao `bool`: um `__exit__` que pode devolver True
+    # ENGOLE a excecao do bloco `with`. Este aqui nunca engole -- ele so
+    # garante o resumo final e deixa o erro subir. Declarar `bool` deixava
+    # essa promessa implicita.
+    def __exit__(self, exc_tipo, exc_valor, _tb) -> Literal[False]:
         # O resumo sai SEMPRE — inclusive quando o lote morre no meio por
         # uma exceção não tratada. Um lote que estoura na ficha 87 de 200 é
         # justamente quando o usuário mais precisa do resumo do que já foi
@@ -172,7 +176,7 @@ class RelatorioLote:
     # Registro por item (exigências nº 2 e nº 3)
     # ------------------------------------------------------------------
     @contextmanager
-    def item(self, identificador: object):
+    def item(self, identificador: Any):
         """Envolve o processamento de UM item: mede a duração, e transforma
         "saiu sem exceção" em sucesso e "estourou" em falha — com o motivo.
 
@@ -192,19 +196,19 @@ class RelatorioLote:
             if not registro.finalizado:
                 self.sucesso(identificador, duracao_s=self._time_fn() - comeco)
 
-    def sucesso(self, identificador: object, detalhe: str = "", *, duracao_s: float | None = None) -> None:
+    def sucesso(self, identificador: Any, detalhe: str = "", *, duracao_s: float | None = None) -> None:
         ocorrencia = _Ocorrencia(str(identificador), detalhe, duracao_s)
         self._sucessos.append(ocorrencia)
         self._callbacks.log(self._linha_item(MARCA_SUCESSO, ocorrencia), nivel="info")
         self._avisar_progresso()
 
-    def falha(self, identificador: object, motivo: str, *, duracao_s: float | None = None) -> None:
+    def falha(self, identificador: Any, motivo: str, *, duracao_s: float | None = None) -> None:
         ocorrencia = _Ocorrencia(str(identificador), motivo, duracao_s)
         self._falhas.append(ocorrencia)
         self._callbacks.log(self._linha_item(MARCA_FALHA, ocorrencia), nivel="error")
         self._avisar_progresso()
 
-    def pulado(self, identificador: object, motivo: str) -> None:
+    def pulado(self, identificador: Any, motivo: str) -> None:
         """Item deliberadamente não processado (já COMPLETO, sem PMIB, fora
         do filtro...). O motivo é OBRIGATÓRIO — "pulado" sem motivo é
         exatamente o log pobre que este checkpoint existe para eliminar."""
@@ -213,7 +217,7 @@ class RelatorioLote:
         self._callbacks.log(self._linha_item(MARCA_PULADO, ocorrencia), nivel="info")
         self._avisar_progresso()
 
-    def aviso(self, identificador: object, causa: str, consequencia: str) -> None:
+    def aviso(self, identificador: Any, causa: str, consequencia: str) -> None:
         """Exigência nº 3 — aviso SEMPRE com causa e consequência.
 
         A assinatura obriga os dois: é impossível registrar um aviso solto
@@ -226,7 +230,7 @@ class RelatorioLote:
             nivel="warn",
         )
 
-    def etapa(self, identificador: object, descricao: str) -> None:
+    def etapa(self, identificador: Any, descricao: str) -> None:
         """Progresso DENTRO de um item ("etapa atual", exigência nº 2), para
         fluxos longos (RPA). Não conta para o resumo."""
         self._callbacks.log(f"   [{identificador}] {descricao}", nivel="info")
@@ -295,7 +299,10 @@ class RelatorioLote:
     def _avisar_progresso(self) -> None:
         if self._total:
             concluidos = len(self._sucessos) + len(self._falhas) + len(self._pulados)
-            self._callbacks.progress(concluidos, self._total)
+            # `progress` nunca e None aqui: `UICallbacks.__post_init__`
+            # normaliza os callbacks ausentes para no-ops seguros (CP 1.4).
+            # O mypy so ve a anotacao `Callable | None` do dataclass.
+            self._callbacks.progress(concluidos, self._total)  # type: ignore[misc]
 
 
 @dataclass
@@ -351,7 +358,7 @@ def espelhar_em_arquivo(
     destino = caminho or caminho_log_do_dia(agora_fn=agora_fn)
     log_original = callbacks.log
 
-    def log_espelhado(msg: object, nivel: str = "info", contexto: object | None = None) -> None:
+    def log_espelhado(msg: Any, nivel: str = "info", contexto: Any | None = None) -> None:
         log_original(msg, nivel, contexto)
         try:
             pasta = os.path.dirname(destino)

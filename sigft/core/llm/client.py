@@ -179,7 +179,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
-from typing import Callable, NamedTuple
+from typing import Any, Callable, NamedTuple
 
 from sigft import config
 from sigft.core.llm import usage
@@ -283,7 +283,7 @@ class LLMClient:
 
     def __init__(
         self,
-        provider: object,
+        provider: Any,
         *,
         provider_name: str,
         model: str,
@@ -588,7 +588,7 @@ def _capturar_prompt_se_pedido(
         pass
 
 
-def _limpar_e_parsear_json(texto: str | None) -> object:
+def _limpar_e_parsear_json(texto: str | None) -> Any:
     """Limpa fences markdown (```` ```json ````/````` ``` `````) e recorta o
     primeiro objeto/lista JSON top-level do texto, depois faz `json.loads`.
 
@@ -662,7 +662,7 @@ def _limpar_e_parsear_json(texto: str | None) -> object:
 # comportamento de hoje, que nunca setava temperature. É retirado do dict de
 # política ANTES de construir o `LLMClient` (que não aceita esse parâmetro)
 # e passado ao construtor do provider.
-_POLITICA_RETRY_POR_TAREFA: dict[str, dict[str, object]] = {
+_POLITICA_RETRY_POR_TAREFA: dict[str, dict[str, Any]] = {
     "categorizar_pdm": {
         "max_retries": 0,
         "retry_sleep_seconds": 0,
@@ -777,6 +777,10 @@ def get_llm(
             f"LLM_MODELOS_HOJE: {tarefas_validas}."
         ) from None
 
+    # `resolvido` pode vir da selecao do usuario (nunca None) ou da consulta
+    # ao arquivo de configuracao (que devolve None quando nao ha escolha
+    # salva). O `cfg = ... if ... else cfg_hoje` logo abaixo e quem resolve.
+    resolvido: dict[str, str] | None
     if selecao_resolvida is not None:
         resolvido = selecao_resolvida
     else:
@@ -788,6 +792,25 @@ def get_llm(
     provider_id = cfg["provider"]
     politica = dict(_POLITICA_RETRY_POR_TAREFA[tarefa])
     temperature = politica.pop("temperature")
+
+    # [CP 8.2] Declarados antes do `if` porque os três ramos atribuem a mesma
+    # variável classes DIFERENTES (Gemini/OpenRouter/OpenAICompat). Sem isto o
+    # mypy fixa o tipo no primeiro ramo e acusa os outros dois.
+    #
+    # `Any` no provider, e não uma classe base: não existe uma. Os três
+    # provedores cumprem o mesmo contrato de fato (`gerar(...) -> ProviderResult`)
+    # sem herdar de nada -- é duck typing, como o resto da camada. Criar a
+    # classe base agora seria mudança de arquitetura, não anotação de tipo.
+    #
+    # `chave` é `str | None` de propósito: chave ausente é caso NORMAL aqui (o
+    # usuário pode não ter configurado aquele provedor), e quem valida é o
+    # próprio provider, com mensagem própria.
+    provider: Any
+    chave: str | None
+    # `dict[str, str | None]`: e o que `config.carregar_chaves()` devolve --
+    # a chave EXISTE no dicionario mesmo quando a env var nao esta
+    # configurada, e o valor e None (ver o docstring de `get_key`).
+    chaves_resolvidas: dict[str, str | None]
 
     if provider_id == config.PROVIDER_GEMINI:
         from sigft.core.llm.providers.gemini import GeminiProvider  # import local
@@ -814,7 +837,9 @@ def get_llm(
 
         chaves_resolvidas = chaves if chaves is not None else config.carregar_chaves()
         chave = chaves_resolvidas.get(config.CHAVE_POR_PROVIDER[provider_id])
-        base_url = chaves_resolvidas.get("EMPRESA_LLM_BASE_URL")
+        # `base_url` pode vir None/vazio; o `if not base_url` logo abaixo e
+        # quem trata. A anotacao larga evita fingir que ja e `str` aqui.
+        base_url: str | None = chaves_resolvidas.get("EMPRESA_LLM_BASE_URL")
         if not base_url:
             raise ValueError(
                 "Provider 'openai_compat' requer EMPRESA_LLM_BASE_URL configurada "

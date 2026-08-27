@@ -68,7 +68,7 @@ falso que levanta `PermissionError` N vezes e depois "salva" de verdade — ver
 from __future__ import annotations
 
 import time
-from typing import Callable
+from typing import Any, Callable
 
 # Assinatura do callback de decisão a cada `PermissionError`. Ver contrato
 # completo no docstring de `save_with_retry`.
@@ -85,8 +85,8 @@ DEFAULT_SLEEP_SECONDS = 5.0
 
 
 def save_with_retry(
-    wb: object,
-    path: object,
+    wb: Any,
+    path: Any,
     *,
     on_locked: OnLockedCallback | None = None,
     max_attempts: int | None = None,

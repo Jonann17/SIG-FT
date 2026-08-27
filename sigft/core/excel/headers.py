@@ -48,7 +48,7 @@ migrado), exatamente como cada implementação original já fazia.
 
 from __future__ import annotations
 
-from typing import Callable, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 CellValue = object
 Row = Sequence[CellValue]
@@ -225,7 +225,7 @@ def find_columns(
 
 
 def rows_from_worksheet(
-    ws: object,
+    ws: Any,
     *,
     max_row: int | None = None,
     max_col: int | None = None,

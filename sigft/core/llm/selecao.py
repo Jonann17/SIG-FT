@@ -78,6 +78,8 @@ ambiente de teste sem nenhuma dependência pesada (mesmo padrão de
 
 from __future__ import annotations
 
+from typing import Any
+
 import json
 import os
 
@@ -89,14 +91,14 @@ from sigft import config
 CHAVE_RESERVADA = "_modelos_ia"
 
 
-def _estado_vazio() -> dict[str, object]:
+def _estado_vazio() -> dict[str, Any]:
     """Novo estado vazio ("nunca configurou nada") -- usado como fallback
     sempre que a sub-árvore de seleção está ausente ou corrompida (no todo
     ou em parte)."""
     return {"global": None, "por_tarefa": {}}
 
 
-def _selecao_valida(candidato: object) -> dict[str, str] | None:
+def _selecao_valida(candidato: Any) -> dict[str, str] | None:
     """`candidato` normalizado para `{"provider": ..., "model": ...}` se for
     um dict com as 2 chaves presentes como strings NÃO-VAZIAS; senão `None`
     ("entrada malformada" -- nunca levanta, só é tratada como ausente)."""
@@ -109,7 +111,7 @@ def _selecao_valida(candidato: object) -> dict[str, str] | None:
     return None
 
 
-def _ler_json_bruto(config_path: str | os.PathLike[str]) -> dict[str, object]:
+def _ler_json_bruto(config_path: str | os.PathLike[str]) -> dict[str, Any]:
     """JSON inteiro de `config_path`, tolerante a ausência/corrupção -- `{}`
     para QUALQUER cenário que não seja "existe e é um objeto JSON válido".
     Nunca levanta (mesmo espírito de `config.carregar_chaves`)."""
@@ -123,7 +125,7 @@ def _ler_json_bruto(config_path: str | os.PathLike[str]) -> dict[str, object]:
     return bruto if isinstance(bruto, dict) else {}
 
 
-def carregar(*, config_path: str | os.PathLike[str] = config.CONFIG_FILE) -> dict[str, object]:
+def carregar(*, config_path: str | os.PathLike[str] = config.CONFIG_FILE) -> dict[str, Any]:
     """Seleção de modelo persistida, NORMALIZADA: sempre com as 2 chaves
     (`"global"`/`"por_tarefa"`), entradas malformadas descartadas em
     silêncio. Nunca levanta -- arquivo ausente/corrompido, JSON que não é um
@@ -173,7 +175,7 @@ def _validar_tarefa(tarefa: str) -> None:
         )
 
 
-def _salvar_secao(secao: dict[str, object], *, config_path: str | os.PathLike[str]) -> None:
+def _salvar_secao(secao: dict[str, Any], *, config_path: str | os.PathLike[str]) -> None:
     """READ-MODIFY-WRITE do JSON INTEIRO -- lê `config_path` como está,
     substitui só `bruto[CHAVE_RESERVADA]` e regrava tudo. É o que garante que
     escrever uma seleção nunca apaga as chaves de API (`GEMINI`/`OPENROUTER`/
@@ -259,7 +261,11 @@ def tornar_roteavel(cfg: dict[str, str], *, origem: str) -> dict[str, str]:
     if provider in config.CHAVE_POR_PROVIDER:
         return dict(cfg)
 
-    equivalente = config.MODELO_RECOMENDADO_ROTEAVEL.get((provider, model))
+    # `provider`/`model` vem de `.get()` e podem ser None (config incompleta).
+    # A tabela so tem chaves de str, entao a busca simplesmente NAO ACHA e cai
+    # no `if equivalente is None` logo abaixo -- que e o tratamento certo.
+    # O `type: ignore` diz isso ao mypy sem afrouxar a tabela.
+    equivalente = config.MODELO_RECOMENDADO_ROTEAVEL.get((provider, model))  # type: ignore[arg-type]
     if equivalente is None:
         roteaveis = ", ".join(sorted(config.CHAVE_POR_PROVIDER))
         raise ValueError(

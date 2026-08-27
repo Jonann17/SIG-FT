@@ -33,6 +33,8 @@ Só stdlib (`json`) — puro e testável sem rede/SDK nenhum.
 
 from __future__ import annotations
 
+from typing import Any
+
 import json
 
 # Quantos caracteres de um valor divergente aparecem no relatório antes de
@@ -40,7 +42,7 @@ import json
 LIMITE_PREVIA_VALOR = 160
 
 
-def achatar(valor: object, prefixo: str = "") -> dict[str, object]:
+def achatar(valor: Any, prefixo: str = "") -> dict[str, Any]:
     """Achata uma estrutura JSON aninhada num dict `caminho -> valor folha`.
 
     Caminhos usam ponto para chaves de objeto e colchete para índice de
@@ -49,7 +51,7 @@ def achatar(valor: object, prefixo: str = "") -> dict[str, object]:
     "campo virou vazio" apareça como diferença em vez de sumir da comparação.
     """
     if isinstance(valor, dict) and valor:
-        achatado: dict[str, object] = {}
+        achatado: dict[str, Any] = {}
         for chave, sub in valor.items():
             caminho = f"{prefixo}.{chave}" if prefixo else str(chave)
             achatado.update(achatar(sub, caminho))
@@ -64,7 +66,7 @@ def achatar(valor: object, prefixo: str = "") -> dict[str, object]:
     return {prefixo or "(raiz)": valor}
 
 
-def comparar_json(baseline: object, candidato: object) -> dict[str, object]:
+def comparar_json(baseline: Any, candidato: Any) -> dict[str, Any]:
     """Compara duas respostas JÁ PARSEADAS e resume as diferenças.
 
     Devolve um dict com:
@@ -102,7 +104,7 @@ def comparar_json(baseline: object, candidato: object) -> dict[str, object]:
     }
 
 
-def _previa(valor: object) -> str:
+def _previa(valor: Any) -> str:
     """Representação curta e de uma linha só de um valor, para caber na
     tabela/lista do relatório sem quebrar o markdown."""
     if isinstance(valor, str):
@@ -126,7 +128,7 @@ def _fmt_tokens(entrada: int | None, saida: int | None) -> str:
 
 
 def montar_relatorio_markdown(
-    resultados: list[dict[str, object]], *, contexto: dict[str, object] | None = None
+    resultados: list[dict[str, Any]], *, contexto: dict[str, Any] | None = None
 ) -> str:
     """Monta o relatório A/B em markdown a partir dos resultados brutos.
 
@@ -160,7 +162,7 @@ def montar_relatorio_markdown(
         "|---|---|---|---|---|---|---|",
     ]
 
-    comparacoes: dict[str, dict[str, object]] = {}
+    comparacoes: dict[str, dict[str, Any]] = {}
     for indice, resultado in enumerate(resultados):
         rotulo = str(resultado["rotulo"])
         if not resultado.get("ok"):

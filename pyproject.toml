@@ -74,7 +74,25 @@ warn_unused_configs = true
 # Sem `disallow_untyped_defs`: função sem anotação continua válida.
 
 [[tool.mypy.overrides]]
-# As dependências pesadas não têm stubs, e instalá-los não agrega aqui.
+# `numpy` (via pandas) TEM stubs, e eles usam sintaxe de Python 3.12 (`type X =`).
+# Com `python_version = "3.10"` o mypy recusa o stub e para tudo com
+# "errors prevented further checking" — sem nunca chegar ao nosso código.
+#
+# `follow_imports = "skip"` faz ele tratar numpy como opaco em vez de tentar
+# analisá-lo. Manter o alvo em 3.10 importa mais: é a versão mínima que o
+# SIG-FT.bat aceita, e é ela que precisa ser verificada.
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# As dependências pesadas sem stubs. A lista cobre o que os SERVIÇOS importam
+# — `core/` toca poucas delas de propósito (é o princípio nº 3 e nº 4 da
+# arquitetura: só `PMIBPortal` conhece o motor de RPA, só `LLMClient` conhece
+# o SDK de IA), e por isso o mypy avisa que várias entradas ficam sem uso ao
+# rodar só em `core/`. Elas passam a valer quando a checagem chegar em
+# `services/`.
 module = [
     "customtkinter.*",
     "playwright.*",
@@ -90,3 +108,38 @@ module = [
     "bs4.*",
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# `core/rpa/portal.py` — os 32 avisos aqui são todos `union-attr` sobre
+# `self.engine`, declarado `RPAEngine | None`.
+#
+# O aviso é LEGÍTIMO e não está sendo negado: se `engine` for None, o acesso
+# estoura. O que o mypy não sabe é o que o docstring do módulo já registra —
+# `PMIBPortal(engine=None)` é uso previsto, para as duas classes que só
+# precisam da parte do portal que não toca o navegador; elas nunca chamam
+# estes métodos.
+#
+# A correção certa (uma propriedade que valide e dê mensagem clara em vez de
+# `AttributeError: 'NoneType'`) mexeria em 32 acessos de um módulo de RPA
+# validado contra o portal REAL nas Fases 5 e 6. O CLAUDE.md é explícito:
+# "nada de RPA se declara pronto sem uma execução real", e esta sessão não
+# tem o portal. Trocar 32 acessos às cegas para satisfazer um lint é
+# exatamente a troca ruim.
+#
+# Registrado em PENDENCIAS.md com o conserto proposto, para uma sessão local
+# com o portal aberto.
+module = ["sigft.core.rpa.portal"]
+disable_error_code = ["union-attr"]
+
+[[tool.mypy.overrides]]
+# `core/rpa/playwright_engine.py` — os 19 avisos são todos a MESMA linha: um
+# `**opcoes` (dict montado em tempo de execução) repassado a
+# `launch_persistent_context`. O mypy tenta casar o dict contra cada um dos
+# ~19 parâmetros da assinatura e reclama de todos.
+#
+# Não é defeito do nosso código nem do stub: é a limitação conhecida de
+# `**kwargs` dinâmico contra assinatura fixa. Tipar isso exigiria um
+# `TypedDict` espelhando a API do Playwright — que passaria a quebrar a cada
+# atualização do pacote, sem nunca ter pegado um bug.
+module = ["sigft.core.rpa.playwright_engine"]
+disable_error_code = ["arg-type"]

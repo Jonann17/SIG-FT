@@ -79,7 +79,7 @@ from __future__ import annotations
 import inspect
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import Any, Callable
 
 
 @dataclass
@@ -197,7 +197,7 @@ def _adapt_legacy_log(callback_log: Callable[[str], None]) -> Callable[..., None
     UI de hoje só sabe imprimir `txt` cru (`> {txt}`); ver docstring do
     módulo."""
 
-    def _log(msg: object, nivel: str = "info", contexto: object | None = None) -> None:
+    def _log(msg: Any, nivel: str = "info", contexto: Any | None = None) -> None:
         callback_log(msg)
 
     return _log
@@ -209,8 +209,11 @@ def _adapt_legacy_ask(callback_ask: Callable[[str, str], bool]) -> Callable[...,
     as duas assinaturas — é o adaptador que resolve isso; quem chama a
     versão nova nunca precisa pensar na ordem antiga."""
 
-    def _ask(pergunta: object, *, titulo: object | None = None) -> bool:
-        return callback_ask(titulo, pergunta)
+    def _ask(pergunta: Any, *, titulo: Any | None = None) -> bool:
+        # O callback LEGADO espera `(titulo, pergunta)` como str. `titulo`
+        # e opcional na assinatura nova, e quem chama sem titulo passa None --
+        # que o legado ja recebia e tratava. Preservado como estava.
+        return callback_ask(titulo, pergunta)  # type: ignore[arg-type]
 
     return _ask
 

@@ -52,6 +52,8 @@ dela, não no topo do módulo) + `genai_module` INJETÁVEL (mesmo padrão de
 
 from __future__ import annotations
 
+from typing import Any
+
 from sigft.core.llm.client import ProviderResult
 
 # Dict ÚNICO de safety_settings, aplicado a TODA chamada -- ver decisão no
@@ -80,7 +82,7 @@ class GeminiProvider:
         api_key: str | None,
         model: str,
         *,
-        genai_module: object | None = None,
+        genai_module: Any | None = None,
         temperature: float | None = None,
     ) -> None:
         """
@@ -153,11 +155,11 @@ class GeminiProvider:
         causa disso -- a resposta de texto em si nunca é sacrificada por uma
         falha ao ler metadados de uso.
         """
-        kwargs: dict[str, object] = {"safety_settings": SAFETY_SETTINGS_BLOCK_NONE}
+        kwargs: dict[str, Any] = {"safety_settings": SAFETY_SETTINGS_BLOCK_NONE}
         if system is not None:
             kwargs["system_instruction"] = system
 
-        generation_config: dict[str, object] = {}
+        generation_config: dict[str, Any] = {}
         if json_mode:
             generation_config["response_mime_type"] = "application/json"
         if self._temperature is not None:

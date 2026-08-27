@@ -104,7 +104,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime
-from typing import Callable
+from typing import Any, Callable
 
 from sigft import config
 
@@ -232,6 +232,11 @@ def registrar(
         return
 
     try:
+        # Os dois ramos atribuem opcionalidades diferentes: o custo REAL vem do
+        # provedor (nunca None quando chega aqui) e o ESTIMADO pode ser None
+        # quando não há tabela de preço para o modelo.
+        custo_final: float | None
+        custo_estimado: bool | None
         if custo_usd is not None:
             custo_final, custo_estimado = custo_usd, False
         else:
@@ -308,7 +313,7 @@ _MODULO_DESCONHECIDO = "desconhecido"
 _DIA_DESCONHECIDO = "desconhecido"
 
 
-def _bucket_vazio() -> dict[str, object]:
+def _bucket_vazio() -> dict[str, Any]:
     """Um "agregado" vazio -- os 5 campos que `usage_report()` promete para
     CADA balde (tarefa+modelo, módulo, modelo, dia, total)."""
     return {
@@ -321,7 +326,7 @@ def _bucket_vazio() -> dict[str, object]:
     }
 
 
-def _acumular(bucket: dict[str, object], registro: dict) -> None:
+def _acumular(bucket: dict[str, Any], registro: dict) -> None:
     """Soma `registro` dentro de `bucket` (mutação in-place).
 
     Tokens/custo AUSENTES (`None`) não contribuem para a soma -- não são
@@ -348,7 +353,7 @@ def _acumular(bucket: dict[str, object], registro: dict) -> None:
             bucket["custo_estimado_parcial"] = True
 
 
-def _dia_do_timestamp(timestamp: object) -> str:
+def _dia_do_timestamp(timestamp: Any) -> str:
     """10 primeiros caracteres do `timestamp` ISO 8601 (`YYYY-MM-DD...`) --
     `_DIA_DESCONHECIDO` para qualquer coisa que não seja uma string com pelo
     menos 10 caracteres (nunca levanta por causa de um registro malformado
@@ -362,7 +367,7 @@ def usage_report(
     *,
     caminho: str | os.PathLike[str] = config.ARQUIVO_USO_LLM,
     registros: list[dict] | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Agrega os registros de uso em 5 dimensões (chaves do dict devolvido):
 
       - `"por_tarefa_e_modelo"`: `{tarefa: {model: agregado}}` -- responde
@@ -431,7 +436,7 @@ def usage_report(
 # usage_report(), para o card "Gastos de IA" da Home (Parte C do checkpoint,
 # `frontend.py`) e para uso no terminal.
 # =============================================================================
-def _formatar_bucket(rotulo: str, bucket: dict[str, object]) -> str:
+def _formatar_bucket(rotulo: str, bucket: dict[str, Any]) -> str:
     custo = bucket.get("custo_usd") or 0.0
     marca = " (inclui estimativa)" if bucket.get("custo_estimado_parcial") else ""
     return (
@@ -442,7 +447,7 @@ def _formatar_bucket(rotulo: str, bucket: dict[str, object]) -> str:
     )
 
 
-def formatar_relatorio_texto(relatorio: dict[str, object]) -> str:
+def formatar_relatorio_texto(relatorio: dict[str, Any]) -> str:
     """Formata `relatorio` (o dict devolvido por `usage_report()`) como
     texto simples, multi-linha, pronto para exibir no card "Gastos de IA"
     da Home (Parte C do checkpoint) ou imprimir no terminal.

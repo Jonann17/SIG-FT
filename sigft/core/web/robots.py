@@ -20,6 +20,8 @@ continua recebendo "está bem"; o que mudou é só o tratamento do silêncio.
 
 Usa `urllib.robotparser`, da stdlib — sem dependência nova.
 """
+from typing import Any
+
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,7 +29,7 @@ import urllib.robotparser
 
 # O robots.txt de um domínio não muda durante um lote. Sem cache, um lote de
 # 50 fichas releria o mesmo arquivo dezenas de vezes.
-_cache = {}
+_cache: dict[str, Any] = {}
 
 TIMEOUT_S = 8
 
