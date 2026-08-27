@@ -19,6 +19,10 @@ import webbrowser  # conferencia de documentos duvidosos (AutoSpec)
 from sigft.core.excel.pmib_codes import normalize_pmib
 from sigft.core import prefs
 from sigft.app import file_dialogs
+# [CP 7.1] Esqueleto de tela (header/conteudo/console) e o console com log()
+# thread-safe unico. As telas vao migrando para ele uma a uma; enquanto isso,
+# as nao migradas seguem com o bloco antigo -- as duas formas convivem.
+from sigft.app.widgets.module_frame import ModuleFrame
 from sigft import config as sigft_config
 from sigft.core.llm import catalogo
 from sigft.core.llm import selecao
@@ -1859,32 +1863,15 @@ class ModuloAnalyzer(ctk.CTkFrame):
 # =============================================================================
 # MÓDULO 4: TRADUTOR DE FICHAS (INTERFACE GE VERNOVA)
 # =============================================================================
-class ModuloTranslator(ctk.CTkFrame):
+class ModuloTranslator(ModuleFrame):
+    # [CP 7.1] Tela piloto nº 2. Mesmo caso do ModuloApagarLMR: o `log()`
+    # antigo escrevia no widget direto, e o `_worker` roda em thread.
     def __init__(self, parent, controller):
-        super().__init__(parent)
-        self.controller = controller
+        # O backend entra DEPOIS do super(): o `_build_ui` roda dentro dele e
+        # nao usa `self.backend` (so `iniciar_traducao`/`parar_traducao` usam,
+        # e essas so rodam por clique, com a tela ja montada).
+        super().__init__(parent, controller, titulo="Tradutor Técnico (PT -> ES)")
         self.backend = translator_backend.TechnicalTranslator()
-
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
-
-        # Header
-        header = ctk.CTkFrame(self, height=50, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=20, pady=10)
-        ctk.CTkLabel(header, text="Tradutor Técnico (PT -> ES)", font=("Roboto", 24, "bold"), text_color=COLORS["text_white"]).pack(side="left")
-
-        # Content
-        self.content = ctk.CTkFrame(self, fg_color="transparent")
-        self.content.grid(row=1, column=0, sticky="nsew", padx=20, pady=10)
-
-        # Console
-        self.console = ctk.CTkTextbox(self, height=150, font=("Consolas", 12))
-        self.console.grid(row=2, column=0, sticky="ew", padx=20, pady=10)
-
-        self._build_ui()
-
-    def log(self, txt):
-        self.console.insert("end", f"> {txt}\n"); self.console.see("end")
 
     def _build_ui(self):
         frm_main = ctk.CTkFrame(self.content, fg_color="#2B2B2B", corner_radius=8)
@@ -3889,31 +3876,22 @@ class ModuloLMR(ctk.CTkFrame):
 # =============================================================================
 # MÓDULO 10: APAGAR LMR (INTERFACE GE VERNOVA)
 # =============================================================================
-class ModuloApagarLMR(ctk.CTkFrame):
+class ModuloApagarLMR(ModuleFrame):
+    # [CP 7.1] Tela piloto nº 1 do esqueleto compartilhado. As 12 linhas de
+    # __init__ (grid + header + content + console) viraram a chamada ao
+    # ModuleFrame; o `log()` proprio saiu, porque o herdado e thread-safe.
+    #
+    # Isto aqui era um BUG, nao so duplicacao: o `log()` antigo chamava
+    # `self.console.insert` DIRETO, e o `_worker` abaixo roda numa
+    # threading.Thread. Tocar widget do Tk fora da thread da interface e
+    # corrupcao de estado -- log sumindo no meio do lote, no melhor caso.
     def __init__(self, parent, controller):
-        super().__init__(parent)
-        self.controller = controller
-
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
-
-        # Header
-        header = ctk.CTkFrame(self, height=50, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=20, pady=10)
-        ctk.CTkLabel(header, text="Apagar Aplicações LMR", font=("Roboto", 24, "bold"), text_color=COLORS["danger"]).pack(side="left")
-
-        # Content
-        self.content = ctk.CTkFrame(self, fg_color="transparent")
-        self.content.grid(row=1, column=0, sticky="nsew", padx=20, pady=10)
-
-        # Console
-        self.console = ctk.CTkTextbox(self, height=150, font=("Consolas", 12))
-        self.console.grid(row=2, column=0, sticky="ew", padx=20, pady=10)
-
-        self._build_ui()
-
-    def log(self, txt):
-        self.console.insert("end", f"> {txt}\n"); self.console.see("end")
+        super().__init__(
+            parent,
+            controller,
+            titulo="Apagar Aplicações LMR",
+            cor_titulo=COLORS["danger"],
+        )
 
     def _build_ui(self):
         frm_main = ctk.CTkFrame(self.content, fg_color="#2B2B2B", corner_radius=8)

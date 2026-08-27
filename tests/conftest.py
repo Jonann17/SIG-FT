@@ -10,9 +10,12 @@ xlwings, deep_translator, unidecode, customtkinter etc.) — só a stdlib,
 [CP 3.2] `langchain-google-genai`/`langchain-core` foram REMOVIDOS de
 `requirements.txt` (o uso residual em `autospec_backend.py` foi migrado para
 `LLMClient`) — não há mais nada a stubar para elas.
-`customtkinter` é a única exceção deliberada: só `frontend.py` a importa, e
-`frontend.py` fica de fora do smoke de importação do CP 0.2 (ver nota no
-`tests/test_smoke_imports.py`) — por isso não entra em `_HEAVY_MODULES`.
+`customtkinter` era a única exceção deliberada até a Fase 7: só `frontend.py`
+a importava, e `frontend.py` fica de fora do smoke de importação do CP 0.2
+(ver nota no `tests/test_smoke_imports.py`). **Mudou no CP 7.1**: com
+`sigft/app/widgets/` existindo, ela passou a ter dublê — mas escrito à mão
+(`tests/ctk_falso.py`), não MagicMock, pelos motivos da seção 2b abaixo. Por
+isso continua fora de `_HEAVY_MODULES`, que é a lista dos MagicMock.
 
 Os módulos `*_backend.py` importam essas dependências pesadas no topo do
 arquivo. Para conseguir importar e testar as funções PURAS (regex/string, sem
@@ -32,6 +35,7 @@ comportamento das funções caracterizadas continua sendo o comportamento real
 do código em produção (só os SDKs pesados — nunca usados pelas funções puras
 testadas aqui — é que viram Mocks).
 """
+import importlib.util
 import os
 import sys
 from unittest.mock import MagicMock
@@ -109,6 +113,30 @@ _HEAVY_MODULES = [
 for _mod_name in _HEAVY_MODULES:
     if _mod_name not in sys.modules:
         sys.modules[_mod_name] = MagicMock(name=_mod_name)
+
+# 2b. [CP 7.1] customtkinter — dublê ESCRITO À MÃO, não MagicMock.
+#
+#     Até a Fase 7 o `customtkinter` era exceção deliberada aqui: só o
+#     `frontend.py` o importava, e o `frontend.py` fica fora do smoke de
+#     importação. Isso mudou — `sigft/app/widgets/` agora tem widgets de
+#     verdade (`ConsoleFrame`, `ModuleFrame`), e eles PRECISAM de teste: são o
+#     código que as 12 telas vão passar a compartilhar.
+#
+#     MagicMock não serve para isto. `class ConsoleFrame(ctk.CTkTextbox)` com
+#     um MagicMock no lugar da base levanta TypeError já no import. E, mesmo
+#     que servisse, o dublê à mão faz algo que nem o MagicMock nem o
+#     CustomTkinter REAL fazem: o `after()` dele ENFILEIRA em vez de executar,
+#     que é o que permite provar que `log()` agenda o trabalho na thread da
+#     interface em vez de tocar o widget na hora — o aceite do CP 7.1.
+#
+#     Instalado SEMPRE (mesmo na máquina que tem o CustomTkinter instalado)
+#     para que a suíte não dependa de haver display: com o pacote real, criar
+#     widget exige um root Tk.
+_CAMINHO_CTK_FALSO = os.path.join(os.path.dirname(__file__), "ctk_falso.py")
+_spec_ctk = importlib.util.spec_from_file_location("ctk_falso", _CAMINHO_CTK_FALSO)
+_ctk_falso = importlib.util.module_from_spec(_spec_ctk)
+_spec_ctk.loader.exec_module(_ctk_falso)
+sys.modules["customtkinter"] = _ctk_falso
 
 # 3. Caso especial pandas: `PMIBSearcher._limpar_texto_parrudo`
 #    (search_pmib_backend.py) chama `pd.isna(texto)`. Um MagicMock puro faria
