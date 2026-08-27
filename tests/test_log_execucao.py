@@ -227,7 +227,8 @@ def test_falha_na_ABERTURA_tambem_avisa_na_primeira_linha():
 import ast  # noqa: E402
 import pathlib  # noqa: E402
 
-FRONTEND = pathlib.Path(__file__).resolve().parents[1] / "frontend.py"
+# [CP 7.3] A tela saiu do `frontend.py` para o seu proprio arquivo.
+FRONTEND = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app" / "views" / "copia_fichas.py"
 
 
 @pytest.fixture(scope="module")
@@ -236,7 +237,7 @@ def copia_fichas():
     for no in ast.walk(arvore):
         if isinstance(no, ast.ClassDef) and no.name == "ModuloCopiaFichas":
             return no
-    pytest.fail("class ModuloCopiaFichas sumiu do frontend.py")
+    pytest.fail("class ModuloCopiaFichas sumiu de sigft/app/views/copia_fichas.py")
 
 
 def _metodo(classe, nome):

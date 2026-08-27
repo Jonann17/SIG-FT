@@ -25,7 +25,11 @@ import pathlib
 import pytest
 
 
-FRONTEND = pathlib.Path(__file__).resolve().parents[1] / "frontend.py"
+# [CP 7.3] A tela saiu do `frontend.py` para o seu proprio arquivo. O teste
+# continua sendo por AST pelo mesmo motivo de antes -- o modulo importa
+# customtkinter e montar a tela exige um root Tk -- so que agora ele le um
+# arquivo de 400 linhas em vez de um de 5.600.
+FRONTEND = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app" / "views" / "autospec.py"
 
 
 @pytest.fixture(scope="module")
@@ -34,7 +38,7 @@ def classe_autospec():
     for no in ast.walk(arvore):
         if isinstance(no, ast.ClassDef) and no.name == "ModuloAutoSpec":
             return no
-    pytest.fail("class ModuloAutoSpec sumiu do frontend.py")
+    pytest.fail("class ModuloAutoSpec sumiu de sigft/app/views/autospec.py")
 
 
 def _metodo(classe, nome):

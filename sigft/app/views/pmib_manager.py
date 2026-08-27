@@ -1,0 +1,264 @@
+"""Tela "Gerenciador PMIB" — Checkpoint 7.3 (Fase 7 do plano).
+
+Varre a pasta raiz das fichas, cruza com a base de dados API e a planilha
+mestra, e mantém o `_STATUS_PMIB` em dia.
+"""
+from __future__ import annotations
+
+import os
+import threading
+import tkinter as tk
+from tkinter import messagebox
+
+import pandas as pd
+
+from sigft.app import backends, file_dialogs
+from sigft.app.theme import COLORS
+
+import customtkinter as ctk
+
+
+# =============================================================================
+# MÓDULO 11: PMIB MANAGER (INTERFACE GE VERNOVA)
+# =============================================================================
+class ModuloPMIBManager(ctk.CTkFrame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+
+        # Variáveis visuais dos caminhos
+        self.path_api = ctk.StringVar()
+        self.path_root = ctk.StringVar()
+        self.path_master = ctk.StringVar()
+
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=0)  # Inputs (Sem expansão)
+        self.grid_rowconfigure(2, weight=0)  # Barra de Progresso (Sem expansão)
+        self.grid_rowconfigure(3, weight=1)  # Console (Puxa todo o resto do espaço)
+
+        # Header
+        header = ctk.CTkFrame(self, height=50, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=20, pady=10)
+        ctk.CTkLabel(header, text="Gestão de Sobressalentes", font=("Roboto", 24, "bold"), text_color=COLORS["text_white"]).pack(side="left")
+
+        # Content (Bloco 1 - Inputs)
+        self.content = ctk.CTkFrame(self, fg_color="transparent")
+        self.content.grid(row=1, column=0, sticky="nsew", padx=20, pady=5)
+
+        # Barra de Progresso Centralizada (Bloco 1.5)
+        self.progress_bar = ctk.CTkProgressBar(self, width=600, height=12, progress_color=COLORS["primary"])
+        self.progress_bar.grid(row=2, column=0, pady=(5, 5))
+        self.progress_bar.set(0)  # Inicia zerada
+
+        # Console (Bloco 2 - Output)
+        self.console = ctk.CTkTextbox(self, font=("Consolas", 12))
+        self.console.grid(row=3, column=0, sticky="nsew", padx=20, pady=(5, 20))
+
+        self._build_ui()
+
+    def log(self, txt):
+        self.console.insert("end", f"> {txt}\n"); self.console.see("end")
+
+    def _build_ui(self):
+        frm_main = ctk.CTkFrame(self.content, fg_color="#2B2B2B", corner_radius=8)
+        frm_main.pack(fill="x", pady=10)
+
+        ctk.CTkLabel(frm_main, text="Configuração de Gestão de Fichas PMIB", font=("Roboto", 16, "bold"), text_color=COLORS["accent"]).pack(anchor="w", padx=15, pady=(15, 5))
+
+        # Input API (Estilo Arquivo: Botão + Label)
+        f_api = ctk.CTkFrame(frm_main, fg_color="transparent")
+        f_api.pack(fill="x", padx=15, pady=8)
+        self.btn_api = ctk.CTkButton(f_api, text="1. Selecionar Histórico Aconex DocManager (.xlsx)", width=280, command=self._sel_api,
+                                     fg_color="#3A3A3A", hover_color="#454545", font=("Roboto", 12))
+        self.btn_api.pack(side="left")
+        self.lbl_api_status = ctk.CTkLabel(f_api, text="Nenhum arquivo selecionado", text_color="gray")
+        self.lbl_api_status.pack(side="left", padx=15)
+
+        # Input Pasta Raiz (Estilo Caminho: Entry + Botão Buscar)
+        f_root = ctk.CTkFrame(frm_main, fg_color="transparent")
+        f_root.pack(fill="x", padx=15, pady=8)
+        ctk.CTkLabel(f_root, text="2. Pasta Raiz (Arquivos _STATUS_PMIB):", width=280, anchor="w").pack(side="left")
+        ctk.CTkEntry(f_root, textvariable=self.path_root, width=300).pack(side="left", padx=5)
+        ctk.CTkButton(f_root, text="Buscar", width=80, command=lambda: self.path_root.set(file_dialogs.ask_directory("pmib_manager.pasta_raiz", "pasta", titulo="Selecione a Pasta Raiz"))).pack(side="left")
+
+        # Input Planilha Mestra (Estilo Arquivo: Botão + Label)
+        f_master = ctk.CTkFrame(frm_main, fg_color="transparent")
+        f_master.pack(fill="x", padx=15, pady=8)
+        self.btn_master = ctk.CTkButton(f_master, text="3. Selecionar Mapeamento Sobressalentes (.xlsx)", width=280, command=self._sel_master,
+                                        fg_color="#3A3A3A", hover_color="#454545", font=("Roboto", 12))
+        self.btn_master.pack(side="left")
+        self.lbl_master_status = ctk.CTkLabel(f_master, text="Nenhum arquivo selecionado", text_color="gray")
+        self.lbl_master_status.pack(side="left", padx=15)
+
+        # O botão volta a ter um padding normal, já que a barra sumiu daqui
+        self.btn_run = ctk.CTkButton(frm_main, text="INICIAR PROCESSO DE GESTÃO",
+                                     height=50, width=350,
+                                     command=self.iniciar_gestao,
+                                     font=("Roboto", 14, "bold"),
+                                     fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"], text_color=COLORS["text_white"])
+        self.btn_run.pack(pady=20)
+
+    def _sel_api(self):
+        f = file_dialogs.ask_open_file("pmib_manager.api", "excel", titulo="Selecione a Base de Dados API", filetypes=[("Excel", "*.xlsx *.xls")])
+        if f:
+            self.path_api.set(f)
+            self.lbl_api_status.configure(text=os.path.basename(f), text_color=COLORS["accent"])
+            self.btn_api.configure(fg_color=COLORS["primary"])
+
+    def _sel_master(self):
+        f = file_dialogs.ask_open_file("pmib_manager.master", "excel", titulo="Selecione a Planilha Mestra", filetypes=[("Excel", "*.xlsx *.xls")])
+        if f:
+            self.path_master.set(f)
+            self.lbl_master_status.configure(text=os.path.basename(f), text_color=COLORS["accent"])
+            self.btn_master.configure(fg_color=COLORS["primary"])
+
+    # --- Lógica de Execução Segura ---
+    def _safe_log(self, txt):
+        """Envia o texto para o console de forma segura através da Thread principal"""
+        self.after(0, lambda: self.log(txt))
+
+    def iniciar_gestao(self):
+        # 1. Coleta e valida os dados visuais ANTES de travar a tela
+        api_path = self.path_api.get()
+        root_folder = self.path_root.get()
+        master_path = self.path_master.get()
+
+        if not api_path:
+            return messagebox.showwarning("Aviso", "Por favor, selecione a Base do Aconex (Passo 1).")
+        if not root_folder:
+            return messagebox.showwarning("Aviso", "Por favor, selecione a Pasta Raiz (Passo 2).")
+        if not master_path:
+            return messagebox.showwarning("Aviso", "Por favor, selecione a Planilha de mapeamento (Passo 3).")
+
+        # 2. Desativa o botão para evitar cliques duplicados
+        self.btn_run.configure(state="disabled")
+
+        # 3. Dispara o processamento em segundo plano (Thread)
+        threading.Thread(target=self._worker, args=(api_path, root_folder, master_path), daemon=True).start()
+
+    def _worker(self, api_path, root_folder, master_path):
+        try:
+            self._safe_log("Iniciando fluxo de gestão de sobressalentes...")
+
+            # Instancia a inteligência do Backend
+            manager = backends.pmib_manager_backend.PMIBManager()
+
+            # Callback de Travamento de Arquivo (Thread-Safe)
+            def cb_retry_lock():
+                resultado = {}
+                evento_espera = threading.Event()
+
+                def mostrar_popup():
+                    res = messagebox.askretrycancel(
+                        "Planilha Mestra Aberta",
+                        "O sistema não conseguiu salvar os dados porque a Planilha de Mapeamento está aberta no Excel.\n\nPor favor, salve suas alterações, feche a planilha e clique em 'Repetir'.\nSe quiser abortar o processo, clique em 'Cancelar'."
+                    )
+                    resultado['retry'] = res
+                    evento_espera.set()
+
+                self.after(0, mostrar_popup)
+                evento_espera.wait()
+                return resultado.get('retry', False)
+
+            # Callback Interativo e Seguro (Thread-Safe)
+            def cb_confirm(df_novos):
+                resultado = {}
+                evento_espera = threading.Event()  # Trava a thread do backend até você clicar
+
+                def desenhar_popup():
+                    win = ctk.CTkToplevel(self)
+                    win.title("Novas Listas Encontradas")
+                    win.geometry("750x550")
+                    win.transient(self)
+                    win.grab_set()
+
+                    ctk.CTkLabel(win, text="Novas Listas de Sobressalentes Encontradas na base de dados:", font=("Roboto", 16, "bold"), text_color=COLORS["accent"]).pack(pady=(15, 5))
+                    ctk.CTkLabel(win, text="Selecione abaixo quais você deseja adicionar à Planilha de Mapeamento.", font=("Roboto", 13), text_color="gray").pack(pady=(0, 10))
+
+                    # Área com Scroll para listar os documentos
+                    scroll = ctk.CTkScrollableFrame(win, fg_color="#2B2B2B")
+                    scroll.pack(fill="both", expand=True, padx=20, pady=5)
+
+                    check_vars = {}
+
+                    # Cria um Checkbox para cada linha encontrada
+                    for idx, row in df_novos.iterrows():
+                        var = tk.BooleanVar(value=True)  # Começam todos marcados por padrão
+                        texto_doc = f"[{row['No. do Documento']}]  -  {row['Título']}"
+                        chk = ctk.CTkCheckBox(scroll, text=texto_doc, variable=var, font=("Roboto", 12))
+                        chk.pack(anchor="w", padx=10, pady=6)
+                        check_vars[idx] = (var, chk)
+
+                    # Funções dos Botões Auxiliares
+                    def selecionar_todos():
+                        for var, _ in check_vars.values(): var.set(True)
+
+                    def limpar_selecao():
+                        for var, _ in check_vars.values(): var.set(False)
+
+                    # Funções de Conclusão
+                    def confirmar():
+                        # Filtra o DataFrame original mantendo apenas os índices que ficaram com True
+                        idxs_marcados = [i for i, (var, _) in check_vars.items() if var.get()]
+                        resultado['df_final'] = df_novos.loc[idxs_marcados]
+                        evento_espera.set()  # Libera a Thread do backend
+                        win.destroy()
+
+                    def ignorar_todas():
+                        resultado['df_final'] = pd.DataFrame()  # Retorna Vazio
+                        evento_espera.set()
+                        win.destroy()
+
+                    # Tratamento caso o usuário clique no "X" da janela
+                    win.protocol("WM_DELETE_WINDOW", ignorar_todas)
+
+                    # Frame para os botões inferiores
+                    f_botoes = ctk.CTkFrame(win, fg_color="transparent")
+                    f_botoes.pack(fill="x", padx=20, pady=15)
+
+                    # Botões de Massa (Esquerda)
+                    ctk.CTkButton(f_botoes, text="Marcar Todas", width=120, fg_color="#3A3A3A", hover_color="#454545", command=selecionar_todos).pack(side="left", padx=5)
+                    ctk.CTkButton(f_botoes, text="Desmarcar Todas", width=120, fg_color="#3A3A3A", hover_color="#454545", command=limpar_selecao).pack(side="left", padx=5)
+
+                    # Botões de Ação (Direita)
+                    ctk.CTkButton(f_botoes, text="Confirmar Seleção", width=150, fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"], command=confirmar).pack(side="right", padx=5)
+                    ctk.CTkButton(f_botoes, text="Ignorar (Não Adicionar)", width=150, fg_color="gray", hover_color="#555555", command=ignorar_todas).pack(side="right", padx=5)
+
+                # Dispara o desenho do popup na Thread Principal (Interface)
+                self.after(0, desenhar_popup)
+
+                # O Backend fica "congelado" aqui esperando você clicar em Confirmar ou Ignorar
+                evento_espera.wait()
+
+                return resultado.get('df_final', pd.DataFrame())
+
+            # Variável de controle para saber se o usuário cancelou
+            sucesso_total = True
+
+            # Lemos a tupla que o backend manda passando ambos os callbacks
+            for resposta in manager.executar_fluxo(api_path, root_folder, master_path, callback_confirm=cb_confirm, callback_retry_lock=cb_retry_lock):
+                if isinstance(resposta, tuple):
+                    msg, progresso = resposta
+                    self._safe_log(msg)
+                    if progresso is not None:
+                        self.after(0, lambda p=progresso: self.progress_bar.set(p))
+                else:
+                    self._safe_log(resposta)
+                    # Se o backend jogar um erro (ex: abortado), marcamos como falha
+                    if "[ERRO]" in resposta:
+                        sucesso_total = False
+
+            # Validação Final Segura
+            if sucesso_total:
+                self.after(0, lambda: self.progress_bar.set(1.0))
+                self.after(0, lambda: messagebox.showinfo("Sucesso", "Processo de Gestão PMIB finalizado com sucesso!"))
+            else:
+                self.after(0, lambda: messagebox.showwarning("Aviso", "O processo foi interrompido ou finalizado com erros. Nenhuma alteração foi salva."))
+
+        except Exception as e:
+            self._safe_log(f"[ERRO FATAL]: {e}")
+            self.after(0, lambda: messagebox.showerror("Erro", f"Ocorreu um erro fatal durante a execução:\n{e}"))
+        finally:
+            # Reativa o botão ao final de tudo (seja erro ou sucesso)
+            self.after(0, lambda: self.btn_run.configure(state="normal"))
+

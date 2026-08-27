@@ -30,7 +30,16 @@ import sys
 import pytest
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
-FRONTEND = RAIZ / "frontend.py"
+
+# [CP 7.3] Esta rede nasceu para o `frontend.py`, quando as 12 telas moravam
+# lá. Agora o `frontend.py` é um shim de 90 linhas e a UI vive em
+# `sigft/app/` -- se o guard continuasse olhando só o shim, ele passaria a
+# vigiar o arquivo onde já não há risco nenhum, e largaria justamente os
+# arquivos que são editados. Foi o que aconteceu de fato: o `undefined name
+# 'e'` sumiu do frontend porque mudou de casa junto com a tela dona dele.
+ARQUIVOS_VIGIADOS = [RAIZ / "frontend.py"] + sorted(
+    (RAIZ / "sigft" / "app").rglob("*.py")
+)
 
 # ⚠️ DÍVIDA CONHECIDA, e não desculpa. Este é anterior à refatoração: um
 # `except Exception as e:` cujo `e` é usado dentro de um `lambda` passado ao
@@ -38,16 +47,18 @@ FRONTEND = RAIZ / "frontend.py"
 # lambda dispara depois com o nome já morto -- só quebra quando aquele erro
 # acontece, que é justamente quando o usuário mais precisa da mensagem.
 #
-# Fica na lista para o teste poder proteger o RESTO do arquivo hoje, em vez de
-# esperar alguém arrumar coragem para mexer num módulo de 5,5 mil linhas.
-# Quando for corrigido, tire daqui -- o teste avisa se a lista tiver linha
-# sobrando.
+# Fica na lista para o teste poder proteger o RESTO do código hoje. O motivo
+# original ("ninguém quer mexer num módulo de 5,5 mil linhas") caducou com o
+# CP 7.3: ele mora agora em `sigft/app/views/pmib_manager.py`, um arquivo de
+# ~250 linhas. Continua registrado em PENDENCIAS, e corrigi-lo deixou de ser
+# assustador. Quando for corrigido, tire daqui -- o teste avisa se a lista
+# tiver linha sobrando.
 INDEFINIDOS_CONHECIDOS = {"e"}
 
 
-def _pyflakes(caminho: pathlib.Path) -> list[str]:
+def _pyflakes(*caminhos: pathlib.Path) -> list[str]:
     resultado = subprocess.run(
-        [sys.executable, "-m", "pyflakes", str(caminho)],
+        [sys.executable, "-m", "pyflakes", *(str(c) for c in caminhos)],
         capture_output=True, text=True,
     )
     return [linha for linha in resultado.stdout.splitlines() if linha.strip()]
@@ -76,19 +87,23 @@ def _indefinidos(linhas: list[str]) -> set[str]:
 @pytest.fixture(scope="module")
 def saida_do_pyflakes():
     pytest.importorskip("pyflakes", reason="pyflakes e dev-only; ver requirements-dev.txt")
-    assert FRONTEND.exists(), FRONTEND
-    return _pyflakes(FRONTEND)
+    assert ARQUIVOS_VIGIADOS, "nenhum arquivo para vigiar -- caminho errado?"
+    for caminho in ARQUIVOS_VIGIADOS:
+        assert caminho.exists(), caminho
+    return _pyflakes(*ARQUIVOS_VIGIADOS)
 
 
 def test_frontend_nao_tem_nome_indefinido_novo(saida_do_pyflakes):
-    """Um `NameError` em `frontend.py` só aparece quando a tela é construída --
-    ou seja, na cara do usuário, e derrubando o aplicativo inteiro na abertura.
+    """Um `NameError` na UI só aparece quando a tela é construída -- ou seja,
+    na cara do usuário, e derrubando o aplicativo inteiro na abertura.
+
+    [CP 7.3] Vigia `frontend.py` E toda a árvore `sigft/app/`.
     """
     novos = _indefinidos(saida_do_pyflakes) - INDEFINIDOS_CONHECIDOS
     assert novos == set(), (
-        f"nome(s) indefinido(s) em frontend.py: {sorted(novos)}. "
+        f"nome(s) indefinido(s) na UI: {sorted(novos)}. "
         f"Isso vira NameError quando a linha rodar -- normalmente na abertura "
-        f"do app. Rode: python -m pyflakes frontend.py"
+        f"do app. Rode: python -m pyflakes frontend.py sigft/app/**/*.py"
     )
 
 

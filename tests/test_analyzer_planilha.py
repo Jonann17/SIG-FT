@@ -591,7 +591,8 @@ def test_callback_manual_desc_e_chamado_quando_o_pmib_nao_esta_na_planilha():
 import ast
 import pathlib
 
-FRONTEND = pathlib.Path(__file__).resolve().parents[1] / "frontend.py"
+# [CP 7.3] A tela saiu do `frontend.py` para o seu proprio arquivo.
+FRONTEND = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app" / "views" / "analyzer.py"
 
 
 def _classe_analyzer():
@@ -599,7 +600,7 @@ def _classe_analyzer():
     for no in ast.walk(arvore):
         if isinstance(no, ast.ClassDef) and no.name == "ModuloAnalyzer":
             return no
-    pytest.fail("class ModuloAnalyzer sumiu do frontend.py")
+    pytest.fail("class ModuloAnalyzer sumiu de sigft/app/views/analyzer.py")
 
 
 def _metodo_analyzer(nome):

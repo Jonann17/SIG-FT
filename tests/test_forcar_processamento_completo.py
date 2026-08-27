@@ -31,7 +31,13 @@ import pytest
 from sigft.services import upload_conditions
 
 
-FRONTEND = pathlib.Path(__file__).resolve().parents[1] / "frontend.py"
+# [CP 7.3] As duas telas saíram do `frontend.py` para arquivos próprios, e
+# para arquivos DIFERENTES -- por isso o mapa em vez de um caminho só.
+VIEWS = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app" / "views"
+ARQUIVO_DA_TELA = {
+    "ModuloUploadConditions": VIEWS / "upload_conditions.py",
+    "ModuloUploadTechSpecs": VIEWS / "upload_tech_specs.py",
+}
 
 
 # =============================================================================
@@ -158,14 +164,20 @@ def test_o_default_continua_economizando_api(processor):
 # =============================================================================
 @pytest.fixture(scope="module")
 def arvore():
-    return ast.parse(FRONTEND.read_text(encoding="utf-8"))
+    """[CP 7.3] Cada tela vive no seu arquivo: a "árvore" virou um mapa de
+    nome da classe -> AST do arquivo dela."""
+    return {
+        nome: ast.parse(caminho.read_text(encoding="utf-8"))
+        for nome, caminho in ARQUIVO_DA_TELA.items()
+    }
 
 
 def _classe(arvore, nome):
-    for no in ast.walk(arvore):
+    no_modulo = arvore[nome] if isinstance(arvore, dict) else arvore
+    for no in ast.walk(no_modulo):
         if isinstance(no, ast.ClassDef) and no.name == nome:
             return no
-    pytest.fail(f"class {nome} sumiu do frontend.py")
+    pytest.fail(f"class {nome} sumiu de {ARQUIVO_DA_TELA.get(nome, '?')}")
 
 
 def _metodo(classe, nome):
@@ -234,7 +246,11 @@ def test_tech_specs_repassa_o_valor_para_o_backend(arvore):
 
 def test_o_comentario_que_confessava_a_divida_nao_voltou():
     """O código antigo dizia, por escrito, que a lógica ficaria "para o
-    futuro". Se essa frase reaparecer, alguém desfez a correção."""
-    fonte = FRONTEND.read_text(encoding="utf-8")
+    futuro". Se essa frase reaparecer, alguém desfez a correção.
 
-    assert "precisaremos adicionar essa lógica no backend no futuro" not in fonte
+    [CP 7.3] Passa a varrer os DOIS arquivos de tela — antes bastava ler o
+    `frontend.py`, onde as duas moravam.
+    """
+    for caminho in ARQUIVO_DA_TELA.values():
+        fonte = caminho.read_text(encoding="utf-8")
+        assert "precisaremos adicionar essa lógica no backend no futuro" not in fonte, caminho
