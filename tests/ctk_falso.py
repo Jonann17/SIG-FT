@@ -98,9 +98,17 @@ class _Widget:
         pass
 
     def grab_set(self):
-        # Registrado para que o teste possa provar que NINGUÉM o chama: é o
-        # que travava a aplicação inteira, e o comentário original avisava.
+        # Registrado para que o teste possa provar QUEM o chama. Nos diálogos
+        # de pausa, ninguém deve: é o que travava a aplicação inteira, e o
+        # comentário original avisava. Nos diálogos de seleção, o oposto —
+        # eles perguntam, e a tela de trás não tem o que fazer sem a resposta.
         self.chamou_grab_set = True
+
+    def grab_release(self):
+        self.chamou_grab_release = True
+
+    def transient(self, dono=None):
+        self.dono_transiente = dono
 
     def focus(self):
         pass

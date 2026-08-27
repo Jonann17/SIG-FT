@@ -193,3 +193,155 @@ def test_retry_tem_os_dois_botoes_com_os_rotulos_originais(raiz, evento):
     # O de cancelar é o discreto: transparente com borda.
     assert dialogo.botao_cancelar.kwargs["fg_color"] == "transparent"
     assert dialogo.botao_repetir.kwargs["fg_color"] == theme.COLORS["primary"]
+
+
+# =============================================================================
+# E. TabelaSelecaoDialog — consolida JanelaSelecao + JanelaSelecaoDuplicadas
+# =============================================================================
+
+def _tabela(raiz, **kwargs):
+    kwargs.setdefault("colunas", ["Descrição", "PMIB"])
+    kwargs.setdefault("linhas", [(10, ("Bomba", "4500.0001")), (20, ("Válvula", "4500.0002"))])
+    return dialogs.TabelaSelecaoDialog(raiz, **kwargs)
+
+
+def test_tabela_monta_cabecalhos_e_linhas(raiz):
+    dialogo = _tabela(raiz)
+
+    assert dialogo.tree.cabecalhos == {"Descrição": "Descrição", "PMIB": "PMIB"}
+    assert dialogo.tree.linhas["10"] == ("Bomba", "4500.0001")
+    assert dialogo.tree.linhas["20"] == ("Válvula", "4500.0002")
+
+
+def test_tabela_devolve_a_CHAVE_da_linha_nao_a_posicao(raiz):
+    """O defeito clássico desta tela.
+
+    A chave é o índice do DataFrame / a posição na fila de origem. Devolver a
+    posição VISUAL faria o lote processar a ficha errada quando a origem
+    estivesse filtrada ou reordenada — sem erro nenhum aparecer.
+    """
+    recebidos = []
+    dialogo = _tabela(raiz, ao_confirmar=recebidos.append)
+
+    dialogo.tree.selection_set(20)
+    dialogo.confirmar()
+
+    assert recebidos == [["20"]]
+
+
+def test_tabela_confirmar_sem_selecao_avisa_e_nao_fecha(raiz):
+    """Confirmar com nada marcado é um cancelamento silencioso disfarçado."""
+    recebidos = []
+    dialogo = _tabela(raiz, ao_confirmar=recebidos.append)
+
+    dialogo.confirmar()
+
+    assert recebidos == []
+    assert not dialogo.destruido
+
+
+def test_tabela_preselecionar_tudo_marca_todas_as_linhas(raiz):
+    """`JanelaSelecaoDuplicadas` vinha com tudo marcado; `JanelaSelecao`, não."""
+    dialogo = _tabela(raiz, preselecionar_tudo=True)
+
+    assert set(dialogo.selecionados) == {"10", "20"}
+
+
+def test_tabela_sem_preselecao_comeca_vazia(raiz):
+    dialogo = _tabela(raiz)
+    assert dialogo.selecionados == []
+
+
+def test_tabela_confirmar_fecha_a_janela(raiz):
+    dialogo = _tabela(raiz)
+    dialogo.tree.selection_set(10)
+
+    dialogo.confirmar()
+
+    assert dialogo.destruido
+
+
+def test_tabela_cancelar_e_opcional(raiz):
+    """`JanelaSelecao` só tinha Confirmar; `JanelaSelecaoDuplicadas` tinha os dois."""
+    com = _tabela(raiz)
+    sem = _tabela(raiz, com_cancelar=False)
+
+    assert com.botao_cancelar is not None
+    assert sem.botao_cancelar is None
+
+
+def test_tabela_de_dataframe_usa_o_INDICE_como_chave(raiz):
+    """`JanelaSelecao` devolvia `[int(i) for i in tree.selection()]` — o índice
+    do DataFrame, não a posição da linha na tela."""
+
+    class LinhaFalsa:
+        def __init__(self, valores):
+            self._valores = valores
+
+        def to_numpy(self):
+            return self
+
+        def tolist(self):
+            return self._valores
+
+    class DataFrameFalso:
+        columns = ["A", "B"]
+
+        def iterrows(self):
+            # Índices NÃO sequenciais, como um DataFrame filtrado.
+            yield 7, LinhaFalsa(["a1", "b1"])
+            yield 42, LinhaFalsa(["a2", "b2"])
+
+    dialogo = dialogs.TabelaSelecaoDialog.de_dataframe(raiz, DataFrameFalso())
+
+    assert set(dialogo.tree.linhas) == {"7", "42"}
+    assert dialogo.tree.linhas["42"] == ("a2", "b2")
+
+
+def test_tabela_larguras_por_coluna(raiz):
+    dialogo = _tabela(raiz, larguras={"Descrição": {"width": 400}})
+
+    assert dialogo.tree.colunas_config["Descrição"]["width"] == 400
+    # A que não foi citada cai no padrão das cópias.
+    assert dialogo.tree.colunas_config["PMIB"]["width"] == 120
+
+
+# =============================================================================
+# F. SelecaoMultiplaDialog — a variante de lista simples
+# =============================================================================
+
+def test_lista_multipla_mostra_os_itens(raiz):
+    dialogo = dialogs.SelecaoMultiplaDialog(raiz, itens=["A", "B", "C"])
+    assert dialogo.listbox.itens == ["A", "B", "C"]
+
+
+def test_lista_multipla_devolve_os_TEXTOS_marcados(raiz):
+    """Os dois popups faziam `[lb.get(i) for i in lb.curselection()]`."""
+    recebidos = []
+    dialogo = dialogs.SelecaoMultiplaDialog(
+        raiz, itens=["4500.0001", "4500.0002", "4500.0003"], ao_confirmar=recebidos.append
+    )
+
+    dialogo.listbox.selecionar(0, 2)
+    dialogo.confirmar()
+
+    assert recebidos == [["4500.0001", "4500.0003"]]
+
+
+def test_lista_multipla_sem_selecao_devolve_lista_vazia(raiz):
+    """O popup de códigos tratava vazio como "cancelou" — quem decide é a tela."""
+    recebidos = []
+    dialogo = dialogs.SelecaoMultiplaDialog(
+        raiz, itens=["A"], ao_confirmar=recebidos.append
+    )
+
+    dialogo.confirmar()
+
+    assert recebidos == [[]]
+    assert dialogo.destruido
+
+
+def test_lista_multipla_usa_a_fonte_monoespacada(raiz):
+    """Códigos PMIB alinhados — era `font=("Consolas", 11)` no popup."""
+    dialogo = dialogs.SelecaoMultiplaDialog(raiz, itens=["A"])
+    assert dialogo.listbox.kwargs["font"] == theme.FONTE_CONSOLE

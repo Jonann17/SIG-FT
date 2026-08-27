@@ -112,44 +112,30 @@ COLORS = {
 # =============================================================================
 # CLASSES AUXILIARES (Pop-ups)
 # =============================================================================
-class JanelaSelecao(ctk.CTkToplevel):
-    def __init__(self, parent, dataframe, callback_confirmar):
-        super().__init__(parent)
-        self.title("Seleção de Itens")
-        self.geometry("900x600")
-        self.transient(parent)
-        self.grab_set()
+def JanelaSelecao(parent, dataframe, callback_confirmar):
+    """[CP 7.2] Era uma classe de ~40 linhas montando um Treeview a mao.
 
-        ctk.CTkLabel(self, text="Selecione as linhas para processar:", font=("Arial", 16, "bold")).pack(pady=10)
+    Agora e uma chamada ao `TabelaSelecaoDialog`, que serve tambem a
+    `JanelaSelecaoDuplicadas` -- as duas faziam a mesma tabela com scrollbars e
+    devolviam a escolha por callback; o que mudava era a origem dos dados.
 
-        self.frame_tabela = ctk.CTkFrame(self)
-        self.frame_tabela.pack(fill="both", expand=True, padx=10, pady=10)
+    Continua sendo chamada como `JanelaSelecao(self, df, callback)`, entao os 2
+    call sites nao mudaram. Vira funcao, e nao classe, porque ninguem guardava
+    a instancia nem chamava metodo nela.
 
-        sb_y = ttk.Scrollbar(self.frame_tabela, orient="vertical")
-        sb_x = ttk.Scrollbar(self.frame_tabela, orient="horizontal")
-
-        self.tree = ttk.Treeview(
-            self.frame_tabela,
-            columns=list(dataframe.columns),
-            show="headings",
-            yscrollcommand=sb_y.set,
-            xscrollcommand=sb_x.set,
-            selectmode="extended"
-        )
-
-        sb_y.config(command=self.tree.yview); sb_x.config(command=self.tree.xview)
-        sb_y.pack(side="right", fill="y"); sb_x.pack(side="bottom", fill="x")
-        self.tree.pack(side="left", fill="both", expand=True)
-
-        for col in dataframe.columns:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=120)
-
-        for index, row in dataframe.iterrows():
-            valores = row.to_numpy().tolist()  # Deixa o Tkinter renderizar o dado bruto
-            self.tree.insert("", "end", iid=index, values=valores)
-
-        ctk.CTkButton(self, text="Confirmar Seleção", command=lambda: callback_confirmar([int(i) for i in self.tree.selection()]) or self.destroy()).pack(pady=20, fill="x", padx=20)
+    As chaves voltam como STRING do Treeview; o `int()` aqui reproduz o
+    `[int(i) for i in self.tree.selection()]` do codigo antigo -- os callbacks
+    do ModuloCriaFichas indexam o DataFrame com elas.
+    """
+    return app_dialogs.TabelaSelecaoDialog.de_dataframe(
+        parent,
+        dataframe,
+        titulo="Seleção de Itens",
+        instrucao="Selecione as linhas para processar:",
+        geometria="900x600",
+        com_cancelar=False,
+        ao_confirmar=lambda chaves: callback_confirmar([int(i) for i in chaves]),
+    )
 
 
 class JanelaResumo(ctk.CTkToplevel):
@@ -345,63 +331,39 @@ class JanelaAcaoRobo(ctk.CTkToplevel):
             messagebox.showwarning("Aviso", "Digite o novo PDM antes de clicar.")
 
 
-class JanelaSelecaoDuplicadas(ctk.CTkToplevel):
-    """Janela para selecionar, dentre todas as duplicadas encontradas, quais rodar agora."""
-    def __init__(self, parent, fila_completa, callback_confirmar):
-        super().__init__(parent)
-        self.title("Selecionar Fichas para Cópia")
-        self.geometry("900x500")
-        self.attributes('-topmost', True)
-        self.grab_set()
+def JanelaSelecaoDuplicadas(parent, fila_completa, callback_confirmar):
+    """[CP 7.2] Selecionar, entre as duplicadas encontradas, quais rodar agora.
 
-        self.fila_completa = fila_completa
-        self.callback_confirmar = callback_confirmar
+    Mesma tabela do `JanelaSelecao`, com tres diferencas que viraram parametro:
+    as colunas sao fixas, tudo ja vem marcado, e ha botao Cancelar.
 
-        ctk.CTkLabel(self, text="Selecione as fichas que deseja processar neste lote:", font=("Roboto", 14, "bold")).pack(pady=10)
+    A chave de cada linha e a POSICAO na `fila_completa` -- e assim que o
+    callback volta a encontrar o item original.
+    """
+    colunas = ("Descrição", "PMIB Original (Base)", "PMIB Alvo (Novo)")
+    linhas = [
+        (idx, (item["descricao"], item["pmib_original"], item["pmib_alvo"]))
+        for idx, item in enumerate(fila_completa)
+    ]
 
-        # Configurando o Treeview
-        frame_tree = ctk.CTkFrame(self)
-        frame_tree.pack(fill="both", expand=True, padx=20, pady=10)
+    def _confirmar(chaves):
+        callback_confirmar([fila_completa[int(i)] for i in chaves])
 
-        cols = ("Descrição", "PMIB Original (Base)", "PMIB Alvo (Novo)")
-        self.tree = ttk.Treeview(frame_tree, columns=cols, show="headings", selectmode="extended")
-
-        self.tree.heading("Descrição", text="Descrição")
-        self.tree.heading("PMIB Original (Base)", text="PMIB Original (Base)")
-        self.tree.heading("PMIB Alvo (Novo)", text="PMIB Alvo (Novo)")
-
-        self.tree.column("Descrição", width=400)
-        self.tree.column("PMIB Original (Base)", width=150, anchor="center")
-        self.tree.column("PMIB Alvo (Novo)", width=150, anchor="center")
-
-        scroll_y = ttk.Scrollbar(frame_tree, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scroll_y.set)
-
-        self.tree.pack(side="left", fill="both", expand=True)
-        scroll_y.pack(side="right", fill="y")
-
-        # Inserindo dados
-        for idx, item in enumerate(self.fila_completa):
-            self.tree.insert("", "end", iid=idx, values=(item["descricao"], item["pmib_original"], item["pmib_alvo"]))
-            # Pré-seleciona todos por padrão
-            self.tree.selection_add(idx)
-
-        # Botões
-        f_btns = ctk.CTkFrame(self, fg_color="transparent")
-        f_btns.pack(pady=10)
-        ctk.CTkButton(f_btns, text="Confirmar Seleção", command=self.confirmar, fg_color=COLORS["primary"]).pack(side="left", padx=10)
-        ctk.CTkButton(f_btns, text="Cancelar", command=self.destroy, fg_color="#3A3A3A").pack(side="left", padx=10)
-
-    def confirmar(self):
-        selecionados_iids = self.tree.selection()
-        if not selecionados_iids:
-            messagebox.showwarning("Aviso", "Selecione ao menos um item.")
-            return
-
-        fila_selecionada = [self.fila_completa[int(i)] for i in selecionados_iids]
-        self.callback_confirmar(fila_selecionada)
-        self.grab_release()
-        self.destroy()
+    return app_dialogs.TabelaSelecaoDialog(
+        parent,
+        colunas=colunas,
+        linhas=linhas,
+        titulo="Selecionar Fichas para Cópia",
+        instrucao="Selecione as fichas que deseja processar neste lote:",
+        geometria="900x500",
+        larguras={
+            "Descrição": {"width": 400},
+            "PMIB Original (Base)": {"width": 150, "anchor": "center"},
+            "PMIB Alvo (Novo)": {"width": 150, "anchor": "center"},
+        },
+        preselecionar_tudo=True,
+        ao_confirmar=_confirmar,
+    )
 
 
 class JanelaRevisaoEdicao(ctk.CTkToplevel):
@@ -1413,32 +1375,26 @@ class ModuloPDM(ctk.CTkFrame):
                     codigos_formatados.append(c_str)
                 codigos = sorted(list(set(codigos_formatados)))
 
-                sel_win = ctk.CTkToplevel(self)
-                sel_win.title("Selecione os Códigos PMIB")
-                sel_win.geometry("400x500")
-                sel_win.transient(self)
-                sel_win.grab_set()
-
-                ctk.CTkLabel(sel_win, text="Selecione um ou mais códigos:", font=("Roboto", 14)).pack(pady=10)
-
-                frame_lista = ctk.CTkFrame(sel_win, fg_color="transparent")
-                frame_lista.pack(fill="both", expand=True, padx=20, pady=10)
-
-                scrollbar = tk.Scrollbar(frame_lista)
-                scrollbar.pack(side="right", fill="y")
-
-                lb = tk.Listbox(frame_lista, selectmode="multiple", yscrollcommand=scrollbar.set, font=("Consolas", 11))
-                lb.pack(side="left", fill="both", expand=True)
-                scrollbar.config(command=lb.yview)
-
-                for c in codigos: lb.insert("end", c)
-
-                def confirm_sel():
+                # [CP 7.2] Popup montado a mao -> SelecaoMultiplaDialog.
+                # `modal=True` preserva o `transient` + `grab_set` que ele ja
+                # usava: diferente dos dialogos de pausa, este PERGUNTA e a tela
+                # nao tem o que fazer sem a resposta -- o `wait_window` logo
+                # abaixo depende disso.
+                def confirm_sel(escolhidos):
                     nonlocal lista_sel
-                    lista_sel = [lb.get(i) for i in lb.curselection()]
-                    sel_win.destroy()
+                    lista_sel = escolhidos
 
-                ctk.CTkButton(sel_win, text="Confirmar Seleção", command=confirm_sel).pack(pady=15)
+                sel_win = app_dialogs.SelecaoMultiplaDialog(
+                    self,
+                    itens=codigos,
+                    titulo="Selecione os Códigos PMIB",
+                    instrucao="Selecione um ou mais códigos:",
+                    geometria="400x500",
+                    fonte_instrucao=("Roboto", 14),
+                    fonte_lista=("Consolas", 11),
+                    modal=True,
+                    ao_confirmar=confirm_sel,
+                )
                 self.wait_window(sel_win)
 
                 if not lista_sel:
@@ -2212,51 +2168,34 @@ class ModuloUploadConditions(ctk.CTkFrame):
         if not dados_dict_lista:
             return messagebox.showwarning("Aviso", "Não há dados para iniciar a automação.")
 
-        # Cria a janela de seleção (Toplevel)
-        top = ctk.CTkToplevel(self)
-        top.title("Selecione as Fichas para Processar")
-        top.geometry("500x400")
-        top.attributes('-topmost', True)
-        top.grab_set()
-
-        ctk.CTkLabel(top, text="Selecione quais PMIBs deseja preencher no portal:", font=("Roboto", 14, "bold")).pack(pady=10)
-
-        list_container = ctk.CTkFrame(top, fg_color="transparent")
-        list_container.pack(fill="both", expand=True, padx=20, pady=5)
-
-        listbox = tk.Listbox(list_container, selectmode=tk.MULTIPLE, bg="#1E1E1E", fg="white",
-                             selectbackground=COLORS.get("primary", "#1f538d"), font=("Consolas", 12), highlightthickness=0, borderwidth=0)
-        listbox.pack(side="left", fill="both", expand=True)
-
-        scrollbar = tk.Scrollbar(list_container, command=listbox.yview)
-        scrollbar.pack(side="right", fill="y")
-        listbox.config(yscrollcommand=scrollbar.set)
-
-        # Preencher a lista com o PMIBs
-        for item in dados_dict_lista:
-            pmib = item.get("pmib_codigo", "N/A")
-            listbox.insert(tk.END, f" Ficha PMIB: {pmib}")
-
-        selecionados_finais = []
-
-        def confirmar():
-            indices = listbox.curselection()
-            for i in indices:
-                selecionados_finais.append(dados_dict_lista[i])
-            top.grab_release()
-            top.destroy()
+        # [CP 7.2] `devolver_indices` existe por causa deste caso: a escolha volta como
+        # POSICAO, para reencontrar o item na lista de origem. Devolver o texto
+        # obrigaria a tela a procurar o item pela string exibida.
+        def confirmar(indices):
+            selecionados_finais = [dados_dict_lista[i] for i in indices]
             if selecionados_finais:
                 self._start_web_process(selecionados_finais)
             else:
                 self.log("Nenhuma ficha selecionada. Operação cancelada.")
 
-        def selecionar_todos():
-            listbox.select_set(0, tk.END)
-
-        f_btns = ctk.CTkFrame(top, fg_color="transparent")
-        f_btns.pack(pady=15)
-        ctk.CTkButton(f_btns, text="Selecionar Todos", command=selecionar_todos, fg_color="#3A3A3A", width=150).pack(side="left", padx=10)
-        ctk.CTkButton(f_btns, text="Confirmar Seleção", command=confirmar, fg_color=COLORS.get("primary", "#1f538d"), width=150).pack(side="left", padx=10)
+        app_dialogs.SelecaoMultiplaDialog(
+            self,
+            itens=[f" Ficha PMIB: {item.get('pmib_codigo', 'N/A')}" for item in dados_dict_lista],
+            titulo="Selecione as Fichas para Processar",
+            instrucao="Selecione quais PMIBs deseja preencher no portal:",
+            geometria="500x400",
+            modal=True,
+            com_selecionar_todos=True,
+            devolver_indices=True,
+            fonte_instrucao=("Roboto", 14, "bold"),
+            fonte_lista=("Consolas", 12),
+            estilo_lista={
+                "bg": "#1E1E1E", "fg": "white",
+                "selectbackground": COLORS["primary"],
+                "highlightthickness": 0, "borderwidth": 0,
+            },
+            ao_confirmar=confirmar,
+        )
 
     def _start_web_from_file(self):
         excel_file = file_dialogs.ask_open_file("upload_conditions.excel_resultados", "excel", titulo="Selecione Excel de Resultados", filetypes=[("Excel", "*.xlsx;*.xls")])
@@ -2632,57 +2571,33 @@ class ModuloUploadTechSpecs(ctk.CTkFrame):
             messagebox.showwarning("Aviso", "Não há dados para iniciar a automação.")
             return
 
-        # Cria a janela de seleção (Toplevel)
-        top = ctk.CTkToplevel(self)
-        top.title("Selecione as Fichas para Processar")
-        top.geometry("600x450")
-        top.attributes('-topmost', True)
-        top.grab_set()  # Foca o clique apenas nesta janela até ela ser fechada
-
-        ctk.CTkLabel(top, text="Selecione quais fichas do JSON deseja enviar para o site:", font=("Roboto", 14, "bold")).pack(pady=10)
-
-        # Frame da lista
-        list_container = ctk.CTkFrame(top, fg_color="transparent")
-        list_container.pack(fill="both", expand=True, padx=20, pady=5)
-
-        # Usamos tk.Listbox porque o CustomTkinter nativo ainda não tem uma Listbox de seleção múltipla tão boa
-        listbox = tk.Listbox(list_container, selectmode=tk.MULTIPLE, bg="#1E1E1E", fg="white",
-                             selectbackground=COLORS.get("primary", "#1f538d"), font=("Consolas", 11), highlightthickness=0, borderwidth=0)
-        listbox.pack(side="left", fill="both", expand=True)
-
-        scrollbar = tk.Scrollbar(list_container, command=listbox.yview)
-        scrollbar.pack(side="right", fill="y")
-        listbox.config(yscrollcommand=scrollbar.set)
-
-        # Preencher a lista
-        for item in dados_json:
-            meta = item.get("METADATA", {})
-            pmib = meta.get("PMIB", "N/A")
-            arq = meta.get("ARQUIVO_ORIGEM", "N/A")
-            listbox.insert(tk.END, f"PMIB: {pmib} | {arq}")
-
-        # Funções internas dos botões do popup
-        selecionados_finais = []
-
-        def confirmar():
-            indices = listbox.curselection()
-            for i in indices:
-                selecionados_finais.append(dados_json[i])
-            top.grab_release()
-            top.destroy()
+        # [CP 7.2] Quarta e ultima variante do popup de selecao multipla. Identica a do
+        # ModuloUploadConditions, tirando geometria, texto e tamanho da fonte.
+        def confirmar(indices):
+            selecionados_finais = [dados_json[i] for i in indices]
             if selecionados_finais:
-                self._start_web_process(selecionados_finais)  # <-- Agora sim, envia pra automação
+                self._start_web_process(selecionados_finais)
             else:
                 self.log("Nenhuma ficha selecionada. Operação cancelada.")
 
-        def selecionar_todos():
-            listbox.select_set(0, tk.END)
-
-        # Frame de botões
-        f_btns = ctk.CTkFrame(top, fg_color="transparent")
-        f_btns.pack(pady=15)
-        ctk.CTkButton(f_btns, text="Selecionar Todos", command=selecionar_todos, fg_color="#3A3A3A", width=150).pack(side="left", padx=10)
-        ctk.CTkButton(f_btns, text="Confirmar Seleção", command=confirmar, fg_color=COLORS.get("primary", "#1f538d"), width=150).pack(side="left", padx=10)
+        app_dialogs.SelecaoMultiplaDialog(
+            self,
+            itens=[f"PMIB: {item.get('METADATA', {}).get('PMIB', 'N/A')} | {item.get('METADATA', {}).get('ARQUIVO_ORIGEM', 'N/A')}" for item in dados_json],
+            titulo="Selecione as Fichas para Processar",
+            instrucao="Selecione quais fichas do JSON deseja enviar para o site:",
+            geometria="600x450",
+            modal=True,
+            com_selecionar_todos=True,
+            devolver_indices=True,
+            fonte_instrucao=("Roboto", 14, "bold"),
+            fonte_lista=("Consolas", 11),
+            estilo_lista={
+                "bg": "#1E1E1E", "fg": "white",
+                "selectbackground": COLORS["primary"],
+                "highlightthickness": 0, "borderwidth": 0,
+            },
+            ao_confirmar=confirmar,
+        )
 
     def _stop_web_process(self):
         """Envia o sinal para o Backend parar o Selenium"""

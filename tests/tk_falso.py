@@ -169,3 +169,67 @@ class _MessageBoxFalso:
 
 
 messagebox = _MessageBoxFalso()
+
+
+# =============================================================================
+# tkinter.ttk
+# =============================================================================
+# `Treeview` é a tabela dos popups de seleção (`TabelaSelecaoDialog`). Guarda
+# as linhas e a seleção de verdade: o teste precisa afirmar QUE LINHAS voltam
+# do diálogo, e é aí que mora o defeito clássico — devolver o índice da tela
+# em vez do índice do dado.
+class Treeview(_WidgetTk):
+    def __init__(self, master=None, **kwargs):
+        super().__init__(master, **kwargs)
+        self.linhas: dict = {}
+        self.ordem: list = []
+        self.cabecalhos: dict = {}
+        self.colunas_config: dict = {}
+        self._selecao: list = []
+
+    def heading(self, coluna, **kwargs):
+        self.cabecalhos[coluna] = kwargs.get("text", "")
+
+    def column(self, coluna, **kwargs):
+        self.colunas_config[coluna] = kwargs
+
+    def insert(self, pai, indice, iid=None, values=(), **kwargs):
+        chave = str(iid)
+        self.linhas[chave] = tuple(values)
+        self.ordem.append(chave)
+        return chave
+
+    def delete(self, *iids):
+        for iid in iids:
+            self.linhas.pop(str(iid), None)
+            if str(iid) in self.ordem:
+                self.ordem.remove(str(iid))
+
+    def get_children(self, item=""):
+        return tuple(self.ordem)
+
+    def selection(self):
+        return tuple(self._selecao)
+
+    def selection_add(self, *iids):
+        for iid in iids:
+            if str(iid) not in self._selecao:
+                self._selecao.append(str(iid))
+
+    def selection_set(self, *iids):
+        self._selecao = [str(i) for i in iids]
+
+    def yview(self, *args):
+        pass
+
+    def xview(self, *args):
+        pass
+
+
+class _TtkFalso:
+    Treeview = Treeview
+    Scrollbar = Scrollbar
+    Frame = Frame
+
+
+ttk = _TtkFalso()

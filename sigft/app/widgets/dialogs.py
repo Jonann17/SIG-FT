@@ -36,6 +36,9 @@ o usuário deixa de conseguir clicar no console para copiar as pendências, que
 """
 from __future__ import annotations
 
+import tkinter as tk
+from tkinter import messagebox, ttk
+
 import customtkinter as ctk
 
 from sigft.app import theme
@@ -208,4 +211,264 @@ class RetryLockDialog(_DialogoDeAcaoManual):
     def cancelar(self) -> None:
         self._resultado["retry"] = False
         self._evento.set()
+        self.destroy()
+
+
+class TabelaSelecaoDialog(ctk.CTkToplevel):
+    """Tabela (`ttk.Treeview`) para escolher várias linhas — Confirmar/Cancelar.
+
+    Consolida `JanelaSelecao` (recebia um DataFrame) e `JanelaSelecaoDuplicadas`
+    (recebia uma lista de dicionários). As duas montavam o mesmo Treeview com
+    scrollbars e devolviam a escolha por callback; o que mudava era a origem
+    dos dados e se tudo vinha pré-marcado.
+
+    Por isso este diálogo recebe `colunas` e `linhas` já prontas, e não um
+    DataFrame: ele não precisa saber de pandas para desenhar uma tabela, e o
+    chamador é quem sabe de onde os dados vêm. Use `TabelaSelecaoDialog.de_dataframe`
+    quando a origem for um DataFrame.
+
+    O identificador de cada linha é a CHAVE que volta no callback
+    ------------------------------------------------------------
+    `linhas` é uma sequência de pares `(chave, valores)`. A `chave` é o que o
+    chamador recebe de volta — o índice do DataFrame, a posição na fila, um id
+    qualquer. Isso não é detalhe: o defeito clássico desta tela é devolver a
+    posição VISUAL da linha quando a origem estava filtrada ou reordenada, e aí
+    o lote processa a ficha errada sem nenhum erro aparecer.
+    """
+
+    def __init__(
+        self,
+        master,
+        *,
+        colunas,
+        linhas,
+        titulo: str = "Seleção de Itens",
+        instrucao: str = "Selecione as linhas para processar:",
+        geometria: str = "900x600",
+        larguras: dict | None = None,
+        preselecionar_tudo: bool = False,
+        texto_confirmar: str = "Confirmar Seleção",
+        com_cancelar: bool = True,
+        modal: bool = True,
+        ao_confirmar=None,
+    ):
+        super().__init__(master)
+        self.title(titulo)
+        self.geometry(geometria)
+        self.attributes("-topmost", True)
+        # Modal por PADRÃO aqui (ao contrário dos diálogos de pausa): as duas
+        # janelas que esta classe substitui chamavam `grab_set()`, e faz
+        # sentido — a tela de trás não tem o que fazer enquanto a escolha do
+        # lote não vem. Ver a nota longa no `SelecaoMultiplaDialog`.
+        if modal:
+            self.transient(master)
+            self.grab_set()
+
+        self._ao_confirmar = ao_confirmar
+        self._chaves = [str(chave) for chave, _ in linhas]
+
+        ctk.CTkLabel(self, text=instrucao, font=theme.FONTE_SECAO).pack(pady=10)
+
+        quadro = ctk.CTkFrame(self)
+        quadro.pack(fill="both", expand=True, padx=10, pady=10)
+
+        barra_y = ttk.Scrollbar(quadro, orient="vertical")
+        barra_x = ttk.Scrollbar(quadro, orient="horizontal")
+
+        self.tree = ttk.Treeview(
+            quadro,
+            columns=list(colunas),
+            show="headings",
+            yscrollcommand=barra_y.set,
+            xscrollcommand=barra_x.set,
+            selectmode="extended",
+        )
+        barra_y.config(command=self.tree.yview)
+        barra_x.config(command=self.tree.xview)
+        barra_y.pack(side="right", fill="y")
+        barra_x.pack(side="bottom", fill="x")
+        self.tree.pack(side="left", fill="both", expand=True)
+
+        larguras = larguras or {}
+        for coluna in colunas:
+            self.tree.heading(coluna, text=coluna)
+            self.tree.column(coluna, **larguras.get(coluna, {"width": 120}))
+
+        for chave, valores in linhas:
+            self.tree.insert("", "end", iid=str(chave), values=list(valores))
+            if preselecionar_tudo:
+                self.tree.selection_add(str(chave))
+
+        botoes = ctk.CTkFrame(self, fg_color="transparent")
+        botoes.pack(pady=10)
+
+        self.botao_confirmar = ctk.CTkButton(
+            botoes,
+            text=texto_confirmar,
+            command=self.confirmar,
+            fg_color=theme.COLORS["primary"],
+        )
+        self.botao_confirmar.pack(side="left", padx=10)
+
+        self.botao_cancelar = None
+        if com_cancelar:
+            self.botao_cancelar = ctk.CTkButton(
+                botoes, text="Cancelar", command=self.destroy, fg_color="#3A3A3A"
+            )
+            self.botao_cancelar.pack(side="left", padx=10)
+
+    @classmethod
+    def de_dataframe(cls, master, dataframe, **kwargs):
+        """Constrói a partir de um DataFrame, como `JanelaSelecao` fazia.
+
+        A chave de cada linha é o ÍNDICE do DataFrame — não a posição —, que é
+        o que `JanelaSelecao` devolvia (`[int(i) for i in tree.selection()]`).
+        """
+        linhas = [
+            (indice, linha.to_numpy().tolist())
+            for indice, linha in dataframe.iterrows()
+        ]
+        return cls(master, colunas=list(dataframe.columns), linhas=linhas, **kwargs)
+
+    @property
+    def selecionados(self) -> list[str]:
+        """As chaves marcadas, na ordem em que a tabela as devolve."""
+        return list(self.tree.selection())
+
+    def confirmar(self) -> None:
+        selecionados = self.selecionados
+        if not selecionados:
+            # Confirmar com nada marcado seria "processar zero itens", que na
+            # prática é um cancelamento silencioso -- e o usuário fica sem
+            # saber por que nada aconteceu.
+            messagebox.showwarning("Aviso", "Selecione ao menos um item.")
+            return
+        if self._ao_confirmar is not None:
+            self._ao_confirmar(selecionados)
+        self.destroy()
+
+
+class SelecaoMultiplaDialog(ctk.CTkToplevel):
+    """Lista simples (`tk.Listbox`) para escolher vários itens de texto.
+
+    A variante leve do `TabelaSelecaoDialog`: quando os itens são strings soltas
+    (códigos PMIB, nomes de ficha) e não linhas de uma tabela com colunas.
+    Consolida os popups montados à mão dentro de `ModuloPDM` e
+    `ModuloUploadConditions`.
+
+    Devolve os TEXTOS marcados, que é o que os dois popups faziam
+    (`[lb.get(i) for i in lb.curselection()]`).
+    """
+
+    def __init__(
+        self,
+        master,
+        *,
+        itens,
+        titulo: str = "Seleção",
+        instrucao: str = "Selecione um ou mais itens:",
+        geometria: str = "500x500",
+        texto_confirmar: str = "Confirmar Seleção",
+        modal: bool = False,
+        com_selecionar_todos: bool = False,
+        devolver_indices: bool = False,
+        estilo_lista: dict | None = None,
+        fonte_lista: tuple | None = None,
+        fonte_instrucao: tuple | None = None,
+        ao_confirmar=None,
+    ):
+        super().__init__(master)
+        self.title(titulo)
+        self.geometry(geometria)
+        self.attributes("-topmost", True)
+        # `modal=True` chama `grab_set()`, e AQUI isso é o certo -- o oposto do
+        # que vale para os diálogos de pausa lá em cima. A diferença não é
+        # estilo, é para que serve cada um:
+        #
+        #   * o diálogo de PAUSA fica aberto enquanto o usuário trabalha em
+        #     OUTRO lugar (o navegador, o console do app para copiar
+        #     pendências). Torná-lo modal tira dele exatamente o que ele
+        #     precisa fazer -- foi o defeito que o comentário original
+        #     registrava;
+        #   * este aqui PERGUNTA e a tela não tem o que fazer sem a resposta:
+        #     quem chama segue com `wait_window()`. Sem `grab_set()`, o usuário
+        #     pode clicar de volta na tela de trás e disparar a mesma ação de
+        #     novo, com o diálogo ainda aberto.
+        if modal:
+            self.transient(master)
+            self.grab_set()
+
+        self._ao_confirmar = ao_confirmar
+        self._devolver_indices = devolver_indices
+
+        ctk.CTkLabel(self, text=instrucao, font=fonte_instrucao or theme.FONTE_SUBTITULO).pack(pady=10)
+
+        quadro = ctk.CTkFrame(self, fg_color="transparent")
+        quadro.pack(fill="both", expand=True, padx=20, pady=(10 if not estilo_lista else 5))
+
+        # Duas das quatro variantes pintavam a lista (fundo escuro, seleção na
+        # cor primária) e duas usavam a Listbox crua. `estilo_lista` carrega
+        # essa diferença em vez de uniformizar — uniformizar mudaria a
+        # aparência de metade delas.
+        opcoes_lista = {
+            "selectmode": "multiple",
+            "font": fonte_lista or theme.FONTE_CONSOLE,
+        }
+        opcoes_lista.update(estilo_lista or {})
+
+        self.scrollbar = tk.Scrollbar(quadro)
+        self.scrollbar.pack(side="right", fill="y")
+
+        self.listbox = tk.Listbox(quadro, yscrollcommand=self.scrollbar.set, **opcoes_lista)
+        self.listbox.pack(side="left", fill="both", expand=True)
+        self.scrollbar.config(command=self.listbox.yview)
+
+        for item in itens:
+            self.listbox.insert("end", item)
+
+        botoes = ctk.CTkFrame(self, fg_color="transparent")
+        botoes.pack(pady=15)
+
+        self.botao_todos = None
+        if com_selecionar_todos:
+            self.botao_todos = ctk.CTkButton(
+                botoes,
+                text="Selecionar Todos",
+                command=self.selecionar_todos,
+                fg_color="#3A3A3A",
+                width=150,
+            )
+            self.botao_todos.pack(side="left", padx=10)
+
+        self.botao_confirmar = ctk.CTkButton(
+            botoes,
+            text=texto_confirmar,
+            command=self.confirmar,
+            fg_color=theme.COLORS["primary"],
+            width=150,
+        )
+        self.botao_confirmar.pack(side="left", padx=10)
+
+    @property
+    def selecionados(self) -> list[str]:
+        """Os TEXTOS marcados — o que os popups de lista faziam."""
+        return [self.listbox.get(i) for i in self.listbox.curselection()]
+
+    @property
+    def indices(self) -> list[int]:
+        """As POSIÇÕES marcadas.
+
+        Duas das variantes usavam o índice para voltar ao dicionário de origem
+        (`dados_dict_lista[i]`). Devolver o texto ali obrigaria a tela a
+        procurar o item pela string — frágil e desnecessário.
+        """
+        return [int(i) for i in self.listbox.curselection()]
+
+    def selecionar_todos(self) -> None:
+        self.listbox.select_set(0, "end")
+
+    def confirmar(self) -> None:
+        escolha = self.indices if self._devolver_indices else self.selecionados
+        if self._ao_confirmar is not None:
+            self._ao_confirmar(escolha)
         self.destroy()

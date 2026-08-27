@@ -163,7 +163,7 @@ sys.modules["tkinter"] = _tk_falso
 # colateral nosso, não por um defeito de produção.
 sys.modules["tkinter.filedialog"] = _tk_falso.filedialog
 sys.modules["tkinter.messagebox"] = _tk_falso.messagebox
-sys.modules["tkinter.ttk"] = MagicMock(name="tkinter.ttk")
+sys.modules["tkinter.ttk"] = _tk_falso.ttk
 
 # 3. Caso especial pandas: `PMIBSearcher._limpar_texto_parrudo`
 #    (search_pmib_backend.py) chama `pd.isna(texto)`. Um MagicMock puro faria
