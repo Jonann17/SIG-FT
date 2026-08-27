@@ -92,10 +92,14 @@ class SplashScreen(ctk.CTk):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure((0, 1, 2, 3), weight=1)
 
-        # 1. Logo (Com caminho absoluto robusto)
-        # Garante que acha a pasta assets onde quer que o script esteja rodando
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        image_path = os.path.join(base_path, "assets", "logo.png")
+        # 1. Logo
+        # [CP 7.3] Passou a usar `resource_path`. Antes montava o caminho com
+        # `os.path.dirname(os.path.abspath(__file__))` -- que dava a raiz
+        # enquanto este codigo morava no frontend.py, e passou a dar
+        # `sigft/app/` quando ele veio para ca. O resultado era o app abrindo
+        # SEM logo e SEM icone, avisando so no console (que ninguem le), como
+        # se os arquivos nao existissem.
+        image_path = resource_path(os.path.join("assets", "logo.png"))
 
         self.logo_img = None  # Mantém referência para não sumir
         if os.path.exists(image_path):
@@ -185,9 +189,10 @@ class SIG_FT_App(ctk.CTk):
         self.geometry("1280x850")
 
         # --- CARREGAMENTO DE IMAGENS (Ícone e Logo) ---
-        # Usa caminho absoluto para garantir que funciona independente de onde o script é chamado
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        image_path = os.path.join(base_path, "assets", "logo.png")
+        # [CP 7.3] Mesmo caso do splash: `resource_path` e quem sabe achar a
+        # raiz do projeto, tanto rodando do .py quanto de dentro do .exe do
+        # PyInstaller (`sys._MEIPASS`).
+        image_path = resource_path(os.path.join("assets", "logo.png"))
 
         # 1. Definir Ícone da Janela (Suporta PNG)
         try:

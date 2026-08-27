@@ -233,3 +233,30 @@ class _TtkFalso:
 
 
 ttk = _TtkFalso()
+
+
+# =============================================================================
+# tkinter.simpledialog
+# =============================================================================
+# Usado por `views/analyzer.py`, `views/lmr.py` e `views/janelas.py` para pedir
+# um valor solto ao usuário. Como o `messagebox`, registra a chamada e devolve
+# um valor fixo -- nada abre.
+class _SimpleDialogFalso:
+    def __init__(self):
+        self.chamadas = []
+        self.resposta = None
+
+    def askstring(self, titulo="", prompt="", **kwargs):
+        self.chamadas.append(("askstring", titulo, prompt))
+        return self.resposta
+
+    def askinteger(self, titulo="", prompt="", **kwargs):
+        self.chamadas.append(("askinteger", titulo, prompt))
+        return self.resposta
+
+    def askfloat(self, titulo="", prompt="", **kwargs):
+        self.chamadas.append(("askfloat", titulo, prompt))
+        return self.resposta
+
+
+simpledialog = _SimpleDialogFalso()
