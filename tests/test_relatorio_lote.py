@@ -21,7 +21,6 @@ from sigft.core.callbacks import UICallbacks
 from sigft.core.relatorio_lote import (
     MARCA_AVISO,
     MARCA_FALHA,
-    MARCA_PULADO,
     MARCA_SUCESSO,
     RelatorioLote,
     caminho_log_do_dia,

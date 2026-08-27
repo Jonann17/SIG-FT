@@ -41,19 +41,24 @@ ARQUIVOS_VIGIADOS = [RAIZ / "frontend.py"] + sorted(
     (RAIZ / "sigft" / "app").rglob("*.py")
 )
 
-# ⚠️ DÍVIDA CONHECIDA, e não desculpa. Este é anterior à refatoração: um
-# `except Exception as e:` cujo `e` é usado dentro de um `lambda` passado ao
-# `after()` do tkinter. O Python apaga o nome ao sair do `except`, então o
-# lambda dispara depois com o nome já morto -- só quebra quando aquele erro
-# acontece, que é justamente quando o usuário mais precisa da mensagem.
+# A lista de dívidas conhecidas está VAZIA desde 2026-08-27 (CP 8.1), e essa é
+# a forma certa dela ficar.
 #
-# Fica na lista para o teste poder proteger o RESTO do código hoje. O motivo
-# original ("ninguém quer mexer num módulo de 5,5 mil linhas") caducou com o
-# CP 7.3: ele mora agora em `sigft/app/views/pmib_manager.py`, um arquivo de
-# ~250 linhas. Continua registrado em PENDENCIAS, e corrigi-lo deixou de ser
-# assustador. Quando for corrigido, tire daqui -- o teste avisa se a lista
-# tiver linha sobrando.
-INDEFINIDOS_CONHECIDOS = {"e"}
+# Havia um item: um `except Exception as e:` cujo `e` era usado dentro de um
+# `lambda` passado ao `after()` do tkinter. O Python apaga o nome ao sair do
+# `except`, e o lambda só roda depois -- então a caixa que deveria mostrar a
+# causa da falha levantava `NameError`, e o usuário perdia justamente a
+# mensagem que explicaria o que deu errado.
+#
+# Ele ficou aqui registrado enquanto o motivo de adiar era real ("ninguém quer
+# mexer num módulo de 5,5 mil linhas"). O CP 7.3 quebrou aquele módulo em
+# arquivos de ~250 linhas, o CP 8.1 corrigiu (`lambda erro=e:` captura por
+# valor) e este teste foi quem cobrou a baixa: ele falha quando a lista tem
+# linha sobrando, justamente para a lista não virar depósito.
+#
+# Item novo aqui exige justificativa e prazo. Uma lista que só cresce deixa de
+# ser dívida registrada e vira dívida escondida.
+INDEFINIDOS_CONHECIDOS: set[str] = set()
 
 
 def _pyflakes(*caminhos: pathlib.Path) -> list[str]:

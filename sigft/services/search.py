@@ -113,7 +113,7 @@ class PMIBSearcher:
         callbacks.log("Iniciando mapeamento de diretórios...")
 
         # 1. Varredura da pasta raiz
-        for root, dirs, files in os.walk(pasta_raiz):
+        for root, _dirs, files in os.walk(pasta_raiz):
             for file in files:
                 if "STATUS_PMIB" in file.upper() and not file.startswith('~$') and file.endswith(('.xlsx', '.xls', '.xlsm')):
                     arquivos_para_processar.append(os.path.join(root, file))

@@ -1172,7 +1172,12 @@ class PMIBPortal:
             # o que exigir, e o `ancora` do salvamento já garante o botão certo.
             palavra = PALAVRA_DA_SECAO.get(secao)
 
-            def _serve(mensagem):
+            # `palavra=palavra` captura por VALOR. Hoje `_serve` e chamada no
+            # mesmo ciclo do laco, entao fechar sobre a variavel funcionaria --
+            # mas basta alguem passar a guardar a funcao numa lista, ou adiar a
+            # chamada, para todas as voltas passarem a usar a ULTIMA palavra.
+            # Congelar aqui custa uma linha e tira a armadilha do caminho.
+            def _serve(mensagem, palavra=palavra):
                 if mensagem in vistas:
                     return False      # estava lá antes do clique
                 if not palavra:

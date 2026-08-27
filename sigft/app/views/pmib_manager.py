@@ -257,7 +257,14 @@ class ModuloPMIBManager(ctk.CTkFrame):
 
         except Exception as e:
             self._safe_log(f"[ERRO FATAL]: {e}")
-            self.after(0, lambda: messagebox.showerror("Erro", f"Ocorreu um erro fatal durante a execução:\n{e}"))
+            # [CP 8.1] `lambda erro=e:` em vez de fechar sobre `e`. O Python
+            # APAGA o nome `e` ao sair do bloco `except`, e este lambda só roda
+            # depois disso, pelo laço do Tk -- então a caixa que deveria mostrar
+            # a causa da falha levantava `NameError`, e o usuário perdia
+            # justamente a mensagem que explicaria o que deu errado.
+            # Capturar por valor no argumento padrão congela o objeto agora.
+            self.after(0, lambda erro=e: messagebox.showerror(
+                "Erro", f"Ocorreu um erro fatal durante a execução:\n{erro}"))
         finally:
             # Reativa o botão ao final de tudo (seja erro ou sucesso)
             self.after(0, lambda: self.btn_run.configure(state="normal"))

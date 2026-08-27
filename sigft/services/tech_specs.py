@@ -561,7 +561,9 @@ class TechSpecsProcessor:
                     "Resposta (Espanhol s/ caracteres especiais)": "RESP_ES",
                     "Resposta (Português s/ caracteres especiais)": "RESP_PT"
                 }
-                df_ficha = df_ficha.rename(columns=lambda x: cols_map.get(x, x))
+                # noqa B023: o pandas chama este lambda DENTRO do `rename`,
+                # antes de `cols_map` poder mudar na proxima volta do laco.
+                df_ficha = df_ficha.rename(columns=lambda x: cols_map.get(x, x))  # noqa: B023
 
                 respostas_pmib = {}
                 for _, row in df_ficha.iterrows():

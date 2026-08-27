@@ -26,7 +26,6 @@ deles é afrouxado aqui.
 """
 import re
 
-import pytest
 
 from sigft.core.llm import prompts
 

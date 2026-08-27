@@ -1,8 +1,6 @@
 import pandas as pd
 import openpyxl
-import json
 import time
-import re
 
 from sigft import config
 from sigft.core.excel import headers, locking
@@ -211,7 +209,11 @@ class GeminiCategorizer:
             )
             return resp.parsed_json
         except Exception as e:
-            raise Exception(f"Erro na IA: {e}")
+            # `from e` mantem o traceback ORIGINAL encadeado. Sem ele, o
+            # erro de verdade (timeout, chave invalida, resposta malformada)
+            # some, e sobra so a string -- que e o que chega no console do
+            # usuario quando a IA falha.
+            raise Exception(f"Erro na IA: {e}") from e
 
 
 # =============================================================================

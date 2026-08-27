@@ -74,8 +74,8 @@ class _FakeElemento:
     def find_element(self, by, seletor):
         try:
             return self.filhos[seletor]
-        except KeyError:
-            raise Exception(f"filho não configurado para seletor: {seletor}")
+        except KeyError as erro:
+            raise Exception(f"filho não configurado para seletor: {seletor}") from erro
 
 
 class _FakeWait:

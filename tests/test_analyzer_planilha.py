@@ -19,7 +19,6 @@ import re
 
 import pytest
 
-from sigft.core.excel import pmib_codes
 from sigft.services import analyzer as analyzer_mod
 from sigft.services.analyzer import DatasheetAnalyzer
 

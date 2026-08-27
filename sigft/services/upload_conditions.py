@@ -3,7 +3,6 @@ import openpyxl
 import pandas as pd
 import os
 import json
-import ast
 from types import SimpleNamespace
 
 from sigft import config
@@ -746,9 +745,12 @@ class UploadAutomation:
         de campos falhou E o portal confirmou o salvamento das 4 seções. Ver
         `SECOES_DE_CONDICOES` e `_registrar_pendencia`.
         """
-        url = "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
-        # O 'driver.get(url)' foi removido do início daqui porque agora
-        # o App chama 'abrir_portal' ANTES de pedir o login.
+        # [CP 8.1] A variavel `url` saiu: ela sobrou de quando esta funcao
+        # fazia `driver.get(url)` aqui. O `abrir_portal` passou a ser chamado
+        # pelo App ANTES do login, e desde entao ninguem lia a variavel --
+        # so o comentario abaixo, que fica porque explica o PORQUE.
+        # O endereco do portal, quando preciso, vem de `config.PORTAL_URL`.
+        # O App chama 'abrir_portal' ANTES de pedir o login.
         lote_completas = []
         lote_incompletas = []
 

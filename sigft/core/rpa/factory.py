@@ -29,7 +29,6 @@ em cada caso, com sinais opostos:
 
 from __future__ import annotations
 
-from sigft import config
 from sigft.core.rpa.engine import RPAEngine
 
 

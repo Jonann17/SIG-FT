@@ -3,7 +3,6 @@ import unicodedata
 
 from sigft import config
 import time
-import os
 
 # CP 1.4 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 1): protocolo único
 # UI<->serviço. `processar_lista` aceita o novo parâmetro `callbacks`

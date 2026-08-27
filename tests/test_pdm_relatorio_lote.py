@@ -19,10 +19,8 @@ neste ambiente de teste — ver tests/conftest.py).
 """
 from __future__ import annotations
 
-import os
 from io import BytesIO
 
-import pytest
 
 
 # =============================================================================

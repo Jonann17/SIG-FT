@@ -1,0 +1,92 @@
+# Configuração de ferramentas do SIG-FT.
+#
+# Este arquivo NÃO declara o pacote (não há build/instalação: o app roda da
+# própria pasta, via SIG-FT.bat). Ele existe só para configurar o `ruff`
+# (CP 8.1) e o `mypy` (CP 8.2) do plano de refatoração.
+
+# =============================================================================
+# ruff — Checkpoint 8.1
+# =============================================================================
+[tool.ruff]
+target-version = "py310"       # o SIG-FT.bat exige Python 3.10+
+line-length = 120
+
+exclude = [
+    # Skills de terceiros, vendorizadas para os dois desenvolvedores terem as
+    # mesmas ferramentas (ver .claude/skills/VENDOR.md). Nao e codigo do
+    # projeto: lintar aqui so gera ruido que ninguem tem autoridade para
+    # corrigir, e o conserto some na proxima atualizacao do upstream.
+    ".claude",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "dados_de_teste",
+]
+
+[tool.ruff.lint]
+# A seleção é deliberadamente ESTREITA, e a razão importa.
+#
+# Rodar o ruff com o conjunto largo neste projeto acusa ~1.100 ocorrências, e
+# a esmagadora maioria não é defeito: são 174 `E701` (dois comandos na mesma
+# linha, `self.console.insert(...); self.console.see(...)`), 89 `E741` (nomes
+# curtos como `l`), 81 `I001` (ordem dos imports). Endireitar isso tocaria
+# quase todo arquivo do repositório — exatamente a "reformatação em massa"
+# que o CLAUDE.md proíbe sem combinar antes, porque transforma merge trivial
+# em conflito gigante, e há uma segunda frente de trabalho no repositório.
+#
+# Lint que acusa mil coisas é lint que se desliga. Então aqui ele acusa só o
+# que quebra:
+#
+#   E9  erros de sintaxe/IO que impedem o arquivo de rodar
+#   F   pyflakes: nome indefinido, import não usado, variável morta
+#   B   bugbear: os defeitos de verdade (captura de variável de loop, default
+#       mutável, `except` que engole a causa)
+#
+# Ampliar a seleção depois é uma decisão de projeto, não uma correção de
+# carona — e deve vir junto com a combinação sobre quando reformatar.
+select = ["E9", "F", "B"]
+
+ignore = [
+    # `zip(a, b)` sem `strict=`. É legítimo, mas exigir `strict` em todo zip
+    # muda comportamento (passa a levantar em tamanhos diferentes) e nenhum
+    # dos 5 casos daqui tem esse risco: os pares vêm da mesma origem.
+    "B905",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Os testes usam `assert False` de propósito em caminhos que não deveriam ser
+# alcançados, e variáveis de laço não usadas em parametrização.
+"tests/*" = ["B011", "B007"]
+
+# =============================================================================
+# mypy — Checkpoint 8.2
+# =============================================================================
+[tool.mypy]
+python_version = "3.10"
+# "Leniente" é o que o CP 8.2 pede, e não preguiça: o projeto tem 12 backends
+# sem anotação nenhuma, e exigir tipagem estrita neles de uma vez pararia a
+# refatoração para escrever `Any` em toda parte. A régua sobe quando as APIs
+# públicas de `core/` estiverem anotadas.
+ignore_missing_imports = true
+follow_imports = "silent"
+warn_unused_configs = true
+# Sem `disallow_untyped_defs`: função sem anotação continua válida.
+
+[[tool.mypy.overrides]]
+# As dependências pesadas não têm stubs, e instalá-los não agrega aqui.
+module = [
+    "customtkinter.*",
+    "playwright.*",
+    "openpyxl.*",
+    "pandas.*",
+    "xlwings.*",
+    "google.generativeai.*",
+    "deep_translator.*",
+    "unidecode.*",
+    "llama_parse.*",
+    "fitz.*",
+    "PyPDF2.*",
+    "bs4.*",
+]
+ignore_missing_imports = true

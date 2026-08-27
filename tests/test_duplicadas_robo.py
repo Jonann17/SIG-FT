@@ -7,8 +7,6 @@ fim. As peças (extrator, injetor) têm os seus próprios testes.
 """
 import pytest
 
-from sigft import config
-from sigft.core.rpa import seletores_duplicada as sel
 from sigft.services import duplicadas_injetor as injetor
 from sigft.services import duplicadas_robo as robo
 

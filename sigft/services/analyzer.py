@@ -1,9 +1,7 @@
 import os
-import json
 import openpyxl
-import time
 import shutil
-from openpyxl.styles import Font, Color
+from openpyxl.styles import Font
 from openpyxl.cell.rich_text import CellRichText, TextBlock
 from openpyxl.cell.text import InlineFont
 
@@ -404,11 +402,15 @@ class DatasheetAnalyzer:
         motivo_do_achado = {}
 
         # 3. Validação de Campos Fixos (CONFIG_MAP)
-        for key, config in CONFIG_MAP.items():
+        # [CP 8.1] `config` renomeado para `regra`: o nome do laco sombreava
+        # o modulo `sigft.config`, importado no topo deste arquivo. Dentro do
+        # laco era proposital, mas qualquer uso de `config.X` acrescentado
+        # depois pegaria silenciosamente o dicionario da ultima iteracao.
+        for key, regra in CONFIG_MAP.items():
             is_valid = True
 
             # --- Lógica de Pesos Customizados ---
-            weight = config["weight"]
+            weight = regra["weight"]
             if custom_weights and key in custom_weights:
                 try:
                     weight = float(custom_weights[key])
@@ -420,15 +422,15 @@ class DatasheetAnalyzer:
             # -----------------------------------------------
 
             # --- TIPO: CÉLULA ÚNICA ---
-            if config["type"] == "cell":
+            if regra["type"] == "cell":
                 # `cell` é da aba gravável (recebe a marcação); o VALOR vem da
                 # aba de valores calculados. Ver `_valor_calculado`.
-                cell = self.get_cell_from_range(ws, config["range"])
+                cell = self.get_cell_from_range(ws, regra["range"])
                 val = self._valor_calculado(
-                    ws_valores, ws, config["range"].split(':')[0], formulas_sem_valor)
+                    ws_valores, ws, regra["range"].split(':')[0], formulas_sem_valor)
                 val_str = str(val).strip().lower() if val is not None else ""
 
-                if config["validation"] == "ai":
+                if regra["validation"] == "ai":
                     celulas_ai_map[key] = {'cell': cell, 'weight': weight}
 
                     # `aceita_nao_aplicavel` (2026-08-26): três campos --
@@ -442,7 +444,7 @@ class DatasheetAnalyzer:
                     # se aplica ao material -- e `FORBIDDEN_NA_STRINGS` matava
                     # a resposta aqui, antes de a IA chegar a vê-la. O código
                     # contrariava o texto que ele mesmo manda para a IA.
-                    if config.get("aceita_nao_aplicavel") and val_str in FORBIDDEN_NA_STRINGS:
+                    if regra.get("aceita_nao_aplicavel") and val_str in FORBIDDEN_NA_STRINGS:
                         dados_ia_validar[key] = val
                     elif val_str in FORBIDDEN_NA_STRINGS:
                         self.set_invalid_error(cell, val)
@@ -456,43 +458,43 @@ class DatasheetAnalyzer:
 
                 elif key in ["texto_breve_material", "fabricante"]:
                     dados_ia_contexto[key] = val
-                    if config["validation"] == "simple":
+                    if regra["validation"] == "simple":
                         if val is None or val_str == "":
                             self.set_blank_error(cell)
                             is_valid = False
 
-                elif config["validation"] == "simple":
+                elif regra["validation"] == "simple":
                     if val is None or val_str == "":
                         self.set_blank_error(cell)
                         is_valid = False
 
             # --- TIPO: CHECKBOX ---
-            elif config["type"] == "checkbox":
+            elif regra["type"] == "checkbox":
                 is_checked = any(
                     self._valor_calculado(ws_valores, ws, c, formulas_sem_valor) is not None
-                    for c in config["cells"])
+                    for c in regra["cells"])
 
                 if not is_checked:
                     is_valid = False
-                    targets = config.get("error_target")
+                    targets = regra.get("error_target")
                     if targets:
                         if isinstance(targets, list):
                             for t in targets: self.set_blank_error(ws[t])
                         else:
                             self.set_blank_error(ws[targets])
                     else:
-                        self.set_blank_error(ws[config["cells"][0]])
+                        self.set_blank_error(ws[regra["cells"][0]])
 
             # Soma pontos GANHOS se passou na validação simples
-            if config.get("validation") == "simple" or config.get("type") == "checkbox":
+            if regra.get("validation") == "simple" or regra.get("type") == "checkbox":
                 if is_valid:
                     total_score_earned += weight
 
             if not is_valid:
                 achados.append(analyzer_relatorio.Achado(
                     key, motivo_do_achado.get(key, "vazio"),
-                    motivo=None, obrigatorio=bool(config.get("obrigatorio"))))
-            if config.get("obrigatorio") and not is_valid:
+                    motivo=None, obrigatorio=bool(regra.get("obrigatorio"))))
+            if regra.get("obrigatorio") and not is_valid:
                 obrigatorios_faltando.append(key)
 
         # Aplica Descrição Complementar

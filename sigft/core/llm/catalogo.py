@@ -42,7 +42,6 @@ da UI ser "modelos que dá para usar aqui" em vez de "tudo o que existe".
 from __future__ import annotations
 
 import json
-import os
 import time
 
 from sigft import config

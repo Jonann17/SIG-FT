@@ -13,7 +13,6 @@ do Target**, porque a URL continha o código do material; no mesmo lote um
 datasheet legítimo de distribuidor foi barrado por não citar a marca no
 título. Indistinguíveis para o código, triviais para quem abre o link.
 """
-import pytest
 
 from sigft.services import autospec_conferencia as conf
 from sigft.services.autospec import AutoSpecCore

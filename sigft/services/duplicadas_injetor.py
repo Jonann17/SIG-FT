@@ -948,7 +948,8 @@ def limpar_caracteristicas(portal, pmib_original, callback_log=None):
     apagadas = 0
     preenchidas = 0
     falhas_de_escrita = []
-    for pagina in range(1, MAX_PAGINAS_CARACTERISTICAS + 1):
+    # `_pagina`: o laco conta as paginas, mas o corpo nao usa o numero.
+    for _pagina in range(1, MAX_PAGINAS_CARACTERISTICAS + 1):
         indice = 1
         while indice <= portal.engine.contar(sel.XPATH_CARACTERISTICAS_LINHAS):
             linha = f"({sel.XPATH_CARACTERISTICAS_LINHAS})[{indice}]"

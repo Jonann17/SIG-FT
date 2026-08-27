@@ -10,7 +10,6 @@ isso o resumo usa o RÓTULO do campo ("Peso líquido (kg)"), e não a chave
 interna (`peso_liquido`), e por isso a justificativa da IA é repassada
 literalmente — ela foi escrita para o fornecedor, e o prompt diz isso.
 """
-import pytest
 
 from sigft.services import analyzer_relatorio as rel
 

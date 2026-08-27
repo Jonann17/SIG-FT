@@ -29,12 +29,9 @@ formatação mudou.
 """
 from __future__ import annotations
 
-import importlib
 import json
 import os
-import sys
 
-import pytest
 
 FIXTURE_BASELINE = os.path.join(
     os.path.dirname(__file__), "fixtures", "pdm_io_baseline.json"

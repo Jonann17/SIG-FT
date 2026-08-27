@@ -306,7 +306,7 @@ class PMIBManager:
         # 2. Buscar Arquivos STATUS
         yield ("Buscando arquivos _STATUS_PMIB na pasta raiz...", 0.15)
         lista_documentos = []
-        for root, dirs, files in os.walk(pasta_raiz_status):
+        for root, _dirs, files in os.walk(pasta_raiz_status):
             for file in files:
                 nome_lower = file.lower()
                 if nome_lower.endswith("_status_pmib.xlsx") or nome_lower.endswith("_status_pmib.xls"):

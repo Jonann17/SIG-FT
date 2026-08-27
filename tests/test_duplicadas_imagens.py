@@ -388,8 +388,11 @@ def test_subir_uma_NAO_confirma_com_o_upload_em_andamento(monkeypatch, tmp_path)
     nunca chamada, é a mesma coisa que não existir.
     """
     monkeypatch.setattr(imgs.time, "sleep", lambda _s: None)
+    # noqa B008: o `iter(...)` no default e o TRUQUE, nao um descuido -- e o
+    # que faz cada chamada de `monotonic()` devolver o proximo valor da
+    # sequencia, simulando o relogio andando. Avaliar uma vez so e o ponto.
     monkeypatch.setattr(imgs.time, "monotonic",
-                        lambda c=iter(range(0, 10_000, 10)): next(c))
+                        lambda c=iter(range(0, 10_000, 10)): next(c))  # noqa: B008
     portal, engine = _tela()
 
     contar_original = engine.contar

@@ -1080,8 +1080,16 @@ class WebSearcher:
         self.duvidosos = []
         self.headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
 
-    def search_and_download(self, query, required_terms=[], max_results=RESULTADOS_POR_BUSCA,
+    # `required_terms=None` em vez de `[]`: uma lista no default e criada UMA
+    # vez, na definicao, e compartilhada por todas as chamadas -- se alguem
+    # der um `.append` nela, o item vaza para a chamada seguinte.
+    def search_and_download(self, query, required_terms=None, max_results=RESULTADOS_POR_BUSCA,
                             callbacks=None, fabricante=(), identificadores=()):
+        # Normaliza o `None` do default para a lista vazia que o corpo espera:
+        # `required_terms` e REPASSADO a `_baixar_resultados`, que o itera --
+        # deixar o `None` passar trocaria um default inofensivo por TypeError.
+        # Com isto, o comportamento e identico ao do default `[]` anterior.
+        required_terms = required_terms or []
         cb = callbacks or _callbacks_silenciosos()
         if not self.api_key or not self.cse_id:
             return []

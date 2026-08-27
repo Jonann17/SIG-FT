@@ -24,7 +24,6 @@ verifica por AST. A tela só escolhe onde salvar.
 """
 import os
 
-from sigft.core.rpa.ficha_layout import CONFIG_MAP
 
 # Rótulos legíveis, na redação do próprio usuário (lista de campos
 # obrigatórios de 2026-08-26). Um campo do CONFIG_MAP sem entrada aqui cairia

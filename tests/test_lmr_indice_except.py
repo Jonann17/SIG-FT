@@ -154,7 +154,6 @@ def test_falha_antes_do_indice_avancar_com_ask_negativo_pula_o_item():
 def test_falha_antes_do_indice_avancar_sem_provedor_de_ask_tambem_progride():
     # Contrato do CP 1.4: `UICallbacks.ask` sem provedor devolve False. É o
     # default SEGURO -- execução sem UI nunca pode travar num laço infinito.
-    registro = {"logs": [], "asks": []}
     df = _FakeDF(_linhas("COD-A", "COD-B"), falhar_em=0)
     callbacks = UICallbacks(log=lambda msg, nivel="info", contexto=None: None)
 

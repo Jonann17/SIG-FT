@@ -47,7 +47,6 @@ regra de origem dos dados que o usuário corrigiu na mesma mensagem.
 """
 import pytest
 
-from sigft.core.rpa import seletores_duplicada as sel
 from sigft.services import duplicadas_injetor as injetor
 from sigft.services import duplicadas_robo as robo
 from tests.test_duplicadas_injetor import _EngineFalso, _PortalFalso
