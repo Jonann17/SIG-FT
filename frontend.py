@@ -19,6 +19,9 @@ import webbrowser  # conferencia de documentos duvidosos (AutoSpec)
 from sigft.core.excel.pmib_codes import normalize_pmib
 from sigft.core import prefs
 from sigft.app import file_dialogs
+# [CP 7.3] Registro dos backends carregados pelo splash -- ver o docstring
+# de sigft/app/backends.py. SEMPRE `backends.X`, nunca `from ... import X`.
+from sigft.app import backends
 # [CP 7.1] Esqueleto de tela (header/conteudo/console) e o console com log()
 # thread-safe unico. As telas vao migrando para ele uma a uma; enquanto isso,
 # as nao migradas seguem com o bloco antigo -- as duas formas convivem.
@@ -46,21 +49,15 @@ from sigft.services import analyzer_relatorio
 # o importa no topo deste arquivo -- nao acrescenta peso ao splash.
 from sigft.services import duplicadas
 
-# --- VARIÁVEIS GLOBAIS DOS BACKENDS (Inicialmente None) ---
-# Isso evita erro de "NameError" nas classes antes do carregamento
-DataManager = None
-GeminiCategorizer = None
-AutomacaoPMIB = None
-pdm_backend = None
-analyzer_backend = None
-translator_backend = None
-upload_conditions_backend = None
-upload_tech_specs_backend = None
-autospec_backend = None
-lmr_backend = None
-apagar_lmr_backend = None
-pmib_manager_backend = None
-search_pmib_backend = None
+# [CP 7.3] As globais dos backends mudaram para `sigft/app/backends.py`.
+# O splash injetava-as em `globals()` DESTE arquivo, o que so funcionava
+# enquanto as 12 telas moravam aqui dentro. Com as telas em modulos
+# proprios (app/views/), `globals()` deixaria de alcanca-las e todas veriam
+# None -- um defeito que nao quebra o import, nem o compileall, nem a
+# abertura do app: so aparece quando o usuario clica em processar.
+#
+# Use SEMPRE `backends.pdm_backend`, nunca `from ... import backends.pdm_backend`:
+# o import copiaria o None do momento do import.
 
 
 # Configuração Global
@@ -661,9 +658,9 @@ class ModuloCriaFichas(ctk.CTkFrame):
         self.file_path_excel = path
         cols = ["DESCRIÇÃO", "CÓDIGO PMIB"]
 
-        df, cod_sug, erro = DataManager.carregar_planilha_inteligente(path, "Lista de Materiais", cols)
+        df, cod_sug, erro = backends.DataManager.carregar_planilha_inteligente(path, "Lista de Materiais", cols)
         if df is None:
-            df, cod_sug, erro = DataManager.carregar_planilha_inteligente(path, 0, cols)
+            df, cod_sug, erro = backends.DataManager.carregar_planilha_inteligente(path, 0, cols)
 
         if df is not None:
             self.df_data_completo = df
@@ -734,7 +731,7 @@ class ModuloCriaFichas(ctk.CTkFrame):
                 # prompt é o que permite logar o modelo de verdade em vez de
                 # "Gemini" fixo. O construtor só resolve config, não chama a
                 # API, então nada é gasto por adiantá-lo.
-                cat = GeminiCategorizer(self.api_key_gemini)
+                cat = backends.GeminiCategorizer(self.api_key_gemini)
                 self.log(f"Processando com IA ({cat.modelo_em_uso})...")
                 df_pdms = pd.read_excel(self.file_path_pdm, sheet_name="PDMs")
                 lista_pdms = "\n".join("- " + df_pdms['PDM COMPLETO'].dropna().astype(str))
@@ -793,7 +790,7 @@ class ModuloCriaFichas(ctk.CTkFrame):
         threading.Thread(target=self._bot_worker).start()
 
     def _bot_worker(self):
-        self.btn_run_auto.configure(state="disabled"); self.bot = AutomacaoPMIB()
+        self.btn_run_auto.configure(state="disabled"); self.bot = backends.AutomacaoPMIB()
         try:
             self.bot.iniciar_driver(); self.bot.abrir_portal('https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList')
             messagebox.showinfo("Ação Manual", "Faça login no portal.\nNavegue até a página com o botão 'Nova Ficha'.\n\nClique em OK apenas quando estiver pronto.")
@@ -887,7 +884,7 @@ class ModuloCriaFichas(ctk.CTkFrame):
 
             salvo_com_sucesso = False
             while not salvo_com_sucesso:
-                ok, msg = DataManager.atualizar_excel_final(self.file_path_excel, "Lista de Materiais", lista)
+                ok, msg = backends.DataManager.atualizar_excel_final(self.file_path_excel, "Lista de Materiais", lista)
 
                 if ok:
                     messagebox.showinfo("Sucesso", f"Planilha atualizada!\n{msg}")
@@ -970,9 +967,9 @@ class ModuloCriaFichas(ctk.CTkFrame):
         path = file_dialogs.ask_open_file("cria_fichas.excel_edicao", "excel", filetypes=[("Excel", "*.xlsx")])
         if not path: return
         cols = ["DESCRIÇÃO", "CÓDIGO PMIB"]
-        df, cod_sug, erro = DataManager.carregar_planilha_inteligente(path, "Lista de Materiais", cols)
+        df, cod_sug, erro = backends.DataManager.carregar_planilha_inteligente(path, "Lista de Materiais", cols)
         if df is None:
-            df, cod_sug, erro = DataManager.carregar_planilha_inteligente(path, 0, cols)
+            df, cod_sug, erro = backends.DataManager.carregar_planilha_inteligente(path, 0, cols)
         if df is not None:
             # FILTRO INTELIGENTE: Remove da visualização linhas que não têm PMIB
             # (Evita que o usuário tente editar itens não criados)
@@ -1026,7 +1023,7 @@ class ModuloCriaFichas(ctk.CTkFrame):
 
     def _edicao_worker(self, lista_pmibs, novo_projeto):
         self.btn_run_edicao.configure(state="disabled")
-        self.bot = AutomacaoPMIB()
+        self.bot = backends.AutomacaoPMIB()
         try:
             self.bot.iniciar_driver()
             self.bot.abrir_portal('https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList')
@@ -1297,7 +1294,7 @@ class ModuloPDM(ctk.CTkFrame):
         # Thread para não congelar a tela
         def task():
             self._safe_log(f"Fatiando a lista geral: {os.path.basename(lista)}...")
-            res = pdm_backend.pdms_fromItaipu_lista_geral(lista, pasta_alvo, log_callback=self._safe_log)
+            res = backends.pdm_backend.pdms_fromItaipu_lista_geral(lista, pasta_alvo, log_callback=self._safe_log)
             self._safe_log(res)
             self.after(0, lambda: messagebox.showinfo("Relatório", res))
 
@@ -1313,10 +1310,10 @@ class ModuloPDM(ctk.CTkFrame):
             def task():
                 self._safe_log(f"Processando todos em: {origem}")
                 count = 0
-                for arq in pdm_backend.listar_arquivos_excel(origem):
-                    tbl = pdm_backend.processar_arquivo_pdm(arq)
+                for arq in backends.pdm_backend.listar_arquivos_excel(origem):
+                    tbl = backends.pdm_backend.processar_arquivo_pdm(arq)
                     if tbl is not None:
-                        ok, msg = pdm_backend.salvar_tabela_formatada(tbl, arq, self.caminho_destino.get())
+                        ok, msg = backends.pdm_backend.salvar_tabela_formatada(tbl, arq, self.caminho_destino.get())
                         self._safe_log(msg)  # Aqui o laço já está no front, então manda o safe_log direto
                         if ok: count += 1
                 self._safe_log(f"Fim: {count} arquivos processados com sucesso.")
@@ -1331,9 +1328,9 @@ class ModuloPDM(ctk.CTkFrame):
             arq = file_dialogs.ask_open_file("pdm.arquivo_especifico", "excel", titulo="Selecione o arquivo PDM específico", filetypes=[("Excel", "*.xlsx *.xls")], initialdir=origem)
             if arq:
                 def task_esp():
-                    tbl = pdm_backend.processar_arquivo_pdm(arq)
+                    tbl = backends.pdm_backend.processar_arquivo_pdm(arq)
                     if tbl is not None:
-                        ok, msg = pdm_backend.salvar_tabela_formatada(tbl, arq, self.caminho_destino.get(), force=True)
+                        ok, msg = backends.pdm_backend.salvar_tabela_formatada(tbl, arq, self.caminho_destino.get(), force=True)
                         self._safe_log(msg)
                         self.after(0, lambda: messagebox.showinfo("Status", msg))
                 threading.Thread(target=task_esp, daemon=True).start()
@@ -1409,7 +1406,7 @@ class ModuloPDM(ctk.CTkFrame):
         # THREADING DA CRIAÇÃO DE FICHAS
         def task():
             self._safe_log(f"Preparando diretórios (Modo: {'Com Pastas' if criar_pastas else 'Apenas Planilhas'})...")
-            dados_pastas, msg = pdm_backend.processar_pastas_fichas(status_pmib, destino_fichas, lista_sel, criar_subpastas=criar_pastas)
+            dados_pastas, msg = backends.pdm_backend.processar_pastas_fichas(status_pmib, destino_fichas, lista_sel, criar_subpastas=criar_pastas)
             self._safe_log(msg)
 
             if not dados_pastas:
@@ -1419,7 +1416,7 @@ class ModuloPDM(ctk.CTkFrame):
             self._safe_log("Injetando os dados dos PDMs no Template (a partir da linha 79)...")
 
             # Repassando o callback para o backend conversar em tempo real com o terminal!
-            msg_res, logs = pdm_backend.aplicar_templates_fichas(dados_pastas, pasta_modificados, template, log_callback=self._safe_log)
+            msg_res, logs = backends.pdm_backend.aplicar_templates_fichas(dados_pastas, pasta_modificados, template, log_callback=self._safe_log)
             self._safe_log(msg_res)
 
             self._safe_log(">>> Processo de criação de fichas finalizado!")
@@ -1434,7 +1431,7 @@ class ModuloPDM(ctk.CTkFrame):
 
         def task():
             self._safe_log(f"Iniciando varredura por duplicados em: {pasta_limpeza}...")
-            res = pdm_backend.logica_excluir_duplicados(pasta_limpeza, log_callback=self._safe_log)
+            res = backends.pdm_backend.logica_excluir_duplicados(pasta_limpeza, log_callback=self._safe_log)
             self._safe_log(res)
             self.after(0, lambda: messagebox.showinfo("Resultado", "Limpeza concluída."))
 
@@ -1606,7 +1603,7 @@ class ModuloAnalyzer(ctk.CTkFrame):
 
     # --- Janela de Configuração de Pesos ---
     def abrir_config_pesos(self):
-        if not analyzer_backend:
+        if not backends.analyzer_backend:
             return messagebox.showerror("Erro", "Backend Analyzer não carregado.")
 
         win = ctk.CTkToplevel(self)
@@ -1621,7 +1618,7 @@ class ModuloAnalyzer(ctk.CTkFrame):
         ctk.CTkLabel(scroll, text="Pesos dos Campos Fixos", font=("Roboto", 14, "bold")).pack(pady=10)
 
         # Pega o mapa padrão do backend
-        config_map = analyzer_backend.CONFIG_MAP
+        config_map = backends.analyzer_backend.CONFIG_MAP
         self.entries_pesos = {}
 
         # Cria campos para cada item
@@ -1759,7 +1756,7 @@ class ModuloAnalyzer(ctk.CTkFrame):
     def _run_backend(self):
         try:
             self._parar_de_perguntar_desc = False
-            analyzer = analyzer_backend.DatasheetAnalyzer(self.api_key)
+            analyzer = backends.analyzer_backend.DatasheetAnalyzer(self.api_key)
             # Relatorio para o fornecedor: o backend acumula os achados de
             # cada ficha aqui dentro (ver `_registrar_no_relatorio`).
             self.relatorio_analise = analyzer_relatorio.RelatorioAnalise()
@@ -1772,7 +1769,7 @@ class ModuloAnalyzer(ctk.CTkFrame):
                     # 2026-08-26: era `wb.active` — a aba selecionada quando o
                     # arquivo foi salvo, que pode ser uma capa. Aí NENHUMA
                     # ficha do lote achava descrição. Ver `aba_do_status_pmib`.
-                    pmib_sheet = analyzer_backend.aba_do_status_pmib(wb)
+                    pmib_sheet = backends.analyzer_backend.aba_do_status_pmib(wb)
                     self.log("STATUS_PMIB carregada.")
                 except Exception as e: self.log(f"Erro STATUS_PMIB: {e}")
 
@@ -1844,7 +1841,7 @@ class ModuloTranslator(ModuleFrame):
         # nao usa `self.backend` (so `iniciar_traducao`/`parar_traducao` usam,
         # e essas so rodam por clique, com a tela ja montada).
         super().__init__(parent, controller, titulo="Tradutor Técnico (PT -> ES)")
-        self.backend = translator_backend.TechnicalTranslator()
+        self.backend = backends.translator_backend.TechnicalTranslator()
 
     def _build_ui(self):
         frm_main = ctk.CTkFrame(self.content, fg_color="#2B2B2B", corner_radius=8)
@@ -2092,7 +2089,7 @@ class ModuloUploadConditions(ctk.CTkFrame):
     def _worker_ia(self, files, status_file, processar_completos=False):
         try:
             # Instancia o backend
-            processor = upload_conditions_backend.ConditionsProcessor(self.api_key)
+            processor = backends.upload_conditions_backend.ConditionsProcessor(self.api_key)
             self.processor_ativo = processor  # Guarda a referência para o botão parar funcionar
 
             # Carrega o Status
@@ -2236,7 +2233,7 @@ class ModuloUploadConditions(ctk.CTkFrame):
         threading.Thread(target=self._worker_web, args=(dados,), daemon=True).start()
 
     def _worker_web(self, dados):
-        auto = upload_conditions_backend.UploadAutomation()
+        auto = backends.upload_conditions_backend.UploadAutomation()
         self.automacao_ativa = auto
         status_file = self.caminho_status.get()
 
@@ -2319,7 +2316,7 @@ class ModuloUploadTechSpecs(ctk.CTkFrame):
         self.api_key = self.controller.get_key("GEMINI")
 
         # Instancia o nosso novo Orquestrador do Backend
-        self.tech_controller = upload_tech_specs_backend.TechSpecsController()
+        self.tech_controller = backends.upload_tech_specs_backend.TechSpecsController()
 
         # Variáveis de Controle da UI
         self.var_processar_completos = ctk.BooleanVar(value=False)
@@ -3413,7 +3410,7 @@ class ModuloAutoSpec(ctk.CTkFrame):
         MESMA construção — duplicar as 4 chaves em dois lugares é como uma
         delas fica para trás quando um provedor novo entra.
         """
-        return autospec_backend.AutoSpecCore(
+        return backends.autospec_backend.AutoSpecCore(
             gemini_key=self.controller.get_key("GEMINI"),
             llama_key=self.controller.get_key("LLAMA"),
             google_search_key=self.controller.get_key("GOOGLE_SEARCH"),
@@ -3540,7 +3537,7 @@ class ModuloLMR(ctk.CTkFrame):
         # usuário recusou -- adivinhar aba funciona nove vezes e, na décima,
         # cadastra o lote a partir da planilha errada sem ninguém notar.
         try:
-            abas = lmr_backend.listar_abas(excel_path)
+            abas = backends.lmr_backend.listar_abas(excel_path)
         except Exception as e:
             messagebox.showerror("Erro", f"Não consegui ler as abas do arquivo:\n{e}")
             return
@@ -3585,7 +3582,7 @@ class ModuloLMR(ctk.CTkFrame):
 
     def _pre_processamento(self, excel_path, aba):
         try:
-            automator = lmr_backend.LMRAutomation()
+            automator = backends.lmr_backend.LMRAutomation()
             ok, df_completo, pmibs_unicos, msg = automator.carregar_dados_excel(excel_path, aba)
 
             self.log(msg)
@@ -3668,7 +3665,7 @@ class ModuloLMR(ctk.CTkFrame):
             return None
 
     def _worker_lmr(self, selecionados, df_completo):
-        auto = lmr_backend.LMRAutomation()
+        auto = backends.lmr_backend.LMRAutomation()
         try:
             self.log("Iniciando navegador...")
             auto.iniciar_driver()
@@ -3753,7 +3750,7 @@ class ModuloApagarLMR(ModuleFrame):
         threading.Thread(target=self._worker, args=(pmib,)).start()
 
     def _worker(self, pmib):
-        auto = apagar_lmr_backend.ApagarLMRAutomation()
+        auto = backends.apagar_lmr_backend.ApagarLMRAutomation()
         try:
             self.log("Iniciando navegador...")
             auto.iniciar_driver()
@@ -3898,7 +3895,7 @@ class ModuloPMIBManager(ctk.CTkFrame):
             self._safe_log("Iniciando fluxo de gestão de sobressalentes...")
 
             # Instancia a inteligência do Backend
-            manager = pmib_manager_backend.PMIBManager()
+            manager = backends.pmib_manager_backend.PMIBManager()
 
             # Callback de Travamento de Arquivo (Thread-Safe)
             def cb_retry_lock():
@@ -4131,7 +4128,7 @@ class ModuloBuscaPMIB(ctk.CTkFrame):
 
     def _worker_busca(self, pasta, modo, termo, coluna):
         try:
-            searcher = search_pmib_backend.PMIBSearcher()
+            searcher = backends.search_pmib_backend.PMIBSearcher()
             resultados = searcher.executar_busca(
                 pasta_raiz=pasta,
                 tipo_busca=modo,
@@ -5141,65 +5138,34 @@ class SplashScreen(ctk.CTk):
         threading.Thread(target=self.carregar_modulos).start()
 
     def carregar_modulos(self):
-        """Importa os módulos pesados um por um e atualiza a barra."""
+        """Importa os modulos pesados um por um e atualiza a barra.
 
-        # Lista de módulos para importar
-        # Formato: (Nome do Arquivo, Variável Global, Classes Específicas, NOME PARA EXIBIÇÃO)
-        modulos_para_carregar = [
-            ("cria_fichas_no_pmib_v1_backend", "mixed_classes", ["DataManager", "GeminiCategorizer", "AutomacaoPMIB"], "Gerador de Fichas"),
-            ("pdm_backend", "pdm_backend", None, "Processamento PDM"),
-            ("analyzer_backend", "analyzer_backend", None, "Analisador IA"),
-            ("translator_backend", "translator_backend", None, "Tradutor Técnico"),
-            ("upload_conditions_backend", "upload_conditions_backend", None, "Upload de Condições"),
-            ("upload_tech_specs_backend", "upload_tech_specs_backend", None, "Upload de Specs"),
-            ("autospec_backend", "autospec_backend", None, "AutoSpec RAG"),
-            ("lmr_backend", "lmr_backend", None, "Automação LMR"),
-            ("apagar_lmr_backend", "apagar_lmr_backend", None, "Ferramenta de Limpeza"),
-            ("pmib_manager_backend", "pmib_manager_backend", None, "Gerenciador PMIB"),
-            ("search_pmib_backend", "search_pmib_backend", None, "Search PMIB")
-        ]
+        [CP 7.3] A LISTA e o mecanismo de import saíram daqui para
+        `sigft/app/backends.py`. O splash ficou com o que e dele: mexer na
+        barra e no rotulo. O motivo esta no docstring daquele modulo -- em
+        resumo, `globals()[nome] = modulo` so alcancava as telas enquanto elas
+        moravam neste arquivo.
 
-        total = len(modulos_para_carregar)
+        A ORDEM e os nomes exibidos sao os mesmos: e o que o usuario ve.
+        """
+        inicio = time.time()
 
-        # Referência às variáveis globais do script principal
-        global DataManager, GeminiCategorizer, AutomacaoPMIB
-        global pdm_backend, analyzer_backend, translator_backend, upload_conditions_backend
-        global upload_tech_specs_backend, autospec_backend, lmr_backend, apagar_lmr_backend, pmib_manager_backend, search_pmib_backend
+        def ao_progredir(exibido, fracao):
+            self.after(0, lambda d=exibido: self.status_label.configure(text=f"Carregando: {d}..."))
+            # Delay minimo para a transicao nao piscar -- estava aqui antes.
+            time.sleep(0.1)
+            self.after(0, lambda p=fracao: self.progress.set(p))
 
-        start_time = time.time()
+        def ao_falhar(exibido, erro):
+            print(f"Erro ao carregar {exibido}: {erro}")
+            self.after(0, lambda d=exibido: self.status_label.configure(
+                text=f"Erro em {d}", text_color=COLORS["danger"]))
+            time.sleep(1)  # Pausa para ler o erro
 
-        # [ALTERAÇÃO]: Desempacotamos agora 4 variáveis: display_name foi adicionado
-        for i, (module_name, target_var, classes, display_name) in enumerate(modulos_para_carregar):
-            try:
-                # [ALTERAÇÃO]: Usamos display_name na interface
-                self.after(0, lambda d=display_name: self.status_label.configure(text=f"Carregando: {d}..."))
-
-                # Simula delay mínimo para visualização (opcional, deixa a transição mais suave)
-                time.sleep(0.1)
-
-                # Importação Dinâmica (Usa o module_name real)
-                mod = importlib.import_module(module_name)
-
-                # Atribuição às globais
-                if target_var == "mixed_classes":
-                    DataManager = getattr(mod, "DataManager")
-                    GeminiCategorizer = getattr(mod, "GeminiCategorizer")
-                    AutomacaoPMIB = getattr(mod, "AutomacaoPMIB")
-                else:
-                    globals()[target_var] = mod
-
-                # Atualiza Barra
-                progresso = (i + 1) / total
-                self.after(0, lambda p=progresso: self.progress.set(p))
-
-            except Exception as e:
-                print(f"Erro ao carregar {module_name}: {e}")
-                # Mostra erro usando o nome amigável
-                self.after(0, lambda d=display_name: self.status_label.configure(text=f"Erro em {d}", text_color=COLORS["danger"]))
-                time.sleep(1)  # Pausa para ler o erro
+        backends.carregar_todos(ao_progredir=ao_progredir, ao_falhar=ao_falhar)
 
         # Finalização
-        elapsed = time.time() - start_time
+        elapsed = time.time() - inicio
         self.after(0, lambda: self.status_label.configure(text=f"Concluído em {elapsed:.1f}s"))
         self.after(0, lambda: self.progress.set(1.0))
 
