@@ -14,6 +14,8 @@ from tkinter import messagebox
 from sigft.app import backends
 from sigft.app.theme import COLORS
 from sigft.app.widgets.module_frame import ModuleFrame
+# [CP B] Mensagens e dialogo da pausa de acao manual (login no portal).
+from sigft.app.widgets import dialogs as app_dialogs
 
 import customtkinter as ctk
 
@@ -86,7 +88,13 @@ class ModuloApagarLMR(ModuleFrame):
             auto.iniciar_driver()
             self.log("Carregando portal...")
             auto.abrir_portal()
-            messagebox.showinfo("Login Necessário", "Faça login no navegador e clique OK para começar a EXCLUSÃO.")
+            # [CP B] Era `messagebox.showinfo`, chamado daqui de dentro do
+            # `_worker` -- ou seja, criando widget fora da thread da interface.
+            # O botao diz o que vai acontecer: a acao e destrutiva.
+            self.pausar_e_esperar(
+                app_dialogs.MSG_LOGIN_APAGAR_LMR,
+                texto_botao=app_dialogs.TEXTO_COMECAR_EXCLUSAO,
+            )
 
             def cb_log(txt): self.log(txt)
 

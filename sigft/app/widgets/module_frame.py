@@ -32,9 +32,10 @@ import customtkinter as ctk
 
 from sigft.app import theme
 from sigft.app.widgets.console import ConsoleFrame
+from sigft.app.widgets.espera import DialogosDeEspera
 
 
-class ModuleFrame(ctk.CTkFrame):
+class ModuleFrame(DialogosDeEspera, ctk.CTkFrame):
     """Base das telas de módulo.
 
     A subclasse implementa `_build_ui()` e desenha DENTRO de `self.content`,

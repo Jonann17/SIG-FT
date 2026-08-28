@@ -48,6 +48,11 @@ from sigft.app import theme
 # arquivos-classe; aqui é uma constante, e quem compara importa daqui.
 LOGIN_NECESSARIO = "LOGIN_NECESSARIO"
 
+# Rótulo padrão do botão que solta o robô. É constante porque a tela de
+# exclusão de LMR troca o dela: numa ação destrutiva, o botão dizer o que vai
+# acontecer ("COMEÇAR A EXCLUSÃO") é mais honesto que um rótulo genérico.
+TEXTO_CONTINUAR = "CONTINUAR AUTOMAÇÃO"
+
 # As mensagens, palavra por palavra como estavam. A Fase 7 é zero redesign, e
 # texto de interface é aparência: mudar "solte o robô" para "iniciar" seria
 # uma alteração de produto sem pedido.
@@ -68,6 +73,58 @@ MSG_EXCEL_BLOQUEADO = (
     "Por favor, FECHE O ARQUIVO e clique em 'Tentar Novamente' para salvar o "
     "status da ficha concluída."
 )
+
+
+def msg_excel_bloqueado(caminho: object) -> str:
+    """A mesma mensagem, NOMEANDO o arquivo travado.
+
+    [CP D] Quando a janela passou a servir os 7 pontos de gravação que antes
+    falhavam calados, "o arquivo _STATUS_PMIB" deixou de bastar: o `pdm` grava
+    ficha e template, o `analyzer` grava relatório, o `autospec` grava a ficha
+    preenchida. Dizer QUAL arquivo fechar é a diferença entre o usuário
+    resolver em 5 segundos e ficar procurando.
+    """
+    import os
+
+    nome = os.path.basename(str(caminho)) or str(caminho)
+    return (
+        f"O arquivo '{nome}' está aberto em outro programa (provavelmente o "
+        "Excel), e por isso não pôde ser salvo.\n\n"
+        "FECHE O ARQUIVO e clique em 'Tentar Novamente'."
+    )
+
+
+# =============================================================================
+# [CP B] As 4 pausas de login que eram `messagebox.showinfo`
+# =============================================================================
+# Textos PRESERVADOS: cada um diz o que já dizia. Só a forma mudou, para a dos
+# passos numerados do modelo. Duas delas carregam instrução específica de qual
+# página abrir — isso é informação, não ruído, e some se uniformizarmos.
+MSG_LOGIN_APAGAR_LMR = (
+    "O navegador foi aberto.\n\n"
+    "1. Faça o LOGIN no site.\n"
+    "2. Clique abaixo para começar a EXCLUSÃO."
+)
+MSG_LOGIN_LMR = (
+    "O navegador foi aberto.\n\n"
+    "1. Faça o LOGIN no site.\n"
+    "2. Clique abaixo para começar."
+)
+MSG_LOGIN_NOVA_FICHA = (
+    "O navegador foi aberto.\n\n"
+    "1. Faça o LOGIN no portal.\n"
+    "2. Navegue até a página com o botão 'Nova Ficha'.\n"
+    "3. Clique abaixo quando estiver pronto."
+)
+MSG_LOGIN_PAGINA_PRINCIPAL = (
+    "O navegador foi aberto.\n\n"
+    "1. Faça o LOGIN no portal.\n"
+    "2. Navegue até a página PRINCIPAL (onde fica a barra de pesquisa).\n"
+    "3. Clique abaixo quando estiver pronto."
+)
+
+# Rótulo do botão na tela de exclusão de LMR — ação destrutiva.
+TEXTO_COMECAR_EXCLUSAO = "COMEÇAR A EXCLUSÃO"
 
 
 def msg_falha_ao_salvar(nome_secao: str) -> str:
@@ -123,7 +180,14 @@ class PausaLoginDialog(_DialogoDeAcaoManual):
                          evento_espera=evento)
     """
 
-    def __init__(self, master, *, mensagem: str, evento_espera):
+    def __init__(
+        self,
+        master,
+        *,
+        mensagem: str,
+        evento_espera,
+        texto_botao: str = TEXTO_CONTINUAR,
+    ):
         super().__init__(
             master,
             titulo="Ação Manual Necessária",
@@ -138,7 +202,7 @@ class PausaLoginDialog(_DialogoDeAcaoManual):
 
         self.botao = ctk.CTkButton(
             self,
-            text="CONTINUAR AUTOMAÇÃO",
+            text=texto_botao,
             command=self.liberar,
             fg_color=theme.COLORS["primary"],
             hover_color=theme.COLORS["primary_hover"],

@@ -13,6 +13,12 @@ import pandas as pd
 
 from sigft.app import backends, file_dialogs
 from sigft.app.theme import COLORS
+# [CP B] Mensagens e dialogo da pausa de acao manual (login no portal).
+from sigft.app.widgets import dialogs as app_dialogs
+# [CP A/B] Mixin com `pausar_e_esperar`: abre o dialogo na thread da
+# interface e segura o worker ate o usuario decidir. Vem ANTES de
+# ctk.CTkFrame na heranca, para o super().__init__ passar por ele.
+from sigft.app.widgets.espera import DialogosDeEspera
 from sigft.app.views.janelas import (
     JanelaAcaoRobo,
     JanelaResumo,
@@ -26,7 +32,7 @@ import customtkinter as ctk
 # =============================================================================
 # MÓDULO 1: CRIA FICHAS NO PMIB (INTERFACE GE VERNOVA)
 # =============================================================================
-class ModuloCriaFichas(ctk.CTkFrame):
+class ModuloCriaFichas(DialogosDeEspera, ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
@@ -363,7 +369,10 @@ class ModuloCriaFichas(ctk.CTkFrame):
         self.btn_run_auto.configure(state="disabled"); self.bot = backends.AutomacaoPMIB()
         try:
             self.bot.iniciar_driver(); self.bot.abrir_portal('https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList')
-            messagebox.showinfo("Ação Manual", "Faça login no portal.\nNavegue até a página com o botão 'Nova Ficha'.\n\nClique em OK apenas quando estiver pronto.")
+            # [CP B] Era `messagebox.showinfo` chamado daqui de dentro do worker
+            # -- criando widget fora da thread da interface. A instrucao de QUAL
+            # pagina abrir foi preservada: e informacao util, nao ruido.
+            self.pausar_e_esperar(app_dialogs.MSG_LOGIN_NOVA_FICHA)
             self.log("Iniciando Robô...")
             sucessos = []
             total = len(self.df_processed)
@@ -597,7 +606,8 @@ class ModuloCriaFichas(ctk.CTkFrame):
         try:
             self.bot.iniciar_driver()
             self.bot.abrir_portal('https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList')
-            messagebox.showinfo("Ação Manual", "Faça login no portal.\nNavegue até a página PRINCIPAL (onde fica a barra de pesquisa).\n\nClique em OK apenas quando estiver pronto.")
+            # [CP B] Idem, com a instrucao da pagina PRINCIPAL preservada.
+            self.pausar_e_esperar(app_dialogs.MSG_LOGIN_PAGINA_PRINCIPAL)
 
             self.log(f"Iniciando Edição em Massa de {len(lista_pmibs)} fichas...")
             self.progress_edicao.configure(mode="determinate")

@@ -11,6 +11,12 @@ from tkinter import messagebox, simpledialog
 
 from sigft.app import backends, file_dialogs
 from sigft.app.theme import COLORS
+# [CP B] Mensagens e dialogo da pausa de acao manual (login no portal).
+from sigft.app.widgets import dialogs as app_dialogs
+# [CP A/B] Mixin com `pausar_e_esperar`: abre o dialogo na thread da
+# interface e segura o worker ate o usuario decidir. Vem ANTES de
+# ctk.CTkFrame na heranca, para o super().__init__ passar por ele.
+from sigft.app.widgets.espera import DialogosDeEspera
 
 import customtkinter as ctk
 
@@ -18,7 +24,7 @@ import customtkinter as ctk
 # =============================================================================
 # MÓDULO 9: LMR (INTERFACE GE VERNOVA)
 # =============================================================================
-class ModuloLMR(ctk.CTkFrame):
+class ModuloLMR(DialogosDeEspera, ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
@@ -244,7 +250,8 @@ class ModuloLMR(ctk.CTkFrame):
             auto.iniciar_driver()
             self.log("Carregando portal...")
             auto.abrir_portal()
-            messagebox.showinfo("Login Necessário", "Faça login no navegador e clique OK para começar.")
+            # [CP B] Era `messagebox.showinfo` chamado do `_worker`.
+            self.pausar_e_esperar(app_dialogs.MSG_LOGIN_LMR)
 
             def cb_log(txt): self.log(txt)
             def cb_ask(tit, msg): return messagebox.askyesno(tit, msg)
