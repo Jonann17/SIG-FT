@@ -183,3 +183,36 @@ def save_with_retry(
             # tenta salvar de novo.
         else:
             return True
+
+
+def salvar_perguntando(
+    wb: Any,
+    path: Any,
+    *,
+    retry_lock: Callable[..., bool] | None = None,
+    logger: LoggerFn | None = None,
+) -> bool:
+    r"""`save_with_retry` ligado ao canal `retry_lock` do `UICallbacks`.
+
+    [CP D] Existe para que os pontos de gravação não precisem repetir o mesmo
+    laço de adaptação. Antes deste checkpoint, 7 lugares em 5 serviços
+    chamavam `wb.save(path)` direto: com a planilha aberta no Excel, o
+    `PermissionError` subia sem que ninguém perguntasse nada ao usuário, e o
+    lote morria sem explicar o motivo.
+
+    `retry_lock(caminho) -> bool` é o canal do CP C: `True` = tentar de novo
+    (o usuário fechou o arquivo), `False` = desistir. Ausente, o
+    comportamento é EXATAMENTE o de antes — uma tentativa, e o
+    `PermissionError` sobe. É o que torna esta mudança segura de aplicar em
+    massa: quem não passa o canal não muda de comportamento.
+
+    Devolve `True` se salvou. Deixa o `PermissionError` subir quando o usuário
+    escolhe desistir, para que o chamador registre a falha do jeito dele.
+    """
+
+    def _on_locked(_tentativa: int, _exc: BaseException) -> bool:
+        if retry_lock is None:
+            return False
+        return bool(retry_lock(path))
+
+    return save_with_retry(wb, path, on_locked=_on_locked, logger=logger)

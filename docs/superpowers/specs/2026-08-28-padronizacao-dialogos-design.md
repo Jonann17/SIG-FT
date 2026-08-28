@@ -75,7 +75,23 @@ widget fora da thread da interface. É a mesma classe de defeito que o CP 7.1 co
 console, onde 7 telas escreviam no `CTkTextbox` de dentro da thread. Funciona por sorte no
 Windows; não é correto.
 
-### 3.1 `ModuleFrame` ganha o mecanismo
+### 3.1 O mecanismo vive num mixin
+
+> **Correção aplicada durante a implementação (2026-08-28).** Este parágrafo
+> dizia "`ModuleFrame` ganha o mecanismo", e não sobreviveu ao contato com o
+> código: das 12 telas, **só 2 herdam de `ModuleFrame`** (`ApagarLMR` e
+> `Translator`, os pilotos do CP 7.1) — as outras 10 são `ctk.CTkFrame` puro.
+> Exigir a migração das 10 para poder trocar 4 caixas de diálogo deixaria a
+> correção refém de um trabalho muito maior.
+>
+> Virou `sigft/app/widgets/espera.py`, o mixin `DialogosDeEspera`: a tela o
+> adota com uma linha (`class ModuloLMR(DialogosDeEspera, ctk.CTkFrame)`), e a
+> `ModuleFrame` herda dele — então as 2 telas que já a usam ganham de graça,
+> sem mudar nada. A ordem importa: o mixin vem ANTES da classe do
+> CustomTkinter, para o `super().__init__` passar por ele.
+>
+> Telas que adotaram: `ApagarLMR` e `Translator` (via `ModuleFrame`), `LMR`,
+> `CriaFichas`, `Analyzer` e `PDM` (direto).
 
 Um método interno privado que serve aos dois casos, e dois métodos públicos sobre ele:
 

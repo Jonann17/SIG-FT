@@ -23,6 +23,7 @@ Como `autospec_conferencia`, este módulo **não importa tkinter**: um teste
 verifica por AST. A tela só escolhe onde salvar.
 """
 import os
+from sigft.core.excel import locking
 
 
 # Rótulos legíveis, na redação do próprio usuário (lista de campos
@@ -149,7 +150,7 @@ class RelatorioAnalise:
                  "" if f["nota"] is None else f"{f['nota']}%")
                 for f in self._fichas]
 
-    def salvar_xlsx(self, pasta_destino, nome=None):
+    def salvar_xlsx(self, pasta_destino, nome=None, retry_lock=None):
         """Grava e devolve o caminho. `None` quando não há pendência.
 
         O `openpyxl` é importado AQUI dentro, e não no topo: assim o módulo
@@ -194,5 +195,6 @@ class RelatorioAnalise:
         except Exception:
             pass  # formatação é conforto; o dado já está gravado
 
-        wb.save(caminho)
+        # [CP D] Era `wb.save(caminho)` cru.
+        locking.salvar_perguntando(wb, caminho, retry_lock=retry_lock)
         return caminho

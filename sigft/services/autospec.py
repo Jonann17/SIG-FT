@@ -33,6 +33,7 @@ from sigft.core.relatorio_lote import RelatorioLote
 # separado porque este arquivo ja passou de 1.500 linhas -- e porque o
 # algoritmo (BM25) nao sabe nada sobre ficha tecnica nem sobre Excel.
 from sigft.services import autospec_rag
+from sigft.core.excel import locking
 
 # -----------------------------------------------------------------
 # 1. CONFIGURAÇÕES E MAPAS
@@ -2729,7 +2730,11 @@ class AutoSpecCore:
 
         base, ext = os.path.splitext(filepath)
         new_path = f"{base}_completed{ext}"
-        wb.save(new_path)
+        # [CP D] Era `wb.save(new_path)` cru: com a ficha aberta no Excel, o
+        # PermissionError subia e o preenchimento inteiro da IA se perdia.
+        locking.salvar_perguntando(
+            wb, new_path, retry_lock=getattr(callbacks, "retry_lock", None)
+        )
         return new_path
 
     # --- MÉTODOS PÚBLICOS DE FLUXO ---

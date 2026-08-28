@@ -22,12 +22,15 @@ from sigft.app.widgets import pickers as app_pickers
 from sigft.services import analyzer_relatorio
 
 import customtkinter as ctk
+# [CP D] Mixin com `perguntar_retry_excel`: a janela de "o arquivo esta
+# aberto no Excel, fecho e tento de novo?". Vem ANTES de ctk.CTkFrame.
+from sigft.app.widgets.espera import DialogosDeEspera
 
 
 # =============================================================================
 # MÓDULO 3: TECHNICAL DATASHEET ANALYZER (INTERFACE GE VERNOVA)
 # =============================================================================
-class ModuloAnalyzer(ctk.CTkFrame):
+class ModuloAnalyzer(DialogosDeEspera, ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
@@ -175,7 +178,9 @@ class ModuloAnalyzer(ctk.CTkFrame):
                 "Relatório", "Rode uma análise primeiro — não há pendências para relatar.")
         destino = self.selected_output or os.getcwd()
         try:
-            caminho = self.relatorio_analise.salvar_xlsx(destino)
+            caminho = self.relatorio_analise.salvar_xlsx(
+                destino, retry_lock=self.perguntar_retry_excel
+            )
         except Exception as e:
             self.log(f"Nao consegui gerar o relatorio: {e}")
             return messagebox.showerror("Relatório", f"Não consegui gerar o arquivo:\n{e}")
@@ -374,7 +379,8 @@ class ModuloAnalyzer(ctk.CTkFrame):
                     score_threshold=int(self.score_value),
                     custom_weights=self.custom_weights,        # <--- NOVO
                     max_variable_points=self.max_var_points,   # <--- NOVO
-                    callback_manual_desc=self._perguntar_descricao
+                    callback_manual_desc=self._perguntar_descricao,
+                    retry_lock=self.perguntar_retry_excel,
                 )
                 # 2026-08-26, duas correções neste laço:
                 #

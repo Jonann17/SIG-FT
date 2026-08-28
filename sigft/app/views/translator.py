@@ -72,7 +72,9 @@ class ModuloTranslator(ModuleFrame):
     def _worker(self, files):
         try:
             for f_path in files:
-                for msg in self.backend.processar_arquivo(f_path):
+                for msg in self.backend.processar_arquivo(
+                    f_path, retry_lock=self.perguntar_retry_excel
+                ):
                     if msg == "PARADO":
                         self.log("Processo interrompido pelo usuário.")
                         return

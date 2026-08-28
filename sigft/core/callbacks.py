@@ -67,6 +67,14 @@ INCONDICIONALMENTE, sem nenhum `if callback_x:` espalhado pelo código:
     resultado final, por um caminho diferente (chamar sempre, em vez de
     checar truthy antes de chamar).
   - `pause`/`progress` sem provedor -> não fazem nada (retornam `None`).
+  - `retry_lock` sem provedor -> retorna `False` (= "não retente"). [CP C]
+    Canal para "o arquivo Excel está aberto em outro programa: tento de
+    novo?". Recebe o caminho e devolve `True`/`False`; é o formato que
+    `core/excel/locking.save_with_retry` espera em `on_locked`. Existe
+    separado de `ask` porque a UI precisa saber O QUE está sendo perguntado
+    para abrir a janela certa (`RetryLockDialog`, com "Tentar Novamente" e
+    "Ignorar e Continuar") — com `ask` genérico ela receberia só um texto e
+    teria de adivinhar pelo conteúdo.
 
 Só stdlib (`dataclasses`, `typing`) — nenhuma dependência de UI (nem
 tkinter, nem customtkinter). Importável no ambiente de teste sem stub
@@ -89,20 +97,22 @@ class UICallbacks:
 
       log(msg, nivel="info", contexto=None) -> None  — OBRIGATÓRIO.
       pause(motivo=None) -> None                      — opcional, no-op.
+      retry_lock(caminho) -> bool                     — opcional, False.
       ask(pergunta, *, titulo=None) -> bool            — opcional, no-op
         devolve `False`.
       progress(atual, total, *, item=None) -> None     — opcional, no-op.
 
     `pause`/`ask`/`progress` ausentes (`None`) são substituídos em
     `__post_init__` por implementações no-op seguras — depois de construído,
-    um `UICallbacks` NUNCA tem `pause`/`ask`/`progress` valendo `None`; os 4
-    campos são sempre chamáveis diretamente.
+    um `UICallbacks` NUNCA tem `pause`/`ask`/`progress`/`retry_lock` valendo
+    `None`; os 5 campos são sempre chamáveis diretamente.
     """
 
     log: Callable[..., None]
     pause: Callable[..., None] | None = None
     ask: Callable[..., bool] | None = None
     progress: Callable[..., None] | None = None
+    retry_lock: Callable[..., bool] | None = None
 
     def __post_init__(self) -> None:
         if self.pause is None:
@@ -111,6 +121,8 @@ class UICallbacks:
             self.ask = _noop_ask
         if self.progress is None:
             self.progress = _noop_progress
+        if self.retry_lock is None:
+            self.retry_lock = _noop_retry_lock
         # CP 4.4: normaliza `log` para que ele SEMPRE possa ser chamado na
         # forma completa do protocolo, `log(msg, nivel, contexto)`.
         #
@@ -176,6 +188,18 @@ def _noop_log(*_args: object, **_kwargs: object) -> None:
 
 def _noop_pause(*_args: object, **_kwargs: object) -> None:
     return None
+
+
+def _noop_retry_lock(*_args: object, **_kwargs: object) -> bool:
+    """Sem provedor, NUNCA retenta — que é exatamente o comportamento de hoje.
+
+    [CP C] Importa que o default seja `False`: os 7 pontos que passaram a usar
+    `save_with_retry` falhavam de imediato no `PermissionError`. Com o no-op
+    devolvendo `False`, eles continuam falhando de imediato quando ninguém
+    fornece o canal — ou seja, ganhar o canal não muda o comportamento de
+    ninguém; só cria a POSSIBILIDADE de perguntar.
+    """
+    return False
 
 
 def _noop_ask(*_args: object, **_kwargs: object) -> bool:

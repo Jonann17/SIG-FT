@@ -26,6 +26,7 @@ from sigft.core.llm.client import get_llm
 # (extrair mat/fab, montar str_fixed/str_vars) continua aqui.
 from sigft.core.llm import prompts
 from sigft.services import analyzer_relatorio
+from sigft.core.excel import locking
 
 # -----------------------------------------------------------------
 # CONSTANTES E CONFIGURAÇÕES
@@ -340,7 +341,7 @@ class DatasheetAnalyzer:
     # -----------------------------------------------------------------
     # LÓGICA DE PROCESSO (IDÊNTICA AO ORIGINAL)
     # -----------------------------------------------------------------
-    def processar_planilha(self, input_filepath, root_output_dir, subfolder_name, original_filename, pmib_sheet, score_threshold, custom_weights=None, max_variable_points=45.0, callback_manual_desc=None):
+    def processar_planilha(self, input_filepath, root_output_dir, subfolder_name, original_filename, pmib_sheet, score_threshold, custom_weights=None, max_variable_points=45.0, callback_manual_desc=None, retry_lock=None):
         """
         Executa o pipeline completo de análise para um arquivo com NORMALIZAÇÃO AUTOMÁTICA.
         """
@@ -724,7 +725,8 @@ class DatasheetAnalyzer:
                 shutil.copy2(input_filepath, out_path)
                 yield f"Salvo (Original): {out_name}"
             else:
-                wb.save(out_path)
+                # [CP D] Era `wb.save(out_path)` cru.
+                locking.salvar_perguntando(wb, out_path, retry_lock=retry_lock)
                 yield f"Salvo (Marcado): {out_name}"
             return True
         except Exception as e:

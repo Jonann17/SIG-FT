@@ -1,10 +1,12 @@
 import os
+from types import SimpleNamespace
 import time
 import shutil
 import tempfile
 from unidecode import unidecode
 import xlwings as xw
 from deep_translator import GoogleTranslator, MyMemoryTranslator
+from sigft.core.excel import locking
 
 
 class TechnicalTranslator:
@@ -48,7 +50,7 @@ class TechnicalTranslator:
         except Exception:
             return texto_str  # Retorna original se tudo falhar
 
-    def processar_arquivo(self, caminho_original):
+    def processar_arquivo(self, caminho_original, retry_lock=None):
         """
         Processa um único arquivo Excel.
         Yields: Mensagens de log para a interface e Status finais ("PARADO", "SUCESSO", "ERRO").
@@ -198,8 +200,21 @@ class TechnicalTranslator:
                 else:
                     row_range.color = (189, 215, 238)  # Azul claro
 
-            # Salvar
-            wb.save()
+            # Salvar -- [CP D] era `wb.save()` cru.
+            #
+            # Caso especial: aqui o `wb` e um workbook do XLWINGS (Excel via
+            # COM), e o `save()` dele NAO recebe caminho -- ele grava onde o
+            # arquivo ja esta. `salvar_perguntando` chama `wb.save(path)`,
+            # entao adaptamos com um objeto duck-typed minimo, o mesmo padrao
+            # que `upload_conditions` usa para o DataFrame do pandas.
+            #
+            # O caminho vai junto so para a MENSAGEM: e ele que a janela mostra
+            # ao usuario ("feche o arquivo X"), e sem isso a janela diria
+            # apenas "o arquivo", que nao ajuda quem tem varios abertos.
+            _adaptador_save = SimpleNamespace(save=lambda _caminho: wb.save())
+            locking.salvar_perguntando(
+                _adaptador_save, caminho_original, retry_lock=retry_lock
+            )
             wb.close()
 
             # Restaurar se Temp

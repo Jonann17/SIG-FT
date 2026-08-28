@@ -305,16 +305,23 @@ def _classes_das_views():
 
 
 def _metodos_do_mixin_chamados(classe):
+    """Toda referência a `self.<metodo do mixin>`, chamada OU não.
+
+    A distinção importa e já falhou uma vez: ligar o canal do CP D é
+    `retry_lock=self.perguntar_retry_excel` — uma REFERÊNCIA ao método, sem
+    parênteses. Uma versão anterior deste helper só procurava `ast.Call`, e
+    passou verde sobre duas telas que referenciavam o método sem ter o mixin.
+    Um `ast.Attribute` cobre os dois casos, porque toda chamada contém um.
+    """
     chamados = set()
     for sub in ast.walk(classe):
         if (
-            isinstance(sub, ast.Call)
-            and isinstance(sub.func, ast.Attribute)
-            and isinstance(sub.func.value, ast.Name)
-            and sub.func.value.id == "self"
-            and sub.func.attr in METODOS_DO_MIXIN
+            isinstance(sub, ast.Attribute)
+            and isinstance(sub.value, ast.Name)
+            and sub.value.id == "self"
+            and sub.attr in METODOS_DO_MIXIN
         ):
-            chamados.add(sub.func.attr)
+            chamados.add(sub.attr)
     return chamados
 
 

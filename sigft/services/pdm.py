@@ -24,6 +24,7 @@ from sigft.core.excel import pmib_codes
 # log hoje -- fora de escopo deste checkpoint (ver PENDENCIAS.md).
 from sigft.core.callbacks import from_legacy
 from sigft.core.relatorio_lote import RelatorioLote
+from sigft.core.excel import locking
 
 
 # =============================================================================
@@ -62,7 +63,7 @@ def processar_arquivo_pdm(caminho_arquivo_pdm):
         return None
 
 
-def salvar_tabela_formatada(nova_tabela, caminho_arquivo_original, pasta_destino, force=False):
+def salvar_tabela_formatada(nova_tabela, caminho_arquivo_original, pasta_destino, force=False, retry_lock=None):
     nome_original = os.path.basename(caminho_arquivo_original)
     nome_sem_extensao = os.path.splitext(nome_original)[0]
     novo_nome = nome_sem_extensao + "_formatado.xlsx"
@@ -96,7 +97,7 @@ def salvar_tabela_formatada(nova_tabela, caminho_arquivo_original, pasta_destino
             c2.alignment = estilo; c2.font = fonte
             for c in range(11, 21): ws.cell(row=i, column=c).border = borda
 
-        wb.save(caminho_saida)
+        locking.salvar_perguntando(wb, caminho_saida, retry_lock=retry_lock)
         return True, f"Salvo: {novo_nome}"
     except Exception as e:
         return False, f"Erro ao salvar: {e}"
@@ -105,7 +106,7 @@ def salvar_tabela_formatada(nova_tabela, caminho_arquivo_original, pasta_destino
 # =============================================================================
 # LÓGICA FROM ITAIPU
 # =============================================================================
-def pdms_fromItaipu_lista_geral(path_lista_geral_pdms, pasta_destino, log_callback=None):
+def pdms_fromItaipu_lista_geral(path_lista_geral_pdms, pasta_destino, log_callback=None, retry_lock=None):
     # CP 4.4: `from_legacy` adapta o `log_callback` de assinatura ANTIGA
     # (1 callable posicional) para `UICallbacks` -- a assinatura pública da
     # função NÃO muda (continua `log_callback=None`, aceitando o mesmo
@@ -201,7 +202,7 @@ def pdms_fromItaipu_lista_geral(path_lista_geral_pdms, pasta_destino, log_callba
                             new_c.number_format = copy(celula.number_format)
                             new_c.alignment = copy(celula.alignment)
 
-                wb.save(caminho_final)
+                locking.salvar_perguntando(wb, caminho_final, retry_lock=retry_lock)
                 criados.append(nome_arq)
                 wb.close()
                 lote.sucesso(codigo, f"criado {nome_arq}")
@@ -264,7 +265,7 @@ def processar_pastas_fichas(arquivo_STATUS_PMIB, destino_fichas, lista_seleciona
         return [], f"Erro ao ler Excel: {e}"
 
 
-def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template, log_callback=None):
+def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template, log_callback=None, retry_lock=None):
     # CP 4.4: mesma adaptação de `pdms_fromItaipu_lista_geral` acima --
     # `callbacks` é local, a assinatura pública não muda.
     callbacks = from_legacy(callback_log=log_callback)
@@ -354,7 +355,7 @@ def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,
                     ws_target.row_dimensions[row_idx].height = 32
 
                 out_file = os.path.join(pasta_destino, f"{pmib}.xlsx")
-                wb_target.save(out_file)
+                locking.salvar_perguntando(wb_target, out_file, retry_lock=retry_lock)
                 wb_target.close()
                 wb_pdm.close()
                 count += 1

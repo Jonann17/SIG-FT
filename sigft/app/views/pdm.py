@@ -18,12 +18,15 @@ from sigft.core import prefs
 from sigft.core.excel.pmib_codes import normalize_pmib
 
 import customtkinter as ctk
+# [CP D] Mixin com `perguntar_retry_excel`: a janela de "o arquivo esta
+# aberto no Excel, fecho e tento de novo?". Vem ANTES de ctk.CTkFrame.
+from sigft.app.widgets.espera import DialogosDeEspera
 
 
 # =============================================================================
 # MÓDULO 2: PROCESSAMENTO DE PDMS (INTERFACE GE VERNOVA)
 # =============================================================================
-class ModuloPDM(ctk.CTkFrame):
+class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
@@ -259,7 +262,10 @@ class ModuloPDM(ctk.CTkFrame):
         # Thread para não congelar a tela
         def task():
             self._safe_log(f"Fatiando a lista geral: {os.path.basename(lista)}...")
-            res = backends.pdm_backend.pdms_fromItaipu_lista_geral(lista, pasta_alvo, log_callback=self._safe_log)
+            res = backends.pdm_backend.pdms_fromItaipu_lista_geral(
+                lista, pasta_alvo, log_callback=self._safe_log,
+                retry_lock=self.perguntar_retry_excel,
+            )
             self._safe_log(res)
             self.after(0, lambda: messagebox.showinfo("Relatório", res))
 
@@ -278,7 +284,10 @@ class ModuloPDM(ctk.CTkFrame):
                 for arq in backends.pdm_backend.listar_arquivos_excel(origem):
                     tbl = backends.pdm_backend.processar_arquivo_pdm(arq)
                     if tbl is not None:
-                        ok, msg = backends.pdm_backend.salvar_tabela_formatada(tbl, arq, self.caminho_destino.get())
+                        ok, msg = backends.pdm_backend.salvar_tabela_formatada(
+                            tbl, arq, self.caminho_destino.get(),
+                            retry_lock=self.perguntar_retry_excel,
+                        )
                         self._safe_log(msg)  # Aqui o laço já está no front, então manda o safe_log direto
                         if ok: count += 1
                 self._safe_log(f"Fim: {count} arquivos processados com sucesso.")
@@ -295,7 +304,10 @@ class ModuloPDM(ctk.CTkFrame):
                 def task_esp():
                     tbl = backends.pdm_backend.processar_arquivo_pdm(arq)
                     if tbl is not None:
-                        ok, msg = backends.pdm_backend.salvar_tabela_formatada(tbl, arq, self.caminho_destino.get(), force=True)
+                        ok, msg = backends.pdm_backend.salvar_tabela_formatada(
+                            tbl, arq, self.caminho_destino.get(), force=True,
+                            retry_lock=self.perguntar_retry_excel,
+                        )
                         self._safe_log(msg)
                         self.after(0, lambda: messagebox.showinfo("Status", msg))
                 threading.Thread(target=task_esp, daemon=True).start()
@@ -381,7 +393,11 @@ class ModuloPDM(ctk.CTkFrame):
             self._safe_log("Injetando os dados dos PDMs no Template (a partir da linha 79)...")
 
             # Repassando o callback para o backend conversar em tempo real com o terminal!
-            msg_res, logs = backends.pdm_backend.aplicar_templates_fichas(dados_pastas, pasta_modificados, template, log_callback=self._safe_log)
+            msg_res, logs = backends.pdm_backend.aplicar_templates_fichas(
+                dados_pastas, pasta_modificados, template,
+                log_callback=self._safe_log,
+                retry_lock=self.perguntar_retry_excel,
+            )
             self._safe_log(msg_res)
 
             self._safe_log(">>> Processo de criação de fichas finalizado!")
