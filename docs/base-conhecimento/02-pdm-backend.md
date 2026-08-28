@@ -1,5 +1,16 @@
 # PDM Backend (`pdm_backend.py`)
 
+> ⚠️ **Onde o código mora hoje** (atualizado em 2026-08-28)
+>
+> Este documento foi escrito antes da refatoração e descreve o comportamento do
+> módulo, que continua valendo. Mas os CAMINHOS mudaram:
+>
+> | O que o texto abaixo chama de | Está hoje em |
+> |---|---|
+> | `pdm_backend.py` | `sigft/services/pdm.py` (serviço) · `sigft/app/views/pdm.py` (tela) |
+>
+> A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
+
 ## Propósito
 Módulo de funções soltas que gerencia o ciclo de vida de Planilhas de Dados de Materiais (PDM): extração de dados de arquivos Excel, fatia de listas gerais em arquivos individuais, preenchimento de fichas técnicas com informações de PDM e exclusão de duplicatas.
 

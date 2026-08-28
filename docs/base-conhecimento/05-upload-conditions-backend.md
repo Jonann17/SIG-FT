@@ -1,5 +1,18 @@
 # Upload de Condições (`upload_conditions_backend.py`)
 
+> ⚠️ **Onde o código mora hoje** (atualizado em 2026-08-28)
+>
+> Este documento foi escrito antes da refatoração e descreve o comportamento do
+> módulo, que continua valendo. Mas os CAMINHOS mudaram:
+>
+> | O que o texto abaixo chama de | Está hoje em |
+> |---|---|
+> | `upload_conditions_backend.py` | `sigft/services/upload_conditions.py` (serviço) · `sigft/app/views/upload_conditions.py` (tela) |
+>
+> ⚠️ Esta tela escreve o log **só no console da janela** — ele some quando a janela fecha. O log em arquivo (`sigft/core/log_execucao.py`) existe desde 2026-08-18, mas hoje só o módulo de Cópia de Fichas o liga. Ver `PENDENCIAS.md`.
+>
+> A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
+
 ## Propósito
 
 Processa as fichas de condições de armazenamento, transporte, manutenção e descarte via IA e automatiza o preenchimento das 4 abas de condições no portal PMIB.

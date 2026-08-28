@@ -1,5 +1,17 @@
 # AutoSpec Backend (`sigft/services/autospec.py`)
 
+> ⚠️ **Onde o código mora hoje** (atualizado em 2026-08-28)
+>
+> Este documento foi escrito antes da refatoração e descreve o comportamento do
+> módulo, que continua valendo. Mas os CAMINHOS mudaram:
+>
+> | O que o texto abaixo chama de | Está hoje em |
+> |---|---|
+> | `autospec_backend.py` | `sigft/services/autospec.py` + `autospec_conferencia.py`, `autospec_embeddings.py`, `autospec_rag.py`, `autospec_unidades.py` |
+> | a tela | `sigft/app/views/autospec.py` |
+>
+> A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
+
 > **Onde o código mora:** `sigft/services/autospec.py` (580 linhas) desde o CP 4.1.
 > `autospec_backend.py` na raiz é só um **shim** que faz `sys.modules[__name__] = _modulo` —
 > os dois nomes apontam para o MESMO objeto de módulo, então `monkeypatch` por qualquer um

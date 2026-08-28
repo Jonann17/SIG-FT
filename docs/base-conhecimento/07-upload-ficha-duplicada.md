@@ -1,5 +1,19 @@
 # Upload de Ficha Duplicada (`upload_ficha_duplicada.py`)
 
+> ⚠️ **Onde o código mora hoje** (atualizado em 2026-08-28)
+>
+> Este documento foi escrito antes da refatoração e descreve o comportamento do
+> módulo, que continua valendo. Mas os CAMINHOS mudaram:
+>
+> | O que o texto abaixo chama de | Está hoje em |
+> |---|---|
+> | `upload_ficha_duplicada.py` | 9 arquivos `sigft/services/duplicadas*.py` (`duplicadas.py`, `_condicoes`, `_documentos`, `_extrator`, `_imagens`, `_injetor`, `_pdm`, `_robo`, `_spec`) |
+> | a tela | `sigft/app/views/copia_fichas.py` |
+>
+> ⚠️ **Este módulo foi RECONSTRUÍDO na Fase 6, não apenas movido** (decisão de produto nº 1). Partes do texto abaixo podem descrever comportamento que não existe mais. Os seletores e o fluxo atuais estão em `sigft/core/rpa/seletores_duplicada.py`.
+>
+> A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
+
 ## Propósito
 
 Clona fichas técnicas completas (informações gerais, fornecedores, condições, características, documentos, imagens) de uma ficha base para uma ficha alvo, usando Selenium para scraping/injeção de dados com purga de características preservando CÓDIGO PMIB da base. Orquestra 3 fases: fila (GerenciadorFilaPMIB), extração base (ExtratorFichaBase), injeção alvo (InjetorFichaAlvo), atualização status.

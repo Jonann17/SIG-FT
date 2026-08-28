@@ -1,5 +1,18 @@
 # Search PMIB Backend (`search_pmib_backend.py`)
 
+> ⚠️ **Onde o código mora hoje** (atualizado em 2026-08-28)
+>
+> Este documento foi escrito antes da refatoração e descreve o comportamento do
+> módulo, que continua valendo. Mas os CAMINHOS mudaram:
+>
+> | O que o texto abaixo chama de | Está hoje em |
+> |---|---|
+> | `search_pmib_backend.py` | `sigft/services/search.py` (serviço) · `sigft/app/views/busca_pmib.py` (tela) |
+>
+> ⚠️ Atenção aos nomes: o serviço é `search.py` e a tela é `busca_pmib.py` — nenhum dos dois repete o nome antigo.
+>
+> A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
+
 ## Propósito
 Fornece dois modos de busca em arquivos `*_STATUS_PMIB*`: busca direcionada (coluna específica) e busca generalista (normalização agressiva removendo acentos/pontuação, concatenando linha inteira). Varre recursivamente os.walk por arquivos Excel, detecta dinamicamente cabeçalho pela palavra-chave "DESCRIÇÃO", e retorna correspondências com metadados (código Itaipu, arquivo, pasta, coluna match, amostra).
 

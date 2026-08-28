@@ -1,5 +1,18 @@
 # Upload de Especificações Técnicas (`upload_tech_specs_backend.py`)
 
+> ⚠️ **Onde o código mora hoje** (atualizado em 2026-08-28)
+>
+> Este documento foi escrito antes da refatoração e descreve o comportamento do
+> módulo, que continua valendo. Mas os CAMINHOS mudaram:
+>
+> | O que o texto abaixo chama de | Está hoje em |
+> |---|---|
+> | `upload_tech_specs_backend.py` | `sigft/services/tech_specs.py` (serviço) · `sigft/app/views/upload_tech_specs.py` (tela) |
+>
+> ⚠️ Atenção ao nome: o serviço chama-se `tech_specs.py`, sem o prefixo `upload_`.
+>
+> A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
+
 ## Propósito
 
 Processa características técnicas cruzando `_STATUS_PMIB` + Master PDM com IA (Gemini 3.5-flash em modo JSON) e system prompt de regras CHAR/INT/NUM/LISTA com auditorias de tipo, unidade e paginação. Automatiza preenchimento de tabelas de características no portal com exclusão segura, auditoria de rejeição e pendências manuais.

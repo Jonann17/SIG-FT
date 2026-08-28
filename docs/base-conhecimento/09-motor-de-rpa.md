@@ -1,5 +1,18 @@
 # O motor de RPA — Playwright explicado para quem escreveu o Selenium
 
+> ⚠️ **Onde o código mora hoje** (atualizado em 2026-08-28)
+>
+> Este documento foi escrito antes da refatoração e descreve o comportamento do
+> módulo, que continua valendo. Mas os CAMINHOS mudaram:
+>
+> | O que o texto abaixo chama de | Está hoje em |
+> |---|---|
+> | o motor de RPA | `sigft/core/rpa/` (engine, portal, factory, seletores) |
+>
+> Este documento já foi atualizado em 2026-08-14 e está em dia. Lembrete: o **Selenium foi REMOVIDO no CP 5.5** — o Playwright é o motor único desde então.
+>
+> A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
+
 > **Por que este documento existe.** Na validação de 2026-08-11 o Playwright
 > passou nos três módulos testados contra o portal real, e mesmo assim a
 > reação foi: *"sinto que é meio perigoso, pois não entendo como o Playwright

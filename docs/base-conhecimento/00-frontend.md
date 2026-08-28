@@ -1,5 +1,18 @@
 # Frontend (`frontend.py`)
 
+> ⚠️ **Onde o código mora hoje** (atualizado em 2026-08-28)
+>
+> Este documento foi escrito antes da refatoração e descreve o comportamento do
+> módulo, que continua valendo. Mas os CAMINHOS mudaram:
+>
+> | O que o texto abaixo chama de | Está hoje em |
+> |---|---|
+> | `frontend.py` | `sigft/app/views/*.py`, `sigft/app/widgets/`, `sigft/app/theme.py` |
+>
+> Cada tela virou um arquivo próprio no CP 7.3 (ex.: `ModuloCriaFichas` em `sigft/app/views/cria_fichas.py`, `ModuloAnalyzer` em `sigft/app/views/analyzer.py`, `ModuloUploadConditions` em `sigft/app/views/upload_conditions.py`, etc.). O arquivo `frontend.py` continua como ponto de entrada compatível (92 linhas). Todos os widgets compartilhados estão em `sigft/app/widgets/` (console.py, dialogs.py, espera.py, module_frame.py, pickers.py).
+>
+> A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
+
 ## Propósito
 
 O módulo frontend implementa a interface gráfica desktop (CustomTkinter) do SIG-FT. Gerencia a navegação entre 12 módulos de tela especializados, o carregamento dinâmico de backends pesados via importlib durante a SplashScreen inicial, e a comunicação entre UI e lógica de negócio através de um padrão controller/getter para chaves API e callbacks de thread.
@@ -189,3 +202,4 @@ Fluxo principal de criação:
 - **Importlib na SplashScreen**: Módulos importados com `importlib.import_module()`, não `import direto`. Permite reload, mas sem validação se módulo existe — falha silenciosamente durante splash se backend renomeado.
 - **Dataframe merge em resume**: `pd.merge(self.df_processed, df_selenium, on='descricao_original', how='inner')` assume coluna idêntica em ambos DFs; mismatch causa perda de dados.
 - **Windows only**: ChromeDriver hardcoded; código específico para OutSystems portal (XPaths frágeis se portal mudar).
+

@@ -567,6 +567,46 @@ informações necessárias da ficha original; replicar essas informações na fi
 
 ---
 
+## 3.9 Regra permanente: a base de conhecimento é ENTREGÁVEL, não só insumo
+
+> **Acrescentada em 2026-08-28, depois de o usuário apontar que a base não era
+> atualizada desde o início da refatoração. Ele estava certo, e a causa é
+> estrutural — não foi descuido de execução.**
+
+Este plano trata `docs/base-conhecimento/` como **insumo**: a linha 6 diz que o
+agente "lê este plano, a base de conhecimento e implementa". Em 9 fases e ~30
+checkpoints, **só o CP 6.4** pedia atualizar um doc no critério de aceite.
+
+O resultado, medido em 2026-08-28:
+
+| Sintoma | Medida |
+|---|---|
+| Docs parados na data do bootstrap (2026-07-24) | **9 de 14** |
+| Docs que mandam o leitor para `frontend.py` / `*_backend.py` | **12 de 14** |
+| Docs que mencionam `sigft/app` (onde as 12 telas vivem hoje) | **0** |
+| Docs que mencionam `UICallbacks` (o protocolo do CP 1.4) | **0** |
+| Docs que mencionam `save_with_retry` | **0** |
+| Docs que mencionam Playwright (motor ÚNICO desde o CP 5.5) | **1** |
+
+Os arquivos citados por eles ainda existem — mas viraram shims de 22 a 92
+linhas. Quem segue a documentação abre o arquivo e não encontra código nenhum,
+o que é pior do que um caminho quebrado: o caminho quebrado avisa.
+
+E o efeito é composto: o documento que o executor **lê para decidir** descreve
+um sistema que não existe mais. Cada checkpoint novo foi feito sobre uma base
+que envelhecia.
+
+**A regra, daqui em diante:** um checkpoint que MOVE código de arquivo, RENOMEIA
+um módulo ou MUDA uma camada não está concluído enquanto o doc correspondente
+em `docs/base-conhecimento/` não apontar para o lugar novo. Isso entra no
+critério de aceite do checkpoint, não numa fase futura de "arrumar a
+documentação" — que é justamente o que nunca chega.
+
+Checkpoints que só mudam comportamento interno, sem mexer em localização, não
+disparam a regra.
+
+---
+
 ## 4. Riscos e mitigações
 
 | Risco | Mitigação |

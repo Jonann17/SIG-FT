@@ -1,5 +1,17 @@
 # AutoSpec AI — Contexto de Negócio e Regras de Engenharia
 
+> ⚠️ **Onde o código mora hoje** (atualizado em 2026-08-28)
+>
+> Este documento foi escrito antes da refatoração e descreve o comportamento do
+> módulo, que continua valendo. Mas os CAMINHOS mudaram:
+>
+> | O que o texto abaixo chama de | Está hoje em |
+> |---|---|
+> | `autospec_backend.py` | `sigft/services/autospec.py` + os 4 módulos `autospec_*.py` ao lado |
+> | a tela | `sigft/app/views/autospec.py` |
+>
+> A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
+
 > **O que é este documento.** Enquanto `08-autospec-backend.md` descreve **como o código
 > funciona**, este descreve **por que ele existe e quais regras ele precisa obedecer**.
 > Fornecido pelo usuário (Rafael) em 2026-08-11, a partir do levantamento feito na concepção

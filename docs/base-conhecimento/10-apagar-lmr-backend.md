@@ -1,5 +1,16 @@
 # Apagar LMR Backend (`apagar_lmr_backend.py`)
 
+> ⚠️ **Onde o código mora hoje** (atualizado em 2026-08-28)
+>
+> Este documento foi escrito antes da refatoração e descreve o comportamento do
+> módulo, que continua valendo. Mas os CAMINHOS mudaram:
+>
+> | O que o texto abaixo chama de | Está hoje em |
+> |---|---|
+> | `apagar_lmr_backend.py` | `sigft/services/apagar_lmr.py` (serviço) · `sigft/app/views/apagar_lmr.py` (tela) |
+>
+> A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
+
 ## Propósito
 Automatiza a exclusão de todas as aplicações (LMR) associadas a uma ficha técnica no portal PMIB. O módulo busca a ficha pelo código, abre a aba "Aplicação - LMR", entra em loop deletando cada linha até TimeoutException indicar que nenhuma linha permanece, e confirma cada exclusão via popup.
 

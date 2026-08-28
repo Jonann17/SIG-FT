@@ -1,5 +1,16 @@
 # Translator Backend (`translator_backend.py`)
 
+> ⚠️ **Onde o código mora hoje** (atualizado em 2026-08-28)
+>
+> Este documento foi escrito antes da refatoração e descreve o comportamento do
+> módulo, que continua valendo. Mas os CAMINHOS mudaram:
+>
+> | O que o texto abaixo chama de | Está hoje em |
+> |---|---|
+> | `translator_backend.py` | `sigft/services/translator.py` (serviço) · `sigft/app/views/translator.py` (tela) |
+>
+> A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
+
 ## Propósito
 Módulo de tradução híbrida de especificações técnicas de português para espanhol usando xlwings (Excel COM no Windows). Lê perguntas e respostas da aba "Ficha Técnica Padrão" a partir da linha 79, traduz via Google Translator com fallback MyMemory, remove caracteres especiais (unidecode) e cria aba "Especificações técnicas copiar" com formatação zebrada e bordas.
 
