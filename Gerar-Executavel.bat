@@ -29,16 +29,42 @@ if errorlevel 1 (
     if errorlevel 1 goto :erro_pip
 )
 
-rem --- 2. O navegador do Playwright DENTRO do pacote --------------------------
-rem  Este passo e o que faz o RPA funcionar na maquina da empresa.
+rem --- 2. O navegador do Playwright (OPCIONAL, desligado por padrao) ----------
+rem  ATENCAO: embutir o Chromium e OPT-IN desde 2026-08-28, e a mudanca foi
+rem  por causa da REVISAO DE SEGURANCA da TI, nao por questao tecnica.
 rem
+rem  Um Chromium embutido e um navegador que NAO recebe os patches de
+rem  seguranca da politica da empresa: ele congela na versao do dia do build e
+rem  fica fora do inventario que a TI gerencia. Numa maquina corporativa isso
+rem  e a objecao mais forte contra o pacote, e ela e legitima.
+rem
+rem  O caminho recomendado passou a ser o SIG-FT.bat + Instalar-Playwright.bat:
+rem  Python oficial, pacotes do PyPI com versao declarada em requirements.txt,
+rem  e o Chromium vindo do canal oficial do Playwright -- atualizavel, e MUITO
+rem  mais facil de aprovar. Ver docs/SEGURANCA_TI.md.
+rem
+rem  Para embutir assim mesmo (maquina sem Python, sem permissao de pip, e com
+rem  o aval da TI):
+rem      set SIGFT_EMBUTIR_NAVEGADOR=1
+rem      Gerar-Executavel.bat
+echo.
+if not defined SIGFT_EMBUTIR_NAVEGADOR (
+    echo [2/4] Navegador NAO embutido ^(padrao^).
+    echo       O .exe roda tudo menos o RPA; para o robo do portal, a maquina
+    echo       precisa do Chromium do Playwright instalado a parte
+    echo       ^(Instalar-Playwright.bat^).
+    echo       Para embutir: set SIGFT_EMBUTIR_NAVEGADOR=1 antes de rodar.
+    echo       Leia docs/SEGURANCA_TI.md antes -- ha implicacao de seguranca.
+    goto :fim_navegador
+)
+
+echo [2/4] SIGFT_EMBUTIR_NAVEGADOR=1 -- instalando o navegador DENTRO do pacote...
+echo       Lembre-se: o Chromium embutido nao recebe patches pela politica da
+echo       empresa. Confirme com a TI antes de distribuir este build.
+
 rem  PLAYWRIGHT_BROWSERS_PATH=0 manda o Playwright instalar o Chromium DENTRO
 rem  do proprio pacote (em vez de %LOCALAPPDATA%\ms-playwright). E assim que o
-rem  SIG-FT.spec consegue leva-lo junto no bundle -- e quem rodar o .exe nao
-rem  precisa baixar nada, o que importa porque esse download e feito por um
-rem  processo Node que costuma ser barrado pelo Zscaler.
-echo.
-echo [2/4] Instalando o navegador DENTRO do pacote (para ir junto no .exe)...
+rem  SIG-FT.spec consegue leva-lo junto no bundle.
 set "PLAYWRIGHT_BROWSERS_PATH=0"
 
 rem  Rede corporativa: o download do navegador nao passa pelo pip. Quem manda
@@ -64,6 +90,7 @@ if errorlevel 1 (
     echo.
     pause
 )
+:fim_navegador
 
 rem --- 3. Icone do executavel ------------------------------------------------
 echo.

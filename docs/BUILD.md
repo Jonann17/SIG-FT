@@ -16,6 +16,28 @@ Duas formas de rodar o SIG-FT, e a escolha é sobre a **máquina de destino**:
 rápido de atualizar e muito menor. O executável existe para o caso em que isso
 não é possível.
 
+> ### ⚠️ Antes de gerar isto para uma máquina corporativa
+>
+> Um executável PyInstaller **não assinado** é o artefato mais difícil de passar
+> por uma revisão de segurança, e por dois motivos legítimos:
+>
+> 1. **sem assinatura de código**, é falso positivo frequente de antivírus
+>    corporativo e não há cadeia de confiança para a TI validar;
+> 2. **com o navegador embutido**, ele carrega um Chromium que **não recebe os
+>    patches de segurança da política da empresa** — congela na versão do dia do
+>    build e fica fora do inventário gerenciado pela TI.
+>
+> Por causa do item 2, **embutir o navegador virou opt-in em 2026-08-28**
+> (`SIGFT_EMBUTIR_NAVEGADOR=1`). O padrão passou a ser o build SEM navegador.
+>
+> O caminho `SIG-FT.bat` é muito mais fácil de aprovar: Python oficial, pacotes
+> do PyPI com versão declarada em `requirements.txt`, e Chromium do canal
+> oficial do Playwright — atualizável como qualquer outro software.
+>
+> **Leia [`SEGURANCA_TI.md`](SEGURANCA_TI.md) antes da conversa com a TI.** Ele
+> reúne o que costumam perguntar: conexões de saída, o que sai da máquina, o que
+> é gravado em disco e por quê.
+
 ---
 
 ## Como gerar
@@ -58,14 +80,30 @@ ignora as variáveis de certificado do Python — ele só respeita
 `NODE_EXTRA_CA_CERTS`. Numa rede com inspeção SSL (Zscaler, Netskope, Blue
 Coat), é o passo que mais falha.
 
-**O build resolve isso embutindo o navegador no pacote.** O
-`Gerar-Executavel.bat` define `PLAYWRIGHT_BROWSERS_PATH=0` antes do
-`playwright install`, o que faz o Chromium ser instalado *dentro* do pacote
-`playwright` em vez de em `%LOCALAPPDATA%\ms-playwright` — e daí o
-`SIG-FT.spec` o leva junto.
+**O build PODE resolver isso embutindo o navegador no pacote — mas não faz
+mais isso por padrão.**
 
-Consequência prática: **quem roda o `.exe` não baixa nada.** A rede da empresa
-deixa de ser problema para o RPA.
+```bat
+set SIGFT_EMBUTIR_NAVEGADOR=1
+Gerar-Executavel.bat
+```
+
+Com a variável definida, o `Gerar-Executavel.bat` define
+`PLAYWRIGHT_BROWSERS_PATH=0` antes do `playwright install`, o que faz o Chromium
+ser instalado *dentro* do pacote `playwright` em vez de em
+`%LOCALAPPDATA%\ms-playwright` — e daí o `SIG-FT.spec` o leva junto. Quem roda o
+`.exe` não baixa nada.
+
+**Por que isso deixou de ser o padrão:** um Chromium embutido não recebe os
+patches de segurança da política da empresa. Ele congela na versão do dia do
+build e fica fora do inventário que a TI gerencia — que é a objeção mais forte,
+e mais justa, numa revisão de segurança corporativa. Trocar um problema de
+instalação por um navegador desatualizado permanente não é um bom negócio, e
+essa decisão não cabe a quem gera o build sozinho.
+
+**O caminho padrão, sem embutir:** a máquina de destino instala o Chromium à
+parte, com o `Instalar-Playwright.bat` (que já trata `NODE_EXTRA_CA_CERTS`). O
+`.exe` sai bem menor e o navegador continua recebendo atualização.
 
 > ⚠️ Se o download falhar **na máquina onde você GERA o executável**, o build
 > continua e avisa. O `.exe` sai funcionando para tudo, menos o RPA. Isso é de
@@ -81,7 +119,7 @@ deixa de ser problema para o RPA.
 |---|---|
 | Não pode instalar Python | ✅ sim |
 | `pip` bloqueado pelo proxy | ✅ sim (nada é instalado no destino) |
-| Download do Chromium bloqueado | ✅ sim (vai embutido) |
+| Download do Chromium bloqueado | ⚠️ só com `SIGFT_EMBUTIR_NAVEGADOR=1` — leia a ressalva de segurança acima |
 | **Chamadas de IA com `CERTIFICATE_VERIFY_FAILED`** | ⚠️ **provavelmente sim** — ver abaixo |
 | Portal PMIB inacessível pela rede | ❌ não (é questão de acesso, não do app) |
 
