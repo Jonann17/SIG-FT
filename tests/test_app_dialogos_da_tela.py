@@ -137,21 +137,48 @@ def test_fechar_no_x_tambem_solta_o_worker(tela, raiz):
 
 
 # =============================================================================
-# C. Chamar da thread da interface falha alto
+# C. Chamado da PRÓPRIA thread da interface — o outro caminho
 # =============================================================================
+# Nem toda gravação vem de um worker. O botão «Gerar relatório» do Analyzer,
+# por exemplo, salva direto no clique — ou seja, na thread da interface.
+#
+# Ali `Event.wait()` seria fatal: seguraria justamente a thread que precisa
+# processar o `after` que o soltaria, e o app congelaria para sempre. O
+# mecanismo certo é `wait_window()`, que bloqueia SEM parar o laço de eventos.
+#
+# Uma versão anterior levantava `RuntimeError` neste caso. Estava errada:
+# transformava um uso legítimo num erro, quando faltava só usar o mecanismo
+# certo para cada thread.
 
-def test_chamar_da_thread_da_interface_levanta_em_vez_de_travar(tela):
-    with pytest.raises(RuntimeError, match="travaria o aplicativo"):
-        tela.pausar_e_esperar("isto travaria o app")
+def test_da_thread_da_interface_usa_wait_window_e_nao_congela(tela, raiz):
+    """Não deve levantar, e não deve travar."""
+    # O "usuário" fecha o diálogo assim que ele aparece.
+    def fechar_quando_abrir():
+        _dialogo_aberto(raiz).cancelar()
+
+    raiz.pendentes.append((fechar_quando_abrir, ()))
+
+    resposta = tela.perguntar_retry_excel(caminho="/x/ficha.xlsx")
+
+    assert resposta is False
 
 
-def test_a_mensagem_do_erro_nomeia_a_tela_e_diz_o_que_fazer(tela):
-    with pytest.raises(RuntimeError) as erro:
-        tela.perguntar_retry_excel()
+def test_da_thread_da_interface_devolve_a_decisao_do_usuario(tela, raiz):
+    def clicar_tentar_novamente():
+        _dialogo_aberto(raiz).repetir()
 
-    texto = str(erro.value)
-    assert "TelaDeTeste" in texto
-    assert "worker" in texto
+    raiz.pendentes.append((clicar_tentar_novamente, ()))
+
+    assert tela.perguntar_retry_excel(caminho="/x/ficha.xlsx") is True
+
+
+def test_pausar_da_thread_da_interface_tambem_funciona(tela, raiz):
+    def liberar():
+        _dialogo_aberto(raiz).liberar()
+
+    raiz.pendentes.append((liberar, ()))
+
+    tela.pausar_e_esperar("faça o login")  # não deve levantar nem travar
 
 
 # =============================================================================

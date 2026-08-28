@@ -66,19 +66,28 @@ class DialogosDeEspera:
         solta quem chamou e o dicionário onde o diálogo grava a decisão.
         Devolve esse dicionário, já preenchido.
         """
-        if threading.get_ident() == getattr(self, "_thread_da_interface", None):
-            # Chamar daqui travaria o app: `wait()` seguraria justamente a
-            # thread que precisa processar o `after` que solta o `wait()`.
-            # Falhar alto é melhor que congelar em silêncio — congelado, o
-            # usuário não tem nem o que reportar.
-            raise RuntimeError(
-                f"{type(self).__name__}: _abrir_e_esperar foi chamado da thread da "
-                "interface, o que travaria o aplicativo. Chame de dentro do worker "
-                "(a thread do robô), ou abra o diálogo direto se já está na interface."
-            )
-
         evento = threading.Event()
         resultado: dict = {}
+
+        if threading.get_ident() == getattr(self, "_thread_da_interface", None):
+            # JÁ estamos na thread da interface (ex.: o botão "Gerar
+            # relatório", que salva direto no clique, sem worker).
+            #
+            # Aqui `Event.wait()` seria fatal: ele seguraria justamente a
+            # thread que precisa processar o `after` que o soltaria — o app
+            # congelaria para sempre. O certo é `wait_window()`, que bloqueia
+            # SEM parar o laço de eventos do Tk: a janela continua respondendo,
+            # e o clique do usuário chega.
+            #
+            # Uma versão anterior deste método levantava `RuntimeError` neste
+            # caso. Estava errado: transformava um uso legítimo (salvar no
+            # clique) num erro, quando o que faltava era só usar o mecanismo
+            # certo para cada thread.
+            dialogo = construir_dialogo(evento, resultado)
+            if dialogo is not None:
+                self.wait_window(dialogo)
+            return resultado
+
         self.after(0, lambda: construir_dialogo(evento, resultado))
         evento.wait()
         return resultado

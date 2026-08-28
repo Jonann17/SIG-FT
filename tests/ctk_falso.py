@@ -94,8 +94,18 @@ class _Widget:
             self.protocolos[nome] = func
         return self.protocolos
 
-    def wait_window(self, *args):
-        pass
+    def wait_window(self, janela=None):
+        """Bloqueia até a janela ser destruída, SEM parar o laço de eventos.
+
+        É essa a diferença para `Event.wait()`, e é por isso que o Tk real
+        oferece os dois: `wait_window` continua drenando a fila do `after`,
+        então a interface segue respondendo e o clique do usuário chega. No
+        dublê, "drenar a fila" é `processar_eventos()`.
+
+        O teste que exercita a thread da interface fecha a janela por um
+        `after` agendado; sem drenar aqui, ele nunca rodaria.
+        """
+        self._raiz().processar_eventos()
 
     def grab_set(self):
         # Registrado para que o teste possa provar QUEM o chama. Nos diálogos
