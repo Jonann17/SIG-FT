@@ -90,9 +90,15 @@ def test_processar_lista_aceita_callbacks_novo_sem_tocar_selenium():
 
     resultado = auto.processar_lista([], None, callbacks=UICallbacks(log=logs.append))
 
-    # Comportamento ORIGINAL preservado: método não tinha `return` (devolve
-    # None implicitamente) -- CP 1.4 não pode mudar isso.
-    assert resultado is None
+    # ⚠️ MUDOU em 2026-08-28: o método passou a devolver
+    # `(completas, incompletas)` para a tela poder marcar a coluna
+    # "APLICAÇÃO - LMR" do `_STATUS_PMIB`. Até então não tinha `return` e
+    # devolvia `None` implicitamente -- e este teste travava esse `None` como
+    # se fosse contrato, quando era só ausência de retorno.
+    #
+    # A mudança é ADITIVA: quem ignora o retorno (a tela, até o mesmo dia)
+    # continua funcionando igual. Com lista vazia, os dois grupos vêm vazios.
+    assert resultado == ([], [])
     # CP 4.4: `processar_lista` passou a emitir o padrão de lote (início +
     # resumo) em volta das mensagens que já existiam. Com lista VAZIA não há
     # linha de item nenhuma; o que importa aqui (contrato do CP 1.4) é que a
@@ -114,7 +120,7 @@ def test_processar_lista_aceita_kwargs_legados_sem_tocar_selenium():
         callback_input=_boom,
     )
 
-    assert resultado is None
+    assert resultado == ([], [])   # ver nota no 1º teste deste bloco (2026-08-28)
     # CP 4.4: `processar_lista` passou a emitir o padrão de lote (início +
     # resumo) em volta das mensagens que já existiam. Com lista VAZIA não há
     # linha de item nenhuma; o que importa aqui (contrato do CP 1.4) é que a
@@ -129,7 +135,7 @@ def test_processar_lista_sem_nenhum_callback_nao_levanta_excecao():
     # cobre esse caso com defaults seguros.
     auto = lmr_backend.LMRAutomation()
     resultado = auto.processar_lista([], None)
-    assert resultado is None
+    assert resultado == ([], [])   # ver nota no teste acima (2026-08-28)
 
 
 def test_processar_lista_callbacks_explicito_tem_prioridade_sobre_legado():

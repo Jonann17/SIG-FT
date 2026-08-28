@@ -17,6 +17,9 @@ from sigft.app.widgets import dialogs as app_dialogs
 # interface e segura o worker ate o usuario decidir. Vem ANTES de
 # ctk.CTkFrame na heranca, para o super().__init__ passar por ele.
 from sigft.app.widgets.espera import DialogosDeEspera
+# [2026-08-28] Seletor do _STATUS_PMIB (opcional) -- o FilePickerRow do CP 7.2
+# ja traz a memoria de caminho e as duas mudancas de cor.
+from sigft.app.widgets import pickers as app_pickers
 
 import customtkinter as ctk
 
@@ -28,6 +31,8 @@ class ModuloLMR(DialogosDeEspera, ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
+        # Caminho do _STATUS_PMIB (opcional) -- ver _marcar_status_do_lote.
+        self.caminho_status_pmib = None
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -61,6 +66,30 @@ class ModuloLMR(DialogosDeEspera, ctk.CTkFrame):
                      "Colunas esperadas: FICHA PMIB, CÓDIGO LMR e TAG LMR.\n"
                      "Será solicitado login no navegador durante o processo.")
         ctk.CTkLabel(frm_main, text=info_text, font=("Roboto", 13), text_color="gray").pack(pady=(0, 20))
+
+        # [2026-08-28] _STATUS_PMIB opcional: quando informado, o módulo marca a
+        # coluna "APLICAÇÃO - LMR" ao fim do lote. É OPCIONAL de propósito --
+        # quem só quer cadastrar no portal (o comportamento de sempre) continua
+        # clicando direto em "Selecionar Excel e Iniciar".
+        ctk.CTkLabel(
+            frm_main,
+            text="Marcar o resultado no _STATUS_PMIB (opcional):",
+            font=("Roboto", 13, "bold"),
+            text_color=COLORS["text_light"],
+        ).pack(pady=(0, 6))
+
+        self.picker_status = app_pickers.FilePickerRow(
+            frm_main,
+            chave="lmr.status_pmib",
+            categoria="excel",
+            texto_botao="Selecionar _STATUS_PMIB",
+            largura_botao=240,
+            titulo="Selecione o _STATUS_PMIB",
+            filetypes=[("Excel", "*.xlsx *.xlsm")],
+            texto_vazio="Nenhum — o lote não será marcado na planilha",
+            ao_escolher=self._ao_escolher_status,
+        )
+        self.picker_status.pack(pady=(0, 20))
 
         self.btn_run = ctk.CTkButton(frm_main, text="Selecionar Excel e Iniciar",
                                      height=50, width=300,
@@ -243,6 +272,38 @@ class ModuloLMR(DialogosDeEspera, ctk.CTkFrame):
             self.log(f"Linha inicial {texto!r} não é um número. Começando do 0.")
             return None
 
+    # -- _STATUS_PMIB (2026-08-28) -------------------------------------------
+    def _ao_escolher_status(self, caminho):
+        self.caminho_status_pmib = caminho
+        self.log(f"_STATUS_PMIB selecionado: {os.path.basename(caminho)}")
+
+    def _marcar_status_do_lote(self, completas, incompletas):
+        """Marca a coluna "APLICAÇÃO - LMR" das fichas do lote.
+
+        Roda na thread do worker, DEPOIS do portal. Nunca deixa uma falha de
+        planilha escapar: o cadastro no portal já aconteceu, e é ele que custa
+        caro. O usuário fica sabendo pelo console e marca à mão se precisar.
+        """
+        caminho = getattr(self, "caminho_status_pmib", None)
+        if not caminho:
+            if completas or incompletas:
+                self.log("[i] Nenhum _STATUS_PMIB selecionado — a planilha não foi marcada.")
+            return
+
+        self.log("Marcando o _STATUS_PMIB...")
+        try:
+            _marcadas, recado = backends.lmr_backend.marcar_status_pmib(
+                caminho,
+                completas,
+                incompletas,
+                retry_lock=self.perguntar_retry_excel,
+                callback_log=self.log,
+            )
+            self.log(recado)
+        except Exception as erro:  # noqa: BLE001 -- ver docstring
+            self.log(f"[!] Não consegui marcar o _STATUS_PMIB: {type(erro).__name__}: {erro}")
+            self.log("    O cadastro no portal FOI feito. Marque a planilha à mão.")
+
     def _worker_lmr(self, selecionados, df_completo):
         auto = backends.lmr_backend.LMRAutomation()
         try:
@@ -257,11 +318,21 @@ class ModuloLMR(DialogosDeEspera, ctk.CTkFrame):
             def cb_ask(tit, msg): return messagebox.askyesno(tit, msg)
             def cb_input(tit, msg): return simpledialog.askstring(tit, msg)
 
-            auto.processar_lista(selecionados, df_completo, callback_log=cb_log,
-                                 callback_ask=cb_ask, callback_input=cb_input,
-                                 linha_inicio=self._linha_inicial_escolhida())
+            completas, incompletas = auto.processar_lista(
+                selecionados, df_completo, callback_log=cb_log,
+                callback_ask=cb_ask, callback_input=cb_input,
+                linha_inicio=self._linha_inicial_escolhida())
 
             self.log("Automação LMR finalizada.")
+
+            # [2026-08-28] Marcação no _STATUS_PMIB, se o usuário escolheu um.
+            #
+            # DEPOIS do portal e num try/except próprio: o trabalho no portal é
+            # a parte cara e não repetível. Uma planilha travada, ou com a
+            # coluna faltando, não pode transformar um lote bem-sucedido num
+            # erro na cara do usuário.
+            self._marcar_status_do_lote(completas, incompletas)
+
             messagebox.showinfo("Sucesso", "Processo concluído.")
         except Exception as e:
             self.log(f"Erro Fatal LMR: {e}")

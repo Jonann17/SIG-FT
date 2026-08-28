@@ -188,6 +188,31 @@ COL_INFO_GERAIS = "INFO. GERAIS"
 # upload_ficha_duplicada, pmib_manager_backend (coluna de seção "COMPLETO"
 # do STATUS_PMIB).
 
+COL_APLICACAO_LMR = "APLICAÇÃO - LMR"
+# Acrescentada em 2026-08-28, a pedido do usuário: a tela de Aplicação LMR
+# passa a marcar no `_STATUS_PMIB` se a ficha ficou COMPLETO/INCOMPLETO, como
+# as outras quatro seções já faziam.
+#
+# O nome acima é o que está na planilha real, confirmado pelo usuário em
+# 2026-08-28 — com o hífen cercado de espaços, que é o detalhe que faria uma
+# constante "APLICAÇÃO LMR" não casar.
+#
+# ⚠️ Por que ALIASES, se o nome já é conhecido: o casamento de cabeçalho
+# (`core/excel/headers.find_columns`) é EXATO depois de `strip()`+`upper()`.
+# Uma planilha salva com "APLICACAO - LMR" (sem cedilha/til, o que acontece
+# quando o arquivo passa por exportação) ou sem o hífen deixaria de casar, e o
+# sintoma seria a marcação silenciosamente não acontecer. A lista cobre as
+# variações plausíveis da MESMA coluna; a primeira é a oficial.
+ALIASES_COL_APLICACAO_LMR = [
+    "APLICAÇÃO - LMR",
+    "APLICACAO - LMR",
+    "APLICAÇÃO LMR",
+    "APLICACAO LMR",
+    "APLICAÇÕES LMR",
+    "APLICACOES LMR",
+    "LMR",
+]
+
 
 # =============================================================================
 # 6. MAPA DE TAREFAS DE IA (LLM_TASKS) + DECISÃO DE MODELOS (MODELOS_IA.md)
