@@ -16,6 +16,8 @@ from sigft.app.theme import COLORS
 from sigft.app.widgets.module_frame import ModuleFrame
 # [CP B] Mensagens e dialogo da pausa de acao manual (login no portal).
 from sigft.app.widgets import dialogs as app_dialogs
+# [2026-08-28] Seletor do _STATUS_PMIB opcional.
+from sigft.app.widgets import pickers as app_pickers
 
 import customtkinter as ctk
 
@@ -41,6 +43,9 @@ class ModuloApagarLMR(ModuleFrame):
             titulo="Apagar Aplicações LMR",
             cor_titulo=COLORS["danger"],
         )
+        # Definido DEPOIS do super(): o `_build_ui` roda lá dentro e cria o
+        # picker, que só grava aqui quando o usuário escolhe um arquivo.
+        self.caminho_status = None
 
     def _build_ui(self):
         frm_main = ctk.CTkFrame(self.content, fg_color="#2B2B2B", corner_radius=8)
@@ -57,6 +62,36 @@ class ModuloApagarLMR(ModuleFrame):
         self.entry_pmib = ctk.CTkEntry(frm_input, width=250, placeholder_text="Ex: 4500063671.1234")
         self.entry_pmib.pack(side="left", padx=10)
 
+        # [2026-08-28] _STATUS_PMIB OPCIONAL, pedido do usuário: apagou as
+        # aplicações com sucesso -> a coluna "APLICAÇÃO - LMR" volta a ficar EM
+        # BRANCO. É o inverso do que a tela de Aplicação LMR faz, e usa o mesmo
+        # módulo (`services/lmr_status.py`).
+        #
+        # Opcional de propósito: sem a planilha, a tela se comporta exatamente
+        # como antes. Quem só quer limpar a ficha no portal não é obrigado a
+        # apontar um Excel.
+        ctk.CTkLabel(
+            frm_main,
+            text="Opcional: informe o _STATUS_PMIB para LIMPAR a marcação da coluna\n"
+                 "\"APLICAÇÃO - LMR\" das fichas que forem apagadas com sucesso.",
+            font=("Roboto", 12),
+            text_color="gray70",
+            justify="center",
+        ).pack(pady=(15, 5))
+
+        self.picker_status = app_pickers.FilePickerRow(
+            frm_main,
+            chave="apagar_lmr.status_pmib",
+            categoria="excel",
+            texto_botao="Selecionar _STATUS_PMIB",
+            largura_botao=220,
+            titulo="Selecione o _STATUS_PMIB (opcional)",
+            filetypes=[("Excel", "*.xlsx;*.xlsm")],
+            texto_vazio="Nenhum — a planilha não será alterada",
+            ao_escolher=self._ao_escolher_status,
+        )
+        self.picker_status.pack(pady=(0, 10))
+
         self.btn_run = ctk.CTkButton(frm_main, text="INICIAR LIMPEZA",
                                      height=50, width=350,
                                      command=self.iniciar_limpeza,
@@ -66,6 +101,44 @@ class ModuloApagarLMR(ModuleFrame):
 
         info_steps = "O robô irá:\n1. Abrir o navegador\n2. Solicitar login manual\n3. Acessar a ficha\n4. Clicar em todas as lixeiras até esvaziar a lista."
         ctk.CTkLabel(frm_main, text=info_steps, text_color="gray70", font=("Roboto", 12)).pack(pady=(0, 20))
+
+    # --- _STATUS_PMIB opcional (2026-08-28) ---
+    def _ao_escolher_status(self, caminho):
+        self.caminho_status = caminho
+        self.log(f"_STATUS_PMIB selecionado: {caminho}")
+
+    def _limpar_status_do_lote(self, pmib, limpou):
+        """Limpa a coluna "APLICAÇÃO - LMR" da ficha apagada.
+
+        Só age quando as DUAS condições valem: o usuário informou a planilha E
+        a exclusão terminou bem. Limpar a marcação de uma ficha cuja exclusão
+        falhou diria que ela está por fazer enquanto as aplicações continuam
+        no portal.
+        """
+        caminho = getattr(self, "caminho_status", None)
+        if not caminho:
+            return
+
+        if not limpou:
+            self.log(
+                "   [i] A exclusão não terminou limpa — o _STATUS_PMIB NÃO foi "
+                "alterado. A marcação continua como estava, o que é o certo "
+                "enquanto houver aplicação na ficha."
+            )
+            return
+
+        try:
+            _n, recado = backends.apagar_lmr_backend.limpar_status_pmib(
+                caminho,
+                [pmib],
+                retry_lock=self.perguntar_retry_excel,
+                callback_log=self.log,
+            )
+            self.log(f"   {recado}")
+        except Exception as erro:  # noqa: BLE001
+            # A planilha não pode derrubar o resultado: o trabalho no portal
+            # já foi feito e não é repetível.
+            self.log(f"   [!] Não consegui atualizar o _STATUS_PMIB: {erro}")
 
     # --- Lógica Mantida ---
     def iniciar_limpeza(self):
@@ -99,8 +172,11 @@ class ModuloApagarLMR(ModuleFrame):
             def cb_log(txt): self.log(txt)
 
             self.log("Iniciando varredura...")
-            auto.executar_limpeza(pmib, callback_log=cb_log)
+            limpou = auto.executar_limpeza(pmib, callback_log=cb_log)
             self.log("Processo Finalizado.")
+
+            self._limpar_status_do_lote(pmib, limpou)
+
             messagebox.showinfo("Sucesso", "Limpeza concluída.")
 
         except Exception as e:

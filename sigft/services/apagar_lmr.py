@@ -40,6 +40,7 @@ from sigft.core.rpa.portal import PMIBPortal, PAUSA_ABERTURA_ABA, PAUSA_POS_EXCL
 # LMR apagada é um item (não há um loop externo de várias fichas aqui: uma
 # chamada de `executar_limpeza` já é sobre UM PMIB só).
 from sigft.core.relatorio_lote import RelatorioLote
+from sigft.services import lmr_status
 
 
 # =============================================================================
@@ -135,7 +136,12 @@ class ApagarLMRAutomation:
         sucesso, msg = self._pesquisar_e_abrir(pmib_codigo)
         if not sucesso:
             callbacks.log(msg)
-            return
+            # [2026-08-28] Passou a devolver False em vez de `None` cru. A tela
+            # usa isso para decidir se LIMPA a coluna "APLICAÇÃO - LMR" do
+            # _STATUS_PMIB: limpar a marcação de uma ficha que nem abriu diria
+            # que ela está por fazer enquanto as aplicações continuam lá -- o
+            # pior dos erros possíveis aqui.
+            return False
 
         # 2. Acessa Aba LMR
         try:
@@ -173,6 +179,9 @@ class ApagarLMRAutomation:
             contexto={"pmib": pmib_codigo},
         ) as lote:
             count = 0
+            # Só o fim NORMAL do laço (a lixeira sumiu = tabela vazia) conta
+            # como exclusão completa.
+            limpou_tudo = False
 
             while True:
                 inicio_item = time.time()
@@ -225,14 +234,17 @@ class ApagarLMRAutomation:
                     time.sleep(PAUSA_POS_EXCLUSAO)  # Pausa para refresh da tabela
 
                 except TempoEsgotado:
-                    # Não achou mais lixeiras -> Fim
+                    # Não achou mais lixeiras -> Fim NORMAL: a tabela esvaziou.
                     callbacks.log("✅ Todas as aplicações visíveis foram apagadas.")
+                    limpou_tudo = True
                     break
                 except ElementoObsoleto:
                     # Tabela atualizou enquanto tentava clicar -> Tenta loop de novo
                     continue
                 except Exception as e:
-                    # Outro erro -> Para
+                    # Outro erro -> Para. `limpou_tudo` fica False: pode ter
+                    # sobrado aplicação na ficha, e a planilha não pode dizer
+                    # que sobrou nada.
                     lote.falha(f"Aplicação {count + 1}", f"{type(e).__name__}: {e}")
                     break
 
@@ -241,3 +253,23 @@ class ApagarLMRAutomation:
             self.engine.goto(self.url_inicial)
         except Exception:
             pass
+
+        return limpou_tudo
+
+
+def limpar_status_pmib(caminho_status, apagadas, *, retry_lock=None, callback_log=None):
+    """LIMPA a coluna "APLICAÇÃO - LMR" das fichas apagadas com sucesso.
+
+    [2026-08-28] O inverso do que `services/lmr.marcar_status_pmib` faz, e pelo
+    MESMO módulo (`services/lmr_status.py`) — os dois escrevem na mesma coluna,
+    e uma segunda implementação divergiria no primeiro detalhe que mudasse.
+
+    Recebe só as fichas que deram certo: quem decide isso é a tela, a partir do
+    booleano que `executar_limpeza` passou a devolver.
+    """
+    return lmr_status.limpar_aplicacao(
+        caminho_status,
+        apagadas,
+        retry_lock=retry_lock,
+        callback_log=callback_log,
+    )

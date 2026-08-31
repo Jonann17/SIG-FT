@@ -45,9 +45,16 @@ def test_executar_limpeza_aceita_callbacks_novo_e_para_na_ficha_nao_encontrada()
     with patch.object(auto, "_pesquisar_e_abrir", return_value=(False, "Ficha 4500063671.9999 não encontrada ou não editável.")):
         resultado = auto.executar_limpeza("4500063671.9999", callbacks=UICallbacks(log=logs.append))
 
-    # Comportamento ORIGINAL preservado: `executar_limpeza` não tinha
-    # `return` explícito no caminho de falha -- devolve `None`.
-    assert resultado is None
+    # [2026-08-28] Era `assert resultado is None`, caracterizando o `return`
+    # CRU do caminho de falha. O `None` ali era ACIDENTE de escrita, não
+    # decisão: ninguém lia o retorno.
+    #
+    # Agora o retorno significa "a exclusão terminou limpa?", e a tela usa
+    # isso para decidir se LIMPA a coluna "APLICAÇÃO - LMR" do _STATUS_PMIB.
+    # Ficha não encontrada -> `False`, que é a resposta certa: limpar a
+    # marcação de uma ficha que nem abriu diria que ela está por fazer
+    # enquanto as aplicações continuam no portal.
+    assert resultado is False
     assert logs == [
         "Iniciando processo para PMIB: 4500063671.9999",
         "Ficha 4500063671.9999 não encontrada ou não editável.",
@@ -61,7 +68,7 @@ def test_executar_limpeza_aceita_callback_log_legado_e_para_na_ficha_nao_encontr
     with patch.object(auto, "_pesquisar_e_abrir", return_value=(False, "não encontrada")):
         resultado = auto.executar_limpeza("X", callback_log=logs.append)
 
-    assert resultado is None
+    assert resultado is False
     assert logs == ["Iniciando processo para PMIB: X", "não encontrada"]
 
 
@@ -73,7 +80,7 @@ def test_executar_limpeza_sem_nenhum_callback_nao_levanta_excecao():
     with patch.object(auto, "_pesquisar_e_abrir", return_value=(False, "não encontrada")):
         resultado = auto.executar_limpeza("X")
 
-    assert resultado is None
+    assert resultado is False
 
 
 def test_executar_limpeza_callbacks_explicito_tem_prioridade_sobre_callback_log():

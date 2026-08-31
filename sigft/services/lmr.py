@@ -2,6 +2,7 @@ import pandas as pd
 import unicodedata
 
 from sigft import config
+from sigft.services import lmr_status
 import time
 
 # CP 1.4 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 1): protocolo único
@@ -605,117 +606,18 @@ def marcar_status_pmib(
 ):
     """Marca a coluna "APLICAÇÃO - LMR" do `_STATUS_PMIB` para as fichas do lote.
 
-    Acrescentado em 2026-08-28, a pedido do usuário: a tela de Aplicação LMR
-    passa a registrar na planilha o que registrava só no console. É o mesmo
-    papel que `upload_conditions` cumpre para a coluna "CONDIÇÕES".
+    [2026-08-28] A implementação mudou de casa para `services/lmr_status.py`,
+    porque a tela de EXCLUSÃO passou a escrever na mesma coluna (limpando-a).
+    Duas cópias divergiriam no primeiro detalhe que mudasse -- o alias de
+    cabeçalho, a mensagem de erro, o retry.
 
-    `completas` recebem COMPLETO; `incompletas` recebem INCOMPLETO. Marcar o
-    fracasso é decisão do usuário e é informação: uma ficha que o robô mexeu e
-    deixou pela metade precisa aparecer na planilha, senão ela se confunde com
-    uma que ninguém tocou.
-
-    Devolve `(quantidade_marcada, mensagem)`. Nunca levanta por causa da
-    planilha — uma falha aqui não pode apagar o trabalho que o robô já fez no
-    portal, que é a parte cara e não repetível.
+    Esta função continua existindo com a mesma assinatura porque
+    `app/views/lmr.py` chama por este nome.
     """
-    from sigft.core.excel import status_sheet
-
-    alvos = [(p, "COMPLETO") for p in completas]
-    alvos += [(p, "INCOMPLETO") for p in incompletas]
-    if not alvos:
-        return 0, "Nenhuma ficha para marcar no _STATUS_PMIB."
-
-    def _log(msg):
-        if callback_log:
-            callback_log(msg)
-
-    try:
-        painel = status_sheet.StatusPMIB(caminho_status, config.ABA_LISTA_MATERIAIS)
-        # A coluna de LMR entra com TODOS os aliases apontando para a MESMA
-        # chave de saída -- é o recurso que `find_columns` oferece para
-        # cabeçalho com grafia variável (ver config.ALIASES_COL_APLICACAO_LMR).
-        painel.abrir(
-            keywords={
-                config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB,
-                config.COL_APLICACAO_LMR: config.ALIASES_COL_APLICACAO_LMR,
-            },
-            # `required` só o código: a varredura não pode parar por não achar
-            # a coluna de LMR -- precisamos chegar ao fim para poder LISTAR os
-            # cabeçalhos que existem, que é o que ajuda quem for corrigir.
-            required=[config.COL_CODIGO_PMIB],
-            max_row=15,
-            max_col=49,
-        )
-    except Exception as erro:  # noqa: BLE001 -- planilha não pode derrubar o lote
-        return 0, f"Não consegui abrir o _STATUS_PMIB: {type(erro).__name__}: {erro}"
-
-    if config.COL_APLICACAO_LMR not in painel.col_map:
-        encontrados = _cabecalhos_da_linha(painel)
-        return 0, (
-            f"A coluna '{config.COL_APLICACAO_LMR}' não foi encontrada no _STATUS_PMIB "
-            f"-- nada foi marcado.\n"
-            f"      Cabeçalhos que existem na planilha: {encontrados}\n"
-            f"      Se o nome certo for um destes, me diga qual e eu ajusto "
-            f"(config.ALIASES_COL_APLICACAO_LMR)."
-        )
-
-    header_row = painel.header_row if painel.header_row is not None else 1
-    marcadas, nao_achadas = 0, []
-
-    for pmib, status in alvos:
-        linha = painel.buscar_linha(str(pmib).strip(), header_row=header_row)
-        if linha is None:
-            nao_achadas.append(str(pmib))
-            continue
-        painel.marcar_linha(linha, {config.COL_APLICACAO_LMR: True}, valor=status)
-        marcadas += 1
-        _log(f"   Planilha: {pmib} -> {config.COL_APLICACAO_LMR} = {status}")
-
-    if not marcadas:
-        painel.fechar()
-        return 0, (
-            "Nenhuma das fichas do lote foi encontrada no _STATUS_PMIB "
-            f"(procurei {len(alvos)}). Nada foi salvo."
-        )
-
-    # O salvamento passa pelo canal do CP D: com a planilha aberta no Excel, o
-    # usuário vê a janela "feche o arquivo e tente de novo" em vez de perder a
-    # marcação em silêncio.
-    try:
-        painel.salvar(on_locked=lambda _tent, _exc: bool(retry_lock(caminho_status))
-                      if retry_lock else False)
-    except PermissionError:
-        painel.fechar()
-        return 0, (
-            "O _STATUS_PMIB está aberto no Excel e a marcação NÃO foi salva. "
-            "O trabalho no portal está feito -- feche a planilha e rode de novo "
-            "só para marcar, ou marque à mão."
-        )
-    except Exception as erro:  # noqa: BLE001
-        painel.fechar()
-        return 0, f"Não consegui salvar o _STATUS_PMIB: {type(erro).__name__}: {erro}"
-
-    painel.fechar()
-
-    recado = f"{marcadas} linha(s) marcada(s) no _STATUS_PMIB."
-    if nao_achadas:
-        recado += (
-            f" {len(nao_achadas)} ficha(s) não foram encontradas na planilha: "
-            f"{', '.join(nao_achadas[:5])}"
-            + ("…" if len(nao_achadas) > 5 else "")
-        )
-    return marcadas, recado
-
-
-def _cabecalhos_da_linha(painel):
-    """Os textos da linha de cabeçalho, para a mensagem de erro poder DIZER o
-    que a planilha tem — em vez de só reclamar do que ela não tem."""
-    try:
-        linha = painel.header_row or 1
-        valores = [
-            str(painel.ws.cell(row=linha, column=c).value or "").strip()
-            for c in range(1, 50)
-        ]
-        return ", ".join(f"'{v}'" for v in valores if v) or "(nenhum)"
-    except Exception:  # noqa: BLE001
-        return "(não consegui ler)"
+    return lmr_status.marcar_aplicacao(
+        caminho_status,
+        completas,
+        incompletas,
+        retry_lock=retry_lock,
+        callback_log=callback_log,
+    )
