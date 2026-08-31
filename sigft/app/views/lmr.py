@@ -13,10 +13,9 @@ from sigft.app import backends, file_dialogs
 from sigft.app.theme import COLORS
 # [CP B] Mensagens e dialogo da pausa de acao manual (login no portal).
 from sigft.app.widgets import dialogs as app_dialogs
-# [CP A/B] Mixin com `pausar_e_esperar`: abre o dialogo na thread da
-# interface e segura o worker ate o usuario decidir. Vem ANTES de
-# ctk.CTkFrame na heranca, para o super().__init__ passar por ele.
-from sigft.app.widgets.espera import DialogosDeEspera
+# [2026-08-28] `pausar_e_esperar` chega pelo ModuleFrame, que herda do mixin
+# DialogosDeEspera -- por isso o import direto dele saiu daqui.
+from sigft.app.widgets.module_frame import ModuleFrame
 # [2026-08-28] Seletor do _STATUS_PMIB (opcional) -- o FilePickerRow do CP 7.2
 # ja traz a memoria de caminho e as duas mudancas de cor.
 from sigft.app.widgets import pickers as app_pickers
@@ -27,33 +26,32 @@ import customtkinter as ctk
 # =============================================================================
 # MÓDULO 9: LMR (INTERFACE GE VERNOVA)
 # =============================================================================
-class ModuloLMR(DialogosDeEspera, ctk.CTkFrame):
-    def __init__(self, parent, controller):
-        super().__init__(parent)
-        self.controller = controller
-        # Caminho do _STATUS_PMIB (opcional) -- ver _marcar_status_do_lote.
+class ModuloLMR(ModuleFrame):
+    """Aba "Upload" da seção Aplicação LMR.
+
+    [2026-08-28] Migrada para `ModuleFrame` ao unificar as duas telas de LMR
+    numa seção com abas. Dois ganhos além da unificação:
+
+    * o `log()` próprio SAIU. Ele chamava `self.console.insert` direto, e os
+      `_worker` desta tela rodam em `threading.Thread` — era o bug que o CP 7.1
+      corrigiu em 7 telas, e que sobreviveu aqui porque esta não foi migrada
+      na época;
+    * `embutida=True` faz a tela desenhar direto na aba, sem header nem console
+      próprios — quem já está na seção "Aplicação LMR" não precisa de um
+      segundo título, e dois consoles dividiriam o log em dois lugares.
+    """
+
+    def __init__(self, parent, controller, *, embutida=False, console_externo=None):
+        # Antes do super(): o `_build_ui` roda lá dentro, e o
+        # `_marcar_status_do_lote` consulta este atributo.
         self.caminho_status_pmib = None
-
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
-
-        # Header
-        header = ctk.CTkFrame(self, height=50, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=20, pady=10)
-        ctk.CTkLabel(header, text="Automação LMR", font=("Roboto", 24, "bold"), text_color=COLORS["text_white"]).pack(side="left")
-
-        # Content
-        self.content = ctk.CTkFrame(self, fg_color="transparent")
-        self.content.grid(row=1, column=0, sticky="nsew", padx=20, pady=10)
-
-        # Console
-        self.console = ctk.CTkTextbox(self, height=150, font=("Consolas", 12))
-        self.console.grid(row=2, column=0, sticky="ew", padx=20, pady=10)
-
-        self._build_ui()
-
-    def log(self, txt):
-        self.console.insert("end", f"> {txt}\n"); self.console.see("end")
+        super().__init__(
+            parent,
+            controller,
+            titulo="Automação LMR",
+            embutida=embutida,
+            console_externo=console_externo,
+        )
 
     def _build_ui(self):
         frm_main = ctk.CTkFrame(self.content, fg_color="#2B2B2B", corner_radius=8)

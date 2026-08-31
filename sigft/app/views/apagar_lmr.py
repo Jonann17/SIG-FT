@@ -36,16 +36,20 @@ class ModuloApagarLMR(ModuleFrame):
     # `self.console.insert` DIRETO, e o `_worker` abaixo roda numa
     # threading.Thread. Tocar widget do Tk fora da thread da interface e
     # corrupcao de estado -- log sumindo no meio do lote, no melhor caso.
-    def __init__(self, parent, controller):
+    def __init__(self, parent, controller, *, embutida=False, console_externo=None):
+        # Antes do super(): o `_build_ui` roda lá dentro e cria o picker, que
+        # grava aqui quando o usuário escolhe um arquivo.
+        self.caminho_status = None
         super().__init__(
             parent,
             controller,
             titulo="Apagar Aplicações LMR",
             cor_titulo=COLORS["danger"],
+            # [2026-08-28] Vira a aba "Exclusão" da seção Aplicação LMR. Sem
+            # header próprio (a seção já tem um) e escrevendo no console dela.
+            embutida=embutida,
+            console_externo=console_externo,
         )
-        # Definido DEPOIS do super(): o `_build_ui` roda lá dentro e cria o
-        # picker, que só grava aqui quando o usuário escolhe um arquivo.
-        self.caminho_status = None
 
     def _build_ui(self):
         frm_main = ctk.CTkFrame(self.content, fg_color="#2B2B2B", corner_radius=8)

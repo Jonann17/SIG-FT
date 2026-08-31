@@ -22,13 +22,13 @@ from PIL import Image
 from sigft.app import backends
 from sigft.app.theme import COLORS
 from sigft.app.views.analyzer import ModuloAnalyzer
-from sigft.app.views.apagar_lmr import ModuloApagarLMR
 from sigft.app.views.autospec import ModuloAutoSpec
 from sigft.app.views.busca_pmib import ModuloBuscaPMIB
 from sigft.app.views.copia_fichas import ModuloCopiaFichas
 from sigft.app.views.cria_fichas import ModuloCriaFichas
 from sigft.app.views.home import HomeView
-from sigft.app.views.lmr import ModuloLMR
+# [2026-08-28] As duas telas de LMR viraram abas de uma seção só.
+from sigft.app.views.aplicacao_lmr import ModuloAplicacaoLMR
 from sigft.app.views.pdm import ModuloPDM
 from sigft.app.views.pmib_manager import ModuloPMIBManager
 from sigft.app.views.translator import ModuloTranslator
@@ -285,8 +285,9 @@ class SIG_FT_App(ctk.CTk):
 
         # Seção 3: Gestão
         self._criar_label_secao(self.sidebar, "Gestão & LMR", row=13)
-        self.btn_lmr = self._criar_botao_menu(self.sidebar, "7.1. LMR (Upload)", "LMR", row=14)
-        self.btn_del_lmr = self._criar_botao_menu(self.sidebar, "7.2. Apagar LMR", "ApagarLMR", row=15)
+        # [2026-08-28] Um botão só: as duas operações sobre a MESMA aba do
+        # portal ficavam em entradas separadas, e uma delas é destrutiva.
+        self.btn_lmr = self._criar_botao_menu(self.sidebar, "7. Aplicação LMR", "LMR", row=14)
         self.btn_manager = self._criar_botao_menu(self.sidebar, "8. PMIB Manager", "PMIBManager", row=16)
         self.btn_search = self._criar_botao_menu(self.sidebar, "9. Search", "SearchPMIB", row=17)
 
@@ -308,8 +309,7 @@ class SIG_FT_App(ctk.CTk):
         self.frames["UploadSpecs"] = ModuloUploadTechSpecs(parent=self.container, controller=self)
         self.frames["CopiaFichas"] = ModuloCopiaFichas(parent=self.container, controller=self)
         self.frames["AutoSpec"] = ModuloAutoSpec(parent=self.container, controller=self)
-        self.frames["LMR"] = ModuloLMR(parent=self.container, controller=self)
-        self.frames["ApagarLMR"] = ModuloApagarLMR(parent=self.container, controller=self)
+        self.frames["LMR"] = ModuloAplicacaoLMR(parent=self.container, controller=self)
         self.frames["PMIBManager"] = ModuloPMIBManager(parent=self.container, controller=self)
         self.frames["SearchPMIB"] = ModuloBuscaPMIB(parent=self.container, controller=self)
 

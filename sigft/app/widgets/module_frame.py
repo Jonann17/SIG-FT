@@ -74,9 +74,44 @@ class ModuleFrame(DialogosDeEspera, ctk.CTkFrame):
         altura_progresso: int = 12,
         cor_progresso: str | None = None,
         construir: bool = True,
+        embutida: bool = False,
+        console_externo=None,
     ):
         super().__init__(parent)
         self.controller = controller
+        self.embutida = embutida
+
+        # --- Tela EMBUTIDA (dentro da aba de outra tela) --------------------
+        # [2026-08-28] Uma tela dentro de uma aba não pode trazer o próprio
+        # header nem o próprio console: quem já está na seção "Aplicação LMR"
+        # não precisa de um segundo título dizendo "Aplicação LMR", e dois
+        # consoles na mesma janela dividem o log em dois lugares — o pior jeito
+        # de acompanhar um lote.
+        #
+        # Então ela desenha DIRETO no espaço que recebeu e escreve no console
+        # do pai. `self.content` continua sendo "onde desenhar", que é o que o
+        # `_build_ui` de cada tela espera — por isso migrar uma tela para
+        # dentro de uma aba não exige reescrever o `_build_ui` dela.
+        if embutida:
+            self.grid_columnconfigure(0, weight=1)
+            self.grid_rowconfigure(0, weight=1)
+            self.header = None
+            self.label_titulo = None
+            self.progress_bar = None
+            self.console = console_externo
+            # ROLÁVEL, e isso não é preferência: dentro de uma aba sobra menos
+            # altura que numa tela inteira (o header e o console da seção
+            # comem espaço), e o conteúdo que não cabe simplesmente SOME —
+            # sem barra, sem aviso. Na primeira montagem da seção de LMR isso
+            # cortou o último passo do "O robô irá:" da tela de exclusão, que
+            # é justamente onde ela diz que vai apagar tudo.
+            #
+            # É o mesmo recurso que o `ModuloCriaFichas` já usa nas abas dele.
+            self.content = ctk.CTkScrollableFrame(self, fg_color="transparent")
+            self.content.grid(row=0, column=0, sticky="nsew")
+            if construir:
+                self._build_ui()
+            return
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=peso_conteudo)
