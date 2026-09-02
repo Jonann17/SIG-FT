@@ -15,6 +15,7 @@ from sigft.app import backends, file_dialogs
 from sigft.app.theme import COLORS
 from sigft.app.widgets import dialogs as app_dialogs
 from sigft.core import prefs
+from sigft.core.callbacks import from_legacy
 from sigft.core.excel.pmib_codes import normalize_pmib
 
 import customtkinter as ctk
@@ -54,6 +55,11 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
         self.path_sam_gm = ctk.StringVar()
         self.path_pdms_itaipu = ctk.StringVar()
         self.modo_proc = ctk.StringVar(value="todos")  # Preset do RadioButton
+        # Ficha em ingles (2026-08-28): a pasta dos PDMs traduzidos e o idioma
+        # escolhido para a montagem. Default "pt" -- quem nao mexe em nada
+        # continua tendo exatamente o comportamento de sempre.
+        self.caminho_destino_en = ctk.StringVar()
+        self.idioma_ficha = ctk.StringVar(value="pt")
 
         # Novas variáveis visuais para a Aba 2
         self.path_status_pmib = ctk.StringVar()
@@ -163,6 +169,32 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
 
         ctk.CTkButton(frm_mod, text="Executar: Criar PDMs Modificados", command=self._op1_modificados, fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"]).pack(pady=10)
 
+        # --- Traducao para ingles (2026-08-28) ---
+        # Fica nesta aba porque produz uma pasta de PDMs, como os dois botoes
+        # acima -- e nao na aba 2, que so CONSOME o que existe.
+        ctk.CTkLabel(frm_mod, text="3. Traduzir para inglês (ficha em inglês)",
+                     font=("Roboto", 14, "bold")).pack(anchor="w", padx=10, pady=(15, 5))
+        ctk.CTkLabel(
+            frm_mod, font=("Roboto", 11), text_color="gray", justify="left", anchor="w",
+            text=("Lê a 'Pasta dos PDMs Modificados' e grava a versão em inglês noutra pasta.\n"
+                  "Rode uma vez; o resultado fica em cache e o glossário editável "
+                  "(_GLOSSARIO_PT_EN.txt) corrige termo técnico de vez."),
+        ).pack(anchor="w", padx=10)
+
+        f_en = ctk.CTkFrame(frm_mod, fg_color="transparent")
+        f_en.pack(fill="x", padx=10, pady=5)
+        ctk.CTkLabel(f_en, text="Pasta dos PDMs Modificados (EN):", width=240, anchor="w").pack(side="left")
+        ctk.CTkEntry(f_en, textvariable=self.caminho_destino_en, width=280).pack(side="left", padx=5)
+        ctk.CTkButton(f_en, text="Buscar", width=80,
+                      command=lambda: self.caminho_destino_en.set(
+                          file_dialogs.ask_directory("pdm.pdms_modificados_en", "pasta",
+                                                     titulo="Pasta dos PDMs Modificados em INGLÊS"))
+                      ).pack(side="left")
+
+        ctk.CTkButton(frm_mod, text="Executar: Traduzir PDMs Modificados para inglês",
+                      command=self._op1_traduzir, fg_color=COLORS["primary"],
+                      hover_color=COLORS["primary_hover"]).pack(pady=10)
+
     def _build_tab2(self, parent):
         # --- SEÇÃO 1: Configuração de Arquivos e Pastas ---
         frm_files = ctk.CTkFrame(parent, fg_color="#333333", corner_radius=8)
@@ -193,6 +225,20 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
         self.btn_template.pack(side="left")
         self.lbl_template_status = ctk.CTkLabel(f_temp, text="Nenhum arquivo selecionado", text_color="gray")
         self.lbl_template_status.pack(side="left", padx=15)
+
+        # IDIOMA DA FICHA (2026-08-28). Explicito, e nao deduzido do nome do
+        # arquivo do template: deduzir quebraria em silencio no dia em que
+        # alguem renomeasse o template, e ficha montada com as perguntas no
+        # idioma errado nao se denuncia sozinha.
+        f_idioma = ctk.CTkFrame(frm_files, fg_color="transparent")
+        f_idioma.pack(fill="x", padx=10, pady=8)
+        ctk.CTkLabel(f_idioma, text="Idioma da ficha:", width=240, anchor="w").pack(side="left")
+        ctk.CTkRadioButton(f_idioma, text="Português", variable=self.idioma_ficha,
+                           value="pt").pack(side="left", padx=10)
+        ctk.CTkRadioButton(f_idioma, text="English", variable=self.idioma_ficha,
+                           value="en").pack(side="left", padx=10)
+        ctk.CTkLabel(f_idioma, text="(English usa a pasta de PDMs traduzidos)",
+                     font=("Roboto", 11), text_color="gray").pack(side="left", padx=10)
 
         # --- SEÇÃO 2: Modo de Execução ---
         frm_exec = ctk.CTkFrame(parent, fg_color="#333333", corner_radius=8)
@@ -314,9 +360,63 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
             else:
                 self.log("Seleção de arquivo específico cancelada.")
 
+    def _op1_traduzir(self):
+        """Traduz a pasta de PDMs Modificados para inglês.
+
+        Roda em thread como as demais operações da tela; o serviço devolve as
+        linhas de log num generator, mesmo contrato do resto do projeto.
+        """
+        origem = self.caminho_destino.get()
+        destino = self.caminho_destino_en.get()
+        if not origem:
+            return messagebox.showwarning("Aviso", "Selecione a 'Pasta dos PDMs Modificados' primeiro.")
+        if not destino:
+            return messagebox.showwarning(
+                "Aviso", "Selecione a pasta de destino dos PDMs Modificados em INGLÊS.")
+        if os.path.abspath(origem) == os.path.abspath(destino):
+            return messagebox.showerror(
+                "Erro", "A pasta de destino não pode ser a mesma da origem —\n"
+                        "os arquivos em português seriam sobrescritos.")
+
+        def task():
+            try:
+                from sigft.services import traducao_pdm
+                self._safe_log("Traduzindo PDMs Modificados para inglês...")
+                for linha in traducao_pdm.traduzir_pasta(
+                        origem, destino,
+                        traduzir=traducao_pdm.motor_padrao(
+                            api_key=self.controller.get_key("GEMINI"),
+                            callbacks=from_legacy(callback_log=self._safe_log)),
+                        retry_lock=self.perguntar_retry_excel):
+                    self._safe_log(linha)
+                self.after(0, lambda: messagebox.showinfo(
+                    "Tradução", f"Tradução concluída.\n\nPasta: {destino}"))
+            except Exception as e:
+                # `motivo=str(e)` e nao `{e}` dentro do lambda: o Python APAGA
+                # o nome `e` ao sair do `except`, e o lambda so roda depois --
+                # viraria NameError na hora de mostrar o erro, justamente
+                # quando alguma coisa ja deu errado. E o mesmo defeito que o
+                # `pyflakes` acusa como conhecido no resto do app.
+                motivo = str(e)
+                self._safe_log(f"ERRO na tradução: {motivo}")
+                self.after(0, lambda: messagebox.showerror(
+                    "Erro", f"Falha na tradução:\n{motivo}"))
+
+        threading.Thread(target=task, daemon=True).start()
+
     def _op2_executar(self):
-        pasta_modificados = self.caminho_destino.get()
-        if not pasta_modificados: return messagebox.showwarning("Aviso", "Selecione a 'Pasta dos PDMs Modificados' primeiro.")
+        # A pasta vem do IDIOMA escolhido: em inglês, as perguntas coladas na
+        # ficha têm de ser as traduzidas. Ver `_op1_traduzir`.
+        em_ingles = self.idioma_ficha.get() == "en"
+        pasta_modificados = (self.caminho_destino_en.get() if em_ingles
+                             else self.caminho_destino.get())
+        if not pasta_modificados:
+            if em_ingles:
+                return messagebox.showwarning(
+                    "Aviso", "Idioma da ficha = English, mas a 'Pasta dos PDMs Modificados "
+                             "(EN)' não foi selecionada.\n\nEla fica na aba 1, no passo 3 "
+                             "(Traduzir para inglês).")
+            return messagebox.showwarning("Aviso", "Selecione a 'Pasta dos PDMs Modificados' primeiro.")
 
         status_pmib = self.path_status_pmib.get()
         destino_fichas = self.path_destino_fichas.get()
