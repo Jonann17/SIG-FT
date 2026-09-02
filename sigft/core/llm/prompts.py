@@ -969,3 +969,54 @@ def montar_autospec(txt_brv, fab, desc_comp, context, desc_list_texto):
 
         CAMPOS A PREENCHER (Retorne JSON {{ID: {{"valor": Resposta, "fonte": Origem}}}}):
         """ + desc_list_texto
+
+
+# =============================================================================
+# 8. traducao_pdm.motor_padrao  --  tarefa "traduzir_pdm"  (2026-08-28)
+# =============================================================================
+def montar_traduzir_pdm(textos, glossario=None):
+    """Traduz PT->EN as perguntas de um PDM Modificado, em lote.
+
+    Nasce aqui, e nao junto do servico, pela mesma regra dos outros sete: o
+    TEXTO de todo prompt do SIG-FT mora neste arquivo desde o CP 3.5.
+
+    Duas decisoes que estao no texto e valem explicacao:
+
+    - **lote com indice**, e nao uma chamada por frase. Sao frases curtas; o
+      lote e o que torna a IA mais barata E mais rapida que o Google Tradutor
+      (que cobra 1 segundo de espera por item). O indice existe para a
+      resposta poder ser conferida contra a entrada -- `_traduzir_com_ia`
+      recusa a resposta se vierem menos traducoes que textos.
+    - **o glossario entra como vocabulario OBRIGATORIO.** E o unico jeito de
+      "corrigiu uma vez, vale sempre" funcionar de verdade: sem isso o modelo
+      alterna entre sinonimos entre uma rodada e outra, e a ficha do fornecedor
+      muda de vocabulario sem ninguem ter mudado nada.
+    """
+    linhas_glossario = ""
+    if glossario:
+        pares = "\n".join(f'  "{pt}" -> "{en}"' for pt, en in glossario.items())
+        linhas_glossario = (
+            "\nVOCABULARIO OBRIGATORIO (use EXATAMENTE estas traducoes onde os termos "
+            f"aparecerem):\n{pares}\n"
+        )
+
+    numeradas = "\n".join(f"{i}. {t}" for i, t in enumerate(textos, start=1))
+    return f"""Você é tradutor técnico de português do Brasil para inglês, especializado em documentação de materiais sobressalentes de usinas hidrelétricas.
+
+Traduza as {len(textos)} linhas abaixo. Cada uma é o nome de uma característica técnica que um fornecedor vai preencher numa ficha, geralmente seguida da unidade entre parênteses.
+
+REGRAS:
+1. Traduza para o inglês técnico usado em datasheet de fabricante, não para o inglês corrente.
+2. PRESERVE a unidade entre parênteses exatamente como está (bar, mm, kg, l/min, V, A, °C não mudam).
+3. PRESERVE códigos, normas e designações (ISO 4406, NBR 10004, IP65, DN50) sem traduzir.
+4. NÃO acrescente, não explique e não numere: devolva só a tradução de cada linha.
+5. Se a linha já estiver em inglês, devolva-a inalterada.
+{linhas_glossario}
+LINHAS:
+{numeradas}
+
+Responda APENAS com JSON, sem ```json e sem texto antes ou depois, no formato:
+{{"traducoes": ["tradução da linha 1", "tradução da linha 2", "..."]}}
+
+A lista deve ter exatamente {len(textos)} itens, na mesma ordem das linhas.
+"""
