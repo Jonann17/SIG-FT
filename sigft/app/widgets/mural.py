@@ -31,6 +31,9 @@ from sigft.services import atividades as at
 # Cor de cada faixa. Vermelho e laranja vêm do tema; as demais seguem a paleta.
 COR_FAIXA = {
     at.ATRASADA: theme.COLORS["danger"],
+    # Roxo, deliberadamente fora da escala vermelho->laranja->verde do prazo:
+    # travada nao e "mais atrasada", e outra natureza de problema.
+    at.TRAVADA: "#B07CE8",
     at.DEVERIA_TER_COMECADO: theme.COLORS["warning"],
     at.EM_ANDAMENTO: theme.COLORS["primary_hover"],
     at.COMECA_HOJE: theme.COLORS["accent"],
@@ -39,6 +42,7 @@ COR_FAIXA = {
 
 ROTULO_FAIXA = {
     at.ATRASADA: "ATRASADO",
+    at.TRAVADA: "TRAVADA",
     at.DEVERIA_TER_COMECADO: "DEVERIA TER COMEÇADO",
     at.EM_ANDAMENTO: "EM ANDAMENTO",
     at.COMECA_HOJE: "COMEÇA HOJE",
@@ -47,6 +51,7 @@ ROTULO_FAIXA = {
 
 EXPLICACAO_FAIXA = {
     at.ATRASADA: "a previsão de término já passou",
+    at.TRAVADA: "começou e parou — precisa de alguém para destravar",
     at.DEVERIA_TER_COMECADO: "a data de início passou e ninguém começou",
     at.EM_ANDAMENTO: "alguém está tocando agora",
     at.COMECA_HOJE: "entra na fila de hoje",

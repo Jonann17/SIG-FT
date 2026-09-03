@@ -401,12 +401,17 @@ def test_em_andamento_vence_deveria_ter_comecado():
 
 
 def test_travada_sem_data_ainda_aparece():
-    """Trabalho parado sem data é justamente o que se perde de vista."""
+    """Trabalho parado sem data é justamente o que se perde de vista.
+
+    A intenção do teste não mudou — o que mudou foi a faixa. Ele nasceu
+    esperando DEVERIA_TER_COMECADO, que era onde a travada caía por falta de
+    faixa própria; hoje ela tem a sua.
+    """
     a = ativ(status="Travada")
 
     faixa, dias = at.classificar(a, HOJE)
 
-    assert faixa == at.DEVERIA_TER_COMECADO
+    assert faixa == at.TRAVADA
     assert dias is None
 
 
@@ -475,3 +480,85 @@ def test_frases_do_futuro():
 
 def test_frase_sem_data():
     assert at.frase_do_prazo(at.DEVERIA_TER_COMECADO, None) == "sem data"
+
+
+# =============================================================================
+# F. TRAVADA tem faixa própria, e DATA DE INÍCIO vale
+# =============================================================================
+# [2026-09-03] Os dois defeitos que o usuário viu no mural, lado a lado:
+# *"tem alguns apontamentos errados de data, e os que estão travados já deram
+# início, só estão travados, outra categoria"*.
+#
+# Na planilha real, 6 das 35 atividades do mural estavam na faixa errada — as
+# 4 travadas e 3 que tinham DATA DE INÍCIO preenchida. Todas as 6 diziam
+# "era para começar há N dias", de trabalho que já havia começado.
+
+def test_travada_vence_o_atraso():
+    """Travada e vencida aparece como TRAVADA, não como ATRASADA.
+
+    O que impede a atividade de andar é o bloqueio, não o calendário. Chamá-la
+    de "atrasada" descreve o sintoma; chamá-la de "travada" diz o que fazer.
+    """
+    a = ativ(status="Travada", previsao_termino=datetime(2026, 8, 20))
+
+    faixa, dias = at.classificar(a, HOJE)
+
+    assert faixa == at.TRAVADA
+    assert dias == -14, "o prazo não se perde: vai no `dias` para o cartão"
+
+
+def test_travada_que_ja_comecou_nao_diz_que_deveria_comecar():
+    """O caso literal do usuário, com os dados reais de 'Tratar com Itaipu'."""
+    a = ativ(
+        status="Travada",
+        data_prevista_inicio=datetime(2026, 8, 26),
+        data_inicio=datetime(2026, 8, 26),
+        previsao_termino=datetime(2026, 9, 9),
+    )
+
+    assert faixa_de(a) == at.TRAVADA
+
+
+def test_data_de_inicio_preenchida_significa_que_comecou():
+    """Sem isto o mural dizia "era para começar há 9 dias" de coisa começada.
+
+    A Home jogava a coluna fora (mandava `data_inicio` sempre ""), então só o
+    status "Em desenvolvimento" contava como começo. Três atividades reais
+    tinham DATA DE INÍCIO em 25/08 e apareciam como não começadas.
+    """
+    a = ativ(
+        status="Não iniciada",
+        data_prevista_inicio=datetime(2026, 8, 25),
+        data_inicio=datetime(2026, 8, 25),
+        previsao_termino=datetime(2026, 9, 11),
+    )
+
+    assert faixa_de(a) == at.EM_ANDAMENTO
+
+
+def test_sem_data_de_inicio_continua_deveria_ter_comecado():
+    """O contraponto: a faixa não sumiu, só deixou de receber quem já começou."""
+    a = ativ(
+        status="Não iniciada",
+        data_prevista_inicio=datetime(2026, 8, 25),
+        previsao_termino=datetime(2026, 9, 11),
+    )
+
+    assert faixa_de(a) == at.DEVERIA_TER_COMECADO
+
+
+def test_travada_concluida_sai_do_mural():
+    """Concluída vence tudo, travada inclusive."""
+    assert faixa_de(ativ(status="Travada", concluida=True)) is None
+
+
+def test_frase_da_travada_mostra_o_prazo():
+    """O rótulo da faixa já diz "TRAVADA", então o cartão gasta o espaço com
+    o prazo — a informação que a palavra "travada" não carrega."""
+    assert at.frase_do_prazo(at.TRAVADA, -3) == "previsão venceu há 3 dias"
+    assert at.frase_do_prazo(at.TRAVADA, 0) == "previsão é hoje"
+    assert at.frase_do_prazo(at.TRAVADA, 6) == "previsão em 6 dias"
+
+
+def test_travada_esta_entre_as_faixas():
+    assert at.TRAVADA in at.FAIXAS

@@ -213,12 +213,14 @@ STATUS_CONCLUIDA = "Concluída"
 
 # As faixas do mural, na ordem em que aparecem — que é a ordem da urgência.
 ATRASADA = "atrasada"
+TRAVADA = "travada"
 DEVERIA_TER_COMECADO = "deveria_ter_comecado"
 EM_ANDAMENTO = "em_andamento"
 COMECA_HOJE = "comeca_hoje"
 PROXIMOS_DIAS = "proximos_dias"
 
-FAIXAS = (ATRASADA, DEVERIA_TER_COMECADO, EM_ANDAMENTO, COMECA_HOJE, PROXIMOS_DIAS)
+FAIXAS = (ATRASADA, TRAVADA, DEVERIA_TER_COMECADO, EM_ANDAMENTO, COMECA_HOJE,
+          PROXIMOS_DIAS)
 
 # Quantos dias à frente o mural enxerga. Decisão do usuário: 7 — uma semana
 # cabe na tela e ainda é acionável.
@@ -266,12 +268,29 @@ def classificar(linha, hoje, horizonte=HORIZONTE_DIAS):
     status = str(linha.get("status") or "").strip()
     em_andamento = status.casefold() == STATUS_EM_DESENVOLVIMENTO.casefold()
 
+    # `DATA DE INÍCIO` preenchida é o registro de que a atividade COMEÇOU.
+    # Antes só o status "Em desenvolvimento" contava, e a coluna era ignorada
+    # — o mural dizia "era para começar há 9 dias" de atividade cuja data de
+    # início estava preenchida havia mais de uma semana.
+    comecou = _so_data(linha.get("data_inicio")) is not None
+
+    # 0. TRAVADA vence todas as outras faixas.
+    #
+    # Decisão do usuário: *"os que estão travados já deram início, só estão
+    # travados, outra categoria"*. O que impede uma atividade travada de
+    # andar não é o calendário — é o bloqueio. Classificá-la pela data dizia
+    # "era para começar há 8 dias" de coisa que já começou e parou, o que
+    # esconde justamente a informação que pede ação: alguém precisa destravar.
+    # O prazo não se perde: vai no `dias`, e a tela o escreve no cartão.
+    if _travada(linha):
+        return TRAVADA, (termino - hoje).days if termino is not None else None
+
     # 1. Passou da previsão de término e não terminou.
     if termino is not None and termino < hoje:
         return ATRASADA, (termino - hoje).days
 
     # 2. Já começou de fato.
-    if em_andamento:
+    if em_andamento or comecou:
         dias = (termino - hoje).days if termino is not None else None
         return EM_ANDAMENTO, dias
 
@@ -287,10 +306,8 @@ def classificar(linha, hoje, horizonte=HORIZONTE_DIAS):
     if inicio is not None and 0 < (inicio - hoje).days <= horizonte:
         return PROXIMOS_DIAS, (inicio - hoje).days
 
-    # Travada sem data nenhuma ainda merece aparecer: é trabalho parado.
-    if status.casefold() == STATUS_TRAVADA.casefold():
-        return DEVERIA_TER_COMECADO, None
-
+    # (A rede que jogava travada-sem-data em DEVERIA_TER_COMECADO saiu: agora
+    # travada tem faixa própria e é decidida lá em cima, com ou sem data.)
     return None, None
 
 
@@ -358,7 +375,9 @@ def frase_do_prazo(faixa, dias) -> str:
         return "começa hoje"
     if faixa == PROXIMOS_DIAS:
         return "começa amanhã" if dias == 1 else f"começa em {dias} dias"
-    if faixa == EM_ANDAMENTO:
+    if faixa in (EM_ANDAMENTO, TRAVADA):
+        # TRAVADA usa a mesma frase de EM_ANDAMENTO: o rótulo da faixa já diz
+        # que está travada, então o cartão aproveita o espaço para o PRAZO.
         if dias < 0:
             return f"previsão venceu há {abs(dias)} dias"
         if dias == 0:

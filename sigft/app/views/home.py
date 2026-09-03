@@ -198,19 +198,35 @@ class HomeView(ctk.CTkScrollableFrame):
                 return vazio, "A planilha nao tem a aba 'Atividades'.\n\n" + str(caminho)
 
             ws = wb["Atividades"]
+
+            # ⚠️ `iter_rows`, NUNCA `ws.cell(...)` numa planilha `read_only`.
+            #
+            # Em modo read-only a aba e um FLUXO so-para-frente: cada
+            # `ws.cell(linha, coluna)` re-percorre o XML desde o comeco. Eram
+            # 84 linhas x 10 colunas = 840 varreduras, e o mural levava
+            # 3,9 s para abrir num arquivo de 40 KB. `iter_rows` passa uma
+            # vez so: caiu para centesimos de segundo.
+            def _celula(valores, coluna):
+                indice = coluna - 1
+                return valores[indice] if indice < len(valores) else None
+
             linhas = []
-            for r in range(at.LINHA_CABECALHO + 1, ws.max_row + 1):
+            for valores in ws.iter_rows(min_row=at.LINHA_CABECALHO + 1, values_only=True):
                 linhas.append({
-                    "nv": ws.cell(row=r, column=at.COL_NV).value,
-                    "descricao": ws.cell(row=r, column=at.COL_DESCRICAO).value,
-                    "concluida": ws.cell(row=r, column=at.COL_CONCLUIDA).value,
-                    "status": ws.cell(row=r, column=at.COL_STATUS).value,
-                    "com_quem": ws.cell(row=r, column=at.COL_COM_QUEM).value,
-                    "criticidade": ws.cell(row=r, column=at.COL_CRITICIDADE).value,
-                    "data_prevista_inicio": ws.cell(row=r, column=at.COL_DATA_PREVISTA_INICIO).value or "",
-                    "previsao_termino": ws.cell(row=r, column=at.COL_PREVISAO_TERMINO).value or "",
-                    "data_inicio": "",
-                    "data_termino": "",
+                    "nv": _celula(valores, at.COL_NV),
+                    "descricao": _celula(valores, at.COL_DESCRICAO),
+                    "concluida": _celula(valores, at.COL_CONCLUIDA),
+                    "status": _celula(valores, at.COL_STATUS),
+                    "com_quem": _celula(valores, at.COL_COM_QUEM),
+                    "criticidade": _celula(valores, at.COL_CRITICIDADE),
+                    "data_prevista_inicio": _celula(valores, at.COL_DATA_PREVISTA_INICIO) or "",
+                    "previsao_termino": _celula(valores, at.COL_PREVISAO_TERMINO) or "",
+                    # As datas REAIS. Antes iam como "" fixo, e a regra que
+                    # decide "ja comecou" ficava cega: atividade com DATA DE
+                    # INICIO preenchida aparecia como "era para comecar ha N
+                    # dias".
+                    "data_inicio": _celula(valores, at.COL_DATA_INICIO) or "",
+                    "data_termino": _celula(valores, at.COL_DATA_TERMINO) or "",
                 })
             wb.close()
             return at.mural(linhas, date.today()), None
