@@ -283,12 +283,12 @@ O que os arquivos DESMENTIRAM esta em `docs/FICHA_EM_INGLES.md`. Ficou de fora:
    → precisa de uma ficha EN preenchida POR FORNECEDOR para medir; a que
    temos veio em branco na coluna das respostas.
 
-2. **Renomear a aba no idioma ingles.** A ficha gerada sai com a aba
-   `Ficha Tecnica Padrao` porque e assim que o template esta; o usuario
-   renomeia a mao para `Standard Technical Sheet`. Renomear automaticamente e
-   seguro (o analyzer escolhe a aba por EVIDENCIA, nao por nome —
-   `_aba_da_ficha`), mas muda um entregavel que vai para o fornecedor.
-   → decisao do usuario, perguntada em 2026-09-03.
+2. ~~**Renomear a aba no idioma ingles.**~~ ✅ **RESOLVIDO no mesmo dia**: o
+   usuario respondeu "renomear automaticamente".
+   `aplicar_templates_fichas(..., idioma="en")` renomeia para
+   `pdm.NOME_DA_ABA_EM_INGLES`. Conferido contra a ficha EN REAL que o
+   analyzer volta a ler: aba `Standard Technical Sheet`, linha 79, 14
+   perguntas lidas.
 
 3. **A linha 79 continua fixa em tres lugares.** `pdm.aplicar_templates_fichas`
    (`start_row = 79`), `config.LINHA_SPECS_FICHA` e `translator.py`

@@ -493,10 +493,14 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
             self._safe_log("Injetando os dados dos PDMs no Template (a partir da linha 79)...")
 
             # Repassando o callback para o backend conversar em tempo real com o terminal!
+            # O idioma vai para o serviço, e não o nome da aba: quem sabe como
+            # a aba se chama em inglês é o serviço (`NOME_DA_ABA_EM_INGLES`).
+            # A tela só repassa o que o usuário escolheu.
             msg_res, logs = backends.pdm_backend.aplicar_templates_fichas(
                 dados_pastas, pasta_modificados, template,
                 log_callback=self._safe_log,
                 retry_lock=self.perguntar_retry_excel,
+                idioma=self.idioma_ficha.get(),
             )
             self._safe_log(msg_res)
 

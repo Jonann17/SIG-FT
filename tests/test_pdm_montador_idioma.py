@@ -186,6 +186,112 @@ def test_a_ficha_em_INGLES_e_montada_com_os_PDMs_traduzidos(tmp_path, openpyxl_r
 
 
 # =============================================================================
+# O NOME DA ABA NA SAÍDA (decisão do usuário, 2026-09-03)
+# =============================================================================
+# O template `Technical_Sheet_of_PDM-R3.xlsx` traz a aba com o nome em
+# PORTUGUÊS. A ficha em inglês que o usuário entrega ao fornecedor
+# (`4500063671.0052_enUS.xlsx`) tem "Standard Technical Sheet" — ou seja, ele
+# renomeia à mão, ficha a ficha. Perguntado, respondeu: renomear
+# automaticamente.
+#
+# A regra "inglês -> qual nome" mora no SERVIÇO, não na tela: a tela passa o
+# IDIOMA (que é o que o usuário escolheu) e o serviço decide o nome. Princípio
+# nº 2 do projeto — UI não contém regra de negócio.
+
+def _template_e_pdm(tmp_path, nome_da_aba):
+    import openpyxl
+    template = tmp_path / "template.xlsx"
+    _workbook([nome_da_aba]).save(template)
+    pasta = tmp_path / "pdms"
+    pasta.mkdir()
+    wb = openpyxl.Workbook()
+    wb.active.cell(row=1, column=1, value="1 - Flow rate (l/min):")
+    wb.save(pasta / "PDM_1234_001_formatado.xlsx")
+    destino = tmp_path / "saida"
+    destino.mkdir()
+    return template, pasta, destino
+
+
+def test_em_INGLES_a_aba_da_ficha_gerada_e_renomeada(tmp_path, openpyxl_real):
+    import openpyxl
+    template, pasta, destino = _template_e_pdm(tmp_path, "Ficha Técnica Padrão")
+
+    pdm.aplicar_templates_fichas(
+        [("4500063671.0071", "PDM.1234.001 - X", str(destino))],
+        str(pasta), str(template), idioma="en")
+
+    wb = openpyxl.load_workbook(destino / "4500063671.0071.xlsx")
+    assert pdm.NOME_DA_ABA_EM_INGLES in wb.sheetnames
+    assert "Ficha Técnica Padrão" not in wb.sheetnames
+
+
+def test_em_PORTUGUES_o_nome_da_aba_NAO_e_tocado(tmp_path, openpyxl_real):
+    """O caminho de sempre não pode mudar por causa disto."""
+    import openpyxl
+    template, pasta, destino = _template_e_pdm(tmp_path, "Ficha Técnica Padrão")
+
+    pdm.aplicar_templates_fichas(
+        [("4500063671.0071", "PDM.1234.001 - X", str(destino))],
+        str(pasta), str(template))          # sem `idioma`: o padrão é português
+
+    wb = openpyxl.load_workbook(destino / "4500063671.0071.xlsx")
+    assert wb.sheetnames == ["Ficha Técnica Padrão"]
+
+
+def test_o_conteudo_continua_na_aba_depois_de_renomeada(tmp_path, openpyxl_real):
+    """Renomear não pode custar a ficha: as perguntas têm de continuar lá,
+    na mesma célula."""
+    import openpyxl
+    template, pasta, destino = _template_e_pdm(tmp_path, "Ficha Técnica Padrão")
+
+    pdm.aplicar_templates_fichas(
+        [("4500063671.0071", "PDM.1234.001 - X", str(destino))],
+        str(pasta), str(template), idioma="en")
+
+    gerada = openpyxl.load_workbook(destino / "4500063671.0071.xlsx")[pdm.NOME_DA_ABA_EM_INGLES]
+    assert gerada.cell(row=79, column=3).value == "1 - Flow rate (l/min):"
+
+
+def test_template_que_JA_esta_em_ingles_nao_quebra(tmp_path, openpyxl_real):
+    """Se alguém consertar o template, o rename vira no-op — e não um erro de
+    'já existe uma aba com esse nome'."""
+    import openpyxl
+    template, pasta, destino = _template_e_pdm(tmp_path, pdm.NOME_DA_ABA_EM_INGLES)
+
+    resumo, log = pdm.aplicar_templates_fichas(
+        [("4500063671.0071", "PDM.1234.001 - X", str(destino))],
+        str(pasta), str(template), idioma="en")
+
+    assert "1" in resumo, log
+    wb = openpyxl.load_workbook(destino / "4500063671.0071.xlsx")
+    assert wb.sheetnames == [pdm.NOME_DA_ABA_EM_INGLES]
+
+
+def test_o_nome_escolhido_e_o_que_a_Itaipu_usa():
+    """Não é invenção: é o nome da aba na ficha que o usuário entregou."""
+    assert pdm.NOME_DA_ABA_EM_INGLES == "Standard Technical Sheet"
+
+
+def test_a_tela_passa_o_IDIOMA_e_nao_o_nome_da_aba():
+    """A tela não pode saber como se chama a aba em inglês — isso é regra de
+    negócio, e regra de negócio duplicada é regra que diverge.
+
+    Procura o argumento nomeado NA CHAMADA, e não a palavra "idioma" solta no
+    método: `idioma_ficha` já aparece ali por outro motivo (escolher a pasta),
+    e um `in` sobre o dump inteiro passaria sem que nada fosse repassado."""
+    chamadas = [
+        no for no in ast.walk(_metodo("_op2_executar"))
+        if isinstance(no, ast.Call)
+        and isinstance(no.func, ast.Attribute)
+        and no.func.attr == "aplicar_templates_fichas"
+    ]
+    assert chamadas, "a tela nao chama mais o montador?"
+    nomeados = {k.arg for c in chamadas for k in c.keywords}
+    assert "idioma" in nomeados, f"argumentos repassados: {sorted(nomeados)}"
+    assert "Standard Technical Sheet" not in VIEW.read_text(encoding="utf-8")
+
+
+# =============================================================================
 # A tela (por AST — `views/pdm.py` importa customtkinter e exige um root Tk)
 # =============================================================================
 import ast

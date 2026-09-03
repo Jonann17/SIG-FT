@@ -163,14 +163,30 @@ trocado. Para consertar uma tradução ruim com certeza, ponha a **pergunta
 inteira** no glossário — essa nem passa pelo tradutor. Está escrito no
 cabeçalho do próprio arquivo.
 
-### Uma decisão que ficou com o usuário
+### O nome da aba na saída
 
-A ficha gerada sai com a aba chamada `Ficha Técnica Padrão`, porque é assim que
-o template está. A ficha em inglês que o usuário entregou tem
-`Standard Technical Sheet` — ou seja, **hoje ele renomeia à mão**. Renomear
-automaticamente quando o idioma for inglês é seguro (o analyzer escolhe a aba
-por evidência, não por nome — `_aba_da_ficha`), mas muda um entregável que vai
-para o fornecedor, então não foi feito por conta própria.
+O template traz a aba em português; a ficha que o usuário entrega ao fornecedor
+tem `Standard Technical Sheet` — ou seja, **ele renomeava à mão, ficha a
+ficha**. Perguntado em 2026-09-03, respondeu: renomear automaticamente. Feito.
+
+A regra mora no **serviço**, não na tela: a tela passa o `idioma` (que é o que
+o usuário escolheu no seletor) e `aplicar_templates_fichas` decide o nome, a
+partir de `pdm.NOME_DA_ABA_EM_INGLES`. Princípio nº 2 — regra de negócio
+duplicada é regra que diverge. Um teste por AST recusa a string
+`"Standard Technical Sheet"` dentro de `views/pdm.py`.
+
+Em português nada muda: sem `idioma`, o padrão é `"pt"` e a aba não é tocada.
+
+Duas guardas: a comparação é **normalizada** (template já consertado → o
+rename vira no-op em vez de erro), e o rename é abortado se **outra** aba do
+mesmo workbook já tiver esse nome.
+
+**Verificado que a ficha volta legível.** Não por dedução — rodando o analyzer
+contra a ficha em inglês real do usuário (`4500063671.0052_enUS.xlsx`):
+escolheu a aba `Standard Technical Sheet`, achou a linha 79 e leu as **14
+perguntas**. O analyzer escolhe a aba por **evidência** (quantas âncoras do
+`CONFIG_MAP` estão preenchidas), não por nome — é isso que torna o rename
+seguro.
 
 ## Verificação
 
@@ -193,6 +209,6 @@ para o fornecedor, então não foi feito por conta própria.
 | Item | Nota |
 |---|---|
 | Rodar com o **motor de verdade** (IA/`deep_translator`) | o contêiner do Claude na web não tem `deep_translator` nem chave de IA; a qualidade da tradução técnica só dá para julgar na sua máquina. É o único item que sobrou do desenho |
-| Renomear a aba para `Standard Technical Sheet` no idioma inglês | decisão do usuário — ver acima |
+| ~~Renomear a aba no idioma inglês~~ | ✅ **feito em 2026-09-03**, decidido pelo usuário — ver acima |
 | Semear o glossário com os termos do AutoSpec | o `GLOSSARIO_MULTILINGUE` do AutoSpec tem 71 termos PT/EN/DE/ES/FR/IT que serviriam de partida |
 | **Analisar** ficha em inglês de volta | o título da seção já é reconhecido nos dois idiomas, e os campos fixos são lidos por endereço de célula (independente de idioma). O que ainda não foi medido é o comportamento do validador de IA diante de respostas em inglês — `"Not applicable"` em vez de `"Não aplicável"`. Registrado em `PENDENCIAS.md` |

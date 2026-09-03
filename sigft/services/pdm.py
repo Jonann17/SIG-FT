@@ -273,6 +273,18 @@ def processar_pastas_fichas(arquivo_STATUS_PMIB, destino_fichas, lista_seleciona
 # O PT-BR e o canonico; os demais existem porque o SIG-FT tem um template em
 # INGLES, e a aba dele pode nao se chamar "Ficha Tecnica Padrao".
 NOME_CANONICO_DA_ABA = "Ficha Técnica Padrão"
+
+# Como a aba tem de se chamar na ficha ENTREGUE AO FORNECEDOR quando o idioma
+# e ingles. Nao e escolha minha: e o nome que aparece na ficha
+# `4500063671.0052_enUS.xlsx`, que o usuario entregou em 2026-09-03 -- ou
+# seja, ele ja renomeia a mao, ficha a ficha. O template
+# `Technical_Sheet_of_PDM-R3.xlsx` ainda traz a aba com o nome em portugues.
+#
+# A regra mora AQUI, e nao na tela: a tela passa o IDIOMA (que e o que o
+# usuario escolheu) e o servico decide o nome. Principio nº 2 -- UI nao contem
+# regra de negocio, e regra duplicada e regra que diverge.
+NOME_DA_ABA_EM_INGLES = "Standard Technical Sheet"
+_ALVO_EN = "standard technical sheet"   # o mesmo, normalizado (ver abaixo)
 NOMES_DA_ABA_DA_FICHA = (
     "ficha tecnica padrao",
     # 2026-09-03, dos arquivos REAIS que o usuario entregou: o template
@@ -338,7 +350,8 @@ def nome_da_aba_da_ficha(wb):
     )
 
 
-def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template, log_callback=None, retry_lock=None):
+def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,
+                             log_callback=None, retry_lock=None, idioma="pt"):
     # CP 4.4: mesma adaptação de `pdms_fromItaipu_lista_geral` acima --
     # `callbacks` é local, a assinatura pública não muda.
     callbacks = from_legacy(callback_log=log_callback)
@@ -368,6 +381,7 @@ def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,
     count = 0
     nome_da_aba = None
     erro_de_template = None
+    em_ingles = str(idioma or "pt").strip().lower().startswith("en")
     # CP 4.4: mesma troca de `pdms_fromItaipu_lista_geral` -- o
     # `if log_callback: log_callback(...)` de cada branch vira uma chamada de
     # `RelatorioLote`; a lista `log` (parte do retorno público da função,
@@ -413,6 +427,23 @@ def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,
                         lote.falha(pmib, erro_de_template)
                         break
                 ws_target = wb_target[nome_da_aba]
+
+                # A aba da ficha ENTREGUE ao fornecedor estrangeiro tem de ter
+                # nome em ingles. O template ainda traz o nome em portugues, e
+                # o usuario vinha renomeando a mao, ficha a ficha (decisao de
+                # 2026-09-03). Renomear e seguro do lado de quem LE de volta:
+                # `analyzer._aba_da_ficha` escolhe a aba por EVIDENCIA --
+                # quantas ancoras do CONFIG_MAP estao preenchidas --, nao por
+                # nome.
+                #
+                # A comparacao normalizada evita o caso "alguem ja consertou o
+                # template": renomear uma aba para o nome que ela ja tem e
+                # inofensivo, mas renomear para o nome de OUTRA aba do mesmo
+                # workbook nao e.
+                if em_ingles and _normalizar_nome_de_aba(ws_target.title) != _ALVO_EN:
+                    if not any(_normalizar_nome_de_aba(outra.title) == _ALVO_EN
+                               for outra in wb_target.worksheets):
+                        ws_target.title = NOME_DA_ABA_EM_INGLES
 
                 # Lógica de cópia (Linha 79 fixo)
                 start_row = 79

@@ -328,9 +328,11 @@ isso só quem conhece o vocabulário da casa julga.
 - uma norma mudar (`ABNT NBR IEC 60749-1` não se traduz);
 - a segunda rodada demorar igual à primeira — o cache não estaria pegando.
 
-> A aba da ficha gerada vai se chamar `Ficha Técnica Padrão`, porque é assim
-> que o template está. Sei que você renomeia para `Standard Technical Sheet` à
-> mão — me diga se quer que o app faça isso sozinho quando o idioma for inglês.
+> **A aba da ficha gerada já sai como `Standard Technical Sheet`** quando o
+> idioma é inglês, mesmo o template trazendo o nome em português — era o passo
+> que você fazia à mão, ficha a ficha. Em português, nada muda. Confira numa
+> ficha gerada: se a aba vier `Ficha Técnica Padrão` com o idioma em English,
+> **me avise**.
 
 ---
 
