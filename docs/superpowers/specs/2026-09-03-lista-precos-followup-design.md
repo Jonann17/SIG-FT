@@ -34,9 +34,22 @@ E, com a regra de pareamento da §4, as 16 se classificam **sem sobra**:
 
 | Desfecho | Quantas |
 |---|---|
-| Par encontrado direto | 11 |
+| Par encontrado | **12** |
 | **RDS-PP divergente** (o alerta que o usuário pediu) | 3 |
-| Órfã (sem lista correspondente em revisão nenhuma) | 2 |
+| Órfã (sem lista correspondente em revisão nenhuma) | **1** |
+
+> **Correção de 2026-09-03, durante a implementação.** Este quadro dizia
+> 11/3/**2**. O usuário duvidou das 2 órfãs — *"é bem simples, basta pegar o
+> XXXXX, achar qualquer um que tenha o tracking ID, filtrar o histórico por ele
+> e pegar a última"* — e estava certo: uma delas não era órfã.
+>
+> `#ST00=B04BMA10TB020&EPB020-01` tem a sua lista **vigente, com a raiz
+> idêntica**, e 13 revisões no histórico. O algoritmo não a achava porque
+> procurava o par **entre os títulos com "SOBRESSALENTES"**, e o título dela
+> não tem essa palavra. O furo era o filtro, não a busca.
+>
+> O algoritmo passou a procurar pela RAIZ no histórico inteiro e a usar o
+> título só para saber qual família é a de preços. Ver §4.2.
 
 ## 3. A aba `Lista de preços Follow-up`
 
@@ -95,7 +108,23 @@ Tirar o sequencial só do lado dos preços procuraria `#ITA0=A01AAM10&EPB020`, q
 vigente — e o par seria perdido. Tirando dos dois, casa. Foi o que subiu o pareamento de 10
 para 11.
 
-### 4.2 O que distingue uma da outra
+### 4.2 O algoritmo, em passos
+
+1. da lista de preços, tira-se o sequencial → a **raiz**;
+2. procuram-se no histórico INTEIRO os documentos com aquela raiz — qualquer
+   revisão, qualquer sequencial;
+3. descartam-se os que têm o `Tracking ID` da própria lista de preços;
+4. do tracking restante, pega-se a revisão `Current` **procurando pelo
+   tracking, não pela raiz**;
+5. se a raiz do código vigente for outra → RDS-PP mudou.
+
+> ⚠️ O passo 4 é o que uma primeira versão errou. Ela procurava a revisão
+> vigente *entre as linhas da raiz antiga* — mas quando o RDS-PP muda, a
+> revisão vigente tem raiz DIFERENTE por definição, e nunca estaria ali. O
+> resultado eram as 3 divergentes classificadas como órfãs. O `Tracking ID` é
+> o que atravessa a mudança de código: ele não muda quando o RDS-PP muda.
+
+### 4.3 O que distingue uma da outra
 
 Não é o sequencial (as duas podem ter). É o **título**: a lista de preços contém "PREÇO"; a de
 sobressalentes, não. Essa distinção já está codificada em `executar_fluxo`, no filtro que hoje
