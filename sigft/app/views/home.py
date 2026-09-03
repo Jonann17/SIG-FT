@@ -217,17 +217,25 @@ class HomeView(ctk.CTkScrollableFrame):
 
         from sigft.core import prefs
 
+        # 1. O arquivo que o PMIB Manager registrou ao ser usado.
         try:
-            salvo = prefs.get_initial_dir("pmib_manager.gerenciadora", "excel")
+            salvo = prefs.get_last_file(prefs.CHAVE_MAPEAMENTO)
         except Exception:
             salvo = None
-        if salvo and os.path.isfile(salvo):
+        if salvo:
             return salvo
-        # `get_initial_dir` devolve PASTA; procura o arquivo dentro dela.
-        if salvo and os.path.isdir(salvo):
-            for nome in os.listdir(salvo):
+
+        # 2. Reserva: a PASTA lembrada do seletor, procurando o arquivo nela.
+        #    Cobre quem já usou o PMIB Manager ANTES desta versão, quando só a
+        #    pasta era guardada.
+        try:
+            pasta = prefs.get_initial_dir("pmib_manager.master", "excel")
+        except Exception:
+            pasta = None
+        if pasta and os.path.isdir(pasta):
+            for nome in sorted(os.listdir(pasta)):
                 if "mapeamento" in nome.lower() and nome.lower().endswith((".xlsx", ".xlsm")):
-                    return os.path.join(salvo, nome)
+                    return os.path.join(pasta, nome)
         return None
 
     # =====================================================================

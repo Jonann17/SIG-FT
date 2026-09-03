@@ -40,6 +40,49 @@ def copiar_estilo_seguro(celula_origem, celula_destino):
 # =============================================================================
 # CLASSE DE GERENCIAMENTO (BACKEND)
 # =============================================================================
+
+# =============================================================================
+# Achar a aba certa  [2026-09-03]
+# =============================================================================
+# ⚠️ O código usava `wb.active` -- a aba que estava SELECIONADA quando a
+# planilha foi salva pela última vez. Isso quebrou na cara do usuário:
+#
+#     [ERRO] Coluna 'N° DOCUMENTO ITAIPU' não encontrada na Mestra.
+#
+# Ele tinha salvado o arquivo com outra aba aberta, e o código foi procurar a
+# coluna na aba errada. A planilha tem 3 abas (e ganhou uma quarta com a Lista
+# de preços), então a chance de `wb.active` ser a certa só diminui.
+#
+# `wb.active` nunca foi uma forma de ACHAR uma aba: é só a que o Excel mostrará
+# ao abrir. Achar exige procurar.
+NOME_ABA_SOBRESSALENTES = "Acompanhamento Sobressalente"
+COLUNA_CHAVE_SOBRESSALENTES = "N° DOCUMENTO ITAIPU"
+
+
+def achar_aba(wb, nome_esperado, coluna_chave, linha_cabecalho=2):
+    """A aba pelo NOME; não achando, a que TEM a coluna-chave.
+
+    O fallback por conteúdo importa porque o nome da aba é editável pelo
+    usuário — renomeá-la não deveria quebrar o app quando a estrutura continua
+    lá. Devolve `(worksheet, motivo)`; `worksheet` é `None` se nenhuma servir,
+    e `motivo` diz o que foi procurado, para o log poder ser específico.
+    """
+    if nome_esperado in wb.sheetnames:
+        return wb[nome_esperado], f"aba '{nome_esperado}'"
+
+    alvo = str(coluna_chave).strip().upper()
+    for nome in wb.sheetnames:
+        ws = wb[nome]
+        for celula in ws[linha_cabecalho]:
+            if celula.value and str(celula.value).strip().upper() == alvo:
+                return ws, f"aba '{nome}' (achada pela coluna '{coluna_chave}')"
+
+    return None, (
+        f"nenhuma aba tem a coluna '{coluna_chave}' na linha {linha_cabecalho}. "
+        f"Abas no arquivo: {', '.join(wb.sheetnames)}"
+    )
+
+
 class PMIBManager:
     def __init__(self):
         pass
@@ -339,7 +382,13 @@ class PMIBManager:
         yield ("Atualizando Mapeamento e Inserindo Novos...", 0.45)
         try:
             wb = load_workbook(caminho_gerenciadora)
-            ws = wb.active
+            ws, motivo = achar_aba(
+                wb, NOME_ABA_SOBRESSALENTES, COLUNA_CHAVE_SOBRESSALENTES)
+            if ws is None:
+                yield f"[ERRO] Não achei a aba de sobressalentes: {motivo}"
+                wb.close()
+                return
+            yield f" -> Usando a {motivo}."
 
             mapeamento_colunas = {
                 'N° DOCUMENTO ITAIPU': 'No. do Documento',
@@ -465,7 +514,12 @@ class PMIBManager:
             yield ("Gravando estatísticas na Planilha Mestra...", 0.90)
             try:
                 wb = load_workbook(caminho_gerenciadora)
-                ws = wb.active
+                ws, motivo = achar_aba(
+                    wb, NOME_ABA_SOBRESSALENTES, COLUNA_CHAVE_SOBRESSALENTES)
+                if ws is None:
+                    yield f"[ERRO] Não achei a aba de sobressalentes: {motivo}"
+                    wb.close()
+                    return
 
                 gerenciadora_map = {
                     'FICHAS EXISTENTES': 'total_fichas',

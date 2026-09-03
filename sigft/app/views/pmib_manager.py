@@ -13,6 +13,10 @@ from tkinter import messagebox
 import pandas as pd
 
 from sigft.app import backends, file_dialogs
+from sigft.core import prefs
+# [2026-09-03] Chave sob a qual o caminho do mapeamento fica lembrado --
+# a Home lê por ela para montar o mural de atividades.
+from sigft.core.prefs import CHAVE_MAPEAMENTO
 from sigft.app.theme import COLORS
 
 import customtkinter as ctk
@@ -111,6 +115,16 @@ class ModuloPMIBManager(ctk.CTkFrame):
             self.path_master.set(f)
             self.lbl_master_status.configure(text=os.path.basename(f), text_color=COLORS["accent"])
             self.btn_master.configure(fg_color=COLORS["primary"])
+            # [2026-09-03] Guarda o ARQUIVO (não só a pasta) para o mural de
+            # atividades da Home poder ler o mapeamento sem pedir nada ao
+            # usuário. Sem isto o mural dizia "não encontrei o mapeamento"
+            # mesmo logo depois de o PMIB Manager rodar sobre ele.
+            try:
+                prefs.remember_file(CHAVE_MAPEAMENTO, f)
+            except Exception:
+                # Lembrar o caminho é conveniência; não pode atrapalhar a
+                # seleção que o usuário acabou de fazer.
+                pass
 
     # --- Lógica de Execução Segura ---
     def _safe_log(self, txt):
