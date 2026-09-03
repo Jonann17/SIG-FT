@@ -382,10 +382,15 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
             try:
                 from sigft.services import traducao_pdm
                 self._safe_log("Traduzindo PDMs Modificados para inglês...")
+                # SEM `api_key=`: `get_llm` resolve a chave do provedor que o
+                # usuário escolheu para `traduzir_pdm` em "Modelos de IA"
+                # (`config.CHAVE_POR_PROVIDER`, mesmo `.env`/`api_config.json`).
+                # Passar `get_key("GEMINI")` aqui é o padrão legado dos 5
+                # módulos migrados no CP 3.1, e mandaria a chave do Gemini para
+                # o OpenRouter de quem tivesse escolhido OpenRouter.
                 for linha in traducao_pdm.traduzir_pasta(
                         origem, destino,
                         traduzir=traducao_pdm.motor_padrao(
-                            api_key=self.controller.get_key("GEMINI"),
                             callbacks=from_legacy(callback_log=self._safe_log)),
                         retry_lock=self.perguntar_retry_excel):
                     self._safe_log(linha)

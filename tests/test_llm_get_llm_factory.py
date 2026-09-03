@@ -153,6 +153,46 @@ def test_get_llm_todas_as_tarefas_de_llm_modelos_hoje_tem_politica_definida():
         get_llm(tarefa, None)  # não deve levantar
 
 
+# -----------------------------------------------------------------------------
+# O invariante que FALTAVA (2026-09-03)
+# -----------------------------------------------------------------------------
+# O teste acima existe desde o CP 3.1 e é bom — mas está ancorado em
+# `LLM_MODELOS_HOJE`, e foi exatamente o mapa incompleto que virou a âncora.
+# Uma tarefa registrada em `LLM_TASKS` DEPOIS do CP 3.1 (`traduzir_pdm`) não
+# aparecia em `LLM_MODELOS_HOJE`, então o laço nunca a visitava, e a suíte
+# ficou verde enquanto a tarefa era 100% inalcançável em produção:
+#
+#     ValueError: Tarefa de IA desconhecida: 'traduzir_pdm'.
+#
+# O usuário só descobriu rodando 1192 arquivos. Um mapa não pode ser, ao mesmo
+# tempo, o objeto testado e a lista do que testar.
+#
+# `LLM_TASKS` é o catálogo VIVO de tarefas — é ele que diz o que o aplicativo
+# se propõe a fazer com IA. Toda tarefa que está lá tem de ser resolvível.
+
+@pytest.mark.parametrize("tarefa", sorted(config.LLM_TASKS))
+def test_TODA_tarefa_de_LLM_TASKS_e_resolvivel_por_get_llm(tarefa):
+    """Registrar a tarefa em `LLM_TASKS` e esquecer dos mapas que `get_llm`
+    consulta produz um recurso que não roda uma única vez — e nada acusa.
+
+    Este é o teste que teria pego o defeito de `traduzir_pdm`."""
+    llm = get_llm(tarefa, None)
+    assert llm.max_retries is not None
+    assert llm._provider is not None  # noqa: SLF001
+
+
+def test_a_politica_de_retry_cobre_LLM_TASKS_e_nao_so_o_baseline():
+    """O mesmo invariante, dito sobre o mapa em vez de sobre a fábrica: é o
+    que dá a mensagem legível quando alguém acrescenta uma tarefa."""
+    from sigft.core.llm.client import _POLITICA_RETRY_POR_TAREFA
+
+    faltando = sorted(set(config.LLM_TASKS) - set(_POLITICA_RETRY_POR_TAREFA))
+    assert not faltando, (
+        f"tarefa(s) em LLM_TASKS sem politica de retry: {faltando}. "
+        "get_llm levanta KeyError ao resolve-las."
+    )
+
+
 def test_get_llm_api_key_e_repassada_tal_qual_sem_ler_outra_fonte(monkeypatch):
     # get_llm NÃO lê nenhuma fonte de chave por conta própria -- só repassa
     # o `api_key` recebido para o provider. Confirmamos indiretamente: uma

@@ -61,11 +61,51 @@ import json
 import os
 import re
 import shutil
+import time
 
 from sigft.core.excel import locking
 
 NOME_GLOSSARIO = "_GLOSSARIO_PT_EN.txt"
 NOME_CACHE = "_CACHE_TRADUCAO.json"
+
+# Quantos textos precisam ter ido ao motor, sem NENHUM voltar diferente, para o
+# lote parar e acusar. Ver `TraducaoIndisponivel` e a secao F dos testes.
+#
+# Por que um MINIMO, e nao "parou de mudar, aborta": texto que traduz para ele
+# mesmo existe -- "Model:", "PT-100", uma pergunta que ja estava em ingles. Com
+# 5 frases tecnicas em portugues seguidas voltando identicas, nao e coincidencia.
+MIN_TEXTOS_PARA_DESCONFIAR = 5
+
+# De quantos em quantos arquivos o cache vai para o disco. Com 1192 PDMs numa
+# pasta, gravar so no fim significa perder HORAS de traducao paga se o usuario
+# fechar o app, a rede cair ou o Excel travar um arquivo no meio.
+SALVAR_CACHE_A_CADA = 10
+
+# Quantos textos vao ao motor de uma vez na passada de preparo.
+#
+# POR QUE A PASSADA DE PREPARO EXISTE. Sem ela, `traduzir_pasta` faz UMA
+# chamada ao motor por ARQUIVO -- 1192 chamadas numa pasta real, cada uma
+# pagando o tempo de ida e volta da rede (2 a 4 s), o que sozinho ja da mais de
+# uma hora so de espera. As perguntas tambem se repetem MUITO entre PDMs
+# ("FABRICANTE", "MODELO", "DIMENSOES", "NORMAS TECNICAS APLICAVEIS"), e a
+# repeticao so era aproveitada DEPOIS de o arquivo anterior ter sido traduzido.
+#
+# Juntando a pasta inteira antes, a repeticao e descontada de uma vez e o
+# numero de idas ao motor cai de "uma por arquivo" para "uma a cada 60 textos
+# NOVOS". De quebra, um tradutor mudo e descoberto antes de o primeiro arquivo
+# ser escrito.
+TEXTOS_POR_LOTE = 60
+
+
+class TraducaoIndisponivel(RuntimeError):
+    """O tradutor nao esta traduzindo -- rede bloqueada, servico fora, chave
+    ausente.
+
+    Existe porque a alternativa e pior: `deep_translator` sem rede devolve o
+    TEXTO DE ENTRADA, que e indistinguivel de uma traducao. Foi o que produziu,
+    em 2026-09-03, uma pasta inteira de PDMs "traduzidos" em portugues, com o
+    log dizendo OK em todos.
+    """
 
 # "1 - ", "12 - ", "007 - " no começo; ":" ou ":." no fim.
 _PREFIXO = re.compile(r"^\s*(\d+\s*-\s*)")
@@ -299,12 +339,82 @@ def traduzir_pasta(pasta_origem, pasta_destino, traduzir=None, callbacks=None,
         yield f"Nenhum PDM encontrado em: {pasta_origem}"
         return 0
 
-    yield f"Traduzindo {len(arquivos)} PDM(s) para ingles..."
+    total = len(arquivos)
+    yield f"Traduzindo {total} PDM(s) para ingles..."
     if glossario:
         yield f"   glossario com {len(glossario)} termo(s): {os.path.basename(caminho_glossario)}"
 
-    traduzidos = 0
+    # O motor e ESPIONADO, nao alterado: quantos textos foram enviados e
+    # quantos voltaram DIFERENTES do que entrou. E o unico jeito de perceber um
+    # tradutor mudo sem depender de qual motor esta por baixo -- vale para a
+    # `deep_translator` sem rede, para uma IA que devolve o prompt de volta, e
+    # para qualquer motor que alguem injete amanha.
+    medida = {"enviados": 0, "mudaram": 0}
+
+    def motor_medido(textos):
+        saida = traduzir(textos)
+        medida["enviados"] += len(textos)
+        medida["mudaram"] += sum(
+            1 for entrou, saiu in zip(textos, saida) if str(saiu or "") != entrou)
+        return saida
+
+    # ---------------------------------------------------------------------
+    # PASSADA 1 -- juntar os textos da pasta e traduzir em lotes grandes.
+    # Ver TEXTOS_POR_LOTE. Nada e escrito aqui: so o cache e preenchido.
+    # ---------------------------------------------------------------------
+    unicos = []
+    vistos = set()
     for caminho in arquivos:
+        try:
+            # `read_only`: a leitura de 1192 planilhas e o custo desta passada,
+            # e o modo somente-leitura do openpyxl e varias vezes mais rapido.
+            wb_leitura = openpyxl.load_workbook(caminho, read_only=True)
+            for linha in wb_leitura.active.iter_rows(min_col=1, max_col=1, values_only=True):
+                _, miolo, _ = partes_da_pergunta(linha[0])
+                if miolo and miolo not in vistos and miolo not in glossario \
+                        and not cache.buscar(miolo):
+                    vistos.add(miolo)
+                    unicos.append(miolo)
+            wb_leitura.close()
+        except Exception:
+            # Arquivo ilegivel aqui nao e problema: a passada 2 abre o mesmo
+            # arquivo e reporta a falha com nome e motivo.
+            continue
+
+    if unicos:
+        lotes = (len(unicos) + TEXTOS_POR_LOTE - 1) // TEXTOS_POR_LOTE
+        yield (f"   {len(unicos)} pergunta(s) diferente(s) em {total} arquivo(s) "
+               f"-> {lotes} ida(s) ao tradutor")
+        for numero, inicio in enumerate(range(0, len(unicos), TEXTOS_POR_LOTE), start=1):
+            pedaco = unicos[inicio:inicio + TEXTOS_POR_LOTE]
+            try:
+                traduzir_textos(pedaco, motor_medido, glossario, cache)
+            except Exception as e:
+                cache.salvar()
+                yield f"PARADO: o tradutor falhou. {type(e).__name__}: {e}"
+                return 0
+            cache.salvar()
+            yield f"   traduzindo... lote {numero} de {lotes}"
+
+            if (medida["enviados"] >= MIN_TEXTOS_PARA_DESCONFIAR
+                    and medida["mudaram"] == 0):
+                # Melhor lugar possivel para descobrir isto: nenhum arquivo
+                # foi escrito ainda.
+                yield (f"PARADO antes de escrever qualquer arquivo: "
+                       f"{medida['enviados']} textos foram ao tradutor e os "
+                       f"{medida['enviados']} voltaram identicos.")
+                yield ("   O tradutor nao esta respondendo. Verifique: (1) a chave "
+                       "de IA em 'Modelos de IA'; (2) se a rede da empresa deixa "
+                       "sair para o tradutor.")
+                return 0
+
+    # ---------------------------------------------------------------------
+    # PASSADA 2 -- escrever os arquivos. Com o cache cheio, esta passada
+    # normalmente nao fala com o tradutor nenhuma vez.
+    # ---------------------------------------------------------------------
+    traduzidos = 0
+    sem_mudanca = []
+    for indice, caminho in enumerate(arquivos, start=1):
         nome = os.path.basename(caminho)
         destino = os.path.join(pasta_destino, nome)
         try:
@@ -314,7 +424,7 @@ def traduzir_pasta(pasta_origem, pasta_destino, traduzir=None, callbacks=None,
 
             linhas = list(range(1, ws.max_row + 1))
             originais = [ws.cell(row=i, column=1).value for i in linhas]
-            novos = traduzir_textos(originais, traduzir, glossario, cache)
+            novos = traduzir_textos(originais, motor_medido, glossario, cache)
 
             mudou = 0
             for i, antigo, novo in zip(linhas, originais, novos):
@@ -329,7 +439,13 @@ def traduzir_pasta(pasta_origem, pasta_destino, traduzir=None, callbacks=None,
             locking.salvar_perguntando(wb, destino, retry_lock=retry_lock)
             wb.close()
             traduzidos += 1
-            yield f"   OK  {nome} ({mudou} pergunta(s))"
+            if mudou:
+                yield f"   [{indice}/{total}] OK  {nome} ({mudou} pergunta(s))"
+            else:
+                # NAO diga "OK ... (0 pergunta(s))". Foi essa linha, repetida
+                # 1192 vezes, que fez a pasta inteira parecer pronta.
+                sem_mudanca.append(destino)
+                yield f"   [{indice}/{total}] AVISO  {nome}: nenhuma pergunta mudou"
         except Exception as e:
             # Um arquivo ruim nao pode derrubar a pasta -- e a pasta e o
             # trabalho de um dia inteiro de traducao.
@@ -338,10 +454,34 @@ def traduzir_pasta(pasta_origem, pasta_destino, traduzir=None, callbacks=None,
                     os.remove(destino)
                 except Exception:
                     pass
-            yield f"   FALHA  {nome}: {type(e).__name__}: {e}"
+            yield f"   [{indice}/{total}] FALHA  {nome}: {type(e).__name__}: {e}"
+
+        # Cache no disco de tempos em tempos. Ver SALVAR_CACHE_A_CADA.
+        if indice % SALVAR_CACHE_A_CADA == 0:
+            cache.salvar()
+
+        # O TRADUTOR ESTA MUDO? Perceber isso no arquivo 1, e nao no 1192º.
+        if (medida["enviados"] >= MIN_TEXTOS_PARA_DESCONFIAR
+                and medida["mudaram"] == 0):
+            # As copias em portugues sao lixo que PARECE resultado. Sair
+            # deixando-as e convidar alguem a monta-las numa ficha.
+            for lixo in sem_mudanca:
+                try:
+                    os.remove(lixo)
+                except Exception:
+                    pass
+            cache.salvar()
+            yield (f"PARADO no arquivo {indice} de {total}: nada foi traduzido. "
+                   f"{medida['enviados']} textos foram ao tradutor e os "
+                   f"{medida['enviados']} voltaram identicos.")
+            yield ("   O tradutor nao esta respondendo. Verifique: (1) a chave "
+                   "de IA em 'Modelos de IA'; (2) se a rede da empresa deixa "
+                   "sair para o tradutor.")
+            yield "   As copias em portugues geradas ate aqui foram apagadas."
+            return 0
 
     cache.salvar()
-    yield f"Traducao concluida: {traduzidos} de {len(arquivos)} arquivo(s)."
+    yield f"Traducao concluida: {traduzidos} de {total} arquivo(s)."
     return traduzidos
 
 
@@ -357,16 +497,24 @@ def motor_padrao(api_key=None, callbacks=None, glossario=None):
     segundo de espera por item. A reserva existe porque a chave de IA pode
     faltar, e uma pasta inteira não pode ficar sem tradução por causa disso.
     """
+    # O aviso da queda para a reserva sai UMA vez por execucao, e nao uma por
+    # arquivo. Na rodada de 2026-09-03 o usuario recebeu a mesma linha de
+    # "IA indisponivel" 1192 vezes -- log que se repete e log que ninguem le,
+    # e foi dentro dessa enxurrada que o "0 pergunta(s)" passou despercebido.
+    ja_avisou = []
+
     def traduzir(textos):
         if not textos:
             return []
         try:
             return _traduzir_com_ia(textos, api_key=api_key, glossario=glossario)
         except Exception as e:
-            if callbacks is not None:
+            if callbacks is not None and not ja_avisou:
+                ja_avisou.append(True)
                 try:
-                    callbacks.log(f"IA indisponivel para traduzir ({e}); "
-                                  "usando deep_translator.", nivel="warn")
+                    callbacks.log(f"IA indisponivel para traduzir ({e}); usando "
+                                  "deep_translator (mais lento) no resto do lote.",
+                                  nivel="warn")
                 except Exception:
                     pass
         return _traduzir_com_deep_translator(textos, glossario=glossario)
@@ -398,23 +546,45 @@ def _traduzir_com_deep_translator(textos, glossario=None):
     A diferença é o alvo (`en` em vez de `es`) e a ausência do `unidecode`: o
     acento é retirado no fluxo do espanhol por exigência do portal, e aqui só
     empobreceria o texto.
-    """
-    import time
 
+    LEVANTA `TraducaoIndisponivel` quando TODOS os textos falharam
+    ------------------------------------------------------------------------
+    O `except` daqui devolvia o texto de entrada quando Google e MyMemory
+    falhavam — e é isso que produziu, em 2026-09-03, uma pasta de PDMs
+    "traduzidos" em português com o log dizendo OK em todos: sem rede, o
+    tradutor é uma função identidade que ninguém percebe ser identidade.
+
+    A tolerância por texto CONTINUA: uma frase que o serviço recusa não pode
+    derrubar o arquivo, e volta como estava. O que mudou é o caso em que
+    **nenhuma** passou — aí não é uma frase difícil, é o tradutor fora do ar.
+    """
     from deep_translator import GoogleTranslator, MyMemoryTranslator
 
     saida = []
+    falharam = 0
+    ultimo_erro = None
     for texto in textos:
-        traduzido = texto
         try:
             traduzido = GoogleTranslator(source="pt", target="en").translate(texto)
-        except Exception:
+        except Exception as e:
+            ultimo_erro = e
             try:
                 time.sleep(1)
                 traduzido = MyMemoryTranslator(source="pt", target="en").translate(texto)
-            except Exception:
+            except Exception as e2:
+                ultimo_erro = e2
                 traduzido = texto
+                falharam += 1
         saida.append(_aplicar_termos(str(traduzido or texto), glossario))
+
+    if textos and falharam == len(textos):
+        raise TraducaoIndisponivel(
+            f"nenhum dos {len(textos)} textos foi traduzido: o Google Tradutor e o "
+            f"MyMemory falharam para todos. Ultimo erro: {type(ultimo_erro).__name__}: "
+            f"{ultimo_erro}. Provavelmente a rede da empresa nao deixa sair para o "
+            "tradutor -- veja se a chave de IA esta configurada, que e o caminho "
+            "principal e nao depende deles."
+        )
     return saida
 
 

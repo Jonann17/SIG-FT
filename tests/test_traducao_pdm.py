@@ -381,7 +381,182 @@ def test_os_termos_da_casa_sao_carregaveis_como_glossario(tmp_path):
 
 
 # =============================================================================
-# F. A fronteira
+# F. Tradutor mudo — a falha que se disfarça de sucesso (2026-09-03)
+# =============================================================================
+# O QUE ACONTECEU. O usuário rodou a tradução numa pasta de 1192 PDMs. O log
+# dizia, arquivo após arquivo:
+#
+#     OK  PDM_1650_001 - ACUMULADOR_formatado.xlsx (0 pergunta(s))
+#
+# e os arquivos gerados estavam **em português**. Duas causas somadas:
+#
+#   1. `traduzir_pdm` não estava nos mapas que `get_llm` consulta, então a IA
+#      nunca rodava (ver tests/test_llm_get_llm_factory.py);
+#   2. o caminho de reserva (`deep_translator`) tem um `except` que, quando
+#      Google e MyMemory falham — rede corporativa bloqueando —, devolve o
+#      **texto original**. Nada muda no arquivo, e `traduzir_pasta` reporta OK.
+#
+# A causa nº 1 se conserta. A nº 2 é de FEITIO: um tradutor que devolve a
+# entrada é indistinguível de um que traduziu bem um texto já em inglês. O que
+# não pode acontecer é o programa não perceber por 1192 arquivos seguidos.
+
+def test_tradutor_que_devolve_o_ORIGINAL_nao_e_sucesso(tmp_path, openpyxl_real):
+    """Reprodução exata do que o usuário viu."""
+    import openpyxl
+    origem = tmp_path / "pt"
+    origem.mkdir()
+    wb = openpyxl.Workbook()
+    for i, texto in enumerate([
+        "1 - FAIXA DE TEMPERATURA DE USO (Indicar a faixa em (°C).):",
+        "2 - SINAL DE ENTRADA (Indicar o sinal do item em (mV, V).):",
+        "3 - TENSAO DE ALIMENTACAO (Indicar a tensão em (V).):",
+        "4 - PROTECAO (Indicar as proteções do item.):",
+        "5 - APLICACAO (Indicar a aplicação do item.):",
+        "6 - DIMENSOES (Indicar as dimensões em (mm).):",
+    ], start=1):
+        wb.active.cell(row=i, column=1, value=texto)
+    wb.save(origem / "PDM_1650_001 - ACUMULADOR_formatado.xlsx")
+
+    def motor_mudo(textos):
+        return list(textos)          # o que a deep_translator faz sem rede
+
+    linhas = list(traducao_pasta_ate_o_fim(tmp_path, origem, motor_mudo))
+    texto = "\n".join(linhas)
+
+    # 1. nao pode se anunciar como sucesso
+    assert "0 pergunta" not in texto, f"ainda diz 'OK (0 pergunta(s))':\n{texto}"
+    assert "concluida" not in texto.lower(), f"declarou conclusao:\n{texto}"
+    # 2. tem de dizer que PAROU, e por que
+    assert "PARADO" in texto, texto
+    assert "identicos" in texto or "identicas" in texto, texto
+    # 3. e tem de dizer o que fazer a respeito
+    assert "chave de IA" in texto and "rede" in texto, texto
+    # 4. nao pode deixar copia em portugues se passando por traducao
+    assert not list((tmp_path / "en").glob("PDM_*.xlsx")), \
+        "sobrou copia em portugues na pasta de destino"
+
+
+def test_o_lote_PARA_no_primeiro_arquivo_e_nao_no_1192o(tmp_path, openpyxl_real):
+    """1192 arquivos errados custam horas e enchem a pasta de lixo que parece
+    bom. Ao perceber que o tradutor está mudo, o lote tem de parar."""
+    import openpyxl
+    origem = tmp_path / "pt"
+    origem.mkdir()
+    for n in range(1, 21):
+        wb = openpyxl.Workbook()
+        for i in range(1, 7):
+            wb.active.cell(row=i, column=1,
+                           value=f"{i} - CARACTERISTICA {n}.{i} (Indicar o valor do item.):")
+        wb.save(origem / f"PDM_1650_{n:03d}_formatado.xlsx")
+
+    visitados = []
+
+    def motor_mudo(textos):
+        visitados.append(len(textos))
+        return list(textos)
+
+    list(traducao_pasta_ate_o_fim(tmp_path, origem, motor_mudo))
+
+    assert len(visitados) <= 3, (
+        f"o lote visitou {len(visitados)} arquivos antes de perceber que o "
+        "tradutor estava mudo")
+    assert len(list((tmp_path / "en").glob("PDM_*.xlsx"))) <= 3
+
+
+def test_traducao_de_VERDADE_nao_e_confundida_com_falha(tmp_path, openpyxl_real):
+    """A guarda não pode custar o caminho feliz: com o motor funcionando, o
+    lote inteiro tem de rodar."""
+    import openpyxl
+    origem = tmp_path / "pt"
+    origem.mkdir()
+    for n in range(1, 6):
+        wb = openpyxl.Workbook()
+        for i in range(1, 7):
+            wb.active.cell(row=i, column=1, value=f"{i} - CARACTERISTICA {n}.{i}:")
+        wb.save(origem / f"PDM_1650_{n:03d}_formatado.xlsx")
+
+    linhas = list(traducao_pasta_ate_o_fim(tmp_path, origem, _falso({})))
+
+    assert len(list((tmp_path / "en").glob("PDM_*.xlsx"))) == 5, "\n".join(linhas)
+    assert any("5 de 5" in linha for linha in linhas), "\n".join(linhas)
+
+
+def test_uma_pergunta_que_ja_esta_em_INGLES_nao_dispara_o_alarme(tmp_path, openpyxl_real):
+    """O ponto cego honesto desta guarda: texto que traduz para ele mesmo.
+    Um arquivo com POUCAS linhas assim não pode ser tratado como falha — por
+    isso o alarme exige um número mínimo de textos."""
+    import openpyxl
+    origem = tmp_path / "pt"
+    origem.mkdir()
+    wb = openpyxl.Workbook()
+    wb.active.cell(row=1, column=1, value="1 - Model:")
+    wb.active.cell(row=2, column=1, value="2 - Manufacturer:")
+    wb.save(origem / "PDM_1650_001_formatado.xlsx")
+
+    linhas = list(traducao_pasta_ate_o_fim(tmp_path, origem, lambda t: list(t)))
+
+    assert (tmp_path / "en" / "PDM_1650_001_formatado.xlsx").exists(), "\n".join(linhas)
+
+
+def traducao_pasta_ate_o_fim(tmp_path, origem, motor):
+    """Roda `traduzir_pasta` esgotando o generator, devolvendo as linhas."""
+    return tp.traduzir_pasta(str(origem), str(tmp_path / "en"), traduzir=motor)
+
+
+def test_deep_translator_sem_rede_LEVANTA_em_vez_de_devolver_o_original(monkeypatch):
+    """Na origem do problema: quando Google E MyMemory falham para TODOS os
+    textos, isso é o tradutor fora do ar — e tem de ser dito, não disfarçado
+    de tradução."""
+    import types
+
+    falso = types.ModuleType("deep_translator")
+
+    class _Quebrado:
+        def __init__(self, **kwargs):
+            pass
+
+        def translate(self, texto):
+            raise OSError("rede bloqueada pelo proxy corporativo")
+
+    falso.GoogleTranslator = _Quebrado
+    falso.MyMemoryTranslator = _Quebrado
+    monkeypatch.setitem(__import__("sys").modules, "deep_translator", falso)
+    monkeypatch.setattr(tp.time, "sleep", lambda _s: None)   # sem 1s por item
+
+    with pytest.raises(tp.TraducaoIndisponivel) as erro:
+        tp._traduzir_com_deep_translator(["Pressão de trabalho", "Vazão nominal"])
+
+    assert "rede" in str(erro.value).lower() or "tradutor" in str(erro.value).lower()
+
+
+def test_a_tela_NAO_amarra_a_traducao_a_chave_do_Gemini():
+    """`traduzir_pdm` nasceu depois do multi-provedor. A tela passava
+    `get_key("GEMINI")` — o padrão legado dos 5 módulos migrados, em que o
+    provedor era sempre o Gemini.
+
+    Quem escolher OpenRouter (ou o provedor da empresa) para esta tarefa em
+    "Modelos de IA" receberia a chave do Gemini enviada ao provedor errado:
+    erro de autenticação, queda silenciosa para a `deep_translator` e uma
+    pasta traduzida pelo Google Tradutor sem ninguém ter pedido.
+
+    Sem `api_key`, `get_llm` resolve a chave do provedor REALMENTE escolhido
+    (`config.CHAVE_POR_PROVIDER`) — é o mesmo `.env`/`api_config.json`."""
+    import ast
+    import pathlib
+
+    view = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app" / "views" / "pdm.py"
+    arvore = ast.parse(view.read_text(encoding="utf-8"))
+    metodo = next(
+        (no for no in ast.walk(arvore)
+         if isinstance(no, ast.FunctionDef) and no.name == "_op1_traduzir"), None)
+    assert metodo is not None, "o metodo de traduzir sumiu da tela"
+    assert "get_key" not in ast.dump(metodo), (
+        "a tela ainda escolhe a chave por conta propria; quem resolve chave por "
+        "provedor e o get_llm")
+
+
+# =============================================================================
+# G. A fronteira
 # =============================================================================
 def test_o_servico_NAO_importa_tkinter():
     import ast

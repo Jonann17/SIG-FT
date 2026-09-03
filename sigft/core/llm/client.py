@@ -696,6 +696,22 @@ _POLITICA_RETRY_POR_TAREFA: dict[str, dict[str, Any]] = {
         "min_interval_seconds": 60,
         "temperature": 0.1,
     },
+    # `traduzir_pdm` (2026-08-28): traducao PT->EN das perguntas dos PDMs
+    # Modificados. Entrou em `LLM_TASKS` e NAO aqui -- e por isso a tarefa era
+    # 100% inalcancavel em producao ate 2026-09-03, quando o usuario rodou
+    # 1192 arquivos e viu "Tarefa de IA desconhecida" a cada um deles.
+    #
+    # SEM `min_interval_seconds`, ao contrario de `validar_ficha`/`autospec`:
+    # esta tarefa roda em LOTE GRANDE (uma pasta tipica tem ~1200 PDMs), e um
+    # intervalo minimo de 60 s entre chamadas transformaria o trabalho em 20
+    # horas de espera. Traducao errada se conserta no glossario; lote que nao
+    # termina nao se conserta.
+    "traduzir_pdm": {
+        "max_retries": 2,
+        "retry_sleep_seconds": 5,
+        "min_interval_seconds": None,
+        "temperature": None,
+    },
 }
 
 
@@ -768,13 +784,31 @@ def get_llm(
     lista curada da UI, `config.LLM_FAVORITOS`, evita esse gap oferecendo
     Grok 4.5 via `openrouter`, que É implementado).
     """
-    try:
-        cfg_hoje = config.LLM_MODELOS_HOJE[tarefa]
-    except KeyError:
-        tarefas_validas = ", ".join(sorted(config.LLM_MODELOS_HOJE))
+    # O FALLBACK EMBUTIDO, e o que fazer com tarefa nascida DEPOIS do CP 3.1.
+    #
+    # `LLM_MODELOS_HOJE` e a caracterizacao do que cada modulo hardcodava
+    # ANTES do CP 3.1 -- baseline de equivalencia, e a razao de ser o fallback
+    # aqui e "sem downgrade silencioso": ninguem troca de modelo por acidente.
+    #
+    # Uma tarefa criada DEPOIS nao tem "modelo de antes" para caracterizar, e
+    # inventar um so para o mapa ficar simetrico faria o baseline mentir --
+    # `tests/test_config.py` guarda isso, com razao. Mas ate 2026-09-03 esta
+    # funcao usava o baseline tambem como CATALOGO DE TAREFAS, e a
+    # consequencia era grave: `traduzir_pdm`, registrada em `LLM_TASKS` em
+    # 28/08, era 100% inalcancavel em producao. O usuario descobriu rodando
+    # 1192 arquivos e recebendo "Tarefa de IA desconhecida" em cada um.
+    #
+    # A separacao correta: `LLM_TASKS` e o CATALOGO (o que o app se propoe a
+    # fazer com IA); `LLM_MODELOS_HOJE` e o BASELINE de quem existia antes.
+    # Para tarefa nova o fallback e a propria entrada de `LLM_TASKS` -- e nao
+    # ha "downgrade silencioso" possivel, porque nao existe comportamento
+    # anterior a preservar.
+    cfg_hoje = config.LLM_MODELOS_HOJE.get(tarefa) or config.LLM_TASKS.get(tarefa)
+    if cfg_hoje is None:
+        tarefas_validas = ", ".join(sorted(set(config.LLM_MODELOS_HOJE) | set(config.LLM_TASKS)))
         raise ValueError(
-            f"Tarefa de IA desconhecida: {tarefa!r}. Tarefas configuradas em "
-            f"LLM_MODELOS_HOJE: {tarefas_validas}."
+            f"Tarefa de IA desconhecida: {tarefa!r}. Tarefas configuradas: "
+            f"{tarefas_validas}."
         ) from None
 
     # `resolvido` pode vir da selecao do usuario (nunca None) ou da consulta
