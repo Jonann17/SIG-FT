@@ -1,0 +1,571 @@
+r"""Tradução dos PDMs Modificados para inglês (2026-08-28).
+
+**Por que existe** (pedido do usuário): o SIG-FT tem dois templates de ficha —
+PT-BR e inglês — mas as características técnicas coladas dentro deles vêm
+sempre da mesma pasta de *PDMs Modificados*, que está em português. Hoje a
+tradução dessas perguntas é feita **na mão**, ficha a ficha.
+
+O desenho aprovado: traduzir a pasta inteira uma vez, guardar numa pasta
+paralela, e o montador da ficha escolhe a pasta pelo idioma do template.
+
+**O que este arquivo NÃO testa:** o motor de tradução de verdade (IA ou
+`deep_translator`). Ele é injetado, sempre. Um teste que dependesse da
+internet mediria a rede, não o código — e não rodaria na suíte.
+"""
+import os
+
+import pytest
+
+from sigft.services import traducao_pdm as tp
+
+
+def _falso(pares):
+    """Motor de tradução falso: devolve 'EN:<original>' para cada texto."""
+    def traduzir(textos):
+        return [pares.get(t, f"EN:{t}") for t in textos]
+    return traduzir
+
+
+# =============================================================================
+# A. Quebrar a pergunta em partes — o que traduz e o que NÃO traduz
+# =============================================================================
+def test_o_numero_da_pergunta_nao_e_traduzido():
+    """`"1 - Pressão de trabalho (bar):"` — o `1 - ` é numeração da lista, e
+    mandá-lo para um tradutor é pedir para ele inventar."""
+    prefixo, miolo, sufixo = tp.partes_da_pergunta("1 - Pressão de trabalho (bar):")
+    assert prefixo == "1 - "
+    assert miolo == "Pressão de trabalho (bar)"
+    assert sufixo == ":"
+
+
+def test_pergunta_sem_numeracao_tambem_funciona():
+    prefixo, miolo, sufixo = tp.partes_da_pergunta("Material de fabricação")
+    assert prefixo == ""
+    assert miolo == "Material de fabricação"
+    assert sufixo == ""
+
+
+def test_numero_de_dois_digitos():
+    prefixo, miolo, _ = tp.partes_da_pergunta("12 - Vazão (l/min):")
+    assert prefixo == "12 - "
+    assert miolo == "Vazão (l/min)"
+
+
+def test_a_montagem_de_volta_devolve_a_frase_inteira():
+    original = "7 - Tensão de isolamento (kV):"
+    prefixo, miolo, sufixo = tp.partes_da_pergunta(original)
+    assert prefixo + miolo + sufixo == original
+
+
+def test_texto_vazio_nao_quebra():
+    assert tp.partes_da_pergunta(None) == ("", "", "")
+    assert tp.partes_da_pergunta("   ") == ("", "", "")
+
+
+# =============================================================================
+# B. O glossário — corrigir uma vez e valer sempre
+# =============================================================================
+def test_glossario_vazio_quando_o_arquivo_nao_existe(tmp_path):
+    assert tp.carregar_glossario(str(tmp_path / "nao_existe.txt")) == {}
+
+
+def test_glossario_le_pares_pt_igual_en(tmp_path):
+    arquivo = tmp_path / "g.txt"
+    arquivo.write_text("vazão = flow rate\niçamento = lifting\n", encoding="utf-8")
+    assert tp.carregar_glossario(str(arquivo)) == {
+        "vazão": "flow rate", "içamento": "lifting"}
+
+
+def test_glossario_ignora_comentario_e_linha_em_branco(tmp_path):
+    arquivo = tmp_path / "g.txt"
+    arquivo.write_text("# como usar\n\nvazão = flow rate\n\n# fim\n", encoding="utf-8")
+    assert tp.carregar_glossario(str(arquivo)) == {"vazão": "flow rate"}
+
+
+def test_glossario_aguenta_ANSI_do_bloco_de_notas(tmp_path):
+    """Mesma lição do `.txt` da conferência do AutoSpec: o arquivo é para ser
+    editado à mão, e o Bloco de Notas ainda oferece ANSI no 'Salvar como'."""
+    arquivo = tmp_path / "g.txt"
+    arquivo.write_bytes("vazão = flow rate\n".encode("cp1252"))
+    assert tp.carregar_glossario(str(arquivo)) == {"vazão": "flow rate"}
+
+
+def test_frase_inteira_no_glossario_NAO_chama_o_motor(tmp_path):
+    """A correção do usuário vence o motor — é o ponto do glossário."""
+    chamou = []
+
+    def traduzir(textos):
+        chamou.extend(textos)
+        return [f"EN:{t}" for t in textos]
+
+    glossario = {"Pressão de trabalho (bar)": "Working pressure (bar)"}
+    saida = tp.traduzir_textos(["1 - Pressão de trabalho (bar):"], traduzir, glossario)
+    assert saida == ["1 - Working pressure (bar):"]
+    assert chamou == [], "o glossário deveria ter resolvido sem o motor"
+
+
+def test_o_glossario_cria_um_arquivo_de_exemplo_explicando_o_uso(tmp_path):
+    caminho = tp.criar_glossario_exemplo(str(tmp_path))
+    texto = open(caminho, encoding="utf-8").read()
+    assert "=" in texto
+    assert "#" in texto  # tem instrução comentada
+    assert os.path.dirname(caminho) == str(tmp_path)
+
+
+def test_criar_glossario_NAO_sobrescreve_o_que_o_usuario_editou(tmp_path):
+    caminho = tp.criar_glossario_exemplo(str(tmp_path))
+    with open(caminho, "a", encoding="utf-8") as fh:
+        fh.write("vazão = flow rate\n")
+    tp.criar_glossario_exemplo(str(tmp_path))
+    assert "flow rate" in open(caminho, encoding="utf-8").read()
+
+
+# =============================================================================
+# C. Cache — o mesmo texto não é traduzido duas vezes
+# =============================================================================
+def test_texto_repetido_vai_UMA_vez_ao_motor():
+    """Perguntas se repetem entre PDMs ('Fabricante', 'Modelo', 'Peso'). Sem
+    dedupe, uma pasta grande paga a mesma tradução dezenas de vezes — e, no
+    caminho da `deep_translator`, cada item custa 1 segundo de espera."""
+    chamou = []
+
+    def traduzir(textos):
+        chamou.extend(textos)
+        return [f"EN:{t}" for t in textos]
+
+    entrada = ["1 - Peso (kg):", "2 - Peso (kg):", "3 - Vazão (l/min):"]
+    saida = tp.traduzir_textos(entrada, traduzir, {})
+    assert chamou == ["Peso (kg)", "Vazão (l/min)"]
+    assert saida == ["1 - EN:Peso (kg):", "2 - EN:Peso (kg):", "3 - EN:Vazão (l/min):"]
+
+
+def test_o_cache_sobrevive_entre_execucoes(tmp_path):
+    cache = tp.Cache(str(tmp_path))
+    cache.guardar("Vazão (l/min)", "Flow rate (l/min)")
+    cache.salvar()
+
+    outro = tp.Cache(str(tmp_path))
+    assert outro.buscar("Vazão (l/min)") == "Flow rate (l/min)"
+
+
+def test_cache_corrompido_nao_derruba_a_traducao(tmp_path):
+    (tmp_path / tp.NOME_CACHE).write_text("{isto não é json", encoding="utf-8")
+    assert tp.Cache(str(tmp_path)).buscar("qualquer") is None
+
+
+# =============================================================================
+# D. Traduzir a pasta inteira
+# =============================================================================
+def _pdm_falso(pasta, nome, perguntas):
+    """Um PDM Modificado como `salvar_tabela_formatada` o grava: descrição na
+    coluna 1 (mesclada 1–10), resposta na 11 (mesclada 11–20), vazia."""
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    for i, pergunta in enumerate(perguntas, start=1):
+        ws.merge_cells(start_row=i, start_column=1, end_row=i, end_column=10)
+        ws.cell(row=i, column=1, value=pergunta)
+        ws.merge_cells(start_row=i, start_column=11, end_row=i, end_column=20)
+    caminho = os.path.join(pasta, nome)
+    wb.save(caminho)
+    return caminho
+
+
+@pytest.fixture
+def openpyxl_real():
+    """A suíte stuba o openpyxl; estes testes precisam do de verdade."""
+    import importlib
+    import sys
+    guardado = sys.modules.get("openpyxl")
+    for nome in [n for n in list(sys.modules) if n.startswith("openpyxl")]:
+        del sys.modules[nome]
+    try:
+        modulo = importlib.import_module("openpyxl")
+        if not hasattr(modulo, "Workbook") or "Mock" in type(modulo).__name__:
+            pytest.skip("openpyxl real nao disponivel")
+        yield modulo
+    finally:
+        for nome in [n for n in list(sys.modules) if n.startswith("openpyxl")]:
+            del sys.modules[nome]
+        if guardado is not None:
+            sys.modules["openpyxl"] = guardado
+
+
+def test_a_pasta_traduzida_ganha_um_arquivo_por_PDM(tmp_path, openpyxl_real):
+    origem, destino = tmp_path / "pt", tmp_path / "en"
+    origem.mkdir()
+    _pdm_falso(str(origem), "PDM_1234_001_formatado.xlsx", ["1 - Vazão (l/min):"])
+    _pdm_falso(str(origem), "PDM_5678_002_formatado.xlsx", ["1 - Peso (kg):"])
+
+    linhas = list(tp.traduzir_pasta(str(origem), str(destino), traduzir=_falso({})))
+    gerados = sorted(os.listdir(destino))
+    assert "PDM_1234_001_formatado.xlsx" in gerados
+    assert "PDM_5678_002_formatado.xlsx" in gerados
+    assert any("2" in l and "PDM" in l for l in linhas)
+
+
+def test_o_NOME_do_arquivo_e_preservado(tmp_path, openpyxl_real):
+    """O montador acha o PDM por SUBSTRING do id (`PDM_1234_001`) no nome do
+    arquivo. Renomear na tradução quebraria o casamento em silêncio."""
+    origem, destino = tmp_path / "pt", tmp_path / "en"
+    origem.mkdir()
+    _pdm_falso(str(origem), "PDM_1234_001_formatado.xlsx", ["1 - Vazão:"])
+    list(tp.traduzir_pasta(str(origem), str(destino), traduzir=_falso({})))
+    assert os.path.exists(destino / "PDM_1234_001_formatado.xlsx")
+
+
+def test_o_conteudo_traduzido_fica_na_MESMA_celula(tmp_path, openpyxl_real):
+    """O montador lê `cell(i, 1)`. Traduzir para outra célula geraria fichas
+    em branco, e ninguém perceberia até abrir uma."""
+    origem, destino = tmp_path / "pt", tmp_path / "en"
+    origem.mkdir()
+    _pdm_falso(str(origem), "PDM_1234_001_formatado.xlsx",
+               ["1 - Vazão (l/min):", "2 - Peso (kg):"])
+    list(tp.traduzir_pasta(str(origem), str(destino),
+                           traduzir=_falso({"Vazão (l/min)": "Flow rate (l/min)",
+                                            "Peso (kg)": "Weight (kg)"})))
+    ws = openpyxl_real.load_workbook(destino / "PDM_1234_001_formatado.xlsx").active
+    assert ws.cell(row=1, column=1).value == "1 - Flow rate (l/min):"
+    assert ws.cell(row=2, column=1).value == "2 - Weight (kg):"
+
+
+def test_linha_vazia_no_meio_nao_vira_traducao(tmp_path, openpyxl_real):
+    origem, destino = tmp_path / "pt", tmp_path / "en"
+    origem.mkdir()
+    _pdm_falso(str(origem), "PDM_1234_001_formatado.xlsx",
+               ["1 - Vazão:", None, "3 - Peso:"])
+    list(tp.traduzir_pasta(str(origem), str(destino), traduzir=_falso({})))
+    ws = openpyxl_real.load_workbook(destino / "PDM_1234_001_formatado.xlsx").active
+    assert ws.cell(row=2, column=1).value in (None, "")
+
+
+def test_pasta_de_origem_vazia_avisa_em_vez_de_fingir_sucesso(tmp_path, openpyxl_real):
+    origem, destino = tmp_path / "pt", tmp_path / "en"
+    origem.mkdir()
+    linhas = list(tp.traduzir_pasta(str(origem), str(destino), traduzir=_falso({})))
+    assert any("nenhum" in l.lower() for l in linhas)
+
+
+def test_um_arquivo_ilegivel_nao_derruba_a_pasta(tmp_path, openpyxl_real):
+    origem, destino = tmp_path / "pt", tmp_path / "en"
+    origem.mkdir()
+    (origem / "quebrado.xlsx").write_text("isto nao e um xlsx")
+    _pdm_falso(str(origem), "PDM_1234_001_formatado.xlsx", ["1 - Vazão:"])
+    linhas = list(tp.traduzir_pasta(str(origem), str(destino), traduzir=_falso({})))
+    assert os.path.exists(destino / "PDM_1234_001_formatado.xlsx")
+    assert any("quebrado.xlsx" in l for l in linhas)
+
+
+# =============================================================================
+# E. As frases REAIS (2026-09-03)
+# =============================================================================
+# Ate aqui os testes usavam frases curtas inventadas por mim -- "1 - Pressao de
+# trabalho (bar):". O usuario mandou o template em ingles e uma ficha ja
+# preenchida, e a forma real e OUTRA: nome da caracteristica em MAIUSCULAS,
+# seguido de uma INSTRUCAO DE PREENCHIMENTO inteira entre parenteses, com
+# parenteses aninhados dentro. Sao 100-200 caracteres, nao um rotulo.
+#
+# Isto nao e detalhe de estilo: o prompt dizia "PRESERVE a unidade entre
+# parenteses exatamente como esta", escrito quando eu achava que o parenteses
+# continha "(bar)". Aplicada a "(Indicar a tensao de alimentacao do item em
+# (V))", essa regra manda o modelo devolver a instrucao inteira em portugues --
+# ficha meio traduzida, e nenhum teste da suite reclamaria, porque todos os
+# meus exemplos casavam com a minha suposicao errada.
+#
+# As frases abaixo sao copia literal de:
+#   PT: 4500063671.0071_completed.xlsx, aba "Ficha Tecnica Padrao", C79:C95
+#   EN: 4500063671.0052_enUS.xlsx, aba "Standard Technical Sheet", C79:C92
+PERGUNTAS_REAIS_PT = [
+    "1 - FAIXA DE TEMPERATURA DE USO (Indicar a faixa de temperatura de uso do item em grau Celsius (°C).):",
+    "2 - SINAL DE ENTRADA (Indicar o sinal de entrada do item em (mV, V, A, mA) ex.: 4-20mA, 0-5 V, outros):",
+    "4 - TENSAO DE ALIMENTACAO (Indicar a tensão de alimentação do item em (V)):",
+    "6 - NORMAS TECNICAS APLICAVEIS (Indicar quais as normas técnicas aplicáveis ao item.):",
+    "9 - TIPO CONSTRUTIVO (Indicar o tipo construtivo do item. Nota: Material especifico de compra com (Número de desenho, referência, nome usual, outros)):",
+    "12 - APLICACAO (Indicar a aplicação do item. Nota: mencionar o equipamento (tipo, modelo) (ex.: Red EIA, 2 fios, diferencial RS485, red EIA 4 fios direferencial RS 485, fibra optica, outros).):",
+    "17 - DIMENSOES (Indicar as dimensões do item (in, mm) ex.: comp. x larg. x alt.):",
+]
+
+# Traducoes da CASA, extraidas da ficha em ingles que o usuario entregou. Sao
+# a referencia de estilo -- nao invencao minha.
+PARES_REAIS_DA_CASA = [
+    ("NORMAS TECNICAS APLICAVEIS", "APPLICABLE TECHNICAL STANDARDS"),
+    ("CARACTERISTICAS ADICIONAIS", "ADDITIONAL CHARACTERISTICS"),
+    ("TIPO CONSTRUTIVO", "TYPE OF CONSTRUCTION"),
+    ("CERTIFICADO", "CERTIFICATE"),
+]
+
+
+@pytest.mark.parametrize("pergunta", PERGUNTAS_REAIS_PT)
+def test_a_frase_real_remonta_EXATAMENTE(pergunta):
+    """Nada pode se perder na ida e volta: o que sai da divisao, concatenado,
+    tem de ser byte a byte o original. Parenteses aninhados e o ".)" antes dos
+    dois pontos sao os pontos onde uma regex desatenta come um caractere."""
+    prefixo, miolo, sufixo = tp.partes_da_pergunta(pergunta)
+    assert f"{prefixo}{miolo}{sufixo}" == pergunta
+
+
+@pytest.mark.parametrize("pergunta", PERGUNTAS_REAIS_PT)
+def test_a_INSTRUCAO_entre_parenteses_vai_junto_para_o_motor(pergunta):
+    """O miolo tem de levar a instrucao inteira. Se a divisao deixasse o
+    parenteses para tras, o motor traduziria so o nome e a ficha em ingles
+    sairia com metade de cada linha em portugues."""
+    _, miolo, _ = tp.partes_da_pergunta(pergunta)
+    assert "(Indicar" in miolo or "(indicar" in miolo
+    assert miolo.rstrip().endswith(")")
+
+
+def test_o_numero_da_pergunta_real_NAO_vai_ao_motor():
+    """Vale para numero de dois digitos tambem -- `12 - `, nao so `1 - `."""
+    enviados = []
+
+    def espiao(textos):
+        enviados.extend(textos)
+        return [f"EN:{t}" for t in textos]
+
+    tp.traduzir_textos(PERGUNTAS_REAIS_PT, espiao)
+    assert enviados, "o motor deveria ter sido chamado"
+    for texto in enviados:
+        assert not texto[0].isdigit(), f"a numeracao vazou para o motor: {texto!r}"
+
+
+# -----------------------------------------------------------------------------
+# O prompt precisa DESCREVER a forma real, e mostrar um exemplo dela
+# -----------------------------------------------------------------------------
+def test_o_prompt_traz_a_frase_real_INTEIRA():
+    from sigft.core.llm import prompts
+    texto = prompts.montar_traduzir_pdm([PERGUNTAS_REAIS_PT[4]])
+    assert "Número de desenho" in texto, "a frase chegou truncada ao prompt"
+
+
+def test_o_prompt_manda_TRADUZIR_a_instrucao_entre_parenteses():
+    """A regra antiga ("preserve o que esta entre parenteses") produziria ficha
+    meio em portugues. O prompt tem de dizer que o parenteses e INSTRUCAO."""
+    from sigft.core.llm import prompts
+    texto = prompts.montar_traduzir_pdm(["1 - X (Indicar o X do item.):"]).lower()
+    assert "instru" in texto
+    assert "traduza a instru" in texto or "traduza tambem a instru" in texto \
+        or "traduza também a instru" in texto
+
+
+def test_o_prompt_mostra_um_exemplo_REAL_da_casa():
+    """Um exemplo trabalhado vale mais que tres regras -- e este exemplo veio
+    da ficha em ingles que a propria Itaipu entregou, nao da minha cabeca."""
+    from sigft.core.llm import prompts
+    texto = prompts.montar_traduzir_pdm(["1 - X:"])
+    assert "APPLICABLE TECHNICAL STANDARDS" in texto
+    assert "NORMAS TECNICAS APLICAVEIS" in texto
+
+
+def test_o_prompt_manda_manter_o_NOME_em_maiusculas():
+    """Estilo da casa: `NOME EM CAIXA ALTA (Instrucao em caixa normal)`."""
+    from sigft.core.llm import prompts
+    texto = prompts.montar_traduzir_pdm(["1 - X:"]).lower()
+    assert "maiúscul" in texto or "maiuscul" in texto or "caixa alta" in texto
+
+
+def test_o_glossario_de_exemplo_ja_vem_com_os_termos_da_CASA():
+    """O usuario nao devia ter que descobrir sozinho como a Itaipu traduz
+    'NORMAS TECNICAS APLICAVEIS' -- a ficha em ingles dele ja diz."""
+    for pt, en in PARES_REAIS_DA_CASA:
+        assert pt in tp.CABECALHO_GLOSSARIO, f"falta o termo {pt!r}"
+        assert en in tp.CABECALHO_GLOSSARIO, f"falta a traducao {en!r}"
+
+
+def test_os_termos_da_casa_sao_carregaveis_como_glossario(tmp_path):
+    """Nao basta estarem no texto: tem de sobreviver ao parser, sem virar
+    comentario nem perder o lado de la do `=`."""
+    caminho = tp.criar_glossario_exemplo(str(tmp_path))
+    glossario = tp.carregar_glossario(caminho)
+    for pt, en in PARES_REAIS_DA_CASA:
+        assert glossario.get(pt) == en, f"{pt!r} nao chegou ao glossario carregado"
+
+
+# =============================================================================
+# F. Tradutor mudo — a falha que se disfarça de sucesso (2026-09-03)
+# =============================================================================
+# O QUE ACONTECEU. O usuário rodou a tradução numa pasta de 1192 PDMs. O log
+# dizia, arquivo após arquivo:
+#
+#     OK  PDM_1650_001 - ACUMULADOR_formatado.xlsx (0 pergunta(s))
+#
+# e os arquivos gerados estavam **em português**. Duas causas somadas:
+#
+#   1. `traduzir_pdm` não estava nos mapas que `get_llm` consulta, então a IA
+#      nunca rodava (ver tests/test_llm_get_llm_factory.py);
+#   2. o caminho de reserva (`deep_translator`) tem um `except` que, quando
+#      Google e MyMemory falham — rede corporativa bloqueando —, devolve o
+#      **texto original**. Nada muda no arquivo, e `traduzir_pasta` reporta OK.
+#
+# A causa nº 1 se conserta. A nº 2 é de FEITIO: um tradutor que devolve a
+# entrada é indistinguível de um que traduziu bem um texto já em inglês. O que
+# não pode acontecer é o programa não perceber por 1192 arquivos seguidos.
+
+def test_tradutor_que_devolve_o_ORIGINAL_nao_e_sucesso(tmp_path, openpyxl_real):
+    """Reprodução exata do que o usuário viu."""
+    import openpyxl
+    origem = tmp_path / "pt"
+    origem.mkdir()
+    wb = openpyxl.Workbook()
+    for i, texto in enumerate([
+        "1 - FAIXA DE TEMPERATURA DE USO (Indicar a faixa em (°C).):",
+        "2 - SINAL DE ENTRADA (Indicar o sinal do item em (mV, V).):",
+        "3 - TENSAO DE ALIMENTACAO (Indicar a tensão em (V).):",
+        "4 - PROTECAO (Indicar as proteções do item.):",
+        "5 - APLICACAO (Indicar a aplicação do item.):",
+        "6 - DIMENSOES (Indicar as dimensões em (mm).):",
+    ], start=1):
+        wb.active.cell(row=i, column=1, value=texto)
+    wb.save(origem / "PDM_1650_001 - ACUMULADOR_formatado.xlsx")
+
+    def motor_mudo(textos):
+        return list(textos)          # o que a deep_translator faz sem rede
+
+    linhas = list(traducao_pasta_ate_o_fim(tmp_path, origem, motor_mudo))
+    texto = "\n".join(linhas)
+
+    # 1. nao pode se anunciar como sucesso
+    assert "0 pergunta" not in texto, f"ainda diz 'OK (0 pergunta(s))':\n{texto}"
+    assert "concluida" not in texto.lower(), f"declarou conclusao:\n{texto}"
+    # 2. tem de dizer que PAROU, e por que
+    assert "PARADO" in texto, texto
+    assert "identicos" in texto or "identicas" in texto, texto
+    # 3. e tem de dizer o que fazer a respeito
+    assert "chave de IA" in texto and "rede" in texto, texto
+    # 4. nao pode deixar copia em portugues se passando por traducao
+    assert not list((tmp_path / "en").glob("PDM_*.xlsx")), \
+        "sobrou copia em portugues na pasta de destino"
+
+
+def test_o_lote_PARA_no_primeiro_arquivo_e_nao_no_1192o(tmp_path, openpyxl_real):
+    """1192 arquivos errados custam horas e enchem a pasta de lixo que parece
+    bom. Ao perceber que o tradutor está mudo, o lote tem de parar."""
+    import openpyxl
+    origem = tmp_path / "pt"
+    origem.mkdir()
+    for n in range(1, 21):
+        wb = openpyxl.Workbook()
+        for i in range(1, 7):
+            wb.active.cell(row=i, column=1,
+                           value=f"{i} - CARACTERISTICA {n}.{i} (Indicar o valor do item.):")
+        wb.save(origem / f"PDM_1650_{n:03d}_formatado.xlsx")
+
+    visitados = []
+
+    def motor_mudo(textos):
+        visitados.append(len(textos))
+        return list(textos)
+
+    list(traducao_pasta_ate_o_fim(tmp_path, origem, motor_mudo))
+
+    assert len(visitados) <= 3, (
+        f"o lote visitou {len(visitados)} arquivos antes de perceber que o "
+        "tradutor estava mudo")
+    assert len(list((tmp_path / "en").glob("PDM_*.xlsx"))) <= 3
+
+
+def test_traducao_de_VERDADE_nao_e_confundida_com_falha(tmp_path, openpyxl_real):
+    """A guarda não pode custar o caminho feliz: com o motor funcionando, o
+    lote inteiro tem de rodar."""
+    import openpyxl
+    origem = tmp_path / "pt"
+    origem.mkdir()
+    for n in range(1, 6):
+        wb = openpyxl.Workbook()
+        for i in range(1, 7):
+            wb.active.cell(row=i, column=1, value=f"{i} - CARACTERISTICA {n}.{i}:")
+        wb.save(origem / f"PDM_1650_{n:03d}_formatado.xlsx")
+
+    linhas = list(traducao_pasta_ate_o_fim(tmp_path, origem, _falso({})))
+
+    assert len(list((tmp_path / "en").glob("PDM_*.xlsx"))) == 5, "\n".join(linhas)
+    assert any("5 de 5" in linha for linha in linhas), "\n".join(linhas)
+
+
+def test_uma_pergunta_que_ja_esta_em_INGLES_nao_dispara_o_alarme(tmp_path, openpyxl_real):
+    """O ponto cego honesto desta guarda: texto que traduz para ele mesmo.
+    Um arquivo com POUCAS linhas assim não pode ser tratado como falha — por
+    isso o alarme exige um número mínimo de textos."""
+    import openpyxl
+    origem = tmp_path / "pt"
+    origem.mkdir()
+    wb = openpyxl.Workbook()
+    wb.active.cell(row=1, column=1, value="1 - Model:")
+    wb.active.cell(row=2, column=1, value="2 - Manufacturer:")
+    wb.save(origem / "PDM_1650_001_formatado.xlsx")
+
+    linhas = list(traducao_pasta_ate_o_fim(tmp_path, origem, lambda t: list(t)))
+
+    assert (tmp_path / "en" / "PDM_1650_001_formatado.xlsx").exists(), "\n".join(linhas)
+
+
+def traducao_pasta_ate_o_fim(tmp_path, origem, motor):
+    """Roda `traduzir_pasta` esgotando o generator, devolvendo as linhas."""
+    return tp.traduzir_pasta(str(origem), str(tmp_path / "en"), traduzir=motor)
+
+
+def test_deep_translator_sem_rede_LEVANTA_em_vez_de_devolver_o_original(monkeypatch):
+    """Na origem do problema: quando Google E MyMemory falham para TODOS os
+    textos, isso é o tradutor fora do ar — e tem de ser dito, não disfarçado
+    de tradução."""
+    import types
+
+    falso = types.ModuleType("deep_translator")
+
+    class _Quebrado:
+        def __init__(self, **kwargs):
+            pass
+
+        def translate(self, texto):
+            raise OSError("rede bloqueada pelo proxy corporativo")
+
+    falso.GoogleTranslator = _Quebrado
+    falso.MyMemoryTranslator = _Quebrado
+    monkeypatch.setitem(__import__("sys").modules, "deep_translator", falso)
+    monkeypatch.setattr(tp.time, "sleep", lambda _s: None)   # sem 1s por item
+
+    with pytest.raises(tp.TraducaoIndisponivel) as erro:
+        tp._traduzir_com_deep_translator(["Pressão de trabalho", "Vazão nominal"])
+
+    assert "rede" in str(erro.value).lower() or "tradutor" in str(erro.value).lower()
+
+
+def test_a_tela_NAO_amarra_a_traducao_a_chave_do_Gemini():
+    """`traduzir_pdm` nasceu depois do multi-provedor. A tela passava
+    `get_key("GEMINI")` — o padrão legado dos 5 módulos migrados, em que o
+    provedor era sempre o Gemini.
+
+    Quem escolher OpenRouter (ou o provedor da empresa) para esta tarefa em
+    "Modelos de IA" receberia a chave do Gemini enviada ao provedor errado:
+    erro de autenticação, queda silenciosa para a `deep_translator` e uma
+    pasta traduzida pelo Google Tradutor sem ninguém ter pedido.
+
+    Sem `api_key`, `get_llm` resolve a chave do provedor REALMENTE escolhido
+    (`config.CHAVE_POR_PROVIDER`) — é o mesmo `.env`/`api_config.json`."""
+    import ast
+    import pathlib
+
+    view = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app" / "views" / "pdm.py"
+    arvore = ast.parse(view.read_text(encoding="utf-8"))
+    metodo = next(
+        (no for no in ast.walk(arvore)
+         if isinstance(no, ast.FunctionDef) and no.name == "_op1_traduzir"), None)
+    assert metodo is not None, "o metodo de traduzir sumiu da tela"
+    assert "get_key" not in ast.dump(metodo), (
+        "a tela ainda escolhe a chave por conta propria; quem resolve chave por "
+        "provedor e o get_llm")
+
+
+# =============================================================================
+# G. A fronteira
+# =============================================================================
+def test_o_servico_NAO_importa_tkinter():
+    import ast
+    import inspect
+    arvore = ast.parse(inspect.getsource(tp))
+    importados = set()
+    for no in ast.walk(arvore):
+        if isinstance(no, ast.Import):
+            importados.update(a.name.split(".")[0] for a in no.names)
+        elif isinstance(no, ast.ImportFrom) and no.module:
+            importados.add(no.module.split(".")[0])
+    assert "tkinter" not in importados and "customtkinter" not in importados

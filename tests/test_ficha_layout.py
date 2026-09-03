@@ -351,6 +351,45 @@ def test_find_variable_specs_start_row_encontra_dinamicamente_quando_o_texto_exi
     assert analyzer._find_variable_specs_start_row(ws) == 75 + 4
 
 
+# -----------------------------------------------------------------------------
+# A ficha em INGLES (2026-09-03)
+# -----------------------------------------------------------------------------
+# O texto-alvo era so o PORTUGUES. Numa ficha em ingles a busca falha e a
+# funcao cai no fallback 79 -- que, por COINCIDENCIA, e a linha certa (o
+# template EN poe o titulo na 75 tambem, e 75+4 = 79). Ou seja: hoje funciona
+# pelo motivo errado.
+#
+# Por que isso importa mesmo "funcionando": a busca dinamica existe para
+# absorver ficha em que o fornecedor inseriu ou apagou linhas acima da secao.
+# A ficha PT se conserta sozinha nesse caso; a EN nao -- le a partir da 79 e
+# comeca no lugar errado, em silencio. Duas fichas do mesmo lote se
+# comportando diferente e o tipo de coisa que so aparece meses depois.
+#
+# O titulo abaixo e copia literal de B75 do template `Technical_Sheet_of_
+# PDM-R3.xlsx` e da ficha `4500063671.0052_enUS.xlsx` -- identico nos dois.
+TITULO_SPECS_EN = "TECHNICAL SPECIFICATIONS - INDICATE TECHNICAL SPECIFICATIONS IN THE FREE SPACE BELOW"
+
+
+class _FakeWorksheetComEspecificacoesEN(_FakeWorksheetComEspecificacoes):
+    _ALVO = TITULO_SPECS_EN
+
+
+def test_find_variable_specs_start_row_acha_o_titulo_em_INGLES():
+    analyzer = _make_analyzer()
+    ws = _FakeWorksheetComEspecificacoesEN(linha_alvo=75)
+
+    assert analyzer._find_variable_specs_start_row(ws) == 79
+
+
+def test_a_ficha_em_INGLES_com_linhas_INSERIDAS_acompanha_o_titulo():
+    """A prova de que nao e coincidencia: com o titulo deslocado para a 82, a
+    resposta tem de ser 86 — e nao o fallback 79."""
+    analyzer = _make_analyzer()
+    ws = _FakeWorksheetComEspecificacoesEN(linha_alvo=82)
+
+    assert analyzer._find_variable_specs_start_row(ws) == 86
+
+
 # =============================================================================
 # 8. AutoSpecCore.analyze_sheet — as 2 linhas corrigidas (.split(":")[0]).
 # =============================================================================

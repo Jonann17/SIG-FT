@@ -265,7 +265,93 @@ def processar_pastas_fichas(arquivo_STATUS_PMIB, destino_fichas, lista_seleciona
         return [], f"Erro ao ler Excel: {e}"
 
 
-def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template, log_callback=None, retry_lock=None):
+
+# =============================================================================
+# A ABA DA FICHA DENTRO DO TEMPLATE
+# =============================================================================
+# Nomes aceitos, normalizados (sem acento, minusculas, sem espaco nas pontas).
+# O PT-BR e o canonico; os demais existem porque o SIG-FT tem um template em
+# INGLES, e a aba dele pode nao se chamar "Ficha Tecnica Padrao".
+NOME_CANONICO_DA_ABA = "Ficha Técnica Padrão"
+
+# Como a aba tem de se chamar na ficha ENTREGUE AO FORNECEDOR quando o idioma
+# e ingles. Nao e escolha minha: e o nome que aparece na ficha
+# `4500063671.0052_enUS.xlsx`, que o usuario entregou em 2026-09-03 -- ou
+# seja, ele ja renomeia a mao, ficha a ficha. O template
+# `Technical_Sheet_of_PDM-R3.xlsx` ainda traz a aba com o nome em portugues.
+#
+# A regra mora AQUI, e nao na tela: a tela passa o IDIOMA (que e o que o
+# usuario escolheu) e o servico decide o nome. Principio nº 2 -- UI nao contem
+# regra de negocio, e regra duplicada e regra que diverge.
+NOME_DA_ABA_EM_INGLES = "Standard Technical Sheet"
+_ALVO_EN = "standard technical sheet"   # o mesmo, normalizado (ver abaixo)
+NOMES_DA_ABA_DA_FICHA = (
+    "ficha tecnica padrao",
+    # 2026-09-03, dos arquivos REAIS que o usuario entregou: o template
+    # `Technical_Sheet_of_PDM-R3.xlsx` traz a aba ainda com o nome em
+    # PORTUGUES (heranca do template do qual foi derivado), enquanto a ficha
+    # ja preenchida `4500063671.0052_enUS.xlsx` traz "Standard Technical
+    # Sheet". Os dois circulam; reconhecer os dois custa uma linha.
+    "standard technical sheet",
+    "standard datasheet",
+    "technical datasheet",
+    "datasheet",
+)
+
+
+def _normalizar_nome_de_aba(nome):
+    import unicodedata
+    texto = unicodedata.normalize("NFKD", str(nome or ""))
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    return " ".join(texto.lower().split())
+
+
+def nome_da_aba_da_ficha(wb):
+    """O NOME da aba onde as especificacoes tecnicas devem ser injetadas.
+
+    Devolve o nome, e nao o objeto: e so disso que o montador precisa
+    (`wb_target[nome]`), e pedir `.title` de volta ao chamador so criava um
+    passo a mais para errar.
+
+    **O que isto conserta.** Era `wb_target["Ficha Tecnica Padrao"]`, nome
+    fixo. Um template com a aba noutro nome -- o caso do template em INGLES --
+    levanta `KeyError` DENTRO do laco, e o `except` generico transforma isso em
+    "ERRO ao gerar ficha {pmib}" **uma vez por ficha**. Num lote de 200
+    materiais sao 200 linhas identicas, e nenhuma delas diz que o problema e a
+    aba do template.
+
+    Workbook de uma aba so usa ela: nao ha ambiguidade para resolver, e um
+    template valido nao pode ser recusado por causa do nome.
+
+    Nenhuma aba reconhecida levanta `ValueError` **com os nomes encontrados**
+    -- a mensagem precisa dizer ao usuario o que ele tem em maos.
+    """
+    try:
+        nomes = [ws.title for ws in wb.worksheets]
+    except Exception:
+        nomes = []
+    if not nomes:
+        # Nao consegui enumerar as abas -- o que NAO e o mesmo que "o template
+        # esta errado". Cai no nome canonico e deixa o erro, se houver, vir de
+        # quem de fato tentar usar a aba.
+        return NOME_CANONICO_DA_ABA
+    if len(nomes) == 1:
+        return nomes[0]
+
+    for nome in nomes:
+        if _normalizar_nome_de_aba(nome) in NOMES_DA_ABA_DA_FICHA:
+            return nome
+
+    encontrados = ", ".join(f"'{n}'" for n in nomes) or "(nenhuma)"
+    raise ValueError(
+        "Nao achei a aba da ficha tecnica no template. Abas encontradas: "
+        f"{encontrados}. Esperado um destes nomes: "
+        + ", ".join(f"'{n}'" for n in NOMES_DA_ABA_DA_FICHA)
+    )
+
+
+def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,
+                             log_callback=None, retry_lock=None, idioma="pt"):
     # CP 4.4: mesma adaptação de `pdms_fromItaipu_lista_geral` acima --
     # `callbacks` é local, a assinatura pública não muda.
     callbacks = from_legacy(callback_log=log_callback)
@@ -291,7 +377,11 @@ def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,
     except Exception as e:
         return f"Erro ao abrir template: {e}", [f"Erro ao abrir template: {e}"]
 
+
     count = 0
+    nome_da_aba = None
+    erro_de_template = None
+    em_ingles = str(idioma or "pt").strip().lower().startswith("en")
     # CP 4.4: mesma troca de `pdms_fromItaipu_lista_geral` -- o
     # `if log_callback: log_callback(...)` de cada branch vira uma chamada de
     # `RelatorioLote`; a lista `log` (parte do retorno público da função,
@@ -322,7 +412,38 @@ def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,
                 # CP 4.3: cópia limpa do template vinda da MEMÓRIA (antes era
                 # um `load_workbook(path_template)` por ficha).
                 wb_target = load_workbook(BytesIO(bytes_template))
-                ws_target = wb_target["Ficha Técnica Padrão"]
+
+                # A aba e resolvida UMA vez, na primeira ficha, reaproveitando
+                # o workbook que seria lido de qualquer jeito. Template errado
+                # e problema do TEMPLATE, nao de cada ficha: falhar 200 vezes
+                # com a mesma mensagem generica esconde a causa em vez de
+                # mostra-la, entao o lote PARA com o motivo.
+                if nome_da_aba is None:
+                    try:
+                        nome_da_aba = nome_da_aba_da_ficha(wb_target)
+                    except ValueError as e:
+                        erro_de_template = f"Erro no template: {e}"
+                        log.append(erro_de_template)
+                        lote.falha(pmib, erro_de_template)
+                        break
+                ws_target = wb_target[nome_da_aba]
+
+                # A aba da ficha ENTREGUE ao fornecedor estrangeiro tem de ter
+                # nome em ingles. O template ainda traz o nome em portugues, e
+                # o usuario vinha renomeando a mao, ficha a ficha (decisao de
+                # 2026-09-03). Renomear e seguro do lado de quem LE de volta:
+                # `analyzer._aba_da_ficha` escolhe a aba por EVIDENCIA --
+                # quantas ancoras do CONFIG_MAP estao preenchidas --, nao por
+                # nome.
+                #
+                # A comparacao normalizada evita o caso "alguem ja consertou o
+                # template": renomear uma aba para o nome que ela ja tem e
+                # inofensivo, mas renomear para o nome de OUTRA aba do mesmo
+                # workbook nao e.
+                if em_ingles and _normalizar_nome_de_aba(ws_target.title) != _ALVO_EN:
+                    if not any(_normalizar_nome_de_aba(outra.title) == _ALVO_EN
+                               for outra in wb_target.worksheets):
+                        ws_target.title = NOME_DA_ABA_EM_INGLES
 
                 # Lógica de cópia (Linha 79 fixo)
                 start_row = 79
@@ -368,6 +489,8 @@ def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,
 
     # CP 4.3: não há mais `wb_templ` para fechar — o template vive como
     # bytes em memória (ver o início da função).
+    if erro_de_template:
+        return erro_de_template, log
     return f"Fichas geradas: {count}", log
 
 

@@ -790,10 +790,28 @@ class DatasheetAnalyzer:
                     return str(c_desc.value).strip()
         return None
 
+    # O titulo da secao de especificacoes, nos DOIS idiomas de template que o
+    # SIG-FT tem. O texto em ingles e copia literal de B75 do template
+    # `Technical_Sheet_of_PDM-R3.xlsx` e da ficha `4500063671.0052_enUS.xlsx`.
+    #
+    # 2026-09-03: antes so o portugues estava aqui. Uma ficha em ingles nao
+    # casava, caia no fallback 79 -- e acertava por COINCIDENCIA, porque o
+    # template EM INGLES tambem poe o titulo na linha 75. O preco da
+    # coincidencia aparecia so no caso que a busca dinamica existe para
+    # resolver: fornecedor que insere ou apaga linhas acima da secao. A ficha
+    # PT se conserta sozinha; a EN passava a ler a partir da linha errada, sem
+    # avisar.
+    TITULOS_DAS_SPECS = (
+        "ESPECIFICAÇÕES TÉCNICAS - INDIQUE AS ESPECIFICAÇÕES TÉCNICAS NO ESPAÇO LIVRE ABAIXO",
+        "TECHNICAL SPECIFICATIONS - INDICATE TECHNICAL SPECIFICATIONS IN THE FREE SPACE BELOW",
+    )
+
     def _find_variable_specs_start_row(self, ws):
-        tgt = "ESPECIFICAÇÕES TÉCNICAS - INDIQUE AS ESPECIFICAÇÕES TÉCNICAS NO ESPAÇO LIVRE ABAIXO"
         for row in ws.iter_rows(min_row=50, max_row=150, min_col=2, max_col=2):
-            if row[0].value and tgt in str(row[0].value).strip().upper():
+            if not row[0].value:
+                continue
+            texto = str(row[0].value).strip().upper()
+            if any(alvo in texto for alvo in self.TITULOS_DAS_SPECS):
                 return row[0].row + 4
         # CP 2.4: fallback nomeado via config.LINHA_SPECS_FICHA (mesmo valor
         # numérico de sempre, 79 — só deixa de ser um literal solto).

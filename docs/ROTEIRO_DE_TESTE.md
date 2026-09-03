@@ -282,6 +282,60 @@ fechar o app perdia a conferência):
 
 ---
 
+### 3c — A ficha em INGLÊS (10 min, sem portal)
+
+**Por que esta etapa existe.** É a única parte da frente da ficha em inglês que
+o contêiner do Claude na web **não consegue rodar**: ele não tem
+`deep_translator` nem chave de IA. Tudo o mais foi verificado ponta a ponta
+contra o template real (`Technical_Sheet_of_PDM-R3.xlsx`) — geometria, mesclas,
+célula, glossário, cache. **O que falta é julgar a qualidade da tradução**, e
+isso só quem conhece o vocabulário da casa julga.
+
+**Passos**
+
+1. Módulo **PDM's**, aba 1. Aponte a pasta de *PDMs Modificados* que já existe
+   e escolha uma pasta nova de destino (ex.: `PDMs Modificados EN`).
+   ⚠️ Origem e destino **não podem ser a mesma pasta** — o app recusa, mas
+   confira mesmo assim: seria apagar o original de tudo.
+2. Clique em **"Traduzir PDMs Modificados para inglês"**.
+3. Abra `_GLOSSARIO_PT_EN.txt` na pasta de destino. Ele já vem com os termos
+   tirados das suas próprias fichas (`NORMAS TECNICAS APLICAVEIS =
+   APPLICABLE TECHNICAL STANDARDS` e mais 6).
+4. Abra 2 ou 3 dos `.xlsx` traduzidos e **leia as perguntas**. É aqui que você
+   é insubstituível.
+5. Achou tradução ruim? Ponha a **pergunta inteira** no glossário (sem o
+   número e sem os dois pontos), apague o `_CACHE_TRADUCAO.json` e rode de
+   novo. A sua linha vence o tradutor, hoje e sempre.
+6. Aba 2: escolha **English**, aponte a pasta EN e o template em inglês, e
+   gere as fichas.
+
+**O que conferir na ficha gerada**
+
+| Onde | O que tem de estar |
+|---|---|
+| **C79** | a primeira pergunta, em inglês |
+| A instrução entre parênteses | **em inglês também**. Se vier em português, é o defeito que mais me preocupa: a ficha sai metade em cada idioma e não se denuncia sozinha |
+| Coluna **M** | vazia — é onde o fornecedor responde |
+| Numeração `1 - `, `2 - ` | intacta e na ordem |
+| O resto do template | cabeçalho, armazenagem, transporte: tudo em inglês, como no template |
+
+**Me avise se:**
+
+- alguma pergunta vier com a instrução em português;
+- o número da pergunta aparecer traduzido ou fora de ordem (`1 - ` virou
+  `1 -`, ou sumiu);
+- uma unidade mudar (`(V)`, `(A)`, `(°C)`, `4-20mA` têm de passar intactas);
+- uma norma mudar (`ABNT NBR IEC 60749-1` não se traduz);
+- a segunda rodada demorar igual à primeira — o cache não estaria pegando.
+
+> **A aba da ficha gerada já sai como `Standard Technical Sheet`** quando o
+> idioma é inglês, mesmo o template trazendo o nome em português — era o passo
+> que você fazia à mão, ficha a ficha. Em português, nada muda. Confira numa
+> ficha gerada: se a aba vier `Ficha Técnica Padrão` com o idioma em English,
+> **me avise**.
+
+---
+
 ## Etapa 4 — Portal, motor ATUAL (Selenium) — 15 min
 
 **Esta é a etapa mais importante do roteiro**, e a ordem importa.

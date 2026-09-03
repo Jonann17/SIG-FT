@@ -157,14 +157,27 @@ def test_chave_por_provider_todas_as_chaves_existem_em_env_var_por_chave():
 # B. LLM_TASKS / get_task_config
 # =============================================================================
 
+# As 5 tarefas caracterizadas pelo CP 3.1, e o que foi acrescentado DEPOIS.
+# Cada acrescimo entra nesta lista junto com o commit que o adiciona -- e o
+# que separa "tarefa nova, decidida" de "tarefa inventada por engano", que e o
+# que este teste sempre protegeu. Afirmar igualdade EXATA quebrava em
+# qualquer acrescimo, inclusive nos legitimos.
+TAREFAS_DO_CP_3_1 = {
+    "categorizar_pdm",
+    "validar_ficha",
+    "condicoes",
+    "tech_specs",
+    "autospec",
+}
+#   traduzir_pdm (2026-08-28): traducao PT->EN das perguntas dos PDMs
+#   Modificados, para a ficha em ingles.
+TAREFAS_ACRESCENTADAS_DEPOIS = {"traduzir_pdm"}
+
+
 def test_llm_tasks_tem_exatamente_as_5_tarefas_do_cp_3_1():
-    assert set(sigft_config.LLM_TASKS) == {
-        "categorizar_pdm",
-        "validar_ficha",
-        "condicoes",
-        "tech_specs",
-        "autospec",
-    }
+    assert TAREFAS_DO_CP_3_1 <= set(sigft_config.LLM_TASKS), "tarefa do CP 3.1 sumiu"
+    assert (set(sigft_config.LLM_TASKS) - TAREFAS_DO_CP_3_1
+            == TAREFAS_ACRESCENTADAS_DEPOIS), "tarefa nova nao declarada"
 
 
 def test_llm_tasks_provider_por_tarefa_segue_a_decisao():
@@ -176,6 +189,8 @@ def test_llm_tasks_provider_por_tarefa_segue_a_decisao():
         "condicoes": sigft_config.PROVIDER_GEMINI,
         "tech_specs": sigft_config.PROVIDER_GEMINI,
         "autospec": sigft_config.PROVIDER_GEMINI,
+        # acrescentada depois do CP 3.1 -- ver TAREFAS_ACRESCENTADAS_DEPOIS
+        "traduzir_pdm": sigft_config.PROVIDER_GEMINI,
     }
     assert sigft_config.PROVIDER_XAI == "xai"
     assert sigft_config.PROVIDER_GEMINI == "gemini"
@@ -250,7 +265,17 @@ def test_llm_modelos_hoje_preserva_os_modelos_atuais_caracterizados():
 
 
 def test_llm_modelos_hoje_tem_as_mesmas_5_tarefas_que_llm_tasks():
-    assert set(sigft_config.LLM_MODELOS_HOJE) == set(sigft_config.LLM_TASKS)
+    """`LLM_MODELOS_HOJE` é a CARACTERIZAÇÃO do que cada módulo hardcodava
+    ANTES do CP 3.1 — é baseline de equivalência, não catálogo de tarefas.
+
+    Uma tarefa criada depois (`traduzir_pdm`, 2026-08-28) **não tem** "modelo
+    de antes" para caracterizar, e inventar um só para o mapa ficar simétrico
+    faria o baseline mentir. O que este teste guarda continua de pé: nenhuma
+    das 5 tarefas caracterizadas sumiu de `LLM_TASKS`, e tudo que está no
+    baseline existe no mapa vivo.
+    """
+    assert set(sigft_config.LLM_MODELOS_HOJE) == TAREFAS_DO_CP_3_1
+    assert set(sigft_config.LLM_MODELOS_HOJE) <= set(sigft_config.LLM_TASKS)
 
 
 def test_llm_precos_cobre_os_modelos_referenciados_hoje_e_alvo():
