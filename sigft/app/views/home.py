@@ -169,7 +169,14 @@ class HomeView(ctk.CTkScrollableFrame):
 
         from sigft.services import atividades as at
 
-        vazio = {at.ATRASADA: [], at.PARA_COMECAR: [], at.EM_ANDAMENTO: [], at.TRAVADA: []}
+        # As gavetas saem de `at.FAIXAS`, NUNCA de uma lista escrita aqui.
+        # A primeira versao listava as faixas a mao; quando o mural passou a
+        # ser por PRAZO os nomes mudaram no servico e esta linha ficou para
+        # tras, com `at.PARA_COMECAR` e `at.TRAVADA` inexistentes. O
+        # AttributeError subia antes do try e o botao simplesmente nao abria
+        # janela nenhuma. Derivando de `FAIXAS` os dois lados nao tem como
+        # divergir de novo.
+        vazio = {faixa: [] for faixa in at.FAIXAS}
 
         caminho = self._caminho_do_mapeamento()
         if not caminho:

@@ -298,7 +298,18 @@ class PMIBManager:
 
             # Verifica Atraso Itaipu
             if 'DATA INFORME' in df_unicos.columns:
-                df_unicos.loc[:, 'DATA INFORME'] = pd.to_datetime(df_unicos['DATA INFORME'], errors='coerce')
+                # ATENCAO: atribuicao DIRETA, nunca `.loc[:, coluna] = `.
+                #
+                # `.loc[:, coluna] = ` escreve DENTRO da coluna existente e
+                # preserva o dtype dela. A coluna vem de `read_excel(...,
+                # na_filter=False)`, entao celula vazia virou '' e o dtype e
+                # `str`. Na pandas 3 encaixar um DatetimeArray num dtype `str`
+                # deixou de ser conversao silenciosa e virou TypeError:
+                #     Invalid value '<DatetimeArray> [NaT, NaT, ...]' for dtype 'str'
+                # A atribuicao direta SUBSTITUI a coluna, e o dtype novo
+                # (datetime64) vem junto. Defeito real: 2026-09-03, o fluxo
+                # morria em toda planilha cuja DATA INFORME estivesse vazia.
+                df_unicos['DATA INFORME'] = pd.to_datetime(df_unicos['DATA INFORME'], errors='coerce')
 
                 # Vamos trabalhar apenas com as linhas que possuem data válida
                 df_com_data = df_unicos.dropna(subset=['DATA INFORME']).copy()
