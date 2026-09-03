@@ -609,4 +609,113 @@ class PMIBManager:
         else:
             yield " -> Nenhuma ficha processada para estatísticas."
 
+        # ---------------------------------------------------------------
+        # 6. Aba "Lista de preços Follow-up"  [2026-09-03]
+        # ---------------------------------------------------------------
+        # Pedido do usuário: "sempre na atualização do PMIB manager devemos
+        # atualizar essa aba". Roda por último, depois de a aba de
+        # sobressalentes estar gravada.
+        #
+        # Envolvido em try/except de propósito: uma falha aqui não pode
+        # derrubar o resto do fluxo, que já gravou tudo o que interessa.
+        yield ("Atualizando a aba Lista de preços Follow-up...", 0.95)
+        try:
+            for linha in self._atualizar_lista_precos(
+                    caminho_gerenciadora, df_api, callback_retry_lock):
+                yield linha
+        except Exception as e:
+            yield f"[ERRO] Lista de preços Follow-up: {type(e).__name__}: {e}"
+
         yield ("--- PROCESSO CONCLUÍDO ---", 1.0)
+
+    def _atualizar_lista_precos(self, caminho_gerenciadora, df_api, callback_retry_lock=None):
+        """Cria (se preciso) e atualiza a aba "Lista de preços Follow-up".
+
+        [2026-09-03] Ver
+        `docs/superpowers/specs/2026-09-03-lista-precos-followup-design.md`.
+
+        A REGRA de pareamento não mora aqui — está em `services/lista_precos.py`,
+        que se prova sem planilha nenhuma. Aqui está só a escrita.
+
+        ⚠️ `AÇÃO` e `OBSERVAÇÕES` são do usuário e NUNCA são sobrescritas: a
+        atualização casa por `N° DOCUMENTO ITAIPU` e escreve célula a célula
+        nas 10 colunas do app. Recriar a aba apagaria a decisão dele, que é o
+        conteúdo mais caro que ela guarda.
+        """
+        from datetime import datetime
+
+        from openpyxl import load_workbook
+
+        from sigft.services import lista_precos as lp
+        from sigft.services import lista_precos_planilha as lpp
+
+        historico = df_api.to_dict("records")
+        levantado = lp.levantar(historico)
+        if not levantado:
+            yield " -> Nenhuma lista de preços vigente encontrada no Aconex."
+            return
+
+        wb = load_workbook(caminho_gerenciadora)
+        criou = lpp.NOME_ABA not in wb.sheetnames
+        ws = lpp.criar_aba(wb)
+        if criou:
+            yield f" -> Aba '{lpp.NOME_ABA}' criada."
+
+        colunas = lpp.mapa_de_colunas(ws)
+        existentes = lpp.linha_por_documento(ws, colunas)
+        hoje = datetime.now().strftime("%d/%m")
+
+        novas, atualizadas, alertas = 0, 0, 0
+
+        for entrada in levantado:
+            precos = entrada["precos"]
+            codigo = str(precos.get(lp.COL_DOC) or "").strip()
+            if not codigo:
+                continue
+
+            linha = existentes.get(codigo)
+            if linha is None:
+                linha = ws.max_row + 1 if ws.max_row >= lpp.LINHA_CABECALHO else lpp.LINHA_CABECALHO + 1
+                existentes[codigo] = linha
+                novas += 1
+            else:
+                atualizadas += 1
+
+            valores = {
+                "N° DOCUMENTO ITAIPU": codigo,
+                "N° DOCUMENTO CMI": precos.get("Controle do Emissor"),
+                "ÚLTIMA REVISÃO EMITIDA": precos.get("Revisão"),
+                "STATUS DA REVISÃO": precos.get("Status"),
+                "DATA DE ATUALIZAÇÃO": precos.get("Data de Alteração"),
+                "DESCRIÇÃO": precos.get("Título"),
+                "ESPECIFICAÇÃO TÉCNICA": precos.get("Especialidade"),
+                "CAPÍTULO": precos.get("Subespecialidade"),
+                "LISTA DE SOBRESSALENTES": entrada["lista"] or "",
+                "ALERTA RDS-PP": entrada["alerta"],
+            }
+            for titulo, valor in valores.items():
+                if titulo in colunas:
+                    ws.cell(row=linha, column=colunas[titulo]).value = valor
+
+            if entrada["alerta"]:
+                alertas += 1
+
+            # OBSERVAÇÕES: ACRESCENTA, nunca substitui -- e não duplica a
+            # mesma linha a cada execução, senão um documento parado com
+            # alerta acumularia uma linha por rodada até a célula ficar
+            # ilegível.
+            recado = lp.texto_de_observacao(entrada, hoje)
+            coluna_obs = colunas.get("OBSERVAÇÕES")
+            if recado and coluna_obs:
+                celula = ws.cell(row=linha, column=coluna_obs)
+                atual = str(celula.value or "")
+                nucleo = recado.split("] ", 1)[-1]
+                if nucleo not in atual:
+                    celula.value = f"{atual}\n{recado}".strip() if atual else recado
+
+        if not self._salvar_com_retry_interativo(wb, caminho_gerenciadora, callback_retry_lock):
+            yield "[ERRO] A planilha está aberta no Excel — a aba de preços NÃO foi salva."
+            return
+
+        yield (f" -> Lista de preços: {novas} nova(s), {atualizadas} atualizada(s), "
+               f"{alertas} com alerta de RDS-PP.")
