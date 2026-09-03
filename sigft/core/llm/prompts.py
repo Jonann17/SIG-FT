@@ -991,6 +991,26 @@ def montar_traduzir_pdm(textos, glossario=None):
       "corrigiu uma vez, vale sempre" funcionar de verdade: sem isso o modelo
       alterna entre sinonimos entre uma rodada e outra, e a ficha do fornecedor
       muda de vocabulario sem ninguem ter mudado nada.
+
+    CORRECAO DE 2026-09-03, com os arquivos reais na mao
+    ------------------------------------------------------------------------
+    A primeira versao deste prompt dizia "cada linha e o nome de uma
+    caracteristica tecnica, geralmente seguida da unidade entre parenteses", e
+    mandava PRESERVAR o que estivesse entre parenteses. Isso foi escrito com
+    exemplos que eu mesmo inventei -- "Pressao de trabalho (bar)".
+
+    A forma real, vista nas fichas que o usuario entregou, e outra:
+
+        9 - TIPO CONSTRUTIVO (Indicar o tipo construtivo do item. Nota:
+        Material especifico de compra com (Numero de desenho, referencia,
+        nome usual, outros)):
+
+    O parenteses de fora carrega a INSTRUCAO INTEIRA, com parenteses aninhados
+    dentro. A regra "preserve o que esta entre parenteses" aplicada a isso
+    manda o modelo devolver a instrucao em portugues -- ficha meio traduzida.
+    Nenhum teste da suite pegava, porque todos os exemplos eram meus e casavam
+    com a suposicao errada. O exemplo trabalhado abaixo vem da ficha em ingles
+    da propria Itaipu.
     """
     linhas_glossario = ""
     if glossario:
@@ -1003,14 +1023,25 @@ def montar_traduzir_pdm(textos, glossario=None):
     numeradas = "\n".join(f"{i}. {t}" for i, t in enumerate(textos, start=1))
     return f"""Você é tradutor técnico de português do Brasil para inglês, especializado em documentação de materiais sobressalentes de usinas hidrelétricas.
 
-Traduza as {len(textos)} linhas abaixo. Cada uma é o nome de uma característica técnica que um fornecedor vai preencher numa ficha, geralmente seguida da unidade entre parênteses.
+Traduza as {len(textos)} linhas abaixo. Cada uma tem a forma:
+
+    NOME DA CARACTERÍSTICA EM MAIÚSCULAS (Instrução de preenchimento para o fornecedor)
+
+O que está entre parênteses NÃO é uma unidade: é uma frase inteira de instrução, e ela também tem de ser traduzida. Dentro dela costuma haver parênteses aninhados — esses sim com unidades, exemplos de valor ou notas.
+
+EXEMPLO (é assim que a Itaipu traduz, siga este estilo):
+  PT: NORMAS TECNICAS APLICAVEIS (Indicar quais as normas técnicas aplicáveis ao item.)
+  EN: APPLICABLE TECHNICAL STANDARDS (Indicate which technical standards apply to the item.)
 
 REGRAS:
-1. Traduza para o inglês técnico usado em datasheet de fabricante, não para o inglês corrente.
-2. PRESERVE a unidade entre parênteses exatamente como está (bar, mm, kg, l/min, V, A, °C não mudam).
-3. PRESERVE códigos, normas e designações (ISO 4406, NBR 10004, IP65, DN50) sem traduzir.
-4. NÃO acrescente, não explique e não numere: devolva só a tradução de cada linha.
-5. Se a linha já estiver em inglês, devolva-a inalterada.
+1. MANTENHA o nome da característica em MAIÚSCULAS, e a instrução entre parênteses em caixa normal, começando por verbo no imperativo ("Indicate...").
+2. TRADUZA a instrução entre parênteses por inteiro. Deixá-la em português é o pior erro possível aqui: a ficha sai metade em cada idioma e ninguém percebe até o fornecedor reclamar.
+3. PRESERVE unidades, números e exemplos de valor exatamente como estão: (V), (A), (mm), (°C), (l/min), 4-20mA, 0-5 V, M12, 1/2" UNF.
+4. PRESERVE códigos, normas e designações (ISO 4406, ABNT NBR IEC 60749-1, NBR 10004, IP65, DN50) sem traduzir.
+5. Convenções da casa: "Indicar" -> "Indicate"; "do item" -> "of the item"; "ex.:" e "ex:" -> "e.g."; "outros" -> "others"; "Nota:" -> "Note:".
+6. Traduza para o inglês técnico de datasheet de fabricante, não para o inglês corrente.
+7. NÃO acrescente, não explique e não numere: devolva só a tradução de cada linha.
+8. Se a linha já estiver em inglês, devolva-a inalterada.
 {linhas_glossario}
 LINHAS:
 {numeradas}
