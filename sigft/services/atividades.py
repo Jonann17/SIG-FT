@@ -189,3 +189,179 @@ def recalcular(linhas) -> dict[int, dict]:
 def linhas_de_grupo(linhas) -> list[int]:
     """Os índices das linhas de nível 1 — as que têm `CÓDIGO ITAIPU`."""
     return [i for i in range(len(linhas)) if _nivel(linhas[i]) == 1]
+
+
+# =============================================================================
+# O mural — o que fazer hoje, e o que vem a seguir
+# =============================================================================
+# [2026-09-03] Pedido do usuário: *"que ela seja visual, e funcione como um
+# apontamento do que é preciso fazer naquele dia, ou o que deveria estar sendo
+# feito, e algumas a frente também para que tenhamos uma ideia do que vem a
+# seguir"*.
+#
+# ⚠️ Agrupa por TEMPO, não por status. Uma primeira versão agrupava por status
+# (travada / em andamento / não iniciada) e não respondia a pergunta que o
+# usuário faz ao abrir: *o que é para fazer hoje?* Status é atributo da
+# atividade; urgência é relação entre a data dela e hoje — e é a urgência que
+# ordena o dia.
+#
+# O status não sumiu: aparece dentro do cartão, onde serve de contexto.
+
+STATUS_NAO_INICIADA = "Não iniciada"
+STATUS_EM_DESENVOLVIMENTO = "Em desenvolvimento"
+STATUS_CONCLUIDA = "Concluída"
+
+# As faixas do mural, na ordem em que aparecem — que é a ordem da urgência.
+ATRASADA = "atrasada"
+DEVERIA_TER_COMECADO = "deveria_ter_comecado"
+EM_ANDAMENTO = "em_andamento"
+COMECA_HOJE = "comeca_hoje"
+PROXIMOS_DIAS = "proximos_dias"
+
+FAIXAS = (ATRASADA, DEVERIA_TER_COMECADO, EM_ANDAMENTO, COMECA_HOJE, PROXIMOS_DIAS)
+
+# Quantos dias à frente o mural enxerga. Decisão do usuário: 7 — uma semana
+# cabe na tela e ainda é acionável.
+HORIZONTE_DIAS = 7
+
+
+def _so_data(valor):
+    """A parte de data de um `datetime`, para comparar com `hoje` sem hora."""
+    from datetime import date, datetime
+
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    return None
+
+
+def esta_concluida(linha) -> bool:
+    """Concluída pela caixa OU pelo status.
+
+    ⚠️ As duas colunas DIVERGEM na planilha real: há 2 linhas com
+    `STATUS = "Concluída"` e só 1 com `CONCLUÍDA = True`. Exigir as duas
+    deixaria uma atividade terminada aparecendo no mural para sempre.
+    """
+    if _concluida(linha):
+        return True
+    return str(linha.get("status") or "").strip().casefold() == STATUS_CONCLUIDA.casefold()
+
+
+def classificar(linha, hoje, horizonte=HORIZONTE_DIAS):
+    """`(faixa, dias)` — onde a atividade cai, e a distância em dias.
+
+    `dias` é negativo no passado (atrasada há N dias), 0 hoje, positivo no
+    futuro. É ele que a tela usa para escrever "venceu há 4 dias" ou "em 3
+    dias" — o dado bruto fica aqui, a frase fica na interface.
+
+    A ordem das checagens é a ordem da urgência: uma atividade atrasada E
+    travada aparece como ATRASADA, porque o atraso é o que exige decisão.
+    """
+    if esta_concluida(linha):
+        return None, None
+
+    termino = _so_data(linha.get("previsao_termino"))
+    inicio = _so_data(linha.get("data_prevista_inicio"))
+    status = str(linha.get("status") or "").strip()
+    em_andamento = status.casefold() == STATUS_EM_DESENVOLVIMENTO.casefold()
+
+    # 1. Passou da previsão de término e não terminou.
+    if termino is not None and termino < hoje:
+        return ATRASADA, (termino - hoje).days
+
+    # 2. Já começou de fato.
+    if em_andamento:
+        dias = (termino - hoje).days if termino is not None else None
+        return EM_ANDAMENTO, dias
+
+    # 3. Era para ter começado e não começou.
+    if inicio is not None and inicio < hoje:
+        return DEVERIA_TER_COMECADO, (inicio - hoje).days
+
+    # 4. Começa hoje.
+    if inicio is not None and inicio == hoje:
+        return COMECA_HOJE, 0
+
+    # 5. O que vem a seguir, dentro do horizonte.
+    if inicio is not None and 0 < (inicio - hoje).days <= horizonte:
+        return PROXIMOS_DIAS, (inicio - hoje).days
+
+    # Travada sem data nenhuma ainda merece aparecer: é trabalho parado.
+    if status.casefold() == STATUS_TRAVADA.casefold():
+        return DEVERIA_TER_COMECADO, None
+
+    return None, None
+
+
+def _criticidade(linha) -> int:
+    try:
+        return int(linha.get("criticidade") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def mural(linhas, hoje, horizonte=HORIZONTE_DIAS) -> dict[str, list[dict]]:
+    """As atividades agrupadas por faixa de tempo.
+
+    Cada item é a linha original acrescida de `_faixa` e `_dias`, para a tela
+    não precisar reclassificar.
+
+    Só atividades de verdade: linhas de GRUPO (nível 1) e linhas que agregam
+    outras ficam de fora — são totalizadores, não trabalho de alguém.
+
+    Dentro de cada faixa: mais urgente primeiro (menor `dias`), e entre
+    empatados, maior criticidade.
+    """
+    gavetas: dict[str, list[dict]] = {faixa: [] for faixa in FAIXAS}
+
+    for indice, linha in enumerate(linhas):
+        if _nivel(linha) == 1:
+            continue
+        if filhas_diretas(linhas, indice):
+            continue
+
+        faixa, dias = classificar(linha, hoje, horizonte)
+        if faixa is None:
+            continue
+
+        item = dict(linha)
+        item["_faixa"] = faixa
+        item["_dias"] = dias
+        gavetas[faixa].append(item)
+
+    for lista in gavetas.values():
+        # `dias` None (sem data) vai para o fim da faixa: sem data não há
+        # urgência a comparar, mas a atividade ainda precisa aparecer.
+        lista.sort(key=lambda a: (
+            a["_dias"] if a["_dias"] is not None else 9999,
+            -_criticidade(a),
+        ))
+    return gavetas
+
+
+def total_do_mural(gavetas) -> int:
+    return sum(len(v) for v in gavetas.values())
+
+
+def frase_do_prazo(faixa, dias) -> str:
+    """Como a tela escreve o prazo. Fica aqui para o texto ser testável."""
+    if dias is None:
+        return "sem data"
+    if faixa == ATRASADA:
+        d = abs(dias)
+        return "venceu ontem" if d == 1 else f"venceu há {d} dias"
+    if faixa == DEVERIA_TER_COMECADO:
+        d = abs(dias)
+        return "era para começar ontem" if d == 1 else f"era para começar há {d} dias"
+    if faixa == COMECA_HOJE:
+        return "começa hoje"
+    if faixa == PROXIMOS_DIAS:
+        return "começa amanhã" if dias == 1 else f"começa em {dias} dias"
+    if faixa == EM_ANDAMENTO:
+        if dias < 0:
+            return f"previsão venceu há {abs(dias)} dias"
+        if dias == 0:
+            return "previsão é hoje"
+        return f"previsão em {dias} dias"
+    return ""

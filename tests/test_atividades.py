@@ -287,3 +287,191 @@ def test_data_como_date_puro_tambem_conta():
     linhas = [linha(1), linha(2, data_inicio=date(2026, 8, 10))]
 
     assert at.agregar(linhas, 0)["data_inicio"] == date(2026, 8, 10)
+
+
+# =============================================================================
+# G. O mural — agrupado por TEMPO
+# =============================================================================
+# Agrupa por tempo, não por status: a pergunta que o usuário faz ao abrir é
+# "o que é para fazer hoje?", e status é atributo da atividade, não relação
+# com a data de hoje. Uma primeira versão agrupava por status e não respondia
+# essa pergunta.
+
+from datetime import date, datetime  # noqa: E402
+
+HOJE = date(2026, 9, 3)
+
+
+def ativ(nv=2, **kw):
+    base = linha(nv)
+    base["criticidade"] = kw.pop("criticidade", 0)
+    base["descricao"] = kw.pop("descricao", "uma atividade")
+    base.update(kw)
+    return base
+
+
+def faixa_de(a, hoje=HOJE):
+    return at.classificar(a, hoje)[0]
+
+
+# --- concluídas saem do mural ---------------------------------------------
+
+def test_concluida_pela_caixa_sai():
+    assert faixa_de(ativ(concluida=True)) is None
+
+
+def test_concluida_pelo_STATUS_tambem_sai():
+    """As duas colunas divergem na planilha real (2 x 1). Exigir as duas
+    deixaria uma atividade terminada no mural para sempre."""
+    assert faixa_de(ativ(status="Concluída")) is None
+
+
+# --- as cinco faixas -------------------------------------------------------
+
+def test_atrasada_quando_a_previsao_de_termino_passou():
+    a = ativ(previsao_termino=datetime(2026, 8, 30))
+
+    faixa, dias = at.classificar(a, HOJE)
+
+    assert faixa == at.ATRASADA
+    assert dias == -4
+
+
+def test_deveria_ter_comecado():
+    a = ativ(status="Não iniciada", data_prevista_inicio=datetime(2026, 9, 1))
+
+    faixa, dias = at.classificar(a, HOJE)
+
+    assert faixa == at.DEVERIA_TER_COMECADO
+    assert dias == -2
+
+
+def test_em_andamento():
+    a = ativ(status="Em desenvolvimento", previsao_termino=datetime(2026, 9, 10))
+
+    faixa, dias = at.classificar(a, HOJE)
+
+    assert faixa == at.EM_ANDAMENTO
+    assert dias == 7
+
+
+def test_comeca_hoje():
+    a = ativ(status="Não iniciada", data_prevista_inicio=datetime(2026, 9, 3))
+
+    assert at.classificar(a, HOJE) == (at.COMECA_HOJE, 0)
+
+
+def test_proximos_dias_dentro_do_horizonte():
+    a = ativ(status="Não iniciada", data_prevista_inicio=datetime(2026, 9, 8))
+
+    faixa, dias = at.classificar(a, HOJE)
+
+    assert faixa == at.PROXIMOS_DIAS
+    assert dias == 5
+
+
+def test_alem_do_horizonte_fica_de_fora():
+    """O horizonte é 7 dias, decisão do usuário. Mais que isso vira ruído."""
+    a = ativ(status="Não iniciada", data_prevista_inicio=datetime(2026, 9, 20))
+
+    assert faixa_de(a) is None
+
+
+def test_o_horizonte_e_configuravel():
+    a = ativ(status="Não iniciada", data_prevista_inicio=datetime(2026, 9, 20))
+
+    assert at.classificar(a, HOJE, horizonte=30)[0] == at.PROXIMOS_DIAS
+
+
+# --- a ordem das checagens é a ordem da urgência ---------------------------
+
+def test_atraso_vence_em_andamento():
+    """Atrasada E em desenvolvimento aparece como ATRASADA: o atraso é o que
+    exige decisão."""
+    a = ativ(status="Em desenvolvimento", previsao_termino=datetime(2026, 8, 20))
+
+    assert faixa_de(a) == at.ATRASADA
+
+
+def test_em_andamento_vence_deveria_ter_comecado():
+    """Se já está em desenvolvimento, não faz sentido dizer que devia começar."""
+    a = ativ(status="Em desenvolvimento", data_prevista_inicio=datetime(2026, 8, 1))
+
+    assert faixa_de(a) == at.EM_ANDAMENTO
+
+
+def test_travada_sem_data_ainda_aparece():
+    """Trabalho parado sem data é justamente o que se perde de vista."""
+    a = ativ(status="Travada")
+
+    faixa, dias = at.classificar(a, HOJE)
+
+    assert faixa == at.DEVERIA_TER_COMECADO
+    assert dias is None
+
+
+def test_sem_data_e_sem_status_fica_fora():
+    assert faixa_de(ativ(status="Não iniciada")) is None
+
+
+# --- o mural inteiro -------------------------------------------------------
+
+def test_mural_ignora_linhas_de_grupo_e_agregadoras():
+    linhas = [
+        ativ(nv=1, previsao_termino=datetime(2026, 8, 1)),   # grupo
+        ativ(nv=2, previsao_termino=datetime(2026, 8, 1)),   # tem filha
+        ativ(nv=3, previsao_termino=datetime(2026, 8, 1)),   # atividade
+    ]
+
+    assert at.total_do_mural(at.mural(linhas, HOJE)) == 1
+
+
+def test_mural_ordena_por_urgencia_e_depois_criticidade():
+    linhas = [
+        ativ(previsao_termino=datetime(2026, 9, 1), criticidade=1),   # -2
+        ativ(previsao_termino=datetime(2026, 8, 20), criticidade=1),  # -14
+        ativ(previsao_termino=datetime(2026, 9, 1), criticidade=5),   # -2, mais crítica
+    ]
+
+    atrasadas = at.mural(linhas, HOJE)[at.ATRASADA]
+
+    assert [a["_dias"] for a in atrasadas] == [-14, -2, -2]
+    assert atrasadas[1]["criticidade"] == 5
+
+
+def test_cada_item_leva_a_faixa_e_os_dias():
+    """A tela não deve precisar reclassificar."""
+    linhas = [ativ(previsao_termino=datetime(2026, 8, 30))]
+
+    item = at.mural(linhas, HOJE)[at.ATRASADA][0]
+
+    assert item["_faixa"] == at.ATRASADA
+    assert item["_dias"] == -4
+
+
+def test_mural_vazio_quando_esta_tudo_em_dia():
+    assert at.total_do_mural(at.mural([ativ(concluida=True)], HOJE)) == 0
+
+
+def test_texto_na_coluna_de_data_nao_quebra():
+    a = ativ(status="Não iniciada", data_prevista_inicio="a combinar")
+
+    assert faixa_de(a) is None
+
+
+# --- as frases de prazo ----------------------------------------------------
+
+def test_frases_do_passado():
+    assert at.frase_do_prazo(at.ATRASADA, -1) == "venceu ontem"
+    assert at.frase_do_prazo(at.ATRASADA, -4) == "venceu há 4 dias"
+    assert at.frase_do_prazo(at.DEVERIA_TER_COMECADO, -1) == "era para começar ontem"
+
+
+def test_frases_do_futuro():
+    assert at.frase_do_prazo(at.COMECA_HOJE, 0) == "começa hoje"
+    assert at.frase_do_prazo(at.PROXIMOS_DIAS, 1) == "começa amanhã"
+    assert at.frase_do_prazo(at.PROXIMOS_DIAS, 5) == "começa em 5 dias"
+
+
+def test_frase_sem_data():
+    assert at.frase_do_prazo(at.DEVERIA_TER_COMECADO, None) == "sem data"
