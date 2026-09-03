@@ -618,7 +618,7 @@ class PMIBManager:
         #
         # Envolvido em try/except de propósito: uma falha aqui não pode
         # derrubar o resto do fluxo, que já gravou tudo o que interessa.
-        yield ("Atualizando a aba Lista de preços Follow-up...", 0.95)
+        yield ("Atualizando a aba Lista de preços Follow-up...", 0.92)
         try:
             for linha in self._atualizar_lista_precos(
                     caminho_gerenciadora, df_api, callback_retry_lock):
@@ -626,7 +626,116 @@ class PMIBManager:
         except Exception as e:
             yield f"[ERRO] Lista de preços Follow-up: {type(e).__name__}: {e}"
 
+        # ---------------------------------------------------------------
+        # 7. Aba "Atividades"  [2026-09-03]
+        # ---------------------------------------------------------------
+        yield ("Atualizando a aba Atividades...", 0.97)
+        try:
+            for linha in self._atualizar_atividades(
+                    caminho_gerenciadora, df_api, callback_retry_lock):
+                yield linha
+        except Exception as e:
+            yield f"[ERRO] Atividades: {type(e).__name__}: {e}"
+
         yield ("--- PROCESSO CONCLUÍDO ---", 1.0)
+
+    def _atualizar_atividades(self, caminho_gerenciadora, df_api, callback_retry_lock=None):
+        """Atualiza a aba "Atividades": o CÓDIGO ITAIPU e os totais dos grupos.
+
+        [2026-09-03] Pedido do usuário. Duas coisas:
+
+        1. o `CÓDIGO ITAIPU` das linhas de grupo passa a acompanhar o RDS-PP
+           vigente, pelo mesmo `_buscar_rdspp_mais_recente` que a aba de
+           sobressalentes usa;
+        2. as fórmulas de agregação viram VALOR calculado — decisão do usuário.
+
+        ⚠️ **As fórmulas da planilha estão erradas hoje**, e não é suposição:
+        comparando o cálculo com o que o Excel produz, 15 linhas batem e 2
+        divergem — nas duas, o intervalo fixo da fórmula (`$A59:$A59`) não
+        acompanhou linhas acrescentadas depois. A `L58` vinha dizendo "1
+        atividade" para um grupo de 4. Gravar o valor calculado CORRIGE esses
+        dois números.
+
+        O app escreve só as 7 colunas de total e o código. `DESCRIÇÃO`,
+        `STATUS`, `COM QUEM ESTÁ`, `DETALHE` e `CRITICIDADE` são do usuário.
+        """
+        from openpyxl import load_workbook
+
+        from sigft.services import atividades as at
+
+        wb = load_workbook(caminho_gerenciadora)
+        if "Atividades" not in wb.sheetnames:
+            yield " -> Aba 'Atividades' não encontrada; nada a fazer."
+            wb.close()
+            return
+
+        ws = wb["Atividades"]
+
+        # ⚠️ DOIS workbooks, e isto não é desperdício.
+        #
+        # `load_workbook` sem `data_only` devolve a FÓRMULA em `.value` — a
+        # string `"=FALSE()"`, não `False`. Ler daí faria o cálculo tratar
+        # texto de fórmula como dado: `CONCLUÍDA` traz `=FALSE()` em dezenas de
+        # linhas, e as datas dos grupos são todas fórmulas. Na primeira versão
+        # isto passou despercebido porque a contagem deu certo por acidente
+        # (`"=FALSE()"` não está na lista de valores verdadeiros).
+        #
+        # E não dá para usar só `data_only=True`: esse workbook PERDE as
+        # fórmulas ao salvar, o que destruiria as das outras abas.
+        #
+        # Então: um para LER valores, outro para ESCREVER. É o mesmo padrão que
+        # `services/analyzer.py` adotou em 2026-08-26, pelo mesmo motivo.
+        wb_valores = load_workbook(caminho_gerenciadora, data_only=True)
+        ws_valores = wb_valores["Atividades"]
+
+        def _valor(r, coluna):
+            return ws_valores.cell(row=r, column=coluna).value
+
+        linhas = []
+        for r in range(at.LINHA_CABECALHO + 1, ws.max_row + 1):
+            linhas.append({
+                "_linha": r,
+                "nv": _valor(r, at.COL_NV),
+                "codigo": _valor(r, at.COL_CODIGO_ITAIPU),
+                "concluida": _valor(r, at.COL_CONCLUIDA),
+                "status": _valor(r, at.COL_STATUS),
+                "data_prevista_inicio": _valor(r, at.COL_DATA_PREVISTA_INICIO) or "",
+                "data_inicio": _valor(r, at.COL_DATA_INICIO) or "",
+                "previsao_termino": _valor(r, at.COL_PREVISAO_TERMINO) or "",
+                "data_termino": _valor(r, at.COL_DATA_TERMINO) or "",
+            })
+        wb_valores.close()
+
+        # --- 1. CÓDIGO ITAIPU com o RDS-PP vigente ----------------------
+        renomeados = 0
+        for indice in at.linhas_de_grupo(linhas):
+            codigo = linhas[indice].get("codigo")
+            if not codigo:
+                continue
+            atual = self._buscar_rdspp_mais_recente(str(codigo).strip(), df_api)
+            if atual and atual != str(codigo).strip():
+                ws.cell(row=linhas[indice]["_linha"], column=at.COL_CODIGO_ITAIPU).value = atual
+                yield f"   RDS-PP: {str(codigo).strip()} -> {atual}"
+                renomeados += 1
+
+        # --- 2. Totais dos grupos, no lugar das fórmulas ----------------
+        totais = at.recalcular(linhas)
+        for indice, valores in totais.items():
+            r = linhas[indice]["_linha"]
+            ws.cell(row=r, column=at.COL_ATIVIDADES).value = valores["atividades"]
+            ws.cell(row=r, column=at.COL_CONCLUIDAS).value = valores["concluidas"]
+            ws.cell(row=r, column=at.COL_TRAVADAS).value = valores["travadas"]
+            ws.cell(row=r, column=at.COL_DATA_PREVISTA_INICIO).value = valores["data_prevista_inicio"]
+            ws.cell(row=r, column=at.COL_DATA_INICIO).value = valores["data_inicio"]
+            ws.cell(row=r, column=at.COL_PREVISAO_TERMINO).value = valores["previsao_termino"]
+            ws.cell(row=r, column=at.COL_DATA_TERMINO).value = valores["data_termino"]
+
+        if not self._salvar_com_retry_interativo(wb, caminho_gerenciadora, callback_retry_lock):
+            yield "[ERRO] A planilha está aberta no Excel — a aba Atividades NÃO foi salva."
+            return
+
+        yield (f" -> Atividades: {len(totais)} grupo(s) recalculado(s), "
+               f"{renomeados} código(s) atualizado(s) pelo RDS-PP.")
 
     def _atualizar_lista_precos(self, caminho_gerenciadora, df_api, callback_retry_lock=None):
         """Cria (se preciso) e atualiza a aba "Lista de preços Follow-up".
