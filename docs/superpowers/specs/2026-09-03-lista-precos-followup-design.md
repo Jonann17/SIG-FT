@@ -56,9 +56,13 @@ E, com a regra de pareamento da §4, as 16 se classificam **sem sobra**:
 Vai no mesmo arquivo do mapeamento (`Mapeamento Listas de Sobressalentes.xlsx`), ao lado de
 `Acompanhamento Sobressalente`, `Dropbox` e `Atividades`.
 
-Cabeçalho na **linha 2**, como na aba de sobressalentes — não na linha 1. Isso não é capricho:
-`_ler_status_pmib` e o `col_indices` do `executar_fluxo` já leem `ws[2]`, e divergir criaria um
-segundo padrão de leitura no mesmo arquivo.
+Cabeçalho na **linha 1** — decisão do usuário em 2026-09-03.
+
+A aba `Acompanhamento Sobressalente` usa a linha 2, e uma versão anterior deste documento
+propunha seguir aquele padrão. O usuário preferiu a linha 1, e a divergência não custa nada
+aqui: `_ler_status_pmib` e o `col_indices` do `executar_fluxo` leem `ws[2]` da aba DELES, e a
+aba nova tem leitura própria (`lista_precos_planilha.mapa_de_colunas`), que respeita
+`LINHA_CABECALHO`.
 
 | # | Coluna | Origem | Quem escreve |
 |---|---|---|---|
@@ -201,12 +205,12 @@ partir do usuário — e o resto da atualização não pode parar por causa diss
 
 ## 8. Riscos
 
-**A planilha aberta no LibreOffice.** O `.~lock.Mapeamento Listas de Sobressalentes.xlsx#`
-estava presente enquanto este design era escrito — ou seja, o arquivo estava aberto. O
-LibreOffice **não** bloqueia o arquivo como o Excel, então `save_with_retry` não dispara e a
-gravação passa por cima do que estiver aberto. Isso já aconteceu com o usuário em 2026-08-28.
-Como esta aba **escreve** nesse arquivo, a detecção do arquivo-sentinela é **pré-requisito**
-desta implementação, não melhoria opcional. Está em `PENDENCIAS.md`.
+**~~A planilha aberta no LibreOffice~~ — risco RETIRADO em 2026-09-03.** Uma versão anterior
+deste documento tratava a detecção do arquivo-sentinela do LibreOffice como pré-requisito, por
+causa da sobrescrita que aconteceu em 2026-08-28. O usuário decidiu que **o LibreOffice não
+será mais usado**, então a trava não será implementada e este deixa de ser um risco desta
+frente. Com o Excel, o `save_with_retry` já dispara normalmente e a janela "feche o arquivo"
+aparece.
 
 **O título é a única coisa que distingue lista de preços de lista comum.** Um documento cujo
 título fuja do padrão ("PREÇO"/"PREÇOS") cai no lado errado. O filtro por sequencial ajuda mas
@@ -233,8 +237,8 @@ mas 16 casos não cobrem tudo o que o Aconex pode produzir. Os dois casos de bor
    estão nomeados neste documento;
 3. teste de que `AÇÃO` e `OBSERVAÇÕES` sobrevivem a duas execuções seguidas;
 4. teste de que a linha do alerta não duplica quando a mesma execução roda duas vezes;
-5. **execução real** contra o `Mapeamento Listas de Sobressalentes.xlsx` do usuário, com a
-   planilha FECHADA, conferindo que as 16 listas aparecem e que os 3 alertas de RDS-PP são os
+5. **execução real** contra o `Mapeamento Listas de Sobressalentes.xlsx` do usuário,
+   conferindo que as 16 listas aparecem e que os 3 alertas de RDS-PP são os
    três nomeados na §5.
 
 O item 5 é o único que prova o resultado de ponta a ponta, e só o usuário pode fazê-lo — a
