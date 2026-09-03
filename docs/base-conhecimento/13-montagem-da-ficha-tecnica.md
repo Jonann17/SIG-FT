@@ -90,7 +90,7 @@ o montador propriamente dito:
 id_pdm = pdm_nome.split(" - ")[0].replace(".", "_")   # "PDM.1234.001 - X" -> "PDM_1234_001"
 src    = <o arquivo da pasta cujo NOME CONTÉM esse id>
 ...
-ws_target = wb_target["Ficha Técnica Padrão"]          # nome de aba FIXO
+ws_target = wb_target[nome_da_aba_da_ficha(wb_target)]  # resolvido, ver nº 1
 start_row = 79                                          # linha inicial FIXA
 ```
 
@@ -107,10 +107,20 @@ por ficha).
 
 ## Quatro coisas que só se descobrem lendo o código
 
-1. **O nome da aba de destino é fixo: `"Ficha Técnica Padrão"`.** Um template
-   cuja aba se chame outra coisa faz `aplicar_templates_fichas` levantar
-   `KeyError` — e o erro cai no `except` genérico do laço, virando
-   `"ERRO ao gerar ficha {pmib}"` para **todas** as fichas.
+1. **O nome da aba de destino ERA fixo: `"Ficha Técnica Padrão"`.** Um template
+   cuja aba se chamasse outra coisa fazia `aplicar_templates_fichas` levantar
+   `KeyError` — e o erro caía no `except` genérico do laço, virando
+   `"ERRO ao gerar ficha {pmib}"` para **todas** as fichas: num lote de 200
+   materiais, 200 linhas idênticas, nenhuma dizendo que o problema era a aba.
+   **Corrigido em 2026-08-28** (`nome_da_aba_da_ficha`): aceita variações,
+   usa a aba única quando só há uma, e quando não reconhece nenhuma **para o
+   lote** com os nomes encontrados na mensagem.
+
+   O template em inglês real confirmou que a preocupação não era teórica — mas
+   pelo avesso do que eu esperava: `Technical_Sheet_of_PDM-R3.xlsx` traz a aba
+   com o nome **em português**, herdado do template do qual foi derivado, e é
+   a ficha já preenchida (`4500063671.0052_enUS.xlsx`) que traz
+   `Standard Technical Sheet`. Os dois nomes circulam.
 
 2. **A linha 79 é fixa em três lugares independentes.** Aqui
    (`start_row = 79`), em `sigft/config.LINHA_SPECS_FICHA` (usado pelo
@@ -142,12 +152,44 @@ por ficha).
 | Chaves de diálogo (`pdm.template`, `pdm.status_pmib`) | `sigft/core/prefs.py` → `PASTAS_PADRAO_POR_CHAVE` |
 | Layout da ficha preenchida (`CONFIG_MAP`) | `sigft/core/rpa/ficha_layout.py` |
 
-## O template, hoje
+## O template, nos dois idiomas
 
-O aplicativo **não sabe em que idioma o template está**. A tela pede
-*"Selecionar Template (.xlsx)"* e usa o arquivo que o usuário escolher; nada no
-código distingue o template PT-BR do template em inglês. As perguntas coladas
-vêm sempre da mesma pasta de PDMs Modificados, que está em português.
-
-É exatamente essa lacuna que a frente de 2026-08-28 vai fechar — ver
+Até 2026-08-28 o aplicativo **não sabia em que idioma o template estava**: a
+tela pedia *"Selecionar Template (.xlsx)"* e usava o arquivo escolhido; nada no
+código distinguia o PT-BR do inglês, e as perguntas coladas vinham sempre da
+mesma pasta de PDMs Modificados, em português. A tela agora tem um **seletor de
+idioma** que decide de qual pasta as perguntas saem — ver
 [`docs/FICHA_EM_INGLES.md`](../FICHA_EM_INGLES.md).
+
+### A geometria dos dois, medida (2026-09-03)
+
+Os dois templates são **o mesmo documento traduzido**, e a geometria não mudou
+em nenhum ponto que o montador toca:
+
+| | PT-BR | Inglês |
+|---|---|---|
+| Título da seção (B75) | `ESPECIFICAÇÕES TÉCNICAS - INDIQUE...` | `TECHNICAL SPECIFICATIONS - INDICATE...` |
+| Primeira pergunta | **C79** | **C79** |
+| Mescla da pergunta | `C{n}:L{n}` | `C{n}:L{n}` |
+| Mescla da resposta | `M{n}:V{n}` | `M{n}:V{n}` |
+| Abaixo da seção | vazio até a 156 | vazio até a 156 |
+| Nome da aba | `Ficha Técnica Padrão` | `Ficha Técnica Padrão` **no template**, `Standard Technical Sheet` na ficha entregue |
+
+Nada abaixo da linha 76 nos dois: por mais perguntas que o PDM traga, a
+injeção não tem rodapé para sobrescrever.
+
+### A forma da pergunta — o que ela realmente é
+
+Não é um rótulo curto com a unidade entre parênteses. É o nome da
+característica em MAIÚSCULAS seguido da **instrução de preenchimento inteira**,
+com parênteses aninhados dentro:
+
+```
+9 - TIPO CONSTRUTIVO (Indicar o tipo construtivo do item. Nota: Material
+especifico de compra com (Número de desenho, referência, nome usual, outros)):
+```
+
+De 100 a 200 caracteres. Quem for mexer em qualquer coisa que **leia ou
+escreva** essa string — tradução, validação por IA, extração de campo — precisa
+partir daqui, e não de `"1 - Pressão (bar):"`. Essa suposição errada já custou
+uma regra de prompt que mandava deixar a instrução em português.

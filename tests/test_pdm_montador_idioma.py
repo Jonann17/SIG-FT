@@ -10,8 +10,6 @@ erro idênticas e inúteis.
 Isto vale independentemente do idioma: é a diferença entre "o aplicativo não
 conseguiu" e "o aplicativo não conseguiu, e é por isto".
 """
-import os
-
 import pytest
 
 from sigft.services import pdm
@@ -82,9 +80,21 @@ def test_template_com_a_aba_em_INGLES_e_aceito(openpyxl_real):
     "Ficha Técnica Padrão ",     # espaço sobrando
     "Technical Datasheet",
     "Datasheet",
+    # 2026-09-03: este NÃO é hipótese minha. É o nome da aba na ficha em
+    # inglês que o usuário entregou (`4500063671.0052_enUS.xlsx`) — enquanto
+    # o template `Technical_Sheet_of_PDM-R3.xlsx` ainda traz a aba com o nome
+    # em português. Os dois nomes circulam na prática, e um template com dois
+    # nomes de aba que eu não reconheço para o lote inteiro.
+    "Standard Technical Sheet",
 ])
 def test_variacoes_de_nome_que_o_montador_deve_aceitar(nome, openpyxl_real):
-    assert pdm.nome_da_aba_da_ficha(_workbook([nome])) == nome
+    # A aba-chamariz "Instruções" NÃO é decoração. Sem ela o workbook tem uma
+    # aba só, e aba única é aceita por atalho (`len(nomes) == 1`) — a
+    # normalização de nome nunca rodava, e esta parametrização inteira passava
+    # sem testar nada. Descoberto em 2026-09-03, ao acrescentar
+    # "Standard Technical Sheet": o caso novo passou ANTES de eu escrever a
+    # linha que o faz passar.
+    assert pdm.nome_da_aba_da_ficha(_workbook(["Instruções", nome])) == nome
 
 
 def test_workbook_de_UMA_aba_usa_ela(openpyxl_real):

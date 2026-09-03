@@ -12,7 +12,6 @@ paralela, e o montador da ficha escolhe a pasta pelo idioma do template.
 `deep_translator`). Ele é injetado, sempre. Um teste que dependesse da
 internet mediria a rede, não o código — e não rodaria na suíte.
 """
-import json
 import os
 
 import pytest
@@ -258,7 +257,131 @@ def test_um_arquivo_ilegivel_nao_derruba_a_pasta(tmp_path, openpyxl_real):
 
 
 # =============================================================================
-# E. A fronteira
+# E. As frases REAIS (2026-09-03)
+# =============================================================================
+# Ate aqui os testes usavam frases curtas inventadas por mim -- "1 - Pressao de
+# trabalho (bar):". O usuario mandou o template em ingles e uma ficha ja
+# preenchida, e a forma real e OUTRA: nome da caracteristica em MAIUSCULAS,
+# seguido de uma INSTRUCAO DE PREENCHIMENTO inteira entre parenteses, com
+# parenteses aninhados dentro. Sao 100-200 caracteres, nao um rotulo.
+#
+# Isto nao e detalhe de estilo: o prompt dizia "PRESERVE a unidade entre
+# parenteses exatamente como esta", escrito quando eu achava que o parenteses
+# continha "(bar)". Aplicada a "(Indicar a tensao de alimentacao do item em
+# (V))", essa regra manda o modelo devolver a instrucao inteira em portugues --
+# ficha meio traduzida, e nenhum teste da suite reclamaria, porque todos os
+# meus exemplos casavam com a minha suposicao errada.
+#
+# As frases abaixo sao copia literal de:
+#   PT: 4500063671.0071_completed.xlsx, aba "Ficha Tecnica Padrao", C79:C95
+#   EN: 4500063671.0052_enUS.xlsx, aba "Standard Technical Sheet", C79:C92
+PERGUNTAS_REAIS_PT = [
+    "1 - FAIXA DE TEMPERATURA DE USO (Indicar a faixa de temperatura de uso do item em grau Celsius (°C).):",
+    "2 - SINAL DE ENTRADA (Indicar o sinal de entrada do item em (mV, V, A, mA) ex.: 4-20mA, 0-5 V, outros):",
+    "4 - TENSAO DE ALIMENTACAO (Indicar a tensão de alimentação do item em (V)):",
+    "6 - NORMAS TECNICAS APLICAVEIS (Indicar quais as normas técnicas aplicáveis ao item.):",
+    "9 - TIPO CONSTRUTIVO (Indicar o tipo construtivo do item. Nota: Material especifico de compra com (Número de desenho, referência, nome usual, outros)):",
+    "12 - APLICACAO (Indicar a aplicação do item. Nota: mencionar o equipamento (tipo, modelo) (ex.: Red EIA, 2 fios, diferencial RS485, red EIA 4 fios direferencial RS 485, fibra optica, outros).):",
+    "17 - DIMENSOES (Indicar as dimensões do item (in, mm) ex.: comp. x larg. x alt.):",
+]
+
+# Traducoes da CASA, extraidas da ficha em ingles que o usuario entregou. Sao
+# a referencia de estilo -- nao invencao minha.
+PARES_REAIS_DA_CASA = [
+    ("NORMAS TECNICAS APLICAVEIS", "APPLICABLE TECHNICAL STANDARDS"),
+    ("CARACTERISTICAS ADICIONAIS", "ADDITIONAL CHARACTERISTICS"),
+    ("TIPO CONSTRUTIVO", "TYPE OF CONSTRUCTION"),
+    ("CERTIFICADO", "CERTIFICATE"),
+]
+
+
+@pytest.mark.parametrize("pergunta", PERGUNTAS_REAIS_PT)
+def test_a_frase_real_remonta_EXATAMENTE(pergunta):
+    """Nada pode se perder na ida e volta: o que sai da divisao, concatenado,
+    tem de ser byte a byte o original. Parenteses aninhados e o ".)" antes dos
+    dois pontos sao os pontos onde uma regex desatenta come um caractere."""
+    prefixo, miolo, sufixo = tp.partes_da_pergunta(pergunta)
+    assert f"{prefixo}{miolo}{sufixo}" == pergunta
+
+
+@pytest.mark.parametrize("pergunta", PERGUNTAS_REAIS_PT)
+def test_a_INSTRUCAO_entre_parenteses_vai_junto_para_o_motor(pergunta):
+    """O miolo tem de levar a instrucao inteira. Se a divisao deixasse o
+    parenteses para tras, o motor traduziria so o nome e a ficha em ingles
+    sairia com metade de cada linha em portugues."""
+    _, miolo, _ = tp.partes_da_pergunta(pergunta)
+    assert "(Indicar" in miolo or "(indicar" in miolo
+    assert miolo.rstrip().endswith(")")
+
+
+def test_o_numero_da_pergunta_real_NAO_vai_ao_motor():
+    """Vale para numero de dois digitos tambem -- `12 - `, nao so `1 - `."""
+    enviados = []
+
+    def espiao(textos):
+        enviados.extend(textos)
+        return [f"EN:{t}" for t in textos]
+
+    tp.traduzir_textos(PERGUNTAS_REAIS_PT, espiao)
+    assert enviados, "o motor deveria ter sido chamado"
+    for texto in enviados:
+        assert not texto[0].isdigit(), f"a numeracao vazou para o motor: {texto!r}"
+
+
+# -----------------------------------------------------------------------------
+# O prompt precisa DESCREVER a forma real, e mostrar um exemplo dela
+# -----------------------------------------------------------------------------
+def test_o_prompt_traz_a_frase_real_INTEIRA():
+    from sigft.core.llm import prompts
+    texto = prompts.montar_traduzir_pdm([PERGUNTAS_REAIS_PT[4]])
+    assert "Número de desenho" in texto, "a frase chegou truncada ao prompt"
+
+
+def test_o_prompt_manda_TRADUZIR_a_instrucao_entre_parenteses():
+    """A regra antiga ("preserve o que esta entre parenteses") produziria ficha
+    meio em portugues. O prompt tem de dizer que o parenteses e INSTRUCAO."""
+    from sigft.core.llm import prompts
+    texto = prompts.montar_traduzir_pdm(["1 - X (Indicar o X do item.):"]).lower()
+    assert "instru" in texto
+    assert "traduza a instru" in texto or "traduza tambem a instru" in texto \
+        or "traduza também a instru" in texto
+
+
+def test_o_prompt_mostra_um_exemplo_REAL_da_casa():
+    """Um exemplo trabalhado vale mais que tres regras -- e este exemplo veio
+    da ficha em ingles que a propria Itaipu entregou, nao da minha cabeca."""
+    from sigft.core.llm import prompts
+    texto = prompts.montar_traduzir_pdm(["1 - X:"])
+    assert "APPLICABLE TECHNICAL STANDARDS" in texto
+    assert "NORMAS TECNICAS APLICAVEIS" in texto
+
+
+def test_o_prompt_manda_manter_o_NOME_em_maiusculas():
+    """Estilo da casa: `NOME EM CAIXA ALTA (Instrucao em caixa normal)`."""
+    from sigft.core.llm import prompts
+    texto = prompts.montar_traduzir_pdm(["1 - X:"]).lower()
+    assert "maiúscul" in texto or "maiuscul" in texto or "caixa alta" in texto
+
+
+def test_o_glossario_de_exemplo_ja_vem_com_os_termos_da_CASA():
+    """O usuario nao devia ter que descobrir sozinho como a Itaipu traduz
+    'NORMAS TECNICAS APLICAVEIS' -- a ficha em ingles dele ja diz."""
+    for pt, en in PARES_REAIS_DA_CASA:
+        assert pt in tp.CABECALHO_GLOSSARIO, f"falta o termo {pt!r}"
+        assert en in tp.CABECALHO_GLOSSARIO, f"falta a traducao {en!r}"
+
+
+def test_os_termos_da_casa_sao_carregaveis_como_glossario(tmp_path):
+    """Nao basta estarem no texto: tem de sobreviver ao parser, sem virar
+    comentario nem perder o lado de la do `=`."""
+    caminho = tp.criar_glossario_exemplo(str(tmp_path))
+    glossario = tp.carregar_glossario(caminho)
+    for pt, en in PARES_REAIS_DA_CASA:
+        assert glossario.get(pt) == en, f"{pt!r} nao chegou ao glossario carregado"
+
+
+# =============================================================================
+# F. A fronteira
 # =============================================================================
 def test_o_servico_NAO_importa_tkinter():
     import ast

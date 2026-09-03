@@ -261,3 +261,44 @@ consegui" de "nao tem".
 `fabricante 17.3 s`, cobrando do combo os ~15 s de ler a ficha original e abrir
 a alvo. Medicao que engana dirige o conserto para o lugar errado, que e o
 oposto do que ela existe para fazer. → `ResultadoDaFicha.marcar`.
+
+---
+
+## 2026-09-03 — a ficha em ingles, com os arquivos reais na mao
+
+O usuario entregou o template `Technical_Sheet_of_PDM-R3.xlsx` e a ficha
+`4500063671.0052_enUS.xlsx`. A geometria bateu com o PT-BR em tudo (linha 79,
+colunas C e M, mesclas `C:L` e `M:V`) e o que estava implementado funcionou.
+O que os arquivos DESMENTIRAM esta em `docs/FICHA_EM_INGLES.md`. Ficou de fora:
+
+1. **O validador de IA nunca viu resposta em INGLES.** Os campos fixos sao
+   lidos por ENDERECO de celula (`CONFIG_MAP`), o que e independente de
+   idioma, e o titulo da secao de specs agora e reconhecido nos dois. Mas o
+   `montar_validar_ficha` e as regras que dependem de TEXTO da resposta
+   (`FORBIDDEN_NA_STRINGS`, a regra do "Nao aplicavel", a exigencia de que
+   `embalagem_transporte` diga o tipo) foram escritas contra respostas em
+   portugues. Um fornecedor estrangeiro escreve `"Not applicable"`,
+   `"N/A"`, `"To be defined"`. Nao foi medido o que acontece.
+   → precisa de uma ficha EN preenchida POR FORNECEDOR para medir; a que
+   temos veio em branco na coluna das respostas.
+
+2. **Renomear a aba no idioma ingles.** A ficha gerada sai com a aba
+   `Ficha Tecnica Padrao` porque e assim que o template esta; o usuario
+   renomeia a mao para `Standard Technical Sheet`. Renomear automaticamente e
+   seguro (o analyzer escolhe a aba por EVIDENCIA, nao por nome —
+   `_aba_da_ficha`), mas muda um entregavel que vai para o fornecedor.
+   → decisao do usuario, perguntada em 2026-09-03.
+
+3. **A linha 79 continua fixa em tres lugares.** `pdm.aplicar_templates_fichas`
+   (`start_row = 79`), `config.LINHA_SPECS_FICHA` e `translator.py`
+   (`current_row = 79`). Ja estava aqui desde o CP 2.4; a conferencia do
+   template EN so confirmou que os tres precisam concordar, agora em dois
+   idiomas. Nao unificado nesta rodada: mexe em `translator.py`, fora do
+   escopo pedido.
+
+**Um defeito de TESTE que apareceu de carona**, e vale a licao mais que o
+conserto: `test_variacoes_de_nome_que_o_montador_deve_aceitar` montava o
+workbook com UMA aba so — e aba unica e aceita por atalho, sem passar pela
+normalizacao de nome. A parametrizacao inteira passava sem testar nada.
+Descoberto porque o caso novo passou ANTES de eu escrever a linha que o faz
+passar. Teste novo que ja nasce verde e teste suspeito.

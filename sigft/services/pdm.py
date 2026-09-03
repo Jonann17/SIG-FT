@@ -275,6 +275,12 @@ def processar_pastas_fichas(arquivo_STATUS_PMIB, destino_fichas, lista_seleciona
 NOME_CANONICO_DA_ABA = "Ficha Técnica Padrão"
 NOMES_DA_ABA_DA_FICHA = (
     "ficha tecnica padrao",
+    # 2026-09-03, dos arquivos REAIS que o usuario entregou: o template
+    # `Technical_Sheet_of_PDM-R3.xlsx` traz a aba ainda com o nome em
+    # PORTUGUES (heranca do template do qual foi derivado), enquanto a ficha
+    # ja preenchida `4500063671.0052_enUS.xlsx` traz "Standard Technical
+    # Sheet". Os dois circulam; reconhecer os dois custa uma linha.
+    "standard technical sheet",
     "standard datasheet",
     "technical datasheet",
     "datasheet",

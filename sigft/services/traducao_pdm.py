@@ -20,12 +20,26 @@ template. Os arquivos traduzidos mantêm **nome e geometria** dos originais:
 
 O QUE É TRADUZIDO, E O QUE NÃO É
 ------------------------------------------------------------------------
-Cada pergunta tem a forma `"1 - Pressão de trabalho (bar):"`. O `"1 - "` é
-numeração da lista e o `":"` é pontuação — mandar os dois para um tradutor é
-pedir para ele inventar. Só o miolo viaja.
+Cada pergunta tem a forma `"1 - NOME (Instrução de preenchimento):"`. O
+`"1 - "` é numeração da lista e o `":"` é pontuação — mandar os dois para um
+tradutor é pedir para ele inventar. Só o miolo viaja.
 
-A unidade viaja JUNTO com a descrição, de propósito: `"Pressão (bar)"` dá ao
-motor o contexto que `"Pressão"` sozinho não dá.
+A FORMA REAL, conferida em 2026-09-03 contra as fichas que o usuário entregou
+(e diferente do que este arquivo dizia antes):
+
+    9 - TIPO CONSTRUTIVO (Indicar o tipo construtivo do item. Nota: Material
+    especifico de compra com (Número de desenho, referência, nome usual,
+    outros)):
+
+Não é um rótulo curto com a unidade entre parênteses — são 100 a 200
+caracteres, com uma instrução inteira dentro dos parênteses e outros
+parênteses aninhados nela. A instrução VIAJA JUNTO e é traduzida também: é o
+que o fornecedor lê para saber o que responder. Deixá-la em português produz
+ficha metade em cada idioma, e isso não se denuncia sozinho.
+
+`partes_da_pergunta` foi medida contra as 17 perguntas reais da ficha
+4500063671.0071: as 17 remontam byte a byte (`tests/test_traducao_pdm.py`,
+seção E).
 
 TRÊS CAMADAS ANTES DO MOTOR
 ------------------------------------------------------------------------
@@ -65,13 +79,33 @@ CABECALHO_GLOSSARIO = """\
 #
 #   Vale de duas formas:
 #     · a PERGUNTA INTEIRA (sem o numero e sem os dois pontos) e usada
-#       exatamente como voce escreveu, sem passar pelo tradutor;
-#     · um TERMO solto vira vocabulario obrigatorio para o tradutor.
+#       exatamente como voce escreveu, SEM passar pelo tradutor. E o jeito
+#       mais forte: serve inclusive para consertar uma traducao ruim;
+#     · um TERMO solto vira vocabulario obrigatorio para o tradutor de IA.
+#       Atencao: no caminho reserva (deep_translator/Google) o termo solto so
+#       conserta o que o tradutor tiver DEIXADO em portugues -- se ele ja
+#       traduziu mal, o portugues nao esta mais la para ser trocado. Para
+#       consertar uma traducao ruim com certeza, use a PERGUNTA INTEIRA.
 #
 #   Linhas comecadas por # sao ignoradas. Acrescente sempre que vir uma
 #   traducao ruim: o que esta aqui vence o tradutor, hoje e sempre.
 #
+# ===========================================================================
+# TERMOS DA CASA
+# Extraidos das fichas reais da Itaipu (4500063671.0071 em PT e
+# 4500063671.0052 em EN). NAO sao chute: e assim que a casa ja traduz.
+# ===========================================================================
+NORMAS TECNICAS APLICAVEIS = APPLICABLE TECHNICAL STANDARDS
+CARACTERISTICAS ADICIONAIS = ADDITIONAL CHARACTERISTICS
+TIPO CONSTRUTIVO = TYPE OF CONSTRUCTION
+CERTIFICADO = CERTIFICATE
+Indicar = Indicate
+do item = of the item
+outros = others
+#
+# ===========================================================================
 # EXEMPLOS (apague ou edite a vontade)
+# ===========================================================================
 vazão = flow rate
 içamento = lifting
 estanqueidade = tightness
