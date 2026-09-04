@@ -206,3 +206,158 @@ def test_o_spec_do_build_esta_no_repositorio():
         "a excecao `!SIG-FT.spec` saiu do .gitignore: a regra `*.spec` volta "
         "a barrar o spec e o build some do repositorio sem ninguem notar"
     )
+
+
+# =============================================================================
+# O navegador nao pode entrar no pacote por acidente
+# =============================================================================
+
+def test_o_spec_filtra_o_navegador_quando_nao_e_para_embutir():
+    r"""`SIGFT_EMBUTIR_NAVEGADOR` desligado tem que EXCLUIR `.local-browsers`.
+
+    Achado compilando de verdade em 2026-09-04: a variável de ambiente não
+    bastava. Ela decide se o `.bat` INSTALA o navegador dentro do pacote
+    `playwright` — mas `collect_data_files` recolhe tudo o que estiver lá,
+    inclusive o que uma execução ANTERIOR deixou. Uma vez embutido, ficava
+    embutido para sempre, enquanto o build seguia anunciando
+    "Navegador NAO embutido (padrao)".
+
+    Foram **841 MB** de Chromium num pacote que deveria ter ~250, e o pior
+    nem é o tamanho:
+
+    * a posição de segurança documentada para a TI ("o pacote não leva
+      navegador") virava mentira sem ninguém perceber;
+    * os caminhos internos do Chromium passam de 260 caracteres, e o `tar`
+      que extrai o ZIP na máquina de destino falha ali.
+
+    Nenhum teste anterior pegava isso porque o defeito não está no código do
+    app: está no que o empacotador VARRE.
+    """
+    spec = (RAIZ / "SIG-FT.spec").read_text(encoding="utf-8")
+
+    assert "SIGFT_EMBUTIR_NAVEGADOR" in spec
+    assert ".local-browsers" in spec, (
+        "o spec precisa filtrar .local-browsers explicitamente; confiar na "
+        "variavel de ambiente nao basta"
+    )
+    # O filtro tem que ser condicional: com a variavel ligada, o navegador
+    # entra de proposito.
+    assert 'if not os.environ.get("SIGFT_EMBUTIR_NAVEGADOR")' in spec
+
+
+def test_a_copia_para_dist_espelha_em_vez_de_acumular():
+    r"""`robocopy /MIR`, nunca `/E`. Precaução, não defeito observado.
+
+    Nos builds medidos em 2026-09-04 o `rmdir /s /q` que precede a cópia
+    sempre funcionou, e o `dist` bateu com a saída do PyInstaller. Não houve
+    contaminação — vale registrar, porque a primeira versão deste teste
+    afirmava que havia.
+
+    A combinação continua frágil: `rmdir` falha em SILÊNCIO quando a pasta
+    tem caminho acima de 260 caracteres (a árvore do Chromium chega lá), e
+    `/E` só ACRESCENTA. Se o rmdir falhar, o pacote vira mistura de dois
+    builds — parece pronto e leva arquivos que o build atual não colocou, e a
+    única pista é o tamanho, que ninguém confere.
+
+    `/MIR` espelha: o que não existe na origem é apagado no destino.
+    """
+    bat = (RAIZ / "Gerar-Executavel.bat").read_text(encoding="ascii")
+
+    linhas = [
+        l for l in bat.splitlines()
+        if l.strip().startswith("robocopy") and "dist" in l
+    ]
+    assert linhas, "nao achei a copia para dist"
+    for linha in linhas:
+        assert "/MIR" in linha, f"copia sem /MIR acumula lixo entre builds: {linha}"
+
+
+def test_o_spec_filtra_o_navegador_DEPOIS_da_analise():
+    r"""Filtrar a entrada do `collect_data_files` não bastou.
+
+    Medido em 2026-09-04: mesmo com aquele filtro, 735 MB de
+    `.local-browsers` chegaram ao pacote — e não há hook de playwright nem no
+    PyInstaller nem no pyinstaller-hooks-contrib (procurei nos dois). A
+    entrada vem por caminho que o spec não controla na origem.
+
+    Por isso o filtro final age sobre `a.datas` e `a.binaries`, que é o único
+    ponto por onde todo arquivo empacotado passa.
+    """
+    spec = (RAIZ / "SIG-FT.spec").read_text(encoding="utf-8")
+
+    assert "a.datas = _sem_navegador(a.datas)" in spec
+    assert "a.binaries = _sem_navegador(a.binaries)" in spec
+
+
+# =============================================================================
+# Sem janela preta -- mas sem perder o diagnostico
+# =============================================================================
+
+def test_o_executavel_nao_abre_console():
+    """[2026-09-04] *"não pode ficar com o powershell aberto"*."""
+    spec = (RAIZ / "SIG-FT.spec").read_text(encoding="utf-8")
+
+    assert "console=False," in spec
+    assert "console=True," not in spec
+
+
+def test_sem_console_a_saida_vai_para_arquivo():
+    """Tirar o console sem repor o canal seria trocar um problema por outro.
+
+    O console ERA o diagnóstico: é nele que apareciam "Erro ao carregar
+    <módulo>" da splash e o `CERTIFICATE_VERIFY_FAILED` do Zscaler. Numa
+    primeira execução em máquina nova — o caso da GE Vernova — perder isso
+    troca uma mensagem clara por "não funciona".
+
+    Sem console o PyInstaller deixa `sys.stdout` como `None`; a função
+    redireciona para `logs/sigft.log`, ao lado do .exe.
+    """
+    main = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
+
+    assert "def _desviar_saida_para_arquivo(" in main
+    assert "_desviar_saida_para_arquivo()" in main, "definida mas nunca chamada"
+    assert "sigft.log" in main
+    # Só no executável: rodando do .py o terminal continua sendo o lugar certo.
+    assert 'getattr(sys, "frozen", False)' in main
+
+
+def test_os_descritores_do_google_ficam_de_fora():
+    """586 JSON, 102 MB, um para cada API REST do Google — nenhuma usada.
+
+    `googleapiclient` entra de carona no `google-generativeai`, que importa o
+    MÓDULO `discovery` mas não lê esses documentos. Eram 25% do pacote.
+
+    O módulo não pode sair; os documentos, sim — e se algum dia alguém chamar
+    `discovery.build()`, a ausência do cache não quebra: o próprio
+    googleapiclient busca o descritor pela rede.
+    """
+    spec = (RAIZ / "SIG-FT.spec").read_text(encoding="utf-8")
+
+    assert "discovery_cache/documents" in spec
+    assert 'excludes=["pytest"' in spec or "googleapiclient" not in spec.split("excludes")[1][:200], (
+        "o MODULO googleapiclient nao pode ser excluido -- so os documentos"
+    )
+
+
+def test_o_build_confere_a_sintaxe_antes_de_empacotar():
+    """O PyInstaller empacota codigo quebrado sem reclamar.
+
+    Caso real de 2026-09-04: `sigft/app/main.py` ficou com erro de sintaxe e o
+    build terminou dizendo **PRONTO**, com o `.exe` no lugar e o tamanho
+    certo. O módulo quebrado apenas não entrou, e o app morria na abertura:
+
+        ModuleNotFoundError: No module named 'sigft.app.main'
+
+    Um build que produz pacote quebrado e se declara bem-sucedido é pior do
+    que um build que falha — o defeito viaja até a máquina do usuário. Dois
+    segundos de `compileall` fecham a porta.
+    """
+    bat = (RAIZ / "Gerar-Executavel.bat").read_text(encoding="ascii")
+
+    assert "compileall" in bat, "o build precisa conferir a sintaxe antes de empacotar"
+
+    pos_compileall = bat.index("compileall")
+    pos_pyinstaller = bat.index("-m PyInstaller")
+    assert pos_compileall < pos_pyinstaller, (
+        "o compileall tem que vir ANTES do PyInstaller, senao nao previne nada"
+    )

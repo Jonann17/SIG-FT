@@ -109,6 +109,57 @@ def definir_icone(janela) -> bool:
     return False
 
 
+# =============================================================================
+# SEM JANELA PRETA, MAS COM DIAGNOSTICO
+# =============================================================================
+# [2026-09-04] Pedido do usuário: *"quando executo o executável, não pode
+# ficar com o powershell aberto"*. O `.exe` passou a ser compilado com
+# `console=False` (ver SIG-FT.spec).
+#
+# Só que o console não era enfeite: ERA o canal de diagnóstico. É nele que
+# apareciam "Erro ao carregar <módulo>" da splash e o
+# `CERTIFICATE_VERIFY_FAILED` do Zscaler. Numa primeira execução em máquina
+# nova — exatamente o caso da GE Vernova — perder isso troca uma mensagem
+# clara por "não funciona".
+#
+# Então o canal não some: muda de lugar. Sem console, o PyInstaller deixa
+# `sys.stdout` e `sys.stderr` como `None`; aqui eles passam a apontar para
+# `logs/sigft.log`, AO LADO do .exe. Quem precisar diagnosticar abre o
+# arquivo (é o que o `Diagnostico-Erro.bat` mostra).
+def _desviar_saida_para_arquivo() -> None:
+    """Sem console, manda `print` e traceback para `logs/sigft.log`.
+
+    Só age no executável compilado (`sys.frozen`) e só quando o PyInstaller
+    de fato não deu console (`sys.stdout is None`). Rodando do `.py` nada
+    muda — o terminal continua sendo o lugar certo.
+
+    Nunca levanta: se não der para abrir o arquivo (pasta somente-leitura,
+    disco cheio), o app tem que subir assim mesmo. Perder o log é ruim;
+    não abrir é pior.
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    try:
+        pasta = os.path.join(os.path.dirname(sys.executable), "logs")
+        os.makedirs(pasta, exist_ok=True)
+        destino = open(
+            os.path.join(pasta, "sigft.log"), "a", encoding="utf-8", buffering=1
+        )
+        if sys.stdout is None:
+            sys.stdout = destino
+        if sys.stderr is None:
+            sys.stderr = destino
+        destino.write(chr(10))
+        print("===== SIG-FT iniciado em %s =====" % time.strftime("%d/%m/%Y %H:%M:%S"))
+    except Exception:
+        pass
+
+
+_desviar_saida_para_arquivo()
+
+
 env_path = resource_path('.env')
 load_dotenv(env_path)
 

@@ -9,7 +9,8 @@ administrador.
 
 ## Os dois arquivos que ficam no Box
 
-Em `%USERPROFILE%\Box\CMI - Consórcio Itaipu	 - Ger. Engenharia - PDM\_python_pdm\`
+Em `%USERPROFILE%\Box\CMI - Consórcio Itaipu	 - Ger. Engenharia
+ - PDM\_python_pdm\`
 (escolha do usuário em 2026-09-04):
 
 | Arquivo | O que é |
@@ -29,7 +30,8 @@ Por isso o launcher resolve a pasta por curinga:
 
 ```bat
 for /d %%D in ("%USERPROFILE%\Box\CMI - Cons*rcio Itaipu") do (
-    set "REDE=%%D	 - Ger. Engenharia - PDM\_python_pdm"
+    set "REDE=%%D	 - Ger. Engenharia
+ - PDM\_python_pdm"
 )
 ```
 
@@ -68,6 +70,41 @@ Box**. Como `api_config.json` e `user_prefs.json` são resolvidos a partir do
 diretório de trabalho, o estrago seria duplo: o app procuraria as chaves no
 Box (e não acharia), e gravaria o `user_prefs.json` de cada usuário lá, **um
 por cima do outro**.
+
+---
+
+## Tamanho do pacote, e o navegador que não pode entrar
+
+Medido em 2026-09-04, compilando de verdade: **415 MB** em `dist\SIG-FT`.
+
+Se der muito mais que isso, quase certamente entrou o Chromium do Playwright.
+Foi o que aconteceu na primeira compilação: **1150 MB**, com o script
+anunciando "Navegador NAO embutido (padrao)".
+
+**Por que a variável de ambiente não bastava.** `SIGFT_EMBUTIR_NAVEGADOR`
+decide se o `.bat` **instala** o navegador dentro do pacote `playwright`. Mas
+qualquer coleta do pacote leva junto o que uma execução ANTERIOR deixou em
+`.local-browsers` — uma vez embutido, ficava embutido para sempre. E não há
+hook de playwright nem no PyInstaller nem no `pyinstaller-hooks-contrib`
+(procurados os dois), então a entrada vinha por caminho que o `.spec` não
+controlava na origem.
+
+A solução foi filtrar o **resultado**: depois do `Analysis`, tudo o que cita
+`.local-browsers` sai de `a.datas` e `a.binaries` — o único ponto por onde
+todo arquivo empacotado passa. O build imprime quantos removeu:
+
+```
+[SIG-FT] navegador fora do pacote: 610 arquivos removidos
+```
+
+**Três motivos para isso importar, e o tamanho é o menor deles:**
+
+1. a posição de segurança documentada em `SEGURANCA_TI.md` ("o pacote não leva
+   navegador") virava falsa sem ninguém perceber;
+2. os caminhos internos do Chromium passam dos **260 caracteres** do Windows —
+   nem o PowerShell os lista, e o `tar` que extrai o ZIP na máquina de destino
+   falha ali: o build "funciona" e a instalação sai quebrada;
+3. o ZIP para o Box triplicava.
 
 ---
 

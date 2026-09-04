@@ -142,6 +142,27 @@ echo       Trabalhando em %SIGFT_DIST_DIR%
 echo       ^(caminho curto: a arvore do Chromium estoura o limite de 260
 echo        caracteres do Windows se o build sair de dentro do OneDrive^)
 echo.
+rem  ANTES de empacotar: o codigo compila?
+rem
+rem  Isto existe por um caso real de 2026-09-04. Um modulo (sigft/app/main.py)
+rem  ficou com erro de sintaxe, e o PyInstaller empacotou assim mesmo,
+rem  SEM RECLAMAR -- terminou dizendo "PRONTO", com o .exe no lugar e o
+rem  tamanho certo. O modulo quebrado simplesmente nao entrou, e o app morria
+rem  na abertura com "ModuleNotFoundError: No module named 'sigft.app.main'".
+rem
+rem  Um build que produz pacote quebrado e diz que deu certo e pior do que um
+rem  build que falha. Dois segundos de compileall fecham essa porta.
+echo       Conferindo a sintaxe do codigo...
+"%SIGFT_PY%" -m compileall -q frontend.py sigft >nul
+if errorlevel 1 (
+    echo.
+    echo [ERRO] Ha erro de SINTAXE no codigo. O PyInstaller empacotaria assim
+    echo        mesmo e o .exe morreria na abertura. Corrija antes.
+    echo.
+    "%SIGFT_PY%" -m compileall frontend.py sigft
+    goto :erro_build
+)
+
 "%SIGFT_PY%" -m PyInstaller --noconfirm --clean ^
     --distpath "%SIGFT_DIST_DIR%" ^
     --workpath "%SIGFT_BUILD_DIR%" ^
@@ -152,7 +173,19 @@ echo.
 echo [4/4] Copiando o resultado para dist\SIG-FT ...
 if exist "%~dp0dist\SIG-FT" rmdir /s /q "%~dp0dist\SIG-FT"
 if not exist "%~dp0dist" mkdir "%~dp0dist"
-robocopy "%SIGFT_DIST_DIR%\SIG-FT" "%~dp0dist\SIG-FT" /E /NFL /NDL /NJH /NJS /NP >nul
+rem  /MIR e nao /E -- PRECAUCAO, nao correcao de defeito observado.
+rem
+rem  Nos builds medidos em 2026-09-04 o `rmdir /s /q` da linha acima sempre
+rem  funcionou, e o dist bateu com a saida do PyInstaller. Mas a combinacao e
+rem  fragil: `rmdir` FALHA em silencio quando a pasta tem caminho acima de
+rem  260 caracteres (a arvore do Chromium chega la), e o /E so ACRESCENTA.
+rem  Se o rmdir falhar, o dist vira mistura de dois builds -- parece pronto e
+rem  leva arquivos que o build atual nao colocou, e a unica pista e o
+rem  tamanho, que ninguem confere.
+rem
+rem  /MIR espelha: o que nao existe na origem e APAGADO no destino. Fecha a
+rem  brecha sem depender de o rmdir ter dado certo.
+robocopy "%SIGFT_DIST_DIR%\SIG-FT" "%~dp0dist\SIG-FT" /MIR /NFL /NDL /NJH /NJS /NP >nul
 rem  robocopy usa codigos < 8 para sucesso; 8+ e erro de verdade.
 if errorlevel 8 (
     echo.

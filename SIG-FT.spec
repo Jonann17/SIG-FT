@@ -87,7 +87,38 @@ datas += collect_data_files("customtkinter")
 # funciona para tudo menos RPA, e o robô usa o Chromium instalado à parte na
 # máquina. É o mesmo `collect_data_files` nos dois casos — o que muda é o que
 # existe dentro do pacote na hora do build, não esta linha.
-datas += collect_data_files("playwright", include_py_files=False)
+#
+# ⚠️ CORREÇÃO 2026-09-04, achada compilando de verdade: a variável de
+# ambiente NÃO bastava.
+#
+# `SIGFT_EMBUTIR_NAVEGADOR` decide se o `.bat` INSTALA o navegador dentro do
+# pacote `playwright`. Só que `collect_data_files` recolhe TUDO que estiver
+# no pacote — inclusive um navegador que uma execução ANTERIOR tenha deixado
+# lá. Uma vez embutido, ficava embutido para sempre, e o build seguia
+# anunciando "Navegador NAO embutido (padrao)".
+#
+# O estrago medido: **841 MB** de Chromium num pacote que deveria ter ~250,
+# com três consequências:
+#
+#   1. a posição de segurança documentada para a TI ("o pacote não leva
+#      navegador") passava a ser FALSA, sem ninguém perceber;
+#   2. os caminhos internos do Chromium estouram o limite de 260 caracteres
+#      do Windows — nem o PowerShell consegue listá-los, e o `tar` que
+#      extrai o ZIP na máquina de destino falha;
+#   3. o ZIP para o Box triplicava de tamanho.
+#
+# Agora o filtro é explícito: sem a variável, `.local-browsers` fica de fora,
+# esteja ele lá ou não.
+_dados_playwright = collect_data_files("playwright", include_py_files=False)
+
+if not os.environ.get("SIGFT_EMBUTIR_NAVEGADOR"):
+    _dados_playwright = [
+        (origem, destino)
+        for (origem, destino) in _dados_playwright
+        if ".local-browsers" not in str(origem).replace("\\", "/")
+    ]
+
+datas += _dados_playwright
 
 # =============================================================================
 # Imports que o PyInstaller não enxerga sozinho
@@ -159,6 +190,69 @@ a = Analysis(
     noarchive=False,
 )
 
+# =============================================================================
+# REDE FINAL: o navegador nao entra, venha de onde vier
+# =============================================================================
+# Filtrar a saida do `collect_data_files` acima NAO bastou -- medido em
+# 2026-09-04: mesmo com aquele filtro, 735 MB de `.local-browsers` chegaram ao
+# pacote. Nao ha hook de playwright nem no PyInstaller nem no
+# pyinstaller-hooks-contrib (procurei nos dois), entao a entrada vem por
+# caminho que este arquivo nao controla na origem.
+#
+# Em vez de continuar cacando a origem, filtramos o RESULTADO: depois da
+# analise, tudo o que mencionar `.local-browsers` sai das listas. E o unico
+# ponto por onde todo arquivo empacotado passa, entao nao ha como escapar.
+#
+# Por que isso importa mais que o tamanho:
+#   * a posicao de seguranca documentada para a TI ("o pacote nao leva
+#     navegador") passava a ser falsa sem ninguem perceber;
+#   * os caminhos internos do Chromium estouram o limite de 260 caracteres do
+#     Windows, e o `tar` que extrai o ZIP na maquina de destino falha ali --
+#     o build "funciona" e a instalacao sai quebrada.
+if not os.environ.get("SIGFT_EMBUTIR_NAVEGADOR"):
+
+    def _sem_navegador(toc):
+        """Tira do TOC toda entrada que cite `.local-browsers`."""
+        limpos = []
+        for entrada in toc:
+            texto = "/".join(str(parte) for parte in entrada).replace(os.sep, "/")
+            if ".local-browsers" in texto:
+                continue
+            limpos.append(entrada)
+        return limpos
+
+    _antes = len(a.datas) + len(a.binaries)
+    a.datas = _sem_navegador(a.datas)
+    a.binaries = _sem_navegador(a.binaries)
+    _depois = len(a.datas) + len(a.binaries)
+    print(f"[SIG-FT] navegador fora do pacote: {_antes - _depois} arquivos removidos")
+
+
+# =============================================================================
+# Os 586 descritores de API do Google que ninguem usa
+# =============================================================================
+# `googleapiclient/discovery_cache/documents/` sao 586 arquivos JSON, 102 MB,
+# um para CADA API REST do Google -- `abusiveexperiencereport`, `acmedns`,
+# `accesscontextmanager`... O SIG-FT nao usa nenhuma: o `googleapiclient`
+# entra de carona como dependencia do `google-generativeai`, que importa o
+# MODULO `discovery` mas nao le esses documentos (o Gemini fala pelo cliente
+# proprio, nao por discovery).
+#
+# Eram 25% do pacote -- o segundo maior item, perdendo so para o driver do
+# Playwright, que esse sim e necessario.
+#
+# Se um dia alguem chamar `discovery.build()`, a ausencia do cache NAO quebra:
+# o proprio googleapiclient busca o descritor pela rede. So o modulo e que nao
+# pode sair; os documentos, sim.
+_ANTES_G = len(a.datas)
+a.datas = [
+    entrada for entrada in a.datas
+    if "discovery_cache/documents" not in str(entrada[0]).replace(os.sep, "/")
+]
+if _ANTES_G != len(a.datas):
+    print(f"[SIG-FT] descritores do Google fora do pacote: {_ANTES_G - len(a.datas)} arquivos")
+
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
@@ -171,19 +265,20 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,          # UPX é outro gatilho clássico de antivírus corporativo.
-    # `console=True` DE PROPÓSITO, mesmo sendo um app de janela.
+    # `console=False` — [2026-09-04] pedido do usuário: *"quando executo o
+    # executável, não pode ficar com o powershell aberto"*.
     #
-    # O SIG-FT.bat já avisa: "Pode fechar esta janela preta só DEPOIS de
-    # fechar o SIG-FT -- é nela que aparecem os erros". Isso não é hábito,
-    # é o canal de diagnóstico real do app: o splash imprime "Erro ao
-    # carregar <módulo>" ali, e foi lendo essa saída que se achou o
-    # ícone/logo apontando para o lugar errado depois do CP 7.3.
+    # Esta linha era `True`, e não por descuido: o console ERA o canal de
+    # diagnóstico. É nele que apareciam "Erro ao carregar <módulo>" da splash
+    # e o `CERTIFICATE_VERIFY_FAILED` do Zscaler — e foi lendo essa saída que
+    # se achou o ícone apontando para o lugar errado depois do CP 7.3.
     #
-    # Numa primeira execução em máquina nova -- que é justamente o caso da
-    # GE Vernova, com Zscaler no caminho -- esconder o console troca uma
-    # mensagem clara ("CERTIFICATE_VERIFY_FAILED") por "não funciona".
-    # Quando o app estiver rodando estável lá, vale reconsiderar.
-    console=True,
+    # Por isso a mudança não foi só apagar o console: `sigft/app/main.py`
+    # ganhou `_desviar_saida_para_arquivo()`, que sem console manda `print` e
+    # traceback para `logs/sigft.log`, ao lado do .exe. O canal mudou de
+    # lugar, não sumiu — se some, uma primeira execução na GE Vernova troca
+    # uma mensagem clara por "não funciona".
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
