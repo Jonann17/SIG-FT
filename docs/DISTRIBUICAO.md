@@ -134,6 +134,8 @@ atual. São ~7 MB, e tudo o que o build precisa vem junto (`SIG-FT.spec`,
 
 1. Baixe e **extraia** o ZIP.
 2. **Copie o seu `api_config.json` para a pasta extraída.** Ver abaixo.
+   Não tem um? Copie o `api_config.example.json` como `api_config.json` e
+   preencha — ele lista os campos e a variável de ambiente de cada um.
 3. Rode `Gerar-Pacote.bat`. Ele cria o venv, instala as dependências, compila
    e produz o `SIG-FT.zip`.
 

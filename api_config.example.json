@@ -1,0 +1,41 @@
+{
+  "_LEIA_ISTO": [
+    "MODELO do api_config.json -- os NOMES dos campos, nunca os valores.",
+    "",
+    "Para usar: copie este arquivo como 'api_config.json' (sem o .example) e",
+    "preencha. O api_config.json real e ignorado pelo git DE PROPOSITO, para",
+    "que chave nunca suba ao repositorio -- e por isso que ele nao vem no",
+    "Download ZIP do GitHub, e por isso que este modelo existe.",
+    "",
+    "Nenhuma chave e obrigatoria para o app ABRIR. No dia a dia basta a",
+    "OPENROUTER, que e o provedor padrao (ver sigft/config.py, LLM_TASKS).",
+    "",
+    "Cada campo tambem pode vir de variavel de ambiente; o valor daqui",
+    "SOBRESCREVE o da variavel. O nome da variavel esta ao lado de cada um.",
+    "",
+    "Para distribuir com as chaves ja preenchidas, ver docs/DISTRIBUICAO.md."
+  ],
+
+  "OPENROUTER": "",
+  "_OPENROUTER": "variavel OPENROUTER_API_KEY -- provedor padrao, o unico que o dia a dia exige",
+
+  "GEMINI": "",
+  "_GEMINI": "variavel API_GEMINI_LUAN_GMAIL -- so se algum LLM_TASKS apontar para o Gemini",
+
+  "GOOGLE_SEARCH": "",
+  "_GOOGLE_SEARCH": "variavel GOOGLE_SEARCH_API -- busca web do AutoSpecAI",
+
+  "GOOGLE_CSE": "",
+  "_GOOGLE_CSE": "variavel GOOGLE_CSE_API -- id do mecanismo de busca, par do anterior",
+
+  "LLAMA": "",
+  "_LLAMA": "variavel LLAMA_CLOUD_API -- LlamaParse, leitura de PDF de datasheet",
+
+  "EMPRESA_LLM_BASE_URL": "",
+  "_EMPRESA_LLM_BASE_URL": "variavel EMPRESA_LLM_BASE_URL -- endpoint OpenAI-compativel da IA interna, quando houver",
+
+  "EMPRESA_LLM_API_KEY": "",
+  "_EMPRESA_LLM_API_KEY": "variavel EMPRESA_LLM_API_KEY -- par do anterior",
+
+  "_modelos_ia": {}
+}
