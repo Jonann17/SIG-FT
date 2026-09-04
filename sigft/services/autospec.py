@@ -15,7 +15,7 @@ from llama_parse import LlamaParse
 
 from sigft import config
 from sigft.core.excel import headers, pmib_codes
-from sigft.core.rpa.ficha_layout import CONFIG_MAP, VARIAVEIS_SPECS
+from sigft.core.rpa.ficha_layout import CONFIG_MAP, VARIAVEIS_SPECS, nome_da_aba_da_ficha
 from sigft.core.llm.client import get_llm
 # CP 3.5 (Fase 3): o TEXTO do preâmbulo do prompt de
 # `generate_ai_response` abaixo mora em
@@ -876,6 +876,10 @@ _FABRICANTE_GENERICO = frozenset({
     "diversos", "diverso", "varios", "varias", "generico", "generica",
     "n/a", "na", "n.a.", "nd", "n/d", "nao aplicavel", "nao informado",
     "sem marca", "sem fabricante", "nacional", "importado", "similar",
+    # Ficha em INGLES (2026-09-03): o campo Manufacturer preenchido com um
+    # marcador de ausencia passava pelo filtro e disparava uma busca web
+    # inutil, com o marcador dentro da query.
+    "not applicable", "not aplicable", "not informed", "unknown", "none",
     "-", "--", "?", "xxx", "0",
 })
 
@@ -1768,13 +1772,16 @@ class AutoSpecCore:
         # vazio. Ler de um e escrever no outro é o que concilia as duas
         # necessidades.
         wb = openpyxl.load_workbook(filepath)
-        if "Ficha Técnica Padrão" not in wb.sheetnames:
-            raise ValueError("Aba 'Ficha Técnica Padrão' não encontrada.")
-        ws_escrita = wb["Ficha Técnica Padrão"]
+        # `nome_da_aba_da_ficha` e nao o nome literal: a ficha em INGLES tem a
+        # aba "Standard Technical Sheet", e desde 2026-09-03 e o proprio SIG-FT
+        # que a nomeia assim. Com o nome fixo, o AutoSpec recusava a propria
+        # ficha que o aplicativo gerou, pedindo uma aba em portugues.
+        nome_da_aba = nome_da_aba_da_ficha(wb)
+        ws_escrita = wb[nome_da_aba]
 
         try:
             wb_valores = openpyxl.load_workbook(filepath, data_only=True)
-            ws = wb_valores["Ficha Técnica Padrão"]
+            ws = wb_valores[nome_da_aba]
         except Exception:
             # Planilha nunca aberta no Excel não tem valor calculado em
             # cache; nesse caso `data_only=True` devolve `None` em toda
@@ -2687,7 +2694,9 @@ class AutoSpecCore:
 
     def fill_save(self, wb, filepath, ai_data, missing, callbacks=None):
         cb = callbacks or _callbacks_silenciosos()
-        ws = wb["Ficha Técnica Padrão"]
+        # Nome resolvido, e nao literal: a ficha em INGLES tem a aba "Standard
+        # Technical Sheet" (2026-09-03).
+        ws = wb[nome_da_aba_da_ficha(wb)]
         font = Font(color="0000FF")
         nao_casados = []
 

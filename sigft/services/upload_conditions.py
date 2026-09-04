@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 from sigft import config
 from sigft.core.excel import headers, locking, pmib_codes, status_sheet
+from sigft.core.rpa.ficha_layout import nome_da_aba_da_ficha
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em
 # `UploadAutomation.iniciar` abaixo.
@@ -112,10 +113,16 @@ class ConditionsProcessor:
     def extrair_dados_brutos_excel(self, caminho_planilha):
         try:
             wb = openpyxl.load_workbook(caminho_planilha, data_only=True)
-            if "Ficha Técnica Padrão" not in wb.sheetnames:
+            # `nome_da_aba_da_ficha` e nao o nome literal: a ficha em INGLES
+            # tem a aba "Standard Technical Sheet", e desde 2026-09-03 e o
+            # proprio SIG-FT que a nomeia assim. Com o nome fixo, esta funcao
+            # devolvia `None` -- e o chamador so via "sem dados", sem nunca
+            # saber que o problema era o nome de uma aba.
+            try:
+                ws = wb[nome_da_aba_da_ficha(wb)]
+            except (ValueError, KeyError):
                 wb.close()
                 return None
-            ws = wb["Ficha Técnica Padrão"]
         except Exception:
             return None
 
@@ -472,9 +479,15 @@ def campos_em_branco_na_origem(dados_brutos):
         # As formas por extenso entram junto das abreviações: o fornecedor que
         # escreve "não aplicável" está dizendo a MESMA coisa que o que escreve
         # "N/A", e quem revisa precisa saber que nenhum dos dois é informação.
+        # As formas em INGLES entraram em 2026-09-03 (auditoria da ficha em
+        # ingles): a lista tinha portugues e espanhol, e nao o idioma da ficha
+        # que o SIG-FT gera para o fornecedor estrangeiro. Sem elas, "Not
+        # applicable" passava por resposta de verdade e ninguem era avisado de
+        # que o campo foi para o portal vazio.
         if not valor or _sem_acento(valor).lower() in (
                 "n/a", "na", "nan", "none", "-",
-                "nao aplicavel", "no aplicable", "nao se aplica", "no se aplica"):
+                "nao aplicavel", "no aplicable", "nao se aplica", "no se aplica",
+                "not applicable", "not aplicable", "does not apply", "not required"):
             vazios.append(campo)
     return vazios
 

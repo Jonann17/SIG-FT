@@ -269,85 +269,32 @@ def processar_pastas_fichas(arquivo_STATUS_PMIB, destino_fichas, lista_seleciona
 # =============================================================================
 # A ABA DA FICHA DENTRO DO TEMPLATE
 # =============================================================================
-# Nomes aceitos, normalizados (sem acento, minusculas, sem espaco nas pontas).
-# O PT-BR e o canonico; os demais existem porque o SIG-FT tem um template em
-# INGLES, e a aba dele pode nao se chamar "Ficha Tecnica Padrao".
-NOME_CANONICO_DA_ABA = "Ficha Técnica Padrão"
-
-# Como a aba tem de se chamar na ficha ENTREGUE AO FORNECEDOR quando o idioma
-# e ingles. Nao e escolha minha: e o nome que aparece na ficha
-# `4500063671.0052_enUS.xlsx`, que o usuario entregou em 2026-09-03 -- ou
-# seja, ele ja renomeia a mao, ficha a ficha. O template
-# `Technical_Sheet_of_PDM-R3.xlsx` ainda traz a aba com o nome em portugues.
+# A implementacao MUDOU DE CASA em 2026-09-03, para `core/rpa/ficha_layout.py`.
 #
-# A regra mora AQUI, e nao na tela: a tela passa o IDIOMA (que e o que o
-# usuario escolheu) e o servico decide o nome. Principio nº 2 -- UI nao contem
-# regra de negocio, e regra duplicada e regra que diverge.
-NOME_DA_ABA_EM_INGLES = "Standard Technical Sheet"
-_ALVO_EN = "standard technical sheet"   # o mesmo, normalizado (ver abaixo)
-NOMES_DA_ABA_DA_FICHA = (
-    "ficha tecnica padrao",
-    # 2026-09-03, dos arquivos REAIS que o usuario entregou: o template
-    # `Technical_Sheet_of_PDM-R3.xlsx` traz a aba ainda com o nome em
-    # PORTUGUES (heranca do template do qual foi derivado), enquanto a ficha
-    # ja preenchida `4500063671.0052_enUS.xlsx` traz "Standard Technical
-    # Sheet". Os dois circulam; reconhecer os dois custa uma linha.
-    "standard technical sheet",
-    "standard datasheet",
-    "technical datasheet",
-    "datasheet",
-)
+# Ela nasceu aqui porque o montador foi o primeiro a precisar dela. Mas a
+# auditoria da ficha em ingles achou mais DOIS modulos resolvendo "qual aba e a
+# ficha" por conta propria -- `upload_conditions.extrair_dados_brutos_excel` e
+# `AutoSpecCore.fill_save` --, os dois exigindo o nome literal em portugues, e
+# os dois quebrando na ficha em ingles que o proprio SIG-FT gera. Tres copias
+# do mesmo conceito e exatamente como o `CONFIG_MAP` acabou duplicado com
+# ranges divergentes antes do CP 2.4.
+#
+# `ficha_layout.py` e, por docstring propria, "fonte unica do layout da Ficha
+# Tecnica Padrao" -- e o nome da aba e layout. Os nomes seguem importaveis
+# daqui: quem ja fazia `pdm.nome_da_aba_da_ficha` nao precisa saber que mudou.
+from sigft.core.rpa import ficha_layout
 
+# Reexportacao por ATRIBUICAO, e nao por `from ... import`: um import so usado
+# para reexportar e "importado e nao usado" para os linters, e o `# noqa` nao
+# vale para o pyflakes nem, dentro de parenteses, para o ruff. Atribuir e
+# explicito -- diz "isto continua morando aqui de proposito".
+NOME_CANONICO_DA_ABA = ficha_layout.NOME_CANONICO_DA_ABA
+NOME_DA_ABA_EM_INGLES = ficha_layout.NOME_DA_ABA_EM_INGLES
+NOMES_DA_ABA_DA_FICHA = ficha_layout.NOMES_DA_ABA_DA_FICHA
+nome_da_aba_da_ficha = ficha_layout.nome_da_aba_da_ficha
+_normalizar_nome_de_aba = ficha_layout._normalizar_nome_de_aba
 
-def _normalizar_nome_de_aba(nome):
-    import unicodedata
-    texto = unicodedata.normalize("NFKD", str(nome or ""))
-    texto = "".join(c for c in texto if not unicodedata.combining(c))
-    return " ".join(texto.lower().split())
-
-
-def nome_da_aba_da_ficha(wb):
-    """O NOME da aba onde as especificacoes tecnicas devem ser injetadas.
-
-    Devolve o nome, e nao o objeto: e so disso que o montador precisa
-    (`wb_target[nome]`), e pedir `.title` de volta ao chamador so criava um
-    passo a mais para errar.
-
-    **O que isto conserta.** Era `wb_target["Ficha Tecnica Padrao"]`, nome
-    fixo. Um template com a aba noutro nome -- o caso do template em INGLES --
-    levanta `KeyError` DENTRO do laco, e o `except` generico transforma isso em
-    "ERRO ao gerar ficha {pmib}" **uma vez por ficha**. Num lote de 200
-    materiais sao 200 linhas identicas, e nenhuma delas diz que o problema e a
-    aba do template.
-
-    Workbook de uma aba so usa ela: nao ha ambiguidade para resolver, e um
-    template valido nao pode ser recusado por causa do nome.
-
-    Nenhuma aba reconhecida levanta `ValueError` **com os nomes encontrados**
-    -- a mensagem precisa dizer ao usuario o que ele tem em maos.
-    """
-    try:
-        nomes = [ws.title for ws in wb.worksheets]
-    except Exception:
-        nomes = []
-    if not nomes:
-        # Nao consegui enumerar as abas -- o que NAO e o mesmo que "o template
-        # esta errado". Cai no nome canonico e deixa o erro, se houver, vir de
-        # quem de fato tentar usar a aba.
-        return NOME_CANONICO_DA_ABA
-    if len(nomes) == 1:
-        return nomes[0]
-
-    for nome in nomes:
-        if _normalizar_nome_de_aba(nome) in NOMES_DA_ABA_DA_FICHA:
-            return nome
-
-    encontrados = ", ".join(f"'{n}'" for n in nomes) or "(nenhuma)"
-    raise ValueError(
-        "Nao achei a aba da ficha tecnica no template. Abas encontradas: "
-        f"{encontrados}. Esperado um destes nomes: "
-        + ", ".join(f"'{n}'" for n in NOMES_DA_ABA_DA_FICHA)
-    )
+_ALVO_EN = _normalizar_nome_de_aba(NOME_DA_ABA_EM_INGLES)
 
 
 def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,

@@ -303,3 +303,63 @@ workbook com UMA aba so — e aba unica e aceita por atalho, sem passar pela
 normalizacao de nome. A parametrizacao inteira passava sem testar nada.
 Descoberto porque o caso novo passou ANTES de eu escrever a linha que o faz
 passar. Teste novo que ja nasce verde e teste suspeito.
+
+---
+
+## 2026-09-03 (tarde) — auditoria: a ficha em INGLES no resto do aplicativo
+
+Pedido do usuario depois do achado do titulo das specs: "e o que mais pode
+quebrar com ficha em ingles?". Varredura por AST de TODO literal em portugues
+usado em COMPARACAO (`==`, `in`, `startswith`) dentro de `sigft/`, fora da UI
+(que fala portugues com o usuario brasileiro, e deve mesmo). 60 ocorrencias.
+
+**A maioria era alarme falso, e isso so se descobre olhando uma a uma:**
+
+| Achado | Veredito |
+|---|---|
+| `upload_conditions`: `== "SIM"` / `== "NAO"` / `== "Nocivo"` | falso. Nao vem do texto da ficha: e derivado de QUAL CELULA de caixa de selecao esta marcada (`if get_val('P69'): "NAO"`). Vocabulario interno do app |
+| `cria_fichas`: `== 'nao reparavel'` / `== 'especial'` | falso. Vem da planilha de status e do prompt de IA, que responde em portugues por contrato |
+| `pmib_manager`: `'CODIGO PMIB'`, `'VALORIZACAO'`, `'INDICE DE EMISSAO'` | falso. Cabecalhos da planilha da Itaipu, sempre em portugues |
+| `upload_conditions`: `'DESCRICAO'`, `'CONDICOES'` | falso. Colunas de DataFrame, nao celulas de ficha |
+| `autospec_conferencia`: `'FICHA'`, `'MATERIAL'` | falso. Marcadores do formato `.txt` do proprio app |
+
+**Dois defeitos reais, corrigidos:**
+
+1. **O nome da aba, fixo em TRES lugares.** `pdm.aplicar_templates_fichas` ja
+   tinha sido corrigido em 28/08, mas `upload_conditions.extrair_dados_brutos_
+   excel` e DUAS funcoes do `autospec` continuavam exigindo
+   `"Ficha Tecnica Padrao"` literal. Como o SIG-FT passou a NOMEAR a aba da
+   ficha em ingles de `"Standard Technical Sheet"` (decisao do usuario, mesma
+   manha), o rename quebraria o upload de condicoes e o AutoSpec a tarde — um
+   deles EM SILENCIO (`return None`, sem dizer por que).
+   → `nome_da_aba_da_ficha` mudou de casa para `core/rpa/ficha_layout.py`, que
+   e por docstring propria "fonte unica do layout da Ficha Tecnica Padrao". Os
+   tres modulos passam a usa-la. `pdm` reexporta, para nao quebrar quem
+   importava de la.
+
+2. **"Not applicable" nao era reconhecido.** Tres listas independentes
+   catalogam "isto nao se aplica" — `analyzer.FORBIDDEN_NA_STRINGS` (PT),
+   `autospec._FABRICANTE_GENERICO` (PT), `upload_conditions.campos_em_branco_
+   na_origem` (PT+ES). Nenhuma tinha INGLES, que e o idioma do fornecedor para
+   quem a ficha em ingles existe. Efeito: o `analyzer` contava "Not applicable"
+   como RESPOSTA VALIDA, a ficha pontuava como preenchida e o campo vazio ia
+   para o portal sem ninguem ser avisado.
+   → formas em ingles acrescentadas as tres. Ganho puro: nada muda em portugues
+   (ha teste guardando isso, e outro guardando que resposta de verdade —
+   "Applicable", "Stainless steel 316" — nao e engolida).
+
+**Fica em aberto, e precisa de dado que nao temos:**
+
+- **O validador de IA nunca viu ficha em ingles PREENCHIDA POR FORNECEDOR.** A
+  que o usuario entregou tem a coluna das respostas em branco. As regras que
+  dependem do TEXTO da resposta (`montar_validar_ficha`, a exigencia de que
+  `embalagem_transporte` diga o TIPO) foram escritas contra respostas em
+  portugues. Nao da para medir sem uma ficha em ingles respondida.
+- **O marcador `FORNECER`.** O `analyzer` escreve essa palavra, em vermelho,
+  nos campos que faltam — e ela vai em PORTUGUES numa ficha que sera devolvida
+  a um fornecedor estrangeiro. Nao e defeito de logica (e marcador interno da
+  Itaipu), e uma decisao do usuario: traduzir para "TO PROVIDE"/"REQUIRED"
+  quando o idioma for ingles, ou deixar como esta.
+- **As tres listas de "nao aplicavel" continuam TRES.** Unifica-las e o
+  conserto certo (principio nº 1), mas mexe em `autospec` e `upload_conditions`
+  ao mesmo tempo e nao cabia nesta rodada.

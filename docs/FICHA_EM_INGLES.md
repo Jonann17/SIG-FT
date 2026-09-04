@@ -211,4 +211,57 @@ seguro.
 | Rodar com o **motor de verdade** (IA/`deep_translator`) | o contêiner do Claude na web não tem `deep_translator` nem chave de IA; a qualidade da tradução técnica só dá para julgar na sua máquina. É o único item que sobrou do desenho |
 | ~~Renomear a aba no idioma inglês~~ | ✅ **feito em 2026-09-03**, decidido pelo usuário — ver acima |
 | Semear o glossário com os termos do AutoSpec | o `GLOSSARIO_MULTILINGUE` do AutoSpec tem 71 termos PT/EN/DE/ES/FR/IT que serviriam de partida |
-| **Analisar** ficha em inglês de volta | o título da seção já é reconhecido nos dois idiomas, e os campos fixos são lidos por endereço de célula (independente de idioma). O que ainda não foi medido é o comportamento do validador de IA diante de respostas em inglês — `"Not applicable"` em vez de `"Não aplicável"`. Registrado em `PENDENCIAS.md` |
+| **Analisar** ficha em inglês de volta | ✅ auditado em 2026-09-03 — ver abaixo. Falta só medir o validador de IA contra uma ficha em inglês **respondida por fornecedor** (a que temos veio com a coluna das respostas em branco) |
+| Traduzir o marcador `FORNECER` | o analyzer escreve essa palavra em vermelho nos campos que faltam, e ela vai **em português** numa ficha que volta para um fornecedor estrangeiro. Decisão sua: traduzir quando o idioma for inglês, ou deixar |
+
+## A ficha em inglês no resto do aplicativo (auditoria, 2026-09-03)
+
+A pergunta veio do usuário depois do achado do título das specs: *"e o que mais
+pode quebrar?"*. A varredura foi por AST — todo literal em português usado numa
+**comparação** dentro de `sigft/`, fora da UI. Deu 60 ocorrências, e **a maioria
+era alarme falso**, o que só se descobre olhando uma a uma:
+
+| Achado | Veredito |
+|---|---|
+| `== "SIM"` / `== "NÃO"` / `== "Nocivo"` | **falso** — não vêm do texto da ficha, e sim de **qual célula de caixa de seleção está marcada** (`if get_val('P69'): "NÃO"`). Vocabulário interno do app |
+| `== 'não reparável'` / `== 'especial'` | **falso** — vêm da planilha de status e do prompt de IA, que responde em português por contrato |
+| `'CÓDIGO PMIB'`, `'VALORIZAÇÃO'` | **falso** — cabeçalhos da planilha da Itaipu, sempre em português |
+| `'DESCRIÇÃO'`, `'CONDIÇÕES'` | **falso** — colunas de DataFrame, não células de ficha |
+
+### Os dois defeitos reais
+
+**1. O nome da aba estava fixo em três lugares, não um.** O montador já tinha
+sido corrigido em 28/08, mas `upload_conditions.extrair_dados_brutos_excel` e
+**duas** funções do `autospec` ainda exigiam `"Ficha Técnica Padrão"` literal.
+
+Isso virou urgente por culpa própria: como o SIG-FT passou a **nomear** a aba da
+ficha em inglês de `Standard Technical Sheet` (decisão sua, na mesma manhã), o
+rename quebraria o upload de condições e o AutoSpec à tarde — e um deles falhava
+**em silêncio**, devolvendo `None` sem dizer por quê.
+
+`nome_da_aba_da_ficha` mudou de casa para `core/rpa/ficha_layout.py`, que é por
+docstring própria *"fonte única do layout da Ficha Técnica Padrão"*. Os três
+módulos usam a mesma. É o princípio nº 1, e a razão de ele existir: foi assim
+que o `CONFIG_MAP` acabou duplicado com ranges divergentes antes do CP 2.4.
+
+**2. `"Not applicable"` não era reconhecido como ausência de resposta.** Três
+listas independentes catalogam "isto não se aplica", e nenhuma tinha inglês —
+justamente o idioma do fornecedor para quem a ficha em inglês existe. O efeito
+era o pior possível: o analyzer contava `"Not applicable"` como **resposta
+válida**, a ficha pontuava como preenchida, e o campo vazio ia para o portal sem
+ninguém ser avisado.
+
+### Conferido de ponta a ponta com a ficha real
+
+Com `4500063671.0052_enUS.xlsx`, e a ficha PT-BR ao lado como controle:
+
+| | EN | PT |
+|---|---|---|
+| Aba resolvida | `Standard Technical Sheet` | `Ficha Técnica Padrão` |
+| Upload de condições | 19 campos lidos | 19 campos lidos |
+| AutoSpec abre | ✅ | ✅ |
+| Analyzer lê as specs | 14 perguntas, linha 79 | 23 perguntas, linha 79 |
+
+E `"Not applicable"` / `"Does not apply"` passaram a ser reconhecidos nos dois
+sentidos que importam: contam como ausência, e `"Applicable"` /
+`"Stainless steel 316"` **não** são engolidos junto.
