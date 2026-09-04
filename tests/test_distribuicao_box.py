@@ -361,3 +361,27 @@ def test_o_build_confere_a_sintaxe_antes_de_empacotar():
     assert pos_compileall < pos_pyinstaller, (
         "o compileall tem que vir ANTES do PyInstaller, senao nao previne nada"
     )
+
+
+def test_o_pacote_para_se_nao_houver_chaves():
+    """Compilar a partir do download do GitHub gera pacote SEM chaves.
+
+    O `api_config.json` é ignorado pelo git de propósito — chave nunca sobe ao
+    repositório. Logo ele não vem no *Download ZIP*, e quem compila de um
+    download novo sem copiá-lo produz um pacote sem chaves, descobrindo isso
+    só na máquina de destino.
+
+    Como o usuário quer explicitamente que todos compartilhem as mesmas
+    chaves, o script não pode seguir em silêncio: avisa e PARA.
+    """
+    texto = PACOTE.read_text(encoding="ascii")
+
+    inicio = texto.index("if exist \"api_config.json\"")
+    ramo_sem_chaves = texto[texto.index(") else (", inicio):]
+
+    assert "SEM AS CHAVES" in ramo_sem_chaves.upper()
+    assert "GitHub" in ramo_sem_chaves, "o aviso precisa citar o caso do download"
+    assert "pause" in ramo_sem_chaves, (
+        "sem `pause` o aviso rola na tela e o usuario gera pacote sem chave "
+        "sem perceber"
+    )

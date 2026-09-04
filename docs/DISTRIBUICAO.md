@@ -125,6 +125,26 @@ título.
 
 ---
 
+## Partindo do download do GitHub
+
+A branch `claude/checkpoint-01-refactor-executor-5lawtu` é a **padrão do
+repositório**, então o botão *Code → Download ZIP* entrega exatamente o código
+atual. São ~7 MB, e tudo o que o build precisa vem junto (`SIG-FT.spec`,
+`scripts/_bootstrap_venv.bat`, `requirements.txt`, os `.bat` e o `assets/`).
+
+1. Baixe e **extraia** o ZIP.
+2. **Copie o seu `api_config.json` para a pasta extraída.** Ver abaixo.
+3. Rode `Gerar-Pacote.bat`. Ele cria o venv, instala as dependências, compila
+   e produz o `SIG-FT.zip`.
+
+> ⚠️ **O `api_config.json` NÃO vem no download, e isso é de propósito** — ele é
+> ignorado pelo git para que chave nunca suba ao repositório. Quem compila a
+> partir de um download novo e não copia o arquivo gera um pacote **sem
+> chaves**, e só descobre na máquina de destino. O `Gerar-Pacote.bat` avisa e
+> pára para você confirmar.
+
+---
+
 ## Na sua máquina: gerar e publicar
 
 ```bat

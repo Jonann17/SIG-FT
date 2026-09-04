@@ -66,9 +66,25 @@ if exist "api_config.json" (
     echo       Quem tiver acesso a pasta do Box tem acesso as chaves.
     echo       Se vazar, rotacione as chaves no provedor.
 ) else (
-    echo   [i] Nao existe api_config.json aqui, entao o pacote sai SEM chaves.
-    echo       Quem usar o app vai ter que preencher as chaves na tela
-    echo       "Chaves de API" da Home, uma vez, na propria maquina.
+    echo   ***********************************************************
+    echo   *  ATENCAO: o pacote vai sair SEM AS CHAVES DE API.       *
+    echo   ***********************************************************
+    echo.
+    echo   Nao existe api_config.json nesta pasta.
+    echo.
+    echo   E o caso TIPICO de quem acabou de baixar o ZIP do GitHub: o
+    echo   api_config.json e ignorado pelo git DE PROPOSITO, para chave
+    echo   nunca subir para o repositorio. Ele nao vem no download.
+    echo.
+    echo   SE VOCE QUER QUE TODOS COMPARTILHEM AS MESMAS CHAVES:
+    echo     1. feche esta janela;
+    echo     2. copie o seu api_config.json para esta pasta;
+    echo     3. rode o Gerar-Pacote.bat de novo.
+    echo.
+    echo   Se seguir assim mesmo, cada usuario tera que preencher as
+    echo   chaves na tela "Chaves de API" da Home, na propria maquina.
+    echo.
+    pause
 )
 echo.
 
