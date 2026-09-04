@@ -29,6 +29,13 @@ erro_web_*.png
 build/
 dist/
 *.spec
+# ...MENOS o nosso. A regra `*.spec` e o padrao do PyInstaller porque ele
+# GERA specs (pyi-makespec) -- descartaveis. O SIG-FT.spec nao e gerado: e
+# escrito a mao e carrega as decisoes do build (onedir e por que, os
+# hiddenimports que a analise estatica nao ve, o tratamento do Playwright).
+# Sem ele versionado, um clone novo nao tem o que compilar: o
+# Gerar-Executavel.bat chama `pyinstaller SIG-FT.spec` e para ali.
+!SIG-FT.spec
 
 # Excel temporários
 ~$*.xlsx

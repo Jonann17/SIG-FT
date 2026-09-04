@@ -64,6 +64,51 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
+# =============================================================================
+# O ÍCONE DA JANELA E DA BARRA DE TAREFAS
+# =============================================================================
+# [2026-09-04] Decisão do usuário: o ícone do app e da barra de tarefas passa
+# a ser o do SIG-FT; DENTRO da janela continua o símbolo da GE Vernova.
+#
+# São dois arquivos com papéis diferentes, e confundi-los é o erro fácil:
+#
+#   assets/SIG-FT-logo-2.ico  -> ÍCONE: barra de tarefas, barra de título, o
+#                                arquivo .exe. Nunca aparece dentro da tela.
+#   assets/logo.png           -> IMAGEM: o logo da GE Vernova desenhado no
+#                                splash e na barra lateral. Não mexer.
+#
+# `.ico` e não `.png` porque no Windows quem dá o ícone bonito na barra de
+# tarefas é o `iconbitmap` com um `.ico` de verdade — o `wm_iconphoto` com PNG
+# funciona, mas o Windows redimensiona na hora e a barra de título sai borrada.
+ARQUIVO_DO_ICONE = os.path.join("assets", "SIG-FT-logo-2.ico")
+
+
+def definir_icone(janela) -> bool:
+    """Põe o ícone do SIG-FT na janela. `True` se conseguiu.
+
+    Nunca levanta: ficar sem ícone é cosmético, e derrubar a abertura do app
+    por causa disso seria trocar um arranhão por um buraco. Foi assim que o
+    ícone quebrado do CP 7.3 passou despercebido — só avisava no console.
+    """
+    caminho = resource_path(ARQUIVO_DO_ICONE)
+    if not os.path.exists(caminho):
+        return False
+    try:
+        janela.iconbitmap(caminho)
+        return True
+    except Exception:
+        # `iconbitmap` só existe com .ico no Windows. Fora dele (ou com um
+        # .ico que o Tk recuse), tenta o PNG, que é melhor que nada.
+        try:
+            png = resource_path(os.path.join("assets", "logo.png"))
+            if os.path.exists(png):
+                janela.wm_iconphoto(False, tk.PhotoImage(file=png))
+                return True
+        except Exception:
+            pass
+    return False
+
+
 env_path = resource_path('.env')
 load_dotenv(env_path)
 
@@ -194,16 +239,11 @@ class SIG_FT_App(ctk.CTk):
         # PyInstaller (`sys._MEIPASS`).
         image_path = resource_path(os.path.join("assets", "logo.png"))
 
-        # 1. Definir Ícone da Janela (Suporta PNG)
-        try:
-            if os.path.exists(image_path):
-                # AGORA VAI FUNCIONAR: 'tk' foi importado lá em cima
-                icon_image = tk.PhotoImage(file=image_path)
-                self.wm_iconphoto(False, icon_image)
-            else:
-                print(f"AVISO: Arquivo de ícone não encontrado em: {image_path}")
-        except Exception as e:
-            print(f"Aviso: Não foi possível carregar o ícone da janela. Detalhe: {e}")
+        # 1. Ícone da janela e da barra de tarefas -- o do SIG-FT.
+        #    NÃO é o `image_path` acima: aquele é o logo da GE Vernova, que
+        #    continua sendo o desenhado DENTRO da tela (barra lateral).
+        if not definir_icone(self):
+            print(f"AVISO: icone nao encontrado em: {resource_path(ARQUIVO_DO_ICONE)}")
 
         # 2. Carregar Imagem para o Menu (Sidebar)
         self.logo_image = None

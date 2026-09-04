@@ -15,10 +15,26 @@ REM  ATUALIZAR = trocar o SIG-FT.zip no Box. Na proxima abertura, este script
 REM  percebe sozinho.
 REM ===========================================================================
 
+REM =========================================================================
 REM 1. Caminho padrao da pasta no Box
-set "REDE=%USERPROFILE%\Box\SIG-FT Itaipu"
+REM =========================================================================
+REM  A pasta e:
+REM     %USERPROFILE%\Box\CMI - Consorcio Itaipu\11 - Ger. Engenharia\
+REM        15 - PDM\_python_pdm
+REM
+REM  ATENCAO ao "Consorcio": no Box ele tem ACENTO, e um .bat NAO pode conter
+REM  esse caractere. O arquivo e lido na pagina de codigo do console (850/437),
+REM  nao em UTF-8, e o acento vira lixo -- o caminho deixa de casar e o usuario
+REM  cai no seletor de pasta sem entender por que.
+REM
+REM  Por isso o curinga Cons*rcio: o "for /d" resolve o nome real da pasta,
+REM  com acento e tudo, sem que o acento precise existir neste arquivo.
+set "REDE="
+for /d %%D in ("%USERPROFILE%\Box\CMI - Cons*rcio Itaipu") do (
+    set "REDE=%%D\11 - Ger. Engenharia\15 - PDM\_python_pdm"
+)
 
-if exist "%REDE%\SIG-FT.zip" goto :copiar
+if defined REDE if exist "%REDE%\SIG-FT.zip" goto :copiar
 
 REM =========================================================================
 REM FALLBACK: nao achou no caminho padrao -> pede a pasta ao usuario
@@ -104,13 +120,20 @@ if not defined NODE_EXTRA_CA_CERTS if defined SSL_CERT_FILE (
 )
 
 :abrir
+REM  O /d NAO e detalhe: ele define o DIRETORIO DE TRABALHO do aplicativo.
+REM
+REM  Sem ele, o .exe herda o diretorio de onde este .bat foi clicado -- ou
+REM  seja, a PASTA DO BOX. E "api_config.json" e "user_prefs.json" sao
+REM  resolvidos a partir do diretorio de trabalho. O estrago seria duplo: o
+REM  app procuraria as chaves de API no Box (e nao acharia), e gravaria o
+REM  user_prefs.json de cada usuario LA, um por cima do outro.
 if exist "%LOCAL%\SIG-FT\SIG-FT.exe" (
-    start "" "%LOCAL%\SIG-FT\SIG-FT.exe"
+    start "" /d "%LOCAL%\SIG-FT" "%LOCAL%\SIG-FT\SIG-FT.exe"
     exit
 )
 
 if exist "%LOCAL%\SIG-FT.exe" (
-    start "" "%LOCAL%\SIG-FT.exe"
+    start "" /d "%LOCAL%" "%LOCAL%\SIG-FT.exe"
     exit
 )
 

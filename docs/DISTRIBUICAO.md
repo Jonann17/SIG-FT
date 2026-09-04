@@ -9,12 +9,82 @@ administrador.
 
 ## Os dois arquivos que ficam no Box
 
-Em `%USERPROFILE%\Box\SIG-FT Itaipu\`:
+Em `%USERPROFILE%\Box\CMI - Consórcio Itaipu	 - Ger. Engenharia - PDM\_python_pdm\`
+(escolha do usuário em 2026-09-04):
 
 | Arquivo | O que é |
 |---|---|
-| `SIG-FT Itaipu.bat` | O que o usuário clica. Copie da raiz do repositório. |
-| `SIG-FT.zip` | O app compilado. Gerado pelo `Gerar-Pacote.bat`. |
+| `SIG-FT Itaipu.bat` | O que o usuário clica. Copie da raiz do repositório. Só uma vez. |
+| `SIG-FT.zip` | O app compilado. Gerado pelo `Gerar-Pacote.bat`. Trocado a cada versão. |
+
+### O acento de "Consórcio", e por que o `.bat` não o contém
+
+Um `.bat` é lido na **página de código do console** (850 ou 437 no Windows em
+português), nunca em UTF-8. Um `ó` gravado no arquivo chega lá como bytes de
+lixo: o caminho deixa de casar e o `if exist` falha **em silêncio** — o script
+segue pelo galho errado sem erro nenhum, e o usuário cai no seletor de pasta
+sem entender por quê.
+
+Por isso o launcher resolve a pasta por curinga:
+
+```bat
+for /d %%D in ("%USERPROFILE%\Box\CMI - Cons*rcio Itaipu") do (
+    set "REDE=%%D	 - Ger. Engenharia - PDM\_python_pdm"
+)
+```
+
+O acento existe na **pasta**, nunca no arquivo. `tests/test_distribuicao_box.py`
+falha se algum `.bat` do projeto ganhar um byte fora do ASCII.
+
+---
+
+## As chaves de API viajam no pacote
+
+Decisão do usuário: *"quero que todos quem usa tenha acesso às mesmas chaves"*.
+O `Gerar-Pacote.bat` copia o `api_config.json` para dentro do ZIP, ao lado do
+`.exe` — que é onde o app o procura.
+
+> ⚠️ **O `SIG-FT.zip` passa a conter segredo em texto claro.** Quem abrir o ZIP
+> lê as chaves, e elas ficam também em texto claro no `%LOCALAPPDATA%` de cada
+> máquina que rodar o app. A **permissão da pasta do Box passa a ser, sozinha,
+> o controle de acesso às chaves.**
+>
+> Consequência prática: se alguém sair do time ou o ZIP vazar, a única saída é
+> **rotacionar as chaves no provedor**. Vale mantê-las onde isso seja rápido.
+
+O `.env` **não** é o canal: dentro do executável ele seria lido de dentro do
+bundle (`resource_path`), não da pasta do `.exe`. O `api_config.json` é o
+mecanismo único — e é o que a própria tela "Chaves de API" da Home grava.
+
+---
+
+## O diretório de trabalho: `start /d`
+
+O launcher abre o app com `start "" /d "%LOCAL%\SIG-FT" ...`, e o `/d` não é
+detalhe.
+
+Sem ele o `.exe` herda o diretório de onde o `.bat` foi clicado — **a pasta do
+Box**. Como `api_config.json` e `user_prefs.json` são resolvidos a partir do
+diretório de trabalho, o estrago seria duplo: o app procuraria as chaves no
+Box (e não acharia), e gravaria o `user_prefs.json` de cada usuário lá, **um
+por cima do outro**.
+
+---
+
+## O ícone
+
+| Arquivo | Papel | Onde aparece |
+|---|---|---|
+| `assets/SIG-FT-logo-2.ico` | **ícone** | Barra de tarefas, barra de título, o arquivo `.exe` |
+| `assets/logo.png` | **imagem** | Splash e barra lateral — o símbolo da GE Vernova, dentro da tela |
+
+São coisas diferentes e trocá-las é o erro fácil. Decisão do usuário: o ícone
+é o do SIG-FT; **dentro** do app continua a GE Vernova.
+
+O `.ico` do repositório tem um tamanho só (256×256). O `Gerar-Executavel.bat`
+gera `build/SIG-FT.ico` com 16, 24, 32, 48, 64, 128 e 256 — sem as medidas
+pequenas o Windows reduz o 256 na hora e o ícone sai borrado na barra de
+título.
 
 ---
 
