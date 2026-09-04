@@ -488,9 +488,77 @@ def test_persistencia_estrutura_completa_do_json_apos_uso_combinado(tmp_path, co
     prefs.set_default_dir("pdms_modificados", str(pasta_padrao), config_path=config_path)
 
     bruto = json.loads(config_path.read_text(encoding="utf-8"))
-    assert set(bruto.keys()) == {"ultimos", "categorias", "pastas_padrao"}
+    # [2026-09-03] Eram 3 seções; "arquivos" entrou com `remember_file`, que o
+    # mural de atividades precisa (ele lê a planilha sem passar por diálogo, e
+    # a memória de PASTA não serve para isso).
+    assert set(bruto.keys()) == {"ultimos", "categorias", "pastas_padrao", "arquivos"}
     assert bruto == {
         "ultimos": {"autospec.ficha": str(pasta_ultimo)},
         "categorias": {"excel": str(pasta_ultimo)},
         "pastas_padrao": {"pdms_modificados": str(pasta_padrao)},
+        # Vazia porque este teste não chamou `remember_file` -- a seção existe
+        # sempre, como as outras três.
+        "arquivos": {},
     }
+
+
+# =============================================================================
+# Lembrar um ARQUIVO  [2026-09-03]
+# =============================================================================
+# `remember_dir` guarda a PASTA — é o que o CP 1.5 precisava, porque o objetivo
+# era abrir o diálogo no lugar certo. O mural de atividades precisa do ARQUIVO:
+# ele lê a planilha sem passar por diálogo nenhum.
+#
+# Sem isto, o mural dizia "não encontrei o mapeamento" mesmo com o usuário
+# tendo acabado de rodar o PMIB Manager sobre ele — aconteceu em 2026-09-03.
+
+def test_remember_file_guarda_o_caminho_completo(tmp_path, config_path):
+    arquivo = tmp_path / "Mapeamento.xlsx"
+    arquivo.write_text("x", encoding="utf-8")
+
+    prefs.remember_file("pmib.mapa", str(arquivo), config_path=config_path)
+
+    assert prefs.get_last_file("pmib.mapa", config_path=config_path) == str(arquivo)
+
+
+def test_get_last_file_sem_registro_devolve_none(config_path):
+    assert prefs.get_last_file("nunca.usada", config_path=config_path) is None
+
+
+def test_arquivo_que_sumiu_do_disco_devolve_none(tmp_path, config_path):
+    """Registro e realidade divergem quando alguém move ou apaga o arquivo.
+    Quem chama trata igual a 'nunca escolhido' — nos dois não há o que ler."""
+    arquivo = tmp_path / "some.xlsx"
+    arquivo.write_text("x", encoding="utf-8")
+    prefs.remember_file("pmib.mapa", str(arquivo), config_path=config_path)
+
+    arquivo.unlink()
+
+    assert prefs.get_last_file("pmib.mapa", config_path=config_path) is None
+
+
+def test_remember_file_com_caminho_vazio_nao_grava(config_path):
+    prefs.remember_file("pmib.mapa", "", config_path=config_path)
+
+    assert prefs.get_last_file("pmib.mapa", config_path=config_path) is None
+
+
+def test_arquivo_e_pasta_convivem_sem_se_atrapalhar(tmp_path, config_path):
+    """As duas memórias são independentes: uma guarda onde ABRIR o diálogo, a
+    outra QUAL arquivo foi escolhido."""
+    pasta = tmp_path / "planilhas"
+    pasta.mkdir()
+    arquivo = pasta / "Mapeamento.xlsx"
+    arquivo.write_text("x", encoding="utf-8")
+
+    prefs.remember_dir("pmib.mapa", "excel", str(pasta), config_path=config_path)
+    prefs.remember_file("pmib.mapa", str(arquivo), config_path=config_path)
+
+    assert prefs.get_initial_dir("pmib.mapa", "excel", config_path=config_path) == str(pasta)
+    assert prefs.get_last_file("pmib.mapa", config_path=config_path) == str(arquivo)
+
+
+def test_a_chave_do_mapeamento_existe():
+    """A Home lê por ela; o PMIB Manager grava nela. Se o nome divergir, o
+    mural volta a não achar nada — em silêncio."""
+    assert prefs.CHAVE_MAPEAMENTO == "pmib_manager.mapeamento"

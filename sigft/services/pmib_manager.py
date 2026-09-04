@@ -40,6 +40,49 @@ def copiar_estilo_seguro(celula_origem, celula_destino):
 # =============================================================================
 # CLASSE DE GERENCIAMENTO (BACKEND)
 # =============================================================================
+
+# =============================================================================
+# Achar a aba certa  [2026-09-03]
+# =============================================================================
+# ⚠️ O código usava `wb.active` -- a aba que estava SELECIONADA quando a
+# planilha foi salva pela última vez. Isso quebrou na cara do usuário:
+#
+#     [ERRO] Coluna 'N° DOCUMENTO ITAIPU' não encontrada na Mestra.
+#
+# Ele tinha salvado o arquivo com outra aba aberta, e o código foi procurar a
+# coluna na aba errada. A planilha tem 3 abas (e ganhou uma quarta com a Lista
+# de preços), então a chance de `wb.active` ser a certa só diminui.
+#
+# `wb.active` nunca foi uma forma de ACHAR uma aba: é só a que o Excel mostrará
+# ao abrir. Achar exige procurar.
+NOME_ABA_SOBRESSALENTES = "Acompanhamento Sobressalente"
+COLUNA_CHAVE_SOBRESSALENTES = "N° DOCUMENTO ITAIPU"
+
+
+def achar_aba(wb, nome_esperado, coluna_chave, linha_cabecalho=2):
+    """A aba pelo NOME; não achando, a que TEM a coluna-chave.
+
+    O fallback por conteúdo importa porque o nome da aba é editável pelo
+    usuário — renomeá-la não deveria quebrar o app quando a estrutura continua
+    lá. Devolve `(worksheet, motivo)`; `worksheet` é `None` se nenhuma servir,
+    e `motivo` diz o que foi procurado, para o log poder ser específico.
+    """
+    if nome_esperado in wb.sheetnames:
+        return wb[nome_esperado], f"aba '{nome_esperado}'"
+
+    alvo = str(coluna_chave).strip().upper()
+    for nome in wb.sheetnames:
+        ws = wb[nome]
+        for celula in ws[linha_cabecalho]:
+            if celula.value and str(celula.value).strip().upper() == alvo:
+                return ws, f"aba '{nome}' (achada pela coluna '{coluna_chave}')"
+
+    return None, (
+        f"nenhuma aba tem a coluna '{coluna_chave}' na linha {linha_cabecalho}. "
+        f"Abas no arquivo: {', '.join(wb.sheetnames)}"
+    )
+
+
 class PMIBManager:
     def __init__(self):
         pass
@@ -255,7 +298,18 @@ class PMIBManager:
 
             # Verifica Atraso Itaipu
             if 'DATA INFORME' in df_unicos.columns:
-                df_unicos.loc[:, 'DATA INFORME'] = pd.to_datetime(df_unicos['DATA INFORME'], errors='coerce')
+                # ATENCAO: atribuicao DIRETA, nunca `.loc[:, coluna] = `.
+                #
+                # `.loc[:, coluna] = ` escreve DENTRO da coluna existente e
+                # preserva o dtype dela. A coluna vem de `read_excel(...,
+                # na_filter=False)`, entao celula vazia virou '' e o dtype e
+                # `str`. Na pandas 3 encaixar um DatetimeArray num dtype `str`
+                # deixou de ser conversao silenciosa e virou TypeError:
+                #     Invalid value '<DatetimeArray> [NaT, NaT, ...]' for dtype 'str'
+                # A atribuicao direta SUBSTITUI a coluna, e o dtype novo
+                # (datetime64) vem junto. Defeito real: 2026-09-03, o fluxo
+                # morria em toda planilha cuja DATA INFORME estivesse vazia.
+                df_unicos['DATA INFORME'] = pd.to_datetime(df_unicos['DATA INFORME'], errors='coerce')
 
                 # Vamos trabalhar apenas com as linhas que possuem data válida
                 df_com_data = df_unicos.dropna(subset=['DATA INFORME']).copy()
@@ -339,7 +393,13 @@ class PMIBManager:
         yield ("Atualizando Mapeamento e Inserindo Novos...", 0.45)
         try:
             wb = load_workbook(caminho_gerenciadora)
-            ws = wb.active
+            ws, motivo = achar_aba(
+                wb, NOME_ABA_SOBRESSALENTES, COLUNA_CHAVE_SOBRESSALENTES)
+            if ws is None:
+                yield f"[ERRO] Não achei a aba de sobressalentes: {motivo}"
+                wb.close()
+                return
+            yield f" -> Usando a {motivo}."
 
             mapeamento_colunas = {
                 'N° DOCUMENTO ITAIPU': 'No. do Documento',
@@ -465,7 +525,12 @@ class PMIBManager:
             yield ("Gravando estatísticas na Planilha Mestra...", 0.90)
             try:
                 wb = load_workbook(caminho_gerenciadora)
-                ws = wb.active
+                ws, motivo = achar_aba(
+                    wb, NOME_ABA_SOBRESSALENTES, COLUNA_CHAVE_SOBRESSALENTES)
+                if ws is None:
+                    yield f"[ERRO] Não achei a aba de sobressalentes: {motivo}"
+                    wb.close()
+                    return
 
                 gerenciadora_map = {
                     'FICHAS EXISTENTES': 'total_fichas',
@@ -609,4 +674,222 @@ class PMIBManager:
         else:
             yield " -> Nenhuma ficha processada para estatísticas."
 
+        # ---------------------------------------------------------------
+        # 6. Aba "Lista de preços Follow-up"  [2026-09-03]
+        # ---------------------------------------------------------------
+        # Pedido do usuário: "sempre na atualização do PMIB manager devemos
+        # atualizar essa aba". Roda por último, depois de a aba de
+        # sobressalentes estar gravada.
+        #
+        # Envolvido em try/except de propósito: uma falha aqui não pode
+        # derrubar o resto do fluxo, que já gravou tudo o que interessa.
+        yield ("Atualizando a aba Lista de preços Follow-up...", 0.92)
+        try:
+            for linha in self._atualizar_lista_precos(
+                    caminho_gerenciadora, df_api, callback_retry_lock):
+                yield linha
+        except Exception as e:
+            yield f"[ERRO] Lista de preços Follow-up: {type(e).__name__}: {e}"
+
+        # ---------------------------------------------------------------
+        # 7. Aba "Atividades"  [2026-09-03]
+        # ---------------------------------------------------------------
+        yield ("Atualizando a aba Atividades...", 0.97)
+        try:
+            for linha in self._atualizar_atividades(
+                    caminho_gerenciadora, df_api, callback_retry_lock):
+                yield linha
+        except Exception as e:
+            yield f"[ERRO] Atividades: {type(e).__name__}: {e}"
+
         yield ("--- PROCESSO CONCLUÍDO ---", 1.0)
+
+    def _atualizar_atividades(self, caminho_gerenciadora, df_api, callback_retry_lock=None):
+        """Atualiza a aba "Atividades": o CÓDIGO ITAIPU e os totais dos grupos.
+
+        [2026-09-03] Pedido do usuário. Duas coisas:
+
+        1. o `CÓDIGO ITAIPU` das linhas de grupo passa a acompanhar o RDS-PP
+           vigente, pelo mesmo `_buscar_rdspp_mais_recente` que a aba de
+           sobressalentes usa;
+        2. as fórmulas de agregação viram VALOR calculado — decisão do usuário.
+
+        ⚠️ **As fórmulas da planilha estão erradas hoje**, e não é suposição:
+        comparando o cálculo com o que o Excel produz, 15 linhas batem e 2
+        divergem — nas duas, o intervalo fixo da fórmula (`$A59:$A59`) não
+        acompanhou linhas acrescentadas depois. A `L58` vinha dizendo "1
+        atividade" para um grupo de 4. Gravar o valor calculado CORRIGE esses
+        dois números.
+
+        O app escreve só as 7 colunas de total e o código. `DESCRIÇÃO`,
+        `STATUS`, `COM QUEM ESTÁ`, `DETALHE` e `CRITICIDADE` são do usuário.
+        """
+        from openpyxl import load_workbook
+
+        from sigft.services import atividades as at
+
+        wb = load_workbook(caminho_gerenciadora)
+        if "Atividades" not in wb.sheetnames:
+            yield " -> Aba 'Atividades' não encontrada; nada a fazer."
+            wb.close()
+            return
+
+        ws = wb["Atividades"]
+
+        # ⚠️ DOIS workbooks, e isto não é desperdício.
+        #
+        # `load_workbook` sem `data_only` devolve a FÓRMULA em `.value` — a
+        # string `"=FALSE()"`, não `False`. Ler daí faria o cálculo tratar
+        # texto de fórmula como dado: `CONCLUÍDA` traz `=FALSE()` em dezenas de
+        # linhas, e as datas dos grupos são todas fórmulas. Na primeira versão
+        # isto passou despercebido porque a contagem deu certo por acidente
+        # (`"=FALSE()"` não está na lista de valores verdadeiros).
+        #
+        # E não dá para usar só `data_only=True`: esse workbook PERDE as
+        # fórmulas ao salvar, o que destruiria as das outras abas.
+        #
+        # Então: um para LER valores, outro para ESCREVER. É o mesmo padrão que
+        # `services/analyzer.py` adotou em 2026-08-26, pelo mesmo motivo.
+        wb_valores = load_workbook(caminho_gerenciadora, data_only=True)
+        ws_valores = wb_valores["Atividades"]
+
+        def _valor(r, coluna):
+            return ws_valores.cell(row=r, column=coluna).value
+
+        linhas = []
+        for r in range(at.LINHA_CABECALHO + 1, ws.max_row + 1):
+            linhas.append({
+                "_linha": r,
+                "nv": _valor(r, at.COL_NV),
+                "codigo": _valor(r, at.COL_CODIGO_ITAIPU),
+                "concluida": _valor(r, at.COL_CONCLUIDA),
+                "status": _valor(r, at.COL_STATUS),
+                "data_prevista_inicio": _valor(r, at.COL_DATA_PREVISTA_INICIO) or "",
+                "data_inicio": _valor(r, at.COL_DATA_INICIO) or "",
+                "previsao_termino": _valor(r, at.COL_PREVISAO_TERMINO) or "",
+                "data_termino": _valor(r, at.COL_DATA_TERMINO) or "",
+            })
+        wb_valores.close()
+
+        # --- 1. CÓDIGO ITAIPU com o RDS-PP vigente ----------------------
+        renomeados = 0
+        for indice in at.linhas_de_grupo(linhas):
+            codigo = linhas[indice].get("codigo")
+            if not codigo:
+                continue
+            atual = self._buscar_rdspp_mais_recente(str(codigo).strip(), df_api)
+            if atual and atual != str(codigo).strip():
+                ws.cell(row=linhas[indice]["_linha"], column=at.COL_CODIGO_ITAIPU).value = atual
+                yield f"   RDS-PP: {str(codigo).strip()} -> {atual}"
+                renomeados += 1
+
+        # --- 2. Totais dos grupos, no lugar das fórmulas ----------------
+        totais = at.recalcular(linhas)
+        for indice, valores in totais.items():
+            r = linhas[indice]["_linha"]
+            ws.cell(row=r, column=at.COL_ATIVIDADES).value = valores["atividades"]
+            ws.cell(row=r, column=at.COL_CONCLUIDAS).value = valores["concluidas"]
+            ws.cell(row=r, column=at.COL_TRAVADAS).value = valores["travadas"]
+            ws.cell(row=r, column=at.COL_DATA_PREVISTA_INICIO).value = valores["data_prevista_inicio"]
+            ws.cell(row=r, column=at.COL_DATA_INICIO).value = valores["data_inicio"]
+            ws.cell(row=r, column=at.COL_PREVISAO_TERMINO).value = valores["previsao_termino"]
+            ws.cell(row=r, column=at.COL_DATA_TERMINO).value = valores["data_termino"]
+
+        if not self._salvar_com_retry_interativo(wb, caminho_gerenciadora, callback_retry_lock):
+            yield "[ERRO] A planilha está aberta no Excel — a aba Atividades NÃO foi salva."
+            return
+
+        yield (f" -> Atividades: {len(totais)} grupo(s) recalculado(s), "
+               f"{renomeados} código(s) atualizado(s) pelo RDS-PP.")
+
+    def _atualizar_lista_precos(self, caminho_gerenciadora, df_api, callback_retry_lock=None):
+        """Cria (se preciso) e atualiza a aba "Lista de preços Follow-up".
+
+        [2026-09-03] Ver
+        `docs/superpowers/specs/2026-09-03-lista-precos-followup-design.md`.
+
+        A REGRA de pareamento não mora aqui — está em `services/lista_precos.py`,
+        que se prova sem planilha nenhuma. Aqui está só a escrita.
+
+        ⚠️ `AÇÃO` e `OBSERVAÇÕES` são do usuário e NUNCA são sobrescritas: a
+        atualização casa por `N° DOCUMENTO ITAIPU` e escreve célula a célula
+        nas 10 colunas do app. Recriar a aba apagaria a decisão dele, que é o
+        conteúdo mais caro que ela guarda.
+        """
+        from datetime import datetime
+
+        from openpyxl import load_workbook
+
+        from sigft.services import lista_precos as lp
+        from sigft.services import lista_precos_planilha as lpp
+
+        historico = df_api.to_dict("records")
+        levantado = lp.levantar(historico)
+        if not levantado:
+            yield " -> Nenhuma lista de preços vigente encontrada no Aconex."
+            return
+
+        wb = load_workbook(caminho_gerenciadora)
+        criou = lpp.NOME_ABA not in wb.sheetnames
+        ws = lpp.criar_aba(wb)
+        if criou:
+            yield f" -> Aba '{lpp.NOME_ABA}' criada."
+
+        colunas = lpp.mapa_de_colunas(ws)
+        existentes = lpp.linha_por_documento(ws, colunas)
+        hoje = datetime.now().strftime("%d/%m")
+
+        novas, atualizadas, alertas = 0, 0, 0
+
+        for entrada in levantado:
+            precos = entrada["precos"]
+            codigo = str(precos.get(lp.COL_DOC) or "").strip()
+            if not codigo:
+                continue
+
+            linha = existentes.get(codigo)
+            if linha is None:
+                linha = ws.max_row + 1 if ws.max_row >= lpp.LINHA_CABECALHO else lpp.LINHA_CABECALHO + 1
+                existentes[codigo] = linha
+                novas += 1
+            else:
+                atualizadas += 1
+
+            valores = {
+                "N° DOCUMENTO ITAIPU": codigo,
+                "N° DOCUMENTO CMI": precos.get("Controle do Emissor"),
+                "ÚLTIMA REVISÃO EMITIDA": precos.get("Revisão"),
+                "STATUS DA REVISÃO": precos.get("Status"),
+                "DATA DE ATUALIZAÇÃO": precos.get("Data de Alteração"),
+                "DESCRIÇÃO": precos.get("Título"),
+                "ESPECIFICAÇÃO TÉCNICA": precos.get("Especialidade"),
+                "CAPÍTULO": precos.get("Subespecialidade"),
+                "LISTA DE SOBRESSALENTES": entrada["lista"] or "",
+                "ALERTA RDS-PP": entrada["alerta"],
+            }
+            for titulo, valor in valores.items():
+                if titulo in colunas:
+                    ws.cell(row=linha, column=colunas[titulo]).value = valor
+
+            if entrada["alerta"]:
+                alertas += 1
+
+            # OBSERVAÇÕES: ACRESCENTA, nunca substitui -- e não duplica a
+            # mesma linha a cada execução, senão um documento parado com
+            # alerta acumularia uma linha por rodada até a célula ficar
+            # ilegível.
+            recado = lp.texto_de_observacao(entrada, hoje)
+            coluna_obs = colunas.get("OBSERVAÇÕES")
+            if recado and coluna_obs:
+                celula = ws.cell(row=linha, column=coluna_obs)
+                atual = str(celula.value or "")
+                nucleo = recado.split("] ", 1)[-1]
+                if nucleo not in atual:
+                    celula.value = f"{atual}\n{recado}".strip() if atual else recado
+
+        if not self._salvar_com_retry_interativo(wb, caminho_gerenciadora, callback_retry_lock):
+            yield "[ERRO] A planilha está aberta no Excel — a aba de preços NÃO foi salva."
+            return
+
+        yield (f" -> Lista de preços: {novas} nova(s), {atualizadas} atualizada(s), "
+               f"{alertas} com alerta de RDS-PP.")

@@ -12,12 +12,62 @@ import threading
 from tkinter import messagebox
 
 from sigft import config as sigft_config
-from sigft.app.theme import COLORS
+from sigft.app.theme import COLORS, COR_CARTAO
 from sigft.core import plataforma
 from sigft.core.llm import catalogo, selecao
 from sigft.core.llm import usage as llm_usage
+# [2026-09-03] Janelas que a Home abre, e o desenho do mural.
+from sigft.app.widgets.painel_janela import JanelaPainel
+from sigft.app.widgets.mural import montar as montar_mural
 
 import customtkinter as ctk
+
+
+# =============================================================================
+# OS MÓDULOS, como aparecem nos cards  [2026-09-03]
+# =============================================================================
+# `(nome do frame, título, descrição)`. O nome do frame é a chave de
+# `SIG_FT_App.frames` — é ele que o clique usa para navegar, e por isso ele e a
+# barra lateral têm de concordar.
+#
+# As descrições foram reescritas: as antigas agrupavam módulos ("1 & 2. Criação
+# e Estruturação") e descreviam o fluxo, não o que cada tela faz. O usuário
+# pediu "descrevê-los diferente, atualizá-los e torná-los clicáveis".
+MODULOS = [
+    ("CriaFichas", "Cria Fichas PMIB",
+     "Lê a lista de materiais, escolhe o PDM de cada item com IA e cria as "
+     "fichas no portal. Tem também a edição do código de projeto em massa."),
+    ("PDM", "Planilhas PMIB",
+     "Fatia a lista geral de PDMs da Itaipu por sistema, aplica o template das "
+     "fichas e organiza as pastas de trabalho."),
+    ("Analyzer", "Analyzer (IA)",
+     "Dá nota às fichas preenchidas e separa as que passam das que voltam para "
+     "correção. Gera o relatório de pendências para mandar ao fornecedor."),
+    ("UploadConditions", "Upload de Condições",
+     "Preenche no portal as condições de armazenamento, transporte, manutenção "
+     "e descarte, a partir da ficha — com a tradução para o espanhol."),
+    ("UploadSpecs", "Upload de Características",
+     "Preenche as características técnicas da ficha no portal, uma linha por "
+     "especificação."),
+    ("Translator", "Tradutor Técnico",
+     "Traduz as características das fichas de português para espanhol e grava "
+     "numa aba nova da própria planilha."),
+    ("CopiaFichas", "Fichas Duplicadas",
+     "Copia uma ficha existente do portal para outra: campos, condições, "
+     "características, PDM, documentos e imagens."),
+    ("AutoSpec", "AutoSpec AI (RAG)",
+     "Preenche ficha vazia lendo manuais em PDF e buscando datasheets na web, "
+     "com conferência dos documentos duvidosos."),
+    ("LMR", "Aplicação LMR",
+     "Cadastra as aplicações (TAGs) das fichas no portal, e apaga quando "
+     "preciso — as duas coisas em abas da mesma seção."),
+    ("PMIBManager", "PMIB Manager",
+     "Atualiza o mapeamento a partir do Aconex: renomeia arquivos pelo RDS-PP, "
+     "calcula o avanço, e mantém as abas de lista de preços e de atividades."),
+    ("SearchPMIB", "Busca PMIB",
+     "Procura um código ou descrição nas planilhas de uma pasta inteira, sem "
+     "abrir arquivo por arquivo."),
+]
 
 
 # =============================================================================
@@ -40,86 +90,249 @@ class HomeView(ctk.CTkScrollableFrame):
         self.lbl_subtitulo.grid(row=1, column=0, pady=(0, 20), sticky="w", padx=20)
 
         # Descrição Geral
-        resumo = ("Bem-vindo ao SIG-FT. Utilize o menu lateral para navegar entre os módulos. "
-                  "Abaixo você encontra um resumo do fluxo de trabalho e das funcionalidades disponíveis.")
+        resumo = ("Clique num módulo abaixo para abri-lo. Os botões desta barra "
+                  "abrem painéis em janela — assim a Home fica limpa.")
         self.criar_texto_simples(resumo, row=2)
 
-        # --- ÁREA DE CONFIGURAÇÃO DE APIs (NOVA) ---
-        self.criar_area_config_api(row=3)
+        # --- BARRA DE BOTÕES ---------------------------------------------
+        # [2026-09-03] Pedido do usuário: "precisamos diminuir a densidade de
+        # informação da home criando botões que abrem janelas". Os painéis de
+        # configuração e de gastos de IA saíram daqui e viraram janelas.
+        self._criar_barra_de_botoes(row=3)
 
-        # --- PAINEL DE MODELOS DE IA (CP 3.3) ---
-        self.criar_painel_modelos_ia(row=4)
+        # --- MÓDULOS, CLICÁVEIS ------------------------------------------
+        self._criar_cards_dos_modulos(row=4)
 
-        # --- PAINEL DE GASTOS DE IA (CP 3.4) ---
-        self.criar_painel_gastos_ia(row=5)
+    # =====================================================================
+    # BARRA DE BOTÕES  [2026-09-03]
+    # =====================================================================
+    def _criar_barra_de_botoes(self, row):
+        barra = ctk.CTkFrame(self, fg_color="transparent")
+        barra.grid(row=row, column=0, sticky="ew", padx=20, pady=(0, 16))
 
-        # --- SEÇÕES (CARDS) ---
+        botoes = [
+            ("\U0001F4CB  Atividades do dia", self.abrir_mural_atividades, COLORS["accent"]),
+            ("\U0001F916  Modelos de IA", self.abrir_janela_modelos_ia, COLORS["primary"]),
+            ("\U0001F4B0  Gastos de IA", self.abrir_janela_gastos_ia, COLORS["primary"]),
+            ("\U0001F511  Chaves de API", self.abrir_janela_chaves_api, "#3A3A3A"),
+        ]
+        for texto, comando, cor in botoes:
+            ctk.CTkButton(
+                barra, text=texto, command=comando, fg_color=cor,
+                height=40, font=("Roboto", 13, "bold"),
+            ).pack(side="left", padx=(0, 10))
 
-        # 1. Criação e PDM
-        self.criar_card_instrucao(
-            row=6,
-            titulo="1 & 2. Criação e Estruturação",
-            descricao="Etapas iniciais para geração da ficha técnica e processamento de PDMs em massa.",
-            inputs="- Excel _STATUS_PMIB\n- Lista de PDMs",
-            outputs="- Fichas criadas\n- Planilhas formatadas"
+    def abrir_janela_chaves_api(self):
+        JanelaPainel(
+            self, titulo="Chaves de API",
+            montar=lambda pai: self.criar_area_config_api(row=None, parent=pai),
+            geometria="760x520",
         )
 
-        # 2. Análise e Qualidade
-        self.criar_card_instrucao(
-            row=7,
-            titulo="3. Análise de Qualidade (IA)",
-            descricao="Módulo 'Analyzer': Verifica a consistência dos dados preenchidos nas fichas antes do upload.",
-            inputs="- Planilhas PMIB (.xlsx)",
-            outputs="- Relatório de Erros\n- Fichas marcadas para correção"
+    def abrir_janela_modelos_ia(self):
+        JanelaPainel(
+            self, titulo="Modelos de IA",
+            montar=lambda pai: self.criar_painel_modelos_ia(row=None, parent=pai),
         )
 
-        # 3. Dados Técnicos (Upload e Tradução)
-        desc_upload = ("Conjunto de ferramentas para automação no Portal PMIB:\n"
-                       "• Upload Condições: Preenche abas de transporte, armazenamento, etc.\n"
-                       "• Upload Caract. Técnicas: Preenche as especificações técnicas.\n"
-                       "• Tradutor: Traduz PT <-> ES automaticamente.")
-        self.criar_card_instrucao(
-            row=8,
-            titulo="4. Dados Técnicos e Upload",
-            descricao=desc_upload,
-            inputs="- Planilhas PMIB\n- Credenciais Portal",
-            outputs="- Preenchimento automático no site"
+    def abrir_janela_gastos_ia(self):
+        JanelaPainel(
+            self, titulo="Gastos de IA",
+            montar=lambda pai: self.criar_painel_gastos_ia(row=None, parent=pai),
+            geometria="860x600",
         )
 
-        # 4. AutoSpec AI
-        self.criar_card_instrucao(
-            row=9,
-            titulo="5. AutoSpec AI (RAG)",
-            descricao="Inteligência Artificial avançada que lê manuais em PDF e busca na web para preencher fichas técnicas vazias automaticamente.",
-            inputs="- Ficha Técnica vazia\n- PDFs dos Manuais (Opcional)",
-            outputs="- Ficha Técnica preenchida com sugestões"
+    # =====================================================================
+    # MURAL DE ATIVIDADES  [2026-09-03]
+    # =====================================================================
+    # Abre por BOTÃO, não na abertura do app -- decisão do usuário. Ler a
+    # planilha do Box a cada abertura faria o SIG-FT depender do Box estar
+    # sincronizado só para abrir.
+    def abrir_mural_atividades(self):
+        from datetime import date
+
+        gavetas, erro = self._ler_mural()
+        JanelaPainel(
+            self, titulo="Atividades do dia",
+            montar=lambda pai: montar_mural(
+                pai, gavetas, date.today().strftime("%d/%m/%Y"), erro),
+            geometria="820x640",
         )
 
-        # 5. Gestão LMR
-        self.criar_card_instrucao(
-            row=10,
-            titulo="6. Gestão LMR (Aplicações)",
-            descricao="Automação para inserir ou apagar listas de materiais de reposição (Aplicações) no portal.",
-            inputs="- Planilha de Aplicações LMR",
-            outputs="- Cadastro ou Remoção no Portal"
-        )
+    def _ler_mural(self):
+        """`(gavetas, erro)` -- le a aba Atividades do mapeamento.
 
-        # 6. Gerenciamento Geral
-        self.criar_card_instrucao(
-            row=11,
-            titulo="7. PMIB Manager",
-            descricao="Gestão macro do processo: Renomeia arquivos, atualiza planilha mestra e calcula KPIs de avanço.",
-            inputs="- Base de Dados API\n- Pasta Raiz de Arquivos",
-            outputs="- Relatórios de Avanço\n- Organização de Pastas"
-        )
+        Devolve o erro como TEXTO em vez de levantar: o mural e informativo, e
+        uma planilha ausente nao pode virar traceback na cara do usuario.
+        """
+        from datetime import date
 
-        # Espaço final
-        ctk.CTkLabel(self, text="").grid(row=12, column=0, pady=20)
+        from sigft.services import atividades as at
 
-    def criar_area_config_api(self, row):
-        """Cria o painel de configuração de chaves API."""
-        frame = ctk.CTkFrame(self, fg_color=("gray90", "gray16"), corner_radius=10)
-        frame.grid(row=row, column=0, sticky="ew", padx=20, pady=10)
+        # As gavetas saem de `at.FAIXAS`, NUNCA de uma lista escrita aqui.
+        # A primeira versao listava as faixas a mao; quando o mural passou a
+        # ser por PRAZO os nomes mudaram no servico e esta linha ficou para
+        # tras, com `at.PARA_COMECAR` e `at.TRAVADA` inexistentes. O
+        # AttributeError subia antes do try e o botao simplesmente nao abria
+        # janela nenhuma. Derivando de `FAIXAS` os dois lados nao tem como
+        # divergir de novo.
+        vazio = {faixa: [] for faixa in at.FAIXAS}
+
+        caminho = self._caminho_do_mapeamento()
+        if not caminho:
+            return vazio, (
+                "Nao encontrei o arquivo de mapeamento.\n\n"
+                "Rode o PMIB Manager uma vez apontando a planilha gerenciadora -- "
+                "o mural passa a ler dela."
+            )
+
+        try:
+            import openpyxl
+
+            # `data_only=True` e obrigatorio: as celulas de agregacao da aba
+            # sao formulas, e sem isto `.value` devolveria a string "=FALSE()"
+            # em vez do valor. Foi um defeito real nesta mesma frente.
+            wb = openpyxl.load_workbook(caminho, data_only=True, read_only=True)
+            if "Atividades" not in wb.sheetnames:
+                wb.close()
+                return vazio, "A planilha nao tem a aba 'Atividades'.\n\n" + str(caminho)
+
+            ws = wb["Atividades"]
+
+            # ⚠️ `iter_rows`, NUNCA `ws.cell(...)` numa planilha `read_only`.
+            #
+            # Em modo read-only a aba e um FLUXO so-para-frente: cada
+            # `ws.cell(linha, coluna)` re-percorre o XML desde o comeco. Eram
+            # 84 linhas x 10 colunas = 840 varreduras, e o mural levava
+            # 3,9 s para abrir num arquivo de 40 KB. `iter_rows` passa uma
+            # vez so: caiu para centesimos de segundo.
+            def _celula(valores, coluna):
+                indice = coluna - 1
+                return valores[indice] if indice < len(valores) else None
+
+            linhas = []
+            for valores in ws.iter_rows(min_row=at.LINHA_CABECALHO + 1, values_only=True):
+                linhas.append({
+                    "nv": _celula(valores, at.COL_NV),
+                    "descricao": _celula(valores, at.COL_DESCRICAO),
+                    "concluida": _celula(valores, at.COL_CONCLUIDA),
+                    "status": _celula(valores, at.COL_STATUS),
+                    "com_quem": _celula(valores, at.COL_COM_QUEM),
+                    "criticidade": _celula(valores, at.COL_CRITICIDADE),
+                    "data_prevista_inicio": _celula(valores, at.COL_DATA_PREVISTA_INICIO) or "",
+                    "previsao_termino": _celula(valores, at.COL_PREVISAO_TERMINO) or "",
+                    # As datas REAIS. Antes iam como "" fixo, e a regra que
+                    # decide "ja comecou" ficava cega: atividade com DATA DE
+                    # INICIO preenchida aparecia como "era para comecar ha N
+                    # dias".
+                    "data_inicio": _celula(valores, at.COL_DATA_INICIO) or "",
+                    "data_termino": _celula(valores, at.COL_DATA_TERMINO) or "",
+                })
+            wb.close()
+            return at.mural(linhas, date.today()), None
+        except Exception as e:
+            return vazio, "Nao consegui ler as atividades:\n{}: {}\n\n{}".format(
+                type(e).__name__, e, caminho)
+
+    def _caminho_do_mapeamento(self):
+        """O ultimo arquivo gerenciadora que o usuario escolheu, se existir."""
+        import os
+
+        from sigft.core import prefs
+
+        # 1. O arquivo que o PMIB Manager registrou ao ser usado.
+        try:
+            salvo = prefs.get_last_file(prefs.CHAVE_MAPEAMENTO)
+        except Exception:
+            salvo = None
+        if salvo:
+            return salvo
+
+        # 2. Reserva: a PASTA lembrada do seletor, procurando o arquivo nela.
+        #    Cobre quem já usou o PMIB Manager ANTES desta versão, quando só a
+        #    pasta era guardada.
+        try:
+            pasta = prefs.get_initial_dir("pmib_manager.master", "excel")
+        except Exception:
+            pasta = None
+        if pasta and os.path.isdir(pasta):
+            for nome in sorted(os.listdir(pasta)):
+                if "mapeamento" in nome.lower() and nome.lower().endswith((".xlsx", ".xlsm")):
+                    return os.path.join(pasta, nome)
+        return None
+
+    # =====================================================================
+    # CARDS DOS MODULOS  [2026-09-03] -- clicaveis
+    # =====================================================================
+    def _criar_cards_dos_modulos(self, row):
+        """Um card por modulo, clicavel, que leva direto a tela.
+
+        Antes eram 7 cards agrupando modulos ("1 & 2. Criacao e
+        Estruturacao"), meramente informativos. O usuario pediu: "temos todos
+        os modulos do SIG-FT explicado, precisamos mudar a forma que isso
+        esta. Vamos descreve-los diferente, atualiza-los e torna-los clicaveis
+        para levar direto pro modulo".
+        """
+        container = ctk.CTkFrame(self, fg_color="transparent")
+        container.grid(row=row, column=0, sticky="nsew", padx=20, pady=(0, 20))
+        container.grid_columnconfigure((0, 1), weight=1, uniform="cards")
+
+        for indice, (frame_alvo, titulo, descricao) in enumerate(MODULOS):
+            self._card_clicavel(
+                container, frame_alvo, titulo, descricao,
+                linha=indice // 2, coluna=indice % 2,
+            )
+
+    def _card_clicavel(self, pai, frame_alvo, titulo, descricao, linha, coluna):
+        card = ctk.CTkFrame(pai, fg_color=COR_CARTAO, corner_radius=8,
+                            border_width=1, border_color="#333333")
+        card.grid(row=linha, column=coluna, sticky="nsew", padx=6, pady=6)
+
+        lbl_titulo = ctk.CTkLabel(card, text=titulo, font=("Roboto", 15, "bold"),
+                                  text_color=COLORS["accent"], anchor="w")
+        lbl_titulo.pack(anchor="w", padx=14, pady=(12, 4), fill="x")
+
+        lbl_desc = ctk.CTkLabel(card, text=descricao, font=("Roboto", 12),
+                                text_color="gray70", justify="left",
+                                wraplength=380, anchor="w")
+        lbl_desc.pack(anchor="w", padx=14, pady=(0, 12), fill="x")
+
+        # O clique vale no card INTEIRO, nao so no titulo: um card que so
+        # responde numa palavra parece quebrado.
+        def ir(_evento=None):
+            try:
+                self.controller.show_frame(frame_alvo)
+            except Exception:
+                pass
+
+        def realce(_e=None):
+            card.configure(border_color=COLORS["accent"])
+
+        def normal(_e=None):
+            card.configure(border_color="#333333")
+
+        for widget in (card, lbl_titulo, lbl_desc):
+            widget.bind("<Button-1>", ir)
+            widget.bind("<Enter>", realce)
+            widget.bind("<Leave>", normal)
+            try:
+                widget.configure(cursor="hand2")
+            except Exception:
+                pass
+
+    def criar_area_config_api(self, row, parent=None):
+        """Cria o painel de configuração de chaves API.
+
+        [2026-09-03] `parent` permite hospedar o painel numa JANELA em vez de
+        na Home -- ver `JanelaPainel`. Com `parent`, o frame é empacotado em
+        vez de posicionado no grid da Home.
+        """
+        dono = parent if parent is not None else self
+        frame = ctk.CTkFrame(dono, fg_color=("gray90", "gray16"), corner_radius=10)
+        if parent is None:
+            frame.grid(row=row, column=0, sticky="ew", padx=20, pady=10)
+        else:
+            frame.pack(fill="both", expand=True, padx=10, pady=10)
 
         ctk.CTkLabel(frame, text="🔑 Configuração de Chaves API (Global)", font=("Arial", 16, "bold")).pack(pady=10, padx=10, anchor="w")
 
@@ -229,7 +442,7 @@ class HomeView(ctk.CTkScrollableFrame):
         "openai_compat": "AMP / IA da empresa",
     }
 
-    def criar_painel_modelos_ia(self, row):
+    def criar_painel_modelos_ia(self, row, parent=None):
         """Painel "Modelos de IA": provedor -> modelo, com filtro de texto,
         override por tarefa e campo manual. Provedores sem chave não
         aparecem."""
@@ -241,9 +454,17 @@ class HomeView(ctk.CTkScrollableFrame):
         self.lbl_catalogo_ia = None
         self.opts_modelo_ia = []
 
-        frame = ctk.CTkFrame(self, fg_color=("gray90", "gray16"), corner_radius=10)
-        frame.grid(row=row, column=0, sticky="ew", padx=20, pady=10)
+        dono = parent if parent is not None else self
+        frame = ctk.CTkFrame(dono, fg_color=("gray90", "gray16"), corner_radius=10)
+        if parent is None:
+            frame.grid(row=row, column=0, sticky="ew", padx=20, pady=10)
+        else:
+            frame.pack(fill="both", expand=True, padx=10, pady=10)
         self.frame_modelos_ia = frame
+        # [2026-09-03] Guardado para o painel poder se remontar dentro da
+        # janela quando o usuário troca de provedor -- `_recarregar_painel_
+        # modelos_ia` precisa saber onde reconstruir.
+        self._parent_modelos_ia = parent
 
         ctk.CTkLabel(frame, text="🤖 Modelos de IA", font=("Arial", 16, "bold")).pack(pady=10, padx=10, anchor="w")
         ctk.CTkLabel(
@@ -617,7 +838,13 @@ class HomeView(ctk.CTkScrollableFrame):
 
     def _recarregar_painel_modelos_ia(self):
         self.frame_modelos_ia.destroy()
-        self.criar_painel_modelos_ia(row=self._row_modelos_ia)
+        # [2026-09-03] Remonta ONDE ele estava: na janela, se veio de uma
+        # janela; na Home, se não. Sem isto, trocar de provedor com o painel
+        # aberto numa janela o reconstruiria na Home, atrás dela.
+        self.criar_painel_modelos_ia(
+            row=self._row_modelos_ia,
+            parent=getattr(self, "_parent_modelos_ia", None),
+        )
 
     def _escolheu_favorito_global_ia(self, _escolha):
         """Escolher na lista DESISTE do modelo manual -- vale sempre o último
@@ -752,7 +979,7 @@ class HomeView(ctk.CTkScrollableFrame):
     # `_atualizar_texto_gastos_ia` (try/except) -- o painel NUNCA pode
     # impedir a Home de abrir, mesmo se `logs/` estiver corrompido/
     # inacessível.
-    def criar_painel_gastos_ia(self, row):
+    def criar_painel_gastos_ia(self, row, parent=None):
         """Painel "Gastos de IA": resumo em texto (total gasto, nº de
         chamadas, período coberto) + gasto por módulo e por modelo (via
         `usage.formatar_relatorio_texto` -- CP 3.4), botão "Atualizar" e
@@ -760,8 +987,12 @@ class HomeView(ctk.CTkScrollableFrame):
         amigável ("Nenhuma chamada de IA registrada ainda.", já produzida
         por `formatar_relatorio_texto`), nunca uma tabela vazia ou erro."""
         self._row_gastos_ia = row
-        frame = ctk.CTkFrame(self, fg_color=("gray90", "gray16"), corner_radius=10)
-        frame.grid(row=row, column=0, sticky="ew", padx=20, pady=10)
+        dono = parent if parent is not None else self
+        frame = ctk.CTkFrame(dono, fg_color=("gray90", "gray16"), corner_radius=10)
+        if parent is None:
+            frame.grid(row=row, column=0, sticky="ew", padx=20, pady=10)
+        else:
+            frame.pack(fill="both", expand=True, padx=10, pady=10)
         self.frame_gastos_ia = frame
 
         ctk.CTkLabel(frame, text="💰 Gastos de IA", font=("Arial", 16, "bold")).pack(pady=10, padx=10, anchor="w")

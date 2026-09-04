@@ -83,8 +83,13 @@ from pathlib import Path
 # já listado em `.gitignore`.
 CONFIG_FILE = "user_prefs.json"
 
-# As 3 seções do estado persistido — ver docstring do módulo.
-_SECOES_ESTADO = ("ultimos", "categorias", "pastas_padrao")
+# As seções do estado persistido — ver docstring do módulo.
+#
+# ⚠️ Seção que não estiver AQUI é descartada ao carregar, mesmo que
+# `remember_*` a tenha gravado. Foi o que aconteceu com "arquivos" em
+# 2026-09-03: `remember_file` gravava, `get_last_file` lia `None`, e o mural
+# de atividades dizia "não encontrei o mapeamento" sem nenhum erro aparecer.
+_SECOES_ESTADO = ("ultimos", "categorias", "pastas_padrao", "arquivos")
 
 
 def _estado_vazio() -> dict[str, dict[str, str]]:
@@ -296,3 +301,57 @@ def set_default_dir(
     estado = _carregar_estado(config_path)
     estado["pastas_padrao"][nome] = os.fspath(caminho)
     _salvar_estado(estado, config_path)
+
+
+# =============================================================================
+# Lembrar um ARQUIVO inteiro  [2026-09-03]
+# =============================================================================
+# `remember_dir` guarda a PASTA de onde o usuário escolheu um arquivo — é o que
+# o CP 1.5 precisava, porque o objetivo era abrir o diálogo no lugar certo.
+#
+# Mas o mural de atividades precisa do ARQUIVO: ele lê a planilha de mapeamento
+# sem passar por diálogo nenhum. Sem isto, o mural nunca achava o arquivo e
+# dizia "não encontrei o mapeamento" mesmo com o usuário tendo acabado de
+# rodar o PMIB Manager sobre ele — foi o que aconteceu em 2026-09-03.
+CHAVE_ARQUIVOS = "arquivos"
+
+# A planilha de mapeamento que o PMIB Manager usa. O mural de atividades
+# da Home lê por esta chave -- é o que liga as duas telas sem que a Home
+# precise pedir o arquivo de novo.
+CHAVE_MAPEAMENTO = "pmib_manager.mapeamento"
+
+
+def remember_file(
+    chave: str,
+    caminho: str | os.PathLike[str],
+    *,
+    config_path: str | os.PathLike[str] = CONFIG_FILE,
+) -> None:
+    """Guarda o CAMINHO COMPLETO de um arquivo sob `chave`.
+
+    Não valida se o arquivo existe: o momento de gravar é quando o usuário
+    acabou de escolhê-lo, e a validação certa é na LEITURA (`get_last_file`),
+    porque o arquivo pode sumir entre uma coisa e outra.
+    """
+    if not caminho:
+        return
+    estado = _carregar_estado(config_path)
+    estado.setdefault(CHAVE_ARQUIVOS, {})[chave] = str(caminho)
+    _salvar_estado(estado, config_path)
+
+
+def get_last_file(
+    chave: str,
+    *,
+    config_path: str | os.PathLike[str] = CONFIG_FILE,
+) -> str | None:
+    """O último arquivo lembrado sob `chave`, SE ainda existir no disco.
+
+    Devolve `None` quando não há registro ou quando o arquivo sumiu — quem
+    chama trata os dois casos igual, que é o certo: nos dois não há o que ler.
+    """
+    estado = _carregar_estado(config_path)
+    caminho = estado.get(CHAVE_ARQUIVOS, {}).get(chave)
+    if caminho and os.path.isfile(caminho):
+        return caminho
+    return None
