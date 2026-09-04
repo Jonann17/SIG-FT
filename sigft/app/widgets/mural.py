@@ -194,12 +194,31 @@ def _cartao(parent, item, faixa):
         font=theme.FONTE_CORPO, justify="left", wraplength=560, anchor="w",
     ).pack(side="left", fill="x", expand=True)
 
-    # O PRAZO, em destaque e na cor da faixa: "venceu há 4 dias" em vez da
-    # data crua, que obrigaria o leitor a fazer a conta.
+    # O PRAZO, à direita, em duas alturas:
+    #
+    #   venceu há 4 dias          <- a urgência, na cor da faixa
+    #   término 11/09/26          <- para quando é, em corpo miúdo
+    #
+    # A frase relativa responde "corre?"; a data responde "para quando?".
+    # Antes só havia a primeira, e em faixa de início ("era para começar
+    # ontem") dava para ler o cartão inteiro sem descobrir o prazo final.
+    #
+    # As duas frases vêm PRONTAS do serviço (`_dias`, `_termino`), como
+    # `_grupo`: a data de hoje e a regra de quando contar os dias moram lá,
+    # onde se testam sem abrir janela.
+    prazos = ctk.CTkFrame(topo, fg_color="transparent")
+    prazos.pack(side="right", padx=(10, 0))
+
     ctk.CTkLabel(
-        topo, text=at.frase_do_prazo(faixa, item.get("_dias")),
+        prazos, text=at.frase_do_prazo(faixa, item.get("_dias")),
         font=("Roboto", 12, "bold"), text_color=COR_FAIXA[faixa], anchor="e",
-    ).pack(side="right", padx=(10, 0))
+    ).pack(anchor="e")
+
+    if item.get("_termino"):
+        ctk.CTkLabel(
+            prazos, text=str(item["_termino"]), font=theme.FONTE_CORPO_MIUDO,
+            text_color=theme.COR_TEXTO_APOIO, anchor="e",
+        ).pack(anchor="e")
 
     partes = []
     if item.get("com_quem"):

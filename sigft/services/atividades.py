@@ -366,6 +366,10 @@ def mural(linhas, hoje, horizonte=HORIZONTE_DIAS) -> dict[str, list[dict]]:
         item["_faixa"] = faixa
         item["_dias"] = dias
         item["_grupo"] = grupo_de(linhas, indice)
+        item["_termino"] = frase_do_termino(
+            linha.get("previsao_termino"), hoje,
+            com_contagem=faixa not in FAIXAS_PELO_TERMINO,
+        )
         gavetas[faixa].append(item)
 
     for lista in gavetas.values():
@@ -380,6 +384,44 @@ def mural(linhas, hoje, horizonte=HORIZONTE_DIAS) -> dict[str, list[dict]]:
 
 def total_do_mural(gavetas) -> int:
     return sum(len(v) for v in gavetas.values())
+
+
+# As faixas cuja frase JÁ fala do término. Nelas o cartão não repete a
+# contagem de dias — mostra só a data, que é o que faltava.
+FAIXAS_PELO_TERMINO = (ATRASADA, TRAVADA, EM_ANDAMENTO)
+
+
+def frase_do_termino(termino, hoje, com_contagem=True) -> str | None:
+    """`"término 11/09/26 · faltam 7 dias"`, ou `None` se não houver data.
+
+    [2026-09-04] Pedido do usuário: *"colocar a data prevista de finalização
+    da atividade, assim dá um norte (e quantos dias tem para acabar)"*.
+
+    O cartão só mostrava frases RELATIVAS ("era para começar ontem"), e
+    nenhuma delas era sobre o fim: nas faixas de início dava para ler o
+    cartão inteiro sem descobrir para quando a atividade é.
+
+    `com_contagem=False` nas faixas cuja frase de prazo já conta os dias —
+    repetir o mesmo número duas vezes no mesmo cartão só ocupa espaço.
+    """
+    dia = _so_data(termino)
+    if dia is None:
+        return None
+
+    data = dia.strftime("%d/%m/%y")
+    if not com_contagem:
+        return f"término {data}"
+
+    dias = (dia - hoje).days
+    if dias < 0:
+        conta = "venceu ontem" if dias == -1 else f"venceu há {abs(dias)} dias"
+    elif dias == 0:
+        conta = "termina hoje"
+    elif dias == 1:
+        conta = "falta 1 dia"
+    else:
+        conta = f"faltam {dias} dias"
+    return f"término {data} · {conta}"
 
 
 def frase_do_prazo(faixa, dias) -> str:

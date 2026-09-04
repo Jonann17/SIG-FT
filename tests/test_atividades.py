@@ -636,3 +636,67 @@ def test_cada_item_do_mural_carrega_o_grupo():
 
     assert len(itens) == 1
     assert itens[0]["_grupo"] == "Sala Segura"
+
+
+# =============================================================================
+# H. A data de termino no cartao
+# =============================================================================
+# [2026-09-04] Pedido do usuário: *"colocar a data prevista de finalização da
+# atividade, assim dá um norte (e quantos dias tem para acabar)"*.
+#
+# O cartão só tinha frases RELATIVAS, e nenhuma sobre o fim: nas faixas de
+# início ("era para começar ontem") dava para ler o cartão inteiro sem
+# descobrir para quando a atividade é.
+
+def test_termino_no_futuro_conta_os_dias():
+    assert at.frase_do_termino(datetime(2026, 9, 11), HOJE) == "término 11/09/26 · faltam 8 dias"
+
+
+def test_termino_amanha_fala_no_singular():
+    assert at.frase_do_termino(datetime(2026, 9, 4), HOJE) == "término 04/09/26 · falta 1 dia"
+
+
+def test_termino_hoje():
+    assert at.frase_do_termino(datetime(2026, 9, 3), HOJE) == "término 03/09/26 · termina hoje"
+
+
+def test_termino_vencido():
+    assert at.frase_do_termino(datetime(2026, 8, 30), HOJE) == "término 30/08/26 · venceu há 4 dias"
+    assert at.frase_do_termino(datetime(2026, 9, 2), HOJE) == "término 02/09/26 · venceu ontem"
+
+
+def test_sem_data_de_termino_nao_ha_frase():
+    """O cartão simplesmente não desenha a linha — não pode virar 'None'."""
+    assert at.frase_do_termino("", HOJE) is None
+    assert at.frase_do_termino(None, HOJE) is None
+
+
+def test_sem_contagem_mostra_so_a_data():
+    """Nas faixas cuja frase de prazo já conta os dias, repetir o mesmo
+    número duas vezes no mesmo cartão só ocupa espaço."""
+    assert at.frase_do_termino(datetime(2026, 9, 11), HOJE, com_contagem=False) == "término 11/09/26"
+
+
+def test_faixas_pelo_termino_nao_repetem_a_contagem():
+    """ATRASADA, TRAVADA e EM_ANDAMENTO já dizem os dias na frase do prazo."""
+    a = ativ(status="Travada", previsao_termino=datetime(2026, 9, 11))
+
+    item = [i for lista in at.mural([a], HOJE).values() for i in lista][0]
+
+    assert item["_faixa"] == at.TRAVADA
+    assert item["_termino"] == "término 11/09/26", "sem contagem: a frase do prazo ja a tem"
+    assert at.frase_do_prazo(at.TRAVADA, item["_dias"]) == "previsão em 8 dias"
+
+
+def test_faixas_de_inicio_trazem_a_contagem_do_termino():
+    """Aqui a frase do prazo fala do INÍCIO, então o término precisa contar."""
+    a = ativ(
+        status="Não iniciada",
+        data_prevista_inicio=datetime(2026, 9, 2),
+        previsao_termino=datetime(2026, 9, 11),
+    )
+
+    item = [i for lista in at.mural([a], HOJE).values() for i in lista][0]
+
+    assert item["_faixa"] == at.DEVERIA_TER_COMECADO
+    assert item["_termino"] == "término 11/09/26 · faltam 8 dias"
