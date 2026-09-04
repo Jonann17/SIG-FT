@@ -31,7 +31,21 @@ from sigft.core.excel import locking
 # -----------------------------------------------------------------
 # CONSTANTES E CONFIGURAÇÕES
 # -----------------------------------------------------------------
-FORBIDDEN_NA_STRINGS = ['n/a', 'na', 'não aplicável', 'nao aplicavel', 'n.a', 'n.d', 'nd', 'não se aplica']
+# Respostas que nao sao resposta. Comparadas contra `str(val).strip().lower()`
+# -- por isso tudo aqui e minusculo, com o acento como o fornecedor escreve.
+#
+# AS FORMAS EM INGLES entraram em 2026-09-03, na auditoria da ficha em ingles.
+# A lista so conhecia portugues, e o fornecedor estrangeiro -- que e a razao de
+# a ficha em ingles existir -- escreve "Not applicable". O efeito era o pior
+# possivel: nao estando na lista, a resposta contava como VALIDA, a ficha
+# pontuava como se tivesse sido preenchida, e o campo vazio chegava ao portal.
+# Acrescentar sinonimo e ganho puro -- nada muda em portugues.
+FORBIDDEN_NA_STRINGS = [
+    'n/a', 'na', 'n.a', 'n.a.', 'n.d', 'nd',
+    'não aplicável', 'nao aplicavel', 'não se aplica', 'nao se aplica',
+    'not applicable', 'not aplicable', 'does not apply', 'not required',
+    'no aplicable', 'no se aplica',          # espanhol, mesma familia de fichas
+]
 
 # Estilos de Fonte (Objetos Globais)
 FONT_ERRO_VERMELHO = Font(color="FF0000", bold=True)

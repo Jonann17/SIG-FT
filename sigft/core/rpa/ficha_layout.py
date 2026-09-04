@@ -170,3 +170,92 @@ VARIAVEIS_SPECS = {
 # acontecer, os dois números são iguais de propósito, não por coincidência.
 # -----------------------------------------------------------------------
 MAX_LINHAS_VAZIAS_SEGUIDAS = 25
+
+
+# =============================================================================
+# QUAL ABA DO WORKBOOK É A FICHA (2026-09-03)
+# =============================================================================
+# Acréscimo ADITIVO nesta zona compartilhada: nenhum valor existente mudou.
+#
+# Mora aqui pela mesma razão do `CONFIG_MAP`: é LAYOUT da ficha, e havia TRÊS
+# módulos resolvendo por conta própria — `pdm.aplicar_templates_fichas`,
+# `upload_conditions.extrair_dados_brutos_excel` e `AutoSpecCore.fill_save` —,
+# os dois últimos exigindo o nome literal `"Ficha Técnica Padrão"`. É
+# exatamente o caminho que fez o `CONFIG_MAP` acabar duplicado com ranges
+# divergentes antes do CP 2.4.
+#
+# O que quebrava: uma ficha em INGLÊS tem a aba `"Standard Technical Sheet"`
+# — e desde 2026-09-03 é o próprio SIG-FT que a nomeia assim, a pedido do
+# usuário. O upload de condições devolvia `None` sem dizer por quê; o AutoSpec
+# levantava `ValueError` pedindo uma aba em português.
+NOME_CANONICO_DA_ABA = "Ficha Técnica Padrão"
+
+# Como a aba se chama na ficha ENTREGUE AO FORNECEDOR quando o idioma é
+# inglês. Não é escolha do código: é o nome que aparece na ficha
+# `4500063671.0052_enUS.xlsx`, que o usuário entregou — ou seja, ele já
+# renomeava à mão, ficha a ficha. O template `Technical_Sheet_of_PDM-R3.xlsx`
+# ainda traz a aba com o nome em português.
+NOME_DA_ABA_EM_INGLES = "Standard Technical Sheet"
+
+# Nomes aceitos, normalizados (sem acento, minúsculas, sem espaço nas pontas).
+NOMES_DA_ABA_DA_FICHA = (
+    "ficha tecnica padrao",
+    # Dos arquivos REAIS: o template EN traz a aba ainda com o nome em
+    # PORTUGUÊS (herança do template do qual foi derivado), e a ficha já
+    # preenchida traz "Standard Technical Sheet". Os dois circulam.
+    "standard technical sheet",
+    "standard datasheet",
+    "technical datasheet",
+    "datasheet",
+)
+
+
+def _normalizar_nome_de_aba(nome):
+    import unicodedata
+    texto = unicodedata.normalize("NFKD", str(nome or ""))
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    return " ".join(texto.lower().split())
+
+
+def nome_da_aba_da_ficha(wb):
+    """O NOME da aba onde a ficha técnica mora, dentro de um workbook.
+
+    Devolve o nome, e não o objeto: é só disso que os chamadores precisam
+    (`wb[nome]`), e pedir `.title` de volta ao chamador só criava um passo a
+    mais para errar.
+
+    **O que isto conserta.** Era `wb["Ficha Técnica Padrão"]`, nome fixo, em
+    três módulos. No montador (`pdm`), um template com a aba noutro nome
+    levantava `KeyError` DENTRO do laço, e o `except` genérico transformava
+    isso em "ERRO ao gerar ficha {pmib}" **uma vez por ficha** — num lote de
+    200 materiais, 200 linhas idênticas, nenhuma delas dizendo que o problema
+    era a aba.
+
+    Workbook de uma aba só usa ela: não há ambiguidade para resolver, e um
+    arquivo válido não pode ser recusado por causa do nome.
+
+    Nenhuma aba reconhecida levanta `ValueError` **com os nomes encontrados**
+    — a mensagem precisa dizer ao usuário o que ele tem em mãos.
+    """
+    try:
+        nomes = [ws.title for ws in wb.worksheets]
+    except Exception:
+        nomes = []
+    if not nomes:
+        # Não consegui enumerar as abas -- o que NÃO é o mesmo que "o arquivo
+        # está errado". Cai no nome canônico e deixa o erro, se houver, vir de
+        # quem de fato tentar usar a aba.
+        return NOME_CANONICO_DA_ABA
+    if len(nomes) == 1:
+        return nomes[0]
+
+    for nome in nomes:
+        if _normalizar_nome_de_aba(nome) in NOMES_DA_ABA_DA_FICHA:
+            return nome
+
+    encontrados = ", ".join(f"'{n}'" for n in nomes) or "(nenhuma)"
+    raise ValueError(
+        "Nao achei a aba da ficha tecnica no arquivo. Abas encontradas: "
+        f"{encontrados}. Esperado um destes nomes: "
+        + ", ".join(f"'{n}'" for n in NOMES_DA_ABA_DA_FICHA)
+    )
