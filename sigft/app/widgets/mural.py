@@ -175,8 +175,19 @@ def _cartao(parent, item, faixa):
     corpo = ctk.CTkFrame(linha, fg_color=theme.COR_CARTAO, corner_radius=6, height=1)
     corpo.grid(row=0, column=1, sticky="ew")
 
+    # O GRUPO (nível 1), acima da descrição e em corpo menor: lê-se primeiro
+    # a frente, depois a tarefa. Vai ACIMA e não na linha de rodapé porque a
+    # pergunta que ele responde ("de qual grupo é isto?") vem ANTES de ler a
+    # atividade, não depois.
+    if item.get("_grupo"):
+        ctk.CTkLabel(
+            corpo, text=str(item["_grupo"]), font=("Roboto", 11, "bold"),
+            text_color=theme.COR_TEXTO_APOIO_CLARO, anchor="w",
+            justify="left", wraplength=560,
+        ).pack(anchor="w", padx=10, pady=(8, 0))
+
     topo = ctk.CTkFrame(corpo, fg_color="transparent")
-    topo.pack(fill="x", padx=10, pady=(8, 2))
+    topo.pack(fill="x", padx=10, pady=(2 if item.get("_grupo") else 8, 2))
 
     ctk.CTkLabel(
         topo, text=str(item.get("descricao") or "(sem descrição)"),

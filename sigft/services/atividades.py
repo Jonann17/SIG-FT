@@ -311,6 +311,26 @@ def classificar(linha, hoje, horizonte=HORIZONTE_DIAS):
     return None, None
 
 
+def grupo_de(linhas, indice):
+    """A descrição do GRUPO (nível 1) a que a linha pertence, ou `None`.
+
+    [2026-09-04] Pedido do usuário: *"para cada atividade deveríamos ter a
+    descrição do nível 1 [...] pois eu li a atividade e não sei de qual grupo
+    é"*. No mural as atividades vêm reordenadas por PRAZO, então elas chegam
+    fora da ordem da planilha — e é a ordem da planilha que dizia, sozinha, a
+    que frente cada uma pertencia. Ao reordenar, o mural perdeu essa
+    informação sem repor nada no lugar.
+
+    A hierarquia é posicional: o grupo de uma linha é o nível 1 mais próximo
+    ACIMA dela. Vale para nível 2 e para nível 3 (a subatividade herda o
+    mesmo grupo da atividade-mãe).
+    """
+    for i in range(indice, -1, -1):
+        if _nivel(linhas[i]) == 1:
+            return str(linhas[i].get("descricao") or "").strip() or None
+    return None
+
+
 def _criticidade(linha) -> int:
     try:
         return int(linha.get("criticidade") or 0)
@@ -345,6 +365,7 @@ def mural(linhas, hoje, horizonte=HORIZONTE_DIAS) -> dict[str, list[dict]]:
         item = dict(linha)
         item["_faixa"] = faixa
         item["_dias"] = dias
+        item["_grupo"] = grupo_de(linhas, indice)
         gavetas[faixa].append(item)
 
     for lista in gavetas.values():

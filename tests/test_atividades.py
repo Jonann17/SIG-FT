@@ -562,3 +562,77 @@ def test_frase_da_travada_mostra_o_prazo():
 
 def test_travada_esta_entre_as_faixas():
     assert at.TRAVADA in at.FAIXAS
+
+
+# =============================================================================
+# G. De que GRUPO e cada atividade
+# =============================================================================
+# [2026-09-04] Pedido do usuário: *"para cada atividade deveríamos ter a
+# descrição do nível 1 [...] pois eu li a atividade e não sei de qual grupo
+# é"*.
+#
+# O mural reordena por PRAZO, então as atividades chegam fora da ordem da
+# planilha — e era a ordem da planilha que dizia, sozinha, a que frente cada
+# uma pertencia. Reordenar tirou essa informação sem repor nada.
+
+def test_o_grupo_e_o_nivel_1_mais_proximo_acima():
+    linhas = [
+        linha(1) | {"descricao": "Sala Segura"},
+        linha(2) | {"descricao": "Explodir os itens"},
+        linha(2) | {"descricao": "Preencher as fichas"},
+    ]
+
+    assert at.grupo_de(linhas, 1) == "Sala Segura"
+    assert at.grupo_de(linhas, 2) == "Sala Segura"
+
+
+def test_a_subatividade_herda_o_grupo_da_mae():
+    """Nível 3 pertence ao mesmo grupo do nível 2 acima dele."""
+    linhas = [
+        linha(1) | {"descricao": "RV - Parte Digital"},
+        linha(2) | {"descricao": "Executar a Aplicação LMR do CCAR"},
+        linha(3) | {"descricao": "Escalar à engenharia"},
+    ]
+
+    assert at.grupo_de(linhas, 2) == "RV - Parte Digital"
+
+
+def test_o_grupo_muda_quando_comeca_outro_nivel_1():
+    linhas = [
+        linha(1) | {"descricao": "Sala Segura"},
+        linha(2) | {"descricao": "uma"},
+        linha(1) | {"descricao": "Água Pura"},
+        linha(2) | {"descricao": "outra"},
+    ]
+
+    assert at.grupo_de(linhas, 1) == "Sala Segura"
+    assert at.grupo_de(linhas, 3) == "Água Pura"
+
+
+def test_sem_nivel_1_acima_nao_ha_grupo():
+    """Não pode explodir: a planilha pode começar com uma linha solta."""
+    linhas = [linha(2) | {"descricao": "atividade orfa"}]
+
+    assert at.grupo_de(linhas, 0) is None
+
+
+def test_grupo_vazio_conta_como_sem_grupo():
+    linhas = [linha(1) | {"descricao": "   "}, linha(2) | {"descricao": "x"}]
+
+    assert at.grupo_de(linhas, 1) is None
+
+
+def test_cada_item_do_mural_carrega_o_grupo():
+    """O que a tela consome. Sem isto o cartão não teria o que desenhar."""
+    linhas = [
+        ativ(nv=1, descricao="Sala Segura"),
+        ativ(nv=2, descricao="Executar a LMR",
+             data_prevista_inicio=datetime(2026, 9, 3),
+             previsao_termino=datetime(2026, 9, 10)),
+    ]
+
+    gavetas = at.mural(linhas, HOJE)
+    itens = [i for lista in gavetas.values() for i in lista]
+
+    assert len(itens) == 1
+    assert itens[0]["_grupo"] == "Sala Segura"
