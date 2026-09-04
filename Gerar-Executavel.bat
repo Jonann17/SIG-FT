@@ -133,7 +133,7 @@ rem
 rem  Medido nesta maquina em 2026-08-27. Por isso build e trabalho vao para
 rem  %LOCALAPPDATA%\SIG-FT (curto, e onde o venv ja mora), e so o resultado e
 rem  copiado de volta.
-set "SIGFT_BUILD_DIR=%LOCALAPPDATA%\SIG-FTuild-exe"
+set "SIGFT_BUILD_DIR=%LOCALAPPDATA%\SIG-FT\build-exe"
 set "SIGFT_DIST_DIR=%LOCALAPPDATA%\SIG-FT\dist-exe"
 
 echo.

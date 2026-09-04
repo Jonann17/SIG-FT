@@ -21,27 +21,63 @@ ICONE = RAIZ / "assets" / "SIG-FT-logo-2.ico"
 # O .bat e o acento
 # =============================================================================
 
+# Um `.bat` só pode conter ASCII IMPRIMÍVEL. As duas metades da regra
+# custaram uma rodada cada, e por motivos diferentes.
+_PERMITIDOS = {0x09, 0x0A, 0x0D}  # tab, LF, CR
+
+
+def _bytes_proibidos(dados):
+    """`[(posição, byte)]` do que não pode estar num .bat."""
+    return [
+        (i, b) for i, b in enumerate(dados)
+        if b > 126 or (b < 0x20 and b not in _PERMITIDOS)
+    ]
+
+
 @pytest.mark.parametrize(
     "bat", sorted(RAIZ.glob("*.bat")), ids=lambda p: p.name
 )
-def test_bat_nao_tem_caractere_fora_do_ascii(bat):
-    """Um `.bat` é lido na PÁGINA DE CÓDIGO do console, nunca em UTF-8.
+def test_bat_so_tem_ascii_imprimivel(bat):
+    r"""Nem acento, nem caractere de CONTROLE. São dois defeitos reais.
 
-    O console do Windows em português abre em 850 ou 437. Um "ó" gravado em
-    UTF-8 chega lá como dois bytes de lixo: um caminho com acento deixa de
-    casar, uma mensagem sai ilegível, e — o pior caso — um `if exist` falha
-    silenciosamente e o script segue pelo galho errado sem erro nenhum.
+    **Acima de 126 — o acento.** Um `.bat` é lido na PÁGINA DE CÓDIGO do
+    console (850 ou 437 no Windows em português), nunca em UTF-8. Um "ó"
+    gravado em UTF-8 chega lá como bytes de lixo: um caminho deixa de casar e
+    o `if exist` falha em silêncio, mandando o script pelo galho errado. O
+    caminho do Box tem acento ("CMI - Consórcio Itaipu"), e por isso ele
+    entra por curinga (`Cons*rcio`): o acento existe na PASTA, nunca aqui.
 
-    O caminho do Box tem acento ("CMI - Consórcio Itaipu"). A saída foi o
-    curinga `Cons*rcio`, que o `for /d` resolve para o nome real: o acento
-    existe na PASTA, nunca neste arquivo.
+    **Abaixo de 0x20 — o escape que virou byte.** Em 2026-09-04 o
+    `Gerar-Executavel.bat` tinha um **0x08 (backspace)** no lugar de
+    `\build-exe`: um script Python escreveu o `.bat` com a string não-crua
+    `"...\SIG-FT\build-exe"`, e o `\b` virou backspace. O resultado foi o
+    build morrendo com
+
+        OSError: [WinError 123] ... 'C:\...\SIG-FT\build-exe'
+
+    A primeira versão deste teste só olhava `> 127` e passou por cima — 0x08
+    é ASCII. As duas metades são a mesma família (byte errado num arquivo que
+    ninguém relê), e agora as duas estão cobertas.
+
+    O byte é INVISÍVEL num editor: só uma varredura de bytes o denuncia.
     """
-    ruins = [(i, b) for i, b in enumerate(bat.read_bytes()) if b > 127]
+    ruins = _bytes_proibidos(bat.read_bytes())
     assert not ruins, (
-        f"{bat.name} tem {len(ruins)} byte(s) fora do ASCII, o primeiro na "
-        f"posicao {ruins[0][0]} (0x{ruins[0][1]:02X}). Use curinga para nomes "
-        f"acentuados e escreva as mensagens sem acento."
+        f"{bat.name} tem {len(ruins)} byte(s) proibido(s); o primeiro na "
+        f"posicao {ruins[0][0]} e 0x{ruins[0][1]:02X}. Acima de 0x7E: use "
+        f"curinga para nomes acentuados e escreva as mensagens sem acento. "
+        f"Abaixo de 0x20: e um escape de Python que virou byte -- gere o "
+        f"arquivo com string CRUA (r\"...\")."
     )
+
+
+def test_o_spec_do_build_nao_tem_caractere_de_controle():
+    """Mesmo cuidado no `.spec`, que também é gerado/editado por script."""
+    ruins = [
+        (i, b) for i, b in enumerate((RAIZ / "SIG-FT.spec").read_bytes())
+        if b < 0x20 and b not in _PERMITIDOS
+    ]
+    assert not ruins, f"SIG-FT.spec tem byte de controle: {ruins[:3]}"
 
 
 # =============================================================================
