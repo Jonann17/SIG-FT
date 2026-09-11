@@ -244,6 +244,31 @@ PROVIDER_OPENAI_COMPAT = "openai_compat"
 # Modelos que o código roda HOJE, por tarefa (caracterização — strings exatas
 # hardcoded em cada módulo, referências arquivo:linha abaixo). NÃO são o alvo;
 # são o baseline de equivalência do CP 3.1.
+#
+# ⚠️ ISTO NÃO É O CATÁLOGO DE TAREFAS. O catálogo é `LLM_TASKS`, logo abaixo.
+#
+# Este mapa é uma FOTOGRAFIA de 2026-08: as 5 tarefas que existiam antes do
+# CP 3.1, com o modelo que cada módulo tinha hardcoded. Ele NÃO cresce quando
+# uma tarefa nova nasce — tarefa nova não tem "modelo de antes" para
+# caracterizar, e inventar um faria o baseline mentir (há teste guardando isso
+# em `tests/test_config.py`).
+#
+# PARA QUEM FOR ACRESCENTAR UMA TAREFA DE IA — e isto custou uma pasta de 1192
+# arquivos processada errada em 2026-09-03, então leia antes de escrever:
+#
+#   1. Acrescente em `LLM_TASKS` (o catálogo).
+#   2. Acrescente em `_POLITICA_RETRY_POR_TAREFA`, em `core/llm/client.py`.
+#   3. NÃO acrescente aqui.
+#   4. Rode `pytest tests/test_llm_get_llm_factory.py` — o teste
+#      `test_TODA_tarefa_de_LLM_TASKS_e_resolvivel_por_get_llm` é quem cobra
+#      o passo 2.
+#
+# O que aconteceu em 2026-09-03: `traduzir_pdm` foi registrada em `LLM_TASKS`
+# e em mais nenhum lugar. `get_llm` usava ESTE mapa como catálogo, e a tarefa
+# ficou 100% inalcançável em produção desde o dia em que nasceu — com a suíte
+# verde, porque o guard que existia estava ancorado neste mesmo mapa
+# incompleto. Um mapa não pode ser, ao mesmo tempo, o objeto testado e a lista
+# do que testar.
 LLM_MODELOS_HOJE: dict[str, dict[str, str]] = {
     # GeminiCategorizer.processar_lote (cria_fichas_no_pmib_v1_backend.py:131)
     "categorizar_pdm": {"provider": PROVIDER_GEMINI, "model": "gemini-3.1-pro-preview"},

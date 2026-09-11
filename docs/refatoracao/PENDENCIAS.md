@@ -357,11 +357,20 @@ usado em COMPARACAO (`==`, `in`, `startswith`) dentro de `sigft/`, fora da UI
   dependem do TEXTO da resposta (`montar_validar_ficha`, a exigencia de que
   `embalagem_transporte` diga o TIPO) foram escritas contra respostas em
   portugues. Nao da para medir sem uma ficha em ingles respondida.
-- **O marcador `FORNECER`.** O `analyzer` escreve essa palavra, em vermelho,
-  nos campos que faltam — e ela vai em PORTUGUES numa ficha que sera devolvida
-  a um fornecedor estrangeiro. Nao e defeito de logica (e marcador interno da
-  Itaipu), e uma decisao do usuario: traduzir para "TO PROVIDE"/"REQUIRED"
-  quando o idioma for ingles, ou deixar como esta.
+- ~~**O marcador `FORNECER`.**~~ ✅ **RESOLVIDO em 2026-09-08**, decisao do
+  usuario: traduzir. Virou `ficha_layout.marcador_de_faltante(idioma)` --
+  `FORNECER` em portugues, `PROVIDE` em ingles -- e o idioma sai do PROPRIO
+  documento (`ficha_layout.idioma_da_ficha`, pelo titulo da secao de specs),
+  nao de um parametro que alguem pode esquecer de passar.
+
+  A metade que quase virou defeito: o AutoSpec LE esse marcador de volta
+  (`AutoSpecCore.is_empty`) para saber que o campo continua vazio e precisa da
+  IA. Traduzir so o lado que ESCREVE faria o AutoSpec, numa ficha em ingles,
+  tratar `PROVIDE` como resposta do fornecedor e pular exatamente os campos
+  marcados como faltantes. Os dois lados agora saem de `ficha_layout`, e o
+  reconhecimento ficou mais ESTRITO que o `startswith("FORNECER")` antigo:
+  exige o marcador inteiro ou `MARCADOR (`, para nao engolir uma resposta de
+  verdade que comece com as mesmas letras ("Provided by supplier").
 - **As tres listas de "nao aplicavel" continuam TRES.** Unifica-las e o
   conserto certo (principio nº 1), mas mexe em `autospec` e `upload_conditions`
   ao mesmo tempo e nao cabia nesta rodada.

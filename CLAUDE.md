@@ -34,6 +34,30 @@ O resumo que não pode ser esquecido:
 - Conflito em `PENDENCIAS.md`: **mantenha as duas linhas**, nunca escolha um lado.
 - Branch oficial: `claude/checkpoint-01-refactor-executor-5lawtu`.
 
+### 📌 Mural — avisos de um lado para o outro
+
+Aqui vai o que o **outro** Claude precisa saber **antes de escrever código**:
+regra que mudou, armadilha nova, arquivo que trocou de casa. Está neste arquivo
+de propósito — o `CLAUDE.md` já é carregado em toda sessão, então o aviso chega
+sem custar nenhuma leitura extra. Um arquivo à parte custaria um `Read` por
+sessão e seria esquecido justamente nas sessões corridas.
+
+**Regras do mural** (é o que impede ele de virar outro `PENDENCIAS.md`):
+
+1. **Efêmero.** Leu e absorveu — **apague a linha**. O mural guarda o que ainda
+   não foi absorvido, não o histórico. O histórico é o `git log`.
+2. **No máximo 5 avisos.** Passou disso, o mais antigo vira linha em
+   `PENDENCIAS.md` e sai daqui.
+3. **Duas linhas, no máximo, por aviso.** O detalhe mora no commit; aqui fica o
+   que muda para o outro lado, e onde ler mais.
+4. **Conflito de merge:** mesma regra do `PENDENCIAS.md` — **fique com os dois**.
+5. Aviso **só quando afeta o outro lado**. Trabalho comum não vira aviso.
+
+| Data | De | Aviso |
+|---|---|---|
+| 2026-09-08 | Rafael | **Tarefa de IA nova não entra mais em `LLM_MODELOS_HOJE`.** O catálogo agora é `config.LLM_TASKS` + `_POLITICA_RETRY_POR_TAREFA` (em `core/llm/client.py`); aquele mapa é só o baseline das 5 tarefas do CP 3.1. O passo a passo está no aviso longo em `config.py`, seção 6. |
+| 2026-09-08 | Rafael | **`ficha_layout.py` ganhou 4 conceitos** (aditivos, nada removido): `nome_da_aba_da_ficha`, `marcador_de_faltante`, `e_marcador_de_faltante` e `idioma_da_ficha`. Se for abrir uma ficha ou escrever `FORNECER` nela, use-os — o nome da aba e o marcador mudam quando a ficha é em inglês. |
+
 ---
 
 ## ⚠️ Trabalho de PORTAL exige sessão LOCAL

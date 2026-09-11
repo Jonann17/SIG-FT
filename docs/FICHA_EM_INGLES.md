@@ -212,7 +212,7 @@ seguro.
 | ~~Renomear a aba no idioma inglês~~ | ✅ **feito em 2026-09-03**, decidido pelo usuário — ver acima |
 | Semear o glossário com os termos do AutoSpec | o `GLOSSARIO_MULTILINGUE` do AutoSpec tem 71 termos PT/EN/DE/ES/FR/IT que serviriam de partida |
 | **Analisar** ficha em inglês de volta | ✅ auditado em 2026-09-03 — ver abaixo. Falta só medir o validador de IA contra uma ficha em inglês **respondida por fornecedor** (a que temos veio com a coluna das respostas em branco) |
-| Traduzir o marcador `FORNECER` | o analyzer escreve essa palavra em vermelho nos campos que faltam, e ela vai **em português** numa ficha que volta para um fornecedor estrangeiro. Decisão sua: traduzir quando o idioma for inglês, ou deixar |
+| ~~Traduzir o marcador `FORNECER`~~ | ✅ **feito em 2026-09-08** — vira `PROVIDE` na ficha em inglês; ver o fim deste arquivo |
 
 ## A ficha em inglês no resto do aplicativo (auditoria, 2026-09-03)
 
@@ -265,3 +265,47 @@ Com `4500063671.0052_enUS.xlsx`, e a ficha PT-BR ao lado como controle:
 E `"Not applicable"` / `"Does not apply"` passaram a ser reconhecidos nos dois
 sentidos que importam: contam como ausência, e `"Applicable"` /
 `"Stainless steel 316"` **não** são engolidos junto.
+
+
+## O marcador de campo faltante, no idioma da ficha (2026-09-08)
+
+O `analyzer` escreve **`FORNECER`** em vermelho nos campos que faltam ou foram
+recusados. Numa ficha em inglês — que existe justamente para voltar a um
+fornecedor estrangeiro — a palavra chegava em português. Agora vira
+**`PROVIDE`**: verbo no imperativo, curto, mesmo registro do original. Trocar a
+palavra é editar uma linha em `ficha_layout.MARCADORES_DE_FALTANTE`.
+
+### O idioma vem do documento, não de um parâmetro
+
+`ficha_layout.idioma_da_ficha(ws)` deduz pelo **título da seção de
+especificações** (B75), que o analyzer já procurava nos dois idiomas desde
+03/09. Um parâmetro a mais seria mais uma coisa para esquecer de passar — e
+ficha marcada no idioma errado não se denuncia sozinha. Idioma desconhecido cai
+em português: *"não sei"* é diferente de *"é inglês"*.
+
+### A metade que quase virou defeito
+
+`FORNECER` **não é decoração, é protocolo.** O AutoSpec o lê de volta
+(`AutoSpecCore.is_empty`) para saber que o campo continua vazio e precisa da IA.
+Traduzir só o lado que **escreve** faria o AutoSpec, numa ficha em inglês,
+tratar `PROVIDE` como resposta do fornecedor — e pular exatamente os campos que
+o analyzer acabou de marcar como faltantes.
+
+É a mesma família do defeito da auditoria de 03/09 (o nome da aba fixo em três
+lugares): quem escreve e quem lê precisam concordar, e a concordância mora num
+lugar só. Os dois saem de `ficha_layout`.
+
+De quebra, o reconhecimento ficou **mais estrito** que o `startswith("FORNECER")`
+que existia: exige o marcador inteiro ou `MARCADOR (`, para não engolir uma
+resposta de verdade que comece com as mesmas letras — `"Provided by supplier
+upon request"` é uma resposta, não um marcador.
+
+### Conferido com os arquivos reais
+
+| | Ficha EN real | Ficha PT real |
+|---|---|---|
+| Idioma deduzido | `en` | `pt` |
+| Marcador escrito em M79 | `PROVIDE` | `FORNECER` |
+| AutoSpec lê de volta como vazio | ✅ | ✅ |
+
+E `"Provided by supplier upon request"` **não** é lido como marcador.

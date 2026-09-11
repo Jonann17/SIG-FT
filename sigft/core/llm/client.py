@@ -636,9 +636,17 @@ def _limpar_e_parsear_json(texto: str | None) -> Any:
 # no topo do docstring do módulo -- seleção do usuário (via
 # `core/llm/selecao.py`, keyword-only `selecao_resolvida` injetável em
 # teste) VENCE `LLM_MODELOS_HOJE[tarefa]` quando existir. `LLM_MODELOS_HOJE`
-# continua sendo o FALLBACK (não muda de fonte); a validação de `tarefa`
-# continua feita contra `LLM_MODELOS_HOJE` ANTES de qualquer leitura de
-# seleção; a política de retry/rate-limit/temperature continua vindo de
+# continua sendo o FALLBACK (não muda de fonte) DAS 5 TAREFAS DO CP 3.1; a
+# validação de `tarefa` é feita ANTES de qualquer leitura de seleção.
+#
+# ⚠️ CORRIGIDO EM 2026-09-03: a validação era feita contra `LLM_MODELOS_HOJE`,
+# usando o baseline histórico como CATÁLOGO de tarefas. Tarefa nascida depois
+# do CP 3.1 (`traduzir_pdm`) não entra nesse mapa por decisão de projeto — e
+# ficava inalcançável em produção. Agora o catálogo é `LLM_TASKS`, e
+# `LLM_MODELOS_HOJE` é o fallback de quem tem baseline. Ver `get_llm()` e o
+# aviso longo em `sigft/config.py`, seção 6.
+#
+# A política de retry/rate-limit/temperature continua vindo de
 # `_POLITICA_RETRY_POR_TAREFA[tarefa]` -- por TAREFA, nunca pela seleção/
 # modelo -- ver docstring de `get_llm()` abaixo.
 # =============================================================================
@@ -824,7 +832,21 @@ def get_llm(
     cfg = resolvido if resolvido is not None else cfg_hoje
 
     provider_id = cfg["provider"]
-    politica = dict(_POLITICA_RETRY_POR_TAREFA[tarefa])
+    try:
+        politica = dict(_POLITICA_RETRY_POR_TAREFA[tarefa])
+    except KeyError:
+        # `KeyError: 'traduzir_pdm'` nao diz a ninguem o que fazer. Esta e a
+        # segunda metade da armadilha de 2026-09-03: a tarefa passou pela
+        # validacao logo acima (esta em `LLM_TASKS`) e morria AQUI, tres linhas
+        # depois. Quem previne de verdade e o teste
+        # `test_TODA_tarefa_de_LLM_TASKS_e_resolvivel_por_get_llm`; esta
+        # mensagem e a rede para quando alguem nao rodou a suite.
+        raise ValueError(
+            f"A tarefa {tarefa!r} existe em LLM_TASKS mas nao tem politica de "
+            "retry. Acrescente uma entrada em `_POLITICA_RETRY_POR_TAREFA`, "
+            "neste arquivo (sigft/core/llm/client.py) -- veja as vizinhas para "
+            "o formato."
+        ) from None
     temperature = politica.pop("temperature")
 
     # [CP 8.2] Declarados antes do `if` porque os três ramos atribuem a mesma

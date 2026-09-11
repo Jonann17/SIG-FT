@@ -15,6 +15,7 @@ from llama_parse import LlamaParse
 
 from sigft import config
 from sigft.core.excel import headers, pmib_codes
+from sigft.core.rpa import ficha_layout
 from sigft.core.rpa.ficha_layout import CONFIG_MAP, VARIAVEIS_SPECS, nome_da_aba_da_ficha
 from sigft.core.llm.client import get_llm
 # CP 3.5 (Fase 3): o TEXTO do preâmbulo do prompt de
@@ -1669,8 +1670,24 @@ class AutoSpecCore:
         return marca.strip(), modelo.strip()
 
     def is_empty(self, val):
-        s_val = str(val).strip().upper()
-        return not val or s_val == "" or s_val.startswith("FORNECER")
+        """Campo que o AutoSpec ainda precisa preencher.
+
+        2026-09-08: era `s_val.startswith(...)` com o marcador literal em
+        portugues. Numa ficha em INGLES o analyzer escreve `PROVIDE`, e o
+        AutoSpec trataria isso como resposta do fornecedor -- pulando
+        justamente os campos marcados como faltantes.
+
+        `e_marcador_de_faltante` sai de `ficha_layout`, a MESMA fonte de quem
+        escreve. Duas listas de marcadores divergiriam em silencio nos dois
+        sentidos. Ela tambem e mais estrita que o `startswith` antigo: exige o
+        marcador inteiro ou `MARCADOR (`, para nao engolir uma resposta de
+        verdade que comece com as mesmas letras ("Provided by supplier").
+        """
+        if not val:
+            return True
+        if not str(val).strip():
+            return True
+        return ficha_layout.e_marcador_de_faltante(val)
 
     # P-01: alcance da varredura em busca do rótulo de um checkbox.
     ALCANCE_ROTULO_CHECKBOX = 4

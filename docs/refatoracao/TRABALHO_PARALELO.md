@@ -218,9 +218,37 @@ Não é proibido — é que precisa de um jeito específico para o merge não do
 2. **Mensagem de commit explícita** sobre a zona tocada, ex.:
    `CONFIG_MAP: adiciona campo X (zona compartilhada analyzer/autospec)`
 3. **Registre em `PENDENCIAS.md`** que a zona foi tocada, com a data.
+3b. **Avise o outro lado no mural do `CLAUDE.md`** (§4.1 abaixo) se a mudança
+   muda o que ele deve escrever. Zona compartilhada tocada quase sempre muda.
 4. Para `ficha_layout.py` especificamente: **nunca remova nem renomeie chave existente do
    `CONFIG_MAP`**. Só acrescente. Remoção quebra o analyzer e o autospec ao mesmo tempo, e o
    CP 2.4 deixou 119 testes de equivalência que vão acusar — mas só depois do merge.
+
+### 4.1 O mural — como um lado avisa o outro (2026-09-08)
+
+Até aqui este contrato dizia **quem mexe em quê** e **como resolver conflito**.
+O que faltava era um canal: um lado mudava uma regra e o outro só descobria no
+merge — ou, pior, não descobria, e escrevia código contra a regra antiga.
+
+O mural fica no **`CLAUDE.md`**, logo abaixo do resumo do §1. A escolha é por
+economia de token, e a conta é simples:
+
+| Onde | Custo por sessão | Risco |
+|---|---|---|
+| Arquivo próprio (`AVISOS.md`) | um `Read` inteiro, **toda** sessão | ser esquecido justamente na sessão corrida |
+| **Seção no `CLAUDE.md`** | **só o texto do aviso** — o arquivo já é carregado sempre | nenhum: não há como não ler |
+
+As regras que impedem o mural de virar um segundo `PENDENCIAS.md` estão lá:
+**efêmero** (leu, absorveu, apaga), **teto de 5 avisos**, **2 linhas por
+aviso**, e conflito resolvido **ficando com os dois**.
+
+A divisão de trabalho entre os três documentos:
+
+- **mural (`CLAUDE.md`)** — o que o outro lado precisa saber **antes de
+  escrever**. Curto, e some quando cumpre o papel.
+- **`PENDENCIAS.md`** — o que ficou **para depois**. Cresce, e é histórico.
+- **`git log`** — o **porquê** de cada mudança, com o detalhe todo. Nenhum dos
+  dois primeiros repete isso.
 
 ---
 

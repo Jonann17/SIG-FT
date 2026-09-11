@@ -7,6 +7,7 @@ from openpyxl.cell.text import InlineFont
 
 from sigft import config
 from sigft.core.excel import headers, pmib_codes
+from sigft.core.rpa import ficha_layout
 from sigft.core.rpa.ficha_layout import (
     CONFIG_MAP,
     MAX_LINHAS_VAZIAS_SEGUIDAS,
@@ -318,22 +319,42 @@ class DatasheetAnalyzer:
         first_cell_ref = range_str.split(':')[0]
         return ws[first_cell_ref]
 
+    def _marcador(self):
+        """A palavra a escrever no campo que falta, no idioma DESTA ficha.
+
+        `getattr` porque o idioma e atributo de instancia definido em
+        `processar_planilha`, e o repositorio constroi o analyzer com
+        `__new__` nos testes -- mesmo motivo de `_registrar_no_relatorio`.
+        Sem idioma, portugues: e a ficha de sempre.
+        """
+        return ficha_layout.marcador_de_faltante(
+            getattr(self, "_idioma_da_ficha", None))
+
     def set_blank_error(self, cell):
-        """Aplica 'FORNECER' em vermelho na célula."""
+        """Aplica o marcador de faltante em vermelho na célula.
+
+        2026-09-08: era `FORNECER` fixo. Numa ficha em INGLES -- que existe
+        para voltar a um fornecedor estrangeiro -- a palavra chegava em
+        portugues. O marcador tambem e PROTOCOLO: o AutoSpec o le de volta
+        (`is_empty`), e por isso os dois lados saem de `ficha_layout`.
+        """
         try:
-            cell.value = "FORNECER"
+            cell.value = self._marcador()
             cell.font = FONT_ERRO_VERMELHO
         except Exception as e:
             print(f"Erro ao setar blank error: {e}")
 
     def set_invalid_error(self, cell, old_value):
-        """Aplica RichText: FORNECER (ValorAntigoTachado)"""
+        """Aplica RichText: FORNECER (ValorAntigoTachado) -- ou PROVIDE (...)
+        numa ficha em ingles. O valor recusado continua visivel, tachado, para
+        o fornecedor ver o que nao foi aceito."""
+        marcador = self._marcador()
         try:
             val_str = str(old_value) if old_value is not None else "N/A"
 
             # Constrói o texto rico
             rt = CellRichText([
-                TextBlock(text="FORNECER (", font=INLINE_FONT_ERRO_VERMELHO),
+                TextBlock(text=f"{marcador} (", font=INLINE_FONT_ERRO_VERMELHO),
                 TextBlock(text=val_str, font=INLINE_FONT_ERRO_TACHADO),
                 TextBlock(text=")", font=INLINE_FONT_ERRO_VERMELHO)
             ])
@@ -341,7 +362,7 @@ class DatasheetAnalyzer:
         except Exception as e:
             print(f"Erro ao setar invalid error: {e}")
             # Fallback seguro
-            cell.value = f"FORNECER ({old_value})"
+            cell.value = f"{marcador} ({old_value})"
             cell.font = FONT_ERRO_VERMELHO
 
     def extract_pmib_code(self, filename):
@@ -374,6 +395,17 @@ class DatasheetAnalyzer:
             ws = self._aba_da_ficha(wb)
             if ws is not wb.active:
                 yield f"[INFO] Lendo a aba '{getattr(ws, 'title', '?')}' (a aba ativa nao e a da ficha)."
+
+            # O IDIOMA DESTA FICHA, deduzido do proprio documento (o titulo da
+            # secao de especificacoes). Decide em que lingua o marcador de
+            # campo faltante e escrito -- ver `_marcador`. Nao vem por
+            # parametro de proposito: parametro e mais uma coisa para esquecer
+            # de passar, e ficha marcada no idioma errado nao grita.
+            self._idioma_da_ficha = ficha_layout.idioma_da_ficha(ws)
+            if self._idioma_da_ficha != ficha_layout.IDIOMA_PADRAO_DA_FICHA:
+                yield (f"[INFO] Ficha em '{self._idioma_da_ficha}': os campos que "
+                       f"faltarem serao marcados com "
+                       f"'{ficha_layout.marcador_de_faltante(self._idioma_da_ficha)}'.")
             # DOIS workbooks de propósito (decisão do usuário, 2026-08-26):
             # `ws` é o GRAVÁVEL (guarda a fórmula, recebe o 'FORNECER' e é o
             # que vai para o disco); `ws_valores` traz o valor CALCULADO.
@@ -815,10 +847,10 @@ class DatasheetAnalyzer:
     # resolver: fornecedor que insere ou apaga linhas acima da secao. A ficha
     # PT se conserta sozinha; a EN passava a ler a partir da linha errada, sem
     # avisar.
-    TITULOS_DAS_SPECS = (
-        "ESPECIFICAÇÕES TÉCNICAS - INDIQUE AS ESPECIFICAÇÕES TÉCNICAS NO ESPAÇO LIVRE ABAIXO",
-        "TECHNICAL SPECIFICATIONS - INDICATE TECHNICAL SPECIFICATIONS IN THE FREE SPACE BELOW",
-    )
+    # Vem de `ficha_layout` desde 2026-09-08: o MESMO texto agora tambem prova
+    # o IDIOMA da ficha (`ficha_layout.idioma_da_ficha`), e duas copias do
+    # titulo divergiriam no dia em que alguem corrigisse uma so.
+    TITULOS_DAS_SPECS = tuple(ficha_layout.TITULO_DAS_SPECS_POR_IDIOMA.values())
 
     def _find_variable_specs_start_row(self, ws):
         for row in ws.iter_rows(min_row=50, max_row=150, min_col=2, max_col=2):
