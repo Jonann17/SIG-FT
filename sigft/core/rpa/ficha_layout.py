@@ -259,3 +259,88 @@ def nome_da_aba_da_ficha(wb):
         f"{encontrados}. Esperado um destes nomes: "
         + ", ".join(f"'{n}'" for n in NOMES_DA_ABA_DA_FICHA)
     )
+
+
+# =============================================================================
+# O MARCADOR DE CAMPO FALTANTE, E O IDIOMA DA FICHA (2026-09-08)
+# =============================================================================
+# Acréscimo ADITIVO nesta zona compartilhada: nada existente muda.
+#
+# `FORNECER` é o que o `analyzer` escreve, em vermelho, nos campos que faltam
+# ou foram recusados. Numa ficha em INGLÊS — que existe justamente para voltar
+# a um fornecedor estrangeiro — a palavra chegava em português.
+#
+# POR QUE ISTO MORA AQUI, e não solto no analyzer: o marcador não é decoração,
+# é PROTOCOLO. O AutoSpec o lê de volta (`AutoSpecCore.is_empty`) para saber
+# que o campo continua vazio e precisa ser preenchido pela IA. Traduzir só o
+# lado que ESCREVE faria o AutoSpec, numa ficha em inglês, tratar `PROVIDE`
+# como resposta do fornecedor — e pular exatamente os campos marcados como
+# faltantes. Quem escreve e quem lê têm de concordar, e a concordância mora
+# num lugar só (princípio nº 1).
+#
+# O inglês escolhido é `PROVIDE`: verbo no imperativo, curto, mesmo registro
+# do `FORNECER`. Trocar a palavra é editar esta linha, e mais nada.
+MARCADORES_DE_FALTANTE = {
+    "pt": "FORNECER",
+    "en": "PROVIDE",
+}
+IDIOMA_PADRAO_DA_FICHA = "pt"
+
+
+def marcador_de_faltante(idioma):
+    """A palavra a escrever no campo que falta, no idioma da ficha.
+
+    Idioma desconhecido cai no português: "não sei o idioma" é diferente de
+    "é inglês", e a ficha que o aplicativo processa desde sempre é PT-BR.
+    """
+    return MARCADORES_DE_FALTANTE.get(
+        str(idioma or "").strip().lower(),
+        MARCADORES_DE_FALTANTE[IDIOMA_PADRAO_DA_FICHA],
+    )
+
+
+def e_marcador_de_faltante(valor):
+    """O valor desta célula é um marcador escrito pelo aplicativo?
+
+    Aceita a forma composta (`FORNECER (valor antigo)`), que é como
+    `set_invalid_error` grava — e por isso compara com `startswith` sobre o
+    marcador MAIS o delimitador, nunca com o marcador solto: `"Provided by
+    supplier"` começa com as mesmas letras de `PROVIDE` e É uma resposta.
+    """
+    texto = str(valor or "").strip().upper()
+    if not texto:
+        return False
+    return any(texto == marcador or texto.startswith(marcador + " (")
+               for marcador in MARCADORES_DE_FALTANTE.values())
+
+
+# O título da seção de especificações, por idioma. O `analyzer` já procurava
+# os dois desde 2026-09-03 (`TITULOS_DAS_SPECS`) para achar a linha inicial;
+# aqui o mesmo texto serve de PROVA DE IDIOMA — vem do próprio documento, e
+# não de um parâmetro que alguém pode esquecer de passar. Ficha marcada no
+# idioma errado não se denuncia sozinha.
+TITULO_DAS_SPECS_POR_IDIOMA = {
+    "pt": "ESPECIFICAÇÕES TÉCNICAS - INDIQUE AS ESPECIFICAÇÕES TÉCNICAS NO ESPAÇO LIVRE ABAIXO",
+    "en": "TECHNICAL SPECIFICATIONS - INDICATE TECHNICAL SPECIFICATIONS IN THE FREE SPACE BELOW",
+}
+
+
+def idioma_da_ficha(ws):
+    """`"pt"` ou `"en"`, deduzido do título da seção de especificações.
+
+    Sem título reconhecido -> português, que é a ficha de sempre. Qualquer
+    erro na leitura também: isto é conveniência de idioma, e não pode ser o
+    motivo de uma ficha deixar de ser analisada.
+    """
+    try:
+        for linha in ws.iter_rows(min_row=50, max_row=150, min_col=2, max_col=2):
+            valor = linha[0].value
+            if not valor:
+                continue
+            texto = str(valor).strip().upper()
+            for idioma, titulo in TITULO_DAS_SPECS_POR_IDIOMA.items():
+                if titulo in texto:
+                    return idioma
+    except Exception:
+        pass
+    return IDIOMA_PADRAO_DA_FICHA
