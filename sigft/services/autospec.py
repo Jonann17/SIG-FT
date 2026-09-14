@@ -920,6 +920,83 @@ def _e_termo_puramente_numerico(termo):
     return True
 
 
+# =============================================================================
+# DOCUMENTO QUE COBRE VARIOS MODELOS (2026-09-14)
+# =============================================================================
+# Pedido do usuario depois do defeito das dimensoes. O lastro conferia
+# PRESENCA -- "este numero esta no documento?" -- e nao PERTINENCIA -- "este
+# numero e DESTE modelo?". Num datasheet de familia isso deixa passar mistura:
+#
+#     UCSCH1, UCSCH2, UCSCS2: 168 x 150 x 55 mm
+#     UCECH1:                 168 x 150 x 85 mm
+#
+# A resposta `168 x 150 x 85 mm` pega altura e profundidade de um modelo e a
+# largura de outro. Os tres numeros estao no documento, entao o lastro
+# aprovava -- e o engenheiro nao tem como perceber olhando.
+
+# Um lado esquerdo de `X: valor` so e tratado como ROTULO DE MODELO quando
+# parece codigo: letra e digito juntos. `Certificate:` e
+# `Operating temperature:` continuam sendo rotulo comum, e a linha inteira
+# vale para todas as variantes.
+_RE_LINHA_COM_ROTULO = re.compile(r"^\s*([^:]{2,80}?)\s*:\s*(.*\S.*)$")
+_RE_PARECE_CODIGO = re.compile(r"^(?=[a-z0-9\-/.]*[a-z])(?=[a-z0-9\-/.]*\d)[a-z0-9\-/.]{3,}$")
+
+
+def _codigos_do_rotulo(rotulo):
+    """Os tokens do lado esquerdo que parecem codigo de modelo."""
+    return [t for t in re.split(r"[,;/]|\s+", _normalizar_texto_busca(rotulo))
+            if t and _RE_PARECE_CODIGO.match(t)]
+
+
+def contexto_do_modelo(contexto, modelo):
+    """So as linhas do documento que servem para ESTE modelo.
+
+    Tres casos, por linha:
+
+    - a linha se declara de um ou mais modelos (`UCECH1: ...`) e o MEU esta
+      entre eles -> fica;
+    - a linha se declara de outros modelos -> **sai**. E a linha que produzia
+      a mistura;
+    - a linha nao se declara de modelo nenhum (cabecalho de secao, temperatura
+      de operacao, norma aplicavel) -> fica. Spec compartilhada vale para
+      todas as variantes, e cortar isso esvaziaria a ficha.
+
+    Sem modelo informado, ou documento em que nenhuma linha se declara de um
+    modelo, devolve o contexto INTEIRO: nao ha o que decidir, e recortar por
+    um modelo que nao existe cegaria o lastro.
+
+    A comparacao e por codigo COMPACTADO (`_compactar_codigo`), entao
+    `IE-3200-8T2S-E` da planilha casa com `IE3200-8T2S-E` do documento. Hifen
+    nao pode decidir se o dado entra na ficha.
+    """
+    texto = str(contexto or "")
+    alvo = _compactar_codigo(_normalizar_texto_busca(modelo or ""))
+    if not alvo or not texto:
+        return texto
+
+    linhas = texto.splitlines()
+    guardadas = []
+    cortou = False
+    for linha in linhas:
+        casamento = _RE_LINHA_COM_ROTULO.match(linha)
+        codigos = _codigos_do_rotulo(casamento.group(1)) if casamento else []
+        if not codigos:
+            guardadas.append(linha)          # spec compartilhada
+            continue
+        compactos = [_compactar_codigo(c) for c in codigos]
+        # `in` nos dois sentidos: o documento pode trazer a familia
+        # (`IE-3200`) onde a planilha traz o SKU (`IE-3200-8T2S-E`), e
+        # vice-versa.
+        if any(c == alvo or c in alvo or alvo in c for c in compactos):
+            guardadas.append(linha)
+        else:
+            cortou = True
+
+    if not cortou:
+        return texto
+    return "\n".join(guardadas)
+
+
 def classificar_resultado(fabricante, identificadores, title, snippet, link):
     """`"certo"`, `"duvidoso"` ou `"descartado"` para um resultado de busca.
 
@@ -948,9 +1025,97 @@ def classificar_resultado(fabricante, identificadores, title, snippet, link):
     )
     if tem_fab and tem_id:
         return "certo"
+
+    # O DOMINIO DO FABRICANTE VALE COMO SEGUNDA EVIDENCIA (2026-09-14).
+    #
+    # Caso do usuario: `CISCO / IE-3200-8T2S-E`. A pagina certa e
+    # `cisco.com/.../cat-ie3200-rugged-series-ds.html` -- um datasheet de
+    # FAMILIA, que e como fabricante publica. O titulo fala da serie, nao do
+    # SKU; se o trecho do Google tambem nao trouxer o codigo exato, o
+    # resultado virava `duvidoso` e NAO virava contexto: ia para a aba de
+    # conferencia, e a ficha ficava vazia com a resposta na mao.
+    #
+    # `cisco.com` falando de produto Cisco nao e a camiseta da Minnie no
+    # Target: o dominio do proprio fabricante E a evidencia que faltava.
+    # A guarda continua de pe para todo o resto -- loja com o codigo na URL e
+    # site de concorrente nao ganham nada com isto.
+    if _dominio_do_fabricante(fabricante, link, identificadores,
+                              f"{title} {snippet} {link}"):
+        return "certo"
+
     if tem_fab or tem_id:
         return "duvidoso"
     return "descartado"
+
+
+def _conflita_com_irmao(identificadores, texto):
+    """O texto cita um produto da MESMA familia que NAO e o meu?"""
+    alvos = [i for i in (identificadores or []) if i]
+    if not alvos or not texto:
+        return False
+    tokens = [t for t in re.split(r"[\s,;()/]+", _normalizar_texto_busca(texto)) if t]
+    for ident in alvos:
+        meu = _compactar_codigo(_normalizar_texto_busca(ident))
+        familia = _compactar_codigo(
+            _normalizar_texto_busca(AutoSpecCore._familia_do_identificador(ident)))
+        if not meu or len(familia) < 3:
+            continue
+        for token in tokens:
+            candidato = _compactar_codigo(token)
+            if len(candidato) <= len(familia) or not candidato.startswith(familia):
+                continue
+            if candidato in meu or meu in candidato:
+                continue      # o proprio codigo, ou a familia dele
+            return True
+    return False
+
+
+def _dominio_do_fabricante(fabricante, link, identificadores=(), texto=""):
+    """O link mora no site do proprio fabricante, falando do MEU produto?
+
+    Compara o nome do fabricante com o DOMINIO REGISTRAVEL, e nao com a URL
+    inteira: `target.com/p/CISCO-switch` tem "cisco" na URL e nao e a Cisco.
+    Sufixo de pais entra junto (`cisco.com.br`, `siemens.de`).
+
+    **E recusa quando o resultado aponta para um IRMAO do meu produto.** Isto
+    nao e detalhe: a primeira versao desta funcao aceitava
+    `wago.com/br/p/750-513` para um item `750-362` -- produto errado, do
+    fabricante certo --, e quem pegou foi a suite (`test_autospec_console_luan`,
+    caso "OUTRO produto da mesma marca"). Seria criar, no filtro, exatamente o
+    defeito de modelo-errado que esta rodada existe para fechar.
+
+    Irmao e um codigo que comeca pela mesma FAMILIA que o meu (`750-*`,
+    `IE-3200-*`) e nao e compativel com ele. `IP67` nao comeca pela familia de
+    `IE-3200-8T2S-E`, entao nao conflita -- e o que impede a guarda de recusar
+    por causa de um grau de protecao citado no titulo.
+    """
+    if not fabricante or not link:
+        return False
+    if _conflita_com_irmao(identificadores, texto):
+        return False
+    try:
+        from urllib.parse import urlparse
+        host = (urlparse(str(link)).hostname or "").lower()
+    except Exception:
+        return False
+    if not host:
+        return False
+    partes = [p for p in host.split(".") if p and p != "www"]
+    # Fora o TLD (e o sufixo de pais, quando houver): `www.cisco.com.br` ->
+    # {"cisco"}; `www.moxa.com` -> {"moxa"}.
+    _SUFIXOS = {"com", "net", "org", "co", "br", "de", "us", "uk", "cn", "jp",
+                "it", "fr", "es", "eu", "io", "biz", "ind", "gov", "edu"}
+    nucleo = {p for p in partes if p not in _SUFIXOS}
+    if not nucleo:
+        return False
+    for nome in (fabricante if isinstance(fabricante, (list, tuple, set)) else [fabricante]):
+        chave = _compactar_codigo(_normalizar_texto_busca(nome))
+        if len(chave) < 3:
+            continue
+        if any(chave == _compactar_codigo(n) or chave in _compactar_codigo(n)
+               for n in nucleo):
+            return True
+    return False
 
 
 def _resultado_e_relevante(termos, title, snippet, link):
@@ -2006,12 +2171,25 @@ class AutoSpecCore:
         traria qualquer coisa.
         """
         bruto = str(identificador or "").strip()
-        base = re.split(r"[-/]", bruto)[0]
-        if base == bruto:
+        partes = re.split(r"([-/])", bruto)
+        if len(partes) < 3:
             return ""  # não havia separador: a família seria o próprio termo
-        if len(base) < 3 or not any(c.isdigit() for c in base):
-            return ""
-        return base
+
+        # PREFIXOS PROGRESSIVOS (2026-09-14). Cortar no PRIMEIRO separador
+        # funciona para `CS1320-A-0-0-0-1` (família `CS1320`) e falha para
+        # `IE-3200-8T2S-E`: dá `IE`, duas letras, e a função devolvia vazio --
+        # então a série IE-3200 nunca era procurada, e é por série que a Cisco
+        # publica datasheet. Mesmo caso de `S7-1200` e `NSD-100-A`.
+        #
+        # Fica o MENOR prefixo válido: `IE-3200` é a família, `IE-3200-8T2S`
+        # já é quase o SKU e traria de volta a página de configuração.
+        for fim in range(1, len(partes), 2):
+            base = "".join(partes[:fim])
+            if base == bruto:
+                break
+            if len(base) >= 3 and any(ch.isdigit() for ch in base):
+                return base
+        return ""
 
     @staticmethod
     def _identificador_distintivo(identificador):
@@ -2203,6 +2381,11 @@ class AutoSpecCore:
         return unicas
 
     def retrieve_context(self, txt_brv, fab, cod_mat, refs_locais, callbacks=None, modelo=""):
+        # Guardado para o lastro recortar o documento por modelo mais adiante
+        # (`_filtrar_por_lastro` -> `contexto_do_modelo`). Mesmo idioma de
+        # `ultimas_fontes_por_campo`: o valor viaja pela instancia em vez de
+        # atravessar tres assinaturas.
+        self._modelo_do_item = str(modelo or "").strip()
         cb = callbacks or _callbacks_silenciosos()
 
         # 1. Processar Locais
@@ -2527,6 +2710,24 @@ class AutoSpecCore:
         reprovados = []
         convertidos = []
         corrigidos = []
+
+        # RECORTE POR MODELO (2026-09-14). O lastro passa a conferir contra as
+        # linhas que servem a ESTE item, e nao contra o documento inteiro --
+        # ver `contexto_do_modelo`. Sem isto, num datasheet de familia a
+        # resposta podia pegar a altura de um modelo e a largura de outro, e
+        # passar, porque os dois numeros estao no documento.
+        #
+        # `getattr` porque `_modelo_do_item` e definido em `retrieve_context`,
+        # e o repositorio constroi o core com `__new__` nos testes. Sem
+        # modelo, `contexto_do_modelo` devolve o contexto inteiro: o
+        # comportamento de sempre.
+        contexto_do_item = contexto_do_modelo(
+            contexto, getattr(self, "_modelo_do_item", ""))
+        if contexto_do_item != contexto:
+            cb.log(
+                "O documento cobre mais de um modelo; conferindo o lastro so "
+                "contra as linhas do modelo do item.", nivel="info")
+        contexto = contexto_do_item
 
         for campo, valor in (valores or {}).items():
             descricao = str((missing.get(campo) or {}).get("desc") or campo)

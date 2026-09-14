@@ -1081,3 +1081,64 @@ decisão: pulava os de mesma unidade e ia buscar outra unidade assim mesmo.
    mais **empurrada** para esse caminho — a resposta certa deixou de ser
    corrompida. Apertar a tolerância mexeria no arredondamento legítimo
    (`175 bar` → `2538 psi`), então ficou como está.
+
+---
+
+## 2026-09-14 (tarde) — "qual destes modelos é o meu?"
+
+Dois pedidos do usuário que, investigados, viraram **um só eixo**: o aplicativo
+não tinha noção de *"este documento fala de vários produtos"*.
+
+### Frente 1 — o lastro conferia presença, não pertinência
+
+`168 x 150 x 85 mm` mistura altura e profundidade do UCSCH1 com a largura do
+UCECH1, e passava: os três números estão no documento.
+
+**`contexto_do_modelo(contexto, modelo)`** recorta o documento por linha:
+
+| A linha | Destino |
+|---|---|
+| se declara do MEU modelo (`UCSCH1, UCSCH2: ...`) | fica |
+| se declara de OUTRO modelo (`UCECH1: ...`) | **sai** |
+| não se declara de modelo nenhum (`Certificate:`, `Dimensions (H x D x W)`) | fica — spec compartilhada vale para todas as variantes |
+
+O que marca uma linha como de-um-modelo é o lado esquerdo do `:` **parecer
+código** — letra e dígito juntos. `Certificate:` e `Operating temperature:`
+continuam sendo rótulo comum. Sem modelo informado, ou num documento em que
+nenhuma linha se declara, devolve o contexto inteiro: recortar por um modelo
+que não existe cegaria o lastro.
+
+A comparação é por código compactado, então `IE-3200-8T2S-E` da planilha casa
+com `IE3200-8T2S-E` do documento. Hífen não pode decidir se o dado entra.
+
+### Frente 2 — o caso CISCO IE-3200-8T2S-E
+
+**Não faltava busca web, nem leitura de HTML.** As duas existem — o AutoSpec
+lê página com BeautifulSoup desde sempre. Faltavam duas coisas:
+
+1. **A família nunca era procurada.** `_familia_do_identificador` cortava no
+   PRIMEIRO hífen: `IE-3200-8T2S-E` → `IE`, duas letras → descartado. Agora
+   tenta prefixos progressivos e fica com o **menor válido**: `IE-3200`. Mesmo
+   caso de `NSD-100-A`. Medido: `CS1320`, `PVF100`, `750` e `1756` continuam
+   idênticos.
+2. **A página da família caía em "duvidosos".** O título fala da série, não do
+   SKU; sem o código exato no trecho do Google, o resultado ia para a
+   conferência humana em vez de virar contexto. Agora o **domínio do próprio
+   fabricante** vale como segunda evidência — `cisco.com` falando de produto
+   Cisco não é a camiseta da Minnie no Target.
+
+> **A suíte pegou um erro meu aqui.** A primeira versão da regra do domínio
+> aceitava `wago.com/br/p/750-513` para um item `750-362` — produto errado, do
+> fabricante certo. Seria criar, dentro do filtro, exatamente o defeito de
+> modelo-errado que esta rodada existe para fechar. A promoção agora recusa
+> quando o resultado cita um **irmão** do meu produto: um código que começa
+> pela mesma família e não é compatível com o meu. `IP67` não começa pela
+> família de `IE-3200-8T2S-E`, então não conflita.
+
+### O que não deu para verificar daqui
+
+⚠️ **Não consegui abrir a página da Cisco.** O contêiner da sessão web não
+alcança `cisco.com` (o proxy devolve 403, e a ferramenta de fetch também é
+bloqueada). O diagnóstico acima é do **código**, medido offline com o item
+real; o que falta é rodar o AutoSpec nessa ficha numa máquina com internet e
+confirmar que a página passa a virar contexto.
