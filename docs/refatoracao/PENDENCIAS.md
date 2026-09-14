@@ -374,3 +374,28 @@ usado em COMPARACAO (`==`, `in`, `startswith`) dentro de `sigft/`, fora da UI
 - **As tres listas de "nao aplicavel" continuam TRES.** Unifica-las e o
   conserto certo (principio nº 1), mas mexe em `autospec` e `upload_conditions`
   ao mesmo tempo e nao cabia nesta rodada.
+
+---
+
+## 2026-09-14 — o AutoSpec reescrevia a resposta CERTA (fica em aberto)
+
+Defeito corrigido, relato completo em `docs/AUTOSPEC_MELHORIAS.md`. O que NAO
+foi consertado, e por que:
+
+1. **O lastro confere PRESENCA, nao PERTINENCIA.** `168 x 150 x 85 mm` mistura
+   altura/profundidade de um modelo (UCSCH1) com a largura de outro (UCECH1) e
+   passa, porque os tres numeros estao no documento. O lastro nao sabe qual
+   VARIANTE do produto a ficha quer -- e esse datasheet tem quatro. Vale para
+   todo campo, nao so dimensao. Resolver exigiria amarrar a resposta ao TRECHO
+   de onde saiu (a rastreabilidade campo-fonte do P-04 ja guarda o documento,
+   mas nao a linha), e conferir se o trecho fala do modelo certo. Mudanca de
+   porte, precisa de decisao.
+
+2. **Tolerancia de 1% aceita `55,118 mm` contra `55 mm`.** E a mesma tolerancia
+   que existe para o arredondamento legitimo (`175 bar` -> `2538 psi`, que e
+   2537,86). Apertar aqui quebra aquilo. Deixado como esta: depois do conserto
+   a IA nao e mais EMPURRADA para converter polegada, que era o que produzia o
+   valor.
+
+3. **`_FATORES` nao tem `min`/`h` para tempo nem tensao/corrente.** Notado ao
+   ler o modulo; fora do escopo desta rodada.

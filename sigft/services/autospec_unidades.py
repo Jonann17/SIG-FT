@@ -133,6 +133,27 @@ _RE_CONECTOR_INTERVALO = re.compile(
     r"^\s{0,3}(?:a|ate|to|e|and|bis|hasta|y|und|-|–|\.{2,3}|/)?\s{0,3}$"
 )
 
+# O SEPARADOR DE DIMENSÃO (2026-09-14). `168 x 150 x 55 mm` são TRÊS medidas
+# em milímetro: a unidade é escrita uma vez e vale para as três, que é como
+# todo datasheet do mundo escreve dimensão.
+#
+# O que isto conserta, medido no datasheet `UCSC CONTROLLERS.pdf`: sem o `x`
+# aqui, a linha `168 x 150 x 55 mm (6.61 x 5.90 x 2.17 in)` dava ao módulo
+# UMA medida em mm (`55 mm`) e UMA em polegada (`2.17 in`) -- o `168` e o
+# `150` não existiam como medida. Consequência em cadeia:
+#
+#   1. a resposta CERTA da IA (`168 x 150 x 55 mm`) não achava par no
+#      documento e era reprovada pelo lastro;
+#   2. reprovada, caía em `corrigir_conversao`, que procurava uma medida de
+#      comprimento em OUTRA unidade, achava `2.17 in`, convertia e
+#      SUBSTITUÍA -- a ficha do usuário saiu com `55,118 x 55,118 x 55 mm`.
+#
+# Separado do conector de intervalo de propósito: são coisas diferentes
+# (`10 a 20 mm` é uma faixa, `10 x 20 mm` são duas medidas), e um dia uma
+# delas pode precisar de tratamento próprio. A herança de unidade, essa, é a
+# mesma nos dois casos.
+_RE_SEPARADOR_DIMENSAO = re.compile(r"^\s{0,3}[x×*]\s{0,3}$", re.IGNORECASE)
+
 _RE_NUMERO_SOLTO = re.compile(r"[+-]?\d+(?:[.,]\d+)?")
 # Ate 6 letras, e nao 3. Achado na varredura de 2026-08-13: `2,05 kgfm` num
 # datasheet brasileiro de motor era INVISIVEL -- `kgfm` tem 4 letras e o
@@ -178,24 +199,38 @@ def extrair_medidas(texto):
             # como alternativas (OU) e não como exigências (E).
             brutos.append([valor, unidade, m.start(), m.end(), indice])
 
-    # A herança é ESTRITAMENTE LOCAL: só atravessa um conector de intervalo.
+    # A herança é ESTRITAMENTE LOCAL: só atravessa um conector de intervalo
+    # (`0 a +70 C`) ou um separador de dimensão (`168 x 150 x 55 mm`).
     #
     # A primeira versão herdava da unidade mais próxima em qualquer distância,
     # e isso criou um falso positivo imediato: o `1000` de `cs1000.pdf`
     # herdava o `bar` de `350 bar` sete palavras adiante, e `999 bar` passava
     # a conferir contra ele dentro da tolerância de 1%. Número de nome de
     # arquivo virando medida é o oposto do que este módulo existe para fazer.
-    for i, item in enumerate(brutos):
-        if item[1] is not None:
-            continue
-        for vizinho in (brutos[i + 1] if i + 1 < len(brutos) else None,
-                        brutos[i - 1] if i > 0 else None):
-            if vizinho is None or vizinho[1] is None:
+    #
+    # REPETE ATÉ ESTABILIZAR (2026-09-14). Uma passada só resolve o par
+    # (`150 x 55 mm`), mas não o trio: ao visitar o `168`, o `150` ainda não
+    # tinha herdado nada, então não havia de quem herdar. Com a repetição, o
+    # `150` recebe `mm` na primeira passada e o `168` na segunda. O limite é o
+    # próprio tamanho da lista — a cada passada pelo menos um item resolve, ou
+    # o laço para.
+    for _passada in range(len(brutos)):
+        mudou = False
+        for i, item in enumerate(brutos):
+            if item[1] is not None:
                 continue
-            ini, fim = (item[3], vizinho[2]) if vizinho[2] > item[3] else (vizinho[3], item[2])
-            if _RE_CONECTOR_INTERVALO.match(normalizado[ini:fim]):
-                item[1] = vizinho[1]
-                break
+            for vizinho in (brutos[i + 1] if i + 1 < len(brutos) else None,
+                            brutos[i - 1] if i > 0 else None):
+                if vizinho is None or vizinho[1] is None:
+                    continue
+                ini, fim = (item[3], vizinho[2]) if vizinho[2] > item[3] else (vizinho[3], item[2])
+                entre = normalizado[ini:fim]
+                if _RE_CONECTOR_INTERVALO.match(entre) or _RE_SEPARADOR_DIMENSAO.match(entre):
+                    item[1] = vizinho[1]
+                    mudou = True
+                    break
+        if not mudou:
+            break
 
     return [(valor, unidade) for valor, unidade, _i, _f, _n in brutos if unidade is not None]
 
@@ -388,6 +423,34 @@ def _pontuar_pela_pergunta(trecho, pergunta):
     return sum(1 for termo in set(expandir_consulta(pergunta)) if termo in alvo)
 
 
+def _documento_fala_esta_unidade(unidade, medidas_ctx):
+    """O documento traz alguma medida NA MESMA unidade da resposta?
+
+    É a pergunta que separa "a IA errou a conta" de "a IA escreveu outro
+    número", e a resposta muda tudo:
+
+    - documento em `bar`, resposta em `MPa` -> houve conversão, e conversão é
+      conta. Se a conta saiu errada, o computador refaz — é para isso que
+      este módulo existe (pedido do usuário, 2026-08-13);
+    - documento em `mm`, resposta em `mm` -> **não houve conversão nenhuma**.
+      O número está simplesmente errado, e "corrigi-lo" é inventar um valor.
+
+    O próprio laço abaixo já dizia isso ao pular candidatos de mesma unidade
+    ("se a resposta está na mesma unidade do documento e o número não bate,
+    não houve erro de conta"). Só que, logo depois, ia buscar uma unidade
+    DIFERENTE e reescrevia com ela assim mesmo.
+
+    Foi o que produziu o defeito de 2026-09-14: o datasheet dizia
+    `168 x 150 x 55 mm (6.61 x 5.90 x 2.17 in)`, e qualquer resposta em mm
+    que não batesse era reescrita a partir das POLEGADAS. `999 x 888 x 777 mm`
+    saía aprovado como `55,118 x 55,118 x 55,118 mm` — três dimensões
+    diferentes viradas no mesmo número, tudo vindo de `2.17 in`. A guarda
+    contra valor inventado fabricando valor inventado.
+    """
+    alvo = _normalizar(unidade)
+    return any(_normalizar(u) == alvo for _v, u, _t in medidas_ctx)
+
+
 def corrigir_conversao(texto, contexto, pergunta=None):
     """Refaz a conta que a IA errou e devolve `(valor_corrigido, explicação)`.
 
@@ -422,6 +485,17 @@ def corrigir_conversao(texto, contexto, pergunta=None):
         if grandeza is None:
             return None, f"unidade desconhecida: {unidade}"
 
+        # A GUARDA CONTRA INVENTAR (2026-09-14). Ver
+        # `_documento_fala_esta_unidade`: se o documento ja fala a unidade da
+        # resposta e o numero nao bate, nao houve conversao para consertar --
+        # o numero e outro, e reescreve-lo seria fabricar dado.
+        if _documento_fala_esta_unidade(unidade, medidas_ctx):
+            return None, (
+                f"o documento tem medidas em {unidade} e nenhuma bate com "
+                f"{valor:g} — nao foi erro de conversao, o numero e outro. "
+                "Preencha a mao."
+            )
+
         candidatos = []
         for valor_ctx, unidade_ctx, trecho in medidas_ctx:
             # SÓ corrige quando há de fato uma CONVERSÃO — unidades
@@ -440,7 +514,7 @@ def corrigir_conversao(texto, contexto, pergunta=None):
                 if certo is not None and not any(_proximos(certo, c[0]) for c in candidatos):
                     candidatos.append(
                         (certo, f"{valor_ctx:g} {unidade_ctx}",
-                         _pontuar_pela_pergunta(trecho, pergunta))
+                         _pontuar_pela_pergunta(trecho, pergunta), valor_ctx)
                     )
 
         if not candidatos:
@@ -458,14 +532,14 @@ def corrigir_conversao(texto, contexto, pergunta=None):
             candidatos.sort(key=lambda c: -c[2])
             melhor, segundo = candidatos[0], candidatos[1]
             if melhor[2] == 0 or melhor[2] == segundo[2]:
-                opcoes = ", ".join(origem for _c, origem, _p in candidatos[:4])
+                opcoes = ", ".join(origem for _c, origem, _p, _v in candidatos[:4])
                 return None, (
                     f"o documento tem {len(candidatos)} medidas de {grandeza} ({opcoes}) e o "
                     f"enunciado do campo nao diz qual — preencha a mao"
                 )
             candidatos = [melhor]
 
-        certo, origem, _pontos = candidatos[0]
+        certo, origem, _pontos, _valor_origem = candidatos[0]
         texto_certo = _formatar(certo)
         corrigido = re.sub(
             rf"(?<![\d.,]){re.escape(f'{valor:g}'.replace('.', ','))}(?![\d.,])",

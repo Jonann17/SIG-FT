@@ -996,3 +996,88 @@ depois dos retries da política da tarefa.
 - A busca web (Google CSE) é assunto separado: ela expõe a *query*, não o datasheet. Fica
   fora desta decisão, mas vale confirmar com a empresa se a descrição do material pode ir
   para o Google.
+
+---
+
+## 2026-09-14 — o aplicativo reescrevia a resposta CERTA da IA
+
+**O que o usuário viu.** Ficha `4500063671.0912`, datasheet
+`Datasheet - UCSC CONTROLLERS.pdf`:
+
+```
+18 - DIMENSOES (...): 55,118 x 55,118 x 55 mm (sem montagem); ...
+```
+
+quando o documento diz, com todas as letras:
+
+```
+UCSCH1, UCSCH2, UCSCS2: 168 x 150 x 55 mm (6.61 x 5.90 x 2.17 in)
+```
+
+### Três hipóteses descartadas por medição, antes de qualquer conserto
+
+| Hipótese | Como foi descartada |
+|---|---|
+| **OCR** (a suspeita do usuário) | O PyMuPDF entrega a linha **limpa**, com espaços e tudo. O texto sem espaços que o usuário colou veio do leitor de PDF dele, não do pipeline |
+| **Retrieval** (o RAG cortou a linha) | Rodado com o PDF real: a linha certa sobrevive ao recorte. A IA recebeu `168 x 150 x 55 mm (6.61 x 5.90 x 2.17 in)` |
+| **A IA inventou** | `55.118` não existe no documento. É `2.17 in × 25,4` — e quem fez essa conta foi o **aplicativo** |
+
+### A causa, em duas partes encadeadas
+
+**1. `extrair_medidas` era cego a trio dimensional.** Em `168 x 150 x 55 mm`,
+só o número colado na unidade virava medida. O documento inteiro oferecia
+**uma** medida em mm (`55 mm`) — `168`, `150`, `204` e `152` não existiam.
+
+**2. `corrigir_conversao` fabricava.** Sem par no documento, a resposta certa
+era reprovada pelo lastro e caía no corretor, que procurava uma medida de
+comprimento em **outra unidade**, achava `2.17 in`, convertia e **substituía**.
+
+Medido, com o filtro de verdade:
+
+| A IA respondia | Entrava na ficha |
+|---|---|
+| `168 x 150 x 55 mm` (correto) | `55,118 x 55,118 x 55 mm` |
+| `168 mm` | `55,118 mm` |
+| `999 x 888 x 777 mm` (inventado) | `55,118 x 55,118 x 55,118 mm`, **aprovado** |
+
+A guarda que existe para barrar valor inventado estava **fabricando** um.
+
+### O conserto (decisão do usuário: extrator + corretor estrito)
+
+**Parte 1 — o separador de dimensão.** O módulo já tinha herança de unidade,
+mas só atravessava conector de **intervalo** (`0 a 70 °C`). Agora atravessa
+também o `x` do trio, e a passada **repete até estabilizar** — com uma passada
+só, o `168` olhava para um `150` que ainda não tinha herdado nada.
+
+**Parte 2 — a guarda contra inventar.** O corretor agora recusa quando **o
+documento já fala a unidade da resposta**: aí não houve conversão nenhuma, o
+número está simplesmente errado, e reescrevê-lo é fabricar dado.
+
+Essa regra não é invenção nova — é o raciocínio que o próprio laço já
+escrevia ao pular candidatos de mesma unidade. Ele só não era aplicado à
+decisão: pulava os de mesma unidade e ia buscar outra unidade assim mesmo.
+
+> **Uma regra minha que foi descartada no caminho.** A primeira tentativa
+> exigia que os *algarismos* da resposta batessem com os do valor corrigido
+> (`3,5` → `35`). Passou nos meus testes e **quebrou cinco** da suíte — os
+> dois comportamentos que o usuário pediu em 2026-08-13: corrigir `100 lb` a
+> partir de `41 kg`, e desempatar três pressões pelo enunciado do campo. A
+> suíte estava certa e a regra estava errada.
+
+### O que continua valendo, e o que continua em aberto
+
+✅ Resposta certa entra **intacta**. ✅ Valor inventado é **descartado**.
+✅ A correção legítima de aritmética continua acontecendo.
+
+⚠️ **Duas limitações conhecidas, que este conserto não toca:**
+
+1. **Modelo errado passa.** `168 x 150 x 85 mm` mistura a altura/profundidade
+   do UCSCH1 com a largura do UCECH1 — e entra, porque os três números estão
+   no documento. O lastro confere *presença*, não *pertinência*: ele não sabe
+   qual variante do produto a ficha quer. É a limitação de desenho do lastro,
+   e vale para todo campo.
+2. **Se a IA converter por conta própria, o valor passa.** `55,118 mm` está a
+   0,21% de `55 mm`, dentro da tolerância de 1%. O que mudou é que a IA não é
+   mais **empurrada** para esse caminho — a resposta certa deixou de ser
+   corrompida. Apertar a tolerância mexeria no arredondamento legítimo
+   (`175 bar` → `2538 psi`), então ficou como está.
