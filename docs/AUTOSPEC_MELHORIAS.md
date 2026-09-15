@@ -1142,3 +1142,90 @@ alcança `cisco.com` (o proxy devolve 403, e a ferramenta de fetch também é
 bloqueada). O diagnóstico acima é do **código**, medido offline com o item
 real; o que falta é rodar o AutoSpec nessa ficha numa máquina com internet e
 confirmar que a página passa a virar contexto.
+
+---
+
+## 2026-09-15 — a conversão certa que era jogada fora
+
+Log da ficha `4500063671.0070 en-US`. A busca funcionou (datasheet da Cisco
+achado e lido, 16 páginas), mas as dimensões ficaram vazias:
+
+```
+14 - DIMENSIONS (Indicate the dimensions of the item in (mm)
+  -> a IA respondeu '152 x 91 x 135'
+     motivo: nao ha medida para recalcular
+```
+
+### A causa, medida
+
+O lastro foi testado contra **todas** as formas plausíveis de um datasheet
+escrever a dimensão. Passa em todas — menos numa: quando o documento traz a
+medida **só em polegada**.
+
+```
+5.98 × 25,4 = 151,9 → 152     3.58 × 25,4 = 90,9 → 91     5.31 × 25,4 = 134,9 → 135
+```
+
+A IA fez a conversão **certa**. E o mecanismo que existe exatamente para
+aprovar conversão correta não pôde agir, porque a resposta veio **sem
+unidade** — a pergunta já dizia `in (mm)`, então a IA não repetiu o `mm`. Sem
+unidade não há medida; sem medida, não há conta para conferir.
+
+Provado com a mesma resposta, mudando só isso:
+
+| Resposta | Lastro | Medidas |
+|---|---|---|
+| `152 x 91 x 135` | ❌ | `[]` |
+| `152 x 91 x 135 mm` | ✅ | `152 mm = 5.98 in; 91 mm = 3.58 in; 135 mm = 5.31 in` |
+
+**Não é só a dimensão.** A ficha está cheia de enunciados que já declaram a
+unidade (`em (mm)`, `em grau Celsius (°C)`), e em todos uma resposta numérica
+crua perdia a conferência.
+
+### Cinco consertos nesta rodada
+
+1. **A unidade sai do enunciado.** `aplicar_unidade_da_pergunta` completa a
+   resposta crua com a unidade que a pergunta declara — **só para conferir**;
+   o que vai para a ficha continua o original. Enunciado que lista várias
+   (`em (mV, V, A, mA)`) não declara nada: chutar seria pior.
+2. **Um número, não três.** `corrigir_conversao` recusa quando mais de um
+   número da resposta não confere. Erro de aritmética é **uma** conta que
+   escorregou; três números errados são outra leitura. Sem isto,
+   `900 x 800 x 700 mm` contra um documento só em polegada saía como
+   `134,874 x 134,874 x 134,874 mm` — a mesma fabricação do dia 14, por um
+   caminho que a guarda daquele dia não cobria (lá o documento falava a
+   unidade da resposta; aqui só a outra).
+3. **As 26 fontes fantasma.** O marcador do contexto leva o TÍTULO do
+   documento; a IA cita a URL, que vem na linha seguinte e não era coletada.
+   26 campos foram acusados de citar "fonte que NÃO está entre os documentos
+   lidos" — citando exatamente o documento lido. Aviso falso em 26 campos
+   ensina a ignorar o aviso, e aí o verdadeiro passa junto.
+4. **O motivo diz o que faltou.** `nao ha medida para recalcular` não diz nada
+   a quem lê. Agora vem acompanhado de `nao achei no documento: 900, 800, 700`.
+   É o que teria dado este diagnóstico em dez segundos.
+5. **`cm`, `cm`, `cm`, `kg`.** Os quatro rótulos que o usuário viu na lista de
+   campos não respondidos. O log era fiel — no `CONFIG_MAP`, o `desc` desses
+   campos é literalmente a unidade. Agora o nome do campo vai junto.
+
+E uma **guarda de segurança** no recorte por modelo que entrou no dia 14: se
+nenhuma linha casar com o modelo da planilha, não corta nada. É mais provável
+que o modelo esteja grafado diferente do que o documento inteiro ser de outro
+produto.
+
+### A varredura da família (o /brainstorming pedido)
+
+Feita por medição, não por especulação: 12 pares realistas de
+resposta-correta + documento, cobrindo decimal vírgula×ponto, separador de
+milhar nos dois idiomas, intervalo com conector diferente, unidade com ponto
+(`in.`), grau de proteção com espaço (`IP 30`), peso convertido de libra,
+tabela quebrada em linhas. **Nenhuma reprovada indevidamente.**
+
+E a contraprova, 7 respostas erradas: número inventado, ordem de grandeza,
+`IP67` contra `IP 30`, meia verdade (`entre 175 e 999 bar`), fonte inexistente
+— **todas barradas**.
+
+Dois casos "vazaram" e **não são vazamento**: `41 g` contra `41 kg` virou
+`41000 g`, e `7 kg` contra `3 lb` virou `1,36 kg`. Nos dois o documento tem
+uma única medida daquela grandeza, a origem é inequívoca, e o computador refez
+a conta — que é a decisão do usuário de 2026-08-13. As duas aparecem na lista
+de corrigidos do console.

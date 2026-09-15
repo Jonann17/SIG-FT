@@ -399,3 +399,23 @@ foi consertado, e por que:
 
 3. **`_FATORES` nao tem `min`/`h` para tempo nem tensao/corrente.** Notado ao
    ler o modulo; fora do escopo desta rodada.
+
+---
+
+## 2026-09-15 — unidades eletricas ausentes do conversor
+
+Achado ao consertar a unidade do enunciado. `autospec_unidades._FATORES` nao
+tem VOLT nem AMPERE -- e a ficha pergunta por eles o tempo todo
+(`TENSAO DE ALIMENTACAO ... em (V)`, `CORRENTE NOMINAL ... em (A)`).
+
+Consequencia: resposta crua nesses campos nao ganha unidade e nao e conferida
+como medida; cai no caminho literal (presenca do numero), que e o mais fraco.
+
+**AMPERE NAO PODE SER ACRESCENTADO COMO ESTA.** O simbolo `a` e o conector de
+intervalo em portugues: `0 a 70 °C`. Aceitar `a` como unidade faria o `0`
+virar "0 amperes" e quebraria a leitura de intervalo, que tem teste proprio
+(`extrair_medidas("0 a 70 °C") == [(0.0,'c'), (70.0,'c')]`).
+
+Sai caro resolver direito: exige o simbolo com contexto (`24 A`, `4-20 mA`)
+distinguido do conector, provavelmente por regex propria. Volt sozinho e
+seguro, mas meia solucao. Fica para uma rodada dedicada.

@@ -472,6 +472,25 @@ def corrigir_conversao(texto, contexto, pergunta=None):
     if not grupos:
         return None, "nao ha medida para recalcular"
 
+    # UM NUMERO, NAO TRES (2026-09-15). Erro de aritmetica e UMA conta que
+    # escorregou -- `3,5 MPa` onde o certo era `35`. Uma resposta com tres
+    # numeros errados nao e conta errada, e outra leitura, e "corrigir" os
+    # tres a partir do documento nao e corrigir: e re-derivar a resposta
+    # inteira, que nao e o papel deste modulo.
+    #
+    # Sem isto, `900 x 800 x 700 mm` contra um documento que so traz polegada
+    # saia como `134,874 x 134,874 x 134,874 mm` -- tres dimensoes diferentes
+    # viradas no mesmo numero. E a mesma fabricacao de 2026-09-14, por outro
+    # caminho: la o documento falava a unidade da resposta e a guarda pegava;
+    # aqui ele so fala a OUTRA, e nao pegava.
+    a_corrigir = [i for i, alt in grupos.items()
+                  if conferir_conversao(alt[0][0], alt[0][1], contexto) is None]
+    if len(a_corrigir) > 1:
+        return None, (
+            f"{len(a_corrigir)} numeros da resposta nao conferem com o documento — "
+            "isso nao e erro de conta, e outra leitura. Preencha a mao."
+        )
+
     medidas_ctx = _medidas_com_janela(contexto)
     corrigido = str(texto)
     explicacoes = []
@@ -599,3 +618,71 @@ def conferir_texto(texto, contexto):
             return False, []
         explicacoes.append(achou)
     return True, explicacoes
+
+
+# =============================================================================
+# A UNIDADE QUE O ENUNCIADO JÁ DECLARA (2026-09-15)
+# =============================================================================
+# Defeito relatado pelo usuário, ficha `4500063671.0070 en-US`:
+#
+#     14 - DIMENSIONS (Indicate the dimensions of the item in (mm))
+#       -> a IA respondeu '152 x 91 x 135'
+#          motivo: nao ha medida para recalcular
+#
+# O datasheet trazia a dimensão só em POLEGADA, e a IA converteu CERTO:
+#
+#     5.98 x 25,4 = 151,9 -> 152     3.58 x 25,4 = 90,9 -> 91
+#     5.31 x 25,4 = 134,9 -> 135
+#
+# Só que a resposta veio SEM UNIDADE: a pergunta já dizia `in (mm)`, então a
+# IA não repetiu o `mm`. Sem unidade não há medida; sem medida, este módulo
+# não tem conta para conferir, e a conversão correta era jogada fora. Medido,
+# com a mesma resposta:
+#
+#     '152 x 91 x 135'     -> lastro False, medidas []
+#     '152 x 91 x 135 mm'  -> lastro True,  "152 mm = 5.98 in; 91 mm = 3.58 in"
+#
+# Não é só a dimensão: a ficha está cheia de enunciados que declaram a unidade
+# (`em (V)`, `em (A)`, `em grau Celsius (°C)`), e em todos uma resposta
+# numérica crua perdia a conferência.
+
+# Só parênteses cujo conteúdo INTEIRO é uma unidade. `(H x W x D)` e
+# `(entrada do cabo)` não entram.
+_RE_UNIDADE_ENTRE_PARENTESES = re.compile(r"\(\s*(°?[a-zµ]{1,6}(?:[./-][a-z0-9]{1,4})?|\")\s*\)",
+                                          re.IGNORECASE)
+
+
+def unidade_declarada(pergunta):
+    """A unidade que o enunciado do campo já declara, ou `None`.
+
+    `"... do item em (mm)"` -> `"mm"`. Devolve `None` quando o enunciado lista
+    VÁRIAS (`em (mV, V, A, mA)`) — aí não dá para saber qual, e chutar seria
+    trocar um campo vazio por um campo errado, que é pior.
+    """
+    achadas = {
+        u for u in (_unidade_valida(m) for m in
+                    _RE_UNIDADE_ENTRE_PARENTESES.findall(str(pergunta or "")))
+        if u
+    }
+    return achadas.pop() if len(achadas) == 1 else None
+
+
+def aplicar_unidade_da_pergunta(valor, pergunta):
+    """A resposta, com a unidade do enunciado — **só quando ela falta**.
+
+    Não toca em resposta que já traz unidade, nem em resposta que não é
+    medida: grudar `mm` em `"Aço inox 316"` seria inventar uma dimensão.
+    """
+    texto = str(valor if valor is not None else "")
+    if not texto.strip() or extrair_medidas(texto):
+        return texto
+    unidade = unidade_declarada(pergunta)
+    if not unidade:
+        return texto
+    if not _RE_NUMERO_SOLTO.search(_normalizar(texto)):
+        return texto
+    # Só números, separadores e espaço: `152 x 91 x 135`, `24`, `0 a 70`.
+    # Qualquer palavra no meio e a resposta deixa de ser uma medida crua.
+    if re.search(r"[a-zµ°]", _normalizar(re.sub(r"\b[xX×]\b|\b(a|to|e|and)\b", " ", texto))):
+        return texto
+    return f"{texto.strip()} {unidade}"

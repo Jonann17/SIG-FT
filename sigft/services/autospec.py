@@ -548,7 +548,20 @@ def origens_do_contexto(contexto):
     não esteja aqui é sinal de invenção — e o engenheiro precisa saber disso
     antes de homologar.
     """
-    return set(re.findall(r"---\s*(?:LOCAL|WEB) DOC:\s*(.+?)\s*---", str(contexto or "")))
+    texto = str(contexto or "")
+    origens = set(re.findall(r"---\s*(?:LOCAL|WEB) DOC:\s*(.+?)\s*---", texto))
+    # A URL TAMBEM (2026-09-15). O marcador leva o TITULO do documento
+    # (`--- WEB DOC: Cisco Catalyst IE3200 ... - Amplicon ---`), e a URL vem na
+    # linha seguinte. A IA cita a URL -- e a comparacao, por substring, nao
+    # casava uma coisa com a outra: no log da ficha `4500063671.0070`, 26
+    # campos foram acusados de citar "fonte que NAO esta entre os documentos
+    # lidos" sendo que citavam exatamente o documento lido.
+    #
+    # Aviso falso em 26 campos ensina o usuario a ignorar o aviso, e ai o
+    # verdadeiro passa junto. E o aviso verdadeiro aqui e serio: fonte que
+    # ninguem leu e sinal de invencao.
+    origens.update(re.findall(r"^URL:\s*(\S+)\s*$", texto, flags=re.MULTILINE))
+    return origens
 
 
 # Fontes que NÃO são documento e são legítimas: os campos gerativos
@@ -977,6 +990,7 @@ def contexto_do_modelo(contexto, modelo):
     linhas = texto.splitlines()
     guardadas = []
     cortou = False
+    achou_o_meu = False
     for linha in linhas:
         casamento = _RE_LINHA_COM_ROTULO.match(linha)
         codigos = _codigos_do_rotulo(casamento.group(1)) if casamento else []
@@ -988,13 +1002,55 @@ def contexto_do_modelo(contexto, modelo):
         # (`IE-3200`) onde a planilha traz o SKU (`IE-3200-8T2S-E`), e
         # vice-versa.
         if any(c == alvo or c in alvo or alvo in c for c in compactos):
+            achou_o_meu = True
             guardadas.append(linha)
         else:
             cortou = True
 
     if not cortou:
         return texto
+    # NAO CORTAR TUDO (2026-09-15). Se nenhuma linha casou com o meu modelo,
+    # e mais provavel que ele esteja grafado diferente do que o documento
+    # inteiro ser de outro produto -- e um recorte que remove todas as linhas
+    # de especificacao deixaria a ficha vazia com o dado bem ali.
+    if not achou_o_meu:
+        return texto
     return "\n".join(guardadas)
+
+
+def _com_unidade_do_enunciado(valor, pergunta):
+    """A resposta com a unidade que a PERGUNTA ja declara, quando ela falta.
+
+    So para CONFERIR. O que vai para a ficha continua sendo o valor original:
+    a pergunta ja diz a unidade, e reescrever a resposta do fornecedor seria
+    mudar um entregavel por conta propria.
+    """
+    try:
+        from sigft.services import autospec_unidades
+    except ImportError:
+        return valor
+    try:
+        return autospec_unidades.aplicar_unidade_da_pergunta(valor, pergunta)
+    except Exception:
+        return valor
+
+
+def _motivo_com_os_numeros(valor, contexto, motivo):
+    """O motivo da reprovacao, dizendo QUAIS numeros nao estao no documento.
+
+    `motivo: nao ha medida para recalcular` nao diz nada a quem le -- foi a
+    mensagem que o usuario recebeu no lugar da dimensao, e nao dava para saber
+    se o problema era o numero, a unidade ou o documento. Nomear o numero que
+    faltou e o que transforma o aviso em acao.
+    """
+    try:
+        faltam = sorted(_numeros_normalizados(valor) - _numeros_normalizados(contexto))
+    except Exception:
+        faltam = []
+    if not faltam:
+        return motivo
+    lista = ", ".join(faltam[:5])
+    return f"{motivo}; nao achei no documento: {lista}"
 
 
 def classificar_resultado(fabricante, identificadores, title, snippet, link):
@@ -2734,16 +2790,25 @@ class AutoSpecCore:
             if not _exige_lastro(campo):
                 aprovados[campo] = valor
                 continue
-            if not valor_tem_lastro(valor, contexto):
+            # A UNIDADE QUE O ENUNCIADO JA DECLARA (2026-09-15). Ver
+            # `autospec_unidades.aplicar_unidade_da_pergunta`: a pergunta diz
+            # `in (mm)`, a IA responde `152 x 91 x 135` sem repetir o `mm`, e
+            # sem unidade nao ha medida para conferir -- uma conversao CERTA
+            # de polegada para milimetro era jogada fora. O valor conferido
+            # ganha a unidade; o que vai para a FICHA continua o original.
+            valor_conferivel = _com_unidade_do_enunciado(valor, descricao)
+            if not valor_tem_lastro(valor_conferivel, contexto):
                 # Antes de descartar: a IA pode ter lido o número CERTO e
                 # errado só a conta. Aí o dado é bom e a aritmética é do
                 # computador — ver `autospec_unidades.corrigir_conversao`.
-                certo, motivo = _corrigir_conversao(valor, contexto, pergunta=descricao)
+                certo, motivo = _corrigir_conversao(
+                    valor_conferivel, contexto, pergunta=descricao)
                 if certo is not None:
                     aprovados[campo] = certo
                     corrigidos.append((descricao, str(valor), certo, motivo))
                     continue
-                reprovados.append((descricao, str(valor), motivo))
+                reprovados.append(
+                    (descricao, str(valor), _motivo_com_os_numeros(valor, contexto, motivo)))
                 continue
 
             aprovados[campo] = valor
@@ -3191,7 +3256,16 @@ class AutoSpecCore:
                                 f"(continuam vazios, preencha a mao):"
                             )
                             for _chave, descricao in sem_resposta:
-                                yield f"      · {str(descricao)[:90]}"
+                                # `cm`, `cm`, `cm`, `kg` foi o que o usuario
+                                # leu no log da ficha 4500063671.0070 -- e e
+                                # fiel: o `desc` desses campos, no CONFIG_MAP,
+                                # e literalmente a unidade. Descricao curta
+                                # nao identifica campo nenhum, entao o nome do
+                                # campo vai junto.
+                                rotulo = str(descricao or "")
+                                if len(rotulo.strip()) <= 6:
+                                    rotulo = f"{_chave} ({rotulo})" if rotulo.strip() else str(_chave)
+                                yield f"      · {rotulo[:90]}"
                     elif ai_resp:
                         yield (
                             "      (a IA não informou a origem dos dados — "
