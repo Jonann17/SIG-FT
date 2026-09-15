@@ -1229,3 +1229,65 @@ Dois casos "vazaram" e **não são vazamento**: `41 g` contra `41 kg` virou
 uma única medida daquela grandeza, a origem é inequívoca, e o computador refez
 a conta — que é a decisão do usuário de 2026-08-13. As duas aparecem na lista
 de corrigidos do console.
+
+---
+
+## 2026-09-15 (tarde) — o PDF real na mão
+
+O usuário mandou o `Cisco-IE-3200.-datasheet.pdf`. Duas coisas mudaram com ele.
+
+### A primeira: o diagnóstico da véspera se confirma, com os números certos
+
+Eu tinha reconstruído a linha como `5.98 x 3.58 x 5.31 in.`. **O documento diz
+outra coisa:**
+
+```
+Dimensions (H x W x D)
+6 in. X 3.6 in. X 5.3 in.
+15.2 cm. x 9.1 cm. x 13.5 cm
+```
+
+O mecanismo que descrevi estava certo — documento em polegada, IA converte,
+resposta vem sem unidade — mas o formato real é diferente do que supus: cada
+número traz **sua própria** unidade, o separador é `X` maiúsculo, e o `in.`
+tem ponto. E há uma linha em **centímetro** que eu não previa.
+
+`6 × 25,4 = 152,4 → 152`, `3.6 × 25,4 = 91,4 → 91`, `5.3 × 25,4 = 134,6 → 135`.
+A conversão da IA estava certa dos dois jeitos.
+
+Rodado o pipeline inteiro contra o PDF de verdade, com o recorte do RAG:
+
+| A IA responde | Veredito |
+|---|---|
+| `152 x 91 x 135` (crua, como respondeu) | ✅ entra |
+| `152 x 91 x 135 mm` | ✅ entra |
+| `15,2 x 9,1 x 13,5 cm` (como o doc escreve) | ✅ entra |
+| `900 x 800 x 700` (inventado) | ❌ barrado |
+| `15 x 9 x 13` (ordem de grandeza) | ❌ barrado |
+
+### A segunda: um defeito que só o documento real revelaria
+
+O módulo lia, na página 5:
+
+```
+Cisco IE-3200-8T2S-E  ->  [(-3200.0, 't'), (-8.0, 't')]
+```
+
+O `T` de `8T2S` casava com `t` de **tonelada**, e o hífen do código deixava a
+herança de unidade espalhar isso para o `-3200`. Um número de peça virando
+−3200 toneladas é matéria-prima para o corretor fabricar um peso — e o item
+pesa 1,7 kg.
+
+**A unidade agora tem de ser token isolado**: letra ou dígito colado depois
+quer dizer que ela é pedaço de outra palavra. Ponto e vírgula não contam, que
+é justamente como este datasheet escreve (`6 in.`, `15.2 cm.`).
+
+Varrido contra seis códigos de peça reais (`GLC-SX-MM-RGD`, `6ES7214-1AG40-0XB0`,
+`1756-L71`, `WAGO 750-362`, `CS1320-A-0-0-0-1/-000`): **nenhum outro produzia
+fantasma** — só o da Cisco, por causa do `T`. E as medidas de verdade
+continuam sendo lidas, incluindo as duas formas deste PDF.
+
+> **A lição, de novo.** Foi a terceira vez nesta frente em que o documento
+> real desmentiu uma reconstrução minha — e as três vezes o desmentido trouxe
+> um defeito junto. Reconstrução prova a ideia que se tem do documento, não o
+> documento.

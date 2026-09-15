@@ -191,7 +191,22 @@ def extrair_medidas(texto):
         candidatos = leituras(m.group())
         if not candidatos:
             continue
-        adiante = _RE_UNIDADE_ADIANTE.match(normalizado[m.end():])
+        resto = normalizado[m.end():]
+        adiante = _RE_UNIDADE_ADIANTE.match(resto)
+        # A UNIDADE TEM DE SER TOKEN ISOLADO (2026-09-15). Achado com o PDF
+        # real da Cisco: `IE-3200-8T2S-E` devolvia `[(-3200, 't'), (-8, 't')]`
+        # -- o `T` de `8T2S` casava com `t` de TONELADA, e o hifen do codigo
+        # deixava a heranca espalhar isso para o `-3200`. Numero de peca
+        # virando -3200 toneladas e materia-prima para o corretor fabricar um
+        # peso.
+        #
+        # Letra ou digito COLADO depois da unidade quer dizer que ela e pedaco
+        # de outra palavra. Ponto e virgula nao: `6 in.` e `15.2 cm.` sao
+        # exatamente como esse datasheet escreve.
+        if adiante:
+            seguinte = resto[adiante.end():adiante.end() + 1]
+            if seguinte.isalnum():
+                adiante = None
         unidade = _unidade_valida(adiante.group(1)) if adiante else None
         for valor in candidatos:
             # Cada leitura possível vira uma entrada; `indice` amarra as que

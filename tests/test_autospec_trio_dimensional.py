@@ -216,3 +216,44 @@ def test_a_correcao_continua_valendo_quando_HOUVE_conversao():
     corrigido, _motivo = un.corrigir_conversao("7 MPa", CTX_PRESSAO,
                                                pergunta="PRESSAO DE TRABALHO")
     assert corrigido == "35 MPa"
+
+
+# =============================================================================
+# O CÓDIGO DE PEÇA QUE VIRAVA MEDIDA (2026-09-15)
+# =============================================================================
+# Achado com o PDF REAL da Cisco na mão — nenhuma reconstrução minha teria
+# mostrado. O módulo lia, na página 5:
+#
+#     Cisco IE-3200-8T2S-E  ->  [(-3200.0, 't'), (-8.0, 't')]
+#
+# O `T` de `8T2S` casava com `t` de TONELADA, e o hífen do código deixava a
+# herança de unidade espalhar isso para o `-3200`. Um número de peça virando
+# −3200 toneladas é matéria-prima para o corretor fabricar um peso.
+
+def test_codigo_de_peca_nao_vira_medida():
+    """`IE-3200-8T2S-E` não tem tonelada nenhuma dentro."""
+    assert un.extrair_medidas("Cisco IE-3200-8T2S-E") == []
+
+
+@pytest.mark.parametrize("codigo", [
+    "IE-3200-8P2S-E", "GLC-SX-MM-RGD", "WAGO 750-362",
+    "6ES7214-1AG40-0XB0", "1756-L71", "CS1320-A-0-0-0-1/-000",
+])
+def test_outros_codigos_continuam_limpos(codigo):
+    assert un.extrair_medidas(codigo) == []
+
+
+@pytest.mark.parametrize("texto,esperado", [
+    # A regra é "unidade tem de ser token isolado". Estes têm de sobreviver.
+    ("350 bar", [(350.0, "bar")]),
+    ("35MPa", [(35.0, "mpa")]),
+    ("2,05 kgfm", [(2.05, "kgfm")]),
+    ("50 l/min", [(50.0, "l/min")]),
+    ("1.7 kg", [(1.7, "kg")]),
+    # Ponto depois da unidade é pontuação, não continuação — é como o
+    # datasheet da Cisco escreve: `6 in. X 3.6 in. X 5.3 in.`
+    ("6 in. X 3.6 in. X 5.3 in.", [(6.0, "in"), (3.6, "in"), (5.3, "in")]),
+    ("15.2 cm. x 9.1 cm. x 13.5 cm", [(15.2, "cm"), (9.1, "cm"), (13.5, "cm")]),
+])
+def test_medida_de_verdade_continua_sendo_lida(texto, esperado):
+    assert un.extrair_medidas(texto) == esperado
