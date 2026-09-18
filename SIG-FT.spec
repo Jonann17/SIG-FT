@@ -46,6 +46,10 @@ datas = [
     # O ícone da janela e o logo do splash. `resource_path` os acha tanto no
     # .py quanto dentro do .exe.
     ("assets", "assets"),
+    # O CHANGELOG: é dele que sai o "o que há de novo" mostrado depois de uma
+    # atualização (`sigft/core/novidades.py`). Sem ele no bundle, a janela de
+    # novidades abre vazia justamente na hora em que ela importa.
+    ("CHANGELOG.md", "."),
 ]
 
 # `customtkinter` carrega temas de arquivos .json que ele traz junto. Sem isto,

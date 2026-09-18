@@ -1,0 +1,259 @@
+# ════════════════════════════════════════════════════════════════════════════
+#  Release do SIG-FT Itaipu -- build + instalador + publicacao
+#
+#  COMO SE LANCA UMA VERSAO (e so isto):
+#     1. acrescente o bloco da versao no CHANGELOG.md e faca commit;
+#     2. git tag v1.0.1 && git push origin v1.0.1
+#
+#  O resto acontece aqui: o Windows da GitHub gera o .exe com o PyInstaller,
+#  monta o instalador com o Inno Setup, calcula o SHA256 e publica o Release.
+#  Os apps ja instalados avisam sozinhos na proxima abertura.
+#
+#  SEM PERMISSAO DE TAG? Use o botao "Run workflow", campo "versao". Por esse
+#  caminho quem cria a tag e o proprio runner, com o GITHUB_TOKEN.
+#
+#  SEGREDO NECESSARIO (Settings -> Secrets and variables -> Actions):
+#     UPDATE_TOKEN -- PAT fine-grained, SOMENTE LEITURA (Contents: Read-only),
+#                     restrito a ESTE repositorio. E ele que o app embute para
+#                     conseguir ler os Releases, ja que o repositorio e
+#                     PRIVADO. Sem o segredo o build sai sem atualizacao
+#                     automatica (e o workflow avisa) -- nada quebra.
+#  Ver docs/BUILD.md, secao "Rotacao do token".
+# ════════════════════════════════════════════════════════════════════════════
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versao a publicar, sem o 'v' (ex.: 1.0.1, ou 1.1.0-rc.1 para testar)"
+        required: true
+        type: string
+      prerelease:
+        description: "Pre-lancamento (o app NAO oferece pre-lancamentos como atualizacao). Desmarque para publicar de verdade."
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write        # necessario para criar o Release e subir os assets
+
+jobs:
+  build:
+    runs-on: windows-latest        # o PyInstaller nao faz compilacao cruzada
+    timeout-minutes: 90            # o pacote do SIG-FT passa de 400 MB
+
+    env:
+      # ARMADILHA N. 1: o Windows roda o Python em cp1252 por padrao, e
+      # qualquer `print` com acento derruba o passo com UnicodeEncodeError --
+      # o build morre por causa de uma MENSAGEM, depois de lint e testes ja
+      # terem passado. PYTHONUTF8=1 liga o modo UTF-8 para o job inteiro.
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # A versao e a TAG (v1.0.1 -> 1.0.1). Num disparo manual vem da entrada,
+      # e o release sai marcado como pre-lancamento.
+      - name: Definir a versao
+        id: versao
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            versao="${{ inputs.versao }}"
+            echo "prerelease=${{ inputs.prerelease }}" >> "$GITHUB_OUTPUT"
+          else
+            versao="${GITHUB_REF_NAME#v}"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          versao="${versao#v}"
+          # ARMADILHA N. 2: o VersionInfoVersion do Inno so aceita DIGITOS.
+          # "1.0.0-rc.1" faz o compilador abortar, entao o sufixo e cortado
+          # aqui: 1.0.0-rc.1 -> 1.0.0. (O .iss tambem sabe fazer esta conta,
+          # para quem compila a mao; aqui e explicito.)
+          numerica="${versao%%-*}"
+          echo "versao=$versao"     >> "$GITHUB_OUTPUT"
+          echo "numerica=$numerica" >> "$GITHUB_OUTPUT"
+          echo "tag=v$versao"       >> "$GITHUB_OUTPUT"
+          echo "Versao desta publicacao: $versao (binario: $numerica)"
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          pip install "pyinstaller>=6,<7"
+
+      # PORTAO RAPIDO: 2 minutos de teste antes de gastar 20 no empacotamento.
+      # Uma versao publicada quebrada e MUITO mais cara de desfazer -- exige
+      # apagar o Release e a tag, e quem ja atualizou ja atualizou.
+      - name: Lint e testes
+        run: |
+          python -m ruff check .
+          python -m pyflakes frontend.py
+          python -m pytest -q
+
+      - name: Carimbar versao e embutir o token
+        id: carimbo
+        shell: bash
+        env:
+          SIGFT_UPDATE_TOKEN: ${{ secrets.UPDATE_TOKEN }}
+        run: |
+          python tools/preparar_build.py "${{ steps.versao.outputs.versao }}" \
+            --origem github-actions --commit "${{ github.sha }}"
+          # `secrets` nao e contexto valido em `if:` de passo -- por isso a
+          # presenca do token vira um output aqui.
+          if [ -z "$SIGFT_UPDATE_TOKEN" ]; then
+            echo "tem_token=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tem_token=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Avisar se o token nao esta configurado
+        if: steps.carimbo.outputs.tem_token == 'false'
+        run: |
+          echo "::warning title=Sem UPDATE_TOKEN::O segredo UPDATE_TOKEN nao esta definido. Este build NAO tera atualizacao automatica - quem instalar precisara baixar as proximas versoes a mao. Veja a secao 'Rotacao do token' do docs/BUILD.md."
+
+      - name: Gerar o executavel (PyInstaller)
+        run: pyinstaller SIG-FT.spec --noconfirm --clean
+
+      # ─── As tres conferencias, e o que cada uma pega ──────────────────────
+
+      - name: Conferir que o pacote ficou completo
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist\SIG-FT\SIG-FT.exe")) {
+            throw "o PyInstaller terminou sem gerar o SIG-FT.exe"
+          }
+          # O `assets/` e lido por `resource_path` em tempo de execucao: sem
+          # ele o app abre sem identidade visual e so avisa no console.
+          if (-not (Test-Path "dist\SIG-FT\_internal\assets\logo.png")) {
+            Write-Host "::warning::assets/logo.png nao entrou no bundle."
+          }
+          Get-Item "dist\SIG-FT\SIG-FT.exe" | Format-List Name, Length
+
+      # A conferencia que responde "o aplicativo consegue IMPORTAR?", que e a
+      # pergunta certa -- modulo Python puro NAO vira pasta em `_internal\`, e
+      # uma checagem por arquivo reprovaria um build bom.
+      #
+      # ARMADILHA DO `console=False`: o .exe nao se prende ao terminal, entao
+      # nem a saida nem o $LASTEXITCODE chegam por uma chamada com `&`. Por
+      # isso Start-Process -Wait -PassThru, e por isso o proprio programa grava
+      # o relatorio num .txt que lemos aqui.
+      - name: O .exe consegue importar o que precisa (--conferir-pacote)
+        shell: pwsh
+        run: |
+          $p = Start-Process "dist\SIG-FT\SIG-FT.exe" -ArgumentList "--conferir-pacote" `
+                             -PassThru -Wait -WorkingDirectory "$PWD"
+          if (Test-Path "conferencia-do-pacote.txt") {
+            Get-Content "conferencia-do-pacote.txt" | Write-Host
+          }
+          if ($p.ExitCode -ne 0) {
+            throw "faltam modulos no pacote (codigo $($p.ExitCode)) - veja o relatorio acima"
+          }
+
+      # A checagem que o CLAUDE.md pedia e nenhum CI em Linux podia fazer:
+      # ABRIR O APP. Em 2026-08-25 o CP 5.5 deixou um widget orfao, compileall
+      # passou, 2625 testes passaram, e o app morria na abertura com NameError.
+      - name: A janela principal monta (--smoke)
+        shell: pwsh
+        run: |
+          $p = Start-Process "dist\SIG-FT\SIG-FT.exe" -ArgumentList "--smoke" `
+                             -PassThru -Wait -WorkingDirectory "$PWD"
+          if ($p.ExitCode -ne 0) {
+            throw "o .exe nao conseguiu montar a janela principal (codigo $($p.ExitCode))"
+          }
+          Write-Host "A janela principal montou e fechou sem erro."
+
+      # ─── Instalador ───────────────────────────────────────────────────────
+
+      # O Inno Setup ja vem na imagem windows-latest; o fallback cobre a
+      # eventualidade de a imagem mudar sem quebrar o release.
+      - name: Garantir o Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            Write-Host "Inno Setup nao encontrado na imagem - instalando via Chocolatey."
+            choco install innosetup --no-progress -y
+          }
+          "ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Montar o instalador
+        shell: pwsh
+        run: |
+          & "$env:ISCC" "/DMyAppVersion=${{ steps.versao.outputs.versao }}" `
+                        "/DMyVersionInfo=${{ steps.versao.outputs.numerica }}" `
+                        installer\sigft.iss
+          $origem = "installer/Output/SIG-FT_Itaipu_Setup.exe"
+          if (-not (Test-Path $origem)) { throw "o Inno Setup nao gerou o instalador." }
+          # Nome com a versao: nos Downloads de quem baixa, "Setup.exe" sozinho
+          # nao diz nada e os arquivos se sobrescrevem. Barras normais de
+          # proposito: o passo que publica o Release roda em bash.
+          $destino = "installer/Output/SIG-FT_Itaipu_Setup_${{ steps.versao.outputs.versao }}.exe"
+          Move-Item $origem $destino -Force
+          "INSTALADOR=$destino" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      # O manifesto (que o app le para conferir o SHA256 antes de instalar) e
+      # as notas do Release saem do MESMO script: ele le o CHANGELOG, calcula o
+      # hash e grava os dois em UTF-8 sem BOM. Fazer isso em PowerShell tem
+      # tres armadilhas (encoding, tipo e BOM) -- ver o docstring do script.
+      - name: Gerar o manifesto e as notas do Release
+        shell: bash
+        run: |
+          python tools/gerar_manifesto.py \
+            --instalador "$INSTALADOR" \
+            --versao "${{ steps.versao.outputs.versao }}" \
+            --tag "${{ steps.versao.outputs.tag }}"
+
+      - name: Publicar o Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.versao.outputs.tag }}
+          VERSAO: ${{ steps.versao.outputs.versao }}
+          PRERELEASE: ${{ steps.versao.outputs.prerelease }}
+        shell: bash
+        run: |
+          ativos=("$INSTALADOR#Instalador do SIG-FT Itaipu"
+                  "latest.json#Manifesto (versao + SHA256)")
+          if [ "$PRERELEASE" = "true" ]; then sinal="--prerelease"; else sinal="--prerelease=false"; fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "O release $TAG ja existe - anexando os arquivos a ele."
+            gh release upload "$TAG" "${ativos[@]}" --clobber
+            gh release edit "$TAG" \
+              --title "SIG-FT Itaipu v$VERSAO" \
+              --notes-file notas_release.md "$sinal"
+          else
+            echo "Criando o release $TAG."
+            # --target: a tag, quando ainda nao existe, nasce apontando para
+            # ESTE commit -- e nao para o topo da branch padrao no momento.
+            gh release create "$TAG" "${ativos[@]}" \
+              --target "${{ github.sha }}" \
+              --title "SIG-FT Itaipu v$VERSAO" \
+              --notes-file notas_release.md "$sinal"
+          fi
+          echo "--- publicado ---"
+          gh release view "$TAG"
+
+      # Guardado por 30 dias: se alguem precisar do build sem passar pelo
+      # instalador (teste rapido, diagnostico), esta aqui.
+      - name: Guardar os artefatos do build
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SIG-FT-${{ steps.versao.outputs.versao }}
+          path: |
+            installer/Output/*.exe
+            latest.json
+            conferencia-do-pacote.txt
+          retention-days: 30
+          if-no-files-found: warn

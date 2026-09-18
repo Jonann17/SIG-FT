@@ -141,3 +141,27 @@ def test_versao_atual_e_semver_valido():
     assert re.match(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$", _build_info.VERSAO), (
         f"VERSAO = {_build_info.VERSAO!r} nao e MAJOR.MINOR.PATCH"
     )
+
+
+# =============================================================================
+# D. A versao APARECE para o usuario
+# =============================================================================
+#
+# Sem isto, nada do resto se ve: a pessoa atualiza e nao tem como saber em que
+# versao esta -- e quando ela relata um problema, ninguem sabe contra qual
+# build. E tambem a prova de que a atualizacao funcionou.
+
+def test_a_barra_de_titulo_mostra_a_versao():
+    """O titulo da janela principal carrega a versao do build."""
+    fonte = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
+
+    titulos = re.findall(r"self\.title\((.+?)\)\n", fonte)
+    principal = [t for t in titulos if "SIG-FT" in t]
+
+    assert principal, "nao achei o titulo da janela principal"
+    assert any("VERSAO" in t or "_build_info" in t or "versao" in t.lower()
+               for t in principal), (
+        f"o titulo nao mostra a versao: {principal}. Sem ela, a pessoa nao tem "
+        f"como saber em que build esta -- nem para relatar um problema, nem "
+        f"para confirmar que a atualizacao pegou."
+    )

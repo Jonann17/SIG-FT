@@ -12,6 +12,21 @@ from __future__ import annotations
 import json
 import os
 import sys
+
+# ⚠️ ANTES de qualquer import pesado, e isto é deliberado.
+#
+# `--conferir-pacote` existe para dizer O QUE ESTÁ FALTANDO num bundle. Se ela
+# rodasse depois do `import tkinter` logo abaixo, um bundle quebrado a
+# quebraria junto — e o passo do CI morreria com um traceback em vez do
+# relatório. Uma conferência de pacote tem de funcionar justamente quando o
+# pacote está incompleto.
+#
+# `sigft/app/conferencia.py` é só stdlib, de propósito. Ver o docstring de lá.
+if __name__ == "__main__" and "--conferir-pacote" in sys.argv:
+    from sigft.app.conferencia import cli as _conferir
+
+    sys.exit(_conferir())
+
 import threading
 import time
 import tkinter as tk
@@ -20,6 +35,7 @@ from dotenv import load_dotenv
 from PIL import Image
 
 from sigft.app import backends
+from sigft import _build_info
 from sigft.app.theme import COLORS
 from sigft.app.views.analyzer import ModuloAnalyzer
 from sigft.app.views.autospec import ModuloAutoSpec
@@ -298,7 +314,11 @@ class SIG_FT_App(ctk.CTk):
     def __init__(self):
         super().__init__()
         # Configuração da Janela
-        self.title("SIG-FT - GE Vernova")
+        # A versão no título é o único lugar onde a pessoa a vê sem procurar.
+        # Sem ela: ninguém sabe em que build está ao relatar um problema, e não
+        # há como confirmar que a atualização pegou. Vem do `_build_info`, que
+        # o CI carimba a partir da tag -- nunca de arquivo do usuário.
+        self.title(f"SIG-FT v{_build_info.VERSAO} - GE Vernova")
         self.geometry("1280x850")
 
         # --- CARREGAMENTO DE IMAGENS (Ícone e Logo) ---
@@ -578,5 +598,44 @@ def main():
     splash.mainloop()
 
 
+# =============================================================================
+# As duas conferencias que o proprio .exe faz de si mesmo, no CI do Windows
+# =============================================================================
+#
+# Vieram do dossie do Corella Suite, e resolvem um problema que o CLAUDE.md
+# deste projeto ja nomeava sem ter solucao: "editou o frontend? ABRA O APP
+# antes de dizer que esta pronto".
+#
+# Em 2026-08-25 o CP 5.5 removeu um frame e deixou um widget filho para tras.
+# `compileall` passou, 2625 testes passaram, e o app morria na abertura com
+# `NameError: name 'f_novo' is not defined`. So abrir a janela teria pego -- e
+# nenhum CI em Linux pode fazer isso. O workflow de Release roda no WINDOWS, e
+# la o .exe recem-compilado responde estas duas perguntas sozinho.
+
+def _smoke() -> int:
+    """Monta a janela principal e sai. Nao entra no `mainloop`.
+
+    E a checagem que pega o widget orfao, o import que sumiu no bundle e o tema
+    que nao carrega -- tudo o que so aparece quando a janela e CONSTRUIDA.
+    """
+    try:
+        app = SIG_FT_App()
+        app.update_idletasks()   # forca o layout a ser calculado de verdade
+        app.destroy()
+        print("[smoke] a janela principal montou e fechou sem erro.")
+        return 0
+    except Exception as e:  # noqa: BLE001 - e exatamente o que se quer relatar
+        import traceback
+
+        print(f"[smoke] FALHOU: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        return 1
+
+
 if __name__ == "__main__":
+    # `--conferir-pacote` já foi tratado lá em cima, antes dos imports pesados.
+    # `--smoke` fica aqui porque ele PRECISA deles: o que ele prova é que a
+    # janela monta.
+    if "--smoke" in sys.argv:
+        sys.exit(_smoke())
     main()
