@@ -286,8 +286,17 @@ BUSCA_WEB_CACHE_TTL_S = 7 * 24 * 3600  # datasheet de fabricante muda devagar
 
 
 def _caminho_cache_busca():
-    """Ao lado do `api_config.json`, seguindo `core/llm/catalogo.py`."""
-    return os.path.join(os.path.dirname(os.path.abspath(config.CONFIG_FILE)), BUSCA_WEB_CACHE)
+    """Ao lado do `api_config.json`, seguindo `core/llm/catalogo.py`.
+
+    A intenção sempre foi essa; o caminho é que não a cumpria. Ele saía de
+    `os.path.dirname(os.path.abspath(config.CONFIG_FILE))`, e `CONFIG_FILE` é
+    só o NOME do arquivo — na prática isso dava o diretório de TRABALHO, não a
+    pasta do `api_config.json`. Sob `Program Files` (o padrão do instalador)
+    essa pasta é somente-leitura e o cache nunca conseguiria ser escrito.
+    """
+    from sigft.core.dados_usuario import caminho
+
+    return str(caminho(BUSCA_WEB_CACHE))
 
 
 def _cache_busca_ler(query, agora=None):
@@ -601,8 +610,10 @@ RESPOSTA_IA_CACHE_MAX_ENTRADAS = 500
 
 
 def _caminho_cache_resposta():
-    """Ao lado do `api_config.json`, igual ao cache de busca."""
-    return os.path.join(os.path.dirname(os.path.abspath(config.CONFIG_FILE)), RESPOSTA_IA_CACHE)
+    """Ao lado do `api_config.json`, igual ao cache de busca (ver acima)."""
+    from sigft.core.dados_usuario import caminho
+
+    return str(caminho(RESPOSTA_IA_CACHE))
 
 
 def _chave_cache_resposta(prompt, provider=None, model=None):

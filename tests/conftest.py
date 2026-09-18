@@ -214,29 +214,38 @@ def _desliga_rastreamento_de_uso_de_ia_por_padrao(monkeypatch):
     monkeypatch.setenv(_llm_usage.ENV_DESABILITAR_USAGE, "1")
 
 
-# 5. [2026-08-12] Caches do AutoSpec (busca web e resposta da IA) resolvem o
-#    caminho a partir de `config.CONFIG_FILE`, ou seja, a RAIZ DO REPOSITÓRIO.
-#    Sem esta fixture, qualquer teste que chame `generate_ai_response` ou
-#    `search_and_download` escreveria um `.json` na pasta do projeto — e, pior
-#    que a sujeira, o teste seguinte poderia LER o que o anterior gravou:
-#    um acerto de cache faz o código pular a chamada de IA, e uma asserção do
-#    tipo "o modelo foi chamado 1 vez" passaria ou falharia dependendo da
-#    ORDEM dos testes. Mesmo espírito da nota 4: teste nunca toca artefato
-#    real do usuário.
+# 5. [2026-08-12, reescrita em 2026-09-18] A PASTA DE DADOS DO USUÁRIO.
+#
+#    Nasceu isolando dois caches do AutoSpec (busca web e resposta da IA), que
+#    resolviam o caminho a partir de `config.CONFIG_FILE` — ou seja, a RAIZ DO
+#    REPOSITÓRIO. Sem isolamento, qualquer teste que chamasse
+#    `generate_ai_response` ou `search_and_download` escreveria um `.json` na
+#    pasta do projeto; e, pior que a sujeira, o teste seguinte poderia LER o
+#    que o anterior gravou — um acerto de cache faz o código pular a chamada
+#    de IA, e uma asserção do tipo "o modelo foi chamado 1 vez" passaria ou
+#    falharia dependendo da ORDEM dos testes.
+#
+#    O QUE MUDOU: ela monkeypatchava as DUAS FUNÇÕES do `autospec`. Isso
+#    isolava os dois caches e mais nada — e agora há muito mais coisa na pasta
+#    de dados: `api_config.json`, `user_prefs.json` e os três caches de
+#    modelo (ver `sigft/core/dados_usuario.py`). Isolar função por função não
+#    escala, e tinha um efeito ruim: um teste que quisesse verificar PARA ONDE
+#    a função real aponta via o dublê, nunca a implementação.
+#
+#    Agora ela redireciona a PASTA, que é a mesma costura que a produção usa
+#    (`SIGFT_DADOS_DIR`). Um arquivo de dados novo passa a ser isolado
+#    automaticamente, sem ninguém lembrar de acrescentar linha aqui.
+#
 #    Usa `tmp_path_factory` e NÃO `tmp_path`: a pasta precisa ficar FORA do
 #    `tmp_path` do teste, senão testes que afirmam "não escrevi nada" (ex.:
-#    `test_relatorio_lote.py::test_espelho_e_opcional...`) veem a pasta do
-#    cache e falham. Aprendido quebrando os dois.
+#    `test_relatorio_lote.py::test_espelho_e_opcional...`) veem a pasta de
+#    dados e falham. Aprendido quebrando os dois.
 @pytest.fixture(autouse=True)
-def _isola_os_caches_do_autospec(monkeypatch, tmp_path_factory):
-    try:
-        from sigft.services import autospec as _autospec
-    except Exception:
-        return  # suíte que não importa o AutoSpec não precisa da proteção
-    pasta = tmp_path_factory.mktemp("caches_autospec")
-    monkeypatch.setattr(
-        _autospec, "_caminho_cache_resposta", lambda: str(pasta / "resposta.json")
-    )
-    monkeypatch.setattr(
-        _autospec, "_caminho_cache_busca", lambda: str(pasta / "busca.json")
-    )
+def _isola_os_dados_do_usuario(monkeypatch, tmp_path_factory):
+    from sigft.core import dados_usuario as _dados
+
+    pasta = tmp_path_factory.mktemp("dados_do_usuario")
+    monkeypatch.setenv(_dados.ENV_PASTA, str(pasta))
+    _dados.esquecer_pasta()
+    yield pasta
+    _dados.esquecer_pasta()

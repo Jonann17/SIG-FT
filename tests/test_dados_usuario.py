@@ -27,18 +27,15 @@ from sigft.core import dados_usuario
 
 
 @pytest.fixture
-def pasta(tmp_path, monkeypatch):
-    """Aponta a pasta de dados para um `tmp_path`.
+def pasta(_isola_os_dados_do_usuario):
+    """A pasta de dados isolada da suite (ver `_isola_os_dados_do_usuario`).
 
-    A variavel existe primeiro para os TESTES: sem ela, esta suite escreveria
-    na pasta Documentos de verdade de quem a rodasse -- e o arquivo deixado
-    la passaria a valer para o app da pessoa. O DocManager pagou exatamente
-    isso com o token de atualizacao.
+    `SIGFT_DADOS_DIR` existe primeiro para os TESTES: sem ela, esta suite
+    escreveria na pasta Documentos DE VERDADE de quem a rodasse -- e o arquivo
+    deixado la passaria a valer para o app da pessoa. O DocManager pagou
+    exatamente isso com o token de atualizacao.
     """
-    monkeypatch.setenv("SIGFT_DADOS_DIR", str(tmp_path))
-    dados_usuario.esquecer_pasta()
-    yield tmp_path
-    dados_usuario.esquecer_pasta()
+    return _isola_os_dados_do_usuario
 
 
 # =============================================================================
@@ -318,3 +315,39 @@ def test_a_migracao_nunca_derruba_a_abertura(pasta, monkeypatch):
     monkeypatch.setattr(du, "importar_do_lugar_antigo", explode)
 
     assert du.migrar_se_preciso(pasta_antiga="/qualquer") == []
+
+
+# =============================================================================
+# F. Os caches do AutoSpec (frente do Rafael)
+# =============================================================================
+#
+# Os dois diziam "ao lado do api_config.json" -- que era a INTENCAO certa. So
+# que o caminho saia de `os.path.dirname(os.path.abspath(config.CONFIG_FILE))`,
+# e `CONFIG_FILE` e um NOME relativo: na pratica isso dava o diretorio de
+# trabalho, nao a pasta do `api_config.json`. Sob Program Files nao grava.
+
+def test_o_cache_de_busca_web_fica_na_pasta_de_dados(pasta):
+    from sigft.services import autospec
+
+    destino = autospec._caminho_cache_busca()
+
+    assert os.path.dirname(os.path.abspath(destino)) == str(pasta)
+
+
+def test_o_cache_de_resposta_da_ia_fica_na_pasta_de_dados(pasta):
+    from sigft.services import autospec
+
+    destino = autospec._caminho_cache_resposta()
+
+    assert os.path.dirname(os.path.abspath(destino)) == str(pasta)
+
+
+def test_os_dois_caches_ficam_ao_lado_do_api_config(pasta):
+    """A intencao que os docstrings ja declaravam, agora verdadeira."""
+    from sigft import config
+    from sigft.services import autospec
+
+    ao_lado = os.path.dirname(os.path.abspath(config.caminho_config()))
+
+    assert os.path.dirname(os.path.abspath(autospec._caminho_cache_busca())) == ao_lado
+    assert os.path.dirname(os.path.abspath(autospec._caminho_cache_resposta())) == ao_lado
