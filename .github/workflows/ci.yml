@@ -45,18 +45,30 @@ jobs:
 
       # A suite roda SEM as dependencias pesadas (pandas, playwright,
       # google-generativeai...): tests/conftest.py as dubla. Instalar tudo aqui
-      # seria minutos de CI para exercitar o mesmo codigo.
+      # seria minutos de CI para exercitar exatamente o mesmo codigo.
       #
-      # Duas escapam da dublagem e precisam ser reais:
-      #   python-dotenv  -- `sigft/app/main.py` a importa no topo, e
-      #                     tests/test_app_recursos.py importa esse modulo;
-      #   pillow         -- idem, pelo `PIL.Image` do splash.
-      # Sem as duas sao 3 falhas que NAO sao defeito do codigo. Medido.
+      # QUATRO escapam da dublagem e precisam ser REAIS. A lista foi medida num
+      # venv limpo, nao deduzida -- a primeira versao deste passo tinha so duas
+      # e o CI falhou com 13 failed + 27 errors, porque o ambiente onde ela foi
+      # "medida" ja tinha as outras instaladas por outro motivo:
+      #
+      #   requests       tests/conftest.py o deixa de FORA da dublagem de
+      #                  proposito ("e dependencia REAL neste ambiente"), e
+      #                  tests/test_rede.py usa `requests.exceptions` para
+      #                  distinguir falha de SSL de falha de conexao;
+      #   openpyxl       a fixture `openpyxl_real` de test_pdm_montador_idioma
+      #                  e test_traducao_pdm recarrega o pacote DE VERDADE --
+      #                  e o unico jeito de provar que a ficha gerada abre;
+      #   python-dotenv  `sigft/app/main.py` o importa no topo, e
+      #                  tests/test_app_recursos.py importa esse modulo;
+      #   pillow         idem, pelo `PIL.Image` do splash.
+      #
+      # Com as quatro: 3608 passed, 6 skipped. Sem elas: 16 failed, 27 errors.
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-          pip install python-dotenv pillow
+          pip install requests openpyxl python-dotenv pillow
 
       # `compileall` cobre o que o pytest nao importa -- inclusive o
       # frontend.py, que abre janela real e por isso nao pode ser importado.
