@@ -524,6 +524,21 @@ class SIG_FT_App(ctk.CTk):
 
 def main():
     """Sobe o aplicativo pela splash, que carrega os backends e abre a janela."""
+    # ANTES de qualquer janela existir, e nesta ordem:
+    #
+    #   - o `AppUserModelID`, senao o Windows agrupa a janela sob o
+    #     identificador que ele deduz sozinho (o do `python.exe`) e mostra DOIS
+    #     botoes na barra de tarefas para o mesmo programa;
+    #   - o mutex nomeado, que e como o instalador descobre que o SIG-FT esta
+    #     aberto e o fecha antes de trocar os arquivos. Sem ele a atualizacao
+    #     falha com "arquivo em uso".
+    #
+    # Ver `sigft/core/instancia.py`; os nomes tem de bater com o
+    # `installer/sigft.iss`, e ha teste travando os dois.
+    from sigft.core import instancia
+
+    instancia.preparar()
+
     # CP 5.5: aqui se imprimia qual motor cada módulo estava usando. Fazia
     # sentido enquanto havia DOIS e o usuário não tinha como saber em qual
     # estava. Agora só há o Playwright, e um texto que diz sempre a mesma coisa
@@ -540,6 +555,24 @@ def main():
     if (trazidos := migrar_se_preciso()):
         print(f"[SIG-FT] Configuracao importada para a pasta de dados: "
               f"{', '.join(trazidos)}")
+
+    # Acha o Chrome/Edge da máquina para o RPA e repassa o certificado da
+    # empresa ao processo Node do Playwright.
+    #
+    # Isto era feito pelo `SIG-FT Itaipu.bat`, que some com o instalador. Sem
+    # esta chamada, `SIGFT_PLAYWRIGHT_EXECUTABLE` não é definida por ninguém e
+    # o RPA fica sem navegador EM TODA MÁQUINA -- com o app abrindo normalmente
+    # e a falha só aparecendo quando a pessoa aciona um módulo de portal.
+    #
+    # `None` é resultado válido: o app abre igual, e só o robô reclama quando
+    # for usado. Ver `sigft/core/rpa/navegador.py`.
+    from sigft.core.rpa.navegador import preparar_ambiente_do_rpa
+
+    if (navegador_do_rpa := preparar_ambiente_do_rpa()):
+        print(f"[SIG-FT] Navegador do RPA: {navegador_do_rpa}")
+    else:
+        print("[SIG-FT] Nenhum Chrome/Edge encontrado. O app abre normalmente; "
+              "so o robo do portal vai reclamar de navegador quando for usado.")
 
     splash = SplashScreen()
     splash.mainloop()
