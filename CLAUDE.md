@@ -82,7 +82,7 @@ não muda, o modal que trava tudo, o `required=False` que não é opcional, a
 recusa silenciosa). O checklist do fim do arquivo é o portão antes do commit.
 
 ⚠️ E o corolário que custou caro: **`scripts/check.sh` verde não é prova de
-portal.** Os 2700 testes rodam contra dublês escritos pelo próprio Claude --
+portal.** Os 3350 testes rodam contra dublês escritos pelo próprio Claude --
 eles provam a ideia dele do portal, não o portal. Nada de RPA se declara pronto
 sem uma execução real.
 
@@ -94,7 +94,7 @@ sem uma execução real.
 bash scripts/check.sh        # compileall (sintaxe, cobre frontend.py) + pytest
 ```
 
-**Verde é pré-requisito de qualquer commit.** A suíte tem 1327 testes (+10 skipped) e é a
+**Verde é pré-requisito de qualquer commit.** A suíte tem 3350 testes (+5 skipped) e é a
 rede de segurança da refatoração — as dependências pesadas (pandas, openpyxl, selenium,
 google-generativeai, tkinter…) são stubadas em `tests/conftest.py`, então a suíte roda em
 ambiente sem elas.

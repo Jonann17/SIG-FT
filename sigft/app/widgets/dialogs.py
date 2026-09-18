@@ -84,9 +84,15 @@ def msg_excel_bloqueado(caminho: object) -> str:
     preenchida. Dizer QUAL arquivo fechar é a diferença entre o usuário
     resolver em 5 segundos e ficar procurando.
     """
-    import os
+    # `ntpath`, e nao `os.path`: ele corta as DUAS barras (`\\` e `/`) em
+    # qualquer sistema. Com `os.path`, um caminho do Windows rodando fora do
+    # Windows volta inteiro -- e a janela de 450px, que esta mensagem existe
+    # para caber, mostra `C:\Users\...\ficha.xlsx` de ponta a ponta. Em
+    # producao o app so roda no Windows e o defeito nao aparece; quem paga e o
+    # portao de testes, que roda em Linux (CI) e reprovava a mensagem certa.
+    import ntpath
 
-    nome = os.path.basename(str(caminho)) or str(caminho)
+    nome = ntpath.basename(str(caminho)) or str(caminho)
     return (
         f"O arquivo '{nome}' está aberto em outro programa (provavelmente o "
         "Excel), e por isso não pôde ser salvo.\n\n"

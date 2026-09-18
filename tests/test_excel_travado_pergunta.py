@@ -209,7 +209,6 @@ def test_nenhum_servico_chama_wb_save_direto():
                 continue
             if no.func.attr != "save":
                 continue
-            alvo = ast.unparse(no.func.value)
             # `wb.save()` sem argumento dentro de um adaptador é o caso do
             # xlwings (translator) — ele JÁ está sob salvar_perguntando.
             if not no.args:

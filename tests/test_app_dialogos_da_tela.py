@@ -28,7 +28,6 @@ import customtkinter as ctk  # dublê — tests/ctk_falso.py
 import pytest
 
 from sigft.app.widgets import dialogs
-from sigft.app.widgets.espera import DialogosDeEspera
 from sigft.app.widgets.module_frame import ModuleFrame
 
 
