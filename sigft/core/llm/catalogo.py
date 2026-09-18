@@ -60,6 +60,19 @@ GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 TTL_PADRAO_SEGUNDOS = 86400  # 1 dia, igual ao catálogo do OpenRouter
 
 
+def caminho_cache(provider: str) -> str:
+    """Onde o cache de modelos daquele provedor mora: `Documentos\\SIG-FT\\`.
+
+    Os três caches eram nomes relativos, resolvidos pelo diretório de
+    trabalho. Sob `Program Files` a gravação falha, e o efeito seria sutil:
+    o catálogo de modelos passaria a ser buscado na rede a CADA abertura,
+    porque o cache nunca conseguiria ser escrito.
+    """
+    from sigft.core.dados_usuario import caminho
+
+    return str(caminho(CACHE_POR_PROVIDER[provider]))
+
+
 def _http_get_real(url, headers=None, timeout=20):
     """GET pela cascata de rotas de `core.rede`.
 
@@ -168,10 +181,10 @@ def listar_modelos(
 
     chaves = chaves if chaves is not None else config.carregar_chaves()
     agora = (time_fn or time.time)()
-    caminho_cache = CACHE_POR_PROVIDER[provider]
+    arquivo_cache = caminho_cache(provider)
 
     if not forcar:
-        do_cache = _ler_cache(caminho_cache, ttl_segundos, agora)
+        do_cache = _ler_cache(arquivo_cache, ttl_segundos, agora)
         if do_cache is not None:
             return do_cache
         if somente_cache:
@@ -206,7 +219,7 @@ def listar_modelos(
 
     ids = sorted(set(ids))
     if ids:
-        _gravar_cache(caminho_cache, ids, agora)
+        _gravar_cache(arquivo_cache, ids, agora)
     return ids
 
 

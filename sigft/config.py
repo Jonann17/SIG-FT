@@ -477,6 +477,24 @@ def get_task_config(tarefa: str) -> dict[str, str]:
 
 CONFIG_FILE = "api_config.json"
 
+
+def caminho_config() -> str:
+    """Onde o `api_config.json` mora DE VERDADE: `Documentos\\SIG-FT\\`.
+
+    Era um nome relativo, resolvido a partir do diretório de trabalho — ou
+    seja, da pasta do programa. Com o instalador o padrão passa a ser
+    `Program Files`, onde usuário comum não escreve: as chaves sumiriam a
+    cada abertura. E a atualização reescreve a pasta do programa, então elas
+    seriam apagadas a cada versão nova.
+
+    `CONFIG_FILE` continua existindo como NOME do arquivo — é o default do
+    parâmetro `config_path` de `carregar_chaves`, que os testes sobrescrevem
+    com `tmp_path`. Quem quer o caminho real chama esta função.
+    """
+    from sigft.core.dados_usuario import caminho
+
+    return str(caminho(CONFIG_FILE))
+
 # Nome da variável de ambiente que popula cada chave lógica — nomes
 # preservados EXATAMENTE por compatibilidade/free-tier (ver
 # docs/refatoracao/PENDENCIAS.md: `API_GEMINI_LUAN_GMAIL` é um nome pessoal,
@@ -528,7 +546,7 @@ MODELO_RECOMENDADO_ROTEAVEL: dict[tuple[str, str], dict[str, str]] = {
 }
 
 
-def carregar_chaves(config_path: str | os.PathLike[str] = CONFIG_FILE) -> dict[str, str | None]:
+def carregar_chaves(config_path: str | os.PathLike[str] | None = None) -> dict[str, str | None]:
     """Carrega as 4 chaves de API, replicando `SIG_FT_App.load_keys()`.
 
     Lógica (idêntica à de frontend.py:4254-4274):
@@ -551,6 +569,12 @@ def carregar_chaves(config_path: str | os.PathLike[str] = CONFIG_FILE) -> dict[s
     em `os.environ` NO MOMENTO DA CHAMADA (não no import do módulo), então
     testes usam `monkeypatch.setenv`/`monkeypatch.delenv` normalmente.
     """
+    # `None` -> o caminho real, resolvido AGORA. Tardio de propósito: se o
+    # default fosse `caminho_config()`, ele seria avaliado no import e a pasta
+    # de dados ficaria congelada antes de `SIGFT_DADOS_DIR` poder apontá-la.
+    if config_path is None:
+        config_path = caminho_config()
+
     defaults: dict[str, str | None] = _limpar_chaves({
         chave_id: os.environ.get(env_var_name)
         for chave_id, env_var_name in ENV_VAR_POR_CHAVE.items()

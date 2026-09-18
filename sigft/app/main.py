@@ -40,7 +40,19 @@ import customtkinter as ctk
 # Configuração Global
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("dark-blue")
+# O NOME do arquivo. O CAMINHO vem de `config.caminho_config()`, que o resolve
+# em `Documentos\SIG-FT\` — ver `sigft/core/dados_usuario.py`. Era um nome
+# relativo, resolvido pelo diretório de trabalho; sob `Program Files` (o padrão
+# do instalador) isso é somente-leitura, e as chaves de API sumiriam a cada
+# abertura.
 CONFIG_FILE = "api_config.json"
+
+
+def _arquivo_de_chaves() -> str:
+    """Caminho completo do `api_config.json` do usuário."""
+    from sigft.config import caminho_config
+
+    return caminho_config()
 
 # Raiz do projeto: dois níveis acima de sigft/app/main.py.
 #
@@ -142,10 +154,15 @@ def _desviar_saida_para_arquivo() -> None:
     if sys.stdout is not None and sys.stderr is not None:
         return
     try:
-        pasta = os.path.join(os.path.dirname(sys.executable), "logs")
-        os.makedirs(pasta, exist_ok=True)
+        # `Documentos\SIG-FT\logs\`, e não ao lado do `.exe`: sob
+        # `Program Files` a pasta do programa é somente-leitura, e este é o
+        # pior lugar para falhar em silêncio — é justamente este log que
+        # explicaria qualquer outra falha da abertura.
+        from sigft.core.dados_usuario import pasta_logs
+
         destino = open(
-            os.path.join(pasta, "sigft.log"), "a", encoding="utf-8", buffering=1
+            os.path.join(str(pasta_logs()), "sigft.log"),
+            "a", encoding="utf-8", buffering=1,
         )
         if sys.stdout is None:
             sys.stdout = destino
@@ -449,12 +466,13 @@ class SIG_FT_App(ctk.CTk):
             "EMPRESA_LLM_BASE_URL": empresa_llm_base_url,
             "EMPRESA_LLM_API_KEY": empresa_llm_api_key
         }
-        if os.path.exists(CONFIG_FILE):
+        arquivo = _arquivo_de_chaves()
+        if os.path.exists(arquivo):
             try:
-                with open(CONFIG_FILE, 'r') as f:
+                with open(arquivo, 'r', encoding='utf-8') as f:
                     saved = json.load(f)
                     self.api_keys = {**defaults, **saved}
-            except:
+            except Exception:
                 self.api_keys = defaults
         else:
             self.api_keys = defaults
@@ -469,10 +487,11 @@ class SIG_FT_App(ctk.CTk):
         # modelo. Mesma disciplina de
         # `sigft.core.llm.selecao._salvar_secao`: lê o que já está no
         # arquivo, atualiza só as chaves de API recebidas, regrava tudo.
+        arquivo = _arquivo_de_chaves()
         dados_no_arquivo = {}
-        if os.path.exists(CONFIG_FILE):
+        if os.path.exists(arquivo):
             try:
-                with open(CONFIG_FILE, 'r') as f:
+                with open(arquivo, 'r', encoding='utf-8') as f:
                     carregado = json.load(f)
                 if isinstance(carregado, dict):
                     dados_no_arquivo = carregado
@@ -482,7 +501,7 @@ class SIG_FT_App(ctk.CTk):
         dados_no_arquivo.update(new_keys)
         self.api_keys = new_keys
 
-        with open(CONFIG_FILE, 'w') as f:
+        with open(arquivo, 'w', encoding='utf-8') as f:
             json.dump(dados_no_arquivo, f, indent=4)
 
     def get_key(self, key_id):
@@ -509,6 +528,19 @@ def main():
     # sentido enquanto havia DOIS e o usuário não tinha como saber em qual
     # estava. Agora só há o Playwright, e um texto que diz sempre a mesma coisa
     # é ruído que ninguém lê.
+    # Traz `api_config.json`, `user_prefs.json` e o `.env` da pasta do
+    # programa para `Documentos\SIG-FT\`, uma vez. Quem já usava o SIG-FT
+    # atualiza e abre sem recadastrar chave nenhuma.
+    #
+    # Silenciosa quando não há o que migrar, que é o caso da segunda abertura
+    # em diante -- e nunca levanta: perder a importação é ruim, não abrir é
+    # pior. Ver `sigft/core/dados_usuario.py`.
+    from sigft.core.dados_usuario import migrar_se_preciso
+
+    if (trazidos := migrar_se_preciso()):
+        print(f"[SIG-FT] Configuracao importada para a pasta de dados: "
+              f"{', '.join(trazidos)}")
+
     splash = SplashScreen()
     splash.mainloop()
 

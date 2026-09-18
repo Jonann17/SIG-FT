@@ -78,10 +78,35 @@ from pathlib import Path
 # Arquivo de estado
 # =============================================================================
 
-# Mesmo padrão de `sigft.config.CONFIG_FILE` ("api_config.json"): nome
-# relativo (resolvido a partir do cwd do processo — raiz do repo/instalação),
-# já listado em `.gitignore`.
+# Mesmo padrão de `sigft.config.CONFIG_FILE` ("api_config.json"): o NOME do
+# arquivo, que é o default do parâmetro `config_path` (os testes o
+# sobrescrevem com `tmp_path`). Quem quer o caminho real chama
+# `caminho_config()` logo abaixo.
 CONFIG_FILE = "user_prefs.json"
+
+
+def caminho_config() -> str:
+    """Onde o `user_prefs.json` mora DE VERDADE: `Documentos\\SIG-FT\\`.
+
+    Mesmo motivo de `config.caminho_config()`: sob `Program Files` o
+    diretório de trabalho é somente-leitura, e a atualização reescreveria a
+    pasta do programa. As preferências (últimas pastas usadas nos diálogos)
+    são do usuário e sobrevivem à atualização.
+    """
+    from sigft.core.dados_usuario import caminho
+
+    return str(caminho(CONFIG_FILE))
+
+
+def _resolver(config_path):
+    """`None` -> o caminho real; qualquer outra coisa passa direto.
+
+    A resolução é TARDIA de propósito. Se o default das funções abaixo fosse
+    `caminho_config()`, ele seria avaliado no import do módulo — e aí a pasta
+    de dados ficaria congelada antes de `SIGFT_DADOS_DIR` poder apontá-la,
+    que é como os testes (e quem quiser outra pasta) a redirecionam.
+    """
+    return caminho_config() if config_path is None else config_path
 
 # As seções do estado persistido — ver docstring do módulo.
 #
@@ -110,6 +135,7 @@ def _carregar_estado(config_path: str | os.PathLike[str]) -> dict[str, dict[str,
     dict devolvido, mesmo que o arquivo real só tenha algumas — quem chama
     nunca precisa checar `.get(secao, {})`.
     """
+    config_path = _resolver(config_path)
     estado = _estado_vazio()
 
     if not os.path.exists(config_path):
@@ -134,6 +160,7 @@ def _carregar_estado(config_path: str | os.PathLike[str]) -> dict[str, dict[str,
 def _salvar_estado(estado: dict[str, dict[str, str]], config_path: str | os.PathLike[str]) -> None:
     """Grava `estado` em `config_path` como JSON (UTF-8, indentado — arquivo
     pensado para ser legível/editável à mão se necessário)."""
+    config_path = _resolver(config_path)
     with open(config_path, "w", encoding="utf-8") as arquivo:
         json.dump(estado, arquivo, ensure_ascii=False, indent=2, sort_keys=True)
 
@@ -193,7 +220,7 @@ def get_initial_dir(
     chave: str,
     categoria: str,
     *,
-    config_path: str | os.PathLike[str] = CONFIG_FILE,
+    config_path: str | os.PathLike[str] | None = None,
 ) -> str | None:
     """Resolve o diretório inicial para abrir um diálogo de arquivo, nesta
     ordem (a PRIMEIRA camada com um candidato que exista de fato no disco
@@ -235,7 +262,7 @@ def remember_dir(
     categoria: str,
     caminho: str | os.PathLike[str],
     *,
-    config_path: str | os.PathLike[str] = CONFIG_FILE,
+    config_path: str | os.PathLike[str] | None = None,
 ) -> None:
     """Grava `caminho` como a última pasta usada tanto para `chave` quanto
     para `categoria` (as DUAS, na mesma chamada), persistindo em
@@ -257,7 +284,7 @@ def remember_dir(
 def get_default_dir(
     nome: str,
     *,
-    config_path: str | os.PathLike[str] = CONFIG_FILE,
+    config_path: str | os.PathLike[str] | None = None,
 ) -> str | None:
     """Devolve a pasta padrão de nome lógico `nome` (ex.:
     ``"pdms_modificados"``), nesta ordem:
@@ -289,7 +316,7 @@ def set_default_dir(
     nome: str,
     caminho: str | os.PathLike[str],
     *,
-    config_path: str | os.PathLike[str] = CONFIG_FILE,
+    config_path: str | os.PathLike[str] | None = None,
 ) -> None:
     """Grava `caminho` como override do usuário para a pasta padrão de nome
     lógico `nome`, persistindo em `config_path`.
@@ -325,7 +352,7 @@ def remember_file(
     chave: str,
     caminho: str | os.PathLike[str],
     *,
-    config_path: str | os.PathLike[str] = CONFIG_FILE,
+    config_path: str | os.PathLike[str] | None = None,
 ) -> None:
     """Guarda o CAMINHO COMPLETO de um arquivo sob `chave`.
 
@@ -343,7 +370,7 @@ def remember_file(
 def get_last_file(
     chave: str,
     *,
-    config_path: str | os.PathLike[str] = CONFIG_FILE,
+    config_path: str | os.PathLike[str] | None = None,
 ) -> str | None:
     """O último arquivo lembrado sob `chave`, SE ainda existir no disco.
 
