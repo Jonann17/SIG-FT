@@ -22,10 +22,10 @@ Usa `urllib.robotparser`, da stdlib — sem dependência nova.
 """
 from typing import Any
 
-import urllib.error
 import urllib.parse
-import urllib.request
 import urllib.robotparser
+
+from sigft.core import rede
 
 # O robots.txt de um domínio não muda durante um lote. Sem cache, um lote de
 # 50 fichas releria o mesmo arquivo dezenas de vezes.
@@ -49,16 +49,31 @@ def _carregar(raiz):
 
     resultado = None
     try:
-        with urllib.request.urlopen(f"{raiz}/robots.txt", timeout=TIMEOUT_S) as resposta:
-            bruto = resposta.read().decode("utf-8", errors="ignore")
-        leitor = urllib.robotparser.RobotFileParser()
-        leitor.parse(bruto.splitlines())
-        resultado = leitor
-    except urllib.error.HTTPError as erro:
-        # 404/410: o site não publica regra nenhuma. O padrão da web é
-        # permitir, e é o único caso em que a ausência libera.
-        resultado = True if erro.code in (404, 410) else None
+        # Pela cascata de rotas, e não por `urllib.request.urlopen`.
+        #
+        # O `urlopen` não enxerga o arquivo PAC da rede da empresa: com a VPN
+        # ligada a leitura SEMPRE estourava o timeout de 8 s e caía no "não
+        # deu para saber", que libera. Ou seja, no trabalho a checagem de
+        # robots estava efetivamente DESLIGADA — e custava 8 segundos por
+        # domínio para não fazer nada. Ver `sigft/core/rede.py`.
+        #
+        # `status_ok=None`: o status é interpretado aqui embaixo, porque 404
+        # e 500 significam coisas diferentes para esta função.
+        resposta = rede.get(f"{raiz}/robots.txt", timeout=TIMEOUT_S, status_ok=None)
+        if resposta.status_code in (404, 410):
+            # O site não publica regra nenhuma. O padrão da web é permitir, e
+            # é o único caso em que a ausência LIBERA de forma afirmativa.
+            resultado = True
+        elif resposta.status_code >= 400:
+            # Qualquer outro erro do servidor é "não deu para saber".
+            resultado = None
+        else:
+            leitor = urllib.robotparser.RobotFileParser()
+            leitor.parse(resposta.text.splitlines())
+            resultado = leitor
     except Exception:
+        # Sem rota, DNS caído, site fora do ar: não é um "não". Falhar aberto
+        # é a regra do módulo (ver o docstring) e não muda aqui.
         resultado = None
 
     _cache[raiz] = resultado

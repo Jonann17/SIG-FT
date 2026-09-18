@@ -428,6 +428,16 @@ def test_cache_corrompido_nao_derruba_a_execucao(monkeypatch, tmp_path):
     assert autospec_backend._cache_busca_ler("q") == [{"link": "x"}]
 
 
+# ---------------------------------------------------------------------------
+# A busca web do AutoSpec saiu de `requests.get` para a cascata de rotas de
+# `sigft/core/rede.py` em 2026-09-18: com a VPN da empresa ligada, a chamada
+# direta morria por timeout -- a rede so publica um arquivo PAC, que o
+# `requests` nao enxerga, e a busca simplesmente nao achava nada.
+#
+# O que os dois testes abaixo AFIRMAM (o cache quente nao chama a rede; os
+# parametros da consulta nao tem vies de idioma/regiao) nao mudou. So a
+# costura por onde o dublê entra.
+# ---------------------------------------------------------------------------
 def test_busca_com_cache_quente_NAO_chama_a_rede(monkeypatch, tmp_path, registro):
     """O ponto do cache: reprocessar o mesmo lote não pode queimar a cota."""
     monkeypatch.setattr(config, "CONFIG_FILE", str(tmp_path / "api_config.json"))
@@ -436,7 +446,7 @@ def test_busca_com_cache_quente_NAO_chama_a_rede(monkeypatch, tmp_path, registro
     def _explode(*a, **k):
         raise AssertionError("nao pode chamar a CSE com o cache quente")
 
-    monkeypatch.setattr(autospec_backend.requests, "get", _explode)
+    monkeypatch.setattr(autospec_backend.rede, "get", _explode)
     s = autospec_backend.WebSearcher("chave", "cse")
     assert s.search_and_download("minha query", callbacks=registro) == []
     assert "cache" in registro.texto()
@@ -458,7 +468,7 @@ def test_parametros_da_cse_sem_vies_de_idioma_e_regiao(monkeypatch, tmp_path):
         capturado.update(params or {})
         return _Resp()
 
-    monkeypatch.setattr(autospec_backend.requests, "get", _fake_get)
+    monkeypatch.setattr(autospec_backend.rede, "get", _fake_get)
     autospec_backend.WebSearcher("chave", "cse").search_and_download("q")
 
     assert "gl" not in capturado and "hl" not in capturado

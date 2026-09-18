@@ -145,10 +145,10 @@ _PODEM_CHAMAR_REQUESTS_DIRETO = {
 # Arquivos da frente do Rafael (ver docs/refatoracao/TRABALHO_PARALELO.md).
 # Eles saem desta lista conforme forem migrados, e cada saida e um commit
 # isolado com aviso no mural -- nunca correcao de carona.
-_PENDENTES_DA_OUTRA_FRENTE: set[str] = {
-    "sigft/services/autospec.py",
-    "sigft/core/web/robots.py",
-}
+# Vazia: os dois arquivos da frente do Rafael que faziam HTTP
+# (`services/autospec.py` e `core/web/robots.py`) foram migrados em
+# 2026-09-18, em commit isolado e com aviso no mural do CLAUDE.md.
+_PENDENTES_DA_OUTRA_FRENTE: set[str] = set()
 
 
 _VERBOS = ("get", "post", "put", "delete", "request")

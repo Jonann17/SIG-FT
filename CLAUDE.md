@@ -56,6 +56,7 @@ sessão e seria esquecido justamente nas sessões corridas.
 | Data | De | Aviso |
 |---|---|---|
 | 2026-09-08 | Rafael | **Tarefa de IA nova não entra mais em `LLM_MODELOS_HOJE`.** O catálogo agora é `config.LLM_TASKS` + `_POLITICA_RETRY_POR_TAREFA` (em `core/llm/client.py`); aquele mapa é só o baseline das 5 tarefas do CP 3.1. O passo a passo está no aviso longo em `config.py`, seção 6. |
+| 2026-09-18 | Luan | **Nada de `requests.get`/`urlopen` direto: use `sigft.core.rede.get`/`.post`.** Com a VPN ligada a chamada direta morre por timeout (a rede so publica um arquivo PAC). Encostei em `autospec.py` (2 linhas) e `core/web/robots.py`; ha guard de AST reprovando ponto novo. |
 | 2026-09-08 | Rafael | **`ficha_layout.py` ganhou 4 conceitos** (aditivos, nada removido): `nome_da_aba_da_ficha`, `marcador_de_faltante`, `e_marcador_de_faltante` e `idioma_da_ficha`. Se for abrir uma ficha ou escrever `FORNECER` nela, use-os — o nome da aba e o marcador mudam quando a ficha é em inglês. |
 
 ---

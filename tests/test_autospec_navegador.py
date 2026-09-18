@@ -85,6 +85,32 @@ def test_robots_permitindo_o_navegador_e_usado(tmp_path):
         assert "especificacao tecnica" in arquivo.read()
 
 
+# ---------------------------------------------------------------------------
+# A costura do `robots.txt` mudou em 2026-09-18: ele passou a sair pela
+# cascata de rotas (`sigft.core.rede`) em vez de `urllib.request.urlopen`.
+#
+# O motivo esta no docstring de `sigft/core/rede.py`: o `urlopen` nao enxerga
+# o arquivo PAC da rede da empresa, entao com a VPN ligada a leitura SEMPRE
+# estourava o timeout e caia no "libera" -- a checagem de robots estava
+# efetivamente desligada no trabalho, e custava 8 segundos por dominio.
+#
+# O que cada teste abaixo AFIRMA nao mudou. So o dublê.
+# ---------------------------------------------------------------------------
+
+class _RespostaRede:
+    """Dublê da resposta de `rede.get`."""
+
+    def __init__(self, texto="", status=200):
+        self.status_code = status
+        self.text = texto
+
+    def close(self):
+        pass
+
+
+def _robots_responde(texto="", status=200):
+    return lambda url, **kw: _RespostaRede(texto, status)
+
 def test_robots_ilegivel_LIBERA(monkeypatch):
     """Falha ABERTA (decisão do usuário, 2026-08-13). Não conseguir LER a
     regra não é o mesmo que a regra dizer não — e rede corporativa com proxy
@@ -92,7 +118,7 @@ def test_robots_ilegivel_LIBERA(monkeypatch):
     problema de rede numa recusa silenciosa."""
     robots.limpar_cache()
     monkeypatch.setattr(
-        robots.urllib.request, "urlopen",
+        robots.rede, "get",
         lambda *a, **k: (_ for _ in ()).throw(OSError("rede fora")),
     )
     assert robots.pode_acessar("https://x.com/p") is True
@@ -102,48 +128,23 @@ def test_o_DISALLOW_explicito_continua_barrando(monkeypatch):
     """O que mudou foi o tratamento do SILÊNCIO, não o do 'não'."""
     robots.limpar_cache()
 
-    class _Resposta:
-        def read(self):
-            return b"User-agent: *\nDisallow: /\n"
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-    monkeypatch.setattr(robots.urllib.request, "urlopen", lambda *a, **k: _Resposta())
+    monkeypatch.setattr(robots.rede, "get",
+                        _robots_responde("User-agent: *\nDisallow: /\n"))
     assert robots.pode_acessar("https://x.com/qualquer") is False
 
 
 def test_robots_404_libera(monkeypatch):
     """Site sem robots.txt não publicou regra — o padrão da web é permitir."""
-    import urllib.error
-
     robots.limpar_cache()
-    monkeypatch.setattr(
-        robots.urllib.request, "urlopen",
-        lambda *a, **k: (_ for _ in ()).throw(
-            urllib.error.HTTPError("u", 404, "nao tem", {}, None)
-        ),
-    )
+    monkeypatch.setattr(robots.rede, "get", _robots_responde("nao achei", status=404))
     assert robots.pode_acessar("https://x.com/p") is True
 
 
 def test_robots_respeita_o_disallow(monkeypatch):
     robots.limpar_cache()
 
-    class _Resposta:
-        def read(self):
-            return b"User-agent: *\nDisallow: /shop/\n"
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-    monkeypatch.setattr(robots.urllib.request, "urlopen", lambda *a, **k: _Resposta())
+    monkeypatch.setattr(robots.rede, "get",
+                        _robots_responde("User-agent: *\nDisallow: /shop/\n"))
     assert robots.pode_acessar("https://x.com/shop/item") is False
     assert robots.pode_acessar("https://x.com/catalogo/item") is True
 

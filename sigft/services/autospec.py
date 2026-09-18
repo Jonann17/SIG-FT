@@ -3,7 +3,6 @@ import re
 import json
 import hashlib
 import unicodedata
-import requests
 import tempfile
 import openpyxl
 from openpyxl.styles import Font
@@ -30,6 +29,7 @@ from sigft.core.llm import prompts
 # com o contrato de generator que `frontend.py` já consome.
 from sigft.core.callbacks import UICallbacks
 from sigft.core.relatorio_lote import RelatorioLote
+from sigft.core import rede
 # Retrieval (2026-08-11): recorta o contexto antes de mandar para a IA. Modulo
 # separado porque este arquivo ja passou de 1.500 linhas -- e porque o
 # algoritmo (BM25) nao sabe nada sobre ficha tecnica nem sobre Excel.
@@ -1340,7 +1340,15 @@ class WebSearcher:
             # à Google CSE travava o módulo INTEIRO por tempo indefinido --
             # `_download_file` logo abaixo já usava timeout=15, esta não usava
             # nenhum. Mesmo valor, pelo mesmo motivo.
-            response = requests.get(self.search_url, params=params, timeout=15)
+            # Pela cascata de rotas (`core/rede.py`), e nao por
+            # `requests.get`: com a VPN da empresa ligada a chamada direta
+            # morre por timeout -- a rede so publica um arquivo PAC, que o
+            # `requests` nao enxerga, e a busca web simplesmente nao achava
+            # nada, sem dizer por que. `status_ok=None` mantem o
+            # `raise_for_status()` abaixo no comando, para a cota estourada
+            # do CSE continuar aparecendo com a mensagem propria.
+            response = rede.get(self.search_url, params=params, timeout=15,
+                                status_ok=None)
             response.raise_for_status()
             data = response.json()
             items = data.get('items', [])
@@ -1445,10 +1453,11 @@ class WebSearcher:
         `timeout=15` não protege, porque o download avança, só não acaba.
 
         `_get` é ponto de injeção para teste; em produção fica `None` e usa
-        o `requests`.
+        a cascata de rotas de `core/rede.py` (e não o `requests` direto: com
+        a VPN ligada a chamada direta morre por timeout).
         """
         cb = callbacks or _callbacks_silenciosos()
-        get = _get or (lambda u, **kw: requests.get(u, **kw))
+        get = _get or (lambda u, **kw: rede.get(u, status_ok=None, **kw))
         response = None
         try:
             response = get(url, headers=self.headers, timeout=15, stream=True)
