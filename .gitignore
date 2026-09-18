@@ -1,5 +1,9 @@
 # Segredos e configuração local
 .env
+# Token de atualizacao embutido no build -- GERADO por tools/preparar_build.py
+# a partir do segredo UPDATE_TOKEN do repositorio. NUNCA pode chegar ao Git:
+# nao ha como despublicar um token comitado, so rotacionar.
+sigft/_update_auth.py
 api_config.json
 user_prefs.json
 openrouter_models_cache.json

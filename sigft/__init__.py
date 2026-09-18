@@ -5,4 +5,11 @@ nasce vazio, como salvaguarda de estrutura; os módulos `core/`, `services/` e
 `app/` são adicionados nos checkpoints seguintes.
 """
 
-__version__ = "0.0.0"
+# A versão vem do `_build_info`, que é o que o CI carimba a partir da tag do
+# Git. Aqui é REEXPORTAÇÃO, nunca uma cópia: dois literais de versão em dois
+# arquivos divergem na primeira pressa, e a divergência é invisível — o app
+# mostraria um número na tela e compararia outro com o Release.
+# `tests/test_build_info.py` reprova a volta do literal.
+from ._build_info import VERSAO as __version__
+
+__all__ = ["__version__"]
