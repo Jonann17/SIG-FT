@@ -154,9 +154,12 @@ def _buscar_modelos_da_rede(
     if http_get is not None:
         get = http_get
     else:
-        import requests  # import preguiçoso -- ver docstring do módulo
+        # `rede.get`, e não `requests.get`: com a VPN ligada a chamada direta
+        # morre por timeout (a rede só publica PAC). Import preguiçoso -- ver
+        # docstring do módulo.
+        from sigft.core import rede
 
-        get = requests.get
+        get = rede.get
 
     headers = {"Authorization": f"Bearer {api_key}"}
     url = f"{base_url.rstrip('/')}/models"

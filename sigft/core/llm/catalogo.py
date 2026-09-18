@@ -61,11 +61,19 @@ TTL_PADRAO_SEGUNDOS = 86400  # 1 dia, igual ao catálogo do OpenRouter
 
 
 def _http_get_real(url, headers=None, timeout=20):
-    """Import PREGUIÇOSO de `requests` -- o módulo é importado pela UI na
-    montagem da Home, e neste ambiente de teste `requests` é stub."""
-    import requests
+    """GET pela cascata de rotas de `core.rede`.
 
-    return requests.get(url, headers=headers or {}, timeout=timeout)
+    Import PREGUIÇOSO -- o módulo é importado pela UI na montagem da Home, e
+    neste ambiente de teste `requests` é stub.
+
+    Passou a sair por `rede.get` em vez de `requests.get` porque, com a VPN da
+    empresa ligada, a chamada direta morre por timeout: a rede só publica um
+    arquivo PAC, que o `requests` não enxerga. O status continua sendo julgado
+    por quem chamou -- `rede.get` não o interpreta.
+    """
+    from sigft.core import rede
+
+    return rede.get(url, headers=headers or {}, timeout=timeout)
 
 
 def _ler_cache(caminho, ttl_segundos, agora):

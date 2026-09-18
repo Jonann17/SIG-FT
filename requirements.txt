@@ -37,6 +37,17 @@ unidecode
 deep-translator
 
 # Rede corporativa (Zscaler e afins)
+# `truststore` — faz o Python validar TLS pela loja de certificados do WINDOWS,
+# onde a TI instala a raiz do Zscaler. É a primeira camada de `core/rede.py`.
+#
+# Não é redundante com o `pip-system-certs` abaixo: aquele resolve o `pip` e o
+# processo como um todo por monkeypatch na importação; este é chamado
+# explicitamente por `rede.injetar_certificados_windows()`, é idempotente e
+# devolve se funcionou — o que permite a cascata registrar no log que o
+# certificado do sistema não estava disponível, em vez de falhar sem pista.
+# Sem ele o app continua abrindo: a cascata só avisa e segue.
+truststore; sys_platform == "win32"
+
 # Faz o Python usar o repositório de certificados do WINDOWS em vez do bundle
 # fixo do `certifi`. Sem isso, em rede com inspeção SSL toda chamada HTTPS do
 # app (Gemini, OpenRouter, Google CSE) falha com CERTIFICATE_VERIFY_FAILED,

@@ -160,9 +160,12 @@ class OpenAICompatProvider:
         if self._http_post is not None:
             post = self._http_post
         else:
-            import requests  # import preguiçoso -- ver docstring do módulo
+            # `rede.post`, e não `requests.post`: com a VPN ligada a chamada
+            # direta morre por timeout (a rede só publica PAC). Import
+            # preguiçoso -- ver docstring do módulo.
+            from sigft.core import rede
 
-            post = requests.post
+            post = rede.post
 
         url = f"{self._base_url.rstrip('/')}/chat/completions"
         resp = post(url, headers=headers, json=body, timeout=self._timeout)
