@@ -1042,7 +1042,7 @@ class TechSpecsAutomation:
         # assinatura pública (o controller segue chamando igual).
         lote = RelatorioLote(
             from_legacy(callback_log=callback_log),
-            titulo="Características Técnicas — preenchendo no portal",
+            titulo="Características Técnicas: preenchendo no portal",
             total=len(lista_fichas),
             contexto={"fichas": len(lista_fichas)},
         )

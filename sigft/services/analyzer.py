@@ -573,7 +573,7 @@ class DatasheetAnalyzer:
         # existe", era "esta ficha ainda não está pronta para ser analisada".
         if total_vars == 0:
             yield "=" * 60
-            yield "⚠️  Ficha SEM a secao de especificacoes tecnicas — NAO ANALISADA."
+            yield "⚠️  Ficha SEM a secao de especificacoes tecnicas. NAO ANALISADA."
             yield "   Essa secao e obrigatoria: sem ela nao ha caracteristicas"
             yield "   para avaliar, e dar nota seria avaliar meia ficha."
             yield "   A ficha precisa ser corrigida e reenviada ao FORNECEDOR"
@@ -650,7 +650,7 @@ class DatasheetAnalyzer:
             # abortar a ficha x pontuar só o que não é IA), registrada em
             # docs/refatoracao/PENDENCIAS.md.
             yield "=" * 60
-            yield "⚠️  A IA NÃO respondeu para esta ficha — ficha PULADA."
+            yield "⚠️  A IA NÃO respondeu para esta ficha. Ficha PULADA."
             # `getattr` e não `self.ultimo_erro_ia` direto: o repositório
             # constrói o analyzer com `DatasheetAnalyzer.__new__(...)` em
             # vários testes (ver test_ficha_layout.py), sem passar pelo

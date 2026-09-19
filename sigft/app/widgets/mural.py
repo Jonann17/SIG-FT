@@ -51,7 +51,7 @@ ROTULO_FAIXA = {
 
 EXPLICACAO_FAIXA = {
     at.ATRASADA: "a previsão de término já passou",
-    at.TRAVADA: "começou e parou — precisa de alguém para destravar",
+    at.TRAVADA: "começou e parou; precisa de alguém para destravar",
     at.DEVERIA_TER_COMECADO: "a data de início passou e ninguém começou",
     at.EM_ANDAMENTO: "alguém está tocando agora",
     at.COMECA_HOJE: "entra na fila de hoje",

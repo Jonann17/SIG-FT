@@ -101,7 +101,7 @@ class LogDeExecucao:
             self._falha_pendente = erro
             return
         inicio = self._agora().strftime("%Y-%m-%d %H:%M:%S")
-        self._escrever(f"===== {self.modulo} — início {inicio} =====")
+        self._escrever(f"===== {self.modulo} - início {inicio} =====")
         for chave, valor in contexto.items():
             self._escrever(f"      {chave}: {valor}")
 
@@ -109,7 +109,7 @@ class LogDeExecucao:
         if self._arquivo is None:
             return
         fim = self._agora().strftime("%Y-%m-%d %H:%M:%S")
-        self._escrever(f"===== {self.modulo} — fim {fim} =====")
+        self._escrever(f"===== {self.modulo} - fim {fim} =====")
         try:
             self._arquivo.close()
         except Exception:  # noqa: BLE001

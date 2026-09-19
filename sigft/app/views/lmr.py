@@ -84,7 +84,7 @@ class ModuloLMR(ModuleFrame):
             largura_botao=240,
             titulo="Selecione o _STATUS_PMIB",
             filetypes=[("Excel", "*.xlsx *.xlsm")],
-            texto_vazio="Nenhum — o lote não será marcado na planilha",
+            texto_vazio="Nenhum (o lote não será marcado na planilha)",
             ao_escolher=self._ao_escolher_status,
         )
         self.picker_status.pack(pady=(0, 20))
@@ -285,7 +285,7 @@ class ModuloLMR(ModuleFrame):
         caminho = getattr(self, "caminho_status_pmib", None)
         if not caminho:
             if completas or incompletas:
-                self.log("[i] Nenhum _STATUS_PMIB selecionado — a planilha não foi marcada.")
+                self.log("[i] Nenhum _STATUS_PMIB selecionado. A planilha não foi marcada.")
             return
 
         self.log("Marcando o _STATUS_PMIB...")

@@ -158,7 +158,7 @@ class RelatorioLote:
         """Exigência nº 1 — início de lote."""
         self._inicio = self._time_fn()
         quantidade = f"{self._total} item(ns)" if self._total is not None else "itens"
-        self._callbacks.log(f"▶️ {self._titulo} — {quantidade}.", nivel="info")
+        self._callbacks.log(f"▶️ {self._titulo}: {quantidade}.", nivel="info")
         for chave, valor in self._contexto.items():
             self._callbacks.log(f"   • {chave}: {valor}", nivel="info")
 
@@ -270,7 +270,7 @@ class RelatorioLote:
             if ocorrencias:
                 linhas.append(f"   {rotulo}:")
                 linhas += [
-                    f"     {marca} {o.identificador}" + (f" — {o.motivo}" if o.motivo else "")
+                    f"     {marca} {o.identificador}" + (f": {o.motivo}" if o.motivo else "")
                     for o in ocorrencias
                 ]
         return linhas
@@ -289,12 +289,16 @@ class RelatorioLote:
 
     # ------------------------------------------------------------------
     def _linha_item(self, marca: str, ocorrencia: _Ocorrencia) -> str:
-        partes = [f"{marca} {ocorrencia.identificador}"]
+        # Os dois-pontos colam no identificador, e não viram uma "parte" do
+        # `join` -- senão sai `PMIB-3 : motivo`, com espaço antes da
+        # pontuação. (Aconteceu ao trocar o travessão por dois-pontos: o
+        # travessão precisava do espaço, os dois-pontos não.)
+        linha = f"{marca} {ocorrencia.identificador}"
         if ocorrencia.motivo:
-            partes.append(f"— {ocorrencia.motivo}")
+            linha += f": {ocorrencia.motivo}"
         if ocorrencia.duracao_s is not None:
-            partes.append(f"({formatar_duracao(ocorrencia.duracao_s)})")
-        return " ".join(partes)
+            linha += f" ({formatar_duracao(ocorrencia.duracao_s)})"
+        return linha
 
     def _avisar_progresso(self) -> None:
         if self._total:

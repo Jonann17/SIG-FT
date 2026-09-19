@@ -452,7 +452,7 @@ def fotografar_edicao(portal, log_auditoria=None, callback_log=None):
 
     for nome in sel.CONDICOES_POR_SUBABA:
         abrir_subaba(portal, nome, callback_log)
-        extrator.fotografar(portal, f"ALVO em EDIÇÃO — Condições «{nome}»",
+        extrator.fotografar(portal, f"ALVO em EDIÇÃO. Condições «{nome}»",
                             log_auditoria, seletor=alvo)
 
     _log(f"      [i] Condições: fotografei as {len(sel.CONDICOES_POR_SUBABA)} "

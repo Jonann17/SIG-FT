@@ -131,7 +131,7 @@ def test_item_com_erro_vira_falha_e_nao_derruba_os_outros():
     assert "1 falha(s)" in texto
     assert "1 pulado(s)" in texto
     assert "Falhas:" in texto
-    assert "C.xlsx — RuntimeError: PDM de origem não encontrado" in texto
+    assert "C.xlsx: RuntimeError: PDM de origem não encontrado" in texto
     assert "Tempo total:" in texto
 
 

@@ -411,8 +411,8 @@ class LMRAutomation:
                     # problema que este checkpoint conserta.
                     callbacks.ask(
                         f"Erro no item {codigo_pmib_item} durante o preenchimento.\n"
-                        "Confira/corrija manualmente no navegador e clique OK — "
-                        "o processamento segue para o próximo código.",
+                        "Confira/corrija manualmente no navegador e clique OK. "
+                        "O processamento segue para o próximo código.",
                         titulo="Erro LMR",
                     )
                 else:
@@ -477,7 +477,7 @@ class LMRAutomation:
 
         lote = RelatorioLote(
             callbacks,
-            titulo="LMR — aplicando TAGs nas fichas",
+            titulo="LMR: aplicando TAGs nas fichas",
             total=total,
             contexto={"fichas selecionadas": total},
         )

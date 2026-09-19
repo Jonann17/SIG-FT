@@ -91,7 +91,7 @@ class ModuloApagarLMR(ModuleFrame):
             largura_botao=220,
             titulo="Selecione o _STATUS_PMIB (opcional)",
             filetypes=[("Excel", "*.xlsx;*.xlsm")],
-            texto_vazio="Nenhum — a planilha não será alterada",
+            texto_vazio="Nenhum (a planilha não será alterada)",
             ao_escolher=self._ao_escolher_status,
         )
         self.picker_status.pack(pady=(0, 10))
@@ -125,7 +125,7 @@ class ModuloApagarLMR(ModuleFrame):
 
         if not limpou:
             self.log(
-                "   [i] A exclusão não terminou limpa — o _STATUS_PMIB NÃO foi "
+                "   [i] A exclusão não terminou limpa. O _STATUS_PMIB NÃO foi "
                 "alterado. A marcação continua como estava, o que é o certo "
                 "enquanto houver aplicação na ficha."
             )

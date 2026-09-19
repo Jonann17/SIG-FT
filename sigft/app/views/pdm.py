@@ -375,8 +375,8 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
                 "Aviso", "Selecione a pasta de destino dos PDMs Modificados em INGLÊS.")
         if os.path.abspath(origem) == os.path.abspath(destino):
             return messagebox.showerror(
-                "Erro", "A pasta de destino não pode ser a mesma da origem —\n"
-                        "os arquivos em português seriam sobrescritos.")
+                "Erro", "A pasta de destino não pode ser a mesma da origem.\n"
+                        "Os arquivos em português seriam sobrescritos.")
 
         def task():
             try:

@@ -224,7 +224,7 @@ def test_relatorio_mostra_custo_real_quando_informado():
 def test_relatorio_mostra_traco_quando_custo_ausente():
     md = montar_relatorio_markdown([_resultado_ok("a", {"x": 1}, custo_usd=None)])
 
-    assert "| — |" in md
+    assert "| - |" in md
 
 
 def test_relatorio_inclui_contexto_do_prompt():

@@ -796,7 +796,7 @@ class PMIBManager:
             ws.cell(row=r, column=at.COL_DATA_TERMINO).value = valores["data_termino"]
 
         if not self._salvar_com_retry_interativo(wb, caminho_gerenciadora, callback_retry_lock):
-            yield "[ERRO] A planilha está aberta no Excel — a aba Atividades NÃO foi salva."
+            yield "[ERRO] A planilha está aberta no Excel. A aba Atividades NÃO foi salva."
             return
 
         yield (f" -> Atividades: {len(totais)} grupo(s) recalculado(s), "
@@ -888,7 +888,7 @@ class PMIBManager:
                     celula.value = f"{atual}\n{recado}".strip() if atual else recado
 
         if not self._salvar_com_retry_interativo(wb, caminho_gerenciadora, callback_retry_lock):
-            yield "[ERRO] A planilha está aberta no Excel — a aba de preços NÃO foi salva."
+            yield "[ERRO] A planilha está aberta no Excel. A aba de preços NÃO foi salva."
             return
 
         yield (f" -> Lista de preços: {novas} nova(s), {atualizadas} atualizada(s), "

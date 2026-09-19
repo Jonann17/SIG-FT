@@ -175,7 +175,7 @@ class ModuloAnalyzer(DialogosDeEspera, ctk.CTkFrame):
         """
         if not self.relatorio_analise:
             return messagebox.showinfo(
-                "Relatório", "Rode uma análise primeiro — não há pendências para relatar.")
+                "Relatório", "Rode uma análise primeiro. Ainda não há pendências para relatar.")
         destino = self.selected_output or os.getcwd()
         try:
             caminho = self.relatorio_analise.salvar_xlsx(
@@ -186,7 +186,7 @@ class ModuloAnalyzer(DialogosDeEspera, ctk.CTkFrame):
             return messagebox.showerror("Relatório", f"Não consegui gerar o arquivo:\n{e}")
         if not caminho:
             return messagebox.showinfo(
-                "Relatório", "Nenhuma ficha ficou com pendência — não há o que relatar.")
+                "Relatório", "Nenhuma ficha ficou com pendência. Não há o que relatar.")
         self.log(f"Relatorio gerado: {caminho}")
         messagebox.showinfo(
             "Relatório", f"{len(self.relatorio_analise)} ficha(s) com pendência.\n\n"
@@ -323,7 +323,7 @@ class ModuloAnalyzer(DialogosDeEspera, ctk.CTkFrame):
                     "Descrição do material",
                     f"A ficha {arquivo} tem o código PMIB {codigo}, que não está "
                     "no _STATUS_PMIB.\n\nSe você souber a descrição do material, "
-                    "digite abaixo — ela entra no contexto que vai para a IA.\n\n"
+                    "digite abaixo. Ela entra no contexto que vai para a IA.\n\n"
                     "CANCELAR segue sem descrição e não pergunta mais nesta rodada.",
                     parent=self,
                 )

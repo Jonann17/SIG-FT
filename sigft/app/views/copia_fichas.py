@@ -205,7 +205,7 @@ class ModuloCopiaFichas(ctk.CTkFrame):
         self.btn_status.configure(state="normal", fg_color=COLORS["primary"])
         texto = f"Planilha carregada. Encontradas {len(self.fila_completa)} duplicadas."
         if self.impedidas:
-            texto += f" ({len(self.impedidas)} sem dados para o robô — ver log.)"
+            texto += f" ({len(self.impedidas)} sem dados para o robô. Ver log.)"
         self.lbl_status.configure(text=texto, text_color=COLORS["accent"])
         self.log(f"{len(self.fila_completa)} fichas identificadas como cópia.")
 

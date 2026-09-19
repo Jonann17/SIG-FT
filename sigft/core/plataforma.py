@@ -141,7 +141,7 @@ def motivo_sem_excel_com() -> str | None:
     except Exception as erro:
         return (
             "Não consegui falar com o Microsoft Excel desta máquina "
-            f"({erro}). O tradutor precisa do Excel instalado — o Excel "
+            f"({erro}). O tradutor precisa do Excel instalado. O Excel "
             "Online e o LibreOffice não servem."
         )
     return None

@@ -118,12 +118,12 @@ def _previa(valor: Any) -> str:
 
 
 def _fmt_custo(custo: float | None) -> str:
-    return "—" if custo is None else f"US$ {custo:.6f}"
+    return "-" if custo is None else f"US$ {custo:.6f}"
 
 
 def _fmt_tokens(entrada: int | None, saida: int | None) -> str:
     if entrada is None and saida is None:
-        return "—"
+        return "-"
     return f"{entrada if entrada is not None else '?'} / {saida if saida is not None else '?'}"
 
 
@@ -166,7 +166,7 @@ def montar_relatorio_markdown(
     for indice, resultado in enumerate(resultados):
         rotulo = str(resultado["rotulo"])
         if not resultado.get("ok"):
-            linhas.append(f"| `{rotulo}` | ❌ falhou | — | — | — | — | — |")
+            linhas.append(f"| `{rotulo}` | ❌ falhou | - | - | - | - | - |")
             continue
 
         parsed = resultado.get("parsed")
@@ -183,7 +183,7 @@ def montar_relatorio_markdown(
             difs = "✅ idêntico" if comparacao["iguais"] else f"⚠️ {total}"
 
         duracao = resultado.get("duracao_s")
-        duracao_fmt = f"{duracao:.1f}s" if isinstance(duracao, (int, float)) else "—"
+        duracao_fmt = f"{duracao:.1f}s" if isinstance(duracao, (int, float)) else "-"
         tokens_fmt = _fmt_tokens(resultado.get("tokens_in"), resultado.get("tokens_out"))
         linhas.append(
             f"| `{rotulo}` | ✅ ok | {json_ok} | {tokens_fmt} "
@@ -245,12 +245,12 @@ def montar_relatorio_markdown(
         "---",
         "",
         "> **O que este relatório NÃO decide por você.** A contagem de diferenças mede",
-        "> divergência ESTRUTURAL do JSON (campo que sumiu, valor que mudou) — ótimo para",
+        "> divergência ESTRUTURAL do JSON (campo que sumiu, valor que mudou), útil para",
         "> `tech_specs`, `categorizar_pdm` e `validar_ficha`, onde o certo e o errado são",
         "> objetivos. Para `condicoes` e `autospec`, boa parte do conteúdo é texto técnico",
         "> livre em PT/ES: um valor \"diferente\" pode estar igualmente correto, ou melhor.",
         "> Nesses casos use as respostas completas acima e leia. Em especial, confira",
-        "> tradução PT→ES e termos técnicos — é o ponto que o MODELOS_IA.md marca como não",
+        "> tradução PT→ES e termos técnicos, o ponto que o MODELOS_IA.md marca como não",
         "> verificado para os modelos mais baratos.",
         "",
     ]

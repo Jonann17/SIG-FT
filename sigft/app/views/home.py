@@ -45,7 +45,7 @@ MODULOS = [
      "correção. Gera o relatório de pendências para mandar ao fornecedor."),
     ("UploadConditions", "Upload de Condições",
      "Preenche no portal as condições de armazenamento, transporte, manutenção "
-     "e descarte, a partir da ficha — com a tradução para o espanhol."),
+     "e descarte, a partir da ficha, com a tradução para o espanhol."),
     ("UploadSpecs", "Upload de Características",
      "Preenche as características técnicas da ficha no portal, uma linha por "
      "especificação."),
@@ -60,7 +60,7 @@ MODULOS = [
      "com conferência dos documentos duvidosos."),
     ("LMR", "Aplicação LMR",
      "Cadastra as aplicações (TAGs) das fichas no portal, e apaga quando "
-     "preciso — as duas coisas em abas da mesma seção."),
+     "preciso. As duas coisas ficam em abas da mesma seção."),
     ("PMIBManager", "PMIB Manager",
      "Atualiza o mapeamento a partir do Aconex: renomeia arquivos pelo RDS-PP, "
      "calcula o avanço, e mantém as abas de lista de preços e de atividades."),
@@ -91,7 +91,7 @@ class HomeView(ctk.CTkScrollableFrame):
 
         # Descrição Geral
         resumo = ("Clique num módulo abaixo para abri-lo. Os botões desta barra "
-                  "abrem painéis em janela — assim a Home fica limpa.")
+                  "abrem painéis em janela, para a Home ficar limpa.")
         self.criar_texto_simples(resumo, row=2)
 
         # --- BARRA DE BOTÕES ---------------------------------------------
@@ -471,7 +471,7 @@ class HomeView(ctk.CTkScrollableFrame):
             frame,
             text="Escolha primeiro COM QUAL CHAVE trabalhar; a lista de modelos passa a ser a daquele "
                  "provedor. \"Aplicar recomendados\" usa os modelos sugeridos em "
-                 "docs/refatoracao/MODELOS_IA.md — mais econômicos; valide a qualidade numa amostra "
+                 "docs/refatoracao/MODELOS_IA.md, que são mais econômicos. Valide a qualidade numa amostra "
                  "antes de rodar em lote.",
             font=("Roboto", 12), text_color="gray70", justify="left", wraplength=800,
         ).pack(anchor="w", padx=10, pady=(0, 10))
@@ -485,7 +485,7 @@ class HomeView(ctk.CTkScrollableFrame):
         if not providers_com_chave:
             ctk.CTkLabel(
                 frame,
-                text="Nenhum provedor de IA tem chave configurada acima — configure ao menos uma "
+                text="Nenhum provedor de IA tem chave configurada acima. Configure ao menos uma "
                      "chave (ex.: Gemini ou OpenRouter) para escolher o modelo aqui.",
                 font=("Roboto", 12), text_color=COLORS["danger"], justify="left", wraplength=800,
             ).pack(anchor="w", padx=10, pady=(0, 15))
@@ -534,7 +534,7 @@ class HomeView(ctk.CTkScrollableFrame):
         f_filtro.pack(fill="x", padx=10, pady=(5, 5))
         ctk.CTkLabel(f_filtro, text="Filtrar modelos:", width=220, anchor="w").pack(side="left")
         self.entry_filtro_modelo_ia = ctk.CTkEntry(
-            f_filtro, placeholder_text="ex.: flash, haiku, minimax — vazio mostra todos", width=300,
+            f_filtro, placeholder_text="ex.: flash, haiku, minimax (vazio mostra todos)", width=300,
         )
         self.entry_filtro_modelo_ia.pack(side="left", padx=5)
         self.entry_filtro_modelo_ia.bind("<KeyRelease>", lambda _e: self._refiltrar_modelos_ia())
@@ -666,8 +666,8 @@ class HomeView(ctk.CTkScrollableFrame):
         acrescenta sobre o id cru do catálogo."""
         tier_legivel = {"padrao": "Padrão", "economia": "Economia", "poder": "Poder"}.get(fav["tier"], fav["tier"])
         return (
-            f"{fav['rotulo']} — {tier_legivel} "
-            f"(${fav['preco_input']:.2f} / ${fav['preco_output']:.2f} por 1M tokens)"
+            f"{fav['rotulo']} ({tier_legivel}, "
+            f"${fav['preco_input']:.2f} / ${fav['preco_output']:.2f} por 1M tokens)"
         )
 
     # ------------------------------------------------------------------
@@ -746,7 +746,7 @@ class HomeView(ctk.CTkScrollableFrame):
             if do_catalogo > 0:
                 texto = f"{len(self._pares_modelo_ia)} modelos disponíveis ({do_catalogo} do catálogo do provedor)."
             else:
-                texto = ("Catálogo ainda não baixado para este provedor — clique em "
+                texto = ("Catálogo ainda não baixado para este provedor. Clique em "
                          "\"Atualizar lista de modelos\". Enquanto isso valem os recomendados "
                          "e o campo manual.")
             self.lbl_catalogo_ia.configure(text=texto)
@@ -929,7 +929,7 @@ class HomeView(ctk.CTkScrollableFrame):
             "Recomendados aplicados",
             "Os modelos recomendados (docs/refatoracao/MODELOS_IA.md) foram aplicados: Gemini 3 Flash "
             "Preview como padrão global, com Grok 4.5 para a classificação de PDM.\n\n"
-            "São modelos mais econômicos que os usados até agora — recomendamos validar a qualidade "
+            "São modelos mais econômicos que os usados até agora. Vale validar a qualidade "
             "num punhado de fichas (comparando com o resultado anterior) antes de rodar em lote.",
         )
 
@@ -963,7 +963,7 @@ class HomeView(ctk.CTkScrollableFrame):
         messagebox.showinfo(
             "Seleção salva",
             "Seleção de modelos de IA salva. A próxima execução de cada módulo já usa o modelo "
-            "escolhido — não é preciso reiniciar o SIG-FT.",
+            "escolhido. Não é preciso reiniciar o SIG-FT.",
         )
 
     # =========================================================================

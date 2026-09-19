@@ -66,7 +66,7 @@ def garantir_pdm(portal, callback_log=None):
         _log(f"      PDM já é o da duplicada: {atual}")
         return ResultadoDaSecao("pdm", True, atual)
 
-    _log(f"      PDM atual: {atual} — trocando para {sel.PDM_DA_DUPLICADA}.")
+    _log(f"      PDM atual: {atual}, trocando para {sel.PDM_DA_DUPLICADA}.")
     if not _escolher_pdm_da_duplicada(portal, callback_log):
         return ResultadoDaSecao("pdm", False, f"não troquei (estava {atual})")
 

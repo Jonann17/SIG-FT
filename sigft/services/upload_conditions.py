@@ -209,7 +209,7 @@ class ConditionsProcessor:
         # assinatura pública desta função (o frontend segue chamando igual).
         lote = RelatorioLote(
             from_legacy(callback_log=callback_log),
-            titulo="Condições — gerando conteúdo por IA",
+            titulo="Condições: gerando conteúdo por IA",
             total=len(lista_caminhos),
             contexto={
                 "fichas": len(lista_caminhos),

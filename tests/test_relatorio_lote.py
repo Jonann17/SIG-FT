@@ -263,7 +263,10 @@ def test_resumo_LISTA_as_falhas_com_motivo():
 
     texto = _texto(registro)
     assert "Falhas:" in texto
-    assert "PMIB-9 — timeout no portal" in texto
+        # O separador de motivo e os titulos de lote sairam do travessao em
+    # 2026-09-19 (Frente 6). Dois-pontos, e nao hifen, porque o
+    # identificador ja tem hifen: `PMIB-9 - timeout` fica ambiguo.
+    assert "PMIB-9: timeout no portal" in texto
 
 
 def test_resumo_lista_pulados_com_motivo():
@@ -274,7 +277,7 @@ def test_resumo_lista_pulados_com_motivo():
 
     texto = _texto(registro)
     assert "Pulados:" in texto
-    assert "PMIB-3 — sem código PMIB no nome do arquivo" in texto
+    assert "PMIB-3: sem código PMIB no nome do arquivo" in texto
 
 
 def test_resumo_sai_mesmo_quando_o_lote_estoura_no_meio():

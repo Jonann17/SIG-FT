@@ -29,7 +29,7 @@ def test_lmr_lista_vazia_ainda_emite_inicio_e_resumo():
     auto.processar_lista([], None, callbacks=UICallbacks(log=logs.append))
 
     texto = "\n".join(logs)
-    assert "LMR — aplicando TAGs nas fichas" in texto
+    assert "LMR: aplicando TAGs nas fichas" in texto
     assert "Resumo" in texto
     assert "Processo Finalizado." in logs  # mensagem antiga preservada
 
@@ -98,7 +98,7 @@ def test_upload_conditions_pula_arquivo_sem_codigo_pmib_com_motivo():
     processor.processar_ia_lote(["arquivo_sem_codigo.xlsx"], _FakeDF(), callback_log=logs.append)
 
     texto = "\n".join(logs)
-    assert "Condições — gerando conteúdo por IA" in texto
+    assert "Condições: gerando conteúdo por IA" in texto
     assert "⏭️" in texto
     assert "não contém código PMIB" in texto
     # A mensagem específica que já existia continua saindo.
@@ -196,7 +196,7 @@ def test_tech_specs_emite_inicio_e_resumo_com_falhas_listadas():
 
     texto = "\n".join(logs)
     assert finalizados == []  # nenhuma concluiu
-    assert "Características Técnicas — preenchendo no portal" in texto
+    assert "Características Técnicas: preenchendo no portal" in texto
     assert "2 item(ns)" in texto
     assert "❌ 4500063671.0001" in texto
     assert "❌ 4500063671.0002" in texto, "uma ficha com erro não aborta as seguintes"
