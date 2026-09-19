@@ -11,7 +11,25 @@ por planilhas Excel.
 
 ## Como executar
 
-### Windows (uso normal)
+### Windows (uso normal, desde a v1.0.0)
+
+**Baixe o instalador** na [página de Releases](https://github.com/luanccozer/SIG-FT/releases)
+e execute. Ele pergunta se quer instalar para todos os usuários (pede senha de
+administrador) ou só para você (não pede, e as atualizações rodam sem popup).
+
+Depois disso o app **se atualiza sozinho**: quando sai uma versão nova, ele
+avisa, mostra o que mudou e instala com um clique.
+
+> **"O Windows protegeu o computador"** aparece na primeira vez, e não é vírus:
+> o SmartScreen reclama de todo programa recém-compilado sem assinatura digital
+> paga. Clique em **"Mais informações"** — é um link pequeno e cinza, e o botão
+> **"Executar assim mesmo"** só aparece depois dele.
+
+As chaves de API e as suas preferências ficam em `Documentos\SIG-FT\`, fora da
+pasta do programa, então a atualização não encosta nelas. Quem já usava o SIG-FT
+tem as chaves antigas importadas sozinhas na primeira abertura.
+
+### Windows, a partir do código (para quem desenvolve)
 
 1. Baixe o repositório em **Code → Download ZIP** e extraia a pasta.
 2. Dê **dois cliques em `SIG-FT.bat`**.

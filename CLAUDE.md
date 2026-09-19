@@ -57,6 +57,7 @@ sessão e seria esquecido justamente nas sessões corridas.
 |---|---|---|
 | 2026-09-08 | Rafael | **Tarefa de IA nova não entra mais em `LLM_MODELOS_HOJE`.** O catálogo agora é `config.LLM_TASKS` + `_POLITICA_RETRY_POR_TAREFA` (em `core/llm/client.py`); aquele mapa é só o baseline das 5 tarefas do CP 3.1. O passo a passo está no aviso longo em `config.py`, seção 6. |
 | 2026-09-18 | Luan | **Nada de `requests.get`/`urlopen` direto: use `sigft.core.rede.get`/`.post`.** Com a VPN ligada a chamada direta morre por timeout (a rede so publica um arquivo PAC). Encostei em `autospec.py` (2 linhas) e `core/web/robots.py`; ha guard de AST reprovando ponto novo. |
+| 2026-09-19 | Luan | **Travessão saiu do texto de tela e de log** (`tests/test_texto_da_ui.py` reprova a volta). Os arquivos do AutoSpec e os prompts ficaram DE FORA — se quiser alinhar, é combinar antes. Nos relatórios de lote o separador virou dois-pontos. |
 | 2026-09-08 | Rafael | **`ficha_layout.py` ganhou 4 conceitos** (aditivos, nada removido): `nome_da_aba_da_ficha`, `marcador_de_faltante`, `e_marcador_de_faltante` e `idioma_da_ficha`. Se for abrir uma ficha ou escrever `FORNECER` nela, use-os — o nome da aba e o marcador mudam quando a ficha é em inglês. |
 
 ---
@@ -95,7 +96,19 @@ sem uma execução real.
 bash scripts/check.sh        # compileall (sintaxe, cobre frontend.py) + pytest
 ```
 
-**Verde é pré-requisito de qualquer commit.** A suíte tem 3350 testes (+5 skipped) e é a
+O **CI do GitHub** repete isso em todo commit (`.github/workflows/ci.yml`):
+`compileall`, `pyflakes` no `frontend.py`, `ruff`, `pytest` e a conferência do
+`CHANGELOG.md`. Ele roda em Ubuntu com Python 3.10 — o mínimo que o `SIG-FT.bat`
+aceita — e instala `requests`, `openpyxl`, `python-dotenv` e `pillow` além do
+`requirements-dev.txt`: as quatro escapam da dublagem do `conftest.py`, e sem
+elas são 16 falhas que não são defeito do código.
+
+> ⚠️ **"Verde na minha máquina" não é verde no CI.** A primeira versão daquele
+> passo tinha só duas dependências, porque foi escrita a partir do que faltava
+> num contêiner que já tinha as outras instaladas. Para levantar lista de
+> dependência, use um venv limpo.
+
+**Verde é pré-requisito de qualquer commit.** A suíte tem 3806 testes (+17 skipped) e é a
 rede de segurança da refatoração — as dependências pesadas (pandas, openpyxl, selenium,
 google-generativeai, tkinter…) são stubadas em `tests/conftest.py`, então a suíte roda em
 ambiente sem elas.

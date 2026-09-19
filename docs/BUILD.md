@@ -2,6 +2,106 @@
 
 > Checkpoint 8.3 do plano de refatoração.
 
+---
+
+## Publicar uma versão (o caminho normal, desde a v1.0.0)
+
+**São dois passos, e o resto é com a máquina:**
+
+```bash
+# 1. escreva o bloco da versão no CHANGELOG.md e faça commit
+git commit -am "v1.0.1"
+
+# 2. crie a tag
+git tag v1.0.1 && git push origin v1.0.1
+```
+
+O `.github/workflows/release.yml` faz o resto no Windows do GitHub: roda lint e
+testes como portão, compila com o PyInstaller, **abre o próprio `.exe`** para
+conferir que a janela monta (`--smoke`) e que o bundle importa o que precisa
+(`--conferir-pacote`), monta o instalador com o Inno Setup, calcula o SHA256 e
+publica o Release. Os apps já instalados avisam sozinhos na próxima abertura.
+
+### Sem permissão para criar tag?
+
+Aba **Actions → Release → Run workflow**, e preencha o campo *versão*. Por esse
+caminho quem cria a tag é o próprio runner, com o `GITHUB_TOKEN`. (Nem toda
+credencial que empurra uma branch consegue empurrar uma tag; algumas recebem
+403 em `refs/tags/`.)
+
+### Testar sem ninguém receber
+
+Publique um pré-lançamento: `1.1.0-rc.1` pelo botão, com a caixa
+*pré-lançamento* marcada. O app consulta `/releases/latest`, que **por definição
+do GitHub ignora pré-lançamentos** — então ninguém é avisado, e você instala o
+`.exe` do Release à mão para testar.
+
+### O CHANGELOG é obrigatório
+
+`tests/test_novidades.py` reprova um commit em que `_build_info.VERSAO` não
+tenha bloco correspondente no `CHANGELOG.md`, e o CI repete a checagem. Sem
+isso, o defeito só apareceria **com a tag já criada**: o Release sairia com o
+corpo vazio, e desfazer exige apagar o Release e a tag.
+
+---
+
+## Rotação do token de atualização
+
+O repositório é **privado**, então o app precisa de um token para ler os
+Releases. Ele é embutido no build pelo workflow, a partir do segredo
+`UPDATE_TOKEN` (*Settings → Secrets and variables → Actions*).
+
+> ### ⚠️ Um token embutido num `.exe` é extraível
+>
+> A ofuscação de `sigft/_ofuscacao.py` é um XOR com chave fixa, e a chave está
+> no próprio arquivo. Ela serve para o token não aparecer num
+> `strings SIG-FT.exe`, e para mais nada.
+>
+> **Por isso ele tem de ser, sem exceção:**
+>
+> - um PAT **fine-grained** (não um clássico);
+> - **somente leitura** — `Contents: Read-only`, e nada além disso;
+> - **restrito a este repositório**, nunca à conta inteira.
+>
+> Com essas três, o pior caso é alguém conseguir ler o código que essa pessoa
+> já recebeu junto com o app.
+
+**Para trocar o token:**
+
+1. GitHub → *Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens* → **Generate new token**;
+2. *Repository access* → **Only select repositories** → `luanccozer/SIG-FT`;
+3. *Permissions → Repository permissions → Contents* → **Read-only**. Mais
+   nada;
+4. copie o valor e grave em *Settings → Secrets and variables → Actions →
+   `UPDATE_TOKEN`*;
+5. **revogue o token antigo** na mesma tela de tokens;
+6. publique uma versão nova. Só os builds feitos a partir daí carregam o token
+   novo.
+
+### Enquanto a versão nova não sai
+
+Os apps já instalados ficam sem atualização automática (o app avisa: "o GitHub
+recusou o token de atualização deste build"). Dá para consertar **sem refazer o
+build**, máquina a máquina: grave o token novo em
+
+```
+Documentos\SIG-FT\update_token.txt
+```
+
+Esse arquivo tem precedência sobre o token embutido. A variável de ambiente
+`SIGFT_UPDATE_TOKEN` tem precedência sobre os dois.
+
+### Build sem token
+
+Um build local (pelo `Gerar-Executavel.bat`) não tem o segredo, e **isso é o
+certo**: ele simplesmente não procura atualizações. O workflow avisa com um
+`::warning::` quando o segredo não está configurado; nada quebra.
+
+---
+
+## Duas formas de rodar o SIG-FT
+
 Duas formas de rodar o SIG-FT, e a escolha é sobre a **máquina de destino**:
 
 | | `SIG-FT.bat` | `Gerar-Executavel.bat` |

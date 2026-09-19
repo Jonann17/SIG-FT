@@ -1,5 +1,41 @@
 # Levar o SIG-FT para uma máquina da GE Vernova
 
+> **Desde a v1.0.0 há DOIS caminhos, e eles convivem de propósito.** Leia esta
+> seção antes do resto do documento, que descreve só o segundo.
+
+| | Instalador (novo) | ZIP no Box (o de sempre) |
+|---|---|---|
+| Como chega | Release do GitHub, baixado pelo próprio app | você copia o ZIP para o Box |
+| Como atualiza | o app avisa e se atualiza com um clique | o `.bat` percebe na próxima abertura |
+| Precisa de rede para o GitHub | **sim** | não |
+| SmartScreen na primeira vez | **sim** (ver as notas do Release) | não |
+| Como se publica | `git tag v1.0.1 && git push origin v1.0.1` | `Gerar-Pacote.bat` + copiar à mão |
+
+## Por que os dois continuam existindo
+
+O caminho do Box **não foi aposentado**, e a razão é concreta: o instalador
+ainda **não foi validado numa máquina real**. Nada neste repositório pode
+prová-lo — o `.iss` só compila no Windows com o Inno Setup, e que o instalador
+instale por cima de si mesmo (fechando o app pelo `AppMutex`) só a instalação de
+verdade diz.
+
+Aposentar o único canal que funciona antes de provar o novo seria trocar o certo
+pelo não verificado. **Quando você instalar uma versão pelo Release e confirmar
+que a atualização automática funciona na rede da empresa**, o Box sai: é apagar
+`SIG-FT Itaipu.bat`, `Gerar-Pacote.bat` e `tests/test_distribuicao_box.py`, e
+tirar esta seção.
+
+> ⚠️ **Uma diferença que importa enquanto os dois existem:** quem instala pelo
+> instalador tem as chaves de API em `Documentos\SIG-FT\`, e elas **não vêm no
+> pacote** — o `.exe` publicado no GitHub não pode carregar segredo. Quem já
+> usava o SIG-FT não sente nada (as chaves antigas são importadas sozinhas na
+> primeira abertura); quem é novo precisa recebê-las por outro caminho. O Box
+> serve: é um arquivo de 1 KB, não mais um ZIP de 415 MB.
+
+---
+
+## O esquema do Box (o segundo caminho)
+
 O esquema é o mesmo que o **DocManager Itaipu** já usa: o app compilado vive
 num ZIP no Box, e um `.bat` cuida de baixar, atualizar e abrir. Quem usa o
 aplicativo não compila nada, não instala Python e não precisa de permissão de
