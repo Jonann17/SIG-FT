@@ -14,6 +14,8 @@ import pathlib
 
 import pytest
 
+from _caminhos import relativo_posix
+
 from sigft.core import rede
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
@@ -200,7 +202,15 @@ def test_nenhum_modulo_chama_requests_direto(arquivo):
     E o defeito mais caro desta frente inteira, e ele nasce de uma linha
     escrita por quem nao sabia que a cascata existe.
     """
-    relativo = str(arquivo.relative_to(RAIZ))
+    # O caminho e comparado em formato POSIX, sempre. `str(Path.relative_to(...))`
+    # usa o separador do SISTEMA: no Windows sai `sigft\services\autospec.py`, que
+    # nao casa com nenhuma entrada destas listas -- e elas ficam INERTES.
+    #
+    # Foi o que derrubou o primeiro Release (run #1, 2026-09-21): nove testes
+    # reprovaram no Windows, incluindo o arquivo onde o travessao e DADO. A suite
+    # estava verde em Linux, e nenhum CI nosso podia ver.
+    # Ver `tests/_caminhos.py` e `tests/test_caminhos_multiplataforma.py`.
+    relativo = relativo_posix(arquivo, RAIZ)
     if relativo in _PODEM_CHAMAR_REQUESTS_DIRETO:
         pytest.skip("e a propria implementacao da cascata")
     if relativo in _PENDENTES_DA_OUTRA_FRENTE:

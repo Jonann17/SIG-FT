@@ -32,6 +32,8 @@ import pathlib
 
 import pytest
 
+from _caminhos import relativo_posix
+
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 PACOTE = RAIZ / "sigft"
 
@@ -89,7 +91,15 @@ def _strings_com_travessao(caminho: pathlib.Path) -> list[tuple[int, str]]:
     ids=lambda p: str(p.relative_to(RAIZ)),
 )
 def test_sem_travessao_no_texto_que_o_usuario_le(arquivo):
-    relativo = str(arquivo.relative_to(RAIZ))
+    # O caminho e comparado em formato POSIX, sempre. `str(Path.relative_to(...))`
+    # usa o separador do SISTEMA: no Windows sai `sigft\services\autospec.py`, que
+    # nao casa com nenhuma entrada destas listas -- e elas ficam INERTES.
+    #
+    # Foi o que derrubou o primeiro Release (run #1, 2026-09-21): nove testes
+    # reprovaram no Windows, incluindo o arquivo onde o travessao e DADO. A suite
+    # estava verde em Linux, e nenhum CI nosso podia ver.
+    # Ver `tests/_caminhos.py` e `tests/test_caminhos_multiplataforma.py`.
+    relativo = relativo_posix(arquivo, RAIZ)
     if relativo in FORA_DO_RECORTE:
         pytest.skip("fora do recorte -- ver o docstring")
     if relativo in ONDE_ELE_E_DADO:
