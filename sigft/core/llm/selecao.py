@@ -111,10 +111,26 @@ def _selecao_valida(candidato: Any) -> dict[str, str] | None:
     return None
 
 
+def _resolver(config_path):
+    """Para onde o `api_config.json` vai DE VERDADE -- ver
+    `dados_usuario.resolver_config`, que é o dono da regra.
+
+    Chamado nos DOIS pontos de I/O deste módulo (`_ler_json_bruto` e
+    `_salvar_secao`), e não em cada assinatura pública: são 8 delas, mais dois
+    pontos de chamada externos que passam `config.CONFIG_FILE` na mão -- um
+    deles em `services/autospec.py`, que é da frente do Rafael. Resolvendo
+    aqui, o ponto dele passa a funcionar sem que eu encoste no arquivo.
+    """
+    from sigft.core.dados_usuario import resolver_config
+
+    return resolver_config(config_path, config.CONFIG_FILE)
+
+
 def _ler_json_bruto(config_path: str | os.PathLike[str]) -> dict[str, Any]:
     """JSON inteiro de `config_path`, tolerante a ausência/corrupção -- `{}`
     para QUALQUER cenário que não seja "existe e é um objeto JSON válido".
     Nunca levanta (mesmo espírito de `config.carregar_chaves`)."""
+    config_path = _resolver(config_path)
     if not os.path.exists(config_path):
         return {}
     try:
@@ -180,6 +196,7 @@ def _salvar_secao(secao: dict[str, Any], *, config_path: str | os.PathLike[str])
     substitui só `bruto[CHAVE_RESERVADA]` e regrava tudo. É o que garante que
     escrever uma seleção nunca apaga as chaves de API (`GEMINI`/`OPENROUTER`/
     etc.) que já estavam no mesmo arquivo -- ver docstring do módulo."""
+    config_path = _resolver(config_path)
     bruto = _ler_json_bruto(config_path)
     bruto[CHAVE_RESERVADA] = secao
     with open(config_path, "w", encoding="utf-8") as arquivo:

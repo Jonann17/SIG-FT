@@ -99,14 +99,22 @@ def caminho_config() -> str:
 
 
 def _resolver(config_path):
-    """`None` -> o caminho real; qualquer outra coisa passa direto.
+    """Para onde o `user_prefs.json` vai DE VERDADE.
 
-    A resolução é TARDIA de propósito. Se o default das funções abaixo fosse
-    `caminho_config()`, ele seria avaliado no import do módulo — e aí a pasta
-    de dados ficaria congelada antes de `SIGFT_DADOS_DIR` poder apontá-la,
-    que é como os testes (e quem quiser outra pasta) a redirecionam.
+    A regra (e o defeito que a originou) mora em
+    `dados_usuario.resolver_config`, que é o dono único dela — `prefs` e
+    `core/llm/selecao.py` tinham a mesma pergunta a responder, e duas cópias
+    divergem na primeira pressa.
+
+    A resolução continua TARDIA. Se o default das funções abaixo fosse
+    `caminho_config()`, ele seria avaliado no import do módulo — e a pasta de
+    dados ficaria congelada antes de `SIGFT_DADOS_DIR` poder apontá-la, que é
+    como os testes (e quem quiser outra pasta) a redirecionam.
     """
-    return caminho_config() if config_path is None else config_path
+    from sigft.core.dados_usuario import resolver_config
+
+    return resolver_config(config_path, CONFIG_FILE)
+
 
 # As seções do estado persistido — ver docstring do módulo.
 #

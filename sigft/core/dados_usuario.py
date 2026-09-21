@@ -104,6 +104,49 @@ def caminho(nome: str) -> Path:
     return pasta_dados() / nome
 
 
+def e_nome_puro(texto: str) -> bool:
+    """`True` se `texto` é um NOME de arquivo, sem nenhuma pasta.
+
+    Checa as DUAS barras de propósito, em vez de usar `os.path.dirname`: no
+    POSIX, o `dirname` de `C:\\x\\api_config.json` é `""`, e um caminho do
+    Windows passaria por nome puro num teste rodando em Linux. Esta base já
+    pagou duas vezes por tratamento de caminho que muda com o sistema — ver
+    `tests/_caminhos.py`.
+    """
+    return "/" not in texto and "\\" not in texto
+
+
+def resolver_config(config_path, nome_padrao: str):
+    """Para onde um `config_path` aponta DE VERDADE. Três casos:
+
+    * `None` -> `nome_padrao` na pasta de dados;
+    * **NOME puro** (`"api_config.json"`) -> o mesmo, na pasta de dados. As
+      constantes `CONFIG_FILE` são o NOME do arquivo, não um caminho: quem as
+      passa quer O arquivo, não um arquivo relativo à pasta em que o app por
+      acaso foi aberto;
+    * caminho com pasta -> **intocado**. É a costura que os testes usam
+      (`tmp_path`), e o conserto não pode atropelá-la.
+
+    O caso do meio nasceu na primeira instalação real (2026-09-21) e derrubou
+    o aplicativo inteiro. `file_dialogs` e `core/llm/selecao.py` passavam a
+    constante crua como default, o que **anulava** a resolução tardia:
+    `open("user_prefs.json", "w")` grava relativo ao diretório de trabalho, que
+    no app instalado é `Program Files`, onde usuário comum não escreve. O
+    `PermissionError` subia pelo callback do tkinter e sumia no stderr (o
+    `.exe` é `console=False`) — então escolher um arquivo "não fazia nada", em
+    TODOS os módulos.
+
+    A regra mora aqui, e não nas assinaturas, porque havia 13 pontos com o
+    nome cru e um deles é de outra frente: consertar o resolvedor conserta
+    todos, inclusive os que não posso editar.
+    """
+    if config_path is None:
+        return str(caminho(nome_padrao))
+    if e_nome_puro(os.fspath(config_path)):
+        return str(caminho(os.fspath(config_path)))
+    return config_path
+
+
 def pasta_logs() -> Path:
     """`Documentos\\SIG-FT\\logs\\`. Cria se faltar.
 
