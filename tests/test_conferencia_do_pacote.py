@@ -45,19 +45,28 @@ CONFERENCIA = RAIZ / "sigft" / "app" / "conferencia.py"
 # A. As flags existem e sao tratadas ANTES de a janela abrir
 # =============================================================================
 
-def test_o_main_trata_a_flag_smoke():
-    fonte = MAIN.read_text(encoding="utf-8")
-
-    assert "--smoke" in fonte, (
-        "sem `--smoke` o workflow nao tem como perguntar ao .exe se a janela "
-        "monta -- e e a unica checagem que pega um widget orfao"
-    )
-
-
-def test_o_main_trata_a_flag_conferir_pacote():
-    fonte = MAIN.read_text(encoding="utf-8")
-
-    assert "--conferir-pacote" in fonte
+# ATENCAO -- aqui havia dois testes, e os dois davam verde com o defeito dentro:
+#
+#     def test_o_main_trata_a_flag_smoke():
+#         assert "--smoke" in MAIN.read_text(...)
+#
+#     def test_o_main_trata_a_flag_conferir_pacote():
+#         assert "--conferir-pacote" in MAIN.read_text(...)
+#
+# Dois problemas, e cada um bastava para deixar passar o que passou em
+# 2026-09-21:
+#
+# 1. mediam `sigft/app/main.py`, e o bundle NAO roda aquele arquivo -- o
+#    `SIG-FT.spec` empacota o `frontend.py`. As flags estavam tratadas no
+#    lugar certo do arquivo errado;
+# 2. mediam TEXTO. Um `--smoke` citado num comentario satisfaz o `in fonte`
+#    tao bem quanto um tratado de verdade. (E foi o que sobrou: depois do
+#    conserto, `main.py` ainda menciona a flag em comentario, e os dois
+#    continuariam verdes sem tratar nada.)
+#
+# Sairam daqui em favor de `tests/test_ponto_de_entrada.py`, que le o script do
+# `Analysis(...)` do spec, RODA aquele script com a flag e exige resposta. Foi
+# a quarta vez nesta frente que um guard mediu a coisa ao lado da coisa.
 
 
 def test_a_conferencia_nao_importa_nada_pesado():

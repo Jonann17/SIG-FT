@@ -29,10 +29,28 @@ agora é `sigft/app/theme.py`, e há teste travando os dois juntos.
 """
 from __future__ import annotations
 
+# ⚠️ ANTES do import pesado logo abaixo, e isto é o que faz o Release funcionar.
+#
+# Este arquivo é o que o `SIG-FT.spec` empacota — dentro do `.exe`, quem é
+# `"__main__"` é ELE, e o `sigft/app/main.py` entra importado. Em 2026-09-21 o
+# despacho de `--conferir-pacote` morava só lá, atrás de um
+# `if __name__ == "__main__"` que no bundle nunca é verdadeiro: o `.exe`
+# ignorava a flag, caía no `main()` e ABRIA A JANELA. O passo do workflow, que
+# chama o `.exe` com `Start-Process -Wait`, ficou pendurado esperando um
+# aplicativo que estava lá, aberto, esperando o usuário.
+#
+# Uma conferência de pacote tem de funcionar num pacote quebrado, então ela vem
+# antes de tudo. `sigft/app/conferencia.py` é só stdlib, de propósito.
+if __name__ == "__main__":
+    from sigft.app.conferencia import despachar_cedo as _despachar_cedo
+
+    _despachar_cedo()
+
 from sigft.app.main import (
     CONFIG_FILE,
     SIG_FT_App,
     SplashScreen,
+    executar_da_linha_de_comando,
     main,
     resource_path,
 )
@@ -83,10 +101,14 @@ __all__ = [
     "ModuloUploadTechSpecs",
     "SIG_FT_App",
     "SplashScreen",
+    "executar_da_linha_de_comando",
     "main",
     "resource_path",
 ]
 
 
 if __name__ == "__main__":
-    main()
+    # `executar_da_linha_de_comando()`, e não `main()` direto: é ele que trata
+    # `--smoke`. Chamar `main()` aqui engoliria a flag, porque o `__main__` do
+    # `sigft/app/main.py` não roda no bundle. Ver o aviso lá em cima.
+    executar_da_linha_de_comando()

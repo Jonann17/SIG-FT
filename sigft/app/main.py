@@ -22,10 +22,16 @@ import sys
 # pacote está incompleto.
 #
 # `sigft/app/conferencia.py` é só stdlib, de propósito. Ver o docstring de lá.
-if __name__ == "__main__" and "--conferir-pacote" in sys.argv:
-    from sigft.app.conferencia import cli as _conferir
+#
+# ⚠️ O `if` aqui vale para `python -m sigft.app.main`, que é uma das formas de
+# abrir. A OUTRA — a que o `.exe` usa — é o `frontend.py`, e lá este bloco
+# precisa existir também: no bundle quem é `"__main__"` é ele, não este
+# arquivo. Em 2026-09-21 faltava, e o Release ficou pendurado. O nome da flag
+# mora em `conferencia.despachar_cedo`, para não haver dois donos.
+if __name__ == "__main__":
+    from sigft.app.conferencia import despachar_cedo as _despachar_cedo
 
-    sys.exit(_conferir())
+    _despachar_cedo()
 
 import threading
 import time
@@ -632,10 +638,24 @@ def _smoke() -> int:
         return 1
 
 
-if __name__ == "__main__":
-    # `--conferir-pacote` já foi tratado lá em cima, antes dos imports pesados.
-    # `--smoke` fica aqui porque ele PRECISA deles: o que ele prova é que a
-    # janela monta.
+def executar_da_linha_de_comando() -> None:
+    """O que um ponto de entrada deve chamar. Trata `--smoke` e abre o app.
+
+    Existe como função, e não como corpo de um `if __name__ == "__main__"`,
+    pela razão que custou um Release: o bundle empacota o `frontend.py`, então
+    o `__main__` do bundle é ELE, e um `--smoke` tratado só aqui embaixo seria
+    ignorado — o `.exe` abriria a janela e o passo do CI ficaria pendurado
+    esperando para sempre. Sendo função, os dois pontos de entrada chamam a
+    mesma coisa e não há o que sair de sincronia.
+
+    `--conferir-pacote` não entra aqui de propósito: ele tem de ser tratado
+    ANTES dos imports pesados, lá no topo do arquivo. `--smoke` é o oposto —
+    ele PRECISA deles, porque o que prova é que a janela monta.
+    """
     if "--smoke" in sys.argv:
         sys.exit(_smoke())
     main()
+
+
+if __name__ == "__main__":
+    executar_da_linha_de_comando()

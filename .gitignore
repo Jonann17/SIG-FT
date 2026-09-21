@@ -58,3 +58,9 @@ autospec_resposta_cache.json
 
 # Capturas do portal (dados reais de ficha) -- ver scripts/capturar_portal.py
 capturas/
+
+# Relatorio do `--conferir-pacote`. E gravado no diretorio de trabalho (o .exe
+# usa `console=False`, entao a saida nao chega pelo terminal), o que inclui a
+# raiz do repositorio quando a flag e usada daqui. E diagnostico de UMA
+# execucao, nunca fonte.
+conferencia-do-pacote.txt

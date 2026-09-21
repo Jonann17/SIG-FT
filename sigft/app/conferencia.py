@@ -112,6 +112,27 @@ def conferir_pacote(modulos: list[str] | None = None) -> tuple[str, bool]:
     return "\n".join(linhas), not faltando
 
 
+FLAG = "--conferir-pacote"
+
+
+def despachar_cedo(argv: list[str] | None = None) -> None:
+    """Trata `--conferir-pacote` e NÃO volta, se a flag estiver presente.
+
+    Chamada no **topo de cada ponto de entrada**, antes dos imports pesados.
+    Existe como função para que a flag tenha UM dono: em 2026-09-21 o despacho
+    estava escrito à mão dentro de um `if __name__ == "__main__"` no `main.py`
+    — que o bundle não executa, porque quem o `SIG-FT.spec` empacota é o
+    `frontend.py`. A condição era sempre falsa, o `.exe` ignorava a flag e
+    abria a janela, e o passo do Release ficava pendurado esperando um
+    aplicativo que estava ali, aberto, esperando o usuário.
+
+    Ver `tests/test_ponto_de_entrada.py`, que roda o script apontado pelo
+    `Analysis(...)` do spec em vez de escolher um arquivo a dedo.
+    """
+    if FLAG in (sys.argv if argv is None else argv):
+        sys.exit(cli())
+
+
 def cli() -> int:
     """Grava o relatório e devolve o código de saída (0 = tudo certo)."""
     relatorio, tudo_certo = conferir_pacote()

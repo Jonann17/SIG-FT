@@ -140,6 +140,12 @@ jobs:
       # isso Start-Process -Wait -PassThru, e por isso o proprio programa grava
       # o relatorio num .txt que lemos aqui.
       - name: O .exe consegue importar o que precisa (--conferir-pacote)
+        # Se o .exe ABRIR A JANELA em vez de responder a flag, este passo nao
+        # falha: ele PENDURA, porque o `-Wait` espera um aplicativo que esta la,
+        # aberto, esperando o usuario. Foi o que aconteceu em 2026-09-21, e sem
+        # este limite o job consumiria os 90 minutos inteiros para nao publicar
+        # nada. Com ele, o sintoma vira uma falha em 5 minutos, com nome.
+        timeout-minutes: 5
         shell: pwsh
         run: |
           $p = Start-Process "dist\SIG-FT\SIG-FT.exe" -ArgumentList "--conferir-pacote" `
@@ -155,6 +161,12 @@ jobs:
       # ABRIR O APP. Em 2026-08-25 o CP 5.5 deixou um widget orfao, compileall
       # passou, 2625 testes passaram, e o app morria na abertura com NameError.
       - name: A janela principal monta (--smoke)
+        # Se o .exe ABRIR A JANELA em vez de responder a flag, este passo nao
+        # falha: ele PENDURA, porque o `-Wait` espera um aplicativo que esta la,
+        # aberto, esperando o usuario. Foi o que aconteceu em 2026-09-21, e sem
+        # este limite o job consumiria os 90 minutos inteiros para nao publicar
+        # nada. Com ele, o sintoma vira uma falha em 5 minutos, com nome.
+        timeout-minutes: 5
         shell: pwsh
         run: |
           $p = Start-Process "dist\SIG-FT\SIG-FT.exe" -ArgumentList "--smoke" `
