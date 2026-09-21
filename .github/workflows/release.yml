@@ -61,29 +61,20 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      # A versao e a TAG (v1.0.1 -> 1.0.1). Num disparo manual vem da entrada,
-      # e o release sai marcado como pre-lancamento.
+      # A versao sai da TAG (v1.0.1 -> 1.0.1) ou do campo do botao. A decisao
+      # mora num SCRIPT, e nao aqui, porque logica em YAML nao tem teste -- e
+      # a primeira versao dela, escrita aqui, publicava `v1.0.0-rc.1` como
+      # release NORMAL. Ver tools/versao_do_release.py e
+      # tests/test_versao_do_release.py.
       - name: Definir a versao
         id: versao
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            versao="${{ inputs.versao }}"
-            echo "prerelease=${{ inputs.prerelease }}" >> "$GITHUB_OUTPUT"
-          else
-            versao="${GITHUB_REF_NAME#v}"
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
-          versao="${versao#v}"
-          # ARMADILHA N. 2: o VersionInfoVersion do Inno so aceita DIGITOS.
-          # "1.0.0-rc.1" faz o compilador abortar, entao o sufixo e cortado
-          # aqui: 1.0.0-rc.1 -> 1.0.0. (O .iss tambem sabe fazer esta conta,
-          # para quem compila a mao; aqui e explicito.)
-          numerica="${versao%%-*}"
-          echo "versao=$versao"     >> "$GITHUB_OUTPUT"
-          echo "numerica=$numerica" >> "$GITHUB_OUTPUT"
-          echo "tag=v$versao"       >> "$GITHUB_OUTPUT"
-          echo "Versao desta publicacao: $versao (binario: $numerica)"
+          python tools/versao_do_release.py \
+            --evento "${{ github.event_name }}" \
+            --ref "${GITHUB_REF_NAME:-}" \
+            --entrada-versao "${{ inputs.versao }}" \
+            --entrada-prerelease "${{ inputs.prerelease }}"
 
       - name: Instalar dependencias
         run: |
