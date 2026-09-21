@@ -171,10 +171,17 @@ jobs:
         run: |
           $p = Start-Process "dist\SIG-FT\SIG-FT.exe" -ArgumentList "--smoke" `
                              -PassThru -Wait -WorkingDirectory "$PWD"
-          if ($p.ExitCode -ne 0) {
-            throw "o .exe nao conseguiu montar a janela principal (codigo $($p.ExitCode))"
+          # O .exe usa `console=False`: o que ele imprime NAO chega aqui. O
+          # motivo da falha vem pelo arquivo, ou nao vem -- e no run #3 de
+          # 2026-09-21 este passo reprovou com "codigo 1" e mais nada.
+          if (Test-Path "conferencia-da-janela.txt") {
+            Get-Content "conferencia-da-janela.txt" | Write-Host
+          } else {
+            Write-Host "(o .exe nao gravou o conferencia-da-janela.txt -- ele morreu antes de chegar ao relato)"
           }
-          Write-Host "A janela principal montou e fechou sem erro."
+          if ($p.ExitCode -ne 0) {
+            throw "o .exe nao conseguiu montar a janela principal (codigo $($p.ExitCode)) - veja o relatorio acima"
+          }
 
       # ─── Instalador ───────────────────────────────────────────────────────
 
@@ -258,5 +265,6 @@ jobs:
             installer/Output/*.exe
             latest.json
             conferencia-do-pacote.txt
+            conferencia-da-janela.txt
           retention-days: 30
           if-no-files-found: warn

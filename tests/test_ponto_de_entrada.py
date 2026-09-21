@@ -397,3 +397,76 @@ def test_os_passos_que_abrem_o_exe_tem_limite_de_tempo(nome_do_passo):
         f"Um .exe que abre a janela pendura o `-Wait` ate o limite do job:\n  "
         + "\n  ".join(bloco)
     )
+
+
+# =============================================================================
+# G. O `--smoke` tem de dizer POR QUE falhou
+# =============================================================================
+# O run #3 reprovou aqui com "codigo 1" e mais nada. O `_smoke` imprime o
+# traceback, mas o `SIG-FT.spec` usa `console=False`: um .exe sem console nao
+# se prende ao terminal, entao a saida NAO chega ao PowerShell. O passo sabia
+# dizer "falhou" e nao sabia dizer por que -- e cada hipotese custa um build
+# inteiro.
+#
+# E a mesma armadilha que o `--conferir-pacote` ja resolvia gravando um
+# arquivo. A regra tem um dono agora (`conferencia.gravar_relatorio`), em vez
+# de estar implementada num lugar e esquecida no outro.
+
+def test_o_smoke_GRAVA_o_motivo_da_falha(monkeypatch, tmp_path):
+    """Sem isto, um smoke vermelho e um beco sem saida.
+
+    Falhar sem diagnostico nao e melhor que nao checar: custa o mesmo build e
+    nao diz nada.
+    """
+    from sigft.app import conferencia
+    from sigft.app import main as modulo
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        modulo, "SIG_FT_App",
+        lambda: (_ for _ in ()).throw(RuntimeError("widget orfao aqui")))
+
+    assert modulo._smoke() == 1
+
+    relatorio = (tmp_path / conferencia.ARQUIVO_JANELA).read_text(encoding="utf-8")
+    assert "widget orfao aqui" in relatorio, "o motivo nao foi gravado"
+    assert "RuntimeError" in relatorio
+    assert "Traceback" in relatorio, (
+        "sem a pilha nao da para saber QUAL widget/import quebrou"
+    )
+
+
+def test_o_smoke_grava_tambem_quando_da_certo(monkeypatch, tmp_path):
+    """O passo imprime o arquivo sempre. Se ele so existisse na falha, o
+    workflow teria de tratar o caso 'nao existe' -- e um arquivo velho de outro
+    build seria lido como se fosse deste."""
+    from sigft.app import conferencia
+    from sigft.app import main as modulo
+
+    class _JanelaFalsa:
+        def update_idletasks(self): pass
+        def destroy(self): pass
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(modulo, "SIG_FT_App", _JanelaFalsa)
+
+    assert modulo._smoke() == 0
+    assert (tmp_path / conferencia.ARQUIVO_JANELA).is_file()
+
+
+def test_o_workflow_IMPRIME_o_relatorio_da_janela():
+    """De nada adianta gravar se o passo nao mostrar."""
+    bloco = "\n".join(_bloco_do_passo("A janela principal monta (--smoke)"))
+
+    assert "conferencia-da-janela.txt" in bloco, (
+        "o passo do --smoke nao imprime o relatorio -- uma falha ali volta a "
+        "ser so `codigo 1`, sem diagnostico"
+    )
+
+
+def test_os_dois_relatorios_sobem_como_artefato():
+    """Quando o passo falha, o arquivo e a unica testemunha do que houve."""
+    texto = WORKFLOW.read_text(encoding="utf-8")
+
+    for arquivo in ("conferencia-do-pacote.txt", "conferencia-da-janela.txt"):
+        assert arquivo in texto, f"{arquivo} nao e guardado como artefato"

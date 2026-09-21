@@ -624,18 +624,29 @@ def _smoke() -> int:
     E a checagem que pega o widget orfao, o import que sumiu no bundle e o tema
     que nao carrega -- tudo o que so aparece quando a janela e CONSTRUIDA.
     """
+    import traceback
+
+    from sigft.app.conferencia import ARQUIVO_JANELA, gravar_relatorio
+
     try:
         app = SIG_FT_App()
         app.update_idletasks()   # forca o layout a ser calculado de verdade
         app.destroy()
-        print("[smoke] a janela principal montou e fechou sem erro.")
-        return 0
     except Exception as e:  # noqa: BLE001 - e exatamente o que se quer relatar
-        import traceback
-
-        print(f"[smoke] FALHOU: {type(e).__name__}: {e}")
-        traceback.print_exc()
+        relatorio = (f"[smoke] FALHOU: {type(e).__name__}: {e}\n\n"
+                     + traceback.format_exc())
+        # GRAVAR, e nao so imprimir: com `console=False` a saida do .exe nao
+        # chega ao PowerShell, e o passo do CI reprova com "codigo 1" e mais
+        # nada. Foi o que aconteceu no run #3 de 2026-09-21. Ver
+        # `conferencia.gravar_relatorio`.
+        gravar_relatorio(ARQUIVO_JANELA, relatorio)
+        print(relatorio)
         return 1
+
+    ok = "[smoke] a janela principal montou e fechou sem erro."
+    gravar_relatorio(ARQUIVO_JANELA, ok)
+    print(ok)
+    return 0
 
 
 def executar_da_linha_de_comando() -> None:

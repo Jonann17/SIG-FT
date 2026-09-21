@@ -58,6 +58,37 @@ MODULOS_ESSENCIAIS = [
 
 ARQUIVO_CONFERENCIA = "conferencia-do-pacote.txt"
 
+# O relatório do `--smoke`, pela mesma razão que o de cima existe. Ver
+# `gravar_relatorio`.
+ARQUIVO_JANELA = "conferencia-da-janela.txt"
+
+
+def gravar_relatorio(nome: str, texto: str) -> None:
+    """Grava um diagnóstico do `.exe` no diretório de trabalho.
+
+    Existe porque o `SIG-FT.spec` usa `console=False`, e **um `.exe` sem
+    console não se prende ao terminal**: nem o que ele imprime nem o
+    `$LASTEXITCODE` chegam por uma chamada direta do PowerShell. Um
+    diagnóstico que só vá para a saída padrão simplesmente não existe para
+    quem lê o log do CI.
+
+    A regra estava implementada no `--conferir-pacote` e esquecida no
+    `--smoke`, e o resultado apareceu no run #3 de 2026-09-21: a janela não
+    montou, o passo reprovou com `codigo 1` e **mais nada**. Uma checagem que
+    falha sem dizer por quê custa o mesmo build e não diz nada — cada hipótese
+    vira uma rodada inteira. Por isso virou função com nome: o próximo
+    diagnóstico que o `.exe` fizer de si mesmo usa esta, e não reaprende a
+    lição.
+
+    Nunca levanta. Ela roda no caminho de erro; deixar o relatório quebrar o
+    relato seria trocar um diagnóstico ruim por nenhum.
+    """
+    try:
+        with open(nome, "w", encoding="utf-8") as arquivo:
+            arquivo.write(texto.rstrip() + "\n")
+    except OSError as e:  # noqa: BLE001 — ver docstring
+        print(f"(nao foi possivel gravar o {nome}: {e})", file=sys.stderr)
+
 
 def conferir_pacote(modulos: list[str] | None = None) -> tuple[str, bool]:
     """`(relatório, tudo_certo)` — o bundle consegue importar o que precisa?
@@ -136,11 +167,6 @@ def despachar_cedo(argv: list[str] | None = None) -> None:
 def cli() -> int:
     """Grava o relatório e devolve o código de saída (0 = tudo certo)."""
     relatorio, tudo_certo = conferir_pacote()
-    try:
-        with open(ARQUIVO_CONFERENCIA, "w", encoding="utf-8") as arquivo:
-            arquivo.write(relatorio + "\n")
-    except OSError as e:
-        print(f"(nao foi possivel gravar o {ARQUIVO_CONFERENCIA}: {e})",
-              file=sys.stderr)
+    gravar_relatorio(ARQUIVO_CONFERENCIA, relatorio)
     print(relatorio)
     return 0 if tudo_certo else 1
