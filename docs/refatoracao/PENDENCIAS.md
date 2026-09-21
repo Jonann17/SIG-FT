@@ -419,3 +419,44 @@ virar "0 amperes" e quebraria a leitura de intervalo, que tem teste proprio
 Sai caro resolver direito: exige o simbolo com contexto (`24 A`, `4-20 mA`)
 distinguido do conector, provavelmente por regex propria. Volt sozinho e
 seguro, mas meia solucao. Fica para uma rodada dedicada.
+
+---
+
+## 2026-09-21 — o `--smoke` pode rodar no CI do Linux, com xvfb
+
+Achado ao diagnosticar o run #3 do Release. O `CLAUDE.md` diz, em dois lugares,
+que abrir a janela "nenhum CI em Linux pode fazer" — e a suposição estava
+errada. Num contêiner Linux comum:
+
+    apt-get install -y python3-tk        # tkinter 8.6
+    python3.12 -m venv .venv             # a mesma versão que o runner usa
+    .venv/bin/pip install -r requirements.txt
+    xvfb-run -a .venv/bin/python frontend.py --smoke
+
+Isso montou a janela de verdade, com os 11 backends carregados, e devolveu 0.
+Foi como o defeito do run #3 foi reproduzido e consertado sem depender do
+build no Windows.
+
+**Por que vale a pena:** o ciclo hoje é de ~6 minutos por hipótese, e o
+`--smoke` só existe no workflow de Release — ou seja, um widget órfão só
+aparece na hora de publicar. No CI, apareceria no commit.
+
+**O que custa, e por isso não entrou de carona:** o job precisa do
+`requirements.txt` inteiro (pandas, playwright, os SDKs de IA), que é bem mais
+pesado que o `requirements-dev.txt` de hoje. É uma decisão de custo de CI, não
+um conserto — pede rodada própria.
+
+## 2026-09-21 — backend que não importa não reprova o Release
+
+Descoberto ao consertar o `_smoke`. `backends.carregar_todos` segue em frente
+quando um backend estoura, de propósito: um backend quebrado deixa **uma** tela
+sem funcionar, não o aplicativo sem abrir.
+
+O `_smoke` passou a **relatar** esses avisos, mas não reprova por causa deles —
+espelhar o contrato do aplicativo em vez de inventar um mais rígido. Fica a
+pergunta para o Luan: **num Release, um backend que não importa deveria barrar
+a publicação?** Argumento a favor: dentro do `.exe` todas as dependências estão
+empacotadas, então uma falha ali é defeito de empacotamento, e publicar significa
+entregar uma tela morta. Argumento contra: um falso vermelho por motivo de
+ambiente (o `xlwings` querendo Excel, por exemplo) trava a publicação inteira
+por causa de uma tela.

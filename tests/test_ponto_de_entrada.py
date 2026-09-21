@@ -470,3 +470,76 @@ def test_os_dois_relatorios_sobem_como_artefato():
 
     for arquivo in ("conferencia-do-pacote.txt", "conferencia-da-janela.txt"):
         assert arquivo in texto, f"{arquivo} nao e guardado como artefato"
+
+
+# =============================================================================
+# H. O `--smoke` monta a janela COMO O USUARIO a vê
+# =============================================================================
+# O run #3 reprovou aqui, e o motivo (reproduzido em Linux com xvfb, com o
+# traceback inteiro) foi:
+#
+#     File "sigft/app/views/translator.py", line 34, in __init__
+#       self.backend = backends.translator_backend.TechnicalTranslator()
+#     AttributeError: 'NoneType' object has no attribute 'TechnicalTranslator'
+#
+# Ou seja: o defeito estava no CHECADOR, nao no aplicativo. O caminho real de
+# abertura e `main()` -> SplashScreen -> `backends.carregar_todos()` -> e so
+# entao a janela. O `_smoke` construia `SIG_FT_App()` direto, com o registro de
+# backends ainda em `None`, e a primeira view que usa o backend no `__init__`
+# estourava.
+#
+# Um checador que nao reproduz a ordem de abertura reprova o que funciona -- e
+# vale menos que nenhum, porque manda consertar o que nao esta quebrado.
+
+def test_o_smoke_CARREGA_os_backends_antes_de_montar_a_janela(monkeypatch, tmp_path):
+    """A ordem que o splash faz, e que o `_smoke` tem de repetir."""
+    from sigft.app import main as modulo
+
+    ordem = []
+
+    class _JanelaFalsa:
+        def __init__(self): ordem.append("janela")
+        def update_idletasks(self): pass
+        def destroy(self): pass
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(modulo, "SIG_FT_App", _JanelaFalsa)
+    monkeypatch.setattr(
+        "sigft.app.backends.carregar_todos",
+        lambda **kw: ordem.append("backends"))
+
+    assert modulo._smoke() == 0
+    assert ordem == ["backends", "janela"], (
+        f"a ordem foi {ordem}. Montar a janela antes dos backends reproduz o "
+        f"defeito do run #3: as views leem `backends.x` no __init__ e acham None."
+    )
+
+
+def test_o_smoke_RELATA_um_backend_que_nao_carregou(monkeypatch, tmp_path):
+    """Um backend que nao importa no bundle nao pode passar em silencio.
+
+    Ele nao REPROVA o smoke, e isso e deliberado: `carregar_todos` continua
+    depois de uma falha de proposito, porque um backend quebrado deixa UMA
+    tela sem funcionar e nao o aplicativo sem abrir. O checador espelha o
+    contrato do aplicativo em vez de inventar um mais rigido -- mas o relatorio
+    diz, em letra grande, para a falha nao virar surpresa do usuario.
+    """
+    from sigft.app import conferencia
+    from sigft.app import main as modulo
+
+    class _JanelaFalsa:
+        def update_idletasks(self): pass
+        def destroy(self): pass
+
+    def _falha_um(ao_falhar=None, **kw):
+        ao_falhar("AutoSpec RAG", ImportError("No module named 'faiss'"))
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(modulo, "SIG_FT_App", _JanelaFalsa)
+    monkeypatch.setattr("sigft.app.backends.carregar_todos", _falha_um)
+
+    modulo._smoke()
+
+    relatorio = (tmp_path / conferencia.ARQUIVO_JANELA).read_text(encoding="utf-8")
+    assert "AutoSpec RAG" in relatorio
+    assert "faiss" in relatorio

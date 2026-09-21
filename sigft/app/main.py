@@ -628,13 +628,36 @@ def _smoke() -> int:
 
     from sigft.app.conferencia import ARQUIVO_JANELA, gravar_relatorio
 
+    avisos: list[str] = []
+
     try:
+        # PRIMEIRO os backends, DEPOIS a janela -- nesta ordem, porque e a do
+        # aplicativo de verdade: `main()` sobe a splash, a splash chama
+        # `backends.carregar_todos()`, e so entao a janela existe.
+        #
+        # Montar a janela antes foi o que reprovou o run #3 de 2026-09-21:
+        #
+        #     backends.translator_backend.TechnicalTranslator()
+        #     AttributeError: 'NoneType' object has no attribute ...
+        #
+        # As views leem o backend no proprio `__init__`, entao com o registro
+        # ainda em `None` a primeira delas estoura. O defeito estava no
+        # CHECADOR, nao no app -- e um checador que nao reproduz a ordem de
+        # abertura reprova o que funciona, que e pior do que nao checar.
+        from sigft.app import backends
+
+        backends.carregar_todos(
+            ao_falhar=lambda nome, erro: avisos.append(
+                f"[smoke] AVISO: o backend '{nome}' nao carregou: "
+                f"{type(erro).__name__}: {erro}"))
+
         app = SIG_FT_App()
         app.update_idletasks()   # forca o layout a ser calculado de verdade
         app.destroy()
     except Exception as e:  # noqa: BLE001 - e exatamente o que se quer relatar
-        relatorio = (f"[smoke] FALHOU: {type(e).__name__}: {e}\n\n"
-                     + traceback.format_exc())
+        relatorio = "\n".join(avisos + [
+            f"[smoke] FALHOU: {type(e).__name__}: {e}", "",
+            traceback.format_exc()])
         # GRAVAR, e nao so imprimir: com `console=False` a saida do .exe nao
         # chega ao PowerShell, e o passo do CI reprova com "codigo 1" e mais
         # nada. Foi o que aconteceu no run #3 de 2026-09-21. Ver
@@ -643,9 +666,14 @@ def _smoke() -> int:
         print(relatorio)
         return 1
 
-    ok = "[smoke] a janela principal montou e fechou sem erro."
-    gravar_relatorio(ARQUIVO_JANELA, ok)
-    print(ok)
+    # Os avisos vao para o relatorio mesmo no caminho feliz: um backend que
+    # nao importou nao derruba a abertura (`carregar_todos` segue em frente de
+    # proposito), mas deixa UMA tela sem funcionar -- e isso tem de estar
+    # escrito em algum lugar antes de chegar ao usuario.
+    relatorio = "\n".join(
+        avisos + ["[smoke] a janela principal montou e fechou sem erro."])
+    gravar_relatorio(ARQUIVO_JANELA, relatorio)
+    print(relatorio)
     return 0
 
 
