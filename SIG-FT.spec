@@ -169,8 +169,9 @@ hiddenimports += ["pip_system_certs", "pip_system_certs.wrapt_requests"]
 #
 # 1ª escolha: `build/SIG-FT.ico`, que o `Gerar-Executavel.bat` monta com as
 #    medidas pequenas (16/24/32/48...) que o Windows usa na barra de tarefas.
-# 2ª escolha: o `.ico` do repositório. Desde 2026-09-22 ele já vem com
-#    Windows reduz na hora e a barra de título fica menos nítida.
+# 2ª escolha: o `.ico` do repositório. Desde 2026-09-22 ele já vem com todas
+#    as medidas, então esta escolha não perde nada -- e é a que o CI usa,
+#    porque o workflow de Release não roda o `.bat`.
 #
 # Quem chama o `pyinstaller` na mão (sem o .bat) cai na 2ª e ainda assim sai
 # com o ícone certo, em vez do ícone genérico do PyInstaller.

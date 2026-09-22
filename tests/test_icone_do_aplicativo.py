@@ -33,7 +33,10 @@ import struct
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 
 ICONE = RAIZ / "assets" / "icone-sig-ft.ico"
-LOGO_DA_SPLASH = RAIZ / "assets" / "icone-sig-ft.png"
+# Nao vai para a splash (ver o teste la embaixo): serve de fallback do Tk
+# fora do Windows, onde `iconbitmap` nao aceita `.ico`.
+LOGO_DE_RESERVA = RAIZ / "assets" / "icone-sig-ft.png"
+LOGO_DA_SPLASH = LOGO_DE_RESERVA
 LOGO_DA_GE = RAIZ / "assets" / "logo.png"
 
 # O que o Windows pede em cada lugar: 16 na barra de titulo e na lista de
@@ -116,11 +119,40 @@ def test_o_executavel_usa_o_MESMO_icone():
 
 
 def test_o_instalador_usa_o_MESMO_icone():
-    iss = (RAIZ / "installer" / "sigft.iss").read_text(encoding="utf-8")
+    """Na diretiva CERTA, e nao "em algum lugar do arquivo".
 
-    assert ICONE.name in iss, (
-        f"o instalador nao aponta para {ICONE.name}; o Setup.exe sairia com o "
-        f"icone antigo"
+    A primeira versao deste teste so procurava o nome no texto inteiro do
+    `.iss`. Passaria com o nome num comentario, ou na diretiva errada -- e
+    diretiva errada aqui e invisivel ate alguem instalar.
+    """
+    iss = (RAIZ / "installer" / "sigft.iss").read_text(encoding="utf-8")
+    linhas = [l.strip() for l in iss.splitlines()
+              if l.strip().lower().startswith("setupiconfile=")]
+
+    assert linhas, "o .iss nao define SetupIconFile"
+    assert len(linhas) == 1, f"SetupIconFile definido {len(linhas)} vezes: {linhas}"
+    assert linhas[0].endswith(ICONE.name), (
+        f"o SetupIconFile aponta para outro arquivo: {linhas[0]}"
+    )
+
+
+def test_o_atalho_do_menu_iniciar_herda_o_icone_do_executavel():
+    """De onde vem o icone do atalho -- que e o que aparece na barra de tarefas.
+
+    As entradas de `[Icons]` NAO definem `IconFilename`, entao o atalho usa o
+    icone embutido no `.exe`, que o PyInstaller poe a partir do `icon=` do
+    spec. Se alguem acrescentar um `IconFilename` apontando para outro
+    arquivo, passam a existir DUAS fontes de icone que podem divergir -- e a
+    divergencia so aparece depois de instalar.
+    """
+    iss = (RAIZ / "installer" / "sigft.iss").read_text(encoding="utf-8")
+    secao = iss[iss.index("[Icons]"):]
+    secao = secao[:secao.index("[", 1)] if "[" in secao[1:] else secao
+
+    assert "IconFilename" not in secao, (
+        "uma entrada de [Icons] passou a definir IconFilename. Ou ela aponta "
+        "para o mesmo .ico do spec, ou o atalho e o .exe mostram desenhos "
+        "diferentes."
     )
 
 
@@ -135,26 +167,37 @@ def test_o_script_de_build_local_parte_do_MESMO_icone():
 # C. Splash x barra lateral -- a decisao do usuario, travada
 # =============================================================================
 
-def test_a_splash_mostra_o_logo_NOVO():
-    """"...e no aplicativo quando vai inicializar" -- a tela de abertura.
+def test_a_splash_CONTINUA_com_a_GE_vernova_e_a_barra_de_progresso():
+    """A tela de abertura nao muda. Eu tinha entendido errado.
 
-    Em dois passos porque o nome do arquivo mora numa constante: o corpo da
-    splash aponta para ela, e ela aponta para o arquivo novo. Medir so o
-    literal reprovaria a versao com constante, que e a melhor das duas.
+    Li "e no aplicativo quando vai inicializar" como sendo o CONTEUDO da
+    splash, e troquei o logo dela. O usuario quis dizer o ICONE mostrado ao
+    abrir o app -- barra de tarefas e barra de titulo:
+
+        "Quando eu disse de iniciar, me referia quando vou abrir o
+         aplicativo, e o simbolo que mostrasse deveria ser esse novo, mas
+         quando estivesse abrindo mesmo, quero que se mantenha igual antes"
+
+    Ou seja: a decisao de 2026-09-04 continua inteira -- o desenho do SIG-FT
+    nunca aparece DENTRO da janela, nem na splash. La e a GE Vernova.
     """
     main = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
     splash = main[main.index("class SplashScreen"):main.index("class SIG_FT_App")]
 
-    assert "ARQUIVO_DO_LOGO_DA_SPLASH" in splash, (
-        "a splash nao usa a constante do logo de abertura"
+    assert "logo.png" in splash, "a splash perdeu o logo da GE Vernova"
+    assert LOGO_DA_SPLASH.name not in splash, (
+        f"a splash voltou a mostrar o {LOGO_DA_SPLASH.name} -- ela tem de "
+        f"ficar como era antes"
     )
-    assert (f'ARQUIVO_DO_LOGO_DA_SPLASH = os.path.join("assets", '
-            f'"{LOGO_DA_SPLASH.name}")') in main, (
-        f"a constante nao aponta para {LOGO_DA_SPLASH.name}"
-    )
-    assert "logo.png" not in splash, (
-        "a splash continua com o logo da GE -- era o que a troca mudou"
-    )
+    assert "ARQUIVO_DO_ICONE_PNG" not in splash
+
+
+def test_a_splash_mantem_a_barra_de_progresso():
+    """"...com a barra de progresso" -- a outra metade do "igual antes"."""
+    main = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
+    splash = main[main.index("class SplashScreen"):main.index("class SIG_FT_App")]
+
+    assert "CTkProgressBar" in splash, "a splash perdeu a barra de progresso"
 
 
 def test_a_barra_lateral_CONTINUA_com_a_GE_vernova():

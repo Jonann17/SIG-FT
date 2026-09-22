@@ -108,23 +108,28 @@ def resource_path(relative_path):
 #
 #   assets/icone-sig-ft.ico   -> ÍCONE: barra de tarefas, barra de título, o
 #                                .exe e o instalador. Nunca aparece na tela.
-#   assets/icone-sig-ft.png   -> o mesmo desenho, para a SPLASH (e como
-#                                fallback do Tk fora do Windows).
-#   assets/logo.png           -> IMAGEM: o símbolo da GE Vernova, na BARRA
-#                                LATERAL. Continua sendo o de dentro do app.
+#   assets/icone-sig-ft.png   -> o mesmo desenho em PNG. NÃO vai para a
+#                                splash: é o fallback do Tk fora do Windows,
+#                                onde `iconbitmap` não aceita `.ico`.
+#   assets/logo.png           -> IMAGEM: o símbolo da GE Vernova, na SPLASH e
+#                                na barra lateral. É o de DENTRO do app.
 #
-# [2026-09-22] O usuário trocou o ícone e pediu que a splash mostrasse o mesmo
-# desenho, mantendo a GE Vernova dentro da janela. O `.ico` versionado passou
-# a trazer todos os tamanhos (16 a 256): o anterior tinha só 256, o
-# `Gerar-Executavel.bat` remendava isso em `build/`, e o workflow de Release
-# não roda o `.bat` -- então o `.exe` publicado saía com o ícone borrado na
-# barra de tarefas. Ver `tests/test_icone_do_aplicativo.py`.
+# [2026-09-22] O ícone mudou de desenho; o que aparece DENTRO da janela não.
+# Cheguei a trocar o logo da splash por ter lido "no aplicativo quando vai
+# inicializar" como sendo o conteúdo dela -- era o ÍCONE mostrado ao abrir o
+# app. A regra de 2026-09-04 segue inteira: o desenho do SIG-FT nunca aparece
+# dentro da janela.
+#
+# O `.ico` versionado passou a trazer todos os tamanhos (16 a 256). O anterior
+# tinha só 256; o `Gerar-Executavel.bat` remendava isso em `build/`, e o
+# workflow de Release não roda o `.bat` -- então o `.exe` publicado saía com o
+# ícone que o Windows reduz na hora. Ver `tests/test_icone_do_aplicativo.py`.
 #
 # `.ico` e não `.png` porque no Windows quem dá o ícone bonito na barra de
 # tarefas é o `iconbitmap` com um `.ico` de verdade — o `wm_iconphoto` com PNG
 # funciona, mas o Windows redimensiona na hora e a barra de título sai borrada.
 ARQUIVO_DO_ICONE = os.path.join("assets", "icone-sig-ft.ico")
-ARQUIVO_DO_LOGO_DA_SPLASH = os.path.join("assets", "icone-sig-ft.png")
+ARQUIVO_DO_ICONE_PNG = os.path.join("assets", "icone-sig-ft.png")
 
 
 def definir_icone(janela) -> bool:
@@ -144,7 +149,7 @@ def definir_icone(janela) -> bool:
         # `iconbitmap` só existe com .ico no Windows. Fora dele (ou com um
         # .ico que o Tk recuse), tenta o PNG, que é melhor que nada.
         try:
-            png = resource_path(ARQUIVO_DO_LOGO_DA_SPLASH)
+            png = resource_path(ARQUIVO_DO_ICONE_PNG)
             if os.path.exists(png):
                 janela.wm_iconphoto(False, tk.PhotoImage(file=png))
                 return True
@@ -244,7 +249,7 @@ class SplashScreen(ctk.CTk):
         # `sigft/app/` quando ele veio para ca. O resultado era o app abrindo
         # SEM logo e SEM icone, avisando so no console (que ninguem le), como
         # se os arquivos nao existissem.
-        image_path = resource_path(ARQUIVO_DO_LOGO_DA_SPLASH)
+        image_path = resource_path(os.path.join("assets", "logo.png"))
 
         self.logo_img = None  # Mantém referência para não sumir
         if os.path.exists(image_path):
