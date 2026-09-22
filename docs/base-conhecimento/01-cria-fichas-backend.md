@@ -24,7 +24,7 @@ Diagnóstico medido contra a planilha-mestra real (`PDMs SAM-GM`, 32.655 linhas,
 
 | # | Defeito | Evidência |
 |---|---|---|
-| 1 | **3 dos 8 exemplos few-shot do prompt apontavam PDMs errados** | `PDM.4020.001 - BOMBA CENTRIFUGA` não existe (nem o código, nem o título, sob código nenhum); `PDM.6145.011 - CABO, TRANSMISSAO DADOS` tem vírgula que o título real não tem — e é essa string que é digitada no filtro do portal; `PDM.7010.018 - SERVIDOR` é `SERVIDOR CONSOLE` (KVM), e o exemplo era um Dell PowerEdge |
+| 1 | **2 dos 8 exemplos few-shot do prompt apontavam PDMs errados** | `PDM.4020.001 - BOMBA CENTRIFUGA` não existe (nem o código, nem o título, sob código nenhum); `PDM.6145.011 - CABO, TRANSMISSAO DADOS` tem vírgula que o título real não tem — e é essa string que é digitada no filtro do portal |
 | 2 | Um 4º exemplo contrariava as notas do próprio catálogo | a câmera AXIS apontava a classe 6720 ("CÁMARAS FOTOGRÁFICAS"); a classe 6710 exclui câmeras de vídeo remetendo à **5836** |
 | 3 | **O elo entre o manual e a lista nunca era dito** | o prompt mandava "ache a classe, escolha o PDM dela", e a lista plana não dizia a classe de ninguém — apesar de o código embuti-la (`PDM.XXXX.YYY`) |
 | 4 | **O manual descrevia 41 classes sem nenhum PDM** | armadilha ativa: a IA raciocinava até a classe e não havia o que escolher lá |
@@ -32,6 +32,16 @@ Diagnóstico medido contra a planilha-mestra real (`PDMs SAM-GM`, 32.655 linhas,
 | 6 | **Casamento por posição** | `res_json[i]` → `df.iloc[i]`: um item pulado pela IA deslocava todas as linhas seguintes, e cada material recebia o PDM de outro — em silêncio |
 | 7 | **As características não entravam na escolha** | 17,5 por PDM em média, lidas só depois para montar o template. São elas que separam `VALVULA GAVETA` (MATERIAL DA CUNHA) de `VALVULA ESFERA` (TIPO DE PASSAGEM, NUMERO DE VIAS) |
 | 8 | Lote inteiro numa chamada, sem retry | `max_retries=0`: uma falha de API derrubava os 40 itens juntos |
+
+> ⚠️ **Um terceiro exemplo foi acusado e absolvido no mesmo dia.**
+> `PDM.7010.018 - SERVIDOR` estava **certo**. A acusação ("o título real é
+> `SERVIDOR CONSOLE`") nasceu de um defeito do leitor novo, que pegava o título
+> da PRIMEIRA linha do código em vez do da revisão VIGENTE — e na revisão 0 esse
+> PDM se chamava assim mesmo. Na vigente (rev 2, 28/02/2025) ele é `SERVIDOR`.
+> Fica registrado porque a lição vale para o módulo inteiro: **no Master, o campo
+> certo depende da revisão, e isso inclui o TÍTULO** — que é a string digitada no
+> filtro do portal. Título de revisão antiga não filtra nada, e a automação
+> quebra com o PDM certo já escolhido.
 
 Por que a ambiguidade é real: **178 dos 467 nomes base cobrem mais de um PDM**
 (VALVULA 44×, RELE 40×, CONJUNTO 27×), e **13 títulos são compartilhados por 2
@@ -45,10 +55,12 @@ característica desempata.
 1. **Lê a planilha-mestra da Itaipu direto** (abas `TEMPLATE_PDM` e
    `GRUPOS_CLASES`), sem manipulação. O formato manipulado antigo (abas `PDMs` +
    `Instruções PDMs`) continua aceito, mas não tem característica.
-2. **Fica só com a revisão vigente de cada PDM.** 1.023 dos 1.194 PDMs têm mais
-   de uma revisão; unir as revisões trazia de volta característica que já saiu
-   do PDM (o "lixo de REMOVER" registrado em `PENDENCIAS.md`). Aqui isso seria
-   sinal FALSO no desempate.
+2. **Fica só com a revisão vigente de cada PDM — características E título.**
+   1.023 dos 1.194 PDMs têm mais de uma revisão; unir as revisões trazia de
+   volta característica que já saiu do PDM (o "lixo de REMOVER" registrado em
+   `PENDENCIAS.md`), o que seria sinal FALSO no desempate. No título o dano é
+   pior: ele é a string **digitada** no filtro de PDM do portal. Em 47 PDMs a
+   primeira linha do arquivo não é a vigente, e em 4 deles o título difere.
 3. **Pré-filtra ~12 candidatos por item**, por ranqueamento léxico que pesa cada
    palavra pela informação que ela carrega (espírito do IDF) e pesa mais o
    casamento no nome base/modificador do que na característica. Tem glossário

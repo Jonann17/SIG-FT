@@ -475,15 +475,28 @@ de fora desse escopo e **não foram corrigidos de carona**:
 | 2026-09-22 | `core/pdm_catalogo.py` × `services/autospec_rag.py` | **Terceiro glossário multilíngue do projeto.** O `pdm_catalogo.GLOSSARIO` (EN→PT, ~40 substantivos de equipamento) nasceu porque as descrições de fornecedor chegam em inglês e o catálogo da Itaipu é PT/ES — medido: 4 das 8 descrições dos exemplos do prompt não achavam candidato nenhum sem ele. O `autospec_rag` tem um glossário próprio, para outro fim (casar DOCUMENTO com ficha). Importar de lá acoplaria `core/` a uma **zona reservada do Rafael**, então não foi feito. Unificar só faz sentido quando as duas frentes fecharem, e só se os dois fins realmente quererem o mesmo vocabulário — o que não é óbvio. | Depois do fechamento da frente AutoSpecAI |
 | 2026-09-22 | `sigft/services/autospec.py`, `sigft/services/duplicadas_extrator.py`, `sigft/core/pdm_catalogo.py` | **`_sem_acento` existe em três arquivos, com duas implementações diferentes** (`NFKD` + `unicodedata.combining` no autospec; `NFD` + `category != "Mn"` nos outros dois). É o tipo de duplicação que o princípio 1 do `CLAUDE.md` existe para eliminar, e o lugar dela é `core/`. Não unifiquei: um dos três é arquivo do Rafael. | Fase 8 |
 
-**Uma pergunta de negócio que só o usuário responde**, e que ficou registrada
-aqui porque afeta o que a IA vai escolher de agora em diante:
+> ⚠️ **Esta seção tinha uma quarta entrada, ERRADA, retirada no mesmo dia.**
+> Ela dizia que "servidor de uso geral não tem PDM no catálogo" e que
+> `PDM.7010.018` era `SERVIDOR CONSOLE`. **Não é**: na revisão VIGENTE (rev 2,
+> 28/02/2025) ele se chama `SERVIDOR`, e era isso que o prompt antigo já usava.
+> O erro veio do leitor novo, que pegava o título da PRIMEIRA linha do código em
+> vez do da revisão vigente. Corrigido; fica registrado porque a lição é do
+> módulo inteiro: **no Master, o campo certo depende da revisão — inclusive o
+> título**, e um título de revisão antiga não filtra nada no portal.
 
-- **Servidor de uso geral não tem PDM no catálogo.** Existem `PDM.5895.010 - SERVIDOR IMPRESSAO`
-  e `PDM.7010.018 - SERVIDOR CONSOLE` (console/KVM) — nenhum dos dois é um servidor
-  de rack. O exemplo do prompt passou a usar `PDM.7010.014 - COMPUTADOR` (classe
-  7010, equipamento de processamento de dados), que é o conceito mais próximo que
-  o catálogo tem. Se a Itaipu catalogar servidor de outro jeito, é o exemplo 7 do
-  prompt que muda.
+**Uma decisão sobre o portal que só uma sessão LOCAL fecha:**
+
+- **22 PDMs têm espaço duplo ou TAB no título da revisão vigente**, e o catálogo
+  COLAPSA tudo para um espaço só. Para os 4 com TAB (`PDM.4310.026`,
+  `PDM.4320.024`, `PDM.4710.005`, `PDM.5830.001` — ex.: `'TUBO     \t\t\t\t RIGIDO'`)
+  a decisão é inequívoca: a string é entregue a `engine.digitar_no_foco`, e um TAB
+  digitado num formulário web MOVE O FOCO, então o `press("ENTER")` seguinte cairia
+  noutro campo. Para os outros 18 (espaço duplo simples, ex.:
+  `'DESUMIDIFICADOR  AR'`, `'RELE DETETOR  GAS'`) a escolha é defensável mas **não
+  verificada** — só o portal diz se ele guarda um espaço ou dois. **Conferir esses
+  18 na próxima sessão local**; se o portal guardar os dois, o ponto de mudança é
+  `pdm_catalogo._txt`, e o teste que trava a decisão de hoje é
+  `tests/test_pdm_titulo_fiel_ao_portal.py::test_espaco_duplo_do_master_vira_espaco_simples`.
 
 ### Aviso aposentado do mural do `CLAUDE.md` (regra 2: teto de 5)
 

@@ -90,10 +90,8 @@ Exemplo 6 (Rede):
 
 Exemplo 7 (TI):
 - Descrição original: Servidor Dell PowerEdge C6600
-- PDM: PDM.7010.014 - COMPUTADOR
+- PDM: PDM.7010.018 - SERVIDOR
 - Descrição breve: SERVIDOR - POWEREDGE C6600
-- Por quê: o catálogo não tem um PDM de servidor de uso geral.
-  `PDM.7010.018 - SERVIDOR CONSOLE` é console/KVM, outra coisa.
 
 Exemplo 8 (Rede):
 - Descrição original: Wi-Fi 6 Outdoor AP, External Ant, -ROW Regulatory Domain

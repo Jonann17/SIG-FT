@@ -474,6 +474,43 @@ def test_carregar_fica_so_com_a_revisao_vigente_do_pdm(tmp_path):
 
 
 @requer_openpyxl
+def test_carregar_usa_o_titulo_da_revisao_vigente(tmp_path):
+    """O TITULO tambem muda entre revisoes, nao so as caracteristicas -- e o
+    titulo e a string DIGITADA no filtro de PDM do portal. Digitar o titulo de
+    uma revisao antiga faz o portal nao achar nada, e a automacao quebra com o
+    PDM certo escolhido.
+
+    Caso real, medido no arquivo do usuario: `PDM.7010.018` e
+    'SERVIDOR CONSOLE' na revisao 0 e **'SERVIDOR'** na vigente (rev 2,
+    28/02/2025). Sao 4 PDMs em que o titulo da primeira linha do arquivo
+    difere do da vigente, e em 47 PDMs a primeira linha nem e a vigente."""
+    import openpyxl
+
+    caminho = os.path.join(str(tmp_path), "titulo_por_revisao.xlsx")
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "TEMPLATE_PDM"
+    for _ in range(6):
+        ws.append([])
+
+    def linha(revisao, titulo, caract):
+        return ["PDM.7010.018", 7010, titulo, titulo, "SERVIDOR", "SERVIDOR",
+                None, None, None, revisao, None, None, None, None, None,
+                None, caract]
+
+    # a revisao ANTIGA vem primeiro, como acontece em 47 PDMs do arquivo real
+    ws.append(linha(0, "SERVIDOR CONSOLE", "CARACTERISTICA ANTIGA"))
+    ws.append(linha(2, "SERVIDOR", "NUMERO DE PROCESSADORES"))
+    wb.save(caminho)
+
+    cat = pdm_catalogo.carregar(caminho)
+
+    assert cat.pdms[0].titulo == "SERVIDOR"
+    assert cat.pdms[0].completo == "PDM.7010.018 - SERVIDOR"
+    assert cat.pdms[0].caracteristicas == ("NUMERO DE PROCESSADORES",)
+
+
+@requer_openpyxl
 def test_carregar_descarta_codigo_sujo_da_planilha(tmp_path):
     """A linha 32661 do arquivo real tem `CÓDIGO PDM = 1192.999999999937`
     -- artefato de float. Sem descarte, vira uma entrada falsa no catálogo."""

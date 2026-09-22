@@ -537,34 +537,42 @@ def _ler_mestra(wb) -> CatalogoPDM:
         if not _RE_CODIGO_PDM.fullmatch(codigo):
             continue
 
-        registro = acumulado.get(codigo)
-        if registro is None:
-            registro = {
-                "classe": _txt(_valor(linha, _COL_CLASSE)),
-                "titulo": _preferir(_valor(linha, _COL_TITULO_PT),
-                                    _valor(linha, _COL_TITULO_ES)),
-                "base": _preferir(_valor(linha, _COL_BASE_PT),
-                                  _valor(linha, _COL_BASE_ES)),
-                "modif": _preferir(_valor(linha, _COL_MODIF_PT),
-                                   _valor(linha, _COL_MODIF_ES)),
-                "caracts": [],
-                "revisao": None,
-            }
-            acumulado[codigo] = registro
+        registro = acumulado.setdefault(codigo, {"revisao": None,
+                                                 "caracts": []})
 
-        # SÓ a revisão vigente. O Master guarda uma linha por
-        # (PDM, característica, REVISÃO), e 1.023 dos 1.194 PDMs do arquivo
-        # real têm mais de uma revisão -- unir as revisões traz de volta
-        # característica que já saiu do PDM (o "lixo de REMOVER" que o usuário
-        # relatou em 2026-08-18; ver PENDENCIAS.md). Aqui o dano seria na
-        # ESCOLHA: característica obsoleta é sinal FALSO no desempate entre
-        # irmãos parecidos.
+        # SÓ a revisão vigente, e isso vale para o TÍTULO tanto quanto para as
+        # características.
+        #
+        # O Master guarda uma linha por (PDM, característica, REVISÃO), e 1.023
+        # dos 1.194 PDMs do arquivo real têm mais de uma revisão. Nas
+        # características, unir revisões traz de volta o que já saiu do PDM (o
+        # "lixo de REMOVER" de 2026-08-18; ver PENDENCIAS.md) -- sinal FALSO no
+        # desempate entre irmãos.
+        #
+        # No TÍTULO o dano é pior, e foi o usuário que apontou: o título é a
+        # string DIGITADA no filtro de PDM do portal. Título de revisão antiga
+        # não filtra nada, e a automação quebra com o PDM CERTO escolhido.
+        # Medido no arquivo real: em 47 PDMs a primeira linha não é a vigente, e
+        # em 4 deles o título difere -- `PDM.7010.018` é "SERVIDOR CONSOLE" na
+        # revisão 0 e **"SERVIDOR"** na vigente (rev 2, 28/02/2025).
+        #
+        # Por isso os campos de identidade são REESCRITOS quando aparece uma
+        # revisão maior, em vez de fixados na primeira linha vista.
         revisao = _revisao_como_numero(_valor(linha, _COL_REVISAO))
+        if registro["revisao"] is not None and revisao < registro["revisao"]:
+            continue
         if registro["revisao"] is None or revisao > registro["revisao"]:
             registro["revisao"] = revisao
             registro["caracts"] = []
-        elif revisao < registro["revisao"]:
-            continue
+            registro.update(
+                classe=_txt(_valor(linha, _COL_CLASSE)),
+                titulo=_preferir(_valor(linha, _COL_TITULO_PT),
+                                 _valor(linha, _COL_TITULO_ES)),
+                base=_preferir(_valor(linha, _COL_BASE_PT),
+                               _valor(linha, _COL_BASE_ES)),
+                modif=_preferir(_valor(linha, _COL_MODIF_PT),
+                                _valor(linha, _COL_MODIF_ES)),
+            )
 
         caract = _txt(_valor(linha, _COL_CARACT_PT))
         if caract and caract not in registro["caracts"]:

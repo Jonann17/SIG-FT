@@ -10,7 +10,8 @@ aqui, checadas por conteúdo. É a mesma divisão de
 O QUE A REESCRITA CONSERTOU, e que cada teste abaixo tranca
 ------------------------------------------------------------------------
 Conferindo os 8 exemplos few-shot do prompt antigo, um a um, contra o
-catálogo real (`PDMs_SAM-GM_1193.xlsx`, 1193 PDMs), TRÊS estavam errados:
+catálogo real (`PDMs_SAM-GM_1193.xlsx`, 1193 PDMs) na REVISÃO VIGENTE de cada
+PDM, DOIS estavam errados:
 
   1. `PDM.4020.001 - BOMBA CENTRIFUGA` -- o código NÃO EXISTE, e não há
      nenhum "BOMBA CENTRIFUGA" no catálogo sob qualquer código. O certo para
@@ -18,11 +19,14 @@ catálogo real (`PDMs_SAM-GM_1193.xlsx`, 1193 PDMs), TRÊS estavam errados:
   2. `PDM.6145.011 - CABO, TRANSMISSAO DADOS` -- o código existe, o título
      real NÃO tem a vírgula. E é essa string que vai ser digitada no filtro
      de PDM do portal.
-  3. `PDM.7010.018 - SERVIDOR` -- o título real é `SERVIDOR CONSOLE`, que é
-     console/KVM. O exemplo era um Dell PowerEdge; o conceito certo no
-     catálogo é `PDM.7010.014 - COMPUTADOR`.
+⚠️ Um TERCEIRO foi acusado por engano e ABSOLVIDO no mesmo dia:
+`PDM.7010.018 - SERVIDOR` estava CERTO. A acusação nasceu de um defeito do
+leitor do catálogo, que pegava o título da PRIMEIRA linha do código em vez do
+da revisão VIGENTE -- e na revisão 0 esse PDM se chamava "SERVIDOR CONSOLE".
+Na vigente (rev 2, 28/02/2025) ele é "SERVIDOR". O teste que trancava a
+acusação virou o teste que tranca a absolvição.
 
-E um quarto, corrigido pelas NOTAS DO PRÓPRIO CATÁLOGO: o exemplo da câmera
+E um outro, corrigido pelas NOTAS DO PRÓPRIO CATÁLOGO: o exemplo da câmera
 apontava `PDM.6720.001 - CAMERA`, da classe 6720 = "CÁMARAS FOTOGRÁFICAS". A
 AXIS P1375-E é câmera de rede; a classe 6710 exclui explicitamente "CÂMERAS
 DE VÍDEO (COA 5836)" e a 5836 inclui "equipos electrónicos de video, como
@@ -61,9 +65,7 @@ def test_nao_ensina_o_titulo_de_cabo_com_virgula():
 
 def _pdms_escolhidos_nos_exemplos():
     """Os PDMs que os exemplos apresentam como RESPOSTA (as linhas
-    "- PDM: ..."). Distinguir isso de "citado em qualquer lugar" importa: o
-    prompt cita `PDM.7010.018 - SERVIDOR CONSOLE` de propósito, como
-    contraexemplo, para afastar o modelo dele."""
+    "- PDM: ...")."""
     return [
         linha.split(":", 1)[1].strip()
         for linha in _prompt().splitlines()
@@ -71,10 +73,14 @@ def _pdms_escolhidos_nos_exemplos():
     ]
 
 
-def test_nao_usa_o_servidor_console_como_resposta_de_servidor_generico():
+def test_usa_o_titulo_vigente_do_pdm_de_servidor():
+    """`PDM.7010.018` é "SERVIDOR" na revisão vigente e "SERVIDOR CONSOLE" na
+    revisão 0. O título digitado no filtro do portal tem que ser o vigente --
+    o antigo não filtra nada, e a automação quebra com o PDM certo escolhido."""
     escolhidos = _pdms_escolhidos_nos_exemplos()
     assert escolhidos, "nenhum exemplo com linha '- PDM:' foi encontrado"
-    assert not any("PDM.7010.018" in p for p in escolhidos)
+    assert "PDM.7010.018 - SERVIDOR" in escolhidos
+    assert not any("SERVIDOR CONSOLE" in p for p in escolhidos)
 
 
 def test_nao_usa_camera_fotografica_para_camera_de_rede():

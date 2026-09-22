@@ -176,17 +176,24 @@ def montar_categorizar_pdm(instrucoes, lista_pdms, itens_texto):
     O texto anterior (no histórico do git, e na fixture antiga) tinha três
     defeitos medidos contra o catálogo real de 1193 PDMs:
 
-    1. **Três dos oito exemplos few-shot apontavam para PDMs errados.**
+    1. **Dois dos oito exemplos few-shot apontavam para PDMs errados.**
        `PDM.4020.001 - BOMBA CENTRIFUGA` não existe -- nem o código, nem o
        título, sob nenhum código. `PDM.6145.011 - CABO, TRANSMISSAO DADOS`
        tem uma vírgula que o título real não tem, e é essa string que vai
-       ser digitada no filtro do portal. `PDM.7010.018 - SERVIDOR` é, no
-       catálogo, `SERVIDOR CONSOLE` (console/KVM) -- e o exemplo era um Dell
-       PowerEdge. Um quarto exemplo, a câmera, apontava a classe 6720
-       ("CÁMARAS FOTOGRÁFICAS") para uma câmera de rede, contrariando a nota
-       da própria classe 6710, que remete câmeras de vídeo à 5836.
+       ser digitada no filtro do portal. Um terceiro, a câmera, apontava a
+       classe 6720 ("CÁMARAS FOTOGRÁFICAS") para uma câmera de rede,
+       contrariando a nota da própria classe 6710, que remete câmeras de
+       vídeo à 5836 -- esse é julgamento de catalogação, não erro de fato.
        Exemplo few-shot é o sinal mais forte de um prompt: ensinar um código
        fabricado é ensinar o formato de fabricar código.
+
+       ⚠️ O exemplo do servidor (`PDM.7010.018 - SERVIDOR`) chegou a ser
+       "corrigido" para `PDM.7010.014 - COMPUTADOR` e foi REVERTIDO no mesmo
+       dia: ele estava certo. Quem errou foi o leitor do catálogo, que pegava
+       o título da PRIMEIRA linha do código em vez do da revisão VIGENTE --
+       e na revisão 0 esse PDM se chamava "SERVIDOR CONSOLE". A lição fica
+       registrada aqui porque ela é a do módulo inteiro: **título de revisão
+       antiga não filtra nada no portal**, e o erro se parece com um acerto.
     2. **O elo entre o manual e a lista nunca era dito.** O processo mandava
        "ache a classe no manual, depois escolha o PDM daquela classe", e a
        lista plana não dizia a classe de ninguém -- apesar de o código
@@ -293,10 +300,8 @@ Exemplo 6 (Rede):
 
 Exemplo 7 (TI):
 - Descrição original: Servidor Dell PowerEdge C6600
-- PDM: PDM.7010.014 - COMPUTADOR
+- PDM: PDM.7010.018 - SERVIDOR
 - Descrição breve: SERVIDOR - POWEREDGE C6600
-- Por quê: o catálogo não tem um PDM de servidor de uso geral.
-  `PDM.7010.018 - SERVIDOR CONSOLE` é console/KVM, outra coisa.
 
 Exemplo 8 (Rede):
 - Descrição original: Wi-Fi 6 Outdoor AP, External Ant, -ROW Regulatory Domain
