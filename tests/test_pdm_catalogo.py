@@ -213,6 +213,50 @@ def test_token_generico_pesa_menos_que_token_raro():
     assert achados[0] is VALVULA_SOLENOIDE
 
 
+def test_candidatos_nao_enchem_a_lista_com_uma_familia_so():
+    """Caso real da Itaipu, 2026-09-23: `COUPLING LANTERN, WITH WIRE MESH
+    OPENING` (NETZSCH). A palavra "COUPLING" casa o nome base de SETE PDMs de
+    acoplamento, e eles ocupavam 6 das 12 vagas de candidato -- empurrando para
+    fora o `PDM.4320.031 - COLUNA FLANGE ACOPLAMENTO`, que era o certo (ele
+    ficava em 15o).
+
+    Variedade de CLASSE vale mais que profundidade numa classe só: depois que
+    o modelo viu 3 acoplamentos, o 4o nao acrescenta informacao nenhuma -- e a
+    vaga que ele ocupa poderia estar mostrando outra familia."""
+    catalogo = pdm_catalogo.CatalogoPDM(
+        pdms=[VALVULA_GAVETA, VALVULA_ESFERA, VALVULA_SOLENOIDE, BOMBA],
+        classes=[CLASSE_4820, CLASSE_4810, CLASSE_4320],
+    )
+
+    # VALVULA_GAVETA e VALVULA_ESFERA sao ambos da classe 4820, e os dois
+    # pontuam igual. `limite=2` com teto 1 obriga a segunda vaga a ir para
+    # OUTRA classe -- se sobrasse vaga, o adiado voltaria (e deve mesmo:
+    # test_o_teto_por_classe_nao_encolhe_a_lista_sem_necessidade).
+    achados = catalogo.candidatos("VALVULA", limite=2, max_por_classe=1)
+
+    classes = [p.classe for p in achados]
+    assert classes == ["4820", "4810"]
+
+
+def test_o_teto_por_classe_nao_encolhe_a_lista_sem_necessidade():
+    """Se nao houver candidato de outra classe, a vaga nao pode ficar vazia --
+    seria trocar um vies por uma lista curta."""
+    catalogo = pdm_catalogo.CatalogoPDM(
+        pdms=[VALVULA_GAVETA, VALVULA_ESFERA], classes=[CLASSE_4820],
+    )
+
+    achados = catalogo.candidatos("VALVULA", limite=5, max_por_classe=1)
+
+    assert len(achados) == 2
+
+
+def test_wire_nao_vira_fio_no_glossario():
+    """No caso da Itaipu, "WIRE MESH" (tela de arame) era traduzido para
+    "FIO" e trazia `FIO ELETRICO NU` e `FIO ELETRICO ISOLADO` como 1o e 2o
+    candidatos -- ruido no topo, num item que nao tem nada de eletrico."""
+    assert "WIRE" not in pdm_catalogo.GLOSSARIO
+
+
 def test_candidatos_nao_repetem_pdm():
     achados = _catalogo().candidatos("VALVULA VALVULA VALVULA ESFERA")
     assert len(achados) == len(set(p.codigo for p in achados))
