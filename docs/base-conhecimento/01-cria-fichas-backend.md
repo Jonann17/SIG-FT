@@ -11,6 +11,77 @@
 >
 > A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
 
+## ⚠️ A escolha de PDM mudou em 2026-09-22 — leia antes do resto
+
+O texto deste documento descreve o fluxo **como ele era**. A etapa de escolha de
+PDM foi reescrita; o resto (leitura da planilha, RPA no portal, edição em massa)
+continua valendo.
+
+### O que estava errado
+
+Diagnóstico medido contra a planilha-mestra real (`PDMs SAM-GM`, 32.655 linhas,
+**1.193 PDMs** válidos, 165 classes FSC no manual e **124 com PDM**):
+
+| # | Defeito | Evidência |
+|---|---|---|
+| 1 | **3 dos 8 exemplos few-shot do prompt apontavam PDMs errados** | `PDM.4020.001 - BOMBA CENTRIFUGA` não existe (nem o código, nem o título, sob código nenhum); `PDM.6145.011 - CABO, TRANSMISSAO DADOS` tem vírgula que o título real não tem — e é essa string que é digitada no filtro do portal; `PDM.7010.018 - SERVIDOR` é `SERVIDOR CONSOLE` (KVM), e o exemplo era um Dell PowerEdge |
+| 2 | Um 4º exemplo contrariava as notas do próprio catálogo | a câmera AXIS apontava a classe 6720 ("CÁMARAS FOTOGRÁFICAS"); a classe 6710 exclui câmeras de vídeo remetendo à **5836** |
+| 3 | **O elo entre o manual e a lista nunca era dito** | o prompt mandava "ache a classe, escolha o PDM dela", e a lista plana não dizia a classe de ninguém — apesar de o código embuti-la (`PDM.XXXX.YYY`) |
+| 4 | **O manual descrevia 41 classes sem nenhum PDM** | armadilha ativa: a IA raciocinava até a classe e não havia o que escolher lá |
+| 5 | **Nada validava o PDM escolhido** | IA → revisão de texto livre → digitado no portal, sem nunca conferir pertinência ao catálogo |
+| 6 | **Casamento por posição** | `res_json[i]` → `df.iloc[i]`: um item pulado pela IA deslocava todas as linhas seguintes, e cada material recebia o PDM de outro — em silêncio |
+| 7 | **As características não entravam na escolha** | 17,5 por PDM em média, lidas só depois para montar o template. São elas que separam `VALVULA GAVETA` (MATERIAL DA CUNHA) de `VALVULA ESFERA` (TIPO DE PASSAGEM, NUMERO DE VIAS) |
+| 8 | Lote inteiro numa chamada, sem retry | `max_retries=0`: uma falha de API derrubava os 40 itens juntos |
+
+Por que a ambiguidade é real: **178 dos 467 nomes base cobrem mais de um PDM**
+(VALVULA 44×, RELE 40×, CONJUNTO 27×), e **13 títulos são compartilhados por 2
+PDMs** — em 4 desses pares os dois estão na **mesma classe**, onde só a
+característica desempata.
+
+### Como é agora
+
+`sigft/core/pdm_catalogo.py` é a fonte única do catálogo. Ele:
+
+1. **Lê a planilha-mestra da Itaipu direto** (abas `TEMPLATE_PDM` e
+   `GRUPOS_CLASES`), sem manipulação. O formato manipulado antigo (abas `PDMs` +
+   `Instruções PDMs`) continua aceito, mas não tem característica.
+2. **Fica só com a revisão vigente de cada PDM.** 1.023 dos 1.194 PDMs têm mais
+   de uma revisão; unir as revisões trazia de volta característica que já saiu
+   do PDM (o "lixo de REMOVER" registrado em `PENDENCIAS.md`). Aqui isso seria
+   sinal FALSO no desempate.
+3. **Pré-filtra ~12 candidatos por item**, por ranqueamento léxico que pesa cada
+   palavra pela informação que ela carrega (espírito do IDF) e pesa mais o
+   casamento no nome base/modificador do que na característica. Tem glossário
+   EN→PT (as descrições de fornecedor chegam em inglês; o catálogo é PT/ES),
+   singularização e penalidade para palavra do título que a descrição não
+   confirmou — é o que faz `BOMBA` vencer `BOMBA VACUO` num "Bomba KSB 123-ABC".
+4. **Manda a lista completa agrupada por classe como REDE.** Não é luxo: medido,
+   uma descrição como `IE4010 w/ 12GE SFP uplink ports` não tem nenhuma palavra
+   que nomeie o equipamento, e nenhum ranqueamento léxico a alcança.
+
+No prompt (`core/llm/prompts.montar_categorizar_pdm`): os 8 exemplos agora
+existem no catálogo (conferidos um a um), a regra código↔classe está enunciada,
+o manual vai podado às classes dos candidatos do bloco, e há regra de **lista
+fechada** ("escolha uma string que aparece literalmente na lista, ou NENHUM").
+
+No serviço (`services/cria_fichas.py`): `processar_lote(df_itens, catalogo,
+callback_log=None)` — mudou de assinatura, e o manual de regras deixou de ser
+montado **dentro da view** (era regra de negócio na UI). O lote é fatiado em
+blocos de `ITENS_POR_BLOCO`; `alinhar_resposta` casa a resposta pelo
+`item_processado`; `conferir_pdm` valida contra o catálogo e **canoniza** pelo
+código quando só o título divergiu; `codigo_do_pdm` permite comparar o PDM
+pedido com o que o portal gravou.
+
+Na tela: a seleção passou a fazer `reset_index`, a revisão ganhou
+`JanelaEscolherPDM` (busca sobre o catálogo, com classe e características, no
+lugar do `askstring` de texto livre), e uma divergência entre o PDM pedido e o
+que o portal gravou passa a aparecer no log.
+
+**O orçamento de contexto ficou no mesmo patamar** (~25 mil tokens por bloco,
+contra ~23,8 mil do prompt antigo), agora com classe e característica dentro.
+
+---
+
 ## Propósito
 
 O módulo implementa a lógica de negócio completa para criação de fichas técnicas no portal PMIB da Itaipu. Orquestra três operações: (1) leitura inteligente de planilhas Excel com detecção automática de cabeçalho e sugestão de código de projeto, (2) classificação em lote de itens usando Gemini com manual de regras customizado, e (3) automação de preenchimento de formulários via Selenium com tratamento de erros interativo.

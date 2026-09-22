@@ -460,3 +460,36 @@ empacotadas, então uma falha ali é defeito de empacotamento, e publicar signif
 entregar uma tela morta. Argumento contra: um falso vermelho por motivo de
 ambiente (o `xlwings` querendo Excel, por exemplo) trava a publicação inteira
 por causa de uma tela.
+
+---
+
+## 2026-09-22 — achados de carona da reescrita da escolha de PDM
+
+A frente do dia foi a escolha de PDM do *cria fichas* (`sigft/core/pdm_catalogo.py`,
+prompt `categorizar_pdm`, guardas no serviço e na tela). Estes três achados são
+de fora desse escopo e **não foram corrigidos de carona**:
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-09-22 | `core/pdm_catalogo.py` × `services/tech_specs.py` | **A regra "fica só com a revisão vigente do PDM" agora existe em DOIS lugares.** `tech_specs.revisao_como_numero` + `filtrar_revisao_vigente` operam sobre um `DataFrame` do pandas e vivem na camada de serviço; `pdm_catalogo._revisao_como_numero` é a gêmea, sobre linhas cruas, na camada `core`. Não dava para reusar: `core/` importar de `services/` inverteria as camadas. A regra é a mesma e a evidência que a justifica é a mesma (1.023 dos 1.194 PDMs têm mais de uma revisão). O conserto é mover o conceito para `core/` e fazer `tech_specs` importar de lá — mexe num módulo com RPA calibrado, então não é para fazer de carona. | Fase 8 (ou quando `tech_specs` for tocado) |
+| 2026-09-22 | `core/pdm_catalogo.py` × `services/autospec_rag.py` | **Terceiro glossário multilíngue do projeto.** O `pdm_catalogo.GLOSSARIO` (EN→PT, ~40 substantivos de equipamento) nasceu porque as descrições de fornecedor chegam em inglês e o catálogo da Itaipu é PT/ES — medido: 4 das 8 descrições dos exemplos do prompt não achavam candidato nenhum sem ele. O `autospec_rag` tem um glossário próprio, para outro fim (casar DOCUMENTO com ficha). Importar de lá acoplaria `core/` a uma **zona reservada do Rafael**, então não foi feito. Unificar só faz sentido quando as duas frentes fecharem, e só se os dois fins realmente quererem o mesmo vocabulário — o que não é óbvio. | Depois do fechamento da frente AutoSpecAI |
+| 2026-09-22 | `sigft/services/autospec.py`, `sigft/services/duplicadas_extrator.py`, `sigft/core/pdm_catalogo.py` | **`_sem_acento` existe em três arquivos, com duas implementações diferentes** (`NFKD` + `unicodedata.combining` no autospec; `NFD` + `category != "Mn"` nos outros dois). É o tipo de duplicação que o princípio 1 do `CLAUDE.md` existe para eliminar, e o lugar dela é `core/`. Não unifiquei: um dos três é arquivo do Rafael. | Fase 8 |
+
+**Uma pergunta de negócio que só o usuário responde**, e que ficou registrada
+aqui porque afeta o que a IA vai escolher de agora em diante:
+
+- **Servidor de uso geral não tem PDM no catálogo.** Existem `PDM.5895.010 - SERVIDOR IMPRESSAO`
+  e `PDM.7010.018 - SERVIDOR CONSOLE` (console/KVM) — nenhum dos dois é um servidor
+  de rack. O exemplo do prompt passou a usar `PDM.7010.014 - COMPUTADOR` (classe
+  7010, equipamento de processamento de dados), que é o conceito mais próximo que
+  o catálogo tem. Se a Itaipu catalogar servidor de outro jeito, é o exemplo 7 do
+  prompt que muda.
+
+### Aviso aposentado do mural do `CLAUDE.md` (regra 2: teto de 5)
+
+Saiu do mural em 2026-09-22 para abrir espaço, e está aqui só para não sumir do
+histórico. O detalhe dele nunca morou no mural: mora no `config.py`, seção 6.
+
+| Data | De | Aviso |
+|---|---|---|
+| 2026-09-08 | Rafael | **Tarefa de IA nova não entra mais em `LLM_MODELOS_HOJE`.** O catálogo agora é `config.LLM_TASKS` + `_POLITICA_RETRY_POR_TAREFA` (em `core/llm/client.py`); aquele mapa é só o baseline das 5 tarefas do CP 3.1. O passo a passo está no aviso longo em `config.py`, seção 6. |
