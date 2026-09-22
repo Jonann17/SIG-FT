@@ -506,3 +506,17 @@ histórico. O detalhe dele nunca morou no mural: mora no `config.py`, seção 6.
 | Data | De | Aviso |
 |---|---|---|
 | 2026-09-08 | Rafael | **Tarefa de IA nova não entra mais em `LLM_MODELOS_HOJE`.** O catálogo agora é `config.LLM_TASKS` + `_POLITICA_RETRY_POR_TAREFA` (em `core/llm/client.py`); aquele mapa é só o baseline das 5 tarefas do CP 3.1. O passo a passo está no aviso longo em `config.py`, seção 6. |
+
+---
+
+## 2026-09-22 (tarde) — a cascata de busca de PDM precisa de execução real
+
+Pedido do usuário: se a busca do PDM no portal não achar nada, tentar só o
+código e depois só o título, em vez de apertar ENTER no vazio. Implementado em
+`services/cria_fichas.AutomacaoPMIB._buscar_pdm`, com o sinal de fracasso que
+ele forneceu (`div.vscomp-no-search-results[aria-hidden=false]`).
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-09-22 | `services/cria_fichas._buscar_pdm` | ⚠️ **NÃO VALIDADO CONTRA O PORTAL.** O seletor veio de um HTML colado no chat, e os 15 testes rodam contra um dublê de `RPAEngine` — eles provam a lógica da cascata (ordem, limpeza entre tentativas, ENTER só quando não há "não encontrado"), **não** que o seletor casa. Se ele estiver errado, tudo passa verde e o comportamento em produção é o de antes. O que falta observar numa sessão local: (a) o elemento realmente alterna `aria-hidden` em vez de entrar/sair do DOM; (b) `PAUSA_FILTRO_PDM` (1 s) é suficiente para o filtro resolver antes da leitura — se for curto, a leitura pega o estado anterior e a cascata pula uma tentativa boa; (c) o BACKSPACE limpa a caixa de busca do `vscomp` de verdade (o foco está nela depois do clique, mas isso não foi visto). | Sessão local |
+| 2026-09-22 | `services/cria_fichas._buscar_pdm` | **A terceira tentativa (só o título) pode casar mais de um PDM.** 13 títulos são compartilhados por 2 PDMs no catálogo (`CAMERA VIDEO` em 5836 e 6710, `VALVULA` em 3040 e 4820...). Buscando só pelo título, o filtro mostra os dois e o ENTER leva o que estiver destacado — que pode ser o errado, em silêncio. A guarda que existe hoje é posterior: `_conferir_pdm_do_portal` compara o código pedido com o que o portal gravou e denuncia a divergência no log. Fechar de vez exige escolher a opção pelo `div[@role='option']` certo em vez de ENTER, e isso muda um fluxo calibrado. | Sessão local, junto com o item acima |

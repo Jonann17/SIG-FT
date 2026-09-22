@@ -84,6 +84,17 @@ blocos de `ITENS_POR_BLOCO`; `alinhar_resposta` casa a resposta pelo
 código quando só o título divergiu; `codigo_do_pdm` permite comparar o PDM
 pedido com o que o portal gravou.
 
+No portal: a busca do PDM virou uma **cascata de três tentativas**
+(`AutomacaoPMIB._buscar_pdm`) — texto completo, depois só o código, depois só o
+título. Entre uma e outra ela confere `XPATH_PDM_NAO_ENCONTRADO`
+(`div.vscomp-no-search-results[aria-hidden='false']`, o "PDM não encontrado"
+que o portal mostra no lugar da lista). Antes o fluxo digitava, esperava um
+segundo e apertava ENTER **sem perguntar se o filtro achou algo** — e um texto
+que não casasse quebrava a automação três passos adiante, com o PDM certo já
+escolhido. Quando as três falham, o item vira um ERRO com as buscas tentadas no
+texto, que abre a `JanelaAcaoRobo` para a pessoa decidir.
+⚠️ Essa cascata **ainda não rodou contra o portal real** — ver `PENDENCIAS.md`.
+
 Na tela: a seleção passou a fazer `reset_index`, a revisão ganhou
 `JanelaEscolherPDM` (busca sobre o catálogo, com classe e características, no
 lugar do `askstring` de texto livre), e uma divergência entre o PDM pedido e o

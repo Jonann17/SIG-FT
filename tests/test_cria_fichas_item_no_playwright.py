@@ -57,6 +57,17 @@ class _Locator:
     def is_enabled(self):
         return True
 
+    def is_visible(self):
+        """Este dublê representa um portal que ACHA o PDM.
+
+        Desde 2026-09-22 o fluxo confere `XPATH_PDM_NAO_ENCONTRADO` antes de
+        apertar ENTER (ver `_buscar_pdm`). "Não encontrado" INVISÍVEL é o que
+        significa "o filtro achou" -- que é a premissa de todos os testes
+        deste arquivo, cujo assunto é a sequência do caminho feliz. A cascata
+        de fallback tem testes próprios, em
+        tests/test_cria_fichas_busca_de_pdm.py."""
+        return "vscomp-no-search-results" not in self.seletor
+
     def text_content(self):
         return self.pagina.textos.get(self.seletor, "")
 

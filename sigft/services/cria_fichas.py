@@ -162,6 +162,45 @@ PDM_NENHUM = "NENHUM"
 _RE_CODIGO_PDM = re.compile(r"PDM\.\d{4}\.\d{3}")
 
 
+def tentativas_de_busca(pdm):
+    """As buscas a tentar no combo de PDM do portal, da melhor para a última.
+
+        1. `PDM.6120.003 - TRANSFORMADOR POTENCIA`  (o que funciona hoje)
+        2. `PDM.6120.003`                           (só o código)
+        3. `TRANSFORMADOR POTENCIA`                 (só o título)
+
+    Pedido do usuário em 2026-09-22. A ordem não é arbitrária:
+
+    - o **completo** é o que já funciona na esmagadora maioria dos itens, e
+      continua sendo o primeiro -- a cascata é rede, não substituição;
+    - o **código** é a parte estável da string: imune a acento (5 PDMs do
+      Master têm), a espaço duplo (18 têm) e a mudança de título entre
+      revisões (179 têm). Quando o completo falha, é quase sempre por causa
+      do título;
+    - o **título** cobre o caso oposto: o portal indexar pelo nome e não pelo
+      código.
+
+    Partir no PRIMEIRO " - " e não no primeiro hífen é o que preserva
+    `MOTO-VENTILADOR`; partir no hífen daria o título "MOTO".
+
+    Sem duplicata: repetir a mesma busca gasta uma rodada no portal e não
+    descobre nada.
+    """
+    texto = str(pdm or "").strip()
+    if not texto:
+        return []
+
+    tentativas = [texto]
+    achado = _RE_CODIGO_PDM.search(texto.upper())
+    if achado:
+        codigo = achado.group(0)
+        titulo = texto[achado.end():].lstrip(" -").strip()
+        for candidata in (codigo, titulo):
+            if candidata and candidata not in tentativas:
+                tentativas.append(candidata)
+    return tentativas
+
+
 def codigo_do_pdm(texto):
     """Só o código (`PDM.4820.004`) de uma string de PDM, ou `""`.
 
@@ -483,6 +522,38 @@ XPATH_PDM_FINAL = (
     " and starts-with(@data-tooltip, 'PDM')]"
 )
 
+# "PDM não encontrado" -- o ÚNICO sinal de que o filtro do combo não achou nada.
+#
+# HTML, colado da tela pelo usuário em 2026-09-22:
+#
+#     <div class="vscomp-no-search-results" tabindex="0"
+#          aria-hidden="false">PDM não encontrado</div>
+#
+# É a regra 6 de docs/PORTAL_COMO_ELE_SE_COMPORTA.md em estado puro ("recusa
+# muitas vezes é silenciosa; às vezes o único sinal é um elemento aparecer ou
+# sumir"). Sem ele, o fluxo digitava, esperava um segundo e apertava ENTER no
+# vazio -- e a automação quebrava três passos adiante, com o PDM CERTO já
+# escolhido.
+#
+# Duas decisões de seletor, e o porquê de cada uma:
+#
+# 1. `@aria-hidden='false'`, e NÃO a mera existência do nó. O widget `vscomp`
+#    esconde em vez de remover -- é a mesma armadilha já documentada na §2 do
+#    doc do portal e em `seletores_duplicada.py` (contar opção devolve 10 com o
+#    dropdown fechado). Testar só a presença daria "não encontrado" sempre, e a
+#    cascata gastaria as três tentativas em todo item.
+#
+# 2. NÃO casa o texto "PDM não encontrado". A tela do PMIB alterna PT/ES e a
+#    redação em espanhol é desconhecida -- o mesmo motivo que deixou
+#    `PALAVRA_DA_SECAO` em PENDENCIAS. Seletor que depende de texto não
+#    traduzido falha em SILÊNCIO, que é justamente o defeito que este veio
+#    consertar. A classe basta: neste ponto do fluxo o único combo aberto é o
+#    do PDM, porque o passo anterior acabou de clicar nele.
+XPATH_PDM_NAO_ENCONTRADO = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '),"
+    " ' vscomp-no-search-results ') and @aria-hidden='false']"
+)
+
 
 def _teclas_da_unidade(unidade):
     """Texto a digitar no combo de unidade -- extraído do meio do fluxo para
@@ -529,6 +600,55 @@ class AutomacaoPMIB:
         if not url_limpa.lower().startswith("http"):
             url_limpa = "https://" + url_limpa
         self.engine.goto(url_limpa)
+
+    def _buscar_pdm(self, pdm):
+        """Digita as variações do PDM no combo até o portal achar alguma.
+
+        Devolve o texto que funcionou, ou `None` se as três falharem.
+
+        Pressupõe o combo JÁ ABERTO e com o foco na caixa de busca -- é o
+        estado que o clique em `XPATH_DIV_PESQUISAR_PDM` deixa, logo acima.
+
+        O QUE MUDOU, E POR QUÊ (2026-09-22, pedido do usuário)
+        --------------------------------------------------------------
+        Antes: `digitar_no_foco(pdm)` -> `sleep` -> `ENTER`, sem nunca
+        perguntar se o filtro achou algo. Quando o texto não casava, o ENTER
+        caía no vazio e a automação quebrava três passos adiante -- com o PDM
+        CERTO já escolhido, que é o que torna esse erro tão caro de
+        diagnosticar.
+
+        Agora cada tentativa é CONFERIDA contra `XPATH_PDM_NAO_ENCONTRADO`
+        antes do ENTER. `esta_visivel` e não `element_exists`: o widget
+        `vscomp` esconde em vez de remover.
+
+        Por que BACKSPACE e não Ctrl+A: `RPAEngine.press` só aceita teclas
+        NOMEADAS (o mapa de teclas de cada motor tem ENTER, TAB, BACKSPACE...
+        e nenhum combinador). E `fill`/`clear` pedem um seletor,
+        que aqui não existe -- a caixa de busca do `vscomp` tem id gerado, e
+        identificá-la pelo placeholder é a armadilha documentada na §4 do doc
+        do portal (a do PDM diz só "Pesquisar", igual à do contrato; um
+        seletor genérico escreve na caixa de OUTRO widget, escondida). O foco
+        já está no lugar certo: BACKSPACE age nele, sem seletor nenhum.
+
+        ⚠️ Esta função NÃO foi validada contra o portal real. O seletor veio
+        de um HTML colado no chat, e `scripts/check.sh` verde não é prova de
+        portal (CLAUDE.md). Precisa de uma execução em sessão local.
+        """
+        for tentativa in tentativas_de_busca(pdm):
+            self.engine.digitar_no_foco(tentativa)
+            time.sleep(PAUSA_FILTRO_PDM)
+
+            if not self.engine.esta_visivel(XPATH_PDM_NAO_ENCONTRADO):
+                self.engine.press("ENTER")
+                return tentativa
+
+            # Limpa para a próxima. Com folga: se o portal tiver completado
+            # algo sozinho, sobrar caractere faria a busca seguinte procurar
+            # por "TENTATIVA_ANTERIORtentativa_nova" -- que não acha nada, e a
+            # cascata inteira falharia por um motivo que não é o do portal.
+            self.engine.press(["BACKSPACE"] * (len(tentativa) + 5))
+            time.sleep(PAUSA_ANIMACAO)
+        return None
 
     def processar_item_individual(self, dados_item):
         """
@@ -601,10 +721,19 @@ class AutomacaoPMIB:
 
             time.sleep(PAUSA_MUDANCA_FOCO)  # Espera foco mudar
 
-            # Digita no input que ganhou o foco automaticamente
-            self.engine.digitar_no_foco(pdm)
-            time.sleep(PAUSA_FILTRO_PDM)
-            self.engine.press("ENTER")
+            # Digita no input que ganhou o foco automaticamente, tentando as
+            # variações até o portal achar (ver `_buscar_pdm`). Antes daqui
+            # era `digitar_no_foco(pdm)` + sleep + ENTER, SEM nunca perguntar
+            # se o filtro tinha achado alguma coisa.
+            usado = self._buscar_pdm(pdm)
+            if usado is None:
+                tentadas = ", ".join(repr(t) for t in tentativas_de_busca(pdm))
+                return "ERRO", (
+                    f"O portal respondeu 'PDM nao encontrado' para todas as "
+                    f"buscas: {tentadas}. O PDM pode nao existir no portal, ou "
+                    f"o titulo pode estar diferente do que o portal indexa. "
+                    f"Escolha outro PDM ou confira a ficha a mao."
+                )
 
             # 3. Preencher Contrato
             _clicar(XPATH_DROPDOWN_CONTRATO)

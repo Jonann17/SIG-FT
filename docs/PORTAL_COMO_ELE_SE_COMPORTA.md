@@ -172,6 +172,35 @@ que `PDM.9900.000` não estava no catálogo. Estava.
 Alvo: o `div[@role='option']`, não o `<span>` de dentro. E confira depois: o
 valor do combo mudou?
 
+### Quando o filtro não acha, ele diz — mas só no DOM
+
+O combo não dá erro nem limpa nada: aparece uma linha no lugar da lista.
+
+```html
+<div class="vscomp-no-search-results" tabindex="0"
+     aria-hidden="false">PDM não encontrado</div>
+```
+
+> **Origem:** HTML fornecido pelo usuário em 2026-09-22, olhando a tela. O
+> comportamento em volta dele (quando aparece, quanto demora) **ainda não foi
+> observado numa execução** — ver a pendência de 2026-09-22 sobre a cascata de
+> busca de PDM.
+
+Duas armadilhas, as duas já conhecidas deste arquivo:
+
+1. **Teste `@aria-hidden='false'`, não a existência do nó.** É a mesma regra da
+   §2 — o `vscomp` esconde em vez de remover. Um guard por presença diria
+   "não encontrado" sempre.
+2. **Não case o TEXTO.** A tela alterna PT/ES e a redação em espanhol é
+   desconhecida (mesmo motivo de `PALAVRA_DA_SECAO`, em PENDENCIAS). Seletor
+   que depende de texto não traduzido falha em silêncio.
+
+Quem usa: `services/cria_fichas.AutomacaoPMIB._buscar_pdm`, que tenta o texto
+completo, depois só o código, depois só o título — nessa ordem, conferindo este
+elemento entre uma tentativa e a outra. Antes disso o fluxo apertava ENTER sem
+perguntar nada, e um texto que não casava quebrava a automação três passos
+adiante, **com o PDM certo já escolhido**.
+
 ---
 
 ## 5. Validação: o portal quase nunca diz o que está errado
