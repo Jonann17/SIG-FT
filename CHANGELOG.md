@@ -12,7 +12,7 @@ Escreva cada linha pensando em quem usa o SIG-FT, não em quem o programa:
 "a busca do AutoSpec passa a funcionar com a VPN ligada" é útil; "refatorado o
 cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
-## 1.0.0 - 2026-09-18
+## 1.0.0 - 2026-09-22
 
 - O SIG-FT passa a ser gerado e publicado pelo GitHub, com instalador próprio. Acabou o passo a passo manual de compilar, zipar e copiar o arquivo para o Box.
 - Atualização automática: quando sai uma versão nova, o app avisa, mostra o que mudou e se atualiza com um clique.

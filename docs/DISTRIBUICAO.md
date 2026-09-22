@@ -280,3 +280,24 @@ O build é `--onedir` (uma pasta) de propósito. Com `--onefile`, o executável
 descompacta tudo num diretório temporário **novo a cada execução** — e o
 `api_config.json` com as chaves de API, que fica ao lado do executável, se
 perderia toda vez. O racional completo está no cabeçalho do `SIG-FT.spec`.
+
+---
+
+## O ícone antigo continua aparecendo depois de atualizar
+
+É **cache do Windows**, não defeito do build. Ele guarda o ícone por caminho de
+arquivo, e a atualização grava o `.exe` novo no mesmo caminho de sempre
+(`...\SIG-FT Itaipu\SIG-FT.exe`) — então o desenho velho pode ficar na barra de
+tarefas e no atalho mesmo com o `.exe` já trocado.
+
+Aconteceu de verdade na troca de ícone de 2026-09-22, e custou uma rodada de
+diagnóstico.
+
+**Como separar cache de defeito, em 5 segundos:** olhe o ícone do instalador
+que você acabou de baixar (`SIG-FT_Itaipu_Setup_*.exe`, na pasta Downloads).
+Esse arquivo tem nome e caminho novos, então não existe cache possível para
+ele. Se ele mostra o ícone certo, o pacote está bom e o resto é cache.
+
+**Como limpar:** reiniciar o Explorer (Gerenciador de Tarefas → Windows Explorer
+→ Reiniciar) ou rodar `ie4uinit.exe -show`. Sair e entrar na sessão também
+resolve.
