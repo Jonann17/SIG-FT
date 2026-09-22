@@ -106,8 +106,12 @@ def test_montar_categorizar_pdm_interpola_instrucoes_lista_pdms_itens_texto():
     assert "<<<INSTRUCOES>>>" in texto
     assert "<<<LISTA_PDMS>>>" in texto
     assert "<<<ITENS_TEXTO>>>" in texto
-    assert "### MANUAL DE REGRAS (GRUPOS E CLASSES)" in texto
-    assert "### LISTA DE PDMS FINAIS (ESCOLHA UM DESTES)" in texto
+    # Títulos de seção reescritos em 2026-09-22: o manual passou a ser
+    # PODADO às classes que têm PDM (eram 165 descritas, 124 com PDM) e a
+    # lista passou a vir AGRUPADA por classe FSC -- antes era plana e não
+    # dizia a classe de ninguém. Ver tests/test_prompt_categorizar_pdm.py.
+    assert "### MANUAL DE REGRAS (CLASSES FSC QUE TÊM PDM)" in texto
+    assert "### LISTA DE PDMS POR CLASSE (ESCOLHA UM DESTES)" in texto
     assert "### ITENS PARA ANALISAR (EM LOTE):" in texto
     assert "Responda APENAS com a lista JSON. Não inclua texto antes ou depois." in texto
 
