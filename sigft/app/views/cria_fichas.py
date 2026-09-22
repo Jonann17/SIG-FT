@@ -13,6 +13,12 @@ import pandas as pd
 
 from sigft.app import backends, file_dialogs
 from sigft.app.theme import COLORS
+# O catálogo de PDMs (2026-09-22): lê a planilha-mestra da Itaipu e faz o
+# pré-filtro de candidatos por item. `cria_fichas_svc` entra pelas guardas
+# (`conferir_pdm`) -- o resto do serviço continua vindo por `backends`, que é
+# quem resolve o shim de compatibilidade.
+from sigft.core import pdm_catalogo
+from sigft.services import cria_fichas as cria_fichas_svc
 # [CP B] Mensagens e dialogo da pausa de acao manual (login no portal).
 from sigft.app.widgets import dialogs as app_dialogs
 # [CP A/B] Mixin com `pausar_e_esperar`: abre o dialogo na thread da
@@ -42,6 +48,9 @@ class ModuloCriaFichas(DialogosDeEspera, ctk.CTkFrame):
         self.df_data_completo = None; self.df_data_selecionado = None
         self.df_processed = None; self.df_resumo_final = None
         self.bot = None
+        # Catálogo de PDMs da planilha escolhida. Só existe depois da etapa de
+        # IA; a revisão e a conferência pós-portal o consultam.
+        self.catalogo = None
         self.api_key_gemini = self.controller.get_key("GEMINI")
         self.var_pular_ia = ctk.BooleanVar(value=False)
 
@@ -113,7 +122,11 @@ class ModuloCriaFichas(DialogosDeEspera, ctk.CTkFrame):
                                          command=self._toggle_pdm_button, fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"])
         self.chk_pular.pack(side="left")
 
-        self.btn_pdm = ctk.CTkButton(f_opts, text="Selecionar PDMs e Instruções", command=self.selecionar_excel_pdm,
+        # Texto atualizado em 2026-09-22: o módulo passou a aceitar a
+        # planilha-mestra da Itaipu (PDMs SAM-GM) direto, sem manipulação --
+        # e é dela que vêm a classe FSC e as características, que a planilha
+        # manipulada não trazia.
+        self.btn_pdm = ctk.CTkButton(f_opts, text="Selecionar planilha de PDMs (mestra)", command=self.selecionar_excel_pdm,
                                      fg_color="#3A3A3A", hover_color="#454545", state="normal")
         self.btn_pdm.pack(side="left", padx=20)
 
@@ -252,7 +265,17 @@ class ModuloCriaFichas(DialogosDeEspera, ctk.CTkFrame):
             messagebox.showerror("Erro", erro)
 
     def pos_selecao(self, indices):
-        self.df_data_selecionado = self.df_data_completo.iloc[indices].copy()
+        # `reset_index(drop=True)`: sem ele, o índice das linhas selecionadas
+        # continuava sendo o da planilha INTEIRA. `_formatar_itens` numerava
+        # os itens com `index + 1`, então selecionar as linhas 50-52 rotulava
+        # "### ITEM 51/52/53" enquanto o contrato de JSON pedia 1, 2, 3 -- e
+        # o casamento da resposta, feito por posição, só funcionava por sorte.
+        # Agora o número do item é a CHAVE do casamento
+        # (`cria_fichas.alinhar_resposta`), então os dois lados precisam
+        # concordar.
+        self.df_data_selecionado = (
+            self.df_data_completo.iloc[indices].copy().reset_index(drop=True)
+        )
         self.log(f"Selecionado: {len(self.df_data_selecionado)} itens.")
         self.lbl_status.configure(text=f"{len(self.df_data_selecionado)} itens selecionados", text_color=COLORS["accent"])
         self.btn_pmib.configure(fg_color=COLORS["primary"])  # Marca visual de sucesso
@@ -309,35 +332,58 @@ class ModuloCriaFichas(DialogosDeEspera, ctk.CTkFrame):
                 # API, então nada é gasto por adiantá-lo.
                 cat = backends.GeminiCategorizer(self.api_key_gemini)
                 self.log(f"Processando com IA ({cat.modelo_em_uso})...")
-                df_pdms = pd.read_excel(self.file_path_pdm, sheet_name="PDMs")
-                lista_pdms = "\n".join("- " + df_pdms['PDM COMPLETO'].dropna().astype(str))
 
-                # Resgatando a inteligência do Script 1
-                df_instrucoes = pd.read_excel(self.file_path_pdm, sheet_name="Instruções PDMs")
-                cols_grupo = ['N° GRUPO', 'GRUPO DESCRIÇÃO PT', 'GRUPO NOTAS PT']
-                cols_classe = ['N° CLASSE', 'CLASSE DESCRIÇÃO PT', 'CLASSE INCLUI PT', 'CLASSE NÃO INCLUI PT', 'CLASSE NOTAS PT']
-                df_instrucoes[cols_grupo] = df_instrucoes[cols_grupo].ffill()
-                instrucoes = "INÍCIO DO MANUAL DE REGRAS:\n"
+                # O catálogo de PDMs substitui as duas leituras de planilha e
+                # o laço de ~20 linhas que montava o "manual de regras" AQUI,
+                # dentro da UI -- regra de negócio na tela, contra o princípio
+                # 2 do CLAUDE.md. Ele aceita a planilha-mestra da Itaipu
+                # (abas TEMPLATE_PDM/GRUPOS_CLASES) direto, sem manipulação, e
+                # também o formato manipulado antigo.
+                self.catalogo = pdm_catalogo.carregar(self.file_path_pdm)
+                self.log(
+                    f"Catálogo: {len(self.catalogo)} PDMs, "
+                    f"{len(self.catalogo.classes_com_pdm())} classes com PDM."
+                )
 
-                for (n_grupo, desc_grupo, notas_grupo), classes_df in df_instrucoes.groupby(cols_grupo, sort=False):
-                    instrucoes += f"\n### GRUPO {n_grupo}: {desc_grupo}\n"
-                    if pd.notna(notas_grupo): instrucoes += f"  - Notas do Grupo: {notas_grupo}\n"
-                    instrucoes += "  Classes deste Grupo:\n"
-                    for _, row_inst in classes_df[cols_classe].iterrows():
-                        if pd.notna(row_inst['N° CLASSE']):
-                            instrucoes += f"    - CLASSE {row_inst['N° CLASSE']}: {row_inst['CLASSE DESCRIÇÃO PT']}\n"
-                            if pd.notna(row_inst['CLASSE INCLUI PT']): instrucoes += f"      - Inclui: {row_inst['CLASSE INCLUI PT']}\n"
-                            if pd.notna(row_inst['CLASSE NÃO INCLUI PT']): instrucoes += f"      - Não Inclui: {row_inst['CLASSE NÃO INCLUI PT']}\n"
-                            if pd.notna(row_inst['CLASSE NOTAS PT']): instrucoes += f"      - Notas da Classe: {row_inst['CLASSE NOTAS PT']}\n"
-                instrucoes += "\nFIM DO MANUAL DE REGRAS."
-
-                res_json = cat.processar_lote(self.df_data_selecionado, lista_pdms, instrucoes)
+                res_json = cat.processar_lote(
+                    self.df_data_selecionado, self.catalogo, callback_log=self.log
+                )
+                sem_resposta = 0
+                fora_do_catalogo = 0
                 for i, item_json in enumerate(res_json):
                     row = self.df_data_selecionado.iloc[i]
+                    if item_json is None:
+                        # A IA não respondeu este item. Antes isso deslocava
+                        # TODAS as linhas seguintes (casamento por posição), e
+                        # cada material recebia o PDM de outro, em silêncio.
+                        sem_resposta += 1
+                        item_json = {"pdm_escolhido": "NENHUM"}
+                        self.log(
+                            f" -> ⚠️ Item {i + 1} sem resposta da IA. Marcado "
+                            f"'NENHUM' para revisão: {str(row['DESCRIÇÃO'])[:40]}"
+                        )
+
+                    ok, motivo = cria_fichas_svc.conferir_pdm(
+                        item_json, self.catalogo
+                    )
+                    if not ok:
+                        # PDM inventado pela IA: antes atravessava a revisão
+                        # humana (um campo de texto livre) e ia direto para o
+                        # filtro do portal, que aperta ENTER e leva o que
+                        # estiver destacado.
+                        fora_do_catalogo += 1
+                        self.log(f" -> ⚠️ Item {i + 1}: {motivo}. Marcado 'NENHUM'.")
+                        item_json["pdm_escolhido"] = "NENHUM"
+
                     item_json['codigo_projeto'] = cod_proj
                     item_json['descricao_original'] = row['DESCRIÇÃO']
                     final_data.append(item_json)
-                self.log("IA Finalizada.")
+
+                self.log(
+                    f"IA Finalizada. {len(final_data)} itens | "
+                    f"sem resposta: {sem_resposta} | "
+                    f"PDM fora do catálogo: {fora_do_catalogo}"
+                )
 
             self.df_processed = pd.DataFrame(final_data)
             self.log("Abrindo janela de Revisão...")
@@ -350,7 +396,9 @@ class ModuloCriaFichas(DialogosDeEspera, ctk.CTkFrame):
 
     def abrir_revisao_pdm(self):
         if self.df_processed is not None and not self.df_processed.empty:
-            JanelaRevisaoPDM(self, self.df_processed, self._pos_revisao_concluida)
+            JanelaRevisaoPDM(self, self.df_processed,
+                             self._pos_revisao_concluida,
+                             catalogo=self.catalogo)
         else:
             messagebox.showerror("Erro", "Nenhum dado processado.")
             self.btn_run_ai.configure(state="normal")
@@ -395,6 +443,11 @@ class ModuloCriaFichas(DialogosDeEspera, ctk.CTkFrame):
 
                     if status == "SUCESSO":
                         self.log(f" -> ✅ SUCESSO: PMIB {res[0]} | PDM {res[1]}")
+                        self._conferir_pdm_do_portal(
+                            pedido=row_atual.get('pdm_escolhido', ''),
+                            gravado=res[1],
+                            pmib=res[0],
+                        )
                         sucessos.append((row_atual['descricao_original'], res[0], res[1]))
                         retry = False
 
@@ -453,6 +506,29 @@ class ModuloCriaFichas(DialogosDeEspera, ctk.CTkFrame):
             self.log(f"Erro Fatal na Thread do Robô: {e}")
         finally:
             self.btn_run_auto.configure(state="normal")
+
+    def _conferir_pdm_do_portal(self, pedido, gravado, pmib):
+        """O PDM que o portal gravou é o que pedimos?
+
+        A evidência disso já era capturada -- `processar_item_individual` lê o
+        `data-tooltip` do combo depois de salvar (é o `PDM_COM_REVISAO` que vai
+        para a coluna "PDM usado" da planilha) -- e nunca era COMPARADA com o
+        que foi digitado. E o fluxo do portal é filtrar-e-apertar-ENTER: uma
+        string que casa vários PDMs, ou nenhum, leva o que estiver destacado.
+        Divergência aqui é a única forma de descobrir isso sem reabrir a ficha.
+
+        Só registra no log: a ficha já foi criada, e decidir o que fazer com
+        ela é do usuário. Um aviso visível é o que faltava.
+        """
+        codigo_pedido = cria_fichas_svc.codigo_do_pdm(pedido)
+        codigo_gravado = cria_fichas_svc.codigo_do_pdm(gravado)
+        if not codigo_pedido or not codigo_gravado:
+            return
+        if codigo_pedido != codigo_gravado:
+            self.log(
+                f" -> ⚠️ DIVERGÊNCIA no PMIB {pmib}: pedimos {codigo_pedido} "
+                f"e o portal gravou {codigo_gravado}. Confira a ficha."
+            )
 
     def abrir_resumo_manual(self):
         if self.df_resumo_final is not None: JanelaResumo(self, self.df_resumo_final)

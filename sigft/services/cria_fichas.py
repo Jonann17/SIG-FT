@@ -1,6 +1,8 @@
+import re
+import time
+
 import pandas as pd
 import openpyxl
-import time
 
 from sigft import config
 from sigft.core.excel import headers, locking
@@ -142,6 +144,111 @@ class DataManager:
             return False, f"Erro ao salvar: {e}"
 
 
+# =============================================================================
+# Guardas da escolha de PDM (2026-09-22)
+# =============================================================================
+# Quantos itens por chamada de IA. O lote inteiro ia numa chamada só, com
+# `max_retries=0` (política de `categorizar_pdm`) -- uma falha de API derrubava
+# os 40 itens juntos, e o prompt crescia sem teto junto com a seleção.
+# Fatiar dá dois ganhos: a falha fica contida num bloco, e o bloco que falha
+# pode ser repetido sem repetir o que já deu certo.
+ITENS_POR_BLOCO = 15
+
+# O que a IA responde quando nenhum PDM serve. `processar_item_individual`
+# trata como PULAR -- é resposta legítima, não erro.
+PDM_NENHUM = "NENHUM"
+
+
+_RE_CODIGO_PDM = re.compile(r"PDM\.\d{4}\.\d{3}")
+
+
+def codigo_do_pdm(texto):
+    """Só o código (`PDM.4820.004`) de uma string de PDM, ou `""`.
+
+    Serve para comparar o PDM PEDIDO com o que o portal GRAVOU: o valor que
+    volta do portal é o `data-tooltip` do combo, que traz a revisão junto, e
+    portanto nunca é igual caractere a caractere ao que foi digitado. O código
+    é a parte estável dos dois lados."""
+    achado = _RE_CODIGO_PDM.search(str(texto or "").upper())
+    return achado.group(0) if achado else ""
+
+
+def alinhar_resposta(res_json, total):
+    """Casa a resposta da IA com os itens do lote PELO `item_processado`.
+
+    Devolve uma lista de `total` posições, com `None` onde a IA não respondeu.
+
+    Antes isto era `res_json[i]` -> `df.iloc[i]`, casamento por POSIÇÃO. Se a
+    IA pulasse ou reordenasse um item, toda linha seguinte recebia o PDM de
+    OUTRO material -- e nada no fluxo denunciava: a planilha saía preenchida,
+    com PDMs plausíveis, nos materiais errados.
+
+    O fallback para a ordem existe para um modelo que ignore a instrução: sem
+    NENHUM `item_processado` utilizável, a ordem é o melhor palpite -- o mesmo
+    comportamento de antes, agora como último recurso em vez de único caminho.
+    """
+    alinhado = [None] * total
+    # "numerou" e "numerou DENTRO da faixa" são coisas diferentes, e confundi-las
+    # era um bug: um `item_processado: 99` num lote de 2 é numeração errada, não
+    # ausência de numeração -- cair na ordem ali seria adivinhar. O fallback só
+    # vale quando NENHUM item trouxe número utilizável.
+    algum_numero_presente = False
+
+    for item in res_json or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            numero = int(item.get("item_processado"))
+        except (TypeError, ValueError):
+            continue
+        algum_numero_presente = True
+        if 1 <= numero <= total:
+            alinhado[numero - 1] = item
+
+    if not algum_numero_presente:
+        for i, item in enumerate(res_json or []):
+            if i < total and isinstance(item, dict):
+                alinhado[i] = item
+
+    return alinhado
+
+
+def conferir_pdm(item, catalogo):
+    """O PDM escolhido existe no catálogo? Devolve `(ok, motivo)`.
+
+    Quando o código está certo e só o título divergiu (a vírgula de
+    "CABO, TRANSMISSAO DADOS", que o prompt antigo ensinava), **canoniza** o
+    valor dentro do próprio `item` em vez de reprovar: a string vai ser
+    DIGITADA no filtro de PDM do portal, e é a vírgula que não casaria lá.
+
+    Sem esta guarda, um código inventado pela IA atravessava a revisão humana
+    (um `askstring` de texto livre) e chegava ao portal, que filtra e aperta
+    ENTER -- levando o que estivesse destacado.
+
+    `catalogo=None` não reprova nada: é o modo "Pular IA", em que o PDM vem da
+    planilha e não há com o que comparar.
+    """
+    escolhido = (item or {}).get("pdm_escolhido")
+    escolhido = str(escolhido).strip() if escolhido is not None else ""
+
+    if not escolhido:
+        return False, "a IA nao devolveu 'pdm_escolhido' para este item"
+    if escolhido.upper() == PDM_NENHUM:
+        return True, ""
+    if catalogo is None:
+        return True, ""
+
+    if catalogo.contem(escolhido):
+        return True, ""
+
+    canonico = catalogo.resolver(escolhido)
+    if canonico is not None:
+        item["pdm_escolhido"] = canonico.completo
+        return True, ""
+
+    return False, f"PDM fora do catalogo: {escolhido!r}"
+
+
 class GeminiCategorizer:
     def __init__(self, api_key):
         self.api_key = api_key
@@ -169,11 +276,26 @@ class GeminiCategorizer:
         log não pode divergir da chamada."""
         return f"{self._llm.provider_name}/{self._llm.model}"
 
-    def _formatar_itens(self, df):
+    def _formatar_itens(self, df, catalogo=None):
+        """O bloco `### ITEM N` de cada item do lote.
+
+        Duas mudanças de 2026-09-22:
+
+        1. A numeração passou a ser **1..N dentro do lote**, com `enumerate`.
+           Era `index + 1` com o índice ORIGINAL da planilha -- e a seleção não
+           fazia `reset_index`, então selecionar as linhas 50-52 produzia
+           "### ITEM 51/52/53" enquanto o contrato de JSON pedia 1, 2, 3. O
+           número agora é a CHAVE de casamento da resposta (`alinhar_resposta`),
+           então ele tem que ser o mesmo dos dois lados.
+        2. Cada item leva seus **candidatos pré-filtrados**, com a classe FSC e
+           as características de cada um -- o sinal que existia na planilha e
+           nunca chegava à IA.
+        """
         texto = ""
-        for index, row in df.iterrows():
-            texto += f"\n### ITEM {index + 1}\n"
-            texto += f"- Descrição: {row['DESCRIÇÃO']}\n"
+        for posicao, (_indice, row) in enumerate(df.iterrows(), start=1):
+            descricao = row['DESCRIÇÃO']
+            texto += f"\n### ITEM {posicao}\n"
+            texto += f"- Descrição: {descricao}\n"
             texto += f"- Marca/Modelo: {row['MARCA/MODELO']}\n"
             cod_mat = str(row['CÓDIGO DO MATERIAL']).strip() if pd.notna(row['CÓDIGO DO MATERIAL']) else ""
             texto += f"- Código do Material: {cod_mat}\n"
@@ -182,14 +304,74 @@ class GeminiCategorizer:
             unidade_raw = row.get('UNID.', '')
             unidade_final = "NÃO ESPECIFICADA" if not unidade_raw or pd.isna(unidade_raw) else unidade_raw
             texto += f"- Unidade: {unidade_final}\n"
+
+            if catalogo is not None:
+                texto += self._bloco_de_candidatos(descricao, row, catalogo)
         return texto
 
-    def processar_lote(self, df_itens, lista_pdms, instrucoes):
+    @staticmethod
+    def _bloco_de_candidatos(descricao, row, catalogo):
+        """Os candidatos de UM item. A marca entra na consulta junto com a
+        descrição: em muitas linhas o substantivo do equipamento está só na
+        coluna MARCA/MODELO."""
+        consulta = f"{descricao} {row.get('MARCA/MODELO', '') or ''}"
+        candidatos = catalogo.candidatos(consulta)
+        if not candidatos:
+            # Dizer que não há candidato é informação, não ruído: sem esta
+            # linha o modelo poderia ler a ausência da seção como "a lista de
+            # candidatos é a lista completa". Medido contra o arquivo real,
+            # descrições como "IE4010 w/ 12GE SFP uplink ports" não têm
+            # nenhuma palavra que nomeie o equipamento.
+            return ("- CANDIDATOS: nenhum candidato foi pré-selecionado para "
+                    "este item. Procure na LISTA DE PDMS POR CLASSE.\n")
+        return "- CANDIDATOS (pré-selecionados por semelhança):\n" + \
+            catalogo.bloco_de_candidatos(candidatos) + "\n"
+
+    def processar_lote(self, df_itens, catalogo, callback_log=None):
+        """Classifica o lote inteiro, em blocos de `ITENS_POR_BLOCO`.
+
+        Devolve uma lista com UM objeto por item do lote, na ordem do lote --
+        `None` nas posições que a IA não respondeu (ver `alinhar_resposta`).
+
+        MUDOU EM 2026-09-22 (era `processar_lote(df_itens, lista_pdms, instrucoes)`):
+
+        - recebe o **catálogo** em vez de duas strings já montadas. Quem
+          montava o manual de regras era a VIEW, num laço de ~20 linhas --
+          regra de negócio dentro da UI, contra o princípio 2 do `CLAUDE.md`.
+          Agora o manual sai de `CatalogoPDM.manual_de_regras`, podado às
+          classes que realmente aparecem nos candidatos do bloco;
+        - **fatia o lote**. Antes tudo ia numa chamada com `max_retries=0`:
+          uma falha de API derrubava os 40 itens juntos.
+        """
         # CP 3.1: `model = genai.GenerativeModel(...)` sai daqui -- a
         # resolução de modelo/provider agora é responsabilidade de
         # `self._llm` (`get_llm("categorizar_pdm", ...)`, ver `__init__`).
         if not self.api_key: raise ValueError("API Key não configurada.")
-        itens_texto = self._formatar_itens(df_itens)
+
+        blocos = _fatiar(list(df_itens.iterrows()), ITENS_POR_BLOCO)
+        resultado = []
+        for numero_do_bloco, bloco in enumerate(blocos, start=1):
+            if callback_log and len(blocos) > 1:
+                callback_log(
+                    f"IA: bloco {numero_do_bloco}/{len(blocos)} "
+                    f"({len(bloco)} itens)"
+                )
+            resultado.extend(
+                self._processar_bloco(_DataFrameDeBloco(bloco), catalogo)
+            )
+        return resultado
+
+    def _processar_bloco(self, df_bloco, catalogo):
+        itens_texto = self._formatar_itens(df_bloco, catalogo=catalogo)
+
+        if catalogo is not None:
+            lista_pdms = catalogo.lista_por_classe()
+            instrucoes = catalogo.manual_de_regras(
+                self._classes_relevantes(df_bloco, catalogo)
+            )
+        else:
+            lista_pdms = ""
+            instrucoes = ""
 
         # CP 3.5 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 3): o TEXTO do
         # prompt (antes embutido aqui como f-string gigante) agora mora em
@@ -207,13 +389,50 @@ class GeminiCategorizer:
                 prompt_template,
                 tags={"modulo": "cria_fichas_no_pmib_v1_backend", "tarefa": "categorizar_pdm"},
             )
-            return resp.parsed_json
         except Exception as e:
             # `from e` mantem o traceback ORIGINAL encadeado. Sem ele, o
             # erro de verdade (timeout, chave invalida, resposta malformada)
             # some, e sobra so a string -- que e o que chega no console do
             # usuario quando a IA falha.
             raise Exception(f"Erro na IA: {e}") from e
+
+        return alinhar_resposta(resp.parsed_json, total=len(df_bloco))
+
+    @staticmethod
+    def _classes_relevantes(df_bloco, catalogo):
+        """As classes FSC que aparecem entre os candidatos deste bloco.
+
+        É o que permite mandar o manual de regras PODADO: o manual inteiro
+        custa ~11 mil tokens (124 classes), e um bloco toca uma fração disso.
+        A lista de PDMs por classe continua completa -- ela é a rede."""
+        classes = set()
+        for _indice, row in df_bloco.iterrows():
+            consulta = f"{row['DESCRIÇÃO']} {row.get('MARCA/MODELO', '') or ''}"
+            for candidato in catalogo.candidatos(consulta):
+                classes.add(candidato.classe)
+        return classes
+
+
+def _fatiar(itens, tamanho):
+    return [itens[i:i + tamanho] for i in range(0, len(itens), tamanho)] or [[]]
+
+
+class _DataFrameDeBloco:
+    """O mínimo de `DataFrame` que `_formatar_itens` usa (`iterrows`/`len`).
+
+    Existe para o fatiamento não depender de `df.iloc[a:b]`: o `df_itens` que
+    chega aqui vem de `iloc[indices].copy()` na view, e fatiar por posição
+    sobre um índice não reiniciado é exatamente o tipo de sutileza que causou
+    o bug de numeração que este checkpoint conserta."""
+
+    def __init__(self, pares):
+        self._pares = pares
+
+    def iterrows(self):
+        return iter(self._pares)
+
+    def __len__(self):
+        return len(self._pares)
 
 
 # =============================================================================
