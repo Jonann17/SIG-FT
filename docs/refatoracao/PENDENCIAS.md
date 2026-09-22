@@ -463,6 +463,63 @@ por causa de uma tela.
 
 ---
 
+## 2026-09-22 — achados de carona da reescrita da escolha de PDM
+
+A frente do dia foi a escolha de PDM do *cria fichas* (`sigft/core/pdm_catalogo.py`,
+prompt `categorizar_pdm`, guardas no serviço e na tela). Estes três achados são
+de fora desse escopo e **não foram corrigidos de carona**:
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-09-22 | `core/pdm_catalogo.py` × `services/tech_specs.py` | **A regra "fica só com a revisão vigente do PDM" agora existe em DOIS lugares.** `tech_specs.revisao_como_numero` + `filtrar_revisao_vigente` operam sobre um `DataFrame` do pandas e vivem na camada de serviço; `pdm_catalogo._revisao_como_numero` é a gêmea, sobre linhas cruas, na camada `core`. Não dava para reusar: `core/` importar de `services/` inverteria as camadas. A regra é a mesma e a evidência que a justifica é a mesma (1.023 dos 1.194 PDMs têm mais de uma revisão). O conserto é mover o conceito para `core/` e fazer `tech_specs` importar de lá — mexe num módulo com RPA calibrado, então não é para fazer de carona. | Fase 8 (ou quando `tech_specs` for tocado) |
+| 2026-09-22 | `core/pdm_catalogo.py` × `services/autospec_rag.py` | **Terceiro glossário multilíngue do projeto.** O `pdm_catalogo.GLOSSARIO` (EN→PT, ~40 substantivos de equipamento) nasceu porque as descrições de fornecedor chegam em inglês e o catálogo da Itaipu é PT/ES — medido: 4 das 8 descrições dos exemplos do prompt não achavam candidato nenhum sem ele. O `autospec_rag` tem um glossário próprio, para outro fim (casar DOCUMENTO com ficha). Importar de lá acoplaria `core/` a uma **zona reservada do Rafael**, então não foi feito. Unificar só faz sentido quando as duas frentes fecharem, e só se os dois fins realmente quererem o mesmo vocabulário — o que não é óbvio. | Depois do fechamento da frente AutoSpecAI |
+| 2026-09-22 | `sigft/services/autospec.py`, `sigft/services/duplicadas_extrator.py`, `sigft/core/pdm_catalogo.py` | **`_sem_acento` existe em três arquivos, com duas implementações diferentes** (`NFKD` + `unicodedata.combining` no autospec; `NFD` + `category != "Mn"` nos outros dois). É o tipo de duplicação que o princípio 1 do `CLAUDE.md` existe para eliminar, e o lugar dela é `core/`. Não unifiquei: um dos três é arquivo do Rafael. | Fase 8 |
+
+> ⚠️ **Esta seção tinha uma quarta entrada, ERRADA, retirada no mesmo dia.**
+> Ela dizia que "servidor de uso geral não tem PDM no catálogo" e que
+> `PDM.7010.018` era `SERVIDOR CONSOLE`. **Não é**: na revisão VIGENTE (rev 2,
+> 28/02/2025) ele se chama `SERVIDOR`, e era isso que o prompt antigo já usava.
+> O erro veio do leitor novo, que pegava o título da PRIMEIRA linha do código em
+> vez do da revisão vigente. Corrigido; fica registrado porque a lição é do
+> módulo inteiro: **no Master, o campo certo depende da revisão — inclusive o
+> título**, e um título de revisão antiga não filtra nada no portal.
+
+**Uma decisão sobre o portal que só uma sessão LOCAL fecha:**
+
+- **22 PDMs têm espaço duplo ou TAB no título da revisão vigente**, e o catálogo
+  COLAPSA tudo para um espaço só. Para os 4 com TAB (`PDM.4310.026`,
+  `PDM.4320.024`, `PDM.4710.005`, `PDM.5830.001` — ex.: `'TUBO     \t\t\t\t RIGIDO'`)
+  a decisão é inequívoca: a string é entregue a `engine.digitar_no_foco`, e um TAB
+  digitado num formulário web MOVE O FOCO, então o `press("ENTER")` seguinte cairia
+  noutro campo. Para os outros 18 (espaço duplo simples, ex.:
+  `'DESUMIDIFICADOR  AR'`, `'RELE DETETOR  GAS'`) a escolha é defensável mas **não
+  verificada** — só o portal diz se ele guarda um espaço ou dois. **Conferir esses
+  18 na próxima sessão local**; se o portal guardar os dois, o ponto de mudança é
+  `pdm_catalogo._txt`, e o teste que trava a decisão de hoje é
+  `tests/test_pdm_titulo_fiel_ao_portal.py::test_espaco_duplo_do_master_vira_espaco_simples`.
+
+### Aviso aposentado do mural do `CLAUDE.md` (regra 2: teto de 5)
+
+Saiu do mural em 2026-09-22 para abrir espaço, e está aqui só para não sumir do
+histórico. O detalhe dele nunca morou no mural: mora no `config.py`, seção 6.
+
+| Data | De | Aviso |
+|---|---|---|
+| 2026-09-08 | Rafael | **Tarefa de IA nova não entra mais em `LLM_MODELOS_HOJE`.** O catálogo agora é `config.LLM_TASKS` + `_POLITICA_RETRY_POR_TAREFA` (em `core/llm/client.py`); aquele mapa é só o baseline das 5 tarefas do CP 3.1. O passo a passo está no aviso longo em `config.py`, seção 6. |
+
+---
+
+## 2026-09-22 (tarde) — a cascata de busca de PDM precisa de execução real
+
+Pedido do usuário: se a busca do PDM no portal não achar nada, tentar só o
+código e depois só o título, em vez de apertar ENTER no vazio. Implementado em
+`services/cria_fichas.AutomacaoPMIB._buscar_pdm`, com o sinal de fracasso que
+ele forneceu (`div.vscomp-no-search-results[aria-hidden=false]`).
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-09-22 | `services/cria_fichas._buscar_pdm` | ⚠️ **NÃO VALIDADO CONTRA O PORTAL.** O seletor veio de um HTML colado no chat, e os 15 testes rodam contra um dublê de `RPAEngine` — eles provam a lógica da cascata (ordem, limpeza entre tentativas, ENTER só quando não há "não encontrado"), **não** que o seletor casa. Se ele estiver errado, tudo passa verde e o comportamento em produção é o de antes. O que falta observar numa sessão local: (a) o elemento realmente alterna `aria-hidden` em vez de entrar/sair do DOM; (b) `PAUSA_FILTRO_PDM` (1 s) é suficiente para o filtro resolver antes da leitura — se for curto, a leitura pega o estado anterior e a cascata pula uma tentativa boa; (c) o BACKSPACE limpa a caixa de busca do `vscomp` de verdade (o foco está nela depois do clique, mas isso não foi visto). | Sessão local |
+| 2026-09-22 | `services/cria_fichas._buscar_pdm` | **A terceira tentativa (só o título) pode casar mais de um PDM.** 13 títulos são compartilhados por 2 PDMs no catálogo (`CAMERA VIDEO` em 5836 e 6710, `VALVULA` em 3040 e 4820...). Buscando só pelo título, o filtro mostra os dois e o ENTER leva o que estiver destacado — que pode ser o errado, em silêncio. A guarda que existe hoje é posterior: `_conferir_pdm_do_portal` compara o código pedido com o que o portal gravou e denuncia a divergência no log. Fechar de vez exige escolher a opção pelo `div[@role='option']` certo em vez de ENTER, e isso muda um fluxo calibrado. | Sessão local, junto com o item acima |
 ## 2026-09-22 — 1,1 MB de imagem sem uso viaja em toda instalação
 
 Sobrou da troca de ícone. Ninguém mais referencia:

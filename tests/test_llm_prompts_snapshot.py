@@ -46,6 +46,34 @@ proibia a dedução. Nenhuma outra parte do prompt foi tocada. As propriedades
 de conteúdo -- que é o que uma fixture regerada não consegue provar sobre si
 mesma -- estão em tests/test_prompt_condicoes_unidades.py.
 
+⚠️ TERCEIRA REGERAÇÃO -- `cria_fichas_prompt`, em 2026-09-22, com o mesmo
+aval do usuário ("melhorar o módulo de cria fichas, talvez o prompt que a IA
+recebe"). O prompt de `categorizar_pdm` foi REESCRITO porque três dos seus
+oito exemplos few-shot apontavam para PDMs errados, conferidos um a um contra
+o catálogo real de 1193 PDMs:
+
+  - `PDM.4020.001 - BOMBA CENTRIFUGA` -- código inexistente, e não há nenhum
+    "BOMBA CENTRIFUGA" no catálogo sob qualquer código;
+  - `PDM.6145.011 - CABO, TRANSMISSAO DADOS` -- o título real não tem a
+    vírgula, e é essa string que é digitada no filtro de PDM do portal;
+  - `PDM.7010.018 - SERVIDOR` -- o título real é `SERVIDOR CONSOLE`
+    (console/KVM), e o exemplo era um Dell PowerEdge.
+
+Mais um quarto, corrigido pelas notas do próprio catálogo: o exemplo da
+câmera apontava a classe 6720 ("CÁMARAS FOTOGRÁFICAS") para uma câmera de
+rede, contra a nota da classe 6710, que remete câmeras de vídeo à 5836.
+
+Junto com isso: o manual de regras passou a ser podado às classes que têm
+PDM (eram 165 descritas, 124 com PDM), a lista passou a vir agrupada por
+classe FSC, e cada item leva seus candidatos pré-filtrados. Ver
+`sigft/core/pdm_catalogo.py`.
+
+O que a fixture regerada NÃO prova sobre si mesma está em
+tests/test_prompt_categorizar_pdm.py, que checa CONTEÚDO: que os três
+exemplos errados não voltaram, que a regra de lista fechada está no texto, e
+que o contrato de JSON (as 7 chaves que o app lê campo a campo por nome)
+continua intacto.
+
 Técnica de captura (idêntica a tests/test_llm_backend_migration.py e
 tests/test_llm_autospec_migration.py, já usada nos CPs 3.1-3.4): cada
 consumidor é construído normalmente e `instancia._llm` é substituído por um
@@ -158,15 +186,21 @@ ANALYZER_VARIABLE = [
     {"pergunta": "Vazão nominal", "resposta": "50 m³/h"},
 ]
 
+# Entradas do prompt de `categorizar_pdm`. Em 2026-09-22 elas passaram a ser
+# o que o CATÁLOGO produz (`manual_de_regras` e `lista_por_classe`), porque
+# `processar_lote` deixou de receber duas strings prontas -- e foram trocadas
+# por PDMs que EXISTEM no catálogo real: a fixture antiga usava
+# `PDM.4020.001 - BOMBA CENTRIFUGA`, que não existe, e
+# `CABO, TRANSMISSAO DADOS`, cujo título real não tem a vírgula. Dublê de
+# entrada de teste com dado impossível convida a copiá-lo como se fosse real.
 CRIA_FICHAS_INSTRUCOES = (
-    "### GRUPO 40: HIDRÁULICA E BOMBAS\n"
-    "  - CLASSE 4020: Bombas Centrifugas\n"
-    "    - Inclui: Bombas de até 100kW\n"
-    "    - Não inclui: Bombas de parafuso\n"
+    "- CLASSE 4320: BOMBAS E COMPRESSORES\n"
+    "  - Inclui: BOMBAS DE AGUA\n"
+    "  - Nao inclui: BOMBAS DE PARAFUSO\n"
 )
 CRIA_FICHAS_LISTA_PDMS = (
-    "- PDM.4020.001 - BOMBA CENTRIFUGA\n"
-    "- PDM.5895.011 - CABO, TRANSMISSAO DADOS\n"
+    "## CLASSE 4320 - BOMBAS E COMPRESSORES\n"
+    "- PDM.4320.007 - BOMBA\n"
 )
 CRIA_FICHAS_ITENS_TEXTO = (
     "### ITEM 1\n"
@@ -255,13 +289,39 @@ def test_snapshot_analyzer_validar_ficha_prompt():
 # =============================================================================
 # 2. cria_fichas_no_pmib_v1_backend.GeminiCategorizer -- tarefa "categorizar_pdm"
 # =============================================================================
+class _CatalogoDeSnapshot:
+    """Devolve as duas strings da fixture, para o snapshot medir só o TEXTO do
+    prompt. `processar_lote` passou a receber o catálogo em 2026-09-22."""
+
+    def lista_por_classe(self):
+        return CRIA_FICHAS_LISTA_PDMS
+
+    def manual_de_regras(self, numeros=None):
+        return CRIA_FICHAS_INSTRUCOES
+
+    def candidatos(self, texto, limite=None):
+        return []
+
+    def bloco_de_candidatos(self, pdms):
+        return ""
+
+
+class _UmItemSo:
+    def iterrows(self):
+        return iter([(0, {"DESCRIÇÃO": "Bomba", "MARCA/MODELO": "KSB",
+                          "CÓDIGO DO MATERIAL": "123-ABC", "UNID.": "Unidade"})])
+
+    def __len__(self):
+        return 1
+
+
 def test_snapshot_cria_fichas_categorizar_pdm_prompt():
     cat = cria_fichas_no_pmib_v1_backend.GeminiCategorizer("chave-fake")
-    cat._formatar_itens = lambda df: CRIA_FICHAS_ITENS_TEXTO
+    cat._formatar_itens = lambda df, catalogo=None: CRIA_FICHAS_ITENS_TEXTO
     fake = _FakeLLM(retorno=_resposta_ok([]))
     cat._llm = fake
 
-    cat.processar_lote(df_itens=object(), lista_pdms=CRIA_FICHAS_LISTA_PDMS, instrucoes=CRIA_FICHAS_INSTRUCOES)
+    cat.processar_lote(df_itens=_UmItemSo(), catalogo=_CatalogoDeSnapshot())
 
     assert len(fake.chamadas) == 1
     assert fake.chamadas[0]["prompt"] == _ler_fixture("cria_fichas_prompt")

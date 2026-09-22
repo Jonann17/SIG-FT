@@ -159,119 +159,202 @@ REGRAS DE VALIDAÇÃO:
 #    tarefa "categorizar_pdm"
 # =============================================================================
 def montar_categorizar_pdm(instrucoes, lista_pdms, itens_texto):
-    """Prompt de classificação em lote de itens em PDMs. instrucoes = manual
-    de regras (grupos/classes) formatado; lista_pdms = todos os PDMs
-    finais disponíveis; itens_texto = bloco '### ITEM N' formatado por
-    GeminiCategorizer._formatar_itens (pré-processamento fora deste
-    módulo).
+    """Prompt de classificação em lote de itens em PDMs.
 
-    Texto idêntico ao antigo prompt_template de
-    cria_fichas_no_pmib_v1_backend.py -- inclui a indentação de 8 espaços
-    por linha herdada do corpo do método original, preservada de
-    propósito (ver docstring do módulo).
+    - `instrucoes`: o manual de regras (classes FSC com INCLUI / NÃO INCLUI /
+      NOTAS), já **podado** às classes que têm PDM -- ver
+      `CatalogoPDM.manual_de_regras`;
+    - `lista_pdms`: o catálogo inteiro **agrupado por classe FSC** -- ver
+      `CatalogoPDM.lista_por_classe`. Ele é a rede: nem toda descrição tem
+      palavra que nomeie o equipamento;
+    - `itens_texto`: o bloco `### ITEM N` de cada item, **com os candidatos
+      pré-filtrados** e as características de cada um -- montado por
+      `GeminiCategorizer._formatar_itens`.
+
+    REESCRITO EM 2026-09-22, a pedido do usuário
+    ------------------------------------------------------------------------
+    O texto anterior (no histórico do git, e na fixture antiga) tinha três
+    defeitos medidos contra o catálogo real de 1193 PDMs:
+
+    1. **Dois dos oito exemplos few-shot apontavam para PDMs errados.**
+       `PDM.4020.001 - BOMBA CENTRIFUGA` não existe -- nem o código, nem o
+       título, sob nenhum código. `PDM.6145.011 - CABO, TRANSMISSAO DADOS`
+       tem uma vírgula que o título real não tem, e é essa string que vai
+       ser digitada no filtro do portal. Um terceiro, a câmera, apontava a
+       classe 6720 ("CÁMARAS FOTOGRÁFICAS") para uma câmera de rede,
+       contrariando a nota da própria classe 6710, que remete câmeras de
+       vídeo à 5836 -- esse é julgamento de catalogação, não erro de fato.
+       Exemplo few-shot é o sinal mais forte de um prompt: ensinar um código
+       fabricado é ensinar o formato de fabricar código.
+
+       ⚠️ O exemplo do servidor (`PDM.7010.018 - SERVIDOR`) chegou a ser
+       "corrigido" para `PDM.7010.014 - COMPUTADOR` e foi REVERTIDO no mesmo
+       dia: ele estava certo. Quem errou foi o leitor do catálogo, que pegava
+       o título da PRIMEIRA linha do código em vez do da revisão VIGENTE --
+       e na revisão 0 esse PDM se chamava "SERVIDOR CONSOLE". A lição fica
+       registrada aqui porque ela é a do módulo inteiro: **título de revisão
+       antiga não filtra nada no portal**, e o erro se parece com um acerto.
+    2. **O elo entre o manual e a lista nunca era dito.** O processo mandava
+       "ache a classe no manual, depois escolha o PDM daquela classe", e a
+       lista plana não dizia a classe de ninguém -- apesar de o código
+       embuti-la (`PDM.XXXX.YYY`).
+    3. **O manual descrevia 41 classes sem nenhum PDM** (165 no manual, 124
+       com PDM). Armadilha ativa: a IA raciocinava até a classe e não havia
+       o que escolher lá.
+
+    O contrato de JSON **não mudou** -- mesmas 7 chaves, mesmos valores
+    permitidos -- porque `app/views/cria_fichas.py` e
+    `services/cria_fichas.processar_item_individual` leem campo a campo por
+    nome. O que mudou de responsabilidade é o `item_processado`: ele deixou
+    de ser decorativo e passou a ser a CHAVE de casamento da resposta com o
+    item (antes era a posição na lista, e um item pulado pela IA deslocava
+    todas as linhas seguintes em silêncio).
+
+    A indentação de 8 espaços por linha, herdada do método original, foi
+    removida: ela era artefato do f-string embutido, não escolha.
     """
     return f"""
-        Você é um especialista em catalogação de materiais (PDM) altamente preciso.
-        Sua tarefa é classificar uma *lista de itens* usando um manual de regras,
-        uma lista de PDMs e um conjunto de exemplos.
+Você é um especialista em catalogação de materiais (PDM) altamente preciso.
+Sua tarefa é classificar uma *lista de itens*, escolhendo para cada um o PDM
+correto de um catálogo fechado.
 
-        ### PROCESSO (Para cada item):
-        1. Analise o "ITEM" (Descrição, Marca, etc.).
-        2. Use o "MANUAL DE REGRAS" e os "EXEMPLOS" para achar a CLASSE correta.
-        3. Use a "LISTA DE PDMS FINAIS" para escolher o PDM exato daquela classe.
+### COMO O CATÁLOGO É ORGANIZADO
+Todo PDM tem a forma `PDM.XXXX.YYY`, onde **XXXX é o número da classe FSC** e
+YYY é o sequencial dentro dela. Ou seja: o código já diz a classe. Use isso --
+o "MANUAL DE REGRAS" abaixo é organizado pelas mesmas classes XXXX, então a
+regra de uma classe vale para todos os PDMs cujo código começa com ela.
 
-        ---
-        ### MANUAL DE REGRAS (GRUPOS E CLASSES)
-        {instrucoes}
-        ---
-        ### LISTA DE PDMS FINAIS (ESCOLHA UM DESTES)
-        {lista_pdms}
-        ---
-        ### EXEMPLOS DE CLASSIFICAÇÃO CORRETA
-        (Estes exemplos são apenas guias de lógica. A sua escolha de PDM
-        DEVE vir da "LISTA DE PDMS FINAIS" acima.)
+### PROCESSO (para cada item)
+1. Leia o item (Descrição, Marca/Modelo, Código do Material, Unidade).
+2. Comece pelos "CANDIDATOS" daquele item: eles foram pré-selecionados por
+   semelhança de texto e vêm com a classe e as características de cada PDM.
+   As características dizem o que aquele PDM descreve -- é o que separa
+   irmãos parecidos (VALVULA ESFERA tem TIPO DE PASSAGEM e NUMERO DE VIAS;
+   VALVULA GAVETA tem MATERIAL DA CUNHA).
+3. Confira a escolha contra o "MANUAL DE REGRAS" da classe (o INCLUI e o
+   NÃO INCLUI de uma classe vencem a semelhança de nome).
+4. Se nenhum candidato servir, procure na "LISTA DE PDMS POR CLASSE". Os
+   candidatos são uma ajuda, não um limite: quando a descrição não nomeia o
+   equipamento (ex.: "IE4010 w/ 12GE SFP uplink ports", que é um switch), a
+   pré-seleção não tem como acertar e a lista completa é o caminho.
+5. Se, depois disso, nenhum PDM do catálogo descrever o material, responda
+   "NENHUM". "NENHUM" é uma resposta correta e esperada -- melhor do que o
+   PDM menos ruim.
 
-        Exemplo 1 (Mecânico):
-        - Descrição: Bomba KSB 123-ABC
-        - PDM: PDM.4020.001 - BOMBA CENTRIFUGA
-        - Descrição breve: BOMBA - KSB 123-ABC
+### REGRA DE LISTA FECHADA (a mais importante)
+O valor de 'pdm_escolhido' DEVE ser, caractere por caractere, uma string que
+aparece **literalmente** na "LISTA DE PDMS POR CLASSE" ou nos "CANDIDATOS"
+do item -- ou então "NENHUM". Não invente código, não invente título, não
+monte um código novo a partir de dois que você viu, e não conserte o que
+achar que está escrito errado. Se o PDM que você quer não está na lista, ele
+não existe.
 
-        Exemplo 2 (Câmera):
-        - Descrição original: CAMERAS DOME FIZ AXIS P1375-E
-        - PDM: PDM.6720.001 - CAMERA
-        - Descrição breve: CAMERA - P1375-E
+---
+### MANUAL DE REGRAS (CLASSES FSC QUE TÊM PDM)
+{instrucoes}
+---
+### LISTA DE PDMS POR CLASSE (ESCOLHA UM DESTES)
+{lista_pdms}
+---
+### EXEMPLOS DE CLASSIFICAÇÃO CORRETA
+(Guias de lógica. Todos os PDMs citados aqui existem no catálogo, mas a sua
+escolha tem que sair da lista acima, não daqui.)
 
-        Exemplo 3 (Rede):
-        - Descrição original: Cisco Analog Voice Gateway VG420 - 144FXS
-        - PDM: PDM.5895.016 - VOIP GATEWAY
-        - Descrição breve: VOICE GATEWAY - VG420-144FXS
+Exemplo 1 (Mecânico -- o genérico vence quando nada confirma o específico):
+- Descrição original: Bomba KSB 123-ABC
+- PDM: PDM.4320.007 - BOMBA
+- Descrição breve: BOMBA - KSB 123-ABC
+- Por quê: a descrição não diz se é centrífuga, hidráulica ou de vácuo.
+  Escolher `BOMBA HIDRAULICA` seria afirmar algo que ninguém disse.
 
-        Exemplo 4 (Rede):
-        - Descrição original: IE4010 w/ 12GE SFP, 12GE Copper PoE+ & 4GE SFP uplink ports
-        - PDM: PDM.5895.003 - SWITCH
-        - Descrição breve: SWITCH - IE-4010-16S12P
+Exemplo 2 (Câmera -- a nota da classe vence a semelhança de nome):
+- Descrição original: CAMERAS DOME FIZ AXIS P1375-E
+- PDM: PDM.5836.000 - CAMERA VIDEO
+- Descrição breve: CAMERA - P1375-E
+- Por quê: é câmera de rede/vídeo. A classe 6720 é de câmeras FOTOGRÁFICAS e
+  a 6710 exclui câmeras de vídeo remetendo à 5836.
 
-        Exemplo 5 (Cabo):
-        - Descrição original: 5 ft LOW LOSS CABLE ASSEMBLY W/N CONNECTORS
-        - PDM: PDM.6145.011 - CABO, TRANSMISSAO DADOS
-        - Descrição breve: CABO ACCESS POINT - AIR-CAB005LL-N
+Exemplo 3 (Rede -- o modificador desempata):
+- Descrição original: Cisco Analog Voice Gateway VG420 - 144FXS
+- PDM: PDM.5895.016 - VOIP GATEWAY
+- Descrição breve: VOICE GATEWAY - VG420-144FXS
+- Por quê: existe também `PDM.5895.017 - GATEWAY`, mais genérico; aqui a
+  descrição CONFIRMA que é de voz.
 
-        Exemplo 6 (Rede):
-        - Descrição original: PATCH PANEL DESCARREGADO 24P BLINDADO - DATAWAVE READY
-        - PDM: PDM.5895.006 - PATCH PANEL
-        - Descrição breve: PATCH PANEL 24P - DATAWAVE READY
+Exemplo 4 (Rede -- a descrição não nomeia o equipamento):
+- Descrição original: IE4010 w/ 12GE SFP, 12GE Copper PoE+ & 4GE SFP uplink ports
+- PDM: PDM.5895.003 - SWITCH
+- Descrição breve: SWITCH - IE-4010-16S12P
+- Por quê: nenhuma palavra da descrição diz "switch". As portas de uplink e o
+  PoE+ dizem. É o caso em que a pré-seleção falha e a lista completa resolve.
 
-        Exemplo 7 (TI):
-        - Descrição original: Servidor Dell PowerEdge C6600 ...
-        - PDM: PDM.7010.018 - SERVIDOR
-        - Descrição Breve: SERVIDOR - POWEREDGE C6600
+Exemplo 5 (Cabo):
+- Descrição original: 5 ft LOW LOSS CABLE ASSEMBLY W/N CONNECTORS
+- PDM: PDM.6145.011 - CABO TRANSMISSAO DADOS
+- Descrição breve: CABO ACCESS POINT - AIR-CAB005LL-N
 
-        Exemplo 8 (Rede):
-        - Descrição original: Wi-Fi 6 Outdoor AP, External Ant, -ROW Regulatory Domain
-        - PDM: PDM.5895.015 - ACCESS POINT
-        - Descrição Breve: ACCESS POINT - C9124AXE-ROW
+Exemplo 6 (Rede):
+- Descrição original: PATCH PANEL DESCARREGADO 24P BLINDADO - DATAWAVE READY
+- PDM: PDM.5895.006 - PATCH PANEL
+- Descrição breve: PATCH PANEL 24P - DATAWAVE READY
 
-        ---
-        ### ITENS PARA ANALISAR (EM LOTE):
-        {itens_texto}
-        ---
-        ### SUA TAREFA:
-        Analise CADA UM dos itens da lista "ITENS PARA ANALISAR".
-        Retorne um JSON contendo UMA LISTA de objetos. Cada objeto deve
-        corresponder a UM item, na MESMA ORDEM.
+Exemplo 7 (TI):
+- Descrição original: Servidor Dell PowerEdge C6600
+- PDM: PDM.7010.018 - SERVIDOR
+- Descrição breve: SERVIDOR - POWEREDGE C6600
 
-        Formato da Resposta (Lista de JSON):
-        [
-        {{
-            "item_processado": 1,
-            "pdm_escolhido": "...",
-            "descricao_curta": "...",
-            "origem": "Importado" | "Nacional",
-            "tipo de fabricação": "Catálogo" | "Especial",
-            "tipo": "Reparável" | "Não Reparável",
-            "unidade": "Unidade" | "Peça" | "Conjunto" | "metro - (m)" | "litro - (l)"
-        }},
-        {{
-            "item_processado": 2,
-            "pdm_escolhido": "...",
-            "descricao_curta": "...",
-            "origem": "...",
-            "tipo de fabricação": "...",
-            "tipo": "...",
-            "unidade": "..."
-        }}
-        ]
+Exemplo 8 (Rede):
+- Descrição original: Wi-Fi 6 Outdoor AP, External Ant, -ROW Regulatory Domain
+- PDM: PDM.5895.015 - ACCESS POINT
+- Descrição breve: ACCESS POINT - C9124AXE-ROW
 
-        Regras para o JSON (para cada item):
-        1. 'pdm_escolhido': O PDM COMPLETO (ex: "PDM.1650.001 - ACUMULADOR"). Se NENHUM for adequado, retorne "NENHUM".
-        2. 'descricao_curta': Uma descrição de até 40 caracteres, sem acentuação.
-        3. 'origem': 'Importado' ou 'Nacional'.
-        4. 'tipo de fabricação': 'Catálogo' ou 'Especial'.
-        5. 'tipo': 'Reparável' ou 'Não Reparável'.
-        6. 'unidade': 'Unidade', 'Peça', 'Conjunto', 'metro - (m)' ou 'litro - (l)'. Se inconclusivo ou "NÃO ESPECIFICADA", use "Unidade".
+---
+### ITENS PARA ANALISAR (EM LOTE):
+{itens_texto}
+---
+### SUA TAREFA:
+Analise CADA UM dos itens da lista "ITENS PARA ANALISAR".
+Retorne um JSON contendo UMA LISTA de objetos, um por item, na MESMA ORDEM.
 
-        Responda APENAS com a lista JSON. Não inclua texto antes ou depois.
-        """
+Formato da Resposta (Lista de JSON):
+[
+{{
+    "item_processado": 1,
+    "pdm_escolhido": "...",
+    "descricao_curta": "...",
+    "origem": "Importado" | "Nacional",
+    "tipo de fabricação": "Catálogo" | "Especial",
+    "tipo": "Reparável" | "Não Reparável",
+    "unidade": "Unidade" | "Peça" | "Conjunto" | "metro - (m)" | "litro - (l)"
+}},
+{{
+    "item_processado": 2,
+    "pdm_escolhido": "...",
+    "descricao_curta": "...",
+    "origem": "...",
+    "tipo de fabricação": "...",
+    "tipo": "...",
+    "unidade": "..."
+}}
+]
+
+Regras para o JSON (para cada item):
+1. 'item_processado': o NÚMERO DO ITEM, exatamente como aparece no cabeçalho
+   "### ITEM N" daquele item. Não renumere e não pule: este número é o que
+   liga a sua resposta ao material certo. Devolva um objeto para CADA item,
+   mesmo os que você classificar como "NENHUM".
+2. 'pdm_escolhido': o PDM COMPLETO, copiado literalmente da lista
+   (ex: "PDM.1650.001 - ACUMULADOR"), ou "NENHUM".
+3. 'descricao_curta': uma descrição de até 40 caracteres, sem acentuação.
+4. 'origem': 'Importado' ou 'Nacional'.
+5. 'tipo de fabricação': 'Catálogo' ou 'Especial'.
+6. 'tipo': 'Reparável' ou 'Não Reparável'.
+7. 'unidade': 'Unidade', 'Peça', 'Conjunto', 'metro - (m)' ou 'litro - (l)'.
+   Se inconclusivo ou "NÃO ESPECIFICADA", use "Unidade".
+
+Responda APENAS com a lista JSON. Não inclua texto antes ou depois.
+"""
+
 
 
 # =============================================================================

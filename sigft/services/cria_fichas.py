@@ -1,6 +1,8 @@
+import re
+import time
+
 import pandas as pd
 import openpyxl
-import time
 
 from sigft import config
 from sigft.core.excel import headers, locking
@@ -142,6 +144,150 @@ class DataManager:
             return False, f"Erro ao salvar: {e}"
 
 
+# =============================================================================
+# Guardas da escolha de PDM (2026-09-22)
+# =============================================================================
+# Quantos itens por chamada de IA. O lote inteiro ia numa chamada só, com
+# `max_retries=0` (política de `categorizar_pdm`) -- uma falha de API derrubava
+# os 40 itens juntos, e o prompt crescia sem teto junto com a seleção.
+# Fatiar dá dois ganhos: a falha fica contida num bloco, e o bloco que falha
+# pode ser repetido sem repetir o que já deu certo.
+ITENS_POR_BLOCO = 15
+
+# O que a IA responde quando nenhum PDM serve. `processar_item_individual`
+# trata como PULAR -- é resposta legítima, não erro.
+PDM_NENHUM = "NENHUM"
+
+
+_RE_CODIGO_PDM = re.compile(r"PDM\.\d{4}\.\d{3}")
+
+
+def tentativas_de_busca(pdm):
+    """As buscas a tentar no combo de PDM do portal, da melhor para a última.
+
+        1. `PDM.6120.003 - TRANSFORMADOR POTENCIA`  (o que funciona hoje)
+        2. `PDM.6120.003`                           (só o código)
+        3. `TRANSFORMADOR POTENCIA`                 (só o título)
+
+    Pedido do usuário em 2026-09-22. A ordem não é arbitrária:
+
+    - o **completo** é o que já funciona na esmagadora maioria dos itens, e
+      continua sendo o primeiro -- a cascata é rede, não substituição;
+    - o **código** é a parte estável da string: imune a acento (5 PDMs do
+      Master têm), a espaço duplo (18 têm) e a mudança de título entre
+      revisões (179 têm). Quando o completo falha, é quase sempre por causa
+      do título;
+    - o **título** cobre o caso oposto: o portal indexar pelo nome e não pelo
+      código.
+
+    Partir no PRIMEIRO " - " e não no primeiro hífen é o que preserva
+    `MOTO-VENTILADOR`; partir no hífen daria o título "MOTO".
+
+    Sem duplicata: repetir a mesma busca gasta uma rodada no portal e não
+    descobre nada.
+    """
+    texto = str(pdm or "").strip()
+    if not texto:
+        return []
+
+    tentativas = [texto]
+    achado = _RE_CODIGO_PDM.search(texto.upper())
+    if achado:
+        codigo = achado.group(0)
+        titulo = texto[achado.end():].lstrip(" -").strip()
+        for candidata in (codigo, titulo):
+            if candidata and candidata not in tentativas:
+                tentativas.append(candidata)
+    return tentativas
+
+
+def codigo_do_pdm(texto):
+    """Só o código (`PDM.4820.004`) de uma string de PDM, ou `""`.
+
+    Serve para comparar o PDM PEDIDO com o que o portal GRAVOU: o valor que
+    volta do portal é o `data-tooltip` do combo, que traz a revisão junto, e
+    portanto nunca é igual caractere a caractere ao que foi digitado. O código
+    é a parte estável dos dois lados."""
+    achado = _RE_CODIGO_PDM.search(str(texto or "").upper())
+    return achado.group(0) if achado else ""
+
+
+def alinhar_resposta(res_json, total):
+    """Casa a resposta da IA com os itens do lote PELO `item_processado`.
+
+    Devolve uma lista de `total` posições, com `None` onde a IA não respondeu.
+
+    Antes isto era `res_json[i]` -> `df.iloc[i]`, casamento por POSIÇÃO. Se a
+    IA pulasse ou reordenasse um item, toda linha seguinte recebia o PDM de
+    OUTRO material -- e nada no fluxo denunciava: a planilha saía preenchida,
+    com PDMs plausíveis, nos materiais errados.
+
+    O fallback para a ordem existe para um modelo que ignore a instrução: sem
+    NENHUM `item_processado` utilizável, a ordem é o melhor palpite -- o mesmo
+    comportamento de antes, agora como último recurso em vez de único caminho.
+    """
+    alinhado = [None] * total
+    # "numerou" e "numerou DENTRO da faixa" são coisas diferentes, e confundi-las
+    # era um bug: um `item_processado: 99` num lote de 2 é numeração errada, não
+    # ausência de numeração -- cair na ordem ali seria adivinhar. O fallback só
+    # vale quando NENHUM item trouxe número utilizável.
+    algum_numero_presente = False
+
+    for item in res_json or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            numero = int(item.get("item_processado"))
+        except (TypeError, ValueError):
+            continue
+        algum_numero_presente = True
+        if 1 <= numero <= total:
+            alinhado[numero - 1] = item
+
+    if not algum_numero_presente:
+        for i, item in enumerate(res_json or []):
+            if i < total and isinstance(item, dict):
+                alinhado[i] = item
+
+    return alinhado
+
+
+def conferir_pdm(item, catalogo):
+    """O PDM escolhido existe no catálogo? Devolve `(ok, motivo)`.
+
+    Quando o código está certo e só o título divergiu (a vírgula de
+    "CABO, TRANSMISSAO DADOS", que o prompt antigo ensinava), **canoniza** o
+    valor dentro do próprio `item` em vez de reprovar: a string vai ser
+    DIGITADA no filtro de PDM do portal, e é a vírgula que não casaria lá.
+
+    Sem esta guarda, um código inventado pela IA atravessava a revisão humana
+    (um `askstring` de texto livre) e chegava ao portal, que filtra e aperta
+    ENTER -- levando o que estivesse destacado.
+
+    `catalogo=None` não reprova nada: é o modo "Pular IA", em que o PDM vem da
+    planilha e não há com o que comparar.
+    """
+    escolhido = (item or {}).get("pdm_escolhido")
+    escolhido = str(escolhido).strip() if escolhido is not None else ""
+
+    if not escolhido:
+        return False, "a IA nao devolveu 'pdm_escolhido' para este item"
+    if escolhido.upper() == PDM_NENHUM:
+        return True, ""
+    if catalogo is None:
+        return True, ""
+
+    if catalogo.contem(escolhido):
+        return True, ""
+
+    canonico = catalogo.resolver(escolhido)
+    if canonico is not None:
+        item["pdm_escolhido"] = canonico.completo
+        return True, ""
+
+    return False, f"PDM fora do catalogo: {escolhido!r}"
+
+
 class GeminiCategorizer:
     def __init__(self, api_key):
         self.api_key = api_key
@@ -169,11 +315,26 @@ class GeminiCategorizer:
         log não pode divergir da chamada."""
         return f"{self._llm.provider_name}/{self._llm.model}"
 
-    def _formatar_itens(self, df):
+    def _formatar_itens(self, df, catalogo=None):
+        """O bloco `### ITEM N` de cada item do lote.
+
+        Duas mudanças de 2026-09-22:
+
+        1. A numeração passou a ser **1..N dentro do lote**, com `enumerate`.
+           Era `index + 1` com o índice ORIGINAL da planilha -- e a seleção não
+           fazia `reset_index`, então selecionar as linhas 50-52 produzia
+           "### ITEM 51/52/53" enquanto o contrato de JSON pedia 1, 2, 3. O
+           número agora é a CHAVE de casamento da resposta (`alinhar_resposta`),
+           então ele tem que ser o mesmo dos dois lados.
+        2. Cada item leva seus **candidatos pré-filtrados**, com a classe FSC e
+           as características de cada um -- o sinal que existia na planilha e
+           nunca chegava à IA.
+        """
         texto = ""
-        for index, row in df.iterrows():
-            texto += f"\n### ITEM {index + 1}\n"
-            texto += f"- Descrição: {row['DESCRIÇÃO']}\n"
+        for posicao, (_indice, row) in enumerate(df.iterrows(), start=1):
+            descricao = row['DESCRIÇÃO']
+            texto += f"\n### ITEM {posicao}\n"
+            texto += f"- Descrição: {descricao}\n"
             texto += f"- Marca/Modelo: {row['MARCA/MODELO']}\n"
             cod_mat = str(row['CÓDIGO DO MATERIAL']).strip() if pd.notna(row['CÓDIGO DO MATERIAL']) else ""
             texto += f"- Código do Material: {cod_mat}\n"
@@ -182,14 +343,74 @@ class GeminiCategorizer:
             unidade_raw = row.get('UNID.', '')
             unidade_final = "NÃO ESPECIFICADA" if not unidade_raw or pd.isna(unidade_raw) else unidade_raw
             texto += f"- Unidade: {unidade_final}\n"
+
+            if catalogo is not None:
+                texto += self._bloco_de_candidatos(descricao, row, catalogo)
         return texto
 
-    def processar_lote(self, df_itens, lista_pdms, instrucoes):
+    @staticmethod
+    def _bloco_de_candidatos(descricao, row, catalogo):
+        """Os candidatos de UM item. A marca entra na consulta junto com a
+        descrição: em muitas linhas o substantivo do equipamento está só na
+        coluna MARCA/MODELO."""
+        consulta = f"{descricao} {row.get('MARCA/MODELO', '') or ''}"
+        candidatos = catalogo.candidatos(consulta)
+        if not candidatos:
+            # Dizer que não há candidato é informação, não ruído: sem esta
+            # linha o modelo poderia ler a ausência da seção como "a lista de
+            # candidatos é a lista completa". Medido contra o arquivo real,
+            # descrições como "IE4010 w/ 12GE SFP uplink ports" não têm
+            # nenhuma palavra que nomeie o equipamento.
+            return ("- CANDIDATOS: nenhum candidato foi pré-selecionado para "
+                    "este item. Procure na LISTA DE PDMS POR CLASSE.\n")
+        return "- CANDIDATOS (pré-selecionados por semelhança):\n" + \
+            catalogo.bloco_de_candidatos(candidatos) + "\n"
+
+    def processar_lote(self, df_itens, catalogo, callback_log=None):
+        """Classifica o lote inteiro, em blocos de `ITENS_POR_BLOCO`.
+
+        Devolve uma lista com UM objeto por item do lote, na ordem do lote --
+        `None` nas posições que a IA não respondeu (ver `alinhar_resposta`).
+
+        MUDOU EM 2026-09-22 (era `processar_lote(df_itens, lista_pdms, instrucoes)`):
+
+        - recebe o **catálogo** em vez de duas strings já montadas. Quem
+          montava o manual de regras era a VIEW, num laço de ~20 linhas --
+          regra de negócio dentro da UI, contra o princípio 2 do `CLAUDE.md`.
+          Agora o manual sai de `CatalogoPDM.manual_de_regras`, podado às
+          classes que realmente aparecem nos candidatos do bloco;
+        - **fatia o lote**. Antes tudo ia numa chamada com `max_retries=0`:
+          uma falha de API derrubava os 40 itens juntos.
+        """
         # CP 3.1: `model = genai.GenerativeModel(...)` sai daqui -- a
         # resolução de modelo/provider agora é responsabilidade de
         # `self._llm` (`get_llm("categorizar_pdm", ...)`, ver `__init__`).
         if not self.api_key: raise ValueError("API Key não configurada.")
-        itens_texto = self._formatar_itens(df_itens)
+
+        blocos = _fatiar(list(df_itens.iterrows()), ITENS_POR_BLOCO)
+        resultado = []
+        for numero_do_bloco, bloco in enumerate(blocos, start=1):
+            if callback_log and len(blocos) > 1:
+                callback_log(
+                    f"IA: bloco {numero_do_bloco}/{len(blocos)} "
+                    f"({len(bloco)} itens)"
+                )
+            resultado.extend(
+                self._processar_bloco(_DataFrameDeBloco(bloco), catalogo)
+            )
+        return resultado
+
+    def _processar_bloco(self, df_bloco, catalogo):
+        itens_texto = self._formatar_itens(df_bloco, catalogo=catalogo)
+
+        if catalogo is not None:
+            lista_pdms = catalogo.lista_por_classe()
+            instrucoes = catalogo.manual_de_regras(
+                self._classes_relevantes(df_bloco, catalogo)
+            )
+        else:
+            lista_pdms = ""
+            instrucoes = ""
 
         # CP 3.5 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 3): o TEXTO do
         # prompt (antes embutido aqui como f-string gigante) agora mora em
@@ -207,13 +428,50 @@ class GeminiCategorizer:
                 prompt_template,
                 tags={"modulo": "cria_fichas_no_pmib_v1_backend", "tarefa": "categorizar_pdm"},
             )
-            return resp.parsed_json
         except Exception as e:
             # `from e` mantem o traceback ORIGINAL encadeado. Sem ele, o
             # erro de verdade (timeout, chave invalida, resposta malformada)
             # some, e sobra so a string -- que e o que chega no console do
             # usuario quando a IA falha.
             raise Exception(f"Erro na IA: {e}") from e
+
+        return alinhar_resposta(resp.parsed_json, total=len(df_bloco))
+
+    @staticmethod
+    def _classes_relevantes(df_bloco, catalogo):
+        """As classes FSC que aparecem entre os candidatos deste bloco.
+
+        É o que permite mandar o manual de regras PODADO: o manual inteiro
+        custa ~11 mil tokens (124 classes), e um bloco toca uma fração disso.
+        A lista de PDMs por classe continua completa -- ela é a rede."""
+        classes = set()
+        for _indice, row in df_bloco.iterrows():
+            consulta = f"{row['DESCRIÇÃO']} {row.get('MARCA/MODELO', '') or ''}"
+            for candidato in catalogo.candidatos(consulta):
+                classes.add(candidato.classe)
+        return classes
+
+
+def _fatiar(itens, tamanho):
+    return [itens[i:i + tamanho] for i in range(0, len(itens), tamanho)] or [[]]
+
+
+class _DataFrameDeBloco:
+    """O mínimo de `DataFrame` que `_formatar_itens` usa (`iterrows`/`len`).
+
+    Existe para o fatiamento não depender de `df.iloc[a:b]`: o `df_itens` que
+    chega aqui vem de `iloc[indices].copy()` na view, e fatiar por posição
+    sobre um índice não reiniciado é exatamente o tipo de sutileza que causou
+    o bug de numeração que este checkpoint conserta."""
+
+    def __init__(self, pares):
+        self._pares = pares
+
+    def iterrows(self):
+        return iter(self._pares)
+
+    def __len__(self):
+        return len(self._pares)
 
 
 # =============================================================================
@@ -264,6 +522,38 @@ XPATH_PDM_FINAL = (
     " and starts-with(@data-tooltip, 'PDM')]"
 )
 
+# "PDM não encontrado" -- o ÚNICO sinal de que o filtro do combo não achou nada.
+#
+# HTML, colado da tela pelo usuário em 2026-09-22:
+#
+#     <div class="vscomp-no-search-results" tabindex="0"
+#          aria-hidden="false">PDM não encontrado</div>
+#
+# É a regra 6 de docs/PORTAL_COMO_ELE_SE_COMPORTA.md em estado puro ("recusa
+# muitas vezes é silenciosa; às vezes o único sinal é um elemento aparecer ou
+# sumir"). Sem ele, o fluxo digitava, esperava um segundo e apertava ENTER no
+# vazio -- e a automação quebrava três passos adiante, com o PDM CERTO já
+# escolhido.
+#
+# Duas decisões de seletor, e o porquê de cada uma:
+#
+# 1. `@aria-hidden='false'`, e NÃO a mera existência do nó. O widget `vscomp`
+#    esconde em vez de remover -- é a mesma armadilha já documentada na §2 do
+#    doc do portal e em `seletores_duplicada.py` (contar opção devolve 10 com o
+#    dropdown fechado). Testar só a presença daria "não encontrado" sempre, e a
+#    cascata gastaria as três tentativas em todo item.
+#
+# 2. NÃO casa o texto "PDM não encontrado". A tela do PMIB alterna PT/ES e a
+#    redação em espanhol é desconhecida -- o mesmo motivo que deixou
+#    `PALAVRA_DA_SECAO` em PENDENCIAS. Seletor que depende de texto não
+#    traduzido falha em SILÊNCIO, que é justamente o defeito que este veio
+#    consertar. A classe basta: neste ponto do fluxo o único combo aberto é o
+#    do PDM, porque o passo anterior acabou de clicar nele.
+XPATH_PDM_NAO_ENCONTRADO = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '),"
+    " ' vscomp-no-search-results ') and @aria-hidden='false']"
+)
+
 
 def _teclas_da_unidade(unidade):
     """Texto a digitar no combo de unidade -- extraído do meio do fluxo para
@@ -310,6 +600,55 @@ class AutomacaoPMIB:
         if not url_limpa.lower().startswith("http"):
             url_limpa = "https://" + url_limpa
         self.engine.goto(url_limpa)
+
+    def _buscar_pdm(self, pdm):
+        """Digita as variações do PDM no combo até o portal achar alguma.
+
+        Devolve o texto que funcionou, ou `None` se as três falharem.
+
+        Pressupõe o combo JÁ ABERTO e com o foco na caixa de busca -- é o
+        estado que o clique em `XPATH_DIV_PESQUISAR_PDM` deixa, logo acima.
+
+        O QUE MUDOU, E POR QUÊ (2026-09-22, pedido do usuário)
+        --------------------------------------------------------------
+        Antes: `digitar_no_foco(pdm)` -> `sleep` -> `ENTER`, sem nunca
+        perguntar se o filtro achou algo. Quando o texto não casava, o ENTER
+        caía no vazio e a automação quebrava três passos adiante -- com o PDM
+        CERTO já escolhido, que é o que torna esse erro tão caro de
+        diagnosticar.
+
+        Agora cada tentativa é CONFERIDA contra `XPATH_PDM_NAO_ENCONTRADO`
+        antes do ENTER. `esta_visivel` e não `element_exists`: o widget
+        `vscomp` esconde em vez de remover.
+
+        Por que BACKSPACE e não Ctrl+A: `RPAEngine.press` só aceita teclas
+        NOMEADAS (o mapa de teclas de cada motor tem ENTER, TAB, BACKSPACE...
+        e nenhum combinador). E `fill`/`clear` pedem um seletor,
+        que aqui não existe -- a caixa de busca do `vscomp` tem id gerado, e
+        identificá-la pelo placeholder é a armadilha documentada na §4 do doc
+        do portal (a do PDM diz só "Pesquisar", igual à do contrato; um
+        seletor genérico escreve na caixa de OUTRO widget, escondida). O foco
+        já está no lugar certo: BACKSPACE age nele, sem seletor nenhum.
+
+        ⚠️ Esta função NÃO foi validada contra o portal real. O seletor veio
+        de um HTML colado no chat, e `scripts/check.sh` verde não é prova de
+        portal (CLAUDE.md). Precisa de uma execução em sessão local.
+        """
+        for tentativa in tentativas_de_busca(pdm):
+            self.engine.digitar_no_foco(tentativa)
+            time.sleep(PAUSA_FILTRO_PDM)
+
+            if not self.engine.esta_visivel(XPATH_PDM_NAO_ENCONTRADO):
+                self.engine.press("ENTER")
+                return tentativa
+
+            # Limpa para a próxima. Com folga: se o portal tiver completado
+            # algo sozinho, sobrar caractere faria a busca seguinte procurar
+            # por "TENTATIVA_ANTERIORtentativa_nova" -- que não acha nada, e a
+            # cascata inteira falharia por um motivo que não é o do portal.
+            self.engine.press(["BACKSPACE"] * (len(tentativa) + 5))
+            time.sleep(PAUSA_ANIMACAO)
+        return None
 
     def processar_item_individual(self, dados_item):
         """
@@ -382,10 +721,19 @@ class AutomacaoPMIB:
 
             time.sleep(PAUSA_MUDANCA_FOCO)  # Espera foco mudar
 
-            # Digita no input que ganhou o foco automaticamente
-            self.engine.digitar_no_foco(pdm)
-            time.sleep(PAUSA_FILTRO_PDM)
-            self.engine.press("ENTER")
+            # Digita no input que ganhou o foco automaticamente, tentando as
+            # variações até o portal achar (ver `_buscar_pdm`). Antes daqui
+            # era `digitar_no_foco(pdm)` + sleep + ENTER, SEM nunca perguntar
+            # se o filtro tinha achado alguma coisa.
+            usado = self._buscar_pdm(pdm)
+            if usado is None:
+                tentadas = ", ".join(repr(t) for t in tentativas_de_busca(pdm))
+                return "ERRO", (
+                    f"O portal respondeu 'PDM nao encontrado' para todas as "
+                    f"buscas: {tentadas}. O PDM pode nao existir no portal, ou "
+                    f"o titulo pode estar diferente do que o portal indexa. "
+                    f"Escolha outro PDM ou confira a ficha a mao."
+                )
 
             # 3. Preencher Contrato
             _clicar(XPATH_DROPDOWN_CONTRATO)

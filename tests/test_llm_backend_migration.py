@@ -165,13 +165,55 @@ def test_gemini_categorizer_init_com_api_key_nao_imprime_aviso(capsys):
     assert "AVISO" not in saida
 
 
+# ⚠️ ASSINATURA MUDOU EM 2026-09-22: `processar_lote(df_itens, lista_pdms,
+# instrucoes)` virou `processar_lote(df_itens, catalogo, callback_log=None)`.
+# O que era duas strings JÁ MONTADAS (e montadas dentro da VIEW, num laço de
+# ~20 linhas -- regra de negócio na UI) passou a ser o catálogo de PDMs, de
+# quem o serviço tira a lista agrupada por classe e o manual de regras podado.
+# Ver `sigft/core/pdm_catalogo.py` e tests/test_cria_fichas_escolha_de_pdm.py.
+#
+# `_CatalogoFalso` é o mínimo que `_processar_bloco` consulta -- o catálogo de
+# verdade tem teste próprio, e o que estes três testes provam é a fiação com o
+# `LLMClient` (chave ausente, 1 chamada sem retry, erro envolvido).
+class _DataFrameDeUmItem:
+    """`processar_lote` agora ITERA o df para fatiar o lote em blocos, então
+    `object()` não serve mais como dublê."""
+
+    _LINHA = {"DESCRIÇÃO": "BOMBA KSB", "MARCA/MODELO": "KSB",
+              "CÓDIGO DO MATERIAL": "1", "UNID.": "PC"}
+
+    def iterrows(self):
+        return iter([(0, self._LINHA)])
+
+    def __len__(self):
+        return 1
+
+
+class _CatalogoFalso:
+    def __init__(self, lista="LISTA", manual="MANUAL"):
+        self._lista = lista
+        self._manual = manual
+
+    def lista_por_classe(self):
+        return self._lista
+
+    def manual_de_regras(self, numeros=None):
+        return self._manual
+
+    def candidatos(self, texto, limite=None):
+        return []
+
+    def bloco_de_candidatos(self, pdms):
+        return ""
+
+
 def test_processar_lote_sem_api_key_levanta_value_error_antes_de_chamar_llm():
     cat = cria_fichas_no_pmib_v1_backend.GeminiCategorizer("")
     fake_llm = _FakeLLM(retorno=_resposta_ok([]))
     cat._llm = fake_llm
 
     try:
-        cat.processar_lote(df_itens=None, lista_pdms="lista", instrucoes="regras")
+        cat.processar_lote(df_itens=None, catalogo=_CatalogoFalso())
         assert False, "deveria ter levantado ValueError"
     except ValueError as e:
         assert str(e) == "API Key não configurada."
@@ -181,17 +223,20 @@ def test_processar_lote_sem_api_key_levanta_value_error_antes_de_chamar_llm():
 
 def test_processar_lote_sucesso_devolve_parsed_json_sem_retry():
     cat = cria_fichas_no_pmib_v1_backend.GeminiCategorizer("uma-chave")
-    cat._formatar_itens = lambda df: "### ITEM 1 formatado"
-    fake_llm = _FakeLLM(retorno=_resposta_ok([{"pdm_escolhido": "PDM.4020.001"}]))
+    cat._formatar_itens = lambda df, catalogo=None: "### ITEM 1 formatado"
+    fake_llm = _FakeLLM(retorno=_resposta_ok([{"pdm_escolhido": "PDM.4320.007"}]))
     cat._llm = fake_llm
 
-    resultado = cat.processar_lote(df_itens=object(), lista_pdms="PDM.4020.001 - BOMBA", instrucoes="MANUAL")
+    resultado = cat.processar_lote(
+        df_itens=_DataFrameDeUmItem(),
+        catalogo=_CatalogoFalso(lista="PDM.4320.007 - BOMBA", manual="MANUAL"),
+    )
 
-    assert resultado == [{"pdm_escolhido": "PDM.4020.001"}]
+    assert resultado == [{"pdm_escolhido": "PDM.4320.007"}]
     assert len(fake_llm.chamadas) == 1
     prompt_enviado = fake_llm.chamadas[0]["prompt"]
     assert "### ITEM 1 formatado" in prompt_enviado
-    assert "PDM.4020.001 - BOMBA" in prompt_enviado
+    assert "PDM.4320.007 - BOMBA" in prompt_enviado
     assert "MANUAL" in prompt_enviado
     assert fake_llm.chamadas[0]["tags"] == {
         "modulo": "cria_fichas_no_pmib_v1_backend",
@@ -201,11 +246,12 @@ def test_processar_lote_sucesso_devolve_parsed_json_sem_retry():
 
 def test_processar_lote_falha_e_relevantada_envolta_em_erro_na_ia():
     cat = cria_fichas_no_pmib_v1_backend.GeminiCategorizer("uma-chave")
-    cat._formatar_itens = lambda df: "itens"
+    cat._formatar_itens = lambda df, catalogo=None: "itens"
     cat._llm = _FakeLLM(excecao=RuntimeError("json invalido"))
 
     try:
-        cat.processar_lote(df_itens=object(), lista_pdms="pdms", instrucoes="regras")
+        cat.processar_lote(df_itens=_DataFrameDeUmItem(),
+                           catalogo=_CatalogoFalso())
         assert False, "deveria ter levantado Exception"
     except Exception as e:
         assert str(e) == "Erro na IA: json invalido"

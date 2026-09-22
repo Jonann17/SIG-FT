@@ -84,8 +84,109 @@ class JanelaResumo(ctk.CTkToplevel):
 
         ctk.CTkButton(self, text="Fechar", command=self.destroy).pack(pady=10)
 
+class JanelaEscolherPDM(ctk.CTkToplevel):
+    """Escolha de um PDM do catálogo, com busca.
+
+    Substitui o `simpledialog.askstring` de texto livre da revisão. A busca e
+    o ranqueamento moram no `CatalogoPDM` (`buscar`), testados sem tkinter;
+    aqui fica só a tela. Mostra a classe FSC e as características de cada PDM,
+    que é o que permite desempatar os 13 títulos repetidos do catálogo real --
+    dois `CAMERA VIDEO`, dois `VALVULA`, e assim por diante.
+    """
+
+    LINHAS_VISIVEIS = 40
+
+    def __init__(self, parent, catalogo):
+        super().__init__(parent)
+        self.title("Escolher PDM")
+        self.geometry("900x560")
+        self.transient(parent)
+        self.grab_set()
+
+        self.catalogo = catalogo
+        self.escolha = None
+        self._achados = []
+
+        topo = ctk.CTkFrame(self, fg_color="transparent")
+        topo.pack(fill="x", padx=10, pady=10)
+        ctk.CTkLabel(
+            topo,
+            text=f"Busque entre os {len(catalogo)} PDMs do catálogo:",
+            font=("Roboto", 13, "bold"),
+        ).pack(anchor="w")
+
+        self.entry_busca = ctk.CTkEntry(
+            topo, placeholder_text="ex.: valvula esfera  |  4820.004  |  camera"
+        )
+        self.entry_busca.pack(fill="x", pady=(6, 0))
+        self.entry_busca.bind("<KeyRelease>", lambda _e: self._atualizar())
+        self.entry_busca.bind("<Return>", lambda _e: self.confirmar())
+
+        frame_lista = ctk.CTkFrame(self)
+        frame_lista.pack(fill="both", expand=True, padx=10, pady=(6, 0))
+
+        sb = ttk.Scrollbar(frame_lista, orient="vertical")
+        self.lista = ttk.Treeview(
+            frame_lista,
+            columns=["PDM", "Classe", "Características"],
+            show="headings",
+            yscrollcommand=sb.set,
+            selectmode="browse",
+        )
+        sb.config(command=self.lista.yview)
+        sb.pack(side="right", fill="y")
+        self.lista.pack(side="left", fill="both", expand=True)
+        for coluna, largura in (("PDM", 330), ("Classe", 70), ("Características", 460)):
+            self.lista.heading(coluna, text=coluna)
+            self.lista.column(coluna, width=largura, anchor="w")
+        self.lista.bind("<Double-1>", lambda _e: self.confirmar())
+
+        rodape = ctk.CTkFrame(self, fg_color="transparent")
+        rodape.pack(fill="x", padx=10, pady=10)
+        self.lbl_contagem = ctk.CTkLabel(rodape, text="", text_color="gray")
+        self.lbl_contagem.pack(side="left")
+        ctk.CTkButton(rodape, text="Cancelar", fg_color="#3A3A3A",
+                      command=self.cancelar).pack(side="right", padx=5)
+        ctk.CTkButton(rodape, text="USAR ESTE PDM", fg_color=COLORS["accent"],
+                      command=self.confirmar).pack(side="right", padx=5)
+
+        self._atualizar()
+        self.entry_busca.focus_set()
+
+    def _atualizar(self):
+        self._achados = self.catalogo.buscar(
+            self.entry_busca.get(), limite=self.LINHAS_VISIVEIS
+        )
+        self.lista.delete(*self.lista.get_children())
+        for posicao, pdm in enumerate(self._achados):
+            self.lista.insert(
+                "", "end", iid=str(posicao),
+                values=(pdm.completo, pdm.classe,
+                        "; ".join(pdm.caracteristicas[:6])),
+            )
+        self.lbl_contagem.configure(
+            text=f"{len(self._achados)} PDM(s) na lista"
+            + (f" (mostrando os {self.LINHAS_VISIVEIS} primeiros)"
+               if len(self._achados) >= self.LINHAS_VISIVEIS else "")
+        )
+        if self._achados:
+            self.lista.selection_set("0")
+
+    def confirmar(self):
+        selecionado = self.lista.selection()
+        if not selecionado:
+            messagebox.showwarning("Aviso", "Selecione um PDM da lista.")
+            return
+        self.escolha = self._achados[int(selecionado[0])]
+        self.destroy()
+
+    def cancelar(self):
+        self.escolha = None
+        self.destroy()
+
+
 class JanelaRevisaoPDM(ctk.CTkToplevel):
-    def __init__(self, parent, dataframe, callback_confirmar):
+    def __init__(self, parent, dataframe, callback_confirmar, catalogo=None):
         super().__init__(parent)
         self.title("Revisão de PDMs - Pré-Automação")
         self.geometry("1100x600")
@@ -94,6 +195,10 @@ class JanelaRevisaoPDM(ctk.CTkToplevel):
 
         self.df_dados = dataframe.copy()  # Trabalha numa cópia para não quebrar o original se cancelar
         self.callback = callback_confirmar
+        # `catalogo=None` mantém a assinatura antiga válida (e o modo
+        # "Pular IA" não tem catálogo): sem ele, `editar_pdm` cai no campo de
+        # texto livre de antes.
+        self.catalogo = catalogo
 
         # --- Cabeçalho e Botões ---
         top_frame = ctk.CTkFrame(self)
@@ -162,7 +267,21 @@ class JanelaRevisaoPDM(ctk.CTkToplevel):
             messagebox.showwarning("Aviso", "Selecione uma ou mais linhas para editar o PDM.")
             return
 
-        novo_pdm = simpledialog.askstring("Editar PDM", "Digite o novo código PDM completo (ex: PDM.1234.001 - NOME):")
+        # Com catálogo, a pessoa ESCOLHE de uma lista com busca; sem ele
+        # (modo "Pular IA", em que o PDM vem da planilha e não há catálogo
+        # carregado), cai no campo de texto de antes. O `askstring` era o
+        # único caminho até 2026-09-22: a pessoa digitava
+        # "PDM.1234.001 - NOME" de cabeça, sem busca e sem validação, e o que
+        # ela escrevesse ia direto para o filtro de PDM do portal.
+        if self.catalogo is not None:
+            escolha = JanelaEscolherPDM(self, self.catalogo).escolha
+            novo_pdm = escolha.completo if escolha else None
+        else:
+            novo_pdm = simpledialog.askstring(
+                "Editar PDM",
+                "Digite o novo código PDM completo (ex: PDM.1234.001 - NOME):",
+            )
+
         if novo_pdm:
             for iid in selecionados:
                 # Atualiza no DataFrame
