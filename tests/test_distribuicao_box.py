@@ -14,7 +14,7 @@ import pytest
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 LAUNCHER = RAIZ / "SIG-FT Itaipu.bat"
 PACOTE = RAIZ / "Gerar-Pacote.bat"
-ICONE = RAIZ / "assets" / "SIG-FT-logo-2.ico"
+ICONE = RAIZ / "assets" / "icone-sig-ft.ico"
 
 
 # =============================================================================
@@ -158,25 +158,41 @@ def test_o_icone_existe_e_e_um_ico_de_verdade():
 def test_o_icone_do_app_nao_e_o_logo_da_ge():
     """São dois arquivos com papéis diferentes, e trocá-los é o erro fácil.
 
-    Decisão do usuário: o ícone da barra de tarefas é o do SIG-FT; DENTRO da
-    janela continua o símbolo da GE Vernova (*"não quero que apareça dentro
-    do APP, por hora mantemos o símbolo da GE VERNOVA"*).
+    A decisão de 2026-09-04 era: ícone do SIG-FT na barra de tarefas, e
+    DENTRO da janela só a GE Vernova (*"não quero que apareça dentro do APP,
+    por hora mantemos o símbolo da GE VERNOVA"*).
+
+    Em 2026-09-22 o usuário abriu uma exceção para a SPLASH: *"esse svg para
+    ficar no ícone do windows **e no aplicativo quando vai inicializar**. A
+    logo interna do app ainda pode ser o png da GE vernova."* Ou seja: a tela
+    de abertura passa a mostrar o ícone; a BARRA LATERAL continua com a GE.
+    Os detalhes do ícone estão em `tests/test_icone_do_aplicativo.py`.
     """
     main = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
 
-    assert 'ARQUIVO_DO_ICONE = os.path.join("assets", "SIG-FT-logo-2.ico")' in main
+    assert 'ARQUIVO_DO_ICONE = os.path.join("assets", "icone-sig-ft.ico")' in main
     assert "def definir_icone(" in main
-    # O logo da GE continua sendo o desenhado na tela.
+    # O logo da GE continua sendo o desenhado na barra lateral.
     assert 'os.path.join("assets", "logo.png")' in main
 
 
 def test_o_build_prepara_os_tamanhos_pequenos_do_icone():
-    """O .ico do repositório tem só 256x256; o Windows usa 16/32/48 na barra
-    de tarefas e na barra de título. Sem gerá-los, ele reduz o 256 na hora e
-    o ícone sai borrado."""
+    """O build local parte do mesmo `.ico` e mantém os tamanhos pequenos.
+
+    ⚠️ A PREMISSA DESTE TESTE MUDOU em 2026-09-22, e vale registrar por quê.
+    Ele nasceu porque o `.ico` do repositório tinha só 256x256 e ESTE `.bat`
+    era o único lugar que gerava 16/32/48. Só que o workflow de Release **não
+    roda o `.bat`** -- então o `.exe` publicado caía no `.ico` de 256 e o
+    Windows reduzia sozinho, borrado. O remendo estava no lugar errado.
+
+    Agora o `.ico` versionado já nasce com todos os tamanhos
+    (`tests/test_icone_do_aplicativo.py`), e o build local e o do CI entregam
+    a mesma coisa. O `.bat` continua regerando -- é redundante e inofensivo, e
+    tirá-lo daqui seria mexer no build local de carona.
+    """
     bat = (RAIZ / "Gerar-Executavel.bat").read_text(encoding="ascii")
 
-    assert "SIG-FT-logo-2.ico" in bat, "o build tem que partir do .ico do SIG-FT"
+    assert "icone-sig-ft.ico" in bat, "o build tem que partir do .ico do SIG-FT"
     for medida in ("(16,16)", "(32,32)", "(48,48)"):
         assert medida in bat, f"falta a medida {medida}"
 

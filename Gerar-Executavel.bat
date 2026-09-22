@@ -94,7 +94,7 @@ if errorlevel 1 (
 
 rem --- 3. Icone do executavel ------------------------------------------------
 rem
-rem  A FONTE e assets\SIG-FT-logo-2.ico -- o icone do SIG-FT, escolhido pelo
+rem  A FONTE e assets\icone-sig-ft.ico -- o icone do SIG-FT, escolhido pelo
 rem  usuario em 2026-09-04. O logo.png (GE Vernova) NAO entra aqui: ele e a
 rem  imagem desenhada DENTRO da tela, nao o icone do app.
 rem
@@ -105,9 +105,9 @@ rem  borrado. Este passo gera as medidas pequenas uma vez, no build.
 echo.
 echo [3/4] Preparando o icone...
 if not exist "build" mkdir "build"
-"%SIGFT_PY%" -c "from PIL import Image; Image.open('assets/SIG-FT-logo-2.ico').save('build/SIG-FT.ico', sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])" 2>nul
+"%SIGFT_PY%" -c "from PIL import Image; Image.open('assets/icone-sig-ft.ico').save('build/SIG-FT.ico', sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])" 2>nul
 if not exist "build\SIG-FT.ico" (
-    echo       [aviso] Nao consegui preparar o assets\SIG-FT-logo-2.ico.
+    echo       [aviso] Nao consegui preparar o assets\icone-sig-ft.ico.
     echo               Tentando o logo.png como reserva...
     "%SIGFT_PY%" -c "from PIL import Image; Image.open('assets/logo.png').save('build/SIG-FT.ico', sizes=[(16,16),(32,32),(48,48),(256,256)])" 2>nul
 )

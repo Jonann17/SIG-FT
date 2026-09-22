@@ -106,15 +106,25 @@ def resource_path(relative_path):
 #
 # São dois arquivos com papéis diferentes, e confundi-los é o erro fácil:
 #
-#   assets/SIG-FT-logo-2.ico  -> ÍCONE: barra de tarefas, barra de título, o
-#                                arquivo .exe. Nunca aparece dentro da tela.
-#   assets/logo.png           -> IMAGEM: o logo da GE Vernova desenhado no
-#                                splash e na barra lateral. Não mexer.
+#   assets/icone-sig-ft.ico   -> ÍCONE: barra de tarefas, barra de título, o
+#                                .exe e o instalador. Nunca aparece na tela.
+#   assets/icone-sig-ft.png   -> o mesmo desenho, para a SPLASH (e como
+#                                fallback do Tk fora do Windows).
+#   assets/logo.png           -> IMAGEM: o símbolo da GE Vernova, na BARRA
+#                                LATERAL. Continua sendo o de dentro do app.
+#
+# [2026-09-22] O usuário trocou o ícone e pediu que a splash mostrasse o mesmo
+# desenho, mantendo a GE Vernova dentro da janela. O `.ico` versionado passou
+# a trazer todos os tamanhos (16 a 256): o anterior tinha só 256, o
+# `Gerar-Executavel.bat` remendava isso em `build/`, e o workflow de Release
+# não roda o `.bat` -- então o `.exe` publicado saía com o ícone borrado na
+# barra de tarefas. Ver `tests/test_icone_do_aplicativo.py`.
 #
 # `.ico` e não `.png` porque no Windows quem dá o ícone bonito na barra de
 # tarefas é o `iconbitmap` com um `.ico` de verdade — o `wm_iconphoto` com PNG
 # funciona, mas o Windows redimensiona na hora e a barra de título sai borrada.
-ARQUIVO_DO_ICONE = os.path.join("assets", "SIG-FT-logo-2.ico")
+ARQUIVO_DO_ICONE = os.path.join("assets", "icone-sig-ft.ico")
+ARQUIVO_DO_LOGO_DA_SPLASH = os.path.join("assets", "icone-sig-ft.png")
 
 
 def definir_icone(janela) -> bool:
@@ -134,7 +144,7 @@ def definir_icone(janela) -> bool:
         # `iconbitmap` só existe com .ico no Windows. Fora dele (ou com um
         # .ico que o Tk recuse), tenta o PNG, que é melhor que nada.
         try:
-            png = resource_path(os.path.join("assets", "logo.png"))
+            png = resource_path(ARQUIVO_DO_LOGO_DA_SPLASH)
             if os.path.exists(png):
                 janela.wm_iconphoto(False, tk.PhotoImage(file=png))
                 return True
@@ -234,7 +244,7 @@ class SplashScreen(ctk.CTk):
         # `sigft/app/` quando ele veio para ca. O resultado era o app abrindo
         # SEM logo e SEM icone, avisando so no console (que ninguem le), como
         # se os arquivos nao existissem.
-        image_path = resource_path(os.path.join("assets", "logo.png"))
+        image_path = resource_path(ARQUIVO_DO_LOGO_DA_SPLASH)
 
         self.logo_img = None  # Mantém referência para não sumir
         if os.path.exists(image_path):

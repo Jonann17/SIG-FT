@@ -62,7 +62,7 @@ SolidCompression=yes
 WizardStyle=modern
 ; O pacote passa de 400 MB; em 32 bits a compressao estoura a memoria.
 ArchitecturesInstallIn64BitMode=x64compatible
-SetupIconFile=..\assets\SIG-FT-logo-2.ico
+SetupIconFile=..\assets\icone-sig-ft.ico
 UninstallDisplayIcon={app}\{#AppExe}
 
 ; --- Escopo da instalacao -------------------------------------------------

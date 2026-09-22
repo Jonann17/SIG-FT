@@ -460,3 +460,22 @@ empacotadas, então uma falha ali é defeito de empacotamento, e publicar signif
 entregar uma tela morta. Argumento contra: um falso vermelho por motivo de
 ambiente (o `xlwings` querendo Excel, por exemplo) trava a publicação inteira
 por causa de uma tela.
+
+---
+
+## 2026-09-22 — 1,1 MB de imagem sem uso viaja em toda instalação
+
+Sobrou da troca de ícone. Ninguém mais referencia:
+
+| Arquivo | Tamanho |
+|---|---|
+| `assets/SIG-FT logo 2.png` | 1,0 MB — **já estava sem uso antes da troca** |
+| `assets/SIG-FT-logo-2.ico` | 62 KB — ícone anterior |
+
+O `SIG-FT.spec` empacota a pasta `assets/` inteira (`("assets", "assets")`), então
+os dois entram no `.exe` e no instalador de todo mundo.
+
+**Não apaguei de propósito**, por dois motivos: apagar asset é decisão do dono, e
+o `.ico` antigo é o caminho curto para voltar atrás se o ícone novo não agradar.
+Quando a decisão estiver tomada, apagar os dois é o suficiente — não há código a
+mudar, e `tests/test_icone_do_aplicativo.py` já trava o que fica.
