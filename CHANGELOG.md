@@ -12,6 +12,12 @@ Escreva cada linha pensando em quem usa o SIG-FT, não em quem o programa:
 "a busca do AutoSpec passa a funcionar com a VPN ligada" é útil; "refatorado o
 cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
+## 1.1.0 - 2026-09-23
+
+- **Correção de PDM sem perder as características técnicas** (tela nova, "5.1. Correção de PDM"). Trocar ou atualizar o PDM de uma ficha faz o portal apagar TODAS as características técnicas, inclusive as que o PDM novo também tem — o próprio modal avisa. Hoje isso é redigitação à mão, ficha a ficha. O módulo tira um retrato das características antes da troca, faz a troca e repõe o que continua valendo.
+- Ele foi escrito para nunca deixar uma ficha pior do que estava: não troca o PDM se o retrato não gravou, só apaga linha depois de repor, e não apaga nada se a reposição falhou ou se nenhum valor voltou — porque isso é sintoma de leitura quebrada, não de "não havia o que reaproveitar".
+- A escolha de PDM na criação de fichas passa a conferir a REVISÃO do PDM, que é o que a Itaipu cobra, e deixou de confundir peça DE um componente com o componente.
+
 ## 1.0.0 - 2026-09-22
 
 - O SIG-FT passa a ser gerado e publicado pelo GitHub, com instalador próprio. Acabou o passo a passo manual de compilar, zipar e copiar o arquivo para o Box.
