@@ -449,6 +449,23 @@ class RPAEngine(ABC):
         """Textos visíveis das opções do `<select>` em `seletor`, na ordem."""
 
     @abstractmethod
+    def texto_selecionado(self, seletor: str) -> str:
+        """Texto visível da opção ESCOLHIDA no `<select>` em `seletor`.
+        `""` quando não há seleção ou o elemento não é um select.
+
+        O par que faltava de `opcoes()` / `selecionar_por_texto()`:
+        `opcoes()` diz quais existem, este diz qual está escolhida. E o
+        TEXTO, não o `value` -- `get_value()` devolve o atributo `value` do
+        `<option>`, enquanto `selecionar_por_texto()` casa por LABEL. Sem
+        esta primitiva não dava para LER uma seleção e repô-la depois.
+
+        Nasceu do módulo de correção de PDM (2026-09-23): a unidade de medida
+        existe em TODA linha de característica, e as do tipo `LISTA` são um
+        `<select>` inteiro. As duas seriam impossíveis de restaurar lendo só
+        o `value`.
+        """
+
+    @abstractmethod
     def selecionar_por_texto(self, seletor: str, texto: str) -> None:
         """Seleciona a opção cujo texto visível é EXATAMENTE `texto`.
         Levanta se não houver."""

@@ -755,3 +755,40 @@ def test_opcoes_devolve_os_textos_limpos():
     engine = PlaywrightEngine(pagina)
 
     assert engine.opcoes("//select") == ["Milímetro (MM)", "Metro (M)"]
+
+
+# ===========================================================================
+# texto_selecionado -- a primitiva do modulo de correcao de PDM (2026-09-23)
+# ===========================================================================
+def test_texto_selecionado_devolve_o_label_da_opcao_escolhida():
+    """O LABEL, nao o `value`: `selecionar_por_texto` casa por label, entao e
+    o label que a reposicao precisa guardar."""
+    capturado = {}
+
+    class _Loc(_FakeLocator):
+        def evaluate(self, expressao):
+            capturado["expressao"] = expressao
+            return "Milimetro (MM)"
+
+    pagina = _FakePage()
+    pagina.locator = lambda seletor: _Loc(pagina, seletor)
+    engine = PlaywrightEngine(pagina)
+
+    assert engine.texto_selecionado("//select") == "Milimetro (MM)"
+
+
+def test_texto_selecionado_vai_pelo_selectedIndex_e_nao_por_atributo():
+    """A selecao viva mora na PROPRIEDADE `selected`, nao no atributo -- um
+    XPath `option[@selected]` casaria so o que veio no HTML original."""
+    capturado = {}
+
+    class _Loc(_FakeLocator):
+        def evaluate(self, expressao):
+            capturado["expressao"] = expressao
+            return ""
+
+    pagina = _FakePage()
+    pagina.locator = lambda seletor: _Loc(pagina, seletor)
+    PlaywrightEngine(pagina).texto_selecionado("//select")
+
+    assert "selectedIndex" in capturado["expressao"]

@@ -536,6 +536,23 @@ class PlaywrightEngine(RPAEngine):
             ]
         )
 
+    def texto_selecionado(self, seletor: str) -> str:
+        """O LABEL da opção escolhida -- ver o contrato em `engine.py`.
+
+        Vai pelo DOM (`selectedIndex`) e não por XPath de propósito: a
+        seleção feita pelo usuário ou por JS vive na PROPRIEDADE `selected`
+        do elemento, e XPath só enxerga ATRIBUTO. Um
+        `option[@selected]` casaria só o que veio marcado no HTML original,
+        que numa tela do OutSystems raramente é o que está escolhido agora.
+
+        `selectedIndex` negativo (nada escolhido) devolve `""`.
+        """
+        return self._executar(lambda: self._loc(seletor).evaluate(
+            "el => el.selectedIndex >= 0"
+            " ? (el.options[el.selectedIndex].textContent || '').trim()"
+            " : ''"
+        ))
+
     def selecionar_por_texto(self, seletor: str, texto: str) -> None:
         self._executar(lambda: self._loc(seletor).select_option(label=texto))
 
