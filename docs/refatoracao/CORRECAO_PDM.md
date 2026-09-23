@@ -1,8 +1,7 @@
 # Correção de PDM preservando as características técnicas
 
-> **Estado: LEVANTAMENTO.** Nada implementado ainda. Este documento reúne o que
-> já existe no app, o que falta, os números medidos e as decisões abertas —
-> para que o plano seja discutido com o usuário sobre fatos, não sobre palpite.
+> **Estado: PLANO APROVADO, nada implementado.** A Parte I é o levantamento; a
+> Parte II traz as decisões do usuário (2026-09-23) e o plano em seis etapas.
 >
 > Pedido do usuário em 2026-09-23: *"sempre que faço atualização ou troca
 > (atualização acaba também sendo troca de pdm) todas as características
@@ -235,3 +234,217 @@ O usuário pediu para citar sem desenvolver. Anotadas ao ler o módulo:
 - não há leitura de valor de característica — o app só escreve e apaga. Este
   módulo cria a peça que falta, e ela serve ao `tech_specs` também (permitiria
   "só preencher o que está vazio", em vez de reescrever tudo).
+
+---
+
+# PARTE II — Decisões e plano (2026-09-23)
+
+## 10. As decisões, respondidas
+
+| # | Pergunta | Resposta do usuário |
+|---|---|---|
+| 1 | De onde vem o PDM novo? | **Seleção na tela.** Carrega o `_STATUS_PMIB`, seleciona as fichas, e precisa de *"um jeito sofisticado de poder colocar o novo pdm dessas fichas"* |
+| 2 | O que não casou? | **Listar sempre**, com o valor em **PT e ES**, *"pra não perdermos nada"* |
+| 3 | Tela de revisão antes? | delegada a mim — decidida abaixo |
+| 4 | Unificar os seletores? | **Não agora.** O mais seguro, e registrar em `PENDENCIAS.md` o que seria o certo |
+
+E dois requisitos novos:
+
+5. **Prevenir a mudança de tipo** entre revisões (§11);
+6. **Apagar as características que ficaram em branco** ao final, e **relatar** as
+   que ficaram em branco de cada ficha.
+
+### Decisão 3, tomada: prévia calculada, sem revisão característica a característica
+
+**Não** haverá uma tela de aprovação por característica. Três razões:
+
+- com 25 fichas × dezenas de características, a revisão interativa seria mais
+  cara do que o trabalho manual que o módulo veio eliminar;
+- a **prévia sai do catálogo, sem tocar o portal e sem risco**: já sabemos, de
+  graça, quais códigos o PDM novo tem. Dá para dizer *"desta ficha, 36 das 63
+  características casam; 27 não existem no PDM novo"* **antes** de qualquer
+  clique;
+- o ponto de confirmação passa a ser a **tela de mapeamento** (§12, E5), que o
+  usuário já precisa ver para escolher o PDM novo. Uma tela, não duas.
+
+A rede continua sendo o **retrato em disco**: se algo der errado depois da
+troca, a reposição roda de novo a partir do arquivo.
+
+---
+
+## 11. A mudança de tipo — medida, e o que ela obriga
+
+Preocupação do usuário: *"em novas revisões algumas características mudaram de
+tipo, antes era NUM e viraram CHAR na nova revisão (é o caso mais comum)"*.
+
+Medido no Master, entre a revisão mais velha e a vigente de cada PDM:
+
+| | |
+|---|---|
+| características presentes nas duas revisões | 8841 |
+| **que mudaram de tipo** | **3160 — 35,7%**, em 748 PDMs |
+
+Ou seja: **a preocupação é mais do que justificada — é um terço das linhas.**
+
+As direções, no conjunto R0→R1 (1023 PDMs):
+
+| De → Para | Ocorrências |
+|---|---|
+| CHAR → NUM | 2659 |
+| CHAR → INT | 291 |
+| CHAR → LISTA | 207 |
+| NUM → INT | 2 |
+| **NUM → CHAR** | **1** |
+
+> ⚠️ **Limite honesto deste número.** O usuário está vivendo **R1 → R2** (a
+> Itaipu já pede R2), e o Master que tenho só tem essa transição em **56 PDMs**
+> — contra 1023 de R0→R1. Então a direção dominante que eu observo pode
+> simplesmente não ser a que ele vê. Na amostra de R1→R2 que existe, aparecem as
+> duas: CHAR→NUM (59), mas também **NUM→CHAR (3)** e **INT→CHAR (3)**.
+>
+> **Conclusão de desenho: as seis direções acontecem.** O módulo não pode
+> apostar em nenhuma.
+
+### O que isso obriga
+
+1. **Nunca confiar no tipo do retrato.** Depois da troca, perguntar à TELA qual
+   o tipo da linha nova — `tech_specs._tipo_da_linha` já faz exatamente isso, e
+   nasceu deste mesmo problema.
+2. **Uma matriz de conversão explícita**, e a regra de ouro: *converter só
+   quando a conversão é sem perda e sem ambiguidade; no resto, não repor e
+   listar*. Repor um valor plausível e errado é pior que deixar vazio — é a
+   mesma lição do prompt de Condições (2026-08-18).
+
+| De → Para | O que fazer | Por quê |
+|---|---|---|
+| **igual** | repor direto | caso comum |
+| NUM → CHAR | **converter**: número + unidade viram texto (`juntar_para_char`, já existe) | sem perda |
+| INT → CHAR | **converter**: "mín a máx + unidade" vira texto | sem perda |
+| LISTA → CHAR | **converter**: a opção vira texto | sem perda |
+| CHAR → NUM | **tentar**: só se o texto for um número puro. Senão, listar | "Aço inox" não vira número |
+| CHAR → LISTA | **tentar**: só se o texto casar uma opção (PT ou ES). Senão, listar | inventar opção é inventar dado |
+| CHAR → INT | **listar** | "de -10 a 50" exige interpretar; não é determinístico |
+| NUM → INT | **listar** | um valor só não define uma faixa |
+| NUM/INT → LISTA | **tentar** casar opção; senão listar | |
+| qualquer → tipo desconhecido | **listar** | tipo novo do portal não pode virar palpite |
+
+O `tech_specs` já tem duas peças desta matriz, e elas devem ser **reusadas, não
+reescritas**: `juntar_para_char` (junta valor + unidade + subtipo) e
+`realocar_por_casas_decimais` (o transbordo quando o número não cabe em 2 casas
+— 6060 das 6085 linhas `NUM` do Master aceitam exatamente 2).
+
+---
+
+## 12. O plano
+
+Seis etapas. As cinco primeiras são **testáveis sem portal**; a sexta é a única
+que exige sessão local, e nada se declara pronto antes dela.
+
+### E1 — O leitor de características (`core/rpa/caracteristicas.py`)
+
+O pedaço que não existe: o inverso de `_preencher_linha`.
+
+- os seletores das colunas num módulo só (copiados, **não** movidos — decisão 4);
+- `ler_linha(engine, seletor_linha) -> Caracteristica` com
+  `codigo`, `nome`, `tipo` (perguntado à tela), `valor_pt`, `valor_es`,
+  `unidade`, `minimo`, `maximo`, `subtipo`;
+- `ler_tabela(portal) -> list[Caracteristica]`, com a paginação e a leitura por
+  `textContent` — o laço é o de `limpar_caracteristicas`, sem o apagar;
+- `codigo_e_nome("1064-CORRENTE NOMINAL") -> ("1064", "CORRENTE NOMINAL")`.
+
+**Aceite:** testes com dublê de engine cobrindo os 4 tipos, a paginação, a
+descrição vazia (linha fora da viewport) e o formato `<código>-<NOME>`.
+
+### E2 — O retrato em disco
+
+- grava em `Documentos\SIG-FT\retratos_pdm\<PMIB>_<data>.json`
+  (via `dados_usuario.resolver_config`, a regra do mural de 2026-09-21);
+- guarda: PMIB, PDM antigo (com revisão), PDM novo pretendido, e a lista de
+  características com **PT e ES** (decisão 2);
+- **grava ANTES de trocar** — depois do CONFIRMAR o dado não existe mais no
+  portal;
+- lê de volta, para o modo "só repor".
+
+**Aceite:** ida e volta sem perda, incluindo acento e texto multilinha.
+
+### E3 — Casamento e conversão (regra pura, sem portal)
+
+O coração, e onde mora o risco de perder dado em silêncio.
+
+- `casar(retrato, caracteristicas_novas) -> Plano` com quatro listas:
+  **repor** / **converter** / **nao_casou** / **sem_valor**;
+- casamento por **código**, nome como conferência (divergência vira aviso);
+- a matriz de tipos da §11;
+- as que ficaram sem valor entram na lista de **apagar** (requisito 6).
+
+**Aceite:** um teste por linha da matriz, mais os casos reais medidos
+(`PDM.5920.020` R0→R1: 13 de 17; `PDM.5925.001`: 36 de 63).
+
+### E4 — O serviço (`services/correcao_pdm.py`)
+
+Orquestra, com dublê de portal nos testes:
+
+```
+abrir → ler PDM atual → LER (E1) → gravar retrato (E2) →
+trocar PDM → salvar → reler tabela nova (E1) → casar (E3) →
+repor → apagar as vazias → salvar → relatar
+```
+
+Regras de ordem que não são detalhe:
+
+- **apagar só DEPOIS de repor** — apagar antes eliminaria linhas que iam receber
+  valor;
+- **não trocar o PDM se o retrato não gravou** — sem rede, não salta;
+- **não apagar nada se a reposição falhou** — melhor uma ficha com linhas vazias
+  do que uma ficha sem as linhas.
+
+**Aceite:** o dublê prova a ordem, e prova que uma falha em qualquer passo
+**interrompe** antes do passo destrutivo seguinte.
+
+### E5 — A tela (`app/views/correcao_pdm.py`)
+
+O *"jeito sofisticado"* da decisão 1:
+
+| Ficha | Descrição | PDM atual | **PDM novo** | Prévia |
+|---|---|---|---|---|
+| …0242 | PROTETOR SURTO | PDM.5920.020 R1 | *(a definir)* | — |
+
+Com três ações em massa sobre as linhas selecionadas:
+
+- **"Só atualizar a revisão"** — copia o código atual para o PDM novo. **É o
+  caso das 25 fichas: um clique resolve todas**, porque o portal já atribui a
+  revisão vigente sozinho;
+- **"Escolher PDM…"** — abre a `JanelaEscolherPDM` (já existe, com busca sobre
+  o catálogo, classe e características à vista) e aplica às selecionadas;
+- **"Limpar"**.
+
+A coluna **Prévia** é calculada do catálogo, sem tocar o portal: *"36 de 63
+casam"*. É o que dá ao usuário a decisão informada antes de qualquer clique.
+
+### E6 — Validação no portal real (sessão local)
+
+Roteiro, nesta ordem:
+
+1. **uma ficha de mentira**, atualização de revisão — conferir que o retrato
+   gravou, que as características voltaram, e que as vazias sumiram;
+2. **uma ficha de mentira**, troca de PDM de código diferente — conferir o
+   relatório do que não casou;
+3. uma ficha **real** das 25, conferida à mão contra o retrato;
+4. só então o lote.
+
+⚠️ `scripts/check.sh` verde não é prova de portal. Nada acima se declara pronto
+sem esta etapa.
+
+---
+
+## 13. O relatório (requisito 2 + 6)
+
+Um arquivo por lote, ao lado dos retratos, e o resumo no console. Por ficha:
+
+| Seção | Conteúdo |
+|---|---|
+| Reposto | código, nome, valor PT, valor ES |
+| Convertido | idem + o tipo de origem e destino, e a conversão aplicada |
+| **Não casou** | código, nome, **valor PT e ES** — o que se perderia sem esta lista |
+| **Ficou em branco** | as linhas do PDM novo sem valor (apagadas), para conferência |
+| Falhou | o que o portal recusou, com o motivo |
