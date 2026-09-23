@@ -208,6 +208,24 @@ XPATH_MENSAGEM_DE_SUCESSO = (
     "//div[contains(concat(' ', normalize-space(@class), ' '), ' feedback-message-text ')]"
 )
 
+# O IRMÃO DE AVISO, pela mesma regra da classe (2026-09-23). HTML mandado pelo
+# usuário:
+#
+#   <div class="feedback-message feedback-message-warning" tabindex="0" role="alert">
+#     <i></i><div class="feedback-message-text">Por favor, verifique os campos</div>
+#
+# ⚠️ REPARE NO QUE ELE NÃO TEM: `feedback-message-autoclose`, que o de sucesso
+# tem. O aviso FICA na tela, e é isso que torna seguro lê-lo DEPOIS de um
+# salvamento que não confirmou -- sem correr contra o relógio do toast.
+#
+# Ele existe para separar "o portal recusou e disse por quê" de "o portal não
+# disse nada": as duas são falha, mas só a primeira tem o que mostrar para
+# quem vai corrigir a ficha à mão.
+XPATH_MENSAGEM_DE_AVISO = (
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' feedback-message-warning ')]"
+    "//div[contains(concat(' ', normalize-space(@class), ' '), ' feedback-message-text ')]"
+)
+
 # A tela do PMIB alterna PT/ES (ver docs/refatoracao/FICHA_DUPLICADA.md §6.5),
 # então o marcador de sucesso é aceito nos dois idiomas.
 MARCADORES_DE_SUCESSO = ("sucesso", "exito")
@@ -832,15 +850,32 @@ class PMIBPortal:
         except Exception:  # noqa: BLE001
             return None
 
-    def _mensagens_de_feedback(self, so_sucesso=False):
+    def mensagens_de_aviso(self):
+        """Os toasts de AVISO na tela agora ("Por favor, verifique os campos").
+
+        Existe para separar "o portal recusou e disse por quê" de "o portal
+        não disse nada": as duas são falha, mas só a primeira tem o que
+        mostrar a quem vai corrigir a ficha à mão.
+
+        O toast de aviso NÃO tem `feedback-message-autoclose` (o de sucesso
+        tem), então ele fica na tela e dá para lê-lo com calma depois de um
+        salvamento que não confirmou.
+        """
+        return self._mensagens_de_feedback(seletor=XPATH_MENSAGEM_DE_AVISO)
+
+    def _mensagens_de_feedback(self, so_sucesso=False, seletor=None):
         """Textos dos toasts visíveis agora. Nunca levanta -- ler a tela não
         pode ser o que derruba a ficha.
 
         Percorre por ÍNDICE (`(xpath)[i]`) e não por elemento, pelo mesmo
         motivo de `clicar_salvar_visivel`: é o que funciona igual nos dois
         motores.
+
+        `seletor` (2026-09-23) escolhe OUTRA família de toast sem duplicar o
+        laço -- é por ele que `mensagens_de_aviso` passa. Sem ele, nada muda.
         """
-        seletor = XPATH_MENSAGEM_DE_SUCESSO if so_sucesso else XPATH_MENSAGEM_DE_FEEDBACK
+        if seletor is None:
+            seletor = XPATH_MENSAGEM_DE_SUCESSO if so_sucesso else XPATH_MENSAGEM_DE_FEEDBACK
         try:
             total = self.engine.contar(seletor)
         except Exception:  # noqa: BLE001

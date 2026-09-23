@@ -66,13 +66,9 @@ _RE_INDICE = re.compile(r"\)\[(\d+)\]")
 _RE_LITERAL = re.compile(r"starts-with\(@data-tooltip, '([^']*)'\)")
 
 
-def seletor_da_linha(indice: int) -> str:
-    """O endereço da linha `indice` (1-based) da tabela de características.
-
-    ⚠️ A MESMA base do leitor (E1), de propósito e com teste. Ler a linha 3 e
-    escrever na linha 4 seria o defeito perfeito: silencioso e destrutivo.
-    """
-    return f"({leitor.XPATH_LINHAS})[{indice}]"
+# O endereço de uma linha vem do LEITOR, e não é recalculado aqui: ler a linha
+# 3 e escrever na 4 seria o defeito perfeito, silencioso e destrutivo.
+seletor_da_linha = leitor.seletor_da_linha
 
 
 def _indice_do_seletor(seletor):
@@ -109,8 +105,56 @@ class ResultadoDaTroca:
 
 
 def pdm_atual(portal) -> str:
-    """O texto do PDM da ficha aberta, COM a revisão. `""` se o combo sumiu."""
+    """O texto do PDM da ficha aberta, COM a revisão. `""` se o combo sumiu.
+
+    ⚠️ LEITURA CRUA, SEM ESPERA. Quem acabou de trocar de aba tem de usar
+    `esperar_o_combo`, e não esta -- ver o aviso lá.
+    """
     return portal.texto_se_existir(sel.XPATH_PDM_VALOR).strip()
+
+
+# Quantas vezes se pergunta pelo combo enquanto o painel monta (x
+# `INTERVALO_DO_PAINEL`). Seis segundos no total, gastos só quando ele demora.
+TENTATIVAS_DO_PAINEL = 12
+INTERVALO_DO_PAINEL = 0.5
+
+
+def esperar_o_combo(portal) -> str:
+    """Espera o painel de "Informações gerais" REMONTAR e devolve o PDM.
+
+    ⚠️ ISTO PAROU A PRIMEIRA EXECUÇÃO REAL, em 2026-09-23. O relatório disse
+    `PAROU em troca (combo de PDM nao encontrado)` -- e o combo estava lá.
+
+    `abrir_secao` confirma a aba pelo `aria-selected` do BOTÃO e volta na hora:
+    ela não espera o painel montar. Na ficha duplicada isso nunca apareceu
+    porque lá "Informações gerais" é a aba em que a ficha ABRE -- o clique cai
+    num botão já ativo, com o conteúdo já na tela. Aqui o módulo sai para
+    "Características técnicas" para fotografar e VOLTA, e a leitura imediata
+    pega a tela no meio da remontagem.
+
+    Pergunta em vez de dormir um tempo fixo: quando o painel já está pronto
+    (o caso comum) custa uma leitura, e não meio segundo por ficha.
+    """
+    for tentativa in range(TENTATIVAS_DO_PAINEL):
+        texto = pdm_atual(portal)
+        if texto:
+            return texto
+        if tentativa < TENTATIVAS_DO_PAINEL - 1:
+            time.sleep(INTERVALO_DO_PAINEL)
+    return ""
+
+
+def ler_pdm_da_ficha(portal, callback_log=None) -> str:
+    """Abre "Informações gerais" e devolve o PDM da ficha, esperando o painel.
+
+    É o que o retrato guarda como `pdm_antigo`. Sem abrir a seção, a leitura
+    sai vazia quando outra aba está na frente -- foi o `"pdm_antigo": ""` do
+    JSON da primeira execução real, porque a tabela de características tinha
+    sido aberta antes.
+    """
+    if not extrator.abrir_secao(portal, sel.NOME_DA_ABA_INFO_GERAIS, callback_log):
+        return ""
+    return esperar_o_combo(portal)
 
 
 def _opcoes_que_casam(portal, texto):
@@ -234,7 +278,7 @@ def trocar_pdm(portal, pdm_pretendido, callback_log=None) -> ResultadoDaTroca:
              "mexi em nada.")
         return ResultadoDaTroca(False, False, motivo="a aba nao abriu")
 
-    antes = pdm_atual(portal)
+    antes = esperar_o_combo(portal)
     if not antes:
         # Sem saber o PDM atual, trocar e chute -- e o retrato ficaria sem o
         # "de onde" que o relatorio precisa.
@@ -281,7 +325,7 @@ def trocar_pdm(portal, pdm_pretendido, callback_log=None) -> ResultadoDaTroca:
 
     # A PROVA: rele. Um SALVAR confirmado nao garante que o combo ficou com o
     # valor escolhido, e e justamente a ficha 0922 que mostra o preco de supor.
-    depois = pdm_atual(portal)
+    depois = esperar_o_combo(portal)
     if not _mesmo_texto(depois, texto_da_opcao):
         _log(f"      [Erro] Depois de salvar, o PDM da ficha e {depois!r} e nao "
              f"{texto_da_opcao!r}.")

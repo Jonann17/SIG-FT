@@ -29,6 +29,29 @@ Tempo estimado: **40 a 50 minutos.**
 
 ---
 
+## O que mudou depois da sua primeira execução (2026-09-23)
+
+A rodada que falhou (`PAROU em troca`, retrato com tudo vazio) achou quatro
+defeitos. Três só apareceram porque você colou o HTML do portal:
+
+1. **o retrato saía vazio** — o XPath dos campos dentro da linha era inválido
+   (`(linhas)[3]` + `.//td` não parseia), e as exceções eram engolidas;
+2. **"combo de PDM não encontrado"** — o seletor estava certo; a leitura é que
+   era cedo demais, com o painel ainda remontando depois da volta de aba;
+3. **a unidade voltava como `(AD) ADIMENSIONAL`** em vez de `AD`;
+4. **o PDM atual era lido com a aba errada na frente** (daí `"pdm_antigo": ""`).
+
+E dois freios novos: o robô **não troca o PDM** se a tabela vier ilegível, e
+**não apaga nada** se o SALVAR não confirmar.
+
+> 📋 **O que falta coletar nesta rodada:** o portal tem uma coluna **"Tipo de
+> dado"** que diz o tipo da linha (`Texto livre` na sua ficha). Se você
+> encontrar uma ficha com linha **numérica, de intervalo ou de lista**, copie o
+> texto dessa coluna. Com os quatro rótulos dá para conferir o tipo lido contra
+> o que o portal declara, em vez de só inferir pelos campos.
+
+---
+
 ## Etapa 0 — O app abre, e a tela existe (2 min)
 
 ```bash
@@ -141,6 +164,7 @@ vista. É o seu gabarito.
 |---|---|
 | Antes de trocar | *"N caracteristica(s) na tela, M com valor"* |
 | Antes de trocar | *"retrato em C:\\Users\\...\\Documentos\\SIG-FT\\retratos_pdm\\....json"* |
+| **Abra esse JSON AGORA** | as características têm de ter `codigo`, `nome`, `tipo` e valor. **Tudo vazio foi o defeito de 2026-09-23** — se voltar, pare: o robô se recusa a trocar o PDM, mas confirme |
 | Na troca | *"Confirmei a troca de PDM"* |
 | Depois | *"PDM trocado e confirmado: ... R2"* |
 | Casamento | *"Reposicao: X direta(s), Y com conversao de tipo."* |

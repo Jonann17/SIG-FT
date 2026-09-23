@@ -140,6 +140,79 @@ def test_a_correcao_de_pdm_esta_nos_tres_lugares():
     assert "CorrecaoPDM" in _frames_dos_cards()
 
 
+def _secoes_da_barra_lateral():
+    """`{"Dados Técnicos & Upload": ["UploadConditions", ...], ...}`.
+
+    A seção de um botão é dada pela `row`, e NÃO pela ordem das linhas de
+    código -- que é exatamente onde o erro de 2026-09-23 se escondeu: o botão
+    da Correção de PDM foi escrito no bloco dos uploads, com `row=15`, e
+    nasceu lá embaixo na Gestão.
+    """
+    arvore = _arvore(RAIZ / "sigft" / "app" / "main.py")
+    rotulos, botoes = [], []
+    for no in ast.walk(arvore):
+        if not (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)):
+            continue
+        linha = next((p.value.value for p in no.keywords
+                      if p.arg == "row" and isinstance(p.value, ast.Constant)), None)
+        if linha is None or len(no.args) < 2:
+            continue
+        if no.func.attr == "_criar_label_secao":
+            rotulos.append((linha, no.args[1].value))
+        elif no.func.attr == "_criar_botao_menu" and len(no.args) >= 3:
+            botoes.append((linha, no.args[2].value))
+
+    rotulos.sort()
+    secoes = {nome: [] for _, nome in rotulos}
+    for linha, frame in sorted(botoes):
+        acima = [nome for r, nome in rotulos if r < linha]
+        if acima:
+            secoes[acima[-1]].append(frame)
+    return secoes
+
+
+def test_a_correcao_de_pdm_fica_com_os_UPLOADS_e_nao_na_gestao():
+    """Ela conserta o que o "Upload Specs" preenche. Estava na Gestão por causa
+    de uma `row` errada."""
+    secoes = _secoes_da_barra_lateral()
+
+    assert "CorrecaoPDM" in secoes["Dados Técnicos & Upload"]
+
+
+def test_a_aplicacao_LMR_e_dado_tecnico_e_nao_gestao():
+    """Pedido do usuário em 2026-09-23: *"aplicação LMR é parte técnica e de
+    upload, e não gestão"*. Ela cadastra e apaga TAGs no portal."""
+    secoes = _secoes_da_barra_lateral()
+
+    assert "LMR" in secoes["Dados Técnicos & Upload"]
+    assert "LMR" not in secoes.get("Gestão", [])
+
+
+def test_a_gestao_ficou_com_o_que_e_gestao():
+    """E não vazia: uma seção sem botão nenhum é um rótulo solto na tela."""
+    assert _secoes_da_barra_lateral()["Gestão"] == ["PMIBManager", "SearchPMIB"]
+
+
+def test_nenhuma_secao_da_barra_lateral_fica_vazia():
+    for nome, frames in _secoes_da_barra_lateral().items():
+        assert frames, f"a secao {nome!r} nao tem botao nenhum"
+
+
+def test_as_linhas_da_barra_lateral_sao_CONTIGUAS():
+    """Um buraco na `row` vira um vão na tela, e foi o rastro do botão que
+    estava fora de lugar (14, depois 15, e o 15 era o da Gestão)."""
+    arvore = _arvore(RAIZ / "sigft" / "app" / "main.py")
+    linhas = []
+    for no in ast.walk(arvore):
+        if (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)
+                and no.func.attr in ("_criar_label_secao", "_criar_botao_menu")):
+            for palavra in no.keywords:
+                if palavra.arg == "row" and isinstance(palavra.value, ast.Constant):
+                    linhas.append(palavra.value.value)
+
+    assert sorted(linhas) == list(range(min(linhas), max(linhas) + 1))
+
+
 def test_dois_botoes_da_barra_lateral_nao_dividem_a_mesma_linha():
     """`grid(row=...)` repetido faz um botão cobrir o outro, e o de baixo some
     sem erro nenhum."""
@@ -362,3 +435,45 @@ def test_a_tela_chama_os_servicos_com_a_assinatura_certa():
                 problemas.append(f"{apelido}.{funcao}(...) -> {erro}")
 
     assert not problemas, "\n".join(problemas)
+
+
+# =============================================================================
+# E. A tela desligada -- decisão do usuário em 2026-09-23
+# =============================================================================
+def test_a_correcao_de_pdm_esta_na_lista_de_telas_bloqueadas():
+    """Ela está inteira e verde, mas NUNCA rodou com sucesso contra o portal
+    (a E6 não foi feita). Trocar o PDM APAGA as características da ficha:
+    liberar uma operação destrutiva não validada é o único jeito de ela
+    estragar uma ficha de verdade."""
+    fonte = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
+
+    assert 'TELAS_BLOQUEADAS = {"CorrecaoPDM"}' in fonte
+
+
+def test_o_bloqueio_vale_no_FUNIL_e_nao_so_no_botao():
+    """O card da Home também navega por `show_frame`. Desabilitar só o botão
+    da barra lateral deixaria a tela acessível pelo card -- e o usuário pediu
+    que ela não fosse clicável, não que ficasse escondida num lugar só."""
+    metodo = _metodo(_arvore(RAIZ / "sigft" / "app" / "main.py"),
+                     "SIG_FT_App", "show_frame")
+    fonte = ast.unparse(metodo)
+
+    assert "TELAS_BLOQUEADAS" in fonte
+    assert "return" in fonte
+
+
+def test_a_tela_bloqueada_CONTINUA_registrada_e_com_botao_e_card():
+    """Desligar não é apagar. O frame segue registrado, com botão e card, para
+    que os guards de fiação continuem valendo e a volta seja uma linha."""
+    assert "CorrecaoPDM" in _frames_de_main()
+    assert "CorrecaoPDM" in _frames_da_barra_lateral()
+    assert "CorrecaoPDM" in _frames_dos_cards()
+
+
+def test_o_botao_de_uma_tela_bloqueada_nasce_DESABILITADO():
+    metodo = _metodo(_arvore(RAIZ / "sigft" / "app" / "main.py"),
+                     "SIG_FT_App", "_criar_botao_menu")
+    fonte = ast.unparse(metodo)
+
+    assert "TELAS_BLOQUEADAS" in fonte
+    assert "disabled" in fonte

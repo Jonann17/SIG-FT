@@ -191,6 +191,28 @@ class ModuloUploadConditions(ctk.CTkFrame):
             if self.automacao_ativa:
                 self.automacao_ativa.solicitar_parada()
 
+    # =========================================================================
+    # A PARADA GERAL, pedida pela home  [2026-09-23]
+    # =========================================================================
+    def interromper_tudo(self):
+        """Responde ao botão de parada da home (`sigft/app/parada.py`).
+
+        Sem caixa de confirmação -- a home já perguntou. Devolve o rótulo do
+        que estava rodando.
+        """
+        parados = []
+        if self.processor_ativo:
+            self.processor_ativo.solicitar_parada()
+            self.btn_parar_ia.configure(state="disabled")
+            parados.append("IA das condições")
+        if self.automacao_ativa:
+            self.automacao_ativa.solicitar_parada()
+            self.btn_parar_web.configure(state="disabled")
+            parados.append("robô das condições")
+        if parados:
+            self.log("Parada pedida na Home. Aguardando o ciclo atual fechar...")
+        return parados
+
     def _start_ia_process(self):
         status_file = self.caminho_status.get()
         files = self.lista_fichas_paths

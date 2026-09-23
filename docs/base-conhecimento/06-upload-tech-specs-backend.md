@@ -160,3 +160,106 @@ Processa características técnicas cruzando `_STATUS_PMIB` + Master PDM com IA 
 - **Duplicação com módulo 1**: Mesmo pattern safe_click, mesma estrutura de callback (log, pause), system prompt base com tradução PT/ES.
 - **Master PDM merge**: Cruzamento faz inner join (não inclui características da ficha sem match em Master), perda de dados customizados.
 - **Cancel_requested**: Flag verifica início loop (linha 96), não interrompe chamada Gemini em andamento (pode demorar).
+
+---
+
+## 2026-09-23 — limpeza das em branco, SALVAR validado, e o fim da pausa obrigatória
+
+Três mudanças pedidas pelo usuário, todas no fim do processamento de cada ficha.
+
+### 1. As linhas em branco que o JSON não menciona são APAGADAS
+
+Quando a ficha (a planilha traduzida) foi feita numa revisão **antiga** do PDM e
+o portal já está numa mais nova, a tabela traz linhas que não existiam na
+origem. Até aqui o robô as deixava lá com um `·  ignorada (não veio no JSON)`.
+
+`TechSpecsAutomation.apagar_em_branco_fora_do_json(dict_dados, callback_log)`
+roda **depois** do preenchimento e antes do salvamento, percorre todas as
+páginas e apaga. O log diz o porquê, característica a característica.
+
+⚠️ **As três condições são todas necessárias**, e cada uma protege um caso:
+
+| Condição | O que ela impede |
+|---|---|
+| **em branco** | uma linha COM valor fora do JSON pode ter sido preenchida à mão; apagá-la destruiria trabalho humano |
+| **fora do JSON** | uma linha em branco que o JSON MENCIONA é um preenchimento que falhou; apagá-la esconderia o que falta corrigir |
+| **a mesma chave do preenchimento** | chaves diferentes fariam a limpeza apagar exatamente o que acabou de ser preenchido |
+
+A chave passou a ter **uma definição só**, `chave_da_caracteristica`, usada
+pelas duas rotinas — e há teste comparando as duas com os formatos reais do
+portal (`1650 - COMPONENTES`, com espaços em volta do hífen).
+
+O índice **não avança** quando a linha é apagada (a de baixo sobe para o
+lugar), e há o guard de "apaguei não é prova de que sumiu": se a contagem não
+cair, o robô avisa e segue, em vez de girar para sempre na mesma linha.
+
+### 2. O SALVAR é do robô, e validado pela mensagem do portal
+
+`salvar_caracteristicas()` clica o SALVAR **da seção de características**
+(ancorado em `TechnicalCharacteristics_Content`; sem âncora a busca varreria a
+tela, que é o defeito de 2026-08-20) e devolve `(ok, mensagem)`.
+
+`ok` só é `True` com o toast de sucesso **novo** na tela. Quando não confirma,
+lê o aviso (`feedback-message-warning` → *"Por favor, verifique os campos"*).
+
+⚠️ O toast de sucesso tem `feedback-message-autoclose`; o de aviso **não**. O
+aviso fica na tela, e é isso que torna seguro lê-lo depois da falha.
+
+### 3. QUAIS campos o portal recusou
+
+`caracteristicas_com_erro()` devolve `[{"chave", "campos", "mensagem"}, ...]`.
+O portal marca o campo culpado com a classe `not-valid` e escreve embaixo dele
+um `<span class="text-error">`. Numa linha `CHAR` o aviso aparece **por
+idioma**, então o log diz se o problema está no PT, no ES ou nos dois:
+
+```
+⛔ 4500063671.0242: o portal NAO confirmou o salvamento (Por favor, verifique os campos).
+   ✋ CERTIFICADO [PT/ES]: Caracter inválido!
+```
+
+O marcador é a **classe**, nunca o texto: a mensagem muda conforme o motivo.
+
+### O que mudou no fluxo, e o que você precisa saber
+
+| Antes | Agora |
+|---|---|
+| pausava em **toda** ficha para a pessoa conferir e salvar | salva sozinho; **pausa só na ficha que não salvou** |
+| toda ficha entrava em `pmibs_finalizados` | **só a ficha confirmada** entra |
+
+A segunda linha é a que exige atenção: `pmibs_finalizados` é o que marca
+**COMPLETO** no `_STATUS_PMIB`. Marcar uma ficha que o portal não gravou seria
+declarar pronto o que não está.
+
+### 3. A reconferência depois da pausa
+
+Pergunta do usuário: *"se eu precisar salvar na mão e clicar no botão de
+continuar a automação, ele marcará como completo se aparecer a mensagem de
+salvo com sucesso?"*
+
+Até 2026-09-23 a resposta era **não** — o robô decidia pela 1ª tentativa e
+nunca mais olhava, então a ficha consertada à mão ficava pendente na planilha.
+Agora, **depois** que `callback_pause(pmib)` retorna, `processar_lista` chama
+`salvar_caracteristicas()` outra vez:
+
+- confirmou → a ficha entra em `pmibs_finalizados` e vira **COMPLETO**;
+- não confirmou → fica pendente, e o log diz "continua sem confirmar".
+
+O clique extra no SALVAR é deliberado e barato: o portal só devolve o toast
+verde se gravou **agora**, então ele é a única evidência de que o problema
+saiu. Uma ficha já salva à mão simplesmente salva de novo.
+
+`lote.aviso(...)` migrou para depois da pausa, sob `if not salvou` — antes ele
+registrava o aviso na 1ª recusa e a ficha consertada saía no relatório como
+problema mesmo tendo dado certo.
+
+### 4. A parada geral, da home
+
+O botão **"⏹ Interromper tudo"** da home varre as telas e pede parada a quem
+souber parar (`sigft/app/parada.py` → `interromper_tudo()` em cada tela). Aqui
+ele chega como `solicitar_parada()`, que `processar_lista` lê no `deve_parar()`
+e trata com `break` — as fichas já concluídas seguem em `pmibs_finalizados` e
+são marcadas COMPLETO normalmente. **Interromper não desfaz nada.**
+
+⚠️ **Nada disso rodou contra o portal.** Os seletores do aviso e do campo
+inválido vieram do HTML que o usuário colou, e há teste avaliando-os com `lxml`
+contra esse recorte; o fluxo inteiro só se prova em execução real.

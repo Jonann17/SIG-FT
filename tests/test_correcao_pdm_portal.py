@@ -396,12 +396,17 @@ def test_os_TRES_lugares_com_os_seletores_da_tabela_continuam_IGUAIS():
     from sigft.services import tech_specs
 
     def igual(a, b):
-        """Compara ignorando o `.` inicial e a ESCOLHA DE ASPAS: o XPath
-        `[@id="x"]` e `[@id='x']` são o mesmo seletor, e os dois arquivos
-        escrevem de jeitos diferentes. Tudo além disso é divergência."""
-        def limpo(x):
-            return x.lstrip(".").replace('"', "'")
-        return limpo(a) == limpo(b)
+        """Compara ignorando só a ESCOLHA DE ASPAS: `[@id="x"]` e `[@id='x']`
+        são o mesmo seletor, e os dois arquivos escrevem de jeitos diferentes.
+
+        ⚠️ A versão anterior também normalizava o `.` inicial, e foi por isso
+        que ela passou verde com o leitor inutilizável: `.//td` e `//td` casam
+        o mesmo nó SOZINHOS, mas somados a `(linhas)[3]` o primeiro vira XPath
+        inválido. Tratar essa diferença como cosmética foi o que deixou o
+        defeito de 2026-09-23 chegar ao portal. Quem prova o comportamento é
+        `tests/test_correcao_pdm_xpath_real.py`; aqui a comparação é literal.
+        """
+        return a.replace('"', "'") == b.replace('"', "'")
 
     pares = [
         (leitor.REL_DESCRICAO, tech_specs.XPATH_REL_COL_DESCRICAO),
@@ -413,20 +418,46 @@ def test_os_TRES_lugares_com_os_seletores_da_tabela_continuam_IGUAIS():
         (leitor.REL_SELECT_LISTA, tech_specs.XPATH_REL_SELECT_LISTA),
         (leitor.REL_SELECT_INTERVALO, tech_specs.XPATH_REL_SELECT_INTERVALO),
         (leitor.REL_SELECT_UNIDADE, tech_specs.XPATH_REL_SELECT_UNIDADE),
-        (leitor.XPATH_LINHAS, tech_specs.XPATH_LINHAS_TABELA),
-        (leitor.XPATH_PROXIMA_PAGINA, tech_specs.XPATH_BOTAO_PROXIMA_PAGINA),
     ]
+    # ⚠️ `XPATH_LINHAS`, `XPATH_SECAO` e `XPATH_PROXIMA_PAGINA` saíram desta
+    # lista em 2026-09-23, e NÃO por conveniência: o recorte real do portal
+    # mostrou que os dois últimos são ambíguos na página (o id
+    # `TechnicalCharacteristics` casa o painel e o cabeçalho da aba; o
+    # `aria-label` da paginação casa também a da aba "Aplicação - LMR"). O
+    # leitor passou a escopá-los; `tech_specs` e `seletores_duplicada` seguem
+    # com a versão larga, por decisão de não mexer no que roda hoje.
+    # A divergência está registrada em `PENDENCIAS.md` e provada em
+    # `tests/test_correcao_pdm_html_real.py`.
     for do_leitor, do_tech_specs in pares:
         assert igual(do_leitor, do_tech_specs), (do_leitor, do_tech_specs)
 
 
-def test_a_secao_da_tabela_e_a_mesma_nos_tres_lugares():
+def test_a_secao_do_leitor_e_MAIS_ESTREITA_que_a_dos_outros_dois():
+    """⚠️ Divergência DELIBERADA desde 2026-09-23, e ela precisa continuar
+    verdadeira nas duas pontas.
+
+    O recorte real do portal mostrou que `contains(@id,
+    'TechnicalCharacteristics')` casa DOIS elementos: o painel (`..._Content`)
+    e o cabeçalho da aba (`..._Header`). O leitor passou a exigir `_Content`;
+    os outros dois ficaram como estavam, porque rodam contra o portal hoje e a
+    decisão do usuário foi não mexer neles junto com código novo.
+
+    Este teste existe para que a divergência seja uma ESCOLHA registrada, e não
+    uma surpresa: se alguém unificar os três, ele cai e manda ler a
+    `PENDENCIAS.md`.
+    """
     from sigft.core.rpa import caracteristicas as leitor
     from sigft.services import tech_specs
 
-    assert leitor.XPATH_SECAO == sel.XPATH_CARACTERISTICAS_SECAO
-    assert leitor.XPATH_LINHAS == sel.XPATH_CARACTERISTICAS_LINHAS
-    assert leitor.XPATH_LINHAS == tech_specs.XPATH_LINHAS_TABELA
+    assert leitor.XPATH_SECAO != sel.XPATH_CARACTERISTICAS_SECAO
+    assert leitor.XPATH_SECAO.startswith(sel.XPATH_CARACTERISTICAS_SECAO[:-3])
+    assert "_Content" in leitor.XPATH_SECAO
+
+    # E os dois antigos continuam iguais ENTRE SI: enquanto não forem
+    # consertados, pelo menos não podem divergir um do outro.
+    assert sel.XPATH_CARACTERISTICAS_LINHAS == tech_specs.XPATH_LINHAS_TABELA
+    assert (sel.XPATH_CARACTERISTICAS_PROXIMA_PAGINA
+            == tech_specs.XPATH_BOTAO_PROXIMA_PAGINA)
 
 
 def test_o_leitor_e_o_escritor_enxergam_a_MESMA_linha():
@@ -451,3 +482,84 @@ def test_a_caracteristica_lida_volta_a_ser_endereçavel():
 
     assert lida.codigo == "1171"
     assert portal_pdm.seletor_da_linha(1).startswith(f"({leitor.XPATH_LINHAS})")
+
+
+# =============================================================================
+# D. O painel que ainda nao remontou -- a falha de 2026-09-23
+# =============================================================================
+# ⚠️ ESTA SEÇÃO EXISTE POR CAUSA DA PRIMEIRA EXECUÇÃO REAL. O relatório disse
+# `PAROU em troca (combo de PDM nao encontrado)`, e o combo estava lá.
+#
+# O que acontece: `abrir_secao` confirma a aba pelo `aria-selected` do BOTÃO e
+# volta na hora -- ela não espera o painel montar. Na ficha duplicada isso
+# nunca apareceu porque lá "Informações gerais" é a aba em que a ficha ABRE: o
+# clique é num botão já ativo, com o conteúdo já na tela.
+#
+# Aqui o módulo sai para "Características técnicas" (para fotografar) e VOLTA.
+# O painel remonta, e a leitura imediata pega a tela no meio do caminho.
+class _PortalPreguicoso(_PortalDublê):
+    """O combo só aparece depois de `demora` perguntas -- é o painel montando."""
+
+    def __init__(self, demora=3, **campos):
+        super().__init__(**campos)
+        self.demora = demora
+        self.perguntas = 0
+
+    def texto_se_existir(self, seletor):
+        if seletor == sel.XPATH_PDM_VALOR:
+            self.perguntas += 1
+            if self.perguntas <= self.demora:
+                return ""
+        return super().texto_se_existir(seletor)
+
+
+def test_trocar_pdm_ESPERA_o_painel_montar(monkeypatch):
+    """Ler na hora devolve vazio e o módulo conclui que a ficha não tem combo
+    de PDM -- foi o que parou a primeira execução real."""
+    _abrir_secao_sempre(monkeypatch)
+    p = _PortalPreguicoso(demora=3,
+                          pdm_depois_de_salvar="PDM.5920.020 - PROTETOR, SURTO, R2")
+
+    r = portal_pdm.trocar_pdm(p, "PDM.5920.020")
+
+    assert r.ok and r.trocou
+    assert p.perguntas > 3, "leu uma vez so; nao esperou o painel"
+
+
+def test_combo_que_nunca_aparece_desiste_com_mensagem(monkeypatch):
+    """Esperar não pode virar esperar para sempre. Depois do teto, o erro tem
+    de dizer o que houve."""
+    _abrir_secao_sempre(monkeypatch)
+    p = _PortalPreguicoso(demora=10_000)
+
+    r = portal_pdm.trocar_pdm(p, "PDM.5920.020")
+
+    assert not r.ok
+    assert "combo" in r.motivo.lower()
+    assert p.perguntas <= portal_pdm.TENTATIVAS_DO_PAINEL + 1
+
+
+def test_a_ESPERA_nao_custa_nada_quando_o_painel_ja_esta_la(monkeypatch):
+    """O caso comum. Uma espera que sempre paga o teto tornaria 25 fichas
+    insuportáveis."""
+    _abrir_secao_sempre(monkeypatch)
+    p = _PortalPreguicoso(demora=0,
+                          pdm_depois_de_salvar="PDM.5920.020 - PROTETOR, SURTO, R2")
+
+    portal_pdm.trocar_pdm(p, "PDM.5920.020")
+
+    assert p.perguntas <= 3, "leu demais para uma tela que ja estava pronta"
+
+
+def test_ler_pdm_da_ficha_abre_a_secao_e_espera(monkeypatch):
+    """O que `corrigir_ficha` usa para o retrato. Sem abrir a seção, o PDM sai
+    vazio -- foi o `"pdm_antigo": ""` do JSON da execução real."""
+    abertas = []
+    monkeypatch.setattr(portal_pdm.extrator, "abrir_secao",
+                        lambda _p, nome, *_a, **_kw: abertas.append(nome) or True)
+    p = _PortalPreguicoso(demora=2)
+
+    texto = portal_pdm.ler_pdm_da_ficha(p)
+
+    assert texto == "PDM.5920.020 - PROTETOR, SURTO, R1"
+    assert abertas == [sel.NOME_DA_ABA_INFO_GERAIS]

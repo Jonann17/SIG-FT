@@ -41,6 +41,7 @@ from dotenv import load_dotenv
 from PIL import Image
 
 from sigft.app import backends
+from sigft.app import parada
 from sigft import _build_info
 from sigft.app.theme import COLORS
 from sigft.app.views.analyzer import ModuloAnalyzer
@@ -332,6 +333,21 @@ class SplashScreen(ctk.CTk):
 # =============================================================================
 # APP PRINCIPAL (Gerenciador com Layout Novo, Estilizado e com IMAGENS)
 # =============================================================================
+# =============================================================================
+# Telas desligadas de propósito
+# =============================================================================
+# ⚠️ ELAS CONTINUAM REGISTRADAS E TESTADAS -- o que muda é só o acesso. Desligar
+# assim, em vez de apagar o registro, mantém os guards de fiação valendo (toda
+# tela precisa de botão e card) e deixa a volta ser uma linha.
+#
+# `CorrecaoPDM`: o módulo está inteiro e verde, mas NUNCA rodou com sucesso
+# contra o portal (a etapa E6 de `docs/ROTEIRO_CORRECAO_PDM.md` não foi feita).
+# Ele troca o PDM, e trocar o PDM APAGA as características da ficha: liberar
+# uma operação destrutiva não validada é o único jeito de ela estragar uma
+# ficha de verdade. Decisão do usuário em 2026-09-23.
+TELAS_BLOQUEADAS = {"CorrecaoPDM"}
+
+
 class SIG_FT_App(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -419,6 +435,13 @@ class SIG_FT_App(ctk.CTk):
         self.btn_home.grid(row=2, column=0, padx=15, pady=10, sticky="ew")
 
         # --- BOTÕES DO MENU ---
+        #
+        # ⚠️ A ORDEM DAQUI É A `row`, NÃO A ORDEM DAS LINHAS DE CÓDIGO. Um
+        # botão declarado no bloco certo com a `row` errada aparece na seção
+        # errada, e foi o que aconteceu com a Correção de PDM em 2026-09-23:
+        # escrita junto dos uploads, com `row=15`, ela nascia lá embaixo na
+        # Gestão. `tests/test_tela_correcao_pdm.py` passou a trancar isso.
+        #
         # Seção 1: Início
         self._criar_label_secao(self.sidebar, "Início da Ficha", row=3)
         self.btn_pmib = self._criar_botao_menu(self.sidebar, "1. Cria Fichas PMIB", "CriaFichas", row=4)
@@ -430,15 +453,22 @@ class SIG_FT_App(ctk.CTk):
         self.btn_cond = self._criar_botao_menu(self.sidebar, "4.1. Upload Condições", "UploadConditions", row=8)
         self.btn_trad = self._criar_botao_menu(self.sidebar, "4.2. Tradutor", "Translator", row=9)
         self.btn_specs = self._criar_botao_menu(self.sidebar, "4.3. Upload Specs", "UploadSpecs", row=10)
-        self.btn_copia = self._criar_botao_menu(self.sidebar, "5. Upload duplicadas", "CopiaFichas", row=11)
-        self.btn_correcao = self._criar_botao_menu(self.sidebar, "5.1. Correção de PDM", "CorrecaoPDM", row=15)
-        self.btn_auto = self._criar_botao_menu(self.sidebar, "6. AutoSpec AI (RAG)", "AutoSpec", row=12)
-
-        # Seção 3: Gestão
-        self._criar_label_secao(self.sidebar, "Gestão & LMR", row=13)
+        # 4.4 e não 5.1: ela conserta exatamente o que o 4.3 preenche, e fica
+        # ao lado dele. O grupo 4.x é "os dados da ficha no portal".
+        self.btn_correcao = self._criar_botao_menu(self.sidebar, "4.4. Correção de PDM", "CorrecaoPDM", row=11)
+        self.btn_copia = self._criar_botao_menu(self.sidebar, "5. Upload duplicadas", "CopiaFichas", row=12)
+        self.btn_auto = self._criar_botao_menu(self.sidebar, "6. AutoSpec AI (RAG)", "AutoSpec", row=13)
+        # [2026-09-23] A Aplicação LMR MUDOU DE SEÇÃO, a pedido do usuário:
+        # ela cadastra e apaga TAGs no portal, ou seja, é dado técnico e
+        # upload -- não gestão. O número (7) ficou como estava de propósito,
+        # para não invalidar o que já está escrito e decorado.
+        #
         # [2026-08-28] Um botão só: as duas operações sobre a MESMA aba do
         # portal ficavam em entradas separadas, e uma delas é destrutiva.
         self.btn_lmr = self._criar_botao_menu(self.sidebar, "7. Aplicação LMR", "LMR", row=14)
+
+        # Seção 3: Gestão (sem o LMR desde 2026-09-23)
+        self._criar_label_secao(self.sidebar, "Gestão", row=15)
         self.btn_manager = self._criar_botao_menu(self.sidebar, "8. PMIB Manager", "PMIBManager", row=16)
         self.btn_search = self._criar_botao_menu(self.sidebar, "9. Search", "SearchPMIB", row=17)
 
@@ -473,12 +503,16 @@ class SIG_FT_App(ctk.CTk):
     # --- Métodos Auxiliares de Estilo ---
     def _criar_botao_menu(self, parent, text, frame_name, row):
         # Botões mais limpos, sem cor de fundo sólida, apenas no hover
-        btn = ctk.CTkButton(parent, text=f"  {text}", command=lambda: self.show_frame(frame_name),
+        bloqueada = frame_name in TELAS_BLOQUEADAS
+        btn = ctk.CTkButton(parent,
+                            text=f"  {text}" + ("  (em obras)" if bloqueada else ""),
+                            command=lambda: self.show_frame(frame_name),
                             fg_color="transparent",
-                            text_color=COLORS["text_light"],
+                            text_color="gray45" if bloqueada else COLORS["text_light"],
                             anchor="w",
                             font=("Roboto", 12),
                             hover_color=COLORS["primary"],  # Hover na cor da marca
+                            state="disabled" if bloqueada else "normal",
                             height=35)
         btn.grid(row=row, column=0, padx=10, pady=2, sticky="ew")
         return btn
@@ -552,11 +586,30 @@ class SIG_FT_App(ctk.CTk):
         return self.api_keys.get(key_id, "")
 
     def show_frame(self, name):
+        # ⚠️ FUNIL ÚNICO DE NAVEGAÇÃO. O botão da barra lateral E o card da
+        # Home passam por aqui, então recusar num lugar só basta -- não há
+        # como chegar na tela por outro caminho.
+        if name in TELAS_BLOQUEADAS:
+            return
         for frame in self.frames.values():
             frame.grid_forget()
         frame = self.frames.get(name)
         if frame:
             frame.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
+
+    # =========================================================================
+    # A PARADA GERAL  [2026-09-23]
+    # =========================================================================
+    def parar_tudo(self):
+        """Pede parada a toda tela que estiver rodando alguma coisa.
+
+        É o botão da home. A varredura mora em `sigft/app/parada.py` (tem teste
+        de comportamento lá); aqui só entram os frames.
+
+        ⚠️ Repare que NÃO há lista de telas escrita na mão: a tela nova que
+        souber parar entra no botão sozinha, sem ninguém lembrar de vir aqui.
+        """
+        return parada.parar_tudo(self.frames)
 
     def show_modulo(self, nome_modulo):
         self.show_frame(nome_modulo)

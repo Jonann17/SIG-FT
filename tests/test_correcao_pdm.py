@@ -114,6 +114,7 @@ class _Bancada:
     def instalar(self, monkeypatch):
         monkeypatch.setattr(servico, "ler_tabela", self._ler_tabela)
         monkeypatch.setattr(servico.operacoes, "trocar_pdm", self._trocar)
+        monkeypatch.setattr(servico.operacoes, "ler_pdm_da_ficha", self._ler_pdm)
         monkeypatch.setattr(servico.retrato, "gravar", self._gravar)
         monkeypatch.setattr(servico, "EscritorDeLinha", lambda _p: self)
         monkeypatch.setattr(servico, "ler_linha", self._ler_linha)
@@ -126,6 +127,10 @@ class _Bancada:
         if self.so_novas or self.leituras > 1:
             return list(self.novas)
         return list(self.antigas)
+
+    def _ler_pdm(self, _portal, callback_log=None):
+        self.passos.append("ler_pdm")
+        return "PDM.5920.020 - PROTETOR, SURTO, R1"
 
     def _trocar(self, _portal, _pdm, callback_log=None):
         self.passos.append("trocar")
@@ -565,3 +570,80 @@ def test_salvar_que_nao_confirma_impede_o_apagamento(monkeypatch):
     assert p.excluidos == []
     assert not r.ok
     assert r.repostas == 1, "o valor foi escrito; o que falhou foi gravar"
+
+
+# =============================================================================
+# G. O que a primeira execução real ensinou (2026-09-23)
+# =============================================================================
+def test_o_pdm_e_lido_ANTES_de_abrir_a_tabela(monkeypatch):
+    """⚠️ Na execução real o retrato saiu com `"pdm_antigo": ""`. O motivo era a
+    ordem: a tabela de características era aberta primeiro, e aí a leitura do
+    combo caía numa tela em que "Informações gerais" não estava mais na frente.
+
+    Sem o PDM antigo, o retrato não diz de onde a ficha veio -- e é ele que
+    responde, depois, se ela foi de R1 para R2 ou ficou parada.
+    """
+    b = _Bancada(antigas=[_char()], novas=[_vazia()]).instalar(monkeypatch)
+
+    servico.corrigir_ficha(b.portal(), "4500063671.0242", "PDM.5920.020")
+
+    assert b.passos.index("ler_pdm") < b.passos.index("ler")
+
+
+def test_o_retrato_guarda_o_pdm_antigo_de_verdade(monkeypatch):
+    gravados = []
+    b = _Bancada(antigas=[_char()], novas=[_vazia()]).instalar(monkeypatch)
+    monkeypatch.setattr(servico.retrato, "gravar",
+                        lambda foto: gravados.append(foto) or "/x.json")
+
+    servico.corrigir_ficha(b.portal(), "4500063671.0242", "PDM.5920.020")
+
+    assert gravados[0].pdm_antigo == "PDM.5920.020 - PROTETOR, SURTO, R1"
+
+
+def test_tabela_ILEGIVEL_nao_deixa_trocar_o_pdm(monkeypatch):
+    """⚠️ O freio que faltava, e o mais importante desta rodada.
+
+    Na execução real o leitor devolveu uma linha por característica com TODOS
+    os campos vazios -- nem código, nem nome, nem tipo. O retrato saiu inútil.
+    A troca falhou por outro motivo e **foi isso que salvou a ficha**: se ela
+    tivesse dado certo, o portal teria apagado tudo e o retrato não teria nada
+    para repor.
+
+    Linha sem NENHUMA identidade não é "ficha em branco": é leitura quebrada. E
+    com a leitura quebrada, trocar o PDM destrói sem volta.
+    """
+    cegas = [Caracteristica(codigo="", nome="", tipo=""),
+             Caracteristica(codigo="", nome="", tipo="")]
+    b = _Bancada(antigas=cegas, novas=[_vazia()]).instalar(monkeypatch)
+    p = b.portal()
+
+    r = servico.corrigir_ficha(p, "4500063671.0242", "PDM.5920.020")
+
+    assert "trocar" not in b.passos, "trocou o PDM com a tabela ilegivel"
+    assert not r.ok and r.etapa == "leitura"
+    assert p.excluidos == []
+
+
+def test_ficha_com_a_tabela_LEGITIMAMENTE_em_branco_segue(monkeypatch):
+    """O oposto, e o que impede o freio de virar bloqueio cego: as linhas têm
+    código e nome, só não têm valor. Isso é uma ficha por preencher, e trocar
+    o PDM dela não perde nada."""
+    b = _Bancada(antigas=[_vazia("1171", "ACABAMENTO"), _vazia("1230", "TENSAO")],
+                 novas=[_vazia("9999", "NOVA", "NUM")]).instalar(monkeypatch)
+
+    r = servico.corrigir_ficha(b.portal(), "4500063671.0242", "PDM.5920.020")
+
+    assert "trocar" in b.passos
+    assert r.ok
+
+
+def test_ficha_SEM_caracteristica_nenhuma_segue(monkeypatch):
+    """Tabela com zero linhas não é leitura quebrada: é um PDM sem
+    características. Não há o que perder."""
+    b = _Bancada(antigas=[], novas=[_vazia("9999", "NOVA", "NUM")]).instalar(monkeypatch)
+
+    r = servico.corrigir_ficha(b.portal(), "4500063671.0242", "PDM.5920.020")
+
+    assert "trocar" in b.passos
+    assert r.ok
