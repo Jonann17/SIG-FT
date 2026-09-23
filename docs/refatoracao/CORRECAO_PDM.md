@@ -345,7 +345,7 @@ que exige sessão local, e nada se declara pronto antes dela.
 | E1 — leitor da tabela | ✅ feita | `sigft/core/rpa/caracteristicas.py` |
 | E2 — retrato em disco | ✅ feita | `sigft/services/correcao_pdm_retrato.py` |
 | E3 — casamento e conversão | ✅ feita | `sigft/services/correcao_pdm_casamento.py` |
-| E4 — serviço | pendente | `sigft/services/correcao_pdm.py` |
+| E4 — portal + serviço | ✅ feita | `sigft/services/correcao_pdm_portal.py` + `correcao_pdm.py` |
 | E5 — tela | pendente | `sigft/app/views/correcao_pdm.py` |
 | E6 — portal real | pendente | sessão local, `docs/OLHAR_O_PORTAL.md` |
 
@@ -432,6 +432,49 @@ Regras de ordem que não são detalhe:
 - **não trocar o PDM se o retrato não gravou** — sem rede, não salta;
 - **não apagar nada se a reposição falhou** — melhor uma ficha com linhas vazias
   do que uma ficha sem as linhas.
+
+#### O que a implementação acrescentou
+
+A E4 saiu em dois arquivos: `correcao_pdm_portal.py` (as duas operações de
+portal que faltavam) e `correcao_pdm.py` (a ordem e as recusas). Cinco pontos
+que o plano não previa, todos vindos de teste:
+
+1. **"Já é o PDM certo" não se decide pelo código.** O caso das 25 fichas é
+   mesmo código com revisão diferente: um guard por código diria "já está
+   certo" e não faria nada, calado, nas 25. Quem decide é o confronto entre o
+   que a ficha tem e **o que o combo oferece** — os dois textos completos, com
+   a revisão. O outro lado importa igual: ficha já na revisão vigente **não é
+   tocada**, porque trocar apagaria as características para chegar ao mesmo
+   lugar.
+2. **Uma quarta recusa**, que não estava no plano: *não apagar nada quando o
+   retrato tinha valores e nenhum voltou*. Isso não é "não havia o que
+   reaproveitar" — é o sintoma de uma leitura quebrada, e nesse estado apagar
+   as "vazias" apagaria a ficha inteira. É a proteção que a `PENDENCIAS.md` da
+   E3 pediu.
+3. **O SALVAR que não confirma impede o apagamento.** Ignorar o retorno era um
+   defeito de verdade: os valores repostos ficam na TELA, e a exclusão de uma
+   linha chega ao servidor na hora — a ficha terminaria com as linhas apagadas
+   e a reposição perdida.
+4. **"Apaguei" não é prova de que sumiu.** O laço de exclusão de propósito não
+   avança o índice (a linha de baixo sobe para o lugar). Um `True` mentiroso
+   travava o app para sempre, sem mensagem; conferir a contagem custa uma
+   chamada. Há teste que **não termina** sem o guard.
+5. **O modo "só repor"** (`repor_do_retrato`) foi implementado junto: é o que
+   dá razão ao retrato em disco. Ele **não** troca o PDM — nesse ponto ele já
+   está certo, e trocar de novo apagaria tudo outra vez, com o segundo retrato
+   saindo da ficha vazia.
+
+`tech_specs._preencher_linha` é **reusada inteira**, com o engine do portal já
+aberto anexado a uma `TechSpecsAutomation` (que não abre navegador no
+`__init__`). São duzentas linhas de regra nascidas de falha real — o blur do
+OutSystems, a auditoria com injeção forçada, a lista em PT e ES, a unidade
+pelos parênteses — e uma cópia divergiria na primeira correção. Há teste que
+reprova se `TechSpecsAutomation()` passar a abrir navegador.
+
+⚠️ E um guard novo: **os três lugares com os seletores da tabela têm de
+continuar iguais** (`test_correcao_pdm_portal.py`). A unificação segue adiada
+por decisão do usuário, mas agora um seletor ajustado num lugar e não nos
+outros reprova, em vez de fazer o robô LER de um elemento e ESCREVER noutro.
 
 **Aceite:** o dublê prova a ordem, e prova que uma falha em qualquer passo
 **interrompe** antes do passo destrutivo seguinte.
