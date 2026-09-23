@@ -49,16 +49,16 @@ MODULOS = [
     ("UploadSpecs", "Upload de Características",
      "Preenche as características técnicas da ficha no portal, uma linha por "
      "especificação."),
+    ("CorrecaoPDM", "Correção de PDM",
+     "Troca ou atualiza o PDM das fichas no portal sem perder as "
+     "características: fotografa antes, repõe o que o PDM novo também tem, e "
+     "lista o que não voltou."),
     ("Translator", "Tradutor Técnico",
      "Traduz as características das fichas de português para espanhol e grava "
      "numa aba nova da própria planilha."),
     ("CopiaFichas", "Fichas Duplicadas",
      "Copia uma ficha existente do portal para outra: campos, condições, "
      "características, PDM, documentos e imagens."),
-    ("CorrecaoPDM", "Correção de PDM",
-     "Troca ou atualiza o PDM das fichas no portal sem perder as "
-     "características: fotografa antes, repõe o que o PDM novo também tem, e "
-     "lista o que não voltou."),
     ("AutoSpec", "AutoSpec AI (RAG)",
      "Preenche ficha vazia lendo manuais em PDF e buscando datasheets na web, "
      "com conferência dos documentos duvidosos."),

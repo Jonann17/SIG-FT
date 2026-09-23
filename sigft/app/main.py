@@ -404,6 +404,13 @@ class SIG_FT_App(ctk.CTk):
         self.btn_home.grid(row=2, column=0, padx=15, pady=10, sticky="ew")
 
         # --- BOTÕES DO MENU ---
+        #
+        # ⚠️ A ORDEM DAQUI É A `row`, NÃO A ORDEM DAS LINHAS DE CÓDIGO. Um
+        # botão declarado no bloco certo com a `row` errada aparece na seção
+        # errada, e foi o que aconteceu com a Correção de PDM em 2026-09-23:
+        # escrita junto dos uploads, com `row=15`, ela nascia lá embaixo na
+        # Gestão. `tests/test_tela_correcao_pdm.py` passou a trancar isso.
+        #
         # Seção 1: Início
         self._criar_label_secao(self.sidebar, "Início da Ficha", row=3)
         self.btn_pmib = self._criar_botao_menu(self.sidebar, "1. Cria Fichas PMIB", "CriaFichas", row=4)
@@ -415,15 +422,22 @@ class SIG_FT_App(ctk.CTk):
         self.btn_cond = self._criar_botao_menu(self.sidebar, "4.1. Upload Condições", "UploadConditions", row=8)
         self.btn_trad = self._criar_botao_menu(self.sidebar, "4.2. Tradutor", "Translator", row=9)
         self.btn_specs = self._criar_botao_menu(self.sidebar, "4.3. Upload Specs", "UploadSpecs", row=10)
-        self.btn_copia = self._criar_botao_menu(self.sidebar, "5. Upload duplicadas", "CopiaFichas", row=11)
-        self.btn_correcao = self._criar_botao_menu(self.sidebar, "5.1. Correção de PDM", "CorrecaoPDM", row=15)
-        self.btn_auto = self._criar_botao_menu(self.sidebar, "6. AutoSpec AI (RAG)", "AutoSpec", row=12)
-
-        # Seção 3: Gestão
-        self._criar_label_secao(self.sidebar, "Gestão & LMR", row=13)
+        # 4.4 e não 5.1: ela conserta exatamente o que o 4.3 preenche, e fica
+        # ao lado dele. O grupo 4.x é "os dados da ficha no portal".
+        self.btn_correcao = self._criar_botao_menu(self.sidebar, "4.4. Correção de PDM", "CorrecaoPDM", row=11)
+        self.btn_copia = self._criar_botao_menu(self.sidebar, "5. Upload duplicadas", "CopiaFichas", row=12)
+        self.btn_auto = self._criar_botao_menu(self.sidebar, "6. AutoSpec AI (RAG)", "AutoSpec", row=13)
+        # [2026-09-23] A Aplicação LMR MUDOU DE SEÇÃO, a pedido do usuário:
+        # ela cadastra e apaga TAGs no portal, ou seja, é dado técnico e
+        # upload -- não gestão. O número (7) ficou como estava de propósito,
+        # para não invalidar o que já está escrito e decorado.
+        #
         # [2026-08-28] Um botão só: as duas operações sobre a MESMA aba do
         # portal ficavam em entradas separadas, e uma delas é destrutiva.
         self.btn_lmr = self._criar_botao_menu(self.sidebar, "7. Aplicação LMR", "LMR", row=14)
+
+        # Seção 3: Gestão (sem o LMR desde 2026-09-23)
+        self._criar_label_secao(self.sidebar, "Gestão", row=15)
         self.btn_manager = self._criar_botao_menu(self.sidebar, "8. PMIB Manager", "PMIBManager", row=16)
         self.btn_search = self._criar_botao_menu(self.sidebar, "9. Search", "SearchPMIB", row=17)
 
