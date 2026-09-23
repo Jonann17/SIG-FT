@@ -1392,17 +1392,37 @@ class TechSpecsAutomation:
                             callback_log(
                                 f"      ✋ {erro['chave']} [{idiomas}]: {erro['mensagem']}")
 
+                    # A PAUSA SÓ AQUI. Era em toda ficha; agora é na que pede
+                    # gente de verdade.
+                    if callback_pause:
+                        callback_pause(pmib)
+
+                        # ⬇️ A RECONFERÊNCIA (2026-09-23). Sem ela, a ficha que
+                        # a pessoa acabou de consertar e salvar durante a pausa
+                        # continuaria pendente: o robô decidia pela 1ª tentativa
+                        # e nunca mais olhava. Clicar em SALVAR de novo é barato
+                        # e é a única forma de ele saber que o problema sumiu --
+                        # o portal só devolve o toast verde se gravou AGORA.
+                        salvou, mensagem_do_portal = self.salvar_caracteristicas(
+                            callback_log)
+                        if salvou:
+                            if callback_log:
+                                callback_log(
+                                    f"   ✅ {pmib}: o portal confirmou o salvamento"
+                                    " depois da conferencia. Ficha COMPLETA.")
+                        elif callback_log:
+                            callback_log(
+                                f"   ⛔ {pmib}: o portal continua sem confirmar"
+                                + (f" ({mensagem_do_portal})" if mensagem_do_portal else "")
+                                + ". A ficha fica PENDENTE.")
+
+                if not salvou:
                     lote.aviso(
                         pmib,
                         "o portal nao confirmou o salvamento"
                         + (f": {mensagem_do_portal}" if mensagem_do_portal else ""),
                         "conferir e salvar a mao (os campos recusados estao no log)",
                     )
-
-                    # A PAUSA SÓ AQUI. Era em toda ficha; agora é na que pede
-                    # gente de verdade.
-                    if callback_pause:
-                        callback_pause(pmib)
 
                 if pendencias_manuais:
                     lote.aviso(
@@ -1416,9 +1436,8 @@ class TechSpecsAutomation:
                 # ⚠️ SÓ A FICHA CONFIRMADA CONTA COMO FINALIZADA. É esta lista
                 # que marca "COMPLETO" no `_STATUS_PMIB`; marcar uma ficha que
                 # o portal não gravou seria declarar pronto o que não está.
-                # Se a pessoa consertar e salvar durante a pausa, o robô não
-                # tem como saber -- e o lado seguro é a ficha continuar
-                # pendente.
+                # A ficha consertada durante a pausa chega aqui com `salvou`
+                # já atualizado pela reconferência logo acima.
                 if salvou:
                     pmibs_finalizados.append(pmib)
                     lote.sucesso(pmib)

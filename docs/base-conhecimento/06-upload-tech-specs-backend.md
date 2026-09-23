@@ -228,8 +228,37 @@ O marcador é a **classe**, nunca o texto: a mensagem muda conforme o motivo.
 
 A segunda linha é a que exige atenção: `pmibs_finalizados` é o que marca
 **COMPLETO** no `_STATUS_PMIB`. Marcar uma ficha que o portal não gravou seria
-declarar pronto o que não está. Se a pessoa consertar e salvar durante a pausa,
-o robô não tem como saber — e o lado seguro é a ficha continuar pendente.
+declarar pronto o que não está.
+
+### 3. A reconferência depois da pausa
+
+Pergunta do usuário: *"se eu precisar salvar na mão e clicar no botão de
+continuar a automação, ele marcará como completo se aparecer a mensagem de
+salvo com sucesso?"*
+
+Até 2026-09-23 a resposta era **não** — o robô decidia pela 1ª tentativa e
+nunca mais olhava, então a ficha consertada à mão ficava pendente na planilha.
+Agora, **depois** que `callback_pause(pmib)` retorna, `processar_lista` chama
+`salvar_caracteristicas()` outra vez:
+
+- confirmou → a ficha entra em `pmibs_finalizados` e vira **COMPLETO**;
+- não confirmou → fica pendente, e o log diz "continua sem confirmar".
+
+O clique extra no SALVAR é deliberado e barato: o portal só devolve o toast
+verde se gravou **agora**, então ele é a única evidência de que o problema
+saiu. Uma ficha já salva à mão simplesmente salva de novo.
+
+`lote.aviso(...)` migrou para depois da pausa, sob `if not salvou` — antes ele
+registrava o aviso na 1ª recusa e a ficha consertada saía no relatório como
+problema mesmo tendo dado certo.
+
+### 4. A parada geral, da home
+
+O botão **"⏹ Interromper tudo"** da home varre as telas e pede parada a quem
+souber parar (`sigft/app/parada.py` → `interromper_tudo()` em cada tela). Aqui
+ele chega como `solicitar_parada()`, que `processar_lista` lê no `deve_parar()`
+e trata com `break` — as fichas já concluídas seguem em `pmibs_finalizados` e
+são marcadas COMPLETO normalmente. **Interromper não desfaz nada.**
 
 ⚠️ **Nada disso rodou contra o portal.** Os seletores do aviso e do campo
 inválido vieram do HTML que o usuário colou, e há teste avaliando-os com `lxml`

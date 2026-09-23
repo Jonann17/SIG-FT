@@ -390,7 +390,7 @@ def test_dropdown_com_texto_vazio_nao_faz_nada():
 # `[{row_index + 1}]` por `[{row_index}]` não derrubava nada. Estes testes
 # exercitam o laço inteiro.
 # ===========================================================================
-def _rodar_lista(auto, dados, pmib="4500063671.0001", salvamento=(True, "")):
+def _rodar_lista(auto, dados, pmib="4500063671.0001", salvamento=(True, ""), pausa=None):
     """Roda `processar_lista` numa thread com prazo.
 
     A falha que estes testes vigiam é um LAÇO QUE NÃO TERMINA -- e um laço
@@ -409,7 +409,19 @@ def _rodar_lista(auto, dados, pmib="4500063671.0001", salvamento=(True, "")):
     # confirma, e quem prova a validação de verdade é
     # `tests/test_tech_specs_limpeza_e_salvamento.py`.
     if salvamento is not None:
-        auto.salvar_caracteristicas = lambda *a, **k: salvamento
+        # Uma LISTA dá um resultado por tentativa: a 1ª é a do robô, a 2ª é a
+        # reconferência depois da pausa (ver `processar_lista`).
+        respostas = list(salvamento) if isinstance(salvamento, list) else None
+        if respostas is None:
+            auto.salvar_caracteristicas = lambda *a, **k: salvamento
+        else:
+            auto.tentativas_de_salvar = []
+
+            def _salvar(*_a, **_kw):
+                auto.tentativas_de_salvar.append(1)
+                return respostas.pop(0) if respostas else (False, "")
+
+            auto.salvar_caracteristicas = _salvar
 
     resultado = {}
 
@@ -418,6 +430,7 @@ def _rodar_lista(auto, dados, pmib="4500063671.0001", salvamento=(True, "")):
             resultado["finalizados"] = auto.processar_lista(
                 [{"METADATA": {"PMIB": pmib}, "DADOS_TRATADOS": dados}],
                 callback_log=logs.append,
+                callback_pause=pausa,
             )
         except BaseException as erro:  # noqa: BLE001
             resultado["erro"] = erro
@@ -488,3 +501,70 @@ def test_caracteristica_fora_do_json_da_ia_NAO_recebe_valor():
 
     assert auto.engine.get_value(_linha(1) + ts.XPATH_REL_INPUT_NUM) == ""
     assert auto.engine.get_value(_linha(2) + ts.XPATH_REL_INPUT_NUM) == ""
+
+
+# =============================================================================
+# A reconferência depois da pausa (2026-09-23)
+# =============================================================================
+# Pergunta do usuário: *"se eu precisar salvar na mão e clicar no botão de
+# continuar a automação, ele marcará como completo se aparecer a mensagem de
+# salvo com sucesso?"*
+#
+# Até aqui: NÃO. O robô decidia pela 1ª tentativa e a ficha ficava pendente
+# mesmo depois de a pessoa consertar e salvar. Agora ele tenta de novo DEPOIS
+# da pausa -- é a única forma de ele saber que o problema foi resolvido.
+def test_a_ficha_consertada_na_pausa_VIRA_finalizada():
+    """A 1ª tentativa falha, a pessoa conserta durante a pausa, a 2ª confirma:
+    a ficha entra em `pmibs_finalizados` e vira COMPLETO no `_STATUS_PMIB`."""
+    auto = _automacao(linhas=1)
+    pausas = []
+
+    finalizados, _ = _rodar_lista(
+        auto, [_dado("CARACTERISTICA 1", "1")],
+        salvamento=[(False, "Por favor, verifique os campos"), (True, "")],
+        pausa=pausas.append)
+
+    assert pausas, "a pausa tem de ser chamada quando o salvamento falha"
+    assert finalizados == ["4500063671.0001"]
+
+
+def test_a_ficha_que_continua_ruim_depois_da_pausa_fica_PENDENTE():
+    """Se nem na 2ª o portal confirma, a ficha não pode virar COMPLETO: seria
+    declarar pronto o que não está."""
+    auto = _automacao(linhas=1)
+
+    finalizados, log = _rodar_lista(
+        auto, [_dado("CARACTERISTICA 1", "1")],
+        salvamento=[(False, "Por favor, verifique os campos"),
+                    (False, "Por favor, verifique os campos")],
+        pausa=lambda _p: None)
+
+    assert finalizados == []
+    assert "continua sem confirmar" in log
+
+
+def test_a_ficha_que_salva_de_primeira_NAO_pausa_nem_salva_duas_vezes():
+    """O ganho do fluxo novo: a pausa só existe para quem precisa dela."""
+    auto = _automacao(linhas=1)
+    pausas = []
+
+    finalizados, _ = _rodar_lista(
+        auto, [_dado("CARACTERISTICA 1", "1")],
+        salvamento=[(True, "")], pausa=pausas.append)
+
+    assert pausas == []
+    assert auto.tentativas_de_salvar == [1]
+    assert finalizados == ["4500063671.0001"]
+
+
+def test_sem_callback_de_pausa_nao_ha_segunda_tentativa():
+    """Sem ninguém para conferir, tentar de novo na hora só repetiria a mesma
+    recusa."""
+    auto = _automacao(linhas=1)
+
+    finalizados, _ = _rodar_lista(
+        auto, [_dado("CARACTERISTICA 1", "1")],
+        salvamento=[(False, "x"), (True, "")], pausa=None)
+
+    assert auto.tentativas_de_salvar == [1]
+    assert finalizados == []
