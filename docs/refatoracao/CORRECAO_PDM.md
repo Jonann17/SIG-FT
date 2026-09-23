@@ -340,6 +340,18 @@ reescritas**: `juntar_para_char` (junta valor + unidade + subtipo) e
 Seis etapas. As cinco primeiras são **testáveis sem portal**; a sexta é a única
 que exige sessão local, e nada se declara pronto antes dela.
 
+| Etapa | Estado | Onde |
+|---|---|---|
+| E1 — leitor da tabela | ✅ feita | `sigft/core/rpa/caracteristicas.py` |
+| E2 — retrato em disco | ✅ feita | `sigft/services/correcao_pdm_retrato.py` |
+| E3 — casamento e conversão | ✅ feita | `sigft/services/correcao_pdm_casamento.py` |
+| E4 — serviço | pendente | `sigft/services/correcao_pdm.py` |
+| E5 — tela | pendente | `sigft/app/views/correcao_pdm.py` |
+| E6 — portal real | pendente | sessão local, `docs/OLHAR_O_PORTAL.md` |
+
+> ⚠️ Verde nas cinco primeiras **não é prova de portal**: elas rodam contra
+> dublês escritos pelo próprio Claude. Só a E6 prova.
+
 ### E1 — O leitor de características (`core/rpa/caracteristicas.py`)
 
 O pedaço que não existe: o inverso de `_preencher_linha`.
@@ -379,6 +391,29 @@ O coração, e onde mora o risco de perder dado em silêncio.
 
 **Aceite:** um teste por linha da matriz, mais os casos reais medidos
 (`PDM.5920.020` R0→R1: 13 de 17; `PDM.5925.001`: 36 de 63).
+
+#### O que a implementação acrescentou à matriz
+
+Três pontos que a §11 não previa e que saíram de testes:
+
+1. **`CHAR → NUM` aceita também "número + símbolo", em três casos fechados.**
+   A §11 dizia "só número puro". O acréscimo é o caminho de volta do recuo de
+   2026-08-18: `"220 V"` com unidade `AD` é exatamente o que
+   `juntar_para_char` escreve quando o robô cai de NUM para CHAR, e `AD` não
+   carrega informação. Também vale quando o símbolo do texto **é** a unidade
+   já gravada. Quando o símbolo **contradiz** a unidade (texto `"220 V"`,
+   unidade `A`), volta a ser `listar`: os dois não podem estar certos.
+2. **A pendência guarda valor e unidade em campos SEPARADOS.** Colá-los num
+   texto só fazia uma linha `CHAR` com texto `"220 V"` e unidade `A` virar
+   `"220 V A"` no relatório — um valor que nunca esteve na ficha. Quem junta
+   os dois é a linha do relatório (`"220" [V]`), e ela omite a unidade quando
+   é `AD`.
+3. **`chave()` é exportada.** É a mesma função que a E4 usa para reencontrar a
+   linha na tela. Se o serviço calculasse a dele, uma diferença de
+   normalização faria a reposição pular linhas em silêncio.
+
+`CHAR → INT` continua **listado**, como a §11 decidiu — mesmo quando o texto
+tem a forma `"-10 / 50"`, que seria decodificável. Ver `PENDENCIAS.md`.
 
 ### E4 — O serviço (`services/correcao_pdm.py`)
 
