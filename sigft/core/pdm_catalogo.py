@@ -252,6 +252,15 @@ class PDM:
     nome_base: str = ""
     modificador: str = ""
     caracteristicas: tuple[str, ...] = ()
+    # A revisão VIGENTE no Master. `None` quando a origem não a traz (o
+    # formato manipulado antigo não tem a coluna).
+    #
+    # Guardada porque é o que a Itaipu cobra: no relatório de recomendações de
+    # 2026-09-23 (28 fichas), as 25 menções a PDM são três códigos e TODAS
+    # pedem "su nueva revisión" -- nenhuma pede troca de PDM. Ter a revisão do
+    # Master ao lado da que o portal atribuiu permite denunciar as duas
+    # direções: ficha criada com revisão velha, ou Master desatualizado.
+    revisao: int | None = None
 
     @property
     def completo(self) -> str:
@@ -636,6 +645,9 @@ def _ler_mestra(wb) -> CatalogoPDM:
             nome_base=r["base"],
             modificador=r["modif"],
             caracteristicas=tuple(r["caracts"]),
+            revisao=(int(r["revisao"])
+                     if r["revisao"] is not None and r["revisao"] >= 0
+                     else None),
         )
         for codigo, r in acumulado.items()
     ]

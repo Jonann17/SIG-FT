@@ -555,6 +555,33 @@ def test_carregar_usa_o_titulo_da_revisao_vigente(tmp_path):
 
 
 @requer_openpyxl
+def test_carregar_guarda_a_revisao_vigente_do_pdm(tmp_path):
+    """A revisao e o que a Itaipu cobra. No relatorio de 2026-09-23 as 25
+    mencoes a PDM sao tres codigos, e todas pedem "su nueva revision" -- nao
+    troca de PDM nenhuma. Guardar a revisao do Master permite comparar com a
+    que o portal atribuiu e denunciar as duas direcoes: ficha criada com
+    revisao velha, ou Master desatualizado."""
+    import openpyxl
+
+    caminho = os.path.join(str(tmp_path), "rev.xlsx")
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "TEMPLATE_PDM"
+    for _ in range(6):
+        ws.append([])
+    for revisao in (0, 2):
+        ws.append(["PDM.5925.001", 5925, "DISJUNTOR BAIXA TENSAO",
+                   "DISJUNTOR BAIXA TENSAO", "DISJUNTOR", "DISJUNTOR",
+                   "BAIXA TENSAO", "BAIXA TENSAO", None, revisao, None, None,
+                   None, None, None, None, "TENSAO NOMINAL"])
+    wb.save(caminho)
+
+    pdm = pdm_catalogo.carregar(caminho).por_codigo("PDM.5925.001")
+
+    assert pdm.revisao == 2
+
+
+@requer_openpyxl
 def test_carregar_descarta_codigo_sujo_da_planilha(tmp_path):
     """A linha 32661 do arquivo real tem `CÓDIGO PDM = 1192.999999999937`
     -- artefato de float. Sem descarte, vira uma entrada falsa no catálogo."""
