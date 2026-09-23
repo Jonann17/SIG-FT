@@ -14,9 +14,28 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
 ## 1.1.0 - 2026-09-23
 
-- **Correção de PDM sem perder as características técnicas** (tela nova, "5.1. Correção de PDM"). Trocar ou atualizar o PDM de uma ficha faz o portal apagar TODAS as características técnicas, inclusive as que o PDM novo também tem — o próprio modal avisa. Hoje isso é redigitação à mão, ficha a ficha. O módulo tira um retrato das características antes da troca, faz a troca e repõe o que continua valendo.
-- Ele foi escrito para nunca deixar uma ficha pior do que estava: não troca o PDM se o retrato não gravou, só apaga linha depois de repor, e não apaga nada se a reposição falhou ou se nenhum valor voltou — porque isso é sintoma de leitura quebrada, não de "não havia o que reaproveitar".
-- A escolha de PDM na criação de fichas passa a conferir a REVISÃO do PDM, que é o que a Itaipu cobra, e deixou de confundir peça DE um componente com o componente.
+**Upload de características técnicas**
+
+- O robô agora **salva sozinho e confere se o portal aceitou**. Antes ele parava em toda ficha esperando você conferir e salvar; agora só chama você na ficha que o portal recusou — nas outras, segue direto para a próxima.
+- Quando o portal recusa ("Por favor, verifique os campos"), o log passa a dizer **quais características travaram o salvamento**, e nas de texto **em qual idioma** (português, espanhol, ou os dois). Antes era procurar o campo vermelho na tela, linha por linha.
+- Se você corrigir e salvar à mão, o robô **reconfere ao continuar**: apareceu a mensagem de salvo com sucesso, a ficha é marcada como COMPLETO na planilha de status. Antes ela ficava pendente mesmo tendo dado certo, e era preciso marcar na mão.
+- Ficha traduzida num PDM de revisão antiga: as **características que só existem na revisão nova do portal, e que por isso ficariam em branco, são apagadas** antes de finalizar — com aviso no log de qual foi apagada e por quê (não estava no JSON de origem).
+
+**Tela inicial**
+
+- Botão **"Interromper tudo"**, para sair no meio de uma lista sem esperar ela acabar. Cada robô termina a ficha que está na mão e para. Nada do que já foi feito se perde: só as fichas que o portal confirmou viram COMPLETO.
+
+**Organização**
+
+- A barra lateral foi corrigida: **"Aplicação LMR" saiu da Gestão** e foi para a seção de dados técnicos e upload, que é o que ela é.
+
+**Criação de fichas**
+
+- A escolha de PDM passa a conferir a REVISÃO do PDM, que é o que a Itaipu cobra, e deixou de confundir peça DE um componente com o componente.
+
+**Correção de PDM — a tela existe, mas está DESLIGADA nesta versão**
+
+- A tela "4.4. Correção de PDM" aparece na barra lateral marcada **"(em obras)"** e não abre. Ela está pronta e testada, mas **nunca rodou contra o portal de verdade** — e é um módulo que apaga características técnicas para repô-las depois. Liberar antes da validação real seria arriscar fichas suas. Fica desligada até essa execução acontecer.
 
 ## 1.0.0 - 2026-09-22
 
