@@ -520,6 +520,45 @@ ele forneceu (`div.vscomp-no-search-results[aria-hidden=false]`).
 |---|---|---|---|
 | 2026-09-22 | `services/cria_fichas._buscar_pdm` | ⚠️ **NÃO VALIDADO CONTRA O PORTAL.** O seletor veio de um HTML colado no chat, e os 15 testes rodam contra um dublê de `RPAEngine` — eles provam a lógica da cascata (ordem, limpeza entre tentativas, ENTER só quando não há "não encontrado"), **não** que o seletor casa. Se ele estiver errado, tudo passa verde e o comportamento em produção é o de antes. O que falta observar numa sessão local: (a) o elemento realmente alterna `aria-hidden` em vez de entrar/sair do DOM; (b) `PAUSA_FILTRO_PDM` (1 s) é suficiente para o filtro resolver antes da leitura — se for curto, a leitura pega o estado anterior e a cascata pula uma tentativa boa; (c) o BACKSPACE limpa a caixa de busca do `vscomp` de verdade (o foco está nela depois do clique, mas isso não foi visto). | Sessão local |
 | 2026-09-22 | `services/cria_fichas._buscar_pdm` | **A terceira tentativa (só o título) pode casar mais de um PDM.** 13 títulos são compartilhados por 2 PDMs no catálogo (`CAMERA VIDEO` em 5836 e 6710, `VALVULA` em 3040 e 4820...). Buscando só pelo título, o filtro mostra os dois e o ENTER leva o que estiver destacado — que pode ser o errado, em silêncio. A guarda que existe hoje é posterior: `_conferir_pdm_do_portal` compara o código pedido com o que o portal gravou e denuncia a divergência no log. Fechar de vez exige escolher a opção pelo `div[@role='option']` certo em vez de ENTER, e isso muda um fluxo calibrado. | Sessão local, junto com o item acima |
+
+---
+
+## 2026-09-23 — o que o relatório de recomendações da Itaipu revelou
+
+Lido o `28_Fichas_Recomendaciones_a_CMI_Sala_Segura` (82 páginas) junto com a
+planilha `ST00U01MPB020_STATUS_PMIB` (38 itens, 15 PDMs distintos). O PDF foi
+extraído por código e filtrado por menção a PDM — 84 mil caracteres viraram 25
+trechos.
+
+**O achado principal: ZERO trocas de PDM.** As 25 menções são três códigos
+(`PDM.5920.020`, `PDM.5925.001`, `PDM.5925.008`) e todas pedem a mesma coisa —
+*"emplear el PDM X en su nueva revisión"*. Nenhuma frase de troca (`cambiar el
+PDM`, `otro PDM`, `no corresponde`) aparece no documento inteiro. Os PDMs que a
+equipe escolheu estavam certos.
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-09-23 | planilha real, coluna "PDM usado" | **O formato do portal é `CODIGO - NOME BASE, MODIFICADOR, R<revisão>`**, e não o título do Master. A prova é `PDM.4120.000 - UNIDADE EVAPORADORA, , R1`: a vírgula dupla é o modificador vazio. Ou seja, o texto que se DIGITA (título do Master, sem vírgula) nunca é igual, caractere a caractere, ao que o portal mostra — e mesmo assim funcionava. A explicação mais provável é que o filtro do `vscomp` casa por TERMOS e não por substring contígua; como o título do Master é `NOME BASE + " " + MODIFICADOR` em 1192 dos 1193 PDMs, todos os termos aparecem e o filtro casa. **Não confirmado no portal.** Se for isso, a 2ª tentativa da cascata (só o código) é a mais robusta das três. | Sessão local |
+| 2026-09-23 | idem | ⚠️ **A 2ª tentativa da cascata pode casar MAIS DE UMA REVISÃO.** Se o combo oferece `PDM.5925.001 ... R1` e `... R2` como opções distintas, digitar só `PDM.5925.001` traz as duas e o ENTER leva a destacada — que pode ser a velha. Isso explicaria como as fichas do relatório saíram com R1 quando a Itaipu já pedia R2. O app hoje DENUNCIA (ver `_conferir_revisao_do_pdm`), mas não escolhe. Fechar exige clicar na opção certa em vez de ENTER, o que muda um fluxo calibrado. | Sessão local, junto com o item acima |
+| 2026-09-23 | `PDMs SAM-GM` do usuário | **O Master está uma revisão atrás em todos os três PDMs cobrados**: tem até R1 onde a Itaipu pede R2, e R0 onde pede R1. O usuário já solicitou um Master novo. Enquanto ele não chega, `_conferir_revisao_do_pdm` avisa nas duas direções (ficha com revisão velha / Master desatualizado). | Aguardando o Master novo |
+
+---
+
+## 2026-09-23 (tarde) — decisão de escopo do módulo de correção de PDM
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-09-23 | `core/rpa/seletores_duplicada.py` × `services/tech_specs.py` × (futuro) `core/rpa/caracteristicas.py` | **Os seletores das colunas da tabela de Características Técnicas estão em DOIS lugares, e o módulo de correção de PDM será o TERCEIRO.** São os mesmos oito XPaths relativos (descrição, valor PT, valor ES, numérico, mín/máx, lista, subtipo de intervalo, unidade). O certo é uma fonte única em `core/rpa/`, com `tech_specs` e `duplicadas_injetor` importando de lá. **Decisão do usuário em 2026-09-23: NÃO fazer agora** — os dois módulos existentes rodam contra o portal real hoje, e unificá-los junto com um módulo novo misturaria "coisa nova que pode falhar" com "coisa que funciona". O módulo novo COPIA os seletores, com este registro apontando a dívida. Quando for pago, o teste que prova a unificação é comparar os três conjuntos e exigir igualdade. | Depois do módulo de correção de PDM validado no portal |
+| 2026-09-23 | `services/correcao_pdm_casamento.py` (E3) | **`CHAR -> INT` é listado mesmo quando o texto tem a forma `"-10 / 50"`.** Essa forma é decodificável — é a que o próprio app escreve (`tech_specs._preencher_linha` lê a faixa com `val_pt.split("/")`), e é o que `juntar_para_char` produz quando o robô recua de INT para CHAR. Ou seja, o caminho de volta existe e é determinístico, exatamente como o `CHAR -> NUM` que a implementação abriu. **Não foi feito agora** porque a matriz da §11 do plano foi aprovada pelo usuário dizendo `listar`, e listar não perde nada (só obriga a digitar à mão). Quando for pago: aceitar `"<num> / <num>"` e `"<num> / <num> <simbolo> (<subtipo>)"`, com o subtipo vindo do texto entre parênteses, e listar todo o resto. | Junto com a validação da E6, quando houver caso real |
+| 2026-09-23 | `services/correcao_pdm_casamento.py` (E3) | **O casamento não cai para o nome quando só UM dos lados perdeu o código.** Se a descrição de uma linha nova vier sem o `<código>-<NOME>`, ela não casa com a característica de mesmo nome do retrato — e, no limite, uma tabela inteira ilegível faria o módulo relatar "nada voltou" e marcar todas as linhas para apagar. A bijeção do Master (2278 códigos ↔ 2278 nomes) tornaria o recuo seguro, mas ele não foi feito porque casar por nome é exatamente o que o módulo proíbe no caso perigoso (códigos diferentes, nome igual). **A proteção certa é na E4**: não apagar nada quando o retrato tinha valores e a reposição não repôs nenhum — sintoma de leitura quebrada, não de ficha vazia. | E4 |
+
+---
+
+## Arquivado do mural do `CLAUDE.md` (regra: no máximo 5 avisos)
+
+| Data | De | Aviso |
+|---|---|---|
+| 2026-09-08 | Rafael | **`ficha_layout.py` ganhou 4 conceitos** (aditivos, nada removido): `nome_da_aba_da_ficha`, `marcador_de_faltante`, `e_marcador_de_faltante` e `idioma_da_ficha`. Se for abrir uma ficha ou escrever `FORNECER` nela, use-os — o nome da aba e o marcador mudam quando a ficha é em inglês. Saiu do mural em 2026-09-23 por ser o aviso mais antigo, não por estar resolvido. |
 ## 2026-09-22 — 1,1 MB de imagem sem uso viaja em toda instalação
 
 Sobrou da troca de ícone. Ninguém mais referencia:

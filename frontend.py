@@ -60,6 +60,7 @@ from sigft.app.views.apagar_lmr import ModuloApagarLMR
 from sigft.app.views.autospec import ModuloAutoSpec
 from sigft.app.views.busca_pmib import ModuloBuscaPMIB
 from sigft.app.views.copia_fichas import ModuloCopiaFichas
+from sigft.app.views.correcao_pdm import ModuloCorrecaoPDM
 from sigft.app.views.cria_fichas import ModuloCriaFichas
 from sigft.app.views.home import HomeView
 from sigft.app.views.janelas import (
@@ -92,6 +93,7 @@ __all__ = [
     "ModuloAutoSpec",
     "ModuloBuscaPMIB",
     "ModuloCopiaFichas",
+    "ModuloCorrecaoPDM",
     "ModuloCriaFichas",
     "ModuloLMR",
     "ModuloPDM",

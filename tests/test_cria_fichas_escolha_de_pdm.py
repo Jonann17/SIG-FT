@@ -281,3 +281,42 @@ def test_codigo_do_pdm_acha_o_codigo_no_tooltip_do_portal():
 def test_codigo_do_pdm_devolve_vazio_quando_nao_ha_codigo():
     assert cria_fichas.codigo_do_pdm("VERIFICAR (PULADO)") == ""
     assert cria_fichas.codigo_do_pdm(None) == ""
+
+
+# =============================================================================
+# F. A REVISÃO do PDM (2026-09-23, relatório de recomendações da Itaipu)
+# =============================================================================
+# O relatório `28_Fichas_Recomendaciones_a_CMI_Sala_Segura` (82 páginas, 28
+# fichas) NÃO pediu nenhuma troca de PDM: as 25 menções a PDM são três códigos,
+# e todas dizem a mesma coisa -- "emplear el PDM X en su nueva revisión".
+#
+# O portal exibe o PDM como `CODIGO - NOME BASE, MODIFICADOR, R<revisao>`
+# (a vírgula dupla de `PDM.4120.000 - UNIDADE EVAPORADORA, , R1`, com
+# modificador vazio, é a prova do formato). Ou seja: a revisão vem junto no
+# que o robô já captura do portal e grava na coluna "PDM usado" -- e ninguém
+# olhava para ela.
+def test_revisao_do_pdm_le_o_sufixo_que_o_portal_grava():
+    assert cria_fichas.revisao_do_pdm(
+        "PDM.5925.001 - DISJUNTOR, BAIXA TENSAO, R1"
+    ) == 1
+
+
+def test_revisao_do_pdm_le_revisao_zero():
+    """R0 é revisão de verdade, e `0` é falsy -- confundir com "não tem" faria
+    a conferência calar justamente no caso mais desatualizado."""
+    assert cria_fichas.revisao_do_pdm(
+        "PDM.5925.008 - DISPARADOR, DISJUNTOR BAIXA TENSAO, R0"
+    ) == 0
+
+
+def test_revisao_do_pdm_devolve_none_quando_o_texto_nao_traz():
+    """Nem toda linha tem revisão: `PDM.5836.000 - CAMERA, VIDEO` aparece sem
+    ela na planilha real."""
+    assert cria_fichas.revisao_do_pdm("PDM.5836.000 - CAMERA, VIDEO") is None
+    assert cria_fichas.revisao_do_pdm("") is None
+
+
+def test_revisao_do_pdm_nao_confunde_o_R_de_uma_palavra():
+    """"R" seguido de dígito, no fim, precedido de vírgula -- e não qualquer
+    R no meio do título."""
+    assert cria_fichas.revisao_do_pdm("PDM.1234.001 - ROTOR, R2 PLUS") is None

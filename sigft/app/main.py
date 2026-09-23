@@ -47,6 +47,7 @@ from sigft.app.views.analyzer import ModuloAnalyzer
 from sigft.app.views.autospec import ModuloAutoSpec
 from sigft.app.views.busca_pmib import ModuloBuscaPMIB
 from sigft.app.views.copia_fichas import ModuloCopiaFichas
+from sigft.app.views.correcao_pdm import ModuloCorrecaoPDM
 from sigft.app.views.cria_fichas import ModuloCriaFichas
 from sigft.app.views.home import HomeView
 # [2026-08-28] As duas telas de LMR viraram abas de uma seção só.
@@ -430,6 +431,7 @@ class SIG_FT_App(ctk.CTk):
         self.btn_trad = self._criar_botao_menu(self.sidebar, "4.2. Tradutor", "Translator", row=9)
         self.btn_specs = self._criar_botao_menu(self.sidebar, "4.3. Upload Specs", "UploadSpecs", row=10)
         self.btn_copia = self._criar_botao_menu(self.sidebar, "5. Upload duplicadas", "CopiaFichas", row=11)
+        self.btn_correcao = self._criar_botao_menu(self.sidebar, "5.1. Correção de PDM", "CorrecaoPDM", row=15)
         self.btn_auto = self._criar_botao_menu(self.sidebar, "6. AutoSpec AI (RAG)", "AutoSpec", row=12)
 
         # Seção 3: Gestão
@@ -457,6 +459,7 @@ class SIG_FT_App(ctk.CTk):
         self.frames["UploadConditions"] = ModuloUploadConditions(parent=self.container, controller=self)
         self.frames["UploadSpecs"] = ModuloUploadTechSpecs(parent=self.container, controller=self)
         self.frames["CopiaFichas"] = ModuloCopiaFichas(parent=self.container, controller=self)
+        self.frames["CorrecaoPDM"] = ModuloCorrecaoPDM(parent=self.container, controller=self)
         self.frames["AutoSpec"] = ModuloAutoSpec(parent=self.container, controller=self)
         self.frames["LMR"] = ModuloAplicacaoLMR(parent=self.container, controller=self)
         self.frames["PMIBManager"] = ModuloPMIBManager(parent=self.container, controller=self)

@@ -71,6 +71,20 @@ LIMITE_CANDIDATOS = 12
 # VALVULA GAVETA tem MATERIAL DA CUNHA).
 MAX_CARACTERISTICAS_NO_BLOCO = 6
 
+# Quantos PDMs de uma MESMA classe FSC podem ocupar a lista de candidatos.
+#
+# Caso real da Itaipu, 2026-09-23: `COUPLING LANTERN, WITH WIRE MESH OPENING`
+# (NETZSCH). "COUPLING" casa o nome base de sete PDMs de acoplamento, e eles
+# tomavam 6 das 12 vagas -- empurrando para fora o
+# `PDM.4320.031 - COLUNA FLANGE ACOPLAMENTO`, que era o certo e ficava em 15º.
+# Com teto 3 ele entra em 11º.
+#
+# O raciocínio: depois que o modelo viu 3 acoplamentos, o 4º não acrescenta
+# informação nenhuma -- ele já entendeu que existe uma família de acoplamentos.
+# A vaga vale mais mostrando OUTRA família, que é onde a resposta costuma estar
+# quando a primeira escolha está errada.
+MAX_CANDIDATOS_POR_CLASSE = 3
+
 # Peso por onde a palavra casou. Nome base e modificador são o nome
 # ESTRUTURADO do PDM (o padrão de catalogação); característica é sinal de
 # apoio, e sozinha não deve promover um PDM da família errada.
@@ -151,7 +165,13 @@ GLOSSARIO = {
     "TUBE": "TUBO",
     "VALVE": "VALVULA",
     "WASHER": "ARRUELA",
-    "WIRE": "FIO",
+    # ⚠️ "WIRE" SAIU daqui em 2026-09-23, e a lição vale para toda entrada
+    # nova: ele traduzia para FIO e, no item real `COUPLING LANTERN, WITH WIRE
+    # MESH OPENING` (NETZSCH), trazia `FIO ELETRICO NU` e `FIO ELETRICO
+    # ISOLADO` como 1º e 2º candidatos -- num item que não tem nada de
+    # elétrico. "WIRE MESH" é tela de arame; a palavra só carrega o sentido
+    # junto com a seguinte. Entrada de glossário que depende de contexto para
+    # estar certa é entrada que gera ruído no topo, que é o lugar mais caro.
 }
 
 _RE_CODIGO_PDM = re.compile(r"PDM\.(\d{4})\.(\d{3})")
@@ -232,6 +252,15 @@ class PDM:
     nome_base: str = ""
     modificador: str = ""
     caracteristicas: tuple[str, ...] = ()
+    # A revisão VIGENTE no Master. `None` quando a origem não a traz (o
+    # formato manipulado antigo não tem a coluna).
+    #
+    # Guardada porque é o que a Itaipu cobra: no relatório de recomendações de
+    # 2026-09-23 (28 fichas), as 25 menções a PDM são três códigos e TODAS
+    # pedem "su nueva revisión" -- nenhuma pede troca de PDM. Ter a revisão do
+    # Master ao lado da que o portal atribuiu permite denunciar as duas
+    # direções: ficha criada com revisão velha, ou Master desatualizado.
+    revisao: int | None = None
 
     @property
     def completo(self) -> str:
@@ -325,11 +354,18 @@ class CatalogoPDM:
         return self._por_completo.get(normalizar(texto_pdm))
 
     # -- pré-filtro ----------------------------------------------------------
-    def candidatos(self, texto, limite: int = LIMITE_CANDIDATOS) -> list[PDM]:
+    def candidatos(self, texto, limite: int = LIMITE_CANDIDATOS,
+                   max_por_classe: int = MAX_CANDIDATOS_POR_CLASSE) -> list[PDM]:
         """Os PDMs mais plausíveis para uma descrição de material, do melhor
         para o pior. Só entram os que casaram alguma palavra: devolver
         candidato de pontuação zero seria devolver ruído com aparência de
-        sugestão."""
+        sugestão.
+
+        `max_por_classe` limita quantos PDMs de uma MESMA classe FSC ocupam a
+        lista -- ver `MAX_CANDIDATOS_POR_CLASSE`. A vaga que sobra é preenchida
+        por quem vem depois, então a lista não encolhe quando não há outra
+        classe disponível.
+        """
         tokens = tokenizar(texto)
         if not tokens:
             return []
@@ -353,7 +389,27 @@ class CatalogoPDM:
         # `-nota` primeiro e o índice depois: empate desempata pela ordem do
         # catálogo, para o resultado ser estável entre execuções.
         pontuados.sort(key=lambda par: (-par[0], par[1]))
-        return [self.pdms[i] for _nota, i in pontuados[:limite]]
+
+        # Teto por classe: variedade de FAMÍLIA vale mais que profundidade numa
+        # só. Depois de ver 3 acoplamentos, o 4º não acrescenta informação --
+        # e ocupa a vaga que mostraria outra família.
+        escolhidos = []
+        adiados = []
+        por_classe: dict[str, int] = {}
+        for _nota, i in pontuados:
+            pdm = self.pdms[i]
+            if por_classe.get(pdm.classe, 0) >= max_por_classe:
+                adiados.append(pdm)
+                continue
+            por_classe[pdm.classe] = por_classe.get(pdm.classe, 0) + 1
+            escolhidos.append(pdm)
+            if len(escolhidos) >= limite:
+                return escolhidos
+
+        # Sobrou vaga porque não havia outra classe: os adiados voltam, na
+        # ordem de pontuação. Trocar viés por lista curta seria pior.
+        escolhidos.extend(adiados[:limite - len(escolhidos)])
+        return escolhidos
 
     def buscar(self, texto, limite: int = 50) -> list[PDM]:
         """Busca para uma PESSOA escolher na tela, não para a IA.
@@ -589,6 +645,9 @@ def _ler_mestra(wb) -> CatalogoPDM:
             nome_base=r["base"],
             modificador=r["modif"],
             caracteristicas=tuple(r["caracts"]),
+            revisao=(int(r["revisao"])
+                     if r["revisao"] is not None and r["revisao"] >= 0
+                     else None),
         )
         for codigo, r in acumulado.items()
     ]

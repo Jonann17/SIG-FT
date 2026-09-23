@@ -59,7 +59,7 @@ sessão e seria esquecido justamente nas sessões corridas.
 | 2026-09-18 | Luan | **Nada de `requests.get`/`urlopen` direto: use `sigft.core.rede.get`/`.post`.** Com a VPN ligada a chamada direta morre por timeout (a rede so publica um arquivo PAC). Encostei em `autospec.py` (2 linhas) e `core/web/robots.py`; ha guard de AST reprovando ponto novo. |
 | 2026-09-19 | Luan | **Travessão saiu do texto de tela e de log** (`tests/test_texto_da_ui.py` reprova a volta). Os arquivos do AutoSpec e os prompts ficaram DE FORA — se quiser alinhar, é combinar antes. Nos relatórios de lote o separador virou dois-pontos. |
 | 2026-09-21 | Luan | **Nome de arquivo (`CONFIG_FILE`) agora resolve para `Documentos\SIG-FT\`, nao para o diretorio de trabalho.** A regra vive em `dados_usuario.resolver_config`; teu `selecao.resolver("autospec", config_path=config.CONFIG_FILE)` no `autospec.py:1710` passou a gravar no lugar certo sozinho -- nao encostei no arquivo. Sob `Program Files` o jeito antigo era `PermissionError` mudo. |
-| 2026-09-08 | Rafael | **`ficha_layout.py` ganhou 4 conceitos** (aditivos, nada removido): `nome_da_aba_da_ficha`, `marcador_de_faltante`, `e_marcador_de_faltante` e `idioma_da_ficha`. Se for abrir uma ficha ou escrever `FORNECER` nela, use-os — o nome da aba e o marcador mudam quando a ficha é em inglês. |
+| 2026-09-23 | Luan | 🔴 **Dois guards novos que valem para QUALQUER tela**, inclusive as do AutoSpec (`tests/test_tela_correcao_pdm.py`): (1) toda tela em `main.py` precisa de botão na barra lateral E card na `home.MODULOS`; (2) toda chamada a `file_dialogs` na UI tem de bater com a assinatura real (foi `title=` no lugar de `titulo=` que criou o guard).<br>**Módulo novo:** `services/correcao_pdm*.py` + `core/rpa/caracteristicas.py` (LER a tabela de características, que não existia). Nada disso encosta no AutoSpec. |
 
 ---
 
@@ -238,3 +238,4 @@ origem, a licença e o modo de atualizar estão em [`.claude/skills/VENDOR.md`](
 | `docs/base-conhecimento/08b-autospec-contexto-negocio.md` | regras de negócio do AutoSpecAI (o "porquê") + anexo de divergências |
 | `docs/AUTOSPEC_MELHORIAS.md` | **caderno da frente do AutoSpecAI** — achados abertos e o checklist de "não fechar sem" |
 | `docs/ROTEIRO_DE_TESTE.md` | roteiro de validação manual, do ZIP até o portal |
+| `docs/ROTEIRO_CORRECAO_PDM.md` | validação do módulo de correção de PDM (a etapa E6 dele) |

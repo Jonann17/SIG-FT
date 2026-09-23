@@ -529,6 +529,47 @@ class ModuloCriaFichas(DialogosDeEspera, ctk.CTkFrame):
                 f" -> ⚠️ DIVERGÊNCIA no PMIB {pmib}: pedimos {codigo_pedido} "
                 f"e o portal gravou {codigo_gravado}. Confira a ficha."
             )
+            return
+
+        self._conferir_revisao_do_pdm(codigo_gravado, gravado, pmib)
+
+    def _conferir_revisao_do_pdm(self, codigo, gravado, pmib):
+        """A ficha saiu com a revisão mais nova do PDM?
+
+        É o que a Itaipu cobra. No relatório de recomendações de 2026-09-23
+        (28 fichas, 82 páginas) NENHUMA das 25 menções a PDM pede troca de
+        PDM: todas dizem *"emplear el PDM X en su nueva revisión"*. A revisão
+        já vinha no que o robô captura do portal (`PDM_COM_REVISAO`, o
+        `data-tooltip` do combo, no formato `... , R1`) e ninguém a lia.
+
+        Duas direções, e as duas importam:
+
+        - **portal < Master**: a ficha foi criada com uma revisão velha,
+          embora exista uma mais nova. É retrabalho garantido;
+        - **portal > Master**: o Master local está desatualizado. Foi o que
+          aconteceu nas três fichas do relatório -- o Master tem no máximo R1
+          onde a Itaipu já pede R2. Aqui a ficha pode estar certa; quem está
+          velho é o arquivo, e o aviso é para pedir um novo à Itaipu.
+        """
+        revisao_gravada = cria_fichas_svc.revisao_do_pdm(gravado)
+        if revisao_gravada is None or self.catalogo is None:
+            return
+        pdm = self.catalogo.por_codigo(codigo)
+        if pdm is None or pdm.revisao is None:
+            return
+
+        if revisao_gravada < pdm.revisao:
+            self.log(
+                f" -> ⚠️ PMIB {pmib}: a ficha ficou na revisão R{revisao_gravada} "
+                f"do {codigo}, mas o catálogo já tem R{pdm.revisao}. A Itaipu "
+                f"costuma pedir a revisão mais nova."
+            )
+        elif revisao_gravada > pdm.revisao:
+            self.log(
+                f" -> ℹ️ PMIB {pmib}: o portal usou R{revisao_gravada} do "
+                f"{codigo} e a sua planilha de PDMs só tem até R{pdm.revisao}. "
+                f"Vale pedir um Master atualizado à Itaipu."
+            )
 
     def abrir_resumo_manual(self):
         if self.df_resumo_final is not None: JanelaResumo(self, self.df_resumo_final)

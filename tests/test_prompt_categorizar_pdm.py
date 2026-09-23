@@ -168,3 +168,30 @@ def test_interpola_instrucoes_lista_e_itens():
     assert "<<<INSTRUCOES>>>" in texto
     assert "<<<LISTA_PDMS>>>" in texto
     assert "<<<ITENS_TEXTO>>>" in texto
+
+
+# =============================================================================
+# 7. As duas regras de catalogação (2026-09-23, caso NETZSCH)
+# =============================================================================
+# Caso real: `COUPLING LANTERN, WITH WIRE MESH OPENING` (NETZSCH, cód. 4671258).
+# O modelo escolhia um PDM de ACOPLAMENTO; a Itaipu corrigiu para
+# `PDM.4320.031 - COLUNA FLANGE ACOPLAMENTO`. A peça não transmite torque --
+# ela é a coluna flangeada que ALOJA o acoplamento.
+def test_ensina_que_o_nome_base_diz_o_que_a_peca_e():
+    texto = _prompt().lower()
+
+    assert "nome base" in texto
+    assert "modificador" in texto
+
+
+def test_ensina_a_nao_catalogar_pelo_componente_que_a_peca_serve():
+    """A palavra do componente ("COUPLING") costuma ser a mais chamativa da
+    descrição, e é justamente a errada."""
+    assert "COLUNA FLANGE ACOPLAMENTO" in _prompt()
+
+
+def test_ensina_que_o_fabricante_restringe_a_familia():
+    texto = _prompt()
+
+    assert "NETZSCH" in texto
+    assert "fabricante" in texto.lower()

@@ -107,11 +107,25 @@ METODOS_DA_AUDITORIA = ("html_do_elemento",)
 # evitar.
 METODOS_DA_COPIA_DE_IMAGEM = ("bytes_da_imagem", "enviar_arquivo")
 
+# 2026-09-23 -- `texto_selecionado` entra para o modulo de correcao de PDM.
+# `opcoes()` lista as opcoes de um `<select>` e `selecionar_por_texto()` casa
+# por LABEL, mas nao havia como perguntar QUAL opcao esta selecionada:
+# `get_value()` devolve o `value` do atributo, e o label e o que a reposicao
+# precisa. Sem isto, a unidade (que existe em TODA linha de caracteristica) e
+# as caracteristicas do tipo LISTA seriam impossiveis de restaurar.
+METODOS_DA_LEITURA_DE_SELECT = ("texto_selecionado",)
+
 METODOS_OBRIGATORIOS = (
     METODOS_CP_2_1 + METODOS_CP_5_1 + METODOS_CP_5_3 + METODOS_DO_TESTE_REAL
     + METODOS_DA_REGRESSAO_DO_PLAYWRIGHT + METODOS_DA_AUDITORIA
-    + METODOS_DA_COPIA_DE_IMAGEM
+    + METODOS_DA_COPIA_DE_IMAGEM + METODOS_DA_LEITURA_DE_SELECT
 )
+
+
+def test_rpaengine_declara_a_leitura_de_select():
+    """`opcoes()` diz QUAIS opcoes existem; este diz QUAL esta escolhida."""
+    for nome in METODOS_DA_LEITURA_DE_SELECT:
+        assert nome in RPAEngine.__abstractmethods__
 
 
 def test_rpaengine_declara_os_10_metodos_do_cp_2_1():
@@ -190,6 +204,7 @@ def _implementacoes_completas():
         "atributo": lambda self, seletor, nome: "",
         "texto": lambda self, seletor: "",
         "opcoes": lambda self, seletor: [],
+        "texto_selecionado": lambda self, seletor: "",
         "selecionar_por_texto": lambda self, seletor, texto: None,
         "selecionar_por_indice": lambda self, seletor, indice: None,
     }

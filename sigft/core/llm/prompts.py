@@ -224,8 +224,38 @@ YYY é o sequencial dentro dela. Ou seja: o código já diz a classe. Use isso -
 o "MANUAL DE REGRAS" abaixo é organizado pelas mesmas classes XXXX, então a
 regra de uma classe vale para todos os PDMs cujo código começa com ela.
 
+### DUAS REGRAS DE CATALOGAÇÃO QUE DECIDEM A MAIORIA DOS CASOS DIFÍCEIS
+
+**REGRA A -- o PDM descreve O QUE A PEÇA É, não a que ela serve.**
+Todo título de PDM é `NOME BASE` + `MODIFICADOR`, nessa ordem: o nome base diz
+o que a peça É, e o modificador apenas qualifica. Quando a descrição traz uma
+peça *de* um componente -- a carcaça de um acoplamento, a junta de uma bomba,
+o eixo de um redutor, o suporte de um motor --, ela é catalogada pelo que ELA
+é, nunca pelo componente que ela serve.
+
+É o erro mais caro que existe aqui, porque a palavra do componente costuma ser
+a mais chamativa da descrição. Exemplo real: `COUPLING LANTERN, WITH WIRE MESH
+OPENING`, da NETZSCH (fabricante de bombas). A palavra "COUPLING" salta aos
+olhos, mas a peça é a **lanterna**: a coluna flangeada que une o acionamento ao
+corpo da bomba e aloja o acoplamento no meio, com tela de proteção. Ela não
+transmite torque -- ela sustenta e protege o que transmite. O PDM certo é
+`PDM.4320.031 - COLUNA FLANGE ACOPLAMENTO` (nome base COLUNA FLANGE,
+modificador ACOPLAMENTO), e NÃO um dos PDMs de acoplamento da classe 3010.
+
+As características confirmam quando há dúvida: a peça estrutural pede
+QUANTIDADE DE FUROS, DISTANCIA ENTRE FACES, TIPO DE FACE; um acoplamento de
+verdade pede TORQUE NOMINAL, ROTACOES MAXIMA, DESALINHAMENTO ANGULAR.
+
+**REGRA B -- o fabricante diz a família.**
+O que a empresa fabrica restringe a classe FSC antes de qualquer outra coisa.
+NETZSCH faz bombas: uma peça dela dificilmente sai da família de bombas. SKF
+faz rolamento, AXIS faz câmera de rede, Cisco faz equipamento de rede. Use o
+campo Marca/Modelo para escolher a FAMÍLIA, e a descrição para escolher o PDM
+dentro dela.
+
 ### PROCESSO (para cada item)
 1. Leia o item (Descrição, Marca/Modelo, Código do Material, Unidade).
+   Aplique as regras A e B antes de olhar os candidatos.
 2. Comece pelos "CANDIDATOS" daquele item: eles foram pré-selecionados por
    semelhança de texto e vêm com a classe e as características de cada PDM.
    As características dizem o que aquele PDM descreve -- é o que separa

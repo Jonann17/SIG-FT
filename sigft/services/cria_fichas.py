@@ -162,6 +162,38 @@ PDM_NENHUM = "NENHUM"
 _RE_CODIGO_PDM = re.compile(r"PDM\.\d{4}\.\d{3}")
 
 
+# A revisão no fim do texto que o PORTAL devolve. Formato confirmado em
+# 2026-09-23, na planilha real `ST00U01MPB020_STATUS_PMIB`, coluna "PDM usado"
+# (que o robô grava a partir do `data-tooltip` do combo):
+#
+#     PDM.5925.001 - DISJUNTOR, BAIXA TENSAO, R1
+#     PDM.4120.000 - UNIDADE EVAPORADORA, , R1     <- modificador vazio
+#
+# Ou seja, o portal mostra `CODIGO - NOME BASE, MODIFICADOR, R<revisao>` -- a
+# vírgula dupla do segundo exemplo é a prova, e é por isso que o texto do
+# portal nunca é igual, caractere a caractere, ao título do Master.
+#
+# Exige a vírgula antes e o fim do texto depois, senão o "R2" de um título
+# como "ROTOR, R2 PLUS" seria lido como revisão.
+_RE_REVISAO_DO_PORTAL = re.compile(r",\s*R(\d+)\s*$", re.IGNORECASE)
+
+
+def revisao_do_pdm(texto):
+    """A revisão que o portal atribuiu ao PDM, ou `None` se o texto não traz.
+
+    Por que isto importa: o relatório de recomendações da Itaipu de 2026-09-23
+    (28 fichas, 82 páginas) **não pediu nenhuma troca de PDM**. As 25 menções
+    a PDM são três códigos, e todas dizem a mesma coisa -- *"emplear el PDM X
+    en su nueva revisión"*. A revisão é o que eles cobram, e ela já vinha no
+    que o robô captura do portal; ninguém olhava.
+
+    `0` é revisão de verdade: devolver `None` para R0 faria a conferência
+    calar justamente no caso mais desatualizado.
+    """
+    achado = _RE_REVISAO_DO_PORTAL.search(str(texto or ""))
+    return int(achado.group(1)) if achado else None
+
+
 def tentativas_de_busca(pdm):
     """As buscas a tentar no combo de PDM do portal, da melhor para a última.
 

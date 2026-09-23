@@ -213,6 +213,50 @@ def test_token_generico_pesa_menos_que_token_raro():
     assert achados[0] is VALVULA_SOLENOIDE
 
 
+def test_candidatos_nao_enchem_a_lista_com_uma_familia_so():
+    """Caso real da Itaipu, 2026-09-23: `COUPLING LANTERN, WITH WIRE MESH
+    OPENING` (NETZSCH). A palavra "COUPLING" casa o nome base de SETE PDMs de
+    acoplamento, e eles ocupavam 6 das 12 vagas de candidato -- empurrando para
+    fora o `PDM.4320.031 - COLUNA FLANGE ACOPLAMENTO`, que era o certo (ele
+    ficava em 15o).
+
+    Variedade de CLASSE vale mais que profundidade numa classe só: depois que
+    o modelo viu 3 acoplamentos, o 4o nao acrescenta informacao nenhuma -- e a
+    vaga que ele ocupa poderia estar mostrando outra familia."""
+    catalogo = pdm_catalogo.CatalogoPDM(
+        pdms=[VALVULA_GAVETA, VALVULA_ESFERA, VALVULA_SOLENOIDE, BOMBA],
+        classes=[CLASSE_4820, CLASSE_4810, CLASSE_4320],
+    )
+
+    # VALVULA_GAVETA e VALVULA_ESFERA sao ambos da classe 4820, e os dois
+    # pontuam igual. `limite=2` com teto 1 obriga a segunda vaga a ir para
+    # OUTRA classe -- se sobrasse vaga, o adiado voltaria (e deve mesmo:
+    # test_o_teto_por_classe_nao_encolhe_a_lista_sem_necessidade).
+    achados = catalogo.candidatos("VALVULA", limite=2, max_por_classe=1)
+
+    classes = [p.classe for p in achados]
+    assert classes == ["4820", "4810"]
+
+
+def test_o_teto_por_classe_nao_encolhe_a_lista_sem_necessidade():
+    """Se nao houver candidato de outra classe, a vaga nao pode ficar vazia --
+    seria trocar um vies por uma lista curta."""
+    catalogo = pdm_catalogo.CatalogoPDM(
+        pdms=[VALVULA_GAVETA, VALVULA_ESFERA], classes=[CLASSE_4820],
+    )
+
+    achados = catalogo.candidatos("VALVULA", limite=5, max_por_classe=1)
+
+    assert len(achados) == 2
+
+
+def test_wire_nao_vira_fio_no_glossario():
+    """No caso da Itaipu, "WIRE MESH" (tela de arame) era traduzido para
+    "FIO" e trazia `FIO ELETRICO NU` e `FIO ELETRICO ISOLADO` como 1o e 2o
+    candidatos -- ruido no topo, num item que nao tem nada de eletrico."""
+    assert "WIRE" not in pdm_catalogo.GLOSSARIO
+
+
 def test_candidatos_nao_repetem_pdm():
     achados = _catalogo().candidatos("VALVULA VALVULA VALVULA ESFERA")
     assert len(achados) == len(set(p.codigo for p in achados))
@@ -508,6 +552,33 @@ def test_carregar_usa_o_titulo_da_revisao_vigente(tmp_path):
     assert cat.pdms[0].titulo == "SERVIDOR"
     assert cat.pdms[0].completo == "PDM.7010.018 - SERVIDOR"
     assert cat.pdms[0].caracteristicas == ("NUMERO DE PROCESSADORES",)
+
+
+@requer_openpyxl
+def test_carregar_guarda_a_revisao_vigente_do_pdm(tmp_path):
+    """A revisao e o que a Itaipu cobra. No relatorio de 2026-09-23 as 25
+    mencoes a PDM sao tres codigos, e todas pedem "su nueva revision" -- nao
+    troca de PDM nenhuma. Guardar a revisao do Master permite comparar com a
+    que o portal atribuiu e denunciar as duas direcoes: ficha criada com
+    revisao velha, ou Master desatualizado."""
+    import openpyxl
+
+    caminho = os.path.join(str(tmp_path), "rev.xlsx")
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "TEMPLATE_PDM"
+    for _ in range(6):
+        ws.append([])
+    for revisao in (0, 2):
+        ws.append(["PDM.5925.001", 5925, "DISJUNTOR BAIXA TENSAO",
+                   "DISJUNTOR BAIXA TENSAO", "DISJUNTOR", "DISJUNTOR",
+                   "BAIXA TENSAO", "BAIXA TENSAO", None, revisao, None, None,
+                   None, None, None, None, "TENSAO NOMINAL"])
+    wb.save(caminho)
+
+    pdm = pdm_catalogo.carregar(caminho).por_codigo("PDM.5925.001")
+
+    assert pdm.revisao == 2
 
 
 @requer_openpyxl
