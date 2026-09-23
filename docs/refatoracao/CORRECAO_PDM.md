@@ -347,7 +347,7 @@ que exige sessão local, e nada se declara pronto antes dela.
 | E3 — casamento e conversão | ✅ feita | `sigft/services/correcao_pdm_casamento.py` |
 | E4 — portal + serviço | ✅ feita | `sigft/services/correcao_pdm_portal.py` + `correcao_pdm.py` |
 | E5 — tela | ✅ feita | `sigft/app/views/correcao_pdm.py` + `services/correcao_pdm_planilha.py` |
-| E6 — portal real | pendente | sessão local, `docs/OLHAR_O_PORTAL.md` |
+| E6 — portal real | **pendente — é a única que prova** | roteiro em [`docs/ROTEIRO_CORRECAO_PDM.md`](../ROTEIRO_CORRECAO_PDM.md) |
 
 > ⚠️ Verde nas cinco primeiras **não é prova de portal**: elas rodam contra
 > dublês escritos pelo próprio Claude. Só a E6 prova.
