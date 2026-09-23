@@ -252,13 +252,12 @@ saiu. Uma ficha já salva à mão simplesmente salva de novo.
 registrava o aviso na 1ª recusa e a ficha consertada saía no relatório como
 problema mesmo tendo dado certo.
 
-### 4. A parada geral, da home
+### 4. Interromper no meio da lista não desfaz nada
 
-O botão **"⏹ Interromper tudo"** da home varre as telas e pede parada a quem
-souber parar (`sigft/app/parada.py` → `interromper_tudo()` em cada tela). Aqui
-ele chega como `solicitar_parada()`, que `processar_lista` lê no `deve_parar()`
-e trata com `break` — as fichas já concluídas seguem em `pmibs_finalizados` e
-são marcadas COMPLETO normalmente. **Interromper não desfaz nada.**
+O **"PARAR ROBÔ WEB"** da própria tela chega aqui como `solicitar_parada()`,
+que `processar_lista` lê no `deve_parar()` e trata com `break`. As fichas já
+concluídas seguem em `pmibs_finalizados` e são marcadas COMPLETO normalmente
+— parar no meio custa a lista, nunca o que já foi feito.
 
 ⚠️ **Nada disso rodou contra o portal.** Os seletores do aviso e do campo
 inválido vieram do HTML que o usuário colou, e há teste avaliando-os com `lxml`

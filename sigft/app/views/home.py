@@ -126,46 +126,6 @@ class HomeView(ctk.CTkScrollableFrame):
                 height=40, font=("Roboto", 13, "bold"),
             ).pack(side="left", padx=(0, 10))
 
-        # À DIREITA, longe dos outros e vermelho: é o botão que se aperta com
-        # pressa, e apertar por engano custa uma ficha pela metade no portal.
-        ctk.CTkButton(
-            barra, text="\u23F9  Interromper tudo", command=self.parar_tudo,
-            fg_color=COLORS["danger"], hover_color="#8E2E2E",
-            height=40, font=("Roboto", 13, "bold"),
-        ).pack(side="right")
-
-    # =====================================================================
-    # A PARADA GERAL  [2026-09-23]
-    # =====================================================================
-    def parar_tudo(self):
-        """Interrompe o que estiver rodando, em qualquer tela.
-
-        Pedido do usuário: *"preciso de um botão na home para interromper
-        quando precisar sair sem finalizar a lista e salvar como completo
-        somente aqueles que de fato concluíram"*.
-
-        A home não fala com automação nenhuma -- ela pede ao app, que varre as
-        telas (`sigft/app/parada.py`). É o princípio 2 do `CLAUDE.md`: a tela
-        não decide nada, só pergunta e mostra.
-        """
-        if not messagebox.askyesno(
-                "Interromper tudo",
-                "Interromper o que estiver rodando?\n\n"
-                "Cada robô termina a ficha que está na mão e para. Nada do que "
-                "já foi feito se perde: só as fichas que o portal confirmou "
-                "viram COMPLETO na planilha de status."):
-            return
-
-        parados = self.controller.parar_tudo()
-        if parados:
-            messagebox.showinfo(
-                "Parada pedida",
-                "Parada pedida para:\n\n\u2022 " + "\n\u2022 ".join(parados)
-                + "\n\nAguarde o ciclo atual fechar antes de sair.")
-        else:
-            messagebox.showinfo(
-                "Nada rodando", "Não há nenhum processo em andamento.")
-
     def abrir_janela_chaves_api(self):
         JanelaPainel(
             self, titulo="Chaves de API",

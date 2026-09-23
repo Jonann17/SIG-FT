@@ -212,31 +212,6 @@ class ModuloUploadTechSpecs(ctk.CTkFrame):
             self.tech_controller.cancelar_processo_ia()
 
     # =========================================================================
-    # A PARADA GERAL, pedida pela home  [2026-09-23]
-    # =========================================================================
-    def interromper_tudo(self):
-        """Responde ao botão de parada da home (`sigft/app/parada.py`).
-
-        Sem caixa de confirmação: quem apertou o botão lá já confirmou. Devolve
-        o rótulo do que estava rodando, que é o que a home mostra de volta.
-
-        ⚠️ Nada do que já foi feito se perde: a automação fecha o ciclo atual e
-        devolve as fichas concluídas, e só elas viram COMPLETO na planilha.
-        """
-        parados = []
-        if self.tech_controller.processor_ativo:
-            self.tech_controller.cancelar_processo_ia()
-            self.btn_parar_ia.configure(state="disabled")
-            parados.append("IA das características técnicas")
-        if self.tech_controller.automacao_ativa:
-            self.tech_controller.cancelar_processo_web()
-            self.btn_parar_web.configure(state="disabled")
-            parados.append("robô das características técnicas")
-        if parados:
-            self.log("Parada pedida na Home. Aguardando o ciclo atual fechar...")
-        return parados
-
-    # =========================================================================
     # LÓGICA DE EXECUÇÃO: IA (Aba 1)
     # =========================================================================
     def _start_ia_process(self):

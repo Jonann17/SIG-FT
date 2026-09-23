@@ -21,10 +21,6 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Se você corrigir e salvar à mão, o robô **reconfere ao continuar**: apareceu a mensagem de salvo com sucesso, a ficha é marcada como COMPLETO na planilha de status. Antes ela ficava pendente mesmo tendo dado certo, e era preciso marcar na mão.
 - Ficha traduzida num PDM de revisão antiga: as **características que só existem na revisão nova do portal, e que por isso ficariam em branco, são apagadas** antes de finalizar — com aviso no log de qual foi apagada e por quê (não estava no JSON de origem).
 
-**Tela inicial**
-
-- Botão **"Interromper tudo"**, para sair no meio de uma lista sem esperar ela acabar. Cada robô termina a ficha que está na mão e para. Nada do que já foi feito se perde: só as fichas que o portal confirmou viram COMPLETO.
-
 **Organização**
 
 - A barra lateral foi corrigida: **"Aplicação LMR" saiu da Gestão** e foi para a seção de dados técnicos e upload, que é o que ela é.
