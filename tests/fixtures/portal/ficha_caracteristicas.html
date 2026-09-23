@@ -1,0 +1,96 @@
+<!-- RECORTE REAL do portal PMIB, colado pelo usuário em 2026-09-23 a partir do
+     "inspecionar elemento" da ficha 4500063671.1471 (MOTOBOMBA), com a aba
+     "Características técnicas" ABERTA.
+
+     Foi podado: sobraram a estrutura das abas, o combo do PDM, duas linhas da
+     tabela e a paginação. Nenhum atributo que os seletores usam foi alterado.
+
+     ⚠️ NENHUMA `<option>` TEM O ATRIBUTO `selected`, e isso e fiel ao original:
+     o valor vivo do OutSystems mora na PROPRIEDADE `selected`, que XPath nao
+     enxerga. E o motivo de `RPAEngine.texto_selecionado` ir por `selectedIndex`.
+
+     ⚠️ LIMITE CONHECIDO: todas as linhas desta ficha são "Texto livre" (CHAR).
+     O usuário avisou que a linha de LISTA não mostra o valor no HTML. Os tipos
+     NUM, INT e LISTA continuam sem recorte real. -->
+<html><body class="windows chrome is-ltr desktop landscape">
+<div data-block="PMIB_DataSheet_Forms.PMIB_DataSheet_DetailForm" class="OSBlockWidget" id="$b10">
+<section class="osui-tabs osui-tabs--is-vertical osui-tabs--is-left">
+<header class="osui-tabs__header"><div class="display-contents ph" id="b10-b1-Header" role="tablist">
+  <div class="OSBlockWidget" id="b10-GeneralInformations_Header"><button class="osui-tabs__header-item" data-tab="0" role="tab" tabindex="-1" aria-selected="false" aria-controls="b10-GeneralInformations_Content"><div class="display-contents ph" id="b10-b2-Title">Informações gerais</div></button></div>
+  <div class="OSBlockWidget" id="b10-TechnicalCharacteristics_Header"><button class="osui-tabs__header-item osui-tabs--is-active" data-tab="2" role="tab" tabindex="0" aria-selected="true" aria-controls="b10-TechnicalCharacteristics_Content"><div class="display-contents ph" id="b10-b4-Title">Características técnicas</div></button></div>
+  <div class="OSBlockWidget" id="b10-Conditions_Header"><button class="osui-tabs__header-item" data-tab="4" role="tab" tabindex="-1" aria-selected="false" aria-controls="b10-Conditions_Content"><div class="display-contents ph" id="b10-b6-Title">Condições</div></button></div>
+</div></header>
+<section class="osui-tabs__content"><div class="display-contents ph" id="b10-b1-Content">
+
+<!-- ABA 1: Informações gerais. NO DOM, porém aria-hidden="true" -->
+<div data-block="Navigation.TabsContentItem" class="OSBlockWidget" id="b10-GeneralInformations_Content">
+<article class="osui-tabs__content-item" data-tab="0" tabindex="-1" aria-hidden="true" aria-labelledby="b10-GeneralInformations_Header" role="tabpanel">
+  <div class="display-contents" id="b10-b8-Content"><form class="form card OSFillParent" id="b10-b9-Form1">
+    <fieldset><legend><div id="b10-b9-b4-Legend">Seleção do PDM</div></legend><div id="b10-b9-b4-Content">
+      <div class="ThemeGrid_Width8"><label class="OSFillParent"><span class="text-primary font-bold">PDM</span></label>
+      <div data-block="Interaction.DropdownSearch" class="OSBlockWidget" id="b10-b9-MDS">
+      <div class="osui-dropdown-search pop-comp-ele vscomp-ele" name="0.dqfw1jwp5i" id="b10-b9-b6-DropdownSearch">
+        <div id="vscomp-ele-wrapper-4344" class="vscomp-ele-wrapper vscomp-wrapper has-clear-button has-search-input text-direction-ltr popup-position-center has-value has-search-value closed" tabindex="0" role="combobox" aria-haspopup="listbox" aria-controls="vscomp-dropbox-container-4344" aria-expanded="false">
+          <input type="hidden" name="0.dqfw1jwp5i" class="vscomp-hidden-input" value="2301">
+          <div class="vscomp-toggle-button">
+            <div class="vscomp-value" data-tooltip="PDM.4320.002 - MOTOBOMBA, ACIONAMENTO ELETRICO, R2" data-tooltip-enter-delay="200">PDM.4320.002 - MOTOBOMBA, ACIONAMENTO ELETRICO, R2</div>
+            <div class="vscomp-arrow"></div>
+            <div class="vscomp-clear-button toggle-button-child" data-tooltip="Clear"><i class="vscomp-clear-icon"></i></div>
+          </div>
+        </div>
+      </div></div>
+      <!-- Outro vscomp NA MESMA ABA, para provar que o seletor do PDM nao o pega -->
+      <div class="osui-dropdown-search pop-comp-ele vscomp-ele" id="b10-b9-b11-DropdownSearch">
+        <div id="vscomp-ele-wrapper-691" class="vscomp-ele-wrapper vscomp-wrapper closed"><div class="vscomp-toggle-button">
+          <div class="vscomp-value" data-tooltip="UNIDADE - (UN)">UNIDADE - (UN)</div></div></div>
+      </div>
+    </div></fieldset>
+  </form></div>
+</article></div>
+
+<!-- ABA 3: Características técnicas. ATIVA -->
+<div data-block="Navigation.TabsContentItem" class="OSBlockWidget" id="b10-TechnicalCharacteristics_Content">
+<article class="osui-tabs__content-item osui-tabs--is-active" data-tab="2" tabindex="0" aria-hidden="false" aria-labelledby="b10-TechnicalCharacteristics_Header" role="tabpanel">
+<div class="display-contents" id="b10-b12-Content"><div data-block="PMIB_DataSheet_Forms.PMIB_DataSheet_TechnicalCharacteristics" class="OSBlockWidget" id="b10-$b13">
+<fieldset><legend><div id="b10-b13-b3-Legend">Características técnicas associadas ao PDM</div></legend><div id="b10-b13-b3-Content">
+
+<table class="table" role="grid"><thead><tr class="table-header"><th tabindex="0">Ordem</th><th tabindex="0">Descrição</th><th tabindex="0">Tipo de dado</th><th tabindex="0">Texto INT  / Num</th><th tabindex="0">Valor ES/PT</th><th tabindex="0">Unidade de medida</th><th tabindex="0"><div class="margin-right-xs OSInline">Ações</div></th></tr></thead><tbody>
+
+<tr class="table-row">
+  <td style="width: 5%;" data-header="Ordem"><div class="center-content-container"><span data-expression="">40</span></div></td>
+  <td class="description-wrap" style="width: 20%;" data-header="Descrição"><div class="OSBlockWidget" id="b10-b13-l3_0-319_67-$b6"><div class="osui-flip-content" id="b10-b13-l3_0-319_67-b6-FlipWrapper" tabindex="0" role="button"><div class="osui-flip-content__container osui-flip-content--flip-self"><div class="osui-flip-content__container__front"><div class="z-indexTop"><span data-expression="" class="margin-right-xs">1650 - COMPONENTES</span><div class="OSBlockWidget" id="b10-b13-l3_0-319_67-$b7"><div class="osui-tooltip osui-tooltip--is-hover"><div class="osui-tooltip__content" role="button" tabindex="0"><i class="icon-info-yellow fa fa-info-circle fa-1x"></i></div></div></div></div></div></div></div></div></td>
+  <td class="description-wrap" style="width: 10%;" data-header="Tipo de dado"><span data-expression="">Texto livre</span></td>
+  <td class="description-wrap" style="width: 15%;" data-header="Texto INT / Num"><div class="center-content-container">-</div></td>
+  <td class="description-wrap" style="width: 30%;" data-header="Valor ES/PT"><div><div><div>ES:</div><span><textarea class="form-control text-uppercase" required="" rows="3" maxlength="1000" id="b10-b13-l3_0-319_67-TextArea_ValueES">BOMBA+BASE</textarea></span></div><div><div>PT:</div><span><textarea class="form-control text-uppercase" required="" rows="3" maxlength="1000" id="b10-b13-l3_0-319_67-TextArea_ValuePT">BOMBA+BASE</textarea></span></div></div></td>
+  <td class="description-wrap" style="width: 15%;" data-header="Unidade de medida"><div class="center-content-container"><div class="OSBlockWidget" id="b10-b13-l3_0-319_67-$b35"><div id="b10-b13-l3_0-319_67-b35-DropdownTCUnitsOfMeasurement-container" class="dropdown-container"><select class="dropdown-display dropdown dropdown-text-overflow" required="" id="b10-b13-l3_0-319_67-b35-DropdownTCUnitsOfMeasurement"><option value="-1">Selecionar</option><option value="0">(AD) ADIMENSIONAL</option></select></div></div></div></td>
+  <td style="width: 5%;" data-header="Ações"><div class="text-align-center"><a href="#"><i class="icon fa fa-trash fa-1x"></i></a></div></td>
+</tr>
+
+<tr class="table-row">
+  <td style="width: 5%;" data-header="Ordem"><div class="center-content-container"><span data-expression="">49</span></div></td>
+  <td class="description-wrap" style="width: 20%;" data-header="Descrição"><div class="osui-flip-content"><div class="osui-flip-content__container__front"><div class="z-indexTop"><span data-expression="" class="margin-right-xs">8267 - CERTIFICADO</span><div class="osui-tooltip"><div class="osui-tooltip__content" role="button" tabindex="0"><i class="icon-info-yellow fa fa-info-circle fa-1x"></i></div></div></div></div></div></td>
+  <td class="description-wrap" style="width: 10%;" data-header="Tipo de dado"><span data-expression="">Texto livre</span></td>
+  <td class="description-wrap" style="width: 15%;" data-header="Texto INT / Num"><div class="center-content-container">-</div></td>
+  <td class="description-wrap" style="width: 30%;" data-header="Valor ES/PT"><div><div><div>ES:</div><span><textarea class="form-control text-uppercase" required="" rows="3" maxlength="1000" id="b10-b13-l3_0-319_73-TextArea_ValueES">CERTIFICADOS DE MATERIALES PARA PIEZAS FUNDIDAS. CUERPO DE BOMBA Y ALOJAMIENTO DE COJINETE TRASERO</textarea></span></div><div><div>PT:</div><span><textarea class="form-control text-uppercase" required="" rows="3" maxlength="1000" id="b10-b13-l3_0-319_73-TextArea_ValuePT">CERTIFICADOS DE MATERIAIS DAS PECAS FUNDIDAS CORPO DA BOMBA E CAIXA DO ROLAMENTO TRASEIRO</textarea></span></div></div></td>
+  <td class="description-wrap" style="width: 15%;" data-header="Unidade de medida"><div class="center-content-container"><div id="b10-b13-l3_0-319_73-b35-DropdownTCUnitsOfMeasurement-container" class="dropdown-container"><select class="dropdown-display dropdown dropdown-text-overflow" required="" id="b10-b13-l3_0-319_73-b35-DropdownTCUnitsOfMeasurement"><option value="-1">Selecionar</option><option value="0">(AD) ADIMENSIONAL</option></select></div></div></td>
+  <td style="width: 5%;" data-header="Ações"><div class="text-align-center"><a href="#"><i class="icon fa fa-trash fa-1x"></i></a></div></td>
+</tr>
+
+</tbody></table>
+
+<div data-block="Navigation.Pagination" class="OSBlockWidget" id="b10-b13-$b39"><div class="pagination" data-maxrecords="10" data-selectedpage="4" data-totalpages="3" id="b10-b13-b39-PaginationWrapper"><div class="pagination-counter OSInline" role="status"><span data-expression="">31</span><span> a </span><span data-expression="">37</span><span> de </span><span data-expression="">37</span><span> itens</span></div><nav class="pagination-container" aria-label="Paginação"><button class="pagination-button" type="button" aria-label="ir para a página anterior"><div class="pagination-previous OSInline" id="b10-b13-b39-Previous"></div></button><button class="pagination-button" type="button" aria-label="Ir para a página seguinte" disabled=""><div class="pagination-next OSInline" id="b10-b13-b39-Next"></div></button></nav></div></div>
+
+<div class="text-align-right"><button class="btn btn-primary" type="button" tabindex="0">SALVAR</button></div>
+</div></fieldset>
+</div></div>
+</article></div>
+
+<!-- ABA 6: Aplicação - LMR. Tem OUTRA tabela e OUTRA paginacao -->
+<div data-block="Navigation.TabsContentItem" class="OSBlockWidget" id="b10-ApplicationMRL_Content">
+<article class="osui-tabs__content-item" data-tab="5" tabindex="-1" aria-hidden="true" role="tabpanel">
+<table class="table" role="grid"><thead><tr class="table-header"><th>Código</th></tr></thead><tbody><tr class="table-row"><td data-header="Código"><span data-expression="">RTA - ACCESS POINT</span></td></tr></tbody></table>
+<div data-block="Navigation.Pagination" class="OSBlockWidget" id="b10-b19-b17-$b9"><nav class="pagination-container" aria-label="Paginação"><button class="pagination-button" type="button" aria-label="Ir para a página seguinte"><div class="pagination-next OSInline"></div></button></nav></div>
+</article></div>
+
+</div></section></section></div>
+</body></html>

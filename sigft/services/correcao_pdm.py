@@ -150,14 +150,49 @@ def corrigir_ficha(portal, pmib, pdm_novo, callback_log=None,
         _log(f"   [Erro] {pmib}: nao abri a ficha. Nao mexi em nada.")
         return ResultadoDaFicha(pmib, False, "abrir", "a ficha nao abriu")
 
-    # 1. FOTOGRAFAR. Antes de qualquer coisa, e com a ficha ainda intacta.
+    # 1. O PDM ATUAL, ANTES de abrir a tabela.
+    #
+    # ⚠️ A ORDEM E O CONSERTO DE 2026-09-23. Na primeira execucao real o
+    # retrato saiu com `"pdm_antigo": ""`, porque a tabela de caracteristicas
+    # era aberta primeiro e a leitura do combo caia numa tela em que
+    # "Informacoes gerais" nao estava mais na frente. Sem o PDM antigo, o
+    # retrato nao diz de onde a ficha veio.
+    pdm_antigo = operacoes.ler_pdm_da_ficha(portal, callback_log)
+    if pdm_antigo:
+        _log(f"   {pmib}: PDM atual e {pdm_antigo}")
+    else:
+        _log(f"   [Aviso] {pmib}: nao consegui ler o PDM atual. Sigo, mas o "
+             f"retrato vai ficar sem o 'de onde'.")
+
+    # 2. FOTOGRAFAR, com a ficha ainda intacta.
     antigas = _ler_a_tabela(portal, callback_log)
     com_valor = [c for c in antigas if not c.esta_vazia]
     _log(f"   {pmib}: {len(antigas)} caracteristica(s) na tela, "
          f"{len(com_valor)} com valor.")
 
-    # 2. GRAVAR o retrato. A regra 1: sem rede, nao salta.
-    foto = retrato.Retrato(pmib=str(pmib), pdm_antigo=operacoes.pdm_atual(portal),
+    # ⚠️ A TABELA E LEGIVEL? O freio que faltava, e o mais importante de todos.
+    #
+    # Na primeira execucao real o leitor devolveu uma linha por caracteristica
+    # com TODOS os campos vazios -- nem codigo, nem nome, nem tipo (o XPath dos
+    # campos era invalido e as excecoes eram engolidas). O retrato saiu inutil.
+    # A troca falhou por OUTRO motivo, e foi isso que salvou a ficha: se ela
+    # tivesse dado certo, o portal teria apagado tudo e nao haveria o que repor.
+    #
+    # Linha sem NENHUMA identidade nao e "ficha em branco" -- e leitura
+    # quebrada. Zero linhas tambem nao e: e um PDM sem caracteristicas, e ai
+    # nao ha o que perder.
+    if antigas and not any(c.codigo or c.nome for c in antigas):
+        _log(f"   [Erro] {pmib}: a tabela tem {len(antigas)} linha(s) e nenhuma "
+             f"delas tem codigo ou nome. Isso nao e ficha em branco, e leitura "
+             f"quebrada -- provavelmente um seletor. NAO troquei o PDM: com a "
+             f"leitura assim, a troca apagaria as caracteristicas sem volta.")
+        return ResultadoDaFicha(
+            pmib, False, "leitura",
+            f"{len(antigas)} linha(s) ilegiveis (sem codigo nem nome)",
+            pdm_antes=pdm_antigo)
+
+    # 3. GRAVAR o retrato. A regra 1: sem rede, nao salta.
+    foto = retrato.Retrato(pmib=str(pmib), pdm_antigo=pdm_antigo,
                            pdm_novo=str(pdm_novo), caracteristicas=tuple(antigas))
     try:
         caminho = str(retrato.gravar(foto))
@@ -168,7 +203,7 @@ def corrigir_ficha(portal, pmib, pdm_novo, callback_log=None,
         return ResultadoDaFicha(pmib, False, "retrato", str(erro))
     _log(f"   {pmib}: retrato em {caminho}")
 
-    # 3. TROCAR.
+    # 4. TROCAR.
     troca = operacoes.trocar_pdm(portal, pdm_novo, callback_log)
     if not troca.ok:
         return ResultadoDaFicha(pmib, False, "troca", troca.motivo,
@@ -186,7 +221,7 @@ def corrigir_ficha(portal, pmib, pdm_novo, callback_log=None,
                                 pdm_depois=troca.pdm_depois,
                                 linhas=("PDM ja era o vigente; ficha intacta.",))
 
-    # 4 a 6: RELER, CASAR, REPOR e APAGAR -- o mesmo trecho que o modo
+    # 5 a 7: RELER, CASAR, REPOR e APAGAR -- o mesmo trecho que o modo
     # "so repor" roda sozinho.
     return _repor_e_apagar(portal, foto, caminho, callback_log=callback_log,
                            callback_pause=callback_pause,

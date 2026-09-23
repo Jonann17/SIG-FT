@@ -559,3 +559,21 @@ equipe escolheu estavam certos.
 | Data | De | Aviso |
 |---|---|---|
 | 2026-09-08 | Rafael | **`ficha_layout.py` ganhou 4 conceitos** (aditivos, nada removido): `nome_da_aba_da_ficha`, `marcador_de_faltante`, `e_marcador_de_faltante` e `idioma_da_ficha`. Se for abrir uma ficha ou escrever `FORNECER` nela, use-os — o nome da aba e o marcador mudam quando a ficha é em inglês. Saiu do mural em 2026-09-23 por ser o aviso mais antigo, não por estar resolvido. |
+
+---
+
+## 2026-09-23 (noite) — o que o HTML real do portal mostrou
+
+O usuário colou o "inspecionar elemento" de uma ficha com a aba de
+Características técnicas aberta, depois da primeira execução real falhar. O
+recorte virou `tests/fixtures/portal/ficha_caracteristicas.html` e
+`tests/test_correcao_pdm_html_real.py`. Três achados valem para módulos que
+**rodam contra o portal hoje**:
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-09-23 | recorte real do portal | **O `aria-label` da paginação não é exclusivo.** `//button[@aria-label='Ir para a página seguinte']` casa DOIS botões na ficha: o da tabela de características e o da aba "Aplicação - LMR". `tech_specs.XPATH_BOTAO_PROXIMA_PAGINA` e `seletores_duplicada.XPATH_CARACTERISTICAS_PROXIMA_PAGINA` usam a versão larga. **Hoje não quebra** — `PlaywrightEngine._loc` usa `.first` de propósito, e o primeiro em ordem de documento é o certo nesta página. O que existe é dependência de ordem: um painel renderizado antes que mostre a paginação dele faria "está habilitado?" falar de outra tabela, e a leitura pararia cedo. O leitor novo (`core/rpa/caracteristicas.py`) já escopa à seção; os dois antigos não. | Junto com a unificação dos seletores |
+| 2026-09-23 | idem | **`contains(@id, 'TechnicalCharacteristics')` casa DOIS elementos**: o painel (`b10-TechnicalCharacteristics_Content`) e o cabeçalho da aba (`..._Header`). Sobrevive porque o cabeçalho não tem tabela dentro — sorte, não desenho. Mesmos dois módulos. | Idem |
+| 2026-09-23 | idem | **O rótulo da unidade é `(AD) ADIMENSIONAL`** — sigla na FRENTE. A docstring de `tech_specs.selecionar_dropdown_unidade` dá o exemplo `"Milímetro (MM)"`, que está desatualizado; o código continua certo porque procura `"(AD)"` como SUBSTRING. Só a docstring engana quem for mexer. | Corrigir a docstring quando tocar o arquivo |
+| 2026-09-23 | idem | 🟢 **O portal TEM uma coluna "Tipo de dado"** (`<td data-header="Tipo de dado">Texto livre</td>`), ou seja, ele DIZ o tipo da linha em vez de obrigar a inferir por quais inputs existem. Só há recorte de `Texto livre`; os rótulos de NUM, INT e LISTA são desconhecidos. Se forem estáveis, vira uma conferência barata contra `tipo_da_linha` — e um aviso quando os dois discordarem. | Coletar os outros rótulos na E6 |
+| 2026-09-23 | idem | **Nenhuma `<option>` do portal traz o atributo `selected`** — o valor vivo do OutSystems mora na propriedade. Confirma por que `RPAEngine.texto_selecionado` vai por `selectedIndex`, e por que um dublê baseado em `option[@selected]` daria falso. | Registrado; nada a fazer |
