@@ -346,7 +346,7 @@ que exige sessão local, e nada se declara pronto antes dela.
 | E2 — retrato em disco | ✅ feita | `sigft/services/correcao_pdm_retrato.py` |
 | E3 — casamento e conversão | ✅ feita | `sigft/services/correcao_pdm_casamento.py` |
 | E4 — portal + serviço | ✅ feita | `sigft/services/correcao_pdm_portal.py` + `correcao_pdm.py` |
-| E5 — tela | pendente | `sigft/app/views/correcao_pdm.py` |
+| E5 — tela | ✅ feita | `sigft/app/views/correcao_pdm.py` + `services/correcao_pdm_planilha.py` |
 | E6 — portal real | pendente | sessão local, `docs/OLHAR_O_PORTAL.md` |
 
 > ⚠️ Verde nas cinco primeiras **não é prova de portal**: elas rodam contra
@@ -498,6 +498,41 @@ Com três ações em massa sobre as linhas selecionadas:
 
 A coluna **Prévia** é calculada do catálogo, sem tocar o portal: *"36 de 63
 casam"*. É o que dá ao usuário a decisão informada antes de qualquer clique.
+
+#### O que a implementação acrescentou
+
+**A prévia se recusa a dar um número na atualização de revisão.** O catálogo
+guarda só a revisão vigente de cada PDM; numa atualização o código é o mesmo
+dos dois lados, então comparar catálogo com catálogo daria "100%" sempre — um
+número bonito e vazio, porque o que a ficha tem é a revisão ANTIGA, que o
+catálogo não tem. Prévia que mente é pior que prévia ausente: é justamente ela
+que o usuário olha antes de autorizar uma operação que apaga características.
+Então ela diz o que sabe ("só a revisão: o portal atribui a vigente") e, para
+um PDM fora do catálogo, diz que não sabe — em vez de "0 de N", que se leria
+como "não recupera nada".
+
+**Sem seleção, a ação em massa vale para todas.** Obrigar a selecionar 25
+linhas para aplicar a ação que resolve as 25 seria o oposto do "um clique".
+
+**Dois guards novos nos testes, e nenhum deles é sobre esta tela:**
+
+1. **toda tela registrada em `main.py` tem de ter botão na barra lateral e card
+   na home** (e vice-versa). Uma tela que existe, compila e passa nos testes
+   mas não aparece em lugar nenhum não é pega por nenhuma das três partes da
+   verificação do `CLAUDE.md` — o app abre normalmente, só que sem ela;
+2. **toda chamada a `file_dialogs` na UI tem de bater com a assinatura real.**
+   Isto nasceu de um erro concreto: a primeira versão desta tela chamava
+   `ask_open_file("chave", title="...")` — sem o argumento `categoria` e com
+   `title` em vez de `titulo`. Compila, passa no `pyflakes`, passa em tudo, e
+   levanta `TypeError` no primeiro clique. Quem pegaria é o `--smoke`, que não
+   roda em ambiente sem tkinter; conferir a assinatura pega a mesma classe de
+   defeito sem precisar de janela.
+
+⚠️ **A terceira parte da verificação do `CLAUDE.md` (abrir o app) continua
+pendente**: este ambiente não tem `tkinter` nem `customtkinter`, então
+`python frontend.py --smoke` não roda aqui. `compileall` e `pyflakes` (partes 1
+e 2) estão verdes, e o guard de fiação cobre o caso do widget órfão que o CP
+5.5 pagou — mas **abrir o app é do usuário**, antes da E6.
 
 ### E6 — Validação no portal real (sessão local)
 

@@ -46,6 +46,8 @@ from dataclasses import dataclass, field
 
 from sigft.core.rpa import seletores_duplicada as sel
 from sigft.core.rpa.caracteristicas import XPATH_LINHAS, ler_linha, ler_tabela
+from sigft.core.rpa.factory import criar_engine
+from sigft.core.rpa.portal import PMIBPortal
 from sigft.services import correcao_pdm_portal as operacoes
 from sigft.services import correcao_pdm_retrato as retrato
 from sigft.services.correcao_pdm_casamento import Pendencia, casar, chave
@@ -89,6 +91,42 @@ class ResultadoDaFicha:
         if self.motivo:
             cabeca += f" ({self.motivo})"
         return [cabeca, *[f"   {x}" for x in self.linhas]]
+
+
+# =============================================================================
+# O motor e o portal -- o que a tela instancia
+# =============================================================================
+class AutomacaoCorrecaoPDM:
+    """Sobe o navegador e o portal desta tela.
+
+    Mesmo molde de `TechSpecsAutomation`: o `__init__` NAO abre navegador (so
+    `iniciar()` abre), e `self.portal` ja nasce aqui para que
+    `solicitar_parada()` seja seguro de chamar a qualquer momento -- inclusive
+    antes de `iniciar()`, porque o botao "Parar" da tela pode ser clicado entre
+    a criacao e a thread de trabalho chegar la.
+
+    Quem escolhe o motor e `criar_engine`: nenhum servico importa um motor
+    concreto (principio 3 da arquitetura).
+    """
+
+    def __init__(self):
+        self.engine = None
+        self.portal = PMIBPortal()
+
+    def iniciar(self):
+        self.engine = criar_engine("correcao_pdm", wait_timeout=20)
+        self.portal.engine = self.engine
+
+    def abrir_portal(self, url):
+        if self.engine:
+            self.engine.goto(url)
+
+    def solicitar_parada(self):
+        self.portal.solicitar_parada()
+
+    def fechar(self):
+        if self.engine:
+            self.engine.fechar()
 
 
 # =============================================================================
