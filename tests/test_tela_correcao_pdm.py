@@ -435,3 +435,45 @@ def test_a_tela_chama_os_servicos_com_a_assinatura_certa():
                 problemas.append(f"{apelido}.{funcao}(...) -> {erro}")
 
     assert not problemas, "\n".join(problemas)
+
+
+# =============================================================================
+# E. A tela desligada -- decisão do usuário em 2026-09-23
+# =============================================================================
+def test_a_correcao_de_pdm_esta_na_lista_de_telas_bloqueadas():
+    """Ela está inteira e verde, mas NUNCA rodou com sucesso contra o portal
+    (a E6 não foi feita). Trocar o PDM APAGA as características da ficha:
+    liberar uma operação destrutiva não validada é o único jeito de ela
+    estragar uma ficha de verdade."""
+    fonte = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
+
+    assert 'TELAS_BLOQUEADAS = {"CorrecaoPDM"}' in fonte
+
+
+def test_o_bloqueio_vale_no_FUNIL_e_nao_so_no_botao():
+    """O card da Home também navega por `show_frame`. Desabilitar só o botão
+    da barra lateral deixaria a tela acessível pelo card -- e o usuário pediu
+    que ela não fosse clicável, não que ficasse escondida num lugar só."""
+    metodo = _metodo(_arvore(RAIZ / "sigft" / "app" / "main.py"),
+                     "SIG_FT_App", "show_frame")
+    fonte = ast.unparse(metodo)
+
+    assert "TELAS_BLOQUEADAS" in fonte
+    assert "return" in fonte
+
+
+def test_a_tela_bloqueada_CONTINUA_registrada_e_com_botao_e_card():
+    """Desligar não é apagar. O frame segue registrado, com botão e card, para
+    que os guards de fiação continuem valendo e a volta seja uma linha."""
+    assert "CorrecaoPDM" in _frames_de_main()
+    assert "CorrecaoPDM" in _frames_da_barra_lateral()
+    assert "CorrecaoPDM" in _frames_dos_cards()
+
+
+def test_o_botao_de_uma_tela_bloqueada_nasce_DESABILITADO():
+    metodo = _metodo(_arvore(RAIZ / "sigft" / "app" / "main.py"),
+                     "SIG_FT_App", "_criar_botao_menu")
+    fonte = ast.unparse(metodo)
+
+    assert "TELAS_BLOQUEADAS" in fonte
+    assert "disabled" in fonte

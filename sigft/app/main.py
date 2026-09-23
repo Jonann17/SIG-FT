@@ -317,6 +317,21 @@ class SplashScreen(ctk.CTk):
 # =============================================================================
 # APP PRINCIPAL (Gerenciador com Layout Novo, Estilizado e com IMAGENS)
 # =============================================================================
+# =============================================================================
+# Telas desligadas de propósito
+# =============================================================================
+# ⚠️ ELAS CONTINUAM REGISTRADAS E TESTADAS -- o que muda é só o acesso. Desligar
+# assim, em vez de apagar o registro, mantém os guards de fiação valendo (toda
+# tela precisa de botão e card) e deixa a volta ser uma linha.
+#
+# `CorrecaoPDM`: o módulo está inteiro e verde, mas NUNCA rodou com sucesso
+# contra o portal (a etapa E6 de `docs/ROTEIRO_CORRECAO_PDM.md` não foi feita).
+# Ele troca o PDM, e trocar o PDM APAGA as características da ficha: liberar
+# uma operação destrutiva não validada é o único jeito de ela estragar uma
+# ficha de verdade. Decisão do usuário em 2026-09-23.
+TELAS_BLOQUEADAS = {"CorrecaoPDM"}
+
+
 class SIG_FT_App(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -472,12 +487,16 @@ class SIG_FT_App(ctk.CTk):
     # --- Métodos Auxiliares de Estilo ---
     def _criar_botao_menu(self, parent, text, frame_name, row):
         # Botões mais limpos, sem cor de fundo sólida, apenas no hover
-        btn = ctk.CTkButton(parent, text=f"  {text}", command=lambda: self.show_frame(frame_name),
+        bloqueada = frame_name in TELAS_BLOQUEADAS
+        btn = ctk.CTkButton(parent,
+                            text=f"  {text}" + ("  (em obras)" if bloqueada else ""),
+                            command=lambda: self.show_frame(frame_name),
                             fg_color="transparent",
-                            text_color=COLORS["text_light"],
+                            text_color="gray45" if bloqueada else COLORS["text_light"],
                             anchor="w",
                             font=("Roboto", 12),
                             hover_color=COLORS["primary"],  # Hover na cor da marca
+                            state="disabled" if bloqueada else "normal",
                             height=35)
         btn.grid(row=row, column=0, padx=10, pady=2, sticky="ew")
         return btn
@@ -551,6 +570,11 @@ class SIG_FT_App(ctk.CTk):
         return self.api_keys.get(key_id, "")
 
     def show_frame(self, name):
+        # ⚠️ FUNIL ÚNICO DE NAVEGAÇÃO. O botão da barra lateral E o card da
+        # Home passam por aqui, então recusar num lugar só basta -- não há
+        # como chegar na tela por outro caminho.
+        if name in TELAS_BLOQUEADAS:
+            return
         for frame in self.frames.values():
             frame.grid_forget()
         frame = self.frames.get(name)

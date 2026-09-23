@@ -390,7 +390,7 @@ def test_dropdown_com_texto_vazio_nao_faz_nada():
 # `[{row_index + 1}]` por `[{row_index}]` não derrubava nada. Estes testes
 # exercitam o laço inteiro.
 # ===========================================================================
-def _rodar_lista(auto, dados, pmib="4500063671.0001"):
+def _rodar_lista(auto, dados, pmib="4500063671.0001", salvamento=(True, "")):
     """Roda `processar_lista` numa thread com prazo.
 
     A falha que estes testes vigiam é um LAÇO QUE NÃO TERMINA -- e um laço
@@ -402,6 +402,15 @@ def _rodar_lista(auto, dados, pmib="4500063671.0001"):
 
     logs = []
     auto.portal.pesquisar_e_abrir = lambda *a, **k: True
+
+    # [2026-09-23] O SALVAR passou a ser do robô, e uma ficha só conta como
+    # finalizada com a confirmação do portal (ver `processar_lista`). Estes
+    # testes são sobre o LAÇO DE LINHAS, não sobre o salvamento: o dublê
+    # confirma, e quem prova a validação de verdade é
+    # `tests/test_tech_specs_limpeza_e_salvamento.py`.
+    if salvamento is not None:
+        auto.salvar_caracteristicas = lambda *a, **k: salvamento
+
     resultado = {}
 
     def _alvo():
@@ -461,7 +470,18 @@ def test_tabela_vazia_encerra_sem_escrever_nada():
     assert finalizados == ["4500063671.0001"]  # a ficha percorreu o fluxo
 
 
-def test_caracteristica_fora_do_json_da_ia_e_ignorada():
+def test_caracteristica_fora_do_json_da_ia_NAO_recebe_valor():
+    """[2026-09-23] Este teste mudou de assunto, e o nome antigo
+    ("...e_ignorada") passou a mentir.
+
+    Uma linha que o JSON não menciona não é mais IGNORADA: se estiver em
+    branco, ela é APAGADA, porque é característica de uma revisão mais nova do
+    PDM do que a revisão em que a ficha foi feita (pedido do usuário). O que
+    este teste continua garantindo é o essencial do laço de preenchimento --
+    ela não recebe valor nenhum.
+
+    Quem cobre a regra de apagar é `tests/test_tech_specs_limpeza_e_salvamento.py`.
+    """
     auto = _automacao(linhas=2)
 
     _rodar_lista(auto, [_dado("CARACTERISTICA QUE NAO ESTA NA TELA", "99")])

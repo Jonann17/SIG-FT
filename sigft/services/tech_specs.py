@@ -184,6 +184,26 @@ def juntar_para_char(dado):
     return valor
 
 
+_RE_CHAVE_DA_CARACTERISTICA = re.compile(r"^\s*\d+\s*-\s*(.*)")
+
+
+def chave_da_caracteristica(descricao, normalizar):
+    """`"1650 - COMPONENTES"` -> `"COMPONENTES"`, normalizado.
+
+    ⚠️ UMA DEFINICAO SO, e isso nao e zelo. Duas rotinas usam esta chave: o
+    laco que PREENCHE (para achar o dado no JSON) e a limpeza que APAGA as
+    linhas em branco fora do JSON. Se as duas calcularem a chave de jeitos
+    diferentes, a limpeza apaga exatamente o que acabou de ser preenchido.
+
+    O formato real do portal tem espacos em volta do hifen (`1650 -
+    COMPONENTES`, medido no recorte de 2026-09-23); sem o codigo na frente,
+    devolve o texto inteiro normalizado.
+    """
+    texto = str(descricao or "")
+    achado = _RE_CHAVE_DA_CARACTERISTICA.search(texto)
+    return normalizar(achado.group(1) if achado else texto)
+
+
 CARACTERISTICA_TEXTO_LIVRE = "CARACTERISTICAS ADICIONAIS"
 TIPOS_NUMERICOS = ("NUM", "INT")
 
@@ -735,6 +755,50 @@ XPATH_TABELA_CARACTERISTICAS = "//div[contains(@id, 'TechnicalCharacteristics')]
 XPATH_LINHAS_TABELA = "//div[contains(@id, 'TechnicalCharacteristics')]//table/tbody/tr"
 XPATH_BOTAO_PROXIMA_PAGINA = "//button[@aria-label='Ir para a página seguinte']"
 
+# A seção de Características, para ANCORAR o SALVAR. A ficha tem um botão
+# "SALVAR" por seção, e sem âncora a busca varre a tela -- 2026-08-20.
+XPATH_SECAO_DE_CARACTERISTICAS = "//div[contains(@id, 'TechnicalCharacteristics_Content')]"
+
+# Teto de paginas da tabela. Um botao "proxima" que nunca desabilita giraria
+# para sempre; `limpar_caracteristicas` e o leitor da E1 tem o mesmo teto.
+MAX_PAGINAS_CARACTERISTICAS = 50
+
+# ---------------------------------------------------------------------------
+# O CAMPO QUE O PORTAL RECUSOU (2026-09-23, HTML mandado pelo usuario)
+# ---------------------------------------------------------------------------
+# Quando o SALVAR nao passa, o portal nao se limita ao toast generico: ele
+# MARCA os campos culpados. O `<textarea>` ganha a classe `not-valid` e nasce
+# embaixo dele um aviso:
+#
+#   <textarea class="form-control text-uppercase not-valid"
+#             id="...-TextArea_ValuePT">FECHADOaa</textarea>
+#   <div ...><div><div><span class="text-error">Caracter invalido!</span></div></div></div>
+#
+# ⚠️ O MARCADOR E A CLASSE, NAO O TEXTO. A mensagem muda conforme o motivo
+# (caractere invalido, limite do SAP, campo obrigatorio); `not-valid` e
+# `text-error` sao o que nao muda. Mesma licao do toast de sucesso, que e
+# reconhecido por `feedback-message-success` e nao pela redacao.
+#
+# ⚠️ E ELE APARECE POR IDIOMA. Numa linha CHAR o aviso nasce embaixo do ES e do
+# PT separadamente -- entao da para dizer em qual dos dois esta o problema, o
+# que poupa procurar nos dois.
+XPATH_REL_ERRO_DO_CAMPO = (
+    "//span[contains(concat(' ', normalize-space(@class), ' '), ' text-error ')]"
+)
+XPATH_REL_CAMPO_INVALIDO = (
+    "//*[contains(concat(' ', normalize-space(@class), ' '), ' not-valid ')]"
+)
+# Por idioma, para dizer QUAL dos dois.
+XPATH_REL_INVALIDO_PT = (
+    "//textarea[contains(concat(' ', normalize-space(@class), ' '), ' not-valid ')]"
+    "[contains(@id, 'TextArea_ValuePT')]"
+)
+XPATH_REL_INVALIDO_ES = (
+    "//textarea[contains(concat(' ', normalize-space(@class), ' '), ' not-valid ')]"
+    "[contains(@id, 'TextArea_ValueES')]"
+)
+NOME_DA_SECAO_DE_CARACTERISTICAS = "Características técnicas"
+
 XPATH_REL_COL_DESCRICAO = "//td[contains(@data-header, 'Descrição')]"
 XPATH_REL_TEXTAREA_PT = '//textarea[contains(@id, "TextArea_ValuePT")]'
 XPATH_REL_TEXTAREA_ES = '//textarea[contains(@id, "TextArea_ValueES")]'
@@ -1148,8 +1212,11 @@ class TechSpecsAutomation:
 
                             # Extrair nome da característica na tela
                             txt_tela = self.engine.texto(seletor_linha + XPATH_REL_COL_DESCRICAO)
-                            match = re.search(r"^\s*\d+\s*-\s*(.*)", txt_tela)
-                            chave_limpa = self.normalizar_texto(match.group(1) if match else txt_tela)
+                            # A MESMA funcao que a limpeza usa. Ver
+                            # `chave_da_caracteristica`: chaves diferentes
+                            # fariam a limpeza apagar o que foi preenchido.
+                            chave_limpa = chave_da_caracteristica(
+                                txt_tela, self.normalizar_texto)
 
                             dado = dict_dados.get(chave_limpa)
 
@@ -1285,9 +1352,57 @@ class TechSpecsAutomation:
                             "conferir a ficha antes de salvar",
                         )
 
-                # 5. Pausa Manual (Obrigatória)
-                if callback_pause:
-                    callback_pause(pmib)
+                # 5. LIMPEZA: as linhas EM BRANCO que o JSON não menciona.
+                #
+                # Elas são características de uma revisão MAIS NOVA do PDM do
+                # que a revisão em que a ficha foi feita. Pedido do usuário em
+                # 2026-09-23. Ver `apagar_em_branco_fora_do_json`: as três
+                # condições (em branco, fora do JSON, mesma chave) são todas
+                # necessárias.
+                apagadas_em_branco = self.apagar_em_branco_fora_do_json(
+                    dict_dados, callback_log)
+                if apagadas_em_branco and callback_log:
+                    callback_log(
+                        f"   ── {len(apagadas_em_branco)} caracteristica(s) em "
+                        f"branco apagada(s) por nao virem no JSON de origem.")
+
+                # 6. SALVAR, e só seguir com a confirmação do portal.
+                #
+                # ⚠️ ISTO MUDOU O FLUXO (2026-09-23). Antes o robô preenchia e
+                # PAUSAVA em toda ficha, para a pessoa conferir e salvar. Agora
+                # ele salva e lê o toast: confirmou, segue para a próxima; não
+                # confirmou, aí sim chama a pausa -- que é onde a pessoa
+                # realmente faz falta.
+                salvou, mensagem_do_portal = self.salvar_caracteristicas(callback_log)
+
+                if salvou:
+                    if callback_log:
+                        callback_log(f"   ✅ {pmib}: o portal confirmou o salvamento.")
+                else:
+                    if callback_log:
+                        callback_log(
+                            f"   ⛔ {pmib}: o portal NAO confirmou o salvamento"
+                            + (f" ({mensagem_do_portal})" if mensagem_do_portal else "")
+                            + ". Esta ficha precisa ser conferida e salva A MAO.")
+                    # QUAIS campos o portal recusou. É o que transforma o
+                    # "verifique os campos" na lista do que corrigir.
+                    for erro in self.caracteristicas_com_erro():
+                        idiomas = "/".join(erro["campos"]) or "campo"
+                        if callback_log:
+                            callback_log(
+                                f"      ✋ {erro['chave']} [{idiomas}]: {erro['mensagem']}")
+
+                    lote.aviso(
+                        pmib,
+                        "o portal nao confirmou o salvamento"
+                        + (f": {mensagem_do_portal}" if mensagem_do_portal else ""),
+                        "conferir e salvar a mao (os campos recusados estao no log)",
+                    )
+
+                    # A PAUSA SÓ AQUI. Era em toda ficha; agora é na que pede
+                    # gente de verdade.
+                    if callback_pause:
+                        callback_pause(pmib)
 
                 if pendencias_manuais:
                     lote.aviso(
@@ -1297,8 +1412,16 @@ class TechSpecsAutomation:
                     )
 
                 if callback_log: callback_log(f"Fim {pmib}.")
-                pmibs_finalizados.append(pmib)  # <--- NOVO: Adiciona a ficha na lista de sucesso
-                lote.sucesso(pmib)
+
+                # ⚠️ SÓ A FICHA CONFIRMADA CONTA COMO FINALIZADA. É esta lista
+                # que marca "COMPLETO" no `_STATUS_PMIB`; marcar uma ficha que
+                # o portal não gravou seria declarar pronto o que não está.
+                # Se a pessoa consertar e salvar durante a pausa, o robô não
+                # tem como saber -- e o lado seguro é a ficha continuar
+                # pendente.
+                if salvou:
+                    pmibs_finalizados.append(pmib)
+                    lote.sucesso(pmib)
 
             except Exception as e:
                 if callback_log: callback_log(f"Erro geral {pmib}: {e}")
@@ -1384,6 +1507,200 @@ class TechSpecsAutomation:
         if existe(XPATH_REL_INPUT_NUM):
             return "NUM"
         return ""
+
+    def apagar_em_branco_fora_do_json(self, dict_dados, callback_log=None):
+        """Apaga as linhas EM BRANCO que o JSON de origem nao menciona.
+
+        Pedido do usuario em 2026-09-23: quando a ficha foi feita numa revisao
+        ANTIGA do PDM e o portal ja esta numa mais nova, a tabela tem linhas
+        que nao existiam na origem. Elas ficam em branco, e ate aqui o robo as
+        deixava com um `·  ignorada (nao veio no JSON)`.
+
+        ⚠️ AS TRES CONDICOES SAO TODAS NECESSARIAS:
+
+        - **em branco**: uma linha COM valor fora do JSON pode ter sido
+          preenchida a mao. Apaga-la seria destruir trabalho humano;
+        - **fora do JSON**: uma linha em branco que o JSON MENCIONA e um
+          preenchimento que falhou. Apaga-la esconderia o que falta corrigir;
+        - **a mesma chave do laco de preenchimento** (`chave_da_caracteristica`).
+
+        ⚠️ O INDICE NAO AVANCA quando a linha e apagada: a de baixo sobe para o
+        lugar dela. E a licao de `limpar_caracteristicas`. Quando a exclusao
+        FALHA o indice avanca, senao o robo gira para sempre na mesma linha.
+
+        Quem le a linha e `core/rpa/caracteristicas.ler_linha` -- o leitor que
+        nasceu para a correcao de PDM e ja esta provado contra o HTML real do
+        portal. Devolve a lista de chaves apagadas.
+        """
+        from sigft.core.rpa.caracteristicas import dentro_da_linha, ler_linha
+
+        apagadas = []
+        for _pagina in range(1, MAX_PAGINAS_CARACTERISTICAS + 1):
+            indice = 1
+            while True:
+                if indice > self._quantas_linhas():
+                    break
+
+                seletor = f"({XPATH_LINHAS_TABELA})[{indice}]"
+                try:
+                    linha = ler_linha(self.engine, seletor)
+                except Exception:  # noqa: BLE001 -- ler nao derruba a ficha
+                    indice += 1
+                    continue
+
+                descricao = self.engine.texto(
+                    dentro_da_linha(seletor, ".//td[contains(@data-header, 'Descrição')]"))
+                chave = chave_da_caracteristica(descricao, self.normalizar_texto)
+
+                if chave in dict_dados or not linha.esta_vazia:
+                    indice += 1
+                    continue
+
+                antes = self._quantas_linhas()
+                if self._excluir_linha_segura(seletor, chave, None):
+                    # ⚠️ "APAGUEI" NAO E PROVA DE QUE SUMIU, e aqui isso nao e
+                    # zelo: o indice so NAO avanca porque a linha de baixo sobe
+                    # para o lugar desta. Se a exclusao mentir -- devolver
+                    # `True` com a tabela intacta --, o laco tenta a mesma
+                    # linha para sempre e o robo trava sem mensagem nenhuma.
+                    # Conferir a contagem custa uma chamada.
+                    if self._quantas_linhas() < antes:
+                        apagadas.append(chave)
+                        if callback_log:
+                            callback_log(
+                                f"   🗑️  apagada: {chave} (estava em branco e nao "
+                                f"veio no JSON de origem; e caracteristica de uma "
+                                f"revisao mais nova do PDM)")
+                        continue   # a linha de baixo subiu para ca
+                    if callback_log:
+                        callback_log(
+                            f"   ⚠️  o portal disse que apagou {chave}, mas a "
+                            f"tabela continua com {antes} linha(s). Sigo.")
+                    indice += 1
+                    continue
+                if callback_log:
+                    callback_log(f"   ⚠️  nao consegui apagar a linha em branco: {chave}")
+                indice += 1
+
+            if not self._avancar_pagina():
+                break
+        return apagadas
+
+    def _quantas_linhas(self):
+        try:
+            return self.engine.contar(XPATH_LINHAS_TABELA)
+        except Exception:  # noqa: BLE001
+            return 0
+
+    def _avancar_pagina(self):
+        """`True` se foi para a proxima pagina da tabela."""
+        try:
+            if not self.engine.element_exists(XPATH_BOTAO_PROXIMA_PAGINA):
+                return False
+            if not self.engine.esta_habilitado(XPATH_BOTAO_PROXIMA_PAGINA):
+                return False
+            self.engine.click_raw(XPATH_BOTAO_PROXIMA_PAGINA)
+            time.sleep(PAUSA_PAGINACAO)
+            return True
+        except Exception:  # noqa: BLE001 -- botao ausente = ultima pagina
+            return False
+
+    def caracteristicas_com_erro(self):
+        """As linhas que o portal MARCOU como invalidas, com o porque.
+
+        Devolve `[{"chave", "campos", "mensagem"}, ...]`. `campos` diz em qual
+        idioma esta o problema (`["PT"]`, `["ES"]` ou os dois) -- numa ficha
+        bilingue isso poupa procurar nos dois.
+
+        E o que transforma o "Por favor, verifique os campos" (que nao diz
+        nada) na lista exata do que corrigir a mao. Ver o comentario em
+        `XPATH_REL_ERRO_DO_CAMPO`: o marcador e a CLASSE, nao o texto.
+        """
+        from sigft.core.rpa.caracteristicas import dentro_da_linha
+
+        achados = []
+        for _pagina in range(1, MAX_PAGINAS_CARACTERISTICAS + 1):
+            try:
+                total = self.engine.contar(XPATH_LINHAS_TABELA)
+            except Exception:  # noqa: BLE001 -- ler nao derruba a ficha
+                break
+
+            for indice in range(1, (total or 0) + 1):
+                seletor = f"({XPATH_LINHAS_TABELA})[{indice}]"
+                erros = self._textos(dentro_da_linha(seletor, XPATH_REL_ERRO_DO_CAMPO))
+                if not erros:
+                    continue
+
+                descricao = self._texto_ou_vazio(
+                    dentro_da_linha(seletor, XPATH_REL_COL_DESCRICAO))
+                campos = [
+                    idioma for idioma, relativo in (("PT", XPATH_REL_INVALIDO_PT),
+                                                    ("ES", XPATH_REL_INVALIDO_ES))
+                    if self._existe(dentro_da_linha(seletor, relativo))
+                ]
+                achados.append({
+                    "chave": chave_da_caracteristica(descricao, self.normalizar_texto),
+                    "campos": campos,
+                    "mensagem": erros[0],
+                })
+
+            if not self._avancar_pagina():
+                break
+        return achados
+
+    def _textos(self, seletor):
+        """Os textos de TODOS os casamentos, normalizados. Nunca levanta."""
+        try:
+            total = self.engine.contar(seletor)
+        except Exception:  # noqa: BLE001
+            return []
+        achados = []
+        for posicao in range(1, (total or 0) + 1):
+            texto = self._texto_ou_vazio(f"({seletor})[{posicao}]")
+            if texto:
+                achados.append(texto)
+        return achados
+
+    def _texto_ou_vazio(self, seletor):
+        try:
+            return " ".join(str(self.engine.texto(seletor) or "").split())
+        except Exception:  # noqa: BLE001
+            return ""
+
+    def _existe(self, seletor):
+        try:
+            return bool(self.engine.element_exists(seletor))
+        except Exception:  # noqa: BLE001
+            return False
+
+    def salvar_caracteristicas(self, callback_log=None):
+        """Clica SALVAR na secao de caracteristicas e classifica o resultado.
+
+        Devolve `(ok, mensagem)`. `ok` so e `True` com o toast de sucesso NOVO
+        na tela -- quem garante isso e `PMIBPortal.salvar_e_confirmar`, que ja
+        fotografa as mensagens de ANTES para nao reler um toast velho.
+
+        ⚠️ A ANCORA decide QUAL botao. A ficha tem um SALVAR por secao, e sem
+        ela a busca varre a tela inteira -- o defeito de 2026-08-20.
+
+        Quando nao confirma, procura o AVISO do portal ("Por favor, verifique
+        os campos"). Ele nao tem `feedback-message-autoclose`, entao fica na
+        tela e da para ler com calma. Mensagem vazia quer dizer que o portal
+        nao disse nada: tambem e falha, so que sem nada a mostrar para quem
+        vai corrigir.
+        """
+        ok = self.portal.salvar_e_confirmar(
+            NOME_DA_SECAO_DE_CARACTERISTICAS, callback_log,
+            ancora=XPATH_SECAO_DE_CARACTERISTICAS)
+        if ok:
+            sucessos = [m for m in self.portal._mensagens_de_feedback(so_sucesso=True) if m]
+            return True, " ".join(sucessos[-1].split()) if sucessos else ""
+
+        # A leitura do aviso e do PORTAL, nao daqui: e a mesma mecanica de
+        # percorrer toast por indice que ele ja tem. Uma copia aqui seria a
+        # segunda implementacao do mesmo conceito.
+        avisos = [m for m in self.portal.mensagens_de_aviso() if m]
+        return False, " ".join(avisos[-1].split()) if avisos else ""
 
     def _preencher_linha(self, seletor_linha, dado, callback_log=None):
         """
