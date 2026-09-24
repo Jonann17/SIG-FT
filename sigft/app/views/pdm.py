@@ -14,6 +14,7 @@ import pandas as pd
 from sigft.app import backends, file_dialogs
 from sigft.app.theme import COLORS
 from sigft.app.widgets import dialogs as app_dialogs
+from sigft.core import pdm_catalogo
 from sigft.core import prefs
 from sigft.core.callbacks import from_legacy
 from sigft.core.excel.pmib_codes import normalize_pmib
@@ -67,6 +68,9 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
         self.path_template = ctk.StringVar()
         self.modo_pmib = ctk.StringVar(value="todos")
         self.modo_saida_fichas = ctk.StringVar(value="apenas_planilhas")  # NOVA: Variável da Melhoria 1
+        # Fonte das perguntas da aba 2 (2026-09-24): a planilha de PDMs é a
+        # padrão; a pasta de PDMs Modificados continua como método antigo.
+        self.fonte_perguntas = ctk.StringVar(value="planilha")
 
         # Variável para Aba 3
         self.path_clean_dir = ctk.StringVar()
@@ -106,12 +110,23 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
         ctk.CTkLabel(frm_config, text="Configuração Global", font=("Roboto", 14, "bold"), text_color=COLORS["accent"]).pack(anchor="w", padx=15, pady=(10, 5))
 
         f_path = ctk.CTkFrame(frm_config, fg_color="transparent")
-        f_path.pack(fill="x", padx=15, pady=(0, 15))
+        f_path.pack(fill="x", padx=15, pady=(0, 5))
         ctk.CTkLabel(f_path, text="Pasta dos PDMs Modificados:", width=190, anchor="w").pack(side="left")
         self.entry_dest = ctk.CTkEntry(f_path, textvariable=self.caminho_destino, width=350)
         self.entry_dest.pack(side="left", padx=5)
         ctk.CTkButton(f_path, text="Selecionar", command=self._sel_destino,
                       fg_color="#3A3A3A", hover_color="#454545", width=100).pack(side="left")
+
+        # A planilha de PDMs subiu da aba 1 para cá em 2026-09-24: as duas
+        # abas passaram a usá-la (regenerar/fatiar e criar as fichas).
+        f_plan = ctk.CTkFrame(frm_config, fg_color="transparent")
+        f_plan.pack(fill="x", padx=15, pady=(0, 15))
+        ctk.CTkLabel(f_plan, text="Planilha de PDMs (SAM-GM):", width=190, anchor="w").pack(side="left")
+        self.btn_sam_gm = ctk.CTkButton(f_plan, text="Selecionar", command=self._sel_sam_gm,
+                                        fg_color="#3A3A3A", hover_color="#454545", width=100)
+        self.btn_sam_gm.pack(side="left", padx=5)
+        self.lbl_sam_gm_status = ctk.CTkLabel(f_plan, text="Nenhum arquivo selecionado", text_color="gray")
+        self.lbl_sam_gm_status.pack(side="left", padx=15)
 
         # --- ABAS DE OPERAÇÃO (TabView) ---
         self.tabview = ctk.CTkTabview(self.content, fg_color="#2B2B2B", segmented_button_fg_color="#161616",
@@ -132,32 +147,44 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
         self._build_tab3(tab3)
 
     def _build_tab1(self, parent):
-        # --- SEÇÃO 1: Fatiar lista geral (From Itaipu) ---
-        frm_from = ctk.CTkFrame(parent, fg_color="#333333", corner_radius=8)
-        frm_from.pack(fill="x", padx=20, pady=10)
-        ctk.CTkLabel(frm_from, text="1. Fatiar Arquivo Geral (From Itaipu)", font=("Roboto", 14, "bold")).pack(anchor="w", padx=10, pady=5)
-
-        # Input do Excel (Estilo Arquivo: Botão + Label)
-        f_xl = ctk.CTkFrame(frm_from, fg_color="transparent")
-        f_xl.pack(fill="x", padx=10, pady=8)
-        self.btn_sam_gm = ctk.CTkButton(f_xl, text="Selecionar PDM's SAM-GM (.xlsx)", width=240, command=self._sel_sam_gm,
-                                        fg_color="#3A3A3A", hover_color="#454545", font=("Roboto", 12))
-        self.btn_sam_gm.pack(side="left")
-        self.lbl_sam_gm_status = ctk.CTkLabel(f_xl, text="Nenhum arquivo selecionado", text_color="gray")
-        self.lbl_sam_gm_status.pack(side="left", padx=15)
-
-        # Input da Pasta (Estilo Caminho: Entry + Botão mantido e alinhado)
-        f_dir = ctk.CTkFrame(frm_from, fg_color="transparent")
-        f_dir.pack(fill="x", padx=10, pady=8)
+        # A pasta From Itaipu fica no topo da aba: a regeneração e o passo 1
+        # antigo usam a mesma.
+        f_dir = ctk.CTkFrame(parent, fg_color="transparent")
+        f_dir.pack(fill="x", padx=20, pady=(10, 0))
         ctk.CTkLabel(f_dir, text="Pasta (PDMs From Itaipu):", width=240, anchor="w").pack(side="left")
         ctk.CTkEntry(f_dir, textvariable=self.path_pdms_itaipu, width=280).pack(side="left", padx=5)
         ctk.CTkButton(f_dir, text="Buscar", width=80, command=lambda: self.path_pdms_itaipu.set(file_dialogs.ask_directory("pdm.pdms_itaipu", "pasta", titulo="Pasta de Origem dos PDMs"))).pack(side="left")
 
-        ctk.CTkButton(frm_from, text="Executar: Criar PDMs From Itaipu", command=self._op1_from_itaipu, fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"]).pack(pady=10)
+        # --- Regenerar as pastas a partir da planilha (2026-09-24) ---
+        # Título e botão na MESMA linha, aqui e no passo 1: com a seção nova a
+        # aba cresceu, e o console do log (que a regeneração enche) sumia da
+        # janela. Medido por print numa janela de 960 px de altura.
+        frm_regen = ctk.CTkFrame(parent, fg_color="#333333", corner_radius=8)
+        frm_regen.pack(fill="x", padx=20, pady=6)
+        cab_regen = ctk.CTkFrame(frm_regen, fg_color="transparent")
+        cab_regen.pack(fill="x", padx=10, pady=(6, 0))
+        ctk.CTkLabel(cab_regen, text="Regenerar as pastas a partir da planilha", font=("Roboto", 14, "bold")).pack(side="left")
+        ctk.CTkButton(cab_regen, text="Executar: Regenerar as pastas", command=self._op1_regenerar,
+                      fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"]).pack(side="right")
+        ctk.CTkLabel(
+            frm_regen, font=("Roboto", 11), text_color="gray", anchor="w",
+            text=("Com a revisão no nome (PDM_1650_001 - ACUMULADOR - R2_formatado.xlsx); "
+                  "a versão antiga vai para _versoes_antigas, nada é apagado."),
+        ).pack(anchor="w", padx=10, pady=(0, 8))
+
+        # --- SEÇÃO 1: Fatiar lista geral (From Itaipu), método antigo ---
+        frm_from = ctk.CTkFrame(parent, fg_color="#333333", corner_radius=8)
+        frm_from.pack(fill="x", padx=20, pady=6)
+        cab_from = ctk.CTkFrame(frm_from, fg_color="transparent")
+        cab_from.pack(fill="x", padx=10, pady=8)
+        ctk.CTkLabel(cab_from, text="1. Fatiar Arquivo Geral (From Itaipu)", font=("Roboto", 14, "bold")).pack(side="left")
+        ctk.CTkLabel(cab_from, text="usa a planilha do painel de cima; só cria os PDMs que faltam na pasta",
+                     font=("Roboto", 11), text_color="gray").pack(side="left", padx=10)
+        ctk.CTkButton(cab_from, text="Executar: Criar PDMs From Itaipu", command=self._op1_from_itaipu, fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"]).pack(side="right")
 
         # --- SEÇÃO 2: Formatar PDMs (Modificados) ---
         frm_mod = ctk.CTkFrame(parent, fg_color="#333333", corner_radius=8)
-        frm_mod.pack(fill="x", padx=20, pady=10)
+        frm_mod.pack(fill="x", padx=20, pady=6)
         ctk.CTkLabel(frm_mod, text="2. Formatar PDMs (Modificados)", font=("Roboto", 14, "bold")).pack(anchor="w", padx=10, pady=5)
 
         ctk.CTkLabel(frm_mod, text="Utiliza a 'Pasta (PDMs From Itaipu)' como base para leitura.", font=("Roboto", 11), text_color="gray").pack(anchor="w", padx=10)
@@ -200,6 +227,18 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
         frm_files = ctk.CTkFrame(parent, fg_color="#333333", corner_radius=8)
         frm_files.pack(fill="x", padx=20, pady=10)
         ctk.CTkLabel(frm_files, text="Configuração das Fichas PMIB", font=("Roboto", 14, "bold")).pack(anchor="w", padx=10, pady=5)
+
+        # FONTE DAS PERGUNTAS (2026-09-24). A planilha de PDMs é a padrão: a
+        # ficha sai da revisão vigente, sem pasta intermediária para manter. A
+        # pasta continua como método antigo, e é por ela que sai a ficha em
+        # inglês, que usa os PDMs traduzidos.
+        f_fonte = ctk.CTkFrame(frm_files, fg_color="transparent")
+        f_fonte.pack(fill="x", padx=10, pady=8)
+        ctk.CTkLabel(f_fonte, text="Fonte das características:", width=240, anchor="w").pack(side="left")
+        ctk.CTkRadioButton(f_fonte, text="Planilha de PDMs", variable=self.fonte_perguntas,
+                           value="planilha").pack(side="left", padx=10)
+        ctk.CTkRadioButton(f_fonte, text="Pasta de PDMs Modificados (método antigo)",
+                           variable=self.fonte_perguntas, value="pasta").pack(side="left", padx=10)
 
         # Input STATUS_PMIB (Estilo Arquivo: Botão + Label)
         f_stat = ctk.CTkFrame(frm_files, fg_color="transparent")
@@ -302,7 +341,7 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
     def _op1_from_itaipu(self):
         lista = self.path_sam_gm.get()
         pasta_alvo = self.path_pdms_itaipu.get()
-        if not lista: return messagebox.showwarning("Aviso", "Por favor, selecione o arquivo PDM's SAM-GM na tela.")
+        if not lista: return messagebox.showwarning("Aviso", "Por favor, selecione a Planilha de PDMs no painel de cima.")
         if not pasta_alvo: return messagebox.showwarning("Aviso", "Por favor, selecione a Pasta (PDMs From Itaipu) na tela.")
 
         # Thread para não congelar a tela
@@ -409,19 +448,61 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
 
         threading.Thread(target=task, daemon=True).start()
 
-    def _op2_executar(self):
-        # A pasta vem do IDIOMA escolhido: em inglês, as perguntas coladas na
-        # ficha têm de ser as traduzidas. Ver `_op1_traduzir`.
-        em_ingles = self.idioma_ficha.get() == "en"
-        pasta_modificados = (self.caminho_destino_en.get() if em_ingles
-                             else self.caminho_destino.get())
+    def _op1_regenerar(self):
+        """Regenera as pastas a partir da planilha. A validação de verdade (as
+        duas pastas iguais, a planilha no formato certo) é do serviço: a tela só
+        confere que os campos foram preenchidos."""
+        planilha = self.path_sam_gm.get()
+        pasta_modificados = self.caminho_destino.get()
+        pasta_itaipu = self.path_pdms_itaipu.get()
+        if not planilha:
+            return messagebox.showwarning("Aviso", "Selecione a planilha de PDMs no painel de cima.")
         if not pasta_modificados:
+            return messagebox.showwarning("Aviso", "Selecione a 'Pasta dos PDMs Modificados' no painel de cima.")
+
+        def task():
+            try:
+                from sigft.services import pdm_regeneracao
+                self._safe_log("Regenerando as pastas a partir da planilha de PDMs...")
+                resumo = pdm_regeneracao.regenerar_pastas(
+                    planilha, pasta_modificados, pasta_itaipu or None,
+                    log_callback=self._safe_log, retry_lock=self.perguntar_retry_excel)
+                self._safe_log(resumo)
+                self.after(0, lambda: messagebox.showinfo("Regeneração", resumo))
+            except Exception as e:
+                # `motivo` e não `{e}` dentro do lambda: o Python apaga `e` ao
+                # sair do `except`, e o lambda só roda depois.
+                motivo = str(e)
+                self._safe_log(f"ERRO na regeneração: {motivo}")
+                self.after(0, lambda: messagebox.showerror("Erro", f"A regeneração não foi feita:\n{motivo}"))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def _op2_executar(self):
+        # A FONTE das perguntas (2026-09-24): a planilha de PDMs, ou a pasta de
+        # PDMs Modificados (método antigo). Em inglês, só a pasta: as perguntas
+        # coladas têm de ser as traduzidas. Ver `_op1_traduzir`.
+        da_planilha = self.fonte_perguntas.get() == "planilha"
+        em_ingles = self.idioma_ficha.get() == "en"
+        planilha = self.path_sam_gm.get()
+        pasta_modificados = None
+        if da_planilha:
             if em_ingles:
                 return messagebox.showwarning(
-                    "Aviso", "Idioma da ficha = English, mas a 'Pasta dos PDMs Modificados "
-                             "(EN)' não foi selecionada.\n\nEla fica na aba 1, no passo 3 "
-                             "(Traduzir para inglês).")
-            return messagebox.showwarning("Aviso", "Selecione a 'Pasta dos PDMs Modificados' primeiro.")
+                    "Aviso", "A ficha em inglês usa a pasta traduzida. Escolha a fonte "
+                             "'Pasta de PDMs Modificados' ou o idioma Português.")
+            if not planilha:
+                return messagebox.showwarning("Aviso", "Selecione a planilha de PDMs no painel de cima.")
+        else:
+            pasta_modificados = (self.caminho_destino_en.get() if em_ingles
+                                 else self.caminho_destino.get())
+            if not pasta_modificados:
+                if em_ingles:
+                    return messagebox.showwarning(
+                        "Aviso", "Idioma da ficha = English, mas a 'Pasta dos PDMs Modificados "
+                                 "(EN)' não foi selecionada.\n\nEla fica na aba 1, no passo 3 "
+                                 "(Traduzir para inglês).")
+                return messagebox.showwarning("Aviso", "Selecione a 'Pasta dos PDMs Modificados' primeiro.")
 
         status_pmib = self.path_status_pmib.get()
         destino_fichas = self.path_destino_fichas.get()
@@ -487,6 +568,20 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
 
         # THREADING DA CRIAÇÃO DE FICHAS
         def task():
+            catalogo = None
+            if da_planilha:
+                # Antes de criar qualquer subpasta: planilha ilegível para o
+                # lote sem deixar pasta vazia para trás.
+                self._safe_log("Lendo a planilha de PDMs...")
+                try:
+                    catalogo = pdm_catalogo.carregar(planilha)
+                except Exception as e:
+                    motivo = str(e)
+                    self._safe_log(f"ERRO ao ler a planilha de PDMs: {motivo}")
+                    self.after(0, lambda: messagebox.showerror(
+                        "Erro", f"Não consegui ler a planilha de PDMs:\n{motivo}"))
+                    return
+
             self._safe_log(f"Preparando diretórios (Modo: {'Com Pastas' if criar_pastas else 'Apenas Planilhas'})...")
             dados_pastas, msg = backends.pdm_backend.processar_pastas_fichas(status_pmib, destino_fichas, lista_sel, criar_subpastas=criar_pastas)
             self._safe_log(msg)
@@ -495,22 +590,28 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
                 self.after(0, lambda: messagebox.showinfo("Aviso", "Nenhum código foi processado."))
                 return
 
-            self._safe_log("Injetando os dados dos PDMs no Template (a partir da linha 79)...")
-
-            # Repassando o callback para o backend conversar em tempo real com o terminal!
-            # O idioma vai para o serviço, e não o nome da aba: quem sabe como
-            # a aba se chama em inglês é o serviço (`NOME_DA_ABA_EM_INGLES`).
-            # A tela só repassa o que o usuário escolheu.
-            msg_res, logs = backends.pdm_backend.aplicar_templates_fichas(
-                dados_pastas, pasta_modificados, template,
-                log_callback=self._safe_log,
-                retry_lock=self.perguntar_retry_excel,
-                idioma=self.idioma_ficha.get(),
-            )
+            if da_planilha:
+                msg_res, logs = backends.pdm_backend.aplicar_templates_fichas_da_planilha(
+                    dados_pastas, catalogo, template,
+                    log_callback=self._safe_log,
+                    retry_lock=self.perguntar_retry_excel,
+                )
+            else:
+                self._safe_log("Injetando os dados dos PDMs no Template (a partir da linha 79)...")
+                # O idioma vai para o serviço, e não o nome da aba: quem sabe
+                # como a aba se chama em inglês é o serviço
+                # (`NOME_DA_ABA_EM_INGLES`). A tela só repassa a escolha.
+                msg_res, logs = backends.pdm_backend.aplicar_templates_fichas(
+                    dados_pastas, pasta_modificados, template,
+                    log_callback=self._safe_log,
+                    retry_lock=self.perguntar_retry_excel,
+                    idioma=self.idioma_ficha.get(),
+                )
             self._safe_log(msg_res)
 
             self._safe_log(">>> Processo de criação de fichas finalizado!")
-            self.after(0, lambda: messagebox.showinfo("Sucesso", "Processo de criação de fichas finalizado com sucesso!"))
+            self.after(0, lambda: messagebox.showinfo(
+                "Fim", f"Processo de criação de fichas finalizado.\n\n{msg_res}"))
 
         threading.Thread(target=task, daemon=True).start()
 
