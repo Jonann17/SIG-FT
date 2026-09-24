@@ -4,6 +4,7 @@ import glob
 import re
 import shutil
 from copy import copy
+from dataclasses import dataclass, field
 # CP 4.3: `BytesIO` permite reabrir uma planilha já lida para memória sem
 # tocar o disco de novo -- ver `pdms_fromItaipu_lista_geral` e
 # `aplicar_templates_fichas`.
@@ -25,6 +26,9 @@ from sigft.core.excel import pmib_codes
 from sigft.core.callbacks import from_legacy
 from sigft.core.relatorio_lote import RelatorioLote
 from sigft.core.excel import locking
+# 2026-09-24: as regras da ficha montada pela planilha de PDMs (e a pergunta
+# sem "(nan)", que o passo "Formatar" também passa a usar).
+from sigft.services import pdm_planilha
 
 
 # =============================================================================
@@ -53,14 +57,45 @@ def processar_arquivo_pdm(caminho_arquivo_pdm):
         col_q = df.iloc[:, 16]  # Coluna Q (índice 16)
         col_s = df.iloc[:, 18]  # Coluna S (índice 18)
 
+        # A pergunta sai pela regra única de `pdm_planilha.montar_pergunta`
+        # (2026-09-24): era aqui que nascia o "(nan)" quando a Itaipu não
+        # escrevia a ajuda -- o pandas lê a célula vazia como NaN.
         nova_tabela = pd.DataFrame({
-            'Descrição': [f"{i+1} - {str(q)} ({str(s)}):" for i, (q, s) in enumerate(zip(col_q, col_s))],
+            'Descrição': [pdm_planilha.montar_pergunta(i + 1, q, s)
+                          for i, (q, s) in enumerate(zip(col_q, col_s))],
             'Resposta': ['' for _ in range(len(col_q))]
         })
         return nova_tabela
     except Exception as e:
         print(f"Erro processar_arquivo_pdm: {e}")
         return None
+
+
+def formatar_tabela_de_perguntas(ws, linhas):
+    """A geometria do PDM formatado, uma implementação só: descrição nas
+    colunas 1 a 10 mescladas, resposta nas 11 a 20 mescladas, fonte 8, quebra
+    de texto, altura 32, bordas finas. Usada pelo passo "Formatar" e pela
+    regeneração da pasta (`services/pdm_regeneracao.py`).
+
+    `linhas`: iterável de `(descricao, resposta)`, na ordem."""
+    borda = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
+    estilo = Alignment(wrap_text=True, vertical='top')
+    fonte = Font(size=8)
+
+    for i, (descricao, resposta) in enumerate(linhas, start=1):
+        ws.row_dimensions[i].height = 32
+
+        # Formatação Coluna 1 (Desc)
+        ws.merge_cells(start_row=i, start_column=1, end_row=i, end_column=10)
+        c1 = ws.cell(row=i, column=1, value=descricao)
+        c1.alignment = estilo; c1.font = fonte
+        for c in range(1, 11): ws.cell(row=i, column=c).border = borda
+
+        # Formatação Coluna 2 (Resp)
+        ws.merge_cells(start_row=i, start_column=11, end_row=i, end_column=20)
+        c2 = ws.cell(row=i, column=11, value=resposta)
+        c2.alignment = estilo; c2.font = fonte
+        for c in range(11, 21): ws.cell(row=i, column=c).border = borda
 
 
 def salvar_tabela_formatada(nova_tabela, caminho_arquivo_original, pasta_destino, force=False, retry_lock=None):
@@ -78,24 +113,8 @@ def salvar_tabela_formatada(nova_tabela, caminho_arquivo_original, pasta_destino
         wb = load_workbook(caminho_saida)
         ws = wb.active
 
-        borda = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
-        estilo = Alignment(wrap_text=True, vertical='top')
-        fonte = Font(size=8)
-
-        for i, row in enumerate(nova_tabela.itertuples(index=False), start=1):
-            ws.row_dimensions[i].height = 32
-
-            # Formatação Coluna 1 (Desc)
-            ws.merge_cells(start_row=i, start_column=1, end_row=i, end_column=10)
-            c1 = ws.cell(row=i, column=1, value=row[0])
-            c1.alignment = estilo; c1.font = fonte
-            for c in range(1, 11): ws.cell(row=i, column=c).border = borda
-
-            # Formatação Coluna 2 (Resp)
-            ws.merge_cells(start_row=i, start_column=11, end_row=i, end_column=20)
-            c2 = ws.cell(row=i, column=11, value=row[1])
-            c2.alignment = estilo; c2.font = fonte
-            for c in range(11, 21): ws.cell(row=i, column=c).border = borda
+        formatar_tabela_de_perguntas(
+            ws, ((row[0], row[1]) for row in nova_tabela.itertuples(index=False)))
 
         locking.salvar_perguntando(wb, caminho_saida, retry_lock=retry_lock)
         return True, f"Salvo: {novo_nome}"
@@ -297,67 +316,143 @@ _normalizar_nome_de_aba = ficha_layout._normalizar_nome_de_aba
 _ALVO_EN = _normalizar_nome_de_aba(NOME_DA_ABA_EM_INGLES)
 
 
-def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,
-                             log_callback=None, retry_lock=None, idioma="pt"):
-    # CP 4.4: mesma adaptação de `pdms_fromItaipu_lista_geral` acima --
-    # `callbacks` é local, a assinatura pública não muda.
-    callbacks = from_legacy(callback_log=log_callback)
-    log = []
+# =============================================================================
+# MONTAGEM DA FICHA: uma implementação, duas fontes de perguntas
+# =============================================================================
+# Desde 2026-09-24 a montagem (template da memória, aba resolvida uma vez,
+# linha 79, mesclas, fonte 8, altura 32, bordas, salvar perguntando) é UMA só.
+# O que varia é de onde vêm as perguntas de cada material: da pasta de PDMs
+# Modificados (método antigo, `aplicar_templates_fichas`) ou da planilha de
+# PDMs (`aplicar_templates_fichas_da_planilha`). Ver
+# docs/superpowers/specs/2026-09-23-planilhas-pmib-da-planilha-design.md.
 
+class _Recusado(Exception):
+    """A fonte não tem as perguntas deste material.
+
+    `motivo` vai para o resumo do lote; `linha_de_log`, para a lista `log` que
+    as funções públicas devolvem (no método antigo ela é contrato:
+    `tests/test_pdm_relatorio_lote.py`)."""
+
+    def __init__(self, motivo, linha_de_log):
+        super().__init__(motivo)
+        self.motivo = motivo
+        self.linha_de_log = linha_de_log
+
+
+@dataclass
+class _Perguntas:
+    # `[(descricao, resposta), ...]` na ordem da ficha, a partir da linha 79.
+    # Entrada vazia PULA uma linha: é o que o PDM formatado faz hoje com linha
+    # em branco, e o método antigo tem de continuar igual.
+    linhas: list
+    # Completa a linha de sucesso do lote: "(PDM.5925.001 R5, 51 perguntas)".
+    detalhe: str = ""
+    # `[(causa, consequencia), ...]` para `RelatorioLote.aviso`.
+    avisos: list = field(default_factory=list)
+    divergencia: str = ""
+    causa_da_divergencia: str = ""
+
+
+def _ler_template(path_template):
+    # CP 4.3 (otimização de I/O): o template é lido do disco UMA única vez,
+    # para memória; cada ficha reabre uma cópia limpa de `BytesIO`.
+    with open(path_template, "rb") as arquivo_template:
+        return arquivo_template.read()
+
+
+def _escolher_arquivo(candidatos):
+    """O de maior revisão no nome; sem revisão conta como a menor; empate fica
+    com o primeiro, que é o que a escolha fazia antes de existir revisão no
+    nome (2026-09-24)."""
+    def revisao(caminho):
+        numero = pdm_planilha.revisao_no_nome(caminho)
+        return -1 if numero is None else numero
+
+    melhor = candidatos[0]
+    for caminho in candidatos[1:]:
+        if revisao(caminho) > revisao(melhor):
+            melhor = caminho
+    return melhor
+
+
+def _perguntas_da_pasta(pasta_pdms_modificados):
+    """A fonte do método antigo: o PDM formatado da pasta."""
     # Cache dos arquivos de PDM para não listar disco toda hora
     pdms_disponiveis = listar_arquivos_excel(pasta_pdms_modificados)
 
-    # CP 4.3 (otimização de I/O): o template é lido do disco UMA única vez,
-    # para memória. Antes, `load_workbook(path_template)` acontecia DENTRO do
-    # laço, uma vez por ficha gerada (o próprio comentário original admitia:
-    # "Para performance ideal, deveríamos copiar o objeto workbook, mas I/O é
-    # aceitável aqui"). Cada ficha continua precisando de um template LIMPO
-    # (o laço escreve nele antes de salvar), então a cópia agora vem de um
-    # `BytesIO` — mesmo isolamento, sem I/O repetido.
-    #
-    # Some junto um desperdício puro que existia aqui: o `wb_templ =
-    # load_workbook(path_template)` original era carregado e NUNCA usado —
-    # só fechado no fim da função. Ler os bytes substitui os dois papéis.
-    try:
-        with open(path_template, "rb") as arquivo_template:
-            bytes_template = arquivo_template.read()
-    except Exception as e:
-        return f"Erro ao abrir template: {e}", [f"Erro ao abrir template: {e}"]
+    def obter(pmib, pdm_nome):
+        id_pdm = pdm_nome.split(" - ")[0].replace(".", "_")
+        candidatos = [f for f in pdms_disponiveis if id_pdm in os.path.basename(f)]
+        if not candidatos:
+            msg_falha = f"PDM fonte não encontrado para {pmib} ({id_pdm})"
+            raise _Recusado(msg_falha, f"FALHA: {msg_falha}")
+
+        src = _escolher_arquivo(candidatos)
+        avisos = []
+        if len(candidatos) > 1:
+            avisos.append((f"{len(candidatos)} arquivos do {id_pdm} na pasta",
+                           f"usei {os.path.basename(src)}, o de revisao mais alta no nome"))
+        wb_pdm = load_workbook(src)
+        try:
+            ws_pdm = wb_pdm.active
+            linhas = [(ws_pdm.cell(row=i, column=1).value, ws_pdm.cell(row=i, column=2).value)
+                      for i in range(1, ws_pdm.max_row + 1)]
+        finally:
+            wb_pdm.close()
+        return _Perguntas(linhas=linhas, avisos=avisos)
+
+    return obter
 
 
+def _escrever_perguntas(ws_target, linhas):
+    # Lógica de cópia (Linha 79 fixo)
+    start_row = 79
+    borda = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
+    align = Alignment(wrap_text=True, vertical='top')
+    font8 = Font(size=8)
+
+    for i, (v_desc, v_resp) in enumerate(linhas, start=1):
+        if not v_desc and not v_resp: continue
+
+        row_idx = start_row + i - 1
+
+        # Merge e escrita
+        ws_target.merge_cells(start_row=row_idx, start_column=3, end_row=row_idx, end_column=12)
+        ws_target.merge_cells(start_row=row_idx, start_column=13, end_row=row_idx, end_column=22)
+
+        c_d = ws_target.cell(row=row_idx, column=3, value=v_desc)
+        c_r = ws_target.cell(row=row_idx, column=13, value=v_resp)
+
+        c_d.font = font8; c_d.alignment = align
+        c_r.font = font8; c_r.alignment = align
+
+        # Bordas
+        for c in range(3, 13): ws_target.cell(row=row_idx, column=c).border = borda
+        for c in range(13, 23): ws_target.cell(row=row_idx, column=c).border = borda
+
+        ws_target.row_dimensions[row_idx].height = 32
+
+
+def _montar_fichas(lista_dados, obter_perguntas, bytes_template, *, callbacks,
+                   retry_lock, idioma, titulo, contexto, log):
+    """O laço de montagem. Devolve `(count, erro_de_template, divergencias)`,
+    com `divergencias = [(pmib, divergencia, causa), ...]` das fichas GERADAS."""
     count = 0
     nome_da_aba = None
     erro_de_template = None
+    divergencias = []
     em_ingles = str(idioma or "pt").strip().lower().startswith("en")
-    # CP 4.4: mesma troca de `pdms_fromItaipu_lista_geral` -- o
-    # `if log_callback: log_callback(...)` de cada branch vira uma chamada de
-    # `RelatorioLote`; a lista `log` (parte do retorno público da função,
-    # consumida hoje só por `frontend.py` e por
-    # `tests/test_pdm_io.py::test_templates_fichas_reporta_erro_se_o_template_nao_abrir`)
-    # continua recebendo EXATAMENTE as mesmas strings de antes.
-    with RelatorioLote(
-        callbacks,
-        titulo="Aplicando templates de PDM nas fichas técnicas",
-        total=len(lista_dados),
-        contexto={"pasta_pdms_modificados": pasta_pdms_modificados, "template": path_template},
-    ) as lote:
+    # CP 4.4: `RelatorioLote` (início com total/contexto, linha por item,
+    # resumo final com as falhas listadas).
+    with RelatorioLote(callbacks, titulo=titulo, total=len(lista_dados),
+                       contexto=contexto) as lote:
         for pmib, pdm_nome, pasta_destino in lista_dados:
-            id_pdm = pdm_nome.split(" - ")[0].replace(".", "_")
-
-            # Achar arquivo fonte
-            src = next((f for f in pdms_disponiveis if id_pdm in os.path.basename(f)), None)
-            if not src:
-                msg_falha = f"PDM fonte não encontrado para {pmib} ({id_pdm})"
-                log.append(f"FALHA: {msg_falha}")
-                lote.falha(pmib, msg_falha)
-                continue
-
             try:
-                wb_pdm = load_workbook(src)
-                ws_pdm = wb_pdm.active
+                perguntas = obter_perguntas(pmib, pdm_nome)
+                for causa, consequencia in perguntas.avisos:
+                    lote.aviso(pmib, causa, consequencia)
 
-                # CP 4.3: cópia limpa do template vinda da MEMÓRIA (antes era
-                # um `load_workbook(path_template)` por ficha).
+                # CP 4.3: cópia limpa do template vinda da MEMÓRIA.
                 wb_target = load_workbook(BytesIO(bytes_template))
 
                 # A aba e resolvida UMA vez, na primeira ficha, reaproveitando
@@ -392,53 +487,127 @@ def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,
                                for outra in wb_target.worksheets):
                         ws_target.title = NOME_DA_ABA_EM_INGLES
 
-                # Lógica de cópia (Linha 79 fixo)
-                start_row = 79
-                borda = Border(left=Side('thin'), right=Side('thin'), top=Side('thin'), bottom=Side('thin'))
-                align = Alignment(wrap_text=True, vertical='top')
-                font8 = Font(size=8)
-
-                for i in range(1, ws_pdm.max_row + 1):
-                    v_desc = ws_pdm.cell(row=i, column=1).value
-                    v_resp = ws_pdm.cell(row=i, column=2).value
-
-                    if not v_desc and not v_resp: continue
-
-                    row_idx = start_row + i - 1
-
-                    # Merge e escrita
-                    ws_target.merge_cells(start_row=row_idx, start_column=3, end_row=row_idx, end_column=12)
-                    ws_target.merge_cells(start_row=row_idx, start_column=13, end_row=row_idx, end_column=22)
-
-                    c_d = ws_target.cell(row=row_idx, column=3, value=v_desc)
-                    c_r = ws_target.cell(row=row_idx, column=13, value=v_resp)
-
-                    c_d.font = font8; c_d.alignment = align
-                    c_r.font = font8; c_r.alignment = align
-
-                    # Bordas
-                    for c in range(3, 13): ws_target.cell(row=row_idx, column=c).border = borda
-                    for c in range(13, 23): ws_target.cell(row=row_idx, column=c).border = borda
-
-                    ws_target.row_dimensions[row_idx].height = 32
+                _escrever_perguntas(ws_target, perguntas.linhas)
 
                 out_file = os.path.join(pasta_destino, f"{pmib}.xlsx")
                 locking.salvar_perguntando(wb_target, out_file, retry_lock=retry_lock)
                 wb_target.close()
-                wb_pdm.close()
                 count += 1
-                lote.sucesso(pmib, f"ficha gerada: {os.path.basename(out_file)}")
+                linha_de_sucesso = f"ficha gerada: {os.path.basename(out_file)}"
+                if perguntas.detalhe:
+                    linha_de_sucesso += f" {perguntas.detalhe}"
+                lote.sucesso(pmib, linha_de_sucesso)
+                if perguntas.divergencia:
+                    divergencias.append((pmib, perguntas.divergencia,
+                                         perguntas.causa_da_divergencia))
 
+            except _Recusado as e:
+                log.append(e.linha_de_log)
+                lote.falha(pmib, e.motivo)
             except Exception as e:
                 msg_erro = f"ERRO ao gerar ficha {pmib}: {e}"
                 log.append(msg_erro)
                 lote.falha(pmib, f"{type(e).__name__}: {e}")
 
-    # CP 4.3: não há mais `wb_templ` para fechar — o template vive como
-    # bytes em memória (ver o início da função).
+    return count, erro_de_template, divergencias
+
+
+def aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template,
+                             log_callback=None, retry_lock=None, idioma="pt"):
+    """Método antigo: as perguntas vêm da pasta de PDMs Modificados.
+
+    Assinatura, mensagens e retorno são os de sempre; a única mudança
+    (2026-09-24) é que, com dois arquivos do mesmo PDM na pasta, vence o de
+    revisão mais alta no nome, com aviso no log."""
+    # CP 4.4: `callbacks` é local, a assinatura pública não muda.
+    callbacks = from_legacy(callback_log=log_callback)
+    log = []
+    obter = _perguntas_da_pasta(pasta_pdms_modificados)
+    try:
+        bytes_template = _ler_template(path_template)
+    except Exception as e:
+        return f"Erro ao abrir template: {e}", [f"Erro ao abrir template: {e}"]
+
+    count, erro_de_template, _ = _montar_fichas(
+        lista_dados, obter, bytes_template, callbacks=callbacks,
+        retry_lock=retry_lock, idioma=idioma,
+        titulo="Aplicando templates de PDM nas fichas técnicas",
+        contexto={"pasta_pdms_modificados": pasta_pdms_modificados, "template": path_template},
+        log=log,
+    )
     if erro_de_template:
         return erro_de_template, log
     return f"Fichas geradas: {count}", log
+
+
+# As duas listas do fim do lote pela planilha (regras 4 e 5 do spec).
+_TITULOS_DAS_DIVERGENCIAS = (
+    (pdm_planilha.PORTAL_ATRAS, "PDM precisa subir de revisao no portal"),
+    (pdm_planilha.PLANILHA_ATRAS, "Planilha atras do portal, exporte uma nova da Itaipu"),
+)
+
+
+def _listar_divergencias(callbacks, divergencias):
+    """O `RelatorioLote` conta os avisos mas não os lista, e estas duas listas
+    SÃO o que o usuário faz depois: subir revisão no portal, ou pedir planilha
+    nova."""
+    for tipo, titulo in _TITULOS_DAS_DIVERGENCIAS:
+        do_tipo = [(pmib, causa) for pmib, qual, causa in divergencias if qual == tipo]
+        if do_tipo:
+            callbacks.log(f"{titulo} ({len(do_tipo)}):", nivel="warn")
+            for pmib, causa in do_tipo:
+                callbacks.log(f"   {pmib}: {causa}", nivel="warn")
+
+
+def aplicar_templates_fichas_da_planilha(lista_dados, catalogo, path_template,
+                                         log_callback=None, retry_lock=None):
+    """As perguntas vêm da PLANILHA de PDMs (`catalogo`, de
+    `pdm_catalogo.carregar`): revisão vigente, ordem da SECUENCIA, sem
+    "(nan)". Sempre em português: a ficha em inglês usa a pasta traduzida
+    (decisão do usuário, 2026-09-23). Regras em `services/pdm_planilha.py`."""
+    callbacks = from_legacy(callback_log=log_callback)
+    log = []
+    try:
+        pdm_planilha.conferir_catalogo(catalogo)
+    except pdm_planilha.PDMRecusado as e:
+        callbacks.log(str(e), nivel="error")
+        return str(e), [str(e)]
+    callbacks.log(pdm_planilha.descrever_catalogo(catalogo), nivel="info")
+    try:
+        bytes_template = _ler_template(path_template)
+    except Exception as e:
+        return f"Erro ao abrir template: {e}", [f"Erro ao abrir template: {e}"]
+
+    def obter(pmib, pdm_nome):
+        try:
+            resultado = pdm_planilha.perguntas_do_pdm(catalogo, pdm_nome)
+        except pdm_planilha.PDMRecusado as e:
+            raise _Recusado(str(e), f"FALHA: {pmib}: {e}") from e
+        pdm_do_item = resultado.pdm
+        return _Perguntas(
+            linhas=[(texto, None) for texto in resultado.linhas],
+            detalhe=(f"({pdm_do_item.codigo} R{pdm_do_item.revisao}, "
+                     f"{len(resultado.linhas)} perguntas)"),
+            avisos=([(resultado.causa, resultado.consequencia)]
+                    if resultado.divergencia else []),
+            divergencia=resultado.divergencia,
+            causa_da_divergencia=resultado.causa,
+        )
+
+    count, erro_de_template, divergencias = _montar_fichas(
+        lista_dados, obter, bytes_template, callbacks=callbacks,
+        retry_lock=retry_lock, idioma="pt",
+        titulo="Montando fichas a partir da planilha de PDMs",
+        contexto={"planilha": catalogo.origem, "template": path_template},
+        log=log,
+    )
+    _listar_divergencias(callbacks, divergencias)
+    if erro_de_template:
+        return erro_de_template, log
+    mensagem = f"Fichas geradas: {count}"
+    if divergencias:
+        mensagem += f" ({len(divergencias)} com revisao diferente do portal)"
+    return mensagem, log
 
 
 def mover_fichas_para_raiz(lista_dados):
