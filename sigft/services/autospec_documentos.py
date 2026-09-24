@@ -30,6 +30,7 @@ ele que a prova devolvida pela IA e conferida (`autospec_evidencia`).
 Sem tkinter, sem SDK de IA, sem Excel: so arquivo e texto.
 """
 import os
+import re
 from dataclasses import dataclass, field
 
 from sigft.core.llm.client import Anexo
@@ -220,3 +221,70 @@ def descrever_anexos(documentos):
         "tabelas, desenhos cotados e gráficos, e cite-os pelo nome exato abaixo:\n"
         + "\n".join(linhas)
     )
+
+
+# =============================================================================
+# O fabricante escrito no PDF anexado (2026-09-24)
+# =============================================================================
+# Nas fichas 0084, 0086 e 0088 a planilha nao trazia fabricante e a busca web
+# era pulada por falta de ancora -- com o nome do fabricante escrito no manual
+# que o usuario anexou. Duas formas, as duas vistas nos PDFs reais:
+#
+#   Primary brand                        (ficha de distribuidor, 0086_b)
+#   Georg Fischer / GF Piping Systems
+#
+#   © Georg Fischer Signet LLC           (rodape do datasheet, 0084)
+#
+# So documento LOCAL: o da web pode ser do concorrente, e e exatamente isso
+# que a ancora existe para filtrar. Regex e nao IA: roda antes da busca, de
+# graca, e o que nao reconhece devolve "" -- o comportamento de antes.
+_RE_ROTULO_FABRICANTE = re.compile(
+    r"^[ \t]*(?:manufacturer|fabricante|hersteller|fabricant|primary brand|brand|marca)"
+    r"[ \t]*(?::[ \t]*(?P<mesma>[^\n]+)|\n[ \t]*(?P<seguinte>[^\n]+))",
+    re.IGNORECASE | re.MULTILINE,
+)
+_RE_COPYRIGHT = re.compile(
+    r"(?:©|\(c\)|copyright)\s*(?:\d{4}(?:\s*-\s*\d{4})?\s*)?(?P<nome>[A-Z][^\n,•|]{1,60})"
+)
+_SUFIXOS_SOCIETARIOS = re.compile(
+    r"[\s,]+(?:LLC|Inc\.?|Corp\.?|GmbH|AG|SE|S\.?A\.?|Ltd\.?|Ltda\.?|S\.?p\.?A\.?|B\.?V\.?|Co\.?"
+    r"|All rights reserved)(?![a-z])",
+    re.IGNORECASE,
+)
+
+
+def _limpar_nome(bruto):
+    nome = str(bruto or "").split(" / ")[0].strip(" .:-\t")
+    # Corta no sufixo societario e em tudo depois dele: `Georg Fischer Signet
+    # LLC  2019` (manual real da 0086) tinha o ano do copyright no fim.
+    nome = _SUFIXOS_SOCIETARIOS.split(nome)[0]
+    return re.sub(r"\s+\d{4}$", "", nome).strip(" .,:-\t")
+
+
+def fabricante_dos_documentos(documentos):
+    """O fabricante que o PDF anexado declara, ou `""`.
+
+    Rotulo explicito primeiro (e o que o documento DIZ que e o fabricante),
+    copyright depois. Olha as 3 primeiras e a ultima pagina de cada documento
+    LOCAL -- e onde marca e rodape moram.
+    """
+    from sigft.services.autospec import _FABRICANTE_GENERICO  # preguicoso: evita ciclo
+
+    locais = [d for d in documentos or () if d.origem == "LOCAL"]
+    for padrao in ("rotulo", "copyright"):
+        for documento in locais:
+            paginas = documento.paginas[:3] + documento.paginas[-1:]
+            for pagina in paginas:
+                texto = str(pagina or "")
+                if padrao == "rotulo":
+                    achados = [m.group("mesma") or m.group("seguinte")
+                               for m in _RE_ROTULO_FABRICANTE.finditer(texto)]
+                else:
+                    achados = [m.group("nome") for m in _RE_COPYRIGHT.finditer(texto)]
+                for bruto in achados:
+                    nome = _limpar_nome(bruto)
+                    chave = nome.lower()
+                    if (2 <= len(nome) <= 60 and re.search(r"[a-zA-Z]{2}", nome)
+                            and chave not in _FABRICANTE_GENERICO):
+                        return nome
+    return ""

@@ -58,7 +58,7 @@ _FATORES = {
     "massa": {"kg": 1.0, "g": 1e-3, "mg": 1e-6, "t": 1e3, "lb": 0.45359237, "oz": 0.0283495},
     # ---- vazão (base: m3/s) -----------------------------------------
     "vazao": {
-        "m3/s": 1.0, "m3/h": 1 / 3600.0, "l/s": 1e-3, "l/min": 1e-3 / 60,
+        "m3/s": 1.0, "m3/h": 1 / 3600.0, "m3/min": 1 / 60.0, "l/s": 1e-3, "l/min": 1e-3 / 60,
         "l/h": 1e-3 / 3600, "ml/min": 1e-6 / 60, "gpm": 6.30902e-5,
     },
     # ---- potência (base: watt) --------------------------------------
@@ -107,9 +107,23 @@ _RE_POR_MINUTO = re.compile(r"(?<![a-z0-9.,])1\s*/\s*min\b")
 _RE_MIN_A_MENOS_UM = re.compile(r"\bmin\s*(?:\^|−|⁻|-)\s*1\b")
 
 
+# EXPOENTE SOLTO (2026-09-24, ficha 0094: "164 m, 190 m" de COMPRIMENTO). O
+# PyMuPDF extrai o `³` de `m³/h` como caractere separado -- outra linha, ou
+# com espaco antes --, e `164 m\n3\n/h` era lido como 164 METROS. Colar o
+# expoente de volta ANTES do NFKD, enquanto `³` ainda e inconfundivel; depois
+# dele vira `3` e `10 m 3 condutores` ficaria ambiguo.
+_RE_EXPOENTE_SOLTO = re.compile(r"\bm\s*([²³])")
+# Depois do NFKD: `m3 / h`, `m 3/h` e `m\n3\n/h` (expoente que ja veio como
+# digito comum) so sao vazao quando o `/h` vem junto -- sem ele, e outro 3.
+_RE_VAZAO_ESPACADA = re.compile(r"\bm\s*([23])\s*/\s*(h|min|s)\b")
+
+
 def _normalizar(texto):
-    s = unicodedata.normalize("NFKD", str(texto or ""))
+    s = _RE_EXPOENTE_SOLTO.sub(lambda m: "m" + ("2" if m.group(1) == "²" else "3"),
+                               str(texto or ""))
+    s = unicodedata.normalize("NFKD", s)
     s = "".join(c for c in s if not unicodedata.combining(c)).lower()
+    s = _RE_VAZAO_ESPACADA.sub(r"m\1/\2", s)
     s = _RE_POR_MINUTO.sub("rpm", s)
     return _RE_MIN_A_MENOS_UM.sub("min-1", s)
 
@@ -182,8 +196,12 @@ _RE_NUMERO_SOLTO = re.compile(r"[+-]?\d+(?:[.,]\d+)?")
 # Mesmo caso de `psig`, `mbar` e `min-1`. Ampliar o regex e seguro porque
 # `_unidade_valida` so aceita o que esta na tabela: o que entra a mais aqui
 # e descartado logo depois.
+# `m[23](/h|/min|/s)?` na FRENTE (2026-09-24): sem ele o regex geral pegava so o
+# `m` de `m3/h` e o descartava pelo digito colado -- a vazao em m³/h, que esta
+# na tabela, nunca era lida.
 _RE_UNIDADE_ADIANTE = re.compile(
-    r"^\s*(kgf/cm[²2]|kgf\.?m|°?[a-zµ]{1,6}(?:[./-][a-z0-9]{1,4})?|\")", re.IGNORECASE
+    r"^\s*(kgf/cm[²2]|kgf\.?m|m[23](?:/(?:h|min|s))?(?![a-z0-9])"
+    r"|°?[a-zµ]{1,6}(?:[./-][a-z0-9]{1,4})?|\")", re.IGNORECASE
 )
 
 

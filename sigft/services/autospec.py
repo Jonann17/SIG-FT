@@ -2594,6 +2594,19 @@ class AutoSpecCore:
         # 1. Processar Locais
         local_txt = self.process_local_documents(refs_locais, callbacks=cb)
 
+        # FABRICANTE DO PDF ANEXADO (2026-09-24, pedido do usuario). Planilha
+        # sem fabricante pulava a busca web por falta de ancora -- com o nome
+        # escrito no manual anexado. Vale como fabricante real: ancora da busca
+        # e dado do prompt (`process_queue` le `_fabricante_do_documento`).
+        self._fabricante_do_documento = ""
+        if not str(fab or "").strip():
+            achado = autospec_documentos.fabricante_dos_documentos(
+                getattr(self, "_documentos", None) or [])
+            if achado:
+                self._fabricante_do_documento = achado
+                fab = achado
+                cb.log(f"A planilha nao tem fabricante; usando o do documento anexado: {achado}.")
+
         # 2. Busca Web
         web_txt = ""
         sources = []
@@ -3650,6 +3663,7 @@ class AutoSpecCore:
                     full_ctx, sources = self.retrieve_context(
                         txt, fab, cod, refs, callbacks=callbacks, modelo=modelo
                     )
+                    fab = fab or getattr(self, "_fabricante_do_documento", "")
                     yield from _flush()
                     if sources: yield f" -> Fontes Web: {len(sources)}"
 
