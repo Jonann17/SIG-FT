@@ -140,11 +140,12 @@ def test_montar_autospec_interpola_todos_os_parametros():
     assert "<<<DESC_COMP>>>" in texto
     assert "<<<CONTEXT>>>" in texto
     assert texto.endswith("<<<DESC_LIST_TEXTO>>>")  # concatenado no final, fora do f-string
-    assert "Você é um Assistente Técnico Industrial." in texto
-    # P-04 (2026-08-11): o prompt passou a pedir {"valor", "fonte"} por campo,
-    # para dar rastreabilidade campo->fonte (regras de negócio §3.4).
-    assert 'CAMPOS A PREENCHER (Retorne JSON {ID: {"valor": Resposta, "fonte": Origem}}):' in texto
-    assert "fonte" in texto
+    # Reescrito em 2026-09-24 (frente do AutoSpec): o prompt passou a pedir a
+    # PROVA de cada valor, alem do {"valor", "fonte"} do P-04 (2026-08-11) --
+    # ver tests/test_autospec_evidencia.py para as regras novas do texto.
+    assert "Você é um engenheiro de especificação técnica." in texto
+    assert '{"ID": {"valor": "...", "tipo": "documento" | "calculo" | "deducao", "fonte": "..."' in texto
+    assert "CAMPOS A PREENCHER:" in texto
 
 
 def test_montar_autospec_context_falsy_cai_no_texto_padrao():

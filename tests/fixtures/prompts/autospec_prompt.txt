@@ -1,23 +1,36 @@
+Você é um engenheiro de especificação técnica. Preencha a ficha técnica de um material sobressalente de usina hidrelétrica (Itaipu) a partir dos documentos abaixo. A ficha vai para o cadastro oficial: cada valor precisa vir com a prova de onde saiu.
 
-        Você é um Assistente Técnico Industrial.
-        DADOS: Nome: Bomba Centrífuga Multiestágio | Descrição: Bomba centrífuga multiestágio, corpo em ferro fundido | Fab: KSB
+MATERIAL
+- Nome: Bomba Centrífuga Multiestágio
+- Descrição: Bomba centrífuga multiestágio, corpo em ferro fundido
+- Fabricante (planilha): KSB
 
-        CONTEXTO:
-        --- LOCAL DOC: manual.pdf ---
+DOCUMENTOS
+--- LOCAL DOC: manual.pdf ---
 Especificações técnicas do fabricante...
 
-        INSTRUÇÕES:
-        1. Priorize "LOCAL DOC".
-        2. Verifique se o documento bate com o material.
-        3. Campos [INFO TÉCNICA PADRÃO]: Se não houver dados, GERE com base em boas práticas.
-        4. Campos [ESTRITO]: Se não houver dados, deixe vazio "".
-        5. 'empilhamento': Apenas números inteiros.
-        6. Checkboxes: Deduza a melhor opção se não explícito.
-        7. Para CADA campo, informe de onde tirou a resposta em "fonte":
-           o nome do arquivo em "LOCAL DOC", a URL em "WEB DOC", ou
-           "conhecimento tecnico" quando deduziu por boas praticas.
+COMO LER
+1. Leia os documentos por inteiro: tabelas, notas, desenhos cotados e gráficos contam. Cota de desenho sem unidade segue a unidade do desenho (normalmente mm).
+2. Um documento pode cobrir outros modelos, ou até trazer outro produto junto. Use só o que é DESTE material (confira modelo, código, faixa). Se não der para saber qual linha é a dele, deixe o campo vazio.
+3. Priorize "LOCAL DOC" (manual anexado pelo usuário) sobre "WEB DOC".
+4. Não troque uma grandeza por outra parecida: temperatura de operação (ambiente) x temperatura do processo/fluido x temperatura de armazenamento; pressão de trabalho x pressão máxima ou de teste; corrente nominal x corrente de curto-circuito; rotação do motor x frequência da rede. Responda exatamente a que o campo pede.
 
-        CAMPOS A PREENCHER (Retorne JSON {ID: {"valor": Resposta, "fonte": Origem}}):
-        - ID 'empilhamento': Empilhamento máximo (unidades) [INFO TÉCNICA PADRÃO]
+COMO RESPONDER
+5. Responda na unidade que o campo pede. Se o documento usa outra, converta, use "tipo": "calculo" e ponha o valor original no "trecho".
+6. Campo que lista opções (no enunciado ou em "Escolha UMA"): responda exatamente uma delas. Se o documento não disser qual, escolha a mais provável para este tipo de material e use "tipo": "deducao".
+7. Campos [ESTRITO] com MEDIDA (dimensão, peso, tensão, corrente, pressão, vazão, rotação, temperatura, potência, grau de proteção IP/NEMA): só o valor escrito no documento. Nunca deduza um número. Sem documento, deixe "".
+8. Campos [ESTRITO] de TEXTO (material, norma, aplicação, uso, tipo construtivo, montagem, acoplamento): se o documento não disser, mas o tipo de equipamento tornar a resposta tecnicamente segura, responda com "tipo": "deducao" e explique em "justificativa". Se não for seguro, deixe "".
+9. Campos [INFO TÉCNICA PADRÃO]: gere com base em boas práticas de armazenagem e manuseio deste tipo de material, com "tipo": "deducao".
+10. 'empilhamento': só um número inteiro.
+
+A PROVA
+11. "trecho": copie LITERALMENTE do documento o pedaço de onde o valor saiu (até uns 200 caracteres), sem traduzir nem reescrever. Ele é conferido contra o documento: trecho que não existe invalida o valor.
+12. "fonte": o nome do documento exatamente como aparece acima, ou "conhecimento tecnico" na dedução. "pagina": o número da página, quando houver.
+
+Responda com um objeto JSON, uma entrada por ID pedido:
+{"ID": {"valor": "...", "tipo": "documento" | "calculo" | "deducao", "fonte": "...", "pagina": 1, "trecho": "...", "justificativa": "..."}}
+
+CAMPOS A PREENCHER:
+- ID 'empilhamento': Empilhamento máximo (unidades) [INFO TÉCNICA PADRÃO]
 - ID 'texto_breve_material': Texto breve do material [ESTRITO]
 - ID 'posicao_armazenamento': Posição de armazenamento [INFO TÉCNICA PADRÃO] (Opções: ['G25', 'G27', 'G29'])

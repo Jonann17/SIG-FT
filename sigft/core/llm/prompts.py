@@ -1057,31 +1057,58 @@ def montar_autospec(txt_brv, fab, desc_comp, context, desc_list_texto):
     constante daquele módulo -- fica lá para este módulo não precisar
     importar de autospec_backend, ver docstring do módulo).
 
-    Texto idêntico ao antigo preâmbulo de prompt em autospec_backend.py;
-    a concatenação final com o texto de desc_list é reproduzida aqui
-    como o retorno deste f-string somado a desc_list_texto -- mesmo
-    resultado byte a byte.
+    REESCRITO EM 2026-09-24 (frente do AutoSpec -- zona compartilhada,
+    commit isolado). O texto do CP 3.5 era a cópia byte a byte do prompt
+    original; este é deliberadamente outro, e a fixture do snapshot foi
+    regerada junto. Motivo, com os números: na comparação do usuário com o
+    AMP (Gemini lendo o PDF inteiro) nas fichas 0084/0086/0088/0094, o AMP
+    achou 78 informações e o AutoSpec 43. Quatro mudanças no texto:
+
+    - pede a PROVA de cada valor (tipo, fonte, página, trecho literal,
+      justificativa) -- é o que `autospec_evidencia` confere;
+    - DEDUÇÃO permitida em campo técnico de TEXTO (material, norma, uso),
+      marcada; NUNCA em número -- o único erro do AMP foi um número deduzido;
+    - regras que faltavam: não trocar temperatura de operação por a do
+      processo (erro da ficha 0084) nem rotação por frequência da rede
+      (ficha 0094); documento que traz outro produto junto (ficha 0088);
+      campo com lista de opções responde uma delas;
+    - cota de desenho sem unidade segue a unidade do desenho.
+
+    A concatenação com `desc_list_texto` no FIM continua igual.
     """
-    return f"""
-        Você é um Assistente Técnico Industrial.
-        DADOS: Nome: {txt_brv} | Descrição: {desc_comp} | Fab: {fab}
+    return f"""Você é um engenheiro de especificação técnica. Preencha a ficha técnica de um material sobressalente de usina hidrelétrica (Itaipu) a partir dos documentos abaixo. A ficha vai para o cadastro oficial: cada valor precisa vir com a prova de onde saiu.
 
-        CONTEXTO:
-        {context if context else "Nenhuma informação disponível."}
+MATERIAL
+- Nome: {txt_brv}
+- Descrição: {desc_comp}
+- Fabricante (planilha): {fab}
 
-        INSTRUÇÕES:
-        1. Priorize "LOCAL DOC".
-        2. Verifique se o documento bate com o material.
-        3. Campos [INFO TÉCNICA PADRÃO]: Se não houver dados, GERE com base em boas práticas.
-        4. Campos [ESTRITO]: Se não houver dados, deixe vazio "".
-        5. 'empilhamento': Apenas números inteiros.
-        6. Checkboxes: Deduza a melhor opção se não explícito.
-        7. Para CADA campo, informe de onde tirou a resposta em "fonte":
-           o nome do arquivo em "LOCAL DOC", a URL em "WEB DOC", ou
-           "conhecimento tecnico" quando deduziu por boas praticas.
+DOCUMENTOS
+{context if context else "Nenhuma informação disponível."}
 
-        CAMPOS A PREENCHER (Retorne JSON {{ID: {{"valor": Resposta, "fonte": Origem}}}}):
-        """ + desc_list_texto
+COMO LER
+1. Leia os documentos por inteiro: tabelas, notas, desenhos cotados e gráficos contam. Cota de desenho sem unidade segue a unidade do desenho (normalmente mm).
+2. Um documento pode cobrir outros modelos, ou até trazer outro produto junto. Use só o que é DESTE material (confira modelo, código, faixa). Se não der para saber qual linha é a dele, deixe o campo vazio.
+3. Priorize "LOCAL DOC" (manual anexado pelo usuário) sobre "WEB DOC".
+4. Não troque uma grandeza por outra parecida: temperatura de operação (ambiente) x temperatura do processo/fluido x temperatura de armazenamento; pressão de trabalho x pressão máxima ou de teste; corrente nominal x corrente de curto-circuito; rotação do motor x frequência da rede. Responda exatamente a que o campo pede.
+
+COMO RESPONDER
+5. Responda na unidade que o campo pede. Se o documento usa outra, converta, use "tipo": "calculo" e ponha o valor original no "trecho".
+6. Campo que lista opções (no enunciado ou em "Escolha UMA"): responda exatamente uma delas. Se o documento não disser qual, escolha a mais provável para este tipo de material e use "tipo": "deducao".
+7. Campos [ESTRITO] com MEDIDA (dimensão, peso, tensão, corrente, pressão, vazão, rotação, temperatura, potência, grau de proteção IP/NEMA): só o valor escrito no documento. Nunca deduza um número. Sem documento, deixe "".
+8. Campos [ESTRITO] de TEXTO (material, norma, aplicação, uso, tipo construtivo, montagem, acoplamento): se o documento não disser, mas o tipo de equipamento tornar a resposta tecnicamente segura, responda com "tipo": "deducao" e explique em "justificativa". Se não for seguro, deixe "".
+9. Campos [INFO TÉCNICA PADRÃO]: gere com base em boas práticas de armazenagem e manuseio deste tipo de material, com "tipo": "deducao".
+10. 'empilhamento': só um número inteiro.
+
+A PROVA
+11. "trecho": copie LITERALMENTE do documento o pedaço de onde o valor saiu (até uns 200 caracteres), sem traduzir nem reescrever. Ele é conferido contra o documento: trecho que não existe invalida o valor.
+12. "fonte": o nome do documento exatamente como aparece acima, ou "conhecimento tecnico" na dedução. "pagina": o número da página, quando houver.
+
+Responda com um objeto JSON, uma entrada por ID pedido:
+{{"ID": {{"valor": "...", "tipo": "documento" | "calculo" | "deducao", "fonte": "...", "pagina": 1, "trecho": "...", "justificativa": "..."}}}}
+
+CAMPOS A PREENCHER:
+""" + desc_list_texto
 
 
 # =============================================================================
