@@ -2811,6 +2811,14 @@ git push -u origin claude/practical-einstein-16tqfl
 
 ---
 
+## Desvios na execução (registrados ao executar)
+
+- **Task 1:** a contagem esperada no Step 3 era "51 passed"; o arquivo tem 42 testes no total (33 que rodavam + os 9 religados). O critério que importa, nenhum `SKIPPED`, foi cumprido.
+- **Task 4, desempenho** (investigado com `systematic-debugging`). A primeira versão do fatiador, rodada na planilha real, levava 3,5 s por PDM (uns 70 minutos para os 1.199). Duas causas, medidas por perfil e corrigidas uma de cada vez, cada uma com o seu teste de invariante:
+  1. `ws[linha]` do openpyxl recalcula `max_column` varrendo as ~530 mil células a cada linha (75% do tempo). Correção: `iter_rows` com `max_row`/`max_col`, e `max_column` lido uma vez em `regenerar_pastas`. Teste: `test_fatiar_nao_varre_a_planilha_inteira_a_cada_linha`. Resultado: 830 ms por PDM.
+  2. O `copy()` de estilo do openpyxl faz ida e volta em XML, e a atribuição compara por hash. Correção: `_CopiadorDeEstilo` copia cada estilo de origem uma vez e reaproveita o `_style` montado dentro de cada arquivo. Teste: `test_cada_estilo_da_planilha_e_copiado_uma_vez_so`. Resultado: 18 ms por PDM, nenhum arquivo diferente célula a célula da versão sem cache.
+  - Medido no fim: **as duas pastas, 1.199 PDMs cada, em 44,9 s** (pico de 430 MB); a segunda rodada, toda "já em dia", em 9,2 s.
+
 ## Auto-revisão do plano (feita)
 
 - **Cobertura do spec:** §4.1 → Task 1; §4.2 e §5 → Task 2; §4.3 → Task 3; §6 → Task 4; §7 → Task 5; §9 e §10 → Tasks 1 a 6. Mudança consciente em relação ao spec: `perguntas_do_pdm` não recebe `pmib` (o `RelatorioLote` já põe o PMIB na linha do aviso, e as listas do fim também); a linha de início diz `PDM(s)`.
