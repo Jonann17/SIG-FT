@@ -37,6 +37,8 @@ from sigft.services import autospec_rag
 # Leitura INTEGRAL (2026-09-24): o documento por pagina, e o que vai para a IA
 # como o proprio PDF. Ver o docstring do modulo para os numeros que motivaram.
 from sigft.services import autospec_documentos
+# A conferencia pela PROVA que a IA devolve com cada valor (2026-09-24).
+from sigft.services import autospec_evidencia
 from sigft.core.excel import locking
 
 # -----------------------------------------------------------------
@@ -1095,6 +1097,63 @@ def _motivo_com_os_numeros(valor, contexto, motivo):
         return motivo
     lista = ", ".join(faltam[:5])
     return f"{motivo}; nao achei no documento: {lista}"
+
+
+def _anotar_celula(celula, nota):
+    """Comentário do Excel na célula, assinado "AutoSpec".
+
+    Import preguiçoso e tolerante: sem `openpyxl.comments` (a suíte dubla o
+    openpyxl inteiro), a célula só fica sem o comentário -- o valor e o log
+    continuam. Nota nunca pode custar a ficha.
+    """
+    try:
+        from openpyxl.comments import Comment
+    except ImportError:
+        return False
+    try:
+        celula.comment = Comment(str(nota)[:1500], "AutoSpec")
+        return True
+    except Exception:
+        return False
+
+
+class _ConferenciaDoLastro:
+    """O que a conferência de UMA resposta decidiu, campo a campo.
+
+    Existe para os dois caminhos (`_lastro_legado` e `_conferir_pela_prova`)
+    escreverem nas mesmas listas -- e o log do fim contar uma história só.
+    """
+
+    def __init__(self):
+        self.aprovados = {}
+        self.reprovados = []   # (descricao, valor, motivo)
+        self.convertidos = []  # (descricao, valor, [explicacoes])
+        self.corrigidos = []   # (descricao, valor_da_ia, valor_gravado, motivo)
+        self.deducoes = []     # (descricao, valor, justificativa)
+        self.de_imagem = []    # (descricao, valor, onde)
+        self.notas = {}        # campo -> comentario da celula
+
+
+def _documento_de_pagina_sem_texto(prova, anexados):
+    """O documento ANEXADO que a prova cita, quando a página citada (ou o
+    documento inteiro) não tem texto -- a IA leu a imagem, e não há texto
+    onde conferir o trecho. `None` em qualquer outro caso.
+
+    Só vale para documento que foi como PDF: no caminho de texto a IA não viu
+    a página-imagem, e um trecho dela seria invenção.
+    """
+    fonte = _normalizar_texto_busca(getattr(prova, "fonte", ""))
+    if not fonte:
+        return None
+    for documento in anexados or ():
+        nomes = [_normalizar_texto_busca(documento.nome), _normalizar_texto_busca(documento.url)]
+        if not any(n and (n in fonte or fonte in n) for n in nomes):
+            continue
+        if not documento.texto.strip():
+            return documento
+        if prova.pagina and prova.pagina in documento.paginas_sem_texto:
+            return documento
+    return None
 
 
 def classificar_resultado(fabricante, identificadores, title, snippet, link):
@@ -2765,6 +2824,9 @@ class AutoSpecCore:
             documentos, aceita_pdf=nativo)
         lista_de_campos = "\n".join(desc_list)
         tags = {"modulo": "autospec_backend", "tarefa": "autospec"}
+        # A conferência precisa saber o que a IA viu como ARQUIVO: prova de
+        # página-imagem só existe lá. Ver `_documento_de_pagina_sem_texto`.
+        self._documentos_anexados = list(como_arquivo)
 
         if como_arquivo:
             anexos = [documento.anexo() for documento in como_arquivo]
@@ -2848,6 +2910,7 @@ class AutoSpecCore:
                     nivel="warn",
                 )
                 anexos = []
+                self._documentos_anexados = []
                 contexto_final = self._contexto_de_texto(context, missing, cb)
                 contexto_conferencia = contexto_final
                 prompt = prompts.montar_autospec(
@@ -2968,10 +3031,15 @@ class AutoSpecCore:
         lastro deles esvaziaria metade da ficha por desenho.
         """
         cb = callbacks or _callbacks_silenciosos()
-        aprovados = {}
-        reprovados = []
-        convertidos = []
-        corrigidos = []
+        r = _ConferenciaDoLastro()
+        # A PROVA de cada valor (2026-09-24), quando a IA devolveu no formato
+        # novo -- ver `autospec_evidencia`. Resposta sem prova segue a regra
+        # antiga, inteira. `getattr`: os testes constroem o core com
+        # `__new__`, e quem chama `_filtrar_por_lastro` direto nao passou pela
+        # normalizacao.
+        provas = getattr(self, "ultimas_evidencias_por_campo", None) or {}
+        anexados = getattr(self, "_documentos_anexados", None) or []
+        contexto_completo = contexto
 
         # RECORTE POR MODELO (2026-09-14). O lastro passa a conferir contra as
         # linhas que servem a ESTE item, e nao contra o documento inteiro --
@@ -2994,37 +3062,42 @@ class AutoSpecCore:
         for campo, valor in (valores or {}).items():
             descricao = str((missing.get(campo) or {}).get("desc") or campo)
             if not _exige_lastro(campo):
-                aprovados[campo] = valor
+                r.aprovados[campo] = valor
                 continue
-            # A UNIDADE QUE O ENUNCIADO JA DECLARA (2026-09-15). Ver
-            # `autospec_unidades.aplicar_unidade_da_pergunta`: a pergunta diz
-            # `in (mm)`, a IA responde `152 x 91 x 135` sem repetir o `mm`, e
-            # sem unidade nao ha medida para conferir -- uma conversao CERTA
-            # de polegada para milimetro era jogada fora. O valor conferido
-            # ganha a unidade; o que vai para a FICHA continua o original.
-            valor_conferivel = _com_unidade_do_enunciado(valor, descricao)
-            if not valor_tem_lastro(valor_conferivel, contexto):
-                # Antes de descartar: a IA pode ter lido o número CERTO e
-                # errado só a conta. Aí o dado é bom e a aritmética é do
-                # computador — ver `autospec_unidades.corrigir_conversao`.
-                certo, motivo = _corrigir_conversao(
-                    valor_conferivel, contexto, pergunta=descricao)
-                if certo is not None:
-                    aprovados[campo] = certo
-                    corrigidos.append((descricao, str(valor), certo, motivo))
-                    continue
-                reprovados.append(
-                    (descricao, str(valor), _motivo_com_os_numeros(valor, contexto, motivo)))
+            prova = provas.get(campo)
+            if prova is None:
+                status, motivo = self._lastro_legado(campo, valor, descricao, contexto, r)
+                if status == "reprovado":
+                    r.reprovados.append((descricao, str(valor), motivo))
                 continue
+            self._conferir_pela_prova(
+                campo, valor, descricao, prova, contexto, contexto_completo, anexados, r)
 
-            aprovados[campo] = valor
-            # Número que passou por CONVERSÃO não foi copiado do documento —
-            # foi calculado. Aprovar em silêncio seria pior que reprovar: quem
-            # homologa precisa saber que aquele valor não está escrito lá, e
-            # poder refazer a conta.
-            explicacoes = explicar_conversao(valor, contexto)
-            if explicacoes:
-                convertidos.append((descricao, str(valor), explicacoes))
+        # Lidos por `fill_save`, que vira cada nota em comentario na celula:
+        # o log some, o arquivo fica.
+        self.notas_por_campo = r.notas
+        aprovados, reprovados = r.aprovados, r.reprovados
+        convertidos, corrigidos = r.convertidos, r.corrigidos
+
+        if r.deducoes:
+            cb.log(
+                f"{len(r.deducoes)} campo(s) preenchidos por DEDUCAO TECNICA: nao estao "
+                f"escritos no documento. Cada celula leva um comentario com a "
+                f"justificativa. Confira antes de homologar:",
+                nivel="warn",
+            )
+            for descricao, valor, justificativa in r.deducoes:
+                cb.log(f"      · {descricao[:60]} = {valor[:40]!r}", nivel="warn")
+                cb.log(f"        porque: {justificativa[:160]}", nivel="warn")
+
+        if r.de_imagem:
+            cb.log(
+                f"{len(r.de_imagem)} campo(s) lidos pela IA em pagina SEM TEXTO (imagem do "
+                f"PDF): a prova nao tem como ser conferida no texto. Confira na pagina:",
+                nivel="warn",
+            )
+            for descricao, valor, onde in r.de_imagem:
+                cb.log(f"      · {descricao[:60]} = {valor[:40]!r} ({onde})", nivel="warn")
 
         if convertidos:
             cb.log(
@@ -3069,6 +3142,128 @@ class AutoSpecCore:
                 if motivo:
                     cb.log(f"        motivo: {motivo}", nivel="warn")
         return aprovados
+
+    def _lastro_legado(self, campo, valor, descricao, contexto, r):
+        """A regra de 2026-08-13, inteira: o valor tem de estar no documento.
+
+        `(status, motivo)`: `"aprovado"` e `"corrigido"` já ficam registrados
+        em `r`; `"reprovado"` volta com o motivo e quem chama decide -- a
+        conferência pela prova ainda pode aceitar um TEXTO como dedução.
+        """
+        # A UNIDADE QUE O ENUNCIADO JA DECLARA (2026-09-15). Ver
+        # `autospec_unidades.aplicar_unidade_da_pergunta`: a pergunta diz
+        # `in (mm)`, a IA responde `152 x 91 x 135` sem repetir o `mm`, e
+        # sem unidade nao ha medida para conferir -- uma conversao CERTA
+        # de polegada para milimetro era jogada fora. O valor conferido
+        # ganha a unidade; o que vai para a FICHA continua o original.
+        valor_conferivel = _com_unidade_do_enunciado(valor, descricao)
+        if not valor_tem_lastro(valor_conferivel, contexto):
+            # Antes de descartar: a IA pode ter lido o número CERTO e
+            # errado só a conta. Aí o dado é bom e a aritmética é do
+            # computador — ver `autospec_unidades.corrigir_conversao`.
+            certo, motivo = _corrigir_conversao(
+                valor_conferivel, contexto, pergunta=descricao)
+            if certo is not None:
+                r.aprovados[campo] = certo
+                r.corrigidos.append((descricao, str(valor), certo, motivo))
+                return "corrigido", motivo
+            return "reprovado", _motivo_com_os_numeros(valor, contexto, motivo)
+
+        r.aprovados[campo] = valor
+        # Número que passou por CONVERSÃO não foi copiado do documento —
+        # foi calculado. Aprovar em silêncio seria pior que reprovar: quem
+        # homologa precisa saber que aquele valor não está escrito lá, e
+        # poder refazer a conta.
+        explicacoes = explicar_conversao(valor, contexto)
+        if explicacoes:
+            r.convertidos.append((descricao, str(valor), explicacoes))
+        return "aprovado", ""
+
+    def _conferir_pela_prova(self, campo, valor, descricao, prova, contexto,
+                             contexto_completo, anexados, r):
+        """Confere um valor pela PROVA que a IA devolveu com ele (2026-09-24).
+
+        A tabela de decisão está no docstring de `autospec_evidencia` e na
+        spec `docs/superpowers/specs/2026-09-24-autospec-leitura-integral-design.md`
+        §3.4. Em uma frase: número só entra se sair do trecho citado, e o
+        trecho tem de existir no documento, na linha do modelo certo; texto
+        sem prova entra como DEDUÇÃO marcada.
+        """
+        texto = str(valor)
+
+        def _deduzir(justificativa):
+            r.aprovados[campo] = valor
+            r.deducoes.append((descricao, texto, justificativa))
+            r.notas[campo] = (
+                f"AutoSpec: deducao tecnica, nao esta escrito no documento. {justificativa}"
+            ).strip()
+
+        if prova.tipo == "deducao":
+            if autospec_evidencia.deducao_permitida(texto):
+                _deduzir(prova.justificativa or "(a IA nao justificou)")
+            else:
+                r.reprovados.append((descricao, texto, (
+                    "a IA DEDUZIU um valor com numero. Medida so entra na ficha quando "
+                    "esta escrita no documento. Preencha a mao.")))
+            return
+
+        if not prova.trecho:
+            status, motivo = self._lastro_legado(campo, valor, descricao, contexto, r)
+            if status != "reprovado":
+                return
+            if autospec_evidencia.deducao_permitida(texto):
+                _deduzir(prova.justificativa or
+                         "a IA citou o documento sem copiar o trecho, e o texto nao aparece nele")
+            else:
+                r.reprovados.append((descricao, texto, motivo))
+            return
+
+        achado = autospec_evidencia.achar_trecho(prova.trecho, contexto)
+        if achado is None:
+            if contexto != contexto_completo and autospec_evidencia.achar_trecho(
+                    prova.trecho, contexto_completo):
+                r.reprovados.append((descricao, texto, (
+                    f"o trecho citado ({prova.trecho[:60]!r}) e da linha de OUTRO modelo "
+                    f"do documento, nao do modelo deste item. Preencha a mao.")))
+                return
+            imagem = _documento_de_pagina_sem_texto(prova, anexados)
+            if imagem is not None:
+                onde = imagem.nome + (f", pag. {prova.pagina}" if prova.pagina else "")
+                r.aprovados[campo] = valor
+                r.de_imagem.append((descricao, texto, onde))
+                r.notas[campo] = (
+                    f"AutoSpec: lido de pagina sem texto ({onde}); a prova nao pode ser "
+                    f"conferida automaticamente. Confira no documento.")
+                return
+            status, motivo = self._lastro_legado(campo, valor, descricao, contexto, r)
+            if status != "reprovado":
+                return
+            if autospec_evidencia.deducao_permitida(texto):
+                _deduzir(f"o trecho citado pela IA nao foi achado no documento "
+                         f"({prova.trecho[:60]!r}). {prova.justificativa}".strip())
+            else:
+                r.reprovados.append((descricao, texto, (
+                    f"o trecho citado pela IA ({prova.trecho[:60]!r}) nao esta no "
+                    f"documento lido. {motivo}")))
+            return
+
+        valor_conferivel = _com_unidade_do_enunciado(valor, descricao)
+        confere, explicacoes = autospec_evidencia.valor_sai_do_trecho(valor_conferivel, achado)
+        if confere:
+            r.aprovados[campo] = valor
+            if explicacoes:
+                r.convertidos.append((descricao, texto, explicacoes))
+            return
+        # A conta refeita DENTRO do trecho citado, e so nele: foi procurar
+        # "a unica medida de rotacao" no documento inteiro que transformou o
+        # 2860 rpm certo em 3600 (ficha 0094).
+        certo, motivo = _corrigir_conversao(valor_conferivel, achado, pergunta=descricao)
+        if certo is not None:
+            r.aprovados[campo] = certo
+            r.corrigidos.append((descricao, texto, certo, motivo))
+            return
+        r.reprovados.append((descricao, texto, (
+            f"o valor nao sai do trecho que a IA citou ({achado[:70]!r}): {motivo}")))
 
     def _conferir_fontes_citadas(self, contexto, callbacks=None):
         """Denuncia fonte citada que não corresponde a documento lido.
@@ -3125,10 +3320,16 @@ class AutoSpecCore:
         dicionário de sempre.
         """
         self.ultimas_fontes_por_campo = {}
+        self.ultimas_evidencias_por_campo = {}
         valores, fontes = normalizar_resposta_autospec(
             parsed, campos_pedidos=campos_pedidos, callbacks=callbacks
         )
         self.ultimas_fontes_por_campo = fontes
+        # A PROVA de cada valor (2026-09-24): tipo, pagina, trecho,
+        # justificativa. Lida da MESMA resposta crua, a parte, para o contrato
+        # de `normalizar_resposta_autospec` (valores, fontes) nao mudar.
+        self.ultimas_evidencias_por_campo = autospec_evidencia.extrair_evidencias(
+            parsed, campos_pedidos=campos_pedidos)
         return valores
 
     @staticmethod
@@ -3188,6 +3389,9 @@ class AutoSpecCore:
         ws = wb[nome_da_aba_da_ficha(wb)]
         font = Font(color="0000FF")
         nao_casados = []
+        # Deducao e leitura de pagina-imagem (2026-09-24): o que o log disse
+        # vira COMENTARIO na celula. Ver `_filtrar_por_lastro`.
+        notas = getattr(self, "notas_por_campo", None) or {}
 
         for k, val in ai_data.items():
             if k in missing and val:
@@ -3200,6 +3404,8 @@ class AutoSpecCore:
                     else:
                         ws[ref].value = val
                     ws[ref].font = font
+                    if notas.get(k):
+                        _anotar_celula(ws[ref], notas[k])
                 elif info['type'] == 'checkbox':
                     alvo = self._resolver_celula_checkbox(val, info)
                     if alvo:
