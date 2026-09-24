@@ -242,6 +242,43 @@ def tokenizar(texto) -> set[str]:
 # Registros
 # =============================================================================
 @dataclass(frozen=True)
+class Caracteristica:
+    """Uma característica da revisão VIGENTE de um PDM, como a planilha a traz.
+
+    É a matéria-prima das perguntas da ficha do módulo 2
+    (`services/pdm_planilha.py`). `nome` e `ajuda` saem VERBATIM, só sem
+    espaço nas pontas, e não passam por `_txt`: o Upload Specs (4.3) casa o
+    nome da ficha com o do Master por IGUALDADE exata, então colapsar um
+    espaço duplo quebraria o casamento em silêncio. E a quebra de linha da
+    ajuda (54 casos na planilha de 23/09/2026) é formatação da Itaipu.
+    """
+
+    nome: str
+    ajuda: str = ""
+    # SECUENCIA: a ordem oficial. A ordem das LINHAS no arquivo não é ela em
+    # 1.140 dos 1.199 PDMs da planilha de 23/09/2026.
+    sequencia: int | None = None
+    # A linha da aba TEMPLATE_PDM de onde a característica veio. É por ela
+    # que a regeneração da pasta From Itaipu copia a formatação da linha.
+    linha: int | None = None
+
+
+@dataclass(frozen=True)
+class Identidade:
+    """O que um código de PDM é numa revisão: título e nome base.
+
+    Existe por causa de dois códigos da planilha de 23/09/2026 que trazem PDMs
+    DIFERENTES: `PDM.3010.007` é ACOPLAMENTO ROSCADO na R1 e FIXADOR na R0;
+    `PDM.5945.026` é UNIDADE RESISTOR e RELE SEGURANCA. O nome base muda, e é
+    isso que separa o caso do histórico de revisão, em que só o modificador
+    costuma mudar (`PDM.7010.018`: SERVIDOR CONSOLE na R0, SERVIDOR na R2)."""
+
+    revisao: int | None
+    titulo: str
+    nome_base: str
+
+
+@dataclass(frozen=True)
 class PDM:
     """Um PDM do catálogo. No arquivo real ele nasce de N linhas da aba
     `TEMPLATE_PDM` -- uma por característica -- agrupadas pelo código."""
@@ -261,6 +298,14 @@ class PDM:
     # Master ao lado da que o portal atribuiu permite denunciar as duas
     # direções: ficha criada com revisão velha, ou Master desatualizado.
     revisao: int | None = None
+    # As características da revisão vigente, na ordem da SECUENCIA, com a
+    # ajuda. Diferente de `caracteristicas` (logo acima), que é o nome
+    # normalizado, na ordem do arquivo, e existe para o RANQUEAMENTO: uma não
+    # substitui a outra. Vazio no formato manipulado antigo.
+    caracteristicas_em_ordem: tuple[Caracteristica, ...] = ()
+    # Uma identidade por (revisão, nome base) vista na planilha, da maior
+    # revisão para a menor. Vazio no formato manipulado antigo.
+    identidades: tuple[Identidade, ...] = ()
 
     @property
     def completo(self) -> str:
@@ -290,6 +335,11 @@ class ClasseFSC:
 class CatalogoPDM:
     pdms: list[PDM]
     classes: list[ClasseFSC] = field(default_factory=list)
+    # A data da exportação, lida da linha 2 da aba TEMPLATE_PDM ("Exportado
+    # el:"). É o que torna visível, no log, uma planilha velha.
+    exportado_em: str = ""
+    # O arquivo de onde o catálogo veio (preenchido por `carregar`).
+    origem: str = ""
 
     def __post_init__(self):
         self._por_codigo = {p.codigo: p for p in self.pdms}
@@ -536,7 +586,10 @@ _COL_BASE_PT = 5
 _COL_MODIF_ES = 6
 _COL_MODIF_PT = 7
 _COL_REVISAO = 9
+_COL_SEQUENCIA = 13
+_COL_CARACT_ES = 15
 _COL_CARACT_PT = 16
+_COL_AJUDA_PT = 18
 
 # Colunas da aba GRUPOS_CLASES, 0-based (linha 2 é o cabeçalho).
 _CLASSES_PRIMEIRA_LINHA = 3
@@ -580,10 +633,45 @@ def _revisao_como_numero(valor) -> float:
         return -1.0
 
 
+def _verbatim(valor) -> str:
+    """O texto como a planilha traz, só sem espaço nas pontas. Ver
+    `Caracteristica` para o porquê de não passar por `_txt`."""
+    return "" if valor is None else str(valor).strip()
+
+
+def _inteiro(valor) -> int | None:
+    """`"12"` -> 12; vazio ou lixo -> None."""
+    texto = str(valor if valor is not None else "").strip().replace(",", ".")
+    try:
+        return int(float(texto))
+    except (ValueError, OverflowError):
+        return None
+
+
+def _ordem_oficial(caracteristica: Caracteristica):
+    # Sem sequência legível vai para o fim; o desempate é a linha do arquivo.
+    sequencia = caracteristica.sequencia
+    return (sequencia is None, sequencia or 0, caracteristica.linha or 0)
+
+
+def _da_maior_revisao(identidade: Identidade):
+    return -(identidade.revisao if identidade.revisao is not None else -1)
+
+
+def _exportado_em(ws) -> str:
+    """O "Exportado el: <data>" da linha 2. Vazio se a linha não for essa."""
+    for linha in ws.iter_rows(min_row=2, max_row=2, values_only=True):
+        if linha and _txt(_valor(linha, 0)).upper().startswith("EXPORTADO"):
+            return _txt(_valor(linha, 1))
+    return ""
+
+
 def _ler_mestra(wb) -> CatalogoPDM:
     ws = wb["TEMPLATE_PDM"]
     acumulado: dict[str, dict] = {}
-    for linha in ws.iter_rows(min_row=_MESTRA_PRIMEIRA_LINHA, values_only=True):
+    for numero, linha in enumerate(
+            ws.iter_rows(min_row=_MESTRA_PRIMEIRA_LINHA, values_only=True),
+            start=_MESTRA_PRIMEIRA_LINHA):
         if not linha:
             continue
         codigo = _txt(linha[_COL_CODIGO]).upper()
@@ -593,8 +681,20 @@ def _ler_mestra(wb) -> CatalogoPDM:
         if not _RE_CODIGO_PDM.fullmatch(codigo):
             continue
 
-        registro = acumulado.setdefault(codigo, {"revisao": None,
-                                                 "caracts": []})
+        registro = acumulado.setdefault(codigo, {"revisao": None, "caracts": [],
+                                                 "ordem": [], "identidades": {}})
+        revisao = _revisao_como_numero(_valor(linha, _COL_REVISAO))
+        titulo = _preferir(_valor(linha, _COL_TITULO_PT), _valor(linha, _COL_TITULO_ES))
+        base = _preferir(_valor(linha, _COL_BASE_PT), _valor(linha, _COL_BASE_ES))
+
+        # Toda (revisão, nome base) vista entra aqui, INCLUSIVE a de revisão
+        # que o resto do laço descarta: é o que deixa ver os dois PDMs de um
+        # código duplicado (ver `Identidade`).
+        registro["identidades"].setdefault(
+            (revisao, normalizar(base)),
+            Identidade(revisao=int(revisao) if revisao >= 0 else None,
+                       titulo=titulo, nome_base=base),
+        )
 
         # SÓ a revisão vigente, e isso vale para o TÍTULO tanto quanto para as
         # características.
@@ -614,18 +714,16 @@ def _ler_mestra(wb) -> CatalogoPDM:
         #
         # Por isso os campos de identidade são REESCRITOS quando aparece uma
         # revisão maior, em vez de fixados na primeira linha vista.
-        revisao = _revisao_como_numero(_valor(linha, _COL_REVISAO))
         if registro["revisao"] is not None and revisao < registro["revisao"]:
             continue
         if registro["revisao"] is None or revisao > registro["revisao"]:
             registro["revisao"] = revisao
             registro["caracts"] = []
+            registro["ordem"] = []
             registro.update(
                 classe=_txt(_valor(linha, _COL_CLASSE)),
-                titulo=_preferir(_valor(linha, _COL_TITULO_PT),
-                                 _valor(linha, _COL_TITULO_ES)),
-                base=_preferir(_valor(linha, _COL_BASE_PT),
-                               _valor(linha, _COL_BASE_ES)),
+                titulo=titulo,
+                base=base,
                 modif=_preferir(_valor(linha, _COL_MODIF_PT),
                                 _valor(linha, _COL_MODIF_ES)),
             )
@@ -633,6 +731,16 @@ def _ler_mestra(wb) -> CatalogoPDM:
         caract = _txt(_valor(linha, _COL_CARACT_PT))
         if caract and caract not in registro["caracts"]:
             registro["caracts"].append(caract)
+
+        nome = (_verbatim(_valor(linha, _COL_CARACT_PT))
+                or _verbatim(_valor(linha, _COL_CARACT_ES)))
+        if nome:
+            registro["ordem"].append(Caracteristica(
+                nome=nome,
+                ajuda=_verbatim(_valor(linha, _COL_AJUDA_PT)),
+                sequencia=_inteiro(_valor(linha, _COL_SEQUENCIA)),
+                linha=numero,
+            ))
 
     pdms = [
         PDM(
@@ -648,10 +756,13 @@ def _ler_mestra(wb) -> CatalogoPDM:
             revisao=(int(r["revisao"])
                      if r["revisao"] is not None and r["revisao"] >= 0
                      else None),
+            caracteristicas_em_ordem=tuple(sorted(r["ordem"], key=_ordem_oficial)),
+            identidades=tuple(sorted(r["identidades"].values(), key=_da_maior_revisao)),
         )
         for codigo, r in acumulado.items()
     ]
-    return CatalogoPDM(pdms=pdms, classes=_ler_classes_mestra(wb))
+    return CatalogoPDM(pdms=pdms, classes=_ler_classes_mestra(wb),
+                       exportado_em=_exportado_em(ws))
 
 
 def _valor(linha, indice):
@@ -776,13 +887,16 @@ def carregar(caminho) -> CatalogoPDM:
     wb = load_workbook(caminho, read_only=True, data_only=True)
     try:
         if "TEMPLATE_PDM" in wb.sheetnames:
-            return _ler_mestra(wb)
-        if "PDMs" in wb.sheetnames:
-            return _ler_manipulada(wb)
-        raise ValueError(
-            "A planilha nao tem a aba TEMPLATE_PDM (planilha-mestra da "
-            'Itaipu) nem a aba "PDMs" (formato manipulado). Abas '
-            f"encontradas: {', '.join(wb.sheetnames)}."
-        )
+            catalogo = _ler_mestra(wb)
+        elif "PDMs" in wb.sheetnames:
+            catalogo = _ler_manipulada(wb)
+        else:
+            raise ValueError(
+                "A planilha nao tem a aba TEMPLATE_PDM (planilha-mestra da "
+                'Itaipu) nem a aba "PDMs" (formato manipulado). Abas '
+                f"encontradas: {', '.join(wb.sheetnames)}."
+            )
+        catalogo.origem = str(caminho)
+        return catalogo
     finally:
         wb.close()
