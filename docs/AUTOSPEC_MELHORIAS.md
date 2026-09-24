@@ -1370,6 +1370,9 @@ rede corporativa, e ele recebe o texto (não o PDF).
 
 ### Para o CHANGELOG da próxima versão (texto sugerido)
 
+> ✅ **Entrou no bloco `1.1.0` do `CHANGELOG.md` em 2026-09-24**, junto com o fabricante do PDF e
+> a vazão em m³/h, para a release publicada com autorização do Luan.
+
 - **AutoSpec** passa a entregar o **documento inteiro** à IA — e, com Gemini, o **próprio PDF**,
   com desenhos, tabelas e gráficos. Antes ia só um recorte de ~24 mil caracteres.
 - Cada valor técnico agora vem com **a prova** (trecho e página do documento), e o programa
