@@ -13,6 +13,11 @@ por PDM, transforma cada um numa **tabela de perguntas**, e depois cola essas
 perguntas dentro de um **template de ficha** — escolhendo qual tabela entra em
 qual ficha pelo **PDM que o `_STATUS_PMIB` associa àquele código PMIB**.
 
+> **Desde 2026-09-24 há um segundo caminho**, que pula as pastas: as perguntas
+> saem direto da planilha de PDMs. É o padrão da tela; o caminho das pastas
+> continua como método antigo. Ver
+> [a seção própria](#desde-2026-09-24-a-ficha-pode-nascer-direto-da-planilha).
+
 ## As três etapas, e as pastas de cada uma
 
 ```
@@ -50,7 +55,7 @@ Esta é a etapa que dá nome à pasta "PDMs **Modificados**".
 | Coluna do PDM original | Índice | O que é |
 |---|---|---|
 | **Q** | 16 | a descrição da característica técnica |
-| **S** | 18 | a unidade |
+| **S** | 18 | o texto de ajuda, a instrução de preenchimento (ver [a forma da pergunta](#a-forma-da-pergunta--o-que-ela-realmente-é)); não é a unidade |
 
 e monta a linha final assim:
 
@@ -142,11 +147,70 @@ por ficha).
    do mesmo PDM na pasta e o resultado depende da ordem do `glob`. É o que a
    Op 3 (`logica_excluir_duplicados`) existe para evitar.
 
+   **Desde 2026-09-24** vence o arquivo de **revisão mais alta no nome**
+   (`_escolher_arquivo`; sem revisão no nome conta como a mais baixa), com
+   aviso no log dizendo quantos havia e qual foi usado. O casamento continua
+   por substring.
+
+## Desde 2026-09-24: a ficha pode nascer direto da planilha
+
+As pastas "From Itaipu" e "PDMs Modificados" eram uma cópia da planilha que
+precisava ser refeita a cada revisão de PDM, e ninguém refazia: em setembro de
+2026 as pastas inteiras estavam desatualizadas. O caminho novo lê a planilha
+exportada pela Itaipu e monta a ficha sem passar por elas:
+
+```
+  PDMs_SAM-GM_<data>.xlsx              (a exportação da Itaipu, aba TEMPLATE_PDM)
+        │
+        │  pdm_catalogo.carregar()      revisão vigente, características em ordem
+        ▼
+  CatalogoPDM
+        │
+        │  pdm_planilha.perguntas_do_pdm()   as 9 regras abaixo, uma ficha por vez
+        ▼
+  as perguntas  "1 - NOME (AJUDA):"
+        │
+        │  pdm.aplicar_templates_fichas_da_planilha()   o MESMO motor do método antigo
+        ▼
+  Fichas/4500063671.0071.xlsx
+```
+
+O motor (`pdm._montar_fichas`) é um só para os dois caminhos: template lido uma
+vez, aba resolvida por `nome_da_aba_da_ficha`, perguntas a partir da C79, a
+mesma geometria. Só muda de onde vêm as perguntas.
+
+| # | Situação | O que acontece |
+|---|---|---|
+| 1 | Qual revisão | A vigente: a maior `REVISIÓN` do código (a mesma regra do módulo 1 e do Upload Specs) |
+| 2 | Ordem | Pela coluna `SECUENCIA`, numeradas de 1 a N; sem sequência legível, vai para o fim |
+| 3 | Texto | `"N - NOME (AJUDA):"`, ou `"N - NOME:"` sem ajuda; nome e ajuda como a Itaipu escreveu. Acabou o `(nan)` |
+| 4 | Portal numa revisão **menor** que a planilha | Gera com a da planilha; aviso de que o PDM precisa subir de revisão no portal |
+| 5 | Portal numa revisão **maior** que a planilha | Gera com a da planilha; aviso para exportar uma planilha nova da Itaipu |
+| 6 | Código com dois nomes base na planilha | Gera só se o título do "PDM usado" começar pelo nome base da revisão vigente; se não, recusa mostrando os dois |
+| 7 | "PDM usado" sem código, código fora da planilha, PDM sem característica | Recusa aquela ficha; o lote segue |
+| 8 | Planilha sem característica nenhuma (o formato manipulado antigo) | O lote para antes de começar |
+| 9 | "PDM usado" sem revisão (formato antigo) | Sem conferência de revisão; gera com a vigente |
+
+Os avisos 4 e 5 também saem agrupados no fim do log, com a lista dos PMIBs de
+cada caso. A ficha em inglês **não** tem esse caminho: as perguntas traduzidas
+só existem na pasta.
+
+**As pastas continuam, agora regeneráveis.** O botão "Regenerar as pastas"
+(`pdm_regeneracao.regenerar_pastas`) refaz as duas a partir da planilha, com a
+revisão no nome: `PDM_1650_001 - ACUMULADOR - R2.xlsx` na From Itaipu e
+`PDM_1650_001 - ACUMULADOR - R2_formatado.xlsx` na Modificados. O arquivo
+desatualizado vai para a subpasta `_versoes_antigas` (nada é apagado), o que já
+está na revisão vigente não é regravado, e a revisão no nome é o que o item 4
+acima usa para escolher entre dois arquivos do mesmo PDM.
+
 ## Onde cada coisa mora
 
 | O quê | Onde |
 |---|---|
 | As três operações | `sigft/services/pdm.py` |
+| A leitura da planilha de PDMs (`CatalogoPDM`) | `sigft/core/pdm_catalogo.py` |
+| As regras da ficha pela planilha | `sigft/services/pdm_planilha.py` |
+| A regeneração das duas pastas | `sigft/services/pdm_regeneracao.py` |
 | A tela (3 abas) | `sigft/app/views/pdm.py` |
 | Pastas padrão (`pdms_modificados`, `templates_ficha`) | `sigft/core/prefs.py` → `PASTAS_PADRAO_SEED` |
 | Chaves de diálogo (`pdm.template`, `pdm.status_pmib`) | `sigft/core/prefs.py` → `PASTAS_PADRAO_POR_CHAVE` |

@@ -31,6 +31,7 @@ import os
 
 import pytest
 
+from _openpyxl_de_verdade import openpyxl_de_verdade
 from sigft.core import pdm_catalogo
 
 
@@ -392,18 +393,16 @@ def test_bloco_de_candidatos_desempata_titulos_iguais_pela_classe():
 # =============================================================================
 # E. Leitura de planilha -- só com openpyxl REAL
 # =============================================================================
-def _openpyxl_real():
-    try:
-        import openpyxl
-    except Exception:
-        return False
-    # conftest.py troca openpyxl por MagicMock no contêiner enxuto.
-    return type(getattr(openpyxl, "Workbook", None)).__name__ == "type"
+# Estes testes usavam `skipif(openpyxl e o duble)` -- e sob o `conftest.py` o
+# openpyxl e SEMPRE o duble: nenhum deles rodou ate 2026-09-24, nem no CI. O
+# fixture troca o duble pelo pacote real so durante o teste.
+@pytest.fixture
+def openpyxl_real():
+    with openpyxl_de_verdade() as modulo:
+        yield modulo
 
 
-requer_openpyxl = pytest.mark.skipif(
-    not _openpyxl_real(), reason="openpyxl real ausente (stub do conftest)"
-)
+requer_openpyxl = pytest.mark.usefixtures("openpyxl_real")
 
 
 def _escrever_mestra(caminho):
@@ -639,3 +638,200 @@ def test_carregar_arquivo_sem_aba_conhecida_levanta_erro_claro(tmp_path):
 
     with pytest.raises(ValueError, match="TEMPLATE_PDM"):
         pdm_catalogo.carregar(caminho)
+
+
+# =============================================================================
+# F. As caracteristicas em ordem, as identidades e a data (modulo 2, 2026-09-24)
+# =============================================================================
+# Logica pura sobre linhas em memoria: uma planilha FALSA com so o que o leitor
+# usa. Assim estes testes rodam sempre, com ou sem openpyxl de verdade.
+class _AbaFalsa:
+    def __init__(self, linhas):
+        self._linhas = [tuple(linha) for linha in linhas]
+
+    def iter_rows(self, min_row=1, max_row=None, values_only=True):
+        fim = len(self._linhas) if max_row is None else min(max_row, len(self._linhas))
+        for indice in range(min_row - 1, fim):
+            yield self._linhas[indice]
+
+
+class _PlanilhaFalsa:
+    def __init__(self, abas):
+        self._abas = abas
+        self.sheetnames = list(abas)
+
+    def __getitem__(self, nome):
+        return self._abas[nome]
+
+
+def _linha_mestra(codigo, revisao, caract, *, seq=None, ajuda=None,
+                  titulo="VALVULA X", base="VALVULA", modif="X", caract_es=None):
+    """Uma linha da aba TEMPLATE_PDM, nas colunas REAIS (A=0 ... X=23)."""
+    linha = [None] * 24
+    linha[0], linha[1] = codigo, codigo.split(".")[1]
+    linha[2] = linha[3] = titulo
+    linha[4] = linha[5] = base
+    linha[6] = linha[7] = modif
+    linha[9], linha[13] = revisao, seq
+    linha[15], linha[16], linha[18] = caract_es, caract, ajuda
+    return linha
+
+
+def _mestra_falsa(dados, exportado_em="23/09/2026 11:02:02"):
+    preambulo = [
+        ["TEMPLATE PARA LA IMPORTACIÓN/EXPORTACIÓN DE PDM"],
+        ["Exportado el:", exportado_em],
+        [], [], ["PDM - PADRÓN DESCRIPTIVO DE MATERIALES"], ["CÓDIGO PDM"],
+    ]
+    return _PlanilhaFalsa({"TEMPLATE_PDM": _AbaFalsa(preambulo + dados)})
+
+
+def _em_ordem(catalogo, codigo):
+    return [c.nome for c in catalogo.por_codigo(codigo).caracteristicas_em_ordem]
+
+
+def test_caracteristicas_em_ordem_seguem_a_secuencia_e_nao_a_linha():
+    """1.140 dos 1.199 PDMs da planilha de 23/09/2026 NAO trazem as linhas na
+    ordem da SECUENCIA: o ACUMULADOR vem 1, 2, 20, 19... A ficha numerava pela
+    ordem do arquivo."""
+    cat = pdm_catalogo._ler_mestra(_mestra_falsa([
+        _linha_mestra("PDM.1650.001", "2", "DIMENSOES", seq="1"),
+        _linha_mestra("PDM.1650.001", "2", "MATERIAL", seq="2"),
+        _linha_mestra("PDM.1650.001", "2", "GAS DE ENCHIMENTO", seq="20"),
+        _linha_mestra("PDM.1650.001", "2", "CLASSE DE PRESSAO", seq="19"),
+    ]))
+
+    assert _em_ordem(cat, "PDM.1650.001") == [
+        "DIMENSOES", "MATERIAL", "CLASSE DE PRESSAO", "GAS DE ENCHIMENTO"]
+
+
+def test_caracteristicas_em_ordem_so_da_revisao_vigente():
+    cat = pdm_catalogo._ler_mestra(_mestra_falsa([
+        _linha_mestra("PDM.4820.015", "0", "CARACTERISTICA OBSOLETA", seq="1"),
+        _linha_mestra("PDM.4820.015", "1", "DIAMETRO NOMINAL", seq="1"),
+        _linha_mestra("PDM.4820.015", "1", "CLASSE DE PRESSAO", seq="2"),
+    ]))
+
+    assert _em_ordem(cat, "PDM.4820.015") == ["DIAMETRO NOMINAL", "CLASSE DE PRESSAO"]
+
+
+def test_nome_e_ajuda_saem_como_a_planilha_traz():
+    """O Upload Specs (4.3) casa o nome da ficha com o do Master por IGUALDADE:
+    colapsar o espaco duplo quebraria o casamento. E a quebra de linha da ajuda
+    e da Itaipu (54 ajudas da planilha de 23/09/2026 tem uma)."""
+    cat = pdm_catalogo._ler_mestra(_mestra_falsa([
+        _linha_mestra("PDM.4310.001", "1", "  VAZAO  NOMINAL ", seq="1",
+                      ajuda=" Indicar a vazao.\nObserv: FAD  "),
+    ]))
+    pdm = cat.por_codigo("PDM.4310.001")
+
+    assert pdm.caracteristicas_em_ordem[0].nome == "VAZAO  NOMINAL"
+    assert pdm.caracteristicas_em_ordem[0].ajuda == "Indicar a vazao.\nObserv: FAD"
+    # o nome do RANQUEAMENTO continua normalizado, como sempre foi
+    assert pdm.caracteristicas == ("VAZAO NOMINAL",)
+
+
+def test_ajuda_vazia_vira_texto_vazio():
+    cat = pdm_catalogo._ler_mestra(_mestra_falsa([
+        _linha_mestra("PDM.2940.900", "0", "APLICACAO", seq="1", ajuda=None),
+        _linha_mestra("PDM.2940.900", "0", "USO", seq="2", ajuda=""),
+    ]))
+
+    ajudas = [c.ajuda for c in cat.por_codigo("PDM.2940.900").caracteristicas_em_ordem]
+    assert ajudas == ["", ""]
+
+
+def test_linha_aponta_de_onde_a_caracteristica_veio():
+    cat = pdm_catalogo._ler_mestra(_mestra_falsa([
+        _linha_mestra("PDM.1650.001", "2", "B", seq="2"),
+        _linha_mestra("PDM.1650.001", "2", "A", seq="1"),
+    ]))
+
+    pares = [(c.nome, c.linha) for c in cat.por_codigo("PDM.1650.001").caracteristicas_em_ordem]
+    assert pares == [("A", 8), ("B", 7)]
+
+
+def test_sequencia_ilegivel_vai_para_o_fim_na_ordem_do_arquivo():
+    cat = pdm_catalogo._ler_mestra(_mestra_falsa([
+        _linha_mestra("PDM.1650.001", "2", "SEM ORDEM 1", seq=None),
+        _linha_mestra("PDM.1650.001", "2", "SEGUNDA", seq="2"),
+        _linha_mestra("PDM.1650.001", "2", "SEM ORDEM 2", seq="lixo"),
+        _linha_mestra("PDM.1650.001", "2", "PRIMEIRA", seq="1"),
+    ]))
+
+    assert _em_ordem(cat, "PDM.1650.001") == ["PRIMEIRA", "SEGUNDA", "SEM ORDEM 1", "SEM ORDEM 2"]
+
+
+def test_nome_cai_no_espanhol_quando_o_portugues_vem_vazio():
+    cat = pdm_catalogo._ler_mestra(_mestra_falsa([
+        _linha_mestra("PDM.1650.001", "2", None, seq="1", caract_es="DIMENSIONES"),
+    ]))
+
+    assert _em_ordem(cat, "PDM.1650.001") == ["DIMENSIONES"]
+
+
+def test_identidades_mostram_os_dois_pdms_de_um_codigo_duplicado():
+    """Caso REAL da planilha de 23/09/2026: PDM.3010.007 e ACOPLAMENTO ROSCADO
+    (R1, 2024) e FIXADOR (R0, 2026). A vigente continua sendo a de maior
+    revisao; as identidades e que deixam ver a outra."""
+    cat = pdm_catalogo._ler_mestra(_mestra_falsa([
+        _linha_mestra("PDM.3010.007", "1", "NORMAS TECNICAS APLICAVEIS", seq="7",
+                      titulo="ACOPLAMENTO ROSCADO", base="ACOPLAMENTO", modif="ROSCADO"),
+        _linha_mestra("PDM.3010.007", "0", "NORMAS TECNICAS APLICAVEIS", seq="1",
+                      titulo="FIXADOR", base="FIXADOR", modif=""),
+        _linha_mestra("PDM.3010.007", "0", "COMPRIMENTO TOTAL", seq="2",
+                      titulo="FIXADOR", base="FIXADOR", modif=""),
+    ]))
+    pdm = cat.por_codigo("PDM.3010.007")
+
+    assert pdm.titulo == "ACOPLAMENTO ROSCADO"
+    assert [c.nome for c in pdm.caracteristicas_em_ordem] == ["NORMAS TECNICAS APLICAVEIS"]
+    assert [(i.revisao, i.titulo, i.nome_base) for i in pdm.identidades] == [
+        (1, "ACOPLAMENTO ROSCADO", "ACOPLAMENTO"),
+        (0, "FIXADOR", "FIXADOR"),
+    ]
+
+
+def test_pdm_comum_tem_uma_identidade_so():
+    cat = pdm_catalogo._ler_mestra(_mestra_falsa([
+        _linha_mestra("PDM.1650.001", "2", "A", seq="1"),
+        _linha_mestra("PDM.1650.001", "2", "B", seq="2"),
+    ]))
+
+    assert len(cat.por_codigo("PDM.1650.001").identidades) == 1
+
+
+def test_exportado_em_vem_da_linha_2():
+    cat = pdm_catalogo._ler_mestra(_mestra_falsa(
+        [_linha_mestra("PDM.1650.001", "2", "A", seq="1")],
+        exportado_em="23/09/2026 11:02:02"))
+
+    assert cat.exportado_em == "23/09/2026 11:02:02"
+
+
+def test_sem_a_linha_de_exportacao_a_data_fica_vazia():
+    aba = _AbaFalsa([[], ["outra coisa", "x"], [], [], [], [],
+                     _linha_mestra("PDM.1650.001", "2", "A", seq="1")])
+
+    cat = pdm_catalogo._ler_mestra(_PlanilhaFalsa({"TEMPLATE_PDM": aba}))
+
+    assert cat.exportado_em == ""
+
+
+def test_formato_manipulado_nao_tem_caracteristicas_nem_identidades():
+    aba = _AbaFalsa([["PDM COMPLETO"], ["PDM.4820.004 - VALVULA ESFERA"]])
+
+    cat = pdm_catalogo._ler_manipulada(_PlanilhaFalsa({"PDMs": aba}))
+    pdm = cat.por_codigo("PDM.4820.004")
+
+    assert pdm.caracteristicas_em_ordem == ()
+    assert pdm.identidades == ()
+    assert cat.exportado_em == ""
+
+
+@requer_openpyxl
+def test_carregar_guarda_de_qual_arquivo_veio(tmp_path):
+    caminho = os.path.join(str(tmp_path), "mestra.xlsx")
+    _escrever_mestra(caminho)
+
+    assert pdm_catalogo.carregar(caminho).origem == caminho
