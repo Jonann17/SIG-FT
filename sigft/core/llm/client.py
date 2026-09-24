@@ -698,11 +698,18 @@ _POLITICA_RETRY_POR_TAREFA: dict[str, dict[str, Any]] = {
     # `autospec` (CP 3.2): agora COM consumidor real (`AutoSpecCore.__init__`
     # -- ver autospec_backend.py). `temperature=0.1` preserva o valor
     # deliberado que o LangChain aplicava antes da migração (ver acima).
+    #
+    # `timeout_s` e `max_retries: 1` (2026-09-24, frente do AutoSpec): a IA
+    # passou a receber o documento INTEIRO (ou o proprio PDF), e 120 s por
+    # tentativa ficou curto -- a ficha 0088 bateu tres `ReadTimeout` seguidos,
+    # 6 min 12 s. Com 300 s, tres tentativas seriam 15 min presos numa ficha;
+    # uma nova tentativa basta para o soluco passageiro do provedor.
     "autospec": {
-        "max_retries": 2,
+        "max_retries": 1,
         "retry_sleep_seconds": 5,
         "min_interval_seconds": 60,
         "temperature": 0.1,
+        "timeout_s": 300,
     },
     # `traduzir_pdm` (2026-08-28): traducao PT->EN das perguntas dos PDMs
     # Modificados. Entrou em `LLM_TASKS` e NAO aqui -- e por isso a tarefa era
@@ -848,6 +855,11 @@ def get_llm(
             "o formato."
         ) from None
     temperature = politica.pop("temperature")
+    # Opcional, ao contrario de `temperature`: so a tarefa que precisa de mais
+    # (ou menos) que o default de 120 s do provedor declara. Ausente, o
+    # provedor e construido exatamente como antes.
+    timeout = politica.pop("timeout_s", None)
+    extras_do_provedor: dict[str, Any] = {} if timeout is None else {"timeout": timeout}
 
     # [CP 8.2] Declarados antes do `if` porque os três ramos atribuem a mesma
     # variável classes DIFERENTES (Gemini/OpenRouter/OpenAICompat). Sem isto o
@@ -879,14 +891,18 @@ def get_llm(
         else:
             chaves_resolvidas = chaves if chaves is not None else config.carregar_chaves()
             chave = chaves_resolvidas.get(config.CHAVE_POR_PROVIDER[provider_id])
-        provider = GeminiProvider(chave, cfg["model"], temperature=temperature)
+        provider = GeminiProvider(
+            chave, cfg["model"], temperature=temperature, **extras_do_provedor
+        )
 
     elif provider_id == config.PROVIDER_OPENROUTER:
         from sigft.core.llm.providers.openrouter import OpenRouterProvider  # import local
 
         chaves_resolvidas = chaves if chaves is not None else config.carregar_chaves()
         chave = chaves_resolvidas.get(config.CHAVE_POR_PROVIDER[provider_id])
-        provider = OpenRouterProvider(chave, cfg["model"], temperature=temperature)
+        provider = OpenRouterProvider(
+            chave, cfg["model"], temperature=temperature, **extras_do_provedor
+        )
 
     elif provider_id == config.PROVIDER_OPENAI_COMPAT:
         from sigft.core.llm.providers.openai_compat import OpenAICompatProvider  # import local
@@ -902,7 +918,8 @@ def get_llm(
                 "(chave ausente/vazia em `chaves`)."
             )
         provider = OpenAICompatProvider(
-            chave, cfg["model"], base_url=base_url, temperature=temperature
+            chave, cfg["model"], base_url=base_url, temperature=temperature,
+            **extras_do_provedor,
         )
 
     else:

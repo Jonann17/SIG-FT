@@ -64,9 +64,11 @@ def test_autospec_ganha_retry_que_antes_nao_tinha():
     core = _make_autospec_core()
 
     # Política de "autospec" -- mesma tabela usada por get_llm() -- concede
-    # 2 retentativas (3 tentativas totais); o LangChain de antes não tinha
-    # NENHUM retry.
-    assert core._llm.max_retries == 2  # noqa: SLF001
+    # retentativa; o LangChain de antes não tinha NENHUM retry. Era 2 até
+    # 2026-09-24; virou 1 quando o tempo por tentativa subiu de 120 s para
+    # 300 s (documento inteiro para a IA) -- ver
+    # tests/test_autospec_falha_da_ia.py.
+    assert core._llm.max_retries == 1  # noqa: SLF001
 
 
 # =============================================================================

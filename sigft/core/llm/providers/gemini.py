@@ -84,6 +84,7 @@ class GeminiProvider:
         *,
         genai_module: Any | None = None,
         temperature: float | None = None,
+        timeout: float | None = None,
     ) -> None:
         """
         Parâmetros:
@@ -109,7 +110,14 @@ class GeminiProvider:
             `get_llm`/`_POLITICA_RETRY_POR_TAREFA`), reproduzindo o
             `temperature=0.1` que `ChatGoogleGenerativeAI` aplicava antes da
             remoção do LangChain (ver docs/refatoracao/PENDENCIAS.md).
+          timeout (2026-09-24, keyword-only): segundos por chamada, repassados
+            como `request_options={"timeout": ...}` ao `generate_content`.
+            `None` (default) = a chamada sai exatamente como antes, sem
+            `request_options`. Só `autospec` declara (300 s, ver
+            `_POLITICA_RETRY_POR_TAREFA`), porque passou a mandar o documento
+            inteiro.
         """
+        self._timeout = timeout
         if genai_module is not None:
             self._genai = genai_module
         else:
@@ -168,7 +176,10 @@ class GeminiProvider:
             kwargs["generation_config"] = generation_config
 
         modelo = self._genai.GenerativeModel(self._model, **kwargs)
-        resp = modelo.generate_content(prompt)
+        if self._timeout is None:
+            resp = modelo.generate_content(prompt)
+        else:
+            resp = modelo.generate_content(prompt, request_options={"timeout": self._timeout})
 
         texto = resp.text
         usage = getattr(resp, "usage_metadata", None)

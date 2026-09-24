@@ -133,7 +133,9 @@ def test_get_llm_erro_lista_as_tarefas_validas_de_llm_modelos_hoje():
         ("validar_ficha", 2, 5, 60),
         ("condicoes", 2, 30, None),
         ("tech_specs", 2, 2, None),
-        ("autospec", 2, 5, 60),
+        # 1, e nao 2, desde 2026-09-24: cada tentativa passou a esperar 300 s
+        # (documento inteiro), ver tests/test_autospec_falha_da_ia.py.
+        ("autospec", 1, 5, 60),
     ],
 )
 def test_get_llm_politica_de_retry_por_tarefa(
@@ -465,7 +467,7 @@ def test_get_llm_politica_de_retry_e_temperature_continuam_da_tarefa_mesmo_com_s
     # ...mas a política continua sendo a de "autospec" (tabela por TAREFA,
     # nunca por modelo/seleção) -- mesmos valores de
     # test_get_llm_politica_de_retry_por_tarefa acima.
-    assert llm.max_retries == 2
+    assert llm.max_retries == 1
     assert llm.retry_sleep_seconds == 5
     assert llm.min_interval_seconds == 60
     assert llm._provider._temperature == 0.1  # noqa: SLF001
