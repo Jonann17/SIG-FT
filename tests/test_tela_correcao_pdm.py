@@ -477,3 +477,13 @@ def test_o_botao_de_uma_tela_bloqueada_nasce_DESABILITADO():
 
     assert "TELAS_BLOQUEADAS" in fonte
     assert "disabled" in fonte
+
+
+def test_a_tela_bloqueada_aparece_na_barra_sem_o_em_obras():
+    """Pedido do usuário em 2026-09-24: o "(em obras)" deixava o texto grande
+    demais na barra lateral, e o botão cinza e desabilitado já diz que a tela
+    não abre."""
+    metodo = _metodo(_arvore(RAIZ / "sigft" / "app" / "main.py"),
+                     "SIG_FT_App", "_criar_botao_menu")
+
+    assert "em obras" not in ast.unparse(metodo)

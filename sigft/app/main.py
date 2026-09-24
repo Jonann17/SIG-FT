@@ -41,7 +41,6 @@ from dotenv import load_dotenv
 from PIL import Image
 
 from sigft.app import backends
-from sigft.app import parada
 from sigft import _build_info
 from sigft.app.theme import COLORS
 from sigft.app.views.analyzer import ModuloAnalyzer
@@ -504,8 +503,10 @@ class SIG_FT_App(ctk.CTk):
     def _criar_botao_menu(self, parent, text, frame_name, row):
         # Botões mais limpos, sem cor de fundo sólida, apenas no hover
         bloqueada = frame_name in TELAS_BLOQUEADAS
+        # Tela bloqueada: só cinza e desabilitada. O "(em obras)" que vinha no
+        # texto deixava o item grande demais na barra (pedido de 2026-09-24).
         btn = ctk.CTkButton(parent,
-                            text=f"  {text}" + ("  (em obras)" if bloqueada else ""),
+                            text=f"  {text}",
                             command=lambda: self.show_frame(frame_name),
                             fg_color="transparent",
                             text_color="gray45" if bloqueada else COLORS["text_light"],
@@ -596,20 +597,6 @@ class SIG_FT_App(ctk.CTk):
         frame = self.frames.get(name)
         if frame:
             frame.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
-
-    # =========================================================================
-    # A PARADA GERAL  [2026-09-23]
-    # =========================================================================
-    def parar_tudo(self):
-        """Pede parada a toda tela que estiver rodando alguma coisa.
-
-        É o botão da home. A varredura mora em `sigft/app/parada.py` (tem teste
-        de comportamento lá); aqui só entram os frames.
-
-        ⚠️ Repare que NÃO há lista de telas escrita na mão: a tela nova que
-        souber parar entra no botão sozinha, sem ninguém lembrar de vir aqui.
-        """
-        return parada.parar_tudo(self.frames)
 
     def show_modulo(self, nome_modulo):
         self.show_frame(nome_modulo)

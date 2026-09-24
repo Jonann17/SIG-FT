@@ -29,10 +29,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Quando a planilha traz **dois PDMs diferentes com o mesmo código** (acontece em 2 códigos da exportação de 23/09/2026), a ficha não sai misturando os dois: o log mostra os dois nomes para conferir com a Itaipu.
 - Botão novo **"Regenerar as pastas"**: refaz as duas pastas a partir da planilha, com a **revisão do PDM no nome do arquivo** (`PDM_1650_001 - ACUMULADOR - R2_formatado.xlsx`). A versão antiga de cada PDM vai para a subpasta `_versoes_antigas`; nada é apagado.
 - No método antigo, quando a pasta tem mais de um arquivo do mesmo PDM, vale o de **revisão mais alta no nome**, com aviso no log. Antes valia o primeiro que aparecesse.
-
-**Tela inicial**
-
-- Botão **"Interromper tudo"**, para sair no meio de uma lista sem esperar ela acabar. Cada robô termina a ficha que está na mão e para. Nada do que já foi feito se perde: só as fichas que o portal confirmou viram COMPLETO.
+- A tela funciona em **janela menor**: o formulário ganhou barra de rolagem e o log de saída mantém o tamanho padrão. Antes, fora da janela maximizada, o log encolhia até sumir e o fim das abas ficava cortado.
 
 **Organização**
 
@@ -44,7 +41,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
 **Correção de PDM — a tela existe, mas está DESLIGADA nesta versão**
 
-- A tela "4.4. Correção de PDM" aparece na barra lateral marcada **"(em obras)"** e não abre. Ela está pronta e testada, mas **nunca rodou contra o portal de verdade** — e é um módulo que apaga características técnicas para repô-las depois. Liberar antes da validação real seria arriscar fichas suas. Fica desligada até essa execução acontecer.
+- A tela "4.4. Correção de PDM" aparece na barra lateral **em cinza** e não abre. Ela está pronta e testada, mas **nunca rodou contra o portal de verdade** — e é um módulo que apaga características técnicas para repô-las depois. Liberar antes da validação real seria arriscar fichas suas. Fica desligada até essa execução acontecer.
 
 ## 1.0.0 - 2026-09-22
 

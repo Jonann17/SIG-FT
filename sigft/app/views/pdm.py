@@ -12,7 +12,7 @@ from tkinter import messagebox
 import pandas as pd
 
 from sigft.app import backends, file_dialogs
-from sigft.app.theme import COLORS
+from sigft.app.theme import ALTURA_CONSOLE, COLORS
 from sigft.app.widgets import dialogs as app_dialogs
 from sigft.core import pdm_catalogo
 from sigft.core import prefs
@@ -75,9 +75,14 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
         # Variável para Aba 3
         self.path_clean_dir = ctk.StringVar()
 
+        # O formulário fica com a sobra e ROLA quando não cabe; o console tem o
+        # tamanho padrão das telas (2026-09-24). Antes era o contrário: o
+        # console esticava para ocupar o que o formulário deixasse. Maximizado
+        # ficava bom; numa janela de 1280x700 o formulário pedia 704 px e o
+        # console sumia abaixo da borda. Ver tests/test_pdm_tela_layout.py.
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=0)  # PARA: O conteúdo usa só o espaço necessário
-        self.grid_rowconfigure(2, weight=1)  # PARA: O console puxa todo o resto do espaço!
+        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(2, weight=0)
 
         # Header
         header = ctk.CTkFrame(self, height=50, fg_color="transparent")
@@ -85,12 +90,12 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
         ctk.CTkLabel(header, text="Gerenciador de PDMs", font=("Roboto", 24, "bold"), text_color=COLORS["text_white"]).pack(side="left")
 
         # Content
-        self.content = ctk.CTkFrame(self, fg_color="transparent")
+        self.content = ctk.CTkScrollableFrame(self, fg_color="transparent")
         self.content.grid(row=1, column=0, sticky="nsew", padx=20, pady=10)
 
-        # Console (Agora sem limite de altura e expandindo em todas as direções - nsew)
-        self.console = ctk.CTkTextbox(self, font=("Consolas", 12))
-        self.console.grid(row=2, column=0, sticky="nsew", padx=20, pady=10)
+        # Console
+        self.console = ctk.CTkTextbox(self, height=ALTURA_CONSOLE, font=("Consolas", 12))
+        self.console.grid(row=2, column=0, sticky="ew", padx=20, pady=10)
 
         self._build_ui()
 
@@ -175,12 +180,14 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
         # --- SEÇÃO 1: Fatiar lista geral (From Itaipu), método antigo ---
         frm_from = ctk.CTkFrame(parent, fg_color="#333333", corner_radius=8)
         frm_from.pack(fill="x", padx=20, pady=6)
+        # O texto cinza fica na linha de baixo, como na seção de cima: na mesma
+        # linha do título ele cortava o botão numa janela de 1280 px de largura.
         cab_from = ctk.CTkFrame(frm_from, fg_color="transparent")
-        cab_from.pack(fill="x", padx=10, pady=8)
+        cab_from.pack(fill="x", padx=10, pady=(6, 0))
         ctk.CTkLabel(cab_from, text="1. Fatiar Arquivo Geral (From Itaipu)", font=("Roboto", 14, "bold")).pack(side="left")
-        ctk.CTkLabel(cab_from, text="usa a planilha do painel de cima; só cria os PDMs que faltam na pasta",
-                     font=("Roboto", 11), text_color="gray").pack(side="left", padx=10)
         ctk.CTkButton(cab_from, text="Executar: Criar PDMs From Itaipu", command=self._op1_from_itaipu, fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"]).pack(side="right")
+        ctk.CTkLabel(frm_from, text="Usa a planilha do painel de cima; só cria os PDMs que faltam na pasta.",
+                     font=("Roboto", 11), text_color="gray", anchor="w").pack(anchor="w", padx=10, pady=(0, 8))
 
         # --- SEÇÃO 2: Formatar PDMs (Modificados) ---
         frm_mod = ctk.CTkFrame(parent, fg_color="#333333", corner_radius=8)

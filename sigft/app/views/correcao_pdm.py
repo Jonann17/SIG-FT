@@ -273,13 +273,6 @@ class ModuloCorrecaoPDM(DialogosDeEspera, ctk.CTkFrame):
             self.automacao.solicitar_parada()
             self.log("Parada pedida. Termino a ficha atual e paro.")
 
-    def interromper_tudo(self):
-        """Responde ao botão de parada da home (`sigft/app/parada.py`)."""
-        if not self.automacao:
-            return []
-        self._parar()
-        return ["robô da correção de PDM"]
-
     def _worker(self, lote):
         self.automacao = correcao_svc.AutomacaoCorrecaoPDM()
         try:
