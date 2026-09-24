@@ -599,6 +599,43 @@ recorte virou `tests/fixtures/portal/ficha_caracteristicas.html` e
 
 ---
 
+## 2026-09-23 — o catálogo de PDMs é reenviado inteiro em cada bloco
+
+Achado ao investigar um "ficou mais lento" no cria fichas (que acabou sendo
+leitura errada do log, mas a medição ficou de pé).
+
+`processar_lote` fatia em `ITENS_POR_BLOCO = 15` desde 7d1ccef — 63 itens
+viram 5 chamadas. Cada chamada carrega o catálogo inteiro
+(`CatalogoPDM.lista_por_classe`, **medido em ~12,4 mil tokens**), que é
+idêntico nas 5. Mas a ordem das seções em `montar_categorizar_pdm` é:
+
+| Ordem | Parte | Muda por bloco? |
+|---|---|---|
+| 1º | cabeçalho fixo | não |
+| 2º | `instrucoes` (manual podado às classes do bloco) | **sim** |
+| 3º | `lista_pdms` (o catálogo) | não |
+| 4º | `itens_texto` | sim |
+
+A parte que varia vem ANTES da parte grande e constante, então o cache de
+prefixo do provedor não pega nada a partir dali: ~62 mil tokens de catálogo
+onde poderiam ser ~12,4 mil + 4 leituras de cache.
+
+**Trocar `instrucoes` e `lista_pdms` de lugar** deve resolver sem mudar uma
+palavra do conteúdo. Duas ressalvas antes de fazer:
+
+1. `core/llm/prompts.py` é 🔴 **zona compartilhada** — commit isolado e aviso
+   no mural, e a fixture do prompt é regerada junto;
+2. mover o manual para depois do catálogo muda a ordem de leitura do modelo.
+   Não é neutro por definição: precisa de uma rodada de comparação contra a
+   escolha atual antes de virar padrão.
+
+Ganho paralelo, independente do acima: os blocos são independentes e hoje
+rodam em série. Em paralelo (com teto de 3 e tratamento de 429, que hoje mata
+o bloco por causa do `max_retries=0`) o tempo total cai para perto do de um
+bloco só.
+
+---
+
 ## 2026-09-24 — o módulo 2 direto da planilha de PDMs
 
 Achados de carona da montagem da ficha direto da planilha e da regeneração das

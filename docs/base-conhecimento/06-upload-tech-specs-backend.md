@@ -252,12 +252,12 @@ saiu. Uma ficha já salva à mão simplesmente salva de novo.
 registrava o aviso na 1ª recusa e a ficha consertada saía no relatório como
 problema mesmo tendo dado certo.
 
-### 4. A parada
+### 4. Interromper no meio da lista não desfaz nada
 
-O botão "Parar" da própria tela chega aqui como `solicitar_parada()`, que
-`processar_lista` lê no `deve_parar()` e trata com `break`: as fichas já
-concluídas seguem em `pmibs_finalizados` e são marcadas COMPLETO normalmente.
-**Parar não desfaz nada.**
+O **"PARAR ROBÔ WEB"** da própria tela chega aqui como `solicitar_parada()`,
+que `processar_lista` lê no `deve_parar()` e trata com `break`. As fichas já
+concluídas seguem em `pmibs_finalizados` e são marcadas COMPLETO normalmente
+— parar no meio custa a lista, nunca o que já foi feito.
 
 > A home teve, de 2026-09-23 a 2026-09-24, um botão **"Interromper tudo"** que
 > pedia a mesma parada a todas as telas (`sigft/app/parada.py` →
