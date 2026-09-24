@@ -252,13 +252,17 @@ saiu. Uma ficha já salva à mão simplesmente salva de novo.
 registrava o aviso na 1ª recusa e a ficha consertada saía no relatório como
 problema mesmo tendo dado certo.
 
-### 4. A parada geral, da home
+### 4. A parada
 
-O botão **"⏹ Interromper tudo"** da home varre as telas e pede parada a quem
-souber parar (`sigft/app/parada.py` → `interromper_tudo()` em cada tela). Aqui
-ele chega como `solicitar_parada()`, que `processar_lista` lê no `deve_parar()`
-e trata com `break` — as fichas já concluídas seguem em `pmibs_finalizados` e
-são marcadas COMPLETO normalmente. **Interromper não desfaz nada.**
+O botão "Parar" da própria tela chega aqui como `solicitar_parada()`, que
+`processar_lista` lê no `deve_parar()` e trata com `break`: as fichas já
+concluídas seguem em `pmibs_finalizados` e são marcadas COMPLETO normalmente.
+**Parar não desfaz nada.**
+
+> A home teve, de 2026-09-23 a 2026-09-24, um botão **"Interromper tudo"** que
+> pedia a mesma parada a todas as telas (`sigft/app/parada.py` →
+> `interromper_tudo()` em cada uma). Saiu a pedido do usuário, com o mecanismo
+> inteiro; `tests/test_home_sem_parada_geral.py` impede a volta sem decisão.
 
 ⚠️ **Nada disso rodou contra o portal.** Os seletores do aviso e do campo
 inválido vieram do HTML que o usuário colou, e há teste avaliando-os com `lxml`

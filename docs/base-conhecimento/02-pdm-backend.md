@@ -144,3 +144,9 @@ O que mudou no caminho antigo, e o que vale saber da regeneração:
   distinto uma vez só (`_CopiadorDeEstilo`). O `ws[linha]` do openpyxl fica de
   fora de propósito: ele recalcula `max_column` varrendo a aba inteira a cada
   chamada, e foi o que fez a primeira versão levar 3,5 s por PDM.
+
+**A tela** (`sigft/app/views/pdm.py`) segue, desde 2026-09-24, o padrão das
+outras: o formulário rola quando não cabe e o console tem `ALTURA_CONSOLE`
+(150 px). Antes o console ocupava o que sobrasse do formulário: maximizado
+ficava bom, mas numa janela de 1280x700 o formulário pedia 704 px e o console
+sumia abaixo da borda (`tests/test_pdm_tela_layout.py`).
