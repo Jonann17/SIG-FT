@@ -23,6 +23,24 @@
 > citados abaixo são de `sigft/services/autospec.py` e envelhecem rápido — use-os como pista,
 > confirme pelo nome do símbolo.
 
+> ### 🆕 2026-09-24: a IA lê o documento inteiro, e prova o que respondeu
+>
+> Motivo e números (comparação com o AMP nas fichas 0084/0086/0088/0094: 78 achados contra
+> 43): [`docs/superpowers/specs/2026-09-24-autospec-leitura-integral-design.md`](../superpowers/specs/2026-09-24-autospec-leitura-integral-design.md).
+>
+> | Etapa | Como é agora | Onde |
+> |---|---|---|
+> | Leitura | PDF lido **por página** (PyMuPDF), inteiro, com `[página N]` no texto. OCR (LlamaParse) só para PDF sem camada de texto | `autospec_documentos.ler_documento`, `PDFProcessor.ler_paginas` |
+> | Envio | modelo que lê PDF (`LLMClient.aceita_pdf`) recebe o **próprio arquivo** (até 15 MB e 500 páginas por chamada); o que não couber vai como texto INTEIRO; recorte (RAG) só acima de 300 mil caracteres | `autospec_documentos.planejar_envio`, `generate_ai_response`, `_contexto_de_texto` |
+> | Recusa do anexo | o provedor recusou o PDF: a ficha é refeita pelo texto, com aviso. Timeout não cai para o texto | `generate_ai_response` |
+> | Resposta | cada campo volta como `{valor, tipo, fonte, pagina, trecho, justificativa}` | `prompts.montar_autospec`, `autospec_evidencia.extrair_evidencias` |
+> | Conferência | campo técnico COM prova: o trecho tem de existir no documento (na linha do modelo certo) e o número tem de sair dele. Texto pode entrar como DEDUÇÃO marcada; número nunca. SEM prova: a regra antiga (`valor_tem_lastro`), inteira | `_filtrar_por_lastro`, `_conferir_pela_prova`, `autospec_evidencia` |
+> | Ficha | dedução e leitura de página-imagem viram **comentário** na célula | `fill_save`, `_anotar_celula` |
+> | Falha da IA | a ficha conta como ❌ no resumo e não gera `_completed` | `ultima_falha_ia`, `_registrar_falha_da_ia` |
+>
+> Interruptor: `core.ler_pdf_nativo = False` volta ao caminho de texto (documento inteiro, sem
+> corte). Os limites de 60k/50k caracteres citados mais abaixo **não existem mais**.
+
 ## Propósito
 Automatiza o preenchimento de fichas técnicas padrão via RAG (Retrieval-Augmented Generation). O módulo analisa campos vazios na ficha, recupera contexto de documentos locais e web, consulta um modelo de IA para gerar respostas técnicas inteligentes e preenche a planilha com fonte azul e sufixo `_completed`.
 
@@ -86,8 +104,8 @@ Orquestra o pipeline RAG completo.
 - `get_pmib_data(pmib_path, code_suffix)`: lê planilha _STATUS_PMIB, procura código com sufixo, retorna tupla `(descrição_completa, código_material)` ou `("", "")`
 - `is_empty(val)`: célula vazia, em branco, ou cujo texto **INICIA COM** "FORNECER" (`.startswith`, não "contém") — a instrução do formulário conta como pendente, um valor real não
 - `analyze_sheet(filepath, status_pmib_path)`: lê ficha, detecta campos vazios (estáticos via CONFIG_MAP e dinâmicos na linha 79+), retorna tupla `(workbook, missing_dict, txt_breve, fabricante, desc_comp, cod_mat)` onde `missing_dict` mapeia campo → `{type, desc, ref}`
-- `retrieve_context(txt_brv, fab, cod_mat, refs_locais)`: pipeline RAG de 2 etapas: processa documentos locais via PDFProcessor, depois busca web com 2 queries (por código material + por descrição breve), limita resultado a 50k caracteres por doc, retorna tupla `(contexto_completo, lista_urls)`
-- `process_local_documents(paths)`: aplica PDFProcessor a cada caminho, limita a 60k chars/doc
+- `retrieve_context(txt_brv, fab, cod_mat, refs_locais)`: pipeline RAG de 2 etapas: processa documentos locais via PDFProcessor, depois busca web com 2 queries (por código material + por descrição breve), guarda cada documento INTEIRO (desde 2026-09-24; os PDFs da web com os bytes, para poderem ir como anexo), retorna tupla `(contexto_completo, lista_urls)` e deixa a lista de `Documento` em `self._documentos`
+- `process_local_documents(paths)`: lê cada caminho por página (`autospec_documentos.ler_documento`), sem corte, e recomeça `self._documentos` — é o primeiro passo da coleta de cada ficha
 - `generate_ai_response(txt_brv, fab, desc_comp, missing, context)` (linha 321): monta prompt JSON com nome/descrição/fabricante/contexto e instruções (prioriza LOCAL DOC, gera padrão para GENERATIVE_FIELDS, deixa vazio para ESTRITO, checkboxes deduzem melhor opção), chama `self._llm.generate(...)` e retorna dict `{field_id: resposta}`. **LangChain foi removido no CP 3.2** — `self._llm` é um `LLMClient` obtido por `get_llm("autospec", ...)`; o parse de JSON é o `_limpar_e_parsear_json` único do client (tolera fences/prosa ao redor, cobre objeto e lista), e a política de retry (2 retentativas, 5s, rate-limit 60s) passou a valer aqui pela primeira vez — o LangChain não tinha retry nenhum. `temperature=0.1` foi preservada via `_POLITICA_RETRY_POR_TAREFA["autospec"]`
 - `fill_save(wb, filepath, ai_data, missing)`: preenche células com fonte azul (0000FF), para checkboxes marca célula com "X", salva com sufixo `_completed`, retorna novo caminho
 - `process_queue(queue, status_pmib_path)`: generator que yields logs para UI, processa lista de tarefas `{sheet: path, refs: [paths]}` em sequência (1 a N), chamando analyze_sheet → retrieve_context → generate_ai_response → fill_save
@@ -180,7 +198,7 @@ mudasse no disco no meio. Coberto por `tests/test_autospec_guard_chave.py` (15 t
 - PDFProcessor cascata de fallback sem logging — se LlamaParse falha, tenta PyPDF2 silenciosamente (linha 134-135)
 - Regex para extração de código PMIB assume formato `\d{10}.\d{4}` (linha 180); nomes fora disso retornam None
 - BeautifulSoup remove tags script, style, nav, footer, header — pode perder informações estruturais (linha 151)
-- Limite de contexto é fixo: 60k local, 50k por doc web, 50k total — textos maiores são truncados
+- ~~Limite de contexto é fixo: 60k local, 50k por doc web~~ — **não existe mais desde 2026-09-24**: o documento vai inteiro (ou como o próprio PDF), e o recorte só age acima de 300 mil caracteres
 - Google Custom Search API tem limite de 100 queries/dia free tier; sem API key retorna array vazio (linha 77-78)
 - Prompt para Gemini é em português; temperatura 0.1 (baixa criatividade) — mudanças podem afetar qualidade
 - Sufixo `_completed` é fixo; se arquivo original já termina com `_completed`, cria duplicata (linha 370)

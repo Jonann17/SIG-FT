@@ -953,6 +953,11 @@ hardcoded no texto — decisão tomada olhando para a migração para OpenRouter
 
 ## 🔒 Decisão de arquitetura — postura de privacidade (2026-08-11)
 
+> ⚠️ **Revista em 2026-09-24**, a pedido do usuário ("fazer toda a leitura e extração de
+> informações via uma chamada de uma IA via API"): no provedor público o documento passou a ir
+> INTEIRO, e com Gemini o próprio PDF. O que mudou, por quê, e como voltar atrás: seção
+> "2026-09-24 — AMP x AutoSpec", no fim deste caderno.
+
 **Decidido pelo usuário (Rafael).** Vale para todo o trabalho de melhoria daqui em diante.
 
 ### Alvo: cenário 2 — só a IA interna da empresa
@@ -1291,3 +1296,88 @@ continuam sendo lidas, incluindo as duas formas deste PDF.
 > real desmentiu uma reconstrução minha — e as três vezes o desmentido trouxe
 > um defeito junto. Reconstrução prova a ideia que se tem do documento, não o
 > documento.
+
+---
+
+## 2026-09-24 — AMP x AutoSpec: a IA passa a ler o documento inteiro, e a provar o que respondeu
+
+**Origem:** o usuário comparou o AutoSpec com o AMP (a IA corporativa da GE Vernova, com o
+Gemini 3.5 flash-lite lendo o PDF inteiro) em quatro fichas reais. O AMP achou **78**
+informações, o AutoSpec **43**, e os únicos 2 erros do AutoSpec (rotação da 0094) eram do
+aplicativo, não da IA. Spec completa, com as abordagens descartadas:
+[`docs/superpowers/specs/2026-09-24-autospec-leitura-integral-design.md`](superpowers/specs/2026-09-24-autospec-leitura-integral-design.md).
+
+### Não era o OCR
+
+A suspeita inicial era o OCR. Os seis PDFs enviados têm camada de texto, o PyMuPDF lê 100% das
+páginas, e o log mostra `[PyMuPDF]` em todos: o OCR nem foi chamado. As perdas estavam **depois**
+da leitura, e cada uma foi reproduzida com o texto real antes de qualquer conserto:
+
+| Etapa | O que fazia | Onde apareceu |
+|---|---|---|
+| Corte | 60 mil caracteres por documento, 24 mil no recorte | 0094: 177 mil lidos, 23 mil enviados (13%) |
+| Prompt | todo campo técnico `[ESTRITO]`: "sem dado, vazio" | 0088 e 0094: material, norma, uso, tipo, aplicação, acoplamento |
+| Lastro | número tem de estar no documento COM unidade; palavra da resposta escrita nele | 0088: `36 mm` e `250 mm` certos reprovados (desenho cota `ø 36`, `250` sem "mm"); `OUTROS`; toda tradução de texto (`Diafragma cerâmico` x `Ceramic`) |
+| Corretor | `Hz` cadastrado como rotação | 0094: `2860 rpm` certo virou `3600 rpm` "de 60 hz" |
+| Falha | timeout contado como sucesso | 0088, 1ª rodada: 6 min, `_completed` vazio, "1 sucesso" |
+
+### O que mudou (7 commits, todos com teste antes)
+
+1. `autospec_unidades`: `Hz` virou grandeza própria; `1/min`, `min⁻¹`, `r/min`, `U/min`,
+   `tr/min` são rpm; o corretor não reescreve número que está escrito no documento.
+2. Falha da IA = falha da ficha (sem `_completed`); tempo limite do AutoSpec 300 s, 1 retentativa.
+3. Camada de IA (`core/llm`): `Anexo` + `aceita_pdf` — o PDF vai para o modelo (OpenRouter com
+   `file-parser` `native`, nunca o OCR pago implícito; Gemini direto em linha).
+4. `autospec_documentos.py`: documento por página, inteiro; o que cabe (15 MB / 500 páginas)
+   vai como PDF, o resto como texto; RAG só acima de 300 mil caracteres; recusa do anexo cai
+   para o texto sozinha.
+5. Prompt novo: pede `{valor, tipo, fonte, pagina, trecho, justificativa}` e regras que
+   faltavam (operação x processo x armazenamento, rotação x frequência, outro produto no
+   mesmo PDF, cota sem unidade, opções).
+6. `autospec_evidencia.py`: conferência pela prova — trecho existe (na linha do modelo
+   certo), número sai dele; dedução só em texto; página-imagem entra com aviso.
+7. Dedução e página-imagem viram comentário na célula.
+
+### Prova contra os PDFs reais (pipeline inteiro, IA dublada no formato novo)
+
+| Ficha | Antes | Agora | Barrados de propósito |
+|---|---|---|---|
+| 0088 (2 PDFs) | 4 de 13 gravados | **11 de 13** | número deduzido (`1,3 x In`), peso com trecho inventado |
+| 0084 | 8 de 10 | **8 de 10** (os mesmos) | a "pressão máxima" que o AMP alucinou, `IP68` inventado |
+| 0086 (3 PDFs) | 7 de 10 | **9 de 10** | faixa de pressão inventada |
+
+Na 0084 e na 0086 a regra antiga já aprovaria quase tudo — o texto é limpo. Ali a perda era
+**antes** da conferência: a IA não recebia o trecho (recorte) ou não podia deduzir (prompt).
+
+### O que só a máquina do usuário prova
+
+Este contêiner não alcança o OpenRouter e não tem chave. A **resposta real** do modelo lendo o
+PDF só aparece rodando de novo as quatro fichas. O que olhar no log:
+`A IA vai ler N documento(s) no proprio PDF`, a lista de **DEDUCAO TECNICA**, e se algum
+`O provedor recusou o(s) PDF(s)` aparecer (aí foi pelo texto — funciona, mas vale saber).
+O PDF de 166 páginas da 0094 não veio; o `164 m, 190 m` daquele log continua sem explicação.
+
+### ⚠️ Privacidade: isto muda a postura de 2026-08-11
+
+A decisão abaixo ("🔒 postura de privacidade") dizia que, no provedor público, iriam **só
+trechos, nunca o documento inteiro**. O pedido de 2026-09-24 foi o contrário — *"até apagar o
+método de OCR e fazer toda a leitura e extração de informações via uma chamada de uma IA via
+API"* —, e é o que foi feito: com OpenRouter/Gemini, o documento inteiro (e o próprio PDF) vai
+para o provedor. Na prática o app já mandava o documento inteiro quando ele era pequeno
+("Contexto pequeno — enviado inteiro"). Para voltar atrás: `core.ler_pdf_nativo = False` tira
+o PDF; o texto inteiro continua indo. Com o endpoint da empresa (`openai_compat`) nada sai da
+rede corporativa, e ele recebe o texto (não o PDF).
+
+### Para o CHANGELOG da próxima versão (texto sugerido)
+
+- **AutoSpec** passa a entregar o **documento inteiro** à IA — e, com Gemini, o **próprio PDF**,
+  com desenhos, tabelas e gráficos. Antes ia só um recorte de ~24 mil caracteres.
+- Cada valor técnico agora vem com **a prova** (trecho e página do documento), e o programa
+  confere a prova antes de gravar. Cotas de desenho sem "mm" (ex.: `ø 36`) deixam de ser
+  descartadas.
+- Materiais, normas, uso e tipo construtivo podem ser preenchidos por **dedução técnica**,
+  marcada com um **comentário na célula**. Números continuam só com documento.
+- A rotação do motor não é mais "corrigida" a partir da frequência da rede (`2860 rpm` virava
+  `3600 rpm`).
+- Ficha em que a IA não respondeu passa a contar como **falha** no resumo, sem gerar o
+  `_completed`.

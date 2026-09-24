@@ -3244,7 +3244,7 @@ class AutoSpecCore:
             else:
                 r.reprovados.append((descricao, texto, (
                     f"o trecho citado pela IA ({prova.trecho[:60]!r}) nao esta no "
-                    f"documento lido. {motivo}")))
+                    f"documento lido. {motivo[:1].upper()}{motivo[1:]}")))
             return
 
         valor_conferivel = _com_unidade_do_enunciado(valor, descricao)

@@ -129,6 +129,23 @@ Se estiver com `"Não aplicável"`, `"N/A"` ou qualquer valor real, **o script n
 | **`[ESTRITO]`** | Propriedades físicas, dimensionais e elétricas do modelo exato | **DEVE deixar vazio (`""`)**. Tolerância zero à alucinação | Dimensões (CxLxA), peso líquido/bruto, curvas de pressão, tensão nominal, desenhos |
 | **`[INFO TÉCNICA PADRÃO]`** | Requisitos de manuseio, armazenagem, segurança e boas práticas de almoxarifado | **DEVE DEDUZIR** a partir de normas e das características do tipo de equipamento | Preservação, limpeza, descarte, embalagem de transporte, proteção, posição de armazenamento, unidade, tipo (reparável/não reparável) |
 
+> **Refinado em 2026-09-24** (comparação do usuário com o AMP, fichas 0084/0086/0088/0094):
+> dentro do `[ESTRITO]`, **MEDIDA e TEXTO passam a ter regras diferentes.**
+>
+> | Campo `[ESTRITO]` | Sem o dado escrito no documento |
+> |---|---|
+> | **Medida** — dimensão, peso, tensão, corrente, pressão, vazão, rotação, temperatura, potência, grau de proteção (IP/NEMA) | continua **vazio**. Nenhum número entra por dedução |
+> | **Texto** — material, norma, aplicação, uso, tipo construtivo, montagem, acoplamento | pode entrar por **DEDUÇÃO técnica fundamentada**, marcada: justificativa no log e **comentário na célula** para o engenheiro conferir antes de homologar |
+>
+> Por que a linha passa aí: o AMP preencheu material do contato, material do corpo, normas e
+> uso por dedução, e isso foi contado como acerto; o único erro dele nas quatro fichas foi um
+> **número** deduzido (pressão máxima de trabalho). O número de uma norma (`IEC 60269-4`) não
+> conta como medida. Chave para desligar: `autospec_evidencia.PERMITIR_DEDUCAO_EM_TEXTO`.
+>
+> E o "achou no manual" passou a ser **provado**: cada valor volta com o trecho do documento
+> de onde saiu, e o app confere que o trecho existe e que o número sai dele — ver
+> `08-autospec-backend.md`, quadro de 2026-09-24.
+
 ### 3.3 Restrições estruturais e de tipo
 
 - **`empilhamento` (`J35`)** é estritamente numérico — quantidade máxima de caixas. Se a IA
@@ -157,20 +174,27 @@ Se estiver com `"Não aplicável"`, `"N/A"` ou qualquer valor real, **o script n
 [ Extração de Código PMIB + Busca no Status PMIB (Desc + Cod Material) ]
          │
          ▼
-[ Ingestão Local: OCR via LlamaParse / PyPDF2 dos Manuais Vinculados ]
+[ Ingestão Local: PDF lido por página (PyMuPDF), INTEIRO; OCR só se não houver texto ]
          │
          ▼
 [ Busca Web em Cascata (Google CSE + Filtro Anti-Intruso por Fabricante) ]
          │
          ▼
-[ Consolidação do Contexto RAG (Local + Web) ]
+[ Envio à IA: o PRÓPRIO PDF quando o modelo lê PDF; senão o texto inteiro ]
          │
          ▼
-[ Prompt com Separação de Regras: ESTRITO vs INFO PADRÃO ]
+[ Prompt com Separação de Regras: ESTRITO (medida x texto) vs INFO PADRÃO, pedindo a PROVA ]
          │
          ▼
-[ Parsing JSON + Sanitização Regex (Empilhamento) + Escrita Excel em Azul ]
+[ Conferência pela prova (trecho existe, número sai dele) ]
+         │
+         ▼
+[ Parsing JSON + Sanitização Regex (Empilhamento) + Escrita Excel em Azul + comentário ]
 ```
+
+Até 2026-09-23 a ingestão cortava cada documento em 60 mil caracteres e o contexto enviado
+em 24 mil (RAG); ver `docs/superpowers/specs/2026-09-24-autospec-leitura-integral-design.md`
+para os números que motivaram a mudança.
 
 ### 4.1 Isolamento de contexto (fila)
 

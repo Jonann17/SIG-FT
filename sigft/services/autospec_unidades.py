@@ -563,8 +563,8 @@ def corrigir_conversao(texto, contexto, pergunta=None):
         # `350 bar` tem a origem inequivoca, e ela e esse mesmo `350`.
         if _numero_escrito_sem_ser_desta_grandeza(valor, grandeza, contexto):
             return None, (
-                f"o numero {valor:g} esta escrito no documento, entao nao foi erro "
-                "de conta; confira a unidade e preencha a mao."
+                f"o numero {valor:g} esta escrito no documento, mas nao como "
+                f"{grandeza}: nao foi erro de conta. Confira e preencha a mao."
             )
 
         # A GUARDA CONTRA INVENTAR (2026-09-14). Ver

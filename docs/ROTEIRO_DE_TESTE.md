@@ -258,6 +258,10 @@ Busca 3/7 rendeu 2 documento(s): "PVF100-4" HYDAC datasheet pdf
 | `Busca web desativada` | Faltou chave do Google/CSE | Só configure se quiser testar a busca |
 
 **3. Recorte do contexto** — quanto foi economizado de token:
+
+> **Desde 2026-09-24 esta linha só aparece para documento acima de 300 mil caracteres.**
+> O normal agora é `A IA vai ler N documento(s) no proprio PDF` ou `Documento(s) enviado(s)
+> INTEIROS a IA como texto`. Ver **3b.3** abaixo.
 ```
 Contexto recortado: 5 de 12 trecho(s), 5955 de 11411 chars (48% a menos enviado a IA)
 ```
@@ -284,6 +288,27 @@ Abra a ficha `.xlsx` e confira, nessa ordem:
    plausível e errado é pior que campo vazio.
 3. **Algum campo que estava preenchido foi apagado?** Não pode acontecer.
 4. **Os dropdowns** (Origem, Tipo, Unidade) ficaram com opção válida?
+
+### 3b.3 — Leitura integral e prova por valor (2026-09-24)
+
+Depois da comparação com o AMP (fichas 0084, 0086, 0088, 0094), a IA passou a receber o
+documento INTEIRO — com Gemini, o próprio PDF — e a devolver, para cada valor, o trecho do
+documento de onde ele saiu. **O teste de aceite é rodar de novo essas quatro fichas e refazer
+a comparação com o AMP.** O que olhar:
+
+| Linha no console | Significa |
+|---|---|
+| `A IA vai ler N documento(s) no proprio PDF (...)` | o modelo recebeu os arquivos: vê desenho, tabela e gráfico |
+| `Documento(s) enviado(s) INTEIROS a IA como texto` | o modelo não lê PDF (ou o arquivo passou de 15 MB): foi o texto, sem corte |
+| `O provedor recusou o(s) PDF(s) anexado(s) ... Refazendo ... com o texto` | **anote o erro**: a ficha saiu, mas pelo texto |
+| `N campo(s) preenchidos por DEDUCAO TECNICA` + `porque: ...` | material, norma, uso, tipo: não estão escritos no documento. **Confira cada um** |
+| `N campo(s) lidos pela IA em pagina SEM TEXTO` | PDF escaneado: a prova não tem como ser conferida no texto |
+| `a IA DEDUZIU um valor com numero` | número deduzido não entra — é de propósito |
+| `o trecho citado pela IA (...) nao esta no documento lido` | possível invenção barrada |
+| `❌ ... a IA nao respondeu (...)` | falha de verdade: a ficha não gerou `_completed`; rode de novo |
+
+Na ficha `.xlsx`: as células preenchidas por **dedução** ou lidas de **página-imagem** têm um
+**comentário** (triângulo vermelho no canto) assinado "AutoSpec", com a justificativa.
 
 ### 3b.2 — A conferência de documentos, e o `.txt` que a salva
 
