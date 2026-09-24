@@ -32,6 +32,23 @@ from sigft import config
 from sigft.core.llm.providers.openai_compat import OpenAICompatProvider
 
 
+# Famílias que LEEM PDF nativamente (2026-09-24). O OpenRouter aceita PDF
+# para qualquer modelo, mas nos que não leem ele faz OCR por conta própria --
+# e o OCR padrão (`mistral-ocr`) é PAGO por página. O AutoSpec só manda o
+# arquivo a quem está nesta lista, e com `engine: native`; os demais recebem
+# o texto que o próprio app extraiu, de graça. Prefixo do id do OpenRouter,
+# em minúsculas. Família nova que leia PDF entra aqui.
+PREFIXOS_COM_PDF_NATIVO = (
+    "google/gemini",
+    "anthropic/claude",
+    "openai/gpt-4o",
+    "openai/gpt-4.1",
+    "openai/gpt-5",
+    "openai/o3",
+    "openai/o4",
+)
+
+
 class OpenRouterProvider(OpenAICompatProvider):
     """Especialização de `OpenAICompatProvider` para o OpenRouter:
     `base_url` default, headers de atribuição (`HTTP-Referer`/`X-Title`) e
@@ -82,6 +99,18 @@ class OpenRouterProvider(OpenAICompatProvider):
         usage = payload.get("usage") or {}
         custo = usage.get("cost")
         return float(custo) if custo is not None else None
+
+    def aceita_pdf(self) -> bool:
+        modelo = str(self._model or "").lower()
+        return modelo.startswith(PREFIXOS_COM_PDF_NATIVO)
+
+    def _corpo_para_anexos(self, anexos: list[Any]) -> dict[str, Any]:
+        # Leitura NATIVA, dita explicitamente. Sem o plugin, um modelo que
+        # não lê PDF cairia no OCR pago do OpenRouter sem ninguém ter decidido
+        # isso -- ver `PREFIXOS_COM_PDF_NATIVO`. Imagem não precisa de plugin.
+        if any(getattr(a, "mime", "") == "application/pdf" for a in anexos):
+            return {"plugins": [{"id": "file-parser", "pdf": {"engine": "native"}}]}
+        return {}
 
 
 # =============================================================================

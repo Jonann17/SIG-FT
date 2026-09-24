@@ -36,6 +36,7 @@ precisar de rede nem do pacote `requests` instalado.
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 from sigft.core.llm.client import ProviderResult
@@ -112,9 +113,37 @@ class OpenAICompatProvider:
         sobrescreve para ler `usage.cost`."""
         return None
 
+    def _corpo_para_anexos(self, anexos: list[Any]) -> dict[str, Any]:
+        """Campos extras do corpo quando a chamada leva arquivo (2026-09-24).
+        Base: nenhum. `OpenRouterProvider` sobrescreve para pedir a leitura
+        NATIVA do PDF."""
+        return {}
+
+    def aceita_pdf(self) -> bool:
+        """Endpoint OpenAI-compatível genérico (a IA da empresa, por
+        exemplo): não há como saber se lê PDF, então o consumidor manda o
+        texto extraído, como sempre fez. `OpenRouterProvider` responde por
+        modelo."""
+        return False
+
+    @staticmethod
+    def _parte_do_anexo(anexo: Any) -> dict[str, Any]:
+        """O anexo no formato de `content` do chat/completions: PDF como
+        `file` (com `file_data` em data URL), imagem como `image_url`."""
+        dados = base64.b64encode(anexo.dados).decode("ascii")
+        url = f"data:{anexo.mime};base64,{dados}"
+        if anexo.mime.startswith("image/"):
+            return {"type": "image_url", "image_url": {"url": url}}
+        return {"type": "file", "file": {"filename": anexo.nome, "file_data": url}}
+
     # ------------------------------------------------------------------
     def generate_raw(
-        self, prompt: str, *, system: str | None = None, json_mode: bool = False
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        json_mode: bool = False,
+        anexos: list[Any] | None = None,
     ) -> ProviderResult:
         """Monta e envia UM `POST {base_url}/chat/completions` (SEM retry --
         responsabilidade do `LLMClient` chamador) e devolve um
@@ -139,10 +168,18 @@ class OpenAICompatProvider:
         é DEFENSIVA (`.get(...)` encadeado, `None` se ausente) -- NUNCA
         levanta por causa de metadado de uso ausente/incompleto.
         """
-        messages: list[dict[str, str]] = []
+        messages: list[dict[str, Any]] = []
         if system is not None:
             messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
+        if anexos:
+            # `content` vira LISTA de partes só quando há arquivo: o texto
+            # primeiro, depois cada anexo. Sem anexo o `content` continua
+            # sendo a string de sempre -- as outras tarefas não mudam nada.
+            partes: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+            partes.extend(self._parte_do_anexo(a) for a in anexos)
+            messages.append({"role": "user", "content": partes})
+        else:
+            messages.append({"role": "user", "content": prompt})
 
         body: dict[str, Any] = {"model": self._model, "messages": messages}
         if self._temperature is not None:
@@ -150,6 +187,8 @@ class OpenAICompatProvider:
         if json_mode:
             body["response_format"] = {"type": "json_object"}
         body.update(self._montar_corpo_extra())
+        if anexos:
+            body.update(self._corpo_para_anexos(anexos))
 
         headers = {
             "Authorization": f"Bearer {self._api_key}",

@@ -129,8 +129,17 @@ class GeminiProvider:
         if api_key:
             self._genai.configure(api_key=api_key, transport="rest")
 
+    def aceita_pdf(self) -> bool:
+        """Todo Gemini atual lê PDF nativamente (texto E imagem da página)."""
+        return True
+
     def generate_raw(
-        self, prompt: str, *, system: str | None = None, json_mode: bool = False
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        json_mode: bool = False,
+        anexos: list[Any] | None = None,
     ) -> ProviderResult:
         """Chama `GenerativeModel(...).generate_content(prompt)` uma única
         vez (SEM retry -- responsabilidade do `LLMClient` chamador) e
@@ -176,10 +185,17 @@ class GeminiProvider:
             kwargs["generation_config"] = generation_config
 
         modelo = self._genai.GenerativeModel(self._model, **kwargs)
+        # Com anexo (2026-09-24), o conteúdo vira lista: os arquivos em linha
+        # primeiro, o prompt por último -- a ordem que a documentação do
+        # Gemini recomenda para pergunta sobre documento. Sem anexo, a string
+        # de sempre.
+        conteudo: Any = prompt
+        if anexos:
+            conteudo = [{"mime_type": a.mime, "data": a.dados} for a in anexos] + [prompt]
         if self._timeout is None:
-            resp = modelo.generate_content(prompt)
+            resp = modelo.generate_content(conteudo)
         else:
-            resp = modelo.generate_content(prompt, request_options={"timeout": self._timeout})
+            resp = modelo.generate_content(conteudo, request_options={"timeout": self._timeout})
 
         texto = resp.text
         usage = getattr(resp, "usage_metadata", None)

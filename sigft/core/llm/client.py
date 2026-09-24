@@ -224,6 +224,43 @@ class ProviderResult(NamedTuple):
     custo_usd: float | None = None
 
 
+_MIME_POR_EXTENSAO = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+}
+
+
+@dataclass(frozen=True)
+class Anexo:
+    """Um ARQUIVO que vai junto com o prompt (2026-09-24): o próprio PDF, e
+    não o texto extraído dele.
+
+    Existe porque o modelo que LÊ o PDF vê o que o texto perde -- desenho
+    cotado, tabela com a unidade só no cabeçalho, curva de desempenho. Na
+    comparação do usuário com o AMP (que manda o PDF inteiro), essa diferença
+    valeu 78 achados contra 43.
+
+    Só o consumidor sabe SE vale mandar (tamanho, número de páginas); o
+    provider só sabe COMO -- ver `generate_raw(..., anexos=...)` em cada um,
+    e `LLMClient.aceita_pdf`.
+    """
+
+    nome: str
+    mime: str
+    dados: bytes
+
+    @classmethod
+    def de_arquivo(cls, caminho: str) -> "Anexo":
+        nome = os.path.basename(str(caminho))
+        extensao = os.path.splitext(nome)[1].lower()
+        with open(caminho, "rb") as arquivo:
+            dados = arquivo.read()
+        return cls(nome, _MIME_POR_EXTENSAO.get(extensao, "application/octet-stream"), dados)
+
+
 @dataclass
 class LLMResponse:
     """Formato de retorno ÚNICO de `LLMClient.generate()` — mesma forma
@@ -355,6 +392,17 @@ class LLMClient:
     def min_interval_seconds(self) -> float | None:
         return self._min_interval_seconds
 
+    @property
+    def aceita_pdf(self) -> bool:
+        """O provider/modelo desta instância lê PDF nativamente?
+
+        Provider sem o método (os dublês de teste, e qualquer provider escrito
+        antes de 2026-09-24) responde `False`: quem pergunta manda o texto
+        extraído, que é o comportamento de sempre.
+        """
+        pergunta = getattr(self._provider, "aceita_pdf", None)
+        return bool(pergunta()) if callable(pergunta) else False
+
     # ------------------------------------------------------------------
     # Rate-limit opcional -- réplica do padrão de
     # `analyzer_backend.DatasheetAnalyzer._call_gemini_api` de hoje: dorme
@@ -388,6 +436,7 @@ class LLMClient:
         system: str | None = None,
         json_mode: bool = False,
         tags: dict[str, str] | None = None,
+        anexos: list[Anexo] | None = None,
     ) -> LLMResponse:
         """Chama `self._provider.generate_raw(...)`, retentando até
         `max_retries` vezes em caso de QUALQUER exceção (erro de
@@ -414,6 +463,9 @@ class LLMClient:
             registro; `modulo` fica `None`/`null` quando o chamador não
             informou). `LLMClient` não conhece a tarefa por nenhum outro
             caminho -- depende inteiramente de `tags`.
+          anexos (2026-09-24): arquivos (`Anexo`) que vão JUNTO com o
+            prompt -- o PDF em si, para o modelo ler. Só repassado ao
+            provider quando não vazio; pergunte `aceita_pdf` antes de mandar.
 
         Fluxo:
           1. `_aplicar_rate_limit()` -- uma vez, ANTES de qualquer
@@ -465,8 +517,12 @@ class LLMClient:
         for tentativa in range(self._max_retries + 1):
             inicio = self._time_fn()
             try:
+                # `anexos` só vai quando há anexo: provider de assinatura
+                # antiga (os dublês de teste do app inteiro) continua valendo
+                # para toda chamada que não manda arquivo.
+                extras = {"anexos": anexos} if anexos else {}
                 resultado = self._provider.generate_raw(
-                    prompt, system=system, json_mode=json_mode,
+                    prompt, system=system, json_mode=json_mode, **extras,
                 )
                 parsed = _limpar_e_parsear_json(resultado.text)
                 duracao = self._time_fn() - inicio
