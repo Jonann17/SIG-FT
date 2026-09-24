@@ -34,6 +34,9 @@ from sigft.core import rede
 # separado porque este arquivo ja passou de 1.500 linhas -- e porque o
 # algoritmo (BM25) nao sabe nada sobre ficha tecnica nem sobre Excel.
 from sigft.services import autospec_rag
+# Leitura INTEGRAL (2026-09-24): o documento por pagina, e o que vai para a IA
+# como o proprio PDF. Ver o docstring do modulo para os numeros que motivaram.
+from sigft.services import autospec_documentos
 from sigft.core.excel import locking
 
 # -----------------------------------------------------------------
@@ -532,6 +535,18 @@ def explicar_conversao(valor, contexto):
     return reais
 
 
+def _e_timeout(erro):
+    """A chamada estourou o TEMPO (e não foi recusada)?
+
+    `ReadTimeout`/`ConnectTimeout` do requests, `TimeoutError` da biblioteca
+    padrão, `DeadlineExceeded` do SDK do Gemini -- os nomes variam, a palavra
+    não.
+    """
+    nome = type(erro).__name__.lower()
+    texto = str(erro).lower()
+    return "timeout" in nome or "deadline" in nome or "timed out" in texto
+
+
 def _corrigir_conversao(valor, contexto, pergunta=None):
     """Ponte para `autospec_unidades.corrigir_conversao`, tolerante à ausência
     do módulo — mesmo padrão de `explicar_conversao`.
@@ -616,11 +631,20 @@ def _caminho_cache_resposta():
     return str(caminho(RESPOSTA_IA_CACHE))
 
 
-def _chave_cache_resposta(prompt, provider=None, model=None):
-    """Hash de (provider, modelo, prompt). Ver o bloco acima para por que o
-    prompt inteiro entra, e por que o modelo tambem."""
+def _chave_cache_resposta(prompt, provider=None, model=None, anexos=None):
+    """Hash de (provider, modelo, prompt, arquivos). Ver o bloco acima para
+    por que o prompt inteiro entra, e por que o modelo tambem.
+
+    `anexos` (2026-09-24): os BYTES de cada PDF que foi junto. No caminho
+    nativo o prompt leva so o NOME do arquivo -- sem os bytes na chave, a
+    revisao nova de um datasheet com o mesmo nome receberia a resposta dada
+    a revisao velha.
+    """
     bruto = f"{provider or ''}|{model or ''}|{prompt or ''}"
-    return hashlib.sha256(bruto.encode("utf-8")).hexdigest()
+    digestor = hashlib.sha256(bruto.encode("utf-8"))
+    for dados in anexos or ():
+        digestor.update(hashlib.sha256(dados).digest())
+    return digestor.hexdigest()
 
 
 def _cache_resposta_ler(chave, agora=None):
@@ -720,12 +744,17 @@ COBERTURA_MINIMA_ACEITAVEL = 0.80
 class RelatorioLeitura:
     """Quanto de um PDF foi realmente lido, e o que ficou de fora."""
 
-    def __init__(self, metodo, paginas_total, paginas_lidas, chars, paginas_sem_texto):
+    def __init__(self, metodo, paginas_total, paginas_lidas, chars, paginas_sem_texto,
+                 paginas=None):
         self.metodo = metodo
         self.paginas_total = paginas_total
         self.paginas_lidas = paginas_lidas
         self.chars = chars
         self.paginas_sem_texto = paginas_sem_texto
+        # O texto de CADA pagina, na ordem, inclusive as vazias (2026-09-24):
+        # e o que `autospec_documentos` usa para marcar `[página N]` e para
+        # saber que pagina e imagem. Ver `PDFProcessor.ler_paginas`.
+        self.paginas = list(paginas or [])
 
     @property
     def cobertura(self):
@@ -782,6 +811,7 @@ def _ler_pdf_local(filepath):
         return "", None
 
     partes = []
+    todas = []
     paginas_sem_texto = []
     lidas = 0
     try:
@@ -793,9 +823,11 @@ def _ler_pdf_local(filepath):
                 texto = ""
             if len(texto.strip()) >= MIN_CHARS_PAGINA_UTIL:
                 partes.append(texto)
+                todas.append(texto)
                 lidas += 1
             else:
                 paginas_sem_texto.append(indice + 1)  # 1-based, como o usuário conta
+                todas.append("")
     finally:
         try:
             documento.close()
@@ -809,6 +841,7 @@ def _ler_pdf_local(filepath):
         paginas_lidas=lidas,
         chars=len(conteudo),
         paginas_sem_texto=paginas_sem_texto,
+        paginas=todas,
     )
 
 
@@ -1610,6 +1643,33 @@ class PDFProcessor:
 
         return text_content, method_used
 
+    def ler_paginas(self, filepath, callbacks=None, nome_exibicao=None):
+        """`(paginas, metodo)`: como `extract_text`, mas POR PÁGINA (2026-09-24).
+
+        PDF com camada de texto sai com uma entrada por página, inclusive as
+        vazias -- é o que marca `[página N]` no contexto e o que diz à
+        conferência que aquela página é imagem. O resto (PDF escaneado que o
+        OCR leu, HTML) sai como uma entrada só, sem paginação.
+
+        PDF sem texto nenhum e sem OCR volta com as páginas VAZIAS, e não com
+        lista vazia: ele ainda pode ir inteiro para um modelo que lê PDF, e
+        quem planeja o envio precisa saber quantas páginas ele tem.
+        """
+        cb = callbacks or _callbacks_silenciosos()
+        nome = nome_exibicao or os.path.basename(str(filepath))
+        relatorio = None
+        if str(filepath).lower().endswith(".pdf"):
+            _texto, relatorio = _ler_pdf_local(filepath)
+            if relatorio is not None and relatorio.paginas_lidas:
+                cb.log(relatorio.resumo(nome), nivel=relatorio.nivel_log())
+                return list(relatorio.paginas), relatorio.metodo
+        texto, metodo = self.extract_text(filepath, callbacks=cb, nome_exibicao=nome_exibicao)
+        if texto:
+            return [texto], metodo
+        if relatorio is not None:
+            return list(relatorio.paginas), relatorio.metodo
+        return [], metodo
+
 
 # -----------------------------------------------------------------
 # 3. BACKEND PRINCIPAL
@@ -1685,6 +1745,14 @@ class AutoSpecCore:
         # simples falhar, e só se o robots.txt do domínio permitir. Ver
         # `_tentar_navegador` — a ordem é a política.
         self.usar_navegador_ultimo_recurso = True
+        # Leitura NATIVA do PDF ligada por padrão (2026-09-24): quando o modelo
+        # lê PDF, o próprio arquivo vai para ele. Desligar devolve o caminho de
+        # texto (documento inteiro, sem corte) -- existe como escape se algum
+        # provedor ou proxy se comportar mal com anexo.
+        self.ler_pdf_nativo = True
+        # Os documentos da ficha em processamento. Preenchido por
+        # `process_local_documents` (primeiro passo da coleta de cada ficha).
+        self._documentos = []
         # O buscador tem a mesma chave; sincronizadas aqui para que desligar
         # num lugar desligue nos dois caminhos (403 e pagina vazia).
         self.searcher.usar_navegador_ultimo_recurso = self.usar_navegador_ultimo_recurso
@@ -2521,11 +2589,19 @@ class AutoSpecCore:
             for item in files:
                 # `nome_exibicao=URL`: o arquivo é um temporário, e o nome
                 # dele no log não diz nada a quem lê. Ver `extract_text`.
-                t, m = self.pdf_parser.extract_text(
-                    item['path'], callbacks=cb, nome_exibicao=item.get('url')
+                #
+                # INTEIRO, e com os bytes guardados (2026-09-24): o temporário
+                # é apagado logo abaixo, e o PDF ainda pode ir como arquivo
+                # para a IA. Era `t[:50000]`.
+                documento = autospec_documentos.ler_documento(
+                    item['path'], self.pdf_parser, origem="WEB",
+                    nome=item['title'], url=item['url'], callbacks=cb,
+                    guardar_bytes=True,
                 )
+                t, m = documento.texto, documento.metodo
                 if t and len(t) > 100:
-                    web_txt += f"--- WEB DOC: {item['title']} ---\nURL: {item['url']}\n{t[:50000]}\n\n"
+                    web_txt += documento.texto_marcado() + "\n\n"
+                    self._documentos.append(documento)
                     sources.append(item['url'])
                     aproveitados += 1
                     cb.log(f"Documento web aproveitado ({m}, {len(t)} chars): {item['url']}")
@@ -2549,10 +2625,13 @@ class AutoSpecCore:
                         except Exception:
                             pass
                         if t2 and len(t2) > 100:
-                            web_txt += (
-                                f"--- WEB DOC: {item['title']} ---\nURL: {item['url']}\n"
-                                f"{t2[:50000]}\n\n"
+                            renderizada = autospec_documentos.Documento(
+                                nome=item['title'], origem="WEB", paginas=[t2],
+                                url=item['url'], mime="text/html", metodo=m2,
+                                paginado=False,
                             )
+                            web_txt += renderizada.texto_marcado() + "\n\n"
+                            self._documentos.append(renderizada)
                             sources.append(item['url'])
                             aproveitados += 1
                             cb.log(
@@ -2585,24 +2664,45 @@ class AutoSpecCore:
         return (local_txt + "\n\n" + web_txt), sources
 
     def process_local_documents(self, paths, callbacks=None):
+        """Le os manuais anexados, INTEIROS, e devolve o contexto de texto.
+
+        Deixa em `self._documentos` a lista de `Documento` desta ficha -- e
+        dela que `generate_ai_response` decide o que vai como o proprio PDF.
+        Zerada aqui porque este e o primeiro passo da coleta de cada ficha
+        (`retrieve_context` e `contexto_das_urls` comecam por ele): o PDF de
+        uma ficha nao pode ir junto com a seguinte.
+
+        Ate 2026-09-24 cada documento entrava cortado em `t[:60000]` -- o
+        manual de 177 mil caracteres da ficha 0094 perdia dois tercos antes de
+        qualquer busca.
+        """
         cb = callbacks or _callbacks_silenciosos()
+        self._documentos = []
         ctx = []
         for p in paths:
             nome = os.path.basename(str(p))
             try:
-                t, m = self.pdf_parser.extract_text(p, callbacks=cb)
-                if t:
-                    ctx.append(f"--- LOCAL DOC: {nome} ---\n{t[:60000]}")
-                    cb.log(f"Manual local lido ({m}, {len(t)} chars): {nome}")
-                else:
-                    cb.log(
-                        f"Manual local nao rendeu texto: {nome} — nao entra no contexto.",
-                        nivel="warn",
-                    )
+                documento = autospec_documentos.ler_documento(
+                    p, self.pdf_parser, origem="LOCAL", callbacks=cb)
             except Exception as e:
                 cb.log(
                     f"Falha ao processar manual local {nome} ({type(e).__name__}: {e}).",
                     nivel="error",
+                )
+                continue
+            self._documentos.append(documento)
+            if documento.texto.strip():
+                ctx.append(documento.texto_marcado())
+                cb.log(f"Manual local lido ({documento.metodo}, "
+                       f"{len(documento.texto)} chars): {nome}")
+            else:
+                # Continua na lista: um modelo que le PDF ainda enxerga as
+                # paginas-imagem. So nao ha texto para conferir a prova.
+                cb.log(
+                    f"Manual local nao rendeu texto: {nome}. So chega a IA se ela "
+                    f"ler o PDF diretamente, e o que vier dele nao tem como ser "
+                    f"conferido no texto.",
+                    nivel="warn",
                 )
         return "\n\n".join(ctx)
 
@@ -2643,45 +2743,51 @@ class AutoSpecCore:
                     info += f" (Opções: {v['options']})"
             desc_list.append(info)
 
-        # RETRIEVAL (2026-08-11): manda só os trechos que interessam, não o
-        # documento inteiro. O enunciado de cada campo faltante É a consulta —
-        # "16 - DIMENSOES (Indicar as dimensões do item...)" já é uma boa
-        # busca, sem precisar reescrever nada.
+        # O QUE VAI PARA A IA (2026-09-24). Três caminhos, decididos aqui:
         #
-        # Antes daqui o prompt levava até 220.000 caracteres (~55 mil tokens)
-        # para responder campos que precisam de umas 20 linhas do documento.
-        contexto_final = context
-        if self.usar_retrieval and context:
-            consultas = [v.get("desc") or k for k, v in missing.items()]
-            recortado, estatisticas = autospec_rag.montar_contexto_relevante(
-                context, consultas, reordenador=self._reordenador_semantico()
-            )
-            if recortado:
-                contexto_final = recortado
-                cb.log(autospec_rag.resumo_estatisticas(estatisticas))
-                # Uma vez por instancia: diz se o recorte teve reforco
-                # semantico ou foi so BM25 + glossario. Sem isto, "o embedding
-                # esta ligado?" viraria adivinhacao -- e a resposta muda a
-                # qualidade do recorte. Fica AQUI, e nao na abertura do lote,
-                # para nao tentar carregar modelo antes de haver o que recortar.
-                if not self._diagnostico_rag_emitido:
-                    self._diagnostico_rag_emitido = True
-                    try:
-                        from sigft.services import autospec_embeddings
-                        cb.log(autospec_embeddings.diagnostico())
-                    except ImportError:
-                        pass
-            else:
-                # Nenhum trecho casou com nenhum campo. Melhor mandar o
-                # contexto inteiro do que mandar nada: recortar não pode
-                # transformar "achei pouco" em "não achei".
-                cb.log(
-                    "Nenhum trecho do contexto casou com os campos pedidos — "
-                    "enviando o contexto completo.",
-                    nivel="warn",
-                )
+        #   1. o PRÓPRIO PDF, quando o modelo lê PDF e o arquivo cabe na
+        #      chamada (`autospec_documentos.planejar_envio`) -- o modelo vê o
+        #      desenho cotado, a tabela, o gráfico;
+        #   2. o texto INTEIRO, até `TETO_TEXTO_INTEIRO` (300 mil caracteres);
+        #   3. o recorte por relevância (RAG), só acima disso.
+        #
+        # Até esta data o caminho único era o 3, com teto de 24 mil caracteres,
+        # sobre documentos já cortados em 60 mil. Na comparação do usuário com
+        # o AMP (que lê o PDF inteiro), isso valeu 43 achados contra 78 -- e a
+        # ficha 0094 mandava à IA 13% do manual.
+        documentos = list(getattr(self, "_documentos", None) or [])
+        nativo = (
+            bool(documentos)
+            and getattr(self, "ler_pdf_nativo", True)
+            and bool(getattr(self._llm, "aceita_pdf", False))
+        )
+        como_arquivo, como_texto = autospec_documentos.planejar_envio(
+            documentos, aceita_pdf=nativo)
+        lista_de_campos = "\n".join(desc_list)
+        tags = {"modulo": "autospec_backend", "tarefa": "autospec"}
 
-        prompt = prompts.montar_autospec(txt_brv, fab, desc_comp, contexto_final, "\n".join(desc_list))
+        if como_arquivo:
+            anexos = [documento.anexo() for documento in como_arquivo]
+            contexto_final = autospec_documentos.descrever_anexos(como_arquivo)
+            restante = self._contexto_de_texto(
+                "\n\n".join(d.texto_marcado() for d in como_texto if d.texto.strip()),
+                missing, cb)
+            if restante:
+                contexto_final += "\n\nDOCUMENTOS EM TEXTO:\n" + restante
+            # A IA viu os documentos INTEIROS: a prova que ela devolver é
+            # conferida contra o texto de todos eles.
+            contexto_conferencia = context
+            cb.log(
+                f"A IA vai ler {len(anexos)} documento(s) no proprio PDF "
+                f"({', '.join(d.nome for d in como_arquivo)}); o texto extraido "
+                f"fica para conferir o que ela responder."
+            )
+        else:
+            anexos = []
+            contexto_final = self._contexto_de_texto(context, missing, cb)
+            contexto_conferencia = contexto_final
+
+        prompt = prompts.montar_autospec(txt_brv, fab, desc_comp, contexto_final, lista_de_campos)
 
         # CACHE (2026-08-12): reprocessar o mesmo lote é o normal, não a
         # exceção — e até aqui cada rerun repagava a IA por ficha que já tinha
@@ -2689,7 +2795,8 @@ class AutoSpecCore:
         # prompt inteiro, e não o nome do arquivo.
         selecao = getattr(self, "_selecao_autospec", None) or {}
         chave_cache = _chave_cache_resposta(
-            prompt, selecao.get("provider"), selecao.get("model")
+            prompt, selecao.get("provider"), selecao.get("model"),
+            anexos=[anexo.dados for anexo in anexos],
         )
         if self.usar_cache_resposta:
             guardada = _cache_resposta_ler(chave_cache)
@@ -2706,7 +2813,7 @@ class AutoSpecCore:
                 valores = self._normalizar_resposta_ia(
                     guardada, campos_pedidos=missing.keys(), callbacks=cb
                 )
-                return self._conferir_e_filtrar(valores, missing, contexto_final, cb)
+                return self._conferir_e_filtrar(valores, missing, contexto_conferencia, cb)
 
         try:
             # [CP 3.2] LangChain removido -- `_limpar_e_parsear_json` do
@@ -2725,17 +2832,35 @@ class AutoSpecCore:
             # caminho principal. Importa mais agora que o provedor é
             # trocável: confiabilidade de formato varia muito entre modelos, e
             # falha de parse aqui devolve a ficha VAZIA.
-            resp = self._llm.generate(
-                prompt,
-                json_mode=True,
-                tags={"modulo": "autospec_backend", "tarefa": "autospec"},
-            )
+            try:
+                resp = self._chamar_ia(prompt, anexos, tags)
+            except Exception as e:
+                # RECUSA DO PDF CAI PARA O TEXTO (2026-09-24). O provedor pode
+                # não aceitar o arquivo (modelo sem leitura de PDF, corpo grande
+                # demais para o proxy): a ficha é refeita com o texto extraído,
+                # que é o caminho de sempre. TIMEOUT não cai -- o provedor
+                # aceitou e demorou, e refazer somaria mais uma espera inteira.
+                if not anexos or _e_timeout(e):
+                    raise
+                cb.log(
+                    f"O provedor recusou o(s) PDF(s) anexado(s) ({type(e).__name__}: "
+                    f"{e}). Refazendo esta ficha com o texto extraido dos documentos.",
+                    nivel="warn",
+                )
+                anexos = []
+                contexto_final = self._contexto_de_texto(context, missing, cb)
+                contexto_conferencia = contexto_final
+                prompt = prompts.montar_autospec(
+                    txt_brv, fab, desc_comp, contexto_final, lista_de_campos)
+                chave_cache = _chave_cache_resposta(
+                    prompt, selecao.get("provider"), selecao.get("model"))
+                resp = self._chamar_ia(prompt, anexos, tags)
             if self.usar_cache_resposta:
                 _cache_resposta_gravar(chave_cache, resp.parsed_json)
             valores = self._normalizar_resposta_ia(
                 resp.parsed_json, campos_pedidos=missing.keys(), callbacks=cb
             )
-            return self._conferir_e_filtrar(valores, missing, contexto_final, cb)
+            return self._conferir_e_filtrar(valores, missing, contexto_conferencia, cb)
         except Exception as e:
             # Até 2026-08-11 isto era `print(f"Erro IA: {e}")` -- ia para o
             # stdout, ou seja, a janela preta que ninguém olha. O CP 4.4
@@ -2744,6 +2869,59 @@ class AutoSpecCore:
             cb.log(f"Chamada de IA falhou ({type(e).__name__}: {e}).", nivel="error")
             self.ultima_falha_ia = f"{type(e).__name__}: {e}"
             return {}
+
+    def _chamar_ia(self, prompt, anexos, tags):
+        """Uma chamada à IA. `anexos` só vai quando há anexo: os dublês de
+        teste (e qualquer cliente antigo) não conhecem o parâmetro."""
+        extras = {"anexos": anexos} if anexos else {}
+        return self._llm.generate(prompt, json_mode=True, tags=tags, **extras)
+
+    def _contexto_de_texto(self, texto, missing, callbacks=None):
+        """O texto que vai no prompt: INTEIRO até `TETO_TEXTO_INTEIRO`, e só
+        acima disso o recorte por relevância (2026-09-24).
+
+        O recorte (2026-08-11) nasceu para economizar -- o prompt chegava a
+        220 mil caracteres para "campos que precisam de umas 20 linhas". A
+        conta mudou de lado: num modelo de US$ 0,50 por milhão de tokens, o
+        documento inteiro de um datasheet custa frações de centavo, e o
+        recorte a 24 mil caracteres custava a ficha. Continua existindo para o
+        manual de centenas de páginas, que não cabe.
+        """
+        cb = callbacks or _callbacks_silenciosos()
+        if not texto:
+            return texto
+        teto = autospec_documentos.TETO_TEXTO_INTEIRO
+        if not getattr(self, "usar_retrieval", True) or len(texto) <= teto:
+            cb.log(f"Documento(s) enviado(s) INTEIROS a IA como texto ({len(texto)} chars).")
+            return texto
+
+        consultas = [v.get("desc") or k for k, v in missing.items()]
+        recortado, estatisticas = autospec_rag.montar_contexto_relevante(
+            texto, consultas, teto_chars=teto, trechos_por_consulta=5,
+            reordenador=self._reordenador_semantico(),
+        )
+        if not recortado:
+            # Nenhum trecho casou com nenhum campo. Melhor mandar o contexto
+            # inteiro do que mandar nada: recortar não pode transformar
+            # "achei pouco" em "não achei".
+            cb.log(
+                "Nenhum trecho do contexto casou com os campos pedidos — "
+                "enviando o contexto completo.",
+                nivel="warn",
+            )
+            return texto
+        cb.log(autospec_rag.resumo_estatisticas(estatisticas))
+        # Uma vez por instancia: diz se o recorte teve reforco semantico ou foi
+        # so BM25 + glossario. Fica AQUI, e nao na abertura do lote, para nao
+        # tentar carregar modelo antes de haver o que recortar.
+        if not getattr(self, "_diagnostico_rag_emitido", False):
+            self._diagnostico_rag_emitido = True
+            try:
+                from sigft.services import autospec_embeddings
+                cb.log(autospec_embeddings.diagnostico())
+            except ImportError:
+                pass
+        return recortado
 
     def _tentar_navegador(self, url, callbacks=None, _robots=None, _navegador=None):
         """Delega para `tentar_navegador`, aplicando o interruptor desta
@@ -3180,15 +3358,20 @@ class AutoSpecCore:
             if not caminho:
                 cb.log(f"Nao consegui ler o documento aprovado: {url}", nivel="warn")
                 continue
-            texto, metodo = self.pdf_parser.extract_text(
-                caminho, callbacks=cb, nome_exibicao=url
+            # Inteiro e com os bytes guardados, como na 1a passada -- ver
+            # `retrieve_context`. Era `texto[:50000]`.
+            documento = autospec_documentos.ler_documento(
+                caminho, self.pdf_parser, origem="WEB", nome=url, url=url,
+                callbacks=cb, guardar_bytes=True,
             )
+            texto, metodo = documento.texto, documento.metodo
             try:
                 os.remove(caminho)
             except Exception:
                 pass
             if texto and len(texto) > 100:
-                partes.append(f"--- WEB DOC: {url} ---\nURL: {url}\n{texto[:50000]}\n")
+                partes.append(documento.texto_marcado() + "\n")
+                self._documentos.append(documento)
                 cb.log(f"Documento aprovado lido ({metodo}, {len(texto)} chars): {url}")
             else:
                 cb.log(f"Documento aprovado veio quase vazio: {url}", nivel="warn")
