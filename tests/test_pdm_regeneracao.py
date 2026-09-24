@@ -254,6 +254,25 @@ def test_a_fatia_copia_a_formatacao_da_planilha(mestra, tmp_path, openpyxl_real)
     assert ws.cell(row=9, column=17).font.color.rgb == "00FF0000"
 
 
+def test_a_altura_viaja_com_a_linha_e_nao_com_a_posicao(mestra, tmp_path, openpyxl_real):
+    """O "Fatiar" antigo reescrevia a própria aba da planilha depois de um
+    `delete_rows`, que não desloca as alturas: cada linha herdava a altura de
+    quem ocupava a mesma POSIÇÃO na planilha (conferido em 2026-09-24 nos
+    arquivos que ele gerou). Aqui MATERIAL (SECUENCIA 2) sai da linha 9 para a
+    8 e leva a altura dela junto."""
+    wb = openpyxl_real.load_workbook(mestra)
+    for linha, altura in ((7, 20), (8, 40), (9, 60)):
+        wb["TEMPLATE_PDM"].row_dimensions[linha].height = altura
+    wb.save(mestra)
+    pasta = tmp_path / "from_itaipu"
+
+    pdm_regeneracao.regenerar_pastas(mestra, str(tmp_path / "modificados"), str(pasta))
+    ws = openpyxl_real.load_workbook(pasta / "PDM_1650_001 - ACUMULADOR - R2.xlsx")["TEMPLATE_PDM"]
+
+    assert [ws.cell(row=r, column=17).value for r in (7, 8, 9)] == ["DIMENSOES", "MATERIAL", "PESO"]
+    assert [ws.row_dimensions[r].height for r in (7, 8, 9)] == [20, 60, 40]
+
+
 # =============================================================================
 # C. Entrada que não serve: recusa ANTES de tocar em arquivo
 # =============================================================================
