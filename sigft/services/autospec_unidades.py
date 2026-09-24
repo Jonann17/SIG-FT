@@ -67,7 +67,18 @@ _FATORES = {
     "torque": {"nm": 1.0, "n.m": 1.0, "knm": 1e3, "kgfm": 9.80665, "kgf.m": 9.80665,
                "lbft": 1.355818, "lb.ft": 1.355818},
     # ---- rotação (base: rpm) ----------------------------------------
-    "rotacao": {"rpm": 1.0, "min-1": 1.0, "rps": 60.0, "hz": 60.0},
+    # `hz` SAIU daqui em 2026-09-24 (ficha 0094). Num datasheet de motor,
+    # `60 Hz` é a frequência da REDE, e a rotação que ela produz depende do
+    # número de polos e do escorregamento -- não é conversão de unidade. Com
+    # `hz: 60` na tabela, o corretor achou "a única medida de rotação" do
+    # documento e gravou `3600 rpm` no lugar do `2860 rpm` CERTO que a IA leu.
+    # `1/min` e `min⁻¹` chegam aqui já reescritos por `_normalizar`.
+    "rotacao": {"rpm": 1.0, "min-1": 1.0, "r/min": 1.0, "u/min": 1.0,
+                "tr/min": 1.0, "rev/min": 1.0, "rps": 60.0},
+    # ---- frequência (base: Hz) --------------------------------------
+    # Grandeza própria, para `FREQUENCIA NOMINAL: 60 Hz` continuar conferindo
+    # contra `60 Hz` -- e nunca contra uma rotação.
+    "frequencia": {"hz": 1.0, "khz": 1e3},
     # ---- área (base: m2) --------------------------------------------
     "area": {"m2": 1.0, "cm2": 1e-4, "mm2": 1e-6, "in2": 6.4516e-4},
 }
@@ -88,9 +99,19 @@ _RE_VALOR_UNIDADE = re.compile(
 )
 
 
+# `2860 1/min` e `2860 min⁻¹` são como o datasheet europeu escreve rpm, e
+# nenhum dos dois cabia no regex de unidade: `1/min` começa por dígito (vira
+# OUTRO número) e o `⁻` do NFKD é o sinal de menos unicode, não o hífen.
+# Reescrever antes de procurar é mais simples que ensinar o regex a ler os dois.
+_RE_POR_MINUTO = re.compile(r"(?<![a-z0-9.,])1\s*/\s*min\b")
+_RE_MIN_A_MENOS_UM = re.compile(r"\bmin\s*(?:\^|−|⁻|-)\s*1\b")
+
+
 def _normalizar(texto):
     s = unicodedata.normalize("NFKD", str(texto or ""))
-    return "".join(c for c in s if not unicodedata.combining(c)).lower()
+    s = "".join(c for c in s if not unicodedata.combining(c)).lower()
+    s = _RE_POR_MINUTO.sub("rpm", s)
+    return _RE_MIN_A_MENOS_UM.sub("min-1", s)
 
 
 def _numero(bruto):
@@ -466,6 +487,19 @@ def _documento_fala_esta_unidade(unidade, medidas_ctx):
     return any(_normalizar(u) == alvo for _v, u, _t in medidas_ctx)
 
 
+def _numero_escrito_sem_ser_desta_grandeza(valor, grandeza, contexto):
+    """O numero esta ESCRITO no contexto, mas em nenhum lugar como medida
+    desta grandeza? E o caso em que corrigir seria inventar -- ver o uso em
+    `corrigir_conversao`."""
+    for v, u in extrair_medidas(contexto):
+        if abs(v - valor) < 1e-9 and _para_base(v, u)[1] == grandeza:
+            return False
+    for m in _RE_NUMERO_SOLTO.finditer(_normalizar(contexto)):
+        if any(abs(leitura - valor) < 1e-9 for leitura in leituras(m.group())):
+            return True
+    return False
+
+
 def corrigir_conversao(texto, contexto, pergunta=None):
     """Refaz a conta que a IA errou e devolve `(valor_corrigido, explicação)`.
 
@@ -518,6 +552,20 @@ def corrigir_conversao(texto, contexto, pergunta=None):
         _base, grandeza = _para_base(valor, unidade)
         if grandeza is None:
             return None, f"unidade desconhecida: {unidade}"
+
+        # NUMERO ESCRITO NO DOCUMENTO NAO E ERRO DE CONTA (2026-09-24). Se o
+        # `2.5` da resposta esta escrito no documento, a IA o LEU -- reescreve-lo
+        # a partir de OUTRA medida (`3.4 hp` -> `2,53537966 kW`) e fabricar um
+        # valor que nao existe em lugar nenhum. Foi o mesmo mecanismo que gravou
+        # `3600 rpm` por cima do `2860` que estava na pagina da ficha 0094.
+        #
+        # A excecao e o proprio numero com a unidade trocada: `350 MPa` contra
+        # `350 bar` tem a origem inequivoca, e ela e esse mesmo `350`.
+        if _numero_escrito_sem_ser_desta_grandeza(valor, grandeza, contexto):
+            return None, (
+                f"o numero {valor:g} esta escrito no documento, entao nao foi erro "
+                "de conta; confira a unidade e preencha a mao."
+            )
 
         # A GUARDA CONTRA INVENTAR (2026-09-14). Ver
         # `_documento_fala_esta_unidade`: se o documento ja fala a unidade da
