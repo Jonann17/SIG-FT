@@ -2609,6 +2609,13 @@ class AutoSpecCore:
     # --- Geração IA ---
     def generate_ai_response(self, txt_brv, fab, desc_comp, missing, context, callbacks=None):
         cb = callbacks or _callbacks_silenciosos()
+        # FALHA DA IA E FALHA DA FICHA (2026-09-24). O retorno continua `{}`
+        # quando a chamada falha -- contrato antigo, com chamadores e testes
+        # que dependem dele --, mas o motivo fica registrado aqui para quem
+        # conta o lote. Antes, a ficha 0088 levou 6 minutos de `ReadTimeout`,
+        # foi salva sem nada e o resumo disse "1 sucesso". Zerado a cada
+        # chamada: a falha de uma ficha nao pode contaminar a seguinte.
+        self.ultima_falha_ia = None
         if not missing: return {}
 
         # CP 3.5 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 3): o laço que
@@ -2735,6 +2742,7 @@ class AutoSpecCore:
             # padronizou os logs pelo console da UI e este ponto ficou de
             # fora: a ficha voltava vazia sem nenhuma explicação visível.
             cb.log(f"Chamada de IA falhou ({type(e).__name__}: {e}).", nivel="error")
+            self.ultima_falha_ia = f"{type(e).__name__}: {e}"
             return {}
 
     def _tentar_navegador(self, url, callbacks=None, _robots=None, _navegador=None):
@@ -3049,6 +3057,22 @@ class AutoSpecCore:
         )
         return new_path
 
+    def _registrar_falha_da_ia(self, fname, lote):
+        """Conta a ficha como FALHA se a IA nao respondeu -- e diz ao lote por
+        que. Devolve `True` quando registrou (quem chama pula o salvamento).
+
+        `getattr`: os testes de lote trocam `generate_ai_response` por fake, e
+        o atributo pode nunca ter sido criado -- ausente e "nao falhou".
+        """
+        falha = getattr(self, "ultima_falha_ia", None)
+        if not falha:
+            return False
+        lote.falha(
+            fname,
+            f"a IA nao respondeu ({falha}). Nada foi gravado nesta ficha; rode de novo.",
+        )
+        return True
+
     # --- MÉTODOS PÚBLICOS DE FLUXO ---
     def processar_conferidos(self, selecao, status_pmib_path):
         """SEGUNDA PASSADA: reprocessa só com os documentos que o engenheiro
@@ -3118,6 +3142,9 @@ class AutoSpecCore:
                         txt, fab, desc, missing, contexto, callbacks=callbacks
                     )
                     yield from _flush()
+                    if self._registrar_falha_da_ia(fname, lote):
+                        yield from _flush()
+                        continue
 
                     out_path = self.fill_save(wb, ficha, ai_resp, missing, callbacks=callbacks)
                     yield f" -> Salvo: {os.path.basename(out_path)}"
@@ -3247,6 +3274,9 @@ class AutoSpecCore:
                         txt, fab, desc, missing, full_ctx, callbacks=callbacks
                     )
                     yield from _flush()
+                    if self._registrar_falha_da_ia(fname, lote):
+                        yield from _flush()
+                        continue
 
                     # P-04: rastreabilidade campo->fonte. As regras de negócio
                     # (§3.4) pedem que o engenheiro veja de onde saiu cada
