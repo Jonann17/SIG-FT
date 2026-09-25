@@ -38,6 +38,12 @@ FIM = "</s>"
 BEAM = 4
 LOTE_MAXIMO = 32
 
+# Teto da tradução: 2x a maior entrada do lote (+ folga), nunca acima do
+# limite do modelo. Sem ele, uma entrada que faça o modelo repetir palavras
+# decodifica até 256 tokens -- tempo perdido, e lixo que as conferências de
+# `traducao_respostas` teriam de barrar depois.
+LIMITE_DO_MODELO = 256
+
 # O que não pode faltar na pasta. O vocabulário (`shared_vocabulary.*`) muda de
 # extensão conforme a versão do CTranslate2 e fica a cargo dele reclamar.
 ARQUIVOS_DO_MODELO = ("model.bin", "config.json", "source.spm", "target.spm")
@@ -136,18 +142,25 @@ class TradutorLocal:
                 self._modelo = (tradutor, origem, destino)
             return self._modelo
 
+    def preparar(self) -> "TradutorLocal":
+        """Carrega o modelo agora. O tradutor 4.2 chama isto ANTES de abrir o
+        Excel, para que "modelo ausente" apareça antes de tocar em planilha."""
+        self._carregar()
+        return self
+
     def traduzir(self, textos) -> list[str]:
         textos = [str(t) for t in textos]
         if not textos:
             return []
         tradutor, origem, destino = self._carregar()
         lote = [[PREFIXO_ES, *origem.encode(texto, out_type=str), FIM] for texto in textos]
+        teto = min(LIMITE_DO_MODELO, 2 * max(len(fonte) for fonte in lote) + 16)
         # SEM `replace_unknowns`: pedir para copiar o desconhecido trouxe o
         # próprio `>>spa<<` no lugar do `Ø` (rodada 3, 2026-09-25). O símbolo
         # vai protegido por `traducao_respostas`; o que escapar sai como `⁇`,
         # e lá vira `conferir` em vez de ir para a ficha.
         resultados = tradutor.translate_batch(
-            lote, beam_size=BEAM, max_batch_size=LOTE_MAXIMO)
+            lote, beam_size=BEAM, max_batch_size=LOTE_MAXIMO, max_decoding_length=teto)
         return [destino.decode(r.hypotheses[0]).strip() for r in resultados]
 
     __call__ = traduzir

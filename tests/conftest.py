@@ -99,12 +99,12 @@ _HEAVY_MODULES = [
     "PyPDF2",
     "bs4",
     "llama_parse",
-    # [CP 0.2] translator_backend.py — tradução híbrida PT->ES via Excel COM.
-    # xlwings automatiza o Excel (Windows-only, `import xlwings as xw`);
-    # deep_translator fornece GoogleTranslator/MyMemoryTranslator; unidecode
-    # remove acentos. Nenhum dos três é usado por funções puras testadas —
-    # bastam como stub de importação (não há caso especial funcional, ao
-    # contrário de "pandas.isna" na seção 3 abaixo).
+    # [CP 0.2] translator_backend.py — tradução PT->ES via Excel COM.
+    # xlwings automatiza o Excel (Windows-only, importado dentro de
+    # `translator._excel_invisivel`); unidecode remove acentos (os testes do
+    # tradutor o trocam por uma função de verdade). deep_translator: desde
+    # 2026-09-25 só a reserva do `traducao_pdm` (PDMs para inglês) o usa -- o
+    # tradutor 4.2 traduz com o modelo local (`core/tradutor_local.py`).
     "deep_translator",
     "unidecode",
     "xlwings",

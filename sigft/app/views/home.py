@@ -59,8 +59,8 @@ MODULOS = [
      "características: fotografa antes, repõe o que o PDM novo também tem, e "
      "lista o que não voltou."),
     ("Translator", "Tradutor Técnico",
-     "Traduz as características das fichas de português para espanhol e grava "
-     "numa aba nova da própria planilha."),
+     "Traduz as características das fichas de português para espanhol, no "
+     "próprio computador, e grava numa aba nova da própria planilha."),
     ("CopiaFichas", "Fichas Duplicadas",
      "Copia uma ficha existente do portal para outra: campos, condições, "
      "características, PDM, documentos e imagens."),

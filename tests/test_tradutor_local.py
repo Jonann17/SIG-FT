@@ -97,6 +97,26 @@ def test_beam_4_e_desconhecido_nao_e_copiado(tmp_path):
     assert not kwargs.get("replace_unknowns")
 
 
+def test_a_traducao_tem_teto_proporcional_a_entrada(tmp_path):
+    """Sem teto, uma entrada que faça o modelo repetir palavras decodifica até
+    256 tokens -- tempo perdido num lote que deveria levar segundos. O teto
+    acompanha a MAIOR entrada do lote."""
+    ct2, spm = _modulos_falsos()
+    motor = tl.TradutorLocal(_pasta_de_modelo(tmp_path), ctranslate2=ct2, sentencepiece=spm)
+    motor.traduzir(["a b c", "a"])
+    _, kwargs = _TranslatorFalso.criados[0].chamadas[0]
+    maior = len([tl.PREFIXO_ES, "▁a", "▁b", "▁c", tl.FIM])
+    assert kwargs["max_decoding_length"] == 2 * maior + 16
+
+
+def test_o_teto_nunca_passa_do_limite_do_modelo(tmp_path):
+    ct2, spm = _modulos_falsos()
+    motor = tl.TradutorLocal(_pasta_de_modelo(tmp_path), ctranslate2=ct2, sentencepiece=spm)
+    motor.traduzir([" ".join(["x"] * 400)])
+    _, kwargs = _TranslatorFalso.criados[0].chamadas[0]
+    assert kwargs["max_decoding_length"] == 256
+
+
 def test_lista_vazia_nao_carrega_o_modelo(tmp_path):
     ct2, spm = _modulos_falsos()
     motor = tl.TradutorLocal(_pasta_de_modelo(tmp_path), ctranslate2=ct2, sentencepiece=spm)
@@ -110,6 +130,23 @@ def test_modelo_carrega_uma_vez_so(tmp_path):
     motor.traduzir(["a b"])
     motor.traduzir(["c d"])
     assert len(_TranslatorFalso.criados) == 1
+
+
+def test_preparar_carrega_antes_da_primeira_traducao(tmp_path):
+    """O tradutor 4.2 chama `preparar()` ANTES de abrir o Excel: modelo
+    ausente aparece antes de qualquer planilha ser tocada."""
+    ct2, spm = _modulos_falsos()
+    motor = tl.TradutorLocal(_pasta_de_modelo(tmp_path), ctranslate2=ct2, sentencepiece=spm)
+    assert motor.preparar() is motor
+    motor.traduzir(["a"])
+    assert len(_TranslatorFalso.criados) == 1
+
+
+def test_preparar_sem_modelo_levanta(tmp_path, monkeypatch):
+    monkeypatch.delenv(tl.VARIAVEL_AMBIENTE, raising=False)
+    monkeypatch.setattr(tl, "_pastas_padrao", lambda: [tmp_path / "nada"])
+    with pytest.raises(tl.ModeloAusente):
+        tl.TradutorLocal().preparar()
 
 
 def test_o_motor_serve_como_funcao(tmp_path):

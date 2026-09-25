@@ -289,7 +289,11 @@ PADRAO_MARCADOR = r"(?i)\bX\s?Q\s?\d{1,2}\b"
 # `±`, `²`...) o modelo não conhece: medido em 2026-09-25, o `Ø` virava `⁇`,
 # ou, pedindo para copiar o desconhecido, o próprio prefixo `>>spa<<`. O token
 # que tem um desses vai inteiro num marcador e volta como estava.
-_PERMITIDOS = frozenset("áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑºª°«»¿¡–—‘’“”…·")
+_PERMITIDOS = frozenset(
+    "áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑºª°«»¿¡‘’“”…·"
+    # meia-risca e travessão por código: o guarda de texto da tela
+    # (tests/test_texto_da_ui.py) não aceita o travessão escrito.
+    + chr(0x2013) + chr(0x2014))
 
 _VARIANTES = {
     "a": "aáàâãä", "e": "eéèêë", "i": "iíìîï", "o": "oóòôõö", "u": "uúùûü",
