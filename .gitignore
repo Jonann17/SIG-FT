@@ -65,3 +65,8 @@ capturas/
 # execucao, nunca fonte.
 conferencia-do-pacote.txt
 conferencia-da-janela.txt
+
+# Modelo do tradutor local (~218 MB) -- GERADO por tools/preparar_tradutor.py
+# e embutido no instalador pelo SIG-FT.spec. Nunca vai para o Git.
+recursos/tradutor_pt_es/
+recursos/tradutor_pt_es.tmp/
