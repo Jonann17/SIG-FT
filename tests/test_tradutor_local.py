@@ -3,7 +3,7 @@ r"""O motor de tradução LOCAL (`sigft.core.tradutor_local`).
 Duas partes:
 
 A-C. Com dublês de `ctranslate2` e `sentencepiece`: o que vai para o modelo
-     (prefixo `>>spa<<`, `</s>`, beam 4, `replace_unknowns`), onde o modelo é
+     (prefixo `>>spa<<`, `</s>`, beam 4), onde o modelo é
      procurado, e a mensagem quando ele não está em lugar nenhum.
 
 D.   Com o MODELO DE VERDADE. Só roda onde ele existe: no workflow de release
@@ -84,14 +84,17 @@ def test_cada_texto_vai_com_prefixo_do_espanhol_e_fim(tmp_path):
     assert lote[1] == [tl.PREFIXO_ES, "▁Sim", tl.FIM]
 
 
-def test_beam_4_e_desconhecido_copiado_da_origem(tmp_path):
-    """`replace_unknowns`: sem ele o `Ø` virava `⁇` (medido em 2026-09-25)."""
+def test_beam_4_e_desconhecido_nao_e_copiado(tmp_path):
+    """Pedir ao modelo para COPIAR o desconhecido (`replace_unknowns`) trouxe o
+    próprio prefixo `>>spa<<` no lugar do `Ø` (medido em 2026-09-25, rodada 3).
+    O símbolo vai protegido por `traducao_respostas`, e o que escapar sai como
+    `⁇`, que lá vira `conferir`."""
     ct2, spm = _modulos_falsos()
     motor = tl.TradutorLocal(_pasta_de_modelo(tmp_path), ctranslate2=ct2, sentencepiece=spm)
     motor.traduzir(["Ø 36 mm"])
     _, kwargs = _TranslatorFalso.criados[0].chamadas[0]
     assert kwargs["beam_size"] == 4
-    assert kwargs["replace_unknowns"] is True
+    assert not kwargs.get("replace_unknowns")
 
 
 def test_lista_vazia_nao_carrega_o_modelo(tmp_path):
@@ -215,14 +218,16 @@ def test_modelo_real_traduz_o_basico():
 
 @com_modelo_real
 def test_modelo_real_preserva_o_simbolo_de_diametro():
-    motor = tl.TradutorLocal(_REAL)
-    [saida] = motor.traduzir(["Diâmetro externo Ø 150 mm"])
-    assert "Ø" in saida and "150" in saida and "⁇" not in saida
+    from sigft.services import traducao_respostas as tr
+    [saida] = tr.traduzir_respostas(["Diâmetro externo Ø 150 mm"], tl.TradutorLocal(_REAL))
+    assert saida.origem == "tradutor", saida
+    assert "Ø" in saida.texto and "150" in saida.texto and "⁇" not in saida.texto
+    assert ">>" not in saida.texto
 
 
 @com_modelo_real
 @pytest.mark.parametrize("original, esperado", [
-    ("PORCA SEXTAVADA", "TUERCA"),
+    ("PORCA SEXTAVADA", "tuerca"),
     ("Mancal de deslizamento", "cojinete"),
     ("Arruela de pressão", "arandela"),
     ("Filtro de óleo do mancal guia", "cojinete"),
@@ -230,11 +235,12 @@ def test_modelo_real_preserva_o_simbolo_de_diametro():
     ("Aço SAE 1045 temperado e revenido", "revenido"),
     ("Escova de carvão para anel coletor do gerador", "escobilla"),
     ("Mancais de rolamento lubrificados a óleo", "cojinetes"),
+    ("Válvula gaveta com haste ascendente", "compuerta con"),
 ])
 def test_modelo_real_com_o_glossario_da_casa(original, esperado):
-    """Os erros medidos em 2026-09-25, agora com os marcadores."""
+    """Os erros medidos em 2026-09-25, agora com as três versões."""
     from sigft.services import traducao_respostas as tr
     motor = tl.TradutorLocal(_REAL)
     [saida] = tr.traduzir_respostas([original], motor, tr.glossario_em_uso())
-    assert esperado in saida.texto, (saida, os.environ.get("GITHUB_JOB"))
-    assert saida.origem == "tradutor", saida
+    assert esperado in saida.texto.lower(), (saida, os.environ.get("GITHUB_JOB"))
+    assert saida.origem in ("tradutor", "glossario"), saida

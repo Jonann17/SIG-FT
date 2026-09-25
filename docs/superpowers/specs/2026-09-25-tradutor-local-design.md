@@ -43,6 +43,14 @@ Erros do tc-big, todos de vocabulário técnico brasileiro: *mancal* ("falta",
 metade o modelo "retraduz" o espanhol (`cojinete` -> `rodamiento`,
 `tuerca` -> `cerda`). Daí os marcadores da seção 4.2.
 
+**Rodada 3 (código de produção contra o modelo real):** com o termo num
+marcador, o termo sai sempre certo ("TUERCA HEXAGONAL", "Cojinete de
+deslizamiento", "Escobilla de carbón", "templado y revenido"), mas às vezes a
+frase em volta estraga ("Válvula de compuerta **como** vástago", "Filtro de
+aceite de guía cojinete"). E pedir ao modelo para copiar o desconhecido
+(`replace_unknowns`) trouxe o próprio `>>spa<<` no lugar do `Ø`. Daí as três
+versões e a proteção de símbolo da seção 4.2.
+
 O caminho do app (só `ctranslate2` + `sentencepiece`, sem `transformers`) bate
 com o de referência em 86 de 88 frases (as 2 diferenças são o `Ø`).
 
@@ -70,7 +78,7 @@ Descartados:
 - `localizar_modelo()`: a pasta do modelo embutido (`_MEIPASS/modelos/tradutor_pt_es`),
   depois `Documentos\SIG-FT\modelos\tradutor_pt_es`, depois `SIGFT_MODELO_TRADUTOR`.
 - `TradutorLocal.traduzir(textos) -> list[str]`: lote, `beam_size=4`,
-  `replace_unknowns=True` (o `Ø` passa), prefixo `>>spa<<`, `</s>` no fim.
+  prefixo `>>spa<<`, `</s>` no fim, SEM `replace_unknowns` (ver a rodada 3).
   Carrega uma vez por processo (0,2 s).
 - `ModeloAusente`: mensagem que diz onde procurou e como resolver.
 - Importa `ctranslate2`/`sentencepiece` só na carga: o resto do app não paga.
@@ -80,13 +88,18 @@ Camadas, em ordem, para cada resposta distinta do lote:
 1. **Vazio / não se traduz**: número, unidade, código, norma, marca, `N/A`, `-`
    (`220 V`, `IP65`, `6205-2RS`, `NBR 5410`, `WEG W22`). Vai igual.
 2. **Glossário, frase inteira**: vai o espanhol do glossário, sem modelo.
-3. **Glossário, termo**: cada termo vira um **marcador** (`Xq1`, ...) que o
-   modelo copia; depois o marcador vira o termo em espanhol. Marcador perdido ->
-   refaz sem marcador e avisa.
-4. **Modelo**, em lote, com a caixa tratada: TUDO MAIÚSCULO vai em caixa de
+3. **Símbolo fora do vocabulário** (`Ø`, `±`, `²`...): o token inteiro vira
+   um marcador (`XQ1`) que o modelo copia, e volta igual.
+4. **Glossário, termo**: a resposta vai em até TRÊS versões, na mesma ida ao
+   modelo: direta, com o termo já em espanhol, e com o termo num marcador.
+   Vence a primeira que mantém o termo da casa (a direta às vezes já acerta; a
+   com espanhol mantém a gramática; a com marcador garante o termo). Nenhuma
+   manteve -> fica a mais natural, marcada `[CONFERIR]` no log.
+5. **Modelo**, em lote, com a caixa tratada: TUDO MAIÚSCULO vai em caixa de
    frase e volta em maiúsculas.
-5. **Conferências**: os números da resposta têm de estar na tradução (senão
-   fica o original e o log avisa); ponto final que o original não tinha sai.
+6. **Conferências**: `⁇`, prefixo vazado ou marcador perdido invalidam a
+   versão; os números da resposta têm de estar na tradução (senão fica o
+   original e o log avisa); ponto final que o original não tinha sai.
 
 Glossário em duas camadas: o **da casa** (no código, melhora a cada versão) e
 o **do usuário** (`Documentos\SIG-FT\traducao\GLOSSARIO_PT_ES.txt`, formato
@@ -130,7 +143,8 @@ o **do usuário** (`Documentos\SIG-FT\traducao\GLOSSARIO_PT_ES.txt`, formato
 | Modelo não encontrado | para antes de abrir o Excel, diz onde procurou e o que fazer |
 | Aba ausente / ficha em inglês | falha só daquela ficha, com o motivo |
 | Número não confere na tradução | fica o original, linha `[CONFERIR]` no log |
-| Marcador do glossário perdido | refaz sem marcador, linha `[CONFERIR]` |
+| Termo da casa que nenhuma versão manteve | fica a versão mais natural, linha `[CONFERIR]` |
+| `⁇` ou prefixo vazado na tradução | fica o original, linha `[CONFERIR]` |
 | Planilha aberta no Excel | a janela "feche o arquivo" de sempre (`salvar_perguntando`) |
 | Parar | termina a ficha atual, fecha o Excel, não deixa processo |
 
@@ -140,10 +154,11 @@ quantas iguais; no fim, o tempo total.
 ## 6. Testes
 
 - Regras (`test_traducao_respostas.py`): não-traduzir, glossário (frase e
-  termo), marcadores (perdido -> refaz), caixa, número, ponto final, dedupe.
+  termo), as três versões e qual vence (com o dublê reproduzindo os erros
+  reais do modelo), símbolo, caixa, número, ponto final, dedupe.
 - Motor (`test_tradutor_local.py`): dublê de `ctranslate2`/`sentencepiece`;
-  prefixo, `</s>`, `replace_unknowns`, beam; modelo ausente; e um teste com o
-  MODELO DE VERDADE que só roda onde ele existe (o release no Windows).
+  prefixo, `</s>`, beam; modelo ausente; e testes com o MODELO DE VERDADE que
+  só rodam onde ele existe (o release no Windows e o experimento).
 - Tradutor (`test_translator_lote.py`): Excel dublado (uma instância só, quit
   no fim, escrita em bloco), nome da característica, número, aba em inglês,
   parar, erro por ficha.

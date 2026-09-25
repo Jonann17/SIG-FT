@@ -14,16 +14,20 @@ vocabulário técnico brasileiro: "PORCA SEXTAVADA" virou "CERDA HEXAGONAL",
 outra metade o modelo "retraduziu" o espanhol (`cojinete` -> `rodamiento`,
 `tuerca` -> `cerda`). O que ele NÃO mexe são códigos (`6205-2RS`, `AISI 316L`)
 -- daí o marcador: o termo vira um código, o modelo o copia, e o código vira o
-termo da casa depois.
+termo da casa depois. Só que, com o marcador, a frase em volta às vezes
+estraga ("Válvula de compuerta como vástago", era "con"). Por isso cada
+resposta com termo do glossário vai em TRÊS versões, e vence a mais natural
+que mantém o termo (ver `_versoes`).
 
 As camadas, na ordem em que cada resposta passa:
 
 1. vazio ou "não se traduz" (número, unidade, código, norma, `N/A`) -> igual;
 2. glossário, FRASE INTEIRA -> o espanhol do glossário, sem modelo;
-3. glossário, TERMO -> marcador; o modelo traduz o resto;
-4. o modelo, UM lote para todas as respostas distintas;
-5. conferências: marcador perdido refaz com o termo já em espanhol; número
-   que muda devolve o original; ponto final que o original não tinha sai.
+3. símbolo fora do vocabulário (`Ø`, `±`, `²`) -> marcador, volta igual;
+4. o modelo, UMA ida para todas as versões distintas do lote;
+5. conferências: marcador perdido, `⁇` ou prefixo vazado invalidam a versão;
+   número que muda devolve o original; ponto final que o original não tinha
+   sai. Termo da casa que nenhuma versão manteve vira `conferir` no log.
 """
 from __future__ import annotations
 
@@ -273,12 +277,19 @@ def glossario_em_uso(caminho_usuario=None) -> dict[str, str]:
 
 
 # =============================================================================
-# Glossário: termo protegido por marcador
+# Marcadores: o que o modelo tem de copiar sem mexer
 # =============================================================================
-# O marcador imita um CÓDIGO, que é o que o modelo copia sem mexer. O padrão
-# aceita o modelo ter posto espaço no meio ou mudado a caixa.
+# O marcador imita um CÓDIGO, que é o que o modelo copia (`6205-2RS`,
+# `AISI 316L`). O padrão aceita o modelo ter posto espaço no meio ou mudado a
+# caixa.
 _PREFIXO_MARCADOR = "XQ"
 PADRAO_MARCADOR = r"(?i)\bX\s?Q\s?\d{1,2}\b"
+
+# Fora do ASCII, o que o português e o espanhol usam. O resto (`Ø`, `Ω`, `µ`,
+# `±`, `²`...) o modelo não conhece: medido em 2026-09-25, o `Ø` virava `⁇`,
+# ou, pedindo para copiar o desconhecido, o próprio prefixo `>>spa<<`. O token
+# que tem um desses vai inteiro num marcador e volta como estava.
+_PERMITIDOS = frozenset("áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑºª°«»¿¡–—‘’“”…·")
 
 _VARIANTES = {
     "a": "aáàâãä", "e": "eéèêë", "i": "iíìîï", "o": "oóòôõö", "u": "uúùûü",
@@ -307,46 +318,78 @@ def _com_caixa_de(modelo: str, termo: str) -> str:
     return termo
 
 
-@dataclass(frozen=True)
-class _Protegido:
-    texto: str                   # com os marcadores
-    marcadores: tuple            # (marcador, espanhol na caixa do original, "pt = es")
-    com_espanhol: str            # o termo já em espanhol, sem marcador
-
-
-def _proteger(texto: str, termos: list[tuple[str, str, re.Pattern]]) -> _Protegido:
-    # Uma resposta que JÁ traz algo com cara de marcador (um código `XQ1` de
-    # verdade) teria esse código trocado pelo termo na volta. Nesse caso raro
-    # o termo vai direto em espanhol, sem marcador.
-    sem_marcador = bool(re.search(PADRAO_MARCADOR, texto))
-    marcadores = []
-    com_espanhol = texto
-    for pt, es, padrao in termos:            # do mais longo para o mais curto
-        def trocar(m, pt=pt, es=es):
-            marcador = f"{_PREFIXO_MARCADOR}{len(marcadores) + 1}"
-            marcadores.append((marcador, _com_caixa_de(m.group(0), es), f"{pt} = {es}"))
-            return marcador
-        if not sem_marcador:
-            texto = padrao.sub(trocar, texto)
-        com_espanhol = padrao.sub(lambda m, es=es: _com_caixa_de(m.group(0), es), com_espanhol)
-    if sem_marcador:
-        return _Protegido(com_espanhol, (), com_espanhol)
-    return _Protegido(texto, tuple(marcadores), com_espanhol)
-
-
-def _restaurar(texto: str, marcadores) -> str | None:
-    """Troca cada marcador pelo termo. `None` se algum sumiu."""
-    for marcador, es, _par in marcadores:
-        numero = marcador[len(_PREFIXO_MARCADOR):]
-        padrao = re.compile(r"(?i)\bX\s?Q\s?" + numero + r"\b")
-        if not padrao.search(texto):
-            return None
-        texto = padrao.sub(lambda _m, es=es: es, texto)
-    return texto
-
-
 def _contem(texto: str, termo: str) -> bool:
     return bool(_padrao_do_termo(termo).search(texto))
+
+
+def _estranho(token: str) -> bool:
+    return any(ord(c) > 127 and c not in _PERMITIDOS for c in token)
+
+
+# =============================================================================
+# As versões de uma resposta
+# =============================================================================
+@dataclass(frozen=True)
+class _Versao:
+    texto: str          # o que vai ao modelo
+    marcadores: tuple   # ((marcador, o que volta no lugar), ...)
+    exigidos: tuple     # ((termo em espanhol, "pt = es"), ...) que a saída tem de ter
+
+
+def _versoes(frase: str, termos) -> list[_Versao]:
+    """Até três versões, da mais natural para a mais garantida:
+
+    1. **direta** -- o modelo sozinho (às vezes ele já acerta o termo);
+    2. **com o espanhol** -- o termo da casa já escrito na frase (a gramática
+       fica intacta, mas o modelo pode "retraduzir" o termo);
+    3. **com marcador** -- o termo vira um código que o modelo copia (o termo
+       sai garantido, mas a frase em volta às vezes estraga).
+
+    Sem termo do glossário na frase, só a direta.
+    """
+    # Uma resposta que JÁ traz algo com cara de marcador (um código `XQ1` de
+    # verdade) teria esse código trocado na volta: nela, nada de marcador.
+    pode_marcar = not re.search(PADRAO_MARCADOR, frase)
+    numero = iter(range(1, 100))
+    simbolos = []
+
+    def marcar_simbolo(m):
+        if not _estranho(m.group(0)):
+            return m.group(0)
+        marcador = f"{_PREFIXO_MARCADOR}{next(numero)}"
+        simbolos.append((marcador, m.group(0)))
+        return marcador
+
+    base = re.sub(r"\S+", marcar_simbolo, frase) if pode_marcar else frase
+
+    presentes = [t for t in termos if t[2].search(base)]
+    if not presentes:
+        return [_Versao(base, tuple(simbolos), ())]
+
+    exigidos, marcadores = [], list(simbolos)
+    com_espanhol, com_marcador = base, base
+    for pt, es, padrao in presentes:         # do mais longo para o mais curto
+        par = f"{pt} = {es}"
+
+        def escrever(m, es=es, par=par):
+            termo = _com_caixa_de(m.group(0), es)
+            exigidos.append((termo, par))
+            return termo
+
+        def marcar(m, es=es):
+            marcador = f"{_PREFIXO_MARCADOR}{next(numero)}"
+            marcadores.append((marcador, _com_caixa_de(m.group(0), es)))
+            return marcador
+
+        com_espanhol = padrao.sub(escrever, com_espanhol)
+        if pode_marcar:
+            com_marcador = padrao.sub(marcar, com_marcador)
+
+    versoes = [_Versao(base, tuple(simbolos), tuple(exigidos)),
+               _Versao(com_espanhol, tuple(simbolos), tuple(exigidos))]
+    if pode_marcar:
+        versoes.append(_Versao(com_marcador, tuple(marcadores), ()))
+    return versoes
 
 
 # =============================================================================
@@ -385,11 +428,43 @@ def _chamar(motor, textos: list[str]) -> list[str]:
     return ["" if s is None else str(s).strip() for s in saida]
 
 
+_MOTIVOS = {
+    "vazio": "o tradutor devolveu vazio; ficou o original",
+    "desconhecido": "o tradutor nao reconheceu um simbolo; ficou o original",
+    "marcador": "o tradutor perdeu um trecho protegido; ficou o original",
+}
+
+
+def _restaurar(versao: _Versao, saida: str, original: str) -> tuple[str | None, str]:
+    """A saída com os marcadores desfeitos, ou `(None, motivo)` se ela não
+    serve de jeito nenhum."""
+    if not saida:
+        return None, "vazio"
+    for sinal in ("\u2047", ">>", "<<"):
+        if sinal in saida and sinal not in original:
+            return None, "desconhecido"
+    texto = saida
+    for marcador, volta in versao.marcadores:
+        numero = marcador[len(_PREFIXO_MARCADOR):]
+        padrao = re.compile(r"(?i)\bX\s?Q\s?" + numero + r"\b")
+        if not padrao.search(texto):
+            return None, "marcador"
+        texto = padrao.sub(lambda _m, volta=volta: volta, texto)
+    if re.search(PADRAO_MARCADOR, texto) and not re.search(PADRAO_MARCADOR, original):
+        return None, "marcador"
+    if _numeros(texto) != _numeros(original):
+        return None, ("a traducao mudou os numeros (" + ", ".join(_numeros(original))
+                      + "); ficou o original")
+    return texto, ""
+
+
 def traduzir_respostas(textos, motor, glossario=None) -> list[Traducao]:
     """Traduz uma lista de respostas, devolvendo na MESMA ordem.
 
-    O motor é chamado no máximo duas vezes: uma com todas as respostas
-    distintas, e outra só para as que perderam um marcador.
+    O motor é chamado UMA vez, com todas as versões distintas do lote. Por
+    resposta, vence a primeira versão (direta, com o espanhol, com marcador)
+    que mantém os termos do glossário; se nenhuma mantém, fica a mais natural
+    que ao menos passou nas conferências, marcada para conferir.
     """
     termos = sorted(
         ((pt, es, _padrao_do_termo(pt)) for pt, es in (glossario or {}).items()),
@@ -397,7 +472,7 @@ def traduzir_respostas(textos, motor, glossario=None) -> list[Traducao]:
     frases = {_chave(pt): es for pt, es, _ in termos}
 
     resultado: list[Traducao | None] = [None] * len(textos)
-    pendentes: dict[int, tuple[str, bool, _Protegido]] = {}
+    pendentes: dict[int, tuple[str, bool, list[_Versao]]] = {}
 
     for i, bruto in enumerate(textos):
         original = "" if bruto is None else str(bruto)
@@ -413,45 +488,31 @@ def traduzir_respostas(textos, motor, glossario=None) -> list[Traducao]:
             resultado[i] = Traducao(original, _ajustar_ponto(limpo, es), "glossario")
         else:
             frase, alta = caixa_de_frase(limpo)
-            pendentes[i] = (limpo, alta, _proteger(frase, termos))
+            pendentes[i] = (limpo, alta, _versoes(frase, termos))
 
-    # 1ª ida: cada entrada distinta uma vez só.
-    entradas = list(dict.fromkeys(p.texto for _, _, p in pendentes.values()))
-    traduzidas = dict(zip(entradas, _chamar(motor, entradas))) if entradas else {}
+    entradas = list(dict.fromkeys(v.texto for _, _, versoes in pendentes.values()
+                                  for v in versoes))
+    saidas = dict(zip(entradas, _chamar(motor, entradas))) if entradas else {}
 
-    # O que perdeu marcador volta com o termo já em espanhol.
-    restaurados, refazer = {}, {}
-    for i, (_, _, protegido) in pendentes.items():
-        texto = _restaurar(traduzidas[protegido.texto], protegido.marcadores)
-        if texto is None:
-            refazer[i] = protegido.com_espanhol
-        else:
-            restaurados[i] = texto
-    if refazer:
-        segunda = list(dict.fromkeys(refazer.values()))
-        refeitas = dict(zip(segunda, _chamar(motor, segunda)))
+    for i, (limpo, alta, versoes) in pendentes.items():
+        escolhido, reserva, motivo = None, None, ""
+        for versao in versoes:
+            texto, problema = _restaurar(versao, saidas[versao.texto], limpo)
+            if texto is None:
+                motivo = motivo or problema
+                continue
+            faltando = [par for termo, par in versao.exigidos if not _contem(texto, termo)]
+            if not faltando:
+                escolhido = texto
+                break
+            if reserva is None:
+                reserva = (texto, "o tradutor nao manteve o termo do glossario ("
+                           + "; ".join(dict.fromkeys(faltando)) + ")")
 
-    for i, (limpo, alta, protegido) in pendentes.items():
-        aviso = ""
-        if i in restaurados:
-            texto = restaurados[i]
-        else:
-            texto = refeitas[refazer[i]]
-            faltando = [par for _, es, par in protegido.marcadores if not _contem(texto, es)]
-            if faltando:
-                aviso = ("o tradutor nao manteve o termo do glossario ("
-                         + "; ".join(faltando) + ")")
-
-        if not texto:
-            resultado[i] = Traducao(textos[i], limpo, "conferir",
-                                    "o tradutor devolveu vazio; ficou o original")
+        if escolhido is None and reserva is None:
+            resultado[i] = Traducao(textos[i], limpo, "conferir", _MOTIVOS.get(motivo, motivo))
             continue
-        if _numeros(texto) != _numeros(limpo):
-            resultado[i] = Traducao(
-                textos[i], limpo, "conferir",
-                f"a traducao mudou os numeros ({', '.join(_numeros(limpo))}); "
-                "ficou o original")
-            continue
+        texto, aviso = (escolhido, "") if escolhido is not None else reserva
         texto = _ajustar_ponto(limpo, texto)
         if alta:
             texto = texto.upper()

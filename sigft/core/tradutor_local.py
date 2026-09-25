@@ -142,10 +142,12 @@ class TradutorLocal:
             return []
         tradutor, origem, destino = self._carregar()
         lote = [[PREFIXO_ES, *origem.encode(texto, out_type=str), FIM] for texto in textos]
-        # `replace_unknowns`: o que o vocabulário não conhece (o `Ø`, medido)
-        # é copiado da origem em vez de virar `⁇`.
+        # SEM `replace_unknowns`: pedir para copiar o desconhecido trouxe o
+        # próprio `>>spa<<` no lugar do `Ø` (rodada 3, 2026-09-25). O símbolo
+        # vai protegido por `traducao_respostas`; o que escapar sai como `⁇`,
+        # e lá vira `conferir` em vez de ir para a ficha.
         resultados = tradutor.translate_batch(
-            lote, beam_size=BEAM, max_batch_size=LOTE_MAXIMO, replace_unknowns=True)
+            lote, beam_size=BEAM, max_batch_size=LOTE_MAXIMO)
         return [destino.decode(r.hypotheses[0]).strip() for r in resultados]
 
     __call__ = traduzir
