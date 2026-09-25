@@ -17,8 +17,14 @@ por planilhas Excel.
 e execute. Ele pergunta se quer instalar para todos os usuários (pede senha de
 administrador) ou só para você (não pede, e as atualizações rodam sem popup).
 
-Depois disso o app **se atualiza sozinho**: quando sai uma versão nova, ele
-avisa, mostra o que mudou e instala com um clique.
+Depois disso o app **se atualiza sozinho**: toda vez que abre, ele confere se
+saiu versão nova e, se saiu, avisa, mostra o que mudou e instala com um clique
+(e abre de novo, já atualizado). O botão **"Atualizações"** da tela inicial faz
+a mesma pergunta na hora.
+
+> **Está na 1.0.0 ou na 1.1.0?** Instale a 1.1.1 (ou mais nova) à mão, uma
+> vez: aquelas duas versões não procuravam atualização. Da 1.1.1 em diante, as
+> próximas chegam pelo aviso.
 
 > **"O Windows protegeu o computador"** aparece na primeira vez, e não é vírus:
 > o SmartScreen reclama de todo programa recém-compilado sem assinatura digital

@@ -57,6 +57,7 @@ sessão e seria esquecido justamente nas sessões corridas.
 |---|---|---|
 | 2026-09-24 | Rafael | 🔴 **`core/llm` ganhou ANEXOS (o PDF em si para o modelo)** — aditivo: sem anexo a requisição sai idêntica. `Anexo`, `LLMClient.generate(..., anexos=)`, `LLMClient.aceita_pdf`, `aceita_pdf()` nos 3 provedores (`PREFIXOS_COM_PDF_NATIVO` no OpenRouter).<br>A política `autospec` ganhou `timeout_s: 300` (opcional, `get_llm` repassa ao provedor) e `max_retries: 1`; dois testes teus que fixavam o 2 foram atualizados. |
 | 2026-09-24 | Rafael | 🔴 **Reescrevi `montar_autospec` e regerei a fixture dele** — só essa função de `prompts.py`; os outros prompts intactos. Pede a prova de cada valor (`tipo/fonte/pagina/trecho/justificativa`). Ajustei a asserção em `test_llm_prompts.py`.<br>**Release 1.1.0:** publiquei com a tua autorização (via Rafael). No CHANGELOG, cada item da 1.1.0 ganhou o nome do módulo na frente: as notas perdem os títulos de seção (ver PENDENCIAS). |
+| 2026-09-25 | Luan | 🔴 **A atualização automática passou a funcionar (1.1.1): todo Release NORMAL aparece como aviso na abertura seguinte de quem tem 1.1.1+, com o bloco do CHANGELOG como "o que mudou".** Para testar sem distribuir, só pré-lançamento.<br>A 1.0.0 e a 1.1.0 nunca perguntavam ao GitHub (nenhuma tela chamava o `updater`): quem está nelas instala a 1.1.1 à mão. Detalhe em `docs/BUILD.md`. |
 
 ---
 

@@ -12,6 +12,13 @@ Escreva cada linha pensando em quem usa o SIG-FT, não em quem o programa:
 "a busca do AutoSpec passa a funcionar com a VPN ligada" é útil; "refatorado o
 cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
+## 1.1.1 - 2026-09-25
+
+- Atualização automática: agora funciona de verdade. **Toda vez que o SIG-FT abre**, ele confere no GitHub se saiu versão nova; se saiu, mostra o que mudou e oferece **"Atualizar agora"**, que baixa, confere e instala, e o SIG-FT **abre de novo sozinho** já atualizado. Até a 1.1.0 esse aviso nunca aparecia: o programa não chegava a perguntar.
+- Atualização automática: **esta versão precisa ser instalada à mão uma última vez**, pelo instalador da página do Release. A 1.0.0 e a 1.1.0 não sabem procurar atualização; da 1.1.1 em diante, as próximas chegam pelo aviso.
+- Atualização automática: botão novo **"Atualizações"** na tela inicial, para procurar versão nova na hora. Quando não dá para atualizar, ele diz por quê (sem conexão, token do build recusado, ou uma cópia que se atualiza pelo `.bat` do Box).
+- Atualização automática: com o SIG-FT instalado para todos os usuários, o Windows pede a senha de administrador para atualizar, e o aviso diz isso antes. O programa reabre **na sua conta**, com as suas chaves de API e preferências, mesmo quando quem digita a senha é outra pessoa.
+
 ## 1.1.0 - 2026-09-24
 
 **AutoSpec AI**

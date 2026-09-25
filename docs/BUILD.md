@@ -22,6 +22,38 @@ conferir que a janela monta (`--smoke`) e que o bundle importa o que precisa
 (`--conferir-pacote`), monta o instalador com o Inno Setup, calcula o SHA256 e
 publica o Release. Os apps já instalados avisam sozinhos na próxima abertura.
 
+> ⚠️ **Só da 1.1.1 em diante.** A 1.0.0 e a 1.1.0 nunca perguntavam ao GitHub
+> (o serviço existia, mas nenhuma tela o chamava — o `latest.json` da v1.1.0
+> ficou com zero downloads). Quem está nelas precisa instalar a 1.1.1, ou a
+> mais nova, **à mão, uma vez**.
+
+### Como o app instalado se atualiza (desde a 1.1.1)
+
+1. **Toda abertura** pergunta ao GitHub pelo último Release, numa thread — a
+   janela não espera. Pré-lançamento não conta (`/releases/latest` o ignora).
+   Só pergunta o app **empacotado, instalado pelo instalador e com token**:
+   rodando do código-fonte, do ZIP do Box ou de um build local, não há o que
+   instalar por aqui (`updater.motivo_para_nao_verificar`).
+2. Havendo versão nova, abre o aviso: versão atual → nova, data, tamanho e
+   **o bloco do CHANGELOG** daquela versão (vem do `latest.json`). "Agora não"
+   fecha; na próxima abertura ele volta.
+3. **"Atualizar agora"** baixa pela API do asset, confere o SHA256, solta o
+   mutex, dispara o instalador em `/SILENT` com `/REABRIR=1` e fecha o app. O
+   instalador troca os arquivos e **reabre o SIG-FT** na conta de quem estava
+   usando (`[Run]` com `runasoriginaluser`, só quando recebe `/REABRIR=1`).
+
+Sem conexão ou com o token recusado, a abertura fica **calada** — o motivo vai
+só para o log. Para ver o motivo, use o botão **"Atualizações"** da tela
+inicial: ele faz a mesma pergunta e sempre responde.
+
+**Onde olhar quando uma máquina não atualiza:**
+
+| O quê | Onde |
+|---|---|
+| a pergunta, o download e o erro | `Documentos\SIG-FT\logs\sigft.log` (linhas `[atualizacao]`) |
+| o que o instalador fez | `%TEMP%\SIG-FT_Update\instalacao.log` |
+| o instalador baixado | `%TEMP%\SIG-FT_Update\` |
+
 ### Sem permissão para criar tag?
 
 Aba **Actions → Release → Run workflow**, e preencha o campo *versão*. Por esse
@@ -81,9 +113,10 @@ Releases. Ele é embutido no build pelo workflow, a partir do segredo
 
 ### Enquanto a versão nova não sai
 
-Os apps já instalados ficam sem atualização automática (o app avisa: "o GitHub
-recusou o token de atualização deste build"). Dá para consertar **sem refazer o
-build**, máquina a máquina: grave o token novo em
+Os apps já instalados ficam sem atualização automática. A abertura não avisa
+(ela é calada de propósito); o botão **"Atualizações"** da tela inicial mostra
+"o GitHub recusou o token de atualização deste build". Dá para consertar **sem
+refazer o build**, máquina a máquina: grave o token novo em
 
 ```
 Documentos\SIG-FT\update_token.txt

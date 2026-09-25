@@ -25,6 +25,21 @@ que a atualização automática funciona na rede da empresa**, o Box sai: é apa
 `SIG-FT Itaipu.bat`, `Gerar-Pacote.bat` e `tests/test_distribuicao_box.py`, e
 tirar esta seção.
 
+> ⚠️ **[2026-09-25] Essa validação só pode começar na 1.1.1.** Até a 1.1.0 o
+> app instalado nunca perguntava ao GitHub: o serviço de atualização existia,
+> mas nenhuma tela o chamava. O roteiro:
+>
+> 1. instale a **1.1.1 à mão**, pelo instalador do Release;
+> 2. publique a versão seguinte como Release **normal** (um pré-lançamento não
+>    é oferecido a ninguém — nem a você);
+> 3. abra o SIG-FT: o aviso tem de aparecer sozinho, em poucos segundos;
+> 4. "Atualizar agora": o app fecha, o instalador roda e o SIG-FT **reabre
+>    sozinho** com a versão nova na barra de título.
+>
+> Se o aviso não aparecer, o botão **"Atualizações"** da tela inicial diz por
+> quê. Os logs estão listados em [`BUILD.md`](BUILD.md), seção "Como o app
+> instalado se atualiza".
+
 > ⚠️ **Uma diferença que importa enquanto os dois existem:** quem instala pelo
 > instalador tem as chaves de API em `Documentos\SIG-FT\`, e elas **não vêm no
 > pacote** — o `.exe` publicado no GitHub não pode carregar segredo. Quem já
