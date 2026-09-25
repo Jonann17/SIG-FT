@@ -115,9 +115,9 @@ class OpenRouterProvider(OpenAICompatProvider):
 
 # =============================================================================
 # listar_modelos() -- catálogo de modelos do OpenRouter, com cache local em
-# disco (insumo do CP 3.3, sem consumidor de produção ainda). `GET
-# {base_url}/models` -- devolve a lista de dicts de modelo (id/name/pricing/
-# etc., o que a API devolver).
+# disco. Consumido por `core/llm/catalogo.py` (botão "Atualizar lista de
+# modelos" da Home). `GET {base_url}/models` -- devolve a lista de dicts de
+# modelo (id/name/pricing/etc., o que a API devolver).
 # =============================================================================
 def listar_modelos(
     api_key: str | None,
@@ -138,8 +138,9 @@ def listar_modelos(
         ainda monta `Authorization: Bearer <vazio>`, o endpoint decide).
       base_url: raiz do endpoint -- default `config.OPENROUTER_BASE_URL`.
       cache_path: caminho do arquivo JSON de cache -- default
-        `config.OPENROUTER_CATALOGO_CACHE` (caminho relativo, mesmo padrão
-        de `config.CONFIG_FILE`).
+        `config.OPENROUTER_CATALOGO_CACHE` na pasta de dados do usuário
+        (`Documentos\\SIG-FT\\`), como `config.CONFIG_FILE`. Um nome puro
+        também vai para lá; nunca é relativo ao diretório de trabalho.
       ttl_segundos: tempo de vida do cache -- default 1 dia (86400s).
       http_get: injeção de dependência para teste -- se `None` (default,
         uso real), importa `requests` de forma PREGUIÇOSA e usa
@@ -158,8 +159,21 @@ def listar_modelos(
         devolve o cache, sem levantar.
       - falha de rede SEM nenhum cache disponível: levanta a exceção
         original (não há nada para degradar para).
+      - falha ao GRAVAR o cache (pasta sem permissão, disco cheio): devolve
+        a lista nova mesmo assim, sem levantar.
     """
-    caminho = cache_path if cache_path is not None else config.OPENROUTER_CATALOGO_CACHE
+    # O NOME do arquivo vai para a pasta de dados; um caminho de verdade (os
+    # `tmp_path` dos testes) passa intocado. Era o nome cru, gravado relativo
+    # ao diretório de trabalho -- `Program Files` no app instalado, onde a
+    # gravação levanta e o catálogo do OpenRouter sumia da Home (2026-09-25).
+    #
+    # É o mesmo arquivo que `core/llm/catalogo.py` usa para o OpenRouter, como
+    # era antes de os dados saírem da pasta do programa: o catálogo regrava
+    # por cima no formato dele, e cada lado lê o formato do outro como "sem
+    # cache".
+    from sigft.core.dados_usuario import resolver_config
+
+    caminho = resolver_config(cache_path, config.OPENROUTER_CATALOGO_CACHE)
     agora_fn = time_fn if time_fn is not None else time.time
 
     cache = _ler_cache(caminho)
@@ -212,5 +226,10 @@ def _ler_cache(caminho: str | os.PathLike[str]) -> dict[str, Any] | None:
 def _gravar_cache(
     caminho: str | os.PathLike[str], modelos: list[dict[str, Any]], timestamp: float
 ) -> None:
-    with open(caminho, "w", encoding="utf-8") as arquivo:
-        json.dump({"timestamp": timestamp, "modelos": modelos}, arquivo, ensure_ascii=False)
+    # Cache é conveniência: não conseguir gravá-lo não pode levar junto a
+    # lista que a rede acabou de trazer (mesma regra de `catalogo._gravar_cache`).
+    try:
+        with open(caminho, "w", encoding="utf-8") as arquivo:
+            json.dump({"timestamp": timestamp, "modelos": modelos}, arquivo, ensure_ascii=False)
+    except OSError:
+        pass

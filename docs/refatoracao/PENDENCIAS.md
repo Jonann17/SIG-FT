@@ -657,3 +657,22 @@ A validação usou a exportação da Itaipu de 23/09/2026 (1.199 PDMs).
 | 2026-09-24 | AutoSpec x AMP (frente Rafael) | **Postura de privacidade de 2026-08-11 revista** (seção em `docs/AUTOSPEC_MELHORIAS.md`): no provedor público o documento vai inteiro, e com Gemini o próprio PDF. Foi pedido explícito do usuário ("fazer toda a leitura e extração via uma chamada de uma IA via API"), mas a decisão antiga dizia "só trechos". Confirmar com o usuário e, se for o caso, com a TI. | Decisão do usuário |
 | 2026-09-24 | AutoSpec x AMP (frente Rafael) | **RESOLVIDO no mesmo dia:** a seção entrou no bloco `1.1.0` para a release publicada com autorização do Luan. Texto original: **CHANGELOG da próxima versão:** o AutoSpec mudou para quem usa (documento inteiro, prova por valor, dedução marcada, rotação, falha da IA). Texto sugerido no fim de `docs/AUTOSPEC_MELHORIAS.md`. O `CHANGELOG.md` não foi tocado: o bloco da versão é de quem fecha o release. | Próximo release (Luan) |
 | 2026-09-24 | Preparando a release 1.1.0 (frente Rafael, com autorização do Luan) | **As notas do Release e a janela de atualização perdem os TÍTULOS de seção do CHANGELOG.** `novidades.analisar` só guarda as linhas de lista, então `**Upload de características técnicas**`, `**Planilhas PMIB**` e os outros títulos da 1.1.0 sumiam, e os itens de módulos diferentes saíam misturados numa lista só (conferido com `tools/gerar_manifesto.py`). Contornado no CONTEÚDO: cada item da 1.1.0 ganhou o nome do módulo na frente (`AutoSpec AI: ...`). O conserto de verdade é o parser levar a seção para o item, ou o CHANGELOG deixar de usar título de seção. | Próximo release (Luan) |
+
+---
+
+## 2026-09-25 — o catálogo do OpenRouter sumia no app instalado
+
+Consertado nesta data: o cache próprio de `providers/openrouter.listar_modelos`
+ficou para trás quando os dados saíram da pasta do programa (79886e4) e
+continuava gravando relativo ao diretório de trabalho — `Program Files` no app
+instalado. A gravação levantava, levava junto a lista que a rede tinha acabado
+de trazer, e o botão "Atualizar lista de modelos" nunca mostrava o catálogo.
+Testes na seção E de `tests/test_pasta_do_programa_somente_leitura.py`.
+Achados de carona que ficaram de fora:
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-09-25 | `core/llm/catalogo.py` × `app/views/home.py` | **Falha ao baixar o catálogo é muda.** `listar_modelos` engole qualquer exceção (rede, proxy, HTTP 401) e devolve `[]`; logo depois do clique o painel diz "Catálogo ainda não baixado... Clique em Atualizar", sem o motivo. Foi o que fez o defeito acima parecer "a chave do OpenRouter não funciona". O texto do motivo já existe (`rede.resumo_erro`); falta o catálogo devolvê-lo e o `lbl_catalogo_ia` mostrá-lo. | Próxima sessão que tocar o painel de Modelos de IA |
+| 2026-09-25 | `core/llm/catalogo.py` (`somente_cache`) | **Um dia depois de baixado, o catálogo some da Home.** A montagem lê só o cache e trata o cache vencido (TTL de 86400 s) como ausente: o painel volta a mostrar só os recomendados e "Catálogo ainda não baixado" até alguém clicar em "Atualizar" de novo (medido: 1 h depois, a lista; 1 dia e 1 s depois, `[]`). Para exibir, um catálogo de ontem serve melhor que nenhum. | Decisão do usuário |
+| 2026-09-25 | `core/llm/catalogo.py` × `providers/openrouter.py` | **Dois caches no mesmo arquivo, em formatos diferentes.** Para o OpenRouter, o catálogo e o provedor gravam `openrouter_models_cache.json`, como era antes de 79886e4. O catálogo regrava por cima, e cada lado lê o formato do outro como "sem cache". Funciona, mas o cache do provedor é peso morto nesse caminho: unificar numa camada só. | Fase 8 |
+| 2026-09-25 | CHANGELOG da próxima versão | **Texto sugerido** (o bloco da versão é de quem fecha o release): "Modelos de IA: o botão **"Atualizar lista de modelos"** volta a trazer o catálogo do **OpenRouter** quando o SIG-FT está instalado para todos os usuários (a instalação padrão). A lista chegava da internet, mas o programa tentava guardá-la na própria pasta, onde o Windows não deixa gravar, e ela era descartada sem aviso — por isso parecia que a chave do OpenRouter não funcionava." | Próximo release (Luan) |

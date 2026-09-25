@@ -255,3 +255,87 @@ def test_os_caches_de_IA_tambem_ficam_fora_do_programa():
     assert str(pasta_dados()) in caminho, (
         f"o cache de modelos foi parar em {caminho!r}, fora da pasta de dados"
     )
+
+
+# =============================================================================
+# E. O catálogo do OpenRouter, mesma causa (2026-09-25)
+# =============================================================================
+#
+# O sintoma, do usuário: "configurei a chave do OpenRouter e o catálogo não
+# aparece". O botão "Atualizar lista de modelos" buscava a lista, a lista
+# CHEGAVA, e o painel voltava dizendo que o catálogo não tinha sido baixado.
+#
+# O catálogo (`core/llm/catalogo.py`) pede a lista a
+# `providers/openrouter.listar_modelos`, que tem um cache PRÓPRIO -- e esse
+# ficou para trás quando os dados saíram da pasta do programa (79886e4): o
+# default dele era o nome cru `config.OPENROUTER_CATALOGO_CACHE`, gravado
+# relativo ao diretório de trabalho. Sob `Program Files` a gravação levanta,
+# a exceção leva junto a lista que acabara de chegar, e o `except` largo do
+# catálogo a transforma em "nenhum modelo". Gemini e AMP não passam por ali,
+# por isso só o OpenRouter sumia.
+#
+# O teste logo acima não pegou porque confere o CAMINHO que o catálogo
+# calcula, e não quem de fato grava.
+
+class _RespostaDoCatalogo:
+    """`GET /models` do OpenRouter, no formato da resposta real."""
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"data": [
+            {"id": "minimax/minimax-m3", "name": "MiniMax: MiniMax M3",
+             "context_length": 1000000,
+             "pricing": {"prompt": "0.0000003", "completion": "0.0000012"}},
+            {"id": "x-ai/grok-4.5", "name": "xAI: Grok 4.5",
+             "context_length": 256000,
+             "pricing": {"prompt": "0.000003", "completion": "0.000015"}},
+        ]}
+
+
+def _get_do_catalogo(url, headers=None, timeout=None):
+    # Só responde ao endpoint do OpenRouter: outro ramo do catálogo (Gemini,
+    # AMP) não pode satisfazer estes testes por engano.
+    assert url == "https://openrouter.ai/api/v1/models", url
+    return _RespostaDoCatalogo()
+
+
+def test_o_catalogo_do_OpenRouter_APARECE_com_a_pasta_do_programa_sem_escrita(instalado):
+    """O caminho do botão "Atualizar lista de modelos", do clique à tela.
+
+    O clique busca com `forcar=True`; depois o painel se remonta lendo SÓ o
+    cache (`somente_cache=True`). As duas pontas têm de ver a lista.
+    """
+    programa, _dados = instalado
+    from sigft import config
+    from sigft.core.llm import catalogo
+
+    _recusa_escrita(programa, config.OPENROUTER_CATALOGO_CACHE)
+    chaves = {"OPENROUTER": "sk-or-v1-chave"}
+
+    baixado = catalogo.listar_modelos(
+        "openrouter", chaves, forcar=True, http_get=_get_do_catalogo)
+    na_tela = catalogo.listar_modelos("openrouter", chaves, somente_cache=True)
+
+    assert baixado == ["minimax/minimax-m3", "x-ai/grok-4.5"], (
+        "a lista chegou da rede e foi descartada -- é o 'catálogo não aparece'"
+    )
+    assert na_tela == ["minimax/minimax-m3", "x-ai/grok-4.5"]
+
+
+def test_o_cache_do_provedor_OpenRouter_vai_para_a_pasta_de_DADOS(instalado):
+    """A causa, medida na fonte: o default de PRODUÇÃO, sem `cache_path`.
+
+    Os testes de `test_llm_openrouter.py` passam todos um `tmp_path` -- a
+    mesma costura que escondeu o defeito de 2026-09-21.
+    """
+    programa, dados = instalado
+    from sigft.core.llm.providers import openrouter
+
+    openrouter.listar_modelos("sk-or-v1-chave", http_get=_get_do_catalogo)
+
+    assert sorted(p.name for p in programa.iterdir()) == [], (
+        "o cache do OpenRouter foi gravado na pasta do programa"
+    )
+    assert (dados / "openrouter_models_cache.json").is_file()

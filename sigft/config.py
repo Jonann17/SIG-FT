@@ -337,8 +337,9 @@ OPENROUTER_HEADERS_ATRIBUICAO: dict[str, str] = {
     "X-Title": "SIG-FT",
 }
 
-# Caminho do cache local do catálogo `GET /models` — relativo, mesmo padrão
-# de `CONFIG_FILE` (resolvido a partir do cwd do processo).
+# NOME do arquivo de cache do catálogo `GET /models` — a pasta vem de
+# `core/dados_usuario` (`Documentos\SIG-FT\`), como a de `CONFIG_FILE`. Nunca
+# relativo ao cwd: no app instalado ele é `Program Files`, que não grava.
 OPENROUTER_CATALOGO_CACHE = "openrouter_models_cache.json"
 
 
