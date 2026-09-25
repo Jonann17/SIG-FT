@@ -285,3 +285,102 @@ def test_o_AppUserModelID_do_atalho_bate_com_o_do_app(iss):
     assert not re.search(r"\d+\.\d+\.\d+", instancia.APP_USER_MODEL_ID), (
         "a versao nao pode entrar no AppUserModelID"
     )
+
+
+# =============================================================================
+# H. A atualizacao automatica REABRE o app  [2026-09-25]
+# =============================================================================
+#
+# A atualizacao roda o instalador em `/SILENT` (`sigft/services/updater.py`).
+# Nesse modo a linha do `[Run]` que abre o app -- `postinstall skipifsilent` --
+# NAO roda: o app fechava para atualizar e nao voltava. Nada no repositorio
+# podia mostrar isso, porque ate aqui ninguem chamava a atualizacao.
+
+def _entradas_run(iss):
+    """As entradas do `[Run]`, com as linhas continuadas por `\\` juntadas."""
+    m = re.search(r"^\[Run\]$(.*?)(?=^\[|\Z)", iss, re.M | re.S)
+    if not m:
+        return []
+    texto = re.sub(r"\\\s*\n\s*", " ", m.group(1))
+    return [linha.strip() for linha in texto.splitlines()
+            if linha.strip() and not linha.lstrip().startswith(";")]
+
+
+def _flags(entrada):
+    m = re.search(r"Flags:\s*([^;]+)", entrada, re.I)
+    return set(m.group(1).lower().split()) if m else set()
+
+
+def _entrada_que_reabre(iss):
+    candidatas = [e for e in _entradas_run(iss)
+                  if "{#AppExe}" in e and "skipifsilent" not in _flags(e)]
+    assert len(candidatas) == 1, (
+        "o [Run] precisa de UMA entrada que abra o app SEM `skipifsilent` -- "
+        "e a que reabre depois da atualizacao silenciosa"
+    )
+    return candidatas[0]
+
+
+def test_ha_uma_entrada_que_reabre_o_app_depois_da_atualizacao(iss):
+    entrada = _entrada_que_reabre(iss)
+
+    assert "nowait" in _flags(entrada), (
+        "sem `nowait` o instalador ficaria esperando o app FECHAR para terminar")
+
+
+def test_o_app_reaberto_sobe_na_conta_de_QUEM_USAVA(iss):
+    """Sem `runasoriginaluser`, no app instalado 'para todos' o SIG-FT reaberto
+    herdaria o administrador do UAC -- e, com a senha de outra pessoa, abriria
+    na conta dela, sem as chaves de API."""
+    assert "runasoriginaluser" in _flags(_entrada_que_reabre(iss))
+
+
+def test_a_reabertura_so_acontece_a_pedido_do_app(iss):
+    """A TI pode instalar em massa com `/SILENT`. Sem a condicao, o SIG-FT
+    abriria sozinho na maquina de todo mundo no meio da distribuicao."""
+    entrada = _entrada_que_reabre(iss)
+    m = re.search(r"Check:\s*(\w+)", entrada)
+    assert m, "a entrada que reabre tem de ter um `Check:`"
+
+    funcao = m.group(1)
+    codigo = re.search(r"^\[Code\]$(.*)", iss, re.M | re.S)
+    assert codigo, "o `Check:` aponta para uma funcao que o [Code] tem de definir"
+    assert re.search(rf"function\s+{funcao}\b", codigo.group(1), re.I), (
+        f"a funcao `{funcao}` do `Check:` nao existe no [Code]")
+
+
+def test_o_parametro_que_o_iss_le_e_O_MESMO_que_o_app_manda(iss):
+    """Mesma classe de defeito do mutex: os dois lados divergindo nao dao erro
+    nenhum, so fazem o app nao reabrir."""
+    from sigft.services import updater
+
+    m = re.search(r"\{param:(\w+)\|", iss)
+    assert m, "o [Code] tem de ler o parametro com `{param:NOME|padrao}`"
+
+    assert updater.ARG_REABRIR.lower() == f"/{m.group(1)}=1".lower()
+
+
+# =============================================================================
+# I. O mutex solto na hora de atualizar
+# =============================================================================
+
+def test_liberar_o_mutex_nunca_levanta_e_e_idempotente():
+    """Roda no caminho da atualizacao, com o app ja se despedindo: nao pode
+    ser ele a impedir a atualizacao."""
+    from sigft.core import instancia
+
+    instancia.liberar_mutex()
+    instancia.liberar_mutex()
+
+
+def test_depois_de_liberar_o_mutex_ele_pode_ser_recriado(monkeypatch):
+    """Se o instalador nao subir, o app segue aberto e precisa do mutex de
+    volta -- `criar_mutex` nao pode achar que ele ainda existe."""
+    from sigft.core import instancia
+
+    monkeypatch.setattr(instancia, "_handle", 1234)
+    monkeypatch.setattr(instancia, "_fechar_handle", lambda handle: None)
+
+    instancia.liberar_mutex()
+
+    assert instancia._handle is None

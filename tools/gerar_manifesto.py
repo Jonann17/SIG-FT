@@ -72,8 +72,10 @@ quer instalar **para todos os usuários**, que pede senha de administrador, ou
 > Se preferir: botão direito no arquivo, **Propriedades**, marque
 > **"Desbloquear"** no rodapé e clique em *Aplicar*.
 
-Quem já tem o SIG-FT instalado **não precisa baixar nada**: o app avisa sozinho
-e se atualiza com um clique.
+Quem já tem o SIG-FT **1.1.1 ou mais novo** instalado **não precisa baixar
+nada**: ao abrir, o app avisa sozinho e se atualiza com um clique. Quem está na
+**1.0.0 ou na 1.1.0** precisa instalar à mão uma vez: aquelas versões não
+procuravam atualização.
 
 **Primeiro uso:** quem já usava o SIG-FT não precisa fazer nada — as chaves de
 API são importadas sozinhas na primeira abertura. Quem é novo cadastra em

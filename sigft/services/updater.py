@@ -26,9 +26,18 @@ possa substituir os arquivos.
    e há guard de AST reprovando qualquer leitura de ambiente lá.
 
 4. **Instalar por cima de si mesmo.** O Windows não deixa sobrescrever um
-   `.exe` em execução. Por isso o instalador é disparado com
-   `/CLOSEAPPLICATIONS` — o Inno acha o app pelo `AppMutex` do `.iss`, que
-   `sigft/core/instancia.py` cria ao abrir — e o app se encerra em seguida.
+   `.exe` em execução. Por isso o app dispara o instalador e se encerra em
+   seguida; `/CLOSEAPPLICATIONS` é a rede de segurança (o Restart Manager
+   fecha o app se ele ainda estiver de pé na hora de trocar os arquivos).
+   [2026-09-25] O `AppMutex` do `.iss` NÃO ajuda aqui, atrapalha: em modo
+   silencioso o Inno que o encontra aborta. Ver `instalar()`.
+
+═══ E o quinto, que era o maior: ninguém chamava este módulo ═══
+Até 2026-09-25 nenhuma linha da interface importava o `updater`. O Release
+v1.1.0 saiu, e o `latest.json` dele ficou com ZERO downloads: nenhum app
+instalado perguntou. Quem chama agora é `sigft/app/atualizacao.py`, na
+abertura da janela principal -- e há teste montando a janela de verdade
+(`tests/test_atualizacao_na_abertura.py`) para isso não voltar.
 
 ═══ Sobre o token ═══
 O repositório é privado, então a consulta exige autenticação. O token é
@@ -48,7 +57,6 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -398,80 +406,146 @@ def precisa_elevacao() -> bool:
         return True
 
 
-# `/SILENT` mostra só a barra de progresso; `/CLOSEAPPLICATIONS` faz o Inno
-# fechar o app pelo `AppMutex`, e `/RESTARTAPPLICATIONS` o reabre atualizado.
+# Pedido ao instalador para REABRIR o app no fim. Em `/SILENT` a linha do
+# `[Run]` que abre o app (`postinstall skipifsilent`) não roda; o `.iss` tem
+# uma segunda linha, condicionada a este parâmetro, que reabre o app na conta
+# de quem estava usando (`runasoriginaluser`). Os dois lados têm de concordar
+# no nome -- há teste lendo o `.iss` (`tests/test_instalador.py`, seção H).
+ARG_REABRIR = "/REABRIR=1"
+
+# `/SILENT` mostra só a barra de progresso. `/CLOSEAPPLICATIONS` é a rede de
+# segurança: se o app ainda estiver de pé na hora de trocar os arquivos, o
+# Restart Manager o fecha. (Até 2026-09-25 havia também
+# `/RESTARTAPPLICATIONS`, que dizia reabrir o app -- mas ele só reabre quem se
+# registrou com `RegisterApplicationRestart`, e o SIG-FT não se registra.
+# Quem reabre é o `ARG_REABRIR`.)
 ARGS_INSTALADOR = ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
-                   "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"]
+                   "/CLOSEAPPLICATIONS", ARG_REABRIR]
+
+# `ERROR_ELEVATION_REQUIRED`: o `CreateProcess` recusa um executável que exige
+# administrador no manifesto.
+_ERRO_ELEVACAO_NECESSARIA = 740
 
 
 def instalar(caminho: Path | str, *, log_cb: Log = _nada) -> None:
-    """Dispara o instalador e volta — quem chama deve FECHAR o app em seguida.
+    """Dispara o instalador e volta -- quem chama deve FECHAR o app em seguida.
 
-    Com elevação (instalação em `Program Files`) usa `ShellExecuteW` com o
-    verbo `runas`, que é o único jeito de fazer o Windows mostrar o UAC: um
-    `subprocess` comum falharia com "acesso negado".
+    Três cuidados, e cada um, sozinho, faria "Atualizar agora" fechar o app
+    sem atualizar nada (nenhum deles aparecia antes de 2026-09-25 porque esta
+    função nunca tinha sido chamada):
+
+    1. **O mutex é solto antes do disparo** (`instancia.liberar_mutex`): em
+       `/SILENT /SUPPRESSMSGBOXES`, o Inno que acha o `AppMutex` responde
+       "Cancelar" sozinho ao aviso de app aberto e aborta calado.
+    2. **O app pede para ser reaberto** (`ARG_REABRIR`): a linha normal do
+       `[Run]` tem `skipifsilent`.
+    3. **O instalador sobe SEM elevação**, e o UAC, quando preciso, é pedido
+       pelo próprio Inno. Pedir o UAC aqui (`runas`) faria o instalador nascer
+       elevado, e aí o `runasoriginaluser` do `.iss` não tem mais as
+       credenciais de quem pediu: o app reabriria como administrador -- e, com
+       a senha de outra pessoa no UAC, na conta dela, sem as chaves de API.
+       O `runas` fica só para o executável que o exigir no manifesto (erro
+       740 no `CreateProcess`).
     """
+    from sigft.core import instancia
+
     caminho = Path(caminho)
     args = [*ARGS_INSTALADOR, f"/LOG={pasta_download() / 'instalacao.log'}"]
 
     if precisa_elevacao():
-        log_cb("A instalacao vai pedir permissao de administrador (o app esta em "
-               "Program Files). Confirme na janela do Windows.")
-        import ctypes
+        log_cb("A instalacao vai pedir permissao de administrador (o app esta "
+               "instalado para todos os usuarios). Confirme na janela do Windows.")
 
-        rc = ctypes.windll.shell32.ShellExecuteW(
-            None, "runas", str(caminho), subprocess.list2cmdline(args), None, 1)
-        if rc <= 32:   # <=32 é erro em ShellExecute; 5 = o usuário recusou o UAC
-            raise RuntimeError(
-                f"Nao foi possivel iniciar o instalador com privilegios de "
-                f"administrador (codigo {rc}). "
-                + ("Voce recusou o pedido do Windows." if rc == 5
-                   else f"Rode manualmente: {caminho}"))
-    else:
-        flags = 0
-        if os.name == "nt":
-            # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: o instalador precisa
-            # sobreviver ao fechamento do app, que acontece logo em seguida.
-            flags = 0x00000008 | 0x00000200
-        subprocess.Popen([str(caminho), *args], close_fds=True,  # noqa: S603
-                         creationflags=flags)
+    instancia.liberar_mutex()
+    try:
+        try:
+            flags = 0
+            if os.name == "nt":
+                # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: o instalador
+                # precisa sobreviver ao fechamento do app, logo em seguida.
+                flags = 0x00000008 | 0x00000200
+            subprocess.Popen([str(caminho), *args], close_fds=True,  # noqa: S603
+                             creationflags=flags)
+        except OSError as erro:
+            if getattr(erro, "winerror", None) != _ERRO_ELEVACAO_NECESSARIA:
+                raise
+            _disparar_elevado(caminho, args)
+    except BaseException:
+        # O app segue aberto: sem o mutex, um instalador rodado depois à mão
+        # não o enxergaria.
+        instancia.criar_mutex()
+        raise
 
     log_cb("Instalador iniciado. O SIG-FT vai fechar e reabrir atualizado.")
 
 
-# ─────────────────── política: quando checar, o que pular ───────────────────
-#
-# A checagem automática precisa ser DISCRETA: nunca atrasar a abertura do app,
-# nunca insistir numa versão que a pessoa mandou pular, e nunca bater no GitHub
-# a cada duplo-clique.
+def _disparar_elevado(caminho: Path, args: list[str]) -> None:
+    """`ShellExecuteW` com `runas`: o único jeito de um processo pedir o UAC.
 
-INTERVALO_PADRAO_HORAS = 6
-
-
-def deve_verificar(*, ultima_verificacao: str | None,
-                   ligada: bool = True,
-                   intervalo_horas: int = INTERVALO_PADRAO_HORAS) -> bool:
-    """`True` se é hora de perguntar ao GitHub (checagem AUTOMÁTICA).
-
-    Desligada, sem token embutido, ou consultada há menos de `intervalo_horas`
-    -> `False`. O botão "Procurar atualizações" ignora tudo isto e chama
-    `checar()` direto: pedido explícito sempre vale.
-
-    Uma data corrompida devolve `True` — errar para o lado de verificar é bem
-    melhor do que travar a verificação para sempre por causa de um arquivo
-    estragado.
+    Só para o caso do erro 740 -- ver o item 3 de `instalar`.
     """
-    if not ligada or not token():
+    import ctypes
+
+    rc = ctypes.windll.shell32.ShellExecuteW(
+        None, "runas", str(caminho), subprocess.list2cmdline(args), None, 1)
+    if rc <= 32:   # <=32 é erro em ShellExecute; 5 = o usuário recusou o UAC
+        raise RuntimeError(
+            f"Nao foi possivel iniciar o instalador com privilegios de "
+            f"administrador (codigo {rc}). "
+            + ("Voce recusou o pedido do Windows." if rc == 5
+               else f"Rode manualmente: {caminho}"))
+
+
+# ─────────────────── política: quando a abertura pergunta ───────────────────
+#
+# [2026-09-25] TODA abertura do app instalado pergunta. Até aqui havia um
+# intervalo de 6 horas entre consultas, e ele saiu a pedido do usuário: "no
+# momento de inicialização ele deve identificar o release". Com o intervalo,
+# quem publica um Release e abre o app para conferir só via a versão nova
+# horas depois -- para quem olha, igual ao defeito que motivou a mudança. O
+# custo de perguntar sempre é uma requisição por abertura, muito abaixo do
+# limite de 5000 por hora do token.
+#
+# A consulta roda numa thread (`sigft/app/atualizacao.py`), então perguntar
+# sempre não atrasa a abertura.
+
+def instalado_pelo_instalador() -> bool:
+    """`True` se ESTA cópia do app foi instalada pelo instalador do Release.
+
+    O sinal é o desinstalador do Inno (`unins000.exe`) na pasta do `.exe`: o
+    `UninstallFilesDir` do Inno tem `{app}` como padrão, e o `.iss` não o muda.
+    A pasta do ZIP do Box e a `dist\\` do build não o têm -- e nelas rodar o
+    instalador não atualizaria nada: criaria uma SEGUNDA instalação, e a pessoa
+    continuaria abrindo a cópia velha.
+    """
+    pasta = pasta_instalacao()
+    if pasta is None:
         return False
-    if not ultima_verificacao:
-        return True
     try:
-        ultima = datetime.fromisoformat(str(ultima_verificacao))
-    except ValueError:
-        return True
-    return datetime.now() - ultima >= timedelta(hours=intervalo_horas)
+        return any(pasta.glob("unins*.exe"))
+    except OSError:
+        return False
 
 
-def agora_iso() -> str:
-    """O carimbo a guardar depois de uma verificação."""
-    return datetime.now().isoformat(timespec="seconds")
+def motivo_para_nao_verificar() -> str | None:
+    """Por que esta cópia NÃO procura atualização; `None` se procura.
+
+    É o que o botão "Atualizações" da Home mostra quando não há o que fazer:
+    sem o motivo, "não aconteceu nada" não se distingue de um defeito.
+    """
+    if not empacotado():
+        return ("Este SIG-FT roda pelo codigo-fonte (SIG-FT.bat). Ele se "
+                "atualiza pelo git, nao pelo instalador do Release.")
+    if not instalado_pelo_instalador():
+        return ("Esta copia do SIG-FT nao foi instalada pelo instalador do "
+                "Release (veio do ZIP do Box, ou direto da pasta do build). "
+                "Ela se atualiza pelo SIG-FT Itaipu.bat.")
+    if not token():
+        return ("Este build nao tem token de atualizacao embutido (build "
+                "local, ou segredo UPDATE_TOKEN ausente no workflow).")
+    return None
+
+
+def deve_verificar() -> bool:
+    """`True` se a abertura do app deve perguntar ao GitHub. Ver acima."""
+    return motivo_para_nao_verificar() is None

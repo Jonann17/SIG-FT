@@ -12,6 +12,7 @@ import threading
 from tkinter import messagebox
 
 from sigft import config as sigft_config
+from sigft.app import atualizacao
 from sigft.app.theme import COLORS, COR_CARTAO
 from sigft.core import plataforma
 from sigft.core.llm import catalogo, selecao
@@ -21,6 +22,10 @@ from sigft.app.widgets.painel_janela import JanelaPainel
 from sigft.app.widgets.mural import montar as montar_mural
 
 import customtkinter as ctk
+
+# O botão da barra que procura versão nova. Constante porque dois lugares
+# precisam concordar: quem cria o botão e quem o devolve ao normal.
+TEXTO_BOTAO_ATUALIZACOES = "\U0001F504  Atualizações"
 
 
 # =============================================================================
@@ -125,6 +130,27 @@ class HomeView(ctk.CTkScrollableFrame):
                 barra, text=texto, command=comando, fg_color=cor,
                 height=40, font=("Roboto", 13, "bold"),
             ).pack(side="left", padx=(0, 10))
+
+        # [2026-09-25] Fora da lista porque o texto muda enquanto procura.
+        # A abertura do app já pergunta sozinha, mas CALADA: falha de rede ou
+        # de token vai só para o log. Este botão é o caminho que responde --
+        # e o que se usa para conferir um Release logo depois de publicá-lo.
+        self.btn_atualizacoes = ctk.CTkButton(
+            barra, text=TEXTO_BOTAO_ATUALIZACOES,
+            command=self.procurar_atualizacoes, fg_color="#3A3A3A",
+            height=40, font=("Roboto", 13, "bold"),
+        )
+        self.btn_atualizacoes.pack(side="left", padx=(0, 10))
+
+    def procurar_atualizacoes(self):
+        """Pergunta ao GitHub agora e SEMPRE responde (ver `app/atualizacao.py`)."""
+        botao = self.btn_atualizacoes
+        botao.configure(state="disabled", text="\U0001F504  Procurando...")
+
+        def ao_terminar():
+            botao.configure(state="normal", text=TEXTO_BOTAO_ATUALIZACOES)
+
+        atualizacao.procurar_agora(self.controller, ao_terminar=ao_terminar)
 
     def abrir_janela_chaves_api(self):
         JanelaPainel(

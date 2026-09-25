@@ -40,7 +40,7 @@ import tkinter as tk
 from dotenv import load_dotenv
 from PIL import Image
 
-from sigft.app import backends
+from sigft.app import atualizacao, backends
 from sigft import _build_info
 from sigft.app.theme import COLORS
 from sigft.app.views.analyzer import ModuloAnalyzer
@@ -498,6 +498,12 @@ class SIG_FT_App(ctk.CTk):
             f.configure(fg_color=COLORS["background"])
 
         self.show_frame("Home")
+
+        # [2026-09-25] A atualização automática: TODA abertura do app instalado
+        # pergunta ao GitHub se há versão nova (numa thread -- a abertura não
+        # espera). Até aqui o serviço existia e ninguém o chamava: o Release
+        # v1.1.0 saiu e nenhum app percebeu. Ver `sigft/app/atualizacao.py`.
+        atualizacao.verificar_na_abertura(self)
 
     # --- Métodos Auxiliares de Estilo ---
     def _criar_botao_menu(self, parent, text, frame_name, row):

@@ -18,6 +18,7 @@ Nada aqui faz rede: a cascata de `core/rede.py` e dublada.
 """
 import hashlib
 import json
+import sys
 
 import pytest
 
@@ -353,46 +354,77 @@ def test_o_progresso_chega_a_1(monkeypatch, tmp_path):
 
 
 # =============================================================================
-# E. A politica: no maximo uma checagem a cada 6 horas
+# E. A politica: TODA abertura do app instalado pergunta
 # =============================================================================
+#
+# Ate 2026-09-25 era "no maximo uma checagem a cada 6 horas". Saiu a pedido do
+# usuario -- "no momento de inicializacao ele deve identificar o release" -- e
+# por um motivo pratico: com o intervalo, quem publica um Release e abre o app
+# para conferir so ve a versao nova horas depois, o que para quem olha e
+# identico ao defeito que motivou a mudanca. Perguntar sempre custa UMA
+# requisicao por abertura, muito abaixo do limite de 5000 por hora do token.
 
-def test_o_intervalo_padrao_e_de_6_horas():
-    assert updater.INTERVALO_PADRAO_HORAS == 6
-
-
-def test_a_primeira_abertura_verifica(com_token, tmp_path):
-    assert updater.deve_verificar(ultima_verificacao=None)
-
-
-def test_logo_depois_de_verificar_NAO_verifica_de_novo(com_token):
-    from datetime import datetime
-
-    agora = datetime.now().isoformat(timespec="seconds")
-
-    assert not updater.deve_verificar(ultima_verificacao=agora)
-
-
-def test_passadas_as_6_horas_verifica(com_token):
-    from datetime import datetime, timedelta
-
-    faz_tempo = (datetime.now() - timedelta(hours=7)).isoformat(timespec="seconds")
-
-    assert updater.deve_verificar(ultima_verificacao=faz_tempo)
+@pytest.fixture
+def app_instalado(monkeypatch):
+    """O caso normal: `.exe` do Release, instalado pelo instalador, com token."""
+    monkeypatch.setattr(updater, "empacotado", lambda: True)
+    monkeypatch.setattr(updater, "instalado_pelo_instalador", lambda: True)
+    monkeypatch.setattr(updater, "token", lambda: "um-token")
 
 
-def test_data_corrompida_nao_trava_a_verificacao_para_sempre(com_token):
-    assert updater.deve_verificar(ultima_verificacao="isto nao e uma data")
+def test_o_app_instalado_verifica_em_TODA_abertura(app_instalado):
+    assert updater.deve_verificar()
+    assert updater.deve_verificar(), "a segunda abertura seguida tambem pergunta"
+    assert updater.motivo_para_nao_verificar() is None
 
 
-def test_sem_token_nunca_verifica(monkeypatch):
-    """Build local: nao adianta bater no GitHub sem credencial."""
+def test_rodando_do_codigo_fonte_nao_verifica(app_instalado, monkeypatch):
+    """Quem roda pelo `SIG-FT.bat` atualiza pelo git; o instalador criaria uma
+    segunda copia do app, instalada, ao lado da que a pessoa usa."""
+    monkeypatch.setattr(updater, "empacotado", lambda: False)
+
+    assert not updater.deve_verificar()
+    assert "codigo-fonte" in updater.motivo_para_nao_verificar()
+
+
+def test_a_copia_do_ZIP_do_Box_nao_verifica(app_instalado, monkeypatch):
+    """O ZIP do Box tem o `.bat` dele para atualizar. Rodar o instalador ali
+    criaria uma SEGUNDA instalacao em vez de atualizar a pasta em uso -- e a
+    pessoa continuaria abrindo a velha."""
+    monkeypatch.setattr(updater, "instalado_pelo_instalador", lambda: False)
+
+    assert not updater.deve_verificar()
+    assert "instalador" in updater.motivo_para_nao_verificar()
+
+
+def test_sem_token_nao_verifica(app_instalado, monkeypatch):
+    """Build local: sem credencial, o GitHub responde 404 a repo privado."""
     monkeypatch.setattr(updater, "token", lambda: "")
 
-    assert not updater.deve_verificar(ultima_verificacao=None)
+    assert not updater.deve_verificar()
+    assert "token" in updater.motivo_para_nao_verificar()
 
 
-def test_a_verificacao_pode_ser_desligada(com_token):
-    assert not updater.deve_verificar(ultima_verificacao=None, ligada=False)
+def test_o_DESINSTALADOR_ao_lado_do_exe_e_o_sinal_do_instalador(monkeypatch, tmp_path):
+    """O Inno grava `unins000.exe` na pasta do app (`UninstallFilesDir` tem
+    `{app}` como padrao, e o `.iss` nao o muda). A pasta do ZIP do Box e a
+    `dist` do build nao tem esse arquivo."""
+    exe = tmp_path / "SIG-FT.exe"
+    exe.write_bytes(b"MZ")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(exe))
+
+    assert not updater.instalado_pelo_instalador()
+
+    (tmp_path / "unins000.exe").write_bytes(b"MZ")
+
+    assert updater.instalado_pelo_instalador()
+
+
+def test_fora_do_executavel_nao_ha_instalacao(monkeypatch):
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+
+    assert not updater.instalado_pelo_instalador()
 
 
 # =============================================================================
@@ -426,3 +458,132 @@ def test_o_token_nunca_aparece_no_log_de_uma_falha(com_token, monkeypatch):
 
     assert "github_pat_SEGREDO" not in str(erro.value)
     assert not any("github_pat_SEGREDO" in linha for linha in registro)
+
+
+# =============================================================================
+# G. Instalar -- o app entrega a vez ao instalador
+# =============================================================================
+#
+# Nada disto rodou de verdade antes de 2026-09-25: sem chamador na interface,
+# `instalar()` nunca foi executado por ninguem. Os tres defeitos abaixo foram
+# achados LENDO a cadeia inteira (app -> Inno -> app de novo), e cada um, sozinho,
+# faria o botao "Atualizar agora" fechar o app sem atualizar nada.
+
+@pytest.fixture
+def disparo(monkeypatch, tmp_path):
+    """Registra, EM ORDEM, o que `instalar()` faz -- sem disparar nada."""
+    from sigft.core import instancia
+
+    registro = {"eventos": [], "erro": None}
+    monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
+    monkeypatch.setattr(instancia, "liberar_mutex",
+                        lambda: registro["eventos"].append("liberou o mutex"))
+    monkeypatch.setattr(instancia, "criar_mutex",
+                        lambda: registro["eventos"].append("recriou o mutex") or True)
+
+    def popen(args, **kw):
+        registro["eventos"].append("disparou o instalador")
+        registro["args"] = list(args)
+        if registro["erro"] is not None:
+            raise registro["erro"]
+        return object()
+
+    def elevado(caminho, args):
+        registro["eventos"].append("pediu elevacao")
+        registro["args_elevado"] = list(args)
+
+    monkeypatch.setattr(updater.subprocess, "Popen", popen)
+    monkeypatch.setattr(updater, "_disparar_elevado", elevado)
+    return registro
+
+
+def test_o_mutex_e_LIBERADO_antes_de_disparar_o_instalador(disparo, tmp_path):
+    """O defeito n. 1 da cadeia.
+
+    A atualizacao roda o instalador em `/SILENT /SUPPRESSMSGBOXES`. O Inno que
+    encontra o `AppMutex` na abertura mostra "o SIG-FT esta aberto: feche e
+    clique OK" -- e, com as caixas suprimidas, responde CANCELAR sozinho. A
+    atualizacao aborta calada, antes de comecar. Liberar o mutex antes de
+    disparar tira a corrida entre "o app terminou de fechar" e "o Inno
+    conferiu o mutex", que no modo por usuario (sem UAC) e questao de
+    milissegundos.
+    """
+    updater.instalar(tmp_path / "Setup.exe")
+
+    assert disparo["eventos"] == ["liberou o mutex", "disparou o instalador"]
+
+
+def test_se_o_instalador_NAO_sobe_o_mutex_volta(disparo, tmp_path):
+    """O app continua aberto; sem o mutex, um instalador rodado depois a mao
+    nao o enxergaria."""
+    disparo["erro"] = OSError(2, "arquivo nao encontrado")
+
+    with pytest.raises(OSError):
+        updater.instalar(tmp_path / "Setup.exe")
+
+    assert disparo["eventos"] == ["liberou o mutex", "disparou o instalador",
+                                  "recriou o mutex"]
+
+
+def test_o_instalador_recebe_o_pedido_de_REABRIR_o_app(disparo, tmp_path):
+    """O defeito n. 2: em `/SILENT`, a linha do `[Run]` que abre o app tem
+    `skipifsilent` e NAO roda. O app fechava para atualizar e nao voltava.
+    O `.iss` reabre so quando recebe este parametro -- ver
+    `tests/test_instalador.py`, secao H."""
+    updater.instalar(tmp_path / "Setup.exe")
+
+    assert updater.ARG_REABRIR in disparo["args"]
+
+
+def test_o_instalador_roda_silencioso_e_fecha_o_que_estiver_aberto(disparo, tmp_path):
+    updater.instalar(tmp_path / "Setup.exe")
+
+    args = disparo["args"]
+    assert args[0] == str(tmp_path / "Setup.exe")
+    for esperado in ("/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"):
+        assert esperado in args
+    assert any(a.startswith("/LOG=") for a in args), "sem log nao ha diagnostico"
+
+
+def test_o_instalador_sobe_SEM_elevacao_quem_pede_o_UAC_e_ele(disparo, tmp_path, monkeypatch):
+    """O defeito n. 3, no app instalado 'para todos' (Program Files).
+
+    O disparo antigo pedia o UAC ele mesmo (`ShellExecute` com `runas`). Com o
+    instalador ja nascendo elevado, o Inno nao tem mais as credenciais de quem
+    pediu -- a documentacao do `runasoriginaluser` diz isso com todas as
+    letras -- e o app reaberto subiria como ADMINISTRADOR. Quando o UAC e
+    respondido com a senha de outra pessoa (o caso comum na empresa), o app
+    abriria na conta dela: sem as chaves de API e sem as preferencias.
+
+    Disparado sem elevacao, o proprio Inno pede o UAC, e o `[Run]` com
+    `runasoriginaluser` reabre o app na conta de quem estava usando.
+    """
+    monkeypatch.setattr(updater, "precisa_elevacao", lambda: True)
+
+    updater.instalar(tmp_path / "Setup.exe")
+
+    assert "pediu elevacao" not in disparo["eventos"]
+
+
+def test_se_o_windows_EXIGIR_elevacao_no_disparo_cai_no_runas(disparo, tmp_path):
+    """Rede de seguranca: se o executavel exigir administrador no manifesto, o
+    `CreateProcess` falha com o erro 740, e so o `ShellExecute` com `runas`
+    abre o UAC. Perde-se a reabertura sem elevacao, mas a atualizacao sai."""
+    erro = OSError("a operacao solicitada requer elevacao")
+    erro.winerror = 740
+    disparo["erro"] = erro
+
+    updater.instalar(tmp_path / "Setup.exe")
+
+    assert disparo["eventos"] == ["liberou o mutex", "disparou o instalador",
+                                  "pediu elevacao"]
+    assert updater.ARG_REABRIR in disparo["args_elevado"]
+
+
+def test_outro_erro_do_disparo_NAO_vira_pedido_de_elevacao(disparo, tmp_path):
+    disparo["erro"] = OSError(2, "arquivo nao encontrado")
+
+    with pytest.raises(OSError):
+        updater.instalar(tmp_path / "Setup.exe")
+
+    assert "pediu elevacao" not in disparo["eventos"]

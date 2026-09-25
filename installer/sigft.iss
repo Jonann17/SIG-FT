@@ -126,6 +126,18 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; \
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Abrir o {#AppName}"; \
     Flags: nowait postinstall skipifsilent
+; [2026-09-25] A atualizacao automatica roda este instalador em /SILENT, e a
+; linha de cima (skipifsilent) NAO roda nesse modo: o app fechava para
+; atualizar e nao voltava. Esta o reabre, com duas condicoes:
+;   - SO quando o proprio app pediu (/REABRIR=1, ARG_REABRIR em
+;     sigft/services/updater.py): a TI instalando em massa com /SILENT nao ve
+;     o SIG-FT abrir sozinho na maquina de todo mundo;
+;   - na conta de QUEM ESTAVA USANDO (runasoriginaluser): o UAC pode ter sido
+;     respondido com a senha de outra pessoa, e o app aberto como ela nao
+;     acharia as chaves de API nem as preferencias.
+; tests/test_instalador.py (secao H) confere os dois lados.
+Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; \
+    Check: ReabrirDepoisDeAtualizar
 
 [UninstallDelete]
 ; Restos do build que nao constam no manifesto de instalacao.
@@ -142,3 +154,13 @@ Type: dirifempty; Name: "{app}"
 ; ja usava o SIG-FT tem a importacao feita sozinha na primeira abertura; quem
 ; e novo precisa cadastra-las uma vez.
 brazilianportuguese.FinishedLabel=Instalacao concluida.%n%nPRIMEIRO USO: se os modulos de IA (AutoSpec, Analyzer, PDM) reclamarem de chave, abra o SIG-FT e va em "Configuracao de Chaves API", na tela inicial. E uma vez so -- os dados ficam em Documentos\SIG-FT e continuam valendo depois das atualizacoes.%n%nQuem ja usava o SIG-FT nao precisa fazer nada: as chaves antigas sao importadas sozinhas na primeira abertura.%n%nOs modulos que mexem no portal PMIB usam o Chrome ou o Edge ja instalado nesta maquina.
+
+[Code]
+// Verdadeiro so quando quem disparou o instalador foi a atualizacao automatica
+// do proprio app, que passa /REABRIR=1 (ARG_REABRIR em
+// sigft/services/updater.py). O nome do parametro tem de bater com o de la:
+// divergindo, nao ha erro nenhum -- o app so deixa de reabrir.
+function ReabrirDepoisDeAtualizar: Boolean;
+begin
+  Result := ExpandConstant('{param:REABRIR|0}') = '1';
+end;

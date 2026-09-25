@@ -15,6 +15,12 @@ está rodando e o fecha antes de trocar os arquivos.
 só faz a atualização falhar. Por isso `tests/test_instalador.py` lê o `.iss` e
 este módulo e reprova se divergirem.
 
+⚠️ [2026-09-25] Isso vale para quem instala **à mão**: o Inno mostra "feche o
+SIG-FT e clique OK". Na atualização automática o instalador roda em modo
+SILENCIOSO, e ali o mesmo aviso é respondido com "Cancelar" sozinho — a
+atualização abortaria. Por isso ela solta o mutex antes de disparar o
+instalador (`liberar_mutex`).
+
 O `AppUserModelID`
 ------------------
 Segunda coisa que mora aqui, pelo mesmo motivo (um nome que precisa bater entre
@@ -78,6 +84,46 @@ def criar_mutex() -> bool:
         return True
     except Exception:  # noqa: BLE001 — ver o docstring
         return False
+
+
+def liberar_mutex() -> None:
+    """Fecha o mutex -- SÓ para entregar a vez ao instalador da atualização.
+
+    [2026-09-25] A atualização automática roda o instalador em
+    `/SILENT /SUPPRESSMSGBOXES`. Nesse modo, o Inno que encontra o `AppMutex`
+    ao abrir mostra "o SIG-FT está aberto: feche e clique OK" e, com as caixas
+    suprimidas, responde CANCELAR sozinho: a atualização aborta, calada, antes
+    de começar. O app fecha logo depois de disparar o instalador; soltar o
+    mutex ANTES do disparo tira a corrida entre "o app terminou de fechar" e
+    "o Inno conferiu o mutex", que sem UAC no meio é questão de milissegundos.
+
+    Os arquivos em uso continuam protegidos: o `CloseApplications=yes` do
+    `.iss` fecha o app pelo Restart Manager se ele ainda estiver de pé na hora
+    de trocar os arquivos.
+
+    Idempotente e nunca levanta. Se o instalador não subir, quem chamou recria
+    com `criar_mutex()`.
+    """
+    global _handle
+
+    if _handle is None:
+        return
+    handle, _handle = _handle, None
+    _fechar_handle(handle)
+
+
+def _fechar_handle(handle) -> None:
+    """`CloseHandle` do Windows. Separado para o teste não precisar do ctypes."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle(handle)
+    except Exception:  # noqa: BLE001 -- o processo vai fechar de qualquer jeito
+        pass
 
 
 def declarar_identidade_na_barra_de_tarefas() -> bool:
