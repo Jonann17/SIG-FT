@@ -50,6 +50,7 @@ código e revisada. Um arquivo por módulo:
 - `.claude/agents/refactor-executor.md` (Sonnet) — executa um checkpoint do plano por vez.
 - `.claude/skills/sigft-novo-modulo/` — guia para criar um módulo novo a partir de uma ideia.
 - `.claude/skills/sigft-melhorar-modulo/` — guia para evoluir um módulo existente com segurança.
+- `.claude/skills/sigft-lancar-versao/` — número da versão, pré-lançamento para testar e release.
 
 ## Como executar a refatoração
 
@@ -67,3 +68,4 @@ Para desenvolvimento fora da refatoração:
 
 > /sigft-novo-modulo — quero um módulo que ...
 > /sigft-melhorar-modulo — o módulo X deveria ...
+> /sigft-lancar-versao — solta um pré-lançamento pra testar

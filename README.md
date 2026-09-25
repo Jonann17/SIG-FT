@@ -268,4 +268,4 @@ As chaves **não são versionadas**. Configure por um dos meios:
   refatoração em fases/checkpoints (inclui IA multi-provedor com rastreamento de custos,
   migração para Playwright e reconstrução do módulo de fichas duplicadas).
 - `.claude/agents/` — agentes (modelos mais baratos) usados para documentação e execução da refatoração.
-- `.claude/skills/` — skills `sigft-novo-modulo` e `sigft-melhorar-modulo` para desenvolvimento guiado.
+- `.claude/skills/` — skills `sigft-novo-modulo` e `sigft-melhorar-modulo` para desenvolvimento guiado, e `sigft-lancar-versao` para numerar e publicar versões.

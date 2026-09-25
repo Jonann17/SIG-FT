@@ -59,6 +59,7 @@ sessão e seria esquecido justamente nas sessões corridas.
 | 2026-09-24 | Rafael | 🔴 **Reescrevi `montar_autospec` e regerei a fixture dele** — só essa função de `prompts.py`; os outros prompts intactos. Pede a prova de cada valor (`tipo/fonte/pagina/trecho/justificativa`). Ajustei a asserção em `test_llm_prompts.py`.<br>**Release 1.1.0:** publiquei com a tua autorização (via Rafael). No CHANGELOG, cada item da 1.1.0 ganhou o nome do módulo na frente: as notas perdem os títulos de seção (ver PENDENCIAS). |
 | 2026-09-25 | Luan | 🔴 **A atualização automática passou a funcionar (1.1.1): todo Release NORMAL aparece como aviso na abertura seguinte de quem tem 1.1.1+, com o bloco do CHANGELOG como "o que mudou".** Para testar sem distribuir, só pré-lançamento.<br>A 1.0.0 e a 1.1.0 nunca perguntavam ao GitHub (nenhuma tela chamava o `updater`): quem está nelas instala a 1.1.1 à mão. Detalhe em `docs/BUILD.md`. |
 | 2026-09-25 | Rafael | 🔴 **Tradutor 4.2 reescrito: tradução LOCAL, sem Google** (`services/translator.py` com `processar_arquivos`, `services/traducao_respostas.py`, `core/tradutor_local.py`, OPUS-MT embutido). Mexi na tua zona: `requirements.txt` (+ctranslate2, +sentencepiece), `SIG-FT.spec` (modelo + exclui torch), `release.yml` (passo que prepara o modelo, com cache) e `conferencia.py` (traduz uma frase no .exe).<br>Pré-release 1.2.0-rc.1 publicada a pedido do Rafael. Por quê e medições: `docs/superpowers/specs/2026-09-25-tradutor-local-design.md`. |
+| 2026-09-25 | Luan | 🔴 **Número de versão tem regra: skill `sigft-lancar-versao`, leia antes de lançar.** Correção e melhoria de função que já existe = PATCH (1.1.x), mesmo reescrita; MINOR (1.x) só para algo novo, com o sim do Luan; MAJOR (x.) para mudança muito grande.<br>Por isso o bloco 1.2.0 do CHANGELOG virou parte do **1.1.1**, o teste passa a ser a `1.1.1-rc.1` e a `1.2.0-rc.1` é retirada: quem a instalou reinstala à mão, senão nunca recebe a 1.1.x. |
 
 ---
 
@@ -197,6 +198,7 @@ já sei fazer isso" são exatamente os momentos em que se pula a etapa e se retr
 | Vai dizer "está pronto / funcionando / passou" | `verification-before-completion` — evidência antes da afirmação |
 | Terminou uma frente e vai integrar | `finishing-a-development-branch` |
 | Mexer num módulo do SIG-FT | `sigft-melhorar-modulo` (ou `sigft-novo-modulo`) |
+| Lançar versão ou pré-lançamento (rc), escolher o número, mexer no bloco do CHANGELOG | `sigft-lancar-versao` |
 
 Anuncie qual skill está usando e para quê. Se a skill tiver checklist, vire tarefas.
 
@@ -215,7 +217,7 @@ direto", faça — e diga que está pulando.
 `.claude/agents/` — `doc-writer` (Haiku, escreve a base de conhecimento) e `refactor-executor`
 (Sonnet, executa um checkpoint por vez).
 
-`.claude/skills/` — `sigft-novo-modulo` e `sigft-melhorar-modulo` são do projeto. As demais
+`.claude/skills/` — `sigft-novo-modulo`, `sigft-melhorar-modulo` e `sigft-lancar-versao` são do projeto. As demais
 são de terceiros, vendorizadas para os dois desenvolvedores terem as mesmas ferramentas; a
 origem, a licença e o modo de atualizar estão em [`.claude/skills/VENDOR.md`](.claude/skills/VENDOR.md).
 

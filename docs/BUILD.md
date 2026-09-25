@@ -27,6 +27,20 @@ publica o Release. Os apps já instalados avisam sozinhos na próxima abertura.
 > ficou com zero downloads). Quem está nelas precisa instalar a 1.1.1, ou a
 > mais nova, **à mão, uma vez**.
 
+### Qual número usar
+
+Regra do Luan (2026-09-25), com o passo a passo na skill
+`.claude/skills/sigft-lancar-versao/`:
+
+- **correção ou melhoria** de algo que já existe, mesmo reescrito por dentro →
+  PATCH: `1.1.0` → `1.1.1` → `1.1.2`;
+- **algo novo**, que não existia (módulo, tela) → MINOR: `1.2.0`;
+- **mudança muito grande** → MAJOR: `2.0.0`.
+
+Na dúvida, PATCH. O número não é enfeite: o app compara versões, e quem instala
+uma versão com número alto demais, mesmo um pré-lançamento, para de receber as
+seguintes pela atualização automática.
+
 ### Como o app instalado se atualiza (desde a 1.1.1)
 
 1. **Toda abertura** pergunta ao GitHub pelo último Release, numa thread — a
