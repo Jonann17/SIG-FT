@@ -308,6 +308,28 @@ def test_erro_de_rede_nao_gasta_a_segunda_chance():
     assert len(proc._llm.prompts) == 1
 
 
+def test_o_erro_de_rede_diz_qual_provedor_e_modelo_falhou():
+    """Em 2026-09-25 o log dizia só "Erro ao chamar IA: ('Connection
+    aborted.', ...)", e não havia como saber se a chamada tinha ido pelo
+    Gemini direto ou pelo OpenRouter -- a escolha do painel parecia não valer.
+    Com o `LLMClient` de verdade, que é de onde o nome vem em produção."""
+    import upload_tech_specs_backend as backend
+    from sigft.core.llm.client import LLMClient
+
+    class _ProvedorQueCai:
+        def generate_raw(self, prompt, **_kw):
+            raise ConnectionError("('Connection aborted.', ConnectionResetError(10054))")
+
+    logs = []
+    proc = backend.TechSpecsProcessor("uma-chave")
+    proc._llm = LLMClient(provider=_ProvedorQueCai(), provider_name="gemini",
+                          model="gemini-3.5-flash")
+
+    assert proc._chamar_gemini_specs({"CODIGO_PMIB": "X"}, logs.append) is None
+    assert any("gemini / gemini-3.5-flash" in linha and "Connection aborted" in linha
+               for linha in logs), logs
+
+
 def test_errar_o_formato_duas_vezes_devolve_none_sem_levantar():
     # O contrato com `processar_ia_lote` é `None` = "essa ficha não saiu".
     # Uma exceção aqui derrubaria o lote inteiro.

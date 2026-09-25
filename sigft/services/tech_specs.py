@@ -438,6 +438,16 @@ class TechSpecsProcessor:
         # configura se api_key for truthy").
         self._llm = get_llm("tech_specs", api_key)
 
+    def ia_em_uso(self):
+        """`provedor / modelo` desta execução, para o log. Sem isso, uma falha
+        de rede não dizia se tinha ido pelo Gemini direto ou pelo OpenRouter,
+        e a escolha do painel "Modelos de IA" parecia não valer (2026-09-25).
+        Roda dentro do `except` do erro de IA: descrever a falha nunca pode
+        levantar outra -- daí o `getattr`."""
+        provedor = getattr(self._llm, "provider_name", "?")
+        modelo = getattr(self._llm, "model", "?")
+        return f"{provedor} / {modelo}"
+
     def solicitar_parada(self):
         self.portal.solicitar_parada()
 
@@ -642,7 +652,7 @@ class TechSpecsProcessor:
             }
 
             # Chamada IA
-            if callback_log: callback_log(f"Enviando {codigo_pmib} para IA...")
+            if callback_log: callback_log(f"Enviando {codigo_pmib} para IA ({self.ia_em_uso()})...")
             # Passa o callback para logar erros internos da API
             dados_tratados = self._chamar_gemini_specs(pacote_envio, callback_log)
 
@@ -738,7 +748,7 @@ class TechSpecsProcessor:
                 callback_log("   [Formato] Corrigido na 2ª tentativa.")
             return dados
         except Exception as e:
-            if callback_log: callback_log(f"Erro ao chamar IA: {e}")
+            if callback_log: callback_log(f"Erro ao chamar IA ({self.ia_em_uso()}): {e}")
             return None
 
 
