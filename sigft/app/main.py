@@ -36,12 +36,15 @@ if __name__ == "__main__":
 import threading
 import time
 import tkinter as tk
+import traceback
+from tkinter import messagebox
 
 from dotenv import load_dotenv
 from PIL import Image
 
 from sigft.app import atualizacao, backends
 from sigft import _build_info
+from sigft.core import instancia
 from sigft.app.theme import COLORS
 from sigft.app.views.analyzer import ModuloAnalyzer
 from sigft.app.views.autospec import ModuloAutoSpec
@@ -326,8 +329,39 @@ class SplashScreen(ctk.CTk):
     def iniciar_app_principal(self):
         self.withdraw()  # Esconde a Splash em vez de destruir imediatamente (evita erros do Tcl)
         self.destroy()   # Destrói
-        app = SIG_FT_App()
+        try:
+            app = SIG_FT_App()
+        except Exception as erro:  # noqa: BLE001 -- vira aviso, e nao fantasma
+            _abertura_falhou(erro)
+            return
         app.mainloop()
+
+
+# Mensagem da janela principal que nao monta. Diz ONDE esta o detalhe: sem
+# console, o traceback so existe no `sigft.log`.
+MSG_ABERTURA_FALHOU = (
+    "O SIG-FT não conseguiu abrir a janela principal.\n\n{erro}\n\n"
+    "O detalhe completo está em Documentos\\SIG-FT\\logs\\sigft.log. "
+    "Mande esse arquivo para quem cuida do SIG-FT."
+)
+
+
+def _abertura_falhou(erro: BaseException) -> None:
+    """A janela principal não montou: avisa e ENCERRA. Não volta.
+
+    [2026-09-25] Antes a exceção só ia para o log, e o processo seguia vivo:
+    sobrava uma janela invisível (o CustomTkinter a esconde até o `mainloop`)
+    e o laço de eventos continuava rodando. Para a pessoa, "o SIG-FT não
+    abriu"; para o instalador, "o SIG-FT está em execução". Reproduzido sob
+    xvfb (`tests/test_fechar_encerra_o_processo.py`, seção E).
+    """
+    traceback.print_exception(erro)
+    try:
+        messagebox.showerror(
+            "SIG-FT", MSG_ABERTURA_FALHOU.format(erro=f"{type(erro).__name__}: {erro}"))
+    except Exception:  # noqa: BLE001 -- sem Tk nem para o aviso: o log basta
+        pass
+    instancia.encerrar(1)
 
 # =============================================================================
 # APP PRINCIPAL (Gerenciador com Layout Novo, Estilizado e com IMAGENS)
@@ -345,6 +379,16 @@ class SplashScreen(ctk.CTk):
 # uma operação destrutiva não validada é o único jeito de ela estragar uma
 # ficha de verdade. Decisão do usuário em 2026-09-23.
 TELAS_BLOQUEADAS = {"CorrecaoPDM"}
+
+# A pergunta do "X" com um robô, uma tradução ou uma consulta à IA rodando.
+# Fechar agora ENCERRA o processo (ver `SIG_FT_App.fechar`), então a tarefa
+# para no ponto em que estiver -- inclusive no meio de uma planilha.
+MSG_TAREFA_EM_ANDAMENTO = (
+    "Há uma tarefa em andamento (um robô, uma tradução ou uma consulta à IA).\n\n"
+    "Se fechar agora, ela é interrompida no ponto em que está, e uma planilha "
+    "que estava sendo gravada pode ficar pela metade.\n\n"
+    "Fechar o SIG-FT mesmo assim?"
+)
 
 
 class SIG_FT_App(ctk.CTk):
@@ -499,6 +543,10 @@ class SIG_FT_App(ctk.CTk):
 
         self.show_frame("Home")
 
+        # [2026-09-25] O "X" passa pelo `fechar`: com tarefa em andamento ele
+        # pergunta antes, porque fechar a janela agora ENCERRA o processo.
+        self.protocol("WM_DELETE_WINDOW", self.fechar)
+
         # [2026-09-25] A atualização automática: TODA abertura do app instalado
         # pergunta ao GitHub se há versão nova (numa thread -- a abertura não
         # espera). Até aqui o serviço existia e ninguém o chamava: o Release
@@ -610,23 +658,34 @@ class SIG_FT_App(ctk.CTk):
     def show_home(self):
         self.show_frame("Home")
 
+    def fechar(self):
+        """O "X" da janela principal. Fecha e, com isso, ENCERRA o SIG-FT.
+
+        [2026-09-25] Fechar a janela passou a terminar o processo de verdade
+        (`main()` chama `instancia.encerrar` quando o laço de eventos acaba).
+        Antes, um robô parado numa pausa mantinha o `SIG-FT.exe` vivo e sem
+        janela, e era esse fantasma que travava o instalador. O preço é que a
+        tarefa em andamento é interrompida no ponto em que está -- por isso,
+        havendo uma, a pessoa confirma antes.
+        """
+        if instancia.tarefas_em_andamento() and not messagebox.askyesno(
+                "Fechar o SIG-FT", MSG_TAREFA_EM_ANDAMENTO, parent=self):
+            return
+        self.destroy()
+
 
 
 def main():
     """Sobe o aplicativo pela splash, que carrega os backends e abre a janela."""
-    # ANTES de qualquer janela existir, e nesta ordem:
-    #
-    #   - o `AppUserModelID`, senao o Windows agrupa a janela sob o
-    #     identificador que ele deduz sozinho (o do `python.exe`) e mostra DOIS
-    #     botoes na barra de tarefas para o mesmo programa;
-    #   - o mutex nomeado, que e como o instalador descobre que o SIG-FT esta
-    #     aberto e o fecha antes de trocar os arquivos. Sem ele a atualizacao
-    #     falha com "arquivo em uso".
-    #
-    # Ver `sigft/core/instancia.py`; os nomes tem de bater com o
+    # ANTES de qualquer janela existir: o `AppUserModelID`, senao o Windows
+    # agrupa a janela sob o identificador que ele deduz sozinho (o do
+    # `python.exe`) e mostra DOIS botoes na barra de tarefas para o mesmo
+    # programa. Ver `sigft/core/instancia.py`; o nome tem de bater com o
     # `installer/sigft.iss`, e ha teste travando os dois.
-    from sigft.core import instancia
-
+    #
+    # (Aqui tambem se criava o mutex do `AppMutex` do instalador. Saiu em
+    # 2026-09-25: era ele que acusava o SIG-FT fantasma e travava a
+    # instalacao. Ver o docstring de `instancia`.)
     instancia.preparar()
 
     # CP 5.5: aqui se imprimia qual motor cada módulo estava usando. Fazia
@@ -666,6 +725,14 @@ def main():
 
     splash = SplashScreen()
     splash.mainloop()
+
+    # [2026-09-25] A janela fechou: o processo termina AQUI, com ou sem thread
+    # presa. Sem isto, um robo parado na pausa de login (thread comum,
+    # esperando um clique que nunca vem) segurava o `SIG-FT.exe` vivo e SEM
+    # JANELA -- e o instalador da 1.1.1-rc.1 acusou "o SIG-FT esta em
+    # execucao" com o app fechado. Quem fecha com tarefa em andamento ja foi
+    # avisado pelo `SIG_FT_App.fechar`. Ver `instancia.encerrar`.
+    instancia.encerrar(0)
 
 
 # =============================================================================

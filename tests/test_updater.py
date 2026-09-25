@@ -465,21 +465,20 @@ def test_o_token_nunca_aparece_no_log_de_uma_falha(com_token, monkeypatch):
 # =============================================================================
 #
 # Nada disto rodou de verdade antes de 2026-09-25: sem chamador na interface,
-# `instalar()` nunca foi executado por ninguem. Os tres defeitos abaixo foram
-# achados LENDO a cadeia inteira (app -> Inno -> app de novo), e cada um, sozinho,
-# faria o botao "Atualizar agora" fechar o app sem atualizar nada.
+# `instalar()` nunca foi executado por ninguem. Os defeitos abaixo foram achados
+# LENDO a cadeia inteira (app -> Inno -> app de novo), e cada um, sozinho, faria
+# o botao "Atualizar agora" fechar o app sem atualizar nada.
+#
+# (Havia um terceiro, o `AppMutex` abortando o instalador silencioso, que se
+# resolvia soltando o mutex antes do disparo. O `AppMutex` saiu do `.iss` no
+# mesmo dia -- ele tambem travava a instalacao manual por causa do SIG-FT
+# fantasma --, e com ele os testes da ordem "solta o mutex, dispara".)
 
 @pytest.fixture
 def disparo(monkeypatch, tmp_path):
     """Registra, EM ORDEM, o que `instalar()` faz -- sem disparar nada."""
-    from sigft.core import instancia
-
     registro = {"eventos": [], "erro": None}
     monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
-    monkeypatch.setattr(instancia, "liberar_mutex",
-                        lambda: registro["eventos"].append("liberou o mutex"))
-    monkeypatch.setattr(instancia, "criar_mutex",
-                        lambda: registro["eventos"].append("recriou o mutex") or True)
 
     def popen(args, **kw):
         registro["eventos"].append("disparou o instalador")
@@ -497,36 +496,8 @@ def disparo(monkeypatch, tmp_path):
     return registro
 
 
-def test_o_mutex_e_LIBERADO_antes_de_disparar_o_instalador(disparo, tmp_path):
-    """O defeito n. 1 da cadeia.
-
-    A atualizacao roda o instalador em `/SILENT /SUPPRESSMSGBOXES`. O Inno que
-    encontra o `AppMutex` na abertura mostra "o SIG-FT esta aberto: feche e
-    clique OK" -- e, com as caixas suprimidas, responde CANCELAR sozinho. A
-    atualizacao aborta calada, antes de comecar. Liberar o mutex antes de
-    disparar tira a corrida entre "o app terminou de fechar" e "o Inno
-    conferiu o mutex", que no modo por usuario (sem UAC) e questao de
-    milissegundos.
-    """
-    updater.instalar(tmp_path / "Setup.exe")
-
-    assert disparo["eventos"] == ["liberou o mutex", "disparou o instalador"]
-
-
-def test_se_o_instalador_NAO_sobe_o_mutex_volta(disparo, tmp_path):
-    """O app continua aberto; sem o mutex, um instalador rodado depois a mao
-    nao o enxergaria."""
-    disparo["erro"] = OSError(2, "arquivo nao encontrado")
-
-    with pytest.raises(OSError):
-        updater.instalar(tmp_path / "Setup.exe")
-
-    assert disparo["eventos"] == ["liberou o mutex", "disparou o instalador",
-                                  "recriou o mutex"]
-
-
 def test_o_instalador_recebe_o_pedido_de_REABRIR_o_app(disparo, tmp_path):
-    """O defeito n. 2: em `/SILENT`, a linha do `[Run]` que abre o app tem
+    """O defeito n. 1: em `/SILENT`, a linha do `[Run]` que abre o app tem
     `skipifsilent` e NAO roda. O app fechava para atualizar e nao voltava.
     O `.iss` reabre so quando recebe este parametro -- ver
     `tests/test_instalador.py`, secao H."""
@@ -546,7 +517,7 @@ def test_o_instalador_roda_silencioso_e_fecha_o_que_estiver_aberto(disparo, tmp_
 
 
 def test_o_instalador_sobe_SEM_elevacao_quem_pede_o_UAC_e_ele(disparo, tmp_path, monkeypatch):
-    """O defeito n. 3, no app instalado 'para todos' (Program Files).
+    """O defeito n. 2, no app instalado 'para todos' (Program Files).
 
     O disparo antigo pedia o UAC ele mesmo (`ShellExecute` com `runas`). Com o
     instalador ja nascendo elevado, o Inno nao tem mais as credenciais de quem
@@ -575,8 +546,7 @@ def test_se_o_windows_EXIGIR_elevacao_no_disparo_cai_no_runas(disparo, tmp_path)
 
     updater.instalar(tmp_path / "Setup.exe")
 
-    assert disparo["eventos"] == ["liberou o mutex", "disparou o instalador",
-                                  "pediu elevacao"]
+    assert disparo["eventos"] == ["disparou o instalador", "pediu elevacao"]
     assert updater.ARG_REABRIR in disparo["args_elevado"]
 
 

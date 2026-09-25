@@ -9,10 +9,11 @@
 ;  Saida: installer\Output\SIG-FT_Itaipu_Setup.exe
 ;
 ;  ⚠️ Este arquivo tem testes: tests/test_instalador.py le as diretivas daqui
-;  e reprova as quatro armadilhas que ja custaram caro a alguem (o mutex
-;  divergente, a versao com sufixo, o [InstallDelete] largo demais e o
-;  AppUserModelID divergente). Verde nele nao prova que o instalador COMPILA
-;  -- so o Windows com o Inno Setup diz isso.
+;  e reprova as armadilhas que ja custaram caro a alguem (o AppMutex que
+;  travava a instalacao, a versao com sufixo, o [InstallDelete] largo demais,
+;  o AppUserModelID divergente e o app que nao reabria depois de atualizar).
+;  Verde nele nao prova que o instalador COMPILA -- so o Windows com o Inno
+;  Setup diz isso.
 ; ============================================================================
 
 ; A versao vem do build (`iscc /DMyAppVersion=...`). O valor abaixo e so o
@@ -74,17 +75,25 @@ PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog commandline
 
 ; --- Atualizacao por cima da versao anterior ------------------------------
-; AppMutex e a peca que faz a atualizacao funcionar: o app cria este mutex
-; nomeado ao abrir (sigft/core/instancia.py, NOME_MUTEX). Com ele o Inno
-; DESCOBRE que o SIG-FT esta rodando e o fecha antes de trocar os arquivos --
-; sem isso a instalacao falha com "arquivo em uso", o sintoma classico de
-; auto-update quebrado.
+; O Windows nao deixa sobrescrever um .exe em execucao: o SIG-FT aberto tem de
+; ser fechado antes de trocar os arquivos. Quem faz isso e o Restart Manager
+; (CloseApplications): ele pergunta QUEM esta usando os arquivos desta pasta,
+; mostra o SIG-FT na pagina "Preparando para instalar" e o fecha com um
+; clique. Em /SILENT (a atualizacao automatica) fecha sozinho.
 ;
-; OS DOIS NOMES TEM QUE SER IGUAIS, e a divergencia nao da erro nenhum: so faz
-; a atualizacao falhar. tests/test_instalador.py le os dois e reprova se
-; divergirem.
-AppMutex=SIGFTItaipu_AppMutex
-CloseApplications=yes
+; `force`, e nao `yes`: um SIG-FT sem janela (o "fantasma", ver abaixo) nao
+; tem como receber o pedido educado de fechar; sem forcar, o Restart Manager
+; desiste dele e a troca dos arquivos falha.
+;
+; [2026-09-25] SEM AppMutex, de proposito. Ele travou a instalacao da
+; 1.1.1-rc.1: "o instalador detectou que o SIG-FT Itaipu esta atualmente em
+; execucao", com o SIG-FT fechado. Havia um SIG-FT.exe vivo e SEM JANELA (um
+; robo parado numa pausa quando a pessoa fechou o app). O AppMutex so pergunta
+; "existe um mutex com esse nome?": nao distingue app aberto de fantasma, nem
+; da copia do ZIP do Box rodando de OUTRA pasta, e nao oferece fechar -- so
+; "feche e clique OK", que a pessoa nao tinha como atender. Em /SILENT ainda
+; abortava sozinho. tests/test_instalador.py (secao A) reprova a volta dele.
+CloseApplications=force
 RestartApplications=yes
 
 [Languages]

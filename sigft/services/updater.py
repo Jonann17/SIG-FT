@@ -27,10 +27,11 @@ possa substituir os arquivos.
 
 4. **Instalar por cima de si mesmo.** O Windows não deixa sobrescrever um
    `.exe` em execução. Por isso o app dispara o instalador e se encerra em
-   seguida; `/CLOSEAPPLICATIONS` é a rede de segurança (o Restart Manager
-   fecha o app se ele ainda estiver de pé na hora de trocar os arquivos).
-   [2026-09-25] O `AppMutex` do `.iss` NÃO ajuda aqui, atrapalha: em modo
-   silencioso o Inno que o encontra aborta. Ver `instalar()`.
+   seguida (`instancia.encerrar`); `/CLOSEAPPLICATIONS` é a rede de
+   segurança: o Restart Manager (`CloseApplications=force` no `.iss`) fecha
+   o que ainda estiver usando os arquivos. [2026-09-25] O `AppMutex` saiu do
+   `.iss`: em modo silencioso ele abortava a instalação, e à mão acusava um
+   SIG-FT fantasma (processo sem janela) como "em execução".
 
 ═══ E o quinto, que era o maior: ninguém chamava este módulo ═══
 Até 2026-09-25 nenhuma linha da interface importava o `updater`. O Release
@@ -430,25 +431,25 @@ _ERRO_ELEVACAO_NECESSARIA = 740
 def instalar(caminho: Path | str, *, log_cb: Log = _nada) -> None:
     """Dispara o instalador e volta -- quem chama deve FECHAR o app em seguida.
 
-    Três cuidados, e cada um, sozinho, faria "Atualizar agora" fechar o app
+    Dois cuidados, e cada um, sozinho, faria "Atualizar agora" fechar o app
     sem atualizar nada (nenhum deles aparecia antes de 2026-09-25 porque esta
     função nunca tinha sido chamada):
 
-    1. **O mutex é solto antes do disparo** (`instancia.liberar_mutex`): em
-       `/SILENT /SUPPRESSMSGBOXES`, o Inno que acha o `AppMutex` responde
-       "Cancelar" sozinho ao aviso de app aberto e aborta calado.
-    2. **O app pede para ser reaberto** (`ARG_REABRIR`): a linha normal do
+    1. **O app pede para ser reaberto** (`ARG_REABRIR`): a linha normal do
        `[Run]` tem `skipifsilent`.
-    3. **O instalador sobe SEM elevação**, e o UAC, quando preciso, é pedido
+    2. **O instalador sobe SEM elevação**, e o UAC, quando preciso, é pedido
        pelo próprio Inno. Pedir o UAC aqui (`runas`) faria o instalador nascer
        elevado, e aí o `runasoriginaluser` do `.iss` não tem mais as
        credenciais de quem pediu: o app reabriria como administrador -- e, com
        a senha de outra pessoa no UAC, na conta dela, sem as chaves de API.
        O `runas` fica só para o executável que o exigir no manifesto (erro
        740 no `CreateProcess`).
-    """
-    from sigft.core import instancia
 
+    (Houve um terceiro, soltar o mutex do `AppMutex` antes do disparo: em
+    `/SILENT` o Inno que o achava abortava calado. Saiu junto com o próprio
+    `AppMutex`, que também travava a instalação manual por causa do SIG-FT
+    fantasma -- ver `installer/sigft.iss`.)
+    """
     caminho = Path(caminho)
     args = [*ARGS_INSTALADOR, f"/LOG={pasta_download() / 'instalacao.log'}"]
 
@@ -456,25 +457,18 @@ def instalar(caminho: Path | str, *, log_cb: Log = _nada) -> None:
         log_cb("A instalacao vai pedir permissao de administrador (o app esta "
                "instalado para todos os usuarios). Confirme na janela do Windows.")
 
-    instancia.liberar_mutex()
     try:
-        try:
-            flags = 0
-            if os.name == "nt":
-                # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: o instalador
-                # precisa sobreviver ao fechamento do app, logo em seguida.
-                flags = 0x00000008 | 0x00000200
-            subprocess.Popen([str(caminho), *args], close_fds=True,  # noqa: S603
-                             creationflags=flags)
-        except OSError as erro:
-            if getattr(erro, "winerror", None) != _ERRO_ELEVACAO_NECESSARIA:
-                raise
-            _disparar_elevado(caminho, args)
-    except BaseException:
-        # O app segue aberto: sem o mutex, um instalador rodado depois à mão
-        # não o enxergaria.
-        instancia.criar_mutex()
-        raise
+        flags = 0
+        if os.name == "nt":
+            # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: o instalador precisa
+            # sobreviver ao fechamento do app, que acontece logo em seguida.
+            flags = 0x00000008 | 0x00000200
+        subprocess.Popen([str(caminho), *args], close_fds=True,  # noqa: S603
+                         creationflags=flags)
+    except OSError as erro:
+        if getattr(erro, "winerror", None) != _ERRO_ELEVACAO_NECESSARIA:
+            raise
+        _disparar_elevado(caminho, args)
 
     log_cb("Instalador iniciado. O SIG-FT vai fechar e reabrir atualizado.")
 

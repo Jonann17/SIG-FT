@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""O instalador do Inno Setup e o mutex -- o que so o `.iss` sabe.
+"""O instalador do Inno Setup -- o que so o `.iss` sabe.
 
 Nada aqui compila o instalador: isso exige Windows com o Inno Setup 6. O que
 da para provar sem compilar e justamente o que mais quebra na pratica, e cada
-item abaixo custou uma rodada de CI a alguem:
+item abaixo custou uma rodada de CI -- ou uma instalacao travada -- a alguem:
 
-  - o nome do mutex divergindo entre o `.iss` e o codigo (a atualizacao falha
-    com "arquivo em uso", que e o sintoma classico de auto-update quebrado);
+  - o `AppMutex`, que TRAVAVA a instalacao por causa de um SIG-FT fantasma
+    (secao A: quem fecha o app e o Restart Manager);
   - `VersionInfoVersion` com sufixo de pre-lancamento (o compilador ABORTA);
   - `[InstallDelete]` apontando para `{app}` sozinho (apaga o `unins000.dat`
     e o app deixa de ser desinstalavel pelo caminho normal);
@@ -36,31 +36,37 @@ def _diretiva(texto, nome):
 
 
 # =============================================================================
-# A. O mutex -- armadilha n. 5: instalar por cima de si mesmo
+# A. Instalar por cima do app aberto -- sem AppMutex  [2026-09-25]
 # =============================================================================
+#
+# O Windows nao deixa sobrescrever um `.exe` em execucao, entao o instalador
+# precisa fechar o SIG-FT antes de trocar os arquivos. Ate 2026-09-25 isso era
+# o `AppMutex`, e ele TRAVOU a instalacao da 1.1.1-rc.1: "o instalador detectou
+# que o SIG-FT Itaipu esta atualmente em execucao", com o SIG-FT fechado.
+#
+# Havia um SIG-FT.exe vivo SEM JANELA (robo parado numa pausa quando a pessoa
+# fechou o app -- `tests/test_fechar_encerra_o_processo.py`). O `AppMutex` so
+# pergunta "existe um mutex com esse nome?": nao distingue app aberto de
+# fantasma, nem da copia do ZIP do Box rodando de OUTRA pasta, e nao oferece
+# fechar -- so "feche e clique OK", que a pessoa nao tinha como atender. Em
+# modo silencioso (a atualizacao automatica), abortava sozinho.
+#
+# O Restart Manager (`CloseApplications`) pergunta a coisa certa: QUEM esta
+# usando os arquivos que vao ser trocados. Mostra o app na pagina "Preparando
+# para instalar", fecha com um clique e, com `force`, encerra ate o fantasma,
+# que nao tem janela para receber o pedido de fechar.
 
-def test_o_iss_declara_um_AppMutex(iss):
-    assert _diretiva(iss, "AppMutex"), (
-        "sem AppMutex o Inno nao descobre que o SIG-FT esta aberto, e a "
-        "instalacao falha com 'arquivo em uso'"
+def test_o_iss_NAO_usa_AppMutex(iss):
+    assert _diretiva(iss, "AppMutex") is None, (
+        "AppMutex trava a instalacao por causa de SIG-FT fantasma (sem janela) "
+        "ou da copia do Box -- ver o comentario desta secao"
     )
 
 
-def test_o_nome_do_mutex_e_O_MESMO_no_iss_e_no_codigo(iss):
-    """A armadilha n. 5, travada.
-
-    O Windows nao deixa sobrescrever um `.exe` em execucao. O app cria um
-    mutex nomeado ao abrir e o instalador o declara em `AppMutex`; e assim que
-    o Inno descobre o app aberto e o fecha. Os dois nomes TEM que ser iguais --
-    e a divergencia nao da erro nenhum, so faz a atualizacao falhar.
-    """
-    from sigft.core import instancia
-
-    assert _diretiva(iss, "AppMutex") == instancia.NOME_MUTEX
-
-
-def test_o_iss_fecha_o_app_antes_de_trocar_os_arquivos(iss):
-    assert (_diretiva(iss, "CloseApplications") or "").lower() == "yes"
+def test_o_instalador_FECHA_o_app_ate_o_fantasma(iss):
+    """`force`: o fantasma nao tem janela para receber o pedido de fechar;
+    sem forcar, o Restart Manager desiste dele e a troca dos arquivos falha."""
+    assert (_diretiva(iss, "CloseApplications") or "").lower() == "force"
 
 
 # =============================================================================
@@ -350,37 +356,11 @@ def test_a_reabertura_so_acontece_a_pedido_do_app(iss):
 
 
 def test_o_parametro_que_o_iss_le_e_O_MESMO_que_o_app_manda(iss):
-    """Mesma classe de defeito do mutex: os dois lados divergindo nao dao erro
-    nenhum, so fazem o app nao reabrir."""
+    """Os dois lados divergindo nao dao erro nenhum: so fazem o app nao
+    reabrir depois de atualizar."""
     from sigft.services import updater
 
     m = re.search(r"\{param:(\w+)\|", iss)
     assert m, "o [Code] tem de ler o parametro com `{param:NOME|padrao}`"
 
     assert updater.ARG_REABRIR.lower() == f"/{m.group(1)}=1".lower()
-
-
-# =============================================================================
-# I. O mutex solto na hora de atualizar
-# =============================================================================
-
-def test_liberar_o_mutex_nunca_levanta_e_e_idempotente():
-    """Roda no caminho da atualizacao, com o app ja se despedindo: nao pode
-    ser ele a impedir a atualizacao."""
-    from sigft.core import instancia
-
-    instancia.liberar_mutex()
-    instancia.liberar_mutex()
-
-
-def test_depois_de_liberar_o_mutex_ele_pode_ser_recriado(monkeypatch):
-    """Se o instalador nao subir, o app segue aberto e precisa do mutex de
-    volta -- `criar_mutex` nao pode achar que ele ainda existe."""
-    from sigft.core import instancia
-
-    monkeypatch.setattr(instancia, "_handle", 1234)
-    monkeypatch.setattr(instancia, "_fechar_handle", lambda handle: None)
-
-    instancia.liberar_mutex()
-
-    assert instancia._handle is None

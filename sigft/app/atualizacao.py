@@ -35,9 +35,7 @@ thread do Tk: tudo volta por `_na_interface`, que é o `after(0, ...)` da casa
 """
 from __future__ import annotations
 
-import os
 import re
-import sys
 import threading
 from tkinter import messagebox
 
@@ -45,6 +43,7 @@ import customtkinter as ctk
 
 from sigft import _build_info
 from sigft.app import theme
+from sigft.core import instancia
 from sigft.services import updater
 
 TITULO = "Atualização do SIG-FT"
@@ -244,20 +243,16 @@ def _mostrar_aviso(janela, info: updater.Atualizacao, versao_atual: str):
 def _fechar_o_app(janela_principal) -> None:
     """Fecha o SIG-FT para o instalador trocar os arquivos. Não volta.
 
-    `os._exit`, e não esperar o fim natural do processo: uma thread de robô que
-    não seja `daemon` o seguraria vivo, com os arquivos do app em uso, e o
-    instalador acabaria brigando com ele. O log é descarregado antes.
+    `instancia.encerrar`, e não esperar o fim natural do processo: uma thread
+    de robô que não seja `daemon` o seguraria vivo, com os arquivos do app em
+    uso, e o instalador acabaria brigando com ele. É o mesmo encerramento do
+    "X" da janela principal -- uma implementação só.
     """
     try:
         janela_principal.destroy()
     except Exception:  # noqa: BLE001
         pass
-    for fluxo in (sys.stdout, sys.stderr):
-        try:
-            fluxo.flush()
-        except Exception:  # noqa: BLE001
-            pass
-    os._exit(0)
+    instancia.encerrar(0)
 
 
 # ───────────────────────────── a janela do aviso ────────────────────────────

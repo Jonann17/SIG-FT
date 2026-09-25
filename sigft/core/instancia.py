@@ -1,129 +1,49 @@
-"""O mutex nomeado que deixa a atualização automática funcionar.
-
-Por que isto existe
--------------------
-**O Windows não deixa sobrescrever um `.exe` em execução.** Sem tratamento, a
-atualização falha com "arquivo em uso" — o sintoma clássico de auto-update
-quebrado, e o mais confuso: a pessoa clica em "atualizar", o instalador abre,
-dá erro no meio e deixa a instalação pela metade.
-
-A saída do Inno Setup é o `AppMutex`: o app cria um **mutex nomeado** ao abrir,
-o instalador declara **o mesmo nome**, e com isso o Inno descobre que o SIG-FT
-está rodando e o fecha antes de trocar os arquivos.
-
-⚠️ **Os dois nomes têm de ser iguais**, e a divergência não dá erro nenhum —
-só faz a atualização falhar. Por isso `tests/test_instalador.py` lê o `.iss` e
-este módulo e reprova se divergirem.
-
-⚠️ [2026-09-25] Isso vale para quem instala **à mão**: o Inno mostra "feche o
-SIG-FT e clique OK". Na atualização automática o instalador roda em modo
-SILENCIOSO, e ali o mesmo aviso é respondido com "Cancelar" sozinho — a
-atualização abortaria. Por isso ela solta o mutex antes de disparar o
-instalador (`liberar_mutex`).
+"""A instância do SIG-FT no Windows: a identidade na barra de tarefas e o fim do processo.
 
 O `AppUserModelID`
 ------------------
-Segunda coisa que mora aqui, pelo mesmo motivo (um nome que precisa bater entre
-o app e o instalador). O Windows agrupa janelas na barra de tarefas por esse
-identificador. Se o atalho declarar um e a janela outro, o sistema trata os
-dois como **aplicativos diferentes** e mostra dois botões lado a lado para o
-mesmo programa — foi o que aconteceu no Corella Suite, que mostrava o ícone do
-Python ao lado do ícone do app.
+O Windows agrupa janelas na barra de tarefas por esse identificador. Se o
+atalho declarar um e a janela outro, o sistema trata os dois como
+**aplicativos diferentes** e mostra dois botões lado a lado para o mesmo
+programa — foi o que aconteceu no Corella Suite, que mostrava o ícone do
+Python ao lado do ícone do app. O nome tem de bater com o `AppUserModelID:`
+dos atalhos do `installer/sigft.iss`, e há teste travando os dois juntos.
 
 E a **versão não entra no identificador**: mudá-lo a cada atualização quebraria
 o atalho que a pessoa fixou na barra de tarefas.
+
+Fechar a janela ENCERRA o processo  [2026-09-25]
+-----------------------------------------------
+Ao instalar a 1.1.1-rc.1, o usuário recebeu "o instalador detectou que o
+SIG-FT Itaipu está atualmente em execução" — com o SIG-FT fechado. Havia um
+`SIG-FT.exe` vivo, SEM JANELA: um robô tinha parado na pausa de login e a
+pessoa fechou o app ali. A thread do robô é comum (não-daemon), fica
+esperando um clique que nunca vem, e o Python espera por ela antes de
+encerrar — para sempre. Reproduzido com o app de verdade sob xvfb, junto com
+um segundo caminho: a montagem da janela principal falhar.
+
+Por isso `encerrar()`: quando a janela principal fecha, o processo termina,
+com ou sem thread presa. Quem fecha com uma tarefa em andamento é avisado
+antes (`tarefas_em_andamento`, usada pelo "X" da janela).
+
+O mutex que morava aqui saiu na mesma data
+------------------------------------------
+Este módulo criava um mutex nomeado para o `AppMutex` do instalador. Era ele
+que acusava o fantasma: o `AppMutex` só pergunta "existe um mutex com esse
+nome?", não distingue app aberto de processo sem janela (nem da cópia do ZIP
+do Box rodando de outra pasta), e não oferece fechar. O instalador passou a
+usar o Restart Manager (`CloseApplications=force`), que pergunta QUEM usa os
+arquivos da pasta instalada e fecha até o fantasma. Ver `installer/sigft.iss`
+e `tests/test_instalador.py`, seção A.
 """
 from __future__ import annotations
 
 import os
+import sys
+import threading
 
-# Tem de ser IDÊNTICO ao `AppMutex` de `installer/sigft.iss`. Há teste travando
-# os dois juntos — não mude um sem o outro.
-NOME_MUTEX = "SIGFTItaipu_AppMutex"
-
-# Idem, para o `AppUserModelID:` dos atalhos do `.iss`. Sem versão dentro.
+# Tem de bater com o `AppUserModelID:` dos atalhos do `.iss`. Sem versão dentro.
 APP_USER_MODEL_ID = "GEVernova.SIGFT.Itaipu"
-
-_handle = None
-
-
-def criar_mutex() -> bool:
-    """Cria o mutex nomeado. `True` se criou, `False` fora do Windows ou falhando.
-
-    Guarda o handle num global de propósito: enquanto o processo viver, o mutex
-    existe; quando ele morre, o Windows o libera sozinho. Não há o que fechar
-    à mão, e fechar cedo seria pior — o instalador deixaria de enxergar o app.
-
-    Idempotente: chamar duas vezes não cria dois mutexes nem levanta.
-
-    Nunca levanta: isto roda no bootstrap, e um app que não abre por causa de
-    um mutex seria uma troca péssima.
-    """
-    global _handle
-
-    if os.name != "nt":
-        return False
-    if _handle is not None:
-        return True
-
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.CreateMutexW.restype = wintypes.HANDLE
-        kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL,
-                                          wintypes.LPCWSTR]
-
-        # `bInitialOwner=False`: não precisamos da posse, só da EXISTÊNCIA do
-        # nome. É por ela que o Inno pergunta.
-        handle = kernel32.CreateMutexW(None, False, NOME_MUTEX)
-        if not handle:
-            return False
-        _handle = handle
-        return True
-    except Exception:  # noqa: BLE001 — ver o docstring
-        return False
-
-
-def liberar_mutex() -> None:
-    """Fecha o mutex -- SÓ para entregar a vez ao instalador da atualização.
-
-    [2026-09-25] A atualização automática roda o instalador em
-    `/SILENT /SUPPRESSMSGBOXES`. Nesse modo, o Inno que encontra o `AppMutex`
-    ao abrir mostra "o SIG-FT está aberto: feche e clique OK" e, com as caixas
-    suprimidas, responde CANCELAR sozinho: a atualização aborta, calada, antes
-    de começar. O app fecha logo depois de disparar o instalador; soltar o
-    mutex ANTES do disparo tira a corrida entre "o app terminou de fechar" e
-    "o Inno conferiu o mutex", que sem UAC no meio é questão de milissegundos.
-
-    Os arquivos em uso continuam protegidos: o `CloseApplications=yes` do
-    `.iss` fecha o app pelo Restart Manager se ele ainda estiver de pé na hora
-    de trocar os arquivos.
-
-    Idempotente e nunca levanta. Se o instalador não subir, quem chamou recria
-    com `criar_mutex()`.
-    """
-    global _handle
-
-    if _handle is None:
-        return
-    handle, _handle = _handle, None
-    _fechar_handle(handle)
-
-
-def _fechar_handle(handle) -> None:
-    """`CloseHandle` do Windows. Separado para o teste não precisar do ctypes."""
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.CloseHandle.restype = wintypes.BOOL
-        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
-        kernel32.CloseHandle(handle)
-    except Exception:  # noqa: BLE001 -- o processo vai fechar de qualquer jeito
-        pass
 
 
 def declarar_identidade_na_barra_de_tarefas() -> bool:
@@ -148,6 +68,36 @@ def declarar_identidade_na_barra_de_tarefas() -> bool:
 
 
 def preparar() -> None:
-    """As duas coisas, numa chamada. Use no bootstrap, antes da janela."""
+    """O que precisa acontecer antes da primeira janela. Use no bootstrap."""
     declarar_identidade_na_barra_de_tarefas()
-    criar_mutex()
+
+
+def tarefas_em_andamento() -> list[str]:
+    """Os nomes das threads COMUNS ainda vivas — o trabalho da pessoa.
+
+    São as threads que o Python espera antes de encerrar: o robô de um módulo,
+    a tradução, a consulta à IA. As `daemon` ficam de fora de propósito: a
+    consulta de atualização, por exemplo, é de fundo e pode morrer com o app;
+    perguntar por ela ao fechar seria um aviso falso.
+    """
+    principal = threading.main_thread()
+    return [t.name for t in threading.enumerate()
+            if t is not principal and t.is_alive() and not t.daemon]
+
+
+def encerrar(codigo: int = 0) -> None:
+    """Termina o processo AGORA, mesmo com thread presa. Não volta.
+
+    `os._exit`, e não o fim normal: o fim normal espera cada thread comum
+    terminar, e uma que espera um clique numa janela que já não existe não
+    termina nunca — é o `SIG-FT.exe` sem janela que travava o instalador.
+
+    O log é descarregado antes: no `.exe` o `print` vai para o `sigft.log`, e a
+    última linha costuma ser justamente a que explica o encerramento.
+    """
+    for fluxo in (sys.stdout, sys.stderr):
+        try:
+            fluxo.flush()
+        except Exception:  # noqa: BLE001 -- sem console, ou arquivo já fechado
+            pass
+    os._exit(codigo)
