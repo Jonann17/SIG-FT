@@ -560,6 +560,7 @@ equipe escolheu estavam certos.
 | Data | De | Aviso |
 |---|---|---|
 | 2026-09-08 | Rafael | **`ficha_layout.py` ganhou 4 conceitos** (aditivos, nada removido): `nome_da_aba_da_ficha`, `marcador_de_faltante`, `e_marcador_de_faltante` e `idioma_da_ficha`. Se for abrir uma ficha ou escrever `FORNECER` nela, use-os — o nome da aba e o marcador mudam quando a ficha é em inglês. Saiu do mural em 2026-09-23 por ser o aviso mais antigo, não por estar resolvido. |
+| 2026-09-24 | Rafael | 🔴 **`core/llm` ganhou ANEXOS (o PDF em si para o modelo)** — aditivo: sem anexo a requisição sai idêntica. `Anexo`, `LLMClient.generate(..., anexos=)`, `LLMClient.aceita_pdf`, `aceita_pdf()` nos 3 provedores (`PREFIXOS_COM_PDF_NATIVO` no OpenRouter).<br>A política `autospec` ganhou `timeout_s: 300` (opcional, `get_llm` repassa ao provedor) e `max_retries: 1`; dois testes teus que fixavam o 2 foram atualizados. |
 
 ---
 
@@ -670,7 +671,7 @@ fora do alcance deste contêiner ou fora do escopo.
 
 | Data | Descoberto em | Descrição | Destino proposto |
 |---|---|---|---|
-| 2026-09-25 | conserto da atualização automática | **A cadeia do instalador nunca rodou numa máquina real, e não há como rodá-la aqui** (exige Windows e o Inno Setup). Três pontos estão só em tese, apoiados na documentação do Inno: (1) em `/SILENT /SUPPRESSMSGBOXES`, o `AppMutex` presente aborta o Setup, e por isso o app agora solta o mutex antes de disparar o instalador; (2) disparado SEM elevação, o próprio Inno pede o UAC, e o `[Run]` com `runasoriginaluser` reabre o app na conta de quem usava (se o executável do Inno exigir administrador no manifesto, o disparo cai no `runas` pelo erro 740, e aí a reabertura herda o administrador); (3) `{param:REABRIR\|0}` lê o `/REABRIR=1`. O `--smoke` e o ensaio sob xvfb provaram a janela e o fluxo do app (aviso, download, disparo, fechamento), não o Inno. | Primeira atualização real: instalar a 1.1.1 à mão, publicar a 1.1.2 e seguir o roteiro de `docs/DISTRIBUICAO.md`; o que o Inno fez fica em `%TEMP%\SIG-FT_Update\instalacao.log` |
+| 2026-09-25 | conserto da atualização automática | **A cadeia do instalador nunca rodou numa máquina real, e não há como rodá-la aqui** (exige Windows e o Inno Setup). Três pontos estão só em tese, apoiados na documentação do Inno: (1) ~~o `AppMutex` abortando o Setup silencioso~~ **SUPERADO no mesmo dia: o `AppMutex` saiu do `.iss`** (ver "o SIG-FT fantasma", no fim do arquivo); (2) disparado SEM elevação, o próprio Inno pede o UAC, e o `[Run]` com `runasoriginaluser` reabre o app na conta de quem usava (se o executável do Inno exigir administrador no manifesto, o disparo cai no `runas` pelo erro 740, e aí a reabertura herda o administrador); (3) `{param:REABRIR\|0}` lê o `/REABRIR=1`. O `--smoke` e o ensaio sob xvfb provaram a janela e o fluxo do app (aviso, download, disparo, fechamento), não o Inno. | Primeira atualização real: instalar a 1.1.1 à mão, publicar a 1.1.2 e seguir o roteiro de `docs/DISTRIBUICAO.md`; o que o Inno fez fica em `%TEMP%\SIG-FT_Update\instalacao.log` |
 | 2026-09-25 | conserto da atualização automática | **Nada prova que o token embutido ainda vale.** O run #13 (v1.1.0) pulou o passo "Sem UPDATE_TOKEN", então o segredo existe; mas a 1.1.0 nunca o usou, e um PAT fine-grained expira. Vencido, a 1.1.1 nasce sem atualização e a abertura fica calada (só o botão "Atualizações" mostra o motivo). | Antes de publicar a 1.1.1: conferir a validade do PAT em *Settings → Developer settings → Fine-grained tokens* (Luan) |
 | 2026-09-25 | `SIG-FT.spec` e `installer/sigft.iss` | **A "janela de novidades" que os dois citam não existe.** Os dois levam o `CHANGELOG.md` para o pacote "para a janela de novidades não abrir vazia depois de atualizar", mas nenhuma tela chama `core/novidades.ler()`. O aviso de atualização mostra as notas ANTES de atualizar (do `latest.json`); depois, só a barra de título confirma a versão nova. | Decisão do Luan: implementar a janela pós-atualização (mostrar uma vez o bloco da versão instalada) ou tirar o CHANGELOG do pacote e os comentários |
 
@@ -706,3 +707,22 @@ Achados de carona que ficaram de fora:
 | 2026-09-25 | `core/llm/catalogo.py` (`somente_cache`) | **Um dia depois de baixado, o catálogo some da Home.** A montagem lê só o cache e trata o cache vencido (TTL de 86400 s) como ausente: o painel volta a mostrar só os recomendados e "Catálogo ainda não baixado" até alguém clicar em "Atualizar" de novo (medido: 1 h depois, a lista; 1 dia e 1 s depois, `[]`). Para exibir, um catálogo de ontem serve melhor que nenhum. | Decisão do usuário |
 | 2026-09-25 | `core/llm/catalogo.py` × `providers/openrouter.py` | **Dois caches no mesmo arquivo, em formatos diferentes.** Para o OpenRouter, o catálogo e o provedor gravam `openrouter_models_cache.json`, como era antes de 79886e4. O catálogo regrava por cima, e cada lado lê o formato do outro como "sem cache". Funciona, mas o cache do provedor é peso morto nesse caminho: unificar numa camada só. | Fase 8 |
 | 2026-09-25 | CHANGELOG da próxima versão | **RESOLVIDO no mesmo dia:** a linha entrou no bloco `1.1.1` (a sessão do tradutor tinha aberto um `1.2.0`, renumerado a pedido do Luan: melhoria e correção são 1.1.x), para o pré-lançamento de teste. Texto original: **Texto sugerido** (o bloco da versão é de quem fecha o release): "Modelos de IA: o botão **"Atualizar lista de modelos"** volta a trazer o catálogo do **OpenRouter** quando o SIG-FT está instalado para todos os usuários (a instalação padrão). A lista chegava da internet, mas o programa tentava guardá-la na própria pasta, onde o Windows não deixa gravar, e ela era descartada sem aviso — por isso parecia que a chave do OpenRouter não funcionava." | Próximo release (Luan) |
+
+---
+
+## 2026-09-25 (noite) — o SIG-FT fantasma que travava o instalador
+
+Ao instalar a 1.1.1-rc.1, o usuário recebeu "o instalador detectou que o SIG-FT
+Itaipu está atualmente em execução" com o SIG-FT fechado. Causa raiz reproduzida
+sob xvfb com o app real: fechar a janela com um robô parado numa pausa (thread
+comum esperando um clique que nunca vem) deixava o `SIG-FT.exe` vivo e SEM
+JANELA; a montagem da janela falhando, idem. O `AppMutex` acusava esse fantasma
+e não oferecia fechá-lo. Consertado nas duas pontas: fechar a janela encerra o
+processo (`instancia.encerrar`, com pergunta se houver tarefa em andamento) e o
+`.iss` troca o `AppMutex` pelo Restart Manager com `CloseApplications=force`.
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-09-25 | instalação da 1.1.1-rc.1 (usuário) | **O `CloseApplications=force` fechando o fantasma ainda não rodou numa máquina real.** Apoia-se na documentação do Inno 6 (o Restart Manager lista quem usa os arquivos da pasta e, com `force`, encerra quem não responde ao pedido de fechar — um processo sem janela não responde). Se o valor `force` não existir na versão do Inno do runner, o ISCC reprova no passo "Montar o instalador", antes de publicar. | Primeira instalação da 1.1.1-rc.2 por cima de uma 1.1.0 com fantasma: conferir que a tela "Preparando para instalar" mostra o SIG-FT e o fecha |
+| 2026-09-25 | instalação da 1.1.1-rc.1 (usuário) | **A 1.1.0 e a 1.0.0 instaladas continuam criando fantasmas** até serem trocadas: o conserto do fechar mora no app novo. O instalador novo lida com eles (Restart Manager), mas quem rodar o instalador da 1.1.1-rc.1 (ainda com `AppMutex`) precisa encerrar o `SIG-FT.exe` à mão — ver `docs/BUILD.md`. | Some sozinho quando todos estiverem na 1.1.1+ |
+| 2026-09-25 | `sigft/app/views/*.py` | **Os robôs dos módulos usam thread comum (não-daemon).** Com o fechar encerrando o processo, isso deixou de travar o app, e passou a ser o sinal de "tarefa em andamento" que faz o "X" perguntar. Thread de fundo que não é tarefa da pessoa tem de nascer `daemon=True`, senão o "X" pergunta à toa (aviso no mural). | Regra para código novo; nada a mudar hoje (medido: app ocioso, zero threads comuns) |

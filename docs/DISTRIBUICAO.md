@@ -16,8 +16,9 @@
 O caminho do Box **não foi aposentado**, e a razão é concreta: o instalador
 ainda **não foi validado numa máquina real**. Nada neste repositório pode
 prová-lo — o `.iss` só compila no Windows com o Inno Setup, e que o instalador
-instale por cima de si mesmo (fechando o app pelo `AppMutex`) só a instalação de
-verdade diz.
+instale por cima de si mesmo (fechando o app pelo Restart Manager, desde a
+1.1.1; antes era o `AppMutex`, que travava com um SIG-FT fantasma — ver
+`BUILD.md`) só a instalação de verdade diz.
 
 Aposentar o único canal que funciona antes de provar o novo seria trocar o certo
 pelo não verificado. **Quando você instalar uma versão pelo Release e confirmar

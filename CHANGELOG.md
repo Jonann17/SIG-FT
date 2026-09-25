@@ -34,6 +34,12 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
 - Modelos de IA: o botão **"Atualizar lista de modelos"** volta a trazer o catálogo do **OpenRouter** no SIG-FT instalado para todos os usuários (a instalação padrão). A lista chegava da internet, mas o programa tentava guardá-la na própria pasta, onde o Windows não deixa gravar, e ela era descartada sem aviso — parecia que a chave do OpenRouter não funcionava.
 
+**Instalação e fechamento do SIG-FT**
+
+- Instalação: o instalador não trava mais com "o SIG-FT Itaipu está atualmente em execução" quando o programa está fechado. Se o SIG-FT tiver ficado rodando escondido, sem janela, o instalador o mostra na tela "Preparando para instalar" e o fecha sozinho. Antes, a única saída era encerrar o `SIG-FT.exe` pelo Gerenciador de Tarefas.
+- Fechar o SIG-FT: fechar a janela passa a encerrar o programa de verdade. Antes, fechar no meio de uma pausa do robô (esperando o login no portal, por exemplo) deixava o SIG-FT rodando escondido, e era isso que travava a instalação. Com uma tarefa em andamento (robô, tradução ou consulta à IA), ele **pergunta antes de fechar**, porque ela é interrompida no ponto em que está.
+- Abertura: quando a janela principal não consegue abrir, aparece uma mensagem com o erro e o caminho do log, em vez de o programa ficar rodando escondido.
+
 ## 1.1.0 - 2026-09-24
 
 **AutoSpec AI**

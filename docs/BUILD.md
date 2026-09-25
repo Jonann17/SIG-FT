@@ -51,10 +51,27 @@ seguintes pela atualização automática.
 2. Havendo versão nova, abre o aviso: versão atual → nova, data, tamanho e
    **o bloco do CHANGELOG** daquela versão (vem do `latest.json`). "Agora não"
    fecha; na próxima abertura ele volta.
-3. **"Atualizar agora"** baixa pela API do asset, confere o SHA256, solta o
-   mutex, dispara o instalador em `/SILENT` com `/REABRIR=1` e fecha o app. O
-   instalador troca os arquivos e **reabre o SIG-FT** na conta de quem estava
-   usando (`[Run]` com `runasoriginaluser`, só quando recebe `/REABRIR=1`).
+3. **"Atualizar agora"** baixa pela API do asset, confere o SHA256, dispara o
+   instalador em `/SILENT` com `/REABRIR=1` e encerra o app. O instalador
+   troca os arquivos e **reabre o SIG-FT** na conta de quem estava usando
+   (`[Run]` com `runasoriginaluser`, só quando recebe `/REABRIR=1`).
+
+### "O instalador detectou que o SIG-FT Itaipu está em execução", com ele fechado
+
+Visto ao instalar a 1.1.1-rc.1, em 2026-09-25. **Era um `SIG-FT.exe` vivo e sem
+janela**: até a 1.1.1, fechar o app no meio de uma pausa do robô (esperando o
+login, por exemplo) deixava o processo rodando escondido, e o `AppMutex` do
+instalador acusava esse fantasma como "em execução" — sem oferecer fechá-lo.
+
+- **Instalando por cima da 1.1.0 ou mais velha** (que ainda criam o fantasma):
+  *Gerenciador de Tarefas* (Ctrl+Shift+Esc) → aba **Detalhes** → `SIG-FT.exe`
+  → **Finalizar tarefa**, e depois OK no instalador. Ou, num prompt:
+  `taskkill /F /IM SIG-FT.exe`.
+- **Da 1.1.1 em diante** não acontece mais, pelos dois lados: fechar a janela
+  encerra o processo (com tarefa em andamento, o app pergunta antes); e o
+  instalador não usa mais `AppMutex` — o Restart Manager
+  (`CloseApplications=force`) mostra o SIG-FT na tela "Preparando para
+  instalar" e o fecha, inclusive o fantasma de uma versão antiga.
 
 Sem conexão ou com o token recusado, a abertura fica **calada** — o motivo vai
 só para o log. Para ver o motivo, use o botão **"Atualizações"** da tela
