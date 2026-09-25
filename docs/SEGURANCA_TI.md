@@ -98,7 +98,7 @@ os módulos de IA — o resto do app funciona sem eles.
 "liga para casa". As únicas conexões de saída são as quatro da tabela acima.
 
 **A tradução PT -> ES do Tradutor Técnico (tela 4.2) não sai da máquina**
-desde a versão 1.2.0: ela roda num modelo embutido no instalador (OPUS-MT, da
+desde a versão 1.1.1: ela roda num modelo embutido no instalador (OPUS-MT, da
 Universidade de Helsinque, licença CC-BY 4.0), na CPU, sem rede. Até a 1.1.0
 cada resposta de ficha ia para o Google Tradutor e para o MyMemory (serviços
 públicos gratuitos, sem contrato), endereços que esta tabela nem listava.
