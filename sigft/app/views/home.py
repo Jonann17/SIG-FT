@@ -1067,8 +1067,14 @@ class HomeView(ctk.CTkScrollableFrame):
         tarefa de IA rodou ainda) para não confrontar o usuário com "pasta
         não encontrada" por algo que é responsabilidade do próprio app criar.
         Tudo dentro de try/except: nunca deixa uma exceção do SO subir até
-        travar a UI."""
-        pasta = sigft_config.PASTA_LOGS
+        travar a UI.
+
+        [2026-09-25] `Documentos\\SIG-FT\\logs\\`, e não mais o `logs`
+        relativo, que no app instalado era a pasta do programa -- onde nada
+        chega a ser gravado."""
+        from sigft.core.dados_usuario import pasta_logs
+
+        pasta = str(pasta_logs())
         try:
             plataforma.abrir_pasta_criando_se_preciso(pasta)
         except Exception as e:

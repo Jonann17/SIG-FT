@@ -648,8 +648,9 @@ def get_key(chaves: dict[str, str | None], key_id: str) -> str:
 
 PASTA_LOGS = "logs"
 
-# Caminho relativo (resolvido a partir do cwd do processo — raiz do
-# repo/instalação), mesma convenção de `CONFIG_FILE`/`prefs.CONFIG_FILE`.
+# NOMES relativos: quem grava resolve na pasta de dados (`Documentos\SIG-FT\`,
+# `usage._no_lugar_certo` e `dados_usuario.pasta_logs`), nunca no cwd — que no
+# app instalado é `Program Files` e não grava (2026-09-25).
 ARQUIVO_USO_LLM = os.path.join(PASTA_LOGS, "llm_usage.jsonl")
 
 

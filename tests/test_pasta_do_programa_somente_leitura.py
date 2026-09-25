@@ -339,3 +339,65 @@ def test_o_cache_do_provedor_OpenRouter_vai_para_a_pasta_de_DADOS(instalado):
         "o cache do OpenRouter foi gravado na pasta do programa"
     )
     assert (dados / "openrouter_models_cache.json").is_file()
+
+
+# =============================================================================
+# F. O registro de uso de IA e o log de execução, mesma causa (2026-09-25)
+# =============================================================================
+#
+# `config.PASTA_LOGS` é o NOME relativo "logs", e três lugares o usavam como
+# caminho: o registro de cada chamada de IA (`core/llm/usage.py`), o log de
+# execução em arquivo (`core/log_execucao.py`) e o botão que abre a pasta de
+# logs no painel "Gastos de IA". No app instalado, "logs" relativo é
+# `Program Files`: a gravação falha em silêncio (o rastreamento nunca derruba
+# o app, de propósito) e o painel "Gastos de IA" fica sempre vazio -- sumindo
+# justamente o registro que diria por qual provedor uma chamada que falhou
+# tinha ido.
+
+def test_o_registro_de_uso_de_IA_vai_para_a_pasta_de_DADOS(instalado, monkeypatch):
+    """O default de PRODUÇÃO -- é por ele que o `LLMClient` grava cada chamada."""
+    programa, dados = instalado
+    from sigft.core.llm import usage
+
+    monkeypatch.delenv(usage.ENV_DESABILITAR_USAGE, raising=False)
+    usage.registrar(
+        provider="gemini", model="gemini-3.5-flash", tarefa="tech_specs",
+        modulo="upload_tech_specs_backend", tokens_in=None, tokens_out=None,
+        custo_usd=None, duracao_s=1.0, sucesso=False,
+        erro="ConnectionError: ('Connection aborted.', ...)",
+    )
+
+    assert sorted(p.name for p in programa.iterdir()) == [], (
+        "o registro de uso de IA foi gravado na pasta do programa"
+    )
+    assert (dados / "logs" / "llm_usage.jsonl").is_file()
+    lidos = usage.ler_registros()
+    assert [(r["provider"], r["tarefa"], r["sucesso"]) for r in lidos] == [
+        ("gemini", "tech_specs", False)
+    ], "o painel 'Gastos de IA' não enxerga o que foi gravado"
+
+
+def test_o_log_de_execucao_vai_para_a_pasta_de_DADOS(instalado):
+    programa, dados = instalado
+    from sigft.core.log_execucao import LogDeExecucao
+
+    with LogDeExecucao("upload_condicoes") as registro:
+        caminho = registro.caminho
+
+    assert sorted(p.name for p in programa.iterdir()) == [], (
+        "o log de execução foi gravado na pasta do programa"
+    )
+    assert caminho.startswith(str(dados / "logs"))
+
+
+def test_o_botao_da_pasta_de_logs_abre_a_pasta_de_DADOS(instalado, monkeypatch):
+    """O botão do painel "Gastos de IA" abria "logs" relativo: a pasta que o
+    Explorer mostrava era a do programa, onde nada chega a ser gravado."""
+    _programa, dados = instalado
+    from sigft.app.views import home
+
+    abertas = []
+    monkeypatch.setattr(home.plataforma, "abrir_pasta_criando_se_preciso", abertas.append)
+    home.HomeView._abrir_pasta_logs_gastos_ia(object())
+
+    assert abertas == [str(dados / "logs")]

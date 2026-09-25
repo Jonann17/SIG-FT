@@ -118,6 +118,21 @@ from sigft import config
 ENV_DESABILITAR_USAGE = "SIGFT_DESABILITAR_USAGE"
 
 
+def _no_lugar_certo(caminho: str | os.PathLike[str]) -> str:
+    """Caminho RELATIVO é relativo à pasta de dados do usuário, nunca ao
+    diretório de trabalho -- que no app instalado é `Program Files`, onde a
+    gravação falhava em silêncio e o painel "Gastos de IA" ficava sempre vazio
+    (2026-09-25). `config.ARQUIVO_USO_LLM` é o nome relativo
+    `logs/llm_usage.jsonl`; caminho absoluto (os `tmp_path` dos testes) passa
+    intocado."""
+    bruto = os.fspath(caminho)
+    if os.path.isabs(bruto):
+        return bruto
+    from sigft.core.dados_usuario import pasta_dados
+
+    return str(pasta_dados() / bruto)
+
+
 # =============================================================================
 # estimar_custo() -- função PURA (Decisão 2). Ver docstring do módulo para o
 # racional completo do casamento de slug. É a peça mais testada deste
@@ -258,7 +273,8 @@ def registrar(
             "erro": erro,
         }
 
-        pasta = os.path.dirname(os.fspath(caminho))
+        caminho = _no_lugar_certo(caminho)
+        pasta = os.path.dirname(caminho)
         if pasta:
             os.makedirs(pasta, exist_ok=True)
         with open(caminho, "a", encoding="utf-8") as arquivo:
@@ -284,6 +300,7 @@ def ler_registros(*, caminho: str | os.PathLike[str] = config.ARQUIVO_USO_LLM) -
     transação. Uma linha que parseia mas não é um OBJETO JSON (`dict`) --
     ex.: um número ou uma lista soltos numa linha -- também é descartada
     (nunca um registro que não seja um `dict`)."""
+    caminho = _no_lugar_certo(caminho)
     if not os.path.exists(caminho):
         return []
 

@@ -195,11 +195,13 @@ def test_serve_de_context_manager():
     assert arquivo.fechado == 1
 
 
-def test_a_pasta_padrao_e_a_do_projeto():
-    from sigft import config
+def test_a_pasta_padrao_e_a_de_dados_do_usuario():
+    """Era `config.PASTA_LOGS` ("logs") relativo -- a pasta do programa, que no
+    app instalado é `Program Files` e não grava (2026-09-25)."""
+    from sigft.core import dados_usuario
 
     assert log_execucao.LogDeExecucao("m", abrir_fn=lambda *_a, **_k: _ArquivoFalso()) \
-        .caminho.startswith(config.PASTA_LOGS)
+        .caminho.startswith(str(dados_usuario.pasta_logs()))
 
 
 def test_falha_na_ABERTURA_tambem_avisa_na_primeira_linha():

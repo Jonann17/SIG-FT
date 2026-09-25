@@ -36,8 +36,6 @@ from __future__ import annotations
 import datetime as _dt
 import os
 
-from sigft import config
-
 
 # Quanto de um bloco (HTML de uma seção, por exemplo) vai para o arquivo.
 # Uma tela de OutSystems inteira passa de megabyte; sem teto, uma execução de
@@ -77,7 +75,14 @@ class LogDeExecucao:
                  abrir_fn=None):
         self._agora = agora_fn or _agora_padrao
         self.modulo = modulo
-        self.pasta = pasta if pasta is not None else config.PASTA_LOGS
+        if pasta is None:
+            # `Documentos\SIG-FT\logs\`. Era `config.PASTA_LOGS` ("logs")
+            # relativo -- no app instalado, `Program Files`, onde o arquivo
+            # nunca era criado (2026-09-25).
+            from sigft.core.dados_usuario import pasta_logs
+
+            pasta = str(pasta_logs())
+        self.pasta = pasta
         self.caminho = os.path.join(self.pasta, nome_de_arquivo(modulo, self._agora()))
         self._abrir = abrir_fn or open
         self._arquivo = None
