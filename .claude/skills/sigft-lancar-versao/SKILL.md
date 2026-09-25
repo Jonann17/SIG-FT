@@ -37,8 +37,9 @@ recebe a `1.1.1` nem a `1.1.2` pela atualização automática — medido em 2026
 ## Número errado já publicado
 
 1. Run rodando: **cancele** antes do passo "Publicar o Release".
-2. Publicado: saia primeiro com o número certo; depois apague a tag errada (`git push origin :refs/tags/<tag>` — o release vira rascunho, e o Luan o apaga na página de Releases; se a tag for recusada com 403, ele apaga pela página).
-3. Avise quem instalou o número errado: **reinstalar à mão** o certo. Pela atualização automática, não sai do lugar.
+2. Publicado: saia com o número certo e veja o `download_count` do instalador errado (`get_release_by_tag`). Zero downloads = ninguém afetado.
+3. **Não apague a tag**: o número fica queimado, e a próxima rc daquela versão continua a contagem — nunca dois builds diferentes com o mesmo nome. Para tirar o release da lista, o Luan o apaga na página de Releases, mantendo a tag.
+4. Quem instalou o número errado reinstala o certo **à mão**: pela atualização automática, só sai do lugar quando a versão passar daquele número.
 
 ## Racionalizações (todas aconteceram em 2026-09-25)
 
