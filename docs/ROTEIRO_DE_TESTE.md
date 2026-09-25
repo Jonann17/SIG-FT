@@ -125,6 +125,7 @@ Dois cliques em **`Gerar-Dados-de-Teste.bat`** — ele cria a pasta
 | 3.2 | **8. PMIB Manager** | Apontar para `dados_de_teste` e listar/gerar KPIs | Lê os arquivos sem erro |
 | 3.3 | **3. Analyzer (IA)** | Ficha = `dados_de_teste\fichas\4500063671.0001.xlsx` | Roda a análise e devolve pontuação — **precisa de chave de IA** (configure na tela Home). Ver **3.3b** logo abaixo: o módulo mudou bastante em 2026-08-26 |
 | 3.4 | **2. Planilhas PMIB** | Ver **3.4b** logo abaixo: mudou em 2026-09-24 | Gera as fichas pela planilha e regenera as pastas |
+| 3.5 | **4.2. Tradutor** | Ver **3.5b** logo abaixo: mudou em 2026-09-25 | Traduz no próprio computador, em segundos por ficha |
 
 > Se você **tem** uma ficha real à mão, use ela em vez da sintética no 3.3. As
 > planilhas geradas seguem o que o *código* espera; uma ficha real é o único
@@ -190,6 +191,34 @@ arquivo desatualizado vai para a `_versoes_antigas` da própria pasta.
 | `... nao esta na planilha de PDMs ...` | O PDM do STATUS não existe na exportação. Confira o código; se estiver certo, a planilha está velha |
 | Uma ficha com pergunta `(nan)` ou fora da ordem do PDM | **Me avise**: é exatamente o que a fonte nova existe para impedir |
 | A regeneração demorando vários minutos | **Me avise** com o tempo que levou: no ambiente de desenvolvimento, as duas pastas (1.199 PDMs cada) levaram 45 s |
+
+---
+
+### 3.5b — Tradutor Técnico 4.2: tradução local (2026-09-25)
+
+A tradução PT -> ES das respostas deixou de usar o Google Tradutor: roda num
+modelo que vem dentro do instalador, sem internet. Precisa do Excel instalado,
+como antes. Use fichas REAIS já respondidas (de preferência de PDMs
+diferentes); uma cópia, não o original.
+
+| # | O que fazer | Esperado |
+|---|---|---|
+| 1 | Tela **4.2. Tradutor**, **Selecionar Arquivos e Iniciar** com 3 a 5 fichas | O log começa com `Tradução local de N ficha(s): nada sai deste computador.` e termina com `Tradução concluída: N de N ficha(s) em X s`. **Anote o X**: antes eram ~80 s por ficha |
+| 2 | Abrir uma ficha traduzida, aba **Especificações técnicas copiar** | Mesmas 3 colunas de antes. Número sem `.0` (`220`, não `220.0`). Nenhuma resposta em português na coluna do espanhol |
+| 3 | Conferir 10 respostas de texto da coluna do espanhol | Vocabulário técnico certo: `cojinete` (mancal), `tuerca` (porca), `arandela` (arruela), `empaquetadura` (gaxeta). Anote as que estiverem erradas |
+| 4 | Linhas `[CONFERIR]` no log | Cada uma diz a pergunta e o motivo. Confira essas respostas na aba |
+| 5 | **Abrir glossário**, acrescentar uma linha `termo errado = termo certo` para algo que o tradutor errou no passo 3, salvar, e traduzir a mesma ficha de novo | A resposta sai com o termo que você escreveu |
+| 6 | Traduzir a ficha e, **no meio do lote**, clicar **PARAR AGORA** | Para na ficha seguinte. No Gerenciador de Tarefas, **nenhum `EXCEL.EXE` sobrando** (antes ficava um por ficha) |
+| 7 | Uma ficha com característica cujo nome tem parênteses (`FAIXA DE TENSAO DE ALIMENTACAO (CA)`) | Na coluna Pergunta, o nome sai **com** o `(CA)` |
+| 8 | Rodar o **4.3. Upload de características** numa ficha traduzida aqui | Funciona como antes: o 4.3 lê a mesma aba |
+
+**Erros que valem anotar:**
+
+| Se aparecer | Significa |
+|---|---|
+| `Nao achei o modelo do tradutor local` | O instalador saiu sem o modelo. **Me avise**: a conferência do Release deveria ter barrado |
+| `esta ficha e a versao em ingles` | A ficha está em inglês; o tradutor traduz respostas em português. É esperado |
+| Tradução claramente errada de um termo que se repete | Vale uma linha no glossário (passo 5), e **me mande o termo**: se for comum, ele entra no glossário que vem no programa |
 
 ---
 

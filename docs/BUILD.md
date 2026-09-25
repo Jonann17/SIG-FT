@@ -293,6 +293,44 @@ funciona". Quando o app estiver estável lá, vale reconsiderar.
 invisível para a análise estática do PyInstaller. Sem declarar, o `.exe` abre e
 os 11 falham um por um na barra de progresso.
 
+**O modelo do tradutor local vai dentro (2026-09-25).** A tela 4.2 traduz na
+própria máquina com o OPUS-MT `tc-big-itc-itc` (Helsinki-NLP, CC-BY 4.0)
+convertido para CTranslate2 int8. O `SIG-FT.spec` embute
+`recursos/tradutor_pt_es` como `modelos/tradutor_pt_es` (~218 MB; o
+instalador cresce ~200 MB). Ver a seção seguinte.
+
+---
+
+## O tradutor local: de onde vem o modelo
+
+A pasta `recursos/tradutor_pt_es/` **não está no Git** (é pesada). Quem a gera
+é `tools/preparar_tradutor.py`, que baixa do Hugging Face a revisão **fixa**
+no script e converte para CTranslate2:
+
+```
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install "transformers<5" huggingface_hub ctranslate2 sentencepiece
+python tools/preparar_tradutor.py
+python tools/preparar_tradutor.py --verificar      # 0 = pronta
+```
+
+- **No Release** isso é automático: o passo "Preparar o tradutor local" roda
+  ANTES dos testes (os testes com o modelo de verdade rodam no Windows) e do
+  PyInstaller, num venv à parte (o `torch` nunca chega ao ambiente do build;
+  o spec ainda exclui `torch` e `transformers`, por garantia), com cache pela
+  revisão. A `--conferir-pacote` traduz "Aço inoxidável" DENTRO do `.exe`: se
+  o modelo não entrou ou a DLL do CTranslate2 não carrega, o Release para antes
+  de publicar.
+- **No `Gerar-Executavel.bat`** (build local): rode o script acima antes. Sem
+  a pasta o build segue, avisa, e só a tela 4.2 fica sem traduzir.
+- **Rodando pelo código-fonte**: o mesmo script, ou copie a pasta
+  `_internal\modelos\tradutor_pt_es` de uma instalação para
+  `Documentos\SIG-FT\modelos\`.
+- **Trocar o modelo** é decisão, não atualização: mude `REVISAO` no script e
+  refaça a medição do spec `docs/superpowers/specs/2026-09-25-tradutor-local-design.md`.
+- **Licença**: CC-BY 4.0 pede atribuição. Ela vai no `LEIA-ME.txt` e no
+  `README.md` do autor, dentro da própria pasta do modelo.
+
 ---
 
 ## ⚠️ O limite de 260 caracteres do Windows (MAX_PATH)

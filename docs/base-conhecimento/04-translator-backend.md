@@ -1,122 +1,104 @@
-# Translator Backend (`translator_backend.py`)
+# Tradutor Técnico PT -> ES (tela 4.2)
 
-> ⚠️ **Onde o código mora hoje** (atualizado em 2026-08-28)
+> **Onde o código mora** (reescrito em 2026-09-25)
 >
-> Este documento foi escrito antes da refatoração e descreve o comportamento do
-> módulo, que continua valendo. Mas os CAMINHOS mudaram:
->
-> | O que o texto abaixo chama de | Está hoje em |
+> | Parte | Arquivo |
 > |---|---|
-> | `translator_backend.py` | `sigft/services/translator.py` (serviço) · `sigft/app/views/translator.py` (tela) |
->
-> A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
+> | Tela | `sigft/app/views/translator.py` (`ModuloTranslator`) |
+> | Lote de fichas, Excel | `sigft/services/translator.py` (`TechnicalTranslator`) · shim `translator_backend.py` |
+> | Regras da tradução | `sigft/services/traducao_respostas.py` |
+> | Motor (modelo local) | `sigft/core/tradutor_local.py` |
+> | Preparo do modelo | `tools/preparar_tradutor.py` → `recursos/tradutor_pt_es/` (fora do Git) |
+> | Por que assim | `docs/superpowers/specs/2026-09-25-tradutor-local-design.md` |
 
 ## Propósito
-Módulo de tradução híbrida de especificações técnicas de português para espanhol usando xlwings (Excel COM no Windows). Lê perguntas e respostas da aba "Ficha Técnica Padrão" a partir da linha 79, traduz via Google Translator com fallback MyMemory, remove caracteres especiais (unidecode) e cria aba "Especificações técnicas copiar" com formatação zebrada e bordas.
 
-## Entradas e Saídas
-- **Entradas**:
-  - Arquivo Excel COM (Windows) com aba "Ficha Técnica Padrão"
-  - Perguntas a partir da linha 79, coluna C (3)
-  - Respostas na mesma linha, coluna M (13)
-  - Suporta caminho longo (>240 chars) via temp
-  
-- **Saídas**:
-  - Aba "Especificações técnicas copiar" com 3 colunas: Pergunta | Resposta (Espanhol s/ acentos) | Resposta (Português s/ acentos)
-  - Formatação: cabeçalho azul escuro com texto branco, linhas zebradas (azul claro alternado), bordas finas, wrap_text, altura 50
-  - Larguras: Pergunta=40, Respostas=50
-  - Arquivo atualizado in-place ou via temp se caminho >240 chars
+Traduz as respostas das características técnicas de cada ficha (aba "Ficha
+Técnica Padrão", linha `config.LINHA_SPECS_FICHA` = 79 em diante, coluna C =
+pergunta, M = resposta) do português para o espanhol, e grava a aba
+**"Especificações técnicas copiar"**, que o Upload de características (4.3)
+lê. O contrato com o 4.3 não mudou: mesma aba, mesmos três cabeçalhos
+(`Pergunta` | `Resposta (Espanhol s/ caracteres especiais)` |
+`Resposta (Português s/ caracteres especiais)`), pergunta com o número na
+frente.
 
-## Classes e Funções
+## Como era, e por que mudou
 
-### TechnicalTranslator
-- **`__init__()`** → inicializa stop_flag=False
-- **`request_stop()`** → sinaliza parada (cancela loop de tradução)
-- **`_remover_caracteres_especiais(texto)`** → unidecode (remove acentos)
-- **`_traduzir_hibrido(texto)`** → GoogleTranslator('pt'→'es') com fallback MyMemory, ignora ["-", "N/A", "NA", ".", "0", 0]
-- **`processar_arquivo(caminho_original)`** → Generator que yield logs ("Iniciando...", "Traduzindo item X", "PARADO", "SUCESSO", "ERRO", "ERRO_MOVER"). Gerencia temp, xlwings, formatação
+Até a 1.1.0: uma chamada ao Google Tradutor por resposta (MyMemory quando o
+Google falhava), com `time.sleep(1.0)` fixo, e um `xw.App()` por ficha. ~80 s
+por ficha de 40 respostas; cada resposta saía para dois serviços públicos; se
+os dois falhassem, o **português ia para a coluna do espanhol** sem aviso; e o
+`xw.App()` com `add_book=True` (padrão) deixava **um Excel invisível aberto
+por ficha** até o SIG-FT fechar (o `quit()` só rodava com `books.count == 0`).
 
-## Fluxo Detalhado
+## Como é agora
 
-1. **Inicialização e Validação de Caminho** (linha 56–76):
-   - Detecta se len(caminho) > 240
-   - Se sim: copia para `tempdir/temp_{timestamp}_{nome}`, marca `usando_temp=True`
-   - Caso contrário: usa caminho original direto
+### O motor (`core/tradutor_local.py`)
+- OPUS-MT `tc-big-itc-itc` (Helsinki-NLP, CC-BY 4.0), convertido para
+  CTranslate2 int8 (~218 MB), **embutido no instalador** em
+  `modelos/tradutor_pt_es`. Roda na CPU; nada sai do computador.
+- Só `ctranslate2` + `sentencepiece` em execução, importados na primeira
+  tradução. Carga ~0,5 s, uma vez por sessão (`obter()`).
+- Prefixo `>>spa<<` (o modelo é multilíngue), beam 4, teto de decodificação
+  proporcional à entrada, SEM `replace_unknowns` (ele trazia o próprio
+  `>>spa<<` no lugar do `Ø`).
+- Onde procura: `SIGFT_MODELO_TRADUTOR`, o pacote (`_MEIPASS`), `recursos/`
+  do repositório, `Documentos\SIG-FT\modelos\`. Sem modelo: `ModeloAusente`
+  dizendo onde procurou e o que fazer.
 
-2. **Abertura Excel COM** (linha 79–96):
-   - `xw.App(visible=False)` abre Excel invisível
-   - Abre workbook com `app.books.open(caminho_trabalho)`
-   - Valida se aba "Ficha Técnica Padrão" existe
-   - Se não: fecha, deleta temp, yield erro, retorna
+### As regras (`services/traducao_respostas.py`)
+Por resposta distinta do lote:
+1. vazia ou "não se traduz" (número, unidade, código, norma, `N/A`) → igual;
+2. glossário, frase inteira → espanhol do glossário, sem modelo;
+3. símbolo fora do vocabulário (`Ø`, `±`, `²`) → marcador `XQn`, volta igual;
+4. termo do glossário dentro da frase → **três versões** numa ida ao modelo:
+   direta, com o termo já em espanhol, com o termo num marcador. Vence a mais
+   natural que mantém o termo (medido: o marcador garante o termo, mas às vezes
+   estraga a frase em volta, "compuerta como vástago");
+5. conferências: `⁇`, prefixo vazado ou marcador perdido invalidam a versão;
+   número que muda devolve o original; ponto final segue o original; TUDO
+   MAIÚSCULO vai em caixa de frase e volta em maiúsculas.
 
-3. **Preparação de Aba Destino** (linha 99–109):
-   - Deleta aba "Especificações técnicas copiar" se existir
-   - Cria aba nova após última aba
-   - Escreve cabeçalho em A1: ["Pergunta", "Resposta (Espanhol s/ caracteres especiais)", "Resposta (Português s/ caracteres especiais)"]
+Glossário em duas camadas: `GLOSSARIO_DA_CASA` (no código, só o que o modelo
+errou: mancal, porca, arruela, gaxeta, escova de carvão, chave fim de curso,
+conforme desenho, revenido...) e o do usuário
+(`Documentos\SIG-FT\traducao\GLOSSARIO_PT_ES.txt`, formato `portugues =
+espanhol`, **vence** o da casa, acento e caixa não importam). O botão "Abrir
+glossário" da tela abre esse arquivo.
 
-4. **Loop de Tradução** (linha 110–157):
-   - `current_row = 79` (fixo)
-   - Enquanto True:
-     - **Checagem de parada** (linha 118): se `stop_flag=True`, fecha, deleta temp, yield "PARADO", retorna
-     - **Leitura pergunta**: `source_sheet.range((current_row, 3)).value` (coluna C)
-     - Break se pergunta vazia
-     - **Processamento texto**: split por '(', strip, remove ':' e '.'
-     - **Leitura resposta**: `source_sheet.range((current_row, 13)).value` (coluna M)
-     - **Remove acentos PT**: `_remover_caracteres_especiais(resposta_val)`
-     - **Sleep 1.0s** (linha 144): delay de segurança original
-     - **Traduz hibrido**: Google → fallback MyMemory
-     - **Remove acentos ES**: `_remover_caracteres_especiais(resposta_traduzida)`
-     - **Escreve linha destino**: item_counter+1, 3 colunas (pergunta, es, pt)
-     - `item_counter++`, `current_row++`
+### O lote (`services/translator.py`)
+- `processar_arquivos(caminhos, retry_lock)`: prepara o motor e o glossário
+  **antes** de abrir o Excel (modelo ausente → `ABORTADO` sem tocar planilha);
+  **um** Excel invisível para o lote (`add_book=False`, `quit()` + `kill()` no
+  fim, mesmo com erro); por ficha, uma leitura da faixa C..M e uma escrita da
+  aba (colunas em formato texto antes, para `1/2` não virar data).
+- Memória do lote: resposta repetida em outra ficha não volta ao modelo.
+- `processar_arquivo(caminho)` continua existindo (chama o de cima).
+- Nome da característica: com dois grupos de parênteses sai só o último
+  (`FAIXA DE TENSAO DE ALIMENTACAO (CA) (ajuda)` → `... (CA)`); com um, como
+  antes.
+- Célula → texto: `220.0` → `220`, `0.5` → `0,5`, data → `dd/mm/aaaa`.
+- Aba "Standard Technical Sheet" (ficha em inglês): falha só daquela ficha,
+  com o motivo.
+- Saída sem acento (`unidecode`), exigência do portal, como antes.
+- Palavras de status que a tela não mostra: `STATUS` =
+  {`SUCESSO`, `ERRO`, `ERRO_MOVER`, `PARADO`, `ABORTADO`}.
 
-5. **Formatação Visual** (linha 159–200):
-   - **Larguras**: coluna A=40, B–C=50 (via `range('A:A').column_width`)
-   - **Altura de linhas**: 50 para linhas 2 até `item_counter`
-   - **Alinhamento geral**: wrap_text=True, vertical=xlCenter
-   - **Cabeçalho**: bold, horizontal center, cor RGB(47, 117, 181) (azul escuro), texto branco (0xFFFFFF)
-   - **Zebrado** (linhas 183–199):
-     - Se i % 2 == 0: RGB(221, 235, 247) (azul muito claro)
-     - Senão: RGB(189, 215, 238) (azul claro)
-     - **Checagem de parada** durante zebrado (linha 185): retorna se stop_flag=True
-     - **Bordas**: LineStyle=1, Weight=2 (thin, com try/except silencioso)
+### A tela (`views/translator.py`)
+- Backend criado no **primeiro clique** (antes, no `__init__`, derrubava a
+  janela principal se o backend não carregasse).
+- O lote inteiro vai ao serviço; `ABORTADO` vira caixa de erro.
 
-6. **Salvamento e Restauração** (linha 202–227):
-   - `wb.save()` atualiza arquivo
-   - `wb.close()` fecha workbook
-   - Se `usando_temp=True`:
-     - Copia temp de volta para original: `shutil.copy2(temp, original)`
-     - Deleta arquivo temp
-     - Se erro: yield "ERRO_MOVER", retorna
-   - Yield "[SUCESSO]" e "SUCESSO"
+## Medido (GitHub Actions, 2026-09-25)
+88 respostas no estilo das fichas: 84 certas, 4 aceitáveis (concordância de
+gênero, "Previa consulta"), 0 para conferir. ~2 a 10 s para as 88 num runner
+Windows de 2 núcleos. O Google, no mesmo runner, devolveu 429 em todas.
 
-7. **Tratamento de Exceção** (linha 220–227):
-   - Except geral: yield "[ERRO FATAL]", tenta fechar workbook
-   - Se usado temp: deleta arquivo temporário
-   - Yield "ERRO"
-
-8. **Finalização** (linha 230–232):
-   - Finally: se `app.books.count == 0`, fecha Excel COM via `app.quit()`
-
-## Integrações
-
-- **Frontend**: Classe `ModuloTranslator` (frontend.py:1659) instancia `TechnicalTranslator()`, expõe botão "Processar" que chama `backend.processar_arquivo()` em thread, itera sobre yields para log, oferece botão "Parar" que chama `backend.request_stop()`
-- **Planilhas**:
-  - Lê: Aba "Ficha Técnica Padrão" (colunas C e M, linha 79+)
-  - Escreve: Aba "Especificações técnicas copiar" com tradução + limpeza de acentos
-
-- **Dependências**: xlwings (Excel COM, Windows only), deep_translator (GoogleTranslator, MyMemoryTranslator), unidecode (remoção de acentos)
-
-## Pontos de Atenção
-
-- **xlwings + Excel COM (Windows-only)**: Não roda em Linux/Mac sem Wine/Parallels. Sem tratamento de fallback para ambiente sem Excel.
-- **Caminho longo hardcoded em 240 chars** (linha 64): limite anterior a Windows MAX_PATH (260). Se arquivo em path >240 chars e não é temp, cria cópia desnecessária mesmo se não ajuda.
-- **Temp via `tempfile.gettempdir()`** (linha 67): pode estar cheio ou com restrições de escrita. Sem validação de espaço em disco.
-- **Delay hardcoded 1.0s** (linha 144): entre cada item traduzido. 100 itens = 100s mínimo. Sem configuração externalizável.
-- **MyMemory fallback silencioso** (linha 43–48): se ambas (Google + MyMemory) falham, retorna texto original. Usuário não sabe que tradução falhou.
-- **Linha 79 fixo** (linha 111): não detecta dinamicamente onde começam as especificações. Se template foi editado, começa traduzir de lugar errado.
-- **Coluna C e M hardcoded** (linha 128, 137): índices fixos. Se coluna foi inserida/deletada, busca dados errados.
-- **Aba "Especificações técnicas copiar" hardcoded** (linha 100): se template usa nome diferente, gera aba nova com nome fixo.
-- **Stop flag durante formatação** (linha 185): interrupção é possível, mas workbook já foi lido. Se usuário clica "Parar" durante zebrado, arquivo é deixado parcialmente formatado.
-- **Except silencioso em bordas** (linha 194): `try/except: pass` ignora erros de aplicação de estilos. Linhas podem ficar sem borda se API xlwings falha.
-- **Restauração não-atômica** (linha 209): se falha ao copiar temp de volta, arquivo original fica intacto, mas temp pode não ser deletado (except silencioso linha 210). Acumula lixo em temp.
-- **Google + MyMemory sem auth**: Não configura chaves de API. Dependem de endpoints públicos (rate-limited, podem retornar 429/403 em alto volume).
+## Pontos de atenção
+- Instalador ~200 MB maior (o modelo). Se o tamanho da atualização incomodar,
+  a alternativa é baixar o modelo no primeiro uso a partir do Release.
+- Ficha em inglês não é traduzida (EN → ES/PT pede outro modelo).
+- Qualidade: frases longas e raras podem sair com gramática imperfeita. O
+  Upload 4.3 ainda passa as respostas pela IA, que corrige o espanhol dos
+  campos de texto; e o glossário do usuário conserta o que se repetir.
+- Excel COM (Windows + Excel instalado) continua sendo requisito da escrita.

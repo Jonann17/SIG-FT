@@ -12,6 +12,17 @@ Escreva cada linha pensando em quem usa o SIG-FT, não em quem o programa:
 "a busca do AutoSpec passa a funcionar com a VPN ligada" é útil; "refatorado o
 cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
+## 1.2.0 - 2026-09-25
+
+**Tradutor Técnico**
+
+- Tradutor Técnico: a tradução das características passa a rodar **no próprio computador**. Nenhuma resposta sai mais para o Google Tradutor ou o MyMemory, e não precisa de internet, VPN nem chave.
+- Tradutor Técnico: **muito mais rápido**. A ficha inteira vai ao tradutor de uma vez, sem a espera de 1 segundo por resposta que havia antes, e um Excel só abre para o lote todo. Antes cada ficha deixava um Excel invisível aberto até o SIG-FT fechar.
+- Tradutor Técnico: o vocabulário técnico da casa sai certo (mancal: cojinete, porca: tuerca, arruela: arandela, gaxeta: empaquetadura, conforme desenho: según plano). Termo que sair errado você corrige de vez no **glossário** (botão "Abrir glossário" na tela).
+- Tradutor Técnico: resposta que o tradutor não garantiu aparece no log como **[CONFERIR]**, com a pergunta e o motivo; se a tradução mudasse um número, fica o original. Antes, quando o Google falhava, o português ia para a coluna do espanhol sem aviso.
+- Tradutor Técnico: número sai como na ficha (`220`, e não `220.0`), e característica com parênteses no nome (`FAIXA DE TENSAO DE ALIMENTACAO (CA)`) passa inteira para o Upload quando a pergunta traz texto de ajuda.
+- Instalação: o instalador fica cerca de 200 MB maior, porque o tradutor vem dentro dele.
+
 ## 1.1.1 - 2026-09-25
 
 - Atualização automática: agora funciona de verdade. **Toda vez que o SIG-FT abre**, ele confere no GitHub se saiu versão nova; se saiu, mostra o que mudou e oferece **"Atualizar agora"**, que baixa, confere e instala, e o SIG-FT **abre de novo sozinho** já atualizado. Até a 1.1.0 esse aviso nunca aparecia: o programa não chegava a perguntar.

@@ -97,6 +97,12 @@ os módulos de IA — o resto do app funciona sem eles.
 **O que NÃO sai:** o app não faz telemetria, não envia relatório de uso, não
 "liga para casa". As únicas conexões de saída são as quatro da tabela acima.
 
+**A tradução PT -> ES do Tradutor Técnico (tela 4.2) não sai da máquina**
+desde a versão 1.2.0: ela roda num modelo embutido no instalador (OPUS-MT, da
+Universidade de Helsinque, licença CC-BY 4.0), na CPU, sem rede. Até a 1.1.0
+cada resposta de ficha ia para o Google Tradutor e para o MyMemory (serviços
+públicos gratuitos, sem contrato), endereços que esta tabela nem listava.
+
 **Credenciais do portal:** o app **não coleta, não armazena e não transmite** a
 senha do PMIB. O login é feito pelo próprio usuário, à mão, na janela do
 navegador — o app pausa e espera (é o diálogo "Ação Manual Necessária").
@@ -130,6 +136,7 @@ Declaradas em `requirements.txt`, todas do PyPI:
 (Excel) · `playwright` (automação do navegador) · `google-generativeai`,
 `llama-parse` (IA) · `pymupdf`, `PyPDF2`, `beautifulsoup4`, `requests`,
 `python-dotenv`, `unidecode`, `deep-translator` (utilidades) ·
+`ctranslate2`, `sentencepiece` (tradutor local, sem rede) ·
 `pip-system-certs` (só Windows — ver abaixo)
 
 **`pip-system-certs` merece nota**, porque é o único cuja finalidade é mexer em

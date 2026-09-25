@@ -17,7 +17,7 @@ a ficha.
 | Pergunta | Decisão |
 |---|---|
 | Como o app sabe o idioma? | **Seletor explícito na tela** (Português / English). Deduzir do nome do arquivo do template quebraria em silêncio no dia em que alguém o renomeasse — e ficha montada no idioma errado não se denuncia sozinha |
-| Qual motor de tradução? | **IA primeiro, `deep_translator` de reserva.** A IA entende termo técnico de hidrelétrica; a `deep_translator` é a mesma cadeia (Google → MyMemory) que o fluxo do espanhol já usa |
+| Qual motor de tradução? | **IA primeiro, `deep_translator` de reserva.** A IA entende termo técnico de hidrelétrica; a `deep_translator` é a cadeia (Google → MyMemory) que o fluxo do espanhol usava até a 1.1.0 (desde a 1.2.0 o espanhol é traduzido no próprio computador, ver `docs/base-conhecimento/04-translator-backend.md`) |
 | Como corrigir termo errado? | **Glossário editável**, consultado antes do motor |
 | Onde ficam os traduzidos? | Pasta paralela, escolhida na tela |
 
