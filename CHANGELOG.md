@@ -23,6 +23,10 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Tradutor Técnico: número sai como na ficha (`220`, e não `220.0`), e característica com parênteses no nome (`FAIXA DE TENSAO DE ALIMENTACAO (CA)`) passa inteira para o Upload quando a pergunta traz texto de ajuda.
 - Instalação: o instalador fica cerca de 200 MB maior, porque o tradutor vem dentro dele.
 
+**Modelos de IA**
+
+- Modelos de IA: o botão **"Atualizar lista de modelos"** volta a trazer o catálogo do **OpenRouter** no SIG-FT instalado para todos os usuários (a instalação padrão). A lista chegava da internet, mas o programa tentava guardá-la na própria pasta, onde o Windows não deixa gravar, e ela era descartada sem aviso — parecia que a chave do OpenRouter não funcionava.
+
 ## 1.1.1 - 2026-09-25
 
 - Atualização automática: agora funciona de verdade. **Toda vez que o SIG-FT abre**, ele confere no GitHub se saiu versão nova; se saiu, mostra o que mudou e oferece **"Atualizar agora"**, que baixa, confere e instala, e o SIG-FT **abre de novo sozinho** já atualizado. Até a 1.1.0 esse aviso nunca aparecia: o programa não chegava a perguntar.
