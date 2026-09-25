@@ -288,3 +288,23 @@ def test_cache_corrompido_e_tratado_como_ausente_e_busca_na_rede(tmp_path):
     )
 
     assert modelos == [{"id": "modelo-novo"}]
+
+
+def test_falha_ao_gravar_o_cache_nao_descarta_a_lista_que_chegou(tmp_path):
+    """Cache é conveniência: não conseguir gravá-lo não apaga o que a rede trouxe.
+
+    Foi o que escondeu o catálogo do OpenRouter no app instalado (2026-09-25):
+    a lista chegava, a gravação do cache levantava, e a lista ia junto com a
+    exceção. Ver `test_pasta_do_programa_somente_leitura.py`, seção E.
+    """
+    cache_path = tmp_path / "cache.json"
+    # Uma PASTA com o nome do arquivo faz o `open(..., "w")` levantar -- chmod
+    # não serve, a suíte roda como root no CI.
+    cache_path.mkdir()
+    http_get = _FakeHttpGet(payload={"data": [{"id": "modelo-novo"}]})
+
+    modelos = listar_modelos(
+        "chave", cache_path=cache_path, http_get=http_get, time_fn=_Relogio().time_fn
+    )
+
+    assert modelos == [{"id": "modelo-novo"}]

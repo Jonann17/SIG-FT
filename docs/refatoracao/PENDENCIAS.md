@@ -687,3 +687,22 @@ GitHub Actions contra 88 respostas sintéticas no estilo das fichas.
 | 2026-09-25 | Tradutor local | **O instalador cresce ~200 MB** com o modelo embutido (`modelos/tradutor_pt_es`). Escolhido por funcionar sempre (sem rede, sem token, sem download no meio do trabalho). Se o tamanho da atualização incomodar, a alternativa é baixar o modelo no primeiro uso a partir de um asset do Release, para `Documentos\SIG-FT\modelos\` (o `tradutor_local` já procura lá). | Se incomodar |
 | 2026-09-25 | Tradutor local | **`traducao_pdm` (PDMs para inglês) ainda cai no Google Tradutor/MyMemory quando a IA falha** (`_traduzir_com_deep_translator`), e o `docs/SEGURANCA_TI.md` diz que as conexões de saída são "as quatro da tabela", sem esses dois. Um modelo local EN (mesma família OPUS-MT) tiraria a queda para o Google. | Quando a ficha em inglês for usada de verdade |
 | 2026-09-25 | Tradutor local | **Ficha em inglês no 4.2 é recusada com mensagem** (aba `Standard Technical Sheet`): as respostas vêm em inglês, e EN -> ES / EN -> PT pede outro modelo. E o 4.3 casa a pergunta com o nome PT do Master, que a ficha EN não tem. | Se houver demanda |
+
+---
+
+## 2026-09-25 — o catálogo do OpenRouter sumia no app instalado
+
+Consertado nesta data: o cache próprio de `providers/openrouter.listar_modelos`
+ficou para trás quando os dados saíram da pasta do programa (79886e4) e
+continuava gravando relativo ao diretório de trabalho — `Program Files` no app
+instalado. A gravação levantava, levava junto a lista que a rede tinha acabado
+de trazer, e o botão "Atualizar lista de modelos" nunca mostrava o catálogo.
+Testes na seção E de `tests/test_pasta_do_programa_somente_leitura.py`.
+Achados de carona que ficaram de fora:
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-09-25 | `core/llm/catalogo.py` × `app/views/home.py` | **Falha ao baixar o catálogo é muda.** `listar_modelos` engole qualquer exceção (rede, proxy, HTTP 401) e devolve `[]`; logo depois do clique o painel diz "Catálogo ainda não baixado... Clique em Atualizar", sem o motivo. Foi o que fez o defeito acima parecer "a chave do OpenRouter não funciona". O texto do motivo já existe (`rede.resumo_erro`); falta o catálogo devolvê-lo e o `lbl_catalogo_ia` mostrá-lo. | Próxima sessão que tocar o painel de Modelos de IA |
+| 2026-09-25 | `core/llm/catalogo.py` (`somente_cache`) | **Um dia depois de baixado, o catálogo some da Home.** A montagem lê só o cache e trata o cache vencido (TTL de 86400 s) como ausente: o painel volta a mostrar só os recomendados e "Catálogo ainda não baixado" até alguém clicar em "Atualizar" de novo (medido: 1 h depois, a lista; 1 dia e 1 s depois, `[]`). Para exibir, um catálogo de ontem serve melhor que nenhum. | Decisão do usuário |
+| 2026-09-25 | `core/llm/catalogo.py` × `providers/openrouter.py` | **Dois caches no mesmo arquivo, em formatos diferentes.** Para o OpenRouter, o catálogo e o provedor gravam `openrouter_models_cache.json`, como era antes de 79886e4. O catálogo regrava por cima, e cada lado lê o formato do outro como "sem cache". Funciona, mas o cache do provedor é peso morto nesse caminho: unificar numa camada só. | Fase 8 |
+| 2026-09-25 | CHANGELOG da próxima versão | **Texto sugerido** (o bloco da versão é de quem fecha o release): "Modelos de IA: o botão **"Atualizar lista de modelos"** volta a trazer o catálogo do **OpenRouter** quando o SIG-FT está instalado para todos os usuários (a instalação padrão). A lista chegava da internet, mas o programa tentava guardá-la na própria pasta, onde o Windows não deixa gravar, e ela era descartada sem aviso — por isso parecia que a chave do OpenRouter não funcionava." | Próximo release (Luan) |
