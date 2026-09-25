@@ -726,3 +726,17 @@ processo (`instancia.encerrar`, com pergunta se houver tarefa em andamento) e o
 | 2026-09-25 | instalação da 1.1.1-rc.1 (usuário) | **O `CloseApplications=force` fechando o fantasma ainda não rodou numa máquina real.** Apoia-se na documentação do Inno 6 (o Restart Manager lista quem usa os arquivos da pasta e, com `force`, encerra quem não responde ao pedido de fechar — um processo sem janela não responde). Se o valor `force` não existir na versão do Inno do runner, o ISCC reprova no passo "Montar o instalador", antes de publicar. | Primeira instalação da 1.1.1-rc.2 por cima de uma 1.1.0 com fantasma: conferir que a tela "Preparando para instalar" mostra o SIG-FT e o fecha |
 | 2026-09-25 | instalação da 1.1.1-rc.1 (usuário) | **A 1.1.0 e a 1.0.0 instaladas continuam criando fantasmas** até serem trocadas: o conserto do fechar mora no app novo. O instalador novo lida com eles (Restart Manager), mas quem rodar o instalador da 1.1.1-rc.1 (ainda com `AppMutex`) precisa encerrar o `SIG-FT.exe` à mão — ver `docs/BUILD.md`. | Some sozinho quando todos estiverem na 1.1.1+ |
 | 2026-09-25 | `sigft/app/views/*.py` | **Os robôs dos módulos usam thread comum (não-daemon).** Com o fechar encerrando o processo, isso deixou de travar o app, e passou a ser o sinal de "tarefa em andamento" que faz o "X" perguntar. Thread de fundo que não é tarefa da pessoa tem de nascer `daemon=True`, senão o "X" pergunta à toa (aviso no mural). | Regra para código novo; nada a mudar hoje (medido: app ocioso, zero threads comuns) |
+
+---
+
+## 2026-09-25 (noite) — o Gemini na VPN, e a escolha do Upload que não valeu
+
+Achados da investigação do `ConnectionResetError(10054)` no Upload de
+características, na VPN da empresa. O que dava para consertar sem a máquina
+real entrou na 1.1.1-rc.3 (o log diz o provedor e o modelo; o "Gastos de IA"
+volta a gravar). Isto aqui ficou em aberto:
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-09-25 | Upload de características na VPN do Luan | **O Gemini direto não passa pela cascata de rede (PAC).** `core/llm/providers/gemini.py` usa o SDK do Google (`transport="rest"`), que sai direto e ignora o `core/rede.py`; na VPN a conexão direta é derrubada (`ConnectionResetError 10054`). O que o app chama pelo `rede` (OpenRouter, catálogo de modelos, atualização) funciona na VPN — o Grok pelo OpenRouter no Cria Fichas, por exemplo. Proposta: trocar o SDK por REST via `rede.post`, como o OpenRouter e o catálogo do Gemini já fazem, o que ainda tira o app de um SDK que o Google descontinuou. Mexe no caminho por onde o AutoSpec manda PDF (frente Rafael) e só se prova na VPN. | Decisão do Luan |
+| 2026-09-25 | mesma investigação | **A escolha de modelo do Upload pareceu não valer.** Com a tarefa apontada para o OpenRouter no painel, o erro saiu no formato do SDK do Gemini — a chamada foi pelo Gemini direto. Suspeita, não confirmada: com o provedor OpenRouter na tela, a lista também mostra as seleções já salvas de outros provedores, com o rótulo `(salvo) gemini / …`, e filtrar por "gemini" as mistura com os `google/gemini-…` do OpenRouter. A 1.1.1-rc.3 escreve no log o provedor e o modelo de cada ficha: com ela, dá para confirmar. | Confirmar com o Luan na rc.3 |

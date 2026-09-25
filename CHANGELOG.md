@@ -33,6 +33,19 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 **Modelos de IA**
 
 - Modelos de IA: o botão **"Atualizar lista de modelos"** volta a trazer o catálogo do **OpenRouter** no SIG-FT instalado para todos os usuários (a instalação padrão). A lista chegava da internet, mas o programa tentava guardá-la na própria pasta, onde o Windows não deixa gravar, e ela era descartada sem aviso — parecia que a chave do OpenRouter não funcionava.
+- Gastos de IA: o painel volta a mostrar as chamadas de IA no SIG-FT instalado para todos os usuários, e o botão da pasta de logs abre a pasta certa (`Documentos\SIG-FT\logs`). O registro de cada chamada ia para a pasta do programa, onde o Windows não deixa gravar, e o painel ficava sempre vazio.
+
+**Cria Fichas**
+
+- Cria Fichas: trocar o PDM na revisão volta a funcionar. O PDM escolhido em **"USAR ESTE PDM"** passa a aparecer na tabela e a valer na automação; antes a escolha era ignorada e ficava o PDM que a IA sugeriu.
+
+**Upload de características técnicas**
+
+- Upload de características técnicas: o log passa a dizer **qual provedor e modelo de IA** cada ficha usou (`Enviando … para IA (openrouter / google/gemini-…)`), também na mensagem de erro. Antes um erro de conexão não dizia se a chamada tinha ido pelo Gemini direto ou pelo OpenRouter.
+
+**Fichas duplicadas**
+
+- Fichas duplicadas: o **log de auditoria** passa a ser gravado em `Documentos\SIG-FT\logs` no SIG-FT instalado. Antes ele tentava gravar na pasta do programa e o arquivo não era criado.
 
 **Instalação e fechamento do SIG-FT**
 
