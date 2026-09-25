@@ -378,6 +378,19 @@ def test_modelo_ausente_nem_abre_o_excel():
     assert any("modelo do tradutor" in m for m in mensagens)
 
 
+def test_modelo_que_nao_carrega_aborta_com_mensagem_clara():
+    """Modelo corrompido ou DLL do CTranslate2 que não carrega: o erro não é
+    `ModeloAusente`, mas o lote também não pode nem abrir o Excel."""
+    class _Quebrado(_MotorFalso):
+        def preparar(self):
+            raise RuntimeError("Unable to open file 'model.bin'")
+
+    excel, aberturas, _, mensagens = _rodar({"f.xlsx": _ficha([("1 - A:", "Aço")])}, motor=_Quebrado())
+    assert aberturas == []
+    assert mensagens[-1] == "ABORTADO"
+    assert any("tradutor local nao carregou" in m and "model.bin" in m for m in mensagens)
+
+
 def test_aviso_de_conferir_vai_para_o_log_com_a_pergunta():
     def muda_numero(textos):
         return [t.replace("10", "11") for t in textos]

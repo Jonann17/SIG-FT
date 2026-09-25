@@ -292,6 +292,11 @@ class TechnicalTranslator:
             yield f"[ERRO] {erro}"
             yield "ABORTADO"
             return
+        except Exception as erro:  # noqa: BLE001 -- modelo corrompido, DLL que não carrega
+            yield (f"[ERRO] O tradutor local nao carregou ({type(erro).__name__}: {erro}). "
+                   "Reinstale a versao mais nova do SIG-FT.")
+            yield "ABORTADO"
+            return
         yield (f"Tradução local de {len(caminhos)} ficha(s): nada sai deste computador. "
                f"Glossário: {len(glossario)} termo(s).")
 
