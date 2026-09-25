@@ -344,7 +344,7 @@ class TechnicalTranslator:
                 yield "ERRO"
                 return
 
-        livro = None
+        livro, gravou = None, False
         try:
             livro = excel.books.open(caminho_trabalho)
             aba = _aba_de_origem(livro)
@@ -371,6 +371,7 @@ class TechnicalTranslator:
             # põe a gravação atrás da janela "feche o arquivo" de sempre.
             adaptador = SimpleNamespace(save=lambda _caminho: livro.save())
             locking.salvar_perguntando(adaptador, caminho_original, retry_lock=retry_lock)
+            gravou = True
         except Exception as erro:  # noqa: BLE001 -- uma ficha ruim não para o lote
             yield f"   [ERRO] {nome}: {erro}"
             yield "ERRO"
@@ -381,7 +382,9 @@ class TechnicalTranslator:
                     livro.close()
                 except Exception:  # noqa: BLE001
                     pass
-            if temporario and os.path.exists(caminho_trabalho) and livro is None:
+            # Ficha que não gravou: a cópia temporária não volta, e não pode
+            # ficar esquecida na pasta temporária.
+            if temporario and not gravou and os.path.exists(caminho_trabalho):
                 try:
                     os.remove(caminho_trabalho)
                 except OSError:

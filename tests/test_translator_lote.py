@@ -453,3 +453,49 @@ def test_o_glossario_vai_ao_motor():
     motor = _MotorFalso()
     _rodar({"f.xlsx": _ficha([("1 - A:", "Porca de aço")])}, motor=motor, glossario={"porca": "tuerca"})
     assert "Tuerca de aço" in motor.lotes[0]
+
+
+# =============================================================================
+# F. Caminho longo (o Excel não abre acima de ~218 caracteres)
+# =============================================================================
+class _QualquerCaminho(dict):
+    """A cópia temporária tem outro nome; o dublê devolve a mesma ficha."""
+
+    def __init__(self, abas):
+        super().__init__()
+        self.abas = abas
+
+    def __getitem__(self, _caminho):
+        return self.abas
+
+
+def _caminho_longo(tmp_path):
+    pasta = tmp_path
+    while len(str(pasta)) < 250:
+        pasta = pasta / ("p" * 40)
+    pasta.mkdir(parents=True)
+    arquivo = pasta / "4500063671.0001.xlsx"
+    arquivo.write_bytes(b"ficha original")
+    return arquivo
+
+
+def test_caminho_longo_usa_copia_temporaria_e_devolve(tmp_path, monkeypatch):
+    monkeypatch.setattr(translator.tempfile, "gettempdir", lambda: str(tmp_path))
+    arquivo = _caminho_longo(tmp_path)
+    excel = _ExcelFalso(_QualquerCaminho(_ficha([("1 - A:", "Aço")])))
+    tradutor = translator.TechnicalTranslator(motor=_MotorFalso(), abrir_excel=lambda: excel, glossario={})
+    mensagens = list(tradutor.processar_arquivos([str(arquivo)]))
+    assert "SUCESSO" in mensagens
+    assert excel.abertos[0].caminho != str(arquivo)            # abriu a cópia
+    assert arquivo.read_bytes() == b"ficha original"           # a cópia voltou
+    assert not list(tmp_path.glob("temp_*"))                   # e foi apagada
+
+
+def test_caminho_longo_que_falha_nao_deixa_copia_para_tras(tmp_path, monkeypatch):
+    monkeypatch.setattr(translator.tempfile, "gettempdir", lambda: str(tmp_path))
+    arquivo = _caminho_longo(tmp_path)
+    excel = _ExcelFalso(_QualquerCaminho([_Aba("Outra coisa")]))
+    tradutor = translator.TechnicalTranslator(motor=_MotorFalso(), abrir_excel=lambda: excel, glossario={})
+    mensagens = list(tradutor.processar_arquivos([str(arquivo)]))
+    assert "ERRO" in mensagens
+    assert not list(tmp_path.glob("temp_*"))
