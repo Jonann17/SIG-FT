@@ -274,8 +274,12 @@ class JanelaRevisaoPDM(ctk.CTkToplevel):
         # "PDM.1234.001 - NOME" de cabeça, sem busca e sem validação, e o que
         # ela escrevesse ia direto para o filtro de PDM do portal.
         if self.catalogo is not None:
-            escolha = JanelaEscolherPDM(self, self.catalogo).escolha
-            novo_pdm = escolha.completo if escolha else None
+            janela = JanelaEscolherPDM(self, self.catalogo)
+            # Espera a pessoa escolher: janela do Tk NÃO bloqueia quem a cria.
+            # Lida na mesma linha, `.escolha` ainda era None e a troca nunca
+            # acontecia (2026-09-25). Mesmo padrão da tela de correção de PDM.
+            self.wait_window(janela)
+            novo_pdm = janela.escolha.completo if janela.escolha else None
         else:
             novo_pdm = simpledialog.askstring(
                 "Editar PDM",
