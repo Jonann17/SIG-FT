@@ -83,6 +83,35 @@ jobs:
           pip install -r requirements-dev.txt
           pip install "pyinstaller>=6,<7"
 
+      # O modelo do tradutor local da tela 4.2 (~218 MB). ANTES dos testes, para
+      # que os testes com o modelo de verdade (tests/test_tradutor_local.py)
+      # rodem aqui, no Windows; e antes do PyInstaller, que o embute. A
+      # conversao precisa de torch + transformers (~200 MB), por isso o cache:
+      # a revisao do modelo e fixa no script, entao a chave pelo hash dele so
+      # muda quando alguem muda a revisao de proposito.
+      - name: Cache do modelo do tradutor
+        id: cache-tradutor
+        uses: actions/cache@v4
+        with:
+          path: recursos/tradutor_pt_es
+          key: tradutor-pt-es-${{ hashFiles('tools/preparar_tradutor.py') }}
+
+      # A conversao roda num venv SEPARADO: o torch nem chega ao ambiente do
+      # PyInstaller (o `ctranslate2.converters` tenta importa-lo, e ele iria
+      # para o instalador). O SIG-FT.spec tambem o exclui, por garantia.
+      - name: Preparar o tradutor local (modelo embutido)
+        shell: bash
+        run: |
+          if ! python tools/preparar_tradutor.py --verificar; then
+            python -m venv "$RUNNER_TEMP/venv-tradutor"
+            CONVERSOR="$RUNNER_TEMP/venv-tradutor/Scripts/python.exe"
+            "$CONVERSOR" -m pip install --upgrade pip
+            "$CONVERSOR" -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+            "$CONVERSOR" -m pip install ctranslate2 sentencepiece huggingface_hub "transformers<5"
+            "$CONVERSOR" tools/preparar_tradutor.py
+          fi
+          python tools/preparar_tradutor.py --verificar
+
       # PORTAO RAPIDO: 2 minutos de teste antes de gastar 20 no empacotamento.
       # Uma versao publicada quebrada e MUITO mais cara de desfazer -- exige
       # apagar o Release e a tag, e quem ja atualizou ja atualizou.

@@ -36,6 +36,13 @@ python-dotenv
 unidecode
 deep-translator
 
+# Tradutor LOCAL da tela 4.2 (2026-09-25): roda o modelo OPUS-MT convertido
+# por `tools/preparar_tradutor.py`, na CPU, sem rede. So estes dois em tempo de
+# execucao -- `torch`/`transformers` so a CONVERSAO do modelo precisa, e ela
+# roda no workflow de release, nunca na maquina do usuario.
+ctranslate2
+sentencepiece
+
 # Rede corporativa (Zscaler e afins)
 # `truststore` — faz o Python validar TLS pela loja de certificados do WINDOWS,
 # onde a TI instala a raiz do Zscaler. É a primeira camada de `core/rede.py`.

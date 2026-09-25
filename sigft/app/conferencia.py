@@ -54,7 +54,19 @@ MODULOS_ESSENCIAIS = [
     "fitz",           # pymupdf: primeira camada da leitura de PDF
     "bs4",
     "google.generativeai",
+    # o tradutor local da tela 4.2 (2026-09-25). O motor os importa por NOME
+    # (`importlib`), o que o PyInstaller não enxerga sozinho.
+    "ctranslate2",
+    "sentencepiece",
+    "sigft.core.tradutor_local",
+    "sigft.services.translator",
 ]
+
+# A frase que a conferência traduz dentro do .exe, e o que a tradução tem de
+# conter. Frase simples de propósito: o que se confere é "o modelo carrega e
+# traduz", não a qualidade (essa tem teste próprio).
+FRASE_DE_PROVA = "Aço inoxidável"
+ESPERADO_NA_PROVA = "acero inoxidable"
 
 ARQUIVO_CONFERENCIA = "conferencia-do-pacote.txt"
 
@@ -164,9 +176,32 @@ def despachar_cedo(argv: list[str] | None = None) -> None:
         sys.exit(cli())
 
 
+def conferir_tradutor() -> tuple[str, bool]:
+    """`(linha do relatório, funcionou)` -- o tradutor local traduz, aqui?
+
+    `find_spec` só diz que o `ctranslate2` está no pacote. Não diz se a DLL
+    dele carrega no Windows nem se o modelo (~218 MB) entrou em
+    `modelos/tradutor_pt_es`. Por isso a prova é traduzir uma frase de
+    verdade: se falhar, o release para antes de publicar um tradutor que não
+    traduz.
+    """
+    try:
+        from sigft.core import tradutor_local
+
+        pasta = tradutor_local.localizar_modelo()
+        [saida] = tradutor_local.TradutorLocal(pasta).traduzir([FRASE_DE_PROVA])
+    except Exception as erro:  # noqa: BLE001 -- o relatório diz o quê
+        return f"  FALHA  tradutor local: {type(erro).__name__}: {erro}", False
+    funcionou = ESPERADO_NA_PROVA in saida.lower()
+    marca = "OK   " if funcionou else "FALHA"
+    return f"  {marca}  tradutor local: '{FRASE_DE_PROVA}' -> '{saida}' ({pasta})", funcionou
+
+
 def cli() -> int:
     """Grava o relatório e devolve o código de saída (0 = tudo certo)."""
-    relatorio, tudo_certo = conferir_pacote()
+    relatorio, pacote_ok = conferir_pacote()
+    linha_do_tradutor, tradutor_ok = conferir_tradutor()
+    relatorio = relatorio + "\n\n" + linha_do_tradutor
     gravar_relatorio(ARQUIVO_CONFERENCIA, relatorio)
     print(relatorio)
-    return 0 if tudo_certo else 1
+    return 0 if (pacote_ok and tradutor_ok) else 1

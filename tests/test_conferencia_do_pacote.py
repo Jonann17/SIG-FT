@@ -222,3 +222,80 @@ def test_a_lista_padrao_cobre_o_que_o_app_precisa():
 
     for essencial in ("pandas", "openpyxl", "playwright", "requests", "sigft.config"):
         assert essencial in padrao, f"{essencial} nao esta na conferencia do pacote"
+
+
+# =============================================================================
+# O tradutor local DENTRO do pacote (2026-09-25)
+# =============================================================================
+# `find_spec` diz que o `ctranslate2` está lá; não diz se a DLL dele carrega
+# nem se o modelo (218 MB, `modelos/tradutor_pt_es`) entrou no pacote. A
+# conferência traduz uma frase de verdade dentro do .exe: se falhar, o
+# release para ANTES de publicar um tradutor que não traduz.
+class _TradutorQueResponde:
+    def __init__(self, saida):
+        self.saida = saida
+
+    def __call__(self, pasta):
+        self.pasta = pasta
+        return self
+
+    def traduzir(self, textos):
+        return [self.saida for _ in textos]
+
+
+def test_a_conferencia_traduz_uma_frase_com_o_modelo_do_pacote(monkeypatch, tmp_path):
+    from sigft.app import conferencia
+    from sigft.core import tradutor_local
+
+    monkeypatch.setattr(tradutor_local, "localizar_modelo", lambda: tmp_path)
+    monkeypatch.setattr(tradutor_local, "TradutorLocal", _TradutorQueResponde("Acero inoxidable"))
+
+    relatorio, ok = conferencia.conferir_tradutor()
+
+    assert ok is True
+    assert "Acero inoxidable" in relatorio and str(tmp_path) in relatorio
+
+
+def test_a_conferencia_reprova_sem_o_modelo(monkeypatch):
+    from sigft.app import conferencia
+    from sigft.core import tradutor_local
+
+    def sem_modelo():
+        raise tradutor_local.ModeloAusente("Nao achei o modelo do tradutor local.")
+
+    monkeypatch.setattr(tradutor_local, "localizar_modelo", sem_modelo)
+
+    relatorio, ok = conferencia.conferir_tradutor()
+
+    assert ok is False
+    assert "Nao achei o modelo" in relatorio
+
+
+def test_a_conferencia_reprova_um_tradutor_que_nao_traduz(monkeypatch, tmp_path):
+    from sigft.app import conferencia
+    from sigft.core import tradutor_local
+
+    monkeypatch.setattr(tradutor_local, "localizar_modelo", lambda: tmp_path)
+    monkeypatch.setattr(tradutor_local, "TradutorLocal", _TradutorQueResponde("Aço inoxidável"))
+
+    assert conferencia.conferir_tradutor()[1] is False
+
+
+def test_o_codigo_de_saida_junta_pacote_e_tradutor(monkeypatch, tmp_path):
+    from sigft.app import conferencia
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(conferencia, "conferir_pacote", lambda: ("PACOTE OK", True))
+    monkeypatch.setattr(conferencia, "conferir_tradutor", lambda: ("TRADUTOR QUEBRADO", False))
+
+    assert conferencia.cli() == 1
+    texto = (tmp_path / conferencia.ARQUIVO_CONFERENCIA).read_text(encoding="utf-8")
+    assert "PACOTE OK" in texto and "TRADUTOR QUEBRADO" in texto
+
+
+def test_a_lista_padrao_cobre_o_tradutor_local():
+    from sigft.app import conferencia
+
+    for modulo in ("ctranslate2", "sentencepiece", "sigft.core.tradutor_local",
+                   "sigft.services.translator"):
+        assert modulo in conferencia.MODULOS_ESSENCIAIS, modulo

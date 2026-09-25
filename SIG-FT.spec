@@ -37,7 +37,7 @@ partir do diretório de trabalho, e não por `resource_path`.
 """
 import os
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 # =============================================================================
 # Recursos que entram no bundle
@@ -125,6 +125,26 @@ if not os.environ.get("SIGFT_EMBUTIR_NAVEGADOR"):
 datas += _dados_playwright
 
 # =============================================================================
+# O tradutor local da tela 4.2 (2026-09-25)
+# =============================================================================
+# O modelo (~218 MB) é gerado por `tools/preparar_tradutor.py` em
+# `recursos/tradutor_pt_es` e entra como `modelos/tradutor_pt_es` -- é ali
+# que `sigft/core/tradutor_local.py` procura dentro do .exe (`sys._MEIPASS`).
+# Sem a pasta o build SEGUE e avisa: o app abre, e só a tela 4.2 diz que falta
+# o modelo. O workflow de release prepara a pasta antes, e a
+# `--conferir-pacote` traduz uma frase dentro do .exe.
+_MODELO_TRADUTOR = os.path.join("recursos", "tradutor_pt_es")
+if os.path.isdir(_MODELO_TRADUTOR):
+    datas += [(_MODELO_TRADUTOR, os.path.join("modelos", "tradutor_pt_es"))]
+else:
+    print("[SIG-FT] AVISO: recursos/tradutor_pt_es nao existe -- o tradutor 4.2 "
+          "vai sem modelo (rode tools/preparar_tradutor.py)")
+
+# As DLLs do CTranslate2 (o motor em C++ e o OpenMP). O pacote as carrega de
+# dentro da própria pasta.
+binarios = collect_dynamic_libs("ctranslate2")
+
+# =============================================================================
 # Imports que o PyInstaller não enxerga sozinho
 # =============================================================================
 # O splash importa os backends por NOME, com `importlib.import_module`
@@ -164,6 +184,10 @@ hiddenimports += [
 # bundle, o .exe volta a dar CERTIFICATE_VERIFY_FAILED na máquina da empresa.
 hiddenimports += ["pip_system_certs", "pip_system_certs.wrapt_requests"]
 
+# O motor do tradutor local importa os dois por NOME (`importlib`), só na
+# primeira tradução -- para o resto do app não pagar o custo.
+hiddenimports += ["ctranslate2", "sentencepiece"]
+
 
 # Ícone do executável.
 #
@@ -184,14 +208,20 @@ if not os.path.exists(_ICONE):
 a = Analysis(
     ["frontend.py"],
     pathex=[os.path.abspath(".")],
-    binaries=[],
+    binaries=binarios,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     # Módulos de teste não vão para produção.
-    excludes=["pytest", "_pytest", "mypy", "ruff"],
+    #
+    # `torch` e `transformers`: só a CONVERSÃO do modelo do tradutor os usa
+    # (`tools/preparar_tradutor.py`, num ambiente à parte no workflow). O
+    # `ctranslate2.converters` tenta importá-los dentro de try/except, e numa
+    # máquina de build que os tenha instalados a análise levaria ~800 MB de
+    # torch para o instalador.
+    excludes=["pytest", "_pytest", "mypy", "ruff", "torch", "transformers"],
     noarchive=False,
 )
 
