@@ -276,6 +276,11 @@ PALAVRA_DA_SECAO = {
     # A seção se chama "Documentos e imagens" na edição, e é esse o nome que
     # os chamadores passam.
     "Documentos e imagens": "imagem",
+    # 2026-09-28, redação do usuário: "As informações da aplicação LMR foram
+    # adicionadas com sucesso!" -- a MESMA frase a cada código salvo (ver
+    # `esperar_confirmacao_anterior_sumir`). "lmr" é sigla: sai igual se a
+    # tela estiver em espanhol.
+    "Aplicação LMR": "lmr",
 }
 
 # Quanto se espera pelo toast. O usuário descreve que ele aparece
@@ -283,6 +288,13 @@ PALAVRA_DA_SECAO = {
 # perdido no caso bom: o laço devolve assim que a mensagem casa.
 TIMEOUT_CONFIRMACAO_S = 8.0
 INTERVALO_POLL_CONFIRMACAO_S = 0.25
+
+# Quanto se espera a mensagem de sucesso ANTERIOR sair da tela antes de salvar
+# a mesma seção de novo (`esperar_confirmacao_anterior_sumir`). Em TENTATIVAS,
+# não em segundos (§0, regra 7 de docs/PORTAL_COMO_ELE_SE_COMPORTA.md): até
+# 15 s, e só se gasta quando ela ainda está lá.
+TENTATIVAS_CONFIRMACAO_ANTERIOR_SUMIR = 30
+INTERVALO_CONFIRMACAO_ANTERIOR_SUMIR_S = 0.5
 
 
 def _sem_acento(texto):
@@ -1137,7 +1149,8 @@ class PMIBPortal:
         mesma tela, produziria um toast de texto idêntico ao anterior e este
         método não o reconheceria como novo. No fluxo da ficha duplicada cada
         seção é salva uma vez; se um dia deixar de ser, esta é a linha a
-        rever.
+        rever. (2026-09-28: a LMR salva a mesma seção a cada código, e chama
+        `esperar_confirmacao_anterior_sumir` antes de cada SALVAR.)
 
         O texto lido vai para o log mesmo quando não confirma -- é assim que a
         redação real aparece, sem ninguém precisar inspecionar a tela.
@@ -1243,6 +1256,50 @@ class PMIBPortal:
                     f"      [!] Não vi nenhuma mensagem de confirmação ao salvar "
                     f"'{secao}'. Confira a ficha antes de seguir.")
         return False, ultima
+
+    def confirmacoes_na_tela(self, secao):
+        """Os toasts de sucesso DESTA seção que estão na tela agora.
+
+        Mesmos critérios de `esperar_confirmacao_nova` -- a classe de sucesso,
+        ou a palavra "sucesso"/"exito" como reserva -- e a palavra da seção.
+        Seção sem palavra mapeada devolve `[]`: não dá para dizer de quem é.
+        """
+        palavra = PALAVRA_DA_SECAO.get(secao)
+        if not palavra:
+            return []
+        por_classe = [m for m in self._mensagens_de_feedback(so_sucesso=True) if m]
+        por_palavra = [m for m in self._mensagens_de_feedback()
+                       if m and any(x in _sem_acento(m).lower() for x in MARCADORES_DE_SUCESSO)]
+        return [m for m in por_classe + por_palavra if palavra in _sem_acento(m).lower()]
+
+    def esperar_confirmacao_anterior_sumir(self, secao, tentativas=None,
+                                           intervalo_s=None, sleep_fn=None) -> bool:
+        """Espera sair da tela o toast de sucesso DESTA seção. `True` se saiu.
+
+        ⚠️ É O LIMITE DECLARADO DE `salvar_e_confirmar`, que deixou de ser
+        hipótese em 2026-09-28: salvar a mesma seção duas vezes seguidas
+        produz um toast de texto IDÊNTICO, e a foto de antes o daria por velho.
+        Na LMR isso acontece a cada código -- *"As informações da aplicação LMR
+        foram adicionadas com sucesso!"*, palavra por palavra.
+
+        Quem salva a mesma seção de novo chama isto ANTES do clique. O toast de
+        sucesso tem `feedback-message-autoclose`, então ele sai sozinho. Se não
+        sair a tempo, devolve `False` e o chamador segue: o toast novo não vai
+        ser reconhecido, e o erro cai no lado seguro (pendência a conferir,
+        nunca confirmação falsa).
+
+        Conta TENTATIVAS, não segundos (§0, regra 7 de
+        docs/PORTAL_COMO_ELE_SE_COMPORTA.md): com o `sleep` anulado num teste,
+        um laço por relógio giraria em vazio.
+        """
+        dormir = sleep_fn or time.sleep
+        total = TENTATIVAS_CONFIRMACAO_ANTERIOR_SUMIR if tentativas is None else tentativas
+        intervalo = INTERVALO_CONFIRMACAO_ANTERIOR_SUMIR_S if intervalo_s is None else intervalo_s
+        for _ in range(total):
+            if not self.confirmacoes_na_tela(secao):
+                return True
+            dormir(intervalo)
+        return not self.confirmacoes_na_tela(secao)
 
     # =========================================================================
     # excluir_linha_com_confirmacao -- mecânica CENTRAL comum a

@@ -9,6 +9,9 @@
 > |---|---|
 > | `lmr_backend.py` | `sigft/services/lmr.py` (serviço) · `sigft/app/views/lmr.py` (tela) |
 >
+> **Desde 2026-09-28** cada código só conta como inserido com a mensagem de sucesso
+> do portal, e os botões SALVAR/CONFIRMAR mudaram de seletor: ver a seção no fim.
+>
 > A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
 
 ## Propósito
@@ -103,3 +106,39 @@ Gerencia automação Selenium para preenchimento LMR.
 - Tratamento de erro genérico (except Exception) engole informação de erro específico, dificultando debug (linha 136)
 - CSV de erros é salvo no diretório de execução, não em pasta estruturada — pode não ser encontrado facilmente
 - WebDriverWait timeout é 20s global — se operação específica demora mais, levanta TimeoutException não capturada
+
+---
+
+## 2026-09-28 — SALVAR → CONFIRMAR → só segue com a mensagem do portal
+
+Relato do usuário: *"ele não está conseguindo subir as informações"*. Os
+botões eram clicados por posição dentro de ids gerados pelo OutSystems
+(`//*[@id="b10-b19-Form"]/div[2]/button[1]` e
+`//*[@id="b10-b19-b22-b1-Footer"]/div/button[1]`), e o log dizia "inserido ✔️"
+no instante do clique, sem conferir nada. Os XPaths de salvar/confirmar da
+seção "Fluxo detalhado" acima são os antigos.
+
+O fluxo agora, por código LMR (`LMRAutomation._salvar_e_confirmar_codigo`):
+
+1. espera sair da tela a mensagem de sucesso do código anterior — ela é
+   **idêntica** a cada código, e com ela na tela a nova seria dada por velha
+   (`PMIBPortal.esperar_confirmacao_anterior_sumir`, até 15 s);
+2. clica o SALVAR **do formulário de LMR** (`type="submit"`, ancorado no campo
+   do código — e não o primeiro SALVAR da tela, que é o de Informações gerais);
+3. espera o diálogo e clica o CONFIRMAR (`type="button"`; primeiro dentro de
+   `role="dialog"`, depois o mesmo seletor com que o `apagar_lmr` confirma a
+   exclusão nesta aba);
+4. só conta como inserido com **"As informações da aplicação LMR foram
+   adicionadas com sucesso!"** nova na tela
+   (`PALAVRA_DA_SECAO["Aplicação LMR"] = "lmr"`: a mensagem de outra seção não
+   confirma a LMR).
+
+Sem a mensagem, o código **não** entra como inserido: vai para
+`erros_lmr.csv`, a ficha fica INCOMPLETA no `_STATUS_PMIB`, e a pessoa é
+chamada **antes** do próximo código, com o motivo — diálogo que não abriu,
+aviso do portal no lugar dele, mensagem que não veio, ou diálogo que ficou
+aberto (que travaria a página inteira).
+
+⚠️ Nada disto rodou contra o portal: os botões e a mensagem vêm do HTML do
+usuário, e os seletores têm teste com `lxml` sobre ele. O que falta confirmar
+está em `docs/refatoracao/PENDENCIAS.md`, 2026-09-28.

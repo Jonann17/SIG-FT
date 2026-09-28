@@ -46,6 +46,7 @@ from sigft.core.rpa.portal import (
     PAUSA_ANIMACAO,
     PAUSA_RETORNO_LISTA,
     PAUSA_SALVAMENTO,
+    XPATH_CONFIRMAR,
 )
 
 
@@ -64,10 +65,67 @@ from sigft.core.rpa.portal import (
 XPATH_CAMPO_CODIGO = '//*[@id="b10-b19-Input_EquipmentCode"]'
 XPATH_CAMPO_QUANTIDADE = '//*[@id="b10-b19-Input_QuantityInstalled"]'
 XPATH_CAMPO_TAG = '//*[@id="b10-b19-Input_Tag"]'
-XPATH_BOTAO_SALVAR = '//*[@id="b10-b19-Form"]/div[2]/button[1]'
-XPATH_BOTAO_CONFIRMAR = '//*[@id="b10-b19-b22-b1-Footer"]/div/button[1]'
 XPATH_ABA_LMR = '//*[@id="b10-ApplicationMRL"]/button'
 XPATH_VOLTAR = '//*[@id="b9-Content"]'
+
+# -----------------------------------------------------------------------------
+# SALVAR -> CONFIRMAR -> mensagem de sucesso (2026-09-28)
+# -----------------------------------------------------------------------------
+# Relato do usuário: *"ele não está conseguindo subir as informações"*. Os dois
+# botões eram endereçados por POSIÇÃO dentro de ids gerados pelo OutSystems:
+#
+#   '//*[@id="b10-b19-Form"]/div[2]/button[1]'           (SALVAR)
+#   '//*[@id="b10-b19-b22-b1-Footer"]/div/button[1]'     (CONFIRMAR)
+#
+# `b19`, `b22` e `b1` são numeração de bloco (docs/PORTAL_COMO_ELE_SE_COMPORTA.md
+# §6, "Ids: quais servem"), e `div[2]/button[1]` é "o primeiro botão da segunda
+# div" -- um botão a mais no formulário e o clique vai para outro lugar. E nada
+# conferia o resultado: o log dizia "inserido ✔️" no instante do clique.
+#
+# Os botões, no HTML que o usuário mandou:
+#
+#   <button data-button="" class="btn btn-primary" type="submit">SALVAR</button>
+#   <button data-button="" class="btn btn-primary" type="button">CONFIRMAR</button>
+#
+# O SALVAR é o do FORMULÁRIO DE LMR, e não o primeiro da tela: a ficha tem um
+# por seção, e o primeiro é o de Informações gerais (o defeito de 2026-08-20).
+# A âncora é o campo do código, que o robô acabou de preencher; a fórmula sobe
+# até o ancestral mais próximo que contenha um SALVAR e desce até ele -- a de
+# `portal.XPATH_SALVAR_SUBINDO_DO_BLOCO`, com o `type="submit"` do HTML.
+_SALVAR_DO_FORMULARIO = "button[@type='submit' and normalize-space()='SALVAR']"
+XPATH_BOTAO_SALVAR = (
+    f"{XPATH_CAMPO_CODIGO}/ancestor::*[.//{_SALVAR_DO_FORMULARIO}][1]"
+    f"//{_SALVAR_DO_FORMULARIO}"
+)
+# O CONFIRMAR do diálogo que o SALVAR abre. `role="dialog"` é o escopo que o
+# projeto usa para modal (§3 do mesmo documento). A RESERVA, sem escopo, é o
+# seletor com que `apagar_lmr` já confirma a exclusão NESTA aba -- vale se o
+# diálogo da LMR não se declarar `dialog`, o que ainda não foi visto no portal.
+XPATH_BOTAO_CONFIRMAR = "//*[@role='dialog']" + XPATH_CONFIRMAR
+XPATH_BOTAO_CONFIRMAR_RESERVA = XPATH_CONFIRMAR
+
+# O nome da seção para `PMIBPortal`: é por ele que `PALAVRA_DA_SECAO` exige
+# "lmr" na mensagem -- "As informações da aplicação LMR foram adicionadas com
+# sucesso!". A mensagem de outra seção não confirma a LMR.
+SECAO_LMR = "Aplicação LMR"
+
+# Quanto se espera a mensagem depois do CONFIRMAR. A espera acaba assim que ela
+# aparece; a folga é para o portal sob carga (o padrão do portal é 8 s).
+TIMEOUT_CONFIRMACAO_LMR_S = 15.0
+
+# Quantas vezes se procura o CONFIRMAR depois do SALVAR (x o intervalo, até
+# 10 s). Em TENTATIVAS, não em segundos: §0, regra 7.
+TENTATIVAS_DIALOGO_ABRIR = 20
+INTERVALO_DIALOGO_ABRIR_S = 0.5
+
+
+class CodigoNaoConfirmado(RuntimeError):
+    """O portal não confirmou a aplicação de UM código LMR.
+
+    Não derruba a ficha: cai no `except` do laço de
+    `_processar_ficha_lmr_interna`, que registra o erro (`erros_lmr.csv`, ficha
+    INCOMPLETA no `_STATUS_PMIB`) e chama a pessoa ANTES do próximo código.
+    """
 
 
 # =============================================================================
@@ -278,6 +336,92 @@ class LMRAutomation:
 
         return linha_inicio
 
+    # --- SALVAR -> CONFIRMAR -> mensagem do portal (2026-09-28) ---
+    def _salvar_e_confirmar_codigo(self, callbacks: UICallbacks):
+        """Grava o código que acabou de ser preenchido. Devolve `(ok, motivo)`.
+
+        Pedido do usuário: *"quando clicar em confirmar, ele só deve ir fazer o
+        próximo código LMR daquela ficha se apareceu essa mensagem"* -- "As
+        informações da aplicação LMR foram adicionadas com sucesso!". `ok` só é
+        `True` com essa mensagem NOVA na tela; sem ela, `motivo` diz em que
+        passo parou, para a pessoa saber o que procurar no navegador.
+
+        ⚠️ A MESMA FRASE A CADA CÓDIGO. Por isso o 1º passo espera sair a do
+        código anterior: com ela ainda na tela, a do atual seria idêntica, e a
+        "foto de antes" de `clicar_e_confirmar` a daria por velha.
+        """
+        if not self.portal.esperar_confirmacao_anterior_sumir(SECAO_LMR):
+            callbacks.log(
+                "      [!] A mensagem de sucesso do código anterior não saiu da tela. "
+                "A deste código tem o mesmo texto e pode não ser reconhecida.")
+
+        # Os avisos que já estavam na tela: o aviso não sai sozinho (não tem
+        # `feedback-message-autoclose`), e um velho não pode passar por recusa
+        # deste código.
+        avisos_antes = {m for m in self.portal.mensagens_de_aviso() if m}
+        try:
+            self.engine.click_raw(XPATH_BOTAO_SALVAR)
+        except Exception as erro:  # noqa: BLE001 -- vira motivo, não queda da ficha
+            return False, (f"não consegui clicar no SALVAR do formulário de LMR "
+                           f"({type(erro).__name__})")
+
+        confirmar, aviso = self._esperar_dialogo_de_confirmacao(avisos_antes)
+        if not confirmar:
+            if aviso:
+                return False, f"o portal recusou o SALVAR: {aviso}"
+            return False, ("o SALVAR não abriu o diálogo de confirmação "
+                           "(nenhum botão CONFIRMAR apareceu)")
+
+        # `clicar_e_confirmar` fotografa as mensagens, clica e só devolve
+        # `True` com a de sucesso NOVA que fale em LMR (`PALAVRA_DA_SECAO`).
+        if self.portal.clicar_e_confirmar(confirmar, SECAO_LMR, callbacks.log,
+                                          timeout_s=TIMEOUT_CONFIRMACAO_LMR_S):
+            return True, ""
+
+        motivo = "o portal não mostrou a mensagem de sucesso da aplicação LMR"
+        if self._confirmar_visivel():
+            # Modal aberto trava a página inteira (§3 do documento do portal):
+            # o próximo código nem conseguiria ser digitado.
+            motivo += ("; o diálogo de confirmação continua aberto -- feche-o no "
+                       "navegador antes de seguir")
+        return False, motivo
+
+    def _confirmar_visivel(self):
+        """O seletor do primeiro CONFIRMAR VISÍVEL -- o do diálogo antes da
+        reserva --, ou `""`. Visível, e não só presente: "contar nós não é ver"
+        (§0 do documento do portal)."""
+        for base in (XPATH_BOTAO_CONFIRMAR, XPATH_BOTAO_CONFIRMAR_RESERVA):
+            try:
+                total = self.engine.contar(base)
+            except Exception:  # noqa: BLE001 -- tela remontando
+                continue
+            for posicao in range(1, (total or 0) + 1):
+                seletor = f"({base})[{posicao}]"
+                try:
+                    if self.engine.esta_visivel(seletor):
+                        return seletor
+                except Exception:  # noqa: BLE001
+                    continue
+        return ""
+
+    def _esperar_dialogo_de_confirmacao(self, avisos_antes):
+        """Espera o diálogo que o SALVAR abre: `(seletor_do_confirmar, "")`.
+
+        Se no lugar dele aparece um aviso NOVO ("Por favor, verifique os
+        campos"), devolve `("", aviso)` na hora: o diálogo não vai vir. Nada
+        dos dois até o fim das tentativas: `("", "")`.
+        """
+        for _ in range(TENTATIVAS_DIALOGO_ABRIR):
+            seletor = self._confirmar_visivel()
+            if seletor:
+                return seletor, ""
+            novos = [m for m in self.portal.mensagens_de_aviso()
+                     if m and m not in avisos_antes]
+            if novos:
+                return "", " ".join(novos[-1].split())
+            time.sleep(INTERVALO_DIALOGO_ABRIR_S)
+        return "", ""
+
     # --- LÓGICA CORE (MANTIDA DO ORIGINAL) ---
     def _processar_ficha_lmr_interna(self, df_filtrado, callbacks: UICallbacks,
                                      callback_input=None, linha_inicio=None):
@@ -374,14 +518,19 @@ class LMRAutomation:
                     self.engine.press("ENTER")
                     time.sleep(PAUSA_ANIMACAO)
 
-                # Salvar e confirmar
-                self.engine.click_raw(XPATH_BOTAO_SALVAR)
-                self.engine.wait_clickable(XPATH_BOTAO_CONFIRMAR)
-                self.engine.click_raw(XPATH_BOTAO_CONFIRMAR)
+                # Salvar, confirmar -- e SÓ SEGUIR COM A MENSAGEM DO PORTAL
+                # (2026-09-28). Sem ela o código cai no `except` abaixo: vai
+                # para `erros_lmr.csv`, a ficha fica INCOMPLETA no
+                # `_STATUS_PMIB`, e a pessoa é chamada ANTES do próximo código.
+                confirmou, motivo = self._salvar_e_confirmar_codigo(callbacks)
+                if not confirmou:
+                    raise CodigoNaoConfirmado(motivo)
+                # O formulário se refaz depois de gravar; digitar o próximo
+                # código no meio disso o perderia.
                 time.sleep(PAUSA_SALVAMENTO)
 
                 processados_ok.append(codigo_pmib_item)
-                callbacks.log(f' -> Código {codigo_pmib_item} inserido ✔️')
+                callbacks.log(f' -> Código {codigo_pmib_item} inserido ✔️ (o portal confirmou)')
 
             except Exception as e:
                 callbacks.log(f"Erro no Cód {codigo_pmib_item}: {e}")
@@ -409,12 +558,24 @@ class LMRAutomation:
                     # salvo parcialmente no portal, e repetir cegamente
                     # duplicaria TAGs. Rebobinar o índice seria pior que o
                     # problema que este checkpoint conserta.
-                    callbacks.ask(
-                        f"Erro no item {codigo_pmib_item} durante o preenchimento.\n"
-                        "Confira/corrija manualmente no navegador e clique OK. "
-                        "O processamento segue para o próximo código.",
-                        titulo="Erro LMR",
-                    )
+                    if isinstance(e, CodigoNaoConfirmado):
+                        # 2026-09-28: sem a mensagem de sucesso o código NÃO
+                        # conta como inserido, e a pessoa confere antes de o
+                        # robô ir ao próximo. O motivo vai junto -- é ele que
+                        # diz o que procurar na tela.
+                        pergunta = (
+                            f"O portal NÃO confirmou o código {codigo_pmib_item}:\n{e}\n\n"
+                            "Confira no navegador: se a aplicação não entrou, lance-a à mão. "
+                            "Clique OK quando terminar. O processamento segue para o "
+                            "próximo código."
+                        )
+                    else:
+                        pergunta = (
+                            f"Erro no item {codigo_pmib_item} durante o preenchimento.\n"
+                            "Confira/corrija manualmente no navegador e clique OK. "
+                            "O processamento segue para o próximo código."
+                        )
+                    callbacks.ask(pergunta, titulo="Erro LMR")
                 else:
                     # (b) A falha veio ANTES de o índice avançar (ex.: erro ao
                     # ler a linha do DataFrame). Sem intervenção, o `while`

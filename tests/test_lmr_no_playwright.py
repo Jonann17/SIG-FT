@@ -23,6 +23,12 @@ o serviço realmente usa (`.empty`, `.shape`, `len()`, `.loc`, `.iloc`).
 ⚠️ CP 5.5 (2026-08-25): a metade Selenium saiu daqui junto com o motor. O que
 fica vale pelo motivo original -- é o único lugar que exercita a cadeia
 serviço -> portal -> motor com as classes DE VERDADE, trocando só o browser.
+
+⚠️ 2026-09-28: o código só conta como inserido com a mensagem de sucesso do
+portal (pedido do usuário). A página falsa passou a responder ao SALVAR e ao
+CONFIRMAR como o portal; antes ela não mostrava mensagem nenhuma, e o teste
+afirmava "inserido ✔️" mesmo assim -- que era justamente o defeito. O fluxo
+de salvamento em si é testado em tests/test_lmr_salvar_com_confirmacao.py.
 """
 from __future__ import annotations
 
@@ -32,12 +38,16 @@ import sigft.services.lmr as lmr_mod
 from sigft import config
 from sigft.core.callbacks import UICallbacks
 from sigft.core.rpa.playwright_engine import PlaywrightEngine
+from sigft.core.rpa.portal import PMIBPortal
 from sigft.services.lmr import LMRAutomation
+
+MENSAGEM_LMR = "As informações da aplicação LMR foram adicionadas com sucesso!"
 
 
 @pytest.fixture(autouse=True)
 def _sem_sleep(monkeypatch):
     monkeypatch.setattr(lmr_mod.time, "sleep", lambda *_a, **_kw: None)
+    monkeypatch.setattr(lmr_mod, "TIMEOUT_CONFIRMACAO_LMR_S", 0.0)
 
 
 # ===========================================================================
@@ -108,7 +118,7 @@ class _LocatorPW:
         self.pagina.registrar("type", self.seletor, texto)
 
     def click(self):
-        self.pagina.registrar("click", self.seletor)
+        self.pagina.clicar(self.seletor)
 
     def scroll_into_view_if_needed(self):
         pass
@@ -118,6 +128,16 @@ class _LocatorPW:
 
     def is_enabled(self):
         return True
+
+    # 2026-09-28: o que o salvamento com prova lê da tela.
+    def count(self):
+        return self.pagina.contar(self.seletor)
+
+    def is_visible(self):
+        return self.pagina.contar(self.seletor) > 0
+
+    def text_content(self):
+        return self.pagina.mensagem or ""
 
 
 class _KeyboardPW:
@@ -129,16 +149,46 @@ class _KeyboardPW:
 
 
 class _PaginaPW:
+    """Responde ao SALVAR como o portal (2026-09-28): ele abre o diálogo; o
+    CONFIRMAR o fecha e mostra a mensagem de sucesso da LMR, que sai da tela
+    na leitura seguinte -- o `feedback-message-autoclose`."""
+
     def __init__(self):
         self.acoes = []
         self.url = ""
         self.keyboard = _KeyboardPW(self)
+        self.dialogo_aberto = False
+        self.mensagem = None
+        self._mensagem_ja_vista = False
 
     def locator(self, seletor):
         return _LocatorPW(self, seletor.replace("xpath=", ""))
 
     def registrar(self, *args):
         self.acoes.append(args)
+
+    def clicar(self, seletor):
+        self.registrar("click", seletor)
+        if "SALVAR" in seletor:
+            self.dialogo_aberto = True
+        elif "CONFIRMAR" in seletor:
+            self.dialogo_aberto = False
+            self.mensagem = MENSAGEM_LMR
+            self._mensagem_ja_vista = False
+
+    def contar(self, seletor):
+        if "CONFIRMAR" in seletor:
+            return 1 if self.dialogo_aberto else 0
+        if "feedback-message-warning" in seletor:
+            return 0
+        if "feedback-message-success" in seletor:
+            if self._mensagem_ja_vista:
+                self.mensagem = None      # o autoclose a levou
+            self._mensagem_ja_vista = self.mensagem is not None
+            return 1 if self.mensagem else 0
+        if "feedback-message-text" in seletor:
+            return 1 if self.mensagem else 0
+        return 1
 
     def goto(self, url):
         self.url = url
@@ -150,7 +200,7 @@ class _PaginaPW:
 def _automacao_playwright():
     auto = LMRAutomation.__new__(LMRAutomation)
     auto.engine = PlaywrightEngine(_PaginaPW())
-    auto.portal = None
+    auto.portal = PMIBPortal(auto.engine)
     auto.url_inicial = config.PORTAL_URL
     return auto
 
@@ -244,15 +294,20 @@ def test_limpa_cada_campo_antes_de_digitar(montar):
 def test_salva_e_confirma_no_fim_de_cada_codigo(montar):
     auto = montar()
 
-    _rodar(auto, _df(("COD-1", "TAG-A"), ("COD-2", "TAG-B")))
+    erros, _ = _rodar(auto, _df(("COD-1", "TAG-A"), ("COD-2", "TAG-B")))
 
-    cliques = [a[1] for a in _acoes(auto) if a[0] == "click"]
-    assert cliques == [
-        lmr_mod.XPATH_BOTAO_SALVAR,
-        lmr_mod.XPATH_BOTAO_CONFIRMAR,
-        lmr_mod.XPATH_BOTAO_SALVAR,
-        lmr_mod.XPATH_BOTAO_CONFIRMAR,
-    ]
+    # 2026-09-28: o CONFIRMAR é clicado pelo índice do VISÍVEL
+    # (`(//...CONFIRMAR)[1]`), então se compara pelo seletor de base.
+    def _qual(seletor):
+        if seletor == lmr_mod.XPATH_BOTAO_SALVAR:
+            return "SALVAR"
+        if lmr_mod.XPATH_BOTAO_CONFIRMAR in seletor:
+            return "CONFIRMAR"
+        return seletor
+
+    cliques = [_qual(a[1]) for a in _acoes(auto) if a[0] == "click"]
+    assert cliques == ["SALVAR", "CONFIRMAR", "SALVAR", "CONFIRMAR"]
+    assert erros == []
 
 
 # CP 5.5: a parametrização tinha os DOIS motores -- era ela que provava
