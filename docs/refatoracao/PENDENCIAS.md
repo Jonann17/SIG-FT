@@ -740,3 +740,26 @@ volta a gravar). Isto aqui ficou em aberto:
 |---|---|---|---|
 | 2026-09-25 | Upload de características na VPN do Luan | **O Gemini direto não passa pela cascata de rede (PAC).** `core/llm/providers/gemini.py` usa o SDK do Google (`transport="rest"`), que sai direto e ignora o `core/rede.py`; na VPN a conexão direta é derrubada (`ConnectionResetError 10054`). O que o app chama pelo `rede` (OpenRouter, catálogo de modelos, atualização) funciona na VPN — o Grok pelo OpenRouter no Cria Fichas, por exemplo. Proposta: trocar o SDK por REST via `rede.post`, como o OpenRouter e o catálogo do Gemini já fazem, o que ainda tira o app de um SDK que o Google descontinuou. Mexe no caminho por onde o AutoSpec manda PDF (frente Rafael) e só se prova na VPN. | Decisão do Luan |
 | 2026-09-25 | mesma investigação | **A escolha de modelo do Upload pareceu não valer.** Com a tarefa apontada para o OpenRouter no painel, o erro saiu no formato do SDK do Gemini — a chamada foi pelo Gemini direto. Suspeita, não confirmada: com o provedor OpenRouter na tela, a lista também mostra as seleções já salvas de outros provedores, com o rótulo `(salvo) gemini / …`, e filtrar por "gemini" as mistura com os `google/gemini-…` do OpenRouter. A 1.1.1-rc.3 escreve no log o provedor e o modelo de cada ficha: com ela, dá para confirmar. | Confirmar com o Luan na rc.3 |
+
+---
+
+## 2026-09-28 — a LISTA com duas opções, e a LMR que não confirmava o salvamento
+
+Duas correções pedidas pelo usuário. **LISTA:** a IA juntou duas opções
+("Protecao contra descargas atmosfericas, etc.") num campo do portal que
+seleciona uma, porque o prompt mandava juntar "vários itens" com ponto e
+vírgula e dizia que a vírgula era só decimal — e no PDM SAM é a vírgula que
+separa as opções. Consertado no prompt e garantido em código
+(`tech_specs.conferir_listas` + uma pergunta dirigida à IA pelo número da
+opção). **LMR:** SALVAR e CONFIRMAR eram clicados por posição dentro de ids
+gerados, e o código contava como inserido sem ler nada; agora os botões são os
+do HTML do usuário, e o código só conta com "As informações da aplicação LMR
+foram adicionadas com sucesso!".
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-09-28 | Pedido do usuário (`core/llm/prompts.py`, **zona compartilhada**) | **Prompt do tech_specs: LISTA é UMA opção.** Mudaram a regra 2 de formatação e a regra 4 (LISTA) do `SYSTEM_TECH_SPECS` e a regra 4 do `CONTRATO_SAIDA_TECH_SPECS`; entrou `montar_tech_specs_lista_unica` (a pergunta dirigida). Fixtures `upload_tech_specs_*` regeradas — 4ª regeração, registrada em `tests/test_llm_prompts_snapshot.py`. O prompt do AutoSpec não foi tocado. Commit isolado. | Registro (zona compartilhada) |
+| 2026-09-28 | LMR (`services/lmr.py`) | **Nada disto rodou contra o portal.** Os botões e a mensagem vieram do HTML do usuário, e há teste avaliando os seletores com `lxml`; a estrutura em volta (o formulário, o diálogo) foi deduzida dos seletores antigos. Três coisas só a execução real diz: (1) se o diálogo da LMR tem `role="dialog"` — senão vale a reserva, o seletor do `apagar_lmr`; (2) quanto a mensagem de sucesso leva para sair da tela — ela é idêntica a cada código, e o robô espera até 15 s antes do próximo SALVAR; se não sair, o código seguinte fica sem confirmação (pendência, nunca falso positivo) e o log diz "não saiu da tela"; (3) se o SALVAR do formulário está mesmo acima do campo do código na árvore (é a âncora). | Execução real, com o log |
+| 2026-09-28 | LMR (`services/lmr.py`) | **Os campos da LMR continuam por id com prefixo gerado** (`b10-b19-Input_EquipmentCode`, `..._QuantityInstalled`, `..._Tag`). O sufixo é estável (§6 de `docs/PORTAL_COMO_ELE_SE_COMPORTA.md`); o prefixo muda se o OutSystems renumerar os blocos, e aí os campos e o SALVAR (ancorado no campo do código) param juntos. Não mexi: pelo relato, o preenchimento das TAGs funciona. | Se quebrar: `contains(@id, 'Input_EquipmentCode')` |
+| 2026-09-28 | LISTA (`services/tech_specs.py`) | **Vírgula decimal sem espaço é ambígua.** `opcoes_da_lista` não separa a vírgula entre dois algarismos ("1,5 mm, 2,5 mm" = duas opções). O custo: uma LISTA escrita "10,20,30" (três opções, sem espaço) vira UMA opção, e a resposta "20" vai para a pergunta dirigida à toa — a resposta fica como veio e o portal ainda casa. Não medido no Master real. | Medir no Master |
+| 2026-09-28 | Leitura do `tech_specs` para a LISTA (fora do escopo) | **O transbordo de casas decimais casa o nome da característica EXATO.** `realocar_por_casas_decimais` procura o `CARACTERISTICA_CHAVE` da IA num dicionário montado com o `CARACTERISTICA_DESC_PT` do Master. O prompt manda a IA não acentuar e o Master acentua: "TENSÃO NOMINAL" x "TENSAO NOMINAL" pode não casar, e aí o limite de casas vira "desconhecido" e o valor segue para o campo numérico como se coubesse. A conferência da LISTA já compara sem acento e sem caixa. | Próxima mexida no Upload |
