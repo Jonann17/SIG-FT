@@ -1112,6 +1112,66 @@ CAMPOS A PREENCHER:
 
 
 # =============================================================================
+# 5b. autospec.AutoSpecCore.auditar_respostas_do_fornecedor
+#     tarefa "autospec" (mesmo modelo do preenchimento)  --  2026-09-28
+# =============================================================================
+def montar_autospec_auditoria(txt_brv, fab, desc_comp, context, lista_texto):
+    """Confere as respostas que o FORNECEDOR escreveu contra o datasheet.
+
+    Pedido do Luan (2026-09-28): o fornecedor responde "nao se aplica" por
+    desleixo, e a caracteristica esta no documento; e o valor preenchido pode
+    divergir dele. Spec:
+    docs/superpowers/specs/2026-09-28-autospec-conferencia-fornecedor-design.md.
+
+    E um prompt SEPARADO do `montar_autospec` de proposito (decisao do
+    usuario): o do preenchimento foi calibrado contra o AMP e continua byte a
+    byte igual. Tres escolhas do texto:
+
+    - a PROVA (valor, trecho, pagina) so em "diverge": "confere" volta numa
+      palavra -- token de saida e o mais caro, e a maioria confere;
+    - nada de deducao nem de conhecimento geral: o que sai daqui pode trocar
+      o "nao se aplica" do fornecedor na ficha, e so com o documento;
+    - unidade, traducao e formato diferentes nao sao divergencia (o app
+      confere de novo com `autospec_auditoria.equivalentes`).
+
+    `lista_texto` = as respostas ja formatadas por
+    `autospec_auditoria.montar_lista`, concatenadas no FIM, como no
+    preenchimento.
+    """
+    return f"""Você é um engenheiro de especificação técnica. O FORNECEDOR preencheu a ficha técnica de um material sobressalente de usina hidrelétrica (Itaipu). Confira cada resposta dele contra os documentos abaixo. Você não corrige a ficha: diz o que o documento traz para cada característica.
+
+MATERIAL
+- Nome: {txt_brv}
+- Descrição: {desc_comp}
+- Fabricante (planilha): {fab}
+
+DOCUMENTOS
+{context if context else "Nenhuma informação disponível."}
+
+COMO CONFERIR
+1. Use só o que está ESCRITO no documento e é DESTE material (confira modelo, código, faixa). Nunca deduza nem use conhecimento geral.
+2. Compare a mesma grandeza que a pergunta pede: temperatura de operação x do processo x de armazenamento; pressão de trabalho x máxima ou de teste; corrente nominal x de curto-circuito; rotação do motor x frequência da rede.
+3. "situacao":
+   - "confere": o documento traz o mesmo valor. Unidade equivalente, tradução, arredondamento e formato diferentes NÃO são divergência (24 Vcc = 24 VDC; 0,5 kW = 500 W; Aço inox = Stainless steel).
+   - "diverge": o documento traz OUTRO valor. Resposta "Não se aplica" (ou N/A, "não informado", "-") com o valor no documento também é "diverge": a característica se aplica.
+   - "nao_consta": o documento não traz esta característica, ou não dá para saber qual linha é a deste material. Na dúvida, "nao_consta".
+
+COMO RESPONDER
+4. Em "confere" e "nao_consta", responda só a situação: {{"ID": {{"situacao": "confere"}}}}.
+5. Em "diverge", traga a prova:
+   - "valor_documento": o valor que o documento dá, na unidade que a pergunta pede (se converter, "tipo": "calculo");
+   - "trecho": copie LITERALMENTE do documento o pedaço de onde o valor saiu (até uns 200 caracteres), sem traduzir nem reescrever. Trecho que não existe no documento invalida a divergência;
+   - "fonte": o nome do documento exatamente como aparece acima; "pagina": o número da página, quando houver;
+   - "justificativa": uma frase curta, só se a diferença não for óbvia.
+
+Responda com um objeto JSON, uma entrada por ID:
+{{"ID": {{"situacao": "confere" | "diverge" | "nao_consta", "valor_documento": "...", "tipo": "documento" | "calculo", "fonte": "...", "pagina": 1, "trecho": "...", "justificativa": "..."}}}}
+
+RESPOSTAS DO FORNECEDOR A CONFERIR:
+""" + lista_texto
+
+
+# =============================================================================
 # 8. traducao_pdm.motor_padrao  --  tarefa "traduzir_pdm"  (2026-08-28)
 # =============================================================================
 def montar_traduzir_pdm(textos, glossario=None):
