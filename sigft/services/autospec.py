@@ -3611,6 +3611,33 @@ class AutoSpecCore:
             _cache_resposta_gravar(chave, resp.parsed_json)
         return resp.parsed_json, contexto, list(como_arquivo)
 
+    def _mesclar_auditoria(self, missing, ai_resp, auditoria):
+        """`(campos, valores)` para o `fill_save`: o preenchimento mais o que
+        a conferencia grava, num `_completed` so. As notas da conferencia
+        somam as do preenchimento -- e, na ficha SEM campo vazio (o
+        preenchimento nao rodou), substituem as que sobraram da ficha
+        anterior."""
+        if auditoria is None or not auditoria.gravar:
+            return missing, ai_resp
+        notas = dict(getattr(self, "notas_por_campo", None) or {}) if missing else {}
+        notas.update(auditoria.notas)
+        self.notas_por_campo = notas
+        return {**missing, **auditoria.campos}, {**(ai_resp or {}), **auditoria.gravar}
+
+    def _fechar_ficha_so_conferida(self, fname, auditoria, lote):
+        """A ficha sem campo vazio em que a conferencia nao tem nada a gravar:
+        nenhum `_completed`, e o motivo no resumo do lote. Devolve a linha do
+        console."""
+        if auditoria is None or auditoria.falha:
+            motivo = auditoria.falha if auditoria is not None else "nao rodou"
+            lote.falha(fname, f"a conferencia das respostas do fornecedor falhou ({motivo})")
+            return " -> A conferencia falhou; a ficha do fornecedor nao foi alterada."
+        if auditoria.sem_documento:
+            lote.pulado(fname, "sem documento para conferir as respostas do fornecedor")
+            return " -> Sem documento para conferir; a ficha do fornecedor nao foi alterada."
+        lote.sucesso(fname, f"{auditoria.resumo()}, nada gravado")
+        return " -> Nada a gravar: a ficha do fornecedor nao foi alterada."
+
     @staticmethod
     def _onde(prova):
         fonte = str(prova.fonte or "").strip()[:60]
@@ -3750,7 +3777,11 @@ class AutoSpecCore:
                 try:
                     analise = self.analyze_sheet(ficha, status_pmib_path)
                     wb, missing, txt, fab, desc, cod = analise[:6]
-                    if not missing:
+                    # Confere tambem (2026-09-28): esta passada REGRAVA o
+                    # `_completed`, e sem a conferencia os "nao se aplica"
+                    # corrigidos na 1a passada se perderiam.
+                    respostas = self._respostas_para_auditar()
+                    if not missing and not respostas:
                         yield " -> Ficha já está completa."
                         lote.pulado(fname, "sem campos faltantes")
                         yield from _flush()
@@ -3769,16 +3800,31 @@ class AutoSpecCore:
                         yield from _flush()
                         continue
 
-                    yield f" -> {len(missing)} campos faltantes. Consultando a IA..."
-                    ai_resp = self.generate_ai_response(
-                        txt, fab, desc, missing, contexto, callbacks=callbacks
-                    )
-                    yield from _flush()
-                    if self._registrar_falha_da_ia(fname, lote):
+                    ai_resp = {}
+                    if missing:
+                        yield f" -> {len(missing)} campos faltantes. Consultando a IA..."
+                        ai_resp = self.generate_ai_response(
+                            txt, fab, desc, missing, contexto, callbacks=callbacks
+                        )
+                        yield from _flush()
+                        if self._registrar_falha_da_ia(fname, lote):
+                            yield from _flush()
+                            continue
+
+                    auditoria = None
+                    if respostas:
+                        yield (f" -> Conferindo {len(respostas)} resposta(s) do fornecedor "
+                               f"contra os documentos aprovados...")
+                        auditoria = self.auditar_respostas_do_fornecedor(
+                            txt, fab, desc, respostas, contexto, callbacks=callbacks)
+                        yield from _flush()
+                    campos, valores = self._mesclar_auditoria(missing, ai_resp, auditoria)
+                    if not missing and not (auditoria and auditoria.gravar):
+                        yield self._fechar_ficha_so_conferida(fname, auditoria, lote)
                         yield from _flush()
                         continue
 
-                    out_path = self.fill_save(wb, ficha, ai_resp, missing, callbacks=callbacks)
+                    out_path = self.fill_save(wb, ficha, valores, campos, callbacks=callbacks)
                     yield f" -> Salvo: {os.path.basename(out_path)}"
                     lote.sucesso(fname, f"salvo como {os.path.basename(out_path)}")
                     yield from _flush()
@@ -3885,14 +3931,21 @@ class AutoSpecCore:
                     # a tupla curta.
                     wb, missing, txt, fab, desc, cod = analise[:6]
                     modelo = analise[6] if len(analise) > 6 else ""
+                    # O que o fornecedor escreveu, para conferir contra o
+                    # datasheet (2026-09-28). `{}` com o interruptor desligado.
+                    respostas = self._respostas_para_auditar()
 
-                    if not missing:
+                    if not missing and not respostas:
                         yield " -> Ficha já está completa."
                         lote.pulado(fname, "ficha já completa (sem campos faltantes)")
                         yield from _flush()
                         continue
 
-                    yield f" -> {len(missing)} campos faltantes. Coletando contexto..."
+                    if missing:
+                        yield f" -> {len(missing)} campos faltantes. Coletando contexto..."
+                    else:
+                        yield (f" -> Nenhum campo vazio; {len(respostas)} resposta(s) do "
+                               f"fornecedor para conferir. Coletando contexto...")
 
                     # 2. Contexto
                     full_ctx, sources = self.retrieve_context(
@@ -3907,14 +3960,16 @@ class AutoSpecCore:
                     # `config.LLM_TASKS`/seleção da UI e pode ser OpenRouter
                     # ou o endpoint da empresa. Mensagem que nomeia "Gemini"
                     # envelhece igual à do guard de chave.
-                    yield " -> Consultando a IA..."
-                    ai_resp = self.generate_ai_response(
-                        txt, fab, desc, missing, full_ctx, callbacks=callbacks
-                    )
-                    yield from _flush()
-                    if self._registrar_falha_da_ia(fname, lote):
+                    ai_resp = {}
+                    if missing:
+                        yield " -> Consultando a IA..."
+                        ai_resp = self.generate_ai_response(
+                            txt, fab, desc, missing, full_ctx, callbacks=callbacks
+                        )
                         yield from _flush()
-                        continue
+                        if self._registrar_falha_da_ia(fname, lote):
+                            yield from _flush()
+                            continue
 
                     # P-04: rastreabilidade campo->fonte. As regras de negócio
                     # (§3.4) pedem que o engenheiro veja de onde saiu cada
@@ -3960,8 +4015,29 @@ class AutoSpecCore:
                             "confira manualmente antes de homologar)"
                         )
 
+                    # 3b. Conferencia das respostas do fornecedor (2026-09-28).
+                    # Chamada SEPARADA, depois do preenchimento, que nao muda.
+                    auditoria = None
+                    if respostas:
+                        yield (f" -> Conferindo {len(respostas)} resposta(s) do fornecedor "
+                               f"contra o(s) documento(s)...")
+                        auditoria = self.auditar_respostas_do_fornecedor(
+                            txt, fab, desc, respostas, full_ctx, callbacks=callbacks)
+                        yield from _flush()
+                    campos, valores = self._mesclar_auditoria(missing, ai_resp, auditoria)
+
+                    if not missing and not (auditoria and auditoria.gravar):
+                        yield self._fechar_ficha_so_conferida(fname, auditoria, lote)
+                        if getattr(self, "duvidosos", None):
+                            self.conferencia.registrar(
+                                ficha, material=txt or fname,
+                                documentos=self.duvidosos, refs_locais=refs,
+                            )
+                        yield from _flush()
+                        continue
+
                     # 4. Salvar
-                    out_path = self.fill_save(wb, ficha, ai_resp, missing, callbacks=callbacks)
+                    out_path = self.fill_save(wb, ficha, valores, campos, callbacks=callbacks)
                     yield f" -> Salvo: {os.path.basename(out_path)}"
                     lote.sucesso(fname, f"salvo como {os.path.basename(out_path)}")
                     # `getattr`: teste substitui `analyze_sheet`/`retrieve_context`

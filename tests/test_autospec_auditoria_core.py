@@ -10,7 +10,6 @@ aplica" (e afins) pode ser trocado, e so com a prova conferida.
 """
 import json
 
-
 from sigft import config
 from sigft.services import autospec, autospec_documentos as docs
 from sigft.services.autospec import AutoSpecCore
