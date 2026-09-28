@@ -62,6 +62,10 @@
            lista. Nao traduza a opcao por conta propria: o portal so aceita o
            texto exato de uma das opcoes, e um texto proximo nao seleciona
            nada.
+           As opcoes vem separadas por VIRGULA: "Borracha, Nylon, etc." sao
+           TRES opcoes ("Borracha", "Nylon" e "etc."). O campo do portal
+           aceita UMA so. Resposta certa: "Nylon". Errada: "Nylon, etc." --
+           junta duas opcoes e nao casa com nenhuma.
 
         5. NA DUVIDA ENTRE PREENCHER E REMOVER, PREENCHA. Uma linha
            preenchida a mais o revisor apaga em 5 segundos; um dado do

@@ -42,6 +42,11 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 **Upload de características técnicas**
 
 - Upload de características técnicas: o log passa a dizer **qual provedor e modelo de IA** cada ficha usou (`Enviando … para IA (openrouter / google/gemini-…)`), também na mensagem de erro. Antes um erro de conexão não dizia se a chamada tinha ido pelo Gemini direto ou pelo OpenRouter.
+- Upload de características técnicas: característica do tipo **LISTA** passa a sair com **uma opção só**. A IA juntava duas opções numa resposta ("Proteção contra descargas atmosféricas, etc.") e nenhuma casava com a lista do portal. Agora cada vírgula do PDM conta como separador de opções; quando a IA junta duas ou escreve uma que não existe, o SIG-FT pergunta de novo só sobre aquela característica, e se ainda assim não vier uma opção válida, o log avisa e o campo fica para escolher à mão. JSON gerado antes desta versão não é corrigido: rode a IA de novo nas fichas afetadas.
+
+**Aplicação LMR**
+
+- Aplicação LMR: depois de colocar as TAGs, o robô clica **SALVAR**, depois **CONFIRMAR**, e só passa para o próximo código quando o portal mostra "As informações da aplicação LMR foram adicionadas com sucesso!". Antes ele procurava os botões pela posição na tela e marcava o código como inserido sem conferir nada. Sem a mensagem, o código vai para o `erros_lmr.csv`, a ficha fica INCOMPLETA no `_STATUS_PMIB`, e o SIG-FT para e diz o motivo antes de seguir.
 
 **Fichas duplicadas**
 
