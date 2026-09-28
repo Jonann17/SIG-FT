@@ -1419,6 +1419,9 @@ o comentário; `IP54` e `1,2 kg` intactos; a divergência `IP54 x IP65` só no l
 não foi tocado. A resposta real do modelo ao prompt novo só a máquina do usuário mostra —
 roteiro na Etapa 3b.4 de `docs/ROTEIRO_DE_TESTE.md`.
 
+✅ **Validado na máquina do Luan em 2026-09-28** (Etapa 3b.4, com a IA real): funcionou.
+Publicado no release **1.1.1**, já em uso.
+
 ### Custo
 
 Uma chamada a mais por ficha **que tenha resposta do fornecedor e documento**. A entrada é o

@@ -1,7 +1,7 @@
 # AutoSpec: a IA confere as respostas do fornecedor contra o datasheet
 
 **Data:** 2026-09-28 · **Frente:** AutoSpecAI (código do Rafael, pedido do Luan)
-**Status:** desenho aprovado pelo usuário em 2026-09-28, nesta sessão.
+**Status:** implementado, validado pelo usuário numa ficha real em 2026-09-28 e publicado na 1.1.1.
 
 > *"Algumas características técnicas respondidas pelo fornecedor são duvidáveis, e muitas vezes
 > por preguiça ou desleixo eles respondem que determinada característica técnica não se aplica, o
