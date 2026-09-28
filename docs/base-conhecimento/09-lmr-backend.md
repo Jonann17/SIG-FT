@@ -139,6 +139,7 @@ chamada **antes** do próximo código, com o motivo — diálogo que não abriu,
 aviso do portal no lugar dele, mensagem que não veio, ou diálogo que ficou
 aberto (que travaria a página inteira).
 
-⚠️ Nada disto rodou contra o portal: os botões e a mensagem vêm do HTML do
-usuário, e os seletores têm teste com `lxml` sobre ele. O que falta confirmar
-está em `docs/refatoracao/PENDENCIAS.md`, 2026-09-28.
+✅ Validado no portal pelo usuário na v1.1.1-rc.4 (2026-09-28). Os botões e a
+mensagem vêm do HTML do usuário, e os seletores têm teste com `lxml` sobre ele;
+o registro de antes da validação está em `docs/refatoracao/PENDENCIAS.md`,
+2026-09-28.
