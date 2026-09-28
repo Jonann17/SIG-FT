@@ -1384,3 +1384,44 @@ rede corporativa, e ele recebe o texto (não o PDF).
   `3600 rpm`).
 - Ficha em que a IA não respondeu passa a contar como **falha** no resumo, sem gerar o
   `_completed`.
+
+---
+
+## 2026-09-28 — a IA confere as respostas do FORNECEDOR (pedido do Luan)
+
+**Origem:** *"muitas vezes por preguiça/desleixo eles respondem que determinada característica
+técnica não se aplica, o que não é verdade, e essa característica está nitidamente no datasheet
+que eu forneci do item."* E: divergência de valor preenchido só no log, sem sobrescrever.
+Spec com as decisões e as abordagens descartadas:
+[`docs/superpowers/specs/2026-09-28-autospec-conferencia-fornecedor-design.md`](superpowers/specs/2026-09-28-autospec-conferencia-fornecedor-design.md).
+
+### O que muda para quem mexe no módulo
+
+- **§3.1 das regras de negócio mudou** (ver `08b`): "não se aplica" na tabela de
+  especificações deixa de ser intocável — vira o valor do documento **com a prova conferida**,
+  original no comentário da célula. Valor preenchido continua intocável.
+- **Chamada separada**, por decisão do usuário: o prompt e a chamada do preenchimento não
+  mudaram. O bloco que decide o envio do documento saiu de `generate_ai_response` para
+  `_preparar_envio` (extração pura; os testes de `test_autospec_documentos.py` passam sem
+  mudança) — a conferência usa o mesmo.
+- **Ficha completa deixou de ser pulada** quando tem resposta do fornecedor e o interruptor está
+  ligado. Sem nada a gravar, nenhum `_completed`.
+- `_conferir_pela_prova` é reaproveitado para decidir o "não se aplica"; o que ele aprovaria
+  como DEDUÇÃO ou página-imagem **não** troca a resposta do fornecedor.
+- Peças puras em `services/autospec_auditoria.py`; testes em
+  `tests/test_autospec_auditoria*.py` (4 arquivos) e `tests/test_nao_se_aplica.py`.
+
+### Prova com o openpyxl real (IA dublada)
+
+Ficha `.xlsx` montada com `"Não se aplica"` (tensão), `"IP54"` (proteção) e `"1,2 kg"` (peso),
+contra um datasheet com `24 VDC`, `IP65` e `1.2 kg`: o `_completed` saiu com `24 Vcc` em azul e
+o comentário; `IP54` e `1,2 kg` intactos; a divergência `IP54 x IP65` só no log; o original
+não foi tocado. A resposta real do modelo ao prompt novo só a máquina do usuário mostra —
+roteiro na Etapa 3b.4 de `docs/ROTEIRO_DE_TESTE.md`.
+
+### Custo
+
+Uma chamada a mais por ficha **que tenha resposta do fornecedor e documento**. A entrada é o
+documento de novo; a saída é curta (prova só na divergência). Cache no rerun. O painel Gastos de
+IA mostra o custo real, na tarefa "autospec". Não medido aqui: o cache implícito de prefixo dos
+provedores (o Gemini direto manda o PDF antes do texto; o OpenRouter, depois).

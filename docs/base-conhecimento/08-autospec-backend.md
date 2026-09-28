@@ -41,6 +41,21 @@
 > Interruptor: `core.ler_pdf_nativo = False` volta ao caminho de texto (documento inteiro, sem
 > corte). Os limites de 60k/50k caracteres citados mais abaixo **não existem mais**.
 
+> ### 🆕 2026-09-28: a IA confere as respostas do FORNECEDOR contra o datasheet
+>
+> Pedido do Luan; decisões dele e o porquê: [`docs/superpowers/specs/2026-09-28-autospec-conferencia-fornecedor-design.md`](../superpowers/specs/2026-09-28-autospec-conferencia-fornecedor-design.md).
+>
+> | Etapa | Como é | Onde |
+> |---|---|---|
+> | Coleta | a linha da tabela de especificações COM resposta (que antes era pulada) vai para `self.respostas_do_fornecedor`, com a marca de "não se aplica". A tupla de 7 de `analyze_sheet` não muda | `analyze_sheet`, `ficha_layout.e_nao_se_aplica` |
+> | Chamada | SEPARADA do preenchimento (que continua byte a byte igual), com a mesma política de envio (`_preparar_envio`, extraído de `generate_ai_response`) e o mesmo cache. Resposta curta: prova só na divergência | `auditar_respostas_do_fornecedor`, `_chamar_auditoria`, `prompts.montar_autospec_auditoria` |
+> | "Não se aplica" | vira o valor do documento SÓ se `_conferir_pela_prova` aprovar (sem dedução, sem página-imagem); a resposta original vai para o comentário da célula | `_decidir_nao_se_aplica` |
+> | Valor preenchido | **nunca é gravado**. Divergência comprovada vai para o log; trecho inexistente, de outro modelo, ou mesma coisa em outra unidade é descartado | `_decidir_divergencia`, `autospec_auditoria.equivalentes` |
+> | Lote | ficha sem campo vazio com resposta do fornecedor passa a ser conferida; o que a conferência grava entra no MESMO `fill_save`; sem nada a gravar, nenhum `_completed`. A 2ª passada confere também | `process_queue`, `processar_conferidos`, `_mesclar_auditoria` |
+> | Tela | caixa "Conferir as respostas do fornecedor contra o datasheet", marcada | `sigft/app/views/autospec.py` → `core.auditar_fornecedor` |
+>
+> Peças puras (ler a resposta, comparar valores, log): `sigft/services/autospec_auditoria.py`.
+
 ## Propósito
 Automatiza o preenchimento de fichas técnicas padrão via RAG (Retrieval-Augmented Generation). O módulo analisa campos vazios na ficha, recupera contexto de documentos locais e web, consulta um modelo de IA para gerar respostas técnicas inteligentes e preenche a planilha com fonte azul e sufixo `_completed`.
 
@@ -102,6 +117,7 @@ Orquestra o pipeline RAG completo.
 - `extract_pmib_code(input_filepath)`: regex sobre nome arquivo, busca padrão `\d{10}\.(\d{4})`, retorna sufixo de 4 dígitos
 - `find_header_columns(pmib_sheet)`: varredura linha 1-10 procurando por "CÓDIGO PMIB", "DESCRIÇÃO", "CÓDIGO MATERIAL", retorna tupla `(pmib_col_idx, desc_col_idx, mat_col_idx, start_row)`
 - `get_pmib_data(pmib_path, code_suffix)`: lê planilha _STATUS_PMIB, procura código com sufixo, retorna tupla `(descrição_completa, código_material)` ou `("", "")`
+- `auditar_respostas_do_fornecedor(txt_brv, fab, desc_comp, respostas, context, callbacks=None)` (2026-09-28): confere o que o fornecedor escreveu contra os documentos; devolve `autospec_auditoria.ResultadoAuditoria` (`gravar`/`campos`/`notas` no formato do `fill_save`, `divergencias` só para o log). Nunca levanta: falha vira `resultado.falha` + aviso
 - `is_empty(val)`: célula vazia, em branco, ou cujo texto **INICIA COM** "FORNECER" (`.startswith`, não "contém") — a instrução do formulário conta como pendente, um valor real não
 - `analyze_sheet(filepath, status_pmib_path)`: lê ficha, detecta campos vazios (estáticos via CONFIG_MAP e dinâmicos na linha 79+), retorna tupla `(workbook, missing_dict, txt_breve, fabricante, desc_comp, cod_mat)` onde `missing_dict` mapeia campo → `{type, desc, ref}`
 - `retrieve_context(txt_brv, fab, cod_mat, refs_locais)`: pipeline RAG de 2 etapas: processa documentos locais via PDFProcessor, depois busca web com 2 queries (por código material + por descrição breve), guarda cada documento INTEIRO (desde 2026-09-24; os PDFs da web com os bytes, para poderem ir como anexo), retorna tupla `(contexto_completo, lista_urls)` e deixa a lista de `Documento` em `self._documentos`

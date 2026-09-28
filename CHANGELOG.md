@@ -53,6 +53,13 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Fechar o SIG-FT: fechar a janela passa a encerrar o programa de verdade. Antes, fechar no meio de uma pausa do robô (esperando o login no portal, por exemplo) deixava o SIG-FT rodando escondido, e era isso que travava a instalação. Com uma tarefa em andamento (robô, tradução ou consulta à IA), ele **pergunta antes de fechar**, porque ela é interrompida no ponto em que está.
 - Abertura: quando a janela principal não consegue abrir, aparece uma mensagem com o erro e o caminho do log, em vez de o programa ficar rodando escondido.
 
+**AutoSpec**
+
+- AutoSpec: a IA passa a **conferir as respostas do fornecedor** contra o datasheet, na tabela de especificações. Quando o fornecedor respondeu **"Não se aplica"** (ou N/A, "não informado", "-") e o datasheet traz o valor, com a prova conferida (trecho e página), o valor do documento entra na ficha em azul, e a resposta original fica num comentário da célula.
+- AutoSpec: resposta do fornecedor **com valor nunca é alterada**. Se ela diverge do datasheet, o log mostra os dois valores, a página e o trecho do documento, para você conferir. Diferença só de unidade ou de escrita (24 Vcc e 24 VDC) não é apontada.
+- AutoSpec: ficha já toda preenchida pelo fornecedor deixa de ser pulada: ela é conferida, e só gera o `_completed` se algum "Não se aplica" for corrigido.
+- AutoSpec: caixa nova **"Conferir as respostas do fornecedor contra o datasheet"**, marcada. Ela usa uma consulta de IA a mais por ficha que tenha resposta do fornecedor; desmarque no lote em que você só quer preencher. Reprocessar a mesma ficha não gasta de novo.
+
 ## 1.1.0 - 2026-09-24
 
 **AutoSpec AI**

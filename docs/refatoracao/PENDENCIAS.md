@@ -740,3 +740,18 @@ volta a gravar). Isto aqui ficou em aberto:
 |---|---|---|---|
 | 2026-09-25 | Upload de características na VPN do Luan | **O Gemini direto não passa pela cascata de rede (PAC).** `core/llm/providers/gemini.py` usa o SDK do Google (`transport="rest"`), que sai direto e ignora o `core/rede.py`; na VPN a conexão direta é derrubada (`ConnectionResetError 10054`). O que o app chama pelo `rede` (OpenRouter, catálogo de modelos, atualização) funciona na VPN — o Grok pelo OpenRouter no Cria Fichas, por exemplo. Proposta: trocar o SDK por REST via `rede.post`, como o OpenRouter e o catálogo do Gemini já fazem, o que ainda tira o app de um SDK que o Google descontinuou. Mexe no caminho por onde o AutoSpec manda PDF (frente Rafael) e só se prova na VPN. | Decisão do Luan |
 | 2026-09-25 | mesma investigação | **A escolha de modelo do Upload pareceu não valer.** Com a tarefa apontada para o OpenRouter no painel, o erro saiu no formato do SDK do Gemini — a chamada foi pelo Gemini direto. Suspeita, não confirmada: com o provedor OpenRouter na tela, a lista também mostra as seleções já salvas de outros provedores, com o rótulo `(salvo) gemini / …`, e filtrar por "gemini" as mistura com os `google/gemini-…` do OpenRouter. A 1.1.1-rc.3 escreve no log o provedor e o modelo de cada ficha: com ela, dá para confirmar. | Confirmar com o Luan na rc.3 |
+
+## 2026-09-28 — a conferência das respostas do fornecedor no AutoSpec
+
+Pedido do Luan, na frente do Rafael (spec
+`docs/superpowers/specs/2026-09-28-autospec-conferencia-fornecedor-design.md`). Zonas
+compartilhadas tocadas em commits isolados, e o que ficou para depois:
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-09-28 | Conferência do fornecedor | **Zona compartilhada tocada — `core/llm/prompts.py`:** função NOVA `montar_autospec_auditoria`, logo depois de `montar_autospec`. O `montar_autospec` e a fixture dele não mudaram. | Registro (feito) |
+| 2026-09-28 | Conferência do fornecedor | **Zona compartilhada tocada — `core/rpa/ficha_layout.py`:** função NOVA `e_nao_se_aplica`, ao lado de `e_marcador_de_faltante`. `CONFIG_MAP` intocado. | Registro (feito) |
+| 2026-09-28 | Conferência do fornecedor | **Quatro listas de "N/A" no projeto.** `ficha_layout.e_nao_se_aplica` (a mais completa: sem acento, com frase + complemento, "não informado", `-`) convive com `analyzer.FORBIDDEN_NA_STRINGS`, a tupla de `upload_conditions.campos_em_branco_na_origem` e `traducao_respostas._NAO_HA`. Não foram unificadas porque mudaria a nota do Analyzer e o aviso do Upload, fora do pedido. Unificar exige decidir, lista a lista, se "não informado" e `-` contam. | CP 8.x (limpeza) ou quando um dos três for mexido |
+| 2026-09-28 | Conferência do fornecedor | **A 2ª passada do AutoSpec (documentos conferidos) não recorta o lastro pelo modelo do item.** `_modelo_do_item` só é definido em `retrieve_context`, e `processar_conferidos` não passa por ele (usa `contexto_das_urls`); o core da 2ª passada é novo, então o recorte fica desligado — o lastro confere contra o documento inteiro. Vale para o preenchimento e para a conferência nova. Conserto: `processar_conferidos` guardar `analise[6]` em `self._modelo_do_item`. | Frente do AutoSpec |
+| 2026-09-28 | Mural do `CLAUDE.md` (teto de 5) | Saiu do mural, por ser o aviso mais antigo: *"2026-09-24, Rafael: reescrevi `montar_autospec` e regerei a fixture dele — só essa função de `prompts.py`; pede a prova de cada valor (`tipo/fonte/pagina/trecho/justificativa`). Release 1.1.0 publicada com a autorização do Luan; no CHANGELOG cada item ganhou o nome do módulo na frente."* | Registro |
+

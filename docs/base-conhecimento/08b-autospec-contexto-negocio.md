@@ -122,6 +122,19 @@ o texto **iniciar com** a instrução do formulário `"FORNECER..."` (ex.: `FORN
 
 Se estiver com `"Não aplicável"`, `"N/A"` ou qualquer valor real, **o script não toca**.
 
+> **Refinado em 2026-09-28, por decisão do Luan** — só na tabela de especificações (linha 79
+> em diante):
+>
+> | O fornecedor escreveu | O que o AutoSpec faz |
+> |---|---|
+> | "Não se aplica" e afins (N/A, não aplicável, não informado, N/D, `-`) | a IA procura no datasheet. **Com a prova conferida** (trecho no documento, na linha do modelo certo, número saindo dele), grava o valor do documento em azul, e a resposta original fica num **comentário da célula**. Sem prova, ou só por dedução: não toca |
+> | Um valor | **continua sem tocar.** Se diverge do datasheet, a divergência vai **só para o log** |
+>
+> Motivo, nas palavras dele: o fornecedor responde "não se aplica" por desleixo, e a
+> característica está nitidamente no datasheet. `"Não"`, `"Nenhum"`, `"Não possui"` são
+> resposta, não "não se aplica". O arquivo do fornecedor nunca é alterado: tudo sai no
+> `_completed`. Spec: `docs/superpowers/specs/2026-09-28-autospec-conferencia-fornecedor-design.md`.
+
 ### 3.2 A dicotomia de preenchimento
 
 | Tipo | Definição | Se NÃO achar no manual | Exemplos |

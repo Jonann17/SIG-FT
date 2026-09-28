@@ -315,7 +315,9 @@ Abra a ficha `.xlsx` e confira, nessa ordem:
    valor escrito na linha errada.
 2. **Os valores batem com o manual?** Pegue 3 ou 4 e confira no PDF. Valor
    plausível e errado é pior que campo vazio.
-3. **Algum campo que estava preenchido foi apagado?** Não pode acontecer.
+3. **Algum campo que estava preenchido foi apagado?** Não pode acontecer. A única troca
+   permitida é a do "não se aplica" (e afins) que o documento prova — ver 3b.4 —, e ela
+   sempre deixa um comentário na célula com o que o fornecedor tinha escrito.
 4. **Os dropdowns** (Origem, Tipo, Unidade) ficaram com opção válida?
 
 ### 3b.3 — Leitura integral e prova por valor (2026-09-24)
@@ -338,6 +340,32 @@ a comparação com o AMP.** O que olhar:
 
 Na ficha `.xlsx`: as células preenchidas por **dedução** ou lidas de **página-imagem** têm um
 **comentário** (triângulo vermelho no canto) assinado "AutoSpec", com a justificativa.
+
+### 3b.4 — A conferência das respostas do fornecedor (2026-09-28)
+
+A IA passou a conferir o que o **fornecedor** escreveu na tabela de especificações contra o
+datasheet. Monte uma ficha de teste a partir de uma já preenchida pelo fornecedor, com o
+datasheet anexado, e garanta nela:
+
+- uma resposta **"Não se aplica"** (ou N/A, "não informado", "-") numa característica que
+  **está** no datasheet;
+- uma resposta **"Não se aplica"** numa característica que o datasheet **não** traz;
+- uma resposta com **valor diferente** do datasheet (ex.: `IP54` onde o documento diz `IP65`);
+- uma resposta **igual** ao datasheet, escrita de outro jeito (ex.: `24 Vcc` × `24 VDC`).
+
+| # | O que fazer | Esperado |
+|---|---|---|
+| 1 | Rodar a ficha com a caixa **"Conferir as respostas do fornecedor contra o datasheet"** marcada | No console: `Conferindo N resposta(s) do fornecedor...` |
+| 2 | Ler o console | `... ESTAO no documento: gravei o valor do documento` listando o 1º caso; `divergencia(s) ... NADA foi alterado na ficha` listando o 3º, com o trecho; o 2º e o 4º só entram nas contagens |
+| 3 | Abrir o `_completed` | 1º caso: o valor do documento **em azul**, com comentário "AutoSpec: o fornecedor respondeu 'Não se aplica'..." ; 2º, 3º e 4º casos: **exatamente** o que o fornecedor escreveu |
+| 4 | Rodar de novo a mesma ficha | `Conferencia do fornecedor reaproveitada do cache: nenhum token gasto` |
+| 5 | Desmarcar a caixa e rodar uma ficha sem campo vazio | `Ficha já está completa.`, como antes |
+| 6 | Painel **Gastos de IA** | quanto a conferência custou (entra como tarefa "autospec") |
+
+**Erros que valem anotar:** um valor do fornecedor (não "não se aplica") alterado na ficha —
+**me avise na hora**, é justamente o que não pode acontecer; uma divergência que é só unidade
+ou tradução (`Aço inox` × `Stainless steel`); e a linha
+`A conferencia das respostas do fornecedor falhou (...)`, com o erro.
 
 ### 3b.2 — A conferência de documentos, e o `.txt` que a salva
 
