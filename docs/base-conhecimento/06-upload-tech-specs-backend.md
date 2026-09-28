@@ -267,3 +267,49 @@ concluídas seguem em `pmibs_finalizados` e são marcadas COMPLETO normalmente
 ⚠️ **Nada disso rodou contra o portal.** Os seletores do aviso e do campo
 inválido vieram do HTML que o usuário colou, e há teste avaliando-os com `lxml`
 contra esse recorte; o fluxo inteiro só se prova em execução real.
+
+---
+
+## 2026-09-28 — LISTA é UMA opção só
+
+Relato do usuário: a característica TIPO (LISTA) do PDM SAM tem, em VALORES PT,
+"Proteção contra descargas atmosféricas, etc., para pulsos pequenos, proteção
+contra pulsos residuais" — **cada vírgula separa uma opção** do dropdown do
+portal. A IA respondeu "Protecao contra descargas atmosfericas, etc.": duas
+opções numa resposta, e nenhuma casou no `<select>` (o log dizia
+`Lista 'TIPO': nenhuma opção casou`, e o campo virava pendência manual).
+
+**Causa:** o prompt mandava juntar "múltiplos itens" de LISTA com ponto e
+vírgula e dizia que a vírgula era "exclusiva para decimais" — justamente o
+separador que o Master usa entre as opções. Corrigido: LISTA é escolha única,
+as opções vêm separadas por vírgula, e "etc." é uma opção como as outras.
+
+**Garantia em código**, que não depende de o modelo obedecer
+(`preparar_dados_ia` → `garantir_uma_opcao_por_lista`, logo depois da resposta
+da IA):
+
+| Resposta da IA | O que acontece |
+|---|---|
+| UMA opção (com ou sem acento, em qualquer caixa) | reescrita com o texto do Master, **sem acento**, e o ES pela mesma posição |
+| duas opções, ou nenhuma | UMA pergunta a mais à IA, só sobre essas características, pedindo o **número** da opção |
+| continua sem UMA opção válida | fica como veio, com `[Lista]` no log; se não casar na tela, vira pendência manual |
+
+Nunca vira REMOVER, e o código nunca escolhe entre as opções que a IA juntou —
+um palpite errado seria invisível (a ficha sairia com um valor plausível).
+
+**Sem acento, de propósito:** quando o portal está noutra revisão do PDM e a
+linha virou CHAR, `_preencher_linha` recua e escreve o texto num campo que
+recusa acento ("Caracter inválido!"). Para o `<select>` não faz diferença:
+`selecionar_dropdown_lista` ganhou um passo entre o exato e a substring — a
+opção **igual** sem acento vence a que só a contém ("Aco" escolhe "Aço", e não
+"Aço inox" listado antes).
+
+| Função | O que faz |
+|---|---|
+| `opcoes_da_lista(valores)` | separa as opções do Master pela vírgula (a vírgula decimal, entre dois algarismos, fica) |
+| `opcoes_na_resposta(resposta, opcoes)` | quais opções a resposta traz: `[i]` é o caso bom |
+| `conferir_listas(dados, contexto)` | `(dados_ajustados, problemas)` — só LISTA do Master com ACAO PREENCHER |
+| `TechSpecsProcessor.garantir_uma_opcao_por_lista` | conferir → perguntar de novo só o que falhou → aplicar ou avisar |
+
+⚠️ JSON gerado **antes** disto não é conferido pelo robô: para as fichas com
+LISTA errada, rode a etapa de IA de novo.

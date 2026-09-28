@@ -371,6 +371,24 @@ def deduplicar_contexto(lista_contexto):
     return unicos
 
 
+def _desembrulhar(bruto):
+    """Tira o envelope de UMA chave (`{"items": [...]}`), aninhado ou não.
+
+    `{"resultado": {"items": [...]}}` já foi visto na natureza. O teto de 3
+    evita laço infinito num JSON malformado auto-referente. Serve às duas
+    respostas da IA deste módulo: a da ficha (`normalizar_resposta_specs`) e a
+    da pergunta dirigida sobre as LISTA (`TechSpecsProcessor._pedir_opcao_unica`).
+    """
+    for _ in range(3):
+        if isinstance(bruto, dict) and len(bruto) == 1:
+            unico = next(iter(bruto.values()))
+            if isinstance(unico, (list, dict)):
+                bruto = unico
+                continue
+        break
+    return bruto
+
+
 def normalizar_resposta_specs(bruto):
     """Devolve a lista de características da resposta da IA, ou levanta
     `ValueError` dizendo o que veio no lugar.
@@ -382,16 +400,7 @@ def normalizar_resposta_specs(bruto):
     if bruto is None:
         raise ValueError("A IA não devolveu resposta nenhuma.")
 
-    # Desembrulha envelopes de 1 chave, aninhados ou não (`{"resultado":
-    # {"items": [...]}}` já foi visto na natureza). O teto de 3 evita laço
-    # infinito num JSON malformado auto-referente.
-    for _ in range(3):
-        if isinstance(bruto, dict) and len(bruto) == 1:
-            unico = next(iter(bruto.values()))
-            if isinstance(unico, (list, dict)):
-                bruto = unico
-                continue
-        break
+    bruto = _desembrulhar(bruto)
 
     if not isinstance(bruto, list):
         raise ValueError(
@@ -419,6 +428,181 @@ def normalizar_resposta_specs(bruto):
             )
 
     return bruto
+
+
+# =============================================================================
+# LISTA É UMA OPÇÃO SÓ (2026-09-28)
+# =============================================================================
+# Relato do usuário. No PDM SAM, a característica TIPO (LISTA) tem
+#
+#   VALORES PT: "Proteção contra descargas atmosféricas, etc., para pulsos
+#                pequenos, proteção contra pulsos residuais"
+#
+# e a IA respondeu "Protecao contra descargas atmosfericas, etc." -- DUAS
+# opções numa resposta só. O `<select>` do portal seleciona UMA; nenhuma casou
+# e o campo ficou para a pessoa.
+#
+# A causa estava no PROMPT, e foi corrigida lá: ele mandava separar "vários
+# itens" de LISTA com ponto e vírgula e dizia que a vírgula era "exclusiva para
+# decimais" -- justamente o separador que o Master usa entre as opções. O que
+# fica AQUI é a garantia, em código: *"cada vírgula ali no campo da resposta
+# mapeado pelo excel PDM SAM é um separador do que aparecerá na lista de
+# opções"* (regra do usuário), e a resposta tem de ser exatamente UMA delas.
+#
+# ⚠️ ESCOLHER entre as opções que a IA juntou NÃO é trabalho do código. É
+# julgamento sobre o material, e um palpite errado é invisível: a ficha sai com
+# um valor plausível. O código só CONFERE, e devolve a escolha à IA.
+
+# A vírgula separa opção -- menos a vírgula DECIMAL, entre dois algarismos:
+# "1,5 mm, 2,5 mm" são duas opções, não quatro.
+_RE_SEPARADOR_DE_OPCOES = re.compile(r"(?<!\d),|,(?!\d)")
+# Na RESPOSTA, o ponto e vírgula também junta opções: era o separador que o
+# prompt antigo mandava usar.
+_RE_JUNCAO_NA_RESPOSTA = re.compile(r"(?<!\d),|,(?!\d)|;")
+
+
+def _sem_acento(texto):
+    base = unicodedata.normalize("NFD", str(texto if texto is not None else ""))
+    return "".join(c for c in base if unicodedata.category(c) != "Mn")
+
+
+def _sem_acento_maiusculo(texto):
+    """Sem acento, em caixa alta e com espaços únicos -- como se comparam nomes."""
+    return " ".join(_sem_acento(texto).upper().split())
+
+
+def _chave_de_opcao(texto):
+    """Como a opção é comparada: também sem a pontuação das pontas -- o PT do
+    relato tem "etc." e o ES tem "etc", e são a mesma opção."""
+    return _sem_acento_maiusculo(texto).strip(" .;:")
+
+
+def opcoes_da_lista(valores):
+    """`"A, etc., B"` -> `["A", "etc.", "B"]`: as opções de uma LISTA do Master.
+
+    Célula vazia do pandas chega como a string `"nan"` (`preparar_dados_ia` faz
+    `str(...)`), e vira lista vazia -- não há o que conferir.
+    """
+    texto = str(valores if valores is not None else "").strip()
+    if texto.upper() in ("", "NAN", "NONE", "NULL"):
+        return []
+    partes = (parte.strip() for parte in _RE_SEPARADOR_DE_OPCOES.split(texto))
+    return [parte for parte in partes if _chave_de_opcao(parte)]
+
+
+def opcoes_na_resposta(resposta, opcoes):
+    """Posições (base 0) das opções que a `resposta` traz, na ordem dela.
+
+    `[i]` é o caso bom: a resposta é UMA opção (sem acento, em outra caixa, sem
+    o ponto final -- tanto faz). Duas ou mais posições: a IA juntou opções, o
+    caso do relato. Lista vazia: a resposta não é opção nenhuma (texto
+    traduzido, inventado ou só um pedaço de uma opção).
+    """
+    chaves = [_chave_de_opcao(opcao) for opcao in opcoes]
+    alvo = _chave_de_opcao(resposta)
+    if not alvo:
+        return []
+    if alvo in chaves:
+        return [chaves.index(alvo)]
+
+    achadas = []
+    for pedaco in _RE_JUNCAO_NA_RESPOSTA.split(str(resposta)):
+        chave = _chave_de_opcao(pedaco)
+        if not chave:
+            continue
+        if chave not in chaves:
+            return []      # um pedaço que não é opção: a resposta não é feita de opções
+        achadas.append(chaves.index(chave))
+    return list(dict.fromkeys(achadas))   # a mesma opção repetida conta uma vez
+
+
+def escolher_opcao(dado, entrada, indice):
+    """O item com a opção `indice` (base 0) do Master, em PT e em ES.
+
+    O texto é o do Master SEM ACENTO -- a mesma regra que o prompt dá à IA.
+    Com acento seria o texto exato da tela, mas quando o portal está noutra
+    revisão do PDM e a linha virou CHAR, `_preencher_linha` recua e escreve
+    este texto num campo de texto, que recusa acento ("Caracter inválido!").
+    O `<select>` não precisa dele: `selecionar_dropdown_lista` compara sem
+    acento, e a opção IGUAL vence a que só a contém.
+
+    O ES vem da MESMA posição, como o prompt manda. Se o Master tem PT e ES com
+    quantidades diferentes, a posição não serve de ponte: vale o ES da IA
+    quando ele for UMA opção do ES; senão, fica o que ela mandou (o robô tenta
+    o PT primeiro de qualquer jeito).
+    """
+    opcoes_pt = opcoes_da_lista(entrada.get("VALORES_POSSIVEIS_MASTER"))
+    opcoes_es = opcoes_da_lista(entrada.get("VALORES_POSSIVEIS_ES"))
+
+    novo = dict(dado)
+    novo["RESPOSTA_PT_FINAL"] = _sem_acento(opcoes_pt[indice])
+    if len(opcoes_es) == len(opcoes_pt):
+        novo["RESPOSTA_ES_FINAL"] = _sem_acento(opcoes_es[indice])
+    else:
+        achadas_es = opcoes_na_resposta(dado.get("RESPOSTA_ES_FINAL"), opcoes_es)
+        if len(achadas_es) == 1:
+            novo["RESPOSTA_ES_FINAL"] = _sem_acento(opcoes_es[achadas_es[0]])
+    return novo
+
+
+def conferir_listas(dados, contexto):
+    """Confere cada LISTA da resposta da IA contra as opções do Master.
+
+    Devolve `(dados_ajustados, problemas)`, com os itens na mesma ordem:
+
+    - resposta = UMA opção -> reescrita com o texto do Master, PT e ES, sem
+      acento (ver `escolher_opcao`) -- é o que conserta caixa, pontuação e o
+      ES trocado;
+    - duas ou mais opções, ou nenhuma -> o item fica INTACTO e vai para
+      `problemas`, com o motivo. Quem escolhe é a IA, de novo
+      (`TechSpecsProcessor.garantir_uma_opcao_por_lista`).
+
+    Só entra o que o MASTER diz que é LISTA e a IA mandou PREENCHER. Vírgula em
+    CHAR é texto; REMOVER não tem resposta; LISTA sem opções no Master não tem
+    contra o que conferir -- os três passam como vieram.
+    """
+    por_nome = {}
+    for entrada in contexto or ():
+        por_nome.setdefault(_sem_acento_maiusculo(entrada.get("CARACTERISTICA_DESC_PT")), entrada)
+
+    ajustados, problemas = [], []
+    for dado in dados:
+        entrada = por_nome.get(_sem_acento_maiusculo(dado.get("CARACTERISTICA_CHAVE")))
+        e_lista = (entrada is not None
+                   and str(entrada.get("TIPO_DADO", "")).strip().upper() == "LISTA"
+                   and str(dado.get("ACAO", "")).strip().upper() == "PREENCHER")
+        opcoes_pt = opcoes_da_lista(entrada.get("VALORES_POSSIVEIS_MASTER")) if e_lista else []
+        if not opcoes_pt:
+            ajustados.append(dado)
+            continue
+
+        achadas = opcoes_na_resposta(dado.get("RESPOSTA_PT_FINAL"), opcoes_pt)
+        if len(achadas) == 1:
+            ajustados.append(escolher_opcao(dado, entrada, achadas[0]))
+            continue
+
+        problemas.append({
+            "posicao": len(ajustados),
+            "entrada": entrada,
+            "CARACTERISTICA_CHAVE": str(dado.get("CARACTERISTICA_CHAVE", "")),
+            "RESPOSTA_RECUSADA": str(dado.get("RESPOSTA_PT_FINAL", "") or ""),
+            "MOTIVO": (f"junta {len(achadas)} opções numa resposta só" if achadas
+                       else "não é nenhuma das opções da lista"),
+        })
+        ajustados.append(dado)
+    return ajustados, problemas
+
+
+def _como_inteiro(valor):
+    """`2`, `2.0` ou `"2"` -> 2; qualquer outra coisa (`"1, 2"`, `None`) -> None."""
+    if isinstance(valor, bool):
+        return None
+    if isinstance(valor, int):
+        return valor
+    if isinstance(valor, float) and valor.is_integer():
+        return int(valor)
+    texto = str(valor if valor is not None else "").strip()
+    return int(texto) if texto.isdigit() else None
 
 
 # =============================================================================
@@ -657,6 +841,12 @@ class TechSpecsProcessor:
             dados_tratados = self._chamar_gemini_specs(pacote_envio, callback_log)
 
             if dados_tratados:
+                # LISTA é UMA opção só (2026-09-28). Em CÓDIGO e não só no
+                # prompt: a resposta que juntou duas opções não casa com
+                # nenhuma no portal -- ver `conferir_listas`.
+                dados_tratados = self.garantir_uma_opcao_por_lista(
+                    dados_tratados, lista_contexto, callback_log)
+
                 # Transbordo de casas decimais -> texto livre. Em CÓDIGO e não
                 # só no prompt: é aritmética com resposta única, e das 6.085
                 # linhas NUM do Master 6.060 aceitam 2 casas -- depender do
@@ -750,6 +940,102 @@ class TechSpecsProcessor:
         except Exception as e:
             if callback_log: callback_log(f"Erro ao chamar IA ({self.ia_em_uso()}): {e}")
             return None
+
+    def garantir_uma_opcao_por_lista(self, dados, lista_contexto, callback_log=None):
+        """UMA opção por característica LISTA, garantida em código (2026-09-28).
+
+        1. `conferir_listas`: a resposta que já é UMA opção sai com o texto
+           do Master (sem acento); as outras voltam como problema.
+        2. Havendo problema, UMA chamada a mais à IA, só com essas
+           características, pedindo o NÚMERO da opção -- número não tem
+           acento, grafia nem tradução para errar.
+        3. O que continuar sem UMA opção válida fica como veio, com aviso no
+           log: o robô não vai achar a opção e a pessoa escolhe no portal.
+           Nunca vira REMOVER, e nunca um palpite do código.
+
+        Não levanta: é uma conferência a mais, e ela não pode custar a ficha.
+        """
+        def _log(mensagem):
+            if callback_log:
+                callback_log(mensagem)
+
+        dados, problemas = conferir_listas(dados, lista_contexto)
+        if not problemas:
+            return dados
+
+        for problema in problemas:
+            _log(f"   [Lista] '{problema['CARACTERISTICA_CHAVE']}': a IA respondeu "
+                 f"{problema['RESPOSTA_RECUSADA']!r}, que {problema['MOTIVO']}. "
+                 f"O campo do portal seleciona UMA opção.")
+        _log(f"   [Lista] Perguntando de novo à IA, só sobre {len(problemas)} "
+             f"característica(s), pelo número da opção...")
+
+        escolhas = self._pedir_opcao_unica(problemas, _log)
+
+        ajustados = list(dados)
+        for problema in problemas:
+            nome = problema["CARACTERISTICA_CHAVE"]
+            opcoes_pt = opcoes_da_lista(problema["entrada"].get("VALORES_POSSIVEIS_MASTER"))
+            numero = escolhas.get(_sem_acento_maiusculo(nome))
+            if numero is not None and 1 <= numero <= len(opcoes_pt):
+                posicao = problema["posicao"]
+                ajustados[posicao] = escolher_opcao(ajustados[posicao], problema["entrada"], numero - 1)
+                _log(f"   [Lista] '{nome}': opção {numero} -> {opcoes_pt[numero - 1]!r}.")
+            else:
+                _log(f"   [Lista] '{nome}': continua sem UMA opção válida -- fica "
+                     f"{problema['RESPOSTA_RECUSADA']!r}. Se ela não casar com nenhuma "
+                     f"opção da tela, o robô deixa este campo para escolher à mão no "
+                     f"portal. Opções: " + " | ".join(opcoes_pt))
+        return ajustados
+
+    def _pedir_opcao_unica(self, problemas, _log):
+        """A pergunta dirigida: `{nome normalizado: número da opção}`.
+
+        Vai com o que a IA precisa para escolher -- o que o fornecedor
+        escreveu, o texto de ajuda e as opções numeradas em PT e ES -- e com a
+        resposta recusada, para ela saber o que não serve. Falha de rede ou de
+        formato devolve `{}`: as respostas ficam como vieram, com aviso.
+        """
+        pedido = []
+        for problema in problemas:
+            entrada = problema["entrada"]
+            opcoes_pt = opcoes_da_lista(entrada.get("VALORES_POSSIVEIS_MASTER"))
+            opcoes_es = opcoes_da_lista(entrada.get("VALORES_POSSIVEIS_ES"))
+            pedido.append({
+                "CARACTERISTICA_CHAVE": problema["CARACTERISTICA_CHAVE"],
+                "RESPOSTA_RECUSADA": problema["RESPOSTA_RECUSADA"],
+                "MOTIVO_DA_RECUSA": problema["MOTIVO"],
+                "RESPOSTA_CRUA_PT": str(entrada.get("RESPOSTA_CRUA_PT", "")),
+                "RESPOSTA_CRUA_ES": str(entrada.get("RESPOSTA_CRUA_ES", "")),
+                "TEXTO_AJUDA": str(entrada.get("TEXTO_AJUDA", "")),
+                "OPCOES": [
+                    {"NUMERO": numero, "PT": opcao_pt,
+                     "ES": opcoes_es[numero - 1] if len(opcoes_es) == len(opcoes_pt) else ""}
+                    for numero, opcao_pt in enumerate(opcoes_pt, start=1)
+                ],
+            })
+        prompt = prompts.montar_tech_specs_lista_unica(
+            json.dumps(pedido, indent=2, ensure_ascii=False))
+
+        try:
+            resposta = self._llm.generate(
+                prompt,
+                json_mode=True,
+                tags={"modulo": "upload_tech_specs_backend", "tarefa": "tech_specs"},
+            )
+            itens = _desembrulhar(resposta.parsed_json)
+        except Exception as erro:  # noqa: BLE001 -- a ficha segue com as respostas de antes
+            _log(f"   [Lista] A pergunta sobre as listas falhou ({self.ia_em_uso()}): {erro}")
+            return {}
+
+        escolhas = {}
+        for item in itens if isinstance(itens, list) else []:
+            if not isinstance(item, dict):
+                continue
+            numero = _como_inteiro(item.get("NUMERO_DA_OPCAO"))
+            if numero is not None:
+                escolhas[_sem_acento_maiusculo(item.get("CARACTERISTICA_CHAVE"))] = numero
+        return escolhas
 
 
 # =============================================================================
@@ -941,6 +1227,11 @@ class TechSpecsAutomation:
         qualquer casamento por substring. Substring é mais frouxo -- "60" casa
         "50/60" --, então deixá-la competir cedo trocaria um acerto exato de
         outro candidato por um acerto aproximado deste.
+
+        2026-09-28: entre os dois, a opção IGUAL sem acento/caixa. A resposta
+        de LISTA vai sem acento (`escolher_opcao`), o exato não a acha, e a
+        substring pegaria a PRIMEIRA opção que a contém -- "Aco" casaria
+        "Aço inox" se ele viesse antes de "Aço" na tela.
         """
         candidatos = [c for c in [texto, *alternativas] if str(c or "").strip()]
         if not candidatos:
@@ -960,18 +1251,21 @@ class TechSpecsAutomation:
             except Exception:
                 pass
 
-        # 2. Substring normalizada, para todos os candidatos.
-        for candidato in candidatos:
-            alvo = self.normalizar_texto(candidato)
-            for indice, opcao in enumerate(opcoes):
-                if alvo and alvo in self.normalizar_texto(opcao):
-                    try:
-                        self.engine.selecionar_por_indice(seletor, indice)
-                        return True
-                    except Exception:
-                        pass
+        # 2. Igual depois de normalizar (acento, caixa, espaços), para todos.
+        # 3. Substring normalizada, para todos.
+        for casa in (lambda alvo, opcao: alvo == opcao,
+                     lambda alvo, opcao: alvo in opcao):
+            for candidato in candidatos:
+                alvo = self.normalizar_texto(candidato)
+                for indice, opcao in enumerate(opcoes):
+                    if alvo and casa(alvo, self.normalizar_texto(opcao)):
+                        try:
+                            self.engine.selecionar_por_indice(seletor, indice)
+                            return True
+                        except Exception:
+                            pass
 
-        # 3. Desistiu -- e diz o que tentou E o que havia. As duas metades
+        # 4. Desistiu -- e diz o que tentou E o que havia. As duas metades
         # importam: sem as opções reais, quem lê o log não sabe se o problema
         # foi a resposta da IA ou a tela.
         if callback_log:
