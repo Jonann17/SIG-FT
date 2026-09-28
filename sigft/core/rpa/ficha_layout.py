@@ -314,6 +314,59 @@ def e_marcador_de_faltante(valor):
                for marcador in MARCADORES_DE_FALTANTE.values())
 
 
+# A resposta do FORNECEDOR que nao e valor: "N/A", "nao se aplica", "nao
+# informado", "-" (2026-09-28, pedido do Luan). O AutoSpec confere essas contra
+# o datasheet -- o fornecedor responde assim por desleixo, e a caracteristica
+# esta no documento. Ver
+# docs/superpowers/specs/2026-09-28-autospec-conferencia-fornecedor-design.md.
+#
+# Comparadas depois de tirar acento, caixa e pontuacao de borda. As SIGLAS so
+# valem sozinhas na celula ("Na posicao vertical" comeca com "na" e e resposta);
+# as FRASES valem tambem com complemento ("Nao se aplica ao modelo").
+#
+# Fora de proposito: "Nao", "Nenhum", "Nao possui". Dizem algo sobre o material,
+# e o AutoSpec nunca substitui resposta assim.
+#
+# Ha outras tres listas parecidas no projeto (analyzer, upload_conditions,
+# traducao_respostas), com usos diferentes; unifica-las esta no PENDENCIAS.md.
+_NAO_SE_APLICA_SIGLAS = frozenset({
+    "n/a", "na", "n.a", "n/d", "nd", "n.d", "nsa", "-", "--", "---",
+})
+_NAO_SE_APLICA_FRASES = (
+    "n/a", "nao se aplica", "nao aplicavel", "nao aplica", "nao e aplicavel",
+    "no aplica", "no se aplica", "no aplicable", "not applicable",
+    "not aplicable", "does not apply", "nao informado", "nao disponivel",
+    "sem informacao", "nao consta", "not available", "not informed",
+    "a definir", "a confirmar",
+)
+# Pelos codigos, e nao pelo caractere: ver o guard de tests/test_texto_da_ui.py.
+_TRACOS_TIPOGRAFICOS = "".join(map(chr, (0x2010, 0x2011, 0x2012, 0x2013, 0x2014,
+                                        0x2015, 0x2212)))
+
+
+def e_nao_se_aplica(valor):
+    """O fornecedor respondeu "nao se aplica" (ou N/A, "nao informado", "-")?"""
+    if valor is None or isinstance(valor, (int, float)):
+        return False
+    import unicodedata
+
+    texto = unicodedata.normalize("NFKD", str(valor))
+    texto = "".join(c for c in texto if not unicodedata.combining(c)).lower()
+    for traco in _TRACOS_TIPOGRAFICOS:
+        texto = texto.replace(traco, "-")
+    texto = " ".join(texto.split()).strip(" .;:,!")
+    if not texto:
+        return False
+    if texto in _NAO_SE_APLICA_SIGLAS:
+        return True
+    for frase in _NAO_SE_APLICA_FRASES:
+        if texto == frase:
+            return True
+        if texto.startswith(frase) and not texto[len(frase)].isalnum():
+            return True
+    return False
+
+
 # O título da seção de especificações, por idioma. O `analyzer` já procurava
 # os dois desde 2026-09-03 (`TITULOS_DAS_SPECS`) para achar a linha inicial;
 # aqui o mesmo texto serve de PROVA DE IDIOMA — vem do próprio documento, e
