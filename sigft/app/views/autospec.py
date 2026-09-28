@@ -109,6 +109,27 @@ class ModuloAutoSpec(ctk.CTkFrame):
         self.update_queue_ui()
 
         # --- SEÇÃO 4: EXECUTAR ---
+        # Conferencia das respostas do fornecedor (2026-09-28, pedido do
+        # Luan). Marcada por padrao; desmarcar e para o lote em que so se
+        # quer preencher, e economiza a chamada de IA a mais. O valor vai
+        # para um atributo comum pelo `command` (thread do Tk): `_novo_core`
+        # roda dentro da thread do worker.
+        self._conferir_fornecedor = True
+        self.chk_fornecedor = ctk.CTkCheckBox(
+            self.content, text="Conferir as respostas do fornecedor contra o datasheet",
+            command=self._ao_marcar_conferencia_fornecedor, font=("Roboto", 13),
+        )
+        self.chk_fornecedor.select()
+        self.chk_fornecedor.pack(anchor="w", padx=30, pady=(15, 0))
+        ctk.CTkLabel(
+            self.content, justify="left", anchor="w", text_color="gray",
+            font=("Roboto", 11), wraplength=680,
+            text=("\"Não se aplica\" que o documento prova vira o valor do documento, em "
+                  "azul, com a resposta original no comentário da célula. Divergência vai "
+                  "só para o log: a ficha do fornecedor não é alterada. Usa uma chamada "
+                  "de IA a mais por ficha que tenha resposta do fornecedor."),
+        ).pack(anchor="w", padx=58, pady=(2, 0))
+
         self.btn_run = ctk.CTkButton(self.content, text="INICIAR PROCESSAMENTO DA FILA",
                                      height=50, command=self.run_process,
                                      font=("Roboto", 15, "bold"),
@@ -421,6 +442,9 @@ class ModuloAutoSpec(ctk.CTkFrame):
         self.btn_run.configure(state="disabled")
         threading.Thread(target=self._worker).start()
 
+    def _ao_marcar_conferencia_fornecedor(self):
+        self._conferir_fornecedor = bool(self.chk_fornecedor.get())
+
     def _novo_core(self):
         """Uma instância do backend com as chaves da tela Home.
 
@@ -428,12 +452,15 @@ class ModuloAutoSpec(ctk.CTkFrame):
         MESMA construção — duplicar as 4 chaves em dois lugares é como uma
         delas fica para trás quando um provedor novo entra.
         """
-        return backends.autospec_backend.AutoSpecCore(
+        core = backends.autospec_backend.AutoSpecCore(
             gemini_key=self.controller.get_key("GEMINI"),
             llama_key=self.controller.get_key("LLAMA"),
             google_search_key=self.controller.get_key("GOOGLE_SEARCH"),
             google_cse_id=self.controller.get_key("GOOGLE_CSE")
         )
+        # O interruptor da conferencia do fornecedor, para os DOIS workers.
+        core.auditar_fornecedor = getattr(self, "_conferir_fornecedor", True)
+        return core
 
     def _worker(self):
         try:
