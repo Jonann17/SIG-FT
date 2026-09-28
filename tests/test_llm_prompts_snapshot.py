@@ -74,6 +74,21 @@ exemplos errados não voltaram, que a regra de lista fechada está no texto, e
 que o contrato de JSON (as 7 chaves que o app lê campo a campo por nome)
 continua intacto.
 
+⚠️ QUARTA REGERAÇÃO -- `upload_tech_specs_system` E `upload_tech_specs_user`,
+em 2026-09-28, com o aval do usuário ("devemos garantir que a resposta da IA
+contemple apenas uma resposta" na LISTA). O prompt mandava separar "múltiplos
+itens selecionados" de LISTA com ponto e vírgula e dizia que a vírgula era
+"exclusiva para decimais" -- mas no PDM SAM é a VÍRGULA que separa uma opção
+da outra, e a IA devolveu duas opções ("Protecao contra descargas
+atmosfericas, etc.") num campo do portal que seleciona uma.
+
+O diff foi conferido linha a linha: no SYSTEM mudaram só a regra 2 de
+formatação e a regra 4 (LISTA); no USER, só a regra 4 do contrato de saída
+ganhou quatro linhas. Nenhuma outra parte foi tocada. O CONTEÚDO da regra nova
+-- o que a fixture regerada não prova sobre si mesma -- está em
+tests/test_prompt_tech_specs_lista.py, e a garantia em código, que não depende
+de o modelo obedecer, em tests/test_tech_specs_lista_uma_opcao.py.
+
 Técnica de captura (idêntica a tests/test_llm_backend_migration.py e
 tests/test_llm_autospec_migration.py, já usada nos CPs 3.1-3.4): cada
 consumidor é construído normalmente e `instancia._llm` é substituído por um

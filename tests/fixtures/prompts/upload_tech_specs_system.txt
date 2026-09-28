@@ -10,8 +10,9 @@
         1. SEPARADOR DECIMAL: Para valores numéricos (NUM ou INT) com casas decimais, você DEVE utilizar OBRIGATORIAMENTE a VÍRGULA (,) como separador decimal, e NUNCA o ponto (.).
            - Exemplo Correto: "0,86" | "10,26".
            - Exemplo Incorreto: "0.86" | "10.26".
-        2. SEPARADOR DE LISTA: Se a resposta pertencer ao tipo LISTA e contiver múltiplos itens selecionados, você DEVE usar PONTO E VÍRGULA (;) para separá-los. NUNCA use vírgula para separar itens, pois a vírgula é exclusiva para decimais.
-           - Exemplo Correto: "A; B; E; F".
+        2. LISTA É ESCOLHA ÚNICA: no portal, a característica do tipo LISTA é um campo de seleção que aceita UMA opção só. Em 'VALORES_POSSIVEIS_MASTER' (e em 'VALORES_POSSIVEIS_ES') cada VÍRGULA separa uma opção da seguinte -- é o formato do PDM. A resposta é o texto de UMA dessas opções. NUNCA junte duas opções, nem com vírgula nem com ponto e vírgula.
+           - Exemplo: 'VALORES_POSSIVEIS_MASTER' = "Borracha, Nylon, Teflon, etc." são QUATRO opções: "Borracha", "Nylon", "Teflon" e "etc.".
+           - Resposta correta: "Nylon". Resposta errada: "Nylon, etc." (junta duas opções e não casa com nenhuma).
 
         === REGRA DE CONVERSÃO DE UNIDADES (SÍMBOLOS) ===
         Para campos do tipo 'NUM' ou 'INT', o sistema fornece as unidades aceitas no campo 'SIMBOLO_UNIDADE' (ex: "AD, m³/h, m³/s").
@@ -49,8 +50,8 @@
            - Se a resposta tiver múltiplos valores, escolha o mais representativo (pior caso ou nominal). Não adicione textos descritivos (como "max", "min", "ate") na resposta, apenas o valor numérico.
 
         4. LISTA (Seleção):
-           - A resposta DEVE ser baseada nos valores presentes no campo 'VALORES_POSSIVEIS_MASTER'.
-           - Lembre-se: múltiplos valores devem ser separados por ponto e vírgula (;).
+           - A resposta é EXATAMENTE UMA das opções de 'VALORES_POSSIVEIS_MASTER' (as opções vêm separadas por vírgula).
+           - Se a ficha citar mais de uma opção, escolha a que melhor descreve o material. "etc." é uma opção como as outras quando aparece na lista: não a acrescente a outra opção.
 
         SAÍDA ESPERADA (JSON):
         Retorne um JSON puro contendo uma lista de objetos:

@@ -826,8 +826,9 @@ SYSTEM_TECH_SPECS = """
         1. SEPARADOR DECIMAL: Para valores numéricos (NUM ou INT) com casas decimais, você DEVE utilizar OBRIGATORIAMENTE a VÍRGULA (,) como separador decimal, e NUNCA o ponto (.).
            - Exemplo Correto: "0,86" | "10,26".
            - Exemplo Incorreto: "0.86" | "10.26".
-        2. SEPARADOR DE LISTA: Se a resposta pertencer ao tipo LISTA e contiver múltiplos itens selecionados, você DEVE usar PONTO E VÍRGULA (;) para separá-los. NUNCA use vírgula para separar itens, pois a vírgula é exclusiva para decimais.
-           - Exemplo Correto: "A; B; E; F".
+        2. LISTA É ESCOLHA ÚNICA: no portal, a característica do tipo LISTA é um campo de seleção que aceita UMA opção só. Em 'VALORES_POSSIVEIS_MASTER' (e em 'VALORES_POSSIVEIS_ES') cada VÍRGULA separa uma opção da seguinte -- é o formato do PDM. A resposta é o texto de UMA dessas opções. NUNCA junte duas opções, nem com vírgula nem com ponto e vírgula.
+           - Exemplo: 'VALORES_POSSIVEIS_MASTER' = "Borracha, Nylon, Teflon, etc." são QUATRO opções: "Borracha", "Nylon", "Teflon" e "etc.".
+           - Resposta correta: "Nylon". Resposta errada: "Nylon, etc." (junta duas opções e não casa com nenhuma).
 
         === REGRA DE CONVERSÃO DE UNIDADES (SÍMBOLOS) ===
         Para campos do tipo 'NUM' ou 'INT', o sistema fornece as unidades aceitas no campo 'SIMBOLO_UNIDADE' (ex: "AD, m³/h, m³/s").
@@ -865,8 +866,8 @@ SYSTEM_TECH_SPECS = """
            - Se a resposta tiver múltiplos valores, escolha o mais representativo (pior caso ou nominal). Não adicione textos descritivos (como "max", "min", "ate") na resposta, apenas o valor numérico.
 
         4. LISTA (Seleção):
-           - A resposta DEVE ser baseada nos valores presentes no campo 'VALORES_POSSIVEIS_MASTER'.
-           - Lembre-se: múltiplos valores devem ser separados por ponto e vírgula (;).
+           - A resposta é EXATAMENTE UMA das opções de 'VALORES_POSSIVEIS_MASTER' (as opções vêm separadas por vírgula).
+           - Se a ficha citar mais de uma opção, escolha a que melhor descreve o material. "etc." é uma opção como as outras quando aparece na lista: não a acrescente a outra opção.
 
         SAÍDA ESPERADA (JSON):
         Retorne um JSON puro contendo uma lista de objetos:
@@ -973,6 +974,10 @@ CONTRATO_SAIDA_TECH_SPECS = """
            lista. Nao traduza a opcao por conta propria: o portal so aceita o
            texto exato de uma das opcoes, e um texto proximo nao seleciona
            nada.
+           As opcoes vem separadas por VIRGULA: "Borracha, Nylon, etc." sao
+           TRES opcoes ("Borracha", "Nylon" e "etc."). O campo do portal
+           aceita UMA so. Resposta certa: "Nylon". Errada: "Nylon, etc." --
+           junta duas opcoes e nao casa com nenhuma.
 
         5. NA DUVIDA ENTRE PREENCHER E REMOVER, PREENCHA. Uma linha
            preenchida a mais o revisor apaga em 5 segundos; um dado do
@@ -1042,6 +1047,50 @@ def montar_tech_specs_correcao(mensagem_de_erro, contexto_json_serializado):
         DADOS DE ENTRADA:
         {contexto_json_serializado}
 {CONTRATO_SAIDA_TECH_SPECS}"""
+
+
+def montar_tech_specs_lista_unica(itens_json_serializados):
+    """Prompt da pergunta DIRIGIDA sobre as LISTA (2026-09-28).
+
+    Nasce do relato do usuário: a característica TIPO (LISTA) voltou como
+    "Protecao contra descargas atmosfericas, etc." -- duas opções num campo
+    do portal que seleciona UMA. `tech_specs.conferir_listas` acha esses casos
+    na resposta; este prompt pergunta de novo SÓ sobre eles.
+
+    Duas escolhas de desenho, e o porquê de cada uma:
+
+    - só as características com problema, e não a ficha inteira (que é o que
+      `montar_tech_specs_correcao` reenvia). Refazer as 40 respostas para
+      corrigir uma poderia mexer nas 39 que estavam certas;
+    - a resposta é o NÚMERO da opção, não o texto. Número não tem acento,
+      grafia nem tradução para errar -- e é o código que converte o número no
+      texto exato do Master, em PT e em ES.
+
+    `itens_json_serializados`: o JSON já serializado, com a resposta recusada,
+    o que o fornecedor escreveu e as opções numeradas de cada característica.
+    """
+    return f"""
+        Nas caracteristicas abaixo, a sua resposta NAO e UMA opcao da lista:
+        juntou duas opcoes, ou escreveu um texto que nao e nenhuma delas. No
+        portal, o campo do tipo LISTA seleciona UMA opcao so.
+
+        Para cada caracteristica, escolha a UNICA opcao que melhor descreve o
+        material, lendo RESPOSTA_CRUA_PT e RESPOSTA_CRUA_ES (o que o
+        fornecedor escreveu) e TEXTO_AJUDA. Se o fornecedor citou varias,
+        escolha a principal. "etc." so quando nenhuma outra opcao servir.
+
+        Responda pelo NUMERO da opcao, como aparece em OPCOES.
+
+        CARACTERISTICAS:
+        {itens_json_serializados}
+
+        Responda com um ARRAY JSON no nivel raiz, um objeto por
+        caracteristica, com exatamente as chaves CARACTERISTICA_CHAVE e
+        NUMERO_DA_OPCAO. Nada antes, nada depois, sem cercas de markdown:
+        [
+          {{"CARACTERISTICA_CHAVE": "NOME DA CARACTERISTICA", "NUMERO_DA_OPCAO": 2}}
+        ]
+        """
 
 
 # =============================================================================
