@@ -39,6 +39,8 @@ from sigft.services import autospec_rag
 from sigft.services import autospec_documentos
 # A conferencia pela PROVA que a IA devolve com cada valor (2026-09-24).
 from sigft.services import autospec_evidencia
+# A conferencia das respostas do FORNECEDOR contra o datasheet (2026-09-28).
+from sigft.services import autospec_auditoria
 from sigft.core.excel import locking
 
 # -----------------------------------------------------------------
@@ -1809,6 +1811,12 @@ class AutoSpecCore:
         # texto (documento inteiro, sem corte) -- existe como escape se algum
         # provedor ou proxy se comportar mal com anexo.
         self.ler_pdf_nativo = True
+        # Conferencia das respostas do FORNECEDOR contra o datasheet LIGADA
+        # por padrao (2026-09-28, pedido do Luan). E o interruptor da tela
+        # ("Conferir as respostas do fornecedor"): custa uma chamada de IA a
+        # mais por ficha que tenha resposta do fornecedor. Ver
+        # `auditar_respostas_do_fornecedor`.
+        self.auditar_fornecedor = True
         # Os documentos da ficha em processamento. Preenchido por
         # `process_local_documents` (primeiro passo da coleta de cada ficha).
         self._documentos = []
@@ -2214,6 +2222,12 @@ class AutoSpecCore:
             txt_brv = " ".join(p for p in (modelo_status, desc_comp) if p).strip()
 
         missing = {}
+        # O que o FORNECEDOR escreveu na tabela de especificacoes (2026-09-28).
+        # Ate aqui essas linhas eram puladas sem conferencia nenhuma; agora sao
+        # conferidas contra o datasheet por `auditar_respostas_do_fornecedor`.
+        # Atributo, e nao 8o elemento da tupla: ha teste e chamador que
+        # desempacotam 7. Zerado aqui para a ficha anterior nao vazar.
+        self.respostas_do_fornecedor = {}
 
         # Mapeamento Estático
         for key, cfg in CONFIG_MAP.items():
@@ -2255,9 +2269,15 @@ class AutoSpecCore:
             r_val = ws.cell(row=r, column=VARIAVEIS_SPECS["resposta_col_idx"]).value
             if p_val:
                 vazias_seguidas = 0
+                clean_p = str(p_val).strip().replace(":", "")
+                ref = ws.cell(row=r, column=VARIAVEIS_SPECS["resposta_col_idx"]).coordinate
                 if self.is_empty(r_val):
-                    clean_p = str(p_val).strip().replace(":", "")
-                    missing[f"var_row_{r}"] = {"type": "text", "desc": clean_p, "ref": ws.cell(row=r, column=VARIAVEIS_SPECS["resposta_col_idx"]).coordinate}
+                    missing[f"var_row_{r}"] = {"type": "text", "desc": clean_p, "ref": ref}
+                else:
+                    self.respostas_do_fornecedor[f"var_row_{r}"] = {
+                        "desc": clean_p, "ref": ref, "resposta": str(r_val).strip(),
+                        "nao_se_aplica": ficha_layout.e_nao_se_aplica(r_val),
+                    }
             else:
                 vazias_seguidas += 1
             r += 1
@@ -2827,40 +2847,16 @@ class AutoSpecCore:
         # sobre documentos já cortados em 60 mil. Na comparação do usuário com
         # o AMP (que lê o PDF inteiro), isso valeu 43 achados contra 78 -- e a
         # ficha 0094 mandava à IA 13% do manual.
-        documentos = list(getattr(self, "_documentos", None) or [])
-        nativo = (
-            bool(documentos)
-            and getattr(self, "ler_pdf_nativo", True)
-            and bool(getattr(self._llm, "aceita_pdf", False))
-        )
-        como_arquivo, como_texto = autospec_documentos.planejar_envio(
-            documentos, aceita_pdf=nativo)
+        #
+        # A decisão mora em `_preparar_envio` desde 2026-09-28: a conferência
+        # das respostas do fornecedor manda o documento do MESMO jeito.
+        como_arquivo, anexos, contexto_final, contexto_conferencia = (
+            self._preparar_envio(context, missing, cb))
         lista_de_campos = "\n".join(desc_list)
         tags = {"modulo": "autospec_backend", "tarefa": "autospec"}
         # A conferência precisa saber o que a IA viu como ARQUIVO: prova de
         # página-imagem só existe lá. Ver `_documento_de_pagina_sem_texto`.
         self._documentos_anexados = list(como_arquivo)
-
-        if como_arquivo:
-            anexos = [documento.anexo() for documento in como_arquivo]
-            contexto_final = autospec_documentos.descrever_anexos(como_arquivo)
-            restante = self._contexto_de_texto(
-                "\n\n".join(d.texto_marcado() for d in como_texto if d.texto.strip()),
-                missing, cb)
-            if restante:
-                contexto_final += "\n\nDOCUMENTOS EM TEXTO:\n" + restante
-            # A IA viu os documentos INTEIROS: a prova que ela devolver é
-            # conferida contra o texto de todos eles.
-            contexto_conferencia = context
-            cb.log(
-                f"A IA vai ler {len(anexos)} documento(s) no proprio PDF "
-                f"({', '.join(d.nome for d in como_arquivo)}); o texto extraido "
-                f"fica para conferir o que ela responder."
-            )
-        else:
-            anexos = []
-            contexto_final = self._contexto_de_texto(context, missing, cb)
-            contexto_conferencia = contexto_final
 
         prompt = prompts.montar_autospec(txt_brv, fab, desc_comp, contexto_final, lista_de_campos)
 
@@ -2945,6 +2941,48 @@ class AutoSpecCore:
             cb.log(f"Chamada de IA falhou ({type(e).__name__}: {e}).", nivel="error")
             self.ultima_falha_ia = f"{type(e).__name__}: {e}"
             return {}
+
+    def _preparar_envio(self, context, campos, callbacks=None):
+        """O que vai para a IA, e contra o que a resposta dela é conferida.
+
+        `(como_arquivo, anexos, contexto_final, contexto_conferencia)`. Os
+        três caminhos estão descritos em `generate_ai_response`, de onde este
+        bloco saiu (2026-09-28) para a conferência das respostas do
+        fornecedor usar a MESMA política -- duas cópias divergiriam na
+        primeira mudança de limite. `campos` só serve de consulta ao recorte
+        por relevância (a `desc` de cada um).
+        """
+        cb = callbacks or _callbacks_silenciosos()
+        documentos = list(getattr(self, "_documentos", None) or [])
+        nativo = (
+            bool(documentos)
+            and getattr(self, "ler_pdf_nativo", True)
+            and bool(getattr(self._llm, "aceita_pdf", False))
+        )
+        como_arquivo, como_texto = autospec_documentos.planejar_envio(
+            documentos, aceita_pdf=nativo)
+
+        if como_arquivo:
+            anexos = [documento.anexo() for documento in como_arquivo]
+            contexto_final = autospec_documentos.descrever_anexos(como_arquivo)
+            restante = self._contexto_de_texto(
+                "\n\n".join(d.texto_marcado() for d in como_texto if d.texto.strip()),
+                campos, cb)
+            if restante:
+                contexto_final += "\n\nDOCUMENTOS EM TEXTO:\n" + restante
+            # A IA viu os documentos INTEIROS: a prova que ela devolver é
+            # conferida contra o texto de todos eles.
+            contexto_conferencia = context
+            cb.log(
+                f"A IA vai ler {len(anexos)} documento(s) no proprio PDF "
+                f"({', '.join(d.nome for d in como_arquivo)}); o texto extraido "
+                f"fica para conferir o que ela responder."
+            )
+        else:
+            anexos = []
+            contexto_final = self._contexto_de_texto(context, campos, cb)
+            contexto_conferencia = contexto_final
+        return como_arquivo, anexos, contexto_final, contexto_conferencia
 
     def _chamar_ia(self, prompt, anexos, tags):
         """Uma chamada à IA. `anexos` só vai quando há anexo: os dublês de
@@ -3469,6 +3507,203 @@ class AutoSpecCore:
             f"a IA nao respondeu ({falha}). Nada foi gravado nesta ficha; rode de novo.",
         )
         return True
+
+    # =========================================================================
+    # CONFERENCIA DAS RESPOSTAS DO FORNECEDOR (2026-09-28, pedido do Luan)
+    # =========================================================================
+    # O fornecedor responde "nao se aplica" por desleixo, com a caracteristica
+    # no datasheet; e o valor dele pode divergir do documento. Decisoes do
+    # usuario (spec docs/superpowers/specs/2026-09-28-autospec-conferencia-
+    # fornecedor-design.md):
+    #
+    #   - "nao se aplica" com a PROVA conferida vira o valor do documento, e a
+    #     resposta original fica no comentario da celula;
+    #   - resposta com valor NUNCA e gravada: divergencia so no log;
+    #   - chamada SEPARADA do preenchimento, que continua byte a byte igual.
+    #
+    # As pecas puras estao em `autospec_auditoria`; aqui fica o que precisa do
+    # documento e da conferencia pela prova.
+    def _respostas_para_auditar(self):
+        """As respostas da ficha em analise, ou `{}` com o interruptor
+        desligado. `getattr`: os testes de lote trocam `analyze_sheet` por
+        fake e constroem o core com `__new__`."""
+        if not getattr(self, "auditar_fornecedor", True):
+            return {}
+        return dict(getattr(self, "respostas_do_fornecedor", None) or {})
+
+    def auditar_respostas_do_fornecedor(self, txt_brv, fab, desc_comp, respostas, context,
+                                        callbacks=None):
+        """Confere `respostas` (de `analyze_sheet`) contra os documentos da
+        ficha. Devolve um `autospec_auditoria.ResultadoAuditoria`; nunca
+        levanta -- falha vira `resultado.falha` e aviso no log, e o
+        preenchimento segue."""
+        cb = callbacks or _callbacks_silenciosos()
+        resultado = autospec_auditoria.ResultadoAuditoria()
+        if not respostas:
+            return resultado
+        if not getattr(self, "_documentos", None) and not str(context or "").strip():
+            resultado.sem_documento = True
+            cb.log("Sem documento para conferir as respostas do fornecedor: a conferencia "
+                   "nao foi feita.", nivel="warn")
+            return resultado
+
+        try:
+            parsed, contexto, anexados = self._chamar_auditoria(
+                txt_brv, fab, desc_comp, respostas, context, cb)
+            itens = autospec_auditoria.ler_resposta(parsed, respostas.keys())
+        except Exception as e:
+            resultado.falha = f"{type(e).__name__}: {e}"
+            cb.log(f"A conferencia das respostas do fornecedor falhou ({resultado.falha}). "
+                   f"Nada foi mudado por ela; rode de novo para conferir.", nivel="warn")
+            return resultado
+
+        contexto_item = contexto_do_modelo(contexto, getattr(self, "_modelo_do_item", ""))
+        for campo, info in respostas.items():
+            item = itens.get(campo)
+            if item is None:
+                resultado.sem_dado += 1
+            elif info.get("nao_se_aplica"):
+                self._decidir_nao_se_aplica(
+                    campo, info, item, contexto_item, contexto, anexados, resultado)
+            else:
+                self._decidir_divergencia(info, item, contexto_item, contexto, anexados, resultado)
+
+        for nivel, linha in resultado.linhas_de_log():
+            cb.log(linha, nivel=nivel)
+        return resultado
+
+    def _chamar_auditoria(self, txt_brv, fab, desc_comp, respostas, context, cb):
+        """A chamada, com a MESMA politica de envio e de cache do
+        preenchimento (`_preparar_envio`, `_chave_cache_resposta`). Recusa do
+        PDF cai para o texto; timeout nao -- a mesma regra de
+        `generate_ai_response`. `(resposta_crua, contexto_da_prova, anexados)`.
+        """
+        como_arquivo, anexos, contexto_final, contexto = self._preparar_envio(
+            context, respostas, cb)
+        lista = autospec_auditoria.montar_lista(respostas)
+        tags = {"modulo": "autospec_backend", "tarefa": "autospec"}
+        selecao = getattr(self, "_selecao_autospec", None) or {}
+        usar_cache = getattr(self, "usar_cache_resposta", True)
+
+        prompt = prompts.montar_autospec_auditoria(txt_brv, fab, desc_comp, contexto_final, lista)
+        chave = _chave_cache_resposta(prompt, selecao.get("provider"), selecao.get("model"),
+                                      anexos=[anexo.dados for anexo in anexos])
+        if usar_cache:
+            guardada = _cache_resposta_ler(chave)
+            if guardada is not None:
+                cb.log("Conferencia do fornecedor reaproveitada do cache: nenhum token gasto.")
+                return guardada, contexto, list(como_arquivo)
+        try:
+            resp = self._chamar_ia(prompt, anexos, tags)
+        except Exception as e:
+            if not anexos or _e_timeout(e):
+                raise
+            cb.log(f"O provedor recusou o(s) PDF(s) na conferencia do fornecedor "
+                   f"({type(e).__name__}: {e}). Refazendo com o texto extraido.", nivel="warn")
+            como_arquivo, anexos = [], []
+            contexto_final = self._contexto_de_texto(context, respostas, cb)
+            contexto = contexto_final
+            prompt = prompts.montar_autospec_auditoria(
+                txt_brv, fab, desc_comp, contexto_final, lista)
+            chave = _chave_cache_resposta(prompt, selecao.get("provider"), selecao.get("model"))
+            resp = self._chamar_ia(prompt, anexos, tags)
+        if usar_cache:
+            _cache_resposta_gravar(chave, resp.parsed_json)
+        return resp.parsed_json, contexto, list(como_arquivo)
+
+    @staticmethod
+    def _onde(prova):
+        fonte = str(prova.fonte or "").strip()[:60]
+        pagina = f"pag. {prova.pagina}" if prova.pagina else ""
+        return ", ".join(p for p in (fonte, pagina) if p) or "documento"
+
+    def _decidir_nao_se_aplica(self, campo, info, item, contexto_item, contexto, anexados,
+                               resultado):
+        """"Nao se aplica" do fornecedor: vira o valor do documento SO com a
+        prova conferida por `_conferir_pela_prova` -- o trecho existe na
+        linha do modelo certo e o numero sai dele. Deducao, pagina-imagem e
+        prova reprovada deixam o que o fornecedor escreveu."""
+        desc, fornecedor = info.get("desc") or campo, info.get("resposta") or ""
+        valor, prova = item.valor_documento, item.prova
+        if (item.situacao != "diverge" or not valor
+                or ficha_layout.e_nao_se_aplica(valor)):
+            resultado.na_mantidos += 1
+            return
+        if prova.tipo == "deducao":
+            resultado.descartados.append((desc, (
+                f"a IA chegou a {valor[:40]!r} por deducao, sem o dado escrito no "
+                f"documento")))
+            return
+        if not prova.trecho:
+            resultado.descartados.append((desc, (
+                f"a IA disse {valor[:40]!r} sem copiar o trecho do documento")))
+            return
+
+        r = _ConferenciaDoLastro()
+        self._conferir_pela_prova(campo, valor, desc, prova, contexto_item, contexto, anexados, r)
+        if campo not in r.aprovados or r.deducoes or r.de_imagem:
+            if r.reprovados:
+                motivo = r.reprovados[0][2]
+            elif r.de_imagem:
+                motivo = f"lido em pagina sem texto ({r.de_imagem[0][2]}); confira nela"
+            else:
+                motivo = f"o trecho citado ({prova.trecho[:60]!r}) nao esta no documento lido"
+            resultado.descartados.append((desc, f"{valor[:40]!r}: {motivo}"))
+            return
+
+        final = r.aprovados[campo]
+        onde = self._onde(prova)
+        resultado.gravar[campo] = final
+        resultado.campos[campo] = {"type": "text", "desc": desc, "ref": info.get("ref")}
+        nota = (f"AutoSpec: o fornecedor respondeu {fornecedor!r}, mas o documento traz "
+                f"este valor ({onde}): \"{prova.trecho[:200]}\".")
+        if r.corrigidos:
+            nota += f" Conta refeita pelo app: {r.corrigidos[0][3]}."
+        resultado.notas[campo] = nota
+        resultado.na_preenchidos.append((desc, fornecedor, str(final), onde))
+
+    def _decidir_divergencia(self, info, item, contexto_item, contexto, anexados, resultado):
+        """Resposta com valor: a divergencia comprovada vai para o log, e so.
+        Nada daqui e gravado -- o pedido foi *"nao sobrescreva excluindo a
+        informacao preenchida pelo fornecedor"*."""
+        desc, fornecedor = info.get("desc") or "", info.get("resposta") or ""
+        if item.situacao == "confere":
+            resultado.conferem += 1
+            return
+        if item.situacao != "diverge":
+            resultado.sem_dado += 1
+            return
+        valor, prova = item.valor_documento, item.prova
+        if not valor or not prova.trecho:
+            resultado.descartados.append((desc, (
+                "a IA apontou divergencia sem trazer o valor e o trecho do documento")))
+            return
+
+        onde = self._onde(prova)
+        achado = autospec_evidencia.achar_trecho(prova.trecho, contexto_item)
+        if achado is None:
+            if contexto_item != contexto and autospec_evidencia.achar_trecho(prova.trecho, contexto):
+                resultado.descartados.append((desc, (
+                    f"o trecho citado ({prova.trecho[:60]!r}) e da linha de OUTRO modelo do "
+                    f"documento")))
+                return
+            if _documento_de_pagina_sem_texto(prova, anexados) is None:
+                resultado.descartados.append((desc, (
+                    f"o trecho citado ({prova.trecho[:60]!r}) nao esta no documento lido")))
+                return
+            onde += "; pagina sem texto, confira nela"
+        else:
+            confere, _ = autospec_evidencia.valor_sai_do_trecho(
+                _com_unidade_do_enunciado(valor, desc), achado)
+            if not confere:
+                resultado.descartados.append((desc, (
+                    f"o valor {valor[:40]!r} nao sai do trecho citado ({achado[:60]!r})")))
+                return
+        if autospec_auditoria.equivalentes(fornecedor, valor, desc):
+            resultado.conferem += 1
+            return
+        resultado.divergencias.append(
+            (desc, fornecedor, valor, onde, prova.trecho, prova.justificativa))
 
     # --- MÉTODOS PÚBLICOS DE FLUXO ---
     def processar_conferidos(self, selecao, status_pmib_path):
