@@ -14,8 +14,8 @@ criado.
 
 > [!info] Onde este pacote está
 > - **GitHub**: repositório privado `luanccozer/SIG-FT`, pasta `gestao-sobressalentes/`
->   (branch `claude/gestao-sobressalentes-v2`, com Pull Request para o branch principal).
-> - **Box**: `15 - PDM/SECOND BRAIN/` (cópia para a equipe).
+>   (branch `claude/gestao-sobressalentes-v2`, Pull Request #2 para o branch principal).
+> - **Box**: `15 - PDM/SECOND BRAIN/` (cópia para a equipe, sincronizada em 01/10/2026).
 > - Original: cofre Obsidian no OneDrive do computador pessoal do Luan.
 
 > [!danger] Conteúdo sensível do Consórcio
@@ -224,7 +224,9 @@ Os scripts acham o Box em `~/Box/CMI - Consórcio Itaipu/11 - Ger. Engenharia/15
   a partir das datas (o openpyxl do SIG-FT apaga o valor calculado ao salvar).
 - No computador pessoal do Luan o Excel está sem licença (automação COM trava); no trabalho o Excel é
   licenciado. Para testar fórmulas sem Excel: LibreOffice `soffice --headless --convert-to xlsx`.
-- A cópia `15 - PDM/SECOND BRAIN/` no Box é **anterior** a esta sessão (04/09).
+- A cópia `15 - PDM/SECOND BRAIN/` no Box foi sincronizada em 01/10/2026, por ordem do Luan
+  (o backup da versão de 04/09 ficou no computador pessoal, em `%LOCALAPPDATA%\Sobressalentes-v2\`).
+  Mudou o cofre? Atualize as duas cópias — elas não se sincronizam sozinhas.
 
 ## Relacionados
 [[00 - Inicio]] · [[Plano - Sistema de Gestao v2]] · [[findings]] · [[progress]]

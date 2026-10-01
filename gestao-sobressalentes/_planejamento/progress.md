@@ -20,7 +20,10 @@ procurement, atraso de Itaipu em 15 d.u.) e um Power BI com visão interna e vis
 - Notas atualizadas: [[Lista de Precos]] (PB021), [[Planilha STATUS_PMIB]],
   [[Organizacao das Pastas]], [[Mapeamento das Listas de Sobressalentes]],
   [[Indicadores e Como Ler]], [[findings]]. Plano em [[Plano - Sistema de Gestao v2]].
-- A cópia `15 - PDM/SECOND BRAIN/` no Box **não** foi atualizada (Box é somente leitura).
+- 01/10, por ordem do Luan: cópia `15 - PDM/SECOND BRAIN/` do Box sincronizada (25 arquivos,
+  backup antes, nada apagado) e pacote enviado ao GitHub — `luanccozer/SIG-FT`, pasta
+  `gestao-sobressalentes/`, branch `claude/gestao-sobressalentes-v2`, Pull Request #2.
+  Ponto de partida para a próxima conversa: [[README]].
 
 ## Proximas sessões
 1. **Aplicar a migração v2** (depois das decisões da seção 8 do plano) e montar o Power BI.
