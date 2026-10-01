@@ -1,0 +1,130 @@
+---
+tags: [gerado, lmr, levantamento]
+gerado_em: 2026-08-31
+fonte: Mapeamento Listas de Sobressalentes.xlsx
+---
+
+# Levantamento — Fichas sem Aplicação LMR
+
+> [!warning] Documento de trabalho, nao conhecimento permanente
+> Contem numeros e situacoes de uma data especifica. O que descreve **como o processo
+> funciona** mora no nucleo do cofre (`01` a `06`).
+
+
+> [!warning] Nota gerada automaticamente
+> Rode `python _scripts/levantamento_lmr.py` para regenerar.
+> Dados de **2026-08-31**.
+
+## O número
+
+| | Fichas |
+|---|---:|
+| Existentes (em 40 listas com ficha criada) | **1219** |
+| Com Aplicação LMR finalizada | 93 (7.6%) |
+| **Sem Aplicação LMR** | **1126** (92.4%) |
+| → grupo A: **passivo**, já emitidas a Itaipu | **413** em 14 listas |
+| → grupo B: backlog, criadas e não emitidas | 542 em 23 listas |
+
+> [!note] Como o passivo e calculado
+> `FICHAS EM ANALISE DE ITAIPU` menos `FICHAS COM APLICACAO - LMR FINALIZADA`,
+> por lista, com piso em zero. E uma **estimativa por agregado** — a mapeadora não
+> diz *quais* fichas individualmente. Para a lista nominal e preciso abrir cada
+> `_STATUS_PMIB` e cruzar `APLICACAO - LMR` com
+> `DATA DO EMAIL COMUNICANDO ENTREGA`.
+
+## Grupo A — PASSIVO (urgência maxima)
+
+Fichas **já emitidas a Itaipu** sem Aplicação LMR completa. São as que podem
+voltar devolvidas, custando um ciclo de 2 a 3 meses cada.
+
+| Fichas | Doc. Itaipu | Doc. CMI | Capítulo | Responsável | Evento |
+|---:|---|---|---|---|---|
+| **76** | `#ST50=B01BDV10&EPB020` | `08934100BRV10-FS00PB-51` | GRUPO GERADOR DIESEL | BRUNO ROMANIV | 2835 / 2835 a / 2836 |
+| **64** | `#ST00=B03BPA10UC012-UC903&EPB020` | `08934100BUB10-FS00PB-02` | SERVIÇOS AUXILIARES ESSENCIAIS | DAVID DURAN | 2826 a / 2826 b |
+| **61** | `#ST00=B03BPA10TB010-TB903&EPB020` | `08934100BTB10-FS00PB-02` | SERVIÇOS AUXILIARES ESSENCIAIS | BRUNO ROMANIV | 2826 a / 2826 b |
+| **48** | `#ST00=B04BMA10TB020&EPB020` | `08934100BRU10-FS00PB-02` | SERVIÇOS AUXILIARES ESSENCIAIS | BRUNO ROMANIV | 2826 a / 2826 b |
+| **33** | `#ST00=U01&MPB020` | `0893410CYU20-206FDD-49` | SALA SEGURA | FABIO ERTNER | 2831 / 2832 |
+| **33** | `#ST00=M00MEU10&EPB020` | `08934100MEU04-SA00PB-01` | SISTEMA DE REGULAÇÃO DE VELOCIDADE E POTÊNCI | CÉLIO SILVA | 2783 ao 2822 |
+| **29** | `#ST00=X00XGF10&MPB020` | `08934120SGM00-FS00PA-02` | SIST DE DET COMBATE A INCÊNDIO DOS TRANSF. / | MARCELO STAHLHOEFER | 2837 / 2838 |
+| **22** | `#ITA0=A01AAM10&EPB020-01` | `08934120CFA00-FS00PB-01` | SISTEMA DE MEDIÇÃO DE FATURAMENTO | RAFAEL BUCCI | 2841 / 2842 |
+| **16** | `#ST00=B03BDV10UC012-UC001&EPB020` | `08934100BUB12-FS00PB-01` | GRUPO GERADOR DIESEL | BRUNO ROMANIV | 2835 / 2835 a / 2836 |
+| **12** | `#ST00=M00MEG20&MPB020` | `08934100MEF33-SP10PB-01` | AUXILIARES ASSOCIADOS À UNIDADE GERADORA / S | CÉLIO SILVA | 2783 ao 2822 |
+| **8** | `#ST00=M00MEU10&MPB020` | `08934100MEU04-SA00PB-02` | SISTEMA DE REGULAÇÃO DE VELOCIDADE E POTÊNCI | CÉLIO SILVA | 2783 ao 2822 |
+| **6** | `#ITA0=C01CUC01&EPB020` | `ATT-ITP-LHW-SCA-5194P30524-2` | SCADA/EMS | Guilherme Carvalho | 2823 / 2824 |
+| **4** | `#ST00=M00MES10&MPB020` | `08934100MEF46-SA10PB-01` | AUXILIARES ASSOCIADOS À UNIDADE GERADORA / S | CÉLIO SILVA | 2783 ao 2822 |
+| **1** | `SEM_LISTA` | `SEM_LISTA` | SEM LISTA | SEM LISTA | - |
+| **413** | | | **14 listas** | | |
+
+## Grupo B — BACKLOG
+
+Fichas criadas, ainda **não emitidas**. Fazer a LMR aqui e barato: entra junto do
+preenchimento, antes da emissão, e não gera devolucao.
+
+| Fichas | Doc. Itaipu | Capítulo | Situação no PMIB | Responsável |
+|---:|---|---|---|---|
+| 79 | `#ST00=M00MKF10&MPB020` | AUXILIARES ASSOCIADOS À UNIDADE GERADORA | EM PROCESSO DE PREENCHIMENTO | MARCELO STAHLHOEFER |
+| 56 | `#ST00=B01BCA10TA030-TA901&EPB020` | TRANSFORMADORES AUXILIARES À ÓLEO | FICHAS CRIADAS | BRUNO ROMANIV |
+| 53 | `#ST00=M00LPB10UZ020-UZ901&MPB020` | COMPORTA DA TOMADA D’ÁGUA E BY-PASS DO C | EM PROCESSO DE PREENCHIMENTO | LEONIR C. |
+| 42 | `#ST00=M00MEG20UH010-UH001&EPB020` | AUXILIARES ASSOCIADOS À UNIDADE GERADORA | EM PROCESSO DE PREENCHIMENTO | CÉLIO SILVA |
+| 41 | `#ST00=B01BMU10&EPB020` | CONVERSORES ESTÁTICOS DE FREQUÊNCIA | FICHAS COM O FORNECEDOR | BRUNO ROMANIV |
+| 36 | `#ST00=M00LPX10UZ020&MPB020` | COMPORTA DA TOMADA D’ÁGUA E BY-PASS DO C | EM PROCESSO DE PREENCHIMENTO | LEONIR C. |
+| 32 | `#ST00=M00QEB10&EPB020` | AUXILIARES ASSOCIADOS À UNIDADE GERADORA | FORNECEDOR / ELABORAÇÃO | BRUNO ROMANIV |
+| 31 | `#ST50=Q01PAC01UC003-UC001&EPB020` | GRUPO GERADOR DIESEL / ELÉTRICA / PAINÉI | FICHAS CRIADAS | BRUNO ROMANIV |
+| 27 | `#ST00=M00GAA10HN010-HN001&EPB020` | AUXILIARES ASSOCIADOS À UNIDADE GERADORA | EM PROCESSO DE PREENCHIMENTO | MARCELO STAHLHOEFER |
+| 21 | `#ST00=M00BPA10UC013&EBP020` | SSAA ELÉTRICOS ESSENCIAIS | EM PROCESSO DE PREENCHIMENTO | (sem responsável) |
+| 17 | `#ST50=X00XAC21GQ030-GQ905&MPB020` | SERVIÇOS AUXILIARES ESSENCIAIS | FICHAS CRIADAS | BRUNO ROMANIV |
+| 17 | `#ST00=M00XGC10&MPB020` | TRANSFORMADORES ELEV. PRINCIPAIS | FICHAS COM O FORNECEDOR | (sem responsável) |
+| 15 | `#ST60=X00XAC21GQ030-GQ905&MPB020` | SERVIÇOS AUXILIARES ESSENCIAIS | FICHAS CRIADAS | BRUNO ROMANIV |
+| 15 | `#ST00=M00BKA10UC013-UC901&EPB020` | PAINÉIS DE MANUTENÇÃO | FICHAS COM O FORNECEDOR | (sem responsável) |
+| 12 | `#ST00=M00LPB10-PF001&MPB020` | COMPORTA DA TOMADA D’ÁGUA E BY-PASS DO C | EM PROCESSO DE PREENCHIMENTO | LEONIR C. |
+| 11 | `#ST00=M00MKA10&MPB020` | AUXILIARES ASSOCIADOS À UNIDADE GERADORA | FORNECEDOR / ELABORAÇÃO | Fábio Garcia |
+| 9 | `#ST00=B01BMU10TA010&EPB020` | CONVERSORES ESTÁTICOS DE FREQUÊNCIA | FICHAS CRIADAS | BRUNO ROMANIV |
+| 7 | `#ST50=X00XAA11&MPB020` | GRUPO GERADOR DIESEL / MECÂNICA / SISTEM | FICHAS CRIADAS | MARCELO STAHLHOEFER |
+| 5 | `#ST00=B01BMU10EQ010-EP901&MPB020` | CONVERSORES ESTÁTICOS DE FREQUÊNCIA / ME | FICHAS CRIADAS | BRUNO ROMANIV |
+| 5 | `#ST00=M00LPX10UR010&MPB020` | COMPORTA DA TOMADA D’ÁGUA E BY-PASS DO C | EM PROCESSO DE PREENCHIMENTO | LEONIR C. |
+| 4 | `#ST00=B01BDV10TA010-TA901&EPB020` | GRUPO GERADOR DIESEL / ELÉTRICA / TRANSF | FORNECEDOR / ELABORAÇÃO | BRUNO ROMANIV |
+| 4 | `#ST60=X00XAA11&MPB020` | GRUPO GERADOR DIESEL / MECÂNICA / SISTEM | FICHAS CRIADAS | MARCELO STAHLHOEFER |
+| 3 | `#ST00=M00MEA20&MPB020` | AUXILIARES ASSOCIADOS À UNIDADE GERADORA | FORNECEDOR / ELABORAÇÃO | (sem responsável) |
+| **542** | | **23 listas** | | |
+
+## Por Especificação Técnica
+
+| Especificação Técnica | Listas | Fichas | Sem LMR | Passivo |
+|---|---:|---:|---:|---:|
+| UNIDADE GERADORA | 16 | 562 | **560** | 57 |
+| SERVIÇOS AUXILIARES ELÉTRICOS | 13 | 270 | **264** | 92 |
+| CONTROLE CENTRALIZADO | 7 | 291 | **211** | 179 |
+| INFRAESTRUTURA COMPLEMENTAR | 1 | 38 | **33** | 33 |
+| SERVIÇOS AUXILIARES MECÂNICOS | 1 | 29 | **29** | 29 |
+| SISTEMA DE MEDIÇÃO DE FATURAMENTO | 1 | 22 | **22** | 22 |
+| SEM LISTA | 1 | 7 | **7** | 1 |
+
+## Por responsável
+
+| Responsável | Listas | Sem LMR | Passivo |
+|---|---:|---:|---:|
+| BRUNO ROMANIV | 13 | 411 | 201 |
+| CÉLIO SILVA | 5 | 264 | 57 |
+| MARCELO STAHLHOEFER | 5 | 146 | 29 |
+| LEONIR C. | 4 | 106 | 0 |
+| DAVID DURAN | 1 | 64 | 64 |
+| (sem responsável) | 4 | 56 | 0 |
+| FABIO ERTNER | 1 | 33 | 33 |
+| RAFAEL BUCCI | 1 | 22 | 22 |
+| Fábio Garcia | 1 | 11 | 0 |
+| SEM LISTA | 1 | 7 | 1 |
+| Guilherme Carvalho | 1 | 6 | 6 |
+
+## Eventos de pagamento atingidos pelo passivo
+
+- `2783 ao 2822`
+- `2823 / 2824`
+- `2826 a / 2826 b`
+- `2831 / 2832`
+- `2835 / 2835 a / 2836`
+- `2837 / 2838`
+- `2841 / 2842`
+
+---
+
+Base de [[Plano de Acao - Aplicacao LMR]] · voltar para [[Secao - Aplicacao LMR]]

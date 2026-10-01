@@ -1,0 +1,149 @@
+// =====================================================================
+// SOBRESSALENTES — MODELO v2 — MEDIDAS
+// Como colar todas de uma vez: Power BI Desktop > Exibição de consulta DAX
+// (DAX query view) > colar este arquivo inteiro > clicar em
+// "Atualizar modelo com alterações" (Update model with changes) que aparece
+// acima do DEFINE. As medidas vão para as tabelas indicadas.
+//
+// Unidade de contagem: FICHA = código PMIB distinto, sem as linhas DUPLICADO
+// (mesma regra do SIG-FT). Linha não é ficha: a mesma ficha pode aparecer em
+// mais de uma linha (componente usado em dois conjuntos).
+// =====================================================================
+DEFINE
+    // ---------------- Fichas ----------------
+    MEASURE Itens[Fichas] =
+        CALCULATE ( DISTINCTCOUNT ( Itens[PMIB] ), Itens[E Ficha] = TRUE () )
+    MEASURE Itens[Fichas Emitidas] =
+        CALCULATE ( [Fichas], Itens[Emitida] = TRUE () )
+    MEASURE Itens[Fichas em Análise IB] =
+        CALCULATE ( [Fichas], Itens[Status] = "EM ANÁLISE IB" )
+    MEASURE Itens[Fichas em Correção] =
+        CALCULATE ( [Fichas], Itens[Status] = "EM CORREÇÃO" )
+    MEASURE Itens[Fichas Aprovadas] =
+        CALCULATE ( [Fichas], Itens[Status] = "APROVADO" )
+    MEASURE Itens[Fichas em Preparação] =
+        CALCULATE ( [Fichas], Itens[Status] IN { "INICIAR", "FICHA CRIADA", "COM O FORNECEDOR", "EM ELABORAÇÃO" } )
+    MEASURE Itens[Fichas com o Fornecedor] =
+        CALCULATE ( [Fichas], Itens[Status] = "COM O FORNECEDOR" )
+    MEASURE Itens[Fichas sem Status Válido] =
+        CALCULATE ( [Fichas], Itens[Status] IN { "N/A", "SEM STATUS" } )
+    MEASURE Itens[% Emitidas] =
+        DIVIDE ( [Fichas Emitidas], [Fichas] )
+    MEASURE Itens[% Aprovadas] =
+        DIVIDE ( [Fichas Aprovadas], [Fichas] )
+    MEASURE Itens[Taxa de Aprovação das Emitidas] =
+        DIVIDE ( [Fichas Aprovadas], [Fichas Emitidas] )
+    MEASURE Itens[Taxa de Devolução] =
+        DIVIDE ( [Fichas em Correção], [Fichas Emitidas] )
+
+    // ---------------- Seções da ficha ----------------
+    MEASURE Itens[Fichas Info Fornecedor Completa] =
+        CALCULATE ( [Fichas], Itens[Info Fornecedor OK] = TRUE () )
+    MEASURE Itens[Fichas Valorizadas] =
+        CALCULATE ( [Fichas], Itens[Valorizacao OK] = TRUE () )
+    MEASURE Itens[Fichas com LMR] =
+        CALCULATE ( [Fichas], Itens[LMR OK] = TRUE () )
+    MEASURE Itens[% Info Fornecedor] =
+        DIVIDE ( [Fichas Info Fornecedor Completa], [Fichas] )
+    MEASURE Itens[% Valorização] =
+        DIVIDE ( [Fichas Valorizadas], [Fichas] )
+    MEASURE Itens[% LMR] =
+        DIVIDE ( [Fichas com LMR], [Fichas] )
+
+    // ---------------- Tipo de entrega ----------------
+    MEASURE Itens[Itens Físicos] =
+        CALCULATE ( [Fichas], Itens[Tipo de Entrega] = "FÍSICA E DOCUMENTAL" )
+    MEASURE Itens[Itens Físicos Entregues] =
+        CALCULATE ( [Itens Físicos], Itens[Entregue] = TRUE () )
+    MEASURE Itens[% Físicos Entregues] =
+        DIVIDE ( [Itens Físicos Entregues], [Itens Físicos] )
+    MEASURE Itens[Fichas Documentais] =
+        CALCULATE ( [Fichas], Itens[Tipo de Entrega] = "DOCUMENTAL" )
+    MEASURE Itens[Fichas sem Tipo de Entrega] =
+        CALCULATE ( [Fichas], Itens[Tipo de Entrega] = "NÃO CLASSIFICADO" )
+
+    // ---------------- Trilha logística: autorização de Itaipu (15 d.u.) ----------------
+    MEASURE Itens[Pedidos de Autorização] =
+        CALCULATE ( [Fichas], NOT ISBLANK ( Itens[Data Email] ) )
+    MEASURE Itens[Aguardando Itaipu no Prazo] =
+        CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "AGUARDANDO ITAIPU" )
+    MEASURE Itens[Autorizações Atrasadas Itaipu] =
+        CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "ATRASADO ITAIPU" )
+    MEASURE Itens[Autorizadas] =
+        CALCULATE ( [Fichas], Itens[Situacao Autorizacao] IN { "AUTORIZADO", "AUTORIZADO NO PRAZO", "AUTORIZADO COM ATRASO" } )
+    MEASURE Itens[Autorizadas com Atraso] =
+        CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "AUTORIZADO COM ATRASO" )
+    MEASURE Itens[Maior Atraso Itaipu (d.u.)] =
+        CALCULATE ( MAX ( Itens[Dias Uteis de Atraso] ), Itens[Situacao Autorizacao] = "ATRASADO ITAIPU" )
+    MEASURE Itens[Prazo Médio de Autorização (d.u.)] =
+        // só existe para quem tem DATA DA AUTORIZAÇÃO registrada (_STATUS_PMIB v2)
+        AVERAGE ( Itens[Dias Uteis para Autorizar] )
+    MEASURE Itens[Aptas Aguardando Entrega] =
+        CALCULATE ( [Itens Físicos], Itens[Apto] = TRUE (), Itens[Entregue] = FALSE () )
+
+    // ---------------- Trilha documental: compromisso de LMR (3 meses do e-mail) ----------------
+    MEASURE Itens[LMR Fora do Compromisso] =
+        CALCULATE ( [Fichas], Itens[Situacao LMR] = "LMR FORA DO COMPROMISSO" )
+    MEASURE Itens[LMR em Atenção] =
+        CALCULATE ( [Fichas], Itens[Situacao LMR] = "LMR EM ATENÇÃO" )
+    MEASURE Itens[Maior Atraso LMR (dias)] =
+        CALCULATE ( MAX ( Itens[Dias desde Email] ), Itens[Situacao LMR] = "LMR FORA DO COMPROMISSO" )
+
+    // ---------------- Valor (lista de preços) ----------------
+    MEASURE Itens[Valor Físico USD] =
+        SUM ( Itens[Valor Linha USD] )
+    MEASURE Itens[Valor Entregue USD] =
+        CALCULATE ( [Valor Físico USD], Itens[Entregue] = TRUE () )
+    MEASURE Itens[% Valor Entregue] =
+        DIVIDE ( [Valor Entregue USD], [Valor Físico USD] )
+    MEASURE Itens[Fichas com Preço] =
+        CALCULATE ( [Fichas], NOT ISBLANK ( Itens[Valor Unitario USD] ) )
+
+    // ---------------- Fila de trabalho ----------------
+    MEASURE Itens[Pendências CMI] =
+        CALCULATE ( [Fichas], Itens[Pendencia] <> "—" )
+
+    // ---------------- Listas ----------------
+    MEASURE Listas[Listas] =
+        COUNTROWS ( Listas )
+    MEASURE Listas[Listas Aprovadas EN.DT] =
+        CALCULATE ( [Listas], Listas[Status Real] = "APROVADO" )
+    MEASURE Listas[Listas com Fichas] =
+        COUNTROWS ( FILTER ( Listas, [Fichas] > 0 ) )
+    MEASURE Listas[Listas Aprovadas sem Fichas] =
+        COUNTROWS ( FILTER ( Listas, Listas[Status Real] = "APROVADO" && ( ISBLANK ( [Fichas] ) || [Fichas] = 0 ) ) )
+    MEASURE Listas[Listas sem Responsável] =
+        CALCULATE ( [Listas], Listas[Tem Responsavel] = FALSE () )
+
+    // ---------------- Listas de preços (Aconex) ----------------
+    MEASURE PrecosAconex[Listas de Preços Emitidas] =
+        COUNTROWS ( PrecosAconex )
+    MEASURE PrecosAconex[Listas de Preços Aprovadas SM.DT] =
+        CALCULATE ( COUNTROWS ( PrecosAconex ), PrecosAconex[Situacao Preco] = "APROVADA SM.DT" )
+    MEASURE PrecosAconex[Listas de Preços no Código Antigo] =
+        CALCULATE ( COUNTROWS ( PrecosAconex ), PrecosAconex[Geracao] = "PB020-0x (legado)" )
+
+    // ---------------- Plano de ação (aba Atividades) ----------------
+    MEASURE Atividades[Atividades Abertas] =
+        CALCULATE ( COUNTROWS ( Atividades ), Atividades[Situacao] <> "CONCLUÍDA" )
+    MEASURE Atividades[Atividades Atrasadas] =
+        CALCULATE ( COUNTROWS ( Atividades ), Atividades[Situacao] = "ATRASADA" )
+    MEASURE Atividades[Atividades Travadas] =
+        CALCULATE ( COUNTROWS ( Atividades ), Atividades[Situacao] = "TRAVADA" )
+
+    // ---------------- Eventos de pagamento ----------------
+    MEASURE Eventos[% do Evento Cumprido] =
+        // ENTREGA: itens físicos entregues; APROVAÇÃO: fichas aprovadas — nas listas ligadas ao evento
+        VAR Tipo = SELECTEDVALUE ( Eventos[Tipo Evento] )
+        RETURN SWITCH ( Tipo, "ENTREGA", [% Físicos Entregues], "APROVAÇÃO", [% Aprovadas] )
+
+    // ---------------- Rótulos ----------------
+    MEASURE Itens[Atualizado em] =
+        "Dados de " & FORMAT ( MAX ( Itens[Data Referencia] ), "dd/mm/yyyy" )
+    MEASURE Itens[Rótulo Atraso Itaipu] =
+        VAR N = [Autorizações Atrasadas Itaipu]
+        RETURN IF ( N > 0, FORMAT ( N, "0" ) & " fichas aguardam autorização além de 15 dias úteis", "Nenhuma autorização fora do prazo" )
+
+EVALUATE
+    ROW ( "Fichas", [Fichas], "Emitidas", [Fichas Emitidas], "Aprovadas", [Fichas Aprovadas],
+          "Atrasadas Itaipu", [Autorizações Atrasadas Itaipu], "LMR fora", [LMR Fora do Compromisso] )
