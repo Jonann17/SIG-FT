@@ -56,6 +56,11 @@ código PMIB **não são dominio da EN.DT**, e sim da SM.DT.
 - **Listas suspensas do `_STATUS_PMIB` somem ao salvar pelo SIG-FT** (validação por
   referência a outra aba = extensão, que o openpyxl apaga). 21 planilhas ainda tinham.
 - **`APTO PARA ENTREGA` da mapeadora = apto e ainda não entregue.**
+- **STATUS `DUPLICADO` ≠ ficha duplicada** (correção do Luan, 04/10): DUPLICADO = item repetido na
+  mesma lista; ficha duplicada de outro sistema = `PDM.9900.000` + PMIB da original em OBSERVAÇÕES.
+- **O openpyxl apaga comentários em thread** (04/10, testado): 16 `_STATUS_PMIB` têm. Migrar esses
+  pelo Excel; blindar o SIG-FT.
+- **Lista de preços vigente da Sala Segura só existe como `ST00=U01&MPB021 - Copy.xlsm`** (04/10).
 - **Excel desta máquina (pessoal) está "Produto Não Licenciado"**: automação via Excel não
   roda aqui; a migração v2 usa openpyxl. O LibreOffice está instalado e serve para
   recalcular fórmulas em teste.

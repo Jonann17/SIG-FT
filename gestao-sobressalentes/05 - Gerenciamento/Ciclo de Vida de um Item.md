@@ -20,9 +20,11 @@ stateDiagram-v2
     EM_CORRECAO --> EM_ANALISE_IB: reemitida
     EM_ANALISE_IB --> APROVADO: Itaipu aprovou
     APROVADO --> [*]
-    FICHA_CRIADA --> DUPLICADO: material identico ja existe em outra lista
-    DUPLICADO --> EM_ELABORACAO
 ```
+
+> [!note] `DUPLICADO` não é um estágio
+> É uma marca de **linha**, não de ficha — ver o fim desta nota. E a ficha duplicada de outro
+> sistema (`PDM.9900.000`) percorre este mesmo caminho, como qualquer ficha.
 
 ## Estagio por estagio
 
@@ -64,9 +66,23 @@ Itaipu devolveu com comentários. Volta para elaboração e reemite.
 ### 7. `APROVADO`
 Fecha o **Evento de Aprovação dos Sobressalentes**.
 
-### Desvio: `DUPLICADO`
-Se na criação o portal recusa a referência por já existir, o item vira
-[[Fichas Duplicadas|ficha duplicada]] com `PDM.9900.000`.
+### Dois casos que parecem iguais e não são
+
+> [!important] Corrigido pelo Luan em 04/10/2026
+> A versão anterior desta nota dizia que `DUPLICADO` era o material idêntico de outra lista.
+> **Está errado.** São duas coisas diferentes:
+
+| | STATUS `DUPLICADO` | [[Fichas Duplicadas\|Ficha duplicada]] de outro sistema |
+|---|---|---|
+| O que é | o **mesmo item aparece duas vezes na mesma lista** (ex.: componente usado em dois conjuntos) | o mesmo material já tem ficha **em outra lista** (outro sistema) |
+| Ficha no portal | **nenhuma nova** — a linha repete o código PMIB de outra linha da mesma lista | **ficha nova**, com código PMIB próprio, criada com o `PDM.9900.000 - FICHA PMIB, DUPLICADA` |
+| Coluna STATUS | `DUPLICADO` — para não preencher COMPLETO duas vezes para a mesma ficha | o ciclo normal: FICHA CRIADA → … → APROVADO |
+| Como se reconhece | STATUS = `DUPLICADO` | `PDM usado` = `PDM.9900.000…` e o **PMIB da ficha original em OBSERVAÇÕES** |
+| Na contagem | **não conta de novo** (a ficha já conta pela outra linha); a **quantidade** da linha conta | conta como ficha |
+
+Em 01/10/2026: 91 linhas `DUPLICADO` (89 com a linha original na mesma lista; 1 sem PMIB e
+1 sem a original — a corrigir) e 111 fichas duplicadas de outro sistema (108 com o PMIB da
+original em OBSERVAÇÕES; 3 sem).
 
 ## Os dois relogios que correm juntos
 

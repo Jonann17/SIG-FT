@@ -4,6 +4,15 @@ tags: [processo, ficha]
 
 # Fichas Duplicadas
 
+> [!warning] Não confundir com o STATUS `DUPLICADO`
+> Esta nota trata da ficha duplicada **de outro sistema** (ficha nova, `PDM.9900.000`). O
+> STATUS `DUPLICADO` do `_STATUS_PMIB` é outra coisa: o mesmo item repetido **na mesma lista**,
+> sem ficha nova. Ver [[Ciclo de Vida de um Item]].
+>
+> No `_STATUS_PMIB`, a ficha duplicada de outro sistema tem `PDM usado` =
+> `PDM.9900.000 - FICHA PMIB, DUPLICADA, R0`, STATUS no ciclo normal e o **PMIB da original em
+> OBSERVAÇÕES** (em 01/10/2026: 111 fichas, 3 sem a referência).
+
 ## O problema
 
 O mesmo material aparece em **duas listas de sobressalentes diferentes**. O portal

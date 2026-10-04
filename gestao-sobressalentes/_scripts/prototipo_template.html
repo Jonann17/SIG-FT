@@ -304,7 +304,7 @@ function interno() {
   const chaveQ = (estado.area || estado.lista) ? "l" : "a";           // filtrou área: uma barra por lista
   const porArea = Object.entries(agrupar(F, chaveQ)).map(([k, arr]) => ({nome: chaveQ === "l" ? (nomeLista[k] || k) : k, valores: contar(arr, "q")}))
     .sort((a, b) => Object.values(b.valores).reduce((s, x) => s + x, 0) - Object.values(a.valores).reduce((s, x) => s + x, 0));
-  const c1 = cabecalho("c-quem", "Com quem está cada ficha", (chaveQ === "l" ? "Por lista." : "Por área.") + " Uma ficha = um código PMIB (sem as duplicadas).",
+  const c1 = cabecalho("c-quem", "Com quem está cada ficha", (chaveQ === "l" ? "Por lista." : "Por área.") + " Uma ficha = um código PMIB; a linha DUPLICADO repete uma ficha da mesma lista e não conta de novo.",
     () => tabela([{t: chaveQ === "l" ? "Lista" : "Área", v: "nome"}, ...SQ.map(s => ({t: s.nome, v: l => fmt(l.valores[s.chave] || 0), n: 1}))], porArea, false));
   barrasEmpilhadas(c1, porArea, SQ);
 

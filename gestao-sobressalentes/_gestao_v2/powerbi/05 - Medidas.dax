@@ -6,8 +6,9 @@
 // acima do DEFINE. As medidas vão para as tabelas indicadas.
 //
 // Unidade de contagem: FICHA = código PMIB distinto, sem as linhas DUPLICADO
-// (mesma regra do SIG-FT). Linha não é ficha: a mesma ficha pode aparecer em
-// mais de uma linha (componente usado em dois conjuntos).
+// (mesma regra do SIG-FT). STATUS DUPLICADO = o mesmo item repetido NA MESMA LISTA:
+// a linha repete o PMIB de outra e não é ficha nova — mas a quantidade dela conta
+// no valor. A ficha duplicada DE OUTRO SISTEMA (PDM.9900.000) é ficha nova e conta.
 // =====================================================================
 DEFINE
     // ---------------- Fichas ----------------
@@ -93,7 +94,10 @@ DEFINE
     MEASURE Itens[Valor Físico USD] =
         SUM ( Itens[Valor Linha USD] )
     MEASURE Itens[Valor Entregue USD] =
-        CALCULATE ( [Valor Físico USD], Itens[Entregue] = TRUE () )
+        // Ficha Entregue: a linha DUPLICADO herda o "entregue" da linha da ficha
+        CALCULATE ( [Valor Físico USD], Itens[Ficha Entregue] = TRUE () )
+    MEASURE Itens[Fichas Duplicadas de Outro Sistema] =
+        CALCULATE ( [Fichas], Itens[Duplicada de Outro Sistema] = TRUE () )
     MEASURE Itens[% Valor Entregue] =
         DIVIDE ( [Valor Entregue USD], [Valor Físico USD] )
     MEASURE Itens[Fichas com Preço] =

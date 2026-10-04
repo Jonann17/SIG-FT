@@ -32,6 +32,9 @@ Cole isto no início do chat:
 > Sou o Luan, coordeno a entrega dos sobressalentes. Quero trabalhar na tarefa **N** da
 > seção 5 do README.
 
+Para a migração do `_STATUS_PMIB`, o plano de execução é
+**`07 - Diagnostico/Plano - Reestruturacao do STATUS_PMIB.md`**.
+
 Se o chat **não tiver acesso ao Box**, ele não consegue ler as planilhas: anexe os arquivos de
 que a tarefa precisa (um `_STATUS_PMIB`, a mapeadora, uma lista de preços) ou rode os scripts
 na máquina que tem o Box.
@@ -125,6 +128,15 @@ na máquina que tem o Box.
   openpyxl (conferido: salvar de novo pelo openpyxl mantém as validações). No SIG-FT, nunca criar
   validação apontando para outra aba.
 
+### D3b. O openpyxl também apaga comentários em thread (04/10)
+- **Evidência**: 16 `_STATUS_PMIB` têm comentários "em thread" (Revisão › Novo Comentário: autor,
+  data, respostas). Teste: salvar pelo openpyxl apaga as partes `threadedComments`/`persons` e deixa
+  só uma anotação comum "[Threaded comment] Your version of Excel…". Acontece toda vez que o SIG-FT
+  grava um desses arquivos.
+- **Fazer**: a migração **pula** esses arquivos (intocados) até existir o motor Excel; no SIG-FT,
+  avisar antes de salvar arquivo com comentário em thread; regra de processo sugerida: usar
+  **Anotação** (nota), que sobrevive. Detalhes no plano de reestruturação.
+
 ### D4. A lista de preços mudou para `PB021`
 - **Evidência**: 9 arquivos `...PB021` já nas pastas (ex.: `#ST00=M00MEU10&MPB021`); a aba
   **"Lista de preços Follow-up"** da mapeadora tem 16 linhas, **todas no código antigo `PB020-0x`**.
@@ -141,6 +153,15 @@ na máquina que tem o Box.
   LMR 24%**. **269 fichas** comunicadas a Itaipu há mais de 3 meses sem LMR.
 - **Fazer**: plano de ação da LMR por lista (começar pelas que têm mais fichas em análise em
   Itaipu); ver `07 - Diagnostico/Plano de Acao - Aplicacao LMR.md`.
+
+### DUPLICADO ≠ ficha duplicada (corrigido pelo Luan em 04/10)
+- **STATUS `DUPLICADO`** = o mesmo item repetido **na mesma lista**: a linha repete o PMIB de outra
+  linha da lista e fica sem as seções preenchidas (para não marcar COMPLETO duas vezes). Não é ficha
+  nova; a **quantidade** conta (no valor em US$, por exemplo).
+- **Ficha duplicada de outro sistema** = ficha **nova**, PMIB próprio, `PDM usado` =
+  `PDM.9900.000 - FICHA PMIB, DUPLICADA, R0`, **PMIB da original em OBSERVAÇÕES**, STATUS normal.
+- Em 01/10: 91 linhas DUPLICADO (2 sem a linha original) e 111 fichas duplicadas (3 sem a referência).
+  A nota antiga "Ciclo de Vida de um Item" descrevia errado e foi corrigida.
 
 ### Outros achados (qualidade dos dados, 01/10)
 
@@ -164,7 +185,7 @@ na máquina que tem o Box.
 |---|---|
 | `_scripts/regras_sobressalentes.py` | testado (prazos, PMIB, situações, pendência) |
 | Template `_gestao_v2/template/codigo_itaipu_STATUS_PMIB_v2.xlsx` | fórmulas recalculadas no LibreOffice batem com o Python (10 casos + 3 planilhas reais) |
-| `_gestao_v2/migrar_status_pmib_v2.py` | **simulado** em cópias: 47/47, nenhum dado existente alterado, 818 TIPO e 1.006 PROCUREMENT pré-preenchidos. **NÃO aplicado no Box** |
+| `_gestao_v2/migrar_status_pmib_v2.py` | **simulado** em cópias (04/10): 31 migram sem nenhuma perda; **16 com comentário em thread são pulados** (motor Excel a construir). **NÃO aplicado no Box.** Plano: `Plano - Reestruturacao do STATUS_PMIB.md` |
 | `_gestao_v2/powerbi/*.pq` + `05 - Medidas.dax` | escritos; **ainda não montados** no Power BI Desktop |
 | `_gerado/prototipo-dashboard.html` | protótipo das duas visões com dados de 01/10 (abrir no navegador; `#itaipu` no fim da URL abre a visão do cliente) |
 | Notas do cofre | atualizadas: Lista de Precos (PB021), Planilha STATUS_PMIB, Organizacao das Pastas, Mapeamento, Indicadores, findings, progress |
@@ -199,7 +220,7 @@ Os scripts acham o Box em `~/Box/CMI - Consórcio Itaipu/11 - Ger. Engenharia/15
 | N | Tarefa | Precisa de | Referência |
 |---|---|---|---|
 | 1 | Decidir as pendências da seção 6 | Luan | — |
-| 2 | Aplicar a migração v2 e trocar o template em `Templates/` | máquina com Box, autorização | seção 4 |
+| 2 | Aplicar a migração v2 (31 arquivos) e construir o motor Excel para os 16 com comentário em thread; trocar o template | máquina com Box e Excel licenciado, autorização | `Plano - Reestruturacao do STATUS_PMIB.md` |
 | 3 | Montar o Power BI v2 (interno, depois Itaipu) | Power BI Desktop | `_gestao_v2/powerbi/LEIA-ME.md` |
 | 4 | SIG-FT: 15 d.u. (D2) | repositório SIG-FT | seção 2, D2 |
 | 5 | SIG-FT: script de aptos grava a **DATA DA AUTORIZAÇÃO** (a data do export `sobressalentes_autorizados_AAAAMMDDhhmm`) ao virar APTO = SIM | repositório SIG-FT | `apto_para_entrega_att.py` |

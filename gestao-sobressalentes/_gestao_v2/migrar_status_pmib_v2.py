@@ -23,6 +23,12 @@ SIG-FT e o Power BI leem por nome, e a equipe nao perde a referencia):
   6. Pre-preenchimento, so em celula vazia: TIPO DE ENTREGA pela lista de
      precos (PMIB) e PROCUREMENT pela mapeadora (lista com uma pessoa so).
 
+PROTECAO: o openpyxl APAGA comentarios em thread (autor, data, respostas). Arquivo
+que tem esse tipo de comentario e PULADO, intocado — migrar pelo Excel (ver
+"Plano - Reestruturacao do STATUS_PMIB"), ou rodar com --aceitar-perda-de-comentarios
+se a perda for aceita. A conferencia compara, antes e depois, celulas, anotacoes,
+comentarios, formatacao condicional e desenhos.
+
 MODOS
   python migrar_status_pmib_v2.py --simular
       Copia os _STATUS_PMIB do Box para uma pasta LOCAL (%TEMP%, nao
@@ -50,6 +56,7 @@ import shutil
 import sys
 import tempfile
 import warnings
+import zipfile
 
 import openpyxl
 import pandas as pd
@@ -229,12 +236,42 @@ def validacao_data(ws, faixa: str, msg: str) -> None:
 
 
 # --------------------------------------------------------------------------
+# Inventario do que o openpyxl NAO preserva — medido no proprio .xlsx (zip)
+# --------------------------------------------------------------------------
+def inventario(caminho: pathlib.Path) -> dict[str, int]:
+    """Conta o que existe no arquivo: comentarios em thread (o openpyxl APAGA), anotacoes,
+    validacoes padrao e de extensao (x14, o openpyxl APAGA), formatacao condicional, desenhos."""
+    with zipfile.ZipFile(caminho) as z:
+        nomes = z.namelist()
+        ler = lambda prefixo: "".join(z.read(n).decode("utf-8", "ignore") for n in nomes if n.startswith(prefixo))  # noqa: E731
+        folhas, thread, notas = ler("xl/worksheets/sheet"), ler("xl/threadedComments/"), ler("xl/comments")
+        desenho = ler("xl/drawings/drawing")   # formas, imagens e graficos; contêiner vazio nao conta
+        return {
+            "comentarios_thread": thread.count("<threadedComment "),
+            "anotacoes": notas.count("<comment "),
+            "validacoes": folhas.count("<dataValidation "),
+            "validacoes_extensao": folhas.count("<x14:dataValidation "),
+            "formatacao_condicional": folhas.count("<conditionalFormatting "),
+            "desenhos": sum(desenho.count(f"<xdr:{a}") for a in ("twoCellAnchor", "oneCellAnchor", "absoluteAnchor")),
+        }
+
+
+# --------------------------------------------------------------------------
 # Migracao de um arquivo
 # --------------------------------------------------------------------------
+class PuladoParaPreservar(Exception):
+    """O openpyxl destruiria algo que nao pode ser perdido; o arquivo fica intocado."""
+
+
 def migrar_planilha(caminho: pathlib.Path, prefill_tipo: dict[str, str], prefill_proc: str | None,
-                    folga: int = FOLGA_LINHAS) -> dict:
+                    folga: int = FOLGA_LINHAS, aceitar_perda_comentarios: bool = False) -> dict:
     resumo = {"arquivo": caminho.name, "colunas_inseridas": 0, "inicio_bloco": "", "aviso": "",
               "tipo_preenchido": 0, "procurement_preenchido": 0}
+    antes = inventario(caminho)
+    if antes["comentarios_thread"] and not aceitar_perda_comentarios:
+        # o openpyxl transforma comentario em thread em anotacao comum: perde autor, data e respostas
+        raise PuladoParaPreservar(f"{antes['comentarios_thread']} comentário(s) em thread — migrar pelo Excel "
+                                  f"(ver Plano - Reestruturacao do STATUS_PMIB, motor Excel)")
     wb = openpyxl.load_workbook(caminho)
     ws = wb["Lista de Materiais"]
     hdr, mapa = cabecalho(ws)
@@ -388,6 +425,13 @@ def conferir(original: pathlib.Path, migrado: pathlib.Path) -> list[str]:
     for nome in ("lst_tipo_entrega", "lst_status"):
         if not any(f and nome in f for f in dvs):
             problemas.append(f"validação {nome} não sobrevive a um save do openpyxl")
+    # nada do que existia pode sumir: anotacoes, comentarios em thread, desenhos, formatacao condicional
+    a_inv, b_inv = inventario(original), inventario(migrado)
+    for k in ("anotacoes", "comentarios_thread", "desenhos"):
+        if b_inv[k] < a_inv[k]:
+            problemas.append(f"{k}: {a_inv[k]} -> {b_inv[k]}")
+    if b_inv["formatacao_condicional"] < a_inv["formatacao_condicional"]:
+        problemas.append(f"formatação condicional: {a_inv['formatacao_condicional']} -> {b_inv['formatacao_condicional']}")
     return problemas
 
 
@@ -413,6 +457,8 @@ def main() -> int:
                     default=pathlib.Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "Sobressalentes-v2")
     ap.add_argument("--so", help="migra só arquivos cujo nome contém este texto")
     ap.add_argument("--confirmo", action="store_true", help="no --aplicar, dispensa a pergunta (autorização já dada)")
+    ap.add_argument("--aceitar-perda-de-comentarios", action="store_true",
+                    help="migra também arquivos com comentário em thread (vira anotação comum: perde autor, data e respostas)")
     args = ap.parse_args()
 
     if args.template:
@@ -453,8 +499,10 @@ def main() -> int:
     for referencia, alvo in alvos:
         lista = alvo.name[: -len("_STATUS_PMIB.xlsx")]
         try:
-            res = migrar_planilha(alvo, tipo, proc.get(lista))
+            res = migrar_planilha(alvo, tipo, proc.get(lista), aceitar_perda_comentarios=args.aceitar_perda_de_comentarios)
             res["problemas"] = "; ".join(conferir(referencia, alvo)) or "—"
+        except PuladoParaPreservar as e:
+            res = {"arquivo": alvo.name, "ok": False, "pulado": True, "erro": f"PULADO (intocado): {e}"}
         except PermissionError:
             res = {"arquivo": alvo.name, "ok": False, "erro": "arquivo aberto (Excel) — não migrado"}
         except Exception as e:  # noqa: BLE001 — registra e segue
@@ -469,6 +517,9 @@ def main() -> int:
     relatorio = pasta / "relatorio_migracao.csv"
     df.to_csv(relatorio, index=False, encoding="utf-8-sig", sep=";")
     ruins = df[df.get("problemas", pd.Series(dtype=str)).fillna("—") != "—"]
+    pulados = int(df.get("pulado", pd.Series(dtype=bool)).fillna(False).sum())
+    if pulados:
+        print(f"\n{pulados} arquivo(s) PULADOS para não perder comentários em thread — ficaram intocados.")
     print(f"\n{int(df['ok'].fillna(False).sum())} de {len(df)} migrados | TIPO DE ENTREGA pré-preenchido: "
           f"{int(df.get('tipo_preenchido', pd.Series([0])).fillna(0).sum())} | PROCUREMENT: "
           f"{int(df.get('procurement_preenchido', pd.Series([0])).fillna(0).sum())}")

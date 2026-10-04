@@ -429,7 +429,15 @@ def ler_itens(raiz: pathlib.Path = PASTA_PMIB, hoje: dt.date | None = None,
 
     itens["PMIB"] = itens["CODIGO PMIB"].map(normalizar_pmib)
     itens["STATUS_N"] = itens["STATUS"].map(normalizar).map(lambda s: STATUS_CANONICO.get(s, "SEM STATUS" if not s else s))
+    # STATUS DUPLICADO = o mesmo item repetido NA MESMA LISTA: a linha repete o PMIB de outra
+    # linha e nao tem as secoes preenchidas. Nao e ficha nova (a ficha conta pela outra linha);
+    # a QUANTIDADE dela conta. Ja a ficha duplicada DE OUTRO SISTEMA e ficha nova, com PMIB
+    # proprio, PDM.9900.000 e o PMIB da original em OBSERVACOES — conta como ficha.
     itens["E_FICHA"] = itens["PMIB"].notna() & (itens["STATUS_N"] != "DUPLICADO")
+    itens["DUP_OUTRO_SISTEMA"] = itens["PDM USADO"].map(normalizar).str.startswith("PDM.9900") if "PDM USADO" in itens else False
+    itens["PMIB_ORIGINAL"] = [
+        (normalizar_pmib(m.group(0)) if (m := re.search(r"4500063671\.?\d{3,4}", str(o or ""))) else None) if d else None
+        for o, d in zip(itens["OBSERVACOES"] if "OBSERVACOES" in itens else [None] * len(itens), itens["DUP_OUTRO_SISTEMA"])]
     itens["COM_QUEM"] = itens["STATUS_N"].map(COM_QUEM).fillna("—")
     for s in SECOES:
         itens[f"OK_{s}"] = itens[s].map(normalizar).eq("COMPLETO")

@@ -103,11 +103,13 @@ def montar(hoje: dt.date) -> dict:
     proc_lista = {str(l).strip(): (p if isinstance(p, str) else None) for l, p in zip(listas_m["N DOCUMENTO ITAIPU"], listas_m["PROCUREMENT"])}
 
     # ---------------- fichas (lista|PMIB) ----------------
-    f = itens[itens["E_FICHA"]].copy()
-    f["VALOR_LINHA"] = [q * v if (t == "FÍSICA E DOCUMENTAL" and pd.notna(q) and v is not None and pd.notna(v)) else 0.0
-                        for q, v, t in zip(f["QTD"], f["VALOR_UNIT"], f["TIPO_ENTREGA"])]
-    valor = f.groupby(["LISTA", "PMIB"])["VALOR_LINHA"].sum()
-    f = f.drop_duplicates(["LISTA", "PMIB"])
+    # valor: TODAS as linhas da ficha, inclusive as DUPLICADO (repeticao na mesma lista tem quantidade propria)
+    com_pmib = itens[itens["PMIB"].notna()].copy()
+    com_pmib["VALOR_LINHA"] = [q * v if (t == "FÍSICA E DOCUMENTAL" and pd.notna(q) and v is not None and pd.notna(v)) else 0.0
+                               for q, v, t in zip(com_pmib["QTD"], com_pmib["VALOR_UNIT"], com_pmib["TIPO_ENTREGA"])]
+    valor = com_pmib.groupby(["LISTA", "PMIB"])["VALOR_LINHA"].sum()
+    # estado: a linha da ficha (a que nao e DUPLICADO)
+    f = itens[itens["E_FICHA"]].copy().drop_duplicates(["LISTA", "PMIB"])
     registros = []
     for r in f.itertuples(index=False):
         d = r._asdict()
@@ -210,6 +212,21 @@ def qualidade(itens: pd.DataFrame, precos: pd.DataFrame, arquivos_preco: pd.Data
                   "detalhe": "Têm código PMIB, então são fichas: N/A só vale para linha sem ficha (título de conjunto). "
                              "Provável FICHA CRIADA — corrigir no _STATUS_PMIB.",
                   "exemplos": [f"{l} ({n})" for l, n in c.most_common(4)]})
+
+    dup = itens[itens["STATUS_N"] == "DUPLICADO"]
+    fichas_lista = set(zip(itens.loc[itens["E_FICHA"], "LISTA"], itens.loc[itens["E_FICHA"], "PMIB"]))
+    orfas = dup[[(l, p) not in fichas_lista for l, p in zip(dup["LISTA"], dup["PMIB"])]]
+    if len(orfas):
+        q.append({"titulo": "linhas DUPLICADO sem a linha original na mesma lista", "n": len(orfas),
+                  "detalhe": "DUPLICADO = o mesmo item repetido na mesma lista; a linha tem de repetir o PMIB de outra linha "
+                             "da lista. Sem PMIB ou sem a original, a ficha some da contagem.",
+                  "exemplos": [f"{l} · item {i} · {p or 'sem PMIB'}" for l, i, p in zip(orfas["LISTA"], orfas["ITEM"], orfas["PMIB"])][:4]})
+
+    sem_ref = itens[itens["DUP_OUTRO_SISTEMA"] & itens["PMIB_ORIGINAL"].isna() & itens["E_FICHA"]]
+    if len(sem_ref):
+        q.append({"titulo": "fichas duplicadas de outro sistema sem o PMIB da original", "n": len(sem_ref),
+                  "detalhe": "PDM.9900.000 exige o PMIB da ficha original em OBSERVAÇÕES — é de onde o módulo Ficha Duplicada copia.",
+                  "exemplos": [f"{l} · {p}" for l, p in zip(sem_ref["LISTA"], sem_ref["PMIB"])][:4]})
 
     apto_sem = fichas[fichas["APTO"] & fichas["DT_EMAIL"].isna()]
     if len(apto_sem):

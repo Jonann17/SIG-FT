@@ -71,7 +71,9 @@ Três decisões estruturam o resto:
    script). Prazo, situação e atraso são **sempre** calculados — no Excel para quem está
    trabalhando, no Power BI para quem está decidindo, com a mesma regra.
 3. **Unidade = ficha** (código PMIB distinto, sem as linhas `DUPLICADO`), a mesma do SIG-FT.
-   Linha não é ficha.
+   Linha não é ficha. `DUPLICADO` = o mesmo item repetido **na mesma lista** (repete o PMIB de
+   outra linha; a quantidade conta no valor). A ficha duplicada **de outro sistema**
+   (`PDM.9900.000`, PMIB da original em OBSERVAÇÕES) é ficha nova e conta.
 
 ---
 
@@ -152,7 +154,7 @@ Roteiro de montagem: [[LEIA-ME|_gestao_v2/powerbi/LEIA-ME]].
 |---|---|---|
 | Regras de negócio + leitura | `_scripts/regras_sobressalentes.py` | testado |
 | Template `_STATUS_PMIB` v2 | `_gestao_v2/template/codigo_itaipu_STATUS_PMIB_v2.xlsx` | fórmulas conferidas no LibreOffice |
-| Migração dos `_STATUS_PMIB` | `_gestao_v2/migrar_status_pmib_v2.py` | **simulada em cópias: 47/47, nenhum dado existente alterado** — não aplicada no Box |
+| Migração dos `_STATUS_PMIB` | `_gestao_v2/migrar_status_pmib_v2.py` | simulada em cópias (04/10): 31 sem perda; 16 com comentário em thread pulados — não aplicada no Box. Execução em [[Plano - Reestruturacao do STATUS_PMIB]] |
 | Consultas Power Query + medidas DAX | `_gestao_v2/powerbi/*.pq`, `05 - Medidas.dax` | escritas; montar no Desktop |
 | Protótipo das duas visões | `_gerado/prototipo-dashboard.html` (`_scripts/gerar_prototipo_dashboard.py`) | gerado com dados de 01/10 |
 

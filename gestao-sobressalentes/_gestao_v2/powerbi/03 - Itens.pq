@@ -44,8 +44,17 @@ let
     // 4. Chaves e vocabulário
     ComPMIB = Table.AddColumn(ComDescricao, "PMIB", each fxPMIB([CODIGO PMIB]), type text),
     ComStatus = Table.AddColumn(ComPMIB, "Status", each fxStatus([STATUS]), type text),
+    // STATUS DUPLICADO = o mesmo item repetido NA MESMA LISTA (repete o PMIB de outra linha, sem
+    // seções preenchidas): não é ficha nova, mas a quantidade conta. A ficha duplicada DE OUTRO
+    // SISTEMA é ficha nova (PMIB próprio, PDM.9900.000, PMIB da original em OBSERVACOES).
     ComEFicha = Table.AddColumn(ComStatus, "E Ficha", each [PMIB] <> null and [Status] <> "DUPLICADO", type logical),
-    ComChave = Table.AddColumn(ComEFicha, "Chave Ficha", each if [E Ficha] then [Lista] & "|" & [PMIB] else null, type text),
+    ComDupOutro = Table.AddColumn(ComEFicha, "Duplicada de Outro Sistema", each Text.StartsWith(fxNorm([PDM USADO]), "PDM.9900"), type logical),
+    ComPMIBOriginal = Table.AddColumn(ComDupOutro, "PMIB Original", each
+        if not [Duplicada de Outro Sistema] then null
+        else
+            let t = if [OBSERVACOES] = null then "" else Text.From([OBSERVACOES]), p = Text.PositionOf(t, "4500063671")
+            in if p < 0 then null else fxPMIB(Text.Select(Text.Middle(t, p, 15), {"0".."9", "."})), type text),
+    ComChave = Table.AddColumn(ComPMIBOriginal, "Chave Ficha", each if [E Ficha] then [Lista] & "|" & [PMIB] else null, type text),
     ComEmitida = Table.AddColumn(ComChave, "Emitida", each List.Contains({"EM ANÁLISE IB", "EM CORREÇÃO", "APROVADO"}, [Status]), type logical),
     ComOrdem = Table.AddColumn(ComEmitida, "Ordem Etapa", each
         List.PositionOf({"INICIAR", "FICHA CRIADA", "COM O FORNECEDOR", "EM ELABORAÇÃO", "EM CORREÇÃO", "EM ANÁLISE IB", "APROVADO"}, [Status]) + 1, Int64.Type),
@@ -87,7 +96,12 @@ let
         {"DATA DA ENTREGA", "Data Entrega"}}),
     ComApto = Table.AddColumn(Renomeada, "Apto", each fxNorm([APTO PARA ENTREGA]) = "SIM", type logical),
     ComEntregue = Table.AddColumn(ComApto, "Entregue", each fxNorm([EQUIPAMENTO ENTREGUE]) = "SIM", type logical),
-    ComPrazo = Table.AddColumn(ComEntregue, "Prazo Autorizacao", each if [Data Email] = null then null else fxSomarDiasUteis([Data Email], 15), type date),
+    // a linha DUPLICADO herda o "entregue" da ficha (mesma lista + mesmo PMIB): o valor dela conta junto
+    EntreguePorFicha = Table.Group(Table.SelectRows(ComEntregue, each [PMIB] <> null), {"Lista", "PMIB"},
+        {{"Ficha Entregue", each List.AnyTrue([Entregue]), type logical}}),
+    ComFichaEntregueN = Table.NestedJoin(ComEntregue, {"Lista", "PMIB"}, EntreguePorFicha, {"Lista", "PMIB"}, "FE", JoinKind.LeftOuter),
+    ComFichaEntregue = Table.ExpandTableColumn(ComFichaEntregueN, "FE", {"Ficha Entregue"}),
+    ComPrazo = Table.AddColumn(ComFichaEntregue, "Prazo Autorizacao", each if [Data Email] = null then null else fxSomarDiasUteis([Data Email], 15), type date),
     ComSituacao = Table.AddColumn(ComPrazo, "Situacao Autorizacao", each
         let Autorizado = [Data Autorizacao] <> null or [Apto] or [Entregue]
         in

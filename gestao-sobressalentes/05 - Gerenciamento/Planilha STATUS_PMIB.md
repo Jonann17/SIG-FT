@@ -70,7 +70,7 @@ CADASTRADOS NO PMIB` / `ESPECIFICAÇÃO TÉCNICA / CAPÍTULO`), e a tabela a par
 | `MARCA/MODELO` | lista | fabricante |
 | `CODIGO PMIB` | portal | preenchido na criação da ficha |
 | `PDM usado` | decisão | qual PDM foi escolhido — ver [[PDM - Padrao de Descricao de Material]] |
-| `STATUS` | gestão | estado geral da ficha |
+| `STATUS` | gestão | estado geral da ficha — ou `DUPLICADO` quando a linha **repete uma ficha da mesma lista** (ver abaixo) |
 | `INFO. GERAIS` | gestão | COMPLETO / INCOMPLETO / N/A |
 | `CARACT. TECNICAS` | gestão | idem |
 | `DOCUMENTOS E IMAGENS` | gestão | idem |
@@ -80,7 +80,17 @@ CADASTRADOS NO PMIB` / `ESPECIFICAÇÃO TÉCNICA / CAPÍTULO`), e a tabela a par
 | `DATA DO EMAIL COMUNICANDO ENTREGA` | gestão | marca o início dos 15 d.u. |
 | `APTO PARA ENTREGA` | gestão | SIM / NÃO |
 | `EQUIPAMENTO ENTREGUE` | gestão | SIM / NÃO |
-| `OBSERVACOES` | gestão | texto livre. **Também carrega o PMIB da ficha base** em fichas duplicadas |
+| `OBSERVACOES` | gestão | texto livre. **Também carrega o PMIB da ficha original** nas fichas duplicadas de outro sistema (`PDM.9900.000`) |
+
+> [!important] `DUPLICADO` ≠ ficha duplicada (corrigido em 04/10/2026)
+> - **STATUS `DUPLICADO`**: o mesmo item aparece **duas vezes na mesma lista**. A linha repete o
+>   código PMIB de outra linha da lista e não tem as seções preenchidas — para não marcar
+>   COMPLETO duas vezes para a mesma ficha. Não conta como ficha nova; a quantidade conta.
+> - **Ficha duplicada de outro sistema**: ficha **nova**, com PMIB próprio, `PDM usado` =
+>   `PDM.9900.000 - FICHA PMIB, DUPLICADA, R0` e o **PMIB da original em OBSERVAÇÕES**. O STATUS
+>   segue o ciclo normal. É o que o módulo Ficha Duplicada do SIG-FT procura.
+>
+> Detalhe em [[Ciclo de Vida de um Item]] e [[Fichas Duplicadas]].
 
 ### `Checklist`
 Os valores validos, que evitam status inventado:

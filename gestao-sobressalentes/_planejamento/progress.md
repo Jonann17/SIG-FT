@@ -25,6 +25,16 @@ procurement, atraso de Itaipu em 15 d.u.) e um Power BI com visão interna e vis
   `gestao-sobressalentes/`, branch `claude/gestao-sobressalentes-v2`, Pull Request #2.
   Ponto de partida para a próxima conversa: [[README]].
 
+## 2026-10-04 — correção do DUPLICADO e plano de reestruturação
+- Luan corrigiu: STATUS `DUPLICADO` = item repetido **na mesma lista**; ficha duplicada de outro
+  sistema = `PDM.9900.000` + PMIB da original em OBSERVAÇÕES. Notas corrigidas (Ciclo de Vida,
+  Planilha STATUS_PMIB, Glossário, Fichas Duplicadas); valor em US$ passa a contar a quantidade das
+  linhas DUPLICADO; dois alertas novos de qualidade.
+- Achado: **o openpyxl apaga comentários em thread** (16 arquivos). A migração passou a pular esses
+  arquivos e a conferir anotações, comentários, formatação condicional e desenhos antes/depois.
+- Simulação de 04/10: 31 migrados sem perda, 16 pulados intactos.
+- Plano de execução: [[Plano - Reestruturacao do STATUS_PMIB]]. Aguardando aprovação.
+
 ## Proximas sessões
 1. **Aplicar a migração v2** (depois das decisões da seção 8 do plano) e montar o Power BI.
 2. **SIG-FT**: 15 d.u. no `pmib_manager.py`; carimbar DATA DA AUTORIZAÇÃO no script de aptos;

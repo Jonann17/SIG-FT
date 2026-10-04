@@ -28,4 +28,5 @@ tags: [contexto, glossario]
 | **SAP ECC 6.07** | ERP da Itaipu, destino final da carga dos dados de PDM |
 | **SOM** | Sistema legado de Itaipu citado na ET, antecessor do PMIB para catalogacao |
 | **SIG-FT** | Sistema Integrado de Gestão de Fichas Técnicas — o app que automatiza tudo isso. Ver [[SIG-FT - Visao Geral]] |
-| **Ficha duplicada** | Ficha para material idêntico já existente em outra lista. Usa `PDM.9900.000`. Ver [[Fichas Duplicadas]] |
+| **Ficha duplicada** | Ficha **nova**, com PMIB próprio, para material idêntico já existente em **outra lista**. Usa `PDM.9900.000`; o PMIB da original vai em OBSERVAÇÕES. Ver [[Fichas Duplicadas]] |
+| **`DUPLICADO` (status)** | Marca de **linha** no `_STATUS_PMIB`: o mesmo item aparece duas vezes **na mesma lista**; a linha repete o PMIB de outra e não é ficha nova. Ver [[Ciclo de Vida de um Item]] |
