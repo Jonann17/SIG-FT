@@ -32,7 +32,11 @@ procurement, atraso de Itaipu em 15 d.u.) e um Power BI com visão interna e vis
   linhas DUPLICADO; dois alertas novos de qualidade.
 - Achado: **o openpyxl apaga comentários em thread** (16 arquivos). A migração passou a pular esses
   arquivos e a conferir anotações, comentários, formatação condicional e desenhos antes/depois.
-- Simulação de 04/10: 31 migrados sem perda, 16 pulados intactos.
+- Decisões do Luan (04/10): sem DATA DA ENTREGA; nenhum cálculo no Excel (SIG-FT calcula e grava
+  valores); sem aba de feriados; comentários têm de ser preservados.
+- Novo editor `_gestao_v2/xlsx_cirurgico.py` (altera só 3 partes do .xlsx, o resto byte a byte).
+  Simulação: 47/47 sem perda, comentários em thread intactos, todos abrem no LibreOffice.
+  Power BI passa a ler prazo/situação/atraso gravados pelo SIG-FT.
 - Plano de execução: [[Plano - Reestruturacao do STATUS_PMIB]]. Aguardando aprovação.
 
 ## Proximas sessões

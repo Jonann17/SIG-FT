@@ -7,7 +7,8 @@ criado: 2026-10-01
 
 O protótipo `_gerado/prototipo-dashboard.html` mostra o resultado esperado com os dados reais.
 Este roteiro reproduz o mesmo painel no Power BI Desktop. As regras são as de
-`_scripts/regras_sobressalentes.py` — se mudar uma, mude nas duas.
+`_scripts/regras_sobressalentes.py`. **Prazo, situação e atraso da autorização (15 dias úteis)
+são calculados pelo SIG-FT** e gravados no `_STATUS_PMIB`; o Power BI só lê (decisão de 04/10/2026).
 
 ## O que muda em relação ao `Sobressalentes - Dashboard.pbix` atual
 
@@ -17,7 +18,7 @@ Este roteiro reproduz o mesmo painel no Power BI Desktop. As regras são as de
 | Os números só ficam certos depois de rodar o SIG-FT | Atualizou o `_STATUS_PMIB`, o Power BI já vê |
 | Caminho fixo `C:\Users\560083605\Box\...` | Parâmetro **PastaPMIB** — cada máquina põe o seu |
 | Funil misturando etapas que correm em paralelo | Barras empilhadas por etapa e por "com quem está" |
-| "Atraso de Itaipu" contado pelo SIG-FT com 14 dias corridos | 15 dias úteis com tabela de feriados, calculado na carga |
+| "Atraso de Itaipu" contado pelo SIG-FT com 14 dias corridos | prazo, situação e atraso **calculados pelo SIG-FT** (15 dias úteis) e lidos do `_STATUS_PMIB` — o Power BI não calcula dias úteis |
 | Sem tempo, sem tipo de entrega, sem valor | Prazo, situação da autorização, LMR, tipo de entrega, valor US$ |
 | Uma página interna copiada numa segunda, com gráfico de preço apontando para a coluna errada | Dois relatórios: **Interno** e **Itaipu** |
 
@@ -28,8 +29,8 @@ Este roteiro reproduz o mesmo painel no Power BI Desktop. As regras são as de
    Editor Avançado. Para cada bloco `// CONSULTA: Nome` dos arquivos `.pq`, cole o bloco e
    renomeie a consulta com o mesmo nome. Ordem:
    - `00` — `PastaPMIB` (parâmetro: **troque o caminho**), `DataReferencia`, `fxNorm`, `fxPMIB`,
-     `fxLerTabela`, `fxData`, `fxStatus`, `fxTipoEntrega`, `fxSomarDiasUteis`, `fxDiasUteisEntre`
-   - `01` — `Feriados`, `Calendario`
+     `fxLerTabela`, `fxData`, `fxStatus`, `fxTipoEntrega`
+   - `01` — `Calendario`
    - `02` — `PrecosArquivos`, `PrecosPorPMIB`, `PrecosAconex`
    - `03` — `Itens`
    - `04` — `Listas`, `Atividades`, `Eventos`, `ListaEvento`
@@ -46,7 +47,7 @@ Este roteiro reproduz o mesmo painel no Power BI Desktop. As regras são as de
    | `ListaEvento[Evento]` | `Eventos[Evento]` | único |
    | `Itens[Data Email]` | `Calendario[Data]` | único (ativo) |
 
-   Marque `Calendario` como tabela de datas. `Feriados` fica solta.
+   Marque `Calendario` como tabela de datas.
 5. **Medidas** — Exibição de consulta DAX › cole `05 - Medidas.dax` inteiro › clique em
    **Atualizar modelo com alterações**. Formate: contagens `0`, `%` com 0 casas, US$ `#,##0`.
 6. **Páginas** — abaixo. Comece pela visão interna.
@@ -83,7 +84,7 @@ Nada de funil, rosca ou medidor: barras horizontais finas com rótulo na ponta.
   rótulo `Maior Atraso Itaipu (d.u.)`.
 - Tabela: Lista, PMIB, Descrição, Data Email, Prazo Autorizacao, Dias Uteis de Atraso, Situacao Autorizacao —
   filtro de página `Situacao Autorizacao` = ATRASADO ITAIPU. **É a pauta da cobrança.**
-- Cartões: `Itens Físicos Entregues` / `Itens Físicos`, `Aptas Aguardando Entrega`, `Prazo Médio de Autorização (d.u.)`.
+- Cartões: `Itens Físicos Entregues` / `Itens Físicos`, `Aptas Aguardando Entrega`, `Aguardando Cálculo do SIG-FT`.
 
 **3. Documental**
 - Matriz Lista × seção (% completo) com formatação condicional — mostra onde a ficha trava.

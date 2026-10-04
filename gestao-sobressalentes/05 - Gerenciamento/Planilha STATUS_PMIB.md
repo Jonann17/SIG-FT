@@ -27,7 +27,7 @@ a revisão da lista em uso e a data da alteração.
 > [!tip] Layout v2 (proposto em 01/10/2026)
 > Bloco novo à direita: **TIPO DE ENTREGA · FORNECEDOR · PROCUREMENT · PRAZO AUTORIZAÇÃO
 > ITAIPU (15 D.U.) · DATA DA AUTORIZAÇÃO ITAIPU · SITUAÇÃO DA AUTORIZAÇÃO · DIAS ÚTEIS DE
-> ATRASO · DATA DA ENTREGA**, abas `Feriados` e `Listas`, e listas suspensas por nome
+> ATRASO** (estas três gravadas pelo SIG-FT, sem fórmula), vocabulários na aba Checklist e listas suspensas por nome
 > definido. Template, migração e regras em [[Plano - Sistema de Gestao v2]].
 
 > [!warning] As listas suspensas somem quando o SIG-FT salva

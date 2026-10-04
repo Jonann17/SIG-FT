@@ -36,7 +36,8 @@ let
                "TIPO DE ENTREGA", "FORNECEDOR", "PROCUREMENT", "CODIGO PMIB", "PDM USADO", "STATUS",
                "INFO. GERAIS", "CARACT. TECNICAS", "DOCUMENTOS E IMAGENS", "CONDICOES", "VALORIZACAO", "APLICACAO - LMR",
                "DATA DO EMAIL COMUNICANDO ENTREGA", "APTO PARA ENTREGA", "DATA DA AUTORIZACAO ITAIPU",
-               "EQUIPAMENTO ENTREGUE", "DATA DA ENTREGA", "OBSERVACOES"},
+               "PRAZO AUTORIZACAO ITAIPU (15 D.U.)", "SITUACAO DA AUTORIZACAO", "DIAS UTEIS DE ATRASO",
+               "EQUIPAMENTO ENTREGUE", "OBSERVACOES"},
     Selecionadas = Table.TransformColumns(Base, {"Dados", each Table.SelectColumns(_, Colunas, MissingField.UseNull)}),
     Expandida = Table.ExpandTableColumn(Selecionadas, "Dados", Colunas),
     ComDescricao = Table.SelectRows(Expandida, each fxNorm([DESCRICAO]) <> ""),
@@ -85,15 +86,17 @@ let
     ComValorLinha = Table.AddColumn(ComQtd, "Valor Linha USD", each
         if [Tipo de Entrega] = "FÍSICA E DOCUMENTAL" and [Qtd] <> null and [Valor Unitario USD] <> null then [Qtd] * [Valor Unitario USD] else null, type number),
 
-    // 7. Trilha logística: datas e a regra dos 15 dias úteis
+    // 7. Trilha logística. Prazo, situação e atraso dos 15 dias úteis são CALCULADOS PELO SIG-FT
+    //    e gravados no _STATUS_PMIB (decisão de 04/10/2026): aqui só se lê. Arquivo ainda não
+    //    processado pelo SIG-FT aparece como "AGUARDANDO CÁLCULO DO SIG-FT".
     ComDatas = Table.TransformColumns(ComValorLinha, {
         {"DATA DO EMAIL COMUNICANDO ENTREGA", fxData, type date},
         {"DATA DA AUTORIZACAO ITAIPU", fxData, type date},
-        {"DATA DA ENTREGA", fxData, type date}}),
+        {"PRAZO AUTORIZACAO ITAIPU (15 D.U.)", fxData, type date}}),
     Renomeada = Table.RenameColumns(ComDatas, {
         {"DATA DO EMAIL COMUNICANDO ENTREGA", "Data Email"},
         {"DATA DA AUTORIZACAO ITAIPU", "Data Autorizacao"},
-        {"DATA DA ENTREGA", "Data Entrega"}}),
+        {"PRAZO AUTORIZACAO ITAIPU (15 D.U.)", "Prazo Autorizacao"}}),
     ComApto = Table.AddColumn(Renomeada, "Apto", each fxNorm([APTO PARA ENTREGA]) = "SIM", type logical),
     ComEntregue = Table.AddColumn(ComApto, "Entregue", each fxNorm([EQUIPAMENTO ENTREGUE]) = "SIM", type logical),
     // a linha DUPLICADO herda o "entregue" da ficha (mesma lista + mesmo PMIB): o valor dela conta junto
@@ -101,24 +104,14 @@ let
         {{"Ficha Entregue", each List.AnyTrue([Entregue]), type logical}}),
     ComFichaEntregueN = Table.NestedJoin(ComEntregue, {"Lista", "PMIB"}, EntreguePorFicha, {"Lista", "PMIB"}, "FE", JoinKind.LeftOuter),
     ComFichaEntregue = Table.ExpandTableColumn(ComFichaEntregueN, "FE", {"Ficha Entregue"}),
-    ComPrazo = Table.AddColumn(ComFichaEntregue, "Prazo Autorizacao", each if [Data Email] = null then null else fxSomarDiasUteis([Data Email], 15), type date),
-    ComSituacao = Table.AddColumn(ComPrazo, "Situacao Autorizacao", each
-        let Autorizado = [Data Autorizacao] <> null or [Apto] or [Entregue]
-        in
-            if Autorizado then
-                (if [Data Autorizacao] <> null and [Prazo Autorizacao] <> null then
-                    (if [Data Autorizacao] > [Prazo Autorizacao] then "AUTORIZADO COM ATRASO" else "AUTORIZADO NO PRAZO")
-                 else "AUTORIZADO")
-            else if [Prazo Autorizacao] = null then "SEM PEDIDO"
-            else if Hoje > [Prazo Autorizacao] then "ATRASADO ITAIPU"
-            else "AGUARDANDO ITAIPU", type text),
-    ComAtraso = Table.AddColumn(ComSituacao, "Dias Uteis de Atraso", each
-        if [Prazo Autorizacao] = null then null
-        else if [Data Autorizacao] <> null then fxDiasUteisEntre([Prazo Autorizacao], [Data Autorizacao])
-        else if [Apto] or [Entregue] then null
-        else fxDiasUteisEntre([Prazo Autorizacao], Hoje), Int64.Type),
-    ComDiasUteisAut = Table.AddColumn(ComAtraso, "Dias Uteis para Autorizar", each
-        if [Data Email] <> null and [Data Autorizacao] <> null then fxDiasUteisEntre([Data Email], [Data Autorizacao]) else null, Int64.Type),
+    ComSituacao = Table.AddColumn(ComFichaEntregue, "Situacao Autorizacao", each
+        let s = fxNorm([SITUACAO DA AUTORIZACAO])
+        in if s <> "" then Text.Upper(Text.From([SITUACAO DA AUTORIZACAO]))
+           else if [Data Email] <> null and not [Apto] and not [Entregue] and [E Ficha] then "AGUARDANDO CÁLCULO DO SIG-FT"
+           else if [Apto] or [Entregue] then "AUTORIZADO"
+           else "SEM PEDIDO", type text),
+    ComAtraso = Table.AddColumn(ComSituacao, "Dias Uteis de Atraso", each try Int64.From([DIAS UTEIS DE ATRASO]) otherwise null, Int64.Type),
+    ComDiasUteisAut = Table.RemoveColumns(ComAtraso, {"SITUACAO DA AUTORIZACAO", "DIAS UTEIS DE ATRASO"}),
 
     // 8. Trilha documental: compromisso CMI de LMR em até 3 meses do e-mail de intenção
     ComDiasEmail = Table.AddColumn(ComDiasUteisAut, "Dias desde Email", each if [Data Email] = null then null else Duration.Days(Hoje - [Data Email]), Int64.Type),

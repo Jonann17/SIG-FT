@@ -68,6 +68,8 @@ DEFINE
         CALCULATE ( [Fichas], NOT ISBLANK ( Itens[Data Email] ) )
     MEASURE Itens[Aguardando Itaipu no Prazo] =
         CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "AGUARDANDO ITAIPU" )
+    MEASURE Itens[Aguardando Cálculo do SIG-FT] =
+        CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "AGUARDANDO CÁLCULO DO SIG-FT" )
     MEASURE Itens[Autorizações Atrasadas Itaipu] =
         CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "ATRASADO ITAIPU" )
     MEASURE Itens[Autorizadas] =
@@ -76,9 +78,6 @@ DEFINE
         CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "AUTORIZADO COM ATRASO" )
     MEASURE Itens[Maior Atraso Itaipu (d.u.)] =
         CALCULATE ( MAX ( Itens[Dias Uteis de Atraso] ), Itens[Situacao Autorizacao] = "ATRASADO ITAIPU" )
-    MEASURE Itens[Prazo Médio de Autorização (d.u.)] =
-        // só existe para quem tem DATA DA AUTORIZAÇÃO registrada (_STATUS_PMIB v2)
-        AVERAGE ( Itens[Dias Uteis para Autorizar] )
     MEASURE Itens[Aptas Aguardando Entrega] =
         CALCULATE ( [Itens Físicos], Itens[Apto] = TRUE (), Itens[Entregue] = FALSE () )
 

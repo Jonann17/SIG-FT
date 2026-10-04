@@ -50,6 +50,7 @@ na máquina que tem o Box.
 | `_scripts/gerar_prototipo_dashboard.py` | gera `_gerado/prototipo-dashboard.html` a partir do Box |
 | `_gestao_v2/template/` | template `_STATUS_PMIB` v2 |
 | `_gestao_v2/migrar_status_pmib_v2.py` | migração dos `_STATUS_PMIB` para o v2 |
+| `_gestao_v2/xlsx_cirurgico.py` | editor de `.xlsx` que altera só o necessário e preserva o resto byte a byte (comentários em thread, validações) — modelo para o SIG-FT gravar sem apagar |
 | `_gestao_v2/powerbi/` | consultas Power Query, medidas DAX e o roteiro (`LEIA-ME.md`) |
 | `_planejamento/` | `findings.md` (achados e divergências) e `progress.md` (histórico) |
 
@@ -124,7 +125,7 @@ na máquina que tem o Box.
 - **Também**: no template `Templates/codigo_itaipu_STATUS_PMIB.xlsx` o nome `dados_validos` aponta para
   `A5:A11` (pula FICHA CRIADA e DUPLICADO) e há 32 nomes definidos quebrados (`#REF!`).
 - **Fazer**: a migração v2 recria todas as listas por **nome definido** (`=lst_status`, `lst_secao`,
-  `lst_simnao`, `lst_tipo_entrega`, `lst_procurement`, na aba `Listas`) — esse formato sobrevive ao
+  `lst_simnao`, `lst_tipo_entrega`, `lst_procurement`, com os vocabulários na aba Checklist) — esse formato sobrevive ao
   openpyxl (conferido: salvar de novo pelo openpyxl mantém as validações). No SIG-FT, nunca criar
   validação apontando para outra aba.
 
@@ -133,9 +134,10 @@ na máquina que tem o Box.
   data, respostas). Teste: salvar pelo openpyxl apaga as partes `threadedComments`/`persons` e deixa
   só uma anotação comum "[Threaded comment] Your version of Excel…". Acontece toda vez que o SIG-FT
   grava um desses arquivos.
-- **Fazer**: a migração **pula** esses arquivos (intocados) até existir o motor Excel; no SIG-FT,
-  avisar antes de salvar arquivo com comentário em thread; regra de processo sugerida: usar
-  **Anotação** (nota), que sobrevive. Detalhes no plano de reestruturação.
+- **Fazer**: a migração usa o **editor cirúrgico** `_gestao_v2/xlsx_cirurgico.py`: altera só três partes do
+  arquivo e regrava o resto byte a byte — comentários em thread intactos (simulado nos 47, inclusive os 16).
+  No SIG-FT, trocar todo `wb.save()` de `_STATUS_PMIB` pelo editor cirúrgico (plano, S4). Até lá, usar
+  **Anotação** (nota), que sobrevive.
 
 ### D4. A lista de preços mudou para `PB021`
 - **Evidência**: 9 arquivos `...PB021` já nas pastas (ex.: `#ST00=M00MEU10&MPB021`); a aba
@@ -184,16 +186,17 @@ na máquina que tem o Box.
 | Entregável | Estado |
 |---|---|
 | `_scripts/regras_sobressalentes.py` | testado (prazos, PMIB, situações, pendência) |
-| Template `_gestao_v2/template/codigo_itaipu_STATUS_PMIB_v2.xlsx` | fórmulas recalculadas no LibreOffice batem com o Python (10 casos + 3 planilhas reais) |
-| `_gestao_v2/migrar_status_pmib_v2.py` | **simulado** em cópias (04/10): 31 migram sem nenhuma perda; **16 com comentário em thread são pulados** (motor Excel a construir). **NÃO aplicado no Box.** Plano: `Plano - Reestruturacao do STATUS_PMIB.md` |
+| Template `_gestao_v2/template/codigo_itaipu_STATUS_PMIB_v2.xlsx` | gerado pelo editor cirúrgico (sem fórmulas, sem aba nova); abre no LibreOffice |
+| `_gestao_v2/migrar_status_pmib_v2.py` + `xlsx_cirurgico.py` | **simulado** em cópias (04/10): **47/47 sem nenhuma perda**, inclusive comentários em thread; todos abrem no LibreOffice. Falta abrir no Excel (piloto). **NÃO aplicado no Box.** Plano: `Plano - Reestruturacao do STATUS_PMIB.md` |
 | `_gestao_v2/powerbi/*.pq` + `05 - Medidas.dax` | escritos; **ainda não montados** no Power BI Desktop |
 | `_gerado/prototipo-dashboard.html` | protótipo das duas visões com dados de 01/10 (abrir no navegador; `#itaipu` no fim da URL abre a visão do cliente) |
 | Notas do cofre | atualizadas: Lista de Precos (PB021), Planilha STATUS_PMIB, Organizacao das Pastas, Mapeamento, Indicadores, findings, progress |
 
-**`_STATUS_PMIB` v2** = nada existente muda de lugar; bloco novo à direita: TIPO DE ENTREGA ·
-FORNECEDOR · PROCUREMENT · PRAZO AUTORIZAÇÃO ITAIPU (15 D.U.) *(fórmula)* · DATA DA AUTORIZAÇÃO
-ITAIPU · SITUAÇÃO DA AUTORIZAÇÃO *(fórmula)* · DIAS ÚTEIS DE ATRASO *(fórmula)* · DATA DA ENTREGA;
-abas `Feriados` e `Listas`.
+**`_STATUS_PMIB` v2** (decisões de 04/10) = nada existente muda de lugar; bloco novo à direita: TIPO DE
+ENTREGA · FORNECEDOR · PROCUREMENT · DATA DA AUTORIZAÇÃO ITAIPU · PRAZO AUTORIZAÇÃO ITAIPU (15 D.U.) ·
+SITUAÇÃO DA AUTORIZAÇÃO · DIAS ÚTEIS DE ATRASO. As três últimas são **valores gravados pelo SIG-FT**
+(nenhuma fórmula no Excel, nenhuma aba de feriados — o calendário fica no SIG-FT). Sem DATA DA ENTREGA.
+Vocabulários das listas suspensas na aba Checklist.
 
 ---
 
@@ -220,9 +223,9 @@ Os scripts acham o Box em `~/Box/CMI - Consórcio Itaipu/11 - Ger. Engenharia/15
 | N | Tarefa | Precisa de | Referência |
 |---|---|---|---|
 | 1 | Decidir as pendências da seção 6 | Luan | — |
-| 2 | Aplicar a migração v2 (31 arquivos) e construir o motor Excel para os 16 com comentário em thread; trocar o template | máquina com Box e Excel licenciado, autorização | `Plano - Reestruturacao do STATUS_PMIB.md` |
+| 2 | Piloto no Excel, aplicar a migração v2 nos 47 e trocar o template | máquina com Box, autorização | `Plano - Reestruturacao do STATUS_PMIB.md` |
 | 3 | Montar o Power BI v2 (interno, depois Itaipu) | Power BI Desktop | `_gestao_v2/powerbi/LEIA-ME.md` |
-| 4 | SIG-FT: 15 d.u. (D2) | repositório SIG-FT | seção 2, D2 |
+| 4 | SIG-FT: calcular e gravar prazo/situação/atraso (15 d.u.) em cada `_STATUS_PMIB` e parar de salvar com openpyxl | repositório SIG-FT | plano de reestruturação, seção 4 (S1–S6) |
 | 5 | SIG-FT: script de aptos grava a **DATA DA AUTORIZAÇÃO** (a data do export `sobressalentes_autorizados_AAAAMMDDhhmm`) ao virar APTO = SIM | repositório SIG-FT | `apto_para_entrega_att.py` |
 | 6 | Follow-up de preços em PB021 (D4) | mapeadora / SIG-FT | seção 2, D4 |
 | 7 | Classificar TIPO DE ENTREGA das 630 fichas | `_STATUS_PMIB` v2 | começar pelas listas com material entregue |

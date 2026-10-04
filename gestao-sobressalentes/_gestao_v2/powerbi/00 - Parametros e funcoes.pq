@@ -145,25 +145,5 @@ in
     else null
 
 
-// ---------------------------------------------------------------------
-// CONSULTA: fxSomarDiasUteis  — equivale ao DIATRABALHO (WORKDAY) do Excel
-// ---------------------------------------------------------------------
-(inicio as date, n as number) as date =>
-let
-    Feriados = List.Buffer(Feriados[Data]),
-    Candidatos = List.Dates(Date.AddDays(inicio, 1), n * 2 + 40, #duration(1, 0, 0, 0)),
-    Uteis = List.Select(Candidatos, each Date.DayOfWeek(_, Day.Monday) < 5 and not List.Contains(Feriados, _))
-in
-    Uteis{n - 1}
-
-
-// ---------------------------------------------------------------------
-// CONSULTA: fxDiasUteisEntre  — dias úteis no intervalo (de, ate]
-// ---------------------------------------------------------------------
-(de as date, ate as date) as number =>
-let
-    Feriados = List.Buffer(Feriados[Data]),
-    Dias = if ate <= de then {} else List.Dates(Date.AddDays(de, 1), Duration.Days(ate - de), #duration(1, 0, 0, 0)),
-    Uteis = List.Select(Dias, each Date.DayOfWeek(_, Day.Monday) < 5 and not List.Contains(Feriados, _))
-in
-    List.Count(Uteis)
+// (Sem funções de dias úteis: prazo, situação e atraso da autorização
+//  são calculados pelo SIG-FT e lidos do _STATUS_PMIB. Decisão de 04/10/2026.)

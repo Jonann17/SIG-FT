@@ -87,13 +87,17 @@ referência. As colunas novas entram num **bloco à direita** da tabela:
 | **TIPO DE ENTREGA** | pré-preenchido pela lista de preços (818 linhas); o resto, quem cria a ficha | `FÍSICA E DOCUMENTAL` (sai na nota fiscal) · `DOCUMENTAL` (componente explodido, só ficha) · `TÍTULO` (conjunto) |
 | **FORNECEDOR** | quem cria a ficha | empresa que vendeu ao CMI — não o fabricante |
 | **PROCUREMENT** | pré-preenchido pela mapeadora quando a lista tem uma pessoa só (1.006 linhas) | lista suspensa que aceita nome novo |
-| PRAZO AUTORIZAÇÃO ITAIPU (15 D.U.) | **fórmula** | `DIATRABALHO(data do e-mail; 15; Feriados)` |
+| PRAZO AUTORIZAÇÃO ITAIPU (15 D.U.) | **SIG-FT** (valor) | data do e-mail + 15 dias úteis |
 | **DATA DA AUTORIZAÇÃO ITAIPU** | e-mail de autorização — ou o script de aptos, com a data do export | substitui, com data, o "SIM" de `APTO PARA ENTREGA` (que fica, por compatibilidade) |
-| SITUAÇÃO DA AUTORIZAÇÃO | **fórmula** | AGUARDANDO ITAIPU · ATRASADO ITAIPU · AUTORIZADO NO PRAZO · AUTORIZADO COM ATRASO · AUTORIZADO |
-| DIAS ÚTEIS DE ATRASO | **fórmula** | além do prazo, até hoje ou até a autorização |
-| **DATA DA ENTREGA** | quem confirma a entrega | dá a curva de entregas ao longo do tempo |
+| SITUAÇÃO DA AUTORIZAÇÃO | **SIG-FT** (valor) | AGUARDANDO ITAIPU · ATRASADO ITAIPU · AUTORIZADO NO PRAZO · AUTORIZADO COM ATRASO · AUTORIZADO |
+| DIAS ÚTEIS DE ATRASO | **SIG-FT** (valor) | além do prazo, até o cálculo ou até a autorização |
 
-Mais: aba **Feriados** (os 15 d.u. pulam essas datas), aba **Listas** com os vocabulários, e
+> [!important] Decisões de 04/10/2026
+> Sem DATA DA ENTREGA (quase nunca se sabe); **nenhuma fórmula no Excel e nenhuma aba de feriados** —
+> o SIG-FT calcula e grava quando roda; o arquivo é editado sem openpyxl, para não apagar comentários.
+> Execução em [[Plano - Reestruturacao do STATUS_PMIB]].
+
+Mais: os vocabulários das listas suspensas na aba **Checklist** (sem aba nova; o calendário de feriados fica no SIG-FT), e
 **listas suspensas por nome definido** em STATUS, seções, APTO e ENTREGUE — esse tipo
 sobrevive ao openpyxl do SIG-FT.
 
@@ -153,8 +157,8 @@ Roteiro de montagem: [[LEIA-ME|_gestao_v2/powerbi/LEIA-ME]].
 | Entregável | Onde | Estado |
 |---|---|---|
 | Regras de negócio + leitura | `_scripts/regras_sobressalentes.py` | testado |
-| Template `_STATUS_PMIB` v2 | `_gestao_v2/template/codigo_itaipu_STATUS_PMIB_v2.xlsx` | fórmulas conferidas no LibreOffice |
-| Migração dos `_STATUS_PMIB` | `_gestao_v2/migrar_status_pmib_v2.py` | simulada em cópias (04/10): 31 sem perda; 16 com comentário em thread pulados — não aplicada no Box. Execução em [[Plano - Reestruturacao do STATUS_PMIB]] |
+| Template `_STATUS_PMIB` v2 | `_gestao_v2/template/codigo_itaipu_STATUS_PMIB_v2.xlsx` | sem fórmulas; gerado pelo editor cirúrgico |
+| Migração dos `_STATUS_PMIB` | `_gestao_v2/migrar_status_pmib_v2.py` + `xlsx_cirurgico.py` | simulada em cópias (04/10): 47/47 sem perda, comentários em thread intactos — não aplicada no Box. Execução em [[Plano - Reestruturacao do STATUS_PMIB]] |
 | Consultas Power Query + medidas DAX | `_gestao_v2/powerbi/*.pq`, `05 - Medidas.dax` | escritas; montar no Desktop |
 | Protótipo das duas visões | `_gerado/prototipo-dashboard.html` (`_scripts/gerar_prototipo_dashboard.py`) | gerado com dados de 01/10 |
 
