@@ -33,7 +33,12 @@ Cole isto no início do chat:
 > seção 5 do README.
 
 Para a migração do `_STATUS_PMIB`, o plano de execução é
-**`07 - Diagnostico/Plano - Reestruturacao do STATUS_PMIB.md`**.
+**`07 - Diagnostico/Plano - Reestruturacao do STATUS_PMIB.md`** (o Luan conduz essa parte no chat
+que tem acesso ao Box).
+
+Para as **correções do SIG-FT na nuvem do GitHub**, o roteiro com o prompt de partida é
+**`07 - Diagnostico/Tarefa SIG-FT - Calculo e Gravacao sem Perda.md`** (fixtures sintéticas em
+`_gestao_v2/fixtures/`, porque a nuvem não enxerga o Box).
 
 Se o chat **não tiver acesso ao Box**, ele não consegue ler as planilhas: anexe os arquivos de
 que a tarefa precisa (um `_STATUS_PMIB`, a mapeadora, uma lista de preços) ou rode os scripts

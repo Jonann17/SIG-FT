@@ -120,6 +120,24 @@ isso, a regra de processo sugerida é usar **Anotação** (nota) em vez de **Com
       nome oficial `#ST00=U01&MPB021.xlsm`, senão os 199 itens ficam sem TIPO DE ENTREGA pré-preenchido.
 - [ ] Python 3.12 com `openpyxl`, `pandas`, `lxml`; cópia deste pacote (GitHub ou Box).
 
+### Etapa 1b — Teste no Box (feito em 04/10/2026, por ordem do Luan)
+Criado `SOBRESSALENTES - PMIB/10- TESTES/TESTE_V2_Banco_de_Baterias_STATUS_PMIB_migrado.xlsx`:
+cópia migrada (com `--calcular`) do `_STATUS_PMIB` de Banco de Baterias — o original **não foi tocado**
+(hash igual). O nome não termina em `_STATUS_PMIB.xlsx` de propósito, para o SIG-FT não confundir
+com a lista real. Conferência: nenhuma perda; 1 comentário em thread, 1 anotação e 3 formatações
+condicionais preservados.
+
+**O que o Luan confere no Excel do trabalho:**
+- [ ] abre sem "Encontramos um problema em algum conteúdo";
+- [ ] comentário em thread em **D20** com autor e respostas;
+- [ ] bloco novo de **U** a **AA**; listas suspensas em STATUS (J), seções, APTO, ENTREGUE, TIPO (U), PROCUREMENT (W);
+- [ ] Z50 e Z51 = `ATRASADO ITAIPU` (34 d.u. em AA), as demais com e-mail = `AUTORIZADO`;
+- [ ] vocabulários na aba Checklist (colunas D a H).
+
+Se estiver tudo certo → autorização para a Etapa 3/4 nos `_STATUS_PMIB` reais.
+Este teste **não** exercita a troca das listas suspensas de extensão (x14), porque esse arquivo não tem;
+esse caminho foi conferido na fixture sintética (`_gestao_v2/fixtures/`) e no LibreOffice.
+
 ### Etapa 2 — Simular (não toca no Box)
 ```bash
 python _gestao_v2/migrar_status_pmib_v2.py --simular --libreoffice

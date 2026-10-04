@@ -37,7 +37,12 @@ procurement, atraso de Itaipu em 15 d.u.) e um Power BI com visão interna e vis
 - Novo editor `_gestao_v2/xlsx_cirurgico.py` (altera só 3 partes do .xlsx, o resto byte a byte).
   Simulação: 47/47 sem perda, comentários em thread intactos, todos abrem no LibreOffice.
   Power BI passa a ler prazo/situação/atraso gravados pelo SIG-FT.
-- Plano de execução: [[Plano - Reestruturacao do STATUS_PMIB]]. Aguardando aprovação.
+- Plano de execução: [[Plano - Reestruturacao do STATUS_PMIB]].
+- Por ordem do Luan: **arquivo de teste no Box** `10- TESTES/TESTE_V2_Banco_de_Baterias_STATUS_PMIB_migrado.xlsx`
+  (cópia migrada; original intocado). Aguardando o Luan abrir no Excel do trabalho para autorizar os 47.
+- Divisão de trabalho combinada: alterações nos `_STATUS_PMIB` seguem **neste chat**; correções do SIG-FT
+  na **nuvem do GitHub**, pelo roteiro [[Tarefa SIG-FT - Calculo e Gravacao sem Perda]] (fixtures sintéticas
+  em `_gestao_v2/fixtures/`, sem texto real).
 
 ## Proximas sessões
 1. **Aplicar a migração v2** (depois das decisões da seção 8 do plano) e montar o Power BI.

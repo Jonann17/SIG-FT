@@ -100,6 +100,7 @@ e essa ficha e condição para liberar os eventos de pagamento do contrato.
 ### 07 — Diagnostico
 - [[Plano - Sistema de Gestao v2]] — **_STATUS_PMIB v2, regra dos 15 d.u. e Power BI interno × Itaipu** (01/10/2026)
 - [[Plano - Reestruturacao do STATUS_PMIB]] — **execução da migração**, sem perder histórico nem listas suspensas (04/10/2026)
+- [[Tarefa SIG-FT - Calculo e Gravacao sem Perda]] — roteiro para corrigir o SIG-FT na nuvem do GitHub
 - [[Diagnostico - Deficiencias]]
 - [[Diagnostico - Riscos]]
 - [[Diagnostico - Plano de Melhoria]]
