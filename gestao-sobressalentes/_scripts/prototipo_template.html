@@ -115,7 +115,8 @@ footer { color: var(--muted); font-size: 12px; max-width: 1280px; margin: 0 auto
     <button role="tab" aria-selected="true" data-visao="interno">Visão interna (CMI)</button>
     <button role="tab" aria-selected="false" data-visao="itaipu">Visão Itaipu (cliente)</button>
   </div>
-  <label class="filtro">Área <select id="f-area"></select></label>
+  <label class="filtro">Especificação técnica <select id="f-et"></select></label>
+  <label class="filtro">Capítulo <select id="f-cap"></select></label>
   <label class="filtro">Lista <select id="f-lista"></select></label>
   <button class="tema" id="tema" type="button">Tema</button>
 </div>
@@ -179,22 +180,35 @@ const ICONES = {
 const icone = k => { const s = el("span"); s.innerHTML = ICONES[k]; return s.firstChild; };
 
 // ---------------- filtros ----------------
-const estado = { visao: "interno", area: "", lista: "", pend: "", busca: "" };
+const estado = { visao: "interno", et: "", cap: "", lista: "", pend: "", busca: "" };
 const nomeLista = Object.fromEntries(D.listas.map(l => [l.l, l.nome]));
-const areas = [...new Set(D.itens.map(i => i.a))].sort();
+// ET e capitulo vem do cadastro (mapeadora); lista sem cadastro fica visivel como tal
+const cadastro = Object.fromEntries(D.listas.map(l => [l.l, l]));
+const SEM_ET = "(sem cadastro na mapeadora)";
+for (const i of D.itens) { const c = cadastro[i.l] || {}; i.et = c.et || SEM_ET; i.cap = c.cap || SEM_ET; }
+for (const l of D.listas) { l.et = l.et || SEM_ET; l.cap = l.cap || SEM_ET; }
+const nP = arr => new Set(arr.map(i => i.p)).size;   // ficha = PMIB distinto (como o Power BI)
+const passa = (o, ignorar = "") => (ignorar === "et" || !estado.et || o.et === estado.et)
+  && (ignorar === "cap" || !estado.cap || o.cap === estado.cap);
+function opcoes(id, valores, atual, todos = "Todas") {
+  const s = document.getElementById(id);
+  s.replaceChildren(el("option", {value: ""}, todos), ...valores.map(v => el("option", {value: v}, v)));
+  s.value = valores.includes(atual) ? atual : "";
+  return s.value;
+}
 function preencherFiltros() {
-  const sa = document.getElementById("f-area");
-  sa.replaceChildren(el("option", {value: ""}, "Todas"), ...areas.map(a => el("option", {value: a}, a)));
-  sa.value = estado.area;
+  const universo = [...D.itens, ...D.listas];
+  estado.et = opcoes("f-et", [...new Set(universo.map(o => o.et))].sort(), estado.et);
+  estado.cap = opcoes("f-cap", [...new Set(universo.filter(o => passa(o, "cap")).map(o => o.cap))].sort(), estado.cap, "Todos");
   const sl = document.getElementById("f-lista");
-  const listas = [...new Set(D.itens.filter(i => !estado.area || i.a === estado.area).map(i => i.l))]
+  const listas = [...new Set(D.itens.filter(i => passa(i)).map(i => i.l))]
     .sort((x, y) => (nomeLista[x] || x).localeCompare(nomeLista[y] || y));
   sl.replaceChildren(el("option", {value: ""}, "Todas"), ...listas.map(l => el("option", {value: l}, nomeLista[l] || l)));
   if (!listas.includes(estado.lista)) estado.lista = "";
   sl.value = estado.lista;
 }
-const fichas = () => D.itens.filter(i => (!estado.area || i.a === estado.area) && (!estado.lista || i.l === estado.lista));
-const listasFiltradas = () => D.listas.filter(l => (!estado.area || l.area === estado.area) && (!estado.lista || l.l === estado.lista));
+const fichas = () => D.itens.filter(i => passa(i) && (!estado.lista || i.l === estado.lista));
+const listasFiltradas = () => D.listas.filter(l => passa(l) && (!estado.lista || l.l === estado.lista));
 
 // ---------------- tooltip ----------------
 const tip = document.getElementById("tip");
@@ -287,25 +301,25 @@ function interno() {
   const pend = F.filter(i => i.pe !== "—");
   const semFicha = L.filter(l => !F.some(i => i.l === l.l) && l.sr === "APROVADO").length;
   kpi("kpi-int", [
-    {rot: "Fichas no PMIB", val: fmt(F.length), det: `${fmt(new Set(F.map(i => i.l)).size)} listas com ficha · ${semFicha} listas aprovadas ainda sem ficha`},
-    {rot: "Emitidas para Itaipu", val: fmt(emit.length), det: `${pct(emit.length, F.length)} · ${fmt(F.filter(i => i.st === "APROVADO").length)} aprovadas · ${fmt(F.filter(i => i.st === "EM CORREÇÃO").length)} em correção`},
-    {rot: "Autorização atrasada (Itaipu)", icone: atras.length ? "critical" : "good", val: fmt(atras.length),
-     det: atras.length ? `além de 15 d.u. · maior atraso ${Math.max(...atras.map(i => i.du || 0))} dias · ${fmt(aguard.length)} no prazo` : `${fmt(aguard.length)} aguardando no prazo`},
-    {rot: "LMR fora do compromisso", icone: lmrFora.length ? "serious" : "good", val: fmt(lmrFora.length),
+    {rot: "Fichas no PMIB", val: fmt(nP(F)), det: `${fmt(new Set(F.map(i => i.l)).size)} listas com ficha · ${semFicha} listas aprovadas ainda sem ficha`},
+    {rot: "Emitidas para Itaipu", val: fmt(nP(emit)), det: `${pct(nP(emit), nP(F))} · ${fmt(nP(F.filter(i => i.st === "APROVADO")))} aprovadas · ${fmt(nP(F.filter(i => i.st === "EM CORREÇÃO")))} em correção`},
+    {rot: "Autorização atrasada (Itaipu)", icone: atras.length ? "critical" : "good", val: fmt(nP(atras)),
+     det: atras.length ? `além de 15 d.u. · maior atraso ${Math.max(...atras.map(i => i.du || 0))} dias · ${fmt(nP(aguard))} no prazo` : `${fmt(nP(aguard))} aguardando no prazo`},
+    {rot: "LMR fora do compromisso", icone: lmrFora.length ? "serious" : "good", val: fmt(nP(lmrFora)),
      det: "mais de 3 meses do e-mail de intenção sem Aplicação LMR"},
-    {rot: "Material entregue", val: fmt(entregues.length), det: `fichas · físicos classificados: ${fmt(fis.filter(i => i.en).length)} de ${fmt(fis.length)} · ${usd(valorEnt)} de ${usd(valor)}`},
-    {rot: "Pendências do CMI", val: fmt(pend.length), det: "fila de trabalho abaixo"},
+    {rot: "Material entregue", val: fmt(nP(fis.filter(i => i.en))), det: `itens físicos entregues, de ${fmt(nP(fis))} · ${fmt(nP(entregues))} fichas entregues (todos os tipos) · ${usd(valorEnt)} de ${usd(valor)}`},
+    {rot: "Pendências do CMI", val: fmt(nP(pend)), det: "fila de trabalho abaixo"},
   ]);
 
   // com quem está a ação, por área
   const SQ = [{chave: "CMI", nome: "CMI", cor: cor("s1")}, {chave: "FORNECEDOR", nome: "Fornecedor", cor: cor("s2")},
               {chave: "ITAIPU", nome: "Itaipu (análise)", cor: cor("s3")}, {chave: "CONCLUÍDO", nome: "Aprovada", cor: cor("s4")},
               {chave: "—", nome: "Sem status válido", cor: cor("deemph")}];
-  const chaveQ = (estado.area || estado.lista) ? "l" : "a";           // filtrou área: uma barra por lista
+  const chaveQ = (estado.et || estado.cap || estado.lista) ? "l" : "et";   // filtrou: uma barra por lista
   const porArea = Object.entries(agrupar(F, chaveQ)).map(([k, arr]) => ({nome: chaveQ === "l" ? (nomeLista[k] || k) : k, valores: contar(arr, "q")}))
     .sort((a, b) => Object.values(b.valores).reduce((s, x) => s + x, 0) - Object.values(a.valores).reduce((s, x) => s + x, 0));
-  const c1 = cabecalho("c-quem", "Com quem está cada ficha", (chaveQ === "l" ? "Por lista." : "Por área.") + " Uma ficha = um código PMIB; a linha DUPLICADO repete uma ficha da mesma lista e não conta de novo.",
-    () => tabela([{t: chaveQ === "l" ? "Lista" : "Área", v: "nome"}, ...SQ.map(s => ({t: s.nome, v: l => fmt(l.valores[s.chave] || 0), n: 1}))], porArea, false));
+  const c1 = cabecalho("c-quem", "Com quem está cada ficha", (chaveQ === "l" ? "Por lista." : "Por especificação técnica.") + " Uma ficha = um código PMIB; a linha DUPLICADO repete uma ficha da mesma lista e não conta de novo.",
+    () => tabela([{t: chaveQ === "l" ? "Lista" : "Especificação técnica", v: "nome"}, ...SQ.map(s => ({t: s.nome, v: l => fmt(l.valores[s.chave] || 0), n: 1}))], porArea, false));
   barrasEmpilhadas(c1, porArea, SQ);
 
   // seções: o que depende do fornecedor x do CMI
@@ -421,17 +435,17 @@ function itaipu() {
   const pedidos = F.filter(i => i.sa === "AGUARDANDO ITAIPU" || i.sa === "ATRASADO ITAIPU");
   const fora = pedidos.filter(i => i.sa === "ATRASADO ITAIPU");
   kpi("kpi-ib", [
-    {rot: "Fichas técnicas enviadas a Itaipu", val: fmt(enviadas.length), det: `${pct(enviadas.length, F.length)} das ${fmt(F.length)} fichas criadas no PMIB`},
-    {rot: "Fichas em análise por Itaipu", val: fmt(analise.length), det: `${fmt(F.filter(i => i.st === "EM CORREÇÃO").length)} devolvidas e em ajuste pelo CMI`},
-    {rot: "Fichas aprovadas", val: fmt(aprov.length), det: pct(aprov.length, enviadas.length) + " das enviadas"},
-    {rot: "Material no almoxarifado de Itaipu", val: fmt(F.filter(i => i.en).length), det: "fichas cujo material já foi entregue"},
-    {rot: "Autorizações de entrega pendentes", icone: fora.length ? "critical" : "good", val: fmt(pedidos.length),
-     det: fora.length ? `${fmt(fora.length)} além do prazo de 15 dias úteis` : "todas dentro do prazo de 15 dias úteis"},
+    {rot: "Fichas técnicas enviadas a Itaipu", val: fmt(nP(enviadas)), det: `${pct(nP(enviadas), nP(F))} das ${fmt(nP(F))} fichas criadas no PMIB`},
+    {rot: "Fichas em análise por Itaipu", val: fmt(nP(analise)), det: `${fmt(nP(F.filter(i => i.st === "EM CORREÇÃO")))} devolvidas e em ajuste pelo CMI`},
+    {rot: "Fichas aprovadas", val: fmt(nP(aprov)), det: pct(nP(aprov), nP(enviadas)) + " das enviadas"},
+    {rot: "Material no almoxarifado de Itaipu", val: fmt(nP(F.filter(i => i.en && i.t === "FÍSICA E DOCUMENTAL"))), det: "itens físicos já entregues"},
+    {rot: "Autorizações de entrega pendentes", icone: fora.length ? "critical" : "good", val: fmt(nP(pedidos)),
+     det: fora.length ? `${fmt(nP(fora))} além do prazo de 15 dias úteis` : "todas dentro do prazo de 15 dias úteis"},
   ]);
   const SO = [{chave: "prep", nome: "Em preparação ou ajuste (CMI)", cor: cor("o1")}, {chave: "anal", nome: "Em análise por Itaipu", cor: cor("o2")},
               {chave: "aprov", nome: "Aprovada", cor: cor("o3")}];
   const etapa = i => i.st === "APROVADO" ? "aprov" : i.st === "EM ANÁLISE IB" ? "anal" : "prep";
-  const chave = (estado.area || estado.lista) ? "l" : "a";
+  const chave = (estado.et || estado.cap || estado.lista) ? "l" : "et";
   const linhas = Object.entries(agrupar(F, chave)).map(([k, arr]) => ({nome: chave === "l" ? (nomeLista[k] || k) : k,
       valores: arr.reduce((m, i) => (m[etapa(i)] = (m[etapa(i)] || 0) + 1, m), {})}))
     .sort((a, b) => Object.values(b.valores).reduce((s, x) => s + x, 0) - Object.values(a.valores).reduce((s, x) => s + x, 0));
@@ -528,7 +542,8 @@ document.querySelectorAll(".abas button").forEach(b => b.addEventListener("click
   document.querySelectorAll(".abas button").forEach(x => x.setAttribute("aria-selected", String(x === b)));
   render();
 }));
-document.getElementById("f-area").addEventListener("change", e => { estado.area = e.target.value; estado.lista = ""; render(); });
+document.getElementById("f-et").addEventListener("change", e => { estado.et = e.target.value; estado.cap = ""; estado.lista = ""; render(); });
+document.getElementById("f-cap").addEventListener("change", e => { estado.cap = e.target.value; estado.lista = ""; render(); });
 document.getElementById("f-lista").addEventListener("change", e => { estado.lista = e.target.value; render(); });
 document.getElementById("tema").addEventListener("click", () => {
   const raiz = document.documentElement;
@@ -542,7 +557,7 @@ if (location.hash.includes("itaipu")) {
 }
 if (location.hash.includes("escuro")) document.documentElement.dataset.theme = "dark";
 if (location.hash.includes("claro")) document.documentElement.dataset.theme = "light";
-document.getElementById("ref").textContent = `Dados de ${br(D.ref)} · ${fmt(D.itens.length)} fichas em ${fmt(new Set(D.itens.map(i => i.l)).size)} listas · prazo de autorização: 15 dias úteis`;
+document.getElementById("ref").textContent = `Dados de ${br(D.ref)} · ${fmt(nP(D.itens))} fichas em ${fmt(new Set(D.itens.map(i => i.l)).size)} listas · prazo de autorização: 15 dias úteis`;
 document.getElementById("rodape").textContent = `Fonte: _STATUS_PMIB (item a item), listas de preços (PB021 e PB020-0x), mapeadora (cadastro, atividades e follow-up de preços). Gerado por _scripts/gerar_prototipo_dashboard.py em ${br(D.gerado)}.`;
 render();
 </script>

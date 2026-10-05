@@ -11,7 +11,7 @@ inicio: 2026-10-05
 ## Prompt para começar a sessão na nuvem
 
 > Leia `gestao-sobressalentes/07 - Diagnostico/Tarefa SIG-FT - Calculo e Gravacao sem Perda.md`
-> inteiro antes de mexer em código. Execute as etapas na ordem (T0 → T6), uma por commit, seguindo
+> inteiro antes de mexer em código. Execute as etapas na ordem (T0 → T7), uma por commit, seguindo
 > as convenções do repositório. Ao final de cada etapa rode `bash scripts/check.sh`; ao final da T3
 > rode também o validador do kit (seção 3) até ele dizer **KIT OK**. Me mostre o que mudou antes de
 > passar de uma etapa para a outra.
@@ -152,6 +152,21 @@ que o esperado é atingível. Sugestão: transformar esse roteiro num teste em `
 própria, sem o `conftest` que stuba) ou num `scripts/validar_kit.sh`.
 
 Para os testes **unitários** da regra (dentro da suíte, só stdlib): use os 13 casos de `CASOS`.
+
+**Painel HTML (T7)** — o mesmo kit serve. Depois do fluxo acima:
+
+```bash
+python - <<'EOF'
+from datetime import date
+from sigft.services.painel import gerar_painel
+gerar_painel("/tmp/kit/status", "/tmp/kit/mapeadora_sintetica.xlsx", "/tmp/kit/painel.html", hoje=date(2026, 10, 10))
+EOF
+python gestao-sobressalentes/_gestao_v2/validar_painel.py /tmp/kit /tmp/kit/painel.html   # tem de dizer: PAINEL OK
+```
+
+O validador roda a referência no mesmo kit e na mesma data e compara os dados embutidos na página, campo a campo:
+fichas, listas, listas de preços, atividades e achados de qualidade. Confere também que a página abre sem rede e
+tem os filtros de ET, Capítulo e Lista. `validar_painel.py --referencia` prova que o kit e o validador estão certos.
 
 ---
 
@@ -330,6 +345,66 @@ Depois da 0A a lista de preços tem histórico próprio — **não regerar**. Co
 lista de preços com o `_STATUS_PMIB` (pelo CÓDIGO PMIB) e listar: item de um lado que falta no outro; QTD. ou TIPO
 diferente; FÍSICA sem CÓDIGO GE ou sem VALOR; DOCUMENTAL com CÓDIGO GE ou VALOR. Só relatório, nada gravado.
 
+### T7 — Painel HTML gerado pelo Gestão PMIB (decisão do Luan, 05/10/2026)
+
+> [!important] Papel do painel e regra de ouro
+> - O **Power BI v2 é o painel oficial**, inclusive para Itaipu.
+> - O HTML é a **foto do dia** para quem não tem Power BI. O SIG-FT gera o arquivo, ele abre no navegador e não
+>   depende de rede.
+> - **Os números têm de ser os mesmos do Power BI.** A referência foi alinhada em 05/10:
+>   - ficha = PMIB distinto;
+>   - material entregue = itens físicos entregues;
+>   - filtros por Especificação técnica e Capítulo, como no Power BI.
+>
+>   Conferido com os dados reais: 1.352 fichas, 615 enviadas, 53 atrasadas, 122 entregues, 1.084 pendências, nos
+>   dois painéis.
+> - **Não mude regra nem definição nesta etapa.** Se precisar, a mudança vale para os dois painéis. Registre em
+>   `docs/refatoracao/PENDENCIAS.md` e avise o Luan.
+
+**Referência** (no repositório; é para portar, não para importar):
+- `gestao-sobressalentes/_scripts/gerar_prototipo_dashboard.py`:
+  - `montar(hoje, raiz, mapeadora)` monta os dados;
+  - `qualidade()` gera os achados;
+  - `limpar()` troca NaN/NaT por null;
+  - `gerar_html()` embute os dados no template.
+- `gestao-sobressalentes/_scripts/prototipo_template.html`: a página inteira (CSS e JS). Os dados entram em
+  `<script id="dados" type="application/json">`.
+- `gestao-sobressalentes/_scripts/regras_sobressalentes.py`: leitura dos `_STATUS_PMIB`, das listas de preços e da
+  mapeadora, e as regras (pendência, LMR, situação da autorização).
+
+**O quê**:
+1. **`sigft/services/painel.py`**: criar `gerar_painel(pasta_pmib, mapeadora, saida, hoje=None) -> Path`, porte do
+   gerador.
+   - A regra da autorização vem do módulo da T2 (`sigft/services/autorizacao.py`) e **nunca é duplicada**.
+   - O resto é porte de `regras_sobressalentes.py`: leitura, pendência, LMR, nomes de exibição, qualidade.
+   - Use as mesmas exclusões de pasta e arquivo da T3-a.
+   - Copie o template **sem mudar** para `sigft/assets/painel_template.html` e inclua-o no `SIG-FT.spec` (o
+     executável precisa dele).
+2. **Tela do Gestão PMIB** (`sigft/app/views/pmib_manager.py`):
+   - botão **"Gerar painel"**: roda em thread, com progresso no log como o resto da tela;
+   - caixa **"Gerar painel ao terminar"**: lembrada em `prefs`, marcada por padrão. Roda **depois** da gravação da
+     T3, para o painel mostrar o que acabou de ser gravado; aí os dias de atraso são os mesmos que o Power BI lê.
+   - Ao terminar, abre o arquivo no navegador padrão com `webbrowser.open(caminho.as_uri())`, como a tela do
+     autospec já faz.
+3. **Saída**: `<pasta SOBRESSALENTES - PMIB>/Painel de Sobressalentes.html`.
+   - Sobrescreve a cada geração; o Box guarda as versões.
+   - Se o arquivo estiver aberto ou bloqueado: log claro e o fluxo segue. Falhar o painel nunca desfaz a gravação
+     da T3.
+
+**Cuidados**:
+- O pandas é real no app, mas é dublê na suíte. Na suíte, teste só funções puras (nomes de exibição, `limpar`,
+  datas); o resto é conferido pelo validador, fora da suíte.
+- **Sem rede**: nada de CDN, porque a rede do trabalho bloqueia. O template atual não usa nenhum recurso externo.
+- A mapeadora é cadastro desde 05/10: nenhum achado de qualidade pode depender das colunas de contagem. A
+  referência já tirou os dois que dependiam.
+- Uma lista que está no `_STATUS_PMIB` e não está na mapeadora aparece como "(sem cadastro na mapeadora)" no filtro
+  de ET. É de propósito; o Power BI mostra "(Em branco)".
+
+**Pronto quando**:
+- `validar_painel.py` diz **PAINEL OK** no kit (seção 3);
+- `check.sh` está verde;
+- um botão gera e abre o painel.
+
 ---
 
 ## 5. Convenções e cuidados
@@ -345,7 +420,8 @@ diferente; FÍSICA sem CÓDIGO GE ou sem VALOR; DOCUMENTAL com CÓDIGO GE ou VAL
 Rodar o Gestão PMIB uma vez e conferir: na mapeadora, REVISÃO EM USO e SITUAÇÃO NO PMIB preenchidas e o link
 "Abrir Box" de `#ST00=B01BMU10&EPB020` apontando para o arquivo real (não `testes_autospec`); num `_STATUS_PMIB`,
 SITUAÇÃO e DIAS DE ATRASO atualizados e o comentário em thread intacto; o Power BI v2 atualizando com os números
-novos. Para a T6: gerar a 0A de uma lista real, clicar OK no aviso da macro e conferir capa, itens e rodapé no PDF.
+novos. Para a T7: o painel abre sozinho no fim do fluxo, e quatro números batem com o Power BI do mesmo dia (fichas,
+enviadas a Itaipu, autorizações atrasadas, material entregue), sem filtro e com uma ET escolhida. Para a T6: gerar a 0A de uma lista real, clicar OK no aviso da macro e conferir capa, itens e rodapé no PDF.
 
 ## Relacionados
 [[Plano - Reestruturacao do STATUS_PMIB]] · [[Mapeamento das Listas de Sobressalentes]] ·

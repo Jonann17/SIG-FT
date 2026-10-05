@@ -11,11 +11,16 @@ regras (`regras_sobressalentes.py`), mesmos numeros.
 
 Uso:
     python _scripts/gerar_prototipo_dashboard.py
+    python _scripts/gerar_prototipo_dashboard.py --pasta <SOBRESSALENTES - PMIB> --mapeadora <xlsx> --saida <html> --hoje AAAA-MM-DD
+
+Tambem e a REFERENCIA da T7 do roteiro do SIG-FT (painel gerado pelo Gestao PMIB):
+`_gestao_v2/validar_painel.py` roda este gerador no kit de teste e compara com o HTML do SIG-FT.
 
 Requisitos: openpyxl, pandas
 """
 from __future__ import annotations
 
+import argparse
 import collections
 import datetime as dt
 import json
@@ -93,10 +98,10 @@ def nome_curto(descricao: str | None, lista: str) -> str:
     return d.strip()[:70]
 
 
-def montar(hoje: dt.date) -> dict:
-    precos, arquivos_preco = R.ler_listas_precos()
-    itens = R.ler_itens(hoje=hoje, precos=precos)
-    mapa = R.ler_mapeadora()
+def montar(hoje: dt.date, raiz: pathlib.Path = R.PASTA_PMIB, mapeadora: pathlib.Path = R.MAPEADORA) -> dict:
+    precos, arquivos_preco = R.ler_listas_precos(raiz)
+    itens = R.ler_itens(raiz, hoje=hoje, precos=precos)
+    mapa = R.ler_mapeadora(mapeadora)
     listas_m = mapa["listas"]
 
     # procurement por lista (mapeadora), usado enquanto a coluna do _STATUS_PMIB v2 estiver vazia
@@ -138,7 +143,7 @@ def montar(hoje: dt.date) -> dict:
         s = sistemas.get(l, {})
         listas.append({"l": l, "nome": nome_exibicao(s["SISTEMA"]) if s.get("SISTEMA") else nome_curto(m.get("DESCRICAO"), l),
                        "area": sem_prefixo(s["AREA"]) if s.get("AREA") else None,
-                       "et": m.get("ESPECIFICACAO TECNICA"), "sr": m.get("STATUS REAL"), "rev": str(m.get("ULTIMA REVISAO EMITIDA")),
+                       "et": m.get("ESPECIFICACAO TECNICA"), "cap": m.get("CAPITULO"), "sr": m.get("STATUS REAL"), "rev": str(m.get("ULTIMA REVISAO EMITIDA")),
                        "resp": m.get("RESPONSAVEL") if isinstance(m.get("RESPONSAVEL"), str) else None,
                        "proc": m.get("PROCUREMENT") if isinstance(m.get("PROCUREMENT"), str) else None,
                        "ev": m.get("EVENTOS DE PAGAMENTOS RELACIONADOS"), "sit": m.get("SITUACAO NO PMIB")})
@@ -188,13 +193,14 @@ def montar(hoje: dt.date) -> dict:
                     "fim_prev": fim_prev, "quem": a.get("COM QUEM ESTA") if isinstance(a.get("COM QUEM ESTA"), str) else None})
 
     return {"ref": hoje.isoformat(), "gerado": dt.date.today().isoformat(), "itens": registros, "listas": listas,
-            "precos": precos_out, "atividades": atv, "qualidade": qualidade(itens, precos, arquivos_preco, mapa, f)}
+            "precos": precos_out, "atividades": atv, "qualidade": qualidade(itens, precos, arquivos_preco, mapa, f, raiz)}
 
 
 # --------------------------------------------------------------------------
 # Qualidade dos dados — cada achado diz onde corrigir
 # --------------------------------------------------------------------------
-def qualidade(itens: pd.DataFrame, precos: pd.DataFrame, arquivos_preco: pd.DataFrame, mapa: dict, fichas: pd.DataFrame) -> list[dict]:
+def qualidade(itens: pd.DataFrame, precos: pd.DataFrame, arquivos_preco: pd.DataFrame, mapa: dict, fichas: pd.DataFrame,
+              raiz: pathlib.Path = R.PASTA_PMIB) -> list[dict]:
     q = []
     nome = lambda l: l  # noqa: E731
 
@@ -254,22 +260,13 @@ def qualidade(itens: pd.DataFrame, precos: pd.DataFrame, arquivos_preco: pd.Data
                       "exemplos": sorted(set(fis_sem_ge["ARQUIVO_PRECO"]))[:4]})
 
     fu = mapa["precos_followup"]
-    antigos = [c for c in fu["N DOCUMENTO ITAIPU"].astype(str) if "PB021" not in c]
+    antigos = [c for c in fu["N DOCUMENTO ITAIPU"].astype(str) if "PB021" not in c] if len(fu) else []
     if antigos:
         q.append({"titulo": "listas de preços no follow-up com código antigo (PB020-0x)", "n": len(antigos),
                   "detalhe": "Pela revisão do ITAIPU-REF-0013 a lista de preços é PB021. A aba 'Lista de preços Follow-up' ainda não tem nenhuma PB021.",
                   "exemplos": antigos[:4]})
 
-    lm = mapa["listas"].set_index(mapa["listas"]["N DOCUMENTO ITAIPU"].astype(str).str.strip())
-    contagem = fichas.groupby("LISTA")["PMIB"].nunique()
-    difs = [(l, int(lm.at[l, "FICHAS EXISTENTES"] or 0), int(n)) for l, n in contagem.items()
-            if l in lm.index and pd.notna(lm.at[l, "FICHAS EXISTENTES"]) and int(lm.at[l, "FICHAS EXISTENTES"]) != int(n)]
-    if difs:
-        q.append({"titulo": "listas com FICHAS EXISTENTES diferente do _STATUS_PMIB", "n": len(difs),
-                  "detalhe": "A mapeadora só acerta depois de o SIG-FT rodar. Por isso o painel conta direto da ficha.",
-                  "exemplos": [f"{l}: mapeadora {a} × arquivo {b}" for l, a, b in difs[:3]]})
-
-    copias = [p.name for p in R.PASTA_PMIB.rglob("*") if p.is_file() and p.suffix.lower() in (".xlsx", ".xlsm")
+    copias = [p.name for p in raiz.rglob("*") if p.is_file() and p.suffix.lower() in (".xlsx", ".xlsm")
               and "00 - OBSOLETO" not in str(p) and re.search(r"STATUS_PMIB_\.xlsx$| - Copy|corrigido|testes_autospec", str(p), re.I)]
     if copias:
         q.append({"titulo": "cópias de trabalho misturadas às planilhas vivas", "n": len(copias),
@@ -282,7 +279,7 @@ def qualidade(itens: pd.DataFrame, precos: pd.DataFrame, arquivos_preco: pd.Data
                   "detalhe": "Lista sem dono é lista que ninguém está puxando.", "exemplos": []})
 
     ext = 0
-    for p in R.listar_status_pmib():
+    for p in R.listar_status_pmib(raiz):
         with zipfile.ZipFile(p) as z:
             ext += any("<x14:dataValidation " in z.read(n).decode("utf-8", "ignore") for n in z.namelist() if n.startswith("xl/worksheets/sheet"))
     if ext:
@@ -290,11 +287,6 @@ def qualidade(itens: pd.DataFrame, precos: pd.DataFrame, arquivos_preco: pd.Data
                   "detalhe": "A validação aponta para outra aba (Checklist!$A$3:$A$8) e é gravada como extensão, que o openpyxl apaga. "
                              "A migração v2 recria por nome definido.", "exemplos": []})
 
-    soma_map = pd.to_numeric(mapa["listas"]["ATRASO DE AUTORIZACAO DE ENTREGA ITAIPU"], errors="coerce").sum()
-    novo = int((fichas["SITUACAO_AUT"] == "ATRASADO ITAIPU").sum())
-    q.append({"titulo": "atraso de autorização: regra antiga ainda no SIG-FT", "n": novo,
-              "detalhe": f"Fichas atrasadas pela regra de 15 dias úteis. A mapeadora mostra {int(soma_map)}, calculado pelo SIG-FT com 14 dias corridos "
-                         "(sigft/services/pmib_manager.py, pd.to_timedelta(14, unit='D')).", "exemplos": []})
     return q
 
 
@@ -311,15 +303,26 @@ def limpar(v):
     return v
 
 
-def main() -> int:
-    if not R.MAPEADORA.exists():
-        sys.exit(f"Mapeadora nao encontrada:\n  {R.MAPEADORA}\nO Box esta sincronizado?")
-    dados = limpar(montar(dt.date.today()))
+def gerar_html(dados: dict) -> str:
+    """Os dados vao inteiros dentro da pagina (<script id="dados">): o HTML abre sem rede e sem servidor."""
     texto = json.dumps(dados, ensure_ascii=False, default=str, allow_nan=False).replace("</", "<\\/")
-    html = MODELO.read_text(encoding="utf-8").replace("/*__DADOS__*/", texto)
-    SAIDA.parent.mkdir(exist_ok=True)
-    SAIDA.write_text(html, encoding="utf-8")
-    print(f"OK: {SAIDA}  ({len(dados['itens'])} fichas, {len(dados['listas'])} listas, {len(dados['qualidade'])} achados de qualidade)")
+    return MODELO.read_text(encoding="utf-8").replace("/*__DADOS__*/", texto)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--pasta", type=pathlib.Path, default=R.PASTA_PMIB, help="pasta SOBRESSALENTES - PMIB")
+    ap.add_argument("--mapeadora", type=pathlib.Path, default=R.MAPEADORA)
+    ap.add_argument("--saida", type=pathlib.Path, default=SAIDA)
+    ap.add_argument("--hoje", type=dt.date.fromisoformat, default=dt.date.today(), help="AAAA-MM-DD")
+    args = ap.parse_args()
+    if not args.mapeadora.exists():
+        sys.exit(f"Mapeadora nao encontrada:\n  {args.mapeadora}\nO Box esta sincronizado?")
+    dados = limpar(montar(args.hoje, args.pasta, args.mapeadora))
+    args.saida.parent.mkdir(parents=True, exist_ok=True)
+    args.saida.write_text(gerar_html(dados), encoding="utf-8")
+    print(f"OK: {args.saida}  ({len(dados['itens'])} fichas, {len(dados['listas'])} listas, "
+          f"{len(dados['qualidade'])} achados de qualidade)")
     return 0
 
 

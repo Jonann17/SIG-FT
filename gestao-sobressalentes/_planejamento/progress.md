@@ -115,6 +115,23 @@ procurement, atraso de Itaipu em 15 d.u.) e um Power BI com visão interna e vis
 - Falta regenerar `_gestao_v2/powerbi/pbip/` no cofre: ainda é a saída da v2 (bloqueado pelo controle de
   permissões; `python montar_pbip.py` refaz).
 
+## 2026-10-05 (fim da tarde) — painel HTML alinhado ao Power BI; T7 no roteiro do SIG-FT
+- Luan perguntou se o HTML pode entrar no SIG-FT e aprovou incluir como **T7**: botão no Gestão PMIB que gera o
+  painel e abre no navegador. O Power BI segue como painel oficial.
+- O gerador `_scripts/gerar_prototipo_dashboard.py` **quebrava** desde que a mapeadora virou cadastro (lia
+  `FICHAS EXISTENTES`). Corrigido:
+  - saíram os dois achados de qualidade que dependiam das contagens;
+  - ganhou parâmetros `--pasta`, `--mapeadora`, `--saida` e `--hoje`.
+- Template alinhado ao Power BI v3:
+  - filtros Especificação técnica e Capítulo;
+  - indicadores por PMIB distinto;
+  - "Material entregue" = itens físicos.
+- Conferido com os dados reais, os mesmos números nos dois painéis:
+  - sem filtro: 1.352 / 615 / 53 / 122 / 1.084;
+  - com Controle Centralizado: 291 / 255 / 32 / 0 / 205.
+- Novo `_gestao_v2/validar_painel.py`: compara o painel do SIG-FT com a referência no kit de teste. Testado: diz
+  PAINEL OK para a referência e pega dado trocado, script externo e filtro faltando.
+
 ## Proximas sessões
 1. **SIG-FT** (a partir de 05/10, na nuvem): T0 cabeçalho na linha 5 (módulo PDM); T1 gravar sem
    openpyxl; T2 situação/dias de atraso; T3 revisão em uso → mapeadora; T4 export de autorizados.
