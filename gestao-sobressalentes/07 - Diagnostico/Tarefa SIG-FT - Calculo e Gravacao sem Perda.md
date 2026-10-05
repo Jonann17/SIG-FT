@@ -11,7 +11,7 @@ inicio: 2026-10-05
 ## Prompt para começar a sessão na nuvem
 
 > Leia `gestao-sobressalentes/07 - Diagnostico/Tarefa SIG-FT - Calculo e Gravacao sem Perda.md`
-> inteiro antes de mexer em código. Execute as etapas na ordem (T0 → T5), uma por commit, seguindo
+> inteiro antes de mexer em código. Execute as etapas na ordem (T0 → T6), uma por commit, seguindo
 > as convenções do repositório. Ao final de cada etapa rode `bash scripts/check.sh`; ao final da T3
 > rode também o validador do kit (seção 3) até ele dizer **KIT OK**. Me mostre o que mudou antes de
 > passar de uma etapa para a outra.
@@ -41,25 +41,31 @@ linha 5:  ... | APLICAÇÃO - LMR | TIPO DE ENTREGA | DATA DO EMAIL COMUNICANDO 
 - **Nenhuma fórmula.** SITUAÇÃO e DIAS DE ATRASO são **valores que o SIG-FT grava**.
 - Comentários em thread existem em 16 arquivos e **têm de sobreviver** a qualquer gravação.
 
-### 1.2 A mapeadora (`Mapeamento Listas de Sobressalentes.xlsx`, aba `Acompanhamento Sobressalente`)
+### 1.2 A mapeadora vira CADASTRO (`Mapeamento Listas de Sobressalentes.xlsx`, aba `Acompanhamento Sobressalente`)
 
-Cabeçalho na **linha 2**. Três colunas **inseridas** no bloco PMIB — nenhuma coluna mudou de nome
-(o `Sobressalentes - Dashboard.pbix` atual usa `APTO PARA ENTREGA` pelo nome):
+> [!important] Decisão do Luan (05/10/2026): a mapeadora é o cadastro das listas; **as contagens saem de
+> cada `_STATUS_PMIB` pelo Power BI v2**. O bloco de contagens da aba (`FICHAS EXISTENTES` … `ÍNDICE DE
+> CONCLUSÃO`) **será retirado** assim que o Power BI v2 estiver montado (pode já ter sido, quando você ler).
 
-```
-... | FICHAS APROVADAS | FICHAS DE ENTREGA FÍSICA | APTO PARA ENTREGA | AGUARDANDO AUTORIZAÇÃO ITAIPU |
-      ATRASO DE AUTORIZAÇÃO DE ENTREGA ITAIPU | MAIOR ATRASO ITAIPU (DIAS) | EQUIPAMENTOS ENTREGUES | ...
-```
+Cabeçalho na **linha 2**. O que fica (e é o que o Gestão PMIB mantém):
 
-Os números de hoje já foram gravados pela regra nova (por um script, uma vez). **Daqui para a frente
-quem mantém é o Gestão PMIB** — é isso que esta tarefa faz. A coluna `REVISÃO EM USO` (G) passa a vir
-do `_STATUS_PMIB` (seção T3-f). Ao clicar no cabeçalho, cada coluna mostra sua definição.
+| Coluna | Quem escreve |
+|---|---|
+| cadastro: `N° DOCUMENTO ITAIPU`, `N° DOCUMENTO CMI`, `ÚLTIMA REVISÃO EMITIDA`, `STATUS DA REVISÃO`, `DATA DE ATUALIZAÇÃO`, `DESCRIÇÃO`, `ESPECIFICAÇÃO TÉCNICA`, `CAPÍTULO` | Gestão PMIB, do DocManager (como hoje, passo "D. Atualizar Metadados") |
+| `REVISÃO EM USO` | **Gestão PMIB, da linha de revisão do `_STATUS_PMIB`** (T3-f, novo) |
+| `SITUAÇÃO NO PMIB` | Gestão PMIB (a "cascata" de hoje — continua) |
+| `LINK DA PLANILHA` | Gestão PMIB (como hoje, sem `testes_autospec` — T3-a) |
+| `CAMPO "CÓDIGO DO PROJETO PARA O PMIB"` | fórmula da planilha — não tocar |
+| `STATUS REAL`, `RESPONSÁVEL`, `PROCUREMENT`, `ELABORADOR…`, `ORIGEM…`, `ENTREGA`, `OBSERVAÇÃO`, `EVENTOS…` | pessoas — nunca sobrescrever |
+
+**O SIG-FT não grava mais contagem nenhuma na mapeadora.** As colunas são achadas pelo nome da linha 2;
+coluna que não existe é pulada (o código atual já faz isso) — então nada quebra quando o bloco sair.
 
 ### 1.3 O que quebra até esta tarefa estar pronta (tudo visível, nenhum dado errado gravado)
 
 | Onde | Sintoma |
 |---|---|
-| Gestão PMIB (`pmib_manager`) | sem `APTO PARA ENTREGA` no arquivo, escreve **"Atualizar template"** em APTO e ATRASO da mapeadora |
+| Gestão PMIB (`pmib_manager`) | sem `APTO PARA ENTREGA` no arquivo, escreve **"Atualizar template"** em APTO e ATRASO da mapeadora (some quando o bloco de contagens sair; o Luan não roda o Gestão PMIB até a T3) |
 | Módulo PDM, modo "selecionar códigos" | lê o cabeçalho fixo na linha 4 → "Coluna 'CÓDIGO PMIB' não encontrada" |
 | `apto_para_entrega_att.py` (fora do repositório) | "Falta coluna APTO", não grava |
 | Qualquer `save` de `_STATUS_PMIB` pelo openpyxl | **apaga os comentários em thread** do arquivo |
@@ -99,24 +105,13 @@ Avaliar **nesta ordem** (a primeira que casar vale):
 - Implementação de referência completa: `situacao_autorizacao()` (regras 2–8) e, para o arquivo inteiro
   (com a regra 1 e "só grava o que mudou"), `recalcular_situacao()` em `_gestao_v2/migrar_status_pmib_v2.py`.
 
-### 2.2 Contagens da mapeadora — por lista
+### 2.2 Contagens — quem faz é o Power BI v2, não o SIG-FT
 
-"Ficha" = linha com código PMIB válido, **sem** STATUS `DUPLICADO`, contada **uma vez** por PMIB (a
-primeira linha) — a mesma base que o `_calcula_fichas` já usa.
-
-| Coluna da mapeadora | Chave sugerida | Regra |
-|---|---|---|
-| `FICHAS DE ENTREGA FÍSICA` | `fichas_entrega_fisica` | TIPO = FÍSICA E DOCUMENTAL |
-| `APTO PARA ENTREGA` | `fichas_aptas_para_entrega` | SITUAÇÃO = AUTORIZADO **e** ENTREGUE ≠ SIM **e** TIPO não é DOCUMENTAL/TÍTULO |
-| `AGUARDANDO AUTORIZAÇÃO ITAIPU` | `aguardando_autorizacao_itaipu` | SITUAÇÃO = AGUARDANDO ITAIPU |
-| `ATRASO DE AUTORIZAÇÃO DE ENTREGA ITAIPU` | `atraso_autorizacao_itaipu` | SITUAÇÃO = ATRASADO ITAIPU |
-| `MAIOR ATRASO ITAIPU (DIAS)` | `maior_atraso_itaipu_dias` | maior DIAS DE ATRASO entre as ATRASADO; 0 se nenhuma |
-| `EQUIPAMENTOS ENTREGUES` | `equipamentos_entregue` | (como hoje) ENTREGUE = SIM |
-| `REVISÃO EM USO` | — | da linha 4 do arquivo (T3-f) |
-
-Arquivo **layout antigo** (sem `SITUAÇÃO DA AUTORIZAÇÃO`): `APTO` = APTO PARA ENTREGA = SIM e não entregue;
-as outras quatro = 0 (sem TIPO, nada conta); logar "arquivo sem layout v2". Lista sem `_STATUS_PMIB`: tudo 0
-(já é o comportamento atual). **Acabar** com o "Atualizar template".
+Fichas existentes, aprovadas, aptas, aguardando, atrasadas, maior atraso etc. são **medidas do Power BI v2**,
+calculadas item a item dos `_STATUS_PMIB` (pacote `gestao-sobressalentes/_gestao_v2/powerbi/`). Por isso o
+SIG-FT tem de **gravar certo, em cada `_STATUS_PMIB`, a SITUAÇÃO e os DIAS DE ATRASO** (T3-c) — é deles que o
+painel conta. O `_calcula_fichas` continua contando por status **só para a cascata da `SITUAÇÃO NO PMIB`**;
+não grava contagem.
 
 ---
 
@@ -129,7 +124,7 @@ Em `gestao-sobressalentes/_gestao_v2/fixtures/kit_gestao_pmib/` — tudo sintét
 | `status/#ST00=TESTE01&MPB020_STATUS_PMIB.xlsx` | layout v2; **linhas 6–18 = os 13 casos da regra** (tabela em `gerar_kit_teste_sigft.py`, `CASOS`); 3 comentários em thread |
 | `status/#ST00=TESTE02&MPB020_STATUS_PMIB.xlsx` | layout antigo (APTO PARA ENTREGA): só leitura, **não pode ser gravado** |
 | `status/testes_autospec/#ST00=TESTE01&MPB020_STATUS_PMIB.xlsx` | **isca**: mesmo código, outros números — tem de ser **ignorada** (T3-a) |
-| `mapeadora_sintetica.xlsx` | `Acompanhamento Sobressalente` no layout v2 (APTO/ATRASO com 99 "velho"; REVISÃO EM USO de TESTE01 = "0", velho) + abas vazias |
+| `mapeadora_sintetica.xlsx` | `Acompanhamento Sobressalente` só com o cadastro + SITUAÇÃO NO PMIB + LINK + CÓDIGO DO PROJETO (REVISÃO EM USO de TESTE01 = "0", velho) + abas vazias |
 | `docmanager_sintetico.xlsx` | export do DocManager com as 3 listas (Current = True) |
 | `esperado.json` | o resultado certo com **hoje = 2026-10-10** |
 
@@ -150,7 +145,8 @@ python gestao-sobressalentes/_gestao_v2/validar_kit_gestao_pmib.py /tmp/kit     
 ```
 
 O validador confere: SITUAÇÃO e DIAS linha a linha; DIAS sem formato de data; comentários byte a byte;
-`sigft_calculado_em`; TESTE02 e isca intocados; as 7 colunas e a REVISÃO EM USO na mapeadora.
+`sigft_calculado_em`; TESTE02 e isca intocados; na mapeadora, SITUAÇÃO NO PMIB, REVISÃO EM USO, o link apontando
+para o arquivo real (não a isca) e **nenhuma coluna de contagem criada**.
 `python validar_kit_gestao_pmib.py --referencia` roda a implementação de referência e dá KIT OK — prova
 que o esperado é atingível. Sugestão: transformar esse roteiro num teste em `tests_integracao/` (pasta
 própria, sem o `conftest` que stuba) ou num `scripts/validar_kit.sh`.
@@ -219,20 +215,20 @@ no passo 5 **antes** de `_ler_status_pmib`, para cada arquivo vivo (já com o ca
 **d) `_ler_status_pmib`** (≈ 160): em `colunas_desejadas` acrescentar `'TIPO DE ENTREGA'`,
 `'SITUAÇÃO DA AUTORIZAÇÃO'`, `'DIAS DE ATRASO'`; manter `'APTO PARA ENTREGA'` (arquivo antigo).
 
-**e) `_calcula_fichas`** (≈ 213–339): substituir o bloco "Novas Regras: Apto para Entrega e Atraso Itaipu"
-(o dos **14 dias corridos** e do "Atualizar template") pelas regras da tabela 2.2, com as chaves sugeridas.
-DIAS lido pelo pandas também pode vir como `Timestamp` → mesmo tratamento (`to_excel`).
+**e) `_calcula_fichas`** (≈ 213–339): **apagar** o bloco "Novas Regras: Apto para Entrega e Atraso Itaipu" (o dos
+**14 dias corridos** e do "Atualizar template") e as contagens que só serviam à mapeadora; manter só o que a
+cascata da `SITUAÇÃO NO PMIB` usa (total de fichas e contagem por STATUS).
 
 **f) Revisão em uso → mapeadora** (no mesmo laço): ler, nas linhas **acima do cabeçalho**, a célula cujo texto
 começa com `REVISÃO DA LISTA DE SOBRESSALENTES` (pelo texto, nunca pela coordenada) e extrair
 `EM USO:\s*(.+?)\s*-\s*DATA DE ALTERA` (pode ser `SEM LISTA`). Gravar em `REVISÃO EM USO` da linha da lista.
 Sem a linha, ou revisão `—`/vazia: **não mexer** em G e logar. A formatação condicional G≠C fica como está.
 
-**g) Gravação na mapeadora** (passo 6, ≈ 535): acrescentar ao `gerenciadora_map`
-`'FICHAS DE ENTREGA FÍSICA'`, `'AGUARDANDO AUTORIZAÇÃO ITAIPU'`, `'MAIOR ATRASO ITAIPU (DIAS)'` (as colunas são
-achadas pelo nome da linha 2 — a posição não importa). A mapeadora pode continuar sendo gravada pelo openpyxl
-(hoje ela não tem comentário em thread nem lista x14; as mensagens dos cabeçalhos são validação padrão e
-sobrevivem) — mas registre isso num comentário, porque deixa de valer se alguém comentar na mapeadora.
+**g) Gravação na mapeadora** (passo 6, ≈ 535): o `gerenciadora_map` fica só com `'LINK DA PLANILHA'`; apagar a
+gravação dos `ÍNDICE DE …`; manter a cascata da `SITUAÇÃO NO PMIB` e acrescentar a `REVISÃO EM USO` (f). Colunas
+achadas pelo nome da linha 2; coluna inexistente é pulada sem erro. A mapeadora pode continuar sendo gravada pelo
+openpyxl (não tem comentário em thread nem lista x14; as mensagens de validação são padrão e sobrevivem) — mas
+registre isso num comentário, porque deixa de valer se alguém comentar na mapeadora.
 
 **Pronto quando**: validador do kit **KIT OK**; `check.sh` verde; grep sem `to_timedelta(14` e sem
 `"Atualizar template"`.
@@ -249,6 +245,91 @@ nome do arquivo; vazio se veio no prazo). Gravar com o editor da T1. Layout anti
 ### T5 — Listas de preços em `PB021` (depois)
 Reconhecer lista de preços pelo DCC `PB021` (o `PB020-0x` é legado). Ver [[Plano - Aba de Listas de Precos]].
 
+### T6 — Gerar a Lista de Preços **revisão 0A** a partir do `_STATUS_PMIB` (ideia do Luan, 05/10/2026)
+
+> [!important] Como esta etapa é validada
+> Não houve protótipo antes (decisão do Luan). Implemente contra o **template oficial** e o kit
+> `fixtures/kit_lista_precos/`; a validação final é **prática**: o Luan gera listas reais no trabalho e abre no
+> Excel. Se algo do formato não bater, os ajustes virão desses exemplos — registre cada um e ajuste aqui.
+> **Não use a lista do PDG (`#ST00=B03BDV10UC012-UC001&EPB021`) como modelo**: pode ter desvios do padrão
+> (colunas a mais, `CÓDIGO CMI` no lugar de `CÓDIGO GE`, fórmulas auxiliares). O modelo é o template.
+
+> [!danger] A macro é inegociável
+> O template `15 - PDM/Templates/Lista de Sobressalentes com preço.xlsm` tem a macro `ConfigurarRodapeCompleto`
+> (módulo `Módulo1`), disparada pelo `Worksheet_Change` da Capa quando muda `D37`, `F37` ou `I37`: ela escreve os
+> rodapés da `Contracapa` e da `Lista de Materiais` (código do emitente, código de Itaipu com `&`→`&&`, folha,
+> revisão). **O arquivo gerado continua `.xlsm` com a macro intacta, e o rodapé é feito PELA MACRO** — não
+> escrever rodapé por fora. Se não for possível manter a macro, a T6 está cancelada (palavra do Luan).
+
+**O quê**: tela nova (ex.: "Lista de Preços 0A") onde se escolhe o `_STATUS_PMIB` e o template (caminho lembrado
+em config); gera `{código Itaipu da lista de preços}.xlsm` na pasta do `_STATUS_PMIB`. **Só revisão 0A**.
+
+**Recusar (mensagem clara, nada gravado)**: `_STATUS_PMIB` sem a coluna TIPO DE ENTREGA; linha com CÓDIGO PMIB e
+TIPO DE ENTREGA vazio (listar as linhas — classificar primeiro; a mesma classificação serve à autorização);
+arquivo de saída já existe (nunca sobrescrever uma lista de preços).
+
+**Campos da tela** (pré-preenchidos, editáveis):
+
+| Campo | Pré-preenchimento | Vai para |
+|---|---|---|
+| código Itaipu da lista de preços | código da lista com `PB020` → `PB021` (`…&EPB020` → `…&EPB021`); código fora do padrão (sufixo `-0x`, `EBP020`): em branco e obrigatório | nome do arquivo, `Capa!F37` |
+| controle do emitente | vazio, obrigatório (não há regra segura para deduzir o código CMI da lista de preços) | `Capa!D37` |
+| disciplina / sistema / título | da DESCRIÇÃO da lista na mapeadora (título do Aconex) cortada em " - ": o pedaço `ENG. …` → disciplina; o seguinte → sistema; o resto até `LISTA DE SOBRESSALENTES` → título | `Capa!E25`, `E26`, `E27` (= título + ` - LISTA DE SOBRESSALENTE COM PREÇO`) |
+| autoria / verificação / aprovação | os últimos usados | `Capa!B31`, `B33`, `B35`; iniciais (sem DE/DA/DO/DAS/DOS/E) em `Contracapa!E12:G12` |
+| data | hoje | `Capa!B37`, `Contracapa!H12` |
+| incluir linhas DUPLICADO | sim (a lista de preços espelha a de sobressalentes linha a linha — **confirmar no teste prático**) | — |
+
+**Aba `Lista de Materiais`** — cabeçalho na linha 4; itens a partir da **linha 5**, uma por linha do `_STATUS_PMIB`
+que tenha DESCRIÇÃO, **na mesma ordem**; colunas do `_STATUS_PMIB` achadas **pelo nome**:
+
+| Col. | Lista de preços | Vem de | Regra |
+|---|---|---|---|
+| A | ITEM | ITEM | como está (pode ser `11.1`) |
+| B | QTD. | QTD. | |
+| C | UNID. | UNID. | |
+| D | DESCRIÇÃO | DESCRIÇÃO | |
+| E | FABRICANTE / MODELO | MARCA/MODELO | |
+| F | CÓDIGO DE MATERIAL | CÓDIGO DO MATERIAL | |
+| G | CÓDIGO GE | CÓDIGO CMI | vazio em DOCUMENTAL (componente não tem código GE); DOCUMENTAL com código no `_STATUS_PMIB` → **aviso** |
+| H | CÓDIGO PMIB | CÓDIGO PMIB | normalizado `4500063671.NNNN`, sem espaços; texto que não é PMIB copiado como está |
+| I | VALOR UNITÁRIO | — | **sempre vazio** (quem monta preenche; DOCUMENTAL não tem preço) |
+| J | TIPO DE ENTREGA | TIPO DE ENTREGA | texto canônico: `FÍSICA E DOCUMENTAL` · `DOCUMENTAL` · `TÍTULO` |
+
+- **Nunca copiar**: OBSERVAÇÕES (notas internas), STATUS, PDM usado, seções, DATA DO EMAIL, SITUAÇÃO, DIAS,
+  ENTREGUE, FORNECEDOR, PROCUREMENT.
+- Template: linhas 5–41 pré-formatadas e numeradas 1–37; exemplos em `J5`/`J6` e instrução em `K5`. Escrever por
+  cima; **limpar** A..K das linhas numeradas que sobrarem e o `K5`. Mais de 37 itens: criar as linhas 42+ com os
+  estilos da linha 6 (os logotipos ficam na linha 2 — não há nada a deslocar).
+- Área de impressão da aba (hoje `$A$2:$J$45`) → `$A$2:$J$<última linha de item>`.
+- `A3` (texto da cotação do dólar) fica como está — **conferir no teste prático** se a data dele muda.
+
+**Contracapa** linha 12: `A12 = 0A`, `B12 = -`, `D12 = PRIMEIRA EMISSÃO`, `E12:G12` = iniciais, `H12` = data.
+
+**Como gravar — dois passos**:
+1. **Preencher** uma cópia do template com o editor cirúrgico (T1) — nunca openpyxl: o arquivo tem macro
+   (`xl/vbaProject.bin`), o carimbo de Itaipu embutido (objeto Word), imagens e metadados; tudo sai idêntico, e o
+   `.xlsm` continua `.xlsm`. Os rodapés **não** são tocados aqui.
+2. **Deixar a macro fazer o rodapé**, no Excel do computador do trabalho, via `xlwings` (o SIG-FT já usa no módulo
+   de tradução): abrir o arquivo num Excel **visível**, com `Application.EnableEvents = True`, e **regravar** em
+   `Capa!D37`, `F37` e `I37` os mesmos valores — é o gatilho documentado da macro (o mesmo que a pessoa digitando).
+   A macro termina com `MsgBox "Rodapés configurados nas planilhas."`: a pessoa clica OK (é a confirmação). Salvar
+   pelo próprio Excel (preserva a macro) e fechar. Excel indisponível ou falhou → log claro + instrução na tela:
+   "abra o arquivo e redigite D37, F37 e I37 da Capa (ou Alt+F8 → ConfigurarRodapeCompleto)".
+
+**Testes**: kit `fixtures/kit_lista_precos/` — o template oficial, um `_STATUS_PMIB` sintético com os quatro casos
+de tipo, um DOCUMENTAL com código CMI (aviso), um PMIB com espaços e uma OBSERVAÇÃO "NOTA INTERNA" que não pode
+vazar. Gerar com os `parametros` do `esperado_lista_precos.json` e rodar
+`python gestao-sobressalentes/_gestao_v2/validar_lista_precos_0a.py "<saída>.xlsm"` até **LISTA OK**:
+- na nuvem (sem Excel) confere o passo 1, inclusive a macro **byte a byte**;
+- no trabalho, depois do passo 2, com `--com-excel` confere também os **rodapés feitos pela macro**.
+Recusas: o `_STATUS_PMIB` do `kit_gestao_pmib` (TIPO vazio nas linhas 12, 19–22) tem de ser recusado; gerar duas
+vezes → a segunda recusa.
+
+### T6b — Conferir lista de preços × `_STATUS_PMIB` (0B em diante; só relatório)
+Depois da 0A a lista de preços tem histórico próprio — **não regerar**. Comparar a aba `Lista de Materiais` de uma
+lista de preços com o `_STATUS_PMIB` (pelo CÓDIGO PMIB) e listar: item de um lado que falta no outro; QTD. ou TIPO
+diferente; FÍSICA sem CÓDIGO GE ou sem VALOR; DOCUMENTAL com CÓDIGO GE ou VALOR. Só relatório, nada gravado.
+
 ---
 
 ## 5. Convenções e cuidados
@@ -261,9 +342,10 @@ Reconhecer lista de preços pelo DCC `PB021` (o `PB020-0x` é legado). Ver [[Pla
 - O que achar fora do escopo vai para `docs/refatoracao/PENDENCIAS.md`.
 
 ## 6. Depois do merge (o Luan, no computador do trabalho)
-Rodar o Gestão PMIB uma vez e conferir na mapeadora: APTO/ATRASO sem "Atualizar template"; as três colunas novas
-preenchidas; o link "Abrir Box" de `#ST00=B01BMU10&EPB020` apontando para o arquivo real (não `testes_autospec`);
-um `_STATUS_PMIB` com comentário em thread continua com o comentário.
+Rodar o Gestão PMIB uma vez e conferir: na mapeadora, REVISÃO EM USO e SITUAÇÃO NO PMIB preenchidas e o link
+"Abrir Box" de `#ST00=B01BMU10&EPB020` apontando para o arquivo real (não `testes_autospec`); num `_STATUS_PMIB`,
+SITUAÇÃO e DIAS DE ATRASO atualizados e o comentário em thread intacto; o Power BI v2 atualizando com os números
+novos. Para a T6: gerar a 0A de uma lista real, clicar OK no aviso da macro e conferir capa, itens e rodapé no PDF.
 
 ## Relacionados
 [[Plano - Reestruturacao do STATUS_PMIB]] · [[Mapeamento das Listas de Sobressalentes]] ·

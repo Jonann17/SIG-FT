@@ -84,6 +84,7 @@ def montar_isca(destino: pathlib.Path) -> None:
     p = PlanilhaXlsx(destino)
     L = p.parte_da_aba("Lista de Materiais")
     for r in range(6, 23):
+        p.escrever(L, f"J{r}", "APROVADO")                 # lida por engano -> SITUAÇÃO NO PMIB = FINALIZADO
         p.escrever(L, f"Q{r}", F)
         p.escrever(L, f"S{r}", "AUTORIZADO")
     p.salvar()
@@ -103,12 +104,7 @@ CAB_MAPEADORA = [
     "N° DOCUMENTO ITAIPU", "N° DOCUMENTO CMI", "ÚLTIMA REVISÃO EMITIDA", "STATUS DA REVISÃO", "DATA DE ATUALIZAÇÃO",
     "STATUS REAL", "REVISÃO EM USO", "DESCRIÇÃO", "ESPECIFICAÇÃO TÉCNICA", "CAPÍTULO", "RESPONSÁVEL", "PROCUREMENT",
     "ELABORADOR DO DOCUMENTO", "ORIGEM FORNECEDOR", "ENTREGA", "OBSERVAÇÃO", "EVENTOS DE PAGAMENTOS\nRELACIONADOS",
-    "SITUAÇÃO NO PMIB", "FICHAS EXISTENTES", "FICHAS COM O FORNECEDOR", "FICHAS RECEBIDAS", "FICHAS EM ELABORAÇÃO",
-    "INFO. DO FORNECEDOR COMPLETO", "VALORIZAÇÃO", "FICHAS COM APLICAÇÃO - LMR FINALIZADA", "FICHAS EM ANÁLISE DE ITAIPU",
-    "FICHAS EM CORREÇÃO", "FICHAS APROVADAS", "FICHAS DE ENTREGA FÍSICA", "APTO PARA ENTREGA",
-    "AGUARDANDO AUTORIZAÇÃO ITAIPU", "ATRASO DE AUTORIZAÇÃO DE ENTREGA ITAIPU", "MAIOR ATRASO ITAIPU (DIAS)",
-    "EQUIPAMENTOS ENTREGUES", "ÍNDICE DE EMISSAO", "ÍNDICE DE CONCLUSÃO", "LINK DA PLANILHA",
-    'CAMPO "CÓDIGO DO PROJETO PARA O PMIB"']
+    "SITUAÇÃO NO PMIB", "LINK DA PLANILHA", 'CAMPO "CÓDIGO DO PROJETO PARA O PMIB"']   # mapeadora = cadastro (05/10)
 LISTAS = {  # codigo: (doc CMI, ultima revisao emitida, revisao em uso ANTES, tracking id)
     "#ST00=TESTE01&MPB020": ("TESTE-CMI-01", "1", "0", "TRK-001"),
     "#ST00=TESTE02&MPB020": ("TESTE-CMI-02", "0B", "0B", "TRK-002"),
@@ -132,8 +128,8 @@ def montar_mapeadora(destino: pathlib.Path) -> None:
         ws.cell(r, col["ÚLTIMA REVISÃO EMITIDA"], ult)
         ws.cell(r, col["REVISÃO EM USO"], emuso)
         ws.cell(r, col["DESCRIÇÃO"], f"TEXTO DE TESTE - LISTA DE SOBRESSALENTES {r - 2}")
-        for nome in ("APTO PARA ENTREGA", "ATRASO DE AUTORIZAÇÃO DE ENTREGA ITAIPU"):
-            ws.cell(r, col[nome], 99)                     # valor velho: tem de ser substituido
+        ws.cell(r, col["SITUAÇÃO NO PMIB"], "VALOR VELHO")       # tem de ser substituido pela cascata
+        ws.cell(r, col['CAMPO "CÓDIGO DO PROJETO PARA O PMIB"'], f'=I{r} & " / " & J{r} & " | " & A{r} & " / " & B{r}')
     d = wb.create_sheet("Dropbox")
     d["C1"] = "STATUS DA ATIVIDADE"
     lp = wb.create_sheet("Lista de preços Follow-up")
@@ -217,7 +213,6 @@ def main() -> None:
                   for r in CASOS}
         linhas.update({str(r): {"situacao": ws[f"S{r}"].value or "", "dias": ws[f"T{r}"].value,
                                 "por_que": "em branco — sem tipo, sem e-mail"} for r in range(19, 23)})
-        m1 = contar(copia)
         partes_intocadas = [n for n in PlanilhaXlsx(t1)._bytes if n.startswith(("xl/threadedComments/", "xl/persons/", "xl/comments"))]
     esperado = {
         "hoje": HOJE.isoformat(),
@@ -234,16 +229,18 @@ def main() -> None:
             "#ST00=TESTE02&MPB020": {"arquivo_inalterado": True, "log": "arquivo sem layout v2 (sem SITUAÇÃO DA AUTORIZAÇÃO)"},
             "testes_autospec/#ST00=TESTE01&MPB020": {"arquivo_inalterado": True, "ignorado": True},
         },
-        "mapeadora": {
-            "#ST00=TESTE01&MPB020": m1 | {"REVISÃO EM USO": "1"},
-            "#ST00=TESTE02&MPB020": contar(t2) | {"REVISÃO EM USO": "0B (sem linha de revisão: não mexer)"},
-            "#ST00=TESTE03&MPB020": {"FICHAS EXISTENTES": 0, "FICHAS DE ENTREGA FÍSICA": 0, "APTO PARA ENTREGA": 0,
-                                     "AGUARDANDO AUTORIZAÇÃO ITAIPU": 0, "ATRASO DE AUTORIZAÇÃO DE ENTREGA ITAIPU": 0,
-                                     "MAIOR ATRASO ITAIPU (DIAS)": 0, "EQUIPAMENTOS ENTREGUES": 0,
-                                     "REVISÃO EM USO": "0 (sem arquivo: não mexer)"},
+        "mapeadora": {   # so cadastro: o SIG-FT nao grava contagem (decisao do Luan, 05/10/2026)
+            "#ST00=TESTE01&MPB020": {"SITUAÇÃO NO PMIB": "FICHAS CRIADAS", "REVISÃO EM USO": "1",
+                                     "LINK DA PLANILHA": "Abrir Box"},
+            "#ST00=TESTE02&MPB020": {"SITUAÇÃO NO PMIB": "FICHAS CRIADAS",
+                                     "REVISÃO EM USO": "0B (sem linha de revisão: não mexer)",
+                                     "LINK DA PLANILHA": "Abrir Box"},
+            "#ST00=TESTE03&MPB020": {"SITUAÇÃO NO PMIB": "INICIAR", "REVISÃO EM USO": "0 (sem arquivo: não mexer)",
+                                     "LINK DA PLANILHA": ""},
         },
-        "isca": "se a mapeadora de TESTE01 mostrar FICHAS DE ENTREGA FÍSICA = 17 ou APTO = 17, a pasta "
-                "testes_autospec não foi ignorada",
+        "mapeadora_cabecalho_inalterado": CAB_MAPEADORA,
+        "isca": "a isca em testes_autospec tem todas as fichas APROVADO: se for lida, a SITUAÇÃO NO PMIB de TESTE01 "
+                "sai FINALIZADO e o link aponta para testes_autospec",
     }
     (KIT / "esperado.json").write_text(json.dumps(esperado, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     print(json.dumps(esperado["mapeadora"], ensure_ascii=False, indent=1))

@@ -118,35 +118,42 @@
   },
   "mapeadora": {
     "#ST00=TESTE01&MPB020": {
-      "FICHAS EXISTENTES": 16,
-      "FICHAS DE ENTREGA FÍSICA": 7,
-      "APTO PARA ENTREGA": 1,
-      "AGUARDANDO AUTORIZAÇÃO ITAIPU": 2,
-      "ATRASO DE AUTORIZAÇÃO DE ENTREGA ITAIPU": 2,
-      "MAIOR ATRASO ITAIPU (DIAS)": 12,
-      "EQUIPAMENTOS ENTREGUES": 1,
-      "REVISÃO EM USO": "1"
+      "SITUAÇÃO NO PMIB": "FICHAS CRIADAS",
+      "REVISÃO EM USO": "1",
+      "LINK DA PLANILHA": "Abrir Box"
     },
     "#ST00=TESTE02&MPB020": {
-      "FICHAS EXISTENTES": 17,
-      "FICHAS DE ENTREGA FÍSICA": 0,
-      "APTO PARA ENTREGA": 1,
-      "AGUARDANDO AUTORIZAÇÃO ITAIPU": 0,
-      "ATRASO DE AUTORIZAÇÃO DE ENTREGA ITAIPU": 0,
-      "MAIOR ATRASO ITAIPU (DIAS)": 0,
-      "EQUIPAMENTOS ENTREGUES": 1,
-      "REVISÃO EM USO": "0B (sem linha de revisão: não mexer)"
+      "SITUAÇÃO NO PMIB": "FICHAS CRIADAS",
+      "REVISÃO EM USO": "0B (sem linha de revisão: não mexer)",
+      "LINK DA PLANILHA": "Abrir Box"
     },
     "#ST00=TESTE03&MPB020": {
-      "FICHAS EXISTENTES": 0,
-      "FICHAS DE ENTREGA FÍSICA": 0,
-      "APTO PARA ENTREGA": 0,
-      "AGUARDANDO AUTORIZAÇÃO ITAIPU": 0,
-      "ATRASO DE AUTORIZAÇÃO DE ENTREGA ITAIPU": 0,
-      "MAIOR ATRASO ITAIPU (DIAS)": 0,
-      "EQUIPAMENTOS ENTREGUES": 0,
-      "REVISÃO EM USO": "0 (sem arquivo: não mexer)"
+      "SITUAÇÃO NO PMIB": "INICIAR",
+      "REVISÃO EM USO": "0 (sem arquivo: não mexer)",
+      "LINK DA PLANILHA": ""
     }
   },
-  "isca": "se a mapeadora de TESTE01 mostrar FICHAS DE ENTREGA FÍSICA = 17 ou APTO = 17, a pasta testes_autospec não foi ignorada"
+  "mapeadora_cabecalho_inalterado": [
+    "N° DOCUMENTO ITAIPU",
+    "N° DOCUMENTO CMI",
+    "ÚLTIMA REVISÃO EMITIDA",
+    "STATUS DA REVISÃO",
+    "DATA DE ATUALIZAÇÃO",
+    "STATUS REAL",
+    "REVISÃO EM USO",
+    "DESCRIÇÃO",
+    "ESPECIFICAÇÃO TÉCNICA",
+    "CAPÍTULO",
+    "RESPONSÁVEL",
+    "PROCUREMENT",
+    "ELABORADOR DO DOCUMENTO",
+    "ORIGEM FORNECEDOR",
+    "ENTREGA",
+    "OBSERVAÇÃO",
+    "EVENTOS DE PAGAMENTOS\nRELACIONADOS",
+    "SITUAÇÃO NO PMIB",
+    "LINK DA PLANILHA",
+    "CAMPO \"CÓDIGO DO PROJETO PARA O PMIB\""
+  ],
+  "isca": "a isca em testes_autospec tem todas as fichas APROVADO: se for lida, a SITUAÇÃO NO PMIB de TESTE01 sai FINALIZADO e o link aponta para testes_autospec"
 }

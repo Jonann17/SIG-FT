@@ -66,6 +66,12 @@ pelo qual atraso de ficha vira atraso de dinheiro.
 | `ATRASO DE AUTORIZACAO DE ENTREGA ITAIPU` | **fichas** físicas (PMIB distinto, sem DUPLICADO) além dos **15 dias úteis** do e-mail, sem autorização (SITUAÇÃO = ATRASADO ITAIPU). Até 04/10 o SIG-FT contava 14 dias corridos e todos os tipos |
 | `MAIOR ATRASO ITAIPU (DIAS)` *(nova)* | maior DIAS DE ATRASO (dias corridos além do prazo) entre as atrasadas da lista |
 
+> [!warning] Decisão do Luan (05/10/2026, tarde): a mapeadora vira **CADASTRO**
+> As contagens (`FICHAS EXISTENTES` … `ÍNDICE DE CONCLUSÃO`, inclusive as três colunas abaixo) saem da
+> mapeadora assim que o **Power BI v2** estiver montado — ele conta item a item nos `_STATUS_PMIB`. Ficam o
+> cadastro, `SITUAÇÃO NO PMIB`, `LINK DA PLANILHA` e `CÓDIGO DO PROJETO PARA O PMIB`. A tabela abaixo descreve o
+> estado intermediário.
+
 > [!info] Mapeadora no tratamento v2 (05/10/2026)
 > As três colunas novas foram **inseridas** (o resto andou para a direita, nada mudou de nome) e os
 > números de APTO/ATRASO recalculados pela regra nova. Clicar no cabeçalho mostra a definição.
