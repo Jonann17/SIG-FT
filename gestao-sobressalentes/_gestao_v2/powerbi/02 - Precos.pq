@@ -5,7 +5,7 @@
 //   ...PB020-0x   legado — ainda existe enquanto não for reemitida como PB021
 // =====================================================================
 let
-    Raiz = if Text.EndsWith(PastaPMIB, "\") then PastaPMIB else PastaPMIB & "\",
+    Raiz = if Text.EndsWith(PastaPMIBEfetiva, "\") then PastaPMIBEfetiva else PastaPMIBEfetiva & "\",
     Arquivos = Folder.Files(Raiz),
     Filtrados = Table.SelectRows(Arquivos, each
         let
@@ -61,7 +61,7 @@ in
 //                           o estado de cada lista de preços no Aconex)
 // =====================================================================
 let
-    Arquivo = File.Contents(PastaPMIB & "\Mapeamento Listas de Sobressalentes.xlsx"),
+    Arquivo = File.Contents(PastaPMIBEfetiva & "\Mapeamento Listas de Sobressalentes.xlsx"),
     Tabela = fxLerTabela(Arquivo, "Lista de preços Follow-up", "N DOCUMENTO ITAIPU"),
     SoLinhas = Table.SelectRows(Tabela, each fxNorm([N DOCUMENTO ITAIPU]) <> ""),
     Colunas = Table.SelectColumns(SoLinhas,

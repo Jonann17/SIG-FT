@@ -1,25 +1,56 @@
 ---
 tags: [gestao-v2, power-bi, handoff]
 criado: 2026-10-01
-atualizado: 2026-10-04
+atualizado: 2026-10-05
 ---
 
 # Power BI v2 — como montar
 
-> [!success] MONTADO e testado em 05/10/2026
-> Está no Box em **`SOBRESSALENTES - PMIB/Sobressalentes v2 (Power BI)/`** como *Projeto do Power BI*:
-> - `Sobressalentes v2 - Interno.pbip` (5 páginas) e `Sobressalentes v2 - Itaipu.pbip` (2 páginas), sobre um
->   modelo só (`Sobressalentes v2.SemanticModel`).
-> - **Abrir**: Power BI Desktop › Arquivo › Abrir › o `.pbip` › **Página Inicial › Atualizar** (≈ 1 min na primeira vez).
-> - O parâmetro `PastaPMIB` aponta para `C:\Users\560083605\Box\...\SOBRESSALENTES - PMIB`. Se o usuário do Windows
->   for outro: Transformar dados › Gerenciar parâmetros › PastaPMIB.
-> - Arquivo único: Arquivo › Salvar como › `.pbix`.
-> - Testado aqui com os dados reais (os 47 `_STATUS_PMIB` e a mapeadora): as 7 tabelas atualizam e as medidas batem
->   com a referência em Python (1.649 linhas, 615 emitidas, 73 aprovadas, 580 autorizadas, 88 aguardando, 53
->   atrasadas, 62 que não precisam de autorização). "Fichas" = PMIB distinto (1.352; 5 fichas aparecem em duas listas).
-> - Gerado por `montar_pbip.py` a partir destes `.pq` e do `05 - Medidas.dax`: mudou a regra, rode de novo.
-> - O `Sobressalentes - Dashboard.pbix` antigo **deixou de atualizar** (a mapeadora não tem mais as colunas de
->   contagem, decisão de 05/10); ele mostra os últimos dados carregados até ser aposentado.
+> [!success] v3 (05/10/2026, tarde): visual executivo, filtros por ET e capítulo, acha a pasta sozinho
+> **Como abrir e atualizar em qualquer máquina**
+> 1. Precisa do **Power BI Desktop** e do **Box Drive** sincronizando `CMI - Consórcio Itaipu` (caminho padrão
+>    `C:\Users\<seu usuário>\Box\CMI - Consórcio Itaipu\11 - Ger. Engenharia\15 - PDM\SOBRESSALENTES - PMIB`).
+> 2. Abra `Sobressalentes v2 - Interno.pbip` (ou `- Itaipu.pbip`) na pasta `Sobressalentes v2 (Power BI)`.
+> 3. **Página Inicial › Atualizar** (≈ 1 min). Pronto.
+>
+> Não há caminho para trocar: a consulta `PastaPMIBEfetiva` procura a pasta em `C:\Users\<cada usuário>\Box\...`.
+> O parâmetro `PastaPMIB` fica **vazio**; só preencha (Transformar dados › Editar parâmetros) se o Box estiver em
+> outro lugar. Para mandar a alguém um arquivo único: atualize e use Arquivo › Salvar como › `.pbix`.
+>
+> **O que tem**: um modelo (`Sobressalentes v2.SemanticModel`) e dois relatórios.
+> - **Interno** (5 páginas):
+>   - *Visão geral*: 6 indicadores, etapa das fichas, com quem estão, tabela por ET.
+>   - *Listas de sobressalentes*: Aconex, situação no PMIB, revisão desatualizada, responsável.
+>   - *Listas de preços*: situação no Aconex e as listas com fichas e **sem** lista de preços.
+>   - *Autorização e entrega*: pauta da cobrança a Itaipu.
+>   - *Fila de trabalho*: a primeira coisa que falta em cada ficha.
+> - **Itaipu** (2 páginas):
+>   - *Panorama*: etapa para o cliente, por ET e por lista.
+>   - *Pendências*: autorizações além de 15 d.u. e listas de preços aguardando a SM.DT.
+> - Em todas as páginas: filtros **Especificação técnica** e **Capítulo** (sincronizados entre as páginas) e a data
+>   dos dados.
+> - Visual: tema próprio (`relatorios_v2.py`) no estilo do protótipo HTML.
+>   - Fundo claro, cartões brancos, números grandes.
+>   - Barras horizontais simples com cor por significado: verde = concluído, vermelho = atraso, âmbar = aguardando.
+>   - **Sem barras empilhadas em porcentagem.**
+>
+> **Testado** em 05/10 no Power BI Desktop desta máquina, com os dados reais e o parâmetro vazio (achou a pasta
+> sozinho). As 7 tabelas atualizam em ≈ 30–50 s e todas as páginas foram conferidas por captura de tela.
+> Números do dia:
+> - 1.352 fichas, 615 enviadas (45%), 73 aprovadas;
+> - 53 autorizações atrasadas (maior: 446 dias, e-mail de 24/06/2025);
+> - 93 listas, 28 delas com fichas e sem lista de preços.
+>
+> "Fichas" = PMIB distinto (5 fichas aparecem em duas listas).
+>
+> **Para mudar**:
+> - consultas: os `.pq`;
+> - medidas: `05 - Medidas.dax`;
+> - desenho das páginas: `relatorios_v2.py`.
+>
+> `python montar_pbip.py --saida <pasta>` gera tudo de novo; tema e logotipos vêm de `recursos/`.
+>
+> O `Sobressalentes - Dashboard.pbix` antigo **não atualiza mais** (a mapeadora virou cadastro em 05/10).
 
 O roteiro abaixo é o que o gerador faz — serve para entender ou montar à mão.
 
@@ -46,8 +77,8 @@ pelo SIG-FT** e gravados no `_STATUS_PMIB`; o Power BI só lê (decisão de 04/1
 |---|---|
 | Uma tabela: a aba principal da mapeadora (contagens por lista) | Tabela fato **Itens** lida direto dos `_STATUS_PMIB`, uma linha por material |
 | Os números só ficam certos depois de rodar o SIG-FT | Atualizou o `_STATUS_PMIB`, o Power BI já vê |
-| Caminho fixo `C:\Users\560083605\Box\...` | Parâmetro **PastaPMIB** — cada máquina põe o seu |
-| Funil misturando etapas que correm em paralelo | Barras empilhadas por etapa e por "com quem está" |
+| Caminho fixo `C:\Users\560083605\Box\...` | Acha a pasta do Box sozinho em qualquer máquina (**PastaPMIB** só se estiver fora do padrão) |
+| Funil misturando etapas que correm em paralelo | Barras simples por etapa e por "com quem está" (sem empilhar) |
 | "Atraso de Itaipu" contado pelo SIG-FT com 14 dias corridos | situação e dias de atraso **calculados pelo SIG-FT** (15 dias úteis) e lidos do `_STATUS_PMIB` — o Power BI não calcula dias úteis |
 | Sem tempo, sem tipo de entrega, sem valor | Situação da autorização, dias de atraso, LMR, tipo de entrega, valor US$ |
 | Revisão em uso digitada à mão na mapeadora | Lida da linha de revisão de cada `_STATUS_PMIB` (`Listas[Revisao em Uso]`), com alerta de revisão desatualizada |

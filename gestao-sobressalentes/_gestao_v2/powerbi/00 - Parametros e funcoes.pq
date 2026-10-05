@@ -7,9 +7,31 @@
 
 
 // ---------------------------------------------------------------------
-// CONSULTA: PastaPMIB   (parâmetro — troque pelo caminho da SUA máquina)
+// CONSULTA: PastaPMIB   (parâmetro OPCIONAL — vazio = descobre sozinho)
+// Só preencha se a pasta SOBRESSALENTES - PMIB não estiver no lugar padrão do
+// Box Drive (C:\Users\<usuário>\Box\CMI - Consórcio Itaipu\...).
 // ---------------------------------------------------------------------
-"C:\Users\560083605\Box\CMI - Consórcio Itaipu\11 - Ger. Engenharia\15 - PDM\SOBRESSALENTES - PMIB" meta [IsParameterQuery = true, Type = "Text", IsParameterQueryRequired = true]
+"" meta [IsParameterQuery = true, Type = "Text", IsParameterQueryRequired = false]
+
+
+// ---------------------------------------------------------------------
+// CONSULTA: PastaPMIBEfetiva   — a pasta que as consultas usam: o parâmetro, se
+// preenchido e existente; senão procura em C:\Users\<cada usuário>\Box\... a
+// pasta SOBRESSALENTES - PMIB (funciona em qualquer máquina com o Box Drive).
+// ---------------------------------------------------------------------
+let
+    Relativo = "\Box\CMI - Consórcio Itaipu\11 - Ger. Engenharia\15 - PDM\SOBRESSALENTES - PMIB",
+    Existe = (p as text) as logical => (try Table.RowCount(Table.FirstN(Folder.Contents(p), 1)) >= 0 otherwise false),
+    Manual = if PastaPMIB <> null and Text.Trim(PastaPMIB) <> "" and Existe(Text.Trim(PastaPMIB)) then Text.Trim(PastaPMIB) else null,
+    Usuarios = try Table.SelectRows(Folder.Contents("C:\Users"), each [Attributes]?[Kind]? = "Folder")[Name] otherwise {},
+    Candidatos = List.Transform(Usuarios, each "C:\Users\" & _ & Relativo),
+    Achado = List.First(List.Select(Candidatos, Existe), null),
+    Resultado =
+        if Manual <> null then Manual
+        else if Achado <> null then Achado
+        else error "Pasta SOBRESSALENTES - PMIB não encontrada. Informe o caminho no parâmetro PastaPMIB (Transformar dados > Editar parâmetros)."
+in
+    Resultado
 
 
 // ---------------------------------------------------------------------

@@ -5,7 +5,7 @@
 // _STATUS_PMIB mas não está na mapeadora entra mesmo assim (com aviso).
 // =====================================================================
 let
-    Arquivo = File.Contents(PastaPMIB & "\Mapeamento Listas de Sobressalentes.xlsx"),
+    Arquivo = File.Contents(PastaPMIBEfetiva & "\Mapeamento Listas de Sobressalentes.xlsx"),
     Tabela = fxLerTabela(Arquivo, "Acompanhamento Sobressalente", "N DOCUMENTO ITAIPU"),
     SoLinhas = Table.SelectRows(Tabela, each fxNorm([N DOCUMENTO ITAIPU]) <> ""),
     Colunas = Table.SelectColumns(SoLinhas, {
@@ -72,7 +72,7 @@ in
 // CONSULTA: Atividades   — aba "Atividades" da mapeadora (plano de ação)
 // =====================================================================
 let
-    Arquivo = File.Contents(PastaPMIB & "\Mapeamento Listas de Sobressalentes.xlsx"),
+    Arquivo = File.Contents(PastaPMIBEfetiva & "\Mapeamento Listas de Sobressalentes.xlsx"),
     Tabela = fxLerTabela(Arquivo, "Atividades", "NV"),
     ComLista = Table.AddColumn(Tabela, "Lista", each if [NV] = 1 then [CODIGO ITAIPU] else null),
     ComFrente = Table.AddColumn(ComLista, "Frente", each if [NV] = 1 then [DESCRICAO] else null),
@@ -103,11 +103,11 @@ in
 
 // =====================================================================
 // CONSULTA: Eventos   — "Extrato dos Eventos dos Sobressalentes.xlsx"
-// (fica na pasta 15 - PDM, um nível acima de PastaPMIB)
+// (fica na pasta 15 - PDM, um nível acima de PastaPMIBEfetiva)
 // Tipo ENTREGA = parcela paga no recebimento; APROVAÇÃO = na aprovação.
 // =====================================================================
 let
-    PastaPDM = Text.BeforeDelimiter(PastaPMIB, "\", {0, RelativePosition.FromEnd}),
+    PastaPDM = Text.BeforeDelimiter(PastaPMIBEfetiva, "\", {0, RelativePosition.FromEnd}),
     Arquivo = File.Contents(PastaPDM & "\Extrato dos Eventos dos Sobressalentes.xlsx"),
     Tabela = fxLerTabela(Arquivo, "Sheet2", "ITEM"),
     ComGrupo = Table.AddColumn(Tabela, "Grupo", each if [VALOR] = null and [ITEM] <> null then [ITEM] else null),

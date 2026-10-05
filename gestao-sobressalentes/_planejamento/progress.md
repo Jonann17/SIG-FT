@@ -98,6 +98,21 @@ procurement, atraso de Itaipu em 15 d.u.) e um Power BI com visão interna e vis
 - **Mapeadora**: retirado o bloco de 18 colunas de contagem (`xlsx_cirurgico.remover_colunas`, nova); sem perda,
   abre no LibreOffice, o Power BI v2 atualiza com ela. O `.pbix` antigo deixou de atualizar.
 
+## 2026-10-05 (tarde/noite) — Power BI v3: executivo
+- Luan achou o v2 "feio, poluído"; quer ver a situação geral das fichas, das listas de sobressalentes e das listas
+  de preços, com filtro por ET e capítulo, e **sem barra empilhada em porcentagem**. Também perguntou como
+  atualizar em outra máquina.
+- **Feito**:
+  - desenho novo em `_gestao_v2/powerbi/relatorios_v2.py`: tema no estilo do protótipo HTML; filtros ET/Capítulo
+    sincronizados; páginas Visão geral, Listas, Listas de preços, Autorização, Fila; Itaipu: Panorama e Pendências;
+  - consulta `PastaPMIBEfetiva`, que acha `C:\Users\<usuário>\Box\...\SOBRESSALENTES - PMIB` sozinha;
+  - colunas Etapa e Etapa Cliente legíveis e ordenadas;
+  - medidas novas para listas de preços.
+- **Testado** no Desktop com o parâmetro vazio e os dados reais; páginas conferidas por captura de tela.
+- **Pendente (permissão)**: substituir no Box a pasta `Sobressalentes v2 (Power BI)/` pela versão v3, e regenerar
+  `_gestao_v2/powerbi/pbip/` no cofre. As duas ações foram bloqueadas pelo controle de permissões, porque apagam a
+  versão anterior. O pacote pronto está em `%TEMP%\pbip_final`.
+
 ## Proximas sessões
 1. **SIG-FT** (a partir de 05/10, na nuvem): T0 cabeçalho na linha 5 (módulo PDM); T1 gravar sem
    openpyxl; T2 situação/dias de atraso; T3 revisão em uso → mapeadora; T4 export de autorizados.

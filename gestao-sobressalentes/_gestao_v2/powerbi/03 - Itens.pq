@@ -8,7 +8,7 @@
 // do APTO PARA ENTREGA (SIM = AUTORIZADO) e DIAS DE ATRASO vem do SIG-FT.
 // =====================================================================
 let
-    Raiz = if Text.EndsWith(PastaPMIB, "\") then PastaPMIB else PastaPMIB & "\",
+    Raiz = if Text.EndsWith(PastaPMIBEfetiva, "\") then PastaPMIBEfetiva else PastaPMIBEfetiva & "\",
     Hoje = DataReferencia,
 
     // 1. Arquivos vivos (fora de obsoleto, testes, backups e cópias de trabalho)
@@ -60,16 +60,21 @@ let
     ComEmitida = Table.AddColumn(ComChave, "Emitida", each List.Contains({"EM ANÁLISE IB", "EM CORREÇÃO", "APROVADO"}, [Status]), type logical),
     ComOrdem = Table.AddColumn(ComEmitida, "Ordem Etapa", each
         List.PositionOf({"INICIAR", "FICHA CRIADA", "COM O FORNECEDOR", "EM ELABORAÇÃO", "EM CORREÇÃO", "EM ANÁLISE IB", "APROVADO"}, [Status]) + 1, Int64.Type),
-    ComEtapaCliente = Table.AddColumn(ComOrdem, "Etapa Cliente", each
-        if [Status] = "APROVADO" then "3. Aprovada"
-        else if [Status] = "EM ANÁLISE IB" then "2. Em análise Itaipu"
-        else "1. Em preparação (CMI)", type text),
-    ComQuem = Table.AddColumn(ComEtapaCliente, "Com Quem", each
+    ComEtapa = Table.AddColumn(ComOrdem, "Etapa", each
+        {"Sem status", "A iniciar", "Ficha criada", "Com o fornecedor", "Em elaboração", "Em correção",
+         "Em análise Itaipu", "Aprovada"}{[Ordem Etapa]}, type text),
+    ComEtapaCliente = Table.AddColumn(ComEtapa, "Etapa Cliente", each
+        if [Status] = "APROVADO" then "Aprovada"
+        else if [Status] = "EM ANÁLISE IB" then "Em análise Itaipu"
+        else "Em preparação (CMI)", type text),
+    ComOrdemCliente = Table.AddColumn(ComEtapaCliente, "Ordem Etapa Cliente", each
+        if [Status] = "APROVADO" then 3 else if [Status] = "EM ANÁLISE IB" then 2 else 1, Int64.Type),
+    ComQuem = Table.AddColumn(ComOrdemCliente, "Com Quem", each
         if List.Contains({"INICIAR", "FICHA CRIADA", "EM ELABORAÇÃO", "EM CORREÇÃO"}, [Status]) then "CMI"
-        else if [Status] = "COM O FORNECEDOR" then "FORNECEDOR"
-        else if [Status] = "EM ANÁLISE IB" then "ITAIPU"
-        else if [Status] = "APROVADO" then "CONCLUÍDO"
-        else "—", type text),
+        else if [Status] = "COM O FORNECEDOR" then "Fornecedor"
+        else if [Status] = "EM ANÁLISE IB" then "Itaipu"
+        else if [Status] = "APROVADO" then "Concluída"
+        else "Sem status", type text),
 
     // 5. Seções da ficha
     ComSecoes = List.Accumulate(

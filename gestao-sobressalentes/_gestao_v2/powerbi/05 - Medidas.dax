@@ -141,6 +141,14 @@ DEFINE
     MEASURE PrecosAconex[Listas de Preços no Código Antigo] =
         CALCULATE ( COUNTROWS ( PrecosAconex ), PrecosAconex[Geracao] = "PB020-0x (legado)" )
 
+    MEASURE PrecosAconex[Listas de Preços Aguardando SM.DT] =
+        CALCULATE ( COUNTROWS ( PrecosAconex ), PrecosAconex[Situacao Preco] = "EMITIDA" )
+    MEASURE PrecosAconex[Listas de Preços Não Aprovadas] =
+        CALCULATE ( COUNTROWS ( PrecosAconex ), PrecosAconex[Situacao Preco] = "NÃO APROVADA" )
+    MEASURE Listas[Listas sem Lista de Preços] =
+        // listas com ficha e sem nenhuma lista de preços registrada na aba de follow-up
+        COUNTROWS ( FILTER ( Listas, [Fichas] > 0 && CALCULATE ( COUNTROWS ( PrecosAconex ) ) = 0 ) )
+
     // ---------------- Plano de ação (aba Atividades) ----------------
     MEASURE Atividades[Atividades Abertas] =
         CALCULATE ( COUNTROWS ( Atividades ), Atividades[Situacao] <> "CONCLUÍDA" )
@@ -156,6 +164,10 @@ DEFINE
         RETURN SWITCH ( Tipo, "ENTREGA", [% Físicos Entregues], "APROVAÇÃO", [% Aprovadas] )
 
     // ---------------- Rótulos ----------------
+    MEASURE Itens[Enviadas a Itaipu (texto)] =
+        FORMAT ( [Fichas Emitidas], "#,##0" ) & " · " & FORMAT ( [% Emitidas], "0%" )
+    MEASURE Itens[Aprovadas (texto)] =
+        FORMAT ( [Fichas Aprovadas], "#,##0" ) & " · " & FORMAT ( [% Aprovadas], "0%" )
     MEASURE Itens[Atualizado em] =
         "Dados de " & FORMAT ( MAX ( Itens[Data Referencia] ), "dd/mm/yyyy" )
     MEASURE Itens[Rótulo Atraso Itaipu] =
