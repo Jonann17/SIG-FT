@@ -92,8 +92,10 @@ let
     //    dias corridos além do prazo de 15 dias úteis do e-mail; congela quando Itaipu autoriza.
     //    Arquivo antigo (só APTO PARA ENTREGA): SIM = AUTORIZADO; com e-mail e sem nada
     //    calculado aparece como "AGUARDANDO CÁLCULO DO SIG-FT".
-    //    TIPO DE ENTREGA = DOCUMENTAL -> "N/A": o componente só tem ficha; quem é entregue (e
-    //    precisa de autorização) é o pai, FÍSICA E DOCUMENTAL (correção do Luan, 05/10/2026).
+    //    Só FÍSICA E DOCUMENTAL precisa de autorização (correções do Luan, 05/10/2026):
+    //    DOCUMENTAL (componente explodido) e TÍTULO (agrupamento) -> "N/A"; TIPO vazio ->
+    //    "SEM TIPO DE ENTREGA" (não conta até alguém classificar). O tipo aqui é o da COLUNA do
+    //    _STATUS_PMIB — o mesmo que o SIG-FT usa —, não o da lista de preços.
     ComDatas = Table.TransformColumns(ComValorLinha, {{"DATA DO EMAIL COMUNICANDO ENTREGA", fxData, type date}}),
     Renomeada = Table.RenameColumns(ComDatas, {{"DATA DO EMAIL COMUNICANDO ENTREGA", "Data Email"}}),
     ComEntregue = Table.AddColumn(Renomeada, "Entregue", each fxNorm([EQUIPAMENTO ENTREGUE]) = "SIM", type logical),
@@ -103,9 +105,11 @@ let
     ComFichaEntregueN = Table.NestedJoin(ComEntregue, {"Lista", "PMIB"}, EntreguePorFicha, {"Lista", "PMIB"}, "FE", JoinKind.LeftOuter),
     ComFichaEntregue = Table.ExpandTableColumn(ComFichaEntregueN, "FE", {"Ficha Entregue"}),
     ComSituacao = Table.AddColumn(ComFichaEntregue, "Situacao Autorizacao", each
-        let s = fxNorm([SITUACAO DA AUTORIZACAO]), a = fxNorm([APTO PARA ENTREGA])
-        in if s = "AUTORIZADO" or a = "SIM" or [Entregue] then "AUTORIZADO"
-           else if s = "N/A" or [Tipo de Entrega] = "DOCUMENTAL" then "N/A"
+        let s = fxNorm([SITUACAO DA AUTORIZACAO]), a = fxNorm([APTO PARA ENTREGA]), tc = fxTipoEntrega([TIPO DE ENTREGA])
+        in if s = "AUTORIZADO" or a = "SIM" then "AUTORIZADO"
+           else if tc = "DOCUMENTAL" or tc = "TÍTULO" then "N/A"
+           else if [Entregue] then "AUTORIZADO"
+           else if tc = null then "SEM TIPO DE ENTREGA"
            else if s = "ATRASADO ITAIPU" or s = "AGUARDANDO ITAIPU" then s
            else if [Data Email] <> null and [E Ficha] then "AGUARDANDO CÁLCULO DO SIG-FT"
            else "SEM PEDIDO", type text),

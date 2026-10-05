@@ -231,7 +231,7 @@ Os scripts acham o Box em `~/Box/CMI - Consórcio Itaipu/11 - Ger. Engenharia/15
 
 | N | Tarefa | Precisa de | Referência |
 |---|---|---|---|
-| 1 | **SIG-FT no layout v2** (início 05/10): T0 cabeçalho na linha 5 · T1 gravar sem openpyxl · T2 situação e dias de atraso · T3 revisão em uso → mapeadora · T4 export de autorizados | repositório SIG-FT (nuvem) | `Tarefa SIG-FT - Calculo e Gravacao sem Perda.md` |
+| 1 | **SIG-FT no tratamento v2** (início 05/10): T0 cabeçalho na linha 5 · T1 gravar sem openpyxl · T2 regra como módulo · T3 `pmib_manager` (pastas de teste, recálculo, contagens, revisão em uso) · T4 export de autorizados. Validar com o kit até **KIT OK** | repositório SIG-FT (nuvem) | `Tarefa SIG-FT - Calculo e Gravacao sem Perda.md` |
 | 2 | Conferir no Excel do trabalho 2–3 listas migradas (uma com comentário em thread) | Luan | `Plano - Reestruturacao do STATUS_PMIB.md`, seção 6 |
 | 3 | Montar o Power BI v2 (interno, depois Itaipu) | Power BI Desktop | `_gestao_v2/powerbi/LEIA-ME.md` |
 | 4 | Decidir as pendências da seção 6 | Luan | — |

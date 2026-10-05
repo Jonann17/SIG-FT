@@ -71,6 +71,20 @@ procurement, atraso de Itaipu em 15 d.u.) e um Power BI com visão interna e vis
 - Box: só #ST00=M00MEU10&MPB020 tinha documentais com situação — 62 células (61 AGUARDANDO + 1 vazia →
   N/A), backup `backup_20261005-0808`, conferência sem outra mudança, abre no LibreOffice.
 
+## 2026-10-05 (manhã) — só FÍSICA conta; mapeadora no v2; roteiro do SIG-FT completo
+- Correção do Luan: TÍTULO e TIPO vazio também não contam — só FÍSICA E DOCUMENTAL precisa de autorização
+  (DOCUMENTAL/TÍTULO = N/A; vazio = branco). Regra, Power BI, protótipo atualizados; nenhum dado gravado mudou.
+- **Defeito da migração corrigido**: DIAS DE ATRASO com formato de data em 33 arquivos (884 células) → formato
+  Geral, valor intocado; template também. `_inteiro()` passou a ler número com formato de data.
+- **Mapeadora no tratamento v2** (pedido do Luan): 3 colunas inseridas no bloco PMIB (FICHAS DE ENTREGA FÍSICA,
+  AGUARDANDO AUTORIZAÇÃO ITAIPU, MAIOR ATRASO ITAIPU (DIAS)); APTO e ATRASO recalculados (ex.: ATRASO de
+  #ST00=M00MEU10&MPB020 111 → 3); mensagens nos cabeçalhos e na REVISÃO EM USO. Nenhuma coluna renomeada (o
+  `.pbix` atual usa APTO pelo nome). `_gestao_v2/atualizar_mapeadora_v2.py`; backup `backup_mapeadora_20261005-0824`.
+- Achado: o Gestão PMIB entra em `testes_autospec/` — o link de #ST00=B01BMU10&EPB020 aponta para a cópia de teste.
+- **Roteiro do SIG-FT reescrito** (T0–T5) + **kit de teste** sintético (`fixtures/kit_gestao_pmib/`, 13 casos,
+  isca, layout antigo, mapeadora e DocManager sintéticos, `esperado.json`) + `validar_kit_gestao_pmib.py`
+  (a referência dá KIT OK). Cópia de referência do `apto_para_entrega_att.py` em `_gestao_v2/referencia_sigft/`.
+
 ## Proximas sessões
 1. **SIG-FT** (a partir de 05/10, na nuvem): T0 cabeçalho na linha 5 (módulo PDM); T1 gravar sem
    openpyxl; T2 situação/dias de atraso; T3 revisão em uso → mapeadora; T4 export de autorizados.

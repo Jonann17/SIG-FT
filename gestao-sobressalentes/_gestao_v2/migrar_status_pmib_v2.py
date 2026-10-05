@@ -233,6 +233,7 @@ def migrar_planilha(caminho: pathlib.Path, prefill_tipo: dict[str, str], prefill
     H = d.lin(hdr)
     F = d.lin(fim) if fim > hdr else H
     p.formatar_como_a_esquerda(L, list(novas.values()))
+    _dias_em_formato_geral(p, L, novas[C_DIAS], H)          # a vizinha (antigo APTO) costuma ter formato de data
     for nome, c in novas.items():
         p.escrever(L, f"{col_letras(c)}{H}", nome)
         p.largura(L, c, LARGURAS[nome])
@@ -335,6 +336,62 @@ def migrar_planilha(caminho: pathlib.Path, prefill_tipo: dict[str, str], prefill
     return resumo
 
 
+def _dias_em_formato_geral(p: PlanilhaXlsx, L: str, c_dias: int, hdr: int) -> int:
+    """DIAS DE ATRASO e numero: celula com formato de data (herdado da coluna vizinha) mostraria
+    4 como 04/01/1900. Troca so o formato de numero do estilo; o valor nao muda."""
+    n = 0
+    for r in sorted(p._linhas(L)):
+        if r <= hdr:
+            continue
+        cel = p.celula(L, f"{col_letras(c_dias)}{r}", criar=False)
+        if cel is not None and cel.get("s"):
+            novo = p.estilo_formato_geral(cel.get("s"))
+            if novo != cel.get("s"):
+                cel.set("s", novo)
+                n += 1
+    if n:
+        p._mudou(L)
+    return n
+
+
+def corrigir_formato_dias(caminho: pathlib.Path) -> dict:
+    """Arquivo ja no v2: DIAS DE ATRASO com formato de numero Geral (correcao de 05/10/2026)."""
+    ws = openpyxl.load_workbook(caminho)[ABA]
+    hdr, mapa = cabecalho(ws)
+    if N(C_DIAS) not in mapa:
+        return {"alteradas": 0, "aviso": "sem layout v2 — nada feito", "_cols": set(), "_hdr": hdr}
+    p = PlanilhaXlsx(caminho)
+    L = p.parte_da_aba(ABA)
+    n = _dias_em_formato_geral(p, L, mapa[N(C_DIAS)], hdr)
+    if n:
+        p.salvar()
+    return {"alteradas": n, "aviso": "", "_cols": {mapa[N(C_DIAS)]}, "_hdr": hdr}
+
+
+def conferir_formato(original: pathlib.Path, novo: pathlib.Path, colunas: set[int], hdr: int) -> list[str]:
+    """So o estilo das celulas de DIAS DE ATRASO (e o styles.xml) muda; valor gravado identico."""
+    problemas = []
+    po, pn = PlanilhaXlsx(original), PlanilhaXlsx(novo)
+    L = po.parte_da_aba(ABA)
+    problemas += [f"parte alterada sem querer: {n}" for n in po._bytes
+                  if n not in (L, "xl/styles.xml") and po._bytes[n] != pn._bytes.get(n)]
+    va = {c.get("r"): (c.findtext(q("v")), c.get("t")) for c in po.raiz(L).iter(q("c"))}
+    vn = {c.get("r"): (c.findtext(q("v")), c.get("t")) for c in pn.raiz(L).iter(q("c"))}
+    if va != vn:
+        problemas.append("valor gravado de alguma célula mudou")
+    sa = {c.get("r"): c.get("s") for c in po.raiz(L).iter(q("c"))}
+    sn = {c.get("r"): c.get("s") for c in pn.raiz(L).iter(q("c"))}
+    fora = [r for r in sa if sa[r] != sn.get(r) and not (limites(r)[0] in colunas and limites(r)[1] > hdr)]
+    if fora:
+        problemas.append(f"estilo mudou fora de DIAS DE ATRASO: {fora[:3]}")
+    wn = openpyxl.load_workbook(novo)[ABA]
+    for c in colunas:
+        datas = [r for r in range(hdr + 1, wn.max_row + 1) if wn.cell(r, c).is_date]
+        if datas:
+            problemas.append(f"ainda há formato de data em DIAS DE ATRASO (linha {datas[0]})")
+    return problemas
+
+
 # --------------------------------------------------------------------------
 # Recalculo da situacao num arquivo ja no v2 (o que o SIG-FT fara a cada rodada — T2)
 # --------------------------------------------------------------------------
@@ -419,7 +476,7 @@ def conferir(original: pathlib.Path, migrado: pathlib.Path, plano: dict, libreof
     L = po.parte_da_aba(ABA)
     ligadas = po._partes_ligadas(L)
     texto_pos = [p for t in (REL_COMENTARIOS, REL_THREADED, REL_VML, REL_DESENHO) for p in ligadas.get(t, [])]
-    editaveis = {L, po.parte_da_aba(ABA_LISTAS), "xl/workbook.xml", "xl/calcChain.xml", *texto_pos}
+    editaveis = {L, po.parte_da_aba(ABA_LISTAS), "xl/workbook.xml", "xl/calcChain.xml", "xl/styles.xml", *texto_pos}
 
     # 1. partes: as mesmas; as nao relacionadas identicas; as de posicao so mudam numeros de posicao
     if list(po._bytes) != list(pm._bytes):
@@ -604,6 +661,8 @@ def main() -> int:
                     help="arquivos já no v2: regrava SITUAÇÃO e DIAS DE ATRASO pela regra (com --simular ou --aplicar)")
     ap.add_argument("--apenas-documental", action="store_true",
                     help="com --recalcular: só as linhas DOCUMENTAL (passam a N/A)")
+    ap.add_argument("--corrigir-formato-dias", action="store_true",
+                    help="arquivos já no v2: DIAS DE ATRASO com formato de número Geral (com --simular ou --aplicar)")
     args = ap.parse_args()
 
     if args.template:
@@ -642,12 +701,16 @@ def main() -> int:
             shutil.copy2(a, copia)
             alvos.append((a, copia))
 
-    if args.recalcular:
+    if args.recalcular or args.corrigir_formato_dias:
         total = 0
         for referencia, alvo in alvos:
             try:
-                res = recalcular_situacao(alvo, dt.date.today(), args.apenas_documental)
-                prob = "; ".join(conferir_recalculo(referencia, alvo, res["_cols"], res["_hdr"])) if res["alteradas"] else ""
+                if args.corrigir_formato_dias:
+                    res = corrigir_formato_dias(alvo)
+                    prob = "; ".join(conferir_formato(referencia, alvo, res["_cols"], res["_hdr"])) if res["alteradas"] else ""
+                else:
+                    res = recalcular_situacao(alvo, dt.date.today(), args.apenas_documental)
+                    prob = "; ".join(conferir_recalculo(referencia, alvo, res["_cols"], res["_hdr"])) if res["alteradas"] else ""
             except PermissionError:
                 res, prob = {"alteradas": 0, "aviso": "arquivo aberto (Excel) — não alterado"}, ""
             total += res["alteradas"]

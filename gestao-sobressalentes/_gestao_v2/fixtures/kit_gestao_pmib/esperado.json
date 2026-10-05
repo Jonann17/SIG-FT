@@ -1,0 +1,152 @@
+{
+  "hoje": "2026-10-10",
+  "regra": "só FÍSICA E DOCUMENTAL precisa de autorização; prazo = e-mail + 15 dias úteis (np.busday_offset, roll='backward', FERIADOS); dias de atraso = dias corridos além do prazo",
+  "status_pmib": {
+    "#ST00=TESTE01&MPB020": {
+      "colunas": {
+        "situacao": "S (SITUAÇÃO DA AUTORIZAÇÃO)",
+        "dias": "T (DIAS DE ATRASO)"
+      },
+      "linhas": {
+        "6": {
+          "situacao": "ATRASADO ITAIPU",
+          "dias": 4,
+          "por_que": "ATRASADO ITAIPU, 4 dias — prazo 06/10, hoje 10/10"
+        },
+        "7": {
+          "situacao": "AGUARDANDO ITAIPU",
+          "dias": null,
+          "por_que": "AGUARDANDO ITAIPU — prazo 23/10"
+        },
+        "8": {
+          "situacao": "AUTORIZADO",
+          "dias": 2,
+          "por_que": "AUTORIZADO, 2 dias — marcação de fato e dias congelados"
+        },
+        "9": {
+          "situacao": "",
+          "dias": null,
+          "por_que": "em branco — sem e-mail"
+        },
+        "10": {
+          "situacao": "N/A",
+          "dias": null,
+          "por_que": "N/A — DOCUMENTAL não precisa de autorização"
+        },
+        "11": {
+          "situacao": "N/A",
+          "dias": null,
+          "por_que": "N/A — TÍTULO não precisa de autorização"
+        },
+        "12": {
+          "situacao": "",
+          "dias": null,
+          "por_que": "em branco — TIPO vazio não conta"
+        },
+        "13": {
+          "situacao": "AUTORIZADO",
+          "dias": null,
+          "por_que": "AUTORIZADO — entregue implica autorizado"
+        },
+        "14": {
+          "situacao": "",
+          "dias": null,
+          "por_que": "em branco — DUPLICADO (repete a ficha da linha 6)"
+        },
+        "15": {
+          "situacao": "AUTORIZADO",
+          "dias": null,
+          "por_que": "AUTORIZADO — marcação de fato vale mesmo em DOCUMENTAL"
+        },
+        "16": {
+          "situacao": "ATRASADO ITAIPU",
+          "dias": 12,
+          "por_que": "ATRASADO ITAIPU — 04/09 + 15 d.u. pula o feriado de 07/09"
+        },
+        "17": {
+          "situacao": "AGUARDANDO ITAIPU",
+          "dias": null,
+          "por_que": "AGUARDANDO ITAIPU, dias em branco — estado calculado é recalculado"
+        },
+        "18": {
+          "situacao": "N/A",
+          "dias": null,
+          "por_que": "N/A — estado calculado antigo é corrigido"
+        },
+        "19": {
+          "situacao": "",
+          "dias": null,
+          "por_que": "em branco — sem tipo, sem e-mail"
+        },
+        "20": {
+          "situacao": "",
+          "dias": null,
+          "por_que": "em branco — sem tipo, sem e-mail"
+        },
+        "21": {
+          "situacao": "",
+          "dias": null,
+          "por_que": "em branco — sem tipo, sem e-mail"
+        },
+        "22": {
+          "situacao": "",
+          "dias": null,
+          "por_que": "em branco — sem tipo, sem e-mail"
+        }
+      },
+      "inventario_igual": {
+        "comentarios_thread": 3,
+        "anotacoes": 3,
+        "formatacao_condicional": 1,
+        "desenhos": 0
+      },
+      "partes_byte_a_byte_iguais": [
+        "xl/comments1.xml",
+        "xl/threadedComments/threadedComment1.xml",
+        "xl/persons/person.xml"
+      ],
+      "nome_definido_novo": "sigft_calculado_em (data do cálculo)"
+    },
+    "#ST00=TESTE02&MPB020": {
+      "arquivo_inalterado": true,
+      "log": "arquivo sem layout v2 (sem SITUAÇÃO DA AUTORIZAÇÃO)"
+    },
+    "testes_autospec/#ST00=TESTE01&MPB020": {
+      "arquivo_inalterado": true,
+      "ignorado": true
+    }
+  },
+  "mapeadora": {
+    "#ST00=TESTE01&MPB020": {
+      "FICHAS EXISTENTES": 16,
+      "FICHAS DE ENTREGA FÍSICA": 7,
+      "APTO PARA ENTREGA": 1,
+      "AGUARDANDO AUTORIZAÇÃO ITAIPU": 2,
+      "ATRASO DE AUTORIZAÇÃO DE ENTREGA ITAIPU": 2,
+      "MAIOR ATRASO ITAIPU (DIAS)": 12,
+      "EQUIPAMENTOS ENTREGUES": 1,
+      "REVISÃO EM USO": "1"
+    },
+    "#ST00=TESTE02&MPB020": {
+      "FICHAS EXISTENTES": 17,
+      "FICHAS DE ENTREGA FÍSICA": 0,
+      "APTO PARA ENTREGA": 1,
+      "AGUARDANDO AUTORIZAÇÃO ITAIPU": 0,
+      "ATRASO DE AUTORIZAÇÃO DE ENTREGA ITAIPU": 0,
+      "MAIOR ATRASO ITAIPU (DIAS)": 0,
+      "EQUIPAMENTOS ENTREGUES": 1,
+      "REVISÃO EM USO": "0B (sem linha de revisão: não mexer)"
+    },
+    "#ST00=TESTE03&MPB020": {
+      "FICHAS EXISTENTES": 0,
+      "FICHAS DE ENTREGA FÍSICA": 0,
+      "APTO PARA ENTREGA": 0,
+      "AGUARDANDO AUTORIZAÇÃO ITAIPU": 0,
+      "ATRASO DE AUTORIZAÇÃO DE ENTREGA ITAIPU": 0,
+      "MAIOR ATRASO ITAIPU (DIAS)": 0,
+      "EQUIPAMENTOS ENTREGUES": 0,
+      "REVISÃO EM USO": "0 (sem arquivo: não mexer)"
+    }
+  },
+  "isca": "se a mapeadora de TESTE01 mostrar FICHAS DE ENTREGA FÍSICA = 17 ou APTO = 17, a pasta testes_autospec não foi ignorada"
+}

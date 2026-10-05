@@ -16,8 +16,9 @@ pelo SIG-FT** e gravados no `_STATUS_PMIB`; o Power BI só lê (decisão de 04/1
 > EQUIPAMENTO ENTREGUE | FORNECEDOR | PROCUREMENT | OBSERVAÇÕES`, mais a linha
 > "REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO" acima do cabeçalho.
 > - `SITUAÇÃO DA AUTORIZAÇÃO` substituiu `APTO PARA ENTREGA` (SIM = AUTORIZADO). Valores:
->   AGUARDANDO ITAIPU · ATRASADO ITAIPU · AUTORIZADO · **N/A** (TIPO DE ENTREGA = DOCUMENTAL: o
->   componente só tem ficha; a autorização é do pai, FÍSICA E DOCUMENTAL). Arquivo antigo cai no APTO.
+>   AGUARDANDO ITAIPU · ATRASADO ITAIPU · AUTORIZADO · **N/A**. **Só FÍSICA E DOCUMENTAL precisa de
+>   autorização**: DOCUMENTAL (componente) e TÍTULO (agrupamento) = N/A; TIPO vazio aparece no painel
+>   como "SEM TIPO DE ENTREGA" e não conta. Arquivo antigo cai no APTO.
 > - `DIAS DE ATRASO` = dias corridos além do prazo de 15 dias úteis do e-mail; congela quando
 >   Itaipu autoriza (por isso `Autorizadas com Atraso` = autorizada com dias > 0).
 > - Não há data de autorização nem coluna de prazo: o prazo é regra, não dado.

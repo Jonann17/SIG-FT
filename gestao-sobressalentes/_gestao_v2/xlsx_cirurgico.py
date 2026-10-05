@@ -806,6 +806,25 @@ class PlanilhaXlsx:
             self._mudou(parte)
         return n
 
+    def estilo_formato_geral(self, s: str | None) -> str:
+        """Indice de um estilo igual a `s`, mas com formato de numero Geral (cria no styles.xml se
+        preciso). Para coluna de numero que herdou formato de data da vizinha."""
+        xfs = self.raiz("xl/styles.xml").find(q("cellXfs"))
+        lista = list(xfs.iterchildren(q("xf")))
+        base = lista[int(s or 0)]
+        if base.get("numFmtId", "0") == "0":
+            return s or "0"
+        cache = self.__dict__.setdefault("_cache_geral", {})
+        if s not in cache:
+            novo = copy.deepcopy(base)
+            novo.set("numFmtId", "0")
+            novo.set("applyNumberFormat", "1")
+            lista[-1].addnext(novo)
+            xfs.set("count", str(len(lista) + 1))
+            self._mudou("xl/styles.xml")
+            cache[s] = str(len(lista))
+        return cache[s]
+
     def mesclar(self, parte: str, ref: str) -> None:
         ws = self.raiz(parte)
         mc = ws.find(q("mergeCells"))

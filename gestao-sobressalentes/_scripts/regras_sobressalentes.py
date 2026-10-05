@@ -273,6 +273,11 @@ SITUACOES_AUTORIZACAO = ["AGUARDANDO ITAIPU", "ATRASADO ITAIPU", "AUTORIZADO", "
 
 
 def _inteiro(v) -> int | None:
+    """Numero inteiro de uma celula. Celula de numero com formato de data chega como data/hora
+    (o openpyxl converte): volta ao numero de dias que esta gravado (serial do Excel)."""
+    if isinstance(v, dt.date):
+        from openpyxl.utils.datetime import to_excel           # inverso exato (inclui o "29/02/1900")
+        return int(to_excel(v if isinstance(v, dt.datetime) else dt.datetime.combine(v, dt.time())))
     try:
         f = float(v)
     except (TypeError, ValueError):
@@ -292,15 +297,22 @@ def situacao_autorizacao(data_email: dt.date | None, situacao_atual, entregue, h
     AUTORIZADO          Itaipu autorizou (export de autorizados; o antigo APTO = SIM; ou ja
                         entregue). DIAS DE ATRASO fica congelado no valor que tinha — o
                         atraso que houve ate a autorizacao (ver dias_de_atraso_na_autorizacao)
-    N/A                 TIPO DE ENTREGA = DOCUMENTAL: o componente explodido so tem ficha; a
-                        entrega fisica e a do pai (FISICA E DOCUMENTAL), e so ela precisa de
-                        autorizacao de Itaipu (correcao do Luan, 05/10/2026)
+    N/A                 TIPO DE ENTREGA = DOCUMENTAL ou TITULO: nao ha entrega fisica deste item
+                        (o componente explodido so tem ficha; TITULO e agrupamento)
+    ""                  TIPO DE ENTREGA vazio: nao conta ate alguem classificar
+
+    So FISICA E DOCUMENTAL precisa de autorizacao de Itaipu (correcoes do Luan, 05/10/2026).
     """
     prazo = somar_dias_uteis(data_email, PRAZO_AUTORIZACAO_DU) if data_email else None
-    if normalizar(situacao_atual) in ("AUTORIZADO", "SIM") or normalizar(entregue) == "SIM":
+    if normalizar(situacao_atual) in ("AUTORIZADO", "SIM"):              # marcacao de fato: vale sempre
         return "AUTORIZADO", prazo, _inteiro(dias_atual)
-    if TIPO_CANONICO.get(normalizar(tipo)) == "DOCUMENTAL":
+    tipo_c = TIPO_CANONICO.get(normalizar(tipo))
+    if tipo_c in ("DOCUMENTAL", "TÍTULO"):
         return "N/A", None, None
+    if normalizar(entregue) == "SIM":                                    # entregue => foi autorizado
+        return "AUTORIZADO", prazo, _inteiro(dias_atual)
+    if tipo_c != "FÍSICA E DOCUMENTAL":
+        return "", None, None
     if prazo is None:
         return "", None, None
     if hoje > prazo:
@@ -486,10 +498,15 @@ def ler_itens(raiz: pathlib.Path = PASTA_PMIB, hoje: dt.date | None = None,
     dt_email = [_para_data(v) for v in itens["DATA DO EMAIL COMUNICANDO ENTREGA"]]
     itens["ENTREGUE"] = itens["EQUIPAMENTO ENTREGUE"].map(normalizar).eq("SIM")
     # a mesma regra que o SIG-FT grava: recalculada aqui para o painel nao depender de o SIG-FT ter rodado hoje
+    # o TIPO e o da coluna do _STATUS_PMIB (o mesmo que o SIG-FT usa); linha DUPLICADO nao
+    # autorizada fica em branco, como no arquivo
     sit = [situacao_autorizacao(e, s, n, hoje, d, t) for e, s, n, d, t in zip(
         dt_email, itens["SITUACAO DA AUTORIZACAO"], itens["EQUIPAMENTO ENTREGUE"], itens["DIAS DE ATRASO"],
-        itens["TIPO_ENTREGA"])]
-    itens["SITUACAO_AUT"] = [s[0] or "SEM PEDIDO" for s in sit]
+        itens["TIPO DE ENTREGA"])]
+    sit = [("", None, None) if st == "DUPLICADO" and s[0] != "AUTORIZADO" else s for s, st in zip(sit, itens["STATUS_N"])]
+    tipo_col = [TIPO_CANONICO.get(normalizar(t)) for t in itens["TIPO DE ENTREGA"]]
+    itens["SITUACAO_AUT"] = [s[0] or ("SEM PEDIDO" if t == "FÍSICA E DOCUMENTAL" or st == "DUPLICADO" else "SEM TIPO DE ENTREGA")
+                             for s, t, st in zip(sit, tipo_col, itens["STATUS_N"])]
     itens["APTO"] = itens["SITUACAO_AUT"].eq("AUTORIZADO")
     itens["PRAZO_AUT"] = pd.Series([s[1].isoformat() if s[1] else None for s in sit], index=itens.index, dtype=object)
     itens["DIAS_ATRASO"] = pd.Series([s[2] for s in sit], index=itens.index, dtype=object)

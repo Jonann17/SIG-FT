@@ -33,7 +33,7 @@ REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE ALTERAÇÃO: 03/0
 | Coluna | O que é | Quem preenche |
 |---|---|---|
 | **TIPO DE ENTREGA** (nova) | FÍSICA E DOCUMENTAL · DOCUMENTAL · TÍTULO | pré-preenchida pela lista de preços (598 linhas); o resto, quem cria a ficha |
-| **SITUAÇÃO DA AUTORIZAÇÃO** (substituiu o APTO PARA ENTREGA, mesma coluna) | AGUARDANDO ITAIPU · ATRASADO ITAIPU · AUTORIZADO · N/A (ficha DOCUMENTAL: não precisa de autorização) | **SIG-FT** (15 dias úteis do e-mail); AUTORIZADO também à mão / pelo export de autorizados |
+| **SITUAÇÃO DA AUTORIZAÇÃO** (substituiu o APTO PARA ENTREGA, mesma coluna) | AGUARDANDO ITAIPU · ATRASADO ITAIPU · AUTORIZADO · N/A — **só FÍSICA E DOCUMENTAL precisa de autorização** (DOCUMENTAL/TÍTULO = N/A; tipo vazio = branco, não conta) | **SIG-FT** (15 dias úteis do e-mail); AUTORIZADO também à mão / pelo export de autorizados |
 | **DIAS DE ATRASO** (nova) | dias **corridos** além do prazo de 15 dias úteis; congela quando Itaipu autoriza | **SIG-FT** |
 | **FORNECEDOR** (nova) | empresa que vendeu ao CMI (não o fabricante) | quem cria a ficha |
 | **PROCUREMENT** (nova) | quem compra | pré-preenchida pela mapeadora quando a lista tem uma pessoa só (1.006 linhas) |
@@ -57,6 +57,11 @@ Nome definido `versao_layout_status_pmib = "v2"`.
   (FÍSICA E DOCUMENTAL) é entregue. Em #ST00=M00MEU10&MPB020, 61 linhas "AGUARDANDO ITAIPU" + 1 em branco
   passaram a `N/A` (`--recalcular --apenas-documental`; backup `backup_20261005-0808`; só essa lista tinha
   documentais com situação). Nenhuma das 53 atrasadas era documental; aguardando caiu de 149 para 88.
+- **Correção 2 de 05/10/2026** (Luan): TÍTULO (agrupamento) e TIPO vazio também **não contam** — só FÍSICA E
+  DOCUMENTAL. Nenhum dado gravado mudou (todas as AGUARDANDO/ATRASADO já eram físicas; nenhum TÍTULO nos arquivos).
+- **Defeito corrigido em 05/10/2026**: a coluna DIAS DE ATRASO herdou o formato de **data** da vizinha (o antigo
+  APTO) em 33 arquivos — 4 dias apareceriam como 04/01/1900. As 884 células passaram ao formato Geral (valor
+  intocado; `--corrigir-formato-dias`, backup `backup_20261005-0829`, template incluído). A migração já faz isso.
 - Linha da revisão: semeada com a `REVISÃO EM USO` da mapeadora; DATA DE ALTERAÇÃO = "—" (não se sabe).
 - `#ST00=M00MEU10&MPB020`: a coluna "Fornecedor" que existia à direita de OBSERVAÇÕES (99 valores)
   foi **movida** para a FORNECEDOR nova; a coluna antiga ficou vazia.
@@ -131,6 +136,7 @@ Lista nova: nasce do template, que já está no v2.
 | 2 linhas `DUPLICADO` sem a linha original; 3 fichas `PDM.9900.000` sem o PMIB da original | ver protótipo, "qualidade dos dados" |
 | Feriados do Paraguai/Foz entram nos 15 d.u.? | Luan |
 | Cópia `SECOND BRAIN` do Box está na versão de 01/10 | só com nova ordem |
+| Mapeadora levada ao tratamento v2 em 05/10 (3 colunas novas, APTO/ATRASO pela regra nova) | ver [[Mapeamento das Listas de Sobressalentes]]; backup `backup_mapeadora_20261005-0824` |
 
 ## Relacionados
 [[README]] · [[Tarefa SIG-FT - Calculo e Gravacao sem Perda]] · [[Plano - Sistema de Gestao v2]] ·

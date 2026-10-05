@@ -81,4 +81,12 @@ código PMIB **não são dominio da EN.DT**, e sim da SM.DT.
 - **53 fichas com autorização atrasada** em 04/10 (55 linhas); nenhuma consta no export de autorizados
   de 18/08/2026. A mais antiga: e-mail de 24/06/2025 (446 dias).
 - **Ficha DOCUMENTAL não precisa de autorização de Itaipu** (correção do Luan, 05/10): só o pai físico é
-  entregue. As 61 "aguardando" de #ST00=M00MEU10&MPB020 eram componentes da Hydac → `N/A`.
+  entregue. As 61 "aguardando" de #ST00=M00MEU10&MPB020 eram componentes da Hydac → `N/A`. TÍTULO (agrupamento
+  feito errado) e TIPO vazio também não contam — **só FÍSICA E DOCUMENTAL**.
+- **Inserir coluna herda o formato da vizinha**: DIAS DE ATRASO nasceu com formato de data em 33 arquivos (a
+  coluna à esquerda, o antigo APTO, tinha). Corrigido; e o openpyxl lê número com formato de data como `datetime`
+  — quem lê DIAS tem de converter (`to_excel`).
+- **O Gestão PMIB não ignora pastas de teste**: `os.walk` entra em `testes_autospec/`; o link "Abrir Box" de
+  #ST00=B01BMU10&EPB020 na mapeadora aponta para a cópia de teste. Vai na T3-a do roteiro.
+- **A suíte de testes do SIG-FT stuba pandas/openpyxl sempre** (`tests/conftest.py`): teste com `.xlsx` de verdade
+  tem de rodar fora dela — por isso o validador do kit.

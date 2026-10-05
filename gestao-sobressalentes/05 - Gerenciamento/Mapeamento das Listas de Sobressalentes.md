@@ -32,7 +32,7 @@ Alimentada pelo módulo **Gestão PMIB** do SIG-FT.
 | `STATUS DA REVISAO` | Aprovado / Aprovado com Comentários / Para Assinatura / Em Processo |
 | `DATA DE ATUALIZACAO` | |
 | `STATUS REAL` | APROVADO / NÃO APROVADO / NÃO EMITIDO / EM PROCESSO |
-| `REVISAO EM USO` | qual revisão a equipe esta usando |
+| `REVISAO EM USO` | qual revisão o `_STATUS_PMIB` reflete — **vem da linha de revisão do próprio `_STATUS_PMIB`** (desde 05/10/2026; o Gestão PMIB copia — T3). Para mudar, atualize a linha no arquivo. Vermelho quando ≠ ÚLTIMA REVISÃO EMITIDA |
 | `DESCRICAO` | título do documento |
 | `ESPECIFICACAO TECNICA` · `CAPITULO` | ver [[Estrutura ET, Capitulo e Sistema]] |
 | `RESPONSAVEL` · `PROCUREMENT` · `ELABORADOR DO DOCUMENTO` | pessoas |
@@ -60,8 +60,17 @@ pelo qual atraso de ficha vira atraso de dinheiro.
 | `FICHAS EM ANALISE DE ITAIPU` | emitidas, aguardando |
 | `FICHAS EM CORRECAO` | devolvidas por Itaipu |
 | `FICHAS APROVADAS` | fechadas |
-| `APTO PARA ENTREGA` | **aptas e ainda não entregues** (o SIG-FT desconta as entregues) |
-| `ATRASO DE AUTORIZACAO DE ENTREGA ITAIPU` | **fichas** (PMIB distinto, sem duplicadas) com e-mail enviado, sem APTO e sem entrega, além do prazo. O SIG-FT ainda calcula com **14 dias corridos**; a regra vigente é **15 dias úteis** |
+| `FICHAS DE ENTREGA FÍSICA` *(nova, 05/10/2026)* | fichas com TIPO DE ENTREGA = FÍSICA E DOCUMENTAL — **as únicas que precisam de autorização de Itaipu** |
+| `APTO PARA ENTREGA` | fichas com SITUAÇÃO DA AUTORIZAÇÃO = AUTORIZADO **e ainda não entregues** (sem DOCUMENTAL/TÍTULO). Nome mantido: o `.pbix` atual usa |
+| `AGUARDANDO AUTORIZAÇÃO ITAIPU` *(nova)* | fichas físicas com e-mail de intenção, dentro do prazo de 15 dias úteis |
+| `ATRASO DE AUTORIZACAO DE ENTREGA ITAIPU` | **fichas** físicas (PMIB distinto, sem DUPLICADO) além dos **15 dias úteis** do e-mail, sem autorização (SITUAÇÃO = ATRASADO ITAIPU). Até 04/10 o SIG-FT contava 14 dias corridos e todos os tipos |
+| `MAIOR ATRASO ITAIPU (DIAS)` *(nova)* | maior DIAS DE ATRASO (dias corridos além do prazo) entre as atrasadas da lista |
+
+> [!info] Mapeadora no tratamento v2 (05/10/2026)
+> As três colunas novas foram **inseridas** (o resto andou para a direita, nada mudou de nome) e os
+> números de APTO/ATRASO recalculados pela regra nova. Clicar no cabeçalho mostra a definição.
+> Quem mantém daqui para a frente é o Gestão PMIB do SIG-FT — ver
+> [[Tarefa SIG-FT - Calculo e Gravacao sem Perda]]. Script: `_gestao_v2/atualizar_mapeadora_v2.py`.
 
 ### `Dropbox` — a lista de validação de `SITUACAO NO PMIB`
 ```

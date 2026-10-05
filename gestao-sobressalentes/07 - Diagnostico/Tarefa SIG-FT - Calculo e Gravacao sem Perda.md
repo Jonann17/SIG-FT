@@ -1,203 +1,270 @@
 ---
-tags: [handoff, sig-ft, status-pmib]
+tags: [handoff, sig-ft, status-pmib, mapeadora]
 criado: 2026-10-04
-atualizado: 2026-10-04
+atualizado: 2026-10-05
 destinatario: sessão Claude Code na nuvem (GitHub), repositório luanccozer/SIG-FT
 inicio: 2026-10-05
 ---
 
-# Tarefa SIG-FT — o SIG-FT no layout v2 do `_STATUS_PMIB`
+# Tarefa SIG-FT — o Gestão PMIB no tratamento v2 (roteiro completo)
 
 ## Prompt para começar a sessão na nuvem
 
 > Leia `gestao-sobressalentes/07 - Diagnostico/Tarefa SIG-FT - Calculo e Gravacao sem Perda.md`
-> e execute a etapa **T0**. Siga as convenções do repositório. Quando terminar e os testes
-> passarem, me mostre o que mudou antes de seguir para a próxima etapa.
+> inteiro antes de mexer em código. Execute as etapas na ordem (T0 → T5), uma por commit, seguindo
+> as convenções do repositório. Ao final de cada etapa rode `bash scripts/check.sh`; ao final da T3
+> rode também o validador do kit (seção 3) até ele dizer **KIT OK**. Me mostre o que mudou antes de
+> passar de uma etapa para a outra.
 
-(Se o Pull Request #2 ainda não foi juntado, abra a sessão no branch
-`claude/gestao-sobressalentes-v2`, que é onde a pasta `gestao-sobressalentes/` está.)
-
-## O que mudou nas planilhas (04/10/2026) — já aplicado nos 47 `_STATUS_PMIB`
-
-Da `APLICAÇÃO - LMR` em diante, a tabela ficou assim:
-
-```
-... | APLICAÇÃO - LMR | TIPO DE ENTREGA | DATA DO EMAIL COMUNICANDO ENTREGA |
-      SITUAÇÃO DA AUTORIZAÇÃO | DIAS DE ATRASO | EQUIPAMENTO ENTREGUE |
-      [extras da lista] | FORNECEDOR | PROCUREMENT | OBSERVAÇÕES | [extras]
-```
-
-e, **acima do cabeçalho**, uma linha (mesclada) que diz qual revisão da lista de
-sobressalentes o arquivo reflete:
-
-```
-REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE ALTERAÇÃO: 03/09/2026
-```
-
-| Mudança | Consequência para o SIG-FT |
-|---|---|
-| `APTO PARA ENTREGA` **virou** `SITUAÇÃO DA AUTORIZAÇÃO` (mesma coluna; SIM → `AUTORIZADO`) | todo código que lê/escreve `APTO PARA ENTREGA` passa a usar a SITUAÇÃO |
-| Colunas novas `TIPO DE ENTREGA`, `DIAS DE ATRASO`, `FORNECEDOR`, `PROCUREMENT` | o SIG-FT acha coluna **pelo nome** — nada quebra; DIAS DE ATRASO passa a ser gravada por ele |
-| Linha da revisão: o cabeçalho desceu da linha 4 para a **5** | quem lê com linha fixa quebra (ver T0); a revisão em uso passa a vir daqui (T3) |
-| Não existe coluna de data de autorização nem de prazo | o prazo é regra (15 dias úteis do e-mail), calculado na hora; não é gravado |
-
-Como foi feito: `_gestao_v2/migrar_status_pmib_v2.py` (inserção de colunas/linha como o Excel,
-com comentários, listas suspensas e formatação acompanhando). Backup dos originais na máquina
-pessoal do Luan (`%LOCALAPPDATA%\Sobressalentes-v2\backup_*`) e no histórico de versões do Box.
-
-### Regra da autorização (decisão do Luan, 04/10/2026)
-
-| SITUAÇÃO DA AUTORIZAÇÃO | Quando | DIAS DE ATRASO |
-|---|---|---|
-| *(em branco)* | sem DATA DO EMAIL; ou linha `DUPLICADO` não autorizada | em branco |
-| `N/A` | `TIPO DE ENTREGA` = `DOCUMENTAL` (componente explodido: só tem ficha; a entrega física — e a autorização — é a do pai, `FÍSICA E DOCUMENTAL`) | em branco |
-| `AGUARDANDO ITAIPU` | e-mail enviado, hoje ≤ prazo | em branco |
-| `ATRASADO ITAIPU` | hoje > prazo, sem autorização | **dias corridos** desde o prazo: `(hoje − prazo).days` |
-| `AUTORIZADO` | Itaipu autorizou (export de autorizados, ou marcado à mão, ou EQUIPAMENTO ENTREGUE = SIM) | **congelado**: o atraso que houve até a autorização (em branco se veio no prazo) |
-
-- **prazo** = 15 dias úteis a partir do e-mail: `np.busday_offset(data_email, 15, roll="backward", holidays=FERIADOS)`.
-  `roll="backward"` (com `"forward"` o prazo sai um dia maior para e-mail em fim de semana/feriado —
-  diverge do Excel em 468 de 1.500 datas testadas). Feriados: `FERIADOS` de
-  `_scripts/regras_sobressalentes.py` (nacionais + Carnaval + Corpus Christi, 2024–2028; o Luan
-  ainda vai confirmar se entram os do Paraguai/Foz).
-- `AUTORIZADO` **nunca volta** para AGUARDANDO/ATRASADO/N/A (é marcação de fato, não cálculo).
-- Ordem: AUTORIZADO (fato) → DOCUMENTAL vira `N/A` → sem e-mail fica em branco → prazo. `TIPO DE ENTREGA`
-  vazio conta como físico (precisa de autorização) — conservador. `TÍTULO` também precisa.
-  (Correção do Luan em 05/10/2026: ficha documental não precisa de autorização de Itaipu.)
-- Implementação de referência: `situacao_autorizacao()` e `dias_de_atraso_na_autorizacao()` em
-  `_scripts/regras_sobressalentes.py`.
-
-> [!important] DUPLICADO
-> STATUS `DUPLICADO` = o mesmo item repetido **na mesma lista** (repete o PMIB de outra linha):
-> não é ficha nova; fica em branco no cálculo (a situação vale pela linha da ficha). Ficha
-> duplicada **de outro sistema** = `PDM.9900.000` + PMIB da original em OBSERVAÇÕES — ficha normal.
-
-## Material de referência (nesta pasta do repositório)
-
-| Arquivo | Para quê |
-|---|---|
-| `_gestao_v2/xlsx_cirurgico.py` | o editor: `PlanilhaXlsx(caminho)`, `parte_da_aba()`, `escrever()`, `salvar()` (e `deslocar()`, não necessário aqui) |
-| `_scripts/regras_sobressalentes.py` | `situacao_autorizacao()`, `dias_de_atraso_na_autorizacao()`, `somar_dias_uteis()`, `FERIADOS`, `normalizar_pmib()` |
-| `_gestao_v2/migrar_status_pmib_v2.py` | `inventario()` e `conferir()` (modelo dos testes); `TEXTO_REVISAO` (formato da linha) |
-| `_gestao_v2/fixtures/status_pmib_v1_sintetico.xlsx` | layout ANTIGO: 3 comentários em thread, 2 listas suspensas x14 — textos trocados por "TEXTO DE TESTE" |
-| `_gestao_v2/fixtures/status_pmib_v2_sintetico.xlsx` | a mesma, migrada para o layout v2 (linha de revisão, colunas novas, comentários intactos) |
-
-A sessão na nuvem **não tem acesso ao Box**: use as fixtures.
+(Se o Pull Request #2 ainda não foi juntado, abra a sessão no branch `claude/gestao-sobressalentes-v2`,
+que é onde a pasta `gestao-sobressalentes/` está. **Nada de `gestao-sobressalentes/` vai para o código
+do app** — é material de referência; copie o que precisar para dentro de `sigft/`.)
 
 ---
 
-## T0 — Cabeçalho na linha 5 (urgente, pequeno)
+## 1. O que já mudou nas planilhas (feito em 04–05/10/2026, no Box)
 
-**Onde**: `sigft/app/views/pdm.py` ≈ linha 438, modo "selecionar códigos":
-`pd.read_excel(status_pmib, sheet_name="Lista de Materiais", skiprows=3)` — cabeçalho fixo na
-linha 4. Com a linha de revisão, lê a linha errada e mostra "Coluna 'CÓDIGO PMIB' não encontrada"
-(falha visível, sem dano — e já acontecia nas 5 listas que tinham a linha).
+### 1.1 Os 47 `_STATUS_PMIB` (e o template)
 
-**Como**: a mesma busca dinâmica dos outros módulos (`core.excel.headers.find_header_row` nas
-10 primeiras linhas, procurando `CÓDIGO PMIB`), como em `services/duplicadas.py` ≈ 139.
-Revisar `config.LINHA_STATUS_PMIB = 4`: hoje só serve de *fallback*; documentar que o cabeçalho
-real está na linha 5 (o fallback pode ir para 5) e ajustar `scripts/gerar_dados_de_teste.py`
-para gerar a linha de revisão (os testes que fixam 4 mudam junto).
+```
+linha 4:  REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE ALTERAÇÃO: 03/09/2026
+linha 5:  ... | APLICAÇÃO - LMR | TIPO DE ENTREGA | DATA DO EMAIL COMUNICANDO ENTREGA |
+              SITUAÇÃO DA AUTORIZAÇÃO | DIAS DE ATRASO | EQUIPAMENTO ENTREGUE |
+              [extras da lista] | FORNECEDOR | PROCUREMENT | OBSERVAÇÕES | [extras]
+```
 
-**Pronto quando**: `grep -rn "skiprows=3"` não acha leitura de `_STATUS_PMIB`; teste com a fixture v2.
+- O cabeçalho está na **linha 5** em todos (era 4 em 42 deles). A linha 4 é mesclada e é **texto**.
+- `SITUAÇÃO DA AUTORIZAÇÃO` **substituiu** `APTO PARA ENTREGA` (mesma coluna; SIM virou AUTORIZADO).
+- Novas: `TIPO DE ENTREGA` (FÍSICA E DOCUMENTAL · DOCUMENTAL · TÍTULO), `DIAS DE ATRASO`, `FORNECEDOR`, `PROCUREMENT`.
+- Listas suspensas por **nome definido** (`lst_status`, `lst_secao`, `lst_simnao`, `lst_tipo_entrega`,
+  `lst_procurement`, `lst_situacao`) e nome `versao_layout_status_pmib = "v2"`.
+- **Nenhuma fórmula.** SITUAÇÃO e DIAS DE ATRASO são **valores que o SIG-FT grava**.
+- Comentários em thread existem em 16 arquivos e **têm de sobreviver** a qualquer gravação.
 
-## T1 — Gravar `_STATUS_PMIB` sem apagar nada (prioridade 1)
+### 1.2 A mapeadora (`Mapeamento Listas de Sobressalentes.xlsx`, aba `Acompanhamento Sobressalente`)
 
-O **openpyxl apaga** comentários em thread (autor, data, respostas) e listas suspensas gravadas
-como extensão (x14) ao salvar. Hoje todo salvamento do SIG-FT faz isso.
+Cabeçalho na **linha 2**. Três colunas **inseridas** no bloco PMIB — nenhuma coluna mudou de nome
+(o `Sobressalentes - Dashboard.pbix` atual usa `APTO PARA ENTREGA` pelo nome):
 
-**Onde** (conferido no commit `f0ebbc3`; confirmar no atual):
-- `sigft/core/excel/status_sheet.py` — classe `StatusPMIB`: abre com `openpyxl.load_workbook` e salva
-  delegando a `locking.save_with_retry(self.wb, self.caminho_excel)` (≈ linhas 275–283). **É o ponto central.**
-- Gravações diretas: `sigft/services/cria_fichas.py` (≈ 136) e `sigft/services/upload_conditions.py`
-  (≈ 413) — confirmar se o alvo é `_STATUS_PMIB`.
-- Procurar qualquer outro `wb.save` / `save_with_retry` / `salvar_perguntando` cujo alvo seja `*_STATUS_PMIB.xlsx`.
+```
+... | FICHAS APROVADAS | FICHAS DE ENTREGA FÍSICA | APTO PARA ENTREGA | AGUARDANDO AUTORIZAÇÃO ITAIPU |
+      ATRASO DE AUTORIZAÇÃO DE ENTREGA ITAIPU | MAIOR ATRASO ITAIPU (DIAS) | EQUIPAMENTOS ENTREGUES | ...
+```
 
-**Como**:
-1. Trazer `xlsx_cirurgico.py` para `sigft/core/excel/cirurgico.py` (com testes próprios).
-2. `StatusPMIB` continua **lendo** com openpyxl, mas as **escritas** passam por um método
-   (ex.: `escrever(linha, coluna, valor)`) que as registra; o `salvar()` abre o arquivo com
-   `PlanilhaXlsx`, aplica as escritas (mantendo o estilo da célula) e grava por cima do mesmo arquivo.
-3. Arquivo aberto no Excel: manter o retry de `locking` — um adaptador com `.save(path)` que chama
-   `PlanilhaXlsx.salvar(path)` resolve.
-4. Trocar nos serviços as atribuições diretas (`ws.cell(...).value = x` + save) pelo método novo.
+Os números de hoje já foram gravados pela regra nova (por um script, uma vez). **Daqui para a frente
+quem mantém é o Gestão PMIB** — é isso que esta tarefa faz. A coluna `REVISÃO EM USO` (G) passa a vir
+do `_STATUS_PMIB` (seção T3-f). Ao clicar no cabeçalho, cada coluna mostra sua definição.
 
-**Testes** (fixtures v1 e v2): escrever `COMPLETO` numa seção, salvar e conferir — partes
-`xl/threadedComments/*`, `xl/persons/*`, `xl/comments*` **idênticas byte a byte**; listas x14 da v1
-continuam; `inventario()` igual antes e depois; o valor escrito é lido de volta. Arquivo travado → retry.
+### 1.3 O que quebra até esta tarefa estar pronta (tudo visível, nenhum dado errado gravado)
 
-**Pronto quando**: não sobra salvamento de `_STATUS_PMIB` pelo openpyxl (grep) e os testes passam.
+| Onde | Sintoma |
+|---|---|
+| Gestão PMIB (`pmib_manager`) | sem `APTO PARA ENTREGA` no arquivo, escreve **"Atualizar template"** em APTO e ATRASO da mapeadora |
+| Módulo PDM, modo "selecionar códigos" | lê o cabeçalho fixo na linha 4 → "Coluna 'CÓDIGO PMIB' não encontrada" |
+| `apto_para_entrega_att.py` (fora do repositório) | "Falta coluna APTO", não grava |
+| Qualquer `save` de `_STATUS_PMIB` pelo openpyxl | **apaga os comentários em thread** do arquivo |
 
-## T2 — Gestão PMIB: situação e dias de atraso (prioridade 2)
+---
 
-**Onde**: `sigft/services/pmib_manager.py`.
-- `_ler_status_pmib` (≈ 160): `colunas_desejadas` mapeia `'APTO PARA ENTREGA'`. Acrescentar
-  `'SITUAÇÃO DA AUTORIZAÇÃO'` e `'DIAS DE ATRASO'`; manter `'APTO PARA ENTREGA'` só como leitura de
-  arquivo antigo (SIM = AUTORIZADO).
-- `_calcula_fichas` (≈ 287–330): hoje conta APTO = SIM e o atraso com **14 dias corridos**
-  (`data_limite = DATA INFORME + 14 dias`) e, sem a coluna APTO, escreve "Atualizar template" na mapeadora.
+## 2. A regra (decisões do Luan, 04–05/10/2026)
 
-**Como**:
-1. Para cada linha de cada `_STATUS_PMIB` v2, calcular SITUAÇÃO e DIAS DE ATRASO pela regra acima
-   (preservando AUTORIZADO e o DIAS DE ATRASO congelado) e **gravar** com o editor da T1, só nas
-   células que mudaram. Gravar também o nome definido `sigft_calculado_em` (data do cálculo).
-2. Mapeadora (as colunas da mapeadora **não** mudam de nome):
-   - `APTO PARA ENTREGA` = fichas (PMIB distinto, sem DUPLICADO) com SITUAÇÃO = `AUTORIZADO` e EQUIPAMENTO ENTREGUE ≠ SIM;
-   - `ATRASO DE AUTORIZAÇÃO DE ENTREGA ITAIPU` = fichas com SITUAÇÃO = `ATRASADO ITAIPU`.
-3. Arquivo sem `SITUAÇÃO DA AUTORIZAÇÃO` (layout antigo): logar "arquivo sem layout v2" e contar pelo
-   APTO, sem gravar nada — nunca falhar em silêncio.
-4. `FERIADOS` em `sigft/config.py` (só constante nova).
+### 2.1 SITUAÇÃO DA AUTORIZAÇÃO e DIAS DE ATRASO — por linha do `_STATUS_PMIB`
 
-**Testes**: e-mail 15/09/2026 → prazo 06/10/2026; 04/09/2026 + 1 d.u. → 08/09/2026 (07/09 feriado);
-hoje 10/10/2026 com e-mail 15/09 → ATRASADO, 4 dias; AUTORIZADO continua AUTORIZADO e mantém o
-DIAS DE ATRASO; ENTREGUE = SIM → AUTORIZADO; TIPO DOCUMENTAL com e-mail vencido → `N/A`, sem dias;
-DOCUMENTAL já AUTORIZADO continua AUTORIZADO; DUPLICADO não autorizado → em branco; sem e-mail → em
-branco; fixture v1 → log e nada gravado. Referência pronta: `recalcular_situacao()` em
-`_gestao_v2/migrar_status_pmib_v2.py` (faz exatamente isto num arquivo).
+Avaliar **nesta ordem** (a primeira que casar vale):
 
-## T3 — Revisão em uso vem do `_STATUS_PMIB` (prioridade 2)
+| # | Condição | SITUAÇÃO | DIAS DE ATRASO |
+|---|---|---|---|
+| 1 | STATUS = `DUPLICADO` e a SITUAÇÃO atual não é AUTORIZADO | *(branco)* | *(branco)* |
+| 2 | SITUAÇÃO atual = `AUTORIZADO` (ou `SIM`, arquivo antigo) | `AUTORIZADO` | **mantém o que estiver** (congelado) |
+| 3 | TIPO DE ENTREGA = `DOCUMENTAL` ou `TÍTULO` | `N/A` | *(branco)* |
+| 4 | EQUIPAMENTO ENTREGUE = `SIM` | `AUTORIZADO` | mantém |
+| 5 | TIPO DE ENTREGA vazio (ou desconhecido) | *(branco)* | *(branco)* |
+| 6 | (FÍSICA E DOCUMENTAL) sem DATA DO EMAIL | *(branco)* | *(branco)* |
+| 7 | hoje > prazo | `ATRASADO ITAIPU` | `(hoje − prazo).days` — **dias corridos** |
+| 8 | senão | `AGUARDANDO ITAIPU` | *(branco)* |
 
-A coluna `REVISÃO EM USO` (G) da aba `Acompanhamento Sobressalente` da mapeadora era digitada à mão.
-**A semeadura já foi feita**: a migração escreveu o valor de G na linha de revisão de cada
-`_STATUS_PMIB`. Agora inverte: quem mantém é o arquivo (quem reconcilia o `_STATUS_PMIB` com a lista
-nova carimba ali), e o Gestão PMIB copia para a mapeadora.
+- **Só FÍSICA E DOCUMENTAL precisa de autorização de Itaipu.** DOCUMENTAL é o componente explodido (só
+  tem ficha; a entrega física é a do pai); TÍTULO é agrupamento; tipo vazio não conta até alguém classificar.
+- **prazo** = DATA DO EMAIL + **15 dias úteis**, igual ao `WORKDAY` do Excel: avança dia a dia e conta os
+  que não são sábado, domingo nem `FERIADOS`. Implementação de referência, só stdlib:
+  `somar_dias_uteis()` em `gestao-sobressalentes/_scripts/regras_sobressalentes.py`.
+  Ex.: 15/09/2026 → 06/10/2026; 04/09/2026 → 28/09/2026 (07/09 é feriado); 01/10/2026 → 23/10/2026 (12/10).
+- `FERIADOS`: copiar o dicionário de `regras_sobressalentes.py` (nacionais + Carnaval + Corpus Christi,
+  2024–2028). O Luan ainda vai confirmar se entram os do Paraguai/Foz — deixe num só lugar (`config.py`).
+- Estados calculados (AGUARDANDO, ATRASADO, N/A, branco) **são recalculados** a cada rodada; AUTORIZADO
+  nunca é desfeito pelo cálculo.
+- Comparações de texto normalizadas (maiúsculas, sem acento, sem espaços extras):
+  `FISICA E DOCUMENTAL` = `FÍSICA E DOCUMENTAL`; `TITULO`/`CONJUNTO` = `TÍTULO`; `APENAS DOCUMENTAL` = `DOCUMENTAL`
+  (tabela `TIPO_CANONICO` em `regras_sobressalentes.py`).
+- Implementação de referência completa: `situacao_autorizacao()` (regras 2–8) e, para o arquivo inteiro
+  (com a regra 1 e "só grava o que mudou"), `recalcular_situacao()` em `_gestao_v2/migrar_status_pmib_v2.py`.
 
-**Como** (no mesmo laço do `pmib_manager` que já abre cada `_STATUS_PMIB`):
-1. Procurar, nas linhas **acima do cabeçalho**, a célula cujo texto começa com
-   `REVISÃO DA LISTA DE SOBRESSALENTES` (pelo texto, nunca pela coordenada) e extrair a revisão:
-   `EM USO:\s*(.+?)\s*-\s*DATA DE ALTERA` (pode ser `SEM LISTA`; `—` = não informado).
-2. Escrever em `REVISÃO EM USO` da linha da lista na mapeadora (achar a coluna pelo nome na linha 2,
-   como os outros campos). A regra `G<>C` (pinta de vermelho quando difere da última emitida) não muda.
-3. Arquivo **sem** a linha, ou revisão `—`: **não apagar** o que está em G; logar.
+### 2.2 Contagens da mapeadora — por lista
 
-**Testes**: fixture v2 → lê `0` (ou o que a fixture tiver); texto com espaços extras; linha ausente → None e log.
+"Ficha" = linha com código PMIB válido, **sem** STATUS `DUPLICADO`, contada **uma vez** por PMIB (a
+primeira linha) — a mesma base que o `_calcula_fichas` já usa.
 
-## T4 — Export de autorizados grava SITUAÇÃO (prioridade 3)
+| Coluna da mapeadora | Chave sugerida | Regra |
+|---|---|---|
+| `FICHAS DE ENTREGA FÍSICA` | `fichas_entrega_fisica` | TIPO = FÍSICA E DOCUMENTAL |
+| `APTO PARA ENTREGA` | `fichas_aptas_para_entrega` | SITUAÇÃO = AUTORIZADO **e** ENTREGUE ≠ SIM **e** TIPO não é DOCUMENTAL/TÍTULO |
+| `AGUARDANDO AUTORIZAÇÃO ITAIPU` | `aguardando_autorizacao_itaipu` | SITUAÇÃO = AGUARDANDO ITAIPU |
+| `ATRASO DE AUTORIZAÇÃO DE ENTREGA ITAIPU` | `atraso_autorizacao_itaipu` | SITUAÇÃO = ATRASADO ITAIPU |
+| `MAIOR ATRASO ITAIPU (DIAS)` | `maior_atraso_itaipu_dias` | maior DIAS DE ATRASO entre as ATRASADO; 0 se nenhuma |
+| `EQUIPAMENTOS ENTREGUES` | `equipamentos_entregue` | (como hoje) ENTREGUE = SIM |
+| `REVISÃO EM USO` | — | da linha 4 do arquivo (T3-f) |
 
-**Onde**: `apto_para_entrega_att.py` — **não está no repositório**; vive no Box em
-`15 - PDM/_python_pdm/SIG-FT/` (e uma cópia antiga em `AMP/`). Procura `APTO PARA ENTREGA` pelo nome:
-nas planilhas migradas responde "Falta coluna APTO" e não grava (sem dano). Também salva com openpyxl.
-O Luan traz o arquivo para o repositório (ex.: `sigft/services/autorizados.py`) antes desta etapa.
+Arquivo **layout antigo** (sem `SITUAÇÃO DA AUTORIZAÇÃO`): `APTO` = APTO PARA ENTREGA = SIM e não entregue;
+as outras quatro = 0 (sem TIPO, nada conta); logar "arquivo sem layout v2". Lista sem `_STATUS_PMIB`: tudo 0
+(já é o comportamento atual). **Acabar** com o "Atualizar template".
 
-**Como**: para cada PMIB do `sobressalentes_autorizados_AAAAMMDDhhmm.xlsx`:
-SITUAÇÃO DA AUTORIZAÇÃO := `AUTORIZADO`; se DIAS DE ATRASO estiver vazio,
-DIAS DE ATRASO := `dias_de_atraso_na_autorizacao(data_email, data do export)` (data tirada do nome do
-arquivo; em branco se veio no prazo). Gravar com o editor da T1. Layout antigo: APTO := SIM, como hoje.
+---
 
-## T5 — Listas de preços em `PB021` (depois)
+## 3. Kit de teste e validador (a nuvem não enxerga o Box)
 
-Reconhecer lista de preços pelo DCC `PB021` (o `PB020-0x` é legado). Ver
-[[Plano - Aba de Listas de Precos]] e [[Lista de Precos]].
+Em `gestao-sobressalentes/_gestao_v2/fixtures/kit_gestao_pmib/` — tudo sintético:
 
-## Convenções do repositório (valem para todas)
+| Arquivo | Para quê |
+|---|---|
+| `status/#ST00=TESTE01&MPB020_STATUS_PMIB.xlsx` | layout v2; **linhas 6–18 = os 13 casos da regra** (tabela em `gerar_kit_teste_sigft.py`, `CASOS`); 3 comentários em thread |
+| `status/#ST00=TESTE02&MPB020_STATUS_PMIB.xlsx` | layout antigo (APTO PARA ENTREGA): só leitura, **não pode ser gravado** |
+| `status/testes_autospec/#ST00=TESTE01&MPB020_STATUS_PMIB.xlsx` | **isca**: mesmo código, outros números — tem de ser **ignorada** (T3-a) |
+| `mapeadora_sintetica.xlsx` | `Acompanhamento Sobressalente` no layout v2 (APTO/ATRASO com 99 "velho"; REVISÃO EM USO de TESTE01 = "0", velho) + abas vazias |
+| `docmanager_sintetico.xlsx` | export do DocManager com as 3 listas (Current = True) |
+| `esperado.json` | o resultado certo com **hoje = 2026-10-10** |
 
-- Código, comentários e documentação em português; **commits sem acento**.
-- Uma etapa por vez; o que achar fora do escopo vai para `docs/refatoracao/PENDENCIAS.md`.
+**Como validar (ponta a ponta)** — o openpyxl/pandas da suíte `tests/` é dublê (`tests/conftest.py`
+stuba sempre), então este teste roda **fora** da suíte, com as bibliotecas reais:
+
+```bash
+python -m pip install -r requirements.txt lxml          # openpyxl, pandas, lxml reais
+rm -rf /tmp/kit && cp -r gestao-sobressalentes/_gestao_v2/fixtures/kit_gestao_pmib /tmp/kit
+python - <<'EOF'
+from datetime import date
+from sigft.services.pmib_manager import PMIBManager
+for _ in PMIBManager().executar_fluxo("/tmp/kit/docmanager_sintetico.xlsx", "/tmp/kit/status",
+                                       "/tmp/kit/mapeadora_sintetica.xlsx", hoje=date(2026, 10, 10)):
+    pass
+EOF
+python gestao-sobressalentes/_gestao_v2/validar_kit_gestao_pmib.py /tmp/kit      # tem de dizer: KIT OK
+```
+
+O validador confere: SITUAÇÃO e DIAS linha a linha; DIAS sem formato de data; comentários byte a byte;
+`sigft_calculado_em`; TESTE02 e isca intocados; as 7 colunas e a REVISÃO EM USO na mapeadora.
+`python validar_kit_gestao_pmib.py --referencia` roda a implementação de referência e dá KIT OK — prova
+que o esperado é atingível. Sugestão: transformar esse roteiro num teste em `tests_integracao/` (pasta
+própria, sem o `conftest` que stuba) ou num `scripts/validar_kit.sh`.
+
+Para os testes **unitários** da regra (dentro da suíte, só stdlib): use os 13 casos de `CASOS`.
+
+---
+
+## 4. Etapas
+
+### T0 — Cabeçalho na linha 5 (pequeno)
+**Onde**: `sigft/app/views/pdm.py` ≈ linha 438 — `pd.read_excel(status_pmib, sheet_name="Lista de Materiais", skiprows=3)`.
+**Como**: busca dinâmica como em `sigft/services/duplicadas.py` ≈ 139 (`headers.find_header_row` nas 10–30
+primeiras linhas, procurando `CÓDIGO PMIB`). `config.LINHA_STATUS_PMIB` (4) é só *fallback* — passar a 5 e
+ajustar `scripts/gerar_dados_de_teste.py` e `tests/test_config.py`/`test_gerar_dados_de_teste.py` (a linha 4
+passa a ser a da revisão).
+**Pronto quando**: nenhuma leitura de `_STATUS_PMIB` com `skiprows`/`header` fixo (grep).
+
+### T1 — Gravar `_STATUS_PMIB` sem apagar nada (pré-requisito da T3)
+O openpyxl apaga comentários em thread e listas suspensas x14 ao salvar.
+1. Trazer `gestao-sobressalentes/_gestao_v2/xlsx_cirurgico.py` para `sigft/core/excel/cirurgico.py`
+   (precisa de `lxml` — mover de `requirements-dev.txt` para `requirements.txt`). Só `PlanilhaXlsx`,
+   `escrever`, `estilo_formato_geral`, `definir_nome`, `salvar` e auxiliares; o `deslocar` não é necessário.
+2. `sigft/core/excel/status_sheet.py` (`StatusPMIB`): continua **lendo** com openpyxl, mas as **escritas** são
+   registradas (`escrever(linha, coluna, valor)`) e aplicadas no `salvar()` com `PlanilhaXlsx`, por cima do
+   mesmo arquivo, mantendo o estilo da célula. Arquivo aberto no Excel: manter o retry de `core.excel.locking`
+   (um adaptador com `.save(path)` que chama `PlanilhaXlsx.salvar(path)`).
+3. Trocar as gravações diretas em `services/cria_fichas.py` (≈ 136), `services/upload_conditions.py` (≈ 413) e
+   qualquer outro `wb.save`/`save_with_retry` cujo alvo seja `*_STATUS_PMIB.xlsx`.
+**Testes**: fixture `_gestao_v2/fixtures/status_pmib_v2_sintetico.xlsx` — escrever `COMPLETO` numa seção,
+salvar e conferir `xl/threadedComments/*`, `xl/persons/*`, `xl/comments*` idênticos byte a byte.
+**Pronto quando**: grep não acha salvamento de `_STATUS_PMIB` pelo openpyxl.
+
+### T2 — A regra como módulo puro
+`sigft/services/autorizacao.py`, **só stdlib** (a suíte não tem numpy/pandas reais):
+`somar_dias_uteis()`, `situacao_autorizacao(email, situacao_atual, entregue, hoje, dias_atual, tipo, status)`
+→ `(situacao, dias)` seguindo a tabela 2.1 inteira (inclusive a regra 1), `dias_de_atraso_na_autorizacao()`,
+normalização de tipo. `FERIADOS` em `sigft/config.py` (constante nova).
+**Testes** (`tests/test_autorizacao.py`): os 13 casos de `CASOS` com hoje = 2026-10-10, mais os três prazos
+da seção 2.1. **Pronto quando**: testes verdes.
+
+### T3 — `sigft/services/pmib_manager.py` (o centro da tarefa)
+
+**a) Ignorar pastas de teste e cópias** — **defeito encontrado em 05/10**: o `os.walk` de `executar_fluxo`
+(≈ 363) pega também `testes_autospec/`; para `#ST00=B01BMU10&EPB020` o link "Abrir Box" da mapeadora aponta
+para a cópia de teste, e as contagens podem vir dela (a última encontrada sobrescreve). Pular pastas cujo
+caminho contenha `00 - OBSOLETO`, `OBSOLETO`, `10- TESTES`, `TESTES_AUTOSPEC`, `\DATASHEETS\`, `BACKUP`
+(sem acento/maiúsculas) e arquivos com `~$`, ` - COPY`, `- CÓPIA`, `COPIA`, `COMENT`, `RESPOSTA` no nome —
+mesma lista de `IGNORAR_PASTAS`/`IGNORAR_ARQUIVOS` em `regras_sobressalentes.py`. Se dois arquivos vivos tiverem
+o mesmo código, logar e usar o modificado por último — nunca em silêncio.
+
+**b) `hoje` injetável**: `executar_fluxo(..., hoje: date | None = None)` (padrão `date.today()`), repassado a
+quem calcula. Sem isso o kit não é testável.
+
+**c) Recalcular e gravar o `_STATUS_PMIB`** — novo método (ex.: `_atualizar_autorizacao(caminho, hoje)`), chamado
+no passo 5 **antes** de `_ler_status_pmib`, para cada arquivo vivo (já com o caminho pós-renomeação):
+- achar o cabeçalho (linha com `CÓDIGO DO MATERIAL`/`CÓDIGO PMIB` nas 10 primeiras) e as colunas **pelo nome**;
+- sem `SITUAÇÃO DA AUTORIZAÇÃO` → log "arquivo sem layout v2" e **não gravar nada**;
+- linha a linha, `autorizacao.situacao_autorizacao(...)`; gravar com o editor da T1 **só as células que mudaram**;
+- **DIAS DE ATRASO é número**: se a célula vier como data (formato herdado da vizinha), o openpyxl entrega
+  `datetime` — converter com `openpyxl.utils.datetime.to_excel()`; ao gravar, se o estilo da célula tiver formato
+  de data, usar `PlanilhaXlsx.estilo_formato_geral(s)` (senão 4 aparece como 04/01/1900);
+- gravar o nome definido `sigft_calculado_em` = data do cálculo (texto `"AAAA-MM-DD"`);
+- arquivo aberto no Excel → retry de `locking`; falhou → log com o nome do arquivo e segue.
+
+**d) `_ler_status_pmib`** (≈ 160): em `colunas_desejadas` acrescentar `'TIPO DE ENTREGA'`,
+`'SITUAÇÃO DA AUTORIZAÇÃO'`, `'DIAS DE ATRASO'`; manter `'APTO PARA ENTREGA'` (arquivo antigo).
+
+**e) `_calcula_fichas`** (≈ 213–339): substituir o bloco "Novas Regras: Apto para Entrega e Atraso Itaipu"
+(o dos **14 dias corridos** e do "Atualizar template") pelas regras da tabela 2.2, com as chaves sugeridas.
+DIAS lido pelo pandas também pode vir como `Timestamp` → mesmo tratamento (`to_excel`).
+
+**f) Revisão em uso → mapeadora** (no mesmo laço): ler, nas linhas **acima do cabeçalho**, a célula cujo texto
+começa com `REVISÃO DA LISTA DE SOBRESSALENTES` (pelo texto, nunca pela coordenada) e extrair
+`EM USO:\s*(.+?)\s*-\s*DATA DE ALTERA` (pode ser `SEM LISTA`). Gravar em `REVISÃO EM USO` da linha da lista.
+Sem a linha, ou revisão `—`/vazia: **não mexer** em G e logar. A formatação condicional G≠C fica como está.
+
+**g) Gravação na mapeadora** (passo 6, ≈ 535): acrescentar ao `gerenciadora_map`
+`'FICHAS DE ENTREGA FÍSICA'`, `'AGUARDANDO AUTORIZAÇÃO ITAIPU'`, `'MAIOR ATRASO ITAIPU (DIAS)'` (as colunas são
+achadas pelo nome da linha 2 — a posição não importa). A mapeadora pode continuar sendo gravada pelo openpyxl
+(hoje ela não tem comentário em thread nem lista x14; as mensagens dos cabeçalhos são validação padrão e
+sobrevivem) — mas registre isso num comentário, porque deixa de valer se alguém comentar na mapeadora.
+
+**Pronto quando**: validador do kit **KIT OK**; `check.sh` verde; grep sem `to_timedelta(14` e sem
+`"Atualizar template"`.
+
+### T4 — Export de autorizados grava SITUAÇÃO
+`apto_para_entrega_att.py` **não está no código do app** (vive no Box em `15 - PDM/_python_pdm/SIG-FT/`); cópia
+de referência em `gestao-sobressalentes/_gestao_v2/referencia_sigft/apto_para_entrega_att.py` (versão de 28/07/2026).
+Traga para `sigft/services/autorizados.py` (caminhos vindos da tela/config, não fixos no código; o `os.walk`
+com as mesmas exclusões da T3-a — hoje ele também entra em `testes_autospec/`). Para cada PMIB do
+`sobressalentes_autorizados_AAAAMMDDhhmm.xlsx`: SITUAÇÃO := `AUTORIZADO` (é fato — vale para qualquer tipo); se
+DIAS DE ATRASO estiver vazio, DIAS := `dias_de_atraso_na_autorizacao(email, data do export)` (data tirada do
+nome do arquivo; vazio se veio no prazo). Gravar com o editor da T1. Layout antigo: APTO := SIM, como hoje.
+
+### T5 — Listas de preços em `PB021` (depois)
+Reconhecer lista de preços pelo DCC `PB021` (o `PB020-0x` é legado). Ver [[Plano - Aba de Listas de Precos]].
+
+---
+
+## 5. Convenções e cuidados
+
+- Código, comentários e documentação em português; **commits sem acento**; uma etapa por commit.
 - Zonas do Rafael (`rafhagmm`, AutoSpecAI): `core/rpa/ficha_layout.py`, `config.LLM_TASKS`,
   `core/llm/prompts.py` — não tocar; `config.py` só ganha constantes novas.
-- `bash scripts/check.sh` verde.
-- **Falha silenciosa é pior que falha ruidosa**: arquivo que não pôde ser processado aparece no log.
-- Nada de fórmula nas planilhas; não renomear colunas existentes (além do APTO, já renomeado pela migração).
+- **Falha silenciosa é pior que falha ruidosa**: todo arquivo não processado aparece no log com o motivo.
+- Não criar fórmula em planilha; não renomear coluna da mapeadora nem do `_STATUS_PMIB`.
+- O que achar fora do escopo vai para `docs/refatoracao/PENDENCIAS.md`.
+
+## 6. Depois do merge (o Luan, no computador do trabalho)
+Rodar o Gestão PMIB uma vez e conferir na mapeadora: APTO/ATRASO sem "Atualizar template"; as três colunas novas
+preenchidas; o link "Abrir Box" de `#ST00=B01BMU10&EPB020` apontando para o arquivo real (não `testes_autospec`);
+um `_STATUS_PMIB` com comentário em thread continua com o comentário.
 
 ## Relacionados
-[[Plano - Reestruturacao do STATUS_PMIB]] · [[Plano - Revisao em Uso automatica]] · [[README]] · [[Planilha STATUS_PMIB]]
+[[Plano - Reestruturacao do STATUS_PMIB]] · [[Mapeamento das Listas de Sobressalentes]] ·
+[[Plano - Revisao em Uso automatica]] · [[Planilha STATUS_PMIB]] · [[README]]
