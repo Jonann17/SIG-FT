@@ -34,8 +34,11 @@ atualizado: 2026-10-05
 >   - Barras horizontais simples com cor por significado: verde = concluído, vermelho = atraso, âmbar = aguardando.
 >   - **Sem barras empilhadas em porcentagem.**
 >
+> **No Box desde 05/10/2026, 14h40** (versão testada, idêntica arquivo a arquivo).
+>
 > **Testado** em 05/10 no Power BI Desktop desta máquina, com os dados reais e o parâmetro vazio (achou a pasta
-> sozinho). As 7 tabelas atualizam em ≈ 30–50 s e todas as páginas foram conferidas por captura de tela.
+> sozinho). O filtro de ET foi testado propagando para as outras páginas. Os cartões mostram 0, e não "(Em
+> branco)", quando não há dado: o gerador cria uma cópia oculta da medida, `... (cartão)` = `COALESCE(..., 0)`. As 7 tabelas atualizam em ≈ 30–50 s e todas as páginas foram conferidas por captura de tela.
 > Números do dia:
 > - 1.352 fichas, 615 enviadas (45%), 73 aprovadas;
 > - 53 autorizações atrasadas (maior: 446 dias, e-mail de 24/06/2025);

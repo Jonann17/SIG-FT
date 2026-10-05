@@ -197,6 +197,8 @@ def escrever_modelo(raiz: pathlib.Path, consultas: dict[str, str], medidas: list
             linhas += [f"\tmeasure {nome(md['nome'])} =", "\n".join("\t\t\t" + l for l in md["expr"])]
             if md["formato"]:
                 linhas.append(f"\t\tformatString: {md['formato']}")
+            if md.get("oculta"):
+                linhas.append("\t\tisHidden")
             linhas += [f"\t\tdisplayFolder: {md['pasta']}", f"\t\tlineageTag: {tag()}", ""]
         for c, tipo in ESQUEMA[t]:
             linhas += [f"\tcolumn {nome(c)}", f"\t\tdataType: {TIPO_TMDL[tipo]}"]
@@ -238,9 +240,14 @@ def main() -> int:
     faltam = [t for t in TABELAS if t not in consultas]
     if faltam:
         raise SystemExit(f"consultas não encontradas nos .pq: {faltam}")
+    relatorios = (("Interno", R.relatorio_interno()), ("Itaipu", R.relatorio_itaipu()))
+    base = {(m["tabela"], m["nome"]): m for m in medidas}
+    for (t, n), copia in sorted(R.CARTOES.items()):      # medidas dos cartoes: vazio vira 0
+        medidas.append({"tabela": t, "nome": copia, "expr": [f"COALESCE ( [{n}], 0 )"], "pasta": "Cartões",
+                        "formato": base[(t, n)]["formato"] or "#,##0", "oculta": True})
     escrever_modelo(args.saida / f"{NOME}.SemanticModel", consultas, medidas, args.pasta)
     total = 0
-    for sufixo, paginas in (("Interno", R.relatorio_interno()), ("Itaipu", R.relatorio_itaipu())):
+    for sufixo, paginas in relatorios:
         nome_rel = f"{NOME} - {sufixo}"
         R.escrever_relatorio(args.saida / f"{nome_rel}.Report", paginas, nome_rel, NOME)
         (args.saida / f"{nome_rel}.pbip").write_text(json.dumps({

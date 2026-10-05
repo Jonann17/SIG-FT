@@ -109,9 +109,11 @@ procurement, atraso de Itaipu em 15 d.u.) e um Power BI com visão interna e vis
   - colunas Etapa e Etapa Cliente legíveis e ordenadas;
   - medidas novas para listas de preços.
 - **Testado** no Desktop com o parâmetro vazio e os dados reais; páginas conferidas por captura de tela.
-- **Pendente (permissão)**: substituir no Box a pasta `Sobressalentes v2 (Power BI)/` pela versão v3, e regenerar
-  `_gestao_v2/powerbi/pbip/` no cofre. As duas ações foram bloqueadas pelo controle de permissões, porque apagam a
-  versão anterior. O pacote pronto está em `%TEMP%\pbip_final`.
+- **No Box** (Luan autorizou substituir sem backup): `Sobressalentes v2 (Power BI)/` = versão v3 testada.
+  Leitura final com o filtro de ET (propaga entre as páginas) e as duas páginas do Itaipu. Corrigido: cartão com
+  "(Em branco)" passou a mostrar 0.
+- Falta regenerar `_gestao_v2/powerbi/pbip/` no cofre: ainda é a saída da v2 (bloqueado pelo controle de
+  permissões; `python montar_pbip.py` refaz).
 
 ## Proximas sessões
 1. **SIG-FT** (a partir de 05/10, na nuvem): T0 cabeçalho na linha 5 (módulo PDM); T1 gravar sem

@@ -124,6 +124,19 @@ def PR(p, rotulo=None):
     return Campo("PrecosAconex", p, True, rotulo)
 
 
+CARTOES: dict[tuple[str, str], str] = {}   # (tabela, medida) -> medida "(cartão)" criada pelo montar_pbip.py
+
+
+def para_cartao(campo: Campo) -> Campo:
+    """Cartao mostra 0, nao "(Em branco)": usa uma copia da medida com COALESCE(..., 0). A medida original
+    continua vazia onde nao ha dado, para as tabelas nao listarem linhas zeradas."""
+    if not campo.m or "(texto)" in campo.p or campo.p == "Atualizado em":
+        return campo
+    nome = f"{campo.p} (cartão)"
+    CARTOES[(campo.t, campo.p)] = nome
+    return Campo(campo.t, nome, True, campo.rotulo or campo.p)
+
+
 def filtro(campo: Campo, valores: list[str], negar: bool = False) -> dict:
     cond = {"In": {"Expressions": [{"Column": {"Expression": {"SourceRef": {"Source": "f"}}, "Property": campo.p}}],
                    "Values": [[{"Literal": {"Value": "'" + v.replace("'", "''") + "'"}}] for v in valores]}}
@@ -180,6 +193,7 @@ class Pagina:
             "imageScaling": [{"properties": {"imageScalingType": lit("Fit")}}]})
 
     def kpi(self, x, y, w, h, campo: Campo, cor_valor: str | None = None):
+        campo = para_cartao(campo)
         objetos = {}
         if cor_valor:
             objetos["labels"] = [{"properties": {"color": cor(cor_valor)}}]
