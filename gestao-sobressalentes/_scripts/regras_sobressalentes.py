@@ -269,30 +269,47 @@ def _para_data(v) -> dt.date | None:
 # --------------------------------------------------------------------------
 # Regras por item
 # --------------------------------------------------------------------------
-def situacao_autorizacao(data_email: dt.date | None, apto: str, data_aut: dt.date | None,
-                         entregue: str, hoje: dt.date) -> tuple[str, dt.date | None, int | None]:
-    """
-    Devolve (situacao, prazo, dias_uteis_de_atraso).
+SITUACOES_AUTORIZACAO = ["AGUARDANDO ITAIPU", "ATRASADO ITAIPU", "AUTORIZADO"]
 
-    SEM PEDIDO             nao ha e-mail de intencao
-    AGUARDANDO ITAIPU      e-mail enviado, sem autorizacao, dentro dos 15 d.u.
-    ATRASADO ITAIPU        e-mail enviado, sem autorizacao, prazo vencido
-    AUTORIZADO NO PRAZO    data de autorizacao <= prazo
-    AUTORIZADO COM ATRASO  data de autorizacao >  prazo
-    AUTORIZADO             APTO = SIM (ou entregue) sem data de autorizacao registrada
+
+def _inteiro(v) -> int | None:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if f != f else int(f)                      # NaN != NaN
+
+
+def situacao_autorizacao(data_email: dt.date | None, situacao_atual, entregue, hoje: dt.date,
+                         dias_atual=None) -> tuple[str, dt.date | None, int | None]:
+    """
+    Devolve (situacao, prazo, dias_de_atraso) — o que o SIG-FT grava nas colunas
+    SITUAÇÃO DA AUTORIZAÇÃO e DIAS DE ATRASO do _STATUS_PMIB (o prazo nao e gravado).
+
+    ""                  sem e-mail de intencao (celula em branco)
+    AGUARDANDO ITAIPU   e-mail enviado, dentro do prazo de 15 dias uteis
+    ATRASADO ITAIPU     prazo vencido sem autorizacao; dias = dias CORRIDOS desde o prazo
+    AUTORIZADO          Itaipu autorizou (export de autorizados; o antigo APTO = SIM; ou ja
+                        entregue). DIAS DE ATRASO fica congelado no valor que tinha — o
+                        atraso que houve ate a autorizacao (ver dias_de_atraso_na_autorizacao)
     """
     prazo = somar_dias_uteis(data_email, PRAZO_AUTORIZACAO_DU) if data_email else None
-    autorizado = data_aut is not None or normalizar(apto) == "SIM" or normalizar(entregue) == "SIM"
-    if autorizado:
-        if data_aut and prazo:
-            atraso = max(0, dias_uteis_entre(prazo, data_aut))
-            return ("AUTORIZADO COM ATRASO" if data_aut > prazo else "AUTORIZADO NO PRAZO"), prazo, atraso
-        return "AUTORIZADO", prazo, None
+    if normalizar(situacao_atual) in ("AUTORIZADO", "SIM") or normalizar(entregue) == "SIM":
+        return "AUTORIZADO", prazo, _inteiro(dias_atual)
     if prazo is None:
-        return "SEM PEDIDO", None, None
+        return "", None, None
     if hoje > prazo:
-        return "ATRASADO ITAIPU", prazo, dias_uteis_entre(prazo, hoje)
-    return "AGUARDANDO ITAIPU", prazo, 0
+        return "ATRASADO ITAIPU", prazo, (hoje - prazo).days
+    return "AGUARDANDO ITAIPU", prazo, None
+
+
+def dias_de_atraso_na_autorizacao(data_email: dt.date | None, data_autorizacao: dt.date) -> int | None:
+    """Quando a autorizacao chega (data do export de autorizados): dias corridos alem do prazo,
+    ou None se chegou no prazo. E o valor que fica congelado em DIAS DE ATRASO."""
+    if not data_email:
+        return None
+    prazo = somar_dias_uteis(data_email, PRAZO_AUTORIZACAO_DU)
+    return (data_autorizacao - prazo).days if data_autorizacao > prazo else None
 
 
 def pendencia(e_ficha: bool, status: str, sit_aut: str, ok: dict[str, bool], apto: bool, entregue: bool,
@@ -422,10 +439,13 @@ def ler_itens(raiz: pathlib.Path = PASTA_PMIB, hoje: dt.date | None = None,
         df["ARQUIVO"] = str(rel)
         frames.append(df)
     itens = pd.concat(frames, ignore_index=True)
-    for c in ["TIPO DE ENTREGA", "FORNECEDOR", "PROCUREMENT", "DATA DA AUTORIZACAO ITAIPU", "DATA DA ENTREGA",
+    for c in ["TIPO DE ENTREGA", "FORNECEDOR", "PROCUREMENT", "SITUACAO DA AUTORIZACAO", "DIAS DE ATRASO",
               "APTO PARA ENTREGA", "EQUIPAMENTO ENTREGUE", "CODIGO CMI", "MARCA/MODELO", *SECOES]:
         if c not in itens.columns:
             itens[c] = None
+    # SITUACAO DA AUTORIZACAO substituiu APTO PARA ENTREGA (SIM -> AUTORIZADO); arquivo antigo cai no APTO
+    itens["SITUACAO DA AUTORIZACAO"] = [s if normalizar(s) else a for s, a in
+                                        zip(itens["SITUACAO DA AUTORIZACAO"], itens["APTO PARA ENTREGA"])]
 
     itens["PMIB"] = itens["CODIGO PMIB"].map(normalizar_pmib)
     itens["STATUS_N"] = itens["STATUS"].map(normalizar).map(lambda s: STATUS_CANONICO.get(s, "SEM STATUS" if not s else s))
@@ -459,15 +479,14 @@ def ler_itens(raiz: pathlib.Path = PASTA_PMIB, hoje: dt.date | None = None,
     # Datas e situacoes — calculadas em listas Python puras: o pandas 3 converte
     # date/None em datetime64/NaT, e NaT e "verdadeiro" num `if`.
     dt_email = [_para_data(v) for v in itens["DATA DO EMAIL COMUNICANDO ENTREGA"]]
-    dt_aut = [_para_data(v) for v in itens["DATA DA AUTORIZACAO ITAIPU"]]
-    dt_entrega = [_para_data(v) for v in itens["DATA DA ENTREGA"]]
-    itens["APTO"] = itens["APTO PARA ENTREGA"].map(normalizar).eq("SIM")
     itens["ENTREGUE"] = itens["EQUIPAMENTO ENTREGUE"].map(normalizar).eq("SIM")
-    sit = [situacao_autorizacao(e, a, d, n, hoje) for e, a, d, n in zip(
-        dt_email, itens["APTO PARA ENTREGA"], dt_aut, itens["EQUIPAMENTO ENTREGUE"])]
-    itens["SITUACAO_AUT"] = [s[0] for s in sit]
+    # a mesma regra que o SIG-FT grava: recalculada aqui para o painel nao depender de o SIG-FT ter rodado hoje
+    sit = [situacao_autorizacao(e, s, n, hoje, d) for e, s, n, d in zip(
+        dt_email, itens["SITUACAO DA AUTORIZACAO"], itens["EQUIPAMENTO ENTREGUE"], itens["DIAS DE ATRASO"])]
+    itens["SITUACAO_AUT"] = [s[0] or "SEM PEDIDO" for s in sit]
+    itens["APTO"] = itens["SITUACAO_AUT"].eq("AUTORIZADO")
     itens["PRAZO_AUT"] = pd.Series([s[1].isoformat() if s[1] else None for s in sit], index=itens.index, dtype=object)
-    itens["DU_ATRASO"] = pd.Series([s[2] for s in sit], index=itens.index, dtype=object)
+    itens["DIAS_ATRASO"] = pd.Series([s[2] for s in sit], index=itens.index, dtype=object)
     itens["SITUACAO_LMR"] = [situacao_lmr(e, l, hoje) for e, l in zip(dt_email, itens["APLICACAO - LMR"])]
     itens["DIAS_DESDE_EMAIL"] = pd.Series([(hoje - e).days if e else None for e in dt_email], index=itens.index, dtype=object)
     itens["PENDENCIA"] = [
@@ -475,6 +494,4 @@ def ler_itens(raiz: pathlib.Path = PASTA_PMIB, hoje: dt.date | None = None,
         for i, ef, st, sa, ap, en, tp in zip(itens.index, itens["E_FICHA"], itens["STATUS_N"], itens["SITUACAO_AUT"],
                                               itens["APTO"], itens["ENTREGUE"], itens["TIPO_ENTREGA"])]
     itens["DT_EMAIL"] = pd.Series([e.isoformat() if e else None for e in dt_email], index=itens.index, dtype=object)
-    itens["DT_AUT"] = pd.Series([e.isoformat() if e else None for e in dt_aut], index=itens.index, dtype=object)
-    itens["DT_ENTREGA"] = pd.Series([e.isoformat() if e else None for e in dt_entrega], index=itens.index, dtype=object)
     return itens

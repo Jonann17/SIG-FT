@@ -1,6 +1,6 @@
 ---
 tags: [plano, gerenciamento, mapeadora, status-pmib]
-status: desenho-definido-pelo-luan
+status: semeado-em-2026-10-04 (linha de revisão em todos os _STATUS_PMIB; falta o SIG-FT ler — T3)
 criado: 2026-09-02
 ---
 

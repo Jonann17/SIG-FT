@@ -64,6 +64,8 @@ DEFINE
         CALCULATE ( [Fichas], Itens[Tipo de Entrega] = "NÃO CLASSIFICADO" )
 
     // ---------------- Trilha logística: autorização de Itaipu (15 d.u.) ----------------
+    // SITUAÇÃO DA AUTORIZAÇÃO e DIAS DE ATRASO vêm do SIG-FT (gravados no _STATUS_PMIB).
+    // DIAS DE ATRASO = dias corridos além do prazo; congela quando Itaipu autoriza.
     MEASURE Itens[Pedidos de Autorização] =
         CALCULATE ( [Fichas], NOT ISBLANK ( Itens[Data Email] ) )
     MEASURE Itens[Aguardando Itaipu no Prazo] =
@@ -73,11 +75,14 @@ DEFINE
     MEASURE Itens[Autorizações Atrasadas Itaipu] =
         CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "ATRASADO ITAIPU" )
     MEASURE Itens[Autorizadas] =
-        CALCULATE ( [Fichas], Itens[Situacao Autorizacao] IN { "AUTORIZADO", "AUTORIZADO NO PRAZO", "AUTORIZADO COM ATRASO" } )
+        CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "AUTORIZADO" )
     MEASURE Itens[Autorizadas com Atraso] =
-        CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "AUTORIZADO COM ATRASO" )
-    MEASURE Itens[Maior Atraso Itaipu (d.u.)] =
-        CALCULATE ( MAX ( Itens[Dias Uteis de Atraso] ), Itens[Situacao Autorizacao] = "ATRASADO ITAIPU" )
+        // autorizadas cujo DIAS DE ATRASO ficou congelado acima de zero
+        CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "AUTORIZADO", Itens[Dias de Atraso] > 0 )
+    MEASURE Itens[Maior Atraso Itaipu (dias)] =
+        CALCULATE ( MAX ( Itens[Dias de Atraso] ), Itens[Situacao Autorizacao] = "ATRASADO ITAIPU" )
+    MEASURE Itens[Atraso Médio Itaipu (dias)] =
+        CALCULATE ( AVERAGE ( Itens[Dias de Atraso] ), Itens[Situacao Autorizacao] = "ATRASADO ITAIPU" )
     MEASURE Itens[Aptas Aguardando Entrega] =
         CALCULATE ( [Itens Físicos], Itens[Apto] = TRUE (), Itens[Entregue] = FALSE () )
 
@@ -117,6 +122,9 @@ DEFINE
         COUNTROWS ( FILTER ( Listas, Listas[Status Real] = "APROVADO" && ( ISBLANK ( [Fichas] ) || [Fichas] = 0 ) ) )
     MEASURE Listas[Listas sem Responsável] =
         CALCULATE ( [Listas], Listas[Tem Responsavel] = FALSE () )
+    MEASURE Listas[Listas com Revisão Desatualizada] =
+        // a revisão em uso no _STATUS_PMIB não é a última emitida no Aconex
+        CALCULATE ( [Listas], Listas[Revisao Desatualizada] = TRUE () )
 
     // ---------------- Listas de preços (Aconex) ----------------
     MEASURE PrecosAconex[Listas de Preços Emitidas] =

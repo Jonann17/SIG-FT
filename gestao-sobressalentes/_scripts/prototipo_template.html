@@ -290,7 +290,7 @@ function interno() {
     {rot: "Fichas no PMIB", val: fmt(F.length), det: `${fmt(new Set(F.map(i => i.l)).size)} listas com ficha · ${semFicha} listas aprovadas ainda sem ficha`},
     {rot: "Emitidas para Itaipu", val: fmt(emit.length), det: `${pct(emit.length, F.length)} · ${fmt(F.filter(i => i.st === "APROVADO").length)} aprovadas · ${fmt(F.filter(i => i.st === "EM CORREÇÃO").length)} em correção`},
     {rot: "Autorização atrasada (Itaipu)", icone: atras.length ? "critical" : "good", val: fmt(atras.length),
-     det: atras.length ? `além de 15 d.u. · maior atraso ${Math.max(...atras.map(i => i.du || 0))} d.u. · ${fmt(aguard.length)} no prazo` : `${fmt(aguard.length)} aguardando no prazo`},
+     det: atras.length ? `além de 15 d.u. · maior atraso ${Math.max(...atras.map(i => i.du || 0))} dias · ${fmt(aguard.length)} no prazo` : `${fmt(aguard.length)} aguardando no prazo`},
     {rot: "LMR fora do compromisso", icone: lmrFora.length ? "serious" : "good", val: fmt(lmrFora.length),
      det: "mais de 3 meses do e-mail de intenção sem Aplicação LMR"},
     {rot: "Material entregue", val: fmt(entregues.length), det: `fichas · físicos classificados: ${fmt(fis.filter(i => i.en).length)} de ${fmt(fis.length)} · ${usd(valorEnt)} de ${usd(valor)}`},
@@ -326,7 +326,7 @@ function interno() {
     .sort((a, b) => b.maxdu - a.maxdu || (b.valores["AGUARDANDO ITAIPU"] || 0) - (a.valores["AGUARDANDO ITAIPU"] || 0));
   const c3 = cabecalho("c-aut", "Autorização de entrega — prazo de Itaipu", "Fichas com e-mail de intenção e sem autorização. Prazo: 15 dias úteis do e-mail (feriados nacionais).",
     () => tabela([{t: "Lista", v: "nome"}, {t: "No prazo", v: l => fmt(l.valores["AGUARDANDO ITAIPU"] || 0), n: 1},
-      {t: "Atrasadas", v: l => fmt(l.valores["ATRASADO ITAIPU"] || 0), n: 1}, {t: "1º pedido", v: l => br(l.pedido)}, {t: "Maior atraso (d.u.)", v: l => l.maxdu || "—", n: 1}], autL, false));
+      {t: "Atrasadas", v: l => fmt(l.valores["ATRASADO ITAIPU"] || 0), n: 1}, {t: "1º pedido", v: l => br(l.pedido)}, {t: "Maior atraso (dias)", v: l => l.maxdu || "—", n: 1}], autL, false));
   barrasEmpilhadas(c3, autL, SA, {rotuloFim: rotuloAtraso});
 
   // compromisso LMR por lista
@@ -348,7 +348,7 @@ const br = iso => iso ? iso.split("-").reverse().join("/") : "—";
 // a barra mostra quantas; o rótulo diz quantas estão fora e o pior atraso
 const rotuloAtraso = l => {
   const fora = l.valores["ATRASADO ITAIPU"] || 0;
-  return fora ? `${fmt(fora)} fora · até ${l.maxdu} d.u.` : "no prazo";
+  return fora ? `${fmt(fora)} fora · até ${l.maxdu} dias` : "no prazo";
 };
 
 function filaDeTrabalho(F) {
@@ -374,7 +374,7 @@ function filaDeTrabalho(F) {
     area.replaceChildren(tabela([
       {t: "Lista", v: i => nomeLista[i.l] || i.l}, {t: "PMIB", v: "p"}, {t: "Descrição", v: "d"}, {t: "Status", v: "st"},
       {t: "Pendência", v: "pe"}, {t: "Autorização", v: i => i.sa === "SEM PEDIDO" ? "—" : i.sa},
-      {t: "Atraso (d.u.)", v: i => i.du || "—", n: 1}, {t: "Dias desde o e-mail", v: i => i.de ?? "—", n: 1},
+      {t: "Dias de atraso", v: i => i.du || "—", n: 1}, {t: "Dias desde o e-mail", v: i => i.de ?? "—", n: 1},
       {t: "Tipo de entrega", v: "t"}, {t: "Procurement", v: i => i.pc || "—"}], linhas.slice(0, 400)),
       linhas.length > 400 ? el("p", {class: "vazio"}, `Mostrando 400 de ${fmt(linhas.length)} — refine pelo filtro.`) : null);
   }
@@ -447,7 +447,7 @@ function itaipu() {
     .sort((a, b) => b.maxdu - a.maxdu);
   const c3 = cabecalho("c-aut-ib", "Pedidos de autorização de entrega", "Prazo contratual: 15 dias úteis a partir do e-mail de intenção de entrega.",
     () => tabela([{t: "Lista", v: "nome"}, {t: "Fichas", v: l => fmt(Object.values(l.valores).reduce((s, x) => s + x, 0)), n: 1},
-      {t: "Pedido em", v: l => br(l.pedido)}, {t: "Prazo", v: l => br(l.prazo)}, {t: "Dias úteis além do prazo", v: l => l.maxdu || "—", n: 1}], autL, false));
+      {t: "Pedido em", v: l => br(l.pedido)}, {t: "Prazo", v: l => br(l.prazo)}, {t: "Dias de atraso (maior)", v: l => l.maxdu || "—", n: 1}], autL, false));
   barrasEmpilhadas(c3, autL, SA, {rotuloFim: rotuloAtraso});
 
   precos("c-precos-ib", false);

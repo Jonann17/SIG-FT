@@ -64,3 +64,19 @@ código PMIB **não são dominio da EN.DT**, e sim da SM.DT.
 - **Excel desta máquina (pessoal) está "Produto Não Licenciado"**: automação via Excel não
   roda aqui; a migração v2 usa openpyxl. O LibreOffice está instalado e serve para
   recalcular fórmulas em teste.
+
+## Achados de 04/10/2026 (noite) — aplicação do layout v2
+- **O SIG-FT acha as colunas do `_STATUS_PMIB` pelo nome** — inserir colunas no meio não o faz gravar
+  na coluna errada. Exceção: o módulo **PDM** (`app/views/pdm.py` ≈ 438, modo "selecionar códigos")
+  lê o cabeçalho **fixo na linha 4** (`skiprows=3`): com a linha de revisão, dá "Coluna 'CÓDIGO PMIB'
+  não encontrada" (já dava nas 5 listas que tinham a linha). Tarefa T0 do SIG-FT.
+- **`apto_para_entrega_att.py` não está no repositório**: vive no Box em `15 - PDM/_python_pdm/SIG-FT/`
+  (cópia antiga em `AMP/`). Procura `APTO PARA ENTREGA` pelo nome e salva com openpyxl.
+- **Sem a coluna APTO, o Gestão PMIB escreve "Atualizar template"** nas colunas APTO e ATRASO da
+  mapeadora (não quebra). Até a T2.
+- **Uma lista tinha "Fornecedor" à direita de OBSERVAÇÕES** (#ST00=M00MEU10&MPB020, 99 valores):
+  movida para a FORNECEDOR nova.
+- **A `DATA DE ATUALIZAÇÃO` da mapeadora não é a "DATA DE ALTERAÇÃO" da linha de revisão** (é a do
+  Aconex): por isso a linha foi semeada com "—" na data.
+- **53 fichas com autorização atrasada** em 04/10 (55 linhas); nenhuma consta no export de autorizados
+  de 18/08/2026. A mais antiga: e-mail de 24/06/2025 (446 dias).

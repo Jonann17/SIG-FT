@@ -122,6 +122,101 @@ def serial_excel(d: dt.date) -> int:
 
 
 # --------------------------------------------------------------------------
+# Deslocamento: inserir linhas e colunas como o Excel faz
+# --------------------------------------------------------------------------
+MAX_COL, MAX_LIN = 16384, 1048576
+
+# referencia dentro de formula: [aba!]celula|faixa|colunas|linhas — fora de texto entre aspas
+_RE_REF_FORMULA = re.compile(r"""
+    (?<![\w.$\]'"!\#])                                   # nao e pedaco de nome, numero ou outra referencia
+    (?:(?P<aba>'(?:[^']|'')+'|(?:\[\d+\])?[^\W\d][\w.]*|\[\d+\][\w.]*)!)?
+    (?P<ref>\$?[A-Za-z]{1,3}\$?\d+(?::\$?[A-Za-z]{1,3}\$?\d+)?
+          |\$?[A-Za-z]{1,3}:\$?[A-Za-z]{1,3}
+          |\$?\d+:\$?\d+)
+    (?![\w(!.\[$])                                       # nao e funcao (LOG10() nem nome de aba
+    """, re.X)
+_RE_TEXTO_FORMULA = re.compile(r'("(?:[^"]|"")*")')
+
+
+class Deslocamento:
+    """Insercoes em coordenadas ORIGINAIS. colunas={17: 1} insere 1 coluna antes da Q (a Q e as
+    seguintes andam para a direita); linhas={4: 1} insere 1 linha antes da 4. Uma faixa que
+    contem o ponto de insercao cresce (A2:T2 vira A2:X2), como no Excel."""
+
+    def __init__(self, colunas: dict[int, int] | None = None, linhas: dict[int, int] | None = None):
+        self.colunas = sorted((colunas or {}).items())
+        self.linhas = sorted((linhas or {}).items())
+
+    @staticmethod
+    def _mover(x: int, insercoes: list[tuple[int, int]], maximo: int) -> int:
+        if x >= maximo:                                  # faixa "ate o fim" (A:A, 1:1) continua ate o fim
+            return x
+        return min(maximo, x + sum(n for p, n in insercoes if x >= p))
+
+    def col(self, c: int) -> int:
+        return self._mover(c, self.colunas, MAX_COL)
+
+    def lin(self, r: int) -> int:
+        return self._mover(r, self.linhas, MAX_LIN)
+
+    def col0(self, c0: int) -> int:                      # 0-based (VML, desenhos)
+        return self.col(c0 + 1) - 1
+
+    def lin0(self, r0: int) -> int:
+        return self.lin(r0 + 1) - 1
+
+    # ---------------- texto de referencia ----------------
+    def _ponta(self, s: str) -> str:
+        """Uma ponta de faixa: 'A1', '$A$1', 'A' (coluna inteira) ou '5' (linha inteira)."""
+        m = re.fullmatch(r"(\$?)([A-Za-z]{1,3})?(\$?)(\d+)?", s)
+        if not m or not (m.group(2) or m.group(4)):
+            raise ValueError(f"referência inválida: {s}")
+        d1, letras, d2, num = m.groups()
+        c = self.col(col_numero(letras)) if letras else None
+        r = self.lin(int(num)) if num else None
+        if (letras is None or c == col_numero(letras)) and (num is None or r == int(num)):
+            return s                                     # nao andou: texto intocado
+        return f"{d1}{col_letras(c) if letras else ''}{d2}{r if num else ''}"
+
+    def faixa(self, fx: str) -> str:
+        return ":".join(self._ponta(p) for p in fx.split(":"))
+
+    def sqref(self, s: str) -> str:
+        novo = " ".join(self.faixa(x) for x in s.split())
+        return s if novo == " ".join(s.split()) else novo
+
+    def formula(self, texto: str, nome_aba: str, local: bool) -> str:
+        """Desloca as referencias de uma formula. `local`: a formula mora na propria aba
+        (referencia sem nome de aba aponta para ela). Referencia a outra aba ou a outro
+        arquivo ([1]...) nao anda."""
+        def troca(m: re.Match) -> str:
+            aba = m.group("aba")
+            if aba:
+                nome = aba[1:-1].replace("''", "'") if aba.startswith("'") else aba
+                if nome.startswith("[") or nome.casefold() != nome_aba.casefold():
+                    return m.group(0)
+            elif not local:
+                return m.group(0)
+            return m.group(0)[: m.start("ref") - m.start(0)] + self.faixa(m.group("ref"))
+        partes = _RE_TEXTO_FORMULA.split(texto)
+        for i in range(0, len(partes), 2):
+            partes[i] = _RE_REF_FORMULA.sub(troca, partes[i])
+        return "".join(partes)
+
+
+# filhos de <worksheet> que o deslocamento sabe tratar; outro qualquer = recusa (falha ruidosa)
+_ABA_SUPORTADA = {"sheetPr", "dimension", "sheetViews", "sheetFormatPr", "cols", "sheetData", "sheetCalcPr",
+                  "sheetProtection", "protectedRanges", "autoFilter", "sortState", "mergeCells", "phoneticPr",
+                  "conditionalFormatting", "dataValidations", "hyperlinks", "printOptions", "pageMargins",
+                  "pageSetup", "headerFooter", "ignoredErrors", "drawing", "legacyDrawing", "legacyDrawingHF",
+                  "extLst"}
+REL_COMENTARIOS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
+REL_THREADED = "http://schemas.microsoft.com/office/2017/10/relationships/threadedComment"
+REL_VML = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing"
+REL_DESENHO = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing"
+
+
+# --------------------------------------------------------------------------
 class PlanilhaXlsx:
     def __init__(self, caminho: pathlib.Path | str):
         self.caminho = pathlib.Path(caminho)
@@ -166,9 +261,10 @@ class PlanilhaXlsx:
         with zipfile.ZipFile(buf, "w") as z:
             for info in self._infos:
                 dados = self._bytes[info.filename]
-                if info.filename in self._modificadas:
+                if info.filename in self._modificadas and info.filename in self._arvores:
                     dados = etree.tostring(self._arvores[info.filename], xml_declaration=True,
                                            encoding="UTF-8", standalone=True)
+                # (parte editada como texto — comentarios, VML, desenho, calcChain — ja esta em _bytes)
                 zi = zipfile.ZipInfo(info.filename, date_time=info.date_time)
                 zi.compress_type = info.compress_type
                 zi.external_attr = info.external_attr
@@ -453,3 +549,272 @@ class PlanilhaXlsx:
             if c.get("r") and (c.find(q("v")) is not None or c.find(q("is")) is not None or c.find(q("f")) is not None):
                 fim = max(fim, separar(c.get("r"))[0])
         return fim
+
+    # ---------------- inserir linhas e colunas ----------------
+    def _texto(self, parte: str) -> str:
+        return self._bytes[parte].decode("utf-8")
+
+    def _trocar_texto(self, parte: str, novo: str) -> None:
+        if novo != self._texto(parte):
+            self._bytes[parte] = novo.encode("utf-8")
+            self._mudou(parte)
+
+    def _partes_ligadas(self, parte: str) -> dict[str, list[str]]:
+        """Partes ligadas a uma aba (ou desenho) pelo .rels dela: {tipo: [partes]}."""
+        pasta, nome = parte.rsplit("/", 1)
+        rels = f"{pasta}/_rels/{nome}.rels"
+        if rels not in self._bytes:
+            return {}
+        saida: dict[str, list[str]] = {}
+        for rel in etree.fromstring(self._bytes[rels]):
+            if rel.get("TargetMode") == "External":
+                continue
+            alvo = rel.get("Target")
+            alvo = alvo.lstrip("/") if alvo.startswith("/") else f"{pasta}/{alvo}"
+            partes: list[str] = []
+            for p in alvo.split("/"):                         # resolve '..'
+                if p == "..":
+                    partes.pop()
+                else:
+                    partes.append(p)
+            saida.setdefault(rel.get("Type"), []).append("/".join(partes))
+        return saida
+
+    def deslocar(self, aba: str, d: Deslocamento) -> None:
+        """Insere linhas/colunas na aba como o Excel: celulas, formulas, mesclagens, validacoes,
+        formatacao condicional, filtro, painel congelado, nomes definidos, comentarios (anotacao,
+        thread e a caixa VML), desenhos e cadeia de calculo andam juntos. O que nao souber
+        deslocar, recusa com erro — nunca desloca pela metade."""
+        parte = self.parte_da_aba(aba)
+        ws = self.raiz(parte)
+        for filho in ws:
+            if isinstance(filho.tag, str) and etree.QName(filho).localname not in _ABA_SUPORTADA:
+                raise NotImplementedError(f"'{etree.QName(filho).localname}' na aba {aba}: deslocamento não suportado")
+        ligadas = self._partes_ligadas(parte)
+        for p in ligadas.get(REL_DESENHO, []):
+            if self._partes_ligadas(p):
+                raise NotImplementedError(f"desenho {p} tem gráfico/imagem ligada — não suportado")
+        f_local = lambda t: d.formula(t, aba, True)  # noqa: E731
+
+        # 1. celulas, linhas e formulas. Formula compartilhada: o Excel guarda so a da primeira
+        #    celula e deduz as outras; confere a deducao depois de deslocar e, se nao bater,
+        #    grava a formula explicita em cada celula.
+        sd = ws.find(q("sheetData"))
+        compartilhadas = self._formulas_compartilhadas(sd)
+        esperado: dict[tuple[str, str], str] = {}
+        if compartilhadas:
+            from openpyxl.formula.translate import Translator
+            for si, (mestre, deps) in compartilhadas.items():
+                base = mestre.find(q("f")).text or ""
+                for dep in deps:
+                    t = Translator("=" + base, origin=mestre.get("r")).translate_formula(dep.get("r"))[1:]
+                    esperado[(si, dep.get("r"))] = f_local(t)
+        antigo = {}
+        for row in sd.iterchildren(q("row")):
+            row.set("r", str(d.lin(int(row.get("r")))))
+            sp = row.get("spans")
+            if sp and re.fullmatch(r"\d+:\d+", sp):
+                a, b = map(int, sp.split(":"))
+                row.set("spans", f"{d.col(a)}:{d.col(b)}")
+            for c in row.iterchildren(q("c")):
+                ref = c.get("r")
+                c.set("r", d.faixa(ref))
+                antigo[c] = ref
+                f = c.find(q("f"))
+                if f is None:
+                    continue
+                if f.get("t") == "dataTable":
+                    raise NotImplementedError(f"tabela de dados em {ref}: não suportado")
+                if f.get("ref"):
+                    f.set("ref", d.sqref(f.get("ref")))
+                if f.text:
+                    f.text = f_local(f.text)
+        if compartilhadas:
+            for si, (mestre, deps) in compartilhadas.items():
+                base = mestre.find(q("f")).text or ""
+                deduz = lambda dep: Translator("=" + base, origin=mestre.get("r")).translate_formula(dep.get("r"))[1:]  # noqa: E731
+                if any(deduz(dep) != esperado[(si, antigo[dep])] for dep in deps):
+                    for dep in deps:
+                        f = dep.find(q("f"))
+                        f.attrib.clear()
+                        f.text = esperado[(si, antigo[dep])]
+                    fm = mestre.find(q("f"))
+                    for a in ("t", "ref", "si"):
+                        fm.attrib.pop(a, None)
+        self._indice_linhas.pop(parte, None)
+
+        # 2. dimensao, vistas, colunas
+        dim = ws.find(q("dimension"))
+        if dim is not None and dim.get("ref"):
+            dim.set("ref", d.sqref(dim.get("ref")))
+        for sv in ws.iter(q("sheetView")):
+            if sv.get("topLeftCell"):
+                sv.set("topLeftCell", d.faixa(sv.get("topLeftCell")))
+            for pane in sv.iter(q("pane")):
+                if pane.get("topLeftCell"):
+                    pane.set("topLeftCell", d.faixa(pane.get("topLeftCell")))
+                if pane.get("state") in ("frozen", "frozenSplit"):     # congelado: split = n de linhas/colunas
+                    if pane.get("ySplit"):
+                        pane.set("ySplit", str(d.lin(int(float(pane.get("ySplit"))) + 1) - 1))
+                    if pane.get("xSplit"):
+                        pane.set("xSplit", str(d.col(int(float(pane.get("xSplit"))) + 1) - 1))
+            for sel in sv.iter(q("selection")):
+                if sel.get("activeCell"):
+                    sel.set("activeCell", d.faixa(sel.get("activeCell")))
+                if sel.get("sqref"):
+                    sel.set("sqref", d.sqref(sel.get("sqref")))
+        cols = ws.find(q("cols"))
+        if cols is not None:
+            for c in cols.iterchildren(q("col")):
+                c.set("min", str(d.col(int(c.get("min")))))
+                c.set("max", str(d.col(int(c.get("max")))))
+
+        # 3. filtro e ordenacao
+        for af in ws.iter(q("autoFilter")):
+            ref = af.get("ref")
+            if ref:
+                c1 = limites(ref)[0]
+                for fc in af.iterchildren(q("filterColumn")):
+                    fc.set("colId", str(d.col(c1 + int(fc.get("colId"))) - d.col(c1)))
+                af.set("ref", d.sqref(ref))
+        for ss in ws.iter(q("sortState")):
+            if ss.get("ref"):
+                ss.set("ref", d.sqref(ss.get("ref")))
+            for sc in ss.iterchildren(q("sortCondition")):
+                if sc.get("ref"):
+                    sc.set("ref", d.sqref(sc.get("ref")))
+
+        # 4. mesclagens, formatacao condicional, validacoes, links, faixas protegidas, erros ignorados
+        for tag, attr in (("mergeCell", "ref"), ("conditionalFormatting", "sqref"), ("dataValidation", "sqref"),
+                          ("hyperlink", "ref"), ("protectedRange", "sqref"), ("ignoredError", "sqref")):
+            for el in ws.iter(q(tag)):
+                if el.get(attr):
+                    el.set(attr, d.sqref(el.get(attr)))
+        for tag in ("formula", "formula1", "formula2"):
+            for el in ws.iter(q(tag)):
+                if el.text:
+                    el.text = f_local(el.text)
+        ext = ws.find(q("extLst"))
+        if ext is not None:                                          # x14: validacoes e formatacao por extensao
+            for el in ext.iter(f"{{{NS_XM}}}sqref"):
+                el.text = d.sqref(el.text or "")
+            for el in ext.iter(f"{{{NS_XM}}}f"):
+                if el.text:
+                    el.text = f_local(el.text)
+        self._mudou(parte)
+
+        # 5. nomes definidos e formulas de outras abas que apontam para esta
+        wb = self.raiz("xl/workbook.xml")
+        dn = wb.find(q("definedNames"))
+        if dn is not None:
+            for n in dn.iterchildren(q("definedName")):
+                if n.text:
+                    novo = d.formula(n.text, aba, False)
+                    if novo != n.text:
+                        n.text = novo
+                        self._mudou("xl/workbook.xml")
+        for s in wb.iter(q("sheet")):
+            outra = s.get("name")
+            if outra == aba:
+                continue
+            p_outra = self.parte_da_aba(outra)
+            if p_outra not in self._bytes or aba.encode("utf-8") not in self._bytes[p_outra]:
+                continue
+            raiz = self.raiz(p_outra)
+            for tag in (q("f"), q("formula"), q("formula1"), q("formula2"), f"{{{NS_XM}}}f"):
+                for el in raiz.iter(tag):
+                    if el.text:
+                        novo = d.formula(el.text, aba, False)
+                        if novo != el.text:
+                            el.text = novo
+                            self._mudou(p_outra)
+
+        # 6. comentarios (anotacao + thread + caixa VML) e desenhos — editados como texto:
+        #    so os numeros de posicao mudam, o resto da parte fica byte a byte
+        sub_ref = lambda tag: (lambda t: re.sub(rf'(<{tag}\b[^>]*?\sref=")([^"]+)(")',  # noqa: E731
+                                                lambda m: m.group(1) + d.faixa(m.group(2)) + m.group(3), t))
+        for p in ligadas.get(REL_COMENTARIOS, []):
+            self._trocar_texto(p, sub_ref("comment")(self._texto(p)))
+        for p in ligadas.get(REL_THREADED, []):
+            self._trocar_texto(p, sub_ref("threadedComment")(self._texto(p)))
+        for p in ligadas.get(REL_VML, []):
+            t = self._texto(p)
+            t = re.sub(r"(<x:Row>)\s*(\d+)\s*(</x:Row>)", lambda m: f"{m.group(1)}{d.lin0(int(m.group(2)))}{m.group(3)}", t)
+            t = re.sub(r"(<x:Column>)\s*(\d+)\s*(</x:Column>)", lambda m: f"{m.group(1)}{d.col0(int(m.group(2)))}{m.group(3)}", t)
+
+            def ancora(m: re.Match) -> str:
+                pedacos = re.split(r"(\d+)", m.group(2))
+                nums = pedacos[1::2]
+                if len(nums) != 8:
+                    raise ValueError(f"âncora VML inesperada em {p}: {m.group(2)!r}")
+                for i, f in ((0, d.col0), (2, d.lin0), (4, d.col0), (6, d.lin0)):
+                    nums[i] = str(f(int(nums[i])))
+                pedacos[1::2] = nums
+                return m.group(1) + "".join(pedacos) + m.group(3)
+            self._trocar_texto(p, re.sub(r"(<x:Anchor>)(.*?)(</x:Anchor>)", ancora, t, flags=re.S))
+        for p in ligadas.get(REL_DESENHO, []):
+            t = self._texto(p)
+            if t.count("<xdr:col>") != t.count("<xdr:row>") or (re.search(r"<xdr:(?:two|one)CellAnchor\b", t)
+                                                                and "<xdr:col>" not in t):
+                raise NotImplementedError(f"desenho {p} fora do padrão esperado")
+            t = re.sub(r"(<xdr:col>)(\d+)(</xdr:col>)", lambda m: f"{m.group(1)}{d.col0(int(m.group(2)))}{m.group(3)}", t)
+            t = re.sub(r"(<xdr:row>)(\d+)(</xdr:row>)", lambda m: f"{m.group(1)}{d.lin0(int(m.group(2)))}{m.group(3)}", t)
+            self._trocar_texto(p, t)
+
+        # 7. cadeia de calculo: entradas desta aba (i = sheetId; ausente = o da entrada anterior)
+        if "xl/calcChain.xml" in self._bytes:
+            sid = next(s.get("sheetId") for s in wb.iter(q("sheet")) if s.get("name") == aba)
+            atual = [None]
+
+            def entrada(m: re.Match) -> str:
+                attrs = m.group(1)
+                mi = re.search(r'\si="(\d+)"', attrs)
+                if mi:
+                    atual[0] = mi.group(1)
+                if atual[0] != sid:
+                    return m.group(0)
+                return "<c" + re.sub(r'(\sr=")([^"]+)(")', lambda x: x.group(1) + d.faixa(x.group(2)) + x.group(3),
+                                     attrs) + m.group(2)
+            self._trocar_texto("xl/calcChain.xml", re.sub(r"<c\b([^>]*?)(/?>)", entrada, self._texto("xl/calcChain.xml")))
+
+    @staticmethod
+    def _formulas_compartilhadas(sd: etree._Element) -> dict[str, tuple[etree._Element, list[etree._Element]]]:
+        grupos: dict[str, list] = {}
+        for c in sd.iter(q("c")):
+            f = c.find(q("f"))
+            if f is not None and f.get("t") == "shared" and f.get("si") is not None:
+                g = grupos.setdefault(f.get("si"), [None, []])
+                if f.get("ref") is not None:
+                    g[0] = c
+                else:
+                    g[1].append(c)
+        return {si: (m, deps) for si, (m, deps) in grupos.items() if m is not None and deps}
+
+    def formatar_como_a_esquerda(self, parte: str, colunas: list[int], desde_linha: int = 1) -> int:
+        """Celula vazia nas `colunas` com o estilo da celula a esquerda, em cada linha — o que o
+        Excel faz ao inserir coluna ('mesma formatação da esquerda'). Devolve quantas criou."""
+        n = 0
+        for r in sorted(self._linhas(parte)):
+            if r < desde_linha:
+                continue
+            for col in sorted(colunas):
+                viz = self.celula(parte, f"{col_letras(col - 1)}{r}", criar=False) if col > 1 else None
+                if viz is not None and viz.get("s") and self.celula(parte, f"{col_letras(col)}{r}", criar=False) is None:
+                    self.celula(parte, f"{col_letras(col)}{r}").set("s", viz.get("s"))
+                    n += 1
+        if n:
+            self._mudou(parte)
+        return n
+
+    def mesclar(self, parte: str, ref: str) -> None:
+        ws = self.raiz(parte)
+        mc = ws.find(q("mergeCells"))
+        if mc is None:
+            mc = etree.Element(q("mergeCells"))
+            self._inserir_em_ordem(ws, mc, ORDEM_WORKSHEET)
+        etree.SubElement(mc, q("mergeCell")).set("ref", ref)
+        mc.set("count", str(len(mc)))
+        self._mudou(parte)
+
+    def linha_xml(self, parte: str, r: int, criar: bool = False) -> etree._Element | None:
+        return self._linha(parte, r, criar)

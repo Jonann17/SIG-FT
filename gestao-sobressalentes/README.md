@@ -1,6 +1,7 @@
 ---
 tags: [handoff, leia-primeiro]
 criado: 2026-10-01
+atualizado: 2026-10-04
 autor: sessão Claude Code de 30/09–01/10/2026, a pedido do Luan
 ---
 
@@ -32,9 +33,9 @@ Cole isto no início do chat:
 > Sou o Luan, coordeno a entrega dos sobressalentes. Quero trabalhar na tarefa **N** da
 > seção 5 do README.
 
-Para a migração do `_STATUS_PMIB`, o plano de execução é
-**`07 - Diagnostico/Plano - Reestruturacao do STATUS_PMIB.md`** (o Luan conduz essa parte no chat
-que tem acesso ao Box).
+A migração do `_STATUS_PMIB` para o layout v2 **foi aplicada em 04/10/2026** nos 47 arquivos e no
+template — registro, conferência e como desfazer em
+**`07 - Diagnostico/Plano - Reestruturacao do STATUS_PMIB.md`**.
 
 Para as **correções do SIG-FT na nuvem do GitHub**, o roteiro com o prompt de partida é
 **`07 - Diagnostico/Tarefa SIG-FT - Calculo e Gravacao sem Perda.md`** (fixtures sintéticas em
@@ -54,8 +55,8 @@ na máquina que tem o Box.
 | `_scripts/regras_sobressalentes.py` | **as regras de negócio** em código (15 d.u., PMIB, situação da autorização, LMR, pendência) |
 | `_scripts/gerar_prototipo_dashboard.py` | gera `_gerado/prototipo-dashboard.html` a partir do Box |
 | `_gestao_v2/template/` | template `_STATUS_PMIB` v2 |
-| `_gestao_v2/migrar_status_pmib_v2.py` | migração dos `_STATUS_PMIB` para o v2 |
-| `_gestao_v2/xlsx_cirurgico.py` | editor de `.xlsx` que altera só o necessário e preserva o resto byte a byte (comentários em thread, validações) — modelo para o SIG-FT gravar sem apagar |
+| `_gestao_v2/migrar_status_pmib_v2.py` | migração dos `_STATUS_PMIB` para o v2 (aplicada em 04/10) |
+| `_gestao_v2/xlsx_cirurgico.py` | editor de `.xlsx` que altera só o necessário e preserva o resto byte a byte (comentários em thread, validações); insere linhas/colunas como o Excel — modelo para o SIG-FT gravar sem apagar |
 | `_gestao_v2/powerbi/` | consultas Power Query, medidas DAX e o roteiro (`LEIA-ME.md`) |
 | `_planejamento/` | `findings.md` (achados e divergências) e `progress.md` (histórico) |
 
@@ -191,16 +192,18 @@ na máquina que tem o Box.
 | Entregável | Estado |
 |---|---|
 | `_scripts/regras_sobressalentes.py` | testado (prazos, PMIB, situações, pendência) |
-| Template `_gestao_v2/template/codigo_itaipu_STATUS_PMIB_v2.xlsx` | gerado pelo editor cirúrgico (sem fórmulas, sem aba nova); abre no LibreOffice |
-| `_gestao_v2/migrar_status_pmib_v2.py` + `xlsx_cirurgico.py` | **simulado** em cópias (04/10): **47/47 sem nenhuma perda**, inclusive comentários em thread; todos abrem no LibreOffice. Falta abrir no Excel (piloto). **NÃO aplicado no Box.** Plano: `Plano - Reestruturacao do STATUS_PMIB.md` |
-| `_gestao_v2/powerbi/*.pq` + `05 - Medidas.dax` | escritos; **ainda não montados** no Power BI Desktop |
-| `_gerado/prototipo-dashboard.html` | protótipo das duas visões com dados de 01/10 (abrir no navegador; `#itaipu` no fim da URL abre a visão do cliente) |
+| Template `_gestao_v2/template/codigo_itaipu_STATUS_PMIB_v2.xlsx` | layout v2; **também gravado em `Templates/` no Box** (04/10) |
+| `_gestao_v2/migrar_status_pmib_v2.py` + `xlsx_cirurgico.py` | **APLICADO nos 47 `_STATUS_PMIB` em 04/10/2026** (autorização do Luan): conferência sem nenhuma perda, 47/47 abrem no LibreOffice. Backup `%LOCALAPPDATA%\Sobressalentes-v2\backup_20261004-2342` + versões do Box |
+| `_gestao_v2/powerbi/*.pq` + `05 - Medidas.dax` | atualizados para o layout v2; **ainda não montados** no Power BI Desktop |
+| `_gerado/prototipo-dashboard.html` | protótipo das duas visões com dados de 04/10, já lendo o layout v2 (`#itaipu` no fim da URL abre a visão do cliente) |
 | Notas do cofre | atualizadas: Lista de Precos (PB021), Planilha STATUS_PMIB, Organizacao das Pastas, Mapeamento, Indicadores, findings, progress |
 
-**`_STATUS_PMIB` v2** (decisões de 04/10) = nada existente muda de lugar; bloco novo à direita: TIPO DE
-ENTREGA · FORNECEDOR · PROCUREMENT · DATA DA AUTORIZAÇÃO ITAIPU · PRAZO AUTORIZAÇÃO ITAIPU (15 D.U.) ·
-SITUAÇÃO DA AUTORIZAÇÃO · DIAS ÚTEIS DE ATRASO. As três últimas são **valores gravados pelo SIG-FT**
-(nenhuma fórmula no Excel, nenhuma aba de feriados — o calendário fica no SIG-FT). Sem DATA DA ENTREGA.
+**`_STATUS_PMIB` v2** (layout definido pelo Luan em 04/10, aplicado):
+`... APLICAÇÃO - LMR | TIPO DE ENTREGA | DATA DO EMAIL | SITUAÇÃO DA AUTORIZAÇÃO | DIAS DE ATRASO |
+EQUIPAMENTO ENTREGUE | FORNECEDOR | PROCUREMENT | OBSERVAÇÕES`, e a linha "REVISÃO DA LISTA DE
+SOBRESSALENTES ATUAL EM USO" acima do cabeçalho (cabeçalho na linha 5). SITUAÇÃO substituiu o APTO PARA
+ENTREGA (SIM → AUTORIZADO); SITUAÇÃO e DIAS DE ATRASO (dias corridos além dos 15 d.u.) são **valores
+gravados pelo SIG-FT** — nenhuma fórmula, nenhuma aba de feriados, sem data de autorização nem de entrega.
 Vocabulários das listas suspensas na aba Checklist.
 
 ---
@@ -213,8 +216,9 @@ pip install openpyxl pandas
 python _scripts/gerar_prototipo_dashboard.py
 # migração: primeiro simular (cópias numa pasta temporária, não toca no Box)
 python _gestao_v2/migrar_status_pmib_v2.py --simular
-# aplicar NO BOX (faz backup antes em %LOCALAPPDATA%\Sobressalentes-v2) — só com as planilhas fechadas
-python _gestao_v2/migrar_status_pmib_v2.py --aplicar
+# aplicar NO BOX (faz backup antes em %LOCALAPPDATA%\Sobressalentes-v2) — só com ordem do Luan
+# (os 47 já foram migrados em 04/10; arquivo já no v2 é reconhecido e fica como está)
+python _gestao_v2/migrar_status_pmib_v2.py --aplicar --so "TEXTO DO NOME" 
 ```
 
 Os scripts acham o Box em `~/Box/CMI - Consórcio Itaipu/11 - Ger. Engenharia/15 - PDM`
@@ -227,11 +231,11 @@ Os scripts acham o Box em `~/Box/CMI - Consórcio Itaipu/11 - Ger. Engenharia/15
 
 | N | Tarefa | Precisa de | Referência |
 |---|---|---|---|
-| 1 | Decidir as pendências da seção 6 | Luan | — |
-| 2 | Piloto no Excel, aplicar a migração v2 nos 47 e trocar o template | máquina com Box, autorização | `Plano - Reestruturacao do STATUS_PMIB.md` |
+| 1 | **SIG-FT no layout v2** (início 05/10): T0 cabeçalho na linha 5 · T1 gravar sem openpyxl · T2 situação e dias de atraso · T3 revisão em uso → mapeadora · T4 export de autorizados | repositório SIG-FT (nuvem) | `Tarefa SIG-FT - Calculo e Gravacao sem Perda.md` |
+| 2 | Conferir no Excel do trabalho 2–3 listas migradas (uma com comentário em thread) | Luan | `Plano - Reestruturacao do STATUS_PMIB.md`, seção 6 |
 | 3 | Montar o Power BI v2 (interno, depois Itaipu) | Power BI Desktop | `_gestao_v2/powerbi/LEIA-ME.md` |
-| 4 | SIG-FT: calcular e gravar prazo/situação/atraso (15 d.u.) em cada `_STATUS_PMIB` e parar de salvar com openpyxl | repositório SIG-FT | plano de reestruturação, seção 4 (S1–S6) |
-| 5 | SIG-FT: script de aptos grava a **DATA DA AUTORIZAÇÃO** (a data do export `sobressalentes_autorizados_AAAAMMDDhhmm`) ao virar APTO = SIM | repositório SIG-FT | `apto_para_entrega_att.py` |
+| 4 | Decidir as pendências da seção 6 | Luan | — |
+| 5 | Cobrar as 53 autorizações atrasadas (a mais antiga de 24/06/2025) | Luan / Itaipu | protótipo, aba Entrega |
 | 6 | Follow-up de preços em PB021 (D4) | mapeadora / SIG-FT | seção 2, D4 |
 | 7 | Classificar TIPO DE ENTREGA das 630 fichas | `_STATUS_PMIB` v2 | começar pelas listas com material entregue |
 | 8 | Corrigir a qualidade dos dados (tabela da seção 2) | `_STATUS_PMIB` | — |
@@ -242,15 +246,16 @@ Os scripts acham o Box em `~/Box/CMI - Consórcio Itaipu/11 - Ger. Engenharia/15
 | Decisão | Padrão adotado até decidir |
 |---|---|
 | Calendário dos 15 d.u.: só feriados nacionais do Brasil? Paraguai? Foz? Pontos facultativos? | nacionais BR + Carnaval e Corpus Christi |
-| Mostrar a Itaipu os pedidos de autorização além de 15 d.u. | sim, com data do pedido e prazo |
+| Mostrar a Itaipu os pedidos de autorização além de 15 d.u. | sim, com data do pedido e dias de atraso |
 | Mostrar valor (US$) na visão do cliente | não |
 | Prioridade da fila: entregar material autorizado antes da LMR | sim (dispara o evento de 80%) |
 
 ## 7. Cuidados
 
 - **Box somente leitura.** Só `migrar_status_pmib_v2.py --aplicar` escreve lá, e só com ordem do Luan.
-- Fórmulas do `_STATUS_PMIB` v2 são **para quem lê no Excel**; o Power BI e os scripts recalculam
-  a partir das datas (o openpyxl do SIG-FT apaga o valor calculado ao salvar).
+- O `_STATUS_PMIB` v2 **não tem fórmula**: SITUAÇÃO e DIAS DE ATRASO são valores que o SIG-FT grava.
+- Até a T1 do SIG-FT, cada salvamento dele **apaga os comentários em thread** do arquivo salvo
+  (as listas suspensas, não mais). Preferir Anotação a Comentário até lá.
 - No computador pessoal do Luan o Excel está sem licença (automação COM trava); no trabalho o Excel é
   licenciado. Para testar fórmulas sem Excel: LibreOffice `soffice --headless --convert-to xlsx`.
 - A cópia `15 - PDM/SECOND BRAIN/` no Box foi sincronizada em 01/10/2026, por ordem do Luan

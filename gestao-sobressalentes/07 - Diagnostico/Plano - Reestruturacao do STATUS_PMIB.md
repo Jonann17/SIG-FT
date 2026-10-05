@@ -1,205 +1,133 @@
 ---
 tags: [plano, status-pmib, migracao, handoff]
-status: aguardando-aprovacao
+status: executado
 criado: 2026-10-04
-atualizado: 2026-10-04 (decisões do Luan: sem data da entrega, sem fórmulas, sem aba de feriados, comentários preservados)
-destinatario: Luan e a próxima conversa que for executar
+atualizado: 2026-10-04 (layout definitivo do Luan; aplicado nos 47 _STATUS_PMIB e no template)
+destinatario: Luan e a próxima conversa
 ---
 
-# Plano — Reestruturação do `_STATUS_PMIB` (layout v2)
+# Plano — Reestruturação do `_STATUS_PMIB` (layout v2) — EXECUTADO
 
-> [!info] Para quem vai executar
-> Autocontido. Contexto maior em [[README]] e [[Plano - Sistema de Gestao v2]].
-> Scripts prontos em `_gestao_v2/`: `migrar_status_pmib_v2.py` (a migração) e
-> `xlsx_cirurgico.py` (o editor que não apaga nada). **Nada foi aplicado no Box ainda.**
+> [!success] Aplicado em 04/10/2026, por autorização do Luan
+> Os **47 `_STATUS_PMIB`** e o template `Templates/codigo_itaipu_STATUS_PMIB.xlsx` estão no layout v2.
+> Conferência automática sem nenhuma perda; os 47 abrem no LibreOffice; o que foi gravado no Box é
+> idêntico, byte a byte, às cópias conferidas. Backup dos originais:
+> `%LOCALAPPDATA%\Sobressalentes-v2\backup_20261004-2342` (máquina pessoal do Luan) + histórico de versões do Box.
 
-## 0. Em uma frase
+## 1. O layout (definido pelo Luan em 04/10/2026)
 
-Acrescentar a cada `_STATUS_PMIB` as colunas de **tipo de entrega, fornecedor, procurement,
-data da autorização e situação da autorização de Itaipu** — **sem perder nada** (dado,
-comentários, histórico de versões no Box, listas suspensas) — e passar ao **SIG-FT** todo o
-cálculo, que hoje não existe no Excel e não vai existir.
+Da `APLICAÇÃO - LMR` em diante:
 
-## 1. Decisões do Luan (04/10/2026)
+```
+... | APLICAÇÃO - LMR | TIPO DE ENTREGA | DATA DO EMAIL COMUNICANDO ENTREGA |
+      SITUAÇÃO DA AUTORIZAÇÃO | DIAS DE ATRASO | EQUIPAMENTO ENTREGUE |
+      [extras da lista] | FORNECEDOR | PROCUREMENT | OBSERVAÇÕES | [extras]
+```
 
-| Decisão | Consequência |
-|---|---|
-| **Sem DATA DA ENTREGA** — quase nunca se sabe | coluna fora; continua o `EQUIPAMENTO ENTREGUE` (SIM/NÃO) |
-| **Nenhum cálculo no Excel** — todo cálculo vem do SIG-FT quando roda | PRAZO, SITUAÇÃO e DIAS DE ATRASO são **valores** gravados pelo SIG-FT; nada de fórmula |
-| **Sem aba de feriados** — o calendário é do SIG-FT | feriados em `sigft/config.py`; o Power BI também não calcula dias úteis, só lê |
-| **Comentários são importantes** | nada de salvar com openpyxl: edição cirúrgica do arquivo (seção 3) |
-| DUPLICADO (status) = item repetido **na mesma lista**; ficha duplicada de outro sistema = `PDM.9900.000` + PMIB da original em OBSERVAÇÕES | a migração não mexe em nenhum dos dois |
+e, acima do cabeçalho (que passou a ficar na **linha 5** em todas as listas):
 
-## 2. O que muda em cada arquivo
+```
+REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE ALTERAÇÃO: 03/09/2026
+```
 
-**Nada que existe muda de nome ou de lugar.** Bloco novo à direita da última coluna (em geral
-a partir da **U**; nos 4 arquivos com anotações soltas à direita, depois delas):
-
-| Coluna nova | Quem preenche | Lista suspensa / regra |
+| Coluna | O que é | Quem preenche |
 |---|---|---|
-| **TIPO DE ENTREGA** | pré-preenchido pela lista de preços (por PMIB); o resto, quem cria a ficha | `FÍSICA E DOCUMENTAL` · `DOCUMENTAL` · `TÍTULO` |
-| **FORNECEDOR** | quem cria a ficha (empresa que vendeu ao CMI, não o fabricante) | texto |
-| **PROCUREMENT** | pré-preenchido pela mapeadora quando a lista tem uma pessoa só | lista que aceita nome novo |
-| **DATA DA AUTORIZAÇÃO ITAIPU** | e-mail de autorização, ou o script de aptos (data do export) | data |
-| PRAZO AUTORIZAÇÃO ITAIPU (15 D.U.) | **SIG-FT** | valor: data do e-mail + 15 dias úteis |
-| SITUAÇÃO DA AUTORIZAÇÃO | **SIG-FT** | AGUARDANDO ITAIPU · ATRASADO ITAIPU · AUTORIZADO NO PRAZO · AUTORIZADO COM ATRASO · AUTORIZADO |
-| DIAS ÚTEIS DE ATRASO | **SIG-FT** | dias úteis além do prazo (até a data do cálculo, ou até a autorização) |
+| **TIPO DE ENTREGA** (nova) | FÍSICA E DOCUMENTAL · DOCUMENTAL · TÍTULO | pré-preenchida pela lista de preços (598 linhas); o resto, quem cria a ficha |
+| **SITUAÇÃO DA AUTORIZAÇÃO** (substituiu o APTO PARA ENTREGA, mesma coluna) | AGUARDANDO ITAIPU · ATRASADO ITAIPU · AUTORIZADO | **SIG-FT** (15 dias úteis do e-mail); AUTORIZADO também à mão / pelo export de autorizados |
+| **DIAS DE ATRASO** (nova) | dias **corridos** além do prazo de 15 dias úteis; congela quando Itaipu autoriza | **SIG-FT** |
+| **FORNECEDOR** (nova) | empresa que vendeu ao CMI (não o fabricante) | quem cria a ficha |
+| **PROCUREMENT** (nova) | quem compra | pré-preenchida pela mapeadora quando a lista tem uma pessoa só (1.006 linhas) |
+| Linha da revisão (nova em 42 listas; 5 já tinham) | revisão da lista de sobressalentes que o arquivo reflete | quem reconcilia o arquivo com a lista nova; o SIG-FT copia para a mapeadora |
 
-As três do SIG-FT mostram, ao clicar, a mensagem "Preenchido pelo SIG-FT — não digitar".
+O que **não** entrou, por decisão do Luan: DATA DA AUTORIZAÇÃO (impraticável por ora), coluna de
+PRAZO (o prazo é regra, não dado), DATA DA ENTREGA, qualquer fórmula, aba de feriados.
 
-Mais:
-- **vocabulários** das listas suspensas na aba **Checklist**, à direita do que já existe, com os
-  nomes definidos `lst_status`, `lst_secao`, `lst_simnao`, `lst_tipo_entrega`, `lst_procurement`;
-- **listas suspensas por nome definido** em STATUS, nas seis seções, APTO, EQUIPAMENTO ENTREGUE e
-  nas colunas novas (as antigas, que apontavam para outra aba, são substituídas);
-- título mesclado estendido até o fim do bloco; nome definido `versao_layout_status_pmib = "v2"`.
+Também: vocabulários na aba **Checklist** (`lst_status`, `lst_secao`, `lst_simnao`,
+`lst_tipo_entrega`, `lst_procurement`, `lst_situacao`) e **listas suspensas por nome definido** em
+STATUS, seções, SITUAÇÃO, EQUIPAMENTO ENTREGUE, TIPO e PROCUREMENT — sobrevivem ao openpyxl do SIG-FT.
+Nome definido `versao_layout_status_pmib = "v2"`.
 
-Sem aba nova, sem fórmula, sem formatação condicional nova.
+### Valores gravados na migração
+- `APTO = SIM` → `AUTORIZADO` (636 linhas — todas).
+- Com e-mail e sem autorização: regra dos 15 d.u. em 04/10/2026 → 149 `AGUARDANDO ITAIPU`,
+  55 `ATRASADO ITAIPU` (53 fichas) com DIAS DE ATRASO. Nenhuma delas consta no export de autorizados
+  de 18/08/2026. A mais antiga: e-mail de 24/06/2025 (3 fichas de #ST00=M00MEU10&MPB020, 446 dias).
+- Linha DUPLICADO não autorizada: em branco (a situação vale pela linha da ficha).
+- Linha da revisão: semeada com a `REVISÃO EM USO` da mapeadora; DATA DE ALTERAÇÃO = "—" (não se sabe).
+- `#ST00=M00MEU10&MPB020`: a coluna "Fornecedor" que existia à direita de OBSERVAÇÕES (99 valores)
+  foi **movida** para a FORNECEDOR nova; a coluna antiga ficou vazia.
 
-## 3. Como não perder nada — o editor cirúrgico
+## 2. Como foi feito sem perder nada
 
-### O problema
-O SIG-FT e o primeiro script gravavam com **openpyxl**, que reescreve o arquivo inteiro com o
-que entende e **apaga** o resto. Testado: um salvamento pelo openpyxl apaga os **comentários em
-thread** (autor, data, respostas — 16 arquivos têm) e as **listas suspensas que apontam para outra
-aba** (22 arquivos ainda têm; as dos outros já sumiram assim).
+`_gestao_v2/xlsx_cirurgico.py` edita o pacote do `.xlsx` diretamente (lxml), sem openpyxl:
 
-### A solução: `_gestao_v2/xlsx_cirurgico.py`
-Um `.xlsx` é um pacote (zip) de partes XML. O editor abre o pacote, **altera só três partes** —
-a aba "Lista de Materiais", a aba "Checklist" e a lista de nomes (`xl/workbook.xml`) — e regrava
-**todas as outras exatamente como estavam, byte a byte**: comentários em thread, pessoas,
-anotações, desenhos, estilos, configurações de impressão. Usa `lxml`; não precisa de Excel, roda
-em qualquer máquina.
+- **`deslocar()`** insere colunas e linhas como o "Inserir" do Excel: andam junto as células, as
+  fórmulas (inclusive compartilhadas — conferidas e, se preciso, tornadas explícitas), mesclagens
+  (o título cresce), validações (inclusive as de extensão x14), formatação condicional, filtro e
+  ordenação, painel congelado, seleção, nomes definidos (área de impressão, títulos, filtro),
+  comentários em thread + anotações + a caixa do comentário (VML), desenhos e a cadeia de cálculo.
+  O que não souber deslocar, **recusa** (nunca desloca pela metade).
+- Coluna inserida recebe a formatação da coluna à esquerda, como no Excel.
+- Partes do arquivo não relacionadas saem byte a byte; comentários/VML/desenhos só têm os números de
+  posição trocados. Grava **por cima do mesmo arquivo** (o Box registra versão nova).
 
-| Garantia | Como é conferida (automático, arquivo por arquivo) |
+### Conferência (automática, arquivo por arquivo — `conferir()`)
+| Garantia | Como |
 |---|---|
-| Partes não editadas idênticas | comparação byte a byte com o original |
-| Nenhuma célula existente mudou | comparação célula a célula (valor e fórmula) |
-| Comentários em thread, anotações, formatação condicional e desenhos | contados antes e depois — têm de ser iguais |
-| O SIG-FT ainda acha o cabeçalho | mesma busca que ele faz (`CÓDIGO DO MATERIAL` nas 10 primeiras linhas) |
-| As listas suspensas sobrevivem ao SIG-FT de hoje | o arquivo migrado é salvo de novo pelo openpyxl e as listas continuam lá |
-| Arquivo íntegro | aberto e reconvertido pelo LibreOffice (`--libreoffice`) |
-| Histórico do Box | grava **por cima do mesmo arquivo** (nunca apaga, renomeia ou move): o Box registra versão nova |
+| Toda célula do original está no lugar novo, com o mesmo valor | célula a célula (fórmula: a deslocada); exceção prevista: APTO → SITUAÇÃO |
+| Nada a mais | só as colunas novas, a SITUAÇÃO e a linha da revisão podem ter conteúdo novo |
+| Ordem do cabeçalho | `LMR, TIPO, EMAIL, SITUAÇÃO, DIAS, ENTREGUE, …, FORNECEDOR, PROCUREMENT, OBSERVAÇÕES` |
+| Mesclagens, formatação condicional, nomes definidos | o original deslocado = o migrado; sem mesclagens sobrepostas |
+| Comentários e anotações | posições deslocadas; texto, autores e respostas idênticos |
+| calcChain | toda entrada aponta para célula com fórmula |
+| XML válido para o Excel | linhas e células em ordem crescente |
+| O SIG-FT acha o cabeçalho e as colunas | mesma busca do `pmib_manager` (pandas, 10 primeiras linhas) |
+| Listas suspensas sobrevivem ao SIG-FT de hoje | salva de novo com openpyxl e confere `lst_status`, `lst_tipo_entrega`, `lst_situacao` |
+| Integridade | os 47 abertos e reconvertidos pelo LibreOffice |
 
-### Simulação de 04/10/2026 (cópias, fora do Box)
-**47 de 47 migrados, nenhuma perda**, inclusive os 16 com comentário em thread; todos abrem no
-LibreOffice; 598 TIPO DE ENTREGA e 1.006 PROCUREMENT pré-preenchidos. Com `--calcular`, a
-gravação de prazo/situação/atraso como valores foi conferida em Inversores e PDE (32 atrasadas,
-16 autorizadas; linhas DUPLICADO em branco).
+## 3. Enquanto o SIG-FT não é corrigido (roteiro em [[Tarefa SIG-FT - Calculo e Gravacao sem Perda]])
 
-> [!warning] Falta um teste que só o Excel faz
-> O LibreOffice é mais tolerante que o Excel. O **piloto (Etapa 3) tem de abrir o arquivo no
-> Excel** e confirmar que não aparece "Encontramos um problema em algum conteúdo".
-
-## 4. O SIG-FT passa a fazer o cálculo — e a gravar sem apagar
-
-| # | Mudança no SIG-FT | Detalhe |
+| Situação | Efeito | Gravidade |
 |---|---|---|
-| S1 | **Calcular e gravar** PRAZO, SITUAÇÃO e DIAS DE ATRASO em cada `_STATUS_PMIB` quando o Gestão PMIB roda | regra: `_scripts/regras_sobressalentes.py` → `situacao_autorizacao()`; modelo pronto de gravação: `gravar_calculos()` em `migrar_status_pmib_v2.py`. Linha DUPLICADO fica em branco |
-| S2 | **Feriados em `sigft/config.py`** | prazo = `np.busday_offset(data, 15, roll="backward", holidays=FERIADOS)` — testado igual ao Excel em 1.500 datas; com `roll="forward"` erra |
-| S3 | **Gravar a data do cálculo** | nome definido `sigft_calculado_em` no próprio arquivo (o Power BI mostra "calculado em") |
-| S4 | **Parar de salvar `_STATUS_PMIB` com openpyxl** em todos os módulos que escrevem nele (Criar Fichas, Upload Condições, Upload Specs, Cadastro LMR, Ficha Duplicada, script de aptos) | trocar o `wb.save()` por `PlanilhaXlsx.escrever()` + `salvar()` do editor cirúrgico. Ler com openpyxl continua permitido |
-| S5 | Script de aptos: ao virar APTO = SIM, gravar **DATA DA AUTORIZAÇÃO ITAIPU** | data do export `sobressalentes_autorizados_AAAAMMDDhhmm` |
-| S6 | Coluna `ATRASO` da mapeadora com a mesma regra | contar SITUAÇÃO = ATRASADO ITAIPU |
+| Gestão PMIB não acha mais `APTO PARA ENTREGA` | escreve "Atualizar template" nas colunas APTO e ATRASO da mapeadora (é o aviso que ele já tinha) | visível, sem dano |
+| Módulo PDM, modo "selecionar códigos", lê o cabeçalho fixo na linha 4 | "Coluna 'CÓDIGO PMIB' não encontrada" (já acontecia nas 5 listas com a linha de revisão) | visível, sem dano — T0 |
+| `apto_para_entrega_att.py` (Box, `_python_pdm/SIG-FT/`) procura `APTO PARA ENTREGA` | "Falta coluna APTO" e não grava; marcar AUTORIZADO à mão até a T4 | visível, sem dano |
+| Qualquer salvamento do SIG-FT com openpyxl | **continua apagando os comentários em thread** daquele arquivo — as listas suspensas, não mais | T1 resolve; até lá, preferir Anotação a Comentário |
+| SITUAÇÃO / DIAS DE ATRASO | ficam com o valor de 04/10 até o SIG-FT recalcular (T2) | o Power BI mostra o que está gravado |
 
-Até S4 estar feito, **cada salvamento do SIG-FT continua apagando os comentários em thread**
-daquele arquivo (as listas suspensas, não mais — depois da migração elas sobrevivem). Enquanto
-isso, a regra de processo sugerida é usar **Anotação** (nota) em vez de **Comentário**.
+Tudo o mais no SIG-FT acha coluna pelo nome e o cabeçalho dinamicamente — inserir colunas no meio não
+o faz gravar na coluna errada.
 
-## 5. Execução, passo a passo
+## 4. Como desfazer (um arquivo ou todos)
 
-### Etapa 0 — Decisões pendentes
-- [ ] Aprovar o layout da seção 2.
-- [ ] Calendário dos 15 d.u. no SIG-FT: feriados nacionais BR + Carnaval e Corpus Christi? Paraguai? Foz?
-- [ ] Até o S4: usar Anotação em vez de Comentário nos `_STATUS_PMIB`?
-
-### Etapa 1 — Preparação
-- [ ] Avisar a equipe: ninguém com `_STATUS_PMIB` aberto e **SIG-FT parado** durante a migração.
-- [ ] Box sincronizado; nenhum `~$...` (trava do Excel) nas pastas.
-- [ ] Sala Segura: a lista de preços vigente só existe como `ST00=U01&MPB021 - Copy.xlsm` — voltar ao
-      nome oficial `#ST00=U01&MPB021.xlsm`, senão os 199 itens ficam sem TIPO DE ENTREGA pré-preenchido.
-- [ ] Python 3.12 com `openpyxl`, `pandas`, `lxml`; cópia deste pacote (GitHub ou Box).
-
-### Etapa 1b — Teste no Box (feito em 04/10/2026, por ordem do Luan)
-Criado `SOBRESSALENTES - PMIB/10- TESTES/TESTE_V2_Banco_de_Baterias_STATUS_PMIB_migrado.xlsx`:
-cópia migrada (com `--calcular`) do `_STATUS_PMIB` de Banco de Baterias — o original **não foi tocado**
-(hash igual). O nome não termina em `_STATUS_PMIB.xlsx` de propósito, para o SIG-FT não confundir
-com a lista real. Conferência: nenhuma perda; 1 comentário em thread, 1 anotação e 3 formatações
-condicionais preservados.
-
-**O que o Luan confere no Excel do trabalho:**
-- [ ] abre sem "Encontramos um problema em algum conteúdo";
-- [ ] comentário em thread em **D20** com autor e respostas;
-- [ ] bloco novo de **U** a **AA**; listas suspensas em STATUS (J), seções, APTO, ENTREGUE, TIPO (U), PROCUREMENT (W);
-- [ ] Z50 e Z51 = `ATRASADO ITAIPU` (34 d.u. em AA), as demais com e-mail = `AUTORIZADO`;
-- [ ] vocabulários na aba Checklist (colunas D a H).
-
-Se estiver tudo certo → autorização para a Etapa 3/4 nos `_STATUS_PMIB` reais.
-Este teste **não** exercita a troca das listas suspensas de extensão (x14), porque esse arquivo não tem;
-esse caminho foi conferido na fixture sintética (`_gestao_v2/fixtures/`) e no LibreOffice.
-
-### Etapa 2 — Simular (não toca no Box)
-```bash
-python _gestao_v2/migrar_status_pmib_v2.py --simular --libreoffice
-```
-- [ ] `relatorio_migracao.csv`: coluna `problemas` toda "—".
-- [ ] Abrir no **Excel** 3 cópias migradas, uma delas com comentário em thread (ex.: Banco de
-      Baterias): sem aviso de reparo; comentários com autor e respostas; listas suspensas funcionando.
-
-### Etapa 3 — Piloto numa lista
-```bash
-python _gestao_v2/migrar_status_pmib_v2.py --aplicar --so "B03BDV10UC012"
-```
-(Gerador Diesel › PDG: pequeno, com e-mails e atrasos reais.)
-- [ ] Abrir no Excel; conferir bloco, listas suspensas, nada de aviso de reparo.
-- [ ] Rodar o SIG-FT (Gestão PMIB) e reabrir: as listas suspensas continuam?
-- [ ] No Box (web): versão nova registrada, anteriores disponíveis.
-
-### Etapa 4 — Aplicar nos demais
-```bash
-python _gestao_v2/migrar_status_pmib_v2.py --aplicar
-```
-
-### Etapa 5 — Template
-- [ ] Copiar `_gestao_v2/template/codigo_itaipu_STATUS_PMIB_v2.xlsx` para `Templates/` com o nome
-      oficial; o antigo vai para `Templates/Obsoleto/`.
-
-### Etapa 6 — SIG-FT (seção 4: S1 a S6)
-Até S1 existir, dá para preencher as colunas uma vez com `--calcular` (mesma regra), sabendo que
-ficam paradas até a próxima rodada.
-
-### Etapa 7 — Preencher o que ficou vazio
-- [ ] TIPO DE ENTREGA das fichas sem lista de preços com a coluna.
-- [ ] FORNECEDOR e PROCUREMENT nas listas com mais de um fornecedor.
-- [ ] DATA DA AUTORIZAÇÃO daqui para frente (ou automática, S5).
-
-## 6. Como desfazer
-
-1. **Pelo backup**: copiar o arquivo de `%LOCALAPPDATA%\Sobressalentes-v2\backup_...\` **por cima**
-   do arquivo no Box — mesmo nome, mesmo lugar.
-2. **Pelo Box**: no navegador, arquivo › Versões › restaurar a anterior.
+1. **Pelo Box** (qualquer máquina): arquivo › Versões › restaurar a anterior a 04/10/2026 23:42.
+2. **Pelo backup** (máquina pessoal): copiar de `%LOCALAPPDATA%\Sobressalentes-v2\backup_20261004-2342\`
+   **por cima** do arquivo no Box — mesmo nome, mesmo lugar. O template está lá como `TEMPLATE_codigo_itaipu_STATUS_PMIB.xlsx`.
 
 Nunca apagar o arquivo migrado para "pôr o antigo no lugar": quebra o histórico de versões.
 
-## 7. Critérios de pronto
+## 5. Para repetir / para uma lista nova
 
-- [ ] Relatório sem `problemas` em todos os arquivos.
-- [ ] Piloto aberto no **Excel** sem aviso de reparo; comentários em thread intactos.
-- [ ] Listas suspensas presentes depois de o SIG-FT salvar o arquivo.
-- [ ] Versões anteriores visíveis no Box.
-- [ ] Template v2 em `Templates/`.
-- [ ] SIG-FT gravando prazo/situação/atraso (S1) sem openpyxl (S4).
-- [ ] Power BI lendo as colunas do SIG-FT (`_gestao_v2/powerbi/03 - Itens.pq`).
+```bash
+python _gestao_v2/migrar_status_pmib_v2.py --simular --libreoffice   # cópias locais, não toca no Box
+python _gestao_v2/migrar_status_pmib_v2.py --aplicar --so "TEXTO"     # só com ordem do Luan
+```
+Arquivo que já está no v2 é reconhecido (tem `SITUAÇÃO DA AUTORIZAÇÃO`) e fica como está.
+Lista nova: nasce do template, que já está no v2.
 
-## 8. Pendências encontradas na simulação
+## 6. Pendências
 
-| Pendência | Onde |
+| Pendência | Onde / quem |
 |---|---|
-| Lista de preços vigente da Sala Segura só existe como `- Copy` | `02 - INFRAESTRUTURA COMPLEMENTAR/SALA SEGURA/` |
-| 2 linhas `DUPLICADO` sem a linha original (1 sem PMIB) | SFC HF-01/02 (item 39); RV parte hidráulica (item 15, `.0794`) |
-| 3 fichas `PDM.9900.000` sem o PMIB da original em OBSERVAÇÕES | PVA (`.1237`), HPU da comporta (`.1180`) e mais 1 |
-| 127 fichas com STATUS `N/A` (126 na Sala Segura) | provável `FICHA CRIADA` |
-| Anotações soltas à direita da tabela em 4 arquivos | o bloco v2 começa depois delas |
+| Conferir no Excel do trabalho 2 ou 3 listas (uma com comentário em thread, ex.: Ventilação das Salas de Baterias U9) | Luan |
+| Arquivo de teste antigo `10- TESTES/TESTE_V2_Banco_de_Baterias_STATUS_PMIB_migrado.xlsx` (layout do 1º teste) pode ser apagado | Luan |
+| DATA DE ALTERAÇÃO da linha de revisão ("—" em 42 listas) | quem reconciliar cada lista |
+| 53 fichas ATRASADO ITAIPU — conferir com o export de autorizados mais recente | Luan / T4 |
+| Lista de preços vigente da Sala Segura só existe como `- Copy` (199 itens sem TIPO pré-preenchido) | `02 - INFRAESTRUTURA COMPLEMENTAR/SALA SEGURA/` |
+| 2 linhas `DUPLICADO` sem a linha original; 3 fichas `PDM.9900.000` sem o PMIB da original | ver protótipo, "qualidade dos dados" |
+| Feriados do Paraguai/Foz entram nos 15 d.u.? | Luan |
+| Cópia `SECOND BRAIN` do Box está na versão de 01/10 | só com nova ordem |
 
 ## Relacionados
-[[README]] · [[Plano - Sistema de Gestao v2]] · [[Planilha STATUS_PMIB]] · [[Ciclo de Vida de um Item]] · [[findings]]
+[[README]] · [[Tarefa SIG-FT - Calculo e Gravacao sem Perda]] · [[Plano - Sistema de Gestao v2]] ·
+[[Planilha STATUS_PMIB]] · [[Plano - Revisao em Uso automatica]] · [[findings]]

@@ -44,9 +44,28 @@ procurement, atraso de Itaipu em 15 d.u.) e um Power BI com visão interna e vis
   na **nuvem do GitHub**, pelo roteiro [[Tarefa SIG-FT - Calculo e Gravacao sem Perda]] (fixtures sintéticas
   em `_gestao_v2/fixtures/`, sem texto real).
 
+## 2026-10-04 (noite) — layout v2 definitivo, APLICADO nos 47
+- O teste no Excel do trabalho funcionou; o Luan redefiniu o layout: TIPO DE ENTREGA à direita da
+  APLICAÇÃO - LMR; SITUAÇÃO DA AUTORIZAÇÃO **no lugar** do APTO PARA ENTREGA; DIAS DE ATRASO (não
+  "dias úteis"); FORNECEDOR e PROCUREMENT por último, antes de OBSERVAÇÕES; **sem** DATA DA
+  AUTORIZAÇÃO e **sem** coluna de prazo; linha "REVISÃO DA LISTA ... EM USO" em todas as listas.
+- `xlsx_cirurgico.py` ganhou `Deslocamento` + `deslocar()`: inserir colunas/linhas como o Excel
+  (células, fórmulas — inclusive compartilhadas —, mesclagens, validações x14, formatação
+  condicional, filtro, ordenação, painel congelado, nomes definidos, comentários + caixa VML,
+  desenhos, calcChain). Recusa o que não sabe deslocar.
+- `migrar_status_pmib_v2.py` reescrito; conferência célula a célula na posição nova.
+- Simulação 47/47 sem perda; 47/47 abrem no LibreOffice; **aplicado no Box** (backup em
+  `%LOCALAPPDATA%\Sobressalentes-v2\backup_20261004-2342`); arquivos do Box idênticos às cópias
+  conferidas. Template `Templates/codigo_itaipu_STATUS_PMIB.xlsx` também atualizado (gravado por cima).
+- Números: 636 linhas AUTORIZADO (= os 636 SIM), 149 AGUARDANDO, 55 ATRASADO (53 fichas; a mais
+  antiga com e-mail de 24/06/2025, 446 dias). Linha de revisão inserida em 42 listas (5 já tinham),
+  semeada com a REVISÃO EM USO da mapeadora (DATA DE ALTERAÇÃO "—": não se sabe).
+- Regras (`situacao_autorizacao` nova), protótipo, Power BI (`00`, `03`, `04`, `05`, LEIA-ME) e o
+  roteiro do SIG-FT ([[Tarefa SIG-FT - Calculo e Gravacao sem Perda]], T0–T5) atualizados.
+
 ## Proximas sessões
-1. **Aplicar a migração v2** (depois das decisões da seção 8 do plano) e montar o Power BI.
-2. **SIG-FT**: 15 d.u. no `pmib_manager.py`; carimbar DATA DA AUTORIZAÇÃO no script de aptos;
-   follow-up de preços em PB021.
+1. **SIG-FT** (a partir de 05/10, na nuvem): T0 cabeçalho na linha 5 (módulo PDM); T1 gravar sem
+   openpyxl; T2 situação/dias de atraso; T3 revisão em uso → mapeadora; T4 export de autorizados.
+2. **Montar o Power BI** a partir de `_gestao_v2/powerbi/`.
 3. **Plano de ação — fichas emitidas sem Aplicação LMR** (269 fora do compromisso em 01/10).
 4. **Gargalo das Listas de Preços**: campo "revisão da lista de sobressalentes a que se refere".

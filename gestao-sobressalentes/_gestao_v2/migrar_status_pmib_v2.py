@@ -2,45 +2,48 @@
 """
 Migra planilhas _STATUS_PMIB para o layout v2 — sem perder nada.
 
-Como: edicao "cirurgica" do .xlsx (`xlsx_cirurgico.py`). So tres partes do
-arquivo sao alteradas — a aba "Lista de Materiais", a aba "Checklist" e a
-lista de nomes definidos (xl/workbook.xml). Todo o resto (comentarios em
-thread, anotacoes, desenhos, estilos, impressao...) sai identico, byte a byte.
-O openpyxl so e usado para LER (achar cabecalho, ultima linha, valores).
+Layout v2 (definido pelo Luan em 04/10/2026), da APLICACAO - LMR em diante:
 
-O que muda no arquivo (nada que ja existe muda de lugar ou de nome):
-  1. Bloco novo A DIREITA da tabela:
-       TIPO DE ENTREGA | FORNECEDOR | PROCUREMENT | DATA DA AUTORIZACAO ITAIPU |
-       PRAZO AUTORIZACAO ITAIPU (15 D.U.) | SITUACAO DA AUTORIZACAO | DIAS UTEIS DE ATRASO
-     As tres ultimas sao VALORES gravados pelo SIG-FT quando roda (nada de
-     formula no Excel). Nascem vazias — ou preenchidas uma vez com --calcular.
-  2. Vocabularios das listas suspensas na aba Checklist (a direita do que ja
-     existe) + nomes definidos lst_status, lst_secao, lst_simnao,
-     lst_tipo_entrega, lst_procurement.
-  3. Listas suspensas recriadas POR NOME DEFINIDO em STATUS, secoes, APTO,
-     EQUIPAMENTO ENTREGUE e nas colunas novas. As atuais apontam para outra aba
-     e sao gravadas como extensao — o openpyxl do SIG-FT as apaga ao salvar.
-     Por nome definido, sobrevivem.
-  4. Pre-preenchimento, so em celula vazia: TIPO DE ENTREGA pela lista de
-     precos (PMIB) e PROCUREMENT pela mapeadora (lista com uma pessoa so).
+  ... | APLICAÇÃO - LMR | TIPO DE ENTREGA | DATA DO EMAIL COMUNICANDO ENTREGA |
+        SITUAÇÃO DA AUTORIZAÇÃO | DIAS DE ATRASO | EQUIPAMENTO ENTREGUE |
+        [colunas extras da lista] | FORNECEDOR | PROCUREMENT | OBSERVAÇÕES | [extras]
+
+  e, acima do cabecalho, a linha
+  "REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE ALTERAÇÃO: dd/mm/aaaa"
+
+  - TIPO DE ENTREGA, DIAS DE ATRASO, FORNECEDOR e PROCUREMENT sao colunas INSERIDAS
+    (como "Inserir coluna" do Excel: o que esta a direita anda, formulas e referencias acompanham).
+  - SITUAÇÃO DA AUTORIZAÇÃO SUBSTITUI a APTO PARA ENTREGA, na mesma coluna: SIM vira
+    AUTORIZADO; o resto e calculado pela regra dos 15 dias uteis (AGUARDANDO / ATRASADO
+    ITAIPU). Depois disso, quem atualiza e o SIG-FT, quando roda.
+  - DIAS DE ATRASO: dias corridos alem do prazo de 15 dias uteis do e-mail (SIG-FT grava).
+  - A linha da revisao em uso e INSERIDA (o cabecalho desce uma linha) nas listas que ainda
+    nao a tem; a revisao vem da coluna REVISAO EM USO da mapeadora. A partir dai quem mantem
+    e o _STATUS_PMIB, e o Gestao PMIB do SIG-FT passa a ler dali para a mapeadora.
+  - Lista que ja tinha uma coluna "Fornecedor" a direita de OBSERVACOES: os valores vao para
+    a FORNECEDOR nova e a coluna antiga fica vazia.
+
+Como: edicao "cirurgica" do .xlsx (`xlsx_cirurgico.py`) — nada de openpyxl para gravar.
+Comentarios (em thread e anotacoes), listas suspensas, formatacao condicional, filtro,
+painel congelado e o resto andam junto com as celulas; partes nao relacionadas saem
+identicas, byte a byte. Nenhuma formula e criada.
 
 MODOS
   python migrar_status_pmib_v2.py --simular [--libreoffice]
-      Copia os _STATUS_PMIB do Box para uma pasta LOCAL (%TEMP%), migra as
-      COPIAS e confere cada uma contra o original. Nao toca no Box.
+      Copia os _STATUS_PMIB do Box para uma pasta LOCAL (%TEMP%), migra as COPIAS e confere
+      cada uma contra o original. Nao toca no Box.
   python migrar_status_pmib_v2.py --template ORIGEM DESTINO
       Gera o template v2 a partir de uma copia do template atual.
   python migrar_status_pmib_v2.py --aplicar [--so TEXTO] [--confirmo]
-      Migra OS ARQUIVOS DO BOX, gravando por cima do mesmo arquivo (o Box guarda
-      a versao anterior), depois de copiar cada original para
-      %LOCALAPPDATA%\\Sobressalentes-v2\\backup_AAAAMMDD-HHMM.
-      >>> SO RODAR COM AUTORIZACAO EXPLICITA DO LUAN. <<<
+      Migra OS ARQUIVOS DO BOX, gravando por cima do mesmo arquivo (o Box guarda a versao
+      anterior), depois de copiar cada original para %LOCALAPPDATA%\\Sobressalentes-v2\\backup_*.
+      >>> SO COM AUTORIZACAO EXPLICITA DO LUAN (dada em 04/10/2026 para os 47). <<<
 
-CONFERENCIA (automatica, por arquivo): partes nao editadas identicas; nenhuma
-celula existente alterada; comentarios, anotacoes, formatacao condicional e
-desenhos na mesma quantidade; o SIG-FT ainda acha o cabecalho; as listas
-suspensas sobrevivem a um save do openpyxl. Com --libreoffice, abre cada
-arquivo no LibreOffice como teste extra de integridade.
+CONFERENCIA (automatica, por arquivo): toda celula, formula, mesclagem, formatacao condicional,
+comentario e nome definido do original esta no lugar novo esperado; nada a mais alem das
+colunas/linha novas; a ordem do cabecalho e a do layout v2; partes nao relacionadas identicas;
+o SIG-FT ainda acha o cabecalho; as listas suspensas sobrevivem a um save do openpyxl; com
+--libreoffice, o arquivo abre no LibreOffice.
 
 Requisitos: openpyxl, pandas, lxml
 """
@@ -51,6 +54,7 @@ import datetime as dt
 import math
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -60,6 +64,7 @@ import zipfile
 
 import openpyxl
 import pandas as pd
+from lxml import etree
 
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
@@ -67,15 +72,18 @@ AQUI = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(AQUI.parent / "_scripts"))
 sys.path.insert(0, str(AQUI))
 import regras_sobressalentes as R  # noqa: E402
-from xlsx_cirurgico import PlanilhaXlsx, col_letras, limites  # noqa: E402
+from xlsx_cirurgico import (NS_XM, PlanilhaXlsx, Deslocamento, REL_COMENTARIOS, REL_DESENHO,  # noqa: E402
+                            REL_THREADED, REL_VML, col_letras, limites, q)
 
-C_TIPO, C_FORN, C_PROC = "TIPO DE ENTREGA", "FORNECEDOR", "PROCUREMENT"
-C_DT_AUT = "DATA DA AUTORIZAÇÃO ITAIPU"
-C_PRAZO, C_SIT, C_DIAS = "PRAZO AUTORIZAÇÃO ITAIPU (15 D.U.)", "SITUAÇÃO DA AUTORIZAÇÃO", "DIAS ÚTEIS DE ATRASO"
-BLOCO = [C_TIPO, C_FORN, C_PROC, C_DT_AUT, C_PRAZO, C_SIT, C_DIAS]
-DO_SIGFT = {C_PRAZO, C_SIT, C_DIAS}                 # valores gravados pelo SIG-FT, nao formulas
-COLUNAS_DATA = {C_DT_AUT, C_PRAZO}
-LARGURAS = {C_TIPO: 20, C_FORN: 18, C_PROC: 18, C_DT_AUT: 15, C_PRAZO: 15, C_SIT: 24, C_DIAS: 11}
+ABA, ABA_LISTAS = "Lista de Materiais", "Checklist"
+C_LMR, C_EMAIL, C_APTO = "APLICAÇÃO - LMR", "DATA DO EMAIL COMUNICANDO ENTREGA", "APTO PARA ENTREGA"
+C_ENT, C_OBS = "EQUIPAMENTO ENTREGUE", "OBSERVAÇÕES"
+C_TIPO, C_SIT, C_DIAS = "TIPO DE ENTREGA", "SITUAÇÃO DA AUTORIZAÇÃO", "DIAS DE ATRASO"
+C_FORN, C_PROC = "FORNECEDOR", "PROCUREMENT"
+NOVAS = [C_TIPO, C_DIAS, C_FORN, C_PROC]
+LARGURAS = {C_TIPO: 20, C_SIT: 22, C_DIAS: 10, C_FORN: 18, C_PROC: 18}
+TEXTO_REVISAO = "REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: {rev} - DATA DE ALTERAÇÃO: {data}"
+VERSAO_LAYOUT = '"v2"'
 
 LISTAS = {
     "lst_status": ["FICHA CRIADA", "DUPLICADO", "COM O FORNECEDOR", "EM ELABORAÇÃO", "EM CORREÇÃO",
@@ -86,14 +94,11 @@ LISTAS = {
     # alerta "aviso": aceita nome novo. Tirada da mapeadora.
     "lst_procurement": ["BRUNA", "DOUGLAS COSTA", "FLAVIA SANTOS", "JULLY CARVALHO", "LEILA MEDEIROS",
                         "LYVIA MACHADO", "MARCELO MENDES", "SUELEN BRUM"],
+    "lst_situacao": R.SITUACOES_AUTORIZACAO,
 }
-VALIDACOES_EXISTENTES = {
-    "STATUS": "lst_status", "INFO. GERAIS": "lst_secao", "CARACT. TECNICAS": "lst_secao",
-    "DOCUMENTOS E IMAGENS": "lst_secao", "CONDICOES": "lst_secao", "VALORIZACAO": "lst_secao",
-    "APLICACAO - LMR": "lst_secao", "APTO PARA ENTREGA": "lst_simnao", "EQUIPAMENTO ENTREGUE": "lst_simnao",
-}
+SECOES_COL = ["INFO. GERAIS", "CARACT. TECNICAS", "DOCUMENTOS E IMAGENS", "CONDICOES", "VALORIZACAO", "APLICACAO - LMR"]
 FOLGA_LINHAS = 50          # validacoes vao alem da ultima linha com dado
-ABA, ABA_LISTAS = "Lista de Materiais", "Checklist"
+N = R.normalizar
 
 
 # --------------------------------------------------------------------------
@@ -105,7 +110,7 @@ def cabecalho(ws) -> tuple[int, dict[str, int]]:
         for c in range(1, 80):
             v = ws.cell(linha, c).value
             if v not in (None, ""):
-                nomes.setdefault(R.normalizar(v), c)
+                nomes.setdefault(N(v), c)
         if "DESCRICAO" in nomes:
             return linha, nomes
     raise ValueError("cabeçalho com DESCRIÇÃO não encontrado nas 14 primeiras linhas")
@@ -119,13 +124,18 @@ def ultima_linha_com_dado(ws, hdr: int, col_desc: int) -> int:
     return fim
 
 
-def ultima_coluna_usada(ws, desde_linha: int) -> int:
-    fim = 0
-    for row in ws.iter_rows(min_row=desde_linha):
-        for c in row:
-            if c.value not in (None, ""):
-                fim = max(fim, c.column)
-    return fim
+def linha_revisao(ws, hdr: int) -> int | None:
+    for r in range(1, hdr):
+        for c in range(1, 6):
+            if N(ws.cell(r, c).value).startswith("REVISAO DA LISTA"):
+                return r
+    return None
+
+
+def para_data(v) -> dt.date | None:
+    if isinstance(v, str) and re.fullmatch(r"\s*\d{1,2}/\d{1,2}/\d{4}\s*", v):
+        return dt.datetime.strptime(v.strip(), "%d/%m/%Y").date()
+    return R._para_data(v)
 
 
 def inventario(caminho: pathlib.Path) -> dict[str, int]:
@@ -149,7 +159,7 @@ def garantir_listas(p: PlanilhaXlsx, parte: str) -> None:
     """Vocabularios na aba Checklist, a direita do que ja existe, + nomes definidos."""
     atual = p.nome_definido("lst_status")
     if atual and atual.startswith(f"{ABA_LISTAS}!"):
-        inicio = limites(atual.split("!")[1])[0]               # ja migrado: reescreve no mesmo lugar
+        inicio = limites(atual.split("!")[1])[0]               # ja tem: reescreve no mesmo lugar
     else:
         inicio = p.ultima_coluna_com_valor(parte) + 2
     for j, (nome, valores) in enumerate(LISTAS.items()):
@@ -161,164 +171,327 @@ def garantir_listas(p: PlanilhaXlsx, parte: str) -> None:
         p.definir_nome(nome, f"{ABA_LISTAS}!${col}$3:${col}${2 + len(valores)}")
 
 
-def migrar_planilha(caminho: pathlib.Path, prefill_tipo: dict[str, str], prefill_proc: str | None,
-                    folga: int = FOLGA_LINHAS, calcular: bool = False, hoje: dt.date | None = None) -> dict:
-    resumo = {"arquivo": caminho.name, "colunas_inseridas": 0, "inicio_bloco": "", "aviso": "",
-              "tipo_preenchido": 0, "procurement_preenchido": 0, "calculados": 0}
-    ws = openpyxl.load_workbook(caminho)[ABA]                   # leitura
+def planejar(ws) -> dict:
+    """Le a estrutura e decide o que inserir (coordenadas ORIGINAIS)."""
     hdr, mapa = cabecalho(ws)
-    ultimo_cab = max(mapa.values())
-    fim_dados = ultima_linha_com_dado(ws, hdr, mapa["DESCRICAO"])
-    primeira, ultima = hdr + 1, max(fim_dados, hdr + 1) + folga
+    if N(C_SIT) in mapa:
+        return {"ja_migrado": True, "hdr": hdr, "mapa": mapa}
+    faltam = [c for c in (C_LMR, C_EMAIL, C_APTO, C_ENT, C_OBS, "CÓDIGO PMIB", "STATUS") if N(c) not in mapa]
+    if faltam:
+        raise ValueError(f"colunas esperadas ausentes: {', '.join(faltam)}")
+    c = lambda nome: mapa[N(nome)]  # noqa: E731
+    insercoes: dict[int, list[str]] = {}
+    insercoes.setdefault(c(C_LMR) + 1, []).append(C_TIPO)
+    insercoes.setdefault(c(C_APTO) + 1, []).append(C_DIAS)
+    insercoes.setdefault(c(C_OBS), []).extend([C_FORN, C_PROC])
+    forn_antigo = mapa.get("FORNECEDOR")
+    if forn_antigo and forn_antigo < c(C_OBS):
+        raise ValueError("já existe FORNECEDOR antes de OBSERVAÇÕES — tratar à mão")
+    rev = linha_revisao(ws, hdr)
+    d = Deslocamento({pos: len(n) for pos, n in insercoes.items()}, {} if rev else {hdr: 1})
+    novas = {}
+    for pos, nomes in insercoes.items():
+        base = d.col(pos) - len(nomes)
+        for k, nome in enumerate(nomes):
+            novas[nome] = base + k
+    return {"ja_migrado": False, "hdr": hdr, "mapa": mapa, "d": d, "insercoes": insercoes, "novas": novas,
+            "tem_revisao": rev is not None, "forn_antigo": forn_antigo,
+            "fim": ultima_linha_com_dado(ws, hdr, mapa["DESCRICAO"])}
+
+
+def migrar_planilha(caminho: pathlib.Path, prefill_tipo: dict[str, str], prefill_proc: str | None,
+                    revisao: str | None, folga: int = FOLGA_LINHAS, hoje: dt.date | None = None) -> dict:
+    hoje = hoje or dt.date.today()
+    resumo = {"arquivo": caminho.name, "aviso": "", "linha_revisao": "", "tipo_preenchido": 0,
+              "procurement_preenchido": 0, "autorizado": 0, "aguardando": 0, "atrasado": 0,
+              "autorizado_por_entregue": 0, "fornecedor_movido": 0}
+    ws = openpyxl.load_workbook(caminho)[ABA]                   # leitura
+    plano = planejar(ws)
+    resumo["_plano"] = plano
+    if plano["ja_migrado"]:
+        resumo.update(ok=True, aviso="já estava no layout v2 — nada feito")
+        return resumo
+    hdr, mapa, d, novas, fim = plano["hdr"], plano["mapa"], plano["d"], plano["novas"], plano["fim"]
+    col = lambda nome: mapa[N(nome)]  # noqa: E731
 
     p = PlanilhaXlsx(caminho)
     L, C = p.parte_da_aba(ABA), p.parte_da_aba(ABA_LISTAS)
-    col_email = col_letras(mapa["DATA DO EMAIL COMUNICANDO ENTREGA"])
 
-    # 1. bloco novo: logo apos o cabecalho, ou apos anotacoes soltas a direita
-    faltam = [c for c in BLOCO if R.normalizar(c) not in mapa]
-    pos = {R.normalizar(c): mapa[R.normalizar(c)] for c in BLOCO if R.normalizar(c) in mapa}
-    if faltam:
-        usada = ultima_coluna_usada(ws, hdr)
-        inicio = ultimo_cab + 1 if usada <= ultimo_cab else usada + 2
-        if usada > ultimo_cab:
-            resumo["aviso"] = (f"anotações soltas em {col_letras(ultimo_cab + 1)}:{col_letras(usada)} — "
-                               f"bloco v2 começa em {col_letras(inicio)}")
-        est_cab = p.estilo(L, f"{col_letras(ultimo_cab)}{hdr}")
-        for k, nome in enumerate(faltam):
-            col = inicio + k
-            p.escrever(L, f"{col_letras(col)}{hdr}", nome, est_cab)
-            p.largura(L, col, LARGURAS[nome])
-            pos[R.normalizar(nome)] = col
-            resumo["colunas_inseridas"] += 1
-        # celulas de dados com o estilo da linha (bordas); colunas de data com o estilo da data do e-mail
-        for r in range(primeira, fim_dados + 1):
-            est, est_data = p.estilo(L, f"{col_letras(ultimo_cab)}{r}"), p.estilo(L, f"{col_email}{r}")
-            for nome in faltam:
-                ref = f"{col_letras(pos[R.normalizar(nome)])}{r}"
-                e = est_data if nome in COLUNAS_DATA else est
-                if e is not None and not p.tem_valor(L, ref):
-                    p.escrever(L, ref, None, e)
-        # titulo mesclado acompanha a tabela, se o bloco estiver colado nela
-        if inicio == ultimo_cab + 1:
-            fim_bloco = inicio + len(faltam) - 1
-            for m in p.mesclagens(L):
-                c1, _, c2, r2 = limites(m.get("ref"))
-                if r2 < hdr and c2 == ultimo_cab and c1 <= 2:
-                    p.estender_mesclagem(L, m, fim_bloco)
-        resumo["inicio_bloco"] = col_letras(inicio)
+    # comentario preso a coluna Fornecedor antiga impede mover (ficaria preso a celula vazia)
+    forn_antigo = plano["forn_antigo"]
+    if forn_antigo:
+        refs = []
+        for parte in p._partes_ligadas(L).get(REL_COMENTARIOS, []):
+            refs += re.findall(r'<comment\b[^>]*?\sref="([^"]+)"', p._texto(parte))
+        if any(limites(r)[0] == forn_antigo for r in refs):
+            forn_antigo = None
+            resumo["aviso"] += "coluna Fornecedor antiga tem comentário: não movida. "
+        plano["forn_movido"] = forn_antigo
+
+    # 1. inserir as colunas (e a linha da revisao) — tudo o que referencia celula acompanha
+    p.deslocar(ABA, d)
+    H = d.lin(hdr)
+    F = d.lin(fim) if fim > hdr else H
+    p.formatar_como_a_esquerda(L, list(novas.values()))
+    for nome, c in novas.items():
+        p.escrever(L, f"{col_letras(c)}{H}", nome)
+        p.largura(L, c, LARGURAS[nome])
+    c_sit = d.col(col(C_APTO))
+    p.escrever(L, f"{col_letras(c_sit)}{H}", C_SIT)
+    p.largura(L, c_sit, LARGURAS[C_SIT])
+    plano["c_sit"] = c_sit
+
+    # 2. SITUACAO DA AUTORIZACAO (no lugar do APTO) e DIAS DE ATRASO — valores, nao formulas
+    for r in range(hdr + 1, fim + 1):
+        status = N(ws.cell(r, col("STATUS")).value)
+        apto = ws.cell(r, col(C_APTO)).value
+        entregue = ws.cell(r, col(C_ENT)).value
+        sit, _, dias = R.situacao_autorizacao(para_data(ws.cell(r, col(C_EMAIL)).value), apto, entregue, hoje)
+        if status == "DUPLICADO" and N(apto) != "SIM":       # a situacao vale pela linha da ficha
+            sit, dias = "", None
+        ref_sit = f"{col_letras(c_sit)}{d.lin(r)}"
+        if sit or p.tem_valor(L, ref_sit):
+            p.escrever(L, ref_sit, sit or None)
+        if dias is not None:
+            p.escrever(L, f"{col_letras(novas[C_DIAS])}{d.lin(r)}", dias)
+        if sit == "AUTORIZADO":
+            resumo["autorizado"] += 1
+            resumo["autorizado_por_entregue"] += N(apto) != "SIM"
+        resumo["aguardando"] += sit == "AGUARDANDO ITAIPU"
+        resumo["atrasado"] += sit == "ATRASADO ITAIPU"
+
+    # 3. linha da revisao em uso, acima do cabecalho, com o estilo da linha de cima
+    if not plano["tem_revisao"]:
+        r_rev, r_cima = hdr, hdr - 1                         # (o cabecalho desceu para hdr + 1)
+        faixa_cima = next((limites(m.get("ref")) for m in p.mesclagens(L)
+                           if limites(m.get("ref"))[1] == r_cima == limites(m.get("ref"))[3]), None)
+        c1, c2 = (faixa_cima[0], faixa_cima[2]) if faixa_cima else (min(mapa.values()), d.col(max(mapa.values())))
+        nova, cima = p.linha_xml(L, r_rev, criar=True), p.linha_xml(L, r_cima)
+        if cima is not None:
+            for a in ("ht", "customHeight"):
+                if cima.get(a):
+                    nova.set(a, cima.get(a))
+        texto = TEXTO_REVISAO.format(rev=revisao or "—", data="—")
+        for c in range(c1, c2 + 1):
+            p.escrever(L, f"{col_letras(c)}{r_rev}", texto if c == c1 else None, p.estilo(L, f"{col_letras(c)}{r_cima}"))
+        if c2 > c1:
+            p.mesclar(L, f"{col_letras(c1)}{r_rev}:{col_letras(c2)}{r_rev}")
+        resumo["linha_revisao"] = f"inserida ({revisao or '—'})"
+        plano["revisao"] = (r_rev, c1, c2, texto)
     else:
-        resumo["inicio_bloco"] = col_letras(pos[R.normalizar(C_TIPO)])
-    letra = {nome: col_letras(pos[R.normalizar(nome)]) for nome in BLOCO}
+        resumo["linha_revisao"] = "já existia"
 
-    # 2. vocabularios e 3. listas suspensas por nome definido
+    # 4. Fornecedor antigo (a direita de OBSERVACOES) -> FORNECEDOR nova
+    if forn_antigo:
+        c_old = d.col(forn_antigo)
+        for r in range(hdr, fim + 1):
+            v = ws.cell(r, forn_antigo).value
+            if v in (None, ""):
+                continue
+            if r > hdr:
+                p.escrever(L, f"{col_letras(novas[C_FORN])}{d.lin(r)}", v)
+                resumo["fornecedor_movido"] += 1
+            p.escrever(L, f"{col_letras(c_old)}{d.lin(r)}", None)
+        resumo["aviso"] += f"coluna Fornecedor antiga ({col_letras(c_old)}) movida para {col_letras(novas[C_FORN])}. "
+
+    # 5. listas suspensas por NOME DEFINIDO (sobrevivem ao openpyxl do SIG-FT)
     garantir_listas(p, C)
-    existentes = {mapa[k]: v for k, v in VALIDACOES_EXISTENTES.items() if k in mapa}
-    p.remover_validacoes(L, set(existentes) | {pos[R.normalizar(n)] for n in BLOCO}, primeira)
-    faixa = lambda col: f"{col}{primeira}:{col}{ultima}"  # noqa: E731
-    for col, nome in existentes.items():
-        p.adicionar_validacao(L, faixa(col_letras(col)), "list", nome, alerta="warning")
-    p.adicionar_validacao(L, faixa(letra[C_TIPO]), "list", "lst_tipo_entrega", titulo="Tipo de entrega",
-                          mensagem="FÍSICA E DOCUMENTAL (sai na nota fiscal) · DOCUMENTAL (componente, só ficha) · TÍTULO (conjunto)")
-    p.adicionar_validacao(L, faixa(letra[C_PROC]), "list", "lst_procurement", alerta="warning",
-                          titulo="Procurement", mensagem="Escolha da lista ou digite um nome novo.")
-    p.adicionar_validacao(L, faixa(letra[C_DT_AUT]), "date", "DATE(2024,1,1)", "DATE(2030,12,31)", "between",
-                          alerta="warning", titulo="Data", mensagem="Data em que Itaipu autorizou a entrega.")
-    for nome in (C_PRAZO, C_SIT, C_DIAS):
-        p.adicionar_validacao(L, faixa(letra[nome]), "none", titulo="Preenchido pelo SIG-FT",
-                              mensagem="Calculado pelo SIG-FT quando roda (15 dias úteis do e-mail de intenção). Não digitar.")
+    primeira, ultima = H + 1, max(F, H + 1) + folga
+    regras = {d.col(col("STATUS")): ("lst_status", "warning", "", "")}
+    for s in SECOES_COL:
+        if s in mapa:
+            regras[d.col(mapa[s])] = ("lst_secao", "warning", "", "")
+    regras[c_sit] = ("lst_situacao", "warning", "Preenchido pelo SIG-FT",
+                     "Atualizado pelo SIG-FT: 15 dias úteis a partir do e-mail de intenção. AUTORIZADO pode ser marcado à mão.")
+    regras[d.col(col(C_ENT))] = ("lst_simnao", "warning", "", "")
+    regras[novas[C_TIPO]] = ("lst_tipo_entrega", "stop", "Tipo de entrega",
+                             "FÍSICA E DOCUMENTAL (sai na nota fiscal) · DOCUMENTAL (componente, só ficha) · TÍTULO (conjunto)")
+    regras[novas[C_PROC]] = ("lst_procurement", "warning", "Procurement", "Escolha da lista ou digite um nome novo.")
+    p.remover_validacoes(L, set(regras) | {novas[C_DIAS]}, primeira)
+    faixa = lambda c: f"{col_letras(c)}{primeira}:{col_letras(c)}{ultima}"  # noqa: E731
+    for c, (nome, alerta, titulo, msg) in sorted(regras.items()):
+        p.adicionar_validacao(L, faixa(c), "list", nome, alerta=alerta, titulo=titulo, mensagem=msg)
+    p.adicionar_validacao(L, faixa(novas[C_DIAS]), "none", titulo="Preenchido pelo SIG-FT",
+                          mensagem="Dias corridos além do prazo de 15 dias úteis do e-mail. Congela quando Itaipu autoriza. Não digitar.")
 
-    # 4. pre-preenchimento — so celula vazia, so linha com PMIB valido
-    c_pmib = mapa["CODIGO PMIB"]
-    for r in range(primeira, fim_dados + 1):
-        pmib = R.normalizar_pmib(ws.cell(r, c_pmib).value)
+    # 6. pre-preenchimento — so celula vazia, so linha com PMIB valido
+    for r in range(hdr + 1, fim + 1):
+        pmib = R.normalizar_pmib(ws.cell(r, col("CÓDIGO PMIB")).value)
         if not pmib:
             continue
-        est = p.estilo(L, f"{col_letras(ultimo_cab)}{r}")
         for nome, valor, chave in ((C_TIPO, prefill_tipo.get(pmib), "tipo_preenchido"),
                                    (C_PROC, prefill_proc, "procurement_preenchido")):
-            ref = f"{letra[nome]}{r}"
+            ref = f"{col_letras(novas[nome])}{d.lin(r)}"
             if valor and not p.tem_valor(L, ref):
-                p.escrever(L, ref, valor, p.estilo(L, ref) or est)
+                p.escrever(L, ref, valor)
                 resumo[chave] += 1
 
-    # 5. opcional: a primeira rodada do calculo que depois e do SIG-FT
-    if calcular:
-        resumo["calculados"] = gravar_calculos(p, L, ws, mapa, letra, primeira, fim_dados, hoje or dt.date.today())
-
-    p.definir_nome("versao_layout_status_pmib", '"v2"')
+    p.definir_nome("versao_layout_status_pmib", VERSAO_LAYOUT)
     p.salvar()
     resumo["partes_alteradas"] = ", ".join(sorted(p.partes_modificadas))
     resumo["ok"] = True
     return resumo
 
 
-def gravar_calculos(p: PlanilhaXlsx, L: str, ws, mapa: dict, letra: dict, primeira: int, fim: int, hoje: dt.date) -> int:
-    """Prazo, situacao e atraso como VALORES — o que o SIG-FT passa a fazer a cada execucao.
-    Linha DUPLICADO fica em branco (a situacao vale pela linha da ficha)."""
-    n = 0
-    col = lambda nome: mapa.get(R.normalizar(nome))  # noqa: E731
-    for r in range(primeira, fim + 1):
-        status = R.normalizar(ws.cell(r, mapa["STATUS"]).value) if "STATUS" in mapa else ""
-        email = ws.cell(r, col("DATA DO EMAIL COMUNICANDO ENTREGA")).value
-        aut = ws.cell(r, col(C_DT_AUT)).value if col(C_DT_AUT) else None
-        apto = ws.cell(r, col("APTO PARA ENTREGA")).value if col("APTO PARA ENTREGA") else None
-        entregue = ws.cell(r, col("EQUIPAMENTO ENTREGUE")).value if col("EQUIPAMENTO ENTREGUE") else None
-        d_email = email.date() if isinstance(email, dt.datetime) else None
-        d_aut = aut.date() if isinstance(aut, dt.datetime) else None
-        sit, prazo, du = R.situacao_autorizacao(d_email, apto, d_aut, entregue, hoje)
-        vazio = status == "DUPLICADO" or sit == "SEM PEDIDO"
-        p.escrever(L, f"{letra[C_PRAZO]}{r}", None if vazio else prazo, p.estilo(L, f"{letra[C_PRAZO]}{r}"))
-        p.escrever(L, f"{letra[C_SIT]}{r}", None if vazio else sit, p.estilo(L, f"{letra[C_SIT]}{r}"))
-        p.escrever(L, f"{letra[C_DIAS]}{r}", None if vazio else du, p.estilo(L, f"{letra[C_DIAS]}{r}"))
-        n += not vazio
-    return n
+# --------------------------------------------------------------------------
+# Conferencia: tudo o que existia esta no lugar novo; nada a mais
+# --------------------------------------------------------------------------
+def _igual(x, y) -> bool:
+    if isinstance(x, float) and isinstance(y, float):
+        return math.isclose(x, y, rel_tol=1e-12, abs_tol=1e-12)
+    return x == y
 
 
-# --------------------------------------------------------------------------
-# Conferencia: nada do que existia pode mudar
-# --------------------------------------------------------------------------
-def conferir(original: pathlib.Path, migrado: pathlib.Path, libreoffice: bool = False) -> list[str]:
-    problemas = []
-    po = PlanilhaXlsx(original)
-    editaveis = {po.parte_da_aba(ABA), po.parte_da_aba(ABA_LISTAS), "xl/workbook.xml"}
-    with zipfile.ZipFile(original) as za, zipfile.ZipFile(migrado) as zb:
-        if za.namelist() != zb.namelist():
-            problemas.append("lista de partes do arquivo mudou")
-        for n in za.namelist():
-            if n not in editaveis and n in zb.namelist() and za.read(n) != zb.read(n):
-                problemas.append(f"parte alterada sem querer: {n}")
-    a = R.ler_tabela(original, ABA, max_col=80)
-    b = R.ler_tabela(migrado, ABA, max_col=80)
-    if len(a) != len(b):
-        problemas.append(f"linhas com dado mudaram: {len(a)} -> {len(b)}")
-    problemas += [f"coluna nova ausente: {c}" for c in (R.normalizar(x) for x in BLOCO) if c not in b.columns]
-    # toda celula preenchida do original (valor ou formula) continua igual, no mesmo lugar
+def _sem_posicoes(t: str) -> str:
+    t = re.sub(r'(\sref=")[^"]*(")', r"\1\2", t)
+    for tag in ("x:Row", "x:Column", "x:Anchor", "xdr:col", "xdr:row"):
+        t = re.sub(rf"(<{tag}>).*?(</{tag}>)", r"\1\2", t, flags=re.S)
+    return t
+
+
+def conferir(original: pathlib.Path, migrado: pathlib.Path, plano: dict, libreoffice: bool = False) -> list[str]:
+    problemas: list[str] = []
+    if plano.get("ja_migrado"):
+        return problemas
+    d, novas, hdr = plano["d"], plano["novas"], plano["hdr"]
+    po, pm = PlanilhaXlsx(original), PlanilhaXlsx(migrado)
+    L = po.parte_da_aba(ABA)
+    ligadas = po._partes_ligadas(L)
+    texto_pos = [p for t in (REL_COMENTARIOS, REL_THREADED, REL_VML, REL_DESENHO) for p in ligadas.get(t, [])]
+    editaveis = {L, po.parte_da_aba(ABA_LISTAS), "xl/workbook.xml", "xl/calcChain.xml", *texto_pos}
+
+    # 1. partes: as mesmas; as nao relacionadas identicas; as de posicao so mudam numeros de posicao
+    if list(po._bytes) != list(pm._bytes):
+        problemas.append("lista de partes do arquivo mudou")
+    for n in po._bytes:
+        if n not in editaveis and po._bytes[n] != pm._bytes.get(n):
+            problemas.append(f"parte alterada sem querer: {n}")
+    for n in texto_pos:
+        if _sem_posicoes(po._texto(n)) != _sem_posicoes(pm._texto(n)):
+            problemas.append(f"{n}: mudou além das posições")
+
+    # 2. celulas: cada uma do original no lugar novo, com o mesmo valor (ou a formula deslocada)
     wa = openpyxl.load_workbook(original)[ABA]
-    wbk = openpyxl.load_workbook(migrado)
-    wm = wbk[ABA]
+    wbm = openpyxl.load_workbook(migrado)
+    wm = wbm[ABA]
+    c_apto, c_sit = plano["mapa"][N(C_APTO)], plano["c_sit"]
+    forn = plano.get("forn_movido")
+    esperado: dict[tuple[int, int], object] = {}
+    for row in wa.iter_rows():
+        for c in row:
+            if c.value in (None, ""):
+                continue
+            v = c.value
+            alvo = (d.col(c.column), d.lin(c.row))
+            if isinstance(v, str) and v.startswith("="):
+                v = "=" + d.formula(v[1:], ABA, True)
+            if c.column == c_apto:
+                v = C_SIT if c.row == hdr else ("AUTORIZADO" if N(v) == "SIM" else v)
+            if forn and c.column == forn:
+                if c.row == hdr:
+                    continue
+                alvo = (novas[C_FORN], d.lin(c.row))
+            esperado[alvo] = v
+    for (cc, rr), v in esperado.items():
+        atual = wm.cell(rr, cc).value
+        if not _igual(atual, v):
+            problemas.append(f"{col_letras(cc)}{rr}: esperado {v!r}, ficou {atual!r}")
+            if len(problemas) > 12:
+                break
+    livres = set(novas.values()) | {c_sit}
+    r_rev = plano.get("revisao", (None,))[0]
+    extras = [c.coordinate for row in wm.iter_rows() for c in row
+              if c.value not in (None, "") and (c.column, c.row) not in esperado
+              and c.column not in livres and c.row != r_rev]
+    if extras:
+        problemas.append(f"{len(extras)} célula(s) inesperada(s): {', '.join(extras[:5])}")
 
-    def igual(x, y) -> bool:
-        if isinstance(x, float) and isinstance(y, float):
-            return math.isclose(x, y, rel_tol=1e-12, abs_tol=1e-12)
-        return x == y
-    mudaram = [c.coordinate for row in wa.iter_rows() for c in row
-               if c.value not in (None, "") and not igual(wm[c.coordinate].value, c.value)]
-    if mudaram:
-        problemas.append(f"{len(mudaram)} célula(s) existentes mudaram: {', '.join(mudaram[:5])}")
-    # o SIG-FT acha o cabecalho por 'CÓDIGO DO MATERIAL' nas 10 primeiras linhas (pandas)
-    if not any(any(str(c).strip().upper() == "CÓDIGO DO MATERIAL" for c in
-                   pd.read_excel(migrado, sheet_name=ABA, skiprows=i, nrows=1, na_filter=False).columns)
-               for i in range(10)):
+    # 3. cabecalho na ordem do layout v2
+    H = d.lin(hdr)
+    nomes = [N(wm.cell(H, c).value) for c in range(1, wm.max_column + 1) if wm.cell(H, c).value not in (None, "")]
+    i = nomes.index(N(C_LMR))
+    seq = nomes[i: nomes.index(N(C_OBS)) + 1]
+    if seq[:6] != [N(x) for x in (C_LMR, C_TIPO, C_EMAIL, C_SIT, C_DIAS, C_ENT)] or seq[-3:] != [N(x) for x in (C_FORN, C_PROC, C_OBS)]:
+        problemas.append(f"ordem do cabeçalho: {' | '.join(seq)}")
+    if plano.get("revisao"):
+        r, c1, _, texto = plano["revisao"]
+        if wm.cell(r, c1).value != texto:
+            problemas.append("linha da revisão não encontrada")
+
+    # 4. mesclagens, formatacao condicional, nomes definidos: o original deslocado, mais o novo
+    mo = {d.sqref(m.get("ref")) for m in po.mesclagens(L)}
+    mm = {m.get("ref") for m in pm.mesclagens(L)}
+    novas_m = {f"{col_letras(plano['revisao'][1])}{plano['revisao'][0]}:{col_letras(plano['revisao'][2])}{plano['revisao'][0]}"} \
+        if plano.get("revisao") and plano["revisao"][2] > plano["revisao"][1] else set()
+    if mm != mo | novas_m:
+        problemas.append(f"mesclagens: faltam {sorted(mo - mm)[:3]} sobram {sorted(mm - mo - novas_m)[:3]}")
+    caixas = [limites(m) for m in mm]
+    for a in range(len(caixas)):
+        for b in range(a + 1, len(caixas)):
+            x, y = caixas[a], caixas[b]
+            if x[0] <= y[2] and y[0] <= x[2] and x[1] <= y[3] and y[1] <= x[3]:
+                problemas.append("mesclagens sobrepostas")
+    cf = lambda p, desl: sorted((desl(el.get("sqref")), tuple(desl(f.text or "", True) for f in el.iter(q("formula"))))  # noqa: E731
+                                for el in p.raiz(L).iter(q("conditionalFormatting")))
+    if cf(po, lambda s, f=False: d.formula(s, ABA, True) if f else d.sqref(s)) != cf(pm, lambda s, f=False: s):
+        problemas.append("formatação condicional não acompanhou")
+    dn = lambda p: {(n.get("name"), n.get("localSheetId")): n.text for n in p.raiz("xl/workbook.xml").iter(q("definedName"))}  # noqa: E731
+    no, nm = dn(po), dn(pm)
+    for k, v in no.items():
+        if k[0] in LISTAS or k[0] == "versao_layout_status_pmib":
+            continue
+        if nm.get(k) != d.formula(v or "", ABA, False):
+            problemas.append(f"nome definido {k[0]}: {nm.get(k)!r}")
+
+    # 5. comentarios no lugar novo (anotacao e thread) e cadeia de calculo apontando para formula
+    def refs(p: PlanilhaXlsx, tipo: str, tag: str) -> list[str]:
+        return [r for n in p._partes_ligadas(L).get(tipo, []) for r in re.findall(rf'<{tag}\b[^>]*?\sref="([^"]+)"', p._texto(n))]
+    for tipo, tag in ((REL_COMENTARIOS, "comment"), (REL_THREADED, "threadedComment")):
+        if [d.faixa(r) for r in refs(po, tipo, tag)] != refs(pm, tipo, tag):
+            problemas.append(f"{tag}: posições não acompanharam")
+    if "xl/calcChain.xml" in pm._bytes:
+        sid = next(s.get("sheetId") for s in pm.raiz("xl/workbook.xml").iter(q("sheet")) if s.get("name") == ABA)
+        com_formula = {c.get("r") for c in pm.raiz(L).iter(q("c")) if c.find(q("f")) is not None}
+        atual = None
+        for m in re.finditer(r"<c\b([^>]*?)/?>", pm._texto("xl/calcChain.xml")):
+            mi = re.search(r'\si="(\d+)"', m.group(1))
+            atual = mi.group(1) if mi else atual
+            r = re.search(r'\sr="([^"]+)"', m.group(1))
+            if atual == sid and r and r.group(1) not in com_formula:
+                problemas.append(f"calcChain aponta {r.group(1)} sem fórmula")
+                break
+
+    # 6. ordem das linhas/celulas no XML (o Excel exige crescente)
+    ult_r = 0
+    for row in pm.raiz(L).find(q("sheetData")).iterchildren(q("row")):
+        r = int(row.get("r"))
+        cols = [limites(c.get("r"))[0] for c in row.iterchildren(q("c"))]
+        if r <= ult_r or cols != sorted(set(cols)):
+            problemas.append(f"linha {r}: ordem de linhas/células inválida")
+            break
+        ult_r = r
+
+    # 7. o SIG-FT acha o cabecalho (CÓDIGO DO MATERIAL nas 10 primeiras linhas, via pandas)
+    prev = pd.read_excel(migrado, sheet_name=ABA, header=None, nrows=10, na_filter=False)
+    linha = next((i for i, row in enumerate(prev.values.tolist())
+                  if any(str(v).strip().upper() == "CÓDIGO DO MATERIAL" for v in row)), None)
+    if linha is None:
         problemas.append("SIG-FT não acharia o cabeçalho (CÓDIGO DO MATERIAL)")
-    # as listas suspensas precisam sobreviver a um save do openpyxl (o que o SIG-FT faz hoje)
+    else:
+        colunas = {str(c).strip().upper() for c in pd.read_excel(migrado, sheet_name=ABA, skiprows=linha, nrows=1).columns}
+        faltam = {x for x in (C_SIT, C_DIAS, C_TIPO, C_FORN, C_PROC, "CÓDIGO PMIB", C_EMAIL, C_ENT)} - colunas
+        if faltam:
+            problemas.append(f"leitura pelo SIG-FT não vê: {', '.join(sorted(faltam))}")
+
+    # 8. listas suspensas sobrevivem a um save do openpyxl (o que o SIG-FT faz hoje)
     tmp = migrado.with_name(migrado.stem + ".roundtrip.xlsx")
-    wbk.save(tmp)
+    wbm.save(tmp)
     dvs = [dv.formula1 for dv in openpyxl.load_workbook(tmp)[ABA].data_validations.dataValidation]
     tmp.unlink()
-    for nome in ("lst_tipo_entrega", "lst_status"):
+    for nome in ("lst_tipo_entrega", "lst_status", "lst_situacao"):
         if not any(f and nome in f for f in dvs):
             problemas.append(f"validação {nome} não sobrevive a um save do openpyxl")
+
     ia, ib = inventario(original), inventario(migrado)
     problemas += [f"{k}: {ia[k]} -> {ib[k]}" for k in ia if ib[k] != ia[k]]
     if libreoffice and not abre_no_libreoffice(migrado):
@@ -334,20 +507,24 @@ def abre_no_libreoffice(caminho: pathlib.Path) -> bool:
     if not SOFFICE.exists():
         return True
     with tempfile.TemporaryDirectory() as d:
-        subprocess.run([str(SOFFICE), "--headless", "--calc", "--convert-to", "xlsx", "--outdir", d, str(caminho)],
-                       capture_output=True, timeout=180)
+        perfil = pathlib.Path(d, "perfil").as_uri()
+        subprocess.run([str(SOFFICE), f"-env:UserInstallation={perfil}", "--headless", "--calc", "--convert-to", "xlsx",
+                        "--outdir", d, str(caminho)], capture_output=True, timeout=240)
         return any(pathlib.Path(d).glob("*.xlsx"))
 
 
 # --------------------------------------------------------------------------
-def fontes_prefill() -> tuple[dict[str, str], dict[str, str]]:
+def fontes() -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """Pre-preenchimento (tipo pela lista de precos, procurement pela mapeadora) e revisao em uso."""
     precos, _ = R.ler_listas_precos()
     tipo = {p: t for p, t in zip(precos["PMIB"], precos["TIPO"]) if p and isinstance(t, str)}
     listas = R.ler_mapeadora()["listas"]
-    nomes = {R.normalizar(n): n for n in LISTAS["lst_procurement"]}
-    proc = {str(l).strip(): nomes[R.normalizar(n)] for l, n in zip(listas["N DOCUMENTO ITAIPU"], listas["PROCUREMENT"])
-            if R.normalizar(n) in nomes}
-    return tipo, proc
+    nomes = {N(n): n for n in LISTAS["lst_procurement"]}
+    proc = {str(l).strip(): nomes[N(n)] for l, n in zip(listas["N DOCUMENTO ITAIPU"], listas["PROCUREMENT"])
+            if N(n) in nomes}
+    rev = {str(l).strip(): str(v).strip() for l, v in zip(listas["N DOCUMENTO ITAIPU"], listas["REVISAO EM USO"])
+           if str(v).strip() not in ("", "nan", "None")}
+    return tipo, proc, rev
 
 
 def main() -> int:
@@ -361,8 +538,6 @@ def main() -> int:
                     default=pathlib.Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "Sobressalentes-v2")
     ap.add_argument("--so", help="migra só arquivos cujo nome contém este texto")
     ap.add_argument("--confirmo", action="store_true", help="no --aplicar, dispensa a pergunta (autorização já dada)")
-    ap.add_argument("--calcular", action="store_true",
-                    help="grava já uma vez prazo/situação/atraso (o que depois é papel do SIG-FT)")
     ap.add_argument("--libreoffice", action="store_true", help="na conferência, abre cada arquivo no LibreOffice")
     args = ap.parse_args()
 
@@ -370,10 +545,12 @@ def main() -> int:
         origem, destino = map(pathlib.Path, args.template)
         destino.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(origem, destino)
-        print(migrar_planilha(destino, {}, None, folga=400))
+        res = migrar_planilha(destino, {}, None, None, folga=400)
+        print({k: v for k, v in res.items() if not k.startswith("_")})
+        print("Conferência:", "; ".join(conferir(origem, destino, res["_plano"], args.libreoffice)) or "nenhuma perda")
         return 0
 
-    tipo, proc = fontes_prefill()
+    tipo, proc, rev = fontes()
     arquivos = R.listar_status_pmib()
     if args.so:
         arquivos = [a for a in arquivos if args.so.upper() in a.name.upper()]
@@ -404,25 +581,28 @@ def main() -> int:
     for referencia, alvo in alvos:
         lista = alvo.name[: -len("_STATUS_PMIB.xlsx")]
         try:
-            res = migrar_planilha(alvo, tipo, proc.get(lista), calcular=args.calcular)
-            res["problemas"] = "; ".join(conferir(referencia, alvo, args.libreoffice)) or "—"
+            res = migrar_planilha(alvo, tipo, proc.get(lista), rev.get(lista))
+            res["problemas"] = "; ".join(conferir(referencia, alvo, res["_plano"], args.libreoffice)) or "—"
         except PermissionError:
             res = {"arquivo": alvo.name, "ok": False, "erro": "arquivo aberto (Excel) — não migrado"}
         except Exception as e:  # noqa: BLE001 — registra e segue
             res = {"arquivo": alvo.name, "ok": False, "erro": f"{type(e).__name__}: {e}"}
+        res.pop("_plano", None)
         res["lista"] = lista
         res["caminho_no_box"] = str((alvo if args.aplicar else referencia).relative_to(R.PASTA_PMIB))
         resumos.append(res)
-        print(f"{'OK  ' if res.get('ok') else 'ERRO'} {alvo.name[:58]:58s} bloco {res.get('inicio_bloco', ''):3s} "
+        print(f"{'OK  ' if res.get('ok') else 'ERRO'} {alvo.name[:52]:52s} rev {res.get('linha_revisao', ''):22s} "
+              f"aut {res.get('autorizado', 0):3d} agu {res.get('aguardando', 0):3d} atr {res.get('atrasado', 0):3d} "
               f"tipo {res.get('tipo_preenchido', 0):3d} proc {res.get('procurement_preenchido', 0):3d} "
-              f"{res.get('aviso', '')} {res.get('erro', '')} {'' if res.get('problemas', '—') == '—' else '!! ' + res['problemas']}")
+              f"{res.get('aviso', '')}{res.get('erro', '')} {'' if res.get('problemas', '—') == '—' else '!! ' + res['problemas']}")
     df = pd.DataFrame(resumos)
     relatorio = pasta / "relatorio_migracao.csv"
     df.to_csv(relatorio, index=False, encoding="utf-8-sig", sep=";")
     ruins = df[df.get("problemas", pd.Series(dtype=str)).fillna("—") != "—"]
-    print(f"\n{int(df['ok'].fillna(False).sum())} de {len(df)} migrados | TIPO DE ENTREGA pré-preenchido: "
-          f"{int(df.get('tipo_preenchido', pd.Series([0])).fillna(0).sum())} | PROCUREMENT: "
-          f"{int(df.get('procurement_preenchido', pd.Series([0])).fillna(0).sum())}")
+    soma = lambda c: int(df.get(c, pd.Series([0])).fillna(0).sum())  # noqa: E731
+    print(f"\n{int(df['ok'].fillna(False).sum())} de {len(df)} migrados | SITUAÇÃO: {soma('autorizado')} autorizado "
+          f"({soma('autorizado_por_entregue')} só pelo ENTREGUE), {soma('aguardando')} aguardando, {soma('atrasado')} atrasado | "
+          f"TIPO pré-preenchido: {soma('tipo_preenchido')} | PROCUREMENT: {soma('procurement_preenchido')}")
     print("Conferencia:", "nenhuma perda" if ruins.empty else f"{len(ruins)} arquivo(s) com diferença")
     print(f"Relatorio: {relatorio}")
     return 0 if df["ok"].fillna(False).all() and ruins.empty else 2

@@ -1,14 +1,25 @@
 ---
 tags: [gestao-v2, power-bi, handoff]
 criado: 2026-10-01
+atualizado: 2026-10-04
 ---
 
 # Power BI v2 — como montar
 
 O protótipo `_gerado/prototipo-dashboard.html` mostra o resultado esperado com os dados reais.
 Este roteiro reproduz o mesmo painel no Power BI Desktop. As regras são as de
-`_scripts/regras_sobressalentes.py`. **Prazo, situação e atraso da autorização (15 dias úteis)
-são calculados pelo SIG-FT** e gravados no `_STATUS_PMIB`; o Power BI só lê (decisão de 04/10/2026).
+`_scripts/regras_sobressalentes.py`. **Situação da autorização e dias de atraso são calculados
+pelo SIG-FT** e gravados no `_STATUS_PMIB`; o Power BI só lê (decisão de 04/10/2026).
+
+> [!info] Layout do `_STATUS_PMIB` que este pacote lê (04/10/2026)
+> `... APLICAÇÃO - LMR | TIPO DE ENTREGA | DATA DO EMAIL | SITUAÇÃO DA AUTORIZAÇÃO | DIAS DE ATRASO |
+> EQUIPAMENTO ENTREGUE | FORNECEDOR | PROCUREMENT | OBSERVAÇÕES`, mais a linha
+> "REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO" acima do cabeçalho.
+> - `SITUAÇÃO DA AUTORIZAÇÃO` substituiu `APTO PARA ENTREGA` (SIM = AUTORIZADO). Valores:
+>   AGUARDANDO ITAIPU · ATRASADO ITAIPU · AUTORIZADO. Arquivo antigo cai no APTO.
+> - `DIAS DE ATRASO` = dias corridos além do prazo de 15 dias úteis do e-mail; congela quando
+>   Itaipu autoriza (por isso `Autorizadas com Atraso` = autorizada com dias > 0).
+> - Não há data de autorização nem coluna de prazo: o prazo é regra, não dado.
 
 ## O que muda em relação ao `Sobressalentes - Dashboard.pbix` atual
 
@@ -18,8 +29,9 @@ são calculados pelo SIG-FT** e gravados no `_STATUS_PMIB`; o Power BI só lê (
 | Os números só ficam certos depois de rodar o SIG-FT | Atualizou o `_STATUS_PMIB`, o Power BI já vê |
 | Caminho fixo `C:\Users\560083605\Box\...` | Parâmetro **PastaPMIB** — cada máquina põe o seu |
 | Funil misturando etapas que correm em paralelo | Barras empilhadas por etapa e por "com quem está" |
-| "Atraso de Itaipu" contado pelo SIG-FT com 14 dias corridos | prazo, situação e atraso **calculados pelo SIG-FT** (15 dias úteis) e lidos do `_STATUS_PMIB` — o Power BI não calcula dias úteis |
-| Sem tempo, sem tipo de entrega, sem valor | Prazo, situação da autorização, LMR, tipo de entrega, valor US$ |
+| "Atraso de Itaipu" contado pelo SIG-FT com 14 dias corridos | situação e dias de atraso **calculados pelo SIG-FT** (15 dias úteis) e lidos do `_STATUS_PMIB` — o Power BI não calcula dias úteis |
+| Sem tempo, sem tipo de entrega, sem valor | Situação da autorização, dias de atraso, LMR, tipo de entrega, valor US$ |
+| Revisão em uso digitada à mão na mapeadora | Lida da linha de revisão de cada `_STATUS_PMIB` (`Listas[Revisao em Uso]`), com alerta de revisão desatualizada |
 | Uma página interna copiada numa segunda, com gráfico de preço apontando para a coluna errada | Dois relatórios: **Interno** e **Itaipu** |
 
 ## Passo a passo (≈ 1 h na primeira vez)
@@ -29,7 +41,7 @@ são calculados pelo SIG-FT** e gravados no `_STATUS_PMIB`; o Power BI só lê (
    Editor Avançado. Para cada bloco `// CONSULTA: Nome` dos arquivos `.pq`, cole o bloco e
    renomeie a consulta com o mesmo nome. Ordem:
    - `00` — `PastaPMIB` (parâmetro: **troque o caminho**), `DataReferencia`, `fxNorm`, `fxPMIB`,
-     `fxLerTabela`, `fxData`, `fxStatus`, `fxTipoEntrega`
+     `fxLerTabela`, `fxData`, `fxStatus`, `fxTipoEntrega`, `fxRevisaoEmUso`
    - `01` — `Calendario`
    - `02` — `PrecosArquivos`, `PrecosPorPMIB`, `PrecosAconex`
    - `03` — `Itens`
@@ -72,7 +84,7 @@ Nada de funil, rosca ou medidor: barras horizontais finas com rótulo na ponta.
 
 **1. Painel**
 - Cartões: `Fichas` · `Fichas Emitidas` (+ `% Emitidas`) · `Autorizações Atrasadas Itaipu`
-  (+ `Maior Atraso Itaipu (d.u.)`) · `LMR Fora do Compromisso` · `Valor Entregue USD` / `Valor Físico USD` ·
+  (+ `Maior Atraso Itaipu (dias)`) · `LMR Fora do Compromisso` · `Valor Entregue USD` / `Valor Físico USD` ·
   `Pendências CMI`. Subtítulo com `Atualizado em`.
 - Barras empilhadas 100%: eixo `Itens[Area]`, legenda `Itens[Com Quem]`, valor `Fichas`.
 - Barras: seções da ficha — use uma tabela de apoio com as 6 medidas `%` (ou 6 cartões de linha).
@@ -81,22 +93,25 @@ Nada de funil, rosca ou medidor: barras horizontais finas com rótulo na ponta.
 
 **2. Entrega (trilha logística)**
 - Barras empilhadas por `Listas[Nome]`: `Aguardando Itaipu no Prazo` + `Autorizações Atrasadas Itaipu`;
-  rótulo `Maior Atraso Itaipu (d.u.)`.
-- Tabela: Lista, PMIB, Descrição, Data Email, Prazo Autorizacao, Dias Uteis de Atraso, Situacao Autorizacao —
+  rótulo `Maior Atraso Itaipu (dias)`.
+- Tabela: Lista, PMIB, Descrição, Data Email, Dias de Atraso, Situacao Autorizacao —
   filtro de página `Situacao Autorizacao` = ATRASADO ITAIPU. **É a pauta da cobrança.**
-- Cartões: `Itens Físicos Entregues` / `Itens Físicos`, `Aptas Aguardando Entrega`, `Aguardando Cálculo do SIG-FT`.
+- Cartões: `Itens Físicos Entregues` / `Itens Físicos`, `Aptas Aguardando Entrega`, `Autorizadas com Atraso`,
+  `Aguardando Cálculo do SIG-FT`.
 
 **3. Documental**
 - Matriz Lista × seção (% completo) com formatação condicional — mostra onde a ficha trava.
 - Barras empilhadas `Situacao LMR` por lista (no prazo / atenção / fora), rótulo `Maior Atraso LMR (dias)`.
 
 **4. Fila de trabalho**
-- Tabela com `Itens[Pendencia]` ≠ "—", ordenada por Pendência e Dias Uteis de Atraso.
+- Tabela com `Itens[Pendencia]` ≠ "—", ordenada por Pendência e Dias de Atraso.
   Segmentação por Pendência e por PROCUREMENT. Detalhamento (drill-through) para a ficha.
 
 **5. Plano de ação e listas de preços**
 - Tabela de `Atividades` com `Situacao` ≠ CONCLUÍDA (ícone em ATRASADA / TRAVADA).
 - Tabela de `PrecosAconex` com `Geracao` (destacar PB020-0x) e `Situacao Preco`.
+- Tabela de `Listas` com `Revisao em Uso`, `Ultima Revisao` e `Revisao Desatualizada` (cartão
+  `Listas com Revisão Desatualizada`): lista cujo `_STATUS_PMIB` ainda não foi conferido com a revisão nova.
 - Página extra opcional: **Eventos de pagamento** — tabela `Eventos` com `% do Evento Cumprido`.
 
 ## Visão Itaipu (cliente) — 2 páginas
@@ -113,13 +128,13 @@ trabalho, LMR fora do compromisso, qualidade de dados.
 - Linha: acumulado de `Fichas Emitidas` por `Calendario[Mes Ano]` (data do e-mail de intenção).
 
 **2. Pendências e listas**
-- "Pedidos de autorização de entrega": por lista, no prazo × além de 15 d.u., com data do pedido e prazo.
+- "Pedidos de autorização de entrega": por lista, no prazo × além de 15 d.u., com a data do pedido e os dias de atraso.
 - "Listas de preços aguardando a SM.DT": `PrecosAconex` com `Situacao Preco` = EMITIDA.
 - Tabela por lista: fichas, enviadas, em análise, aprovadas, material entregue, autorização pendente.
 
 > [!tip] Tom com o cliente
 > "Pedidos de autorização além de 15 dias úteis" é fato contratual, não acusação — o painel
-> mostra a data do pedido e o prazo, e a conversa sai do "achismo" para a data.
+> mostra a data do pedido e os dias de atraso, e a conversa sai do "achismo" para a data.
 
 ## Atualização
 

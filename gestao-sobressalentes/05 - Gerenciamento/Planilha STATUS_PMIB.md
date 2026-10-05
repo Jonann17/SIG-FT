@@ -21,14 +21,18 @@ gerenciamento**. E o instrumento de rastreio **item a item** — uma linha por m
 uma planilha por lista.
 
 Template: `Box/15 - PDM/Templates/codigo_itaipu_STATUS_PMIB.xlsx` (era `no_itaipu_STATUS_PMIB.xlsx`).
-No template de setembro/2026 o cabeçalho desceu para a **linha 5**: a linha 4 passou a dizer
-a revisão da lista em uso e a data da alteração.
+Desde o template de setembro/2026 — e, desde **04/10/2026, em todos os 47** — o cabeçalho está
+na **linha 5**: a linha 4 diz qual revisão da lista de sobressalentes o arquivo reflete:
+`REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE ALTERAÇÃO: 03/09/2026`.
+Quem reconcilia o `_STATUS_PMIB` com uma revisão nova da lista atualiza essa linha; o Gestão PMIB
+do SIG-FT passa a copiá-la para a coluna `REVISÃO EM USO` da mapeadora ([[Plano - Revisao em Uso automatica]]).
 
-> [!tip] Layout v2 (proposto em 01/10/2026)
-> Bloco novo à direita: **TIPO DE ENTREGA · FORNECEDOR · PROCUREMENT · PRAZO AUTORIZAÇÃO
-> ITAIPU (15 D.U.) · DATA DA AUTORIZAÇÃO ITAIPU · SITUAÇÃO DA AUTORIZAÇÃO · DIAS ÚTEIS DE
-> ATRASO** (estas três gravadas pelo SIG-FT, sem fórmula), vocabulários na aba Checklist e listas suspensas por nome
-> definido. Template, migração e regras em [[Plano - Sistema de Gestao v2]].
+> [!tip] Layout v2 — aplicado nos 47 em 04/10/2026
+> `... APLICAÇÃO - LMR | TIPO DE ENTREGA | DATA DO EMAIL | SITUAÇÃO DA AUTORIZAÇÃO | DIAS DE ATRASO |
+> EQUIPAMENTO ENTREGUE | FORNECEDOR | PROCUREMENT | OBSERVAÇÕES`. SITUAÇÃO substituiu o APTO PARA
+> ENTREGA (SIM → AUTORIZADO); SITUAÇÃO e DIAS DE ATRASO são **gravados pelo SIG-FT** (sem fórmula).
+> Vocabulários na aba Checklist e listas suspensas por nome definido. Como foi feito:
+> [[Plano - Reestruturacao do STATUS_PMIB]].
 
 > [!warning] As listas suspensas somem quando o SIG-FT salva
 > A validação da coluna STATUS aponta para outra aba (`Checklist!$A$3:$A$8`). O Excel grava
@@ -77,9 +81,13 @@ CADASTRADOS NO PMIB` / `ESPECIFICAÇÃO TÉCNICA / CAPÍTULO`), e a tabela a par
 | `CONDICOES` | gestão | idem |
 | `VALORIZACAO` | gestão | idem |
 | `APLICACAO - LMR` | gestão | idem |
+| `TIPO DE ENTREGA` | lista de preços / gestão | FÍSICA E DOCUMENTAL · DOCUMENTAL · TÍTULO — ver [[Entrega Documental e Explosao de Itens]] |
 | `DATA DO EMAIL COMUNICANDO ENTREGA` | gestão | marca o início dos 15 d.u. |
-| `APTO PARA ENTREGA` | gestão | SIM / NÃO |
+| `SITUAÇÃO DA AUTORIZAÇÃO` | **SIG-FT** (AUTORIZADO também à mão) | AGUARDANDO ITAIPU · ATRASADO ITAIPU · AUTORIZADO — era `APTO PARA ENTREGA` (SIM = AUTORIZADO) |
+| `DIAS DE ATRASO` | **SIG-FT** | dias corridos além do prazo de 15 d.u.; congela quando Itaipu autoriza |
 | `EQUIPAMENTO ENTREGUE` | gestão | SIM / NÃO |
+| `FORNECEDOR` | gestão | empresa que vendeu ao CMI (não o fabricante) |
+| `PROCUREMENT` | mapeadora / gestão | quem compra — lista que aceita nome novo |
 | `OBSERVACOES` | gestão | texto livre. **Também carrega o PMIB da ficha original** nas fichas duplicadas de outro sistema (`PDM.9900.000`) |
 
 > [!important] `DUPLICADO` ≠ ficha duplicada (corrigido em 04/10/2026)

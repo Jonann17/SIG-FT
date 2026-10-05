@@ -99,8 +99,8 @@ e essa ficha e condição para liberar os eventos de pagamento do contrato.
 
 ### 07 — Diagnostico
 - [[Plano - Sistema de Gestao v2]] — **_STATUS_PMIB v2, regra dos 15 d.u. e Power BI interno × Itaipu** (01/10/2026)
-- [[Plano - Reestruturacao do STATUS_PMIB]] — **execução da migração**, sem perder histórico nem listas suspensas (04/10/2026)
-- [[Tarefa SIG-FT - Calculo e Gravacao sem Perda]] — roteiro para corrigir o SIG-FT na nuvem do GitHub
+- [[Plano - Reestruturacao do STATUS_PMIB]] — **migração APLICADA nos 47** (layout v2, linha de revisão), como desfazer (04/10/2026)
+- [[Tarefa SIG-FT - Calculo e Gravacao sem Perda]] — **roteiro do SIG-FT no layout v2** (T0–T5), início 05/10/2026
 - [[Diagnostico - Deficiencias]]
 - [[Diagnostico - Riscos]]
 - [[Diagnostico - Plano de Melhoria]]
@@ -118,8 +118,8 @@ e essa ficha e condição para liberar os eventos de pagamento do contrato.
 - `_gerado/prototipo-dashboard.html` — protótipo do painel (visão interna e visão Itaipu), item a item. `_scripts/gerar_prototipo_dashboard.py`
 
 ### Gestão v2 (`_gestao_v2/`)
-- `template/codigo_itaipu_STATUS_PMIB_v2.xlsx` — template novo
-- `migrar_status_pmib_v2.py` — migração dos `_STATUS_PMIB` (`--simular` / `--aplicar`)
+- `template/codigo_itaipu_STATUS_PMIB_v2.xlsx` — template v2 (também em `Templates/` no Box)
+- `migrar_status_pmib_v2.py` — migração dos `_STATUS_PMIB` (aplicada em 04/10/2026)
 - `powerbi/` — consultas Power Query, medidas DAX e o [[LEIA-ME]] de montagem
 
 ### Planejamento

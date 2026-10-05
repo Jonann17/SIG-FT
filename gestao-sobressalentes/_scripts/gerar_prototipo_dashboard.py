@@ -118,7 +118,7 @@ def montar(hoje: dt.date) -> dict:
             "l": d["LISTA"], "a": sem_prefixo(d["AREA"]), "s": nome_exibicao(d["SISTEMA"]), "p": d["PMIB"],
             "d": str(d["DESCRICAO"])[:90], "st": d["STATUS_N"], "q": d["COM_QUEM"], "t": d["TIPO_ENTREGA"],
             "en": bool(d["ENTREGUE"]), "ap": bool(d["APTO"]), "sa": d["SITUACAO_AUT"], "pr": d["PRAZO_AUT"],
-            "du": d["DU_ATRASO"], "sl": d["SITUACAO_LMR"], "de": d["DIAS_DESDE_EMAIL"], "dt": d["DT_EMAIL"],
+            "du": d["DIAS_ATRASO"], "sl": d["SITUACAO_LMR"], "de": d["DIAS_DESDE_EMAIL"], "dt": d["DT_EMAIL"],
             "v": round(float(valor.get((d["LISTA"], d["PMIB"]), 0.0)), 2), "pe": d["PENDENCIA"],
             "pc": pc if isinstance(pc, str) and pc.strip() else proc_lista.get(d["LISTA"]),
         })

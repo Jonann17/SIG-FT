@@ -48,7 +48,20 @@ let
                 Text.Trim(Limpo), type text),
     ComAreaFinal = Table.AddColumn(ComNome, "Area Final", each if [Area] <> null then [Area] else "SEM _STATUS_PMIB", type text),
     ComFlags = Table.AddColumn(ComAreaFinal, "Tem Responsavel", each [Responsavel] <> null and fxNorm([Responsavel]) <> "" and fxNorm([Responsavel]) <> "-", type logical),
-    Final = Table.RemoveColumns(Table.RenameColumns(ComFlags, {{"Area", "Area (pasta)"}}), {"Sistema"})
+
+    // revisão em uso: a do próprio _STATUS_PMIB (linha acima do cabeçalho) manda; a da
+    // mapeadora fica como referência até o SIG-FT passar a copiá-la do arquivo
+    Revisoes = Table.Distinct(Table.SelectRows(Table.SelectColumns(Itens, {"Lista", "Revisao no Arquivo"}),
+                                               each [Revisao no Arquivo] <> null), {"Lista"}),
+    ComRevArq = Table.ExpandTableColumn(Table.NestedJoin(ComFlags, {"Lista"}, Revisoes, {"Lista"}, "R", JoinKind.LeftOuter),
+                                        "R", {"Revisao no Arquivo"}),
+    ComRevMap = Table.RenameColumns(ComRevArq, {{"Revisao em Uso", "Revisao em Uso (mapeadora)"}}),
+    ComRevisao = Table.AddColumn(ComRevMap, "Revisao em Uso", each
+        if [Revisao no Arquivo] <> null then [Revisao no Arquivo] else [#"Revisao em Uso (mapeadora)"], type text),
+    ComDefasagem = Table.AddColumn(ComRevisao, "Revisao Desatualizada", each
+        [Revisao em Uso] <> null and [Ultima Revisao] <> null and fxNorm([Ultima Revisao]) <> "SEM LISTA"
+        and fxNorm([Revisao em Uso]) <> fxNorm([Ultima Revisao]), type logical),
+    Final = Table.RemoveColumns(Table.RenameColumns(ComDefasagem, {{"Area", "Area (pasta)"}}), {"Sistema"})
 in
     Final
 

@@ -145,5 +145,24 @@ in
     else null
 
 
-// (Sem funções de dias úteis: prazo, situação e atraso da autorização
-//  são calculados pelo SIG-FT e lidos do _STATUS_PMIB. Decisão de 04/10/2026.)
+// ---------------------------------------------------------------------
+// CONSULTA: fxRevisaoEmUso  — a revisão da lista de sobressalentes que o
+//   _STATUS_PMIB reflete, lida da linha acima do cabeçalho:
+//   "REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE ALTERAÇÃO: 03/09/2026" -> "0A"
+//   Procura pelo texto, não pela posição. Sem a linha -> null.
+// ---------------------------------------------------------------------
+(conteudo as binary) as nullable text =>
+let
+    Livro = Excel.Workbook(conteudo, null, true),
+    Planilha = try Livro{[Item = "Lista de Materiais", Kind = "Sheet"]}[Data]
+               otherwise Table.SelectRows(Livro, each [Kind] = "Sheet"){0}[Data],
+    Textos = List.Transform(List.Combine(Table.ToRows(Table.FirstN(Planilha, 10))), fxNorm),
+    Linha = List.First(List.Select(Textos, each Text.StartsWith(_, "REVISAO DA LISTA")), null),
+    Rev = if Linha = null then null
+          else Text.Trim(Text.BeforeDelimiter(Text.AfterDelimiter(Linha, "EM USO:"), " - DATA"))
+in
+    if Rev = null or Rev = "" then null else Rev
+
+
+// (Sem funções de dias úteis: situação e dias de atraso da autorização são
+//  calculados pelo SIG-FT e lidos do _STATUS_PMIB. Decisão de 04/10/2026.)
