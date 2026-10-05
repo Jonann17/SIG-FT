@@ -1,0 +1,218 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.12.0/schema.json",
+  "name": "0085ca01a1f4400a9042",
+  "position": {
+    "x": 10,
+    "y": 156,
+    "z": 11000,
+    "height": 300,
+    "width": 760,
+    "tabOrder": 11000
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Listas"
+                    }
+                  },
+                  "Property": "Nome"
+                }
+              },
+              "queryRef": "Listas.Nome",
+              "nativeQueryRef": "Lista",
+              "displayName": "Lista"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Listas"
+                    }
+                  },
+                  "Property": "Status Real"
+                }
+              },
+              "queryRef": "Listas.Status Real",
+              "nativeQueryRef": "Status Real"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Listas"
+                    }
+                  },
+                  "Property": "Revisao em Uso"
+                }
+              },
+              "queryRef": "Listas.Revisao em Uso",
+              "nativeQueryRef": "Revisão em uso",
+              "displayName": "Revisão em uso"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Listas"
+                    }
+                  },
+                  "Property": "Ultima Revisao"
+                }
+              },
+              "queryRef": "Listas.Ultima Revisao",
+              "nativeQueryRef": "Última emitida",
+              "displayName": "Última emitida"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Listas"
+                    }
+                  },
+                  "Property": "Responsavel"
+                }
+              },
+              "queryRef": "Listas.Responsavel",
+              "nativeQueryRef": "Responsável",
+              "displayName": "Responsável"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Itens"
+                    }
+                  },
+                  "Property": "Fichas"
+                }
+              },
+              "queryRef": "Itens.Fichas",
+              "nativeQueryRef": "Fichas"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Itens"
+                    }
+                  },
+                  "Property": "% Aprovadas"
+                }
+              },
+              "queryRef": "Itens.% Aprovadas",
+              "nativeQueryRef": "% Aprovadas"
+            }
+          ]
+        }
+      },
+      "sortDefinition": {
+        "sort": [
+          {
+            "field": {
+              "Measure": {
+                "Expression": {
+                  "SourceRef": {
+                    "Entity": "Itens"
+                  }
+                },
+                "Property": "Fichas"
+              }
+            },
+            "direction": "Descending"
+          }
+        ]
+      }
+    },
+    "objects": {
+      "columnHeaders": [
+        {
+          "properties": {
+            "bold": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "wordWrap": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "total": [
+        {
+          "properties": {
+            "totals": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Listas'"
+                }
+              }
+            },
+            "fontColor": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#0e1a77'"
+                    }
+                  }
+                }
+              }
+            },
+            "bold": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

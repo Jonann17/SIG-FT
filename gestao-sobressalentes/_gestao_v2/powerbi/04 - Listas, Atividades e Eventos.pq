@@ -61,7 +61,9 @@ let
     ComDefasagem = Table.AddColumn(ComRevisao, "Revisao Desatualizada", each
         [Revisao em Uso] <> null and [Ultima Revisao] <> null and fxNorm([Ultima Revisao]) <> "SEM LISTA"
         and fxNorm([Revisao em Uso]) <> fxNorm([Ultima Revisao]), type logical),
-    Final = Table.RemoveColumns(Table.RenameColumns(ComDefasagem, {{"Area", "Area (pasta)"}}), {"Sistema"})
+    // uma linha por lista (a mapeadora pode repetir um código): exigência do relacionamento com Itens
+    Unica = Table.Distinct(ComDefasagem, {"Lista"}),
+    Final = Table.RemoveColumns(Table.RenameColumns(Unica, {{"Area", "Area (pasta)"}}), {"Sistema"})
 in
     Final
 
@@ -114,8 +116,9 @@ let
     ComEvento = Table.AddColumn(SoEventos, "Evento", each Text.Upper(Text.Remove(Text.From([ITEM]), {" "})), type text),
     ComPercentual = Table.AddColumn(ComEvento, "Percentual", each try Number.From(Text.BeforeDelimiter(Text.From([VALOR]), "%")) / 100 otherwise null, Percentage.Type),
     ComTipo = Table.AddColumn(ComPercentual, "Tipo Evento", each if Text.Contains(fxNorm([DESCRICAO]), "APROVACAO") then "APROVAÇÃO" else "ENTREGA", type text),
-    Final = Table.SelectColumns(Table.RenameColumns(ComTipo, {{"DESCRICAO", "Descricao Evento"}, {"MES DE REFERENCIA", "Mes de Referencia"}}),
-        {"Evento", "Grupo", "Tipo Evento", "Percentual", "Descricao Evento", "Mes de Referencia"}, MissingField.UseNull)
+    Selecionada = Table.SelectColumns(Table.RenameColumns(ComTipo, {{"DESCRICAO", "Descricao Evento"}, {"MES DE REFERENCIA", "Mes de Referencia"}}),
+        {"Evento", "Grupo", "Tipo Evento", "Percentual", "Descricao Evento", "Mes de Referencia"}, MissingField.UseNull),
+    Final = Table.Distinct(Selecionada, {"Evento"})          // um evento por linha: exigência do relacionamento
 in
     Final
 

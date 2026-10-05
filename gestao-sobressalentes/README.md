@@ -233,7 +233,7 @@ Os scripts acham o Box em `~/Box/CMI - Consórcio Itaipu/11 - Ger. Engenharia/15
 |---|---|---|---|
 | 1 | **SIG-FT no tratamento v2** (início 05/10): T0 cabeçalho na linha 5 · T1 gravar sem openpyxl · T2 regra como módulo · T3 `pmib_manager` (pastas de teste, recálculo, contagens, revisão em uso) · T4 export de autorizados. Validar com o kit até **KIT OK** | repositório SIG-FT (nuvem) | `Tarefa SIG-FT - Calculo e Gravacao sem Perda.md` |
 | 2 | Conferir no Excel do trabalho 2–3 listas migradas (uma com comentário em thread) | Luan | `Plano - Reestruturacao do STATUS_PMIB.md`, seção 6 |
-| 3 | Montar o Power BI v2 (interno, depois Itaipu) | Power BI Desktop | `_gestao_v2/powerbi/LEIA-ME.md` |
+| 3 | ~~Montar o Power BI v2~~ **feito em 05/10** — abrir `Sobressalentes v2 (Power BI)/…Interno.pbip` no Box e Atualizar; salvar como `.pbix` se quiser | Power BI Desktop | `_gestao_v2/powerbi/LEIA-ME.md` |
 | 4 | Decidir as pendências da seção 6 | Luan | — |
 | 5 | Cobrar as 53 autorizações atrasadas (a mais antiga de 24/06/2025) | Luan / Itaipu | protótipo, aba Entrega |
 | 6 | Follow-up de preços em PB021 (D4) | mapeadora / SIG-FT | seção 2, D4 |

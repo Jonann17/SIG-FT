@@ -202,12 +202,74 @@ def conferir(original: pathlib.Path, novo: pathlib.Path, resumo: dict) -> list[s
     return problemas
 
 
+# --------------------------------------------------------------------------
+# Mapeadora = CADASTRO (decisao do Luan, 05/10/2026): as contagens saem; o Power BI v2 conta
+# item a item nos _STATUS_PMIB. Ficam o cadastro, SITUAÇÃO NO PMIB, LINK e CÓDIGO DO PROJETO.
+# --------------------------------------------------------------------------
+CONTAGENS = ["FICHAS EXISTENTES", "FICHAS COM O FORNECEDOR", "FICHAS RECEBIDAS", "FICHAS EM ELABORAÇÃO",
+             "INFO. DO FORNECEDOR COMPLETO", "VALORIZAÇÃO", "FICHAS COM APLICAÇÃO - LMR FINALIZADA",
+             "FICHAS EM ANÁLISE DE ITAIPU", "FICHAS EM CORREÇÃO", "FICHAS APROVADAS", C_FISICAS, C_APTO, C_AGUARDANDO,
+             C_ATRASO, C_MAIOR, C_ENTREGUES, "ÍNDICE DE EMISSAO", "ÍNDICE DE CONCLUSÃO"]
+
+
+def retirar_contagens(caminho: pathlib.Path) -> dict:
+    from xlsx_cirurgico import Remocao
+    ws = openpyxl.load_workbook(caminho)[ABA]
+    cab = {str(c.value).strip(): c.column for c in ws[LINHA_CAB] if c.value not in (None, "")}
+    presentes = [n for n in CONTAGENS if n in cab]
+    if not presentes:
+        return {"removidas": 0, "aviso": "já sem contagens", "_r": Remocao(set())}
+    colunas = {cab[n] for n in presentes}
+    p = PlanilhaXlsx(caminho)
+    p.remover_colunas(ABA, colunas)
+    p.salvar()
+    return {"removidas": len(colunas), "nomes": presentes, "aviso": "", "_r": Remocao(colunas),
+            "partes_alteradas": ", ".join(sorted(p.partes_modificadas))}
+
+
+def conferir_retirada(original: pathlib.Path, novo: pathlib.Path, res: dict) -> list[str]:
+    r, problemas = res["_r"], []
+    po, pn = PlanilhaXlsx(original), PlanilhaXlsx(novo)
+    L = po.parte_da_aba(ABA)
+    if list(po._bytes) != list(pn._bytes):
+        problemas.append("lista de partes do arquivo mudou")
+    problemas += [f"parte alterada sem querer: {n}" for n in po._bytes
+                  if n not in (L, "xl/workbook.xml", "xl/calcChain.xml") and po._bytes[n] != pn._bytes.get(n)]
+    wa, wn = openpyxl.load_workbook(original)[ABA], openpyxl.load_workbook(novo)[ABA]
+    for row in wa.iter_rows():
+        for c in row:
+            if c.value in (None, "") or r.col(c.column) is None:
+                continue
+            esperado = "=" + r.formula(c.value[1:], ABA, True) if isinstance(c.value, str) and c.value.startswith("=") else c.value
+            atual = wn.cell(c.row, r.col(c.column)).value
+            if not _igual(atual, esperado):
+                problemas.append(f"{col_letras(r.col(c.column))}{c.row}: esperado {esperado!r}, ficou {atual!r}")
+                if len(problemas) > 10:
+                    return problemas
+    nomes = [str(c.value).strip() for c in wn[LINHA_CAB] if c.value not in (None, "")]
+    if any(n in nomes for n in CONTAGENS):
+        problemas.append("ainda há coluna de contagem no cabeçalho")
+    for n in ("SITUAÇÃO NO PMIB", "LINK DA PLANILHA", 'CAMPO "CÓDIGO DO PROJETO PARA O PMIB"', C_REV):
+        if n not in nomes:
+            problemas.append(f"coluna {n} sumiu")
+    links_a = [r.faixa(h.get("ref")) for h in po.raiz(L).iter(q("hyperlink"))]
+    links_n = [h.get("ref") for h in pn.raiz(L).iter(q("hyperlink"))]
+    if [x for x in links_a if x] != links_n:
+        problemas.append("links não acompanharam")
+    for aba in ("Dropbox", "Lista de preços Follow-up", "Atividades"):
+        if po._bytes[po.parte_da_aba(aba)] != pn._bytes[pn.parte_da_aba(aba)]:
+            problemas.append(f"aba {aba} mudou")
+    return problemas
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--simular", action="store_true")
     g.add_argument("--aplicar", action="store_true")
     ap.add_argument("--confirmo", action="store_true")
+    ap.add_argument("--retirar-contagens", action="store_true",
+                    help="mapeadora = cadastro: remove o bloco de contagens (depois do Power BI v2)")
     ap.add_argument("--backup", type=pathlib.Path,
                     default=pathlib.Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "Sobressalentes-v2")
     args = ap.parse_args()
@@ -225,8 +287,12 @@ def main() -> int:
         pasta.mkdir(parents=True, exist_ok=True)
         referencia, alvo = MAPEADORA, pasta / MAPEADORA.name
         shutil.copy2(MAPEADORA, alvo)
-    res = atualizar(alvo, hoje)
-    prob = conferir(referencia, alvo, res)
+    if args.retirar_contagens:
+        res = retirar_contagens(alvo)
+        prob = conferir_retirada(referencia, alvo, res) if res["removidas"] else []
+    else:
+        res = atualizar(alvo, hoje)
+        prob = conferir(referencia, alvo, res)
     print({k: v for k, v in res.items() if not k.startswith("_")})
     print("Conferência:", "; ".join(prob) or "nenhuma perda")
     if not args.aplicar:

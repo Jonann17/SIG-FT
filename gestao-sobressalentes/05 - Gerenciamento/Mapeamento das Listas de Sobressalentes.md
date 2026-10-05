@@ -66,11 +66,11 @@ pelo qual atraso de ficha vira atraso de dinheiro.
 | `ATRASO DE AUTORIZACAO DE ENTREGA ITAIPU` | **fichas** físicas (PMIB distinto, sem DUPLICADO) além dos **15 dias úteis** do e-mail, sem autorização (SITUAÇÃO = ATRASADO ITAIPU). Até 04/10 o SIG-FT contava 14 dias corridos e todos os tipos |
 | `MAIOR ATRASO ITAIPU (DIAS)` *(nova)* | maior DIAS DE ATRASO (dias corridos além do prazo) entre as atrasadas da lista |
 
-> [!warning] Decisão do Luan (05/10/2026, tarde): a mapeadora vira **CADASTRO**
-> As contagens (`FICHAS EXISTENTES` … `ÍNDICE DE CONCLUSÃO`, inclusive as três colunas abaixo) saem da
-> mapeadora assim que o **Power BI v2** estiver montado — ele conta item a item nos `_STATUS_PMIB`. Ficam o
-> cadastro, `SITUAÇÃO NO PMIB`, `LINK DA PLANILHA` e `CÓDIGO DO PROJETO PARA O PMIB`. A tabela abaixo descreve o
-> estado intermediário.
+> [!warning] Desde 05/10/2026 a mapeadora é **CADASTRO** (decisão do Luan)
+> O bloco de contagens (`FICHAS EXISTENTES` … `ÍNDICE DE CONCLUSÃO`, 18 colunas) foi **retirado** depois de o
+> **Power BI v2** ser montado — ele conta item a item nos `_STATUS_PMIB`. A aba ficou com o cadastro (A–Q),
+> `SITUAÇÃO NO PMIB` (R), `LINK DA PLANILHA` (S) e `CÓDIGO DO PROJETO PARA O PMIB` (T). As tabelas abaixo das
+> contagens são histórico. Backup antes da retirada: `%LOCALAPPDATA%\Sobressalentes-v2\backup_mapeadora_20261005-0944`.
 
 > [!info] Mapeadora no tratamento v2 (05/10/2026)
 > As três colunas novas foram **inseridas** (o resto andou para a direita, nada mudou de nome) e os

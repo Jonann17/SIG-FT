@@ -73,6 +73,8 @@ DEFINE
                     Itens[Situacao Autorizacao] IN { "AGUARDANDO ITAIPU", "ATRASADO ITAIPU", "AUTORIZADO", "AGUARDANDO CÁLCULO DO SIG-FT" } )
     MEASURE Itens[Fichas que Não Precisam de Autorização] =
         CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "N/A" )
+    MEASURE Itens[Pedidos de Autorização Pendentes] =
+        [Aguardando Itaipu no Prazo] + [Autorizações Atrasadas Itaipu]
     MEASURE Itens[Aguardando Itaipu no Prazo] =
         CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "AGUARDANDO ITAIPU" )
     MEASURE Itens[Aguardando Cálculo do SIG-FT] =

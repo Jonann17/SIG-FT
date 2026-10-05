@@ -1,0 +1,880 @@
+table Itens
+	lineageTag: 0e18e0ad-b9b4-40a6-93b1-b6578ffa42cd
+
+	measure Fichas =
+			CALCULATE ( DISTINCTCOUNT ( Itens[PMIB] ), Itens[E Ficha] = TRUE () )
+		formatString: 0
+		displayFolder: Fichas
+		lineageTag: 395867de-6926-4f0f-a64c-9b3a53291bb9
+
+	measure 'Fichas Emitidas' =
+			CALCULATE ( [Fichas], Itens[Emitida] = TRUE () )
+		formatString: 0
+		displayFolder: Fichas
+		lineageTag: 5976ec08-24cf-4d5f-978e-e6d3fb814cf2
+
+	measure 'Fichas em Análise IB' =
+			CALCULATE ( [Fichas], Itens[Status] = "EM ANÁLISE IB" )
+		formatString: 0
+		displayFolder: Fichas
+		lineageTag: ca6f82ac-c5d5-477a-bc38-8281647dee2a
+
+	measure 'Fichas em Correção' =
+			CALCULATE ( [Fichas], Itens[Status] = "EM CORREÇÃO" )
+		formatString: 0
+		displayFolder: Fichas
+		lineageTag: 71e34d59-3f4e-488f-a0bd-477ddd589392
+
+	measure 'Fichas Aprovadas' =
+			CALCULATE ( [Fichas], Itens[Status] = "APROVADO" )
+		formatString: 0
+		displayFolder: Fichas
+		lineageTag: 5149ca91-7c43-4af0-82e7-e5c98cdff018
+
+	measure 'Fichas em Preparação' =
+			CALCULATE ( [Fichas], Itens[Status] IN { "INICIAR", "FICHA CRIADA", "COM O FORNECEDOR", "EM ELABORAÇÃO" } )
+		formatString: 0
+		displayFolder: Fichas
+		lineageTag: 9326fa43-3b82-4786-9d8b-8e3cd2275f2b
+
+	measure 'Fichas com o Fornecedor' =
+			CALCULATE ( [Fichas], Itens[Status] = "COM O FORNECEDOR" )
+		formatString: 0
+		displayFolder: Fichas
+		lineageTag: 7be2a66f-e6cb-4917-a076-b0db9de50508
+
+	measure 'Fichas sem Status Válido' =
+			CALCULATE ( [Fichas], Itens[Status] IN { "N/A", "SEM STATUS" } )
+		formatString: 0
+		displayFolder: Fichas
+		lineageTag: 64f92736-d4fd-4222-986d-9b4650834981
+
+	measure '% Emitidas' =
+			DIVIDE ( [Fichas Emitidas], [Fichas] )
+		formatString: 0%
+		displayFolder: Fichas
+		lineageTag: aff89416-3c33-4da8-b42a-e7c3e260f85e
+
+	measure '% Aprovadas' =
+			DIVIDE ( [Fichas Aprovadas], [Fichas] )
+		formatString: 0%
+		displayFolder: Fichas
+		lineageTag: 314691a9-55de-4343-ac96-12d643666280
+
+	measure 'Taxa de Aprovação das Emitidas' =
+			DIVIDE ( [Fichas Aprovadas], [Fichas Emitidas] )
+		formatString: 0%
+		displayFolder: Fichas
+		lineageTag: 7f896b10-61e9-4699-97b9-d42d0a5d023c
+
+	measure 'Taxa de Devolução' =
+			DIVIDE ( [Fichas em Correção], [Fichas Emitidas] )
+		formatString: 0%
+		displayFolder: Fichas
+		lineageTag: 8e73c1fe-533c-47ad-bbda-f02624793c3f
+
+	measure 'Fichas Info Fornecedor Completa' =
+			CALCULATE ( [Fichas], Itens[Info Fornecedor OK] = TRUE () )
+		formatString: 0
+		displayFolder: Seções da ficha
+		lineageTag: 22c7ac5f-61b9-424f-b0b6-c65afedd3a07
+
+	measure 'Fichas Valorizadas' =
+			CALCULATE ( [Fichas], Itens[Valorizacao OK] = TRUE () )
+		formatString: 0
+		displayFolder: Seções da ficha
+		lineageTag: f2773f0f-c16f-4022-889c-2632770b0cdc
+
+	measure 'Fichas com LMR' =
+			CALCULATE ( [Fichas], Itens[LMR OK] = TRUE () )
+		formatString: 0
+		displayFolder: Seções da ficha
+		lineageTag: 3c527a8d-31f3-4e98-ad5b-7b91a3a0d1d2
+
+	measure '% Info Fornecedor' =
+			DIVIDE ( [Fichas Info Fornecedor Completa], [Fichas] )
+		formatString: 0%
+		displayFolder: Seções da ficha
+		lineageTag: 1d3de204-df5c-4c31-bb16-15b7cb32a606
+
+	measure '% Valorização' =
+			DIVIDE ( [Fichas Valorizadas], [Fichas] )
+		formatString: 0%
+		displayFolder: Seções da ficha
+		lineageTag: 162db006-6323-40ac-8acb-01fc7265170a
+
+	measure '% LMR' =
+			DIVIDE ( [Fichas com LMR], [Fichas] )
+		formatString: 0%
+		displayFolder: Seções da ficha
+		lineageTag: 2c88fa4f-6188-4d53-bc40-3e021bcff387
+
+	measure 'Itens Físicos' =
+			CALCULATE ( [Fichas], Itens[Tipo de Entrega] = "FÍSICA E DOCUMENTAL" )
+		formatString: 0
+		displayFolder: Tipo de entrega
+		lineageTag: 18571670-cd13-4acb-9aab-afd3da5d8aa6
+
+	measure 'Itens Físicos Entregues' =
+			CALCULATE ( [Itens Físicos], Itens[Entregue] = TRUE () )
+		formatString: 0
+		displayFolder: Tipo de entrega
+		lineageTag: 3165fa5d-d8ae-4aef-92da-13660bdcfa0b
+
+	measure '% Físicos Entregues' =
+			DIVIDE ( [Itens Físicos Entregues], [Itens Físicos] )
+		formatString: 0%
+		displayFolder: Tipo de entrega
+		lineageTag: c3466409-d917-46bb-8fba-df905630a94b
+
+	measure 'Fichas Documentais' =
+			CALCULATE ( [Fichas], Itens[Tipo de Entrega] = "DOCUMENTAL" )
+		formatString: 0
+		displayFolder: Tipo de entrega
+		lineageTag: 89bc50ad-1be4-4670-aebb-db7e27068e3c
+
+	measure 'Fichas sem Tipo de Entrega' =
+			CALCULATE ( [Fichas], Itens[Tipo de Entrega] = "NÃO CLASSIFICADO" )
+		formatString: 0
+		displayFolder: Tipo de entrega
+		lineageTag: 21b9f0cc-2770-42c0-a3a0-78bb29d2e543
+
+	measure 'Pedidos de Autorização' =
+			CALCULATE ( [Fichas], NOT ISBLANK ( Itens[Data Email] ),
+			            Itens[Situacao Autorizacao] IN { "AGUARDANDO ITAIPU", "ATRASADO ITAIPU", "AUTORIZADO", "AGUARDANDO CÁLCULO DO SIG-FT" } )
+		formatString: 0
+		displayFolder: Trilha logística: autorização de Itaipu (15 d.u.)
+		lineageTag: fbf99793-8349-4fb9-972b-0bd2c6c4645a
+
+	measure 'Fichas que Não Precisam de Autorização' =
+			CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "N/A" )
+		formatString: 0
+		displayFolder: Trilha logística: autorização de Itaipu (15 d.u.)
+		lineageTag: 3f8a578b-c89f-4c7e-83da-baa331e93eb8
+
+	measure 'Pedidos de Autorização Pendentes' =
+			[Aguardando Itaipu no Prazo] + [Autorizações Atrasadas Itaipu]
+		formatString: 0
+		displayFolder: Trilha logística: autorização de Itaipu (15 d.u.)
+		lineageTag: b3142568-c1cb-4b36-9a3f-0b2c9b639916
+
+	measure 'Aguardando Itaipu no Prazo' =
+			CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "AGUARDANDO ITAIPU" )
+		formatString: 0
+		displayFolder: Trilha logística: autorização de Itaipu (15 d.u.)
+		lineageTag: 846750e3-cf15-458c-a4da-2a42b83835f5
+
+	measure 'Aguardando Cálculo do SIG-FT' =
+			CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "AGUARDANDO CÁLCULO DO SIG-FT" )
+		formatString: 0
+		displayFolder: Trilha logística: autorização de Itaipu (15 d.u.)
+		lineageTag: f1430791-c147-4f0e-9ee7-aa1a88525fa8
+
+	measure 'Autorizações Atrasadas Itaipu' =
+			CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "ATRASADO ITAIPU" )
+		formatString: 0
+		displayFolder: Trilha logística: autorização de Itaipu (15 d.u.)
+		lineageTag: 672d8303-1eb8-4f6b-ab2f-f5b327d21758
+
+	measure Autorizadas =
+			CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "AUTORIZADO" )
+		formatString: 0
+		displayFolder: Trilha logística: autorização de Itaipu (15 d.u.)
+		lineageTag: 8c10d2e0-be70-40dd-b06f-603f60592319
+
+	measure 'Autorizadas com Atraso' =
+			// autorizadas cujo DIAS DE ATRASO ficou congelado acima de zero
+			CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "AUTORIZADO", Itens[Dias de Atraso] > 0 )
+		formatString: 0
+		displayFolder: Trilha logística: autorização de Itaipu (15 d.u.)
+		lineageTag: 0c92acf2-0c22-47d2-bf88-a23f54285e5c
+
+	measure 'Maior Atraso Itaipu (dias)' =
+			CALCULATE ( MAX ( Itens[Dias de Atraso] ), Itens[Situacao Autorizacao] = "ATRASADO ITAIPU" )
+		formatString: 0
+		displayFolder: Trilha logística: autorização de Itaipu (15 d.u.)
+		lineageTag: 3e393350-24a6-40c5-b4ff-c6261e0f1559
+
+	measure 'Atraso Médio Itaipu (dias)' =
+			CALCULATE ( AVERAGE ( Itens[Dias de Atraso] ), Itens[Situacao Autorizacao] = "ATRASADO ITAIPU" )
+		formatString: 0
+		displayFolder: Trilha logística: autorização de Itaipu (15 d.u.)
+		lineageTag: 16ba988e-d05c-4ccc-9931-3d2326acbe08
+
+	measure 'Aptas Aguardando Entrega' =
+			CALCULATE ( [Itens Físicos], Itens[Apto] = TRUE (), Itens[Entregue] = FALSE () )
+		formatString: 0
+		displayFolder: Trilha logística: autorização de Itaipu (15 d.u.)
+		lineageTag: 6765f68e-b1e9-42bf-ae96-1abe1e7a4a4b
+
+	measure 'LMR Fora do Compromisso' =
+			CALCULATE ( [Fichas], Itens[Situacao LMR] = "LMR FORA DO COMPROMISSO" )
+		formatString: 0
+		displayFolder: Trilha documental: compromisso de LMR (3 meses do e-mail)
+		lineageTag: 4e120c90-80d8-4707-90ee-d4769ad737c4
+
+	measure 'LMR em Atenção' =
+			CALCULATE ( [Fichas], Itens[Situacao LMR] = "LMR EM ATENÇÃO" )
+		formatString: 0
+		displayFolder: Trilha documental: compromisso de LMR (3 meses do e-mail)
+		lineageTag: 4d4b2abc-b8ad-4d9d-a5cd-587141760b63
+
+	measure 'Maior Atraso LMR (dias)' =
+			CALCULATE ( MAX ( Itens[Dias desde Email] ), Itens[Situacao LMR] = "LMR FORA DO COMPROMISSO" )
+		formatString: 0
+		displayFolder: Trilha documental: compromisso de LMR (3 meses do e-mail)
+		lineageTag: 9512f7de-b0e4-42c1-9e1a-9fa7958793fa
+
+	measure 'Valor Físico USD' =
+			SUM ( Itens[Valor Linha USD] )
+		formatString: #,##0
+		displayFolder: Valor (lista de preços)
+		lineageTag: f566987b-074d-4df1-a24c-61763a3dc9f7
+
+	measure 'Valor Entregue USD' =
+			// Ficha Entregue: a linha DUPLICADO herda o "entregue" da linha da ficha
+			CALCULATE ( [Valor Físico USD], Itens[Ficha Entregue] = TRUE () )
+		formatString: #,##0
+		displayFolder: Valor (lista de preços)
+		lineageTag: c30a8eb4-fa02-4ef6-9085-afbc6693914c
+
+	measure 'Fichas Duplicadas de Outro Sistema' =
+			CALCULATE ( [Fichas], Itens[Duplicada de Outro Sistema] = TRUE () )
+		formatString: 0
+		displayFolder: Valor (lista de preços)
+		lineageTag: 472f77ba-cbc4-483c-9a62-5c85aaeffdcc
+
+	measure '% Valor Entregue' =
+			DIVIDE ( [Valor Entregue USD], [Valor Físico USD] )
+		formatString: 0%
+		displayFolder: Valor (lista de preços)
+		lineageTag: 37f35ab9-85a2-49a2-a2ab-019c4abafb3d
+
+	measure 'Fichas com Preço' =
+			CALCULATE ( [Fichas], NOT ISBLANK ( Itens[Valor Unitario USD] ) )
+		formatString: 0
+		displayFolder: Valor (lista de preços)
+		lineageTag: 036612f1-19ab-4a90-a87e-c12c1025a197
+
+	measure 'Pendências CMI' =
+			CALCULATE ( [Fichas], Itens[Pendencia] <> "—" )
+		formatString: 0
+		displayFolder: Fila de trabalho
+		lineageTag: 5beace20-f845-4fdc-880e-1094e9d7bc5a
+
+	measure 'Atualizado em' =
+			"Dados de " & FORMAT ( MAX ( Itens[Data Referencia] ), "dd/mm/yyyy" )
+		displayFolder: Rótulos
+		lineageTag: 73e2fd86-ce03-4205-9360-37827615e305
+
+	measure 'Rótulo Atraso Itaipu' =
+			VAR N = [Autorizações Atrasadas Itaipu]
+			RETURN IF ( N > 0, FORMAT ( N, "0" ) & " fichas aguardam autorização além de 15 dias úteis", "Nenhuma autorização fora do prazo" )
+		displayFolder: Rótulos
+		lineageTag: 20ef4f02-14f4-4c93-8c1c-e0de79858b71
+
+	column Lista
+		dataType: string
+		lineageTag: 896ced38-544d-4178-9499-3001e9ccff04
+		summarizeBy: none
+		sourceColumn: Lista
+
+		annotation SummarizationSetBy = User
+
+	column Area
+		dataType: string
+		lineageTag: fc9aeb38-7cb7-4f74-993b-587b0bb15a20
+		summarizeBy: none
+		sourceColumn: Area
+
+		annotation SummarizationSetBy = User
+
+	column Sistema
+		dataType: string
+		lineageTag: 020a96e3-6786-4a87-bd0d-9d11b640a597
+		summarizeBy: none
+		sourceColumn: Sistema
+
+		annotation SummarizationSetBy = User
+
+	column Caminho
+		dataType: string
+		lineageTag: aaaa66b4-c14e-43a8-8faa-9ca420f32194
+		summarizeBy: none
+		sourceColumn: Caminho
+
+		annotation SummarizationSetBy = User
+
+	column 'Revisao no Arquivo'
+		dataType: string
+		lineageTag: 6907131d-5ce0-4892-a3eb-92423d2fed0c
+		summarizeBy: none
+		sourceColumn: Revisao no Arquivo
+
+		annotation SummarizationSetBy = User
+
+	column ITEM
+		dataType: string
+		lineageTag: bfdc5f28-bb66-4d60-afe2-a8fc0039e7f7
+		summarizeBy: none
+		sourceColumn: ITEM
+
+		annotation SummarizationSetBy = User
+
+	column 'QTD.'
+		dataType: string
+		lineageTag: 108dc48c-c569-4bb8-a817-9a43fe54a64d
+		summarizeBy: none
+		sourceColumn: QTD.
+
+		annotation SummarizationSetBy = User
+
+	column 'UNID.'
+		dataType: string
+		lineageTag: 8b0b33eb-22b2-4cf9-b79e-02e0429e4954
+		summarizeBy: none
+		sourceColumn: UNID.
+
+		annotation SummarizationSetBy = User
+
+	column DESCRICAO
+		dataType: string
+		lineageTag: 132dd0b5-8f3a-4280-8903-b32cc19b91fc
+		summarizeBy: none
+		sourceColumn: DESCRICAO
+
+		annotation SummarizationSetBy = User
+
+	column 'CODIGO DO MATERIAL'
+		dataType: string
+		lineageTag: ba77d0ca-828e-4b49-bf56-3bfda1b25370
+		summarizeBy: none
+		sourceColumn: CODIGO DO MATERIAL
+
+		annotation SummarizationSetBy = User
+
+	column 'CODIGO CMI'
+		dataType: string
+		lineageTag: 85036200-f32c-47da-a7fb-e3165d368084
+		summarizeBy: none
+		sourceColumn: CODIGO CMI
+
+		annotation SummarizationSetBy = User
+
+	column 'MARCA/MODELO'
+		dataType: string
+		lineageTag: 7f020dc2-9195-4f33-92d7-8cc69cf84293
+		summarizeBy: none
+		sourceColumn: MARCA/MODELO
+
+		annotation SummarizationSetBy = User
+
+	column FORNECEDOR
+		dataType: string
+		lineageTag: cc9eeade-5bce-4e03-b135-db8f966d28cc
+		summarizeBy: none
+		sourceColumn: FORNECEDOR
+
+		annotation SummarizationSetBy = User
+
+	column PROCUREMENT
+		dataType: string
+		lineageTag: 43881cba-e495-4869-9cab-ad360b776587
+		summarizeBy: none
+		sourceColumn: PROCUREMENT
+
+		annotation SummarizationSetBy = User
+
+	column 'PDM USADO'
+		dataType: string
+		lineageTag: 425213c5-72a1-4f84-b3a5-691c65233b44
+		summarizeBy: none
+		sourceColumn: PDM USADO
+
+		annotation SummarizationSetBy = User
+
+	column 'INFO. GERAIS'
+		dataType: string
+		lineageTag: b0eb400d-ea94-4dac-9440-e5f169aeb2bc
+		summarizeBy: none
+		sourceColumn: INFO. GERAIS
+
+		annotation SummarizationSetBy = User
+
+	column 'CARACT. TECNICAS'
+		dataType: string
+		lineageTag: 3b4555f8-93e7-481c-8f41-510e9e024711
+		summarizeBy: none
+		sourceColumn: CARACT. TECNICAS
+
+		annotation SummarizationSetBy = User
+
+	column 'DOCUMENTOS E IMAGENS'
+		dataType: string
+		lineageTag: 1d3295fd-91df-4463-986f-6c3362e67038
+		summarizeBy: none
+		sourceColumn: DOCUMENTOS E IMAGENS
+
+		annotation SummarizationSetBy = User
+
+	column CONDICOES
+		dataType: string
+		lineageTag: 95d59b05-4086-43aa-82f4-c764ed572bf5
+		summarizeBy: none
+		sourceColumn: CONDICOES
+
+		annotation SummarizationSetBy = User
+
+	column VALORIZACAO
+		dataType: string
+		lineageTag: ffb19fbd-0905-4145-bf31-5cd592ffe529
+		summarizeBy: none
+		sourceColumn: VALORIZACAO
+
+		annotation SummarizationSetBy = User
+
+	column 'APLICACAO - LMR'
+		dataType: string
+		lineageTag: d1a9989e-f91f-4d78-84f4-b259a9431626
+		summarizeBy: none
+		sourceColumn: APLICACAO - LMR
+
+		annotation SummarizationSetBy = User
+
+	column OBSERVACOES
+		dataType: string
+		lineageTag: 64697ea2-f0bc-4f52-bcaa-aa125381cd12
+		summarizeBy: none
+		sourceColumn: OBSERVACOES
+
+		annotation SummarizationSetBy = User
+
+	column PMIB
+		dataType: string
+		lineageTag: 5d3aa642-dd69-4c96-8f43-3488133692ea
+		summarizeBy: none
+		sourceColumn: PMIB
+
+		annotation SummarizationSetBy = User
+
+	column Status
+		dataType: string
+		lineageTag: cefbe18d-7751-4592-82d6-9ce5e8f5a45a
+		summarizeBy: none
+		sourceColumn: Status
+
+		annotation SummarizationSetBy = User
+
+	column 'PMIB Original'
+		dataType: string
+		lineageTag: cbba78d1-f674-4eac-8b10-fa3374f87b1f
+		summarizeBy: none
+		sourceColumn: PMIB Original
+
+		annotation SummarizationSetBy = User
+
+	column 'Chave Ficha'
+		dataType: string
+		lineageTag: f46a171c-8984-4c47-8e8c-eba7a545883f
+		summarizeBy: none
+		sourceColumn: Chave Ficha
+
+		annotation SummarizationSetBy = User
+
+	column 'Etapa Cliente'
+		dataType: string
+		lineageTag: abbe4a6f-05df-47c6-8af4-e059c98e852a
+		summarizeBy: none
+		sourceColumn: Etapa Cliente
+
+		annotation SummarizationSetBy = User
+
+	column 'Com Quem'
+		dataType: string
+		lineageTag: b41643e5-f35d-4359-8129-6e84b8c8f3e9
+		summarizeBy: none
+		sourceColumn: Com Quem
+
+		annotation SummarizationSetBy = User
+
+	column 'Codigo GE Preco'
+		dataType: string
+		lineageTag: 847fb026-1be2-4025-83b3-3e16e39e20b5
+		summarizeBy: none
+		sourceColumn: Codigo GE Preco
+
+		annotation SummarizationSetBy = User
+
+	column 'Lista de Precos'
+		dataType: string
+		lineageTag: 5b048d7f-bdd6-49c9-867f-d3e5617a76bd
+		summarizeBy: none
+		sourceColumn: Lista de Precos
+
+		annotation SummarizationSetBy = User
+
+	column 'Tipo de Entrega'
+		dataType: string
+		lineageTag: 89f48749-5bce-4dc7-9f69-4f9afc2838ec
+		summarizeBy: none
+		sourceColumn: Tipo de Entrega
+
+		annotation SummarizationSetBy = User
+
+	column 'Origem do Tipo'
+		dataType: string
+		lineageTag: d83b68b3-cad5-4aa7-bc0e-479ec6e70073
+		summarizeBy: none
+		sourceColumn: Origem do Tipo
+
+		annotation SummarizationSetBy = User
+
+	column 'Situacao Autorizacao'
+		dataType: string
+		lineageTag: ea5a5b29-a427-4a0c-be16-83ea8ce08256
+		summarizeBy: none
+		sourceColumn: Situacao Autorizacao
+
+		annotation SummarizationSetBy = User
+
+	column 'Situacao LMR'
+		dataType: string
+		lineageTag: 00875b07-6820-474a-b3cc-196e5b91813f
+		summarizeBy: none
+		sourceColumn: Situacao LMR
+
+		annotation SummarizationSetBy = User
+
+	column Pendencia
+		dataType: string
+		lineageTag: 6191c838-a367-441e-bd3f-fcf7876a5dd8
+		summarizeBy: none
+		sourceColumn: Pendencia
+
+		annotation SummarizationSetBy = User
+
+	column 'Data Email'
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		lineageTag: c8a4a5ee-4c73-44a5-9b1d-a44584d3ca05
+		summarizeBy: none
+		sourceColumn: Data Email
+
+		annotation SummarizationSetBy = User
+
+	column 'Data Referencia'
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		lineageTag: f5003e80-6467-4d90-9dbd-6c21862912d2
+		summarizeBy: none
+		sourceColumn: Data Referencia
+
+		annotation SummarizationSetBy = User
+
+	column 'E Ficha'
+		dataType: boolean
+		lineageTag: c365962e-1c1f-4027-b016-8c771e22e4ad
+		summarizeBy: none
+		sourceColumn: E Ficha
+
+		annotation SummarizationSetBy = User
+
+	column 'Duplicada de Outro Sistema'
+		dataType: boolean
+		lineageTag: 26f65055-78a0-486a-aa51-89f5e5cde803
+		summarizeBy: none
+		sourceColumn: Duplicada de Outro Sistema
+
+		annotation SummarizationSetBy = User
+
+	column Emitida
+		dataType: boolean
+		lineageTag: 4b21ee3a-85ec-46b1-9557-602dd689db11
+		summarizeBy: none
+		sourceColumn: Emitida
+
+		annotation SummarizationSetBy = User
+
+	column 'Info Gerais OK'
+		dataType: boolean
+		lineageTag: ccdd38df-9864-41f2-873e-b3d170662979
+		summarizeBy: none
+		sourceColumn: Info Gerais OK
+
+		annotation SummarizationSetBy = User
+
+	column 'Caract Tecnicas OK'
+		dataType: boolean
+		lineageTag: db285dcc-ed4c-4320-ba39-3bbb70d0a242
+		summarizeBy: none
+		sourceColumn: Caract Tecnicas OK
+
+		annotation SummarizationSetBy = User
+
+	column 'Documentos OK'
+		dataType: boolean
+		lineageTag: e747ef52-ffd4-4c5d-9f28-0c22a8539a37
+		summarizeBy: none
+		sourceColumn: Documentos OK
+
+		annotation SummarizationSetBy = User
+
+	column 'Condicoes OK'
+		dataType: boolean
+		lineageTag: d462afd5-23be-42c7-8f14-94776f6a0189
+		summarizeBy: none
+		sourceColumn: Condicoes OK
+
+		annotation SummarizationSetBy = User
+
+	column 'Valorizacao OK'
+		dataType: boolean
+		lineageTag: 1e213d19-8881-48cd-8d19-093e386b7a15
+		summarizeBy: none
+		sourceColumn: Valorizacao OK
+
+		annotation SummarizationSetBy = User
+
+	column 'LMR OK'
+		dataType: boolean
+		lineageTag: 2451aa2c-cc75-4ad3-bd1e-0f8e97c79bec
+		summarizeBy: none
+		sourceColumn: LMR OK
+
+		annotation SummarizationSetBy = User
+
+	column 'Info Fornecedor OK'
+		dataType: boolean
+		lineageTag: 90b72122-a84a-41ed-a0a1-979615999cb9
+		summarizeBy: none
+		sourceColumn: Info Fornecedor OK
+
+		annotation SummarizationSetBy = User
+
+	column Entregue
+		dataType: boolean
+		lineageTag: 54a73fc5-77e0-4e4a-859d-83a608b456f0
+		summarizeBy: none
+		sourceColumn: Entregue
+
+		annotation SummarizationSetBy = User
+
+	column 'Ficha Entregue'
+		dataType: boolean
+		lineageTag: 7c720141-e6b1-41f6-ba48-5ceba6805f25
+		summarizeBy: none
+		sourceColumn: Ficha Entregue
+
+		annotation SummarizationSetBy = User
+
+	column Apto
+		dataType: boolean
+		lineageTag: e42c2c24-4837-4d2d-ac1c-bac714136039
+		summarizeBy: none
+		sourceColumn: Apto
+
+		annotation SummarizationSetBy = User
+
+	column 'Ordem Etapa'
+		dataType: int64
+		formatString: 0
+		lineageTag: d548530a-ca17-4c3c-b9ec-a56f2f9178f7
+		summarizeBy: none
+		sourceColumn: Ordem Etapa
+
+		annotation SummarizationSetBy = User
+
+	column 'Dias de Atraso'
+		dataType: int64
+		formatString: 0
+		lineageTag: dbbcaee5-bec9-4249-b81f-41db00fa545c
+		summarizeBy: none
+		sourceColumn: Dias de Atraso
+
+		annotation SummarizationSetBy = User
+
+	column 'Dias desde Email'
+		dataType: int64
+		formatString: 0
+		lineageTag: 19917d14-cbc6-40c4-99f7-4d48f860bdcf
+		summarizeBy: none
+		sourceColumn: Dias desde Email
+
+		annotation SummarizationSetBy = User
+
+	column 'Valor Unitario USD'
+		dataType: double
+		formatString: #,##0.00
+		lineageTag: cf478c20-1a8a-4e32-92a9-0ea2961804b8
+		summarizeBy: none
+		sourceColumn: Valor Unitario USD
+
+		annotation SummarizationSetBy = User
+
+	column Qtd
+		dataType: double
+		formatString: #,##0.00
+		lineageTag: 0b6d3e16-0b1a-4848-9088-4d24fcc11fec
+		summarizeBy: none
+		sourceColumn: Qtd
+
+		annotation SummarizationSetBy = User
+
+	column 'Valor Linha USD'
+		dataType: double
+		formatString: #,##0.00
+		lineageTag: 6654fe15-02de-4948-bd41-db26d9d5e89d
+		summarizeBy: none
+		sourceColumn: Valor Linha USD
+
+		annotation SummarizationSetBy = User
+
+	partition Itens = m
+		mode: import
+		source =
+				let
+				    Consulta =
+				        let
+				            Raiz = if Text.EndsWith(PastaPMIB, "\") then PastaPMIB else PastaPMIB & "\",
+				            Hoje = DataReferencia,
+				            // 1. Arquivos vivos (fora de obsoleto, testes, backups e cópias de trabalho)
+				            Arquivos = Folder.Files(Raiz),
+				            Filtrados = Table.SelectRows(Arquivos, each
+				                let
+				                    n = Text.Upper([Name]),
+				                    p = fxNorm([Folder Path])
+				                in
+				                    Text.EndsWith(n, "_STATUS_PMIB.XLSX")
+				                    and not Text.StartsWith(n, "~$")
+				                    and not List.AnyTrue(List.Transform({"OBSOLETO", "10- TESTES", "TESTES_AUTOSPEC", "\DATASHEETS\", "BACKUP"}, (k) => Text.Contains(p, k)))),
+				            // 2. Identidade do arquivo: código da lista, área (1º nível) e sistema (resto do caminho)
+				            ComLista = Table.AddColumn(Filtrados, "Lista", each Text.Start([Name], Text.Length([Name]) - Text.Length("_STATUS_PMIB.xlsx")), type text),
+				            ComCaminho = Table.AddColumn(ComLista, "Caminho", each Text.AfterDelimiter([Folder Path], Raiz), type text),
+				            ComArea = Table.AddColumn(ComCaminho, "Area", each Text.BeforeDelimiter([Caminho], "\"), type text),
+				            ComSistema = Table.AddColumn(ComArea, "Sistema", each
+				                let Partes = List.Select(Text.Split([Caminho], "\"), each _ <> "")
+				                in if List.Count(Partes) <= 1 then [Area] else Text.Combine(List.Skip(Partes, 1), " › "), type text),
+				            // 3. Conteúdo + a revisão da lista de sobressalentes que o arquivo reflete (linha acima do cabeçalho)
+				            ComDados = Table.AddColumn(ComSistema, "Dados", each fxLerTabela([Content], "Lista de Materiais", "DESCRICAO")),
+				            ComRevisao = Table.AddColumn(ComDados, "Revisao no Arquivo", each fxRevisaoEmUso([Content]), type text),
+				            Base = Table.SelectColumns(ComRevisao, {"Lista", "Area", "Sistema", "Caminho", "Revisao no Arquivo", "Dados"}),
+				            Colunas = {"ITEM", "QTD.", "UNID.", "DESCRICAO", "CODIGO DO MATERIAL", "CODIGO CMI", "MARCA/MODELO",
+				                       "TIPO DE ENTREGA", "FORNECEDOR", "PROCUREMENT", "CODIGO PMIB", "PDM USADO", "STATUS",
+				                       "INFO. GERAIS", "CARACT. TECNICAS", "DOCUMENTOS E IMAGENS", "CONDICOES", "VALORIZACAO", "APLICACAO - LMR",
+				                       "DATA DO EMAIL COMUNICANDO ENTREGA", "SITUACAO DA AUTORIZACAO", "DIAS DE ATRASO",
+				                       "APTO PARA ENTREGA", "EQUIPAMENTO ENTREGUE", "OBSERVACOES"},
+				            Selecionadas = Table.TransformColumns(Base, {"Dados", each Table.SelectColumns(_, Colunas, MissingField.UseNull)}),
+				            Expandida = Table.ExpandTableColumn(Selecionadas, "Dados", Colunas),
+				            ComDescricao = Table.SelectRows(Expandida, each fxNorm([DESCRICAO]) <> ""),
+				            // 4. Chaves e vocabulário
+				            ComPMIB = Table.AddColumn(ComDescricao, "PMIB", each fxPMIB([CODIGO PMIB]), type text),
+				            ComStatus = Table.AddColumn(ComPMIB, "Status", each fxStatus([STATUS]), type text),
+				            // STATUS DUPLICADO = o mesmo item repetido NA MESMA LISTA (repete o PMIB de outra linha, sem
+				            // seções preenchidas): não é ficha nova, mas a quantidade conta. A ficha duplicada DE OUTRO
+				            // SISTEMA é ficha nova (PMIB próprio, PDM.9900.000, PMIB da original em OBSERVACOES).
+				            ComEFicha = Table.AddColumn(ComStatus, "E Ficha", each [PMIB] <> null and [Status] <> "DUPLICADO", type logical),
+				            ComDupOutro = Table.AddColumn(ComEFicha, "Duplicada de Outro Sistema", each Text.StartsWith(fxNorm([PDM USADO]), "PDM.9900"), type logical),
+				            ComPMIBOriginal = Table.AddColumn(ComDupOutro, "PMIB Original", each
+				                if not [Duplicada de Outro Sistema] then null
+				                else
+				                    let t = if [OBSERVACOES] = null then "" else Text.From([OBSERVACOES]), p = Text.PositionOf(t, "4500063671")
+				                    in if p < 0 then null else fxPMIB(Text.Select(Text.Middle(t, p, 15), {"0".."9", "."})), type text),
+				            ComChave = Table.AddColumn(ComPMIBOriginal, "Chave Ficha", each if [E Ficha] then [Lista] & "|" & [PMIB] else null, type text),
+				            ComEmitida = Table.AddColumn(ComChave, "Emitida", each List.Contains({"EM ANÁLISE IB", "EM CORREÇÃO", "APROVADO"}, [Status]), type logical),
+				            ComOrdem = Table.AddColumn(ComEmitida, "Ordem Etapa", each
+				                List.PositionOf({"INICIAR", "FICHA CRIADA", "COM O FORNECEDOR", "EM ELABORAÇÃO", "EM CORREÇÃO", "EM ANÁLISE IB", "APROVADO"}, [Status]) + 1, Int64.Type),
+				            ComEtapaCliente = Table.AddColumn(ComOrdem, "Etapa Cliente", each
+				                if [Status] = "APROVADO" then "3. Aprovada"
+				                else if [Status] = "EM ANÁLISE IB" then "2. Em análise Itaipu"
+				                else "1. Em preparação (CMI)", type text),
+				            ComQuem = Table.AddColumn(ComEtapaCliente, "Com Quem", each
+				                if List.Contains({"INICIAR", "FICHA CRIADA", "EM ELABORAÇÃO", "EM CORREÇÃO"}, [Status]) then "CMI"
+				                else if [Status] = "COM O FORNECEDOR" then "FORNECEDOR"
+				                else if [Status] = "EM ANÁLISE IB" then "ITAIPU"
+				                else if [Status] = "APROVADO" then "CONCLUÍDO"
+				                else "—", type text),
+				            // 5. Seções da ficha
+				            ComSecoes = List.Accumulate(
+				                {{"INFO. GERAIS", "Info Gerais OK"}, {"CARACT. TECNICAS", "Caract Tecnicas OK"}, {"DOCUMENTOS E IMAGENS", "Documentos OK"},
+				                 {"CONDICOES", "Condicoes OK"}, {"VALORIZACAO", "Valorizacao OK"}, {"APLICACAO - LMR", "LMR OK"}},
+				                ComQuem,
+				                (t, par) => Table.AddColumn(t, par{1}, (r) => fxNorm(Record.Field(r, par{0})) = "COMPLETO", type logical)),
+				            ComFornecedorOK = Table.AddColumn(ComSecoes, "Info Fornecedor OK", each [Info Gerais OK] and [Caract Tecnicas OK] and [Documentos OK] and [Condicoes OK], type logical),
+				            // 6. Lista de preços: tipo de entrega e valor
+				            ComPreco = Table.NestedJoin(ComFornecedorOK, {"PMIB"}, PrecosPorPMIB, {"PMIB"}, "Preco", JoinKind.LeftOuter),
+				            ExpPreco = Table.ExpandTableColumn(ComPreco, "Preco", {"Tipo Preco", "Valor Unitario USD", "Codigo GE Preco", "Lista de Precos"}),
+				            ComTipo = Table.AddColumn(ExpPreco, "Tipo de Entrega", each
+				                let DoStatus = fxTipoEntrega([TIPO DE ENTREGA])
+				                in if DoStatus <> null then DoStatus else if [Tipo Preco] <> null then [Tipo Preco] else "NÃO CLASSIFICADO", type text),
+				            ComOrigemTipo = Table.AddColumn(ComTipo, "Origem do Tipo", each
+				                if fxTipoEntrega([TIPO DE ENTREGA]) <> null then "_STATUS_PMIB" else if [Tipo Preco] <> null then "LISTA DE PREÇOS" else "—", type text),
+				            ComQtd = Table.AddColumn(ComOrigemTipo, "Qtd", each try Number.From([#"QTD."]) otherwise null, type number),
+				            ComValorLinha = Table.AddColumn(ComQtd, "Valor Linha USD", each
+				                if [Tipo de Entrega] = "FÍSICA E DOCUMENTAL" and [Qtd] <> null and [Valor Unitario USD] <> null then [Qtd] * [Valor Unitario USD] else null, type number),
+				            // 7. Trilha logística. SITUAÇÃO DA AUTORIZAÇÃO e DIAS DE ATRASO são CALCULADOS PELO SIG-FT
+				            //    e gravados no _STATUS_PMIB (decisão de 04/10/2026): aqui só se lê. DIAS DE ATRASO =
+				            //    dias corridos além do prazo de 15 dias úteis do e-mail; congela quando Itaipu autoriza.
+				            //    Arquivo antigo (só APTO PARA ENTREGA): SIM = AUTORIZADO; com e-mail e sem nada
+				            //    calculado aparece como "AGUARDANDO CÁLCULO DO SIG-FT".
+				            //    Só FÍSICA E DOCUMENTAL precisa de autorização (correções do Luan, 05/10/2026):
+				            //    DOCUMENTAL (componente explodido) e TÍTULO (agrupamento) -> "N/A"; TIPO vazio ->
+				            //    "SEM TIPO DE ENTREGA" (não conta até alguém classificar). O tipo aqui é o da COLUNA do
+				            //    _STATUS_PMIB — o mesmo que o SIG-FT usa —, não o da lista de preços.
+				            ComDatas = Table.TransformColumns(ComValorLinha, {{"DATA DO EMAIL COMUNICANDO ENTREGA", fxData, type date}}),
+				            Renomeada = Table.RenameColumns(ComDatas, {{"DATA DO EMAIL COMUNICANDO ENTREGA", "Data Email"}}),
+				            ComEntregue = Table.AddColumn(Renomeada, "Entregue", each fxNorm([EQUIPAMENTO ENTREGUE]) = "SIM", type logical),
+				            // a linha DUPLICADO herda o "entregue" da ficha (mesma lista + mesmo PMIB): o valor dela conta junto
+				            EntreguePorFicha = Table.Group(Table.SelectRows(ComEntregue, each [PMIB] <> null), {"Lista", "PMIB"},
+				                {{"Ficha Entregue", each List.AnyTrue([Entregue]), type logical}}),
+				            ComFichaEntregueN = Table.NestedJoin(ComEntregue, {"Lista", "PMIB"}, EntreguePorFicha, {"Lista", "PMIB"}, "FE", JoinKind.LeftOuter),
+				            ComFichaEntregue = Table.ExpandTableColumn(ComFichaEntregueN, "FE", {"Ficha Entregue"}),
+				            ComSituacao = Table.AddColumn(ComFichaEntregue, "Situacao Autorizacao", each
+				                let s = fxNorm([SITUACAO DA AUTORIZACAO]), a = fxNorm([APTO PARA ENTREGA]), tc = fxTipoEntrega([TIPO DE ENTREGA])
+				                in if s = "AUTORIZADO" or a = "SIM" then "AUTORIZADO"
+				                   else if tc = "DOCUMENTAL" or tc = "TÍTULO" then "N/A"
+				                   else if [Entregue] then "AUTORIZADO"
+				                   else if tc = null then "SEM TIPO DE ENTREGA"
+				                   else if s = "ATRASADO ITAIPU" or s = "AGUARDANDO ITAIPU" then s
+				                   else if [Data Email] <> null and [E Ficha] then "AGUARDANDO CÁLCULO DO SIG-FT"
+				                   else "SEM PEDIDO", type text),
+				            ComApto = Table.AddColumn(ComSituacao, "Apto", each [Situacao Autorizacao] = "AUTORIZADO", type logical),
+				            ComAtraso = Table.AddColumn(ComApto, "Dias de Atraso", each try Int64.From([DIAS DE ATRASO]) otherwise null, Int64.Type),
+				            SemBrutas = Table.RemoveColumns(ComAtraso, {"SITUACAO DA AUTORIZACAO", "DIAS DE ATRASO"}),
+				            // 8. Trilha documental: compromisso CMI de LMR em até 3 meses do e-mail de intenção
+				            ComDiasEmail = Table.AddColumn(SemBrutas, "Dias desde Email", each if [Data Email] = null then null else Duration.Days(Hoje - [Data Email]), Int64.Type),
+				            ComLMR = Table.AddColumn(ComDiasEmail, "Situacao LMR", each
+				                if [LMR OK] then "LMR CONCLUÍDA"
+				                else if [Data Email] = null then "SEM PEDIDO"
+				                else if [Dias desde Email] > 90 then "LMR FORA DO COMPROMISSO"
+				                else if [Dias desde Email] > 60 then "LMR EM ATENÇÃO"
+				                else "LMR NO PRAZO", type text),
+				            // 9. Pendência principal (a primeira coisa que falta) — alimenta a fila de trabalho.
+				            //    Ficha já emitida só tem três pendências do CMI: cobrar, entregar, ou a LMR que faltou.
+				            ComPendencia = Table.AddColumn(ComLMR, "Pendencia", each
+				                if not [E Ficha] then "—"
+				                else if [Status] = "EM CORREÇÃO" then "Responder comentários de Itaipu"
+				                else if [Situacao Autorizacao] = "ATRASADO ITAIPU" then "Cobrar autorização de Itaipu"
+				                else if [Apto] and not [Entregue] and [Tipo de Entrega] = "FÍSICA E DOCUMENTAL" then "Entregar no almoxarifado"
+				                else if [Emitida] then (if [Status] <> "APROVADO" and not [LMR OK] then "Aplicação LMR" else "—")
+				                else if [Status] = "COM O FORNECEDOR" or not [Info Fornecedor OK] then "Informações do fornecedor"
+				                else if not [Valorizacao OK] then "Valorização"
+				                else if not [LMR OK] then "Aplicação LMR"
+				                else "Emitir para Itaipu", type text),
+				            // 10. Limpeza final
+				            ComReferencia = Table.AddColumn(ComPendencia, "Data Referencia", each Hoje, type date),
+				            Removidas = Table.RemoveColumns(ComReferencia, {"CODIGO PMIB", "STATUS", "TIPO DE ENTREGA", "APTO PARA ENTREGA", "EQUIPAMENTO ENTREGUE", "Tipo Preco"}),
+				            Tipada = Table.TransformColumnTypes(Removidas, {
+				                {"ITEM", type text}, {"QTD.", type text}, {"UNID.", type text}, {"DESCRICAO", type text},
+				                {"CODIGO DO MATERIAL", type text}, {"CODIGO CMI", type text}, {"MARCA/MODELO", type text},
+				                {"FORNECEDOR", type text}, {"PROCUREMENT", type text}, {"PDM USADO", type text}, {"Revisao no Arquivo", type text},
+				                {"INFO. GERAIS", type text}, {"CARACT. TECNICAS", type text}, {"DOCUMENTOS E IMAGENS", type text},
+				                {"CONDICOES", type text}, {"VALORIZACAO", type text}, {"APLICACAO - LMR", type text}, {"OBSERVACOES", type text}})
+				        in
+				            Tipada,
+				    Colunas = Table.SelectColumns(Consulta, {"Lista", "Area", "Sistema", "Caminho", "Revisao no Arquivo", "ITEM", "QTD.", "UNID.", "DESCRICAO", "CODIGO DO MATERIAL", "CODIGO CMI", "MARCA/MODELO", "FORNECEDOR", "PROCUREMENT", "PDM USADO", "INFO. GERAIS", "CARACT. TECNICAS", "DOCUMENTOS E IMAGENS", "CONDICOES", "VALORIZACAO", "APLICACAO - LMR", "OBSERVACOES", "PMIB", "Status", "PMIB Original", "Chave Ficha", "Etapa Cliente", "Com Quem", "Codigo GE Preco", "Lista de Precos", "Tipo de Entrega", "Origem do Tipo", "Situacao Autorizacao", "Situacao LMR", "Pendencia", "Data Email", "Data Referencia", "E Ficha", "Duplicada de Outro Sistema", "Emitida", "Info Gerais OK", "Caract Tecnicas OK", "Documentos OK", "Condicoes OK", "Valorizacao OK", "LMR OK", "Info Fornecedor OK", "Entregue", "Ficha Entregue", "Apto", "Ordem Etapa", "Dias de Atraso", "Dias desde Email", "Valor Unitario USD", "Qtd", "Valor Linha USD"}, MissingField.UseNull),
+				    Tipada = Table.TransformColumnTypes(Colunas, {{"Lista", type text}, {"Area", type text}, {"Sistema", type text}, {"Caminho", type text}, {"Revisao no Arquivo", type text}, {"ITEM", type text}, {"QTD.", type text}, {"UNID.", type text}, {"DESCRICAO", type text}, {"CODIGO DO MATERIAL", type text}, {"CODIGO CMI", type text}, {"MARCA/MODELO", type text}, {"FORNECEDOR", type text}, {"PROCUREMENT", type text}, {"PDM USADO", type text}, {"INFO. GERAIS", type text}, {"CARACT. TECNICAS", type text}, {"DOCUMENTOS E IMAGENS", type text}, {"CONDICOES", type text}, {"VALORIZACAO", type text}, {"APLICACAO - LMR", type text}, {"OBSERVACOES", type text}, {"PMIB", type text}, {"Status", type text}, {"PMIB Original", type text}, {"Chave Ficha", type text}, {"Etapa Cliente", type text}, {"Com Quem", type text}, {"Codigo GE Preco", type text}, {"Lista de Precos", type text}, {"Tipo de Entrega", type text}, {"Origem do Tipo", type text}, {"Situacao Autorizacao", type text}, {"Situacao LMR", type text}, {"Pendencia", type text}, {"Data Email", type date}, {"Data Referencia", type date}, {"E Ficha", type logical}, {"Duplicada de Outro Sistema", type logical}, {"Emitida", type logical}, {"Info Gerais OK", type logical}, {"Caract Tecnicas OK", type logical}, {"Documentos OK", type logical}, {"Condicoes OK", type logical}, {"Valorizacao OK", type logical}, {"LMR OK", type logical}, {"Info Fornecedor OK", type logical}, {"Entregue", type logical}, {"Ficha Entregue", type logical}, {"Apto", type logical}, {"Ordem Etapa", Int64.Type}, {"Dias de Atraso", Int64.Type}, {"Dias desde Email", Int64.Type}, {"Valor Unitario USD", type number}, {"Qtd", type number}, {"Valor Linha USD", type number}})
+				in
+				    Tipada
+
+	annotation PBI_ResultType = Table
+

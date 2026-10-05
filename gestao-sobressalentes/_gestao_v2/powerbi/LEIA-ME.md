@@ -6,6 +6,23 @@ atualizado: 2026-10-04
 
 # Power BI v2 — como montar
 
+> [!success] MONTADO e testado em 05/10/2026
+> Está no Box em **`SOBRESSALENTES - PMIB/Sobressalentes v2 (Power BI)/`** como *Projeto do Power BI*:
+> - `Sobressalentes v2 - Interno.pbip` (5 páginas) e `Sobressalentes v2 - Itaipu.pbip` (2 páginas), sobre um
+>   modelo só (`Sobressalentes v2.SemanticModel`).
+> - **Abrir**: Power BI Desktop › Arquivo › Abrir › o `.pbip` › **Página Inicial › Atualizar** (≈ 1 min na primeira vez).
+> - O parâmetro `PastaPMIB` aponta para `C:\Users\560083605\Box\...\SOBRESSALENTES - PMIB`. Se o usuário do Windows
+>   for outro: Transformar dados › Gerenciar parâmetros › PastaPMIB.
+> - Arquivo único: Arquivo › Salvar como › `.pbix`.
+> - Testado aqui com os dados reais (os 47 `_STATUS_PMIB` e a mapeadora): as 7 tabelas atualizam e as medidas batem
+>   com a referência em Python (1.649 linhas, 615 emitidas, 73 aprovadas, 580 autorizadas, 88 aguardando, 53
+>   atrasadas, 62 que não precisam de autorização). "Fichas" = PMIB distinto (1.352; 5 fichas aparecem em duas listas).
+> - Gerado por `montar_pbip.py` a partir destes `.pq` e do `05 - Medidas.dax`: mudou a regra, rode de novo.
+> - O `Sobressalentes - Dashboard.pbix` antigo **deixou de atualizar** (a mapeadora não tem mais as colunas de
+>   contagem, decisão de 05/10); ele mostra os últimos dados carregados até ser aposentado.
+
+O roteiro abaixo é o que o gerador faz — serve para entender ou montar à mão.
+
 O protótipo `_gerado/prototipo-dashboard.html` mostra o resultado esperado com os dados reais.
 Este roteiro reproduz o mesmo painel no Power BI Desktop. As regras são as de
 `_scripts/regras_sobressalentes.py`. **Situação da autorização e dias de atraso são calculados

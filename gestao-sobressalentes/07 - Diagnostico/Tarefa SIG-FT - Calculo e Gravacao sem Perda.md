@@ -45,7 +45,7 @@ linha 5:  ... | APLICAÇÃO - LMR | TIPO DE ENTREGA | DATA DO EMAIL COMUNICANDO 
 
 > [!important] Decisão do Luan (05/10/2026): a mapeadora é o cadastro das listas; **as contagens saem de
 > cada `_STATUS_PMIB` pelo Power BI v2**. O bloco de contagens da aba (`FICHAS EXISTENTES` … `ÍNDICE DE
-> CONCLUSÃO`) **será retirado** assim que o Power BI v2 estiver montado (pode já ter sido, quando você ler).
+> CONCLUSÃO`) **foi retirado em 05/10/2026**, depois de o Power BI v2 ser montado e testado.
 
 Cabeçalho na **linha 2**. O que fica (e é o que o Gestão PMIB mantém):
 
@@ -65,7 +65,7 @@ coluna que não existe é pulada (o código atual já faz isso) — então nada 
 
 | Onde | Sintoma |
 |---|---|
-| Gestão PMIB (`pmib_manager`) | sem `APTO PARA ENTREGA` no arquivo, escreve **"Atualizar template"** em APTO e ATRASO da mapeadora (some quando o bloco de contagens sair; o Luan não roda o Gestão PMIB até a T3) |
+| Gestão PMIB (`pmib_manager`) | as colunas de contagem não existem mais na mapeadora: ele as pula (nada quebra); as contagens antigas (14 dias) e o "Atualizar template" só somem do código na T3 |
 | Módulo PDM, modo "selecionar códigos" | lê o cabeçalho fixo na linha 4 → "Coluna 'CÓDIGO PMIB' não encontrada" |
 | `apto_para_entrega_att.py` (fora do repositório) | "Falta coluna APTO", não grava |
 | Qualquer `save` de `_STATUS_PMIB` pelo openpyxl | **apaga os comentários em thread** do arquivo |

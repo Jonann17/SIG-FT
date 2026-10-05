@@ -1,0 +1,39 @@
+table ListaEvento
+	lineageTag: b4131441-95e0-48ad-8536-e19539cf7334
+
+	column Lista
+		dataType: string
+		lineageTag: 85ae9360-a423-4989-98f9-938f8f6817f9
+		summarizeBy: none
+		sourceColumn: Lista
+
+		annotation SummarizationSetBy = User
+
+	column Evento
+		dataType: string
+		lineageTag: ec59635b-f01d-4561-9f07-03d0fc19067a
+		summarizeBy: none
+		sourceColumn: Evento
+
+		annotation SummarizationSetBy = User
+
+	partition ListaEvento = m
+		mode: import
+		source =
+				let
+				    Consulta =
+				        let
+				            Base = Table.SelectRows(Table.SelectColumns(Listas, {"Lista", "Eventos"}), each [Eventos] <> null),
+				            Separada = Table.AddColumn(Base, "Evento", each
+				                List.Select(List.Transform(Text.SplitAny([Eventos], ",/;"), each Text.Upper(Text.Remove(Text.Trim(_), {" "}))), each _ <> "")),
+				            Expandida = Table.ExpandListColumn(Separada, "Evento"),
+				            Final = Table.Distinct(Table.SelectColumns(Expandida, {"Lista", "Evento"}))
+				        in
+				            Final,
+				    Colunas = Table.SelectColumns(Consulta, {"Lista", "Evento"}, MissingField.UseNull),
+				    Tipada = Table.TransformColumnTypes(Colunas, {{"Lista", type text}, {"Evento", type text}})
+				in
+				    Tipada
+
+	annotation PBI_ResultType = Table
+

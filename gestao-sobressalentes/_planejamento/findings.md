@@ -90,3 +90,11 @@ código PMIB **não são dominio da EN.DT**, e sim da SM.DT.
   #ST00=B01BMU10&EPB020 na mapeadora aponta para a cópia de teste. Vai na T3-a do roteiro.
 - **A suíte de testes do SIG-FT stuba pandas/openpyxl sempre** (`tests/conftest.py`): teste com `.xlsx` de verdade
   tem de rodar fora dela — por isso o validador do kit.
+- **O rodapé da lista de preços é escrito por macro** (`ConfigurarRodapeCompleto`, disparada por
+  `Worksheet_Change` em Capa!D37/F37/I37). Gerar o arquivo por fora do Excel não dispara a macro — o SIG-FT tem de
+  regravar essas células pelo Excel (xlwings). O template tem ainda o carimbo de Itaipu embutido (objeto Word).
+- **Power BI Project (.pbip) dá para gerar como texto e testar sem a interface**: TMDL validado pela biblioteca
+  oficial (TOM, via pythonnet) e atualização/consultas DAX no motor local do Desktop (porta em
+  `msmdsrv.port.txt`). "Ignorar níveis de privacidade" = `fastCombine` no `dataAccessOptions` do modelo.
+- **5 fichas aparecem em duas listas** (mesmo PMIB): por isso "Fichas" no Power BI (PMIB distinto) dá 1.352 e a
+  soma por lista dá 1.357.

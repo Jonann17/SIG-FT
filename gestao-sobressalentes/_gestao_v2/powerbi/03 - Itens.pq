@@ -60,7 +60,11 @@ let
     ComEmitida = Table.AddColumn(ComChave, "Emitida", each List.Contains({"EM ANÁLISE IB", "EM CORREÇÃO", "APROVADO"}, [Status]), type logical),
     ComOrdem = Table.AddColumn(ComEmitida, "Ordem Etapa", each
         List.PositionOf({"INICIAR", "FICHA CRIADA", "COM O FORNECEDOR", "EM ELABORAÇÃO", "EM CORREÇÃO", "EM ANÁLISE IB", "APROVADO"}, [Status]) + 1, Int64.Type),
-    ComQuem = Table.AddColumn(ComOrdem, "Com Quem", each
+    ComEtapaCliente = Table.AddColumn(ComOrdem, "Etapa Cliente", each
+        if [Status] = "APROVADO" then "3. Aprovada"
+        else if [Status] = "EM ANÁLISE IB" then "2. Em análise Itaipu"
+        else "1. Em preparação (CMI)", type text),
+    ComQuem = Table.AddColumn(ComEtapaCliente, "Com Quem", each
         if List.Contains({"INICIAR", "FICHA CRIADA", "EM ELABORAÇÃO", "EM CORREÇÃO"}, [Status]) then "CMI"
         else if [Status] = "COM O FORNECEDOR" then "FORNECEDOR"
         else if [Status] = "EM ANÁLISE IB" then "ITAIPU"

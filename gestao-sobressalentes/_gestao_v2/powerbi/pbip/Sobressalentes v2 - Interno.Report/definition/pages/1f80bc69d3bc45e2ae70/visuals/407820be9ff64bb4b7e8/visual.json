@@ -1,0 +1,159 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.12.0/schema.json",
+  "name": "407820be9ff64bb4b7e8",
+  "position": {
+    "x": 780,
+    "y": 156,
+    "z": 12000,
+    "height": 300,
+    "width": 490,
+    "tabOrder": 12000
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "PrecosAconex"
+                    }
+                  },
+                  "Property": "Lista de Precos"
+                }
+              },
+              "queryRef": "PrecosAconex.Lista de Precos",
+              "nativeQueryRef": "Lista de preços",
+              "displayName": "Lista de preços"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "PrecosAconex"
+                    }
+                  },
+                  "Property": "Geracao"
+                }
+              },
+              "queryRef": "PrecosAconex.Geracao",
+              "nativeQueryRef": "Geração",
+              "displayName": "Geração"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "PrecosAconex"
+                    }
+                  },
+                  "Property": "Situacao Preco"
+                }
+              },
+              "queryRef": "PrecosAconex.Situacao Preco",
+              "nativeQueryRef": "Situação",
+              "displayName": "Situação"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "PrecosAconex"
+                    }
+                  },
+                  "Property": "Revisao"
+                }
+              },
+              "queryRef": "PrecosAconex.Revisao",
+              "nativeQueryRef": "Rev.",
+              "displayName": "Rev."
+            }
+          ]
+        }
+      }
+    },
+    "objects": {
+      "columnHeaders": [
+        {
+          "properties": {
+            "bold": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "wordWrap": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "total": [
+        {
+          "properties": {
+            "totals": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Listas de preços no Aconex'"
+                }
+              }
+            },
+            "fontColor": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#0e1a77'"
+                    }
+                  }
+                }
+              }
+            },
+            "bold": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

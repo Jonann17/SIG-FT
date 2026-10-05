@@ -1,0 +1,311 @@
+table Listas
+	lineageTag: 52f5e708-1521-4ec9-aded-de619c210410
+
+	measure Listas =
+			COUNTROWS ( Listas )
+		formatString: 0
+		displayFolder: Listas
+		lineageTag: bbc3ffcb-6a8b-4fd2-b5b0-a4ff7c85db9e
+
+	measure 'Listas Aprovadas EN.DT' =
+			CALCULATE ( [Listas], Listas[Status Real] = "APROVADO" )
+		formatString: 0
+		displayFolder: Listas
+		lineageTag: e2ce58e0-3cbd-452d-a07b-79acb2d30590
+
+	measure 'Listas com Fichas' =
+			COUNTROWS ( FILTER ( Listas, [Fichas] > 0 ) )
+		formatString: 0
+		displayFolder: Listas
+		lineageTag: 1a2d99a0-eeff-4e62-b039-aabe1dd06689
+
+	measure 'Listas Aprovadas sem Fichas' =
+			COUNTROWS ( FILTER ( Listas, Listas[Status Real] = "APROVADO" && ( ISBLANK ( [Fichas] ) || [Fichas] = 0 ) ) )
+		formatString: 0
+		displayFolder: Listas
+		lineageTag: 6a1ce1b2-4bf7-4ce1-bb66-ad9cd3ff9022
+
+	measure 'Listas sem Responsável' =
+			CALCULATE ( [Listas], Listas[Tem Responsavel] = FALSE () )
+		formatString: 0
+		displayFolder: Listas
+		lineageTag: 68f60f15-96e2-43d7-b85c-ccdd4fe2dc6d
+
+	measure 'Listas com Revisão Desatualizada' =
+			// a revisão em uso no _STATUS_PMIB não é a última emitida no Aconex
+			CALCULATE ( [Listas], Listas[Revisao Desatualizada] = TRUE () )
+		formatString: 0
+		displayFolder: Listas
+		lineageTag: 4fc630de-eb90-4e1b-b331-4394768b71a1
+
+	column Lista
+		dataType: string
+		lineageTag: 53b0ad3c-56fa-4896-a78a-e255eff22b1d
+		summarizeBy: none
+		sourceColumn: Lista
+
+		annotation SummarizationSetBy = User
+
+	column 'Documento CMI'
+		dataType: string
+		lineageTag: 4d0023ab-246b-471a-92e2-e6eb775564dc
+		summarizeBy: none
+		sourceColumn: Documento CMI
+
+		annotation SummarizationSetBy = User
+
+	column 'Ultima Revisao'
+		dataType: string
+		lineageTag: a7191cb0-5515-44e4-a063-cf0f36dd99b8
+		summarizeBy: none
+		sourceColumn: Ultima Revisao
+
+		annotation SummarizationSetBy = User
+
+	column 'Status da Revisao'
+		dataType: string
+		lineageTag: 13a2384d-5e9e-4cac-874e-03426c93d672
+		summarizeBy: none
+		sourceColumn: Status da Revisao
+
+		annotation SummarizationSetBy = User
+
+	column 'Status Real'
+		dataType: string
+		lineageTag: 9bfef0ee-92e2-4d91-a4eb-f4f4d2393bfd
+		summarizeBy: none
+		sourceColumn: Status Real
+
+		annotation SummarizationSetBy = User
+
+	column 'Revisao em Uso (mapeadora)'
+		dataType: string
+		lineageTag: 6d3ffa04-ff25-4801-adab-c441e5b1268d
+		summarizeBy: none
+		sourceColumn: Revisao em Uso (mapeadora)
+
+		annotation SummarizationSetBy = User
+
+	column Descricao
+		dataType: string
+		lineageTag: 77348eaa-62fc-4cd2-844f-09e9abc3d266
+		summarizeBy: none
+		sourceColumn: Descricao
+
+		annotation SummarizationSetBy = User
+
+	column 'Especificacao Tecnica'
+		dataType: string
+		lineageTag: 49aecc15-1a8b-4031-a137-e662fdeedb06
+		summarizeBy: none
+		sourceColumn: Especificacao Tecnica
+
+		annotation SummarizationSetBy = User
+
+	column Capitulo
+		dataType: string
+		lineageTag: 47f3b569-5c92-425d-9be2-0151b896fd28
+		summarizeBy: none
+		sourceColumn: Capitulo
+
+		annotation SummarizationSetBy = User
+
+	column Responsavel
+		dataType: string
+		lineageTag: baa2d352-d53a-4f46-8f89-e8349635ad0f
+		summarizeBy: none
+		sourceColumn: Responsavel
+
+		annotation SummarizationSetBy = User
+
+	column 'Procurement (lista)'
+		dataType: string
+		lineageTag: 15d60812-7e41-4b32-8085-5a8ec4c7364b
+		summarizeBy: none
+		sourceColumn: Procurement (lista)
+
+		annotation SummarizationSetBy = User
+
+	column Elaborador
+		dataType: string
+		lineageTag: a5cdd929-d45f-4701-88d7-743512d03923
+		summarizeBy: none
+		sourceColumn: Elaborador
+
+		annotation SummarizationSetBy = User
+
+	column 'Origem Fornecedor'
+		dataType: string
+		lineageTag: a9315ee6-45ec-4590-9d92-caf4cd3cd646
+		summarizeBy: none
+		sourceColumn: Origem Fornecedor
+
+		annotation SummarizationSetBy = User
+
+	column 'Entrega (texto)'
+		dataType: string
+		lineageTag: cf6bd803-dc4a-41b1-8da2-91d85ac04161
+		summarizeBy: none
+		sourceColumn: Entrega (texto)
+
+		annotation SummarizationSetBy = User
+
+	column Observacao
+		dataType: string
+		lineageTag: f09bfd74-82cf-484b-a84d-67e02df1ea74
+		summarizeBy: none
+		sourceColumn: Observacao
+
+		annotation SummarizationSetBy = User
+
+	column Eventos
+		dataType: string
+		lineageTag: a0d5d283-afb0-4402-857a-51ab451b1379
+		summarizeBy: none
+		sourceColumn: Eventos
+
+		annotation SummarizationSetBy = User
+
+	column 'Situacao PMIB (mapeadora)'
+		dataType: string
+		lineageTag: e958f6b2-6baa-4b0e-96c4-72b41ef53362
+		summarizeBy: none
+		sourceColumn: Situacao PMIB (mapeadora)
+
+		annotation SummarizationSetBy = User
+
+	column 'Origem Cadastro'
+		dataType: string
+		lineageTag: eae97be5-24c6-4f84-ab18-b05886a2e65f
+		summarizeBy: none
+		sourceColumn: Origem Cadastro
+
+		annotation SummarizationSetBy = User
+
+	column 'Area (pasta)'
+		dataType: string
+		lineageTag: eac21b1b-c380-44f9-9189-556159fc8658
+		summarizeBy: none
+		sourceColumn: Area (pasta)
+
+		annotation SummarizationSetBy = User
+
+	column Nome
+		dataType: string
+		lineageTag: f8d358ef-819d-4cbd-bdbc-2a4abb949718
+		summarizeBy: none
+		sourceColumn: Nome
+
+		annotation SummarizationSetBy = User
+
+	column 'Area Final'
+		dataType: string
+		lineageTag: a354cdca-5ccb-4305-a998-ad920d712f8a
+		summarizeBy: none
+		sourceColumn: Area Final
+
+		annotation SummarizationSetBy = User
+
+	column 'Revisao no Arquivo'
+		dataType: string
+		lineageTag: c20d72a1-3022-4bde-98e6-4970a658fa7a
+		summarizeBy: none
+		sourceColumn: Revisao no Arquivo
+
+		annotation SummarizationSetBy = User
+
+	column 'Revisao em Uso'
+		dataType: string
+		lineageTag: 5de5c666-9ab7-465d-923d-66d95c96d196
+		summarizeBy: none
+		sourceColumn: Revisao em Uso
+
+		annotation SummarizationSetBy = User
+
+	column 'Tem Responsavel'
+		dataType: boolean
+		lineageTag: bba0c929-7662-42fa-bed2-60315b3a4f46
+		summarizeBy: none
+		sourceColumn: Tem Responsavel
+
+		annotation SummarizationSetBy = User
+
+	column 'Revisao Desatualizada'
+		dataType: boolean
+		lineageTag: 26849137-bffd-4e06-b728-79678db50a65
+		summarizeBy: none
+		sourceColumn: Revisao Desatualizada
+
+		annotation SummarizationSetBy = User
+
+	partition Listas = m
+		mode: import
+		source =
+				let
+				    Consulta =
+				        let
+				            Arquivo = File.Contents(PastaPMIB & "\Mapeamento Listas de Sobressalentes.xlsx"),
+				            Tabela = fxLerTabela(Arquivo, "Acompanhamento Sobressalente", "N DOCUMENTO ITAIPU"),
+				            SoLinhas = Table.SelectRows(Tabela, each fxNorm([N DOCUMENTO ITAIPU]) <> ""),
+				            Colunas = Table.SelectColumns(SoLinhas, {
+				                "N DOCUMENTO ITAIPU", "N DOCUMENTO CMI", "ULTIMA REVISAO EMITIDA", "STATUS DA REVISAO", "STATUS REAL",
+				                "REVISAO EM USO", "DESCRICAO", "ESPECIFICACAO TECNICA", "CAPITULO", "RESPONSAVEL", "PROCUREMENT",
+				                "ELABORADOR DO DOCUMENTO", "ORIGEM FORNECEDOR", "ENTREGA", "OBSERVACAO",
+				                "EVENTOS DE PAGAMENTOS RELACIONADOS", "SITUACAO NO PMIB"}, MissingField.UseNull),
+				            Renomeada = Table.RenameColumns(Colunas, {
+				                {"N DOCUMENTO ITAIPU", "Lista"}, {"N DOCUMENTO CMI", "Documento CMI"},
+				                {"ULTIMA REVISAO EMITIDA", "Ultima Revisao"}, {"STATUS DA REVISAO", "Status da Revisao"},
+				                {"STATUS REAL", "Status Real"}, {"REVISAO EM USO", "Revisao em Uso"}, {"DESCRICAO", "Descricao"},
+				                {"ESPECIFICACAO TECNICA", "Especificacao Tecnica"}, {"CAPITULO", "Capitulo"},
+				                {"RESPONSAVEL", "Responsavel"}, {"PROCUREMENT", "Procurement (lista)"},
+				                {"ELABORADOR DO DOCUMENTO", "Elaborador"}, {"ORIGEM FORNECEDOR", "Origem Fornecedor"},
+				                {"ENTREGA", "Entrega (texto)"}, {"OBSERVACAO", "Observacao"},
+				                {"EVENTOS DE PAGAMENTOS RELACIONADOS", "Eventos"}, {"SITUACAO NO PMIB", "Situacao PMIB (mapeadora)"}}),
+				            TextoTudo = Table.TransformColumns(Renomeada, List.Transform(Table.ColumnNames(Renomeada), (c) => {c, each if _ = null then null else Text.Trim(Text.From(_)), type text})),
+				            ComOrigem = Table.AddColumn(TextoTudo, "Origem Cadastro", each "MAPEADORA", type text),
+				            // listas que existem só como _STATUS_PMIB
+				            DeItens = Table.Distinct(Table.SelectColumns(Itens, {"Lista", "Sistema"}), {"Lista"}),
+				            Faltantes = Table.SelectRows(DeItens, each not List.Contains(ComOrigem[Lista], [Lista])),
+				            FaltantesFmt = Table.AddColumn(Table.RenameColumns(Faltantes, {{"Sistema", "Descricao"}}), "Origem Cadastro", each "SÓ _STATUS_PMIB (falta na mapeadora)", type text),
+				            Unidas = Table.Combine({ComOrigem, FaltantesFmt}),
+				            // nome curto para gráficos: pasta do _STATUS_PMIB; sem ela, a descrição sem o prefixo padrão
+				            Pastas = Table.Distinct(Table.SelectColumns(Itens, {"Lista", "Area", "Sistema"}), {"Lista"}),
+				            ComPasta = Table.NestedJoin(Unidas, {"Lista"}, Pastas, {"Lista"}, "P", JoinKind.LeftOuter),
+				            ExpPasta = Table.ExpandTableColumn(ComPasta, "P", {"Area", "Sistema"}),
+				            ComNome = Table.AddColumn(ExpPasta, "Nome", each
+				                if [Sistema] <> null then [Sistema]
+				                else
+				                    let
+				                        d = if [Descricao] = null then [Lista] else [Descricao],
+				                        Prefixos = {"ATUALIZAÇÃO TECNOLÓGICA - PAT_OBJ1 - ", "ATUALIZAÇÃO TECNOLÓGICA – PAT_OBJ1 - ",
+				                                    "ENG. ELÉTRICA - ", "ENG. MECÂNICA  - ", "ENG. MECÂNICA - ", "ENG. ELETRÔNICA - ", "ENG. CIVIL - ",
+				                                    " - LISTA DE SOBRESSALENTES", " - LISTA DESOBRESSALENTES"},
+				                        Limpo = List.Accumulate(Prefixos, d, (s, p) => Text.Replace(s, p, ""))
+				                    in
+				                        Text.Trim(Limpo), type text),
+				            ComAreaFinal = Table.AddColumn(ComNome, "Area Final", each if [Area] <> null then [Area] else "SEM _STATUS_PMIB", type text),
+				            ComFlags = Table.AddColumn(ComAreaFinal, "Tem Responsavel", each [Responsavel] <> null and fxNorm([Responsavel]) <> "" and fxNorm([Responsavel]) <> "-", type logical),
+				            // revisão em uso: a do próprio _STATUS_PMIB (linha acima do cabeçalho) manda; a da
+				            // mapeadora fica como referência até o SIG-FT passar a copiá-la do arquivo
+				            Revisoes = Table.Distinct(Table.SelectRows(Table.SelectColumns(Itens, {"Lista", "Revisao no Arquivo"}),
+				                                                       each [Revisao no Arquivo] <> null), {"Lista"}),
+				            ComRevArq = Table.ExpandTableColumn(Table.NestedJoin(ComFlags, {"Lista"}, Revisoes, {"Lista"}, "R", JoinKind.LeftOuter),
+				                                                "R", {"Revisao no Arquivo"}),
+				            ComRevMap = Table.RenameColumns(ComRevArq, {{"Revisao em Uso", "Revisao em Uso (mapeadora)"}}),
+				            ComRevisao = Table.AddColumn(ComRevMap, "Revisao em Uso", each
+				                if [Revisao no Arquivo] <> null then [Revisao no Arquivo] else [#"Revisao em Uso (mapeadora)"], type text),
+				            ComDefasagem = Table.AddColumn(ComRevisao, "Revisao Desatualizada", each
+				                [Revisao em Uso] <> null and [Ultima Revisao] <> null and fxNorm([Ultima Revisao]) <> "SEM LISTA"
+				                and fxNorm([Revisao em Uso]) <> fxNorm([Ultima Revisao]), type logical),
+				            // uma linha por lista (a mapeadora pode repetir um código): exigência do relacionamento com Itens
+				            Unica = Table.Distinct(ComDefasagem, {"Lista"}),
+				            Final = Table.RemoveColumns(Table.RenameColumns(Unica, {{"Area", "Area (pasta)"}}), {"Sistema"})
+				        in
+				            Final,
+				    Colunas = Table.SelectColumns(Consulta, {"Lista", "Documento CMI", "Ultima Revisao", "Status da Revisao", "Status Real", "Revisao em Uso (mapeadora)", "Descricao", "Especificacao Tecnica", "Capitulo", "Responsavel", "Procurement (lista)", "Elaborador", "Origem Fornecedor", "Entrega (texto)", "Observacao", "Eventos", "Situacao PMIB (mapeadora)", "Origem Cadastro", "Area (pasta)", "Nome", "Area Final", "Revisao no Arquivo", "Revisao em Uso", "Tem Responsavel", "Revisao Desatualizada"}, MissingField.UseNull),
+				    Tipada = Table.TransformColumnTypes(Colunas, {{"Lista", type text}, {"Documento CMI", type text}, {"Ultima Revisao", type text}, {"Status da Revisao", type text}, {"Status Real", type text}, {"Revisao em Uso (mapeadora)", type text}, {"Descricao", type text}, {"Especificacao Tecnica", type text}, {"Capitulo", type text}, {"Responsavel", type text}, {"Procurement (lista)", type text}, {"Elaborador", type text}, {"Origem Fornecedor", type text}, {"Entrega (texto)", type text}, {"Observacao", type text}, {"Eventos", type text}, {"Situacao PMIB (mapeadora)", type text}, {"Origem Cadastro", type text}, {"Area (pasta)", type text}, {"Nome", type text}, {"Area Final", type text}, {"Revisao no Arquivo", type text}, {"Revisao em Uso", type text}, {"Tem Responsavel", type logical}, {"Revisao Desatualizada", type logical}})
+				in
+				    Tipada
+
+	annotation PBI_ResultType = Table
+

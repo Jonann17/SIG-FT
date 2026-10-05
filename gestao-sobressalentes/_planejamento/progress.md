@@ -85,6 +85,19 @@ procurement, atraso de Itaipu em 15 d.u.) e um Power BI com visão interna e vis
   isca, layout antigo, mapeadora e DocManager sintéticos, `esperado.json`) + `validar_kit_gestao_pmib.py`
   (a referência dá KIT OK). Cópia de referência do `apto_para_entrega_att.py` em `_gestao_v2/referencia_sigft/`.
 
+## 2026-10-05 (tarde) — macro inegociável, mapeadora = cadastro, Power BI v2 montado
+- Luan: a T6 (lista de preços 0A) só vale se o **rodapé for feito pela macro** do template — roteiro refeito
+  (passo 2 no Excel do trabalho via xlwings); validação final prática; a lista do PDG não é modelo.
+- Luan: o "plano R2" era a arquitetura v2 — **mapeadora = cadastro**, contagens no Power BI. Eu tinha feito o
+  contrário (acrescentado colunas). Roteiro do SIG-FT e kit corrigidos (o Gestão PMIB grava só REVISÃO EM USO,
+  SITUAÇÃO NO PMIB e LINK).
+- **Power BI v2 montado** como Projeto do Power BI (`montar_pbip.py` → TMDL + PBIR, relatórios Interno e Itaipu),
+  instalado o Power BI Desktop nesta máquina (autorizado) e **testado com os dados reais**: modelo validado pela
+  biblioteca oficial (TOM), as 7 tabelas atualizam, medidas batem com a referência em Python, páginas conferidas
+  por captura de tela. Entregue no Box: `SOBRESSALENTES - PMIB/Sobressalentes v2 (Power BI)/`.
+- **Mapeadora**: retirado o bloco de 18 colunas de contagem (`xlsx_cirurgico.remover_colunas`, nova); sem perda,
+  abre no LibreOffice, o Power BI v2 atualiza com ela. O `.pbix` antigo deixou de atualizar.
+
 ## Proximas sessões
 1. **SIG-FT** (a partir de 05/10, na nuvem): T0 cabeçalho na linha 5 (módulo PDM); T1 gravar sem
    openpyxl; T2 situação/dias de atraso; T3 revisão em uso → mapeadora; T4 export de autorizados.

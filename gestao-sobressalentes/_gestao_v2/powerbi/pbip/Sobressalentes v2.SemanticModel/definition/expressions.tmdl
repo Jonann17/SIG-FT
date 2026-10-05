@@ -1,0 +1,213 @@
+expression PastaPMIB = "C:\Users\560083605\Box\CMI - Consórcio Itaipu\11 - Ger. Engenharia\15 - PDM\SOBRESSALENTES - PMIB" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	lineageTag: ee032c65-846f-4074-b7ae-7902c85c942d
+	queryGroup: Parametros
+
+	annotation PBI_ResultType = Text
+
+expression DataReferencia =
+		let
+		    Hoje = Date.From(DateTime.LocalNow())
+		in
+		    Hoje
+	lineageTag: 0292fde4-715e-4224-8788-2671bc8cf274
+	queryGroup: Apoio
+
+	annotation PBI_ResultType = Date
+
+expression fxNorm =
+		(valor as any) as text =>
+		let
+		    Texto = if valor = null then "" else Text.Upper(Text.Trim(Text.From(valor))),
+		    Trocas = {
+		        {"Á","A"},{"À","A"},{"Â","A"},{"Ã","A"},{"Ä","A"},
+		        {"É","E"},{"È","E"},{"Ê","E"},{"Ë","E"},
+		        {"Í","I"},{"Ì","I"},{"Î","I"},{"Ï","I"},
+		        {"Ó","O"},{"Ò","O"},{"Ô","O"},{"Õ","O"},{"Ö","O"},
+		        {"Ú","U"},{"Ù","U"},{"Û","U"},{"Ü","U"},
+		        {"Ç","C"},{"Ñ","N"},{"°",""},{"º",""},{"ª",""},
+		        {"#(lf)"," "},{"#(cr)"," "},{"#(tab)"," "}
+		    },
+		    SemAcento = List.Accumulate(Trocas, Texto, (estado, par) => Text.Replace(estado, par{0}, par{1})),
+		    Colapsado = Text.Combine(List.Select(Text.Split(SemAcento, " "), each _ <> ""), " ")
+		in
+		    Colapsado
+	lineageTag: 5fbb1f9a-4991-48c3-ad48-3bee9ddc5dac
+	queryGroup: Funcoes
+
+	annotation PBI_ResultType = Function
+
+expression fxPMIB =
+		(valor as any) as nullable text =>
+		let
+		    Bruto = if valor = null then ""
+		            else if Value.Is(valor, type number) then Number.ToText(valor, "F4", "en-US")
+		            else Text.Remove(Text.From(valor), {" ", "#(lf)", "#(tab)"}),
+		    TemPonto = Text.StartsWith(Bruto, "4500063671."),
+		    SemPonto = (not TemPonto) and Text.StartsWith(Bruto, "4500063671"),
+		    Seq = if TemPonto then Text.AfterDelimiter(Bruto, "4500063671.")
+		          else if SemPonto then Text.Middle(Bruto, 10)
+		          else null,
+		    SoDigitos = Seq <> null and Seq <> "" and Text.Length(Seq) <= 4
+		                and List.AllTrue(List.Transform(Text.ToList(Seq), each List.Contains({"0".."9"}, _))),
+		    Valido = SoDigitos and (TemPonto or Text.Length(Seq) = 4),
+		    Resultado = if Valido then "4500063671." & Text.PadEnd(Seq, 4, "0") else null
+		in
+		    Resultado
+	lineageTag: 2fa72d55-ec83-4711-b65a-977433d1a7b8
+	queryGroup: Funcoes
+
+	annotation PBI_ResultType = Function
+
+expression fxLerTabela =
+		(conteudo as binary, aba as text, chave as text) as table =>
+		let
+		    Livro = Excel.Workbook(conteudo, null, true),
+		    Planilha = try Livro{[Item = aba, Kind = "Sheet"]}[Data]
+		               otherwise Table.SelectRows(Livro, each [Kind] = "Sheet"){0}[Data],
+		    Topo = Table.ToRows(Table.FirstN(Planilha, 30)),
+		    Posicao = List.PositionOf(List.Transform(Topo, each List.Contains(List.Transform(_, fxNorm), chave)), true),
+		    Resultado =
+		        if Posicao < 0 then #table({}, {})
+		        else
+		            let
+		                Corpo = Table.Skip(Planilha, Posicao),
+		                Promovida = Table.PromoteHeaders(Corpo, [PromoteAllScalars = true]),
+		                Antigos = Table.ColumnNames(Promovida),
+		                Novos = List.Accumulate(Antigos, {}, (acc, nome) =>
+		                    let
+		                        n = fxNorm(nome),
+		                        base = if n = "" then "_COL" & Text.From(List.Count(acc)) else n,
+		                        unico = if List.Contains(acc, base) then base & "_" & Text.From(List.Count(acc)) else base
+		                    in acc & {unico}),
+		                Renomeada = Table.RenameColumns(Promovida, List.Zip({Antigos, Novos}))
+		            in
+		                Renomeada
+		in
+		    Resultado
+	lineageTag: 091cfe2c-10d3-45f2-8834-71be3d8188b6
+	queryGroup: Funcoes
+
+	annotation PBI_ResultType = Function
+
+expression fxData =
+		(valor as any) as nullable date =>
+		    if valor = null then null
+		    else if Value.Is(valor, type date) then valor
+		    else if Value.Is(valor, type datetime) then Date.From(valor)
+		    else if Value.Is(valor, type number) then (if valor > 40000 and valor < 60000 then Date.From(valor) else null)
+		    else try Date.FromText(Text.Trim(Text.From(valor)), [Culture = "pt-BR"]) otherwise null
+	lineageTag: 4eb8b0a6-0012-4c80-8316-23fcaf6dd396
+	queryGroup: Funcoes
+
+	annotation PBI_ResultType = Function
+
+expression fxStatus =
+		(valor as any) as text =>
+		let
+		    n = fxNorm(valor),
+		    Mapa = [
+		        #"INICIAR" = "INICIAR",
+		        #"FICHA CRIADA" = "FICHA CRIADA",
+		        #"FICHAS CRIADAS" = "FICHA CRIADA",
+		        #"COM O FORNECEDOR" = "COM O FORNECEDOR",
+		        #"EM ELABORACAO" = "EM ELABORAÇÃO",
+		        #"EM ANALISE IB" = "EM ANÁLISE IB",
+		        #"EM ANALISE ITAIPU" = "EM ANÁLISE IB",
+		        #"EM CORRECAO" = "EM CORREÇÃO",
+		        #"APROVADO" = "APROVADO",
+		        #"DUPLICADO" = "DUPLICADO",
+		        #"N/A" = "N/A"
+		    ]
+		in
+		    if n = "" then "SEM STATUS" else Record.FieldOrDefault(Mapa, n, n)
+	lineageTag: 904ec7e5-a05a-41ce-9452-7f5da68bdac0
+	queryGroup: Funcoes
+
+	annotation PBI_ResultType = Function
+
+expression fxTipoEntrega =
+		(valor as any) as nullable text =>
+		let
+		    n = fxNorm(valor)
+		in
+		    if n = "FISICA E DOCUMENTAL" or n = "FISICO E DOCUMENTAL" then "FÍSICA E DOCUMENTAL"
+		    else if n = "DOCUMENTAL" or n = "APENAS DOCUMENTAL" then "DOCUMENTAL"
+		    else if n = "TITULO" or n = "CONJUNTO" or n = "CONJUNTO (TITULO)" then "TÍTULO"
+		    else null
+	lineageTag: f5525d91-fdbc-42b4-b199-6e7ea507c33b
+	queryGroup: Funcoes
+
+	annotation PBI_ResultType = Function
+
+expression fxRevisaoEmUso =
+		(conteudo as binary) as nullable text =>
+		let
+		    Livro = Excel.Workbook(conteudo, null, true),
+		    Planilha = try Livro{[Item = "Lista de Materiais", Kind = "Sheet"]}[Data]
+		               otherwise Table.SelectRows(Livro, each [Kind] = "Sheet"){0}[Data],
+		    Textos = List.Transform(List.Combine(Table.ToRows(Table.FirstN(Planilha, 10))), fxNorm),
+		    Linha = List.First(List.Select(Textos, each Text.StartsWith(_, "REVISAO DA LISTA")), null),
+		    Rev = if Linha = null then null
+		          else Text.Trim(Text.BeforeDelimiter(Text.AfterDelimiter(Linha, "EM USO:"), " - DATA"))
+		in
+		    if Rev = null or Rev = "" then null else Rev
+	lineageTag: e1d9887d-9ffb-494c-b818-47acd63fe713
+	queryGroup: Funcoes
+
+	annotation PBI_ResultType = Function
+
+expression PrecosArquivos =
+		let
+		    Raiz = if Text.EndsWith(PastaPMIB, "\") then PastaPMIB else PastaPMIB & "\",
+		    Arquivos = Folder.Files(Raiz),
+		    Filtrados = Table.SelectRows(Arquivos, each
+		        let
+		            n = Text.Upper([Name]),
+		            p = fxNorm([Folder Path])
+		        in
+		            (Text.EndsWith(n, ".XLSM") or Text.EndsWith(n, ".XLSX"))
+		            and (Text.Contains(n, "PB021") or Text.Contains(n, "PB020-0"))
+		            and not Text.Contains(n, "STATUS_PMIB")
+		            and not Text.StartsWith(n, "~$")
+		            and not List.AnyTrue(List.Transform({"COPY", "COPIA", "CÓPIA", "COMENT", "RESPOSTA"}, (k) => Text.Contains(n, k)))
+		            and not List.AnyTrue(List.Transform({"OBSOLETO", "TESTES", "BACKUP"}, (k) => Text.Contains(p, k)))),
+		    ComCodigo = Table.AddColumn(Filtrados, "Lista de Precos", each
+		        let
+		            SemExt = Text.BeforeDelimiter([Name], ".", {0, RelativePosition.FromEnd}),
+		            SemRev = if Text.Contains(SemExt, "[") then Text.BeforeDelimiter(SemExt, "[") else SemExt
+		        in
+		            Text.Trim(SemRev), type text),
+		    ComGeracao = Table.AddColumn(ComCodigo, "Geracao", each if Text.Contains(Text.Upper([Name]), "PB021") then "PB021" else "PB020-0x (legado)", type text),
+		    ComPasta = Table.AddColumn(ComGeracao, "Pasta", each Text.AfterDelimiter([Folder Path], Raiz), type text),
+		    ComDados = Table.AddColumn(ComPasta, "Dados", each fxLerTabela([Content], "Lista de Materiais", "DESCRICAO")),
+		    Resultado = Table.SelectColumns(ComDados, {"Lista de Precos", "Geracao", "Pasta", "Date modified", "Dados"})
+		in
+		    Resultado
+	lineageTag: f1bc7c70-9daa-400a-9c47-c3257060e117
+	queryGroup: Apoio
+
+	annotation PBI_ResultType = Table
+
+expression PrecosPorPMIB =
+		let
+		    Base = PrecosArquivos,
+		    Colunas = {"QTD.", "CODIGO GE", "CODIGO GE (MTA)", "CODIGO CMI", "CODIGO PMIB", "VALOR UNITARIO", "TIPO DE ENTREGA"},
+		    Selecionadas = Table.TransformColumns(Base, {"Dados", each Table.SelectColumns(_, Colunas, MissingField.UseNull)}),
+		    Expandida = Table.ExpandTableColumn(Selecionadas, "Dados", Colunas),
+		    ComPMIB = Table.AddColumn(Expandida, "PMIB", each fxPMIB([CODIGO PMIB]), type text),
+		    SoComPMIB = Table.SelectRows(ComPMIB, each [PMIB] <> null),
+		    ComTipo = Table.AddColumn(SoComPMIB, "Tipo Preco", each fxTipoEntrega([TIPO DE ENTREGA]), type text),
+		    ComValor = Table.AddColumn(ComTipo, "Valor Unitario USD", each try Number.From([VALOR UNITARIO]) otherwise null, type number),
+		    ComCodigoGE = Table.AddColumn(ComValor, "Codigo GE Preco", each
+		        List.First(List.Select({[CODIGO GE], [#"CODIGO GE (MTA)"], [CODIGO CMI]}, each _ <> null and fxNorm(_) <> "" and fxNorm(_) <> "-"), null), type text),
+		    Prioridade = Table.AddColumn(ComCodigoGE, "Prioridade", each if [Geracao] = "PB021" then 2 else 1, Int64.Type),
+		    Ordenada = Table.Buffer(Table.Sort(Prioridade, {{"Prioridade", Order.Descending}, {"Date modified", Order.Descending}})),
+		    UmPorPMIB = Table.Distinct(Ordenada, {"PMIB"}),
+		    Resultado = Table.SelectColumns(UmPorPMIB, {"PMIB", "Tipo Preco", "Valor Unitario USD", "Codigo GE Preco", "Lista de Precos", "Geracao"})
+		in
+		    Resultado
+	lineageTag: 60897d24-a37b-4690-9532-b54583702943
+	queryGroup: Apoio
+
+	annotation PBI_ResultType = Table
+
