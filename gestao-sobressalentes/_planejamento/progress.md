@@ -63,6 +63,14 @@ procurement, atraso de Itaipu em 15 d.u.) e um Power BI com visão interna e vis
 - Regras (`situacao_autorizacao` nova), protótipo, Power BI (`00`, `03`, `04`, `05`, LEIA-ME) e o
   roteiro do SIG-FT ([[Tarefa SIG-FT - Calculo e Gravacao sem Perda]], T0–T5) atualizados.
 
+## 2026-10-05 — ficha DOCUMENTAL não precisa de autorização
+- Correção do Luan: componente explodido (TIPO DE ENTREGA = DOCUMENTAL) só tem ficha; a entrega física
+  — e a autorização de Itaipu — é a do pai (FÍSICA E DOCUMENTAL). SITUAÇÃO passa a `N/A`, sem dias.
+- Regra (`situacao_autorizacao(..., tipo)`), migração (`--recalcular [--apenas-documental]`), Power BI
+  (`03`, `05`, LEIA-ME), protótipo e roteiro do SIG-FT (T2) atualizados.
+- Box: só #ST00=M00MEU10&MPB020 tinha documentais com situação — 62 células (61 AGUARDANDO + 1 vazia →
+  N/A), backup `backup_20261005-0808`, conferência sem outra mudança, abre no LibreOffice.
+
 ## Proximas sessões
 1. **SIG-FT** (a partir de 05/10, na nuvem): T0 cabeçalho na linha 5 (módulo PDM); T1 gravar sem
    openpyxl; T2 situação/dias de atraso; T3 revisão em uso → mapeadora; T4 export de autorizados.

@@ -66,8 +66,11 @@ DEFINE
     // ---------------- Trilha logística: autorização de Itaipu (15 d.u.) ----------------
     // SITUAÇÃO DA AUTORIZAÇÃO e DIAS DE ATRASO vêm do SIG-FT (gravados no _STATUS_PMIB).
     // DIAS DE ATRASO = dias corridos além do prazo; congela quando Itaipu autoriza.
+    // Ficha DOCUMENTAL (componente explodido) não precisa de autorização: Situacao = "N/A".
     MEASURE Itens[Pedidos de Autorização] =
-        CALCULATE ( [Fichas], NOT ISBLANK ( Itens[Data Email] ) )
+        CALCULATE ( [Fichas], NOT ISBLANK ( Itens[Data Email] ), Itens[Situacao Autorizacao] <> "N/A" )
+    MEASURE Itens[Fichas sem Autorização (Documentais)] =
+        CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "N/A" )
     MEASURE Itens[Aguardando Itaipu no Prazo] =
         CALCULATE ( [Fichas], Itens[Situacao Autorizacao] = "AGUARDANDO ITAIPU" )
     MEASURE Itens[Aguardando Cálculo do SIG-FT] =

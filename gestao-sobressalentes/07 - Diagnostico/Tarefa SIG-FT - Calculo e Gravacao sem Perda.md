@@ -50,6 +50,7 @@ pessoal do Luan (`%LOCALAPPDATA%\Sobressalentes-v2\backup_*`) e no histórico de
 | SITUAÇÃO DA AUTORIZAÇÃO | Quando | DIAS DE ATRASO |
 |---|---|---|
 | *(em branco)* | sem DATA DO EMAIL; ou linha `DUPLICADO` não autorizada | em branco |
+| `N/A` | `TIPO DE ENTREGA` = `DOCUMENTAL` (componente explodido: só tem ficha; a entrega física — e a autorização — é a do pai, `FÍSICA E DOCUMENTAL`) | em branco |
 | `AGUARDANDO ITAIPU` | e-mail enviado, hoje ≤ prazo | em branco |
 | `ATRASADO ITAIPU` | hoje > prazo, sem autorização | **dias corridos** desde o prazo: `(hoje − prazo).days` |
 | `AUTORIZADO` | Itaipu autorizou (export de autorizados, ou marcado à mão, ou EQUIPAMENTO ENTREGUE = SIM) | **congelado**: o atraso que houve até a autorização (em branco se veio no prazo) |
@@ -59,7 +60,10 @@ pessoal do Luan (`%LOCALAPPDATA%\Sobressalentes-v2\backup_*`) e no histórico de
   diverge do Excel em 468 de 1.500 datas testadas). Feriados: `FERIADOS` de
   `_scripts/regras_sobressalentes.py` (nacionais + Carnaval + Corpus Christi, 2024–2028; o Luan
   ainda vai confirmar se entram os do Paraguai/Foz).
-- `AUTORIZADO` **nunca volta** para AGUARDANDO/ATRASADO (é marcação de fato, não cálculo).
+- `AUTORIZADO` **nunca volta** para AGUARDANDO/ATRASADO/N/A (é marcação de fato, não cálculo).
+- Ordem: AUTORIZADO (fato) → DOCUMENTAL vira `N/A` → sem e-mail fica em branco → prazo. `TIPO DE ENTREGA`
+  vazio conta como físico (precisa de autorização) — conservador. `TÍTULO` também precisa.
+  (Correção do Luan em 05/10/2026: ficha documental não precisa de autorização de Itaipu.)
 - Implementação de referência: `situacao_autorizacao()` e `dias_de_atraso_na_autorizacao()` em
   `_scripts/regras_sobressalentes.py`.
 
@@ -146,8 +150,10 @@ continuam; `inventario()` igual antes e depois; o valor escrito é lido de volta
 
 **Testes**: e-mail 15/09/2026 → prazo 06/10/2026; 04/09/2026 + 1 d.u. → 08/09/2026 (07/09 feriado);
 hoje 10/10/2026 com e-mail 15/09 → ATRASADO, 4 dias; AUTORIZADO continua AUTORIZADO e mantém o
-DIAS DE ATRASO; ENTREGUE = SIM → AUTORIZADO; DUPLICADO não autorizado → em branco; sem e-mail → em
-branco; fixture v1 → log e nada gravado.
+DIAS DE ATRASO; ENTREGUE = SIM → AUTORIZADO; TIPO DOCUMENTAL com e-mail vencido → `N/A`, sem dias;
+DOCUMENTAL já AUTORIZADO continua AUTORIZADO; DUPLICADO não autorizado → em branco; sem e-mail → em
+branco; fixture v1 → log e nada gravado. Referência pronta: `recalcular_situacao()` em
+`_gestao_v2/migrar_status_pmib_v2.py` (faz exatamente isto num arquivo).
 
 ## T3 — Revisão em uso vem do `_STATUS_PMIB` (prioridade 2)
 

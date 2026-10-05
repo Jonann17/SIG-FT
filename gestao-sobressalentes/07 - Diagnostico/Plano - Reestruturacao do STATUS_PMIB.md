@@ -33,7 +33,7 @@ REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE ALTERAÇÃO: 03/0
 | Coluna | O que é | Quem preenche |
 |---|---|---|
 | **TIPO DE ENTREGA** (nova) | FÍSICA E DOCUMENTAL · DOCUMENTAL · TÍTULO | pré-preenchida pela lista de preços (598 linhas); o resto, quem cria a ficha |
-| **SITUAÇÃO DA AUTORIZAÇÃO** (substituiu o APTO PARA ENTREGA, mesma coluna) | AGUARDANDO ITAIPU · ATRASADO ITAIPU · AUTORIZADO | **SIG-FT** (15 dias úteis do e-mail); AUTORIZADO também à mão / pelo export de autorizados |
+| **SITUAÇÃO DA AUTORIZAÇÃO** (substituiu o APTO PARA ENTREGA, mesma coluna) | AGUARDANDO ITAIPU · ATRASADO ITAIPU · AUTORIZADO · N/A (ficha DOCUMENTAL: não precisa de autorização) | **SIG-FT** (15 dias úteis do e-mail); AUTORIZADO também à mão / pelo export de autorizados |
 | **DIAS DE ATRASO** (nova) | dias **corridos** além do prazo de 15 dias úteis; congela quando Itaipu autoriza | **SIG-FT** |
 | **FORNECEDOR** (nova) | empresa que vendeu ao CMI (não o fabricante) | quem cria a ficha |
 | **PROCUREMENT** (nova) | quem compra | pré-preenchida pela mapeadora quando a lista tem uma pessoa só (1.006 linhas) |
@@ -53,6 +53,10 @@ Nome definido `versao_layout_status_pmib = "v2"`.
   55 `ATRASADO ITAIPU` (53 fichas) com DIAS DE ATRASO. Nenhuma delas consta no export de autorizados
   de 18/08/2026. A mais antiga: e-mail de 24/06/2025 (3 fichas de #ST00=M00MEU10&MPB020, 446 dias).
 - Linha DUPLICADO não autorizada: em branco (a situação vale pela linha da ficha).
+- **Correção de 05/10/2026** (Luan): ficha **DOCUMENTAL** não precisa de autorização de Itaipu — só o pai
+  (FÍSICA E DOCUMENTAL) é entregue. Em #ST00=M00MEU10&MPB020, 61 linhas "AGUARDANDO ITAIPU" + 1 em branco
+  passaram a `N/A` (`--recalcular --apenas-documental`; backup `backup_20261005-0808`; só essa lista tinha
+  documentais com situação). Nenhuma das 53 atrasadas era documental; aguardando caiu de 149 para 88.
 - Linha da revisão: semeada com a `REVISÃO EM USO` da mapeadora; DATA DE ALTERAÇÃO = "—" (não se sabe).
 - `#ST00=M00MEU10&MPB020`: a coluna "Fornecedor" que existia à direita de OBSERVAÇÕES (99 valores)
   foi **movida** para a FORNECEDOR nova; a coluna antiga ficou vazia.

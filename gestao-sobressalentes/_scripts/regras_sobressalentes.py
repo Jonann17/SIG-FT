@@ -269,7 +269,7 @@ def _para_data(v) -> dt.date | None:
 # --------------------------------------------------------------------------
 # Regras por item
 # --------------------------------------------------------------------------
-SITUACOES_AUTORIZACAO = ["AGUARDANDO ITAIPU", "ATRASADO ITAIPU", "AUTORIZADO"]
+SITUACOES_AUTORIZACAO = ["AGUARDANDO ITAIPU", "ATRASADO ITAIPU", "AUTORIZADO", "N/A"]
 
 
 def _inteiro(v) -> int | None:
@@ -281,7 +281,7 @@ def _inteiro(v) -> int | None:
 
 
 def situacao_autorizacao(data_email: dt.date | None, situacao_atual, entregue, hoje: dt.date,
-                         dias_atual=None) -> tuple[str, dt.date | None, int | None]:
+                         dias_atual=None, tipo=None) -> tuple[str, dt.date | None, int | None]:
     """
     Devolve (situacao, prazo, dias_de_atraso) — o que o SIG-FT grava nas colunas
     SITUAÇÃO DA AUTORIZAÇÃO e DIAS DE ATRASO do _STATUS_PMIB (o prazo nao e gravado).
@@ -292,10 +292,15 @@ def situacao_autorizacao(data_email: dt.date | None, situacao_atual, entregue, h
     AUTORIZADO          Itaipu autorizou (export de autorizados; o antigo APTO = SIM; ou ja
                         entregue). DIAS DE ATRASO fica congelado no valor que tinha — o
                         atraso que houve ate a autorizacao (ver dias_de_atraso_na_autorizacao)
+    N/A                 TIPO DE ENTREGA = DOCUMENTAL: o componente explodido so tem ficha; a
+                        entrega fisica e a do pai (FISICA E DOCUMENTAL), e so ela precisa de
+                        autorizacao de Itaipu (correcao do Luan, 05/10/2026)
     """
     prazo = somar_dias_uteis(data_email, PRAZO_AUTORIZACAO_DU) if data_email else None
     if normalizar(situacao_atual) in ("AUTORIZADO", "SIM") or normalizar(entregue) == "SIM":
         return "AUTORIZADO", prazo, _inteiro(dias_atual)
+    if TIPO_CANONICO.get(normalizar(tipo)) == "DOCUMENTAL":
+        return "N/A", None, None
     if prazo is None:
         return "", None, None
     if hoje > prazo:
@@ -481,8 +486,9 @@ def ler_itens(raiz: pathlib.Path = PASTA_PMIB, hoje: dt.date | None = None,
     dt_email = [_para_data(v) for v in itens["DATA DO EMAIL COMUNICANDO ENTREGA"]]
     itens["ENTREGUE"] = itens["EQUIPAMENTO ENTREGUE"].map(normalizar).eq("SIM")
     # a mesma regra que o SIG-FT grava: recalculada aqui para o painel nao depender de o SIG-FT ter rodado hoje
-    sit = [situacao_autorizacao(e, s, n, hoje, d) for e, s, n, d in zip(
-        dt_email, itens["SITUACAO DA AUTORIZACAO"], itens["EQUIPAMENTO ENTREGUE"], itens["DIAS DE ATRASO"])]
+    sit = [situacao_autorizacao(e, s, n, hoje, d, t) for e, s, n, d, t in zip(
+        dt_email, itens["SITUACAO DA AUTORIZACAO"], itens["EQUIPAMENTO ENTREGUE"], itens["DIAS DE ATRASO"],
+        itens["TIPO_ENTREGA"])]
     itens["SITUACAO_AUT"] = [s[0] or "SEM PEDIDO" for s in sit]
     itens["APTO"] = itens["SITUACAO_AUT"].eq("AUTORIZADO")
     itens["PRAZO_AUT"] = pd.Series([s[1].isoformat() if s[1] else None for s in sit], index=itens.index, dtype=object)

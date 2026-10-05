@@ -246,7 +246,8 @@ def migrar_planilha(caminho: pathlib.Path, prefill_tipo: dict[str, str], prefill
         status = N(ws.cell(r, col("STATUS")).value)
         apto = ws.cell(r, col(C_APTO)).value
         entregue = ws.cell(r, col(C_ENT)).value
-        sit, _, dias = R.situacao_autorizacao(para_data(ws.cell(r, col(C_EMAIL)).value), apto, entregue, hoje)
+        tipo = prefill_tipo.get(R.normalizar_pmib(ws.cell(r, col("CÓDIGO PMIB")).value) or "")
+        sit, _, dias = R.situacao_autorizacao(para_data(ws.cell(r, col(C_EMAIL)).value), apto, entregue, hoje, tipo=tipo)
         if status == "DUPLICADO" and N(apto) != "SIM":       # a situacao vale pela linha da ficha
             sit, dias = "", None
         ref_sit = f"{col_letras(c_sit)}{d.lin(r)}"
@@ -259,6 +260,7 @@ def migrar_planilha(caminho: pathlib.Path, prefill_tipo: dict[str, str], prefill
             resumo["autorizado_por_entregue"] += N(apto) != "SIM"
         resumo["aguardando"] += sit == "AGUARDANDO ITAIPU"
         resumo["atrasado"] += sit == "ATRASADO ITAIPU"
+        resumo["documental"] = resumo.get("documental", 0) + (sit == "N/A")
 
     # 3. linha da revisao em uso, acima do cabecalho, com o estilo da linha de cima
     if not plano["tem_revisao"]:
@@ -331,6 +333,65 @@ def migrar_planilha(caminho: pathlib.Path, prefill_tipo: dict[str, str], prefill
     resumo["partes_alteradas"] = ", ".join(sorted(p.partes_modificadas))
     resumo["ok"] = True
     return resumo
+
+
+# --------------------------------------------------------------------------
+# Recalculo da situacao num arquivo ja no v2 (o que o SIG-FT fara a cada rodada — T2)
+# --------------------------------------------------------------------------
+def recalcular_situacao(caminho: pathlib.Path, hoje: dt.date, apenas_documental: bool = False) -> dict:
+    """Regrava SITUAÇÃO DA AUTORIZAÇÃO e DIAS DE ATRASO pela regra. AUTORIZADO nunca e desfeito.
+    `apenas_documental`: so as linhas que passam a N/A (TIPO DE ENTREGA = DOCUMENTAL) — sem mexer
+    nos dias de atraso que andaram desde a ultima gravacao. Salva so se alguma celula mudou."""
+    resumo = {"arquivo": caminho.name, "alteradas": 0, "aviso": ""}
+    ws = openpyxl.load_workbook(caminho)[ABA]
+    hdr, mapa = cabecalho(ws)
+    if N(C_SIT) not in mapa:
+        resumo["aviso"] = "sem layout v2 — nada feito"
+        return resumo
+    col = lambda nome: mapa[N(nome)]  # noqa: E731
+    fim = ultima_linha_com_dado(ws, hdr, mapa["DESCRICAO"])
+    p = PlanilhaXlsx(caminho)
+    L = p.parte_da_aba(ABA)
+    for r in range(hdr + 1, fim + 1):
+        atual, dias = ws.cell(r, col(C_SIT)).value, ws.cell(r, col(C_DIAS)).value
+        sit, _, novo_dias = R.situacao_autorizacao(
+            para_data(ws.cell(r, col(C_EMAIL)).value), atual, ws.cell(r, col(C_ENT)).value, hoje, dias,
+            ws.cell(r, col(C_TIPO)).value)
+        if N(ws.cell(r, col("STATUS")).value) == "DUPLICADO" and sit != "AUTORIZADO":
+            sit, novo_dias = "", None                       # a situacao vale pela linha da ficha
+        if apenas_documental and sit != "N/A":
+            continue
+        if N(sit) != N(atual):
+            p.escrever(L, f"{col_letras(col(C_SIT))}{r}", sit or None)
+            resumo["alteradas"] += 1
+        if novo_dias != R._inteiro(dias):
+            p.escrever(L, f"{col_letras(col(C_DIAS))}{r}", novo_dias)
+            resumo["alteradas"] += 1
+    if resumo["alteradas"]:
+        p.salvar()
+    resumo["_cols"] = {col(C_SIT), col(C_DIAS)}
+    resumo["_hdr"] = hdr
+    return resumo
+
+
+def conferir_recalculo(original: pathlib.Path, novo: pathlib.Path, colunas: set[int], hdr: int) -> list[str]:
+    """So SITUAÇÃO e DIAS DE ATRASO (linhas de dados) podem ter mudado; o resto do arquivo, nada."""
+    problemas = []
+    po, pn = PlanilhaXlsx(original), PlanilhaXlsx(novo)
+    L = po.parte_da_aba(ABA)
+    if list(po._bytes) != list(pn._bytes):
+        problemas.append("lista de partes do arquivo mudou")
+    problemas += [f"parte alterada sem querer: {n}" for n in po._bytes if n != L and po._bytes[n] != pn._bytes.get(n)]
+    wa, wb = openpyxl.load_workbook(original)[ABA], openpyxl.load_workbook(novo)[ABA]
+    for r in range(1, max(wa.max_row, wb.max_row) + 1):
+        for c in range(1, max(wa.max_column, wb.max_column) + 1):
+            if (c in colunas and r > hdr) or _igual(wa.cell(r, c).value, wb.cell(r, c).value):
+                continue
+            problemas.append(f"{col_letras(c)}{r} mudou")
+            if len(problemas) > 10:
+                return problemas
+    ia, ib = inventario(original), inventario(novo)
+    return problemas + [f"{k}: {ia[k]} -> {ib[k]}" for k in ia if ib[k] != ia[k]]
 
 
 # --------------------------------------------------------------------------
@@ -539,6 +600,10 @@ def main() -> int:
     ap.add_argument("--so", help="migra só arquivos cujo nome contém este texto")
     ap.add_argument("--confirmo", action="store_true", help="no --aplicar, dispensa a pergunta (autorização já dada)")
     ap.add_argument("--libreoffice", action="store_true", help="na conferência, abre cada arquivo no LibreOffice")
+    ap.add_argument("--recalcular", action="store_true",
+                    help="arquivos já no v2: regrava SITUAÇÃO e DIAS DE ATRASO pela regra (com --simular ou --aplicar)")
+    ap.add_argument("--apenas-documental", action="store_true",
+                    help="com --recalcular: só as linhas DOCUMENTAL (passam a N/A)")
     args = ap.parse_args()
 
     if args.template:
@@ -576,6 +641,20 @@ def main() -> int:
             copia = pasta / a.name
             shutil.copy2(a, copia)
             alvos.append((a, copia))
+
+    if args.recalcular:
+        total = 0
+        for referencia, alvo in alvos:
+            try:
+                res = recalcular_situacao(alvo, dt.date.today(), args.apenas_documental)
+                prob = "; ".join(conferir_recalculo(referencia, alvo, res["_cols"], res["_hdr"])) if res["alteradas"] else ""
+            except PermissionError:
+                res, prob = {"alteradas": 0, "aviso": "arquivo aberto (Excel) — não alterado"}, ""
+            total += res["alteradas"]
+            if res["alteradas"] or res["aviso"] or prob:
+                print(f"{alvo.name[:52]:52s} células alteradas {res['alteradas']:3d} {res['aviso']} {'!! ' + prob if prob else ''}")
+        print(f"\nTotal de células alteradas: {total}")
+        return 0
 
     resumos = []
     for referencia, alvo in alvos:

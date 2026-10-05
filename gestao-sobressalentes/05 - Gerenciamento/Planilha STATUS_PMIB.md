@@ -83,7 +83,7 @@ CADASTRADOS NO PMIB` / `ESPECIFICAÇÃO TÉCNICA / CAPÍTULO`), e a tabela a par
 | `APLICACAO - LMR` | gestão | idem |
 | `TIPO DE ENTREGA` | lista de preços / gestão | FÍSICA E DOCUMENTAL · DOCUMENTAL · TÍTULO — ver [[Entrega Documental e Explosao de Itens]] |
 | `DATA DO EMAIL COMUNICANDO ENTREGA` | gestão | marca o início dos 15 d.u. |
-| `SITUAÇÃO DA AUTORIZAÇÃO` | **SIG-FT** (AUTORIZADO também à mão) | AGUARDANDO ITAIPU · ATRASADO ITAIPU · AUTORIZADO — era `APTO PARA ENTREGA` (SIM = AUTORIZADO) |
+| `SITUAÇÃO DA AUTORIZAÇÃO` | **SIG-FT** (AUTORIZADO também à mão) | AGUARDANDO ITAIPU · ATRASADO ITAIPU · AUTORIZADO · N/A (ficha DOCUMENTAL: só o pai físico precisa de autorização) — era `APTO PARA ENTREGA` (SIM = AUTORIZADO) |
 | `DIAS DE ATRASO` | **SIG-FT** | dias corridos além do prazo de 15 d.u.; congela quando Itaipu autoriza |
 | `EQUIPAMENTO ENTREGUE` | gestão | SIM / NÃO |
 | `FORNECEDOR` | gestão | empresa que vendeu ao CMI (não o fabricante) |

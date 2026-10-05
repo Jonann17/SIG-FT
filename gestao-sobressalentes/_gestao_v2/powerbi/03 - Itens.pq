@@ -92,6 +92,8 @@ let
     //    dias corridos além do prazo de 15 dias úteis do e-mail; congela quando Itaipu autoriza.
     //    Arquivo antigo (só APTO PARA ENTREGA): SIM = AUTORIZADO; com e-mail e sem nada
     //    calculado aparece como "AGUARDANDO CÁLCULO DO SIG-FT".
+    //    TIPO DE ENTREGA = DOCUMENTAL -> "N/A": o componente só tem ficha; quem é entregue (e
+    //    precisa de autorização) é o pai, FÍSICA E DOCUMENTAL (correção do Luan, 05/10/2026).
     ComDatas = Table.TransformColumns(ComValorLinha, {{"DATA DO EMAIL COMUNICANDO ENTREGA", fxData, type date}}),
     Renomeada = Table.RenameColumns(ComDatas, {{"DATA DO EMAIL COMUNICANDO ENTREGA", "Data Email"}}),
     ComEntregue = Table.AddColumn(Renomeada, "Entregue", each fxNorm([EQUIPAMENTO ENTREGUE]) = "SIM", type logical),
@@ -103,6 +105,7 @@ let
     ComSituacao = Table.AddColumn(ComFichaEntregue, "Situacao Autorizacao", each
         let s = fxNorm([SITUACAO DA AUTORIZACAO]), a = fxNorm([APTO PARA ENTREGA])
         in if s = "AUTORIZADO" or a = "SIM" or [Entregue] then "AUTORIZADO"
+           else if s = "N/A" or [Tipo de Entrega] = "DOCUMENTAL" then "N/A"
            else if s = "ATRASADO ITAIPU" or s = "AGUARDANDO ITAIPU" then s
            else if [Data Email] <> null and [E Ficha] then "AGUARDANDO CÁLCULO DO SIG-FT"
            else "SEM PEDIDO", type text),

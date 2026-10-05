@@ -80,3 +80,5 @@ código PMIB **não são dominio da EN.DT**, e sim da SM.DT.
   Aconex): por isso a linha foi semeada com "—" na data.
 - **53 fichas com autorização atrasada** em 04/10 (55 linhas); nenhuma consta no export de autorizados
   de 18/08/2026. A mais antiga: e-mail de 24/06/2025 (446 dias).
+- **Ficha DOCUMENTAL não precisa de autorização de Itaipu** (correção do Luan, 05/10): só o pai físico é
+  entregue. As 61 "aguardando" de #ST00=M00MEU10&MPB020 eram componentes da Hydac → `N/A`.
