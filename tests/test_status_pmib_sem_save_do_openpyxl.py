@@ -70,3 +70,10 @@ def test_o_recalculo_da_autorizacao_do_gestao_pmib_grava_pelo_statuspmib():
     funcao = _funcao("sigft/services/pmib_manager.py", "_atualizar_autorizacao")
     assert _grava_workbook_pelo_openpyxl(funcao) == []
     assert any(nome == "salvar" for nome, _ in _chamadas(funcao))
+
+
+def test_o_export_de_autorizados_grava_pelo_statuspmib():
+    # T4 (2026-10-05): o script que vivia no Box salvava pelo openpyxl.
+    funcao = _funcao("sigft/services/autorizados.py", "_aplicar_no_arquivo")
+    assert _grava_workbook_pelo_openpyxl(funcao) == []
+    assert any(nome == "salvar" for nome, _ in _chamadas(funcao))

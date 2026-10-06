@@ -34,6 +34,7 @@ class ModuloPMIBManager(ctk.CTkFrame):
         self.path_api = ctk.StringVar()
         self.path_root = ctk.StringVar()
         self.path_master = ctk.StringVar()
+        self.path_autorizados = ctk.StringVar()
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=0)  # Inputs (Sem expansão)
@@ -102,6 +103,113 @@ class ModuloPMIBManager(ctk.CTkFrame):
                                      fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"], text_color=COLORS["text_white"])
         self.btn_run.pack(pady=20)
 
+        # [2026-10-05, T4] Autorizações de entrega de Itaipu: o export que
+        # Itaipu manda vira AUTORIZADO nos `_STATUS_PMIB` da Pasta Raiz (era o
+        # script `apto_para_entrega_att.py`, com os caminhos fixos no código).
+        frm_aut = ctk.CTkFrame(self.content, fg_color="#2B2B2B", corner_radius=8)
+        frm_aut.pack(fill="x", pady=(0, 10))
+        ctk.CTkLabel(frm_aut, text="Autorizações de entrega de Itaipu", font=("Roboto", 16, "bold"),
+                     text_color=COLORS["accent"]).pack(anchor="w", padx=15, pady=(15, 0))
+        ctk.CTkLabel(frm_aut, text="Grava AUTORIZADO nos _STATUS_PMIB da Pasta Raiz (passo 2) para cada PMIB do "
+                                   "export de Itaipu (sobressalentes_autorizados_AAAAMMDDhhmm.xlsx).",
+                     text_color="gray", wraplength=720, justify="left").pack(anchor="w", padx=15)
+        f_aut = ctk.CTkFrame(frm_aut, fg_color="transparent")
+        f_aut.pack(fill="x", padx=15, pady=(8, 15))
+        self.btn_autorizados = ctk.CTkButton(f_aut, text="4. Selecionar export de autorizados (.xlsx)", width=280,
+                                             command=self._sel_autorizados, fg_color="#3A3A3A",
+                                             hover_color="#454545", font=("Roboto", 12))
+        self.btn_autorizados.pack(side="left")
+        self.lbl_autorizados = ctk.CTkLabel(f_aut, text="Nenhum arquivo selecionado", text_color="gray")
+        self.lbl_autorizados.pack(side="left", padx=15)
+        self.btn_aplicar = ctk.CTkButton(f_aut, text="APLICAR AUTORIZAÇÕES", width=200,
+                                         command=self.aplicar_autorizacoes, font=("Roboto", 12, "bold"),
+                                         fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"],
+                                         text_color=COLORS["text_white"])
+        self.btn_aplicar.pack(side="right")
+
+    def _sel_autorizados(self):
+        f = file_dialogs.ask_open_file("pmib_manager.autorizados", "excel",
+                                       titulo="Selecione o export de autorizados de Itaipu",
+                                       filetypes=[("Excel", "*.xlsx")])
+        if f:
+            self.path_autorizados.set(f)
+            self.lbl_autorizados.configure(text=os.path.basename(f), text_color=COLORS["accent"])
+            self.btn_autorizados.configure(fg_color=COLORS["primary"])
+
+    def _travar_botoes(self, travar):
+        estado = "disabled" if travar else "normal"
+        self.btn_run.configure(state=estado)
+        self.btn_aplicar.configure(state=estado)
+
+    # Callback de Travamento de Arquivo (Thread-Safe)
+    # [2026-10-05] Sem argumento = a Planilha de Mapeamento (Cancelar aborta o
+    # processo). Com o CAMINHO = um `_STATUS_PMIB`, que agora também é gravado
+    # (situação da autorização, dias de atraso, autorizações): Cancelar pula só
+    # aquele arquivo. Chamado da thread do serviço; o diálogo abre na thread da
+    # tela.
+    def _perguntar_arquivo_aberto(self, caminho=None):
+        resultado = {}
+        evento_espera = threading.Event()
+
+        def mostrar_popup():
+            if caminho is None:
+                titulo = "Planilha Mestra Aberta"
+                texto = "O sistema não conseguiu salvar os dados porque a Planilha de Mapeamento está aberta no Excel.\n\nPor favor, salve suas alterações, feche a planilha e clique em 'Repetir'.\nSe quiser abortar o processo, clique em 'Cancelar'."
+            else:
+                titulo = "Planilha _STATUS_PMIB Aberta"
+                texto = (f"O arquivo abaixo está aberto no Excel e não pôde ser gravado:\n\n"
+                         f"{os.path.basename(caminho)}\n\n"
+                         "Salve suas alterações, feche o arquivo e clique em 'Repetir'.\n"
+                         "'Cancelar' pula só este arquivo; o processo continua com os outros.")
+            resultado['retry'] = messagebox.askretrycancel(titulo, texto)
+            evento_espera.set()
+
+        self.after(0, mostrar_popup)
+        evento_espera.wait()
+        return resultado.get('retry', False)
+
+    def aplicar_autorizacoes(self):
+        export = self.path_autorizados.get()
+        root_folder = self.path_root.get()
+        if not export:
+            return messagebox.showwarning("Aviso", "Por favor, selecione o export de autorizados de Itaipu (Passo 4).")
+        if not root_folder:
+            return messagebox.showwarning("Aviso", "Por favor, selecione a Pasta Raiz dos _STATUS_PMIB (Passo 2).")
+        self._travar_botoes(True)
+        threading.Thread(target=self._worker_autorizados, args=(export, root_folder), daemon=True).start()
+
+    def _worker_autorizados(self, export, root_folder):
+        try:
+            # Importado aqui: o serviço é leve, mas a tela não precisa dele
+            # até alguém clicar.
+            from sigft.services import autorizados
+
+            self.after(0, lambda: self.progress_bar.set(0))
+            self._safe_log("Aplicando o export de autorizados de Itaipu...")
+            erros = avisos = 0
+            for linha in autorizados.executar(export, root_folder,
+                                              callback_retry_lock=self._perguntar_arquivo_aberto):
+                self._safe_log(linha)
+                erros += "[ERRO]" in linha
+                avisos += "[AVISO]" in linha
+            self.after(0, lambda: self.progress_bar.set(1.0))
+            if erros:
+                self.after(0, lambda: messagebox.showwarning(
+                    "Aviso", "As autorizações não foram aplicadas. Veja o motivo no log."))
+            elif avisos:
+                self.after(0, lambda n=avisos: messagebox.showwarning(
+                    "Concluído com avisos",
+                    f"As autorizações foram aplicadas, mas {n} aviso(s) pedem atenção. "
+                    "Procure as linhas [AVISO] no log."))
+            else:
+                self.after(0, lambda: messagebox.showinfo("Sucesso", "Autorizações de Itaipu aplicadas."))
+        except Exception as e:
+            self._safe_log(f"[ERRO FATAL]: {e}")
+            self.after(0, lambda erro=e: messagebox.showerror(
+                "Erro", f"Ocorreu um erro ao aplicar as autorizações:\n{erro}"))
+        finally:
+            self.after(0, lambda: self._travar_botoes(False))
+
     def _sel_api(self):
         f = file_dialogs.ask_open_file("pmib_manager.api", "excel", titulo="Selecione a Base de Dados API", filetypes=[("Excel", "*.xlsx *.xls")])
         if f:
@@ -144,8 +252,8 @@ class ModuloPMIBManager(ctk.CTkFrame):
         if not master_path:
             return messagebox.showwarning("Aviso", "Por favor, selecione a Planilha de mapeamento (Passo 3).")
 
-        # 2. Desativa o botão para evitar cliques duplicados
-        self.btn_run.configure(state="disabled")
+        # 2. Desativa os botões para evitar cliques duplicados
+        self._travar_botoes(True)
 
         # 3. Dispara o processamento em segundo plano (Thread)
         threading.Thread(target=self._worker, args=(api_path, root_folder, master_path), daemon=True).start()
@@ -157,33 +265,8 @@ class ModuloPMIBManager(ctk.CTkFrame):
             # Instancia a inteligência do Backend
             manager = backends.pmib_manager_backend.PMIBManager()
 
-            # Callback de Travamento de Arquivo (Thread-Safe)
-            # [2026-10-05] Sem argumento = a Planilha de Mapeamento (Cancelar
-            # aborta o processo). Com o CAMINHO = um `_STATUS_PMIB`, que agora
-            # também é gravado (situação e dias de atraso): Cancelar pula só
-            # aquele arquivo.
-            def cb_retry_lock(caminho=None):
-                resultado = {}
-                evento_espera = threading.Event()
-
-                def mostrar_popup():
-                    if caminho is None:
-                        titulo = "Planilha Mestra Aberta"
-                        texto = "O sistema não conseguiu salvar os dados porque a Planilha de Mapeamento está aberta no Excel.\n\nPor favor, salve suas alterações, feche a planilha e clique em 'Repetir'.\nSe quiser abortar o processo, clique em 'Cancelar'."
-                    else:
-                        titulo = "Planilha _STATUS_PMIB Aberta"
-                        texto = (f"O arquivo abaixo está aberto no Excel, e a situação da autorização "
-                                 f"e os dias de atraso dele não puderam ser gravados:\n\n"
-                                 f"{os.path.basename(caminho)}\n\n"
-                                 "Salve suas alterações, feche o arquivo e clique em 'Repetir'.\n"
-                                 "'Cancelar' pula só este arquivo; o processo continua com os outros.")
-                    res = messagebox.askretrycancel(titulo, texto)
-                    resultado['retry'] = res
-                    evento_espera.set()
-
-                self.after(0, mostrar_popup)
-                evento_espera.wait()
-                return resultado.get('retry', False)
+            # Arquivo aberto no Excel: ver `_perguntar_arquivo_aberto`.
+            cb_retry_lock = self._perguntar_arquivo_aberto
 
             # Callback Interativo e Seguro (Thread-Safe)
             def cb_confirm(df_novos):
@@ -309,6 +392,6 @@ class ModuloPMIBManager(ctk.CTkFrame):
             self.after(0, lambda erro=e: messagebox.showerror(
                 "Erro", f"Ocorreu um erro fatal durante a execução:\n{erro}"))
         finally:
-            # Reativa o botão ao final de tudo (seja erro ou sucesso)
-            self.after(0, lambda: self.btn_run.configure(state="normal"))
+            # Reativa os botões ao final de tudo (seja erro ou sucesso)
+            self.after(0, lambda: self._travar_botoes(False))
 

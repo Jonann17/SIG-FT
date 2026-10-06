@@ -24,6 +24,13 @@ O roteiro `gestao-sobressalentes/07 - Diagnostico/Tarefa SIG-FT - Calculo e Grav
 | 6. Gravar na mapeadora | A mapeadora virou **cadastro** (decisão do Luan, 05/10/2026): grava só `LINK DA PLANILHA`, a cascata da `SITUAÇÃO NO PMIB` (agora a função pura `situacao_no_pmib`) e a `REVISÃO EM USO` (lida do `_STATUS_PMIB`; quando é igual à ÚLTIMA REVISÃO EMITIDA, grava o valor de lá, com o mesmo tipo, para a formatação condicional G≠C não acender à toa). Nenhuma contagem. As contagens saem dos `_STATUS_PMIB` pelo Power BI v2. |
 | `executar_fluxo(..., hoje=None)` | `hoje` injetável — o kit de teste roda com `hoje = 2026-10-10`. |
 
+**Autorizações de entrega de Itaipu (T4)** — bloco novo na mesma tela: "4. Selecionar export de autorizados" +
+"APLICAR AUTORIZAÇÕES" (`services/autorizados.py`, porte do `apto_para_entrega_att.py` que vivia no Box com os
+caminhos fixos). Para cada PMIB do `sobressalentes_autorizados_AAAAMMDDhhmm.xlsx`, nos `_STATUS_PMIB` vivos da
+Pasta Raiz (mesmas exclusões): v2 → SITUAÇÃO := AUTORIZADO e, se DIAS estiver vazio, o atraso até a data do
+export (tirada do nome); layout antigo → APTO := SIM. Grava pelo editor cirúrgico; PMIB do export que não está em
+nenhum arquivo aparece como `[AVISO]`.
+
 A mapeadora continua gravada pelo openpyxl (não tem comentário em thread nem lista de extensão). Se passar a
 ter, o passo 4 escreve um `[AVISO]` antes de gravar.
 
