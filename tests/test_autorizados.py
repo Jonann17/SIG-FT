@@ -27,9 +27,11 @@ from pathlib import Path
 
 import pytest
 
+from _excel_de_mentira import ExcelDeMentira, TelaDeMentira, depois_da_conferencia, resumo_do_log
 from _openpyxl_de_verdade import openpyxl_de_verdade
 
 from sigft import config
+from sigft.core.excel import travas
 from sigft.services import autorizados
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -226,20 +228,141 @@ def test_o_gestao_pmib_depois_mantem_o_autorizado(pasta, tmp_path):
     assert (ws["S6"].value, ws["T6"].value) == ("AUTORIZADO", 3)
 
 
+# ===========================================================================
+# F. Arquivo travado: a lista de antes e a do fim  [2026-10-06]
+# ===========================================================================
+# Ver `docs/superpowers/specs/2026-10-06-gravacao-com-retry-design.md`. O
+# Excel aberto é o `ExcelDeMentira`: no Linux da suíte nada impede a escrita.
+def _aplicar(export, pasta, tela=None, ao_ver=None):
+    linhas = []
+    for linha in autorizados.executar(export, pasta, callback_travados=tela):
+        linhas.append(linha)
+        if ao_ver is not None:
+            ao_ver(linha)
+    return linhas
+
+
 @precisa_do_kit
-def test_arquivo_aberto_no_excel_e_pulado_com_aviso(pasta, tmp_path, monkeypatch):
+def test_travado_antes_repetir_depois_de_fechar_grava(pasta, tmp_path, monkeypatch):
     pytest.importorskip("lxml")
-    from sigft.core.excel import cirurgico
-
-    antes = (pasta / T1).read_bytes()
-
-    def _aberto(self, destino=None):
-        raise PermissionError(13, "aberto no Excel")
-
+    t1 = pasta / T1
+    excel = ExcelDeMentira(monkeypatch)
+    excel.abrir(t1, usuario="Luan")
+    tela = TelaDeMentira(True, ao_perguntar=lambda momento, falhas: excel.fechar(t1))
     with openpyxl_de_verdade():
         export = _export(tmp_path, ["4500063671.9003"])
-        monkeypatch.setattr(cirurgico.PlanilhaXlsx, "salvar", _aberto)
-        linhas = list(autorizados.executar(export, pasta, callback_retry_lock=lambda caminho: False))
+        linhas = _aplicar(export, pasta, tela)
+        ws = _aba(t1)
 
-    assert (pasta / T1).read_bytes() == antes
-    assert any(linha.startswith("[AVISO]") and "aberto no Excel" in linha for linha in linhas)
+    assert tela.perguntas == [(travas.ANTES, [(T1, "está aberto no Excel por Luan")])]
+    assert ws["S6"].value == "AUTORIZADO"
+    assert not resumo_do_log(linhas)
+
+
+@precisa_do_kit
+def test_travado_antes_seguir_sem_ele_nao_grava_e_avisa_no_fim(pasta, tmp_path, monkeypatch):
+    pytest.importorskip("lxml")
+    t1 = pasta / T1
+    antes = t1.read_bytes()
+    excel = ExcelDeMentira(monkeypatch)
+    excel.abrir(t1)
+    with openpyxl_de_verdade():
+        assert _aba(pasta / T2)["R7"].value is None
+        export = _export(tmp_path, ["4500063671.9003", "4500063671.9010"])
+        linhas = _aplicar(export, pasta, TelaDeMentira(False))
+        ws2 = _aba(pasta / T2)
+
+    assert t1.read_bytes() == antes
+    assert ws2["R7"].value == "SIM"  # o outro arquivo seguiu sendo gravado
+    resumo = resumo_do_log(linhas)
+    assert len(resumo) == 2 and T1 in resumo[1]
+    assert "autorizações não gravadas" in resumo[1] and "seguiu sem ele" in resumo[1]
+
+
+@precisa_do_kit
+def test_seguir_sem_um_arquivo_que_nao_tinha_nada_a_gravar_nao_vira_aviso(pasta, tmp_path, monkeypatch):
+    # 9010 no TESTE01 já é AUTORIZADO com os dias congelados: nada a gravar
+    # nele. Pulá-lo não perdeu nada; o TESTE02 ganha o APTO.
+    pytest.importorskip("lxml")
+    t1 = pasta / T1
+    antes = t1.read_bytes()
+    excel = ExcelDeMentira(monkeypatch)
+    excel.abrir(t1)
+    with openpyxl_de_verdade():
+        export = _export(tmp_path, ["4500063671.9010"])
+        linhas = _aplicar(export, pasta, TelaDeMentira(False))
+        ws2 = _aba(pasta / T2)
+
+    assert t1.read_bytes() == antes
+    assert ws2["R7"].value == "SIM"
+    assert not resumo_do_log(linhas)
+
+
+@precisa_do_kit
+def test_trava_durante_vai_para_a_lista_do_fim_e_repetir_rele_e_grava(pasta, tmp_path, monkeypatch):
+    pytest.importorskip("lxml")
+    t1 = pasta / T1
+    excel = ExcelDeMentira(monkeypatch)
+    tela = TelaDeMentira(True, ao_perguntar=lambda momento, falhas: excel.fechar(t1))
+    with openpyxl_de_verdade():
+        export = _export(tmp_path, ["4500063671.9003"])
+        linhas = _aplicar(export, pasta, tela,
+                          ao_ver=lambda linha: excel.abrir(t1) if depois_da_conferencia(linha) else None)
+        ws = _aba(t1)
+
+    assert tela.perguntas == [(travas.DEPOIS, [(T1, "está aberto no Excel por Luan")])]
+    assert ws["S6"].value == "AUTORIZADO"
+    assert any(T1 in linha and "gravado na nova tentativa" in linha for linha in linhas)
+    assert not [linha for linha in linhas if "[AVISO]" in linha]
+    assert not resumo_do_log(linhas)
+
+
+@precisa_do_kit
+def test_repetir_que_acha_o_arquivo_fora_do_padrao_nao_diz_que_gravou(pasta, tmp_path, monkeypatch):
+    pytest.importorskip("lxml")
+    from sigft.core.excel import status_sheet
+
+    t1 = pasta / T1
+    excel = ExcelDeMentira(monkeypatch)
+    abrir_de_verdade = status_sheet.StatusPMIB.abrir
+    aba_renomeada = []
+
+    def _abrir(self, *args, **kwargs):
+        if aba_renomeada and str(self.caminho_excel) == str(t1):
+            raise KeyError("Lista de Materiais")
+        return abrir_de_verdade(self, *args, **kwargs)
+
+    monkeypatch.setattr(status_sheet.StatusPMIB, "abrir", _abrir)
+    tela = TelaDeMentira(True, ao_perguntar=lambda momento, falhas: (excel.fechar(t1), aba_renomeada.append(1)))
+    with openpyxl_de_verdade():
+        export = _export(tmp_path, ["4500063671.9003"])
+        linhas = _aplicar(export, pasta, tela,
+                          ao_ver=lambda linha: excel.abrir(t1) if depois_da_conferencia(linha) else None)
+
+    assert not [linha for linha in linhas if "gravado na nova tentativa" in linha]
+    assert len(tela.perguntas) == 1
+    resumo = resumo_do_log(linhas)
+    assert len(resumo) == 2 and T1 in resumo[1]
+
+
+@precisa_do_kit
+def test_sem_callback_o_travado_nao_e_gravado_e_fica_no_resumo(pasta, tmp_path, monkeypatch):
+    pytest.importorskip("lxml")
+    t1 = pasta / T1
+    antes = t1.read_bytes()
+    excel = ExcelDeMentira(monkeypatch)
+    with openpyxl_de_verdade():
+        export = _export(tmp_path, ["4500063671.9003"])
+        linhas = _aplicar(export, pasta,
+                          ao_ver=lambda linha: excel.abrir(t1) if depois_da_conferencia(linha) else None)
+
+    assert t1.read_bytes() == antes
+    resumo = resumo_do_log(linhas)
+    assert len(resumo) == 2 and T1 in resumo[1] and "aberto no Excel" in resumo[1]
+    assert any("1 não gravado" in linha for linha in linhas)
+
+
+def test_o_callback_antigo_saiu():
+    import inspect
+
+    assert "callback_retry_lock" not in inspect.signature(autorizados.executar).parameters

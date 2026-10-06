@@ -375,3 +375,27 @@ def test_a_guarda_acima_esta_de_fato_examinando_telas():
 
     com_mixin = [c.name for _, c in _classes_das_views() if _metodos_do_mixin_chamados(c)]
     assert com_mixin, "nenhuma tela chama o mixin — o CP B não foi aplicado?"
+
+
+# =============================================================================
+# E. A lista de arquivos travados  [2026-10-06]
+# =============================================================================
+def test_perguntar_arquivos_travados_agenda_mostra_o_motivo_e_devolve_a_escolha(tela, raiz):
+    # É o `callback_travados(falhas, momento) -> bool` que o Gestão PMIB e o
+    # "Aplicar autorizações" recebem: a tela passa o método direto.
+    from sigft.core.excel import travas
+
+    falhas = [travas.Falha("C:/Box/a_STATUS_PMIB.xlsx",
+                           travas.Diagnostico(travas.EM_USO, "está em uso por outro programa", "Espere.", True))]
+    t, caixa = _rodar_em_thread(lambda: tela.perguntar_arquivos_travados(falhas, travas.DEPOIS))
+    assert _esperar_agendamento(raiz)
+    raiz.processar_eventos()
+
+    dialogos = [neto for filho in [raiz, *raiz.filhos] for neto in getattr(filho, "filhos", [])
+                if isinstance(neto, dialogs.ArquivosTravadosDialog)]
+    assert len(dialogos) == 1
+    assert dialogos[0].itens == [("a_STATUS_PMIB.xlsx", "está em uso por outro programa", "Espere.")]
+
+    dialogos[0].repetir()
+    t.join(timeout=5)
+    assert caixa == {"valor": True}

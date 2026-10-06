@@ -15,7 +15,9 @@ from tkinter import messagebox
 import pandas as pd
 
 from sigft.app import backends, file_dialogs
+from sigft.app.widgets.espera import DialogosDeEspera
 from sigft.core import prefs
+from sigft.core.excel import travas
 # [2026-09-03] Chave sob a qual o caminho do mapeamento fica lembrado --
 # a Home lê por ela para montar o mural de atividades.
 from sigft.core.prefs import CHAVE_MAPEAMENTO
@@ -27,10 +29,27 @@ OPCAO_GERAR_PAINEL = "pmib_manager.gerar_painel"
 import customtkinter as ctk
 
 
+def _texto_dos_avisos(inicio, avisos, nao_gravados):
+    """O texto da janela "Concluído com avisos". [2026-10-06] Os arquivos que
+    ficaram sem gravar vêm primeiro, com a contagem do resumo do fim do log
+    (`travas.TITULO_RESUMO`): é o que a pessoa precisa resolver."""
+    partes = []
+    if nao_gravados:
+        partes.append(f"{nao_gravados} arquivo(s) não foram gravados nesta rodada: o motivo de cada um "
+                      "e o que fazer estão no fim do log")
+    outros = avisos - (1 if nao_gravados else 0)
+    if outros > 0:
+        partes.append(f"{outros} aviso(s) pedem atenção (procure as linhas [AVISO] no log)")
+    return f"{inicio}, mas " + "; e ".join(partes) + "."
+
+
 # =============================================================================
 # MÓDULO 11: PMIB MANAGER (INTERFACE GE VERNOVA)
 # =============================================================================
-class ModuloPMIBManager(ctk.CTkFrame):
+class ModuloPMIBManager(DialogosDeEspera, ctk.CTkFrame):
+    # [2026-10-06] `DialogosDeEspera`: as janelas que param o processo e
+    # esperam a pessoa -- aqui, a lista de arquivos travados
+    # (`perguntar_arquivos_travados`, o `callback_travados` dos dois fluxos).
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
@@ -196,9 +215,10 @@ class ModuloPMIBManager(ctk.CTkFrame):
         self._safe_log("Gerando o painel de sobressalentes...")
         try:
             caminho = painel.gerar_painel(root_folder, master_path, saida, callback_log=self._safe_log)
-        except PermissionError:
-            self._safe_log(f"[AVISO] O painel não foi gravado: {os.path.basename(saida)} está aberto ou "
-                           "bloqueado. Feche-o e clique em 'Gerar painel'.")
+        except OSError as e:
+            motivo = travas.diagnosticar(saida, e)
+            self._safe_log(f"[AVISO] O painel não foi gravado: {os.path.basename(saida)} {motivo.motivo}. "
+                           f"{motivo.o_que_fazer} Depois, clique em 'Gerar painel'.")
             return False
         except Exception as e:
             self._safe_log(f"[AVISO] O painel não foi gerado: {type(e).__name__}: {e}")
@@ -208,33 +228,6 @@ class ModuloPMIBManager(ctk.CTkFrame):
         except Exception as e:
             self._safe_log(f"[AVISO] Painel gravado, mas não consegui abri-lo no navegador ({e}): {caminho}")
         return True
-
-    # Callback de Travamento de Arquivo (Thread-Safe)
-    # [2026-10-05] Sem argumento = a Planilha de Mapeamento (Cancelar aborta o
-    # processo). Com o CAMINHO = um `_STATUS_PMIB`, que agora também é gravado
-    # (situação da autorização, dias de atraso, autorizações): Cancelar pula só
-    # aquele arquivo. Chamado da thread do serviço; o diálogo abre na thread da
-    # tela.
-    def _perguntar_arquivo_aberto(self, caminho=None):
-        resultado = {}
-        evento_espera = threading.Event()
-
-        def mostrar_popup():
-            if caminho is None:
-                titulo = "Planilha Mestra Aberta"
-                texto = "O sistema não conseguiu salvar os dados porque a Planilha de Mapeamento está aberta no Excel.\n\nPor favor, salve suas alterações, feche a planilha e clique em 'Repetir'.\nSe quiser abortar o processo, clique em 'Cancelar'."
-            else:
-                titulo = "Planilha _STATUS_PMIB Aberta"
-                texto = (f"O arquivo abaixo está aberto no Excel e não pôde ser gravado:\n\n"
-                         f"{os.path.basename(caminho)}\n\n"
-                         "Salve suas alterações, feche o arquivo e clique em 'Repetir'.\n"
-                         "'Cancelar' pula só este arquivo; o processo continua com os outros.")
-            resultado['retry'] = messagebox.askretrycancel(titulo, texto)
-            evento_espera.set()
-
-        self.after(0, mostrar_popup)
-        evento_espera.wait()
-        return resultado.get('retry', False)
 
     def aplicar_autorizacoes(self):
         export = self.path_autorizados.get()
@@ -254,21 +247,21 @@ class ModuloPMIBManager(ctk.CTkFrame):
 
             self.after(0, lambda: self.progress_bar.set(0))
             self._safe_log("Aplicando o export de autorizados de Itaipu...")
-            erros = avisos = 0
+            erros = avisos = nao_gravados = 0
+            # Arquivo travado: a lista de antes e a do fim (`perguntar_arquivos_travados`).
             for linha in autorizados.executar(export, root_folder,
-                                              callback_retry_lock=self._perguntar_arquivo_aberto):
+                                              callback_travados=self.perguntar_arquivos_travados):
                 self._safe_log(linha)
                 erros += "[ERRO]" in linha
                 avisos += "[AVISO]" in linha
+                nao_gravados = travas.quantos_no_resumo(linha) or nao_gravados
             self.after(0, lambda: self.progress_bar.set(1.0))
             if erros:
                 self.after(0, lambda: messagebox.showwarning(
                     "Aviso", "As autorizações não foram aplicadas. Veja o motivo no log."))
             elif avisos:
-                self.after(0, lambda n=avisos: messagebox.showwarning(
-                    "Concluído com avisos",
-                    f"As autorizações foram aplicadas, mas {n} aviso(s) pedem atenção. "
-                    "Procure as linhas [AVISO] no log."))
+                texto = _texto_dos_avisos("As autorizações foram aplicadas", avisos, nao_gravados)
+                self.after(0, lambda texto=texto: messagebox.showwarning("Concluído com avisos", texto))
             else:
                 self.after(0, lambda: messagebox.showinfo("Sucesso", "Autorizações de Itaipu aplicadas."))
         except Exception as e:
@@ -336,9 +329,6 @@ class ModuloPMIBManager(ctk.CTkFrame):
 
             # Instancia a inteligência do Backend
             manager = backends.pmib_manager_backend.PMIBManager()
-
-            # Arquivo aberto no Excel: ver `_perguntar_arquivo_aberto`.
-            cb_retry_lock = self._perguntar_arquivo_aberto
 
             # Callback Interativo e Seguro (Thread-Safe)
             def cb_confirm(df_novos):
@@ -417,10 +407,12 @@ class ModuloPMIBManager(ctk.CTkFrame):
             # [2026-10-05] Avisos não interrompem (um `_STATUS_PMIB` aberto no
             # Excel é pulado e o resto segue), mas não podem terminar num
             # "Sucesso" seco: a pessoa precisa saber que algo ficou para trás.
-            avisos = 0
+            avisos = nao_gravados = 0
 
-            # Lemos a tupla que o backend manda passando ambos os callbacks
-            for resposta in manager.executar_fluxo(api_path, root_folder, master_path, callback_confirm=cb_confirm, callback_retry_lock=cb_retry_lock):
+            # [2026-10-06] Arquivo travado: a lista de antes, a do fim da etapa
+            # e a pergunta da mapeadora, todas por `perguntar_arquivos_travados`.
+            for resposta in manager.executar_fluxo(api_path, root_folder, master_path, callback_confirm=cb_confirm,
+                                                   callback_travados=self.perguntar_arquivos_travados):
                 if isinstance(resposta, tuple):
                     msg, progresso = resposta
                     self._safe_log(msg)
@@ -433,6 +425,7 @@ class ModuloPMIBManager(ctk.CTkFrame):
                         sucesso_total = False
                     elif "[AVISO]" in resposta:
                         avisos += 1
+                    nao_gravados = travas.quantos_no_resumo(resposta) or nao_gravados
 
             # [T7] O painel, DEPOIS da gravação: mostra o que acabou de ser
             # gravado. Fluxo com erro não gera (o botão continua lá).
@@ -445,11 +438,8 @@ class ModuloPMIBManager(ctk.CTkFrame):
             # Validação Final Segura
             if sucesso_total and avisos:
                 self.after(0, lambda: self.progress_bar.set(1.0))
-                self.after(0, lambda n=avisos: messagebox.showwarning(
-                    "Concluído com avisos",
-                    f"O processo de Gestão PMIB terminou, mas {n} aviso(s) pedem atenção "
-                    "(ex.: _STATUS_PMIB aberto no Excel, arquivo ilegível).\n\n"
-                    "Procure as linhas [AVISO] no log."))
+                texto = _texto_dos_avisos("O processo de Gestão PMIB terminou", avisos, nao_gravados)
+                self.after(0, lambda texto=texto: messagebox.showwarning("Concluído com avisos", texto))
             elif sucesso_total:
                 self.after(0, lambda: self.progress_bar.set(1.0))
                 self.after(0, lambda: messagebox.showinfo("Sucesso", "Processo de Gestão PMIB finalizado com sucesso!"))

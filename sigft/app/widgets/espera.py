@@ -131,3 +131,21 @@ class DialogosDeEspera:
             )
         )
         return bool(resultado.get("retry", False))
+
+    def perguntar_arquivos_travados(self, falhas, momento) -> bool:
+        """[2026-10-06] Uma lista de arquivos que não puderam ser gravados,
+        cada um com o motivo e o que fazer: `True` = Repetir, `False` = Seguir.
+
+        É o `callback_travados(falhas, momento)` do Gestão PMIB e do "Aplicar
+        autorizações": a tela passa este método direto. `falhas` são
+        `core.excel.travas.Falha` (nome, `diagnostico.motivo`,
+        `diagnostico.o_que_fazer`); `momento` escolhe os textos e os botões
+        (`dialogs.TEXTOS_TRAVADOS`).
+        """
+        itens = [(f.nome, f.diagnostico.motivo, f.diagnostico.o_que_fazer) for f in falhas]
+        resultado = self._abrir_e_esperar(
+            lambda evento, res: dialogs.ArquivosTravadosDialog(
+                self, itens=itens, momento=momento, evento_espera=evento, resultado=res
+            )
+        )
+        return bool(resultado.get("repetir", False))

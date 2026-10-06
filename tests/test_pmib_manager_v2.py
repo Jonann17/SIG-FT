@@ -120,7 +120,8 @@ def test_recalcula_os_13_casos_do_kit_e_grava(kit):
             dias = ws[f"T{linha}"].value
             assert (int(dias) if dias not in (None, "") else None) == v["dias"], f"linha {linha}"
 
-    assert resultado == {"revisao_em_uso": "1", "calculado": True, "gravado": True}
+    assert resultado == {"revisao_em_uso": "1", "calculado": True, "gravado": True,
+                         "pendente": True, "falha": None, "nao_lido": False}
     assert any("célula(s)" in linha for linha in linhas)
     depois = _partes(t1)
     for parte in ("xl/comments1.xml", "xl/threadedComments/threadedComment1.xml", "xl/persons/person.xml"):
@@ -153,7 +154,8 @@ def test_rodar_de_novo_no_mesmo_dia_nao_regrava(kit):
         _linhas, resultado = _consumir(PMIBManager()._atualizar_autorizacao(str(t1), HOJE))
 
     assert t1.read_bytes() == primeira
-    assert resultado == {"revisao_em_uso": "1", "calculado": True, "gravado": False}
+    assert resultado == {"revisao_em_uso": "1", "calculado": True, "gravado": False,
+                         "pendente": False, "falha": None, "nao_lido": False}
 
 
 @precisa_do_kit
@@ -197,26 +199,28 @@ def test_dias_com_formato_de_data_herdado_vira_formato_geral(kit):
 
 
 @precisa_do_kit
-def test_arquivo_aberto_no_excel_avisa_pula_e_nao_estraga(kit, monkeypatch):
+def test_arquivo_aberto_no_excel_nao_pergunta_devolve_a_falha_e_nao_estraga(kit, monkeypatch):
+    # [2026-10-06] Antes, uma janela por arquivo, no meio da etapa. Agora a
+    # falha volta com o motivo e quem pergunta, uma vez, no fim da etapa, é o
+    # fluxo (tests/test_pmib_manager_travados.py).
     pytest.importorskip("lxml")
-    from sigft.core.excel import cirurgico
+    from sigft.core.excel import cirurgico, travas
 
     t1 = kit / "status" / T1
     antes = t1.read_bytes()
-    perguntas = []
 
     def _aberto(self, destino=None):
         raise PermissionError(13, "aberto no Excel")
 
     monkeypatch.setattr(cirurgico.PlanilhaXlsx, "salvar", _aberto)
     with openpyxl_de_verdade():
-        linhas, resultado = _consumir(PMIBManager()._atualizar_autorizacao(
-            str(t1), HOJE, callback_retry_lock=lambda caminho: perguntas.append(caminho) or False))
+        linhas, resultado = _consumir(PMIBManager()._atualizar_autorizacao(str(t1), HOJE))
 
-    assert perguntas == [str(t1)]  # a pergunta nomeia o arquivo
     assert t1.read_bytes() == antes
     assert resultado["gravado"] is False
-    assert any(linha.startswith("[AVISO]") and "aberto no Excel" in linha for linha in linhas)
+    assert resultado["falha"].caminho == str(t1)  # nomeia o arquivo
+    assert resultado["falha"].diagnostico.tipo == travas.EM_USO  # sem `~$` ao lado
+    assert any(T1 in linha and "em uso por outro programa" in linha for linha in linhas)
 
 
 def test_xls_antigo_e_avisado_e_nao_quebra(tmp_path):

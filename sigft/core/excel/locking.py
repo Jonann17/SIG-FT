@@ -24,6 +24,14 @@ docs/refatoracao/PENDENCIAS.md):
      e `cria_fichas_no_pmib_v1_backend.DataManager.atualizar_excel_final`
      (2 ocorrências).
 
+[2026-10-06] A variante 2 saiu: o Gestão PMIB (`services/pmib_manager.py`) e o
+"Aplicar autorizações" (`services/autorizados.py`) gravam numa tentativa só
+(`max_attempts=1`) e quem pergunta, com o motivo de cada arquivo, é o fluxo --
+uma lista antes de gravar e uma no fim da etapa (`core/excel/travas.py`).
+Repetir ali é refazer a etapa RELENDO o arquivo: regravar o workbook da memória,
+como o retry daqui faz, apagava o que a pessoa salvou antes de fechar a
+planilha. Ver `docs/superpowers/specs/2026-10-06-gravacao-com-retry-design.md`.
+
 (A 7ª ocorrência de UX "log + sai", em
 `upload_ficha_duplicada.GerenciadorFilaPMIB.montar_fila_processamento`, NÃO é
 migrada para este módulo: aquele `except PermissionError` protege uma

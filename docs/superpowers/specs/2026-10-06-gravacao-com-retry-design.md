@@ -39,6 +39,11 @@ E um defeito, achado lendo o código para este desenho:
 > mas reaplica as células pelo NÚMERO DA LINHA calculado antes; se a pessoa inseriu uma linha
 > antes de fechar, a situação cai na linha errada.
 
+> ⚠️ **E um segundo, achado nos testes com o Windows simulado:** renomear um `_STATUS_PMIB` aberto
+> no Excel com `shutil.move` falhava no rename, COPIAVA para o nome novo e não conseguia apagar o
+> antigo — sobravam dois controles vivos. Passa a ser `os.rename` (na mesma pasta, renomear nunca
+> precisa copiar), recusando um destino que já existe.
+
 ## 2. A regra de ouro: Repetir sempre relê
 
 **Toda repetição refaz a etapa daquele arquivo desde a leitura** — abre de novo, recalcula,
