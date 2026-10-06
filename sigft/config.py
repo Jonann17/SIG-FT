@@ -29,6 +29,7 @@ equivalência do CP 3.1). O resto do arquivo é caracterização pura.
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import os
 
@@ -695,3 +696,88 @@ LMR_COLUNAS = {
 # procura em TODAS as abas do arquivo qual tem as colunas -- é o que o
 # usuário chamou de "leitura automática": não ter de acertar o nome da aba.
 LMR_ABAS = ("LMR", "GERAL", "Aplicações", "Aplicacoes")
+
+# =============================================================================
+# 10. AUTORIZAÇÃO DE ENTREGA DE ITAIPU (Gestão PMIB no tratamento v2)
+# =============================================================================
+# Itaipu tem 15 DIAS ÚTEIS, contados do e-mail de intenção de entrega, para
+# autorizar a entrega física (decisão do Luan, 04-05/10/2026). Até 2026-10-05 o
+# Gestão PMIB contava 14 dias CORRIDOS -- ver `services/autorizacao.py`, que é a
+# ÚNICA implementação da regra (o Gestão PMIB grava, o painel HTML lê).
+PRAZO_AUTORIZACAO_DIAS_UTEIS = 15
+
+# Feriados que não contam como dia útil no prazo acima: nacionais do Brasil +
+# os pontos facultativos de Carnaval e Corpus Christi, 2024-2028. Cópia do
+# dicionário de `gestao-sobressalentes/_scripts/regras_sobressalentes.py`, que
+# é também o que o Power BI v2 usa -- se mudar aqui, mude lá.
+#
+# DECISÃO EM ABERTO (do Luan): confirmar com Itaipu se entram os feriados do
+# Paraguai e os municipais de Foz. Para tirar uma data, apague a linha; para
+# acrescentar, uma linha nova. Num lugar só, de propósito.
+FERIADOS: dict[_dt.date, str] = {
+    _dt.date(2024, 1, 1): "Confraternização Universal",
+    _dt.date(2024, 2, 12): "Carnaval (ponto facultativo)",
+    _dt.date(2024, 2, 13): "Carnaval (ponto facultativo)",
+    _dt.date(2024, 3, 29): "Sexta-feira Santa",
+    _dt.date(2024, 4, 21): "Tiradentes",
+    _dt.date(2024, 5, 1): "Dia do Trabalho",
+    _dt.date(2024, 5, 30): "Corpus Christi (ponto facultativo)",
+    _dt.date(2024, 9, 7): "Independência",
+    _dt.date(2024, 10, 12): "Nossa Senhora Aparecida",
+    _dt.date(2024, 11, 2): "Finados",
+    _dt.date(2024, 11, 15): "Proclamação da República",
+    _dt.date(2024, 11, 20): "Consciência Negra",
+    _dt.date(2024, 12, 25): "Natal",
+    _dt.date(2025, 1, 1): "Confraternização Universal",
+    _dt.date(2025, 3, 3): "Carnaval (ponto facultativo)",
+    _dt.date(2025, 3, 4): "Carnaval (ponto facultativo)",
+    _dt.date(2025, 4, 18): "Sexta-feira Santa",
+    _dt.date(2025, 4, 21): "Tiradentes",
+    _dt.date(2025, 5, 1): "Dia do Trabalho",
+    _dt.date(2025, 6, 19): "Corpus Christi (ponto facultativo)",
+    _dt.date(2025, 9, 7): "Independência",
+    _dt.date(2025, 10, 12): "Nossa Senhora Aparecida",
+    _dt.date(2025, 11, 2): "Finados",
+    _dt.date(2025, 11, 15): "Proclamação da República",
+    _dt.date(2025, 11, 20): "Consciência Negra",
+    _dt.date(2025, 12, 25): "Natal",
+    _dt.date(2026, 1, 1): "Confraternização Universal",
+    _dt.date(2026, 2, 16): "Carnaval (ponto facultativo)",
+    _dt.date(2026, 2, 17): "Carnaval (ponto facultativo)",
+    _dt.date(2026, 4, 3): "Sexta-feira Santa",
+    _dt.date(2026, 4, 21): "Tiradentes",
+    _dt.date(2026, 5, 1): "Dia do Trabalho",
+    _dt.date(2026, 6, 4): "Corpus Christi (ponto facultativo)",
+    _dt.date(2026, 9, 7): "Independência",
+    _dt.date(2026, 10, 12): "Nossa Senhora Aparecida",
+    _dt.date(2026, 11, 2): "Finados",
+    _dt.date(2026, 11, 15): "Proclamação da República",
+    _dt.date(2026, 11, 20): "Consciência Negra",
+    _dt.date(2026, 12, 25): "Natal",
+    _dt.date(2027, 1, 1): "Confraternização Universal",
+    _dt.date(2027, 2, 8): "Carnaval (ponto facultativo)",
+    _dt.date(2027, 2, 9): "Carnaval (ponto facultativo)",
+    _dt.date(2027, 3, 26): "Sexta-feira Santa",
+    _dt.date(2027, 4, 21): "Tiradentes",
+    _dt.date(2027, 5, 1): "Dia do Trabalho",
+    _dt.date(2027, 5, 27): "Corpus Christi (ponto facultativo)",
+    _dt.date(2027, 9, 7): "Independência",
+    _dt.date(2027, 10, 12): "Nossa Senhora Aparecida",
+    _dt.date(2027, 11, 2): "Finados",
+    _dt.date(2027, 11, 15): "Proclamação da República",
+    _dt.date(2027, 11, 20): "Consciência Negra",
+    _dt.date(2027, 12, 25): "Natal",
+    _dt.date(2028, 1, 1): "Confraternização Universal",
+    _dt.date(2028, 2, 28): "Carnaval (ponto facultativo)",
+    _dt.date(2028, 2, 29): "Carnaval (ponto facultativo)",
+    _dt.date(2028, 4, 14): "Sexta-feira Santa",
+    _dt.date(2028, 4, 21): "Tiradentes",
+    _dt.date(2028, 5, 1): "Dia do Trabalho",
+    _dt.date(2028, 6, 15): "Corpus Christi (ponto facultativo)",
+    _dt.date(2028, 9, 7): "Independência",
+    _dt.date(2028, 10, 12): "Nossa Senhora Aparecida",
+    _dt.date(2028, 11, 2): "Finados",
+    _dt.date(2028, 11, 15): "Proclamação da República",
+    _dt.date(2028, 11, 20): "Consciência Negra",
+    _dt.date(2028, 12, 25): "Natal",
+}
