@@ -181,6 +181,27 @@ def test_abrir_max_col_limita_quais_colunas_sao_encontradas():
     assert col_map == {config.COL_CODIGO_PMIB: 1}
 
 
+def test_abrir_com_normalize_casa_cabecalho_sem_acento():
+    # Planilha que perdeu os acentos numa exportação: o cabeçalho diz
+    # "SITUACAO DA AUTORIZACAO" e a chave é "SITUAÇÃO DA AUTORIZAÇÃO".
+    from sigft.services.autorizacao import normalizar
+
+    grid = [
+        ["CÓDIGO PMIB", "SITUACAO DA AUTORIZACAO"],
+        ["4500063671.1000", ""],
+    ]
+    ws = _FakeWorksheet(grid)
+    painel = StatusPMIB("c.xlsx")
+    chaves = {config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB,
+              config.COL_SITUACAO_AUTORIZACAO: config.COL_SITUACAO_AUTORIZACAO}
+
+    sem, _ = painel.abrir(ws=ws, keywords=chaves, required=[config.COL_CODIGO_PMIB])
+    com, _ = painel.abrir(ws=ws, keywords=chaves, required=[config.COL_CODIGO_PMIB], normalize=normalizar)
+
+    assert config.COL_SITUACAO_AUTORIZACAO not in sem
+    assert com[config.COL_SITUACAO_AUTORIZACAO] == 2
+
+
 def test_abrir_sem_wb_nem_ws_importa_openpyxl_de_forma_preguicosa():
     """`abrir()` só toca `openpyxl` quando NÃO recebe `wb`/`ws` prontos --
     e só DENTRO do método (não no topo do módulo, nem no topo deste

@@ -11,6 +11,28 @@
 >
 > A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
 
+## ⚠️ Tratamento v2 (desde 2026-10-05) — leia antes do resto
+
+O roteiro `gestao-sobressalentes/07 - Diagnostico/Tarefa SIG-FT - Calculo e Gravacao sem Perda.md`
+(T0–T3) mudou o papel do módulo. O texto mais abaixo descreve o fluxo antigo; o que vale hoje:
+
+| Passo | O que mudou |
+|---|---|
+| 2. Buscar `_STATUS_PMIB` | `status_pmib_arquivos.listar()` ignora pastas de teste/obsoletas/cópias (`testes_autospec`, `00 - OBSOLETO`, `10- TESTES`, `DATASHEETS`, `BACKUP`; nomes com `~$`, `- Copy`, `CÓPIA`, `COMENT`, `RESPOSTA`) — **cada ignorado aparece no log com o motivo**. Dois vivos com o mesmo código: fica o modificado por último, com `[AVISO]`. Defeito que motivou: o link "Abrir Box" de `#ST00=B01BMU10&EPB020` apontava para a cópia de `testes_autospec/`. |
+| 5. Ler cada `_STATUS_PMIB` | **Antes** de ler, `_atualizar_autorizacao()` recalcula e **grava** em cada linha a `SITUAÇÃO DA AUTORIZAÇÃO` e os `DIAS DE ATRASO` pela regra de `services/autorizacao.py` (15 dias úteis do e-mail; antes eram 14 corridos e só contados para a mapeadora). Só as células que mudaram, pelo editor cirúrgico (`StatusPMIB` → `core/excel/cirurgico.py`): comentários em thread e listas suspensas ficam. Grava o nome definido `sigft_calculado_em` (data do cálculo). Arquivo sem a coluna SITUAÇÃO (layout antigo) não é gravado — o log diz. Arquivo aberto no Excel: a tela pergunta, nomeando o arquivo; "Cancelar" pula só ele. Também lê a **revisão em uso** na linha de texto acima do cabeçalho. |
+| `_calcula_fichas` | Só total de fichas e contagem por STATUS (PMIB distinto, sem DUPLICADO) — o que a cascata usa. Saíram as contagens que iam para a mapeadora e o bloco dos 14 dias / "Atualizar template". |
+| 6. Gravar na mapeadora | A mapeadora virou **cadastro** (decisão do Luan, 05/10/2026): grava só `LINK DA PLANILHA`, a cascata da `SITUAÇÃO NO PMIB` (agora a função pura `situacao_no_pmib`) e a `REVISÃO EM USO` (lida do `_STATUS_PMIB`; quando é igual à ÚLTIMA REVISÃO EMITIDA, grava o valor de lá, com o mesmo tipo, para a formatação condicional G≠C não acender à toa). Nenhuma contagem. As contagens saem dos `_STATUS_PMIB` pelo Power BI v2. |
+| `executar_fluxo(..., hoje=None)` | `hoje` injetável — o kit de teste roda com `hoje = 2026-10-10`. |
+
+A mapeadora continua gravada pelo openpyxl (não tem comentário em thread nem lista de extensão). Se passar a
+ter, o passo 4 escreve um `[AVISO]` antes de gravar.
+
+**Como validar**: `tests/test_pmib_manager_v2.py` roda o fluxo inteiro sobre o kit do cofre
+(`gestao-sobressalentes/_gestao_v2/fixtures/kit_gestao_pmib/`) e o confere com `validar_kit_gestao_pmib.py`
+(KIT OK). Na máquina com o Box: rodar uma vez e conferir, num `_STATUS_PMIB`, SITUAÇÃO e DIAS atualizados e o
+comentário em thread intacto; na mapeadora, REVISÃO EM USO e SITUAÇÃO NO PMIB, e o link de
+`#ST00=B01BMU10&EPB020` apontando para o arquivo real.
+
 ## Propósito
 Orquestra o gerenciamento integrado de fichas técnicas PMIB: carrega base Aconex DocManager (histórico de revisões), busca arquivos `_STATUS_PMIB.xlsx`, renomeia por Tracking ID/Current, atualiza planilha mestra com inserção interativa, calcula indicadores de progresso por ficha, grava KPIs, cascata de situação PMIB e hyperlinks.
 
@@ -166,7 +188,7 @@ Gerenciador de PMIB.
 - dtype=str em read_excel previne truncamento de zeros, mas converte tudo para string; parsing posterior necessário (linha 76, 214)
 - Normalização de 'Current' assume string 'true' lowercase — outros valores (True, TRUE, 1) não são capturados (linha 266)
 - Status_revisao é normalizado uppercase (linha 527), mas valores na mestra podem ter case misto — comparação segura (linha 540-542)
-- Atraso_autorizacao_itaipu requer coluna 'DATA INFORME' válida como data; erros de parse em coerce='coerce' resultam em NaT (linha 226)
+- ~~Atraso_autorizacao_itaipu (14 dias corridos)~~ — saiu em 2026-10-05; a regra (15 dias úteis) é `services/autorizacao.py`, gravada linha a linha no `_STATUS_PMIB`
 - Hyperlink é relativo ao diretório da mestra — se arquivos STATUS_PMIB se movem após criação do link, links quebram (linha 488)
 - SITUAÇÃO NO PMIB é cascata com regras em ordem; primeira condição True define resultado — ordem importa (linha 540-569)
 - Se nenhum arquivo processado, yield aviso e retorna sem atualizar mestra (linha 590)

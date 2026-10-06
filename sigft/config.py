@@ -706,6 +706,28 @@ LMR_ABAS = ("LMR", "GERAL", "Aplicações", "Aplicacoes")
 # ÚNICA implementação da regra (o Gestão PMIB grava, o painel HTML lê).
 PRAZO_AUTORIZACAO_DIAS_UTEIS = 15
 
+# Colunas do `_STATUS_PMIB` v2 (layout de 04/10/2026) que a regra lê e grava.
+# Achadas pelo NOME na linha do cabeçalho, nunca pela letra da coluna: as listas
+# têm colunas extras em posições diferentes.
+COL_STATUS = "STATUS"
+COL_TIPO_ENTREGA = "TIPO DE ENTREGA"
+COL_DATA_EMAIL_ENTREGA = "DATA DO EMAIL COMUNICANDO ENTREGA"
+COL_SITUACAO_AUTORIZACAO = "SITUAÇÃO DA AUTORIZAÇÃO"
+COL_DIAS_ATRASO = "DIAS DE ATRASO"
+COL_EQUIPAMENTO_ENTREGUE = "EQUIPAMENTO ENTREGUE"
+# A coluna que a SITUAÇÃO substituiu (SIM virou AUTORIZADO). Só existe nos
+# arquivos que ainda não migraram -- que são lidos, nunca gravados.
+COL_APTO_PARA_ENTREGA = "APTO PARA ENTREGA"
+
+# O começo do texto da linha ACIMA do cabeçalho que diz a revisão da lista em
+# uso: "REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE
+# ALTERAÇÃO: 03/09/2026". Achada pelo texto, nunca pela coordenada.
+TEXTO_LINHA_REVISAO = "REVISÃO DA LISTA DE SOBRESSALENTES"
+
+# Nome definido que o Gestão PMIB grava em cada `_STATUS_PMIB` v2 que calculou:
+# a data do cálculo, como texto "AAAA-MM-DD".
+NOME_CALCULADO_EM = "sigft_calculado_em"
+
 # Feriados que não contam como dia útil no prazo acima: nacionais do Brasil +
 # os pontos facultativos de Carnaval e Corpus Christi, 2024-2028. Cópia do
 # dicionário de `gestao-sobressalentes/_scripts/regras_sobressalentes.py`, que

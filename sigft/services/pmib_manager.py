@@ -1,13 +1,16 @@
 import os
 import shutil
+import zipfile
 import pandas as pd
 import openpyxl
-from datetime import datetime
+from datetime import date
 from openpyxl import load_workbook
 from copy import copy
 import warnings
 
-from sigft.core.excel import headers, locking
+from sigft import config
+from sigft.core.excel import headers, locking, status_sheet
+from sigft.services import autorizacao, status_pmib_arquivos
 
 # Configurações iniciais
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
@@ -81,6 +84,94 @@ def achar_aba(wb, nome_esperado, coluna_chave, linha_cabecalho=2):
         f"nenhuma aba tem a coluna '{coluna_chave}' na linha {linha_cabecalho}. "
         f"Abas no arquivo: {', '.join(wb.sheetnames)}"
     )
+
+
+# =============================================================================
+# SITUAÇÃO NO PMIB (a "cascata")  [função pura desde 2026-10-05]
+# =============================================================================
+# A mesma cascata de prioridade que morava inline no passo 6; virou função para
+# poder ser testada sem planilha. `dados` é o que `_calcula_fichas` devolve
+# (total e contagem por STATUS, PMIB distinto, sem DUPLICADO); `status_revisao`
+# é o STATUS DA REVISÃO da linha da mapeadora, já em maiúsculas.
+def situacao_no_pmib(dados, status_revisao=""):
+    total = dados.get('total_fichas', 0)
+    ini = dados.get('fichas_para_iniciar', 0)
+    cria = dados.get('fichas_criadas', 0)
+    forn = dados.get('fichas_com_fornecedor', 0)
+    elab = dados.get('fichas_em_elaboracao', 0)
+    analise = dados.get('fichas_em_analise_ib', 0)
+    corr = dados.get('fichas_em_correcao', 0)
+    aprov = dados.get('fichas_aprovadas', 0)
+    na = dados.get('fichas_na', 0)
+
+    if status_revisao == "LISTA NÃO EMITIDA":
+        return "LISTA NÃO EMITIDA"
+    if status_revisao == "SEM LISTA":
+        return "SEM LISTA"
+    if total == 0:
+        return "INICIAR"
+    if ini > 0:
+        return "CRIAÇÃO DAS FICHAS EM PROCESSO"
+    if corr > 0 and elab > 0:
+        return "CORREÇÃO / ELABORAÇÃO"
+    if corr > 0 and aprov > 0:
+        return "EM CORREÇÃO / FINALIZADO"
+    if corr == total:
+        return "EM CORREÇÃO"
+    if analise > 0 and elab > 0:
+        return "EM PROCESSO / ANÁLISE ITAIPU"
+    if analise == total:
+        return "EM ANÁLISE ITAIPU"
+    if forn > 0 and elab > 0:
+        return "FORNECEDOR / ELABORAÇÃO"
+    if elab > 0:
+        return "EM PROCESSO DE PREENCHIMENTO"
+    if forn == total:
+        return "FICHAS COM O FORNECEDOR"
+    if (aprov + na) == total and total > 0:
+        return "FINALIZADO"
+    if cria > 0 and forn == 0 and elab == 0 and analise == 0 and corr == 0 and aprov == 0:
+        # Tem ficha criada e nenhuma avançou para o fornecedor ou além
+        return "FICHAS CRIADAS"
+    return "EM ANDAMENTO"  # misturas não mapeadas
+
+
+# =============================================================================
+# Colunas do `_STATUS_PMIB` v2 que o recálculo da autorização lê  [T3-c]
+# =============================================================================
+# Casadas SEM acento e sem caixa (`autorizacao.normalizar`): um arquivo que
+# passou por exportação pode ter "SITUACAO DA AUTORIZACAO".
+COLUNAS_AUTORIZACAO = (
+    config.COL_STATUS,
+    config.COL_TIPO_ENTREGA,
+    config.COL_DATA_EMAIL_ENTREGA,
+    config.COL_SITUACAO_AUTORIZACAO,
+    config.COL_DIAS_ATRASO,
+    config.COL_EQUIPAMENTO_ENTREGUE,
+)
+# Até onde procurar o cabeçalho (está na linha 5 no v2, na 4 no layout antigo).
+LINHAS_BUSCA_CABECALHO_STATUS = 10
+
+
+def _o_que_o_openpyxl_apagaria(caminho):
+    """O que um `save` do openpyxl apagaria deste arquivo: comentários em
+    thread e listas suspensas gravadas como extensão. Lista vazia = nada.
+
+    A mapeadora continua sendo gravada pelo openpyxl (ver o passo 4): hoje ela
+    não tem nenhum dos dois. Se alguém comentar nela, o log avisa ANTES de o
+    comentário sumir, em vez de ele simplesmente desaparecer."""
+    try:
+        with zipfile.ZipFile(caminho) as z:
+            nomes = z.namelist()
+            perdas = []
+            if any(n.startswith("xl/threadedComments/") for n in nomes):
+                perdas.append("comentários em thread")
+            if any(n.startswith("xl/worksheets/") and n.endswith(".xml")
+                   and b"x14:dataValidation" in z.read(n) for n in nomes):
+                perdas.append("listas suspensas de extensão (x14)")
+            return perdas
+    except (OSError, zipfile.BadZipFile):
+        return []
 
 
 class PMIBManager:
@@ -171,7 +262,12 @@ class PMIBManager:
                 'APLICAÇÃO - LMR': 'APLICAÇÃO - LMR',
                 'DATA DO EMAIL COMUNICANDO ENTREGA': 'DATA INFORME',
                 'EQUIPAMENTO ENTREGUE': 'ENTREGUE',
-                'APTO PARA ENTREGA': 'APTO PARA ENTREGA'  # <- NOVA COLUNA MAPEADA
+                # Layout v2 (04/10/2026). A SITUAÇÃO substituiu o APTO, que
+                # continua aqui para os arquivos que ainda não migraram.
+                'TIPO DE ENTREGA': 'TIPO DE ENTREGA',
+                'SITUAÇÃO DA AUTORIZAÇÃO': 'SITUAÇÃO DA AUTORIZAÇÃO',
+                'DIAS DE ATRASO': 'DIAS DE ATRASO',
+                'APTO PARA ENTREGA': 'APTO PARA ENTREGA',
             }
             colunas_desejadas_norm = {str(k).strip().upper(): v for k, v in colunas_desejadas.items()}
 
@@ -211,16 +307,27 @@ class PMIBManager:
             return None, None
 
     def _calcula_fichas(self, df, rdspp):
+        """Total de fichas e contagem por STATUS -- só o que a cascata da
+        SITUAÇÃO NO PMIB usa.
+
+        [2026-10-05, T3-e] As outras contagens (recebidas, completas,
+        valorização, LMR, entregues, aptas e o atraso de Itaipu) iam para
+        colunas da mapeadora que saíram em 05/10/2026: a mapeadora virou
+        CADASTRO, e quem conta, item a item dos `_STATUS_PMIB`, é o Power BI
+        v2. O atraso era calculado com 14 dias CORRIDOS; a regra vigente (15
+        dias úteis) mora em `services/autorizacao.py` e é gravada linha a
+        linha no próprio `_STATUS_PMIB` (`_atualizar_autorizacao`).
+        """
         if 'CÓDIGO PMIB' not in df.columns: return {}
         df['CÓDIGO PMIB'] = df['CÓDIGO PMIB'].astype(str).str.strip().replace('', pd.NA)
         df = df[df['CÓDIGO PMIB'].notna()]
 
-        # --- NOVA REGRA: Expulsar as linhas marcadas como "DUPLICADO" ---
+        # Linha "DUPLICADO" = o mesmo item repetido na mesma lista: não é
+        # ficha nova, a ficha conta pela outra linha.
         if 'STATUS' in df.columns:
-            # Filtra e mantém apenas as linhas onde o STATUS NÃO É 'DUPLICADO'
             df = df[df['STATUS'].astype(str).str.strip().str.upper() != 'DUPLICADO']
 
-        # Adicionamos o .copy() no final para tornar o dataframe independente e acabar com o aviso
+        # `.copy()`: DataFrame independente (sem o aviso de cópia do pandas)
         df_unicos = df.drop_duplicates(subset=['CÓDIGO PMIB'], keep='first').copy()
 
         total_fichas = df_unicos['CÓDIGO PMIB'].dropna().nunique()
@@ -236,113 +343,167 @@ class PMIBManager:
             'N/A': 'fichas_na'
         }
 
-        resultados = {'RDS_PP': rdspp, 'total_fichas': total_fichas}
+        resultados = {'RDS_PP': rdspp, 'total_fichas': int(total_fichas)}
 
         if 'STATUS' in df_unicos.columns:
+            # strip + upper: "Aprovado " conta como APROVADO, como na
+            # referência do kit e no Power BI.
+            status = df_unicos['STATUS'].astype(str).str.strip().str.upper()
             for status_excel, chave_dict in status_map.items():
-                resultados[chave_dict] = (df_unicos['STATUS'] == status_excel).sum()
-
-        # Check completeness (Mantido o indicador original caso precise, e adicionado o novo)
-        cols_compl = ['INFO. GERAIS', 'CARACT. TÉCNICAS', 'DOCUMENTOS E IMAGENS', 'CONDIÇÕES']
-
-        # 1. Nova Regra: Fichas Recebidas (Pelo menos um 'COMPLETO')
-        if any(c in df_unicos.columns for c in cols_compl):
-            mask_recebidas = pd.DataFrame()
-            for c in cols_compl:
-                if c in df_unicos.columns:
-                    mask_recebidas[c] = df_unicos[c] == 'COMPLETO'
-            # any(axis=1) verifica se tem pelo menos um True na linha
-            resultados['fichas_recebidas'] = mask_recebidas.any(axis=1).sum()
-        else:
-            resultados['fichas_recebidas'] = 0
-
-        # 2. Regra Original mantida: Info completa do fornecedor (Todos 'COMPLETO')
-        if all(c in df_unicos.columns for c in cols_compl):
-            condicoes_completas = (
-                (df_unicos['INFO. GERAIS'] == 'COMPLETO') &
-                (df_unicos['CARACT. TÉCNICAS'] == 'COMPLETO') &
-                (df_unicos['DOCUMENTOS E IMAGENS'] == 'COMPLETO') &
-                (df_unicos['CONDIÇÕES'] == 'COMPLETO')
-            )
-            resultados['fichas_completas_info_fornecedor'] = condicoes_completas.sum()
-        else:
-            resultados['fichas_completas_info_fornecedor'] = 0
-
-        if 'VALORIZAÇÃO' in df_unicos.columns:
-            resultados['fichas_com_valorizacao'] = (df_unicos['VALORIZAÇÃO'] == 'COMPLETO').sum()
-        else: resultados['fichas_com_valorizacao'] = 0
-
-        if 'APLICAÇÃO - LMR' in df_unicos.columns:
-            resultados['fichas_com_aplicacao_lmr'] = (df_unicos['APLICAÇÃO - LMR'] == 'COMPLETO').sum()
-        else: resultados['fichas_com_aplicacao_lmr'] = 0
-
-        if 'ENTREGUE' in df_unicos.columns:
-            # Padroniza a coluna para evitar erros de espaços ou minúsculas
-            df_unicos['ENTREGUE'] = df_unicos['ENTREGUE'].astype(str).str.strip().str.upper()
-            resultados['equipamentos_entregue'] = (df_unicos['ENTREGUE'] == 'SIM').sum()
-        else:
-            resultados['equipamentos_entregue'] = 0
-
-        # 3. Novas Regras: Apto para Entrega e Atraso Itaipu
-        if 'APTO PARA ENTREGA' in df_unicos.columns:
-            # Padroniza para caixa alta e tira espaços
-            df_unicos['APTO PARA ENTREGA'] = df_unicos['APTO PARA ENTREGA'].astype(str).str.strip().str.upper()
-
-            # Conta os SIM (excluindo aqueles que já foram efetivamente entregues)
-            if 'ENTREGUE' in df_unicos.columns:
-                cond_apto = (df_unicos['APTO PARA ENTREGA'] == 'SIM') & (df_unicos['ENTREGUE'] != 'SIM')
-            else:
-                cond_apto = (df_unicos['APTO PARA ENTREGA'] == 'SIM')
-
-            resultados['fichas_aptas_para_entrega'] = cond_apto.sum()
-
-            # Verifica Atraso Itaipu
-            if 'DATA INFORME' in df_unicos.columns:
-                # ATENCAO: atribuicao DIRETA, nunca `.loc[:, coluna] = `.
-                #
-                # `.loc[:, coluna] = ` escreve DENTRO da coluna existente e
-                # preserva o dtype dela. A coluna vem de `read_excel(...,
-                # na_filter=False)`, entao celula vazia virou '' e o dtype e
-                # `str`. Na pandas 3 encaixar um DatetimeArray num dtype `str`
-                # deixou de ser conversao silenciosa e virou TypeError:
-                #     Invalid value '<DatetimeArray> [NaT, NaT, ...]' for dtype 'str'
-                # A atribuicao direta SUBSTITUI a coluna, e o dtype novo
-                # (datetime64) vem junto. Defeito real: 2026-09-03, o fluxo
-                # morria em toda planilha cuja DATA INFORME estivesse vazia.
-                df_unicos['DATA INFORME'] = pd.to_datetime(df_unicos['DATA INFORME'], errors='coerce')
-
-                # Vamos trabalhar apenas com as linhas que possuem data válida
-                df_com_data = df_unicos.dropna(subset=['DATA INFORME']).copy()
-
-                if not df_com_data.empty:
-                    data_hoje = pd.Timestamp(datetime.now().date())
-                    data_limite = df_com_data['DATA INFORME'] + pd.to_timedelta(14, unit='D')
-
-                    # Condição: Data Limite Venceu E Apto NÃO é 'SIM' E o equipamento NÃO foi entregue ainda
-                    if 'ENTREGUE' in df_com_data.columns:
-                        cond_atraso = (data_limite < data_hoje) & (df_com_data['APTO PARA ENTREGA'] != 'SIM') & (df_com_data['ENTREGUE'] != 'SIM')
-                    else:
-                        cond_atraso = (data_limite < data_hoje) & (df_com_data['APTO PARA ENTREGA'] != 'SIM')
-
-                    resultados['atraso_autorizacao_itaipu'] = cond_atraso.sum()
-                else:
-                    resultados['atraso_autorizacao_itaipu'] = 0
-            else:
-                resultados['atraso_autorizacao_itaipu'] = 0
-
-        else:
-            # Planilha desatualizada: emite o alerta no lugar dos números
-            resultados['fichas_aptas_para_entrega'] = "Atualizar template"
-            resultados['atraso_autorizacao_itaipu'] = "Atualizar template"
+                resultados[chave_dict] = int((status == status_excel).sum())
 
         return resultados
 
+    # --- SITUAÇÃO DA AUTORIZAÇÃO E DIAS DE ATRASO NO `_STATUS_PMIB` [T3-c] ---
+    def _atualizar_autorizacao(self, caminho, hoje, callback_retry_lock=None):
+        """Recalcula e grava SITUAÇÃO DA AUTORIZAÇÃO e DIAS DE ATRASO de cada
+        linha do `_STATUS_PMIB` -- e lê a revisão em uso (T3-f).
+
+        Generator: entrega as linhas de log e DEVOLVE (`return`) um dicionário
+        para o passo 6: `revisao_em_uso` (str | None), `calculado` (o arquivo é
+        v2 e a regra rodou nele) e `gravado` (alguma coisa mudou e foi gravada).
+
+        - A regra é a de `services/autorizacao.py` (15 dias úteis); aqui só se
+          lê, compara e grava.
+        - Sem a coluna SITUAÇÃO DA AUTORIZAÇÃO (layout antigo) nada é gravado:
+          o arquivo sai intocado, e o log diz por quê.
+        - Grava SÓ as células que mudaram, pelo editor cirúrgico (`StatusPMIB`):
+          os comentários em thread e as listas suspensas ficam.
+        - DIAS DE ATRASO é número: célula que herdou formato de data ganha
+          formato Geral ao ser gravada (senão 4 aparece como 04/01/1900).
+        - Grava o nome definido `sigft_calculado_em` com a data do cálculo.
+        - Arquivo aberto no Excel: pergunta (`callback_retry_lock(caminho)`); se
+          a pessoa desistir, o log diz e o fluxo segue com o próximo arquivo.
+        """
+        nome = os.path.basename(caminho)
+        resultado = {'revisao_em_uso': None, 'calculado': False, 'gravado': False}
+
+        if not caminho.lower().endswith(".xlsx"):
+            yield f"[AVISO] {nome}: formato antigo ({os.path.splitext(nome)[1]}), não é lido nem gravado. Salve como .xlsx."
+            return resultado
+
+        painel = status_sheet.StatusPMIB(caminho, config.ABA_LISTA_MATERIAIS)
+        chaves = {config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB, config.COL_DESCRICAO: config.COL_DESCRICAO}
+        chaves.update({coluna: coluna for coluna in COLUNAS_AUTORIZACAO})
+        try:
+            col_map, header_row = painel.abrir(
+                keywords=chaves, required=[config.COL_CODIGO_PMIB],
+                max_row=LINHAS_BUSCA_CABECALHO_STATUS, normalize=autorizacao.normalizar)
+        except KeyError:
+            yield f"[AVISO] {nome}: não tem a aba '{config.ABA_LISTA_MATERIAIS}'. Não lido."
+            return resultado
+        except Exception as e:
+            yield f"[AVISO] {nome}: não consegui abrir ({type(e).__name__}: {e}). Não lido."
+            return resultado
+
+        try:
+            if header_row is None:
+                yield (f"[AVISO] {nome}: cabeçalho com '{config.COL_CODIGO_PMIB}' não encontrado nas "
+                       f"{LINHAS_BUSCA_CABECALHO_STATUS} primeiras linhas. Não lido.")
+                return resultado
+
+            # T3-f: a revisão em uso, na linha de texto ACIMA do cabeçalho.
+            linhas_acima = []
+            if header_row > 1:
+                linhas_acima = list(headers.rows_from_worksheet(
+                    painel.ws, max_row=header_row - 1, max_col=min(painel.ws.max_column or 1, 30)))
+            resultado['revisao_em_uso'] = status_pmib_arquivos.revisao_acima_do_cabecalho(
+                linhas_acima, header_row)
+            if resultado['revisao_em_uso'] is None:
+                yield (f" -> {nome}: sem a linha '{config.TEXTO_LINHA_REVISAO}...' (ou sem revisão nela): "
+                       "a REVISÃO EM USO da mapeadora não muda.")
+
+            if config.COL_SITUACAO_AUTORIZACAO not in col_map:
+                yield (f" -> {nome}: arquivo sem layout v2 (sem '{config.COL_SITUACAO_AUTORIZACAO}'): "
+                       "situação e dias de atraso não são gravados.")
+                return resultado
+            faltam = [c for c in COLUNAS_AUTORIZACAO if c not in col_map]
+            if faltam:
+                yield f"[AVISO] {nome}: layout v2 incompleto (falta {', '.join(faltam)}). Nada gravado."
+                return resultado
+
+            ws = painel.ws
+            col = col_map.__getitem__
+            # Até a última linha com DESCRIÇÃO (as de baixo são formatação vazia).
+            fim = header_row
+            col_desc = col_map.get(config.COL_DESCRICAO)
+            for r in range(header_row + 1, ws.max_row + 1):
+                if col_desc is None or ws.cell(row=r, column=col_desc).value not in (None, ""):
+                    fim = r
+
+            alteradas = 0
+            for r in range(header_row + 1, fim + 1):
+                atual = ws.cell(row=r, column=col(config.COL_SITUACAO_AUTORIZACAO)).value
+                celula_dias = ws.cell(row=r, column=col(config.COL_DIAS_ATRASO))
+                situacao, dias = autorizacao.situacao_autorizacao(
+                    ws.cell(row=r, column=col(config.COL_DATA_EMAIL_ENTREGA)).value,
+                    atual,
+                    ws.cell(row=r, column=col(config.COL_EQUIPAMENTO_ENTREGUE)).value,
+                    hoje,
+                    celula_dias.value,
+                    ws.cell(row=r, column=col(config.COL_TIPO_ENTREGA)).value,
+                    ws.cell(row=r, column=col(config.COL_STATUS)).value,
+                )
+                if autorizacao.normalizar(situacao) != autorizacao.normalizar(atual):
+                    painel.escrever(r, col(config.COL_SITUACAO_AUTORIZACAO), situacao or None)
+                    alteradas += 1
+                # Número com formato de data herdado da vizinha também é
+                # regravado: o valor não muda, o formato vira Geral.
+                if dias != autorizacao.dias_da_celula(celula_dias.value) or (
+                        dias is not None and getattr(celula_dias, "is_date", False) is True):
+                    painel.escrever(r, col(config.COL_DIAS_ATRASO), dias, formato_geral=True)
+                    alteradas += 1
+
+            calculado_em = f'"{hoje.isoformat()}"'
+            vai_gravar = bool(alteradas) or self._nome_definido(painel.wb, config.NOME_CALCULADO_EM) != calculado_em
+            if vai_gravar:
+                painel.definir_nome(config.NOME_CALCULADO_EM, calculado_em)
+
+            def _perguntar(_tentativa, _erro):
+                return bool(callback_retry_lock(caminho)) if callback_retry_lock else False
+
+            try:
+                painel.salvar(on_locked=_perguntar)
+            except PermissionError:
+                yield (f"[AVISO] {nome} está aberto no Excel: situação e dias de atraso NÃO foram gravados "
+                       "nesta rodada. Feche o arquivo e rode de novo.")
+                return resultado
+            except Exception as e:
+                yield f"[AVISO] {nome}: falha ao gravar ({type(e).__name__}: {e}). Nada gravado."
+                return resultado
+
+            resultado['calculado'] = True
+            resultado['gravado'] = vai_gravar
+            if alteradas:
+                yield f" -> {nome}: {alteradas} célula(s) de situação/dias de atraso atualizada(s)."
+            return resultado
+        finally:
+            painel.fechar()
+
+    @staticmethod
+    def _nome_definido(wb, nome):
+        """O texto de um nome definido global do workbook (openpyxl), ou `None`."""
+        try:
+            definido = wb.defined_names.get(nome)
+        except Exception:
+            return None
+        return getattr(definido, "attr_text", None) if definido is not None else None
+
     # --- FLUXO PRINCIPAL EXECUTADO PELO APP ---
-    def executar_fluxo(self, caminho_api, pasta_raiz_status, caminho_gerenciadora, callback_confirm=None, callback_retry_lock=None):
+    def executar_fluxo(self, caminho_api, pasta_raiz_status, caminho_gerenciadora, callback_confirm=None,
+                       callback_retry_lock=None, hoje=None):
         """
         Orquestra todo o processo de gerenciamento.
         Yields: Logs de progresso.
+
+        `callback_retry_lock`: chamado SEM argumento quando a mapeadora está
+        aberta no Excel (desistir aborta o fluxo), e com o CAMINHO quando é um
+        `_STATUS_PMIB` (desistir pula só aquele arquivo).
+
+        `hoje` (T3-b): a data do cálculo da autorização; padrão, hoje. Existe
+        para o kit de teste ser reprodutível (`hoje=date(2026, 10, 10)`).
         """
+        hoje = hoje or date.today()
 
         # 1. Carregar API
         yield ("Carregando Base de Dados do DocManager...", 0.05)
@@ -358,15 +519,19 @@ class PMIBManager:
             return
 
         # 2. Buscar Arquivos STATUS
+        # [2026-10-05, T3-a] Pastas de teste, obsoletas e cópias ficam de fora
+        # (`status_pmib_arquivos`). O `os.walk` daqui entrava em
+        # `testes_autospec/`, e a cópia de teste virava o link "Abrir Box" da
+        # mapeadora. Todo arquivo deixado de fora aparece no log, com o motivo.
         yield ("Buscando arquivos _STATUS_PMIB na pasta raiz...", 0.15)
-        lista_documentos = []
-        for root, _dirs, files in os.walk(pasta_raiz_status):
-            for file in files:
-                nome_lower = file.lower()
-                if nome_lower.endswith("_status_pmib.xlsx") or nome_lower.endswith("_status_pmib.xls"):
-                    codigo_documento = file.rsplit("_STATUS_PMIB", 1)[0]  # Pega o prefixo
-                    caminho_completo = os.path.join(root, file)
-                    lista_documentos.append((codigo_documento, caminho_completo))
+        levantamento = status_pmib_arquivos.listar(pasta_raiz_status)
+        for caminho, motivo in levantamento.ignorados:
+            yield f" -> Ignorado ({motivo}): {os.path.relpath(caminho, pasta_raiz_status)}"
+        for codigo, escolhido, descartados in levantamento.repetidos:
+            yield (f"[AVISO] Mais de um _STATUS_PMIB vivo para {codigo}: usando o modificado por último, "
+                   f"{os.path.relpath(escolhido, pasta_raiz_status)}. Ignorado(s): "
+                   + ", ".join(os.path.relpath(d, pasta_raiz_status) for d in descartados))
+        lista_documentos = levantamento.vivos
 
         if not lista_documentos:
             yield "[AVISO] Nenhum arquivo _STATUS_PMIB encontrado."
@@ -391,6 +556,15 @@ class PMIBManager:
 
         # 4. Atualizar Mapeamento (Planilha Mestra)
         yield ("Atualizando Mapeamento e Inserindo Novos...", 0.45)
+        # A mapeadora continua sendo gravada pelo openpyxl (insere linhas,
+        # cria a aba de preços...): hoje ela não tem comentário em thread nem
+        # lista suspensa de extensão, que ele apagaria. Se passar a ter, avisa
+        # ANTES -- os `_STATUS_PMIB`, que têm, são gravados pelo editor
+        # cirúrgico (`StatusPMIB`).
+        perdas = _o_que_o_openpyxl_apagaria(caminho_gerenciadora)
+        if perdas:
+            yield (f"[AVISO] A planilha de mapeamento tem {' e '.join(perdas)}, que esta gravação vai APAGAR "
+                   "(o openpyxl não os preserva). Para não perder, use Anotação (Nota) em vez de Comentário.")
         try:
             wb = load_workbook(caminho_gerenciadora)
             ws, motivo = achar_aba(
@@ -506,23 +680,50 @@ class PMIBManager:
             yield f"[ERRO] Atualização Mapeamento: {e}"
             return
 
-        # 5. Calcular Indicadores (Ler cada Status PMIB)
-        yield ("Lendo fichas individuais e calculando estatísticas...", 0.75)
+        # 5. Recalcular a autorização (T3-c) e ler cada Status PMIB
+        yield ("Recalculando a autorização de Itaipu e lendo as fichas...", 0.75)
         resultados_por_rdspp = {}
+        calculados = gravados = 0
 
         for _, (codigo_atual, caminho_arquivo) in codigos_renomeados.items():
-            if os.path.basename(caminho_arquivo).startswith('~$'): continue
+            if not os.path.exists(caminho_arquivo):
+                yield f"[AVISO] {os.path.basename(caminho_arquivo)} sumiu da pasta durante o processo. Não lido."
+                continue
 
-            if os.path.exists(caminho_arquivo):
-                df_fichas, rdspp_lido = self._ler_status_pmib(codigo_atual, caminho_arquivo)
-                if df_fichas is not None:
-                    res = self._calcula_fichas(df_fichas, rdspp_lido)
-                    res['caminho_absoluto_arquivo'] = caminho_arquivo  # Salvamos o caminho para gerar o link depois
-                    resultados_por_rdspp[rdspp_lido] = res
+            # ANTES da leitura: as contagens e o painel veem o que acabou de
+            # ser gravado.
+            autorizacao_lida = yield from self._atualizar_autorizacao(caminho_arquivo, hoje, callback_retry_lock)
+            calculados += bool(autorizacao_lida['calculado'])
+            gravados += bool(autorizacao_lida['gravado'])
 
-        # 6. Gravar Indicadores na Mestra
+            df_fichas, rdspp_lido = self._ler_status_pmib(codigo_atual, caminho_arquivo)
+            if df_fichas is None:
+                yield f"[AVISO] {os.path.basename(caminho_arquivo)}: não consegui ler a lista de materiais. Fora da contagem."
+                continue
+            res = self._calcula_fichas(df_fichas, rdspp_lido)
+            res['caminho_absoluto_arquivo'] = caminho_arquivo  # Salvamos o caminho para gerar o link depois
+            res['revisao_em_uso'] = autorizacao_lida['revisao_em_uso']
+            resultados_por_rdspp[rdspp_lido] = res
+
+        yield (f" -> Autorização de Itaipu calculada em {calculados} _STATUS_PMIB (data do cálculo: "
+               f"{hoje.strftime('%d/%m/%Y')}): {gravados} gravado(s), {calculados - gravados} já em dia.")
+
+        # 6. Gravar na Mestra: link, SITUAÇÃO NO PMIB e REVISÃO EM USO
+        # [2026-10-05, T3-g] A mapeadora virou CADASTRO (decisão do Luan,
+        # 05/10/2026): as contagens (FICHAS EXISTENTES ... ÍNDICE DE CONCLUSÃO)
+        # saem de cada `_STATUS_PMIB` pelo Power BI v2, e o bloco de colunas
+        # foi retirado da aba. O Gestão PMIB grava só o LINK DA PLANILHA, a
+        # cascata da SITUAÇÃO NO PMIB e a REVISÃO EM USO (lida do próprio
+        # `_STATUS_PMIB`). Colunas achadas pelo nome da linha 2; a que não
+        # existir é pulada, sem erro. As de pessoas (STATUS REAL, RESPONSÁVEL,
+        # OBSERVAÇÃO...) e a fórmula do CÓDIGO DO PROJETO nunca são tocadas.
+        #
+        # A mapeadora é gravada pelo openpyxl: não tem comentário em thread nem
+        # lista suspensa de extensão (as mensagens de validação são padrão e
+        # sobrevivem). Isso deixa de valer se alguém comentar nela -- o passo 4
+        # avisa no log quando acontecer.
         if resultados_por_rdspp:
-            yield ("Gravando estatísticas na Planilha Mestra...", 0.90)
+            yield ("Gravando link, situação e revisão em uso na Planilha Mestra...", 0.90)
             try:
                 wb = load_workbook(caminho_gerenciadora)
                 ws, motivo = achar_aba(
@@ -532,23 +733,6 @@ class PMIBManager:
                     wb.close()
                     return
 
-                gerenciadora_map = {
-                    'FICHAS EXISTENTES': 'total_fichas',
-                    'FICHAS RECEBIDAS': 'fichas_recebidas',
-                    'FICHAS COM O FORNECEDOR': 'fichas_com_fornecedor',
-                    'FICHAS EM ELABORAÇÃO': 'fichas_em_elaboracao',
-                    'INFO. DO FORNECEDOR COMPLETO': 'fichas_completas_info_fornecedor',
-                    'VALORIZAÇÃO': 'fichas_com_valorizacao',
-                    'FICHAS COM APLICAÇÃO - LMR FINALIZADA': 'fichas_com_aplicacao_lmr',
-                    'FICHAS EM ANÁLISE DE ITAIPU': 'fichas_em_analise_ib',
-                    'FICHAS EM CORREÇÃO': 'fichas_em_correcao',
-                    'FICHAS APROVADAS': 'fichas_aprovadas',
-                    'APTO PARA ENTREGA': 'fichas_aptas_para_entrega',
-                    'ATRASO DE AUTORIZAÇÃO DE ENTREGA ITAIPU': 'atraso_autorizacao_itaipu',
-                    'EQUIPAMENTOS ENTREGUES': 'equipamentos_entregue',
-                    'LINK DA PLANILHA': 'caminho_absoluto_arquivo'  # <- NOVA COLUNA MAPEADA
-                }
-
                 # Recalcula índices (pois o arquivo pode ter mudado ou sido recarregado)
                 col_indices = {}
                 for col_idx, cell in enumerate(ws[2]):
@@ -557,108 +741,62 @@ class PMIBManager:
                 doc_col = col_indices.get('N° DOCUMENTO ITAIPU')
                 status_rev_col = col_indices.get('STATUS DA REVISÃO')
                 situacao_col = col_indices.get('SITUAÇÃO NO PMIB')
+                link_col = col_indices.get('LINK DA PLANILHA')
+                revisao_col = col_indices.get('REVISÃO EM USO')
+                ultima_rev_col = col_indices.get('ÚLTIMA REVISÃO EMITIDA')
+                revisoes_mudadas = 0
 
                 if doc_col is not None:
                     for row_idx in range(3, ws.max_row + 1):
                         rdspp_doc = ws.cell(row=row_idx, column=doc_col + 1).value
-                        if rdspp_doc:
-                            rdspp_doc = str(rdspp_doc).strip()
+                        if not rdspp_doc:
+                            continue
+                        rdspp_doc = str(rdspp_doc).strip()
 
-                            # Pega os dados se o arquivo existir, senão retorna um dicionário vazio (garantindo que tudo zere)
-                            dados = resultados_por_rdspp.get(rdspp_doc, {})
+                        # Sem arquivo vivo para a lista: dicionário vazio (link
+                        # apagado, cascata em INICIAR, revisão intocada).
+                        dados = resultados_por_rdspp.get(rdspp_doc, {})
 
-                            for col_name, key in gerenciadora_map.items():
-                                if col_name in col_indices:
-                                    celula = ws.cell(row=row_idx, column=col_indices[col_name] + 1)
-
-                                    # Lógica especial apenas para a coluna de Link
-                                    if key == 'caminho_absoluto_arquivo':
-                                        caminho_arq = dados.get(key)
-                                        if caminho_arq:
-                                            try:
-                                                caminho_relativo = os.path.relpath(caminho_arq, start=os.path.dirname(caminho_gerenciadora))
-                                                celula.value = "Abrir Box"
-                                                celula.hyperlink = caminho_relativo
-                                                celula.font = openpyxl.styles.Font(color="0563C1", underline="single")
-                                            except ValueError:
-                                                celula.value = "Erro no Link"
-                                        else:
-                                            # Remove formatações antigas caso a planilha não exista mais
-                                            celula.value = ""
-                                            celula.hyperlink = None
-                                            celula.font = openpyxl.styles.Font(color="000000", underline="none")
-                                    else:
-                                        celula.value = dados.get(key, 0)
-
-                            # --- CÁLCULO DOS ÍNDICES % ---
-                            total = dados.get('total_fichas', 0)
-                            if total > 0:
-                                analise = dados.get('fichas_em_analise_ib', 0)
-                                correcao = dados.get('fichas_em_correcao', 0)
-                                aprovadas = dados.get('fichas_aprovadas', 0)
-
-                                idx_emi = ((analise + correcao) / total) * 100
-                                idx_conc = (aprovadas / total) * 100
-
-                                if 'ÍNDICE DE EMISSAO' in col_indices:
-                                    ws.cell(row=row_idx, column=col_indices['ÍNDICE DE EMISSAO'] + 1).value = f"{idx_emi:.2f}%"
-                                if 'ÍNDICE DE CONCLUSÃO' in col_indices:
-                                    ws.cell(row=row_idx, column=col_indices['ÍNDICE DE CONCLUSÃO'] + 1).value = f"{idx_conc:.2f}%"
+                        # --- LINK DA PLANILHA ---
+                        if link_col is not None:
+                            celula = ws.cell(row=row_idx, column=link_col + 1)
+                            caminho_arq = dados.get('caminho_absoluto_arquivo')
+                            if caminho_arq:
+                                try:
+                                    caminho_relativo = os.path.relpath(caminho_arq, start=os.path.dirname(caminho_gerenciadora))
+                                    celula.value = "Abrir Box"
+                                    celula.hyperlink = caminho_relativo
+                                    celula.font = openpyxl.styles.Font(color="0563C1", underline="single")
+                                except ValueError:
+                                    celula.value = "Erro no Link"
                             else:
-                                # Zera os índices caso não existam fichas
-                                if 'ÍNDICE DE EMISSAO' in col_indices:
-                                    ws.cell(row=row_idx, column=col_indices['ÍNDICE DE EMISSAO'] + 1).value = "0.00%"
-                                if 'ÍNDICE DE CONCLUSÃO' in col_indices:
-                                    ws.cell(row=row_idx, column=col_indices['ÍNDICE DE CONCLUSÃO'] + 1).value = "0.00%"
+                                # Remove formatações antigas caso a planilha não exista mais
+                                celula.value = ""
+                                celula.hyperlink = None
+                                celula.font = openpyxl.styles.Font(color="000000", underline="none")
 
-                            # --- CASCATA DE PRIORIDADE: SITUAÇÃO NO PMIB ---
-                            if situacao_col is not None:
-                                status_revisao = ""
-                                if status_rev_col is not None:
-                                    status_revisao = str(ws.cell(row=row_idx, column=status_rev_col + 1).value or "").strip().upper()
+                        # --- REVISÃO EM USO (T3-f) ---
+                        revisao = dados.get('revisao_em_uso')
+                        if revisao_col is not None and revisao:
+                            celula = ws.cell(row=row_idx, column=revisao_col + 1)
+                            # Mesma revisão da ÚLTIMA EMITIDA: grava o valor DE LÁ
+                            # (mesmo tipo, texto ou número), para a formatação
+                            # condicional G≠C não acender por "1" ≠ 1.
+                            novo = revisao
+                            if ultima_rev_col is not None:
+                                ultima = ws.cell(row=row_idx, column=ultima_rev_col + 1).value
+                                if ultima is not None and autorizacao.normalizar(ultima) == autorizacao.normalizar(revisao):
+                                    novo = ultima
+                            if celula.value != novo:
+                                celula.value = novo
+                                revisoes_mudadas += 1
 
-                                ini = dados.get('fichas_para_iniciar', 0)
-                                cria = dados.get('fichas_criadas', 0)
-                                forn = dados.get('fichas_com_fornecedor', 0)
-                                elab = dados.get('fichas_em_elaboracao', 0)
-                                analise = dados.get('fichas_em_analise_ib', 0)
-                                corr = dados.get('fichas_em_correcao', 0)
-                                aprov = dados.get('fichas_aprovadas', 0)
-                                na = dados.get('fichas_na', 0)
-
-                                situacao = "EM ANDAMENTO"  # Fallback para misturas não mapeadas
-
-                                if status_revisao == "LISTA NÃO EMITIDA":
-                                    situacao = "LISTA NÃO EMITIDA"
-                                elif status_revisao == "SEM LISTA":
-                                    situacao = "SEM LISTA"
-                                elif total == 0:
-                                    situacao = "INICIAR"
-                                elif ini > 0:
-                                    situacao = "CRIAÇÃO DAS FICHAS EM PROCESSO"
-                                elif corr > 0 and elab > 0:
-                                    situacao = "CORREÇÃO / ELABORAÇÃO"
-                                elif corr > 0 and aprov > 0:
-                                    situacao = "EM CORREÇÃO / FINALIZADO"
-                                elif corr == total:
-                                    situacao = "EM CORREÇÃO"
-                                elif analise > 0 and elab > 0:
-                                    situacao = "EM PROCESSO / ANÁLISE ITAIPU"
-                                elif analise == total:
-                                    situacao = "EM ANÁLISE ITAIPU"
-                                elif forn > 0 and elab > 0:
-                                    situacao = "FORNECEDOR / ELABORAÇÃO"
-                                elif elab > 0:
-                                    situacao = "EM PROCESSO DE PREENCHIMENTO"
-                                elif forn == total:
-                                    situacao = "FICHAS COM O FORNECEDOR"
-                                elif (aprov + na) == total and total > 0:
-                                    situacao = "FINALIZADO"
-                                elif cria > 0 and forn == 0 and elab == 0 and analise == 0 and corr == 0 and aprov == 0:
-                                    # Se tem ficha criada e nenhuma ficha avançou para o fornecedor ou além
-                                    situacao = "FICHAS CRIADAS"
-
-                                ws.cell(row=row_idx, column=situacao_col + 1).value = situacao
+                        # --- CASCATA DE PRIORIDADE: SITUAÇÃO NO PMIB ---
+                        if situacao_col is not None:
+                            status_revisao = ""
+                            if status_rev_col is not None:
+                                status_revisao = str(ws.cell(row=row_idx, column=status_rev_col + 1).value or "").strip().upper()
+                            ws.cell(row=row_idx, column=situacao_col + 1).value = situacao_no_pmib(dados, status_revisao)
 
                     # CP 1.3: retry de PermissionError unificado via
                     # `_salvar_com_retry_interativo` (delega para
@@ -667,12 +805,13 @@ class PMIBManager:
                         yield "[ERRO] Processo cancelado. A Planilha Mestra está aberta no Excel."
                         return  # Aborta o fluxo
 
-                    yield " -> Estatísticas gravadas com sucesso."
+                    yield (f" -> Mapeadora gravada: link e situação no PMIB de cada lista; "
+                           f"revisão em uso alterada em {revisoes_mudadas} lista(s).")
 
             except Exception as e:
-                yield f"[ERRO] Gravação Estatísticas: {e}"
+                yield f"[ERRO] Gravação na Mestra: {e}"
         else:
-            yield " -> Nenhuma ficha processada para estatísticas."
+            yield " -> Nenhuma ficha processada para a mapeadora."
 
         # ---------------------------------------------------------------
         # 6. Aba "Lista de preços Follow-up"  [2026-09-03]

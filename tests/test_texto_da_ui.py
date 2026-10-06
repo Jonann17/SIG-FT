@@ -58,6 +58,11 @@ FORA_DO_RECORTE = {
 ONDE_ELE_E_DADO = {
     "sigft/services/duplicadas_condicoes.py",
     "sigft/core/novidades.py",
+    # 2026-10-05 (T3 do roteiro do Gestão PMIB v2): o "—" é o valor que a
+    # pessoa escreve na linha da revisão em uso quando NÃO há revisão ("EM
+    # USO: — - DATA DE ALTERAÇÃO: —"). Tirá-lo do conjunto `_SEM_REVISAO`
+    # faria o Gestão PMIB gravar "—" como revisão na mapeadora.
+    "sigft/services/status_pmib_arquivos.py",
 }
 
 
@@ -166,6 +171,17 @@ def test_o_CHANGELOG_escrito_com_travessao_continua_sendo_lido():
         assert blocos, f"o cabecalho com `{traco}` deixou de ser reconhecido"
         assert blocos[0].versao == "1.0.0"
         assert blocos[0].data == "2026-09-18"
+
+
+def test_a_revisao_em_uso_escrita_com_travessao_e_sem_revisao():
+    """Se isto quebrar, o Gestão PMIB grava "—" na REVISÃO EM USO da mapeadora."""
+    from sigft.services.status_pmib_arquivos import revisao_do_texto
+
+    for traco in ("-", "–", "—"):
+        texto = f"REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: {traco} - DATA DE ALTERAÇÃO: {traco}"
+        assert revisao_do_texto(texto) is None, f"`{traco}` virou revisão"
+    assert revisao_do_texto(
+        "REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE ALTERAÇÃO: —") == "0A"
 
 
 # =============================================================================

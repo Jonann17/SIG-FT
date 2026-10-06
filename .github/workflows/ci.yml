@@ -64,11 +64,18 @@ jobs:
       #   pillow         idem, pelo `PIL.Image` do splash.
       #
       # Com as quatro: 3608 passed, 6 skipped. Sem elas: 16 failed, 27 errors.
+      #
+      # E o pandas (2026-10-05), que NAO e para a suite inteira -- o conftest
+      # continua dublando-o. E para os testes que o trocam pelo REAL so dentro
+      # do bloco (`tests/_pandas_de_verdade.py`), e o principal e o do Gestao
+      # PMIB: `test_pmib_manager_v2.py` roda o fluxo inteiro sobre o kit de
+      # teste do cofre e o confere com o validador do kit (o "KIT OK" da T3).
+      # Sem o pandas aqui, esse teste seria PULADO -- e um pulo nao e verde.
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-          pip install requests openpyxl python-dotenv pillow
+          pip install requests openpyxl python-dotenv pillow pandas
 
       # `compileall` cobre o que o pytest nao importa -- inclusive o
       # frontend.py, que abre janela real e por isso nao pode ser importado.

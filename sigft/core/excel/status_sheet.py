@@ -175,6 +175,7 @@ class StatusPMIB:
         required: Iterable[str] | None = None,
         max_row: int | None = 15,
         max_col: int | None = None,
+        normalize: Callable[[Any], str] | None = None,
         **load_kwargs: Any,
     ) -> tuple[dict[str, int], int | None]:
         """Abre a planilha (ou reaproveita `wb`/`ws` já abertos — ESSENCIAL
@@ -204,6 +205,11 @@ class StatusPMIB:
             em `upload_conditions`, que restringe a 49 colunas como o
             original).
 
+          normalize: repassado a `headers.find_columns` -- ex.:
+            `autorizacao.normalizar` casa "SITUAÇÃO DA AUTORIZAÇÃO" com
+            "SITUACAO DA AUTORIZACAO" (planilha que perdeu os acentos numa
+            exportação). `None` = o padrão do `headers` (strip + upper).
+
         Guarda `self.wb`, `self.ws`, `self.col_map`, `self.header_row` e
         também RETORNA `(col_map, header_row)` (conveniência — muitos
         chamadores só precisam checar `header_row is None` em seguida).
@@ -223,7 +229,7 @@ class StatusPMIB:
         )
         linhas = headers.rows_from_worksheet(ws, max_row=max_row, max_col=max_col)
         self.col_map, self.header_row = headers.find_columns(
-            linhas, keywords_efetivo, required=required, max_rows=max_row
+            linhas, keywords_efetivo, required=required, max_rows=max_row, normalize=normalize
         )
         return self.col_map, self.header_row
 

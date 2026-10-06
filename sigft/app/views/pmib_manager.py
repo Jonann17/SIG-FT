@@ -158,15 +158,26 @@ class ModuloPMIBManager(ctk.CTkFrame):
             manager = backends.pmib_manager_backend.PMIBManager()
 
             # Callback de Travamento de Arquivo (Thread-Safe)
-            def cb_retry_lock():
+            # [2026-10-05] Sem argumento = a Planilha de Mapeamento (Cancelar
+            # aborta o processo). Com o CAMINHO = um `_STATUS_PMIB`, que agora
+            # também é gravado (situação e dias de atraso): Cancelar pula só
+            # aquele arquivo.
+            def cb_retry_lock(caminho=None):
                 resultado = {}
                 evento_espera = threading.Event()
 
                 def mostrar_popup():
-                    res = messagebox.askretrycancel(
-                        "Planilha Mestra Aberta",
-                        "O sistema não conseguiu salvar os dados porque a Planilha de Mapeamento está aberta no Excel.\n\nPor favor, salve suas alterações, feche a planilha e clique em 'Repetir'.\nSe quiser abortar o processo, clique em 'Cancelar'."
-                    )
+                    if caminho is None:
+                        titulo = "Planilha Mestra Aberta"
+                        texto = "O sistema não conseguiu salvar os dados porque a Planilha de Mapeamento está aberta no Excel.\n\nPor favor, salve suas alterações, feche a planilha e clique em 'Repetir'.\nSe quiser abortar o processo, clique em 'Cancelar'."
+                    else:
+                        titulo = "Planilha _STATUS_PMIB Aberta"
+                        texto = (f"O arquivo abaixo está aberto no Excel, e a situação da autorização "
+                                 f"e os dias de atraso dele não puderam ser gravados:\n\n"
+                                 f"{os.path.basename(caminho)}\n\n"
+                                 "Salve suas alterações, feche o arquivo e clique em 'Repetir'.\n"
+                                 "'Cancelar' pula só este arquivo; o processo continua com os outros.")
+                    res = messagebox.askretrycancel(titulo, texto)
                     resultado['retry'] = res
                     evento_espera.set()
 
@@ -248,6 +259,10 @@ class ModuloPMIBManager(ctk.CTkFrame):
 
             # Variável de controle para saber se o usuário cancelou
             sucesso_total = True
+            # [2026-10-05] Avisos não interrompem (um `_STATUS_PMIB` aberto no
+            # Excel é pulado e o resto segue), mas não podem terminar num
+            # "Sucesso" seco: a pessoa precisa saber que algo ficou para trás.
+            avisos = 0
 
             # Lemos a tupla que o backend manda passando ambos os callbacks
             for resposta in manager.executar_fluxo(api_path, root_folder, master_path, callback_confirm=cb_confirm, callback_retry_lock=cb_retry_lock):
@@ -261,13 +276,27 @@ class ModuloPMIBManager(ctk.CTkFrame):
                     # Se o backend jogar um erro (ex: abortado), marcamos como falha
                     if "[ERRO]" in resposta:
                         sucesso_total = False
+                    elif "[AVISO]" in resposta:
+                        avisos += 1
 
             # Validação Final Segura
-            if sucesso_total:
+            if sucesso_total and avisos:
+                self.after(0, lambda: self.progress_bar.set(1.0))
+                self.after(0, lambda n=avisos: messagebox.showwarning(
+                    "Concluído com avisos",
+                    f"O processo de Gestão PMIB terminou, mas {n} aviso(s) pedem atenção "
+                    "(ex.: _STATUS_PMIB aberto no Excel, arquivo ilegível).\n\n"
+                    "Procure as linhas [AVISO] no log."))
+            elif sucesso_total:
                 self.after(0, lambda: self.progress_bar.set(1.0))
                 self.after(0, lambda: messagebox.showinfo("Sucesso", "Processo de Gestão PMIB finalizado com sucesso!"))
             else:
-                self.after(0, lambda: messagebox.showwarning("Aviso", "O processo foi interrompido ou finalizado com erros. Nenhuma alteração foi salva."))
+                # Não dá mais para dizer "nenhuma alteração foi salva": os
+                # `_STATUS_PMIB` e a mapeadora são gravados ao longo do fluxo,
+                # e o que foi gravado antes do erro continua gravado.
+                self.after(0, lambda: messagebox.showwarning(
+                    "Aviso", "O processo foi interrompido ou terminou com erros.\n\n"
+                             "O que foi gravado antes do erro continua gravado. Veja o log para saber o que faltou."))
 
         except Exception as e:
             self._safe_log(f"[ERRO FATAL]: {e}")

@@ -62,3 +62,11 @@ def test_o_guarda_reconhece_o_padrao_proibido():
     fonte = "def f(wb, caminho):\n    locking.save_with_retry(wb, caminho, max_attempts=1)\n    wb.save(caminho)\n"
     funcao = ast.parse(fonte).body[0]
     assert len(_grava_workbook_pelo_openpyxl(funcao)) == 2
+
+
+def test_o_recalculo_da_autorizacao_do_gestao_pmib_grava_pelo_statuspmib():
+    # T3 (2026-10-05): o Gestão PMIB passou a GRAVAR nos `_STATUS_PMIB`
+    # (situação da autorização e dias de atraso) -- pelo `StatusPMIB`.
+    funcao = _funcao("sigft/services/pmib_manager.py", "_atualizar_autorizacao")
+    assert _grava_workbook_pelo_openpyxl(funcao) == []
+    assert any(nome == "salvar" for nome, _ in _chamadas(funcao))
