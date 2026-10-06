@@ -22,6 +22,12 @@ exclude = [
     "build",
     "dist",
     "dados_de_teste",
+    # Cofre da gestao dos sobressalentes (PR #2): notas e scripts de REFERENCIA
+    # que rodam na maquina do Luan, contra o Box. Nao e codigo do app -- o que
+    # o SIG-FT precisa dali e portado para `sigft/`, e e la que o lint vale.
+    # Lintar aqui deixava o CI vermelho por aviso em script que o app nunca
+    # importa.
+    "gestao-sobressalentes",
 ]
 
 [tool.ruff.lint]
