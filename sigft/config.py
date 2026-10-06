@@ -123,21 +123,22 @@ PREFIXO_CONTRATO = "4500063671"
 #   - frontend.py:1374        -> comentário "a partir da linha 79" (log)
 LINHA_SPECS_FICHA = 79
 
-# "Linha 4 do STATUS" (diagnóstico do plano, seção 1.5): linha (1-based)
-# onde o cabeçalho da aba "Lista de Materiais" do arquivo `_STATUS_PMIB`
-# aparece na variante de leitura FIXA (não dinâmica) usada por
-# `pdm_backend.processar_pastas_fichas`:
-#   - pdm_backend.py:169 -> `pd.read_excel(..., skiprows=3)`: `skiprows` do
-#     pandas é 0-based, então `skiprows=3` pula as 3 primeiras linhas e trata
-#     a 4ª linha do arquivo como cabeçalho.
-#   - pdm_backend.py:176 -> mensagem de erro cita "(linha 4)" explicitamente.
-#   - docs/base-conhecimento/02-pdm-backend.md:9 documenta o mesmo valor.
-# Outros módulos (ex.: `upload_conditions_backend.carregar_lookup_status`,
-# `search_pmib_backend._encontrar_e_formatar_dataframe`) buscam esse
-# cabeçalho DINAMICAMENTE nas primeiras N linhas em vez de fixar a linha 4 —
-# unificar essas buscas é o CP 1.2 (`core/excel/headers.py`); aqui só se
-# nomeia o valor mágico usado pela variante fixa do `pdm_backend`.
-LINHA_STATUS_PMIB = 4
+# Linha (1-based) do cabeçalho da aba "Lista de Materiais" do `_STATUS_PMIB`
+# no layout v2 -- e só o valor de RESERVA: quem lê ACHA o cabeçalho com
+# `core.excel.headers.find_header_row`, e este número só vale quando a busca
+# não acha nada (`duplicadas`, `pdm.ler_lista_materiais`). Também é a linha em
+# que `scripts/gerar_dados_de_teste.py` escreve o cabeçalho sintético.
+#
+# Era 4 até 2026-10-05. Em 04/10/2026 os 47 `_STATUS_PMIB` e o template
+# migraram para o layout v2 (`gestao-sobressalentes/07 - Diagnostico/Plano -
+# Reestruturacao do STATUS_PMIB.md`): a linha 4 virou a da revisão em uso
+# ("REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE ALTERAÇÃO:
+# ..."), mesclada e em TEXTO, e o cabeçalho desceu para a 5. As duas leituras
+# que fixavam a linha 4 (`skiprows=3` no módulo PDM: a criação das pastas e o
+# modo "selecionar códigos") passaram a tratar aquela frase como cabeçalho; a
+# T0 do roteiro trocou as duas pela busca, e
+# `tests/test_status_pmib_cabecalho_linha5.py` impede leitura fixa nova.
+LINHA_STATUS_PMIB = 5
 
 
 # =============================================================================

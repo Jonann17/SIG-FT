@@ -13,7 +13,8 @@ from io import BytesIO
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment, Font
 
-from sigft.core.excel import pmib_codes
+from sigft import config
+from sigft.core.excel import headers, pmib_codes
 # CP 4.4 (Fase 4, docs/refatoracao/PLANO_REFATORACAO.md): padrão único de log
 # de lote. `pdm_backend` era um dos "módulos hoje pobres" do diagnóstico
 # (sem resumo final, sem contexto do item) -- as 3 funções de LOTE deste
@@ -234,17 +235,60 @@ def pdms_fromItaipu_lista_geral(path_lista_geral_pdms, pasta_destino, log_callba
 # =============================================================================
 # LÓGICA CRIAÇÃO DE FICHAS (PMIB)
 # =============================================================================
+# Até onde procurar o cabeçalho do `_STATUS_PMIB`: o mesmo alcance que
+# `duplicadas` usa para o mesmo arquivo.
+LINHAS_BUSCA_CABECALHO = 30
+
+
+def ler_lista_materiais(arquivo_status_pmib):
+    """A aba "Lista de Materiais" do `_STATUS_PMIB`, com o cabeçalho ACHADO.
+
+    [2026-10-05, T0 do roteiro do Gestão PMIB v2] Lia com `skiprows=3`, o
+    cabeçalho fixo na linha 4. No layout v2 (04/10/2026) a linha 4 é a da
+    revisão em uso e o cabeçalho está na 5: a frase da revisão virava o nome
+    da primeira coluna e nenhuma coluna era encontrada. A busca acha a linha
+    nos dois layouts; `config.LINHA_STATUS_PMIB` só vale se ela não achar.
+    """
+    previa = pd.read_excel(arquivo_status_pmib, sheet_name=config.ABA_LISTA_MATERIAIS,
+                           header=None, nrows=LINHAS_BUSCA_CABECALHO)
+    linha_cabecalho = headers.find_header_row(previa.values.tolist(), [config.COL_CODIGO_PMIB])
+    if linha_cabecalho is None:
+        linha_cabecalho = config.LINHA_STATUS_PMIB - 1
+    return pd.read_excel(arquivo_status_pmib, sheet_name=config.ABA_LISTA_MATERIAIS,
+                         header=linha_cabecalho)
+
+
+def codigos_pmib_da_lista(arquivo_status_pmib):
+    """Os códigos PMIB do `_STATUS_PMIB`, normalizados, sem repetição e em
+    ordem -- o que a tela do PDM mostra no modo "selecionar códigos".
+
+    Levanta `ValueError` se a planilha não tiver a coluna, para a tela dizer
+    isso em vez de abrir uma janela de seleção vazia.
+    """
+    df = ler_lista_materiais(arquivo_status_pmib)
+    coluna = next((c for c in df.columns if config.COL_CODIGO_PMIB in str(c)), None)
+    if coluna is None:
+        raise ValueError(f"Coluna '{config.COL_CODIGO_PMIB}' não encontrada.")
+    # CP 1.2: normalização única e canônica (core.excel.pmib_codes). O
+    # `str(c).strip()` antes garante que ela sempre veja uma string, como o
+    # código que morava na tela fazia.
+    return sorted({pmib_codes.normalize_pmib(str(c).strip()) for c in df[coluna].dropna().unique()})
+
+
 def processar_pastas_fichas(arquivo_STATUS_PMIB, destino_fichas, lista_selecionados=None, criar_subpastas=True):
     """Cria a estrutura de pastas (ou apenas lista os caminhos) baseada no Excel STATUS_PMIB"""
     try:
-        df = pd.read_excel(arquivo_STATUS_PMIB, sheet_name="Lista de Materiais", skiprows=3)
+        df = ler_lista_materiais(arquivo_STATUS_PMIB)
 
         # Busca dinâmica de colunas
         c_pmib = next((c for c in df.columns if "CÓDIGO PMIB" in str(c)), None)
         c_pdm = next((c for c in df.columns if "PDM usado" in str(c)), None)
 
         if not c_pmib or not c_pdm:
-            return [], "Colunas 'CÓDIGO PMIB' ou 'PDM usado' não encontradas no Excel (linha 4)."
+            return [], (
+                "Colunas 'CÓDIGO PMIB' ou 'PDM usado' não encontradas na aba "
+                f"'{config.ABA_LISTA_MATERIAIS}' (cabeçalho procurado nas "
+                f"{LINHAS_BUSCA_CABECALHO} primeiras linhas).")
 
         df = df[[c_pmib, c_pdm]].dropna()
 

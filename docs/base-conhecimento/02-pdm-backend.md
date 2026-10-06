@@ -23,7 +23,7 @@ Módulo de funções soltas que gerencia o ciclo de vida de Planilhas de Dados d
 ## Entradas e Saídas
 - **Entradas**: 
   - Arquivos Excel com aba `TEMPLATE_PDM` (colunas Q e S contêm descrição e unidade)
-  - Planilha STATUS_PMIB com aba "Lista de Materiais" (colunas "CÓDIGO PMIB" e "PDM usado" detectadas dinamicamente a partir da linha 4)
+  - Planilha STATUS_PMIB com aba "Lista de Materiais" (colunas "CÓDIGO PMIB" e "PDM usado"). O cabeçalho é ACHADO nas 30 primeiras linhas por `ler_lista_materiais` (layout v2 desde 04/10/2026: linha 5, com a revisão em uso na linha 4; o layout antigo, linha 4, também é lido). Até 2026-10-05 era lido fixo na linha 4 (`skiprows=3`) — no v2 isso tomava a linha da revisão por cabeçalho
   - Template de ficha técnica com aba "Ficha Técnica Padrão" (dados injetados a partir da linha 79)
   
 - **Saídas**: 
@@ -46,7 +46,9 @@ Módulo de funções soltas que gerencia o ciclo de vida de Planilhas de Dados d
 - **`pdms_fromItaipu_lista_geral(path_lista_geral_pdms, pasta_destino, log_callback=None)`** → extrai cada código único da aba `TEMPLATE_PDM` (linha 7+, coluna A), cria arquivo individual preservando estilos (fonte, borda, fill, number_format, alignment), retorna string de resumo
 
 ### Criação de Fichas PMIB
-- **`processar_pastas_fichas(arquivo_STATUS_PMIB, destino_fichas, lista_selecionados=None, criar_subpastas=True)`** → (lista_dados, msg). Lê STATUS_PMIB, formata CÓDIGO PMIB com zeros à esquerda (ex: "1234.5000"), retorna tuplas (cod_fmt, pdm_val, path_dir) para cada item
+- **`ler_lista_materiais(arquivo_status_pmib)`** → DataFrame da aba "Lista de Materiais" com o cabeçalho achado (`core.excel.headers.find_header_row` procurando `CÓDIGO PMIB`; `config.LINHA_STATUS_PMIB` = 5 só como reserva).
+- **`codigos_pmib_da_lista(arquivo_status_pmib)`** → códigos PMIB normalizados, sem repetição e ordenados — o que a tela mostra no modo "selecionar códigos" (levanta `ValueError` sem a coluna).
+- **`processar_pastas_fichas(arquivo_STATUS_PMIB, destino_fichas, lista_selecionados=None, criar_subpastas=True)`** → (lista_dados, msg). Lê STATUS_PMIB (via `ler_lista_materiais`), formata CÓDIGO PMIB com zeros à esquerda (ex: "1234.5000"), retorna tuplas (cod_fmt, pdm_val, path_dir) para cada item
 - **`aplicar_templates_fichas(lista_dados, pasta_pdms_modificados, path_template, log_callback=None)`** → (resumo, log_list). Para cada PMIB: busca arquivo PDM fonte, copia template em memória, injeta Descrição (coluna 1 do PDM) na coluna C (merge 3-12) e Resposta (coluna 2) na coluna M (merge 13-22) a partir da linha 79, formata com bordas/fonte 8pt/height 32
 - **`mover_fichas_para_raiz(lista_dados)`** → move arquivos `{pmib}.xlsx` das subpastas para pasta raiz, retorna msg com contador
 
