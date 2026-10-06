@@ -6,8 +6,10 @@ mestra, e mantém o `_STATUS_PMIB` em dia.
 from __future__ import annotations
 
 import os
+import pathlib
 import threading
 import tkinter as tk
+import webbrowser
 from tkinter import messagebox
 
 import pandas as pd
@@ -18,6 +20,9 @@ from sigft.core import prefs
 # a Home lê por ela para montar o mural de atividades.
 from sigft.core.prefs import CHAVE_MAPEAMENTO
 from sigft.app.theme import COLORS
+
+# [2026-10-05, T7] A caixa "Gerar painel ao terminar", lembrada entre aberturas.
+OPCAO_GERAR_PAINEL = "pmib_manager.gerar_painel"
 
 import customtkinter as ctk
 
@@ -101,7 +106,23 @@ class ModuloPMIBManager(ctk.CTkFrame):
                                      command=self.iniciar_gestao,
                                      font=("Roboto", 14, "bold"),
                                      fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"], text_color=COLORS["text_white"])
-        self.btn_run.pack(pady=20)
+        self.btn_run.pack(pady=(20, 8))
+
+        # [2026-10-05, T7] Painel HTML: a foto do dia para quem não tem o Power
+        # BI (que continua sendo o painel oficial). Gerado DEPOIS da gravação
+        # dos `_STATUS_PMIB`, para mostrar o que acabou de ser gravado.
+        f_painel = ctk.CTkFrame(frm_main, fg_color="transparent")
+        f_painel.pack(pady=(0, 15))
+        try:
+            gerar_por_padrao = prefs.get_opcao(OPCAO_GERAR_PAINEL, True)
+        except Exception:
+            gerar_por_padrao = True  # preferência é conveniência: nunca impede a tela de abrir
+        self.var_gerar_painel = ctk.BooleanVar(value=gerar_por_padrao)
+        ctk.CTkCheckBox(f_painel, text="Gerar painel ao terminar", variable=self.var_gerar_painel,
+                        command=self._lembrar_gerar_painel, font=("Roboto", 12)).pack(side="left", padx=10)
+        self.btn_painel = ctk.CTkButton(f_painel, text="Gerar painel", width=160, command=self.gerar_painel,
+                                        fg_color="#3A3A3A", hover_color="#454545", font=("Roboto", 12))
+        self.btn_painel.pack(side="left", padx=10)
 
         # [2026-10-05, T4] Autorizações de entrega de Itaipu: o export que
         # Itaipu manda vira AUTORIZADO nos `_STATUS_PMIB` da Pasta Raiz (era o
@@ -140,6 +161,53 @@ class ModuloPMIBManager(ctk.CTkFrame):
         estado = "disabled" if travar else "normal"
         self.btn_run.configure(state=estado)
         self.btn_aplicar.configure(state=estado)
+        self.btn_painel.configure(state=estado)
+
+    def _lembrar_gerar_painel(self):
+        try:
+            prefs.set_opcao(OPCAO_GERAR_PAINEL, bool(self.var_gerar_painel.get()))
+        except Exception:
+            pass  # lembrar é conveniência; não pode atrapalhar o clique
+
+    def gerar_painel(self):
+        root_folder = self.path_root.get()
+        master_path = self.path_master.get()
+        if not root_folder:
+            return messagebox.showwarning("Aviso", "Por favor, selecione a Pasta Raiz (Passo 2).")
+        if not master_path:
+            return messagebox.showwarning("Aviso", "Por favor, selecione a Planilha de mapeamento (Passo 3).")
+        self._travar_botoes(True)
+
+        def tarefa():
+            try:
+                self._gerar_painel_e_abrir(root_folder, master_path)
+            finally:
+                self.after(0, lambda: self._travar_botoes(False))
+
+        threading.Thread(target=tarefa, daemon=True).start()
+
+    def _gerar_painel_e_abrir(self, root_folder, master_path):
+        """Gera `Painel de Sobressalentes.html` na Pasta Raiz e o abre no
+        navegador. Roda na thread do trabalho. Falhar aqui só gera aviso:
+        nunca desfaz o que o Gestão PMIB já gravou."""
+        from sigft.services import painel  # pandas: só na hora de usar
+
+        saida = os.path.join(root_folder, painel.NOME_DO_ARQUIVO)
+        self._safe_log("Gerando o painel de sobressalentes...")
+        try:
+            caminho = painel.gerar_painel(root_folder, master_path, saida, callback_log=self._safe_log)
+        except PermissionError:
+            self._safe_log(f"[AVISO] O painel não foi gravado: {os.path.basename(saida)} está aberto ou "
+                           "bloqueado. Feche-o e clique em 'Gerar painel'.")
+            return False
+        except Exception as e:
+            self._safe_log(f"[AVISO] O painel não foi gerado: {type(e).__name__}: {e}")
+            return False
+        try:
+            webbrowser.open(pathlib.Path(caminho).resolve().as_uri())
+        except Exception as e:
+            self._safe_log(f"[AVISO] Painel gravado, mas não consegui abri-lo no navegador ({e}): {caminho}")
+        return True
 
     # Callback de Travamento de Arquivo (Thread-Safe)
     # [2026-10-05] Sem argumento = a Planilha de Mapeamento (Cancelar aborta o
@@ -256,9 +324,13 @@ class ModuloPMIBManager(ctk.CTkFrame):
         self._travar_botoes(True)
 
         # 3. Dispara o processamento em segundo plano (Thread)
-        threading.Thread(target=self._worker, args=(api_path, root_folder, master_path), daemon=True).start()
+        # A caixa é lida AQUI, na thread da tela: variável do Tk lida de outra
+        # thread pode levantar "main thread is not in main loop".
+        gerar_painel = bool(self.var_gerar_painel.get())
+        threading.Thread(target=self._worker, args=(api_path, root_folder, master_path, gerar_painel),
+                         daemon=True).start()
 
-    def _worker(self, api_path, root_folder, master_path):
+    def _worker(self, api_path, root_folder, master_path, gerar_painel=False):
         try:
             self._safe_log("Iniciando fluxo de gestão de sobressalentes...")
 
@@ -361,6 +433,14 @@ class ModuloPMIBManager(ctk.CTkFrame):
                         sucesso_total = False
                     elif "[AVISO]" in resposta:
                         avisos += 1
+
+            # [T7] O painel, DEPOIS da gravação: mostra o que acabou de ser
+            # gravado. Fluxo com erro não gera (o botão continua lá).
+            if gerar_painel and sucesso_total:
+                if not self._gerar_painel_e_abrir(root_folder, master_path):
+                    avisos += 1
+            elif gerar_painel:
+                self._safe_log(" -> Painel não gerado: o processo terminou com erro. Use o botão 'Gerar painel'.")
 
             # Validação Final Segura
             if sucesso_total and avisos:

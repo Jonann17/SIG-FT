@@ -31,6 +31,14 @@ Pasta Raiz (mesmas exclusões): v2 → SITUAÇÃO := AUTORIZADO e, se DIAS estiv
 export (tirada do nome); layout antigo → APTO := SIM. Grava pelo editor cirúrgico; PMIB do export que não está em
 nenhum arquivo aparece como `[AVISO]`.
 
+**Painel HTML (T7)** — botão "Gerar painel" e caixa "Gerar painel ao terminar" (lembrada em `prefs`, marcada por
+padrão) na mesma tela. `services/painel.gerar_painel()` é o porte de `gerar_prototipo_dashboard.py` do cofre: lê os
+`_STATUS_PMIB` vivos (mesmas exclusões), as listas de preços e a mapeadora e grava `Painel de Sobressalentes.html` na
+Pasta Raiz (sobrescreve; o Box guarda as versões), que abre no navegador e não depende de rede. A regra da autorização é
+a de `services/autorizacao.py`; o template é `sigft/assets/painel_template.html`, cópia sem mudança do protótipo. O
+**Power BI v2 continua sendo o painel oficial** — os números têm de bater com ele; `tests/test_painel.py` roda o
+`validar_painel.py` do cofre (PAINEL OK). Painel bloqueado/aberto: `[AVISO]` e o fluxo segue (não desfaz nada).
+
 A mapeadora continua gravada pelo openpyxl (não tem comentário em thread nem lista de extensão). Se passar a
 ter, o passo 4 escreve um `[AVISO]` antes de gravar.
 

@@ -132,14 +132,22 @@ def prazo_autorizacao(data_email: dt.date | None, feriados=None) -> dt.date | No
 
 def para_data(valor) -> dt.date | None:
     """A DATA DO EMAIL como a planilha a entrega: data do openpyxl, Timestamp do
-    pandas, ou texto `dd/mm/aaaa` / `aaaa-mm-dd`. Qualquer outra coisa (vazio,
-    NaT, número solto, "A CONFIRMAR") -> `None`."""
+    pandas, texto `dd/mm/aaaa` / `aaaa-mm-dd`, ou número de série do Excel
+    entre 40000 e 60000 (célula de data que perdeu o formato). Qualquer outra
+    coisa (vazio, NaT, número fora da faixa, "A CONFIRMAR") -> `None`.
+
+    É a mesma leitura do `fxData` do Power BI v2 (o painel oficial): quem
+    GRAVA a situação e quem a MOSTRA têm de enxergar a mesma data."""
     if _vazio(valor):
         return None
     if isinstance(valor, dt.datetime):
         return valor.date()
     if isinstance(valor, dt.date):
         return valor
+    if isinstance(valor, (int, float)) and not isinstance(valor, bool):
+        if 40000 < valor < 60000:
+            return dt.date(1899, 12, 30) + dt.timedelta(days=int(valor))
+        return None
     if isinstance(valor, str):
         texto = valor.strip()
         for formato in ("%d/%m/%Y", "%Y-%m-%d"):

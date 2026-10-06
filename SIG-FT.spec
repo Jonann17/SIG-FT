@@ -50,6 +50,10 @@ datas = [
     # atualização (`sigft/core/novidades.py`). Sem ele no bundle, a janela de
     # novidades abre vazia justamente na hora em que ela importa.
     ("CHANGELOG.md", "."),
+    # O template do painel HTML do Gestão PMIB (2026-10-05, T7). Vai para
+    # `sigft/assets/`, que é onde `services/painel.caminho_do_template` procura
+    # (ao lado do pacote, inclusive dentro do .exe).
+    (os.path.join("sigft", "assets", "painel_template.html"), os.path.join("sigft", "assets")),
 ]
 
 # `customtkinter` carrega temas de arquivos .json que ele traz junto. Sem isto,

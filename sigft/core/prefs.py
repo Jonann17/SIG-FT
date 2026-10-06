@@ -122,11 +122,11 @@ def _resolver(config_path):
 # `remember_*` a tenha gravado. Foi o que aconteceu com "arquivos" em
 # 2026-09-03: `remember_file` gravava, `get_last_file` lia `None`, e o mural
 # de atividades dizia "não encontrei o mapeamento" sem nenhum erro aparecer.
-_SECOES_ESTADO = ("ultimos", "categorias", "pastas_padrao", "arquivos")
+_SECOES_ESTADO = ("ultimos", "categorias", "pastas_padrao", "arquivos", "opcoes")
 
 
 def _estado_vazio() -> dict[str, dict[str, str]]:
-    """Novo estado vazio (as 3 seções, cada uma um dict vazio) — usado como
+    """Novo estado vazio (as seções de `_SECOES_ESTADO`, cada uma um dict vazio) — usado como
     fallback sempre que o arquivo de prefs não existe ou está corrompido (no
     todo ou em parte)."""
     return {secao: {} for secao in _SECOES_ESTADO}
@@ -390,3 +390,36 @@ def get_last_file(
     if caminho and os.path.isfile(caminho):
         return caminho
     return None
+
+
+# =============================================================================
+# Opções liga/desliga  [2026-10-05]
+# =============================================================================
+# Uma caixa de marcar que a tela lembra entre uma abertura e outra -- a
+# primeira é "Gerar painel ao terminar" do Gestão PMIB (T7 do roteiro). Mesma
+# tolerância do resto do arquivo: valor que não for booleano (arquivo editado
+# à mão, corrompido) vale como "nunca gravado".
+CHAVE_OPCOES = "opcoes"
+
+
+def get_opcao(
+    chave: str,
+    padrao: bool,
+    *,
+    config_path: str | os.PathLike[str] | None = None,
+) -> bool:
+    """A opção lembrada sob `chave`, ou `padrao` se nunca foi gravada."""
+    valor = _carregar_estado(config_path).get(CHAVE_OPCOES, {}).get(chave)
+    return valor if isinstance(valor, bool) else padrao
+
+
+def set_opcao(
+    chave: str,
+    valor: bool,
+    *,
+    config_path: str | os.PathLike[str] | None = None,
+) -> None:
+    """Guarda a opção `chave` (liga/desliga)."""
+    estado = _carregar_estado(config_path)
+    estado.setdefault(CHAVE_OPCOES, {})[chave] = bool(valor)
+    _salvar_estado(estado, config_path)

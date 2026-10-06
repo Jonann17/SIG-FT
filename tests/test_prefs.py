@@ -490,15 +490,17 @@ def test_persistencia_estrutura_completa_do_json_apos_uso_combinado(tmp_path, co
     bruto = json.loads(config_path.read_text(encoding="utf-8"))
     # [2026-09-03] Eram 3 seções; "arquivos" entrou com `remember_file`, que o
     # mural de atividades precisa (ele lê a planilha sem passar por diálogo, e
-    # a memória de PASTA não serve para isso).
-    assert set(bruto.keys()) == {"ultimos", "categorias", "pastas_padrao", "arquivos"}
+    # a memória de PASTA não serve para isso). [2026-10-05] "opcoes" entrou
+    # com `set_opcao` -- o "Gerar painel ao terminar" do Gestão PMIB.
+    assert set(bruto.keys()) == {"ultimos", "categorias", "pastas_padrao", "arquivos", "opcoes"}
     assert bruto == {
         "ultimos": {"autospec.ficha": str(pasta_ultimo)},
         "categorias": {"excel": str(pasta_ultimo)},
         "pastas_padrao": {"pdms_modificados": str(pasta_padrao)},
-        # Vazia porque este teste não chamou `remember_file` -- a seção existe
-        # sempre, como as outras três.
+        # Vazias porque este teste não chamou `remember_file` nem `set_opcao`
+        # -- as seções existem sempre, como as outras três.
         "arquivos": {},
+        "opcoes": {},
     }
 
 
@@ -562,3 +564,42 @@ def test_a_chave_do_mapeamento_existe():
     """A Home lê por ela; o PMIB Manager grava nela. Se o nome divergir, o
     mural volta a não achar nada — em silêncio."""
     assert prefs.CHAVE_MAPEAMENTO == "pmib_manager.mapeamento"
+
+
+# ===========================================================================
+# Opções liga/desliga (2026-10-05): "Gerar painel ao terminar" do Gestão PMIB
+# ===========================================================================
+def test_opcao_nunca_gravada_devolve_o_padrao(tmp_path):
+    config_path = tmp_path / "user_prefs.json"
+
+    assert prefs.get_opcao("pmib_manager.gerar_painel", True, config_path=config_path) is True
+    assert prefs.get_opcao("pmib_manager.gerar_painel", False, config_path=config_path) is False
+
+
+def test_opcao_gravada_e_lida_de_volta(tmp_path):
+    config_path = tmp_path / "user_prefs.json"
+
+    prefs.set_opcao("pmib_manager.gerar_painel", False, config_path=config_path)
+
+    assert prefs.get_opcao("pmib_manager.gerar_painel", True, config_path=config_path) is False
+
+
+def test_opcao_sobrevive_ao_recarregar_junto_com_as_outras_secoes(tmp_path):
+    # A armadilha de 2026-09-03: seção que não está em `_SECOES_ESTADO` é
+    # DESCARTADA ao carregar -- gravar e ler de volta pegaria o padrão.
+    config_path = tmp_path / "user_prefs.json"
+    pasta = tmp_path / "pasta"
+    pasta.mkdir()
+
+    prefs.set_opcao("pmib_manager.gerar_painel", False, config_path=config_path)
+    prefs.remember_dir("autospec.ficha", "excel", str(pasta), config_path=config_path)
+
+    assert prefs.get_opcao("pmib_manager.gerar_painel", True, config_path=config_path) is False
+    assert prefs.get_initial_dir("autospec.ficha", "excel", config_path=config_path) == str(pasta)
+
+
+def test_opcao_corrompida_no_arquivo_cai_no_padrao(tmp_path):
+    config_path = tmp_path / "user_prefs.json"
+    config_path.write_text('{"opcoes": {"pmib_manager.gerar_painel": "talvez"}}', encoding="utf-8")
+
+    assert prefs.get_opcao("pmib_manager.gerar_painel", True, config_path=config_path) is True

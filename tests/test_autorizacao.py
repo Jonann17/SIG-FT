@@ -194,7 +194,18 @@ def test_data_do_email_em_todos_os_formatos_que_a_planilha_entrega():
     assert aut.para_data(None) is None
     assert aut.para_data(float("nan")) is None
     assert aut.para_data("A CONFIRMAR") is None
-    assert aut.para_data(45000) is None  # número solto não é data aqui
+    assert aut.para_data("15/9/2026") == E1
+
+
+def test_data_do_email_como_numero_de_serie_como_no_power_bi():
+    # O `fxData` do Power BI v2 (o painel oficial) lê número entre 40000 e
+    # 60000 como data -- célula de data que perdeu o formato. Quem grava a
+    # situação e quem a mostra têm de ler a mesma data.
+    assert aut.para_data(46280) == E1
+    assert aut.para_data(46280.0) == E1
+    assert aut.para_data(4) is None       # não é data: é o DIAS DE ATRASO de alguém
+    assert aut.para_data(60000) is None
+    assert aut.para_data(True) is None
 
 
 def test_nat_do_pandas_e_vazio():
