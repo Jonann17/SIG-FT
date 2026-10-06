@@ -188,6 +188,13 @@ hiddenimports += ["pip_system_certs", "pip_system_certs.wrapt_requests"]
 # primeira tradução -- para o resto do app não pagar o custo.
 hiddenimports += ["ctranslate2", "sentencepiece"]
 
+# O editor cirúrgico (`sigft/core/excel/cirurgico.py`, 2026-10-05) grava os
+# `_STATUS_PMIB` com o lxml -- e o `StatusPMIB` só o importa na hora de gravar.
+# A análise estática o acha pelo `collect_submodules("sigft")`; declarado aqui
+# para não depender disso, junto com o `_elementpath` que o `etree` carrega por
+# dentro. Sem ele, o app abre e a primeira gravação de planilha falha.
+hiddenimports += ["lxml.etree", "lxml._elementpath"]
+
 
 # Ícone do executável.
 #

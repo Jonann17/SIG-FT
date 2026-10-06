@@ -19,7 +19,10 @@ usa só a metade "lock" do checkpoint via `locking.py` — ver lá):
      reimplementa normalização.
   3. **marcar seções como "COMPLETO"** na linha encontrada.
   4. **salvar com retry** via `core.excel.locking.save_with_retry` (CP 1.3)
-     — NÃO reimplementa laço de `PermissionError`.
+     — NÃO reimplementa laço de `PermissionError`. Desde a T1 do roteiro do
+     Gestão PMIB v2 (2026-10-05), quem grava é o editor cirúrgico
+     (`core/excel/cirurgico.py`), nunca o `wb.save` -- ver "Gravação sem
+     perda" abaixo.
 
 Metodologia: a classe expõe tanto o método de conveniência de ponta a ponta
 citado explicitamente no plano — `marcar_completo(pmib, secoes)`, usado
@@ -42,14 +45,36 @@ openpyxl instalado — ver `tests/test_status_sheet.py`), exatamente como
 Este módulo é o consumidor de referência de `pmib_codes`/`headers`/
 `locking`/`sigft.config` — não reintroduz busca de cabeçalho nem
 normalização de PMIB.
+
+Gravação sem perda (2026-10-05, T1 do roteiro do Gestão PMIB v2)
+-----------------------------------------------------------------
+`salvar()` chamava `wb.save()` do openpyxl, que regrava o arquivo inteiro e
+APAGA o que não entende: os comentários em thread (16 dos 47 `_STATUS_PMIB`
+tinham em 04/10/2026) e as listas suspensas gravadas como extensão. Cada
+"COMPLETO" que o SIG-FT marcava levava junto os comentários da planilha.
+
+Agora a leitura continua com openpyxl (`abrir`), mas a ESCRITA é registrada:
+`escrever`/`marcar_linha` mudam a célula na aba aberta (para a leitura seguinte
+ver o valor novo) e anotam `(linha, coluna) -> valor`. O `salvar()` aplica só
+essas células com o editor cirúrgico (`core/excel/cirurgico.py`), que regrava o
+resto do pacote byte a byte. **`wb.save` não é mais chamado por este módulo.**
+
+A cada tentativa o arquivo é RELIDO do disco antes de aplicar as células: se a
+pessoa fechou o Excel salvando alguma coisa entre uma tentativa e outra, o que
+ela salvou fica -- só as nossas células são reescritas.
 """
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping
+from types import SimpleNamespace
+from typing import Any, Callable, Iterable, Mapping
 
 from sigft import config
 from sigft.core.excel import headers, locking, pmib_codes
+
+# Assinatura de quem grava: `(caminho, aba, escritas, *, nomes, formato_geral)`.
+# O padrão é `core.excel.cirurgico.gravar_celulas`; os testes injetam um dublê.
+Gravador = Callable[..., None]
 
 # Valor gravado nas células de seção quando uma seção é marcada como
 # concluída — literal ÚNICO usado pelos 3 escritores originais
@@ -88,15 +113,55 @@ class StatusPMIB:
         >>> painel.fechar()
     """
 
-    def __init__(self, caminho_excel, nome_aba: str | None = None) -> None:
+    def __init__(self, caminho_excel, nome_aba: str | None = None, *,
+                 gravar: Gravador | None = None) -> None:
         self.caminho_excel = caminho_excel
         self.nome_aba = nome_aba or config.ABA_LISTA_MATERIAIS
+        # Quem grava no `salvar()`. `None` = o editor cirúrgico, importado só
+        # na hora de gravar (ele precisa do `lxml`; ler não precisa).
+        self._gravar = gravar
 
         # Estado populado por `abrir()`.
         self.wb: Any | None = None
         self.ws: Any | None = None
         self.col_map: dict[str, int] = {}
         self.header_row: int | None = None
+
+        # O que o `salvar()` vai gravar -- ver "Gravação sem perda" no
+        # docstring do módulo. Dicionário: a mesma célula escrita duas vezes
+        # grava o último valor.
+        self._escritas: dict[tuple[int, int], Any] = {}
+        self._nomes: dict[str, str] = {}
+        self._formato_geral: set[tuple[int, int]] = set()
+
+    @property
+    def escritas_pendentes(self) -> dict[tuple[int, int], Any]:
+        """Cópia do que ainda não foi gravado: `{(linha, coluna): valor}`."""
+        return dict(self._escritas)
+
+    def escrever(self, linha: int, coluna: int, valor: Any, *, formato_geral: bool = False) -> None:
+        """Escreve `valor` na célula, EM MEMÓRIA, e a anota para o `salvar()`.
+
+        `formato_geral=True`: a célula guarda NÚMERO e pode ter herdado formato
+        de data da coluna vizinha (o DIAS DE ATRASO herdou em 33 arquivos) --
+        ao gravar, o estilo dela troca para formato Geral; sem isso, 4 aparece
+        como 04/01/1900.
+        """
+        self.ws.cell(row=linha, column=coluna).value = valor  # type: ignore[union-attr]
+        self._escritas[(linha, coluna)] = valor
+        if formato_geral:
+            self._formato_geral.add((linha, coluna))
+
+    def definir_nome(self, nome: str, referencia: str) -> None:
+        """Nome definido GLOBAL a gravar no próximo `salvar()` -- ex.:
+        `definir_nome("sigft_calculado_em", '"2026-10-10"')`."""
+        self._nomes[nome] = referencia
+
+    def _nome_da_aba(self) -> str:
+        """O nome REAL da aba aberta (o openpyxl o expõe em `.title`): quem
+        chama pode ter aberto outra aba que não `self.nome_aba`."""
+        titulo = getattr(self.ws, "title", None)
+        return titulo if isinstance(titulo, str) and titulo else self.nome_aba
 
     # ------------------------------------------------------------------
     # 1. Carregar (abrir workbook/worksheet + achar colunas via headers)
@@ -267,20 +332,43 @@ class StatusPMIB:
                 coluna = self.col_map.get(str(nome_secao).upper())
             if coluna is None:
                 continue
-            self.ws.cell(row=linha, column=coluna).value = valor  # type: ignore[union-attr]
+            self.escrever(linha, coluna, valor)
             marcadas.append(nome_secao)
         return marcadas
 
     # ------------------------------------------------------------------
-    # 4. Salvar (delega inteiramente para locking.save_with_retry)
+    # 4. Salvar (editor cirúrgico + locking.save_with_retry)
     # ------------------------------------------------------------------
     def salvar(self, **kwargs: Any) -> bool:
-        """`locking.save_with_retry(self.wb, self.caminho_excel, **kwargs)`
-        — ver `core.excel.locking` para o contrato completo de
-        `on_locked`/`max_attempts`/etc. Requer que `abrir()` (ou a
-        atribuição manual de `self.wb`) já tenha sido feita com um `wb` de
-        verdade (não apenas `ws`)."""
-        return locking.save_with_retry(self.wb, self.caminho_excel, **kwargs)
+        """Grava as células anotadas (e os nomes definidos) com o editor
+        cirúrgico, por cima do arquivo, com o retry de
+        `locking.save_with_retry(..., **kwargs)` -- mesmo contrato de
+        `on_locked`/`max_attempts`/etc. de antes: devolve `True` ao gravar e
+        deixa o `PermissionError` subir quando a política desiste.
+
+        Sem nada anotado, devolve `True` sem tocar no arquivo: regravá-lo igual
+        só criaria uma versão vazia no Box.
+        """
+        if not self._escritas and not self._nomes:
+            return True
+
+        gravar = self._gravar
+        if gravar is None:
+            from sigft.core.excel import cirurgico  # precisa do lxml -- só aqui
+
+            gravar = cirurgico.gravar_celulas
+        aba = self._nome_da_aba()
+        escritas, nomes, geral = dict(self._escritas), dict(self._nomes), set(self._formato_geral)
+
+        # O `save(caminho)` que o `save_with_retry` chama a cada tentativa:
+        # relê o arquivo e reaplica as células (ver o docstring do módulo).
+        gravacao = SimpleNamespace(
+            save=lambda caminho: gravar(caminho, aba, escritas, nomes=nomes, formato_geral=geral))
+        resultado = locking.save_with_retry(gravacao, self.caminho_excel, **kwargs)
+        self._escritas.clear()
+        self._nomes.clear()
+        self._formato_geral.clear()
+        return resultado
 
     def fechar(self) -> None:
         """`self.wb.close()`, se houver um `wb` de verdade associado

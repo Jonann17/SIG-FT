@@ -9,17 +9,18 @@
 # unittest.mock para permitir importar os módulos *_backend.py).
 pytest
 
-# lxml — OPCIONAL, e de propósito.
+# lxml — desde 2026-10-05 é dependência de PRODUÇÃO (está no requirements.txt:
+# o editor cirúrgico que grava nos `_STATUS_PMIB`). Fica aqui também porque o CI
+# instala só este arquivo, e são os testes que mais precisam dele:
 #
-# Um único arquivo de teste o usa (`tests/test_duplicadas_xpath_real.py`), para
-# avaliar os XPath da ficha duplicada DE VERDADE contra o HTML que o usuário
-# colou do portal. É o único lugar do projeto onde um erro dentro da string de
-# um seletor aparece — todo o resto testa a regra, com os tokens já
-# classificados.
+#   - `tests/test_cirurgico.py` e `tests/test_status_pmib_gravacao_real.py`
+#     provam, com arquivo de verdade, que a gravação não apaga comentário em
+#     thread nem lista suspensa de extensão;
+#   - `tests/test_duplicadas_xpath_real.py` avalia os XPath da ficha duplicada
+#     DE VERDADE contra o HTML que o usuário colou do portal.
 #
-# Sem ele o arquivo é PULADO (`pytest.importorskip`) e a suíte continua verde:
-# nenhuma proteção do projeto pode depender de um pacote opcional. Instale se
-# for mexer em seletor:  python -m pip install lxml
+# Sem ele esses arquivos são PULADOS (`pytest.importorskip`), e o pulo não é
+# verde de verdade: é a proteção da T1 deixando de rodar.
 lxml
 
 # pyflakes -- a UNICA checagem que consegue olhar `frontend.py` neste ambiente.
