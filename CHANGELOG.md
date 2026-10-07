@@ -12,6 +12,20 @@ Escreva cada linha pensando em quem usa o SIG-FT, não em quem o programa:
 "a busca do AutoSpec passa a funcionar com a VPN ligada" é útil; "refatorado o
 cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
+## 1.2.0 - 2026-10-07
+
+**Gestão PMIB**
+
+- Gestão PMIB: novo bloco **"Autorizações de entrega de Itaipu"**. Escolha o export que Itaipu manda (`sobressalentes_autorizados_AAAAMMDDhhmm.xlsx`) e clique em **APLICAR AUTORIZAÇÕES**: cada PMIB dele vira AUTORIZADO nos `_STATUS_PMIB` da Pasta Raiz, com os dias de atraso até a data do export. Antes era um script à parte, com os caminhos fixos no código.
+- Gestão PMIB: novo **painel de sobressalentes** em HTML. O botão **"Gerar painel"** (e a caixa "Gerar painel ao terminar") grava o `Painel de Sobressalentes.html` na Pasta Raiz e o abre no navegador, sem Power BI e sem internet. Os números batem com os do Power BI, que continua sendo o painel oficial.
+- Gestão PMIB: cada `_STATUS_PMIB` passa a ter a **SITUAÇÃO DA AUTORIZAÇÃO** e os **DIAS DE ATRASO** de cada linha recalculados e gravados pela regra de **15 dias úteis** a contar do e-mail (antes eram 14 dias corridos, contados só na planilha de mapeamento). AUTORIZADO nunca é desfeito, e DOCUMENTAL e TÍTULO ficam N/A.
+- Gestão PMIB: gravar no `_STATUS_PMIB` **não apaga mais os comentários** (os de conversa) nem as listas suspensas. Só as células que mudaram são regravadas, e o Box guarda a versão anterior.
+- Gestão PMIB: pastas de teste, obsoletas e cópias (`testes_autospec`, `00 - OBSOLETO`, `BACKUP`, "- Copy"...) ficam de fora, e cada arquivo ignorado aparece no log com o motivo. Antes o link "Abrir Box" de uma lista podia apontar para a cópia de teste.
+- Gestão PMIB: a planilha de mapeamento vira cadastro. O SIG-FT grava nela só o link, a SITUAÇÃO NO PMIB e a REVISÃO EM USO, lida da linha de revisão do `_STATUS_PMIB`. As contagens vêm dos `_STATUS_PMIB`, pelo Power BI.
+- Gestão PMIB: arquivo aberto no Excel **não interrompe mais o processo a cada arquivo**. Antes de gravar, o SIG-FT mostra **uma lista** com os arquivos travados e o motivo de cada um (aberto no Excel e por quem, somente leitura, Box desconectado, disco cheio...): feche e clique em **Repetir**, ou **Seguir sem eles**. No fim da etapa, outra lista com o que não gravou e o botão **Repetir só estes**. O log termina com "Não gravados nesta rodada", dizendo o que fazer em cada caso. Vale também para o "Aplicar autorizações".
+- Gestão PMIB: com a planilha de mapeamento aberta, **Repetir** relê a planilha antes de gravar, então o que você salvou nela antes de fechar continua lá. Antes o SIG-FT gravava por cima. **Seguir sem ela** não cancela mais o processo: os `_STATUS_PMIB` continuam sendo atualizados.
+- Gestão PMIB: renomear um `_STATUS_PMIB` que está aberto no Excel não deixa mais uma cópia com o nome novo ao lado do antigo.
+
 ## 1.1.1 - 2026-09-28
 
 **Atualização automática**
