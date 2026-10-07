@@ -318,19 +318,37 @@ jobs:
           echo "--- publicado ---"
           gh release view "$TAG"
 
-      # Guardado por 30 dias: se alguem precisar do build sem passar pelo
-      # instalador (teste rapido, diagnostico), esta aqui.
+      # Guardado por 30 dias: os manifestos e as conferencias, para diagnostico.
+      #
+      # [2026-10-07] SEM o instalador. Cada run guardava os ~300 MB dele (que ja
+      # estao no proprio Release), a cota de artefatos da conta lotou, e o
+      # passo derrubou o job da 1.2.0-rc.2 DEPOIS de publicar -- de quebra, o
+      # job vermelho fez o cache do modelo do tradutor nao ser salvo. Agora o
+      # instalador so vai para artefato quando o Release NAO saiu (passo de
+      # baixo), e nenhum dos dois reprova o job: e copia de seguranca, nao
+      # entrega.
       - name: Guardar os artefatos do build
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: SIG-FT-${{ steps.versao.outputs.versao }}
           path: |
-            installer/Output/*.exe
-            installer/Output/*.bin
             latest.json
             arquivos.json
             conferencia-do-pacote.txt
             conferencia-da-janela.txt
           retention-days: 30
+          if-no-files-found: warn
+
+      - name: Guardar o instalador quando o Release nao saiu
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: SIG-FT-${{ steps.versao.outputs.versao }}-instalador
+          path: |
+            installer/Output/*.exe
+            installer/Output/*.bin
+          retention-days: 7
           if-no-files-found: warn

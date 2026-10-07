@@ -307,3 +307,17 @@ def test_o_release_gera_manifesto_bases_e_pacotes_e_publica_os_dois(tmp_path):
         assert f"tools/gerar_atualizacao.py {subcomando}" in texto
     publicar = texto[posicao["Publicar o Release"]:]
     assert '"arquivos.json#' in publicar and "installer/Output/*.bin" in publicar
+
+
+def test_guardar_artefatos_nao_reprova_o_release_e_nao_leva_o_instalador_a_toa():
+    # 2026-10-07: a cota de artefatos lotou com o instalador de ~300 MB de
+    # cada run (que ja esta no Release) e o job da 1.2.0-rc.2 ficou vermelho
+    # DEPOIS de publicar -- e sem salvar o cache do modelo do tradutor.
+    texto = (RAIZ / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    passos = texto.split("      - name: ")
+    guardar = next(p for p in passos if p.startswith("Guardar os artefatos do build"))
+    quando_falha = next(p for p in passos if p.startswith("Guardar o instalador quando o Release nao saiu"))
+
+    assert "continue-on-error: true" in guardar and "continue-on-error: true" in quando_falha
+    assert "*.exe" not in guardar
+    assert "if: failure()" in quando_falha
