@@ -561,6 +561,7 @@ equipe escolheu estavam certos.
 |---|---|---|
 | 2026-09-08 | Rafael | **`ficha_layout.py` ganhou 4 conceitos** (aditivos, nada removido): `nome_da_aba_da_ficha`, `marcador_de_faltante`, `e_marcador_de_faltante` e `idioma_da_ficha`. Se for abrir uma ficha ou escrever `FORNECER` nela, use-os — o nome da aba e o marcador mudam quando a ficha é em inglês. Saiu do mural em 2026-09-23 por ser o aviso mais antigo, não por estar resolvido. |
 | 2026-09-24 | Rafael | 🔴 **`core/llm` ganhou ANEXOS (o PDF em si para o modelo)** — aditivo: sem anexo a requisição sai idêntica. `Anexo`, `LLMClient.generate(..., anexos=)`, `LLMClient.aceita_pdf`, `aceita_pdf()` nos 3 provedores (`PREFIXOS_COM_PDF_NATIVO` no OpenRouter).<br>A política `autospec` ganhou `timeout_s: 300` (opcional, `get_llm` repassa ao provedor) e `max_retries: 1`; dois testes teus que fixavam o 2 foram atualizados. |
+| 2026-09-25 | Luan (arquivado em 2026-10-07) | 🔴 **A atualização automática passou a funcionar (1.1.1): todo Release NORMAL aparece como aviso na abertura seguinte de quem tem 1.1.1+, com o bloco do CHANGELOG como "o que mudou".** Para testar sem distribuir, só pré-lançamento.<br>A 1.0.0 e a 1.1.0 nunca perguntavam ao GitHub (nenhuma tela chamava o `updater`): quem está nelas instala a 1.1.1 à mão. Detalhe em `docs/BUILD.md`. |
 
 ---
 
