@@ -78,6 +78,18 @@ Até a 1.1.1, toda atualização baixava e reinstalava o pacote inteiro (316 MB 
   a primeira atualização a partir dela ainda vem inteira.
 - **`.bin`, e não `.exe`**: o app 1.1.1 baixa "o primeiro `.exe` do Release". O
   app novo confere o SHA256 e o renomeia antes de rodar.
+- **Pequeno que falha cai no completo** (`updater.baixar`, desde a 1.2.0-rc.5).
+  Na rede da empresa, o Zscaler cortou o fim do `.bin` da rc.4 duas vezes
+  (`IncompleteRead`: faltaram 883 bytes, depois 636 KB), e o completo, de 316 MB,
+  passa pelo mesmo caminho. Corte, arquivo que não confere ou rota que não
+  responde: o app baixa o completo do mesmo Release e diz isso na janela. Erro
+  de disco não troca de arquivo. O log diz quanto chegou e quanto tempo a
+  conexão ficou parada antes do corte.
+- **O app não remenda o download cortado** (pedido parcial só do que faltou),
+  de propósito: se o proxy segura o fim do arquivo para analisá-lo, pedir só o
+  resto seria contornar a análise da empresa. Se o Zscaler barrar o pequeno
+  sempre, o caminho é a TI liberar o endereço dos Releases ou o instalador
+  passar a ter assinatura digital.
 - Pequeno que não compensa (copiaria mais de 60% do pacote) ou que o ISCC não
   compilou **não sai**, com `::warning` no run: o completo serve para todos.
 - A primeira versão com isto não tem base (ninguém publicou `arquivos.json`

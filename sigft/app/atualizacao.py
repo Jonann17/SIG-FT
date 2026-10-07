@@ -403,7 +403,8 @@ class JanelaAtualizacao(ctk.CTkToplevel):
         """Roda na THREAD. Só fecha o app depois que o instalador SUBIU."""
         try:
             caminho = updater.baixar(self.info, progresso_cb=self._ao_progredir,
-                                     log_cb=_log)
+                                     log_cb=_log,
+                                     ao_cair_no_completo=self._ao_cair_no_completo)
             _na_interface(self, self._mostrar_status,
                           "Download conferido. Abrindo o instalador...")
             updater.instalar(caminho, log_cb=_log)
@@ -412,6 +413,13 @@ class JanelaAtualizacao(ctk.CTkToplevel):
             _na_interface(self, self._falhou, erro)
             return
         _na_interface(self, self._fechar_app, self.master)
+
+    def _ao_cair_no_completo(self, completo: updater.Atualizacao) -> None:
+        """Roda na THREAD: o pequeno falhou e o download virou o do completo
+        (a barra recomeça pelo `progresso_cb` do serviço)."""
+        _na_interface(self, self._mostrar_status,
+                      f"A atualização pequena falhou. Baixando o instalador completo "
+                      f"({_mb(completo.tamanho_mb)} MB)...")
 
     def _ao_progredir(self, fracao: float) -> None:
         """Roda na THREAD, a cada bloco de 256 KB. Só agenda quando o

@@ -385,7 +385,7 @@ def test_atualizar_BAIXA_INSTALA_e_so_entao_FECHA_o_app(monkeypatch, raiz, sem_u
     eventos = []
     baixado = tmp_path / "SIG-FT_Itaipu_Setup_1.2.0.exe"
 
-    def baixar(info, *, progresso_cb, log_cb):
+    def baixar(info, *, progresso_cb, log_cb, ao_cair_no_completo):
         eventos.append("baixou")
         progresso_cb(0.5)
         progresso_cb(1.0)
@@ -421,6 +421,37 @@ def test_download_que_falha_NAO_fecha_o_app_e_deixa_tentar_de_novo(monkeypatch, 
     assert aviso.botao_agora_nao.kwargs["state"] == "normal"
     aviso.protocolos["WM_DELETE_WINDOW"]()
     assert aviso.destruido, "depois da falha, o X volta a fechar o aviso"
+
+
+def test_quando_o_pequeno_falha_a_janela_DIZ_que_baixa_o_completo(monkeypatch, raiz, sem_uac,
+                                                                 tmp_path):
+    """[2026-10-07] O pequeno da 1.2.0-rc.4 chegou cortado na rede da empresa,
+    e o servico cai no completo. A janela tem de dizer que o download agora e
+    o de 300 MB -- em vez de seguir com "Baixando a v1.2.0 (36,7 MB)" -- e a
+    barra recomeca do zero."""
+    completo = _info(tamanho=316_197_094)
+    vistos = []
+
+    def baixar(info, *, progresso_cb, log_cb, ao_cair_no_completo):
+        progresso_cb(0.97)
+        ao_cair_no_completo(completo)
+        progresso_cb(0.0)
+        raiz.processar_eventos()
+        vistos.append((aviso.rotulo_status.kwargs["text"], aviso.barra.valor))
+        return tmp_path / "Setup.exe"
+
+    monkeypatch.setattr(updater, "baixar", baixar)
+    monkeypatch.setattr(updater, "instalar", lambda *a, **k: None)
+    aviso = _aviso(raiz, fechar_app=lambda janela: None,
+                   info=_info(nome_arquivo="SIG-FT_Itaipu_Atualizacao_1.1.0_para_1.2.0.bin",
+                              tamanho=38_518_933, incremental=True, tamanho_completo=316_197_094))
+    aviso.botao_atualizar.kwargs["command"]()
+    raiz.processar_eventos()
+
+    texto, barra = vistos[0]
+    assert "pequena falhou" in texto
+    assert "instalador completo (301,5 MB)" in texto
+    assert barra == 0
 
 
 def test_instalador_que_NAO_SOBE_nao_fecha_o_app(monkeypatch, raiz, sem_uac, tmp_path):

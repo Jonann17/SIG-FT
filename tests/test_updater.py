@@ -702,3 +702,151 @@ def test_o_canal_vem_desligado_e_lembra_a_escolha(tmp_path):
     assert updater.canal_testes_ligado(config_path=preferencias) is True
     updater.ligar_canal_testes(False, config_path=preferencias)
     assert updater.canal_testes_ligado(config_path=preferencias) is False
+
+
+# =============================================================================
+# J. O pequeno que NAO chega inteiro  [2026-10-07]
+# =============================================================================
+# Caso real, 1.2.0-rc.3 -> rc.4, na rede da empresa (Zscaler): o proxy
+# entregou o instalador pequeno quase inteiro e cortou o fim, duas vezes --
+# `IncompleteRead(38518050 bytes read, 883 more expected)` e depois
+# `IncompleteRead(37882569 bytes read, 636364 more expected)`. O completo, de
+# 316 MB, passa pelo mesmo caminho. O pequeno e um atalho: se ele nao chega,
+# o app baixa o completo, que serve para todos -- e NAO remenda o pedaco que
+# faltou (se o proxy segurou o fim para analisar o arquivo, pedir so o resto
+# seria passar por cima da analise).
+
+import requests  # noqa: E402 -- dependencia real (ver conftest)
+import urllib3  # noqa: E402
+
+
+class _RespostaCortada(_RespostaBinaria):
+    """Entrega os primeiros `ate` bytes e cai como na rede da empresa."""
+
+    def __init__(self, dados, ate):
+        super().__init__(dados)
+        self._ate = ate
+
+    def iter_content(self, chunk_size=1):
+        for i in range(0, self._ate, chunk_size):
+            yield self._dados[i:min(i + chunk_size, self._ate)]
+        faltam = len(self._dados) - self._ate
+        raise requests.exceptions.ChunkedEncodingError(urllib3.exceptions.ProtocolError(
+            f"Connection broken: IncompleteRead({self._ate} bytes read, {faltam} more expected)", None))
+
+
+class _AbrirPorAsset:
+    """Uma resposta por asset (o fim da URL), anotando a ordem dos pedidos."""
+
+    def __init__(self, respostas):
+        self.respostas = respostas
+        self.assets = []
+
+    def __call__(self, url, **kw):
+        asset = url.rsplit("/", 1)[1]
+        self.assets.append(asset)
+        return _Sessao(), self.respostas[asset]
+
+
+def _pequeno_e_completo(pequeno, completo):
+    """A `Atualizacao` que o app monta quando o Release traz um pequeno feito
+    a partir da versao instalada (assets 77 = pequeno, 42 = completo)."""
+    manifesto = {"sha256": hashlib.sha256(completo).hexdigest(),
+                 "atualizacoes": [{"de": "1.0.0", "arquivo": PACOTE,
+                                   "sha256": hashlib.sha256(pequeno).hexdigest(),
+                                   "tamanho": len(pequeno)}]}
+    return updater.interpretar_release(_release_com_pequeno(), manifesto, versao_atual="1.0.0")
+
+
+def test_o_pequeno_escolhido_guarda_o_completo_para_cair_nele():
+    info = updater.interpretar_release(_release_com_pequeno(), _manifesto_com_pequeno(),
+                                       versao_atual="1.0.0")
+
+    completo = info.completo
+    assert completo is not None and completo.incremental is False
+    assert completo.nome_arquivo == "SIG-FT_Itaipu_Setup_1.1.0.exe"
+    assert completo.url_asset.endswith("/assets/42")
+    assert (completo.tamanho, completo.sha256) == (180_000_000, "ab" * 32)
+    assert updater.interpretar_release(_release(), _manifesto_com_pequeno()).completo is None
+
+
+def test_download_cortado_diz_quanto_chegou_e_nao_deixa_o_parcial(monkeypatch, tmp_path):
+    monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
+    dados = b"C" * 3_000_000
+    monkeypatch.setattr(rede, "abrir",
+                        lambda url, **kw: (_Sessao(), _RespostaCortada(dados, ate=2_000_000)))
+
+    with pytest.raises(updater.DownloadInterrompido) as erro:
+        updater.baixar(_info(dados))
+
+    texto = str(erro.value)
+    assert "chegaram 1.9 de 2.9 MB" in texto
+    assert "faltaram 1000000 bytes" in texto
+    assert list(tmp_path.iterdir()) == [], "o .part cortado nao pode ficar"
+
+
+def test_pequeno_cortado_no_fim_cai_no_completo(monkeypatch, tmp_path):
+    monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
+    pequeno, completo = b"P" * 2_000_000, b"C" * 3_000_000
+    abrir = _AbrirPorAsset({"77": _RespostaCortada(pequeno, ate=len(pequeno) - 883),
+                            "42": _RespostaBinaria(completo)})
+    monkeypatch.setattr(rede, "abrir", abrir)
+    avisos, progresso = [], []
+
+    destino = updater.baixar(_pequeno_e_completo(pequeno, completo),
+                             progresso_cb=progresso.append, ao_cair_no_completo=avisos.append)
+
+    assert abrir.assets == ["77", "42"]
+    assert destino.name == "SIG-FT_Itaipu_Setup_1.1.0.exe"
+    assert destino.read_bytes() == completo
+    assert sorted(p.name for p in tmp_path.iterdir()) == [destino.name]
+    assert [a.nome_arquivo for a in avisos] == ["SIG-FT_Itaipu_Setup_1.1.0.exe"], (
+        "a janela precisa saber que o download virou o do completo")
+    assert 0.0 in progresso, "a barra recomeca do zero para o completo"
+
+
+def test_pequeno_que_nao_confere_tambem_cai_no_completo(monkeypatch, tmp_path):
+    # Um proxy pode entregar outra coisa no lugar do arquivo (pagina de
+    # bloqueio, arquivo truncado): o SHA256 recusa, e o completo resolve.
+    monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
+    pequeno, completo = b"P" * 2_000_000, b"C" * 3_000_000
+    abrir = _AbrirPorAsset({"77": _RespostaBinaria(b"X" * 2_000_000),
+                            "42": _RespostaBinaria(completo)})
+    monkeypatch.setattr(rede, "abrir", abrir)
+
+    destino = updater.baixar(_pequeno_e_completo(pequeno, completo))
+
+    assert abrir.assets == ["77", "42"] and destino.read_bytes() == completo
+
+
+def test_se_o_completo_tambem_cai_o_erro_e_o_do_completo(monkeypatch, tmp_path):
+    monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
+    pequeno, completo = b"P" * 2_000_000, b"C" * 3_000_000
+    monkeypatch.setattr(rede, "abrir", _AbrirPorAsset({
+        "77": _RespostaCortada(pequeno, ate=1_000_000),
+        "42": _RespostaCortada(completo, ate=1_500_000)}))
+
+    with pytest.raises(updater.DownloadInterrompido) as erro:
+        updater.baixar(_pequeno_e_completo(pequeno, completo))
+
+    assert "de 2.9 MB" in str(erro.value), "a mensagem final e a do completo"
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_disco_cheio_no_pequeno_NAO_vira_download_do_completo(monkeypatch, tmp_path):
+    # Sem espaco para 38 MB, nao ha para 316: o erro sobe como veio.
+    monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
+    pequeno, completo = b"P" * 2_000_000, b"C" * 3_000_000
+    abrir = _AbrirPorAsset({"77": _RespostaBinaria(pequeno), "42": _RespostaBinaria(completo)})
+    monkeypatch.setattr(rede, "abrir", abrir)
+
+    def sem_espaco(*a, **k):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(updater, "open", sem_espaco, raising=False)
+
+    with pytest.raises(OSError) as erro:
+        updater.baixar(_pequeno_e_completo(pequeno, completo))
+
+    assert erro.value.errno == 28
+    assert abrir.assets == ["77"]

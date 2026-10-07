@@ -68,6 +68,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -195,6 +196,9 @@ class Atualizacao:
     tamanho_completo: int = 0
     # Veio pelo canal de testes.
     prerelease: bool = False
+    # [2026-10-07] Com o pequeno, o completo do mesmo Release: é nele que o
+    # download cai quando o pequeno não chega inteiro (ver `baixar`).
+    completo: Atualizacao | None = None
 
     @property
     def tamanho_mb(self) -> float:
@@ -211,6 +215,10 @@ class SemToken(RuntimeError):
 
 class ArquivoInvalido(RuntimeError):
     """O arquivo baixado não pode ser executado (pequeno demais, ou SHA errado)."""
+
+
+class DownloadInterrompido(RuntimeError):
+    """A conexão caiu antes do fim do arquivo. A mensagem diz quanto chegou."""
 
 
 def _asset(release: dict, nome: str) -> dict | None:
@@ -271,6 +279,13 @@ def interpretar_release(release: dict, manifesto: dict | None = None,
         publicado_em=str(release.get("published_at", "") or "")[:10],
         prerelease=bool(release.get("prerelease")),
     )
+    completo = Atualizacao(
+        nome_arquivo=str(asset.get("name", "")),
+        url_asset=str(asset.get("url", "")),
+        tamanho=int(asset.get("size") or 0),
+        sha256=sha,
+        **comum,
+    )
     if (pequeno := _pacote_pequeno(release, manifesto, versao_atual)) is not None:
         asset_pequeno, entrada = pequeno
         return Atualizacao(
@@ -279,16 +294,11 @@ def interpretar_release(release: dict, manifesto: dict | None = None,
             tamanho=int(asset_pequeno.get("size") or entrada.get("tamanho") or 0),
             sha256=str(entrada["sha256"]).strip().lower(),
             incremental=True,
-            tamanho_completo=int(asset.get("size") or 0),
+            tamanho_completo=completo.tamanho,
+            completo=completo,
             **comum,
         )
-    return Atualizacao(
-        nome_arquivo=str(asset.get("name", "")),
-        url_asset=str(asset.get("url", "")),
-        tamanho=int(asset.get("size") or 0),
-        sha256=sha,
-        **comum,
-    )
+    return completo
 
 
 # ─────────────────────────── o canal de testes ──────────────────────────────
@@ -417,12 +427,42 @@ def pasta_download() -> Path:
 
 
 def baixar(info: Atualizacao, *, progresso_cb: Progresso = _nada,
-           log_cb: Log = _nada) -> Path:
+           log_cb: Log = _nada,
+           ao_cair_no_completo: Callable[[Atualizacao], None] = _nada) -> Path:
     """Baixa o instalador e confere o SHA256. Devolve o caminho do arquivo.
 
     Usa o **endpoint de API do asset**, nunca o `browser_download_url`: em
     repositório privado só ele entrega o binário — ver o item 1 do cabeçalho.
+
+    [2026-10-07] O instalador pequeno é um atalho. Se ele não chega inteiro
+    (na rede da empresa, o proxy cortou o fim do da 1.2.0-rc.4, duas vezes)
+    ou não confere, baixa o completo do mesmo Release, que serve para qualquer
+    versão, e avisa `ao_cair_no_completo`. NÃO remenda o pedaço que faltou: se
+    o proxy segurou o fim para analisar o arquivo, pedir só o resto seria
+    passar por cima da análise. Erro de disco não troca de arquivo: sem espaço
+    para o pequeno, não há para o completo.
     """
+    try:
+        return _baixar_arquivo(info, progresso_cb=progresso_cb, log_cb=log_cb)
+    except (DownloadInterrompido, ArquivoInvalido, rede.FalhaDeRede) as erro:
+        if not info.incremental or info.completo is None:
+            raise
+        log_cb(f"A atualizacao pequena falhou -- {erro}")
+        log_cb("Vai o instalador completo, que serve para qualquer versao.")
+        ao_cair_no_completo(info.completo)
+        progresso_cb(0.0)
+        return _baixar_arquivo(info.completo, progresso_cb=progresso_cb, log_cb=log_cb)
+
+
+def _mb_do_log(n_bytes: int) -> str:
+    return f"{n_bytes / (1024 * 1024):.1f}"
+
+
+def _baixar_arquivo(info: Atualizacao, *, progresso_cb: Progresso,
+                    log_cb: Log) -> Path:
+    """Um arquivo do Release, conferido. Ver `baixar`."""
+    import requests
+
     nome = info.nome_arquivo
     # O instalador pequeno chega como `.bin` (o app 1.1.1 baixa "o primeiro
     # `.exe` do Release" e não pode pegá-lo); é um instalador como o outro.
@@ -439,15 +479,31 @@ def baixar(info: Atualizacao, *, progresso_cb: Progresso = _nada,
         total = int(resp.headers.get("Content-Length") or info.tamanho or 0)
         baixado = 0
         digest = hashlib.sha256()
-        with open(parcial, "wb") as f:
-            for bloco in resp.iter_content(chunk_size=256 * 1024):
-                if not bloco:
-                    continue
-                f.write(bloco)
-                digest.update(bloco)
-                baixado += len(bloco)
-                if total:
-                    progresso_cb(min(baixado / total, 1.0))
+        inicio = ultimo_bloco = time.monotonic()
+        try:
+            with open(parcial, "wb") as f:
+                for bloco in resp.iter_content(chunk_size=256 * 1024):
+                    if not bloco:
+                        continue
+                    f.write(bloco)
+                    digest.update(bloco)
+                    baixado += len(bloco)
+                    ultimo_bloco = time.monotonic()
+                    if total:
+                        progresso_cb(min(baixado / total, 1.0))
+        except requests.exceptions.RequestException as erro:
+            # O `IncompleteRead` cru não diz nada a quem lê. Os tempos separam
+            # um corte seco de um proxy que segurou o fim antes de cortar.
+            parcial.unlink(missing_ok=True)
+            agora = time.monotonic()
+            quanto = (f"chegaram {_mb_do_log(baixado)} de {_mb_do_log(total)} MB "
+                      f"(faltaram {total - baixado} bytes)" if total
+                      else f"chegaram {_mb_do_log(baixado)} MB")
+            raise DownloadInterrompido(
+                f"A conexao caiu antes do fim do download: {quanto}, aos "
+                f"{agora - inicio:.0f} s, {agora - ultimo_bloco:.0f} s depois do "
+                f"ultimo pedaco. Perto do fim, costuma ser o proxy da empresa "
+                f"interrompendo o arquivo. Detalhe: {rede.resumo_erro(erro)}") from erro
     finally:
         resp.close()
         sessao.close()
