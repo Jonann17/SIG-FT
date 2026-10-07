@@ -557,3 +557,148 @@ def test_outro_erro_do_disparo_NAO_vira_pedido_de_elevacao(disparo, tmp_path):
         updater.instalar(tmp_path / "Setup.exe")
 
     assert "pediu elevacao" not in disparo["eventos"]
+
+
+# =============================================================================
+# H. O instalador PEQUENO (so o que mudou)  [2026-10-07]
+# =============================================================================
+# Ver docs/superpowers/specs/2026-10-07-atualizacao-incremental-design.md. O
+# Release traz, alem do completo, um instalador pequeno por versao de origem
+# (`latest.json` -> `atualizacoes`). O app usa o pequeno quando o `de` dele e a
+# versao instalada; em qualquer outro caso, o completo -- que serve para todos.
+
+PACOTE = "SIG-FT_Itaipu_Atualizacao_1.0.0_para_1.1.0.bin"
+
+
+def _release_com_pequeno(**extra):
+    release = _release(**extra)
+    release["assets"].append({
+        "name": PACOTE, "url": "https://api.github.com/repos/luanccozer/SIG-FT/releases/assets/77",
+        "size": 12_000_000})
+    return release
+
+
+def _manifesto_com_pequeno(de="1.0.0", arquivo=PACOTE):
+    return {"sha256": "ab" * 32,
+            "atualizacoes": [{"de": de, "arquivo": arquivo, "sha256": "cd" * 32, "tamanho": 12_000_000}]}
+
+
+def test_o_pequeno_e_escolhido_quando_saiu_da_versao_instalada():
+    info = updater.interpretar_release(_release_com_pequeno(), _manifesto_com_pequeno(), versao_atual="1.0.0")
+
+    assert info.incremental is True
+    assert info.nome_arquivo == PACOTE
+    assert info.url_asset.endswith("/assets/77")
+    assert (info.tamanho, info.tamanho_completo) == (12_000_000, 180_000_000)
+    assert info.sha256 == "cd" * 32  # o do pequeno, nao o do completo
+
+
+def test_de_outra_versao_vai_o_completo():
+    info = updater.interpretar_release(_release_com_pequeno(), _manifesto_com_pequeno(de="0.9.0"),
+                                       versao_atual="1.0.0")
+
+    assert info.incremental is False
+    assert info.nome_arquivo == "SIG-FT_Itaipu_Setup_1.1.0.exe"
+    assert info.sha256 == "ab" * 32
+
+
+def test_pequeno_listado_mas_ausente_do_release_vai_o_completo():
+    info = updater.interpretar_release(_release(), _manifesto_com_pequeno(), versao_atual="1.0.0")
+
+    assert info.incremental is False
+
+
+def test_sem_saber_a_versao_instalada_vai_o_completo():
+    assert updater.interpretar_release(_release_com_pequeno(), _manifesto_com_pequeno()).incremental is False
+
+
+def test_o_app_antigo_continua_achando_o_completo_primeiro():
+    # O 1.1.1 escolhe "o primeiro .exe do Release": o pequeno, em .bin, nao
+    # entra na conta dele -- nem quando aparece antes na lista.
+    release = _release_com_pequeno()
+    release["assets"].reverse()
+
+    assert updater._instalador(release)["name"] == "SIG-FT_Itaipu_Setup_1.1.0.exe"
+
+
+def test_checar_passa_a_versao_instalada_e_escolhe_o_pequeno(com_token, monkeypatch):
+    release = _release_com_pequeno()
+    release["assets"].append({"name": "latest.json", "url": "https://api.github.com/x/assets/99", "size": 9})
+    manifesto = _Resposta(conteudo=json.dumps(_manifesto_com_pequeno()).encode("utf-8"))
+    monkeypatch.setattr(rede, "abrir", _abrir_devolvendo(_Resposta(release), _Sessao(manifesto)))
+
+    info = updater.checar("1.0.0", canal_testes=False)
+
+    assert info.incremental is True and info.nome_arquivo == PACOTE
+
+
+def test_o_pequeno_baixado_vira_exe_depois_de_conferido(monkeypatch, tmp_path):
+    monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
+    dados = b"P" * 2_000_000
+    monkeypatch.setattr(rede, "abrir", lambda url, **kw: (_Sessao(), _RespostaBinaria(dados)))
+    info = updater.Atualizacao(
+        versao="1.1.0", notas="", nome_arquivo=PACOTE, url_asset="https://api.github.com/.../assets/77",
+        tamanho=len(dados), sha256=hashlib.sha256(dados).hexdigest(), url_pagina="", incremental=True)
+
+    destino = updater.baixar(info)
+
+    assert destino.name == PACOTE[:-len(".bin")] + ".exe"
+    assert destino.read_bytes() == dados
+    assert sorted(p.name for p in tmp_path.iterdir()) == [destino.name]
+
+
+# =============================================================================
+# I. O canal de testes  [2026-10-07]
+# =============================================================================
+# Desligado (o padrao), o app pergunta `/releases/latest`, que o GitHub
+# responde ignorando pre-lancamentos. Ligado, pergunta `/releases` e fica com a
+# versao mais nova, pre-lancamento inclusive -- e assim que o Luan testa o
+# instalador pequeno antes de ele chegar a todo mundo.
+
+class _AbrirAnotando:
+    def __init__(self, resposta):
+        self.urls = []
+        self.resposta = resposta
+
+    def __call__(self, url, **kw):
+        self.urls.append(url)
+        return _Sessao(), self.resposta
+
+
+def test_canal_desligado_pergunta_so_pelo_ultimo_release_normal(com_token, monkeypatch):
+    abrir = _AbrirAnotando(_Resposta(_release()))
+    monkeypatch.setattr(rede, "abrir", abrir)
+
+    updater.checar("1.0.0", canal_testes=False)
+
+    assert abrir.urls[0].endswith("/releases/latest")
+
+
+def test_canal_ligado_fica_com_a_versao_mais_nova_pre_lancamento_inclusive(com_token, monkeypatch):
+    lista = [_release(tag_name="v1.1.0"),
+             _release(tag_name="v1.2.0-rc.3", prerelease=True),
+             _release(tag_name="v1.2.0-rc.4", prerelease=True, draft=True),  # rascunho: nao
+             _release(tag_name="v1.2.0-rc.2", prerelease=True)]
+    abrir = _AbrirAnotando(_Resposta(lista))
+    monkeypatch.setattr(rede, "abrir", abrir)
+
+    info = updater.checar("1.1.0", canal_testes=True)
+
+    assert "/releases?" in abrir.urls[0]
+    assert (info.versao, info.prerelease) == ("1.2.0-rc.3", True)
+
+
+def test_canal_ligado_sem_nada_mais_novo_nao_oferece_nada(com_token, monkeypatch):
+    monkeypatch.setattr(rede, "abrir", _AbrirAnotando(_Resposta([_release(tag_name="v1.1.0")])))
+
+    assert updater.checar("1.1.0", canal_testes=True) is None
+
+
+def test_o_canal_vem_desligado_e_lembra_a_escolha(tmp_path):
+    preferencias = tmp_path / "user_prefs.json"
+
+    assert updater.canal_testes_ligado(config_path=preferencias) is False
+    updater.ligar_canal_testes(True, config_path=preferencias)
+    assert updater.canal_testes_ligado(config_path=preferencias) is True
+    updater.ligar_canal_testes(False, config_path=preferencias)
+    assert updater.canal_testes_ligado(config_path=preferencias) is False

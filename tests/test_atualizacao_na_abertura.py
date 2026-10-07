@@ -580,6 +580,23 @@ def test_o_resumo_sem_data_nem_tamanho_nao_inventa():
     assert resumo == "Você está na v1.1.0. A v1.2.0."
 
 
+def test_o_resumo_do_instalador_pequeno_compara_com_o_completo():
+    # [2026-10-07] O que a pessoa ganha com o pequeno tem de aparecer.
+    info = _info(nome_arquivo="SIG-FT_Itaipu_Atualizacao_1.1.0_para_1.2.0.bin", tamanho=12_900_000,
+                 incremental=True, tamanho_completo=316_017_517)
+
+    resumo = atualizacao.resumo_da_versao(info, "1.1.0")
+
+    assert resumo == ("Você está na v1.1.0. A v1.2.0 saiu em 25/09/2026. A atualização tem 12,3 MB: "
+                      "só o que mudou (o instalador completo tem 301,4 MB).")
+
+
+def test_versao_de_teste_e_dita_no_titulo(raiz, sem_uac):
+    aviso = _aviso(raiz, info=_info(versao="1.2.0-rc.3", prerelease=True))
+
+    assert "Nova versão de teste disponível: v1.2.0-rc.3" in _textos(aviso)
+
+
 # =============================================================================
 # F. O botao na Home
 # =============================================================================
@@ -611,6 +628,28 @@ def test_a_home_tem_o_botao_e_ele_PERGUNTA_AGORA(monkeypatch, raiz):
 
     assert botao.kwargs["state"] == "normal"
     assert botao.kwargs["text"] == home.TEXTO_BOTAO_ATUALIZACOES
+
+
+def test_a_home_tem_a_caixa_do_canal_de_testes_e_ela_lembra(monkeypatch, raiz):
+    # [2026-10-07] Desligada por padrao; marcar grava a escolha na hora.
+    from sigft.app.views import home
+
+    escolhas = []
+    monkeypatch.setattr(updater, "canal_testes_ligado", lambda **kw: False)
+    monkeypatch.setattr(updater, "ligar_canal_testes", lambda ligado, **kw: escolhas.append(ligado))
+    tela = home.HomeView.__new__(home.HomeView)
+    ctk.CTkScrollableFrame.__init__(tela, raiz)
+    tela.controller = raiz
+    tela._criar_barra_de_botoes(row=3)
+
+    caixa = tela.caixa_canal_testes
+    assert caixa.kwargs["text"] == home.TEXTO_CANAL_TESTES
+    assert tela.var_canal_testes.get() is False
+
+    tela.var_canal_testes.set(True)
+    caixa.kwargs["command"]()
+
+    assert escolhas == [True]
 
 
 # =============================================================================
