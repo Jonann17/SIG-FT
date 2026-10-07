@@ -364,3 +364,119 @@ def test_o_parametro_que_o_iss_le_e_O_MESMO_que_o_app_manda(iss):
     assert m, "o [Code] tem de ler o parametro com `{param:NOME|padrao}`"
 
     assert updater.ARG_REABRIR.lower() == f"/{m.group(1)}=1".lower()
+
+
+# =============================================================================
+# I. O instalador PEQUENO (modo atualizacao)  [2026-10-07]
+# =============================================================================
+# Ver docs/superpowers/specs/2026-10-07-atualizacao-incremental-design.md. O
+# mesmo .iss, compilado com /DAtualizacao=1 /DVersaoDe=<versao>, gera o
+# instalador so com os arquivos que mudaram (listas de
+# tools/gerar_atualizacao.py nos includes). Os perigos que estes testes travam:
+#
+#   - o pequeno herdar o `[InstallDelete]` do completo: ele LIMPA o _internal
+#     inteiro e so traz meia duzia de arquivos -- o app nao abriria mais;
+#   - o pequeno rodar sobre outra versao: ficaria uma mistura das duas;
+#   - o pequeno perder o que o completo ja acerta: fechar o app e reabri-lo.
+
+def _preprocessar(texto, definidos=()):
+    """O que o ISPP entrega ao Inno com estes `/D`. So `#ifdef`, `#ifndef`,
+    `#else` e `#endif` sao avaliados; um `#if <expressao>` fica com as duas
+    pernas (so aparece no calculo da versao, no topo)."""
+    saida, pilha = [], []
+    for linha in texto.splitlines():
+        s = linha.strip()
+        if s.startswith(("#ifdef ", "#ifndef ")):
+            nome = s.split()[1]
+            pilha.append([(nome in definidos) == s.startswith("#ifdef "), True])
+            continue
+        if s.startswith("#if "):
+            pilha.append([True, False])
+            continue
+        if s == "#else":
+            if pilha[-1][1]:
+                pilha[-1][0] = not pilha[-1][0]
+            continue
+        if s == "#endif":
+            pilha.pop()
+            continue
+        if all(ativo for ativo, _ in pilha):
+            saida.append(linha)
+    return "\n".join(saida)
+
+
+@pytest.fixture(scope="module")
+def iss_pequeno(iss):
+    return _preprocessar(iss, {"Atualizacao", "VersaoDe"})
+
+
+@pytest.fixture(scope="module")
+def iss_completo(iss):
+    return _preprocessar(iss)
+
+
+def _modulo_gerar_atualizacao():
+    import importlib.util
+    import sys
+
+    spec = importlib.util.spec_from_file_location("gerar_atualizacao", RAIZ / "tools" / "gerar_atualizacao.py")
+    modulo = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = modulo
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+def test_o_pequeno_NAO_limpa_o_internal_inteiro(iss_pequeno):
+    for tipo, alvo in _entradas_de(iss_pequeno, "InstallDelete"):
+        assert alvo.rstrip("\\*") != "{app}\\_internal", (
+            f"o instalador pequeno apagaria o _internal inteiro ({tipo}) e so traria os arquivos que mudaram")
+
+
+def test_o_pequeno_traz_so_as_listas_geradas(iss_pequeno):
+    ga = _modulo_gerar_atualizacao()
+    arquivos = re.search(r"^\[Files\]$(.*?)(?=^\[|\Z)", iss_pequeno, re.M | re.S).group(1)
+    remocoes = re.search(r"^\[InstallDelete\]$(.*?)(?=^\[|\Z)", iss_pequeno, re.M | re.S).group(1)
+
+    assert f'#include "{ga.INCLUDE_ARQUIVOS}"' in arquivos
+    assert f'#include "{ga.INCLUDE_REMOCOES}"' in remocoes
+    assert "dist\\SIG-FT\\*" not in arquivos
+
+
+def test_o_completo_continua_como_era(iss_completo):
+    alvos = _alvos_de(iss_completo, "InstallDelete")
+    assert "{app}\\_internal" in alvos
+    assert 'Source: "..\\dist\\SIG-FT\\*"' in iss_completo
+    assert "atualizacao_" not in iss_completo
+
+
+def test_cada_modo_tem_o_nome_de_saida_que_o_build_espera(iss_pequeno, iss_completo):
+    ga = _modulo_gerar_atualizacao()
+    release = (RAIZ / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+
+    assert _diretiva(iss_pequeno, "OutputBaseFilename") + ".exe" == ga.SAIDA_DO_ISCC
+    assert f"installer/Output/{_diretiva(iss_completo, 'OutputBaseFilename')}.exe" in release
+
+
+def test_o_pequeno_fecha_e_reabre_o_app_como_o_completo(iss_pequeno):
+    assert (_diretiva(iss_pequeno, "CloseApplications") or "").lower() == "force"
+    assert "runasoriginaluser" in iss_pequeno and "Check: ReabrirDepoisDeAtualizar" in iss_pequeno
+
+
+def test_o_pequeno_so_instala_sobre_a_versao_de_onde_saiu(iss_pequeno, iss):
+    codigo = iss_pequeno[iss_pequeno.index("[Code]"):]
+    app_id = re.search(r"^AppId=\{(\{[0-9A-F-]+\})$", iss, re.M | re.I).group(1)
+
+    assert "function PrepareToInstall" in codigo
+    assert "{#VersaoDe}" in codigo
+    assert f"Uninstall\\{app_id}_is1" in codigo and "DisplayVersion" in codigo
+    # Recusou: o app tem de voltar a abrir, senao a pessoa fica sem ele.
+    assert "ExecAsOriginalUser" in codigo
+
+
+def test_o_pequeno_sem_versao_de_origem_nao_compila(iss):
+    assert re.search(r"#ifdef Atualizacao\s+#ifndef VersaoDe\s+#error", iss)
+
+
+def test_o_pequeno_nao_recria_atalhos(iss_pequeno):
+    # Os atalhos ja existem (vieram do completo); [Tasks] perguntaria de novo.
+    assert "[Icons]" not in iss_pequeno and "[Tasks]" not in iss_pequeno

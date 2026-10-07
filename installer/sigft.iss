@@ -8,6 +8,13 @@
 ;      iscc /DMyAppVersion=1.0.0 installer\sigft.iss
 ;  Saida: installer\Output\SIG-FT_Itaipu_Setup.exe
 ;
+;  [2026-10-07] MODO ATUALIZACAO -- o instalador PEQUENO, so com o que mudou:
+;      iscc /DAtualizacao=1 /DVersaoDe=1.2.0-rc.3 /DMyAppVersion=1.2.0-rc.4 installer\sigft.iss
+;  Quem chama e o tools/gerar_atualizacao.py (no release.yml), depois de gerar
+;  ao lado deste arquivo as duas listas que ele inclui. Saida:
+;  installer\Output\SIG-FT_Itaipu_Atualizacao.exe. Ver
+;  docs/superpowers/specs/2026-10-07-atualizacao-incremental-design.md.
+;
 ;  ⚠️ Este arquivo tem testes: tests/test_instalador.py le as diretivas daqui
 ;  e reprova as armadilhas que ja custaram caro a alguem (o AppMutex que
 ;  travava a instalacao, a versao com sufixo, o [InstallDelete] largo demais,
@@ -45,6 +52,14 @@
 #define AppName "SIG-FT Itaipu"
 #define AppExe "SIG-FT.exe"
 
+; O instalador pequeno so serve para a versao de onde a diferenca saiu: sem
+; ela, nao ha o que conferir antes de copiar (ver PrepareToInstall, no [Code]).
+#ifdef Atualizacao
+  #ifndef VersaoDe
+    #error Modo atualizacao sem /DVersaoDe=<a versao instalada que ele atualiza>
+  #endif
+#endif
+
 [Setup]
 AppId={{9F2C4A18-51D7-4E0B-9A3C-5B7E1D6A2C40}
 AppName={#AppName}
@@ -57,7 +72,14 @@ DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 OutputDir=Output
+#ifdef Atualizacao
+OutputBaseFilename=SIG-FT_Itaipu_Atualizacao
+; Vai para onde o SIG-FT ja esta (UsePreviousAppDir, padrao do Inno).
+DisableDirPage=yes
+DisableReadyPage=yes
+#else
 OutputBaseFilename=SIG-FT_Itaipu_Setup
+#endif
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -99,8 +121,11 @@ RestartApplications=yes
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
+#ifndef Atualizacao
+; Atalhos so no completo: no pequeno eles ja existem, e o [Tasks] perguntaria de novo.
 [Tasks]
 Name: "desktopicon"; Description: "Criar atalho na Area de Trabalho"; GroupDescription: "Atalhos:"; Flags: checkedonce
+#endif
 
 [InstallDelete]
 ; O Inno sobrescreve o que esta em [Files], mas NAO apaga o que sumiu entre
@@ -111,15 +136,28 @@ Name: "desktopicon"; Description: "Criar atalho na Area de Trabalho"; GroupDescr
 ; `unins000.dat`, o registro do que o instalador escreveu: apagando-o, a
 ; entrada em Programas e Recursos fica orfa e o SIG-FT deixa de ser
 ; desinstalavel pelo caminho normal. tests/test_instalador.py reprova isso.
+#ifdef Atualizacao
+; O PEQUENO apaga so o que sumiu desde a VersaoDe, arquivo por arquivo. Limpar
+; o _internal inteiro, como o completo faz, apagaria tudo o que ele nao traz --
+; e ele so traz o que mudou. tests/test_instalador.py (secao I) reprova isso.
+#include "atualizacao_remover.iss"
+#else
 Type: filesandordirs; Name: "{app}\_internal"
+#endif
 
 [Files]
+#ifdef Atualizacao
+; So os arquivos que mudaram desde a VersaoDe (o CHANGELOG entra quando muda).
+#include "atualizacao_arquivos.iss"
+#else
 ; Toda a pasta onedir gerada pelo PyInstaller.
 Source: "..\dist\SIG-FT\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 ; O CHANGELOG viaja junto: e dele que sai o "o que ha de novo" depois de
 ; atualizar. Sem ele no pacote, a janela de novidades abre vazia.
 Source: "..\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion
+#endif
 
+#ifndef Atualizacao
 [Icons]
 ; O AppUserModelID e o MESMO que o programa declara em
 ; sigft/core/instancia.py, antes de a primeira janela existir. Divergindo, o
@@ -131,6 +169,7 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"; \
 Name: "{group}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; \
     AppUserModelID: "GEVernova.SIGFT.Itaipu"; Tasks: desktopicon
+#endif
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Abrir o {#AppName}"; \
@@ -173,3 +212,48 @@ function ReabrirDepoisDeAtualizar: Boolean;
 begin
   Result := ExpandConstant('{param:REABRIR|0}') = '1';
 end;
+
+#ifdef Atualizacao
+// [2026-10-07] O instalador PEQUENO so serve para a versao de onde a
+// diferenca foi calculada (VersaoDe): sobre outra, ele deixaria uma mistura
+// das duas. A versao instalada e a do registro do desinstalador
+// (DisplayVersion, que o Inno grava a partir do AppVersion -- do completo e
+// do pequeno), na mesma visao em que esta instalacao vai gravar. Diferente:
+// nada e copiado, e o app volta a abrir; na abertura seguinte o app escolhe o
+// arquivo pelo que de fato esta instalado.
+const
+  ChaveDesinstalar = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{9F2C4A18-51D7-4E0B-9A3C-5B7E1D6A2C40}_is1';
+
+function VersaoInstalada: String;
+begin
+  Result := '';
+  if IsAdminInstallMode then
+  begin
+    if IsWin64 then
+      RegQueryStringValue(HKLM64, ChaveDesinstalar, 'DisplayVersion', Result);
+    if Result = '' then
+      RegQueryStringValue(HKLM32, ChaveDesinstalar, 'DisplayVersion', Result);
+  end
+  else
+    RegQueryStringValue(HKCU, ChaveDesinstalar, 'DisplayVersion', Result);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Instalada: String;
+  Codigo: Integer;
+begin
+  Result := '';
+  Instalada := VersaoInstalada;
+  if Instalada <> '{#VersaoDe}' then
+  begin
+    if Instalada = '' then
+      Instalada := '(nenhuma)';
+    Log('Atualizacao recusada: instalada ' + Instalada + ', esperada {#VersaoDe}.');
+    Result := 'Esta atualizacao leva o SIG-FT da v{#VersaoDe} para a v{#MyAppVersion}, mas a versao ' +
+              'instalada e ' + Instalada + '. Nada foi alterado: use o instalador completo, na pagina de Releases.';
+    if ReabrirDepoisDeAtualizar then
+      ExecAsOriginalUser(ExpandConstant('{app}\{#AppExe}'), '', '', SW_SHOWNORMAL, ewNoWait, Codigo);
+  end;
+end;
+#endif

@@ -253,6 +253,36 @@ jobs:
             --versao "${{ steps.versao.outputs.versao }}" \
             --tag "${{ steps.versao.outputs.tag }}"
 
+      # ─── Atualizacao so com o que mudou  [2026-10-07] ──────────────────────
+      # O `arquivos.json` (cada arquivo instalado, com SHA256) vai para o
+      # Release e e a BASE da proxima versao. Contra o das versoes anteriores
+      # (as 3 mais recentes que o publicaram, e a ultima normal sempre), o
+      # tools/gerar_atualizacao.py monta um instalador PEQUENO por base -- o
+      # mesmo installer/sigft.iss em modo atualizacao -- e o registra no
+      # latest.json, de onde o app escolhe o arquivo. Logica no script, e nao
+      # aqui, pela razao de sempre: YAML nao tem teste
+      # (tests/test_gerar_atualizacao.py). Pequeno que nao compensa ou nao
+      # compila vira aviso: o completo ja esta pronto e serve para todo mundo.
+      # Spec: docs/superpowers/specs/2026-10-07-atualizacao-incremental-design.md
+      - name: Manifesto de arquivos e instaladores pequenos
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.versao.outputs.tag }}
+        shell: bash
+        run: |
+          python tools/gerar_atualizacao.py manifesto --pasta dist/SIG-FT --changelog CHANGELOG.md \
+            --versao "${{ steps.versao.outputs.versao }}" --saida arquivos.json
+          gh api "repos/${{ github.repository }}/releases?per_page=30" > releases_anteriores.json
+          mkdir -p bases
+          for base in $(python tools/gerar_atualizacao.py escolher-bases \
+                          --releases releases_anteriores.json --tag-atual "$TAG"); do
+            gh release download "$base" -p arquivos.json -O "bases/$base.json" \
+              || echo "::warning::nao consegui baixar o arquivos.json de $base"
+          done
+          python tools/gerar_atualizacao.py pacotes --bases bases \
+            --versao "${{ steps.versao.outputs.versao }}" \
+            --numerica "${{ steps.versao.outputs.numerica }}" --iscc "$ISCC"
+
       - name: Publicar o Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -262,7 +292,12 @@ jobs:
         shell: bash
         run: |
           ativos=("$INSTALADOR#Instalador do SIG-FT Itaipu"
-                  "latest.json#Manifesto (versao + SHA256)")
+                  "latest.json#Manifesto (versao + SHA256)"
+                  "arquivos.json#Arquivos desta versao (base da atualizacao pequena)")
+          # `.bin`, e nao `.exe`: o app 1.1.1 baixa o primeiro .exe do Release.
+          for pacote in installer/Output/*.bin; do
+            [ -e "$pacote" ] && ativos+=("$pacote#Atualizacao pequena (so o que mudou)")
+          done
           if [ "$PRERELEASE" = "true" ]; then sinal="--prerelease"; else sinal="--prerelease=false"; fi
 
           if gh release view "$TAG" >/dev/null 2>&1; then
@@ -292,7 +327,9 @@ jobs:
           name: SIG-FT-${{ steps.versao.outputs.versao }}
           path: |
             installer/Output/*.exe
+            installer/Output/*.bin
             latest.json
+            arquivos.json
             conferencia-do-pacote.txt
             conferencia-da-janela.txt
           retention-days: 30
