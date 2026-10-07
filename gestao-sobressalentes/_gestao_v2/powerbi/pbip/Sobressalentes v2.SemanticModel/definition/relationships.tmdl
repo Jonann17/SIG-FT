@@ -1,0 +1,25 @@
+relationship b62c6588-18e9-43af-a5b4-5bea9917169c
+	fromColumn: Itens.Lista
+	toColumn: Listas.Lista
+
+relationship 9eafdaac-42b8-473c-8961-6abd655bb927
+	fromColumn: Atividades.Lista
+	toColumn: Listas.Lista
+
+relationship a2a7cdd5-de9f-4ae3-807d-0e072ad10e94
+	fromColumn: PrecosAconex.Lista
+	toColumn: Listas.Lista
+
+relationship c35b2818-fce3-4697-852c-dcaaeeec2bb6
+	crossFilteringBehavior: bothDirections
+	fromColumn: ListaEvento.Lista
+	toColumn: Listas.Lista
+
+relationship d3cd3d5c-c9ab-4444-9199-893a0c3a94f7
+	fromColumn: ListaEvento.Evento
+	toColumn: Eventos.Evento
+
+relationship 7038d0c3-9c2c-4551-904c-ecf4dad78efe
+	fromColumn: Itens.'Data Email'
+	toColumn: Calendario.Data
+

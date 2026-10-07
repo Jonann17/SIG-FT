@@ -9,15 +9,12 @@ import os
 import threading
 from tkinter import messagebox
 
-import pandas as pd
-
 from sigft.app import backends, file_dialogs
 from sigft.app.theme import ALTURA_CONSOLE, COLORS
 from sigft.app.widgets import dialogs as app_dialogs
 from sigft.core import pdm_catalogo
 from sigft.core import prefs
 from sigft.core.callbacks import from_legacy
-from sigft.core.excel.pmib_codes import normalize_pmib
 
 import customtkinter as ctk
 # [CP D] Mixin com `perguntar_retry_excel`: a janela de "o arquivo esta
@@ -523,24 +520,15 @@ class ModuloPDM(DialogosDeEspera, ctk.CTkFrame):
         lista_sel = None
         if modo == "selecionar":
             try:
-                df = pd.read_excel(status_pmib, sheet_name="Lista de Materiais", skiprows=3)
-                col_c = next((c for c in df.columns if "CÓDIGO PMIB" in str(c)), None)
-                if not col_c: return messagebox.showerror("Erro", "Coluna 'CÓDIGO PMIB' não encontrada.")
-
-                codigos_raw = df[col_c].dropna().unique().tolist()
-                codigos_formatados = []
-                for c in codigos_raw:
-                    # CP 1.2: delega para a normalização única e canônica
-                    # (core.excel.pmib_codes.normalize_pmib) — o código
-                    # original TRUNCAVA a fração para 4 dígitos quando havia
-                    # mais; o canônico NÃO trunca (diferença só visível com
-                    # mais de 4 casas decimais, que não ocorre em PMIB
-                    # real). Mantém o `str(c).strip()` explícito antes, para
-                    # que a normalização sempre veja uma string (mesmo
-                    # caminho de código exercido pelo original).
-                    c_str = normalize_pmib(str(c).strip())
-                    codigos_formatados.append(c_str)
-                codigos = sorted(list(set(codigos_formatados)))
+                # [2026-10-05, T0] A leitura (cabeçalho ACHADO, não fixo na
+                # linha 4) e a normalização moram no serviço. Era aqui que o
+                # layout v2 do `_STATUS_PMIB` dava "Coluna 'CÓDIGO PMIB' não
+                # encontrada": o `skiprows=3` tomava a linha da revisão em uso
+                # por cabeçalho.
+                try:
+                    codigos = backends.pdm_backend.codigos_pmib_da_lista(status_pmib)
+                except ValueError as erro:
+                    return messagebox.showerror("Erro", str(erro))
 
                 # [CP 7.2] Popup montado a mao -> SelecaoMultiplaDialog.
                 # `modal=True` preserva o `transient` + `grab_set` que ele ja

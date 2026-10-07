@@ -6,6 +6,12 @@ pillow
 pandas
 openpyxl
 xlwings
+# lxml: o editor cirurgico (`sigft/core/excel/cirurgico.py`) que GRAVA nos
+# `_STATUS_PMIB` sem apagar comentario em thread nem lista suspensa de extensao
+# -- o openpyxl le, mas regravava o arquivo inteiro e apagava os dois
+# (2026-10-05, T1 do roteiro do Gestao PMIB v2). Wheel pronta no pip para
+# Windows, sem compilar nada.
+lxml
 
 # Automação Web (RPA)
 # Motor único desde o CP 5.5 (2026-08-25). O `selenium` saiu daqui quando a

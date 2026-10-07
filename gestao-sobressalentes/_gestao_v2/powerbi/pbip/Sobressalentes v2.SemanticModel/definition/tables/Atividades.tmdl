@@ -1,0 +1,179 @@
+table Atividades
+	lineageTag: 070498e0-7cad-4962-8baf-d5d604c8822d
+
+	measure 'Atividades Abertas' =
+			CALCULATE ( COUNTROWS ( Atividades ), Atividades[Situacao] <> "CONCLUÍDA" )
+		formatString: 0
+		displayFolder: Plano de ação (aba Atividades)
+		lineageTag: d6c230e0-871a-4067-9446-30922df46600
+
+	measure 'Atividades Atrasadas' =
+			CALCULATE ( COUNTROWS ( Atividades ), Atividades[Situacao] = "ATRASADA" )
+		formatString: 0
+		displayFolder: Plano de ação (aba Atividades)
+		lineageTag: 4933a5cd-d476-4061-919c-117bbb6700c9
+
+	measure 'Atividades Travadas' =
+			CALCULATE ( COUNTROWS ( Atividades ), Atividades[Situacao] = "TRAVADA" )
+		formatString: 0
+		displayFolder: Plano de ação (aba Atividades)
+		lineageTag: d7db0eb6-976e-443b-aa26-a53f858c2b5a
+
+	column Lista
+		dataType: string
+		lineageTag: 3745bebc-8d23-43ce-88b2-edfd82b5602f
+		summarizeBy: none
+		sourceColumn: Lista
+
+		annotation SummarizationSetBy = User
+
+	column Frente
+		dataType: string
+		lineageTag: d0ef0472-e9e9-4d33-8dc9-a165bbb6839c
+		summarizeBy: none
+		sourceColumn: Frente
+
+		annotation SummarizationSetBy = User
+
+	column Atividade
+		dataType: string
+		lineageTag: e6be04a9-2736-47ee-b090-905d9288307d
+		summarizeBy: none
+		sourceColumn: Atividade
+
+		annotation SummarizationSetBy = User
+
+	column 'Status Atividade'
+		dataType: string
+		lineageTag: 3ad8c362-ce47-4f0b-8554-f54a981fed39
+		summarizeBy: none
+		sourceColumn: Status Atividade
+
+		annotation SummarizationSetBy = User
+
+	column 'Com Quem Esta'
+		dataType: string
+		lineageTag: 69bdcfac-ea43-45e0-a036-5b5f9c99eeb4
+		summarizeBy: none
+		sourceColumn: Com Quem Esta
+
+		annotation SummarizationSetBy = User
+
+	column Detalhe
+		dataType: string
+		lineageTag: e9aab50d-41fb-4b95-a70d-14ae1608c0a0
+		summarizeBy: none
+		sourceColumn: Detalhe
+
+		annotation SummarizationSetBy = User
+
+	column Situacao
+		dataType: string
+		lineageTag: adb38363-739c-4357-b26d-6f2a1c0a240f
+		summarizeBy: none
+		sourceColumn: Situacao
+
+		annotation SummarizationSetBy = User
+
+	column 'Inicio Previsto'
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		lineageTag: 0e973985-801e-4150-a1fe-c56299ecf13c
+		summarizeBy: none
+		sourceColumn: Inicio Previsto
+
+		annotation SummarizationSetBy = User
+
+	column 'Inicio Real'
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		lineageTag: fa6096a2-9e7c-4269-b91a-cac926347247
+		summarizeBy: none
+		sourceColumn: Inicio Real
+
+		annotation SummarizationSetBy = User
+
+	column 'Termino Previsto'
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		lineageTag: 7b45810b-a036-4660-bba2-41ee0bd328f9
+		summarizeBy: none
+		sourceColumn: Termino Previsto
+
+		annotation SummarizationSetBy = User
+
+	column 'Termino Real'
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		lineageTag: 50f15c7c-5b8f-41b3-b663-83529f7ed192
+		summarizeBy: none
+		sourceColumn: Termino Real
+
+		annotation SummarizationSetBy = User
+
+	column 'Alteracao do Status'
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		lineageTag: d2af0ea3-5807-48ae-b7f9-c3bb07088c27
+		summarizeBy: none
+		sourceColumn: Alteracao do Status
+
+		annotation SummarizationSetBy = User
+
+	column Criticidade
+		dataType: int64
+		formatString: 0
+		lineageTag: 69cf3136-0312-441b-986c-f164e86c859c
+		summarizeBy: none
+		sourceColumn: Criticidade
+
+		annotation SummarizationSetBy = User
+
+	column Concluida
+		dataType: boolean
+		lineageTag: 37484a52-20cf-41f6-87dd-209ad0392050
+		summarizeBy: none
+		sourceColumn: Concluida
+
+		annotation SummarizationSetBy = User
+
+	partition Atividades = m
+		mode: import
+		source =
+				let
+				    Consulta =
+				        let
+				            Arquivo = File.Contents(PastaPMIB & "\Mapeamento Listas de Sobressalentes.xlsx"),
+				            Tabela = fxLerTabela(Arquivo, "Atividades", "NV"),
+				            ComLista = Table.AddColumn(Tabela, "Lista", each if [NV] = 1 then [CODIGO ITAIPU] else null),
+				            ComFrente = Table.AddColumn(ComLista, "Frente", each if [NV] = 1 then [DESCRICAO] else null),
+				            Preenchida = Table.FillDown(ComFrente, {"Lista", "Frente"}),
+				            SoAtividades = Table.SelectRows(Preenchida, each [NV] <> 1 and fxNorm([DESCRICAO]) <> ""),   // NV vazio conta como atividade
+				            Selecionada = Table.SelectColumns(SoAtividades, {"Lista", "Frente", "DESCRICAO", "DATA PREVISTA DE INICIO", "DATA DE INICIO",
+				                "PREVISAO DE TERMINO", "DATA DE TERMINO", "STATUS", "ALTERACAO DO STATUS", "COM QUEM ESTA", "DETALHE", "CRITICIDADE", "CONCLUIDA"}, MissingField.UseNull),
+				            Renomeada = Table.RenameColumns(Selecionada, {
+				                {"DESCRICAO", "Atividade"}, {"DATA PREVISTA DE INICIO", "Inicio Previsto"}, {"DATA DE INICIO", "Inicio Real"},
+				                {"PREVISAO DE TERMINO", "Termino Previsto"}, {"DATA DE TERMINO", "Termino Real"}, {"STATUS", "Status Atividade"},
+				                {"ALTERACAO DO STATUS", "Alteracao do Status"}, {"COM QUEM ESTA", "Com Quem Esta"}, {"DETALHE", "Detalhe"},
+				                {"CRITICIDADE", "Criticidade"}, {"CONCLUIDA", "Concluida"}}),
+				            Datas = Table.TransformColumns(Renomeada, {
+				                {"Inicio Previsto", fxData, type date}, {"Inicio Real", fxData, type date}, {"Termino Previsto", fxData, type date},
+				                {"Termino Real", fxData, type date}, {"Alteracao do Status", fxData, type date}}),
+				            ComConcluida = Table.TransformColumns(Datas, {{"Concluida", each _ = true or fxNorm(_) = "TRUE" or fxNorm(_) = "VERDADEIRO", type logical}}),
+				            ComSituacao = Table.AddColumn(ComConcluida, "Situacao", each
+				                if [Concluida] or fxNorm([Status Atividade]) = "CONCLUIDA" then "CONCLUÍDA"
+				                else if fxNorm([Status Atividade]) = "TRAVADA" then "TRAVADA"
+				                else if [Termino Previsto] <> null and [Termino Previsto] < DataReferencia then "ATRASADA"
+				                else if [Inicio Real] = null then "NÃO INICIADA"
+				                else "EM DIA", type text),
+				            Tipada = Table.TransformColumnTypes(ComSituacao, {{"Lista", type text}, {"Frente", type text}, {"Atividade", type text},
+				                {"Status Atividade", type text}, {"Com Quem Esta", type text}, {"Detalhe", type text}, {"Criticidade", Int64.Type}})
+				        in
+				            Tipada,
+				    Colunas = Table.SelectColumns(Consulta, {"Lista", "Frente", "Atividade", "Status Atividade", "Com Quem Esta", "Detalhe", "Situacao", "Inicio Previsto", "Inicio Real", "Termino Previsto", "Termino Real", "Alteracao do Status", "Criticidade", "Concluida"}, MissingField.UseNull),
+				    Tipada = Table.TransformColumnTypes(Colunas, {{"Lista", type text}, {"Frente", type text}, {"Atividade", type text}, {"Status Atividade", type text}, {"Com Quem Esta", type text}, {"Detalhe", type text}, {"Situacao", type text}, {"Inicio Previsto", type date}, {"Inicio Real", type date}, {"Termino Previsto", type date}, {"Termino Real", type date}, {"Alteracao do Status", type date}, {"Criticidade", Int64.Type}, {"Concluida", type logical}})
+				in
+				    Tipada
+
+	annotation PBI_ResultType = Table
+

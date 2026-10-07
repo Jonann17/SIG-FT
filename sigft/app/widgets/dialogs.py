@@ -542,3 +542,100 @@ class SelecaoMultiplaDialog(ctk.CTkToplevel):
         if self._ao_confirmar is not None:
             self._ao_confirmar(escolha)
         self.destroy()
+
+
+# =============================================================================
+# [2026-10-06] A lista de arquivos travados
+# =============================================================================
+# Ver `docs/superpowers/specs/2026-10-06-gravacao-com-retry-design.md`. Pedido
+# do Luan: *"identificar qual está travado, deu erro e o motivo. E pedir pra
+# fechar e dar retry nessa parte."* O Gestão PMIB pergunta em três momentos
+# (`core/excel/travas.py`), e cada um diz nos botões o que vai acontecer.
+TEXTOS_TRAVADOS = {
+    "antes": {
+        "titulo": "Arquivos travados",
+        "explicacao": "Antes de gravar, o SIG-FT conferiu os arquivos. Estes não podem ser gravados agora:",
+        "rodape": ("Feche-os (salvando o que for seu) e clique em Repetir. Se seguir sem eles, o processo "
+                   "roda e lê esses arquivos, mas não grava neles nesta rodada."),
+        "repetir": "Repetir",
+        "seguir": "Seguir sem eles",
+    },
+    "depois": {
+        "titulo": "Arquivos não gravados",
+        "explicacao": "Estes arquivos não foram gravados:",
+        "rodape": ("Resolva o motivo e clique em Repetir só estes: o SIG-FT relê cada um e grava de novo. "
+                   "Se seguir, eles ficam para a próxima rodada."),
+        "repetir": "Repetir só estes",
+        "seguir": "Seguir",
+    },
+    "na_hora": {
+        "titulo": "Arquivo travado",
+        "explicacao": "Este arquivo não pôde ser gravado:",
+        "rodape": ("Feche-o e clique em Repetir: o SIG-FT relê o arquivo antes de gravar, então o que você "
+                   "salvou nele continua lá. Se seguir sem ele, o processo continua e o que faltava gravar "
+                   "nele fica para a próxima rodada."),
+        "repetir": "Repetir",
+        "seguir": "Seguir sem ele",
+    },
+}
+
+
+class ArquivosTravadosDialog(ctk.CTkToplevel):
+    """Uma lista de arquivos, cada um com o motivo e o que fazer, e dois
+    botões: Repetir × Seguir. A decisão volta em `resultado["repetir"]`.
+
+    `itens`: `(nome, motivo, o_que_fazer)`. `momento`: "antes", "depois" ou
+    "na_hora" -- escolhe os textos (`TEXTOS_TRAVADOS`).
+
+    Como as outras janelas de espera: o "X" equivale a Seguir; sem
+    `grab_set()` e sem `transient()` -- a pessoa precisa ir ao Excel fechar os
+    arquivos (e minimizar esta janela, se quiser) enquanto ela está aberta.
+    """
+
+    def __init__(self, master, *, itens, momento, evento_espera, resultado: dict):
+        super().__init__(master)
+        textos = TEXTOS_TRAVADOS[momento]
+        self.itens = [tuple(item) for item in itens]
+        self._evento = evento_espera
+        self._resultado = resultado
+
+        self.title(textos["titulo"])
+        self.geometry("620x380")
+        self.attributes("-topmost", True)
+        self.protocol("WM_DELETE_WINDOW", self.seguir)
+
+        ctk.CTkLabel(self, text=textos["explicacao"], font=theme.FONTE_CORPO, wraplength=580,
+                     justify="left").pack(anchor="w", padx=20, pady=(16, 6))
+
+        lista = ctk.CTkScrollableFrame(self, fg_color=theme.COR_CARTAO)
+        lista.pack(fill="both", expand=True, padx=20, pady=4)
+        for nome, motivo, o_que_fazer in self.itens:
+            ctk.CTkLabel(lista, text=nome, font=theme.FONTE_ROTULO, wraplength=540,
+                         justify="left").pack(anchor="w", padx=10, pady=(8, 0))
+            ctk.CTkLabel(lista, text=f"Motivo: {motivo}. {o_que_fazer}", font=theme.FONTE_CORPO_MIUDO,
+                         text_color=theme.COR_TEXTO_APOIO_CLARO, wraplength=540,
+                         justify="left").pack(anchor="w", padx=10, pady=(0, 6))
+
+        ctk.CTkLabel(self, text=textos["rodape"], font=theme.FONTE_CORPO_MIUDO, text_color=theme.COR_TEXTO_APOIO,
+                     wraplength=580, justify="left").pack(anchor="w", padx=20, pady=(6, 4))
+
+        botoes = ctk.CTkFrame(self, fg_color="transparent")
+        botoes.pack(pady=(4, 16))
+        self.botao_repetir = ctk.CTkButton(
+            botoes, text=textos["repetir"], command=self.repetir, fg_color=theme.COLORS["primary"],
+            hover_color=theme.COLORS["primary_hover"], width=170, height=40, font=theme.FONTE_BOTAO)
+        self.botao_repetir.pack(side="left", padx=10)
+        self.botao_seguir = ctk.CTkButton(
+            botoes, text=textos["seguir"], command=self.seguir, fg_color="transparent", border_width=1,
+            border_color="#555", text_color=theme.COR_TEXTO_APOIO, width=170, height=40)
+        self.botao_seguir.pack(side="left", padx=10)
+
+    def repetir(self) -> None:
+        self._resultado["repetir"] = True
+        self._evento.set()
+        self.destroy()
+
+    def seguir(self) -> None:
+        self._resultado["repetir"] = False
+        self._evento.set()
+        self.destroy()

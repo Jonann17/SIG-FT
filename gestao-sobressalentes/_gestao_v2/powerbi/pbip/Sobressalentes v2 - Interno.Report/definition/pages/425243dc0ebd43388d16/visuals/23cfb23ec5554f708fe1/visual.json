@@ -1,0 +1,50 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.12.0/schema.json",
+  "name": "23cfb23ec5554f708fe1",
+  "position": {
+    "x": 170,
+    "y": 6,
+    "z": 2000,
+    "height": 60,
+    "width": 760,
+    "tabOrder": 2000
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "TRILHA LOGÍSTICA — AUTORIZAÇÃO DE ITAIPU (15 DIAS ÚTEIS)",
+                    "textStyle": {
+                      "fontWeight": "bold",
+                      "fontSize": "14pt",
+                      "color": "#0e1a77"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Só FÍSICA E DOCUMENTAL precisa de autorização. Situação e dias de atraso gravados pelo SIG-FT.",
+                    "textStyle": {
+                      "fontWeight": "normal",
+                      "fontSize": "9pt",
+                      "color": "#0e1a77"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

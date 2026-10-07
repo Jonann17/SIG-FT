@@ -73,6 +73,26 @@ class _FakeWorkbook:
         self.closed = True
 
 
+class _GravadorFalso:
+    """Dublê do editor cirúrgico (`core.excel.cirurgico.gravar_celulas`):
+    registra o que seria gravado. `falhas_antes_do_sucesso` simula arquivo
+    aberto no Excel, como o `_FakeWorkbook` faz para o `wb.save`."""
+
+    def __init__(self, falhas_antes_do_sucesso=0):
+        self.falhas_antes_do_sucesso = falhas_antes_do_sucesso
+        self.chamadas = []
+        self.gravados = []
+
+    def __call__(self, caminho, aba, escritas, *, nomes, formato_geral):
+        self.chamadas.append(caminho)
+        if len(self.chamadas) <= self.falhas_antes_do_sucesso:
+            raise PermissionError("arquivo aberto no Excel")
+        self.gravados.append({
+            "caminho": caminho, "aba": aba, "escritas": dict(escritas),
+            "nomes": dict(nomes), "formato_geral": set(formato_geral),
+        })
+
+
 def _painel_status_pmib_padrao():
     """Grade típica de `_STATUS_PMIB`: cabeçalho na linha 2 (linha 1 é
     título/mesclagem), colunas CÓDIGO PMIB / DESCRIÇÃO / CONDIÇÕES /
@@ -159,6 +179,27 @@ def test_abrir_max_col_limita_quais_colunas_sao_encontradas():
     # "CARACT. TÉCNICAS" está na coluna 4, fora do limite max_col=2.
     assert header_row is None
     assert col_map == {config.COL_CODIGO_PMIB: 1}
+
+
+def test_abrir_com_normalize_casa_cabecalho_sem_acento():
+    # Planilha que perdeu os acentos numa exportação: o cabeçalho diz
+    # "SITUACAO DA AUTORIZACAO" e a chave é "SITUAÇÃO DA AUTORIZAÇÃO".
+    from sigft.services.autorizacao import normalizar
+
+    grid = [
+        ["CÓDIGO PMIB", "SITUACAO DA AUTORIZACAO"],
+        ["4500063671.1000", ""],
+    ]
+    ws = _FakeWorksheet(grid)
+    painel = StatusPMIB("c.xlsx")
+    chaves = {config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB,
+              config.COL_SITUACAO_AUTORIZACAO: config.COL_SITUACAO_AUTORIZACAO}
+
+    sem, _ = painel.abrir(ws=ws, keywords=chaves, required=[config.COL_CODIGO_PMIB])
+    com, _ = painel.abrir(ws=ws, keywords=chaves, required=[config.COL_CODIGO_PMIB], normalize=normalizar)
+
+    assert config.COL_SITUACAO_AUTORIZACAO not in sem
+    assert com[config.COL_SITUACAO_AUTORIZACAO] == 2
 
 
 def test_abrir_sem_wb_nem_ws_importa_openpyxl_de_forma_preguicosa():
@@ -329,31 +370,140 @@ def test_marcar_linha_procura_por_upper_quando_chave_nao_bate_exata():
 
 
 # ===========================================================================
-# salvar() / fechar() — delegação para locking.save_with_retry
+# salvar() / fechar() — editor cirúrgico + locking.save_with_retry
 # ===========================================================================
+# T1 do roteiro do Gestão PMIB v2 (2026-10-05): o `salvar()` não chama mais
+# `wb.save` -- o openpyxl apagava os comentários em thread do `_STATUS_PMIB`.
+# As escritas são anotadas e gravadas pelo editor cirúrgico; aqui ele é o
+# `_GravadorFalso`, e `tests/test_status_pmib_gravacao_real.py` prova o
+# caminho com o arquivo de verdade.
 
-def test_salvar_delega_para_save_with_retry_e_repassa_kwargs():
+def _painel_com_gravador(falhas=0, caminho="caminho/real.xlsx"):
     wb, ws = _painel_status_pmib_padrao()
-    wb.falhas_antes_do_sucesso = 2
-    painel = StatusPMIB("caminho/real.xlsx")
-    painel.abrir(wb=wb, ws=ws)
+    gravador = _GravadorFalso(falhas_antes_do_sucesso=falhas)
+    painel = StatusPMIB(caminho, gravar=gravador)
+    painel.abrir(wb=wb, ws=ws, keywords={
+        config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB, "CONDIÇÕES": "CONDIÇÕES"})
+    return painel, wb, ws, gravador
+
+
+def test_salvar_grava_pelo_editor_com_retry_e_repassa_kwargs():
+    painel, wb, _ws, gravador = _painel_com_gravador(falhas=2)
+    painel.marcar_linha(4, [config.COL_CONDICOES])
 
     tentativas = []
     resultado = painel.salvar(on_locked=lambda a, e: tentativas.append(a) or True)
 
     assert resultado is True
     assert tentativas == [1, 2]
-    assert wb.paths_salvos == ["caminho/real.xlsx"]
+    # Cada tentativa chama o gravador de novo -- é ele quem RELÊ o arquivo.
+    assert gravador.chamadas == ["caminho/real.xlsx"] * 3
+    assert gravador.gravados == [{
+        "caminho": "caminho/real.xlsx", "aba": config.ABA_LISTA_MATERIAIS,
+        "escritas": {(4, 3): VALOR_COMPLETO}, "nomes": {}, "formato_geral": set(),
+    }]
+
+
+def test_salvar_nunca_chama_o_wb_save_do_openpyxl():
+    # É o que apagava os comentários em thread: o openpyxl regrava o arquivo
+    # inteiro com o que entende.
+    painel, wb, _ws, _gravador = _painel_com_gravador()
+    painel.marcar_linha(4, [config.COL_CONDICOES])
+
+    painel.salvar()
+
+    assert wb.chamadas_save == 0
+
+
+def test_salvar_sem_nada_anotado_nao_toca_no_arquivo():
+    painel, _wb, _ws, gravador = _painel_com_gravador()
+
+    assert painel.salvar() is True
+    assert gravador.chamadas == []
+
+
+def test_salvar_limpa_o_que_gravou():
+    painel, _wb, _ws, gravador = _painel_com_gravador()
+    painel.marcar_linha(4, [config.COL_CONDICOES])
+    painel.salvar()
+
+    painel.salvar()  # nada novo: não grava de novo
+
+    assert len(gravador.chamadas) == 1
+    assert painel.escritas_pendentes == {}
 
 
 def test_salvar_propaga_permission_error_quando_on_locked_aborta():
-    wb, ws = _painel_status_pmib_padrao()
-    wb.falhas_antes_do_sucesso = 5
-    painel = StatusPMIB("c.xlsx")
-    painel.abrir(wb=wb, ws=ws)
+    painel, _wb, _ws, _gravador = _painel_com_gravador(falhas=5, caminho="c.xlsx")
+    painel.marcar_linha(4, [config.COL_CONDICOES])
 
     with pytest.raises(PermissionError):
         painel.salvar(max_attempts=1)
+
+
+def test_desistencia_mantem_o_que_estava_anotado():
+    # Quem chama pode tentar de novo mais tarde (a pessoa fechou o Excel).
+    painel, _wb, _ws, _gravador = _painel_com_gravador(falhas=1)
+    painel.marcar_linha(4, [config.COL_CONDICOES])
+
+    with pytest.raises(PermissionError):
+        painel.salvar(max_attempts=1)
+
+    assert painel.escritas_pendentes == {(4, 3): VALOR_COMPLETO}
+
+
+def test_escrever_muda_a_celula_em_memoria_e_anota():
+    painel, _wb, ws, _gravador = _painel_com_gravador()
+
+    painel.escrever(5, 2, "Item 3 revisto")
+
+    assert ws.cell(row=5, column=2).value == "Item 3 revisto"  # a leitura seguinte vê
+    assert painel.escritas_pendentes == {(5, 2): "Item 3 revisto"}
+
+
+def test_a_mesma_celula_escrita_duas_vezes_grava_o_ultimo_valor():
+    painel, _wb, _ws, gravador = _painel_com_gravador()
+
+    painel.escrever(4, 3, "INCOMPLETO")
+    painel.escrever(4, 3, VALOR_COMPLETO)
+    painel.salvar()
+
+    assert gravador.gravados[0]["escritas"] == {(4, 3): VALOR_COMPLETO}
+
+
+def test_formato_geral_e_nome_definido_vao_para_o_gravador():
+    painel, _wb, _ws, gravador = _painel_com_gravador()
+
+    painel.escrever(4, 5, 4, formato_geral=True)
+    painel.definir_nome("sigft_calculado_em", '"2026-10-10"')
+    painel.salvar()
+
+    assert gravador.gravados[0]["formato_geral"] == {(4, 5)}
+    assert gravador.gravados[0]["nomes"] == {"sigft_calculado_em": '"2026-10-10"'}
+
+
+def test_so_um_nome_definido_tambem_e_gravado():
+    painel, _wb, _ws, gravador = _painel_com_gravador()
+
+    painel.definir_nome("sigft_calculado_em", '"2026-10-10"')
+    painel.salvar()
+
+    assert gravador.gravados[0]["escritas"] == {}
+
+
+def test_salvar_usa_o_nome_real_da_aba_aberta():
+    # Quem chama pode ter aberto outra aba (o Cria Fichas cai na aba ativa
+    # quando a "Lista de Materiais" não existe): grava-se na que foi LIDA.
+    wb, ws = _painel_status_pmib_padrao()
+    ws.title = "Lista de materiais"
+    gravador = _GravadorFalso()
+    painel = StatusPMIB("c.xlsx", gravar=gravador)
+    painel.abrir(wb=wb, ws=ws)
+
+    painel.escrever(4, 3, VALOR_COMPLETO)
+    painel.salvar()
+
+    assert gravador.gravados[0]["aba"] == "Lista de materiais"
 
 
 def test_fechar_chama_close_do_wb():
@@ -379,51 +529,41 @@ def test_fechar_e_no_op_silencioso_sem_wb():
 # ===========================================================================
 
 def test_marcar_completo_encontra_marca_salva_e_fecha():
-    wb, ws = _painel_status_pmib_padrao()
-    painel = StatusPMIB("c.xlsx")
-    painel.abrir(
-        wb=wb,
-        ws=ws,
-        keywords={config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB, "CONDIÇÕES": "CONDIÇÕES"},
-    )
+    painel, wb, ws, gravador = _painel_com_gravador(caminho="c.xlsx")
 
     resultado = painel.marcar_completo("4500063671.1234", [config.COL_CONDICOES])
 
     assert resultado is True
     assert ws.cell(row=4, column=3).value == VALOR_COMPLETO
-    assert wb.paths_salvos == ["c.xlsx"]
+    assert gravador.gravados[0]["escritas"] == {(4, 3): VALOR_COMPLETO}
+    assert wb.chamadas_save == 0
     assert wb.closed is True
 
 
 def test_marcar_completo_pmib_nao_encontrado_retorna_false_sem_salvar():
-    wb, ws = _painel_status_pmib_padrao()
-    painel = StatusPMIB("c.xlsx")
-    painel.abrir(wb=wb, ws=ws, keywords={config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB})
+    painel, wb, _ws, gravador = _painel_com_gravador(caminho="c.xlsx")
 
     resultado = painel.marcar_completo("4500063671.0000", [config.COL_CONDICOES])
 
     assert resultado is False
-    assert wb.paths_salvos == []
+    assert gravador.chamadas == []
     assert wb.closed is True  # fechar() ainda acontece
 
 
-def test_marcar_completo_salvar_false_nao_chama_wb_save():
-    wb, ws = _painel_status_pmib_padrao()
-    painel = StatusPMIB("c.xlsx")
-    painel.abrir(wb=wb, ws=ws, keywords={config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB, "CONDIÇÕES": "CONDIÇÕES"})
+def test_marcar_completo_salvar_false_nao_grava():
+    painel, wb, ws, gravador = _painel_com_gravador(caminho="c.xlsx")
 
     resultado = painel.marcar_completo("4500063671.1234", [config.COL_CONDICOES], salvar=False)
 
     assert resultado is True
     assert ws.cell(row=4, column=3).value == VALOR_COMPLETO  # marcado em memória
-    assert wb.paths_salvos == []  # mas não salvo
+    assert gravador.chamadas == []  # mas não gravado
+    assert painel.escritas_pendentes == {(4, 3): VALOR_COMPLETO}
     assert wb.closed is True
 
 
 def test_marcar_completo_fechar_false_mantem_wb_aberto():
-    wb, ws = _painel_status_pmib_padrao()
-    painel = StatusPMIB("c.xlsx")
-    painel.abrir(wb=wb, ws=ws, keywords={config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB, "CONDIÇÕES": "CONDIÇÕES"})
+    painel, wb, _ws, _gravador = _painel_com_gravador(caminho="c.xlsx")
 
     painel.marcar_completo("4500063671.1234", [config.COL_CONDICOES], fechar=False)
 
@@ -444,20 +584,19 @@ def test_marcar_completo_abre_sozinho_quando_ainda_nao_foi_aberto(monkeypatch):
 
     monkeypatch.setattr(sys.modules["openpyxl"], "load_workbook", _fake_load_workbook)
 
-    painel = StatusPMIB("c.xlsx")
+    gravador = _GravadorFalso()
+    painel = StatusPMIB("c.xlsx", gravar=gravador)
     resultado = painel.marcar_completo("4500063671.1000", [config.COL_CODIGO_PMIB])
 
     assert resultado is True
     assert chamadas == [("c.xlsx", {})]
     assert painel.wb is wb
     assert painel.ws is ws
+    assert gravador.gravados[0]["escritas"] == {(3, 1): VALOR_COMPLETO}
 
 
 def test_marcar_completo_fecha_mesmo_quando_salvar_levanta_permission_error():
-    wb, ws = _painel_status_pmib_padrao()
-    wb.falhas_antes_do_sucesso = 99
-    painel = StatusPMIB("c.xlsx")
-    painel.abrir(wb=wb, ws=ws, keywords={config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB, "CONDIÇÕES": "CONDIÇÕES"})
+    painel, wb, _ws, _gravador = _painel_com_gravador(falhas=99, caminho="c.xlsx")
 
     with pytest.raises(PermissionError):
         painel.marcar_completo("4500063671.1234", [config.COL_CONDICOES], max_attempts=1)

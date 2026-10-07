@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel de Sobressalentes</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10); --hover: rgba(11,11,11,0.05);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --deemph: #898781;
+  --o1: #86b6ef; --o2: #2a78d6; --o3: #104281;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --good-ink: #006300; --crit-ink: #a52a2a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --hover: rgba(255,255,255,0.06);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --o1: #1c5cab; --o2: #3987e5; --o3: #9ec5f4;
+    --good-ink: #0ca30c; --crit-ink: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --hover: rgba(255,255,255,0.06);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --o1: #1c5cab; --o2: #3987e5; --o3: #9ec5f4;
+  --good-ink: #0ca30c; --crit-ink: #e66767;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { padding: 20px 16px 8px; max-width: 1280px; margin: 0 auto; }
+h1 { font-size: 20px; margin: 0 0 2px; font-weight: 600; }
+.sub { color: var(--ink-2); margin: 0; }
+.barra { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; max-width: 1280px;
+  margin: 0 auto; padding: 8px 16px 12px; }
+.abas { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.abas button { border: 0; background: transparent; color: var(--ink-2); padding: 7px 14px; font: inherit; cursor: pointer; }
+.abas button[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--s1); }
+label.filtro { display: inline-flex; gap: 6px; align-items: center; color: var(--ink-2); }
+select, input[type="search"] { font: inherit; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; max-width: 280px; }
+.tema { margin-left: auto; border: 1px solid var(--border); background: var(--surface); color: var(--ink-2);
+  border-radius: 6px; padding: 5px 10px; font: inherit; cursor: pointer; }
+main { max-width: 1280px; margin: 0 auto; padding: 0 16px 40px; }
+.visao[hidden] { display: none; }
+.aviso { border: 1px solid var(--border); background: var(--surface); border-radius: 10px;
+  padding: 10px 14px; color: var(--ink-2); margin: 0 0 14px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.kpi .rot { color: var(--ink-2); font-size: 13px; display: flex; gap: 6px; align-items: center; }
+.kpi .val { font-size: 28px; font-weight: 600; margin: 2px 0; }
+.kpi .det { color: var(--muted); font-size: 12px; }
+.ic { width: 14px; height: 14px; flex: none; }
+.grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); gap: 14px; margin-bottom: 14px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.card h2 { font-size: 15px; margin: 0; font-weight: 600; }
+.card .leg-sub { color: var(--ink-2); font-size: 12.5px; margin: 2px 0 10px; }
+.card-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.btn-tab { border: 1px solid var(--border); background: transparent; color: var(--ink-2); border-radius: 6px;
+  font: inherit; font-size: 12px; padding: 3px 8px; cursor: pointer; white-space: nowrap; }
+.legenda { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 10px; color: var(--ink-2); font-size: 12.5px; }
+.legenda span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.linhas { display: grid; grid-template-columns: minmax(110px, 34%) 1fr auto; gap: 7px 10px; align-items: center; }
+.linhas .nome { color: var(--ink); font-size: 12.5px; line-height: 1.25; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.linhas .tot { color: var(--ink-2); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; min-width: 3ch; }
+.trilho { display: flex; height: 16px; min-width: 0; }
+.seg { height: 100%; margin-right: 2px; min-width: 2px; cursor: default; }
+.seg:last-child { margin-right: 0; border-radius: 0 4px 4px 0; }
+.seg:hover, .seg:focus { filter: brightness(1.12); outline: none; }
+.vazio { color: var(--muted); font-size: 13px; padding: 8px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { color: var(--ink-2); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rolagem { max-height: 420px; overflow: auto; }
+#c-fila .rolagem { max-height: 560px; }
+.tabela-alt { margin-top: 10px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.chips button { border: 1px solid var(--border); background: transparent; color: var(--ink-2); border-radius: 999px;
+  padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.chips button[aria-pressed="true"] { color: var(--ink); border-color: var(--s1); background: var(--hover); }
+.qual { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 10px; }
+.qual .item { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--surface); }
+.qual .item b { font-size: 18px; margin-right: 6px; }
+.qual .item p { margin: 4px 0 0; color: var(--ink-2); font-size: 12.5px; }
+.qual .item code { font-size: 11.5px; color: var(--muted); word-break: break-all; }
+svg text { fill: var(--muted); font-size: 11px; font-family: inherit; }
+#tip { position: fixed; pointer-events: none; z-index: 10; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12.5px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12); display: none; max-width: 320px; }
+#tip .v { font-weight: 600; font-size: 14px; }
+#tip .k { display: inline-block; width: 12px; height: 2px; vertical-align: middle; margin-right: 6px; }
+footer { color: var(--muted); font-size: 12px; max-width: 1280px; margin: 0 auto; padding: 0 16px 24px; }
+@media (max-width: 640px) { .linhas { grid-template-columns: minmax(90px, 40%) 1fr auto; } .kpi .val { font-size: 24px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Gestão dos Sobressalentes — Atualização Tecnológica de Itaipu</h1>
+  <p class="sub" id="ref"></p>
+</header>
+<div class="barra" role="toolbar" aria-label="Filtros">
+  <div class="abas" role="tablist">
+    <button role="tab" aria-selected="true" data-visao="interno">Visão interna (CMI)</button>
+    <button role="tab" aria-selected="false" data-visao="itaipu">Visão Itaipu (cliente)</button>
+  </div>
+  <label class="filtro">Especificação técnica <select id="f-et"></select></label>
+  <label class="filtro">Capítulo <select id="f-cap"></select></label>
+  <label class="filtro">Lista <select id="f-lista"></select></label>
+  <button class="tema" id="tema" type="button">Tema</button>
+</div>
+<main>
+  <section class="visao" id="v-interno" aria-label="Visão interna">
+    <p class="aviso">Protótipo gerado dos <b>_STATUS_PMIB</b> (item a item) e da <b>mapeadora</b> (cadastro das listas). É o desenho alvo do Power BI: os números saem da ficha, não da contagem da mapeadora.</p>
+    <div class="kpis" id="kpi-int"></div>
+    <div class="grade">
+      <div class="card" id="c-quem"></div>
+      <div class="card" id="c-secoes"></div>
+    </div>
+    <div class="grade">
+      <div class="card" id="c-aut"></div>
+      <div class="card" id="c-lmr"></div>
+    </div>
+    <div class="card" id="c-fila" style="margin-bottom:14px"></div>
+    <div class="grade">
+      <div class="card" id="c-ativ"></div>
+      <div class="card" id="c-precos"></div>
+    </div>
+    <div class="card" id="c-qual"></div>
+  </section>
+  <section class="visao" id="v-itaipu" aria-label="Visão Itaipu" hidden>
+    <div class="kpis" id="kpi-ib"></div>
+    <div class="grade">
+      <div class="card" id="c-avanco"></div>
+      <div class="card" id="c-curva"></div>
+    </div>
+    <div class="grade">
+      <div class="card" id="c-aut-ib"></div>
+      <div class="card" id="c-precos-ib"></div>
+    </div>
+    <div class="card" id="c-listas-ib"></div>
+  </section>
+</main>
+<footer id="rodape"></footer>
+<div id="tip" role="tooltip"></div>
+<script id="dados" type="application/json">/*__DADOS__*/</script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("dados").textContent);
+const fmt = n => (n ?? 0).toLocaleString("pt-BR");
+const pct = (a, b) => b ? Math.round(a / b * 100) + "%" : "—";
+const usd = n => "US$ " + (n >= 1e6 ? (n / 1e6).toLocaleString("pt-BR", {maximumFractionDigits: 2}) + " mi"
+                                    : Math.round(n / 1e3).toLocaleString("pt-BR") + " mil");
+const el = (tag, attrs = {}, ...filhos) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v; else if (k === "style") e.setAttribute("style", v);
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v);
+  }
+  for (const f of filhos.flat()) if (f !== null && f !== undefined) e.append(f.nodeType ? f : document.createTextNode(String(f)));
+  return e;
+};
+const ICONES = {
+  critical: '<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="var(--critical)"/><path d="M8 4v5M8 11.2v.6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  serious: '<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 15 14H1z" fill="var(--serious)"/><path d="M8 6v4M8 11.8v.4" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  warning: '<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="var(--warning)"/><path d="M8 4.2V8.5l2.6 1.6" stroke="#0b0b0b" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>',
+  good: '<svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="var(--good)"/><path d="m4.8 8.2 2.2 2.2 4.2-4.6" stroke="#fff" stroke-width="1.7" fill="none" stroke-linecap="round"/></svg>',
+};
+const icone = k => { const s = el("span"); s.innerHTML = ICONES[k]; return s.firstChild; };
+
+// ---------------- filtros ----------------
+const estado = { visao: "interno", et: "", cap: "", lista: "", pend: "", busca: "" };
+const nomeLista = Object.fromEntries(D.listas.map(l => [l.l, l.nome]));
+// ET e capitulo vem do cadastro (mapeadora); lista sem cadastro fica visivel como tal
+const cadastro = Object.fromEntries(D.listas.map(l => [l.l, l]));
+const SEM_ET = "(sem cadastro na mapeadora)";
+for (const i of D.itens) { const c = cadastro[i.l] || {}; i.et = c.et || SEM_ET; i.cap = c.cap || SEM_ET; }
+for (const l of D.listas) { l.et = l.et || SEM_ET; l.cap = l.cap || SEM_ET; }
+const nP = arr => new Set(arr.map(i => i.p)).size;   // ficha = PMIB distinto (como o Power BI)
+const passa = (o, ignorar = "") => (ignorar === "et" || !estado.et || o.et === estado.et)
+  && (ignorar === "cap" || !estado.cap || o.cap === estado.cap);
+function opcoes(id, valores, atual, todos = "Todas") {
+  const s = document.getElementById(id);
+  s.replaceChildren(el("option", {value: ""}, todos), ...valores.map(v => el("option", {value: v}, v)));
+  s.value = valores.includes(atual) ? atual : "";
+  return s.value;
+}
+function preencherFiltros() {
+  const universo = [...D.itens, ...D.listas];
+  estado.et = opcoes("f-et", [...new Set(universo.map(o => o.et))].sort(), estado.et);
+  estado.cap = opcoes("f-cap", [...new Set(universo.filter(o => passa(o, "cap")).map(o => o.cap))].sort(), estado.cap, "Todos");
+  const sl = document.getElementById("f-lista");
+  const listas = [...new Set(D.itens.filter(i => passa(i)).map(i => i.l))]
+    .sort((x, y) => (nomeLista[x] || x).localeCompare(nomeLista[y] || y));
+  sl.replaceChildren(el("option", {value: ""}, "Todas"), ...listas.map(l => el("option", {value: l}, nomeLista[l] || l)));
+  if (!listas.includes(estado.lista)) estado.lista = "";
+  sl.value = estado.lista;
+}
+const fichas = () => D.itens.filter(i => passa(i) && (!estado.lista || i.l === estado.lista));
+const listasFiltradas = () => D.listas.filter(l => passa(l) && (!estado.lista || l.l === estado.lista));
+
+// ---------------- tooltip ----------------
+const tip = document.getElementById("tip");
+function mostrarTip(ev, titulo, linhas) {
+  tip.replaceChildren(el("div", {style: "color:var(--ink-2);margin-bottom:4px"}, titulo),
+    ...linhas.map(([cor, nome, valor]) => el("div", {}, el("span", {class: "k", style: `background:${cor}`}),
+      el("span", {class: "v"}, valor), " ", el("span", {style: "color:var(--ink-2)"}, nome))));
+  tip.style.display = "block";
+  const r = ev.target.getBoundingClientRect ? ev.target.getBoundingClientRect() : {left: ev.clientX, top: ev.clientY, width: 0};
+  const x = ev.clientX ?? (r.left + r.width / 2), y = ev.clientY ?? r.top;
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.min(window.innerWidth - w - 8, Math.max(8, x + 12)) + "px";
+  tip.style.top = Math.max(8, y - h - 10) + "px";
+}
+const esconderTip = () => { tip.style.display = "none"; };
+
+// ---------------- componentes ----------------
+function cabecalho(card, titulo, subtitulo, tabelaFn) {
+  const box = document.getElementById(card);
+  const corpo = el("div");
+  const alt = el("div", {class: "tabela-alt", hidden: ""});
+  const top = el("div", {class: "card-top"}, el("div", {}, el("h2", {}, titulo), subtitulo ? el("p", {class: "leg-sub"}, subtitulo) : null));
+  if (tabelaFn) {
+    const b = el("button", {class: "btn-tab", type: "button", "aria-expanded": "false"}, "Ver tabela");
+    b.addEventListener("click", () => {
+      const abrir = alt.hasAttribute("hidden");
+      if (abrir) { alt.replaceChildren(tabelaFn()); alt.removeAttribute("hidden"); } else alt.setAttribute("hidden", "");
+      b.textContent = abrir ? "Ver gráfico" : "Ver tabela"; b.setAttribute("aria-expanded", String(abrir));
+      corpo.hidden = abrir;
+    });
+    top.append(b);
+  }
+  box.replaceChildren(top, corpo, alt);
+  return corpo;
+}
+function legenda(series) {
+  return el("div", {class: "legenda"}, ...series.map(s => el("span", {}, el("i", {class: "sw", style: `background:${s.cor}`}), s.nome)));
+}
+function tabela(colunas, linhas, rolagem = true) {
+  const t = el("table", {},
+    el("thead", {}, el("tr", {}, ...colunas.map(c => el("th", {class: c.n ? "n" : ""}, c.t)))),
+    el("tbody", {}, ...linhas.map(l => el("tr", {}, ...colunas.map(c => {
+      const v = typeof c.v === "function" ? c.v(l) : l[c.v];
+      return el("td", {class: c.n ? "n" : ""}, v && v.nodeType ? v : (v ?? "—"));
+    })))));
+  return rolagem ? el("div", {class: "rolagem"}, t) : t;
+}
+// barras horizontais empilhadas: linhas [{nome, valores:{chave:n}}], series [{chave, nome, cor}]
+function barrasEmpilhadas(alvo, linhas, series, {total = true, max = null, rotuloFim = null} = {}) {
+  if (!linhas.length) { alvo.append(el("p", {class: "vazio"}, "Nada a mostrar com este filtro.")); return; }
+  alvo.append(legenda(series));
+  const escala = max ?? Math.max(...linhas.map(l => series.reduce((s, x) => s + (l.valores[x.chave] || 0), 0)));
+  const g = el("div", {class: "linhas"});
+  for (const l of linhas) {
+    const soma = series.reduce((s, x) => s + (l.valores[x.chave] || 0), 0);
+    const trilho = el("div", {class: "trilho", role: "img", "aria-label": `${l.nome}: ` + series.map(s => `${s.nome} ${l.valores[s.chave] || 0}`).join(", ")});
+    for (const s of series) {
+      const v = l.valores[s.chave] || 0;
+      if (!v) continue;
+      const seg = el("div", {class: "seg", tabindex: "0", style: `width:${(v / escala * 100).toFixed(3)}%;background:${s.cor}`});
+      const mostrar = ev => mostrarTip(ev, l.nome, [[s.cor, s.nome, fmt(v)], ["transparent", "total", fmt(soma)]]);
+      seg.addEventListener("pointermove", mostrar); seg.addEventListener("pointerleave", esconderTip);
+      seg.addEventListener("focus", ev => { const r = seg.getBoundingClientRect(); mostrar({clientX: r.left + r.width / 2, clientY: r.top, target: seg}); });
+      seg.addEventListener("blur", esconderTip);
+      trilho.append(seg);
+    }
+    g.append(el("div", {class: "nome", title: l.nome}, l.nome), trilho,
+      el("div", {class: "tot"}, rotuloFim ? rotuloFim(l, soma) : (total ? fmt(soma) : "")));
+  }
+  alvo.append(g);
+}
+function kpi(alvo, itens) {
+  document.getElementById(alvo).replaceChildren(...itens.map(k => el("div", {class: "kpi"},
+    el("div", {class: "rot"}, k.icone ? icone(k.icone) : null, k.rot),
+    el("div", {class: "val"}, k.val),
+    el("div", {class: "det"}, k.det || ""))));
+}
+const cor = v => `var(--${v})`;
+const contar = (arr, chave) => arr.reduce((m, i) => (m[i[chave]] = (m[i[chave]] || 0) + 1, m), {});
+const agrupar = (arr, chave) => arr.reduce((m, i) => ((m[i[chave]] ||= []).push(i), m), {});
+
+// ---------------- VISÃO INTERNA ----------------
+function interno() {
+  const F = fichas(), L = listasFiltradas();
+  const emit = F.filter(i => ["EM ANÁLISE IB", "EM CORREÇÃO", "APROVADO"].includes(i.st));
+  const atras = F.filter(i => i.sa === "ATRASADO ITAIPU"), aguard = F.filter(i => i.sa === "AGUARDANDO ITAIPU");
+  const lmrFora = F.filter(i => i.sl === "LMR FORA DO COMPROMISSO");
+  const entregues = F.filter(i => i.en), fis = F.filter(i => i.t === "FÍSICA E DOCUMENTAL");
+  const valor = F.reduce((s, i) => s + (i.v || 0), 0), valorEnt = F.filter(i => i.en).reduce((s, i) => s + (i.v || 0), 0);
+  const pend = F.filter(i => i.pe !== "—");
+  const semFicha = L.filter(l => !F.some(i => i.l === l.l) && l.sr === "APROVADO").length;
+  kpi("kpi-int", [
+    {rot: "Fichas no PMIB", val: fmt(nP(F)), det: `${fmt(new Set(F.map(i => i.l)).size)} listas com ficha · ${semFicha} listas aprovadas ainda sem ficha`},
+    {rot: "Emitidas para Itaipu", val: fmt(nP(emit)), det: `${pct(nP(emit), nP(F))} · ${fmt(nP(F.filter(i => i.st === "APROVADO")))} aprovadas · ${fmt(nP(F.filter(i => i.st === "EM CORREÇÃO")))} em correção`},
+    {rot: "Autorização atrasada (Itaipu)", icone: atras.length ? "critical" : "good", val: fmt(nP(atras)),
+     det: atras.length ? `além de 15 d.u. · maior atraso ${Math.max(...atras.map(i => i.du || 0))} dias · ${fmt(nP(aguard))} no prazo` : `${fmt(nP(aguard))} aguardando no prazo`},
+    {rot: "LMR fora do compromisso", icone: lmrFora.length ? "serious" : "good", val: fmt(nP(lmrFora)),
+     det: "mais de 3 meses do e-mail de intenção sem Aplicação LMR"},
+    {rot: "Material entregue", val: fmt(nP(fis.filter(i => i.en))), det: `itens físicos entregues, de ${fmt(nP(fis))} · ${fmt(nP(entregues))} fichas entregues (todos os tipos) · ${usd(valorEnt)} de ${usd(valor)}`},
+    {rot: "Pendências do CMI", val: fmt(nP(pend)), det: "fila de trabalho abaixo"},
+  ]);
+
+  // com quem está a ação, por área
+  const SQ = [{chave: "CMI", nome: "CMI", cor: cor("s1")}, {chave: "FORNECEDOR", nome: "Fornecedor", cor: cor("s2")},
+              {chave: "ITAIPU", nome: "Itaipu (análise)", cor: cor("s3")}, {chave: "CONCLUÍDO", nome: "Aprovada", cor: cor("s4")},
+              {chave: "—", nome: "Sem status válido", cor: cor("deemph")}];
+  const chaveQ = (estado.et || estado.cap || estado.lista) ? "l" : "et";   // filtrou: uma barra por lista
+  const porArea = Object.entries(agrupar(F, chaveQ)).map(([k, arr]) => ({nome: chaveQ === "l" ? (nomeLista[k] || k) : k, valores: contar(arr, "q")}))
+    .sort((a, b) => Object.values(b.valores).reduce((s, x) => s + x, 0) - Object.values(a.valores).reduce((s, x) => s + x, 0));
+  const c1 = cabecalho("c-quem", "Com quem está cada ficha", (chaveQ === "l" ? "Por lista." : "Por especificação técnica.") + " Uma ficha = um código PMIB; a linha DUPLICADO repete uma ficha da mesma lista e não conta de novo.",
+    () => tabela([{t: chaveQ === "l" ? "Lista" : "Especificação técnica", v: "nome"}, ...SQ.map(s => ({t: s.nome, v: l => fmt(l.valores[s.chave] || 0), n: 1}))], porArea, false));
+  barrasEmpilhadas(c1, porArea, SQ);
+
+  // seções: o que depende do fornecedor x do CMI
+  const SEC = [["Informações gerais", 0, "f"], ["Características técnicas", 1, "f"], ["Documentos e imagens", 2, "f"],
+               ["Condições", 3, "f"], ["Valorização", 4, "c"], ["Aplicação LMR", 5, "c"]];
+  const linhasSec = SEC.map(([nome, k, dono]) => ({nome, dono, ok: F.filter(i => i.ok[k] === "1").length}));
+  const SS = [{chave: "f", nome: "Depende do fornecedor", cor: cor("deemph")}, {chave: "c", nome: "Depende do CMI", cor: cor("s1")}];
+  const c2 = cabecalho("c-secoes", "Seções da ficha concluídas", `% das ${fmt(F.length)} fichas com a seção COMPLETO. As duas de baixo só o CMI fecha.`,
+    () => tabela([{t: "Seção", v: "nome"}, {t: "Completas", v: l => fmt(l.ok), n: 1}, {t: "%", v: l => pct(l.ok, F.length), n: 1}], linhasSec, false));
+  barrasEmpilhadas(c2, linhasSec.map(l => ({nome: l.nome, valores: {[l.dono]: l.ok}})), SS,
+    {max: F.length || 1, rotuloFim: (l) => pct(Object.values(l.valores)[0], F.length)});
+
+  // autorização de Itaipu por lista
+  const SA = [{chave: "AGUARDANDO ITAIPU", nome: "Aguardando, no prazo", cor: cor("warning")}, {chave: "ATRASADO ITAIPU", nome: "Além de 15 dias úteis", cor: cor("critical")}];
+  const autL = Object.entries(agrupar(F.filter(i => i.sa === "AGUARDANDO ITAIPU" || i.sa === "ATRASADO ITAIPU"), "l"))
+    .map(([l, arr]) => ({nome: nomeLista[l] || l, lista: l, valores: contar(arr, "sa"), maxdu: Math.max(0, ...arr.map(i => i.du || 0)),
+      pedido: arr.map(i => i.dt).sort()[0], prazo: arr.map(i => i.pr).sort()[0]}))
+    .sort((a, b) => b.maxdu - a.maxdu || (b.valores["AGUARDANDO ITAIPU"] || 0) - (a.valores["AGUARDANDO ITAIPU"] || 0));
+  const c3 = cabecalho("c-aut", "Autorização de entrega — prazo de Itaipu", "Fichas com e-mail de intenção e sem autorização. Prazo: 15 dias úteis do e-mail (feriados nacionais).",
+    () => tabela([{t: "Lista", v: "nome"}, {t: "No prazo", v: l => fmt(l.valores["AGUARDANDO ITAIPU"] || 0), n: 1},
+      {t: "Atrasadas", v: l => fmt(l.valores["ATRASADO ITAIPU"] || 0), n: 1}, {t: "1º pedido", v: l => br(l.pedido)}, {t: "Maior atraso (dias)", v: l => l.maxdu || "—", n: 1}], autL, false));
+  barrasEmpilhadas(c3, autL, SA, {rotuloFim: rotuloAtraso});
+
+  // compromisso LMR por lista
+  const SL = [{chave: "LMR NO PRAZO", nome: "Até 2 meses", cor: cor("good")}, {chave: "LMR EM ATENÇÃO", nome: "2 a 3 meses", cor: cor("warning")},
+              {chave: "LMR FORA DO COMPROMISSO", nome: "Mais de 3 meses", cor: cor("critical")}];
+  const lmrL = Object.entries(agrupar(F.filter(i => SL.some(s => s.chave === i.sl)), "l"))
+    .map(([l, arr]) => ({nome: nomeLista[l] || l, valores: contar(arr, "sl"), maxd: Math.max(...arr.map(i => i.de || 0))}))
+    .sort((a, b) => (b.valores["LMR FORA DO COMPROMISSO"] || 0) - (a.valores["LMR FORA DO COMPROMISSO"] || 0));
+  const c4 = cabecalho("c-lmr", "Aplicação LMR — compromisso de 3 meses", "Fichas já comunicadas a Itaipu sem LMR concluída, pelo tempo desde o e-mail de intenção.",
+    () => tabela([{t: "Lista", v: "nome"}, ...SL.map(s => ({t: s.nome, v: l => fmt(l.valores[s.chave] || 0), n: 1})), {t: "Mais antiga (dias)", v: "maxd", n: 1}], lmrL, false));
+  barrasEmpilhadas(c4, lmrL, SL, {rotuloFim: l => `mais antiga: ${l.maxd} d`});
+
+  filaDeTrabalho(F);
+  atividades();
+  precos("c-precos", true);
+  qualidade();
+}
+const br = iso => iso ? iso.split("-").reverse().join("/") : "—";
+// a barra mostra quantas; o rótulo diz quantas estão fora e o pior atraso
+const rotuloAtraso = l => {
+  const fora = l.valores["ATRASADO ITAIPU"] || 0;
+  return fora ? `${fmt(fora)} fora · até ${l.maxdu} dias` : "no prazo";
+};
+
+function filaDeTrabalho(F) {
+  const box = document.getElementById("c-fila");
+  const pend = F.filter(i => i.pe !== "—");
+  const tipos = Object.entries(contar(pend, "pe")).sort((a, b) => b[1] - a[1]);
+  const chips = el("div", {class: "chips"}, ...[["", `Todas (${fmt(pend.length)})`], ...tipos.map(([k, n]) => [k, `${k} (${fmt(n)})`])].map(([k, rot]) => {
+    const b = el("button", {type: "button", "aria-pressed": String(estado.pend === k)}, rot);
+    b.addEventListener("click", () => { estado.pend = k; filaDeTrabalho(fichas()); });
+    return b;
+  }));
+  const busca = el("input", {type: "search", placeholder: "Buscar PMIB, descrição, lista, procurement…", value: estado.busca,
+    "aria-label": "Buscar na fila", style: "width:min(100%, 360px);max-width:none;margin-bottom:8px"});
+  busca.addEventListener("input", () => { estado.busca = busca.value; desenhar(); });
+  const area = el("div");
+  const ordem = {"Cobrar autorização de Itaipu": 0, "Responder comentários de Itaipu": 1, "Aplicação LMR": 2, "Valorização": 3,
+                 "Informações do fornecedor": 4, "Emitir para Itaipu": 5, "Entregar no almoxarifado": 6};
+  function desenhar() {
+    const q = estado.busca.trim().toLowerCase();
+    const linhas = pend.filter(i => (!estado.pend || i.pe === estado.pend) &&
+        (!q || [i.p, i.d, i.pc, nomeLista[i.l]].some(x => (x || "").toLowerCase().includes(q))))
+      .sort((a, b) => (ordem[a.pe] ?? 9) - (ordem[b.pe] ?? 9) || (b.du || 0) - (a.du || 0) || (b.de || 0) - (a.de || 0));
+    area.replaceChildren(tabela([
+      {t: "Lista", v: i => nomeLista[i.l] || i.l}, {t: "PMIB", v: "p"}, {t: "Descrição", v: "d"}, {t: "Status", v: "st"},
+      {t: "Pendência", v: "pe"}, {t: "Autorização", v: i => i.sa === "SEM PEDIDO" ? "—" : i.sa},
+      {t: "Dias de atraso", v: i => i.du || "—", n: 1}, {t: "Dias desde o e-mail", v: i => i.de ?? "—", n: 1},
+      {t: "Tipo de entrega", v: "t"}, {t: "Procurement", v: i => i.pc || "—"}], linhas.slice(0, 400)),
+      linhas.length > 400 ? el("p", {class: "vazio"}, `Mostrando 400 de ${fmt(linhas.length)} — refine pelo filtro.`) : null);
+  }
+  box.replaceChildren(el("div", {class: "card-top"}, el("div", {}, el("h2", {}, "Fila de trabalho do CMI"),
+    el("p", {class: "leg-sub"}, "A próxima ação de cada ficha, na ordem: cobrar Itaipu, corrigir, LMR, valorização, fornecedor, emitir, entregar."))), chips, busca, area);
+  desenhar();
+}
+
+function atividades() {
+  const A = D.atividades.filter(a => (!estado.lista || a.lista === estado.lista) && a.sit !== "CONCLUÍDA")
+    .sort((a, b) => ({"ATRASADA": 0, "TRAVADA": 1, "EM DIA": 2, "NÃO INICIADA": 3}[a.sit] ?? 4) - ({"ATRASADA": 0, "TRAVADA": 1, "EM DIA": 2, "NÃO INICIADA": 3}[b.sit] ?? 4)
+      || (a.fim_prev || "9").localeCompare(b.fim_prev || "9"));
+  const n = contar(A, "sit");
+  const corpo = cabecalho("c-ativ", "Plano de ação (aba Atividades)", `${fmt(A.length)} abertas · ${n["ATRASADA"] || 0} atrasadas · ${n["TRAVADA"] || 0} travadas`);
+  const sit = s => el("span", {class: "chip"}, s === "ATRASADA" ? icone("critical") : s === "TRAVADA" ? icone("serious") : null, s);
+  corpo.append(tabela([{t: "Frente", v: "frente"}, {t: "Atividade", v: "atividade"}, {t: "Situação", v: a => sit(a.sit)},
+    {t: "Término previsto", v: a => br(a.fim_prev)}, {t: "Com quem", v: "quem"}], A));
+}
+
+function precos(card, interno) {
+  const P = D.precos.filter(p => !estado.lista || p.lista === estado.lista);
+  const legado = P.filter(p => p.geracao !== "PB021").length;
+  const corpo = cabecalho(card, interno ? "Listas de preços (Aconex)" : "Listas de preços aguardando a SM.DT",
+    interno ? `${fmt(P.length)} na aba de follow-up · ${legado} ainda com código PB020-0x (o vigente é PB021)` :
+              "Valorização das fichas e evento de aprovação dependem da lista de preços aprovada.");
+  // para o cliente: só o que está registrado no Aconex e ainda sem aprovação
+  const linhas = interno ? P : P.filter(p => p.situacao === "EMITIDA" && !p.status.startsWith("arquivo na pasta"));
+  corpo.append(tabela([{t: "Lista de preços", v: "lp"}, ...(interno ? [{t: "Código", v: "geracao"}] : []), {t: "Rev.", v: "rev"},
+    {t: "Status Aconex", v: "status"}, {t: "Data", v: p => br(p.data)}, {t: "Lista de sobressalentes", v: p => nomeLista[p.lista] || p.lista || "—"}], linhas));
+}
+
+function qualidade() {
+  const corpo = cabecalho("c-qual", "Qualidade dos dados", "O que faz o número do painel divergir da realidade. Cada item diz onde corrigir.");
+  corpo.append(el("div", {class: "qual"}, ...D.qualidade.map(q => el("div", {class: "item"},
+    el("div", {}, el("b", {}, fmt(q.n)), q.titulo), el("p", {}, q.detalhe),
+    q.exemplos && q.exemplos.length ? el("p", {}, el("code", {}, q.exemplos.join(" · "))) : null))));
+}
+
+// ---------------- VISÃO ITAIPU ----------------
+function itaipu() {
+  const F = fichas();
+  const enviadas = F.filter(i => ["EM ANÁLISE IB", "EM CORREÇÃO", "APROVADO"].includes(i.st));
+  const aprov = F.filter(i => i.st === "APROVADO"), analise = F.filter(i => i.st === "EM ANÁLISE IB");
+  const pedidos = F.filter(i => i.sa === "AGUARDANDO ITAIPU" || i.sa === "ATRASADO ITAIPU");
+  const fora = pedidos.filter(i => i.sa === "ATRASADO ITAIPU");
+  kpi("kpi-ib", [
+    {rot: "Fichas técnicas enviadas a Itaipu", val: fmt(nP(enviadas)), det: `${pct(nP(enviadas), nP(F))} das ${fmt(nP(F))} fichas criadas no PMIB`},
+    {rot: "Fichas em análise por Itaipu", val: fmt(nP(analise)), det: `${fmt(nP(F.filter(i => i.st === "EM CORREÇÃO")))} devolvidas e em ajuste pelo CMI`},
+    {rot: "Fichas aprovadas", val: fmt(nP(aprov)), det: pct(nP(aprov), nP(enviadas)) + " das enviadas"},
+    {rot: "Material no almoxarifado de Itaipu", val: fmt(nP(F.filter(i => i.en && i.t === "FÍSICA E DOCUMENTAL"))), det: "itens físicos já entregues"},
+    {rot: "Autorizações de entrega pendentes", icone: fora.length ? "critical" : "good", val: fmt(nP(pedidos)),
+     det: fora.length ? `${fmt(nP(fora))} além do prazo de 15 dias úteis` : "todas dentro do prazo de 15 dias úteis"},
+  ]);
+  const SO = [{chave: "prep", nome: "Em preparação ou ajuste (CMI)", cor: cor("o1")}, {chave: "anal", nome: "Em análise por Itaipu", cor: cor("o2")},
+              {chave: "aprov", nome: "Aprovada", cor: cor("o3")}];
+  const etapa = i => i.st === "APROVADO" ? "aprov" : i.st === "EM ANÁLISE IB" ? "anal" : "prep";
+  const chave = (estado.et || estado.cap || estado.lista) ? "l" : "et";
+  const linhas = Object.entries(agrupar(F, chave)).map(([k, arr]) => ({nome: chave === "l" ? (nomeLista[k] || k) : k,
+      valores: arr.reduce((m, i) => (m[etapa(i)] = (m[etapa(i)] || 0) + 1, m), {})}))
+    .sort((a, b) => Object.values(b.valores).reduce((s, x) => s + x, 0) - Object.values(a.valores).reduce((s, x) => s + x, 0));
+  const c1 = cabecalho("c-avanco", "Avanço das fichas técnicas", chave === "l" ? "Por lista de sobressalentes." : "Por área do projeto.",
+    () => tabela([{t: chave === "l" ? "Lista" : "Área", v: "nome"}, ...SO.map(s => ({t: s.nome, v: l => fmt(l.valores[s.chave] || 0), n: 1}))], linhas, false));
+  barrasEmpilhadas(c1, linhas, SO);
+
+  curva(F);
+
+  const SA = [{chave: "AGUARDANDO ITAIPU", nome: "Dentro do prazo", cor: cor("warning")}, {chave: "ATRASADO ITAIPU", nome: "Além de 15 dias úteis", cor: cor("critical")}];
+  const autL = Object.entries(agrupar(pedidos, "l")).map(([l, arr]) => ({nome: nomeLista[l] || l, valores: contar(arr, "sa"),
+      pedido: arr.map(i => i.dt).sort()[0], prazo: arr.map(i => i.pr).sort()[0], maxdu: Math.max(0, ...arr.map(i => i.du || 0))}))
+    .sort((a, b) => b.maxdu - a.maxdu);
+  const c3 = cabecalho("c-aut-ib", "Pedidos de autorização de entrega", "Prazo contratual: 15 dias úteis a partir do e-mail de intenção de entrega.",
+    () => tabela([{t: "Lista", v: "nome"}, {t: "Fichas", v: l => fmt(Object.values(l.valores).reduce((s, x) => s + x, 0)), n: 1},
+      {t: "Pedido em", v: l => br(l.pedido)}, {t: "Prazo", v: l => br(l.prazo)}, {t: "Dias de atraso (maior)", v: l => l.maxdu || "—", n: 1}], autL, false));
+  barrasEmpilhadas(c3, autL, SA, {rotuloFim: rotuloAtraso});
+
+  precos("c-precos-ib", false);
+
+  const porLista = Object.entries(agrupar(F, "l")).map(([l, arr]) => ({
+    nome: nomeLista[l] || l, total: arr.length,
+    enviadas: arr.filter(i => ["EM ANÁLISE IB", "EM CORREÇÃO", "APROVADO"].includes(i.st)).length,
+    analise: arr.filter(i => i.st === "EM ANÁLISE IB").length, aprov: arr.filter(i => i.st === "APROVADO").length,
+    entregue: arr.filter(i => i.en).length, pend: arr.filter(i => i.sa === "AGUARDANDO ITAIPU" || i.sa === "ATRASADO ITAIPU").length,
+  })).sort((a, b) => b.total - a.total);
+  const c5 = cabecalho("c-listas-ib", "Situação por lista de sobressalentes", `${fmt(porLista.length)} listas com fichas no PMIB`);
+  c5.append(tabela([{t: "Lista", v: "nome"}, {t: "Fichas", v: l => fmt(l.total), n: 1}, {t: "Enviadas", v: l => fmt(l.enviadas), n: 1},
+    {t: "Em análise", v: l => fmt(l.analise), n: 1}, {t: "Aprovadas", v: l => fmt(l.aprov), n: 1},
+    {t: "Material entregue", v: l => fmt(l.entregue), n: 1}, {t: "Autorização pendente", v: l => fmt(l.pend), n: 1}], porLista));
+}
+
+function curva(F) {
+  // mesma população do KPI "enviadas": fichas emitidas, posicionadas pela data do e-mail de intenção
+  const enviadas = F.filter(i => ["EM ANÁLISE IB", "EM CORREÇÃO", "APROVADO"].includes(i.st));
+  const datas = enviadas.filter(i => i.dt).map(i => i.dt.slice(0, 7)).sort();
+  const semData = enviadas.length - datas.length;
+  const corpo = cabecalho("c-curva", "Fichas enviadas a Itaipu ao longo do tempo",
+    "Acumulado pela data do e-mail de intenção de entrega." + (semData ? ` ${fmt(semData)} enviadas sem data registrada não entram na curva.` : ""),
+    () => tabela([{t: "Mês", v: "m"}, {t: "No mês", v: "n", n: 1}, {t: "Acumulado", v: "a", n: 1}], pontos || [], false));
+  if (!datas.length) { corpo.append(el("p", {class: "vazio"}, "Sem e-mail de intenção registrado neste filtro.")); return; }
+  const meses = [];
+  for (let [y, m] = datas[0].split("-").map(Number); ; m++) {
+    if (m > 12) { m = 1; y++; }
+    const k = `${y}-${String(m).padStart(2, "0")}`; meses.push(k);
+    if (k >= D.ref.slice(0, 7)) break;
+  }
+  const porMes = datas.reduce((o, k) => (o[k] = (o[k] || 0) + 1, o), {});
+  let acc = 0;
+  var pontos = meses.map(k => (acc += porMes[k] || 0, {m: k.split("-").reverse().join("/"), n: porMes[k] || 0, a: acc, k}));
+  const W = 560, H = 230, ml = 40, mr = 44, mt = 12, mb = 28;
+  const bruto = Math.max(1, acc / 4), base = Math.pow(10, Math.floor(Math.log10(bruto))), fr = bruto / base;
+  const passo = (fr <= 1 ? 1 : fr <= 2 ? 2 : fr <= 2.5 ? 2.5 : fr <= 5 ? 5 : 10) * base;   // ticks redondos
+  const ymax = Math.max(passo, Math.ceil(acc / passo) * passo);
+  const x = i => ml + (W - ml - mr) * (pontos.length === 1 ? 0.5 : i / (pontos.length - 1));
+  const y = v => mt + (H - mt - mb) * (1 - v / ymax);
+  const ns = "http://www.w3.org/2000/svg";
+  const s = (tag, a) => { const e = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(a)) e.setAttribute(k, v); return e; };
+  const svg = s("svg", {viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-label": `Acumulado de fichas comunicadas: ${acc} até ${pontos.at(-1).m}`});
+  for (let v = 0; v <= ymax; v += passo) {
+    svg.append(s("line", {x1: ml, x2: W - mr, y1: y(v), y2: y(v), stroke: "var(--grid)", "stroke-width": 1}));
+    const tx = s("text", {x: ml - 6, y: y(v) + 4, "text-anchor": "end"}); tx.textContent = fmt(v); svg.append(tx);
+  }
+  pontos.forEach((p, i) => { if (i % Math.ceil(pontos.length / 6) === 0 || i === pontos.length - 1) {
+    const tx = s("text", {x: x(i), y: H - 8, "text-anchor": "middle"}); tx.textContent = p.m.slice(0, 2) + "/" + p.m.slice(5); svg.append(tx); } });
+  svg.append(s("path", {d: `M${x(0)},${y(0)} ` + pontos.map((p, i) => `L${x(i)},${y(p.a)}`).join(" ") + ` L${x(pontos.length - 1)},${y(0)} Z`,
+    fill: "var(--s1)", opacity: 0.1}));
+  svg.append(s("path", {d: pontos.map((p, i) => `${i ? "L" : "M"}${x(i)},${y(p.a)}`).join(" "), fill: "none", stroke: "var(--s1)",
+    "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"}));
+  const ult = pontos.length - 1;
+  svg.append(s("circle", {cx: x(ult), cy: y(pontos[ult].a), r: 4, fill: "var(--s1)", stroke: "var(--surface)", "stroke-width": 2}));
+  const lab = s("text", {x: x(ult) + 8, y: y(pontos[ult].a) + 4, style: "fill:var(--ink);font-weight:600"}); lab.textContent = fmt(pontos[ult].a); svg.append(lab);
+  const cruz = s("line", {y1: mt, y2: H - mb, stroke: "var(--axis)", "stroke-width": 1, visibility: "hidden"}); svg.append(cruz);
+  const alvo = s("rect", {x: ml, y: mt, width: W - ml - mr, height: H - mt - mb, fill: "transparent"}); svg.append(alvo);
+  alvo.addEventListener("pointermove", ev => {
+    const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) / r.width * W;
+    const i = Math.max(0, Math.min(ult, Math.round((px - ml) / (W - ml - mr) * ult)));
+    cruz.setAttribute("x1", x(i)); cruz.setAttribute("x2", x(i)); cruz.setAttribute("visibility", "visible");
+    mostrarTip(ev, pontos[i].m, [["var(--s1)", "acumulado", fmt(pontos[i].a)], ["transparent", "no mês", fmt(pontos[i].n)]]);
+  });
+  alvo.addEventListener("pointerleave", () => { cruz.setAttribute("visibility", "hidden"); esconderTip(); });
+  corpo.append(svg);
+}
+
+// ---------------- montagem ----------------
+function render() {
+  preencherFiltros();
+  document.getElementById("v-interno").hidden = estado.visao !== "interno";
+  document.getElementById("v-itaipu").hidden = estado.visao !== "itaipu";
+  if (estado.visao === "interno") interno(); else itaipu();
+}
+document.querySelectorAll(".abas button").forEach(b => b.addEventListener("click", () => {
+  estado.visao = b.dataset.visao;
+  document.querySelectorAll(".abas button").forEach(x => x.setAttribute("aria-selected", String(x === b)));
+  render();
+}));
+document.getElementById("f-et").addEventListener("change", e => { estado.et = e.target.value; estado.cap = ""; estado.lista = ""; render(); });
+document.getElementById("f-cap").addEventListener("change", e => { estado.cap = e.target.value; estado.lista = ""; render(); });
+document.getElementById("f-lista").addEventListener("change", e => { estado.lista = e.target.value; render(); });
+document.getElementById("tema").addEventListener("click", () => {
+  const raiz = document.documentElement;
+  const escuro = raiz.dataset.theme ? raiz.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  raiz.dataset.theme = escuro ? "light" : "dark";
+});
+// atalhos de URL: #itaipu abre na visão do cliente; #escuro / #claro forçam o tema
+if (location.hash.includes("itaipu")) {
+  estado.visao = "itaipu";
+  document.querySelectorAll(".abas button").forEach(x => x.setAttribute("aria-selected", String(x.dataset.visao === "itaipu")));
+}
+if (location.hash.includes("escuro")) document.documentElement.dataset.theme = "dark";
+if (location.hash.includes("claro")) document.documentElement.dataset.theme = "light";
+document.getElementById("ref").textContent = `Dados de ${br(D.ref)} · ${fmt(nP(D.itens))} fichas em ${fmt(new Set(D.itens.map(i => i.l)).size)} listas · prazo de autorização: 15 dias úteis`;
+document.getElementById("rodape").textContent = `Fonte: _STATUS_PMIB (item a item), listas de preços (PB021 e PB020-0x), mapeadora (cadastro, atividades e follow-up de preços). Gerado por _scripts/gerar_prototipo_dashboard.py em ${br(D.gerado)}.`;
+render();
+</script>
+</body>
+</html>

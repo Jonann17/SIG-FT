@@ -1,0 +1,83 @@
+table Calendario
+	lineageTag: 3c7d9f71-04c3-4a3b-a4be-dbd1016ed24c
+	dataCategory: Time
+
+	column Data
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		isKey
+		lineageTag: f5525d10-e546-4a63-9304-a368304ca463
+		summarizeBy: none
+		sourceColumn: Data
+
+		annotation SummarizationSetBy = User
+
+	column Ano
+		dataType: int64
+		formatString: 0
+		lineageTag: e0710c64-0b5b-45c4-a135-eecae63e2276
+		summarizeBy: none
+		sourceColumn: Ano
+
+		annotation SummarizationSetBy = User
+
+	column Mes
+		dataType: int64
+		formatString: 0
+		lineageTag: 112f1339-5341-4667-a6c1-2a6ad0460cd4
+		summarizeBy: none
+		sourceColumn: Mes
+
+		annotation SummarizationSetBy = User
+
+	column 'Mes Ano'
+		dataType: string
+		sortByColumn: 'Inicio do Mes'
+		lineageTag: e4b7ed97-9990-4844-99ff-323c3eb5145b
+		summarizeBy: none
+		sourceColumn: Mes Ano
+
+		annotation SummarizationSetBy = User
+
+	column 'Inicio do Mes'
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		lineageTag: 09f0e264-3e58-4b46-bf70-185d18331b44
+		summarizeBy: none
+		sourceColumn: Inicio do Mes
+
+		annotation SummarizationSetBy = User
+
+	column 'Inicio da Semana'
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		lineageTag: d0d512dc-ebfc-4d05-b8de-a22ed68577d0
+		summarizeBy: none
+		sourceColumn: Inicio da Semana
+
+		annotation SummarizationSetBy = User
+
+	partition Calendario = m
+		mode: import
+		source =
+				let
+				    Consulta =
+				        let
+				            Inicio = #date(2024, 1, 1),
+				            Fim = #date(2028, 12, 31),
+				            Datas = List.Dates(Inicio, Duration.Days(Fim - Inicio) + 1, #duration(1, 0, 0, 0)),
+				            Tabela = Table.FromList(Datas, Splitter.SplitByNothing(), type table [Data = date]),
+				            ComAno = Table.AddColumn(Tabela, "Ano", each Date.Year([Data]), Int64.Type),
+				            ComMes = Table.AddColumn(ComAno, "Mes", each Date.Month([Data]), Int64.Type),
+				            ComMesNome = Table.AddColumn(ComMes, "Mes Ano", each Text.Proper(Date.ToText([Data], "MMM/yy", "pt-BR")), type text),
+				            ComMesInicio = Table.AddColumn(ComMesNome, "Inicio do Mes", each Date.StartOfMonth([Data]), type date),
+				            ComSemana = Table.AddColumn(ComMesInicio, "Inicio da Semana", each Date.StartOfWeek([Data], Day.Monday), type date)
+				        in
+				            ComSemana,
+				    Colunas = Table.SelectColumns(Consulta, {"Data", "Ano", "Mes", "Mes Ano", "Inicio do Mes", "Inicio da Semana"}, MissingField.UseNull),
+				    Tipada = Table.TransformColumnTypes(Colunas, {{"Data", type date}, {"Ano", Int64.Type}, {"Mes", Int64.Type}, {"Mes Ano", type text}, {"Inicio do Mes", type date}, {"Inicio da Semana", type date}})
+				in
+				    Tipada
+
+	annotation PBI_ResultType = Table
+

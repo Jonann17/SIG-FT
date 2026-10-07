@@ -148,6 +148,23 @@ def test_status_pmib_e_lido_pelo_statuspmib_de_producao(gerados):
         status.fechar()
 
 
+def test_status_pmib_tem_a_linha_da_revisao_acima_do_cabecalho(gerados):
+    # Layout v2 (04/10/2026): a linha acima do cabeçalho é a da revisão em
+    # uso, em texto. É o que derrubava quem lia com o cabeçalho fixo na linha
+    # 4 -- o dado sintético tem de reproduzir a armadilha, senão o defeito só
+    # aparece na planilha do usuário.
+    from openpyxl import load_workbook
+
+    from sigft import config
+
+    caminho = gerados / f"{config.PREFIXO_CONTRATO}.0001_STATUS_PMIB.xlsx"
+    ws = load_workbook(caminho)[config.ABA_LISTA_MATERIAIS]
+    revisao = ws.cell(row=config.LINHA_STATUS_PMIB - 1, column=1).value
+
+    assert revisao.startswith("REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO:")
+    assert ws.cell(row=config.LINHA_STATUS_PMIB, column=2).value == config.COL_CODIGO_PMIB
+
+
 def test_marcar_completo_funciona_sobre_o_arquivo_gerado(gerados):
     from sigft import config
     from sigft.core.excel.status_sheet import StatusPMIB

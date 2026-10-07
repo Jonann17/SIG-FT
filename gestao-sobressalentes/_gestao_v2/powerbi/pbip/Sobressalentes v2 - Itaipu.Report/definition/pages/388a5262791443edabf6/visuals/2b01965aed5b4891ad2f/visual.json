@@ -1,0 +1,133 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.12.0/schema.json",
+  "name": "2b01965aed5b4891ad2f",
+  "position": {
+    "x": 10,
+    "y": 156,
+    "z": 11000,
+    "height": 556,
+    "width": 1260,
+    "tabOrder": 11000
+  },
+  "visual": {
+    "visualType": "hundredPercentStackedBarChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Itens"
+                    }
+                  },
+                  "Property": "Area"
+                }
+              },
+              "queryRef": "Itens.Area",
+              "nativeQueryRef": "Área",
+              "displayName": "Área",
+              "active": true
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Itens"
+                    }
+                  },
+                  "Property": "Fichas"
+                }
+              },
+              "queryRef": "Itens.Fichas",
+              "nativeQueryRef": "Fichas",
+              "displayName": "Fichas"
+            }
+          ]
+        },
+        "Series": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Itens"
+                    }
+                  },
+                  "Property": "Etapa Cliente"
+                }
+              },
+              "queryRef": "Itens.Etapa Cliente",
+              "nativeQueryRef": "Etapa",
+              "displayName": "Etapa"
+            }
+          ]
+        }
+      }
+    },
+    "objects": {
+      "labels": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Fichas por área e etapa'"
+                }
+              }
+            },
+            "fontColor": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#0e1a77'"
+                    }
+                  }
+                }
+              }
+            },
+            "bold": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

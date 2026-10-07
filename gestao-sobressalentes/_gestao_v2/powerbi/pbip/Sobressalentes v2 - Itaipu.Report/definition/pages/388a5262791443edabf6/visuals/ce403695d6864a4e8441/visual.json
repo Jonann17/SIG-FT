@@ -1,0 +1,33 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.12.0/schema.json",
+  "name": "ce403695d6864a4e8441",
+  "position": {
+    "x": 10,
+    "y": 8,
+    "z": 1000,
+    "height": 56,
+    "width": 150,
+    "tabOrder": 1000
+  },
+  "visual": {
+    "visualType": "image",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "imageUrl": {
+              "expr": {
+                "ResourcePackageItem": {
+                  "PackageName": "RegisteredResources",
+                  "PackageType": 1,
+                  "ItemName": "LOGO_IB_Colorido6911759159194111.png"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

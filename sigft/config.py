@@ -29,6 +29,7 @@ equivalência do CP 3.1). O resto do arquivo é caracterização pura.
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import os
 
@@ -123,21 +124,22 @@ PREFIXO_CONTRATO = "4500063671"
 #   - frontend.py:1374        -> comentário "a partir da linha 79" (log)
 LINHA_SPECS_FICHA = 79
 
-# "Linha 4 do STATUS" (diagnóstico do plano, seção 1.5): linha (1-based)
-# onde o cabeçalho da aba "Lista de Materiais" do arquivo `_STATUS_PMIB`
-# aparece na variante de leitura FIXA (não dinâmica) usada por
-# `pdm_backend.processar_pastas_fichas`:
-#   - pdm_backend.py:169 -> `pd.read_excel(..., skiprows=3)`: `skiprows` do
-#     pandas é 0-based, então `skiprows=3` pula as 3 primeiras linhas e trata
-#     a 4ª linha do arquivo como cabeçalho.
-#   - pdm_backend.py:176 -> mensagem de erro cita "(linha 4)" explicitamente.
-#   - docs/base-conhecimento/02-pdm-backend.md:9 documenta o mesmo valor.
-# Outros módulos (ex.: `upload_conditions_backend.carregar_lookup_status`,
-# `search_pmib_backend._encontrar_e_formatar_dataframe`) buscam esse
-# cabeçalho DINAMICAMENTE nas primeiras N linhas em vez de fixar a linha 4 —
-# unificar essas buscas é o CP 1.2 (`core/excel/headers.py`); aqui só se
-# nomeia o valor mágico usado pela variante fixa do `pdm_backend`.
-LINHA_STATUS_PMIB = 4
+# Linha (1-based) do cabeçalho da aba "Lista de Materiais" do `_STATUS_PMIB`
+# no layout v2 -- e só o valor de RESERVA: quem lê ACHA o cabeçalho com
+# `core.excel.headers.find_header_row`, e este número só vale quando a busca
+# não acha nada (`duplicadas`, `pdm.ler_lista_materiais`). Também é a linha em
+# que `scripts/gerar_dados_de_teste.py` escreve o cabeçalho sintético.
+#
+# Era 4 até 2026-10-05. Em 04/10/2026 os 47 `_STATUS_PMIB` e o template
+# migraram para o layout v2 (`gestao-sobressalentes/07 - Diagnostico/Plano -
+# Reestruturacao do STATUS_PMIB.md`): a linha 4 virou a da revisão em uso
+# ("REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE ALTERAÇÃO:
+# ..."), mesclada e em TEXTO, e o cabeçalho desceu para a 5. As duas leituras
+# que fixavam a linha 4 (`skiprows=3` no módulo PDM: a criação das pastas e o
+# modo "selecionar códigos") passaram a tratar aquela frase como cabeçalho; a
+# T0 do roteiro trocou as duas pela busca, e
+# `tests/test_status_pmib_cabecalho_linha5.py` impede leitura fixa nova.
+LINHA_STATUS_PMIB = 5
 
 
 # =============================================================================
@@ -694,3 +696,110 @@ LMR_COLUNAS = {
 # procura em TODAS as abas do arquivo qual tem as colunas -- é o que o
 # usuário chamou de "leitura automática": não ter de acertar o nome da aba.
 LMR_ABAS = ("LMR", "GERAL", "Aplicações", "Aplicacoes")
+
+# =============================================================================
+# 10. AUTORIZAÇÃO DE ENTREGA DE ITAIPU (Gestão PMIB no tratamento v2)
+# =============================================================================
+# Itaipu tem 15 DIAS ÚTEIS, contados do e-mail de intenção de entrega, para
+# autorizar a entrega física (decisão do Luan, 04-05/10/2026). Até 2026-10-05 o
+# Gestão PMIB contava 14 dias CORRIDOS -- ver `services/autorizacao.py`, que é a
+# ÚNICA implementação da regra (o Gestão PMIB grava, o painel HTML lê).
+PRAZO_AUTORIZACAO_DIAS_UTEIS = 15
+
+# Colunas do `_STATUS_PMIB` v2 (layout de 04/10/2026) que a regra lê e grava.
+# Achadas pelo NOME na linha do cabeçalho, nunca pela letra da coluna: as listas
+# têm colunas extras em posições diferentes.
+COL_STATUS = "STATUS"
+COL_TIPO_ENTREGA = "TIPO DE ENTREGA"
+COL_DATA_EMAIL_ENTREGA = "DATA DO EMAIL COMUNICANDO ENTREGA"
+COL_SITUACAO_AUTORIZACAO = "SITUAÇÃO DA AUTORIZAÇÃO"
+COL_DIAS_ATRASO = "DIAS DE ATRASO"
+COL_EQUIPAMENTO_ENTREGUE = "EQUIPAMENTO ENTREGUE"
+# A coluna que a SITUAÇÃO substituiu (SIM virou AUTORIZADO). Só existe nos
+# arquivos que ainda não migraram -- que são lidos, nunca gravados.
+COL_APTO_PARA_ENTREGA = "APTO PARA ENTREGA"
+
+# O começo do texto da linha ACIMA do cabeçalho que diz a revisão da lista em
+# uso: "REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE
+# ALTERAÇÃO: 03/09/2026". Achada pelo texto, nunca pela coordenada.
+TEXTO_LINHA_REVISAO = "REVISÃO DA LISTA DE SOBRESSALENTES"
+
+# Nome definido que o Gestão PMIB grava em cada `_STATUS_PMIB` v2 que calculou:
+# a data do cálculo, como texto "AAAA-MM-DD".
+NOME_CALCULADO_EM = "sigft_calculado_em"
+
+# Feriados que não contam como dia útil no prazo acima: nacionais do Brasil +
+# os pontos facultativos de Carnaval e Corpus Christi, 2024-2028. Cópia do
+# dicionário de `gestao-sobressalentes/_scripts/regras_sobressalentes.py`, que
+# é também o que o Power BI v2 usa -- se mudar aqui, mude lá.
+#
+# DECISÃO EM ABERTO (do Luan): confirmar com Itaipu se entram os feriados do
+# Paraguai e os municipais de Foz. Para tirar uma data, apague a linha; para
+# acrescentar, uma linha nova. Num lugar só, de propósito.
+FERIADOS: dict[_dt.date, str] = {
+    _dt.date(2024, 1, 1): "Confraternização Universal",
+    _dt.date(2024, 2, 12): "Carnaval (ponto facultativo)",
+    _dt.date(2024, 2, 13): "Carnaval (ponto facultativo)",
+    _dt.date(2024, 3, 29): "Sexta-feira Santa",
+    _dt.date(2024, 4, 21): "Tiradentes",
+    _dt.date(2024, 5, 1): "Dia do Trabalho",
+    _dt.date(2024, 5, 30): "Corpus Christi (ponto facultativo)",
+    _dt.date(2024, 9, 7): "Independência",
+    _dt.date(2024, 10, 12): "Nossa Senhora Aparecida",
+    _dt.date(2024, 11, 2): "Finados",
+    _dt.date(2024, 11, 15): "Proclamação da República",
+    _dt.date(2024, 11, 20): "Consciência Negra",
+    _dt.date(2024, 12, 25): "Natal",
+    _dt.date(2025, 1, 1): "Confraternização Universal",
+    _dt.date(2025, 3, 3): "Carnaval (ponto facultativo)",
+    _dt.date(2025, 3, 4): "Carnaval (ponto facultativo)",
+    _dt.date(2025, 4, 18): "Sexta-feira Santa",
+    _dt.date(2025, 4, 21): "Tiradentes",
+    _dt.date(2025, 5, 1): "Dia do Trabalho",
+    _dt.date(2025, 6, 19): "Corpus Christi (ponto facultativo)",
+    _dt.date(2025, 9, 7): "Independência",
+    _dt.date(2025, 10, 12): "Nossa Senhora Aparecida",
+    _dt.date(2025, 11, 2): "Finados",
+    _dt.date(2025, 11, 15): "Proclamação da República",
+    _dt.date(2025, 11, 20): "Consciência Negra",
+    _dt.date(2025, 12, 25): "Natal",
+    _dt.date(2026, 1, 1): "Confraternização Universal",
+    _dt.date(2026, 2, 16): "Carnaval (ponto facultativo)",
+    _dt.date(2026, 2, 17): "Carnaval (ponto facultativo)",
+    _dt.date(2026, 4, 3): "Sexta-feira Santa",
+    _dt.date(2026, 4, 21): "Tiradentes",
+    _dt.date(2026, 5, 1): "Dia do Trabalho",
+    _dt.date(2026, 6, 4): "Corpus Christi (ponto facultativo)",
+    _dt.date(2026, 9, 7): "Independência",
+    _dt.date(2026, 10, 12): "Nossa Senhora Aparecida",
+    _dt.date(2026, 11, 2): "Finados",
+    _dt.date(2026, 11, 15): "Proclamação da República",
+    _dt.date(2026, 11, 20): "Consciência Negra",
+    _dt.date(2026, 12, 25): "Natal",
+    _dt.date(2027, 1, 1): "Confraternização Universal",
+    _dt.date(2027, 2, 8): "Carnaval (ponto facultativo)",
+    _dt.date(2027, 2, 9): "Carnaval (ponto facultativo)",
+    _dt.date(2027, 3, 26): "Sexta-feira Santa",
+    _dt.date(2027, 4, 21): "Tiradentes",
+    _dt.date(2027, 5, 1): "Dia do Trabalho",
+    _dt.date(2027, 5, 27): "Corpus Christi (ponto facultativo)",
+    _dt.date(2027, 9, 7): "Independência",
+    _dt.date(2027, 10, 12): "Nossa Senhora Aparecida",
+    _dt.date(2027, 11, 2): "Finados",
+    _dt.date(2027, 11, 15): "Proclamação da República",
+    _dt.date(2027, 11, 20): "Consciência Negra",
+    _dt.date(2027, 12, 25): "Natal",
+    _dt.date(2028, 1, 1): "Confraternização Universal",
+    _dt.date(2028, 2, 28): "Carnaval (ponto facultativo)",
+    _dt.date(2028, 2, 29): "Carnaval (ponto facultativo)",
+    _dt.date(2028, 4, 14): "Sexta-feira Santa",
+    _dt.date(2028, 4, 21): "Tiradentes",
+    _dt.date(2028, 5, 1): "Dia do Trabalho",
+    _dt.date(2028, 6, 15): "Corpus Christi (ponto facultativo)",
+    _dt.date(2028, 9, 7): "Independência",
+    _dt.date(2028, 10, 12): "Nossa Senhora Aparecida",
+    _dt.date(2028, 11, 2): "Finados",
+    _dt.date(2028, 11, 15): "Proclamação da República",
+    _dt.date(2028, 11, 20): "Consciência Negra",
+    _dt.date(2028, 12, 25): "Natal",
+}

@@ -50,6 +50,10 @@ datas = [
     # atualização (`sigft/core/novidades.py`). Sem ele no bundle, a janela de
     # novidades abre vazia justamente na hora em que ela importa.
     ("CHANGELOG.md", "."),
+    # O template do painel HTML do Gestão PMIB (2026-10-05, T7). Vai para
+    # `sigft/assets/`, que é onde `services/painel.caminho_do_template` procura
+    # (ao lado do pacote, inclusive dentro do .exe).
+    (os.path.join("sigft", "assets", "painel_template.html"), os.path.join("sigft", "assets")),
 ]
 
 # `customtkinter` carrega temas de arquivos .json que ele traz junto. Sem isto,
@@ -187,6 +191,13 @@ hiddenimports += ["pip_system_certs", "pip_system_certs.wrapt_requests"]
 # O motor do tradutor local importa os dois por NOME (`importlib`), só na
 # primeira tradução -- para o resto do app não pagar o custo.
 hiddenimports += ["ctranslate2", "sentencepiece"]
+
+# O editor cirúrgico (`sigft/core/excel/cirurgico.py`, 2026-10-05) grava os
+# `_STATUS_PMIB` com o lxml -- e o `StatusPMIB` só o importa na hora de gravar.
+# A análise estática o acha pelo `collect_submodules("sigft")`; declarado aqui
+# para não depender disso, junto com o `_elementpath` que o `etree` carrega por
+# dentro. Sem ele, o app abre e a primeira gravação de planilha falha.
+hiddenimports += ["lxml.etree", "lxml._elementpath"]
 
 
 # Ícone do executável.

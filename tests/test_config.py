@@ -79,9 +79,11 @@ def test_linha_specs_ficha_e_79():
     assert sigft_config.LINHA_SPECS_FICHA == 79
 
 
-def test_linha_status_pmib_e_4():
-    # pdm_backend.py:169 (`skiprows=3`, 0-based) e :176 ("... (linha 4).").
-    assert sigft_config.LINHA_STATUS_PMIB == 4
+def test_linha_status_pmib_e_5():
+    # Layout v2 do `_STATUS_PMIB` (04/10/2026): a linha 4 é a da revisão em
+    # uso e o cabeçalho está na 5. É só o valor de reserva -- quem lê acha o
+    # cabeçalho pela busca (ver tests/test_status_pmib_cabecalho_linha5.py).
+    assert sigft_config.LINHA_STATUS_PMIB == 5
 
 
 def test_colunas_chave_principais():

@@ -6,26 +6,50 @@ mestra, e mantém o `_STATUS_PMIB` em dia.
 from __future__ import annotations
 
 import os
+import pathlib
 import threading
 import tkinter as tk
+import webbrowser
 from tkinter import messagebox
 
 import pandas as pd
 
 from sigft.app import backends, file_dialogs
+from sigft.app.widgets.espera import DialogosDeEspera
 from sigft.core import prefs
+from sigft.core.excel import travas
 # [2026-09-03] Chave sob a qual o caminho do mapeamento fica lembrado --
 # a Home lê por ela para montar o mural de atividades.
 from sigft.core.prefs import CHAVE_MAPEAMENTO
 from sigft.app.theme import COLORS
 
+# [2026-10-05, T7] A caixa "Gerar painel ao terminar", lembrada entre aberturas.
+OPCAO_GERAR_PAINEL = "pmib_manager.gerar_painel"
+
 import customtkinter as ctk
+
+
+def _texto_dos_avisos(inicio, avisos, nao_gravados):
+    """O texto da janela "Concluído com avisos". [2026-10-06] Os arquivos que
+    ficaram sem gravar vêm primeiro, com a contagem do resumo do fim do log
+    (`travas.TITULO_RESUMO`): é o que a pessoa precisa resolver."""
+    partes = []
+    if nao_gravados:
+        partes.append(f"{nao_gravados} arquivo(s) não foram gravados nesta rodada: o motivo de cada um "
+                      "e o que fazer estão no fim do log")
+    outros = avisos - (1 if nao_gravados else 0)
+    if outros > 0:
+        partes.append(f"{outros} aviso(s) pedem atenção (procure as linhas [AVISO] no log)")
+    return f"{inicio}, mas " + "; e ".join(partes) + "."
 
 
 # =============================================================================
 # MÓDULO 11: PMIB MANAGER (INTERFACE GE VERNOVA)
 # =============================================================================
-class ModuloPMIBManager(ctk.CTkFrame):
+class ModuloPMIBManager(DialogosDeEspera, ctk.CTkFrame):
+    # [2026-10-06] `DialogosDeEspera`: as janelas que param o processo e
+    # esperam a pessoa -- aqui, a lista de arquivos travados
+    # (`perguntar_arquivos_travados`, o `callback_travados` dos dois fluxos).
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
@@ -34,6 +58,7 @@ class ModuloPMIBManager(ctk.CTkFrame):
         self.path_api = ctk.StringVar()
         self.path_root = ctk.StringVar()
         self.path_master = ctk.StringVar()
+        self.path_autorizados = ctk.StringVar()
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=0)  # Inputs (Sem expansão)
@@ -100,7 +125,151 @@ class ModuloPMIBManager(ctk.CTkFrame):
                                      command=self.iniciar_gestao,
                                      font=("Roboto", 14, "bold"),
                                      fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"], text_color=COLORS["text_white"])
-        self.btn_run.pack(pady=20)
+        self.btn_run.pack(pady=(20, 8))
+
+        # [2026-10-05, T7] Painel HTML: a foto do dia para quem não tem o Power
+        # BI (que continua sendo o painel oficial). Gerado DEPOIS da gravação
+        # dos `_STATUS_PMIB`, para mostrar o que acabou de ser gravado.
+        f_painel = ctk.CTkFrame(frm_main, fg_color="transparent")
+        f_painel.pack(pady=(0, 15))
+        try:
+            gerar_por_padrao = prefs.get_opcao(OPCAO_GERAR_PAINEL, True)
+        except Exception:
+            gerar_por_padrao = True  # preferência é conveniência: nunca impede a tela de abrir
+        self.var_gerar_painel = ctk.BooleanVar(value=gerar_por_padrao)
+        ctk.CTkCheckBox(f_painel, text="Gerar painel ao terminar", variable=self.var_gerar_painel,
+                        command=self._lembrar_gerar_painel, font=("Roboto", 12)).pack(side="left", padx=10)
+        self.btn_painel = ctk.CTkButton(f_painel, text="Gerar painel", width=160, command=self.gerar_painel,
+                                        fg_color="#3A3A3A", hover_color="#454545", font=("Roboto", 12))
+        self.btn_painel.pack(side="left", padx=10)
+
+        # [2026-10-05, T4] Autorizações de entrega de Itaipu: o export que
+        # Itaipu manda vira AUTORIZADO nos `_STATUS_PMIB` da Pasta Raiz (era o
+        # script `apto_para_entrega_att.py`, com os caminhos fixos no código).
+        frm_aut = ctk.CTkFrame(self.content, fg_color="#2B2B2B", corner_radius=8)
+        frm_aut.pack(fill="x", pady=(0, 10))
+        ctk.CTkLabel(frm_aut, text="Autorizações de entrega de Itaipu", font=("Roboto", 16, "bold"),
+                     text_color=COLORS["accent"]).pack(anchor="w", padx=15, pady=(15, 0))
+        ctk.CTkLabel(frm_aut, text="Grava AUTORIZADO nos _STATUS_PMIB da Pasta Raiz (passo 2) para cada PMIB do "
+                                   "export de Itaipu (sobressalentes_autorizados_AAAAMMDDhhmm.xlsx).",
+                     text_color="gray", wraplength=720, justify="left").pack(anchor="w", padx=15)
+        f_aut = ctk.CTkFrame(frm_aut, fg_color="transparent")
+        f_aut.pack(fill="x", padx=15, pady=(8, 15))
+        self.btn_autorizados = ctk.CTkButton(f_aut, text="4. Selecionar export de autorizados (.xlsx)", width=280,
+                                             command=self._sel_autorizados, fg_color="#3A3A3A",
+                                             hover_color="#454545", font=("Roboto", 12))
+        self.btn_autorizados.pack(side="left")
+        self.lbl_autorizados = ctk.CTkLabel(f_aut, text="Nenhum arquivo selecionado", text_color="gray")
+        self.lbl_autorizados.pack(side="left", padx=15)
+        self.btn_aplicar = ctk.CTkButton(f_aut, text="APLICAR AUTORIZAÇÕES", width=200,
+                                         command=self.aplicar_autorizacoes, font=("Roboto", 12, "bold"),
+                                         fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"],
+                                         text_color=COLORS["text_white"])
+        self.btn_aplicar.pack(side="right")
+
+    def _sel_autorizados(self):
+        f = file_dialogs.ask_open_file("pmib_manager.autorizados", "excel",
+                                       titulo="Selecione o export de autorizados de Itaipu",
+                                       filetypes=[("Excel", "*.xlsx")])
+        if f:
+            self.path_autorizados.set(f)
+            self.lbl_autorizados.configure(text=os.path.basename(f), text_color=COLORS["accent"])
+            self.btn_autorizados.configure(fg_color=COLORS["primary"])
+
+    def _travar_botoes(self, travar):
+        estado = "disabled" if travar else "normal"
+        self.btn_run.configure(state=estado)
+        self.btn_aplicar.configure(state=estado)
+        self.btn_painel.configure(state=estado)
+
+    def _lembrar_gerar_painel(self):
+        try:
+            prefs.set_opcao(OPCAO_GERAR_PAINEL, bool(self.var_gerar_painel.get()))
+        except Exception:
+            pass  # lembrar é conveniência; não pode atrapalhar o clique
+
+    def gerar_painel(self):
+        root_folder = self.path_root.get()
+        master_path = self.path_master.get()
+        if not root_folder:
+            return messagebox.showwarning("Aviso", "Por favor, selecione a Pasta Raiz (Passo 2).")
+        if not master_path:
+            return messagebox.showwarning("Aviso", "Por favor, selecione a Planilha de mapeamento (Passo 3).")
+        self._travar_botoes(True)
+
+        def tarefa():
+            try:
+                self._gerar_painel_e_abrir(root_folder, master_path)
+            finally:
+                self.after(0, lambda: self._travar_botoes(False))
+
+        threading.Thread(target=tarefa, daemon=True).start()
+
+    def _gerar_painel_e_abrir(self, root_folder, master_path):
+        """Gera `Painel de Sobressalentes.html` na Pasta Raiz e o abre no
+        navegador. Roda na thread do trabalho. Falhar aqui só gera aviso:
+        nunca desfaz o que o Gestão PMIB já gravou."""
+        from sigft.services import painel  # pandas: só na hora de usar
+
+        saida = os.path.join(root_folder, painel.NOME_DO_ARQUIVO)
+        self._safe_log("Gerando o painel de sobressalentes...")
+        try:
+            caminho = painel.gerar_painel(root_folder, master_path, saida, callback_log=self._safe_log)
+        except OSError as e:
+            motivo = travas.diagnosticar(saida, e)
+            self._safe_log(f"[AVISO] O painel não foi gravado: {os.path.basename(saida)} {motivo.motivo}. "
+                           f"{motivo.o_que_fazer} Depois, clique em 'Gerar painel'.")
+            return False
+        except Exception as e:
+            self._safe_log(f"[AVISO] O painel não foi gerado: {type(e).__name__}: {e}")
+            return False
+        try:
+            webbrowser.open(pathlib.Path(caminho).resolve().as_uri())
+        except Exception as e:
+            self._safe_log(f"[AVISO] Painel gravado, mas não consegui abri-lo no navegador ({e}): {caminho}")
+        return True
+
+    def aplicar_autorizacoes(self):
+        export = self.path_autorizados.get()
+        root_folder = self.path_root.get()
+        if not export:
+            return messagebox.showwarning("Aviso", "Por favor, selecione o export de autorizados de Itaipu (Passo 4).")
+        if not root_folder:
+            return messagebox.showwarning("Aviso", "Por favor, selecione a Pasta Raiz dos _STATUS_PMIB (Passo 2).")
+        self._travar_botoes(True)
+        threading.Thread(target=self._worker_autorizados, args=(export, root_folder), daemon=True).start()
+
+    def _worker_autorizados(self, export, root_folder):
+        try:
+            # Importado aqui: o serviço é leve, mas a tela não precisa dele
+            # até alguém clicar.
+            from sigft.services import autorizados
+
+            self.after(0, lambda: self.progress_bar.set(0))
+            self._safe_log("Aplicando o export de autorizados de Itaipu...")
+            erros = avisos = nao_gravados = 0
+            # Arquivo travado: a lista de antes e a do fim (`perguntar_arquivos_travados`).
+            for linha in autorizados.executar(export, root_folder,
+                                              callback_travados=self.perguntar_arquivos_travados):
+                self._safe_log(linha)
+                erros += "[ERRO]" in linha
+                avisos += "[AVISO]" in linha
+                nao_gravados = travas.quantos_no_resumo(linha) or nao_gravados
+            self.after(0, lambda: self.progress_bar.set(1.0))
+            if erros:
+                self.after(0, lambda: messagebox.showwarning(
+                    "Aviso", "As autorizações não foram aplicadas. Veja o motivo no log."))
+            elif avisos:
+                texto = _texto_dos_avisos("As autorizações foram aplicadas", avisos, nao_gravados)
+                self.after(0, lambda texto=texto: messagebox.showwarning("Concluído com avisos", texto))
+            else:
+                self.after(0, lambda: messagebox.showinfo("Sucesso", "Autorizações de Itaipu aplicadas."))
+        except Exception as e:
+            self._safe_log(f"[ERRO FATAL]: {e}")
+            self.after(0, lambda erro=e: messagebox.showerror(
+                "Erro", f"Ocorreu um erro ao aplicar as autorizações:\n{erro}"))
+        finally:
+            self.after(0, lambda: self._travar_botoes(False))
 
     def _sel_api(self):
         f = file_dialogs.ask_open_file("pmib_manager.api", "excel", titulo="Selecione a Base de Dados API", filetypes=[("Excel", "*.xlsx *.xls")])
@@ -144,35 +313,22 @@ class ModuloPMIBManager(ctk.CTkFrame):
         if not master_path:
             return messagebox.showwarning("Aviso", "Por favor, selecione a Planilha de mapeamento (Passo 3).")
 
-        # 2. Desativa o botão para evitar cliques duplicados
-        self.btn_run.configure(state="disabled")
+        # 2. Desativa os botões para evitar cliques duplicados
+        self._travar_botoes(True)
 
         # 3. Dispara o processamento em segundo plano (Thread)
-        threading.Thread(target=self._worker, args=(api_path, root_folder, master_path), daemon=True).start()
+        # A caixa é lida AQUI, na thread da tela: variável do Tk lida de outra
+        # thread pode levantar "main thread is not in main loop".
+        gerar_painel = bool(self.var_gerar_painel.get())
+        threading.Thread(target=self._worker, args=(api_path, root_folder, master_path, gerar_painel),
+                         daemon=True).start()
 
-    def _worker(self, api_path, root_folder, master_path):
+    def _worker(self, api_path, root_folder, master_path, gerar_painel=False):
         try:
             self._safe_log("Iniciando fluxo de gestão de sobressalentes...")
 
             # Instancia a inteligência do Backend
             manager = backends.pmib_manager_backend.PMIBManager()
-
-            # Callback de Travamento de Arquivo (Thread-Safe)
-            def cb_retry_lock():
-                resultado = {}
-                evento_espera = threading.Event()
-
-                def mostrar_popup():
-                    res = messagebox.askretrycancel(
-                        "Planilha Mestra Aberta",
-                        "O sistema não conseguiu salvar os dados porque a Planilha de Mapeamento está aberta no Excel.\n\nPor favor, salve suas alterações, feche a planilha e clique em 'Repetir'.\nSe quiser abortar o processo, clique em 'Cancelar'."
-                    )
-                    resultado['retry'] = res
-                    evento_espera.set()
-
-                self.after(0, mostrar_popup)
-                evento_espera.wait()
-                return resultado.get('retry', False)
 
             # Callback Interativo e Seguro (Thread-Safe)
             def cb_confirm(df_novos):
@@ -248,9 +404,15 @@ class ModuloPMIBManager(ctk.CTkFrame):
 
             # Variável de controle para saber se o usuário cancelou
             sucesso_total = True
+            # [2026-10-05] Avisos não interrompem (um `_STATUS_PMIB` aberto no
+            # Excel é pulado e o resto segue), mas não podem terminar num
+            # "Sucesso" seco: a pessoa precisa saber que algo ficou para trás.
+            avisos = nao_gravados = 0
 
-            # Lemos a tupla que o backend manda passando ambos os callbacks
-            for resposta in manager.executar_fluxo(api_path, root_folder, master_path, callback_confirm=cb_confirm, callback_retry_lock=cb_retry_lock):
+            # [2026-10-06] Arquivo travado: a lista de antes, a do fim da etapa
+            # e a pergunta da mapeadora, todas por `perguntar_arquivos_travados`.
+            for resposta in manager.executar_fluxo(api_path, root_folder, master_path, callback_confirm=cb_confirm,
+                                                   callback_travados=self.perguntar_arquivos_travados):
                 if isinstance(resposta, tuple):
                     msg, progresso = resposta
                     self._safe_log(msg)
@@ -261,13 +423,33 @@ class ModuloPMIBManager(ctk.CTkFrame):
                     # Se o backend jogar um erro (ex: abortado), marcamos como falha
                     if "[ERRO]" in resposta:
                         sucesso_total = False
+                    elif "[AVISO]" in resposta:
+                        avisos += 1
+                    nao_gravados = travas.quantos_no_resumo(resposta) or nao_gravados
+
+            # [T7] O painel, DEPOIS da gravação: mostra o que acabou de ser
+            # gravado. Fluxo com erro não gera (o botão continua lá).
+            if gerar_painel and sucesso_total:
+                if not self._gerar_painel_e_abrir(root_folder, master_path):
+                    avisos += 1
+            elif gerar_painel:
+                self._safe_log(" -> Painel não gerado: o processo terminou com erro. Use o botão 'Gerar painel'.")
 
             # Validação Final Segura
-            if sucesso_total:
+            if sucesso_total and avisos:
+                self.after(0, lambda: self.progress_bar.set(1.0))
+                texto = _texto_dos_avisos("O processo de Gestão PMIB terminou", avisos, nao_gravados)
+                self.after(0, lambda texto=texto: messagebox.showwarning("Concluído com avisos", texto))
+            elif sucesso_total:
                 self.after(0, lambda: self.progress_bar.set(1.0))
                 self.after(0, lambda: messagebox.showinfo("Sucesso", "Processo de Gestão PMIB finalizado com sucesso!"))
             else:
-                self.after(0, lambda: messagebox.showwarning("Aviso", "O processo foi interrompido ou finalizado com erros. Nenhuma alteração foi salva."))
+                # Não dá mais para dizer "nenhuma alteração foi salva": os
+                # `_STATUS_PMIB` e a mapeadora são gravados ao longo do fluxo,
+                # e o que foi gravado antes do erro continua gravado.
+                self.after(0, lambda: messagebox.showwarning(
+                    "Aviso", "O processo foi interrompido ou terminou com erros.\n\n"
+                             "O que foi gravado antes do erro continua gravado. Veja o log para saber o que faltou."))
 
         except Exception as e:
             self._safe_log(f"[ERRO FATAL]: {e}")
@@ -280,6 +462,6 @@ class ModuloPMIBManager(ctk.CTkFrame):
             self.after(0, lambda erro=e: messagebox.showerror(
                 "Erro", f"Ocorreu um erro fatal durante a execução:\n{erro}"))
         finally:
-            # Reativa o botão ao final de tudo (seja erro ou sucesso)
-            self.after(0, lambda: self.btn_run.configure(state="normal"))
+            # Reativa os botões ao final de tudo (seja erro ou sucesso)
+            self.after(0, lambda: self._travar_botoes(False))
 

@@ -5,7 +5,7 @@ import pandas as pd
 import openpyxl
 
 from sigft import config
-from sigft.core.excel import headers, locking
+from sigft.core.excel import headers, status_sheet
 # CP 3.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 3): `google.generativeai`
 # deixou de ser importado aqui -- `GeminiCategorizer.processar_lote` abaixo
 # delega para `LLMClient`/`GeminiProvider` (ÚNICO lugar do projeto que
@@ -111,8 +111,12 @@ class DataManager:
                 config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB,
                 config.COL_PDM_USADO: ["PDM USADO", "PDM"],
             }
-            rows = headers.rows_from_worksheet(ws, max_row=20)
-            col_map, header_row = headers.find_columns(rows, keywords)
+            # [2026-10-05, T1 do roteiro do Gestão PMIB v2] Lê com o openpyxl,
+            # mas GRAVA pelo `StatusPMIB` -- o editor cirúrgico. O `wb.save`
+            # que estava aqui regravava o `_STATUS_PMIB` inteiro e apagava os
+            # comentários em thread e as listas suspensas de extensão.
+            painel = status_sheet.StatusPMIB(filepath, ws.title)
+            col_map, header_row = painel.abrir(wb=wb, ws=ws, keywords=keywords, max_row=20)
 
             if header_row is None:
                 return False, "Erro: Colunas não encontradas no Excel."
@@ -125,17 +129,15 @@ class DataManager:
                     cell_desc = ws.cell(row=row_num, column=col_map[config.COL_DESCRICAO]).value
 
                     if cell_desc and str(cell_desc).strip() == desc_search:
-                        ws.cell(row=row_num, column=col_map[config.COL_CODIGO_PMIB]).value = pmib_criado
-                        ws.cell(row=row_num, column=col_map[config.COL_PDM_USADO]).value = pdm_revisao
+                        painel.escrever(row_num, col_map[config.COL_CODIGO_PMIB], pmib_criado)
+                        painel.escrever(row_num, col_map[config.COL_PDM_USADO], pdm_revisao)
                         linhas_atualizadas += 1
                         break
 
-            # CP 1.3: delega o retry de PermissionError para
-            # locking.save_with_retry (única implementação). `max_attempts=1`
-            # preserva o comportamento ORIGINAL desta variante (log + sai):
-            # nenhuma retentativa, aborta na 1ª PermissionError (relevantada
-            # e capturada pelo `except` abaixo, exatamente como antes).
-            locking.save_with_retry(wb, filepath, max_attempts=1)
+            # CP 1.3: `max_attempts=1` preserva o comportamento ORIGINAL desta
+            # variante (log + sai): nenhuma retentativa, aborta na 1ª
+            # PermissionError (relevantada e capturada pelo `except` abaixo).
+            painel.salvar(max_attempts=1)
             return True, f"{linhas_atualizadas} linhas atualizadas."
 
         except PermissionError:

@@ -58,6 +58,16 @@ FORA_DO_RECORTE = {
 ONDE_ELE_E_DADO = {
     "sigft/services/duplicadas_condicoes.py",
     "sigft/core/novidades.py",
+    # 2026-10-05 (T3 do roteiro do Gestão PMIB v2): o "—" é o valor que a
+    # pessoa escreve na linha da revisão em uso quando NÃO há revisão ("EM
+    # USO: — - DATA DE ALTERAÇÃO: —"). Tirá-lo do conjunto `_SEM_REVISAO`
+    # faria o Gestão PMIB gravar "—" como revisão na mapeadora.
+    "sigft/services/status_pmib_arquivos.py",
+    # 2026-10-05 (T7): o "—" é o marcador de "sem pendência" / "sem com quem"
+    # que o template do painel (`sigft/assets/painel_template.html`) filtra
+    # (`i.pe !== "—"`); os textos de qualidade são os da referência do cofre,
+    # que o validador do painel compara palavra por palavra.
+    "sigft/services/painel.py",
 }
 
 
@@ -166,6 +176,31 @@ def test_o_CHANGELOG_escrito_com_travessao_continua_sendo_lido():
         assert blocos, f"o cabecalho com `{traco}` deixou de ser reconhecido"
         assert blocos[0].versao == "1.0.0"
         assert blocos[0].data == "2026-09-18"
+
+
+def test_a_revisao_em_uso_escrita_com_travessao_e_sem_revisao():
+    """Se isto quebrar, o Gestão PMIB grava "—" na REVISÃO EM USO da mapeadora."""
+    from sigft.services.status_pmib_arquivos import revisao_do_texto
+
+    for traco in ("-", "–", "—"):
+        texto = f"REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: {traco} - DATA DE ALTERAÇÃO: {traco}"
+        assert revisao_do_texto(texto) is None, f"`{traco}` virou revisão"
+    assert revisao_do_texto(
+        "REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE ALTERAÇÃO: —") == "0A"
+
+
+def test_o_marcador_de_sem_pendencia_do_painel_e_o_que_o_template_filtra():
+    """Se isto quebrar, a fila de trabalho do painel passa a listar quem não
+    tem pendência nenhuma."""
+    from sigft.services import painel
+
+    marcador = painel.pendencia(False, "INICIAR", "", {}, False, False, "")
+    template = painel.caminho_do_template().read_text(encoding="utf-8")
+
+    assert marcador == "—"
+    assert f'i.pe !== "{marcador}"' in template
+    assert painel.COM_QUEM.get("SEM STATUS", "—") == "—"
+    assert 'chave: "—", nome: "Sem status válido"' in template
 
 
 # =============================================================================

@@ -345,3 +345,100 @@ def test_lista_multipla_usa_a_fonte_monoespacada(raiz):
     """Códigos PMIB alinhados — era `font=("Consolas", 11)` no popup."""
     dialogo = dialogs.SelecaoMultiplaDialog(raiz, itens=["A"])
     assert dialogo.listbox.kwargs["font"] == theme.FONTE_CONSOLE
+
+
+# =============================================================================
+# G. ArquivosTravadosDialog — a lista de arquivos travados  [2026-10-06]
+# =============================================================================
+# Ver `docs/superpowers/specs/2026-10-06-gravacao-com-retry-design.md`. Mesmo
+# contrato com a thread do robô: todo caminho de saída solta o worker, e o "X"
+# é Seguir (repetir algo que a pessoa fechou seria pior).
+from sigft.core.excel import travas  # noqa: E402
+
+ITENS = [
+    ("a_STATUS_PMIB.xlsx", "está aberto no Excel por Luan", "Salve o que for seu e feche o arquivo no Excel."),
+    ("Planilha de mapeamento (mapa.xlsx)", "está em uso por outro programa", "Espere alguns segundos."),
+]
+
+
+def _textos(widget):
+    """Todo `text=` desenhado dentro de `widget`, recursivo."""
+    textos = []
+    for filho in getattr(widget, "filhos", []):
+        if "text" in filho.kwargs:
+            textos.append(str(filho.kwargs["text"]))
+        textos.extend(_textos(filho))
+    return textos
+
+
+def _travados(raiz, evento, resultado, momento=travas.ANTES):
+    return dialogs.ArquivosTravadosDialog(raiz, itens=ITENS, momento=momento,
+                                          evento_espera=evento, resultado=resultado)
+
+
+@pytest.mark.parametrize("momento", [travas.ANTES, travas.DEPOIS, travas.NA_HORA])
+def test_travados_repetir_devolve_true_e_solta(raiz, evento, momento):
+    resultado = {}
+    dialogo = _travados(raiz, evento, resultado, momento)
+
+    dialogo.repetir()
+
+    assert resultado["repetir"] is True
+    assert evento.is_set() and dialogo.destruido
+
+
+def test_travados_seguir_devolve_false_e_solta(raiz, evento):
+    resultado = {}
+    dialogo = _travados(raiz, evento, resultado)
+
+    dialogo.seguir()
+
+    assert resultado["repetir"] is False
+    assert evento.is_set() and dialogo.destruido
+
+
+def test_travados_fechar_no_x_e_seguir(raiz, evento):
+    resultado = {}
+    dialogo = _travados(raiz, evento, resultado)
+
+    dialogo.protocolos["WM_DELETE_WINDOW"]()
+
+    assert resultado["repetir"] is False
+    assert evento.is_set()
+
+
+def test_travados_mostra_cada_arquivo_com_motivo_e_o_que_fazer(raiz, evento):
+    textos = "\n".join(_textos(_travados(raiz, evento, {})))
+
+    for nome, motivo, o_que_fazer in ITENS:
+        assert nome in textos and motivo in textos and o_que_fazer in textos
+
+
+def test_travados_minimiza_libera_o_app_e_fica_no_topo(raiz, evento):
+    # Padrão das janelas de espera (spec de 2026-08-28): sem `transient` (que
+    # tira o minimizar) e sem `grab_set` (a pessoa precisa ir ao Excel e ao
+    # console enquanto ela está aberta).
+    dialogo = _travados(raiz, evento, {})
+
+    assert not hasattr(dialogo, "chamou_grab_set")
+    assert not hasattr(dialogo, "dono_transiente")
+    assert dialogo.atributos["-topmost"] is True
+
+
+@pytest.mark.parametrize("momento, repetir, seguir", [
+    (travas.ANTES, "Repetir", "Seguir sem eles"),
+    (travas.DEPOIS, "Repetir só estes", "Seguir"),
+    (travas.NA_HORA, "Repetir", "Seguir sem ele"),
+])
+def test_os_botoes_dizem_o_que_acontece_em_cada_momento(raiz, evento, momento, repetir, seguir):
+    dialogo = _travados(raiz, evento, {}, momento)
+
+    assert dialogo.botao_repetir.kwargs["text"] == repetir
+    assert dialogo.botao_seguir.kwargs["text"] == seguir
+    assert dialogo.botao_repetir.kwargs["fg_color"] == theme.COLORS["primary"]
+
+
+def test_textos_dos_travados_sem_travessao():
+    for momento, textos in dialogs.TEXTOS_TRAVADOS.items():
+        for chave, texto in textos.items():
+            assert "—" not in texto, (momento, chave)

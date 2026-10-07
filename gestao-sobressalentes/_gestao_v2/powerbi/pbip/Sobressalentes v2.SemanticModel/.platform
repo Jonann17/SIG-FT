@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "SemanticModel",
+    "displayName": "Sobressalentes v2"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "5fe2e290-3ff9-4f4c-9989-7800473b08f4"
+  }
+}

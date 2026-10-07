@@ -1,0 +1,87 @@
+table Eventos
+	lineageTag: 09e4680f-7ffe-4919-8c35-96276fab0bc4
+
+	measure '% do Evento Cumprido' =
+			// ENTREGA: itens físicos entregues; APROVAÇÃO: fichas aprovadas — nas listas ligadas ao evento
+			VAR Tipo = SELECTEDVALUE ( Eventos[Tipo Evento] )
+			RETURN SWITCH ( Tipo, "ENTREGA", [% Físicos Entregues], "APROVAÇÃO", [% Aprovadas] )
+		formatString: 0%
+		displayFolder: Eventos de pagamento
+		lineageTag: 24c3646b-9b79-4c18-b551-730638c7be90
+
+	column Evento
+		dataType: string
+		lineageTag: e97bd681-eec7-4073-a0bd-bd2005aaa7f4
+		summarizeBy: none
+		sourceColumn: Evento
+
+		annotation SummarizationSetBy = User
+
+	column Grupo
+		dataType: string
+		lineageTag: 6769e94c-04fd-4cac-b100-e6295b7f4f2c
+		summarizeBy: none
+		sourceColumn: Grupo
+
+		annotation SummarizationSetBy = User
+
+	column 'Tipo Evento'
+		dataType: string
+		lineageTag: b507671b-52b2-4810-b6f5-6e930a86b934
+		summarizeBy: none
+		sourceColumn: Tipo Evento
+
+		annotation SummarizationSetBy = User
+
+	column Percentual
+		dataType: double
+		formatString: 0%
+		lineageTag: f3954259-a1a3-4b89-a15f-8a79d3bb4dc5
+		summarizeBy: none
+		sourceColumn: Percentual
+
+		annotation SummarizationSetBy = User
+
+	column 'Descricao Evento'
+		dataType: string
+		lineageTag: f92eaf17-a1a7-4652-93b6-8f0f66451960
+		summarizeBy: none
+		sourceColumn: Descricao Evento
+
+		annotation SummarizationSetBy = User
+
+	column 'Mes de Referencia'
+		dataType: string
+		lineageTag: 9321a61c-ac50-4d1a-8836-a2831c8eaf47
+		summarizeBy: none
+		sourceColumn: Mes de Referencia
+
+		annotation SummarizationSetBy = User
+
+	partition Eventos = m
+		mode: import
+		source =
+				let
+				    Consulta =
+				        let
+				            PastaPDM = Text.BeforeDelimiter(PastaPMIB, "\", {0, RelativePosition.FromEnd}),
+				            Arquivo = File.Contents(PastaPDM & "\Extrato dos Eventos dos Sobressalentes.xlsx"),
+				            Tabela = fxLerTabela(Arquivo, "Sheet2", "ITEM"),
+				            ComGrupo = Table.AddColumn(Tabela, "Grupo", each if [VALOR] = null and [ITEM] <> null then [ITEM] else null),
+				            Preenchida = Table.FillDown(ComGrupo, {"Grupo"}),
+				            SoEventos = Table.SelectRows(Preenchida, each [VALOR] <> null),
+				            ComEvento = Table.AddColumn(SoEventos, "Evento", each Text.Upper(Text.Remove(Text.From([ITEM]), {" "})), type text),
+				            ComPercentual = Table.AddColumn(ComEvento, "Percentual", each try Number.From(Text.BeforeDelimiter(Text.From([VALOR]), "%")) / 100 otherwise null, Percentage.Type),
+				            ComTipo = Table.AddColumn(ComPercentual, "Tipo Evento", each if Text.Contains(fxNorm([DESCRICAO]), "APROVACAO") then "APROVAÇÃO" else "ENTREGA", type text),
+				            Selecionada = Table.SelectColumns(Table.RenameColumns(ComTipo, {{"DESCRICAO", "Descricao Evento"}, {"MES DE REFERENCIA", "Mes de Referencia"}}),
+				                {"Evento", "Grupo", "Tipo Evento", "Percentual", "Descricao Evento", "Mes de Referencia"}, MissingField.UseNull),
+				            Final = Table.Distinct(Selecionada, {"Evento"})          // um evento por linha: exigência do relacionamento
+				        in
+				            Final,
+				    Colunas = Table.SelectColumns(Consulta, {"Evento", "Grupo", "Tipo Evento", "Percentual", "Descricao Evento", "Mes de Referencia"}, MissingField.UseNull),
+				    Tipada = Table.TransformColumnTypes(Colunas, {{"Evento", type text}, {"Grupo", type text}, {"Tipo Evento", type text}, {"Percentual", Percentage.Type}, {"Descricao Evento", type text}, {"Mes de Referencia", type text}})
+				in
+				    Tipada
+
+	annotation PBI_ResultType = Table
+

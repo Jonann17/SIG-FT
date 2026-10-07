@@ -125,8 +125,12 @@ def gerar_ficha(caminho, pmib, material):
 
 def gerar_status_pmib(caminho, pmib, itens):
     """Planilha `_STATUS_PMIB`: aba "Lista de Materiais", cabeçalho na linha
-    que `config.LINHA_STATUS_PMIB` define (4) -- é o que
-    `core/excel/headers.find_columns` e `StatusPMIB` procuram."""
+    que `config.LINHA_STATUS_PMIB` define (5) -- é o que
+    `core/excel/headers.find_columns` e `StatusPMIB` procuram.
+
+    A linha de cima é a da revisão em uso, como no layout v2 dos arquivos reais
+    (04/10/2026): é ela que faz um leitor de cabeçalho FIXO na linha 4 falhar
+    aqui também, em vez de só na planilha do usuário."""
     from openpyxl import Workbook
 
     wb = Workbook()
@@ -135,6 +139,8 @@ def gerar_status_pmib(caminho, pmib, itens):
 
     ws["A1"] = "CONTROLE DE FICHAS TÉCNICAS -- DADOS SINTÉTICOS"
     ws["A2"] = f"Ficha PMIB: {pmib}"
+    ws.cell(row=config.LINHA_STATUS_PMIB - 1, column=1,
+            value="REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE ALTERAÇÃO: 01/10/2026")
 
     colunas = [
         "ITEM",

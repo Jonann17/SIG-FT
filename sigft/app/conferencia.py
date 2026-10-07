@@ -47,6 +47,11 @@ MODULOS_ESSENCIAIS = [
     # as dependências pesadas que o PyInstaller pode não coletar sozinho
     "pandas",
     "openpyxl",
+    # o editor que grava nos `_STATUS_PMIB` sem apagar comentário (2026-10-05).
+    # O `StatusPMIB` só o importa na hora de gravar: faltando no bundle, o app
+    # abre e quebra na primeira planilha que tentar marcar.
+    "lxml.etree",
+    "sigft.core.excel.cirurgico",
     "playwright",
     "requests",
     "customtkinter",

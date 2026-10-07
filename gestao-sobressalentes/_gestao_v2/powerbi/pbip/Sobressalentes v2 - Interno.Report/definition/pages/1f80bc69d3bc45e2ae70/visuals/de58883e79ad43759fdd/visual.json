@@ -1,0 +1,264 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.12.0/schema.json",
+  "name": "de58883e79ad43759fdd",
+  "position": {
+    "x": 10,
+    "y": 466,
+    "z": 13000,
+    "height": 246,
+    "width": 1260,
+    "tabOrder": 13000
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Atividades"
+                    }
+                  },
+                  "Property": "Frente"
+                }
+              },
+              "queryRef": "Atividades.Frente",
+              "nativeQueryRef": "Frente"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Atividades"
+                    }
+                  },
+                  "Property": "Atividade"
+                }
+              },
+              "queryRef": "Atividades.Atividade",
+              "nativeQueryRef": "Atividade"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Atividades"
+                    }
+                  },
+                  "Property": "Situacao"
+                }
+              },
+              "queryRef": "Atividades.Situacao",
+              "nativeQueryRef": "Situação",
+              "displayName": "Situação"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Atividades"
+                    }
+                  },
+                  "Property": "Termino Previsto"
+                }
+              },
+              "queryRef": "Atividades.Termino Previsto",
+              "nativeQueryRef": "Término previsto",
+              "displayName": "Término previsto"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Atividades"
+                    }
+                  },
+                  "Property": "Com Quem Esta"
+                }
+              },
+              "queryRef": "Atividades.Com Quem Esta",
+              "nativeQueryRef": "Com quem está",
+              "displayName": "Com quem está"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Atividades"
+                    }
+                  },
+                  "Property": "Criticidade"
+                }
+              },
+              "queryRef": "Atividades.Criticidade",
+              "nativeQueryRef": "Criticidade"
+            }
+          ]
+        }
+      },
+      "sortDefinition": {
+        "sort": [
+          {
+            "field": {
+              "Column": {
+                "Expression": {
+                  "SourceRef": {
+                    "Entity": "Atividades"
+                  }
+                },
+                "Property": "Termino Previsto"
+              }
+            },
+            "direction": "Ascending"
+          }
+        ]
+      }
+    },
+    "objects": {
+      "columnHeaders": [
+        {
+          "properties": {
+            "bold": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "wordWrap": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "total": [
+        {
+          "properties": {
+            "totals": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Plano de ação — em aberto'"
+                }
+              }
+            },
+            "fontColor": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#0e1a77'"
+                    }
+                  }
+                }
+              }
+            },
+            "bold": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  },
+  "filterConfig": {
+    "filters": [
+      {
+        "name": "79a4bdea8a4b45729350",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "Atividades"
+              }
+            },
+            "Property": "Situacao"
+          }
+        },
+        "type": "Categorical",
+        "filter": {
+          "Version": 2,
+          "From": [
+            {
+              "Name": "f",
+              "Entity": "Atividades",
+              "Type": 0
+            }
+          ],
+          "Where": [
+            {
+              "Condition": {
+                "Not": {
+                  "Expression": {
+                    "In": {
+                      "Expressions": [
+                        {
+                          "Column": {
+                            "Expression": {
+                              "SourceRef": {
+                                "Source": "f"
+                              }
+                            },
+                            "Property": "Situacao"
+                          }
+                        }
+                      ],
+                      "Values": [
+                        [
+                          {
+                            "Literal": {
+                              "Value": "'CONCLUÍDA'"
+                            }
+                          }
+                        ]
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
