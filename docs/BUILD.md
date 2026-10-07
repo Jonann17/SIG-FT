@@ -82,6 +82,11 @@ Até a 1.1.1, toda atualização baixava e reinstalava o pacote inteiro (316 MB 
   compilou **não sai**, com `::warning` no run: o completo serve para todos.
 - A primeira versão com isto não tem base (ninguém publicou `arquivos.json`
   antes): ela sai só com o completo, e a seguinte já traz o pequeno.
+- **Medido na 1.2.0-rc.4** (a partir da rc.3, mesmo código): **38,5 MB** contra
+  316 MB do completo, 4 arquivos de 2048. O piso é o `SIG-FT.exe` (~38 MB): no
+  onedir do PyInstaller ele leva TODO o código Python, o do SIG-FT e o das
+  bibliotecas, e por isso muda em toda versão. Os `RECORD` do numpy e do tqdm
+  também mudam a cada build (os lançadores `.exe` que o pip gera), mas são KB.
 
 ### Canal de testes (desde a 1.2.0)
 
