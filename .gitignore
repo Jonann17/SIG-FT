@@ -70,3 +70,12 @@ conferencia-da-janela.txt
 # e embutido no instalador pelo SIG-FT.spec. Nunca vai para o Git.
 recursos/tradutor_pt_es/
 recursos/tradutor_pt_es.tmp/
+
+# Atualizacao so com o que mudou (tools/gerar_atualizacao.py, no release.yml):
+# as listas que o installer/sigft.iss inclui em modo atualizacao e os
+# manifestos de arquivos baixados das versoes anteriores. Gerados a cada build.
+installer/atualizacao_arquivos.iss
+installer/atualizacao_remover.iss
+/arquivos.json
+/releases_anteriores.json
+/bases/

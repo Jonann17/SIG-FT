@@ -26,6 +26,11 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Gestão PMIB: com a planilha de mapeamento aberta, **Repetir** relê a planilha antes de gravar, então o que você salvou nela antes de fechar continua lá. Antes o SIG-FT gravava por cima. **Seguir sem ela** não cancela mais o processo: os `_STATUS_PMIB` continuam sendo atualizados.
 - Gestão PMIB: renomear um `_STATUS_PMIB` que está aberto no Excel não deixa mais uma cópia com o nome novo ao lado do antigo.
 
+**Atualização automática**
+
+- Atualização automática: passa a baixar **só os arquivos que mudaram** desde a versão instalada, em vez do instalador completo (mais de 300 MB). O aviso mostra o tamanho da atualização ao lado do tamanho do completo. Quem pulou versões recebe o completo, como antes. Vale da próxima versão em diante: quem está na 1.1.1 recebe esta ainda pelo instalador completo.
+- Atualização automática: caixa nova **"Versões de teste"** ao lado do botão "Atualizações", na tela inicial. Desmarcada, nada muda. Marcada, o aviso oferece também os pré-lançamentos, para testar uma versão antes de ela chegar a todo mundo.
+
 ## 1.1.1 - 2026-09-28
 
 **Atualização automática**

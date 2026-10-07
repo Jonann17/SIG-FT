@@ -56,6 +56,41 @@ seguintes pela atualização automática.
    troca os arquivos e **reabre o SIG-FT** na conta de quem estava usando
    (`[Run]` com `runasoriginaluser`, só quando recebe `/REABRIR=1`).
 
+### Atualização pequena: só o que mudou (desde a 1.2.0)
+
+Até a 1.1.1, toda atualização baixava e reinstalava o pacote inteiro (316 MB na
+1.1.1, o tradutor sozinho com 218). Spec:
+`docs/superpowers/specs/2026-10-07-atualizacao-incremental-design.md`.
+
+- **No Release.** Além do instalador completo, o workflow publica o
+  `arquivos.json` (cada arquivo instalado, com SHA256) e, contra o `arquivos.json`
+  das versões anteriores (as 3 mais recentes que o publicaram, e a última normal
+  sempre), um **instalador pequeno** por versão de origem:
+  `SIG-FT_Itaipu_Atualizacao_<de>_para_<para>.bin`, com só os arquivos que
+  mudaram. É o mesmo `installer/sigft.iss` em modo atualização
+  (`/DAtualizacao=1 /DVersaoDe=...`): mesmo `AppId`, fecha e reabre o app como o
+  completo, e **recusa** instalar se a versão instalada não for a `de` dele. A
+  lista entra no `latest.json` (`atualizacoes`). Lógica em
+  `tools/gerar_atualizacao.py`.
+- **No app.** Se o `latest.json` traz um pequeno feito a partir da versão
+  instalada, o aviso oferece **ele** ("12,3 MB: só o que mudou"); senão, o
+  completo. Quem decide é o app instalado: a 1.1.1 só conhece o completo, então
+  a primeira atualização a partir dela ainda vem inteira.
+- **`.bin`, e não `.exe`**: o app 1.1.1 baixa "o primeiro `.exe` do Release". O
+  app novo confere o SHA256 e o renomeia antes de rodar.
+- Pequeno que não compensa (copiaria mais de 60% do pacote) ou que o ISCC não
+  compilou **não sai**, com `::warning` no run: o completo serve para todos.
+- A primeira versão com isto não tem base (ninguém publicou `arquivos.json`
+  antes): ela sai só com o completo, e a seguinte já traz o pequeno.
+
+### Canal de testes (desde a 1.2.0)
+
+Caixa **"Versões de teste"** ao lado do botão "Atualizações" da tela inicial
+(desmarcada por padrão; fica em `Documentos\SIG-FT\user_prefs.json`). Marcada, o
+app consulta `/releases` em vez de `/releases/latest` e oferece também
+**pré-lançamentos**. É como se testa uma rc pela atualização automática --
+inclusive o instalador pequeno -- antes de ela chegar a todo mundo.
+
 ### "O instalador detectou que o SIG-FT Itaipu está em execução", com ele fechado
 
 Visto ao instalar a 1.1.1-rc.1, em 2026-09-25. **Era um `SIG-FT.exe` vivo e sem
@@ -83,7 +118,8 @@ inicial: ele faz a mesma pergunta e sempre responde.
 |---|---|
 | a pergunta, o download e o erro | `Documentos\SIG-FT\logs\sigft.log` (linhas `[atualizacao]`) |
 | o que o instalador fez | `%TEMP%\SIG-FT_Update\instalacao.log` |
-| o instalador baixado | `%TEMP%\SIG-FT_Update\` |
+| o instalador baixado (o completo ou o pequeno, já como `.exe`) | `%TEMP%\SIG-FT_Update\` |
+| por que o pequeno não instalou (versão de origem diferente) | `%TEMP%\SIG-FT_Update\instalacao.log`, linha `Atualizacao recusada` |
 
 ### Sem permissão para criar tag?
 
@@ -97,7 +133,9 @@ credencial que empurra uma branch consegue empurrar uma tag; algumas recebem
 Publique um pré-lançamento: `1.1.0-rc.1` pelo botão, com a caixa
 *pré-lançamento* marcada. O app consulta `/releases/latest`, que **por definição
 do GitHub ignora pré-lançamentos** — então ninguém é avisado, e você instala o
-`.exe` do Release à mão para testar.
+`.exe` do Release à mão para testar. Da 1.2.0 em diante, quem marcou **"Versões
+de teste"** na tela inicial recebe o pré-lançamento pelo aviso, como uma versão
+normal.
 
 ### O CHANGELOG é obrigatório
 

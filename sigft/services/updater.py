@@ -40,6 +40,17 @@ instalado perguntou. Quem chama agora é `sigft/app/atualizacao.py`, na
 abertura da janela principal -- e há teste montando a janela de verdade
 (`tests/test_atualizacao_na_abertura.py`) para isso não voltar.
 
+═══ E o sexto: atualizar era reinstalar tudo (2026-10-07) ═══
+O instalador completo tem centenas de MB, e entre duas versões quase tudo é
+igual. Cada Release traz agora também um instalador PEQUENO por versão de
+origem, só com os arquivos que mudaram (`tools/gerar_atualizacao.py`), listado
+no `latest.json` (`atualizacoes`). `interpretar_release` escolhe o pequeno
+quando o `de` dele é a versão instalada; senão, o completo. O pequeno chega
+como `.bin` (o app 1.1.1 baixa "o primeiro `.exe`" e não pode pegá-lo) e vira
+`.exe` depois do SHA256. O canal de testes (opção, desligado) faz o app
+oferecer também pré-lançamentos. Ver
+`docs/superpowers/specs/2026-10-07-atualizacao-incremental-design.md`.
+
 ═══ Sobre o token ═══
 O repositório é privado, então a consulta exige autenticação. O token é
 embutido no build pelo workflow (nunca fica no Git). **Ofuscação não é
@@ -69,6 +80,11 @@ API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NOME}"
 
 # O manifesto publicado junto do instalador (versão, SHA256 e notas).
 ARQUIVO_MANIFESTO = "latest.json"
+
+# [2026-10-07] O canal de testes: ligado, o app oferece também pré-lançamentos.
+OPCAO_CANAL_TESTES = "atualizacao.canal_testes"
+# Quantos releases o canal de testes olha (os mais recentes primeiro).
+RELEASES_NO_CANAL_DE_TESTES = 20
 
 # Um HTML de login tem alguns KB; um instalador do SIG-FT tem centenas de MB.
 # O corte é conservador de propósito: ele só precisa separar "página de erro"
@@ -173,10 +189,20 @@ class Atualizacao:
     sha256: str             # `""` quando o release não publicou o hash
     url_pagina: str
     publicado_em: str = ""
+    # [2026-10-07] O instalador pequeno (só o que mudou desde a versão
+    # instalada), e o tamanho do completo, para a janela comparar.
+    incremental: bool = False
+    tamanho_completo: int = 0
+    # Veio pelo canal de testes.
+    prerelease: bool = False
 
     @property
     def tamanho_mb(self) -> float:
         return round(self.tamanho / (1024 * 1024), 1) if self.tamanho else 0.0
+
+    @property
+    def tamanho_completo_mb(self) -> float:
+        return round(self.tamanho_completo / (1024 * 1024), 1) if self.tamanho_completo else 0.0
 
 
 class SemToken(RuntimeError):
@@ -197,12 +223,33 @@ def _instalador(release: dict) -> dict | None:
                  if str(a.get("name", "")).lower().endswith(".exe")), None)
 
 
-def interpretar_release(release: dict, manifesto: dict | None = None) -> Atualizacao | None:
+def _pacote_pequeno(release: dict, manifesto: dict | None,
+                    versao_atual: str | None) -> tuple[dict, dict] | None:
+    """O instalador pequeno que serve para `versao_atual`: `(asset, entrada do
+    latest.json)`, ou `None`. Só vale com o SHA256 publicado e o arquivo
+    presente no Release -- na dúvida, o completo, que serve para todos."""
+    atual = str(versao_atual or "").strip().lstrip("vV")
+    if not atual or not manifesto:
+        return None
+    for entrada in manifesto.get("atualizacoes") or []:
+        if not isinstance(entrada, dict) or str(entrada.get("de", "")).lstrip("vV") != atual:
+            continue
+        asset = _asset(release, str(entrada.get("arquivo", "")))
+        if asset is not None and str(entrada.get("sha256", "")).strip():
+            return asset, entrada
+    return None
+
+
+def interpretar_release(release: dict, manifesto: dict | None = None,
+                        versao_atual: str | None = None) -> Atualizacao | None:
     """Monta a `Atualizacao` a partir do JSON do release. Função pura.
 
     O SHA256 vem, nesta ordem: do `latest.json` publicado junto; senão do campo
     `digest` que a própria API do GitHub devolve; senão fica vazio — e aí o
     download ainda acontece, mas com aviso de que não deu para conferir.
+
+    [2026-10-07] Com `versao_atual`, escolhe o instalador PEQUENO quando o
+    `latest.json` traz um feito a partir dela (ver `_pacote_pequeno`).
     """
     asset = _instalador(release)
     if asset is None:
@@ -217,19 +264,61 @@ def interpretar_release(release: dict, manifesto: dict | None = None) -> Atualiz
             sha = digest.split(":", 1)[1].strip().lower()
 
     notas = (manifesto or {}).get("notas") or release.get("body") or ""
-    return Atualizacao(
+    comum = dict(
         versao=str(release.get("tag_name", "")).lstrip("vV"),
         notas=str(notas).strip(),
+        url_pagina=str(release.get("html_url", "")),
+        publicado_em=str(release.get("published_at", "") or "")[:10],
+        prerelease=bool(release.get("prerelease")),
+    )
+    if (pequeno := _pacote_pequeno(release, manifesto, versao_atual)) is not None:
+        asset_pequeno, entrada = pequeno
+        return Atualizacao(
+            nome_arquivo=str(asset_pequeno.get("name", "")),
+            url_asset=str(asset_pequeno.get("url", "")),
+            tamanho=int(asset_pequeno.get("size") or entrada.get("tamanho") or 0),
+            sha256=str(entrada["sha256"]).strip().lower(),
+            incremental=True,
+            tamanho_completo=int(asset.get("size") or 0),
+            **comum,
+        )
+    return Atualizacao(
         nome_arquivo=str(asset.get("name", "")),
         url_asset=str(asset.get("url", "")),
         tamanho=int(asset.get("size") or 0),
         sha256=sha,
-        url_pagina=str(release.get("html_url", "")),
-        publicado_em=str(release.get("published_at", "") or "")[:10],
+        **comum,
     )
 
 
-def checar(versao_atual: str, *, log_cb: Log = _nada) -> Atualizacao | None:
+# ─────────────────────────── o canal de testes ──────────────────────────────
+
+def canal_testes_ligado(*, config_path=None) -> bool:
+    """`True` se a pessoa pediu para receber também pré-lançamentos. Desligado
+    por padrão -- e na dúvida (preferência ilegível), desligado."""
+    try:
+        from sigft.core import prefs
+
+        return bool(prefs.get_opcao(OPCAO_CANAL_TESTES, False, config_path=config_path))
+    except Exception:  # noqa: BLE001 -- preferência é conveniência
+        return False
+
+
+def ligar_canal_testes(ligado: bool, *, config_path=None) -> None:
+    from sigft.core import prefs
+
+    prefs.set_opcao(OPCAO_CANAL_TESTES, bool(ligado), config_path=config_path)
+
+
+def _mais_nova(releases) -> dict | None:
+    """O release de versão mais alta, pré-lançamento inclusive; rascunho não."""
+    validos = [r for r in (releases or []) if isinstance(r, dict) and not r.get("draft")
+               and str(r.get("tag_name", "")).strip()]
+    return max(validos, key=lambda r: versao_em_partes(r.get("tag_name")), default=None)
+
+
+def checar(versao_atual: str, *, canal_testes: bool | None = None,
+           log_cb: Log = _nada) -> Atualizacao | None:
     """A `Atualizacao` se houver versão mais nova; `None` se já está em dia.
 
     Levanta `SemToken` (build sem token, ou token recusado) ou
@@ -238,8 +327,12 @@ def checar(versao_atual: str, *, log_cb: Log = _nada) -> Atualizacao | None:
 
     Consulta `/releases/latest`, que **por definição do GitHub ignora
     pré-lançamentos**. É isso que permite publicar um `1.1.0-rc.1` para testar
-    sem que ninguém receba.
+    sem que ninguém receba. [2026-10-07] Com o canal de testes ligado
+    (`canal_testes`; `None` = a preferência salva), consulta `/releases` e fica
+    com a versão mais nova, pré-lançamento inclusive.
     """
+    if canal_testes is None:
+        canal_testes = canal_testes_ligado()
     if not token():
         raise SemToken(
             "Este build nao tem token de atualizacao embutido (build local, ou "
@@ -252,7 +345,9 @@ def checar(versao_atual: str, *, log_cb: Log = _nada) -> Atualizacao | None:
     # `status_ok` para virarem mensagem que diz o que fazer, em vez do
     # "nenhuma rota funcionou" genérico — que mandaria a pessoa investigar a
     # rede quando o problema é o token.
-    sessao, resp = rede.abrir(f"{API}/releases/latest", headers=_cabecalhos(),
+    endereco = (f"{API}/releases?per_page={RELEASES_NO_CANAL_DE_TESTES}" if canal_testes
+                else f"{API}/releases/latest")
+    sessao, resp = rede.abrir(endereco, headers=_cabecalhos(),
                               timeout=20, log_cb=log_cb,
                               status_ok=(200, 401, 403, 404))
     try:
@@ -271,6 +366,8 @@ def checar(versao_atual: str, *, log_cb: Log = _nada) -> Atualizacao | None:
                        "ao repositorio).")
                 return None
             release = resp.json()
+            if canal_testes:
+                release = _mais_nova(release if isinstance(release, list) else [release]) or {}
         finally:
             resp.close()
 
@@ -299,13 +396,15 @@ def checar(versao_atual: str, *, log_cb: Log = _nada) -> Atualizacao | None:
     finally:
         sessao.close()
 
-    info = interpretar_release(release, manifesto)
+    info = interpretar_release(release, manifesto, versao_atual)
     if info is None:
         log_cb(f"O release v{versao_remota} existe, mas nao tem instalador (.exe) "
                f"publicado. Avise quem cuida do build.")
         return None
 
-    log_cb(f"Nova versao disponivel: v{info.versao} ({info.tamanho_mb} MB).")
+    log_cb(f"Nova versao disponivel: v{info.versao} ({info.tamanho_mb} MB"
+           + (f", so o que mudou desde a v{versao_atual}" if info.incremental else "")
+           + (", versao de teste" if info.prerelease else "") + ").")
     return info
 
 
@@ -324,7 +423,12 @@ def baixar(info: Atualizacao, *, progresso_cb: Progresso = _nada,
     Usa o **endpoint de API do asset**, nunca o `browser_download_url`: em
     repositório privado só ele entrega o binário — ver o item 1 do cabeçalho.
     """
-    destino = pasta_download() / info.nome_arquivo
+    nome = info.nome_arquivo
+    # O instalador pequeno chega como `.bin` (o app 1.1.1 baixa "o primeiro
+    # `.exe` do Release" e não pode pegá-lo); é um instalador como o outro.
+    if nome.lower().endswith(".bin"):
+        nome = nome[:-len(".bin")] + ".exe"
+    destino = pasta_download() / nome
     parcial = destino.with_suffix(destino.suffix + ".part")
     log_cb(f"Baixando {info.nome_arquivo} ({info.tamanho_mb} MB)...")
 

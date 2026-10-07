@@ -132,11 +132,21 @@ def _erro_curto(erro: BaseException, limite: int = 300) -> str:
 
 
 def resumo_da_versao(info: updater.Atualizacao, versao_atual: str) -> str:
-    """A linha de baixo do título: onde a pessoa está e o que vai receber."""
+    """A linha de baixo do título: onde a pessoa está e o que vai receber.
+
+    [2026-10-07] Com o instalador pequeno, o tamanho é o DELE, comparado com o
+    do completo: é o ganho que a pessoa precisa ver."""
     partes = [f"Você está na v{versao_atual}."]
     detalhe = f"A v{info.versao}"
     if info.publicado_em:
         detalhe += f" saiu em {_data_br(info.publicado_em)}"
+    if info.incremental and info.tamanho:
+        partes.append(detalhe + ".")
+        pequeno = f"A atualização tem {_mb(info.tamanho_mb)} MB: só o que mudou"
+        if info.tamanho_completo:
+            pequeno += f" (o instalador completo tem {_mb(info.tamanho_completo_mb)} MB)"
+        partes.append(pequeno + ".")
+        return " ".join(partes)
     if info.tamanho:
         detalhe += f" e tem {_mb(info.tamanho_mb)} MB"
     partes.append(detalhe + ".")
@@ -310,8 +320,10 @@ class JanelaAtualizacao(ctk.CTkToplevel):
             self, width=530, progress_color=theme.COLORS["accent"])
         self.barra.set(0)
 
+        # [2026-10-07] Pelo canal de testes chega pré-lançamento: o título diz.
+        titulo = "Nova versão de teste disponível" if info.prerelease else "Nova versão disponível"
         ctk.CTkLabel(
-            self, text=f"Nova versão disponível: v{info.versao}",
+            self, text=f"{titulo}: v{info.versao}",
             font=theme.FONTE_SECAO,
         ).pack(pady=(20, 4), padx=20, anchor="w")
         self.rotulo_resumo = ctk.CTkLabel(

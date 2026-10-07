@@ -17,6 +17,7 @@ from sigft.app.theme import COLORS, COR_CARTAO
 from sigft.core import plataforma
 from sigft.core.llm import catalogo, selecao
 from sigft.core.llm import usage as llm_usage
+from sigft.services import updater
 # [2026-09-03] Janelas que a Home abre, e o desenho do mural.
 from sigft.app.widgets.painel_janela import JanelaPainel
 from sigft.app.widgets.mural import montar as montar_mural
@@ -26,6 +27,9 @@ import customtkinter as ctk
 # O botão da barra que procura versão nova. Constante porque dois lugares
 # precisam concordar: quem cria o botão e quem o devolve ao normal.
 TEXTO_BOTAO_ATUALIZACOES = "\U0001F504  Atualizações"
+# [2026-10-07] O canal de testes: marcada, a atualização oferece também
+# pré-lançamentos. Ver services/updater.py.
+TEXTO_CANAL_TESTES = "Versões de teste"
 
 
 # =============================================================================
@@ -141,6 +145,26 @@ class HomeView(ctk.CTkScrollableFrame):
             height=40, font=("Roboto", 13, "bold"),
         )
         self.btn_atualizacoes.pack(side="left", padx=(0, 10))
+
+        # [2026-10-07] O canal de testes, desmarcado por padrão: marcado, o
+        # aviso de atualização oferece também pré-lançamentos. É como o Luan
+        # testa a atualização pequena antes de ela chegar a todo mundo.
+        try:
+            ligado = updater.canal_testes_ligado()
+        except Exception:  # noqa: BLE001 -- preferência é conveniência
+            ligado = False
+        self.var_canal_testes = ctk.BooleanVar(value=ligado)
+        self.caixa_canal_testes = ctk.CTkCheckBox(
+            barra, text=TEXTO_CANAL_TESTES, variable=self.var_canal_testes,
+            command=self._lembrar_canal_testes, font=("Roboto", 12),
+        )
+        self.caixa_canal_testes.pack(side="left", padx=(0, 10))
+
+    def _lembrar_canal_testes(self):
+        try:
+            updater.ligar_canal_testes(bool(self.var_canal_testes.get()))
+        except Exception:  # noqa: BLE001 -- lembrar não pode atrapalhar o clique
+            pass
 
     def procurar_atualizacoes(self):
         """Pergunta ao GitHub agora e SEMPRE responde (ver `app/atualizacao.py`)."""
