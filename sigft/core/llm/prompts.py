@@ -1300,3 +1300,43 @@ Responda APENAS com JSON, sem ```json e sem texto antes ou depois, no formato:
 
 A lista deve ter exatamente {len(textos)} itens, na mesma ordem das linhas.
 """
+
+
+# =============================================================================
+# 9. services.cria_fichas.GeminiCategorizer.interpretar_lote
+#    tarefa "interpretar_material"  (2026-10-08)
+# =============================================================================
+def montar_interpretar_material(itens_texto):
+    """Passada 1 da escolha de PDM: o que cada material É, nas palavras de um
+    catálogo, antes de qualquer busca.
+
+    Existe porque a busca do catálogo é por PALAVRA, e a descrição do
+    fornecedor muitas vezes não traz a palavra do PDM: "DISPLAY CRISTAL
+    LIQUIDO" é um INDICADOR DIGITAL. Esta passada não recebe o catálogo -- é o
+    que a torna barata --, e por isso não escolhe código: o que ela escreve
+    vira a consulta da busca (`CatalogoPDM.candidatos_em_duas_frentes`).
+
+    Spec: docs/superpowers/specs/2026-10-08-escolha-de-pdm-em-duas-passadas-design.md §4.1.
+    """
+    return f"""Você é um especialista em catalogação de materiais sobressalentes de usinas hidrelétricas.
+Para cada item abaixo, diga o que o material É, com as palavras que um catálogo de materiais usaria. Você não vai escolher código nenhum: depois, uma busca no catálogo da Itaipu procura exatamente as palavras que você escrever aqui.
+
+Para cada item, devolva:
+- "e": o nome genérico do material, como um catálogo o chamaria: o substantivo da peça, seguido do que a qualifica, em maiúsculas, sem marca, sem modelo e sem medida. Ex.: "INDICADOR DIGITAL", "PLAQUETA INDICADORA", "VALVULA ESFERA", "SWITCH REDE".
+- "sinonimos": até 4 outros nomes pelos quais o mesmo material é conhecido. Ex.: para um display de cristal líquido, "MOSTRADOR", "DISPLAY LCD", "VISOR DIGITAL".
+- "serve": o equipamento a que a peça se destina, quando a descrição diz ("PARA VALVULA DUPLOMATIC" vira "VALVULA DUPLOMATIC"); string vazia quando não diz.
+
+A regra mais importante: "e" é o que a peça É, nunca o equipamento que ela serve. Em "PLAQUETA EM ALUMINIO PARA VALVULA DUPLOMATIC", a peça é uma plaqueta; a válvula vai em "serve".
+
+Quando a descrição não nomeia o material (ex.: "IE4010 w/ 12GE SFP uplink ports"), use o que você sabe sobre o modelo para dizer o que ele é ("SWITCH REDE").
+
+### ITENS
+{itens_texto}
+
+### RESPOSTA
+Responda APENAS com a lista JSON, um objeto por item, sem texto antes ou depois:
+[
+  {{"item": 1, "e": "...", "sinonimos": ["...", "..."], "serve": "..."}}
+]
+O valor de "item" é o número do cabeçalho "### ITEM N" daquele item.
+"""
