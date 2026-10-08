@@ -89,6 +89,22 @@ ganhou quatro linhas. Nenhuma outra parte foi tocada. O CONTEÚDO da regra nova
 tests/test_prompt_tech_specs_lista.py, e a garantia em código, que não depende
 de o modelo obedecer, em tests/test_tech_specs_lista_uma_opcao.py.
 
+⚠️ QUINTA REGERAÇÃO -- `cria_fichas_prompt`, em 2026-10-08, com o aval do
+usuário dado na aprovação da spec
+docs/superpowers/specs/2026-10-08-escolha-de-pdm-em-duas-passadas-design.md
+(§6). O prompt de `categorizar_pdm` foi reescrito para as duas passadas.
+
+O diff foi conferido linha a linha antes de gravar: mudaram a Regra B (agora
+subordinada à A), os passos 1, 2 e 5 a 7 do PROCESSO (a "Interpretação", as
+características que confirmam, o NENHUM só para PDM novo), a regra de lista
+fechada (vale também para as alternativas), a ORDEM das seções (a lista e os
+exemplos vêm antes do manual, para o prefixo ser igual em todos os blocos),
+os exemplos do PATCH PANEL e do ACCESS POINT (saíram) e o contrato de JSON
+(4 campos novos, os 7 de antes intactos). O CONTEÚDO -- o que a fixture
+regerada não prova sobre si mesma -- continua checado em
+tests/test_prompt_categorizar_pdm.py. A fixture nova da passada 1,
+`interpretar_material_prompt`, nasceu com o mesmo aval.
+
 Técnica de captura (idêntica a tests/test_llm_backend_migration.py e
 tests/test_llm_autospec_migration.py, já usada nos CPs 3.1-3.4): cada
 consumidor é construído normalmente e `instancia._llm` é substituído por um

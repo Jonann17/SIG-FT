@@ -158,7 +158,119 @@ REGRAS DE VALIDAÇÃO:
 # 2. cria_fichas_no_pmib_v1_backend.GeminiCategorizer.processar_lote
 #    tarefa "categorizar_pdm"
 # =============================================================================
-def montar_categorizar_pdm(instrucoes, lista_pdms, itens_texto):
+# Os exemplos do `categorizar_pdm`, por CÓDIGO (2026-10-08).
+#
+# O título que vai no exemplo sai do catálogo carregado na hora (ver
+# `montar_exemplos_categorizar_pdm`): um exemplo com título errado ensina o
+# formato de fabricar título, e foi exatamente o defeito que a reescrita de
+# 2026-09-22 corrigiu. `pdm_conferido` é o título conferido no Master naquela
+# data, e só vale quando não há catálogo (os testes de conteúdo). Os dois
+# exemplos sem `pdm_conferido` vêm dos casos reais do usuário e só entram com
+# o catálogo -- o título exato deles nunca foi visto no repositório.
+EXEMPLOS_CATEGORIZAR_PDM = [
+    {
+        "rotulo": "Mecânico -- o genérico vence quando nada confirma o específico",
+        "codigo": "PDM.4320.007",
+        "pdm_conferido": "PDM.4320.007 - BOMBA",
+        "descricao_original": "Bomba KSB 123-ABC",
+        "descricao_breve": "BOMBA - KSB 123-ABC",
+        "por_que": ("a descrição não diz se é centrífuga, hidráulica ou de vácuo.\n"
+                    "  Escolher `BOMBA HIDRAULICA` seria afirmar algo que ninguém disse."),
+    },
+    {
+        "rotulo": "Câmera -- a nota da classe vence a semelhança de nome",
+        "codigo": "PDM.5836.000",
+        "pdm_conferido": "PDM.5836.000 - CAMERA VIDEO",
+        "descricao_original": "CAMERAS DOME FIZ AXIS P1375-E",
+        "descricao_breve": "CAMERA - P1375-E",
+        "por_que": ("é câmera de rede/vídeo. A classe 6720 é de câmeras FOTOGRÁFICAS e\n"
+                    "  a 6710 exclui câmeras de vídeo remetendo à 5836."),
+    },
+    {
+        "rotulo": "Rede -- o modificador desempata",
+        "codigo": "PDM.5895.016",
+        "pdm_conferido": "PDM.5895.016 - VOIP GATEWAY",
+        "descricao_original": "Cisco Analog Voice Gateway VG420 - 144FXS",
+        "descricao_breve": "VOICE GATEWAY - VG420-144FXS",
+        "por_que": ("existe também `PDM.5895.017 - GATEWAY`, mais genérico; aqui a\n"
+                    "  descrição CONFIRMA que é de voz."),
+    },
+    {
+        "rotulo": "Rede -- a descrição não nomeia o equipamento",
+        "codigo": "PDM.5895.003",
+        "pdm_conferido": "PDM.5895.003 - SWITCH",
+        "descricao_original": "IE4010 w/ 12GE SFP, 12GE Copper PoE+ & 4GE SFP uplink ports",
+        "descricao_breve": "SWITCH - IE-4010-16S12P",
+        "por_que": ("nenhuma palavra da descrição diz \"switch\". As portas de uplink e o\n"
+                    "  PoE+ dizem. É o caso em que a pré-seleção falha e a lista completa resolve."),
+    },
+    {
+        "rotulo": "Peça descrita pela aplicação -- a Regra A vence a marca",
+        "codigo": "PDM.5930.012",
+        "pdm_conferido": None,
+        "descricao_original": "PLAQUETA EM ALUMINIO PARA VALVULA DUPLOMATIC",
+        "descricao_breve": "PLAQUETA - VALVULA DUPLOMATIC",
+        "por_que": ("a peça é a plaqueta; \"VALVULA DUPLOMATIC\" diz a que ela serve. A\n"
+                    "  Duplomatic faz válvulas, mas não fez esta peça: a marca aqui é da aplicação."),
+    },
+    {
+        "rotulo": "Sinônimo -- a característica confirma",
+        "codigo": "PDM.6685.017",
+        "pdm_conferido": None,
+        "descricao_original": "DISPLAY CRISTAL LIQUIDO 20X2 BACKLIGHT VERDE",
+        "descricao_breve": "DISPLAY LCD 20X2",
+        "por_que": ("nenhuma palavra do título aparece na descrição, mas um display de\n"
+                    "  cristal líquido é um indicador digital, e o PDM tem a característica\n"
+                    "  CARACTERISTICAS DO DISPLAY, que confirma."),
+    },
+    {
+        "rotulo": "Cabo",
+        "codigo": "PDM.6145.011",
+        "pdm_conferido": "PDM.6145.011 - CABO TRANSMISSAO DADOS",
+        "descricao_original": "5 ft LOW LOSS CABLE ASSEMBLY W/N CONNECTORS",
+        "descricao_breve": "CABO ACCESS POINT - AIR-CAB005LL-N",
+        "por_que": "",
+    },
+    {
+        "rotulo": "TI",
+        "codigo": "PDM.7010.018",
+        "pdm_conferido": "PDM.7010.018 - SERVIDOR",
+        "descricao_original": "Servidor Dell PowerEdge C6600",
+        "descricao_breve": "SERVIDOR - POWEREDGE C6600",
+        "por_que": "",
+    },
+]
+
+
+def montar_exemplos_categorizar_pdm(pdm_por_codigo=None):
+    """O bloco de exemplos do `categorizar_pdm`.
+
+    `pdm_por_codigo(codigo) -> str | None` devolve o PDM COMPLETO do catálogo
+    carregado ("PDM.4320.007 - BOMBA"), ou `None` se o código não está lá --
+    e aí o exemplo sai. Sem ele (testes, catálogo dublado), valem os
+    `pdm_conferido`, e os exemplos sem título conferido ficam de fora.
+    A numeração acompanha os exemplos que entraram, sem buraco."""
+    blocos = []
+    for exemplo in EXEMPLOS_CATEGORIZAR_PDM:
+        if pdm_por_codigo is not None:
+            completo = pdm_por_codigo(exemplo["codigo"])
+        else:
+            completo = exemplo["pdm_conferido"]
+        if not completo:
+            continue
+        linhas = [
+            f"Exemplo {len(blocos) + 1} ({exemplo['rotulo']}):",
+            f"- Descrição original: {exemplo['descricao_original']}",
+            f"- PDM: {completo}",
+            f"- Descrição breve: {exemplo['descricao_breve']}",
+        ]
+        if exemplo["por_que"]:
+            linhas.append(f"- Por quê: {exemplo['por_que']}")
+        blocos.append("\n".join(linhas))
+    return "\n\n".join(blocos)
+
+
+def montar_categorizar_pdm(instrucoes, lista_pdms, itens_texto, exemplos_texto=None):
     """Prompt de classificação em lote de itens em PDMs.
 
     - `instrucoes`: o manual de regras (classes FSC com INCLUI / NÃO INCLUI /
@@ -212,7 +324,20 @@ def montar_categorizar_pdm(instrucoes, lista_pdms, itens_texto):
 
     A indentação de 8 espaços por linha, herdada do método original, foi
     removida: ela era artefato do f-string embutido, não escolha.
+
+    REESCRITO EM 2026-10-08 -- duas passadas
+    ------------------------------------------------------------------------
+    Spec: docs/superpowers/specs/2026-10-08-escolha-de-pdm-em-duas-passadas-design.md.
+    O item traz a "Interpretação" da passada 1; a resposta ganha confiança,
+    alternativas, justificativa e as características que confirmam; NENHUM
+    fica só para "PDM novo"; a Regra B cede à A quando a marca é da
+    aplicação; a lista e os exemplos vêm ANTES do manual, para o prefixo ser
+    igual em todos os blocos (cache); e os exemplos saem por código
+    (`montar_exemplos_categorizar_pdm`). Os 7 campos de antes continuam
+    iguais -- os novos são só acréscimo.
     """
+    if exemplos_texto is None:
+        exemplos_texto = montar_exemplos_categorizar_pdm()
     return f"""
 Você é um especialista em catalogação de materiais (PDM) altamente preciso.
 Sua tarefa é classificar uma *lista de itens*, escolhendo para cada um o PDM
@@ -246,42 +371,47 @@ As características confirmam quando há dúvida: a peça estrutural pede
 QUANTIDADE DE FUROS, DISTANCIA ENTRE FACES, TIPO DE FACE; um acoplamento de
 verdade pede TORQUE NOMINAL, ROTACOES MAXIMA, DESALINHAMENTO ANGULAR.
 
-**REGRA B -- o fabricante diz a família.**
-O que a empresa fabrica restringe a classe FSC antes de qualquer outra coisa.
-NETZSCH faz bombas: uma peça dela dificilmente sai da família de bombas. SKF
-faz rolamento, AXIS faz câmera de rede, Cisco faz equipamento de rede. Use o
-campo Marca/Modelo para escolher a FAMÍLIA, e a descrição para escolher o PDM
-dentro dela.
+**REGRA B -- o fabricante DA PEÇA sugere a família (a Regra A vence).**
+Quando a marca é de quem fabricou a própria peça, ela restringe a classe FSC:
+NETZSCH faz bombas, SKF faz rolamento, AXIS faz câmera de rede, Cisco faz
+equipamento de rede. Mas a marca muitas vezes nomeia o equipamento que a peça
+SERVE, e não quem a fez: em "PLAQUETA EM ALUMINIO PARA VALVULA DUPLOMATIC", a
+Duplomatic faz válvulas e a peça é uma plaqueta, não uma válvula. Marca que vem
+depois de "PARA" ou "P/" descreve a aplicação; aí vale a Regra A.
 
 ### PROCESSO (para cada item)
-1. Leia o item (Descrição, Marca/Modelo, Código do Material, Unidade).
-   Aplique as regras A e B antes de olhar os candidatos.
-2. Comece pelos "CANDIDATOS" daquele item: eles foram pré-selecionados por
-   semelhança de texto e vêm com a classe e as características de cada PDM.
-   As características dizem o que aquele PDM descreve -- é o que separa
-   irmãos parecidos (VALVULA ESFERA tem TIPO DE PASSAGEM e NUMERO DE VIAS;
-   VALVULA GAVETA tem MATERIAL DA CUNHA).
+1. Leia o item (Descrição, Marca/Modelo, Código do Material, Unidade) e a
+   "Interpretação", quando houver: é o que uma leitura anterior do mesmo item
+   disse que o material É, com sinônimos e a que ele serve. Aplique as regras
+   A e B antes de olhar os candidatos.
+2. Comece pelos "CANDIDATOS" daquele item. Eles vêm de duas buscas: uma pela
+   interpretação e outra pelas palavras da descrição, e trazem a classe e as
+   características de cada PDM. As características dizem o que aquele PDM
+   descreve -- é o que separa irmãos parecidos (VALVULA ESFERA tem TIPO DE
+   PASSAGEM e NUMERO DE VIAS; VALVULA GAVETA tem MATERIAL DA CUNHA).
 3. Confira a escolha contra o "MANUAL DE REGRAS" da classe (o INCLUI e o
    NÃO INCLUI de uma classe vencem a semelhança de nome).
 4. Se nenhum candidato servir, procure na "LISTA DE PDMS POR CLASSE". Os
    candidatos são uma ajuda, não um limite: quando a descrição não nomeia o
    equipamento (ex.: "IE4010 w/ 12GE SFP uplink ports", que é um switch), a
    pré-seleção não tem como acertar e a lista completa é o caminho.
-5. Se, depois disso, nenhum PDM do catálogo descrever o material, responda
-   "NENHUM". "NENHUM" é uma resposta correta e esperada -- melhor do que o
-   PDM menos ruim.
+5. Confirme pelas características: um PDM serve quando as características
+   dele fazem sentido para o material. Liste em 'caracteristicas_que_confirmam'
+   as que a descrição confirma.
+6. Dê sempre o seu melhor palpite, com a confiança honesta. Um palpite com
+   confiança BAIXA ajuda quem revisa, porque põe a pessoa na família certa;
+   "NENHUM" obriga a procurar à mão entre todos os PDMs do catálogo.
+7. Responda "NENHUM" só quando nenhum PDM do catálogo é sequer da família do
+   material: é o caso em que um PDM novo precisa ser criado.
 
 ### REGRA DE LISTA FECHADA (a mais importante)
-O valor de 'pdm_escolhido' DEVE ser, caractere por caractere, uma string que
-aparece **literalmente** na "LISTA DE PDMS POR CLASSE" ou nos "CANDIDATOS"
-do item -- ou então "NENHUM". Não invente código, não invente título, não
-monte um código novo a partir de dois que você viu, e não conserte o que
-achar que está escrito errado. Se o PDM que você quer não está na lista, ele
-não existe.
+O valor de 'pdm_escolhido', e de cada PDM em 'alternativas', DEVE ser,
+caractere por caractere, uma string que aparece **literalmente** na "LISTA DE
+PDMS POR CLASSE" ou nos "CANDIDATOS" do item -- ou então "NENHUM". Não invente
+código, não invente título, não monte um código novo a partir de dois que você
+viu, e não conserte o que achar que está escrito errado. Se o PDM que você quer
+não está na lista, ele não existe.
 
----
-### MANUAL DE REGRAS (CLASSES FSC QUE TÊM PDM)
-{instrucoes}
 ---
 ### LISTA DE PDMS POR CLASSE (ESCOLHA UM DESTES)
 {lista_pdms}
@@ -290,54 +420,11 @@ não existe.
 (Guias de lógica. Todos os PDMs citados aqui existem no catálogo, mas a sua
 escolha tem que sair da lista acima, não daqui.)
 
-Exemplo 1 (Mecânico -- o genérico vence quando nada confirma o específico):
-- Descrição original: Bomba KSB 123-ABC
-- PDM: PDM.4320.007 - BOMBA
-- Descrição breve: BOMBA - KSB 123-ABC
-- Por quê: a descrição não diz se é centrífuga, hidráulica ou de vácuo.
-  Escolher `BOMBA HIDRAULICA` seria afirmar algo que ninguém disse.
+{exemplos_texto}
 
-Exemplo 2 (Câmera -- a nota da classe vence a semelhança de nome):
-- Descrição original: CAMERAS DOME FIZ AXIS P1375-E
-- PDM: PDM.5836.000 - CAMERA VIDEO
-- Descrição breve: CAMERA - P1375-E
-- Por quê: é câmera de rede/vídeo. A classe 6720 é de câmeras FOTOGRÁFICAS e
-  a 6710 exclui câmeras de vídeo remetendo à 5836.
-
-Exemplo 3 (Rede -- o modificador desempata):
-- Descrição original: Cisco Analog Voice Gateway VG420 - 144FXS
-- PDM: PDM.5895.016 - VOIP GATEWAY
-- Descrição breve: VOICE GATEWAY - VG420-144FXS
-- Por quê: existe também `PDM.5895.017 - GATEWAY`, mais genérico; aqui a
-  descrição CONFIRMA que é de voz.
-
-Exemplo 4 (Rede -- a descrição não nomeia o equipamento):
-- Descrição original: IE4010 w/ 12GE SFP, 12GE Copper PoE+ & 4GE SFP uplink ports
-- PDM: PDM.5895.003 - SWITCH
-- Descrição breve: SWITCH - IE-4010-16S12P
-- Por quê: nenhuma palavra da descrição diz "switch". As portas de uplink e o
-  PoE+ dizem. É o caso em que a pré-seleção falha e a lista completa resolve.
-
-Exemplo 5 (Cabo):
-- Descrição original: 5 ft LOW LOSS CABLE ASSEMBLY W/N CONNECTORS
-- PDM: PDM.6145.011 - CABO TRANSMISSAO DADOS
-- Descrição breve: CABO ACCESS POINT - AIR-CAB005LL-N
-
-Exemplo 6 (Rede):
-- Descrição original: PATCH PANEL DESCARREGADO 24P BLINDADO - DATAWAVE READY
-- PDM: PDM.5895.006 - PATCH PANEL
-- Descrição breve: PATCH PANEL 24P - DATAWAVE READY
-
-Exemplo 7 (TI):
-- Descrição original: Servidor Dell PowerEdge C6600
-- PDM: PDM.7010.018 - SERVIDOR
-- Descrição breve: SERVIDOR - POWEREDGE C6600
-
-Exemplo 8 (Rede):
-- Descrição original: Wi-Fi 6 Outdoor AP, External Ant, -ROW Regulatory Domain
-- PDM: PDM.5895.015 - ACCESS POINT
-- Descrição breve: ACCESS POINT - C9124AXE-ROW
-
+---
+### MANUAL DE REGRAS (CLASSES FSC QUE TÊM PDM)
+{instrucoes}
 ---
 ### ITENS PARA ANALISAR (EM LOTE):
 {itens_texto}
@@ -351,6 +438,10 @@ Formato da Resposta (Lista de JSON):
 {{
     "item_processado": 1,
     "pdm_escolhido": "...",
+    "confianca": "ALTA" | "MEDIA" | "BAIXA",
+    "alternativas": [{{"pdm": "...", "motivo": "..."}}],
+    "justificativa": "...",
+    "caracteristicas_que_confirmam": ["..."],
     "descricao_curta": "...",
     "origem": "Importado" | "Nacional",
     "tipo de fabricação": "Catálogo" | "Especial",
@@ -360,6 +451,10 @@ Formato da Resposta (Lista de JSON):
 {{
     "item_processado": 2,
     "pdm_escolhido": "...",
+    "confianca": "...",
+    "alternativas": [],
+    "justificativa": "...",
+    "caracteristicas_que_confirmam": [],
     "descricao_curta": "...",
     "origem": "...",
     "tipo de fabricação": "...",
@@ -375,12 +470,24 @@ Regras para o JSON (para cada item):
    mesmo os que você classificar como "NENHUM".
 2. 'pdm_escolhido': o PDM COMPLETO, copiado literalmente da lista
    (ex: "PDM.1650.001 - ACUMULADOR"), ou "NENHUM".
-3. 'descricao_curta': uma descrição de até 40 caracteres, sem acentuação.
-4. 'origem': 'Importado' ou 'Nacional'.
-5. 'tipo de fabricação': 'Catálogo' ou 'Especial'.
-6. 'tipo': 'Reparável' ou 'Não Reparável'.
-7. 'unidade': 'Unidade', 'Peça', 'Conjunto', 'metro - (m)' ou 'litro - (l)'.
-   Se inconclusivo ou "NÃO ESPECIFICADA", use "Unidade".
+3. 'confianca': "ALTA" quando a descrição (ou a interpretação) nomeia o
+   material e as características do PDM confirmam; "MEDIA" quando a família
+   está certa, mas a descrição não decide entre PDMs parecidos; "BAIXA" quando
+   é o mais próximo que existe, mas pode haver PDM melhor. Com "NENHUM", use "".
+4. 'alternativas': até 2 outros PDMs plausíveis, do mais para o menos provável,
+   cada um copiado literalmente da lista e com o motivo em uma frase. Lista
+   vazia se não houver outro plausível. Mesmo com "NENHUM", liste aqui os mais
+   próximos, se houver.
+5. 'justificativa': uma frase dizendo por que este PDM.
+6. 'caracteristicas_que_confirmam': nomes de características do PDM escolhido,
+   como aparecem nos CANDIDATOS, que a descrição confirma. Lista vazia se
+   nenhuma.
+7. 'descricao_curta': uma descrição de até 40 caracteres, sem acentuação.
+8. 'origem': 'Importado' ou 'Nacional'.
+9. 'tipo de fabricação': 'Catálogo' ou 'Especial'.
+10. 'tipo': 'Reparável' ou 'Não Reparável'.
+11. 'unidade': 'Unidade', 'Peça', 'Conjunto', 'metro - (m)' ou 'litro - (l)'.
+    Se inconclusivo ou "NÃO ESPECIFICADA", use "Unidade".
 
 Responda APENAS com a lista JSON. Não inclua texto antes ou depois.
 """

@@ -195,3 +195,86 @@ def test_ensina_que_o_fabricante_restringe_a_familia():
 
     assert "NETZSCH" in texto
     assert "fabricante" in texto.lower()
+
+
+# =============================================================================
+# 8. Duas passadas (2026-10-08)
+#    Spec: docs/superpowers/specs/2026-10-08-escolha-de-pdm-em-duas-passadas-design.md §4.3
+# =============================================================================
+def test_regra_b_cede_a_regra_a_quando_a_marca_e_da_aplicacao():
+    """Caso real: PLAQUETA EM ALUMINIO PARA VALVULA DUPLOMATIC respondeu NENHUM
+    com o PDM certo em 1º lugar entre os candidatos."""
+    texto = _prompt()
+    assert "a Regra A vence" in texto
+    assert "PLAQUETA EM ALUMINIO PARA VALVULA DUPLOMATIC" in texto
+    assert "antes de qualquer outra coisa" not in texto
+
+
+def test_nenhum_e_so_para_pdm_novo():
+    texto = _prompt()
+    assert "PDM novo precisa ser criado" in texto
+    assert "melhor do que o PDM menos ruim" not in texto
+
+
+def test_pede_confianca_alternativas_justificativa_e_caracteristicas():
+    texto = _prompt()
+    for chave in ("confianca", "alternativas", "justificativa",
+                  "caracteristicas_que_confirmam"):
+        assert f'"{chave}"' in texto, chave
+    for nivel in ('"ALTA"', '"MEDIA"', '"BAIXA"'):
+        assert nivel in texto, nivel
+
+
+def test_a_lista_fechada_vale_tambem_para_as_alternativas():
+    assert "cada PDM em 'alternativas'" in _prompt()
+
+
+def test_explica_a_interpretacao_do_item():
+    assert '"Interpretação"' in _prompt()
+
+
+def test_o_que_vem_antes_do_manual_e_igual_em_todos_os_blocos():
+    """Cache de prefixo: a parte constante (regras, lista, exemplos) vem antes
+    da que muda a cada bloco (manual podado, itens)."""
+    p1 = prompts.montar_categorizar_pdm("MANUAL DO BLOCO 1", "<<<LISTA>>>", "ITENS 1")
+    p2 = prompts.montar_categorizar_pdm("MANUAL DO BLOCO 2", "<<<LISTA>>>", "ITENS 2")
+    corte = "### MANUAL DE REGRAS"
+    assert p1[:p1.index(corte)] == p2[:p2.index(corte)]
+    assert p1.index("<<<LISTA>>>") < p1.index(corte)
+
+
+def test_exemplos_sem_catalogo_saem_com_o_titulo_conferido():
+    texto = prompts.montar_exemplos_categorizar_pdm()
+    assert "- PDM: PDM.7010.018 - SERVIDOR" in texto
+    # sem título conferido no Master: só entram com o catálogo carregado
+    assert "PDM.5930.012" not in texto
+    assert "PDM.6685.017" not in texto
+
+
+def test_exemplos_com_catalogo_usam_o_titulo_do_catalogo():
+    completos = {
+        "PDM.7010.018": "PDM.7010.018 - SERVIDOR RACK",
+        "PDM.5930.012": "PDM.5930.012 - PLAQUETA INDICADORA",
+        "PDM.6685.017": "PDM.6685.017 - INDICADOR DIGITAL",
+    }
+    texto = prompts.montar_exemplos_categorizar_pdm(completos.get)
+    assert "- PDM: PDM.7010.018 - SERVIDOR RACK" in texto
+    assert "- PDM: PDM.5930.012 - PLAQUETA INDICADORA" in texto
+    assert "- PDM: PDM.6685.017 - INDICADOR DIGITAL" in texto
+
+
+def test_exemplo_cujo_codigo_nao_esta_no_catalogo_sai():
+    assert prompts.montar_exemplos_categorizar_pdm(lambda _codigo: None).strip() == ""
+
+
+def test_exemplos_sao_numerados_sem_buraco():
+    texto = prompts.montar_exemplos_categorizar_pdm(
+        {"PDM.6685.017": "PDM.6685.017 - X"}.get)
+    assert "Exemplo 1 (" in texto
+    assert "Exemplo 2 (" not in texto
+
+
+def test_sairam_os_exemplos_de_patch_panel_e_access_point():
+    texto = _prompt()
+    assert "PDM.5895.006" not in texto  # PATCH PANEL
+    assert "PDM.5895.015" not in texto  # ACCESS POINT
