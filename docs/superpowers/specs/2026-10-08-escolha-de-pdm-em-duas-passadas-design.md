@@ -1,8 +1,9 @@
 # Cria Fichas: a escolha de PDM em duas passadas
 
 **Data:** 2026-10-08 · **Frente:** Luan (Cria Fichas)
-**Status:** desenho aprovado em conversa até a arquitetura (§4.1–4.3); falhas, revisão,
-calibração e testes (§4.4–§7) aguardando a revisão desta spec.
+**Status:** aprovada pelo usuário em 2026-10-08 ("pode seguir"). Plano de implementação:
+`docs/superpowers/plans/2026-10-08-escolha-de-pdm-em-duas-passadas.md` (a seção "Ajustes em
+relação à spec" de lá lista o que o código refinou; o texto abaixo já está alinhado).
 
 > *"Ele está diversas vezes não apontando para nenhum PDM... Está vindo como Nenhum.... Mesmo
 > quando eu sei que tem PDMs bons para escolher."*
@@ -95,8 +96,9 @@ lote (ex.: 63 itens)
   `e` é o que a peça É, no vocabulário de catálogo (substantivo genérico, sem marca);
   `sinonimos`, até 4; `serve`, o equipamento a que ela se destina, quando a descrição diz.
 - **Uma chamada para o lote** (fatias de 60 acima disso). Serviço:
-  `cria_fichas.interpretar_lote(df, llm) -> dict[int, Interpretacao]`, que casa por número
-  (mesma régua de `alinhar_resposta`) e descarta entrada sem `e` utilizável.
+  `GeminiCategorizer.interpretar_lote(df)`, que devolve uma `Interpretacao` (ou `None`) por
+  item, na ordem do lote: casa por número (mesma régua de `alinhar_resposta`) e descarta
+  entrada sem `e` utilizável.
 
 ### 4.2 Busca em duas frentes — `CatalogoPDM.candidatos_em_duas_frentes(...)`
 
@@ -120,7 +122,8 @@ Mesma tarefa, mesmos blocos de 15, mesmo modelo. O que muda no prompt:
 1. **Cada item traz a interpretação:** `- Interpretação: é PLAQUETA INDICADORA · sinônimos: … · serve a: VALVULA DUPLOMATIC`.
 2. **Campos novos na resposta**, em acréscimo aos 7 de hoje:
    - `confianca`: `"ALTA"` | `"MEDIA"` | `"BAIXA"`;
-   - `alternativas`: até 2 PDMs, copiados literalmente da lista, em ordem;
+   - `alternativas`: até 2 objetos `{"pdm": ..., "motivo": ...}`, com o PDM copiado
+     literalmente da lista, em ordem (o motivo é o que o seletor mostra, §4.6);
    - `justificativa`: uma frase;
    - `caracteristicas_que_confirmam`: nomes de características do PDM escolhido que a descrição
      confirma — é o critério do usuário ("ver se as características se enquadram") virado
@@ -176,11 +179,13 @@ justamente o que se aprova sem olhar.
 
 ### 4.6 Tela de revisão
 
-- Coluna nova **Confiança**: `ALTA`, `MÉDIA`, `BAIXA` ou `PDM NOVO?` (para NENHUM); `MÉDIA ↓`
-  quando rebaixada.
-- **Ordem**: `PDM NOVO?` → BAIXA → MÉDIA → ALTA; dentro do mesmo nível, a ordem da planilha. A
-  coluna ID continua com o número original da linha. A ordenação é função do serviço; a tela só
-  exibe.
+- Coluna nova **Confiança**: `ALTA`, `MÉDIA` ou `BAIXA`; `MÉDIA ↓` quando rebaixada. Para
+  NENHUM, a causa: `PDM NOVO?` (a IA respondeu NENHUM), `SEM RESPOSTA` (a IA pulou o item) ou
+  `FORA DO CATÁLOGO` (a guarda recusou um PDM inventado). Linha do modo "Pular IA" fica sem
+  rótulo.
+- **Ordem**: NENHUM → BAIXA → MÉDIA → ALTA; dentro do mesmo nível, a ordem da planilha. Linhas
+  do modo "Pular IA" ficam na ordem da planilha. A coluna ID continua com o número original da
+  linha. A ordenação é função do serviço; a tela só exibe.
 - Ao selecionar uma linha, um rótulo sob a tabela mostra a justificativa e os sinais
   (`na busca ✓ · nome base ✓ · características ✗`).
 - **Trocar o PDM:** `JanelaEscolherPDM` ganha `sugestoes=` e abre com o 2º e o 3º lugar fixos
@@ -196,7 +201,7 @@ Ao confirmar a revisão (`_pos_revisao_concluida`), uma linha JSON por item em
  "interpretacao": {"e": "...", "sinonimos": [...], "serve": "..."},
  "ia": {"pdm": "...", "confianca": "ALTA", "confianca_final": "MEDIA",
         "sinais": {"na_busca": true, "nome_base": false, "caracteristicas": false},
-        "alternativas": ["...", "..."]},
+        "alternativas": [{"pdm": "...", "motivo": "..."}]},
  "final": "...", "trocou": true, "posicao_do_final": 2,
  "modelos": {"passada_1": "...", "passada_2": "..."}}
 ```
