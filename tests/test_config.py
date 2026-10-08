@@ -173,7 +173,9 @@ TAREFAS_DO_CP_3_1 = {
 }
 #   traduzir_pdm (2026-08-28): traducao PT->EN das perguntas dos PDMs
 #   Modificados, para a ficha em ingles.
-TAREFAS_ACRESCENTADAS_DEPOIS = {"traduzir_pdm"}
+#   interpretar_material (2026-10-08): passada 1 da escolha de PDM do Cria
+#   Fichas -- diz o que o material E, antes da busca no catalogo.
+TAREFAS_ACRESCENTADAS_DEPOIS = {"traduzir_pdm", "interpretar_material"}
 
 
 def test_llm_tasks_tem_exatamente_as_5_tarefas_do_cp_3_1():
@@ -191,8 +193,9 @@ def test_llm_tasks_provider_por_tarefa_segue_a_decisao():
         "condicoes": sigft_config.PROVIDER_GEMINI,
         "tech_specs": sigft_config.PROVIDER_GEMINI,
         "autospec": sigft_config.PROVIDER_GEMINI,
-        # acrescentada depois do CP 3.1 -- ver TAREFAS_ACRESCENTADAS_DEPOIS
+        # acrescentadas depois do CP 3.1 -- ver TAREFAS_ACRESCENTADAS_DEPOIS
         "traduzir_pdm": sigft_config.PROVIDER_GEMINI,
+        "interpretar_material": sigft_config.PROVIDER_GEMINI,
     }
     assert sigft_config.PROVIDER_XAI == "xai"
     assert sigft_config.PROVIDER_GEMINI == "gemini"

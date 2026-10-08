@@ -306,6 +306,11 @@ LLM_TASKS: dict[str, dict[str, str]] = {
     # ficha em ingles. Frases curtas, em lote, volume baixo (roda uma vez por
     # pasta e o resultado fica em cache) -- o modelo padrao dá conta.
     "traduzir_pdm": {"provider": PROVIDER_GEMINI, "model": "gemini-3-flash-preview"},
+    # [2026-10-08] passada 1 da escolha de PDM (Cria Fichas): diz o que cada
+    # material E, no vocabulario do catalogo, antes da busca. Sem catalogo no
+    # prompt e saida curta -- o modelo padrao da conta, e a falha so degrada
+    # para a busca de hoje (spec 2026-10-08-escolha-de-pdm-em-duas-passadas).
+    "interpretar_material": {"provider": PROVIDER_GEMINI, "model": "gemini-3-flash-preview"},
 }
 
 # Tabela de preços (US$ por 1M tokens) — SEED do UsageTracker (CP 3.4) para
