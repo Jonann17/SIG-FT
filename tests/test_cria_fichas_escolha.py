@@ -5,6 +5,9 @@ Sem IA, sem tkinter, sem pandas: listas e dicionários.
 """
 from __future__ import annotations
 
+import pytest
+
+from sigft.core.pdm_catalogo import Caracteristica, CatalogoPDM, PDM
 from sigft.services import cria_fichas_escolha as escolha
 from sigft.services.cria_fichas_escolha import Interpretacao
 
@@ -80,3 +83,137 @@ def test_sem_interpretacao_a_consulta_e_vazia():
 def test_como_dict_e_o_formato_da_revisao():
     assert Interpretacao(e="X", sinonimos=("A",), serve="S").como_dict() == {
         "e": "X", "sinonimos": ["A"], "serve": "S"}
+
+
+# =============================================================================
+# 2. Confiança, alternativas e sinais
+# =============================================================================
+INDICADOR = PDM(codigo="PDM.6685.017", classe="6685", titulo="INDICADOR DIGITAL",
+                nome_base="INDICADOR", modificador="DIGITAL",
+                caracteristicas=("CARACTERISTICAS DO DISPLAY", "FAIXA DE MEDICAO"),
+                caracteristicas_em_ordem=(Caracteristica(nome="Alimentação"),))
+VALVULAS = PDM(codigo="PDM.4820.004", classe="4820", titulo="VALVULAS ESFERA",
+               nome_base="VALVULAS", modificador="ESFERA")
+PLAQUETA = PDM(codigo="PDM.5930.012", classe="5930", titulo="PLAQUETA INDICADORA",
+               nome_base="PLAQUETA", modificador="INDICADORA")
+CATALOGO = CatalogoPDM(pdms=[INDICADOR, VALVULAS, PLAQUETA])
+
+
+@pytest.mark.parametrize("bruto,esperado", [
+    ("ALTA", "ALTA"), ("media", "MEDIA"), ("MÉDIA", "MEDIA"), (" baixa ", "BAIXA"),
+    ("", "BAIXA"), (None, "BAIXA"), ("certeza", "BAIXA"), (0.9, "BAIXA"),
+])
+def test_normalizar_confianca(bruto, esperado):
+    assert escolha.normalizar_confianca(bruto) == esperado
+
+
+def test_alternativas_resolvidas_pelo_catalogo_com_motivo():
+    validas, recusadas = escolha.alternativas_validas(
+        {"alternativas": [{"pdm": "PDM.4820.004 - VALVULAS ESFERA", "motivo": "se for válvula"},
+                          {"pdm": "PDM.5930.012", "motivo": ""}]},
+        CATALOGO, escolhido=INDICADOR)
+    assert validas == [
+        {"pdm": "PDM.4820.004 - VALVULAS ESFERA", "motivo": "se for válvula"},
+        {"pdm": "PDM.5930.012 - PLAQUETA INDICADORA", "motivo": ""},
+    ]
+    assert recusadas == []
+
+
+def test_alternativa_fora_do_catalogo_e_recusada():
+    validas, recusadas = escolha.alternativas_validas(
+        {"alternativas": [{"pdm": "PDM.0000.000 - INVENTADO"}]}, CATALOGO, escolhido=None)
+    assert validas == []
+    assert recusadas == ["PDM.0000.000 - INVENTADO"]
+
+
+def test_alternativa_igual_a_escolhida_ou_repetida_sai_sem_ser_recusa():
+    validas, recusadas = escolha.alternativas_validas(
+        {"alternativas": ["PDM.6685.017 - INDICADOR DIGITAL", "PDM.5930.012",
+                          "PDM.5930.012 - PLAQUETA INDICADORA"]},
+        CATALOGO, escolhido=INDICADOR)
+    assert [v["pdm"] for v in validas] == ["PDM.5930.012 - PLAQUETA INDICADORA"]
+    assert recusadas == []
+
+
+def test_no_maximo_duas_alternativas():
+    validas, _ = escolha.alternativas_validas(
+        {"alternativas": ["PDM.4820.004", "PDM.5930.012", "PDM.6685.017"]},
+        CATALOGO, escolhido=None)
+    assert len(validas) == 2
+
+
+def test_alternativas_ausentes_ou_mal_formadas():
+    assert escolha.alternativas_validas({}, CATALOGO, None) == ([], [])
+    assert escolha.alternativas_validas({"alternativas": "x"}, CATALOGO, None) == ([], [])
+
+
+INTERP_DISPLAY = Interpretacao(e="INDICADOR DIGITAL", sinonimos=("MOSTRADOR",))
+
+
+def test_os_tres_sinais_confirmados():
+    sinais = escolha.calcular_sinais(INDICADOR, [INDICADOR], INTERP_DISPLAY,
+                                     ["CARACTERISTICAS DO DISPLAY"])
+    assert sinais == {"na_busca": True, "nome_base": True, "caracteristicas": True}
+
+
+def test_na_busca_e_falso_quando_veio_da_lista_completa():
+    assert escolha.calcular_sinais(INDICADOR, [PLAQUETA], None, [])["na_busca"] is False
+
+
+def test_nome_base_aceita_plural_e_acento():
+    sinais = escolha.calcular_sinais(VALVULAS, [], Interpretacao(e="VÁLVULA ESFERA"), [])
+    assert sinais["nome_base"] is True
+
+
+def test_nome_base_falha_sem_interpretacao_ou_com_outra_peca():
+    assert escolha.calcular_sinais(INDICADOR, [], None, [])["nome_base"] is False
+    assert escolha.calcular_sinais(
+        INDICADOR, [], Interpretacao(e="PLAQUETA"), [])["nome_base"] is False
+
+
+def test_caracteristica_citada_tem_de_existir_no_pdm():
+    """Inclusive as da revisão vigente, e com prefixo numérico ("5279 - ...")."""
+    assert escolha.calcular_sinais(
+        INDICADOR, [], None, ["5279 - Caracteristicas do display", "ALIMENTACAO"]
+    )["caracteristicas"] is True
+    assert escolha.calcular_sinais(
+        INDICADOR, [], None, ["CARACTERISTICAS DO DISPLAY", "TORQUE"])["caracteristicas"] is False
+
+
+def test_sem_caracteristica_citada_o_sinal_e_falso():
+    assert escolha.calcular_sinais(INDICADOR, [], None, [])["caracteristicas"] is False
+    assert escolha.calcular_sinais(INDICADOR, [], None, None)["caracteristicas"] is False
+
+
+def test_o_prefixo_numerico_sai_dos_dois_lados():
+    """Se o Master um dia trouxer "5279 - NOME", a conferência não pode quebrar."""
+    com_prefixo = PDM(codigo="PDM.6685.017", classe="6685", titulo="INDICADOR DIGITAL",
+                      nome_base="INDICADOR", caracteristicas=("5279 - CARACTERISTICAS DO DISPLAY",))
+    assert escolha.calcular_sinais(
+        com_prefixo, [], None, ["CARACTERISTICAS DO DISPLAY"])["caracteristicas"] is True
+
+
+def test_caracteristicas_inexistentes_lista_so_as_que_o_pdm_nao_tem():
+    assert escolha.caracteristicas_inexistentes(
+        INDICADOR, ["CARACTERISTICAS DO DISPLAY", " TORQUE ", "", None]) == ["TORQUE"]
+    assert escolha.caracteristicas_inexistentes(None, ["TORQUE"]) == []
+    assert escolha.caracteristicas_inexistentes(INDICADOR, "TORQUE") == []
+
+
+def test_sem_pdm_escolhido_nenhum_sinal():
+    assert escolha.calcular_sinais(None, [INDICADOR], INTERP_DISPLAY, ["X"]) == {
+        "na_busca": False, "nome_base": False, "caracteristicas": False}
+
+
+@pytest.mark.parametrize("confianca,confirmados,esperado", [
+    ("ALTA", 3, ("ALTA", False)),
+    ("ALTA", 2, ("ALTA", False)),
+    ("ALTA", 1, ("MEDIA", True)),
+    ("ALTA", 0, ("MEDIA", True)),
+    ("MEDIA", 0, ("MEDIA", False)),
+    ("BAIXA", 3, ("BAIXA", False)),
+])
+def test_confianca_final(confianca, confirmados, esperado):
+    chaves = ("na_busca", "nome_base", "caracteristicas")
+    sinais = {c: i < confirmados for i, c in enumerate(chaves)}
+    assert escolha.confianca_final(confianca, sinais) == esperado
