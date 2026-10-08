@@ -4,6 +4,7 @@ Spec: docs/superpowers/specs/2026-10-08-escolha-de-pdm-em-duas-passadas-design.m
 """
 from __future__ import annotations
 
+from sigft.core import pdm_catalogo
 from sigft.core.llm.client import LLMResponse
 from sigft.services import cria_fichas
 from sigft.services.cria_fichas_escolha import Interpretacao
@@ -120,3 +121,73 @@ def test_modelo_da_interpretacao_descreve_o_cliente_da_passada_1():
 
 def test_PDM_NENHUM_continua_importavel_pelo_nome_antigo():
     assert cria_fichas.PDM_NENHUM == "NENHUM"
+
+
+# =============================================================================
+# 2. A passada 2 com a interpretação
+#    Os candidatos de um item aparecem como "- <PDM>  [classe N]"; a LISTA DE
+#    PDMS POR CLASSE traz todo PDM como "- <PDM>", sem o "[classe". É o sufixo
+#    que diz se o PDM chegou como CANDIDATO.
+# =============================================================================
+def _pdm(codigo, base, mod="", caracts=()):
+    titulo = f"{base} {mod}".strip()
+    return pdm_catalogo.PDM(codigo=codigo, classe=codigo.split(".")[1], titulo=titulo,
+                            nome_base=base, modificador=mod, caracteristicas=tuple(caracts))
+
+
+DISPLAY_CERTO = _pdm("PDM.6685.017", "INDICADOR", "DIGITAL",
+                     ["CARACTERISTICAS DO DISPLAY", "FAIXA DE MEDICAO"])
+
+
+def _catalogo_do_display():
+    distratores = []
+    for palavra, classe in (("CRISTAL", "5340"), ("LIQUIDO", "6850"),
+                            ("VERDE", "6210"), ("BACKLIGHT", "6625"),
+                            ("CRISTAL", "4820")):
+        for j in range(3):
+            distratores.append(_pdm(f"PDM.{classe}.{j:03d}", palavra, f"TIPO{j}"))
+    return pdm_catalogo.CatalogoPDM(pdms=[DISPLAY_CERTO] + distratores)
+
+
+DISPLAY = _linha("DISPLAY CRISTAL LIQUIDO 20X2 BACKLIGHT VERDE")
+INTERP_DISPLAY = Interpretacao(e="INDICADOR DIGITAL", sinonimos=("MOSTRADOR", "DISPLAY LCD"))
+
+
+def test_sem_interpretacao_o_display_nao_chega_como_candidato():
+    llm = _LLMFalso([])
+    _categorizador(llm=llm).processar_lote(_DataFrameFalso([DISPLAY]), _catalogo_do_display())
+    assert "- PDM.6685.017 - INDICADOR DIGITAL  [classe 6685]" not in llm.chamadas[0]["prompt"]
+
+
+def test_com_interpretacao_o_display_chega_ao_prompt_como_candidato():
+    llm = _LLMFalso([])
+    _categorizador(llm=llm).processar_lote(_DataFrameFalso([DISPLAY]), _catalogo_do_display(),
+                                           interpretacoes=[INTERP_DISPLAY])
+    assert "- PDM.6685.017 - INDICADOR DIGITAL  [classe 6685]" in llm.chamadas[0]["prompt"]
+
+
+def test_o_item_leva_a_linha_da_interpretacao():
+    llm = _LLMFalso([])
+    interp = Interpretacao(e="PLAQUETA INDICADORA", sinonimos=("PLACA",),
+                           serve="VALVULA DUPLOMATIC")
+    _categorizador(llm=llm).processar_lote(
+        _DataFrameFalso([_linha("PLAQUETA PARA VALVULA")]), _catalogo_do_display(),
+        interpretacoes=[interp])
+    assert ("- Interpretação: é PLAQUETA INDICADORA · sinônimos: PLACA · "
+            "serve a: VALVULA DUPLOMATIC") in llm.chamadas[0]["prompt"]
+
+
+def test_item_sem_interpretacao_nao_leva_a_linha():
+    llm = _LLMFalso([])
+    _categorizador(llm=llm).processar_lote(_DataFrameFalso([DISPLAY]), _catalogo_do_display(),
+                                           interpretacoes=[None])
+    assert "- Interpretação:" not in llm.chamadas[0]["prompt"]
+
+
+def test_ultimos_candidatos_fica_alinhado_ao_lote():
+    cat = _categorizador(llm=_LLMFalso([]))
+    cat.processar_lote(_DataFrameFalso([DISPLAY, _linha("ZZZZ")]), _catalogo_do_display(),
+                       interpretacoes=[INTERP_DISPLAY, None])
+    assert len(cat.ultimos_candidatos) == 2
+    assert "PDM.6685.017" in [p.codigo for p in cat.ultimos_candidatos[0]]
+    assert cat.ultimos_candidatos[1] == []

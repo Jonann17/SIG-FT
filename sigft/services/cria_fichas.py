@@ -421,6 +421,7 @@ class GeminiCategorizer:
            nunca chegava à IA.
         """
         texto = ""
+        bloco = df if isinstance(df, _DataFrameDeBloco) else None
         for posicao, (_indice, row) in enumerate(df.iterrows(), start=1):
             descricao = row['DESCRIÇÃO']
             texto += f"\n### ITEM {posicao}\n"
@@ -434,17 +435,45 @@ class GeminiCategorizer:
             unidade_final = "NÃO ESPECIFICADA" if not unidade_raw or pd.isna(unidade_raw) else unidade_raw
             texto += f"- Unidade: {unidade_final}\n"
 
+            if bloco is not None and bloco.interpretacoes:
+                interpretacao = bloco.interpretacoes[posicao - 1]
+                if interpretacao is not None:
+                    texto += self._linha_da_interpretacao(interpretacao)
             if catalogo is not None:
-                texto += self._bloco_de_candidatos(descricao, row, catalogo)
+                pre = bloco.candidatos[posicao - 1] if bloco is not None and bloco.candidatos else None
+                texto += self._bloco_de_candidatos(descricao, row, catalogo, candidatos=pre)
         return texto
 
     @staticmethod
-    def _bloco_de_candidatos(descricao, row, catalogo):
+    def _candidatos_do_item(linha, interpretacao, catalogo):
+        """Os candidatos de UM item: a busca de hoje, ou as duas frentes
+        quando a passada 1 disse o que o material é."""
+        if catalogo is None:
+            return []
+        consulta_crua = f"{linha['DESCRIÇÃO']} {linha.get('MARCA/MODELO', '') or ''}"
+        if interpretacao is None:
+            return catalogo.candidatos(consulta_crua)
+        return catalogo.candidatos_em_duas_frentes(
+            escolha.consulta_da_interpretacao(interpretacao), consulta_crua)
+
+    @staticmethod
+    def _linha_da_interpretacao(interpretacao):
+        partes = [f"é {interpretacao.e}"]
+        if interpretacao.sinonimos:
+            partes.append("sinônimos: " + ", ".join(interpretacao.sinonimos))
+        if interpretacao.serve:
+            partes.append(f"serve a: {interpretacao.serve}")
+        return "- Interpretação: " + " · ".join(partes) + "\n"
+
+    @staticmethod
+    def _bloco_de_candidatos(descricao, row, catalogo, candidatos=None):
         """Os candidatos de UM item. A marca entra na consulta junto com a
         descrição: em muitas linhas o substantivo do equipamento está só na
-        coluna MARCA/MODELO."""
-        consulta = f"{descricao} {row.get('MARCA/MODELO', '') or ''}"
-        candidatos = catalogo.candidatos(consulta)
+        coluna MARCA/MODELO. `candidatos` já calculados (pelo `processar_lote`)
+        são usados como vieram."""
+        if candidatos is None:
+            consulta = f"{descricao} {row.get('MARCA/MODELO', '') or ''}"
+            candidatos = catalogo.candidatos(consulta)
         if not candidatos:
             # Dizer que não há candidato é informação, não ruído: sem esta
             # linha o modelo poderia ler a ausência da seção como "a lista de
@@ -456,7 +485,7 @@ class GeminiCategorizer:
         return "- CANDIDATOS (pré-selecionados por semelhança):\n" + \
             catalogo.bloco_de_candidatos(candidatos) + "\n"
 
-    def processar_lote(self, df_itens, catalogo, callback_log=None):
+    def processar_lote(self, df_itens, catalogo, callback_log=None, interpretacoes=None):
         """Classifica o lote inteiro, em blocos de `ITENS_POR_BLOCO`.
 
         Devolve uma lista com UM objeto por item do lote, na ordem do lote --
@@ -471,23 +500,40 @@ class GeminiCategorizer:
           classes que realmente aparecem nos candidatos do bloco;
         - **fatia o lote**. Antes tudo ia numa chamada com `max_retries=0`:
           uma falha de API derrubava os 40 itens juntos.
+
+        MUDOU EM 2026-10-08: `interpretacoes` (a passada 1, uma por item ou
+        `None`) leva a busca para as duas frentes e põe a linha
+        "Interpretação" no item. Sem ela, o resultado é o de antes. Os
+        candidatos de cada item ficam em `self.ultimos_candidatos`.
         """
         # CP 3.1: `model = genai.GenerativeModel(...)` sai daqui -- a
         # resolução de modelo/provider agora é responsabilidade de
         # `self._llm` (`get_llm("categorizar_pdm", ...)`, ver `__init__`).
         if not self.api_key: raise ValueError("API Key não configurada.")
 
-        blocos = _fatiar(list(df_itens.iterrows()), ITENS_POR_BLOCO)
+        pares = list(df_itens.iterrows())
+        if interpretacoes is None:
+            interpretacoes = [None] * len(pares)
+        candidatos = [
+            self._candidatos_do_item(linha, interpretacao, catalogo)
+            for (_indice, linha), interpretacao in zip(pares, interpretacoes)
+        ]
+        self.ultimos_candidatos = candidatos
+
+        blocos = _fatiar(list(range(len(pares))), ITENS_POR_BLOCO)
         resultado = []
-        for numero_do_bloco, bloco in enumerate(blocos, start=1):
+        for numero_do_bloco, posicoes in enumerate(blocos, start=1):
             if callback_log and len(blocos) > 1:
                 callback_log(
                     f"IA: bloco {numero_do_bloco}/{len(blocos)} "
-                    f"({len(bloco)} itens)"
+                    f"({len(posicoes)} itens)"
                 )
-            resultado.extend(
-                self._processar_bloco(_DataFrameDeBloco(bloco), catalogo)
+            df_bloco = _DataFrameDeBloco(
+                [pares[p] for p in posicoes],
+                interpretacoes=[interpretacoes[p] for p in posicoes],
+                candidatos=[candidatos[p] for p in posicoes],
             )
+            resultado.extend(self._processar_bloco(df_bloco, catalogo))
         return resultado
 
     def _processar_bloco(self, df_bloco, catalogo):
@@ -535,9 +581,14 @@ class GeminiCategorizer:
         custa ~11 mil tokens (124 classes), e um bloco toca uma fração disso.
         A lista de PDMs por classe continua completa -- ela é a rede."""
         classes = set()
-        for _indice, row in df_bloco.iterrows():
-            consulta = f"{row['DESCRIÇÃO']} {row.get('MARCA/MODELO', '') or ''}"
-            for candidato in catalogo.candidatos(consulta):
+        pre = df_bloco.candidatos if isinstance(df_bloco, _DataFrameDeBloco) else None
+        for posicao, (_indice, row) in enumerate(df_bloco.iterrows()):
+            if pre is not None:
+                achados = pre[posicao]
+            else:
+                consulta = f"{row['DESCRIÇÃO']} {row.get('MARCA/MODELO', '') or ''}"
+                achados = catalogo.candidatos(consulta)
+            for candidato in achados:
                 classes.add(candidato.classe)
         return classes
 
@@ -552,10 +603,17 @@ class _DataFrameDeBloco:
     Existe para o fatiamento não depender de `df.iloc[a:b]`: o `df_itens` que
     chega aqui vem de `iloc[indices].copy()` na view, e fatiar por posição
     sobre um índice não reiniciado é exatamente o tipo de sutileza que causou
-    o bug de numeração que este checkpoint conserta."""
+    o bug de numeração que este checkpoint conserta.
 
-    def __init__(self, pares):
+    `interpretacoes` e `candidatos` (2026-10-08) vêm calculados pelo
+    `processar_lote`, um por item, na ordem dos pares -- calcular uma vez só
+    é o que garante que o prompt, o manual podado e os sinais da revisão
+    olhem os MESMOS candidatos."""
+
+    def __init__(self, pares, interpretacoes=None, candidatos=None):
         self._pares = pares
+        self.interpretacoes = interpretacoes
+        self.candidatos = candidatos
 
     def iterrows(self):
         return iter(self._pares)
