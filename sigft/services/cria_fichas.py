@@ -330,6 +330,88 @@ def conferir_pdm(item, catalogo):
     return False, f"PDM fora do catalogo: {escolhido!r}"
 
 
+def preparar_para_revisao(respostas, linhas, catalogo, interpretacoes, candidatos,
+                          codigo_projeto, callback_log=None):
+    """Da resposta da IA à linha da tela de revisão, item a item.
+
+    Até 2026-10-08 isto era um laço DENTRO da tela (`views/cria_fichas.py`),
+    com a guarda contra PDM inventado no meio -- regra de negócio na UI,
+    contra o princípio 2 do `CLAUDE.md`. O comportamento de antes está
+    preservado (e trancado nos testes de CARACTERIZACAO); o que chegou junto
+    é a confiança, as alternativas e os sinais (spec §4.4-4.5).
+
+    Devolve `(linhas_da_revisao, contagem)`. `respostas` vem do
+    `processar_lote` (uma por item, `None` onde a IA não respondeu);
+    `interpretacoes` e `candidatos` são da mesma rodada, na mesma ordem."""
+    def log(mensagem):
+        if callback_log:
+            callback_log(mensagem)
+
+    contagem = {"sem_resposta": 0, "fora_do_catalogo": 0, "alternativas_recusadas": 0}
+    saida = []
+    for i, (resposta, linha) in enumerate(zip(respostas, linhas)):
+        descricao = linha["DESCRIÇÃO"]
+        origem_do_nenhum = ""
+        if resposta is None:
+            contagem["sem_resposta"] += 1
+            origem_do_nenhum = "sem_resposta"
+            item = {"pdm_escolhido": PDM_NENHUM}
+            log(f" -> ⚠️ Item {i + 1} sem resposta da IA. Marcado "
+                f"'NENHUM' para revisão: {str(descricao)[:40]}")
+        else:
+            item = dict(resposta)
+
+        ok, motivo = conferir_pdm(item, catalogo)
+        if not ok:
+            contagem["fora_do_catalogo"] += 1
+            origem_do_nenhum = "fora_do_catalogo"
+            log(f" -> ⚠️ Item {i + 1}: {motivo}. Marcado 'NENHUM'.")
+            item["pdm_escolhido"] = PDM_NENHUM
+
+        escolhido_txt = str(item.get("pdm_escolhido") or "").strip()
+        e_nenhum = escolhido_txt.upper() == PDM_NENHUM
+        if e_nenhum and not origem_do_nenhum:
+            origem_do_nenhum = "ia"
+        escolhido = None if e_nenhum else catalogo.resolver(escolhido_txt)
+        interpretacao = interpretacoes[i] if interpretacoes else None
+
+        alternativas, recusadas = escolha.alternativas_validas(item, catalogo, escolhido)
+        for texto in recusadas:
+            contagem["alternativas_recusadas"] += 1
+            log(f" -> ⚠️ Item {i + 1}: alternativa fora do catálogo descartada: {texto!r}")
+
+        citadas = item.get("caracteristicas_que_confirmam")
+        citadas = [str(c).strip() for c in citadas if str(c or "").strip()] \
+            if isinstance(citadas, list) else []
+        for nome in escolha.caracteristicas_inexistentes(escolhido, citadas):
+            log(f" -> ⚠️ Item {i + 1}: característica citada que o PDM não tem: {nome!r}")
+        sinais = escolha.calcular_sinais(
+            escolhido, candidatos[i] if candidatos else [], interpretacao, citadas)
+        if e_nenhum:
+            confianca, final, rebaixada = "", "", False
+        else:
+            confianca = escolha.normalizar_confianca(item.get("confianca"))
+            final, rebaixada = escolha.confianca_final(confianca, sinais)
+
+        item.update({
+            "pdm_ia": item["pdm_escolhido"],
+            "origem_do_nenhum": origem_do_nenhum,
+            "confianca": confianca,
+            "confianca_final": final,
+            "rebaixada": rebaixada,
+            "sinais": sinais,
+            "alternativas": alternativas,
+            "justificativa": str(item.get("justificativa") or "").strip(),
+            "caracteristicas_que_confirmam": citadas,
+            "interpretacao": interpretacao.como_dict() if interpretacao is not None else {},
+            "marca_modelo": escolha.texto_da_celula(linha.get("MARCA/MODELO")),
+            "codigo_projeto": codigo_projeto,
+            "descricao_original": descricao,
+        })
+        saida.append(item)
+    return saida, contagem
+
+
 class GeminiCategorizer:
     def __init__(self, api_key):
         self.api_key = api_key

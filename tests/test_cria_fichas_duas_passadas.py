@@ -211,3 +211,123 @@ def test_exemplo_cujo_pdm_nao_esta_no_master_carregado_nao_entra():
     prompt = llm.chamadas[0]["prompt"]
     assert "PDM.7010.018" not in prompt          # SERVIDOR não está neste catálogo
     assert "- PDM: PDM.6685.017 - INDICADOR DIGITAL" in prompt
+
+
+# =============================================================================
+# 4. preparar_para_revisao -- 1º o comportamento que o laço da TELA tinha
+#    (views/cria_fichas.py, antes de 2026-10-08), depois o novo
+# =============================================================================
+PLAQUETA = _pdm("PDM.5930.012", "PLAQUETA", "INDICADORA", ["MATERIAL", "TEXTO GRAVADO"])
+CAT_REVISAO = pdm_catalogo.CatalogoPDM(pdms=[DISPLAY_CERTO, PLAQUETA])
+
+
+def _preparar(respostas, linhas, interpretacoes=None, candidatos=None):
+    logs = []
+    saida, contagem = cria_fichas.preparar_para_revisao(
+        respostas, linhas, CAT_REVISAO,
+        interpretacoes or [None] * len(linhas),
+        candidatos or [[] for _ in linhas],
+        "PROJ-1", callback_log=logs.append)
+    return saida, contagem, logs
+
+
+def test_CARACTERIZACAO_item_sem_resposta_vira_nenhum_e_e_contado():
+    saida, contagem, logs = _preparar([None], [_linha("PLAQUETA DE TESTE")])
+    assert saida[0]["pdm_escolhido"] == "NENHUM"
+    assert contagem["sem_resposta"] == 1
+    assert logs == [" -> ⚠️ Item 1 sem resposta da IA. Marcado 'NENHUM' "
+                    "para revisão: PLAQUETA DE TESTE"]
+
+
+def test_CARACTERIZACAO_pdm_inventado_vira_nenhum_e_e_contado():
+    saida, contagem, logs = _preparar(
+        [{"pdm_escolhido": "PDM.0000.000 - INVENTADO"}], [_linha("X")])
+    assert saida[0]["pdm_escolhido"] == "NENHUM"
+    assert contagem["fora_do_catalogo"] == 1
+    assert logs == [" -> ⚠️ Item 1: PDM fora do catalogo: 'PDM.0000.000 - INVENTADO'. "
+                    "Marcado 'NENHUM'."]
+
+
+def test_CARACTERIZACAO_codigo_certo_com_titulo_errado_e_consertado():
+    saida, _, _ = _preparar([{"pdm_escolhido": "PDM.5930.012 - PLAQUETA, INDICADORA"}],
+                            [_linha("X")])
+    assert saida[0]["pdm_escolhido"] == "PDM.5930.012 - PLAQUETA INDICADORA"
+
+
+def test_CARACTERIZACAO_leva_projeto_e_descricao_original():
+    saida, _, _ = _preparar([{"pdm_escolhido": "NENHUM"}], [_linha("DESC ORIGINAL")])
+    assert saida[0]["codigo_projeto"] == "PROJ-1"
+    assert saida[0]["descricao_original"] == "DESC ORIGINAL"
+
+
+def test_a_resposta_original_nao_e_alterada():
+    respostas = [{"pdm_escolhido": "PDM.5930.012 - PLAQUETA, INDICADORA"}]
+    _preparar(respostas, [_linha("X")])
+    assert respostas[0]["pdm_escolhido"] == "PDM.5930.012 - PLAQUETA, INDICADORA"
+
+
+# --- o novo ------------------------------------------------------------------
+def test_alta_sem_conferencia_e_rebaixada():
+    saida, _, _ = _preparar([{"pdm_escolhido": "PDM.5930.012", "confianca": "ALTA"}],
+                            [_linha("X")])
+    assert saida[0]["confianca"] == "ALTA"
+    assert saida[0]["confianca_final"] == "MEDIA"
+    assert saida[0]["rebaixada"] is True
+
+
+def test_alta_confirmada_continua_alta():
+    resposta = {"pdm_escolhido": "PDM.5930.012", "confianca": "ALTA",
+                "caracteristicas_que_confirmam": ["TEXTO GRAVADO"]}
+    saida, _, _ = _preparar(
+        [resposta], [_linha("PLAQUETA PARA VALVULA")],
+        interpretacoes=[Interpretacao(e="PLAQUETA INDICADORA")], candidatos=[[PLAQUETA]])
+    assert saida[0]["sinais"] == {"na_busca": True, "nome_base": True, "caracteristicas": True}
+    assert saida[0]["confianca_final"] == "ALTA"
+    assert saida[0]["rebaixada"] is False
+
+
+def test_nenhum_da_ia_nao_tem_confianca_e_guarda_a_origem():
+    saida, _, _ = _preparar([{"pdm_escolhido": "NENHUM", "confianca": "ALTA"}], [_linha("X")])
+    assert saida[0]["confianca"] == ""
+    assert saida[0]["confianca_final"] == ""
+    assert saida[0]["origem_do_nenhum"] == "ia"
+
+
+def test_origem_do_nenhum_distingue_as_tres_causas():
+    saida, _, _ = _preparar(
+        [None, {"pdm_escolhido": "PDM.0000.000"}, {"pdm_escolhido": "PDM.5930.012"}],
+        [_linha("A"), _linha("B"), _linha("C")])
+    assert [s["origem_do_nenhum"] for s in saida] == ["sem_resposta", "fora_do_catalogo", ""]
+
+
+def test_alternativa_recusada_e_logada_e_contada():
+    saida, contagem, logs = _preparar(
+        [{"pdm_escolhido": "PDM.5930.012",
+          "alternativas": [{"pdm": "PDM.9999.999 - NAO EXISTE", "motivo": "x"}]}],
+        [_linha("X")])
+    assert saida[0]["alternativas"] == []
+    assert contagem["alternativas_recusadas"] == 1
+    assert logs == [" -> ⚠️ Item 1: alternativa fora do catálogo descartada: "
+                    "'PDM.9999.999 - NAO EXISTE'"]
+
+
+def test_caracteristica_citada_que_o_pdm_nao_tem_e_logada():
+    saida, _, logs = _preparar(
+        [{"pdm_escolhido": "PDM.5930.012", "caracteristicas_que_confirmam": ["TORQUE"]}],
+        [_linha("X")])
+    assert saida[0]["sinais"]["caracteristicas"] is False
+    assert logs == [" -> ⚠️ Item 1: característica citada que o PDM não tem: 'TORQUE'"]
+
+
+def test_guarda_o_que_a_ia_disse_para_a_calibracao():
+    saida, _, _ = _preparar(
+        [{"pdm_escolhido": "PDM.6685.017", "confianca": "baixa", "justificativa": " é um display "}],
+        [_linha("DISPLAY", marca="ACME")],
+        interpretacoes=[Interpretacao(e="INDICADOR DIGITAL", sinonimos=("MOSTRADOR",))])
+    linha = saida[0]
+    assert linha["pdm_ia"] == "PDM.6685.017 - INDICADOR DIGITAL"
+    assert linha["confianca"] == "BAIXA"
+    assert linha["justificativa"] == "é um display"
+    assert linha["marca_modelo"] == "ACME"
+    assert linha["interpretacao"] == {"e": "INDICADOR DIGITAL",
+                                      "sinonimos": ["MOSTRADOR"], "serve": ""}
