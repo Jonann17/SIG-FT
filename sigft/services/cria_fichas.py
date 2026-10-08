@@ -567,6 +567,27 @@ class GeminiCategorizer:
         return "- CANDIDATOS (pré-selecionados por semelhança):\n" + \
             catalogo.bloco_de_candidatos(candidatos) + "\n"
 
+    def classificar_para_revisao(self, df_itens, catalogo, codigo_projeto, callback_log=None):
+        """As duas passadas e a preparação para a revisão, de uma vez.
+
+        Devolve `(linhas_da_revisao, contagem)` -- ver `preparar_para_revisao`.
+        Spec: docs/superpowers/specs/2026-10-08-escolha-de-pdm-em-duas-passadas-design.md."""
+        if not self.api_key:
+            raise ValueError("API Key não configurada.")
+        linhas = [linha for _indice, linha in df_itens.iterrows()]
+
+        if callback_log:
+            callback_log(f"IA: interpretando {len(linhas)} itens ({self.modelo_da_interpretacao})...")
+        interpretacoes = self.interpretar_lote(df_itens, callback_log=callback_log)
+        if callback_log:
+            lidas = sum(1 for i in interpretacoes if i is not None)
+            callback_log(f"IA: {lidas} de {len(linhas)} itens interpretados.")
+
+        respostas = self.processar_lote(df_itens, catalogo, callback_log=callback_log,
+                                        interpretacoes=interpretacoes)
+        return preparar_para_revisao(respostas, linhas, catalogo, interpretacoes,
+                                     self.ultimos_candidatos, codigo_projeto, callback_log)
+
     def processar_lote(self, df_itens, catalogo, callback_log=None, interpretacoes=None):
         """Classifica o lote inteiro, em blocos de `ITENS_POR_BLOCO`.
 

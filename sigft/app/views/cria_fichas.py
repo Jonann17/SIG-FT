@@ -14,9 +14,10 @@ import pandas as pd
 from sigft.app import backends, file_dialogs
 from sigft.app.theme import COLORS
 # O catálogo de PDMs (2026-09-22): lê a planilha-mestra da Itaipu e faz o
-# pré-filtro de candidatos por item. `cria_fichas_svc` entra pelas guardas
-# (`conferir_pdm`) -- o resto do serviço continua vindo por `backends`, que é
-# quem resolve o shim de compatibilidade.
+# pré-filtro de candidatos por item. `cria_fichas_svc` entra pelas
+# conferências do que o portal gravou (`codigo_do_pdm`, `revisao_do_pdm`) --
+# o resto do serviço continua vindo por `backends`, que é quem resolve o shim
+# de compatibilidade.
 from sigft.core import pdm_catalogo
 from sigft.services import cria_fichas as cria_fichas_svc
 # [CP B] Mensagens e dialogo da pausa de acao manual (login no portal).
@@ -345,44 +346,22 @@ class ModuloCriaFichas(DialogosDeEspera, ctk.CTkFrame):
                     f"{len(self.catalogo.classes_com_pdm())} classes com PDM."
                 )
 
-                res_json = cat.processar_lote(
-                    self.df_data_selecionado, self.catalogo, callback_log=self.log
+                # [2026-10-08] As duas passadas e a preparação da revisão
+                # moram no serviço -- inclusive a guarda contra PDM inventado,
+                # que era um laço aqui dentro (regra de negócio na tela).
+                final_data, contagem = cat.classificar_para_revisao(
+                    self.df_data_selecionado, self.catalogo, cod_proj,
+                    callback_log=self.log,
                 )
-                sem_resposta = 0
-                fora_do_catalogo = 0
-                for i, item_json in enumerate(res_json):
-                    row = self.df_data_selecionado.iloc[i]
-                    if item_json is None:
-                        # A IA não respondeu este item. Antes isso deslocava
-                        # TODAS as linhas seguintes (casamento por posição), e
-                        # cada material recebia o PDM de outro, em silêncio.
-                        sem_resposta += 1
-                        item_json = {"pdm_escolhido": "NENHUM"}
-                        self.log(
-                            f" -> ⚠️ Item {i + 1} sem resposta da IA. Marcado "
-                            f"'NENHUM' para revisão: {str(row['DESCRIÇÃO'])[:40]}"
-                        )
-
-                    ok, motivo = cria_fichas_svc.conferir_pdm(
-                        item_json, self.catalogo
-                    )
-                    if not ok:
-                        # PDM inventado pela IA: antes atravessava a revisão
-                        # humana (um campo de texto livre) e ia direto para o
-                        # filtro do portal, que aperta ENTER e leva o que
-                        # estiver destacado.
-                        fora_do_catalogo += 1
-                        self.log(f" -> ⚠️ Item {i + 1}: {motivo}. Marcado 'NENHUM'.")
-                        item_json["pdm_escolhido"] = "NENHUM"
-
-                    item_json['codigo_projeto'] = cod_proj
-                    item_json['descricao_original'] = row['DESCRIÇÃO']
-                    final_data.append(item_json)
+                self._modelos_da_ia = {
+                    "passada_1": cat.modelo_da_interpretacao,
+                    "passada_2": cat.modelo_em_uso,
+                }
 
                 self.log(
                     f"IA Finalizada. {len(final_data)} itens | "
-                    f"sem resposta: {sem_resposta} | "
-                    f"PDM fora do catálogo: {fora_do_catalogo}"
+                    f"sem resposta: {contagem['sem_resposta']} | "
+                    f"PDM fora do catálogo: {contagem['fora_do_catalogo']}"
                 )
 
             self.df_processed = pd.DataFrame(final_data)

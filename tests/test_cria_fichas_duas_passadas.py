@@ -4,6 +4,8 @@ Spec: docs/superpowers/specs/2026-10-08-escolha-de-pdm-em-duas-passadas-design.m
 """
 from __future__ import annotations
 
+import pytest
+
 from sigft.core import pdm_catalogo
 from sigft.core.llm.client import LLMResponse
 from sigft.services import cria_fichas
@@ -331,3 +333,54 @@ def test_guarda_o_que_a_ia_disse_para_a_calibracao():
     assert linha["marca_modelo"] == "ACME"
     assert linha["interpretacao"] == {"e": "INDICADOR DIGITAL",
                                       "sinonimos": ["MOSTRADOR"], "serve": ""}
+
+
+# =============================================================================
+# 5. As duas passadas de ponta a ponta
+# =============================================================================
+def test_classificar_para_revisao_de_ponta_a_ponta():
+    llm1 = _LLMFalso([{"item": 1, "e": "INDICADOR DIGITAL", "sinonimos": ["MOSTRADOR"]}])
+    llm2 = _LLMFalso([{"item_processado": 1, "pdm_escolhido": "PDM.6685.017",
+                       "confianca": "ALTA",
+                       "caracteristicas_que_confirmam": ["CARACTERISTICAS DO DISPLAY"]}])
+    cat = _categorizador(llm_interpretacao=llm1, llm=llm2)
+    logs = []
+
+    linhas, contagem = cat.classificar_para_revisao(
+        _DataFrameFalso([DISPLAY]), _catalogo_do_display(), "PROJ-1", callback_log=logs.append)
+
+    assert linhas[0]["pdm_escolhido"] == "PDM.6685.017 - INDICADOR DIGITAL"
+    assert linhas[0]["confianca_final"] == "ALTA"
+    assert linhas[0]["sinais"]["na_busca"] is True
+    assert contagem["sem_resposta"] == 0
+    assert "IA: 1 de 1 itens interpretados." in logs
+
+
+def test_classificar_sem_chave_nao_chama_ia_nenhuma():
+    llm1, llm2 = _LLMFalso([]), _LLMFalso([])
+    cat = cria_fichas.GeminiCategorizer("")
+    cat._llm_interpretacao, cat._llm = llm1, llm2
+    with pytest.raises(ValueError):
+        cat.classificar_para_revisao(_DataFrameFalso([DISPLAY]), _catalogo_do_display(), "P")
+    assert llm1.chamadas == [] and llm2.chamadas == []
+
+
+def test_classificar_com_passada_1_caida_ainda_classifica():
+    llm2 = _LLMFalso([{"item_processado": 1, "pdm_escolhido": "PDM.6685.017"}])
+    cat = _categorizador(llm_interpretacao=_LLMFalso(RuntimeError("rede")), llm=llm2)
+    linhas, _ = cat.classificar_para_revisao(
+        _DataFrameFalso([DISPLAY]), _catalogo_do_display(), "P")
+    assert linhas[0]["pdm_escolhido"] == "PDM.6685.017 - INDICADOR DIGITAL"
+    assert linhas[0]["interpretacao"] == {}
+
+
+def test_passada_1_caida_manda_a_passada_2_igual_a_de_hoje():
+    """Spec §4.8: sem a passada 1, o lote segue exatamente como hoje."""
+    hoje = _LLMFalso([])
+    _categorizador(llm=hoje).processar_lote(_DataFrameFalso([DISPLAY]), _catalogo_do_display())
+
+    com_falha = _LLMFalso([])
+    _categorizador(llm_interpretacao=_LLMFalso(RuntimeError("rede")), llm=com_falha) \
+        .classificar_para_revisao(_DataFrameFalso([DISPLAY]), _catalogo_do_display(), "P")
+
+    assert com_falha.chamadas[0]["prompt"] == hoje.chamadas[0]["prompt"]
