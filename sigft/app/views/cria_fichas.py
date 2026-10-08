@@ -20,6 +20,8 @@ from sigft.app.theme import COLORS
 # de compatibilidade.
 from sigft.core import pdm_catalogo
 from sigft.services import cria_fichas as cria_fichas_svc
+# 2026-10-08: o registro de calibração da escolha de PDM (IA x revisão).
+from sigft.services import cria_fichas_escolha
 # [CP B] Mensagens e dialogo da pausa de acao manual (login no portal).
 from sigft.app.widgets import dialogs as app_dialogs
 # [CP A/B] Mixin com `pausar_e_esperar`: abre o dialogo na thread da
@@ -384,6 +386,17 @@ class ModuloCriaFichas(DialogosDeEspera, ctk.CTkFrame):
 
     def _pos_revisao_concluida(self, df_atualizado):
         self.df_processed = df_atualizado
+        # [2026-10-08] O que a IA disse x o que a revisão decidiu, para a
+        # confiança virar medição (spec §4.7). Nunca trava a automação.
+        try:
+            registrados = cria_fichas_escolha.gravar_calibracao(
+                [row for _index, row in df_atualizado.iterrows()],
+                modelos=getattr(self, "_modelos_da_ia", None),
+            )
+            if registrados:
+                self.log(f"Calibração: {registrados} itens registrados.")
+        except Exception as e:
+            self.log(f"Calibração não registrada: {e}")
         self.log(f"Revisão OK. {len(self.df_processed)} itens prontos.")
         # [ALTERAÇÃO]: Removido 'text_color="black"' para manter o branco definido na criação
         self.btn_run_auto.configure(state="normal", fg_color=COLORS["accent"])

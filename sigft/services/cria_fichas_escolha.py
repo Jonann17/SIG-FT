@@ -8,9 +8,13 @@ dicionários e devolve listas e dicionários. Quem chama a IA é o
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 
+from sigft.core import dados_usuario
 from sigft.core.pdm_catalogo import normalizar, tokenizar
 
 # A resposta da IA quando nenhum PDM serve. Mora aqui, e `services/cria_fichas`
@@ -288,3 +292,68 @@ def juntar_sugestoes(sugestoes, achados, limite) -> list:
     fixos = [pdm for pdm, _rotulo in sugestoes]
     codigos = {p.codigo for p in fixos}
     return (fixos + [p for p in achados if p.codigo not in codigos])[:limite]
+
+
+# =============================================================================
+# Calibração (spec §4.7): o que a IA disse x o que o usuário escolheu
+# =============================================================================
+ARQUIVO_DE_CALIBRACAO = "escolha_pdm.jsonl"
+
+
+def registro_de_calibracao(linha, data) -> dict | None:
+    """Uma linha do registro, ou `None` quando a linha não veio da IA."""
+    pdm_ia = linha.get("pdm_ia")
+    if not isinstance(pdm_ia, str):
+        return None
+    final = str(linha.get("pdm_escolhido") or "")
+    alternativas = linha.get("alternativas")
+    alternativas = alternativas if isinstance(alternativas, list) else []
+    opcoes = [normalizar(pdm_ia)] + [
+        normalizar(str((a.get("pdm") if isinstance(a, dict) else a) or ""))
+        for a in alternativas]
+    alvo = normalizar(final)
+    sinais = linha.get("sinais")
+    interpretacao = linha.get("interpretacao")
+    return {
+        "data": data,
+        "descricao": str(linha.get("descricao_original") or ""),
+        "marca": str(linha.get("marca_modelo") or ""),
+        "interpretacao": interpretacao if isinstance(interpretacao, dict) else {},
+        "ia": {
+            "pdm": pdm_ia,
+            # "sem_resposta" não é um NENHUM da IA, é a IA que não respondeu:
+            # a conta de acerto tem de poder separar os dois.
+            "origem_do_nenhum": texto_da_celula(linha.get("origem_do_nenhum")),
+            "confianca": str(linha.get("confianca") or ""),
+            "confianca_final": str(linha.get("confianca_final") or ""),
+            "sinais": sinais if isinstance(sinais, dict) else {},
+            "alternativas": alternativas,
+        },
+        "final": final,
+        "trocou": alvo != normalizar(pdm_ia),
+        "posicao_do_final": opcoes.index(alvo) + 1 if alvo in opcoes else 0,
+    }
+
+
+def gravar_calibracao(linhas, modelos=None, caminho=None, data=None) -> int:
+    """Acrescenta uma linha JSON por item vindo da IA. Devolve quantas.
+
+    NUNCA levanta: o registro existe para medir a confiança com o tempo, e
+    não pode travar a automação que vem depois da revisão."""
+    data = data or datetime.now().isoformat(timespec="seconds")
+    registros = []
+    for linha in linhas:
+        registro = registro_de_calibracao(linha, data)
+        if registro is not None:
+            registro["modelos"] = dict(modelos or {})
+            registros.append(registro)
+    if not registros:
+        return 0
+    try:
+        destino = Path(caminho) if caminho else dados_usuario.pasta_logs() / ARQUIVO_DE_CALIBRACAO
+        with open(destino, "a", encoding="utf-8") as arquivo:
+            for registro in registros:
+                arquivo.write(json.dumps(registro, ensure_ascii=False, default=str) + "\n")
+    except OSError:
+        return 0
+    return len(registros)

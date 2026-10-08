@@ -65,3 +65,11 @@ def test_a_revisao_tem_a_coluna_confianca():
     textos = {no.value for no in ast.walk(_classe("JanelaRevisaoPDM"))
               if isinstance(no, ast.Constant) and isinstance(no.value, str)}
     assert "Confiança" in textos
+
+
+def test_a_tela_grava_a_calibracao_ao_confirmar_a_revisao():
+    for no in ast.walk(ast.parse(TELA.read_text(encoding="utf-8"))):
+        if isinstance(no, ast.FunctionDef) and no.name == "_pos_revisao_concluida":
+            assert "gravar_calibracao" in _chamadas_em(no)
+            return
+    raise AssertionError("_pos_revisao_concluida sumiu")

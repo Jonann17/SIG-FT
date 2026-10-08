@@ -5,6 +5,8 @@ Sem IA, sem tkinter, sem pandas: listas e dicionários.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from sigft.core.pdm_catalogo import Caracteristica, CatalogoPDM, PDM
@@ -311,3 +313,89 @@ def test_juntar_sugestoes_fixa_no_topo_sem_repetir():
 
 def test_juntar_sugestoes_respeita_o_limite():
     assert len(escolha.juntar_sugestoes([(PLAQUETA, "x")], [INDICADOR, VALVULAS], 2)) == 2
+
+
+# =============================================================================
+# 4. Calibração: o que a IA disse x o que o usuário escolheu (spec §4.7)
+# =============================================================================
+def _linha_cal(final, **extra):
+    linha = {
+        "pdm_ia": "PDM.6685.017 - INDICADOR DIGITAL", "pdm_escolhido": final,
+        "alternativas": [{"pdm": "PDM.5930.012 - PLAQUETA INDICADORA", "motivo": "x"},
+                         {"pdm": "PDM.4820.004 - VALVULAS ESFERA", "motivo": "y"}],
+        "confianca": "ALTA", "confianca_final": "MEDIA",
+        "sinais": {"na_busca": True, "nome_base": False, "caracteristicas": False},
+        "interpretacao": {"e": "INDICADOR DIGITAL"},
+        "descricao_original": "DISPLAY", "marca_modelo": "ACME",
+    }
+    linha.update(extra)
+    return linha
+
+
+@pytest.mark.parametrize("final,posicao,trocou", [
+    ("PDM.6685.017 - INDICADOR DIGITAL", 1, False),
+    ("PDM.5930.012 - PLAQUETA INDICADORA", 2, True),
+    ("PDM.4820.004 - VALVULAS ESFERA", 3, True),
+    ("PDM.1111.111 - OUTRO", 0, True),
+])
+def test_posicao_do_final(final, posicao, trocou):
+    registro = escolha.registro_de_calibracao(_linha_cal(final), "2026-10-08T10:00:00")
+    assert registro["posicao_do_final"] == posicao
+    assert registro["trocou"] is trocou
+
+
+def test_nenhum_mantido_conta_como_primeiro_lugar():
+    registro = escolha.registro_de_calibracao(
+        _linha_cal("NENHUM", pdm_ia="NENHUM", alternativas=[]), "d")
+    assert registro["posicao_do_final"] == 1
+    assert registro["trocou"] is False
+
+
+def test_linha_sem_pdm_ia_nao_entra():
+    """Modo "Pular IA": não há o que calibrar."""
+    assert escolha.registro_de_calibracao({"pdm_escolhido": "PDM.1"}, "d") is None
+    assert escolha.registro_de_calibracao({"pdm_ia": float("nan")}, "d") is None
+
+
+def test_alternativa_em_texto_tambem_conta_na_posicao():
+    registro = escolha.registro_de_calibracao(
+        _linha_cal("PDM.5930.012 - PLAQUETA INDICADORA",
+                   alternativas=["PDM.5930.012 - PLAQUETA INDICADORA"]), "d")
+    assert registro["posicao_do_final"] == 2
+
+
+def test_o_registro_diz_por_que_a_ia_ficou_em_nenhum():
+    """Item que a IA nem respondeu não é um NENHUM dela: a conta de acerto
+    precisa poder separar os dois."""
+    registro = escolha.registro_de_calibracao(
+        _linha_cal("PDM.1111.111 - OUTRO", pdm_ia="NENHUM", alternativas=[],
+                   origem_do_nenhum="sem_resposta"), "d")
+    assert registro["ia"]["origem_do_nenhum"] == "sem_resposta"
+    assert escolha.registro_de_calibracao(_linha_cal("X"), "d")["ia"]["origem_do_nenhum"] == ""
+
+
+def test_gravar_calibracao_acrescenta_uma_linha_json_por_item(tmp_path):
+    destino = tmp_path / "escolha_pdm.jsonl"
+    n = escolha.gravar_calibracao(
+        [_linha_cal("PDM.5930.012 - PLAQUETA INDICADORA"), {"pdm_escolhido": "PDM.1"}],
+        modelos={"passada_1": "m1", "passada_2": "m2"}, caminho=destino, data="D")
+    n2 = escolha.gravar_calibracao([_linha_cal("PDM.6685.017 - INDICADOR DIGITAL")],
+                                   caminho=destino, data="D")
+    linhas = destino.read_text(encoding="utf-8").splitlines()
+    assert (n, n2, len(linhas)) == (1, 1, 2)
+    primeiro = json.loads(linhas[0])
+    assert primeiro["final"] == "PDM.5930.012 - PLAQUETA INDICADORA"
+    assert primeiro["ia"]["confianca_final"] == "MEDIA"
+    assert primeiro["modelos"] == {"passada_1": "m1", "passada_2": "m2"}
+    assert primeiro["marca"] == "ACME"
+
+
+def test_gravar_calibracao_nunca_levanta(tmp_path):
+    """Um diretório no lugar do arquivo: o registro não pode travar a automação."""
+    assert escolha.gravar_calibracao([_linha_cal("X")], caminho=tmp_path, data="D") == 0
+
+
+def test_gravar_calibracao_sem_nada_para_gravar(tmp_path):
+    destino = tmp_path / "x.jsonl"
+    assert escolha.gravar_calibracao([{"pdm_escolhido": "PDM.1"}], caminho=destino) == 0
+    assert not destino.exists()
