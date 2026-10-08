@@ -15,6 +15,9 @@ from sigft.core.llm.client import get_llm
 # `sigft.core.llm.prompts.montar_categorizar_pdm` -- só o pré-processamento
 # (`_formatar_itens`) continua aqui.
 from sigft.core.llm import prompts
+# 2026-10-08: as regras puras da escolha de PDM em duas passadas (a leitura
+# da passada 1, a confiança, os sinais, o que a revisão mostra).
+from sigft.services import cria_fichas_escolha as escolha
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em
 # `AutomacaoPMIB.iniciar_driver` abaixo.
@@ -156,9 +159,14 @@ class DataManager:
 # pode ser repetido sem repetir o que já deu certo.
 ITENS_POR_BLOCO = 15
 
+# Itens por chamada da passada 1 (`interpretar_material`). Ela não carrega o
+# catálogo, então o prompt é pequeno; o teto existe para a RESPOSTA (uma
+# linha por item) não ficar longa a ponto de ser cortada.
+ITENS_POR_INTERPRETACAO = 60
+
 # O que a IA responde quando nenhum PDM serve. `processar_item_individual`
 # trata como PULAR -- é resposta legítima, não erro.
-PDM_NENHUM = "NENHUM"
+PDM_NENHUM = escolha.PDM_NENHUM
 
 
 _RE_CODIGO_PDM = re.compile(r"PDM\.\d{4}\.\d{3}")
@@ -331,6 +339,13 @@ class GeminiCategorizer:
         # (é só um print, não chama genai) -- mesmo comportamento
         # observável de hoje quando a chave está ausente.
         self._llm = get_llm("categorizar_pdm", api_key)
+        # Passada 1 (2026-10-08): construída só quando usada -- se o provedor
+        # dela não puder ser montado (chave ausente, por exemplo), o lote
+        # degrada para a busca de hoje em vez de nem começar.
+        self._llm_interpretacao = None
+        # Os candidatos de cada item do último `processar_lote`, na ordem do
+        # lote. É o que os sinais da revisão conferem ("estava na busca?").
+        self.ultimos_candidatos = []
         if not self.api_key:
             print("AVISO: Nenhuma API Key fornecida.")
 
@@ -348,6 +363,47 @@ class GeminiCategorizer:
         `LLMClient` já construído -- perguntar a ele é o que garante que o
         log não pode divergir da chamada."""
         return f"{self._llm.provider_name}/{self._llm.model}"
+
+    def _cliente_da_interpretacao(self):
+        if self._llm_interpretacao is None:
+            self._llm_interpretacao = get_llm("interpretar_material", self.api_key)
+        return self._llm_interpretacao
+
+    @property
+    def modelo_da_interpretacao(self) -> str:
+        """`provider/model` da passada 1, no formato de uma linha de log.
+        Nunca levanta: é só a linha de log de um passo que pode degradar."""
+        try:
+            llm = self._cliente_da_interpretacao()
+            return f"{llm.provider_name}/{llm.model}"
+        except Exception as e:
+            return f"indisponível ({e})"
+
+    def interpretar_lote(self, df_itens, callback_log=None) -> list:
+        """Passada 1: o que cada material É, antes da busca no catálogo.
+
+        Devolve uma posição por item, na ordem do lote -- `None` onde não há
+        interpretação utilizável. NUNCA levanta: se uma chamada falhar (rede,
+        chave, JSON inválido), as fatias que já voltaram ficam, o resto vira
+        `None`, e esses itens seguem com a busca de hoje. Spec §4.8."""
+        linhas = [linha for _indice, linha in df_itens.iterrows()]
+        resultado = []
+        try:
+            llm = self._cliente_da_interpretacao()
+            for fatia in _fatiar(linhas, ITENS_POR_INTERPRETACAO):
+                if not fatia:
+                    continue
+                resp = llm.generate(
+                    prompts.montar_interpretar_material(escolha.itens_para_interpretar(fatia)),
+                    tags={"modulo": "cria_fichas_no_pmib_v1_backend",
+                          "tarefa": "interpretar_material"},
+                )
+                resultado.extend(escolha.ler_interpretacoes(resp.parsed_json, total=len(fatia)))
+        except Exception as e:
+            if callback_log:
+                callback_log(f"IA: interpretação indisponível ({e}). "
+                             "Seguindo só com a busca por palavras.")
+        return resultado + [None] * (len(linhas) - len(resultado))
 
     def _formatar_itens(self, df, catalogo=None):
         """O bloco `### ITEM N` de cada item do lote.

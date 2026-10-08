@@ -392,3 +392,20 @@ def test_snapshot_autospec_prompt():
     assert len(fake.chamadas) == 1
     assert fake.chamadas[0]["prompt"] == _ler_fixture("autospec_prompt")
     assert fake.chamadas[0]["system"] is None
+
+
+# =============================================================================
+# 6. services.cria_fichas.GeminiCategorizer.interpretar_lote
+#    tarefa "interpretar_material" (2026-10-08) -- fixture NASCIDA com a
+#    spec docs/superpowers/specs/2026-10-08-escolha-de-pdm-em-duas-passadas-design.md
+# =============================================================================
+def test_snapshot_cria_fichas_interpretar_material_prompt():
+    cat = cria_fichas_no_pmib_v1_backend.GeminiCategorizer("chave-fake")
+    fake = _FakeLLM(retorno=_resposta_ok([]))
+    cat._llm_interpretacao = fake
+
+    cat.interpretar_lote(_UmItemSo())
+
+    assert len(fake.chamadas) == 1
+    assert fake.chamadas[0]["prompt"] == _ler_fixture("interpretar_material_prompt")
+    assert fake.chamadas[0]["system"] is None
