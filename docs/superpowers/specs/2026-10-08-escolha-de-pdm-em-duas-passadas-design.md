@@ -1,9 +1,10 @@
 # Cria Fichas: a escolha de PDM em duas passadas
 
 **Data:** 2026-10-08 · **Frente:** Luan (Cria Fichas)
-**Status:** aprovada pelo usuário em 2026-10-08 ("pode seguir"). Plano de implementação:
-`docs/superpowers/plans/2026-10-08-escolha-de-pdm-em-duas-passadas.md` (a seção "Ajustes em
-relação à spec" de lá lista o que o código refinou; o texto abaixo já está alinhado).
+**Status:** implementada em 2026-10-08 (plano
+`docs/superpowers/plans/2026-10-08-escolha-de-pdm-em-duas-passadas.md`, cujas seções de ajustes
+listam o que o código refinou; o texto abaixo já está alinhado). Aguarda a validação na máquina
+do usuário (§7).
 
 > *"Ele está diversas vezes não apontando para nenhum PDM... Está vindo como Nenhum.... Mesmo
 > quando eu sei que tem PDMs bons para escolher."*
@@ -199,7 +200,7 @@ Ao confirmar a revisão (`_pos_revisao_concluida`), uma linha JSON por item em
 ```json
 {"data": "2026-10-08T14:02:11", "descricao": "...", "marca": "...",
  "interpretacao": {"e": "...", "sinonimos": [...], "serve": "..."},
- "ia": {"pdm": "...", "confianca": "ALTA", "confianca_final": "MEDIA",
+ "ia": {"pdm": "...", "origem_do_nenhum": "", "confianca": "ALTA", "confianca_final": "MEDIA",
         "sinais": {"na_busca": true, "nome_base": false, "caracteristicas": false},
         "alternativas": [{"pdm": "...", "motivo": "..."}]},
  "final": "...", "trocou": true, "posicao_do_final": 2,
@@ -208,8 +209,10 @@ Ao confirmar a revisão (`_pos_revisao_concluida`), uma linha JSON por item em
 
 `posicao_do_final`: a posição do PDM final em `[escolhido, alternativa 1, alternativa 2]` —
 1, 2 ou 3 —, ou 0 se ele veio da busca livre. NENHUM entra na comparação como qualquer outro
-valor: a IA disse NENHUM e o usuário manteve → 1. Nada lê o arquivo ainda: depois de 2 ou 3 lotes, uma conta simples diz
-quanto ALTA de fato acerta.
+valor: a IA disse NENHUM e o usuário manteve → 1. `origem_do_nenhum` separa o NENHUM da IA
+(`ia`) do item que ela nem respondeu (`sem_resposta`) ou que a guarda recusou
+(`fora_do_catalogo`): só o primeiro é julgamento dela. Nada lê o arquivo ainda: depois de 2 ou 3
+lotes, uma conta simples diz quanto ALTA de fato acerta.
 
 ### 4.8 Quando algo falha
 

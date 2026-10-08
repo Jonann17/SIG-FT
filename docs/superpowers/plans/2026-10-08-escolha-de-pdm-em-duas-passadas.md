@@ -3319,3 +3319,13 @@ git commit -m "Docs: escolha de PDM em duas passadas (base de conhecimento, pend
 2. Rodar o lote de 63 itens **até a revisão**, sem criar fichas: contar `PDM NOVO?`, acerto do 1º lugar, acerto em 2º/3º, e os dois casos reais.
 3. Custo e tempo no painel "Gastos de IA", antes × depois.
 4. Versão: PATCH, via rc, com a skill `sigft-lancar-versao`.
+
+## Ajustes feitos na execução (2026-10-08)
+
+O plano foi executado tarefa a tarefa, um commit por tarefa (os de zona 🔴 isolados). O que mudou em relação ao texto acima:
+
+1. **Task 7:** a fixture `cria_fichas_prompt` foi regerada por script que extrai o docstring atual de `montar_categorizar_pdm` sem retranscrevê-lo, e o diff da fixture foi conferido linha a linha antes do commit.
+2. **Task 12:** a tela de revisão foi aberta de verdade (customtkinter e pandas reais, sob Xvfb, num venv de Python 3.12 descartável). A captura mostrou a coluna Confiança cortando "SEM RESPOSTA" e empurrando "Tipo" para fora: a coluna ficou com 140 px e a janela foi de 1100×600 para 1250×640.
+3. **Task 13:** o registro de calibração guarda também `ia.origem_do_nenhum`. Um item que a IA nem respondeu não pode contar como um NENHUM dela na conta de acerto.
+4. **Task 14:** a seção da base de conhecimento entrou logo depois da de 2026-09-22 ("a escolha de PDM mudou"), e não no fim do arquivo. No `PENDENCIAS.md` entraram três linhas: o registro da zona compartilhada, o `nan` que a revisão mostra no item sem resposta (pré-existente, visto na captura) e a validação da §7.
+5. **Abrir o app:** a cada tarefa que mexeu em `sigft/app/`, o `frontend.py` ficou 30 a 40 s de pé sob Xvfb, com o mesmo conjunto de mensagens de antes da mudança. As mensagens são ruído pré-existente: Chrome ausente, PyPDF2 fora do venv e o `after` do customtkinter.
