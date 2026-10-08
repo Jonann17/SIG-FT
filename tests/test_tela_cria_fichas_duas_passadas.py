@@ -25,3 +25,43 @@ def test_a_tela_nao_confere_pdm_sozinha():
 
 def test_a_tela_delega_as_duas_passadas_ao_servico():
     assert "classificar_para_revisao" in _chamadas()
+
+
+JANELAS = TELA.parent / "janelas.py"
+
+
+def _classe(nome):
+    for no in ast.walk(ast.parse(JANELAS.read_text(encoding="utf-8"))):
+        if isinstance(no, ast.ClassDef) and no.name == nome:
+            return no
+    raise AssertionError(nome)
+
+
+def _chamadas_em(no):
+    return {c.func.attr for c in ast.walk(no)
+            if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)}
+
+
+def test_o_seletor_aceita_sugestoes():
+    init = next(f for f in _classe("JanelaEscolherPDM").body
+                if isinstance(f, ast.FunctionDef) and f.name == "__init__")
+    assert "sugestoes" in [a.arg for a in init.args.args + init.args.kwonlyargs]
+
+
+def test_a_revisao_usa_as_regras_do_servico_para_exibir():
+    chamadas = _chamadas_em(_classe("JanelaRevisaoPDM"))
+    for regra in ("ordem_para_revisao", "rotulo_de_confianca",
+                  "texto_do_porque", "sugestoes_da_linha"):
+        assert regra in chamadas, regra
+
+
+def test_a_revisao_nao_ordena_por_conta_propria():
+    nomes = {c.func.id for c in ast.walk(_classe("JanelaRevisaoPDM"))
+             if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}
+    assert "sorted" not in nomes
+
+
+def test_a_revisao_tem_a_coluna_confianca():
+    textos = {no.value for no in ast.walk(_classe("JanelaRevisaoPDM"))
+              if isinstance(no, ast.Constant) and isinstance(no.value, str)}
+    assert "Confiança" in textos

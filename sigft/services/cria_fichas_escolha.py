@@ -197,3 +197,94 @@ def confianca_final(confianca, sinais) -> tuple:
     if confianca == "ALTA" and sum(bool(v) for v in sinais.values()) < 2:
         return "MEDIA", True
     return confianca, False
+
+
+# =============================================================================
+# O que a tela de revisão mostra (spec §4.6). A tela só exibe o que sai daqui.
+# =============================================================================
+_PRIORIDADE = {"BAIXA": 1, "MEDIA": 2, "ALTA": 3}
+_ROTULOS = {"ALTA": "ALTA", "MEDIA": "MÉDIA", "BAIXA": "BAIXA"}
+_ROTULOS_DO_NENHUM = {"ia": "PDM NOVO?", "sem_resposta": "SEM RESPOSTA",
+                      "fora_do_catalogo": "FORA DO CATÁLOGO"}
+_NOMES_DOS_SINAIS = (("na_busca", "na busca"), ("nome_base", "nome base"),
+                     ("caracteristicas", "características"))
+
+
+def _e_nenhum(valor) -> bool:
+    return isinstance(valor, str) and valor.strip().upper() == PDM_NENHUM
+
+
+def _veio_da_ia(linha) -> bool:
+    """A linha passou pelo `preparar_para_revisao`? No modo "Pular IA" o PDM
+    vem da planilha, e não há confiança nenhuma a mostrar."""
+    return isinstance(linha.get("pdm_ia"), str)
+
+
+def _sim(valor) -> bool:
+    """Verdadeiro para `True` e para o `numpy.True_` que a linha do pandas
+    pode entregar (`numpy.True_ is True` é falso)."""
+    return str(valor).strip().lower() == "true"
+
+
+def ordem_para_revisao(linhas) -> list:
+    """Em que ordem as linhas aparecem: NENHUM, BAIXA, MEDIA, ALTA. Linha que
+    não veio da IA fica por último, sem reordenar. Empate fica na ordem da
+    planilha -- a coluna ID continua mostrando o número original."""
+    def chave(par):
+        posicao, linha = par
+        if not _veio_da_ia(linha):
+            return (4, posicao)
+        if _e_nenhum(linha.get("pdm_escolhido")):
+            return (0, posicao)
+        return (_PRIORIDADE.get(linha.get("confianca_final"), 4), posicao)
+    return [posicao for posicao, _linha in sorted(enumerate(linhas), key=chave)]
+
+
+def rotulo_de_confianca(linha) -> str:
+    if not _veio_da_ia(linha):
+        return ""
+    if _e_nenhum(linha.get("pdm_escolhido")):
+        return _ROTULOS_DO_NENHUM.get(linha.get("origem_do_nenhum"), "PDM NOVO?")
+    rotulo = _ROTULOS.get(linha.get("confianca_final"), "")
+    if rotulo and _sim(linha.get("rebaixada")):
+        rotulo += " ↓"
+    return rotulo
+
+
+def texto_do_porque(linha) -> str:
+    """O texto sob a tabela quando uma linha é selecionada."""
+    partes = []
+    justificativa = linha.get("justificativa")
+    if isinstance(justificativa, str) and justificativa.strip():
+        partes.append(f"Por quê: {justificativa.strip()}")
+    sinais = linha.get("sinais")
+    if isinstance(sinais, dict) and sinais:
+        partes.append("Conferências: " + " · ".join(
+            f"{nome} {'✓' if sinais.get(chave) else '✗'}" for chave, nome in _NOMES_DOS_SINAIS))
+    interpretacao = linha.get("interpretacao")
+    if isinstance(interpretacao, dict) and interpretacao.get("e"):
+        partes.append(f"A IA leu: {interpretacao['e']}")
+    return "\n".join(partes)
+
+
+def sugestoes_da_linha(linha, catalogo) -> list:
+    """O 2º e o 3º lugar como `(PDM, rótulo)`, para o seletor de PDM."""
+    alternativas = linha.get("alternativas")
+    if catalogo is None or not isinstance(alternativas, list):
+        return []
+    sugestoes = []
+    for lugar, alternativa in enumerate(alternativas, start=2):
+        alternativa = alternativa if isinstance(alternativa, dict) else {}
+        pdm = catalogo.resolver(str(alternativa.get("pdm") or ""))
+        if pdm is None:
+            continue
+        motivo = str(alternativa.get("motivo") or "").strip()
+        sugestoes.append((pdm, f"{lugar}º lugar" + (f": {motivo}" if motivo else "")))
+    return sugestoes
+
+
+def juntar_sugestoes(sugestoes, achados, limite) -> list:
+    """As sugestões fixas no topo, depois o resto da busca, sem repetir."""
+    fixos = [pdm for pdm, _rotulo in sugestoes]
+    codigos = {p.codigo for p in fixos}
+    return (fixos + [p for p in achados if p.codigo not in codigos])[:limite]

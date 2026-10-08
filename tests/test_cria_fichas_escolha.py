@@ -217,3 +217,97 @@ def test_confianca_final(confianca, confirmados, esperado):
     chaves = ("na_busca", "nome_base", "caracteristicas")
     sinais = {c: i < confirmados for i, c in enumerate(chaves)}
     assert escolha.confianca_final(confianca, sinais) == esperado
+
+
+# =============================================================================
+# 3. O que a tela de revisão mostra
+# =============================================================================
+def _linha_rev(pdm="PDM.5930.012 - PLAQUETA INDICADORA", final="ALTA", **extra):
+    """Uma linha como o `preparar_para_revisao` devolve: tem `pdm_ia`."""
+    linha = {"pdm_escolhido": pdm, "pdm_ia": pdm, "confianca_final": final}
+    linha.update(extra)
+    return linha
+
+
+def test_ordem_poe_o_que_precisa_de_olho_primeiro():
+    linhas = [_linha_rev(final="ALTA"), _linha_rev(final="BAIXA"),
+              _linha_rev(pdm="NENHUM", final=""), _linha_rev(final="MEDIA"),
+              _linha_rev(final="BAIXA")]
+    assert escolha.ordem_para_revisao(linhas) == [2, 1, 4, 3, 0]
+
+
+def test_ordem_sem_ia_mantem_a_planilha():
+    """Modo "Pular IA": o PDM vem da planilha, NENHUM inclusive, e a ordem
+    não muda."""
+    linhas = [{"pdm_escolhido": "PDM.1"}, {"pdm_escolhido": "NENHUM"}]
+    assert escolha.ordem_para_revisao(linhas) == [0, 1]
+
+
+@pytest.mark.parametrize("linha,esperado", [
+    (_linha_rev(final="ALTA"), "ALTA"),
+    (_linha_rev(final="MEDIA"), "MÉDIA"),
+    (_linha_rev(final="MEDIA", rebaixada=True), "MÉDIA ↓"),
+    (_linha_rev(final="BAIXA"), "BAIXA"),
+    (_linha_rev(pdm="NENHUM", final="", origem_do_nenhum="ia"), "PDM NOVO?"),
+    (_linha_rev(pdm="NENHUM", final="", origem_do_nenhum="sem_resposta"), "SEM RESPOSTA"),
+    (_linha_rev(pdm="NENHUM", final="", origem_do_nenhum="fora_do_catalogo"), "FORA DO CATÁLOGO"),
+    ({"pdm_escolhido": "PDM.1"}, ""),
+    ({"pdm_escolhido": "NENHUM"}, ""),  # "Pular IA": não foi a IA que disse NENHUM
+])
+def test_rotulo_de_confianca(linha, esperado):
+    assert escolha.rotulo_de_confianca(linha) == esperado
+
+
+class _BoolDoNumpy:
+    """`numpy.True_ is True` é falso, e é o que a linha do pandas pode
+    entregar numa coluna só de booleanos."""
+
+    def __bool__(self):
+        return True
+
+    def __str__(self):
+        return "True"
+
+
+def test_rebaixada_vale_tambem_para_o_booleano_do_numpy():
+    linha = _linha_rev(final="MEDIA", rebaixada=_BoolDoNumpy())
+    assert escolha.rotulo_de_confianca(linha) == "MÉDIA ↓"
+
+
+def test_texto_do_porque_junta_justificativa_conferencias_e_leitura():
+    texto = escolha.texto_do_porque({
+        "justificativa": "é um display",
+        "sinais": {"na_busca": True, "nome_base": False, "caracteristicas": True},
+        "interpretacao": {"e": "INDICADOR DIGITAL"},
+    })
+    assert texto == ("Por quê: é um display\n"
+                     "Conferências: na busca ✓ · nome base ✗ · características ✓\n"
+                     "A IA leu: INDICADOR DIGITAL")
+    assert "—" not in texto
+
+
+def test_texto_do_porque_vazio_sem_dados():
+    assert escolha.texto_do_porque({"pdm_escolhido": "PDM.1"}) == ""
+
+
+def test_sugestoes_sao_o_2o_e_o_3o_lugar_com_motivo():
+    sugestoes = escolha.sugestoes_da_linha(
+        {"alternativas": [{"pdm": "PDM.4820.004 - VALVULAS ESFERA", "motivo": "se for válvula"},
+                          {"pdm": "PDM.5930.012 - PLAQUETA INDICADORA", "motivo": ""}]},
+        CATALOGO)
+    assert [(p.codigo, r) for p, r in sugestoes] == [
+        ("PDM.4820.004", "2º lugar: se for válvula"), ("PDM.5930.012", "3º lugar")]
+
+
+def test_sugestoes_sem_alternativas_ou_sem_catalogo():
+    assert escolha.sugestoes_da_linha({}, CATALOGO) == []
+    assert escolha.sugestoes_da_linha({"alternativas": [{"pdm": "PDM.5930.012"}]}, None) == []
+
+
+def test_juntar_sugestoes_fixa_no_topo_sem_repetir():
+    juntos = escolha.juntar_sugestoes([(PLAQUETA, "2º lugar")], [INDICADOR, PLAQUETA], 40)
+    assert [p.codigo for p in juntos] == ["PDM.5930.012", "PDM.6685.017"]
+
+
+def test_juntar_sugestoes_respeita_o_limite():
+    assert len(escolha.juntar_sugestoes([(PLAQUETA, "x")], [INDICADOR, VALVULAS], 2)) == 2
