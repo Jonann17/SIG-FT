@@ -552,7 +552,10 @@ class GeminiCategorizer:
         # prompt (antes embutido aqui como f-string gigante) agora mora em
         # `sigft.core.llm.prompts.montar_categorizar_pdm` -- só o
         # pré-processamento acima (`_formatar_itens`) continua neste método.
-        prompt_template = prompts.montar_categorizar_pdm(instrucoes, lista_pdms, itens_texto)
+        prompt_template = prompts.montar_categorizar_pdm(
+            instrucoes, lista_pdms, itens_texto,
+            exemplos_texto=self._exemplos_do_catalogo(catalogo),
+        )
         # CP 3.1: SEM retry (política de `categorizar_pdm`: `max_retries=0`,
         # 1 tentativa só -- mesmo comportamento de hoje) e limpeza/parse do
         # JSON delegados a `LLMClient.generate()` (`_limpar_e_parsear_json`,
@@ -572,6 +575,21 @@ class GeminiCategorizer:
             raise Exception(f"Erro na IA: {e}") from e
 
         return alinhar_resposta(resp.parsed_json, total=len(df_bloco))
+
+    @staticmethod
+    def _exemplos_do_catalogo(catalogo):
+        """Os exemplos do prompt com o título do Master carregado (spec §4.3).
+        Catálogo sem `por_codigo` (os dublês dos testes) fica com o padrão
+        conferido -- `None` faz o prompt usá-lo."""
+        por_codigo = getattr(catalogo, "por_codigo", None)
+        if not callable(por_codigo):
+            return None
+
+        def completo(codigo):
+            pdm = por_codigo(codigo)
+            return pdm.completo if pdm is not None else None
+
+        return prompts.montar_exemplos_categorizar_pdm(completo)
 
     @staticmethod
     def _classes_relevantes(df_bloco, catalogo):

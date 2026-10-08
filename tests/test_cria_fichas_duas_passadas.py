@@ -191,3 +191,23 @@ def test_ultimos_candidatos_fica_alinhado_ao_lote():
     assert len(cat.ultimos_candidatos) == 2
     assert "PDM.6685.017" in [p.codigo for p in cat.ultimos_candidatos[0]]
     assert cat.ultimos_candidatos[1] == []
+
+
+# =============================================================================
+# 3. Os exemplos vêm do catálogo
+# =============================================================================
+def test_o_exemplo_da_plaqueta_entra_com_o_titulo_do_master():
+    plaqueta = _pdm("PDM.5930.012", "PLAQUETA", "INDICADORA", ["MATERIAL"])
+    llm = _LLMFalso([])
+    _categorizador(llm=llm).processar_lote(
+        _DataFrameFalso([_linha("X")]), pdm_catalogo.CatalogoPDM(pdms=[plaqueta]))
+    assert "- PDM: PDM.5930.012 - PLAQUETA INDICADORA" in llm.chamadas[0]["prompt"]
+
+
+def test_exemplo_cujo_pdm_nao_esta_no_master_carregado_nao_entra():
+    llm = _LLMFalso([])
+    _categorizador(llm=llm).processar_lote(
+        _DataFrameFalso([_linha("X")]), _catalogo_do_display())
+    prompt = llm.chamadas[0]["prompt"]
+    assert "PDM.7010.018" not in prompt          # SERVIDOR não está neste catálogo
+    assert "- PDM: PDM.6685.017 - INDICADOR DIGITAL" in prompt
