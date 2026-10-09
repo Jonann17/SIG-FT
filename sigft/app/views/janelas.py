@@ -22,6 +22,9 @@ from tkinter import messagebox, simpledialog, ttk
 
 from sigft.app.theme import COLORS
 from sigft.app.widgets import dialogs as app_dialogs
+# 2026-10-08: o que a revisão de PDMs mostra (confiança, ordem, "por quê",
+# 2º e 3º lugar) é regra do serviço; a tela só exibe.
+from sigft.services import cria_fichas_escolha as escolha
 
 import customtkinter as ctk
 
@@ -96,7 +99,7 @@ class JanelaEscolherPDM(ctk.CTkToplevel):
 
     LINHAS_VISIVEIS = 40
 
-    def __init__(self, parent, catalogo):
+    def __init__(self, parent, catalogo, sugestoes=()):
         super().__init__(parent)
         self.title("Escolher PDM")
         self.geometry("900x560")
@@ -106,6 +109,9 @@ class JanelaEscolherPDM(ctk.CTkToplevel):
         self.catalogo = catalogo
         self.escolha = None
         self._achados = []
+        # 2º e 3º lugar da IA, fixos no topo enquanto a busca está vazia.
+        self._sugestoes = list(sugestoes or ())
+        self._rotulo_da_sugestao = {pdm.codigo: rotulo for pdm, rotulo in self._sugestoes}
 
         topo = ctk.CTkFrame(self, fg_color="transparent")
         topo.pack(fill="x", padx=10, pady=10)
@@ -154,16 +160,19 @@ class JanelaEscolherPDM(ctk.CTkToplevel):
         self.entry_busca.focus_set()
 
     def _atualizar(self):
-        self._achados = self.catalogo.buscar(
-            self.entry_busca.get(), limite=self.LINHAS_VISIVEIS
-        )
+        procurado = self.entry_busca.get()
+        self._achados = self.catalogo.buscar(procurado, limite=self.LINHAS_VISIVEIS)
+        com_sugestoes = not procurado.strip() and self._sugestoes
+        if com_sugestoes:
+            self._achados = escolha.juntar_sugestoes(
+                self._sugestoes, self._achados, self.LINHAS_VISIVEIS)
         self.lista.delete(*self.lista.get_children())
         for posicao, pdm in enumerate(self._achados):
-            self.lista.insert(
-                "", "end", iid=str(posicao),
-                values=(pdm.completo, pdm.classe,
-                        "; ".join(pdm.caracteristicas[:6])),
-            )
+            detalhe = "; ".join(pdm.caracteristicas[:6])
+            if com_sugestoes and pdm.codigo in self._rotulo_da_sugestao:
+                detalhe = "★ " + self._rotulo_da_sugestao[pdm.codigo]
+            self.lista.insert("", "end", iid=str(posicao),
+                              values=(pdm.completo, pdm.classe, detalhe))
         self.lbl_contagem.configure(
             text=f"{len(self._achados)} PDM(s) na lista"
             + (f" (mostrando os {self.LINHAS_VISIVEIS} primeiros)"
@@ -189,7 +198,9 @@ class JanelaRevisaoPDM(ctk.CTkToplevel):
     def __init__(self, parent, dataframe, callback_confirmar, catalogo=None):
         super().__init__(parent)
         self.title("Revisão de PDMs - Pré-Automação")
-        self.geometry("1100x600")
+        # 1250 (era 1100): a coluna Confiança (2026-10-08) cabe sem empurrar
+        # "Tipo" para fora; a altura extra é do "por quê" sob a tabela.
+        self.geometry("1250x640")
         self.transient(parent)
         self.grab_set()
 
@@ -220,7 +231,8 @@ class JanelaRevisaoPDM(ctk.CTkToplevel):
         sb_y = ttk.Scrollbar(self.frame_tabela, orient="vertical")
         sb_x = ttk.Scrollbar(self.frame_tabela, orient="horizontal")
 
-        colunas = ["INDEX", "Descrição Original", "PDM Escolhido", "Descrição Curta", "Unidade", "Tipo"]
+        colunas = ["INDEX", "Descrição Original", "PDM Escolhido", "Confiança",
+                   "Descrição Curta", "Unidade", "Tipo"]
 
         self.tree = ttk.Treeview(
             self.frame_tabela,
@@ -239,27 +251,45 @@ class JanelaRevisaoPDM(ctk.CTkToplevel):
         self.tree.heading("INDEX", text="ID"); self.tree.column("INDEX", width=40)
         self.tree.heading("Descrição Original", text="Descrição Original"); self.tree.column("Descrição Original", width=350)
         self.tree.heading("PDM Escolhido", text="PDM Escolhido (EDITÁVEL)"); self.tree.column("PDM Escolhido", width=250)
+        self.tree.heading("Confiança", text="Confiança"); self.tree.column("Confiança", width=140)
         self.tree.heading("Descrição Curta", text="Descrição Curta"); self.tree.column("Descrição Curta", width=200)
         self.tree.heading("Unidade", text="UN"); self.tree.column("Unidade", width=50)
         self.tree.heading("Tipo", text="Tipo"); self.tree.column("Tipo", width=100)
 
+        # O "por quê" da linha selecionada: justificativa, conferências e o que
+        # a IA leu do material (spec §4.6).
+        self.lbl_porque = ctk.CTkLabel(self, text="", justify="left", anchor="w")
+        self.lbl_porque.pack(fill="x", padx=12, pady=(0, 10))
+        self.tree.bind("<<TreeviewSelect>>", self._mostrar_porque)
+
         self.preencher_tabela()
 
     def preencher_tabela(self):
-        # Limpa atual
         for item in self.tree.get_children(): self.tree.delete(item)
 
-        # Preenche
-        for index, row in self.df_dados.iterrows():
+        # A ORDEM vem do serviço (o que precisa de olho primeiro); a coluna ID
+        # continua com o índice original, que é o que liga a linha à planilha.
+        indices = list(self.df_dados.index)
+        linhas = [row for _index, row in self.df_dados.iterrows()]
+        for posicao in escolha.ordem_para_revisao(linhas):
+            index, row = indices[posicao], linhas[posicao]
             vals = [
                 index,
                 row.get('descricao_original', ''),
                 row.get('pdm_escolhido', ''),
+                escolha.rotulo_de_confianca(row),
                 row.get('descricao_curta', ''),
                 row.get('unidade', ''),
                 row.get('tipo', '')
             ]
             self.tree.insert("", "end", iid=index, values=vals)
+
+    def _mostrar_porque(self, _evento=None):
+        selecionados = self.tree.selection()
+        texto = ""
+        if len(selecionados) == 1:
+            texto = escolha.texto_do_porque(self.df_dados.loc[int(selecionados[0])])
+        self.lbl_porque.configure(text=texto)
 
     def editar_pdm(self):
         selecionados = self.tree.selection()
@@ -274,7 +304,11 @@ class JanelaRevisaoPDM(ctk.CTkToplevel):
         # "PDM.1234.001 - NOME" de cabeça, sem busca e sem validação, e o que
         # ela escrevesse ia direto para o filtro de PDM do portal.
         if self.catalogo is not None:
-            janela = JanelaEscolherPDM(self, self.catalogo)
+            sugestoes = []
+            if len(selecionados) == 1:
+                sugestoes = escolha.sugestoes_da_linha(
+                    self.df_dados.loc[int(selecionados[0])], self.catalogo)
+            janela = JanelaEscolherPDM(self, self.catalogo, sugestoes=sugestoes)
             # Espera a pessoa escolher: janela do Tk NÃO bloqueia quem a cria.
             # Lida na mesma linha, `.escolha` ainda era None e a troca nunca
             # acontecia (2026-09-25). Mesmo padrão da tela de correção de PDM.
@@ -296,6 +330,7 @@ class JanelaRevisaoPDM(ctk.CTkToplevel):
                 atuais = self.tree.item(iid, "values")
                 novos_valores = list(atuais)
                 novos_valores[2] = novo_pdm  # Índice 2 é a coluna PDM
+                novos_valores[3] = "MANUAL"  # a confiança era da escolha da IA
                 self.tree.item(iid, values=novos_valores)
 
     def confirmar(self):

@@ -783,6 +783,16 @@ _POLITICA_RETRY_POR_TAREFA: dict[str, dict[str, Any]] = {
         "min_interval_seconds": None,
         "temperature": None,
     },
+    # `interpretar_material` (2026-10-08): passada 1 da escolha de PDM. UMA
+    # retentativa: se ainda assim falhar, o lote segue com a busca de hoje
+    # (`GeminiCategorizer.interpretar_lote` degrada sem levantar) -- nada se
+    # perde, entao nao vale prender o usuario esperando mais.
+    "interpretar_material": {
+        "max_retries": 1,
+        "retry_sleep_seconds": 2,
+        "min_interval_seconds": None,
+        "temperature": None,
+    },
 }
 
 

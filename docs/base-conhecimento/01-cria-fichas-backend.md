@@ -103,6 +103,43 @@ que o portal gravou passa a aparecer no log.
 **O orçamento de contexto ficou no mesmo patamar** (~25 mil tokens por bloco,
 contra ~23,8 mil do prompt antigo), agora com classe e característica dentro.
 
+## ⚠️ E mudou de novo em 2026-10-08 — a escolha em duas passadas
+
+Spec: `docs/superpowers/specs/2026-10-08-escolha-de-pdm-em-duas-passadas-design.md`.
+Motivo: NENHUM demais, com PDM bom no catálogo. Dois casos reais: o
+`PDM.6685.017` (INDICADOR DIGITAL) de um "DISPLAY CRISTAL LIQUIDO" nem chegava
+às 12 vagas da busca (só casava pela característica, peso 1,0), e o
+`PDM.5930.012` (PLAQUETA INDICADORA) chegava em 1º e a IA respondia NENHUM
+(a Regra B, "o fabricante restringe a família antes de qualquer outra
+coisa", empurrava para válvulas).
+
+1. **Passada 1** (`GeminiCategorizer.interpretar_lote`, tarefa `interpretar_material`):
+   uma chamada por lote (fatias de 60), sem catálogo, devolve por item o que o
+   material É (`e`), sinônimos e a que ele serve. Falhou → o lote segue com a
+   busca de hoje e uma linha de log; nunca derruba.
+2. **Busca** (`CatalogoPDM.candidatos_em_duas_frentes`): 8 vagas pela
+   interpretação ("é" + sinônimos, nunca o "serve"), 4 pela descrição crua (a
+   de hoje, intacta); uma frente que rende pouco cede a vaga à outra.
+3. **Passada 2** (`categorizar_pdm`): cada item leva a linha "Interpretação";
+   a resposta traz `confianca`, `alternativas` (`{"pdm", "motivo"}`),
+   `justificativa` e `caracteristicas_que_confirmam`. NENHUM só para "PDM
+   novo". Lista e exemplos vêm antes do manual (prefixo igual em todos os
+   blocos, para o cache do provedor), e o título dos exemplos sai do Master
+   carregado.
+4. **Revisão** (`preparar_para_revisao`, no serviço — o laço saiu da tela):
+   guarda contra PDM inventado, três sinais (na busca, nome base,
+   características) e o rebaixamento do ALTA que nada confirma. A tela mostra
+   a coluna Confiança (o NENHUM diz a causa: PDM NOVO?, SEM RESPOSTA ou FORA DO
+   CATÁLOGO), ordena NENHUM → BAIXA → MÉDIA → ALTA, explica o "por quê" da
+   linha selecionada e abre o seletor com o 2º e o 3º lugar no topo. No modo
+   "Pular IA" nada disso aparece, e a ordem é a da planilha.
+5. **Calibração**: ao confirmar a revisão, uma linha por item em
+   `Documentos\SIG-FT\logs\escolha_pdm.jsonl` (o que a IA disse × o que ficou).
+   Nada lê o arquivo ainda: é a matéria-prima para medir quanto ALTA acerta.
+
+Regras puras em `sigft/services/cria_fichas_escolha.py`; a orquestração é
+`GeminiCategorizer.classificar_para_revisao`.
+
 ---
 
 ## Propósito

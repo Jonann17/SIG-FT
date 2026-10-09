@@ -85,6 +85,12 @@ MAX_CARACTERISTICAS_NO_BLOCO = 6
 # quando a primeira escolha está errada.
 MAX_CANDIDATOS_POR_CLASSE = 3
 
+# Quantas das LIMITE_CANDIDATOS vagas vão para a busca feita com a
+# interpretação da IA (frente A). As outras ficam com a busca pela descrição
+# crua (frente B), que é a rede contra uma interpretação errada -- ver
+# `CatalogoPDM.candidatos_em_duas_frentes`.
+VAGAS_DA_INTERPRETACAO = 8
+
 # Peso por onde a palavra casou. Nome base e modificador são o nome
 # ESTRUTURADO do PDM (o padrão de catalogação); característica é sinal de
 # apoio, e sozinha não deve promover um PDM da família errada.
@@ -459,6 +465,45 @@ class CatalogoPDM:
         # Sobrou vaga porque não havia outra classe: os adiados voltam, na
         # ordem de pontuação. Trocar viés por lista curta seria pior.
         escolhidos.extend(adiados[:limite - len(escolhidos)])
+        return escolhidos
+
+    def candidatos_em_duas_frentes(self, consulta_interpretada, consulta_crua,
+                                   limite: int = LIMITE_CANDIDATOS,
+                                   vagas_da_interpretacao: int = VAGAS_DA_INTERPRETACAO
+                                   ) -> list[PDM]:
+        """Os candidatos de um item quando a IA já disse o que ele É.
+
+        Frente A: `consulta_interpretada` ("é" + sinônimos, no vocabulário do
+        catálogo), até `vagas_da_interpretacao`. É o que leva um sinônimo ao
+        nome base, onde ele pesa 5,0 em vez de 1,0: "DISPLAY CRISTAL LIQUIDO"
+        não casa com INDICADOR DIGITAL, mas "INDICADOR DIGITAL" casa.
+
+        Frente B: a busca de hoje, pela descrição crua, completando até
+        `limite`. Não é filtrada pela interpretação, de propósito: se a IA
+        errou a leitura, é por ela que o PDM certo ainda chega ao prompt.
+
+        Uma frente que rende pouco cede a vaga à outra; um PDM nas duas entra
+        uma vez só. Sem interpretação, o resultado é exatamente o de
+        `candidatos(consulta_crua)`."""
+        frente_b = self.candidatos(consulta_crua, limite=limite)
+        if not str(consulta_interpretada or "").strip():
+            return frente_b
+        frente_a = self.candidatos(consulta_interpretada, limite=limite)
+
+        escolhidos: list[PDM] = []
+        vistos: set[str] = set()
+
+        def pegar(fonte, ate):
+            for pdm in fonte:
+                if len(escolhidos) >= ate:
+                    return
+                if pdm.codigo not in vistos:
+                    vistos.add(pdm.codigo)
+                    escolhidos.append(pdm)
+
+        pegar(frente_a, vagas_da_interpretacao)
+        pegar(frente_b, limite)
+        pegar(frente_a, limite)
         return escolhidos
 
     def buscar(self, texto, limite: int = 50) -> list[PDM]:

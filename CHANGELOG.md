@@ -31,6 +31,13 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Atualização automática: passa a baixar **só os arquivos que mudaram** desde a versão instalada, em vez do instalador completo (mais de 300 MB). O aviso mostra o tamanho da atualização ao lado do tamanho do completo. Quem pulou versões recebe o completo, como antes, e se a atualização pequena falhar no download (a rede da empresa às vezes corta o arquivo no fim), o SIG-FT baixa o completo na hora, em vez de parar com erro. Vale da próxima versão em diante: quem está na 1.1.1 recebe esta ainda pelo instalador completo.
 - Atualização automática: caixa nova **"Versões de teste"** ao lado do botão "Atualizações", na tela inicial. Desmarcada, nada muda. Marcada, o aviso oferece também os pré-lançamentos, para testar uma versão antes de ela chegar a todo mundo.
 
+**Cria Fichas**
+
+- Cria Fichas: a IA passa a **ler o que cada material é** antes de escolher o PDM ("DISPLAY CRISTAL LIQUIDO" é um INDICADOR DIGITAL), e a busca no catálogo usa essa leitura junto com as palavras da descrição. PDM bom que antes nem chegava à IA passa a ser oferecido a ela. Se essa leitura falhar, o lote segue como antes.
+- Cria Fichas: **NENHUM só quando precisa de PDM novo.** Na dúvida, a IA dá o melhor palpite com confiança BAIXA, que você corrige com um clique, em vez do NENHUM, que obrigava a procurar à mão entre todos os PDMs. A marca que vem depois de "PARA" (uma plaqueta PARA válvula) não puxa mais a escolha para a família da válvula.
+- Cria Fichas: a **revisão dos PDMs** ganha a coluna **Confiança** (ALTA, MÉDIA ou BAIXA; no NENHUM, PDM NOVO?, SEM RESPOSTA ou FORA DO CATÁLOGO), mostra **primeiro o que precisa de atenção**, explica **por que** a IA escolheu cada PDM e, ao trocar o PDM, abre a busca com o **2º e o 3º lugar** da IA no topo. Um ALTA que as conferências do SIG-FT não confirmam aparece como "MÉDIA ↓".
+- Cria Fichas: cada revisão confirmada fica registrada em `Documentos\SIG-FT\logs\escolha_pdm.jsonl` (o que a IA escolheu e o que ficou), para medir com o tempo quanto a confiança acerta.
+
 ## 1.1.1 - 2026-09-28
 
 **Atualização automática**

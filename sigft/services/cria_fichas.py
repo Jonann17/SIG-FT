@@ -15,6 +15,9 @@ from sigft.core.llm.client import get_llm
 # `sigft.core.llm.prompts.montar_categorizar_pdm` -- só o pré-processamento
 # (`_formatar_itens`) continua aqui.
 from sigft.core.llm import prompts
+# 2026-10-08: as regras puras da escolha de PDM em duas passadas (a leitura
+# da passada 1, a confiança, os sinais, o que a revisão mostra).
+from sigft.services import cria_fichas_escolha as escolha
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em
 # `AutomacaoPMIB.iniciar_driver` abaixo.
@@ -156,9 +159,14 @@ class DataManager:
 # pode ser repetido sem repetir o que já deu certo.
 ITENS_POR_BLOCO = 15
 
+# Itens por chamada da passada 1 (`interpretar_material`). Ela não carrega o
+# catálogo, então o prompt é pequeno; o teto existe para a RESPOSTA (uma
+# linha por item) não ficar longa a ponto de ser cortada.
+ITENS_POR_INTERPRETACAO = 60
+
 # O que a IA responde quando nenhum PDM serve. `processar_item_individual`
 # trata como PULAR -- é resposta legítima, não erro.
-PDM_NENHUM = "NENHUM"
+PDM_NENHUM = escolha.PDM_NENHUM
 
 
 _RE_CODIGO_PDM = re.compile(r"PDM\.\d{4}\.\d{3}")
@@ -322,6 +330,88 @@ def conferir_pdm(item, catalogo):
     return False, f"PDM fora do catalogo: {escolhido!r}"
 
 
+def preparar_para_revisao(respostas, linhas, catalogo, interpretacoes, candidatos,
+                          codigo_projeto, callback_log=None):
+    """Da resposta da IA à linha da tela de revisão, item a item.
+
+    Até 2026-10-08 isto era um laço DENTRO da tela (`views/cria_fichas.py`),
+    com a guarda contra PDM inventado no meio -- regra de negócio na UI,
+    contra o princípio 2 do `CLAUDE.md`. O comportamento de antes está
+    preservado (e trancado nos testes de CARACTERIZACAO); o que chegou junto
+    é a confiança, as alternativas e os sinais (spec §4.4-4.5).
+
+    Devolve `(linhas_da_revisao, contagem)`. `respostas` vem do
+    `processar_lote` (uma por item, `None` onde a IA não respondeu);
+    `interpretacoes` e `candidatos` são da mesma rodada, na mesma ordem."""
+    def log(mensagem):
+        if callback_log:
+            callback_log(mensagem)
+
+    contagem = {"sem_resposta": 0, "fora_do_catalogo": 0, "alternativas_recusadas": 0}
+    saida = []
+    for i, (resposta, linha) in enumerate(zip(respostas, linhas)):
+        descricao = linha["DESCRIÇÃO"]
+        origem_do_nenhum = ""
+        if resposta is None:
+            contagem["sem_resposta"] += 1
+            origem_do_nenhum = "sem_resposta"
+            item = {"pdm_escolhido": PDM_NENHUM}
+            log(f" -> ⚠️ Item {i + 1} sem resposta da IA. Marcado "
+                f"'NENHUM' para revisão: {str(descricao)[:40]}")
+        else:
+            item = dict(resposta)
+
+        ok, motivo = conferir_pdm(item, catalogo)
+        if not ok:
+            contagem["fora_do_catalogo"] += 1
+            origem_do_nenhum = "fora_do_catalogo"
+            log(f" -> ⚠️ Item {i + 1}: {motivo}. Marcado 'NENHUM'.")
+            item["pdm_escolhido"] = PDM_NENHUM
+
+        escolhido_txt = str(item.get("pdm_escolhido") or "").strip()
+        e_nenhum = escolhido_txt.upper() == PDM_NENHUM
+        if e_nenhum and not origem_do_nenhum:
+            origem_do_nenhum = "ia"
+        escolhido = None if e_nenhum else catalogo.resolver(escolhido_txt)
+        interpretacao = interpretacoes[i] if interpretacoes else None
+
+        alternativas, recusadas = escolha.alternativas_validas(item, catalogo, escolhido)
+        for texto in recusadas:
+            contagem["alternativas_recusadas"] += 1
+            log(f" -> ⚠️ Item {i + 1}: alternativa fora do catálogo descartada: {texto!r}")
+
+        citadas = item.get("caracteristicas_que_confirmam")
+        citadas = [str(c).strip() for c in citadas if str(c or "").strip()] \
+            if isinstance(citadas, list) else []
+        for nome in escolha.caracteristicas_inexistentes(escolhido, citadas):
+            log(f" -> ⚠️ Item {i + 1}: característica citada que o PDM não tem: {nome!r}")
+        sinais = escolha.calcular_sinais(
+            escolhido, candidatos[i] if candidatos else [], interpretacao, citadas)
+        if e_nenhum:
+            confianca, final, rebaixada = "", "", False
+        else:
+            confianca = escolha.normalizar_confianca(item.get("confianca"))
+            final, rebaixada = escolha.confianca_final(confianca, sinais)
+
+        item.update({
+            "pdm_ia": item["pdm_escolhido"],
+            "origem_do_nenhum": origem_do_nenhum,
+            "confianca": confianca,
+            "confianca_final": final,
+            "rebaixada": rebaixada,
+            "sinais": sinais,
+            "alternativas": alternativas,
+            "justificativa": str(item.get("justificativa") or "").strip(),
+            "caracteristicas_que_confirmam": citadas,
+            "interpretacao": interpretacao.como_dict() if interpretacao is not None else {},
+            "marca_modelo": escolha.texto_da_celula(linha.get("MARCA/MODELO")),
+            "codigo_projeto": codigo_projeto,
+            "descricao_original": descricao,
+        })
+        saida.append(item)
+    return saida, contagem
+
+
 class GeminiCategorizer:
     def __init__(self, api_key):
         self.api_key = api_key
@@ -331,6 +421,13 @@ class GeminiCategorizer:
         # (é só um print, não chama genai) -- mesmo comportamento
         # observável de hoje quando a chave está ausente.
         self._llm = get_llm("categorizar_pdm", api_key)
+        # Passada 1 (2026-10-08): construída só quando usada -- se o provedor
+        # dela não puder ser montado (chave ausente, por exemplo), o lote
+        # degrada para a busca de hoje em vez de nem começar.
+        self._llm_interpretacao = None
+        # Os candidatos de cada item do último `processar_lote`, na ordem do
+        # lote. É o que os sinais da revisão conferem ("estava na busca?").
+        self.ultimos_candidatos = []
         if not self.api_key:
             print("AVISO: Nenhuma API Key fornecida.")
 
@@ -349,6 +446,47 @@ class GeminiCategorizer:
         log não pode divergir da chamada."""
         return f"{self._llm.provider_name}/{self._llm.model}"
 
+    def _cliente_da_interpretacao(self):
+        if self._llm_interpretacao is None:
+            self._llm_interpretacao = get_llm("interpretar_material", self.api_key)
+        return self._llm_interpretacao
+
+    @property
+    def modelo_da_interpretacao(self) -> str:
+        """`provider/model` da passada 1, no formato de uma linha de log.
+        Nunca levanta: é só a linha de log de um passo que pode degradar."""
+        try:
+            llm = self._cliente_da_interpretacao()
+            return f"{llm.provider_name}/{llm.model}"
+        except Exception as e:
+            return f"indisponível ({e})"
+
+    def interpretar_lote(self, df_itens, callback_log=None) -> list:
+        """Passada 1: o que cada material É, antes da busca no catálogo.
+
+        Devolve uma posição por item, na ordem do lote -- `None` onde não há
+        interpretação utilizável. NUNCA levanta: se uma chamada falhar (rede,
+        chave, JSON inválido), as fatias que já voltaram ficam, o resto vira
+        `None`, e esses itens seguem com a busca de hoje. Spec §4.8."""
+        linhas = [linha for _indice, linha in df_itens.iterrows()]
+        resultado = []
+        try:
+            llm = self._cliente_da_interpretacao()
+            for fatia in _fatiar(linhas, ITENS_POR_INTERPRETACAO):
+                if not fatia:
+                    continue
+                resp = llm.generate(
+                    prompts.montar_interpretar_material(escolha.itens_para_interpretar(fatia)),
+                    tags={"modulo": "cria_fichas_no_pmib_v1_backend",
+                          "tarefa": "interpretar_material"},
+                )
+                resultado.extend(escolha.ler_interpretacoes(resp.parsed_json, total=len(fatia)))
+        except Exception as e:
+            if callback_log:
+                callback_log(f"IA: interpretação indisponível ({e}). "
+                             "Seguindo só com a busca por palavras.")
+        return resultado + [None] * (len(linhas) - len(resultado))
+
     def _formatar_itens(self, df, catalogo=None):
         """O bloco `### ITEM N` de cada item do lote.
 
@@ -365,6 +503,7 @@ class GeminiCategorizer:
            nunca chegava à IA.
         """
         texto = ""
+        bloco = df if isinstance(df, _DataFrameDeBloco) else None
         for posicao, (_indice, row) in enumerate(df.iterrows(), start=1):
             descricao = row['DESCRIÇÃO']
             texto += f"\n### ITEM {posicao}\n"
@@ -378,17 +517,45 @@ class GeminiCategorizer:
             unidade_final = "NÃO ESPECIFICADA" if not unidade_raw or pd.isna(unidade_raw) else unidade_raw
             texto += f"- Unidade: {unidade_final}\n"
 
+            if bloco is not None and bloco.interpretacoes:
+                interpretacao = bloco.interpretacoes[posicao - 1]
+                if interpretacao is not None:
+                    texto += self._linha_da_interpretacao(interpretacao)
             if catalogo is not None:
-                texto += self._bloco_de_candidatos(descricao, row, catalogo)
+                pre = bloco.candidatos[posicao - 1] if bloco is not None and bloco.candidatos else None
+                texto += self._bloco_de_candidatos(descricao, row, catalogo, candidatos=pre)
         return texto
 
     @staticmethod
-    def _bloco_de_candidatos(descricao, row, catalogo):
+    def _candidatos_do_item(linha, interpretacao, catalogo):
+        """Os candidatos de UM item: a busca de hoje, ou as duas frentes
+        quando a passada 1 disse o que o material é."""
+        if catalogo is None:
+            return []
+        consulta_crua = f"{linha['DESCRIÇÃO']} {linha.get('MARCA/MODELO', '') or ''}"
+        if interpretacao is None:
+            return catalogo.candidatos(consulta_crua)
+        return catalogo.candidatos_em_duas_frentes(
+            escolha.consulta_da_interpretacao(interpretacao), consulta_crua)
+
+    @staticmethod
+    def _linha_da_interpretacao(interpretacao):
+        partes = [f"é {interpretacao.e}"]
+        if interpretacao.sinonimos:
+            partes.append("sinônimos: " + ", ".join(interpretacao.sinonimos))
+        if interpretacao.serve:
+            partes.append(f"serve a: {interpretacao.serve}")
+        return "- Interpretação: " + " · ".join(partes) + "\n"
+
+    @staticmethod
+    def _bloco_de_candidatos(descricao, row, catalogo, candidatos=None):
         """Os candidatos de UM item. A marca entra na consulta junto com a
         descrição: em muitas linhas o substantivo do equipamento está só na
-        coluna MARCA/MODELO."""
-        consulta = f"{descricao} {row.get('MARCA/MODELO', '') or ''}"
-        candidatos = catalogo.candidatos(consulta)
+        coluna MARCA/MODELO. `candidatos` já calculados (pelo `processar_lote`)
+        são usados como vieram."""
+        if candidatos is None:
+            consulta = f"{descricao} {row.get('MARCA/MODELO', '') or ''}"
+            candidatos = catalogo.candidatos(consulta)
         if not candidatos:
             # Dizer que não há candidato é informação, não ruído: sem esta
             # linha o modelo poderia ler a ausência da seção como "a lista de
@@ -400,7 +567,28 @@ class GeminiCategorizer:
         return "- CANDIDATOS (pré-selecionados por semelhança):\n" + \
             catalogo.bloco_de_candidatos(candidatos) + "\n"
 
-    def processar_lote(self, df_itens, catalogo, callback_log=None):
+    def classificar_para_revisao(self, df_itens, catalogo, codigo_projeto, callback_log=None):
+        """As duas passadas e a preparação para a revisão, de uma vez.
+
+        Devolve `(linhas_da_revisao, contagem)` -- ver `preparar_para_revisao`.
+        Spec: docs/superpowers/specs/2026-10-08-escolha-de-pdm-em-duas-passadas-design.md."""
+        if not self.api_key:
+            raise ValueError("API Key não configurada.")
+        linhas = [linha for _indice, linha in df_itens.iterrows()]
+
+        if callback_log:
+            callback_log(f"IA: interpretando {len(linhas)} itens ({self.modelo_da_interpretacao})...")
+        interpretacoes = self.interpretar_lote(df_itens, callback_log=callback_log)
+        if callback_log:
+            lidas = sum(1 for i in interpretacoes if i is not None)
+            callback_log(f"IA: {lidas} de {len(linhas)} itens interpretados.")
+
+        respostas = self.processar_lote(df_itens, catalogo, callback_log=callback_log,
+                                        interpretacoes=interpretacoes)
+        return preparar_para_revisao(respostas, linhas, catalogo, interpretacoes,
+                                     self.ultimos_candidatos, codigo_projeto, callback_log)
+
+    def processar_lote(self, df_itens, catalogo, callback_log=None, interpretacoes=None):
         """Classifica o lote inteiro, em blocos de `ITENS_POR_BLOCO`.
 
         Devolve uma lista com UM objeto por item do lote, na ordem do lote --
@@ -415,23 +603,40 @@ class GeminiCategorizer:
           classes que realmente aparecem nos candidatos do bloco;
         - **fatia o lote**. Antes tudo ia numa chamada com `max_retries=0`:
           uma falha de API derrubava os 40 itens juntos.
+
+        MUDOU EM 2026-10-08: `interpretacoes` (a passada 1, uma por item ou
+        `None`) leva a busca para as duas frentes e põe a linha
+        "Interpretação" no item. Sem ela, o resultado é o de antes. Os
+        candidatos de cada item ficam em `self.ultimos_candidatos`.
         """
         # CP 3.1: `model = genai.GenerativeModel(...)` sai daqui -- a
         # resolução de modelo/provider agora é responsabilidade de
         # `self._llm` (`get_llm("categorizar_pdm", ...)`, ver `__init__`).
         if not self.api_key: raise ValueError("API Key não configurada.")
 
-        blocos = _fatiar(list(df_itens.iterrows()), ITENS_POR_BLOCO)
+        pares = list(df_itens.iterrows())
+        if interpretacoes is None:
+            interpretacoes = [None] * len(pares)
+        candidatos = [
+            self._candidatos_do_item(linha, interpretacao, catalogo)
+            for (_indice, linha), interpretacao in zip(pares, interpretacoes)
+        ]
+        self.ultimos_candidatos = candidatos
+
+        blocos = _fatiar(list(range(len(pares))), ITENS_POR_BLOCO)
         resultado = []
-        for numero_do_bloco, bloco in enumerate(blocos, start=1):
+        for numero_do_bloco, posicoes in enumerate(blocos, start=1):
             if callback_log and len(blocos) > 1:
                 callback_log(
                     f"IA: bloco {numero_do_bloco}/{len(blocos)} "
-                    f"({len(bloco)} itens)"
+                    f"({len(posicoes)} itens)"
                 )
-            resultado.extend(
-                self._processar_bloco(_DataFrameDeBloco(bloco), catalogo)
+            df_bloco = _DataFrameDeBloco(
+                [pares[p] for p in posicoes],
+                interpretacoes=[interpretacoes[p] for p in posicoes],
+                candidatos=[candidatos[p] for p in posicoes],
             )
+            resultado.extend(self._processar_bloco(df_bloco, catalogo))
         return resultado
 
     def _processar_bloco(self, df_bloco, catalogo):
@@ -450,7 +655,10 @@ class GeminiCategorizer:
         # prompt (antes embutido aqui como f-string gigante) agora mora em
         # `sigft.core.llm.prompts.montar_categorizar_pdm` -- só o
         # pré-processamento acima (`_formatar_itens`) continua neste método.
-        prompt_template = prompts.montar_categorizar_pdm(instrucoes, lista_pdms, itens_texto)
+        prompt_template = prompts.montar_categorizar_pdm(
+            instrucoes, lista_pdms, itens_texto,
+            exemplos_texto=self._exemplos_do_catalogo(catalogo),
+        )
         # CP 3.1: SEM retry (política de `categorizar_pdm`: `max_retries=0`,
         # 1 tentativa só -- mesmo comportamento de hoje) e limpeza/parse do
         # JSON delegados a `LLMClient.generate()` (`_limpar_e_parsear_json`,
@@ -472,6 +680,21 @@ class GeminiCategorizer:
         return alinhar_resposta(resp.parsed_json, total=len(df_bloco))
 
     @staticmethod
+    def _exemplos_do_catalogo(catalogo):
+        """Os exemplos do prompt com o título do Master carregado (spec §4.3).
+        Catálogo sem `por_codigo` (os dublês dos testes) fica com o padrão
+        conferido -- `None` faz o prompt usá-lo."""
+        por_codigo = getattr(catalogo, "por_codigo", None)
+        if not callable(por_codigo):
+            return None
+
+        def completo(codigo):
+            pdm = por_codigo(codigo)
+            return pdm.completo if pdm is not None else None
+
+        return prompts.montar_exemplos_categorizar_pdm(completo)
+
+    @staticmethod
     def _classes_relevantes(df_bloco, catalogo):
         """As classes FSC que aparecem entre os candidatos deste bloco.
 
@@ -479,9 +702,14 @@ class GeminiCategorizer:
         custa ~11 mil tokens (124 classes), e um bloco toca uma fração disso.
         A lista de PDMs por classe continua completa -- ela é a rede."""
         classes = set()
-        for _indice, row in df_bloco.iterrows():
-            consulta = f"{row['DESCRIÇÃO']} {row.get('MARCA/MODELO', '') or ''}"
-            for candidato in catalogo.candidatos(consulta):
+        pre = df_bloco.candidatos if isinstance(df_bloco, _DataFrameDeBloco) else None
+        for posicao, (_indice, row) in enumerate(df_bloco.iterrows()):
+            if pre is not None:
+                achados = pre[posicao]
+            else:
+                consulta = f"{row['DESCRIÇÃO']} {row.get('MARCA/MODELO', '') or ''}"
+                achados = catalogo.candidatos(consulta)
+            for candidato in achados:
                 classes.add(candidato.classe)
         return classes
 
@@ -496,10 +724,17 @@ class _DataFrameDeBloco:
     Existe para o fatiamento não depender de `df.iloc[a:b]`: o `df_itens` que
     chega aqui vem de `iloc[indices].copy()` na view, e fatiar por posição
     sobre um índice não reiniciado é exatamente o tipo de sutileza que causou
-    o bug de numeração que este checkpoint conserta."""
+    o bug de numeração que este checkpoint conserta.
 
-    def __init__(self, pares):
+    `interpretacoes` e `candidatos` (2026-10-08) vêm calculados pelo
+    `processar_lote`, um por item, na ordem dos pares -- calcular uma vez só
+    é o que garante que o prompt, o manual podado e os sinais da revisão
+    olhem os MESMOS candidatos."""
+
+    def __init__(self, pares, interpretacoes=None, candidatos=None):
         self._pares = pares
+        self.interpretacoes = interpretacoes
+        self.candidatos = candidatos
 
     def iterrows(self):
         return iter(self._pares)

@@ -31,44 +31,46 @@ As características confirmam quando há dúvida: a peça estrutural pede
 QUANTIDADE DE FUROS, DISTANCIA ENTRE FACES, TIPO DE FACE; um acoplamento de
 verdade pede TORQUE NOMINAL, ROTACOES MAXIMA, DESALINHAMENTO ANGULAR.
 
-**REGRA B -- o fabricante diz a família.**
-O que a empresa fabrica restringe a classe FSC antes de qualquer outra coisa.
-NETZSCH faz bombas: uma peça dela dificilmente sai da família de bombas. SKF
-faz rolamento, AXIS faz câmera de rede, Cisco faz equipamento de rede. Use o
-campo Marca/Modelo para escolher a FAMÍLIA, e a descrição para escolher o PDM
-dentro dela.
+**REGRA B -- o fabricante DA PEÇA sugere a família (a Regra A vence).**
+Quando a marca é de quem fabricou a própria peça, ela restringe a classe FSC:
+NETZSCH faz bombas, SKF faz rolamento, AXIS faz câmera de rede, Cisco faz
+equipamento de rede. Mas a marca muitas vezes nomeia o equipamento que a peça
+SERVE, e não quem a fez: em "PLAQUETA EM ALUMINIO PARA VALVULA DUPLOMATIC", a
+Duplomatic faz válvulas e a peça é uma plaqueta, não uma válvula. Marca que vem
+depois de "PARA" ou "P/" descreve a aplicação; aí vale a Regra A.
 
 ### PROCESSO (para cada item)
-1. Leia o item (Descrição, Marca/Modelo, Código do Material, Unidade).
-   Aplique as regras A e B antes de olhar os candidatos.
-2. Comece pelos "CANDIDATOS" daquele item: eles foram pré-selecionados por
-   semelhança de texto e vêm com a classe e as características de cada PDM.
-   As características dizem o que aquele PDM descreve -- é o que separa
-   irmãos parecidos (VALVULA ESFERA tem TIPO DE PASSAGEM e NUMERO DE VIAS;
-   VALVULA GAVETA tem MATERIAL DA CUNHA).
+1. Leia o item (Descrição, Marca/Modelo, Código do Material, Unidade) e a
+   "Interpretação", quando houver: é o que uma leitura anterior do mesmo item
+   disse que o material É, com sinônimos e a que ele serve. Aplique as regras
+   A e B antes de olhar os candidatos.
+2. Comece pelos "CANDIDATOS" daquele item. Eles vêm de duas buscas: uma pela
+   interpretação e outra pelas palavras da descrição, e trazem a classe e as
+   características de cada PDM. As características dizem o que aquele PDM
+   descreve -- é o que separa irmãos parecidos (VALVULA ESFERA tem TIPO DE
+   PASSAGEM e NUMERO DE VIAS; VALVULA GAVETA tem MATERIAL DA CUNHA).
 3. Confira a escolha contra o "MANUAL DE REGRAS" da classe (o INCLUI e o
    NÃO INCLUI de uma classe vencem a semelhança de nome).
 4. Se nenhum candidato servir, procure na "LISTA DE PDMS POR CLASSE". Os
    candidatos são uma ajuda, não um limite: quando a descrição não nomeia o
    equipamento (ex.: "IE4010 w/ 12GE SFP uplink ports", que é um switch), a
    pré-seleção não tem como acertar e a lista completa é o caminho.
-5. Se, depois disso, nenhum PDM do catálogo descrever o material, responda
-   "NENHUM". "NENHUM" é uma resposta correta e esperada -- melhor do que o
-   PDM menos ruim.
+5. Confirme pelas características: um PDM serve quando as características
+   dele fazem sentido para o material. Liste em 'caracteristicas_que_confirmam'
+   as que a descrição confirma.
+6. Dê sempre o seu melhor palpite, com a confiança honesta. Um palpite com
+   confiança BAIXA ajuda quem revisa, porque põe a pessoa na família certa;
+   "NENHUM" obriga a procurar à mão entre todos os PDMs do catálogo.
+7. Responda "NENHUM" só quando nenhum PDM do catálogo é sequer da família do
+   material: é o caso em que um PDM novo precisa ser criado.
 
 ### REGRA DE LISTA FECHADA (a mais importante)
-O valor de 'pdm_escolhido' DEVE ser, caractere por caractere, uma string que
-aparece **literalmente** na "LISTA DE PDMS POR CLASSE" ou nos "CANDIDATOS"
-do item -- ou então "NENHUM". Não invente código, não invente título, não
-monte um código novo a partir de dois que você viu, e não conserte o que
-achar que está escrito errado. Se o PDM que você quer não está na lista, ele
-não existe.
-
----
-### MANUAL DE REGRAS (CLASSES FSC QUE TÊM PDM)
-- CLASSE 4320: BOMBAS E COMPRESSORES
-  - Inclui: BOMBAS DE AGUA
-  - Nao inclui: BOMBAS DE PARAFUSO
+O valor de 'pdm_escolhido', e de cada PDM em 'alternativas', DEVE ser,
+caractere por caractere, uma string que aparece **literalmente** na "LISTA DE
+PDMS POR CLASSE" ou nos "CANDIDATOS" do item -- ou então "NENHUM". Não invente
+código, não invente título, não monte um código novo a partir de dois que você
+viu, e não conserte o que achar que está escrito errado. Se o PDM que você quer
+não está na lista, ele não existe.
 
 ---
 ### LISTA DE PDMS POR CLASSE (ESCOLHA UM DESTES)
@@ -113,20 +115,16 @@ Exemplo 5 (Cabo):
 - PDM: PDM.6145.011 - CABO TRANSMISSAO DADOS
 - Descrição breve: CABO ACCESS POINT - AIR-CAB005LL-N
 
-Exemplo 6 (Rede):
-- Descrição original: PATCH PANEL DESCARREGADO 24P BLINDADO - DATAWAVE READY
-- PDM: PDM.5895.006 - PATCH PANEL
-- Descrição breve: PATCH PANEL 24P - DATAWAVE READY
-
-Exemplo 7 (TI):
+Exemplo 6 (TI):
 - Descrição original: Servidor Dell PowerEdge C6600
 - PDM: PDM.7010.018 - SERVIDOR
 - Descrição breve: SERVIDOR - POWEREDGE C6600
 
-Exemplo 8 (Rede):
-- Descrição original: Wi-Fi 6 Outdoor AP, External Ant, -ROW Regulatory Domain
-- PDM: PDM.5895.015 - ACCESS POINT
-- Descrição breve: ACCESS POINT - C9124AXE-ROW
+---
+### MANUAL DE REGRAS (CLASSES FSC QUE TÊM PDM)
+- CLASSE 4320: BOMBAS E COMPRESSORES
+  - Inclui: BOMBAS DE AGUA
+  - Nao inclui: BOMBAS DE PARAFUSO
 
 ---
 ### ITENS PARA ANALISAR (EM LOTE):
@@ -146,6 +144,10 @@ Formato da Resposta (Lista de JSON):
 {
     "item_processado": 1,
     "pdm_escolhido": "...",
+    "confianca": "ALTA" | "MEDIA" | "BAIXA",
+    "alternativas": [{"pdm": "...", "motivo": "..."}],
+    "justificativa": "...",
+    "caracteristicas_que_confirmam": ["..."],
     "descricao_curta": "...",
     "origem": "Importado" | "Nacional",
     "tipo de fabricação": "Catálogo" | "Especial",
@@ -155,6 +157,10 @@ Formato da Resposta (Lista de JSON):
 {
     "item_processado": 2,
     "pdm_escolhido": "...",
+    "confianca": "...",
+    "alternativas": [],
+    "justificativa": "...",
+    "caracteristicas_que_confirmam": [],
     "descricao_curta": "...",
     "origem": "...",
     "tipo de fabricação": "...",
@@ -170,11 +176,23 @@ Regras para o JSON (para cada item):
    mesmo os que você classificar como "NENHUM".
 2. 'pdm_escolhido': o PDM COMPLETO, copiado literalmente da lista
    (ex: "PDM.1650.001 - ACUMULADOR"), ou "NENHUM".
-3. 'descricao_curta': uma descrição de até 40 caracteres, sem acentuação.
-4. 'origem': 'Importado' ou 'Nacional'.
-5. 'tipo de fabricação': 'Catálogo' ou 'Especial'.
-6. 'tipo': 'Reparável' ou 'Não Reparável'.
-7. 'unidade': 'Unidade', 'Peça', 'Conjunto', 'metro - (m)' ou 'litro - (l)'.
-   Se inconclusivo ou "NÃO ESPECIFICADA", use "Unidade".
+3. 'confianca': "ALTA" quando a descrição (ou a interpretação) nomeia o
+   material e as características do PDM confirmam; "MEDIA" quando a família
+   está certa, mas a descrição não decide entre PDMs parecidos; "BAIXA" quando
+   é o mais próximo que existe, mas pode haver PDM melhor. Com "NENHUM", use "".
+4. 'alternativas': até 2 outros PDMs plausíveis, do mais para o menos provável,
+   cada um copiado literalmente da lista e com o motivo em uma frase. Lista
+   vazia se não houver outro plausível. Mesmo com "NENHUM", liste aqui os mais
+   próximos, se houver.
+5. 'justificativa': uma frase dizendo por que este PDM.
+6. 'caracteristicas_que_confirmam': nomes de características do PDM escolhido,
+   como aparecem nos CANDIDATOS, que a descrição confirma. Lista vazia se
+   nenhuma.
+7. 'descricao_curta': uma descrição de até 40 caracteres, sem acentuação.
+8. 'origem': 'Importado' ou 'Nacional'.
+9. 'tipo de fabricação': 'Catálogo' ou 'Especial'.
+10. 'tipo': 'Reparável' ou 'Não Reparável'.
+11. 'unidade': 'Unidade', 'Peça', 'Conjunto', 'metro - (m)' ou 'litro - (l)'.
+    Se inconclusivo ou "NÃO ESPECIFICADA", use "Unidade".
 
 Responda APENAS com a lista JSON. Não inclua texto antes ou depois.

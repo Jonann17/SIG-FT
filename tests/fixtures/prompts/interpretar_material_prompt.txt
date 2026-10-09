@@ -1,0 +1,23 @@
+Você é um especialista em catalogação de materiais sobressalentes de usinas hidrelétricas.
+Para cada item abaixo, diga o que o material É, com as palavras que um catálogo de materiais usaria. Você não vai escolher código nenhum: depois, uma busca no catálogo da Itaipu procura exatamente as palavras que você escrever aqui.
+
+Para cada item, devolva:
+- "e": o nome genérico do material, como um catálogo o chamaria: o substantivo da peça, seguido do que a qualifica, em maiúsculas, sem marca, sem modelo e sem medida. Ex.: "INDICADOR DIGITAL", "PLAQUETA INDICADORA", "VALVULA ESFERA", "SWITCH REDE".
+- "sinonimos": até 4 outros nomes pelos quais o mesmo material é conhecido. Ex.: para um display de cristal líquido, "MOSTRADOR", "DISPLAY LCD", "VISOR DIGITAL".
+- "serve": o equipamento a que a peça se destina, quando a descrição diz ("PARA VALVULA DUPLOMATIC" vira "VALVULA DUPLOMATIC"); string vazia quando não diz.
+
+A regra mais importante: "e" é o que a peça É, nunca o equipamento que ela serve. Em "PLAQUETA EM ALUMINIO PARA VALVULA DUPLOMATIC", a peça é uma plaqueta; a válvula vai em "serve".
+
+Quando a descrição não nomeia o material (ex.: "IE4010 w/ 12GE SFP uplink ports"), use o que você sabe sobre o modelo para dizer o que ele é ("SWITCH REDE").
+
+### ITENS
+### ITEM 1
+- Descrição: Bomba
+- Marca/Modelo: KSB
+
+### RESPOSTA
+Responda APENAS com a lista JSON, um objeto por item, sem texto antes ou depois:
+[
+  {"item": 1, "e": "...", "sinonimos": ["...", "..."], "serve": "..."}
+]
+O valor de "item" é o número do cabeçalho "### ITEM N" daquele item.
