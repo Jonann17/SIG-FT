@@ -162,3 +162,54 @@ def pintar_caixa(pintor: QPainter, x: float, y: float, marcada: bool, cor_marcad
         pintor.drawPolyline([QPointF(cx + raio, cy - raio), QPointF(cx - raio / 4, cy + raio * 0.8),
                              QPointF(cx - raio, cy + raio / 6)])
     pintor.restore()
+
+
+# --- E4.2: CTkCheckBox avulsa ---------------------------------------------------
+# A caixa de 24 (`pintar_caixa`) seguida do texto, 6 px depois (a coluna de
+# `minsize=6` do CTkCheckBox). Sob o mouse, a caixa enche da cor de hover --
+# marcada ou não (`_on_enter` do CTk); desmarcada, a borda continua cinza.
+VAO_TEXTO_CAIXA = 6
+
+
+class CaixaDeMarcar(QCheckBox):
+    """CTkCheckBox: um QCheckBox (isChecked, toggled) com a caixa e o "v" do CTk.
+
+    Clicar no texto também alterna, como lá. `cor_marcada`/`cor_hover` são o
+    `fg_color`/`hover_color` do CTk (o padrão do tema é o azul).
+    """
+
+    def __init__(self, texto: str, parent=None, *, tamanho_fonte: int = 13,
+                 cor_marcada: str = estilo.AZUL_CTK, cor_hover: str = estilo.AZUL_CTK_HOVER) -> None:
+        super().__init__(texto, parent)
+        self._cor_marcada, self._cor_hover = cor_marcada, cor_hover
+        # A folha do widget ganha da global (QCheckBox 12 px): o tamanho é o pedido.
+        self.setStyleSheet(f"font-size: {tamanho_fonte}px; background: transparent;")
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+
+    def sizeHint(self) -> QSize:  # noqa: N802 -- nome do Qt
+        largura = LADO_CAIXA + VAO_TEXTO_CAIXA + self.fontMetrics().horizontalAdvance(self.text())
+        return QSize(largura, max(LADO_CAIXA, self.fontMetrics().height()))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 -- nome do Qt
+        return self.sizeHint()
+
+    def hitButton(self, pos) -> bool:  # noqa: N802 -- nome do Qt
+        return self.rect().contains(pos)
+
+    def paintEvent(self, _evento) -> None:  # noqa: N802 -- nome do Qt
+        pintor = _pintor(self)
+        y = (self.height() - LADO_CAIXA) / 2
+        sobre = self.isEnabled() and self.underMouse()
+        marcada = self.isChecked()
+        if sobre and not marcada:
+            pintor.setPen(Qt.PenStyle.NoPen)
+            pintor.setBrush(QColor(self._cor_hover))
+            pintor.drawRoundedRect(QRectF(BORDA_CAIXA, y + BORDA_CAIXA, LADO_CAIXA - 2 * BORDA_CAIXA,
+                                          LADO_CAIXA - 2 * BORDA_CAIXA), RAIO_CAIXA / 2, RAIO_CAIXA / 2)
+        pintar_caixa(pintor, 0, y, marcada, self._cor_hover if sobre else self._cor_marcada)
+        pintor.setPen(QColor(COR_TEXTO_CTK if self.isEnabled() else COR_TEXTO_DESLIGADO_CTK))
+        pintor.setFont(self.font())
+        x_texto = LADO_CAIXA + VAO_TEXTO_CAIXA
+        pintor.drawText(QRectF(x_texto, 0, self.width() - x_texto, self.height()),
+                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.text())
+        pintor.end()
