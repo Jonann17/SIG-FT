@@ -133,6 +133,9 @@ def carregar_todos(ao_progredir=None, ao_falhar=None, pausa_fn=None) -> None:
             carregar_um(nome_modulo, destino, classes)
         except Exception as erro:  # noqa: BLE001 — ver docstring
             falhas[destino] = erro
+            # As telas pedem o "mixed_classes" pelo nome da classe (DataManager...).
+            for nome_classe in classes or []:
+                falhas[nome_classe] = erro
             if ao_falhar is not None:
                 ao_falhar(exibido, erro)
 

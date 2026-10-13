@@ -35,3 +35,17 @@ def test_exigir_sem_falha_registrada_ainda_explica(monkeypatch):
     monkeypatch.setattr(backends, "lmr_backend", None)
     with pytest.raises(backends.BackendIndisponivel, match="ainda não foi carregado"):
         backends.exigir("lmr_backend")
+
+
+def test_falha_de_modulo_com_classes_responde_pelo_nome_da_classe(monkeypatch):
+    """O Gerador de Fichas é `mixed_classes`: o módulo falha, mas as telas
+    pedem pelo nome da CLASSE (`DataManager`), não pelo destino."""
+    monkeypatch.setattr(backends, "MODULOS", [("modulo_que_nao_existe_y", "mixed_classes", ["DataManager"], "Teste")])
+    monkeypatch.setattr(backends, "DataManager", None)
+    ao_falhar_chamadas = []
+    backends.carregar_todos(ao_falhar=lambda nome, erro: ao_falhar_chamadas.append(nome))
+    assert len(ao_falhar_chamadas) == 1
+    with pytest.raises(backends.BackendIndisponivel) as erro:
+        backends.exigir("DataManager")
+    texto = str(erro.value)
+    assert "não carregou" in texto and "modulo_que_nao_existe_y" in texto
