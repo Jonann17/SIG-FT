@@ -32,6 +32,27 @@ def test_tela_bloqueada_nao_abre_e_botao_desabilitado(app_qt):
     assert not app_qt.botoes_menu["CorrecaoPDM"].isEnabled()
 
 
+def test_barra_lateral_tem_a_largura_total_da_do_customtkinter(qt_interface, app_qt, qtbot):
+    # CTkScrollableFrame(width=260) + barra de rolagem (16) + 1 de borda: o
+    # conteúdo começa em x=277 na captura do CTk. Os botões ficam com os 246 de
+    # antes: os 7 px a mais são a faixa (vazia) onde o CTk desenha a rolagem.
+    from sigft.app_qt import estilo
+
+    anterior = qt_interface.styleSheet()
+    qt_interface.setStyleSheet(estilo.folha_de_estilo())  # sem ela a área ganha moldura de 1 px
+    try:
+        app_qt.resize(1280, 850)
+        app_qt.show()
+        qtbot.waitExposed(app_qt)
+        barra = app_qt.centralWidget().layout().itemAt(0).widget()
+        assert estilo.LARGURA_BARRA_LATERAL == 277
+        assert barra.width() == 277
+        assert app_qt.pilha.mapTo(app_qt, app_qt.pilha.rect().topLeft()).x() == 277
+        assert app_qt.botoes_menu["CriaFichas"].width() == 246
+    finally:
+        qt_interface.setStyleSheet(anterior)
+
+
 def test_titulo_com_versao(app_qt):
     from sigft import _build_info
     assert f"v{_build_info.VERSAO}" in app_qt.windowTitle()

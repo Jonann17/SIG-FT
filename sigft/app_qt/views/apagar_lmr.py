@@ -17,12 +17,6 @@ from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos, pickers
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 
-# CTkEntry do tema dark-blue: 28 px de altura (borda incluída), texto gray84 e
-# placeholder gray62. A folha do app dá ao QLineEdit outra altura (min-height
-# + padding), então a do campo vai na folha DELE, como em `blocos.botao`.
-ALTURA_CAMPO = 28
-_BORDA_CAMPO = 2
-
 
 class ModuloApagarLMR(ModuleFrame):
     def __init__(self, parent=None, controller=None, *, embutida=False, console_externo=None) -> None:
@@ -95,13 +89,9 @@ class ModuloApagarLMR(ModuleFrame):
         self._rotulos["pmib"] = rotulo
         linha.addWidget(rotulo)
         linha.addSpacing(20)                            # rótulo (…, 10) + campo (10, …)
-        self.entry_pmib = QLineEdit()
+        self.entry_pmib = QLineEdit()  # o visual (28 px, cores, fonte) é o do CTkEntry, na folha do app
         self.entry_pmib.setFixedWidth(250)
         self.entry_pmib.setPlaceholderText("Ex: 4500063671.1234")
-        interna = ALTURA_CAMPO - 2 * _BORDA_CAMPO
-        self.entry_pmib.setStyleSheet(
-            f"QLineEdit {{ min-height: {interna}px; max-height: {interna}px; padding: 0 4px;"
-            f" font-size: 13px; placeholder-text-color: {estilo.cinza_tk('gray62')}; }}")
         linha.addWidget(self.entry_pmib)
         linha.addStretch()
         return linha

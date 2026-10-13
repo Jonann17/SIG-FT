@@ -82,6 +82,23 @@ def test_carregar_fontes_registra_as_familias(qapp):
     assert "Roboto" in familias and "Noto Emoji" in familias
 
 
+def test_negrito_e_sintetizado_do_regular_como_no_tk():
+    # O Tk (GDI no Windows) não acha um "Roboto" negrito e engrossa o Regular:
+    # o Medium registrado fazia o Qt usar OUTRA letra no negrito (ver estilo.py).
+    assert "Roboto-Regular.ttf" in estilo.ARQUIVOS_DE_FONTE
+    assert not any("Medium" in nome or "Bold" in nome for nome in estilo.ARQUIVOS_DE_FONTE)
+
+
+def test_fonte_do_app_usa_hinting_completo_como_o_tk(qapp):
+    # Larguras arredondadas ao pixel, com o engrossamento do negrito sintetizado
+    # contando -- sem isto o negrito saía ~10% mais estreito que o do Tk no Linux.
+    from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QApplication
+
+    estilo.carregar_fontes()
+    assert QApplication.font().hintingPreference() == QFont.HintingPreference.PreferFullHinting
+
+
 def test_folha_usa_a_paleta_do_theme():
     qss = estilo.folha_de_estilo()
     for cor in (theme.COLORS["background"], theme.COLORS["sidebar"],

@@ -49,3 +49,25 @@ def test_tela_nao_migrada_diz_o_nome(qt_interface, qtbot):
     t = TelaNaoMigrada("AutoSpec")
     qtbot.addWidget(t)
     assert "AutoSpec" in t.mensagem.text()
+
+
+def test_barra_com_a_largura_do_ctkbutton_e_sem_rolagem_lateral(qt_interface, qtbot):
+    # CTkButton: 140 px, ou o texto + 7 de cada lado quando não cabe (lá: 148 no
+    # "Atividades do dia" e 140 nos outros). Com a folga antiga (16 px) e o negrito
+    # na largura do Tk, a linha passava dos 1003 px da área e surgia rolagem lateral.
+    from sigft.app_qt import estilo
+
+    anterior = qt_interface.styleSheet()
+    qt_interface.setStyleSheet(estilo.folha_de_estilo())
+    try:
+        estilo.carregar_fontes()
+        home = HomeView(controller=Controller())
+        qtbot.addWidget(home)
+        home.resize(1280 - estilo.LARGURA_BARRA_LATERAL, 850)
+        home.show()
+        qtbot.waitExposed(home)
+        for botao in home.botoes_barra.values():
+            assert botao.width() >= estilo.LARGURA_BOTAO_CTK, botao.text()
+        assert home.horizontalScrollBar().maximum() == 0  # nada a rolar de lado
+    finally:
+        qt_interface.setStyleSheet(anterior)

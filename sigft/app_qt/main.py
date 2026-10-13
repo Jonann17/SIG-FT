@@ -94,12 +94,18 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
     # -- barra lateral --------------------------------------------------------
     def _montar_sidebar(self) -> QScrollArea:
         area = QScrollArea(objectName="sidebar")
-        area.setFixedWidth(270)
+        # A largura total da barra do CustomTkinter (277), para os módulos
+        # começarem no mesmo x. Lá, 17 desses px são a faixa da barra de rolagem,
+        # SEMPRE visível (um traço cinza que não rola nada quando tudo cabe).
+        # Aqui a faixa fica vazia -- margem direita maior --, e a barra do Qt só
+        # aparece quando há o que rolar: a mesma largura sem o traço inútil, e os
+        # botões com a largura que já tinham (246).
+        area.setFixedWidth(estilo.LARGURA_BARRA_LATERAL)
         area.setWidgetResizable(True)
         area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         interno = QWidget(objectName="sidebar_interno")
         lay = QVBoxLayout(interno)
-        lay.setContentsMargins(12, 26, 12, 12)
+        lay.setContentsMargins(12, 26, 19, 12)  # 19 = 12 + os 7 px da faixa vazia
         lay.setSpacing(estilo.ESPACO_MENU)
 
         logo = QLabel()
