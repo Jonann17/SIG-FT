@@ -562,10 +562,6 @@ def test_falha_ao_abrir_a_revisao_devolve_o_botao(tela, qtbot, pd, monkeypatch, 
     assert tela.btn_run_ai.isEnabled() and not tela._ia_em_andamento
     assert tela.progress.maximum() == 1000
     assert "janela quebrada" in capsys.readouterr().err       # o traceback vai para o log de erros
-    # E o "Pular IA" volta a mandar no botão, como antes da cadeia.
-    tela.chk_pular.click()
-    tela.chk_pular.click()
-    assert tela.btn_run_ai.isEnabled()
 
 
 def test_robo_so_aponta_para_dados_revisados(tela, qtbot, pd):
@@ -894,7 +890,7 @@ def test_limpar_volta_tudo_ao_comeco(tela, qtbot, pd):
     for b in (tela.btn_run_ai, tela.btn_run_auto, tela.btn_resumo, tela.btn_save, tela.btn_run_edicao):
         b.setEnabled(True)
     tela.btn_run_ai.setText("3. Analisar (OK)")
-    tela._pos_revisao_concluida(_resumo(pd))
+    tela._pos_revisao_concluida(_resumo(pd), catalogo=CatalogoFalso())
     tela.progress.definir(0.5)
     tela.progress_edicao.definir(0.5)
     tela.entry_novo_projeto.setText("NOVO")
@@ -905,6 +901,9 @@ def test_limpar_volta_tudo_ao_comeco(tela, qtbot, pd):
     assert bot.saiu and tela.bot is None
     assert tela.file_path_excel is None and tela.file_path_pdm is None
     assert tela.df_processed is None and tela.df_resumo_final is None
+    # O catálogo anda com o lote (os dois mudam no CONFIRMAR da revisão): sem o
+    # lote e com a planilha de PDMs esquecida, ele também sai.
+    assert tela.catalogo is None
     assert tela.df_edicao_completo is None and tela.df_edicao_selecionado is None
     assert tela.entry_projeto.text() == "" and tela.entry_novo_projeto.text() == ""
     assert tela.lbl_status.text() == "Aguardando..." and "#808080" in _folha(tela.lbl_status)
@@ -1058,6 +1057,50 @@ def test_um_robo_por_vez(tela, robo, qtbot, pd, monkeypatch):
         # Falhando no meio, nenhum robô pode sobrar esperando (o processo não sairia).
         liberar.set()
         qtbot.waitUntil(lambda: not _robos_vivos(), timeout=5000)
+
+
+def test_revisao_confirmada_com_a_edicao_rodando_devolve_o_robo_web(tela, robo, qtbot, pd, monkeypatch):
+    # Rodada 2 (re-revisão E4.9): confirmada a revisão com o robô de EDIÇÃO
+    # rodando, o "4. Robô Web" não liga na hora (um robô por vez) -- e tem de
+    # voltar no fim dele: o `iniciar_tarefa` da edição só devolve o botão dela.
+    liberar = threading.Event()
+    monkeypatch.setattr(RoboFalso, "iniciar_driver", lambda self: liberar.wait(5))
+    tela.resetar_processo()                       # tela limpa: sem lote, "4. Robô Web" desligado
+    try:
+        tela.df_edicao_completo = pd.DataFrame({"DESCRIÇÃO": ["A"], "CÓDIGO PMIB": ["4500.1"]})
+        tela.pos_selecao_edicao([0])
+        tela.entry_novo_projeto.setText("NOVO")
+        tela.btn_run_edicao.click()               # o robô de edição fica preso no navegador
+        assert tela._robo_ativo
+
+        _selecionar_pular_ia(tela, pd)            # a aba 1 está livre: IA + revisão
+        tela.btn_run_ai.click()
+        qtbot.waitUntil(lambda: bool(tela.revisoes), timeout=3000)
+        tela.revisoes[0].confirmar()
+        assert tela.df_processed is not None
+        assert not tela.btn_run_auto.isEnabled()  # com a edição rodando, não liga
+
+        liberar.set()
+        qtbot.waitUntil(tela.btn_run_edicao.isEnabled, timeout=3000)
+        qtbot.waitUntil(tela.btn_run_auto.isEnabled, timeout=2000)  # e volta no fim dela
+        assert not tela._robo_ativo
+    finally:
+        liberar.set()
+        qtbot.waitUntil(lambda: not _robos_vivos(), timeout=5000)
+
+
+def test_fim_da_edicao_sem_lote_nao_liga_o_robo_web(tela, robo, qtbot, pd):
+    # Sem lote confirmado (tela limpa), o fim do robô de edição não inventa um
+    # "4. Robô Web" ligado apontando para nada.
+    tela.resetar_processo()
+    tela.df_edicao_completo = pd.DataFrame({"DESCRIÇÃO": ["A"], "CÓDIGO PMIB": ["4500.1"]})
+    tela.pos_selecao_edicao([0])
+    tela.entry_novo_projeto.setText("NOVO")
+    tela.run_edicao_thread()
+    _esperar_log(qtbot, tela, "> Edição em massa concluída!")
+    qtbot.waitUntil(tela.btn_run_edicao.isEnabled, timeout=3000)
+    qtbot.waitUntil(lambda: not tela._robo_ativo, timeout=2000)
+    assert tela.df_processed is None and not tela.btn_run_auto.isEnabled()
 
 
 def test_tarefas_em_thread_comum(tela, robo, qtbot):

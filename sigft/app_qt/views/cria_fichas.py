@@ -606,8 +606,9 @@ class ModuloCriaFichas(ModuleFrame):
         self.df_processed = df_atualizado
         self.catalogo = catalogo
         self.log(f"Revisão OK. {len(self.df_processed)} itens prontos.")
-        # Com um robô rodando, o "4. Robô Web" volta sozinho no fim dele (e
-        # então leva ESTE lote); ligá-lo agora subiria um segundo robô.
+        # Com um robô rodando (criação ou edição), o "4. Robô Web" volta no fim
+        # dele (`_robo_terminou`) e então leva ESTE lote; ligá-lo agora subiria
+        # um segundo robô.
         if not self._robo_ativo:
             self.btn_run_auto.setEnabled(True)
         _pintar(self.btn_run_auto, COLORS["accent"], COLORS["primary_hover"])
@@ -646,7 +647,17 @@ class ModuloCriaFichas(ModuleFrame):
             interface.na_interface(self._robo_terminou)
 
     def _robo_terminou(self) -> None:
+        """Na thread da interface, no fim de qualquer robô (bem ou mal)."""
         self._robo_ativo = False
+        # Revisão confirmada com o robô de EDIÇÃO rodando: `_pos_revisao_concluida`
+        # não ligou o "4. Robô Web", e o `iniciar_tarefa` da edição só devolve o
+        # botão dela. Com lote confirmado, ele volta aqui. (No fim do robô de
+        # criação o `iniciar_tarefa` também o devolve: ligar duas vezes dá no mesmo.)
+        if self.df_processed is not None:
+            try:
+                self.btn_run_auto.setEnabled(True)
+            except RuntimeError:
+                pass  # tela já destruída
 
     def _definir_progresso(self, barra, fracao) -> None:
         try:
@@ -881,6 +892,9 @@ class ModuloCriaFichas(ModuleFrame):
         self.df_data_completo = None
         self.df_data_selecionado = None
         self.df_processed = None
+        # O catálogo anda com o lote (os dois mudam no CONFIRMAR da revisão):
+        # sem o lote, e com a planilha de PDMs esquecida, ele também sai.
+        self.catalogo = None
         self.df_resumo_final = None
         if self.bot:
             try:
