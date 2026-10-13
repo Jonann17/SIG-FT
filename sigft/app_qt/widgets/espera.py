@@ -11,6 +11,8 @@ from __future__ import annotations
 import threading
 import traceback
 
+from PySide6.QtWidgets import QInputDialog, QMessageBox
+
 from sigft.app.textos_dialogos import MSG_EXCEL_BLOQUEADO, TEXTO_CONTINUAR, msg_excel_bloqueado
 from sigft.app_qt import interface
 from sigft.app_qt.widgets import dialogs
@@ -50,3 +52,51 @@ class DialogosDeEspera:
         resultado = self._abrir_e_esperar(lambda evento, res: dialogs.RetryLockDialog(
             self, mensagem=mensagem, evento_espera=evento, resultado=res))
         return bool(resultado.get("retry", False))
+
+    # -- perguntas e avisos simples ------------------------------------------
+    def _na_interface_e_esperar(self, func):
+        """Roda `func()` na thread da interface e devolve o resultado.
+
+        Da própria thread da interface, chama direto (os diálogos estáticos do
+        Qt já bloqueiam sem parar o laço de eventos).
+        """
+        if interface.na_thread_da_interface():
+            return func()
+        evento = threading.Event()
+        caixa: dict = {}
+
+        def rodar() -> None:
+            try:
+                caixa["valor"] = func()
+            except Exception:  # noqa: BLE001 -- o worker não pode ficar preso
+                traceback.print_exc()
+            finally:
+                evento.set()
+
+        interface.na_interface(rodar)
+        evento.wait()
+        return caixa.get("valor")
+
+    def perguntar_sim_nao(self, titulo: str, mensagem: str) -> bool:
+        def perguntar():
+            resposta = QMessageBox.question(
+                self, titulo, mensagem,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            return resposta == QMessageBox.StandardButton.Yes
+        return bool(self._na_interface_e_esperar(perguntar))
+
+    def pedir_texto(self, titulo: str, mensagem: str) -> str | None:
+        def pedir():
+            texto, ok = QInputDialog.getText(self, titulo, mensagem)
+            return texto if ok else None
+        return self._na_interface_e_esperar(pedir)
+
+    def avisar(self, titulo: str, mensagem: str, tipo: str = "info") -> None:
+        """Mostra e segue: o worker não espera a pessoa fechar o aviso."""
+        funcao = {"info": QMessageBox.information, "aviso": QMessageBox.warning,
+                  "erro": QMessageBox.critical}[tipo]
+        if interface.na_thread_da_interface():
+            funcao(self, titulo, mensagem)
+        else:
+            interface.na_interface(funcao, self, titulo, mensagem)

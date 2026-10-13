@@ -7,7 +7,9 @@ thread do robô fica presa em `Event.wait()` para sempre.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import (
+    QDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout,
+)
 
 from sigft.app.textos_dialogos import MSG_EXCEL_BLOQUEADO, TEXTO_CONTINUAR
 
@@ -103,3 +105,51 @@ class RetryLockDialog(_DialogoDeAcaoManual):
 
     def _ao_fechar_sem_decidir(self) -> None:
         self._responder(False)
+
+
+class SelecaoComCaixasDialog(QDialog):
+    """Lista com caixas de marcar + "Todos" + "CONFIRMAR".
+
+    É a janela de seleção de fichas da Aplicação LMR (450x600). A lista é um
+    QListWidget: desenha só as linhas visíveis, ao contrário de um widget por
+    ficha -- com centenas de PMIBs a diferença aparece.
+    """
+
+    def __init__(self, parent, *, titulo: str, mensagem: str, itens: list[str]) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(titulo)
+        self.resize(450, 600)
+        layout = QVBoxLayout(self)
+        rotulo = QLabel(mensagem)
+        rotulo.setStyleSheet("font-size: 14px; font-weight: bold;")
+        rotulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(rotulo)
+        self.lista = QListWidget()
+        for texto in itens:
+            item = QListWidgetItem(texto)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            self.lista.addItem(item)
+        layout.addWidget(self.lista, 1)
+        linha = QHBoxLayout()
+        self.botao_todos = QPushButton("Todos")
+        self.botao_todos.setProperty("variante", "neutro")
+        self.botao_todos.setFixedWidth(80)
+        self.botao_todos.clicked.connect(self._marcar_todos)
+        self.botao_confirmar = QPushButton("CONFIRMAR")
+        self.botao_confirmar.setProperty("variante", "acento")
+        self.botao_confirmar.setStyleSheet("color: #161616;")
+        self.botao_confirmar.setFixedWidth(150)
+        self.botao_confirmar.clicked.connect(self.accept)
+        linha.addWidget(self.botao_todos)
+        linha.addStretch()
+        linha.addWidget(self.botao_confirmar)
+        layout.addLayout(linha)
+
+    def _marcar_todos(self) -> None:
+        for i in range(self.lista.count()):
+            self.lista.item(i).setCheckState(Qt.CheckState.Checked)
+
+    def selecionados(self) -> list[str]:
+        return [self.lista.item(i).text() for i in range(self.lista.count())
+                if self.lista.item(i).checkState() == Qt.CheckState.Checked]
