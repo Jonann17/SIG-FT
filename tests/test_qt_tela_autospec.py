@@ -53,6 +53,8 @@ class CoreFalso:
     def processar_conferidos(self, selecao, status_pmib_path):
         self.conferidos.append((selecao, status_pmib_path, self.conferencia))
         yield "--- segunda passada ---"
+        if CoreFalso.segurar is not None:
+            CoreFalso.segurar.wait(5)
         if CoreFalso.erro_no_lote is not None:
             raise CoreFalso.erro_no_lote
 
@@ -354,9 +356,12 @@ def test_o_botao_fica_desligado_durante_o_lote(tela, qtbot, monkeypatch):
 
 
 def test_o_lote_e_a_fila_do_clique(tela, qtbot, monkeypatch):
-    # Lá a thread lia `self.queue` (mexida pela interface) e no fim a zerava:
-    # o que se acrescentava durante o lote sumia sem ser processado. Aqui o
-    # lote é a fila do clique, e o que entrou depois fica para a próxima.
+    # Lá o `process_queue` percorria a lista VIVA (`self.queue`, mexida pela
+    # interface): o que se acrescentava DURANTE o laço entrava no mesmo lote, e
+    # o que entrava depois dele (com o "Sucesso" aberto, por exemplo) era
+    # apagado pelo `self.queue = []` sem ser processado. Aqui o lote é a cópia
+    # do clique (a thread não lê estado da interface): o que entra durante o
+    # lote fica na fila para o próximo, e só saem dela os itens processados.
     _backend(monkeypatch)
     _escolher_status(tela)
     _montar_fila(tela)
@@ -371,6 +376,43 @@ def test_o_lote_e_a_fila_do_clique(tela, qtbot, monkeypatch):
         "/lote/a.xlsx", "/lote/b.xlsx"]
     assert tela.queue == [{"sheet": "/lote/c.xlsx", "refs": []}]
     assert [r.text() for r, _ in tela.linhas_fila] == ["#1: c.xlsx (+0 manuais)"]
+
+
+def test_o_x_durante_o_lote_nao_muda_o_lote(tela, qtbot, monkeypatch):
+    # Lá o laço percorria a lista VIVA: tirar um item já processado puxava os de
+    # trás uma casa, e o seguinte era pulado. Aqui o lote é a cópia do clique: o
+    # "X" tira o item da fila na hora, mas o lote em andamento não muda.
+    _backend(monkeypatch)
+    _escolher_status(tela)
+    _montar_fila(tela, (("/lote/a.xlsx", ()), ("/lote/b.xlsx", ()), ("/lote/c.xlsx", ())))
+    CoreFalso.segurar = threading.Event()
+    tela.btn_run.click()
+    qtbot.waitUntil(lambda: "lote AutoSpec" in _texto(tela), timeout=2000)
+    tela.linhas_fila[0][1].click()                       # o "X" do #1 com o lote andando
+    assert [item["sheet"] for item in tela.queue] == ["/lote/b.xlsx", "/lote/c.xlsx"]
+    CoreFalso.segurar.set()
+    texto = _console(qtbot, tela, "Processamento Completo!")
+    qtbot.waitUntil(tela.btn_run.isEnabled, timeout=2000)
+    for nome in ("a", "b", "c"):
+        assert f"> ficha /lote/{nome}.xlsx com 0 manual(is)" in texto
+    assert tela.queue == []
+
+
+def test_erro_no_fim_do_lote_vai_para_o_console_sem_sucesso(tela, qtbot, monkeypatch):
+    # O fim do lote (lista nova, .txt automático) roda na thread da interface;
+    # um erro ali sai no console como "ERRO FATAL", e o "Sucesso" não aparece.
+    _backend(monkeypatch)
+    _escolher_status(tela)
+    _montar_fila(tela)
+
+    def quebra(*_a, **_k):
+        raise RuntimeError("lista quebrada")
+
+    monkeypatch.setattr(tela, "_conferencia_mostrar", quebra)
+    tela.btn_run.click()
+    _console(qtbot, tela, "> ERRO FATAL: lista quebrada")
+    qtbot.waitUntil(tela.btn_run.isEnabled, timeout=2000)
+    assert tela.avisos == []
 
 
 def test_erro_fatal_mantem_a_fila(tela, qtbot, monkeypatch):
@@ -478,6 +520,76 @@ def test_invariante_a_secao_nunca_se_esconde(tela):
     for conferencia in (None, _conferencia(), None):
         tela._conferencia_mostrar(conferencia)
         assert tela.frm_conf.isVisibleTo(tela) and tela.btn_conf_importar.isVisibleTo(tela)
+
+
+def test_titulo_com_e_comercial_aparece_inteiro_e_sem_atalho(tela):
+    # "&" no texto de um QPushButton é o mnemônico do Qt: some do que se vê e o
+    # botão ganha um atalho Alt (com este título, Alt+Espaço -- o menu da janela
+    # no Windows). O título é o que a pessoa lê para julgar o documento.
+    from PySide6.QtCore import Qt
+    from sigft.app_qt import estilo
+    titulo = "Products & Solutions | R&S"
+    c = conf_mod.Conferencia()
+    c.registrar("/lote/x.xlsx", "MATERIAL", [{"url": "https://r-s.com/a", "title": titulo}])
+    tela._conferencia_mostrar(c)
+    link = tela.links_conf[(0, 0)]
+    assert link.shortcut().isEmpty()
+    # O texto como o Qt o desenha (mnemônicos processados) é o título inteiro.
+    fm = link.fontMetrics()
+    assert (fm.size(Qt.TextFlag.TextShowMnemonic, link.text())
+            == fm.size(0, estilo.mono("🔗") + " " + titulo))
+
+
+def test_rotulos_com_dado_da_pessoa_sao_texto_puro(tela):
+    # Um QLabel no formato automático lê "<b>...</b>" como HTML: o material
+    # "CABO <b>X</b>" apareceria com o X em negrito e sem as marcas.
+    from PySide6.QtCore import Qt
+    c = conf_mod.Conferencia()
+    c.registrar("/lote/x.xlsx", "CABO <b>X</b> 3x2,5", [{"url": "https://a.b/c", "title": "t"}])
+    tela._conferencia_mostrar(c)
+    assert tela.cabecalhos_conf[0].textFormat() == Qt.TextFormat.PlainText
+    assert tela.cabecalhos_conf[0].text().endswith("  —  CABO <b>X</b> 3x2,5")
+    _montar_fila(tela, (("/lote/a.xlsx", ()),))
+    for rotulo in (tela.linhas_fila[0][0], tela.lbl_sheet, tela.lbl_refs, tela.lbl_status):
+        assert rotulo.textFormat() == Qt.TextFormat.PlainText
+
+
+def test_importar_durante_a_2a_passada_nao_religa_o_processar(tela, qtbot, monkeypatch, tmp_path):
+    # Lá o `_conferencia_mostrar` religava o PROCESSAR sem olhar se havia uma 2ª
+    # passada rodando: importar (ou o fim de um lote) no meio dela deixava clicar
+    # de novo, e duas passadas regravavam os mesmos `_completed`.
+    _backend(monkeypatch)
+    _escolher_status(tela)
+    tela._conferencia_mostrar(_conferencia(), {(0, 0): True})
+    CoreFalso.segurar = threading.Event()
+    tela.btn_conf.click()
+    qtbot.waitUntil(lambda: "segunda passada" in _texto(tela), timeout=2000)
+    arquivo = conf_mod.salvar_txt(_conferencia(), None, {(0, 1): True}, pasta=str(tmp_path))
+    tela.respostas.append(arquivo)
+    tela.btn_conf_importar.click()
+    assert tela.conferencia is not None and len(tela.marcados_conf) == 3
+    assert not tela.btn_conf.isEnabled()
+    tela.btn_conf.click()
+    assert len(CoreFalso.criados) == 1
+    CoreFalso.segurar.set()
+    qtbot.waitUntil(tela.btn_conf.isEnabled, timeout=3000)      # a lista importada pode seguir
+    assert len(CoreFalso.criados) == 1
+
+
+def test_fim_da_2a_passada_sem_lista_deixa_o_processar_desligado(tela, qtbot, monkeypatch):
+    # O fim de um lote sem conferência esvazia a lista no meio da 2ª passada: ao
+    # terminar, ela não religa um PROCESSAR que não tem o que processar.
+    _backend(monkeypatch)
+    _escolher_status(tela)
+    tela._conferencia_mostrar(_conferencia(), {(0, 0): True})
+    CoreFalso.segurar = threading.Event()
+    tela.btn_conf.click()
+    qtbot.waitUntil(lambda: "segunda passada" in _texto(tela), timeout=2000)
+    tela._conferencia_mostrar(None)
+    CoreFalso.segurar.set()
+    qtbot.waitUntil(lambda: bool(tela.avisos), timeout=3000)
+    qtbot.waitUntil(lambda: not tela._conf_em_andamento, timeout=2000)
+    assert not tela.btn_conf.isEnabled()
 
 
 # -- conferência: salvar / importar --------------------------------------------------------
@@ -754,15 +866,16 @@ def test_medidas_das_linhas_da_fila_e_da_conferencia(tela_medida, qtbot):
     t.queue = [{"sheet": "/lote/FICHA_0084.xlsx", "refs": ["a", "b"]},
                {"sheet": "/lote/FICHA_0086.xlsx", "refs": []}]
     t.update_queue_ui()
-    qtbot.wait(50)                                       # o layout novo se arruma no laço
     (r1, x1), (r2, _x2) = t.linhas_fila
+    # O layout novo se arruma no laço de eventos: espera a 1ª linha chegar lá.
+    qtbot.waitUntil(lambda: _r(t, r1)[:2] == (72, 464), timeout=2000)
     assert _r(t, r1)[:2] == (72, 464) and _r(t, r1)[3] == 28
     assert _r(t, x1) == (879, 465, 30, 25)
     assert _r(t, r2)[1] == 496
     t._conferencia_mostrar(_conferencia())
-    qtbot.wait(50)
     base_y = 972
     c1, c2 = t.cabecalhos_conf
+    qtbot.waitUntil(lambda: _r(t, c1)[1] == base_y + 8, timeout=2000)
     assert _r(t, c1) == (73, base_y + 8, 835, 28)
     assert _r(t, t.marcados_conf[(0, 0)]) == (73, base_y + 39, 25, 24)
     assert _r(t, t.links_conf[(0, 0)]) == (98, base_y + 40, 810, 22)

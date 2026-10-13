@@ -175,9 +175,10 @@ def pintar_caixa(pintor: QPainter, x: float, y: float, marcada: bool, cor_marcad
 
 
 # --- E4.2: CTkCheckBox avulsa ---------------------------------------------------
-# A caixa de 24 (`pintar_caixa`) seguida do texto, 6 px depois (a coluna de
-# `minsize=6` do CTkCheckBox). Sob o mouse, a caixa enche da cor de hover --
-# marcada ou não (`_on_enter` do CTk); desmarcada, a borda continua cinza.
+# A caixa (`pintar_caixa`: 24 px, a do tema, ou o `lado` pedido) seguida do
+# texto, 6 px depois (a coluna de `minsize=6` do CTkCheckBox). Sob o mouse, a
+# caixa enche da cor de hover -- marcada ou não (`_on_enter` do CTk);
+# desmarcada, a borda continua cinza.
 VAO_TEXTO_CAIXA = 6
 
 

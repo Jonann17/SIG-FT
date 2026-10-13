@@ -75,8 +75,12 @@ TAMANHO_CAIXA_CONF = QSize(25, 24)
 
 def _rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, cor: str = COR_ROTULO,
             alinhar: str = "esquerda") -> QLabel:
-    """CTkLabel de uma linha, `anchor="w"`, 28 px de altura."""
+    """CTkLabel de uma linha, `anchor="w"`, 28 px de altura.
+
+    Texto PURO: estes rótulos mostram dado da pessoa (nome de arquivo, material),
+    e no formato automático o QLabel leria um "<b>...</b>" como HTML."""
     r = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, cor=cor, alinhar=alinhar)
+    r.setTextFormat(Qt.TextFormat.PlainText)
     r.setWordWrap(False)
     r.setFixedHeight(blocos.ALTURA_MINIMA_ROTULO)
     return r
@@ -380,6 +384,8 @@ class ModuloAutoSpec(ModuleFrame):
         self.links_conf = {}
         self.cabecalhos_conf = []
         self.rotulo_conf_vazia = None
+        # Uma 2ª passada por vez (ver `_conferencia_processar`).
+        self._conf_em_andamento = False
 
         self.frm_conf, conf = _cartao(corpo, borda=COLORS["warning"])
         self.rotulo_conf_titulo = _rotulo("5. Conferência de documentos", tamanho=14, negrito=True,
@@ -431,7 +437,10 @@ class ModuloAutoSpec(ModuleFrame):
         _esvaziar(self._layout_conf)
 
         estado = bool(conferencia)
-        self.btn_conf.setEnabled(estado)
+        # Com uma 2ª passada rodando, o PROCESSAR fica desligado mesmo que a lista
+        # mude (IMPORTAR ou o fim de um lote chegam aqui): quem o devolve é o fim
+        # da passada (`_conferencia_terminou`).
+        self.btn_conf.setEnabled(estado and not self._conf_em_andamento)
         self.btn_conf_salvar.setEnabled(estado)
 
         lista = self._layout_conf
@@ -467,8 +476,10 @@ class ModuloAutoSpec(ModuleFrame):
                 url = doc.get("url", "")
                 titulo = (doc.get("title") or url)[:70]
                 # O link é um botão (lá porque CTkLabel não tem clique nativo); o
-                # visual de link é feito à mão.
-                link = blocos.botao(estilo.mono("🔗") + f" {titulo}", altura=22, tamanho_fonte=11,
+                # visual de link é feito à mão. O "&" do título vai dobrado: sozinho,
+                # o Qt o leria como mnemônico (some do texto e vira atalho Alt).
+                link = blocos.botao(estilo.mono("🔗") + " " + titulo.replace("&", "&&"),
+                                    altura=22, tamanho_fonte=11,
                                     cor_texto=COR_LINK, cor_fundo="transparent", cor_hover=COR_LINK_HOVER)
                 link.setStyleSheet(link.styleSheet() + " QPushButton { text-align: left;"
                                    f" padding: 0 {estilo.FOLGA_TEXTO_BOTAO_CTK}px;"
@@ -574,8 +585,22 @@ class ModuloAutoSpec(ModuleFrame):
                 self, "Conferência", "Marque ao menos um documento antes de processar."
             )
             return
+        # Uma passada por vez: ela regrava o `_completed` de cada ficha, e duas ao
+        # mesmo tempo disputariam esses arquivos. O flag segura o PROCESSAR até o
+        # fim, mesmo que a lista mude no meio (lá ele religava ali).
+        self._conf_em_andamento = True
+        self.btn_conf.setEnabled(False)
         self.iniciar_tarefa(self._conferencia_worker, self.conferencia, selecao,
-                            self.status_pmib_path, self._conferir_fornecedor, botao=self.btn_conf)
+                            self.status_pmib_path, self._conferir_fornecedor)
+
+    def _conferencia_terminou(self) -> None:
+        """Fim da 2ª passada, na thread da interface: o PROCESSAR volta se ainda
+        houver lista (ela pode ter mudado, ou sumido, durante a passada)."""
+        self._conf_em_andamento = False
+        try:
+            self.btn_conf.setEnabled(bool(self.conferencia))
+        except RuntimeError:
+            pass  # tela já destruída pelo Qt: nada a devolver
 
     def _conferencia_worker(self, conferencia, selecao, status_pmib_path, auditar_fornecedor) -> None:
         try:
@@ -591,6 +616,8 @@ class ModuloAutoSpec(ModuleFrame):
             self.avisar("Sucesso", "Documentos conferidos processados.")
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"ERRO na conferência: {e}")
+        finally:
+            interface.na_interface(self._conferencia_terminou)
 
     # --- Seletores (Lógica Mantida) -------------------------------------------------
     def sel_status(self) -> None:
@@ -715,10 +742,10 @@ class ModuloAutoSpec(ModuleFrame):
                 self.log(msg)
 
             self.log("Processamento Completo!")
-            # Conferência humana: só lista se sobrou dúvida (2026-08-13).
+            # Conferência humana: só lista se sobrou dúvida (2026-08-13). O fim do
+            # lote -- e o "Sucesso" -- segue na thread da interface.
             conferencia = getattr(core, "conferencia", None)
             interface.na_interface(self._fila_processada, fila, conferencia)
-            self.avisar("Sucesso", "Todas as tarefas da fila foram processadas.")
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"ERRO FATAL: {e}")
 
@@ -729,11 +756,19 @@ class ModuloAutoSpec(ModuleFrame):
         A ordem importa (invariante de 2026-08-17): `_conferencia_mostrar` zera
         as marcações, então o `.txt` automático sai coerente com a lista nova,
         e não com as marcas do lote anterior.
+
+        Um erro aqui vai para o console como "ERRO FATAL", e o "Sucesso" não
+        aparece: a ponte da interface só o escreveria no stderr.
         """
-        processados = {id(item) for item in fila}
-        self.queue = [item for item in self.queue if id(item) not in processados]
-        self.update_queue_ui()
-        self._conferencia_mostrar(conferencia)
-        # Salva sozinho (2026-08-17).
-        if conferencia:
-            self._conferencia_salvar(automatico=True)
+        try:
+            processados = {id(item) for item in fila}
+            self.queue = [item for item in self.queue if id(item) not in processados]
+            self.update_queue_ui()
+            self._conferencia_mostrar(conferencia)
+            # Salva sozinho (2026-08-17).
+            if conferencia:
+                self._conferencia_salvar(automatico=True)
+        except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
+            self.log(f"ERRO FATAL: {e}")
+            return
+        self.avisar("Sucesso", "Todas as tarefas da fila foram processadas.")
