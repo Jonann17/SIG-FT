@@ -9,6 +9,7 @@ Mesma API e mesma regra da versão CustomTkinter:
 from __future__ import annotations
 
 import threading
+import traceback
 
 from sigft.app.widgets.dialogs import MSG_EXCEL_BLOQUEADO, TEXTO_CONTINUAR, msg_excel_bloqueado
 from sigft.app_qt import interface
@@ -25,9 +26,16 @@ class DialogosDeEspera:
             return resultado
 
         def abrir() -> None:
-            dialogo = construir_dialogo(evento, resultado)
-            self._dialogo_aberto = dialogo  # segura a referência enquanto está aberto
-            dialogo.show()
+            try:
+                dialogo = construir_dialogo(evento, resultado)
+                self._dialogo_aberto = dialogo  # segura a referência enquanto está aberto
+                dialogo.show()
+            except Exception:  # noqa: BLE001 -- o worker não pode ficar preso
+                # `interface._rodar` engole a exceção; sem o `set()` o worker
+                # esperaria para sempre. Resposta segura: login segue, Excel
+                # não repete (`resultado` fica sem "retry").
+                traceback.print_exc()
+                evento.set()
 
         interface.na_interface(abrir)
         evento.wait()

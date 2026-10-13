@@ -30,6 +30,14 @@ class _DialogoDeAcaoManual(QDialog):
     def _ao_fechar_sem_decidir(self) -> None:
         raise NotImplementedError
 
+    def reject(self) -> None:
+        """Esc (e qualquer `reject()`) esconde o diálogo SEM passar pelo
+        `closeEvent`; sem isto o worker ficaria preso. Só responde se ainda
+        ninguém decidiu -- os botões já responderam antes de chamar `reject()`."""
+        if not self._decidido:
+            self._ao_fechar_sem_decidir()
+        super().reject()
+
     def closeEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
         if not self._decidido:
             self._ao_fechar_sem_decidir()
