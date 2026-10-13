@@ -5,7 +5,7 @@
 # importação").
 #
 # Roda, nesta ordem, a partir da raiz do repositório:
-#   1) `"$PY" -m compileall -q -x '[/\\]\.venv[/\\]' .`
+#   1) `"$PY" -m compileall -q -x '[/\\]\.?venv[/\\]' .`
 #      Verificação de SINTAXE de TODA a árvore do repositório — inclui
 #      frontend.py, que fica de fora do passo 2 (não é seguro IMPORTAR
 #      frontend.py neste ambiente: ele importa customtkinter/tkinter e o
@@ -86,7 +86,7 @@ echo "=================================================================="
 # `deploy_lib/` um template Jinja com extensao `.py` (`{% for ... %}`) que nao e
 # Python valido -- o compileall morria nele. O regex aceita `/` e `\` porque o
 # script tambem roda no Git Bash do Windows.
-"$PY" -m compileall -q -x '[/\\]\.venv[/\\]' .
+"$PY" -m compileall -q -x '[/\\]\.?venv[/\\]' .
 echo "OK: compileall não encontrou erro de sintaxe."
 echo
 

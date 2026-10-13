@@ -31,7 +31,7 @@ def test_clique_no_card_inteiro_navega(qt_interface, qtbot):
 def test_icones_da_barra_em_preto_e_branco(qt_interface, qtbot):
     home = HomeView(controller=Controller())
     qtbot.addWidget(home)
-    assert "︎" in home.botoes_barra["atividades"].text()
+    assert "\ufe0e" in home.botoes_barra["atividades"].text()
 
 
 def test_canal_de_testes_lembra_a_escolha(qt_interface, qtbot, monkeypatch):
