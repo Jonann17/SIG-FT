@@ -235,9 +235,16 @@ class SplashScreen(QWidget):
             print(f"Erro ao carregar {exibido}: {erro}")
             interface.na_interface(self.status.setText, f"Erro em {exibido}")
 
-        backends.carregar_todos(ao_progredir=progredir, ao_falhar=falhar)
-        interface.na_interface(self.status.setText, f"Concluído em {time.time() - inicio:.1f}s")
-        interface.na_interface(self.pronta.emit)
+        try:
+            backends.carregar_todos(ao_progredir=progredir, ao_falhar=falhar)
+            interface.na_interface(self.status.setText, f"Concluído em {time.time() - inicio:.1f}s")
+        except BaseException:  # noqa: BLE001 -- inclui SystemExit de um backend no import
+            traceback.print_exc()
+        finally:
+            # Sempre segue adiante: a splash que não some deixa o processo vivo
+            # e sem janela. Tela com backend ausente mostra o motivo sozinha
+            # (`backends.falhas`).
+            interface.na_interface(self.pronta.emit)
 
 
 def _preparar_qt() -> QApplication:
@@ -276,15 +283,23 @@ def main() -> None:
 
 def _smoke() -> int:
     """Monta a janela principal e sai, sem laço de eventos (para o CI)."""
+    avisos: list[str] = []
     try:
         _preparar_qt()
-        backends.carregar_todos()
+        backends.carregar_todos(
+            ao_falhar=lambda nome, erro: avisos.append(
+                f"[smoke] AVISO: o backend '{nome}' nao carregou: "
+                f"{type(erro).__name__}: {erro}"))
         janela = SIG_FT_App()
         janela.close()
     except Exception as erro:  # noqa: BLE001 -- é o que se quer relatar
+        for aviso in avisos:
+            print(aviso)
         print(f"[smoke] FALHOU: {type(erro).__name__}: {erro}")
         traceback.print_exc()
         return 1
+    for aviso in avisos:
+        print(aviso)
     print("[smoke] a janela principal Qt montou e fechou sem erro.")
     return 0
 

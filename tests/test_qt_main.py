@@ -61,3 +61,26 @@ def test_smoke_monta_e_sai_com_zero(qt_interface, monkeypatch, tmp_path):
     monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))
     monkeypatch.setattr(qmain.backends, "carregar_todos", lambda **k: None)
     assert qmain._smoke() == 0
+
+
+def test_smoke_relata_backend_que_nao_carregou(qt_interface, monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))
+
+    def carregar(ao_falhar=None, **_):
+        ao_falhar("Teste", ImportError("x"))
+
+    monkeypatch.setattr(qmain.backends, "carregar_todos", carregar)
+    assert qmain._smoke() == 0
+    assert "[smoke] AVISO: o backend 'Teste' nao carregou: ImportError: x" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("erro", [SystemExit(1), RuntimeError("quebrou")])
+def test_splash_sempre_emite_pronta_mesmo_se_o_carregamento_morre(qt_interface, qtbot, monkeypatch, erro):
+    def carregar(**_):
+        raise erro
+
+    monkeypatch.setattr(qmain.backends, "carregar_todos", carregar)
+    splash = qmain.SplashScreen()
+    qtbot.addWidget(splash)
+    with qtbot.waitSignal(splash.pronta, timeout=3000):
+        splash.carregar()
