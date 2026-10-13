@@ -9,7 +9,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
-from sigft.app.widgets.dialogs import MSG_EXCEL_BLOQUEADO, TEXTO_CONTINUAR
+from sigft.app.textos_dialogos import MSG_EXCEL_BLOQUEADO, TEXTO_CONTINUAR
 
 
 class _DialogoDeAcaoManual(QDialog):

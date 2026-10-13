@@ -11,7 +11,7 @@ from __future__ import annotations
 import threading
 import traceback
 
-from sigft.app.widgets.dialogs import MSG_EXCEL_BLOQUEADO, TEXTO_CONTINUAR, msg_excel_bloqueado
+from sigft.app.textos_dialogos import MSG_EXCEL_BLOQUEADO, TEXTO_CONTINUAR, msg_excel_bloqueado
 from sigft.app_qt import interface
 from sigft.app_qt.widgets import dialogs
 
