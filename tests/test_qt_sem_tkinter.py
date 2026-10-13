@@ -74,6 +74,7 @@ def _importa_sem_tk(modulo):
     "sigft.app_qt.atualizacao",
     "sigft.app_qt.views.home",
     "sigft.app_qt.widgets.mural",
+    "sigft.services.mural_atividades",
 ])
 def test_importa_sem_tkinter(modulo):
     resultado = _importa_sem_tk(modulo)

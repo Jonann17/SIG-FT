@@ -5,7 +5,8 @@ e o mural de atividades).
 É a `sigft/app/views/home.py` (CustomTkinter) em Qt, com o mesmo comportamento:
 as mesmas chaves de configuração (gravadas pela janela principal no
 `api_config.json`), os mesmos serviços (`sigft.config`, `core.llm.catalogo`,
-`core.llm.selecao`, `core.llm.usage`, `services.atividades`, `services.updater`)
+`core.llm.selecao`, `core.llm.usage`, `services.atividades`,
+`services.mural_atividades`, `services.updater`)
 e os mesmos textos. Os cards seguem a decisão do protótipo de 2026-10-07
 (compactos: a descrição ocupa a largura do card); o resto tem as medidas do
 CustomTkinter, tiradas das capturas da E5.1.

@@ -40,7 +40,13 @@ def caminho_do_mapeamento():
     except Exception:
         pasta = None
     if pasta and os.path.isdir(pasta):
-        for nome in sorted(os.listdir(pasta)):
+        try:
+            nomes = sorted(os.listdir(pasta))
+        except OSError:
+            # Pasta sem permissão (ou que sumiu no meio): é "não achei", e o
+            # mural mostra o texto de sempre -- a exceção escapava do botão.
+            return None
+        for nome in nomes:
             if "mapeamento" in nome.lower() and nome.lower().endswith((".xlsx", ".xlsm")):
                 return os.path.join(pasta, nome)
     return None
