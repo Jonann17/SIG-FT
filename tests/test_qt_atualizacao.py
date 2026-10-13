@@ -626,3 +626,51 @@ def test_os_botoes_NUNCA_somem_com_mensagem_longa(monkeypatch, raiz, qtbot, com_
 
     assert _base(aviso, aviso.botao_atualizar) <= aviso.height() - 20
     assert aviso.caixa_notas.height() < 300
+
+
+def test_aviso_fechado_e_apagado_e_nao_so_escondido(raiz, qtbot, sem_uac):
+    # Como o `destroy()` da janela CTk: fechado ("Agora não", "X" ou Esc), o
+    # aviso é apagado -- antes ficava escondido, vivo, até o app fechar.
+    from shiboken6 import isValid
+
+    for fechar in ("agora_nao", "close", "reject"):
+        aviso = atualizacao._mostrar_aviso(raiz, _info(), "1.1.0")
+        getattr(aviso, fechar)()
+        qtbot.waitUntil(lambda a=aviso: not isValid(a), timeout=1000)
+    # A próxima resposta abre outro, sem tocar no apagado.
+    novo = atualizacao._mostrar_aviso(raiz, _info(), "1.1.0")
+    assert isValid(novo) and novo.isVisible()
+    novo.agora_nao()
+
+
+def test_baixando_o_x_nao_fecha_nem_apaga(raiz, qtbot, sem_uac):
+    from shiboken6 import isValid
+
+    aviso = _aviso(raiz, qtbot, disparar=lambda *a: None)
+    aviso.show()
+    aviso.atualizar()
+    aviso.close()
+    aviso.reject()
+    qtbot.wait(20)
+    assert isValid(aviso) and aviso.isVisible()
+    aviso._baixando = False
+    aviso.agora_nao()
+
+
+def test_caixa_de_notas_e_barra_com_o_estilo_compartilhado(raiz, qtbot, sem_uac):
+    # A cara da caixa de notas (CTkTextbox) mora na folha do app, e a barra é a
+    # CTkProgressBar de `blocos.barra_progresso` -- nada de folha escrita aqui.
+    from sigft.app_qt import estilo
+
+    aviso = _aviso(raiz, qtbot)
+    assert aviso.caixa_notas.styleSheet() == ""
+    assert "#notas_atualizacao" in estilo.folha_de_estilo()
+    assert aviso.barra.styleSheet() == blocos_barra_folha()
+    assert (aviso.barra.minimum(), aviso.barra.maximum()) == (0, 100)
+
+
+def blocos_barra_folha():
+    from sigft.app import theme
+    from sigft.app_qt.widgets import blocos
+
+    return blocos.barra_progresso(largura=530, altura=8, cor=theme.COLORS["accent"]).styleSheet()

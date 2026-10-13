@@ -125,18 +125,9 @@ LARGURA_LIMPAR = 70
 # =============================================================================
 def _rotulo(texto: str, fonte: tuple = FONTE_CTK, *, cor: str = COR_TEXTO_CTK,
             largura_minima: int | None = None) -> QLabel:
-    """CTkLabel de uma linha, `anchor="w"`: 28 px de altura no mínimo, texto
-    centrado na vertical; `largura_minima` é o `width=` (o texto maior alarga)."""
-    r = QLabel(texto)
-    # Texto cru, como o CTkLabel: em AutoText um "<" viraria HTML.
-    r.setTextFormat(Qt.TextFormat.PlainText)
-    r.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-    r.setMinimumHeight(blocos.ALTURA_MINIMA_ROTULO)
-    if largura_minima:
-        r.setMinimumWidth(largura_minima)
-    r.setStyleSheet(f"{blocos.folha_fonte_tk(fonte)} color: {estilo.cinza_tk(cor)};"
-                    " background: transparent;")
-    return r
+    """CTkLabel de uma linha, `anchor="w"` (`blocos.rotulo_tk`, com a fonte e a cor
+    padrão do CTkLabel); `largura_minima` é o `width=` (o texto maior alarga)."""
+    return blocos.rotulo_tk(texto, fonte, cor, largura_minima=largura_minima)
 
 
 def _titulo_painel(texto: str) -> QLabel:

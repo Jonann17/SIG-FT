@@ -156,3 +156,19 @@ TEXTOS_TRAVADOS = {
         "seguir": "Seguir sem ele",
     },
 }
+
+
+def texto_dos_avisos(inicio: str, avisos: int, nao_gravados: int) -> str:
+    """O texto da janela "Concluído com avisos" do PMIB Manager (Gestão e
+    autorizações de Itaipu). [2026-10-06] Os arquivos que ficaram sem gravar vêm
+    primeiro, com a contagem do resumo do fim do log (`travas.TITULO_RESUMO`): é
+    o que a pessoa precisa resolver. As duas interfaces usam esta (era uma cópia
+    em cada tela)."""
+    partes = []
+    if nao_gravados:
+        partes.append(f"{nao_gravados} arquivo(s) não foram gravados nesta rodada: o motivo de cada um "
+                      "e o que fazer estão no fim do log")
+    outros = avisos - (1 if nao_gravados else 0)
+    if outros > 0:
+        partes.append(f"{outros} aviso(s) pedem atenção (procure as linhas [AVISO] no log)")
+    return f"{inicio}, mas " + "; e ".join(partes) + "."

@@ -136,9 +136,9 @@ class ModuloCorrecaoPDM(ModuleFrame):
         acoes.setSpacing(0)
         self.rotulo_acoes = QLabel("Nas fichas selecionadas:")
         self.rotulo_acoes.setFixedHeight(blocos.ALTURA_MINIMA_ROTULO)
-        # 148 medidos lá: o negrito de 12 px do Tk sai 1 px mais largo por letra
-        # (sintetizado) que o do Qt (136). Sem isto os três botões chegavam 12 px
-        # para a esquerda.
+        # 148 medidos lá e ~136 no Qt: a 12 px o negrito sintetizado do Qt não
+        # alarga as letras, e o do Tk soma ~0,5 px por letra (13 px nas 24 do
+        # texto). Sem isto os três botões chegavam 12 px para a esquerda.
         self.rotulo_acoes.setMinimumWidth(LARGURA_ROTULO_ACOES)
         self.rotulo_acoes.setStyleSheet(
             "QLabel { font-size: 12px; font-weight: bold; background: transparent;"
@@ -237,13 +237,6 @@ class ModuloCorrecaoPDM(ModuleFrame):
         altura = theme.ALTURA_CONSOLE + sobra * PESO_CONSOLE // (PESO_CONTEUDO + PESO_CONSOLE)
         if self.faixa_console.height() != altura or self.faixa_console.minimumHeight() != altura:
             self.faixa_console.setFixedHeight(altura)
-
-    # -- perguntas -----------------------------------------------------------
-    def _perguntar(self, titulo: str, mensagem: str, *, padrao_sim: bool) -> bool:
-        """O `askyesno` de lá. `padrao_sim` escolhe o botão do Enter."""
-        sim, nao = QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No
-        return QMessageBox.question(self, titulo, mensagem, sim | nao,
-                                    sim if padrao_sim else nao) == sim
 
     # -- arquivos ----------------------------------------------------------
     def _sel_status(self) -> None:
@@ -357,7 +350,7 @@ class ModuloCorrecaoPDM(ModuleFrame):
                 "'Escolher PDM...' antes.")
             return
         # Operação destrutiva: o Enter fica no "Não" (lá o askyesno o punha no "Sim").
-        if not self._perguntar(
+        if not self.perguntar_sim_nao(
                 "Confirmar",
                 f"{len(lote)} ficha(s) vão ter o PDM trocado no portal.\n\n"
                 "O portal apaga as características técnicas na troca. O robô "
@@ -410,7 +403,7 @@ class ModuloCorrecaoPDM(ModuleFrame):
     def _oferecer_relatorio(self, resultados) -> None:
         """Salva o relatório num arquivo, se o usuário quiser (no console ele rola e some)."""
         # Enter = "Sim", como o askyesno de lá: recusar sem querer perde a lista do que não voltou.
-        if not self._perguntar("Relatório", "Salvar o relatório num arquivo?", padrao_sim=True):
+        if not self.perguntar_sim_nao("Relatório", "Salvar o relatório num arquivo?", padrao_sim=True):
             return
         caminho = file_dialogs.ask_save_file(
             "correcao_pdm.relatorio", "texto", titulo="Salvar relatorio",

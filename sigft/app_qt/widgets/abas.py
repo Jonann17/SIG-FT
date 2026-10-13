@@ -21,7 +21,7 @@ desconhecido em `tab`/`set` levanta ValueError, como lá.
 Limites (o que o CTkTabview também não faz, ou que nenhuma tela usa):
 * a largura de cada botão é fixada quando a aba é criada (texto + 14): mudar o
   texto ou a fonte depois não a refaz; não há `delete`, `rename` nem `insert`;
-* sem teclado: as setas não trocam de aba (no CTk também não); Tab foca cada botão;
+* sem teclado: os botões não pegam o foco nem trocam de aba por tecla, como no CTk;
 * só `anchor="n"` (barra em cima, centrada) -- o único que as telas usam;
 * a barra não encolhe: abas que não cabem na largura alargam o widget;
 * a altura pedida é a da MAIOR aba (a do QStackedWidget), a não ser com
@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 from sigft.app_qt import estilo
+from sigft.app_qt.widgets import blocos
 
 ESPACO_ACIMA = 10
 ALTURA_BARRA = 26
@@ -125,6 +126,7 @@ class Abas(QWidget):
         self.pilha.addWidget(aba)
 
         botao = QPushButton(nome)
+        blocos.sem_tecla(botao)   # os do CTkSegmentedButton nunca pegam o foco
         botao.setCheckable(True)
         botao.setCursor(Qt.CursorShape.PointingHandCursor)
         botao.clicked.connect(lambda _=False, n=nome: self._clicou(n))

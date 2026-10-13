@@ -84,27 +84,22 @@ def _titulo(texto: str):
     return _rotulo(texto, tamanho=16, negrito=True, cor=COLORS["accent"])
 
 
-# O "▶" do "Iniciar Robô de Edição": o Roboto não o tem, e a reserva da folha
-# (Noto Emoji) desenha o emoji "play" -- um quadrado com o triângulo dentro. A
-# lista de fontes de símbolos mora no `estilo` desde a E4.10 (o "⬇" do AutoSpec).
-FAMILIAS_COM_SIMBOLO = estilo.FAMILIAS_COM_SIMBOLO
-
-
 def _botao(texto: str, *, com_simbolo: bool = False, **kw):
     """`blocos.botao` sem Enter: o Tk não ligava tecla nenhuma aos botões."""
     b = blocos.botao(texto, **kw)
-    b.setAutoDefault(False)
     if com_simbolo:
-        b.setStyleSheet(f"{b.styleSheet()} QPushButton {{ font-family: {FAMILIAS_COM_SIMBOLO}; }}")
+        # O "▶" do "Iniciar Robô de Edição": o Roboto não o tem, e o Noto Emoji
+        # desenharia o emoji "play" (um quadrado com o triângulo dentro).
+        estilo.botao_com_simbolos(b)
     b.setProperty("_folha_base", b.styleSheet())
     return b
 
 
 def _pintar(botao, fundo: str, hover: str) -> None:
-    """O `configure(fg_color=...)` do CTk: troca o fundo, mantém o resto da folha.
-    `hover` é o hover_color que o botão já tinha (o configure não o mudava)."""
-    botao.setStyleSheet(f"{botao.property('_folha_base')} QPushButton {{ background: {fundo}; }}"
-                        f" QPushButton:hover {{ background: {hover}; }}")
+    """O `configure(fg_color=...)` do CTk: troca o fundo, mantém o resto da folha
+    (`blocos.pintar`). `hover` é o hover_color que o botão já tinha (o configure
+    não o mudava)."""
+    blocos.pintar(botao, f"QPushButton {{ background: {fundo}; }} QPushButton:hover {{ background: {hover}; }}")
 
 
 def _cor_rotulo(rotulo, cor: str) -> None:

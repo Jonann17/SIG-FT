@@ -87,13 +87,14 @@ class DialogosDeEspera:
         evento.wait()
         return caixa.get("valor")
 
-    def perguntar_sim_nao(self, titulo: str, mensagem: str) -> bool:
+    def perguntar_sim_nao(self, titulo: str, mensagem: str, *, padrao_sim: bool = False) -> bool:
+        """O `askyesno` do Tk. `padrao_sim` escolhe o botão do Enter: lá era o
+        "Sim"; aqui o padrão é o "Não", e a tela pede o "Sim" quando recusar sem
+        querer custa mais (ex.: perder o relatório da Correção de PDM)."""
+        sim, nao = QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No
+
         def perguntar():
-            resposta = QMessageBox.question(
-                self, titulo, mensagem,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No)
-            return resposta == QMessageBox.StandardButton.Yes
+            return QMessageBox.question(self, titulo, mensagem, sim | nao, sim if padrao_sim else nao) == sim
         return bool(self._na_interface_e_esperar(perguntar))
 
     def pedir_texto(self, titulo: str, mensagem: str) -> str | None:

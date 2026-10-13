@@ -617,3 +617,9 @@ def test_barra_de_progresso_acompanha_a_largura(com_folha, qtbot):
     qtbot.waitUntil(lambda: abs(t.progress.value() - round(1000 * 374 / 923)) <= 1, timeout=2000)
     t.resize(803, 850)
     qtbot.waitUntil(lambda: abs(t.progress.value() - round(1000 * (8 + 0.4 * 715) / 723)) <= 1, timeout=2000)
+
+
+def test_perguntas_usam_o_sim_nao_compartilhado():
+    # O `_perguntar` local (cópia de `DialogosDeEspera.perguntar_sim_nao`) saiu:
+    # o compartilhado ganhou o botão padrão (`padrao_sim`).
+    assert not hasattr(tela_mod.ModuloCorrecaoPDM, "_perguntar")

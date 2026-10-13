@@ -198,6 +198,9 @@ def folha_de_estilo() -> str:
     # * abas: não há regra de QTabWidget -- o CTkTabview é `widgets/abas.Abas`.
     # * QCheckBox::indicator: width/height NÃO contam a borda -- 18 + 2*3 = os 24 da
     #   CTkCheckBox (com 20 saía 26). Sem imagem, a marcada não tem o "v" de lá.
+    # * #notas_atualizacao: o CTkTextbox das notas do aviso de atualização (fundo
+    #   gray20, sem borda, cantos 6, texto gray84, Roboto 12); o texto começa 8 px
+    #   à esquerda e 11 px abaixo da borda (medido na E5.2).
     return f"""
 QMainWindow, #conteudo, #tela {{ background: {c['background']}; }}
 QDialog {{ background: {cinza_tk('gray10')}; }}
@@ -245,6 +248,8 @@ QPushButton[variante="contorno"]:hover, QPushButton[variante="contorno_padrao"]:
 #card_desc {{ color: {cinza_tk('gray70')}; font-size: 12px; background: transparent; }}
 #console {{ background: {cinza_tk('gray20')}; border: none; border-radius: 6px;
             color: {cinza_tk('gray84')}; font-family: "Consolas", "Menlo", monospace; font-size: 12px; }}
+#notas_atualizacao {{ background: {cinza_tk('gray20')}; border: none; border-radius: 6px;
+    color: {cinza_tk('gray84')}; font-size: 12px; padding: 5px 4px 3px 4px; }}
 QCheckBox {{ font-size: 12px; }}
 QCheckBox::indicator {{ width: 18px; height: 18px; border: 3px solid #949A9F;
                         border-radius: 6px; background: transparent; }}
@@ -412,3 +417,10 @@ QAbstractScrollArea[barra_nativa="true"] QScrollBar::sub-line {{
 # widget, `QPushButton { font-family: <FAMILIAS_COM_SIMBOLO>; }`. (Era local da
 # Criação de Fichas, E4.9.)
 FAMILIAS_COM_SIMBOLO = '"Roboto", "Segoe UI Symbol", "DejaVu Sans", "Apple Symbols", "Noto Emoji"'
+
+
+def botao_com_simbolos(botao) -> None:
+    """O botão com um símbolo que o Roboto não tem ("▶", "⬇"): acrescenta
+    `FAMILIAS_COM_SIMBOLO` à folha dele (só o desenho, como no Tk, e não o emoji
+    do Noto Emoji). Era repetido na Criação de Fichas e no AutoSpec."""
+    botao.setStyleSheet(f"{botao.styleSheet()} QPushButton {{ font-family: {FAMILIAS_COM_SIMBOLO}; }}")

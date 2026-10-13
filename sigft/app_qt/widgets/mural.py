@@ -18,8 +18,7 @@ isso cada peça entra numa caixa com as margens dela, num layout sem espaçament
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontMetrics
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QWidget
 
 from sigft.app import theme
 from sigft.app_qt import estilo
@@ -81,32 +80,6 @@ def _cor_da_criticidade(valor) -> str:
         return COR_CRITICIDADE_PADRAO
 
 
-def _rotulo(texto, fonte: tuple, cor: str, *, largura: int | None = None,
-            quebra: int | None = None, direita: bool = False) -> QLabel:
-    """CTkLabel: 28 px de altura no mínimo, texto centrado na vertical.
-
-    `quebra` é o `wraplength`: o texto que passa dele quebra linha naquela
-    largura; o que cabe fica numa linha só, com a largura dele (o `anchor` de lá).
-    """
-    r = QLabel(texto)
-    # Texto da planilha, CRU como no CTkLabel: em AutoText o QLabel tomaria um
-    # "Trocar <a> por <b> no PDM" por HTML e engoliria as "tags".
-    r.setTextFormat(Qt.TextFormat.PlainText)
-    horizontal = Qt.AlignmentFlag.AlignRight if direita else Qt.AlignmentFlag.AlignLeft
-    r.setAlignment(horizontal | Qt.AlignmentFlag.AlignVCenter)
-    r.setMinimumHeight(blocos.ALTURA_MINIMA_ROTULO)
-    r.setStyleSheet(f"{blocos.folha_fonte_tk(fonte)} color: {estilo.cinza_tk(cor)};"
-                    " background: transparent;")
-    if largura:
-        r.setFixedWidth(largura)
-    if quebra:
-        medida = QFontMetrics(blocos.fonte_tk(fonte))
-        if max(medida.horizontalAdvance(linha) for linha in str(texto).split("\n")) > quebra:
-            r.setWordWrap(True)
-            r.setFixedWidth(quebra)
-    return r
-
-
 def _caixa(layout, item, *, padx=(0, 0), pady=(0, 0), horizontal: bool = False):
     """`pack(padx=, pady=)`: `item` (widget ou layout) numa caixa com essas margens."""
     caixa = QHBoxLayout() if horizontal else QVBoxLayout()
@@ -128,7 +101,7 @@ def montar(parent, gavetas, quando: str, erro: str | None = None) -> None:
     """
     layout = parent.layout()
     if erro:
-        _caixa(layout, _rotulo(erro, theme.FONTE_CORPO, theme.COLORS["danger"], quebra=_QUEBRA_ERRO),
+        _caixa(layout, blocos.rotulo_tk(erro, theme.FONTE_CORPO, theme.COLORS["danger"], quebra=_QUEBRA_ERRO),
                padx=(14, 14), pady=(14, 14))
         return
 
@@ -136,15 +109,15 @@ def montar(parent, gavetas, quando: str, erro: str | None = None) -> None:
 
     cabecalho = QHBoxLayout()
     cabecalho.setSpacing(0)
-    cabecalho.addWidget(_rotulo(quando, theme.FONTE_SECAO, theme.COLORS["text_light"]))
+    cabecalho.addWidget(blocos.rotulo_tk(quando, theme.FONTE_SECAO, theme.COLORS["text_light"]))
     cabecalho.addSpacing(12)
-    cabecalho.addWidget(_rotulo(f"{total} atividade(s) pedindo atenção",
+    cabecalho.addWidget(blocos.rotulo_tk(f"{total} atividade(s) pedindo atenção",
                                 theme.FONTE_CORPO_MIUDO, theme.COR_TEXTO_APOIO))
     cabecalho.addStretch()
     _caixa(layout, cabecalho, padx=(14, 14), pady=(4, 12))
 
     if total == 0:
-        _caixa(layout, _rotulo("Nada pendente para hoje nem para os próximos dias.",
+        _caixa(layout, blocos.rotulo_tk("Nada pendente para hoje nem para os próximos dias.",
                                theme.FONTE_SUBTITULO, theme.COLORS["accent"]),
                padx=(14, 14), pady=(24, 24))
         return
@@ -163,13 +136,13 @@ def _faixa(layout, faixa, itens) -> None:
     # direita. O número vem primeiro porque é o que se lê de relance.
     barra = QHBoxLayout()
     barra.setSpacing(0)
-    barra.addWidget(_rotulo(str(len(itens)), ("Roboto", 30, "bold"), cor, largura=48, direita=True),
+    barra.addWidget(blocos.rotulo_tk(str(len(itens)), ("Roboto", 30, "bold"), cor, largura=48, direita=True),
                     0, Qt.AlignmentFlag.AlignVCenter)
     barra.addSpacing(10)
     textos = QVBoxLayout()
     textos.setSpacing(0)
-    textos.addWidget(_rotulo(ROTULO_FAIXA[faixa], ("Roboto", 14, "bold"), cor))
-    textos.addWidget(_rotulo(EXPLICACAO_FAIXA[faixa], theme.FONTE_CORPO_MIUDO, theme.COR_TEXTO_APOIO))
+    textos.addWidget(blocos.rotulo_tk(ROTULO_FAIXA[faixa], ("Roboto", 14, "bold"), cor))
+    textos.addWidget(blocos.rotulo_tk(EXPLICACAO_FAIXA[faixa], theme.FONTE_CORPO_MIUDO, theme.COR_TEXTO_APOIO))
     barra.addLayout(textos)
     barra.addStretch()
     _caixa(layout, barra, padx=(14, 14), pady=(16, 6))
@@ -212,13 +185,13 @@ def _cartao(layout, item, faixa) -> None:
     # O GRUPO (nível 1), acima da descrição e em corpo menor: lê-se primeiro
     # a frente, depois a tarefa.
     if item.get("_grupo"):
-        _caixa(coluna, _rotulo(str(item["_grupo"]), ("Roboto", 11, "bold"), theme.COR_TEXTO_APOIO_CLARO,
+        _caixa(coluna, blocos.rotulo_tk(str(item["_grupo"]), ("Roboto", 11, "bold"), theme.COR_TEXTO_APOIO_CLARO,
                                quebra=_QUEBRA_CARTAO),
                padx=(10, 10), pady=(8, 0), horizontal=True).addStretch()
 
     topo = QHBoxLayout()
     topo.setSpacing(0)
-    topo.addWidget(_rotulo(str(item.get("descricao") or "(sem descrição)"), theme.FONTE_CORPO,
+    topo.addWidget(blocos.rotulo_tk(str(item.get("descricao") or "(sem descrição)"), theme.FONTE_CORPO,
                            _COR_TEXTO, quebra=_QUEBRA_CARTAO), 0, Qt.AlignmentFlag.AlignVCenter)
     topo.addStretch()
 
@@ -227,10 +200,10 @@ def _cartao(layout, item, faixa) -> None:
     # quando?". As duas frases vêm PRONTAS do serviço.
     prazos = QVBoxLayout()
     prazos.setSpacing(0)
-    prazos.addWidget(_rotulo(at.frase_do_prazo(faixa, item.get("_dias")), ("Roboto", 12, "bold"),
+    prazos.addWidget(blocos.rotulo_tk(at.frase_do_prazo(faixa, item.get("_dias")), ("Roboto", 12, "bold"),
                              COR_FAIXA[faixa], direita=True), 0, Qt.AlignmentFlag.AlignRight)
     if item.get("_termino"):
-        prazos.addWidget(_rotulo(str(item["_termino"]), theme.FONTE_CORPO_MIUDO, theme.COR_TEXTO_APOIO,
+        prazos.addWidget(blocos.rotulo_tk(str(item["_termino"]), theme.FONTE_CORPO_MIUDO, theme.COR_TEXTO_APOIO,
                                  direita=True), 0, Qt.AlignmentFlag.AlignRight)
     topo.addSpacing(10)
     topo.addLayout(prazos)
@@ -244,7 +217,7 @@ def _cartao(layout, item, faixa) -> None:
     if item.get("criticidade"):
         partes.append(f"criticidade {item['criticidade']}")
     if partes:
-        _caixa(coluna, _rotulo("   ·   ".join(partes), theme.FONTE_CORPO_MIUDO, theme.COR_TEXTO_APOIO_CLARO),
+        _caixa(coluna, blocos.rotulo_tk("   ·   ".join(partes), theme.FONTE_CORPO_MIUDO, theme.COR_TEXTO_APOIO_CLARO),
                padx=(10, 10), pady=(0, 8), horizontal=True).addStretch()
 
     _caixa(layout, linha, padx=(14, 14), pady=(3, 3))

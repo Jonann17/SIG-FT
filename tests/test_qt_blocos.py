@@ -168,3 +168,53 @@ def test_area_rolavel_sem_o_parametro_continua_igual(com_folha, qtbot):
     assert area.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
     margens = corpo.contentsMargins()
     assert (margens.left(), margens.top(), margens.right(), margens.bottom()) == (6, 6, 6, 6)
+
+
+# --- polimento B1/B4: folha reconstruída da base e botões sem foco ----------------
+def test_pintar_reconstroi_a_folha_a_partir_da_base(com_folha, qtbot):
+    # O `configure(fg_color=...)` do CTk: trocar a cor de novo não acumula regra.
+    b = blocos.botao("Selecionar", variante="cinza", tamanho_fonte=12)
+    qtbot.addWidget(b)
+    base = b.styleSheet()
+    for cor in ("#035D67", "#123456", "#035D67"):
+        blocos.pintar(b, f"QPushButton {{ background: {cor}; }}")
+    assert b.styleSheet() == f"{base} QPushButton {{ background: #035D67; }}"
+    assert b.styleSheet().count("background") == 1
+
+
+def test_marcar_arquivo_escolhido_nao_acumula(com_folha, qtbot):
+    b = blocos.botao("Selecionar", variante="cinza")
+    r = blocos.rotulo("Nenhum arquivo selecionado", alinhar="esquerda", elidir=True)
+    for w in (b, r):
+        qtbot.addWidget(w)
+    blocos.marcar_arquivo_escolhido(b, r, "/d/a.xlsx")
+    folhas = (b.styleSheet(), r.styleSheet())
+    blocos.marcar_arquivo_escolhido(b, r, "/d/b.xlsx")
+    blocos.marcar_arquivo_escolhido(b, r, "/d/c.xlsx")
+    assert (b.styleSheet(), r.styleSheet()) == folhas
+    assert r.text() == "c.xlsx" and r.toolTip() == "/d/c.xlsx"
+    assert theme.COLORS["accent"] in r.styleSheet() and theme.COLORS["primary"] in b.styleSheet()
+
+
+def test_botao_nao_pega_foco_e_nenhuma_tecla_o_aperta(com_folha, qtbot):
+    # Como o CTkButton, que nunca pegava o foco: Espaço e Enter não o apertam,
+    # nem numa janela de diálogo (onde o Qt o faria "padrão").
+    from PySide6.QtWidgets import QDialog, QLineEdit
+
+    dialogo = QDialog()
+    layout = QVBoxLayout(dialogo)
+    campo = QLineEdit()
+    b = blocos.botao("Confirmar", variante="primario")
+    cliques = []
+    b.clicked.connect(lambda: cliques.append(1))
+    layout.addWidget(campo)
+    layout.addWidget(b)
+    qtbot.addWidget(dialogo)
+    dialogo.show()
+    qtbot.waitExposed(dialogo)
+    assert b.focusPolicy() == Qt.FocusPolicy.NoFocus
+    assert not b.autoDefault() and not b.isDefault()
+    campo.setFocus()
+    for tecla in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space, Qt.Key.Key_Tab):
+        qtbot.keyClick(campo, tecla)
+    assert cliques == [] and not b.hasFocus()

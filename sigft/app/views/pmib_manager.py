@@ -15,6 +15,7 @@ from tkinter import messagebox
 import pandas as pd
 
 from sigft.app import backends, file_dialogs
+from sigft.app.textos_dialogos import texto_dos_avisos
 from sigft.app.widgets.espera import DialogosDeEspera
 from sigft.core import prefs
 from sigft.core.excel import travas
@@ -29,18 +30,9 @@ OPCAO_GERAR_PAINEL = "pmib_manager.gerar_painel"
 import customtkinter as ctk
 
 
-def _texto_dos_avisos(inicio, avisos, nao_gravados):
-    """O texto da janela "Concluído com avisos". [2026-10-06] Os arquivos que
-    ficaram sem gravar vêm primeiro, com a contagem do resumo do fim do log
-    (`travas.TITULO_RESUMO`): é o que a pessoa precisa resolver."""
-    partes = []
-    if nao_gravados:
-        partes.append(f"{nao_gravados} arquivo(s) não foram gravados nesta rodada: o motivo de cada um "
-                      "e o que fazer estão no fim do log")
-    outros = avisos - (1 if nao_gravados else 0)
-    if outros > 0:
-        partes.append(f"{outros} aviso(s) pedem atenção (procure as linhas [AVISO] no log)")
-    return f"{inicio}, mas " + "; e ".join(partes) + "."
+# O texto da janela "Concluído com avisos" mora em `textos_dialogos` (sem
+# tkinter), o mesmo da tela Qt.
+_texto_dos_avisos = texto_dos_avisos
 
 
 # =============================================================================

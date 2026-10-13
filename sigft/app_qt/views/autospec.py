@@ -272,8 +272,7 @@ class ModuloAutoSpec(ModuleFrame):
                                     altura=28, tamanho_fonte=13, negrito=True,
                                     cor_texto=COLORS["text_white"])
         # O "⬇" sai da fonte de símbolos (só a seta, como no Tk), não do Noto Emoji.
-        self.btn_add.setStyleSheet(f"{self.btn_add.styleSheet()}"
-                                   f" QPushButton {{ font-family: {estilo.FAMILIAS_COM_SIMBOLO}; }}")
+        estilo.botao_com_simbolos(self.btn_add)
         self.btn_add.clicked.connect(self.add_queue)
         _recuado(job, self.btn_add, 5, 5)               # padx=20 (15 já são do cartão)
 

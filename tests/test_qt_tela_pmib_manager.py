@@ -588,11 +588,22 @@ def test_caixa_de_marcar_alterna_pela_caixa_e_pelo_texto(qt_interface, qtbot):
 # ---------------------------------------------------------------------------
 # Texto dos avisos (a mesma regra da tela antiga)
 # ---------------------------------------------------------------------------
-def test_texto_dos_avisos():
-    f = tela_mod._texto_dos_avisos
+def test_texto_dos_avisos_e_um_so_para_as_duas_interfaces():
+    # Era uma cópia da função da tela CTk; agora mora num módulo sem tkinter
+    # (`sigft.app.textos_dialogos`) e as duas telas usam a mesma.
+    import importlib
+
+    from sigft.app import textos_dialogos
+
+    f = textos_dialogos.texto_dos_avisos
     assert f("X", 1, 0) == "X, mas 1 aviso(s) pedem atenção (procure as linhas [AVISO] no log)."
     assert f("X", 1, 3) == ("X, mas 3 arquivo(s) não foram gravados nesta rodada: o motivo de cada um e o "
                             "que fazer estão no fim do log.")
+    assert f("X", 3, 1) == ("X, mas 1 arquivo(s) não foram gravados nesta rodada: o motivo de cada um e o "
+                            "que fazer estão no fim do log; e 2 aviso(s) pedem atenção (procure as linhas "
+                            "[AVISO] no log).")
+    assert tela_mod.texto_dos_avisos is f
+    assert importlib.import_module("sigft.app.views.pmib_manager")._texto_dos_avisos is f
 
 
 # ---------------------------------------------------------------------------
@@ -696,3 +707,33 @@ def test_nome_de_arquivo_longo_nao_alarga_a_tela(tela, monkeypatch):
     assert tela.minimumSizeHint().width() <= largura
     for rotulo in (tela.lbl_api_status, tela.lbl_master_status, tela.lbl_autorizados):
         assert rotulo.text() == nome and rotulo.toolTip() == "/d/" + nome
+
+
+def test_escolher_de_novo_nao_acumula_folha(tela, monkeypatch):
+    monkeypatch.setattr(tela_mod.file_dialogs, "ask_open_file", lambda *a, **k: "/d/a.xlsx")
+    tela.btn_api.click()
+    folhas = (tela.btn_api.styleSheet(), tela.lbl_api_status.styleSheet())
+    tela.btn_api.click()
+    tela.btn_api.click()
+    assert (tela.btn_api.styleSheet(), tela.lbl_api_status.styleSheet()) == folhas
+
+
+def test_popup_das_listas_novas_nao_e_solto_por_tecla(qt_interface, qtbot):
+    # Ele segura o worker: nenhum botão pega o foco, e Enter/Espaço não decidem.
+    import threading
+
+    from PySide6.QtCore import Qt
+
+    evento, resultado = threading.Event(), {}
+    d = tela_mod.NovasListasDialog(None, itens=[(0, "[L-1]  -  Lista 1")], evento_espera=evento,
+                                   resultado=resultado)
+    qtbot.addWidget(d)
+    d.show()
+    qtbot.waitExposed(d)
+    botoes = (d.botao_marcar, d.botao_desmarcar, d.botao_confirmar, d.botao_ignorar)
+    for b in botoes:
+        assert b.focusPolicy() == Qt.FocusPolicy.NoFocus and not b.autoDefault(), b.text()
+    for tecla in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+        qtbot.keyClick(d, tecla)
+    assert not evento.is_set() and resultado == {}
+    d.reject()

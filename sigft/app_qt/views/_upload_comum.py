@@ -23,8 +23,6 @@ URL_PORTAL = "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
 TEXTO_NAO_SELECIONADO = "Não selecionado"
 # O tk.Listbox da fila tem as 10 linhas padrão: 200 px medidos na tela CTk.
 ALTURA_LISTA_FILA = 200
-# Os botões cinza escritos à mão na tela CTk (fg #3A3A3A, hover #454545).
-HOVER_CINZA = "#454545"
 # Um robô por vez: o "Continuar" do fim da IA (ou uma seleção antiga
 # confirmada agora) não sobe um segundo navegador com o primeiro rodando.
 MSG_ROBO_OCUPADO = ("O robô já está preenchendo uma fila no portal. Espere ele terminar "
@@ -208,15 +206,6 @@ class TelaDeUpload(ModuleFrame):
         aba.addStretch()
 
     # --- comum aos comandos ------------------------------------------------------
-    @staticmethod
-    def _marcar_escolhido(botao, rotulo, caminho) -> None:
-        """Arquivo escolhido: o nome em verde e o botão na cor primária (o hover
-        continua o cinza, como o `configure(fg_color=...)` de lá)."""
-        rotulo.mostrar_caminho(caminho)   # nome elidido se for longo; o caminho no tooltip
-        rotulo.setStyleSheet(rotulo.styleSheet() + f" color: {theme.COLORS['accent']};")
-        botao.setStyleSheet(botao.styleSheet() + f" QPushButton {{ background: {theme.COLORS['primary']}; }}"
-                            f" QPushButton:hover {{ background: {HOVER_CINZA}; }}")
-
     @property
     def lista_fichas_paths(self) -> list[str]:
         """Os caminhos na fila (a fila é a dona deles)."""

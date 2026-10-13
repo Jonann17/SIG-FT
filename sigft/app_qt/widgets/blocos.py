@@ -9,11 +9,12 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QFont, QPainter, QPalette
+from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPalette
 from PySide6.QtWidgets import (
     QFrame, QLabel, QProgressBar, QPushButton, QScrollArea, QSlider, QVBoxLayout, QWidget,
 )
 
+from sigft.app import theme
 from sigft.app_qt import estilo
 
 # "esquerda" é o anchor="w" do CTkLabel: encostado à esquerda, centrado na vertical.
@@ -109,6 +110,22 @@ def rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, cor: str | N
     return etiqueta
 
 
+def sem_tecla(botao) -> None:
+    """Botão que nenhuma tecla aperta, como o CTkButton, que nunca pega o foco.
+
+    No Qt o botão pega o foco no clique (e no Tab), e aí um Espaço perdido o
+    apertava; numa janela de diálogo o autoDefault fazia o mesmo com o Enter --
+    nas que seguram o robô, soltando-o (e começando o lote) antes de a pessoa
+    terminar o login. Esc e o "X" continuam valendo. Todo `botao` nasce assim
+    (decisão do polimento, pela paridade com o CTk); botões criados à mão
+    (barra lateral, abas, seletores) chamam esta função. Era `dialogs.sem_tecla`,
+    que continua com esse nome.
+    """
+    botao.setAutoDefault(False)
+    botao.setDefault(False)
+    botao.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+
 def botao(texto: str, *, variante: str | None = None, largura: int | None = None,
           altura: int | None = None, tamanho_fonte: int | None = None,
           negrito: bool = False, cor_texto: str | None = None, cor_fundo: str | None = None,
@@ -121,6 +138,7 @@ def botao(texto: str, *, variante: str | None = None, largura: int | None = None
     `FOLGA_TEXTO_BOTAO_CTK` de cada lado (o "Editar PDM Selecionado" de 140 sai
     com 151 lá)."""
     b = QPushButton(texto)
+    sem_tecla(b)
     if variante:
         b.setProperty("variante", variante)
     if largura:
@@ -152,6 +170,35 @@ def botao(texto: str, *, variante: str | None = None, largura: int | None = None
     if folha:
         b.setStyleSheet(f"QPushButton {{{folha} }}{extra}")
     return b
+
+
+# Onde `pintar` guarda a folha com que a peça nasceu (a Criação de Fichas a
+# grava logo ao criar o botão; as outras peças, na primeira pintura).
+_FOLHA_BASE = "_folha_base"
+# O hover que os botões de arquivo das telas CTk mantinham depois do
+# `configure(fg_color=primary)`: o #454545 escrito à mão neles.
+HOVER_BOTAO_ARQUIVO = "#454545"
+
+
+def pintar(widget, folha: str) -> None:
+    """O `configure(fg_color=..., text_color=...)` do CTk numa peça com folha
+    própria: a folha de quando ela nasceu + `folha`. Pintar de novo REFAZ a
+    folha a partir dessa base, em vez de somar regra a regra a cada escolha."""
+    base = widget.property(_FOLHA_BASE)
+    if base is None:
+        base = widget.styleSheet()
+        widget.setProperty(_FOLHA_BASE, base)
+    widget.setStyleSheet(f"{base} {folha}".strip())
+
+
+def marcar_arquivo_escolhido(botao, rotulo, caminho: str) -> None:
+    """Arquivo escolhido: o nome em verde no rótulo (um `RotuloElidido`: elidido
+    se for longo, com o caminho completo no tooltip) e o botão na cor primária;
+    o hover continua o cinza, como o `configure(fg_color=...)` de lá."""
+    rotulo.mostrar_caminho(caminho)
+    pintar(rotulo, f"color: {theme.COLORS['accent']};")
+    pintar(botao, f"QPushButton {{ background: {theme.COLORS['primary']}; }}"
+                  f" QPushButton:hover {{ background: {HOVER_BOTAO_ARQUIVO}; }}")
 
 
 # --- E3.1: fonte de tupla do Tk, área rolável, barra de progresso, slider -----
@@ -197,6 +244,37 @@ def folha_fonte_tk(tupla, *, em_pontos: bool = False) -> str:
     tamanho = f"{f.pointSize()}pt" if em_pontos else f"{f.pixelSize()}px"
     peso = "bold" if f.bold() else "normal"
     return f"font-family: {familias}; font-size: {tamanho}; font-weight: {peso};"
+
+
+def rotulo_tk(texto: str, fonte: tuple, cor: str, *, direita: bool = False, largura: int | None = None,
+              largura_minima: int | None = None, quebra: int | None = None) -> QLabel:
+    """CTkLabel com a fonte em tupla do Tk (`("Roboto", 13)`, pixels) e a cor
+    por nome do Tk ("gray70"): 28 px de altura no mínimo, texto centrado na
+    vertical, encostado à esquerda (`direita`: o `anchor="e"`).
+
+    Texto PURO, como o do CTkLabel: em AutoText o QLabel tomaria um "Trocar <a>
+    por <b> no PDM" (texto da planilha) por HTML e engoliria as "tags".
+    `largura` FIXA a largura; `largura_minima` é o `width=` (o texto maior
+    alarga); `quebra` é o `wraplength`: o texto que passa dele quebra linha
+    naquela largura, e o que cabe fica numa linha só, com a largura dele.
+    (Era o `_rotulo` quase igual da Home e do mural.)
+    """
+    r = QLabel(texto)
+    r.setTextFormat(Qt.TextFormat.PlainText)
+    horizontal = Qt.AlignmentFlag.AlignRight if direita else Qt.AlignmentFlag.AlignLeft
+    r.setAlignment(horizontal | Qt.AlignmentFlag.AlignVCenter)
+    r.setMinimumHeight(ALTURA_MINIMA_ROTULO)
+    r.setStyleSheet(f"{folha_fonte_tk(fonte)} color: {estilo.cinza_tk(cor)}; background: transparent;")
+    if largura_minima:
+        r.setMinimumWidth(largura_minima)
+    if largura:
+        r.setFixedWidth(largura)
+    if quebra:
+        medida = QFontMetrics(fonte_tk(fonte))
+        if max(medida.horizontalAdvance(linha) for linha in str(texto).split("\n")) > quebra:
+            r.setWordWrap(True)
+            r.setFixedWidth(quebra)
+    return r
 
 
 def geometria_tk(texto: str) -> tuple[int, int]:

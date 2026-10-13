@@ -86,7 +86,7 @@ class ModuloUploadTechSpecs(TelaDeUpload):
                                           filetypes=[("Excel", "*.xlsx;*.xlsm")])
         if path:
             self.caminho_status = path
-            self._marcar_escolhido(self.btn_status, self.lbl_status_status, path)
+            blocos.marcar_arquivo_escolhido(self.btn_status, self.lbl_status_status, path)
 
     def _sel_master(self) -> None:
         path = file_dialogs.ask_open_file("upload_tech_specs.master", "excel",
@@ -94,7 +94,7 @@ class ModuloUploadTechSpecs(TelaDeUpload):
                                           filetypes=[("Excel", "*.xlsx;*.xlsm")])
         if path:
             self.caminho_master = path
-            self._marcar_escolhido(self.btn_master, self.lbl_master_status, path)
+            blocos.marcar_arquivo_escolhido(self.btn_master, self.lbl_master_status, path)
 
     def _logar_mudanca_na_fila(self, acao, quantidade, total) -> None:
         # Esta tela loga as TRÊS ações; a irmã só a adição (como lá).

@@ -122,3 +122,16 @@ def test_selecao_com_caixas_tem_as_medidas_e_a_cara_da_janela_do_ctk(qt_interfac
     qtbot.mouseClick(d.lista.viewport(), Qt.MouseButton.LeftButton,
                      pos=QPoint(retangulo.x() + 350, retangulo.center().y()))
     assert d.selecionados() == ["4500063671.0002", "4500063671.0003"]
+
+
+def test_sim_nao_escolhe_o_botao_padrao(qt_interface, qtbot, monkeypatch):
+    # O `askyesno` do Tk tem o "Sim" como padrão; numa ação destrutiva a tela
+    # pede o "Não" (`padrao_sim=False`, o padrão de `perguntar_sim_nao`).
+    padroes = []
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(
+        lambda _p, _t, _m, _b, padrao: padroes.append(padrao) or QMessageBox.StandardButton.Yes))
+    tela = Tela()
+    qtbot.addWidget(tela)
+    assert tela.perguntar_sim_nao("Relatório", "Salvar?", padrao_sim=True) is True
+    assert tela.perguntar_sim_nao("Confirmar", "Trocar o PDM?") is True
+    assert padroes == [QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No]

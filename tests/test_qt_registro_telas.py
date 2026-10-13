@@ -55,3 +55,22 @@ def test_tela_bloqueada_continua_fechada(janela):
         janela.show_frame(chave)
         assert janela.pilha.currentWidget() is antes
         assert not janela.botoes_menu[chave].isEnabled()
+
+
+def test_nenhum_botao_pega_o_foco(janela, qtbot):
+    # Decisão do polimento (B4), pela paridade com o CTkButton, que nunca pegava
+    # o foco: em nenhuma tela (nem na barra lateral, nas abas ou nos seletores)
+    # um Espaço perdido aperta um botão. Vale para a bloqueada também.
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QPushButton
+
+    for chave in CHAVES_DO_MENU:
+        if chave not in catalogo.TELAS_BLOQUEADAS:
+            janela.show_frame(chave)
+    bloqueadas = [qmain.TELAS[chave](None, janela) for chave in sorted(catalogo.TELAS_BLOQUEADAS)]
+    for tela in bloqueadas:
+        qtbot.addWidget(tela)
+    botoes = janela.findChildren(QPushButton) + [b for t in bloqueadas for b in t.findChildren(QPushButton)]
+    assert len(botoes) > 100
+    com_foco = sorted({b.text().strip() for b in botoes if b.focusPolicy() != Qt.FocusPolicy.NoFocus})
+    assert com_foco == []

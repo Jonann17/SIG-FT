@@ -35,6 +35,7 @@ from sigft.app_qt.views.aplicacao_lmr import ModuloAplicacaoLMR
 from sigft.app_qt.views.home import HomeView
 from sigft.app_qt.views.nao_migrada import TelaComErro, TelaNaoMigrada
 from sigft.app_qt.views.translator import ModuloTranslator
+from sigft.app_qt.widgets import blocos
 from sigft.core import instancia
 from sigft.core.saida_log import desviar_saida_para_arquivo
 
@@ -198,6 +199,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         lay.addWidget(nome)
         lay.addSpacing(22)
         home = QPushButton(estilo.mono("  🏠  Home"), objectName="home")
+        blocos.sem_tecla(home)   # os botões da barra (CTkButton) nunca pegam o foco
         home.clicked.connect(self.show_home)
         lay.addWidget(home)
         lay.addSpacing(6)
@@ -211,6 +213,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
                 continue
             _tipo, texto, alvo = item
             botao = QPushButton(f"  {texto}")
+            blocos.sem_tecla(botao)
             botao.setProperty("menu", True)
             botao.setEnabled(alvo not in catalogo.TELAS_BLOQUEADAS)
             botao.clicked.connect(lambda _=False, a=alvo: self.show_frame(a))

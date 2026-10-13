@@ -16,27 +16,15 @@ from sigft.app import theme
 from sigft.app.textos_dialogos import MSG_EXCEL_BLOQUEADO, TEXTO_CONTINUAR
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos, controles
+# Botão das janelas que seguram o robô: nenhuma tecla o aperta. Mora em `blocos`
+# desde o polimento (todo `blocos.botao` nasce assim); o nome continua aqui.
+from sigft.app_qt.widgets.blocos import sem_tecla
 
 # CTkCheckBox na lista de lá: caixa de 24, `pack(pady=2)` -> uma linha a cada 28;
-# o texto começa 6 px depois da caixa.
+# o texto começa `controles.VAO_TEXTO_CAIXA` (6) px depois da caixa.
 ALTURA_LINHA_CAIXA = 28
-VAO_TEXTO_CAIXA = 6
 # O wraplength=400 do texto das janelas de ação manual.
 LARGURA_QUEBRA_TEXTO = 400
-
-
-def sem_tecla(botao) -> None:
-    """Botão das janelas que seguram o robô: nenhuma tecla o aperta.
-
-    No CTk nenhuma tecla estava ligada e o CTkButton nunca pega o foco. No Qt,
-    o botão ganha o foco ao abrir a janela: um Espaço perdido o apertava, e o
-    autoDefault fazia o mesmo com o Enter -- soltando o robô (e começando o
-    lote) antes de a pessoa terminar o login. Esc e o "X" continuam valendo.
-    """
-    botao.setAutoDefault(False)
-    botao.setDefault(False)
-    botao.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-
 
 
 class SoltaAoFechar:
@@ -187,7 +175,7 @@ class _DelegadoDaCaixa(QStyledItemDelegate):
         pintor.save()
         pintor.setPen(QColor(controles.COR_TEXTO_CTK))
         pintor.setFont(option.font)
-        x_texto = r.x() + controles.LADO_CAIXA + VAO_TEXTO_CAIXA
+        x_texto = r.x() + controles.LADO_CAIXA + controles.VAO_TEXTO_CAIXA
         pintor.drawText(QRect(x_texto, r.y(), r.right() - x_texto, r.height()),
                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                         index.data(Qt.ItemDataRole.DisplayRole))
@@ -200,7 +188,8 @@ class _DelegadoDaCaixa(QStyledItemDelegate):
         if tipo != QEvent.Type.MouseButtonRelease or evento.button() != Qt.MouseButton.LeftButton:
             return False
         texto = index.data(Qt.ItemDataRole.DisplayRole) or ""
-        alcance = controles.LADO_CAIXA + VAO_TEXTO_CAIXA + option.fontMetrics.horizontalAdvance(texto)
+        alcance = (controles.LADO_CAIXA + controles.VAO_TEXTO_CAIXA
+                   + option.fontMetrics.horizontalAdvance(texto))
         if evento.position().x() - option.rect.x() <= alcance:
             novo = Qt.CheckState.Unchecked if self._marcada(index) else Qt.CheckState.Checked
             modelo.setData(index, novo, Qt.ItemDataRole.CheckStateRole)

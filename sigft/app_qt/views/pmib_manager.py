@@ -20,8 +20,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMessageBox, QVBoxLayout
 
 from sigft.app import theme
+from sigft.app.textos_dialogos import texto_dos_avisos
 from sigft.app_qt import estilo, file_dialogs, interface
-from sigft.app_qt.widgets import blocos, controles
+from sigft.app_qt.widgets import blocos, controles, dialogs
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.core import prefs
 from sigft.core.excel import travas
@@ -38,29 +39,10 @@ TEXTO_NENHUM_ARQUIVO = "Nenhum arquivo selecionado"
 # texto com 7 px de cada lado (medido: 272 px de texto -> 286): é o
 # `largura_minima` do `blocos.botao`.
 LARGURA_BOTAO_ARQUIVO = 280
-# Cinza escuro dos botões de arquivo e do "Gerar painel" (fg/hover das telas CTk).
-HOVER_CINZA = "#454545"
 # A descrição das autorizações quebra em 720 px (wraplength) e ocupa duas
 # linhas de 17 px do Tk (medido: 34). O QLabel tem a linha mais baixa.
 LARGURA_QUEBRA_DESCRICAO = 720
 ALTURA_DESCRICAO_CTK = 34
-
-
-def _texto_dos_avisos(inicio, avisos, nao_gravados):
-    """O texto da janela "Concluído com avisos". [2026-10-06] Os arquivos que
-    ficaram sem gravar vêm primeiro, com a contagem do resumo do fim do log
-    (`travas.TITULO_RESUMO`): é o que a pessoa precisa resolver.
-
-    Cópia da função da tela CTk (que importa o Tk e não pode ser importada
-    aqui); as duas saem juntas quando a tela antiga for aposentada."""
-    partes = []
-    if nao_gravados:
-        partes.append(f"{nao_gravados} arquivo(s) não foram gravados nesta rodada: o motivo de cada um "
-                      "e o que fazer estão no fim do log")
-    outros = avisos - (1 if nao_gravados else 0)
-    if outros > 0:
-        partes.append(f"{outros} aviso(s) pedem atenção (procure as linhas [AVISO] no log)")
-    return f"{inicio}, mas " + "; e ".join(partes) + "."
 
 
 def _rotulo_status():
@@ -129,8 +111,10 @@ class NovasListasDialog(QDialog):
         # fg_color="gray" e hover #555555, escritos à mão na tela antiga.
         self.botao_ignorar = blocos.botao("Ignorar (Não Adicionar)", largura_minima=150, tamanho_fonte=13,
                                           cor_fundo=estilo.cinza_tk("gray"), cor_hover="#555555")
+        # Ela segura o worker: nenhuma tecla aperta um botão (Enter ou Espaço
+        # não confirmam nem ignoram as listas no lugar da pessoa).
         for b in (self.botao_marcar, self.botao_desmarcar, self.botao_confirmar, self.botao_ignorar):
-            b.setAutoDefault(False)
+            dialogs.sem_tecla(b)
         self.botao_marcar.clicked.connect(self.marcar_todas)
         self.botao_desmarcar.clicked.connect(self.desmarcar_todas)
         self.botao_confirmar.clicked.connect(self.confirmar)
@@ -334,21 +318,12 @@ class ModuloPMIBManager(ModuleFrame):
         return linha
 
     # --- seletores ------------------------------------------------------------
-    @staticmethod
-    def _marcar_escolhido(botao, rotulo, caminho) -> None:
-        """Arquivo escolhido: o nome em verde e o botão na cor primária (o
-        hover continua o cinza, como o `configure(fg_color=...)` de lá)."""
-        rotulo.mostrar_caminho(caminho)   # nome elidido se for longo; o caminho no tooltip
-        rotulo.setStyleSheet(rotulo.styleSheet() + f" color: {theme.COLORS['accent']};")
-        botao.setStyleSheet(botao.styleSheet() + f" QPushButton {{ background: {theme.COLORS['primary']}; }}"
-                            f" QPushButton:hover {{ background: {HOVER_CINZA}; }}")
-
     def _sel_api(self) -> None:
         f = file_dialogs.ask_open_file("pmib_manager.api", "excel", titulo="Selecione a Base de Dados API",
                                        filetypes=[("Excel", "*.xlsx *.xls")])
         if f:
             self.path_api = f
-            self._marcar_escolhido(self.btn_api, self.lbl_api_status, f)
+            blocos.marcar_arquivo_escolhido(self.btn_api, self.lbl_api_status, f)
 
     def _sel_root(self) -> None:
         pasta = file_dialogs.ask_directory("pmib_manager.pasta_raiz", "pasta", titulo="Selecione a Pasta Raiz")
@@ -361,7 +336,7 @@ class ModuloPMIBManager(ModuleFrame):
                                        filetypes=[("Excel", "*.xlsx *.xls")])
         if f:
             self.path_master = f
-            self._marcar_escolhido(self.btn_master, self.lbl_master_status, f)
+            blocos.marcar_arquivo_escolhido(self.btn_master, self.lbl_master_status, f)
             # [2026-09-03] Guarda o ARQUIVO (não só a pasta) para o mural de
             # atividades da Home poder ler o mapeamento sem pedir nada.
             try:
@@ -375,7 +350,7 @@ class ModuloPMIBManager(ModuleFrame):
                                        filetypes=[("Excel", "*.xlsx")])
         if f:
             self.path_autorizados = f
-            self._marcar_escolhido(self.btn_autorizados, self.lbl_autorizados, f)
+            blocos.marcar_arquivo_escolhido(self.btn_autorizados, self.lbl_autorizados, f)
 
     def _lembrar_gerar_painel(self, ligado) -> None:
         try:
@@ -481,7 +456,7 @@ class ModuloPMIBManager(ModuleFrame):
             if erros:
                 self.avisar("Aviso", "As autorizações não foram aplicadas. Veja o motivo no log.", tipo="aviso")
             elif avisos:
-                texto = _texto_dos_avisos("As autorizações foram aplicadas", avisos, nao_gravados)
+                texto = texto_dos_avisos("As autorizações foram aplicadas", avisos, nao_gravados)
                 self.avisar("Concluído com avisos", texto, tipo="aviso")
             else:
                 self.avisar("Sucesso", "Autorizações de Itaipu aplicadas.")
@@ -570,7 +545,7 @@ class ModuloPMIBManager(ModuleFrame):
 
             if sucesso_total and avisos:
                 self._progresso(1.0)
-                texto = _texto_dos_avisos("O processo de Gestão PMIB terminou", avisos, nao_gravados)
+                texto = texto_dos_avisos("O processo de Gestão PMIB terminou", avisos, nao_gravados)
                 self.avisar("Concluído com avisos", texto, tipo="aviso")
             elif sucesso_total:
                 self._progresso(1.0)

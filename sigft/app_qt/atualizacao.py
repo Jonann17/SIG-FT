@@ -29,8 +29,9 @@ import threading
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextBlockFormat, QTextCursor, QTextOption
 from PySide6.QtWidgets import (
-    QDialog, QHBoxLayout, QLabel, QMessageBox, QProgressBar, QTextEdit, QVBoxLayout, QWidget,
+    QDialog, QHBoxLayout, QLabel, QMessageBox, QTextEdit, QVBoxLayout, QWidget,
 )
+from shiboken6 import isValid
 
 from sigft import _build_info
 from sigft.app import theme
@@ -160,7 +161,8 @@ def _mostrar_aviso(janela, info: updater.Atualizacao, versao_atual: str):
     avisos, cada um com o seu "Atualizar agora", seriam dois downloads.
     """
     aberta = getattr(janela, "_janela_de_atualizacao", None)
-    if aberta is not None and not aberta.fechada:
+    # Fechado, o aviso é apagado (WA_DeleteOnClose): só se usa o que está vivo.
+    if aberta is not None and isValid(aberta) and not aberta.fechada:
         aberta.raise_()
         aberta.activateWindow()
         return aberta
@@ -226,6 +228,9 @@ class JanelaAtualizacao(QDialog):
         self.resize(580, 560)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)   # "-topmost"
         self.setWindowModality(Qt.WindowModality.ApplicationModal)     # o grab_set
+        # Fechado ("Agora não", "X" ou Esc), o aviso é APAGADO, como o `destroy()`
+        # da janela CTk -- e não só escondido, vivo até o app fechar.
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(20, 0, 20, 0)   # padx=20 de todos
@@ -255,12 +260,7 @@ class JanelaAtualizacao(QDialog):
         self.caixa_notas.setReadOnly(True)
         self.caixa_notas.setWordWrapMode(QTextOption.WrapMode.WordWrap)
         self.caixa_notas.setMinimumHeight(40)
-        # CTkTextbox do tema: fundo gray20, sem borda, cantos 6, texto gray84.
-        # O texto começa 8 px à esquerda e 11 px abaixo da borda (medido).
-        self.caixa_notas.setStyleSheet(
-            f"QTextEdit {{ background: {estilo.cinza_tk('gray20')}; border: none;"
-            f" border-radius: 6px; color: {_COR_ROTULO_CTK}; font-size: 12px;"
-            f" padding: 5px 4px 3px 4px; }}")
+        # A cara (CTkTextbox do tema) é a regra #notas_atualizacao da folha do app.
         self._linhas_de_15px()
         lay.addWidget(self.caixa_notas, 1)
 
@@ -286,17 +286,11 @@ class JanelaAtualizacao(QDialog):
         faixa = QVBoxLayout(self._faixa_barra)
         faixa.setContentsMargins(0, 0, 0, 6)
         faixa.setSpacing(0)
-        self.barra = QProgressBar()
+        # CTkProgressBar(width=530) do tema, progresso na cor `accent`; o valor
+        # aqui é o percentual (0 a 100).
+        self.barra = blocos.barra_progresso(largura=530, altura=8, cor=theme.COLORS["accent"])
         self.barra.setRange(0, 100)
         self.barra.setValue(0)
-        self.barra.setTextVisible(False)
-        self.barra.setFixedSize(530, 8)
-        # CTkProgressBar(width=530) do tema: fundo #4A4D50, cantos redondos
-        # (corner_radius=1000 -> metade da altura), progresso na cor `accent`.
-        self.barra.setStyleSheet(
-            "QProgressBar { background: #4A4D50; border: none; border-radius: 4px;"
-            " min-height: 8px; max-height: 8px; }"
-            f" QProgressBar::chunk {{ background: {theme.COLORS['accent']}; border-radius: 4px; }}")
         faixa.addWidget(self.barra, 0, Qt.AlignmentFlag.AlignHCenter)
         self._faixa_barra.hide()
         lay.addWidget(self._faixa_barra)

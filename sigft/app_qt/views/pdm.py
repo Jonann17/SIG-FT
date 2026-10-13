@@ -27,10 +27,8 @@ from sigft.core.callbacks import from_legacy
 
 TEXTO_NENHUM_ARQUIVO = "Nenhum arquivo selecionado"
 EXCEL = [("Excel", "*.xlsx *.xls")]
-# Fundo dos quadros de dentro das abas e o cinza escuro dos botões de arquivo
-# (fg/hover escritos à mão na tela antiga).
+# Fundo dos quadros de dentro das abas (fg escrito à mão na tela antiga).
 FUNDO_QUADRO = "#333333"
-HOVER_CINZA = "#454545"
 COR_TEXTO = controles.COR_TEXTO_CTK          # CTkLabel sem text_color: gray84
 COR_APOIO = estilo.cinza_tk(theme.COR_TEXTO_APOIO)
 
@@ -379,15 +377,6 @@ class ModuloPDM(ModuleFrame):
 
     # --- seletores ------------------------------------------------------------
     @staticmethod
-    def _marcar_escolhido(botao, rotulo, caminho) -> None:
-        """Arquivo escolhido: o nome em verde e o botão na cor primária (o
-        hover continua o cinza, como o `configure(fg_color=...)` de lá)."""
-        rotulo.mostrar_caminho(caminho)   # nome elidido se for longo; o caminho no tooltip
-        rotulo.setStyleSheet(rotulo.styleSheet() + f" color: {theme.COLORS['accent']};")
-        botao.setStyleSheet(botao.styleSheet() + f" QPushButton {{ background: {theme.COLORS['primary']}; }}"
-                            f" QPushButton:hover {{ background: {HOVER_CINZA}; }}")
-
-    @staticmethod
     def _escolher_pasta(campo, chave, titulo=None) -> None:
         """Lá o campo recebia o "" do cancelar e apagava o caminho já escolhido."""
         pasta = file_dialogs.ask_directory(chave, "pasta", **({"titulo": titulo} if titulo else {}))
@@ -414,19 +403,19 @@ class ModuloPDM(ModuleFrame):
         f = file_dialogs.ask_open_file("pdm.sam_gm", "excel", titulo="Selecione o PDM's SAM-GM", filetypes=EXCEL)
         if f:
             self.path_sam_gm = f
-            self._marcar_escolhido(self.btn_sam_gm, self.lbl_sam_gm_status, f)
+            blocos.marcar_arquivo_escolhido(self.btn_sam_gm, self.lbl_sam_gm_status, f)
 
     def _sel_status_pmib(self) -> None:
         f = file_dialogs.ask_open_file("pdm.status_pmib", "excel", titulo="Selecione o STATUS_PMIB", filetypes=EXCEL)
         if f:
             self.path_status_pmib = f
-            self._marcar_escolhido(self.btn_pmib, self.lbl_pmib_status, f)
+            blocos.marcar_arquivo_escolhido(self.btn_pmib, self.lbl_pmib_status, f)
 
     def _sel_template(self) -> None:
         f = file_dialogs.ask_open_file("pdm.template", "excel", titulo="Selecione o Template", filetypes=EXCEL)
         if f:
             self.path_template = f
-            self._marcar_escolhido(self.btn_template, self.lbl_template_status, f)
+            blocos.marcar_arquivo_escolhido(self.btn_template, self.lbl_template_status, f)
 
     # --- Aba 1 ------------------------------------------------------------------
     def _op1_from_itaipu(self) -> None:

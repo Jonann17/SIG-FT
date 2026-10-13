@@ -896,3 +896,13 @@ def test_nome_de_arquivo_longo_nao_alarga_o_formulario(tela_medida, qtbot, monke
         assert "…" in rotulo.texto_visivel()
         quadro = rotulo.parentWidget()
         assert rotulo.mapTo(quadro, rotulo.rect().topRight()).x() < quadro.width()
+
+
+def test_escolher_de_novo_nao_acumula_folha(tela, monkeypatch):
+    # Cada escolha reconstrói a folha a partir da base (não soma regra a regra).
+    monkeypatch.setattr(tela_mod.file_dialogs, "ask_open_file", lambda *a, **k: "/d/a.xlsx")
+    tela.btn_sam_gm.click()
+    folhas = (tela.btn_sam_gm.styleSheet(), tela.lbl_sam_gm_status.styleSheet())
+    tela.btn_sam_gm.click()
+    tela.btn_sam_gm.click()
+    assert (tela.btn_sam_gm.styleSheet(), tela.lbl_sam_gm_status.styleSheet()) == folhas

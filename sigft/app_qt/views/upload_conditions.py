@@ -22,7 +22,7 @@ from sigft.app import theme
 from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO, msg_falha_ao_salvar
 from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.views._upload_comum import ABA_WEB, URL_PORTAL, TelaDeUpload, reabilitar
-from sigft.app_qt.widgets import dialogos_selecao
+from sigft.app_qt.widgets import blocos, dialogos_selecao
 from sigft.core.excel.pmib_codes import normalize_pmib
 
 ABA_IA = "Processamento IA (Gerar Excel)"
@@ -87,7 +87,7 @@ class ModuloUploadConditions(TelaDeUpload):
                                           filetypes=[("Excel", "*.xlsx;*.xlsm")])
         if path:
             self.caminho_status = path
-            self._marcar_escolhido(self.btn_status, self.lbl_status_status, path)
+            blocos.marcar_arquivo_escolhido(self.btn_status, self.lbl_status_status, path)
 
     def _logar_mudanca_na_fila(self, acao, quantidade, total) -> None:
         # Esta tela só loga a adição (a irmã loga as três, como lá).

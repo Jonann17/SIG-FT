@@ -670,3 +670,12 @@ def test_nome_de_arquivo_longo_nao_alarga_a_tela(tela, monkeypatch):
     assert tela.minimumSizeHint().width() <= largura
     assert tela.lbl_status_status.text() == nome
     assert tela.lbl_status_status.toolTip() == "/d/" + nome
+
+
+def test_escolher_de_novo_nao_acumula_folha(tela, monkeypatch):
+    monkeypatch.setattr(tela_mod.file_dialogs, "ask_open_file", lambda *a, **k: "/d/a.xlsx")
+    tela.btn_status.click()
+    folhas = (tela.btn_status.styleSheet(), tela.lbl_status_status.styleSheet())
+    tela.btn_status.click()
+    tela.btn_status.click()
+    assert (tela.btn_status.styleSheet(), tela.lbl_status_status.styleSheet()) == folhas

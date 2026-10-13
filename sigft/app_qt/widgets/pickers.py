@@ -47,6 +47,7 @@ class _LinhaSeletora(QWidget):
         # conta quando a linha vai centrada (largura natural igual à de lá).
         linha.setSpacing(0)
         self.botao = QPushButton(texto_botao)
+        blocos.sem_tecla(self.botao)   # como o CTkButton: nunca pega o foco
         self.botao.setFixedWidth(largura_botao)
         self.botao.clicked.connect(self._abrir_dialogo)
         # Elidido: um nome comprido não alarga o formulário (o caminho vai no tooltip).
