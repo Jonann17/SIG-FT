@@ -30,6 +30,10 @@ class _LinhaSeletora(QWidget):
         self._valor = None
         linha = QHBoxLayout(self)
         linha.setContentsMargins(0, 0, 0, 0)
+        # Lá o rótulo vai com `pack(side="left", padx=15)`: 15 px dos DOIS lados
+        # e nada mais -- sem o espaçamento automático do layout. O de depois
+        # conta quando a linha vai centrada (largura natural igual à de lá).
+        linha.setSpacing(0)
         self.botao = QPushButton(texto_botao)
         self.botao.setFixedWidth(largura_botao)
         self.botao.clicked.connect(self._abrir_dialogo)
@@ -37,6 +41,7 @@ class _LinhaSeletora(QWidget):
         linha.addWidget(self.botao)
         linha.addSpacing(15)
         linha.addWidget(self.label_status)
+        linha.addSpacing(15)
         linha.addStretch()
         self.limpar()
 
@@ -46,7 +51,9 @@ class _LinhaSeletora(QWidget):
             self.botao.setStyleSheet(
                 f"QPushButton {{ background: {cor}; font-size: 12px; }}"
                 f" QPushButton:hover {{ background: {hover}; }}")
-        self.label_status.setStyleSheet(f"color: {cor_texto}; background: transparent;")
+        # 13 px: a fonte padrão do CTkLabel; sem ela o rótulo pegava a do app.
+        self.label_status.setStyleSheet(
+            f"color: {cor_texto}; background: transparent; font-size: 13px;")
 
     @property
     def valor(self):

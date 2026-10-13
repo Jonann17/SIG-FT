@@ -44,3 +44,20 @@ def test_limpar_volta_ao_cinza(qt_interface, qtbot):
     linha.botao.click()
     linha.limpar()
     assert linha.valor is None and linha.label_status.text() == "Nenhum"
+
+
+def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
+    # Lá: botão `pack(side="left")` e rótulo `pack(side="left", padx=15)` --
+    # 15 px dos DOIS lados do rótulo, nada além disso; rótulo na fonte padrão
+    # do CTkLabel (Roboto 13), nos dois estados.
+    linha = pickers.FilePickerRow(chave="k", categoria="excel", texto_botao="S",
+                                  largura_botao=220, dialog_fn=lambda **k: "/tmp/a.xlsx")
+    qtbot.addWidget(linha)
+    linha.show()
+    qtbot.waitExposed(linha)
+    rotulo = linha.label_status
+    assert "font-size: 13px" in rotulo.styleSheet()
+    assert rotulo.x() - (linha.botao.x() + linha.botao.width()) == 15
+    assert linha.sizeHint().width() == 220 + 15 + rotulo.sizeHint().width() + 15
+    linha.botao.click()
+    assert "font-size: 13px" in rotulo.styleSheet()
