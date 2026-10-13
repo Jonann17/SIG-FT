@@ -33,8 +33,41 @@ def test_cinza_tk_bate_com_a_tabela_x11_inteira():
 
 
 def test_mono_pede_versao_texto_de_cada_emoji():
-    assert estilo.mono("\U0001F4CB  Atividades") == "\U0001F4CB︎  Atividades"
+    assert estilo.mono("\U0001F4CB  Atividades") == "\U0001F4CB\ufe0e  Atividades"
     assert estilo.mono("Upload Condições – ok") == "Upload Condições – ok"
+
+
+@pytest.mark.parametrize("simbolo", [
+    "\u2b07",      # seta para baixo
+    "\u23ed",      # proxima faixa
+    "\u25b6",      # triangulo de play
+    "\u2139",      # i de informacao
+    "\u2190",      # inicio do bloco de setas
+    "\u2bff",      # fim da faixa U+2190-U+2BFF
+    "\u2600",      # simbolos diversos
+    "\u27bf",      # dingbats
+    "\U0001F4CB",  # emoji do plano 1F000
+])
+def test_mono_cobre_os_simbolos_usados_como_emoji(simbolo):
+    assert estilo.mono(f"{simbolo} x") == f"{simbolo}\ufe0e x"
+
+
+def test_mono_nao_mexe_em_texto_comum():
+    assert estilo.mono("A \u2013 b \u00e7 \u2018") == "A \u2013 b \u00e7 \u2018"
+
+
+def test_mono_nao_duplica_o_seletor_de_texto():
+    assert estilo.mono("\u25b6\ufe0e x") == "\u25b6\ufe0e x"
+
+
+def test_mono_troca_o_seletor_de_emoji_pelo_de_texto():
+    assert estilo.mono("\u2b07\ufe0f x") == "\u2b07\ufe0e x"
+    assert estilo.mono("\U0001F4CB\ufe0f x") == "\U0001F4CB\ufe0e x"
+
+
+def test_mono_e_idempotente():
+    uma_vez = estilo.mono("\u2139\ufe0f \u23ed \U0001F3E0 oi")
+    assert estilo.mono(uma_vez) == uma_vez
 
 
 def test_fontes_existem_com_licenca():

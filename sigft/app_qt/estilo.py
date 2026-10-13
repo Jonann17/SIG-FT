@@ -20,7 +20,8 @@ ALTURA_BOTAO_MENU = 35
 ESPACO_MENU = 4
 ALTURA_BOTAO_BARRA = 40
 
-_SELETOR_TEXTO = "︎"
+_SELETOR_TEXTO = "\ufe0e"   # U+FE0E: pede a forma de texto (preto e branco)
+_SELETOR_EMOJI = "\ufe0f"   # U+FE0F: pede a forma de emoji (colorida)
 
 
 # Nível (0-255) de "grayNN" no Tk, índice = NN. Vem da tabela X11 (rgb.txt), que NÃO
@@ -52,17 +53,33 @@ def cinza_tk(nome: str) -> str:
     return f"#{valor:02X}{valor:02X}{valor:02X}"
 
 
+def _parece_emoji(codigo: int) -> bool:
+    """Plano dos emoji (U+1F000+), setas/técnicos/formas/dingbats (U+2190-U+2BFF) e o ℹ."""
+    return codigo >= 0x1F000 or 0x2190 <= codigo <= 0x2BFF or codigo == 0x2139
+
+
 def mono(texto: str) -> str:
     """Pede a versão PRETO E BRANCO de cada emoji (seletor U+FE0E).
 
     Só a fonte Noto Emoji não basta: sem o seletor, o Qt escolhe a fonte de
     emoji colorida do sistema (testado no protótipo de 2026-10-07).
+
+    Cobre também os símbolos que viram emoji colorido sem ser do plano dos
+    emoji (⬇ ⏭ ▶ ℹ e o resto de U+2190-U+2BFF). Se o texto já traz um seletor
+    depois do símbolo, não se duplica: o de texto fica, e o de emoji (U+FE0F)
+    é TROCADO pelo de texto. Aplicar duas vezes dá o mesmo resultado.
     """
-    saida = []
-    for caractere in texto:
+    saida: list[str] = []
+    i = 0
+    while i < len(texto):
+        caractere = texto[i]
         saida.append(caractere)
-        if ord(caractere) >= 0x1F000 or 0x2600 <= ord(caractere) <= 0x27BF:
-            saida.append(_SELETOR_TEXTO)
+        i += 1
+        if not _parece_emoji(ord(caractere)):
+            continue
+        saida.append(_SELETOR_TEXTO)
+        if i < len(texto) and texto[i] in (_SELETOR_TEXTO, _SELETOR_EMOJI):
+            i += 1  # o seletor que já estava foi absorvido pelo de texto
     return "".join(saida)
 
 
