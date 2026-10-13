@@ -114,3 +114,24 @@ def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
         assert pos(cartao).y() + cartao.height() - (pos(t.btn_glossario).y() + 32) == 20
     finally:
         qt_interface.setStyleSheet(anterior)
+
+
+def test_glossario_abre_no_sistema(tela, monkeypatch):
+    _com_backend(monkeypatch, [])
+    abertos = []
+    monkeypatch.setattr(tela_mod.plataforma, "abrir_no_sistema", abertos.append)
+    tela.abrir_glossario()
+    assert abertos == ["/tmp/glossario.csv"]
+
+
+def test_glossario_que_nao_abre_vira_aviso(tela, monkeypatch):
+    _com_backend(monkeypatch, [])
+    criticos = []
+
+    def falha(caminho):
+        raise OSError("sem programa associado")
+
+    monkeypatch.setattr(tela_mod.plataforma, "abrir_no_sistema", falha)
+    monkeypatch.setattr(tela_mod.QMessageBox, "critical", staticmethod(lambda *a: criticos.append(a[2])))
+    tela.abrir_glossario()
+    assert criticos == ["Não consegui abrir o glossário: sem programa associado"]

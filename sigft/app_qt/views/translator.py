@@ -96,9 +96,9 @@ class ModuloTranslator(ModuleFrame):
             QMessageBox.critical(self, "Glossário", f"Não consegui abrir o glossário: {e}")
 
     def _worker(self, files) -> None:
-        status = backends.exigir("translator_backend").STATUS
         ultimo_erro = ""
         try:
+            status = backends.exigir("translator_backend").STATUS
             for msg in self.tradutor.processar_arquivos(files, retry_lock=self.perguntar_retry_excel):
                 if msg == "PARADO":
                     self.log("Processo interrompido pelo usuário.")

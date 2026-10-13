@@ -160,6 +160,7 @@ QPushButton[variante="acento"]:hover {{ background: {c['accent_hover']}; }}
 QPushButton[variante="neutro"] {{ background: #3A3A3A; }}
 QPushButton[variante="neutro"]:hover {{ background: #4A4A4A; }}
 QPushButton[variante="perigo"] {{ background: {c['danger']}; }}
+QPushButton[variante="perigo"]:hover {{ background: #B71C1C; }}  /* o hover_color das telas CTk */
 QPushButton[variante="contorno"] {{ background: transparent;
     border: {BORDA_DA_VARIANTE['contorno']}px solid #555555; color: {cinza_tk('gray')}; }}
 QPushButton[variante="contorno_padrao"] {{ background: transparent;
