@@ -487,13 +487,16 @@ class ModuloAutoSpec(ModuleFrame):
     def _marcacoes(self) -> dict:
         return {chave: caixa.isChecked() for chave, caixa in self.marcados_conf.items()}
 
-    def _conferencia_salvar(self, automatico: bool = False):
+    def _conferencia_salvar(self, automatico: bool = False, status_pmib_path=None):
         """Grava a aba num `.txt` na pasta do `_STATUS_PMIB`.
 
         `automatico=True` é a gravação que acontece sozinha quando o lote
         termina: não abre caixa nenhuma (não há quem dê OK). O botão só protege
         quem lembra de clicar nele, e o relato que originou isto foi de alguém
         que precisou fechar o aplicativo no meio da conferência.
+
+        `status_pmib_path`: a do clique que começou o lote (a gravação
+        automática); sem ela, a escolhida agora (o botão).
         """
         if not self.conferencia:
             if not automatico:
@@ -501,7 +504,7 @@ class ModuloAutoSpec(ModuleFrame):
             return None
         try:
             caminho = conferencia_txt.salvar_txt(
-                self.conferencia, self.status_pmib_path, self._marcacoes()
+                self.conferencia, status_pmib_path or self.status_pmib_path, self._marcacoes()
             )
         except Exception as e:  # noqa: BLE001 -- vira aviso, como lá
             self.log(f"Nao consegui salvar o .txt da conferencia: {e}")
@@ -729,11 +732,11 @@ class ModuloAutoSpec(ModuleFrame):
             # Conferência humana: só lista se sobrou dúvida (2026-08-13). O fim do
             # lote -- e o "Sucesso" -- segue na thread da interface.
             conferencia = getattr(core, "conferencia", None)
-            interface.na_interface(self._fila_processada, fila, conferencia)
+            interface.na_interface(self._fila_processada, fila, conferencia, status_pmib_path)
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"ERRO FATAL: {e}")
 
-    def _fila_processada(self, fila, conferencia) -> None:
+    def _fila_processada(self, fila, conferencia, status_pmib_path=None) -> None:
         """Fim do lote, na thread da interface: tira da fila o que foi
         processado, mostra a conferência e a salva sozinha.
 
@@ -749,9 +752,10 @@ class ModuloAutoSpec(ModuleFrame):
             self.queue = [item for item in self.queue if id(item) not in processados]
             self.update_queue_ui()
             self._conferencia_mostrar(conferencia)
-            # Salva sozinho (2026-08-17).
+            # Salva sozinho (2026-08-17), na pasta do `_STATUS_PMIB` do clique:
+            # outro escolhido no meio do lote é para o próximo.
             if conferencia:
-                self._conferencia_salvar(automatico=True)
+                self._conferencia_salvar(automatico=True, status_pmib_path=status_pmib_path)
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"ERRO FATAL: {e}")
             return

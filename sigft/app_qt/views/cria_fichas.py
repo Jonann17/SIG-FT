@@ -69,10 +69,12 @@ RECUO_ROLAGEM = 6
 
 
 def _rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, cor: str = controles.COR_TEXTO_CTK,
-            largura: int | None = None):
+            largura: int | None = None, elidir: bool = False):
     """CTkLabel de uma linha, anchor="w", 28 px de altura (`width` fixa se pedida).
-    Sem `cor`, a do CTkLabel sem text_color (gray84), e não o text_light do app."""
-    r = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, cor=cor, alinhar="esquerda")
+    Sem `cor`, a do CTkLabel sem text_color (gray84), e não o text_light do app.
+    `elidir=True`: nome de arquivo que, longo, é elidido em vez de alargar a tela."""
+    r = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, cor=cor, alinhar="esquerda",
+                      elidir=elidir)
     r.setWordWrap(False)
     r.setFixedHeight(blocos.ALTURA_MINIMA_ROTULO)
     if largura:
@@ -158,6 +160,12 @@ class ModuloCriaFichas(ModuleFrame):
         # Catálogo de PDMs da planilha escolhida. Só existe depois da etapa de
         # IA; a revisão e a conferência pós-portal o consultam.
         self.catalogo = None
+        # O Excel de onde o lote saiu anda com ele: do clique em "3. Analisar"
+        # ao CONFIRMAR (`_excel_do_lote`), ao robô e ao resumo dele
+        # (`_excel_do_resumo`), que é onde "5. Salvar no Excel" grava. Escolher
+        # outro Excel com o robô rodando prepara o PRÓXIMO lote.
+        self._excel_do_lote = None
+        self._excel_do_resumo = None
         self.api_key_gemini = controller.get_key("GEMINI") if controller is not None else ""
         # Do clique em "3. Analisar" até a revisão fechar, o botão fica
         # desligado: nada (nem o "Pular IA") o religa no meio da cadeia.
@@ -237,7 +245,7 @@ class ModuloCriaFichas(ModuleFrame):
         self.btn_pdm.clicked.connect(self.selecionar_excel_pdm)
         linha.addWidget(self.btn_pdm)
         linha.addSpacing(20)
-        self.lbl_status_pdm = _rotulo("", cor=COR_ROTULO_APOIO)
+        self.lbl_status_pdm = _rotulo("", cor=COR_ROTULO_APOIO, elidir=True)
         linha.addWidget(self.lbl_status_pdm)
         linha.addStretch()
 
@@ -419,7 +427,7 @@ class ModuloCriaFichas(ModuleFrame):
 
             # Pega apenas o nome do arquivo final (ex: "planilha.xlsx") ignorando as pastas
             nome_arquivo = path.split("/")[-1]
-            self.lbl_status_pdm.setText(f"Selecionado: {nome_arquivo}")
+            self.lbl_status_pdm.mostrar_caminho(path, f"Selecionado: {nome_arquivo}")
             _cor_rotulo(self.lbl_status_pdm, COLORS["accent"])
             self.log(f"PDMs carregados: {nome_arquivo}")
 
@@ -446,6 +454,7 @@ class ModuloCriaFichas(ModuleFrame):
         # esta referência é a do clique.
         df = self.df_data_selecionado
         caminho_pdm = self.file_path_pdm
+        excel = self.file_path_excel
 
         self._ia_em_andamento = True
         self.btn_run_ai.setEnabled(False)
@@ -453,9 +462,9 @@ class ModuloCriaFichas(ModuleFrame):
         # Sem `botao=`: o botão NÃO volta no fim do worker -- volta só se a
         # cadeia falhar ou a revisão for fechada sem confirmar.
         self.iniciar_tarefa(self._ai_worker, cod_proj, pular, categorizador, df, caminho_pdm,
-                            self.api_key_gemini)
+                            self.api_key_gemini, excel)
 
-    def _ai_worker(self, cod_proj, pular, categorizador, df, caminho_pdm, chave) -> None:
+    def _ai_worker(self, cod_proj, pular, categorizador, df, caminho_pdm, chave, excel=None) -> None:
         """Só lê os argumentos (o que foi tirado no clique) e não grava nada na
         tela: o resultado vai para `_depois_da_ia`, na thread da interface."""
         resultado = None
@@ -528,7 +537,7 @@ class ModuloCriaFichas(ModuleFrame):
             # Para a REVISÃO, não para o `df_processed`: o robô só enxerga o que
             # a pessoa confirmou (lá, fechar a revisão nova no "X" deixava o robô
             # de um lote anterior apontado para dados que ninguém conferiu).
-            resultado = (pd.DataFrame(final_data), catalogo)
+            resultado = (pd.DataFrame(final_data), catalogo, excel)
             self.log("Abrindo janela de Revisão...")
         except Exception as e:  # noqa: BLE001 -- vira log, como lá
             self.log(f"Erro no processamento: {e}")
@@ -545,11 +554,11 @@ class ModuloCriaFichas(ModuleFrame):
         if resultado is None:
             self._fim_da_cadeia_da_ia()
             return
-        df_novo, catalogo_novo = resultado
+        df_novo, catalogo_novo, excel = resultado
         # "Pular IA" não carrega catálogo: a revisão usa o que a tela já tinha, como lá.
         catalogo = catalogo_novo if catalogo_novo is not None else self.catalogo
         try:
-            self.abrir_revisao_pdm(df_novo, catalogo)
+            self.abrir_revisao_pdm(df_novo, catalogo, excel)
         except Exception as erro:  # noqa: BLE001 -- o botão tem de voltar
             traceback.print_exc()
             self.log(f"Erro ao abrir a revisão: {type(erro).__name__}: {erro}")
@@ -570,11 +579,13 @@ class ModuloCriaFichas(ModuleFrame):
         except RuntimeError:
             pass  # tela já destruída
 
-    def abrir_revisao_pdm(self, df, catalogo) -> None:
+    def abrir_revisao_pdm(self, df, catalogo, excel=None) -> None:
         if df is not None and not df.empty:
-            # O catálogo vai junto para o CONFIRMAR: o da tela (o do robô) só
-            # muda com a revisão confirmada, como o `df_processed`.
-            confirmar = functools.partial(self._pos_revisao_concluida, catalogo=catalogo)
+            # O catálogo e o Excel do lote vão junto para o CONFIRMAR: os da
+            # tela (os do robô) só mudam com a revisão confirmada, como o
+            # `df_processed`.
+            confirmar = functools.partial(self._pos_revisao_concluida, catalogo=catalogo,
+                                          excel=excel)
             janela = JanelaRevisaoPDM(self, df, confirmar, catalogo=catalogo)
             janela.finished.connect(self._revisao_fechada)
         else:
@@ -588,9 +599,10 @@ class ModuloCriaFichas(ModuleFrame):
             # Fechada no "X": lá o botão ficava desligado até o "Limpar".
             self._fim_da_cadeia_da_ia()
 
-    def _pos_revisao_concluida(self, df_atualizado, catalogo=None) -> None:
+    def _pos_revisao_concluida(self, df_atualizado, catalogo=None, excel=None) -> None:
         self.df_processed = df_atualizado
         self.catalogo = catalogo
+        self._excel_do_lote = excel
         self.log(f"Revisão OK. {len(self.df_processed)} itens prontos.")
         # Com um robô rodando (criação ou edição), o "4. Robô Web" volta no fim
         # dele (`_robo_terminou`) e então leva ESTE lote; ligá-lo agora subiria
@@ -605,13 +617,20 @@ class ModuloCriaFichas(ModuleFrame):
     def run_automation_thread(self) -> None:
         if self._robo_ocupado():
             return
+        if self.df_processed is None:
+            return  # sem lote confirmado não há robô (o botão já fica desligado)
         automacao = self.backend("AutomacaoPMIB")
         if automacao is None:
             return
-        # O lote e o catálogo saem daqui, do clique: uma revisão confirmada com o
-        # robô rodando troca `df_processed`, e o resumo deste robô é do lote DELE.
+        # O lote, o catálogo e o Excel saem daqui, do clique: uma revisão
+        # confirmada com o robô rodando troca `df_processed`, e o resumo deste
+        # robô (e o "Salvar no Excel" dele) é do lote DELE.
+        # Sem `botao=`: o `iniciar_tarefa` religaria o "4. Robô Web" no fim
+        # mesmo depois de um Limpar (sem lote); quem o devolve é
+        # `_robo_terminou`, e só com lote confirmado.
+        self.btn_run_auto.setEnabled(False)
         self._iniciar_robo(self._bot_worker, automacao, self.df_processed, self.catalogo,
-                           botao=self.btn_run_auto)
+                           self._excel_do_lote, botao=None)
 
     # --- um robô por vez (criação ou edição) ----------------------------------------
     def _robo_ocupado(self) -> bool:
@@ -637,8 +656,8 @@ class ModuloCriaFichas(ModuleFrame):
         self._robo_ativo = False
         # Revisão confirmada com o robô de EDIÇÃO rodando: `_pos_revisao_concluida`
         # não ligou o "4. Robô Web", e o `iniciar_tarefa` da edição só devolve o
-        # botão dela. Com lote confirmado, ele volta aqui. (No fim do robô de
-        # criação o `iniciar_tarefa` também o devolve: ligar duas vezes dá no mesmo.)
+        # botão dela. Com lote confirmado, ele volta aqui -- e é o ÚNICO lugar
+        # que o devolve no fim do robô de criação (ele sobe sem `botao=`).
         if self.df_processed is not None:
             try:
                 self.btn_run_auto.setEnabled(True)
@@ -651,7 +670,7 @@ class ModuloCriaFichas(ModuleFrame):
         except RuntimeError:
             pass  # tela já destruída
 
-    def _bot_worker(self, automacao, df, catalogo) -> None:
+    def _bot_worker(self, automacao, df, catalogo, excel=None) -> None:
         bot = automacao()
         self.bot = bot  # o "Limpar" fecha o navegador por aqui
         try:
@@ -741,7 +760,7 @@ class ModuloCriaFichas(ModuleFrame):
             df_selenium = pd.DataFrame(sucessos, columns=['descricao_original', 'PMIB_CRIADO', 'PDM_COM_REVISAO'])
             resumo = pd.merge(df, df_selenium, on='descricao_original', how='inner')
 
-            interface.na_interface(self._fim_do_robo, resumo)
+            interface.na_interface(self._fim_do_robo, resumo, excel)
 
             # Finaliza o driver
             try:
@@ -752,8 +771,9 @@ class ModuloCriaFichas(ModuleFrame):
         except Exception as e:  # noqa: BLE001 -- vira log, como lá
             self.log(f"Erro Fatal na Thread do Robô: {e}")
 
-    def _fim_do_robo(self, resumo) -> None:
+    def _fim_do_robo(self, resumo, excel=None) -> None:
         self.df_resumo_final = resumo
+        self._excel_do_resumo = excel
         try:
             self._mostrar_resumo()
             self.btn_save.setEnabled(True)
@@ -845,7 +865,9 @@ class ModuloCriaFichas(ModuleFrame):
 
             salvo_com_sucesso = False
             while not salvo_com_sucesso:
-                ok, msg = data_manager.atualizar_excel_final(self.file_path_excel, "Lista de Materiais", lista)
+                # O Excel do LOTE deste resumo, e não o último escolhido.
+                ok, msg = data_manager.atualizar_excel_final(self._excel_do_resumo, "Lista de Materiais",
+                                                             lista)
 
                 if ok:
                     QMessageBox.information(self, "Sucesso", f"Planilha atualizada!\n{msg}")
@@ -882,6 +904,8 @@ class ModuloCriaFichas(ModuleFrame):
         # sem o lote, e com a planilha de PDMs esquecida, ele também sai.
         self.catalogo = None
         self.df_resumo_final = None
+        self._excel_do_lote = None
+        self._excel_do_resumo = None
         if self.bot:
             try:
                 self.bot.driver.quit()

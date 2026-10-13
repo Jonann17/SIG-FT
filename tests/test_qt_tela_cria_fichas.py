@@ -12,7 +12,7 @@ import sys
 import threading
 
 import pytest
-from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QApplication, QDialog
 
 from sigft.app import backends, theme
 from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA, MSG_LOGIN_PAGINA_PRINCIPAL
@@ -827,7 +827,7 @@ def test_salvar_sem_dados_avisa(tela):
 
 
 def test_salvar_ok(tela, qtbot, pd):
-    tela.file_path_excel = "/d/_STATUS_PMIB.xlsx"
+    tela._excel_do_resumo = "/d/_STATUS_PMIB.xlsx"
     tela.df_resumo_final = _resumo(pd)
     DataManagerFalso.respostas_salvar = [(True, "2 linhas")]
     tela.salvar_excel()
@@ -838,7 +838,7 @@ def test_salvar_ok(tela, qtbot, pd):
 
 
 def test_salvar_com_o_arquivo_aberto_pergunta_e_repete(tela, qtbot, pd, monkeypatch):
-    tela.file_path_excel = "/d/_STATUS_PMIB.xlsx"
+    tela._excel_do_resumo = "/d/_STATUS_PMIB.xlsx"
     tela.df_resumo_final = _resumo(pd)
     DataManagerFalso.respostas_salvar = [(False, "Arquivo aberto"), (False, "PermissionError"),
                                          (True, "ok")]
@@ -858,7 +858,7 @@ def test_salvar_com_o_arquivo_aberto_pergunta_e_repete(tela, qtbot, pd, monkeypa
 
 
 def test_salvar_cancelado(tela, qtbot, pd, monkeypatch):
-    tela.file_path_excel = "/d/x.xlsx"
+    tela._excel_do_resumo = "/d/x.xlsx"
     tela.df_resumo_final = _resumo(pd)
     DataManagerFalso.respostas_salvar = [(False, "arquivo ABERTO")]
     monkeypatch.setattr(tela_mod.QMessageBox, "warning",
@@ -869,7 +869,7 @@ def test_salvar_cancelado(tela, qtbot, pd, monkeypatch):
 
 
 def test_salvar_outro_erro(tela, qtbot, pd):
-    tela.file_path_excel = "/d/x.xlsx"
+    tela._excel_do_resumo = "/d/x.xlsx"
     tela.df_resumo_final = _resumo(pd)
     DataManagerFalso.respostas_salvar = [(False, "Aba não encontrada")]
     tela.salvar_excel()
@@ -1222,3 +1222,70 @@ def test_abas_e_console_dividem_a_altura_como_o_grid_do_tk(qt_interface, qtbot, 
         qtbot.waitUntil(lambda: (t.abas.height(), t.console.height()) == (abas, console), timeout=1000)
     finally:
         qt_interface.setStyleSheet(anterior)
+
+
+# --- revisão final: o lote leva o robô e o Excel dele ------------------------------
+
+def test_limpar_com_o_robo_rodando_deixa_o_robo_web_desligado(tela, robo, qtbot, monkeypatch):
+    """Sem lote não há robô: o `iniciar_tarefa` religava o "4. Robô Web" no fim
+    do robô mesmo depois do Limpar, e o clique seguinte dava `len(None)`."""
+    liberar = threading.Event()
+    monkeypatch.setattr(RoboFalso, "iniciar_driver", lambda self: liberar.wait(3))
+    try:
+        tela.btn_run_auto.click()
+        assert not tela.btn_run_auto.isEnabled()
+        tela.resetar_processo()
+    finally:
+        liberar.set()
+    qtbot.waitUntil(lambda: not tela._robo_ativo, timeout=3000)
+    qtbot.waitUntil(lambda: not _robos_vivos(), timeout=3000)
+    QApplication.processEvents()
+    assert tela.df_processed is None
+    assert not tela.btn_run_auto.isEnabled()
+    tela.run_automation_thread()                    # nem à força
+    assert len(RoboFalso.instancias) == 1
+
+
+def test_o_excel_do_lote_vem_do_clique_da_ia(tela, qtbot, pd):
+    _selecionar_pular_ia(tela, pd)
+    tela.file_path_excel = "/d/A.xlsx"
+    tela.btn_run_ai.click()
+    tela.file_path_excel = "/d/B.xlsx"              # outro Excel escolhido durante a IA
+    qtbot.waitUntil(lambda: bool(tela.revisoes), timeout=3000)
+    tela.revisoes[0].confirmar(pd.DataFrame({"descricao_original": ["A"]}))
+    assert tela._excel_do_lote == "/d/A.xlsx"
+
+
+def test_salvar_grava_no_excel_do_lote_e_nao_no_escolhido_depois(tela, robo, qtbot, pd, monkeypatch):
+    """Escolher outro Excel com o robô rodando (para preparar o próximo lote)
+    não pode mandar os PMIBs deste lote para a planilha nova."""
+    tela._pos_revisao_concluida(tela.df_processed, excel="/d/A.xlsx")
+    RoboFalso.roteiro = {d: [("SUCESSO", (f"PMIB-{i}", "PDM.1111.001 - VALVULA, R1"))]
+                         for i, d in enumerate(tela.df_processed["descricao_original"])}
+    liberar = threading.Event()
+    monkeypatch.setattr(RoboFalso, "iniciar_driver", lambda self: liberar.wait(3))
+    try:
+        tela.btn_run_auto.click()
+        tela.file_path_excel = "/d/B.xlsx"
+        tela._pos_revisao_concluida(tela.df_processed.copy(), excel="/d/B.xlsx")  # próximo lote
+    finally:
+        liberar.set()
+    qtbot.waitUntil(lambda: bool(tela.resumos), timeout=3000)
+    qtbot.waitUntil(lambda: not _robos_vivos(), timeout=3000)
+    DataManagerFalso.respostas_salvar = [(True, "ok")]
+    tela.salvar_excel()
+    assert [s[0] for s in DataManagerFalso.salvamentos] == ["/d/A.xlsx"]
+
+
+def test_nome_longo_da_planilha_de_pdms_nao_alarga_a_tela(tela, qtbot, monkeypatch):
+    tela.resize(1080, 800)
+    tela.show()
+    antes = tela.area_criacao.widget().minimumSizeHint().width()
+    nome = ("PDMs_SAM-GM_planilha_mestra_revisao_2026_versao_final_corrigida_pelo_luan"
+            "_e_rafael_v12.xlsx")
+    monkeypatch.setattr(tela_mod.file_dialogs, "ask_open_file", lambda *a, **k: "/x/" + nome)
+    tela.selecionar_excel_pdm()
+    QApplication.processEvents()
+    assert tela.area_criacao.widget().minimumSizeHint().width() <= antes
+    assert tela.lbl_status_pdm.text() == f"Selecionado: {nome}"
+    assert tela.lbl_status_pdm.toolTip() == "/x/" + nome

@@ -474,6 +474,33 @@ def test_invariante_o_automatico_salva_a_lista_NOVA(tela, qtbot, monkeypatch, tm
     assert not any(marcados.values())
 
 
+def test_o_automatico_vai_para_a_pasta_do_status_do_clique(tela, qtbot, monkeypatch, tmp_path):
+    """Revisão final: outro `_STATUS_PMIB` escolhido no meio do lote não leva o
+    `.txt` automático deste lote para a outra pasta."""
+    import threading
+
+    _backend(monkeypatch)
+    pasta_a, pasta_b = tmp_path / "a", tmp_path / "b"
+    pasta_a.mkdir()
+    pasta_b.mkdir()
+    (pasta_a / "_STATUS_PMIB.xlsx").write_text("x")
+    (pasta_b / "_STATUS_PMIB.xlsx").write_text("x")
+    _escolher_status(tela, str(pasta_a / "_STATUS_PMIB.xlsx"))
+    _montar_fila(tela)
+    CoreFalso.conferencia_do_lote = _conferencia()
+    segurar = threading.Event()
+    monkeypatch.setattr(CoreFalso, "segurar", segurar)
+    tela.btn_run.click()
+    try:
+        qtbot.waitUntil(lambda: "--- lote AutoSpec ---" in _texto(tela), timeout=2000)
+        tela.status_pmib_path = str(pasta_b / "_STATUS_PMIB.xlsx")   # trocado no meio
+    finally:
+        segurar.set()
+    qtbot.waitUntil(lambda: "Conferencia salva em:" in _texto(tela), timeout=3000)
+    assert len(list(pasta_a.glob("CONFERENCIA_AUTOSPEC_*.txt"))) == 1
+    assert list(pasta_b.glob("CONFERENCIA_AUTOSPEC_*.txt")) == []
+
+
 # -- conferência: lista -------------------------------------------------------------------
 def test_mostrar_a_conferencia_com_as_marcacoes(tela):
     tela._conferencia_mostrar(_conferencia(), {(0, 1): True})
