@@ -75,3 +75,50 @@ def test_selecao_com_caixas(qt_interface, qtbot):
     assert d.selecionados() == ["C"]
     d.botao_todos.click()
     assert d.selecionados() == ["A", "B", "C"]
+
+
+def test_selecao_com_caixas_tem_as_medidas_e_a_cara_da_janela_do_ctk(qt_interface, qtbot):
+    # Janela CTk de 450x600 (sigft/app/views/lmr.py), medida na captura de 2026-10-08:
+    # rótulo 14 negrito em y=10 (28 de altura); quadro rolável #212121 em (10, 53),
+    # 430x494; caixas de 24 px a cada 28 px, a primeira em (16, 61); "Todos" 80x28
+    # em (10, 562) e "CONFIRMAR" 150x28 em (290, 562).
+    from PySide6.QtCore import QPoint, Qt
+
+    from sigft.app import theme
+    from sigft.app_qt import estilo
+
+    d = qd.SelecaoComCaixasDialog(None, titulo="Selecione as Fichas",
+                                  mensagem="Selecione os PMIBs para processar:",
+                                  itens=[f"4500063671.{i:04d}" for i in range(1, 31)])
+    d.setStyleSheet(estilo.folha_de_estilo())
+    qtbot.addWidget(d)
+    d.show()
+    qtbot.waitExposed(d)
+
+    def caixa(w):
+        p = w.mapTo(d, w.rect().topLeft())
+        return (p.x(), p.y(), w.width(), w.height())
+
+    assert (d.width(), d.height()) == (450, 600)
+    assert caixa(d.rotulo)[1:4:2] == (10, 28)
+    assert caixa(d.quadro) == (10, 53, 430, 494)
+    assert caixa(d.botao_todos) == (10, 562, 80, 28)
+    assert caixa(d.botao_confirmar) == (290, 562, 150, 28)
+    linha = d.lista.visualItemRect(d.lista.item(0))
+    origem = d.lista.viewport().mapTo(d, linha.topLeft())
+    assert (origem.x(), origem.y(), linha.height()) == (16, 59, 28)
+
+    d.lista.item(1).setCheckState(Qt.CheckState.Checked)
+    imagem = d.grab().toImage()
+    cor = lambda x, y: imagem.pixelColor(x, y).name().upper()  # noqa: E731
+    assert cor(200, 300) == "#212121"
+    assert cor(17, 73) == estilo.BORDA_CTK                      # borda da caixa desmarcada
+    assert cor(22, 92) == theme.COLORS["primary"].upper()       # caixa marcada cheia de primary
+
+    # Clicar no TEXTO marca, como na CTkCheckBox; fora dele, não.
+    retangulo = d.lista.visualItemRect(d.lista.item(2))
+    qtbot.mouseClick(d.lista.viewport(), Qt.MouseButton.LeftButton,
+                     pos=QPoint(retangulo.x() + 60, retangulo.center().y()))
+    qtbot.mouseClick(d.lista.viewport(), Qt.MouseButton.LeftButton,
+                     pos=QPoint(retangulo.x() + 350, retangulo.center().y()))
+    assert d.selecionados() == ["4500063671.0002", "4500063671.0003"]

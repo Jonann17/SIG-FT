@@ -258,6 +258,24 @@ def _isola_os_dados_do_usuario(monkeypatch, tmp_path_factory):
     _dados.esquecer_pasta()
 
 
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
+def pytest_runtest_teardown(item, nextitem):
+    """Depois de um teste Qt, recolhe o lixo NA HORA.
+
+    O pytest-qt fecha as telas com `close()` + `deleteLater()`, mas o
+    `processEvents()` dele não roda o DeferredDelete: o C++ das telas fica
+    vivo e dono do Python. E uma tela é lixo em ciclo (o seletor guarda um
+    método da tela, que guarda o seletor), que o GC só apaga quando quer --
+    no meio da pintura do teste seguinte. Aí o QPainter dele quebrava
+    (segfault em `QPainter::device()`, 2026-10-08, ordem de testes certa).
+    Recolhendo aqui, depois de toda a desmontagem, o C++ morre fora de pintura.
+    """
+    yield
+    if "qtbot" in getattr(item, "fixturenames", ()):
+        import gc
+        gc.collect()
+
+
 @pytest.fixture
 def qt_interface(qapp):
     """QApplication pronta e o canal thread -> interface instalado."""

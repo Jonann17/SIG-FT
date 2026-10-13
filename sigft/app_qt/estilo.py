@@ -60,6 +60,10 @@ TEXTO_BOTAO_CTK = "#DCE4EE"
 # começa no mesmo x (medido: 8 px da borda de fora, nas duas capturas).
 ALTURA_CAMPO_CTK = 28
 BORDA_CAMPO_CTK = 2
+# CTkOptionMenu: 28 de altura, fonte 13 e texto #DCE4EE. O desenho (a parte
+# escura da seta) é de `widgets.controles.MenuDeOpcoes`; a lista que abre é o
+# DropdownMenu do tema (fundo gray20, texto gray84, gray28 sob o mouse).
+ALTURA_MENU_CTK = 28
 
 # Espessura da borda (px) de cada variante de botão que tem borda. `blocos.botao`
 # desconta isto da altura: no Qt o `min-height` da folha NÃO inclui a borda, e no
@@ -178,6 +182,13 @@ def folha_de_estilo() -> str:
     # * QLineEdit: o CTkEntry do tema (ver ALTURA_CAMPO_CTK). min/max-height não
     #   contam borda nem padding: 28 - 2*2 - 1;
     # * #console: CTkTextbox do tema dark-blue -- fg gray20, border_width 0, texto gray84.
+    # * variante "cinza": o #3A3A3A com hover #454545 que as telas CTk escreviam à mão
+    #   ("Todos", "Cancelar"); "neutro" é o mesmo fundo com o hover do tema (Home).
+    # * #quadro_caixas/#lista_caixas: o CTkScrollableFrame da seleção de fichas
+    #   (fundo gray13, cantos 6) e o CTkScrollbar dele (16 px, alça gray41 de 8 px,
+    #   4 px de folga -- border_spacing). As linhas são de `dialogs._DelegadoDaCaixa`.
+    # * QCheckBox::indicator: width/height NÃO contam a borda -- 18 + 2*3 = os 24 da
+    #   CTkCheckBox (com 20 saía 26). Sem imagem, a marcada não tem o "v" de lá.
     return f"""
 QMainWindow, #conteudo, #tela {{ background: {c['background']}; }}
 QDialog {{ background: {cinza_tk('gray10')}; }}
@@ -205,6 +216,8 @@ QPushButton[variante="acento"] {{ background: {c['accent']}; }}
 QPushButton[variante="acento"]:hover {{ background: {c['accent_hover']}; }}
 QPushButton[variante="neutro"] {{ background: #3A3A3A; }}
 QPushButton[variante="neutro"]:hover {{ background: #4A4A4A; }}
+QPushButton[variante="cinza"] {{ background: #3A3A3A; }}
+QPushButton[variante="cinza"]:hover {{ background: #454545; }}
 QPushButton[variante="perigo"] {{ background: {c['danger']}; }}
 QPushButton[variante="perigo"]:hover {{ background: #B71C1C; }}  /* o hover_color das telas CTk */
 QPushButton[variante="contorno"] {{ background: transparent;
@@ -224,7 +237,7 @@ QPushButton[variante="contorno"]:hover, QPushButton[variante="contorno_padrao"]:
 #console {{ background: {cinza_tk('gray20')}; border: none; border-radius: 6px;
             color: {cinza_tk('gray84')}; font-family: "Consolas", "Menlo", monospace; font-size: 12px; }}
 QCheckBox {{ font-size: 12px; }}
-QCheckBox::indicator {{ width: 20px; height: 20px; border: 3px solid #949A9F;
+QCheckBox::indicator {{ width: 18px; height: 18px; border: 3px solid #949A9F;
                         border-radius: 6px; background: transparent; }}
 QCheckBox::indicator:checked {{ background: {AZUL_CTK}; border-color: {AZUL_CTK}; }}
 QProgressBar {{ background: #333333; border: none; border-radius: 5px; max-height: 12px; }}
@@ -235,8 +248,11 @@ QLineEdit {{ background: #343638; border: {BORDA_CAMPO_CTK}px solid #565B5E; bor
              min-height: {ALTURA_CAMPO_CTK - 2 * BORDA_CAMPO_CTK - 1}px;
              max-height: {ALTURA_CAMPO_CTK - 2 * BORDA_CAMPO_CTK - 1}px; }}
 QLineEdit:disabled {{ color: {cinza_tk('gray45')}; }}
-QComboBox {{ background: {AZUL_CTK}; border-radius: 6px; padding: 4px 10px;
-             color: {TEXTO_BOTAO_CTK}; min-height: 22px; }}
+QComboBox {{ background: {AZUL_CTK}; border-radius: 6px; padding: 0 10px; border: none;
+             color: {TEXTO_BOTAO_CTK}; font-size: 13px;
+             min-height: {ALTURA_MENU_CTK}px; max-height: {ALTURA_MENU_CTK}px; }}
+QComboBox QAbstractItemView {{ background: {cinza_tk('gray20')}; color: {cinza_tk('gray84')};
+    selection-background-color: {cinza_tk('gray28')}; border: none; outline: none; }}
 QTabWidget::pane {{ border: none; background: {cinza_tk('gray16')}; border-radius: 6px; }}
 QTabBar::tab {{ background: {cinza_tk('gray29')}; color: {TEXTO_BOTAO_CTK}; padding: 6px 14px;
                 margin: 0 1px; border-radius: 6px; }}
@@ -244,6 +260,12 @@ QTabBar::tab:selected {{ background: {AZUL_CTK}; }}
 QTabBar::tab:hover:!selected {{ background: {cinza_tk('gray41')}; }}
 QListWidget {{ background: #1E1E1E; color: {c['text_light']}; border: none; }}
 QListWidget::item:selected {{ background: {c['primary']}; color: white; }}
+#quadro_caixas {{ background: {cinza_tk('gray13')}; border-radius: 6px; }}
+#lista_caixas {{ background: transparent; border: none; font-size: 13px; }}
+#lista_caixas QScrollBar:vertical {{ width: 16px; margin: 4px; background: transparent; }}
+#lista_caixas QScrollBar::handle:vertical {{ background: {cinza_tk('gray41')}; border-radius: 4px;
+    min-height: 20px; }}
+#lista_caixas QScrollBar::handle:vertical:hover {{ background: {cinza_tk('gray53')}; }}
 #cartao {{ background: {theme.COR_CARTAO}; border-radius: 8px; }}
 QScrollArea {{ border: none; background: transparent; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; }}
