@@ -20,6 +20,7 @@ import threading
 import time
 import traceback
 
+from dotenv import load_dotenv
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
@@ -33,6 +34,12 @@ from sigft.app_qt import catalogo, estilo, interface
 from sigft.app_qt.views.home import HomeView
 from sigft.app_qt.views.nao_migrada import TelaNaoMigrada
 from sigft.core import instancia
+from sigft.core.saida_log import desviar_saida_para_arquivo
+
+# Sem console (o .exe), `print` e traceback vão para `logs/sigft.log`: é o canal
+# de diagnóstico da primeira execução em máquina nova. Na mesma posição do app
+# CustomTkinter -- no import, antes de qualquer coisa imprimir.
+desviar_saida_para_arquivo()
 
 _RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -46,6 +53,9 @@ TELAS = {
 def resource_path(relativo: str) -> str:
     base = getattr(sys, "_MEIPASS", _RAIZ)
     return os.path.join(base, relativo)
+
+
+load_dotenv(resource_path(".env"))
 
 
 def _arquivo_de_chaves() -> str:
@@ -260,6 +270,28 @@ def _preparar_qt() -> QApplication:
 
 def main() -> None:
     instancia.preparar()
+
+    # Traz `api_config.json`, `user_prefs.json` e o `.env` da pasta do programa
+    # para `Documentos\SIG-FT\`, uma vez. Silenciosa quando não há o que
+    # migrar, e nunca levanta. Ver `sigft/core/dados_usuario.py`.
+    from sigft.core.dados_usuario import migrar_se_preciso
+
+    if (trazidos := migrar_se_preciso()):
+        print(f"[SIG-FT] Configuracao importada para a pasta de dados: "
+              f"{', '.join(trazidos)}")
+
+    # Acha o Chrome/Edge da máquina para o RPA e repassa o certificado da
+    # empresa ao processo Node do Playwright. `None` é resultado válido: o app
+    # abre igual, e só o robô reclama quando for usado. Ver
+    # `sigft/core/rpa/navegador.py`.
+    from sigft.core.rpa.navegador import preparar_ambiente_do_rpa
+
+    if (navegador_do_rpa := preparar_ambiente_do_rpa()):
+        print(f"[SIG-FT] Navegador do RPA: {navegador_do_rpa}")
+    else:
+        print("[SIG-FT] Nenhum Chrome/Edge encontrado. O app abre normalmente; "
+              "so o robo do portal vai reclamar de navegador quando for usado.")
+
     app = _preparar_qt()
     splash = SplashScreen()
     janela: list[SIG_FT_App] = []

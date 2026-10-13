@@ -105,3 +105,40 @@ def test_smoke_nao_pergunta_nada_mesmo_com_thread_comum_viva(qt_interface, monke
     finally:
         liberar.set()
         viva.join(3)
+
+
+def test_main_prepara_dados_e_navegador_antes_da_splash(qt_interface, monkeypatch, capsys):
+    """Mesmos passos de partida do app CustomTkinter, na mesma ordem."""
+    from sigft.core import dados_usuario, instancia
+    from sigft.core.rpa import navegador
+
+    eventos = []
+
+    class SplashFalsa:
+        pronta = type("S", (), {"connect": lambda self, f: eventos.append("conectou")})()
+
+        def __init__(self):
+            eventos.append("splash")
+
+        def show(self):
+            eventos.append("show")
+
+        def carregar(self):
+            eventos.append("carregar")
+
+    monkeypatch.setattr(instancia, "preparar", lambda: eventos.append("preparar"))
+    monkeypatch.setattr(instancia, "encerrar", lambda codigo=0: eventos.append(("encerrar", codigo)))
+    monkeypatch.setattr(dados_usuario, "migrar_se_preciso",
+                        lambda: eventos.append("migrou") or ["api_config.json"])
+    monkeypatch.setattr(navegador, "preparar_ambiente_do_rpa",
+                        lambda: eventos.append("navegador") or None)
+    monkeypatch.setattr(qmain, "_preparar_qt",
+                        lambda: type("A", (), {"exec": lambda self: eventos.append("exec")})())
+    monkeypatch.setattr(qmain, "SplashScreen", SplashFalsa)
+    qmain.main()
+    assert eventos.index("migrou") < eventos.index("splash")
+    assert eventos.index("navegador") < eventos.index("splash")
+    assert eventos[-1] == ("encerrar", 0)
+    saida = capsys.readouterr().out
+    assert "[SIG-FT] Configuracao importada para a pasta de dados: api_config.json" in saida
+    assert "[SIG-FT] Nenhum Chrome/Edge encontrado." in saida
