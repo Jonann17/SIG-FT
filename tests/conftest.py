@@ -268,12 +268,13 @@ def pytest_runtest_teardown(item, nextitem):
     método da tela, que guarda o seletor), que o GC só apaga quando quer --
     no meio da pintura do teste seguinte. Aí o QPainter dele quebrava
     (segfault em `QPainter::device()`, 2026-10-08, ordem de testes certa).
-    Recolhendo aqui, depois de toda a desmontagem, o C++ morre fora de pintura.
+    Rodar aqui o DeferredDelete, depois de toda a desmontagem, apaga o C++ fora
+    de pintura; o que o GC recolher depois é só casca Python já invalidada.
     """
     yield
     if "qtbot" in getattr(item, "fixturenames", ()):
-        import gc
-        gc.collect()
+        from PySide6.QtCore import QCoreApplication, QEvent
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 @pytest.fixture

@@ -72,10 +72,53 @@ def tela(qt_interface, qtbot, monkeypatch):
 
 
 def _esperar_fim(tela, qtbot, ultima):
+    """Espera o robô fechar, o botão voltar e `ultima` aparecer no console.
+
+    O botão é desligado no clique e só volta no fim: conferir que ele está
+    desligado ANTES de esperar torna a espera dele uma prova, não um "já estava".
+    """
+    assert not tela.btn_run.isEnabled()
     qtbot.waitUntil(lambda: "fechou" in tela.robo.passos, timeout=3000)
     qtbot.waitUntil(tela.btn_run.isEnabled, timeout=2000)
     qtbot.waitUntil(lambda: ultima in tela.console.toPlainText(), timeout=2000)
     return tela.console.toPlainText()
+
+
+def test_botao_fica_desligado_da_leitura_ate_o_fim_do_robo(tela, qtbot):
+    # Lá (CTk) o botão desligava em "Ler esta aba" e só voltava no `finally`
+    # do robô. A seleção das fichas no meio NÃO pode devolvê-lo.
+    import threading
+    dentro, solta = threading.Event(), threading.Event()
+    original = tela.robo.processar_lista
+
+    def processar_preso(*a, **k):
+        dentro.set()
+        solta.wait(5)
+        return original(*a, **k)
+
+    tela.robo.processar_lista = processar_preso
+    tela.btn_run.click()
+    try:
+        qtbot.waitUntil(dentro.is_set, timeout=3000)
+        for _ in range(20):           # dá tempo a qualquer reabilitação atrasada na fila
+            qtbot.wait(10)
+            assert not tela.btn_run.isEnabled()
+    finally:
+        solta.set()
+    qtbot.waitUntil(lambda: "fechou" in tela.robo.passos, timeout=3000)
+    qtbot.waitUntil(tela.btn_run.isEnabled, timeout=2000)
+
+
+def test_erro_na_janela_de_selecao_vira_log(tela, qtbot, monkeypatch):
+    def quebra(pmibs):
+        raise RuntimeError("janela quebrou")
+
+    monkeypatch.setattr(tela, "escolher_pmibs", quebra)
+    tela.btn_run.click()
+    qtbot.waitUntil(lambda: "Erro Pré-processamento: janela quebrou"
+                    in tela.console.toPlainText(), timeout=3000)
+    qtbot.waitUntil(tela.btn_run.isEnabled, timeout=2000)
+    assert "driver" not in tela.robo.passos
 
 
 def test_textos_e_caixa_da_linha_inicial(tela):

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMessageBox, QVBo
 
 from sigft.app import theme
 from sigft.app.textos_dialogos import MSG_LOGIN_LMR
-from sigft.app_qt import estilo, file_dialogs, interface
+from sigft.app_qt import estilo, file_dialogs
 from sigft.app_qt.widgets import blocos, controles, pickers
 from sigft.app_qt.widgets.dialogs import SelecaoComCaixasDialog
 from sigft.app_qt.widgets.module_frame import ModuleFrame
@@ -244,6 +244,13 @@ class ModuloLMR(ModuleFrame):
         self.iniciar_tarefa(self._pre_processamento, modulo, excel_path, aba, botao=self.btn_run)
 
     def _pre_processamento(self, modulo, excel_path, aba) -> None:
+        """Lê o Excel, pede as fichas e roda o robô, TUDO na mesma tarefa.
+
+        Uma tarefa só de propósito: o botão desliga em "Ler esta aba" e só
+        volta quando o robô termina, como lá. Com duas tarefas, a devolução do
+        botão da primeira podia chegar depois do começo da segunda e religá-lo
+        com o robô rodando.
+        """
         try:
             automator = modulo.LMRAutomation()
             ok, df_completo, pmibs_unicos, msg = automator.carregar_dados_excel(excel_path, aba)
@@ -254,20 +261,32 @@ class ModuloLMR(ModuleFrame):
             if not pmibs_unicos:
                 self.log("Nenhum PMIB encontrado.")
                 return
-            # A seleção é uma janela: abre na thread da interface. Ela é modal,
-            # então o botão (que `iniciar_tarefa` devolve agora) não pode ser
-            # clicado enquanto a pessoa escolhe.
-            interface.na_interface(self._selecionar_e_rodar, modulo, pmibs_unicos, df_completo)
+            selecionados = self._escolher_pmibs_e_esperar(pmibs_unicos)
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"Erro Pré-processamento: {e}")
-
-    def _selecionar_e_rodar(self, modulo, pmibs, df_completo) -> None:
-        selecionados = self.escolher_pmibs(pmibs)
+            return
         if not selecionados:
             self.log("Seleção cancelada.")
             return
         self.log(f"{len(selecionados)} fichas selecionadas. Iniciando robô...")
-        self.iniciar_tarefa(self._worker_lmr, modulo, selecionados, df_completo, botao=self.btn_run)
+        self._worker_lmr(modulo, selecionados, df_completo)
+
+    def _escolher_pmibs_e_esperar(self, pmibs) -> list[str]:
+        """A janela de seleção abre na thread da interface; a tarefa espera.
+
+        Um erro da janela volta para cá e é relançado: `_na_interface_e_esperar`
+        sozinho o engoliria (só traceback) e viraria "Seleção cancelada."
+        """
+        def escolher():
+            try:
+                return ("ok", self.escolher_pmibs(pmibs))
+            except Exception as erro:  # noqa: BLE001 -- relançado na tarefa
+                return ("erro", erro)
+
+        tipo, valor = self._na_interface_e_esperar(escolher)
+        if tipo == "erro":
+            raise valor
+        return valor
 
     def _worker_lmr(self, modulo, selecionados, df_completo) -> None:
         auto = modulo.LMRAutomation()
