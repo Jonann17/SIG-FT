@@ -1,8 +1,5 @@
 # Interface
 customtkinter
-# Interface Qt (migração em andamento: sigft/app_qt/). LGPL -- ver
-# docs/superpowers/specs/2026-10-07-migracao-qt6-design.md, decisões.
-PySide6
 pillow
 
 # Dados / Excel

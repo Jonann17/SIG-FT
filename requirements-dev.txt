@@ -10,7 +10,9 @@
 pytest
 # Fixture `qtbot`: monta widgets Qt de verdade, sem display (offscreen).
 pytest-qt
-PySide6
+# PySide6 (so a UI Qt em migracao) fica em arquivo proprio: nao entra no
+# requirements.txt de producao ate o corte (Etapa 6).
+-r requirements-qt.txt
 
 # lxml — desde 2026-10-05 é dependência de PRODUÇÃO (está no requirements.txt:
 # o editor cirúrgico que grava nos `_STATUS_PMIB`). Fica aqui também porque o CI
