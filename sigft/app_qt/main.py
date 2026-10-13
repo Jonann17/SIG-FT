@@ -45,13 +45,75 @@ desviar_saida_para_arquivo()
 
 _RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Registro das telas migradas: nome -> fábrica(parent, controller). Cada plano
-# de etapa acrescenta as suas aqui.
+# As telas das etapas 3 a 5 importam na PRIMEIRA visita, dentro da fábrica:
+# abrir o app não paga o import de todas, e uma tela que não importa (falta
+# uma dependência) vira a tela de erro DELA em `show_frame`, em vez de impedir
+# a janela de abrir. O import fica escrito por extenso (não `importlib`) para o
+# PyInstaller enxergar o módulo.
+def _cria_fichas(parent, controller):
+    from sigft.app_qt.views.cria_fichas import ModuloCriaFichas
+    return ModuloCriaFichas(parent, controller)
+
+
+def _pdm(parent, controller):
+    from sigft.app_qt.views.pdm import ModuloPDM
+    return ModuloPDM(parent, controller)
+
+
+def _analyzer(parent, controller):
+    from sigft.app_qt.views.analyzer import ModuloAnalyzer
+    return ModuloAnalyzer(parent, controller)
+
+
+def _upload_conditions(parent, controller):
+    from sigft.app_qt.views.upload_conditions import ModuloUploadConditions
+    return ModuloUploadConditions(parent, controller)
+
+
+def _upload_specs(parent, controller):
+    from sigft.app_qt.views.upload_tech_specs import ModuloUploadTechSpecs
+    return ModuloUploadTechSpecs(parent, controller)
+
+
+def _correcao_pdm(parent, controller):
+    # Continua bloqueada no menu (`catalogo.TELAS_BLOQUEADAS`); registrada para
+    # abrir assim que for liberada.
+    from sigft.app_qt.views.correcao_pdm import ModuloCorrecaoPDM
+    return ModuloCorrecaoPDM(parent, controller)
+
+
+def _copia_fichas(parent, controller):
+    from sigft.app_qt.views.copia_fichas import ModuloCopiaFichas
+    return ModuloCopiaFichas(parent, controller)
+
+
+def _pmib_manager(parent, controller):
+    from sigft.app_qt.views.pmib_manager import ModuloPMIBManager
+    return ModuloPMIBManager(parent, controller)
+
+
+def _busca_pmib(parent, controller):
+    from sigft.app_qt.views.busca_pmib import ModuloBuscaPMIB
+    return ModuloBuscaPMIB(parent, controller)
+
+
+# Registro das telas migradas: nome -> fábrica(parent, controller). O teste
+# `tests/test_qt_registro_telas.py` cobra que todo item do menu esteja aqui.
 TELAS = {
     "Home": lambda parent, controller: HomeView(parent, controller),
     # Etapa 2 (pilotos): Tradutor e a seção Aplicação LMR (Upload + Exclusão).
     "Translator": lambda parent, controller: ModuloTranslator(parent, controller),
     "LMR": lambda parent, controller: ModuloAplicacaoLMR(parent, controller),
+    # Etapas 3 a 5.
+    "CriaFichas": _cria_fichas,
+    "PDM": _pdm,
+    "Analyzer": _analyzer,
+    "UploadConditions": _upload_conditions,
+    "UploadSpecs": _upload_specs,
+    "CorrecaoPDM": _correcao_pdm,
+    "CopiaFichas": _copia_fichas,
+    "PMIBManager": _pmib_manager,
+    "SearchPMIB": _busca_pmib,
 }
 
 
