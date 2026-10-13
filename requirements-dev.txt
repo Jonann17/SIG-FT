@@ -8,6 +8,9 @@
 # produção instaladas (ver tests/conftest.py, que faz stub delas via
 # unittest.mock para permitir importar os módulos *_backend.py).
 pytest
+# Fixture `qtbot`: monta widgets Qt de verdade, sem display (offscreen).
+pytest-qt
+PySide6
 
 # lxml — desde 2026-10-05 é dependência de PRODUÇÃO (está no requirements.txt:
 # o editor cirúrgico que grava nos `_STATUS_PMIB`). Fica aqui também porque o CI

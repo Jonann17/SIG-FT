@@ -35,6 +35,13 @@ comportamento das funções caracterizadas continua sendo o comportamento real
 do código em produção (só os SDKs pesados — nunca usados pelas funções puras
 testadas aqui — é que viram Mocks).
 """
+import os as _os_qt
+
+# [Qt6] Sem display no CI e no contêiner: o Qt desenha em memória. Tem de vir
+# antes de qualquer import do PySide6, e setdefault deixa quem quiser ver a
+# janela (QT_QPA_PLATFORM=xcb) rodar com display de verdade.
+_os_qt.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 import importlib.util
 import os
 import sys
@@ -249,3 +256,12 @@ def _isola_os_dados_do_usuario(monkeypatch, tmp_path_factory):
     _dados.esquecer_pasta()
     yield pasta
     _dados.esquecer_pasta()
+
+
+@pytest.fixture
+def qt_interface(qapp):
+    """QApplication pronta e o canal thread -> interface instalado."""
+    from sigft.app_qt import interface
+
+    interface.instalar()
+    return qapp

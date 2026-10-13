@@ -26,6 +26,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 e o minimo; 3.12 e o que a maioria instala hoje. O Qt e a
+        # parte nova que mais depende de versao -- os dois ficam no portao.
+        python: ["3.10", "3.12"]
+
     env:
       # Mesmo motivo do workflow de Release: um `print` com acento num teste
       # ou num script morreria por UnicodeEncodeError. Aqui e barato ligar.
@@ -40,8 +47,13 @@ jobs:
           # 3.10 e o MINIMO que o SIG-FT.bat aceita, e o alvo do ruff/mypy no
           # pyproject.toml. Testar no minimo e o que pega uso de sintaxe nova
           # por engano; a maquina do usuario pode estar exatamente nele.
-          python-version: "3.10"
+          python-version: ${{ matrix.python }}
           cache: pip
+
+      # O PySide6 precisa destas bibliotecas do sistema mesmo em modo
+      # offscreen (sem elas: "libEGL.so.1: cannot open shared object file").
+      - name: Bibliotecas do sistema para o Qt
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libxkbcommon0 libfontconfig1 libgl1
 
       # A suite roda SEM as dependencias pesadas (pandas, playwright,
       # google-generativeai...): tests/conftest.py as dubla. Instalar tudo aqui
