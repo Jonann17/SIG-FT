@@ -1,4 +1,4 @@
-"""`pausar_e_esperar` e `perguntar_retry_excel` para as telas Qt.
+"""`pausar_e_esperar`, `perguntar_retry_excel` e `perguntar_arquivos_travados` para as telas Qt.
 
 Mesma API e mesma regra da versão CustomTkinter:
 * chamado de um worker: a janela nasce na thread da interface (`na_interface`)
@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QInputDialog, QMessageBox
 
 from sigft.app.textos_dialogos import MSG_EXCEL_BLOQUEADO, TEXTO_CONTINUAR, msg_excel_bloqueado
 from sigft.app_qt import interface
-from sigft.app_qt.widgets import dialogs
+from sigft.app_qt.widgets import dialogos_selecao, dialogs
 
 
 class DialogosDeEspera:
@@ -52,6 +52,16 @@ class DialogosDeEspera:
         resultado = self._abrir_e_esperar(lambda evento, res: dialogs.RetryLockDialog(
             self, mensagem=mensagem, evento_espera=evento, resultado=res))
         return bool(resultado.get("retry", False))
+
+    def perguntar_arquivos_travados(self, falhas, momento) -> bool:
+        """Arquivos que não puderam ser gravados (`core.excel.travas.Falha`):
+        `True` = Repetir, `False` = Seguir. É o `callback_travados(falhas,
+        momento)` do Gestão PMIB e do "Aplicar autorizações"; `momento` escolhe
+        os textos (`TEXTOS_TRAVADOS`). "X", Esc ou falha ao abrir = Seguir."""
+        itens = [(f.nome, f.diagnostico.motivo, f.diagnostico.o_que_fazer) for f in falhas]
+        resultado = self._abrir_e_esperar(lambda evento, res: dialogos_selecao.ArquivosTravadosDialog(
+            self, itens=itens, momento=momento, evento_espera=evento, resultado=res))
+        return bool(resultado.get("repetir", False))
 
     # -- perguntas e avisos simples ------------------------------------------
     def _na_interface_e_esperar(self, func):

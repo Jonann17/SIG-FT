@@ -7,7 +7,10 @@ variante); fonte e tamanho continuam por chamada, porque variam de tela a tela.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QVBoxLayout
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QFrame, QLabel, QProgressBar, QPushButton, QScrollArea, QSlider, QVBoxLayout, QWidget,
+)
 
 from sigft.app_qt import estilo
 
@@ -81,3 +84,145 @@ def botao(texto: str, *, variante: str | None = None, largura: int | None = None
     if folha:
         b.setStyleSheet(f"QPushButton {{{folha} }}{extra}")
     return b
+
+
+# --- E3.1: fonte de tupla do Tk, área rolável, barra de progresso, slider -----
+
+# Famílias que o Tk acha e o Qt talvez não: a de reserva tem a mesma cara.
+_RESERVA_DA_FAMILIA = {
+    "Consolas": ["Consolas", "Menlo", "DejaVu Sans Mono", "monospace"],
+    "Segoe UI": ["Segoe UI", "Roboto"],
+}
+
+
+def fonte_tk(tupla, *, em_pontos: bool = False) -> QFont:
+    """`("Roboto", 14, "bold")` do Tk em QFont.
+
+    O mesmo número quer dizer coisas diferentes lá: num widget do
+    CustomTkinter é PIXEL (o CTk passa o tamanho negativo ao Tk); num widget
+    cru do Tk (`tk.Listbox`, `ttk.Treeview`) é PONTO. `em_pontos=True` para os
+    crus.
+    """
+    familia, tamanho, *estilos = tuple(tupla)
+    fonte = QFont()
+    fonte.setFamilies(_RESERVA_DA_FAMILIA.get(familia, [familia]) + ["Roboto", "Noto Emoji"])
+    if familia == "Consolas":
+        fonte.setStyleHint(QFont.StyleHint.Monospace)
+    if em_pontos:
+        fonte.setPointSize(int(tamanho))
+    else:
+        fonte.setPixelSize(int(tamanho))
+    marcas = " ".join(str(e) for e in estilos)
+    fonte.setBold("bold" in marcas)
+    fonte.setItalic("italic" in marcas)
+    return fonte
+
+
+def folha_fonte_tk(tupla, *, em_pontos: bool = False) -> str:
+    """A mesma fonte de `fonte_tk`, em folha de estilo.
+
+    Para widget que a folha do app alcança: o `font-family` dela (Roboto) GANHA
+    do `setFont`, então numa lista em Consolas a família tem de ir na folha.
+    """
+    f = fonte_tk(tupla, em_pontos=em_pontos)
+    familias = ", ".join(f'"{n}"' for n in f.families())
+    tamanho = f"{f.pointSize()}pt" if em_pontos else f"{f.pixelSize()}px"
+    peso = "bold" if f.bold() else "normal"
+    return f"font-family: {familias}; font-size: {tamanho}; font-weight: {peso};"
+
+
+def area_rolavel(layout_pai=None, *, cor: str | None = None, margem: int = 6):
+    """CTkScrollableFrame: devolve `(area, layout)` -- os filhos vão no `layout`.
+
+    `cor=None` é o `fg_color="transparent"` (o uso mais comum nas telas); com
+    cor, o quadro tem os cantos de 6 do CTkFrame. `margem` é o recuo do
+    conteúdo (6 = o canto, medido). A barra de rolagem é a do CTk (16 px, alça
+    gray41 de 8) e aparece só quando há o que rolar -- a mesma decisão da barra
+    lateral (main.py): lá ela é um traço sempre visível que não rola nada.
+    """
+    area = QScrollArea()
+    area.setWidgetResizable(True)
+    area.setFrameShape(QFrame.Shape.NoFrame)
+    area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    fundo = estilo.cinza_tk(cor) if cor else "transparent"
+    area.setStyleSheet(f"QScrollArea {{ background: {fundo}; border: none; border-radius: 6px; }}")
+    area.viewport().setStyleSheet("background: transparent;")
+    interno = QWidget()
+    interno.setStyleSheet("background: transparent;")
+    layout = QVBoxLayout(interno)
+    layout.setContentsMargins(margem, margem, margem, margem)
+    layout.setSpacing(0)
+    layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+    area.setWidget(interno)
+    folga = (estilo.LARGURA_ROLAGEM_CTK - 8) // 2
+    area.verticalScrollBar().setStyleSheet(
+        f"QScrollBar:vertical {{ width: {estilo.LARGURA_ROLAGEM_CTK}px; background: transparent;"
+        f" margin: {margem + folga}px 0 {margem + folga}px 0; }}"
+        f" QScrollBar::handle:vertical {{ background: {estilo.cinza_tk('gray41')}; border-radius: 4px;"
+        f" margin: 0 {folga}px; min-height: 20px; }}"
+        f" QScrollBar::handle:vertical:hover {{ background: {estilo.cinza_tk('gray53')}; }}"
+        " QScrollBar::add-line, QScrollBar::sub-line { height: 0; }"
+        " QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }")
+    if layout_pai is not None:
+        layout_pai.addWidget(area)
+    return area, layout
+
+
+def barra_progresso(*, largura: int | None = None, altura: int = 8, cor: str | None = None,
+                    fundo: str = estilo.TRILHO_CTK, barra: QProgressBar | None = None) -> QProgressBar:
+    """CTkProgressBar: `width`/`height`/`progress_color`/`fg_color` do CTk.
+
+    Padrão do tema: 200 x 8 (aqui a largura só é fixada se pedida), trilho
+    #4A4D50, progresso azul, pontas redondas (corner_radius=1000 -> metade da
+    altura). Faixa 0-1000, sem texto. `barra=` estiliza uma que já existe (ex.:
+    `ModuleFrame.progress_bar`).
+    """
+    barra = barra or QProgressBar()
+    barra.setRange(0, 1000)
+    barra.setTextVisible(False)
+    barra.setFixedHeight(altura)
+    if largura:
+        barra.setFixedWidth(largura)
+    raio = altura // 2
+    barra.setStyleSheet(
+        f"QProgressBar {{ background: {fundo}; border: none; border-radius: {raio}px;"
+        f" min-height: {altura}px; max-height: {altura}px; }}"
+        f" QProgressBar::chunk {{ background: {cor or estilo.AZUL_CTK}; border-radius: {raio}px; }}")
+    return barra
+
+
+def definir_progresso(barra: QProgressBar, fracao: float) -> None:
+    """O `progress_bar.set(fracao)` do CTk (0.0 a 1.0) numa barra de `barra_progresso`.
+
+    O CTk desenha o trecho cheio com as pontas redondas DENTRO da barra: com
+    raio r e largura L, ele vai até r + fracao * (L - 2r) + r -- em 0 já há um
+    ponto de 2r, e em 40% de 200 x 8 o fim está em 84,8 (o `setValue` cru daria 80).
+    """
+    fracao = min(max(float(fracao), 0.0), 1.0)
+    largura = barra.width() or 1
+    raio = barra.height() / 2
+    cheio = 2 * raio + fracao * (largura - 2 * raio)
+    barra.setValue(round(barra.maximum() * min(cheio / largura, 1.0)))
+
+
+def slider(*, minimo: int = 0, maximo: int = 100, largura: int = 200, cor_botao: str | None = None,
+           cor_percorrido: str | None = None, cor_botao_hover: str | None = None) -> QSlider:
+    """CTkSlider horizontal (`from_`/`to` inteiros; `number_of_steps` = a faixa).
+
+    A cara vem da folha global; `cor_botao`/`cor_percorrido` são o
+    `button_color`/`progress_color` do CTk (o Analisador pinta os dois de
+    primary). O hover do botão, que o CTk deriva do tema, vira `cor_botao_hover`.
+    """
+    s = QSlider(Qt.Orientation.Horizontal)
+    s.setRange(minimo, maximo)
+    s.setFixedSize(largura, estilo.ALTURA_SLIDER_CTK)
+    folha = ""
+    if cor_botao:
+        folha += f" QSlider::handle:horizontal {{ background: {cor_botao}; }}"
+    if cor_botao_hover:
+        folha += f" QSlider::handle:horizontal:hover {{ background: {cor_botao_hover}; }}"
+    if cor_percorrido:
+        folha += f" QSlider::sub-page:horizontal {{ background: {cor_percorrido}; }}"
+    if folha:
+        s.setStyleSheet(folha.strip())
+    return s
