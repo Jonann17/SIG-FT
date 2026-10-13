@@ -61,6 +61,16 @@ pmib_manager_backend = None
 search_pmib_backend = None
 
 
+# [Qt6] O motivo de cada backend que não carregou, por nome de destino
+# ("pdm_backend", "mixed_classes"...). Antes a falha só ia para o console da
+# splash, e a tela quebrava depois com `AttributeError: 'NoneType'`.
+falhas: dict[str, BaseException] = {}
+
+
+class BackendIndisponivel(RuntimeError):
+    """O backend que a tela pediu não carregou. A mensagem é para a pessoa."""
+
+
 # --- O que carregar, e com que nome aparecer na barra de progresso ----------
 # Formato: (módulo, atributo de destino, classes específicas, nome exibido).
 # Copiado do `SplashScreen.carregar_modulos`, na mesma ORDEM — a ordem é o que
@@ -122,6 +132,7 @@ def carregar_todos(ao_progredir=None, ao_falhar=None, pausa_fn=None) -> None:
                 pausa_fn()
             carregar_um(nome_modulo, destino, classes)
         except Exception as erro:  # noqa: BLE001 — ver docstring
+            falhas[destino] = erro
             if ao_falhar is not None:
                 ao_falhar(exibido, erro)
 
@@ -129,3 +140,22 @@ def carregar_todos(ao_progredir=None, ao_falhar=None, pausa_fn=None) -> None:
 def esta_carregado(nome: str) -> bool:
     """`True` se o backend `nome` já foi carregado (útil em teste e diagnóstico)."""
     return globals().get(nome) is not None
+
+
+def motivo_da_falha(nome: str) -> str | None:
+    erro = falhas.get(nome)
+    return None if erro is None else f"{type(erro).__name__}: {erro}"
+
+
+def exigir(nome: str):
+    """O backend `nome`, ou `BackendIndisponivel` com o motivo em português."""
+    objeto = globals().get(nome)
+    if objeto is not None:
+        return objeto
+    motivo = motivo_da_falha(nome)
+    if motivo is None:
+        raise BackendIndisponivel(
+            f"O módulo '{nome}' ainda não foi carregado. Espere a abertura terminar.")
+    raise BackendIndisponivel(
+        f"Este módulo não carregou: {motivo}\n\n"
+        "O detalhe está em Documentos\\SIG-FT\\logs\\sigft.log.")
