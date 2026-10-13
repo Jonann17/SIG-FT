@@ -20,6 +20,12 @@ ALTURA_BOTAO_MENU = 35
 ESPACO_MENU = 4
 ALTURA_BOTAO_BARRA = 40
 
+# Tema "dark-blue" do CustomTkinter (customtkinter/assets/themes/dark-blue.json),
+# o que `sigft/app/main.py` usa: é o que pinta tudo o que as telas antigas não
+# coloriam à mão.
+AZUL_CTK = "#1F538D"
+AZUL_CTK_HOVER = "#14375E"
+
 _SELETOR_TEXTO = "\ufe0e"   # U+FE0E: pede a forma de texto (preto e branco)
 _SELETOR_EMOJI = "\ufe0f"   # U+FE0F: pede a forma de emoji (colorida)
 
@@ -110,14 +116,17 @@ def folha_de_estilo() -> str:
     c = theme.COLORS
     fam = '"Roboto", "Noto Emoji"'
     return f"""
-QMainWindow, QDialog, #conteudo, #tela {{ background: {c['background']}; }}
+QMainWindow, #conteudo, #tela {{ background: {c['background']}; }}
+QDialog {{ background: {cinza_tk('gray10')}; }}
 QWidget {{ font-family: {fam}; color: {c['text_light']}; }}
 #sidebar, #sidebar_interno {{ background: {c['sidebar']}; border: none; }}
 #secao {{ color: {cinza_tk('gray50')}; font-size: 11px; font-weight: bold; padding-left: 10px; }}
 #app_nome {{ color: {cinza_tk('gray60')}; font-size: 13px; }}
-QPushButton {{ border-radius: 6px; color: {c['text_light']}; background: {c['primary']};
+QPushButton {{ border-radius: 6px; color: {c['text_light']}; background: {AZUL_CTK};
                border: none; padding: 0 14px; min-height: 28px; font-size: 13px; }}
-QPushButton:hover {{ background: {c['primary_hover']}; }}
+QPushButton:hover {{ background: {AZUL_CTK_HOVER}; }}
+QPushButton[variante="primario"] {{ background: {c['primary']}; }}
+QPushButton[variante="primario"]:hover {{ background: {c['primary_hover']}; }}
 QPushButton:disabled {{ color: {cinza_tk('gray45')}; }}
 QPushButton[menu="true"] {{ background: transparent; text-align: left; padding: 0 10px;
     min-height: {ALTURA_BOTAO_MENU}px; max-height: {ALTURA_BOTAO_MENU}px; font-size: 12px; }}
@@ -145,11 +154,24 @@ QPushButton[variante="contorno"] {{ background: transparent; border: 1px solid #
 #console {{ background: #1D1E1E; border: 1px solid #333333; border-radius: 6px;
             font-family: "Consolas", "Menlo", monospace; font-size: 12px; }}
 QCheckBox {{ font-size: 12px; }}
-QCheckBox::indicator {{ width: 20px; height: 20px; border: 2px solid {cinza_tk('gray45')};
+QCheckBox::indicator {{ width: 20px; height: 20px; border: 3px solid #949A9F;
                         border-radius: 6px; background: transparent; }}
-QCheckBox::indicator:checked {{ background: {c['primary']}; border-color: {c['primary']}; }}
+QCheckBox::indicator:checked {{ background: {AZUL_CTK}; border-color: {AZUL_CTK}; }}
 QProgressBar {{ background: #333333; border: none; border-radius: 5px; max-height: 12px; }}
 QProgressBar::chunk {{ background: {c['primary']}; border-radius: 5px; }}
+QLineEdit {{ background: #343638; border: 2px solid #565B5E; border-radius: 6px;
+             color: {cinza_tk('gray84')}; padding: 4px 8px; min-height: 22px; }}
+QLineEdit:disabled {{ color: {cinza_tk('gray45')}; }}
+QComboBox {{ background: {AZUL_CTK}; border-radius: 6px; padding: 4px 10px;
+             color: #DCE4EE; min-height: 22px; }}
+QTabWidget::pane {{ border: none; background: {cinza_tk('gray16')}; border-radius: 6px; }}
+QTabBar::tab {{ background: {cinza_tk('gray29')}; color: #DCE4EE; padding: 6px 14px;
+                margin: 0 1px; border-radius: 6px; }}
+QTabBar::tab:selected {{ background: {AZUL_CTK}; }}
+QTabBar::tab:hover:!selected {{ background: {cinza_tk('gray41')}; }}
+QListWidget {{ background: #1E1E1E; color: {c['text_light']}; border: none; }}
+QListWidget::item:selected {{ background: {c['primary']}; color: white; }}
+#cartao {{ background: {theme.COR_CARTAO}; border-radius: 8px; }}
 QScrollArea {{ border: none; background: transparent; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; }}
 QScrollBar::handle:vertical {{ background: #4A4D50; border-radius: 5px; min-height: 30px; }}

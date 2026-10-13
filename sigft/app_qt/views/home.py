@@ -18,8 +18,8 @@ from sigft.app_qt.estilo import mono
 
 BARRA = [
     ("atividades", "\U0001F4CB  Atividades do dia", "acento"),
-    ("modelos", "\U0001F916  Modelos de IA", None),
-    ("gastos", "\U0001F4B0  Gastos de IA", None),
+    ("modelos", "\U0001F916  Modelos de IA", "primario"),
+    ("gastos", "\U0001F4B0  Gastos de IA", "primario"),
     ("chaves", "\U0001F511  Chaves de API", "neutro"),
     ("atualizacoes", "\U0001F504  Atualizações", "neutro"),
 ]

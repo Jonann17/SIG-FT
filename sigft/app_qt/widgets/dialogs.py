@@ -53,6 +53,7 @@ class PausaLoginDialog(_DialogoDeAcaoManual):
         self._evento = evento_espera
         self.botao = QPushButton(texto_botao)
         self.botao.setMinimumHeight(45)
+        self.botao.setProperty("variante", "primario")
         self.botao.setStyleSheet("font-size: 14px; font-weight: bold;")
         self.botao.clicked.connect(self.liberar)
         self.layout_principal.addWidget(self.botao, 0, Qt.AlignmentFlag.AlignHCenter)
@@ -77,6 +78,7 @@ class RetryLockDialog(_DialogoDeAcaoManual):
         self._resultado = resultado
         linha = QHBoxLayout()
         self.botao_repetir = QPushButton("Tentar Novamente")
+        self.botao_repetir.setProperty("variante", "primario")
         self.botao_cancelar = QPushButton("Ignorar e Continuar")
         self.botao_cancelar.setProperty("variante", "contorno")
         for botao in (self.botao_repetir, self.botao_cancelar):
