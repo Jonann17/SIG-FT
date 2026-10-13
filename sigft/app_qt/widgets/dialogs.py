@@ -73,11 +73,19 @@ class PausaLoginDialog(_DialogoDeAcaoManual):
         super().__init__(parent, titulo="Ação Manual Necessária", mensagem=mensagem,
                          largura=450, altura=250)
         self._evento = evento_espera
+        # [E4.7] Medidas do CTk: texto com pady=30 (expand) e botão de 45 com
+        # pady=(0, 20) -- o texto fica centrado em 125 px a partir de y=30, e
+        # o botão em y=185. A altura vai na folha do PRÓPRIO botão: o
+        # `setMinimumHeight` perdia para o `min-height: 28px` da folha do app.
+        # Largura = texto + 6 de cada lado, como o CTkButton.
+        self.layout_principal.setContentsMargins(20, 30, 20, 20)
+        self.layout_principal.setSpacing(0)
         self.botao = QPushButton(texto_botao)
-        self.botao.setMinimumHeight(45)
         self.botao.setProperty("variante", "primario")
-        self.botao.setStyleSheet("font-size: 14px; font-weight: bold;")
+        self.botao.setStyleSheet("QPushButton { font-size: 14px; font-weight: bold; padding: 0 6px;"
+                                 " min-height: 45px; max-height: 45px; }")
         self.botao.clicked.connect(self.liberar)
+        self.layout_principal.addSpacing(30)
         self.layout_principal.addWidget(self.botao, 0, Qt.AlignmentFlag.AlignHCenter)
 
     def liberar(self) -> None:
