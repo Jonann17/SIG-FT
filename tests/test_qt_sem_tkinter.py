@@ -57,6 +57,7 @@ def _importa_sem_tk(modulo):
     "sigft.app_qt.views.apagar_lmr",
     "sigft.app_qt.views.lmr",
     "sigft.app_qt.views.aplicacao_lmr",
+    "sigft.app_qt.views.analyzer",
     "sigft.app_qt.views.busca_pmib",
     "sigft.app_qt.views.janelas",
     "sigft.app_qt.views.pmib_manager",
