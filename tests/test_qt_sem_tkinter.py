@@ -47,6 +47,9 @@ def _importa_sem_tk(modulo):
     "sigft.app_qt.widgets.espera",
     "sigft.app_qt.widgets.module_frame",
     "sigft.app_qt.main",
+    "sigft.app_qt.file_dialogs",
+    "sigft.app_qt.widgets.pickers",
+    "sigft.app_qt.widgets.blocos",
 ])
 def test_importa_sem_tkinter(modulo):
     resultado = _importa_sem_tk(modulo)
