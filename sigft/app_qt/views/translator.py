@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMessageBox
 
 from sigft.app import backends, theme
-from sigft.app_qt import file_dialogs, interface
+from sigft.app_qt import estilo, file_dialogs, interface
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.core import plataforma
@@ -24,30 +24,39 @@ class ModuloTranslator(ModuleFrame):
         super().__init__(parent, controller, titulo="Tradutor Técnico (PT -> ES)")
 
     def _build_ui(self) -> None:
+        # Espaços verticais do `pack` da tela antiga (pady de cada peça). O pady
+        # de dois vizinhos SOMA no Tk, então o espaço entre eles é a soma dos
+        # dois: por isso o espaçamento automático do cartão vai a zero.
+        self.content_layout.addSpacing(20)              # cartão: pady=20
         corpo = blocos.cartao(self.content_layout)
+        corpo.setSpacing(0)
+        corpo.setContentsMargins(20, 20, 20, 20)        # título: pady=(20, …); glossário: (…, 20)
         corpo.addWidget(blocos.rotulo("Tradução Automática de Características", tamanho=16,
                                       negrito=True, cor=theme.COLORS["accent"]))
-        descricao = blocos.rotulo(
+        corpo.addSpacing(10)                            # título (…, 10) + descrição (0, …)
+        corpo.addWidget(blocos.rotulo(
             "Selecione as planilhas para traduzir do Português para Espanhol.\n"
             "O sistema cria uma nova aba traduzida.\n"
             "A tradução roda neste computador: nenhuma resposta sai daqui.",
-            cor="#BEBEBE")
-        # As 3 linhas já vêm quebradas no texto. Com quebra automática, o
-        # rótulo centralizado no cartão recebe largura estreita e altura de
-        # uma linha, e o texto aparece cortado.
-        descricao.setWordWrap(False)
-        corpo.addWidget(descricao)
+            cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO)))
         self.btn_run = blocos.botao("Selecionar Arquivos e Iniciar", variante="primario",
-                                    largura=300, altura=50, tamanho_fonte=14, negrito=True)
+                                    largura=300, altura=50, tamanho_fonte=14, negrito=True,
+                                    cor_texto=theme.COLORS["text_white"])
         self.btn_run.clicked.connect(self.iniciar_traducao)
-        self.btn_stop = blocos.botao("PARAR AGORA", variante="perigo", largura=200, altura=40)
+        self.btn_stop = blocos.botao("PARAR AGORA", variante="perigo", largura=200, altura=40,
+                                     cor_texto=theme.COLORS["text_white"])
         self.btn_stop.setEnabled(False)
         self.btn_stop.clicked.connect(self.parar_traducao)
+        # Lá: fg_color="transparent", border_width=1 e texto text_light.
         self.btn_glossario = blocos.botao("Abrir glossário (correções de termos)",
-                                          variante="contorno", largura=300, altura=32)
+                                          variante="contorno_padrao", largura=300, altura=32)
         self.btn_glossario.clicked.connect(self.abrir_glossario)
-        for b in (self.btn_run, self.btn_stop, self.btn_glossario):
+        # descrição (…, 20) + iniciar (10, …); iniciar (…, 10) + parar (10, …);
+        # parar (…, 10) + glossário (0, …).
+        for espaco, b in ((30, self.btn_run), (20, self.btn_stop), (10, self.btn_glossario)):
+            corpo.addSpacing(espaco)
             corpo.addWidget(b, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self.content_layout.addSpacing(20)
         self.content_layout.addStretch()
 
     def _tradutor(self):

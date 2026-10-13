@@ -81,3 +81,36 @@ def test_backend_que_nao_carregou_nao_abre_dialogo(tela, monkeypatch):
     monkeypatch.setattr(tela_mod.file_dialogs, "ask_open_files", lambda *a, **k: chamou.append(1))
     tela.btn_run.click()
     assert chamou == []
+
+
+def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
+    # Medidas da tela antiga (CustomTkinter, 1280x850, sondadas com winfo_*),
+    # relativas à área da tela: título em (20, 10) dentro da tela posta com
+    # padx/pady=20; cartão 20 px abaixo do conteúdo; botões 50/40/32 de altura
+    # com 30/20/10 px de espaço entre as peças; console 20 px abaixo do conteúdo.
+    from sigft.app_qt import estilo
+
+    anterior = qt_interface.styleSheet()
+    qt_interface.setStyleSheet(estilo.folha_de_estilo())
+    try:
+        t = tela_mod.ModuloTranslator()
+        qtbot.addWidget(t)
+        t.resize(1003, 850)
+        t.show()
+        qtbot.waitExposed(t)
+
+        def pos(w):
+            return w.mapTo(t, w.rect().topLeft())
+
+        assert (pos(t.label_titulo).x(), pos(t.label_titulo).y()) == (40, 30)
+        assert pos(t.content).y() - (pos(t.header).y() + t.header.height()) == 20
+        assert pos(t.console).y() - (pos(t.content).y() + t.content.height()) == 20
+        assert t.height() - (pos(t.console).y() + t.console.height()) == 30
+        cartao = t.btn_run.parentWidget()
+        assert pos(cartao).y() - pos(t.content).y() == 20
+        assert (t.btn_run.height(), t.btn_stop.height(), t.btn_glossario.height()) == (50, 40, 32)
+        assert pos(t.btn_stop).y() - (pos(t.btn_run).y() + 50) == 20
+        assert pos(t.btn_glossario).y() - (pos(t.btn_stop).y() + 40) == 10
+        assert pos(cartao).y() + cartao.height() - (pos(t.btn_glossario).y() + 32) == 20
+    finally:
+        qt_interface.setStyleSheet(anterior)

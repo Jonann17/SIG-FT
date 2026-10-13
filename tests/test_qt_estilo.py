@@ -10,7 +10,8 @@ from sigft.app_qt import estilo
 def test_cinza_tk_converte_como_o_tk():
     assert estilo.cinza_tk("gray70") == "#B3B3B3"
     assert estilo.cinza_tk("gray30") == "#4D4D4D"
-    assert estilo.cinza_tk("gray") == "#BEBEBE"
+    # "gray" sem número: o Tk 8.6 usa o valor do W3C (#808080), não o #BEBEBE do X11.
+    assert estilo.cinza_tk("gray") == "#808080"
     assert estilo.cinza_tk("#123456") == "#123456"
     assert estilo.cinza_tk("gray50") == "#7F7F7F"
     assert estilo.cinza_tk("gray90") == "#E5E5E5"

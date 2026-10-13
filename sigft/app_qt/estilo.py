@@ -25,6 +25,15 @@ ALTURA_BOTAO_BARRA = 40
 # coloriam à mão.
 AZUL_CTK = "#1F538D"
 AZUL_CTK_HOVER = "#14375E"
+# CTkButton do mesmo tema: borda (índice 1 = escuro) de um botão com
+# `border_width` e sem `border_color`, e texto de um botão desabilitado (gray60).
+BORDA_CTK = "#949A9F"
+TEXTO_DESABILITADO_CTK = "gray60"
+
+# Espessura da borda (px) de cada variante de botão que tem borda. `blocos.botao`
+# desconta isto da altura: no Qt o `min-height` da folha NÃO inclui a borda, e no
+# CustomTkinter `height` é a altura total do botão, borda incluída.
+BORDA_DA_VARIANTE = {"contorno": 1, "contorno_padrao": 1}
 
 _SELETOR_TEXTO = "\ufe0e"   # U+FE0E: pede a forma de texto (preto e branco)
 _SELETOR_EMOJI = "\ufe0f"   # U+FE0F: pede a forma de emoji (colorida)
@@ -49,9 +58,13 @@ _NIVEIS_CINZA_X11 = (
 
 
 def cinza_tk(nome: str) -> str:
-    """`"grayNN"` do Tk em hexadecimal. O Qt não conhece esses nomes e pinta preto."""
+    """`"grayNN"` do Tk em hexadecimal. O Qt não conhece esses nomes e pinta preto.
+
+    `"gray"` sem número é #808080, e NÃO o #BEBEBE do rgb.txt do X11: o Tk 8.6
+    adotou o valor do W3C/CSS para gray/grey (os "grayNN" seguem o X11).
+    """
     if nome in ("gray", "grey"):
-        return "#BEBEBE"
+        return "#808080"
     achado = re.fullmatch(r"gr[ae]y(\d{1,3})", nome)
     if not achado or int(achado.group(1)) > 100:
         return nome
@@ -115,6 +128,11 @@ def folha_de_estilo() -> str:
     """A folha QSS do app inteiro, montada a partir de `theme.py`."""
     c = theme.COLORS
     fam = '"Roboto", "Noto Emoji"'
+    # Notas que não cabem dentro da folha (comentário nela vazaria "gray" no QSS):
+    # * variante "contorno": o "Ignorar e Continuar" de sigft/app/widgets/dialogs.py
+    #   (borda #555 e texto COR_TEXTO_APOIO, escritos à mão); "contorno_padrao": botão
+    #   transparente com border_width=1 e sem border_color/text_color -- o do tema;
+    # * #console: CTkTextbox do tema dark-blue -- fg gray20, border_width 0, texto gray84.
     return f"""
 QMainWindow, #conteudo, #tela {{ background: {c['background']}; }}
 QDialog {{ background: {cinza_tk('gray10')}; }}
@@ -127,10 +145,11 @@ QPushButton {{ border-radius: 6px; color: {c['text_light']}; background: {AZUL_C
 QPushButton:hover {{ background: {AZUL_CTK_HOVER}; }}
 QPushButton[variante="primario"] {{ background: {c['primary']}; }}
 QPushButton[variante="primario"]:hover {{ background: {c['primary_hover']}; }}
-QPushButton:disabled {{ color: {cinza_tk('gray45')}; }}
+QPushButton:disabled {{ color: {cinza_tk(TEXTO_DESABILITADO_CTK)}; }}
 QPushButton[menu="true"] {{ background: transparent; text-align: left; padding: 0 10px;
     min-height: {ALTURA_BOTAO_MENU}px; max-height: {ALTURA_BOTAO_MENU}px; font-size: 12px; }}
 QPushButton[menu="true"]:hover {{ background: {c['primary']}; }}
+QPushButton[menu="true"]:disabled {{ color: {cinza_tk('gray45')}; }}
 #home {{ background: transparent; text-align: left; font-weight: bold;
          border: 1px solid {cinza_tk('gray30')}; }}
 #home:hover {{ background: {c['primary']}; }}
@@ -141,8 +160,12 @@ QPushButton[variante="acento"]:hover {{ background: {c['accent_hover']}; }}
 QPushButton[variante="neutro"] {{ background: #3A3A3A; }}
 QPushButton[variante="neutro"]:hover {{ background: #4A4A4A; }}
 QPushButton[variante="perigo"] {{ background: {c['danger']}; }}
-QPushButton[variante="contorno"] {{ background: transparent; border: 1px solid #555555;
-    color: {cinza_tk('gray')}; }}
+QPushButton[variante="contorno"] {{ background: transparent;
+    border: {BORDA_DA_VARIANTE['contorno']}px solid #555555; color: {cinza_tk('gray')}; }}
+QPushButton[variante="contorno_padrao"] {{ background: transparent;
+    border: {BORDA_DA_VARIANTE['contorno_padrao']}px solid {BORDA_CTK}; color: {c['text_light']}; }}
+QPushButton[variante="contorno"]:hover, QPushButton[variante="contorno_padrao"]:hover {{
+    background: {AZUL_CTK_HOVER}; }}
 #titulo_home {{ font-size: 32px; font-weight: bold; }}
 #subtitulo_home {{ font-size: 16px; color: {cinza_tk('gray70')}; }}
 #texto_simples {{ font-size: 14px; }}
@@ -151,8 +174,8 @@ QPushButton[variante="contorno"] {{ background: transparent; border: 1px solid #
 #card:hover {{ border: 1px solid {c['accent']}; }}
 #card_titulo {{ color: {c['accent']}; font-size: 15px; font-weight: bold; background: transparent; }}
 #card_desc {{ color: {cinza_tk('gray70')}; font-size: 12px; background: transparent; }}
-#console {{ background: #1D1E1E; border: 1px solid #333333; border-radius: 6px;
-            font-family: "Consolas", "Menlo", monospace; font-size: 12px; }}
+#console {{ background: {cinza_tk('gray20')}; border: none; border-radius: 6px;
+            color: {cinza_tk('gray84')}; font-family: "Consolas", "Menlo", monospace; font-size: 12px; }}
 QCheckBox {{ font-size: 12px; }}
 QCheckBox::indicator {{ width: 20px; height: 20px; border: 3px solid #949A9F;
                         border-radius: 6px; background: transparent; }}

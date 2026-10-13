@@ -23,6 +23,9 @@ from sigft.app_qt import interface
 from sigft.app_qt.widgets.console import ConsoleFrame
 from sigft.app_qt.widgets.espera import DialogosDeEspera
 
+# O padx/pady=20 com que o `show_frame` do CustomTkinter põe cada tela na janela.
+MARGEM_DA_TELA = 20
+
 
 def _reabilitar(botao) -> None:
     """Devolve o botão. A tela pode ter sido fechada antes de a tarefa acabar."""
@@ -52,8 +55,14 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         self.controller = controller
         self.embutida = embutida
         raiz = QVBoxLayout(self)
-        raiz.setContentsMargins(theme.PADDING_X, theme.PADDING_Y, theme.PADDING_X, theme.PADDING_Y)
-        raiz.setSpacing(theme.PADDING_Y)
+        # As medidas do CustomTkinter somadas: `show_frame` põe a tela inteira
+        # com padx=20/pady=20 (sigft/app/main.py), e o `ModuleFrame` de lá põe
+        # header, conteúdo e console cada um com padx=PADDING_X/pady=PADDING_Y
+        # (sigft/app/widgets/module_frame.py). O pady de dois vizinhos soma:
+        # entre eles ficam 2 * PADDING_Y.
+        raiz.setContentsMargins(MARGEM_DA_TELA + theme.PADDING_X, MARGEM_DA_TELA + theme.PADDING_Y,
+                                MARGEM_DA_TELA + theme.PADDING_X, MARGEM_DA_TELA + theme.PADDING_Y)
+        raiz.setSpacing(2 * theme.PADDING_Y)
 
         self.content = QWidget()
         self.content_layout = QVBoxLayout(self.content)
@@ -79,7 +88,9 @@ class ModuleFrame(DialogosDeEspera, QWidget):
             if cor_titulo:
                 self.label_titulo.setStyleSheet(f"color: {cor_titulo};")
             linha_header.addWidget(self.label_titulo)
-            self.header.setFixedHeight(theme.ALTURA_HEADER)
+            # SEM `setFixedHeight(theme.ALTURA_HEADER)`: lá o título entra no
+            # header com `pack`, e o quadro encolhe até a altura do título
+            # (29 px medidos, não os 50 pedidos). Altura natural aqui também.
             raiz.addWidget(self.header)
             raiz.addWidget(self.content, peso_conteudo)
             self.progress_bar = None
