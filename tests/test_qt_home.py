@@ -45,6 +45,34 @@ def test_canal_de_testes_lembra_a_escolha(qt_interface, qtbot, monkeypatch):
     assert gravado == [True]
 
 
+def test_titulo_do_card_fica_no_topo_quando_o_vizinho_e_mais_alto(qt_interface, qtbot):
+    # No CTk (grid sticky="nsew" + pack no topo) a sobra do card mais baixo da
+    # linha fica EMBAIXO; o título não desce para o meio do card.
+    from PySide6.QtWidgets import QLabel
+
+    from sigft.app_qt import estilo
+
+    anterior = qt_interface.styleSheet()
+    estilo.carregar_fontes()
+    qt_interface.setStyleSheet(estilo.folha_de_estilo())
+    try:
+        home = HomeView(controller=Controller())
+        qtbot.addWidget(home)
+        home.resize(1280 - estilo.LARGURA_BARRA_LATERAL, 850)
+        home.show()
+        qtbot.waitExposed(home)
+        alturas = {card.height() for card in home.cards.values()}
+        assert len(alturas) > 1, "o teste precisa de cards de alturas diferentes"
+        topos = set()
+        for card in home.cards.values():
+            titulo = card.findChild(QLabel, "card_titulo")
+            topos.add(titulo.y())
+            assert titulo.height() == titulo.sizeHint().height(), card._alvo
+        assert len(topos) == 1, topos  # 1 da borda + 12 da margem, em todos
+    finally:
+        qt_interface.setStyleSheet(anterior)
+
+
 def test_tela_nao_migrada_diz_o_nome(qt_interface, qtbot):
     t = TelaNaoMigrada("AutoSpec")
     qtbot.addWidget(t)

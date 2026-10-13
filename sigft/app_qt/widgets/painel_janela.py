@@ -12,7 +12,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from sigft.app_qt import estilo
-from sigft.app_qt.widgets import blocos
+from sigft.app_qt.widgets import blocos, dialogs
+
+# O conteúdo do CTkScrollableFrame começa 6 px para dentro (o canto do quadro).
+RECUO_ROLAGEM = 6
 
 # Mesma ideia do `_ABERTOS` dos diálogos: a janela vive enquanto está aberta,
 # mesmo que quem a abriu não guarde a referência. Chave = id(): as conexões que
@@ -35,8 +38,9 @@ class JanelaPainel(QWidget):
     do CTk do ponto de vista de quem abriu: a tela não precisa saber se a janela
     ainda existe. Sem pai, ao fechar ela sai de `_ABERTAS` e o Python a recolhe;
     com pai (a Home), fica oculta até o pai morrer -- e sai de `_ABERTAS` também
-    se o pai for destruído com ela aberta (`destroyed`). Cada clique na Home abre
-    uma janela nova, como lá.
+    se o pai for destruído com ela aberta (`destroyed`). A Home guarda uma janela
+    de cada painel: o segundo clique traz a aberta para a frente, e a fechada dá
+    lugar a uma nova (`HomeView._abrir_painel`).
     """
 
     def __init__(self, master=None, *, titulo: str, montar, geometria: str = "900x680") -> None:
@@ -54,7 +58,18 @@ class JanelaPainel(QWidget):
         # entre os dois, 10 + 0.
         layout.setContentsMargins(10, 10, 10, 12)
         layout.setSpacing(0)
-        self.area, self._layout_conteudo = blocos.area_rolavel()
+        self.area, self._layout_conteudo = blocos.area_rolavel(margem=RECUO_ROLAGEM)
+        # E5.1: a barra SEMPRE à vista, como no CTkScrollableFrame (que reserva a
+        # faixa mesmo sem nada para rolar, com a alça cheia): 17 px, 1 antes da
+        # borda direita, alça de 8 a 4 px da esquerda; o conteúdo vai até ela.
+        # Sem isso os painéis da Home saíam 11 px mais largos que lá (o quadro
+        # das chaves: 708 x 697). Mesma conta de `views/pdm.py`.
+        self.area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.area.verticalScrollBar().setStyleSheet(
+            estilo.folha_rolagem_ctk(margem_vertical=RECUO_ROLAGEM + 4)
+            + f"\nQScrollBar:vertical {{ width: {estilo.LARGURA_ROLAGEM_CTK + 1}px;"
+            f" margin: {RECUO_ROLAGEM + 4}px 5px {RECUO_ROLAGEM + 4}px 4px; }}")
+        self._layout_conteudo.setContentsMargins(RECUO_ROLAGEM, RECUO_ROLAGEM, 0, RECUO_ROLAGEM)
         self.conteudo = self.area.widget()
         layout.addWidget(self.area, 1)
         layout.addSpacing(10)
@@ -63,6 +78,9 @@ class JanelaPainel(QWidget):
 
         # primary com hover primary_hover: é a variante "primario" da folha.
         self.botao_fechar = blocos.botao("Fechar", variante="primario", largura=120, altura=28)
+        # Nenhuma tecla o aperta (o CTkButton nunca pega o foco): um Espaço
+        # perdido fecharia o painel e jogaria fora as chaves digitadas.
+        dialogs.sem_tecla(self.botao_fechar)
         self.botao_fechar.clicked.connect(self.close)
         layout.addWidget(self.botao_fechar, 0, Qt.AlignmentFlag.AlignHCenter)
 

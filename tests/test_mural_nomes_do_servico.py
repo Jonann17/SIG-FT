@@ -29,7 +29,13 @@ RAIZ = pathlib.Path(__file__).resolve().parent.parent
 ARQUIVOS = [
     RAIZ / "sigft" / "app" / "views" / "home.py",
     RAIZ / "sigft" / "app" / "widgets" / "mural.py",
+    # [2026-10-09] A Home e o mural da interface Qt (E5.1): a mesma leitura e o
+    # mesmo desenho, então as mesmas travas.
+    RAIZ / "sigft" / "app_qt" / "views" / "home.py",
+    RAIZ / "sigft" / "app_qt" / "widgets" / "mural.py",
 ]
+HOMES = [p for p in ARQUIVOS if p.name == "home.py"]
+MURAIS = [p for p in ARQUIVOS if p.name == "mural.py"]
 
 
 def _apelidos_do_servico(arvore):
@@ -47,7 +53,7 @@ def _apelidos_do_servico(arvore):
     return apelidos
 
 
-@pytest.mark.parametrize("caminho", ARQUIVOS, ids=lambda p: p.name)
+@pytest.mark.parametrize("caminho", ARQUIVOS, ids=lambda p: f"{p.parent.parent.name}/{p.name}")
 def test_todo_nome_citado_existe_no_servico(caminho):
     arvore = ast.parse(caminho.read_text(encoding="utf-8"))
     apelidos = _apelidos_do_servico(arvore)
@@ -70,13 +76,14 @@ def test_todo_nome_citado_existe_no_servico(caminho):
     )
 
 
-def test_gavetas_do_mural_saem_de_faixas():
+@pytest.mark.parametrize("caminho", HOMES, ids=lambda p: p.parent.parent.name)
+def test_gavetas_do_mural_saem_de_faixas(caminho):
     """A Home monta as gavetas vazias derivando de `FAIXAS`, não a mão.
 
     Escrever as faixas a mão é exatamente o que apodreceu. Se alguém voltar a
     listá-las, este teste avisa.
     """
-    fonte = (RAIZ / "sigft" / "app" / "views" / "home.py").read_text(encoding="utf-8")
+    fonte = caminho.read_text(encoding="utf-8")
     assert "vazio = {faixa: [] for faixa in at.FAIXAS}" in fonte, (
         "Home._ler_mural deve derivar as gavetas de at.FAIXAS, nunca listar as faixas a mao."
     )
@@ -104,8 +111,9 @@ def _chaves_do_dicionario(arvore, nome_do_dicionario, apelidos):
     return None
 
 
+@pytest.mark.parametrize("caminho", MURAIS, ids=lambda p: p.parent.parent.name)
 @pytest.mark.parametrize("dicionario", ["COR_FAIXA", "ROTULO_FAIXA", "EXPLICACAO_FAIXA"])
-def test_o_mural_desenha_todas_as_faixas(dicionario):
+def test_o_mural_desenha_todas_as_faixas(dicionario, caminho):
     """Faixa sem cor/rótulo/explicação estoura KeyError na hora de desenhar.
 
     Foi o risco concreto ao criar a faixa TRAVADA em 2026-09-03: a regra
@@ -114,7 +122,6 @@ def test_o_mural_desenha_todas_as_faixas(dicionario):
     travada — ou seja, não na hora de escrever o código, e sim na frente do
     usuário.
     """
-    caminho = RAIZ / "sigft" / "app" / "widgets" / "mural.py"
     arvore = ast.parse(caminho.read_text(encoding="utf-8"))
     apelidos = _apelidos_do_servico(arvore)
 
@@ -136,7 +143,8 @@ def test_o_mural_desenha_todas_as_faixas(dicionario):
 # Planilha em read_only se le com iter_rows, nunca com ws.cell
 # =============================================================================
 
-def test_leitura_do_mural_nao_usa_ws_cell():
+@pytest.mark.parametrize("caminho", HOMES, ids=lambda p: p.parent.parent.name)
+def test_leitura_do_mural_nao_usa_ws_cell(caminho):
     """`ws.cell(l, c)` em `read_only=True` custa O(n²).
 
     Em modo read-only a aba é um FLUXO só-para-frente: cada `ws.cell` volta ao
@@ -148,7 +156,7 @@ def test_leitura_do_mural_nao_usa_ws_cell():
     O defeito não dá erro nenhum: só fica lento. Por isso precisa de trava —
     nada mais o denunciaria.
     """
-    fonte = (RAIZ / "sigft" / "app" / "views" / "home.py").read_text(encoding="utf-8")
+    fonte = caminho.read_text(encoding="utf-8")
     arvore = ast.parse(fonte)
 
     for no in ast.walk(arvore):

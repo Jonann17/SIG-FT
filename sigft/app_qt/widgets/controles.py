@@ -110,6 +110,13 @@ class MenuDeOpcoes(QComboBox):
     def sizeHint(self) -> QSize:  # noqa: N802 -- nome do Qt
         return QSize(super().sizeHint().width(), ALTURA_MENU)
 
+    def wheelEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
+        # E5.1: a roda do mouse NÃO troca a opção -- o CTkOptionMenu não a escuta.
+        # O QComboBox troca, e numa área rolável (o painel de modelos da Home)
+        # rolar a janela com o ponteiro em cima de um menu mudaria a escolha
+        # sem a pessoa ver. Ignorada, a roda segue para a área, que rola.
+        evento.ignore()
+
     def paintEvent(self, _evento) -> None:  # noqa: N802 -- nome do Qt
         pintor = _pintor(self)
         largura, altura = self.width(), self.height()
