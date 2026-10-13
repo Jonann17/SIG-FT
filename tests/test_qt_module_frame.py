@@ -1,7 +1,5 @@
 import threading
 
-import pytest
-
 from sigft.app import backends
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 
