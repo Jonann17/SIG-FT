@@ -36,11 +36,20 @@ do código em produção (só os SDKs pesados — nunca usados pelas funções p
 testadas aqui — é que viram Mocks).
 """
 import os as _os_qt
+import sys as _sys_qt
 
 # [Qt6] Sem display no CI e no contêiner: o Qt desenha em memória. Tem de vir
 # antes de qualquer import do PySide6, e setdefault deixa quem quiser ver a
 # janela (QT_QPA_PLATFORM=xcb) rodar com display de verdade.
 _os_qt.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+# [Qt6] No Linux, o fontconfig dos testes esconde o Roboto e o Noto Emoji
+# instalados na máquina: valem os do app, registrados pelo `qapp` abaixo. Também
+# antes de qualquer import do PySide6. Ver tests/test_qt_fontes_dos_testes.py.
+if _sys_qt.platform.startswith("linux"):
+    _os_qt.environ.setdefault(
+        "FONTCONFIG_FILE",
+        _os_qt.path.join(_os_qt.path.dirname(_os_qt.path.abspath(__file__)), "fontes_dos_testes.conf"))
 
 import importlib.util
 import os
@@ -275,6 +284,21 @@ def pytest_runtest_teardown(item, nextitem):
     if "qtbot" in getattr(item, "fixturenames", ()):
         from PySide6.QtCore import QCoreApplication, QEvent
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+@pytest.fixture(scope="session")
+def qapp(qapp):
+    """O `qapp` do pytest-qt com as fontes do app, como o `_preparar_qt`.
+
+    No Release (Windows, `offscreen`) o Qt não vê fonte nenhuma do sistema, só
+    as registradas: teste que rodava antes de qualquer `carregar_fontes()`
+    desenhava cada letra como caixa de 13 px, e seis medidas quebravam lá
+    (2026-10-13). Carregando aqui, todo teste Qt mede com o Roboto do app.
+    """
+    from sigft.app_qt import estilo
+
+    estilo.carregar_fontes()
+    return qapp
 
 
 @pytest.fixture

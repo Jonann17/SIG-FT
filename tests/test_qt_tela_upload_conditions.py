@@ -644,8 +644,11 @@ def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
         assert geo(t.fila_fichas.label_contador)[:2] == (72, 264)
         assert geo(t.fila_fichas)[:2] == (72, 297) and geo(t.fila_fichas)[3] == 210
         # O botão cresce até caber o texto: 202 lá; o negrito do Roboto no Qt sai
-        # ~9 px mais largo que o do Tk, por isso 212 (o par fica centrado igual).
-        assert geo(t.btn_ia)[1:] == (527, 212, 40)
+        # ~8 px mais largo que o do Tk, por isso 210 (o par fica centrado igual).
+        # Sintetizado do Regular, o único registrado; era 212 medido com o
+        # Roboto-Medium do ~/.fonts do contêiner, que o app não tem
+        # (tests/test_qt_fontes_dos_testes.py).
+        assert geo(t.btn_ia)[1:] == (527, 210, 40)
         assert geo(t.btn_parar_ia)[1:] == (527, 100, 40)
         assert geo(t.console) == (40, 670, 923, 150)
 

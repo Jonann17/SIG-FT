@@ -472,8 +472,11 @@ def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
         assert geo(t.fila_fichas)[:2] == (72, 403) and geo(t.fila_fichas)[3] == 210
         # A aba rola (lá também): os botões ficam abaixo da parte visível.
         assert geo(t.btn_ia)[1] - geo(cartao)[1] == 268
-        # 202 lá: o negrito do Roboto no Qt sai ~9 px mais largo que o do Tk.
-        assert geo(t.btn_ia)[2:] == (212, 40)
+        # 202 lá: o negrito do Roboto no Qt (sintetizado do Regular, o único
+        # registrado) sai ~8 px mais largo que o do Tk. Era 212 medido com o
+        # Roboto-Medium do ~/.fonts do contêiner; o app e o Release dão 210
+        # (tests/test_qt_fontes_dos_testes.py).
+        assert geo(t.btn_ia)[2:] == (210, 40)
         assert geo(t.console) == (40, 670, 923, 150)
 
         t.tabview.set(ABA_WEB)
