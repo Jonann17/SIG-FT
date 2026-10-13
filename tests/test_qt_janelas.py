@@ -683,3 +683,76 @@ def test_cores_dos_botoes_do_customtkinter(qt_interface, qtbot):
     r, _ = _revisao(qtbot)
     assert "#008000" in r.botao_confirmar.styleSheet()  # "green" do Tk
     r.close()
+
+
+# --- correções da revisão (Esc, janela que some, peças compartilhadas) ---------------
+
+def test_revisao_pdm_esc_nao_joga_fora_as_edicoes(qt_interface, qtbot, monkeypatch):
+    # Esc fechava pelo reject() padrão: as edições sumiam e ninguém era chamado
+    # (a tela ficava com o "Analisar" desligado para sempre).
+    monkeypatch.setattr(janelas.QInputDialog, "getText", staticmethod(lambda *a, **k: ("PDM.N - N", True)))
+    j, _ = _revisao(qtbot)
+    j.tree.topLevelItem(0).setSelected(True)
+    j.botao_editar.click()
+    qtbot.keyClick(j, Qt.Key.Key_Escape)
+    qtbot.keyClick(j.tree, Qt.Key.Key_Escape)
+    assert j.isVisible()
+    assert j.df_dados.at[0, "pdm_escolhido"] == "PDM.N - N"
+    j.close()
+
+
+def _robo_no_worker(qtbot):
+    resultado = {}
+    t = threading.Thread(target=lambda: resultado.update(r=janelas.JanelaAcaoRobo(None, "e", "p")),
+                         daemon=True)
+    t.start()
+
+    def aberta():
+        return [w for w in QApplication.topLevelWidgets()
+                if isinstance(w, janelas.DialogoAcaoRobo) and w.isVisible()]
+
+    qtbot.waitUntil(lambda: bool(aberta()), timeout=3000)
+    return aberta()[0], resultado
+
+
+def test_acao_robo_escondida_sem_decisao_solta_o_worker_com_stop(qt_interface, qtbot):
+    d, resultado = _robo_no_worker(qtbot)
+    d.hide()
+    qtbot.waitUntil(lambda: "r" in resultado, timeout=3000)
+    assert resultado["r"] == janelas.DecisaoRobo("STOP", None)
+
+
+def test_acao_robo_destruida_solta_o_worker_com_stop(qt_interface, qtbot):
+    d, resultado = _robo_no_worker(qtbot)
+    d.ao_sumir = None  # só o `destroyed` sobra: é ele que tem de soltar
+    d.blockSignals(False)
+    d.deleteLater()
+    qtbot.waitUntil(lambda: "r" in resultado, timeout=3000)
+    assert resultado["r"].escolha == "STOP"
+
+
+def test_acao_robo_decisao_vale_mesmo_com_o_hide_depois(qt_interface, qtbot):
+    d, resultado = _robo_no_worker(qtbot)
+    d.botao_retry.click()
+    qtbot.waitUntil(lambda: "r" in resultado, timeout=3000)
+    assert resultado["r"].escolha == "RETRY"
+
+
+def test_escolher_pdm_esperar_volta_se_escondida(qt_interface, qtbot):
+    j = janelas.JanelaEscolherPDM(None, _catalogo())
+    qtbot.addWidget(j)
+    QTimer.singleShot(0, j.hide)
+    assert j.esperar() is None
+
+
+def test_tabela_ttk_compartilhada(qt_interface, qtbot):
+    tree = dialogos_selecao.tabela_ttk([("A", 50, "w"), ("B", 80, "center")], selecao="browse",
+                                       barra_horizontal=False)
+    qtbot.addWidget(tree)
+    item = dialogos_selecao.linha_ttk(tree, [1, "x"], chave=7)
+    assert tree.selectionMode() == QAbstractItemView.SelectionMode.SingleSelection
+    assert tree.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    assert tree.textElideMode() == Qt.TextElideMode.ElideNone
+    assert item.data(0, Qt.ItemDataRole.UserRole) == 7
+    assert item.textAlignment(1) & Qt.AlignmentFlag.AlignHCenter
+    assert isinstance(tree.esticar_colunas, dialogos_selecao.EsticaColunas)

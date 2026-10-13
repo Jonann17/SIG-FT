@@ -58,9 +58,14 @@ def rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, cor: str | N
 def botao(texto: str, *, variante: str | None = None, largura: int | None = None,
           altura: int | None = None, tamanho_fonte: int | None = None,
           negrito: bool = False, cor_texto: str | None = None, cor_fundo: str | None = None,
-          cor_hover: str = estilo.AZUL_CTK_HOVER) -> QPushButton:
+          cor_hover: str = estilo.AZUL_CTK_HOVER, largura_minima: int | None = None) -> QPushButton:
     """`cor_fundo` é o `fg_color` de um CTkButton pintado à mão; `cor_hover`, o
-    `hover_color` (sem ele, o CTk usa o do tema: AZUL_CTK_HOVER)."""
+    `hover_color` (sem ele, o CTk usa o do tema: AZUL_CTK_HOVER).
+
+    `largura` FIXA a largura; `largura_minima` é o `width` do CTkButton de
+    verdade: o botão tem pelo menos isso, e o texto que não cabe o alarga com
+    `FOLGA_TEXTO_BOTAO_CTK` de cada lado (o "Editar PDM Selecionado" de 140 sai
+    com 151 lá)."""
     b = QPushButton(texto)
     if variante:
         b.setProperty("variante", variante)
@@ -74,6 +79,9 @@ def botao(texto: str, *, variante: str | None = None, largura: int | None = None
         # `min-height` do Qt não conta a borda; o `height` do CTk conta.
         interna = altura - 2 * estilo.BORDA_DA_VARIANTE.get(variante or "", 0)
         folha += f" min-height: {interna}px; max-height: {interna}px;"
+    if largura_minima:
+        folga = estilo.FOLGA_TEXTO_BOTAO_CTK
+        folha += f" min-width: {largura_minima - 2 * folga}px; padding: 0 {folga}px;"
     if tamanho_fonte:
         folha += f" font-size: {tamanho_fonte}px;"
     if negrito:

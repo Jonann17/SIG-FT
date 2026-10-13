@@ -31,12 +31,11 @@ import threading
 import traceback
 from typing import NamedTuple
 
-from PySide6.QtCore import QEventLoop, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextOption
 from PySide6.QtWidgets import (
-    QAbstractItemView, QDialog, QFrame, QHBoxLayout, QHeaderView, QInputDialog, QLabel,
-    QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QTreeWidget, QTreeWidgetItem,
-    QVBoxLayout,
+    QDialog, QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
+    QPushButton, QVBoxLayout,
 )
 
 from sigft.app import theme
@@ -51,42 +50,25 @@ VERMELHO_TK = "#FF0000"
 # CTkLabel sem `text_color`: o texto do tema (gray84), não o text_light.
 COR_TEXTO_CTK = estilo.cinza_tk("gray84")
 
-# Janela aberta sem referência na tela (a `JanelaResumo` via `na_interface`, a
-# janela do robô) precisa continuar viva enquanto está na tela.
+# A janela do robô, aberta pelo worker, fica sem referência na tela: precisa
+# continuar viva enquanto está aberta.
 _ABERTAS: set = set()
 
 
 # =============================================================================
 # Peças comuns
 # =============================================================================
-class _Janela(QDialog):
-    """Um CTkToplevel: abre ao ser construída (`_abrir`, no fim do __init__ de
+class _Janela(dialogos_selecao.JanelaQueAbre):
+    """Um CTkToplevel (abre ao ser construído: `_abrir()` no fim do __init__ de
     cada uma). `parent` faz o papel do `transient(parent)`; `modal` é o
-    `grab_set()`; `sempre_por_cima`, o `-topmost`."""
+    `grab_set()`; `sempre_por_cima`, o `-topmost`. A referência viva enquanto
+    aberta, o `esperar()` (o `wait_window`) e o hideEvent que o solta vêm de
+    `dialogos_selecao.JanelaQueAbre`."""
 
     def __init__(self, parent, *, titulo: str, largura: int, altura: int,
                  modal: bool = False, sempre_por_cima: bool = False) -> None:
-        super().__init__(parent)
-        self.setWindowTitle(titulo)
-        self.resize(largura, altura)
-        if sempre_por_cima:
-            self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
-        if modal:
-            self.setWindowModality(Qt.WindowModality.ApplicationModal)
-        _ABERTAS.add(self)
-        self.finished.connect(lambda _r: _ABERTAS.discard(self))
-
-    def _abrir(self) -> None:
-        self.show()
-        self.raise_()
-        self.activateWindow()
-
-    def _esperar_fechar(self) -> None:
-        """O `wait_window` do Tk: volta quando a janela fecha, sem parar o laço de eventos."""
-        if self.isVisible():
-            laco = QEventLoop()
-            self.finished.connect(laco.quit)
-            laco.exec()
+        super().__init__(parent, titulo=titulo, geometria=f"{largura}x{altura}", modal=modal,
+                         sempre_por_cima=sempre_por_cima)
 
 
 def _rotulo(texto: str, fonte: tuple = theme.FONTE_CORPO, *, cor: str = COR_TEXTO_CTK,
@@ -101,68 +83,33 @@ def _rotulo(texto: str, fonte: tuple = theme.FONTE_CORPO, *, cor: str = COR_TEXT
     return r
 
 
-def _botao(texto: str, *, fundo: str | None = None, hover: str | None = None,
-           largura: int = estilo.LARGURA_BOTAO_CTK) -> QPushButton:
-    """CTkButton de 28 de altura: `largura` é o `width` (o texto que não cabe
-    alarga, com 7 px de folga de cada lado). `fundo` sem `hover` = o hover do
-    tema (#14375E): é o que o CTk faz com `fg_color` sem `hover_color`."""
-    b = blocos.botao(texto, altura=28)
-    folga = estilo.FOLGA_TEXTO_BOTAO_CTK
-    folha = (f" QPushButton {{ min-width: {largura - 2 * folga}px;"
-             f" padding: 0 {folga}px; }}")
-    if fundo:
-        folha += (f" QPushButton {{ background: {fundo}; }}"
-                  f" QPushButton:hover {{ background: {hover or estilo.AZUL_CTK_HOVER}; }}")
-    b.setStyleSheet(b.styleSheet() + folha)
+def _botao(texto: str, *, fundo: str | None = None, hover: str = estilo.AZUL_CTK_HOVER) -> QPushButton:
+    """CTkButton padrão destas janelas: 28 de altura e `width` 140 que o texto
+    largo alarga (`largura_minima`). `fundo` sem `hover` = o hover do tema: é o
+    que o CTk faz com `fg_color` sem `hover_color`."""
+    b = blocos.botao(texto, altura=28, largura_minima=estilo.LARGURA_BOTAO_CTK,
+                     cor_fundo=fundo, cor_hover=hover)
     # Enter não aperta botão nenhum: o Tk não ligava tecla nestas janelas.
     b.setAutoDefault(False)
     b.setDefault(False)
     return b
 
 
-def _tabela(colunas, *, selecao: str = "extended", barra_horizontal: bool = True) -> QTreeWidget:
-    """O `ttk.Treeview(show="headings")` com as ttk.Scrollbar empacotadas ao lado.
-
-    `colunas`: `(titulo, largura, anchor)`. As colunas esticam para ocupar a
-    largura (o `stretch` do ttk), como no `TabelaSelecaoDialog`; as barras de
-    rolagem ficam sempre à vista, como as empacotadas lá.
-    """
-    tree = QTreeWidget()
-    tree.setColumnCount(len(colunas))
-    tree.setHeaderLabels([titulo for titulo, _l, _a in colunas])
-    tree.setRootIsDecorated(False)
-    tree.setUniformRowHeights(True)
-    tree.setProperty("barra_nativa", True)
-    # O ttk corta o texto que não cabe na coluna; o Qt poria "..." no fim.
-    tree.setTextElideMode(Qt.TextElideMode.ElideNone)
-    tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection if selecao == "browse"
-                          else QAbstractItemView.SelectionMode.ExtendedSelection)
-    tree.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-    tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn if barra_horizontal
-                                      else Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    cabecalho = tree.header()
-    cabecalho.setStretchLastSection(False)
-    cabecalho.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-    cabecalho.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)  # heading do ttk: centrado
-    larguras = []
-    for i, (_t, largura, _a) in enumerate(colunas):
-        tree.setColumnWidth(i, largura)
-        larguras.append(largura)
-    tree._alinhamentos = [Qt.AlignmentFlag.AlignCenter if anchor == "center"
-                          else Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-                          for _t, _l, anchor in colunas]
-    tree._esticar = dialogos_selecao._EsticaColunas(tree, larguras)
-    return tree
+_tabela = dialogos_selecao.tabela_ttk
+_linha = dialogos_selecao.linha_ttk
 
 
-def _linha(tree: QTreeWidget, valores, chave=None) -> QTreeWidgetItem:
-    """`tree.insert("", "end", iid=chave, values=valores)`."""
-    item = QTreeWidgetItem([str(v) for v in valores])
-    item.setData(0, Qt.ItemDataRole.UserRole, chave)
-    for i, alinhamento in enumerate(tree._alinhamentos):
-        item.setTextAlignment(i, alinhamento)
-    tree.addTopLevelItem(item)
-    return item
+class _IgnoraEsc:
+    """Mixin (antes do QDialog): Esc não fecha. O Tk não tinha tecla nenhuma
+    nestas janelas, e nelas fechar tem custo: na do robô é PARAR o lote; na
+    revisão de PDM, jogar fora as edições sem chamar ninguém (o fluxo da tela
+    ficava parado, com o "Analisar" desligado)."""
+
+    def keyPressEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
+        if evento.key() == Qt.Key.Key_Escape:
+            evento.accept()
+            return
+        super().keyPressEvent(evento)
 
 
 def _faixa(*widgets, espaco: int = 0) -> QHBoxLayout:
@@ -342,14 +289,14 @@ class JanelaEscolherPDM(_Janela):
         self.reject()
 
     def esperar(self):
-        self._esperar_fechar()
+        super().esperar()
         return self.escolha
 
 
 # =============================================================================
 # Revisão do PDM
 # =============================================================================
-class JanelaRevisaoPDM(_Janela):
+class JanelaRevisaoPDM(_IgnoraEsc, _Janela):
     """Revisão, linha a linha, do PDM que a IA escolheu, antes do robô. Modal.
 
     Trabalha numa CÓPIA do DataFrame; `callback_confirmar(df)` só no
@@ -438,7 +385,7 @@ class DecisaoRobo(NamedTuple):
     novo_pdm: str | None = None
 
 
-class DialogoAcaoRobo(QDialog):
+class DialogoAcaoRobo(_IgnoraEsc, QDialog):
     """A janela de decisão quando o robô falha num item: RETRY, SKIP,
     CHANGE_PDM (com `novo_pdm`) ou STOP. Fechar no "X" = STOP, como lá.
 
@@ -452,6 +399,9 @@ class DialogoAcaoRobo(QDialog):
         self.setWindowModality(Qt.WindowModality.ApplicationModal)  # o grab_set()
         self.escolha = None
         self.novo_pdm = None
+        # Quem espera a resposta (o worker) é solto por aqui se a janela sumir
+        # sem `done()` -- ver `JanelaAcaoRobo`.
+        self.ao_sumir = None
 
         layout = QVBoxLayout(self)
         # pady somados: título (15, 5) | caixa 5 | PDM 5 | quadro de botões 10,
@@ -520,13 +470,16 @@ class DialogoAcaoRobo(QDialog):
             self.escolha = "STOP"
         super().reject()
 
-    def keyPressEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
-        # Esc fecharia, e fechar é PARAR a automação: no Tk não havia tecla
-        # nenhuma, e uma tecla escapada não pode derrubar o lote.
-        if evento.key() == Qt.Key.Key_Escape:
-            evento.accept()
+    def hideEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
+        """Sumiu sem `done()` (`hide()`, o pai fechando): sem decisão é STOP, e
+        `ao_sumir` solta o worker. Minimizar (evento espontâneo) não conta."""
+        super().hideEvent(evento)
+        if evento.spontaneous():
             return
-        super().keyPressEvent(evento)
+        if self.escolha is None:
+            self.escolha = "STOP"
+        if self.ao_sumir is not None:
+            self.ao_sumir()
 
 
 # CTkTextbox do tema: fundo gray20, sem borda, cantos 6, texto gray84; a
@@ -564,12 +517,20 @@ def JanelaAcaoRobo(parent, msg_erro, pdm_atual) -> DecisaoRobo:  # noqa: N802 --
         try:
             dialogo = DialogoAcaoRobo(parent, msg_erro, pdm_atual)
 
-            def fim(_resultado) -> None:
+            def fim(*_sinal) -> None:
+                if evento.is_set():
+                    return
                 caixa["decisao"] = DecisaoRobo(dialogo.escolha or "STOP", dialogo.novo_pdm)
                 _ABERTAS.discard(dialogo)
                 evento.set()
 
+            # Três saídas, e qualquer uma solta o worker (uma vez só): fechou
+            # (`finished`), sumiu sem `done()` (`ao_sumir`, do hideEvent) ou foi
+            # destruída junto com o pai (`destroyed`: aí não há mais o que ler
+            # nela, e a resposta fica STOP).
             dialogo.finished.connect(fim)
+            dialogo.ao_sumir = fim
+            dialogo.destroyed.connect(lambda *_: evento.set())
             _ABERTAS.add(dialogo)
             dialogo.show()
             dialogo.raise_()

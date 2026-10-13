@@ -67,14 +67,19 @@ def _linha_de_botoes(*botoes, padx: int = 10) -> QHBoxLayout:
     return linha
 
 
-class _JanelaQueAbre(QDialog):
-    """Base: título, tamanho, sempre por cima, modal se pedido, e abre já."""
+class JanelaQueAbre(QDialog):
+    """Base de um CTkToplevel: título, tamanho, modal se pedido (`grab_set`),
+    sempre por cima (`-topmost`, padrão aqui) e abre já (`_abrir()` no fim do
+    __init__ da subclasse). `esperar()` é o `wait_window`. Também a base das
+    janelas de `views/janelas.py`."""
 
-    def __init__(self, parent, *, titulo: str, geometria: str, modal: bool) -> None:
+    def __init__(self, parent, *, titulo: str, geometria: str, modal: bool,
+                 sempre_por_cima: bool = True) -> None:
         super().__init__(parent)
         self.setWindowTitle(titulo)
         self.resize(*blocos.geometria_tk(geometria))
-        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        if sempre_por_cima:
+            self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         if modal:
             self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self._escolha = None
@@ -100,7 +105,8 @@ class _JanelaQueAbre(QDialog):
     def hideEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
         # Escondida por fora (hide(), o pai fechando) sem passar por done():
         # o `esperar()` também tem de voltar.
-        if self._laco is not None:
+        # Minimizar (evento espontâneo do sistema) não é fechar.
+        if self._laco is not None and not evento.spontaneous():
             self._laco.quit()
         super().hideEvent(evento)
 
@@ -111,7 +117,7 @@ class _JanelaQueAbre(QDialog):
         self.accept()
 
 
-class SelecaoMultiplaDialog(_JanelaQueAbre):
+class SelecaoMultiplaDialog(JanelaQueAbre):
     """Lista simples para escolher vários textos (o `tk.Listbox` do CTk).
 
     Devolve os TEXTOS marcados, ou as POSIÇÕES com `devolver_indices=True`.
@@ -210,7 +216,7 @@ def _folha_da_listbox(opcoes: dict) -> str:
             f" QListWidget::item:selected {{ background: {selecao}; color: {texto_selecao}; }}")
 
 
-class TabelaSelecaoDialog(_JanelaQueAbre):
+class TabelaSelecaoDialog(JanelaQueAbre):
     """Tabela (o `ttk.Treeview` do CTk) para escolher várias linhas.
 
     `linhas` são pares `(chave, valores)`; volta a CHAVE (em texto, como o iid
@@ -238,39 +244,13 @@ class TabelaSelecaoDialog(_JanelaQueAbre):
         layout.addWidget(self.rotulo)
         layout.addSpacing(20)
 
-        self.tree = QTreeWidget()
-        self.tree.setColumnCount(len(colunas))
-        self.tree.setHeaderLabels([str(c) for c in colunas])
-        self.tree.setRootIsDecorated(False)
-        self.tree.setUniformRowHeights(True)
-        self.tree.setProperty("barra_nativa", True)
-        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        # ttk.Scrollbar empacotada: sempre à vista.
-        self.tree.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-        self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-        cabecalho = self.tree.header()
-        cabecalho.setStretchLastSection(False)
-        cabecalho.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        cabecalho.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)  # heading do ttk: centrado
         larguras = larguras or {}
-        self._larguras_base = []
-        alinhamentos = []
-        for i, coluna in enumerate(colunas):
-            conf = larguras.get(coluna, {})
-            largura = int(conf.get("width", 120))
-            self._larguras_base.append(largura)
-            self.tree.setColumnWidth(i, largura)
-            alinhamentos.append(Qt.AlignmentFlag.AlignCenter if conf.get("anchor") == "center"
-                                else Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.tree = tabela_ttk([(str(c), int(larguras.get(c, {}).get("width", 120)),
+                                 larguras.get(c, {}).get("anchor", "w")) for c in colunas])
         for chave, valores in linhas:
-            item = QTreeWidgetItem([str(v) for v in valores])
-            item.setData(0, Qt.ItemDataRole.UserRole, str(chave))
-            for i, alinhamento in enumerate(alinhamentos):
-                item.setTextAlignment(i, alinhamento)
-            self.tree.addTopLevelItem(item)
+            item = linha_ttk(self.tree, valores, chave=str(chave))
             if preselecionar_tudo:
                 item.setSelected(True)
-        self._esticar = _EsticaColunas(self.tree, self._larguras_base)
 
         quadro = QHBoxLayout()
         quadro.setContentsMargins(10, 0, 10, 0)  # padx=10, pady=10
@@ -310,7 +290,7 @@ class TabelaSelecaoDialog(_JanelaQueAbre):
         self._confirmar_com(selecionados, self._ao_confirmar)
 
 
-class _EsticaColunas(QObject):
+class EsticaColunas(QObject):
     """O ttk.Treeview estica as colunas (`stretch=True`, o padrão) para ocupar a
     largura: a sobra é repartida IGUALMENTE entre elas. Encolher abaixo das
     larguras pedidas, não -- aí aparece a rolagem horizontal."""
@@ -328,6 +308,52 @@ class _EsticaColunas(QObject):
             for i, largura in enumerate(self._base):
                 self._tree.setColumnWidth(i, largura + extra + (resto if i == len(self._base) - 1 else 0))
         return False
+
+
+def tabela_ttk(colunas, *, selecao: str = "extended", barra_horizontal: bool = True) -> QTreeWidget:
+    """O `ttk.Treeview(show="headings")` com as ttk.Scrollbar empacotadas ao lado.
+
+    `colunas`: `[(titulo, largura, anchor)]` (anchor "w" ou "center", o
+    `tree.column(..., width=, anchor=)`). `selecao`: "extended" (padrão do ttk)
+    ou "browse" (uma linha). As colunas esticam (`EsticaColunas`), o cabeçalho
+    é centrado (o heading do ttk), o texto que não cabe é CORTADO (o ttk não põe
+    "...") e as barras de rolagem ficam sempre à vista, como as empacotadas.
+    Linhas: `linha_ttk(tree, valores, chave=)`.
+    """
+    tree = QTreeWidget()
+    tree.setColumnCount(len(colunas))
+    tree.setHeaderLabels([titulo for titulo, _l, _a in colunas])
+    tree.setRootIsDecorated(False)
+    tree.setUniformRowHeights(True)
+    tree.setProperty("barra_nativa", True)
+    tree.setTextElideMode(Qt.TextElideMode.ElideNone)
+    tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection if selecao == "browse"
+                          else QAbstractItemView.SelectionMode.ExtendedSelection)
+    tree.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+    tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn if barra_horizontal
+                                      else Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    cabecalho = tree.header()
+    cabecalho.setStretchLastSection(False)
+    cabecalho.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+    cabecalho.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+    larguras = [int(largura) for _t, largura, _a in colunas]
+    for i, largura in enumerate(larguras):
+        tree.setColumnWidth(i, largura)
+    tree.setProperty("_alinhamentos", [anchor == "center" for _t, _l, anchor in colunas])
+    tree.esticar_colunas = EsticaColunas(tree, larguras)
+    return tree
+
+
+def linha_ttk(tree: QTreeWidget, valores, chave=None) -> QTreeWidgetItem:
+    """`tree.insert("", "end", iid=chave, values=valores)`: a chave fica no
+    `UserRole` da coluna 0; cada célula com o anchor da sua coluna."""
+    item = QTreeWidgetItem([str(v) for v in valores])
+    item.setData(0, Qt.ItemDataRole.UserRole, chave)
+    for i, centro in enumerate(tree.property("_alinhamentos") or []):
+        item.setTextAlignment(i, Qt.AlignmentFlag.AlignCenter if centro
+                              else Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    tree.addTopLevelItem(item)
+    return item
 
 
 class ArquivosTravadosDialog(SoltaAoFechar, QDialog):
