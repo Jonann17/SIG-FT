@@ -682,3 +682,17 @@ def test_popup_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
         assert geo(d.botao_confirmar) == (575, 507, 150, 28)
     finally:
         qt_interface.setStyleSheet(anterior)
+
+
+def test_nome_de_arquivo_longo_nao_alarga_a_tela(tela, monkeypatch):
+    # Com um nome de ~120 caracteres a janela passava de 1280 para 1391 px.
+    # Agora o nome é elidido e o caminho completo fica no tooltip.
+    nome = ("Historico Aconex DocManager exportado em setembro de 2026 com todas as "
+            "listas de sobressalentes e revisoes.xlsx")
+    largura = tela.minimumSizeHint().width()
+    monkeypatch.setattr(tela_mod.file_dialogs, "ask_open_file", lambda *a, **k: "/d/" + nome)
+    for botao in (tela.btn_api, tela.btn_master, tela.btn_autorizados):
+        botao.click()
+    assert tela.minimumSizeHint().width() <= largura
+    for rotulo in (tela.lbl_api_status, tela.lbl_master_status, tela.lbl_autorizados):
+        assert rotulo.text() == nome and rotulo.toolTip() == "/d/" + nome

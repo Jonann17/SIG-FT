@@ -64,10 +64,10 @@ def _texto_dos_avisos(inicio, avisos, nao_gravados):
 
 
 def _rotulo_status():
-    """O "Nenhum arquivo selecionado" cinza ao lado de cada botão de arquivo."""
-    r = blocos.rotulo(TEXTO_NENHUM_ARQUIVO, cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO), alinhar="esquerda")
-    r.setWordWrap(False)
-    return r
+    """O "Nenhum arquivo selecionado" cinza ao lado de cada botão de arquivo. É
+    um `blocos.RotuloElidido`: um nome comprido não alarga a tela."""
+    return blocos.rotulo(TEXTO_NENHUM_ARQUIVO, cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO), alinhar="esquerda",
+                         elidir=True)
 
 
 class NovasListasDialog(QDialog):
@@ -338,7 +338,7 @@ class ModuloPMIBManager(ModuleFrame):
     def _marcar_escolhido(botao, rotulo, caminho) -> None:
         """Arquivo escolhido: o nome em verde e o botão na cor primária (o
         hover continua o cinza, como o `configure(fg_color=...)` de lá)."""
-        rotulo.setText(os.path.basename(caminho))
+        rotulo.mostrar_caminho(caminho)   # nome elidido se for longo; o caminho no tooltip
         rotulo.setStyleSheet(rotulo.styleSheet() + f" color: {theme.COLORS['accent']};")
         botao.setStyleSheet(botao.styleSheet() + f" QPushButton {{ background: {theme.COLORS['primary']}; }}"
                             f" QPushButton:hover {{ background: {HOVER_CINZA}; }}")

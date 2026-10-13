@@ -58,18 +58,11 @@ class JanelaPainel(QWidget):
         # entre os dois, 10 + 0.
         layout.setContentsMargins(10, 10, 10, 12)
         layout.setSpacing(0)
-        self.area, self._layout_conteudo = blocos.area_rolavel(margem=RECUO_ROLAGEM)
         # E5.1: a barra SEMPRE à vista, como no CTkScrollableFrame (que reserva a
-        # faixa mesmo sem nada para rolar, com a alça cheia): 17 px, 1 antes da
-        # borda direita, alça de 8 a 4 px da esquerda; o conteúdo vai até ela.
-        # Sem isso os painéis da Home saíam 11 px mais largos que lá (o quadro
-        # das chaves: 708 x 697). Mesma conta de `views/pdm.py`.
-        self.area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-        self.area.verticalScrollBar().setStyleSheet(
-            estilo.folha_rolagem_ctk(margem_vertical=RECUO_ROLAGEM + 4)
-            + f"\nQScrollBar:vertical {{ width: {estilo.LARGURA_ROLAGEM_CTK + 1}px;"
-            f" margin: {RECUO_ROLAGEM + 4}px 5px {RECUO_ROLAGEM + 4}px 4px; }}")
-        self._layout_conteudo.setContentsMargins(RECUO_ROLAGEM, RECUO_ROLAGEM, 0, RECUO_ROLAGEM)
+        # faixa mesmo sem nada para rolar, com a alça cheia). Sem isso os painéis
+        # da Home saíam 11 px mais largos que lá (o quadro das chaves: 708 x 697).
+        self.area, self._layout_conteudo = blocos.area_rolavel(margem=RECUO_ROLAGEM,
+                                                               barra_sempre_visivel=True)
         self.conteudo = self.area.widget()
         layout.addWidget(self.area, 1)
         layout.addSpacing(10)

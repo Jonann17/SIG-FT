@@ -48,7 +48,9 @@ from sigft.services import autospec_conferencia as conferencia_txt
 
 # CTkTextbox(height=120) no lugar do console padrão de 150.
 ALTURA_CONSOLE = 120
-# O CTkScrollableFrame: conteúdo 6 px dentro do quadro, barra 1 px antes da borda.
+# O CTkScrollableFrame: conteúdo 6 px dentro do quadro, barra 1 px antes da borda,
+# e o que rola some 6 px antes da borda (`blocos.area_rolavel(barra_sempre_visivel=True)`:
+# na fila e na conferência, as linhas ficam dentro do retângulo escuro de cantos redondos).
 RECUO_ROLAGEM = 6
 # Os dois quadros roláveis de dentro (fila e conferência): fundo #1E1E1E e
 # 212 de altura. Lá pedem 150 e 190, mas a CTkScrollbar vertical mede 200 e
@@ -106,26 +108,6 @@ def _texto_quebrado(texto: str, *, cor: str, quebra: int, tamanho: int = 11) -> 
     r.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
     r.setStyleSheet(f"font-size: {tamanho}px; background: transparent; color: {cor};")
     return r
-
-
-def _area_como_a_do_ctk(layout_pai, *, cor: str | None = None):
-    """`blocos.area_rolavel` com a barra SEMPRE à vista, como o CTkScrollableFrame
-    (mesma conta do `copia_fichas`): faixa de 17 com a alça de 8 a 4 px da
-    esquerda, 1 px antes da borda direita, e o conteúdo indo até a barra.
-
-    E o recorte do CTk: o canvas fica 6 px para dentro do quadro (o canto), e o
-    que rola some ali -- não corre até a borda. Aqui são as margens da vista
-    (a barra continua com a altura toda). Na fila e na conferência isso
-    mantém as linhas dentro do retângulo escuro de cantos redondos."""
-    area, corpo = blocos.area_rolavel(layout_pai, cor=cor, margem=RECUO_ROLAGEM)
-    area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-    area.verticalScrollBar().setStyleSheet(
-        estilo.folha_rolagem_ctk(margem_vertical=RECUO_ROLAGEM + 4)
-        + f"\nQScrollBar:vertical {{ width: {estilo.LARGURA_ROLAGEM_CTK + 1}px;"
-        f" margin: {RECUO_ROLAGEM + 4}px 5px {RECUO_ROLAGEM + 4}px 4px; }}")
-    area.setViewportMargins(0, RECUO_ROLAGEM, 0, RECUO_ROLAGEM)
-    corpo.setContentsMargins(RECUO_ROLAGEM, 0, 0, 0)
-    return area, corpo
 
 
 def _cartao(corpo, *, borda: str | None = None, fim: int = 15):
@@ -247,7 +229,8 @@ class ModuloAutoSpec(ModuleFrame):
 
     def _build_ui(self) -> None:
         # Content: CTkScrollableFrame transparente.
-        self.area, corpo = _area_como_a_do_ctk(self.content_layout)
+        self.area, corpo = blocos.area_rolavel(self.content_layout, margem=RECUO_ROLAGEM,
+                                               barra_sempre_visivel=True)
 
         # --- SEÇÃO 1: STATUS PMIB ---
         corpo.addSpacing(10)                            # frm_status: pady=10
@@ -302,7 +285,8 @@ class ModuloAutoSpec(ModuleFrame):
         fila.addWidget(self.rotulo_fila)
         fila.addSpacing(10)
         # Fundo mais escuro para a lista
-        self.queue_frame, self._layout_fila = _area_como_a_do_ctk(fila, cor=COR_LISTA)
+        self.queue_frame, self._layout_fila = blocos.area_rolavel(
+            fila, cor=COR_LISTA, margem=RECUO_ROLAGEM, barra_sempre_visivel=True)
         self.queue_frame.setFixedHeight(ALTURA_QUADRO_INTERNO)
         self.update_queue_ui()
 
@@ -402,7 +386,8 @@ class ModuloAutoSpec(ModuleFrame):
         _recuado(conf, self.rotulo_conf_explicacao, 0, natural=True)
         conf.addSpacing(8)                              # texto: pady=(0, 8)
 
-        self.lista_conf, self._layout_conf = _area_como_a_do_ctk(conf, cor=COR_LISTA)
+        self.lista_conf, self._layout_conf = blocos.area_rolavel(
+            conf, cor=COR_LISTA, margem=RECUO_ROLAGEM, barra_sempre_visivel=True)
         self.lista_conf.setFixedHeight(ALTURA_QUADRO_INTERNO)
         conf.addSpacing(10)                             # lista: pady=(0, 10)
 

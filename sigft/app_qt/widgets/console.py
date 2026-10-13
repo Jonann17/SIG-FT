@@ -19,6 +19,10 @@ from sigft.app_qt import interface
 PREFIXO_LINHA = "> "
 INTERVALO_MS = 50
 MAX_LINHAS = 20_000
+# Onde o texto começa no CTkTextbox, a mais do que no QPlainTextEdit cru (que já
+# tem a margem de 4 do documento): 4 px à direita e 5 px abaixo, medidos nas
+# capturas do polimento (Tradutor, PDM e Upload: o ">" e a base da 1a linha).
+RECUO_TEXTO_CTK = (4, 5)
 
 
 def formatar_linha(msg: object) -> str:
@@ -34,6 +38,10 @@ class ConsoleFrame(QPlainTextEdit):
         self.setMaximumBlockCount(MAX_LINHAS)
         if altura is not None:
             self.setFixedHeight(altura)
+        # Só a vista recua (a barra de rolagem continua com a altura toda); a
+        # faixa que sobra é o fundo do próprio console, da mesma cor.
+        esquerda, cima = RECUO_TEXTO_CTK
+        self.setViewportMargins(esquerda, cima, 0, 0)
         self._pendentes: deque[str] = deque()
         self._trava = threading.Lock()
         self._agendado = False

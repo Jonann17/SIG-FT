@@ -6,8 +6,10 @@ variante); fonte e tamanho continuam por chamada, porque variam de tela a tela.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+import os
+
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QFont, QPainter, QPalette
 from PySide6.QtWidgets import (
     QFrame, QLabel, QProgressBar, QPushButton, QScrollArea, QSlider, QVBoxLayout, QWidget,
 )
@@ -40,11 +42,63 @@ def cartao(layout_pai) -> QVBoxLayout:
     return layout
 
 
+class RotuloElidido(QLabel):
+    """Rótulo de uma linha para um nome que pode ser comprido (arquivo, pasta).
+
+    Com espaço, é um QLabel comum: mede e desenha igual. Sem espaço, o texto é
+    ELIDIDO no meio (`QFontMetrics.elidedText`: o começo e a extensão ficam à
+    vista) em vez de alargar o formulário -- um nome de ~85 caracteres ou mais
+    empurrava a tela além da janela. É o único lugar que elide: `text()`
+    continua sendo o texto inteiro, e `mostrar_caminho` põe o caminho completo
+    no tooltip.
+    """
+
+    MODO = Qt.TextElideMode.ElideMiddle
+
+    def mostrar_caminho(self, caminho: str, texto: str | None = None) -> None:
+        """O nome do arquivo (ou `texto`) no rótulo e o caminho completo no tooltip."""
+        self.setText(texto if texto is not None else (os.path.basename(caminho) or caminho))
+        self.setToolTip(caminho)
+
+    def texto_visivel(self) -> str:
+        """O que cabe na largura de agora (o próprio texto, quando cabe)."""
+        return self.fontMetrics().elidedText(self.text(), self.MODO, self._caixa_do_texto().width())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 -- nome do Qt
+        # A largura do texto deixa de ser o mínimo: o layout pode estreitar o
+        # rótulo, e o que não couber é elidido. Ao menos as reticências cabem.
+        dica = super().minimumSizeHint()
+        return QSize(self.fontMetrics().horizontalAdvance("…"), dica.height())
+
+    def _caixa_do_texto(self):
+        margem = self.margin()
+        return self.contentsRect().adjusted(margem, margem, -margem, -margem)
+
+    def paintEvent(self, _evento) -> None:  # noqa: N802 -- nome do Qt
+        # O desenho do QLabel de texto puro -- a moldura e o `drawItemText` do
+        # estilo, que pinta o texto na cor da paleta (a da folha) --, com o
+        # texto que cabe no lugar do inteiro. Sem `self.style()`: o estilo de um
+        # widget com folha é um QStyleSheetStyle que o Qt recria quando a folha
+        # muda, e chamá-lo pelo Python derrubava o app (objeto já apagado).
+        pintor = QPainter(self)
+        self.drawFrame(pintor)
+        if not self.isEnabled():
+            grupo = QPalette.ColorGroup.Disabled
+        elif self.isActiveWindow():
+            grupo = QPalette.ColorGroup.Active
+        else:
+            grupo = QPalette.ColorGroup.Inactive
+        pintor.setPen(self.palette().color(grupo, self.foregroundRole()))
+        pintor.drawText(self._caixa_do_texto(), int(self.alignment()), self.texto_visivel())
+        pintor.end()
+
+
 def rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, cor: str | None = None,
-           alinhar: str = "centro") -> QLabel:
-    etiqueta = QLabel(texto)
+           alinhar: str = "centro", elidir: bool = False) -> QLabel:
+    """`elidir=True`: um `RotuloElidido` (uma linha) para nome de arquivo ou pasta."""
+    etiqueta = RotuloElidido(texto) if elidir else QLabel(texto)
     etiqueta.setAlignment(_ALINHAMENTO[alinhar])
-    etiqueta.setWordWrap(True)
+    etiqueta.setWordWrap(not elidir)
     etiqueta.setMinimumHeight(ALTURA_MINIMA_ROTULO)
     folha = f"font-size: {tamanho}px; background: transparent;"
     if negrito:
@@ -151,7 +205,8 @@ def geometria_tk(texto: str) -> tuple[int, int]:
     return int(largura), int(altura)
 
 
-def area_rolavel(layout_pai=None, *, cor: str | None = None, margem: int = 6):
+def area_rolavel(layout_pai=None, *, cor: str | None = None, margem: int = 6,
+                 barra_sempre_visivel: bool = False):
     """CTkScrollableFrame: devolve `(area, layout)` -- os filhos vão no `layout`.
 
     `cor=None` é o `fg_color="transparent"` (o uso mais comum nas telas); com
@@ -159,6 +214,18 @@ def area_rolavel(layout_pai=None, *, cor: str | None = None, margem: int = 6):
     conteúdo (6 = o canto, medido). A barra de rolagem é a do CTk (16 px, alça
     gray41 de 8) e aparece só quando há o que rolar -- a mesma decisão da barra
     lateral (main.py): lá ela é um traço sempre visível que não rola nada.
+
+    `barra_sempre_visivel=True` é o CTkScrollableFrame como ele é, para a tela
+    que precisa das mesmas larguras de lá:
+    * a barra SEMPRE à vista (o CTk reserva a faixa e desenha a alça cheia sem
+      nada para rolar; sem ela os cartões saíam 11 a 16 px mais largos e o que
+      é centrado andava), numa faixa de 17 px -- os 16 da barra + 1 até a borda
+      direita --, com a alça de 8 a 4 px do começo da faixa;
+    * o conteúdo `margem` px para dentro à esquerda e indo até a faixa;
+    * o recorte: o canvas fica `margem` px para dentro do quadro em cima e
+      embaixo, e o que rola some ali -- não corre até a borda (num quadro com
+      cor, as linhas ficam dentro dos cantos redondos). A barra continua com a
+      altura toda.
     """
     # Folhas SEMPRE com seletor de objectName: uma "background: transparent"
     # solta vale para todos os descendentes e apagava o fundo de cartões e
@@ -179,7 +246,15 @@ def area_rolavel(layout_pai=None, *, cor: str | None = None, margem: int = 6):
     layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     area.setWidget(interno)
     # A alça começa no canto do quadro (margem) + os 4 do border_spacing.
-    area.verticalScrollBar().setStyleSheet(estilo.folha_rolagem_ctk(margem_vertical=margem + 4))
+    folha_barra = estilo.folha_rolagem_ctk(margem_vertical=margem + 4)
+    if barra_sempre_visivel:
+        area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        folga = estilo.LARGURA_ROLAGEM_CTK - 8 - 4   # o que sobra da faixa depois da alça
+        folha_barra += (f"\nQScrollBar:vertical {{ width: {estilo.LARGURA_ROLAGEM_CTK + 1}px;"
+                        f" margin: {margem + 4}px {folga + 1}px {margem + 4}px 4px; }}")
+        area.setViewportMargins(0, margem, 0, margem)
+        layout.setContentsMargins(margem, 0, 0, 0)
+    area.verticalScrollBar().setStyleSheet(folha_barra)
     if layout_pai is not None:
         layout_pai.addWidget(area)
     return area, layout

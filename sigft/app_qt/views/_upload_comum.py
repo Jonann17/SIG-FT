@@ -10,8 +10,6 @@ Tech Specs tem o quadro "Referência para IA"; os workers são de cada uma).
 """
 from __future__ import annotations
 
-import os
-
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QSizePolicy, QVBoxLayout
 
@@ -101,8 +99,9 @@ class TelaDeUpload(ModuleFrame):
         """Botão cinza de 200 + "Não selecionado" cinza (padx=10), à esquerda."""
         botao = blocos.botao(texto_botao, variante="cinza", largura=200, altura=28, tamanho_fonte=12)
         botao.clicked.connect(ao_clicar)
-        rotulo = blocos.rotulo(TEXTO_NAO_SELECIONADO, cor=estilo.cinza_tk("gray"), alinhar="esquerda")
-        rotulo.setWordWrap(False)
+        # Elidido: um nome comprido não alarga a tela (passava de 1280 para 1682 px).
+        rotulo = blocos.rotulo(TEXTO_NAO_SELECIONADO, cor=estilo.cinza_tk("gray"), alinhar="esquerda",
+                               elidir=True)
         linha = QHBoxLayout()
         linha.setSpacing(0)
         linha.addWidget(botao)
@@ -133,12 +132,12 @@ class TelaDeUpload(ModuleFrame):
     def _area_da_aba_ia(aba: QVBoxLayout) -> QVBoxLayout:
         """O CTkScrollableFrame transparente da aba 1; devolve o layout de dentro.
 
-        Ele fica 6 px para dentro da aba (1 à direita, onde encosta a barra) e
-        CORTA o conteúdo ali: com a margem dentro da área rolável, o topo dos
+        Com a barra SEMPRE à vista, como lá: na Condições, que não tem o que
+        rolar, o cartão das fichas saía 16 px mais largo que os 868 do CTk. E o
+        conteúdo é CORTADO 6 px antes da borda da aba: sem o recorte, o topo dos
         botões aparecia na beirada de baixo.
         """
-        aba.setContentsMargins(6, 6, 1, 6)
-        _area, rolavel = blocos.area_rolavel(aba, margem=0)
+        _area, rolavel = blocos.area_rolavel(aba, barra_sempre_visivel=True)
         return rolavel
 
     @staticmethod
@@ -213,7 +212,7 @@ class TelaDeUpload(ModuleFrame):
     def _marcar_escolhido(botao, rotulo, caminho) -> None:
         """Arquivo escolhido: o nome em verde e o botão na cor primária (o hover
         continua o cinza, como o `configure(fg_color=...)` de lá)."""
-        rotulo.setText(os.path.basename(caminho))
+        rotulo.mostrar_caminho(caminho)   # nome elidido se for longo; o caminho no tooltip
         rotulo.setStyleSheet(rotulo.styleSheet() + f" color: {theme.COLORS['accent']};")
         botao.setStyleSheet(botao.styleSheet() + f" QPushButton {{ background: {theme.COLORS['primary']}; }}"
                             f" QPushButton:hover {{ background: {HOVER_CINZA}; }}")

@@ -61,3 +61,22 @@ def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
     assert linha.sizeHint().width() == 220 + 15 + rotulo.sizeHint().width() + 15
     linha.botao.click()
     assert "font-size: 13px" in rotulo.styleSheet()
+
+
+def test_nome_longo_e_elidido_com_o_caminho_no_tooltip(qt_interface, qtbot):
+    nome = ("Lista de PDMs SAM-GM revisao final aprovada pelo cliente em setembro de 2026 "
+            "- versao definitiva para fatiamento geral.xlsx")
+    linha = pickers.FilePickerRow(chave="k", categoria="excel", texto_botao="S",
+                                  dialog_fn=lambda **k: "/tmp/" + nome)
+    qtbot.addWidget(linha)
+    minima = linha.minimumSizeHint().width()
+    linha.botao.click()
+    assert linha.minimumSizeHint().width() <= minima, "o nome longo alargava a linha"
+    assert linha.label_status.text() == nome and linha.label_status.toolTip() == "/tmp/" + nome
+    linha.limpar()
+    assert linha.label_status.toolTip() == ""
+    varios = pickers.MultiFilePickerRow(chave="k", categoria="excel", texto_botao="S",
+                                        dialog_fn=lambda **k: ("/a.xlsx", "/b.xlsx"))
+    qtbot.addWidget(varios)
+    varios.botao.click()
+    assert varios.label_status.toolTip() == "/a.xlsx\n/b.xlsx"

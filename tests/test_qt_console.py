@@ -56,3 +56,30 @@ def test_widget_destruido_nao_derruba_o_worker(qt_interface, qtbot):
     c.deleteLater()
     qtbot.wait(100)
     c.log("depois")  # não pode levantar
+
+
+def test_texto_comeca_onde_comeca_no_ctktextbox(qt_interface, qtbot):
+    # Medido nas capturas do polimento (Tradutor, PDM e Upload, CTk x Qt): no
+    # CTkTextbox o texto começa 4 px mais à direita e 5 px mais abaixo que no
+    # QPlainTextEdit cru (base da 1a linha e começo do ">"). O documento já tem
+    # a margem de 4 do Qt; o recuo que falta vem da vista do console.
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QTextCursor
+
+    from sigft.app_qt import estilo
+
+    anterior = qt_interface.styleSheet()
+    qt_interface.setStyleSheet(estilo.folha_de_estilo())   # #console: sem borda
+    try:
+        c = qconsole.ConsoleFrame()
+        qtbot.addWidget(c)
+        c.resize(400, 150)
+        c.show()
+        qtbot.waitExposed(c)
+        primeira = c.cursorRect(QTextCursor(c.document())).topLeft()
+        assert c.viewport().mapTo(c, primeira) == QPoint(4 + 4, 4 + 5)
+        # A barra de rolagem não anda: o recuo é só da vista.
+        barra = c.verticalScrollBar()
+        assert barra.mapTo(c, barra.rect().topLeft()).y() == 0
+    finally:
+        qt_interface.setStyleSheet(anterior)

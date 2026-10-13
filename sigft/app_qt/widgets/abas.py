@@ -23,14 +23,18 @@ Limites (o que o CTkTabview também não faz, ou que nenhuma tela usa):
   texto ou a fonte depois não a refaz; não há `delete`, `rename` nem `insert`;
 * sem teclado: as setas não trocam de aba (no CTk também não); Tab foca cada botão;
 * só `anchor="n"` (barra em cima, centrada) -- o único que as telas usam;
-* a barra não encolhe: abas que não cabem na largura alargam o widget.
+* a barra não encolhe: abas que não cabem na largura alargam o widget;
+* a altura pedida é a da MAIOR aba (a do QStackedWidget), a não ser com
+  `altura_da_escolhida=True`: aí é a da aba escolhida, como no CTkTabview, que
+  só põe na grade a aba que aparece. Faz diferença onde as abas não esticam
+  (num formulário que rola, como o do PDM).
 """
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QButtonGroup, QFrame, QGridLayout, QHBoxLayout, QPushButton, QStackedWidget, QVBoxLayout,
-    QWidget,
+    QButtonGroup, QFrame, QGridLayout, QHBoxLayout, QPushButton, QSizePolicy, QStackedWidget,
+    QVBoxLayout, QWidget,
 )
 
 from sigft.app_qt import estilo
@@ -51,13 +55,14 @@ class Abas(QWidget):
     def __init__(self, parent=None, *, cor_fundo: str | None = None, cor_barra: str | None = None,
                  cor_selecionada: str = estilo.AZUL_CTK, cor_selecionada_hover: str = estilo.AZUL_CTK_HOVER,
                  cor_nao_selecionada: str | None = None, cor_nao_selecionada_hover: str | None = None,
-                 tamanho_fonte: int = 13, ao_mudar=None) -> None:
+                 tamanho_fonte: int = 13, ao_mudar=None, altura_da_escolhida: bool = False) -> None:
         """Cores com os nomes do CTkTabview: `fg_color` (cor_fundo, padrão gray13 --
         use `estilo.FUNDO_QUADRO_INTERNO_CTK` quando o CTk a punha dentro de um
         CTkFrame de fundo padrão), `segmented_button_fg_color` (cor_barra, gray29),
         `segmented_button_selected_color`/`_hover_color`, e
         `segmented_button_unselected_color` (gray29) / `_hover_color` (gray41).
-        `ao_mudar(nome)` é o `command` do CTkTabview: só no clique da pessoa."""
+        `ao_mudar(nome)` é o `command` do CTkTabview: só no clique da pessoa.
+        `altura_da_escolhida`: a altura pedida é a da aba escolhida (ver o topo)."""
         super().__init__(parent)
         c = estilo.cinza_tk
         self.cor_fundo = c(cor_fundo or estilo.FUNDO_QUADRO_CTK)
@@ -67,6 +72,7 @@ class Abas(QWidget):
         self._cor_nao_sel_hover = c(cor_nao_selecionada_hover or "gray41")
         self._tamanho_fonte = tamanho_fonte
         self._ao_mudar = ao_mudar
+        self._altura_da_escolhida = altura_da_escolhida
         self.abas: dict[str, QWidget] = {}
         self.botoes: dict[str, QPushButton] = {}
 
@@ -88,6 +94,8 @@ class Abas(QWidget):
         dentro.setContentsMargins(CANTO, ALTURA_BARRA_VISIVEL - SOBRA_DA_BARRA + CANTO, CANTO, CANTO)
         self.pilha = QStackedWidget()
         self.pilha.setStyleSheet("QStackedWidget { background: transparent; }")
+        if altura_da_escolhida:
+            self.pilha.currentChanged.connect(self._altura_da_aba_escolhida)
         dentro.addWidget(self.pilha)
         grade.addWidget(self.quadro, 2, 0, 2, 1)
 
@@ -126,6 +134,8 @@ class Abas(QWidget):
         if len(self.abas) == 1:
             botao.setChecked(True)
             self.pilha.setCurrentWidget(aba)
+        if self._altura_da_escolhida:
+            self._altura_da_aba_escolhida()
         self._pintar_barra()
         return aba
 
@@ -146,6 +156,14 @@ class Abas(QWidget):
     def _conferir(self, nome: str) -> None:
         if nome not in self.abas:
             raise ValueError(f"Não existe aba chamada {nome!r}")
+
+    def _altura_da_aba_escolhida(self, *_):
+        """As abas que não aparecem não pedem altura (política `Ignored`): a
+        pilha fica com a altura da escolhida, como o CTkTabview."""
+        atual = self.pilha.currentWidget()
+        for aba in self.abas.values():
+            vertical = QSizePolicy.Policy.Preferred if aba is atual else QSizePolicy.Policy.Ignored
+            aba.setSizePolicy(QSizePolicy.Policy.Preferred, vertical)
 
     def _clicou(self, nome: str) -> None:
         self.set(nome)

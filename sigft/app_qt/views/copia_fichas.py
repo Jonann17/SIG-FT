@@ -78,17 +78,11 @@ class ModuloCopiaFichas(ModuleFrame):
     def _build_ui(self) -> None:
         # Container Principal: CTkScrollableFrame transparente, com a barra
         # sempre à vista (o CTk reserva a faixa mesmo sem nada para rolar; sem
-        # ela, os cartões ficariam 11 px mais largos).
-        self.area, corpo = blocos.area_rolavel(self.content_layout, margem=RECUO_ROLAGEM)
-        self.area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-        # A barra do CTk fica 1 px antes da borda direita (x 946..962 numa área
-        # que acaba em 963): faixa de 17 com a alça de 8 a 4 px da esquerda, e
-        # o conteúdo vai até a barra (900 = 923 - 6 - 17).
-        self.area.verticalScrollBar().setStyleSheet(
-            estilo.folha_rolagem_ctk(margem_vertical=RECUO_ROLAGEM + 4)
-            + f"\nQScrollBar:vertical {{ width: {estilo.LARGURA_ROLAGEM_CTK + 1}px;"
-            f" margin: {RECUO_ROLAGEM + 4}px 5px {RECUO_ROLAGEM + 4}px 4px; }}")
-        corpo.setContentsMargins(RECUO_ROLAGEM, RECUO_ROLAGEM, 0, RECUO_ROLAGEM)
+        # ela, os cartões ficariam 11 px mais largos). A barra do CTk fica 1 px
+        # antes da borda direita (x 946..962 numa área que acaba em 963), e o
+        # conteúdo vai até ela (900 = 923 - 6 - 17).
+        self.area, corpo = blocos.area_rolavel(self.content_layout, margem=RECUO_ROLAGEM,
+                                               barra_sempre_visivel=True)
 
         # --- ETAPA 1: CONFIGURAÇÃO ---
         corpo.addSpacing(10)                            # frm_config: pady=10

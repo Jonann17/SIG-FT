@@ -638,9 +638,9 @@ def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
         assert geo(t.tabview) == (40, 195, 923, 445)
         assert geo(t.tabview.tab(ABA_IA))[:2] == (46, 238)
         cartao = t.fila_fichas.parentWidget()
-        # Sem a barra de rolagem do CTkScrollableFrame (só aparece quando há o
-        # que rolar): o cartão fica 16 px mais largo que os 868 de lá.
-        assert geo(cartao)[:2] == (62, 254) and geo(cartao)[3] == 258
+        # A barra do CTkScrollableFrame fica sempre à vista (polimento A4): o
+        # cartão tem os 868 de lá (era 884 com a barra só quando havia o que rolar).
+        assert geo(cartao) == (62, 254, 868, 258)
         assert geo(t.fila_fichas.label_contador)[:2] == (72, 264)
         assert geo(t.fila_fichas)[:2] == (72, 297) and geo(t.fila_fichas)[3] == 210
         # O botão cresce até caber o texto: 202 lá; o negrito do Roboto no Qt sai
@@ -657,3 +657,16 @@ def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
         assert geo(t.btn_parar_web) == (326, 446, 350, 40)
     finally:
         qt_interface.setStyleSheet(anterior)
+
+
+def test_nome_de_arquivo_longo_nao_alarga_a_tela(tela, monkeypatch):
+    # Com um nome de ~120 caracteres a janela inteira passava de 1280 para
+    # 1682 px. Agora o nome é elidido e o caminho completo fica no tooltip.
+    nome = ("Lista de PDMs SAM-GM revisao final aprovada pelo cliente em setembro de 2026 "
+            "- versao definitiva para fatiamento geral.xlsx")
+    largura = tela.minimumSizeHint().width()
+    monkeypatch.setattr(tela_mod.file_dialogs, "ask_open_file", lambda *a, **k: "/d/" + nome)
+    tela.btn_status.click()
+    assert tela.minimumSizeHint().width() <= largura
+    assert tela.lbl_status_status.text() == nome
+    assert tela.lbl_status_status.toolTip() == "/d/" + nome

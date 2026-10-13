@@ -15,9 +15,7 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QButtonGroup, QFrame, QHBoxLayout, QLineEdit, QRadioButton, QSizePolicy, QVBoxLayout,
-)
+from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLineEdit, QRadioButton, QVBoxLayout
 
 from sigft.app import theme
 from sigft.app_qt import estilo, file_dialogs
@@ -35,14 +33,14 @@ FUNDO_QUADRO = "#333333"
 HOVER_CINZA = "#454545"
 COR_TEXTO = controles.COR_TEXTO_CTK          # CTkLabel sem text_color: gray84
 COR_APOIO = estilo.cinza_tk(theme.COR_TEXTO_APOIO)
-LARGURA_RADIO_CTK = 100
 
 
 # --- peças -------------------------------------------------------------------
 def _rotulo(texto: str, *, largura: int | None = None, tamanho: int = 13, negrito: bool = False,
-            cor: str = COR_TEXTO):
-    """CTkLabel de uma linha, `anchor="w"` (sem quebra: lá o texto não quebra)."""
-    r = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, cor=cor, alinhar="esquerda")
+            cor: str = COR_TEXTO, elidir: bool = False):
+    """CTkLabel de uma linha, `anchor="w"` (sem quebra: lá o texto não quebra).
+    `elidir`: o rótulo de um nome de arquivo (`blocos.RotuloElidido`)."""
+    r = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, cor=cor, alinhar="esquerda", elidir=elidir)
     r.setWordWrap(False)
     if largura:
         r.setFixedWidth(largura)
@@ -92,10 +90,7 @@ class _Opcoes(QButtonGroup):
         self.botoes: dict[str, QRadioButton] = {}
 
     def adicionar(self, texto: str, valor: str) -> QRadioButton:
-        rb = QRadioButton(texto)
-        # O `width` padrão do CTkRadioButton (100) é largura MÍNIMA: "Português"
-        # e "English" ocupam 100 e empurram o vizinho para o mesmo x de lá.
-        rb.setMinimumWidth(LARGURA_RADIO_CTK)
+        rb = QRadioButton(texto)   # 100 de largura no mínimo, como lá: regra da folha do app
         self.addButton(rb)
         self.botoes[valor] = rb
         if valor == self._padrao:
@@ -150,36 +145,27 @@ class ModuloPDM(ModuleFrame):
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         # CTkScrollableFrame transparente. A barra fica sempre à vista, como lá
         # (alça cheia quando não há o que rolar): com ela só às vezes, a largura
-        # do formulário mudaria de uma aba para outra.
-        self.area, corpo = blocos.area_rolavel(self.content_layout)
-        self.area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-        # Lá o formulário (900) encosta na barra: sem a margem de 6 à direita.
-        corpo.setContentsMargins(6, 6, 1, 6)
+        # do formulário mudaria de uma aba para outra. O formulário (900) vai
+        # até a barra.
+        self.area, corpo = blocos.area_rolavel(self.content_layout, barra_sempre_visivel=True)
         corpo.addSpacing(10)                            # frm_config: pady=10
         self._painel_global(corpo)
         corpo.addSpacing(20)                            # frm_config (…, 10) + abas (10, …)
 
         # --- ABAS DE OPERAÇÃO ---
+        # O CTkTabview (dentro do formulário que rola) tem a altura da aba
+        # ESCOLHIDA; o QStackedWidget teria a da maior.
         self.tabview = Abas(cor_fundo=theme.COR_CARTAO, cor_barra="#161616",
                             cor_selecionada=theme.COLORS["primary"],
-                            cor_selecionada_hover=theme.COLORS["primary_hover"])
+                            cor_selecionada_hover=theme.COLORS["primary_hover"],
+                            altura_da_escolhida=True)
         self._build_tab1(self.tabview.add("Processar PDMs"))
         self._build_tab2(self.tabview.add("Criar planilhas PMIB"))
         self._build_tab3(self.tabview.add("Excluir Duplicados"))
-        # O CTkTabview (dentro do formulário que rola) tem a altura da aba
-        # ESCOLHIDA; o QStackedWidget teria a da maior.
-        self.tabview.pilha.currentChanged.connect(self._altura_da_aba_escolhida)
-        self._altura_da_aba_escolhida()
         corpo.addWidget(self.tabview)
         corpo.addSpacing(10)                            # abas: pady=10
         # A sobra (aba curta) fica embaixo; sem isto as abas esticariam.
         corpo.addStretch(1)
-
-    def _altura_da_aba_escolhida(self, *_):
-        atual = self.tabview.pilha.currentWidget()
-        for aba in self.tabview.abas.values():
-            vertical = QSizePolicy.Policy.Preferred if aba is atual else QSizePolicy.Policy.Ignored
-            aba.setSizePolicy(QSizePolicy.Policy.Preferred, vertical)
 
     def _painel_global(self, corpo) -> None:
         r = self._rotulos
@@ -204,7 +190,7 @@ class ModuloPDM(ModuleFrame):
         r["sam_gm"] = _rotulo("Planilha de PDMs (SAM-GM):", largura=190)
         self.btn_sam_gm = _botao("Selecionar", largura=100, variante="cinza")
         self.btn_sam_gm.clicked.connect(self._sel_sam_gm)
-        self.lbl_sam_gm_status = _rotulo(TEXTO_NENHUM_ARQUIVO, cor=COR_APOIO)
+        self.lbl_sam_gm_status = _rotulo(TEXTO_NENHUM_ARQUIVO, cor=COR_APOIO, elidir=True)
         layout.addLayout(_linha(r["sam_gm"], 5, self.btn_sam_gm, 20, self.lbl_sam_gm_status))
 
     def _campo_de_pasta(self, layout, chave_rotulo, texto, *, largura_rotulo=240):
@@ -326,7 +312,7 @@ class ModuloPDM(ModuleFrame):
         # STATUS_PMIB (botão + rótulo)
         self.btn_pmib = _botao("Selecionar STATUS_PMIB (.xlsx)", largura=240, variante="cinza", tamanho_fonte=12)
         self.btn_pmib.clicked.connect(self._sel_status_pmib)
-        self.lbl_pmib_status = _rotulo(TEXTO_NENHUM_ARQUIVO, cor=COR_APOIO)
+        self.lbl_pmib_status = _rotulo(TEXTO_NENHUM_ARQUIVO, cor=COR_APOIO, elidir=True)
         q.addLayout(_linha(self.btn_pmib, 15, self.lbl_pmib_status))
         q.addSpacing(16)
 
@@ -339,7 +325,7 @@ class ModuloPDM(ModuleFrame):
         # Template (botão + rótulo)
         self.btn_template = _botao("Selecionar Template (.xlsx)", largura=240, variante="cinza", tamanho_fonte=12)
         self.btn_template.clicked.connect(self._sel_template)
-        self.lbl_template_status = _rotulo(TEXTO_NENHUM_ARQUIVO, cor=COR_APOIO)
+        self.lbl_template_status = _rotulo(TEXTO_NENHUM_ARQUIVO, cor=COR_APOIO, elidir=True)
         q.addLayout(_linha(self.btn_template, 15, self.lbl_template_status))
         q.addSpacing(16)
 
@@ -396,7 +382,7 @@ class ModuloPDM(ModuleFrame):
     def _marcar_escolhido(botao, rotulo, caminho) -> None:
         """Arquivo escolhido: o nome em verde e o botão na cor primária (o
         hover continua o cinza, como o `configure(fg_color=...)` de lá)."""
-        rotulo.setText(os.path.basename(caminho))
+        rotulo.mostrar_caminho(caminho)   # nome elidido se for longo; o caminho no tooltip
         rotulo.setStyleSheet(rotulo.styleSheet() + f" color: {theme.COLORS['accent']};")
         botao.setStyleSheet(botao.styleSheet() + f" QPushButton {{ background: {theme.COLORS['primary']}; }}"
                             f" QPushButton:hover {{ background: {HOVER_CINZA}; }}")

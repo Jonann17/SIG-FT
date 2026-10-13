@@ -39,22 +39,6 @@ from sigft.services import analyzer_relatorio
 # CTkButton "Configurar Pesos": fg_color/hover_color escritos à mão lá.
 COR_BOTAO_CONFIG = "#3A3A3A"
 COR_BOTAO_CONFIG_HOVER = "#454545"
-# O CTkScrollableFrame: o conteúdo começa 6 px dentro do quadro (o canto) e vai
-# até a barra de rolagem, que fica 1 px antes da borda direita.
-RECUO_ROLAGEM = 6
-
-
-def _area_como_a_do_ctk(layout_pai=None, *, cor=None):
-    """`blocos.area_rolavel` com a barra SEMPRE à vista, como o CTkScrollableFrame.
-
-    O CTk reserva a faixa da barra mesmo sem nada para rolar (e desenha a alça
-    ocupando o trilho todo). Com a barra só quando precisa, os cartões desta
-    tela ficariam 11 px mais largos e tudo o que é centrado andaria 5 px.
-    """
-    area, layout = blocos.area_rolavel(layout_pai, cor=cor, margem=RECUO_ROLAGEM)
-    area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-    layout.setContentsMargins(RECUO_ROLAGEM, RECUO_ROLAGEM, 1, RECUO_ROLAGEM)
-    return area, layout
 
 
 def _rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, cor: str | None = None,
@@ -78,7 +62,7 @@ class JanelaPesos(QDialog):
         raiz.setContentsMargins(10, 10, 10, 0)   # scroll: padx=10, pady=10
         raiz.setSpacing(0)
         # fg_color padrão do CTkScrollableFrame no tema dark-blue: gray13 (medido), cantos de 6.
-        self.area, corpo = _area_como_a_do_ctk(raiz, cor="gray13")
+        self.area, corpo = blocos.area_rolavel(raiz, cor="gray13", barra_sempre_visivel=True)
         raiz.addSpacing(20)                      # scroll (…, 10) + salvar (10, …)
 
         self.titulo = _rotulo("Pesos dos Campos Fixos", tamanho=14, negrito=True, alinhar="centro")
@@ -165,8 +149,10 @@ class ModuloAnalyzer(ModuleFrame):
         return self.controller.get_key("GEMINI") if self.controller is not None else ""
 
     def _build_ui(self) -> None:
-        # Lá o conteúdo é um CTkScrollableFrame transparente.
-        self.area, corpo = _area_como_a_do_ctk(self.content_layout)
+        # Lá o conteúdo é um CTkScrollableFrame transparente, com a barra SEMPRE
+        # à vista: sem ela os cartões ficariam 11 px mais largos e o que é
+        # centrado andaria 5 px.
+        self.area, corpo = blocos.area_rolavel(self.content_layout, barra_sempre_visivel=True)
 
         self.lbl_subtitulo = _rotulo("Validação e Pontuação de Fichas Técnicas via IA", tamanho=16,
                                      cor=COLORS["text_light"], alinhar="centro")

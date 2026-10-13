@@ -162,6 +162,13 @@ def carregar_fontes() -> list[str]:
     # saía ~10% mais estreito que o do app antigo (medido: 221 x 237 px no
     # "ATENÇÃO: AÇÃO DESTRUTIVA"). No Windows a 100% de escala este já é o padrão
     # do Qt (métricas compatíveis com o GDI); escrito, vale também com escala.
+    # Remedido no polimento: o engrossamento soma 0,5-0,7 px por letra (13 a 16
+    # px) e o hinting completo o arredonda para 1 px; título longo em minúsculas
+    # sai até ~9% mais largo que no Tk da captura do Linux -- que usa o
+    # Roboto-Medium engrossado (o fontconfig acha o Medium em ~/.fonts), e não o
+    # Regular engrossado do GDI do Windows. Textos curtos e maiúsculas ficam
+    # iguais; o hinting padrão erra mais (tudo ~7% mais estreito). Um ajuste por
+    # letra consertaria os longos e estragaria os curtos: não há.
     fonte.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
     QApplication.setFont(fonte)
     return familias
@@ -278,6 +285,12 @@ PERCORRIDO_SLIDER_CTK = "#AAB0B5"
 # CTkRadioButton 22x22: borda 3 desmarcado, 6 marcado. No Qt `width`/`height` do
 # ::indicator NÃO contam a borda.
 TAMANHO_RADIO_CTK = 22
+# O `width=100` padrão do CTkRadioButton é largura MÍNIMA: "Português" e "English"
+# ocupam 100 (e empurram o vizinho para o mesmo x de lá); o texto maior alarga.
+# No QSS o `min-width` do rádio conta só o texto: os 22 da bolinha e os 6 do vão
+# vêm por fora (era um `setMinimumWidth` local do PDM).
+LARGURA_RADIO_CTK = 100
+VAO_TEXTO_RADIO_CTK = 6
 # CTkSlider: 16 de altura, trilho de 4 (16 - 2 * border_width 6), botão redondo de
 # 16; o centro do botão anda de 8 a largura - 8, o trilho vai de 6 a largura - 6.
 ALTURA_SLIDER_CTK = 16
@@ -338,6 +351,7 @@ def _folha_e31() -> str:
     # Notas fora da folha (um comentário dentro dela vazaria "gray" no QSS):
     # * rádio: desmarcado borda 3 #949A9F, marcado borda 6 azul (o miolo é o
     #   fundo), borda azul-escura sob o mouse nos dois; texto gray84, 6 px depois;
+    #   100 de largura no mínimo (LARGURA_RADIO_CTK);
     # * slider: o sulco é transparente e as duas metades (sub-page/add-page) é que
     #   desenham o trilho de 4 px, recuado 6 px das pontas -- assim o botão anda
     #   a largura inteira (centro de 8 a largura - 8), como no CTk;
@@ -345,7 +359,8 @@ def _folha_e31() -> str:
     #   claras na tabela e em toda lista com `barra_nativa` (as do tk.Listbox):
     #   a ttk/tk.Scrollbar é a do sistema, que no Windows ignora cores.
     return f"""
-QRadioButton {{ font-size: 13px; color: {cinza_tk('gray84')}; spacing: 6px; background: transparent; }}
+QRadioButton {{ font-size: 13px; color: {cinza_tk('gray84')}; spacing: {VAO_TEXTO_RADIO_CTK}px;
+    background: transparent; min-width: {LARGURA_RADIO_CTK - TAMANHO_RADIO_CTK - VAO_TEXTO_RADIO_CTK}px; }}
 QRadioButton:disabled {{ color: {cinza_tk('gray45')}; }}
 QRadioButton::indicator {{ width: {TAMANHO_RADIO_CTK - 6}px; height: {TAMANHO_RADIO_CTK - 6}px;
     border: 3px solid {BORDA_CTK}; border-radius: {raio_radio}px; background: transparent; }}

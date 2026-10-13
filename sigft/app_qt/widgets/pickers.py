@@ -49,7 +49,8 @@ class _LinhaSeletora(QWidget):
         self.botao = QPushButton(texto_botao)
         self.botao.setFixedWidth(largura_botao)
         self.botao.clicked.connect(self._abrir_dialogo)
-        self.label_status = QLabel()
+        # Elidido: um nome comprido não alarga o formulário (o caminho vai no tooltip).
+        self.label_status = blocos.RotuloElidido()
         linha.addWidget(self.botao)
         linha.addSpacing(15)
         linha.addWidget(self.label_status)
@@ -74,11 +75,14 @@ class _LinhaSeletora(QWidget):
     def limpar(self) -> None:
         self._valor = None
         self.label_status.setText(self._texto_vazio)
+        self.label_status.setToolTip("")
         self._pintar(COR_BOTAO_SELECAO, cinza_tk(theme.COR_TEXTO_APOIO))
 
     def definir(self, valor, rotulo: str) -> None:
+        """`valor` é o caminho (ou a tupla de caminhos): vai inteiro no tooltip."""
         self._valor = valor
-        self.label_status.setText(rotulo)
+        caminhos = "\n".join(valor) if isinstance(valor, (tuple, list)) else str(valor)
+        self.label_status.mostrar_caminho(caminhos, rotulo)
         self._pintar(theme.COLORS["primary"], theme.COLORS["accent"])
 
     def _abrir_dialogo(self) -> None:

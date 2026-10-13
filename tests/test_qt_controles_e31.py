@@ -263,3 +263,69 @@ def test_area_rolavel_nao_apaga_o_fundo_dos_filhos(qt_interface, qtbot, folha_do
     assert cor_cartao == theme.COR_CARTAO.upper()
     assert cor_botao == theme.COLORS["danger"].upper()
     assert isinstance(imagem, QImage)
+
+
+# --- polimento A5: rádio com a largura mínima do CTk e abas com a altura da escolhida ---
+
+def _em_linha(qtbot, *widgets):
+    from PySide6.QtWidgets import QHBoxLayout
+
+    recipiente = QWidget()
+    linha = QHBoxLayout(recipiente)
+    linha.setContentsMargins(0, 0, 0, 0)
+    linha.setSpacing(0)
+    for w in widgets:
+        linha.addWidget(w)
+    linha.addStretch()
+    qtbot.addWidget(recipiente)
+    recipiente.resize(900, 40)
+    recipiente.show()
+    qtbot.waitExposed(recipiente)
+    return recipiente
+
+
+def test_radio_tem_a_largura_minima_do_ctkradiobutton(qt_interface, qtbot, folha_do_app):
+    # O `width=100` padrão do CTkRadioButton é largura MÍNIMA: "Português" e
+    # "English" ocupam 100 e empurram o vizinho para o mesmo x de lá; o texto
+    # maior alarga. Vale para todo rádio do app (era local do PDM).
+    curto, longo = QRadioButton("English"), QRadioButton("Específico (Escolher 1 arquivo)")
+    recipiente = _em_linha(qtbot, curto, longo)  # noqa: F841 -- segura vivo
+    assert estilo.LARGURA_RADIO_CTK == 100
+    assert curto.width() == 100
+    assert longo.width() == longo.sizeHint().width() > 100
+
+
+def test_abas_com_a_altura_da_aba_escolhida(qt_interface, qtbot, folha_do_app):
+    # O CTkTabview só põe na grade a aba escolhida: num lugar que não estica
+    # (o formulário que rola do PDM), a altura dele é a dessa aba. O
+    # QStackedWidget pediria a da maior; `altura_da_escolhida=True` faz como lá.
+    def montar(**kw):
+        abas = Abas(**kw)
+        for nome, altura in (("Alta", 300), ("Baixa", 60)):
+            caixa = QWidget()
+            caixa.setFixedHeight(altura)
+            abas.add(nome).layout().addWidget(caixa)
+        recipiente = QWidget()
+        coluna = QVBoxLayout(recipiente)
+        coluna.addWidget(abas)
+        coluna.addStretch(1)       # a sobra fica embaixo, como no formulário do PDM
+        qtbot.addWidget(recipiente)
+        recipiente.resize(500, 700)
+        recipiente.show()
+        qtbot.waitExposed(recipiente)
+        vivos.append(recipiente)   # sem pai: sem esta referência o Python o apagaria
+        return abas
+
+    vivos = []
+    abas = montar(altura_da_escolhida=True)
+    alta = abas.height()
+    abas.set("Baixa")
+    qtbot.waitUntil(lambda: abas.height() == alta - 240, timeout=1000)
+    abas.botoes["Alta"].click()
+    qtbot.waitUntil(lambda: abas.height() == alta, timeout=1000)
+    # Sem o parâmetro, continua com a altura da maior (o padrão de hoje).
+    padrao = montar()
+    altura_padrao = padrao.height()
+    padrao.set("Baixa")
+    qtbot.wait(20)
+    assert padrao.height() == altura_padrao == alta

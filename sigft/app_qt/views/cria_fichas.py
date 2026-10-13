@@ -135,16 +135,7 @@ def _area_da_aba(aba: QWidget):
     """CTkScrollableFrame transparente que ocupa a aba, com a barra sempre à
     vista (o CTk reserva a faixa mesmo sem nada para rolar). Devolve
     `(area, corpo)`: o conteúdo tem a largura da aba menos 6 + 17."""
-    area, corpo = blocos.area_rolavel(aba.layout(), margem=RECUO_ROLAGEM)
-    area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-    # A barra do CTk fica 1 px antes da borda direita: faixa de 17 com a alça
-    # de 8 a 4 px da esquerda (a mesma da Cópia de Fichas).
-    area.verticalScrollBar().setStyleSheet(
-        estilo.folha_rolagem_ctk(margem_vertical=RECUO_ROLAGEM + 4)
-        + f"\nQScrollBar:vertical {{ width: {estilo.LARGURA_ROLAGEM_CTK + 1}px;"
-        f" margin: {RECUO_ROLAGEM + 4}px 5px {RECUO_ROLAGEM + 4}px 4px; }}")
-    corpo.setContentsMargins(RECUO_ROLAGEM, RECUO_ROLAGEM, 0, RECUO_ROLAGEM)
-    return area, corpo
+    return blocos.area_rolavel(aba.layout(), margem=RECUO_ROLAGEM, barra_sempre_visivel=True)
 
 
 def _barra():

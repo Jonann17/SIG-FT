@@ -748,16 +748,42 @@ def _perto(a, b, tol):
     return all(abs(x - y) <= tol for x, y in zip(a, b))
 
 
+# A única altura que depende da FONTE é a do título (Roboto 24 negrito: 29 px
+# aqui e no CTk), e ela empurra tudo o que vem abaixo. As outras alturas, as
+# larguras e os x são fixos (rótulos de 28, campos e botões com altura dada).
+# Os testes de medida descontam do `y` o que o título passar de 29 -- no
+# máximo 2 px --, e a tolerância fica só aí (e na altura da área, que cede o
+# mesmo tanto para o console, preso embaixo).
+ALTURA_TITULO_CTK = 29
+
+
+def _desvio_do_titulo(t):
+    desvio = t.label_titulo.height() - ALTURA_TITULO_CTK
+    assert abs(desvio) <= 2, f"título com {t.label_titulo.height()} px de altura"
+    return desvio
+
+
+def _medidor(t):
+    """`_geo` de quem fica abaixo do título, com o `y` sem o desvio da fonte dele."""
+    desvio = _desvio_do_titulo(t)
+
+    def g(w):
+        x, y, largura, altura = _geo(t, w)
+        return x, y - desvio, largura, altura
+    return g, desvio
+
+
 def test_medidas_iguais_as_do_customtkinter(tela_medida, qtbot):
     # Medidas da tela antiga (CustomTkinter, janela 1280x850, winfo_* -- aqui
     # relativas à área da tela, 277 px à direita da barra lateral). Ver
     # capturas/e4.6. Larguras de texto: ±8 (Roboto do Qt × do Tk; o hinting
     # muda com a ordem dos testes, que mexem na fonte do app).
     t, r = tela_medida, tela_medida._rotulos
-    g = lambda w: _geo(t, w)  # noqa: E731
-    assert g(t.label_titulo)[:2] == (40, 30)
-    assert g(t.area) == (40, 79, 923, 571)
-    assert g(t.console) == (40, 670, 923, 150)
+    g, desvio = _medidor(t)
+    assert _geo(t, t.label_titulo)[:2] == (40, 30)
+    x, y, largura, altura = g(t.area)
+    assert (x, y, largura, altura + desvio) == (40, 79, 923, 571)
+    assert _geo(t, t.console) == (40, 670, 923, 150)
     # Configuração global
     assert g(t.cartao_config) == (46, 95, 900, 119)
     assert g(r["config"])[:2] == (61, 105)
@@ -801,7 +827,7 @@ def test_medidas_iguais_as_do_customtkinter(tela_medida, qtbot):
 
 def test_medidas_da_aba_2(tela_medida, qtbot):
     t, r = tela_medida, tela_medida._rotulos
-    g = lambda w: _geo(t, w)  # noqa: E731
+    g, _desvio = _medidor(t)
     t.tabview.set("Criar planilhas PMIB")
     qtbot.waitUntil(lambda: g(t.tabview)[3] == 481, timeout=2000)
     assert g(t.quadro_fichas) == (72, 287, 848, 258)
@@ -832,7 +858,7 @@ def test_medidas_da_aba_2(tela_medida, qtbot):
 
 def test_medidas_da_aba_3(tela_medida, qtbot):
     t, r = tela_medida, tela_medida._rotulos
-    g = lambda w: _geo(t, w)  # noqa: E731
+    g, _desvio = _medidor(t)
     t.tabview.botoes["Excluir Duplicados"].click()
     qtbot.waitUntil(lambda: g(t.tabview)[3] == 261, timeout=2000)
     # Rótulo centrado (lá 431 de largura; o texto do Qt sai uns px mais curto).
@@ -845,3 +871,28 @@ def test_medidas_da_aba_3(tela_medida, qtbot):
     # E volta ao tamanho da aba 1
     t.tabview.set("Processar PDMs")
     qtbot.waitUntil(lambda: g(t.tabview)[3] == 571, timeout=2000)
+
+
+NOME_LONGO = ("Lista de PDMs SAM-GM revisao final aprovada pelo cliente em setembro de 2026 "
+              "- versao definitiva para fatiamento geral.xlsx")
+
+
+def test_nome_de_arquivo_longo_nao_alarga_o_formulario(tela_medida, qtbot, monkeypatch):
+    # Um nome de ~85 caracteres ou mais empurrava o formulário além da janela
+    # (os botões "Executar" da aba 1 saíam da tela). Agora o nome é elidido no
+    # rótulo e o caminho completo fica no tooltip.
+    t = tela_medida
+    caminho = "/dados/" + NOME_LONGO
+    monkeypatch.setattr(tela_mod.file_dialogs, "ask_open_file", lambda *a, **k: caminho)
+    t.btn_sam_gm.click()
+    t.tabview.set("Criar planilhas PMIB")
+    t.btn_pmib.click()
+    t.btn_template.click()
+    qtbot.waitUntil(lambda: _geo(t, t.tabview)[3] == 481, timeout=2000)
+    assert _geo(t, t.cartao_config)[2] == 900
+    assert t.area.widget().width() == t.area.viewport().width()
+    for rotulo in (t.lbl_sam_gm_status, t.lbl_pmib_status, t.lbl_template_status):
+        assert rotulo.text() == NOME_LONGO and rotulo.toolTip() == caminho
+        assert "…" in rotulo.texto_visivel()
+        quadro = rotulo.parentWidget()
+        assert rotulo.mapTo(quadro, rotulo.rect().topRight()).x() < quadro.width()
