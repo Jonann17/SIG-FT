@@ -18,6 +18,7 @@ from sigft.app import backends, theme
 from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA, MSG_LOGIN_PAGINA_PRINCIPAL
 from sigft.app_qt import estilo
 from sigft.app_qt.views import cria_fichas as tela_mod
+from sigft.app_qt.widgets import controles
 from sigft.app_qt.views.janelas import DecisaoRobo
 
 COLORS = theme.COLORS
@@ -75,6 +76,10 @@ class JanelaFalsa:
 
     def activateWindow(self):  # noqa: N802 -- API Qt
         pass
+
+    def setAttribute(self, atributo, ligado=True):  # noqa: N802 -- API Qt
+        self.atributos = getattr(self, "atributos", {})
+        self.atributos[atributo] = ligado
 
     def close(self):
         self.visivel = False
@@ -236,6 +241,10 @@ def test_cores_dos_botoes_e_rotulos(tela):
     for r in (tela.rotulo_etapa1, tela.rotulo_etapa2, tela.rotulo_etapa1_edicao, tela.rotulo_etapa2_edicao):
         assert COLORS["accent"] in _folha(r) and "16px" in _folha(r)
     assert "#808080" in _folha(tela.lbl_status) and "#808080" in _folha(tela.lbl_status_edicao)
+    # CTkLabel sem text_color: o gray84 do tema (#D6D6D6), não o text_light do app.
+    for r in (tela.rotulo_projeto, tela.rotulo_pmib, tela.rotulo_novo_projeto, tela.rotulo_excel_edicao):
+        assert f"color: {controles.COR_TEXTO_CTK}" in _folha(r), r.text()
+    assert controles.COR_TEXTO_CTK == "#D6D6D6"
     assert COLORS["accent"] in tela.progress.styleSheet()
     assert COLORS["accent"] in tela.progress_edicao.styleSheet()
     # O "▶" sai da fonte de símbolos (só o triângulo, como no Tk), não do Noto
@@ -481,7 +490,8 @@ def test_ia_com_catalogo(tela, qtbot, pd, monkeypatch):
     assert carregados == ["/d/PDM_MASTER.xlsx"]
     assert lotes == [("chave-GEMINI", 3, catalogo, False)]
     df = tela.revisoes[0].df
-    assert tela.revisoes[0].catalogo is catalogo and tela.catalogo is catalogo
+    # A revisão abre com o catálogo novo; o da tela (o do robô) só muda no CONFIRMAR.
+    assert tela.revisoes[0].catalogo is catalogo and tela.catalogo is None
     assert list(df["pdm_escolhido"]) == ["PDM.1111.001 - VALVULA", "NENHUM", "NENHUM"]
     assert list(df["codigo_projeto"]) == ["PROJ-1"] * 3
     assert list(df["descricao_original"]) == ["VALVULA", "PARAFUSO SEXTAVADO M8", "CABO"]
@@ -494,6 +504,85 @@ def test_ia_com_catalogo(tela, qtbot, pd, monkeypatch):
             "PARAFUSO SEXTAVADO M8") in texto
     assert ">  -> ⚠️ Item 3: PDM fora do catalogo: 'PDM.9999.999 - INVENTADO'. Marcado 'NENHUM'." in texto
     assert "> IA Finalizada. 3 itens | sem resposta: 1 | PDM fora do catálogo: 1" in texto
+    tela.revisoes[0].confirmar()
+    assert tela.catalogo is catalogo and tela.df_processed is df
+
+
+def test_ia_usa_a_selecao_e_a_planilha_do_clique(tela, qtbot, pd, monkeypatch):
+    # Correção 1 (revisão E4.9): a IA leva minutos e "Selecionar Excel" continua
+    # ligado. Trocar as linhas (ou a planilha de PDMs) no meio não pode pôr as
+    # descrições novas sob as respostas que a IA deu para as antigas.
+    segurar, entrou, lotes, carregados = threading.Event(), threading.Event(), [], []
+
+    class Categorizador:
+        modelo_em_uso = "modelo"
+
+        def __init__(self, chave):
+            self.chave = chave
+            entrou.set()
+            segurar.wait(3)          # a pessoa mexe na tela enquanto isto espera
+
+        def processar_lote(self, df, catalogo, callback_log=None):
+            lotes.append((self.chave, list(df["DESCRIÇÃO"])))
+            return [{"pdm_escolhido": "PDM.1111.001 - A"}, {"pdm_escolhido": "PDM.1111.002 - B"}]
+
+    monkeypatch.setattr(backends, "GeminiCategorizer", Categorizador)
+    monkeypatch.setattr(tela_mod.pdm_catalogo, "carregar", lambda p: carregados.append(p) or CatalogoFalso())
+    monkeypatch.setattr(tela_mod.file_dialogs, "ask_open_file", lambda *a, **k: "/d/OUTRO_MASTER.xlsx")
+    tela.controller = type("C", (), {"get_key": lambda self, k: "chave-do-clique"})()
+    tela.df_data_completo = pd.DataFrame({"DESCRIÇÃO": ["A", "B", "C", "D"], "CÓDIGO PMIB": [""] * 4})
+    tela.pos_selecao([0, 1])
+    tela.entry_projeto.setText("PROJ")
+    tela.file_path_pdm = "/d/PDM_MASTER.xlsx"
+    tela.btn_run_ai.setEnabled(True)
+    tela.btn_run_ai.click()
+    assert entrou.wait(3)
+    tela.pos_selecao([2, 3])                 # outras linhas, com a IA rodando
+    tela.selecionar_excel_pdm()              # e outra planilha de PDMs
+    tela.controller = type("C", (), {"get_key": lambda self, k: "outra-chave"})()
+    segurar.set()
+    qtbot.waitUntil(lambda: bool(tela.revisoes), timeout=3000)
+    assert carregados == ["/d/PDM_MASTER.xlsx"]
+    assert lotes == [("chave-do-clique", ["A", "B"])]
+    df = tela.revisoes[0].df
+    assert list(zip(df["descricao_original"], df["pdm_escolhido"])) == [
+        ("A", "PDM.1111.001 - A"), ("B", "PDM.1111.002 - B")]
+
+
+def test_falha_ao_abrir_a_revisao_devolve_o_botao(tela, qtbot, pd, monkeypatch, capsys):
+    # Correção 2: a continuação na thread da interface não pode morrer calada
+    # (a ponte engole a exceção) e deixar "3. Analisar" desligado para sempre.
+    def quebrada(*a, **k):
+        raise RuntimeError("janela quebrada")
+
+    monkeypatch.setattr(tela_mod, "JanelaRevisaoPDM", quebrada)
+    _selecionar_pular_ia(tela, pd)
+    tela.btn_run_ai.click()
+    _esperar_log(qtbot, tela, "> Erro ao abrir a revisão: RuntimeError: janela quebrada")
+    assert tela.btn_run_ai.isEnabled() and not tela._ia_em_andamento
+    assert tela.progress.maximum() == 1000
+    assert "janela quebrada" in capsys.readouterr().err       # o traceback vai para o log de erros
+    # E o "Pular IA" volta a mandar no botão, como antes da cadeia.
+    tela.chk_pular.click()
+    tela.chk_pular.click()
+    assert tela.btn_run_ai.isEnabled()
+
+
+def test_robo_so_aponta_para_dados_revisados(tela, qtbot, pd):
+    # Herdado do CTk (achado 6a): o resultado da IA ia para `df_processed` antes
+    # da revisão; com "4. Robô Web" ligado de um lote anterior, fechar a revisão
+    # nova no "X" deixava o robô apontado para dados que ninguém conferiu.
+    _selecionar_pular_ia(tela, pd)
+    revisado = pd.DataFrame({"descricao_original": ["LOTE ANTERIOR"]})
+    tela._pos_revisao_concluida(revisado)
+    assert tela.btn_run_auto.isEnabled()
+    tela.chk_pular.click()
+    tela.chk_pular.click()                     # religa o "3. Processar", como lá
+    tela.btn_run_ai.click()
+    qtbot.waitUntil(lambda: bool(tela.revisoes), timeout=3000)
+    assert tela.df_processed is revisado       # a revisão nova ainda está aberta
+    tela.revisoes[0].fechar_no_x()
+    assert tela.df_processed is revisado       # e foi recusada
 
 
 def test_ia_sem_o_backend_nao_comeca(tela, monkeypatch):
@@ -508,8 +597,7 @@ def test_ia_sem_o_backend_nao_comeca(tela, monkeypatch):
 
 
 def test_revisao_sem_dados_avisa_e_devolve_o_botao(tela, pd):
-    tela.df_processed = pd.DataFrame([])
-    tela.abrir_revisao_pdm()
+    tela.abrir_revisao_pdm(pd.DataFrame([]), None)
     assert tela.avisos == [("critical", "Erro", "Nenhum dado processado.")]
     assert tela.btn_run_ai.isEnabled() and tela.revisoes == []
 
@@ -682,8 +770,7 @@ def test_robo_sem_o_backend_nao_comeca(tela, robo, monkeypatch):
     ("NENHUM", "PDM.1111.001 - VALVULA, R1", {}, None),
 ])
 def test_conferencia_do_pdm_gravado(tela, qtbot, pedido, gravado, revisoes, esperado):
-    tela.catalogo = CatalogoFalso(revisoes)
-    tela._conferir_pdm_do_portal(pedido=pedido, gravado=gravado, pmib="45.1")
+    tela._conferir_pdm_do_portal(pedido=pedido, gravado=gravado, pmib="45.1", catalogo=CatalogoFalso(revisoes))
     tela.log("fim")
     _esperar_log(qtbot, tela, "> fim")
     if esperado is None:
@@ -714,6 +801,28 @@ def test_ver_resumo_nao_abre_duas_janelas(tela):
 def _resumo(pd):
     return pd.DataFrame({"descricao_original": ["A", "B"], "PMIB_CRIADO": ["45.1", "VERIFICAR (PULADO)"],
                          "PDM_COM_REVISAO": ["PDM.1, R1", "VERIFICAR (PULADO)"]})
+
+
+def test_resumos_fechados_nao_se_acumulam(tela, qtbot, pd, monkeypatch):
+    # Correção 3: cada "Ver Resumo" depois de fechar cria uma janela nova; a
+    # fechada (com a tabela inteira) não pode ficar escondida como filha da tela.
+    # O `destroy()` do CTk a liberava.
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    from sigft.app_qt.views import janelas
+
+    monkeypatch.setattr(tela_mod, "JanelaResumo", janelas.JanelaResumo)
+    tela.df_resumo_final = _resumo(pd)
+    for _ in range(3):
+        tela.abrir_resumo_manual()
+        janela = tela.janela_resumo
+        assert janela.isVisible() and janela.tree.topLevelItemCount() == 2
+        janela.botao_fechar.click()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    assert tela.findChildren(janelas.JanelaResumo) == []
+    tela.abrir_resumo_manual()                 # a referência velha (apagada) não atrapalha
+    assert len(tela.findChildren(janelas.JanelaResumo)) == 1
+    tela.janela_resumo.close()
 
 
 def test_salvar_sem_dados_avisa(tela):
@@ -868,8 +977,11 @@ def test_edicao_valida_antes_de_comecar(tela, pd):
 
 def test_robo_de_edicao(tela, robo, qtbot, pd, monkeypatch):
     avisos = []
+    # O aviso chega ANTES de o navegador fechar: lá o showinfo segurava o worker
+    # antes do `finally` (que fecha o navegador e devolve o botão).
     monkeypatch.setattr(tela, "avisar", lambda *a, **k: avisos.append((a, k, threading.current_thread()
-                                                                        is threading.main_thread())))
+                                                                        is threading.main_thread(),
+                                                                        RoboFalso.instancias[0].saiu)))
     tela.df_edicao_completo = pd.DataFrame({"DESCRIÇÃO": ["A", "B", "C"],
                                             "CÓDIGO PMIB": [" 4500.1 ", "4500.2", "nan"]})
     tela.pos_selecao_edicao([0, 1, 2])
@@ -888,7 +1000,8 @@ def test_robo_de_edicao(tela, robo, qtbot, pd, monkeypatch):
     assert "> Editando PMIB [1/2]: 4500.1..." in texto
     assert ">  -> ✅ SUCESSO: Projeto do 4500.1 atualizado." in texto
     assert ">  -> ❌ ERRO no 4500.2: ficha travada" in texto
-    assert avisos == [(("Concluído", "Processo de edição em massa finalizado. Verifique o log."), {}, False)]
+    assert avisos == [(("Concluído", "Processo de edição em massa finalizado. Verifique o log."),
+                       {"esperar": True}, False, False)]
     qtbot.waitUntil(lambda: tela.progress_edicao.fracao == 1.0, timeout=2000)
 
 
@@ -904,6 +1017,47 @@ def test_robo_de_edicao_erro_fatal(tela, robo, qtbot, pd, monkeypatch):
     _esperar_log(qtbot, tela, "> Erro Fatal na Edição: chrome não abriu")
     qtbot.waitUntil(tela.btn_run_edicao.isEnabled, timeout=2000)
     assert RoboFalso.instancias[0].saiu
+
+
+def _robos_vivos():
+    return [t for t in threading.enumerate() if t.name.startswith("tarefa:ModuloCriaFichas")]
+
+
+def test_um_robo_por_vez(tela, robo, qtbot, pd, monkeypatch):
+    # Herdado do CTk (achado 6b): uma revisão confirmada no meio religava o
+    # "4. Robô Web" (segundo robô), e o resumo do primeiro saía do lote NOVO.
+    liberar = threading.Event()
+    lote_a = list(tela.df_processed["descricao_original"])
+    RoboFalso.roteiro = {d: [("SUCESSO", (f"PMIB-{i}", "PDM.1111.001 - VALVULA, R1"))]
+                         for i, d in enumerate(lote_a)}
+    monkeypatch.setattr(RoboFalso, "iniciar_driver", lambda self: liberar.wait(3))
+    try:
+        tela.btn_run_auto.click()
+        assert not tela.btn_run_auto.isEnabled()
+
+        lote_b = pd.DataFrame([{"descricao_original": "LOTE NOVO", "pdm_escolhido": "NENHUM"}])
+        tela._pos_revisao_concluida(lote_b)           # revisão nova confirmada com o robô rodando
+        assert tela.df_processed is lote_b
+        assert not tela.btn_run_auto.isEnabled()      # o segundo robô não fica à mão
+        tela.run_automation_thread()                  # nem à força
+        tela.df_edicao_completo = pd.DataFrame({"DESCRIÇÃO": ["A"], "CÓDIGO PMIB": ["4500.1"]})
+        tela.pos_selecao_edicao([0])
+        tela.entry_novo_projeto.setText("NOVO")
+        tela.btn_run_edicao.click()                   # nem o da aba de edição
+        qtbot.waitUntil(lambda: _texto(tela).count(tela_mod.MSG_ROBO_OCUPADO) == 2, timeout=2000)
+        assert len(RoboFalso.instancias) == 1
+
+        liberar.set()
+        qtbot.waitUntil(lambda: bool(tela.resumos), timeout=3000)
+        # O resumo é do lote que ESTE robô levou ao portal.
+        assert list(tela.df_resumo_final["descricao_original"]) == lote_a
+        qtbot.waitUntil(tela.btn_run_auto.isEnabled, timeout=2000)
+        assert not tela._robo_ativo
+        assert tela.btn_run_edicao.isEnabled()        # o botão da edição nunca foi desligado
+    finally:
+        # Falhando no meio, nenhum robô pode sobrar esperando (o processo não sairia).
+        liberar.set()
+        qtbot.waitUntil(lambda: not _robos_vivos(), timeout=5000)
 
 
 def test_tarefas_em_thread_comum(tela, robo, qtbot):
