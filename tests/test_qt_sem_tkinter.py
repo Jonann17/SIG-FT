@@ -54,6 +54,8 @@ def _importa_sem_tk(modulo):
     "sigft.app_qt.views.apagar_lmr",
     "sigft.app_qt.views.lmr",
     "sigft.app_qt.widgets.controles",
+    "sigft.app.atualizacao_textos",
+    "sigft.app_qt.atualizacao",
 ])
 def test_importa_sem_tkinter(modulo):
     resultado = _importa_sem_tk(modulo)
@@ -68,3 +70,14 @@ def test_reexportacao_do_customtkinter_continua_igual():
                  "TEXTO_COMECAR_EXCLUSAO", "TEXTOS_TRAVADOS", "msg_excel_bloqueado",
                  "msg_falha_ao_salvar", "msg_ficha_preenchida", "MSG_LOGIN_LOTE"):
         assert getattr(dialogs, nome) is getattr(textos_dialogos, nome)
+
+
+def test_reexportacao_dos_textos_da_atualizacao():
+    # `sigft.app.atualizacao` (CustomTkinter) segue com os nomes de antes.
+    from sigft.app import atualizacao, atualizacao_textos
+    for nome in ("TITULO", "MSG_UAC", "MSG_COMO_FUNCIONA", "notas_para_exibir",
+                 "resumo_da_versao"):
+        assert getattr(atualizacao, nome) is getattr(atualizacao_textos, nome)
+    assert atualizacao._erro_curto is atualizacao_textos.erro_curto
+    assert atualizacao._data_br is atualizacao_textos.data_br
+    assert atualizacao._mb is atualizacao_textos.mb

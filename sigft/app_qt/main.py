@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 
 from sigft import _build_info
 from sigft.app import backends, theme
-from sigft.app_qt import catalogo, estilo, interface
+from sigft.app_qt import atualizacao, catalogo, estilo, interface
 from sigft.app_qt.views.home import HomeView
 from sigft.app_qt.views.nao_migrada import TelaComErro, TelaNaoMigrada
 from sigft.core import instancia
@@ -90,6 +90,10 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
 
         self.telas: dict[str, QWidget] = {}
         self.show_frame("Home")
+
+        # Toda abertura do app instalado pergunta ao GitHub se há versão nova,
+        # numa thread (a abertura não espera). Ver `sigft/app_qt/atualizacao.py`.
+        atualizacao.verificar_na_abertura(self)
 
     # -- barra lateral --------------------------------------------------------
     def _montar_sidebar(self) -> QScrollArea:
