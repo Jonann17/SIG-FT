@@ -39,6 +39,48 @@ from sigft.core.python_minimo import exigir_python_minimo
 
 exigir_python_minimo()
 
+
+def _a_qt_nao_abriu(erro: Exception) -> None:
+    """A interface Qt não importou (PySide6 ausente ou quebrado) ou não subiu.
+
+    Com `--smoke` (o passo do Release): grava o motivo e sai com 1. Sem isto,
+    um PySide6 que não carrega estourava ANTES do `_smoke`, o `.exe` sem
+    console mostrava a caixa de traceback do PyInstaller e o passo esperava até
+    o limite, sem relatório. E nunca cai no CustomTkinter: o Release tem de
+    reprovar, não passar com a interface errada.
+
+    Sem `--smoke` (decisão da transição): avisa no console e volta, e o
+    `frontend.py` segue para a interface antiga no mesmo processo -- a pessoa
+    continua trabalhando, e fica com o comando para abrir a antiga direto.
+    """
+    import os
+    import traceback
+
+    pilha = "".join(traceback.format_exception(erro))
+    if "--smoke" in sys.argv:
+        from sigft.app.conferencia import ARQUIVO_JANELA, gravar_relatorio
+
+        relatorio = (f"[smoke] FALHOU: a interface Qt nao abriu: "
+                     f"{type(erro).__name__}: {erro}\n\n{pilha}")
+        gravar_relatorio(ARQUIVO_JANELA, relatorio)
+        print(relatorio)
+        sys.exit(1)
+
+    # No `.exe` sem console, o aviso e a pilha vão para o `logs/sigft.log` (o
+    # import do `sigft.app_qt.main`, que faria isso, foi o que falhou).
+    from sigft.core.saida_log import desviar_saida_para_arquivo
+
+    desviar_saida_para_arquivo()
+    if getattr(sys, "frozen", False):
+        comando = f'"{sys.executable}" --ctk'
+    else:
+        comando = f'"{sys.executable}" "{os.path.abspath(__file__)}" --ctk'
+    print(pilha, file=sys.stderr)
+    print(f"[SIG-FT] A interface nova (Qt) nao abriu: {type(erro).__name__}: {erro}")
+    print("[SIG-FT] Abrindo a interface antiga para voce continuar trabalhando.")
+    print(f"         Para abrir a antiga direto: {comando}", flush=True)
+
+
 # ⚠️ ANTES do import pesado logo abaixo, e isto é o que faz o Release funcionar.
 #
 # Este arquivo é o que o `SIG-FT.spec` empacota — dentro do `.exe`, quem é
@@ -60,13 +102,17 @@ if __name__ == "__main__":
     # CustomTkinter logo abaixo: o modo Qt não importa tkinter (o Python do
     # Homebrew, no Mac, nem o traz). `--ctk` abre a interface antiga.
     if "--ctk" not in sys.argv:
-        from sigft.app_qt.main import executar_da_linha_de_comando as _abrir_qt
+        try:
+            from sigft.app_qt.main import executar_da_linha_de_comando as _abrir_qt
 
-        _abrir_qt()
-        # Não volta: o `main()` da Qt termina o processo (`instancia.encerrar`)
-        # e o `--smoke` sai com `sys.exit`. Se um dia voltar, sai aqui mesmo,
-        # em vez de cair no CustomTkinter.
-        sys.exit(0)
+            _abrir_qt()
+        except Exception as erro:  # noqa: BLE001 -- ver `_a_qt_nao_abriu`
+            _a_qt_nao_abriu(erro)  # com `--smoke` sai com 1; sem ele, segue para o CTk
+        else:
+            # Não volta: o `main()` da Qt termina o processo (`instancia.encerrar`)
+            # e o `--smoke` sai com `sys.exit`. Se um dia voltar, sai aqui mesmo,
+            # em vez de cair no CustomTkinter.
+            sys.exit(0)
 
 from sigft.app.main import (
     CONFIG_FILE,
@@ -132,7 +178,7 @@ __all__ = [
 
 
 if __name__ == "__main__":
-    # Só com `--ctk` chega aqui (sem ele, a Qt já recebeu a linha de comando).
+    # Chega aqui com `--ctk`, ou quando a Qt não abriu (ver `_a_qt_nao_abriu`).
     # `executar_da_linha_de_comando()`, e não `main()` direto: é ele que trata
     # `--smoke`. Chamar `main()` aqui engoliria a flag, porque o `__main__` do
     # `sigft/app/main.py` não roda no bundle. Ver o aviso lá em cima.

@@ -82,19 +82,48 @@ def test_sintaxe_do_script(script):
     assert resultado.returncode == 0, resultado.stderr
 
 
+def _git(*argumentos):
+    """Saida do `git` na raiz -- ou PULA o teste sem git, ou fora de um
+    repositorio (o ZIP do GitHub), onde nao ha o que conferir."""
+    try:
+        resultado = subprocess.run(["git", *argumentos], cwd=str(RAIZ),
+                                   capture_output=True, text=True)
+    except FileNotFoundError:
+        pytest.skip("sem o git nesta maquina: nao ha o que conferir")
+    if resultado.returncode != 0:
+        pytest.skip("fora de um repositorio git (ZIP): nao ha o que conferir")
+    return resultado.stdout
+
+
+def test_sem_git_os_testes_do_git_pulam(monkeypatch):
+    def sem_git(*_a, **_k):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(subprocess, "run", sem_git)
+    with pytest.raises(pytest.skip.Exception):
+        _git("status")
+
+
 @pytest.mark.parametrize("script", [COMMAND, BOOTSTRAP], ids=lambda p: p.name)
 def test_bit_de_execucao_gravado_no_git(script):
     """Sem o bit, o clique duplo no Finder recusa o arquivo. E e o modo gravado
     no git que chega a quem baixa o ZIP ou clona -- nao o do disco de quem
     commitou."""
     relativo = script.relative_to(RAIZ).as_posix()
-    resultado = subprocess.run(["git", "ls-files", "-s", "--", relativo], cwd=str(RAIZ),
-                               capture_output=True, text=True)
-    if resultado.returncode != 0:
-        pytest.skip("fora de um repositorio git (ZIP): o modo nao e conferivel")
-    assert resultado.stdout.strip(), f"{relativo} nao esta no git"
-    assert resultado.stdout.split()[0] == "100755", (
+    saida = _git("ls-files", "-s", "--", relativo)
+    assert saida.strip(), f"{relativo} nao esta no git"
+    assert saida.split()[0] == "100755", (
         f"{relativo} esta no git sem o bit de execucao: git update-index --chmod=+x {relativo}")
+
+
+@pytest.mark.parametrize("script", [COMMAND, BOOTSTRAP], ids=lambda p: p.name)
+def test_git_entrega_os_scripts_com_lf(script):
+    """Num checkout do Windows (`core.autocrlf=true`) o git os converteria para
+    CRLF, e uma pasta copiada ou zipada de la morreria no Mac ja na primeira
+    linha (`/bin/bash^M: bad interpreter`). O `.gitattributes` fixa LF, como
+    fixa CRLF no `.bat`."""
+    relativo = script.relative_to(RAIZ).as_posix()
+    assert _git("check-attr", "eol", "--", relativo).strip() == f"{relativo}: eol: lf"
 
 
 # -- o carimbo: so instala quando o requirements muda -------------------------------
@@ -156,19 +185,26 @@ def test_reconhece_pasta_de_servico_de_sincronizacao(tmp_path, caminho, sincroni
     assert resultado.stdout.strip() == ("SIM" if sincronizada else "NAO"), resultado.stderr
 
 
-def test_reconhece_o_icloud_mesa_e_documentos(tmp_path):
-    """Com "Mesa e Documentos" no iCloud, o caminho continua `~/Documents/...`:
-    a pista e o link que o iCloud Drive ganha para a pasta."""
-    casa = tmp_path / "home"
-    (casa / "Documents" / "SIG-FT").mkdir(parents=True)
-    nuvem = casa / "Library" / "Mobile Documents" / "com~apple~CloudDocs"
-    nuvem.mkdir(parents=True)
-    projeto = casa / "Documents" / "SIG-FT"
-    pergunta = f'_sigft_pasta_sincronizada "{projeto}" && echo SIM || echo NAO'
+@pytest.mark.parametrize(("dentro_da_casa", "sincronizada"), [
+    ("Desktop/SIG-FT", True),
+    ("Documents/SIG-FT", True),
+    ("Documents/Projetos/SIG-FT-main", True),
+    ("documents/SIG-FT", True),        # o disco do Mac nao diferencia maiusculas
+    ("Projetos/SIG-FT", False),
+    ("DocumentsVelhos/SIG-FT", False),
+])
+def test_mesa_e_documentos_contam_sempre_como_sincronizadas(tmp_path, dentro_da_casa,
+                                                             sincronizada):
+    """O iCloud "Mesa e Documentos" sincroniza ~/Desktop e ~/Documents NO LUGAR,
+    sem pista confiavel de que esta ligado. Errar para "sincronizada" nao custa
+    nada (o venv vai para Application Support); errar para o outro lado poria
+    dezenas de milhares de arquivos do venv no iCloud."""
+    projeto = tmp_path / "home" / dentro_da_casa
 
-    assert _bash(pergunta, tmp_path).stdout.strip() == "NAO"
-    (nuvem / "Documents").symlink_to(casa / "Documents")
-    assert _bash(pergunta, tmp_path).stdout.strip() == "SIM"
+    resultado = _bash(f'_sigft_pasta_sincronizada "{projeto}" && echo SIM || echo NAO',
+                      tmp_path)
+
+    assert resultado.stdout.strip() == ("SIM" if sincronizada else "NAO"), resultado.stderr
 
 
 def test_venv_fica_fora_da_pasta_sincronizada(tmp_path):

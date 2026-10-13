@@ -24,7 +24,8 @@ cd /d "%~dp0"
 echo [SIG-FT] Abrindo o aplicativo. Pode fechar esta janela preta so DEPOIS
 echo          de fechar o SIG-FT -- e nela que aparecem os erros.
 echo.
-"%SIGFT_PY%" "%~dp0frontend.py"
+rem Os argumentos seguem adiante: "SIG-FT.bat --ctk" abre a interface antiga.
+"%SIGFT_PY%" "%~dp0frontend.py" %*
 if errorlevel 1 goto :erro
 
 endlocal

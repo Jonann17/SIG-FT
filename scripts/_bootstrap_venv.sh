@@ -62,10 +62,10 @@ _sigft_escolher_venv() {
         # O servico tentaria sincronizar as dezenas de milhares de arquivos do
         # venv -- entao ele vai para fora da pasta sincronizada.
         SIGFT_VENV_DIR="$suporte"
-        echo "[SIG-FT] A pasta do projeto esta num servico de sincronizacao"
-        echo "         (iCloud Drive/OneDrive/Dropbox/Google Drive/Box). Para nao"
-        echo "         sincronizar milhares de arquivos, o ambiente virtual vai ficar"
-        echo "         fora dela: $suporte"
+        echo "[SIG-FT] A pasta do projeto esta (ou pode estar) sincronizada com a"
+        echo "         nuvem (Mesa ou Documentos no iCloud, iCloud Drive, OneDrive,"
+        echo "         Dropbox, Google Drive ou Box). Para nao sincronizar milhares de"
+        echo "         arquivos, o ambiente virtual vai ficar fora dela: $suporte"
         echo
     else
         SIGFT_VENV_DIR="$SIGFT_RAIZ/.venv"
@@ -91,19 +91,24 @@ _sigft_pasta_sincronizada() {
             */box/*|*"/box sync"*) return 0 ;;
         esac
     done
-    _sigft_icloud_mesa_e_documentos "$1"
+    _sigft_mesa_ou_documentos "$1"
 }
 
-_sigft_icloud_mesa_e_documentos() {
-    # Com "Mesa e Documentos" ligado no iCloud, ~/Desktop e ~/Documents
-    # sincronizam NO LUGAR: o caminho nao muda. A pista e o link que o iCloud
-    # Drive ganha para a pasta. Se a pista falhar para um lado, o pior caso e o
-    # venv em Application Support, que funciona do mesmo jeito.
-    local pasta
-    for pasta in Desktop Documents; do
-        case "$1/" in
-            "$HOME/$pasta/"*)
-                [ -L "$HOME/Library/Mobile Documents/com~apple~CloudDocs/$pasta" ] && return 0 ;;
+_sigft_mesa_ou_documentos() {
+    # ~/Desktop e ~/Documents contam SEMPRE como sincronizadas. O iCloud ("Mesa e
+    # Documentos", que o macOS oferece ja na configuracao do Mac) as sincroniza
+    # NO LUGAR -- o caminho nao muda -- e nao ha pista confiavel de que esta
+    # ligado. Os dois erros nao custam o mesmo: tomar por sincronizada uma pasta
+    # que nao e so poe o venv em Application Support, que funciona igual; o
+    # contrario poe dezenas de milhares de arquivos do venv no iCloud, que ainda
+    # pode tira-los do disco ("Otimizar Armazenamento") e quebrar imports de vez
+    # em quando. Sem distinguir maiusculas: o disco do Mac nao distingue.
+    local caminho casa pasta
+    caminho="$(_sigft_minusculo "$1/")"
+    casa="$(_sigft_minusculo "${HOME%/}")"
+    for pasta in desktop documents; do
+        case "$caminho" in
+            "$casa/$pasta/"*) return 0 ;;
         esac
     done
     return 1

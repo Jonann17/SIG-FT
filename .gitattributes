@@ -6,3 +6,11 @@
 # entrega CRLF tanto no checkout quanto no `git archive` — que é o que o botão
 # "Download ZIP" do GitHub usa. Verificado: o ZIP sai com CRLF.
 *.bat text eol=crlf
+
+# O contrário para os scripts do Mac (`SIG-FT.command`, `scripts/*.sh`): o bash
+# não aceita CRLF. Sem esta regra, um checkout no Windows com o padrão do Git
+# for Windows (`core.autocrlf=true`) os converteria, e uma pasta copiada ou
+# zipada de lá morreria no Mac já na primeira linha, com
+# `/bin/bash^M: bad interpreter`.
+*.sh text eol=lf
+*.command text eol=lf

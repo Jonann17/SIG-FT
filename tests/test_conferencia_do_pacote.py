@@ -326,9 +326,21 @@ def _modulos_da_fabrica(fabrica) -> set:
     usa uma classe importada no topo do `main.py` (o `LOAD_GLOBAL`, cujo
     modulo e o `__module__` da classe). Lido do objeto vivo, e nao de uma
     lista escrita aqui: uma tela nova entra no teste sozinha.
+
+    Um `functools.partial` e lido pela fabrica de dentro, e a propria classe da
+    tela registrada da o modulo dela. Outro chamavel devolve vazio -- e o teste
+    diz qual tela nao conseguiu ler, em vez de estourar aqui.
     """
     import dis
+    import functools
+    import inspect
 
+    while isinstance(fabrica, functools.partial):
+        fabrica = fabrica.func
+    if inspect.isclass(fabrica):
+        return {fabrica.__module__}
+    if not inspect.isfunction(fabrica):
+        return set()
     modulos = set()
     for instrucao in dis.get_instructions(fabrica):
         if instrucao.opname == "IMPORT_NAME":
@@ -367,3 +379,31 @@ def test_toda_tela_registrada_esta_na_conferencia_do_pacote():
     assert not sobrando, (
         "modulos de tela na conferencia que nenhuma fabrica de `TELAS` importa "
         "mais -- tire de `conferencia.MODULOS_ESSENCIAIS`: " + ", ".join(sobrando))
+
+
+def test_a_trava_entende_partial_e_classe_registrados_em_telas(monkeypatch):
+    """`TELAS` aceita qualquer chamavel(parent, controller): um `partial` de uma
+    fabrica, ou a propria classe da tela, tem de ser lido -- e nao estourar com
+    AttributeError/TypeError no lugar da mensagem que diz o que fazer."""
+    import functools
+
+    from sigft.app_qt import main as qmain
+    from sigft.app_qt.views.busca_pmib import ModuloBuscaPMIB
+
+    monkeypatch.setitem(qmain.TELAS, "SearchPMIB", ModuloBuscaPMIB)
+    monkeypatch.setitem(qmain.TELAS, "PDM", functools.partial(qmain.TELAS["PDM"]))
+
+    test_toda_tela_registrada_esta_na_conferencia_do_pacote()
+
+
+def test_a_trava_diz_qual_tela_nao_conseguiu_ler(monkeypatch):
+    from sigft.app_qt import main as qmain
+
+    class _ChamavelOpaco:
+        def __call__(self, parent, controller):
+            return None
+
+    monkeypatch.setitem(qmain.TELAS, "Opaca", _ChamavelOpaco())
+
+    with pytest.raises(AssertionError, match="nao achei o modulo da tela 'Opaca'"):
+        test_toda_tela_registrada_esta_na_conferencia_do_pacote()

@@ -63,8 +63,9 @@ Ele faz o mesmo que o `SIG-FT.bat`, numa janela do Terminal: na primeira
 execução cria o ambiente virtual e instala as dependências; depois só abre o
 aplicativo. Precisa do **Python 3.10 ou mais novo**
 ([python.org/downloads/macos](https://www.python.org/downloads/macos/)). Com o
-projeto no iCloud Drive, OneDrive, Dropbox ou Google Drive, o ambiente virtual
-vai para `~/Library/Application Support/SIG-FT/venv`.
+projeto na Mesa (Desktop) ou em Documentos, que o iCloud pode sincronizar, ou no
+iCloud Drive, OneDrive, Dropbox ou Google Drive, o ambiente virtual vai para
+`~/Library/Application Support/SIG-FT/venv`.
 
 ### Testar sem ter dados reais em mãos
 
@@ -103,7 +104,13 @@ python frontend.py          # a interface Qt, a oficial
 python frontend.py --ctk    # a interface antiga (CustomTkinter), durante a transição
 ```
 
-No Mac, `./SIG-FT.command --ctk` no Terminal também abre a interface antiga.
+Quem usa os atalhos tem de abrir a interface antiga com o Python do ambiente
+virtual, e não com o `python` do sistema: `SIG-FT.bat --ctk` (Windows) ou
+`./SIG-FT.command --ctk` (Mac, no Terminal), que já sabem onde ele está; ou,
+direto, `.venv\Scripts\python.exe frontend.py --ctk` (Windows) /
+`.venv/bin/python frontend.py --ctk` (Mac). Se a interface nova não conseguir
+abrir, o SIG-FT avisa na janela preta (no Mac, a do Terminal), com o comando
+certo, e abre a antiga sozinho.
 
 - **Entry point**: `frontend.py` (abre a Splash Screen, que carrega os backends dinamicamente e abre o app).
 - **Windows**: os módulos Tradutor (`xlwings`, exige Excel instalado) e alguns recursos (`os.startfile`) só funcionam em Windows.
