@@ -63,6 +63,8 @@ def _importa_sem_tk(modulo):
     "sigft.app_qt.views.pmib_manager",
     "sigft.app_qt.views.copia_fichas",
     "sigft.app_qt.views.pdm",
+    "sigft.app_qt.views._upload_comum",
+    "sigft.app_qt.views.upload_conditions",
     "sigft.app_qt.widgets.controles",
     "sigft.app.atualizacao_textos",
     "sigft.app_qt.atualizacao",
