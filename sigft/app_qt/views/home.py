@@ -128,6 +128,8 @@ def _rotulo(texto: str, fonte: tuple = FONTE_CTK, *, cor: str = COR_TEXTO_CTK,
     """CTkLabel de uma linha, `anchor="w"`: 28 px de altura no mínimo, texto
     centrado na vertical; `largura_minima` é o `width=` (o texto maior alarga)."""
     r = QLabel(texto)
+    # Texto cru, como o CTkLabel: em AutoText um "<" viraria HTML.
+    r.setTextFormat(Qt.TextFormat.PlainText)
     r.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     r.setMinimumHeight(blocos.ALTURA_MINIMA_ROTULO)
     if largura_minima:
@@ -438,7 +440,9 @@ class HomeView(QScrollArea):
         if not _vivo(janela) or not janela.isVisible():
             return None
         if janela.isMinimized():
-            janela.showNormal()
+            # Só tira o "minimizado": `showNormal()` também desmaximizaria a
+            # janela que a pessoa tinha maximizado antes de minimizar.
+            janela.setWindowState(janela.windowState() & ~Qt.WindowState.WindowMinimized)
         janela.raise_()
         janela.activateWindow()
         return janela
@@ -494,91 +498,19 @@ class HomeView(QScrollArea):
             geometria="820x640")
 
     def _ler_mural(self):
-        """`(gavetas, erro)` -- le a aba Atividades do mapeamento.
+        """`(gavetas, erro)` -- a aba Atividades do mapeamento, lida pelo
+        serviço (`services/mural_atividades.ler_mural_do_mapeamento`), o mesmo da
+        Home CustomTkinter. O erro vem como TEXTO: o mural é informativo."""
+        from sigft.services import mural_atividades
 
-        Devolve o erro como TEXTO em vez de levantar: o mural e informativo, e
-        uma planilha ausente nao pode virar traceback na cara do usuario.
-        """
-        from sigft.services import atividades as at
-
-        # As gavetas saem de `at.FAIXAS`, NUNCA de uma lista escrita aqui (ver
-        # tests/test_mural_nomes_do_servico.py).
-        vazio = {faixa: [] for faixa in at.FAIXAS}
-
-        caminho = self._caminho_do_mapeamento()
-        if not caminho:
-            return vazio, (
-                "Nao encontrei o arquivo de mapeamento.\n\n"
-                "Rode o PMIB Manager uma vez apontando a planilha gerenciadora -- "
-                "o mural passa a ler dela."
-            )
-
-        try:
-            import openpyxl
-
-            # `data_only=True` e obrigatorio: as celulas de agregacao da aba
-            # sao formulas, e sem isto `.value` devolveria a string "=FALSE()".
-            wb = openpyxl.load_workbook(caminho, data_only=True, read_only=True)
-            if "Atividades" not in wb.sheetnames:
-                wb.close()
-                return vazio, "A planilha nao tem a aba 'Atividades'.\n\n" + str(caminho)
-
-            ws = wb["Atividades"]
-
-            # ⚠️ `iter_rows`, NUNCA `ws.cell(...)` numa planilha `read_only`:
-            # cada `ws.cell` re-percorre o XML desde o comeco (o mural levava
-            # 3,9 s para abrir num arquivo de 40 KB).
-            def _celula(valores, coluna):
-                indice = coluna - 1
-                return valores[indice] if indice < len(valores) else None
-
-            linhas = []
-            for valores in ws.iter_rows(min_row=at.LINHA_CABECALHO + 1, values_only=True):
-                linhas.append({
-                    "nv": _celula(valores, at.COL_NV),
-                    "descricao": _celula(valores, at.COL_DESCRICAO),
-                    "concluida": _celula(valores, at.COL_CONCLUIDA),
-                    "status": _celula(valores, at.COL_STATUS),
-                    "com_quem": _celula(valores, at.COL_COM_QUEM),
-                    "criticidade": _celula(valores, at.COL_CRITICIDADE),
-                    "data_prevista_inicio": _celula(valores, at.COL_DATA_PREVISTA_INICIO) or "",
-                    "previsao_termino": _celula(valores, at.COL_PREVISAO_TERMINO) or "",
-                    # As datas REAIS: sem elas a regra que decide "ja comecou"
-                    # ficava cega.
-                    "data_inicio": _celula(valores, at.COL_DATA_INICIO) or "",
-                    "data_termino": _celula(valores, at.COL_DATA_TERMINO) or "",
-                })
-            wb.close()
-            return at.mural(linhas, date.today()), None
-        except Exception as e:
-            return vazio, "Nao consegui ler as atividades:\n{}: {}\n\n{}".format(
-                type(e).__name__, e, caminho)
+        return mural_atividades.ler_mural_do_mapeamento(self._caminho_do_mapeamento(), date.today())
 
     def _caminho_do_mapeamento(self):
-        """O ultimo arquivo gerenciadora que o usuario escolheu, se existir."""
-        import os
+        """O último arquivo gerenciadora que o usuário escolheu, se existir
+        (`services/mural_atividades.caminho_do_mapeamento`)."""
+        from sigft.services import mural_atividades
 
-        from sigft.core import prefs
-
-        # 1. O arquivo que o PMIB Manager registrou ao ser usado.
-        try:
-            salvo = prefs.get_last_file(prefs.CHAVE_MAPEAMENTO)
-        except Exception:
-            salvo = None
-        if salvo:
-            return salvo
-
-        # 2. Reserva: a PASTA lembrada do seletor, procurando o arquivo nela.
-        #    Cobre quem já usou o PMIB Manager ANTES de o arquivo ser guardado.
-        try:
-            pasta = prefs.get_initial_dir("pmib_manager.master", "excel")
-        except Exception:
-            pasta = None
-        if pasta and os.path.isdir(pasta):
-            for nome in sorted(os.listdir(pasta)):
-                if "mapeamento" in nome.lower() and nome.lower().endswith((".xlsx", ".xlsm")):
-                    return os.path.join(pasta, nome)
-        return None
+        return mural_atividades.caminho_do_mapeamento()
 
     # =====================================================================
     # CARDS DOS MÓDULOS  [2026-09-03] -- clicáveis

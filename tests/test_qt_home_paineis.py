@@ -12,9 +12,7 @@ janela 1280x850, `winfo_*`), em `capturas/e5.1/ctk_*.txt`.
 """
 import ast
 import pathlib
-import sys
 import threading
-import types
 from datetime import date
 
 import pytest
@@ -82,11 +80,13 @@ class Controller:
 def mensagens(monkeypatch):
     """Toda caixa de mensagem vira um registro; `respostas` responde as perguntas."""
     caixas = _Lista()
+    caixas.extras = []  # (botões, padrão...) de cada caixa, na mesma ordem
     respostas = []
 
     def registrar(tipo):
         def caixa(parent, titulo, texto, *a, **k):
             caixas.append((tipo, titulo, texto, parent))
+            caixas.extras.append((a, k))
             if tipo == "question":
                 return respostas.pop(0) if respostas else QMessageBox.StandardButton.No
             return QMessageBox.StandardButton.Ok
@@ -283,6 +283,26 @@ def test_segundo_clique_traz_a_mesma_janela(home, monkeypatch, abrir):
     primeira = getattr(home, abrir)()
     assert getattr(home, abrir)() is primeira
     assert _janelas_abertas(home) == [primeira]
+
+
+def test_segundo_clique_restaura_a_janela_minimizada(home, qtbot):
+    janela = home.abrir_janela_gastos_ia()
+    janela.showMinimized()
+    assert janela.isMinimized()
+    assert home.abrir_janela_gastos_ia() is janela
+    assert not janela.isMinimized() and janela.isVisible()
+
+
+def test_restaurar_nao_desmaximiza(home, qtbot):
+    # Maximizada e depois minimizada: volta MAXIMIZADA (o `showNormal()` a
+    # desmaximizava).
+    janela = home.abrir_janela_modelos_ia()
+    janela.showMaximized()
+    janela.showMinimized()
+    assert janela.isMinimized() and janela.windowState() & Qt.WindowState.WindowMaximized
+    assert home.abrir_janela_modelos_ia() is janela
+    assert not janela.isMinimized()
+    assert janela.isMaximized()
 
 
 def test_fechado_reabre_com_o_conteudo_de_agora(home, qtbot, rede):
@@ -571,6 +591,19 @@ def test_aplicar_recomendados_sem_a_chave_pergunta_antes(qt_interface, qtbot, re
     assert bool(estado["por_tarefa"]) is aplicou
 
 
+def test_aplicar_mesmo_assim_tem_nao_como_padrao(qt_interface, qtbot, rede, mensagens):
+    # Desvio deliberado: o askyesno do Tk tinha "Sim" como padrão; aqui um Enter
+    # na pergunta NÃO aplica os recomendados sem a chave.
+    tela = home_mod.HomeView(controller=Controller({"GEMINI": "g"}))
+    qtbot.addWidget(tela)
+    tela.abrir_janela_modelos_ia()
+    tela.btn_aplicar_recomendados_ia.click()
+    assert mensagens[0][:2] == ("question", "Chave de API faltando")
+    botoes, padrao = mensagens.extras[0][0]
+    assert botoes == QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+    assert padrao == QMessageBox.StandardButton.No
+
+
 def test_esc_e_enter_nao_salvam_a_selecao(home, qtbot, mensagens):
     janela = home.abrir_janela_modelos_ia()
     qtbot.keyClicks(home.entry_modelo_ia_livre, "meu/modelo")
@@ -679,19 +712,27 @@ def test_catalogo_que_chega_depois_de_reabrir_vai_para_o_painel_novo(home, qtbot
 
 def test_catalogo_que_chega_depois_do_painel_destruido_e_descartado(home, qtbot, rede, monkeypatch,
                                                                     capsys):
+    # A resposta chega (na thread da interface) e a GUARDA a descarta: o painel
+    # não é redesenhado sobre widgets destruídos.
     from PySide6.QtCore import QCoreApplication, QEvent
 
     janela = home.abrir_janela_modelos_ia()
     liberar, vistos = threading.Event(), []
     _catalogo_que_espera(monkeypatch, rede, liberar, vistos)
+    chegadas, redesenhos = [], []
+    chegou = home._catalogo_chegou
+    monkeypatch.setattr(home, "_catalogo_chegou", lambda: (
+        chegadas.append(threading.current_thread() is threading.main_thread()), chegou()))
+    monkeypatch.setattr(home, "_recarregar_modelos_do_provider", lambda *a, **k: redesenhos.append(a))
     home.btn_atualizar_catalogo_ia.click()
     janela.close()
     janela.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     assert not _vivo(janela)
     liberar.set()
-    qtbot.waitUntil(lambda: vistos and not vistos[0][0].is_alive(), timeout=3000)
-    qtbot.wait(50)  # a resposta passa pela fila da interface
+    qtbot.waitUntil(lambda: bool(chegadas), timeout=3000)
+    assert chegadas == [True], "a resposta veio pela thread da interface"
+    assert redesenhos == [], "a guarda descartou a resposta (painel destruído)"
     assert "Traceback" not in capsys.readouterr().err
 
 
@@ -820,108 +861,26 @@ def test_cor_da_barra_de_criticidade():
     assert mural_qt._cor_da_criticidade(None) == mural_qt.COR_CRITICIDADE_PADRAO
 
 
-class _AbaFalsa:
-    def __init__(self, linhas):
-        self.linhas = linhas
-        self.pedidos = []
+def test_mural_mostra_o_texto_da_planilha_como_veio(qt_interface, qtbot):
+    # O CTkLabel mostra o texto cru. O QLabel, em AutoText, tomaria "<a>"/"<b>"
+    # por HTML e os engoliria (o rótulo saía com 112 px).
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-    def iter_rows(self, min_row=1, values_only=False):
-        self.pedidos.append((min_row, values_only))
-        return iter(self.linhas)
+    from sigft.app_qt import estilo as _estilo
 
-
-class _PastaFalsa:
-    def __init__(self, abas):
-        self.abas = abas
-        self.sheetnames = list(abas)
-        self.fechada = False
-
-    def __getitem__(self, nome):
-        return self.abas[nome]
-
-    def close(self):
-        self.fechada = True
-
-
-def _openpyxl_falso(monkeypatch, pasta):
-    modulo = types.ModuleType("openpyxl")
-    modulo.abertos = []
-
-    def load_workbook(caminho, **kw):
-        modulo.abertos.append((caminho, kw))
-        if isinstance(pasta, Exception):
-            raise pasta
-        return pasta
-
-    modulo.load_workbook = load_workbook
-    monkeypatch.setitem(sys.modules, "openpyxl", modulo)
-    return modulo
-
-
-def test_ler_mural_sem_mapeamento(home, monkeypatch):
-    monkeypatch.setattr(home_mod.HomeView, "_caminho_do_mapeamento", lambda self: None)
-    gavetas, erro = home._ler_mural()
-    assert gavetas == {f: [] for f in at.FAIXAS}
-    assert erro == ("Nao encontrei o arquivo de mapeamento.\n\n"
-                    "Rode o PMIB Manager uma vez apontando a planilha gerenciadora -- "
-                    "o mural passa a ler dela.")
-
-
-def test_ler_mural_sem_a_aba(home, monkeypatch):
-    monkeypatch.setattr(home_mod.HomeView, "_caminho_do_mapeamento", lambda self: "/x/mapeamento.xlsx")
-    pasta = _PastaFalsa({"Outra": _AbaFalsa([])})
-    _openpyxl_falso(monkeypatch, pasta)
-    gavetas, erro = home._ler_mural()
-    assert erro == "A planilha nao tem a aba 'Atividades'.\n\n/x/mapeamento.xlsx"
-    assert pasta.fechada
-
-
-def test_ler_mural_le_as_colunas_e_classifica(home, monkeypatch):
-    monkeypatch.setattr(home_mod.HomeView, "_caminho_do_mapeamento", lambda self: "/x/mapeamento.xlsx")
-    linha = [None] * 16
-    linha[at.COL_NV - 1] = 2
-    linha[at.COL_DESCRICAO - 1] = "Revisar"
-    linha[at.COL_STATUS - 1] = "Em andamento"
-    linha[at.COL_PREVISAO_TERMINO - 1] = "2026-10-01"
-    aba = _AbaFalsa([tuple(linha), (1,)])
-    modulo = _openpyxl_falso(monkeypatch, _PastaFalsa({"Atividades": aba}))
-    recebidas = []
-    monkeypatch.setattr(at, "mural", lambda linhas, hoje: recebidas.append((linhas, hoje)) or "GAVETAS")
-    gavetas, erro = home._ler_mural()
-    assert (gavetas, erro) == ("GAVETAS", None)
-    assert modulo.abertos == [("/x/mapeamento.xlsx", {"data_only": True, "read_only": True})]
-    assert aba.pedidos == [(at.LINHA_CABECALHO + 1, True)]
-    [(linhas, hoje)] = recebidas
-    assert hoje == date.today()
-    assert linhas[0]["descricao"] == "Revisar" and linhas[0]["status"] == "Em andamento"
-    assert linhas[0]["previsao_termino"] == "2026-10-01" and linhas[0]["data_inicio"] == ""
-    assert linhas[1]["nv"] == 1 and linhas[1]["descricao"] is None  # linha curta não quebra
-
-
-def test_ler_mural_que_falha_vira_texto(home, monkeypatch):
-    monkeypatch.setattr(home_mod.HomeView, "_caminho_do_mapeamento", lambda self: "/x/m.xlsx")
-    _openpyxl_falso(monkeypatch, PermissionError("travado"))
-    gavetas, erro = home._ler_mural()
-    assert gavetas == {f: [] for f in at.FAIXAS}
-    assert erro == "Nao consegui ler as atividades:\nPermissionError: travado\n\n/x/m.xlsx"
-
-
-def test_caminho_do_mapeamento(home, monkeypatch, tmp_path):
-    from sigft.core import prefs
-
-    monkeypatch.setattr(prefs, "get_last_file", lambda chave: "/salvo/Mapeamento.xlsx"
-                        if chave == prefs.CHAVE_MAPEAMENTO else None)
-    assert home._caminho_do_mapeamento() == "/salvo/Mapeamento.xlsx"
-
-    monkeypatch.setattr(prefs, "get_last_file", lambda chave: None)
-    (tmp_path / "leia-me.txt").write_text("x")
-    (tmp_path / "PMIB - Mapeamento geral.xlsm").write_text("x")
-    monkeypatch.setattr(prefs, "get_initial_dir", lambda chave, categoria: str(tmp_path)
-                        if (chave, categoria) == ("pmib_manager.master", "excel") else None)
-    assert home._caminho_do_mapeamento() == str(tmp_path / "PMIB - Mapeamento geral.xlsm")
-
-    monkeypatch.setattr(prefs, "get_initial_dir", lambda *a: str(tmp_path / "nao-existe"))
-    assert home._caminho_do_mapeamento() is None
+    _estilo.carregar_fontes()
+    pai = QWidget()
+    QVBoxLayout(pai)
+    qtbot.addWidget(pai)
+    gavetas = {f: [] for f in at.FAIXAS}
+    gavetas[at.ATRASADA] = [_item("Trocar <a> por <b> no PDM", -1, _grupo="<i>Grupo</i>",
+                                  com_quem="<b>Luan</b>")]
+    mural_qt.montar(pai, gavetas, "09/10/2026")
+    for texto in ("Trocar <a> por <b> no PDM", "<i>Grupo</i>", "com <b>Luan</b>"):
+        rotulo = _por_texto(pai, texto)
+        assert rotulo.textFormat() == Qt.TextFormat.PlainText, texto
+        rotulo.ensurePolished()
+        assert rotulo.sizeHint().width() >= rotulo.fontMetrics().horizontalAdvance(texto), texto
 
 
 # =============================================================================

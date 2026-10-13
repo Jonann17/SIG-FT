@@ -89,6 +89,9 @@ def _rotulo(texto, fonte: tuple, cor: str, *, largura: int | None = None,
     largura; o que cabe fica numa linha só, com a largura dele (o `anchor` de lá).
     """
     r = QLabel(texto)
+    # Texto da planilha, CRU como no CTkLabel: em AutoText o QLabel tomaria um
+    # "Trocar <a> por <b> no PDM" por HTML e engoliria as "tags".
+    r.setTextFormat(Qt.TextFormat.PlainText)
     horizontal = Qt.AlignmentFlag.AlignRight if direita else Qt.AlignmentFlag.AlignLeft
     r.setAlignment(horizontal | Qt.AlignmentFlag.AlignVCenter)
     r.setMinimumHeight(blocos.ALTURA_MINIMA_ROTULO)

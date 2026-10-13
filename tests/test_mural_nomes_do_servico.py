@@ -15,8 +15,9 @@ Por que `compileall` e `pyflakes` não pegam: `at.PARA_COMECAR` é sintaxe
 válida e `at` está definido. Só olhando DENTRO do módulo importado dá para
 saber que o atributo não existe — que é o que este teste faz.
 
-Vale para qualquer nome (constante ou função), e para os dois arquivos que
-falam com o serviço: a Home lê a planilha, o widget desenha.
+Vale para qualquer nome (constante ou função), e para os arquivos que falam
+com o serviço: o leitor lê a planilha (`services/mural_atividades.py`, para
+onde as duas Homes delegam desde 2026-10-10), os widgets desenham.
 """
 import ast
 import pathlib
@@ -27,15 +28,25 @@ from sigft.services import atividades
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 ARQUIVOS = [
-    RAIZ / "sigft" / "app" / "views" / "home.py",
+    # [2026-10-10] A LEITURA da aba (o `_ler_mural` que morava nas duas Homes)
+    # agora é do serviço `mural_atividades`; as Homes só delegam
+    # (`tests/test_mural_atividades.py`). Os arquivos que citam o serviço
+    # `atividades` são o leitor e os dois desenhos (CustomTkinter e Qt).
+    RAIZ / "sigft" / "services" / "mural_atividades.py",
     RAIZ / "sigft" / "app" / "widgets" / "mural.py",
-    # [2026-10-09] A Home e o mural da interface Qt (E5.1): a mesma leitura e o
-    # mesmo desenho, então as mesmas travas.
-    RAIZ / "sigft" / "app_qt" / "views" / "home.py",
     RAIZ / "sigft" / "app_qt" / "widgets" / "mural.py",
 ]
-HOMES = [p for p in ARQUIVOS if p.name == "home.py"]
 MURAIS = [p for p in ARQUIVOS if p.name == "mural.py"]
+LEITOR = RAIZ / "sigft" / "services" / "mural_atividades.py"
+FUNCAO_DE_LEITURA = "ler_mural_do_mapeamento"
+
+
+def _funcao_de_leitura():
+    arvore = ast.parse(LEITOR.read_text(encoding="utf-8"))
+    for no in ast.walk(arvore):
+        if isinstance(no, ast.FunctionDef) and no.name == FUNCAO_DE_LEITURA:
+            return no
+    pytest.fail(f"{FUNCAO_DE_LEITURA} nao encontrada em services/mural_atividades.py")
 
 
 def _apelidos_do_servico(arvore):
@@ -76,16 +87,15 @@ def test_todo_nome_citado_existe_no_servico(caminho):
     )
 
 
-@pytest.mark.parametrize("caminho", HOMES, ids=lambda p: p.parent.parent.name)
-def test_gavetas_do_mural_saem_de_faixas(caminho):
-    """A Home monta as gavetas vazias derivando de `FAIXAS`, não a mão.
+def test_gavetas_do_mural_saem_de_faixas():
+    """A leitura monta as gavetas vazias derivando de `FAIXAS`, não a mão.
 
     Escrever as faixas a mão é exatamente o que apodreceu. Se alguém voltar a
     listá-las, este teste avisa.
     """
-    fonte = caminho.read_text(encoding="utf-8")
-    assert "vazio = {faixa: [] for faixa in at.FAIXAS}" in fonte, (
-        "Home._ler_mural deve derivar as gavetas de at.FAIXAS, nunca listar as faixas a mao."
+    trecho = ast.unparse(_funcao_de_leitura())
+    assert "vazio = {faixa: [] for faixa in at.FAIXAS}" in trecho, (
+        f"{FUNCAO_DE_LEITURA} deve derivar as gavetas de at.FAIXAS, nunca listar as faixas a mao."
     )
 
 
@@ -143,8 +153,7 @@ def test_o_mural_desenha_todas_as_faixas(dicionario, caminho):
 # Planilha em read_only se le com iter_rows, nunca com ws.cell
 # =============================================================================
 
-@pytest.mark.parametrize("caminho", HOMES, ids=lambda p: p.parent.parent.name)
-def test_leitura_do_mural_nao_usa_ws_cell(caminho):
+def test_leitura_do_mural_nao_usa_ws_cell():
     """`ws.cell(l, c)` em `read_only=True` custa O(n²).
 
     Em modo read-only a aba é um FLUXO só-para-frente: cada `ws.cell` volta ao
@@ -156,22 +165,13 @@ def test_leitura_do_mural_nao_usa_ws_cell(caminho):
     O defeito não dá erro nenhum: só fica lento. Por isso precisa de trava —
     nada mais o denunciaria.
     """
-    fonte = caminho.read_text(encoding="utf-8")
-    arvore = ast.parse(fonte)
-
-    for no in ast.walk(arvore):
-        if not (isinstance(no, ast.FunctionDef) and no.name == "_ler_mural"):
-            continue
-        chamadas = [
-            c.func.attr
-            for c in ast.walk(no)
-            if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
-        ]
-        assert "cell" not in chamadas, (
-            "_ler_mural voltou a usar ws.cell() numa planilha read_only: "
-            "custo quadratico. Use ws.iter_rows(values_only=True)."
-        )
-        assert "iter_rows" in chamadas, "_ler_mural deve ler com iter_rows"
-        return
-
-    pytest.fail("_ler_mural nao encontrado em home.py")
+    chamadas = [
+        c.func.attr
+        for c in ast.walk(_funcao_de_leitura())
+        if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+    ]
+    assert "cell" not in chamadas, (
+        f"{FUNCAO_DE_LEITURA} voltou a usar ws.cell() numa planilha read_only: "
+        "custo quadratico. Use ws.iter_rows(values_only=True)."
+    )
+    assert "iter_rows" in chamadas, f"{FUNCAO_DE_LEITURA} deve ler com iter_rows"
