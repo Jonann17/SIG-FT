@@ -56,17 +56,14 @@ def _rotulo_da_linha(texto: str, largura: int | None = LARGURA_ROTULO) -> QLabel
 
 
 def _botao_cinza(texto: str, largura: int) -> QPushButton:
-    """O CTkButton #3A3A3A (hover #454545) que a tela escrevia à mão.
+    """O CTkButton #3A3A3A (hover #454545) que a tela escrevia à mão: a variante "cinza".
 
-    As cores vão na folha do PRÓPRIO botão, não só na variante: dentro da área
-    rolável (`blocos.area_rolavel`, cujo `background: transparent` sem seletor
-    desce para os filhos) a variante "cinza" da folha do app perde. E sem o
-    padding de 14 da folha do app: o texto que passa da largura transborda
-    centrado, como no CTk, em vez de ser cortado pela margem.
+    Sem o padding de 14 da folha do app (regra própria, somada à do `blocos`):
+    o texto que passa da largura transborda centrado, como no CTk, em vez de
+    ser cortado pela margem ("Buscar Pasta" em 100 px, "Abrir Arquivo" em 120).
     """
     b = blocos.botao(texto, variante="cinza", largura=largura, altura=28)
-    b.setStyleSheet(b.styleSheet().replace("QPushButton {", f"QPushButton {{ padding: 0; background: {CINZA};", 1)
-                    + f" QPushButton:hover {{ background: {CINZA_SETA}; }}")
+    b.setStyleSheet(b.styleSheet() + " QPushButton { padding: 0; }")
     return b
 
 
@@ -76,7 +73,8 @@ def _caixa_de_texto(texto: str, *, fonte: tuple, cor: str) -> QPlainTextEdit:
     caixa.setReadOnly(True)
     caixa.setFrameShape(QFrame.Shape.NoFrame)
     caixa.setPlainText(texto)
-    caixa.setFixedHeight(_altura_do_textbox(texto))
+    # A conta da tela antiga, sobre o texto que ela via (sem o seletor U+FE0E do `mono`).
+    caixa.setFixedHeight(_altura_do_textbox(texto.replace("\ufe0e", "")))
     caixa.document().setDocumentMargin(0)
     caixa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     # O tk.Text do CTkTextbox fica 6 px para dentro (o canto), e a primeira letra
@@ -130,14 +128,14 @@ class CartaoResultado(QFrame):
         layout.addLayout(linha_topo)
 
         layout.addSpacing(7)                            # f_top (…, 5) + caminho (2, …)
-        self.texto_caminho = _caixa_de_texto(estilo.mono(f"📂 Caminho:\n{caminho_arq}"),
+        self.texto_caminho = _caixa_de_texto(estilo.mono("📂 Caminho:") + f"\n{caminho_arq}",
                                              fonte=("Consolas", 11), cor="#A0A0A0")
         layout.addWidget(self.texto_caminho)
 
         self.texto_amostra = None
         if amostra:
             layout.addSpacing(4)                        # caminho (…, 2) + amostra (2, …)
-            self.texto_amostra = _caixa_de_texto(estilo.mono(f"🔎 Amostra: {amostra}"),
+            self.texto_amostra = _caixa_de_texto(estilo.mono("🔎 Amostra: ") + amostra,
                                                  fonte=("Roboto", 12), cor="#E0E0E0")
             layout.addWidget(self.texto_amostra)
             layout.addSpacing(5)                        # amostra (…, 5) + botões (0, …)
@@ -367,4 +365,9 @@ class ModuloBuscaPMIB(ModuleFrame):
             QMessageBox.information(self, "Resultados", "Nenhum material encontrado com esses parâmetros.")
             return
         self.janela_resultados = JanelaResultados(self, resultados)
+        # WA_DeleteOnClose: fechada, a janela some; a referência não pode sobrar.
+        self.janela_resultados.destroyed.connect(self._janela_fechada)
         self.janela_resultados.show()
+
+    def _janela_fechada(self, *_args) -> None:
+        self.janela_resultados = None

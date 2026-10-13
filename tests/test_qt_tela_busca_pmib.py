@@ -188,8 +188,8 @@ def test_janela_de_resultados(janela):
     c1, c2 = janela.cartoes
     assert c1.campo_pmib.text() == "PMIB: 4500063671.0012" and c1.campo_pmib.isReadOnly()
     assert c1.rotulo_coluna.text() == "| Match na coluna: DESCRIÇÃO"
-    assert c1.texto_caminho.toPlainText() == estilo.mono("📂 Caminho:\n/fichas/UG01/4500063671.0012.xlsx")
-    assert c1.texto_amostra.toPlainText() == estilo.mono("🔎 Amostra: ROLAMENTO DE ESFERAS 6205-2RS")
+    assert c1.texto_caminho.toPlainText() == estilo.mono("📂 Caminho:") + "\n/fichas/UG01/4500063671.0012.xlsx"
+    assert c1.texto_amostra.toPlainText() == estilo.mono("🔎 Amostra: ") + "ROLAMENTO DE ESFERAS 6205-2RS"
     assert c1.texto_caminho.isReadOnly() and c1.texto_amostra.isReadOnly()
     # Sem amostra, sem a caixa da amostra.
     assert c2.texto_amostra is None
@@ -241,9 +241,28 @@ def test_arquivo_ou_pasta_que_sumiu(janela, monkeypatch):
     assert abertos == []
 
 
-def test_fechar(janela):
+def test_fechar(janela, qtbot):
+    tela = janela.tela
     janela.botao_fechar.click()
     assert not janela.isVisible()
+    # WA_DeleteOnClose: a tela não fica apontando para uma janela destruída.
+    qtbot.waitUntil(lambda: tela.janela_resultados is None, timeout=2000)
+
+
+def test_dados_da_ficha_nao_ganham_seletor_de_texto(qt_interface, qtbot):
+    # `mono` só nos rótulos com emoji: "≤", "→" e "⌀" da ficha chegam intactos
+    # (quem copia a amostra não leva caractere invisível) e a altura é a da conta antiga.
+    t = tela_mod.ModuloBuscaPMIB()
+    qtbot.addWidget(t)
+    amostra = "TORQUE ≤ 40 N·m → ⌀ 25 MM"
+    caminho = "/fichas/≤ 2020/→ ficha.xlsx"
+    t._mostrar_janela_resultados([{"amostra": amostra, "caminho_arquivo": caminho}])
+    c = t.janela_resultados.cartoes[0]
+    assert c.texto_amostra.toPlainText().endswith(amostra)
+    assert c.texto_caminho.toPlainText().endswith("\n" + caminho)
+    assert "\ufe0e" not in c.texto_amostra.toPlainText().split(": ", 1)[1]
+    assert "\ufe0e" not in c.texto_caminho.toPlainText().split("\n", 1)[1]
+    assert c.texto_amostra.height() == tela_mod._altura_do_textbox(f"🔎 Amostra: {amostra}")
 
 
 # --- geometria -------------------------------------------------------------------------
