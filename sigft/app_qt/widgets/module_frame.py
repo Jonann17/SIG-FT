@@ -24,6 +24,14 @@ from sigft.app_qt.widgets.console import ConsoleFrame
 from sigft.app_qt.widgets.espera import DialogosDeEspera
 
 
+def _reabilitar(botao) -> None:
+    """Devolve o botão. A tela pode ter sido fechada antes de a tarefa acabar."""
+    try:
+        botao.setEnabled(True)
+    except RuntimeError:
+        pass  # widget já destruído pelo Qt: nada a devolver
+
+
 class ModuleFrame(DialogosDeEspera, QWidget):
     def __init__(
         self,
@@ -125,7 +133,7 @@ class ModuleFrame(DialogosDeEspera, QWidget):
                 traceback.print_exc()
             finally:
                 if botao is not None:
-                    interface.na_interface(botao.setEnabled, True)
+                    interface.na_interface(_reabilitar, botao)
 
         thread = threading.Thread(target=rodar, name=f"tarefa:{type(self).__name__}")
         thread.start()

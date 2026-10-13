@@ -32,7 +32,7 @@ from sigft import _build_info
 from sigft.app import backends, theme
 from sigft.app_qt import catalogo, estilo, interface
 from sigft.app_qt.views.home import HomeView
-from sigft.app_qt.views.nao_migrada import TelaNaoMigrada
+from sigft.app_qt.views.nao_migrada import TelaComErro, TelaNaoMigrada
 from sigft.core import instancia
 from sigft.core.saida_log import desviar_saida_para_arquivo
 
@@ -144,7 +144,17 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         tela = self.telas.get(nome)
         if tela is None:
             fabrica = TELAS.get(nome)
-            tela = fabrica(self.pilha, self) if fabrica else TelaNaoMigrada(nome)
+            if fabrica is None:
+                tela = TelaNaoMigrada(nome)
+            else:
+                try:
+                    tela = fabrica(self.pilha, self)
+                except Exception as erro:  # noqa: BLE001 -- vira tela de erro
+                    traceback.print_exc()
+                    erro_tela = TelaComErro(nome, erro)
+                    self.pilha.addWidget(erro_tela)
+                    self.pilha.setCurrentWidget(erro_tela)
+                    return  # sem cache: a próxima visita tenta montar de novo
             self.telas[nome] = tela
             self.pilha.addWidget(tela)
         self.pilha.setCurrentWidget(tela)
@@ -260,8 +270,23 @@ class SplashScreen(QWidget):
             interface.na_interface(self.pronta.emit)
 
 
+def _instalar_traducao(app) -> bool:
+    """Botões dos diálogos do Qt em português ("Sim", "Não", "Cancelar").
+    Sem isto o QMessageBox mostra "Yes"/"No"/"Cancel"."""
+    from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
+
+    tradutor = QTranslator(app)
+    pasta = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+    if tradutor.load(QLocale("pt_BR"), "qtbase", "_", pasta):
+        app.installTranslator(tradutor)
+        app._tradutor_qt = tradutor  # segura a referência
+        return True
+    return False
+
+
 def _preparar_qt() -> QApplication:
     app = QApplication.instance() or QApplication(sys.argv)
+    _instalar_traducao(app)
     interface.instalar()
     estilo.carregar_fontes()
     app.setStyleSheet(estilo.folha_de_estilo())

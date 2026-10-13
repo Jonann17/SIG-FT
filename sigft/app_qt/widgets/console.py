@@ -48,7 +48,11 @@ class ConsoleFrame(QPlainTextEdit):
         try:
             interface.na_interface(self._agendar)
         except RuntimeError:
-            pass  # app fechando: perder a linha é o certo, derrubar o worker não
+            # Canal fechado (app fechando) ou ainda não instalado: a linha fica
+            # na fila e a PRÓXIMA chamada tenta agendar de novo -- sem isto o
+            # `_agendado` ficaria preso em True e o console, mudo para sempre.
+            with self._trava:
+                self._agendado = False
 
     def _agendar(self) -> None:
         try:

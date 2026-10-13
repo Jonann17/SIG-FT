@@ -145,6 +145,14 @@ def esta_carregado(nome: str) -> bool:
     return globals().get(nome) is not None
 
 
+def _modulo_de(nome: str) -> str | None:
+    """O módulo Python por trás de `nome` (destino ou classe), ou None."""
+    for nome_modulo, destino, classes, _exibido in MODULOS:
+        if nome == destino or nome in (classes or []):
+            return nome_modulo
+    return None
+
+
 def motivo_da_falha(nome: str) -> str | None:
     erro = falhas.get(nome)
     return None if erro is None else f"{type(erro).__name__}: {erro}"
@@ -152,6 +160,11 @@ def motivo_da_falha(nome: str) -> str | None:
 
 def exigir(nome: str):
     """O backend `nome`, ou `BackendIndisponivel` com o motivo em português."""
+    nome_modulo = _modulo_de(nome)
+    if nome_modulo is None:
+        # Nome errado é defeito de programação, não do computador da pessoa:
+        # sem isto, "pdm_backnd" respondia "espere a abertura terminar".
+        raise KeyError(f"backend desconhecido: {nome!r}")
     objeto = globals().get(nome)
     if objeto is not None:
         return objeto
@@ -160,5 +173,5 @@ def exigir(nome: str):
         raise BackendIndisponivel(
             f"O módulo '{nome}' ainda não foi carregado. Espere a abertura terminar.")
     raise BackendIndisponivel(
-        f"Este módulo não carregou: {motivo}\n\n"
+        f"Este módulo não carregou (módulo {nome_modulo}): {motivo}\n\n"
         "O detalhe está em Documentos\\SIG-FT\\logs\\sigft.log.")

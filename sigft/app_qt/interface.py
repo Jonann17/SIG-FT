@@ -35,11 +35,21 @@ _thread_da_interface: int | None = None
 
 
 def instalar() -> None:
-    """Cria a ponte na thread atual (a da interface). Chamar uma vez, cedo."""
+    """Cria a ponte na thread atual (a da interface). Chamar uma vez, cedo,
+    DEPOIS do `QApplication` existir: a ponte vive na thread em que nasce, e
+    é para lá que o Qt entrega as chamadas."""
     global _ponte, _thread_da_interface
-    if _ponte is None:
-        _ponte = _Ponte()
-        _thread_da_interface = threading.get_ident()
+    if _ponte is not None:
+        return
+    from PySide6.QtCore import QCoreApplication, QThread
+
+    app = QCoreApplication.instance()
+    if app is None or QThread.currentThread() is not app.thread():
+        raise RuntimeError(
+            "interface.instalar() precisa rodar na thread da interface, "
+            "depois do QApplication existir.")
+    _ponte = _Ponte()
+    _thread_da_interface = threading.get_ident()
 
 
 def na_thread_da_interface() -> bool:
