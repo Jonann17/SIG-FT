@@ -26,7 +26,9 @@ Onde ficam os dados do usuário
 Distinção que importa e que é fácil errar:
 
 * **Dentro do bundle** (somente leitura, achado por `resource_path`, que sabe
-  ler o `sys._MEIPASS`): `assets/logo.png`.
+  ler o `sys._MEIPASS`, ou pelo `__file__` do módulo, que no bundle também
+  aponta para dentro dele): `assets/` -- o logo, o ícone e as fontes da
+  interface Qt --, a Qt e as licenças dela (ver "A interface Qt" abaixo).
 * **Fora, ao lado do .exe** (graváveis, achados pelo diretório de trabalho):
   `api_config.json`, `user_prefs.json`, `logs/`, os caches de modelo.
 
@@ -149,6 +151,62 @@ else:
 binarios = collect_dynamic_libs("ctranslate2")
 
 # =============================================================================
+# A interface Qt (E6.2, 2026-10-10)
+# =============================================================================
+# Desde o corte (E6.1) o `.exe` abre a interface Qt (`sigft/app_qt/`); o
+# `--ctk` ainda abre a CustomTkinter, que continua no pacote enquanto ele
+# existir. O PySide6 entra pela análise (o `frontend.py` importa
+# `sigft.app_qt.main`) e pelos hooks do PyInstaller, que trazem as DLLs do Qt,
+# os plugins e as traduções. Três peças são escolha nossa:
+#
+#   1. os plugins: só a plataforma e o estilo, no hook
+#      `empacotamento/hooks/hook-PySide6.QtGui.py` (o `hookspath` do Analysis),
+#      e o módulo QtNetwork fora, nos `excludes` (lá está por quê);
+#   2. as traduções e o OpenGL por software: filtrados depois da análise, em
+#      "A Qt que a interface não usa", lá embaixo;
+#   3. as licenças, logo aqui.
+#
+# O que a interface lê do disco já vem por outros caminhos e é conferido
+# DENTRO do `.exe` pela `--conferir-pacote` (`sigft/app/conferencia.py`,
+# `conferir_qt`): as fontes em `assets/fonts` (o `("assets", "assets")` lá em
+# cima; `estilo.PASTA_FONTES` sai do `__file__`, que no bundle é
+# `_internal/sigft/app_qt/estilo.pyc`, e cai em `_internal/assets/fonts`), a
+# tradução `qtbase_pt_BR` e o plugin da plataforma (achados pelo `qt.conf` que
+# o PySide6 cria ao ser importado).
+#
+# Licenças. O Qt for Python (PySide6, shiboken6) e o Qt vão sob a LGPLv3, que
+# pede a quem distribui: avisar que a biblioteca está no programa, mandar junto
+# o texto da LGPL e o da GPL, e deixar a biblioteca trocável (no onedir, as
+# DLLs do Qt e os `.pyd` ficam em arquivos à parte, em `_internal/PySide6`).
+# O wheel NÃO traz o texto da LGPL: medido no 6.12, o `.dist-info` do Windows
+# tem só o METADATA ("License: LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only")
+# e um `LicenseRef-Qt-Commercial.txt`, sobre a licença comercial; o do Linux,
+# só o METADATA. Por isso o aviso e
+# os textos oficiais da FSF moram em `empacotamento/licencas/` (com o SHA-256
+# conferido em `tests/test_qt_no_pacote.py`), e os arquivos do wheel vêm do
+# ambiente do build, na versão que vai no pacote. Tudo em `_internal/licencas/`.
+datas += [(os.path.join("empacotamento", "licencas", nome), "licencas")
+          for nome in ("LEIA-ME-Qt.txt", "LGPL-3.0.txt", "GPL-3.0.txt")]
+
+
+def _licencas_do_wheel(distribuicao):
+    """O METADATA e o `.dist-info/licenses/` do pacote instalado no build."""
+    from importlib import metadata
+
+    try:
+        dist = metadata.distribution(distribuicao)
+    except metadata.PackageNotFoundError:
+        raise SystemExit(f"[SIG-FT] ERRO: {distribuicao} nao esta instalado no ambiente do build. "
+                         "A interface oficial e a Qt: pip install -r requirements.txt") from None
+    return [(str(dist.locate_file(arquivo)), os.path.join("licencas", distribuicao))
+            for arquivo in dist.files or []
+            if arquivo.parts[0].endswith(".dist-info")
+            and (arquivo.name == "METADATA" or "licenses" in arquivo.parts)]
+
+
+datas += _licencas_do_wheel("PySide6_Essentials") + _licencas_do_wheel("shiboken6")
+
+# =============================================================================
 # Imports que o PyInstaller não enxerga sozinho
 # =============================================================================
 # O splash importa os backends por NOME, com `importlib.import_module`
@@ -169,15 +227,12 @@ hiddenimports = [
     "search_pmib_backend",
 ]
 
-# O pacote `sigft` inteiro: as views são importadas pelo `main.py`, mas os
-# serviços entram por aqueles shims dinâmicos acima.
-#
-# `sigft.app_qt` (a UI Qt em migração) fica DE FORA: até o corte (Etapa 6) o
-# .exe é o app CustomTkinter, e coletar o pacote arrastaria PySide6 + as DLLs e
-# plugins do Qt (50 MB ou mais) para um .exe que nem abre essa interface.
-# A Etapa 6 remove este filtro (e o "PySide6"/"shiboken6" dos `excludes`).
-hiddenimports += collect_submodules(
-    "sigft", filter=lambda nome: not nome.startswith("sigft.app_qt"))
+# O pacote `sigft` inteiro, as duas interfaces incluídas: os serviços entram por
+# aqueles shims dinâmicos acima, e as telas Qt são importadas na PRIMEIRA visita
+# (dentro das fábricas de `sigft.app_qt.main.TELAS`). Sem esta coleta, uma tela
+# que a análise não enxergasse só faltaria quando alguém clicasse no menu -- a
+# `--conferir-pacote` procura cada uma, e um teste trava as duas listas juntas.
+hiddenimports += collect_submodules("sigft")
 
 # Provedores de IA são importados PREGUIÇOSAMENTE dentro das funções
 # (`core/llm/client.py`), de propósito — mesma razão dos backends: o
@@ -228,7 +283,12 @@ a = Analysis(
     binaries=binarios,
     datas=datas,
     hiddenimports=hiddenimports,
-    hookspath=[],
+    # O hook que escolhe os plugins do Qt (ver "A interface Qt", acima). Hook
+    # daqui ganha do embutido no PyInstaller para o mesmo módulo. Pelo
+    # `SPECPATH`: o PyInstaller acha as `datas` a partir da pasta do spec, mas
+    # o `hookspath` a partir da pasta ATUAL -- rodado de outra pasta, o hook
+    # sumiria calado e a Qt iria inteira.
+    hookspath=[os.path.join(SPECPATH, "empacotamento", "hooks")],
     hooksconfig={},
     runtime_hooks=[],
     # Módulos de teste não vão para produção.
@@ -239,11 +299,18 @@ a = Analysis(
     # máquina de build que os tenha instalados a análise levaria ~800 MB de
     # torch para o instalador.
     #
-    # `PySide6` e `shiboken6`: a UI Qt ainda não é a oficial (ver o filtro do
-    # `collect_submodules("sigft")` acima). Se o ambiente de build os tiver, a
-    # análise não pode puxá-los para o .exe. Sai no corte (Etapa 6).
+    # (`PySide6` e `shiboken6` estiveram aqui até a E6.2, quando a interface
+    # oficial ainda era a CustomTkinter. Hoje sem eles o `.exe` não abre.)
+    #
+    # `PySide6.QtNetwork`: ninguém no SIG-FT o importa. Quem o puxa é um
+    # `from . import QtNetwork` CONDICIONAL do `PySide6/__init__.py` (só no
+    # Windows, se existir a pasta `PySide6\openssl`, que o wheel do PyPI não
+    # tem, e dentro de try/except ImportError) -- a análise segue o import e
+    # levaria o módulo, o Qt6Network e os plugins de TLS e de rede: 3,6 MB no
+    # Windows. Se um dia alguém usar o QtNetwork, `tests/test_qt_no_pacote.py`
+    # manda tirar esta linha antes que o `.exe` quebre.
     excludes=["pytest", "_pytest", "mypy", "ruff", "torch", "transformers",
-              "PySide6", "shiboken6"],
+              "PySide6.QtNetwork"],
     noarchive=False,
 )
 
@@ -310,6 +377,43 @@ if _ANTES_G != len(a.datas):
     print(f"[SIG-FT] descritores do Google fora do pacote: {_ANTES_G - len(a.datas)} arquivos")
 
 
+# =============================================================================
+# A Qt que a interface não usa  (E6.2)
+# =============================================================================
+# Os plugins saem antes, no hook (lá está por quê). Aqui, depois da análise,
+# saem dois itens que não puxam biblioteca nenhuma -- medidos no wheel 6.12 do
+# Windows, que é o que vai no instalador:
+#
+#   * as traduções: o PyInstaller leva as ~100 do Qt (`qt_*` e `qtbase_*`,
+#     7 MB), e a interface carrega UMA, a `qtbase_pt_BR` -- os "Sim", "Não" e
+#     "Cancelar" dos diálogos (`_instalar_traducao`, em sigft/app_qt/main.py);
+#   * o `opengl32sw.dll` (20,6 MB, só no Windows): o OpenGL por software que o
+#     Qt usa no Qt Quick e no QOpenGLWidget quando a placa de vídeo não serve.
+#     A interface é QtWidgets puro, que desenha sem OpenGL.
+#
+# Com os plugins e o QtNetwork (nos `excludes`), a parte do Qt no pacote do
+# Windows cai de 78,4 para 43,2 MB (ver docs/BUILD.md, "A interface Qt dentro
+# do pacote").
+_TRADUCAO_DO_QT = "qtbase_pt_BR.qm"
+
+
+def _qt_que_a_interface_nao_usa(entrada):
+    destino = str(entrada[0]).replace("\\", "/")
+    if not destino.startswith("PySide6/"):
+        return False
+    pasta, _, nome = destino.rpartition("/")
+    if pasta.endswith("/translations"):     # PySide6/translations ou PySide6/Qt/translations
+        return nome != _TRADUCAO_DO_QT
+    return nome.lower() == "opengl32sw.dll"
+
+
+_ANTES_QT = len(a.datas) + len(a.binaries)
+a.datas = [entrada for entrada in a.datas if not _qt_que_a_interface_nao_usa(entrada)]
+a.binaries = [entrada for entrada in a.binaries if not _qt_que_a_interface_nao_usa(entrada)]
+print(f"[SIG-FT] Qt que a interface nao usa, fora do pacote: "
+      f"{_ANTES_QT - len(a.datas) - len(a.binaries)} arquivos")
+
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
@@ -342,9 +446,9 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     # O PyInstaller no Windows quer `.ico` para o ícone do EXECUTÁVEL. O
-    # projeto só tem o `.png` (que serve para a janela, via CustomTkinter,
-    # mas não para o arquivo). `Gerar-Executavel.bat` converte o PNG em
-    # `build/SIG-FT.ico` antes de chamar o PyInstaller; se a conversão não
+    # projeto só tem o `.png` (que serve para a janela, na Qt e no
+    # CustomTkinter, mas não para o arquivo). `Gerar-Executavel.bat` converte
+    # o PNG em `build/SIG-FT.ico` antes de chamar o PyInstaller; se a conversão não
     # rolar, o build segue com o ícone padrão em vez de falhar.
     icon=_ICONE,
 )

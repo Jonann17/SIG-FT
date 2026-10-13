@@ -1,0 +1,33 @@
+Qt for Python (PySide6) no SIG-FT
+=================================
+
+A interface do SIG-FT usa o Qt for Python -- os pacotes PySide6-Essentials e
+shiboken6 -- e as bibliotecas do Qt que vem com eles.
+Copyright (C) The Qt Company Ltd. e outros colaboradores.
+
+LICENCA
+O Qt for Python e oferecido sob LGPLv3, GPLv2 ou GPLv3, ou sob licenca
+comercial. O SIG-FT o usa sob a GNU Lesser General Public License, versao 3
+(LGPLv3). Os textos estao nesta pasta, copiados sem alteracao dos originais
+da Free Software Foundation:
+
+  LGPL-3.0.txt   a LGPLv3   (https://www.gnu.org/licenses/lgpl-3.0.txt)
+  GPL-3.0.txt    a GPLv3, a que a LGPLv3 se refere
+                            (https://www.gnu.org/licenses/gpl-3.0.txt)
+
+As pastas PySide6_Essentials e shiboken6 trazem os arquivos de licenca que vem
+nos proprios pacotes; o METADATA de cada uma declara a licenca e a versao.
+
+AS BIBLIOTECAS
+Sao as dos pacotes publicados no PyPI (https://pypi.org/project/PySide6-Essentials/
+e https://pypi.org/project/shiboken6/), sem modificacao. As bibliotecas do Qt e
+os modulos binarios do PySide6 ficam em arquivos separados, nas pastas
+_internal\PySide6 e _internal\shiboken6, e podem ser trocados por uma versao
+compativel.
+
+CODIGO-FONTE
+Qt for Python: https://code.qt.io/cgit/pyside/pyside-setup.git/
+Qt:            https://code.qt.io/  e  https://download.qt.io/official_releases/qt/
+
+O Qt inclui componentes de terceiros, cada um com a sua licenca, listados em
+https://doc.qt.io/qt-6/licenses-used-in-qt.html
