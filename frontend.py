@@ -12,9 +12,12 @@ aplicativo, tudo junto. Cada peça mudou para o seu lugar:
     sigft/app/widgets/           console, esqueleto de tela, pickers, diálogos
     sigft/app/backends.py        o registro que o splash carrega (CP 7.3)
 
-**A forma de abrir o aplicativo continua a mesma** — `python frontend.py`, e o
-`SIG-FT.bat`, que faz exatamente isso, não precisou mudar. A forma nova é
-`python -m sigft.app.main`; as duas fazem o mesmo.
+**A forma de abrir o aplicativo continua a mesma; o que abre mudou** (E6.1,
+2026-10-10): `python frontend.py` — e o `SIG-FT.bat` e o `SIG-FT.command` (Mac),
+que fazem exatamente isso — abre a interface Qt (`sigft/app_qt/`).
+`python frontend.py --ctk` abre a CustomTkinter de antes, enquanto durar a
+transição. `python -m sigft.app_qt.main` e `python -m sigft.app.main` abrem cada
+uma direto.
 
 Por que o shim existe, em vez de simplesmente apagar o arquivo
 --------------------------------------------------------------
@@ -28,6 +31,8 @@ lista porque havia código lendo `frontend.COLORS`; a fonte de verdade dele
 agora é `sigft/app/theme.py`, e há teste travando os dois juntos.
 """
 from __future__ import annotations
+
+import sys
 
 # Antes de tudo: com Python antigo o app abria pela metade, com erro enigmático.
 from sigft.core.python_minimo import exigir_python_minimo
@@ -50,6 +55,18 @@ if __name__ == "__main__":
     from sigft.app.conferencia import despachar_cedo as _despachar_cedo
 
     _despachar_cedo()
+
+    # A interface oficial é a Qt (E6.1), e ela entra AQUI, antes dos imports do
+    # CustomTkinter logo abaixo: o modo Qt não importa tkinter (o Python do
+    # Homebrew, no Mac, nem o traz). `--ctk` abre a interface antiga.
+    if "--ctk" not in sys.argv:
+        from sigft.app_qt.main import executar_da_linha_de_comando as _abrir_qt
+
+        _abrir_qt()
+        # Não volta: o `main()` da Qt termina o processo (`instancia.encerrar`)
+        # e o `--smoke` sai com `sys.exit`. Se um dia voltar, sai aqui mesmo,
+        # em vez de cair no CustomTkinter.
+        sys.exit(0)
 
 from sigft.app.main import (
     CONFIG_FILE,
@@ -115,6 +132,7 @@ __all__ = [
 
 
 if __name__ == "__main__":
+    # Só com `--ctk` chega aqui (sem ele, a Qt já recebeu a linha de comando).
     # `executar_da_linha_de_comando()`, e não `main()` direto: é ele que trata
     # `--smoke`. Chamar `main()` aqui engoliria a flag, porque o `__main__` do
     # `sigft/app/main.py` não roda no bundle. Ver o aviso lá em cima.

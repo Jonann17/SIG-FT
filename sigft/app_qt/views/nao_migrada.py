@@ -12,7 +12,7 @@ class TelaNaoMigrada(QWidget):
         layout = QVBoxLayout(self)
         self.mensagem = QLabel(
             f"A tela \"{nome}\" ainda não foi migrada para a interface nova.\n"
-            "Use a versão atual (python frontend.py) para ela.")
+            "Use a interface antiga (python frontend.py --ctk) para ela.")
         self.mensagem.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.mensagem.setStyleSheet("font-size: 16px; color: #B3B3B3;")
         layout.addWidget(self.mensagem)
@@ -24,6 +24,8 @@ class TelaComErro(QWidget):
     def __init__(self, nome: str, erro: BaseException, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("tela")
+        # O `--smoke` lê o motivo (com a pilha) daqui para o relatório do Release.
+        self.erro = erro
         layout = QVBoxLayout(self)
         self.mensagem = QLabel(
             f"A tela \"{nome}\" não conseguiu abrir.\n\n{type(erro).__name__}: {erro}\n\n"

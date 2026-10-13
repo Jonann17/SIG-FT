@@ -50,6 +50,22 @@ Para conferir se a instalação está sã, `Testar-SIG-FT.bat` roda a suíte de
 testes automatizados: é offline, não abre navegador, não chama IA e não toca no
 portal PMIB.
 
+### Mac, a partir do código
+
+1. Baixe o repositório em **Code → Download ZIP** e extraia a pasta.
+2. Dê **dois cliques em `SIG-FT.command`**. Na **primeira vez** o macOS barra o
+   clique duplo (arquivo baixado da internet, sem assinatura): clique com o
+   **botão direito → Abrir → Abrir**. No macOS 15 ou mais novo, se o botão
+   *Abrir* não aparecer: **Ajustes do Sistema → Privacidade e Segurança → Abrir
+   Mesmo Assim**.
+
+Ele faz o mesmo que o `SIG-FT.bat`, numa janela do Terminal: na primeira
+execução cria o ambiente virtual e instala as dependências; depois só abre o
+aplicativo. Precisa do **Python 3.10 ou mais novo**
+([python.org/downloads/macos](https://www.python.org/downloads/macos/)). Com o
+projeto no iCloud Drive, OneDrive, Dropbox ou Google Drive, o ambiente virtual
+vai para `~/Library/Application Support/SIG-FT/venv`.
+
 ### Testar sem ter dados reais em mãos
 
 `Gerar-Dados-de-Teste.bat` cria a pasta `dados_de_teste/` com planilhas
@@ -83,8 +99,11 @@ Detalhes de comportamento dos `.bat`:
 
 ```bash
 pip install -r requirements.txt
-python frontend.py
+python frontend.py          # a interface Qt, a oficial
+python frontend.py --ctk    # a interface antiga (CustomTkinter), durante a transição
 ```
+
+No Mac, `./SIG-FT.command --ctk` no Terminal também abre a interface antiga.
 
 - **Entry point**: `frontend.py` (abre a Splash Screen, que carrega os backends dinamicamente e abre o app).
 - **Windows**: os módulos Tradutor (`xlwings`, exige Excel instalado) e alguns recursos (`os.startfile`) só funcionam em Windows.

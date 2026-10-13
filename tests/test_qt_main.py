@@ -82,12 +82,14 @@ def test_fechar_com_tarefa_pergunta_antes(app_qt, monkeypatch):
 
 
 def test_smoke_monta_e_sai_com_zero(qt_interface, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)  # o smoke grava o relatório no diretório de trabalho
     monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))
     monkeypatch.setattr(qmain.backends, "carregar_todos", lambda **k: None)
     assert qmain._smoke() == 0
 
 
 def test_smoke_relata_backend_que_nao_carregou(qt_interface, monkeypatch, tmp_path, capsys):
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))
 
     def carregar(ao_falhar=None, **_):
@@ -114,6 +116,7 @@ def test_smoke_nao_pergunta_nada_mesmo_com_thread_comum_viva(qt_interface, monke
     """Offscreen ninguem responde o "Fechar o SIG-FT?": o --smoke travava (exit 124)."""
     import threading
 
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))
     monkeypatch.setattr(qmain.backends, "carregar_todos", lambda **k: None)
 

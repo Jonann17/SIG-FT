@@ -299,3 +299,71 @@ def test_a_lista_padrao_cobre_o_tradutor_local():
     for modulo in ("ctranslate2", "sentencepiece", "sigft.core.tradutor_local",
                    "sigft.services.translator"):
         assert modulo in conferencia.MODULOS_ESSENCIAIS, modulo
+
+
+# =============================================================================
+# A interface Qt dentro do pacote (E6.1, o corte)
+# =============================================================================
+# Desde o corte o `.exe` abre a Qt. As telas Qt sao importadas na PRIMEIRA
+# visita (as fabricas de `sigft.app_qt.main.TELAS`): uma que o PyInstaller
+# deixasse de fora passaria pela abertura e pelo `--smoke` de um build sem a
+# conferencia, e a pessoa descobriria ao clicar no menu. A conferencia procura
+# cada uma dentro do `.exe` antes de publicar.
+
+def test_a_lista_padrao_cobre_o_qt():
+    from sigft.app import conferencia
+
+    for modulo in ("PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets",
+                   "shiboken6", "sigft.app_qt.main"):
+        assert modulo in conferencia.MODULOS_ESSENCIAIS, modulo
+
+
+def _modulos_da_fabrica(fabrica) -> set:
+    """Os modulos que uma fabrica de `TELAS` precisa, lidos do bytecode dela.
+
+    Dois formatos convivem no registro: a fabrica com o import DENTRO
+    (`from sigft.app_qt.views.x import Tela`, o `IMPORT_NAME`) e o lambda que
+    usa uma classe importada no topo do `main.py` (o `LOAD_GLOBAL`, cujo
+    modulo e o `__module__` da classe). Lido do objeto vivo, e nao de uma
+    lista escrita aqui: uma tela nova entra no teste sozinha.
+    """
+    import dis
+
+    modulos = set()
+    for instrucao in dis.get_instructions(fabrica):
+        if instrucao.opname == "IMPORT_NAME":
+            modulos.add(instrucao.argval)
+        elif instrucao.opname == "LOAD_GLOBAL":
+            objeto = fabrica.__globals__.get(instrucao.argval)
+            if isinstance(objeto, type) and objeto.__module__.startswith("sigft.app_qt."):
+                modulos.add(objeto.__module__)
+    return modulos
+
+
+def test_toda_tela_registrada_esta_na_conferencia_do_pacote():
+    """As duas listas andam juntas: tela registrada em `TELAS` sem entrar na
+    conferencia reprova aqui, e tela de `MODULOS_ESSENCIAIS` que saiu do
+    registro tambem (a conferencia acusaria FALTA de um modulo que nem existe
+    mais, e o Release pararia por nada)."""
+    from sigft.app import conferencia
+    from sigft.app_qt import main as qmain
+
+    essenciais = set(conferencia.MODULOS_ESSENCIAIS)
+    das_telas = {}
+    for chave, fabrica in qmain.TELAS.items():
+        modulos = _modulos_da_fabrica(fabrica)
+        assert modulos, f"nao achei o modulo da tela {chave!r} na fabrica dela"
+        for modulo in modulos:
+            das_telas[modulo] = chave
+
+    faltando = {m: chave for m, chave in das_telas.items() if m not in essenciais}
+    assert not faltando, (
+        "telas registradas em `sigft.app_qt.main.TELAS` que a conferencia do "
+        "pacote nao procura -- acrescente em `conferencia.MODULOS_ESSENCIAIS`: "
+        + ", ".join(f"{m} (tela {c!r})" for m, c in sorted(faltando.items())))
+
+    sobrando = sorted(m for m in essenciais
+                      if m.startswith("sigft.app_qt.views.") and m not in das_telas)
+    assert not sobrando, (
+        "modulos de tela na conferencia que nenhuma fabrica de `TELAS` importa "
+        "mais -- tire de `conferencia.MODULOS_ESSENCIAIS`: " + ", ".join(sobrando))

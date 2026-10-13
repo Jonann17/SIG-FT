@@ -54,6 +54,7 @@ MODULOS_ESSENCIAIS = [
     "sigft.core.excel.cirurgico",
     "playwright",
     "requests",
+    # a interface antiga: fica enquanto o `--ctk` existir (E6.1).
     "customtkinter",
     "PIL",
     "fitz",           # pymupdf: primeira camada da leitura de PDF
@@ -65,6 +66,29 @@ MODULOS_ESSENCIAIS = [
     "sentencepiece",
     "sigft.core.tradutor_local",
     "sigft.services.translator",
+    # a interface Qt, a oficial desde o corte (E6.1, 2026-10-10).
+    "PySide6.QtCore",
+    "PySide6.QtGui",
+    "PySide6.QtWidgets",
+    "shiboken6",
+    "sigft.app_qt.main",
+    # As telas Qt são importadas na PRIMEIRA visita (as fábricas de
+    # `sigft.app_qt.main.TELAS`): uma que ficasse fora do pacote só apareceria
+    # quando alguém clicasse no menu. `tests/test_conferencia_do_pacote.py`
+    # trava esta lista com o registro: tela nova em `TELAS` entra aqui também.
+    "sigft.app_qt.views.home",
+    "sigft.app_qt.views.translator",
+    "sigft.app_qt.views.aplicacao_lmr",
+    "sigft.app_qt.views.cria_fichas",
+    "sigft.app_qt.views.pdm",
+    "sigft.app_qt.views.analyzer",
+    "sigft.app_qt.views.upload_conditions",
+    "sigft.app_qt.views.upload_tech_specs",
+    "sigft.app_qt.views.correcao_pdm",
+    "sigft.app_qt.views.copia_fichas",
+    "sigft.app_qt.views.autospec",
+    "sigft.app_qt.views.pmib_manager",
+    "sigft.app_qt.views.busca_pmib",
 ]
 
 # A frase que a conferência traduz dentro do .exe, e o que a tradução tem de

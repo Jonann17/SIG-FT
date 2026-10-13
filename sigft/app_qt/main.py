@@ -425,8 +425,38 @@ def main() -> None:
     instancia.encerrar(0)
 
 
+def _visitar_telas(janela: SIG_FT_App) -> tuple[list[str], list[tuple[str, BaseException]]]:
+    """Abre cada tela de `TELAS` pelo funil de sempre (`show_frame`).
+
+    As telas nascem na primeira visita: sem isto, um módulo de tela que ficou
+    fora do pacote só apareceria quando alguém clicasse no menu. As bloqueadas
+    ficam de fora -- `show_frame` as recusa de propósito.
+    """
+    linhas: list[str] = []
+    quebradas: list[tuple[str, BaseException]] = []
+    for chave in TELAS:
+        if chave in catalogo.TELAS_BLOQUEADAS:
+            continue
+        janela.show_frame(chave)
+        tela = janela.pilha.currentWidget()
+        if isinstance(tela, TelaComErro):
+            quebradas.append((chave, tela.erro))
+            linhas.append(f"  FALHOU  {chave}: {type(tela.erro).__name__}: {tela.erro}")
+        else:
+            linhas.append(f"  OK      {chave}")
+    return linhas, quebradas
+
+
 def _smoke() -> int:
-    """Monta a janela principal e sai, sem laço de eventos (para o CI)."""
+    """Monta a janela, visita as telas e sai, sem laço de eventos (Release e CI).
+
+    O relatório é GRAVADO, e não só impresso: o `.exe` é `console=False`, e o
+    que ele imprime não chega ao passo do Release, que lê o arquivo. Mesma
+    lição do `_smoke` de `sigft/app/main.py` (run #3 de 2026-09-21), com os
+    avisos de backend nos dois caminhos.
+    """
+    from sigft.app.conferencia import ARQUIVO_JANELA, gravar_relatorio
+
     avisos: list[str] = []
     try:
         _preparar_qt()
@@ -436,17 +466,32 @@ def _smoke() -> int:
                 f"{type(erro).__name__}: {erro}"))
         janela = SIG_FT_App()
         janela.fechar_sem_perguntar = True
+        linhas, quebradas = _visitar_telas(janela)
         janela.close()
     except Exception as erro:  # noqa: BLE001 -- é o que se quer relatar
-        for aviso in avisos:
-            print(aviso)
-        print(f"[smoke] FALHOU: {type(erro).__name__}: {erro}")
-        traceback.print_exc()
+        relatorio = "\n".join(avisos + [
+            f"[smoke] FALHOU: {type(erro).__name__}: {erro}", "",
+            traceback.format_exc()])
+        gravar_relatorio(ARQUIVO_JANELA, relatorio)
+        print(relatorio)
         return 1
-    for aviso in avisos:
-        print(aviso)
-    print("[smoke] a janela principal Qt montou e fechou sem erro.")
-    return 0
+
+    partes = avisos + ["[smoke] telas visitadas:", *linhas]
+    if (bloqueadas := [chave for chave in TELAS if chave in catalogo.TELAS_BLOQUEADAS]):
+        partes.append(f"[smoke] bloqueadas no menu (nao visitadas): {', '.join(bloqueadas)}")
+    if quebradas:
+        partes.append(f"[smoke] FALHOU: telas que nao abriram ({len(quebradas)}): "
+                      + ", ".join(chave for chave, _ in quebradas))
+        for chave, erro in quebradas:
+            partes += ["", f"--- {chave} ---",
+                       "".join(traceback.format_exception(erro)).rstrip()]
+    else:
+        partes.append(f"[smoke] a janela principal Qt montou, as {len(linhas)} telas "
+                      "abriram e ela fechou sem erro.")
+    relatorio = "\n".join(partes)
+    gravar_relatorio(ARQUIVO_JANELA, relatorio)
+    print(relatorio)
+    return 1 if quebradas else 0
 
 
 def executar_da_linha_de_comando() -> None:
