@@ -142,20 +142,23 @@ class MenuDeOpcoes(QComboBox):
         pintor.end()
 
 
-def pintar_caixa(pintor: QPainter, x: float, y: float, marcada: bool, cor_marcada: str) -> None:
-    """Desenha uma CTkCheckBox de 24 px com o canto de cima à esquerda em (x, y)."""
+def pintar_caixa(pintor: QPainter, x: float, y: float, marcada: bool, cor_marcada: str,
+                 lado: int = LADO_CAIXA) -> None:
+    """Desenha uma CTkCheckBox de `lado` px (24, o do tema, ou o `checkbox_width`
+    da tela) com o canto de cima à esquerda em (x, y). Borda e cantos não mudam
+    com o lado, como no CTk."""
     pintor.save()
     pintor.setRenderHint(QPainter.RenderHint.Antialiasing)
     metade = BORDA_CAIXA / 2
-    quadro = QRectF(x + metade, y + metade, LADO_CAIXA - BORDA_CAIXA, LADO_CAIXA - BORDA_CAIXA)
+    quadro = QRectF(x + metade, y + metade, lado - BORDA_CAIXA, lado - BORDA_CAIXA)
     pintor.setPen(QPen(QColor(cor_marcada if marcada else COR_BORDA_CAIXA), BORDA_CAIXA))
     pintor.setBrush(QColor(cor_marcada) if marcada else Qt.BrushStyle.NoBrush)
     pintor.drawRoundedRect(quadro, RAIO_CAIXA - metade, RAIO_CAIXA - metade)
     if marcada:
         # draw_checkmark do CTk: tamanho 0.58 da caixa, raio tamanho/2.8, traço lado/8.
-        raio = round(LADO_CAIXA * 0.58) / 2.8
-        cx, cy = x + LADO_CAIXA / 2, y + LADO_CAIXA / 2
-        caneta = QPen(QColor(COR_MARCA_CAIXA), round(LADO_CAIXA / 8))
+        raio = round(lado * 0.58) / 2.8
+        cx, cy = x + lado / 2, y + lado / 2
+        caneta = QPen(QColor(COR_MARCA_CAIXA), round(lado / 8))
         caneta.setCapStyle(Qt.PenCapStyle.RoundCap)
         caneta.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
         pintor.setPen(caneta)
@@ -179,16 +182,18 @@ class CaixaDeMarcar(QCheckBox):
     """
 
     def __init__(self, texto: str, parent=None, *, tamanho_fonte: int = 13,
-                 cor_marcada: str = estilo.AZUL_CTK, cor_hover: str = estilo.AZUL_CTK_HOVER) -> None:
+                 cor_marcada: str = estilo.AZUL_CTK, cor_hover: str = estilo.AZUL_CTK_HOVER,
+                 lado: int = LADO_CAIXA) -> None:
         super().__init__(texto, parent)
         self._cor_marcada, self._cor_hover = cor_marcada, cor_hover
+        self._lado = lado   # `checkbox_width`/`checkbox_height` do CTk (E4.10: 18 no AutoSpec)
         # A folha do widget ganha da global (QCheckBox 12 px): o tamanho é o pedido.
         self.setStyleSheet(f"font-size: {tamanho_fonte}px; background: transparent;")
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
     def sizeHint(self) -> QSize:  # noqa: N802 -- nome do Qt
-        largura = LADO_CAIXA + VAO_TEXTO_CAIXA + self.fontMetrics().horizontalAdvance(self.text())
-        return QSize(largura, max(LADO_CAIXA, self.fontMetrics().height()))
+        largura = self._lado + VAO_TEXTO_CAIXA + self.fontMetrics().horizontalAdvance(self.text())
+        return QSize(largura, max(self._lado, self.fontMetrics().height()))
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802 -- nome do Qt
         return self.sizeHint()
@@ -198,18 +203,19 @@ class CaixaDeMarcar(QCheckBox):
 
     def paintEvent(self, _evento) -> None:  # noqa: N802 -- nome do Qt
         pintor = _pintor(self)
-        y = (self.height() - LADO_CAIXA) / 2
+        lado = self._lado
+        y = (self.height() - lado) / 2
         sobre = self.isEnabled() and self.underMouse()
         marcada = self.isChecked()
         if sobre and not marcada:
             pintor.setPen(Qt.PenStyle.NoPen)
             pintor.setBrush(QColor(self._cor_hover))
-            pintor.drawRoundedRect(QRectF(BORDA_CAIXA, y + BORDA_CAIXA, LADO_CAIXA - 2 * BORDA_CAIXA,
-                                          LADO_CAIXA - 2 * BORDA_CAIXA), RAIO_CAIXA / 2, RAIO_CAIXA / 2)
-        pintar_caixa(pintor, 0, y, marcada, self._cor_hover if sobre else self._cor_marcada)
+            pintor.drawRoundedRect(QRectF(BORDA_CAIXA, y + BORDA_CAIXA, lado - 2 * BORDA_CAIXA,
+                                          lado - 2 * BORDA_CAIXA), RAIO_CAIXA / 2, RAIO_CAIXA / 2)
+        pintar_caixa(pintor, 0, y, marcada, self._cor_hover if sobre else self._cor_marcada, lado)
         pintor.setPen(QColor(COR_TEXTO_CTK if self.isEnabled() else COR_TEXTO_DESLIGADO_CTK))
         pintor.setFont(self.font())
-        x_texto = LADO_CAIXA + VAO_TEXTO_CAIXA
+        x_texto = lado + VAO_TEXTO_CAIXA
         pintor.drawText(QRectF(x_texto, 0, self.width() - x_texto, self.height()),
                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.text())
         pintor.end()

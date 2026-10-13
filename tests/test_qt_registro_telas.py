@@ -13,7 +13,7 @@ from sigft.app_qt import main as qmain
 from sigft.app_qt.views.nao_migrada import TelaComErro, TelaNaoMigrada
 
 # Telas ainda em porte. Esvaziar quando a última entrar em `TELAS`.
-PENDENTES = {"AutoSpec"}
+PENDENTES = set()
 
 CHAVES_DO_MENU = [item[2] for item in catalogo.MENU if item[0] == "botao"]
 

@@ -74,10 +74,9 @@ def _titulo(texto: str):
 
 
 # O "▶" do "Iniciar Robô de Edição": o Roboto não o tem, e a reserva da folha
-# (Noto Emoji) desenha o emoji "play" -- um quadrado com o triângulo dentro. O
-# Tk caía numa fonte de símbolos e mostrava só o triângulo; estas são as de
-# símbolos de cada sistema (Windows, Linux, macOS), antes do Noto Emoji.
-FAMILIAS_COM_SIMBOLO = '"Roboto", "Segoe UI Symbol", "DejaVu Sans", "Apple Symbols", "Noto Emoji"'
+# (Noto Emoji) desenha o emoji "play" -- um quadrado com o triângulo dentro. A
+# lista de fontes de símbolos mora no `estilo` desde a E4.10 (o "⬇" do AutoSpec).
+FAMILIAS_COM_SIMBOLO = estilo.FAMILIAS_COM_SIMBOLO
 
 
 def _botao(texto: str, *, com_simbolo: bool = False, **kw):

@@ -87,6 +87,12 @@ def _copia_fichas(parent, controller):
     return ModuloCopiaFichas(parent, controller)
 
 
+def _autospec(parent, controller):
+    # Tela da frente do Rafael (TRABALHO_PARALELO.md); a lógica é do serviço.
+    from sigft.app_qt.views.autospec import ModuloAutoSpec
+    return ModuloAutoSpec(parent, controller)
+
+
 def _pmib_manager(parent, controller):
     from sigft.app_qt.views.pmib_manager import ModuloPMIBManager
     return ModuloPMIBManager(parent, controller)
@@ -112,6 +118,7 @@ TELAS = {
     "UploadSpecs": _upload_specs,
     "CorrecaoPDM": _correcao_pdm,
     "CopiaFichas": _copia_fichas,
+    "AutoSpec": _autospec,
     "PMIBManager": _pmib_manager,
     "SearchPMIB": _busca_pmib,
 }

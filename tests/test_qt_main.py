@@ -20,8 +20,11 @@ def test_abre_na_home_e_cria_telas_so_na_visita(app_qt):
     assert app_qt.pilha.currentWidget() is app_qt.telas["Analyzer"]
 
 
-def test_tela_nao_registrada_mostra_aviso(app_qt):
+def test_tela_nao_registrada_mostra_aviso(app_qt, monkeypatch):
+    # Desde a E4.10 todas as telas do menu estão em `TELAS`; o aviso continua
+    # sendo o caminho de uma chave sem fábrica.
     from sigft.app_qt.views.nao_migrada import TelaNaoMigrada
+    monkeypatch.delitem(qmain.TELAS, "AutoSpec")
     app_qt.show_frame("AutoSpec")
     assert isinstance(app_qt.telas["AutoSpec"], TelaNaoMigrada)
 

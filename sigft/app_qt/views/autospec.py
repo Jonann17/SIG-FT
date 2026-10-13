@@ -1,0 +1,739 @@
+"""Tela "AutoSpec AI" na interface Qt.
+
+Mesma tela de `sigft/app/views/autospec.py`: preenche as especificações
+técnicas da ficha a partir de manuais e datasheets, com IA, e tem a seção de
+*Conferência de documentos*, que abre no navegador os documentos que a IA
+marcou como duvidosos.
+
+⚠️ Módulo da frente do Rafael (ver `docs/refatoracao/TRABALHO_PARALELO.md`
+§3.1). A lógica mora em `sigft/services/autospec.py` (o `AutoSpecCore`) e em
+`sigft/services/autospec_conferencia.py` (a conferência e o `.txt`); aqui só
+há widget. O bloco da conferência viajou INTEIRO, com os mesmos 6 métodos e 7
+atributos da tela CTk (`_build_conferencia`, `_conferencia_mostrar`,
+`_conferencia_salvar`, `_conferencia_importar`, `_conferencia_processar`,
+`_conferencia_worker`; `conferencia`, `marcados_conf`, `frm_conf`,
+`lista_conf`, `btn_conf`, `btn_conf_salvar`, `btn_conf_importar`), e com as
+três coisas de fora da classe: `webbrowser`, o import de
+`autospec_conferencia as conferencia_txt` no topo (fora do carregamento
+preguiçoso, de propósito) e `COLORS["warning"]`. `_novo_core` continua sendo a
+ÚNICA construção do `AutoSpecCore`, usada pelos dois workers.
+
+Os invariantes que `tests/test_autospec_conferencia_tela.py` prova na tela CTk
+valem aqui (e `tests/test_qt_tela_autospec.py` os prova rodando a tela): o fim
+do lote MOSTRA a lista nova antes de SALVAR o `.txt` automático; a seção nunca
+se esconde (o IMPORTAR existe para quem acabou de abrir o app); processar exige
+o `_STATUS_PMIB`; o salvamento automático não abre caixa nenhuma.
+
+O que muda é só como as threads falam com a interface: lá `messagebox`,
+`btn.configure`, `update_queue_ui` e `_conferencia_mostrar` eram chamados de
+dentro da thread (proibido no Tk); aqui o worker só loga e usa `self.avisar` e
+`interface.na_interface`, e os botões passam por `iniciar_tarefa`. A fila, o
+`_STATUS_PMIB` e o interruptor do fornecedor são lidos NO CLIQUE.
+"""
+from __future__ import annotations
+
+import html
+import os
+import webbrowser
+
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QSizePolicy, QWidget
+
+from sigft.app import backends
+from sigft.app.theme import COLORS
+from sigft.app_qt import estilo, file_dialogs, interface
+from sigft.app_qt.widgets import blocos, controles
+from sigft.app_qt.widgets.module_frame import ModuleFrame
+from sigft.services import autospec_conferencia as conferencia_txt
+
+# CTkTextbox(height=120) no lugar do console padrão de 150.
+ALTURA_CONSOLE = 120
+# O CTkScrollableFrame: conteúdo 6 px dentro do quadro, barra 1 px antes da borda.
+RECUO_ROLAGEM = 6
+# Os dois quadros roláveis de dentro (fila e conferência): fundo #1E1E1E e
+# 212 de altura. Lá pedem 150 e 190, mas a CTkScrollbar vertical mede 200 e
+# manda na linha do grid: 200 + 2 * 6 (medido nas duas).
+COR_LISTA = "#1E1E1E"
+ALTURA_QUADRO_INTERNO = 212
+# CTkLabel sem `text_color`: gray84 (o do tema); "gray" do Tk = #808080.
+COR_ROTULO = controles.COR_TEXTO_CTK
+CINZA = estilo.cinza_tk("gray")
+# Rótulos com `wraplength`: Roboto 11 no Tk tem 14 px por linha (3 linhas =
+# 42, medido); o Qt usa 13. A altura mínima é a medida lá (3 linhas).
+ALTURA_LINHA_PEQUENA = 14
+ALTURA_TEXTO_3_LINHAS = 3 * ALTURA_LINHA_PEQUENA
+QUEBRA_TEXTOS = 680
+QUEBRA_CONFERENCIA_VAZIA = 650
+# O link da conferência: CTkButton transparente com cara de link, escrito à mão lá.
+COR_LINK = "#6FB3FF"
+COR_LINK_HOVER = "#333333"
+# CTkCheckBox(text="", width=24, checkbox_width=18, checkbox_height=18): a
+# caixa de 18, o vão de 6 e o rótulo vazio de 1 px -- 25 x 24 medidos.
+LADO_CAIXA_CONF = 18
+TAMANHO_CAIXA_CONF = QSize(25, 24)
+
+
+def _rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, cor: str = COR_ROTULO,
+            alinhar: str = "esquerda") -> QLabel:
+    """CTkLabel de uma linha, `anchor="w"`, 28 px de altura."""
+    r = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, cor=cor, alinhar=alinhar)
+    r.setWordWrap(False)
+    r.setFixedHeight(blocos.ALTURA_MINIMA_ROTULO)
+    return r
+
+
+def _pintar(rotulo: QLabel, cor: str, *, tamanho: int = 13) -> None:
+    """O `configure(text_color=...)` do CTkLabel."""
+    rotulo.setStyleSheet(f"font-size: {tamanho}px; background: transparent; color: {cor};")
+
+
+def _texto_quebrado(texto: str, *, cor: str, quebra: int, tamanho: int = 11) -> QLabel:
+    """CTkLabel com `wraplength` e `justify="left"`: quebra em `quebra` px, com
+    a linha de 14 px do Tk. Texto FIXO da tela (vai como HTML)."""
+    r = QLabel()
+    r.setTextFormat(Qt.TextFormat.RichText)
+    corpo = html.escape(texto, quote=False).replace("\n", "<br>")
+    r.setText(f'<div style="line-height: {ALTURA_LINHA_PEQUENA}px;">{corpo}</div>')
+    r.setWordWrap(True)
+    r.setFixedWidth(quebra)
+    # A altura de lá (3 linhas). Com a fonte do Qt, mais estreita, o mesmo texto
+    # pode caber em 2: o resto da tela não sobe por isso.
+    r.setMinimumHeight(ALTURA_TEXTO_3_LINHAS)
+    r.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+    r.setStyleSheet(f"font-size: {tamanho}px; background: transparent; color: {cor};")
+    return r
+
+
+def _area_como_a_do_ctk(layout_pai, *, cor: str | None = None):
+    """`blocos.area_rolavel` com a barra SEMPRE à vista, como o CTkScrollableFrame
+    (mesma conta do `copia_fichas`): faixa de 17 com a alça de 8 a 4 px da
+    esquerda, 1 px antes da borda direita, e o conteúdo indo até a barra.
+
+    E o recorte do CTk: o canvas fica 6 px para dentro do quadro (o canto), e o
+    que rola some ali -- não corre até a borda. Aqui são as margens da vista
+    (a barra continua com a altura toda). Na fila e na conferência isso
+    mantém as linhas dentro do retângulo escuro de cantos redondos."""
+    area, corpo = blocos.area_rolavel(layout_pai, cor=cor, margem=RECUO_ROLAGEM)
+    area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+    area.verticalScrollBar().setStyleSheet(
+        estilo.folha_rolagem_ctk(margem_vertical=RECUO_ROLAGEM + 4)
+        + f"\nQScrollBar:vertical {{ width: {estilo.LARGURA_ROLAGEM_CTK + 1}px;"
+        f" margin: {RECUO_ROLAGEM + 4}px 5px {RECUO_ROLAGEM + 4}px 4px; }}")
+    area.setViewportMargins(0, RECUO_ROLAGEM, 0, RECUO_ROLAGEM)
+    corpo.setContentsMargins(RECUO_ROLAGEM, 0, 0, 0)
+    return area, corpo
+
+
+def _cartao(corpo, *, borda: str | None = None, fim: int = 15):
+    """CTkFrame #2B2B2B de cantos 8: peças com padx=15, título com pady 10.
+
+    `borda` = o `border_width=1` + `border_color` do CTk. Lá a borda é desenhada
+    no canvas e não empurra os filhos; aqui ela come 1 px do conteúdo, que sai
+    das margens."""
+    layout = blocos.cartao(corpo)
+    quadro = layout.parentWidget()
+    folga = 0
+    if borda:
+        quadro.setStyleSheet(f"#cartao {{ border: 1px solid {borda}; }}")
+        folga = 1
+    layout.setContentsMargins(15 - folga, 10 - folga, 15 - folga, fim - folga)
+    layout.setSpacing(0)
+    return quadro, layout
+
+
+def _recuado(layout, widget, esquerda: int, direita: int = 0, *, natural: bool = False) -> None:
+    """O `padx` de um filho do `pack`: o widget entre as margens. `natural` =
+    sem `fill="x"` (fica com a própria largura, encostado à esquerda)."""
+    linha = QHBoxLayout()
+    linha.setContentsMargins(esquerda, 0, direita, 0)
+    linha.setSpacing(0)
+    if natural:
+        linha.addWidget(widget, 0, Qt.AlignmentFlag.AlignLeft)
+        linha.addStretch()
+    else:
+        linha.addWidget(widget)
+    layout.addLayout(linha)
+
+
+def _em_caixa(widget, esquerda: int, direita: int) -> QWidget:
+    """O widget dentro de um QWidget com margens -- para as listas que se
+    refazem (o que entra nelas sai inteiro com `_esvaziar`)."""
+    caixa = QWidget()
+    linha = QHBoxLayout(caixa)
+    linha.setContentsMargins(esquerda, 0, direita, 0)
+    linha.setSpacing(0)
+    linha.addWidget(widget)
+    return caixa
+
+
+def _esvaziar(layout) -> None:
+    """O `for w in frame.winfo_children(): w.destroy()` de lá."""
+    while layout.count():
+        item = layout.takeAt(0)
+        widget = item.widget()
+        if widget is not None:
+            widget.setParent(None)
+            widget.deleteLater()
+
+
+def _sem_largura_minima(widget) -> None:
+    """A largura do texto não manda no layout: um nome de arquivo (ou material)
+    comprido é cortado no fim, em vez de empurrar o botão ao lado para fora do
+    quadro -- ou alargar a lista além da barra de rolagem."""
+    widget.setSizePolicy(QSizePolicy.Policy.Ignored, widget.sizePolicy().verticalPolicy())
+
+
+class _DoisBotoesQueCrescem(QWidget):
+    """Dois botões com `pack(side="left", fill="x", expand=True)` e padx (0, 5)
+    e (5, 0).
+
+    O Tk dá a cada um o que ele PEDE e reparte a SOBRA igual (lá 418 e 432 para
+    pedidos de 171 e 185); o QHBoxLayout com stretch repartiria a largura toda
+    (425 e 425), e o segundo botão andaria 7 px.
+    """
+
+    VAO = 10
+
+    def __init__(self, esquerdo, direito, *, altura: int) -> None:
+        super().__init__()
+        self.botoes = (esquerdo, direito)
+        for botao in self.botoes:
+            botao.setParent(self)
+        self.setFixedHeight(altura)
+
+    def sizeHint(self) -> QSize:  # noqa: N802 -- nome do Qt
+        esquerdo, direito = self.botoes
+        return QSize(esquerdo.sizeHint().width() + self.VAO + direito.sizeHint().width(), self.height())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 -- nome do Qt
+        # O pedido do Tk: abaixo disso o texto dos botões seria cortado.
+        return self.sizeHint()
+
+    def resizeEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
+        super().resizeEvent(evento)
+        self.arrumar()
+
+    def showEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
+        super().showEvent(evento)
+        self.arrumar()
+
+    def arrumar(self) -> None:
+        esquerdo, direito = self.botoes
+        pedido_e, pedido_d = esquerdo.sizeHint().width(), direito.sizeHint().width()
+        sobra = max(self.width() - self.VAO - pedido_e - pedido_d, 0)
+        largura_e = pedido_e + sobra // 2
+        esquerdo.setGeometry(0, 0, largura_e, self.height())
+        direito.setGeometry(largura_e + self.VAO, 0, self.width() - largura_e - self.VAO, self.height())
+
+
+# =============================================================================
+# MÓDULO 8: AUTO SPEC AI (INTERFACE GE VERNOVA)
+# =============================================================================
+class ModuloAutoSpec(ModuleFrame):
+    def __init__(self, parent=None, controller=None) -> None:
+        # Variáveis de Estado
+        self.queue: list[dict] = []
+        self.temp_sheet = None
+        self.temp_refs: list[str] = []
+        self.status_pmib_path = None
+        self.linhas_fila: list[tuple[QLabel, object]] = []
+        self.rotulo_fila_vazia = None
+        super().__init__(parent, controller, titulo="AutoSpec AI (RAG & Geração)",
+                         altura_console=ALTURA_CONSOLE)
+
+    def _build_ui(self) -> None:
+        # Content: CTkScrollableFrame transparente.
+        self.area, corpo = _area_como_a_do_ctk(self.content_layout)
+
+        # --- SEÇÃO 1: STATUS PMIB ---
+        corpo.addSpacing(10)                            # frm_status: pady=10
+        self.cartao_status, status = _cartao(corpo)
+        self.rotulo_secao1 = _rotulo("1. Arquivo de Referência", tamanho=14, negrito=True,
+                                     cor=COLORS["accent"])
+        status.addWidget(self.rotulo_secao1)
+        status.addSpacing(10)                           # título (…, 10); a linha: pady=(0, 15)
+        linha = QHBoxLayout()
+        linha.setContentsMargins(0, 0, 0, 0)
+        linha.setSpacing(0)
+        self.lbl_status = _rotulo("Nenhum _STATUS_PMIB selecionado", cor=CINZA)
+        _sem_largura_minima(self.lbl_status)
+        linha.addWidget(self.lbl_status, 1)
+        self.btn_status = blocos.botao("Selecionar _STATUS_PMIB", variante="cinza", altura=28,
+                                       tamanho_fonte=12, largura_minima=estilo.LARGURA_BOTAO_CTK)
+        self.btn_status.clicked.connect(self.sel_status)
+        linha.addWidget(self.btn_status)
+        status.addLayout(linha)
+
+        # --- SEÇÃO 2: MONTADOR DE FILA ---
+        corpo.addSpacing(20)                            # frm_status (…, 10) + frm_job (10, …)
+        self.cartao_job, job = _cartao(corpo, borda=COLORS["primary"])
+        self.rotulo_secao2 = _rotulo("2. Adicionar Tarefa à Fila", tamanho=14, negrito=True,
+                                     cor=COLORS["accent"])
+        job.addWidget(self.rotulo_secao2)
+
+        # A) Ficha Alvo   B) Manuais
+        job.addSpacing(15)                              # título (…, 10) + f_sheet (5, …)
+        self.lbl_sheet, self.btn_sheet = self._linha_de_arquivo(
+            job, "Ficha: [Nenhuma]", "Selecionar Ficha (.xlsx)", self.sel_sheet)
+        job.addSpacing(10)                              # f_sheet (…, 5) + f_refs (5, …)
+        self.lbl_refs, self.btn_refs = self._linha_de_arquivo(
+            job, "Manuais: 0 arquivos", "Adic. Manuais (.pdf)", self.sel_refs)
+
+        # Botão Add
+        job.addSpacing(20)                              # f_refs (…, 5) + botão (15, …)
+        self.btn_add = blocos.botao(estilo.mono("⬇ Adicionar à Fila ⬇"), variante="primario",
+                                    altura=28, tamanho_fonte=13, negrito=True,
+                                    cor_texto=COLORS["text_white"])
+        # O "⬇" sai da fonte de símbolos (só a seta, como no Tk), não do Noto Emoji.
+        self.btn_add.setStyleSheet(f"{self.btn_add.styleSheet()}"
+                                   f" QPushButton {{ font-family: {estilo.FAMILIAS_COM_SIMBOLO}; }}")
+        self.btn_add.clicked.connect(self.add_queue)
+        _recuado(job, self.btn_add, 5, 5)               # padx=20 (15 já são do cartão)
+
+        # --- SEÇÃO 3: VISUALIZAÇÃO DA FILA ---
+        corpo.addSpacing(20)
+        self.cartao_fila, fila = _cartao(corpo)
+        self.rotulo_fila = _rotulo("Fila de Processamento", tamanho=14, negrito=True,
+                                   cor=COLORS["accent"])
+        fila.addWidget(self.rotulo_fila)
+        fila.addSpacing(10)
+        # Fundo mais escuro para a lista
+        self.queue_frame, self._layout_fila = _area_como_a_do_ctk(fila, cor=COR_LISTA)
+        self.queue_frame.setFixedHeight(ALTURA_QUADRO_INTERNO)
+        self.update_queue_ui()
+
+        # --- SEÇÃO 4: EXECUTAR ---
+        # Conferencia das respostas do fornecedor (2026-09-28, pedido do
+        # Luan). Marcada por padrao; desmarcar e para o lote em que so se
+        # quer preencher, e economiza a chamada de IA a mais. O valor vai
+        # para um atributo comum pelo sinal (thread da interface), e o
+        # clique o entrega aos workers.
+        self._conferir_fornecedor = True
+        corpo.addSpacing(25)                            # frm_queue (…, 10) + caixa (15, …)
+        self.chk_fornecedor = controles.CaixaDeMarcar(
+            "Conferir as respostas do fornecedor contra o datasheet", tamanho_fonte=13)
+        self.chk_fornecedor.setChecked(True)
+        self.chk_fornecedor.toggled.connect(self._ao_marcar_conferencia_fornecedor)
+        _recuado(corpo, self.chk_fornecedor, 30, natural=True)
+        corpo.addSpacing(2)
+        self.rotulo_fornecedor = _texto_quebrado(
+            "\"Não se aplica\" que o documento prova vira o valor do documento, em "
+            "azul, com a resposta original no comentário da célula. Divergência vai "
+            "só para o log: a ficha do fornecedor não é alterada. Usa uma chamada "
+            "de IA a mais por ficha que tenha resposta do fornecedor.",
+            cor=CINZA, quebra=QUEBRA_TEXTOS)
+        _recuado(corpo, self.rotulo_fornecedor, 58, natural=True)
+
+        corpo.addSpacing(20)                            # texto (…, 0) + botão (20, …)
+        self.btn_run = blocos.botao("INICIAR PROCESSAMENTO DA FILA", variante="acento", altura=50,
+                                    tamanho_fonte=15, negrito=True, cor_texto="#FFFFFF")
+        self.btn_run.clicked.connect(self.run_process)
+        _recuado(corpo, self.btn_run, 30, 30)
+
+        # --- SEÇÃO 5: CONFERÊNCIA DE DOCUMENTOS ---
+        # Bloco AUTOCONTIDO (2026-08-13). Ver `_build_conferencia`.
+        corpo.addSpacing(30)                            # botão (…, 20) + frm_conf (10, …)
+        self._build_conferencia(corpo)
+        corpo.addSpacing(10)                            # frm_conf: pady=10
+
+    def _linha_de_arquivo(self, layout, texto: str, texto_botao: str, acao):
+        """Rótulo cinza à esquerda (fill/expand) e o botão de 180 à direita (o
+        #3A3A3A/#454545 escrito à mão lá = a variante "cinza")."""
+        linha = QHBoxLayout()
+        linha.setContentsMargins(0, 0, 0, 0)
+        linha.setSpacing(0)
+        rotulo = _rotulo(texto, cor=CINZA)
+        _sem_largura_minima(rotulo)
+        linha.addWidget(rotulo, 1)
+        botao = blocos.botao(texto_botao, variante="cinza", altura=28, tamanho_fonte=12,
+                             largura_minima=180)
+        botao.clicked.connect(acao)
+        linha.addWidget(botao)
+        layout.addLayout(linha)
+        return rotulo, botao
+
+    # =========================================================================
+    # CONFERÊNCIA DE DOCUMENTOS DUVIDOSOS  (frente AutoSpecAI — Rafael)
+    # =========================================================================
+    # Movida da tela CTk EM BLOCO (TRABALHO_PARALELO.md §3.1): os mesmos 6
+    # métodos e 7 atributos. Só o desenho de widget mudou de biblioteca; a
+    # lógica continua em `sigft/services/autospec_conferencia.py`.
+    #
+    # POR QUE ESTA TELA EXISTE: o filtro anti-intruso (§4.3) tem três
+    # destinos, e o do meio (`duvidoso`) não tem como ser resolvido por
+    # código. Numa ficha real entrou uma camiseta da Minnie do site do Target
+    # porque a URL continha o código do material; no mesmo lote um datasheet
+    # legítimo foi barrado por não citar a marca no título. Indistinguíveis
+    # para o programa, triviais para quem abre o link.
+    #
+    # POR QUE ELA NÃO SE ESCONDE (2026-08-17): conferir 20 links não cabe numa
+    # sessão. Salvar/importar `.txt` resolve, mas o botão de IMPORTAR precisa
+    # estar visível ANTES de existir conferência nenhuma, que é a situação de
+    # quem reabriu o app no dia seguinte. Por isso a seção fica sempre
+    # montada, com um estado vazio no lugar da lista.
+    # =========================================================================
+    def _build_conferencia(self, corpo) -> None:
+        """Monta a seção. Fica sempre visível: sem nada a conferir, mostra o
+        estado vazio e só o botão de importar funciona."""
+        self.conferencia = None
+        self.marcados_conf = {}
+        self.links_conf = {}
+        self.cabecalhos_conf = []
+        self.rotulo_conf_vazia = None
+
+        self.frm_conf, conf = _cartao(corpo, borda=COLORS["warning"])
+        self.rotulo_conf_titulo = _rotulo("5. Conferência de documentos", tamanho=14, negrito=True,
+                                          cor=COLORS["warning"])
+        conf.addWidget(self.rotulo_conf_titulo)
+        conf.addSpacing(2)                              # título: pady=(10, 2)
+        self.rotulo_conf_explicacao = _texto_quebrado(
+            "Estes documentos citam o fabricante OU o código, mas não os dois — "
+            "podem ser o datasheet certo num distribuidor, ou a página de outro "
+            "produto. Abra o link, confira, e marque os que são deste material.\n"
+            "Não precisa terminar agora: salve em .txt e importe depois para "
+            "continuar de onde parou.",
+            cor="#CCCCCC", quebra=QUEBRA_TEXTOS)
+        _recuado(conf, self.rotulo_conf_explicacao, 0, natural=True)
+        conf.addSpacing(8)                              # texto: pady=(0, 8)
+
+        self.lista_conf, self._layout_conf = _area_como_a_do_ctk(conf, cor=COR_LISTA)
+        self.lista_conf.setFixedHeight(ALTURA_QUADRO_INTERNO)
+        conf.addSpacing(10)                             # lista: pady=(0, 10)
+
+        self.btn_conf_salvar = blocos.botao(
+            "SALVAR CONFERÊNCIA (.txt)", variante="primario", altura=32, tamanho_fonte=12,
+            largura_minima=estilo.LARGURA_BOTAO_CTK)
+        self.btn_conf_salvar.clicked.connect(lambda: self._conferencia_salvar())
+        self.btn_conf_importar = blocos.botao(
+            "IMPORTAR CONFERÊNCIA (.txt)", variante="primario", altura=32, tamanho_fonte=12,
+            largura_minima=estilo.LARGURA_BOTAO_CTK)
+        self.btn_conf_importar.clicked.connect(self._conferencia_importar)
+        self._linha_botoes_conf = _DoisBotoesQueCrescem(self.btn_conf_salvar, self.btn_conf_importar,
+                                                        altura=32)
+        _recuado(conf, self._linha_botoes_conf, 5, 5)  # padx=20
+        conf.addSpacing(8)                              # linha: pady=(0, 8)
+
+        self.btn_conf = blocos.botao(
+            "PROCESSAR OS DOCUMENTOS MARCADOS", variante="acento", altura=40, tamanho_fonte=13,
+            negrito=True, cor_texto="#FFFFFF")
+        self.btn_conf.clicked.connect(self._conferencia_processar)
+        _recuado(conf, self.btn_conf, 5, 5)             # padx=20, pady=(0, 15)
+        self._conferencia_mostrar(None)
+
+    def _conferencia_mostrar(self, conferencia, marcados=None) -> None:
+        """Preenche a lista. `marcados` vem do `.txt` importado — é o que faz
+        a conferência retomada nascer com o que já tinha sido conferido."""
+        self.conferencia = conferencia
+        self.marcados_conf = {}
+        self.links_conf = {}
+        self.cabecalhos_conf = []
+        self.rotulo_conf_vazia = None
+        _esvaziar(self._layout_conf)
+
+        estado = bool(conferencia)
+        self.btn_conf.setEnabled(estado)
+        self.btn_conf_salvar.setEnabled(estado)
+
+        lista = self._layout_conf
+        if not conferencia:
+            self.rotulo_conf_vazia = _texto_quebrado(
+                "Nenhuma conferência pendente.\n\n"
+                "Se você salvou uma conferência anterior em .txt, use "
+                "IMPORTAR CONFERÊNCIA para continuar de onde parou.",
+                cor=CINZA, quebra=QUEBRA_CONFERENCIA_VAZIA)
+            lista.addSpacing(10)                        # pady=10
+            lista.addWidget(_em_caixa(self.rotulo_conf_vazia, 10, 0), 0, Qt.AlignmentFlag.AlignLeft)
+            lista.addSpacing(10)
+            return
+
+        marcados = marcados or {}
+        folga = 0                                       # pady de baixo do vizinho de cima
+        for i_pend, pendencia in enumerate(conferencia.pendencias):
+            # O emoji é da tela (mono); nome e material são dado da pessoa.
+            cabecalho = _rotulo(estilo.mono("📄") + f" {pendencia.nome_curto}  —  {pendencia.material[:60]}",
+                                tamanho=12, negrito=True, cor=COLORS["accent"])
+            _sem_largura_minima(cabecalho)
+            lista.addSpacing(folga + 8)                 # pady=(8, 2)
+            lista.addWidget(_em_caixa(cabecalho, 6, 6))
+            self.cabecalhos_conf.append(cabecalho)
+            folga = 2
+
+            for i_doc, doc in enumerate(pendencia.documentos):
+                caixa = controles.CaixaDeMarcar("", lado=LADO_CAIXA_CONF)
+                caixa.setFixedSize(TAMANHO_CAIXA_CONF)
+                caixa.setChecked(bool(marcados.get((i_pend, i_doc))))
+                self.marcados_conf[(i_pend, i_doc)] = caixa
+
+                url = doc.get("url", "")
+                titulo = (doc.get("title") or url)[:70]
+                # O link é um botão (lá porque CTkLabel não tem clique nativo); o
+                # visual de link é feito à mão.
+                link = blocos.botao(estilo.mono("🔗") + f" {titulo}", altura=22, tamanho_fonte=11,
+                                    cor_texto=COR_LINK, cor_fundo="transparent", cor_hover=COR_LINK_HOVER)
+                link.setStyleSheet(link.styleSheet() + " QPushButton { text-align: left;"
+                                   f" padding: 0 {estilo.FOLGA_TEXTO_BOTAO_CTK}px;"
+                                   " text-decoration: underline; }")
+                _sem_largura_minima(link)
+                link.clicked.connect(lambda *_, u=url: webbrowser.open(u))
+                self.links_conf[(i_pend, i_doc)] = link
+
+                linha = QWidget()
+                linha.setFixedHeight(TAMANHO_CAIXA_CONF.height())
+                arranjo = QHBoxLayout(linha)
+                arranjo.setContentsMargins(6, 0, 6, 0)  # padx=6
+                arranjo.setSpacing(0)
+                arranjo.addWidget(caixa)
+                arranjo.addWidget(link, 1, Qt.AlignmentFlag.AlignVCenter)
+                lista.addSpacing(folga + 1)             # pady=1
+                lista.addWidget(linha)
+                folga = 1
+        lista.addSpacing(folga)
+
+    def _marcacoes(self) -> dict:
+        return {chave: caixa.isChecked() for chave, caixa in self.marcados_conf.items()}
+
+    def _conferencia_salvar(self, automatico: bool = False):
+        """Grava a aba num `.txt` na pasta do `_STATUS_PMIB`.
+
+        `automatico=True` é a gravação que acontece sozinha quando o lote
+        termina: não abre caixa nenhuma (não há quem dê OK). O botão só protege
+        quem lembra de clicar nele, e o relato que originou isto foi de alguém
+        que precisou fechar o aplicativo no meio da conferência.
+        """
+        if not self.conferencia:
+            if not automatico:
+                QMessageBox.information(self, "Conferência", "Não há conferência para salvar.")
+            return None
+        try:
+            caminho = conferencia_txt.salvar_txt(
+                self.conferencia, self.status_pmib_path, self._marcacoes()
+            )
+        except Exception as e:  # noqa: BLE001 -- vira aviso, como lá
+            self.log(f"Nao consegui salvar o .txt da conferencia: {e}")
+            if not automatico:
+                QMessageBox.critical(self, "Conferência", f"Não consegui salvar:\n{e}")
+            return None
+        self.log(f"Conferencia salva em: {caminho}")
+        if not automatico:
+            QMessageBox.information(self, "Conferência", f"Conferência salva em:\n{caminho}")
+        return caminho
+
+    def _conferencia_importar(self) -> None:
+        """Retoma uma conferência salva — inclusive de outra sessão do app."""
+        caminho = file_dialogs.ask_open_file(
+            "autospec.conferencia", "txt",
+            titulo="Selecione o .txt da conferência",
+            filetypes=[("Texto", "*.txt"), ("Todos", "*.*")],
+        )
+        if not caminho:
+            return
+        try:
+            conferencia, marcados = conferencia_txt.carregar_txt(caminho)
+        except Exception as e:  # noqa: BLE001 -- vira aviso, como lá
+            QMessageBox.critical(self, "Conferência", f"Não consegui ler o arquivo:\n{e}")
+            return
+        if not conferencia:
+            QMessageBox.warning(
+                self, "Conferência",
+                "Não encontrei nenhum documento neste arquivo.\n\n"
+                "Ele precisa ter as linhas 'FICHA:' e os links marcados com [ ] ou [x].",
+            )
+            return
+
+        self._conferencia_mostrar(conferencia, marcados)
+        self.log(f"Conferencia importada de: {caminho}")
+        self.log(f" -> {conferencia.total_documentos} documento(s) em "
+                 f"{len(conferencia.pendencias)} ficha(s).")
+        ausentes = conferencia_txt.fichas_ausentes(conferencia)
+        for ficha in ausentes:
+            self.log(f" -> AVISO: nao encontrei a ficha {ficha}")
+        if ausentes:
+            QMessageBox.warning(
+                self, "Conferência",
+                f"{len(ausentes)} ficha(s) não estão mais no caminho gravado no "
+                "arquivo.\nElas vão falhar no processamento — veja o console.",
+            )
+
+    def _conferencia_processar(self) -> None:
+        if not self.conferencia:
+            return
+        if self.backend("autospec_backend") is None:
+            return
+        # Guard que vale sobretudo para a conferência IMPORTADA: quem reabriu
+        # o aplicativo tem a lista de links, mas ainda não escolheu o
+        # _STATUS_PMIB — e a 2ª passada lê a planilha de status ficha a ficha.
+        if not self.status_pmib_path:
+            QMessageBox.critical(
+                self, "Erro", "Selecione o arquivo _STATUS_PMIB (seção 1) antes de "
+                              "processar a conferência."
+            )
+            return
+        selecao = self.conferencia.selecao_por_ficha(self._marcacoes())
+        if not selecao:
+            QMessageBox.information(
+                self, "Conferência", "Marque ao menos um documento antes de processar."
+            )
+            return
+        self.iniciar_tarefa(self._conferencia_worker, self.conferencia, selecao,
+                            self.status_pmib_path, self._conferir_fornecedor, botao=self.btn_conf)
+
+    def _conferencia_worker(self, conferencia, selecao, status_pmib_path, auditar_fornecedor) -> None:
+        try:
+            core = self._novo_core(auditar_fornecedor)
+            core.conferencia = conferencia
+            for msg in core.processar_conferidos(selecao, status_pmib_path):
+                self.log(msg)
+            self.log("Conferência processada!")
+            # A lista FICA na tela: o que não foi marcado continua duvidoso, e
+            # limpar aqui repetiria a perda que o .txt veio consertar.
+            self.log("Os documentos nao marcados continuam na lista. Se for parar "
+                     "agora, use SALVAR CONFERENCIA (.txt).")
+            self.avisar("Sucesso", "Documentos conferidos processados.")
+        except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
+            self.log(f"ERRO na conferência: {e}")
+
+    # --- Seletores (Lógica Mantida) -------------------------------------------------
+    def sel_status(self) -> None:
+        p = file_dialogs.ask_open_file("autospec.status_pmib", "excel", titulo="Selecione _STATUS_PMIB",
+                                       filetypes=[("Excel", "*.xlsx")])
+        if p:
+            self.status_pmib_path = p
+            self.lbl_status.setText(os.path.basename(p))
+            _pintar(self.lbl_status, COLORS["text_white"])
+
+    def sel_sheet(self) -> None:
+        p = file_dialogs.ask_open_file("autospec.ficha", "excel", titulo="Selecione a Ficha Técnica",
+                                       filetypes=[("Excel", "*.xlsx")])
+        if p:
+            self.temp_sheet = p
+            self.lbl_sheet.setText(f"Ficha: {os.path.basename(p)}")
+            _pintar(self.lbl_sheet, COLORS["text_white"])
+
+    def sel_refs(self) -> None:
+        ps = file_dialogs.ask_open_files("autospec.manuais", "pdf", titulo="Selecione Manuais/PDFs",
+                                         filetypes=[("Docs", "*.pdf *.txt")])
+        if ps:
+            self.temp_refs = list(ps)
+            self.lbl_refs.setText(f"Manuais: {len(ps)} arquivos")
+            _pintar(self.lbl_refs, COLORS["text_white"])
+
+    def add_queue(self) -> None:
+        if not self.temp_sheet:
+            QMessageBox.warning(self, "Aviso", "Selecione pelo menos a Ficha Técnica (.xlsx).")
+            return
+
+        self.queue.append({'sheet': self.temp_sheet, 'refs': self.temp_refs})
+
+        # Reset Temp
+        self.temp_sheet = None
+        self.temp_refs = []
+        self.lbl_sheet.setText("Ficha: [Nenhuma]")
+        _pintar(self.lbl_sheet, CINZA)
+        self.lbl_refs.setText("Manuais: 0 arquivos")
+        _pintar(self.lbl_refs, CINZA)
+        self.update_queue_ui()
+
+    def remove_queue(self, idx: int) -> None:
+        del self.queue[idx]
+        self.update_queue_ui()
+
+    def update_queue_ui(self) -> None:
+        _esvaziar(self._layout_fila)
+        self.linhas_fila = []
+        self.rotulo_fila_vazia = None
+        lista = self._layout_fila
+
+        if not self.queue:
+            self.rotulo_fila_vazia = _rotulo("Fila vazia.", cor=CINZA, alinhar="centro")
+            lista.addSpacing(10)                        # pady=10, centrado
+            lista.addWidget(self.rotulo_fila_vazia, 0, Qt.AlignmentFlag.AlignHCenter)
+            lista.addSpacing(10)
+            return
+
+        for i, item in enumerate(self.queue):
+            fname = os.path.basename(item['sheet'])
+            n_refs = len(item['refs'])
+            rotulo = _rotulo(f"#{i+1}: {fname} (+{n_refs} manuais)", tamanho=12)
+            _sem_largura_minima(rotulo)
+            botao = blocos.botao("X", variante="perigo", largura=30, altura=25)
+            # Sem o padding de 14 da folha do app: num botão de 30 ele cortaria o "X".
+            botao.setStyleSheet(botao.styleSheet() + " QPushButton { padding: 0; }")
+            botao.clicked.connect(lambda *_, x=i: self.remove_queue(x))
+
+            f = QWidget()
+            f.setFixedHeight(blocos.ALTURA_MINIMA_ROTULO)
+            arranjo = QHBoxLayout(f)
+            arranjo.setContentsMargins(5, 0, 5, 0)      # padx=5 dos dois
+            arranjo.setSpacing(0)
+            arranjo.addWidget(rotulo, 1)
+            arranjo.addWidget(botao)
+            lista.addSpacing(2 if i == 0 else 4)        # pady=2: os vizinhos somam
+            lista.addWidget(f)
+            self.linhas_fila.append((rotulo, botao))
+        lista.addSpacing(2)
+
+    # --- Execução -------------------------------------------------------------------
+    def run_process(self) -> None:
+        if self.backend("autospec_backend") is None:
+            return
+        if not self.status_pmib_path:
+            QMessageBox.critical(self, "Erro", "Selecione o arquivo _STATUS_PMIB.")
+            return
+        if not self.queue:
+            QMessageBox.critical(self, "Erro", "Adicione itens à fila.")
+            return
+        # A fila do lote é a do clique: o que se acrescentar (ou tirar) durante o
+        # lote não mexe na lista que a thread está percorrendo.
+        self.iniciar_tarefa(self._worker, list(self.queue), self.status_pmib_path,
+                            self._conferir_fornecedor, botao=self.btn_run)
+
+    def _ao_marcar_conferencia_fornecedor(self, marcada: bool) -> None:
+        self._conferir_fornecedor = bool(marcada)
+
+    def _novo_core(self, auditar_fornecedor: bool):
+        """Uma instância do backend com as chaves da tela Home.
+
+        Extraído de `_worker` em 2026-08-13 porque a conferência precisa da
+        MESMA construção — duplicar as 4 chaves em dois lugares é como uma
+        delas fica para trás quando um provedor novo entra.
+        """
+        core = backends.exigir("autospec_backend").AutoSpecCore(
+            gemini_key=self.controller.get_key("GEMINI"),
+            llama_key=self.controller.get_key("LLAMA"),
+            google_search_key=self.controller.get_key("GOOGLE_SEARCH"),
+            google_cse_id=self.controller.get_key("GOOGLE_CSE")
+        )
+        # O interruptor da conferencia do fornecedor, para os DOIS workers
+        # (lido no clique de cada um).
+        core.auditar_fornecedor = auditar_fornecedor
+        return core
+
+    def _worker(self, fila, status_pmib_path, auditar_fornecedor) -> None:
+        try:
+            core = self._novo_core(auditar_fornecedor)
+            for msg in core.process_queue(fila, status_pmib_path):
+                self.log(msg)
+
+            self.log("Processamento Completo!")
+            # Conferência humana: só lista se sobrou dúvida (2026-08-13).
+            conferencia = getattr(core, "conferencia", None)
+            interface.na_interface(self._fila_processada, fila, conferencia)
+            self.avisar("Sucesso", "Todas as tarefas da fila foram processadas.")
+        except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
+            self.log(f"ERRO FATAL: {e}")
+
+    def _fila_processada(self, fila, conferencia) -> None:
+        """Fim do lote, na thread da interface: tira da fila o que foi
+        processado, mostra a conferência e a salva sozinha.
+
+        A ordem importa (invariante de 2026-08-17): `_conferencia_mostrar` zera
+        as marcações, então o `.txt` automático sai coerente com a lista nova,
+        e não com as marcas do lote anterior.
+        """
+        processados = {id(item) for item in fila}
+        self.queue = [item for item in self.queue if id(item) not in processados]
+        self.update_queue_ui()
+        self._conferencia_mostrar(conferencia)
+        # Salva sozinho (2026-08-17).
+        if conferencia:
+            self._conferencia_salvar(automatico=True)

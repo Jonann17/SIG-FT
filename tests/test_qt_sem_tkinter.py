@@ -68,6 +68,7 @@ def _importa_sem_tk(modulo):
     "sigft.app_qt.views.upload_tech_specs",
     "sigft.app_qt.views.correcao_pdm",
     "sigft.app_qt.views.cria_fichas",
+    "sigft.app_qt.views.autospec",
     "sigft.app_qt.widgets.controles",
     "sigft.app.atualizacao_textos",
     "sigft.app_qt.atualizacao",

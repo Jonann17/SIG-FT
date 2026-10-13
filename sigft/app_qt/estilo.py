@@ -387,3 +387,13 @@ QAbstractScrollArea[barra_nativa="true"] QScrollBar::add-line,
 QAbstractScrollArea[barra_nativa="true"] QScrollBar::sub-line {{
     width: 0; height: 0; }}
 """
+
+
+# --- E4.10: símbolos que o Roboto não tem ------------------------------------------
+# O "▶" da Criação de Fichas e o "⬇" do AutoSpec: o Roboto não os tem, e a reserva
+# da folha (Noto Emoji) desenha o EMOJI -- o triângulo/a seta dentro de um quadrado.
+# O Tk caía numa fonte de símbolos e mostrava só o desenho; estas são as de símbolos
+# de cada sistema (Windows, Linux, macOS), antes do Noto Emoji. Uso: na folha do
+# widget, `QPushButton { font-family: <FAMILIAS_COM_SIMBOLO>; }`. (Era local da
+# Criação de Fichas, E4.9.)
+FAMILIAS_COM_SIMBOLO = '"Roboto", "Segoe UI Symbol", "DejaVu Sans", "Apple Symbols", "Noto Emoji"'
