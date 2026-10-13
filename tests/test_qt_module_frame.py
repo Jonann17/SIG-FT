@@ -68,3 +68,28 @@ def test_excecao_no_worker_vai_para_o_console_e_solta_o_botao(qt_interface, qtbo
     thread.join(3)
     qtbot.waitUntil(lambda: "ZeroDivisionError" in t.console.toPlainText(), timeout=2000)
     qtbot.waitUntil(botao.isEnabled, timeout=2000)
+
+
+def test_backend_pedido_de_thread_de_fundo_avisa_na_thread_da_interface(
+        qt_interface, qtbot, monkeypatch):
+    """As telas piloto leem o backend dentro do worker: o QMessageBox nao pode
+    nascer la (derruba o app no macOS) -- vai para a thread da interface."""
+    monkeypatch.setattr(backends, "lmr_backend", None)
+    monkeypatch.setattr(backends, "falhas", {"lmr_backend": ImportError("sem xlwings")})
+    chamadas = []
+    monkeypatch.setattr(
+        "sigft.app_qt.widgets.module_frame.QMessageBox.warning",
+        lambda *a, **k: chamadas.append((threading.get_ident(), a[2])))
+    t = Tela(titulo="x")
+    qtbot.addWidget(t)
+    resultado = []
+    worker = threading.Thread(
+        target=lambda: resultado.append(t.backend("lmr_backend")), daemon=True)
+    worker.start()
+    worker.join(3)
+    assert resultado == [None]                       # o worker nao trava nem recebe lixo
+    qtbot.waitUntil(lambda: len(chamadas) == 1, timeout=2000)
+    assert chamadas[0][0] == threading.get_ident()   # aviso na thread da interface
+    assert worker.ident != chamadas[0][0]
+    assert "sem xlwings" in chamadas[0][1]
+    qtbot.waitUntil(lambda: "sem xlwings" in t.console.toPlainText(), timeout=2000)

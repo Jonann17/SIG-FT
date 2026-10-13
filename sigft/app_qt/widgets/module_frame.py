@@ -94,12 +94,22 @@ class ModuleFrame(DialogosDeEspera, QWidget):
             self.console.log(msg, nivel, contexto)
 
     def backend(self, nome: str):
-        """O backend `nome`, ou `None` depois de avisar a pessoa do porquê."""
+        """O backend `nome`, ou `None` depois de avisar a pessoa do porquê.
+
+        Pode ser chamado de uma thread de fundo: o aviso sempre aparece na
+        thread da interface.
+        """
         try:
             return backends.exigir(nome)
         except backends.BackendIndisponivel as erro:
             self.log(f"[ERRO] {erro}")
-            QMessageBox.warning(self, "Módulo indisponível", str(erro))
+            if interface.na_thread_da_interface():
+                QMessageBox.warning(self, "Módulo indisponível", str(erro))
+            else:
+                # As telas leem o backend dentro do worker; um QMessageBox criado
+                # fora da thread da interface derruba o app (macOS).
+                interface.na_interface(
+                    QMessageBox.warning, self, "Módulo indisponível", str(erro))
             return None
 
     def iniciar_tarefa(self, alvo, *args, botao=None) -> threading.Thread:
