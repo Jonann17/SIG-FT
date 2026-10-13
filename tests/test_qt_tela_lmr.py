@@ -188,7 +188,9 @@ def test_fluxo_completo(tela, qtbot):
                                 ("lista", ("222",), "DF"), "fechou"]
     assert tela.pausas == [MSG_LOGIN_LMR]
     assert tela.robo.callbacks["log"] == tela.log
-    assert tela.robo.callbacks["ask"] == tela.perguntar_sim_nao
+    # Revisão final: o Enter das perguntas do LMR é o "Sim" do `askyesno`
+    # (SIM = tentar este item de novo; nada foi enviado, é a resposta segura).
+    assert tela.robo.callbacks["ask"] == tela._perguntar_com_sim_padrao
     assert tela.robo.callbacks["input"] == tela.pedir_texto
     assert tela.robo.callbacks["inicio"] == 7
     [(caminho, completas, incompletas, retry_lock, callback_log)] = tela.marcadas
@@ -445,3 +447,11 @@ def test_janela_da_aba_tem_as_medidas_do_ctk(folha, qtbot):
     assert caixa(d.botao_cancelar) == (60, 183, 300, 28)
     assert d.botao_ler.text() == "Ler esta aba" and d.botao_cancelar.text() == "Cancelar"
     assert d.aba_escolhida() == "Plan1"
+
+
+def test_pergunta_do_lmr_tem_o_sim_como_padrao(tela, monkeypatch):
+    pedidos = []
+    monkeypatch.setattr(tela, "perguntar_sim_nao",
+                        lambda titulo, mensagem, **kw: pedidos.append((titulo, mensagem, kw)) or True)
+    assert tela._perguntar_com_sim_padrao("Erro", "Tentar este item de novo?") is True
+    assert pedidos == [("Erro", "Tentar este item de novo?", {"padrao_sim": True})]

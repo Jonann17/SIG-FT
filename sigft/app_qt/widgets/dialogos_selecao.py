@@ -8,7 +8,7 @@ Mesma API e mesmo contrato dos CustomTkinter:
 
 * `SelecaoMultiplaDialog` / `TabelaSelecaoDialog` abrem ao serem construídos
   (como o CTkToplevel) e devolvem a escolha por `ao_confirmar`; fechar no "X"
-  (ou Esc, ou Cancelar) não chama ninguém. O `wait_window(dialogo)` das telas
+  (ou Cancelar) não chama ninguém; Esc não fecha. O `wait_window(dialogo)` das telas
   CTk vira `dialogo.esperar()`, que também devolve a escolha (None se fechou).
   Só da thread da interface -- quem os abre é um clique.
 * `ArquivosTravadosDialog` é janela de ESPERA (o worker está parado num
@@ -32,7 +32,7 @@ from sigft.app import theme
 from sigft.app.textos_dialogos import TEXTOS_TRAVADOS
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos
-from sigft.app_qt.widgets.dialogs import SoltaAoFechar, sem_tecla
+from sigft.app_qt.widgets.dialogs import IgnoraEsc, SoltaAoFechar, sem_tecla
 
 # Diálogo aberto sem pai (ou cujo pai some) precisa de uma referência viva
 # enquanto está na tela; sai daqui quando fecha. Chave = id(): a conexão que o
@@ -67,11 +67,15 @@ def _linha_de_botoes(*botoes, padx: int = 10) -> QHBoxLayout:
     return linha
 
 
-class JanelaQueAbre(QDialog):
+class JanelaQueAbre(IgnoraEsc, QDialog):
     """Base de um CTkToplevel: título, tamanho, modal se pedido (`grab_set`),
     sempre por cima (`-topmost`, padrão aqui) e abre já (`_abrir()` no fim do
     __init__ da subclasse). `esperar()` é o `wait_window`. Também a base das
-    janelas de `views/janelas.py`."""
+    janelas de `views/janelas.py`.
+
+    Esc não fecha (`IgnoraEsc`, revisão final): o Tk não tinha tecla nenhuma, e
+    numa seleção feita item a item uma tecla escapada jogava a escolha fora.
+    O "X" (e o Cancelar) continuam cancelando."""
 
     def __init__(self, parent, *, titulo: str, geometria: str, modal: bool,
                  sempre_por_cima: bool = True) -> None:

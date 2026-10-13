@@ -288,6 +288,12 @@ class ModuloLMR(ModuleFrame):
             raise valor
         return valor
 
+    def _perguntar_com_sim_padrao(self, titulo: str, mensagem: str) -> bool:
+        """O `callback_ask` do serviço: o `askyesno` do CTk tinha o "Sim" no
+        Enter, e aqui a pergunta é "SIM = tentar este item de novo / NÃO =
+        pular" -- nada foi enviado, então repetir é a resposta segura."""
+        return self.perguntar_sim_nao(titulo, mensagem, padrao_sim=True)
+
     def _worker_lmr(self, modulo, selecionados, df_completo) -> None:
         auto = modulo.LMRAutomation()
         try:
@@ -301,7 +307,7 @@ class ModuloLMR(ModuleFrame):
             linha_inicio = self._na_interface_e_esperar(self._linha_inicial_escolhida)
             completas, incompletas = auto.processar_lista(
                 selecionados, df_completo, callback_log=self.log,
-                callback_ask=self.perguntar_sim_nao, callback_input=self.pedir_texto,
+                callback_ask=self._perguntar_com_sim_padrao, callback_input=self.pedir_texto,
                 linha_inicio=linha_inicio)
             self.log("Automação LMR finalizada.")
             # DEPOIS do portal e com try/except próprio (ver o método).

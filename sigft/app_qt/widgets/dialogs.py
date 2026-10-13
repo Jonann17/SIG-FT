@@ -27,6 +27,19 @@ ALTURA_LINHA_CAIXA = 28
 LARGURA_QUEBRA_TEXTO = 400
 
 
+class IgnoraEsc:
+    """Mixin (antes do QDialog): Esc não fecha. O Tk não tinha tecla nenhuma
+    nas janelas de seleção e de revisão, e nelas fechar tem custo: jogar fora
+    uma escolha feita item a item, o que foi digitado, ou parar um lote. O
+    "X" continua fechando (e cancelando) normalmente."""
+
+    def keyPressEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
+        if evento.key() == Qt.Key.Key_Escape:
+            evento.accept()
+            return
+        super().keyPressEvent(evento)
+
+
 class SoltaAoFechar:
     """Mixin (antes do QDialog) das janelas em que um worker espera a resposta.
 
@@ -196,7 +209,7 @@ class _DelegadoDaCaixa(QStyledItemDelegate):
         return True
 
 
-class SelecaoComCaixasDialog(QDialog):
+class SelecaoComCaixasDialog(IgnoraEsc, QDialog):
     """Lista com caixas de marcar + "Todos" + "CONFIRMAR".
 
     É a janela de seleção de fichas da Aplicação LMR (450x600). A lista é um
@@ -204,6 +217,8 @@ class SelecaoComCaixasDialog(QDialog):
     ficha -- com centenas de PMIBs a diferença aparece. Cada linha é pintada
     como a CTkCheckBox de lá (`_DelegadoDaCaixa`), dentro de um quadro como o
     CTkScrollableFrame.
+
+    Esc não fecha (`IgnoraEsc`): as fichas podem ter sido marcadas uma a uma.
     """
 
     def __init__(self, parent, *, titulo: str, mensagem: str, itens: list[str],

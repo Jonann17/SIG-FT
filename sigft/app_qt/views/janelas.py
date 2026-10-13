@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (
 from sigft.app import theme
 from sigft.app.theme import COLORS
 from sigft.app_qt import estilo, interface
-from sigft.app_qt.widgets import blocos, dialogos_selecao
+from sigft.app_qt.widgets import blocos, dialogos_selecao, dialogs
 
 # Cores com nome do Tk que as telas escreviam ("green", "red"): no Tk 8.6 são
 # as do W3C/CSS, e o Qt não as lê da mesma forma em folha de estilo.
@@ -99,17 +99,11 @@ _tabela = dialogos_selecao.tabela_ttk
 _linha = dialogos_selecao.linha_ttk
 
 
-class _IgnoraEsc:
-    """Mixin (antes do QDialog): Esc não fecha. O Tk não tinha tecla nenhuma
-    nestas janelas, e nelas fechar tem custo: na do robô é PARAR o lote; na
-    revisão de PDM, jogar fora as edições sem chamar ninguém (o fluxo da tela
-    ficava parado, com o "Analisar" desligado)."""
-
-    def keyPressEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
-        if evento.key() == Qt.Key.Key_Escape:
-            evento.accept()
-            return
-        super().keyPressEvent(evento)
+# Esc não fecha. Todas as `_Janela` já o herdam de `JanelaQueAbre` (a revisão
+# de PDM, que jogava fora as edições, e o `_PopupEdicao`, que perdia o texto
+# dos campos); o nome fica para a janela do robô, que é um QDialog cru (fechar
+# ali é PARAR o lote).
+_IgnoraEsc = dialogs.IgnoraEsc
 
 
 def _faixa(*widgets, espaco: int = 0) -> QHBoxLayout:
@@ -296,7 +290,7 @@ class JanelaEscolherPDM(_Janela):
 # =============================================================================
 # Revisão do PDM
 # =============================================================================
-class JanelaRevisaoPDM(_IgnoraEsc, _Janela):
+class JanelaRevisaoPDM(_Janela):  # Esc não fecha: herdado de JanelaQueAbre
     """Revisão, linha a linha, do PDM que a IA escolheu, antes do robô. Modal.
 
     Trabalha numa CÓPIA do DataFrame; `callback_confirmar(df)` só no

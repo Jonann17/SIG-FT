@@ -342,6 +342,48 @@ def test_falha_do_robo_vira_log_fecha_o_navegador_e_devolve_os_botoes(tela, robo
     assert robo["marcar"] is None
 
 
+def test_novo_status_desliga_robo_e_resumo_e_esvazia_a_fila(tela, qtbot, monkeypatch):
+    """Revisão final: durante a leitura de um `_STATUS_PMIB` novo, a fila
+    antiga não pode mais ir para o robô."""
+    tela._pos_selecao(_fila(2))
+    liberar = threading.Event()
+    _leitura(monkeypatch, liberar=liberar)
+    tela.btn_status.click()
+    try:
+        assert not tela.btn_robo_novo.isEnabled() and not tela.btn_resumo.isEnabled()
+        assert tela.fila_selecionada == []
+    finally:
+        liberar.set()
+    qtbot.waitUntil(tela.btn_status.isEnabled, timeout=3000)
+
+
+def test_robo_marca_a_planilha_do_clique(tela, robo, qtbot):
+    robo["liberar"].clear()
+    tela.btn_robo_novo.click()
+    tela.caminho_status = "/d/OUTRA_STATUS_PMIB.xlsx"     # trocada no meio do lote
+    robo["liberar"].set()
+    qtbot.waitUntil(lambda: robo["marcar"] is not None, timeout=3000)
+    assert robo["marcar"] == ("/d/_STATUS_PMIB.xlsx", 2)
+    qtbot.waitUntil(tela.btn_robo_novo.isEnabled, timeout=2000)
+
+
+def test_um_robo_por_vez_selecao_e_leitura_nao_religam_os_botoes(tela, robo, qtbot):
+    robo["liberar"].clear()
+    tela.btn_robo_novo.click()
+    try:
+        assert tela._robo_ativo
+        tela._pos_selecao(_fila(1))                       # uma seleção que chegou atrasada
+        assert not tela.btn_robo_novo.isEnabled() and not tela.btn_resumo.isEnabled()
+        tela.fila_completa = []
+        tela._pos_leitura_sucesso()                       # uma leitura que terminou agora
+        assert not tela.btn_status.isEnabled()
+    finally:
+        robo["liberar"].set()
+    qtbot.waitUntil(tela.btn_robo_novo.isEnabled, timeout=3000)
+    assert not tela._robo_ativo
+    assert tela.btn_status.isEnabled() and tela.btn_resumo.isEnabled()
+
+
 def test_robo_sem_fila_nao_faz_nada(tela, robo):
     tela.fila_selecionada = []
     tela.run_robo_novo_thread()

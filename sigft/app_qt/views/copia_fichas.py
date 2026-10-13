@@ -63,6 +63,10 @@ class ModuloCopiaFichas(ModuleFrame):
         # e explicadas -- ver `_worker_leitura_excel`.
         self.impedidas = []
         self.janela_selecao = None
+        # Um robô por vez (como `_upload_comum` e `cria_fichas`): liga e
+        # desliga só na thread da interface, e segura os botões que a seleção
+        # e a leitura religariam no meio do lote.
+        self._robo_ativo = False
         super().__init__(parent, controller, titulo="Módulo: Cópia de Fichas PMIB", altura_console=None)
         # Lá a tela não é o ModuleFrame: header pady=10, quadro rolável pady=0,
         # console pady=10, dentro do padx/pady=20 do `show_frame`. Os pady
@@ -181,19 +185,24 @@ class ModuloCopiaFichas(ModuleFrame):
         if not path:
             return
         self.caminho_status = path
+        # A fila da planilha anterior não vai mais para o robô: sem isto,
+        # "2. Iniciar Robô Web" seguia ligado com ela durante a leitura.
+        self.fila_selecionada = []
+        self.btn_resumo.setEnabled(False)
+        self.btn_robo_novo.setEnabled(False)
 
         self.log("Lendo arquivo Excel, aguarde...")
         # O botão desliga NO CLIQUE e volta no fim da leitura, dê no que der.
         # Thread comum: ler o Excel é tarefa da pessoa (o "X" pergunta antes).
-        self.iniciar_tarefa(self._worker_leitura_excel, botao=self.btn_status)
+        self.iniciar_tarefa(self._worker_leitura_excel, path, botao=self.btn_status)
 
-    def _worker_leitura_excel(self) -> None:
+    def _worker_leitura_excel(self, caminho: str) -> None:
         # CP 6.2: quem identifica as duplicadas é `sigft/services/duplicadas.py`
         # (prefixo `PDM.9900.000` na coluna do PDM usado). As impedidas viram
         # log em vez de sumirem caladas.
         try:
             fichas, mensagem = duplicadas.localizar_duplicadas(
-                self.caminho_status, callback_log=self.log)
+                caminho, callback_log=self.log)
             self.log(mensagem)
 
             self.impedidas = [f for f in fichas if not f.pronta_para_duplicar]
@@ -229,7 +238,7 @@ class ModuloCopiaFichas(ModuleFrame):
             self.log(f"Falha na leitura: {e}")
 
     def _pos_leitura_sucesso(self) -> None:
-        self.btn_status.setEnabled(True)
+        self.btn_status.setEnabled(not self._robo_ativo)
         # Lá: configure(fg_color=primary) -- o hover_color continua o #454545.
         self.btn_status.setStyleSheet(
             self._folha_btn_status + f" QPushButton {{ background: {COLORS['primary']}; }}"
@@ -253,7 +262,7 @@ class ModuloCopiaFichas(ModuleFrame):
         self.lbl_status.setText(f"{len(self.fila_selecionada)} fichas na fila para processar.")
         self.log(f"Fila final configurada com {len(self.fila_selecionada)} fichas.")
 
-        ligado = bool(self.fila_selecionada)
+        ligado = bool(self.fila_selecionada) and not self._robo_ativo
         self.btn_resumo.setEnabled(ligado)
         self.btn_robo_novo.setEnabled(ligado)
 
@@ -265,14 +274,17 @@ class ModuloCopiaFichas(ModuleFrame):
     # ROBÔ NOVO (Fase 6) — Playwright, sem uma linha de Selenium
     # =========================================================================
     def run_robo_novo_thread(self) -> None:
-        if not self.fila_selecionada:
+        if not self.fila_selecionada or self._robo_ativo:
             return
+        self._robo_ativo = True
         # Os botões desligam AQUI, na thread da interface, e voltam no fim do
         # worker por `na_interface`.
         for botao in (self.btn_robo_novo, self.btn_resumo, self.btn_status):
             botao.setEnabled(False)
-        # A caixa é lida no clique: o worker não toca widget.
-        self.iniciar_tarefa(self._worker_robo_novo, self.switch_auditoria.isChecked())
+        # Tudo lido no clique -- a caixa, a fila e a planilha que o robô marca
+        # no fim: o worker não toca widget nem lê o estado da tela.
+        self.iniciar_tarefa(self._worker_robo_novo, self.switch_auditoria.isChecked(),
+                            self._fichas_para_o_robo_novo(), self.caminho_status)
 
     def _fichas_para_o_robo_novo(self):
         """Os dicts da fila viram `FichaDuplicada` de novo.
@@ -300,13 +312,15 @@ class ModuloCopiaFichas(ModuleFrame):
             pass  # tela já destruída
 
     def _religar_botoes(self) -> None:
+        self._robo_ativo = False
         try:
-            for botao in (self.btn_robo_novo, self.btn_resumo, self.btn_status):
-                botao.setEnabled(True)
+            self.btn_status.setEnabled(True)
+            for botao in (self.btn_robo_novo, self.btn_resumo):
+                botao.setEnabled(bool(self.fila_selecionada))
         except RuntimeError:
             pass  # tela já destruída
 
-    def _worker_robo_novo(self, gravar_auditoria: bool) -> None:
+    def _worker_robo_novo(self, gravar_auditoria: bool, fichas, caminho_status) -> None:
         # Import tardio de propósito: puxa o Playwright, e quem nunca clica
         # neste botão não deve pagar por isso na abertura do aplicativo.
         from sigft.core import log_execucao
@@ -316,8 +330,6 @@ class ModuloCopiaFichas(ModuleFrame):
         log_auditoria = None
         registrar = self.log
         try:
-            fichas = self._fichas_para_o_robo_novo()
-
             if gravar_auditoria:
                 log_auditoria = log_execucao.LogDeExecucao(
                     "duplicadas", contexto={"fichas": len(fichas)})
@@ -345,7 +357,7 @@ class ModuloCopiaFichas(ModuleFrame):
             # certo, INCOMPLETO no resto.
             registrar("[Robô novo] Marcando o _STATUS_PMIB...")
             marcadas, falhas = duplicadas_robo.marcar_status_na_planilha(
-                self.caminho_status, resultados, callback_log=registrar)
+                caminho_status, resultados, callback_log=registrar)
 
             concluidas = [r for r in resultados if r.ok]
             registrar(f"[Robô novo] {len(concluidas)} de {len(resultados)} sem pendência; "

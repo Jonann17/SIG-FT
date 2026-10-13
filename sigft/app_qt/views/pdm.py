@@ -102,18 +102,6 @@ class _Opcoes(QButtonGroup):
         self.botoes[valor].setChecked(True)
 
 
-class _SelecaoDeCodigos(dialogos_selecao.SelecaoMultiplaDialog):
-    """A seleção dos códigos PMIB, sem Esc: a lista pode ter dezenas de
-    códigos marcados um a um, e o Tk não tinha tecla nenhuma -- uma tecla
-    escapada não pode jogar a escolha fora. "X" continua cancelando."""
-
-    def keyPressEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
-        if evento.key() == Qt.Key.Key_Escape:
-            evento.accept()
-            return
-        super().keyPressEvent(evento)
-
-
 # =============================================================================
 class ModuloPDM(ModuleFrame):
     def __init__(self, parent=None, controller=None) -> None:
@@ -607,7 +595,9 @@ class ModuloPDM(ModuleFrame):
 
     def _escolher_codigos(self, codigos):
         escolhidos = []
-        dialogo = _SelecaoDeCodigos(
+        # Sem Esc (o diálogo compartilhado o ignora): a lista pode ter dezenas
+        # de códigos marcados um a um. "X" continua cancelando.
+        dialogo = dialogos_selecao.SelecaoMultiplaDialog(
             self, itens=codigos, titulo="Selecione os Códigos PMIB", instrucao="Selecione um ou mais códigos:",
             geometria="400x500", fonte_instrucao=("Roboto", 14), fonte_lista=("Consolas", 11), modal=True,
             ao_confirmar=escolhidos.extend)

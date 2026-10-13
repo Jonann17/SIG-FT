@@ -612,7 +612,7 @@ class SelecaoFalsa:
 
 def _selecao_falsa(monkeypatch, escolha):
     SelecaoFalsa.criadas = []
-    monkeypatch.setattr(tela_mod, "_SelecaoDeCodigos",
+    monkeypatch.setattr(tela_mod.dialogos_selecao, "SelecaoMultiplaDialog",
                         lambda parent=None, **kw: SelecaoFalsa(parent, escolha=escolha, **kw))
 
 
@@ -670,7 +670,7 @@ def test_janela_real_de_selecao_confirma_e_esc_nao_descarta(tela, qtbot, pdm, mo
     vistos = {}
 
     def mexer():
-        dlg = next(w for w in tela.findChildren(tela_mod._SelecaoDeCodigos) if w.isVisible())
+        dlg = next(w for w in tela.findChildren(tela_mod.dialogos_selecao.SelecaoMultiplaDialog) if w.isVisible())
         vistos["modal"] = dlg.isModal()
         dlg.listbox.item(0).setSelected(True)
         dlg.listbox.item(2).setSelected(True)
@@ -683,6 +683,8 @@ def test_janela_real_de_selecao_confirma_e_esc_nao_descarta(tela, qtbot, pdm, mo
     _esperar_aviso(tela, qtbot)
     assert vistos == {"modal": True, "depois_do_esc": True}
     assert pdm.chamadas[1][1][2] == ["PMIB-1", "PMIB-3"]
+    # Revisão final: o bloqueio do Esc mora no diálogo compartilhado.
+    assert not hasattr(tela_mod, "_SelecaoDeCodigos")
 
 
 def test_janela_real_de_selecao_fechada_no_x_cancela(tela, qtbot, pdm):
@@ -690,7 +692,7 @@ def test_janela_real_de_selecao_fechada_no_x_cancela(tela, qtbot, pdm):
     tela.rb_selecionar.click()
 
     def fechar():
-        dlg = next(w for w in tela.findChildren(tela_mod._SelecaoDeCodigos) if w.isVisible())
+        dlg = next(w for w in tela.findChildren(tela_mod.dialogos_selecao.SelecaoMultiplaDialog) if w.isVisible())
         dlg.listbox.item(0).setSelected(True)
         dlg.close()
 

@@ -114,7 +114,9 @@ def test_monta_com_os_textos(tela):
     assert tela.lbl_subtitulo.text() == "Validação e Pontuação de Fichas Técnicas via IA"
     assert tela.lbl_score.text() == "Nota Mínima: 90%"
     assert tela.slider.value() == 90 and (tela.slider.minimum(), tela.slider.maximum()) == (0, 100)
-    assert tela.btn_config.text() == "⚙️ Configurar Pesos"
+    # Revisão final: a engrenagem vai em preto e branco, como nas outras telas.
+    assert tela.btn_config.text() == tela_mod.estilo.mono("⚙️ Configurar Pesos")
+    assert "\ufe0f" not in tela.btn_config.text()
     assert tela.btn_run.text() == "INICIAR PROCESSAMENTO"
     assert tela.btn_relatorio.text() == "GERAR RELATÓRIO PARA O FORNECEDOR (.xlsx)"
     assert not tela.btn_relatorio.isEnabled()
@@ -217,6 +219,46 @@ def test_botao_desliga_durante_o_lote(tela, qtbot, monkeypatch):
     assert not tela.btn_run.isEnabled()
     solta.set()
     qtbot.waitUntil(tela.btn_run.isEnabled, timeout=3000)
+
+
+def test_valores_lidos_no_clique_valem_para_o_lote_inteiro(tela, qtbot, monkeypatch):
+    """Revisão final: seletores, régua e pesos seguem ligados durante o lote;
+    mexer neles no meio não muda as fichas que faltam."""
+    import threading
+    solta = threading.Event()
+    _backend(monkeypatch)
+
+    def lento(**kw):
+        yield "lendo"
+        if kw["original_filename"] == "a.xlsx":
+            solta.wait(3)
+        return True
+
+    monkeypatch.setattr(AnalisadorFalso, "processar_planilha",
+                        lambda self, **kw: (self.chamadas.append(kw), lento(**kw))[1])
+    tela.custom_weights = {"tipo_fabricacao": 5.0}
+    tela.max_var_points = 30.0
+    _escolher(tela, arquivos=("/d/sub/a.xlsx", "/d/sub/b.xlsx"))
+    tela.slider.setValue(80)
+    tela.btn_run.click()
+    qtbot.waitUntil(lambda: "lendo" in tela.console.toPlainText(), timeout=3000)
+    # No meio do lote: outra régua, outra pasta, outros pesos, outra lista.
+    tela.slider.setValue(10)
+    tela._ao_escolher_saida("/outra")
+    tela.custom_weights.update({"tipo_fabricacao": 1.0})
+    tela.max_var_points = 99.0
+    tela._ao_escolher_fichas(("/d/x.xlsx", "/d/y.xlsx", "/d/z.xlsx"))
+    solta.set()
+    qtbot.waitUntil(lambda: "Concluído!" in tela.console.toPlainText(), timeout=3000)
+    qtbot.waitUntil(tela.btn_run.isEnabled, timeout=2000)
+
+    chamadas = AnalisadorFalso.criados[0].chamadas
+    assert [kw["original_filename"] for kw in chamadas] == ["a.xlsx", "b.xlsx"]
+    segunda = chamadas[1]
+    assert segunda["root_output_dir"] == "/saida" and segunda["score_threshold"] == 80
+    assert segunda["custom_weights"] == {"tipo_fabricacao": 5.0}
+    assert segunda["max_variable_points"] == 30.0
+    assert "Concluído! 2 de 2 ficha(s) processada(s)." in tela.console.toPlainText()
 
 
 def test_falhas_e_excecao_nao_derrubam_o_lote(tela, qtbot, monkeypatch):

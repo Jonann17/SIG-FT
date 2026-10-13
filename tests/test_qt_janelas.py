@@ -574,6 +574,21 @@ def test_revisao_edicao_duplo_clique_edita_o_dict_da_fila(qt_interface, qtbot, a
     j.close()
 
 
+def test_popup_de_edicao_esc_nao_joga_fora_o_que_foi_digitado(qt_interface, qtbot):
+    """Revisão final: o Tk não tinha tecla aqui, e o Esc padrão do QDialog
+    fechava o pop-up perdendo os códigos digitados."""
+    j = janelas.JanelaRevisaoEdicao(None, _fila())
+    qtbot.addWidget(j)
+    _duplo_clique(qtbot, j.tree, 1)
+    pop = j.popup
+    pop.entry_alvo.setText("PMIB.009.8888")
+    qtbot.keyClick(pop.entry_alvo, Qt.Key.Key_Escape)
+    qtbot.keyClick(pop, Qt.Key.Key_Escape)
+    assert pop.isVisible() and pop.entry_alvo.text() == "PMIB.009.8888"
+    pop.close()
+    j.close()
+
+
 def test_revisao_edicao_duplo_clique_sem_selecao_nao_abre(qt_interface, qtbot):
     j = janelas.JanelaRevisaoEdicao(None, _fila())
     qtbot.addWidget(j)

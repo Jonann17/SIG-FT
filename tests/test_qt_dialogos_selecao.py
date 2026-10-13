@@ -178,6 +178,46 @@ def test_tabela_cancelar_e_sem_cancelar(qt_interface, qtbot):
     assert sem.windowModality() == Qt.WindowModality.NonModal
 
 
+# --- Esc nunca joga fora uma seleção feita à mão (revisão final) ----------------
+# O Tk não tinha tecla nenhuma nestas janelas; no Qt o Esc fecharia, e a lista
+# pode ter dezenas de itens marcados um a um. O "X" continua cancelando.
+
+def test_selecao_multipla_esc_nao_descarta_e_o_x_cancela(qt_interface, qtbot):
+    escolhas = []
+    dlg = qd.SelecaoMultiplaDialog(None, itens=["A", "B"], ao_confirmar=escolhas.append)
+    qtbot.addWidget(dlg)
+    dlg.listbox.item(1).setSelected(True)
+    qtbot.keyClick(dlg, Qt.Key.Key_Escape)
+    qtbot.keyClick(dlg.listbox, Qt.Key.Key_Escape)
+    assert dlg.isVisible() and dlg.listbox.item(1).isSelected()
+    dlg.close()
+    assert escolhas == [] and not dlg.isVisible()
+
+
+def test_tabela_esc_nao_descarta_e_o_x_cancela(qt_interface, qtbot):
+    escolhas = []
+    dlg = _tabela(qtbot, ao_confirmar=escolhas.append)
+    qtbot.keyClick(dlg, Qt.Key.Key_Escape)
+    qtbot.keyClick(dlg.tree, Qt.Key.Key_Escape)
+    assert dlg.isVisible()
+    dlg.close()
+    assert escolhas == [] and not dlg.isVisible()
+
+
+def test_selecao_com_caixas_esc_nao_descarta_e_o_x_cancela(qt_interface, qtbot):
+    from sigft.app_qt.widgets.dialogs import SelecaoComCaixasDialog
+
+    dlg = SelecaoComCaixasDialog(None, titulo="Selecione as Fichas", mensagem="Marque:",
+                                 itens=["PMIB-1", "PMIB-2"])
+    qtbot.addWidget(dlg)
+    dlg.show()
+    dlg.lista.item(0).setCheckState(Qt.CheckState.Checked)
+    qtbot.keyClick(dlg, Qt.Key.Key_Escape)
+    assert dlg.isVisible() and dlg.selecionados() == ["PMIB-1"]
+    dlg.close()
+    assert dlg.result() == dlg.DialogCode.Rejected and not dlg.isVisible()
+
+
 def test_tabela_de_dataframe_usa_o_indice(qt_interface, qtbot):
     pd = pytest.importorskip("pandas")
     if not isinstance(getattr(pd, "DataFrame", None), type):

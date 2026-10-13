@@ -180,7 +180,7 @@ class ModuloAnalyzer(ModuleFrame):
         controles.addWidget(self.slider)
         controles.addStretch()
         # Botão de Configurar Pesos
-        self.btn_config = blocos.botao("⚙️ Configurar Pesos", largura=150, altura=28, tamanho_fonte=12,
+        self.btn_config = blocos.botao(estilo.mono("⚙️ Configurar Pesos"), largura=150, altura=28, tamanho_fonte=12,
                                        cor_fundo=COR_BOTAO_CONFIG, cor_hover=COR_BOTAO_CONFIG_HOVER)
         self.btn_config.clicked.connect(self.abrir_config_pesos)
         controles.addWidget(self.btn_config)
@@ -356,7 +356,13 @@ class ModuloAnalyzer(ModuleFrame):
         self.api_key = self._chave_gemini()
         # Desliga o relatório já no clique: a lista anterior vai ser trocada.
         self.btn_relatorio.setEnabled(False)
-        self.iniciar_tarefa(self._run_backend, botao=self.btn_run)
+        # Tudo lido no clique: os seletores, a régua e "Configurar Pesos"
+        # seguem ligados durante o lote, e mexer neles no meio não pode mudar
+        # as fichas que faltam (nem a contagem do fim).
+        self.iniciar_tarefa(
+            self._run_backend, list(self.selected_files), self.selected_output,
+            self.selected_pmib, int(self.score_value), dict(self.custom_weights),
+            self.max_var_points, botao=self.btn_run)
 
     def _perguntar_descricao(self, arquivo, codigo):
         """Pergunta a descrição do material quando o código PMIB não está no
@@ -390,7 +396,8 @@ class ModuloAnalyzer(ModuleFrame):
             self.log(f" -> Descricao informada a mao: {texto}")
         return texto or None
 
-    def _run_backend(self) -> None:
+    def _run_backend(self, arquivos, pasta_saida, caminho_pmib, nota_minima, pesos,
+                     max_pontos) -> None:
         try:
             self._parar_de_perguntar_desc = False
             backend = self.backend("analyzer_backend")
@@ -402,9 +409,9 @@ class ModuloAnalyzer(ModuleFrame):
             self.relatorio_analise = analyzer_relatorio.RelatorioAnalise()
             analyzer.relatorio = self.relatorio_analise
             pmib_sheet = None
-            if self.selected_pmib:
+            if caminho_pmib:
                 try:
-                    wb = openpyxl.load_workbook(self.selected_pmib, data_only=True)
+                    wb = openpyxl.load_workbook(caminho_pmib, data_only=True)
                     # 2026-08-26: era `wb.active` -- a aba selecionada quando o
                     # arquivo foi salvo, que pode ser uma capa. Ver `aba_do_status_pmib`.
                     pmib_sheet = backend.aba_do_status_pmib(wb)
@@ -413,19 +420,19 @@ class ModuloAnalyzer(ModuleFrame):
                     self.log(f"Erro STATUS_PMIB: {e}")
 
             ok, falhas = 0, []
-            for f_path in self.selected_files:
+            for f_path in arquivos:
                 fname = os.path.basename(f_path)
                 subfolder = os.path.basename(os.path.dirname(f_path))
 
                 iterador_logs = analyzer.processar_planilha(
                     input_filepath=f_path,
-                    root_output_dir=self.selected_output,
+                    root_output_dir=pasta_saida,
                     subfolder_name=subfolder,
                     original_filename=fname,
                     pmib_sheet=pmib_sheet,
-                    score_threshold=int(self.score_value),
-                    custom_weights=self.custom_weights,
-                    max_variable_points=self.max_var_points,
+                    score_threshold=nota_minima,
+                    custom_weights=pesos,
+                    max_variable_points=max_pontos,
                     callback_manual_desc=self._perguntar_descricao,
                     retry_lock=self.perguntar_retry_excel,
                 )
@@ -445,7 +452,7 @@ class ModuloAnalyzer(ModuleFrame):
                     self.log(f"[ERRO] {fname}: {e}")
                     falhas.append(fname)
 
-            self.log(f"Concluído! {ok} de {len(self.selected_files)} ficha(s) processada(s).")
+            self.log(f"Concluído! {ok} de {len(arquivos)} ficha(s) processada(s).")
             if self.relatorio_analise:
                 interface.na_interface(self.btn_relatorio.setEnabled, True)
                 self.log(f"{len(self.relatorio_analise)} ficha(s) com pendencia. Use "
@@ -454,7 +461,7 @@ class ModuloAnalyzer(ModuleFrame):
                 self.log(f"NAO concluidas ({len(falhas)}): {', '.join(falhas)}")
                 self.avisar(
                     "Análise finalizada com pendências",
-                    f"{len(falhas)} de {len(self.selected_files)} ficha(s) não foram "
+                    f"{len(falhas)} de {len(arquivos)} ficha(s) não foram "
                     "processadas.\nVeja o console para o motivo de cada uma.",
                     tipo="aviso",
                 )
