@@ -167,6 +167,33 @@ def test_pip_que_falha_nao_grava_o_carimbo_e_tenta_de_novo(tmp_path, venv):
     assert len([linha for linha in _registro(tmp_path) if " -r " in linha]) == 2
 
 
+def test_pip_que_falha_com_instalacao_anterior_segue_e_tenta_de_novo(tmp_path, venv):
+    """Revisao final: o `requirements.txt` mudou (PySide6, ~80 MB) e o pip
+    falhou. O ambiente antigo continua inteiro (o pip baixa tudo antes de
+    instalar), entao o app abre com ele -- inclusive `--ctk`. O carimbo velho
+    fica, para a proxima abertura tentar de novo."""
+    requisitos = tmp_path / "requirements.txt"
+    requisitos.write_text("pandas\nPySide6-Essentials\n", encoding="utf-8")
+    carimbo = venv / ".sigft-requirements.stamp"
+    carimbo.write_text("hash-da-instalacao-anterior\n", encoding="utf-8")
+    comum = dict(SIGFT_VENV_DIR=venv, SIGFT_PY=venv / "bin" / "python",
+                 SIGFT_PIP_ARGS_EFETIVO="--isolated")
+
+    falhou = _bash(f'_sigft_instalar "{requisitos}" requirements; echo "rc=$?"',
+                   tmp_path, SIGFT_TESTE_CODIGO_PIP=1, **comum)
+
+    assert "rc=0" in falhou.stdout, falhou.stdout + falhou.stderr
+    assert "SEGUINDO" in falhou.stdout
+    assert carimbo.read_text(encoding="utf-8") == "hash-da-instalacao-anterior\n"
+
+    de_novo = _bash(f'_sigft_instalar "{requisitos}" requirements; echo "rc=$?"',
+                    tmp_path, **comum)
+
+    assert "rc=0" in de_novo.stdout
+    assert len([linha for linha in _registro(tmp_path) if " -r " in linha]) == 2
+    assert carimbo.read_text(encoding="utf-8") != "hash-da-instalacao-anterior\n"
+
+
 # -- onde fica o venv ----------------------------------------------------------------
 
 @pytest.mark.parametrize(("caminho", "sincronizada"), [
@@ -327,3 +354,4 @@ def test_command_com_erro_deixa_a_mensagem_na_tela_ate_o_enter(tmp_path, venv, f
 
     assert processo.returncode == 1
     assert "Encerrado com erro" in saida
+    assert f'"{COMMAND}" --ctk' in saida, "sem o caminho para a interface antiga"

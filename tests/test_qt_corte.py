@@ -261,3 +261,66 @@ def test_import_frontend_continua_dando_os_nomes_do_customtkinter(despachos, mon
     assert despachos == [], "importar o frontend abriu uma interface"
     assert nomes["SIG_FT_App"] is ctk.SIG_FT_App
     assert nomes["main"] is ctk.main
+
+
+# -- o caminho para a interface antiga quando a Qt falha (revisao final) ---------
+
+def test_o_comando_da_antiga_e_um_so(monkeypatch):
+    """O console do `frontend.py`, a caixa da abertura que falhou e a tela que
+    nao montou dao o MESMO comando, montado num lugar so."""
+    from sigft.core.interface_antiga import comando_da_interface_antiga
+
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    assert comando_da_interface_antiga() == f'"{sys.executable}" "{FRONTEND}" --ctk'
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert comando_da_interface_antiga() == f'"{sys.executable}" --ctk'
+
+
+def test_no_mac_a_qt_que_falha_com_a_qapplication_viva_nao_cai_no_tk(
+        qt_interface, despachos, monkeypatch, capsys):
+    """No macOS o Tk e a Qt disputam o mesmo NSApplication: com uma
+    QApplication viva, abrir o Tk no mesmo processo quebra. Avisa e sai com 1."""
+    _qt_que_nao_sobe(monkeypatch)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(sys, "argv", [str(FRONTEND)])
+
+    with pytest.raises(SystemExit) as saida:
+        runpy.run_path(str(FRONTEND), run_name="__main__")
+
+    assert saida.value.code == 1
+    assert despachos == [], "caiu no CustomTkinter com a Qt viva no Mac"
+    texto = "".join(capsys.readouterr())
+    assert "a Qt nao subiu" in texto
+    assert f'"{sys.executable}" "{FRONTEND}" --ctk' in texto
+
+
+def test_fora_do_mac_a_qapplication_viva_nao_impede_a_antiga(
+        qt_interface, despachos, monkeypatch):
+    _qt_que_nao_sobe(monkeypatch)
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(sys, "argv", [str(FRONTEND)])
+
+    runpy.run_path(str(FRONTEND), run_name="__main__")
+
+    assert despachos == ["ctk"]
+
+
+def test_o_erro_do_sig_ft_bat_ensina_o_ctk():
+    """Depois de um pip que falhou ou de uma Qt que abortou, o bloco `:erro` e a
+    unica coisa que a pessoa le: ele da o caminho para a interface antiga."""
+    texto = (RAIZ / "SIG-FT.bat").read_text(encoding="utf-8")
+    bloco = texto[texto.index("\n:erro"):]
+    assert any(linha.lstrip().lower().startswith("echo") and 'SIG-FT.bat" --ctk' in linha
+               for linha in bloco.splitlines()), bloco
+
+
+def test_o_bootstrap_bat_segue_com_a_instalacao_anterior_quando_o_pip_falha():
+    """Sem cmd.exe aqui: confere-se que o ramo de falha do `pip install -r`
+    olha o carimbo anterior antes de sair com 1, e que ele so e gravado no
+    caminho que deu certo."""
+    texto = (RAIZ / "scripts" / "_bootstrap_venv.bat").read_text(encoding="utf-8")
+    rotina = texto[texto.index("\n:_instalar\n"):texto.index("\n:_instalar_navegador")]
+    falha = rotina[rotina.index("if errorlevel 1 ("):]
+    assert "_hash_ant" in falha.split("exit /b 1")[0], falha
+    assert "SEGUINDO" in falha
+    assert rotina.count('>"%_stamp%"') == 1

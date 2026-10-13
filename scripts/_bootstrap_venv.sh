@@ -245,6 +245,17 @@ _sigft_instalar() {
         echo
         echo "[ERRO] Falha ao instalar as dependencias de $nome."
         _sigft_dica_rede
+        if [ -f "$carimbo" ]; then
+            # Ja houve uma instalacao que deu certo: o pip baixa tudo antes de
+            # instalar, entao o ambiente anterior continua inteiro e o app abre
+            # com ele (inclusive `--ctk`). O carimbo antigo fica, e a proxima
+            # abertura tenta de novo. Sem carimbo (nunca instalou), falha.
+            echo
+            echo "[SIG-FT] SEGUINDO com as dependencias da instalacao anterior."
+            echo "         Na proxima abertura o SIG-FT tenta instalar de novo."
+            echo
+            return 0
+        fi
         return 1
     fi
     _sigft_hash_arquivo "$arquivo" > "$carimbo"

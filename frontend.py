@@ -52,8 +52,8 @@ def _a_qt_nao_abriu(erro: Exception) -> None:
     Sem `--smoke` (decisão da transição): avisa no console e volta, e o
     `frontend.py` segue para a interface antiga no mesmo processo -- a pessoa
     continua trabalhando, e fica com o comando para abrir a antiga direto.
+    Exceção: no Mac com uma QApplication já viva, só dá o comando e sai com 1.
     """
-    import os
     import traceback
 
     pilha = "".join(traceback.format_exception(erro))
@@ -68,17 +68,34 @@ def _a_qt_nao_abriu(erro: Exception) -> None:
 
     # No `.exe` sem console, o aviso e a pilha vão para o `logs/sigft.log` (o
     # import do `sigft.app_qt.main`, que faria isso, foi o que falhou).
+    from sigft.core.interface_antiga import comando_da_interface_antiga
     from sigft.core.saida_log import desviar_saida_para_arquivo
 
     desviar_saida_para_arquivo()
-    if getattr(sys, "frozen", False):
-        comando = f'"{sys.executable}" --ctk'
-    else:
-        comando = f'"{sys.executable}" "{os.path.abspath(__file__)}" --ctk'
+    comando = comando_da_interface_antiga()
     print(pilha, file=sys.stderr)
     print(f"[SIG-FT] A interface nova (Qt) nao abriu: {type(erro).__name__}: {erro}")
+    if sys.platform == "darwin" and _qapplication_viva():
+        # No Mac o Tk e a Qt disputam o mesmo NSApplication: com uma
+        # QApplication já criada, abrir o Tk neste processo quebra. Aqui só
+        # se chega quando a falha veio DEPOIS de a Qt subir (a de import, a
+        # comum, acontece antes de existir QApplication).
+        print(f"[SIG-FT] Para abrir a interface antiga: {comando}", flush=True)
+        sys.exit(1)
     print("[SIG-FT] Abrindo a interface antiga para voce continuar trabalhando.")
     print(f"         Para abrir a antiga direto: {comando}", flush=True)
+
+
+def _qapplication_viva() -> bool:
+    """Há uma QApplication neste processo? Sem importar o PySide6 (que pode ser
+    justamente o que está quebrado): só olha o que já foi importado."""
+    qt_widgets = sys.modules.get("PySide6.QtWidgets")
+    if qt_widgets is None:
+        return False
+    try:
+        return qt_widgets.QApplication.instance() is not None
+    except Exception:  # noqa: BLE001 -- PySide6 pela metade: trata como sem Qt
+        return False
 
 
 # ⚠️ ANTES do import pesado logo abaixo, e isto é o que faz o Release funcionar.

@@ -94,3 +94,13 @@ def test_tela_que_falha_ao_montar_vira_tela_de_erro(qt_interface, qtbot, tmp_pat
     assert isinstance(janela.pilha.currentWidget(), TelaComErro)
     assert "faltou coluna" in janela.pilha.currentWidget().mensagem.text()
     assert "Analyzer" not in janela.telas  # a próxima visita tenta de novo
+
+
+def test_tela_que_falha_ensina_a_abrir_a_antiga(qt_interface, qtbot):
+    """Revisão final: uma tela que não monta não tem outra saída hoje."""
+    from sigft.app_qt.views.nao_migrada import TelaComErro
+    from sigft.core.interface_antiga import comando_da_interface_antiga
+
+    tela = TelaComErro("Analyzer", ValueError("faltou coluna"))
+    qtbot.addWidget(tela)
+    assert comando_da_interface_antiga() in tela.mensagem.text()

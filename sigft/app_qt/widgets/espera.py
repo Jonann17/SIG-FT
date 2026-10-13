@@ -11,6 +11,7 @@ from __future__ import annotations
 import threading
 import traceback
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QInputDialog, QMessageBox
 
 from sigft.app.textos_dialogos import MSG_EXCEL_BLOQUEADO, TEXTO_CONTINUAR, msg_excel_bloqueado
@@ -30,6 +31,10 @@ class DialogosDeEspera:
         def abrir() -> None:
             try:
                 dialogo = construir_dialogo(evento, resultado)
+                # Fechado, é apagado: sem isto cada caixa de um lote longo
+                # (muitas travas de Excel) ficava viva, escondida, como filha
+                # da tela. O worker não toca no diálogo depois do `evento`.
+                dialogo.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
                 self._dialogo_aberto = dialogo  # segura a referência enquanto está aberto
                 dialogo.show()
             except Exception:  # noqa: BLE001 -- o worker não pode ficar preso

@@ -4,6 +4,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from sigft.core.interface_antiga import comando_da_interface_antiga
+
 
 class TelaNaoMigrada(QWidget):
     def __init__(self, nome: str, parent=None) -> None:
@@ -29,7 +31,10 @@ class TelaComErro(QWidget):
         layout = QVBoxLayout(self)
         self.mensagem = QLabel(
             f"A tela \"{nome}\" não conseguiu abrir.\n\n{type(erro).__name__}: {erro}\n\n"
-            "O detalhe está em Documentos\\SIG-FT\\logs\\sigft.log.")
+            "O detalhe está em Documentos\\SIG-FT\\logs\\sigft.log.\n\n"
+            "Para usar esta tela agora, abra a interface antiga:\n"
+            f"{comando_da_interface_antiga()}")
+        self.mensagem.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.mensagem.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.mensagem.setWordWrap(True)
         self.mensagem.setStyleSheet("font-size: 15px; color: #E0E0E0;")

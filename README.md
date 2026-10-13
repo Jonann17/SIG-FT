@@ -109,8 +109,11 @@ virtual, e não com o `python` do sistema: `SIG-FT.bat --ctk` (Windows) ou
 `./SIG-FT.command --ctk` (Mac, no Terminal), que já sabem onde ele está; ou,
 direto, `.venv\Scripts\python.exe frontend.py --ctk` (Windows) /
 `.venv/bin/python frontend.py --ctk` (Mac). Se a interface nova não conseguir
-abrir, o SIG-FT avisa na janela preta (no Mac, a do Terminal), com o comando
-certo, e abre a antiga sozinho.
+abrir (o PySide6 não carrega), o SIG-FT avisa na janela preta (no Mac, a do
+Terminal), com o comando certo, e abre a antiga sozinho. Se ela abrir e a janela
+principal ou uma tela não montar, a caixa (ou a tela) dá o comando da antiga; e
+se a instalação das dependências falhar numa máquina que já tinha o SIG-FT, ele
+abre com as dependências de antes e tenta instalar de novo na próxima vez.
 
 - **Entry point**: `frontend.py` (abre a Splash Screen, que carrega os backends dinamicamente e abre o app).
 - **Windows**: os módulos Tradutor (`xlwings`, exige Excel instalado) e alguns recursos (`os.startfile`) só funcionam em Windows.

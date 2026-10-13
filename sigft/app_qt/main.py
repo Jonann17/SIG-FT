@@ -37,6 +37,7 @@ from sigft.app_qt.views.nao_migrada import TelaComErro, TelaNaoMigrada
 from sigft.app_qt.views.translator import ModuloTranslator
 from sigft.app_qt.widgets import blocos
 from sigft.core import instancia
+from sigft.core.interface_antiga import comando_da_interface_antiga
 from sigft.core.saida_log import desviar_saida_para_arquivo
 
 # Sem console (o .exe), `print` e traceback vão para `logs/sigft.log`: é o canal
@@ -413,8 +414,13 @@ def main() -> None:
             principal = SIG_FT_App()
         except Exception as erro:  # noqa: BLE001 -- vira aviso, e não fantasma
             traceback.print_exception(erro)
+            # Sem reabrir com `--ctk` sozinho, de propósito: o `SIG-FT.bat` e o
+            # `.command` esperam este processo e, com o código 1, mostrariam
+            # "Encerrado com erro" ao lado de uma interface antiga aberta. A
+            # caixa dá o comando, e a pessoa escolhe.
             QMessageBox.critical(None, "SIG-FT", catalogo.MSG_ABERTURA_FALHOU.format(
-                erro=f"{type(erro).__name__}: {erro}"))
+                erro=f"{type(erro).__name__}: {erro}",
+                comando=comando_da_interface_antiga()))
             instancia.encerrar(1)
             return
         janela.append(principal)

@@ -34,6 +34,7 @@ exit /b 0
 :erro
 echo.
 echo [SIG-FT] Encerrado com erro. As mensagens acima dizem o motivo.
+echo          Para abrir a interface antiga: "%~dp0SIG-FT.bat" --ctk
 echo.
 pause
 endlocal

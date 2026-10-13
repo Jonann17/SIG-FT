@@ -54,6 +54,24 @@ def test_retry_excel_devolve_a_escolha(qt_interface, qtbot):
     assert respostas == [True]
 
 
+def test_dialogo_aberto_pelo_worker_e_apagado_ao_fechar(qt_interface, qtbot):
+    """Revisao final: num lote longo com muitas travas de Excel, cada caixa
+    fechada ficava viva, escondida, como filha da tela."""
+    import shiboken6
+
+    tela = Tela()
+    qtbot.addWidget(tela)
+    respostas = []
+    t = threading.Thread(target=lambda: respostas.append(tela.perguntar_retry_excel()), daemon=True)
+    t.start()
+    qtbot.waitUntil(lambda: len(_abertos(qd.RetryLockDialog)) == 1, timeout=2000)
+    dialogo = _abertos(qd.RetryLockDialog)[0]
+    dialogo.botao_repetir.click()
+    t.join(3)
+    assert respostas == [True]
+    qtbot.waitUntil(lambda: not shiboken6.isValid(dialogo), timeout=2000)
+
+
 def test_retry_excel_fechar_no_x_e_cancelar(qt_interface, qtbot):
     tela = Tela()
     qtbot.addWidget(tela)

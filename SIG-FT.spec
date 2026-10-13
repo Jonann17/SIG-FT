@@ -445,11 +445,12 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # O PyInstaller no Windows quer `.ico` para o ícone do EXECUTÁVEL. O
-    # projeto só tem o `.png` (que serve para a janela, na Qt e no
-    # CustomTkinter, mas não para o arquivo). `Gerar-Executavel.bat` converte
-    # o PNG em `build/SIG-FT.ico` antes de chamar o PyInstaller; se a conversão não
-    # rolar, o build segue com o ícone padrão em vez de falhar.
+    # O PyInstaller no Windows quer `.ico` para o ícone do EXECUTÁVEL (o `.png`
+    # serve para a janela, na Qt e no CustomTkinter, mas não para o arquivo).
+    # `_ICONE` vem da escolha mais acima: o `build/SIG-FT.ico` que o
+    # `Gerar-Executavel.bat` gera a partir do PNG, ou o
+    # `assets/icone-sig-ft.ico` do repositório, que é o que o CI usa. Sem
+    # nenhum dos dois, o build segue com o ícone padrão em vez de falhar.
     icon=_ICONE,
 )
 

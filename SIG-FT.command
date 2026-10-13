@@ -21,6 +21,7 @@ RAIZ="$(cd "$(dirname "$0")" && pwd)"
 _sigft_encerrar_com_erro() {
     echo
     echo "[SIG-FT] Encerrado com erro. As mensagens acima dizem o motivo."
+    echo "         Para abrir a interface antiga: \"$RAIZ/SIG-FT.command\" --ctk"
     echo
     # O `pause` do .bat: sem isto, o Terminal pode fechar a janela (ou
     # esconder a mensagem) antes de a pessoa conseguir ler.

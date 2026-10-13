@@ -28,7 +28,53 @@ def test_bloqueadas_iguais():
 
 def test_mensagens_iguais():
     assert catalogo.MSG_TAREFA_EM_ANDAMENTO == _valor(MAIN, "MSG_TAREFA_EM_ANDAMENTO")
-    assert catalogo.MSG_ABERTURA_FALHOU == _valor(MAIN, "MSG_ABERTURA_FALHOU")
+
+
+def test_mensagem_da_abertura_que_falhou_e_a_do_ctk_mais_o_caminho_da_antiga():
+    """Revisao final: na Qt, quem nao conseguiu abrir a janela tem de saber
+    abrir a interface antiga (o CTk nao precisa, ele E a antiga)."""
+    ctk = _valor(MAIN, "MSG_ABERTURA_FALHOU")
+    assert catalogo.MSG_ABERTURA_FALHOU.startswith(ctk)
+    assert "{comando}" in catalogo.MSG_ABERTURA_FALHOU[len(ctk):]
+
+
+def test_abertura_que_falha_mostra_o_comando_da_antiga(qt_interface, monkeypatch):
+    from sigft.app_qt import main as qmain
+    from sigft.core import dados_usuario, instancia
+    from sigft.core.interface_antiga import comando_da_interface_antiga
+    from sigft.core.rpa import navegador
+
+    codigos, caixas, ligados = [], [], []
+
+    class SplashFalsa:
+        pronta = type("S", (), {"connect": lambda self, f: ligados.append(f)})()
+
+        def show(self):
+            pass
+
+        def carregar(self):
+            ligados[0]()
+
+        def close(self):
+            pass
+
+    def quebra():
+        raise ValueError("api_config.json corrompido")
+
+    monkeypatch.setattr(instancia, "preparar", lambda: None)
+    monkeypatch.setattr(instancia, "encerrar", lambda codigo=0: codigos.append(codigo))
+    monkeypatch.setattr(dados_usuario, "migrar_se_preciso", lambda: [])
+    monkeypatch.setattr(navegador, "preparar_ambiente_do_rpa", lambda: None)
+    monkeypatch.setattr(qmain, "_preparar_qt",
+                        lambda: type("A", (), {"exec": lambda self: None})())
+    monkeypatch.setattr(qmain, "SplashScreen", SplashFalsa)
+    monkeypatch.setattr(qmain, "SIG_FT_App", quebra)
+    monkeypatch.setattr(qmain.QMessageBox, "critical",
+                        lambda pai, titulo, texto: caixas.append(texto))
+    qmain.main()
+    assert codigos[0] == 1
+    assert "api_config.json corrompido" in caixas[0]
+    assert comando_da_interface_antiga() in caixas[0]
 
 
 def test_menu_tem_as_telas_dos_cards_e_na_ordem_da_barra():

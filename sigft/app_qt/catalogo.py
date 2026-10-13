@@ -73,8 +73,13 @@ MSG_TAREFA_EM_ANDAMENTO = (
     "Fechar o SIG-FT mesmo assim?"
 )
 
+# O texto do CustomTkinter (`tests/test_qt_catalogo.py` trava o começo) mais o
+# caminho para a interface antiga, enquanto durar a transição: sem ele, quem
+# não consegue abrir a janela nova fica sem saída. `{comando}` vem de
+# `sigft.core.interface_antiga`, o mesmo que o `frontend.py` imprime.
 MSG_ABERTURA_FALHOU = (
     "O SIG-FT não conseguiu abrir a janela principal.\n\n{erro}\n\n"
     "O detalhe completo está em Documentos\\SIG-FT\\logs\\sigft.log. "
     "Mande esse arquivo para quem cuida do SIG-FT."
+    "\n\nPara continuar trabalhando, abra a interface antiga:\n{comando}"
 )
