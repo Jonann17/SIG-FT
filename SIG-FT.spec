@@ -171,7 +171,13 @@ hiddenimports = [
 
 # O pacote `sigft` inteiro: as views são importadas pelo `main.py`, mas os
 # serviços entram por aqueles shims dinâmicos acima.
-hiddenimports += collect_submodules("sigft")
+#
+# `sigft.app_qt` (a UI Qt em migração) fica DE FORA: até o corte (Etapa 6) o
+# .exe é o app CustomTkinter, e coletar o pacote arrastaria PySide6 + as DLLs e
+# plugins do Qt (50 MB ou mais) para um .exe que nem abre essa interface.
+# A Etapa 6 remove este filtro (e o "PySide6"/"shiboken6" dos `excludes`).
+hiddenimports += collect_submodules(
+    "sigft", filter=lambda nome: not nome.startswith("sigft.app_qt"))
 
 # Provedores de IA são importados PREGUIÇOSAMENTE dentro das funções
 # (`core/llm/client.py`), de propósito — mesma razão dos backends: o
@@ -232,7 +238,12 @@ a = Analysis(
     # `ctranslate2.converters` tenta importá-los dentro de try/except, e numa
     # máquina de build que os tenha instalados a análise levaria ~800 MB de
     # torch para o instalador.
-    excludes=["pytest", "_pytest", "mypy", "ruff", "torch", "transformers"],
+    #
+    # `PySide6` e `shiboken6`: a UI Qt ainda não é a oficial (ver o filtro do
+    # `collect_submodules("sigft")` acima). Se o ambiente de build os tiver, a
+    # análise não pode puxá-los para o .exe. Sai no corte (Etapa 6).
+    excludes=["pytest", "_pytest", "mypy", "ruff", "torch", "transformers",
+              "PySide6", "shiboken6"],
     noarchive=False,
 )
 
