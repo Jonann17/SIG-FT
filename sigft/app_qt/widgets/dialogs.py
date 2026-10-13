@@ -7,20 +7,22 @@ thread do robô fica presa em `Event.wait()` para sempre.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QRect, QSize, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QFontMetrics
 from PySide6.QtWidgets import (
-    QDialog, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton,
-    QStyledItemDelegate, QVBoxLayout,
+    QDialog, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QStyledItemDelegate, QVBoxLayout,
 )
 
 from sigft.app import theme
 from sigft.app.textos_dialogos import MSG_EXCEL_BLOQUEADO, TEXTO_CONTINUAR
+from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos, controles
 
 # CTkCheckBox na lista de lá: caixa de 24, `pack(pady=2)` -> uma linha a cada 28;
 # o texto começa 6 px depois da caixa.
 ALTURA_LINHA_CAIXA = 28
 VAO_TEXTO_CAIXA = 6
+# O wraplength=400 do texto das janelas de ação manual.
+LARGURA_QUEBRA_TEXTO = 400
 
 
 class SoltaAoFechar:
@@ -51,19 +53,33 @@ class SoltaAoFechar:
 
 
 class _DialogoDeAcaoManual(SoltaAoFechar, QDialog):
-    def __init__(self, parent, *, titulo: str, mensagem: str, largura: int, altura: int) -> None:
+    def __init__(self, parent, *, titulo: str, mensagem: str, largura: int, altura: int,
+                 pady_texto: int) -> None:
         super().__init__(parent)
         self.setWindowTitle(titulo)
         self.setFixedSize(largura, altura)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self._decidido = False
+        # Medidas do CTk (E4.4/E4.5, capturas/e4.45): o texto vai com
+        # pady=`pady_texto` e `expand=True` (centrado na sobra acima dos
+        # botões), padx=20 e wraplength=400; os botões com pady=(0, 20).
         self.layout_principal = QVBoxLayout(self)
-        self.layout_principal.setContentsMargins(20, 20, 20, 20)
+        self.layout_principal.setContentsMargins(20, 0, 20, 20)
+        self.layout_principal.setSpacing(0)
+        self.layout_principal.addSpacing(pady_texto)
         self.rotulo = QLabel(mensagem)
         self.rotulo.setWordWrap(True)
         self.rotulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.rotulo.setStyleSheet("font-size: 13px;")
-        self.layout_principal.addWidget(self.rotulo, 1)
+        self.rotulo.setMaximumWidth(LARGURA_QUEBRA_TEXTO)
+        self.rotulo.setStyleSheet(f"font-size: 13px; color: {controles.COR_TEXTO_CTK};")
+        # Numa linha com sobras dos lados (e não com `alignment`): com alinhamento,
+        # o QLabel com quebra escolhe uma largura estreita e quebra cedo demais.
+        linha_texto = QHBoxLayout()
+        linha_texto.addStretch()
+        linha_texto.addWidget(self.rotulo, 100)
+        linha_texto.addStretch()
+        self.layout_principal.addLayout(linha_texto, 1)
+        self.layout_principal.addSpacing(pady_texto)
 
 
 class PausaLoginDialog(_DialogoDeAcaoManual):
@@ -71,21 +87,21 @@ class PausaLoginDialog(_DialogoDeAcaoManual):
 
     def __init__(self, parent, *, mensagem: str, evento_espera, texto_botao: str = TEXTO_CONTINUAR) -> None:
         super().__init__(parent, titulo="Ação Manual Necessária", mensagem=mensagem,
-                         largura=450, altura=250)
+                         largura=450, altura=250, pady_texto=30)
         self._evento = evento_espera
-        # [E4.7] Medidas do CTk: texto com pady=30 (expand) e botão de 45 com
-        # pady=(0, 20) -- o texto fica centrado em 125 px a partir de y=30, e
-        # o botão em y=185. A altura vai na folha do PRÓPRIO botão: o
-        # `setMinimumHeight` perdia para o `min-height: 28px` da folha do app.
-        # Largura = texto + 6 de cada lado, como o CTkButton.
-        self.layout_principal.setContentsMargins(20, 30, 20, 20)
-        self.layout_principal.setSpacing(0)
-        self.botao = QPushButton(texto_botao)
-        self.botao.setProperty("variante", "primario")
-        self.botao.setStyleSheet("QPushButton { font-size: 14px; font-weight: bold; padding: 0 6px;"
-                                 " min-height: 45px; max-height: 45px; }")
+        # height=45 e FONTE_BOTAO (Roboto 14 bold); a largura é a do CTkButton:
+        # 140, ou o texto + 7 px de cada lado (195 com "CONTINUAR AUTOMAÇÃO").
+        self.botao = blocos.botao(texto_botao, variante="primario", altura=45, tamanho_fonte=14,
+                                  negrito=True)
+        folga = estilo.FOLGA_TEXTO_BOTAO_CTK
+        self.botao.setStyleSheet(self.botao.styleSheet() + f" QPushButton {{ padding: 0 {folga}px; }}")
+        texto_px = QFontMetrics(blocos.fonte_tk(("Roboto", 14, "bold"))).horizontalAdvance(texto_botao)
+        self.botao.setFixedWidth(max(estilo.LARGURA_BOTAO_CTK, texto_px + 2 * folga))
+        # Enter não aperta o botão: no CTk nenhuma tecla estava ligada, e um Enter
+        # perdido soltaria o robô (e começaria o lote) antes de terminar o login.
+        self.botao.setAutoDefault(False)
+        self.botao.setDefault(False)
         self.botao.clicked.connect(self.liberar)
-        self.layout_principal.addSpacing(30)
         self.layout_principal.addWidget(self.botao, 0, Qt.AlignmentFlag.AlignHCenter)
 
     def liberar(self) -> None:
@@ -103,17 +119,20 @@ class RetryLockDialog(_DialogoDeAcaoManual):
 
     def __init__(self, parent, *, mensagem: str = MSG_EXCEL_BLOQUEADO, evento_espera, resultado: dict) -> None:
         super().__init__(parent, titulo="Arquivo Bloqueado", mensagem=mensagem,
-                         largura=450, altura=200)
+                         largura=450, altura=200, pady_texto=20)
         self._evento = evento_espera
         self._resultado = resultado
+        # Dois botões de 150x40 com padx=10, o par centrado.
         linha = QHBoxLayout()
-        self.botao_repetir = QPushButton("Tentar Novamente")
-        self.botao_repetir.setProperty("variante", "primario")
-        self.botao_cancelar = QPushButton("Ignorar e Continuar")
-        self.botao_cancelar.setProperty("variante", "contorno")
+        linha.setSpacing(20)
+        linha.addStretch()
+        self.botao_repetir = blocos.botao("Tentar Novamente", variante="primario", largura=150, altura=40)
+        self.botao_cancelar = blocos.botao("Ignorar e Continuar", variante="contorno", largura=150, altura=40)
         for botao in (self.botao_repetir, self.botao_cancelar):
-            botao.setFixedSize(150, 40)
+            botao.setAutoDefault(False)  # Enter não decide (no CTk nenhuma tecla estava ligada)
+            botao.setDefault(False)
             linha.addWidget(botao)
+        linha.addStretch()
         self.botao_repetir.clicked.connect(self.repetir)
         self.botao_cancelar.clicked.connect(self.cancelar)
         self.layout_principal.addLayout(linha)

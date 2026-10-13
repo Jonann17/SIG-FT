@@ -419,7 +419,8 @@ class ArquivosTravadosDialog(SoltaAoFechar, QDialog):
                                           tamanho_fonte=14, negrito=True)
         self.botao_seguir = blocos.botao(textos["seguir"], variante="contorno", largura=170, altura=40)
         for b in (self.botao_repetir, self.botao_seguir):
-            b.setAutoDefault(False)
+            b.setAutoDefault(False)  # Enter não decide: o worker espera a pessoa escolher
+            b.setDefault(False)
         self.botao_repetir.clicked.connect(self.repetir)
         self.botao_seguir.clicked.connect(self.seguir)
         layout.addLayout(_linha_de_botoes(self.botao_repetir, self.botao_seguir))
