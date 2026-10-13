@@ -84,3 +84,24 @@ def test_splash_sempre_emite_pronta_mesmo_se_o_carregamento_morre(qt_interface, 
     qtbot.addWidget(splash)
     with qtbot.waitSignal(splash.pronta, timeout=3000):
         splash.carregar()
+
+
+def test_smoke_nao_pergunta_nada_mesmo_com_thread_comum_viva(qt_interface, monkeypatch, tmp_path):
+    """Offscreen ninguem responde o "Fechar o SIG-FT?": o --smoke travava (exit 124)."""
+    import threading
+
+    monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))
+    monkeypatch.setattr(qmain.backends, "carregar_todos", lambda **k: None)
+
+    def nao_deve_perguntar(*a, **k):
+        raise AssertionError("o --smoke nao pode abrir o QMessageBox.question")
+
+    monkeypatch.setattr(qmain.QMessageBox, "question", nao_deve_perguntar)
+    liberar = threading.Event()
+    viva = threading.Thread(target=liberar.wait, name="tarefa:presa")  # comum, de proposito
+    viva.start()
+    try:
+        assert qmain._smoke() == 0
+    finally:
+        liberar.set()
+        viva.join(3)

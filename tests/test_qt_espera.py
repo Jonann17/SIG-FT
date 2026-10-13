@@ -19,7 +19,7 @@ def test_worker_espera_o_login_e_e_solto(qt_interface, qtbot):
     tela = Tela()
     qtbot.addWidget(tela)
     terminou = []
-    t = threading.Thread(target=lambda: (tela.pausar_e_esperar("Faça login"), terminou.append(True)))
+    t = threading.Thread(target=lambda: (tela.pausar_e_esperar("Faça login"), terminou.append(True)), daemon=True)
     t.start()
     qtbot.waitUntil(lambda: len(_abertos(qd.PausaLoginDialog)) == 1, timeout=2000)
     assert terminou == []
@@ -32,7 +32,7 @@ def test_fechar_no_x_tambem_solta_o_worker(qt_interface, qtbot):
     tela = Tela()
     qtbot.addWidget(tela)
     terminou = []
-    t = threading.Thread(target=lambda: (tela.pausar_e_esperar("x"), terminou.append(True)))
+    t = threading.Thread(target=lambda: (tela.pausar_e_esperar("x"), terminou.append(True)), daemon=True)
     t.start()
     qtbot.waitUntil(lambda: len(_abertos(qd.PausaLoginDialog)) == 1, timeout=2000)
     _abertos(qd.PausaLoginDialog)[0].close()
@@ -44,7 +44,7 @@ def test_retry_excel_devolve_a_escolha(qt_interface, qtbot):
     tela = Tela()
     qtbot.addWidget(tela)
     respostas = []
-    t = threading.Thread(target=lambda: respostas.append(tela.perguntar_retry_excel("C:/a.xlsx")))
+    t = threading.Thread(target=lambda: respostas.append(tela.perguntar_retry_excel("C:/a.xlsx")), daemon=True)
     t.start()
     qtbot.waitUntil(lambda: len(_abertos(qd.RetryLockDialog)) == 1, timeout=2000)
     dialogo = _abertos(qd.RetryLockDialog)[0]
@@ -58,7 +58,7 @@ def test_retry_excel_fechar_no_x_e_cancelar(qt_interface, qtbot):
     tela = Tela()
     qtbot.addWidget(tela)
     respostas = []
-    t = threading.Thread(target=lambda: respostas.append(tela.perguntar_retry_excel()))
+    t = threading.Thread(target=lambda: respostas.append(tela.perguntar_retry_excel()), daemon=True)
     t.start()
     qtbot.waitUntil(lambda: len(_abertos(qd.RetryLockDialog)) == 1, timeout=2000)
     _abertos(qd.RetryLockDialog)[0].close()
@@ -69,7 +69,7 @@ def test_retry_excel_fechar_no_x_e_cancelar(qt_interface, qtbot):
 def test_janela_nasce_na_thread_da_interface(qt_interface, qtbot):
     tela = Tela()
     qtbot.addWidget(tela)
-    t = threading.Thread(target=lambda: tela.pausar_e_esperar("x"))
+    t = threading.Thread(target=lambda: tela.pausar_e_esperar("x"), daemon=True)
     t.start()
     qtbot.waitUntil(lambda: len(_abertos(qd.PausaLoginDialog)) == 1, timeout=2000)
     dialogo = _abertos(qd.PausaLoginDialog)[0]
@@ -85,7 +85,7 @@ def test_esc_solta_o_login(qt_interface, qtbot):
     tela = Tela()
     qtbot.addWidget(tela)
     terminou = []
-    t = threading.Thread(target=lambda: (tela.pausar_e_esperar("x"), terminou.append(True)))
+    t = threading.Thread(target=lambda: (tela.pausar_e_esperar("x"), terminou.append(True)), daemon=True)
     t.start()
     qtbot.waitUntil(lambda: len(_abertos(qd.PausaLoginDialog)) == 1, timeout=2000)
     QTest.keyClick(_abertos(qd.PausaLoginDialog)[0], Qt.Key.Key_Escape)
@@ -101,7 +101,7 @@ def test_esc_no_retry_excel_e_cancelar(qt_interface, qtbot):
     tela = Tela()
     qtbot.addWidget(tela)
     respostas = []
-    t = threading.Thread(target=lambda: respostas.append(tela.perguntar_retry_excel()))
+    t = threading.Thread(target=lambda: respostas.append(tela.perguntar_retry_excel()), daemon=True)
     t.start()
     qtbot.waitUntil(lambda: len(_abertos(qd.RetryLockDialog)) == 1, timeout=2000)
     QTest.keyClick(_abertos(qd.RetryLockDialog)[0], Qt.Key.Key_Escape)
@@ -140,8 +140,8 @@ def test_falha_ao_construir_o_dialogo_solta_o_worker(qt_interface, qtbot, monkey
     qtbot.addWidget(tela)
     terminou = []
     respostas = []
-    t1 = threading.Thread(target=lambda: (tela.pausar_e_esperar("x"), terminou.append(True)))
-    t2 = threading.Thread(target=lambda: respostas.append(tela.perguntar_retry_excel()))
+    t1 = threading.Thread(target=lambda: (tela.pausar_e_esperar("x"), terminou.append(True)), daemon=True)
+    t2 = threading.Thread(target=lambda: respostas.append(tela.perguntar_retry_excel()), daemon=True)
     t1.start()
     t2.start()
     # a thread principal precisa seguir processando eventos (join travaria a fila)

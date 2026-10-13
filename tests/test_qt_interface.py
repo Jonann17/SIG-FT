@@ -8,7 +8,7 @@ from sigft.app_qt import interface
 def test_funcao_roda_na_thread_da_interface(qt_interface, qtbot):
     vistas = []
     t = threading.Thread(target=lambda: interface.na_interface(
-        lambda: vistas.append(threading.get_ident())))
+        lambda: vistas.append(threading.get_ident())), daemon=True)
     t.start()
     t.join()
     qtbot.waitUntil(lambda: len(vistas) == 1, timeout=2000)
@@ -33,7 +33,7 @@ def test_argumentos_sao_repassados(qt_interface, qtbot):
 def test_sabe_em_que_thread_esta(qt_interface):
     assert interface.na_thread_da_interface()
     fora = []
-    t = threading.Thread(target=lambda: fora.append(interface.na_thread_da_interface()))
+    t = threading.Thread(target=lambda: fora.append(interface.na_thread_da_interface()), daemon=True)
     t.start()
     t.join()
     assert fora == [False]

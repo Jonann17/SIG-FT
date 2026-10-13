@@ -24,7 +24,7 @@ def test_linhas_de_thread_chegam_em_ordem(qt_interface, qtbot):
         for i in range(500):
             c.log(f"linha {i}")
 
-    t = threading.Thread(target=worker)
+    t = threading.Thread(target=worker, daemon=True)
     t.start()
     t.join()
     qtbot.waitUntil(lambda: c.blockCount() >= 500, timeout=3000)

@@ -63,6 +63,9 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         if os.path.exists(icone):
             self.setWindowIcon(QIcon(icone))
 
+        # Só o --smoke liga: ele fecha a janela sem ninguém para responder a
+        # pergunta de "tarefa em andamento" (offscreen, no CI).
+        self.fechar_sem_perguntar = False
         self.api_keys: dict = {}
         self.load_keys()
 
@@ -176,7 +179,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
 
     # -- fechar -------------------------------------------------------------------
     def closeEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
-        if instancia.tarefas_em_andamento():
+        if not self.fechar_sem_perguntar and instancia.tarefas_em_andamento():
             resposta = QMessageBox.question(
                 self, "Fechar o SIG-FT", catalogo.MSG_TAREFA_EM_ANDAMENTO,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -291,6 +294,7 @@ def _smoke() -> int:
                 f"[smoke] AVISO: o backend '{nome}' nao carregou: "
                 f"{type(erro).__name__}: {erro}"))
         janela = SIG_FT_App()
+        janela.fechar_sem_perguntar = True
         janela.close()
     except Exception as erro:  # noqa: BLE001 -- é o que se quer relatar
         for aviso in avisos:
