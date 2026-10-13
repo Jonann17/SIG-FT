@@ -35,3 +35,17 @@ def test_excel_travado(qt_interface, qtbot):
         assert y >= 20 and y + h <= 120 and abs(y + h / 2 - 70) <= 1
     finally:
         qt_interface.setStyleSheet(anterior)
+
+
+def test_tentar_novamente_com_o_hover_do_tema(qt_interface, qtbot):
+    # CTk: fg_color=primary SEM hover_color -> o hover é o do tema (#14375E),
+    # não o primary_hover da variante "primario".
+    from sigft.app import theme
+
+    d = dialogs.RetryLockDialog(None, mensagem=MSG_EXCEL_BLOQUEADO, evento_espera=threading.Event(),
+                                resultado={})
+    qtbot.addWidget(d)
+    folha = d.botao_repetir.styleSheet()
+    assert d.botao_repetir.property("variante") is None
+    assert f"background: {theme.COLORS['primary']}" in folha
+    assert f"QPushButton:hover {{ background: {estilo.AZUL_CTK_HOVER}; }}" in folha

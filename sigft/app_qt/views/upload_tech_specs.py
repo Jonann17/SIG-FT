@@ -171,6 +171,8 @@ class ModuloUploadTechSpecs(TelaDeUpload):
     # --- Robô Web (aba 2) -------------------------------------------------------
     def _pre_start_web(self, dados_json) -> None:
         """Abre o popup para a pessoa escolher quais fichas do JSON processar."""
+        if self._robo_ocupado():
+            return
         if not dados_json:
             QMessageBox.warning(self, "Aviso", "Não há dados para iniciar a automação.")
             return
@@ -220,16 +222,19 @@ class ModuloUploadTechSpecs(TelaDeUpload):
         try:
             with open(json_file, "r", encoding="utf-8") as f:
                 dados = json.load(f)
+            # DENTRO do try, como lá: um JSON que não é uma lista de fichas também
+            # vira "Erro ao ler JSON" (fora dele, a exceção sumia no laço do Qt).
+            self._pre_start_web(dados)
         except Exception as e:  # noqa: BLE001 -- lá só ia para o log
             self.log(f"Erro ao ler JSON: {e}")
-            return
-        self._pre_start_web(dados)
 
     def _start_web_process(self, dados) -> None:
+        if self._robo_ocupado():
+            return
         controlador = self._controlador()
         if controlador is None:
             return
-        reabilitar((self.btn_web_mem, False), (self.btn_web_file, False), (self.btn_parar_web, True))
+        self._inicio_do_robo()
         self.log(f"Iniciando fila de {len(dados)} fichas no navegador...")
         caminho_status = self.caminho_status
         if not caminho_status:
@@ -256,5 +261,4 @@ class ModuloUploadTechSpecs(TelaDeUpload):
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"Erro Crítico Web: {e}")
         finally:
-            interface.na_interface(reabilitar, (self.btn_web_mem, True), (self.btn_web_file, True),
-                                   (self.btn_parar_web, False))
+            interface.na_interface(self._fim_do_robo)

@@ -110,27 +110,28 @@ def test_esc_no_retry_excel_e_cancelar(qt_interface, qtbot):
     assert respostas == [False]
 
 
-def _apertar_enter(janela):
-    """Return e Enter (teclado numérico), com o foco no primeiro botão -- o
-    caso de uma tecla perdida enquanto a pessoa ainda faz o login."""
+def _apertar_teclas(janela):
+    """Return, Enter (teclado numérico) e Espaço onde o foco estiver -- o caso
+    de uma tecla perdida enquanto a pessoa ainda faz o login. No CTk nenhuma
+    tecla estava ligada e os CTkButton nunca pegam o foco: aqui nenhum botão
+    pode ser o padrão (Enter) nem receber o foco (Espaço)."""
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
-    from PySide6.QtWidgets import QPushButton
+    from PySide6.QtWidgets import QApplication, QPushButton
 
-    botoes = janela.findChildren(QPushButton)
-    for botao in botoes:
+    janela.activateWindow()
+    QApplication.processEvents()
+    for tecla in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+        QTest.keyClick(QApplication.focusWidget() or janela, tecla)
+    QApplication.processEvents()
+    for botao in janela.findChildren(QPushButton):
         assert not botao.autoDefault() and not botao.isDefault(), botao.text()
-    if botoes:
-        botoes[0].setFocus()
-    for tecla in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-        QTest.keyClick(janela, tecla)
-        if botoes:
-            QTest.keyClick(botoes[0], tecla)
+        assert botao.focusPolicy() == Qt.FocusPolicy.NoFocus, botao.text()
 
 
-def test_enter_nao_solta_o_login(qt_interface, qtbot):
-    # No CTk nenhuma tecla estava ligada: um Enter perdido não pode soltar o
-    # robô (e começar o lote) antes de a pessoa terminar o login.
+def test_enter_e_espaco_nao_soltam_o_login(qt_interface, qtbot):
+    # No CTk nenhuma tecla estava ligada: um Enter ou Espaço perdido não pode
+    # soltar o robô (e começar o lote) antes de a pessoa terminar o login.
     tela = Tela()
     qtbot.addWidget(tela)
     terminou = []
@@ -138,7 +139,7 @@ def test_enter_nao_solta_o_login(qt_interface, qtbot):
     t.start()
     qtbot.waitUntil(lambda: len(_abertos(qd.PausaLoginDialog)) == 1, timeout=2000)
     dialogo = _abertos(qd.PausaLoginDialog)[0]
-    _apertar_enter(dialogo)
+    _apertar_teclas(dialogo)
     qtbot.wait(100)
     assert t.is_alive() and terminou == [] and dialogo.isVisible()
     dialogo.botao.click()
@@ -146,7 +147,7 @@ def test_enter_nao_solta_o_login(qt_interface, qtbot):
     assert terminou == [True]
 
 
-def test_enter_nao_decide_o_retry_excel(qt_interface, qtbot):
+def test_enter_e_espaco_nao_decidem_o_retry_excel(qt_interface, qtbot):
     tela = Tela()
     qtbot.addWidget(tela)
     respostas = []
@@ -154,7 +155,7 @@ def test_enter_nao_decide_o_retry_excel(qt_interface, qtbot):
     t.start()
     qtbot.waitUntil(lambda: len(_abertos(qd.RetryLockDialog)) == 1, timeout=2000)
     dialogo = _abertos(qd.RetryLockDialog)[0]
-    _apertar_enter(dialogo)
+    _apertar_teclas(dialogo)
     qtbot.wait(100)
     assert t.is_alive() and respostas == [] and dialogo.isVisible()
     dialogo.botao_cancelar.click()
@@ -162,7 +163,7 @@ def test_enter_nao_decide_o_retry_excel(qt_interface, qtbot):
     assert respostas == [False]
 
 
-def test_enter_nao_decide_os_arquivos_travados(qt_interface, qtbot):
+def test_enter_e_espaco_nao_decidem_os_arquivos_travados(qt_interface, qtbot):
     from sigft.app_qt.widgets import dialogos_selecao
 
     evento, resultado = threading.Event(), {}
@@ -172,7 +173,7 @@ def test_enter_nao_decide_os_arquivos_travados(qt_interface, qtbot):
     qtbot.addWidget(dialogo)
     dialogo.show()
     qtbot.waitExposed(dialogo)
-    _apertar_enter(dialogo)
+    _apertar_teclas(dialogo)
     qtbot.wait(50)
     assert not evento.is_set() and resultado == {} and dialogo.isVisible()
     dialogo.seguir()

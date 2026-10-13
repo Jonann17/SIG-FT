@@ -32,7 +32,7 @@ from sigft.app import theme
 from sigft.app.textos_dialogos import TEXTOS_TRAVADOS
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos
-from sigft.app_qt.widgets.dialogs import SoltaAoFechar
+from sigft.app_qt.widgets.dialogs import SoltaAoFechar, sem_tecla
 
 # Diálogo aberto sem pai (ou cujo pai some) precisa de uma referência viva
 # enquanto está na tela; sai daqui quando fecha. Chave = id(): a conexão que o
@@ -419,8 +419,7 @@ class ArquivosTravadosDialog(SoltaAoFechar, QDialog):
                                           tamanho_fonte=14, negrito=True)
         self.botao_seguir = blocos.botao(textos["seguir"], variante="contorno", largura=170, altura=40)
         for b in (self.botao_repetir, self.botao_seguir):
-            b.setAutoDefault(False)  # Enter não decide: o worker espera a pessoa escolher
-            b.setDefault(False)
+            sem_tecla(b)  # nem Enter nem Espaço decidem: o worker espera a pessoa escolher
         self.botao_repetir.clicked.connect(self.repetir)
         self.botao_seguir.clicked.connect(self.seguir)
         layout.addLayout(_linha_de_botoes(self.botao_repetir, self.botao_seguir))

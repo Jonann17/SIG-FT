@@ -13,7 +13,6 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QSizePolicy, QVBoxLayout
 
 from sigft.app import theme
@@ -28,21 +27,10 @@ TEXTO_NAO_SELECIONADO = "Não selecionado"
 ALTURA_LISTA_FILA = 200
 # Os botões cinza escritos à mão na tela CTk (fg #3A3A3A, hover #454545).
 HOVER_CINZA = "#454545"
-
-
-def botao_que_cresce(texto: str, *, largura: int, altura: int, tamanho_fonte: int = 13,
-                     negrito: bool = True, cor_fundo: str | None = None,
-                     variante: str | None = None):
-    """CTkButton de `width=largura` que CRESCE até caber o texto, com a folga
-    de texto dele (7 px de cada lado): "INICIAR PROCESSAMENTO IA" pede 200 e
-    fica com 202 lá."""
-    b = blocos.botao(texto, variante=variante, altura=altura, tamanho_fonte=tamanho_fonte,
-                     negrito=negrito, cor_fundo=cor_fundo)
-    folga = estilo.FOLGA_TEXTO_BOTAO_CTK
-    b.setStyleSheet(b.styleSheet() + f" QPushButton {{ padding: 0 {folga}px; }}")
-    fonte = blocos.fonte_tk(("Roboto", tamanho_fonte) + (("bold",) if negrito else ()))
-    b.setFixedWidth(max(largura, QFontMetrics(fonte).horizontalAdvance(texto) + 2 * folga))
-    return b
+# Um robô por vez: o "Continuar" do fim da IA (ou uma seleção antiga
+# confirmada agora) não sobe um segundo navegador com o primeiro rodando.
+MSG_ROBO_OCUPADO = ("O robô já está preenchendo uma fila no portal. Espere ele terminar "
+                    "(ou use PARAR ROBÔ WEB) antes de iniciar outra.")
 
 
 def reabilitar(*botoes_e_estados) -> None:
@@ -69,8 +57,30 @@ class TelaDeUpload(ModuleFrame):
     TEXTO_WEB = ""
     TEXTO_CARREGAR = ""
 
+    # Liga no `_inicio_do_robo` e desliga no `_fim_do_robo`, os dois na thread
+    # da interface. Não dá para olhar o PARAR: ele desliga no clique, com o
+    # robô ainda fechando o ciclo.
+    _robo_ativo = False
+
     def _chave(self) -> str:
         return self.controller.get_key("GEMINI") if self.controller is not None else ""
+
+    # --- um robô por vez ----------------------------------------------------------
+    def _robo_ocupado(self) -> bool:
+        """Com um robô já rodando, diz no console por que nada começa."""
+        if self._robo_ativo:
+            self.log(MSG_ROBO_OCUPADO)
+            return True
+        return False
+
+    def _inicio_do_robo(self) -> None:
+        self._robo_ativo = True
+        reabilitar((self.btn_web_mem, False), (self.btn_web_file, False), (self.btn_parar_web, True))
+
+    def _fim_do_robo(self) -> None:
+        """Na thread da interface, quando o worker do robô acaba (bem ou mal)."""
+        self._robo_ativo = False
+        reabilitar((self.btn_web_mem, True), (self.btn_web_file, True), (self.btn_parar_web, False))
 
     # --- montagem -------------------------------------------------------------
     def _build_ui(self) -> None:
@@ -157,8 +167,9 @@ class TelaDeUpload(ModuleFrame):
     def _linha_acoes_ia(self) -> QHBoxLayout:
         """INICIAR (pack expand=True: centrado no que sobra) e PARAR encostado à
         direita; os dois com padx=5, dentro do padx=10 da linha."""
-        self.btn_ia = botao_que_cresce("INICIAR PROCESSAMENTO IA", largura=200, altura=40,
-                                       cor_fundo=theme.COLORS["primary"])
+        # width=200 lá, mas o CTkButton cresce até caber o texto (202 no CTk).
+        self.btn_ia = blocos.botao("INICIAR PROCESSAMENTO IA", largura_minima=200, altura=40,
+                                   tamanho_fonte=13, negrito=True, cor_fundo=theme.COLORS["primary"])
         self.btn_ia.clicked.connect(self._start_ia_process)
         self.btn_parar_ia = blocos.botao("PARAR", largura=100, altura=40, tamanho_fonte=13, negrito=True,
                                          cor_fundo=theme.COLORS["danger"])
@@ -220,7 +231,10 @@ class TelaDeUpload(ModuleFrame):
         return resposta == QMessageBox.StandardButton.Yes
 
     def _perguntar_se_continua(self) -> bool:
-        """Depois de salvar: pular para a aba 2 e iniciar o robô?"""
+        """Depois de salvar: pular para a aba 2 e iniciar o robô? Com um robô já
+        rodando, nem pergunta: o Sim não teria como ser atendido."""
+        if self._robo_ocupado():
+            return False
         resposta = QMessageBox.question(
             self, "Continuar", "Dados salvos! Deseja pular para a Aba 2 e iniciar o Robô Web agora?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes)

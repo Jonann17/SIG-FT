@@ -17,7 +17,6 @@ import pathlib
 import webbrowser
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMessageBox, QVBoxLayout
 
 from sigft.app import theme
@@ -36,10 +35,9 @@ OPCAO_GERAR_PAINEL = "pmib_manager.gerar_painel"
 TEXTO_NENHUM_ARQUIVO = "Nenhum arquivo selecionado"
 
 # Os botões de arquivo pedem width=280, mas o CTkButton CRESCE até caber o
-# texto com 7 px de cada lado (medido: 272 px de texto -> 286). A folha do app
-# dá 14 de cada lado; nestes botões a folga é a do CTk.
+# texto com 7 px de cada lado (medido: 272 px de texto -> 286): é o
+# `largura_minima` do `blocos.botao`.
 LARGURA_BOTAO_ARQUIVO = 280
-FOLGA_TEXTO_BOTAO_CTK = 7
 # Cinza escuro dos botões de arquivo e do "Gerar painel" (fg/hover das telas CTk).
 HOVER_CINZA = "#454545"
 # A descrição das autorizações quebra em 720 px (wraplength) e ocupa duas
@@ -63,19 +61,6 @@ def _texto_dos_avisos(inicio, avisos, nao_gravados):
     if outros > 0:
         partes.append(f"{outros} aviso(s) pedem atenção (procure as linhas [AVISO] no log)")
     return f"{inicio}, mas " + "; e ".join(partes) + "."
-
-
-def _botao_ctk(texto, *, largura, variante=None, tamanho_fonte=12, negrito=False, cor_texto=None,
-               cor_fundo=None, cor_hover=estilo.AZUL_CTK_HOVER):
-    """Botão de largura mínima `largura` que cresce até caber o texto, como o
-    CTkButton (7 px de folga de cada lado do texto)."""
-    b = blocos.botao(texto, variante=variante, tamanho_fonte=tamanho_fonte, negrito=negrito,
-                     cor_texto=cor_texto, cor_fundo=cor_fundo, cor_hover=cor_hover)
-    b.setStyleSheet(b.styleSheet() + f" QPushButton {{ padding: 0 {FOLGA_TEXTO_BOTAO_CTK}px; }}")
-    fonte = blocos.fonte_tk(("Roboto", tamanho_fonte) + (("bold",) if negrito else ()))
-    texto_px = QFontMetrics(fonte).horizontalAdvance(texto)
-    b.setFixedWidth(max(largura, texto_px + 2 * FOLGA_TEXTO_BOTAO_CTK))
-    return b
 
 
 def _rotulo_status():
@@ -137,13 +122,13 @@ class NovasListasDialog(QDialog):
 
         # Fonte padrão do CTkButton (13) e a folga de texto dele: com a da folha
         # do app, "Ignorar (Não Adicionar)" não cabe nos 150.
-        self.botao_marcar = _botao_ctk("Marcar Todas", largura=120, variante="cinza", tamanho_fonte=13)
-        self.botao_desmarcar = _botao_ctk("Desmarcar Todas", largura=120, variante="cinza", tamanho_fonte=13)
-        self.botao_confirmar = _botao_ctk("Confirmar Seleção", largura=150, variante="primario",
-                                          tamanho_fonte=13)
+        self.botao_marcar = blocos.botao("Marcar Todas", largura_minima=120, variante="cinza", tamanho_fonte=13)
+        self.botao_desmarcar = blocos.botao("Desmarcar Todas", largura_minima=120, variante="cinza", tamanho_fonte=13)
+        self.botao_confirmar = blocos.botao("Confirmar Seleção", largura_minima=150, variante="primario",
+                                            tamanho_fonte=13)
         # fg_color="gray" e hover #555555, escritos à mão na tela antiga.
-        self.botao_ignorar = _botao_ctk("Ignorar (Não Adicionar)", largura=150, tamanho_fonte=13,
-                                        cor_fundo=estilo.cinza_tk("gray"), cor_hover="#555555")
+        self.botao_ignorar = blocos.botao("Ignorar (Não Adicionar)", largura_minima=150, tamanho_fonte=13,
+                                          cor_fundo=estilo.cinza_tk("gray"), cor_hover="#555555")
         for b in (self.botao_marcar, self.botao_desmarcar, self.botao_confirmar, self.botao_ignorar):
             b.setAutoDefault(False)
         self.botao_marcar.clicked.connect(self.marcar_todas)
@@ -243,8 +228,8 @@ class ModuloPMIBManager(ModuleFrame):
         corpo.addSpacing(13)                            # título (…, 5) + linha (8, …)
 
         # 1. Histórico do Aconex (botão + rótulo)
-        self.btn_api = _botao_ctk("1. Selecionar Histórico Aconex DocManager (.xlsx)",
-                                  largura=LARGURA_BOTAO_ARQUIVO, variante="cinza")
+        self.btn_api = blocos.botao("1. Selecionar Histórico Aconex DocManager (.xlsx)",
+                                    largura_minima=LARGURA_BOTAO_ARQUIVO, variante="cinza", tamanho_fonte=12)
         self.btn_api.clicked.connect(self._sel_api)
         self.lbl_api_status = _rotulo_status()
         corpo.addLayout(self._linha_arquivo(self.btn_api, self.lbl_api_status))
@@ -271,8 +256,9 @@ class ModuloPMIBManager(ModuleFrame):
         corpo.addSpacing(16)
 
         # 3. Planilha de mapeamento (botão + rótulo)
-        self.btn_master = _botao_ctk("3. Selecionar Mapeamento Sobressalentes (.xlsx)",
-                                     largura=LARGURA_BOTAO_ARQUIVO, variante="cinza")
+        self.btn_master = blocos.botao("3. Selecionar Mapeamento Sobressalentes (.xlsx)",
+                                       largura_minima=LARGURA_BOTAO_ARQUIVO, variante="cinza",
+                                       tamanho_fonte=12)
         self.btn_master.clicked.connect(self._sel_master)
         self.lbl_master_status = _rotulo_status()
         corpo.addLayout(self._linha_arquivo(self.btn_master, self.lbl_master_status))
@@ -295,7 +281,7 @@ class ModuloPMIBManager(ModuleFrame):
         self.caixa_gerar_painel = controles.CaixaDeMarcar("Gerar painel ao terminar", tamanho_fonte=12)
         self.caixa_gerar_painel.setChecked(bool(gerar_por_padrao))
         self.caixa_gerar_painel.toggled.connect(self._lembrar_gerar_painel)
-        self.btn_painel = _botao_ctk("Gerar painel", largura=160, variante="cinza")
+        self.btn_painel = blocos.botao("Gerar painel", largura_minima=160, variante="cinza", tamanho_fonte=12)
         self.btn_painel.clicked.connect(self.gerar_painel)
         # Lá o quadro é `pack` sem `fill` (centrado); caixa e botão com padx=10.
         linha = QHBoxLayout()
@@ -324,8 +310,9 @@ class ModuloPMIBManager(ModuleFrame):
         corpo.addWidget(r["descricao_aut"])
         corpo.addSpacing(8)                             # linha: pady=(8, 15)
 
-        self.btn_autorizados = _botao_ctk("4. Selecionar export de autorizados (.xlsx)",
-                                          largura=LARGURA_BOTAO_ARQUIVO, variante="cinza")
+        self.btn_autorizados = blocos.botao("4. Selecionar export de autorizados (.xlsx)",
+                                            largura_minima=LARGURA_BOTAO_ARQUIVO, variante="cinza",
+                                            tamanho_fonte=12)
         self.btn_autorizados.clicked.connect(self._sel_autorizados)
         self.lbl_autorizados = _rotulo_status()
         linha = self._linha_arquivo(self.btn_autorizados, self.lbl_autorizados)

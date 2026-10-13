@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QMessageBox
 from sigft.app import backends, theme
 from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO, msg_falha_ao_salvar
 from sigft.app_qt.views import upload_conditions as tela_mod
+from sigft.app_qt.views._upload_comum import MSG_ROBO_OCUPADO
 
 ABA_IA = "Processamento IA (Gerar Excel)"
 ABA_WEB = "Robô Web (Preencher Portal)"
@@ -489,6 +490,97 @@ def test_cancelar_o_excel_de_resultados(tela, caixas, monkeypatch, selecao):
     monkeypatch.setattr(tela_mod.file_dialogs, "ask_open_file", lambda *a, **k: "")
     tela.btn_web_file.click()
     assert caixas.chamadas == [] and selecao == []
+
+
+def test_excel_com_linhas_estranhas_vai_para_o_console(tela, caixas, monkeypatch, selecao, qtbot):
+    # Lá o `_pre_start_web` ficava DENTRO do try: dados num formato inesperado
+    # viram "Erro ao ler Excel" no console e o aviso, não uma exceção solta.
+    monkeypatch.setattr(tela_mod.file_dialogs, "ask_open_file", lambda *a, **k: "/d/r.xlsx")
+    monkeypatch.setattr(tela_mod, "ler_resultados_excel", lambda c: ["linha solta"])
+    tela.caminho_status = "/d/s.xlsx"
+    tela.btn_web_file.click()
+    erro = "'str' object has no attribute 'get'"
+    assert caixas.chamadas == [("erro", "Erro de Leitura", f"Falha ao ler Excel: {erro}")]
+    qtbot.waitUntil(lambda: "Erro ao ler Excel" in _texto(tela), timeout=2000)
+    assert _texto(tela).splitlines() == ["> Lendo arquivo Excel, convertendo strings em dicionários...",
+                                         f"> Erro ao ler Excel: {erro}"]
+    assert selecao == []
+
+
+def test_robo_que_nao_nasce_devolve_os_botoes(tela, qtbot, monkeypatch):
+    # Lá `UploadAutomation()` ficava fora do try: a exceção derrubava a thread
+    # e os botões do robô nunca mais voltavam.
+    def quebra():
+        raise RuntimeError("chromedriver ausente")
+
+    monkeypatch.setattr(backends, "upload_conditions_backend", SimpleNamespace(UploadAutomation=quebra))
+    tela.caminho_status = "/d/s.xlsx"
+    tela._start_web_process([{"pmib_codigo": "A"}])
+    qtbot.waitUntil(lambda: tela.btn_web_mem.isEnabled() and tela.btn_web_file.isEnabled()
+                    and not tela.btn_parar_web.isEnabled(), timeout=3000)
+    qtbot.waitUntil(lambda: "Erro Crítico Web" in _texto(tela), timeout=2000)
+    assert _texto(tela).splitlines() == ["> Iniciando fila de 1 fichas no navegador...",
+                                         "> Erro Crítico Web: chromedriver ausente"]
+    assert tela.automacao_ativa is None and tela.avisos == []
+
+
+def test_fechar_que_falha_loga_e_devolve_os_botoes(tela, qtbot, monkeypatch):
+    class FechaQuebrando(AutomacaoFalsa):
+        def fechar(self):
+            super().fechar()
+            raise OSError("navegador já fechado")
+
+    auto = FechaQuebrando()
+    _rodar_robo(tela, qtbot, monkeypatch, auto, [{"pmib_codigo": "A"}])
+    assert auto.chamadas[-1] == "fechar"
+    assert _texto(tela).splitlines()[-2:] == ["> Fila de processamento web concluída.",
+                                              "> Erro Crítico Web: navegador já fechado"]
+    assert tela.avisos == [("info", "Aviso", "A fila de automação foi finalizada!")]
+    assert tela.automacao_ativa is None
+
+
+class AutomacaoQueEspera(AutomacaoFalsa):
+    """Fica "preenchendo" até o teste soltar."""
+
+    def __init__(self):
+        super().__init__()
+        self.liberar = threading.Event()
+
+    def processar_lista(self, dados, status, **k):
+        self.chamadas.append(("lista", dados, status))
+        self.liberar.wait(5)
+
+
+def test_um_robo_por_vez(tela, caixas, qtbot, monkeypatch, selecao):
+    auto = AutomacaoQueEspera()
+    criados = []
+    monkeypatch.setattr(backends, "upload_conditions_backend",
+                        SimpleNamespace(UploadAutomation=lambda: criados.append(1) or auto))
+    tela.caminho_status = "/d/s.xlsx"
+    tela._start_web_process([{"pmib_codigo": "A"}])
+    qtbot.waitUntil(lambda: any(c[0] == "lista" for c in auto.chamadas if isinstance(c, tuple)),
+                    timeout=2000)
+    # A IA termina enquanto o robô roda: salva, mas nem pergunta o "Continuar"
+    # (não haveria como atender o Sim) e não abre a seleção.
+    proc = ProcessadorFalso(None, resultados=[{"pmib_codigo": "B"}])
+    monkeypatch.setattr(tela_mod.file_dialogs, "ask_save_file", lambda *a, **k: "/d/novo.xlsx")
+    caixas.respostas[:] = [SIM]
+    tela._on_ia_finished([{"pmib_codigo": "B"}], proc)
+    assert [c[1] for c in caixas.chamadas] == ["Salvar Resultados"]
+    assert proc.chamadas[-1] == ("novo", "/d/novo.xlsx")
+    assert selecao == []
+    # Nem uma seleção antiga confirmada agora.
+    tela._start_web_process([{"pmib_codigo": "C"}])
+    auto.liberar.set()
+    qtbot.waitUntil(tela.btn_web_mem.isEnabled, timeout=3000)
+    qtbot.wait(100)
+    assert criados == [1]
+    assert _texto(tela).count(MSG_ROBO_OCUPADO) == 2
+    # Terminado o primeiro, um novo pode começar.
+    auto.liberar = threading.Event()
+    auto.liberar.set()
+    tela._start_web_process([{"pmib_codigo": "D"}])
+    qtbot.waitUntil(lambda: criados == [1, 1] and tela.btn_web_mem.isEnabled(), timeout=3000)
 
 
 def test_ler_resultados_excel_normaliza_o_pmib_e_os_dicionarios(monkeypatch):

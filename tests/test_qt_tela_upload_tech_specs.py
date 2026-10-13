@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QMessageBox
 from sigft.app import backends, theme
 from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO, msg_ficha_preenchida
 from sigft.app_qt.views import upload_tech_specs as tela_mod
+from sigft.app_qt.views._upload_comum import MSG_ROBO_OCUPADO
 
 ABA_IA = "Processamento IA (Gerar JSON)"
 ABA_WEB = "Robô Web (Preencher Portal)"
@@ -378,6 +379,55 @@ def test_carregar_json_quebrado_so_loga(tela, caixas, monkeypatch, selecao, tmp_
     tela.btn_web_file.click()
     qtbot.waitUntil(lambda: "Erro ao ler JSON" in _texto(tela), timeout=2000)
     assert caixas.chamadas == [] and selecao == []
+
+
+def test_carregar_json_em_forma_de_dicionario_vai_para_o_console(tela, caixas, monkeypatch, selecao,
+                                                                 tmp_path, qtbot):
+    # Lá o `_pre_start_web` ficava DENTRO do try: um JSON que não é uma lista
+    # de fichas logava "Erro ao ler JSON"; fora dele, a exceção sumia no
+    # excepthook e a pessoa não via nada.
+    arquivo = tmp_path / "r.json"
+    arquivo.write_text(json.dumps({"METADATA": {"PMIB": "Z"}}), encoding="utf-8")
+    monkeypatch.setattr(tela_mod.file_dialogs, "ask_open_file", lambda *a, **k: str(arquivo))
+    tela.btn_web_file.click()
+    qtbot.waitUntil(lambda: "Erro ao ler JSON" in _texto(tela), timeout=2000)
+    assert _texto(tela).splitlines() == ["> Erro ao ler JSON: 'str' object has no attribute 'get'"]
+    assert caixas.chamadas == [] and selecao == []
+
+
+class ControladorQueEspera(ControladorFalso):
+    """O robô fica "preenchendo" até o teste soltar."""
+
+    def __init__(self):
+        super().__init__()
+        self.liberar = threading.Event()
+
+    def executar_pipeline_rpa(self, dados, caminho_status, callback_log=None, callback_pause=None):
+        self.chamadas.append(("rpa", dados, caminho_status))
+        self.liberar.wait(5)
+
+
+def test_um_robo_por_vez(tela, caixas, qtbot, monkeypatch):
+    ctrl = ControladorQueEspera()
+    _backend(monkeypatch, ctrl)
+    tela.caminho_status = "/d/s.xlsx"
+    tela._start_web_process([{"x": 1}])
+    qtbot.waitUntil(lambda: ("rpa", [{"x": 1}], "/d/s.xlsx") in ctrl.chamadas, timeout=2000)
+    # A IA termina enquanto o robô roda: salva, mas nem pergunta o "Continuar"
+    # (não haveria como atender o Sim) e não sobe um segundo robô.
+    monkeypatch.setattr(tela_mod.file_dialogs, "ask_save_file", lambda *a, **k: "/d/r.json")
+    tela._on_ia_finished([{"METADATA": {"PMIB": "B"}}])
+    assert caixas.chamadas == []
+    assert ("salvar", "/d/r.json") in ctrl.chamadas
+    ctrl.liberar.set()
+    qtbot.waitUntil(tela.btn_web_mem.isEnabled, timeout=3000)
+    qtbot.wait(100)
+    assert [c for c in ctrl.chamadas if c[0] == "rpa"] == [("rpa", [{"x": 1}], "/d/s.xlsx")]
+    assert _texto(tela).count(MSG_ROBO_OCUPADO) == 1
+    # Terminado o primeiro, um novo pode começar.
+    tela._start_web_process([{"x": 2}])
+    qtbot.waitUntil(lambda: ("rpa", [{"x": 2}], "/d/s.xlsx") in ctrl.chamadas and tela.btn_web_mem.isEnabled(),
+                    timeout=3000)
 
 
 # ---------------------------------------------------------------------------

@@ -433,9 +433,13 @@ def test_medidas_da_pausa_de_login(qt_interface, qtbot):
         b = d.botao.geometry()
         assert (b.y(), b.height()) == (185, 45)
         assert abs(b.center().x() - 225) <= 1
-        # 195 no CTk: texto + 6 de cada lado (a largura do texto muda com a fonte).
-        texto = d.botao.fontMetrics().horizontalAdvance(d.botao.text())
-        assert texto + 12 <= b.width() <= texto + 14
+        # 195 no CTk: texto + 7 de cada lado (a largura do texto muda com a fonte).
+        # O texto medido como o Qt mede o do botão (`size`, que arredonda a
+        # largura de cada letra; o `horizontalAdvance` pode dar 1 px a menos).
+        from PySide6.QtCore import Qt
+
+        texto = d.botao.fontMetrics().size(Qt.TextFlag.TextShowMnemonic, d.botao.text()).width()
+        assert b.width() == max(estilo.LARGURA_BOTAO_CTK, texto + 2 * estilo.FOLGA_TEXTO_BOTAO_CTK)
         r = d.rotulo.geometry()
         assert (r.y(), r.height()) == (30, 125)        # o texto centrado em 92,5, como lá
     finally:

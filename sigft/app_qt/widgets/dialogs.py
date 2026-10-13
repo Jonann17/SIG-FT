@@ -7,7 +7,7 @@ thread do robô fica presa em `Event.wait()` para sempre.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QRect, QSize, Qt
-from PySide6.QtGui import QColor, QFontMetrics
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QStyledItemDelegate, QVBoxLayout,
 )
@@ -23,6 +23,20 @@ ALTURA_LINHA_CAIXA = 28
 VAO_TEXTO_CAIXA = 6
 # O wraplength=400 do texto das janelas de ação manual.
 LARGURA_QUEBRA_TEXTO = 400
+
+
+def sem_tecla(botao) -> None:
+    """Botão das janelas que seguram o robô: nenhuma tecla o aperta.
+
+    No CTk nenhuma tecla estava ligada e o CTkButton nunca pega o foco. No Qt,
+    o botão ganha o foco ao abrir a janela: um Espaço perdido o apertava, e o
+    autoDefault fazia o mesmo com o Enter -- soltando o robô (e começando o
+    lote) antes de a pessoa terminar o login. Esc e o "X" continuam valendo.
+    """
+    botao.setAutoDefault(False)
+    botao.setDefault(False)
+    botao.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
 
 
 class SoltaAoFechar:
@@ -92,15 +106,8 @@ class PausaLoginDialog(_DialogoDeAcaoManual):
         # height=45 e FONTE_BOTAO (Roboto 14 bold); a largura é a do CTkButton:
         # 140, ou o texto + 7 px de cada lado (195 com "CONTINUAR AUTOMAÇÃO").
         self.botao = blocos.botao(texto_botao, variante="primario", altura=45, tamanho_fonte=14,
-                                  negrito=True)
-        folga = estilo.FOLGA_TEXTO_BOTAO_CTK
-        self.botao.setStyleSheet(self.botao.styleSheet() + f" QPushButton {{ padding: 0 {folga}px; }}")
-        texto_px = QFontMetrics(blocos.fonte_tk(("Roboto", 14, "bold"))).horizontalAdvance(texto_botao)
-        self.botao.setFixedWidth(max(estilo.LARGURA_BOTAO_CTK, texto_px + 2 * folga))
-        # Enter não aperta o botão: no CTk nenhuma tecla estava ligada, e um Enter
-        # perdido soltaria o robô (e começaria o lote) antes de terminar o login.
-        self.botao.setAutoDefault(False)
-        self.botao.setDefault(False)
+                                  negrito=True, largura_minima=estilo.LARGURA_BOTAO_CTK)
+        sem_tecla(self.botao)
         self.botao.clicked.connect(self.liberar)
         self.layout_principal.addWidget(self.botao, 0, Qt.AlignmentFlag.AlignHCenter)
 
@@ -126,11 +133,12 @@ class RetryLockDialog(_DialogoDeAcaoManual):
         linha = QHBoxLayout()
         linha.setSpacing(20)
         linha.addStretch()
-        self.botao_repetir = blocos.botao("Tentar Novamente", variante="primario", largura=150, altura=40)
+        # fg_color=primary SEM hover_color lá: o hover é o do tema (#14375E).
+        self.botao_repetir = blocos.botao("Tentar Novamente", cor_fundo=theme.COLORS["primary"],
+                                          largura=150, altura=40)
         self.botao_cancelar = blocos.botao("Ignorar e Continuar", variante="contorno", largura=150, altura=40)
         for botao in (self.botao_repetir, self.botao_cancelar):
-            botao.setAutoDefault(False)  # Enter não decide (no CTk nenhuma tecla estava ligada)
-            botao.setDefault(False)
+            sem_tecla(botao)
             linha.addWidget(botao)
         linha.addStretch()
         self.botao_repetir.clicked.connect(self.repetir)

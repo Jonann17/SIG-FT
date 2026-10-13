@@ -204,6 +204,8 @@ class ModuloUploadConditions(TelaDeUpload):
 
     # --- Robô Web (aba 2) -------------------------------------------------------
     def _pre_start_web(self, dados_dict_lista) -> None:
+        if self._robo_ocupado():
+            return
         if not self.caminho_status:
             QMessageBox.warning(self, "Aviso",
                                 "Selecione o _STATUS_PMIB na Configuração Global antes de iniciar o Robô.")
@@ -249,17 +251,20 @@ class ModuloUploadConditions(TelaDeUpload):
         try:
             self.log("Lendo arquivo Excel, convertendo strings em dicionários...")
             dados = ler_resultados_excel(excel_file)
+            # DENTRO do try, como lá: linhas num formato inesperado também viram
+            # "Erro ao ler Excel" (fora dele, a exceção sumia no laço do Qt).
+            self._pre_start_web(dados)
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"Erro ao ler Excel: {e}")
             QMessageBox.critical(self, "Erro de Leitura", f"Falha ao ler Excel: {e}")
-            return
-        self._pre_start_web(dados)
 
     def _start_web_process(self, dados) -> None:
+        if self._robo_ocupado():
+            return
         modulo = self.backend("upload_conditions_backend")
         if modulo is None:
             return
-        reabilitar((self.btn_web_mem, False), (self.btn_web_file, False), (self.btn_parar_web, True))
+        self._inicio_do_robo()
         self.log(f"Iniciando fila de {len(dados)} fichas no navegador...")
         self.iniciar_tarefa(self._worker_web, modulo, dados, self.caminho_status)
 
@@ -303,5 +308,4 @@ class ModuloUploadConditions(TelaDeUpload):
                 except Exception as e:  # noqa: BLE001 -- os botões têm de voltar
                     self.log(f"Erro Crítico Web: {e}")
             self.automacao_ativa = None
-            interface.na_interface(reabilitar, (self.btn_web_mem, True), (self.btn_web_file, True),
-                                   (self.btn_parar_web, False))
+            interface.na_interface(self._fim_do_robo)
