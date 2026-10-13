@@ -91,10 +91,16 @@ class Interruptor(QCheckBox):
 
 
 class MenuDeOpcoes(QComboBox):
-    """CTkOptionMenu: a lista que abre continua a do Qt; o botão é o do CTk."""
+    """CTkOptionMenu: a lista que abre continua a do Qt; o botão é o do CTk.
 
-    def __init__(self, opcoes: list[str] | None = None, parent=None) -> None:
+    `cor`/`cor_seta` são o `fg_color`/`button_color` do CTk (a Busca PMIB pinta
+    o menu de #3A3A3A/#454545); o escurecer da seta sob o mouse é o do tema.
+    """
+
+    def __init__(self, opcoes: list[str] | None = None, parent=None, *,
+                 cor: str = estilo.AZUL_CTK, cor_seta: str = estilo.AZUL_CTK_HOVER) -> None:
         super().__init__(parent)
+        self._cor, self._cor_seta = cor, cor_seta
         if opcoes:
             self.addItems(opcoes)
         self.setFixedHeight(ALTURA_MENU)
@@ -110,10 +116,10 @@ class MenuDeOpcoes(QComboBox):
         inteiro = QPainterPath()
         inteiro.addRoundedRect(QRectF(0, 0, largura, altura), 6, 6)
         pintor.setClipPath(inteiro)
-        pintor.fillRect(QRectF(0, 0, largura - altura, altura), QColor(estilo.AZUL_CTK))
+        pintor.fillRect(QRectF(0, 0, largura - altura, altura), QColor(self._cor))
         sobre = self.isEnabled() and self.underMouse()
         pintor.fillRect(QRectF(largura - altura, 0, altura, altura),
-                        QColor(COR_SETA_MENU_HOVER if sobre else estilo.AZUL_CTK_HOVER))
+                        QColor(COR_SETA_MENU_HOVER if sobre else self._cor_seta))
         pintor.setClipping(False)
         # A seta: no Windows e no Linux o CTk a desenha com a fonte de formas dele
         # (não com o polígono do macOS). Medida na captura: um "v" de 9x5 px com
