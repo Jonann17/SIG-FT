@@ -472,3 +472,29 @@ def test_medidas_da_janela_de_pesos(qt_interface, qtbot, monkeypatch):
         assert r(t.entry_max_vars)[1] == r(win.rotulos[-1])[1] + 121
     finally:
         qt_interface.setStyleSheet(anterior)
+
+
+def test_esc_e_enter_nao_fecham_nem_salvam_a_janela_de_pesos(tela, qtbot, monkeypatch):
+    # No Tk, nem Esc nem Enter faziam nada: o que foi digitado só sai pelo "Salvar".
+    from PySide6.QtCore import Qt
+    _backend(monkeypatch)
+    tela.btn_config.click()
+    win = tela.janela_pesos
+    qtbot.addWidget(win)
+    campo = tela.entries_pesos["texto_breve_material"]
+    campo.setText("9")
+    qtbot.keyClick(campo, Qt.Key.Key_Return)
+    qtbot.keyClick(win, Qt.Key.Key_Escape)
+    assert win.isVisible()
+    assert campo.text() == "9"
+    assert tela.caixas == []
+    assert "texto_breve_material" not in tela.custom_weights
+
+
+def test_segundo_clique_traz_a_mesma_janela_de_pesos(tela, qtbot, monkeypatch):
+    _backend(monkeypatch)
+    tela.btn_config.click()
+    primeira = tela.janela_pesos
+    qtbot.addWidget(primeira)
+    tela.btn_config.click()
+    assert tela.janela_pesos is primeira

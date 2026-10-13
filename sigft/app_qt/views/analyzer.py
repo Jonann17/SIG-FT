@@ -108,9 +108,19 @@ class JanelaPesos(QDialog):
 
         self.btn_salvar = blocos.botao("Salvar Pesos", largura=estilo.LARGURA_BOTAO_CTK, altura=28,
                                        cor_fundo=COLORS["primary"])
+        # Enter num campo não salva: no Tk o Enter não fazia nada aqui.
+        self.btn_salvar.setAutoDefault(False)
+        self.btn_salvar.setDefault(False)
         self.btn_salvar.clicked.connect(lambda: tela._salvar_pesos(self))
         raiz.addWidget(self.btn_salvar, alignment=Qt.AlignmentFlag.AlignHCenter)
         raiz.addSpacing(10)
+
+    def keyPressEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
+        # Esc fecharia e perderia os pesos digitados; no Tk não havia tecla nenhuma.
+        if evento.key() == Qt.Key.Key_Escape:
+            evento.accept()
+            return
+        super().keyPressEvent(evento)
 
     @staticmethod
     def _linha(corpo, texto, valor, *, folga: int = 2):
@@ -298,6 +308,12 @@ class ModuloAnalyzer(ModuleFrame):
     def abrir_config_pesos(self) -> None:
         modulo = self.backend("analyzer_backend")
         if modulo is None:
+            return
+        # Já aberta: traz para a frente em vez de abrir outra, que salvaria
+        # pelos campos da mais nova.
+        if self.janela_pesos is not None and self.janela_pesos.isVisible():
+            self.janela_pesos.raise_()
+            self.janela_pesos.activateWindow()
             return
         # Pega o mapa padrão do backend
         self.janela_pesos = JanelaPesos(self, modulo.CONFIG_MAP)
