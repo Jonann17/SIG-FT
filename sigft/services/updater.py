@@ -75,8 +75,9 @@ from typing import Callable
 
 from sigft.core import rede
 
-REPO_OWNER = "luanccozer"
-REPO_NOME = "SIG-FT"
+# PRUEBA: reverter para luanccozer/SIG-FT antes de entregar ao Luan
+REPO_OWNER = "Jonann17"
+REPO_NOME = "SIG-FT-prueba-qt"
 API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NOME}"
 
 # O manifesto publicado junto do instalador (versão, SHA256 e notas).
