@@ -490,6 +490,16 @@ def test_revisao_pdm_mostra_o_porque_da_linha_selecionada(qt_interface, qtbot):
     j.close()
 
 
+def test_revisao_pdm_porque_e_texto_puro(qt_interface, qtbot):
+    # Texto escrito pela IA: "<b>" aparece como está, nunca vira HTML.
+    linha = _da_ia("PDM.4820.004 - VALVULA ESFERA", "ALTA", justificativa="<b>forte</b>")
+    j, _ = _revisao(qtbot, df=DfFalso([linha]))
+    j.tree.topLevelItem(0).setSelected(True)
+    assert j.lbl_porque.text() == "Por quê: <b>forte</b>"
+    assert j.lbl_porque.textFormat() == Qt.TextFormat.PlainText
+    j.close()
+
+
 def test_revisao_pdm_porque_nao_alarga_a_janela(folha, qtbot):
     longa = _da_ia("PDM.4820.004 - VALVULA ESFERA", "ALTA", justificativa="X" * 2000)
     j, _ = _revisao(qtbot, df=DfFalso([longa]))

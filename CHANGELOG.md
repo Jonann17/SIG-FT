@@ -20,7 +20,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Interface nova: **todas as telas** estão nela (Cria Fichas, Planilhas PMIB, Analyzer, Upload Condições, Tradutor, Upload Specs, Correção de PDM, Upload duplicadas, AutoSpec, Aplicação LMR, PMIB Manager e Search), e a tela inicial traz os painéis de chaves de API, modelos de IA, gastos, mural, "Atualizações" e "Versões de teste".
 - Interface nova: lançadores para **Windows** (`SIG-FT.bat`) e **macOS** (`SIG-FT.command`, novo), que preparam o ambiente sozinhos. Se a instalação das dependências falhar numa máquina que já tinha o SIG-FT, ele abre com as de antes.
 - Instalação: o instalador passa a levar a interface nova.
-- Interface nova: nas perguntas que **apagam ou descartam** algo, Enter responde **"Não"**. Tecla nenhuma (Enter ou Esc) confirma ou joga fora trabalho feito: a revisão de PDMs e os campos de edição não fecham mais com Esc.
+- Interface nova: nas perguntas que **apagam ou descartam** trabalho (Apagar LMR, troca de PDM na Correção de PDM, fechar com tarefa rodando), Enter responde **"Não"**. Esc não fecha mais a revisão de PDMs, as seleções nem os campos de edição: para cancelar, use o "X".
 - Interface nova: **um robô por vez** no portal. Na Cria Fichas (criação ou edição do código do projeto) e nos uploads, um segundo clique com o robô trabalhando não abre outro robô: o log avisa para esperar o primeiro terminar.
 - Interface nova: cada botão usa os **valores do momento do clique** (projeto, linhas selecionadas, planilha). Trocar a seleção com a IA ou o robô rodando não mistura mais um lote com o outro.
 

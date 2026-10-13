@@ -355,6 +355,8 @@ class JanelaRevisaoPDM(_Janela):  # Esc não fecha: herdado de JanelaQueAbre
         # `Ignored`, uma justificativa longa ALARGARIA a janela.
         self.lbl_porque = _rotulo("", alinhar="esquerda")
         self.lbl_porque.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        # Texto da IA: nunca interpretado como HTML (o QLabel adivinharia).
+        self.lbl_porque.setTextFormat(Qt.TextFormat.PlainText)
         faixa_porque = QHBoxLayout()
         faixa_porque.setContentsMargins(2, 0, 2, 0)  # padx=12 = os 10 da borda + 2
         faixa_porque.addWidget(self.lbl_porque)
