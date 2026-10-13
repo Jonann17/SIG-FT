@@ -261,3 +261,24 @@ def slider(*, minimo: int = 0, maximo: int = 100, largura: int = 200, cor_botao:
     if folha:
         s.setStyleSheet(folha.strip())
     return s
+
+
+class BarraDeProgresso(QProgressBar):
+    """CTkProgressBar que guarda a fração e a redesenha quando a largura muda.
+
+    `definir_progresso` converte a fração em valor PELA LARGURA da barra (as
+    pontas redondas); sem refazer a conta no resize, o `set(0)` feito antes de
+    a tela aparecer viraria um trecho de 8 % numa barra de 870 px. Estilizar com
+    `barra_progresso(barra=BarraDeProgresso(), ...)`. (Era `_BarraDeProgresso`
+    da Cópia de Fichas; a Criação de Fichas precisa da mesma.)
+    """
+
+    fracao = 0.0
+
+    def definir(self, fracao: float) -> None:
+        self.fracao = float(fracao)
+        definir_progresso(self, self.fracao)
+
+    def resizeEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
+        super().resizeEvent(evento)
+        definir_progresso(self, self.fracao)

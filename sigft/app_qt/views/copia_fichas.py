@@ -18,7 +18,7 @@ interface e o worker espera).
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QProgressBar, QSizePolicy
+from PySide6.QtWidgets import QHBoxLayout, QSizePolicy
 
 from sigft import config as sigft_config
 from sigft.app.textos_dialogos import MSG_LOGIN_LOTE
@@ -47,25 +47,6 @@ def _rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, cor: str | 
     r.setWordWrap(False)
     r.setFixedHeight(blocos.ALTURA_MINIMA_ROTULO)
     return r
-
-
-class _BarraDeProgresso(QProgressBar):
-    """CTkProgressBar que guarda a fração e a redesenha quando a largura muda.
-
-    `blocos.definir_progresso` converte a fração em valor PELA LARGURA da barra
-    (as pontas redondas); sem refazer a conta no resize, o `set(0)` feito antes
-    de a tela aparecer viraria um trecho de 8 % numa barra de 870 px.
-    """
-
-    fracao = 0.0
-
-    def definir(self, fracao: float) -> None:
-        self.fracao = float(fracao)
-        blocos.definir_progresso(self, self.fracao)
-
-    def resizeEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
-        super().resizeEvent(evento)
-        blocos.definir_progresso(self, self.fracao)
 
 
 # =============================================================================
@@ -169,7 +150,7 @@ class ModuloCopiaFichas(ModuleFrame):
         acoes.addSpacing(15)                            # interruptor (…, 0) + barra (15, …)
 
         # Progresso: CTkProgressBar(progress_color=accent), pack(fill="x", pady=15).
-        self.progress = blocos.barra_progresso(barra=_BarraDeProgresso(), cor=COLORS["accent"])
+        self.progress = blocos.barra_progresso(barra=blocos.BarraDeProgresso(), cor=COLORS["accent"])
         self.progress.definir(0)
         acoes.addWidget(self.progress)
 

@@ -102,10 +102,18 @@ class DialogosDeEspera:
             return texto if ok else None
         return self._na_interface_e_esperar(pedir)
 
-    def avisar(self, titulo: str, mensagem: str, tipo: str = "info") -> None:
-        """Mostra e segue: o worker não espera a pessoa fechar o aviso."""
+    def avisar(self, titulo: str, mensagem: str, tipo: str = "info", *, esperar: bool = False) -> None:
+        """Mostra e segue: o worker não espera a pessoa fechar o aviso.
+
+        `esperar=True`: o worker só segue depois do OK -- o `messagebox`
+        chamado de dentro do worker no CustomTkinter, que bloqueava ali (o
+        "Preparo" do robô de Criação de Fichas é uma pausa de propósito).
+        """
         funcao = {"info": QMessageBox.information, "aviso": QMessageBox.warning,
                   "erro": QMessageBox.critical}[tipo]
+        if esperar:
+            self._na_interface_e_esperar(lambda: funcao(self, titulo, mensagem))
+            return
         if interface.na_thread_da_interface():
             funcao(self, titulo, mensagem)
         else:

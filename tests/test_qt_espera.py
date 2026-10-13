@@ -219,3 +219,41 @@ def test_falha_ao_construir_o_dialogo_solta_o_worker(qt_interface, qtbot, monkey
     assert terminou == [True]
     assert respostas == [False]
     assert "falha de construcao" in capsys.readouterr().err
+
+
+def test_avisar_e_esperar_segura_o_worker_ate_o_ok(qt_interface, qtbot, monkeypatch):
+    # E4.9: o "Preparo" do robô de Criação de Fichas era um `showinfo` chamado
+    # de dentro do worker, e SEGURAVA o robô até o OK (é a pausa para arrumar o
+    # navegador). `avisar(..., esperar=True)` abre na thread da interface e só
+    # devolve depois que a caixa fechou.
+    from sigft.app_qt.widgets import espera
+
+    seguiu = threading.Event()
+    chamadas = []
+    # Enquanto a "caixa" está aberta, o worker não pode ter seguido.
+    monkeypatch.setattr(espera.QMessageBox, "information", lambda parent, titulo, mensagem: chamadas.append(
+        (titulo, mensagem, threading.current_thread() is threading.main_thread(), seguiu.wait(0.3))))
+    tela = Tela()
+    qtbot.addWidget(tela)
+    t = threading.Thread(target=lambda: (tela.avisar("Preparo", "Arrume o navegador", esperar=True),
+                                         seguiu.set()), daemon=True)
+    t.start()
+    qtbot.waitUntil(seguiu.is_set, timeout=3000)
+    assert chamadas == [("Preparo", "Arrume o navegador", True, False)]
+
+
+def test_avisar_sem_esperar_nao_segura_o_worker(qt_interface, qtbot, monkeypatch):
+    from sigft.app_qt.widgets import espera
+
+    seguiu = threading.Event()
+    chamadas = []
+    # A caixa só "fecha" depois de ver o worker seguir: se `avisar` segurasse
+    # o worker, isto esperaria à toa e anotaria False.
+    monkeypatch.setattr(espera.QMessageBox, "warning",
+                        lambda *a: chamadas.append((a[1:], seguiu.wait(2))))
+    tela = Tela()
+    qtbot.addWidget(tela)
+    t = threading.Thread(target=lambda: (tela.avisar("T", "M", tipo="aviso"), seguiu.set()), daemon=True)
+    t.start()
+    qtbot.waitUntil(lambda: bool(chamadas), timeout=3000)
+    assert chamadas == [(("T", "M"), True)]
