@@ -7,7 +7,7 @@ CustomTkinter usavam:
 * `JanelaSelecao(tela, df, callback)` e `JanelaSelecaoDuplicadas(tela, fila,
   callback)` -- funções finas sobre o `TabelaSelecaoDialog`;
 * `JanelaResumo(tela, df)` -- tabela de conferência ao fim de um lote;
-* `JanelaEscolherPDM(tela, catalogo)` -- modal; o `wait_window(janela)` de lá
+* `JanelaEscolherPDM(tela, catalogo, sugestoes=())` -- modal; o `wait_window(janela)` de lá
   vira `janela.esperar()` (devolve a escolha) e `.escolha` continua lá;
 * `JanelaRevisaoPDM(tela, df, callback, catalogo=None)` -- revisão do PDM;
 * `JanelaAcaoRobo(tela, msg_erro=..., pdm_atual=...)` -- devolve um objeto com
@@ -35,13 +35,16 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextOption
 from PySide6.QtWidgets import (
     QDialog, QFrame, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
-    QPushButton, QVBoxLayout,
+    QPushButton, QSizePolicy, QVBoxLayout,
 )
 
 from sigft.app import theme
 from sigft.app.theme import COLORS
 from sigft.app_qt import estilo, interface
 from sigft.app_qt.widgets import blocos, dialogos_selecao, dialogs
+# 2026-10-08: o que a revisão de PDMs mostra (confiança, ordem, "por quê",
+# 2º e 3º lugar) é regra do serviço; a janela só exibe -- a mesma de lá.
+from sigft.services import cria_fichas_escolha as escolha
 
 # Cores com nome do Tk que as telas escreviam ("green", "red"): no Tk 8.6 são
 # as do W3C/CSS, e o Qt não as lê da mesma forma em folha de estilo.
@@ -212,11 +215,14 @@ class JanelaEscolherPDM(_Janela):
 
     LINHAS_VISIVEIS = 40
 
-    def __init__(self, parent, catalogo) -> None:
+    def __init__(self, parent, catalogo, sugestoes=()) -> None:
         super().__init__(parent, titulo="Escolher PDM", largura=900, altura=560, modal=True)
         self.catalogo = catalogo
         self.escolha = None
         self._achados = []
+        # 2º e 3º lugar da IA, fixos no topo enquanto a busca está vazia.
+        self._sugestoes = list(sugestoes or ())
+        self._rotulo_da_sugestao = {pdm.codigo: rotulo for pdm, rotulo in self._sugestoes}
 
         layout = QVBoxLayout(self)
         # topo padx=10, pady=10 (busca com pady=(6, 0)) | lista pady=(6, 0) |
@@ -256,11 +262,17 @@ class JanelaEscolherPDM(_Janela):
         self.entry_busca.setFocus()
 
     def _atualizar(self) -> None:
-        self._achados = self.catalogo.buscar(self.entry_busca.text(), limite=self.LINHAS_VISIVEIS)
+        procurado = self.entry_busca.text()
+        self._achados = self.catalogo.buscar(procurado, limite=self.LINHAS_VISIVEIS)
+        com_sugestoes = not procurado.strip() and self._sugestoes
+        if com_sugestoes:
+            self._achados = escolha.juntar_sugestoes(self._sugestoes, self._achados, self.LINHAS_VISIVEIS)
         self.lista.clear()
         for posicao, pdm in enumerate(self._achados):
-            _linha(self.lista, (pdm.completo, pdm.classe, "; ".join(pdm.caracteristicas[:6])),
-                   chave=posicao)
+            detalhe = "; ".join(pdm.caracteristicas[:6])
+            if com_sugestoes and pdm.codigo in self._rotulo_da_sugestao:
+                detalhe = "★ " + self._rotulo_da_sugestao[pdm.codigo]
+            _linha(self.lista, (pdm.completo, pdm.classe, detalhe), chave=posicao)
         self.lbl_contagem.setText(
             f"{len(self._achados)} PDM(s) na lista"
             + (f" (mostrando os {self.LINHAS_VISIVEIS} primeiros)"
@@ -295,18 +307,24 @@ class JanelaRevisaoPDM(_Janela):  # Esc não fecha: herdado de JanelaQueAbre
 
     Trabalha numa CÓPIA do DataFrame; `callback_confirmar(df)` só no
     "CONFIRMAR" (com o sim da pessoa). Com `catalogo`, editar abre a
-    `JanelaEscolherPDM`; sem ele (modo "Pular IA"), o campo de texto livre.
+    `JanelaEscolherPDM` (com o 2º e o 3º lugar da IA, se a linha é uma só);
+    sem ele (modo "Pular IA"), o campo de texto livre. A ordem das linhas, a
+    coluna "Confiança" e o "por quê" sob a tabela vêm do serviço
+    (`cria_fichas_escolha`), como lá.
     """
 
     def __init__(self, parent, dataframe, callback_confirmar, catalogo=None) -> None:
-        super().__init__(parent, titulo="Revisão de PDMs - Pré-Automação", largura=1100, altura=600,
+        # 1250x640 (era 1100x600), como lá: a coluna Confiança cabe sem
+        # empurrar "Tipo" para fora; a altura extra é do "por quê".
+        super().__init__(parent, titulo="Revisão de PDMs - Pré-Automação", largura=1250, altura=640,
                          modal=True)
         self.df_dados = dataframe.copy()
         self.callback = callback_confirmar
         self.catalogo = catalogo
 
         layout = QVBoxLayout(self)
-        # topo padx=10, pady=10 | tabela padx=10, pady=(0, 10).
+        # topo padx=10, pady=10 | tabela padx=10, pady=(0, 10) | "por quê"
+        # padx=12, pady=(0, 10).
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
         # CTkFrame de fundo padrão (gray13, cantos 6), da altura dos botões.
@@ -327,18 +345,47 @@ class JanelaRevisaoPDM(_Janela):  # Esc não fecha: herdado de JanelaQueAbre
         layout.addWidget(self.topo)
 
         self.tree = _tabela([("ID", 40, "w"), ("Descrição Original", 350, "w"),
-                             ("PDM Escolhido (EDITÁVEL)", 250, "w"), ("Descrição Curta", 200, "w"),
-                             ("UN", 50, "w"), ("Tipo", 100, "w")])
+                             ("PDM Escolhido (EDITÁVEL)", 250, "w"), ("Confiança", 140, "w"),
+                             ("Descrição Curta", 200, "w"), ("UN", 50, "w"), ("Tipo", 100, "w")])
         layout.addWidget(self.tree, 1)
+
+        # O "por quê" da linha selecionada: justificativa, conferências e o que
+        # a IA leu do material. Texto da IA: fonte do corpo, nunca mono. O
+        # CTkLabel não quebra linha e corta o que passa da janela; aqui, sem
+        # `Ignored`, uma justificativa longa ALARGARIA a janela.
+        self.lbl_porque = _rotulo("", alinhar="esquerda")
+        self.lbl_porque.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        faixa_porque = QHBoxLayout()
+        faixa_porque.setContentsMargins(2, 0, 2, 0)  # padx=12 = os 10 da borda + 2
+        faixa_porque.addWidget(self.lbl_porque)
+        layout.addLayout(faixa_porque)
+        self.tree.itemSelectionChanged.connect(self._mostrar_porque)
+
         self.preencher_tabela()
         self._abrir()
 
     def preencher_tabela(self) -> None:
         self.tree.clear()
-        for index, row in self.df_dados.iterrows():
+        # A ORDEM vem do serviço (o que precisa de olho primeiro); a coluna ID
+        # continua com o índice original, que é o que liga a linha à planilha.
+        indices = list(self.df_dados.index)
+        linhas = [row for _index, row in self.df_dados.iterrows()]
+        for posicao in escolha.ordem_para_revisao(linhas):
+            index, row = indices[posicao], linhas[posicao]
             _linha(self.tree, [index, row.get("descricao_original", ""), row.get("pdm_escolhido", ""),
-                               row.get("descricao_curta", ""), row.get("unidade", ""), row.get("tipo", "")],
+                               escolha.rotulo_de_confianca(row), row.get("descricao_curta", ""),
+                               row.get("unidade", ""), row.get("tipo", "")],
                    chave=index)
+
+    def _linha_do_df(self, item):
+        return self.df_dados.loc[item.data(0, Qt.ItemDataRole.UserRole)]
+
+    def _mostrar_porque(self) -> None:
+        selecionados = self.tree.selectedItems()
+        texto = ""
+        if len(selecionados) == 1:
+            texto = escolha.texto_do_porque(self._linha_do_df(selecionados[0]))
+        self.lbl_porque.setText(texto)
 
     def editar_pdm(self) -> None:
         selecionados = self.tree.selectedItems()
@@ -347,9 +394,12 @@ class JanelaRevisaoPDM(_Janela):  # Esc não fecha: herdado de JanelaQueAbre
             return
 
         if self.catalogo is not None:
-            janela = JanelaEscolherPDM(self, self.catalogo)
-            escolha = janela.esperar()
-            novo_pdm = escolha.completo if escolha else None
+            sugestoes = []
+            if len(selecionados) == 1:
+                sugestoes = escolha.sugestoes_da_linha(self._linha_do_df(selecionados[0]), self.catalogo)
+            janela = JanelaEscolherPDM(self, self.catalogo, sugestoes=sugestoes)
+            escolhido = janela.esperar()
+            novo_pdm = escolhido.completo if escolhido else None
         else:
             texto, ok = QInputDialog.getText(
                 self, "Editar PDM", "Digite o novo código PDM completo (ex: PDM.1234.001 - NOME):")
@@ -359,6 +409,7 @@ class JanelaRevisaoPDM(_Janela):  # Esc não fecha: herdado de JanelaQueAbre
             for item in selecionados:
                 self.df_dados.at[item.data(0, Qt.ItemDataRole.UserRole), "pdm_escolhido"] = novo_pdm
                 item.setText(2, novo_pdm)  # coluna do PDM; o resto da linha fica
+                item.setText(3, "MANUAL")  # a confiança era da escolha da IA
 
     def confirmar(self) -> None:
         resposta = QMessageBox.question(

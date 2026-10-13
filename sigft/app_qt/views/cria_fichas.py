@@ -36,11 +36,14 @@ from sigft.app_qt.widgets import blocos, controles
 from sigft.app_qt.widgets.abas import Abas
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 # O catálogo de PDMs (2026-09-22): lê a planilha-mestra da Itaipu e faz o
-# pré-filtro de candidatos por item. `cria_fichas_svc` entra pelas guardas
-# (`conferir_pdm`); as classes do serviço (DataManager, GeminiCategorizer,
-# AutomacaoPMIB) vêm por `self.backend(...)`, que avisa se não carregaram.
+# pré-filtro de candidatos por item. `cria_fichas_svc` entra pelas
+# conferências do que o portal gravou (`codigo_do_pdm`, `revisao_do_pdm`); as
+# classes do serviço (DataManager, GeminiCategorizer, AutomacaoPMIB) vêm por
+# `self.backend(...)`, que avisa se não carregaram.
 from sigft.core import pdm_catalogo
 from sigft.services import cria_fichas as cria_fichas_svc
+# 2026-10-08: o registro de calibração da escolha de PDM (IA x revisão).
+from sigft.services import cria_fichas_escolha
 
 ABA_CRIACAO = "Criação de Fichas"
 ABA_EDICAO = "Editar código do projeto"
@@ -471,6 +474,7 @@ class ModuloCriaFichas(ModuleFrame):
         try:
             final_data = []
             catalogo = None
+            modelos = None  # os da rodada da IA; vão com o lote até a calibração
             if pular:
                 self.log("Modo 'Pular IA'. Lendo dados do Excel...")
                 for index, row in df.iterrows():
@@ -501,43 +505,28 @@ class ModuloCriaFichas(ModuleFrame):
                     f"{len(catalogo.classes_com_pdm())} classes com PDM."
                 )
 
-                res_json = cat.processar_lote(df, catalogo, callback_log=self.log)
-                sem_resposta = 0
-                fora_do_catalogo = 0
-                for i, item_json in enumerate(res_json):
-                    row = df.iloc[i]
-                    if item_json is None:
-                        # A IA não respondeu este item: fica 'NENHUM' para a
-                        # revisão, sem deslocar os seguintes.
-                        sem_resposta += 1
-                        item_json = {"pdm_escolhido": "NENHUM"}
-                        self.log(
-                            f" -> ⚠️ Item {i + 1} sem resposta da IA. Marcado "
-                            f"'NENHUM' para revisão: {str(row['DESCRIÇÃO'])[:40]}"
-                        )
-
-                    ok_pdm, motivo = cria_fichas_svc.conferir_pdm(item_json, catalogo)
-                    if not ok_pdm:
-                        # PDM inventado pela IA: não pode chegar ao filtro do
-                        # portal, que aperta ENTER e leva o que estiver destacado.
-                        fora_do_catalogo += 1
-                        self.log(f" -> ⚠️ Item {i + 1}: {motivo}. Marcado 'NENHUM'.")
-                        item_json["pdm_escolhido"] = "NENHUM"
-
-                    item_json['codigo_projeto'] = cod_proj
-                    item_json['descricao_original'] = row['DESCRIÇÃO']
-                    final_data.append(item_json)
+                # [2026-10-08] As duas passadas e a preparação da revisão
+                # moram no serviço -- inclusive a guarda contra PDM inventado,
+                # que era um laço aqui dentro (regra de negócio na tela).
+                final_data, contagem = cat.classificar_para_revisao(
+                    df, catalogo, cod_proj, callback_log=self.log)
+                # Lá isto ia para `self._modelos_da_ia` (de quem rodou por
+                # último); aqui viaja com o lote, como o catálogo e o Excel.
+                modelos = {
+                    "passada_1": cat.modelo_da_interpretacao,
+                    "passada_2": cat.modelo_em_uso,
+                }
 
                 self.log(
                     f"IA Finalizada. {len(final_data)} itens | "
-                    f"sem resposta: {sem_resposta} | "
-                    f"PDM fora do catálogo: {fora_do_catalogo}"
+                    f"sem resposta: {contagem['sem_resposta']} | "
+                    f"PDM fora do catálogo: {contagem['fora_do_catalogo']}"
                 )
 
             # Para a REVISÃO, não para o `df_processed`: o robô só enxerga o que
             # a pessoa confirmou (lá, fechar a revisão nova no "X" deixava o robô
             # de um lote anterior apontado para dados que ninguém conferiu).
-            resultado = (pd.DataFrame(final_data), catalogo, excel)
+            resultado = (pd.DataFrame(final_data), catalogo, excel, modelos)
             self.log("Abrindo janela de Revisão...")
         except Exception as e:  # noqa: BLE001 -- vira log, como lá
             self.log(f"Erro no processamento: {e}")
@@ -554,11 +543,11 @@ class ModuloCriaFichas(ModuleFrame):
         if resultado is None:
             self._fim_da_cadeia_da_ia()
             return
-        df_novo, catalogo_novo, excel = resultado
+        df_novo, catalogo_novo, excel, modelos = resultado
         # "Pular IA" não carrega catálogo: a revisão usa o que a tela já tinha, como lá.
         catalogo = catalogo_novo if catalogo_novo is not None else self.catalogo
         try:
-            self.abrir_revisao_pdm(df_novo, catalogo, excel)
+            self.abrir_revisao_pdm(df_novo, catalogo, excel, modelos)
         except Exception as erro:  # noqa: BLE001 -- o botão tem de voltar
             traceback.print_exc()
             self.log(f"Erro ao abrir a revisão: {type(erro).__name__}: {erro}")
@@ -579,13 +568,13 @@ class ModuloCriaFichas(ModuleFrame):
         except RuntimeError:
             pass  # tela já destruída
 
-    def abrir_revisao_pdm(self, df, catalogo, excel=None) -> None:
+    def abrir_revisao_pdm(self, df, catalogo, excel=None, modelos=None) -> None:
         if df is not None and not df.empty:
-            # O catálogo e o Excel do lote vão junto para o CONFIRMAR: os da
-            # tela (os do robô) só mudam com a revisão confirmada, como o
-            # `df_processed`.
+            # O catálogo, o Excel e os modelos da IA do lote vão junto para o
+            # CONFIRMAR: os da tela (os do robô) só mudam com a revisão
+            # confirmada, como o `df_processed`.
             confirmar = functools.partial(self._pos_revisao_concluida, catalogo=catalogo,
-                                          excel=excel)
+                                          excel=excel, modelos=modelos)
             janela = JanelaRevisaoPDM(self, df, confirmar, catalogo=catalogo)
             janela.finished.connect(self._revisao_fechada)
         else:
@@ -599,10 +588,19 @@ class ModuloCriaFichas(ModuleFrame):
             # Fechada no "X": lá o botão ficava desligado até o "Limpar".
             self._fim_da_cadeia_da_ia()
 
-    def _pos_revisao_concluida(self, df_atualizado, catalogo=None, excel=None) -> None:
+    def _pos_revisao_concluida(self, df_atualizado, catalogo=None, excel=None, modelos=None) -> None:
         self.df_processed = df_atualizado
         self.catalogo = catalogo
         self._excel_do_lote = excel
+        # [2026-10-08] O que a IA disse x o que a revisão decidiu, para a
+        # confiança virar medição (spec §4.7). Nunca trava a automação.
+        try:
+            registrados = cria_fichas_escolha.gravar_calibracao(
+                [row for _index, row in df_atualizado.iterrows()], modelos=modelos)
+            if registrados:
+                self.log(f"Calibração: {registrados} itens registrados.")
+        except Exception as e:  # noqa: BLE001 -- vira log, como lá
+            self.log(f"Calibração não registrada: {e}")
         self.log(f"Revisão OK. {len(self.df_processed)} itens prontos.")
         # Com um robô rodando (criação ou edição), o "4. Robô Web" volta no fim
         # dele (`_robo_terminou`) e então leva ESTE lote; ligá-lo agora subiria

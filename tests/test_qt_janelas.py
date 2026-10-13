@@ -42,6 +42,16 @@ class _At:
         return self._df.linhas[self._df.index.index(indice)][coluna]
 
 
+class _Loc:
+    """`df.loc[indice]`: a linha (com `.get`) do índice."""
+
+    def __init__(self, df):
+        self._df = df
+
+    def __getitem__(self, indice):
+        return _Linha(self._df.linhas[self._df.index.index(indice)])
+
+
 class DfFalso:
     """Só o que as janelas usam de um DataFrame (o conftest dubla o pandas)."""
 
@@ -50,6 +60,7 @@ class DfFalso:
         self.index = list(indice) if indice is not None else list(range(len(self.linhas)))
         self.columns = list(self.linhas[0]) if self.linhas else []
         self.at = _At(self)
+        self.loc = _Loc(self)
 
     def iterrows(self):
         for indice, linha in zip(self.index, self.linhas):
@@ -308,10 +319,12 @@ def test_revisao_pdm_preenche_a_tabela(qt_interface, qtbot):
     j, _ = _revisao(qtbot)
     assert j.isModal() and j.windowTitle() == "Revisão de PDMs - Pré-Automação"
     assert j.rotulo.text() == "Verifique os PDMs sugeridos antes da automação."
-    assert [j.tree.headerItem().text(i) for i in range(6)] == [
-        "ID", "Descrição Original", "PDM Escolhido (EDITÁVEL)", "Descrição Curta", "UN", "Tipo"]
-    assert [j.tree.topLevelItem(2).text(i) for i in range(6)] == [
-        "2", "CAMERA IP", "PDM.5820.010 - CAMERA VIDEO", "CAM", "PC", "Equipamento"]
+    assert [j.tree.headerItem().text(i) for i in range(7)] == [
+        "ID", "Descrição Original", "PDM Escolhido (EDITÁVEL)", "Confiança", "Descrição Curta", "UN",
+        "Tipo"]
+    # Linha que não veio da IA ("Pular IA"): sem confiança, na ordem da planilha.
+    assert [j.tree.topLevelItem(2).text(i) for i in range(7)] == [
+        "2", "CAMERA IP", "PDM.5820.010 - CAMERA VIDEO", "", "CAM", "PC", "Equipamento"]
     assert j.tree.selectionMode() == QAbstractItemView.SelectionMode.ExtendedSelection
     assert j.botao_confirmar.text() == "CONFIRMAR E AVANÇAR >>"
     assert j.botao_editar.text() == "Editar PDM Selecionado"
@@ -329,7 +342,7 @@ def test_revisao_pdm_editar_com_catalogo_usa_a_janela_de_escolha(qt_interface, q
     abertas = []
 
     class EscolhaFalsa:
-        def __init__(self, parent, catalogo):
+        def __init__(self, parent, catalogo, sugestoes=()):
             abertas.append((parent, catalogo))
             self.escolha = catalogo.pdms[1]
 
@@ -354,7 +367,7 @@ def test_revisao_pdm_editar_com_catalogo_usa_a_janela_de_escolha(qt_interface, q
 
 def test_revisao_pdm_editar_com_catalogo_cancelado_nao_muda(qt_interface, qtbot, monkeypatch):
     class EscolhaFalsa:
-        def __init__(self, parent, catalogo):
+        def __init__(self, parent, catalogo, sugestoes=()):
             self.escolha = None
 
         def esperar(self):
@@ -424,6 +437,127 @@ def test_revisao_pdm_com_pandas_de_verdade(qt_interface, qtbot, monkeypatch):
     j.botao_editar.click()
     assert j.df_dados.at[1, "pdm_escolhido"] == "PDM.X - Y"
     assert df.at[1, "pdm_escolhido"] == "PDM.3110.002 - ROLAMENTO"
+    j.close()
+
+
+# --- revisão com a escolha em duas passadas (2026-10-08) ----------------------------
+# As linhas como `preparar_para_revisao` as entrega: confiança, "por quê", 2º/3º lugar.
+
+def _da_ia(pdm, confianca="", **extra):
+    linha = {"descricao_original": extra.pop("descricao", "ITEM"), "pdm_escolhido": pdm, "pdm_ia": pdm,
+             "confianca": confianca, "confianca_final": confianca, "rebaixada": False,
+             "origem_do_nenhum": "", "sinais": {}, "alternativas": [], "justificativa": "",
+             "interpretacao": {}, "descricao_curta": "C", "unidade": "PC", "tipo": "Material"}
+    linha.update(extra)
+    return linha
+
+
+REVISAO_IA = [
+    _da_ia("PDM.4820.004 - VALVULA ESFERA", "ALTA", descricao="VALVULA ESFERA 2POL",
+           alternativas=[{"pdm": "PDM.3110.002", "motivo": "também gira"}, {"pdm": "PDM.5820.010"},
+                         {"pdm": "PDM.0000.000"}]),
+    _da_ia("PDM.3110.002 - ROLAMENTO", "BAIXA", descricao="ROLAMENTO 6205", rebaixada=True,
+           justificativa="  rolamento de esferas  ",
+           sinais={"na_busca": True, "nome_base": False, "caracteristicas": True},
+           interpretacao={"e": "rolamento rigido de esferas"}),
+    _da_ia("NENHUM", descricao="CAMERA IP", origem_do_nenhum="sem_resposta"),
+    _da_ia("PDM.5820.010 - CAMERA VIDEO", "MEDIA", descricao="CAMERA ANALOGICA"),
+]
+
+
+def test_revisao_pdm_confianca_e_ordem_vem_do_servico(qt_interface, qtbot):
+    j, _ = _revisao(qtbot, df=DfFalso(REVISAO_IA))
+    # NENHUM, BAIXA, MÉDIA, ALTA; a coluna ID continua com o índice da planilha.
+    assert _textos(j.tree, 0) == ["2", "1", "3", "0"]
+    assert _textos(j.tree, 3) == ["SEM RESPOSTA", "BAIXA ↓", "MÉDIA", "ALTA"]
+    assert _textos(j.tree, 1) == ["CAMERA IP", "ROLAMENTO 6205", "CAMERA ANALOGICA", "VALVULA ESFERA 2POL"]
+    assert [j.tree.topLevelItem(i).data(0, Qt.ItemDataRole.UserRole) for i in range(4)] == [2, 1, 3, 0]
+    j.close()
+
+
+def test_revisao_pdm_mostra_o_porque_da_linha_selecionada(qt_interface, qtbot):
+    j, _ = _revisao(qtbot, df=DfFalso(REVISAO_IA))
+    assert j.lbl_porque.text() == ""
+    j.tree.topLevelItem(1).setSelected(True)          # a linha do índice 1
+    assert j.lbl_porque.text() == (
+        "Por quê: rolamento de esferas\n"
+        "Conferências: na busca ✓ · nome base ✗ · características ✓\n"
+        "A IA leu: rolamento rigido de esferas")
+    j.tree.topLevelItem(0).setSelected(True)          # duas linhas: nenhum "por quê"
+    assert j.lbl_porque.text() == ""
+    j.tree.clearSelection()
+    assert j.lbl_porque.text() == ""
+    j.close()
+
+
+def test_revisao_pdm_porque_nao_alarga_a_janela(folha, qtbot):
+    longa = _da_ia("PDM.4820.004 - VALVULA ESFERA", "ALTA", justificativa="X" * 2000)
+    j, _ = _revisao(qtbot, df=DfFalso([longa]))
+    _mostrar(qtbot, j, 1250, 640)
+    j.tree.topLevelItem(0).setSelected(True)
+    QApplication.processEvents()
+    assert j.width() == 1250 and j.lbl_porque.width() == 1226
+    j.close()
+
+
+def test_revisao_pdm_uma_linha_leva_o_2o_e_3o_lugar_ao_seletor(qt_interface, qtbot, monkeypatch):
+    abertas = []
+
+    class EscolhaFalsa:
+        def __init__(self, parent, catalogo, sugestoes=()):
+            abertas.append([(pdm.codigo, rotulo) for pdm, rotulo in sugestoes])
+            self.escolha = catalogo.pdms[2]
+
+        def esperar(self):
+            return self.escolha
+
+    monkeypatch.setattr(janelas, "JanelaEscolherPDM", EscolhaFalsa)
+    j, _ = _revisao(qtbot, catalogo=_catalogo(), df=DfFalso(REVISAO_IA))
+    j.tree.topLevelItem(3).setSelected(True)          # a linha do índice 0 (ALTA)
+    j.botao_editar.click()
+    # O PDM inexistente (PDM.0000.000) fica de fora: `sugestoes_da_linha`.
+    assert abertas == [[("PDM.3110.002", "2º lugar: também gira"), ("PDM.5820.010", "3º lugar")]]
+    j.tree.topLevelItem(2).setSelected(True)          # duas linhas: sem sugestões
+    j.botao_editar.click()
+    assert abertas[1] == []
+    j.close()
+
+
+def test_revisao_pdm_troca_manual_marca_manual_na_confianca(qt_interface, qtbot, monkeypatch):
+    class EscolhaFalsa:
+        def __init__(self, parent, catalogo, sugestoes=()):
+            self.escolha = catalogo.pdms[1]
+
+        def esperar(self):
+            return self.escolha
+
+    monkeypatch.setattr(janelas, "JanelaEscolherPDM", EscolhaFalsa)
+    j, _ = _revisao(qtbot, catalogo=_catalogo(), df=DfFalso(REVISAO_IA))
+    j.tree.topLevelItem(3).setSelected(True)
+    j.botao_editar.click()
+    assert j.tree.topLevelItem(3).text(2) == "PDM.3110.002 - ROLAMENTO"
+    assert j.tree.topLevelItem(3).text(3) == "MANUAL"
+    assert j.tree.topLevelItem(0).text(3) == "SEM RESPOSTA"   # as outras ficam
+    # Só a tela muda: o que a IA disse continua na linha, para a calibração.
+    assert j.df_dados.at[0, "pdm_escolhido"] == "PDM.3110.002 - ROLAMENTO"
+    assert j.df_dados.at[0, "pdm_ia"] == "PDM.4820.004 - VALVULA ESFERA"
+    assert j.df_dados.at[0, "confianca_final"] == "ALTA"
+    j.close()
+
+
+def test_escolher_pdm_com_sugestoes_fixas_no_topo_so_sem_busca(qt_interface, qtbot):
+    cat = _catalogo()
+    sugestao = [(cat.pdms[2], "2º lugar: é uma câmera")]
+    j = janelas.JanelaEscolherPDM(None, cat, sugestoes=sugestao)
+    qtbot.addWidget(j)
+    assert _textos(j.lista, 0)[0] == "PDM.5820.010 - CAMERA VIDEO"
+    assert _textos(j.lista, 2)[0] == "★ 2º lugar: é uma câmera"
+    assert _textos(j.lista, 0).count("PDM.5820.010 - CAMERA VIDEO") == 1   # sem repetir
+    assert j.lista.topLevelItem(0).isSelected()
+    j.entry_busca.setText("camera")
+    assert "★ 2º lugar: é uma câmera" not in _textos(j.lista, 2)
+    j.entry_busca.setText("")
+    assert _textos(j.lista, 2)[0] == "★ 2º lugar: é uma câmera"
     j.close()
 
 
@@ -643,14 +777,17 @@ def test_medidas_escolher_pdm(folha, qtbot):
 
 
 def test_medidas_revisao_pdm(folha, qtbot):
+    # 1250x640 desde 2026-10-08 (coluna Confiança e o "por quê" sob a tabela).
     j, _ = _revisao(qtbot)
-    _mostrar(qtbot, j, 1100, 600)
-    assert _geo(j.topo, j) == [10, 10, 1080, 28]
+    assert (j.width(), j.height()) == (1250, 640)
+    _mostrar(qtbot, j, 1250, 640)
+    assert _geo(j.topo, j) == [10, 10, 1230, 28]
     assert _geo(j.rotulo, j)[:2] == [10, 10]
     confirmar, editar = _geo(j.botao_confirmar, j), _geo(j.botao_editar, j)
-    assert confirmar[0] + confirmar[2] == 1085 and confirmar[1] == 10 and confirmar[3] == 28
+    assert confirmar[0] + confirmar[2] == 1235 and confirmar[1] == 10 and confirmar[3] == 28
     assert confirmar[0] - (editar[0] + editar[2]) == 10 and editar[3] == 28
-    assert _geo(j.tree, j) == [10, 48, 1080, 542]
+    assert _geo(j.tree, j) == [10, 48, 1230, 544]
+    assert _geo(j.lbl_porque, j) == [12, 602, 1226, 28]
     j.close()
 
 

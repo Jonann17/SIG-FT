@@ -86,6 +86,29 @@ class JanelaFalsa:
         self.fechada = True
 
 
+class CategorizadorFalso:
+    """O categorizador do serviço, só com o que a tela chama (2026-10-08): as
+    duas passadas e a preparação da revisão moram em `classificar_para_revisao`.
+    As respostas passam pelo `preparar_para_revisao` DE VERDADE (a guarda contra
+    PDM inventado e os avisos no log são do serviço)."""
+
+    modelo_em_uso = "openrouter/google/gemini-2.5-flash"
+    modelo_da_interpretacao = "openrouter/google/gemini-2.5-flash-lite"
+    respostas = []
+    chamadas = []
+
+    def __init__(self, chave):
+        self.chave = chave
+
+    def classificar_para_revisao(self, df, catalogo, codigo_projeto, callback_log=None):
+        type(self).chamadas.append((self.chave, list(df["DESCRIÇÃO"]), catalogo, codigo_projeto,
+                                    threading.current_thread() is threading.main_thread()))
+        callback_log("lote 1/1")
+        linhas = [linha for _i, linha in df.iterrows()]
+        return tela_mod.cria_fichas_svc.preparar_para_revisao(
+            list(self.respostas), linhas, catalogo, None, None, codigo_projeto, callback_log)
+
+
 class RevisaoFalsa(JanelaFalsa):
     """JanelaRevisaoPDM: `finished` é chamado pelo teste (confirmar ou fechar no X)."""
 
@@ -459,20 +482,12 @@ def test_ia_falhando_vira_log_e_devolve_o_botao(tela, qtbot):
 
 
 def test_ia_com_catalogo(tela, qtbot, pd, monkeypatch):
-    lotes = []
-
-    class Categorizador:
-        modelo_em_uso = "openrouter/google/gemini-2.5-flash"
-
-        def __init__(self, chave):
-            self.chave = chave
-
-        def processar_lote(self, df, catalogo, callback_log=None):
-            lotes.append((self.chave, len(df), catalogo, threading.current_thread() is threading.main_thread()))
-            callback_log("lote 1/1")
-            return [{"pdm_escolhido": "PDM.1111.001 - VALVULA", "item_processado": 1},
-                    None,
-                    {"pdm_escolhido": "PDM.9999.999 - INVENTADO", "item_processado": 3}]
+    class Categorizador(CategorizadorFalso):
+        chamadas = []
+        respostas = [{"pdm_escolhido": "PDM.1111.001 - VALVULA", "item_processado": 1,
+                      "confianca": "alta", "justificativa": "é válvula"},
+                     None,
+                     {"pdm_escolhido": "PDM.9999.999 - INVENTADO", "item_processado": 3}]
 
     catalogo = CatalogoFalso()
     carregados = []
@@ -488,13 +503,19 @@ def test_ia_com_catalogo(tela, qtbot, pd, monkeypatch):
     tela.btn_run_ai.click()
     qtbot.waitUntil(lambda: bool(tela.revisoes), timeout=3000)
     assert carregados == ["/d/PDM_MASTER.xlsx"]
-    assert lotes == [("chave-GEMINI", 3, catalogo, False)]
+    # As duas passadas e a guarda vêm do serviço, no worker, com o projeto do clique.
+    assert Categorizador.chamadas == [("chave-GEMINI", ["VALVULA", "PARAFUSO SEXTAVADO M8", "CABO"],
+                                       catalogo, "PROJ-1", False)]
     df = tela.revisoes[0].df
     # A revisão abre com o catálogo novo; o da tela (o do robô) só muda no CONFIRMAR.
     assert tela.revisoes[0].catalogo is catalogo and tela.catalogo is None
     assert list(df["pdm_escolhido"]) == ["PDM.1111.001 - VALVULA", "NENHUM", "NENHUM"]
     assert list(df["codigo_projeto"]) == ["PROJ-1"] * 3
     assert list(df["descricao_original"]) == ["VALVULA", "PARAFUSO SEXTAVADO M8", "CABO"]
+    # O que a revisão mostra (confiança, origem do NENHUM, "por quê") vai junto.
+    assert list(df["origem_do_nenhum"]) == ["", "sem_resposta", "fora_do_catalogo"]
+    assert list(df["pdm_ia"]) == ["PDM.1111.001 - VALVULA", "NENHUM", "NENHUM"]
+    assert df["justificativa"][0] == "é válvula"
     _esperar_log(qtbot, tela, "> Abrindo janela de Revisão...")
     texto = _texto(tela)
     assert "> Processando com IA (openrouter/google/gemini-2.5-flash)..." in texto
@@ -508,23 +529,83 @@ def test_ia_com_catalogo(tela, qtbot, pd, monkeypatch):
     assert tela.catalogo is catalogo and tela.df_processed is df
 
 
+def test_ia_e_revisao_confirmada_grava_a_calibracao_com_os_modelos_do_lote(tela, qtbot, pd, monkeypatch):
+    # 2026-10-08: o que a IA disse x o que a revisão decidiu, para a confiança
+    # virar medição. Os modelos são os da rodada que gerou ESTE lote (viajam
+    # com ele até o CONFIRMAR, como o catálogo e o Excel).
+    gravados = []
+    monkeypatch.setattr(tela_mod.cria_fichas_escolha, "gravar_calibracao",
+                        lambda linhas, modelos=None: gravados.append((linhas, modelos)) or 2)
+
+    class Categorizador(CategorizadorFalso):
+        chamadas = []
+        respostas = [{"pdm_escolhido": "PDM.1111.001 - A"}, {"pdm_escolhido": "NENHUM"}]
+
+    monkeypatch.setattr(backends, "GeminiCategorizer", Categorizador)
+    monkeypatch.setattr(tela_mod.pdm_catalogo, "carregar", lambda p: CatalogoFalso())
+    tela.controller = type("C", (), {"get_key": lambda self, k: "chave"})()
+    tela.df_data_completo = pd.DataFrame({"DESCRIÇÃO": ["A", "B"], "CÓDIGO PMIB": ["", ""]})
+    tela.pos_selecao([0, 1])
+    tela.entry_projeto.setText("PROJ")
+    tela.file_path_pdm = "/d/PDM_MASTER.xlsx"
+    tela.btn_run_ai.setEnabled(True)
+    tela.btn_run_ai.click()
+    qtbot.waitUntil(lambda: bool(tela.revisoes), timeout=3000)
+    assert gravados == []                       # nada antes do CONFIRMAR
+    revisado = tela.revisoes[0].df.copy()
+    revisado.loc[1, "pdm_escolhido"] = "PDM.1111.002 - B"
+    tela.revisoes[0].confirmar(revisado)
+    (linhas, modelos), = gravados
+    assert [linha["pdm_escolhido"] for linha in linhas] == ["PDM.1111.001 - A", "PDM.1111.002 - B"]
+    assert [linha["pdm_ia"] for linha in linhas] == ["PDM.1111.001 - A", "NENHUM"]
+    assert modelos == {"passada_1": "openrouter/google/gemini-2.5-flash-lite",
+                       "passada_2": "openrouter/google/gemini-2.5-flash"}
+    _esperar_log(qtbot, tela, "> Revisão OK. 2 itens prontos.")
+    texto = _texto(tela)
+    assert texto.index("> Calibração: 2 itens registrados.") < texto.index("> Revisão OK.")
+
+
+def test_pular_ia_nao_leva_modelos_para_a_calibracao(tela, qtbot, pd, monkeypatch):
+    gravados = []
+    monkeypatch.setattr(tela_mod.cria_fichas_escolha, "gravar_calibracao",
+                        lambda linhas, modelos=None: gravados.append(modelos) or 0)
+    _selecionar_pular_ia(tela, pd)
+    tela.btn_run_ai.click()
+    qtbot.waitUntil(lambda: bool(tela.revisoes), timeout=3000)
+    tela.revisoes[0].confirmar()
+    assert gravados == [None]
+    _esperar_log(qtbot, tela, "> Revisão OK. 2 itens prontos.")
+    assert "Calibração" not in _texto(tela)    # 0 registrados: nada no log, como lá
+
+
+def test_calibracao_que_falha_nao_trava_a_automacao(tela, qtbot, pd, monkeypatch):
+    def quebrada(linhas, modelos=None):
+        raise OSError("disco cheio")
+
+    monkeypatch.setattr(tela_mod.cria_fichas_escolha, "gravar_calibracao", quebrada)
+    tela._pos_revisao_concluida(pd.DataFrame({"descricao_original": ["A"]}))
+    _esperar_log(qtbot, tela, "> Revisão OK. 1 itens prontos.")
+    assert "> Calibração não registrada: disco cheio" in _texto(tela)
+    assert tela.btn_run_auto.isEnabled()
+
+
 def test_ia_usa_a_selecao_e_a_planilha_do_clique(tela, qtbot, pd, monkeypatch):
     # Correção 1 (revisão E4.9): a IA leva minutos e "Selecionar Excel" continua
     # ligado. Trocar as linhas (ou a planilha de PDMs) no meio não pode pôr as
     # descrições novas sob as respostas que a IA deu para as antigas.
     segurar, entrou, lotes, carregados = threading.Event(), threading.Event(), [], []
 
-    class Categorizador:
-        modelo_em_uso = "modelo"
+    class Categorizador(CategorizadorFalso):
+        respostas = [{"pdm_escolhido": "PDM.1111.001 - A"}, {"pdm_escolhido": "PDM.1111.002 - B"}]
 
         def __init__(self, chave):
-            self.chave = chave
+            super().__init__(chave)
             entrou.set()
             segurar.wait(3)          # a pessoa mexe na tela enquanto isto espera
 
-        def processar_lote(self, df, catalogo, callback_log=None):
+        def classificar_para_revisao(self, df, catalogo, codigo_projeto, callback_log=None):
             lotes.append((self.chave, list(df["DESCRIÇÃO"])))
-            return [{"pdm_escolhido": "PDM.1111.001 - A"}, {"pdm_escolhido": "PDM.1111.002 - B"}]
+            return super().classificar_para_revisao(df, catalogo, codigo_projeto, callback_log)
 
     monkeypatch.setattr(backends, "GeminiCategorizer", Categorizador)
     monkeypatch.setattr(tela_mod.pdm_catalogo, "carregar", lambda p: carregados.append(p) or CatalogoFalso())
@@ -1289,3 +1370,23 @@ def test_nome_longo_da_planilha_de_pdms_nao_alarga_a_tela(tela, qtbot, monkeypat
     assert tela.area_criacao.widget().minimumSizeHint().width() <= antes
     assert tela.lbl_status_pdm.text() == f"Selecionado: {nome}"
     assert tela.lbl_status_pdm.toolTip() == "/x/" + nome
+
+
+# --- a regra da revisão mora no serviço (equivalente Qt de
+# `test_tela_cria_fichas_duas_passadas.py`, lido por AST) ------------------------------
+
+def _chamadas_na_tela():
+    import ast
+    import pathlib
+    arvore = ast.parse(pathlib.Path(tela_mod.__file__).read_text(encoding="utf-8"))
+    return {no.func.attr for no in ast.walk(arvore)
+            if isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)}
+
+
+def test_a_tela_nao_confere_pdm_sozinha():
+    assert "conferir_pdm" not in _chamadas_na_tela()
+    assert "processar_lote" not in _chamadas_na_tela()
+
+
+def test_a_tela_delega_as_duas_passadas_ao_servico():
+    assert {"classificar_para_revisao", "gravar_calibracao"} <= _chamadas_na_tela()
