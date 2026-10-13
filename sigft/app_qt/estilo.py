@@ -23,15 +23,32 @@ ALTURA_BOTAO_BARRA = 40
 _SELETOR_TEXTO = "︎"
 
 
+# Nível (0-255) de "grayNN" no Tk, índice = NN. Vem da tabela X11 (rgb.txt), que NÃO
+# é uma fórmula de arredondamento (gray30 -> 77, mas gray50 -> 127): por isso a tabela
+# literal. Gerada uma vez; não ler rgb.txt em tempo de execução (não existe no Windows).
+_NIVEIS_CINZA_X11 = (
+    0, 3, 5, 8, 10, 13, 15, 18, 20, 23,
+    26, 28, 31, 33, 36, 38, 41, 43, 46, 48,
+    51, 54, 56, 59, 61, 64, 66, 69, 71, 74,
+    77, 79, 82, 84, 87, 89, 92, 94, 97, 99,
+    102, 105, 107, 110, 112, 115, 117, 120, 122, 125,
+    127, 130, 133, 135, 138, 140, 143, 145, 148, 150,
+    153, 156, 158, 161, 163, 166, 168, 171, 173, 176,
+    179, 181, 184, 186, 189, 191, 194, 196, 199, 201,
+    204, 207, 209, 212, 214, 217, 219, 222, 224, 227,
+    229, 232, 235, 237, 240, 242, 245, 247, 250, 252,
+    255,
+)
+
+
 def cinza_tk(nome: str) -> str:
     """`"grayNN"` do Tk em hexadecimal. O Qt não conhece esses nomes e pinta preto."""
     if nome in ("gray", "grey"):
         return "#BEBEBE"
     achado = re.fullmatch(r"gr[ae]y(\d{1,3})", nome)
-    if not achado:
+    if not achado or int(achado.group(1)) > 100:
         return nome
-    # Meio para cima, como o Tk (o round() do Python arredonda meio para o par).
-    valor = (255 * int(achado.group(1)) + 50) // 100
+    valor = _NIVEIS_CINZA_X11[int(achado.group(1))]
     return f"#{valor:02X}{valor:02X}{valor:02X}"
 
 
