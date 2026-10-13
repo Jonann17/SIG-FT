@@ -98,8 +98,10 @@ class Abas(QWidget):
     def add(self, nome: str) -> QWidget:
         if nome in self.abas:
             raise ValueError(f"Já existe uma aba chamada {nome!r}")
-        aba = QWidget()
-        aba.setStyleSheet("background: transparent;")
+        aba = QWidget(objectName="aba_abas")
+        # COM seletor: "background: transparent" solto vale para todos os
+        # descendentes e apagava o fundo do cartão e dos botões da aba.
+        aba.setStyleSheet("#aba_abas { background: transparent; }")
         layout = QVBoxLayout(aba)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)

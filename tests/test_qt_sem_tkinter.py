@@ -56,6 +56,7 @@ def _importa_sem_tk(modulo):
     "sigft.app_qt.views.translator",
     "sigft.app_qt.views.apagar_lmr",
     "sigft.app_qt.views.lmr",
+    "sigft.app_qt.views.aplicacao_lmr",
     "sigft.app_qt.widgets.controles",
     "sigft.app.atualizacao_textos",
     "sigft.app_qt.atualizacao",

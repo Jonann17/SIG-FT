@@ -78,6 +78,11 @@ class ModuleFrame(DialogosDeEspera, QWidget):
             rolagem = QScrollArea()
             rolagem.setWidgetResizable(True)
             rolagem.setWidget(self.content)
+            # Transparente como o CTkScrollableFrame(fg_color="transparent") de
+            # lá: o `setWidget` liga o autoFill do conteúdo, que pintava a
+            # paleta clara do Qt atrás do cartão.
+            self.content.setAutoFillBackground(False)
+            rolagem.viewport().setAutoFillBackground(False)
             raiz.setContentsMargins(0, 0, 0, 0)
             raiz.addWidget(rolagem)
         else:

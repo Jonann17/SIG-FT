@@ -76,6 +76,29 @@ def test_abas_geometria_do_ctktabview(qt_interface, qtbot, folha_do_app):
     assert barra.width() == sum(x.width() for x in abas.botoes.values())
 
 
+def test_abas_nao_apaga_o_fundo_do_que_vai_dentro(qt_interface, qtbot, folha_do_app):
+    # A folha "background: transparent" SEM seletor na aba valia para todos os
+    # descendentes: o cartão e os botões da tela embutida perdiam o fundo
+    # (Aplicação LMR, Task 8 da Etapa 2).
+    from PySide6.QtGui import QColor
+    abas = Abas()
+    aba = abas.add("A")
+    cartao = blocos.cartao(aba.layout())
+    botao = blocos.botao("Iniciar", variante="primario", largura=200, altura=50)
+    cartao.addWidget(botao)
+    abas.setFixedSize(420, 300)
+    recipiente = _mostrar(qtbot, abas)  # noqa: F841 -- segura vivo
+    quadro_cartao = botao.parentWidget()
+    imagem = abas.grab().toImage()
+
+    def cor(w, dx, dy):
+        p = w.mapTo(abas, w.rect().topLeft())
+        return QColor(imagem.pixel(p.x() + dx, p.y() + dy)).name().upper()
+
+    assert cor(quadro_cartao, 3, quadro_cartao.height() // 2) == theme.COR_CARTAO.upper()
+    assert cor(botao, 5, 25) == theme.COLORS["primary"].upper()
+
+
 def test_abas_cores_por_parametro(qt_interface, qtbot):
     # As telas pintam fg_color="#2B2B2B", segmented_button_fg_color="#161616" e
     # o selecionado em primary.

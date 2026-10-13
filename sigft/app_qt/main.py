@@ -31,8 +31,10 @@ from PySide6.QtWidgets import (
 from sigft import _build_info
 from sigft.app import backends, theme
 from sigft.app_qt import atualizacao, catalogo, estilo, interface
+from sigft.app_qt.views.aplicacao_lmr import ModuloAplicacaoLMR
 from sigft.app_qt.views.home import HomeView
 from sigft.app_qt.views.nao_migrada import TelaComErro, TelaNaoMigrada
+from sigft.app_qt.views.translator import ModuloTranslator
 from sigft.core import instancia
 from sigft.core.saida_log import desviar_saida_para_arquivo
 
@@ -47,6 +49,9 @@ _RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 # de etapa acrescenta as suas aqui.
 TELAS = {
     "Home": lambda parent, controller: HomeView(parent, controller),
+    # Etapa 2 (pilotos): Tradutor e a seção Aplicação LMR (Upload + Exclusão).
+    "Translator": lambda parent, controller: ModuloTranslator(parent, controller),
+    "LMR": lambda parent, controller: ModuloAplicacaoLMR(parent, controller),
 }
 
 
