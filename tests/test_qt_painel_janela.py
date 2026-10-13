@@ -64,3 +64,22 @@ def test_medidas_do_customtkinter(qt_interface, qtbot, folha_do_app):
     assert botao.y() - (area.y() + area.height()) == 10
     assert janela.height() - (botao.y() + botao.height()) == 12
     assert abs((botao.x() + botao.width() / 2) - janela.width() / 2) <= 1
+
+
+def test_sai_do_registro_ao_fechar_e_ao_ser_destruida(qt_interface, qtbot):
+    from PySide6.QtWidgets import QWidget
+
+    from sigft.app_qt.widgets import painel_janela
+
+    sem_pai = JanelaPainel(None, titulo="x", montar=lambda p: None)
+    assert id(sem_pai) in painel_janela._ABERTAS
+    sem_pai.close()
+    assert id(sem_pai) not in painel_janela._ABERTAS
+
+    pai = QWidget()
+    com_pai = JanelaPainel(pai, titulo="y", montar=lambda p: None)
+    chave = id(com_pai)
+    assert chave in painel_janela._ABERTAS
+    pai.deleteLater()
+    del com_pai
+    qtbot.waitUntil(lambda: chave not in painel_janela._ABERTAS, timeout=2000)

@@ -20,7 +20,7 @@ from sigft.app_qt import estilo
 LARGURA_TRILHO, ALTURA_TRILHO, BORDA_TRILHO = 36, 18, 3
 VAO_TEXTO_INTERRUPTOR = 6
 ALTURA_INTERRUPTOR = 24
-COR_TRILHO = "#4A4D50"          # CTkSwitch fg_color
+COR_TRILHO = estilo.TRILHO_CTK   # CTkSwitch fg_color (o mesmo da barra e do slider)
 COR_BOTAO_INTERRUPTOR = "#D5D9DE"
 COR_BOTAO_INTERRUPTOR_HOVER = "#FFFFFF"   # gray100
 COR_TEXTO_CTK = estilo.cinza_tk("gray84")

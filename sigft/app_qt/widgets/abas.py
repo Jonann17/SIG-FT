@@ -9,13 +9,21 @@ captura da E3.1:
   27 na tela);
 * o quadro começa 18 px abaixo do topo (os 10 livres + os 8 da barra que
   ficam acima dele, `_outer_button_overhang`), cantos de 6;
-* o conteúdo da aba começa em x=6, y=42 (36 da barra + 6 do canto) e termina
+* o conteúdo da aba começa em x=6, y=43 (37 da barra + 6 do canto) e termina
   6 px antes da borda de baixo e da direita;
 * cada botão: texto + 14 px (6 do canto + 1 do rótulo do Tk, dos dois lados),
   borda de 3 na cor da barra -- o selecionado é o miolo azul dentro dela.
 
 API como a do CTkTabview: `add(nome)` devolve o QWidget da aba (com um
-QVBoxLayout), `tab(nome)`, `set(nome)`, `get()`.
+QVBoxLayout), `tab(nome)`, `set(nome)`, `get()`. Nome repetido em `add` ou
+desconhecido em `tab`/`set` levanta ValueError, como lá.
+
+Limites (o que o CTkTabview também não faz, ou que nenhuma tela usa):
+* a largura de cada botão é fixada quando a aba é criada (texto + 14): mudar o
+  texto ou a fonte depois não a refaz; não há `delete`, `rename` nem `insert`;
+* sem teclado: as setas não trocam de aba (no CTk também não); Tab foca cada botão;
+* só `anchor="n"` (barra em cima, centrada) -- o único que as telas usam;
+* a barra não encolhe: abas que não cabem na largura alargam o widget.
 """
 from __future__ import annotations
 
@@ -31,8 +39,8 @@ ESPACO_ACIMA = 10
 ALTURA_BARRA = 26
 SOBRA_DA_BARRA = 8          # quanto da barra fica ACIMA do quadro
 # Na captura a barra tem 27 px, não 26 (o CTkSegmentedButton arredonda para
-# cima). A grade continua com 26 -- o quadro e o conteúdo não andam --, e a barra
-# desce 1 px a mais sobre o quadro.
+# cima), e no Tk ela alarga a linha 2 da grade para 19: o quadro continua em 18,
+# mas o conteúdo da aba começa em 43 (medido com winfo), não em 42.
 ALTURA_BARRA_VISIVEL = 27
 CANTO = 6
 BORDA_BOTAO = 3
@@ -69,15 +77,15 @@ class Abas(QWidget):
         grade.setSpacing(0)
         grade.setRowMinimumHeight(0, ESPACO_ACIMA)
         grade.setRowMinimumHeight(1, SOBRA_DA_BARRA)
-        grade.setRowMinimumHeight(2, ALTURA_BARRA - SOBRA_DA_BARRA)
+        grade.setRowMinimumHeight(2, ALTURA_BARRA_VISIVEL - SOBRA_DA_BARRA)
         grade.setRowStretch(3, 1)
 
         self.quadro = QFrame(objectName="quadro_abas")
         self.quadro.setStyleSheet(
             f"#quadro_abas {{ background: {self.cor_fundo}; border-radius: {CANTO}px; }}")
         dentro = QVBoxLayout(self.quadro)
-        # 24 = o que sobra da barra dentro do quadro (18) + o canto (6).
-        dentro.setContentsMargins(CANTO, ALTURA_BARRA - SOBRA_DA_BARRA + CANTO, CANTO, CANTO)
+        # 25 = o que sobra da barra dentro do quadro (19) + o canto (6).
+        dentro.setContentsMargins(CANTO, ALTURA_BARRA_VISIVEL - SOBRA_DA_BARRA + CANTO, CANTO, CANTO)
         self.pilha = QStackedWidget()
         self.pilha.setStyleSheet("QStackedWidget { background: transparent; }")
         dentro.addWidget(self.pilha)
@@ -122,9 +130,11 @@ class Abas(QWidget):
         return aba
 
     def tab(self, nome: str) -> QWidget:
+        self._conferir(nome)
         return self.abas[nome]
 
     def set(self, nome: str) -> None:
+        self._conferir(nome)
         self.botoes[nome].setChecked(True)
         self.pilha.setCurrentWidget(self.abas[nome])
 
@@ -133,6 +143,10 @@ class Abas(QWidget):
         return next((n for n, a in self.abas.items() if a is atual), "")
 
     # -- interno -------------------------------------------------------------
+    def _conferir(self, nome: str) -> None:
+        if nome not in self.abas:
+            raise ValueError(f"Não existe aba chamada {nome!r}")
+
     def _clicou(self, nome: str) -> None:
         self.set(nome)
         if self._ao_mudar is not None:

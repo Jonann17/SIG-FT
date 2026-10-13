@@ -102,10 +102,8 @@ def test_medidas_iguais_as_do_customtkinter(folha, qtbot):
         rolagem = tela.content.parentWidget().parentWidget()  # viewport -> QScrollArea
         vista = rolagem.viewport()
         p = _pos(vista, t)
-        # y/altura: +-1 porque o `Abas` põe o conteúdo a 42 px do topo e o
-        # CTkTabview a 43 (a barra de 27 alarga a linha 2 da grade do Tk em 1 px).
-        assert p.x() == 52 and abs(p.y() - 128) <= 1
-        assert vista.width() == 888 and abs(vista.height() - 510) <= 1
+        assert p.x() == 52 and p.y() == 128
+        assert vista.width() == 888 and vista.height() == 510
         cartao = tela.btn_run.parentWidget()
         assert _pos(cartao, t).y() - p.y() == 20
         # O cartão e o botão grande mantêm o fundo dentro da aba.

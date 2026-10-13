@@ -54,12 +54,17 @@ def test_abas_add_tab_set_get_e_aviso(qt_interface, qtbot):
     assert abas.botoes["Processamento IA (Gerar Excel)"].isChecked()
     with pytest.raises(ValueError):
         abas.add("Robô Web (Preencher Portal)")
+    # nome desconhecido: ValueError, como o CTkTabview (e não KeyError)
+    with pytest.raises(ValueError):
+        abas.set("Não existe")
+    with pytest.raises(ValueError):
+        abas.tab("Não existe")
 
 
 def test_abas_geometria_do_ctktabview(qt_interface, qtbot, folha_do_app):
     # Medido na captura: barra de 27 px (26 do CTk + 1 de arredondamento) a 10 px do topo, centrada; o quadro
     # começa 18 px abaixo do topo (a barra entra 18 px nele); o conteúdo da aba
-    # começa em y=42 e x=6 (canto de 6 px). Cada botão: texto + 14 px.
+    # começa em y=43 e x=6 (canto de 6 px). Cada botão: texto + 14 px.
     abas = Abas()
     aba = abas.add("Processamento IA (Gerar Excel)")
     abas.add("Robô Web")
@@ -70,7 +75,8 @@ def test_abas_geometria_do_ctktabview(qt_interface, qtbot, folha_do_app):
     assert abs((barra.x() + barra.width() / 2) - abas.width() / 2) <= 1
     assert quadro.y() == 18 and quadro.height() == 200 - 18 and quadro.width() == 420
     topo = aba.mapTo(abas, aba.rect().topLeft())
-    assert (topo.x(), topo.y()) == (6, 42)
+    assert (topo.x(), topo.y()) == (6, 43)  # winfo no CTk: 43
+    assert aba.height() == 200 - 43 - 6  # winfo no CTk: 151
     b = abas.botoes["Robô Web"]
     assert b.width() == b.fontMetrics().horizontalAdvance("Robô Web") + 14
     assert barra.width() == sum(x.width() for x in abas.botoes.values())
@@ -191,3 +197,69 @@ def test_fonte_tk_pixel_ou_ponto(qt_interface):
     g = blocos.fonte_tk(("Consolas", 11), em_pontos=True)
     assert g.pointSize() == 11 and not g.bold()
     assert g.families()[0] == "Consolas"
+
+
+def test_barra_indeterminada_liga_e_desliga(qt_interface, qtbot):
+    # cria_fichas: configure(mode="indeterminate") + start() ... stop().
+    barra = blocos.barra_progresso(largura=200)
+    qtbot.addWidget(barra)
+    blocos.definir_progresso(barra, 0.5)
+    blocos.modo_indeterminado(barra, True)
+    assert (barra.minimum(), barra.maximum()) == (0, 0)
+    blocos.definir_progresso(barra, 0.7)  # não escreve nada com a faixa 0-0
+    assert (barra.minimum(), barra.maximum()) == (0, 0)
+    blocos.modo_indeterminado(barra, False)
+    assert (barra.minimum(), barra.maximum(), barra.value()) == (0, 1000, 0)
+    blocos.definir_progresso(barra, 1.0)
+    assert barra.value() == 1000
+
+
+def test_tabela_com_as_cores_do_windows(qt_interface, monkeypatch):
+    import sys
+    monkeypatch.setattr(sys, "platform", "win32")
+    qss = estilo.folha_de_estilo()
+    assert "selection-background-color: #0078D7" in qss
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert "#0078D7" not in estilo.folha_de_estilo()
+
+
+def test_botao_com_cor_de_fundo_e_hover_do_tema(qt_interface, qtbot):
+    b = blocos.botao("Adicionar", cor_fundo="#3A3A3A", altura=28)
+    qtbot.addWidget(b)
+    assert "background: #3A3A3A" in b.styleSheet()
+    assert f"QPushButton:hover {{ background: {estilo.AZUL_CTK_HOVER}; }}" in b.styleSheet()
+    c = blocos.botao("x", cor_fundo="#3A3A3A", cor_hover="#454545")
+    qtbot.addWidget(c)
+    assert "#454545" in c.styleSheet()
+
+
+def test_uma_cor_de_trilho_so(qt_interface):
+    from sigft.app_qt.widgets import controles
+    assert controles.COR_TRILHO == estilo.TRILHO_CTK
+
+
+def test_sem_regras_de_qtabwidget(qt_interface):
+    # O CTkTabview é `Abas`; regra de QTabWidget seria código morto.
+    assert "QTabBar" not in estilo.folha_de_estilo() and "QTabWidget" not in estilo.folha_de_estilo()
+
+
+def test_area_rolavel_nao_apaga_o_fundo_dos_filhos(qt_interface, qtbot, folha_do_app):
+    # "background: transparent" sem seletor valia para TODO descendente: o cartão
+    # e o botão dentro da área perdiam o fundo.
+    from PySide6.QtGui import QImage
+
+    area, layout = blocos.area_rolavel(cor="#2B2B2B")
+    cartao = blocos.cartao(layout)
+    botao = blocos.botao("Gerar", variante="perigo", largura=120, altura=40)
+    cartao.addWidget(botao)
+    area.resize(400, 300)
+    recipiente = _mostrar(qtbot, area)  # noqa: F841 -- segura vivo
+    imagem = area.grab().toImage()
+    quadro = cartao.parentWidget()
+    ponto_cartao = quadro.mapTo(area, quadro.rect().topLeft())
+    cor_cartao = imagem.pixelColor(ponto_cartao.x() + 10, ponto_cartao.y() + 5).name().upper()
+    centro = botao.mapTo(area, botao.rect().center())
+    cor_botao = imagem.pixelColor(centro.x() - 50, centro.y()).name().upper()
+    assert cor_cartao == theme.COR_CARTAO.upper()
+    assert cor_botao == theme.COLORS["danger"].upper()
+    assert isinstance(imagem, QImage)

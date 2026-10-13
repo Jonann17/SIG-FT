@@ -57,7 +57,10 @@ def rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, cor: str | N
 
 def botao(texto: str, *, variante: str | None = None, largura: int | None = None,
           altura: int | None = None, tamanho_fonte: int | None = None,
-          negrito: bool = False, cor_texto: str | None = None) -> QPushButton:
+          negrito: bool = False, cor_texto: str | None = None, cor_fundo: str | None = None,
+          cor_hover: str = estilo.AZUL_CTK_HOVER) -> QPushButton:
+    """`cor_fundo` é o `fg_color` de um CTkButton pintado à mão; `cor_hover`, o
+    `hover_color` (sem ele, o CTk usa o do tema: AZUL_CTK_HOVER)."""
     b = QPushButton(texto)
     if variante:
         b.setProperty("variante", variante)
@@ -76,11 +79,14 @@ def botao(texto: str, *, variante: str | None = None, largura: int | None = None
     if negrito:
         folha += " font-weight: bold;"
     extra = ""
+    if cor_fundo:
+        folha += f" background: {cor_fundo};"
+        extra += f" QPushButton:hover {{ background: {cor_hover}; }}"
     if cor_texto:
         folha += f" color: {cor_texto};"
         # A folha do botão ganha da do app em TODOS os estados: sem repetir o
         # desabilitado aqui, o texto ficaria com `cor_texto` mesmo desligado.
-        extra = f" QPushButton:disabled {{ color: {estilo.cinza_tk(estilo.TEXTO_DESABILITADO_CTK)}; }}"
+        extra += f" QPushButton:disabled {{ color: {estilo.cinza_tk(estilo.TEXTO_DESABILITADO_CTK)}; }}"
     if folha:
         b.setStyleSheet(f"QPushButton {{{folha} }}{extra}")
     return b
@@ -131,6 +137,12 @@ def folha_fonte_tk(tupla, *, em_pontos: bool = False) -> str:
     return f"font-family: {familias}; font-size: {tamanho}; font-weight: {peso};"
 
 
+def geometria_tk(texto: str) -> tuple[int, int]:
+    """O `geometry("900x600")` do Tk (com ou sem "+x+y") em (largura, altura)."""
+    largura, altura = texto.lower().split("+")[0].split("x")
+    return int(largura), int(altura)
+
+
 def area_rolavel(layout_pai=None, *, cor: str | None = None, margem: int = 6):
     """CTkScrollableFrame: devolve `(area, layout)` -- os filhos vão no `layout`.
 
@@ -140,29 +152,26 @@ def area_rolavel(layout_pai=None, *, cor: str | None = None, margem: int = 6):
     gray41 de 8) e aparece só quando há o que rolar -- a mesma decisão da barra
     lateral (main.py): lá ela é um traço sempre visível que não rola nada.
     """
-    area = QScrollArea()
+    # Folhas SEMPRE com seletor de objectName: uma "background: transparent"
+    # solta vale para todos os descendentes e apagava o fundo de cartões e
+    # botões postos na área.
+    area = QScrollArea(objectName="area_rolavel")
     area.setWidgetResizable(True)
     area.setFrameShape(QFrame.Shape.NoFrame)
     area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     fundo = estilo.cinza_tk(cor) if cor else "transparent"
-    area.setStyleSheet(f"QScrollArea {{ background: {fundo}; border: none; border-radius: 6px; }}")
-    area.viewport().setStyleSheet("background: transparent;")
-    interno = QWidget()
-    interno.setStyleSheet("background: transparent;")
+    area.setStyleSheet(f"#area_rolavel {{ background: {fundo}; border: none; border-radius: 6px; }}")
+    area.viewport().setObjectName("area_rolavel_vista")
+    area.viewport().setStyleSheet("#area_rolavel_vista { background: transparent; }")
+    interno = QWidget(objectName="area_rolavel_interno")
+    interno.setStyleSheet("#area_rolavel_interno { background: transparent; }")
     layout = QVBoxLayout(interno)
     layout.setContentsMargins(margem, margem, margem, margem)
     layout.setSpacing(0)
     layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     area.setWidget(interno)
-    folga = (estilo.LARGURA_ROLAGEM_CTK - 8) // 2
-    area.verticalScrollBar().setStyleSheet(
-        f"QScrollBar:vertical {{ width: {estilo.LARGURA_ROLAGEM_CTK}px; background: transparent;"
-        f" margin: {margem + folga}px 0 {margem + folga}px 0; }}"
-        f" QScrollBar::handle:vertical {{ background: {estilo.cinza_tk('gray41')}; border-radius: 4px;"
-        f" margin: 0 {folga}px; min-height: 20px; }}"
-        f" QScrollBar::handle:vertical:hover {{ background: {estilo.cinza_tk('gray53')}; }}"
-        " QScrollBar::add-line, QScrollBar::sub-line { height: 0; }"
-        " QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }")
+    # A alça começa no canto do quadro (margem) + os 4 do border_spacing.
+    area.verticalScrollBar().setStyleSheet(estilo.folha_rolagem_ctk(margem_vertical=margem + 4))
     if layout_pai is not None:
         layout_pai.addWidget(area)
     return area, layout
@@ -197,12 +206,30 @@ def definir_progresso(barra: QProgressBar, fracao: float) -> None:
     O CTk desenha o trecho cheio com as pontas redondas DENTRO da barra: com
     raio r e largura L, ele vai até r + fracao * (L - 2r) + r -- em 0 já há um
     ponto de 2r, e em 40% de 200 x 8 o fim está em 84,8 (o `setValue` cru daria 80).
+    Com a barra em modo indeterminado, não faz nada (lá o `set` também não aparece
+    enquanto a animação corre); o valor volta a contar depois de `modo_indeterminado(barra, False)`.
     """
+    if barra.maximum() == barra.minimum():
+        return  # em modo indeterminado (faixa 0-0) um valor não quer dizer nada
     fracao = min(max(float(fracao), 0.0), 1.0)
     largura = barra.width() or 1
     raio = barra.height() / 2
     cheio = 2 * raio + fracao * (largura - 2 * raio)
     barra.setValue(round(barra.maximum() * min(cheio / largura, 1.0)))
+
+
+def modo_indeterminado(barra: QProgressBar, ligado: bool) -> None:
+    """O `configure(mode="indeterminate")` + `start()`/`stop()` do CTkProgressBar.
+
+    Ligado: faixa 0-0, que o Qt anima sozinho (o bloco que vai e vem). Desligado:
+    volta à faixa 0-1000 de `barra_progresso`, em zero (o `stop()` + `set(0)` que a
+    tela fazia).
+    """
+    if ligado:
+        barra.setRange(0, 0)
+    else:
+        barra.setRange(0, 1000)
+        barra.setValue(0)
 
 
 def slider(*, minimo: int = 0, maximo: int = 100, largura: int = 200, cor_botao: str | None = None,

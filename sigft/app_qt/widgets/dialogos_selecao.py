@@ -20,6 +20,8 @@ lista quando a tela pede. Ver a nota longa no `SelecaoMultiplaDialog` do CTk.
 """
 from __future__ import annotations
 
+import functools
+
 from PySide6.QtCore import QEvent, QEventLoop, QObject, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView, QDialog, QHBoxLayout, QHeaderView, QLabel, QListWidget, QMessageBox,
@@ -30,30 +32,23 @@ from sigft.app import theme
 from sigft.app.textos_dialogos import TEXTOS_TRAVADOS
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos
+from sigft.app_qt.widgets.dialogs import SoltaAoFechar
 
 # Diálogo aberto sem pai (ou cujo pai some) precisa de uma referência viva
-# enquanto está na tela; sai daqui quando fecha.
-_ABERTOS: set = set()
+# enquanto está na tela; sai daqui quando fecha. Chave = id(): a conexão que o
+# tira daqui não pode guardar o próprio diálogo (seria um ciclo que o prende).
+_ABERTOS: dict = {}
 
 
+def _esquecer(chave: int, *_sinal) -> None:
+    _ABERTOS.pop(chave, None)
 
-def _folha_de_fundo(cor: str) -> str:
-    """Botão com `fg_color` e sem `hover_color` no CTk: o fundo pedido e o hover do tema."""
-    return (f"QPushButton {{ background: {cor}; }}"
-            f" QPushButton:hover {{ background: {estilo.AZUL_CTK_HOVER}; }}")
-
-
-def _geometria(texto: str) -> tuple[int, int]:
-    """"900x600" do Tk em (900, 600)."""
-    largura, altura = texto.lower().split("+")[0].split("x")
-    return int(largura), int(altura)
 
 
 def _botao(texto: str, *, largura: int | None = None, variante: str | None = None,
            cor: str | None = None):
-    b = blocos.botao(texto, variante=variante, largura=largura, altura=28)
-    if cor:
-        b.setStyleSheet(b.styleSheet() + " " + _folha_de_fundo(cor))
+    # `cor`: fg_color sem hover_color no CTk -> o hover é o do tema.
+    b = blocos.botao(texto, variante=variante, largura=largura, altura=28, cor_fundo=cor)
     # Enter não confirma sozinho: o Tk não ligava tecla nenhuma nestas janelas.
     b.setAutoDefault(False)
     b.setDefault(False)
@@ -78,13 +73,14 @@ class _JanelaQueAbre(QDialog):
     def __init__(self, parent, *, titulo: str, geometria: str, modal: bool) -> None:
         super().__init__(parent)
         self.setWindowTitle(titulo)
-        self.resize(*_geometria(geometria))
+        self.resize(*blocos.geometria_tk(geometria))
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         if modal:
             self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self._escolha = None
-        _ABERTOS.add(self)
-        self.finished.connect(lambda _r: _ABERTOS.discard(self))
+        self._laco: QEventLoop | None = None
+        _ABERTOS[id(self)] = self
+        self.finished.connect(functools.partial(_esquecer, id(self)))
 
     def _abrir(self) -> None:
         self.show()
@@ -95,10 +91,18 @@ class _JanelaQueAbre(QDialog):
         """O `wait_window` do CTk: volta quando a janela fecha, sem parar o laço
         de eventos. Devolve o que foi confirmado, ou None."""
         if self.isVisible():
-            laco = QEventLoop()
-            self.finished.connect(laco.quit)
-            laco.exec()
+            self._laco = QEventLoop()
+            self.finished.connect(self._laco.quit)
+            self._laco.exec()
+            self._laco = None
         return self._escolha
+
+    def hideEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
+        # Escondida por fora (hide(), o pai fechando) sem passar por done():
+        # o `esperar()` também tem de voltar.
+        if self._laco is not None:
+            self._laco.quit()
+        super().hideEvent(evento)
 
     def _confirmar_com(self, escolha, ao_confirmar) -> None:
         self._escolha = escolha
@@ -326,17 +330,30 @@ class _EsticaColunas(QObject):
         return False
 
 
-class ArquivosTravadosDialog(QDialog):
+class ArquivosTravadosDialog(SoltaAoFechar, QDialog):
     """Arquivos que não puderam ser gravados, cada um com o motivo e o que fazer;
     Repetir x Seguir. A decisão volta em `resultado["repetir"]`.
 
     `itens`: `(nome, motivo, o_que_fazer)`; `momento`: "antes", "depois" ou
     "na_hora" (`TEXTOS_TRAVADOS`). Sem modal: a pessoa vai ao Excel fechar os
     arquivos com a janela aberta. "X" e Esc = Seguir.
+
+    Janela INDEPENDENTE, como o CTkToplevel de lá (sem `transient()`): tem botão
+    de minimizar e entrada própria na barra de tarefas, e não vai junto quando a
+    janela principal minimiza -- o original diz à pessoa para ir ao Excel e
+    "minimizar esta janela, se quiser". Por isso nasce SEM pai Qt (um QDialog com
+    pai é "possuído" pela janela principal no Windows); `parent` fica em
+    `self.dono` só como referência. Sempre por cima, como o `-topmost` de lá
+    (que também ficava por cima do Excel enquanto não minimizada).
     """
 
     def __init__(self, parent=None, *, itens, momento, evento_espera, resultado: dict) -> None:
-        super().__init__(parent)
+        super().__init__(None)
+        self.dono = parent
+        self.setWindowFlags(
+            Qt.WindowType.Window | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowSystemMenuHint
+            | Qt.WindowType.WindowMinimizeButtonHint | Qt.WindowType.WindowCloseButtonHint
+            | Qt.WindowType.WindowStaysOnTopHint)
         textos = TEXTOS_TRAVADOS[momento]
         self.itens = [tuple(item) for item in itens]
         self._evento = evento_espera
@@ -344,7 +361,6 @@ class ArquivosTravadosDialog(QDialog):
         self._decidido = False
         self.setWindowTitle(textos["titulo"])
         self.resize(620, 380)
-        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
 
         layout = QVBoxLayout(self)
         # pady do Tk somados: (16, 6) | 4 | (6, 4) | (4, 16).
@@ -395,13 +411,6 @@ class ArquivosTravadosDialog(QDialog):
         self._responder(False)
         self.reject()
 
-    def reject(self) -> None:
-        """Esc chega aqui sem passar pelo `closeEvent`: também solta o worker."""
-        if not self._decidido:
-            self._responder(False)
-        super().reject()
-
-    def closeEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
-        if not self._decidido:
-            self._responder(False)
-        super().closeEvent(evento)
+    def _ao_fechar_sem_decidir(self) -> None:
+        """"X", Esc ou qualquer `reject()` sem decisão = Seguir (`SoltaAoFechar`)."""
+        self._responder(False)

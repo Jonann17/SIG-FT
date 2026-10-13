@@ -308,3 +308,43 @@ def test_falha_ao_abrir_a_lista_de_travados_solta_o_worker(qt_interface, qtbot, 
     qtbot.waitUntil(lambda: not t.is_alive(), timeout=3000)
     assert respostas == [False]  # resposta segura: Seguir
     assert "falha de construcao" in capsys.readouterr().err
+
+
+def test_travados_minimiza_e_e_janela_independente(qt_interface, qtbot):
+    # O original manda a pessoa ir ao Excel e "minimizar esta janela, se quiser":
+    # CTkToplevel sem transient() -- janela própria, com minimizar, sempre por cima.
+    tela = Tela()
+    qtbot.addWidget(tela)
+    dlg = qd.ArquivosTravadosDialog(tela, itens=ITENS, momento="antes",
+                                    evento_espera=threading.Event(), resultado={})
+    qtbot.addWidget(dlg)
+    flags = dlg.windowFlags()
+    assert flags & Qt.WindowType.WindowMinimizeButtonHint
+    assert flags & Qt.WindowType.WindowCloseButtonHint
+    assert flags & Qt.WindowType.WindowStaysOnTopHint
+    assert dlg.parent() is None and dlg.dono is tela  # não "possuída" pela janela principal
+    assert dlg.windowModality() == Qt.WindowModality.NonModal
+
+
+def test_perguntar_arquivos_travados_da_thread_da_interface(qt_interface, qtbot):
+    # Sem worker (um clique que grava direto): `exec()`, que bloqueia sem parar o
+    # laço de eventos. Aqui a janela fica modal -- ver o relatório da E3.1.
+    from PySide6.QtCore import QTimer
+
+    tela = Tela()
+    qtbot.addWidget(tela)
+
+    def clicar():
+        _abertos(qd.ArquivosTravadosDialog)[0].botao_repetir.click()
+
+    QTimer.singleShot(50, clicar)
+    assert tela.perguntar_arquivos_travados([_falha(*ITENS[0])], "na_hora") is True
+
+
+def test_esperar_volta_quando_a_janela_e_escondida_por_fora(qt_interface, qtbot):
+    from PySide6.QtCore import QTimer
+
+    dlg = qd.SelecaoMultiplaDialog(None, itens=["a"], modal=True)
+    qtbot.addWidget(dlg)
+    QTimer.singleShot(50, dlg.hide)
+    assert dlg.esperar() is None

@@ -200,16 +200,11 @@ class FileQueueList(QWidget):
         coluna.setContentsMargins(0, 0, 0, 0)
         coluna.setSpacing(10)  # pady=5 de cada botão: 5 + 5 entre dois
         coluna.addSpacing(5)
-        self.botao_adicionar = blocos.botao(texto_adicionar, largura=estilo.LARGURA_BOTAO_CTK, altura=28)
-        self.botao_adicionar.setStyleSheet(
-            self.botao_adicionar.styleSheet()
-            + f" QPushButton {{ background: {COR_BOTAO_SELECAO}; }}"
-            + f" QPushButton:hover {{ background: {estilo.AZUL_CTK_HOVER}; }}")
-        self.botao_remover = blocos.botao("Remover Seleção", largura=estilo.LARGURA_BOTAO_CTK, altura=28)
-        self.botao_remover.setStyleSheet(
-            self.botao_remover.styleSheet()
-            + f" QPushButton {{ background: {theme.COLORS['danger']}; }}"
-            + f" QPushButton:hover {{ background: {estilo.AZUL_CTK_HOVER}; }}")
+        # fg_color sem hover_color lá: o hover é o do tema (padrão de `cor_hover`).
+        self.botao_adicionar = blocos.botao(texto_adicionar, largura=estilo.LARGURA_BOTAO_CTK, altura=28,
+                                            cor_fundo=COR_BOTAO_SELECAO)
+        self.botao_remover = blocos.botao("Remover Seleção", largura=estilo.LARGURA_BOTAO_CTK, altura=28,
+                                          cor_fundo=theme.COLORS["danger"])
         self.botao_limpar = blocos.botao("Limpar Tudo", variante="contorno",
                                          largura=estilo.LARGURA_BOTAO_CTK, altura=28,
                                          cor_texto=estilo.TEXTO_BOTAO_CTK)

@@ -23,20 +23,15 @@ ALTURA_LINHA_CAIXA = 28
 VAO_TEXTO_CAIXA = 6
 
 
-class _DialogoDeAcaoManual(QDialog):
-    def __init__(self, parent, *, titulo: str, mensagem: str, largura: int, altura: int) -> None:
-        super().__init__(parent)
-        self.setWindowTitle(titulo)
-        self.setFixedSize(largura, altura)
-        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
-        self._decidido = False
-        self.layout_principal = QVBoxLayout(self)
-        self.layout_principal.setContentsMargins(20, 20, 20, 20)
-        self.rotulo = QLabel(mensagem)
-        self.rotulo.setWordWrap(True)
-        self.rotulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.rotulo.setStyleSheet("font-size: 13px;")
-        self.layout_principal.addWidget(self.rotulo, 1)
+class SoltaAoFechar:
+    """Mixin (antes do QDialog) das janelas em que um worker espera a resposta.
+
+    Fechar no "X", Esc ou qualquer `reject()` responde `_ao_fechar_sem_decidir()`
+    se ninguém decidiu ainda -- sem isso a thread do robô fica presa em
+    `Event.wait()`. Quem decide (um botão) põe `_decidido = True` antes.
+    """
+
+    _decidido = False
 
     def _ao_fechar_sem_decidir(self) -> None:
         raise NotImplementedError
@@ -53,6 +48,22 @@ class _DialogoDeAcaoManual(QDialog):
         if not self._decidido:
             self._ao_fechar_sem_decidir()
         super().closeEvent(evento)
+
+
+class _DialogoDeAcaoManual(SoltaAoFechar, QDialog):
+    def __init__(self, parent, *, titulo: str, mensagem: str, largura: int, altura: int) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(titulo)
+        self.setFixedSize(largura, altura)
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        self._decidido = False
+        self.layout_principal = QVBoxLayout(self)
+        self.layout_principal.setContentsMargins(20, 20, 20, 20)
+        self.rotulo = QLabel(mensagem)
+        self.rotulo.setWordWrap(True)
+        self.rotulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.rotulo.setStyleSheet("font-size: 13px;")
+        self.layout_principal.addWidget(self.rotulo, 1)
 
 
 class PausaLoginDialog(_DialogoDeAcaoManual):

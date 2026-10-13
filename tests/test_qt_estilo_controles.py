@@ -19,8 +19,7 @@ def test_variante_primario_usa_a_cor_da_marca():
 
 def test_campos_abas_listas_e_cartao():
     qss = _qss()
-    for trecho in ("QLineEdit", "#343638", "#565B5E", "QTabBar::tab:selected",
-                   "QListWidget", "#1E1E1E", "#cartao", theme.COR_CARTAO, "QComboBox"):
+    for trecho in ("QLineEdit", "#343638", "#565B5E", "QListWidget", "#1E1E1E", "#cartao", theme.COR_CARTAO, "QComboBox"):
         assert trecho in qss, trecho
 
 

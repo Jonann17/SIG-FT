@@ -186,8 +186,9 @@ def folha_de_estilo() -> str:
     # * variante "cinza": o #3A3A3A com hover #454545 que as telas CTk escreviam à mão
     #   ("Todos", "Cancelar"); "neutro" é o mesmo fundo com o hover do tema (Home).
     # * #quadro_caixas/#lista_caixas: o CTkScrollableFrame da seleção de fichas
-    #   (fundo gray13, cantos 6) e o CTkScrollbar dele (16 px, alça gray41 de 8 px,
-    #   4 px de folga -- border_spacing). As linhas são de `dialogs._DelegadoDaCaixa`.
+    #   (fundo gray13, cantos 6) e o CTkScrollbar dele (`folha_rolagem_ctk`). As
+    #   linhas são de `dialogs._DelegadoDaCaixa`.
+    # * abas: não há regra de QTabWidget -- o CTkTabview é `widgets/abas.Abas`.
     # * QCheckBox::indicator: width/height NÃO contam a borda -- 18 + 2*3 = os 24 da
     #   CTkCheckBox (com 20 saía 26). Sem imagem, a marcada não tem o "v" de lá.
     return f"""
@@ -254,19 +255,11 @@ QComboBox {{ background: {AZUL_CTK}; border-radius: 6px; padding: 0 10px; border
              min-height: {ALTURA_MENU_CTK}px; max-height: {ALTURA_MENU_CTK}px; }}
 QComboBox QAbstractItemView {{ background: {cinza_tk('gray20')}; color: {cinza_tk('gray84')};
     selection-background-color: {cinza_tk('gray28')}; border: none; outline: none; }}
-QTabWidget::pane {{ border: none; background: {cinza_tk('gray16')}; border-radius: 6px; }}
-QTabBar::tab {{ background: {cinza_tk('gray29')}; color: {TEXTO_BOTAO_CTK}; padding: 6px 14px;
-                margin: 0 1px; border-radius: 6px; }}
-QTabBar::tab:selected {{ background: {AZUL_CTK}; }}
-QTabBar::tab:hover:!selected {{ background: {cinza_tk('gray41')}; }}
 QListWidget {{ background: #1E1E1E; color: {c['text_light']}; border: none; }}
 QListWidget::item:selected {{ background: {c['primary']}; color: white; }}
 #quadro_caixas {{ background: {cinza_tk('gray13')}; border-radius: 6px; }}
 #lista_caixas {{ background: transparent; border: none; font-size: 13px; }}
-#lista_caixas QScrollBar:vertical {{ width: 16px; margin: 4px; background: transparent; }}
-#lista_caixas QScrollBar::handle:vertical {{ background: {cinza_tk('gray41')}; border-radius: 4px;
-    min-height: 20px; }}
-#lista_caixas QScrollBar::handle:vertical:hover {{ background: {cinza_tk('gray53')}; }}
+{folha_rolagem_ctk('#lista_caixas', margem_vertical=4)}
 #cartao {{ background: {theme.COR_CARTAO}; border-radius: 8px; }}
 QScrollArea {{ border: none; background: transparent; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; }}
@@ -314,6 +307,23 @@ ALTURA_LINHA_TABELA_TK = 20
 # tk.Listbox: cada linha tem a altura da fonte + 2 * selectborderwidth, que é 1 no
 # X11 e 0 no Windows. Folga de cima e de baixo de cada item.
 FOLGA_LINHA_LISTA_TK = 0 if sys.platform == "win32" else 1
+
+
+def folha_rolagem_ctk(seletor: str = "", *, margem_vertical: int = 4) -> str:
+    """O CTkScrollbar: faixa de 16 px, alça gray41 de 8 (border_spacing 4 dos
+    lados), gray53 sob o mouse, sem setas. `seletor` prefixa as regras (ex.:
+    "#lista_caixas"); vazio, a folha vale para a própria QScrollBar (folha local).
+    `margem_vertical`: onde a alça começa e acaba -- 4 do border_spacing, mais o
+    canto do quadro quando a barra vai da borda de cima à de baixo dele."""
+    p = f"{seletor} " if seletor else ""
+    folga = (LARGURA_ROLAGEM_CTK - 8) // 2
+    return (f"{p}QScrollBar:vertical {{ width: {LARGURA_ROLAGEM_CTK}px; background: transparent;"
+            f" margin: {margem_vertical}px {folga}px; }}\n"
+            f"{p}QScrollBar::handle:vertical {{ background: {cinza_tk('gray41')}; border-radius: 4px;"
+            " min-height: 20px; }\n"
+            f"{p}QScrollBar::handle:vertical:hover {{ background: {cinza_tk('gray53')}; }}\n"
+            f"{p}QScrollBar::add-line:vertical, {p}QScrollBar::sub-line:vertical {{ height: 0; }}\n"
+            f"{p}QScrollBar::add-page:vertical, {p}QScrollBar::sub-page:vertical {{ background: transparent; }}")
 
 
 def _folha_e31() -> str:
