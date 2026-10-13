@@ -29,6 +29,11 @@ agora é `sigft/app/theme.py`, e há teste travando os dois juntos.
 """
 from __future__ import annotations
 
+# Antes de tudo: com Python antigo o app abria pela metade, com erro enigmático.
+from sigft.core.python_minimo import exigir_python_minimo
+
+exigir_python_minimo()
+
 # ⚠️ ANTES do import pesado logo abaixo, e isto é o que faz o Release funcionar.
 #
 # Este arquivo é o que o `SIG-FT.spec` empacota — dentro do `.exe`, quem é
