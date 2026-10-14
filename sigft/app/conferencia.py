@@ -19,6 +19,10 @@ dizer o que está faltando.
 Era o contrário do que ela existe para fazer. Uma conferência de pacote tem de
 funcionar justamente quando o pacote está incompleto.
 
+As duas conferências que precisam CARREGAR algo de verdade -- o tradutor
+(`conferir_tradutor`) e a Qt (`conferir_qt`) -- importam o que usam dentro da
+função, e nunca levantam: o que falhar vira linha de FALHA no relatório.
+
 Como é usada
 ------------
 No workflow de Release, no Windows, contra o `.exe` recém-compilado:
@@ -32,6 +36,7 @@ PowerShell. Por isso o relatório é **gravado em arquivo**, e o workflow o lê.
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 
 # O que, faltando no bundle, derruba o app NO USO e não na abertura — o caso
@@ -54,6 +59,7 @@ MODULOS_ESSENCIAIS = [
     "sigft.core.excel.cirurgico",
     "playwright",
     "requests",
+    # a interface antiga: fica enquanto o `--ctk` existir (E6.1).
     "customtkinter",
     "PIL",
     "fitz",           # pymupdf: primeira camada da leitura de PDF
@@ -65,6 +71,29 @@ MODULOS_ESSENCIAIS = [
     "sentencepiece",
     "sigft.core.tradutor_local",
     "sigft.services.translator",
+    # a interface Qt, a oficial desde o corte (E6.1, 2026-10-10).
+    "PySide6.QtCore",
+    "PySide6.QtGui",
+    "PySide6.QtWidgets",
+    "shiboken6",
+    "sigft.app_qt.main",
+    # As telas Qt são importadas na PRIMEIRA visita (as fábricas de
+    # `sigft.app_qt.main.TELAS`): uma que ficasse fora do pacote só apareceria
+    # quando alguém clicasse no menu. `tests/test_conferencia_do_pacote.py`
+    # trava esta lista com o registro: tela nova em `TELAS` entra aqui também.
+    "sigft.app_qt.views.home",
+    "sigft.app_qt.views.translator",
+    "sigft.app_qt.views.aplicacao_lmr",
+    "sigft.app_qt.views.cria_fichas",
+    "sigft.app_qt.views.pdm",
+    "sigft.app_qt.views.analyzer",
+    "sigft.app_qt.views.upload_conditions",
+    "sigft.app_qt.views.upload_tech_specs",
+    "sigft.app_qt.views.correcao_pdm",
+    "sigft.app_qt.views.copia_fichas",
+    "sigft.app_qt.views.autospec",
+    "sigft.app_qt.views.pmib_manager",
+    "sigft.app_qt.views.busca_pmib",
 ]
 
 # A frase que a conferência traduz dentro do .exe, e o que a tradução tem de
@@ -202,11 +231,159 @@ def conferir_tradutor() -> tuple[str, bool]:
     return f"  {marca}  tradutor local: '{FRASE_DE_PROVA}' -> '{saida}' ({pasta})", funcionou
 
 
+# -- A interface Qt (E6.2) ------------------------------------------------------
+
+MODULOS_DA_QT = ("PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets")
+
+# A plataforma que o Qt usa em cada sistema quando `QT_QPA_PLATFORM` não diz
+# outra. O plugin dela tem de ir no pacote: `empacotamento/hooks/
+# hook-PySide6.QtGui.py` a mantém, e um teste trava as duas pontas juntas.
+PLATAFORMA_PADRAO = {"win32": "windows", "darwin": "cocoa", "linux": "xcb"}
+
+# O estilo nativo, que vem num PLUGIN (no Windows, `qmodernwindowsstyle.dll`,
+# que registra "windows11" e "windowsvista"). Faltando, o Qt usa outro estilo
+# sem avisar ninguém. No Linux o estilo, o Fusion, já vem dentro do QtWidgets.
+ESTILO_NATIVO = {"win32": "windowsvista", "darwin": "macos"}
+
+# A tradução que `_instalar_traducao` (sigft/app_qt/main.py) carrega: os "Sim",
+# "Não" e "Cancelar" dos diálogos.
+TRADUCAO_DA_QT = ("pt_BR", "qtbase")
+
+
+def plataformas_do_qt(ambiente=None, sistema: str | None = None) -> list[str]:
+    """As plataformas que o Qt tentaria, na ordem, pela regra dele mesmo.
+
+    As de `QT_QPA_PLATFORM` (`"windows:darkmode=2"` -> `windows`; `"wayland;xcb"`
+    -> as duas, em ordem); sem a variável, a do sistema. No Release ela não
+    existe, então é `windows`; no --smoke sem tela e nos testes, `offscreen`.
+    """
+    ambiente = os.environ if ambiente is None else ambiente
+    sistema = sys.platform if sistema is None else sistema
+    pedidas = [parte.split(":", 1)[0].strip()
+               for parte in (ambiente.get("QT_QPA_PLATFORM") or "").split(";")]
+    return [p for p in pedidas if p] or [PLATAFORMA_PADRAO.get(sistema, "xcb")]
+
+
+def _pasta_do_qt(nome: str) -> str:
+    """Uma pasta do Qt (`PluginsPath`, `TranslationsPath`) como o próprio Qt a
+    acha -- no pacote, pelo `qt.conf` que o PySide6 cria ao ser importado."""
+    from PySide6.QtCore import QLibraryInfo
+
+    return QLibraryInfo.path(getattr(QLibraryInfo.LibraryPath, nome))
+
+
+def _conferir_plataforma() -> tuple[str, bool]:
+    """CARREGA os plugins de plataforma do pacote até achar o que o Qt usaria.
+
+    Sem ele a janela não abre -- e, no Windows, o Qt ainda mostra uma caixa
+    modal ("no Qt platform plugin could be initialized") que deixaria o passo
+    `--smoke` do Release pendurado até o tempo-limite, sem dizer o motivo.
+    Carregar (e não só achar o arquivo) pega também a DLL de que ele depende.
+    """
+    from PySide6.QtCore import QPluginLoader
+
+    procuradas = plataformas_do_qt()
+    pasta = os.path.join(_pasta_do_qt("PluginsPath"), "platforms")
+    try:
+        arquivos = sorted(os.listdir(pasta))
+    except OSError:
+        arquivos = []
+    nao_carregaram = []
+    for arquivo in arquivos:
+        carregador = QPluginLoader(os.path.join(pasta, arquivo))
+        if not carregador.load():
+            nao_carregaram.append(f"{arquivo} ({carregador.errorString()})")
+            continue
+        chaves = {str(c).lower() for c in carregador.metaData().get("MetaData", {}).get("Keys", [])}
+        carregador.unload()
+        for plataforma in procuradas:
+            if plataforma.lower() in chaves:
+                return f"  OK     Qt: plataforma '{plataforma}' ({os.path.join(pasta, arquivo)})", True
+    detalhe = f"; nao carregaram: {', '.join(nao_carregaram)}" if nao_carregaram else ""
+    return (f"  FALHA  Qt: nenhum plugin da plataforma '{procuradas[0]}' carregou de {pasta} "
+            f"-- sem ele a janela nao abre{detalhe}"), False
+
+
+def _conferir_estilo() -> tuple[str, bool] | None:
+    nativo = ESTILO_NATIVO.get(sys.platform)
+    if not nativo:
+        return None
+    from PySide6.QtWidgets import QStyleFactory
+
+    achados = QStyleFactory.keys()
+    if nativo.lower() in {estilo.lower() for estilo in achados}:
+        return f"  OK     Qt: estilo nativo '{nativo}'", True
+    return (f"  FALHA  Qt: o estilo nativo '{nativo}' nao esta no pacote -- a janela abriria com "
+            f"outro, sem aviso (achados: {', '.join(achados)})"), False
+
+
+def _conferir_traducao() -> tuple[str, bool]:
+    from PySide6.QtCore import QLocale, QTranslator
+
+    idioma, catalogo = TRADUCAO_DA_QT
+    pasta = _pasta_do_qt("TranslationsPath")
+    tradutor = QTranslator()
+    if tradutor.load(QLocale(idioma), catalogo, "_", pasta):
+        return f"  OK     Qt: traducao {idioma} ({tradutor.filePath()})", True
+    return (f"  FALHA  Qt: a traducao {idioma} ({catalogo}_{idioma}.qm) nao esta em {pasta} "
+            "-- os dialogos sairiam em ingles"), False
+
+
+def _conferir_fontes() -> tuple[str, bool]:
+    from sigft.app_qt import estilo
+
+    faltando = [nome for nome in estilo.ARQUIVOS_DE_FONTE
+                if not os.path.isfile(os.path.join(estilo.PASTA_FONTES, nome))]
+    if faltando:
+        return (f"  FALHA  Qt: fontes fora do pacote: {', '.join(faltando)} "
+                f"(procurei em {estilo.PASTA_FONTES})"), False
+    return f"  OK     Qt: fontes {', '.join(estilo.ARQUIVOS_DE_FONTE)} ({estilo.PASTA_FONTES})", True
+
+
+def conferir_qt() -> tuple[str, bool]:
+    """`(linhas do relatório, funcionou)` -- a interface Qt CARREGA, aqui?
+
+    `find_spec` (em `conferir_pacote`) acha `PySide6.QtCore` sem carregar o
+    `QtCore.pyd` nem as DLLs do Qt: um pacote sem o `Qt6Core.dll` passaria lá e
+    só morreria na abertura. Aqui o import é de verdade, e depois vem o que a
+    janela lê do disco: o plugin da plataforma (carregado), o estilo nativo, a
+    tradução pt_BR e as fontes. Tudo sem criar a `QApplication` -- que, sem o
+    plugin da plataforma, travaria em vez de responder.
+    """
+    for nome in MODULOS_DA_QT:
+        try:
+            importlib.import_module(nome)
+        except Exception as erro:  # noqa: BLE001 -- o relatório diz o quê
+            return f"  FALHA  Qt nao carrega: {nome}: {type(erro).__name__}: {erro}", False
+    try:
+        import PySide6
+        from PySide6.QtCore import qVersion
+
+        linhas = [f"  OK     Qt carrega: PySide6 {PySide6.__version__}, Qt {qVersion()} "
+                  f"({', '.join(nome.split('.')[-1] for nome in MODULOS_DA_QT)})"]
+    except Exception as erro:  # noqa: BLE001
+        return f"  FALHA  Qt nao carrega: {type(erro).__name__}: {erro}", False
+
+    tudo_certo = True
+    for conferir in (_conferir_plataforma, _conferir_estilo, _conferir_traducao, _conferir_fontes):
+        try:
+            resultado = conferir()
+        except Exception as erro:  # noqa: BLE001 -- uma conferência quebrada não cala as outras
+            resultado = (f"  FALHA  Qt: {conferir.__name__}: {type(erro).__name__}: {erro}", False)
+        if resultado is None:
+            continue
+        linha, certo = resultado
+        linhas.append(linha)
+        tudo_certo = tudo_certo and certo
+    return "\n".join(linhas), tudo_certo
+
+
 def cli() -> int:
     """Grava o relatório e devolve o código de saída (0 = tudo certo)."""
     relatorio, pacote_ok = conferir_pacote()
     linha_do_tradutor, tradutor_ok = conferir_tradutor()
-    relatorio = relatorio + "\n\n" + linha_do_tradutor
+    linhas_da_qt, qt_ok = conferir_qt()
+    relatorio = relatorio + "\n\n" + linha_do_tradutor + "\n\n" + linhas_da_qt
     gravar_relatorio(ARQUIVO_CONFERENCIA, relatorio)
     print(relatorio)
-    return 0 if (pacote_ok and tradutor_ok) else 1
+    return 0 if (pacote_ok and tradutor_ok and qt_ok) else 1

@@ -1,4 +1,15 @@
 # Interface
+# PySide6-Essentials: a interface OFICIAL desde o corte (E6.1, 2026-10-10), o
+# pacote `sigft/app_qt/`. O essencial do Qt (usamos QtCore, QtGui e QtWidgets),
+# sem os add-ons do metapacote `PySide6` (WebEngine, 3D, Multimedia...).
+# >=6.9 porque `QFontDatabase.setApplicationEmojiFontFamilies`, usado em
+# `sigft/app_qt/estilo.py`, so existe a partir do Qt 6.9.
+# Quem ja tem o ambiente virtual nao faz nada: o SIG-FT.bat (e o SIG-FT.command,
+# no Mac) reinstala sozinho na proxima abertura, porque o hash deste arquivo
+# mudou. E o maior download da lista: ~80 MB no Windows, ~120 MB no Mac (que
+# precisa do macOS 12 ou mais novo), so nessa primeira abertura.
+PySide6-Essentials>=6.9
+# A interface antiga, que o `--ctk` ainda abre durante a transicao.
 customtkinter
 pillow
 

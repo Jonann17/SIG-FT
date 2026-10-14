@@ -35,7 +35,6 @@ thread do Tk: tudo volta por `_na_interface`, que é o `after(0, ...)` da casa
 """
 from __future__ import annotations
 
-import re
 import threading
 from tkinter import messagebox
 
@@ -43,22 +42,33 @@ import customtkinter as ctk
 
 from sigft import _build_info
 from sigft.app import theme
+# Os textos e as funções puras moram em `atualizacao_textos` (sem tkinter, para
+# a interface Qt dizer as mesmas palavras). Reexportados com os nomes de antes.
+from sigft.app.atualizacao_textos import (  # noqa: F401 -- reexportados
+    MSG_COMO_FUNCIONA,
+    MSG_DOWNLOAD_CONFERIDO,
+    MSG_UAC,
+    TEXTO_AGORA_NAO,
+    TEXTO_ATUALIZANDO,
+    TEXTO_ATUALIZAR,
+    TEXTO_O_QUE_MUDOU,
+    TEXTO_TENTAR_DE_NOVO,
+    TITULO,
+    msg_baixando,
+    msg_caiu_no_completo,
+    msg_em_dia,
+    msg_erro_ao_procurar,
+    msg_falhou,
+    msg_sem_verificar,
+    notas_para_exibir,
+    resumo_da_versao,
+    titulo_do_aviso,
+)
+from sigft.app.atualizacao_textos import data_br as _data_br  # noqa: F401
+from sigft.app.atualizacao_textos import erro_curto as _erro_curto  # noqa: F401
+from sigft.app.atualizacao_textos import mb as _mb  # noqa: F401
 from sigft.core import instancia
 from sigft.services import updater
-
-TITULO = "Atualização do SIG-FT"
-
-MSG_UAC = (
-    "O SIG-FT está instalado para todos os usuários, então o Windows vai pedir "
-    "permissão de administrador. Se o pedido for recusado, o SIG-FT fecha sem "
-    "atualizar: é só abri-lo de novo."
-)
-
-MSG_COMO_FUNCIONA = (
-    "Ao atualizar, o SIG-FT fecha, instala a versão nova e abre de novo sozinho. "
-    "Suas chaves de API e preferências continuam onde estão."
-)
-
 
 # ─────────────────────────────── utilidades ─────────────────────────────────
 
@@ -84,73 +94,6 @@ def _na_interface(widget, func, *args) -> None:
         widget.after(0, func, *args)
     except Exception:  # noqa: BLE001
         pass
-
-
-def notas_para_exibir(notas: str | None) -> str:
-    """O Markdown das notas do Release vira texto de leitura.
-
-    As notas vêm do CHANGELOG (via `latest.json`), escritas para o GitHub:
-    `**negrito**`, crase e `- ` de lista. Numa caixa de texto do Tk isso
-    aparece cru. Aqui cada item vira um parágrafo com marcador, e o rodapé
-    "Como instalar" do corpo do Release (que só existe quando o manifesto
-    falta) é cortado no `---`: quem está atualizando pelo app não precisa dele.
-    """
-    paragrafos = []
-    for linha in str(notas or "").splitlines():
-        texto = linha.strip()
-        if texto == "---":
-            break
-        if not texto:
-            continue
-        texto = texto.lstrip("#").strip()
-        texto = re.sub(r"^[-*+]\s+", "• ", texto)
-        texto = texto.replace("**", "").replace("`", "")
-        if texto:
-            paragrafos.append(texto)
-    return "\n\n".join(paragrafos) or "(Esta versão não trouxe notas.)"
-
-
-def _data_br(iso: str) -> str:
-    """`2026-09-25` -> `25/09/2026`. Qualquer outra coisa volta como veio."""
-    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", str(iso or "").strip())
-    return f"{m.group(3)}/{m.group(2)}/{m.group(1)}" if m else str(iso or "")
-
-
-def _mb(tamanho_mb: float) -> str:
-    return f"{tamanho_mb:.1f}".replace(".", ",")
-
-
-def _erro_curto(erro: BaseException, limite: int = 300) -> str:
-    """O começo do erro, para caber na janela do aviso.
-
-    O `FalhaDeRede` traz o diagnóstico de cada rota tentada e passa fácil de
-    mil caracteres. Na janela o começo basta; o erro inteiro já foi para o
-    `sigft.log` por quem o capturou.
-    """
-    texto = str(erro).strip()
-    return texto if len(texto) <= limite else texto[:limite].rstrip() + " (...)"
-
-
-def resumo_da_versao(info: updater.Atualizacao, versao_atual: str) -> str:
-    """A linha de baixo do título: onde a pessoa está e o que vai receber.
-
-    [2026-10-07] Com o instalador pequeno, o tamanho é o DELE, comparado com o
-    do completo: é o ganho que a pessoa precisa ver."""
-    partes = [f"Você está na v{versao_atual}."]
-    detalhe = f"A v{info.versao}"
-    if info.publicado_em:
-        detalhe += f" saiu em {_data_br(info.publicado_em)}"
-    if info.incremental and info.tamanho:
-        partes.append(detalhe + ".")
-        pequeno = f"A atualização tem {_mb(info.tamanho_mb)} MB: só o que mudou"
-        if info.tamanho_completo:
-            pequeno += f" (o instalador completo tem {_mb(info.tamanho_completo_mb)} MB)"
-        partes.append(pequeno + ".")
-        return " ".join(partes)
-    if info.tamanho:
-        detalhe += f" e tem {_mb(info.tamanho_mb)} MB"
-    partes.append(detalhe + ".")
-    return " ".join(partes)
 
 
 # ─────────────────────────── a pergunta ao GitHub ───────────────────────────
@@ -183,8 +126,7 @@ def procurar_agora(janela, *, versao_atual: str | None = None, ao_terminar=None,
     if motivo is not None:
         if ao_terminar is not None:
             ao_terminar()
-        messagebox.showinfo(TITULO, f"Você está na v{versao}.\n\n{motivo}",
-                            parent=janela)
+        messagebox.showinfo(TITULO, msg_sem_verificar(versao, motivo), parent=janela)
         return
     disparar(_consultar, janela, versao, True, ao_terminar)
 
@@ -219,15 +161,11 @@ def _consultar(janela, versao_atual: str, falar: bool, ao_terminar) -> None:
 
 
 def _avisar_em_dia(janela, versao_atual: str) -> None:
-    messagebox.showinfo(
-        TITULO, f"Você já está na versão mais recente (v{versao_atual}).",
-        parent=janela)
+    messagebox.showinfo(TITULO, msg_em_dia(versao_atual), parent=janela)
 
 
 def _avisar_erro(janela, erro: BaseException) -> None:
-    messagebox.showwarning(
-        TITULO, f"Não foi possível procurar atualizações.\n\n{erro}",
-        parent=janela)
+    messagebox.showwarning(TITULO, msg_erro_ao_procurar(erro), parent=janela)
 
 
 def _mostrar_aviso(janela, info: updater.Atualizacao, versao_atual: str):
@@ -321,9 +259,8 @@ class JanelaAtualizacao(ctk.CTkToplevel):
         self.barra.set(0)
 
         # [2026-10-07] Pelo canal de testes chega pré-lançamento: o título diz.
-        titulo = "Nova versão de teste disponível" if info.prerelease else "Nova versão disponível"
         ctk.CTkLabel(
-            self, text=f"{titulo}: v{info.versao}",
+            self, text=titulo_do_aviso(info),
             font=theme.FONTE_SECAO,
         ).pack(pady=(20, 4), padx=20, anchor="w")
         self.rotulo_resumo = ctk.CTkLabel(
@@ -334,7 +271,7 @@ class JanelaAtualizacao(ctk.CTkToplevel):
         self.rotulo_resumo.pack(padx=20, anchor="w")
 
         ctk.CTkLabel(
-            self, text="O que mudou:", font=theme.FONTE_ROTULO,
+            self, text=TEXTO_O_QUE_MUDOU, font=theme.FONTE_ROTULO,
         ).pack(pady=(14, 4), padx=20, anchor="w")
         self.caixa_notas = ctk.CTkTextbox(
             self, height=220, wrap="word", font=theme.FONTE_CORPO_MIUDO)
@@ -343,14 +280,14 @@ class JanelaAtualizacao(ctk.CTkToplevel):
         self.caixa_notas.pack(fill="both", expand=True, padx=20)
 
         self.botao_atualizar = ctk.CTkButton(
-            botoes, text="Atualizar agora", command=self.atualizar,
+            botoes, text=TEXTO_ATUALIZAR, command=self.atualizar,
             fg_color=theme.COLORS["primary"],
             hover_color=theme.COLORS["primary_hover"],
             width=170, height=40, font=theme.FONTE_BOTAO,
         )
         self.botao_atualizar.pack(side="left", padx=10)
         self.botao_agora_nao = ctk.CTkButton(
-            botoes, text="Agora não", command=self.agora_nao,
+            botoes, text=TEXTO_AGORA_NAO, command=self.agora_nao,
             fg_color="transparent", border_width=1, border_color="#555",
             text_color=theme.COR_TEXTO_APOIO, width=150, height=40,
         )
@@ -384,7 +321,7 @@ class JanelaAtualizacao(ctk.CTkToplevel):
 
     def atualizar(self) -> None:
         """Baixa em segundo plano; a janela acompanha pela barra."""
-        self.botao_atualizar.configure(state="disabled", text="Atualizando...")
+        self.botao_atualizar.configure(state="disabled", text=TEXTO_ATUALIZANDO)
         self.botao_agora_nao.configure(state="disabled")
         # Fechar no "X" no meio do download não cancela nada (o download não
         # tem como parar no meio), então o "X" fica mudo até terminar.
@@ -394,8 +331,7 @@ class JanelaAtualizacao(ctk.CTkToplevel):
         # Logo depois dos botões na ordem de empacotamento: como os dois estão
         # presos embaixo, a barra fica imediatamente ACIMA deles.
         self.barra.pack(side="bottom", pady=(0, 6), padx=20, after=self.quadro_botoes)
-        self._mostrar_status(
-            f"Baixando a v{self.info.versao} ({_mb(self.info.tamanho_mb)} MB)...")
+        self._mostrar_status(msg_baixando(self.info))
         self._disparar(self._baixar_e_instalar)
 
     # -- o trabalho, na thread ------------------------------------------------
@@ -405,8 +341,7 @@ class JanelaAtualizacao(ctk.CTkToplevel):
             caminho = updater.baixar(self.info, progresso_cb=self._ao_progredir,
                                      log_cb=_log,
                                      ao_cair_no_completo=self._ao_cair_no_completo)
-            _na_interface(self, self._mostrar_status,
-                          "Download conferido. Abrindo o instalador...")
+            _na_interface(self, self._mostrar_status, MSG_DOWNLOAD_CONFERIDO)
             updater.instalar(caminho, log_cb=_log)
         except Exception as erro:  # noqa: BLE001 -- vira mensagem na janela
             _log(f"a atualizacao falhou: {erro}")
@@ -417,9 +352,7 @@ class JanelaAtualizacao(ctk.CTkToplevel):
     def _ao_cair_no_completo(self, completo: updater.Atualizacao) -> None:
         """Roda na THREAD: o pequeno falhou e o download virou o do completo
         (a barra recomeça pelo `progresso_cb` do serviço)."""
-        _na_interface(self, self._mostrar_status,
-                      f"A atualização pequena falhou. Baixando o instalador completo "
-                      f"({_mb(completo.tamanho_mb)} MB)...")
+        _na_interface(self, self._mostrar_status, msg_caiu_no_completo(completo))
 
     def _ao_progredir(self, fracao: float) -> None:
         """Roda na THREAD, a cada bloco de 256 KB. Só agenda quando o
@@ -437,14 +370,9 @@ class JanelaAtualizacao(ctk.CTkToplevel):
             text=texto, text_color=cor or theme.COLORS["text_light"])
 
     def _falhou(self, erro: BaseException) -> None:
-        self._mostrar_status(
-            f"Não foi possível atualizar: {_erro_curto(erro)}\n\nO SIG-FT "
-            f"continua nesta versão. Tente de novo; se o erro se repetir, avise "
-            f"quem cuida do SIG-FT. O detalhe completo fica no log "
-            f"(Documentos\\SIG-FT\\logs\\sigft.log).",
-            cor=theme.COLORS["danger"])
+        self._mostrar_status(msg_falhou(erro), cor=theme.COLORS["danger"])
         self.barra.set(0)
-        self.botao_atualizar.configure(state="normal", text="Tentar de novo")
+        self.botao_atualizar.configure(state="normal", text=TEXTO_TENTAR_DE_NOVO)
         self.botao_agora_nao.configure(state="normal")
         self.protocol("WM_DELETE_WINDOW", self.agora_nao)
 

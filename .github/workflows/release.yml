@@ -158,11 +158,25 @@ jobs:
           if (-not (Test-Path "dist\SIG-FT\_internal\assets\logo.png")) {
             Write-Host "::warning::assets/logo.png nao entrou no bundle."
           }
+          # A Qt vai sob a LGPLv3, que exige o aviso e os textos da LGPL e da GPL
+          # junto com o programa (E6.2). Sem eles o pacote nao sai. Ver
+          # empacotamento/licencas/ e a secao "A interface Qt" do SIG-FT.spec.
+          foreach ($licenca in "LEIA-ME-Qt.txt", "LGPL-3.0.txt", "GPL-3.0.txt") {
+            if (-not (Test-Path "dist\SIG-FT\_internal\licencas\$licenca")) {
+              throw "a licenca do Qt nao entrou no pacote: _internal\licencas\$licenca"
+            }
+          }
           Get-Item "dist\SIG-FT\SIG-FT.exe" | Format-List Name, Length
 
       # A conferencia que responde "o aplicativo consegue IMPORTAR?", que e a
       # pergunta certa -- modulo Python puro NAO vira pasta em `_internal\`, e
       # uma checagem por arquivo reprovaria um build bom.
+      #
+      # Desde a E6.2 ela tambem CARREGA a Qt (`conferir_qt`): importa o QtCore,
+      # o QtGui e o QtWidgets de verdade, carrega o plugin da plataforma
+      # `windows` e confere o estilo nativo, a traducao pt_BR e as fontes. E o
+      # que transforma "falta o qwindows.dll" numa linha FALHA aqui, em vez de
+      # uma caixa modal do Qt pendurando o passo --smoke abaixo.
       #
       # ARMADILHA DO `console=False`: o .exe nao se prende ao terminal, entao
       # nem a saida nem o $LASTEXITCODE chegam por uma chamada com `&`. Por
@@ -189,6 +203,8 @@ jobs:
       # A checagem que o CLAUDE.md pedia e nenhum CI em Linux podia fazer:
       # ABRIR O APP. Em 2026-08-25 o CP 5.5 deixou um widget orfao, compileall
       # passou, 2625 testes passaram, e o app morria na abertura com NameError.
+      # Desde a E6.1 a janela e a da Qt, e o --smoke visita TODAS as telas (elas
+      # nascem na primeira visita): tela que nao abre reprova, com o nome.
       - name: A janela principal monta (--smoke)
         # Se o .exe ABRIR A JANELA em vez de responder a flag, este passo nao
         # falha: ele PENDURA, porque o `-Wait` espera um aplicativo que esta la,

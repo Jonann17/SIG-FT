@@ -61,6 +61,16 @@ pmib_manager_backend = None
 search_pmib_backend = None
 
 
+# [Qt6] O motivo de cada backend que não carregou, por nome de destino
+# ("pdm_backend", "mixed_classes"...). Antes a falha só ia para o console da
+# splash, e a tela quebrava depois com `AttributeError: 'NoneType'`.
+falhas: dict[str, BaseException] = {}
+
+
+class BackendIndisponivel(RuntimeError):
+    """O backend que a tela pediu não carregou. A mensagem é para a pessoa."""
+
+
 # --- O que carregar, e com que nome aparecer na barra de progresso ----------
 # Formato: (módulo, atributo de destino, classes específicas, nome exibido).
 # Copiado do `SplashScreen.carregar_modulos`, na mesma ORDEM — a ordem é o que
@@ -122,6 +132,10 @@ def carregar_todos(ao_progredir=None, ao_falhar=None, pausa_fn=None) -> None:
                 pausa_fn()
             carregar_um(nome_modulo, destino, classes)
         except Exception as erro:  # noqa: BLE001 — ver docstring
+            falhas[destino] = erro
+            # As telas pedem o "mixed_classes" pelo nome da classe (DataManager...).
+            for nome_classe in classes or []:
+                falhas[nome_classe] = erro
             if ao_falhar is not None:
                 ao_falhar(exibido, erro)
 
@@ -129,3 +143,35 @@ def carregar_todos(ao_progredir=None, ao_falhar=None, pausa_fn=None) -> None:
 def esta_carregado(nome: str) -> bool:
     """`True` se o backend `nome` já foi carregado (útil em teste e diagnóstico)."""
     return globals().get(nome) is not None
+
+
+def _modulo_de(nome: str) -> str | None:
+    """O módulo Python por trás de `nome` (destino ou classe), ou None."""
+    for nome_modulo, destino, classes, _exibido in MODULOS:
+        if nome == destino or nome in (classes or []):
+            return nome_modulo
+    return None
+
+
+def motivo_da_falha(nome: str) -> str | None:
+    erro = falhas.get(nome)
+    return None if erro is None else f"{type(erro).__name__}: {erro}"
+
+
+def exigir(nome: str):
+    """O backend `nome`, ou `BackendIndisponivel` com o motivo em português."""
+    nome_modulo = _modulo_de(nome)
+    if nome_modulo is None:
+        # Nome errado é defeito de programação, não do computador da pessoa:
+        # sem isto, "pdm_backnd" respondia "espere a abertura terminar".
+        raise KeyError(f"backend desconhecido: {nome!r}")
+    objeto = globals().get(nome)
+    if objeto is not None:
+        return objeto
+    motivo = motivo_da_falha(nome)
+    if motivo is None:
+        raise BackendIndisponivel(
+            f"O módulo '{nome}' ainda não foi carregado. Espere a abertura terminar.")
+    raise BackendIndisponivel(
+        f"Este módulo não carregou (módulo {nome_modulo}): {motivo}\n\n"
+        "O detalhe está em Documentos\\SIG-FT\\logs\\sigft.log.")

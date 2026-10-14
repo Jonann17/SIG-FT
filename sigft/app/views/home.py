@@ -216,104 +216,24 @@ class HomeView(ctk.CTkScrollableFrame):
     def _ler_mural(self):
         """`(gavetas, erro)` -- le a aba Atividades do mapeamento.
 
-        Devolve o erro como TEXTO em vez de levantar: o mural e informativo, e
-        uma planilha ausente nao pode virar traceback na cara do usuario.
+        [2026-10-10] A leitura mora em `services/mural_atividades.py`
+        (`ler_mural_do_mapeamento`): era o mesmo bloco copiado linha a linha
+        aqui e na Home Qt (`sigft/app_qt/views/home.py`), que tambem delega
+        para la. Devolve o erro como TEXTO em vez de levantar -- o mural e
+        informativo, e uma planilha ausente nao pode virar traceback.
         """
         from datetime import date
 
-        from sigft.services import atividades as at
+        from sigft.services import mural_atividades
 
-        # As gavetas saem de `at.FAIXAS`, NUNCA de uma lista escrita aqui.
-        # A primeira versao listava as faixas a mao; quando o mural passou a
-        # ser por PRAZO os nomes mudaram no servico e esta linha ficou para
-        # tras, com `at.PARA_COMECAR` e `at.TRAVADA` inexistentes. O
-        # AttributeError subia antes do try e o botao simplesmente nao abria
-        # janela nenhuma. Derivando de `FAIXAS` os dois lados nao tem como
-        # divergir de novo.
-        vazio = {faixa: [] for faixa in at.FAIXAS}
-
-        caminho = self._caminho_do_mapeamento()
-        if not caminho:
-            return vazio, (
-                "Nao encontrei o arquivo de mapeamento.\n\n"
-                "Rode o PMIB Manager uma vez apontando a planilha gerenciadora -- "
-                "o mural passa a ler dela."
-            )
-
-        try:
-            import openpyxl
-
-            # `data_only=True` e obrigatorio: as celulas de agregacao da aba
-            # sao formulas, e sem isto `.value` devolveria a string "=FALSE()"
-            # em vez do valor. Foi um defeito real nesta mesma frente.
-            wb = openpyxl.load_workbook(caminho, data_only=True, read_only=True)
-            if "Atividades" not in wb.sheetnames:
-                wb.close()
-                return vazio, "A planilha nao tem a aba 'Atividades'.\n\n" + str(caminho)
-
-            ws = wb["Atividades"]
-
-            # ⚠️ `iter_rows`, NUNCA `ws.cell(...)` numa planilha `read_only`.
-            #
-            # Em modo read-only a aba e um FLUXO so-para-frente: cada
-            # `ws.cell(linha, coluna)` re-percorre o XML desde o comeco. Eram
-            # 84 linhas x 10 colunas = 840 varreduras, e o mural levava
-            # 3,9 s para abrir num arquivo de 40 KB. `iter_rows` passa uma
-            # vez so: caiu para centesimos de segundo.
-            def _celula(valores, coluna):
-                indice = coluna - 1
-                return valores[indice] if indice < len(valores) else None
-
-            linhas = []
-            for valores in ws.iter_rows(min_row=at.LINHA_CABECALHO + 1, values_only=True):
-                linhas.append({
-                    "nv": _celula(valores, at.COL_NV),
-                    "descricao": _celula(valores, at.COL_DESCRICAO),
-                    "concluida": _celula(valores, at.COL_CONCLUIDA),
-                    "status": _celula(valores, at.COL_STATUS),
-                    "com_quem": _celula(valores, at.COL_COM_QUEM),
-                    "criticidade": _celula(valores, at.COL_CRITICIDADE),
-                    "data_prevista_inicio": _celula(valores, at.COL_DATA_PREVISTA_INICIO) or "",
-                    "previsao_termino": _celula(valores, at.COL_PREVISAO_TERMINO) or "",
-                    # As datas REAIS. Antes iam como "" fixo, e a regra que
-                    # decide "ja comecou" ficava cega: atividade com DATA DE
-                    # INICIO preenchida aparecia como "era para comecar ha N
-                    # dias".
-                    "data_inicio": _celula(valores, at.COL_DATA_INICIO) or "",
-                    "data_termino": _celula(valores, at.COL_DATA_TERMINO) or "",
-                })
-            wb.close()
-            return at.mural(linhas, date.today()), None
-        except Exception as e:
-            return vazio, "Nao consegui ler as atividades:\n{}: {}\n\n{}".format(
-                type(e).__name__, e, caminho)
+        return mural_atividades.ler_mural_do_mapeamento(self._caminho_do_mapeamento(), date.today())
 
     def _caminho_do_mapeamento(self):
-        """O ultimo arquivo gerenciadora que o usuario escolheu, se existir."""
-        import os
+        """O ultimo arquivo gerenciadora que o usuario escolheu, se existir
+        (`services/mural_atividades.caminho_do_mapeamento`)."""
+        from sigft.services import mural_atividades
 
-        from sigft.core import prefs
-
-        # 1. O arquivo que o PMIB Manager registrou ao ser usado.
-        try:
-            salvo = prefs.get_last_file(prefs.CHAVE_MAPEAMENTO)
-        except Exception:
-            salvo = None
-        if salvo:
-            return salvo
-
-        # 2. Reserva: a PASTA lembrada do seletor, procurando o arquivo nela.
-        #    Cobre quem já usou o PMIB Manager ANTES desta versão, quando só a
-        #    pasta era guardada.
-        try:
-            pasta = prefs.get_initial_dir("pmib_manager.master", "excel")
-        except Exception:
-            pasta = None
-        if pasta and os.path.isdir(pasta):
-            for nome in sorted(os.listdir(pasta)):
-                if "mapeamento" in nome.lower() and nome.lower().endswith((".xlsx", ".xlsm")):
-                    return os.path.join(pasta, nome)
-        return None
+        return mural_atividades.caminho_do_mapeamento()
 
     # =====================================================================
     # CARDS DOS MODULOS  [2026-09-03] -- clicaveis
