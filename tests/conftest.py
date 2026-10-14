@@ -35,6 +35,22 @@ comportamento das funções caracterizadas continua sendo o comportamento real
 do código em produção (só os SDKs pesados — nunca usados pelas funções puras
 testadas aqui — é que viram Mocks).
 """
+import os as _os_qt
+import sys as _sys_qt
+
+# [Qt6] Sem display no CI e no contêiner: o Qt desenha em memória. Tem de vir
+# antes de qualquer import do PySide6, e setdefault deixa quem quiser ver a
+# janela (QT_QPA_PLATFORM=xcb) rodar com display de verdade.
+_os_qt.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+# [Qt6] No Linux, o fontconfig dos testes esconde o Roboto e o Noto Emoji
+# instalados na máquina: valem os do app, registrados pelo `qapp` abaixo. Também
+# antes de qualquer import do PySide6. Ver tests/test_qt_fontes_dos_testes.py.
+if _sys_qt.platform.startswith("linux"):
+    _os_qt.environ.setdefault(
+        "FONTCONFIG_FILE",
+        _os_qt.path.join(_os_qt.path.dirname(_os_qt.path.abspath(__file__)), "fontes_dos_testes.conf"))
+
 import importlib.util
 import os
 import sys
@@ -249,3 +265,74 @@ def _isola_os_dados_do_usuario(monkeypatch, tmp_path_factory):
     _dados.esquecer_pasta()
     yield pasta
     _dados.esquecer_pasta()
+
+
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
+def pytest_runtest_teardown(item, nextitem):
+    """Depois de um teste Qt, recolhe o lixo NA HORA.
+
+    O pytest-qt fecha as telas com `close()` + `deleteLater()`, mas o
+    `processEvents()` dele não roda o DeferredDelete: o C++ das telas fica
+    vivo e dono do Python. E uma tela é lixo em ciclo (o seletor guarda um
+    método da tela, que guarda o seletor), que o GC só apaga quando quer --
+    no meio da pintura do teste seguinte. Aí o QPainter dele quebrava
+    (segfault em `QPainter::device()`, 2026-10-08, ordem de testes certa).
+    Rodar aqui o DeferredDelete, depois de toda a desmontagem, apaga o C++ fora
+    de pintura; o que o GC recolher depois é só casca Python já invalidada.
+    """
+    yield
+    if "qtbot" in getattr(item, "fixturenames", ()):
+        from PySide6.QtCore import QCoreApplication, QEvent
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def pytest_unconfigure(config):
+    """No fim da sessão, apaga pelo Qt as janelas que sobraram, o pai antes.
+
+    Na saída do Python, o PySide apaga cada objeto Qt "do Python" ainda vivo
+    numa ordem qualquer. Uma tela vazada (um `lambda` com `self` no sinal de
+    um filho: ciclo que passa pelo C++, que o GC não vê) às vezes tinha o
+    FILHO apagado antes -- o `lambda` morria, levava a tela, e a tela apagava
+    de novo o filho. 6610 testes verdes e o processo morto na saída (código
+    134, CI do PR #5, 2026-10-14). Daqui, cada filho morre com o pai, uma vez
+    só, e a faxina do PySide não acha mais tela nenhuma.
+    Ver tests/test_qt_saida.py.
+    """
+    if "PySide6.QtWidgets" not in sys.modules:
+        return
+    import gc
+
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if not isinstance(app, QApplication):
+        return
+    for janela in app.topLevelWidgets():
+        janela.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    gc.collect()
+
+
+@pytest.fixture(scope="session")
+def qapp(qapp):
+    """O `qapp` do pytest-qt com as fontes do app, como o `_preparar_qt`.
+
+    No Release (Windows, `offscreen`) o Qt não vê fonte nenhuma do sistema, só
+    as registradas: teste que rodava antes de qualquer `carregar_fontes()`
+    desenhava cada letra como caixa de 13 px, e seis medidas quebravam lá
+    (2026-10-13). Carregando aqui, todo teste Qt mede com o Roboto do app.
+    """
+    from sigft.app_qt import estilo
+
+    estilo.carregar_fontes()
+    return qapp
+
+
+@pytest.fixture
+def qt_interface(qapp):
+    """QApplication pronta e o canal thread -> interface instalado."""
+    from sigft.app_qt import interface
+
+    interface.instalar()
+    return qapp

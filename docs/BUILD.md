@@ -385,6 +385,11 @@ convertido para CTranslate2 int8. O `SIG-FT.spec` embute
 `recursos/tradutor_pt_es` como `modelos/tradutor_pt_es` (~218 MB; o
 instalador cresce ~200 MB). Ver a seção seguinte.
 
+**A Qt vai, e só o que a interface usa (E6.2).** A plataforma e o estilo como
+plugins, uma tradução, sem o QtNetwork e sem o OpenGL por software: a parte do
+Qt no pacote do Windows cai de 78,4 para 43,2 MB. As licenças (LGPLv3) vão em
+`_internal\licencas`. Ver "A interface Qt dentro do pacote".
+
 ---
 
 ## O tradutor local: de onde vem o modelo
@@ -416,6 +421,91 @@ python tools/preparar_tradutor.py --verificar      # 0 = pronta
   refaça a medição do spec `docs/superpowers/specs/2026-09-25-tradutor-local-design.md`.
 - **Licença**: CC-BY 4.0 pede atribuição. Ela vai no `LEIA-ME.txt` e no
   `README.md` do autor, dentro da própria pasta do modelo.
+
+---
+
+## A interface Qt dentro do pacote (desde a E6.2)
+
+Desde o corte (E6.1) o `.exe` abre a interface Qt (`sigft/app_qt/`); o `--ctk`
+ainda abre a CustomTkinter, que continua no pacote enquanto ele existir. Até a
+E6.2 o `SIG-FT.spec` deixava a Qt de fora de propósito; agora ela vai, e só o
+que a interface usa.
+
+**O que vai:** o PySide6 e o shiboken6 -- as DLLs do Qt (`Qt6Core`, `Qt6Gui`,
+`Qt6Widgets`), os `.pyd` e o runtime do MSVC que vem no wheel --, em
+`_internal\PySide6` e `_internal\shiboken6`; dois tipos de plugin, a plataforma
+(`qwindows`, mais as sem tela `qoffscreen` e `qminimal`) e o estilo nativo
+(`qmodernwindowsstyle`: "windows11" e "windowsvista"); a tradução
+`qtbase_pt_BR` (os "Sim"/"Não"/"Cancelar" dos diálogos); as fontes, em
+`_internal\assets\fonts`; e as licenças, em `_internal\licencas`.
+
+**O que fica de fora, e quanto pesa** -- medido no wheel 6.12 do Windows, que é o
+que vai no instalador (o PyInstaller não compila para outro sistema, então o
+número sai do fecho das dependências de cada DLL, como o PyInstaller faz):
+
+| Fora | Windows | Por quê |
+|---|---|---|
+| `opengl32sw.dll` | 20,6 MB | OpenGL por software, do Qt Quick e do QOpenGLWidget; a interface é QtWidgets puro, que desenha sem OpenGL |
+| traduções do Qt, menos a `qtbase_pt_BR` | 6,7 MB | o app carrega uma (`_instalar_traducao`, em `sigft/app_qt/main.py`) |
+| plugins de imagem, SVG, toque, `qdirect2d`..., e o `Qt6Svg.dll` | 4,3 MB | o app só carrega PNG, que o QtGui lê sem plugin |
+| o módulo QtNetwork, o `Qt6Network.dll` e os plugins de TLS e de rede | 3,6 MB | ninguém o importa; quem o puxava era um import condicional do `PySide6/__init__.py` |
+| **a Qt no pacote** | **78,4 → 43,2 MB** | |
+
+Onde cada corte mora: os plugins no hook `empacotamento/hooks/hook-PySide6.QtGui.py`
+(antes da análise, para não deixar órfãs as bibliotecas que eles puxam); o
+QtNetwork nos `excludes` do `Analysis`; as traduções e o `opengl32sw.dll` num
+filtro no fim do spec. `tests/test_qt_no_pacote.py` executa o spec e o hook com
+dublês do PyInstaller.
+
+No build de Linux usado para validar (2026-10-11, PySide6 6.12, só para medir --
+não há Release de Linux): sem a Qt, 562,5 MB; com a Qt do jeito que o PyInstaller
+a coleta, 693,9 MB (+131,4: no Linux entram também o ICU, 39 MB, e as
+bibliotecas de X11, Wayland, EGL e GTK do sistema); com os cortes, 653,9 MB --
+40 MB a menos, e nenhum arquivo do QtNetwork. O ICU não existe no wheel do
+Windows.
+
+**Precisa de algo que ficou de fora?** Um formato de imagem novo na interface
+(SVG, JPEG...): acrescente a família `imageformats` no hook (e, se for SVG, o
+`Qt6Svg` vem junto). Rede pelo Qt: tire o `PySide6.QtNetwork` dos `excludes` --
+o teste reprova enquanto alguém importar o QtNetwork com ele lá. Outra tradução:
+o filtro do fim do spec.
+
+**Como o Release confere.** A `--conferir-pacote` carrega a Qt de verdade dentro
+do `.exe` (`conferir_qt`, em `sigft/app/conferencia.py`), sem criar janela.
+Esperado no Windows:
+
+```
+  OK     Qt carrega: PySide6 6.x, Qt 6.x (QtCore, QtGui, QtWidgets)
+  OK     Qt: plataforma 'windows' (...\_internal\PySide6\plugins\platforms\qwindows.dll)
+  OK     Qt: estilo nativo 'windowsvista'
+  OK     Qt: traducao pt_BR (...\_internal\PySide6\translations\qtbase_pt_BR.qm)
+  OK     Qt: fontes Roboto-Regular.ttf, NotoEmoji-Regular.ttf (...\_internal\assets\fonts)
+```
+
+O plugin da plataforma é **carregado**, e não só procurado: sem ele (ou sem uma
+DLL de que ele depende) a linha sai FALHA ali, em vez de o Qt mostrar a caixa
+modal "no Qt platform plugin could be initialized" e pendurar o passo `--smoke`
+até o tempo-limite. Com `QT_QPA_PLATFORM` definida (o `--smoke` sem tela, os
+testes), a plataforma conferida é a dela. Faltando o estilo nativo, o Qt cairia
+no estilo "Windows" clássico sem avisar ninguém -- só esta conferência vê. E o
+passo "Conferir que o pacote ficou completo" exige as três licenças.
+
+**Licenças.** O Qt for Python vai sob a LGPLv3, que pede o aviso de que a
+biblioteca está no programa, os textos da LGPL e da GPL junto, e a biblioteca
+trocável. O wheel **não traz o texto da LGPL**: medido no 6.12, o do Windows tem
+o `METADATA` (que declara `LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only`) e um
+`LicenseRef-Qt-Commercial.txt` sobre a licença comercial; o de Linux, só o
+`METADATA`. Por isso o aviso (`LEIA-ME-Qt.txt`) e os textos oficiais da FSF
+(`LGPL-3.0.txt`, `GPL-3.0.txt`; o SHA-256 é conferido nos testes) moram em
+`empacotamento/licencas/`, e os arquivos do wheel vêm do ambiente do build, na
+versão que vai no pacote. Tudo cai em `_internal\licencas\`. As DLLs do Qt ficam
+em arquivos separados -- mais um motivo para o `--onedir`: no `--onefile` elas
+iriam dentro do `.exe`, e trocá-las deixaria de ser simples.
+
+**A atualização pequena** da primeira versão com a Qt leva a Qt inteira (para
+uma base CustomTkinter, são arquivos novos) além do `SIG-FT.exe` de sempre:
+estimados uns 80 MB descompactados, bem acima dos 38,5 MB da rc.4, mas longe do
+limite de 60% do pacote -- ela sai.
 
 ---
 
@@ -477,6 +567,16 @@ Falta de `hiddenimports`. Confira se o backend novo entrou na lista da spec.
 Executável não assinado gerado por PyInstaller é falso positivo frequente. Peça
 à TI para liberar a pasta. Assinar o executável resolve de vez, mas exige um
 certificado de code signing.
+
+**Abre a interface antiga em vez da nova.** Desde o corte, quando a Qt não abre o
+`frontend.py` cai na CustomTkinter, para a pessoa continuar trabalhando; o motivo
+vai para `Documentos\SIG-FT\logs\sigft.log`. Para ver o que falta no pacote, rode
+`SIG-FT.exe --conferir-pacote` de uma pasta onde se possa gravar e leia as linhas
+`Qt` do `conferencia-do-pacote.txt`.
+
+**Os diálogos aparecem em inglês ("Yes"/"No"/"Cancel").** A tradução
+`qtbase_pt_BR.qm` não entrou no pacote: a linha `Qt: traducao pt_BR` da
+`--conferir-pacote` diz onde ela foi procurada.
 
 **O `.exe` abre sem ícone/logo.**
 `assets/` não entrou no bundle. Confira a linha `("assets", "assets")` em

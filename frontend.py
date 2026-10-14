@@ -12,9 +12,12 @@ aplicativo, tudo junto. Cada peça mudou para o seu lugar:
     sigft/app/widgets/           console, esqueleto de tela, pickers, diálogos
     sigft/app/backends.py        o registro que o splash carrega (CP 7.3)
 
-**A forma de abrir o aplicativo continua a mesma** — `python frontend.py`, e o
-`SIG-FT.bat`, que faz exatamente isso, não precisou mudar. A forma nova é
-`python -m sigft.app.main`; as duas fazem o mesmo.
+**A forma de abrir o aplicativo continua a mesma; o que abre mudou** (E6.1,
+2026-10-10): `python frontend.py` — e o `SIG-FT.bat` e o `SIG-FT.command` (Mac),
+que fazem exatamente isso — abre a interface Qt (`sigft/app_qt/`).
+`python frontend.py --ctk` abre a CustomTkinter de antes, enquanto durar a
+transição. `python -m sigft.app_qt.main` e `python -m sigft.app.main` abrem cada
+uma direto.
 
 Por que o shim existe, em vez de simplesmente apagar o arquivo
 --------------------------------------------------------------
@@ -28,6 +31,72 @@ lista porque havia código lendo `frontend.COLORS`; a fonte de verdade dele
 agora é `sigft/app/theme.py`, e há teste travando os dois juntos.
 """
 from __future__ import annotations
+
+import sys
+
+# Antes de tudo: com Python antigo o app abria pela metade, com erro enigmático.
+from sigft.core.python_minimo import exigir_python_minimo
+
+exigir_python_minimo()
+
+
+def _a_qt_nao_abriu(erro: Exception) -> None:
+    """A interface Qt não importou (PySide6 ausente ou quebrado) ou não subiu.
+
+    Com `--smoke` (o passo do Release): grava o motivo e sai com 1. Sem isto,
+    um PySide6 que não carrega estourava ANTES do `_smoke`, o `.exe` sem
+    console mostrava a caixa de traceback do PyInstaller e o passo esperava até
+    o limite, sem relatório. E nunca cai no CustomTkinter: o Release tem de
+    reprovar, não passar com a interface errada.
+
+    Sem `--smoke` (decisão da transição): avisa no console e volta, e o
+    `frontend.py` segue para a interface antiga no mesmo processo -- a pessoa
+    continua trabalhando, e fica com o comando para abrir a antiga direto.
+    Exceção: no Mac com uma QApplication já viva, só dá o comando e sai com 1.
+    """
+    import traceback
+
+    pilha = "".join(traceback.format_exception(erro))
+    if "--smoke" in sys.argv:
+        from sigft.app.conferencia import ARQUIVO_JANELA, gravar_relatorio
+
+        relatorio = (f"[smoke] FALHOU: a interface Qt nao abriu: "
+                     f"{type(erro).__name__}: {erro}\n\n{pilha}")
+        gravar_relatorio(ARQUIVO_JANELA, relatorio)
+        print(relatorio)
+        sys.exit(1)
+
+    # No `.exe` sem console, o aviso e a pilha vão para o `logs/sigft.log` (o
+    # import do `sigft.app_qt.main`, que faria isso, foi o que falhou).
+    from sigft.core.interface_antiga import comando_da_interface_antiga
+    from sigft.core.saida_log import desviar_saida_para_arquivo
+
+    desviar_saida_para_arquivo()
+    comando = comando_da_interface_antiga()
+    print(pilha, file=sys.stderr)
+    print(f"[SIG-FT] A interface nova (Qt) nao abriu: {type(erro).__name__}: {erro}")
+    if sys.platform == "darwin" and _qapplication_viva():
+        # No Mac o Tk e a Qt disputam o mesmo NSApplication: com uma
+        # QApplication já criada, abrir o Tk neste processo quebra. Aqui só
+        # se chega quando a falha veio DEPOIS de a Qt subir (a de import, a
+        # comum, acontece antes de existir QApplication).
+        print(f"[SIG-FT] Para abrir a interface antiga: {comando}", flush=True)
+        sys.exit(1)
+    print("[SIG-FT] Abrindo a interface antiga para voce continuar trabalhando.")
+    print(f"         Para abrir a antiga direto: {comando}", flush=True)
+
+
+def _qapplication_viva() -> bool:
+    """Há uma QApplication neste processo? Sem importar o PySide6 (que pode ser
+    justamente o que está quebrado): só olha o que já foi importado."""
+    qt_widgets = sys.modules.get("PySide6.QtWidgets")
+    if qt_widgets is None:
+        return False
+    try:
+        return qt_widgets.QApplication.instance() is not None
+    except Exception:  # noqa: BLE001 -- PySide6 pela metade: trata como sem Qt
+        return False
+
 
 # ⚠️ ANTES do import pesado logo abaixo, e isto é o que faz o Release funcionar.
 #
@@ -45,6 +114,22 @@ if __name__ == "__main__":
     from sigft.app.conferencia import despachar_cedo as _despachar_cedo
 
     _despachar_cedo()
+
+    # A interface oficial é a Qt (E6.1), e ela entra AQUI, antes dos imports do
+    # CustomTkinter logo abaixo: o modo Qt não importa tkinter (o Python do
+    # Homebrew, no Mac, nem o traz). `--ctk` abre a interface antiga.
+    if "--ctk" not in sys.argv:
+        try:
+            from sigft.app_qt.main import executar_da_linha_de_comando as _abrir_qt
+
+            _abrir_qt()
+        except Exception as erro:  # noqa: BLE001 -- ver `_a_qt_nao_abriu`
+            _a_qt_nao_abriu(erro)  # com `--smoke` sai com 1; sem ele, segue para o CTk
+        else:
+            # Não volta: o `main()` da Qt termina o processo (`instancia.encerrar`)
+            # e o `--smoke` sai com `sys.exit`. Se um dia voltar, sai aqui mesmo,
+            # em vez de cair no CustomTkinter.
+            sys.exit(0)
 
 from sigft.app.main import (
     CONFIG_FILE,
@@ -110,6 +195,7 @@ __all__ = [
 
 
 if __name__ == "__main__":
+    # Chega aqui com `--ctk`, ou quando a Qt não abriu (ver `_a_qt_nao_abriu`).
     # `executar_da_linha_de_comando()`, e não `main()` direto: é ele que trata
     # `--smoke`. Chamar `main()` aqui engoliria a flag, porque o `__main__` do
     # `sigft/app/main.py` não roda no bundle. Ver o aviso lá em cima.

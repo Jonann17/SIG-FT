@@ -173,10 +173,23 @@ if errorlevel 1 (
     echo.
     echo [ERRO] Falha ao instalar as dependencias de %~nx1.
     call :_dica_rede
+    if defined _hash_ant goto :_instalar_seguir
     exit /b 1
 )
 >"%_stamp%" echo %_hash%
 echo [SIG-FT] Dependencias de %~nx1 instaladas.
+echo.
+exit /b 0
+
+:_instalar_seguir
+rem Ja houve uma instalacao que deu certo (ha carimbo): o pip baixa tudo antes
+rem de instalar, entao o ambiente anterior continua inteiro e o aplicativo abre
+rem com ele -- inclusive "SIG-FT.bat --ctk". O carimbo antigo fica como esta,
+rem e a proxima abertura tenta instalar de novo. Sem carimbo (nunca instalou)
+rem o erro acima continua derrubando a abertura.
+echo.
+echo [SIG-FT] SEGUINDO com as dependencias da instalacao anterior.
+echo          Na proxima abertura o SIG-FT tenta instalar de novo.
 echo.
 exit /b 0
 
