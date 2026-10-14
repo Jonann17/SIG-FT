@@ -286,6 +286,34 @@ def pytest_runtest_teardown(item, nextitem):
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
+def pytest_unconfigure(config):
+    """No fim da sessão, apaga pelo Qt as janelas que sobraram, o pai antes.
+
+    Na saída do Python, o PySide apaga cada objeto Qt "do Python" ainda vivo
+    numa ordem qualquer. Uma tela vazada (um `lambda` com `self` no sinal de
+    um filho: ciclo que passa pelo C++, que o GC não vê) às vezes tinha o
+    FILHO apagado antes -- o `lambda` morria, levava a tela, e a tela apagava
+    de novo o filho. 6610 testes verdes e o processo morto na saída (código
+    134, CI do PR #5, 2026-10-14). Daqui, cada filho morre com o pai, uma vez
+    só, e a faxina do PySide não acha mais tela nenhuma.
+    Ver tests/test_qt_saida.py.
+    """
+    if "PySide6.QtWidgets" not in sys.modules:
+        return
+    import gc
+
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if not isinstance(app, QApplication):
+        return
+    for janela in app.topLevelWidgets():
+        janela.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    gc.collect()
+
+
 @pytest.fixture(scope="session")
 def qapp(qapp):
     """O `qapp` do pytest-qt com as fontes do app, como o `_preparar_qt`.
