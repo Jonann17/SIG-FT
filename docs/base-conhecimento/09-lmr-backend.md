@@ -143,3 +143,31 @@ aberto (que travaria a página inteira).
 mensagem vêm do HTML do usuário, e os seletores têm teste com `lxml` sobre ele;
 o registro de antes da validação está em `docs/refatoracao/PENDENCIAS.md`,
 2026-09-28.
+
+## 2026-10-14 — a resposta do servidor confirma, e cada TAG é conferida
+
+Pedido do Luan: a Aplicação LMR mais rápida
+(`docs/PMIB_ENGENHARIA_REVERSA.md`, R1 e R8). Duas mudanças, as duas com
+volta automática ao fluxo de 2026-09-28:
+
+1. **A gravação é confirmada pela resposta do servidor.** O CONFIRMAR dispara
+   `ActionApplicationMRL_CreateOrUpdate`, que grava a aplicação e **todas** as
+   tags de uma vez e devolve o `ApplicationMRLId` ou a recusa do servidor
+   (`LMRAutomation._confirmar_pela_resposta`, sobre
+   `RPAEngine.capturar_respostas` e `core/rpa/respostas.py`). A resposta é
+   única por gravação, então o passo 1 da seção acima — esperar a mensagem do
+   código anterior sair, até 15 s por código — deixa de existir. Uma recusa
+   vem com o motivo do próprio portal. Se a resposta não vier (o endereço
+   mudou numa versão nova do portal), a mensagem na tela decide aquele código,
+   e o resto do lote volta ao fluxo de antes (`_confirma_pela_resposta`).
+2. **Cada TAG é conferida.** Adicionar tag não fala com o servidor: o portal
+   põe a tag numa lista local e **esvazia o campo** (`Tag.Tag = ""` na ação
+   `_addTag` da tela). A segunda pausa fixa de 0,5 s depois do ENTER virou
+   espera por condição (`_esperar_tag_sair_do_campo`, até 1 s em tentativas de
+   0,05 s), que também prova que a tag entrou; a que não sai vira aviso no
+   log. A pausa entre o TAB e o ENTER continua, calibrada no portal.
+
+Continua sendo RPA (regra do Luan, 2026-10-14): o robô clica como uma pessoa,
+e a resposta lida é a que o navegador recebeu por causa do clique. Motor ou
+dublê que não lê as respostas da página (`captura_respostas_disponivel`
+falso) segue exatamente o fluxo de 2026-09-28.
