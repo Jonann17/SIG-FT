@@ -50,6 +50,11 @@
     da Itaipu e da TI, não do SIG-FT. A §8 (R9) explica por que nem para leitura
     convém começar por aí.
 
+**Cobertura.** Os **558 elementos interativos** das telas foram ligados, cada um, à ação
+que disparam e ao efeito final (Apêndice F). Das **72 ações de servidor** do PMIB, 64 têm
+caminho a partir de um clique ou da abertura da tela. As 8 restantes são utilitários
+internos. O que o código cliente **não** pode mostrar está na §9.
+
 ---
 
 ## 1. Do que o PMIB é feito
@@ -517,6 +522,15 @@ próprias. **Nenhum foi implementado nesta leitura.**
 - **Retrato de 2026-10-13.** A Itaipu publica versões; o Apêndice E diz como saber se
   este retrato envelheceu.
 - **Os "[inferido do nome]"** da §4 são leitura dos nomes dos campos, não regra escrita.
+- **Conteúdo que vem do servidor**: as opções dos dropdowns (PDMs, unidades, opções de
+  característica, grupos GM, contratos) e as linhas das listas dependem do usuário e só
+  aparecem com login.
+- **Componentes de terceiros** (upload FilePond, dropdown `vscomp`, árvore zTree): o
+  catálogo mostra o que a tela faz com eles, não o comportamento interno de cada um.
+- **Eventos entre blocos**: no Apêndice F, um botão de bloco filho que "repassa evento ao
+  pai" é resolvido na linha do bloco pai, não numa cadeia única.
+- **Nada disto foi executado contra o portal.** O mapa diz o que o código manda fazer; a
+  prova continua sendo uma execução real.
 
 ## 10. Como refazer
 
@@ -1074,3 +1088,585 @@ Manifesto lido em 2026-10-13: `versionSequence` = **30465**, `versionToken` = `i
 | `PMIB_DataSheet_CW.Conditions_Flow.Datasheet_Conditions_Discart.mvc.js` | `aLHKfeN2BTr4Kx3UWUjeVg` | Upload Condições, Ficha Duplicada |
 | `PMIB_DataSheet_CW.PMIB_DataSheetView.Datasheet_Popover.mvc.js` | `oEILUfRf_usgzB2gciR_dw` | (nenhum hoje; status da ficha) |
 | `PMIB_DataSheet_CW.PMIB_DataSheetView.Datasheet_ApplicationMRLView.mvc.js` | `dNKNspUt5Otr+5+YHy0mzQ` | Apagar LMR |
+
+## Apêndice F — Catálogo de interações (botão → ação → efeito)
+
+Levantado em 2026-10-13 sobre **558 elementos interativos** das telas e blocos `PMIB*` e `SAMGM*`: botões, links, campos, seleções e instâncias de bloco que recebem evento. Cada um foi ligado à ação de cliente que dispara, e essa ação foi seguida, dentro do bloco, até o efeito final. **[código]**
+
+| O que o elemento faz | Quantos |
+|---|---|
+| só estado local: abre/fecha popup, marca/desmarca | 149 |
+| só recarrega dados (consulta) | 141 |
+| grava ou comanda no servidor (endpoint) | 91 |
+| entrada de dado (campo ligado a variável) | 79 |
+| JavaScript local (máscara, limite de teclas) | 26 |
+| navega para outra tela | 23 |
+| repassa evento ao bloco pai | 22 |
+| link de navegação (menu, Voltar, Nova ficha) | 14 |
+| opção de grupo de rádio | 13 |
+
+**Ações de servidor do PMIB (`PMIB*`): 72.** 62 são alcançadas por clique ou mudança de campo, 2 pela abertura da tela (`CheckDatasheetProviderCreator`, ao renderizar). As 8 restantes são utilitários chamados de outros módulos: `ActionUser_GetUnifiedLoginUrl`, `ActionGetRequestDomain`, `ActionRegex_Search`, `ActionStringJoinValues`, `ActionCheckEmailIsExist`, `ActionGetUserByEmail`, `ActionGetHomeModuleAddress`, `ActionUser_GetUnifiedLoginUrl`.
+
+**Nomes estáveis:** os 127 campos de digitação/seleção têm nome interno (Apêndice D). Dos 141 botões e links, **só 7 têm nome**; os demais não ganham `id` próprio no HTML e precisam ser achados pelo texto (PT **ou** ES, ambos abaixo e no código) ou pela estrutura. Um evento "ao bloco pai" é resolvido na linha do bloco pai que o recebe.
+
+Fora do escopo desta tabela: campos de digitação sem ação (estão no Apêndice D) e instâncias de bloco que só recarregam dados.
+
+
+**PMIB_Datasheet.PMIB_DataSheetView**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Voltar <sub>(Back)</sub> |  | navegação por link |
+| Link | ícone `times` |  | recarrega `getPMIBDataSheetById` |
+| bloco PMIB_LayoutMenuTemplate | — | `NoteSidebar` | **grava/comanda:** `CheckDatasheetProviderCreator`; navega → InvalidPermissions, PMIB_DatasheetEdit, PMIB_DatasheetList |
+| bloco Datasheet_Popover | — |  | navega → PMIB_DatasheetEdit, PMIB_DatasheetList |
+| bloco PMIB_DataSheetView | — |  | **grava/comanda:** `CheckDatasheetProviderCreator`; navega → InvalidPermissions, PMIB_DatasheetList |
+
+**PMIB_Datasheet.PMIB_DatasheetCadastre**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Voltar <sub>(Back)</sub> |  | navegação por link |
+| bloco PMIB_LayoutMenuTemplate | — |  | navega → (PreviousScreen), PMIB_DatasheetEdit |
+| bloco PMIB_Datasheet_Cadastre | — |  | navega → (PreviousScreen), PMIB_DatasheetEdit |
+
+**PMIB_Datasheet.PMIB_DatasheetEdit**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Voltar <sub>(Back)</sub> |  | navega → PMIB_DatasheetList |
+| bloco PMIB_LayoutMenuTemplate | — |  | navega → PMIB_DatasheetList |
+| bloco Tooltip | — |  | navega → PMIB_DatasheetList |
+| bloco PMIB_DataSheet_DetailForm | — |  | navega → PMIB_DatasheetList |
+
+**PMIB_Datasheet.PMIB_DatasheetList**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Fluxo de Ficha Técnica <sub>(Datasheet Flow)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Button | NOVA FICHA <sub>(NEW Datasheet)</sub> |  | navegação por link |
+| bloco PMIB_LayoutMenuTemplate | — |  | navega → PMIB_DataSheetView, PMIB_DatasheetEdit |
+| bloco PMIB_DatasheetList | — |  | navega → PMIB_DataSheetView, PMIB_DatasheetEdit |
+
+**PMIB_Datasheet.PMIB_MDSTreeList**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Ajuda para criar uma Ficha Técnica <sub>(Help to create Technical Data Sheets)</sub> |  | **grava/comanda:** `GetHelpFile` |
+| bloco PMIB_LayoutMenuTemplate | — |  | **grava/comanda:** `GetHelpFile`; navega → PMIB_DatasheetCadastre |
+| bloco Tooltip | — |  | **grava/comanda:** `GetHelpFile` |
+| bloco MDSTreeView_Optimized | — |  | navega → PMIB_DatasheetCadastre |
+
+**Common.InvalidPermissions**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Button | Voltar <sub>(Go Back)</sub> |  | navegação por link |
+| Button | Iniciar Sessão <sub>(Login)</sub> |  | navegação por link |
+
+**Common.Menu**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Lista de PDMs <sub>(PMIB_MDSTreeList)</sub> |  | navegação por link |
+| Link | Fichas técnicas <sub>(PMIB_DatasheetList)</sub> |  | navegação por link |
+| Link | Documentos <sub>(Documents)</sub> |  | navegação por link |
+| Link | Lista de usuários fornecedores <sub>(List of user providers)</sub> |  | navegação por link |
+
+**Common.UserInfo**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | ícone `sign-out` |  | navega → Home |
+| Link | ícone `sign-in` |  | **grava/comanda:** `User_GetUnifiedLoginUrl`; navega → , /PMIB_Security/Login |
+
+**Conditions_Flow.AttachmentByDataSheetAndSection**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Associar documentos <sub>(Attached file)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Link | — |  | estado local (abre/fecha, marca/desmarca) |
+| bloco LayoutPopup | — |  | **grava/comanda:** `PMIBDocumentDatasheet_MultiCreate` |
+| bloco SelectDocument | — |  | **grava/comanda:** `PMIBDocumentDatasheet_MultiCreate` |
+
+**Conditions_Flow.Datasheet_Conditions_Discart**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| RadioGroup | — | `NBR_RadioGroup` | entrada de dado |
+| RadioButton | Classe I - Perigoso <sub>(Class I - Dangerous)</sub> | `RadioButton1` | opção do grupo de rádio |
+| RadioButton | Classe II – Não perigoso <sub>(Class II - Not Dangerous)</sub> | `RadioButton2` | opção do grupo de rádio |
+| RadioGroup | — | `IsApplied_ReverseLogistics` | recarrega `getDiscardLocationConditionsByDatasheetId`, `getDiscardTypeConditionsByDatasheetId`, `getNBRClassificationDatasheetsByPMIBDatasheetId`… |
+| RadioButton | Não se aplica <sub>(Does Not Apply)</sub> | `DoesNotApply` | opção do grupo de rádio |
+| RadioButton | Aplica <sub>(Applies)</sub> | `Applies` | opção do grupo de rádio |
+| Button | SALVAR <sub>(SAVE)</sub> |  | **grava/comanda:** `Datasheet_Discart_Save` |
+
+**Conditions_Flow.Datasheet_Conditions_Maintenance**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Button | SALVAR <sub>(SAVE)</sub> |  | **grava/comanda:** `Datasheet_Maintenance_Save` |
+
+**Conditions_Flow.Datasheet_Conditions_TransportMovement**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Button | SALVAR <sub>(SAVE)</sub> |  | **grava/comanda:** `Datasheet_TransportMovement_Save` |
+
+**Conditions_Flow.Datasheet_FinancialConditions**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Adicionar número de série <sub>(Add serial number)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Link | Excluir <sub>(Remove)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Button | SALVAR <sub>(SAVE)</sub> |  | **grava/comanda:** `Datasheet_FinancialConditions_CreateOrUpdate_BL` |
+| bloco ConfirmationPopUp_Th | Deseja salvar as mudanças feitas na seção de condições financeiras? <sub>(Save changes on financial conditions section?)</sub> |  | **grava/comanda:** `Datasheet_FinancialConditions_CreateOrUpdate_BL` |
+
+**Conditions_Flow.Datasheet_Popup_DocumentsView**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Excluir documento <sub>(Delete Document)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Button | FECHAR <sub>(Cancel)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| bloco ConfirmationPopUp_Th | Deseja excluir o documento? <sub>(Do you want to delete the document?)</sub> |  | **grava/comanda:** `PMIB_DocumentDatasheet_Delete` |
+
+**Conditions_Flow.Datasheet_StorageConditions**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| RadioGroup | — | `RadioGroupNTHC` | estado local (abre/fecha, marca/desmarca) |
+| RadioButton | Sem necessidade <sub>(No need)</sub> | `RadioButton4` | opção do grupo de rádio |
+| RadioButton | Com necessidade <sub>(In need)</sub> | `RadioButton5` | opção do grupo de rádio |
+| Checkbox | Climatização <sub>(Is Weatherization)</sub> | `Checkbox4` | estado local (abre/fecha, marca/desmarca) |
+| Checkbox | Umidade <sub>(Is Humidity)</sub> | `Checkbox5` | estado local (abre/fecha, marca/desmarca) |
+| RadioGroup | — | `RadioGroupPosition` | entrada de dado |
+| RadioButton | Vertical | `RadioButton` | opção do grupo de rádio |
+| RadioButton | Indiferente <sub>(Indifferent)</sub> | `RadioButton7` | opção do grupo de rádio |
+| RadioButton | Indiferente <sub>(Indifferent)</sub> | `RadioButton8` | opção do grupo de rádio |
+| Checkbox | Sujeito a intempérie <sub>(Is Subject To Weather)</sub> | `Checkbox3` | entrada de dado |
+| Checkbox | Sem necessidade <sub>(No need)</sub> | `Checkbox6` | estado local (abre/fecha, marca/desmarca) |
+| Checkbox | Raios ultravioleta <sub>(Ultraviolet rays)</sub> | `Checkbox7` | estado local (abre/fecha, marca/desmarca) |
+| Checkbox | Eletrostática <sub>(Electrostatics)</sub> | `Checkbox8` | entrada de dado |
+| RadioGroup | — | `RadioGroup1` | recarrega `getStorageConditionById` |
+| RadioButton | Não contém agentes nocivos <sub>(Not Harmful)</sub> | `RadioButton1` | opção do grupo de rádio |
+| RadioButton | Nocivo <sub>(Harmful)</sub> | `RadioButton2` | opção do grupo de rádio |
+| RadioGroup | — | `RadioGroupOtherCare` | estado local (abre/fecha, marca/desmarca) |
+| RadioButton | Sem necessidade <sub>(No need)</sub> | `RadioButton3` | opção do grupo de rádio |
+| RadioButton | Outros cuidados <sub>(Other Care)</sub> | `RadioButton6` | opção do grupo de rádio |
+| Button | SALVAR <sub>(SAVE)</sub> |  | **grava/comanda:** `Storage_Conditions_CreateOrUpdate` |
+| bloco ButtonLoading | — |  | **grava/comanda:** `Storage_Conditions_CreateOrUpdate` |
+
+**DocumentWB.AttachmentsDropdown**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | — |  | estado local (abre/fecha, marca/desmarca) |
+| Link | Baixar <sub>(Dowload)</sub> |  | **grava/comanda:** `GetAttachmentBinaryById` |
+| bloco Card | — |  | **grava/comanda:** `GetAttachmentBinaryById` |
+| bloco Tooltip | — |  | **grava/comanda:** `GetAttachmentBinaryById` |
+
+**DocumentWB.DocumentAttachmentList**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Baixar <sub>(Download)</sub> |  | **grava/comanda:** `GetAttachmentBinaryById` |
+| Link | Excluir <sub>(Remove)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| bloco Card | — |  | **grava/comanda:** `GetAttachmentBinaryById` |
+| bloco Tooltip | — |  | **grava/comanda:** `GetAttachmentBinaryById` |
+| bloco ConfirmationPopUp_Th | Deseja remover esse arquivo anexado? O arquivo anexado removido não pode ser recuperado. <sub>(Are you sure you want to remove this attachment? The removed attachment can not be recovered.)</sub> |  | **grava/comanda:** `Delete_DocumentAttachment` |
+
+**DocumentWB.DocumentDescriptionCoincidences**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | ícone `times` |  | recarrega `getDocumentsCoincidences` |
+
+**DocumentWB.DocumentDetails**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Button | EDITAR <sub>(EDIT)</sub> |  | recarrega `getDocumentById`, `getPMIBDocumentById`, `veryToDelete` |
+| Button | EDITAR <sub>(EDIT)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Button | Excluir <sub>(Delete)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Button | Excluir <sub>(Delete)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| bloco ConfirmationPopUp_Th | Deseja excluir o documento? <sub>(¿Desea eliminar el documento?)</sub> |  | **grava/comanda:** `DeleteDocument` |
+
+**DocumentWB.DocumentList**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Dropdown | — | `DropdownMaxRecords` | entrada de dado |
+| Button | Pesquisar <sub>(Search)</sub> |  | recarrega `getDocumentList` |
+| Link | Limpar <sub>(Clear)</sub> |  | recarrega `getDocumentList` |
+| Link | Visualizar <sub>(View)</sub> |  | recarrega `getDocumentList` |
+
+**DocumentWB.Document_Delete**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Excluir <sub>(Remove)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| bloco ConfirmationPopUp_Th | Deseja excluir o documento? <sub>(¿Desea eliminar el documento?)</sub> |  | **grava/comanda:** `DeleteDocument` |
+
+**DocumentWB.Document_Form**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Input | — | `Input_DescriptionES` | JavaScript local |
+| Input | — | `Input_DescriptionPT` | JavaScript local |
+| Button | Salvar <sub>(Save)</sub> |  | **grava/comanda:** `SaveDocumentAndAttachment` |
+| Button | Cancelar <sub>(Cancel)</sub> |  | navega → (PreviousScreen); recarrega `getAttachmentsByDocumentID`, `getDocumentWithSameDescriptionES`, `getDocumentWithSameDescriptionPT`…; evento ao bloco pai: `Close` |
+| bloco ConfirmationPopUp_Th | Deseja salvar as alterações? <sub>(Do you want to save the changes?)</sub> |  | **grava/comanda:** `SaveDocumentAndAttachment` |
+
+**DocumentWB.Document_VeryEdit**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Editar <sub>(Edit)</sub> |  | recarrega `getPMIBDocumentById` |
+
+**DocumentWB.SelectDocument**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | NOVO <sub>(NEW)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Button | Pesquisar <sub>(Search)</sub> |  | recarrega `getDocuments` |
+| Link | Limpar <sub>(Clear)</sub> |  | recarrega `getDocuments` |
+| Button | ASSOCIAR <sub>(ASSOCIATE)</sub> |  | evento ao bloco pai: `AssociateEvent` |
+| Button | CANCELAR <sub>(CLOSE)</sub> |  | recarrega `getDocuments` |
+| Checkbox | — | `Checkbox1` | estado local (abre/fecha, marca/desmarca) |
+
+**PMIBNoteOrJustification.AttachmentsList**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Baixar <sub>(Dowload)</sub> |  | **grava/comanda:** `GetAttachmentBinaryById` |
+| Link | Excluir <sub>(Delete)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Button | FECHAR <sub>(Cancel)</sub> |  | recarrega `getPMIBProcessJustificationById` |
+| bloco LayoutPopup | — | `IsTableLoadingOrEmpty` | **grava/comanda:** `GetAttachmentBinaryById` |
+| bloco Card | — |  | **grava/comanda:** `GetAttachmentBinaryById` |
+| bloco Tooltip | — |  | **grava/comanda:** `GetAttachmentBinaryById` |
+| bloco ConfirmationPopUp_Th | Deseja excluir o anexo? <sub>(Do you want to delete the attachment?)</sub> |  | **grava/comanda:** `DeleteProcessAttachment_BL` |
+
+**PMIBNoteOrJustification.IconNoteDetailPMIB**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | — |  | recarrega `getPMIBProcessJustificationsByPMIBDataSheetId` |
+
+**PMIBNoteOrJustification.Note**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Criar <sub>(Send)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Link | Cancelar <sub>(Clear)</sub> |  | recarrega `getPMIBProcessJustificationsByPMIBDataSheetId`; evento ao bloco pai: `OnClear` |
+| bloco ConfirmationPopUp_Th | Deseja criar a nota? <sub>(You want to create the note?)</sub> |  | **grava/comanda:** `CreateOrUpdateNoteOrJustification_BL` |
+
+**PMIBNoteOrJustification.ViewAttachment**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | — |  | estado local (abre/fecha, marca/desmarca) |
+
+**PMIB_DataSheetView.Datasheet_ApplicationMRLTagList**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | — |  | estado local (abre/fecha, marca/desmarca) |
+
+**PMIB_DataSheetView.Datasheet_ApplicationMRLView**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | ícone `pencil-square-o` |  | recarrega `getApplicationMRLSByPMIBDatasheet`; evento ao bloco pai: `EditEvent` |
+| Link | ícone `trash` |  | estado local (abre/fecha, marca/desmarca) |
+| bloco ConfirmationPopUp_Th | Deseja excluir as informações da aplicação LMR? <sub>(Do you want to delete the information for the LMR Application?)</sub> |  | **grava/comanda:** `ApplicationMRL_Delete` |
+
+**PMIB_DataSheetView.Datasheet_Conditions_DiscartView**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Checkbox | Classe I - Perigoso <sub>(Class I - Dangerous)</sub> | `Checkbox1` | entrada de dado |
+| Checkbox | Classe II – Não perigoso <sub>(Class II - Not Dangerous)</sub> | `Checkbox2` | entrada de dado |
+| Checkbox | Aplica <sub>(Applies)</sub> | `Checkbox3` | entrada de dado |
+| Checkbox | Não se aplica <sub>(Does Not Apply)</sub> | `Checkbox4` | entrada de dado |
+
+**PMIB_DataSheetView.Datasheet_Conditions_StorageView**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Checkbox | Nocivo <sub>(Harmful)</sub> | `Checkbox1` | estado local (abre/fecha, marca/desmarca) |
+| Checkbox | Outros cuidados <sub>(Other care)</sub> | `Checkbox2` | estado local (abre/fecha, marca/desmarca) |
+
+**PMIB_DataSheetView.Datasheet_DocumentsBySectionView**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Button | FECHAR <sub>(Cancel)</sub> |  | recarrega `documents` |
+
+**PMIB_DataSheetView.Datasheet_Popover**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Editar ficha técnica <sub>(Edit technical sheet)</sub> |  | evento ao bloco pai: `Event_EditSheet` |
+| Link | Concluir elaboração <sub>(Conclude elaboration)</sub> |  | recarrega `getValidateRequiredSections` |
+| Link | Descartar elaboração <sub>(Discard elaboration)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Link | Enviar para ITAIPU <sub>(Send to ITAIPU)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Link | Verificar <sub>(Verify)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Link | Enviar para Em Elaboração <sub>(Send to Draft)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Link | Cancelar elaboração <sub>(Cancel elaboration)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Link | Cancelar elaboração <sub>(Cancel elaboration)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| bloco ConfirmationPopUpWithLoading | Deseja enviar rascunho da Ficha Técnica para o status “Para Enviar para ITAIPU”? <sub>(Do you want to send the Datasheet draft for the next status?)</sub> |  | **grava/comanda:** `PMIB_ConcludeDatasheet` |
+| bloco ConfirmationPopUp_Th | ¿Deseja descartar o rascunho de Ficha Técnica? <sub>(Do you want to delete the draft?)</sub> |  | **grava/comanda:** `PMIB_DataSheet_Discard` |
+| bloco ConfirmationPopUp_Th | Deseja cancelar a elaboração da Ficha Técnica? <sub>(Do you want to cancel the data sheet?)</sub> |  | **grava/comanda:** `PMIB_CancelDatasheet` |
+| bloco ConfirmationPopUp_Th | Deseja enviar a Ficha Técnica para o estado 'Em Análise ITAIPU'? <sub>(Do you want to send the Technical Sheet to the status 'In ITAIPU Analysis'?)</sub> |  | **grava/comanda:** `PMIB_SendToITAIPU` |
+| bloco ConfirmationPopUp_Th | Deseja retornar a Ficha Técnica ao estado 'Em Elaboração'? <sub>(Do you wish to return the Data Sheet to 'In Elaboration' status?)</sub> |  | **grava/comanda:** `ChangeStatusDataSheet` |
+| bloco ConfirmationPopUp_Th | Deseja enviar a Ficha Técnica para o estado "Em Elaboração"? <sub>(Do you want to send the datasheet to the draft status?)</sub> |  | **grava/comanda:** `PMIB_SendToDraft` |
+
+**PMIB_DataSheetView.Datasheet_Popup_ValidateRequiredSections**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Button | Fechar <sub>(Close)</sub> |  | evento ao bloco pai: `Event_ClosePopup` |
+
+**PMIB_DataSheetView.PMIB_DataSheetViewHeader**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | — |  | recarrega `getCodificationRequestsByPMIBDatasheetId`, `getDataSheetsById`, `getPMIBDatasheetSAMGMDatasheetsByPMIBDatasheetId` |
+| Link | Clique para obter informações adicionais <sub>(Click here for additional information)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Link | — |  | estado local (abre/fecha, marca/desmarca) |
+
+**PMIB_DataSheetView.ViewAttachmentByDataSheetAndSection**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | — |  | estado local (abre/fecha, marca/desmarca) |
+
+**PMIB_DataSheet_Forms.Block_ReferenceCoincidence**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | ícone `times` |  | estado local (abre/fecha, marca/desmarca) |
+
+**PMIB_DataSheet_Forms.Datasheet_ApplicationMRL**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Input | — | `Input_EquipmentCode` | recarrega `getPriorities` |
+| Input | — | `Input_QuantityInstalled` | recarrega `getPriorities` |
+| Link | ícone `plus-circle` |  | estado local (abre/fecha, marca/desmarca) |
+| Link | ícone `trash` |  | estado local (abre/fecha, marca/desmarca) |
+| Input | — | `Input_EquipmentCodeSOM` | recarrega `getPriorities` |
+| Input | — | `Input_LocationSOM` | recarrega `getPriorities` |
+| Dropdown | — | `DropdownCriticity` | recarrega `getPriorities` |
+| Checkbox | Prioridade do material no equipamento <sub>(Priority)</sub> | `Checkbox1` | recarrega `getPriorities` |
+| Dropdown | — | `DropdownPriority` | recarrega `getPriorities` |
+| Button | SALVAR <sub>(Save)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Button | Cancelar <sub>(Cancel)</sub> |  | recarrega `getApplicationMRLById`, `getTagApplicationMRLSByApplicationMRL` |
+| Button | Fechar <sub>(Close)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| bloco ConfirmationPopUp_Th | Deseja excluir a tag? <sub>(Do you want to delete the tag?)</sub> |  | **grava/comanda:** `TagApplicationMRL_Delete` |
+| bloco ConfirmationPopUp_Th | Deseja salvar as mudanças feitas na seção Aplicação - LMR? <sub>(Do you want to save the changes made in the Application - MRL section?)</sub> |  | **grava/comanda:** `ApplicationMRL_CreateOrUpdate` |
+
+**PMIB_DataSheet_Forms.ManufacturerPMIB_EditReference**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Input | — | `Input_Reference` | JavaScript local |
+| Button | GUARDAR <sub>(SAVE)</sub> | `ConfirmBtn` | **grava/comanda:** `DataSheetManufacturer_CreateOrUpdateBL` |
+| Button | CANCELAR <sub>(CANCEL)</sub> |  | recarrega `getManufacturerDataSheetById`, `validReference` |
+| bloco LayoutPopup | — | `Form1` | **grava/comanda:** `DataSheetManufacturer_CreateOrUpdateBL` |
+
+**PMIB_DataSheet_Forms.PMIB_DataSheet_DocumentsAndImages**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Adicionar imagens <sub>(Add Images)</sub> |  | recarrega `newImageDataSheets` |
+| Checkbox | — | `Checkbox1` | **grava/comanda:** `PMIBDataSheetImage_SetToPrincipal` |
+| Link | Editar <sub>(Edit)</sub> |  | recarrega `newImageDataSheets` |
+| Link | Baixar <sub>(Dowload)</sub> |  | **grava/comanda:** `GetAttachmentBinaryById` |
+| Link | Excluir <sub>(Remove)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Link | Associar documentos <sub>(Associate Documents)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Link | Excluir <sub>(Remove)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Button | Confirmar <sub>(Confirm)</sub> |  | **grava/comanda:** `PMIBDataSheetImage_Add` |
+| Button | Cancelar <sub>(Close)</sub> |  | recarrega `newImageDataSheets` |
+| Button | Confirmar <sub>(Confirm)</sub> |  | **grava/comanda:** `PMIBDataSheetImage_Update` |
+| Button | Cancelar <sub>(Close)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| bloco Fieldset | — | `FieldSet_Imagen` | **grava/comanda:** `GetAttachmentBinaryById`, `PMIBDataSheetImage_SetToPrincipal` |
+| bloco Tooltip | — |  | **grava/comanda:** `GetAttachmentBinaryById` |
+| bloco LayoutPopup | — |  | **grava/comanda:** `PMIBDocumentDatasheet_MultiCreate` |
+| bloco SelectDocument | — |  | **grava/comanda:** `PMIBDocumentDatasheet_MultiCreate` |
+| bloco LayoutPopup | — | `Form1` | **grava/comanda:** `PMIBDataSheetImage_Add` |
+| bloco ConfirmationPopUp_Th | Deseja excluir a imagem? <sub>(Do you want to delete the image?)</sub> |  | **grava/comanda:** `PMIBDataSheetImage_Delete` |
+| bloco ConfirmationPopUp_Th | Deseja excluir o documento? <sub>(Do you want to delete the document?)</sub> |  | **grava/comanda:** `PMIB_DocumentDatasheet_DeleteByDocument` |
+| bloco LayoutPopup | — | `Form2` | **grava/comanda:** `PMIBDataSheetImage_Update` |
+
+**PMIB_DataSheet_Forms.PMIB_DataSheet_TCOptionsList**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Dropdown | — | `Dropdown1` | recarrega `getMDSTechnicalCharacteristicOptionsByMDSTechnical`; evento ao bloco pai: `SelectedTechnicalCharacteristicOption` |
+
+**PMIB_DataSheet_Forms.PMIB_DataSheet_TCUnitsOfMeasurement**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Dropdown | — | `DropdownTCUnitsOfMeasurement` | recarrega `getMDSTUnitOfMeasurementsByMDSTechnicalCharacteris`; evento ao bloco pai: `SelectedTCUnitOfMeasurement` |
+
+**PMIB_DataSheet_Forms.PMIB_DataSheet_TechnicalCharacteristics**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Adicionar <sub>(Add)</sub> |  | recarrega `getMDSTechnicalCharacteristics`, `getTechnicalCharacteristics` |
+| Dropdown | — | `Dropdown_IntervalOptions` | recarrega `getSelectedIntervalOption` |
+| Dropdown | — | `Dropdown_NumericValuesSymbols` | recarrega `getSelectedSymbol` |
+| Input | — | `NumberValue_Input` | JavaScript local |
+| Checkbox | Fração <sub>(Fraction)</sub> | `Checkbox_IsFraction` | **grava/comanda:** `ConvertDecimalToFraction`, `ConvertFractionToDecimal` |
+| Input | — | `MinValue_Input` | JavaScript local |
+| Input | — | `MaxValue_Input` | JavaScript local |
+| Checkbox | Fração <sub>(Fraction)</sub> | `Checkbox_Interval_IsFraction` | **grava/comanda:** `ConvertIntervalToDecimal`, `ConvertIntervalToFraction` |
+| Link | Excluir <sub>(Delete)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Button | SALVAR <sub>(SAVE)</sub> |  | **grava/comanda:** `PMIB_DataSheet_TCs_UpdateTCsValues` |
+| Link | ícone `times` |  | recarrega `getPMIBDataSheetById` |
+| bloco Fieldset | Deseja excluir a característica técnica? <sub>(You want to delete this technical characteristic?)</sub> | `Dropdown_IntervalOptions` | **grava/comanda:** `ConvertDecimalToFraction`, `ConvertFractionToDecimal`, `ConvertIntervalToDecimal`, `ConvertIntervalToFraction`, `PMIB_DataSheet_TCs_Delete_BL`, `PMIB_DataSheet_TCs_UpdateTCsValues` |
+| bloco ConfirmationPopUp_Th | Deseja excluir a característica técnica? <sub>(You want to delete this technical characteristic?)</sub> |  | **grava/comanda:** `PMIB_DataSheet_TCs_Delete_BL` |
+
+**PMIB_DataSheet_Forms.PMIB_Datasheet_Cadastre**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Button | SALVAR <sub>(Save)</sub> |  | **grava/comanda:** `DataSheet_CreateOrUpdate_BL` |
+| Button | CANCELAR <sub>(Cancel)</sub> |  | evento ao bloco pai: `Cancel` |
+| bloco Tabs | — | `Form1` | **grava/comanda:** `DataSheet_CreateOrUpdate_BL`, `GetMDSBasicAndModifierNameById` |
+| bloco TabsContentItem | — | `Form1` | **grava/comanda:** `DataSheet_CreateOrUpdate_BL`, `GetMDSBasicAndModifierNameById` |
+| bloco DropdownSearch | — | `MDSSearch` | **grava/comanda:** `GetMDSBasicAndModifierNameById` |
+| bloco ButtonLoading | — |  | **grava/comanda:** `DataSheet_CreateOrUpdate_BL` |
+
+**PMIB_DataSheet_Forms.PMIB_Datasheet_GeneralInformations**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Input | — | `Input_ShortText` | estado local (abre/fecha, marca/desmarca) |
+| Dropdown | — | `MaterialSource` | entrada de dado |
+| Dropdown | — | `MaterialType` | estado local (abre/fecha, marca/desmarca) |
+| Dropdown | — | `ManufactureType` | entrada de dado |
+| Button | SALVAR <sub>(SAVE)</sub> |  | **grava/comanda:** `DataSheet_CreateOrUpdate_BL` |
+| Button | CANCELAR <sub>(CANCEL)</sub> |  | recarrega `getDataSheetsById`, `getManufactureTypes`, `getMaterialSources`… |
+| bloco ConfirmationPopUp_Th | Todos os dados de Características Técnicas serão removidos. Deseja continuar? <sub>(When saved, All technical characteristics data will be deleted)</sub> |  | **grava/comanda:** `GetMDSBasicAndModifierNameById` |
+
+**PMIB_DataSheet_Forms.PMIB_ManufacturersAndSuppliers**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | ícone `times` |  | recarrega `getPMIBDataSheetById` |
+
+**PMIB_DataSheet_Forms.PMIB_ManufacturersAndSuppliersList**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Input | — | `Input_TextVar` | JavaScript local |
+| Link | Adicionar <sub>(Add)</sub> |  | **grava/comanda:** `DataSheetManufacturer_CreateOrUpdateBL` |
+| Link | Editar <sub>(Edit)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Link | Excluir <sub>(Remove)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| bloco Fieldset | Mensagem de confirmação <sub>(Confirmation message)</sub> | `ManufacturersDropdown` | **grava/comanda:** `DataSheetManufacturer_CreateOrUpdateBL`, `DataSheetManufacturer_DeleteBL` |
+| bloco AlignCenter | — | `Input_TextVar` | **grava/comanda:** `DataSheetManufacturer_CreateOrUpdateBL` |
+| bloco Tooltip | — |  | **grava/comanda:** `DataSheetManufacturer_CreateOrUpdateBL` |
+| bloco ConfirmationPopUp_Th | Mensagem de confirmação <sub>(Confirmation message)</sub> |  | **grava/comanda:** `DataSheetManufacturer_DeleteBL` |
+
+**PMIB_DatasheetList.ManufacturerDropdown**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | — |  | estado local (abre/fecha, marca/desmarca) |
+
+**PMIB_DatasheetList.PMIB_DatasheetList**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Dropdown | — | `Dropdown1` | entrada de dado |
+| Link | Pesquisar <sub>(Search)</sub> | `Search` | estado local (abre/fecha, marca/desmarca) |
+| Link | Limpar <sub>(Clear)</sub> | `Clear` | estado local (abre/fecha, marca/desmarca) |
+
+**PMIB_DatasheetList.PMIB_DatasheetListTable**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Visualizar <sub>(View)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Link | Editar <sub>(Edit)</sub> |  | recarrega `getPMIBDataSheetsByCreateBy` |
+
+**PMIB_DatasheetList.PMIB_Datasheet_DeleteOrCancelIcon**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Descartar rascunho <sub>(Discard draft)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Link | Não é possível cancelar a ficha técnica. Existe um processo de autorização em aberto para a recepção de materiais. <sub>(The technical data sheet cannot be canceled. There is an open authorization process for receiving materials.)</sub> |  | recarrega `getValidateRequiredSections` |
+| Link | Cancelar elaboração <sub>(Cancel Elaboration)</sub> |  | recarrega `getValidateRequiredSections` |
+| bloco ConfirmationPopUpWithLoading | Deseja descartar o rascunho da Ficha Técnica? <sub>(Do you want to delete the draft?)</sub> |  | **grava/comanda:** `PMIB_DataSheet_Discard` |
+| bloco ConfirmationPopUp_Th | Deseja cancelar a elaboração da Ficha Técnica? <sub>(Do you want to cancel the data sheet?)</sub> |  | **grava/comanda:** `PMIB_CancelDatasheet` |
+
+**PMIB_DatasheetList.ShowMoreLessText**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | — | `Showmore` | estado local (abre/fecha, marca/desmarca) |
+
+**PMIB_DocumentsFlow.PMIB_DocumentEdit**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| bloco PMIB_LayoutMenuTemplate | — |  | navega → PMIB_DocumentsList |
+| bloco Tabs | — |  | navega → PMIB_DocumentsList |
+| bloco TabsContentItem | — |  | navega → PMIB_DocumentsList |
+| bloco Document_Form | — |  | navega → PMIB_DocumentsList |
+
+**PMIB_DocumentsFlow.PMIB_DocumentView**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Link | Voltar <sub>(Back)</sub> |  | navegação por link |
+| bloco PMIB_LayoutMenuTemplate | — |  | navega → PMIB_DocumentEdit, PMIB_DocumentsList |
+| bloco Fieldset | — |  | navega → PMIB_DocumentEdit, PMIB_DocumentsList |
+| bloco DocumentDetails | — |  | navega → PMIB_DocumentEdit, PMIB_DocumentsList |
+
+**PMIB_DocumentsFlow.PMIB_DocumentsList**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Button | NOVO <sub>(New)</sub> |  | navegação por link |
+| bloco PMIB_LayoutMenuTemplate | — |  | navega → PMIB_DocumentEdit, PMIB_DocumentView |
+| bloco DocumentList | — |  | navega → PMIB_DocumentEdit, PMIB_DocumentView |
+
+**PMIB_MDSTreeList.MDSTreeView_Optimized**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Dropdown | — | `DropdownMaxRecords` | entrada de dado |
+| Link | Pesquisar <sub>(Search)</sub> | `Search` | recarrega `getGroupsFirstLevel`, `getItemsZtree`, `getMds` |
+| Link | Limpar <sub>(Clear)</sub> | `Clear` | recarrega `getGroupsFirstLevel`, `getMds` |
+| Link | Nova Ficha Técnica <sub>(New Datasheet)</sub> |  | evento ao bloco pai: `EventNewDatasheetByMDSId` |
+
+**Utils.ConfirmationPopUpWithJustificationLoading**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Button | CONFIRMAR <sub>(CONFIRM)</sub> |  | evento ao bloco pai: `ConfirmEvent` |
+| Button | CANCELAR <sub>(CANCEL)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+
+**Utils.ConfirmationPopUpWithJustification_Th**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Button | CONFIRMAR <sub>(CONFIRM)</sub> | `ConfirmBtn` | evento ao bloco pai: `ConfirmEvent` |
+| Button | CANCELAR <sub>(CANCEL)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+
+**Utils.ConfirmationPopUpWithLoading**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Button | CONFIRMAR <sub>(CONFIRM)</sub> |  | evento ao bloco pai: `ConfirmEvent` |
+| Button | CANCELAR <sub>(CANCEL)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+
+**Utils.ConfirmationPopUp_Th**
+
+| Elemento | Rótulo | Nome interno | O que faz |
+|---|---|---|---|
+| Button | CONFIRMAR <sub>(CONFIRM)</sub> |  | estado local (abre/fecha, marca/desmarca) |
+| Button | CANCELAR <sub>(CANCEL)</sub> |  | estado local (abre/fecha, marca/desmarca) |
