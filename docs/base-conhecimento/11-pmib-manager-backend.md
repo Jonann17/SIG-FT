@@ -42,7 +42,8 @@ o Id —; abre cada uma pelo link direto `PMIB_DataSheetView?PMIB_DataSheetId=<I
 recebe. As que têm código passam pela mesma gravação do export (`autorizados.aplicar`, separada de `executar` nesse
 dia), com a **data da conferência** no lugar da data do export. Três fichas seguidas sem resposta param a conferência;
 o fim do log lista as não encontradas e as sem resposta. Só RPA (regra do Luan, 2026-10-14): o robô pesquisa e abre
-como uma pessoa, e lê a resposta que o navegador recebeu (`RPAEngine.capturar_respostas`).
+como uma pessoa, e lê a resposta que o navegador recebeu (`RPAEngine.capturar_respostas`). O botão está nas duas
+telas: `app_qt/views/pmib_manager.py` (a interface oficial desde a migração Qt) e `app/views/pmib_manager.py` (`--ctk`).
 
 **Painel HTML (T7)** — botão "Gerar painel" e caixa "Gerar painel ao terminar" (lembrada em `prefs`, marcada por
 padrão) na mesma tela. `services/painel.gerar_painel()` é o porte de `gerar_prototipo_dashboard.py` do cofre: lê os

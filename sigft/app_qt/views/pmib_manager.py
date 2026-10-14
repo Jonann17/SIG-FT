@@ -20,7 +20,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMessageBox, QVBoxLayout
 
 from sigft.app import theme
-from sigft.app.textos_dialogos import texto_dos_avisos
+from sigft.app.textos_dialogos import MSG_LOGIN_CONFERIR_AUTORIZACOES, texto_dos_avisos
 from sigft.app_qt import estilo, file_dialogs, interface
 from sigft.app_qt.widgets import blocos, controles, dialogs
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
@@ -43,6 +43,9 @@ LARGURA_BOTAO_ARQUIVO = 280
 # linhas de 17 px do Tk (medido: 34). O QLabel tem a linha mais baixa.
 LARGURA_QUEBRA_DESCRICAO = 720
 ALTURA_DESCRICAO_CTK = 34
+# [2026-10-14] A descrição do CONFERIR NO PORTAL quebra em 480 px, como o
+# wraplength da tela antiga.
+LARGURA_QUEBRA_PORTAL = 480
 
 
 def _rotulo_status():
@@ -306,6 +309,29 @@ class ModuloPMIBManager(ModuleFrame):
         linha.addWidget(self.btn_aplicar)               # pack(side="right")
         corpo.addLayout(linha)
 
+        # [2026-10-14] Ou direto no portal, sem esperar o export: o robô abre
+        # cada ficha FÍSICA E DOCUMENTAL ainda sem AUTORIZADO e lê o código SAP
+        # de recebimento (`services/autorizacao_portal.py`). O mesmo botão da
+        # tela antiga.
+        corpo.addSpacing(15)                            # o pady de baixo da linha do export
+        linha_portal = QHBoxLayout()
+        linha_portal.setSpacing(0)
+        r["descricao_portal"] = blocos.rotulo(
+            "Ou confira no portal: o SIG-FT abre cada ficha física ainda sem AUTORIZADO e lê o "
+            "código SAP de recebimento. Precisa do login no PMIB.",
+            cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO), alinhar="esquerda")
+        # O texto é mais longo que 480 px, então o CTkLabel ocupa os 480 inteiros;
+        # o QLabel com quebra prefere a metade disso se ninguém fixar.
+        r["descricao_portal"].setFixedWidth(LARGURA_QUEBRA_PORTAL)
+        r["descricao_portal"].setMinimumHeight(ALTURA_DESCRICAO_CTK)    # duas linhas do Tk
+        linha_portal.addWidget(r["descricao_portal"])    # pack(side="left")
+        linha_portal.addStretch()
+        self.btn_conferir = blocos.botao("CONFERIR NO PORTAL", variante="primario", largura=200,
+                                         tamanho_fonte=12, negrito=True, cor_texto=theme.COLORS["text_white"])
+        self.btn_conferir.clicked.connect(self.conferir_no_portal)
+        linha_portal.addWidget(self.btn_conferir)        # pack(side="right")
+        corpo.addLayout(linha_portal)                    # pady=(0, 15): a margem do cartão
+
     @staticmethod
     def _linha_arquivo(botao, rotulo) -> QHBoxLayout:
         """Botão + rótulo de status (padx=15), encostados à esquerda."""
@@ -360,7 +386,7 @@ class ModuloPMIBManager(ModuleFrame):
 
     # --- botões e barra (só na thread da interface) ---------------------------
     def _travar_botoes(self, travar) -> None:
-        for botao in (self.btn_run, self.btn_aplicar, self.btn_painel):
+        for botao in (self.btn_run, self.btn_aplicar, self.btn_conferir, self.btn_painel):
             try:
                 botao.setEnabled(not travar)
             except RuntimeError:
@@ -464,6 +490,50 @@ class ModuloPMIBManager(ModuleFrame):
             self.log(f"[ERRO FATAL]: {e}")
             self.avisar("Erro", f"Ocorreu um erro ao aplicar as autorizações:\n{e}", tipo="erro")
         finally:
+            self._destravar()
+
+    # --- [2026-10-14] conferir as autorizações no portal ----------------------
+    def conferir_no_portal(self) -> None:
+        root_folder = self.entry_root.text()
+        if not root_folder:
+            QMessageBox.warning(self, "Aviso", "Por favor, selecione a Pasta Raiz dos _STATUS_PMIB (Passo 2).")
+            return
+        self._travar_botoes(True)
+        self.iniciar_tarefa(self._worker_conferir_portal, root_folder)
+
+    def _worker_conferir_portal(self, root_folder) -> None:
+        """Abre o navegador, pausa para o login e confere as fichas físicas
+        ainda sem AUTORIZADO. Só RPA -- ver `services/autorizacao_portal.py`.
+        O navegador fecha no `finally`, dê certo ou errado."""
+        from sigft.services import autorizacao_portal
+
+        conferencia = autorizacao_portal.ConferenciaNoPortal()
+        try:
+            self._progresso(0)
+            self.log("Iniciando navegador...")
+            conferencia.iniciar_navegador()
+            self.log("Carregando portal...")
+            conferencia.abrir_portal()
+            self.pausar_e_esperar(MSG_LOGIN_CONFERIR_AUTORIZACOES)
+            erros = avisos = nao_gravados = 0
+            for linha in conferencia.executar(root_folder, callback_travados=self.perguntar_arquivos_travados):
+                self.log(linha)
+                erros += "[ERRO]" in linha
+                avisos += "[AVISO]" in linha
+                nao_gravados = travas.quantos_no_resumo(linha) or nao_gravados
+            self._progresso(1.0)
+            if erros:
+                self.avisar("Aviso", "A conferência no portal não terminou. Veja o motivo no log.", tipo="aviso")
+            elif avisos:
+                texto = texto_dos_avisos("A conferência no portal terminou", avisos, nao_gravados)
+                self.avisar("Concluído com avisos", texto, tipo="aviso")
+            else:
+                self.avisar("Sucesso", "Conferência no portal concluída.")
+        except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
+            self.log(f"[ERRO FATAL]: {e}")
+            self.avisar("Erro", f"Ocorreu um erro na conferência no portal:\n{e}", tipo="erro")
+        finally:
+            conferencia.fechar_navegador()
             self._destravar()
 
     # --- Gestão PMIB ------------------------------------------------------------

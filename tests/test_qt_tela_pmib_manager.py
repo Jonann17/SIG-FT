@@ -658,9 +658,17 @@ def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot, monkeypatch):
         assert geo(t.btn_autorizados) == (55, 480, 280, 28)
         assert geo(t.lbl_autorizados)[:2] == (350, 480)
         assert geo(t.btn_aplicar) == (748, 480, 200, 28)
-        assert geo(cartao2)[3] == 128
-        assert geo(t.progress_bar) == (201, 543, 600, 12)
-        assert geo(t.console) == (40, 565, 923, 245)
+        # [2026-10-14] A linha nova do CONFERIR NO PORTAL, nas duas telas com o
+        # mesmo empacotamento: pady=(0, 15) depois da linha do export, descrição
+        # com wraplength=480 (duas linhas do Tk: 34 px) e o botão à direita.
+        # O cartão cresce 15 + 34 = 49 px (era 128 na captura e4.2), e a barra
+        # e o console descem o mesmo tanto. Medidas da tela Qt; a captura da
+        # tela antiga com a linha nova ainda não foi feita.
+        assert geo(r["descricao_portal"]) == (55, 523, 480, 34)
+        assert geo(t.btn_conferir) == (748, 526, 200, 28)
+        assert geo(cartao2)[3] == 128 + 49
+        assert geo(t.progress_bar) == (201, 543 + 49, 600, 12)
+        assert geo(t.console) == (40, 565 + 49, 923, 245 - 49)
     finally:
         qt_interface.setStyleSheet(anterior)
 
@@ -737,3 +745,101 @@ def test_popup_das_listas_novas_nao_e_solto_por_tecla(qt_interface, qtbot):
         qtbot.keyClick(d, tecla)
     assert not evento.is_set() and resultado == {}
     d.reject()
+
+
+# ---------------------------------------------------------------------------
+# Conferir autorizações no portal (2026-10-14)
+# ---------------------------------------------------------------------------
+# O mesmo botão da tela antiga (`sigft/app/views/pmib_manager.py`): abre o
+# navegador, pausa para o login e confere no portal as fichas físicas ainda
+# sem AUTORIZADO (`services/autorizacao_portal.py`). Só RPA.
+class ConferenciaFalsa:
+    """`ConferenciaNoPortal` de mentira: registra a ORDEM dos passos -- é ela
+    que evita os defeitos caros (robô pesquisando na tela de login, navegador
+    que fica aberto depois de um erro)."""
+
+    def __init__(self, linhas=(), falha=None):
+        self.linhas, self.falha, self.passos = list(linhas), falha, []
+
+    def iniciar_navegador(self):
+        self.passos.append("navegador")
+
+    def abrir_portal(self):
+        self.passos.append("portal")
+
+    def executar(self, raiz, *, callback_travados=None):
+        self.passos.append(("executar", raiz, callback_travados))
+        if self.falha:
+            raise self.falha
+        yield from self.linhas
+
+    def fechar_navegador(self):
+        self.passos.append("fechar")
+
+
+def _conferencia_falsa(monkeypatch, tela, conferencia):
+    modulo = SimpleNamespace(ConferenciaNoPortal=lambda: conferencia)
+    monkeypatch.setitem(sys.modules, "sigft.services.autorizacao_portal", modulo)
+    import sigft.services as servicos
+    monkeypatch.setattr(servicos, "autorizacao_portal", modulo, raising=False)
+    pausas = []
+
+    def pausar(mensagem, *_a, **_kw):
+        pausas.append(mensagem)
+        conferencia.passos.append("login")
+
+    monkeypatch.setattr(tela, "pausar_e_esperar", pausar)
+    return pausas
+
+
+def _rodar_conferencia(tela, qtbot, ultima):
+    tela.btn_conferir.click()
+    qtbot.waitUntil(tela.btn_conferir.isEnabled, timeout=3000)
+    qtbot.waitUntil(lambda: bool(tela.avisos), timeout=2000)
+    qtbot.waitUntil(lambda: ultima in tela.console.toPlainText(), timeout=2000)
+    return tela.console.toPlainText()
+
+
+def test_conferir_no_portal_pede_a_pasta_raiz(tela, avisos_qt, monkeypatch):
+    conferencia = ConferenciaFalsa()
+    _conferencia_falsa(monkeypatch, tela, conferencia)
+    _preencher(tela)
+    tela.entry_root.setText("")
+    tela.btn_conferir.click()
+    assert avisos_qt == [("Aviso", "Por favor, selecione a Pasta Raiz dos _STATUS_PMIB (Passo 2).")]
+    assert conferencia.passos == []
+
+
+def test_conferir_no_portal_pausa_para_o_login_antes_de_conferir_e_fecha_o_navegador(tela, qtbot, monkeypatch):
+    from sigft.app.textos_dialogos import MSG_LOGIN_CONFERIR_AUTORIZACOES
+
+    conferencia = ConferenciaFalsa([" -> 2 ficha(s) FÍSICA E DOCUMENTAL ainda sem AUTORIZADO.",
+                                    " -> Conferência: 1 autorizada(s) agora"])
+    pausas = _conferencia_falsa(monkeypatch, tela, conferencia)
+    _preencher(tela)
+    texto = _rodar_conferencia(tela, qtbot, "autorizada(s) agora")
+
+    assert conferencia.passos == ["navegador", "portal", "login",
+                                  ("executar", "/d/raiz", tela.perguntar_arquivos_travados), "fechar"]
+    assert pausas == [MSG_LOGIN_CONFERIR_AUTORIZACOES]
+    assert ">  -> Conferência: 1 autorizada(s) agora" in texto
+    assert tela.avisos == [("info", "Sucesso", "Conferência no portal concluída.")]
+
+
+def test_conferir_no_portal_com_excecao_fecha_o_navegador_e_destrava(tela, qtbot, monkeypatch):
+    conferencia = ConferenciaFalsa(falha=RuntimeError("navegador caiu"))
+    _conferencia_falsa(monkeypatch, tela, conferencia)
+    _preencher(tela)
+    texto = _rodar_conferencia(tela, qtbot, "[ERRO FATAL]")
+
+    assert "> [ERRO FATAL]: navegador caiu" in texto
+    assert conferencia.passos[-1] == "fechar"
+    assert tela.avisos == [("erro", "Erro", "Ocorreu um erro na conferência no portal:\nnavegador caiu")]
+    assert tela.btn_run.isEnabled() and tela.btn_aplicar.isEnabled()
+
+
+def test_o_botao_conferir_trava_junto_com_os_outros(tela):
+    tela._travar_botoes(True)
+    assert not tela.btn_conferir.isEnabled()
+    tela._travar_botoes(False)
+    assert tela.btn_conferir.isEnabled()
