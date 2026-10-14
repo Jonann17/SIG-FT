@@ -483,3 +483,29 @@ class RPAEngine(ABC):
     def fechar(self) -> None:
         """Encerra o browser e libera os recursos do motor. Idempotente:
         chamar duas vezes não levanta."""
+
+    # =====================================================================
+    # Leitura das respostas que a página recebe (2026-10-14)
+    # =====================================================================
+    # NÃO é abstrato, de propósito: os dublês dos testes e um motor futuro
+    # continuam válidos sem implementá-lo, e quem usa decide pelo
+    # `captura_respostas_disponivel` -- sem ele, o fluxo de antes (ler a tela).
+    #
+    # Continua sendo RPA. O motor não faz requisição nenhuma: o robô clica ou
+    # navega como uma pessoa, e isto só lê o que o navegador recebeu por causa
+    # disso. Regra do Luan (2026-10-14): a Itaipu proíbe contato com o banco de
+    # dados dela, e o SIG-FT não chama o servidor por fora da tela. Ver
+    # docs/PMIB_ENGENHARIA_REVERSA.md, R1.
+    captura_respostas_disponivel = False
+
+    def capturar_respostas(self, trecho_url: str, acao, *, quantas: int = 1,
+                           ate=None, timeout_s: float = 20.0) -> list:
+        """Executa `acao()` e devolve o JSON das respostas que a página recebeu
+        de endereços que contêm `trecho_url`, na ordem de chegada.
+
+        Para ao juntar `quantas` respostas, assim que `ate(json)` aceitar uma
+        delas, ou ao fim de `timeout_s` -- e então devolve o que chegou, que
+        pode ser lista vazia. Resposta sem JSON conta para `quantas`, mas não
+        volta. Não levanta por falta de resposta: quem chama decide o que isso
+        significa."""
+        raise NotImplementedError("este motor não lê as respostas que a página recebe")

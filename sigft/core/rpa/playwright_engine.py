@@ -115,6 +115,12 @@ TIMEOUT_CLIQUE_REAL_MS = 3_000
 # `arguments[0].click()` do motor Selenium.
 _JS_CLICK = "el => el.click()"
 
+# De quanto em quanto `capturar_respostas` olha se chegou resposta. O
+# Playwright síncrono só entrega eventos enquanto espera, e esta espera é a
+# vez dele. O tempo limite vira um NÚMERO DE ESPERAS (regra 7 de
+# docs/PORTAL_COMO_ELE_SE_COMPORTA.md): contado, não medido no relógio.
+INTERVALO_CAPTURA_MS = 100
+
 
 class PlaywrightEngine(RPAEngine):
     """Implementação de `RPAEngine` sobre Playwright (motor-alvo da Fase 5).
@@ -591,6 +597,50 @@ class PlaywrightEngine(RPAEngine):
             # Diagnóstico nunca derruba produção: uma falha ao salvar não pode
             # abortar a automação que estava em curso.
             pass
+
+    # =====================================================================
+    # Leitura das respostas que a página recebe (2026-10-14)
+    # =====================================================================
+    # Contrato e racional em `engine.py`. Aqui: um ouvinte do evento
+    # `response` guarda as respostas do endereço pedido; o JSON é lido FORA do
+    # ouvinte, porque chamar a API síncrona dentro de um evento trava o
+    # Playwright.
+    @property
+    def captura_respostas_disponivel(self) -> bool:
+        """Só anuncia a leitura quando a página entrega o evento `response` e
+        sabe esperar -- toda página do Playwright sabe. Anunciar sem poder ler
+        faria quem usa clicar e dar a gravação por não confirmada."""
+        return all(callable(getattr(self.page, nome, None))
+                   for nome in ("on", "remove_listener", "wait_for_timeout"))
+
+    def capturar_respostas(self, trecho_url: str, acao, *, quantas: int = 1,
+                           ate=None, timeout_s: float = 20.0) -> list:
+        chegaram = []
+
+        def _ouvir(resposta):
+            if trecho_url in (getattr(resposta, "url", "") or ""):
+                chegaram.append(resposta)
+
+        self.page.on("response", _ouvir)
+        try:
+            acao()
+            lidas = []
+            esperas = max(1, round(timeout_s * 1000 / INTERVALO_CAPTURA_MS))
+            for rodada in range(esperas + 1):
+                while len(lidas) < len(chegaram):
+                    try:
+                        corpo = chegaram[len(lidas)].json()
+                    except Exception:  # noqa: BLE001 -- corpo sem JSON conta, mas não serve
+                        corpo = None
+                    lidas.append(corpo)
+                    if corpo is not None and ate is not None and ate(corpo):
+                        return [c for c in lidas if c is not None]
+                if len(lidas) >= quantas or rodada == esperas:
+                    break
+                self._executar(lambda: self.page.wait_for_timeout(INTERVALO_CAPTURA_MS))
+            return [c for c in lidas if c is not None]
+        finally:
+            self.page.remove_listener("response", _ouvir)
 
     # =====================================================================
     # Encerramento
