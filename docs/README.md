@@ -5,6 +5,7 @@
 | Doc | Para quê |
 |---|---|
 | [`PORTAL_COMO_ELE_SE_COMPORTA.md`](PORTAL_COMO_ELE_SE_COMPORTA.md) | **como o portal se comporta de verdade** — as armadilhas medidas na tela, e o checklist antes do commit |
+| [`PMIB_ENGENHARIA_REVERSA.md`](PMIB_ENGENHARIA_REVERSA.md) | **o que está por trás da tela**, lido no código do próprio portal: status, regras de validação, modelo de dados, endpoints, nomes internos dos campos — e a lista priorizada do que isso muda no SIG-FT |
 | [`OLHAR_O_PORTAL.md`](OLHAR_O_PORTAL.md) | como abrir o navegador e enxergar o portal numa sessão local |
 | [`ROTEIRO_DE_TESTE.md`](ROTEIRO_DE_TESTE.md) | validação manual, do ZIP até o portal |
 
