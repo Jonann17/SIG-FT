@@ -31,8 +31,9 @@
 3. O SIG-FT hoje lê **só o DOM**: espera mensagem, conta nós e dorme. Ler a resposta que
    a tela já recebe resolve a "recusa silenciosa" da regra 6 sem nenhuma chamada nova
    (§8, R1).
-4. As regras de validação de cada formulário estão no código. Por exemplo, o texto curto
-   tem 40 caracteres, começa por letra e não aceita acento. O SIG-FT pode **recusar
+4. As regras de validação de cada formulário estão no código. Por exemplo, o **texto
+   breve do material** tem 40 caracteres, começa por letra e não aceita acento. As
+   características técnicas aceitam 1000 caracteres em texto e 15 em número. O SIG-FT pode **recusar
    antes do portal recusar** (§5, R2).
 5. Cada campo tem um **nome interno estável** (`Input_ShortText`, `TextArea_DiscardTypeES`
    etc.), sufixo do `id` no HTML. O prefixo `b10-b17-` muda conforme a tela, mas o
@@ -249,10 +250,12 @@ recusar algo que o cliente aceita: as regras `…_BL` do servidor não estão vi
 Limites e obrigatoriedade de cada campo estão no **Apêndice D**.
 
 ### 5.1 Informações gerais (`PMIB_Datasheet_GeneralInformations`)
-- **Texto curto** (`Input_ShortText`): obrigatório, **máximo de 40 caracteres**,
-  **convertido para MAIÚSCULAS** ao salvar. Antes de testar, o portal tira os espaços
-  das pontas. Depois exige as duas regras abaixo; se o texto não passa e não está
-  vazio, a mensagem é "Invalid Value!".
+- **Texto breve do material** (`Input_ShortText`; ES: "Texto breve del material"):
+  obrigatório, **máximo de 40 caracteres**, **convertido para MAIÚSCULAS** ao salvar.
+  Essa regra vale **só para este campo** (e para o nome de usuário do fornecedor, que
+  usa a mesma validação); as características técnicas têm limites próprios (§5.3). Antes
+  de testar, o portal tira os espaços das pontas. Depois exige as duas regras abaixo; se
+  o texto não passa e não está vazio, a mensagem é "Invalid Value!".
   ```js
   /^[A-Za-z]/                                    // 1º caractere: letra
   /^[A-Z a-z](?:_?[A-Za-z0-9 .,\-/_()]+)*$/      // cada caractere seguinte
@@ -283,6 +286,19 @@ Limites e obrigatoriedade de cada campo estão no **Apêndice D**.
   e as equivalentes de intervalo, todas no servidor.
 - Intervalo exige mínimo e máximo (`MinValue_Input`, `MaxValue_Input`) e opção de
   intervalo. Lista exige a opção. Unidade é obrigatória onde existe.
+- **Limites de tamanho**, avisados pelo bloco "Número máximo de caracteres SAP (N)!"
+  (`SAPLimitationInput_Warning`), que aparece quando o texto sem espaços nas pontas passa
+  de N **[código]**:
+
+  | Campo | N |
+  |---|---|
+  | texto livre ES (`TextArea_ValueES`) e PT (`TextArea_ValuePT`) | **1000** |
+  | valor numérico (`NumberValue_Input`), mínimo e máximo do intervalo | **15** |
+
+  Ao contrário do texto breve, o cliente **não** proíbe acento nem caractere especial
+  aqui. Mas o servidor devolve `IsValidCharacterES/PT` e `IsValidFreeTextES/PT` por
+  linha: há uma regra de caracteres **no servidor** que o código cliente não mostra
+  **[a confirmar]**.
 - **Gravação em lote**: o "Salvar" manda **todas** as características numa chamada,
   `ActionPMIB_DataSheet_TCs_UpdateTCsValues`. A resposta traz `IsValid` e, **por linha**,
   as marcas `IsUnitOfMeasurementValid`, `IsValueValid`, `IsValidCharacterES/PT`,
@@ -425,7 +441,8 @@ próprias. **Nenhum foi implementado nesta leitura.**
 - **Hoje**: o SIG-FT descobre a recusa depois de digitar.
 - **Com o que sabemos**: um módulo puro, `sigft/core/pmib_regras.py` por exemplo, com
   as regras da §5:
-  - texto curto (regex, 40 caracteres, maiúsculas, sem acento);
+  - texto breve do material (regex, 40 caracteres, maiúsculas, sem acento);
+  - características: 1000 caracteres em texto livre, 15 em número;
   - obrigatórios de descarte e armazenamento;
   - quantidade igual ao nº de tags; criticidade exige prioridade;
   - séries iguais à quantidade de reserva;
@@ -491,6 +508,9 @@ próprias. **Nenhum foi implementado nesta leitura.**
 - **Como provar**: tempo por ficha antes e depois, numa ficha real de teste.
 
 ### R9. Chamar os endpoints direto (só com aval da Itaipu e da TI)
+> **Fora do plano (decisão do Luan, 2026-10-14):** o servidor da Itaipu é restritivo, e
+> não se espera aval. Fica registrado como possibilidade técnica, não como caminho.
+
 - É possível: o protocolo está na §2, com a sessão do próprio usuário. Seria a mudança
   de maior ganho e de maior risco.
 - **Por que não começar por aí, nem para leitura**:
