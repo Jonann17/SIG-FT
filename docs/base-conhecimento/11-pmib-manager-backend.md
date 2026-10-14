@@ -32,6 +32,18 @@ Pasta Raiz (mesmas exclusões): v2 → SITUAÇÃO := AUTORIZADO e, se DIAS estiv
 export (tirada do nome); layout antigo → APTO := SIM. Grava pelo editor cirúrgico; PMIB do export que não está em
 nenhum arquivo aparece como `[AVISO]`.
 
+**Conferir autorizações no portal (2026-10-14)** — botão "CONFERIR NO PORTAL" no mesmo bloco
+(`services/autorizacao_portal.py`). Autorizado = ter o **código SAP de recebimento** (solicitação de codificação
+não cancelada com `StockCodeSAP`), o mesmo critério da consulta da Itaipu que vem na aba "SQL" do export; a aprovação
+da ficha é outra etapa e não cria o código. Fluxo: lê nos `_STATUS_PMIB` vivos as fichas FÍSICA E DOCUMENTAL sem
+AUTORIZADO (layout antigo não é conferido, com aviso); abre o navegador e pausa para o login; abre a lista (se ela
+não responde, para: é login); pesquisa cada ficha — a pesquisa recarrega as SETE abas, e a resposta da aba dela traz
+o Id —; abre cada uma pelo link direto `PMIB_DataSheetView?PMIB_DataSheetId=<Id>` e lê a codificação que o cabeçalho
+recebe. As que têm código passam pela mesma gravação do export (`autorizados.aplicar`, separada de `executar` nesse
+dia), com a **data da conferência** no lugar da data do export. Três fichas seguidas sem resposta param a conferência;
+o fim do log lista as não encontradas e as sem resposta. Só RPA (regra do Luan, 2026-10-14): o robô pesquisa e abre
+como uma pessoa, e lê a resposta que o navegador recebeu (`RPAEngine.capturar_respostas`).
+
 **Painel HTML (T7)** — botão "Gerar painel" e caixa "Gerar painel ao terminar" (lembrada em `prefs`, marcada por
 padrão) na mesma tela. `services/painel.gerar_painel()` é o porte de `gerar_prototipo_dashboard.py` do cofre: lê os
 `_STATUS_PMIB` vivos (mesmas exclusões), as listas de preços e a mapeadora e grava `Painel de Sobressalentes.html` na

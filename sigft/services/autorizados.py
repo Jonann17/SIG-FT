@@ -213,6 +213,22 @@ def executar(caminho_export, pasta_raiz, *, data_export=None, callback_travados=
     else:
         yield f" -> Data do export: {data_export.strftime('%d/%m/%Y')}."
 
+    yield from aplicar(pmibs, pasta_raiz, data_autorizacao=data_export,
+                       callback_travados=callback_travados, origem="do export")
+
+
+def aplicar(pmibs, pasta_raiz, *, data_autorizacao=None, callback_travados=None, origem="autorizados"):
+    """Grava AUTORIZADO, nos `_STATUS_PMIB` vivos da pasta, para cada PMIB de
+    `pmibs` (já normalizados). Generator de linhas de log.
+
+    [2026-10-14] Separada de `executar` para servir às duas fontes da lista:
+    o export que a Itaipu manda e a conferência no portal
+    (`autorizacao_portal`), que lê o código SAP de recebimento de cada ficha.
+    `data_autorizacao` faz o papel da data do export no cálculo dos dias de
+    atraso (`None`: não calcula); `origem` diz, no aviso do PMIB que não está
+    em nenhum `_STATUS_PMIB`, de onde veio a lista ("do export", "conferidos
+    no portal"). `callback_travados` como em `executar`.
+    """
     levantamento = status_pmib_arquivos.listar(pasta_raiz)
     for caminho, motivo in levantamento.ignorados:
         yield f" -> Ignorado ({motivo}): {os.path.relpath(caminho, pasta_raiz)}"
@@ -231,7 +247,7 @@ def executar(caminho_export, pasta_raiz, *, data_export=None, callback_travados=
     falhas = {}
     for _codigo, caminho in levantamento.vivos:
         pulado = pulados.get(caminho)
-        estado, achados, falha = yield from _aplicar_no_arquivo(caminho, pmibs, data_export, gravar=pulado is None)
+        estado, achados, falha = yield from _aplicar_no_arquivo(caminho, pmibs, data_autorizacao, gravar=pulado is None)
         encontrados.update(achados)
         if estado == "pendente":
             nao_gravados.append(replace(pulado, consequencia=f"{CONSEQUENCIA} (você seguiu sem ele)"))
@@ -245,7 +261,7 @@ def executar(caminho_export, pasta_raiz, *, data_export=None, callback_travados=
 
     # A lista do fim: "Repetir só estes" relê cada um desde o começo.
     def _refazer(caminho):
-        estado, achados, falha = yield from _aplicar_no_arquivo(caminho, pmibs, data_export)
+        estado, achados, falha = yield from _aplicar_no_arquivo(caminho, pmibs, data_autorizacao)
         encontrados.update(achados)
         if estado == "pulado":
             # Abriu, mas fora do template (o [AVISO] já saiu): não gravou.
@@ -261,7 +277,7 @@ def executar(caminho_export, pasta_raiz, *, data_export=None, callback_travados=
     yield (f" -> Resumo: {contagem['atualizado']} _STATUS_PMIB atualizado(s), {contagem['intacto']} já em dia, "
            f"{contagem['pulado'] + len(nao_gravados)} não gravado(s).")
     if faltam:
-        yield (f"[AVISO] {len(faltam)} PMIB(s) do export não estão em nenhum _STATUS_PMIB vivo: "
+        yield (f"[AVISO] {len(faltam)} PMIB(s) {origem} não estão em nenhum _STATUS_PMIB vivo: "
                + ", ".join(faltam[:20]) + ("..." if len(faltam) > 20 else ""))
     for linha in travas.resumo(nao_gravados):
         yield linha
