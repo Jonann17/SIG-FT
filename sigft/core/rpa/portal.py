@@ -875,6 +875,12 @@ class PMIBPortal:
         """
         return self._mensagens_de_feedback(seletor=XPATH_MENSAGEM_DE_AVISO)
 
+    def mensagens_na_tela(self):
+        """[2026-10-14] Os textos de todos os toasts visíveis agora: a "foto de
+        antes" que `esperar_confirmacao_nova` compara, para quem clica por
+        conta própria (a LMR, que lê a resposta do servidor ao confirmar)."""
+        return {m for m in self._mensagens_de_feedback() if m}
+
     def _mensagens_de_feedback(self, so_sucesso=False, seletor=None):
         """Textos dos toasts visíveis agora. Nunca levanta -- ler a tela não
         pode ser o que derruba a ficha.

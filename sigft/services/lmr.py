@@ -48,6 +48,9 @@ from sigft.core.rpa.portal import (
     PAUSA_SALVAMENTO,
     XPATH_CONFIRMAR,
 )
+# [2026-10-14] O que a tela recebe do servidor ao salvar -- ver
+# `_confirmar_pela_resposta`.
+from sigft.core.rpa import respostas as respostas_do_portal
 
 
 # =============================================================================
@@ -117,6 +120,14 @@ TIMEOUT_CONFIRMACAO_LMR_S = 15.0
 # 10 s). Em TENTATIVAS, não em segundos: §0, regra 7.
 TENTATIVAS_DIALOGO_ABRIR = 20
 INTERVALO_DIALOGO_ABRIR_S = 0.5
+
+# [2026-10-14] Depois do ENTER, quanto se espera a TAG sair do campo (x o
+# intervalo, até 1 s). Adicionar tag não fala com o servidor: o portal põe a
+# tag numa lista local e esvazia o campo (`Tag.Tag = ""` no `_addTag` da
+# tela), então isso costuma levar menos de 0,1 s. É o que substitui a segunda
+# pausa fixa de 0,5 s -- e prova que a tag entrou.
+TENTATIVAS_TAG_SAIR_DO_CAMPO = 20
+INTERVALO_TAG_SAIR_DO_CAMPO_S = 0.05
 
 
 class CodigoNaoConfirmado(RuntimeError):
@@ -349,8 +360,14 @@ class LMRAutomation:
         ⚠️ A MESMA FRASE A CADA CÓDIGO. Por isso o 1º passo espera sair a do
         código anterior: com ela ainda na tela, a do atual seria idêntica, e a
         "foto de antes" de `clicar_e_confirmar` a daria por velha.
+
+        [2026-10-14] Com um motor que lê as respostas da página, quem confirma
+        é a RESPOSTA do servidor ao CONFIRMAR (`_confirmar_pela_resposta`):
+        única por gravação, ela dispensa a espera da mensagem anterior -- até
+        15 s por código. Ver docs/PMIB_ENGENHARIA_REVERSA.md, R1 e R8.
         """
-        if not self.portal.esperar_confirmacao_anterior_sumir(SECAO_LMR):
+        pela_resposta = self._confirma_pela_resposta()
+        if not pela_resposta and not self.portal.esperar_confirmacao_anterior_sumir(SECAO_LMR):
             callbacks.log(
                 "      [!] A mensagem de sucesso do código anterior não saiu da tela. "
                 "A deste código tem o mesmo texto e pode não ser reconhecida.")
@@ -372,6 +389,9 @@ class LMRAutomation:
             return False, ("o SALVAR não abriu o diálogo de confirmação "
                            "(nenhum botão CONFIRMAR apareceu)")
 
+        if pela_resposta:
+            return self._confirmar_pela_resposta(confirmar, callbacks)
+
         # `clicar_e_confirmar` fotografa as mensagens, clica e só devolve
         # `True` com a de sucesso NOVA que fale em LMR (`PALAVRA_DA_SECAO`).
         if self.portal.clicar_e_confirmar(confirmar, SECAO_LMR, callbacks.log,
@@ -385,6 +405,87 @@ class LMRAutomation:
             motivo += ("; o diálogo de confirmação continua aberto -- feche-o no "
                        "navegador antes de seguir")
         return False, motivo
+
+    # --- [2026-10-14] A resposta do servidor confirma a gravação ---
+    def _confirma_pela_resposta(self):
+        """O lote confirma pela resposta do servidor? Sim quando o motor lê as
+        respostas que a página recebe -- até a primeira gravação sem resposta:
+        aí o resto do lote volta à mensagem na tela, como antes."""
+        modo = getattr(self, "_modo_resposta", None)
+        if modo is None:
+            modo = bool(getattr(self.engine, "captura_respostas_disponivel", False))
+            self._modo_resposta = modo
+        return modo
+
+    def _confirmar_pela_resposta(self, confirmar, callbacks: UICallbacks):
+        """Clica o CONFIRMAR e lê a resposta da ação de salvar
+        (`ActionApplicationMRL_CreateOrUpdate`), que grava a aplicação e todas
+        as tags de uma vez. Devolve `(ok, motivo)`, como
+        `_salvar_e_confirmar_codigo`.
+
+        É RPA: o clique é o de uma pessoa, e a resposta é a que o navegador
+        recebeu por causa dele (regra do Luan, 2026-10-14: nada de chamar o
+        servidor por fora da tela).
+
+          - resposta com o Id da aplicação: gravou;
+          - resposta com `exception`: o servidor recusou -- o motivo é o dele;
+          - sem resposta legível (o endereço mudou numa versão nova do portal):
+            a mensagem na tela decide ESTE código, e o resto do lote volta ao
+            modo de antes. Sem esperar a mensagem anterior sair, uma idêntica
+            pode passar por velha: o erro cai no lado seguro (pendência a
+            conferir), nunca numa confirmação falsa.
+        """
+        ja_na_tela = self.portal.mensagens_na_tela()
+        try:
+            chegaram = self.engine.capturar_respostas(
+                respostas_do_portal.URL_GRAVAR_APLICACAO_LMR,
+                lambda: self.engine.click_raw(f"({confirmar})[1]"),
+                quantas=1, timeout_s=TIMEOUT_CONFIRMACAO_LMR_S)
+        except Exception as erro:  # noqa: BLE001 -- vira motivo, não queda da ficha
+            return False, (f"o navegador falhou no CONFIRMAR ({type(erro).__name__}); confira no "
+                           "portal se a aplicação entrou")
+
+        if chegaram:
+            gravou, detalhe = respostas_do_portal.resultado_da_gravacao(chegaram[0], "ApplicationMRLId")
+            if gravou:
+                callbacks.log(f"      Portal confirmou: aplicação LMR gravada (id {detalhe}).")
+                return True, ""
+            if gravou is False:
+                return False, f"o portal recusou a gravação: {detalhe}"
+
+        self._modo_resposta = False
+        callbacks.log("      [!] Não vi a resposta do portal a esta gravação. Confiro pela mensagem na tela, "
+                      "e o resto do lote volta a esperar a mensagem na tela, como antes.")
+        confirmou, _mensagem = self.portal.esperar_confirmacao_nova(
+            SECAO_LMR, ja_na_tela, timeout_s=TIMEOUT_CONFIRMACAO_LMR_S, callback_log=callbacks.log)
+        if confirmou:
+            return True, ""
+        motivo = "o portal não respondeu à gravação nem mostrou a mensagem de sucesso da aplicação LMR"
+        if self._confirmar_visivel():
+            motivo += ("; o diálogo de confirmação continua aberto -- feche-o no "
+                       "navegador antes de seguir")
+        return False, motivo
+
+    # --- [2026-10-14] A TAG saiu do campo: entrou na lista ---
+    def _esperar_tag_sair_do_campo(self, tag, callbacks: UICallbacks):
+        """Depois do ENTER, espera o portal esvaziar o campo da TAG -- é a tela
+        dizendo que a tag entrou na lista local da aplicação. Devolve `False`
+        quando o motor não lê o campo: quem chama faz a pausa fixa de antes.
+
+        Se o campo não esvazia, avisa e segue: a quantidade é o número de tags,
+        então o próprio portal recusa o SALVAR deste código se faltar alguma, e
+        o erro chega à pessoa pelo caminho de sempre."""
+        for _ in range(TENTATIVAS_TAG_SAIR_DO_CAMPO):
+            try:
+                valor = self.engine.get_value(XPATH_CAMPO_TAG)
+            except Exception:  # noqa: BLE001 -- motor ou tela que não lê o campo
+                return False
+            if not str(valor or "").strip():
+                return True
+            time.sleep(INTERVALO_TAG_SAIR_DO_CAMPO_S)
+        callbacks.log(f"      [!] A TAG {tag} não saiu do campo depois do ENTER: pode não ter entrado na "
+                      "lista. Se faltar tag, o portal recusa o SALVAR deste código.")
+        return True
 
     def _confirmar_visivel(self):
         """O seletor do primeiro CONFIRMAR VISÍVEL -- o do diálogo antes da
@@ -516,7 +617,11 @@ class LMRAutomation:
                     self.engine.press("TAB")
                     time.sleep(PAUSA_TAB_ANTES_DO_ENTER)
                     self.engine.press("ENTER")
-                    time.sleep(PAUSA_ANIMACAO)
+                    # [2026-10-14] A segunda pausa virou espera por CONDIÇÃO: o
+                    # campo esvazia quando a tag entra na lista. Motor que não
+                    # lê o campo: a pausa de antes.
+                    if not self._esperar_tag_sair_do_campo(tag_pmib, callbacks):
+                        time.sleep(PAUSA_ANIMACAO)
 
                 # Salvar, confirmar -- e SÓ SEGUIR COM A MENSAGEM DO PORTAL
                 # (2026-09-28). Sem ela o código cai no `except` abaixo: vai

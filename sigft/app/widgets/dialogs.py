@@ -116,6 +116,12 @@ MSG_LOGIN_LMR = (
     "1. Faça o LOGIN no site.\n"
     "2. Clique abaixo para começar."
 )
+# [2026-10-14] Gestão PMIB -> CONFERIR NO PORTAL.
+MSG_LOGIN_CONFERIR_AUTORIZACOES = (
+    "O navegador foi aberto.\n\n"
+    "1. Faça o LOGIN no portal.\n"
+    "2. Clique abaixo para conferir as autorizações de entrega."
+)
 MSG_LOGIN_NOVA_FICHA = (
     "O navegador foi aberto.\n\n"
     "1. Faça o LOGIN no portal.\n"

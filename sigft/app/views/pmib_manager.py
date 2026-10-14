@@ -15,6 +15,7 @@ from tkinter import messagebox
 import pandas as pd
 
 from sigft.app import backends, file_dialogs
+from sigft.app.widgets import dialogs as app_dialogs
 from sigft.app.widgets.espera import DialogosDeEspera
 from sigft.core import prefs
 from sigft.core.excel import travas
@@ -167,6 +168,20 @@ class ModuloPMIBManager(DialogosDeEspera, ctk.CTkFrame):
                                          text_color=COLORS["text_white"])
         self.btn_aplicar.pack(side="right")
 
+        # [2026-10-14] Ou direto no portal, sem esperar o export: o robô abre
+        # cada ficha FÍSICA E DOCUMENTAL ainda sem AUTORIZADO e lê o código SAP
+        # de recebimento (`services/autorizacao_portal.py`).
+        f_portal = ctk.CTkFrame(frm_aut, fg_color="transparent")
+        f_portal.pack(fill="x", padx=15, pady=(0, 15))
+        ctk.CTkLabel(f_portal, text="Ou confira no portal: o SIG-FT abre cada ficha física ainda sem AUTORIZADO "
+                                    "e lê o código SAP de recebimento. Precisa do login no PMIB.",
+                     text_color="gray", wraplength=480, justify="left").pack(side="left")
+        self.btn_conferir = ctk.CTkButton(f_portal, text="CONFERIR NO PORTAL", width=200,
+                                          command=self.conferir_no_portal, font=("Roboto", 12, "bold"),
+                                          fg_color=COLORS["primary"], hover_color=COLORS["primary_hover"],
+                                          text_color=COLORS["text_white"])
+        self.btn_conferir.pack(side="right")
+
     def _sel_autorizados(self):
         f = file_dialogs.ask_open_file("pmib_manager.autorizados", "excel",
                                        titulo="Selecione o export de autorizados de Itaipu",
@@ -180,6 +195,7 @@ class ModuloPMIBManager(DialogosDeEspera, ctk.CTkFrame):
         estado = "disabled" if travar else "normal"
         self.btn_run.configure(state=estado)
         self.btn_aplicar.configure(state=estado)
+        self.btn_conferir.configure(state=estado)
         self.btn_painel.configure(state=estado)
 
     def _lembrar_gerar_painel(self):
@@ -269,6 +285,52 @@ class ModuloPMIBManager(DialogosDeEspera, ctk.CTkFrame):
             self.after(0, lambda erro=e: messagebox.showerror(
                 "Erro", f"Ocorreu um erro ao aplicar as autorizações:\n{erro}"))
         finally:
+            self.after(0, lambda: self._travar_botoes(False))
+
+    def conferir_no_portal(self):
+        root_folder = self.path_root.get()
+        if not root_folder:
+            return messagebox.showwarning("Aviso", "Por favor, selecione a Pasta Raiz dos _STATUS_PMIB (Passo 2).")
+        self._travar_botoes(True)
+        # Thread comum, e não daemon: é tarefa da pessoa, e fechar a janela no
+        # meio pergunta antes (mural de 2026-09-25 no CLAUDE.md).
+        threading.Thread(target=self._worker_conferir_portal, args=(root_folder,)).start()
+
+    def _worker_conferir_portal(self, root_folder):
+        """[2026-10-14] CONFERIR NO PORTAL: abre o navegador, pausa para o login
+        e confere as fichas físicas ainda sem AUTORIZADO. Só RPA -- ver
+        `services/autorizacao_portal.py`."""
+        from sigft.services import autorizacao_portal
+
+        conferencia = autorizacao_portal.ConferenciaNoPortal()
+        try:
+            self.after(0, lambda: self.progress_bar.set(0))
+            self._safe_log("Iniciando navegador...")
+            conferencia.iniciar_navegador()
+            self._safe_log("Carregando portal...")
+            conferencia.abrir_portal()
+            self.pausar_e_esperar(app_dialogs.MSG_LOGIN_CONFERIR_AUTORIZACOES)
+            erros = avisos = nao_gravados = 0
+            for linha in conferencia.executar(root_folder, callback_travados=self.perguntar_arquivos_travados):
+                self._safe_log(linha)
+                erros += "[ERRO]" in linha
+                avisos += "[AVISO]" in linha
+                nao_gravados = travas.quantos_no_resumo(linha) or nao_gravados
+            self.after(0, lambda: self.progress_bar.set(1.0))
+            if erros:
+                self.after(0, lambda: messagebox.showwarning(
+                    "Aviso", "A conferência no portal não terminou. Veja o motivo no log."))
+            elif avisos:
+                texto = _texto_dos_avisos("A conferência no portal terminou", avisos, nao_gravados)
+                self.after(0, lambda texto=texto: messagebox.showwarning("Concluído com avisos", texto))
+            else:
+                self.after(0, lambda: messagebox.showinfo("Sucesso", "Conferência no portal concluída."))
+        except Exception as e:
+            self._safe_log(f"[ERRO FATAL]: {e}")
+            self.after(0, lambda erro=e: messagebox.showerror(
+                "Erro", f"Ocorreu um erro na conferência no portal:\n{erro}"))
+        finally:
+            conferencia.fechar_navegador()
             self.after(0, lambda: self._travar_botoes(False))
 
     def _sel_api(self):
