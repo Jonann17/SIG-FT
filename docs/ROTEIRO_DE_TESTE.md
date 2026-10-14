@@ -589,6 +589,30 @@ Se algum módulo se comportar mal no motor novo mas tiver funcionado na Etapa 4,
 **é do motor** — e é uma informação ótima, porque o rollback é imediato: feche o
 Prompt e siga trabalhando no Selenium.
 
+### 5.4 — O SIG-FT lendo as respostas do portal (2026-10-14)
+
+Duas melhorias leem a resposta que o navegador recebe enquanto o robô clica
+(continua sendo RPA). Os testes rodam contra um portal de mentira, escrito a
+partir do código das telas: **a prova é esta etapa**.
+
+**Conferir autorizações no portal** (Gestão PMIB → CONFERIR NO PORTAL):
+
+1. Pasta Raiz = a dos `_STATUS_PMIB`; clique em CONFERIR NO PORTAL e faça o
+   login quando a janela pedir.
+2. O log deve passar por "Abrindo a lista de fichas do portal...", "Etapa 1 de
+   2" e "Etapa 2 de 2". Um `[ERRO]` logo depois de abrir a lista quer dizer que
+   ela não respondeu (login, ou o endereço mudou).
+3. **Prova de aceite:** os PMIBs do último `sobressalentes_autorizados_*.xlsx`
+   que ainda não estavam AUTORIZADO precisam sair como "código SAP de
+   recebimento ... -> AUTORIZADO", com o mesmo código do arquivo.
+4. Muitas "não encontrada(s) no portal" seguidas de fichas que existem: a
+   pesquisa pode não estar recarregando as sete abas — mande o log.
+
+**Aplicação LMR:** rode uma ficha de teste com 2 ou 3 códigos. O log de cada
+código deve dizer "Portal confirmou: aplicação LMR gravada (id ...)". Se
+aparecer "[!] Não vi a resposta do portal", o resto do lote voltou ao modo de
+antes — mande o log. Anote o tempo da ficha para comparar com uma rodada antiga.
+
 ---
 
 ## Etapa 6 — Me mandar o resultado

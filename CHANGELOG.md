@@ -25,6 +25,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Gestão PMIB: arquivo aberto no Excel **não interrompe mais o processo a cada arquivo**. Antes de gravar, o SIG-FT mostra **uma lista** com os arquivos travados e o motivo de cada um (aberto no Excel e por quem, somente leitura, Box desconectado, disco cheio...): feche e clique em **Repetir**, ou **Seguir sem eles**. No fim da etapa, outra lista com o que não gravou e o botão **Repetir só estes**. O log termina com "Não gravados nesta rodada", dizendo o que fazer em cada caso. Vale também para o "Aplicar autorizações".
 - Gestão PMIB: com a planilha de mapeamento aberta, **Repetir** relê a planilha antes de gravar, então o que você salvou nela antes de fechar continua lá. Antes o SIG-FT gravava por cima. **Seguir sem ela** não cancela mais o processo: os `_STATUS_PMIB` continuam sendo atualizados.
 - Gestão PMIB: renomear um `_STATUS_PMIB` que está aberto no Excel não deixa mais uma cópia com o nome novo ao lado do antigo.
+- Gestão PMIB: novo botão **CONFERIR NO PORTAL**, no bloco das autorizações. O SIG-FT abre o PMIB (você faz o login), procura cada ficha FÍSICA E DOCUMENTAL ainda sem AUTORIZADO e lê o **código SAP de recebimento**, que aparece na ficha quando a Itaipu autoriza a entrega. As que têm o código viram AUTORIZADO, com os dias de atraso contados até o dia da conferência, sem esperar o export de autorizados (que continua funcionando como antes). O fim do log lista as fichas que não foram achadas no portal e as que ficaram sem resposta. O SIG-FT só navega no portal como uma pessoa: não consulta o banco de dados da Itaipu.
 
 **Atualização automática**
 
@@ -37,6 +38,11 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Cria Fichas: **NENHUM só quando precisa de PDM novo.** Na dúvida, a IA dá o melhor palpite com confiança BAIXA, que você corrige com um clique, em vez do NENHUM, que obrigava a procurar à mão entre todos os PDMs. A marca que vem depois de "PARA" (uma plaqueta PARA válvula) não puxa mais a escolha para a família da válvula.
 - Cria Fichas: a **revisão dos PDMs** ganha a coluna **Confiança** (ALTA, MÉDIA ou BAIXA; no NENHUM, PDM NOVO?, SEM RESPOSTA ou FORA DO CATÁLOGO), mostra **primeiro o que precisa de atenção**, explica **por que** a IA escolheu cada PDM e, ao trocar o PDM, abre a busca com o **2º e o 3º lugar** da IA no topo. Um ALTA que as conferências do SIG-FT não confirmam aparece como "MÉDIA ↓".
 - Cria Fichas: cada revisão confirmada fica registrada em `Documentos\SIG-FT\logs\escolha_pdm.jsonl` (o que a IA escolheu e o que ficou), para medir com o tempo quanto a confiança acerta.
+
+**Aplicação LMR**
+
+- Aplicação LMR: **mais rápida** em fichas com muitos códigos. Cada código é confirmado pela resposta do portal ao CONFIRMAR, em vez de esperar a mensagem do código anterior sair da tela (até 15 s por código), e uma recusa vem com o motivo dado pelo próprio portal. Se a resposta não vier, aquele código é conferido pela mensagem na tela e o resto do lote segue como antes.
+- Aplicação LMR: cada TAG é conferida. Depois do ENTER, o SIG-FT espera a tag sair do campo, que é o sinal de que ela entrou na lista, em vez de uma pausa fixa, e avisa no log a tag que não saiu.
 
 ## 1.1.1 - 2026-09-28
 

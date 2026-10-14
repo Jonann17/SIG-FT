@@ -417,7 +417,8 @@ espera só uma delas perde a outra.
 ## 8. O que isso muda no SIG-FT
 
 Em ordem de valor sobre risco. Cada item é uma tarefa própria, com spec e aprovação
-próprias. **Nenhum foi implementado nesta leitura.**
+próprias. Nenhum foi implementado nesta leitura. Em 2026-10-14 entraram R1 (a base), R8 e
+a parte de autorização da R6, como diz o **Estado** de cada uma.
 
 ### R1. Ler a resposta do servidor, não o DOM (prova de gravação)
 - **Hoje**: a prova de gravação é a mensagem na tela. O `lmr.py` (2026-09-28) espera o
@@ -436,6 +437,10 @@ próprias. **Nenhum foi implementado nesta leitura.**
   Continua sendo RPA aos olhos do portal.
 - **Como provar**: uma execução real de um código LMR e de uma ficha nova, comparando o
   JSON capturado com o que a tela mostra.
+- **Estado (2026-10-14)**: implementada a base, `RPAEngine.capturar_respostas` (Playwright:
+  ouvinte do evento `response`, tempo contado em tentativas) e `core/rpa/respostas.py`.
+  Usada na LMR (R8) e na conferência de autorizações (R6). A criação de ficha e as
+  características técnicas ainda não usam. Falta a prova no portal real.
 
 ### R2. Validar antes do portal (regras da §5 em Python)
 - **Hoje**: o SIG-FT descobre a recusa depois de digitar.
@@ -490,6 +495,14 @@ próprias. **Nenhum foi implementado nesta leitura.**
 - **[a confirmar]**: "`StockCodeSAP` preenchido" é a mesma coisa que "autorizado" no
   export? Comparar fichas conhecidas nos dois.
 - **Risco**: médio. Depende de R1 e de validar a hipótese acima.
+- **Estado (2026-10-14)**: a hipótese está **confirmada pela própria Itaipu**. A aba "SQL"
+  do export de autorizados traz a consulta que o gera: solicitação de codificação não
+  cancelada (`requeststatusid <> 7`) com `StockCodeSAP` preenchido. O código é o **de
+  recebimento**, criado na autorização de entrega; a aprovação da ficha é outra etapa
+  (correção do Luan). Implementada a parte da autorização: botão **CONFERIR NO PORTAL**
+  do Gestão PMIB (`services/autorizacao_portal.py`). O status real das fichas de um
+  sistema (pedido do Luan, com CONDIÇÕES = COMPLETO só com as quatro subabas
+  preenchidas) é a próxima entrega.
 
 ### R7. Autoverificação antes de "Concluir elaboração"
 - Espelhar as sete seções obrigatórias (§4) e o checklist de análise da Itaipu
@@ -506,6 +519,14 @@ próprias. **Nenhum foi implementado nesta leitura.**
   tem de ser igual ao nº de tags: conferir **antes** de salvar evita a recusa "The value
   does not match…".
 - **Como provar**: tempo por ficha antes e depois, numa ficha real de teste.
+- **Estado (2026-10-14)**: implementada (`services/lmr.py`).
+  - Cada código é confirmado pela resposta de `ActionApplicationMRL_CreateOrUpdate`, sem
+    esperar a mensagem do código anterior sair (até 15 s por código).
+  - A segunda pausa de cada tag virou "esperar o campo esvaziar", que prova que a tag
+    entrou.
+  - A quantidade já sai do número de tags por construção (`len(grupo_tags)`); a tag que
+    não entra vira aviso.
+  - Sem resposta, o lote volta ao fluxo de 2026-09-28.
 
 ### R9. Chamar os endpoints direto (só com aval da Itaipu e da TI)
 > **Fora do plano (decisão do Luan, 2026-10-14):** o servidor da Itaipu é restritivo, e
