@@ -30,18 +30,18 @@ def test_mensagens_iguais():
     assert catalogo.MSG_TAREFA_EM_ANDAMENTO == _valor(MAIN, "MSG_TAREFA_EM_ANDAMENTO")
 
 
-def test_mensagem_da_abertura_que_falhou_e_a_do_ctk_mais_o_caminho_da_antiga():
-    """Revisao final: na Qt, quem nao conseguiu abrir a janela tem de saber
-    abrir a interface antiga (o CTk nao precisa, ele E a antiga)."""
-    ctk = _valor(MAIN, "MSG_ABERTURA_FALHOU")
-    assert catalogo.MSG_ABERTURA_FALHOU.startswith(ctk)
-    assert "{comando}" in catalogo.MSG_ABERTURA_FALHOU[len(ctk):]
+def test_mensagem_da_abertura_que_falhou_da_o_caminho_do_log_e_nao_manda_para_a_antiga():
+    """A interface antiga saiu (2026-10-15): a caixa diz o motivo e onde está o
+    log, e não oferece mais um comando para abrir outra interface."""
+    assert catalogo.MSG_ABERTURA_FALHOU == (
+        "O SIG-FT não conseguiu abrir a janela principal.\n\n{erro}\n\n"
+        "O detalhe completo está em Documentos\\SIG-FT\\logs\\sigft.log. "
+        "Mande esse arquivo para quem cuida do SIG-FT.")
 
 
-def test_abertura_que_falha_mostra_o_comando_da_antiga(qt_interface, monkeypatch):
+def test_abertura_que_falha_mostra_o_motivo_e_sai_com_1(qt_interface, monkeypatch):
     from sigft.app_qt import main as qmain
     from sigft.core import dados_usuario, instancia
-    from sigft.core.interface_antiga import comando_da_interface_antiga
     from sigft.core.rpa import navegador
 
     codigos, caixas, ligados = [], [], []
@@ -74,7 +74,7 @@ def test_abertura_que_falha_mostra_o_comando_da_antiga(qt_interface, monkeypatch
     qmain.main()
     assert codigos[0] == 1
     assert "api_config.json corrompido" in caixas[0]
-    assert comando_da_interface_antiga() in caixas[0]
+    assert "sigft.log" in caixas[0] and "interface antiga" not in caixas[0]
 
 
 def test_menu_tem_as_telas_dos_cards_e_na_ordem_da_barra():

@@ -184,7 +184,7 @@ exit /b 0
 :_instalar_seguir
 rem Ja houve uma instalacao que deu certo (ha carimbo): o pip baixa tudo antes
 rem de instalar, entao o ambiente anterior continua inteiro e o aplicativo abre
-rem com ele -- inclusive "SIG-FT.bat --ctk". O carimbo antigo fica como esta,
+rem com ele. O carimbo antigo fica como esta,
 rem e a proxima abertura tenta instalar de novo. Sem carimbo (nunca instalou)
 rem o erro acima continua derrubando a abertura.
 echo.

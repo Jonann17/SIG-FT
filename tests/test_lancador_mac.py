@@ -170,7 +170,7 @@ def test_pip_que_falha_nao_grava_o_carimbo_e_tenta_de_novo(tmp_path, venv):
 def test_pip_que_falha_com_instalacao_anterior_segue_e_tenta_de_novo(tmp_path, venv):
     """Revisao final: o `requirements.txt` mudou (PySide6, ~80 MB) e o pip
     falhou. O ambiente antigo continua inteiro (o pip baixa tudo antes de
-    instalar), entao o app abre com ele -- inclusive `--ctk`. O carimbo velho
+    instalar), entao o app abre com ele. O carimbo velho
     fica, para a proxima abertura tentar de novo."""
     requisitos = tmp_path / "requirements.txt"
     requisitos.write_text("pandas\nPySide6-Essentials\n", encoding="utf-8")
@@ -327,7 +327,7 @@ def test_primeira_abertura_cria_o_venv_na_raiz_e_instala(tmp_path, venv):
 
 # -- o SIG-FT.command inteiro ----------------------------------------------------------
 
-@pytest.mark.parametrize("argumentos", [[], ["--ctk"]])
+@pytest.mark.parametrize("argumentos", [[], ["--smoke"]])
 def test_command_roda_o_frontend_da_raiz_com_o_python_do_venv(tmp_path, venv, argumentos):
     resultado = subprocess.run(
         [str(COMMAND), *argumentos], input="", capture_output=True, text=True, timeout=60,
@@ -354,4 +354,5 @@ def test_command_com_erro_deixa_a_mensagem_na_tela_ate_o_enter(tmp_path, venv, f
 
     assert processo.returncode == 1
     assert "Encerrado com erro" in saida
-    assert f'"{COMMAND}" --ctk' in saida, "sem o caminho para a interface antiga"
+    assert "sigft.log" in saida, "sem o caminho do log"
+    assert "--ctk" not in saida and "interface antiga" not in saida

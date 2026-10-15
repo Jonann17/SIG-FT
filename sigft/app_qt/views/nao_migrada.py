@@ -1,20 +1,20 @@
-"""Lugar-tenente das telas que ainda não foram migradas para Qt."""
+"""O que aparece no lugar de uma tela que não existe ou que não montou."""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-from sigft.core.interface_antiga import comando_da_interface_antiga
-
 
 class TelaNaoMigrada(QWidget):
+    """Uma chave do menu sem fábrica em `TELAS`. Desde a E4.10 todas as telas
+    estão registradas: isto só aparece se uma sair do registro por engano."""
+
     def __init__(self, nome: str, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("tela")
         layout = QVBoxLayout(self)
         self.mensagem = QLabel(
-            f"A tela \"{nome}\" ainda não foi migrada para a interface nova.\n"
-            "Use a interface antiga (python frontend.py --ctk) para ela.")
+            f"A tela \"{nome}\" não está disponível nesta versão do SIG-FT.")
         self.mensagem.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.mensagem.setStyleSheet("font-size: 16px; color: #B3B3B3;")
         layout.addWidget(self.mensagem)
@@ -31,9 +31,8 @@ class TelaComErro(QWidget):
         layout = QVBoxLayout(self)
         self.mensagem = QLabel(
             f"A tela \"{nome}\" não conseguiu abrir.\n\n{type(erro).__name__}: {erro}\n\n"
-            "O detalhe está em Documentos\\SIG-FT\\logs\\sigft.log.\n\n"
-            "Para usar esta tela agora, abra a interface antiga:\n"
-            f"{comando_da_interface_antiga()}")
+            "O detalhe está em Documentos\\SIG-FT\\logs\\sigft.log. "
+            "Mande esse arquivo para quem cuida do SIG-FT.")
         self.mensagem.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.mensagem.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.mensagem.setWordWrap(True)

@@ -13,6 +13,13 @@ if __name__ == "__main__":
 
     exigir_python_minimo()
 
+    # `python -m sigft.app_qt.main --conferir-pacote`: antes do PySide6, pelo
+    # mesmo motivo do `frontend.py` (a conferência tem de responder num
+    # ambiente quebrado).
+    from sigft.app.conferencia import despachar_cedo
+
+    despachar_cedo()
+
 import json
 import os
 import sys
@@ -21,7 +28,7 @@ import time
 import traceback
 
 from dotenv import load_dotenv
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QtMsgType, Signal, qInstallMessageHandler
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar,
@@ -37,12 +44,11 @@ from sigft.app_qt.views.nao_migrada import TelaComErro, TelaNaoMigrada
 from sigft.app_qt.views.translator import ModuloTranslator
 from sigft.app_qt.widgets import blocos
 from sigft.core import instancia
-from sigft.core.interface_antiga import comando_da_interface_antiga
 from sigft.core.saida_log import desviar_saida_para_arquivo
 
 # Sem console (o .exe), `print` e traceback vão para `logs/sigft.log`: é o canal
-# de diagnóstico da primeira execução em máquina nova. Na mesma posição do app
-# CustomTkinter -- no import, antes de qualquer coisa imprimir.
+# de diagnóstico da primeira execução em máquina nova. No import, antes de
+# qualquer coisa imprimir.
 desviar_saida_para_arquivo()
 
 _RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -174,7 +180,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
     # -- barra lateral --------------------------------------------------------
     def _montar_sidebar(self) -> QScrollArea:
         area = QScrollArea(objectName="sidebar")
-        # A largura total da barra do CustomTkinter (277), para os módulos
+        # A largura total da barra da interface antiga (277), para os módulos
         # começarem no mesmo x. Lá, 17 desses px são a faixa da barra de rolagem,
         # SEMPRE visível (um traço cinza que não rola nada quando tudo cabe).
         # Aqui a faixa fica vazia -- margem direita maior --, e a barra do Qt só
@@ -372,8 +378,51 @@ def _instalar_traducao(app) -> bool:
     return False
 
 
+def _a_qt_nao_subiu(texto: str) -> None:
+    """Um erro FATAL do Qt na criação da QApplication (o plugin da plataforma
+    que falta é o caso clássico). O Qt aborta o processo logo depois de
+    avisar -- código 134, sem exceção nenhuma para o `frontend.py` tratar, e
+    no `.exe` sem console a pessoa via o app simplesmente não abrir.
+
+    Aqui o aviso vira o mesmo do `frontend.py` quando a Qt não importa: o
+    relatório do `--smoke`, ou a caixa do sistema com o caminho do `sigft.log`.
+    E sai com 1 antes do `abort` do Qt.
+    """
+    if "--smoke" in sys.argv:
+        from sigft.app.conferencia import ARQUIVO_JANELA, gravar_relatorio
+
+        relatorio = f"[smoke] FALHOU: a interface Qt nao abriu: {texto}"
+        gravar_relatorio(ARQUIVO_JANELA, relatorio)
+        print(relatorio, flush=True)
+    else:
+        from sigft.core.erro_de_abertura import avisar
+
+        avisar(f"A Qt não conseguiu iniciar:\n{texto}")
+    os._exit(1)
+
+
+def _criar_qapplication() -> QApplication:
+    """A QApplication, com os erros fatais do Qt virando aviso (ver
+    `_a_qt_nao_subiu`). O tratador vale só durante a criação: depois dela, as
+    mensagens do Qt voltam ao caminho padrão."""
+    avisos: list[str] = []
+
+    def _ao_avisar(modo, _contexto, texto) -> None:
+        if modo == QtMsgType.QtFatalMsg:
+            _a_qt_nao_subiu("\n".join([*avisos, texto]))
+        avisos.append(texto)
+        if sys.stderr is not None:
+            print(texto, file=sys.stderr)
+
+    anterior = qInstallMessageHandler(_ao_avisar)
+    try:
+        return QApplication(sys.argv)
+    finally:
+        qInstallMessageHandler(anterior)
+
+
 def _preparar_qt() -> QApplication:
-    app = QApplication.instance() or QApplication(sys.argv)
+    app = QApplication.instance() or _criar_qapplication()
     _instalar_traducao(app)
     interface.instalar()
     estilo.carregar_fontes()
@@ -414,13 +463,10 @@ def main() -> None:
             principal = SIG_FT_App()
         except Exception as erro:  # noqa: BLE001 -- vira aviso, e não fantasma
             traceback.print_exception(erro)
-            # Sem reabrir com `--ctk` sozinho, de propósito: o `SIG-FT.bat` e o
-            # `.command` esperam este processo e, com o código 1, mostrariam
-            # "Encerrado com erro" ao lado de uma interface antiga aberta. A
-            # caixa dá o comando, e a pessoa escolhe.
+            # Sai com 1: o `SIG-FT.bat` e o `.command` esperam este processo e
+            # deixam a janela preta aberta com "Encerrado com erro".
             QMessageBox.critical(None, "SIG-FT", catalogo.MSG_ABERTURA_FALHOU.format(
-                erro=f"{type(erro).__name__}: {erro}",
-                comando=comando_da_interface_antiga()))
+                erro=f"{type(erro).__name__}: {erro}"))
             instancia.encerrar(1)
             return
         janela.append(principal)

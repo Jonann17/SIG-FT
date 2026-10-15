@@ -1,19 +1,20 @@
-"""O corte (E6.1): `python frontend.py` abre a interface Qt; `--ctk`, a antiga.
+"""O ponto de entrada: `python frontend.py` abre a interface Qt, e só ela.
 
 `frontend.py` e o que o `SIG-FT.spec` empacota e o que o `SIG-FT.bat` (e, no
-Mac, o `SIG-FT.command`) roda: trocar a interface oficial e trocar o despacho
-dele. O que se cobra aqui:
+Mac, o `SIG-FT.command`) roda. Desde 2026-10-15 a interface antiga saiu do
+SIG-FT, com o `--ctk` e a queda para ela. O que se cobra aqui:
 
-1. sem `--ctk`, ele entrega a linha de comando a Qt e NAO segue adiante -- o
-   modo Qt nao importa tkinter nem CustomTkinter (no Mac com o Python do
-   Homebrew nem ha Tk), e nao cai no CTk nem se a Qt voltar;
+1. ele entrega a linha de comando a Qt e NAO segue adiante -- nem se a Qt
+   voltar --, sem nenhuma biblioteca Tk no processo;
 2. `--smoke` pelo ponto de entrada do bundle grava o relatorio da Qt, que e o
    que o passo do Release le;
-3. com `--ctk`, tudo como antes, inclusive `--ctk --smoke`;
-4. `import frontend` continua dando os nomes do CustomTkinter (os reexports);
-5. a Qt que nao abre (PySide6 ausente ou quebrado, ou falha na partida): com
-   `--smoke`, grava o motivo e sai com 1, sem cair em interface nenhuma; sem
-   ele, avisa no console e abre a antiga no mesmo processo (transicao).
+3. a Qt que nao abre (PySide6 ausente ou quebrado, falha na partida, ou o
+   erro FATAL do Qt, como o plugin de plataforma que falta): com `--smoke`,
+   grava o motivo e sai com 1, sem caixa; sem ele, o motivo vai para o
+   `sigft.log`, para a saida de erro e para uma caixa do sistema, e sai com 1;
+4. `import frontend` nao abre nada e nao traz mais os nomes da interface
+   antiga;
+5. os lancadores repassam os argumentos e nao mandam mais para o `--ctk`.
 """
 import os
 import runpy
@@ -23,19 +24,24 @@ from pathlib import Path
 
 import pytest
 
+# As bibliotecas da interface antiga, bloqueadas no subprocesso. A lista tem um
+# dono so: tests/test_sem_tkinter.py, a trava do repositorio inteiro.
+from test_sem_tkinter import MODULOS_PROIBIDOS
+
 RAIZ = Path(__file__).resolve().parent.parent
 FRONTEND = RAIZ / "frontend.py"
 
-# Roda o `frontend.py` como `__main__` num interpretador limpo (o conftest dubla
-# o Tk NESTE processo), com tkinter/customtkinter bloqueados por um finder: se
-# o despacho chegar aos imports do CTk, o import estoura aqui.
+# Roda o `frontend.py` como `__main__` num interpretador limpo, com as
+# bibliotecas Tk bloqueadas por um finder: se algo no caminho as importar, o
+# import estoura aqui.
 _RODAR_SEM_TK = r"""
 import importlib.abc, runpy, sys, types
 sys.path.insert(0, {raiz!r})
+PROIBIDOS = {proibidos!r}
 
 class _SemTk(importlib.abc.MetaPathFinder):
     def find_spec(self, nome, caminho=None, alvo=None):
-        if nome.split('.')[0] in ('tkinter', '_tkinter', 'customtkinter'):
+        if nome.split('.')[0] in PROIBIDOS:
             raise ImportError('Tk bloqueado pelo teste: ' + nome)
 
 sys.meta_path.insert(0, _SemTk())
@@ -64,37 +70,35 @@ try:
     print('VOLTOU SEM SAIR')
 finally:
     print('TK NO PROCESSO:', sorted(m for m in sys.modules
-                                    if m.split('.')[0] in ('tkinter', 'customtkinter')))
+                                    if m.split('.')[0] in PROIBIDOS))
 """
 
 
-def _rodar_sem_tk(argumentos, cwd, *, qt_falsa, qt_quebrada=False):
+def _rodar_sem_tk(argumentos, cwd, *, qt_falsa, qt_quebrada=False, ambiente_extra=None):
     codigo = _RODAR_SEM_TK.format(raiz=str(RAIZ), frontend=str(FRONTEND),
                                   argumentos=list(argumentos), qt_falsa=qt_falsa,
-                                  qt_quebrada=qt_quebrada)
+                                  qt_quebrada=qt_quebrada,
+                                  proibidos=tuple(sorted(MODULOS_PROIBIDOS)))
     ambiente = {**os.environ, "QT_QPA_PLATFORM": "offscreen",
-                "SIGFT_DADOS_DIR": str(Path(cwd) / "dados")}
+                "SIGFT_DADOS_DIR": str(Path(cwd) / "dados"), **(ambiente_extra or {})}
     return subprocess.run([sys.executable, "-c", codigo], cwd=str(cwd), env=ambiente,
                           capture_output=True, text=True, timeout=180)
 
 
 @pytest.mark.parametrize("argumentos", [[], ["--smoke"]])
-def test_sem_ctk_entrega_a_linha_de_comando_a_qt_e_nao_toca_no_tk(tmp_path, argumentos):
+def test_entrega_a_linha_de_comando_a_qt_e_nao_toca_no_tk(tmp_path, argumentos):
     resultado = _rodar_sem_tk(argumentos, tmp_path, qt_falsa=True)
 
-    assert "Tk bloqueado" not in resultado.stderr, (
-        "o frontend.py chegou aos imports do CustomTkinter sem `--ctk`:\n"
-        + resultado.stderr[-1500:])
+    assert "Tk bloqueado" not in resultado.stderr, resultado.stderr[-1500:]
     assert f"QT ABRIU COM {argumentos}" in resultado.stdout, resultado.stderr[-1500:]
-    assert "VOLTOU SEM SAIR" not in resultado.stdout, (
-        "a Qt voltou e o frontend.py seguiu em frente (cairia nos imports do CTk)")
+    assert "VOLTOU SEM SAIR" not in resultado.stdout, "a Qt voltou e o frontend.py seguiu em frente"
     assert "TK NO PROCESSO: []" in resultado.stdout
     assert resultado.returncode == 0, resultado.stderr[-1500:]
 
 
 def test_smoke_pelo_ponto_de_entrada_grava_o_relatorio_da_qt(tmp_path):
     """O passo do Release, com a Qt de verdade: `SIG-FT.exe --smoke` le o
-    `conferencia-da-janela.txt`. Com o Tk bloqueado, so a Qt consegue grava-lo.
+    `conferencia-da-janela.txt`.
 
     O codigo de saida nao e cobrado: ele depende das dependencias pesadas
     deste ambiente (backend que nao carrega so vira aviso). O que se prova e o
@@ -107,7 +111,6 @@ def test_smoke_pelo_ponto_de_entrada_grava_o_relatorio_da_qt(tmp_path):
     assert relatorio.is_file(), (
         f"o --smoke nao gravou o relatorio.\ncodigo: {resultado.returncode}\n"
         f"stdout: {resultado.stdout[-800:]}\nstderr: {resultado.stderr[-1500:]}")
-    # "telas visitadas" e do smoke da Qt; o do CTk nao tem essa linha.
     assert "telas visitadas" in relatorio.read_text(encoding="utf-8")
 
 
@@ -115,47 +118,65 @@ def test_smoke_com_a_qt_quebrada_grava_o_motivo_e_sai_com_1(tmp_path):
     """O PySide6 que nao carrega estoura no import, ANTES do `_smoke`. No `.exe`
     sem console isso virava a caixa de traceback do PyInstaller, e o
     `Start-Process -Wait` do Release esperava ate o limite do passo, sem
-    relatorio. Tem de gravar o motivo, sair com 1 e NAO cair no CustomTkinter:
-    o Release tem de reprovar, nao passar com a interface errada."""
+    relatorio. Tem de gravar o motivo e sair com 1."""
     resultado = _rodar_sem_tk(["--smoke"], tmp_path, qt_falsa=False, qt_quebrada=True)
 
     relatorio = tmp_path / "conferencia-da-janela.txt"
-    assert relatorio.is_file(), (
-        f"codigo: {resultado.returncode}\nstderr: {resultado.stderr[-1500:]}")
+    assert relatorio.is_file(), f"codigo: {resultado.returncode}\nstderr: {resultado.stderr[-1500:]}"
     texto = relatorio.read_text(encoding="utf-8")
     assert "DLL load failed while importing QtCore" in texto
     assert "Traceback" in texto, "sem a pilha nao da para saber o que faltou"
     assert resultado.returncode == 1
-    assert "TK NO PROCESSO: []" in resultado.stdout, "caiu no CustomTkinter"
+    assert "TK NO PROCESSO: []" in resultado.stdout
+    assert "nao conseguiu abrir a janela" not in resultado.stderr.lower(), "o --smoke avisou como gente"
 
 
-# -- `--ctk` e `import frontend`: o CustomTkinter de antes ----------------------
-# Neste processo o conftest dubla o Tk, entao o `frontend.py` roda inteiro; os
-# dois despachantes sao trocados por anotadores.
+def test_sem_smoke_a_qt_quebrada_avisa_com_o_motivo_e_o_log_e_sai_com_1(tmp_path):
+    """Decisao de 2026-10-15: sem interface antiga para cair, a pessoa recebe o
+    motivo e o caminho do `sigft.log` (que fica com a pilha), e o processo sai
+    com 1 -- o `SIG-FT.bat` mostra "Encerrado com erro" e espera."""
+    resultado = _rodar_sem_tk([], tmp_path, qt_falsa=False, qt_quebrada=True)
 
-@pytest.fixture
-def despachos(monkeypatch):
-    from sigft.app import main as ctk
-    from sigft.app_qt import main as qt
-
-    chamados = []
-    monkeypatch.setattr(ctk, "executar_da_linha_de_comando", lambda: chamados.append("ctk"))
-    monkeypatch.setattr(qt, "executar_da_linha_de_comando", lambda: chamados.append("qt"))
-    return chamados
-
-
-@pytest.mark.parametrize("argumentos", [["--ctk"], ["--ctk", "--smoke"]])
-def test_com_ctk_abre_a_interface_antiga(despachos, monkeypatch, argumentos):
-    # `--ctk --smoke`: quem trata o `--smoke` e o despachante do CTk, que o
-    # `tests/test_ponto_de_entrada.py` cobre.
-    monkeypatch.setattr(sys, "argv", [str(FRONTEND), *argumentos])
-
-    runpy.run_path(str(FRONTEND), run_name="__main__")
-
-    assert despachos == ["ctk"]
+    assert resultado.returncode == 1, resultado.stderr[-1500:]
+    assert "TK NO PROCESSO: []" in resultado.stdout
+    log = tmp_path / "dados" / "logs" / "sigft.log"
+    assert "O SIG-FT não conseguiu abrir a janela." in resultado.stderr
+    assert "DLL load failed while importing QtCore" in resultado.stderr
+    assert str(log) in resultado.stderr
+    texto_log = log.read_text(encoding="utf-8")
+    assert "DLL load failed while importing QtCore" in texto_log and "Traceback" in texto_log
+    assert "--ctk" not in resultado.stderr + resultado.stdout
 
 
-# -- a Qt que nao abre (transicao) ------------------------------------------------
+def _rodar_qt_de_verdade(argumentos, cwd, plataforma):
+    ambiente = {**os.environ, "QT_QPA_PLATFORM": plataforma,
+                "SIGFT_DADOS_DIR": str(Path(cwd) / "dados")}
+    return subprocess.run([sys.executable, str(FRONTEND), *argumentos], cwd=str(cwd),
+                          env=ambiente, capture_output=True, text=True, timeout=180)
+
+
+def test_erro_fatal_do_qt_vira_aviso_e_sai_com_1(tmp_path):
+    """O plugin de plataforma que falta nao levanta excecao: o Qt avisa e
+    ABORTA o processo (codigo 134), e no `.exe` sem console a pessoa via o app
+    simplesmente nao abrir. O aviso fatal vira o mesmo aviso da Qt que nao
+    importa."""
+    resultado = _rodar_qt_de_verdade([], tmp_path, "inexistente")
+
+    assert resultado.returncode == 1, (resultado.returncode, resultado.stderr[-1500:])
+    assert "O SIG-FT não conseguiu abrir a janela." in resultado.stderr
+    texto_log = (tmp_path / "dados" / "logs" / "sigft.log").read_text(encoding="utf-8")
+    assert "inexistente" in texto_log and "Qt platform plugin" in texto_log
+
+
+def test_erro_fatal_do_qt_no_smoke_grava_o_relatorio(tmp_path):
+    resultado = _rodar_qt_de_verdade(["--smoke"], tmp_path, "inexistente")
+
+    assert resultado.returncode == 1, (resultado.returncode, resultado.stderr[-1500:])
+    texto = (tmp_path / "conferencia-da-janela.txt").read_text(encoding="utf-8")
+    assert "FALHOU" in texto and "inexistente" in texto
+
+
+# -- no mesmo processo: a Qt que nao importa ou nao sobe ---------------------------
 
 def _qt_que_nao_importa(monkeypatch):
     # `None` em sys.modules faz o `from sigft.app_qt.main import ...` levantar
@@ -178,26 +199,39 @@ QUEBRAS_DA_QT = [
 ]
 
 
+@pytest.fixture
+def caixas(monkeypatch):
+    """As caixas do sistema que o aviso abriria, anotadas em vez de abertas.
+    (O `sigft.log` cai na pasta de dados isolada pelo conftest.)"""
+    from sigft.core import erro_de_abertura
+
+    abertas = []
+    monkeypatch.setattr(erro_de_abertura, "mostrar_caixa",
+                        lambda texto, **_: abertas.append(texto) or "anotada")
+    return abertas
+
+
 @pytest.mark.parametrize(("quebrar", "motivo"), QUEBRAS_DA_QT)
-def test_sem_smoke_a_qt_que_falha_avisa_e_abre_a_antiga(despachos, monkeypatch, capsys,
-                                                        quebrar, motivo):
-    """Decisao da transicao: a pessoa continua trabalhando, na interface antiga,
-    e a janela preta diz o que falhou e o comando para abrir a antiga direto."""
+def test_sem_smoke_a_qt_que_falha_mostra_a_caixa_e_sai_com_1(caixas, monkeypatch, capsys,
+                                                             quebrar, motivo):
     quebrar(monkeypatch)
     monkeypatch.setattr(sys, "argv", [str(FRONTEND)])
 
-    runpy.run_path(str(FRONTEND), run_name="__main__")
+    with pytest.raises(SystemExit) as saida:
+        runpy.run_path(str(FRONTEND), run_name="__main__")
 
-    assert despachos == ["ctk"]
-    texto = "".join(capsys.readouterr())
-    assert motivo in texto
-    assert "interface antiga" in texto
-    assert f'"{sys.executable}" "{FRONTEND}" --ctk' in texto
+    assert saida.value.code == 1
+    assert len(caixas) == 1 and motivo in caixas[0] and "sigft.log" in caixas[0]
+    from sigft.core.erro_de_abertura import caminho_do_log
+
+    assert motivo in capsys.readouterr().err
+    assert caminho_do_log() in caixas[0]
+    assert motivo in Path(caminho_do_log()).read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(("quebrar", "motivo"), QUEBRAS_DA_QT)
-def test_smoke_com_a_qt_que_falha_grava_o_motivo_e_nao_cai_na_antiga(
-        despachos, monkeypatch, tmp_path, quebrar, motivo):
+def test_smoke_com_a_qt_que_falha_grava_o_motivo_sem_caixa(caixas, monkeypatch, tmp_path,
+                                                           quebrar, motivo):
     monkeypatch.chdir(tmp_path)
     quebrar(monkeypatch)
     monkeypatch.setattr(sys, "argv", [str(FRONTEND), "--smoke"])
@@ -206,33 +240,55 @@ def test_smoke_com_a_qt_que_falha_grava_o_motivo_e_nao_cai_na_antiga(
         runpy.run_path(str(FRONTEND), run_name="__main__")
 
     assert saida.value.code == 1
-    assert despachos == [], "o --smoke caiu numa interface"
+    assert caixas == [], "o --smoke abriu uma caixa (o Release ficaria esperando o OK)"
     texto = (tmp_path / "conferencia-da-janela.txt").read_text(encoding="utf-8")
     assert motivo in texto and "Traceback" in texto
 
 
-def test_no_executavel_o_comando_da_antiga_e_o_proprio_exe(despachos, monkeypatch, capsys):
-    """No `.exe` nao ha `frontend.py` para passar ao interpretador."""
-    _qt_que_nao_importa(monkeypatch)
-    monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.setattr(sys, "argv", [str(FRONTEND)])
+def test_import_frontend_nao_abre_nada_e_nao_traz_a_interface_antiga(monkeypatch):
+    from sigft.app_qt import main as qt
 
-    runpy.run_path(str(FRONTEND), run_name="__main__")
+    chamados = []
+    monkeypatch.setattr(qt, "executar_da_linha_de_comando", lambda: chamados.append("qt"))
+    monkeypatch.setattr(sys, "argv", ["pytest"])
 
-    texto = "".join(capsys.readouterr())
-    assert f'"{sys.executable}" --ctk' in texto
-    assert f'"{sys.executable}" "{FRONTEND}" --ctk' not in texto
+    nomes = runpy.run_path(str(FRONTEND), run_name="frontend")
 
+    assert chamados == [], "importar o frontend abriu a interface"
+    for antigo in ("SIG_FT_App", "SplashScreen", "COLORS", "ModuloAutoSpec", "main"):
+        assert antigo not in nomes, antigo
+
+
+# -- os lancadores -------------------------------------------------------------------
 
 def test_o_sig_ft_bat_repassa_os_argumentos_ao_frontend():
-    """`SIG-FT.bat --ctk` tem de chegar ao `frontend.py` (e o que o README manda
-    usar). Sem cmd.exe aqui para rodar o .bat, confere-se a linha que chama o
-    `frontend.py`."""
+    """`SIG-FT.bat --smoke` (e qualquer outra flag) tem de chegar ao
+    `frontend.py`. Sem cmd.exe aqui para rodar o .bat, confere-se a linha que
+    chama o `frontend.py`."""
     linhas = [linha for linha in (RAIZ / "SIG-FT.bat").read_text(encoding="utf-8").splitlines()
               if "frontend.py" in linha
               and not linha.lstrip().lower().startswith(("rem", "echo"))]
     assert linhas, "o SIG-FT.bat nao chama mais o frontend.py?"
     assert all(linha.rstrip().endswith("%*") for linha in linhas), linhas
+
+
+@pytest.mark.parametrize("lancador", ["SIG-FT.bat", "SIG-FT.command", "SIG-FT Itaipu.bat",
+                                      "scripts/_bootstrap_venv.bat",
+                                      "scripts/_bootstrap_venv.sh"])
+def test_nenhum_lancador_manda_para_a_interface_antiga(lancador):
+    texto = (RAIZ / lancador).read_text(encoding="utf-8")
+    assert "--ctk" not in texto
+    assert "interface antiga" not in texto.lower()
+
+
+def test_o_erro_do_sig_ft_bat_diz_onde_esta_o_log():
+    """Depois de um pip que falhou ou de uma Qt que nao abriu, o bloco `:erro`
+    e a unica coisa que a pessoa le: ele diz onde esta o `sigft.log`."""
+    texto = (RAIZ / "SIG-FT.bat").read_text(encoding="utf-8")
+    bloco = texto[texto.index("\n:erro"):]
+    assert any(linha.lstrip().lower().startswith("echo") and "sigft.log" in linha
+               for linha in bloco.splitlines()), bloco
+    assert "pause" in bloco
 
 
 def _requisitos(nome):
@@ -249,69 +305,6 @@ def test_requirements_de_producao_instala_o_pyside6():
     diante. (No `requirements-dev.txt` ele tambem esta, mas la a falta ja
     quebraria a suite Qt inteira sozinha.)"""
     assert "pyside6-essentials>=6.9" in _requisitos("requirements.txt")
-
-
-def test_import_frontend_continua_dando_os_nomes_do_customtkinter(despachos, monkeypatch):
-    from sigft.app import main as ctk
-
-    monkeypatch.setattr(sys, "argv", ["pytest"])
-
-    nomes = runpy.run_path(str(FRONTEND), run_name="frontend")
-
-    assert despachos == [], "importar o frontend abriu uma interface"
-    assert nomes["SIG_FT_App"] is ctk.SIG_FT_App
-    assert nomes["main"] is ctk.main
-
-
-# -- o caminho para a interface antiga quando a Qt falha (revisao final) ---------
-
-def test_o_comando_da_antiga_e_um_so(monkeypatch):
-    """O console do `frontend.py`, a caixa da abertura que falhou e a tela que
-    nao montou dao o MESMO comando, montado num lugar so."""
-    from sigft.core.interface_antiga import comando_da_interface_antiga
-
-    monkeypatch.delattr(sys, "frozen", raising=False)
-    assert comando_da_interface_antiga() == f'"{sys.executable}" "{FRONTEND}" --ctk'
-    monkeypatch.setattr(sys, "frozen", True, raising=False)
-    assert comando_da_interface_antiga() == f'"{sys.executable}" --ctk'
-
-
-def test_no_mac_a_qt_que_falha_com_a_qapplication_viva_nao_cai_no_tk(
-        qt_interface, despachos, monkeypatch, capsys):
-    """No macOS o Tk e a Qt disputam o mesmo NSApplication: com uma
-    QApplication viva, abrir o Tk no mesmo processo quebra. Avisa e sai com 1."""
-    _qt_que_nao_sobe(monkeypatch)
-    monkeypatch.setattr(sys, "platform", "darwin")
-    monkeypatch.setattr(sys, "argv", [str(FRONTEND)])
-
-    with pytest.raises(SystemExit) as saida:
-        runpy.run_path(str(FRONTEND), run_name="__main__")
-
-    assert saida.value.code == 1
-    assert despachos == [], "caiu no CustomTkinter com a Qt viva no Mac"
-    texto = "".join(capsys.readouterr())
-    assert "a Qt nao subiu" in texto
-    assert f'"{sys.executable}" "{FRONTEND}" --ctk' in texto
-
-
-def test_fora_do_mac_a_qapplication_viva_nao_impede_a_antiga(
-        qt_interface, despachos, monkeypatch):
-    _qt_que_nao_sobe(monkeypatch)
-    monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setattr(sys, "argv", [str(FRONTEND)])
-
-    runpy.run_path(str(FRONTEND), run_name="__main__")
-
-    assert despachos == ["ctk"]
-
-
-def test_o_erro_do_sig_ft_bat_ensina_o_ctk():
-    """Depois de um pip que falhou ou de uma Qt que abortou, o bloco `:erro` e a
-    unica coisa que a pessoa le: ele da o caminho para a interface antiga."""
-    texto = (RAIZ / "SIG-FT.bat").read_text(encoding="utf-8")
-    bloco = texto[texto.index("\n:erro"):]
-    assert any(linha.lstrip().lower().startswith("echo") and 'SIG-FT.bat" --ctk' in linha
-               for linha in bloco.splitlines()), bloco
 
 
 def test_o_bootstrap_bat_segue_com_a_instalacao_anterior_quando_o_pip_falha():

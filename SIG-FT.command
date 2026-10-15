@@ -21,7 +21,7 @@ RAIZ="$(cd "$(dirname "$0")" && pwd)"
 _sigft_encerrar_com_erro() {
     echo
     echo "[SIG-FT] Encerrado com erro. As mensagens acima dizem o motivo."
-    echo "         Para abrir a interface antiga: \"$RAIZ/SIG-FT.command\" --ctk"
+    echo "         O detalhe tambem fica em ~/Documents/SIG-FT/logs/sigft.log."
     echo
     # O `pause` do .bat: sem isto, o Terminal pode fechar a janela (ou
     # esconder a mensagem) antes de a pessoa conseguir ler.
@@ -44,7 +44,7 @@ cd "$RAIZ" || _sigft_encerrar_com_erro
 echo "[SIG-FT] Abrindo o aplicativo. Pode fechar esta janela do Terminal so DEPOIS"
 echo "         de fechar o SIG-FT -- e nela que aparecem os erros."
 echo
-# Os argumentos seguem adiante: no Terminal, `./SIG-FT.command --ctk` abre a
-# interface antiga.
+# Os argumentos seguem adiante (no Terminal, `./SIG-FT.command --smoke`, por
+# exemplo).
 "$SIGFT_PY" "$RAIZ/frontend.py" "$@" || _sigft_encerrar_com_erro
 exit 0

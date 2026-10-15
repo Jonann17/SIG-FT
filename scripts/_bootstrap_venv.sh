@@ -248,7 +248,7 @@ _sigft_instalar() {
         if [ -f "$carimbo" ]; then
             # Ja houve uma instalacao que deu certo: o pip baixa tudo antes de
             # instalar, entao o ambiente anterior continua inteiro e o app abre
-            # com ele (inclusive `--ctk`). O carimbo antigo fica, e a proxima
+            # com ele. O carimbo antigo fica, e a proxima
             # abertura tenta de novo. Sem carimbo (nunca instalou), falha.
             echo
             echo "[SIG-FT] SEGUINDO com as dependencias da instalacao anterior."

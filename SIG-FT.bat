@@ -24,7 +24,7 @@ cd /d "%~dp0"
 echo [SIG-FT] Abrindo o aplicativo. Pode fechar esta janela preta so DEPOIS
 echo          de fechar o SIG-FT -- e nela que aparecem os erros.
 echo.
-rem Os argumentos seguem adiante: "SIG-FT.bat --ctk" abre a interface antiga.
+rem Os argumentos seguem adiante (ex.: "SIG-FT.bat --smoke").
 "%SIGFT_PY%" "%~dp0frontend.py" %*
 if errorlevel 1 goto :erro
 
@@ -34,7 +34,7 @@ exit /b 0
 :erro
 echo.
 echo [SIG-FT] Encerrado com erro. As mensagens acima dizem o motivo.
-echo          Para abrir a interface antiga: "%~dp0SIG-FT.bat" --ctk
+echo          O detalhe tambem fica em Documentos\SIG-FT\logs\sigft.log.
 echo.
 pause
 endlocal
