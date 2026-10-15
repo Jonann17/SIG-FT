@@ -58,10 +58,6 @@ datas = [
     (os.path.join("sigft", "assets", "painel_template.html"), os.path.join("sigft", "assets")),
 ]
 
-# `customtkinter` carrega temas de arquivos .json que ele traz junto. Sem isto,
-# o app abre com o tema padrão errado ou nem abre.
-datas += collect_data_files("customtkinter")
-
 # =============================================================================
 # O navegador do Playwright
 # =============================================================================
@@ -153,9 +149,10 @@ binarios = collect_dynamic_libs("ctranslate2")
 # =============================================================================
 # A interface Qt (E6.2, 2026-10-10)
 # =============================================================================
-# Desde o corte (E6.1) o `.exe` abre a interface Qt (`sigft/app_qt/`); o
-# `--ctk` ainda abre a CustomTkinter, que continua no pacote enquanto ele
-# existir. O PySide6 entra pela análise (o `frontend.py` importa
+# Desde o corte (E6.1) o `.exe` abre a interface Qt (`sigft/app_qt/`), e desde
+# 2026-10-15 só ela: a interface antiga saiu do SIG-FT (e a biblioteca dela e o
+# Tcl/Tk saem do pacote, nos `excludes`). O PySide6 entra pela análise (o
+# `frontend.py` importa
 # `sigft.app_qt.main`) e pelos hooks do PyInstaller, que trazem as DLLs do Qt,
 # os plugins e as traduções. Três peças são escolha nossa:
 #
@@ -227,7 +224,7 @@ hiddenimports = [
     "search_pmib_backend",
 ]
 
-# O pacote `sigft` inteiro, as duas interfaces incluídas: os serviços entram por
+# O pacote `sigft` inteiro: os serviços entram por
 # aqueles shims dinâmicos acima, e as telas Qt são importadas na PRIMEIRA visita
 # (dentro das fábricas de `sigft.app_qt.main.TELAS`). Sem esta coleta, uma tela
 # que a análise não enxergasse só faltaria quando alguém clicasse no menu -- a
@@ -300,7 +297,14 @@ a = Analysis(
     # torch para o instalador.
     #
     # (`PySide6` e `shiboken6` estiveram aqui até a E6.2, quando a interface
-    # oficial ainda era a CustomTkinter. Hoje sem eles o `.exe` não abre.)
+    # oficial ainda era a antiga. Hoje sem eles o `.exe` não abre.)
+    #
+    # `tkinter`, `_tkinter` e `customtkinter` (2026-10-15): a interface antiga
+    # saiu do SIG-FT, e nenhum arquivo do projeto os importa
+    # (`tests/test_sem_interface_antiga.py`). Quem ainda os puxaria é import
+    # opcional de terceiros (o `PIL.ImageTk`, por exemplo): sem a exclusão, a
+    # análise levaria o `_tkinter`, a libtcl/libtk e os dados do Tcl/Tk
+    # (`_tcl_data`, `_tk_data`), que o hook do PyInstaller recolhe junto.
     #
     # `PySide6.QtNetwork`: ninguém no SIG-FT o importa. Quem o puxa é um
     # `from . import QtNetwork` CONDICIONAL do `PySide6/__init__.py` (só no
@@ -310,7 +314,7 @@ a = Analysis(
     # Windows. Se um dia alguém usar o QtNetwork, `tests/test_qt_no_pacote.py`
     # manda tirar esta linha antes que o `.exe` quebre.
     excludes=["pytest", "_pytest", "mypy", "ruff", "torch", "transformers",
-              "PySide6.QtNetwork"],
+              "PySide6.QtNetwork", "tkinter", "_tkinter", "customtkinter"],
     noarchive=False,
 )
 
@@ -446,7 +450,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     # O PyInstaller no Windows quer `.ico` para o ícone do EXECUTÁVEL (o `.png`
-    # serve para a janela, na Qt e no CustomTkinter, mas não para o arquivo).
+    # serve para a janela Qt, mas não para o arquivo).
     # `_ICONE` vem da escolha mais acima: o `build/SIG-FT.ico` que o
     # `Gerar-Executavel.bat` gera a partir do PNG, ou o
     # `assets/icone-sig-ft.ico` do repositório, que é o que o CI usa. Sem

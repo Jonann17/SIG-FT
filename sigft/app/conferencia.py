@@ -58,9 +58,6 @@ MODULOS_ESSENCIAIS = [
     "sigft.core.excel.cirurgico",
     "playwright",
     "requests",
-    # a interface antiga: fica enquanto o `--ctk` existir (E6.1).
-    "customtkinter",
-    "PIL",
     "fitz",           # pymupdf: primeira camada da leitura de PDF
     "bs4",
     "google.generativeai",

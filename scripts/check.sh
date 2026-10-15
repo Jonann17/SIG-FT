@@ -8,10 +8,9 @@
 #   1) `"$PY" -m compileall -q -x '[/\\]\.?venv[/\\]' .`
 #      Verificação de SINTAXE de TODA a árvore do repositório — inclui
 #      frontend.py, que fica de fora do passo 2 (não é seguro IMPORTAR
-#      frontend.py neste ambiente: ele importa customtkinter/tkinter e o
-#      bloco `if __name__ == "__main__":` abre uma janela real; compileall
-#      só compila para bytecode, nunca executa o módulo, então é a
-#      verificação certa para ele aqui).
+#      frontend.py como script: o bloco `if __name__ == "__main__":` abre
+#      a janela real da interface Qt; compileall só compila para bytecode,
+#      nunca executa o módulo, então é a verificação certa para ele aqui).
 #   2) `"$PY" -m pytest -q`
 #      Testes de caracterização de funções puras (CP 0.1) + smoke de
 #      importação dos 12 módulos `*_backend.py` / `upload_ficha_duplicada.py`

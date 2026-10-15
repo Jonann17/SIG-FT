@@ -9,8 +9,9 @@
 # mudou. E o maior download da lista: ~80 MB no Windows, ~120 MB no Mac (que
 # precisa do macOS 12 ou mais novo), so nessa primeira abertura.
 PySide6-Essentials>=6.9
-# A interface antiga, que o `--ctk` ainda abre durante a transicao.
-customtkinter
+# pillow: o `Gerar-Executavel.bat` monta com ele o .ico de varios tamanhos (e o
+# llama-index o puxa de qualquer jeito). A interface antiga, que tambem o usava,
+# saiu em 2026-10-15 -- e com ela o customtkinter.
 pillow
 
 # Dados / Excel

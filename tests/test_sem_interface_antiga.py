@@ -88,3 +88,38 @@ def test_a_trava_pega_cada_forma_de_import(fonte):
 ])
 def test_a_trava_nao_acusa_o_que_nao_e_import(fonte):
     assert not _importa_proibido(ast.parse(fonte))
+
+
+# -- o pacote e as dependencias -------------------------------------------------
+
+def _excludes_do_spec() -> list[str]:
+    arvore = ast.parse((RAIZ / "SIG-FT.spec").read_text(encoding="utf-8"))
+    for no in ast.walk(arvore):
+        if isinstance(no, ast.Call) and getattr(no.func, "id", None) == "Analysis":
+            for k in no.keywords:
+                if k.arg == "excludes":
+                    return ast.literal_eval(k.value)
+    pytest.fail("o Analysis do SIG-FT.spec perdeu os excludes")
+
+
+def test_o_pacote_exclui_a_interface_antiga_e_o_tcl_tk():
+    """Sem a exclusão, import opcional de terceiros (o `PIL.ImageTk`) levaria o
+    `_tkinter`, a libtcl/libtk e os dados do Tcl/Tk para o pacote: medido em
+    2026-10-15 no Linux, 334 arquivos e 9 MB."""
+    assert MODULOS_PROIBIDOS <= set(_excludes_do_spec())
+    spec = (RAIZ / "SIG-FT.spec").read_text(encoding="utf-8")
+    assert 'collect_data_files("customtkinter")' not in spec
+
+
+def test_as_dependencias_nao_trazem_a_interface_antiga():
+    for nome in ("requirements.txt", "requirements-dev.txt"):
+        pacotes = [linha.split(";")[0].strip().lower()
+                   for linha in (RAIZ / nome).read_text(encoding="utf-8").splitlines()
+                   if linha.strip() and not linha.strip().startswith("#")]
+        assert not [p for p in pacotes if p.split("=")[0].split(">")[0] in MODULOS_PROIBIDOS], nome
+
+
+def test_a_conferencia_do_pacote_nao_procura_a_interface_antiga():
+    from sigft.app import conferencia
+
+    assert not MODULOS_PROIBIDOS & set(conferencia.MODULOS_ESSENCIAIS)

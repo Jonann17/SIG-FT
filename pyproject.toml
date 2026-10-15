@@ -100,7 +100,6 @@ ignore_missing_imports = true
 # rodar só em `core/`. Elas passam a valer quando a checagem chegar em
 # `services/`.
 module = [
-    "customtkinter.*",
     "playwright.*",
     "openpyxl.*",
     "pandas.*",
