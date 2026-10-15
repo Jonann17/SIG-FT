@@ -7,7 +7,7 @@
 >
 > | O que o texto abaixo chama de | Está hoje em |
 > |---|---|
-> | `upload_tech_specs_backend.py` | `sigft/services/tech_specs.py` (serviço) · `sigft/app/views/upload_tech_specs.py` (tela) |
+> | `upload_tech_specs_backend.py` | `sigft/services/tech_specs.py` (serviço) · `sigft/app_qt/views/upload_tech_specs.py` (tela) |
 >
 > ⚠️ Atenção ao nome: o serviço chama-se `tech_specs.py`, sem o prefixo `upload_`.
 >

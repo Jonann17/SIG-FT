@@ -8,7 +8,7 @@
 > | O que o texto abaixo chama de | Está hoje em |
 > |---|---|
 > | `upload_ficha_duplicada.py` | 9 arquivos `sigft/services/duplicadas*.py` (`duplicadas.py`, `_condicoes`, `_documentos`, `_extrator`, `_imagens`, `_injetor`, `_pdm`, `_robo`, `_spec`) |
-> | a tela | `sigft/app/views/copia_fichas.py` |
+> | a tela | `sigft/app_qt/views/copia_fichas.py` |
 >
 > ⚠️ **Este módulo foi RECONSTRUÍDO na Fase 6, não apenas movido** (decisão de produto nº 1). Partes do texto abaixo podem descrever comportamento que não existe mais. Os seletores e o fluxo atuais estão em `sigft/core/rpa/seletores_duplicada.py`.
 >

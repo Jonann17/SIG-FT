@@ -7,7 +7,7 @@
 >
 > | O que o texto abaixo chama de | Está hoje em |
 > |---|---|
-> | `pmib_manager_backend.py` | `sigft/services/pmib_manager.py` (serviço) · `sigft/app/views/pmib_manager.py` (tela) |
+> | `pmib_manager_backend.py` | `sigft/services/pmib_manager.py` (serviço) · `sigft/app_qt/views/pmib_manager.py` (tela) |
 >
 > A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
 
@@ -42,8 +42,8 @@ o Id —; abre cada uma pelo link direto `PMIB_DataSheetView?PMIB_DataSheetId=<I
 recebe. As que têm código passam pela mesma gravação do export (`autorizados.aplicar`, separada de `executar` nesse
 dia), com a **data da conferência** no lugar da data do export. Três fichas seguidas sem resposta param a conferência;
 o fim do log lista as não encontradas e as sem resposta. Só RPA (regra do Luan, 2026-10-14): o robô pesquisa e abre
-como uma pessoa, e lê a resposta que o navegador recebeu (`RPAEngine.capturar_respostas`). O botão está nas duas
-telas: `app_qt/views/pmib_manager.py` (a interface oficial desde a migração Qt) e `app/views/pmib_manager.py` (`--ctk`).
+como uma pessoa, e lê a resposta que o navegador recebeu (`RPAEngine.capturar_respostas`). O botão está na tela
+`app_qt/views/pmib_manager.py` (a interface antiga, que também o tinha, saiu do SIG-FT em 2026-10-15).
 
 **Painel HTML (T7)** — botão "Gerar painel" e caixa "Gerar painel ao terminar" (lembrada em `prefs`, marcada por
 padrão) na mesma tela. `services/painel.gerar_painel()` é o porte de `gerar_prototipo_dashboard.py` do cofre: lê os

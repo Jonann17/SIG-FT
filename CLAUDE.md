@@ -1,6 +1,6 @@
 # SIG-FT — instruções para o Claude
 
-Aplicativo desktop (Python + CustomTkinter) que automatiza a gestão de fichas técnicas de
+Aplicativo desktop (Python + Qt/PySide6) que automatiza a gestão de fichas técnicas de
 materiais sobressalentes do projeto Itaipu: criação de fichas no Portal PMIB, RPA no portal,
 geração de planilhas e módulos de IA sobre as fichas.
 
@@ -26,8 +26,8 @@ O resumo que não pode ser esquecido:
 - ⛔ **Não use o AutoSpec como tela piloto** de nenhum checkpoint da Fase 7.
 - 🟢 **São do Rafael:** `sigft/services/autospec.py` + `autospec_conferencia.py`,
   `autospec_rag.py`, `autospec_embeddings.py`, `autospec_unidades.py`, `autospec_backend.py`,
-  `sigft/core/web/`, `class ModuloAutoSpec` no `frontend.py` (~linhas 3077–3508 —
-  **confirme pelo nome da classe, o número anda**), `tests/test_autospec_*.py`,
+  `sigft/core/web/`, `class ModuloAutoSpec` em `sigft/app_qt/views/autospec.py` (a tela;
+  desde 2026-10-15 a única), `tests/test_autospec_*.py`,
   `docs/base-conhecimento/08-autospec-backend.md`.
 - 🔴 **Zonas compartilhadas** (`ficha_layout.py` → `CONFIG_MAP`, `config.LLM_TASKS`,
   `core/llm/prompts.py`, tabelas de status): commit isolado + mensagem explícita.
@@ -55,11 +55,11 @@ sessão e seria esquecido justamente nas sessões corridas.
 
 | Data | De | Aviso |
 |---|---|---|
-| 2026-09-25 | Luan | 🔴 **Fechar a janela agora ENCERRA o processo** (`instancia.encerrar`): thread comum viva é "tarefa em andamento" e faz o "X" perguntar antes; thread de fundo que não é tarefa da pessoa tem de nascer `daemon=True`.<br>O `.iss` perdeu o `AppMutex` (travava a instalação por causa de um SIG-FT sem janela) e usa `CloseApplications=force`. Detalhe em `docs/BUILD.md` e `PENDENCIAS.md`. |
 | 2026-09-28 | Luan | 🔴 **AutoSpec confere as respostas do FORNECEDOR contra o datasheet** (pedido meu, no teu código): "não se aplica" com prova conferida vira o valor do documento (original no comentário); valor do fornecedor nunca é gravado, divergência só no log. Ficha completa deixou de ser pulada.<br>Chamada SEPARADA; `montar_autospec` intacto, prompt novo `montar_autospec_auditoria`; `_preparar_envio` saiu de `generate_ai_response` (extração pura). §3.1 do `08b` mudou. Spec: `docs/superpowers/specs/2026-09-28-autospec-conferencia-fornecedor-design.md`. |
 | 2026-10-07 | Luan | 🔴 **Atualização pequena: o Release publica também `arquivos.json` e um `.bin` só com o que mudou, e o app usa o pequeno quando ele serve; a caixa "Versões de teste" (tela inicial) faz o app receber pré-lançamentos pelo aviso.**<br>Ou seja: rc deixou de ser invisível para quem marcou a caixa. A primeira versão com isso sai só com o completo (não há base). Detalhe em `docs/BUILD.md`. |
 | 2026-10-08 | Luan | 🔴 **`prompts.py`: `categorizar_pdm` reescrito (duas passadas) e prompt novo `interpretar_material`; `LLM_TASKS` ganhou a tarefa `interpretar_material`.** Fixture `cria_fichas_prompt.txt` regerada com aval; nenhum prompt do AutoSpec mudou.<br>Spec: `docs/superpowers/specs/2026-10-08-escolha-de-pdm-em-duas-passadas-design.md`. |
-| 2026-10-14 | Luan | 🔴 **A interface Qt (branch do Jonathan) entrou na branch oficial**: o app abre na Qt (`sigft/app_qt/`), a antiga só com `--ctk`. Tela que muda = mexer nas DUAS (`app/views/` e `app_qt/views/`, com o teste de medidas da Qt); textos de diálogo em `app/textos_dialogos.py`.<br>Junto entraram `RPAEngine.capturar_respostas` (o robô lê a resposta que a tela recebe -- só RPA, regra do Luan) e o CONFERIR NO PORTAL do Gestão PMIB. Python 3.12.0 exato quebra a Qt com o pandas: ver `PENDENCIAS.md` de 2026-10-14. No fim do pytest, o `conftest` apaga as janelas que sobraram: um `lambda` com `self` no sinal de um filho vaza a tela, e a faxina do PySide na saída derrubava o processo (`tests/test_qt_saida.py`). |
+| 2026-10-14 | Luan | 🔴 **A interface Qt (branch do Jonathan) entrou na branch oficial**: o app abre na Qt (`sigft/app_qt/`), a antiga só com `--ctk`. Tela que muda = mexer nas DUAS (`app/views/` e `app_qt/views/`, com o teste de medidas da Qt) [superado em 2026-10-15: só `app_qt/views/`]; textos de diálogo em `app/textos_dialogos.py`.<br>Junto entraram `RPAEngine.capturar_respostas` (o robô lê a resposta que a tela recebe -- só RPA, regra do Luan) e o CONFERIR NO PORTAL do Gestão PMIB. Python 3.12.0 exato quebra a Qt com o pandas: ver `PENDENCIAS.md` de 2026-10-14. No fim do pytest, o `conftest` apaga as janelas que sobraram: um `lambda` com `self` no sinal de um filho vaza a tela, e a faxina do PySide na saída derrubava o processo (`tests/test_qt_saida.py`). |
+| 2026-10-15 | Jonathan | 🔴 **A interface antiga (CustomTkinter) SAIU do SIG-FT**: `sigft/app/views/`, `widgets/`, `main.py` e o `--ctk` não existem mais; `frontend.py` só abre a Qt (se ela não abre: caixa com o motivo + `sigft.log`, sai com 1). Tela que muda = só `sigft/app_qt/views/` (a regra das DUAS, de 10-14, caiu).<br>Rafael: a tela do AutoSpec é `sigft/app_qt/views/autospec.py`, e os teus testes de tela (`test_autospec_conferencia_tela`/`_auditoria_tela`) olham ela, com as mesmas invariantes; serviços intocados. Trava: `tests/test_sem_interface_antiga.py`. |
 
 ---
 
@@ -100,9 +100,10 @@ bash scripts/check.sh        # compileall (sintaxe, cobre frontend.py) + pytest
 O **CI do GitHub** repete isso em todo commit (`.github/workflows/ci.yml`):
 `compileall`, `pyflakes` no `frontend.py`, `ruff`, `pytest` e a conferência do
 `CHANGELOG.md`. Ele roda em Ubuntu com Python 3.10 — o mínimo que o `SIG-FT.bat`
-aceita — e instala `requests`, `openpyxl`, `python-dotenv` e `pillow` além do
-`requirements-dev.txt`: as quatro escapam da dublagem do `conftest.py`, e sem
-elas são 16 falhas que não são defeito do código.
+aceita — e instala `requests`, `openpyxl`, `python-dotenv` e `pandas` além do
+`requirements-dev.txt` (o PySide6 vem dele): elas escapam da dublagem do
+`conftest.py`, e sem elas são falhas que não são defeito do código. (O `pillow`
+saiu da lista em 2026-10-15, com a interface antiga.)
 
 > ⚠️ **"Verde na minha máquina" não é verde no CI.** A primeira versão daquele
 > passo tinha só duas dependências, porque foi escrita a partir do que faltava
@@ -111,16 +112,17 @@ elas são 16 falhas que não são defeito do código.
 
 **Verde é pré-requisito de qualquer commit.** A suíte tem 3806 testes (+17 skipped) e é a
 rede de segurança da refatoração — as dependências pesadas (pandas, openpyxl, selenium,
-google-generativeai, tkinter…) são stubadas em `tests/conftest.py`, então a suíte roda em
-ambiente sem elas.
+google-generativeai…) são stubadas em `tests/conftest.py`, então a suíte roda em
+ambiente sem elas. A interface Qt é testada de verdade (pytest-qt, offscreen).
 
-`frontend.py` **não pode ser importado** neste ambiente (abre janela real). Para ele a
-verificação tem TRÊS partes, e as três são necessárias:
+`frontend.py` é o lançador da interface Qt: rodado como script, abre a janela real. Para
+ele e para a interface a verificação tem TRÊS partes, e as três são necessárias:
 
 1. `compileall` — sintaxe;
 2. `python -m pyflakes frontend.py` — **nome indefinido**, que é o que `compileall` não
    vê. Já vem na suíte (`tests/test_frontend_nomes_indefinidos.py`);
-3. **abrir o aplicativo.** `python frontend.py` e olhar a janela preta.
+3. **abrir o aplicativo.** `python frontend.py` e olhar a janela preta (sem tela:
+   `QT_QPA_PLATFORM=offscreen python frontend.py --smoke`, que visita todas as telas).
 
 ⚠️ Por que as três: em 2026-08-25 o CP 5.5 removeu um frame de `ModuloCopiaFichas` e
 deixou um widget filho dele para trás. `compileall` passou, os 2625 testes passaram, e o
@@ -131,10 +133,10 @@ app morria na abertura com `NameError: name 'f_novo' is not defined`. Editou `fr
 
 ## Arquitetura
 
-A refatoração migra um monolito para o pacote `sigft/`, mantendo os nomes antigos vivos:
+A refatoração migrou um monolito para o pacote `sigft/`, mantendo os nomes antigos vivos:
 
 ```
-frontend.py          # UI monolítica (240 KB, 12 telas) — vira shim no CP 7.3
+frontend.py          # só o lançador da interface Qt (era a UI monolítica de 12 telas)
 *_backend.py         # shims de compatibilidade → sigft/services/*
 sigft/
 ├── config.py        # constantes, chaves, LLM_TASKS (tarefa → provedor+modelo)
@@ -145,13 +147,19 @@ sigft/
 │   ├── callbacks.py # protocolo UI↔serviço (log/pause/ask/progress)
 │   └── prefs.py     # memória de caminhos dos diálogos
 ├── services/        # lógica de negócio (backends magros)
-└── app/             # UI (file_dialogs hoje; views a partir do CP 7.3)
+├── app/             # peças da UI sem biblioteca gráfica: theme, textos, backends,
+│                    #   file_dialogs (memória de pastas), conferencia (--conferir-pacote)
+└── app_qt/          # a interface (Qt/PySide6): main.py (janela, TELAS), catalogo.py,
+                     #   views/ (uma tela por arquivo), widgets/
 ```
+
+A interface antiga (CustomTkinter, `sigft/app/views/` e `widgets/`, o `--ctk`) saiu em
+2026-10-15; nenhum arquivo importa a biblioteca dela (`tests/test_sem_interface_antiga.py`).
 
 ### Princípios que não se negociam
 
 1. **Uma implementação por conceito** — cabeçalho de planilha, código PMIB, portal, LLM.
-2. **UI nunca contém regra de negócio; serviço nunca importa tkinter.** A comunicação é só
+2. **UI nunca contém regra de negócio; serviço nunca importa interface (Qt).** A comunicação é só
    por callbacks (`core/callbacks.py`).
 3. **Nenhum serviço conhece Selenium/Playwright** — só `PMIBPortal`. É o que torna a troca de
    motor barata.

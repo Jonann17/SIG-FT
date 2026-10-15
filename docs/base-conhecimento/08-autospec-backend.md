@@ -8,7 +8,7 @@
 > | O que o texto abaixo chama de | Está hoje em |
 > |---|---|
 > | `autospec_backend.py` | `sigft/services/autospec.py` + `autospec_conferencia.py`, `autospec_embeddings.py`, `autospec_rag.py`, `autospec_unidades.py` |
-> | a tela | `sigft/app/views/autospec.py` |
+> | a tela | `sigft/app_qt/views/autospec.py` |
 >
 > A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
 
@@ -52,7 +52,7 @@
 > | "Não se aplica" | vira o valor do documento SÓ se `_conferir_pela_prova` aprovar (sem dedução, sem página-imagem); a resposta original vai para o comentário da célula | `_decidir_nao_se_aplica` |
 > | Valor preenchido | **nunca é gravado**. Divergência comprovada vai para o log; trecho inexistente, de outro modelo, ou mesma coisa em outra unidade é descartado | `_decidir_divergencia`, `autospec_auditoria.equivalentes` |
 > | Lote | ficha sem campo vazio com resposta do fornecedor passa a ser conferida; o que a conferência grava entra no MESMO `fill_save`; sem nada a gravar, nenhum `_completed`. A 2ª passada confere também | `process_queue`, `processar_conferidos`, `_mesclar_auditoria` |
-> | Tela | caixa "Conferir as respostas do fornecedor contra o datasheet", marcada | `sigft/app/views/autospec.py` → `core.auditar_fornecedor` |
+> | Tela | caixa "Conferir as respostas do fornecedor contra o datasheet", marcada | `sigft/app_qt/views/autospec.py` → `core.auditar_fornecedor` |
 >
 > Peças puras (ler a resposta, comparar valores, log): `sigft/services/autospec_auditoria.py`.
 

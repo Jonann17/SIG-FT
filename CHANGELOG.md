@@ -16,7 +16,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
 **Interface nova**
 
-- Interface nova: o SIG-FT abre com a **interface nova (Qt)**, com a mesma aparência e os mesmos botões de antes. A antiga continua disponível por um tempo: `SIG-FT.bat --ctk` (Windows) ou `./SIG-FT.command --ctk` (Mac). Se a nova não abrir, a mensagem na tela dá o comando da antiga.
+- Interface nova: o SIG-FT abre com a **interface nova (Qt)**, com a mesma aparência e os mesmos botões de antes. A interface antiga saiu do SIG-FT. Se a nova não abrir, aparece uma mensagem com o motivo e o caminho do arquivo de log (`Documentos\SIG-FT\logs\sigft.log`), para mandar a quem cuida do SIG-FT.
 - Interface nova: **todas as telas** estão nela (Cria Fichas, Planilhas PMIB, Analyzer, Upload Condições, Tradutor, Upload Specs, Correção de PDM, Upload duplicadas, AutoSpec, Aplicação LMR, PMIB Manager e Search; a Correção de PDM continua bloqueada no menu, como antes), e a tela inicial traz os painéis de chaves de API, modelos de IA, gastos, mural, "Atualizações" e "Versões de teste".
 - Interface nova: lançadores para **Windows** (`SIG-FT.bat`) e **macOS** (`SIG-FT.command`, novo), que preparam o ambiente sozinhos. Se a instalação das dependências falhar numa máquina que já tinha o SIG-FT, ele abre com as de antes.
 - Instalação: o instalador passa a levar a interface nova.

@@ -4,7 +4,7 @@
 >
 > | Parte | Arquivo |
 > |---|---|
-> | Tela | `sigft/app/views/translator.py` (`ModuloTranslator`) |
+> | Tela | `sigft/app_qt/views/translator.py` (`ModuloTranslator`) |
 > | Lote de fichas, Excel | `sigft/services/translator.py` (`TechnicalTranslator`) · shim `translator_backend.py` |
 > | Regras da tradução | `sigft/services/traducao_respostas.py` |
 > | Motor (modelo local) | `sigft/core/tradutor_local.py` |

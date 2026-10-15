@@ -1,21 +1,21 @@
 # Frontend (`frontend.py`)
 
-> ⚠️ **Onde o código mora hoje** (atualizado em 2026-08-28)
+> ⚠️ **Onde o código mora hoje** (atualizado em 2026-10-15)
 >
 > Este documento foi escrito antes da refatoração e descreve o comportamento do
 > módulo, que continua valendo. Mas os CAMINHOS mudaram:
 >
 > | O que o texto abaixo chama de | Está hoje em |
 > |---|---|
-> | `frontend.py` | `sigft/app/views/*.py`, `sigft/app/widgets/`, `sigft/app/theme.py` |
+> | `frontend.py` | `sigft/app_qt/main.py` (janela, splash, registro `TELAS`), `sigft/app_qt/views/*.py`, `sigft/app_qt/widgets/`, `sigft/app/theme.py` |
 >
-> Cada tela virou um arquivo próprio no CP 7.3 (ex.: `ModuloCriaFichas` em `sigft/app/views/cria_fichas.py`, `ModuloAnalyzer` em `sigft/app/views/analyzer.py`, `ModuloUploadConditions` em `sigft/app/views/upload_conditions.py`, etc.). O arquivo `frontend.py` continua como ponto de entrada compatível (92 linhas). Todos os widgets compartilhados estão em `sigft/app/widgets/` (console.py, dialogs.py, espera.py, module_frame.py, pickers.py).
+> Cada tela virou um arquivo próprio no CP 7.3 (ex.: `ModuloCriaFichas` em `sigft/app_qt/views/cria_fichas.py`, `ModuloAnalyzer` em `sigft/app_qt/views/analyzer.py`, `ModuloUploadConditions` em `sigft/app_qt/views/upload_conditions.py`, etc.). O arquivo `frontend.py` é só o lançador da interface Qt. Os widgets compartilhados estão em `sigft/app_qt/widgets/` (console.py, dialogs.py, espera.py, module_frame.py, pickers.py, blocos.py). A interface CustomTkinter, que este texto descreve, saiu do SIG-FT em 2026-10-15; a Qt é a porta dela, com o mesmo comportamento.
 >
 > A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
 
 ## Propósito
 
-O módulo frontend implementa a interface gráfica desktop (CustomTkinter) do SIG-FT. Gerencia a navegação entre 12 módulos de tela especializados, o carregamento dinâmico de backends pesados via importlib durante a SplashScreen inicial, e a comunicação entre UI e lógica de negócio através de um padrão controller/getter para chaves API e callbacks de thread.
+O módulo frontend implementa a interface gráfica desktop do SIG-FT (hoje em Qt/PySide6; quando este texto foi escrito, CustomTkinter). Gerencia a navegação entre 12 módulos de tela especializados, o carregamento dinâmico de backends pesados via importlib durante a SplashScreen inicial, e a comunicação entre UI e lógica de negócio através de um padrão controller/getter para chaves API e callbacks de thread.
 
 ## Entradas e Saídas
 

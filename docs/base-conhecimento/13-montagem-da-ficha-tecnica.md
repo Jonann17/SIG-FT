@@ -1,7 +1,7 @@
 # Como uma ficha técnica nasce — do PDM da Itaipu à ficha em branco
 
 > Mapeado em 2026-08-28. Este documento não descreve **um** módulo: descreve o
-> **processo** que atravessa `sigft/services/pdm.py`, `sigft/app/views/pdm.py`,
+> **processo** que atravessa `sigft/services/pdm.py`, `sigft/app_qt/views/pdm.py`,
 > o `_STATUS_PMIB` e os templates de ficha. Ele existe porque a pergunta
 > "de onde vêm as características técnicas da ficha?" não tinha resposta em
 > lugar nenhum — estava espalhada por três funções e uma tela de três abas.
@@ -211,7 +211,7 @@ acima usa para escolher entre dois arquivos do mesmo PDM.
 | A leitura da planilha de PDMs (`CatalogoPDM`) | `sigft/core/pdm_catalogo.py` |
 | As regras da ficha pela planilha | `sigft/services/pdm_planilha.py` |
 | A regeneração das duas pastas | `sigft/services/pdm_regeneracao.py` |
-| A tela (3 abas) | `sigft/app/views/pdm.py` |
+| A tela (3 abas) | `sigft/app_qt/views/pdm.py` |
 | Pastas padrão (`pdms_modificados`, `templates_ficha`) | `sigft/core/prefs.py` → `PASTAS_PADRAO_SEED` |
 | Chaves de diálogo (`pdm.template`, `pdm.status_pmib`) | `sigft/core/prefs.py` → `PASTAS_PADRAO_POR_CHAVE` |
 | Layout da ficha preenchida (`CONFIG_MAP`) | `sigft/core/rpa/ficha_layout.py` |

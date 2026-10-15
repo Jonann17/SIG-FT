@@ -20,7 +20,8 @@ Extraia da conversa (pergunte apenas o que não estiver claro):
    (status — diz o quanto da refatoração já aconteceu).
 2. Detecte o estado real da árvore:
    - **Se `sigft/` existe com `core/`**: o módulo novo nasce como `sigft/services/<nome>.py`
-     + `sigft/app/views/<nome>.py`, usando `core/` (PMIBPortal, LLMClient/get_llm, StatusPMIB,
+     + `sigft/app_qt/views/<nome>.py` (a interface é só a Qt desde 2026-10-15: NÃO há mais
+     `sigft/app/views/`), usando `core/` (PMIBPortal, LLMClient/get_llm, StatusPMIB,
      normalize_pmib, find_header_row, UICallbacks). NÃO reimplemente nada que exista em `core/`.
    - **Se ainda é a estrutura plana** (`*_backend.py` na raiz): o módulo nasce como
      `<nome>_backend.py` + classe `Modulo<Nome>` no `frontend.py`, imitando o módulo análogo
@@ -35,11 +36,12 @@ Extraia da conversa (pergunte apenas o que não estiver claro):
 
 ## Passo 3 — Convenções obrigatórias do projeto
 
-- **Separação**: serviço nunca importa tkinter; view nunca contém regra de negócio.
+- **Separação**: serviço nunca importa interface (Qt); view nunca contém regra de negócio.
   Comunicação por callbacks: `log(msg[, nivel, contexto])`, `pause(motivo)`, `ask(...)`,
   `progress(fração)`.
-- **Threading na UI**: trabalho pesado em `threading.Thread(daemon=True)`; toda atualização
-  de widget via `self.after(0, ...)`.
+- **Threading na UI**: trabalho pesado pelo `self.iniciar_tarefa(...)` do `ModuleFrame`; o
+  worker nunca toca widget -- só `self.log`, os diálogos de `DialogosDeEspera` e
+  `sigft.app_qt.interface.na_interface`.
 - **Logs** (padrão do CP 4.4 do plano): início de lote (o quê/quantos), linha por item
   (id + resultado ✅/⚠️/❌ + motivo), resumo final (sucessos/falhas/pulados/tempo).
 - **Código PMIB**: sempre normalizar (apóstrofo, 4 casas após o ponto). Use a implementação
@@ -47,8 +49,8 @@ Extraia da conversa (pergunte apenas o que não estiver claro):
   `upload_conditions_backend.carregar_lookup_status`).
 - **Excel**: cabeçalho é dinâmico — nunca assuma linha fixa; trate `PermissionError`
   (arquivo aberto) com retry via callback.
-- **Diálogos de arquivo**: nunca chame `filedialog` direto — use os wrappers com memória de
-  caminho (`sigft/app/file_dialogs.py` + `sigft/core/prefs.py`, CP 1.5 do plano), informando
+- **Diálogos de arquivo**: nunca chame `QFileDialog` direto — use os wrappers com memória de
+  caminho (`sigft/app_qt/file_dialogs.py`, sobre `sigft/app/file_dialogs.py` + `sigft/core/prefs.py`, CP 1.5 do plano), informando
   a categoria (`excel`/`pdf`/`json`/`pasta`) e uma chave própria do campo (ex.:
   `"meumodulo.ficha"`), para que cada seletor reabra na última pasta usada daquele contexto.
   Se o campo corresponder a uma pasta padrão conhecida (SOBRESSALENTES - PMIB, PDMs
@@ -70,8 +72,11 @@ classe `Modulo<Nome>` no `frontend.py`; 4) registrar em `self.frames[...]` no `S
 `HomeView`.
 
 Estrutura em pacote (pós-refatoração): 1) `sigft/services/<nome>.py`; 2)
-`sigft/app/views/<nome>.py` herdando `ModuleFrame`; 3) registrar no `app/main.py`
-(sidebar + frames); 4) config nova em `sigft/config.py` se necessário.
+`sigft/app_qt/views/<nome>.py` herdando `sigft.app_qt.widgets.module_frame.ModuleFrame`;
+3) registrar a fábrica em `TELAS` (`sigft/app_qt/main.py`), o botão em `catalogo.MENU`, o
+card em `catalogo.MODULOS` e o módulo em `conferencia.MODULOS_ESSENCIAIS` (há testes que
+cobram os quatro); 4) config nova em `sigft/config.py` se necessário. (Desde 2026-10-15 a
+interface é só a Qt: não há segunda tela a manter.)
 
 ## Passo 5 — Fechar
 

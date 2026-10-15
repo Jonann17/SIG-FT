@@ -7,7 +7,7 @@
 >
 > | O que o texto abaixo chama de | Está hoje em |
 > |---|---|
-> | `upload_conditions_backend.py` | `sigft/services/upload_conditions.py` (serviço) · `sigft/app/views/upload_conditions.py` (tela) |
+> | `upload_conditions_backend.py` | `sigft/services/upload_conditions.py` (serviço) · `sigft/app_qt/views/upload_conditions.py` (tela) |
 >
 > ⚠️ Esta tela escreve o log **só no console da janela** — ele some quando a janela fecha. O log em arquivo (`sigft/core/log_execucao.py`) existe desde 2026-08-18, mas hoje só o módulo de Cópia de Fichas o liga. Ver `PENDENCIAS.md`.
 >

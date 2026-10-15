@@ -7,7 +7,7 @@
 >
 > | O que o texto abaixo chama de | Está hoje em |
 > |---|---|
-> | `apagar_lmr_backend.py` | `sigft/services/apagar_lmr.py` (serviço) · `sigft/app/views/apagar_lmr.py` (tela) |
+> | `apagar_lmr_backend.py` | `sigft/services/apagar_lmr.py` (serviço) · `sigft/app_qt/views/apagar_lmr.py` (tela) |
 >
 > A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
 

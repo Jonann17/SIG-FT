@@ -1,6 +1,6 @@
 # SIG-FT — Sistema Integrado de Gestão de Fichas Técnicas
 
-Aplicativo desktop (Python + CustomTkinter) para gerenciar o sistema de entrega de materiais
+Aplicativo desktop (Python + Qt/PySide6) para gerenciar o sistema de entrega de materiais
 sobressalentes do projeto de Itaipu: criação de fichas técnicas no Portal PMIB, geração de
 planilhas para fornecedores, automação RPA (Selenium) no portal oficial e gestão do processo
 por planilhas Excel.
@@ -100,20 +100,19 @@ Detalhes de comportamento dos `.bat`:
 
 ```bash
 pip install -r requirements.txt
-python frontend.py          # a interface Qt, a oficial
-python frontend.py --ctk    # a interface antiga (CustomTkinter), durante a transição
+python frontend.py          # a interface (Qt)
 ```
 
-Quem usa os atalhos tem de abrir a interface antiga com o Python do ambiente
-virtual, e não com o `python` do sistema: `SIG-FT.bat --ctk` (Windows) ou
-`./SIG-FT.command --ctk` (Mac, no Terminal), que já sabem onde ele está; ou,
-direto, `.venv\Scripts\python.exe frontend.py --ctk` (Windows) /
-`.venv/bin/python frontend.py --ctk` (Mac). Se a interface nova não conseguir
-abrir (o PySide6 não carrega), o SIG-FT avisa na janela preta (no Mac, a do
-Terminal), com o comando certo, e abre a antiga sozinho. Se ela abrir e a janela
-principal ou uma tela não montar, a caixa (ou a tela) dá o comando da antiga; e
-se a instalação das dependências falhar numa máquina que já tinha o SIG-FT, ele
-abre com as dependências de antes e tenta instalar de novo na próxima vez.
+A interface do SIG-FT é só a Qt: a antiga (CustomTkinter) e o `--ctk` saíram em
+2026-10-15. Se a interface não conseguir abrir (o PySide6 não carrega, falta o
+plugin de plataforma do Qt), o SIG-FT mostra uma caixa com o motivo e o caminho
+do `Documentos\SIG-FT\logs\sigft.log` (no Windows; no Mac, um alerta; fora
+deles, só a janela preta), grava o motivo nesse log e sai com erro -- e a janela
+preta do `SIG-FT.bat` (no Mac, a do Terminal) fica aberta com a mensagem. Se a
+janela principal ou uma tela não montar, a caixa (ou a tela) diz o motivo e onde
+está o log. Se a instalação das dependências falhar numa máquina que já tinha o
+SIG-FT, ele abre com as dependências de antes e tenta instalar de novo na
+próxima vez.
 
 - **Entry point**: `frontend.py` (abre a Splash Screen, que carrega os backends dinamicamente e abre o app).
 - **Windows**: os módulos Tradutor (`xlwings`, exige Excel instalado) e alguns recursos (`os.startfile`) só funcionam em Windows.

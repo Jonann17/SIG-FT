@@ -7,7 +7,7 @@
 >
 > | O que o texto abaixo chama de | Está hoje em |
 > |---|---|
-> | `lmr_backend.py` | `sigft/services/lmr.py` (serviço) · `sigft/app/views/lmr.py` (tela) |
+> | `lmr_backend.py` | `sigft/services/lmr.py` (serviço) · `sigft/app_qt/views/lmr.py` (tela) |
 >
 > **Desde 2026-09-28** cada código só conta como inserido com a mensagem de sucesso
 > do portal, e os botões SALVAR/CONFIRMAR mudaram de seletor: ver a seção no fim.

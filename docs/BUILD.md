@@ -426,10 +426,12 @@ python tools/preparar_tradutor.py --verificar      # 0 = pronta
 
 ## A interface Qt dentro do pacote (desde a E6.2)
 
-Desde o corte (E6.1) o `.exe` abre a interface Qt (`sigft/app_qt/`); o `--ctk`
-ainda abre a CustomTkinter, que continua no pacote enquanto ele existir. Até a
-E6.2 o `SIG-FT.spec` deixava a Qt de fora de propósito; agora ela vai, e só o
-que a interface usa.
+Desde o corte (E6.1) o `.exe` abre a interface Qt (`sigft/app_qt/`), e desde
+2026-10-15 só ela: a CustomTkinter saiu do SIG-FT, e o `SIG-FT.spec` exclui
+`tkinter`, `_tkinter` e `customtkinter` (sem a exclusão, import opcional de
+terceiros ainda traria o `_tkinter`, a libtcl/libtk e os dados do Tcl/Tk;
+medido no Linux, saíram 334 arquivos e 9,2 MB). Até a E6.2 o `SIG-FT.spec`
+deixava a Qt de fora de propósito; agora ela vai, e só o que a interface usa.
 
 **O que vai:** o PySide6 e o shiboken6 -- as DLLs do Qt (`Qt6Core`, `Qt6Gui`,
 `Qt6Widgets`), os `.pyd` e o runtime do MSVC que vem no wheel --, em
@@ -568,11 +570,11 @@ Executável não assinado gerado por PyInstaller é falso positivo frequente. Pe
 à TI para liberar a pasta. Assinar o executável resolve de vez, mas exige um
 certificado de code signing.
 
-**Abre a interface antiga em vez da nova.** Desde o corte, quando a Qt não abre o
-`frontend.py` cai na CustomTkinter, para a pessoa continuar trabalhando; o motivo
-vai para `Documentos\SIG-FT\logs\sigft.log`. Para ver o que falta no pacote, rode
-`SIG-FT.exe --conferir-pacote` de uma pasta onde se possa gravar e leia as linhas
-`Qt` do `conferencia-do-pacote.txt`.
+**Aparece "O SIG-FT não conseguiu abrir a janela" e o app não abre.** A Qt não
+importou ou não subiu (desde 2026-10-15 não há mais interface antiga para cair).
+A caixa traz o motivo, que também vai para `Documentos\SIG-FT\logs\sigft.log`.
+Para ver o que falta no pacote, rode `SIG-FT.exe --conferir-pacote` de uma pasta
+onde se possa gravar e leia as linhas `Qt` do `conferencia-do-pacote.txt`.
 
 **Os diálogos aparecem em inglês ("Yes"/"No"/"Cancel").** A tradução
 `qtbase_pt_BR.qm` não entrou no pacote: a linha `Qt: traducao pt_BR` da

@@ -59,7 +59,7 @@ começar nada.** Trocar a default exige permissão de admin — é ação do Lua
 | `sigft/services/autospec_conferencia.py` | conferência humana dos documentos duvidosos |
 | `sigft/core/web/` (`navegador.py`, `robots.py`) | leitura de página por navegador, último recurso |
 | `autospec_backend.py` | shim de compatibilidade do AutoSpec (23 linhas) |
-| `frontend.py`, **linhas ~3077–3508** | `class ModuloAutoSpec` — a tela do módulo. **Localize pela linha `class ModuloAutoSpec` até a `class` seguinte, não pelo número** — o intervalo já andou de 2947–3122 → 2971–3146 (2026-08-11) → 3077–3508 (2026-08-26). O número aqui envelhece a cada commit no arquivo; o nome da classe, não |
+| `sigft/app_qt/views/autospec.py` | `class ModuloAutoSpec` — a tela do módulo, na interface Qt. Desde 2026-10-15 é a ÚNICA tela dele: a interface antiga saiu (a tela morou em `frontend.py` até o CP 7.3 e em `sigft/app/views/autospec.py` até 2026-10-15). Os testes da tela (`tests/test_autospec_conferencia_tela.py`, `tests/test_autospec_auditoria_tela.py`) olham este arquivo |
 | `tests/test_autospec_*.py`, `tests/test_llm_autospec_migration.py` | testes do módulo |
 | `tests/fixtures/prompts/autospec_prompt.txt` | fixture do prompt |
 | `docs/base-conhecimento/08-autospec-backend.md` | doc do módulo |
@@ -73,7 +73,7 @@ começar nada.** Trocar a default exige permissão de admin — é ação do Lua
 | `sigft/core/rpa/ficha_layout.py` → `CONFIG_MAP` | **fonte única compartilhada entre `analyzer` e `autospec`** desde o CP 2.4 — mudar "para o AutoSpec" muda o analyzer junto | ver §4 |
 | `sigft/config.py` → `LLM_TASKS["autospec"]` | mapa de tarefas de IA, arquivo que a refatoração também edita | ver §4 |
 | `sigft/core/llm/prompts.py` → prompt do autospec | os 5 prompts moram no mesmo arquivo desde o CP 3.5 | ver §4 |
-| `frontend.py` → linhas de **registro** do módulo | poucas linhas, espalhadas, e todo módulo passa por elas | ver §3.2 |
+| `sigft/app_qt/main.py` (`TELAS`) e `sigft/app_qt/catalogo.py` (`MENU`, `MODULOS`) → **registro** do módulo | poucas linhas, e todo módulo passa por elas (até 2026-10-15 eram as linhas de registro do `frontend.py`/`sigft/app/main.py`) | ver §3.2 |
 
 As linhas de registro do AutoSpec no `frontend.py` — identifique por **âncora de conteúdo**,
 não por número (os números andam):
@@ -194,6 +194,11 @@ não tem browser no caminho), Fase 6 (`ficha_duplicada`), Fase 8 (ruff, type hin
 PyInstaller, isolamento Windows — desde que o lint não reescreva `autospec.py` em massa).
 
 ### 3.2 Regra do `frontend.py`
+
+> **2026-10-15:** o `frontend.py` é só o lançador da interface Qt, e a interface antiga saiu
+> do SIG-FT. Tela que muda = mexer só em `sigft/app_qt/views/` (não há mais `app/views/`); o
+> registro das telas é `sigft/app_qt/main.py` (`TELAS`) e `sigft/app_qt/catalogo.py`. A regra
+> abaixo vale hoje para esses dois arquivos.
 
 O arquivo é compartilhado, mas o Git resolve sozinho quando as edições ficam em regiões
 diferentes. Então:

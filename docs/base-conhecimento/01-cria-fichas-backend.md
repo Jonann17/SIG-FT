@@ -7,7 +7,7 @@
 >
 > | O que o texto abaixo chama de | Está hoje em |
 > |---|---|
-> | `cria_fichas_no_pmib_v1_backend.py` | `sigft/services/cria_fichas.py` (serviço) · `sigft/app/views/cria_fichas.py` (tela) |
+> | `cria_fichas_no_pmib_v1_backend.py` | `sigft/services/cria_fichas.py` (serviço) · `sigft/app_qt/views/cria_fichas.py` (tela) |
 >
 > A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
 

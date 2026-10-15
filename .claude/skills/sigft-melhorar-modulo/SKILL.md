@@ -21,7 +21,9 @@ description: Melhorar/evoluir um módulo existente do SIG-FT (nova opção, corr
      (via `refactor-executor`) em vez de fazer uma versão paralela.
    - O módulo está no meio de uma migração (ex.: engine RPA)? → implemente na camada nova,
      não na antiga.
-3. Leia o código-fonte atual do módulo (serviço + view correspondente).
+3. Leia o código-fonte atual do módulo (serviço + view correspondente). A view é a de
+   `sigft/app_qt/views/` -- desde 2026-10-15 a interface é só a Qt, e mudança de tela
+   mexe só lá (não há mais a cópia CustomTkinter em `sigft/app/views/`).
 
 ## Passo 2 — Alinhar a mudança
 

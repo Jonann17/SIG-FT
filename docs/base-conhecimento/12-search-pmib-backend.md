@@ -7,7 +7,7 @@
 >
 > | O que o texto abaixo chama de | Está hoje em |
 > |---|---|
-> | `search_pmib_backend.py` | `sigft/services/search.py` (serviço) · `sigft/app/views/busca_pmib.py` (tela) |
+> | `search_pmib_backend.py` | `sigft/services/search.py` (serviço) · `sigft/app_qt/views/busca_pmib.py` (tela) |
 >
 > ⚠️ Atenção aos nomes: o serviço é `search.py` e a tela é `busca_pmib.py` — nenhum dos dois repete o nome antigo.
 >

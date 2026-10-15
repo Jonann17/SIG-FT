@@ -8,7 +8,7 @@
 > | O que o texto abaixo chama de | Está hoje em |
 > |---|---|
 > | `autospec_backend.py` | `sigft/services/autospec.py` + os 4 módulos `autospec_*.py` ao lado |
-> | a tela | `sigft/app/views/autospec.py` |
+> | a tela | `sigft/app_qt/views/autospec.py` |
 >
 > A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
 
@@ -181,7 +181,7 @@ Se estiver com `"Não aplicável"`, `"N/A"` ou qualquer valor real, **o script n
 ## 4. Pipeline lógico
 
 ```
-[ Usuário monta Fila no CustomTkinter ]
+[ Usuário monta Fila na tela (Qt) ]
          │
          ▼
 [ Extração de Código PMIB + Busca no Status PMIB (Desc + Cod Material) ]
@@ -232,7 +232,7 @@ Hydac), o script valida **título, URL e snippet** antes de autorizar o download
 
 ## 5. Tecnologias
 
-- **Frontend:** `customtkinter` (tema escuro, fila interativa com deleção individual).
+- **Frontend:** a tela Qt `sigft/app_qt/views/autospec.py` (tema escuro, fila interativa com deleção individual; até 2026-10-15 era CustomTkinter).
 - **Planilhas:** `openpyxl` (fórmulas, valores puros via `data_only=True`, escrita estilizada
   com `Font(color="0000FF")`).
 - **Web search:** Google Custom Search JSON API.
