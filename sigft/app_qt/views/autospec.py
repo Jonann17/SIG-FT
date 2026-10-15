@@ -1,6 +1,7 @@
 """Tela "AutoSpec AI" na interface Qt.
 
-Mesma tela de `sigft/app/views/autospec.py`: preenche as especificações
+A porta Qt da tela da interface antiga (que saiu do SIG-FT em 2026-10-15,
+com tudo o que tinha): preenche as especificações
 técnicas da ficha a partir de manuais e datasheets, com IA, e tem a seção de
 *Conferência de documentos*, que abre no navegador os documentos que a IA
 marcou como duvidosos.
@@ -9,7 +10,7 @@ marcou como duvidosos.
 §3.1). A lógica mora em `sigft/services/autospec.py` (o `AutoSpecCore`) e em
 `sigft/services/autospec_conferencia.py` (a conferência e o `.txt`); aqui só
 há widget. O bloco da conferência viajou INTEIRO, com os mesmos 6 métodos e 7
-atributos da tela CTk (`_build_conferencia`, `_conferencia_mostrar`,
+atributos da tela antiga (`_build_conferencia`, `_conferencia_mostrar`,
 `_conferencia_salvar`, `_conferencia_importar`, `_conferencia_processar`,
 `_conferencia_worker`; `conferencia`, `marcados_conf`, `frm_conf`,
 `lista_conf`, `btn_conf`, `btn_conf_salvar`, `btn_conf_importar`), e com as
@@ -18,13 +19,14 @@ três coisas de fora da classe: `webbrowser`, o import de
 preguiçoso, de propósito) e `COLORS["warning"]`. `_novo_core` continua sendo a
 ÚNICA construção do `AutoSpecCore`, usada pelos dois workers.
 
-Os invariantes que `tests/test_autospec_conferencia_tela.py` prova na tela CTk
-valem aqui (e `tests/test_qt_tela_autospec.py` os prova rodando a tela): o fim
+Os invariantes que `tests/test_autospec_conferencia_tela.py` provava na tela
+antiga ele prova aqui, por AST (e `tests/test_qt_tela_autospec.py` os prova
+rodando a tela): o fim
 do lote MOSTRA a lista nova antes de SALVAR o `.txt` automático; a seção nunca
 se esconde (o IMPORTAR existe para quem acabou de abrir o app); processar exige
 o `_STATUS_PMIB`; o salvamento automático não abre caixa nenhuma.
 
-O que muda é só como as threads falam com a interface: lá `messagebox`,
+O que mudou da tela antiga é só como as threads falam com a interface: lá `messagebox`,
 `btn.configure`, `update_queue_ui` e `_conferencia_mostrar` eram chamados de
 dentro da thread (proibido no Tk); aqui o worker só loga e usa `self.avisar` e
 `interface.na_interface`, e os botões passam por `iniciar_tarefa`. A fila, o
@@ -113,7 +115,7 @@ def _texto_quebrado(texto: str, *, cor: str, quebra: int, tamanho: int = 11) -> 
 def _cartao(corpo, *, borda: str | None = None, fim: int = 15):
     """CTkFrame #2B2B2B de cantos 8: peças com padx=15, título com pady 10.
 
-    `borda` = o `border_width=1` + `border_color` do CTk. Lá a borda é desenhada
+    `borda` = o `border_width=1` + `border_color` da tela antiga. Lá a borda é desenhada
     no canvas e não empurra os filhos; aqui ela come 1 px do conteúdo, que sai
     das margens."""
     layout = blocos.cartao(corpo)
@@ -342,7 +344,7 @@ class ModuloAutoSpec(ModuleFrame):
     # =========================================================================
     # CONFERÊNCIA DE DOCUMENTOS DUVIDOSOS  (frente AutoSpecAI — Rafael)
     # =========================================================================
-    # Movida da tela CTk EM BLOCO (TRABALHO_PARALELO.md §3.1): os mesmos 6
+    # Movida da tela antiga EM BLOCO (TRABALHO_PARALELO.md §3.1): os mesmos 6
     # métodos e 7 atributos. Só o desenho de widget mudou de biblioteca; a
     # lógica continua em `sigft/services/autospec_conferencia.py`.
     #

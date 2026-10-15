@@ -4,8 +4,8 @@ Testes do Checkpoint 4.4 (2ª parte) — `sigft/services/autospec.py`,
 log de lote).
 
 Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 4 -> CP 4.4. `process_queue`
-é um GENERATOR consumido por `frontend.py` como `for msg in
-core.process_queue(...): self.log(msg)` -- sem nenhum pattern-match em valor
+é um GENERATOR consumido pela tela (`sigft/app_qt/views/autospec.py`) como
+`for msg in core.process_queue(...): self.log(msg)` -- sem nenhum pattern-match em valor
 sentinela (diferente de `translator.processar_arquivo`, que por isso NÃO foi
 migrado neste checkpoint -- ver PENDENCIAS.md). Isso torna seguro acrescentar
 linhas novas (início/resumo do `RelatorioLote`) ao fluxo de `yield` já

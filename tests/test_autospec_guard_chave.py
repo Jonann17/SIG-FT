@@ -202,10 +202,11 @@ def test_chaves_injetado_nao_consulta_o_disco(monkeypatch):
 
 
 # =============================================================================
-# D. A assinatura antiga continua valendo (o frontend.py não muda)
+# D. A assinatura antiga continua valendo (a tela não muda)
 # =============================================================================
 def test_assinatura_posicional_de_hoje_continua_funcionando():
-    """`frontend.py` chama com 4 keywords e nada mais; os parâmetros novos
+    """A tela (`sigft/app_qt/views/autospec.py`, `_novo_core`) chama com 4
+    keywords e nada mais; os parâmetros novos
     são keyword-only COM default, então nenhum call site existente quebra."""
     core = autospec_backend.AutoSpecCore(
         gemini_key="uma-chave",

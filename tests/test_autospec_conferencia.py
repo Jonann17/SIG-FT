@@ -1,10 +1,11 @@
 r"""Conferência humana dos documentos duvidosos (2026-08-13).
-Ver `sigft/services/autospec_conferencia.py` e `frontend.py`,
-`class ModuloAutoSpec`, seção "CONFERÊNCIA DE DOCUMENTOS DUVIDOSOS".
+Ver `sigft/services/autospec_conferencia.py` e a tela
+(`sigft/app_qt/views/autospec.py`, `class ModuloAutoSpec`), seção
+"CONFERÊNCIA DE DOCUMENTOS DUVIDOSOS".
 
-**Por que a lógica está num serviço e não na tela.** `frontend.py` não pode
-ser importado no ambiente de teste (abre janela real), então tudo que morar
-lá é código sem rede de segurança. Pondo a decisão aqui — agrupar, converter
+**Por que a lógica está num serviço e não na tela.** A tela, quando isto
+nasceu, não podia ser importada no ambiente de teste (abria janela real), então
+tudo que morasse lá era código sem rede de segurança. Pondo a decisão aqui — agrupar, converter
 a marcação da grade em seleção, reprocessar — a conferência inteira fica
 testável, e o que sobra na tela é desenho de widget.
 
@@ -188,8 +189,8 @@ def test_erro_numa_ficha_nao_derruba_as_outras(monkeypatch):
 # E. A fronteira que não pode ser cruzada
 # =============================================================================
 def test_o_servico_de_conferencia_NAO_importa_tkinter():
-    """Princípio nº 2 da arquitetura. Também é o que permite estes testes
-    existirem: `frontend.py` abre janela e não pode ser importado aqui."""
+    """Princípio nº 2 da arquitetura: serviço nunca importa interface.
+    Também é o que permite estes testes rodarem sem tela nenhuma."""
     import ast
     import inspect
 
