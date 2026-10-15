@@ -33,6 +33,17 @@ MSG_COMO_FUNCIONA = (
     "Suas chaves de API e preferências continuam onde estão."
 )
 
+# "Atualizar agora" com um robô rodando: o app fecha sozinho quando o download
+# termina, e a tarefa morre ali. Mesmo aviso do "X" da janela principal.
+MSG_TAREFA_AO_ATUALIZAR = (
+    "Há uma tarefa em andamento (um robô, uma tradução ou uma consulta à IA).\n\n"
+    "Para instalar a atualização, o SIG-FT fecha sozinho quando o download "
+    "termina. A tarefa é interrompida no ponto em que estiver, e uma planilha "
+    "que estava sendo gravada pode ficar pela metade.\n\n"
+    "Se puder, espere a tarefa terminar e atualize depois.\n\n"
+    "Atualizar mesmo assim?"
+)
+
 MSG_DOWNLOAD_CONFERIDO = "Download conferido. Abrindo o instalador..."
 
 TEXTO_ATUALIZAR = "Atualizar agora"

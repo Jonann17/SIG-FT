@@ -47,6 +47,7 @@ from sigft.app import theme
 from sigft.app.atualizacao_textos import (  # noqa: F401 -- reexportados
     MSG_COMO_FUNCIONA,
     MSG_DOWNLOAD_CONFERIDO,
+    MSG_TAREFA_AO_ATUALIZAR,
     MSG_UAC,
     TEXTO_AGORA_NAO,
     TEXTO_ATUALIZANDO,
@@ -214,9 +215,11 @@ class JanelaAtualizacao(ctk.CTkToplevel):
     """
 
     def __init__(self, master, *, info: updater.Atualizacao, versao_atual: str,
-                 disparar=_em_segundo_plano, fechar_app=_fechar_o_app):
+                 disparar=_em_segundo_plano, fechar_app=_fechar_o_app,
+                 tarefas_em_andamento=None):
         super().__init__(master)
         self.info = info
+        self._tarefas_em_andamento = tarefas_em_andamento
         self.fechada = False
         self._disparar = disparar
         self._fechar_app = fechar_app
@@ -321,6 +324,8 @@ class JanelaAtualizacao(ctk.CTkToplevel):
 
     def atualizar(self) -> None:
         """Baixa em segundo plano; a janela acompanha pela barra."""
+        if not self._pode_fechar_o_app():
+            return
         self.botao_atualizar.configure(state="disabled", text=TEXTO_ATUALIZANDO)
         self.botao_agora_nao.configure(state="disabled")
         # Fechar no "X" no meio do download não cancela nada (o download não
@@ -333,6 +338,16 @@ class JanelaAtualizacao(ctk.CTkToplevel):
         self.barra.pack(side="bottom", pady=(0, 6), padx=20, after=self.quadro_botoes)
         self._mostrar_status(msg_baixando(self.info))
         self._disparar(self._baixar_e_instalar)
+
+    def _pode_fechar_o_app(self) -> bool:
+        """Com tarefa em andamento, pergunta antes: o app fecha sozinho quando
+        o download termina, e um robô no meio do lote morreria ali. A mesma
+        regra do "X" da janela principal."""
+        tarefas = (self._tarefas_em_andamento or instancia.tarefas_em_andamento)()
+        if not tarefas:
+            return True
+        return bool(messagebox.askyesno(TITULO, MSG_TAREFA_AO_ATUALIZAR,
+                                        parent=self, default="no"))
 
     # -- o trabalho, na thread ------------------------------------------------
     def _baixar_e_instalar(self) -> None:

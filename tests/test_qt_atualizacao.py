@@ -76,6 +76,7 @@ def sem_uac(monkeypatch):
 def _aviso(raiz, qtbot, **kw):
     kw.setdefault("disparar", _sincrono)
     kw.setdefault("fechar_app", lambda janela: pytest.fail("fechou o app"))
+    kw.setdefault("tarefas_em_andamento", lambda: [])
     aviso = atualizacao.JanelaAtualizacao(raiz, info=kw.pop("info", _info()),
                                           versao_atual="1.1.0", **kw)
     qtbot.addWidget(aviso)
@@ -396,6 +397,89 @@ def test_atualizar_BAIXA_INSTALA_e_so_entao_FECHA_o_app(monkeypatch, raiz, qtbot
     assert eventos == ["baixou", ("instalou", baixado), ("fechou", raiz)]
     assert aviso.barra.value() == 100
     assert aviso.rotulo_status.text() == textos.MSG_DOWNLOAD_CONFERIDO
+
+
+# -- "Atualizar agora" com um robo rodando -----------------------------------
+# O app fecha sozinho quando o download termina (`instancia.encerrar`), e um
+# robo no meio do lote morre ali, com uma planilha que pode estar sendo
+# gravada. O "X" da janela principal ja pergunta; o "Atualizar agora" tambem.
+
+def _pergunta(monkeypatch, resposta):
+    from PySide6.QtWidgets import QMessageBox
+
+    perguntas = []
+
+    def question(pai, titulo, msg, botoes, padrao):
+        perguntas.append((pai, titulo, msg, padrao))
+        return resposta
+    monkeypatch.setattr(atualizacao.QMessageBox, "question", staticmethod(question))
+    return perguntas, QMessageBox.StandardButton
+
+
+def test_com_tarefa_em_andamento_atualizar_PERGUNTA_e_o_nao_nao_baixa(
+        monkeypatch, raiz, qtbot, sem_uac):
+    from PySide6.QtWidgets import QMessageBox
+
+    perguntas, botao = _pergunta(monkeypatch, QMessageBox.StandardButton.No)
+    disparos = []
+    aviso = _aviso(raiz, qtbot, disparar=lambda *a: disparos.append(a),
+                   tarefas_em_andamento=lambda: ["robo-upload"])
+    aviso.show()
+    aviso.botao_atualizar.click()
+
+    assert len(perguntas) == 1
+    pai, titulo, msg, padrao = perguntas[0]
+    assert pai is aviso and titulo == textos.TITULO
+    assert msg == textos.MSG_TAREFA_AO_ATUALIZAR
+    assert padrao == botao.No, "acao que interrompe trabalho: Enter responde Nao"
+    assert disparos == [], "respondeu Nao e o download comecou mesmo assim"
+    assert aviso.botao_atualizar.isEnabled() and aviso.botao_agora_nao.isEnabled()
+    assert aviso.botao_atualizar.text() == textos.TEXTO_ATUALIZAR
+    assert not aviso._baixando and aviso.isVisible()
+
+
+def test_com_tarefa_em_andamento_o_sim_baixa_como_antes(monkeypatch, raiz, qtbot, sem_uac):
+    from PySide6.QtWidgets import QMessageBox
+
+    perguntas, _ = _pergunta(monkeypatch, QMessageBox.StandardButton.Yes)
+    disparos = []
+    aviso = _aviso(raiz, qtbot, disparar=lambda alvo, *a: disparos.append(alvo),
+                   tarefas_em_andamento=lambda: ["robo-upload"])
+    aviso.show()
+    aviso.botao_atualizar.click()
+
+    assert len(perguntas) == 1
+    assert disparos == [aviso._baixar_e_instalar]
+    assert aviso.botao_atualizar.text() == textos.TEXTO_ATUALIZANDO
+    aviso._baixando = False
+
+
+def test_sem_tarefa_em_andamento_atualizar_NAO_pergunta(monkeypatch, raiz, qtbot, sem_uac):
+    perguntas, _ = _pergunta(monkeypatch, None)
+    disparos = []
+    aviso = _aviso(raiz, qtbot, disparar=lambda alvo, *a: disparos.append(alvo))
+    aviso.show()
+    aviso.botao_atualizar.click()
+
+    assert perguntas == []
+    assert disparos == [aviso._baixar_e_instalar]
+    aviso._baixando = False
+
+
+def test_por_padrao_o_aviso_olha_as_tarefas_da_instancia(monkeypatch, raiz, qtbot, sem_uac):
+    from PySide6.QtWidgets import QMessageBox
+
+    from sigft.core import instancia
+
+    monkeypatch.setattr(instancia, "tarefas_em_andamento", lambda: ["robo"])
+    perguntas, _ = _pergunta(monkeypatch, QMessageBox.StandardButton.No)
+    aviso = atualizacao.JanelaAtualizacao(raiz, info=_info(), versao_atual="1.1.0",
+                                          disparar=lambda *a: pytest.fail("baixou"))
+    qtbot.addWidget(aviso)
+    aviso.show()
+    aviso.botao_atualizar.click()
+
+    assert len(perguntas) == 1
 
 
 def test_o_status_diz_o_que_esta_baixando(raiz, qtbot, sem_uac):

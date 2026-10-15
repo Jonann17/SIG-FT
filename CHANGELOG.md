@@ -40,6 +40,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
 - Atualização automática: passa a baixar **só os arquivos que mudaram** desde a versão instalada, em vez do instalador completo (mais de 300 MB). O aviso mostra o tamanho da atualização ao lado do tamanho do completo. Quem pulou versões recebe o completo, como antes, e se a atualização pequena falhar no download (a rede da empresa às vezes corta o arquivo no fim), o SIG-FT baixa o completo na hora, em vez de parar com erro. Vale da próxima versão em diante: quem está na 1.1.1 recebe esta ainda pelo instalador completo.
 - Atualização automática: caixa nova **"Versões de teste"** ao lado do botão "Atualizações", na tela inicial. Desmarcada, nada muda. Marcada, o aviso oferece também os pré-lançamentos, para testar uma versão antes de ela chegar a todo mundo.
+- Atualização automática: **"Atualizar agora" com um robô ou uma tradução rodando pergunta antes**, como o "X" da janela já fazia. O SIG-FT fecha sozinho para instalar, e a tarefa seria interrompida no meio, com risco de deixar uma planilha gravada pela metade. Enter responde "Não".
 
 **Cria Fichas**
 
