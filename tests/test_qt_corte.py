@@ -46,6 +46,11 @@ class _SemTk(importlib.abc.MetaPathFinder):
 
 sys.meta_path.insert(0, _SemTk())
 
+# A caixa do sistema (MessageBoxW no Windows) esperaria um clique que ninguem da
+# no CI: o texto dela continua indo para a saida de erro e para o log.
+import sigft.core.erro_de_abertura as _erro
+_erro.mostrar_caixa = lambda *a, **k: 'nenhum'
+
 class _QtQuebrada(importlib.abc.MetaPathFinder):
     # O PySide6 instalado que nao carrega, como no Windows quando falta a DLL.
     def find_spec(self, nome, caminho=None, alvo=None):
@@ -148,11 +153,30 @@ def test_sem_smoke_a_qt_quebrada_avisa_com_o_motivo_e_o_log_e_sai_com_1(tmp_path
     assert "--ctk" not in resultado.stderr + resultado.stdout
 
 
+# A Qt de verdade, sem a caixa do NOSSO aviso (ver `_RODAR_SEM_TK`).
+_RODAR_QT_DE_VERDADE = r"""
+import runpy, sys
+sys.path.insert(0, {raiz!r})
+import sigft.core.erro_de_abertura as _erro
+_erro.mostrar_caixa = lambda *a, **k: 'nenhum'
+sys.argv = [{frontend!r}, *{argumentos!r}]
+runpy.run_path({frontend!r}, run_name='__main__')
+"""
+
+
 def _rodar_qt_de_verdade(argumentos, cwd, plataforma):
     ambiente = {**os.environ, "QT_QPA_PLATFORM": plataforma,
                 "SIGFT_DADOS_DIR": str(Path(cwd) / "dados")}
-    return subprocess.run([sys.executable, str(FRONTEND), *argumentos], cwd=str(cwd),
-                          env=ambiente, capture_output=True, text=True, timeout=180)
+    codigo = _RODAR_QT_DE_VERDADE.format(raiz=str(RAIZ), frontend=str(FRONTEND),
+                                         argumentos=list(argumentos))
+    # No Windows, quando o plugin de plataforma falta, a PROPRIA Qt mostra uma
+    # caixa nativa se o processo nao tem janela de console (`GetConsoleWindow()`
+    # nulo, o caso do subprocesso do CI) -- e ela espera um clique: medido no
+    # windows-latest em 2026-10-15, preso dentro de `QApplication(...)`. Com
+    # console proprio, a Qt so manda o aviso fatal, que e o que se testa aqui.
+    extras = {"creationflags": subprocess.CREATE_NEW_CONSOLE} if sys.platform == "win32" else {}
+    return subprocess.run([sys.executable, "-c", codigo], cwd=str(cwd), env=ambiente,
+                          capture_output=True, text=True, timeout=180, **extras)
 
 
 def test_erro_fatal_do_qt_vira_aviso_e_sai_com_1(tmp_path):
