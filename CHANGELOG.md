@@ -12,7 +12,7 @@ Escreva cada linha pensando em quem usa o SIG-FT, não em quem o programa:
 "a busca do AutoSpec passa a funcionar com a VPN ligada" é útil; "refatorado o
 cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
-## 1.2.0 - 2026-10-07
+## 1.2.0 - 2026-10-15
 
 **Interface nova**
 
