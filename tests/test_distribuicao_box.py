@@ -168,10 +168,12 @@ def test_o_icone_do_app_nao_e_o_logo_da_ge():
     de abertura passa a mostrar o ícone; a BARRA LATERAL continua com a GE.
     Os detalhes do ícone estão em `tests/test_icone_do_aplicativo.py`.
     """
-    main = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
+    main = (RAIZ / "sigft" / "app_qt" / "main.py").read_text(encoding="utf-8")
 
-    assert 'ARQUIVO_DO_ICONE = os.path.join("assets", "icone-sig-ft.ico")' in main
-    assert "def definir_icone(" in main
+    # [2026-10-15] A interface é a Qt: o ícone da janela é o PNG do mesmo
+    # desenho do `.ico` (que segue no .exe e no instalador, ver o spec).
+    assert 'os.path.join("assets", "icone-sig-ft.png")' in main
+    assert "setWindowIcon" in main
     # O logo da GE continua sendo o desenhado na barra lateral.
     assert 'os.path.join("assets", "logo.png")' in main
 
@@ -326,15 +328,18 @@ def test_sem_console_a_saida_vai_para_arquivo():
     troca uma mensagem clara por "não funciona".
 
     Sem console o PyInstaller deixa `sys.stdout` como `None`; a função
-    redireciona para `logs/sigft.log`, ao lado do .exe.
+    redireciona para `logs/sigft.log` (hoje em `Documentos\\SIG-FT\\logs\\`).
+    [2026-10-15] A função mora em `sigft/core/saida_log.py`, e quem a chama é
+    a interface Qt, no import.
     """
-    main = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
+    saida_log = (RAIZ / "sigft" / "core" / "saida_log.py").read_text(encoding="utf-8")
+    main = (RAIZ / "sigft" / "app_qt" / "main.py").read_text(encoding="utf-8")
 
-    assert "def _desviar_saida_para_arquivo(" in main
-    assert "_desviar_saida_para_arquivo()" in main, "definida mas nunca chamada"
-    assert "sigft.log" in main
+    assert "def desviar_saida_para_arquivo(" in saida_log
+    assert "\ndesviar_saida_para_arquivo()" in main, "definida mas nunca chamada"
+    assert "sigft.log" in saida_log
     # Só no executável: rodando do .py o terminal continua sendo o lugar certo.
-    assert 'getattr(sys, "frozen", False)' in main
+    assert 'getattr(sys, "frozen", False)' in saida_log
 
 
 def test_os_descritores_do_google_ficam_de_fora():

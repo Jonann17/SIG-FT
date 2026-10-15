@@ -1,6 +1,6 @@
 """Tela "Upload de Condições no PMIB" na interface Qt.
 
-Mesma tela de `sigft/app/views/upload_conditions.py`: lê as condições das
+Mesma tela da interface antiga (`sigft/app/views/upload_conditions.py`, removida em 2026-10-15): lê as condições das
 fichas com IA (aba 1, gera o Excel de resultados) e preenche as abas
 correspondentes no portal (aba 2, o robô), marcando o `_STATUS_PMIB`.
 
@@ -32,7 +32,7 @@ COLUNAS_DICIONARIO = ["dimensoes", "controle_temperatura", "nocivo", "peso", "pr
 
 
 def ler_resultados_excel(caminho: str) -> list[dict]:
-    """O `resultados_api_pmib.xlsx` em lista de fichas, como a tela CTk lia.
+    """O `resultados_api_pmib.xlsx` em lista de fichas, como a tela antiga lia.
 
     O PMIB vem como texto e passa pela normalização única (`normalize_pmib`);
     as colunas de dicionário voltam a ser dicionário (`{}` quando vazias).

@@ -1,8 +1,8 @@
 """As janelas auxiliares das telas na interface Qt (E3.2).
 
-Mesmas janelas de `sigft/app/views/janelas.py`, com a mesma forma de chamar --
+Mesmas janelas da interface antiga (`sigft/app/views/janelas.py`, removida em 2026-10-15), com a mesma forma de chamar --
 as telas Qt (Cria Fichas, Cópia de Fichas, Correção de PDM) as usam como as
-CustomTkinter usavam:
+interface antiga usavam:
 
 * `JanelaSelecao(tela, df, callback)` e `JanelaSelecaoDuplicadas(tela, fila,
   callback)` -- funções finas sobre o `TabelaSelecaoDialog`;
@@ -23,7 +23,7 @@ como em `DialogosDeEspera`. As outras são abertas por clique ou por
 `interface.na_interface(JanelaResumo, self, df)`.
 
 O espaçamento reproduz o `pack` de lá (o pady de dois vizinhos SOMA) e foi
-conferido em captura CTk x Qt (`capturas/e3.2`).
+conferido em captura interface antiga x Qt (`capturas/e3.2`).
 """
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ def _rotulo(texto: str, fonte: tuple = theme.FONTE_CORPO, *, cor: str = COR_TEXT
 def _botao(texto: str, *, fundo: str | None = None, hover: str = estilo.AZUL_CTK_HOVER) -> QPushButton:
     """CTkButton padrão destas janelas: 28 de altura e `width` 140 que o texto
     largo alarga (`largura_minima`). `fundo` sem `hover` = o hover do tema: é o
-    que o CTk faz com `fg_color` sem `hover_color`."""
+    que a interface antiga faz com `fg_color` sem `hover_color`."""
     b = blocos.botao(texto, altura=28, largura_minima=estilo.LARGURA_BOTAO_CTK,
                      cor_fundo=fundo, cor_hover=hover)
     # Enter não aperta botão nenhum: o Tk não ligava tecla nestas janelas.
@@ -530,7 +530,7 @@ class DialogoAcaoRobo(_IgnoraEsc, QDialog):
 
 
 # CTkTextbox do tema: fundo gray20, sem borda, cantos 6, texto gray84; a
-# barra de rolagem é a do CTk (16 px, alça gray41 de 8).
+# barra de rolagem é a da interface antiga (16 px, alça gray41 de 8).
 _FOLHA_CAIXA_TEXTO = (
     f"QPlainTextEdit {{ background: {estilo.cinza_tk('gray20')}; border: none; border-radius: 6px;"
     f" color: {COR_TEXTO_CTK}; padding: 3px 0 3px 6px; {blocos.folha_fonte_tk(('Consolas', 11))} }}"

@@ -5,13 +5,13 @@ ask, progress (Checkpoint 1.4 do plano de refatoração).
 Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 1 -> CP 1.4, diagnóstico
 seção 1.4 ("Frontend monolítico" — "console + `log()` thread-safe (3
 variantes de implementação!)") e princípio nº 2 da arquitetura-alvo: "UI
-nunca contém regra de negócio; serviço nunca importa tkinter. Comunicação só
+nunca contém regra de negócio; serviço nunca importa Tk. Comunicação só
 por callbacks (`log`, `pause`, `ask`, `progress`) definidos em
 `core/callbacks.py`."
 
 `UICallbacks` é o contrato ÚNICO que um serviço (`*_backend.py` hoje,
 `sigft/services/*` depois do CP 4.1) usa para falar com QUALQUER UI (a UI
-CustomTkinter de hoje, ou uma futura) sem conhecer nada dela:
+interface antiga de hoje, ou uma futura) sem conhecer nada dela:
 
   - `log(msg, nivel="info", contexto=None)`: já nasce ESTRUTURADO (nível +
     contexto opcional), mas a UI de HOJE continua imprimindo exatamente como
@@ -77,7 +77,7 @@ INCONDICIONALMENTE, sem nenhum `if callback_x:` espalhado pelo código:
     teria de adivinhar pelo conteúdo.
 
 Só stdlib (`dataclasses`, `typing`) — nenhuma dependência de UI (nem
-tkinter, nem customtkinter). Importável no ambiente de teste sem stub
+Tk, nem interface antiga). Importável no ambiente de teste sem stub
 nenhum (ver tests/conftest.py) e por qualquer serviço, sem acoplar o
 serviço a uma UI concreta — ver tests/test_callbacks.py.
 """

@@ -1,10 +1,10 @@
-"""Controles do CustomTkinter que a folha de estilo não sabe imitar.
+"""Controles da interface antiga que a folha de estilo não sabe imitar.
 
 O QSS pinta fundo, borda e texto, mas não desenha o botão redondo de um
 CTkSwitch, a seta do CTkOptionMenu nem o "v" de uma CTkCheckBox (sem imagem,
 a caixa marcada do QSS é só um quadrado cheio). Aqui eles são desenhados à
 mão, com as medidas e as cores do tema dark-blue
-(customtkinter/assets/themes/dark-blue.json), o que o app antigo usa.
+(interface antiga/assets/themes/dark-blue.json), o que o app antigo usa.
 """
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def _pintor(widget) -> QPainter:
 class Interruptor(QCheckBox):
     """CTkSwitch: um QCheckBox (isChecked, toggled) com a cara do interruptor.
 
-    `cor_ligado` é o `progress_color` do CTk (o padrão do tema é o azul).
+    `cor_ligado` é o `progress_color` da interface antiga (o padrão do tema é o azul).
     Clicar no texto também alterna, como lá.
     """
 
@@ -91,9 +91,9 @@ class Interruptor(QCheckBox):
 
 
 class MenuDeOpcoes(QComboBox):
-    """CTkOptionMenu: a lista que abre continua a do Qt; o botão é o do CTk.
+    """CTkOptionMenu: a lista que abre continua a do Qt; o botão é o da interface antiga.
 
-    `cor`/`cor_seta` são o `fg_color`/`button_color` do CTk (a Busca PMIB pinta
+    `cor`/`cor_seta` são o `fg_color`/`button_color` da interface antiga (a Busca PMIB pinta
     o menu de #3A3A3A/#454545); o escurecer da seta sob o mouse é o do tema.
     """
 
@@ -128,7 +128,7 @@ class MenuDeOpcoes(QComboBox):
         pintor.fillRect(QRectF(largura - altura, 0, altura, altura),
                         QColor(COR_SETA_MENU_HOVER if sobre else self._cor_seta))
         pintor.setClipping(False)
-        # A seta: no Windows e no Linux o CTk a desenha com a fonte de formas dele
+        # A seta: no Windows e no Linux a interface antiga a desenha com a fonte de formas dele
         # (não com o polígono do macOS). Medida na captura: um "v" de 9x5 px com
         # traço de 2, no meio do quadrado escuro (1 px abaixo do centro).
         cor_texto = QColor(estilo.TEXTO_BOTAO_CTK if self.isEnabled() else estilo.cinza_tk("gray60"))
@@ -153,7 +153,7 @@ def pintar_caixa(pintor: QPainter, x: float, y: float, marcada: bool, cor_marcad
                  lado: int = LADO_CAIXA) -> None:
     """Desenha uma CTkCheckBox de `lado` px (24, o do tema, ou o `checkbox_width`
     da tela) com o canto de cima à esquerda em (x, y). Borda e cantos não mudam
-    com o lado, como no CTk."""
+    com o lado, como na interface antiga."""
     pintor.save()
     pintor.setRenderHint(QPainter.RenderHint.Antialiasing)
     metade = BORDA_CAIXA / 2
@@ -162,7 +162,7 @@ def pintar_caixa(pintor: QPainter, x: float, y: float, marcada: bool, cor_marcad
     pintor.setBrush(QColor(cor_marcada) if marcada else Qt.BrushStyle.NoBrush)
     pintor.drawRoundedRect(quadro, RAIO_CAIXA - metade, RAIO_CAIXA - metade)
     if marcada:
-        # draw_checkmark do CTk: tamanho 0.58 da caixa, raio tamanho/2.8, traço lado/8.
+        # draw_checkmark da interface antiga: tamanho 0.58 da caixa, raio tamanho/2.8, traço lado/8.
         raio = round(lado * 0.58) / 2.8
         cx, cy = x + lado / 2, y + lado / 2
         caneta = QPen(QColor(COR_MARCA_CAIXA), round(lado / 8))
@@ -177,16 +177,16 @@ def pintar_caixa(pintor: QPainter, x: float, y: float, marcada: bool, cor_marcad
 # --- E4.2: CTkCheckBox avulsa ---------------------------------------------------
 # A caixa (`pintar_caixa`: 24 px, a do tema, ou o `lado` pedido) seguida do
 # texto, 6 px depois (a coluna de `minsize=6` do CTkCheckBox). Sob o mouse, a
-# caixa enche da cor de hover -- marcada ou não (`_on_enter` do CTk);
+# caixa enche da cor de hover -- marcada ou não (`_on_enter` da interface antiga);
 # desmarcada, a borda continua cinza.
 VAO_TEXTO_CAIXA = 6
 
 
 class CaixaDeMarcar(QCheckBox):
-    """CTkCheckBox: um QCheckBox (isChecked, toggled) com a caixa e o "v" do CTk.
+    """CTkCheckBox: um QCheckBox (isChecked, toggled) com a caixa e o "v" da interface antiga.
 
     Clicar no texto também alterna, como lá. `cor_marcada`/`cor_hover` são o
-    `fg_color`/`hover_color` do CTk (o padrão do tema é o azul).
+    `fg_color`/`hover_color` da interface antiga (o padrão do tema é o azul).
     """
 
     def __init__(self, texto: str, parent=None, *, tamanho_fonte: int = 13,
@@ -194,7 +194,7 @@ class CaixaDeMarcar(QCheckBox):
                  lado: int = LADO_CAIXA) -> None:
         super().__init__(texto, parent)
         self._cor_marcada, self._cor_hover = cor_marcada, cor_hover
-        self._lado = lado   # `checkbox_width`/`checkbox_height` do CTk (E4.10: 18 no AutoSpec)
+        self._lado = lado   # `checkbox_width`/`checkbox_height` da interface antiga (E4.10: 18 no AutoSpec)
         # A folha do widget ganha da global (QCheckBox 12 px): o tamanho é o pedido.
         self.setStyleSheet(f"font-size: {tamanho_fonte}px; background: transparent;")
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)

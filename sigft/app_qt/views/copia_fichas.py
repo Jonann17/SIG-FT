@@ -1,11 +1,11 @@
 """Tela "Cópia de Fichas" (fichas duplicadas) na interface Qt.
 
-Mesma tela de `sigft/app/views/copia_fichas.py`: identifica as fichas
+Mesma tela da interface antiga (`sigft/app/views/copia_fichas.py`, removida em 2026-10-15): identifica as fichas
 duplicadas a partir do `_STATUS_PMIB`, deixa a pessoa escolher e revisar os
 pares original/alvo, e copia o conteúdo de uma para a outra no portal (o robô
 novo, Playwright, de `services/duplicadas_robo.py`).
 
-Layout = o ATUAL da tela CTk (depois do CP 5.5, que tirou o robô Selenium e o
+Layout = o ATUAL da tela antiga (depois do CP 5.5, que tirou o robô Selenium e o
 "Salvar COMPLETO"): cartão 1 com o botão do `_STATUS_PMIB` e o rótulo; cartão
 2 com os dois botões, o interruptor do log de auditoria e a barra de progresso.
 
@@ -31,10 +31,10 @@ from sigft.services import duplicadas
 
 # O #3A3A3A/#454545 que a tela escrevia à mão (a variante "cinza").
 COR_HOVER_CINZA = "#454545"
-# O grid da tela CTk: linha 1 (quadro rolável, weight=3) e linha 2 (console,
+# O grid da tela antiga: linha 1 (quadro rolável, weight=3) e linha 2 (console,
 # weight=1). O Tk dá a cada linha o que ela PEDE e reparte a sobra (ou a
 # falta) pelos pesos -- não a altura toda, como o stretch do Qt. Pedidos
-# medidos no CTk: CTkScrollableFrame 212, CTkTextbox 200.
+# medidos na interface antiga: CTkScrollableFrame 212, CTkTextbox 200.
 PEDIDO_ROLAVEL, PEDIDO_CONSOLE = 212, 200
 PESO_ROLAVEL, PESO_CONSOLE = 3, 1
 # O CTkScrollableFrame: conteúdo 6 px dentro do quadro, barra 1 px antes da borda.
@@ -81,8 +81,8 @@ class ModuloCopiaFichas(ModuleFrame):
     # --- montagem -------------------------------------------------------------
     def _build_ui(self) -> None:
         # Container Principal: CTkScrollableFrame transparente, com a barra
-        # sempre à vista (o CTk reserva a faixa mesmo sem nada para rolar; sem
-        # ela, os cartões ficariam 11 px mais largos). A barra do CTk fica 1 px
+        # sempre à vista (a interface antiga reserva a faixa mesmo sem nada para rolar; sem
+        # ela, os cartões ficariam 11 px mais largos). A barra da interface antiga fica 1 px
         # antes da borda direita (x 946..962 numa área que acaba em 963), e o
         # conteúdo vai até ela (900 = 923 - 6 - 17).
         self.area, corpo = blocos.area_rolavel(self.content_layout, margem=RECUO_ROLAGEM,

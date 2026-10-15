@@ -1,6 +1,6 @@
 """Diálogos de seleção e de arquivos travados da interface Qt (E3.1).
 
-Mesmo contrato dos CustomTkinter (`sigft/app/widgets/dialogs.py`): a escolha
+Mesmo contrato da interface antiga (`sigft/app/widgets/dialogs.py`): a escolha
 volta por `ao_confirmar`, o "X" não chama ninguém, e o de arquivos travados
 solta o worker com a resposta segura (Seguir).
 """
@@ -77,7 +77,7 @@ def test_selecao_multipla_fechar_no_x_nao_chama_ninguem(qt_interface, qtbot):
 
 
 def test_selecao_multipla_modal_e_esperar(qt_interface, qtbot):
-    # `esperar()` é o `wait_window` do CTk: volta quando a janela fecha e
+    # `esperar()` é o `wait_window` da interface antiga: volta quando a janela fecha e
     # devolve a escolha (None se fechou sem confirmar).
     dlg = qd.SelecaoMultiplaDialog(None, itens=["a", "b"], modal=True, geometria="400x500")
     qtbot.addWidget(dlg)
@@ -322,7 +322,7 @@ def test_perguntar_arquivos_travados_esc_e_seguir(qt_interface, qtbot):
     assert respostas == [False]
 
 
-def test_travados_medidas_do_customtkinter(qt_interface, qtbot, folha_do_app):
+def test_travados_medidas_do_interface_antiga(qt_interface, qtbot, folha_do_app):
     evento, resultado = threading.Event(), {}
     dlg = qd.ArquivosTravadosDialog(None, itens=ITENS, momento="antes",
                                     evento_espera=evento, resultado=resultado)

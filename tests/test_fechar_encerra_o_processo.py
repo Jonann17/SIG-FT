@@ -29,12 +29,9 @@ import sys
 import textwrap
 import threading
 
-import customtkinter as ctk
 import pytest
-from tkinter import messagebox as caixa
 
 from sigft.core import instancia
-from sigft.services import updater
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 
@@ -117,128 +114,76 @@ def test_tarefa_em_andamento_e_thread_COMUM_viva():
 
 
 # =============================================================================
-# C. `main()`: janela fechada, processo encerrado
+# C. A janela principal (Qt)
 # =============================================================================
-
-def test_main_ENCERRA_o_processo_quando_a_janela_fecha(monkeypatch):
-    from sigft.app import main as modulo
-    from sigft.core.rpa import navegador
-
-    eventos = []
-
-    class _SplashFalsa:
-        def mainloop(self):
-            eventos.append("a janela fechou")
-
-    monkeypatch.setattr(modulo, "SplashScreen", _SplashFalsa)
-    monkeypatch.setattr(navegador, "preparar_ambiente_do_rpa", lambda: None)
-    monkeypatch.setattr(instancia, "encerrar",
-                        lambda codigo=0: eventos.append(("encerrou", codigo)))
-
-    modulo.main()
-
-    assert eventos == ["a janela fechou", ("encerrou", 0)]
-
-
-# =============================================================================
-# D. O "X" da janela principal
-# =============================================================================
-
-TELAS = [
-    "HomeView", "ModuloCriaFichas", "ModuloPDM", "ModuloAnalyzer",
-    "ModuloTranslator", "ModuloUploadConditions", "ModuloUploadTechSpecs",
-    "ModuloCopiaFichas", "ModuloCorrecaoPDM", "ModuloAutoSpec",
-    "ModuloAplicacaoLMR", "ModuloPMIBManager", "ModuloBuscaPMIB",
-]
-
-
-class _TelaVazia(ctk.CTkFrame):
-    def __init__(self, parent=None, controller=None, **_kw):
-        super().__init__(parent)
-
-    def grid_forget(self):
-        pass
-
+# [2026-10-15] Estas seções testavam a janela da interface antiga, que saiu do
+# SIG-FT. Na Qt:
+#   - `main()` encerra o processo quando o laço de eventos termina:
+#     `tests/test_qt_main.py::test_main_prepara_dados_e_navegador_antes_da_splash`
+#     (o último evento é `instancia.encerrar(0)`);
+#   - a falha ao montar a janela avisa (com o caminho do `sigft.log`) e encerra
+#     com 1: `tests/test_qt_catalogo.py::test_abertura_que_falha_mostra_o_motivo_e_sai_com_1`;
+#   - com tarefa, o "X" pergunta e não fecha se a pessoa desistir:
+#     `tests/test_qt_main.py::test_fechar_com_tarefa_pergunta_antes`.
+# Aqui, o resto do contrato do "X", portado.
 
 @pytest.fixture
-def janela(monkeypatch):
-    """A janela principal DE VERDADE, com as telas trocadas por quadros vazios."""
-    from sigft.app import main as modulo
+def janela(qt_interface, qtbot, tmp_path, monkeypatch):
+    from sigft.app_qt import main as qmain
 
-    for nome in TELAS:
-        monkeypatch.setattr(modulo, nome, _TelaVazia)
-    monkeypatch.setattr(updater, "deve_verificar", lambda: False)
-    return modulo.SIG_FT_App()
+    monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))
+    janela = qmain.SIG_FT_App()
+    qtbot.addWidget(janela)
+    janela.show()
+    return janela
 
 
-def test_o_X_da_janela_principal_passa_pelo_fechar(janela):
-    assert janela.protocolos.get("WM_DELETE_WINDOW") == janela.fechar
+def _perguntas(monkeypatch, resposta):
+    from sigft.app_qt import main as qmain
+
+    feitas = []
+
+    def question(pai, titulo, texto, *a, **k):
+        feitas.append(texto)
+        return resposta
+
+    monkeypatch.setattr(qmain.QMessageBox, "question", question)
+    return feitas
 
 
 def test_sem_tarefa_o_X_fecha_DIRETO(janela, monkeypatch):
+    from sigft.app_qt import main as qmain
+
     monkeypatch.setattr(instancia, "tarefas_em_andamento", lambda: [])
-    monkeypatch.setattr(caixa, "askyesno",
-                        lambda *a, **k: pytest.fail("perguntou sem tarefa nenhuma"))
+    feitas = _perguntas(monkeypatch, qmain.QMessageBox.StandardButton.No)
 
-    janela.fechar()
+    janela.close()
 
-    assert janela.destruido
+    assert feitas == [], "perguntou sem tarefa nenhuma"
+    assert not janela.isVisible()
 
 
-def test_com_tarefa_o_X_PERGUNTA_e_nao_fecha_se_a_pessoa_desistir(janela, monkeypatch):
+def test_com_tarefa_a_pergunta_diz_que_interrompe(janela, monkeypatch):
     """Fechar agora interrompe o robo no ponto em que ele esta -- no meio de
     uma planilha, inclusive. A pessoa tem de saber antes."""
-    perguntas = []
+    from sigft.app_qt import main as qmain
+
     monkeypatch.setattr(instancia, "tarefas_em_andamento", lambda: ["robo-do-modulo"])
-    monkeypatch.setattr(caixa, "askyesno",
-                        lambda titulo, msg, **k: perguntas.append(msg) or False)
+    feitas = _perguntas(monkeypatch, qmain.QMessageBox.StandardButton.No)
 
-    janela.fechar()
+    janela.close()
 
-    assert not janela.destruido
-    [pergunta] = perguntas
+    assert janela.isVisible()
+    [pergunta] = feitas
     assert "andamento" in pergunta and "interromp" in pergunta
 
 
 def test_com_tarefa_e_a_pessoa_confirmando_fecha(janela, monkeypatch):
+    from sigft.app_qt import main as qmain
+
     monkeypatch.setattr(instancia, "tarefas_em_andamento", lambda: ["robo-do-modulo"])
-    monkeypatch.setattr(caixa, "askyesno", lambda *a, **k: True)
+    _perguntas(monkeypatch, qmain.QMessageBox.StandardButton.Yes)
 
-    janela.fechar()
+    janela.close()
 
-    assert janela.destruido
-
-
-# =============================================================================
-# E. A montagem da janela falhando
-# =============================================================================
-
-class _SplashQueJaSaiu:
-    def withdraw(self):
-        pass
-
-    def destroy(self):
-        pass
-
-
-def test_falha_ao_montar_a_janela_AVISA_e_encerra_em_vez_de_virar_fantasma(monkeypatch):
-    from sigft.app import main as modulo
-
-    eventos = []
-
-    def janela_quebrada():
-        raise RuntimeError("tela quebrada na abertura")
-
-    monkeypatch.setattr(modulo, "SIG_FT_App", janela_quebrada)
-    monkeypatch.setattr(caixa, "showerror",
-                        lambda titulo, msg, **k: eventos.append(("aviso", msg)))
-    monkeypatch.setattr(instancia, "encerrar",
-                        lambda codigo=0: eventos.append(("encerrou", codigo)))
-
-    modulo.SplashScreen.iniciar_app_principal(_SplashQueJaSaiu())
-
-    [(tipo, aviso), fim] = eventos
-    assert tipo == "aviso"
-    assert "tela quebrada na abertura" in aviso
-    assert "sigft.log" in aviso, "sem dizer onde esta o detalhe, ninguem acha"
-    assert fim == ("encerrou", 1)
+    assert not janela.isVisible()

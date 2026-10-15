@@ -1,6 +1,6 @@
 """Tela "Cria Fichas PMIB" (Módulo de Criação) na interface Qt.
 
-Mesma tela de `sigft/app/views/cria_fichas.py`: lê a lista de materiais,
+Mesma tela da interface antiga (`sigft/app/views/cria_fichas.py`, removida em 2026-10-15): lê a lista de materiais,
 categoriza os itens com IA para escolher o PDM, deixa a pessoa revisar e cria
 as fichas no portal; na segunda aba, a edição em massa do código do projeto.
 Serviços, robô e portal são os mesmos (nenhum seletor muda aqui).
@@ -62,9 +62,9 @@ PLACEHOLDER_PROJETO = (
 # #2B2B2B é o botão de PDMs "apagado" (a cor do cartão) no modo "Pular IA".
 CINZA, CINZA_HOVER, CINZA_APAGADO = "#3A3A3A", "#454545", "#2B2B2B"
 COR_ROTULO_APOIO = estilo.cinza_tk("gray")          # text_color="gray" do Tk
-# O grid da tela CTk: linha 1 (Tabview, weight=3) e linha 2 (console,
+# O grid da tela antiga: linha 1 (Tabview, weight=3) e linha 2 (console,
 # weight=1). O Tk dá a cada linha o que ela PEDE e reparte a sobra (ou a
-# falta) pelos pesos. Pedidos medidos no CTk: Tabview 261, CTkTextbox 200.
+# falta) pelos pesos. Pedidos medidos na interface antiga: Tabview 261, CTkTextbox 200.
 PEDIDO_ABAS, PEDIDO_CONSOLE = 261, 200
 PESO_ABAS, PESO_CONSOLE = 3, 1
 # O CTkScrollableFrame de cada aba: conteúdo 6 px dentro, barra 1 px antes da borda.
@@ -101,7 +101,7 @@ def _botao(texto: str, *, com_simbolo: bool = False, **kw):
 
 
 def _pintar(botao, fundo: str, hover: str) -> None:
-    """O `configure(fg_color=...)` do CTk: troca o fundo, mantém o resto da folha
+    """O `configure(fg_color=...)` da interface antiga: troca o fundo, mantém o resto da folha
     (`blocos.pintar`). `hover` é o hover_color que o botão já tinha (o configure
     não o mudava)."""
     blocos.pintar(botao, f"QPushButton {{ background: {fundo}; }} QPushButton:hover {{ background: {hover}; }}")
@@ -133,7 +133,7 @@ def _linha(layout) -> QHBoxLayout:
 
 def _area_da_aba(aba: QWidget):
     """CTkScrollableFrame transparente que ocupa a aba, com a barra sempre à
-    vista (o CTk reserva a faixa mesmo sem nada para rolar). Devolve
+    vista (a interface antiga reserva a faixa mesmo sem nada para rolar). Devolve
     `(area, corpo)`: o conteúdo tem a largura da aba menos 6 + 17."""
     return blocos.area_rolavel(aba.layout(), margem=RECUO_ROLAGEM, barra_sempre_visivel=True)
 
@@ -848,7 +848,7 @@ class ModuloCriaFichas(ModuleFrame):
             janela.close()
         janela = JanelaResumo(self, self.df_resumo_final)
         # Fechada, a janela (com a tabela inteira) é apagada, como o destroy()
-        # do CTk; sem isto, cada "Ver Resumo" deixava uma escondida na tela.
+        # da interface antiga; sem isto, cada "Ver Resumo" deixava uma escondida na tela.
         janela.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.janela_resumo = janela
         self._df_da_janela_resumo = self.df_resumo_final

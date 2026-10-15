@@ -1,5 +1,5 @@
 """Tela "Analyzer" (IA) na interface Qt: comportamento com backend/IA falsos,
-slider, seletores, janela de pesos e medidas contra o CustomTkinter."""
+slider, seletores, janela de pesos e medidas contra a interface antiga."""
 from types import SimpleNamespace
 
 import pytest
@@ -442,8 +442,8 @@ def test_janela_de_pesos_com_texto_invalido(tela, qtbot, monkeypatch):
 
 
 # -- medidas -----------------------------------------------------------------------------
-def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
-    # Medidas da tela CTk (1280x850, winfo_*), com x relativo à área da tela (a
+def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
+    # Medidas da tela antiga (1280x850, winfo_*), com x relativo à área da tela (a
     # barra lateral tem 277 px), como no Tradutor: título (40, 30); área rolável
     # em y=79 com o conteúdo recuado 6 (y=85, largura 900); subtítulo h28;
     # cartão 1 em y=143 (h81: título +10, controles +48, slider 300x16 a +124);
@@ -483,7 +483,7 @@ def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
 
 
 def test_medidas_da_janela_de_pesos(qt_interface, qtbot, monkeypatch):
-    # CTk: quadro rolável em (10,10) 480x632, conteúdo recuado 6 (largura 457);
+    # interface antiga: quadro rolável em (10,10) 480x632, conteúdo recuado 6 (largura 457);
     # título h28 a +10; linhas de 28 a cada 32 (rótulo 250, campo 80 encostado à
     # direita); "Salvar Pesos" 140x28 em (180, 662).
     from sigft.app_qt import estilo
@@ -510,7 +510,7 @@ def test_medidas_da_janela_de_pesos(qt_interface, qtbot, monkeypatch):
         campo = t.entries_pesos["texto_breve_material"]
         assert r(campo) == (393, 66, 80, 28)
         assert r(win.btn_salvar) == (180, 662, 140, 28)
-        # "Pontos Totais": 121 abaixo da última linha (866 -> 987 no CTk).
+        # "Pontos Totais": 121 abaixo da última linha (866 -> 987 na interface antiga).
         assert r(t.entry_max_vars)[1] == r(win.rotulos[-1])[1] + 121
     finally:
         qt_interface.setStyleSheet(anterior)

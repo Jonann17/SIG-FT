@@ -4,19 +4,19 @@ que faltavam na interface Qt (E3.1).
 Num módulo à parte de `dialogs.py` porque a frente da Aplicação LMR mexe lá ao
 mesmo tempo, e para o `dialogs.py` não dobrar de tamanho.
 
-Mesma API e mesmo contrato dos CustomTkinter:
+Mesma API e mesmo contrato da interface antiga:
 
 * `SelecaoMultiplaDialog` / `TabelaSelecaoDialog` abrem ao serem construídos
   (como o CTkToplevel) e devolvem a escolha por `ao_confirmar`; fechar no "X"
   (ou Cancelar) não chama ninguém; Esc não fecha. O `wait_window(dialogo)` das telas
-  CTk vira `dialogo.esperar()`, que também devolve a escolha (None se fechou).
+  interface antiga vira `dialogo.esperar()`, que também devolve a escolha (None se fechou).
   Só da thread da interface -- quem os abre é um clique.
 * `ArquivosTravadosDialog` é janela de ESPERA (o worker está parado num
   `threading.Event`): "X" e Esc equivalem a Seguir e soltam o worker. Quem a
   abre é `DialogosDeEspera.perguntar_arquivos_travados`, de qualquer thread.
 
-Modal só onde o CTk chamava `grab_set()` (`modal=True`): a tabela por padrão, a
-lista quando a tela pede. Ver a nota longa no `SelecaoMultiplaDialog` do CTk.
+Modal só onde a interface antiga chamava `grab_set()` (`modal=True`): a tabela por padrão, a
+lista quando a tela pede. Ver a nota longa no `SelecaoMultiplaDialog` da interface antiga.
 """
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def _esquecer(chave: int, *_sinal) -> None:
 
 def _botao(texto: str, *, largura: int | None = None, variante: str | None = None,
            cor: str | None = None):
-    # `cor`: fg_color sem hover_color no CTk -> o hover é o do tema.
+    # `cor`: fg_color sem hover_color na interface antiga -> o hover é o do tema.
     b = blocos.botao(texto, variante=variante, largura=largura, altura=28, cor_fundo=cor)
     # Enter não confirma sozinho: o Tk não ligava tecla nenhuma nestas janelas.
     b.setAutoDefault(False)
@@ -97,7 +97,7 @@ class JanelaQueAbre(IgnoraEsc, QDialog):
         self.activateWindow()
 
     def esperar(self):
-        """O `wait_window` do CTk: volta quando a janela fecha, sem parar o laço
+        """O `wait_window` da interface antiga: volta quando a janela fecha, sem parar o laço
         de eventos. Devolve o que foi confirmado, ou None."""
         if self.isVisible():
             self._laco = QEventLoop()
@@ -122,7 +122,7 @@ class JanelaQueAbre(IgnoraEsc, QDialog):
 
 
 class SelecaoMultiplaDialog(JanelaQueAbre):
-    """Lista simples para escolher vários textos (o `tk.Listbox` do CTk).
+    """Lista simples para escolher vários textos (o `tk.Listbox` da interface antiga).
 
     Devolve os TEXTOS marcados, ou as POSIÇÕES com `devolver_indices=True`.
     `estilo_lista` são as opções do `tk.Listbox` que as telas passavam (bg, fg,
@@ -221,10 +221,10 @@ def _folha_da_listbox(opcoes: dict) -> str:
 
 
 class TabelaSelecaoDialog(JanelaQueAbre):
-    """Tabela (o `ttk.Treeview` do CTk) para escolher várias linhas.
+    """Tabela (o `ttk.Treeview` da interface antiga) para escolher várias linhas.
 
     `linhas` são pares `(chave, valores)`; volta a CHAVE (em texto, como o iid
-    do Treeview) -- nunca a posição visual. `larguras` como no CTk:
+    do Treeview) -- nunca a posição visual. `larguras` como na interface antiga:
     `{"coluna": {"width": 150, "anchor": "center"}}` (120 sem largura).
     """
 

@@ -1,14 +1,12 @@
-"""A interface Qt nao pode depender do Tk.
+"""A interface Qt importa sem as bibliotecas da interface antiga.
 
-`sigft.app_qt.widgets.dialogs`/`espera` importavam os textos de
-`sigft.app.widgets.dialogs`, que importa tkinter/ttk/customtkinter no topo:
-toda tela Qt falhava num Python sem Tk (ex.: Homebrew no macOS) e o Tk entrava
-no processo Qt sem necessidade. Os textos agora moram em
-`sigft.app.textos_dialogos` (so biblioteca padrao).
-
-O subprocesso bloqueia `tkinter`/`customtkinter` com um finder, entao o teste
-vale mesmo numa maquina que TEM Tk (o conftest dubla o Tk neste processo, por
-isso e preciso um interpretador limpo).
+Nasceu quando as duas interfaces conviviam: as telas Qt importavam textos de
+módulos que puxavam a biblioteca gráfica antiga, e falhavam num Python sem ela
+(ex.: Homebrew no macOS). Desde 2026-10-15 a interface antiga saiu do SIG-FT,
+e `tests/test_sem_interface_antiga.py` trava, por AST, que nenhum arquivo a importa.
+Este teste é a outra metade: importa cada módulo DE VERDADE num interpretador
+limpo, com as bibliotecas bloqueadas por um finder, e pega também um import
+indireto (de uma dependência de terceiros, por exemplo).
 """
 import os
 import subprocess
@@ -16,6 +14,8 @@ import sys
 from pathlib import Path
 
 import pytest
+
+from test_sem_interface_antiga import MODULOS_PROIBIDOS
 
 RAIZ = Path(__file__).resolve().parent.parent
 
@@ -25,19 +25,20 @@ sys.path.insert(0, {raiz!r})
 
 class _SemTk(importlib.abc.MetaPathFinder):
     def find_spec(self, nome, caminho=None, alvo=None):
-        if nome.split('.')[0] in ('tkinter', '_tkinter', 'customtkinter'):
+        if nome.split('.')[0] in {proibidos!r}:
             raise ImportError('Tk bloqueado pelo teste: ' + nome)
 
 sys.meta_path.insert(0, _SemTk())
 import {modulo}
-assert not [m for m in sys.modules if m.split('.')[0] in ('tkinter', 'customtkinter')]
+assert not [m for m in sys.modules if m.split('.')[0] in {proibidos!r}]
 """
 
 
 def _importa_sem_tk(modulo):
     ambiente = {**os.environ, "QT_QPA_PLATFORM": "offscreen"}
     return subprocess.run(
-        [sys.executable, "-c", _BLOQUEIO.format(raiz=str(RAIZ), modulo=modulo)],
+        [sys.executable, "-c", _BLOQUEIO.format(raiz=str(RAIZ), modulo=modulo,
+                                                   proibidos=tuple(sorted(MODULOS_PROIBIDOS)))],
         capture_output=True, text=True, timeout=60, env=ambiente, cwd=str(RAIZ))
 
 
@@ -75,28 +76,11 @@ def _importa_sem_tk(modulo):
     "sigft.app_qt.views.home",
     "sigft.app_qt.widgets.mural",
     "sigft.services.mural_atividades",
+    "sigft.app.file_dialogs",
+    "sigft.app.conferencia",
+    "sigft.core.erro_de_abertura",
+    "sigft.core.novidades",
 ])
-def test_importa_sem_tkinter(modulo):
+def test_importa_sem_a_interface_antiga(modulo):
     resultado = _importa_sem_tk(modulo)
     assert resultado.returncode == 0, resultado.stderr[-800:]
-
-
-def test_reexportacao_do_customtkinter_continua_igual():
-    # `sigft.app.widgets.dialogs` (CustomTkinter) reexporta os mesmos objetos.
-    from sigft.app import textos_dialogos
-    from sigft.app.widgets import dialogs
-    for nome in ("LOGIN_NECESSARIO", "MSG_EXCEL_BLOQUEADO", "TEXTO_CONTINUAR",
-                 "TEXTO_COMECAR_EXCLUSAO", "TEXTOS_TRAVADOS", "msg_excel_bloqueado",
-                 "msg_falha_ao_salvar", "msg_ficha_preenchida", "MSG_LOGIN_LOTE"):
-        assert getattr(dialogs, nome) is getattr(textos_dialogos, nome)
-
-
-def test_reexportacao_dos_textos_da_atualizacao():
-    # `sigft.app.atualizacao` (CustomTkinter) segue com os nomes de antes.
-    from sigft.app import atualizacao, atualizacao_textos
-    for nome in ("TITULO", "MSG_UAC", "MSG_COMO_FUNCIONA", "notas_para_exibir",
-                 "resumo_da_versao"):
-        assert getattr(atualizacao, nome) is getattr(atualizacao_textos, nome)
-    assert atualizacao._erro_curto is atualizacao_textos.erro_curto
-    assert atualizacao._data_br is atualizacao_textos.data_br
-    assert atualizacao._mb is atualizacao_textos.mb

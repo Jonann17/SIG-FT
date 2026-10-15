@@ -544,7 +544,7 @@ def test_a_tela_NAO_amarra_a_traducao_a_chave_do_Gemini():
     import ast
     import pathlib
 
-    view = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app" / "views" / "pdm.py"
+    view = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app_qt" / "views" / "pdm.py"
     arvore = ast.parse(view.read_text(encoding="utf-8"))
     metodo = next(
         (no for no in ast.walk(arvore)
@@ -558,7 +558,9 @@ def test_a_tela_NAO_amarra_a_traducao_a_chave_do_Gemini():
 # =============================================================================
 # G. A fronteira
 # =============================================================================
-def test_o_servico_NAO_importa_tkinter():
+def test_o_servico_NAO_importa_interface():
+    from test_sem_interface_antiga import MODULOS_PROIBIDOS
+
     import ast
     import inspect
     arvore = ast.parse(inspect.getsource(tp))
@@ -568,4 +570,4 @@ def test_o_servico_NAO_importa_tkinter():
             importados.update(a.name.split(".")[0] for a in no.names)
         elif isinstance(no, ast.ImportFrom) and no.module:
             importados.add(no.module.split(".")[0])
-    assert "tkinter" not in importados and "customtkinter" not in importados
+    assert not importados & (MODULOS_PROIBIDOS | {"PySide6", "shiboken6"})

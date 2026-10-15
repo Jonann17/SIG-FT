@@ -274,8 +274,8 @@ def com_folha(qt_interface):
     qt_interface.setStyleSheet(anterior)
 
 
-def test_medidas_iguais_as_do_customtkinter(com_folha, qtbot):
-    # Medidas da tela antiga (CustomTkinter, janela 1280x850, sondadas com
+def test_medidas_iguais_as_do_interface_antiga(com_folha, qtbot):
+    # Medidas da tela antiga (interface antiga, janela 1280x850, sondadas com
     # winfo_*), já na origem da tela Qt (que começa no x=277 da janela e inclui
     # o padx/pady=20 do `show_frame`): título em (40, 30); quadro dos parâmetros
     # em (40, 79) com 167 de altura; linhas em y 127/165/203; console de 271 a 810.
@@ -305,7 +305,7 @@ def test_medidas_iguais_as_do_customtkinter(com_folha, qtbot):
 
 
 def test_medidas_da_janela_de_resultados(com_folha, qtbot):
-    # CTk: título (y 15, 28 de altura, centrado); quadro rolável (20, 48) de 860x539;
+    # interface antiga: título (y 15, 28 de altura, centrado); quadro rolável (20, 48) de 860x539;
     # cartões a partir de (36, 62) com 817 de largura; "Fechar" (375, 602) 150x28.
     t = tela_mod.ModuloBuscaPMIB()
     qtbot.addWidget(t)

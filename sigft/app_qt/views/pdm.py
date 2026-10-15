@@ -1,6 +1,6 @@
 """Tela "Gerenciador de PDMs" (PDM) na interface Qt.
 
-Mesma tela de `sigft/app/views/pdm.py`: fatia o arquivo geral de PDMs vindo de
+Mesma tela da interface antiga (`sigft/app/views/pdm.py`, removida em 2026-10-15): fatia o arquivo geral de PDMs vindo de
 Itaipu, formata e traduz os PDMs Modificados, regenera as pastas a partir da
 planilha, cria as fichas PMIB a partir do template e limpa duplicatas de pasta.
 

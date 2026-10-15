@@ -1,17 +1,15 @@
 """A Home em Qt, completa (E5.1): barra de botões, "Versões de teste" e os quatro
 painéis em janela -- chaves de API, modelos de IA, gastos de IA e o mural.
 
-Comportamento igual ao de `sigft/app/views/home.py` (CustomTkinter): mesmas
+Comportamento igual ao de `sigft/app/views/home.py` (interface antiga): mesmas
 chaves de configuração, mesmos serviços (`sigft.config`, `core.llm.catalogo`,
 `core.llm.selecao`, `core.llm.usage`, `services.atividades`). A seleção de
 modelos é gravada de verdade, no `api_config.json` da pasta de dados isolada
 pelo conftest; só a REDE (catálogo do provedor) e o log de uso são dublados.
 
-As medidas dos testes de geometria vêm das capturas do CustomTkinter (Xvfb,
+As medidas dos testes de geometria vêm das capturas da interface antiga (Xvfb,
 janela 1280x850, `winfo_*`), em `capturas/e5.1/ctk_*.txt`.
 """
-import ast
-import pathlib
 import threading
 from datetime import date
 
@@ -30,7 +28,6 @@ from sigft.core.llm import catalogo, selecao
 from sigft.services import atividades as at
 from sigft.services import updater
 
-RAIZ = pathlib.Path(__file__).resolve().parent.parent
 NEUTRO_GLOBAL = "Padrão do sistema (modelos atuais)"
 NEUTRO_TAREFA = "Usar o global"
 ROTULO_OPENROUTER = "OpenRouter (vários modelos, uma chave)"
@@ -154,40 +151,50 @@ def _janelas_abertas(home):
 
 
 # =============================================================================
-# Textos iguais aos da tela CustomTkinter
+# Textos iguais aos da Home da interface antiga
 # =============================================================================
 
-def _literal_na_funcao(caminho, funcao, variavel):
-    """O valor literal de `variavel = ...` dentro de `funcao` no arquivo CTk."""
-    arvore = ast.parse(caminho.read_text(encoding="utf-8"))
-    for no in ast.walk(arvore):
-        if isinstance(no, ast.FunctionDef) and no.name == funcao:
-            for filho in ast.walk(no):
-                if (isinstance(filho, ast.Assign) and isinstance(filho.targets[0], ast.Name)
-                        and filho.targets[0].id == variavel):
-                    return ast.literal_eval(filho.value)
-    raise AssertionError(f"{variavel} não encontrado em {funcao}")
+def test_textos_iguais_aos_da_home_antiga():
+    """Os textos que a Home da interface antiga mostrava (eram comparados com
+    ela; ela saiu em 2026-10-15, e os valores ficam travados aqui)."""
+    assert home_mod.TEXTO_BOTAO_ATUALIZACOES == "\U0001F504  Atualizações"
+    assert home_mod.TEXTO_CANAL_TESTES == "Versões de teste"
+    assert home_mod.HomeView.ROTULO_PROVIDER_IA == {
+        "gemini": "Gemini (chave direta do Google)",
+        "openrouter": "OpenRouter (vários modelos, uma chave)",
+        "openai_compat": "AMP / IA da empresa",
+    }
+    assert list(home_mod.CHAVES_API) == [
+        ("GEMINI", "Gemini API Key:"), ("GOOGLE_SEARCH", "Google Search API:"),
+        ("GOOGLE_CSE", "Google CSE ID:"), ("LLAMA", "LlamaCloud API:"),
+        ("OPENROUTER", "OpenRouter API Key:"), ("EMPRESA_LLM_BASE_URL", "IA Empresa (Base URL):"),
+        ("EMPRESA_LLM_API_KEY", "IA Empresa (API Key):"),
+    ]
+    assert home_mod.ROTULOS_TAREFA_IA == {
+        "categorizar_pdm": "Categorizar PDM (Cria Fichas):",
+        "validar_ficha": "Validar ficha (Analyzer):",
+        "condicoes": "Condições (Upload Condições):",
+        "tech_specs": "Caract. Técnicas (Upload Specs):",
+        "autospec": "AutoSpec (RAG):",
+    }
 
 
-def test_textos_iguais_aos_da_home_customtkinter():
-    from sigft.app.views import home as home_ctk
-
-    ctk_py = RAIZ / "sigft" / "app" / "views" / "home.py"
-    assert home_mod.TEXTO_BOTAO_ATUALIZACOES == home_ctk.TEXTO_BOTAO_ATUALIZACOES
-    assert home_mod.TEXTO_CANAL_TESTES == home_ctk.TEXTO_CANAL_TESTES
-    assert home_mod.HomeView.ROTULO_PROVIDER_IA == home_ctk.HomeView.ROTULO_PROVIDER_IA
-    chaves_ctk = _literal_na_funcao(ctk_py, "criar_area_config_api", "keys_info")
-    assert [(k, r) for k, r, _padrao in chaves_ctk] == list(home_mod.CHAVES_API)
-    assert (_literal_na_funcao(ctk_py, "criar_painel_modelos_ia", "rotulos_tarefa")
-            == home_mod.ROTULOS_TAREFA_IA)
-
-
-def test_desenho_do_mural_igual_ao_customtkinter():
-    from sigft.app.widgets import mural as mural_ctk
-
-    for nome in ("COR_FAIXA", "ROTULO_FAIXA", "EXPLICACAO_FAIXA", "COR_CRITICIDADE",
-                 "COR_CRITICIDADE_PADRAO"):
-        assert getattr(mural_qt, nome) == getattr(mural_ctk, nome), nome
+def test_desenho_do_mural_igual_ao_da_home_antiga():
+    assert mural_qt.COR_FAIXA == {
+        "atrasada": "#D32F2F", "travada": "#B07CE8", "deveria_ter_comecado": "#FFA726",
+        "em_andamento": "#047A83", "comeca_hoje": "#00C975", "proximos_dias": "gray70"}
+    assert mural_qt.ROTULO_FAIXA == {
+        "atrasada": "ATRASADO", "travada": "TRAVADA", "deveria_ter_comecado": "DEVERIA TER COMEÇADO",
+        "em_andamento": "EM ANDAMENTO", "comeca_hoje": "COMEÇA HOJE", "proximos_dias": "PRÓXIMOS 7 DIAS"}
+    assert mural_qt.EXPLICACAO_FAIXA == {
+        "atrasada": "a previsão de término já passou",
+        "travada": "começou e parou; precisa de alguém para destravar",
+        "deveria_ter_comecado": "a data de início passou e ninguém começou",
+        "em_andamento": "alguém está tocando agora",
+        "comeca_hoje": "entra na fila de hoje",
+        "proximos_dias": "para se preparar"}
+    assert mural_qt.COR_CRITICIDADE == {5: "#D32F2F", 4: "#FF6F3C", 3: "#FFA726", 2: "#4DA3A9", 1: "#5A5A5A"}
+    assert mural_qt.COR_CRITICIDADE_PADRAO == "#3A3A3A"
 
 
 # =============================================================================
@@ -239,7 +246,7 @@ def test_versoes_de_teste_e_a_caixa_do_ctk_e_lembra(qt_interface, qtbot, rede, m
     tela = home_mod.HomeView(controller=Controller())
     qtbot.addWidget(tela)
     caixa = tela.caixa_canal_testes
-    assert isinstance(caixa, controles.CaixaDeMarcar)  # o "v" pintado, como no CTk
+    assert isinstance(caixa, controles.CaixaDeMarcar)  # o "v" pintado, como na interface antiga
     assert caixa.text() == home_mod.TEXTO_CANAL_TESTES
     assert caixa.isChecked()
     caixa.click()
@@ -884,7 +891,7 @@ def test_mural_mostra_o_texto_da_planilha_como_veio(qt_interface, qtbot):
 
 
 # =============================================================================
-# Geometria contra o CustomTkinter (janela 1280x850; capturas/e5.1/ctk_*.txt)
+# Geometria contra a interface antiga (janela 1280x850; capturas/e5.1/ctk_*.txt)
 # =============================================================================
 
 @pytest.fixture
@@ -908,7 +915,7 @@ def _exposta(qtbot, janela):
 
 
 def test_medidas_da_home(com_folha, qtbot, rede, mensagens):
-    # CTk: a Home é um CTkScrollableFrame no grid(padx=20, pady=20), o conteúdo
+    # interface antiga: a Home é um CTkScrollableFrame no grid(padx=20, pady=20), o conteúdo
     # 6 px para dentro (o canto): (26, 26) na origem da tela Qt (x 277 da janela).
     # Título (46, 46) h 38; subtítulo (46, 89) h 28; texto (46, 147) h 28; barra
     # y 185 h 40 a partir de x 46, 10 px entre os botões; caixa y 193 h 24;
@@ -1031,7 +1038,7 @@ def _gavetas_da_captura():
 
 
 def test_medidas_do_painel_de_gastos(com_folha, qtbot, rede, mensagens):
-    # CTk: título (36, 36); texto (36, 74) com 11 linhas de 15 px (165); botões
+    # interface antiga: título (36, 36); texto (36, 74) com 11 linhas de 15 px (165); botões
     # (36, 249) e (186, 249), 140x28; quadro (26, 26, 797, 266).
     rede.relatorio = RELATORIO_CAPTURA
     tela = home_mod.HomeView(controller=Controller())
@@ -1057,7 +1064,7 @@ def _por_nome(widget, nome):
 
 
 def test_medidas_do_mural(com_folha, qtbot, rede, mensagens, monkeypatch):
-    # CTk (janela 820x640): cabeçalho (30, 20); faixa (30, 76) com o contador de
+    # interface antiga (janela 820x640): cabeçalho (30, 20); faixa (30, 76) com o contador de
     # 48 px e os textos em x 88; régua (30, 138, 749, 2); cartão 1 (30, 149, 749,
     # 132) com a barra de 6 e o corpo em x 44; cartão 2 em y 287 com 102; a
     # segunda faixa em y 408.

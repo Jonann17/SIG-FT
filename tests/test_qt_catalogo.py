@@ -1,33 +1,73 @@
-import ast
-import os
+"""Os dados da navegação (`sigft/app_qt/catalogo.py`).
 
+Até 2026-10-15 eram comparados com os da interface antiga (a Home e o
+`main.py` dela). Ela saiu do SIG-FT; os valores ficam travados aqui, para
+mudar só de propósito.
+"""
 from sigft.app_qt import catalogo
 
-RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODULOS_DA_HOME = [('CriaFichas',
+  'Cria Fichas PMIB',
+  'Lê a lista de materiais, escolhe o PDM de cada item com IA e cria as fichas no portal. Tem também a '
+  'edição do código de projeto em massa.'),
+ ('PDM',
+  'Planilhas PMIB',
+  'Fatia a lista geral de PDMs da Itaipu por sistema, aplica o template das fichas e organiza as pastas de '
+  'trabalho.'),
+ ('Analyzer',
+  'Analyzer (IA)',
+  'Dá nota às fichas preenchidas e separa as que passam das que voltam para correção. Gera o relatório de '
+  'pendências para mandar ao fornecedor.'),
+ ('UploadConditions',
+  'Upload de Condições',
+  'Preenche no portal as condições de armazenamento, transporte, manutenção e descarte, a partir da ficha, '
+  'com a tradução para o espanhol.'),
+ ('UploadSpecs',
+  'Upload de Características',
+  'Preenche as características técnicas da ficha no portal, uma linha por especificação.'),
+ ('CorrecaoPDM',
+  'Correção de PDM',
+  'Troca ou atualiza o PDM das fichas no portal sem perder as características: fotografa antes, repõe o que '
+  'o PDM novo também tem, e lista o que não voltou.'),
+ ('Translator',
+  'Tradutor Técnico',
+  'Traduz as características das fichas de português para espanhol, no próprio computador, e grava numa aba '
+  'nova da própria planilha.'),
+ ('CopiaFichas',
+  'Fichas Duplicadas',
+  'Copia uma ficha existente do portal para outra: campos, condições, características, PDM, documentos e '
+  'imagens.'),
+ ('AutoSpec',
+  'AutoSpec AI (RAG)',
+  'Preenche ficha vazia lendo manuais em PDF e buscando datasheets na web, com conferência dos documentos '
+  'duvidosos.'),
+ ('LMR',
+  'Aplicação LMR',
+  'Cadastra as aplicações (TAGs) das fichas no portal, e apaga quando preciso. As duas coisas ficam em abas '
+  'da mesma seção.'),
+ ('PMIBManager',
+  'PMIB Manager',
+  'Atualiza o mapeamento a partir do Aconex: renomeia arquivos pelo RDS-PP, calcula o avanço, e mantém as '
+  'abas de lista de preços e de atividades.'),
+ ('SearchPMIB',
+  'Busca PMIB',
+  'Procura um código ou descrição nas planilhas de uma pasta inteira, sem abrir arquivo por arquivo.')]
 
 
-def _valor(caminho, nome):
-    arvore = ast.parse(open(caminho, encoding="utf-8").read())
-    for no in arvore.body:
-        if isinstance(no, ast.Assign) and getattr(no.targets[0], "id", None) == nome:
-            return ast.literal_eval(no.value)
-    raise AssertionError(f"{nome} não achado em {caminho}")
+def test_modulos_iguais_aos_da_home():
+    assert catalogo.MODULOS == MODULOS_DA_HOME
 
 
-HOME = os.path.join(RAIZ, "sigft", "app", "views", "home.py")
-MAIN = os.path.join(RAIZ, "sigft", "app", "main.py")
+def test_bloqueadas():
+    assert catalogo.TELAS_BLOQUEADAS == frozenset({"CorrecaoPDM"})
 
 
-def test_modulos_iguais_aos_da_home_atual():
-    assert catalogo.MODULOS == _valor(HOME, "MODULOS")
-
-
-def test_bloqueadas_iguais():
-    assert catalogo.TELAS_BLOQUEADAS == frozenset(_valor(MAIN, "TELAS_BLOQUEADAS"))
-
-
-def test_mensagens_iguais():
-    assert catalogo.MSG_TAREFA_EM_ANDAMENTO == _valor(MAIN, "MSG_TAREFA_EM_ANDAMENTO")
+def test_mensagem_da_tarefa_em_andamento():
+    assert catalogo.MSG_TAREFA_EM_ANDAMENTO == (
+        "Há uma tarefa em andamento (um robô, uma tradução ou uma consulta à IA).\n\n"
+        "Se fechar agora, ela é interrompida no ponto em que está, e uma planilha "
+        "que estava sendo gravada pode ficar pela metade.\n\n"
+        "Fechar o SIG-FT mesmo assim?")
 
 
 def test_mensagem_da_abertura_que_falhou_da_o_caminho_do_log_e_nao_manda_para_a_antiga():

@@ -4,8 +4,8 @@
 ele) e o que o `SIG-FT.bat` e o `SIG-FT.command` (Mac) rodam. A interface em
 si mora em `sigft/app_qt/`; `python -m sigft.app_qt.main` abre a mesma coisa.
 
-Desde 2026-10-15 a interface é só a Qt: a CustomTkinter de antes saiu do
-SIG-FT, com o `--ctk` e a queda para ela quando a Qt falhava. Se a Qt não
+Desde 2026-10-15 a interface é só a Qt: a interface antiga de antes saiu do
+SIG-FT, com a opção que a abria e a queda para ela quando a Qt falhava. Se a Qt não
 abrir, a pessoa recebe uma mensagem com o motivo e o caminho do `sigft.log`
 (`sigft/core/erro_de_abertura.py`, sem biblioteca gráfica nenhuma), e o
 processo sai com 1.

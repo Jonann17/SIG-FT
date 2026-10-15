@@ -36,9 +36,9 @@ possa substituir os arquivos.
 ═══ E o quinto, que era o maior: ninguém chamava este módulo ═══
 Até 2026-09-25 nenhuma linha da interface importava o `updater`. O Release
 v1.1.0 saiu, e o `latest.json` dele ficou com ZERO downloads: nenhum app
-instalado perguntou. Quem chama agora é `sigft/app/atualizacao.py`, na
+instalado perguntou. Quem chama agora é `sigft/app_qt/atualizacao.py`, na
 abertura da janela principal -- e há teste montando a janela de verdade
-(`tests/test_atualizacao_na_abertura.py`) para isso não voltar.
+(`tests/test_qt_atualizacao.py`) para isso não voltar.
 
 ═══ E o sexto: atualizar era reinstalar tudo (2026-10-07) ═══
 O instalador completo tem centenas de MB, e entre duas versões quase tudo é
@@ -660,7 +660,7 @@ def _disparar_elevado(caminho: Path, args: list[str]) -> None:
 # custo de perguntar sempre é uma requisição por abertura, muito abaixo do
 # limite de 5000 por hora do token.
 #
-# A consulta roda numa thread (`sigft/app/atualizacao.py`), então perguntar
+# A consulta roda numa thread (`sigft/app_qt/atualizacao.py`), então perguntar
 # sempre não atrasa a abertura.
 
 def instalado_pelo_instalador() -> bool:

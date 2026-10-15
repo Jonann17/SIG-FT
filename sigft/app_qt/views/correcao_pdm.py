@@ -1,6 +1,6 @@
 """Tela "Correção de PDM" na interface Qt -- trocar ou atualizar o PDM sem perder as características.
 
-Mesma tela de `sigft/app/views/correcao_pdm.py` (leia a docstring de lá: o
+Mesma tela da interface antiga (`sigft/app/views/correcao_pdm.py`, removida em 2026-10-15) (leia a docstring de lá: o
 portal apaga TODAS as características na troca; o robô fotografa, troca e repõe
 o que couber). Continua BLOQUEADA no menu (`catalogo.TELAS_BLOQUEADAS`): o port
 existe para estar pronto quando ela for liberada, depois do roteiro

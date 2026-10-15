@@ -1,7 +1,8 @@
 r"""A tela do módulo 2 com a fonte "planilha de PDMs" e a regeneração das pastas.
 
-Por AST: `views/pdm.py` importa customtkinter e exige um root Tk (o mesmo
-recurso de `test_pdm_montador_idioma.py`)."""
+Por AST, sobre a tela Qt (`sigft/app_qt/views/pdm.py`; a interface antiga
+saiu em 2026-10-15). Na Qt o clique valida e o trabalho roda numa tarefa
+(`_tarefa_*`), então a chamada ao serviço mora na tarefa."""
 from __future__ import annotations
 
 import ast
@@ -10,7 +11,7 @@ import pathlib
 
 import pytest
 
-VIEW = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app" / "views" / "pdm.py"
+VIEW = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app_qt" / "views" / "pdm.py"
 
 
 def _arvore():
@@ -37,10 +38,8 @@ def _textos(raiz):
 
 
 def test_a_fonte_padrao_das_perguntas_e_a_planilha():
-    init = _metodo("__init__")
-    assert "fonte_perguntas" in ast.dump(init)
-    assert any(k.arg == "value" and getattr(k.value, "value", None) == "planilha"
-               for chamada in _chamadas(init, "StringVar") for k in chamada.keywords)
+    """O grupo de opções nasce com a planilha escolhida."""
+    assert "self.fonte_perguntas = _Opcoes('planilha', self)" in ast.unparse(_metodo("_build_tab2"))
 
 
 def test_a_aba_2_oferece_as_duas_fontes():
@@ -58,19 +57,22 @@ def test_planilha_com_ingles_e_recusado_antes_de_comecar():
 
 
 def test_a_aba_2_carrega_o_catalogo_e_chama_o_montador_da_planilha():
-    metodo = _metodo("_op2_executar")
+    assert "self._tarefa_fichas" in ast.unparse(_metodo("_op2_executar"))
+    metodo = _metodo("_tarefa_fichas")
     assert _chamadas(metodo, "carregar")
     assert _chamadas(metodo, "aplicar_templates_fichas_da_planilha")
 
 
 def test_a_aba_1_tem_a_regeneracao_e_ela_chama_o_servico():
     assert "_op1_regenerar" in ast.dump(_metodo("_build_tab1"))
-    assert _chamadas(_metodo("_op1_regenerar"), "regenerar_pastas")
+    assert "self._tarefa_regenerar" in ast.unparse(_metodo("_op1_regenerar"))
+    assert _chamadas(_metodo("_tarefa_regenerar"), "regenerar_pastas")
 
 
 def test_o_seletor_da_planilha_fica_no_painel_de_cima():
     """As duas abas usam a planilha: o seletor subiu da aba 1 para o painel."""
-    assert "_sel_sam_gm" in ast.dump(_metodo("_build_ui"))
+    assert "_painel_global" in ast.dump(_metodo("_build_ui"))
+    assert "_sel_sam_gm" in ast.dump(_metodo("_painel_global"))
     assert "_sel_sam_gm" not in ast.dump(_metodo("_build_tab1"))
 
 

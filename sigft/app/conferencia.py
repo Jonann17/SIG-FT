@@ -1,16 +1,15 @@
 """`--conferir-pacote`: o bundle consegue importar o que o app precisa?
 
 Módulo **deliberadamente pobre**: só stdlib, nenhum import do resto do `sigft`,
-nada de tkinter. E isso é o ponto inteiro.
+nada de biblioteca gráfica. E isso é o ponto inteiro.
 
 Por que ele existe separado do `main.py`
 ----------------------------------------
-A primeira versão disto morava no `main.py`, e o teste que a exercitava falhou
-assim:
+A primeira versão disto morava no `main.py` da interface (na época, a antiga),
+e o teste que a exercitava falhou com `ModuleNotFoundError` da biblioteca
+gráfica, que o contêiner não tinha.
 
-    ModuleNotFoundError: No module named 'tkinter'
-
-O `main.py` importa tkinter, CustomTkinter, PIL e as 12 telas no topo. Rodar
+Aquele `main.py` importava a biblioteca gráfica, PIL e as 12 telas no topo. Rodar
 `--conferir-pacote` por lá significa pagar todos esses imports **antes** de
 conseguir relatar qualquer coisa — ou seja: **num bundle quebrado, a
 conferência quebra junto**, e o passo do CI morre com um traceback em vez de

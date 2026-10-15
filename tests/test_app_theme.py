@@ -103,15 +103,11 @@ def test_medidas_dominantes_do_frontend():
 # D. O módulo é puro — precisa importar sem Tk
 # =============================================================================
 
-def test_theme_nao_importa_customtkinter():
-    """`sigft.app.theme` tem de ser consultável por quem não desenha nada.
-
-    O teste analisa os IMPORTS por AST, não o texto do arquivo: o conftest
-    instala um dublê de `customtkinter` para a suíte inteira, então checar
-    `sys.modules` não provaria nada — e uma busca por substring acusaria
-    falsamente o docstring, que explica justamente por que este módulo não
-    importa Tk.
-    """
+def test_theme_e_biblioteca_padrao_pura():
+    """`sigft.app.theme` tem de ser consultável por quem não desenha nada:
+    nenhum import além de `__future__` (por AST: o docstring explica por que
+    o módulo não importa biblioteca gráfica, e uma busca por texto acusaria
+    falsamente a explicação)."""
     import ast
     import inspect
 
@@ -124,7 +120,4 @@ def test_theme_nao_importa_customtkinter():
         elif isinstance(no, ast.ImportFrom) and no.module:
             importados.add(no.module.split(".")[0])
 
-    assert "customtkinter" not in importados
-    assert "tkinter" not in importados
-    # `__future__` é o único import esperado hoje.
     assert importados <= {"__future__"}, importados

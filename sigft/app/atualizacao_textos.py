@@ -1,10 +1,8 @@
-"""Os TEXTOS da atualização automática -- sem tkinter, sem customtkinter, sem Qt.
+"""Os TEXTOS da atualização automática -- sem biblioteca gráfica.
 
-Saíram de `sigft/app/atualizacao.py` para que a interface Qt
-(`sigft/app_qt/atualizacao.py`) diga as mesmas palavras sem puxar o Tk para
-dentro do processo -- o mesmo caminho de `textos_dialogos.py` na etapa 1.
-`sigft.app.atualizacao` reexporta tudo daqui, com os nomes de antes
-(`atualizacao.notas_para_exibir`, `atualizacao._erro_curto` etc.).
+Saíram da atualização da interface antiga para que a Qt
+(`sigft/app_qt/atualizacao.py`) dissesse as mesmas palavras -- o mesmo caminho
+de `textos_dialogos.py`. A interface antiga saiu do SIG-FT em 2026-10-15.
 
 Texto de interface é aparência: palavra por palavra como estava. As frases que
 antes eram f-strings soltas dentro das funções viraram funções `msg_*` daqui,

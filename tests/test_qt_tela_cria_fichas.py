@@ -1,7 +1,7 @@
 """Tela "Criação de Fichas" (Cria Fichas PMIB) na interface Qt.
 
 Comportamento com backends, IA e robô FALSOS (nada de portal: os seletores e o
-fluxo do portal são do serviço, que não muda), e medidas contra a tela CTk.
+fluxo do portal são do serviço, que não muda), e medidas contra a tela antiga.
 
 O conftest dubla o pandas; os testes que dependem de DataFrame de verdade usam
 a fixture `pandas_real` (o CI instala o pandas; sem ele, são pulados).
@@ -646,7 +646,7 @@ def test_falha_ao_abrir_a_revisao_devolve_o_botao(tela, qtbot, pd, monkeypatch, 
 
 
 def test_robo_so_aponta_para_dados_revisados(tela, qtbot, pd):
-    # Herdado do CTk (achado 6a): o resultado da IA ia para `df_processed` antes
+    # Herdado da interface antiga (achado 6a): o resultado da IA ia para `df_processed` antes
     # da revisão; com "4. Robô Web" ligado de um lote anterior, fechar a revisão
     # nova no "X" deixava o robô apontado para dados que ninguém conferiu.
     _selecionar_pular_ia(tela, pd)
@@ -883,7 +883,7 @@ def _resumo(pd):
 def test_resumos_fechados_nao_se_acumulam(tela, qtbot, pd, monkeypatch):
     # Correção 3: cada "Ver Resumo" depois de fechar cria uma janela nova; a
     # fechada (com a tabela inteira) não pode ficar escondida como filha da tela.
-    # O `destroy()` do CTk a liberava.
+    # O `destroy()` da interface antiga a liberava.
     from PySide6.QtCore import QCoreApplication, QEvent
 
     from sigft.app_qt.views import janelas
@@ -1104,7 +1104,7 @@ def _robos_vivos():
 
 
 def test_um_robo_por_vez(tela, robo, qtbot, pd, monkeypatch):
-    # Herdado do CTk (achado 6b): uma revisão confirmada no meio religava o
+    # Herdado da interface antiga (achado 6b): uma revisão confirmada no meio religava o
     # "4. Robô Web" (segundo robô), e o resumo do primeiro saía do lote NOVO.
     liberar = threading.Event()
     lote_a = list(tela.df_processed["descricao_original"])
@@ -1220,8 +1220,8 @@ def _r(t, w):
     return (p.x(), p.y(), w.width(), w.height())
 
 
-def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
-    # Medidas da tela CTk (janela 1280x850, winfo_*, x menos os 277 da barra
+def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
+    # Medidas da tela antiga (janela 1280x850, winfo_*, x menos os 277 da barra
     # lateral): título (40, 30) h29; Tabview (40, 69) 923x471, aba (46, 112)
     # 911x422; área rolável recuada 6 (largura 888), barra em x=940;
     # cartão 1 (52, 128) 888x172: título (67, 138) h28, "Código do Projeto:"
@@ -1265,7 +1265,7 @@ def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
 
 
 def test_medidas_da_aba_de_edicao(qt_interface, qtbot):
-    # CTk: cartões com padx=10 -> (62, 128) 868x134 e (62, 282) 868x146;
+    # interface antiga: cartões com padx=10 -> (62, 128) 868x134 e (62, 282) 868x146;
     # "Novo Código do Projeto:" 180 de largura, campo (257, 181) 648x28;
     # botão (257, 224) 200x28, rótulo em x=467; Iniciar (77, 340) 838x40;
     # barra (77, 405) 838x8.
@@ -1296,7 +1296,7 @@ def test_medidas_da_aba_de_edicao(qt_interface, qtbot):
 ])
 def test_abas_e_console_dividem_a_altura_como_o_grid_do_tk(qt_interface, qtbot, altura_janela, abas, console):
     # grid do Tk: linha 1 (Tabview, weight=3, pede 261) e linha 2 (console,
-    # weight=1, pede 200) repartem a SOBRA 3:1. Medido no CTk em seis alturas.
+    # weight=1, pede 200) repartem a SOBRA 3:1. Medido na interface antiga em seis alturas.
     anterior = qt_interface.styleSheet()
     try:
         t = _medir(qt_interface, qtbot, altura_janela)

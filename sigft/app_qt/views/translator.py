@@ -1,6 +1,6 @@
 """Tela "Tradutor Técnico (PT -> ES)" na interface Qt.
 
-Mesma tela de `sigft/app/views/translator.py`. O que muda é só COMO ela fala
+Mesma tela da interface antiga (`sigft/app/views/translator.py`, removida em 2026-10-15). O que muda é só COMO ela fala
 com a pessoa a partir do worker: lá eram `messagebox` e `btn.configure`
 chamados de dentro da thread (proibido no Tk, fatal no macOS); aqui é
 `self.avisar(...)` e `iniciar_tarefa`, que sempre passam pela thread da

@@ -1,5 +1,5 @@
 """Tela "Cópia de Fichas" (duplicadas) na interface Qt: leitura da planilha,
-seleção, revisão e o robô com serviços falsos, e medidas contra o CustomTkinter."""
+seleção, revisão e o robô com serviços falsos, e medidas contra a interface antiga."""
 import threading
 
 import pytest
@@ -76,7 +76,7 @@ def test_monta_com_os_textos_e_estados(tela):
     assert tela.switch_auditoria.isChecked()
     assert tela.btn_status.isEnabled()
     assert not tela.btn_resumo.isEnabled() and not tela.btn_robo_novo.isEnabled()
-    assert tela.progress.fracao == 0.0                       # o "set(0)" do CTk
+    assert tela.progress.fracao == 0.0                       # o "set(0)" da interface antiga
 
 
 def test_cores_dos_botoes_e_rotulos(tela):
@@ -392,8 +392,8 @@ def test_robo_sem_fila_nao_faz_nada(tela, robo):
 
 # --- medidas ----------------------------------------------------------------------
 
-def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
-    # Medidas da tela CTk (1280x850, winfo_*), x relativo à área da tela (a barra
+def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
+    # Medidas da tela antiga (1280x850, winfo_*), x relativo à área da tela (a barra
     # lateral tem 277 px): título (40, 30) h29; quadro rolável (40, 69) 923x458,
     # conteúdo recuado 6 (largura 900) e barra de 16 em x=946; cartão 1 (46, 85)
     # 900x96: título +15/+10, botão 250x28 em (61, 143), rótulo em x=326;
@@ -441,7 +441,7 @@ def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
 def test_quadro_e_console_dividem_a_altura_como_o_grid_do_tk(qt_interface, qtbot, altura_janela,
                                                             rolavel, console):
     # grid do Tk: linha 1 (weight=3, pede 212) e linha 2 (weight=1, pede 200)
-    # repartem a SOBRA 3:1. Medido no CTk em cinco alturas de janela.
+    # repartem a SOBRA 3:1. Medido na interface antiga em cinco alturas de janela.
     from sigft.app_qt import estilo
 
     anterior = qt_interface.styleSheet()
@@ -460,7 +460,7 @@ def test_quadro_e_console_dividem_a_altura_como_o_grid_do_tk(qt_interface, qtbot
 
 def test_medidas_da_pausa_de_login(qt_interface, qtbot):
     # A pausa que esta tela abre (PausaLoginDialog + MSG_LOGIN_LOTE), medida no
-    # CTk 450x250: texto (wraplength 400, pady=30, expand) centrado em y=92;
+    # interface antiga 450x250: texto (wraplength 400, pady=30, expand) centrado em y=92;
     # CONTINUAR AUTOMAÇÃO 45 de altura em y=185, 20 do fundo, centrado.
     from sigft.app_qt import estilo
     from sigft.app_qt.widgets import dialogs
@@ -475,7 +475,7 @@ def test_medidas_da_pausa_de_login(qt_interface, qtbot):
         b = d.botao.geometry()
         assert (b.y(), b.height()) == (185, 45)
         assert abs(b.center().x() - 225) <= 1
-        # 195 no CTk: texto + 7 de cada lado (a largura do texto muda com a fonte).
+        # 195 na interface antiga: texto + 7 de cada lado (a largura do texto muda com a fonte).
         # O texto medido como o Qt mede o do botão (`size`, que arredonda a
         # largura de cada letra; o `horizontalAdvance` pode dar 1 px a menos).
         from PySide6.QtCore import Qt

@@ -5,7 +5,7 @@ refatoração, Parte A).
 
 Ver docs/refatoracao/PLANO_REFATORACAO.md, Fase 3 -> CP 3.3, e
 docs/refatoracao/MODELOS_IA.md §5 ("Como isto entra na refatoração (sem
-downgrade silencioso)"). Módulo PURO (sem tkinter/customtkinter, sem
+downgrade silencioso)"). Módulo PURO (sem Tk/interface antiga, sem
 `google.generativeai`/`requests`) que só LÊ e GRAVA a seleção -- a
 RESOLUÇÃO em runtime (o que `get_llm()` de fato usa quando não há seleção)
 é responsabilidade de `core/llm/client.py:get_llm()` (Parte B do mesmo

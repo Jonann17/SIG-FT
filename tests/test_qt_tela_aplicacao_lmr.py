@@ -41,7 +41,7 @@ def test_telas_registradas_no_menu(qt_interface, qtbot, tmp_path, monkeypatch):
     assert isinstance(janela.pilha.currentWidget(), ModuloTranslator)
 
 
-# --- Paridade com o CTkTabview (captura CustomTkinter, 1280x850, winfo_*) ------
+# --- Paridade com o CTkTabview (captura interface antiga, 1280x850, winfo_*) ------
 
 @pytest.fixture
 def folha(qt_interface):
@@ -70,8 +70,8 @@ def _caixa_do_botao_segmentado(imagem, topo, base, x0, x1):
     return min(xs), min(ys), max(xs) + 1, max(ys) + 1
 
 
-def test_medidas_iguais_as_do_customtkinter(folha, qtbot):
-    # Na captura do CTk (coordenadas da tela, que aqui inclui a margem de 20 do
+def test_medidas_iguais_as_do_interface_antiga(folha, qtbot):
+    # Na captura da interface antiga (coordenadas da tela, que aqui inclui a margem de 20 do
     # show_frame): conteúdo em (40, 79), 923 de largura; o botão segmentado
     # (137 + 150) x 27 centrado no conteúdo, 10 px abaixo do topo dele
     # (`_top_spacing`), o quadro do Tabview da cor do fundo (invisível); a área

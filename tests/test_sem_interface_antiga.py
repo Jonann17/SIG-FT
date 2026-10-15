@@ -27,22 +27,11 @@ MODULOS_PROIBIDOS = frozenset({"tkinter", "_tkinter", "customtkinter"})
 _FORA = {".venv", "venv", ".git", "build", "dist", "__pycache__", ".claude", "node_modules"}
 
 
-# TEMPORARIO (sai no commit que apaga a interface antiga).
-_AINDA_COM_TK = ("sigft/app/views/", "sigft/app/widgets/", "sigft/app/main.py",
-                 "sigft/app/atualizacao.py", "sigft/app/file_dialogs.py",
-                 "tests/test_app_dialogos_da_tela.py", "tests/test_app_dialogs.py",
-                 "tests/test_app_pickers.py", "tests/test_app_widgets.py",
-                 "tests/test_atualizacao_na_abertura.py", "tests/test_fechar_encerra_o_processo.py",
-                 "tests/test_file_dialogs.py")
-
-
 def _arquivos_py() -> list[Path]:
     arquivos = []
     for caminho in RAIZ.rglob("*.py"):
         partes = set(caminho.relative_to(RAIZ).parts[:-1])
         if partes & _FORA:
-            continue
-        if str(caminho.relative_to(RAIZ)).replace("\\", "/").startswith(_AINDA_COM_TK):
             continue
         arquivos.append(caminho)
     return sorted(arquivos)
@@ -68,7 +57,7 @@ def _importa_proibido(arvore: ast.AST) -> list[str]:
 
 def test_ha_arquivos_para_conferir():
     nomes = {str(c.relative_to(RAIZ)).replace("\\", "/") for c in _arquivos_py()}
-    assert {"frontend.py", "sigft/app_qt/main.py", "tests/test_sem_tkinter.py"} <= nomes
+    assert {"frontend.py", "sigft/app_qt/main.py", "tests/test_sem_interface_antiga.py"} <= nomes
 
 
 @pytest.mark.parametrize("caminho", _arquivos_py(), ids=lambda c: str(c.relative_to(RAIZ)))

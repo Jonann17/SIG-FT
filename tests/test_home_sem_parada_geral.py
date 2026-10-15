@@ -8,13 +8,16 @@ Saiu o recurso inteiro, e não só o botão: o `parar_tudo` do app, o
 `sigft/app/parada.py` e o `interromper_tudo()` das telas só existiam para ele.
 Sem o botão, sobraria código que ninguém chama. O "Parar" de cada tela
 continua onde sempre esteve.
+
+[2026-10-15] A interface é a Qt (a antiga saiu do SIG-FT): o guarda olha
+`sigft/app_qt/`.
 """
 from __future__ import annotations
 
 import pathlib
 
 RAIZ = pathlib.Path(__file__).resolve().parents[1]
-APP = RAIZ / "sigft" / "app"
+APP = RAIZ / "sigft" / "app_qt"
 
 
 def _fonte(caminho):

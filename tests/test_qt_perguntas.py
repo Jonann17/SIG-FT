@@ -78,7 +78,7 @@ def test_selecao_com_caixas(qt_interface, qtbot):
 
 
 def test_selecao_com_caixas_tem_as_medidas_e_a_cara_da_janela_do_ctk(qt_interface, qtbot):
-    # Janela CTk de 450x600 (sigft/app/views/lmr.py), medida na captura de 2026-10-08:
+    # Janela antiga de 450x600 (sigft/app/views/lmr.py), medida na captura de 2026-10-08:
     # rótulo 14 negrito em y=10 (28 de altura); quadro rolável #212121 em (10, 53),
     # 430x494; caixas de 24 px a cada 28 px, a primeira em (16, 61); "Todos" 80x28
     # em (10, 562) e "CONFIRMAR" 150x28 em (290, 562).

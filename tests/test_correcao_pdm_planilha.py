@@ -2,7 +2,7 @@ r"""A lista de fichas da tela de correção de PDM, e a PRÉVIA (E5, parte 1).
 
 Esta é a camada que a tela usa e que **não pode morar nela**: ler o
 `_STATUS_PMIB`, montar as linhas e calcular a prévia são regras, e regra de
-negócio não vive em tkinter (princípio 2 da arquitetura).
+negócio não vive em Tk (princípio 2 da arquitetura).
 
 ⚠️ O PONTO DELICADO É A PRÉVIA, e ele é sobre o que ela **não pode dizer**.
 

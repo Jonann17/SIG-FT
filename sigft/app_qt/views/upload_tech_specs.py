@@ -1,12 +1,12 @@
 """Tela "Upload Características Técnicas" na interface Qt.
 
-Mesma tela de `sigft/app/views/upload_tech_specs.py`: extrai as
+Mesma tela da interface antiga (`sigft/app/views/upload_tech_specs.py`, removida em 2026-10-15): extrai as
 características técnicas das fichas com IA e salva o resultado em JSON (aba 1),
 e envia para o portal (aba 2) -- as duas metades podem rodar separadas.
 
 Irmã quase gêmea de `upload_conditions.py`: a montagem comum (quadro global,
 abas, fila, INICIAR/PARAR, aba do robô) mora em `_upload_comum.TelaDeUpload`.
-O que muda em relação à tela CTk é só COMO os workers falam com a tela
+O que muda em relação à tela antiga é só COMO os workers falam com a tela
 (console, `interface.na_interface`, `pausar_e_esperar`, `avisar`) e o
 `TechSpecsController`, que nasce no primeiro clique em vez de no `__init__`
 (sem o backend, lá a tela nem abria).

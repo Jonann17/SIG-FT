@@ -1,7 +1,7 @@
 r"""Regras puras da escolha de PDM em duas passadas (2026-10-08).
 
 Spec: docs/superpowers/specs/2026-10-08-escolha-de-pdm-em-duas-passadas-design.md.
-Sem IA, sem tkinter, sem pandas: listas e dicionários.
+Sem IA, sem Tk, sem pandas: listas e dicionários.
 """
 from __future__ import annotations
 

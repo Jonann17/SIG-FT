@@ -1,6 +1,6 @@
 """Atualização automática -- a metade da INTERFACE, em Qt.
 
-Mesma API e mesmo comportamento de `sigft/app/atualizacao.py` (CustomTkinter);
+Mesma API e mesmo comportamento de `sigft/app/atualizacao.py` (interface antiga);
 os textos vêm de `sigft/app/atualizacao_textos.py`, o trabalho de rede de
 `sigft/services/updater.py`. Aqui mora só o que é de tela:
 
@@ -68,7 +68,7 @@ __all__ = [
 
 # Texto de um CTkLabel que não diz `text_color` (tema dark-blue): gray84.
 _COR_ROTULO_CTK = estilo.cinza_tk("gray84")
-# `wraplength=530` dos rótulos que quebram linha na janela CTk.
+# `wraplength=530` dos rótulos que quebram linha na janela antiga.
 _LARGURA_DO_TEXTO = 530
 
 
@@ -210,7 +210,7 @@ class JanelaAtualizacao(QDialog):
     FECHA o app. Sem a modalidade, dava para começar um lote na tela de trás
     com o aviso aberto, e o "Atualizar agora" mataria o robô no meio.
 
-    Geometria da janela CTk (580x560, `pack`), medida sob Xvfb: os `pady` de
+    Geometria da janela antiga (580x560, `pack`), medida sob Xvfb: os `pady` de
     vizinhos SOMAM, então o layout tem espaçamento zero e cada vão é escrito.
     """
 
@@ -232,7 +232,7 @@ class JanelaAtualizacao(QDialog):
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)   # "-topmost"
         self.setWindowModality(Qt.WindowModality.ApplicationModal)     # o grab_set
         # Fechado ("Agora não", "X" ou Esc), o aviso é APAGADO, como o `destroy()`
-        # da janela CTk -- e não só escondido, vivo até o app fechar.
+        # da janela antiga -- e não só escondido, vivo até o app fechar.
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
 
         lay = QVBoxLayout(self)
@@ -255,7 +255,7 @@ class JanelaAtualizacao(QDialog):
         lay.addSpacing(4)
 
         # As notas são quem ENCOLHE quando a parte de baixo cresce (UAC + erro
-        # longo): no CTk isso exigiu empacotar os botões primeiro; aqui é o
+        # longo): na interface antiga isso exigiu empacotar os botões primeiro; aqui é o
         # fator de esticamento 1 e uma altura mínima pequena.
         self.caixa_notas = QTextEdit(objectName="notas_atualizacao")
         self.caixa_notas.setAcceptRichText(False)

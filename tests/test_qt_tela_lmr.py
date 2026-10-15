@@ -85,7 +85,7 @@ def _esperar_fim(tela, qtbot, ultima):
 
 
 def test_botao_fica_desligado_da_leitura_ate_o_fim_do_robo(tela, qtbot):
-    # Lá (CTk) o botão desligava em "Ler esta aba" e só voltava no `finally`
+    # Lá (interface antiga) o botão desligava em "Ler esta aba" e só voltava no `finally`
     # do robô. A seleção das fichas no meio NÃO pode devolvê-lo.
     import threading
     dentro, solta = threading.Event(), threading.Event()
@@ -382,8 +382,8 @@ def _pos(w, base):
     return w.mapTo(base, w.rect().topLeft())
 
 
-def test_medidas_iguais_as_do_customtkinter(folha, qtbot):
-    # Tela antiga avulsa (CustomTkinter, 1280x850, sondada com winfo_*): cartão
+def test_medidas_iguais_as_do_interface_antiga(folha, qtbot):
+    # Tela antiga avulsa (interface antiga, 1280x850, sondada com winfo_*): cartão
     # 20 px abaixo do conteúdo; entre as peças, a SOMA dos pady vizinhos (10, 20,
     # 6, 30, 14, 8, 20) e 20 nas pontas; seletor 240x28; botão 300x50; linha do
     # código (interruptor 24 de altura + 10 + campo 70x28) centrada.

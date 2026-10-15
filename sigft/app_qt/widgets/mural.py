@@ -1,15 +1,15 @@
-"""O mural de atividades em Qt -- o desenho de `sigft/app/widgets/mural.py`.
+"""O mural de atividades em Qt -- o desenho do mural da interface antiga (que
+saiu do SIG-FT em 2026-10-15).
 
 A regra (que atividade cai em que faixa, as frases de prazo) mora em
 `services/atividades.py` e se prova sem interface; aqui só o desenho, o mesmo
-do CustomTkinter: contador grande na faixa, barra colorida da criticidade à
+da interface antiga: contador grande na faixa, barra colorida da criticidade à
 esquerda de cada cartão, o prazo em destaque à direita, faixas em ordem de
 urgência.
 
-As tabelas de cor, rótulo e explicação são CÓPIA das de lá (o módulo de lá
-importa o customtkinter e não pode ser importado daqui). O teste
-`test_desenho_do_mural_igual_ao_customtkinter` falha se um lado mudar sozinho;
-`tests/test_mural_nomes_do_servico.py` cobra as faixas nos dois.
+As tabelas de cor, rótulo e explicação eram CÓPIA das de lá; o teste
+`test_desenho_do_mural_igual_ao_da_home_antiga` trava os valores, e
+`tests/test_mural_nomes_do_servico.py` cobra as faixas.
 
 As medidas são as do `pack` de lá: cada CTkLabel tem pelo menos 28 px de altura
 (o `height` padrão) com o texto centrado, e os `pady` de vizinhos SOMAM -- por

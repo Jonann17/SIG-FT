@@ -59,9 +59,11 @@ def test_modulo_nao_importa_interface():
     import ast
     from pathlib import Path
 
+    from test_sem_interface_antiga import MODULOS_PROIBIDOS
+
     arvore = ast.parse(Path(saida_log.__file__).read_text(encoding="utf-8"))
     nomes = {n.module if isinstance(n, ast.ImportFrom) else a.name
              for n in ast.walk(arvore) if isinstance(n, (ast.Import, ast.ImportFrom))
              for a in (n.names if isinstance(n, ast.Import) else [n])}
-    assert not any(n and n.split(".")[0] in {"tkinter", "customtkinter", "PySide6"}
+    assert not any(n and n.split(".")[0] in MODULOS_PROIBIDOS | {"PySide6"}
                    for n in nomes)

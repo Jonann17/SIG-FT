@@ -1,14 +1,16 @@
 r"""A tela de correção de PDM (E5) — e o guard de que ela é ALCANÇÁVEL.
 
-As telas não podem ser importadas neste ambiente (abrem janela de verdade),
-então tudo aqui é lido por AST. É a mesma técnica de
-`tests/test_frontend_nomes_indefinidos.py`.
+[2026-10-15] A interface antiga saiu do SIG-FT; este arquivo passou a olhar a
+Qt: o registro `sigft.app_qt.main.TELAS`, o menu e os cards de
+`sigft/app_qt/catalogo.py` e a tela `sigft/app_qt/views/correcao_pdm.py`
+(lida por AST, como antes; o comportamento rodando está em
+`tests/test_qt_tela_correcao_pdm.py`).
 
 ⚠️ O TESTE MAIS ÚTIL DESTE ARQUIVO NÃO É SOBRE A TELA NOVA. É o guard de
-fiação: **toda tela registrada em `main.py` tem de ter botão na barra lateral
-e card na home.** Uma tela que existe, compila, passa nos testes e não aparece
-em lugar nenhum é um defeito que nenhuma das três partes da verificação do
-`CLAUDE.md` pega -- nem o `compileall`, nem o `pyflakes`, nem abrir o app (ela
+fiação: **toda tela registrada tem de ter botão na barra lateral e card na
+home.** Uma tela que existe, compila, passa nos testes e não aparece em lugar
+nenhum é um defeito que nenhuma das três partes da verificação do `CLAUDE.md`
+pega -- nem o `compileall`, nem o `pyflakes`, nem abrir o app (ela
 simplesmente não está lá, e quem abre não sabe que deveria estar).
 
 O resto confere a separação que o princípio 2 exige: a tela não pode conter
@@ -21,9 +23,12 @@ import pathlib
 
 import pytest
 
+from sigft.app_qt import catalogo
+
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
-VIEWS = RAIZ / "sigft" / "app" / "views"
+VIEWS = RAIZ / "sigft" / "app_qt" / "views"
 TELA = VIEWS / "correcao_pdm.py"
+MAIN = RAIZ / "sigft" / "app_qt" / "main.py"
 
 
 def _arvore(caminho):
@@ -72,49 +77,24 @@ def _metodo(arvore, nome_da_classe, nome_do_metodo):
 # A. A fiação -- o guard que vale para TODAS as telas
 # =============================================================================
 def _frames_de_main():
-    """`{"Home", "CriaFichas", ...}` -- as chaves de `self.frames[...]`."""
-    arvore = _arvore(RAIZ / "sigft" / "app" / "main.py")
-    chaves = set()
-    for no in ast.walk(arvore):
-        if (isinstance(no, ast.Assign) and len(no.targets) == 1
-                and isinstance(no.targets[0], ast.Subscript)):
-            alvo = no.targets[0]
-            if (isinstance(alvo.value, ast.Attribute)
-                    and alvo.value.attr == "frames"
-                    and isinstance(alvo.slice, ast.Constant)):
-                chaves.add(alvo.slice.value)
-    return chaves
+    """`{"Home", "CriaFichas", ...}` -- as chaves do registro `TELAS`."""
+    from sigft.app_qt import main as qmain
+
+    return set(qmain.TELAS)
 
 
 def _frames_da_barra_lateral():
-    """O 3º argumento de cada `_criar_botao_menu(...)`."""
-    arvore = _arvore(RAIZ / "sigft" / "app" / "main.py")
-    nomes = set()
-    for no in ast.walk(arvore):
-        if (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)
-                and no.func.attr == "_criar_botao_menu" and len(no.args) >= 3
-                and isinstance(no.args[2], ast.Constant)):
-            nomes.add(no.args[2].value)
-    return nomes
+    return [item[2] for item in catalogo.MENU if item[0] == "botao"]
 
 
 def _frames_dos_cards():
-    """O 1º item de cada tupla de `home.MODULOS`."""
-    arvore = _arvore(VIEWS / "home.py")
-    for no in ast.walk(arvore):
-        if (isinstance(no, ast.Assign) and len(no.targets) == 1
-                and isinstance(no.targets[0], ast.Name)
-                and no.targets[0].id == "MODULOS"):
-            return {x.elts[0].value for x in no.value.elts
-                    if isinstance(x, ast.Tuple) and x.elts}
-    raise AssertionError("home.MODULOS nao encontrado")
+    return {modulo[0] for modulo in catalogo.MODULOS}
 
 
 def test_toda_tela_registrada_tem_botao_na_barra_lateral():
     """Uma tela sem botão existe, compila, passa nos testes -- e o usuário não
-    tem como chegar nela. Nenhuma das três partes da verificação do CLAUDE.md
-    pega isso: o app abre normalmente, só que sem a tela."""
-    faltando = _frames_de_main() - _frames_da_barra_lateral() - {"Home"}
+    tem como chegar nela."""
+    faltando = _frames_de_main() - set(_frames_da_barra_lateral()) - {"Home"}
 
     assert not faltando, f"sem botao na barra lateral: {sorted(faltando)}"
 
@@ -126,11 +106,11 @@ def test_toda_tela_registrada_tem_card_na_home():
 
 
 def test_nenhum_botao_ou_card_aponta_para_tela_que_nao_existe():
-    """O lado oposto, e o mais barulhento dos dois: clicar num card que aponta
-    para um frame inexistente levanta `KeyError` na cara do usuário."""
+    """O lado oposto: clicar num card que aponta para uma tela sem fábrica
+    mostraria o aviso de tela indisponível."""
     registrados = _frames_de_main()
 
-    assert not (_frames_da_barra_lateral() - registrados)
+    assert not (set(_frames_da_barra_lateral()) - registrados)
     assert not (_frames_dos_cards() - registrados)
 
 
@@ -141,42 +121,22 @@ def test_a_correcao_de_pdm_esta_nos_tres_lugares():
 
 
 def _secoes_da_barra_lateral():
-    """`{"Dados Técnicos & Upload": ["UploadConditions", ...], ...}`.
-
-    A seção de um botão é dada pela `row`, e NÃO pela ordem das linhas de
-    código -- que é exatamente onde o erro de 2026-09-23 se escondeu: o botão
-    da Correção de PDM foi escrito no bloco dos uploads, com `row=15`, e
-    nasceu lá embaixo na Gestão.
-    """
-    arvore = _arvore(RAIZ / "sigft" / "app" / "main.py")
-    rotulos, botoes = [], []
-    for no in ast.walk(arvore):
-        if not (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)):
-            continue
-        linha = next((p.value.value for p in no.keywords
-                      if p.arg == "row" and isinstance(p.value, ast.Constant)), None)
-        if linha is None or len(no.args) < 2:
-            continue
-        if no.func.attr == "_criar_label_secao":
-            rotulos.append((linha, no.args[1].value))
-        elif no.func.attr == "_criar_botao_menu" and len(no.args) >= 3:
-            botoes.append((linha, no.args[2].value))
-
-    rotulos.sort()
-    secoes = {nome: [] for _, nome in rotulos}
-    for linha, frame in sorted(botoes):
-        acima = [nome for r, nome in rotulos if r < linha]
-        if acima:
-            secoes[acima[-1]].append(frame)
+    """`{"Dados Técnicos & Upload": ["UploadConditions", ...], ...}`, na ordem
+    do `catalogo.MENU` (que é a ordem em que a barra é montada)."""
+    secoes, atual = {}, None
+    for item in catalogo.MENU:
+        if item[0] == "secao":
+            atual = item[1]
+            secoes[atual] = []
+        elif item[0] == "botao" and atual is not None:
+            secoes[atual].append(item[2])
     return secoes
 
 
 def test_a_correcao_de_pdm_fica_com_os_UPLOADS_e_nao_na_gestao():
-    """Ela conserta o que o "Upload Specs" preenche. Estava na Gestão por causa
-    de uma `row` errada."""
-    secoes = _secoes_da_barra_lateral()
-
-    assert "CorrecaoPDM" in secoes["Dados Técnicos & Upload"]
+    """Ela conserta o que o "Upload Specs" preenche. Esteve na Gestão por causa
+    de uma linha errada (2026-09-23)."""
+    assert "CorrecaoPDM" in _secoes_da_barra_lateral()["Dados Técnicos & Upload"]
 
 
 def test_a_aplicacao_LMR_e_dado_tecnico_e_nao_gestao():
@@ -198,34 +158,12 @@ def test_nenhuma_secao_da_barra_lateral_fica_vazia():
         assert frames, f"a secao {nome!r} nao tem botao nenhum"
 
 
-def test_as_linhas_da_barra_lateral_sao_CONTIGUAS():
-    """Um buraco na `row` vira um vão na tela, e foi o rastro do botão que
-    estava fora de lugar (14, depois 15, e o 15 era o da Gestão)."""
-    arvore = _arvore(RAIZ / "sigft" / "app" / "main.py")
-    linhas = []
-    for no in ast.walk(arvore):
-        if (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)
-                and no.func.attr in ("_criar_label_secao", "_criar_botao_menu")):
-            for palavra in no.keywords:
-                if palavra.arg == "row" and isinstance(palavra.value, ast.Constant):
-                    linhas.append(palavra.value.value)
+def test_nenhuma_tela_aparece_duas_vezes_na_barra_lateral():
+    """Na interface antiga o perigo era duas `row` iguais (um botão cobria o
+    outro); na Qt a barra é a lista do `MENU`, e o equivalente é a repetição."""
+    botoes = _frames_da_barra_lateral()
 
-    assert sorted(linhas) == list(range(min(linhas), max(linhas) + 1))
-
-
-def test_dois_botoes_da_barra_lateral_nao_dividem_a_mesma_linha():
-    """`grid(row=...)` repetido faz um botão cobrir o outro, e o de baixo some
-    sem erro nenhum."""
-    arvore = _arvore(RAIZ / "sigft" / "app" / "main.py")
-    linhas = []
-    for no in ast.walk(arvore):
-        if (isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)
-                and no.func.attr == "_criar_botao_menu"):
-            for palavra in no.keywords:
-                if palavra.arg == "row" and isinstance(palavra.value, ast.Constant):
-                    linhas.append(palavra.value.value)
-
-    assert len(linhas) == len(set(linhas)), f"linhas repetidas: {sorted(linhas)}"
+    assert len(botoes) == len(set(botoes)), botoes
 
 
 # =============================================================================
@@ -274,7 +212,7 @@ def test_a_rodada_pede_confirmacao_antes_de_mexer_no_portal():
     faria um engano virar 25 fichas alteradas."""
     metodo = _metodo(_arvore(TELA), "ModuloCorrecaoPDM", "_rodar")
 
-    assert "messagebox.askyesno" in _fontes_de_chamada(metodo)
+    assert "self.perguntar_sim_nao" in _fontes_de_chamada(metodo)
 
 
 def test_apagar_as_vazias_e_uma_ESCOLHA_e_chega_ao_servico():
@@ -282,8 +220,8 @@ def test_apagar_as_vazias_e_uma_ESCOLHA_e_chega_ao_servico():
     a tela mostra e não repassa é pior que não ter switch."""
     fonte = TELA.read_text(encoding="utf-8")
 
-    assert "var_apagar_vazias" in fonte
-    assert "apagar_vazias=self.var_apagar_vazias.get()" in fonte
+    assert "self.chk_apagar_vazias.isChecked()" in fonte
+    assert "apagar_vazias=apagar_vazias" in ast.unparse(_metodo(_arvore(TELA), "ModuloCorrecaoPDM", "_worker"))
 
 
 def test_a_pausa_de_conferencia_so_existe_se_o_usuario_pedir():
@@ -292,7 +230,8 @@ def test_a_pausa_de_conferencia_so_existe_se_o_usuario_pedir():
     da tela, e o serviço só oferece o gancho."""
     fonte = TELA.read_text(encoding="utf-8")
 
-    assert "if self.var_conferir.get() else None" in fonte
+    assert "self.chk_conferir.isChecked()" in fonte
+    assert "callback_pause=self._pausa_de_conferencia if conferir else None" in fonte
 
 
 def test_o_botao_parar_chega_na_automacao():
@@ -337,10 +276,9 @@ def test_toda_acao_em_massa_redesenha_a_tabela(metodo):
 # `pyflakes`, passa em todos os testes -- e levanta `TypeError` no primeiro
 # clique do usuário.
 #
-# Quem pegaria isso é o `--smoke` (monta a janela de verdade), e ele não roda
-# em ambiente sem tkinter/customtkinter. Conferir a assinatura pega a mesma
-# classe de defeito sem precisar de janela: `file_dialogs` é importável porque
-# não é uma tela.
+# Conferir a assinatura pega a mesma classe de defeito sem precisar de janela.
+# Na Qt, `sigft.app_qt.file_dialogs` repassa os nomes (`**kwargs`) para
+# `sigft.app.file_dialogs`, então a assinatura que vale é a de lá.
 def _chamadas_de(modulo_alvo, caminho):
     """`[(funcao, n_posicionais, {nomes das keywords}), ...]`."""
     achadas = []
@@ -361,7 +299,7 @@ def _chamadas_de(modulo_alvo, caminho):
 
 
 def _arquivos_da_ui():
-    return sorted((RAIZ / "sigft" / "app").rglob("*.py"))
+    return sorted((RAIZ / "sigft" / "app_qt").rglob("*.py"))
 
 
 def test_toda_chamada_a_file_dialogs_bate_com_a_assinatura():
@@ -372,7 +310,7 @@ def test_toda_chamada_a_file_dialogs_bate_com_a_assinatura():
     class _Qualquer:
         pass
 
-    problemas = []
+    problemas, achadas = [], []
     for caminho in _arquivos_da_ui():
         if caminho.name == "file_dialogs.py":
             continue
@@ -387,7 +325,9 @@ def test_toda_chamada_a_file_dialogs_bate_com_a_assinatura():
                     **{nome: _Qualquer() for nome in palavras})
             except TypeError as erro:
                 problemas.append(f"{caminho.name}: file_dialogs.{funcao}(...) -> {erro}")
+            achadas.append(funcao)
 
+    assert achadas, "o guard nao achou nenhuma chamada -- esta olhando o lugar certo?"
     assert not problemas, "\n".join(problemas)
 
 
@@ -445,25 +385,20 @@ def test_a_correcao_de_pdm_esta_na_lista_de_telas_bloqueadas():
     (a E6 não foi feita). Trocar o PDM APAGA as características da ficha:
     liberar uma operação destrutiva não validada é o único jeito de ela
     estragar uma ficha de verdade."""
-    fonte = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
-
-    assert 'TELAS_BLOQUEADAS = {"CorrecaoPDM"}' in fonte
+    assert catalogo.TELAS_BLOQUEADAS == frozenset({"CorrecaoPDM"})
 
 
 def test_o_bloqueio_vale_no_FUNIL_e_nao_so_no_botao():
     """O card da Home também navega por `show_frame`. Desabilitar só o botão
-    da barra lateral deixaria a tela acessível pelo card -- e o usuário pediu
-    que ela não fosse clicável, não que ficasse escondida num lugar só."""
-    metodo = _metodo(_arvore(RAIZ / "sigft" / "app" / "main.py"),
-                     "SIG_FT_App", "show_frame")
-    fonte = ast.unparse(metodo)
+    da barra lateral deixaria a tela acessível pelo card."""
+    fonte = ast.unparse(_metodo(_arvore(MAIN), "SIG_FT_App", "show_frame"))
 
     assert "TELAS_BLOQUEADAS" in fonte
     assert "return" in fonte
 
 
 def test_a_tela_bloqueada_CONTINUA_registrada_e_com_botao_e_card():
-    """Desligar não é apagar. O frame segue registrado, com botão e card, para
+    """Desligar não é apagar. A tela segue registrada, com botão e card, para
     que os guards de fiação continuem valendo e a volta seja uma linha."""
     assert "CorrecaoPDM" in _frames_de_main()
     assert "CorrecaoPDM" in _frames_da_barra_lateral()
@@ -471,19 +406,13 @@ def test_a_tela_bloqueada_CONTINUA_registrada_e_com_botao_e_card():
 
 
 def test_o_botao_de_uma_tela_bloqueada_nasce_DESABILITADO():
-    metodo = _metodo(_arvore(RAIZ / "sigft" / "app" / "main.py"),
-                     "SIG_FT_App", "_criar_botao_menu")
-    fonte = ast.unparse(metodo)
+    fonte = ast.unparse(_metodo(_arvore(MAIN), "SIG_FT_App", "_montar_sidebar"))
 
-    assert "TELAS_BLOQUEADAS" in fonte
-    assert "disabled" in fonte
+    assert "setEnabled" in fonte and "TELAS_BLOQUEADAS" in fonte
 
 
 def test_a_tela_bloqueada_aparece_na_barra_sem_o_em_obras():
     """Pedido do usuário em 2026-09-24: o "(em obras)" deixava o texto grande
     demais na barra lateral, e o botão cinza e desabilitado já diz que a tela
     não abre."""
-    metodo = _metodo(_arvore(RAIZ / "sigft" / "app" / "main.py"),
-                     "SIG_FT_App", "_criar_botao_menu")
-
-    assert "em obras" not in ast.unparse(metodo)
+    assert not any("em obras" in str(item) for item in catalogo.MENU)

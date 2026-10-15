@@ -1,7 +1,7 @@
 r"""O botão CONFERIR NO PORTAL do Gestão PMIB (2026-10-14).
 
-As telas não são importadas na suíte: o guarda é por AST, como o de
-tests/test_tela_pmib_manager.py. O que ele prova é a ordem que evita os
+O guarda é por AST, como o de tests/test_tela_pmib_manager.py, sobre a tela Qt
+(a interface antiga saiu em 2026-10-15). O que ele prova é a ordem que evita os
 defeitos caros:
 
   - o navegador abre, o portal carrega e a tela PAUSA para o login ANTES de a
@@ -18,7 +18,7 @@ import ast
 import pathlib
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
-TELA = RAIZ / "sigft" / "app" / "views" / "pmib_manager.py"
+TELA = RAIZ / "sigft" / "app_qt" / "views" / "pmib_manager.py"
 
 
 def _metodo(nome):
@@ -49,6 +49,8 @@ def test_o_navegador_da_conferencia_fecha_no_finally():
 
 
 def test_o_botao_conferir_trava_junto_com_os_outros():
-    fonte = ast.unparse(_metodo("_travar_botoes"))
+    metodo = _metodo("_travar_botoes")
+    botoes = next(no for no in ast.walk(metodo) if isinstance(no, ast.For)).iter
 
-    assert "self.btn_conferir.configure(state=estado)" in fonte
+    assert "self.btn_conferir" in ast.unparse(botoes)
+    assert "setEnabled" in ast.unparse(metodo)

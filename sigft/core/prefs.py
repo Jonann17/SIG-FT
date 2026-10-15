@@ -61,10 +61,10 @@ SEMPRE validam `os.path.isdir(...)` em CADA candidato antes de devolvê-lo —
 um candidato inexistente (ou de tipo inesperado, ex.: JSON adulterado à mão)
 é silenciosamente PULADO, caindo para a camada seguinte da resolução. Nunca
 propaga erro; nunca devolve ao chamador um caminho morto para o
-`tkinter.filedialog` tentar abrir.
+`Tk.filedialog` tentar abrir.
 
 Só stdlib (`json`, `os`, `pathlib`) — nenhuma dependência de UI (nem
-tkinter/customtkinter), nenhuma dependência pesada. Importável no ambiente de
+Tk/interface antiga), nenhuma dependência pesada. Importável no ambiente de
 teste sem stub nenhum (ver tests/conftest.py). Ver tests/test_prefs.py.
 """
 
@@ -240,7 +240,7 @@ def get_initial_dir(
       3. Pasta padrão mapeada para essa `chave` via `PASTAS_PADRAO_POR_CHAVE`
          (override do usuário se houver, senão a semeada — delega para
          `get_default_dir`, que já valida as duas camadas).
-      4. `None` — comportamento atual do sistema: o `tkinter.filedialog`
+      4. `None` — comportamento atual do sistema: o `Tk.filedialog`
          abre onde quiser (sem `initialdir`).
 
     Cada candidato passa por `_pasta_valida` (`os.path.isdir`); um candidato

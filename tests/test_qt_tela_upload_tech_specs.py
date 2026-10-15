@@ -433,8 +433,8 @@ def test_um_robo_por_vez(tela, caixas, qtbot, monkeypatch):
 # ---------------------------------------------------------------------------
 # Medidas
 # ---------------------------------------------------------------------------
-def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
-    # Medidas da tela CTk (janela 1280x850), relativas à área da tela (277 px
+def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
+    # Medidas da tela antiga (janela 1280x850), relativas à área da tela (277 px
     # à direita, a barra lateral). Ver capturas/e4.45.
     from sigft.app_qt import estilo
 

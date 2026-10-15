@@ -2,8 +2,9 @@
 
 Toda a lógica (pasta inicial por chave/categoria, lembrar a pasta escolhida,
 cancelar devolvendo vazio) mora em `sigft/app/file_dialogs.py`, que não
-depende de tkinter para isso: ela aceita um `dialog_fn`. Aqui só se troca o
-diálogo do Tk pelo `QFileDialog`, com os mesmos nomes de parâmetro do Tk.
+depende de biblioteca gráfica: ela recebe o diálogo como `dialog_fn`. Aqui
+mora o diálogo, o `QFileDialog`, com os nomes de parâmetro que as telas já
+usavam (`initialdir`, `title`, `filetypes`, `defaultextension`).
 """
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ from sigft.app import file_dialogs as _base
 
 
 def filtro_qt(filetypes) -> str:
-    """`[("Excel", "*.xlsx;*.xlsm")]` (Tk) -> `"Excel (*.xlsx *.xlsm)"` (Qt)."""
+    """`[("Excel", "*.xlsx;*.xlsm")]` (o formato das telas) -> `"Excel (*.xlsx *.xlsm)"` (Qt)."""
     if not filetypes:
         return ""
     return ";;".join(

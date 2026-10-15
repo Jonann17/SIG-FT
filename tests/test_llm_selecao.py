@@ -440,7 +440,7 @@ def test_atualizar_chaves_de_api_por_read_modify_write_preserva_a_selecao(config
     selecao.definir_global("gemini", "modelo-escolhido-pelo-usuario", config_path=config_path)
 
     # Réplica do algoritmo fixado em SIG_FT_App.save_keys (Parte C deste
-    # checkpoint) -- não importa frontend.py (sem tkinter neste ambiente).
+    # checkpoint) -- não importa frontend.py (sem Tk neste ambiente).
     novas_chaves_de_api = {"GEMINI": "nova-chave-gemini", "OPENROUTER": "nova-chave-openrouter"}
     bruto = _ler_json(config_path) if config_path.exists() else {}
     bruto.update(novas_chaves_de_api)

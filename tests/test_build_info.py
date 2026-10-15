@@ -153,9 +153,9 @@ def test_versao_atual_e_semver_valido():
 
 def test_a_barra_de_titulo_mostra_a_versao():
     """O titulo da janela principal carrega a versao do build."""
-    fonte = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
+    fonte = (RAIZ / "sigft" / "app_qt" / "main.py").read_text(encoding="utf-8")
 
-    titulos = re.findall(r"self\.title\((.+?)\)\n", fonte)
+    titulos = re.findall(r"self\.setWindowTitle\((.+?)\)\n", fonte)
     principal = [t for t in titulos if "SIG-FT" in t]
 
     assert principal, "nao achei o titulo da janela principal"

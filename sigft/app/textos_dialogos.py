@@ -1,13 +1,9 @@
-"""Os TEXTOS dos diálogos de ação manual -- sem tkinter, sem customtkinter.
+"""Os TEXTOS dos diálogos de ação manual -- sem biblioteca gráfica.
 
-Saíram de `sigft/app/widgets/dialogs.py` para que a interface Qt
-(`sigft/app_qt/`) use as mesmas palavras sem puxar o Tk para dentro do processo
-(e sem falhar num Python sem Tk, como o do Homebrew no macOS). Texto de
-interface é aparência: continua palavra por palavra como estava.
-
-`sigft.app.widgets.dialogs` reexporta tudo daqui, então os nomes antigos
-(`dialogs.MSG_EXCEL_BLOQUEADO` etc.) seguem valendo para a interface
-CustomTkinter e para os testes dela.
+Saíram dos diálogos da interface antiga para que a Qt (`sigft/app_qt/`)
+usasse as mesmas palavras; a interface antiga saiu do SIG-FT em 2026-10-15, e
+eles ficam aqui. Texto de interface é aparência: continua palavra por palavra
+como estava (`tests/test_textos_dialogos.py`).
 
 Só biblioteca padrão.
 """

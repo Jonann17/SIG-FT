@@ -1,4 +1,4 @@
-"""Seletores de arquivo/pasta da interface Qt — mesma API dos CustomTkinter.
+"""Seletores de arquivo/pasta da interface Qt — mesma API da interface antiga.
 
 A tela declara `chave`/`categoria` uma vez e nunca mais pensa em memória de
 pastas (é o CP 7.2). Rótulo cinza "Nenhum arquivo selecionado" que vira o nome
@@ -151,7 +151,7 @@ class FolderPickerRow(_LinhaSeletora):
 class FileQueueList(QWidget):
     """A lista de fichas com Adicionar / Remover Seleção / Limpar Tudo.
 
-    Mesma API do CustomTkinter: `arquivos` (cópia), `adicionar()`,
+    Mesma API da interface antiga: `arquivos` (cópia), `adicionar()`,
     `remover_selecionados()`, `limpar()`, `definir(caminhos)`, e
     `ao_mudar(acao, quantidade, total)` com acao "adicionou"/"removeu"/"limpou".
 

@@ -741,7 +741,7 @@ def test_revisao_edicao_duplo_clique_sem_selecao_nao_abre(qt_interface, qtbot):
     j.close()
 
 
-# --- medidas (capturas CTk, Xvfb, `capturas/e3.2/ctk_medidas.json`) -----------------
+# --- medidas (capturas interface antiga, Xvfb, `capturas/e3.2/ctk_medidas.json`) -----------------
 
 def _geo(w, base):
     p = w.mapTo(base, w.rect().topLeft())
@@ -831,7 +831,7 @@ def test_medidas_revisao_edicao_e_popup(folha, qtbot):
     j.close()
 
 
-def test_cores_dos_botoes_do_customtkinter(qt_interface, qtbot):
+def test_cores_dos_botoes_do_interface_antiga(qt_interface, qtbot):
     d = janelas.DialogoAcaoRobo(None, "e", "p")
     qtbot.addWidget(d)
     assert "#B8860B" in d.botao_pular.styleSheet() and "#DAA520" in d.botao_pular.styleSheet()

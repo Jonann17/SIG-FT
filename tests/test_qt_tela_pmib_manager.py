@@ -588,11 +588,9 @@ def test_caixa_de_marcar_alterna_pela_caixa_e_pelo_texto(qt_interface, qtbot):
 # ---------------------------------------------------------------------------
 # Texto dos avisos (a mesma regra da tela antiga)
 # ---------------------------------------------------------------------------
-def test_texto_dos_avisos_e_um_so_para_as_duas_interfaces():
-    # Era uma cópia da função da tela CTk; agora mora num módulo sem tkinter
-    # (`sigft.app.textos_dialogos`) e as duas telas usam a mesma.
-    import importlib
-
+def test_texto_dos_avisos_mora_nos_textos_dos_dialogos():
+    # Era uma cópia da função da tela antiga; mora em `sigft.app.textos_dialogos`
+    # (só biblioteca padrão), e a tela usa a de lá.
     from sigft.app import textos_dialogos
 
     f = textos_dialogos.texto_dos_avisos
@@ -603,14 +601,13 @@ def test_texto_dos_avisos_e_um_so_para_as_duas_interfaces():
                             "que fazer estão no fim do log; e 2 aviso(s) pedem atenção (procure as linhas "
                             "[AVISO] no log).")
     assert tela_mod.texto_dos_avisos is f
-    assert importlib.import_module("sigft.app.views.pmib_manager")._texto_dos_avisos is f
 
 
 # ---------------------------------------------------------------------------
-# Geometria contra o CustomTkinter
+# Geometria contra a interface antiga
 # ---------------------------------------------------------------------------
-def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot, monkeypatch):
-    # Medidas da tela antiga (CustomTkinter, janela 1280x850, winfo_* da tela;
+def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot, monkeypatch):
+    # Medidas da tela antiga (interface antiga, janela 1280x850, winfo_* da tela;
     # aqui relativas à área da tela, que começa 277 px à direita -- a barra
     # lateral -- e no topo). Ver capturas/e4.2.
     from sigft.app_qt import estilo
@@ -673,7 +670,7 @@ def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot, monkeypatch):
         qt_interface.setStyleSheet(anterior)
 
 
-def test_popup_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
+def test_popup_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
     from sigft.app_qt import estilo
 
     anterior = qt_interface.styleSheet()
@@ -750,7 +747,7 @@ def test_popup_das_listas_novas_nao_e_solto_por_tecla(qt_interface, qtbot):
 # ---------------------------------------------------------------------------
 # Conferir autorizações no portal (2026-10-14)
 # ---------------------------------------------------------------------------
-# O mesmo botão da tela antiga (`sigft/app/views/pmib_manager.py`): abre o
+# O mesmo botão da tela antiga (a interface que saiu em 2026-10-15): abre o
 # navegador, pausa para o login e confere no portal as fichas físicas ainda
 # sem AUTORIZADO (`services/autorizacao_portal.py`). Só RPA.
 class ConferenciaFalsa:

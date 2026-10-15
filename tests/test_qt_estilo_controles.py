@@ -6,7 +6,7 @@ def _qss():
     return estilo.folha_de_estilo()
 
 
-def test_botao_padrao_e_o_azul_do_customtkinter():
+def test_botao_padrao_e_o_azul_do_interface_antiga():
     assert "QPushButton {" in _qss()
     assert estilo.AZUL_CTK == "#1F538D" and estilo.AZUL_CTK_HOVER == "#14375E"
     trecho = _qss().split("QPushButton {", 1)[1].split("}", 1)[0]
@@ -30,7 +30,7 @@ def test_caixa_marcada_e_fundo_de_dialogo_como_no_ctk():
 
 
 def test_home_e_dialogos_usam_primario_onde_o_ctk_pintava_primary():
-    # E5.1: a barra pinta a cor do CTk no próprio botão (fg_color, com o hover
+    # E5.1: a barra pinta a cor da interface antiga no próprio botão (fg_color, com o hover
     # do tema, que nenhuma variante tem); modelos e gastos continuam primary.
     from sigft.app_qt.views import home
     cores = {chave: cor for chave, _t, cor, _metodo in home.BARRA}

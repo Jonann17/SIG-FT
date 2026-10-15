@@ -325,105 +325,12 @@ def test_revisao_do_pdm_nao_confunde_o_R_de_uma_palavra():
 # =============================================================================
 # A troca de PDM na revisão (JanelaRevisaoPDM.editar_pdm) -- 2026-09-25
 # =============================================================================
-#
-# O sintoma, do usuário: "seleciono e uso o PDM, mas ele não atualiza".
-#
-# `editar_pdm` fazia `JanelaEscolherPDM(self, catalogo).escolha` na MESMA
-# linha. Uma janela do Tk não bloqueia quem a cria: a leitura acontecia com a
-# janela recém-aberta, a escolha ainda `None`, e a revisão concluía "nada
-# escolhido". O clique em "USAR ESTE PDM" gravava a escolha numa janela que
-# ninguém mais lia. A tela de correção de PDM usa a mesma janela do jeito
-# certo (`self.wait_window(janela)` antes de ler) -- é o modelo.
-
-class _JanelaEscolherFalsa:
-    """Como a de verdade: abrir NÃO bloqueia, e a escolha só existe depois
-    que a pessoa clica em "USAR ESTE PDM" -- o que acontece dentro do laço do
-    Tk, isto é, no `wait_window` de quem abriu."""
-
-    def __init__(self, parent, catalogo, sugestoes=()):
-        self.escolha = None
-        self.sugestoes = list(sugestoes)
-
-
-class _ArvoreFalsa:
-    """O mínimo do `ttk.Treeview` que `editar_pdm` usa."""
-
-    def __init__(self, linhas, selecao):
-        self.linhas = dict(linhas)
-        self._selecao = list(selecao)
-
-    def selection(self):
-        return tuple(self._selecao)
-
-    def item(self, iid, opcao=None, **kwargs):
-        if "values" in kwargs:
-            self.linhas[str(iid)] = tuple(kwargs["values"])
-            return None
-        if opcao == "values":
-            return self.linhas[str(iid)]
-        return None
-
-
-class _DfDaRevisaoFalso:
-    """`df.at[idx, coluna] = valor` vira uma chave `(idx, coluna)`, e
-    `df.loc[idx]` devolve a linha como dicionário."""
-
-    def __init__(self, linhas=None):
-        self.at = {}
-        self.loc = linhas if linhas is not None else {0: {}}
-
-
-def test_trocar_o_pdm_na_revisao_aplica_o_que_foi_escolhido_na_janela(monkeypatch):
-    from types import SimpleNamespace
-
-    from sigft.app.views import janelas
-
-    monkeypatch.setattr(janelas, "JanelaEscolherPDM", _JanelaEscolherFalsa)
-    escolhido = SimpleNamespace(completo="PDM.4820.004 - VALVULA, ESFERA")
-
-    class _Revisao:
-        tree = _ArvoreFalsa(
-            {"0": ("0", "VALVULA 2 POL", "PDM.1111.001 - ERRADO", "BAIXA", "VALV", "UN", "MATERIAL")},
-            selecao=["0"],
-        )
-        df_dados = _DfDaRevisaoFalso()
-        catalogo = object()
-
-        def wait_window(self, janela):
-            janela.escolha = escolhido   # a pessoa escolhe e clica em "USAR ESTE PDM"
-
-    revisao = _Revisao()
-    janelas.JanelaRevisaoPDM.editar_pdm(revisao)
-
-    assert revisao.df_dados.at.get((0, "pdm_escolhido")) == "PDM.4820.004 - VALVULA, ESFERA", (
-        "a escolha feita na janela não chegou ao dado que vai para a automação"
-    )
-    assert revisao.tree.linhas["0"][2] == "PDM.4820.004 - VALVULA, ESFERA", (
-        "a tabela da revisão continua mostrando o PDM antigo"
-    )
-    assert revisao.tree.linhas["0"][3] == "MANUAL", (
-        "a confiança era da escolha da IA, e a troca foi da pessoa"
-    )
-
-
-def test_o_seletor_abre_com_o_2o_e_o_3o_lugar_da_linha(monkeypatch):
-    from sigft.app.views import janelas
-
-    monkeypatch.setattr(janelas, "JanelaEscolherPDM", _JanelaEscolherFalsa)
-
-    class _Revisao:
-        tree = _ArvoreFalsa(
-            {"0": ("0", "VALVULA", "PDM.1111.001 - X", "BAIXA", "V", "UN", "M")}, selecao=["0"])
-        df_dados = _DfDaRevisaoFalso({0: {"alternativas": [
-            {"pdm": "PDM.4820.004 - VALVULA ESFERA", "motivo": "se for esfera"}]}})
-        catalogo = CATALOGO
-        janela = None
-
-        def wait_window(self, janela):
-            self.janela = janela   # a pessoa fecha sem escolher
-
-    revisao = _Revisao()
-    janelas.JanelaRevisaoPDM.editar_pdm(revisao)
-
-    assert [(p.codigo, r) for p, r in revisao.janela.sugestoes] == [
-        ("PDM.4820.004", "2º lugar: se for esfera")]
+# O sintoma, do usuário: "seleciono e uso o PDM, mas ele não atualiza" (a
+# revisão lia a escolha antes de a janela de escolha fechar). Os dois testes
+# daqui usavam a janela da interface antiga, que saiu em 2026-10-15; a mesma
+# garantia, na Qt, está em `tests/test_qt_janelas.py`:
+#   - test_revisao_pdm_editar_com_catalogo_usa_a_janela_de_escolha (a escolha
+#     chega ao dado e à tabela);
+#   - test_revisao_pdm_troca_manual_marca_manual_na_confianca (a confiança
+#     vira MANUAL);
+#   - test_revisao_pdm_uma_linha_leva_o_2o_e_3o_lugar_ao_seletor.

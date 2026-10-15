@@ -1,16 +1,12 @@
 r"""
-Testes da 1ª metade do Checkpoint 1.5 — `sigft/app/file_dialogs.py`
-(wrappers de `tkinter.filedialog` com memória de caminho, lado UI de
-`sigft.core.prefs`).
+Testes do Checkpoint 1.5 — `sigft/app/file_dialogs.py` (a memória de pastas
+dos diálogos de arquivo, lado UI de `sigft.core.prefs`).
 
-Este ambiente de teste NÃO TEM tkinter instalado (`ModuleNotFoundError: No
-module named 'tkinter'`, confirmado) — por isso TODO teste aqui passa um
+O diálogo de verdade vem de quem chama (`dialog_fn`; na produção, o
+`QFileDialog` de `sigft/app_qt/file_dialogs.py`). Aqui TODO teste passa um
 `dialog_fn` FAKE (`_DialogSpy`, uma função Python simples que devolve um
-resultado fixo e grava os kwargs recebidos); nenhum exercita o import real
-do tkinter, exceto a seção E, que confirma DE PROPÓSITO que omitir
-`dialog_fn` tenta (e falha, neste ambiente) importar o tkinter de verdade —
-prova de que o import é preguiçoso (o módulo em si já foi importado com
-sucesso no topo deste arquivo, sem tkinter).
+resultado fixo e grava os kwargs recebidos). A seção E prova que, sem
+`dialog_fn`, as funções falham alto em vez de pular o diálogo em silêncio.
 
 Cobre, para as 4 funções (`ask_open_file`, `ask_open_files`, `ask_save_file`,
 `ask_directory`): `initialdir` resolvido por `prefs.get_initial_dir` é
@@ -20,7 +16,7 @@ cancelamento (resultado vazio) NÃO chama `remember_dir` e devolve o vazio no
 tipo certo (`""` singular, `()` para `ask_open_files`); `ask_open_files` usa
 o dirname do PRIMEIRO arquivo selecionado; e (seção F, 2ª metade do CP 1.5) o
 parâmetro `initialdir` — override CONTEXTUAL explícito de quem chama, usado
-por `frontend.ModuloPDM._op1_modificados` — vence a resolução via `prefs`
+pela tela do PDM (`_op1_modificados`) — vence a resolução via `prefs`
 quando aponta para uma pasta válida, e cai integralmente para a resolução
 normal via `prefs` quando ausente/inválido.
 
@@ -53,7 +49,7 @@ def config_path(tmp_path):
 class _DialogSpy:
     """`dialog_fn` fake: devolve `resultado` (fixo, definido no construtor)
     e GRAVA os kwargs recebidos em `kwargs_recebidos`, para o teste
-    inspecionar depois — nunca importa/usa tkinter de verdade."""
+    inspecionar depois — nunca abre diálogo de verdade."""
 
     def __init__(self, resultado):
         self.resultado = resultado
@@ -223,7 +219,7 @@ def test_selecoes_sucessivas_atualizam_a_memoria(tmp_path, config_path):
         ("ask_directory", ("chave.x", "pasta"), "", ""),
         ("ask_open_files", ("chave.x", "excel"), (), ()),
         ("ask_open_files", ("chave.x", "excel"), [], ()),
-        ("ask_open_files", ("chave.x", "excel"), "", ()),  # quirk histórico do Tk
+        ("ask_open_files", ("chave.x", "excel"), "", ()),  # vazio em forma de str
         ("ask_open_file", ("chave.x", "excel"), None, ""),  # tolerância extra (fake mal comportado)
     ],
 )
@@ -296,7 +292,7 @@ def test_ask_open_files_string_unica_de_tk_antigo_nao_itera_caracteres(tmp_path,
     pasta.mkdir()
     arquivo_unico = str(pasta / "unico.pdf")
 
-    # Builds antigos do Tcl/Tk podem devolver uma STRING única (não uma
+    # Um diálogo pode devolver uma STRING única (não uma
     # sequência de 1 elemento) quando só 1 arquivo é escolhido -- não pode
     # virar uma tupla de CARACTERES do caminho.
     resultado = file_dialogs.ask_open_files(
@@ -308,69 +304,33 @@ def test_ask_open_files_string_unica_de_tk_antigo_nao_itera_caracteres(tmp_path,
 
 
 # =============================================================================
-# E. dialog_fn ausente -> resolve tkinter.filedialog PREGUIÇOSAMENTE (o
-#    import do módulo, no topo deste arquivo, já teve sucesso sem tkinter).
+# E. dialog_fn ausente -> falha alto (o diálogo é da interface)
 # =============================================================================
+# Até 2026-10-15, sem `dialog_fn` o módulo abria o diálogo da interface antiga.
+# Ela saiu do SIG-FT; o diálogo vem sempre de quem chama.
 
-def test_modulo_e_importavel_sem_tkinter_instalado():
+def test_modulo_e_importavel_sem_biblioteca_grafica():
     assert file_dialogs is not None
 
 
 @pytest.mark.parametrize("metodo", _TODAS_AS_FUNCOES)
-def test_sem_dialog_fn_resolve_a_funcao_real_do_tkinter(metodo):
-    """SEM `dialog_fn` injetado, cada wrapper tem de resolver a função REAL do
-    `tkinter.filedialog` -- nunca pular o diálogo em silêncio nem devolver um
-    valor "chute".
-
-    Este teste verifica a RESOLUÇÃO, não chega a abrir diálogo nenhum. A
-    versão anterior fazia `pytest.raises(ModuleNotFoundError)` chamando o
-    wrapper de verdade, e isso estava errado por dois motivos que só
-    apareceram quando o usuário rodou a suíte na máquina dele:
-
-      1. transformava um ACIDENTE do ambiente de CI ("aqui não tem tkinter")
-         numa regra do código -- em qualquer Windows com Python padrão o
-         tkinter existe, o import funciona, e o teste falhava;
-      2. no `ask_directory` ele chegava a ABRIR um seletor de pastas de
-         verdade na tela de quem rodava a suíte. Um teste não pode fazer
-         isso.
-
-    Agora funciona nos dois ambientes: com tkinter, confere que a função
-    resolvida é exatamente a do `filedialog`; sem tkinter, confere que a
-    tentativa de import acontece (e falha alto) em vez de ser engolida.
-    """
-    nome_tk = file_dialogs._NOME_TK_POR_WRAPPER[metodo]
-
-    try:
-        from tkinter import filedialog
-    except ImportError:
-        with pytest.raises(ModuleNotFoundError):
-            file_dialogs._resolver_dialog_fn(metodo, None)
-        return
-
-    resolvida = file_dialogs._resolver_dialog_fn(metodo, None)
-
-    assert resolvida is getattr(filedialog, nome_tk)
+def test_sem_dialog_fn_falha_alto_e_diz_onde_esta_o_dialogo(config_path, metodo):
+    """Nunca pular o diálogo em silêncio nem devolver um valor "chute"."""
+    with pytest.raises(TypeError, match="sigft.app_qt.file_dialogs"):
+        getattr(file_dialogs, metodo)("x.y", "excel", config_path=config_path)
 
 
 @pytest.mark.parametrize("metodo", _TODAS_AS_FUNCOES)
-def test_dialog_fn_injetado_vence_o_tkinter(metodo):
-    # O outro lado do contrato: quando o teste (ou a UI) injeta a função, o
-    # tkinter não entra na jogada.
+def test_dialog_fn_injetado_e_o_usado(metodo):
     sentinela = object()
 
     assert file_dialogs._resolver_dialog_fn(metodo, sentinela) is sentinela
 
 
-def test_todos_os_wrappers_estao_mapeados_para_o_tkinter():
-    # Trava contra wrapper novo sem mapeamento: `_resolver_dialog_fn` faria
-    # `KeyError` só na hora de abrir o diálogo, na frente do usuário.
-    assert set(file_dialogs._NOME_TK_POR_WRAPPER) == set(_TODAS_AS_FUNCOES)
-
-
 # =============================================================================
 # F. `initialdir` -- override CONTEXTUAL explícito (2ª metade do CP 1.5).
 #
-# Caso de uso real (único hoje): `frontend.ModuloPDM._op1_modificados` passa
+# Caso de uso real (único hoje): a tela do PDM (`_op1_modificados`) passa
 # `initialdir=origem`, onde `origem` é a pasta que o usuário ACABOU de
 # escolher em OUTRO campo da mesma tela ("Pasta (PDMs From Itaipu)") --
 # informação contextual da sessão atual, não memória de sessões anteriores.

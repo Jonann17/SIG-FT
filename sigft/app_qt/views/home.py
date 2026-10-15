@@ -2,14 +2,14 @@
 painéis que a barra abre em janela (chaves de API, modelos de IA, gastos de IA
 e o mural de atividades).
 
-É a `sigft/app/views/home.py` (CustomTkinter) em Qt, com o mesmo comportamento:
+É a `sigft/app/views/home.py` (interface antiga) em Qt, com o mesmo comportamento:
 as mesmas chaves de configuração (gravadas pela janela principal no
 `api_config.json`), os mesmos serviços (`sigft.config`, `core.llm.catalogo`,
 `core.llm.selecao`, `core.llm.usage`, `services.atividades`,
 `services.mural_atividades`, `services.updater`)
 e os mesmos textos. Os cards seguem a decisão do protótipo de 2026-10-07
 (compactos: a descrição ocupa a largura do card); o resto tem as medidas do
-CustomTkinter, tiradas das capturas da E5.1.
+interface antiga, tiradas das capturas da E5.1.
 
 Diferenças deliberadas (com o porquê no relatório da E5.1):
 * um painel de cada tipo por vez: o segundo clique traz para a frente a janela
@@ -18,7 +18,7 @@ Diferenças deliberadas (com o porquê no relatório da E5.1):
 * a lista de modelos do provedor é buscada numa thread `daemon` e volta só por
   `interface.na_interface`; se o painel sumiu nesse meio-tempo, a resposta é
   descartada em vez de tocar em widget destruído;
-* nenhum botão nem caixa dos painéis pega o foco (como os do CTk): Enter, Espaço
+* nenhum botão nem caixa dos painéis pega o foco (como os da interface antiga): Enter, Espaço
   e Esc não salvam nem descartam o que a pessoa digitou.
 """
 from __future__ import annotations
@@ -96,7 +96,7 @@ SEM_PROVEDOR_IA = (
     "Nenhum provedor de IA tem chave configurada acima. Configure ao menos uma "
     "chave (ex.: Gemini ou OpenRouter) para escolher o modelo aqui.")
 
-# --- aparência (tema dark-blue do CTk e o que as telas escreviam à mão) ---------
+# --- aparência (tema dark-blue da interface antiga e o que as telas escreviam à mão) ---------
 # CTkLabel sem `text_color`: o texto do tema (gray84), não o text_light.
 COR_TEXTO_CTK = controles.COR_TEXTO_CTK
 FONTE_CTK = ("Roboto", 13)                 # CTkFont() do tema
@@ -187,7 +187,7 @@ def _botao_cinza(texto: str, *, largura_minima: int = estilo.LARGURA_BOTAO_CTK):
 def _menu(opcoes: list[str], largura: int) -> controles.MenuDeOpcoes:
     """CTkOptionMenu(fg_color="#3A3A3A", button_color="#454545", width=largura).
 
-    Sem foco (as setas do teclado trocariam a escolha sem abrir o menu; o CTk
+    Sem foco (as setas do teclado trocariam a escolha sem abrir o menu; a interface antiga
     não tem teclado ali) e sem roda (ver `MenuDeOpcoes.wheelEvent`).
     """
     m = controles.MenuDeOpcoes(opcoes, cor="#3A3A3A", cor_seta="#454545")
@@ -270,7 +270,7 @@ class _Card(QFrame):
         desc = QLabel(descricao, objectName="card_desc")
         desc.setWordWrap(True)
         layout.addWidget(desc)
-        # A sobra do card mais baixo da linha fica embaixo, como no CTk (grid
+        # A sobra do card mais baixo da linha fica embaixo, como na interface antiga (grid
         # sticky="nsew" e os rótulos no topo): sem isto o título descia.
         layout.addStretch()
         for rotulo in self.findChildren(QLabel):
@@ -288,7 +288,8 @@ class _Card(QFrame):
 class HomeView(QScrollArea):
     # Redesenho de 2026-08-11 do painel de modelos -- PROVEDOR PRIMEIRO: uma
     # pergunta de cada vez (com qual CHAVE trabalhar; depois, qual MODELO dela).
-    # Ver o comentário longo em `sigft/app/views/home.py`.
+    # (O comentário longo estava na Home da interface antiga, no histórico do
+    # repositório: `sigft/app/views/home.py`, removida em 2026-10-15.)
     ROTULO_PROVIDER_IA = {
         "gemini": "Gemini (chave direta do Google)",
         "openrouter": "OpenRouter (vários modelos, uma chave)",
@@ -317,7 +318,7 @@ class HomeView(QScrollArea):
         self.setObjectName("conteudo")
         corpo = QWidget(objectName="conteudo")
         layout = QVBoxLayout(corpo)
-        # A Home do CTk é um CTkScrollableFrame no grid(padx=20, pady=20): o
+        # A Home da interface antiga é um CTkScrollableFrame no grid(padx=20, pady=20): o
         # conteúdo começa 6 px para dentro (o canto) e cada filho tem padx=20 --
         # 46 dos dois lados de cima; à direita, mais os 17 da barra de rolagem
         # dele (sempre reservada): 57.
@@ -444,7 +445,7 @@ class HomeView(QScrollArea):
         if aberta is not None:
             return aberta
         # A fechada (só escondida) dá lugar a uma nova, montada com o que vale
-        # agora -- como o CTk, que recriava o painel a cada clique.
+        # agora -- como a interface antiga, que recriava o painel a cada clique.
         velha = self._janelas.pop(chave, None)
         if _vivo(velha):
             velha.deleteLater()
@@ -492,7 +493,7 @@ class HomeView(QScrollArea):
     def _ler_mural(self):
         """`(gavetas, erro)` -- a aba Atividades do mapeamento, lida pelo
         serviço (`services/mural_atividades.ler_mural_do_mapeamento`), o mesmo da
-        Home CustomTkinter. O erro vem como TEXTO: o mural é informativo."""
+        Home interface antiga. O erro vem como TEXTO: o mural é informativo."""
         from sigft.services import mural_atividades
 
         return mural_atividades.ler_mural_do_mapeamento(self._caminho_do_mapeamento(), date.today())

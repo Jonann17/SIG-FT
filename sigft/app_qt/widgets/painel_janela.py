@@ -35,7 +35,7 @@ class JanelaPainel(QWidget):
     painel faz `parent.layout().addWidget(...)`. Abre ao ser construída.
 
     Fechar só ESCONDE (o padrão do Qt, sem WA_DeleteOnClose), como o `destroy()`
-    do CTk do ponto de vista de quem abriu: a tela não precisa saber se a janela
+    da interface antiga do ponto de vista de quem abriu: a tela não precisa saber se a janela
     ainda existe. Sem pai, ao fechar ela sai de `_ABERTAS` e o Python a recolhe;
     com pai (a Home), fica oculta até o pai morrer -- e sai de `_ABERTAS` também
     se o pai for destruído com ela aberta (`destroyed`). A Home guarda uma janela
@@ -80,7 +80,7 @@ class JanelaPainel(QWidget):
         _ABERTAS[id(self)] = self
         self.destroyed.connect(functools.partial(_esquecer, id(self)))
         self.show()
-        # O CTk punha `-topmost` por 200 ms só para a janela nascer na frente;
+        # A interface antiga punha `-topmost` por 200 ms só para a janela nascer na frente;
         # no Qt, trocar a flag de "sempre por cima" exige reabrir a janela
         # (pisca). Trazer para a frente faz o mesmo.
         self.raise_()

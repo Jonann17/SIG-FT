@@ -4,7 +4,7 @@ A tela continua BLOQUEADA no menu (`catalogo.TELAS_BLOQUEADAS`): o port existe
 para estar pronto quando ela for liberada. O robô e a planilha são dublês -- o
 que se prova é a TELA: textos, ações em massa sobre a tabela, a confirmação
 antes do portal, a ordem do worker (login, lote, relatório), as threads (barra
-e perguntas só na thread da interface) e as medidas contra o CustomTkinter.
+e perguntas só na thread da interface) e as medidas contra a interface antiga.
 """
 import threading
 from types import SimpleNamespace
@@ -103,9 +103,9 @@ def test_nao_importa_regra_de_planilha_nem_motor():
     import pathlib
 
     fonte = pathlib.Path(tela_mod.__file__).read_text(encoding="utf-8")
-    for proibido in ("import pandas", "import openpyxl", "playwright", "selenium",
-                     "import tkinter", "from tkinter"):
+    for proibido in ("import pandas", "import openpyxl", "playwright", "selenium"):
         assert proibido not in fonte.lower()
+    # (A biblioteca da interface antiga: `tests/test_sem_interface_antiga.py`.)
 
 
 # ---------------------------------------------------------------------------
@@ -534,7 +534,7 @@ def test_relatorio_que_nao_grava(tela, monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Geometria contra o CustomTkinter
+# Geometria contra a interface antiga
 # ---------------------------------------------------------------------------
 @pytest.fixture
 def com_folha(qt_interface):
@@ -548,8 +548,8 @@ def com_folha(qt_interface):
     qt_interface.setFont(fonte)
 
 
-def test_medidas_iguais_as_do_customtkinter(com_folha, qtbot):
-    # Medidas da tela antiga (CustomTkinter, janela 1280x850, sondadas com
+def test_medidas_iguais_as_do_interface_antiga(com_folha, qtbot):
+    # Medidas da tela antiga (interface antiga, janela 1280x850, sondadas com
     # winfo_*), já na origem da tela Qt (x=277 da janela, com o padx/pady=20 do
     # `show_frame`). Ver capturas/e4.8. Textos: ±6 px (fonte do Tk x Qt).
     t = tela_mod.ModuloCorrecaoPDM()

@@ -15,7 +15,7 @@ _RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 PASTA_FONTES = os.path.join(_RAIZ, "assets", "fonts")
 
 # SEM o Roboto-Medium, de propósito: o negrito tem de ser SINTETIZADO a partir do
-# Regular, como no Tk. O CustomTkinter registra Regular e Medium (no Windows, com
+# Regular, como no Tk. A interface antiga registra Regular e Medium (no Windows, com
 # AddFontResourceEx), mas o GDI lê o nome de família "antigo" de cada arquivo, e o
 # do Medium é "Roboto Medium": uma família à parte. Para o Tk, "Roboto" negrito só
 # tem o Regular, e o GDI o engrossa (e alarga cada letra). O Qt lê o nome
@@ -24,12 +24,12 @@ PASTA_FONTES = os.path.join(_RAIZ, "assets", "fonts")
 # pede peso 500; o arquivo continua em assets/fonts, só não é registrado.
 ARQUIVOS_DE_FONTE = ("Roboto-Regular.ttf", "NotoEmoji-Regular.ttf")
 
-# Largura total da barra lateral do CustomTkinter: CTkScrollableFrame(width=260)
+# Largura total da barra lateral da interface antiga: CTkScrollableFrame(width=260)
 # mais a barra de rolagem dele, sempre visível (16 px), e 1 px de borda. Medido na
 # captura: o fundo do conteúdo começa em x=277. Os módulos começam no mesmo x.
 LARGURA_BARRA_LATERAL = 277
 
-# Medidas que o CustomTkinter aplica hoje (decisão: espaçamento igual ao atual).
+# Medidas que a interface antiga aplica hoje (decisão: espaçamento igual ao atual).
 ALTURA_BOTAO_MENU = 35
 ESPACO_MENU = 4
 ALTURA_BOTAO_BARRA = 40
@@ -40,7 +40,7 @@ ALTURA_BOTAO_BARRA = 40
 LARGURA_BOTAO_CTK = 140
 FOLGA_TEXTO_BOTAO_CTK = 7
 
-# Tema "dark-blue" do CustomTkinter (customtkinter/assets/themes/dark-blue.json),
+# Tema "dark-blue" da interface antiga (interface antiga/assets/themes/dark-blue.json),
 # o que `sigft/app/main.py` usa: é o que pinta tudo o que as telas antigas não
 # coloriam à mão.
 AZUL_CTK = "#1F538D"
@@ -68,7 +68,7 @@ ALTURA_MENU_CTK = 28
 
 # Espessura da borda (px) de cada variante de botão que tem borda. `blocos.botao`
 # desconta isto da altura: no Qt o `min-height` da folha NÃO inclui a borda, e no
-# CustomTkinter `height` é a altura total do botão, borda incluída.
+# interface antiga `height` é a altura total do botão, borda incluída.
 BORDA_DA_VARIANTE = {"contorno": 1, "contorno_padrao": 1}
 
 _SELETOR_TEXTO = "\ufe0e"   # U+FE0E: pede a forma de texto (preto e branco)
@@ -184,13 +184,13 @@ def folha_de_estilo() -> str:
     #   transparente com border_width=1, sem border_color (a do tema) e com
     #   text_color=text_light escrito à mão -- o glossário do Tradutor;
     # * texto dos botões: TEXTO_BOTAO_CTK (o do tema) na regra geral; text_light só
-    #   onde o CTk o escrevia (menu, Home, contorno_padrao). A barra da Home não o
+    #   onde a interface antiga o escrevia (menu, Home, contorno_padrao). A barra da Home não o
     #   escreve: lá é #DCE4EE (medido na captura), e não branco; e a largura dos
     #   botões dela é a do CTkButton (LARGURA_BOTAO_CTK);
     # * QLineEdit: o CTkEntry do tema (ver ALTURA_CAMPO_CTK). min/max-height não
     #   contam borda nem padding: 28 - 2*2 - 1;
     # * #console: CTkTextbox do tema dark-blue -- fg gray20, border_width 0, texto gray84.
-    # * variante "cinza": o #3A3A3A com hover #454545 que as telas CTk escreviam à mão
+    # * variante "cinza": o #3A3A3A com hover #454545 que as telas antigas escreviam à mão
     #   ("Todos", "Cancelar"); "neutro" é o mesmo fundo com o hover do tema (Home).
     # * #quadro_caixas/#lista_caixas: o CTkScrollableFrame da seleção de fichas
     #   (fundo gray13, cantos 6) e o CTkScrollbar dele (`folha_rolagem_ctk`). As
@@ -231,7 +231,7 @@ QPushButton[variante="neutro"]:hover {{ background: #4A4A4A; }}
 QPushButton[variante="cinza"] {{ background: #3A3A3A; }}
 QPushButton[variante="cinza"]:hover {{ background: #454545; }}
 QPushButton[variante="perigo"] {{ background: {c['danger']}; }}
-QPushButton[variante="perigo"]:hover {{ background: #B71C1C; }}  /* o hover_color das telas CTk */
+QPushButton[variante="perigo"]:hover {{ background: #B71C1C; }}  /* o hover_color das telas antigas */
 QPushButton[variante="contorno"] {{ background: transparent;
     border: {BORDA_DA_VARIANTE['contorno']}px solid #555555; color: {cinza_tk('gray')}; }}
 QPushButton[variante="contorno_padrao"] {{ background: transparent;
@@ -359,7 +359,7 @@ def _folha_e31() -> str:
     #   100 de largura no mínimo (LARGURA_RADIO_CTK);
     # * slider: o sulco é transparente e as duas metades (sub-page/add-page) é que
     #   desenham o trilho de 4 px, recuado 6 px das pontas -- assim o botão anda
-    #   a largura inteira (centro de 8 a largura - 8), como no CTk;
+    #   a largura inteira (centro de 8 a largura - 8), como na interface antiga;
     # * tabela/lista claras: as cores do Tk nativo (TABELA_TK). Barras de rolagem
     #   claras na tabela e em toda lista com `barra_nativa` (as do tk.Listbox):
     #   a ttk/tk.Scrollbar é a do sistema, que no Windows ignora cores.

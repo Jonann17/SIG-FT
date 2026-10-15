@@ -280,7 +280,7 @@ def test_a_tela_passa_o_IDIOMA_e_nao_o_nome_da_aba():
     método: `idioma_ficha` já aparece ali por outro motivo (escolher a pasta),
     e um `in` sobre o dump inteiro passaria sem que nada fosse repassado."""
     chamadas = [
-        no for no in ast.walk(_metodo("_op2_executar"))
+        no for no in ast.walk(_metodo("_tarefa_fichas"))
         if isinstance(no, ast.Call)
         and isinstance(no.func, ast.Attribute)
         and no.func.attr == "aplicar_templates_fichas"
@@ -292,12 +292,12 @@ def test_a_tela_passa_o_IDIOMA_e_nao_o_nome_da_aba():
 
 
 # =============================================================================
-# A tela (por AST — `views/pdm.py` importa customtkinter e exige um root Tk)
+# A tela (por AST — a tela Qt, `sigft/app_qt/views/pdm.py`)
 # =============================================================================
 import ast
 import pathlib
 
-VIEW = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app" / "views" / "pdm.py"
+VIEW = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app_qt" / "views" / "pdm.py"
 
 
 def _classe_pdm():
@@ -324,9 +324,9 @@ def test_a_tela_tem_o_seletor_de_idioma_e_o_botao_de_traduzir():
 def test_o_montador_recebe_a_pasta_do_IDIOMA_escolhido():
     """O erro que isto impede é o pior possível aqui: ficha em inglês montada
     com as perguntas em português, que não se denuncia sozinha."""
-    fonte = ast.dump(_metodo("_op2_executar"))
-    assert "caminho_destino_en" in fonte
-    assert "idioma_ficha" in fonte
+    fonte = ast.unparse(_metodo("_op2_executar"))
+    assert "self.entry_destino_en.text() if em_ingles else self.entry_dest.text()" in fonte
+    assert "self.idioma_ficha.get()" in fonte
 
 
 def test_traduzir_recusa_gravar_por_cima_da_pasta_de_origem():

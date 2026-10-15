@@ -2,7 +2,7 @@ r"""
 O interruptor "Forçar processamento de fichas com status 'COMPLETO'".
 
 Contexto (2026-08-18). O usuário relatou que o botão não funcionava em
-Condições. Ele estava certo, e o defeito não era sutil: `ctk.CTkSwitch` ligado
+Condições. Ele estava certo, e o defeito não era sutil: o `CTkSwitch` (interface antiga) ligado
 a `self.var_processar_completos` existia na tela desde sempre, mas
 `.get()` NUNCA era chamado, `_worker_ia` não recebia o valor e
 `processar_ia_lote` não tinha o parâmetro. O `frontend.py` até registrava a
@@ -17,8 +17,10 @@ checagem inteira era pulada **em silêncio**, com a consequência invertida
 (toda ficha ia para a IA, inclusive as completas — gastando API onde o
 objetivo era economizar).
 
-**Por que a tela é testada por AST.** `frontend.py` abre janela real e não pode
-ser importado neste ambiente (ver `CLAUDE.md`). Mas o defeito daqui era
+**Por que a tela é testada por AST.** Nasceu assim porque a tela não podia ser
+importada nos testes. [2026-10-15] A tela agora é a Qt
+(`sigft/app_qt/views/upload_*.py`; a antiga saiu do SIG-FT), e o teste continua
+por AST porque o defeito daqui era
 exatamente de FIAÇÃO — widget presente, valor nunca lido —, e é isso que a AST
 enxerga bem. Um teste só de backend teria passado feliz durante todo o tempo
 em que o botão não fazia nada.
@@ -33,7 +35,7 @@ from sigft.services import upload_conditions
 
 # [CP 7.3] As duas telas saíram do `frontend.py` para arquivos próprios, e
 # para arquivos DIFERENTES -- por isso o mapa em vez de um caminho só.
-VIEWS = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app" / "views"
+VIEWS = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app_qt" / "views"
 ARQUIVO_DA_TELA = {
     "ModuloUploadConditions": VIEWS / "upload_conditions.py",
     "ModuloUploadTechSpecs": VIEWS / "upload_tech_specs.py",
@@ -188,15 +190,16 @@ def _metodo(classe, nome):
 
 
 def _le_o_interruptor(no):
-    """Existe um `self.var_processar_completos.get()` dentro do nó?"""
+    """Existe um `self.switch_completos.isChecked()` dentro do nó? (Na tela
+    antiga era `self.var_processar_completos.get()`.)"""
     for chamada in ast.walk(no):
         if not (isinstance(chamada, ast.Call)
                 and isinstance(chamada.func, ast.Attribute)
-                and chamada.func.attr == "get"):
+                and chamada.func.attr == "isChecked"):
             continue
         alvo = chamada.func.value
         if (isinstance(alvo, ast.Attribute)
-                and alvo.attr == "var_processar_completos"):
+                and alvo.attr == "switch_completos"):
             return True
     return False
 
@@ -218,7 +221,7 @@ def test_a_tela_LE_o_interruptor_antes_de_disparar_a_ia(arvore, tela):
     inicio = _metodo(_classe(arvore, tela), "_start_ia_process")
 
     assert _le_o_interruptor(inicio), (
-        f"{tela}._start_ia_process não chama var_processar_completos.get() -- "
+        f"{tela}._start_ia_process não chama switch_completos.isChecked() -- "
         "o interruptor da tela voltou a ser decorativo"
     )
 

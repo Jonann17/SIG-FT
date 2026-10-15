@@ -6,7 +6,7 @@ instalada) e o workflow de Release (o corpo do Release no GitHub). Escrever as
 duas a mao e garantir que divirjam no primeiro dia corrido -- e a divergencia
 aparece justamente para o usuario, que le uma coisa no app e outra no GitHub.
 
-Tudo aqui e funcao pura sobre texto: sem rede, sem tkinter, sem arquivo.
+Tudo aqui e funcao pura sobre texto: sem rede, sem interface, sem arquivo.
 """
 import pathlib
 
@@ -185,3 +185,28 @@ def test_a_versao_do_build_tem_bloco_no_CHANGELOG():
         f"tem bloco para ela. Acrescente '## {_build_info.VERSAO} - <data>' "
         f"ANTES de criar a tag."
     )
+
+
+# [2026-10-15] O caminho do CHANGELOG no `.exe` saía do `resource_path` da
+# interface antiga; agora sai do `sys._MEIPASS` direto, sem importar interface.
+def test_changelog_dentro_do_executavel_vem_da_raiz_do_bundle(tmp_path, monkeypatch):
+    import sys
+
+    from sigft.core import novidades as mod
+
+    (tmp_path / "CHANGELOG.md").write_text("## 1.0.0\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+
+    assert mod.caminho_changelog() == str(tmp_path / "CHANGELOG.md")
+
+
+def test_changelog_rodando_do_codigo_e_o_da_raiz_do_projeto(monkeypatch):
+    import os
+    import sys
+
+    from sigft.core import novidades as mod
+
+    monkeypatch.delattr(sys, "_MEIPASS", raising=False)
+    raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    assert mod.caminho_changelog() == os.path.join(raiz, "CHANGELOG.md")

@@ -132,7 +132,7 @@ def resolver_config(config_path, nome_padrao: str):
     constante crua como default, o que **anulava** a resolução tardia:
     `open("user_prefs.json", "w")` grava relativo ao diretório de trabalho, que
     no app instalado é `Program Files`, onde usuário comum não escreve. O
-    `PermissionError` subia pelo callback do tkinter e sumia no stderr (o
+    `PermissionError` subia pelo callback do Tk e sumia no stderr (o
     `.exe` é `console=False`) — então escolher um arquivo "não fazia nada", em
     TODOS os módulos.
 

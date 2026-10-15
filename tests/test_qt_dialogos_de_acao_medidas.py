@@ -1,5 +1,5 @@
 """Medidas da janela de Excel travado (RetryLockDialog) contra
-as do CustomTkinter (sigft/app/widgets/dialogs.py), medidas com winfo_* numa
+as da interface antiga (sigft/app/widgets/dialogs.py), medidas com winfo_* numa
 captura Xvfb (capturas/e4.45): lá o texto vem com pady=20 e `expand=True` e os
 botões com pady=(0, 20). A pausa de login tem o teste dela em
 `test_qt_tela_copia_fichas.py::test_medidas_da_pausa_de_login`."""
@@ -38,7 +38,7 @@ def test_excel_travado(qt_interface, qtbot):
 
 
 def test_tentar_novamente_com_o_hover_do_tema(qt_interface, qtbot):
-    # CTk: fg_color=primary SEM hover_color -> o hover é o do tema (#14375E),
+    # interface antiga: fg_color=primary SEM hover_color -> o hover é o do tema (#14375E),
     # não o primary_hover da variante "primario".
     from sigft.app import theme
 

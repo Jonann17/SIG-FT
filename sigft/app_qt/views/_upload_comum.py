@@ -1,6 +1,6 @@
 """O que as telas "Upload de Condições" e "Upload Características Técnicas" têm em comum.
 
-As duas telas CTk (`sigft/app/views/upload_conditions.py` e
+As duas telas antigas (`sigft/app/views/upload_conditions.py` e
 `upload_tech_specs.py`) são quase gêmeas: quadro "Configuração Global" com o
 _STATUS_PMIB e o interruptor "Forçar processamento", abas IA × Robô Web, a fila
 de fichas numa área rolável, a linha INICIAR/PARAR e a aba do robô com os três
@@ -21,7 +21,7 @@ from sigft.app_qt.widgets.module_frame import ModuleFrame
 ABA_WEB = "Robô Web (Preencher Portal)"
 URL_PORTAL = "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
 TEXTO_NAO_SELECIONADO = "Não selecionado"
-# O tk.Listbox da fila tem as 10 linhas padrão: 200 px medidos na tela CTk.
+# O tk.Listbox da fila tem as 10 linhas padrão: 200 px medidos na tela antiga.
 ALTURA_LISTA_FILA = 200
 # Um robô por vez: o "Continuar" do fim da IA (ou uma seleção antiga
 # confirmada agora) não sobe um segundo navegador com o primeiro rodando.
@@ -131,7 +131,7 @@ class TelaDeUpload(ModuleFrame):
         """O CTkScrollableFrame transparente da aba 1; devolve o layout de dentro.
 
         Com a barra SEMPRE à vista, como lá: na Condições, que não tem o que
-        rolar, o cartão das fichas saía 16 px mais largo que os 868 do CTk. E o
+        rolar, o cartão das fichas saía 16 px mais largo que os 868 da interface antiga. E o
         conteúdo é CORTADO 6 px antes da borda da aba: sem o recorte, o topo dos
         botões aparecia na beirada de baixo.
         """
@@ -164,7 +164,7 @@ class TelaDeUpload(ModuleFrame):
     def _linha_acoes_ia(self) -> QHBoxLayout:
         """INICIAR (pack expand=True: centrado no que sobra) e PARAR encostado à
         direita; os dois com padx=5, dentro do padx=10 da linha."""
-        # width=200 lá, mas o CTkButton cresce até caber o texto (202 no CTk).
+        # width=200 lá, mas o CTkButton cresce até caber o texto (202 na interface antiga).
         self.btn_ia = blocos.botao("INICIAR PROCESSAMENTO IA", largura_minima=200, altura=40,
                                    tamanho_fonte=13, negrito=True, cor_fundo=theme.COLORS["primary"])
         self.btn_ia.clicked.connect(self._start_ia_process)

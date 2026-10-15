@@ -198,8 +198,8 @@ def test_embutida_escreve_no_console_do_pai(qt_interface, qtbot):
     qtbot.waitUntil(lambda: "oi" in console.toPlainText(), timeout=2000)
 
 
-def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
-    # Medidas da tela antiga (CustomTkinter, 1280x850, sondadas com winfo_*):
+def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
+    # Medidas da tela antiga (interface antiga, 1280x850, sondadas com winfo_*):
     # cartão 20 px abaixo do conteúdo; entre as peças, a SOMA dos pady vizinhos
     # (5, 30, 25, 5, 30, 20) e 20 px nas pontas; campo do PMIB 250x28; botão
     # 350x50; seletor 220x28. Linha do PMIB e seletor centrados no cartão.

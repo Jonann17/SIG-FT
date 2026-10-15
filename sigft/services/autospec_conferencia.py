@@ -23,9 +23,9 @@ usa só o que ele aprovou.
 O QUE ESTE MÓDULO É, E O QUE NÃO É
 ------------------------------------------------------------------------
 É a lógica: acumular, agrupar, e reprocessar com a seleção. **Não sabe nada
-de tkinter** — devolve estruturas de dados e um generator de linhas de log,
+de Tk** — devolve estruturas de dados e um generator de linhas de log,
 igual ao `process_queue`. Isso é o princípio nº 2 da arquitetura ("UI nunca
-contém regra de negócio; serviço nunca importa tkinter") e é o que permite
+contém regra de negócio; serviço nunca importa Tk") e é o que permite
 testar a conferência inteira sem abrir janela.
 
 A tela correspondente vive em `frontend.py`, `class ModuloAutoSpec` — ver

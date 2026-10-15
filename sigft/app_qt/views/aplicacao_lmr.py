@@ -1,6 +1,6 @@
 """Seção "Aplicação LMR" na interface Qt: Upload e Exclusão em abas, UM console.
 
-Mesma seção de `sigft/app/views/aplicacao_lmr.py` (pedido de 2026-08-28): duas
+Mesma seção da interface antiga (`sigft/app/views/aplicacao_lmr.py`, removida em 2026-10-15) (pedido de 2026-08-28): duas
 operações sobre a MESMA aba do portal e a MESMA coluna da planilha ficam juntas,
 e o log fica num lugar só -- com um console, a ordem dos eventos é a ordem na
 tela. Abre sempre na aba de Upload: a outra APAGA.
@@ -18,7 +18,7 @@ from sigft.app_qt.widgets.module_frame import ModuleFrame
 ABA_UPLOAD = "Upload de Aplicações"
 ABA_EXCLUSAO = "Exclusão de Aplicações"
 
-# A área rolável de cada aba, medida na captura do CTk: o CTkScrollableFrame
+# A área rolável de cada aba, medida na captura da interface antiga: o CTkScrollableFrame
 # põe o canvas a 6 px (corner_radius) da borda do quadro da aba -- que o `Abas`
 # já recua 6 do quadro do Tabview. À direita, 1 + a faixa de 16 px onde o
 # CTkScrollableFrame desenha a barra, SEMPRE visível lá. Aqui a faixa fica vazia

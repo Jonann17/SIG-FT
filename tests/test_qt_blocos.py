@@ -172,7 +172,7 @@ def test_area_rolavel_sem_o_parametro_continua_igual(com_folha, qtbot):
 
 # --- polimento B1/B4: folha reconstruída da base e botões sem foco ----------------
 def test_pintar_reconstroi_a_folha_a_partir_da_base(com_folha, qtbot):
-    # O `configure(fg_color=...)` do CTk: trocar a cor de novo não acumula regra.
+    # O `configure(fg_color=...)` da interface antiga: trocar a cor de novo não acumula regra.
     b = blocos.botao("Selecionar", variante="cinza", tamanho_fonte=12)
     qtbot.addWidget(b)
     base = b.styleSheet()

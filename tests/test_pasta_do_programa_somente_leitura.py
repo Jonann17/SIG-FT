@@ -31,7 +31,7 @@ resolucao**: `open("user_prefs.json", "w")` grava relativo ao DIRETORIO DE
 TRABALHO, que no app instalado e `C:\\Program Files\\SIG-FT Itaipu\\`.
 
 Sob `Program Files` um processo sem elevacao nao escreve: `PermissionError`.
-A excecao sobe pelo callback do tkinter, que a manda para o stderr -- e o
+A excecao sobe pelo callback do Tk, que a manda para o stderr -- e o
 `SIG-FT.spec` usa `console=False`, entao ela sumia. Para o usuario, "nao
 acontece nada".
 
@@ -394,7 +394,7 @@ def test_o_botao_da_pasta_de_logs_abre_a_pasta_de_DADOS(instalado, monkeypatch):
     """O botão do painel "Gastos de IA" abria "logs" relativo: a pasta que o
     Explorer mostrava era a do programa, onde nada chega a ser gravado."""
     _programa, dados = instalado
-    from sigft.app.views import home
+    from sigft.app_qt.views import home
 
     abertas = []
     monkeypatch.setattr(home.plataforma, "abrir_pasta_criando_se_preciso", abertas.append)

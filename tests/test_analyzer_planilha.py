@@ -585,61 +585,14 @@ def test_callback_manual_desc_e_chamado_quando_o_pmib_nao_esta_na_planilha():
 
 
 # =============================================================================
-# I. A caixa de diálogo da descrição manual (tela — por AST)
+# I. A caixa de diálogo da descrição manual (tela)
 # =============================================================================
-import ast
-import pathlib
-
-# [CP 7.3] A tela saiu do `frontend.py` para o seu proprio arquivo.
-FRONTEND = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app" / "views" / "analyzer.py"
-
-
-def _classe_analyzer():
-    arvore = ast.parse(FRONTEND.read_text(encoding="utf-8"))
-    for no in ast.walk(arvore):
-        if isinstance(no, ast.ClassDef) and no.name == "ModuloAnalyzer":
-            return no
-    pytest.fail("class ModuloAnalyzer sumiu de sigft/app/views/analyzer.py")
-
-
-def _metodo_analyzer(nome):
-    for no in _classe_analyzer().body:
-        if isinstance(no, ast.FunctionDef) and no.name == nome:
-            return no
-    pytest.fail(f"metodo {nome} nao existe em ModuloAnalyzer")
-
-
-def test_a_tela_passa_um_callback_de_VERDADE_e_nao_um_lambda_morto():
-    """Era `callback_manual_desc=lambda f, c: None` — o parâmetro existia, era
-    chamado, e nunca fazia nada."""
-    metodo = _metodo_analyzer("_run_backend")
-    assert "_perguntar_descricao" in ast.dump(metodo)
-    # Nenhum lambda que devolve `None` fixo continua sendo passado ali. Olha
-    # a ÁRVORE do método, e não o texto do arquivo: a string
-    # "lambda f, c: None" ainda aparece no docstring de
-    # `_perguntar_descricao`, contando de onde isto veio.
-    for no in ast.walk(metodo):
-        if isinstance(no, ast.Lambda):
-            corpo = no.body
-            assert not (isinstance(corpo, ast.Constant) and corpo.value is None), \
-                "voltou o callback morto"
-
-
-def test_o_dialogo_abre_na_THREAD_DA_UI_e_nao_na_do_processamento():
-    """`_run_backend` roda em `threading.Thread`. Abrir janela tkinter de
-    fora da thread principal é o caminho curto para travar o app. O projeto
-    já tem o padrão certo em `_worker_web`: `self.after(0, ...)` para abrir e
-    um `Event` para esperar."""
-    fonte = ast.dump(_metodo_analyzer("_perguntar_descricao"))
-    assert "'after'" in fonte or '"after"' in fonte, "a janela precisa abrir via self.after"
-    assert "Event" in fonte, "a thread do backend precisa esperar a resposta"
-
-
-def test_cancelar_para_de_perguntar_no_resto_do_lote():
-    """Um lote de 50 fichas com PMIB desconhecido não pode virar 50 caixas de
-    diálogo obrigatórias. Cancelar é a saída."""
-    fonte = ast.dump(_metodo_analyzer("_perguntar_descricao"))
-    assert "_parar_de_perguntar_desc" in fonte
+# [2026-10-15] Os três testes daqui liam a tela da interface antiga, que saiu do
+# SIG-FT. Na Qt, rodando a tela, em `tests/test_qt_tela_analyzer.py`: o
+# callback de verdade (`callback_manual_desc == tela._perguntar_descricao`), o
+# diálogo aberto na thread da interface (`pedir_texto`, de `DialogosDeEspera`)
+# e o cancelar que para de perguntar no resto do lote
+# (`test_pergunta_descricao_e_cancelar_para_de_perguntar`).
 
 
 # =============================================================================

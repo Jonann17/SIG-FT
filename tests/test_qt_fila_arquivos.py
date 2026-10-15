@@ -1,4 +1,4 @@
-"""`FileQueueList` da interface Qt: mesma API do CustomTkinter (E3.1)."""
+"""`FileQueueList` da interface Qt: mesma API da interface antiga (E3.1)."""
 import pytest
 
 from sigft.app import theme
@@ -34,7 +34,7 @@ def test_adicionar_sem_repetir_e_contador(qt_interface, qtbot):
     fila.botao_adicionar.click()
     assert fila.arquivos == ["/a/F1.xlsx", "/a/F2.xlsx", "/b/F3.xlsx"]
     assert fila.label_contador.text() == "Planilhas PMIB Selecionadas (3)"
-    # o aviso conta os ESCOLHIDOS (2), não os novos -- como no CTk
+    # o aviso conta os ESCOLHIDOS (2), não os novos -- como na interface antiga
     assert avisos == [("adicionou", 2, 2), ("adicionou", 2, 3)]
     assert fila.listbox.item(0).text() == estilo.mono(pickers.PREFIXO_ITEM + "F1.xlsx")
 
@@ -83,7 +83,7 @@ def test_selecao_estendida_e_cores_da_lista(qt_interface, qtbot):
     assert fila.listbox.font().pointSize() == 11
 
 
-def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot, folha_do_app):
+def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot, folha_do_app):
     # Botões 140x28 (CTkButton padrão) empilhados com pady=5; coluna à direita
     # com padx=(10, 0); lista com padx=(5, 0) e pady=5.
     fila, _ = _fila(qtbot, [])

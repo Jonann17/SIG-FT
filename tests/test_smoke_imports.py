@@ -29,7 +29,7 @@ arquivo, que:
      chamadas — ex. `pandas.isna` — se comportem de verdade).
 
 `frontend.py` FICA DE FORA deste smoke de importação: ele importa
-`customtkinter`/`tkinter` no topo do arquivo e, mais importante, o bloco
+interface antiga/Tk no topo do arquivo e, mais importante, o bloco
 `if __name__ == "__main__":` no fim do arquivo cria uma `SplashScreen`
 (janela real) — não há como isolar isso com stub de módulo, e o ambiente de
 teste não tem display. `frontend.py` continua coberto pela verificação de

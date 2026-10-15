@@ -93,3 +93,58 @@ def test_backend_pedido_de_thread_de_fundo_avisa_na_thread_da_interface(
     assert worker.ident != chamadas[0][0]
     assert "sem xlwings" in chamadas[0][1]
     qtbot.waitUntil(lambda: "sem xlwings" in t.console.toPlainText(), timeout=2000)
+
+
+# =============================================================================
+# Portados de `tests/test_app_widgets.py` (o esqueleto de tela da interface
+# antiga, que saiu em 2026-10-15): o contrato do `ModuleFrame`.
+# =============================================================================
+
+class TelaQueConta(ModuleFrame):
+    def __init__(self, **kwargs):
+        self.construiu = 0
+        super().__init__(titulo="Título", **kwargs)
+
+    def _build_ui(self):
+        self.construiu += 1
+
+
+def test_build_ui_e_chamado_uma_vez_e_construir_false_adia(qt_interface, qtbot):
+    tela = TelaQueConta()
+    qtbot.addWidget(tela)
+    assert tela.construiu == 1
+    adiada = TelaQueConta(construir=False)
+    qtbot.addWidget(adiada)
+    assert adiada.construiu == 0
+    adiada._build_ui()
+    assert adiada.construiu == 1
+
+
+def test_subclasse_sem_build_ui_falha_com_mensagem_util(qt_interface):
+    import pytest
+
+    class TelaIncompleta(ModuleFrame):
+        pass
+
+    with pytest.raises(NotImplementedError, match="TelaIncompleta"):
+        TelaIncompleta(titulo="x")
+
+
+def test_cor_do_titulo_pode_ser_trocada_e_controller_fica_acessivel(qt_interface, qtbot):
+    """O `ModuloApagarLMR` usa vermelho -- é ação destrutiva."""
+    from sigft.app import theme
+
+    controlador = object()
+    tela = TelaQueConta(cor_titulo=theme.COLORS["danger"], controller=controlador)
+    qtbot.addWidget(tela)
+    assert theme.COLORS["danger"] in tela.label_titulo.styleSheet()
+    assert tela.controller is controlador
+
+
+def test_log_da_tela_delega_ao_console_com_o_protocolo_completo(qt_interface, qtbot):
+    tela = TelaQueConta()
+    qtbot.addWidget(tela)
+    tela.log("pela tela")
+    tela.log("msg", nivel="error", contexto={"x": 1})
+    qtbot.waitUntil(lambda: tela.console.blockCount() >= 2, timeout=2000)
+    assert tela.console.toPlainText().splitlines() == ["> pela tela", "> msg"]

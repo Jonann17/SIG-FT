@@ -2,7 +2,7 @@ r"""A escolha de PDM em duas passadas: as regras puras (2026-10-08).
 
 Spec: docs/superpowers/specs/2026-10-08-escolha-de-pdm-em-duas-passadas-design.md
 
-Este módulo não chama IA e não conhece tkinter nem pandas: recebe listas e
+Este módulo não chama IA e não conhece Tk nem pandas: recebe listas e
 dicionários e devolve listas e dicionários. Quem chama a IA é o
 `GeminiCategorizer` (`services/cria_fichas.py`); quem mostra é a tela.
 """

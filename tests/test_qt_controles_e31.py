@@ -1,4 +1,4 @@
-"""Controles do CustomTkinter que o Qt não tem (E3.1): abas (CTkTabview), área
+"""Controles da interface antiga que o Qt não tem (E3.1): abas (CTkTabview), área
 rolável (CTkScrollableFrame), barra de progresso, slider, e a folha global de
 rádio, lista crua (tk.Listbox) e tabela (ttk.Treeview).
 
@@ -62,7 +62,7 @@ def test_abas_add_tab_set_get_e_aviso(qt_interface, qtbot):
 
 
 def test_abas_geometria_do_ctktabview(qt_interface, qtbot, folha_do_app):
-    # Medido na captura: barra de 27 px (26 do CTk + 1 de arredondamento) a 10 px do topo, centrada; o quadro
+    # Medido na captura: barra de 27 px (26 da interface antiga + 1 de arredondamento) a 10 px do topo, centrada; o quadro
     # começa 18 px abaixo do topo (a barra entra 18 px nele); o conteúdo da aba
     # começa em y=43 e x=6 (canto de 6 px). Cada botão: texto + 14 px.
     abas = Abas()
@@ -75,8 +75,8 @@ def test_abas_geometria_do_ctktabview(qt_interface, qtbot, folha_do_app):
     assert abs((barra.x() + barra.width() / 2) - abas.width() / 2) <= 1
     assert quadro.y() == 18 and quadro.height() == 200 - 18 and quadro.width() == 420
     topo = aba.mapTo(abas, aba.rect().topLeft())
-    assert (topo.x(), topo.y()) == (6, 43)  # winfo no CTk: 43
-    assert aba.height() == 200 - 43 - 6  # winfo no CTk: 151
+    assert (topo.x(), topo.y()) == (6, 43)  # winfo na interface antiga: 43
+    assert aba.height() == 200 - 43 - 6  # winfo na interface antiga: 151
     b = abas.botoes["Robô Web"]
     assert b.width() == b.fontMetrics().horizontalAdvance("Robô Web") + 14
     assert barra.width() == sum(x.width() for x in abas.botoes.values())
@@ -143,16 +143,16 @@ def test_barra_progresso_do_ctkprogressbar(qt_interface, qtbot):
     folha = barra.styleSheet()
     assert theme.COLORS["primary"] in folha and estilo.TRILHO_CTK in folha
     assert "border-radius: 6px" in folha  # metade da altura: corner_radius=1000
-    # set(0.4) do CTk numa barra de 200 x 8: o cheio termina em 8 + 0.4 * 192 = 84,8
+    # set(0.4) da interface antiga numa barra de 200 x 8: o cheio termina em 8 + 0.4 * 192 = 84,8
     # (medido: 384 numa barra em x=300), não em 80.
-    ctk = blocos.barra_progresso(largura=200)
-    qtbot.addWidget(ctk)
-    blocos.definir_progresso(ctk, 0.4)
-    assert ctk.value() == 424
-    blocos.definir_progresso(ctk, 0)
-    assert ctk.value() == 40  # o ponto de 8 px que o CTk mostra em zero
-    blocos.definir_progresso(ctk, 1.5)
-    assert ctk.value() == 1000
+    curta = blocos.barra_progresso(largura=200)
+    qtbot.addWidget(curta)
+    blocos.definir_progresso(curta, 0.4)
+    assert curta.value() == 424
+    blocos.definir_progresso(curta, 0)
+    assert curta.value() == 40  # o ponto de 8 px que a interface antiga mostrava em zero
+    blocos.definir_progresso(curta, 1.5)
+    assert curta.value() == 1000
     padrao = blocos.barra_progresso()
     qtbot.addWidget(padrao)
     assert padrao.height() == 8 and estilo.AZUL_CTK in padrao.styleSheet()
@@ -265,7 +265,7 @@ def test_area_rolavel_nao_apaga_o_fundo_dos_filhos(qt_interface, qtbot, folha_do
     assert isinstance(imagem, QImage)
 
 
-# --- polimento A5: rádio com a largura mínima do CTk e abas com a altura da escolhida ---
+# --- polimento A5: rádio com a largura mínima da interface antiga e abas com a altura da escolhida ---
 
 def _em_linha(qtbot, *widgets):
     from PySide6.QtWidgets import QHBoxLayout

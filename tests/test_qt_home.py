@@ -46,7 +46,7 @@ def test_canal_de_testes_lembra_a_escolha(qt_interface, qtbot, monkeypatch):
 
 
 def test_titulo_do_card_fica_no_topo_quando_o_vizinho_e_mais_alto(qt_interface, qtbot):
-    # No CTk (grid sticky="nsew" + pack no topo) a sobra do card mais baixo da
+    # Na interface antiga (grid sticky="nsew" + pack no topo) a sobra do card mais baixo da
     # linha fica EMBAIXO; o título não desce para o meio do card.
     from PySide6.QtWidgets import QLabel
 

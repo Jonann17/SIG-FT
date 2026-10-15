@@ -1,11 +1,11 @@
 """Tela "AutoSpec AI" na interface Qt: comportamento com o serviço (AutoSpecCore),
 a IA e a web falsos, a seção de conferência de documentos, e as medidas contra o
-CustomTkinter.
+interface antiga.
 
 A tela é da frente do Rafael: a lógica fica em `sigft/services/autospec.py` e
 `autospec_conferencia.py` (intocados); aqui só se prova a fiação da tela. Os
 invariantes que `tests/test_autospec_conferencia_tela.py` prova por AST na tela
-CTk são provados aqui RODANDO a tela (ver os testes marcados "invariante").
+interface antiga são provados aqui RODANDO a tela (ver os testes marcados "invariante").
 """
 import threading
 from types import SimpleNamespace
@@ -810,8 +810,8 @@ def _r(t, w):
     return (p.x(), p.y(), w.width(), w.height())
 
 
-def test_medidas_iguais_as_do_customtkinter(tela_medida):
-    # Tela CTk 1280x850 (winfo_*), x relativo à área da tela (a barra lateral
+def test_medidas_iguais_as_do_interface_antiga(tela_medida):
+    # Tela antiga 1280x850 (winfo_*), x relativo à área da tela (a barra lateral
     # tem 277 px). Header (40, 30); quadro rolável em (40, 79) 923x601 com o
     # conteúdo recuado 6 (900 de largura); console de 120 em y=700.
     t = tela_medida
@@ -886,7 +886,7 @@ def test_salvar_e_importar_nao_encolhem_abaixo_do_pedido(tela_medida):
 
 
 def test_medidas_das_linhas_da_fila_e_da_conferencia(tela_medida, qtbot):
-    # CTk: linha da fila 2 abaixo do topo do quadro interno (462 + 2), rótulo com
+    # interface antiga: linha da fila 2 abaixo do topo do quadro interno (462 + 2), rótulo com
     # padx 5, "X" 30x25 a 5 da barra; conferência: cabeçalho a (6, 8) do quadro
     # interno (h28), linhas de 24 com a caixa de 25 e o link de 22 (810).
     t = tela_medida

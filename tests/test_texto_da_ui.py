@@ -50,10 +50,9 @@ FORA_DO_RECORTE = {
     "sigft/services/autospec_conferencia.py",
     "sigft/core/web/navegador.py",
     "sigft/core/web/robots.py",
-    "sigft/app/views/autospec.py",
-    # A mesma tela na interface Qt (E4.10, migração PySide6): leva os textos da
-    # tela CTk acima, que são do Rafael, sem mudar uma letra. Tirar o travessão
-    # delas é decisão dele, nas duas telas juntas.
+    # A tela do AutoSpec (a Qt, desde 2026-10-15 a única): leva os textos da
+    # tela da interface antiga, que são do Rafael, sem mudar uma letra. Tirar o
+    # travessão deles é decisão dele.
     "sigft/app_qt/views/autospec.py",
     "sigft/core/llm/prompts.py",
 }

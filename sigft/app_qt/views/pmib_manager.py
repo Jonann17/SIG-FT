@@ -1,6 +1,6 @@
 """Tela "Gestão de Sobressalentes" (PMIB Manager) na interface Qt.
 
-Mesma tela de `sigft/app/views/pmib_manager.py`: varre a Pasta Raiz, cruza
+Mesma tela da interface antiga (`sigft/app/views/pmib_manager.py`, removida em 2026-10-15): varre a Pasta Raiz, cruza
 com a base do Aconex e a planilha de mapeamento e mantém os `_STATUS_PMIB` em
 dia; gera o painel HTML e aplica as autorizações de entrega de Itaipu.
 

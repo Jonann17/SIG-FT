@@ -35,10 +35,10 @@ def test_tela_bloqueada_nao_abre_e_botao_desabilitado(app_qt):
     assert not app_qt.botoes_menu["CorrecaoPDM"].isEnabled()
 
 
-def test_barra_lateral_tem_a_largura_total_da_do_customtkinter(qt_interface, app_qt, qtbot):
+def test_barra_lateral_tem_a_largura_total_da_do_interface_antiga(qt_interface, app_qt, qtbot):
     # CTkScrollableFrame(width=260) + barra de rolagem (16) + 1 de borda: o
-    # conteúdo começa em x=277 na captura do CTk. Os botões ficam com os 246 de
-    # antes: os 7 px a mais são a faixa (vazia) onde o CTk desenha a rolagem.
+    # conteúdo começa em x=277 na captura da interface antiga. Os botões ficam com os 246 de
+    # antes: os 7 px a mais são a faixa (vazia) onde a interface antiga desenha a rolagem.
     from sigft.app_qt import estilo
 
     anterior = qt_interface.styleSheet()
@@ -135,7 +135,7 @@ def test_smoke_nao_pergunta_nada_mesmo_com_thread_comum_viva(qt_interface, monke
 
 
 def test_main_prepara_dados_e_navegador_antes_da_splash(qt_interface, monkeypatch, capsys):
-    """Mesmos passos de partida do app CustomTkinter, na mesma ordem."""
+    """Mesmos passos de partida do app antigo, na mesma ordem."""
     from sigft.core import dados_usuario, instancia
     from sigft.core.rpa import navegador
 

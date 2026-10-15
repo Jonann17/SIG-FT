@@ -1,13 +1,14 @@
 r"""A tela do Cria Fichas não tem mais a regra da revisão (2026-10-08).
 
-Lida por AST: as telas não podem ser importadas neste ambiente.
+Lida por AST (a tela Qt, `sigft/app_qt/views/cria_fichas.py`, e as janelas
+de `sigft/app_qt/views/janelas.py`; a interface antiga saiu em 2026-10-15).
 """
 from __future__ import annotations
 
 import ast
 import pathlib
 
-TELA = pathlib.Path(__file__).resolve().parent.parent / "sigft" / "app" / "views" / "cria_fichas.py"
+TELA = pathlib.Path(__file__).resolve().parent.parent / "sigft" / "app_qt" / "views" / "cria_fichas.py"
 
 
 def _chamadas():

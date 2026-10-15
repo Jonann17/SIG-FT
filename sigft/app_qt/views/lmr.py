@@ -1,6 +1,6 @@
 """Aba "Upload de Aplicações" (Automação LMR) na interface Qt.
 
-Mesma tela de `sigft/app/views/lmr.py`. O que muda é só COMO o worker fala com
+Mesma tela da interface antiga (`sigft/app/views/lmr.py`, removida em 2026-10-15). O que muda é só COMO o worker fala com
 a pessoa: lá `callback_ask`/`callback_input` chamavam `messagebox`/`simpledialog`
 de dentro da thread do robô, e o fim do lote (e as falhas do pré-processamento)
 mexiam no botão pela thread; aqui as perguntas são `perguntar_sim_nao` e
@@ -289,7 +289,7 @@ class ModuloLMR(ModuleFrame):
         return valor
 
     def _perguntar_com_sim_padrao(self, titulo: str, mensagem: str) -> bool:
-        """O `callback_ask` do serviço: o `askyesno` do CTk tinha o "Sim" no
+        """O `callback_ask` do serviço: o `askyesno` da interface antiga tinha o "Sim" no
         Enter, e aqui a pergunta é "SIM = tentar este item de novo / NÃO =
         pular" -- nada foi enviado, então repetir é a resposta segura."""
         return self.perguntar_sim_nao(titulo, mensagem, padrao_sim=True)

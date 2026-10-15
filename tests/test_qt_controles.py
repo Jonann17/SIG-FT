@@ -1,7 +1,7 @@
 """Interruptor (CTkSwitch) e menu de opções (CTkOptionMenu) desenhados à mão.
 
-As medidas e cores vêm do tema dark-blue do CustomTkinter
-(customtkinter/assets/themes/dark-blue.json) e da captura da tela LMR de
+As medidas e cores vêm do tema dark-blue da interface antiga
+(interface antiga/assets/themes/dark-blue.json) e da captura da tela LMR de
 2026-10-08 (Xvfb, 1280x850).
 """
 from PySide6.QtCore import QPoint, Qt

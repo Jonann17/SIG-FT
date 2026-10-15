@@ -5,19 +5,18 @@ Fase 7). A regra da fase é **zero redesign**: os valores aqui são os que o
 `frontend.py` já usava, copiados sem alteração. Este módulo não inventa cor,
 não renomeia chave e não "melhora" espaçamento — ele só para de repetir.
 
-Por que este módulo NÃO importa `customtkinter`
------------------------------------------------
+Por que este módulo NÃO importa biblioteca gráfica
+--------------------------------------------------
 Só dados: dicionários e tuplas da stdlib. Isso é deliberado e vale tanto para
 o teste quanto para a produção:
 
-* dá para importar `sigft.app.theme` em QUALQUER ambiente — inclusive no
-  contêiner sem `customtkinter`, onde a suíte também roda (ver
-  `tests/conftest.py`);
-* mantém o princípio nº 2 da arquitetura (serviço nunca importa tkinter)
+* dá para importar `sigft.app.theme` em QUALQUER ambiente;
+* mantém o princípio nº 2 da arquitetura (serviço nunca importa interface)
   válido também para quem só quer consultar a paleta.
 
-Quem desenha widget importa `customtkinter`; quem só precisa da cor importa
-daqui.
+A interface Qt (`sigft/app_qt/estilo.py`) lê as cores daqui. (As fontes em
+tupla são o formato da interface antiga, que saiu em 2026-10-15; a Qt as
+converte.)
 """
 from __future__ import annotations
 
@@ -58,7 +57,7 @@ COR_TEXTO_APOIO_CLARO: str = "gray70"
 # =============================================================================
 # Fontes
 # =============================================================================
-# Tuplas no formato que o CustomTkinter aceita direto: (família, tamanho[, estilo]).
+# Tuplas no formato que a interface antiga aceita direto: (família, tamanho[, estilo]).
 FONTE_TITULO_MODULO: tuple = ("Roboto", 24, "bold")
 FONTE_SECAO: tuple = ("Roboto", 16, "bold")
 FONTE_SUBTITULO: tuple = ("Roboto", 16)

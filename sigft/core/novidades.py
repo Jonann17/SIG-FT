@@ -20,12 +20,13 @@ Formato esperado (o "Keep a Changelog" enxuto):
     - ...
 
 Fica em `core/` e não em `services/` porque não há regra de negócio nenhuma:
-é análise de texto pura, sem rede, sem tkinter e sem Excel. Testável direto.
+é análise de texto pura, sem rede, sem Tk e sem Excel. Testável direto.
 """
 from __future__ import annotations
 
 import os
 import re
+import sys
 from dataclasses import dataclass, field
 
 # "## 1.1.0 - 2026-10-01", "## v1.1.0 - 2026-10-01" ou só "## 1.1.0".
@@ -113,12 +114,9 @@ def caminho_changelog() -> str:
     """
     candidatos = []
 
-    try:
-        from sigft.app.main import resource_path
-
-        candidatos.append(resource_path("CHANGELOG.md"))
-    except Exception:  # noqa: BLE001 — sem tkinter/PIL (testes, CI) segue no 2º
-        pass
+    # Dentro do executável: a raiz do bundle (`sys._MEIPASS`).
+    if (bundle := getattr(sys, "_MEIPASS", None)):
+        candidatos.append(os.path.join(bundle, "CHANGELOG.md"))
 
     candidatos.append(os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),

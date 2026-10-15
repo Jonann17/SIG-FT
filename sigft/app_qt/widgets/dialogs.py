@@ -75,7 +75,7 @@ class _DialogoDeAcaoManual(SoltaAoFechar, QDialog):
         self.setFixedSize(largura, altura)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self._decidido = False
-        # Medidas do CTk (E4.4/E4.5, capturas/e4.45): o texto vai com
+        # Medidas da interface antiga (E4.4/E4.5, capturas/e4.45): o texto vai com
         # pady=`pady_texto` e `expand=True` (centrado na sobra acima dos
         # botões), padx=20 e wraplength=400; os botões com pady=(0, 20).
         self.layout_principal = QVBoxLayout(self)

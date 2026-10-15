@@ -52,7 +52,7 @@ def test_botao_fechar(qt_interface, qtbot, folha_do_app):
     assert not janela.isVisible()
 
 
-def test_medidas_do_customtkinter(qt_interface, qtbot, folha_do_app):
+def test_medidas_do_interface_antiga(qt_interface, qtbot, folha_do_app):
     # CTkScrollableFrame com padx=10/pady=10; botão Fechar 120 de largura com
     # pady=(0, 12), centrado.
     janela = JanelaPainel(None, titulo="x", montar=lambda p: None)

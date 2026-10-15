@@ -32,20 +32,21 @@ import pytest
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 
 # [CP 7.3] Esta rede nasceu para o `frontend.py`, quando as 12 telas moravam
-# lá. Agora o `frontend.py` é um shim de 90 linhas e a UI vive em
-# `sigft/app/` -- se o guard continuasse olhando só o shim, ele passaria a
-# vigiar o arquivo onde já não há risco nenhum, e largaria justamente os
-# arquivos que são editados. Foi o que aconteceu de fato: o `undefined name
-# 'e'` sumiu do frontend porque mudou de casa junto com a tela dona dele.
+# lá. Depois o `frontend.py` virou um lançador e a UI foi para um pacote -- se
+# o guard continuasse olhando só ele, passaria a vigiar o arquivo onde já não
+# há risco nenhum, e largaria justamente os arquivos que são editados. Foi o
+# que aconteceu de fato: o `undefined name 'e'` sumiu do frontend porque mudou
+# de casa junto com a tela dona dele. [2026-10-15] A UI é a Qt
+# (`sigft/app_qt/`), mais as peças sem biblioteca gráfica de `sigft/app/`.
 ARQUIVOS_VIGIADOS = [RAIZ / "frontend.py"] + sorted(
-    (RAIZ / "sigft" / "app").rglob("*.py")
-)
+    (RAIZ / "sigft" / "app_qt").rglob("*.py")
+) + sorted((RAIZ / "sigft" / "app").rglob("*.py"))
 
 # A lista de dívidas conhecidas está VAZIA desde 2026-08-27 (CP 8.1), e essa é
 # a forma certa dela ficar.
 #
 # Havia um item: um `except Exception as e:` cujo `e` era usado dentro de um
-# `lambda` passado ao `after()` do tkinter. O Python apaga o nome ao sair do
+# `lambda` passado ao `after()` do Tk. O Python apaga o nome ao sair do
 # `except`, e o lambda só roda depois -- então a caixa que deveria mostrar a
 # causa da falha levantava `NameError`, e o usuário perdia justamente a
 # mensagem que explicaria o que deu errado.

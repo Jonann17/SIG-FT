@@ -1,6 +1,6 @@
 """O esqueleto de uma tela: cabeçalho + conteúdo + (progresso) + console.
 
-Mesma ideia e mesmos parâmetros do `ModuleFrame` CustomTkinter, mais duas
+Mesma ideia e mesmos parâmetros do `ModuleFrame` interface antiga, mais duas
 coisas que lá eram disciplina e aqui são mecanismo:
 
 * `backend(nome)`: um backend que não carregou vira aviso com o motivo, nunca
@@ -23,7 +23,7 @@ from sigft.app_qt import interface
 from sigft.app_qt.widgets.console import ConsoleFrame
 from sigft.app_qt.widgets.espera import DialogosDeEspera
 
-# O padx/pady=20 com que o `show_frame` do CustomTkinter põe cada tela na janela.
+# O padx/pady=20 com que o `show_frame` da interface antiga põe cada tela na janela.
 MARGEM_DA_TELA = 20
 
 
@@ -55,7 +55,7 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         self.controller = controller
         self.embutida = embutida
         raiz = QVBoxLayout(self)
-        # As medidas do CustomTkinter somadas: `show_frame` põe a tela inteira
+        # As medidas da interface antiga somadas: `show_frame` põe a tela inteira
         # com padx=20/pady=20 (sigft/app/main.py), e o `ModuleFrame` de lá põe
         # header, conteúdo e console cada um com padx=PADDING_X/pady=PADDING_Y
         # (sigft/app/widgets/module_frame.py). O pady de dois vizinhos soma:

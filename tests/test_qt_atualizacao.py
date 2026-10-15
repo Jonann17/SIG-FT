@@ -1,6 +1,6 @@
 """A atualizacao automatica na interface Qt (`sigft/app_qt/atualizacao.py`).
 
-Espelho de `tests/test_atualizacao_na_abertura.py` (a interface CustomTkinter):
+Espelho de `tests/test_atualizacao_na_abertura.py` (a interface antiga):
 o mesmo comportamento -- a abertura pergunta calada, o botao "Atualizacoes"
 sempre responde, o aviso baixa, instala e so entao fecha o app -- com o canal
 thread -> interface do Qt (`interface.na_interface`). Rede e servico dublados:
@@ -632,7 +632,7 @@ def test_fechar_o_app_ENCERRA_o_processo(monkeypatch, raiz):
 
 
 # =============================================================================
-# E. Paridade visual com a JanelaAtualizacao do CustomTkinter
+# E. Paridade visual com a JanelaAtualizacao da interface antiga
 # =============================================================================
 
 @pytest.fixture
@@ -654,8 +654,8 @@ def _base(aviso, w):
     return _pos(aviso, w)[1] + w.height()
 
 
-def test_medidas_iguais_as_do_customtkinter(raiz, qtbot, sem_uac, com_estilo):
-    # Medidas da JanelaAtualizacao CTk (580x560, sondadas com winfo_* sob Xvfb):
+def test_medidas_iguais_as_do_interface_antiga(raiz, qtbot, sem_uac, com_estilo):
+    # Medidas da JanelaAtualizacao interface antiga (580x560, sondadas com winfo_* sob Xvfb):
     # titulo y=20; resumo y=52; notas (20, 126) 540 de largura; status 10 abaixo
     # das notas e 14 acima dos botoes; botoes 170x40 em (120, 500) e 150x40 em
     # (310, 500), 20 px da borda de baixo.
@@ -697,7 +697,7 @@ def test_medidas_com_o_aviso_do_UAC(monkeypatch, raiz, qtbot, com_estilo):
 
 
 def test_os_botoes_NUNCA_somem_com_mensagem_longa(monkeypatch, raiz, qtbot, com_estilo):
-    """Defeito visto no ensaio do CTk (2026-09-25): com o UAC e um erro de rede
+    """Defeito visto no ensaio da interface antiga (2026-09-25): com o UAC e um erro de rede
     longo, os botoes saiam da janela. Aqui quem encolhe e a caixa de notas."""
     monkeypatch.setattr(updater, "precisa_elevacao", lambda: True)
     aviso = _aviso(raiz, qtbot, disparar=lambda *a: None)
@@ -713,7 +713,7 @@ def test_os_botoes_NUNCA_somem_com_mensagem_longa(monkeypatch, raiz, qtbot, com_
 
 
 def test_aviso_fechado_e_apagado_e_nao_so_escondido(raiz, qtbot, sem_uac):
-    # Como o `destroy()` da janela CTk: fechado ("Agora não", "X" ou Esc), o
+    # Como o `destroy()` da janela antiga: fechado ("Agora não", "X" ou Esc), o
     # aviso é apagado -- antes ficava escondido, vivo, até o app fechar.
     from shiboken6 import isValid
 

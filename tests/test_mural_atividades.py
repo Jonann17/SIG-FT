@@ -1,6 +1,6 @@
 """A leitura do mural no mapeamento -- `services/mural_atividades.py`.
 
-Até a E5.1 morava nas duas Homes (CustomTkinter e Qt), linha a linha: o mesmo
+Até a E5.1 morava nas duas Homes (interface antiga e Qt), linha a linha: o mesmo
 bloco que já teve três defeitos reais (`ws.cell` levando 3,9 s, `data_inicio`
 lida em branco, as faixas listadas a mão). Agora as duas Homes DELEGAM para o
 serviço (`HomeView._ler_mural` / `_caminho_do_mapeamento`), e a regra se prova
@@ -158,7 +158,7 @@ def _home_falsa(caminho):
     return types.SimpleNamespace(_caminho_do_mapeamento=lambda: caminho)
 
 
-@pytest.mark.parametrize("modulo", ["sigft.app.views.home", "sigft.app_qt.views.home"])
+@pytest.mark.parametrize("modulo", ["sigft.app_qt.views.home"])
 def test_as_homes_delegam_a_leitura_ao_servico(modulo, monkeypatch):
     import importlib
 
@@ -206,7 +206,7 @@ def test_a_guarda_pega_os_jeitos_de_ler_a_planilha(fonte):
     assert importa or chamadas
 
 
-@pytest.mark.parametrize("modulo", ["sigft.app.views.home", "sigft.app_qt.views.home"])
+@pytest.mark.parametrize("modulo", ["sigft.app_qt.views.home"])
 def test_as_homes_nao_leem_a_planilha(modulo):
     """Regra de negócio fora da interface (CLAUDE.md, princípio 2): nenhuma das
     duas Homes abre planilha nem procura arquivo -- é tudo do serviço."""

@@ -1,6 +1,6 @@
 """Tela "Search PMIB" (Busca de Sobressalentes) na interface Qt.
 
-Mesma tela de `sigft/app/views/busca_pmib.py`: procura fichas numa árvore de
+Mesma tela da interface antiga (`sigft/app/views/busca_pmib.py`, removida em 2026-10-15): procura fichas numa árvore de
 pastas e mostra cada achado num cartão, com atalhos para abrir o arquivo e a
 pasta. O que muda é só COMO o worker fala com a interface: lá o botão voltava
 e a janela abria por `self.after` (disciplina); aqui o botão é de
@@ -59,7 +59,7 @@ def _botao_cinza(texto: str, largura: int) -> QPushButton:
     """O CTkButton #3A3A3A (hover #454545) que a tela escrevia à mão: a variante "cinza".
 
     Sem o padding de 14 da folha do app (regra própria, somada à do `blocos`):
-    o texto que passa da largura transborda centrado, como no CTk, em vez de
+    o texto que passa da largura transborda centrado, como na interface antiga, em vez de
     ser cortado pela margem ("Buscar Pasta" em 100 px, "Abrir Arquivo" em 120).
     """
     b = blocos.botao(texto, variante="cinza", largura=largura, altura=28)
@@ -231,7 +231,7 @@ class ModuloBuscaPMIB(ModuleFrame):
         # conteúdo só com o necessário (row 1, weight=0).
         super().__init__(parent, controller, titulo="Search PMIB (Buscador de Sobressalentes)",
                          peso_conteudo=0, altura_console=None)
-        # A tela antiga não é um ModuleFrame do CTk: tem grid próprio. Header
+        # A tela antiga não é um ModuleFrame da interface antiga: tem grid próprio. Header
         # pady=10, conteúdo pady=5, console pady=(15, 20) -- no grid cada linha
         # soma os dois lados: 15 entre header e conteúdo, 20 até o console e 20
         # embaixo (mais os 20 do `show_frame`).

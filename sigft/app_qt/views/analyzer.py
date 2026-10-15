@@ -1,6 +1,6 @@
 """Tela "Analyzer" (IA) na interface Qt.
 
-Mesma tela de `sigft/app/views/analyzer.py`: valida e pontua fichas técnicas
+Mesma tela da interface antiga (`sigft/app/views/analyzer.py`, removida em 2026-10-15): valida e pontua fichas técnicas
 com IA, separando as aprovadas das que voltam para o fornecedor, e gera o
 relatório de pendências em Excel.
 

@@ -221,65 +221,11 @@ def test_falha_na_ABERTURA_tambem_avisa_na_primeira_linha():
 
 
 # =============================================================================
-# A fiação da tela — por AST, porque `frontend.py` abre janela
+# A fiação da tela
 # =============================================================================
-# Mesma disciplina de `test_forcar_processamento_completo.py`: o defeito
-# clássico aqui é o interruptor existir e o valor nunca ser lido, e um teste
-# só de backend passaria feliz o tempo todo.
-import ast  # noqa: E402
-import pathlib  # noqa: E402
-
-# [CP 7.3] A tela saiu do `frontend.py` para o seu proprio arquivo.
-FRONTEND = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app" / "views" / "copia_fichas.py"
-
-
-@pytest.fixture(scope="module")
-def copia_fichas():
-    arvore = ast.parse(FRONTEND.read_text(encoding="utf-8"))
-    for no in ast.walk(arvore):
-        if isinstance(no, ast.ClassDef) and no.name == "ModuloCopiaFichas":
-            return no
-    pytest.fail("class ModuloCopiaFichas sumiu de sigft/app/views/copia_fichas.py")
-
-
-def _metodo(classe, nome):
-    for no in classe.body:
-        if isinstance(no, ast.FunctionDef) and no.name == nome:
-            return no
-    pytest.fail(f"método {nome} não existe em {classe.name}")
-
-
-def test_a_tela_LE_o_interruptor_de_auditoria(copia_fichas):
-    worker = _metodo(copia_fichas, "_worker_robo_novo")
-    leituras = [
-        c for c in ast.walk(worker)
-        if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
-        and c.func.attr == "get" and isinstance(c.func.value, ast.Attribute)
-        and c.func.value.attr == "var_log_auditoria"
-    ]
-
-    assert leituras, "o interruptor de auditoria voltou a ser decorativo"
-
-
-def test_o_log_e_repassado_ao_servico(copia_fichas):
-    worker = _metodo(copia_fichas, "_worker_robo_novo")
-    passou = any(kw.arg == "log_auditoria"
-                 for c in ast.walk(worker) if isinstance(c, ast.Call)
-                 for kw in c.keywords)
-
-    assert passou, "o log é criado e não chega no `processar_lote`"
-
-
-def test_o_log_e_FECHADO_no_finally(copia_fichas):
-    """Sem isto, o arquivo fica com a última linha presa no buffer justamente
-    quando o lote morre no meio -- que é a execução que mais interessa."""
-    worker = _metodo(copia_fichas, "_worker_robo_novo")
-    tries = [n for n in ast.walk(worker) if isinstance(n, ast.Try) and n.finalbody]
-    fechamentos = [
-        c for t in tries for no in t.finalbody for c in ast.walk(no)
-        if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
-        and c.func.attr == "fechar"
-        and isinstance(c.func.value, ast.Name) and c.func.value.id == "log_auditoria"
-    ]
-
-    assert fechamentos, "log_auditoria.fechar() não está no finally"
+# [2026-10-15] Os três testes daqui liam a tela da interface antiga (por AST),
+# que saiu do SIG-FT. Na Qt, rodando a tela, em `tests/test_qt_tela_copia_fichas.py`:
+# o interruptor de auditoria lido (`test_robo_sem_auditoria`), o log repassado
+# ao serviço (`test_robo_completo_com_auditoria`, `robo["log_auditoria"] is log`)
+# e o log fechado mesmo com erro
+# (`test_falha_do_robo_vira_log_fecha_o_navegador_e_devolve_os_botoes`).

@@ -1,6 +1,6 @@
 """O ÚNICO caminho de uma thread até um widget.
 
-No CustomTkinter isso era disciplina: `self.after(0, ...)` em cada lugar, e
+Na interface antiga isso era disciplina: `self.after(0, ...)` em cada lugar, e
 onde alguém esqueceu, o widget era tocado fora da thread da interface -- no
 macOS isso derruba o app (`cria_fichas.py` abria janela de dentro do robô).
 Aqui é mecanismo: um sinal Qt com conexão em FILA entrega a função na thread

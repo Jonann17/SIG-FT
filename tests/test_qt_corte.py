@@ -2,7 +2,7 @@
 
 `frontend.py` e o que o `SIG-FT.spec` empacota e o que o `SIG-FT.bat` (e, no
 Mac, o `SIG-FT.command`) roda. Desde 2026-10-15 a interface antiga saiu do
-SIG-FT, com o `--ctk` e a queda para ela. O que se cobra aqui:
+SIG-FT, com a opcao que a abria e a queda para ela. O que se cobra aqui:
 
 1. ele entrega a linha de comando a Qt e NAO segue adiante -- nem se a Qt
    voltar --, sem nenhuma biblioteca Tk no processo;
@@ -14,7 +14,7 @@ SIG-FT, com o `--ctk` e a queda para ela. O que se cobra aqui:
    `sigft.log`, para a saida de erro e para uma caixa do sistema, e sai com 1;
 4. `import frontend` nao abre nada e nao traz mais os nomes da interface
    antiga;
-5. os lancadores repassam os argumentos e nao mandam mais para o `--ctk`.
+5. os lancadores repassam os argumentos e nao mandam mais para a interface antiga.
 """
 import os
 import runpy
@@ -25,8 +25,8 @@ from pathlib import Path
 import pytest
 
 # As bibliotecas da interface antiga, bloqueadas no subprocesso. A lista tem um
-# dono so: tests/test_sem_tkinter.py, a trava do repositorio inteiro.
-from test_sem_tkinter import MODULOS_PROIBIDOS
+# dono so: tests/test_sem_interface_antiga.py, a trava do repositorio inteiro.
+from test_sem_interface_antiga import MODULOS_PROIBIDOS
 
 RAIZ = Path(__file__).resolve().parent.parent
 FRONTEND = RAIZ / "frontend.py"

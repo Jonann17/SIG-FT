@@ -1,5 +1,8 @@
-r"""Tela 4.2 (`views/translator.py`), lida por AST: ela importa customtkinter
-e exige um root Tk (mesmo recurso de `test_pdm_tela_layout.py`).
+r"""Tela 4.2 (`sigft/app_qt/views/translator.py`), lida por AST.
+
+[2026-10-15] Lia a tela da interface antiga, que saiu do SIG-FT; as mesmas
+invariantes valem na Qt (o comportamento rodando está em
+`tests/test_qt_tela_translator.py`).
 
 O que se segura aqui:
 
@@ -20,7 +23,7 @@ import pathlib
 
 import pytest
 
-VIEW = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app" / "views" / "translator.py"
+VIEW = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app_qt" / "views" / "translator.py"
 ARVORE = ast.parse(VIEW.read_text(encoding="utf-8"))
 
 
@@ -46,9 +49,10 @@ def test_o_backend_nao_nasce_no_init():
 
 
 def test_o_backend_nasce_no_primeiro_uso_e_avisa_se_o_modulo_nao_carregou():
-    metodo = _metodo("_backend")
+    """Na Qt o aviso é do `ModuleFrame.backend(nome)`, que diz o motivo."""
+    metodo = _metodo("_tradutor")
     assert any("TechnicalTranslator" in c for c in _chamadas(metodo))
-    assert any("showerror" in c for c in _chamadas(metodo))
+    assert "self.backend" in _chamadas(metodo)
 
 
 def test_o_lote_vai_inteiro_ao_servico():
@@ -60,7 +64,10 @@ def test_o_lote_vai_inteiro_ao_servico():
 def test_abortado_vira_erro_na_tela():
     metodo = _metodo("_worker")
     assert "ABORTADO" in _textos(metodo)
-    assert any("showerror" in c for c in _chamadas(metodo))
+    avisos = [c for c in ast.walk(metodo) if isinstance(c, ast.Call)
+              and ast.unparse(c.func) == "self.avisar"]
+    assert any(any(k.arg == "tipo" and ast.unparse(k.value) == "'erro'" for k in c.keywords)
+               for c in avisos), "o ABORTADO tem de virar aviso de ERRO"
 
 
 def test_o_worker_nao_mostra_as_palavras_de_status():

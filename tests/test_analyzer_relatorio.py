@@ -111,11 +111,13 @@ def test_sem_codigo_pmib_usa_o_nome_do_arquivo():
     assert "ficha_sem_codigo.xlsx" in r.linhas()[0][0]
 
 
-def test_o_servico_de_relatorio_NAO_importa_tkinter():
+def test_o_servico_de_relatorio_NAO_importa_interface():
     """Princípio nº 2 da arquitetura, verificado por AST — a mesma trava que
     `autospec_conferencia` tem."""
     import ast
     import inspect
+
+    from test_sem_interface_antiga import MODULOS_PROIBIDOS
 
     arvore = ast.parse(inspect.getsource(rel))
     importados = set()
@@ -124,8 +126,7 @@ def test_o_servico_de_relatorio_NAO_importa_tkinter():
             importados.update(a.name.split(".")[0] for a in no.names)
         elif isinstance(no, ast.ImportFrom) and no.module:
             importados.add(no.module.split(".")[0])
-    assert "tkinter" not in importados
-    assert "customtkinter" not in importados
+    assert not importados & (MODULOS_PROIBIDOS | {"PySide6", "shiboken6"})
 
 
 def test_todo_campo_do_CONFIG_MAP_tem_rotulo():

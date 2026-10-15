@@ -17,7 +17,7 @@ saber que o atributo não existe — que é o que este teste faz.
 
 Vale para qualquer nome (constante ou função), e para os arquivos que falam
 com o serviço: o leitor lê a planilha (`services/mural_atividades.py`, para
-onde as duas Homes delegam desde 2026-10-10), os widgets desenham.
+onde a Home delega desde 2026-10-10), o widget desenha.
 """
 import ast
 import pathlib
@@ -29,11 +29,11 @@ from sigft.services import atividades
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 ARQUIVOS = [
     # [2026-10-10] A LEITURA da aba (o `_ler_mural` que morava nas duas Homes)
-    # agora é do serviço `mural_atividades`; as Homes só delegam
+    # agora é do serviço `mural_atividades`; a Home só delega
     # (`tests/test_mural_atividades.py`). Os arquivos que citam o serviço
-    # `atividades` são o leitor e os dois desenhos (CustomTkinter e Qt).
+    # `atividades` são o leitor e o desenho (o da interface antiga saiu em
+    # 2026-10-15).
     RAIZ / "sigft" / "services" / "mural_atividades.py",
-    RAIZ / "sigft" / "app" / "widgets" / "mural.py",
     RAIZ / "sigft" / "app_qt" / "widgets" / "mural.py",
 ]
 MURAIS = [p for p in ARQUIVOS if p.name == "mural.py"]

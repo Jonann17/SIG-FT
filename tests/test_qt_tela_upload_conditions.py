@@ -607,8 +607,8 @@ def test_ler_resultados_excel_normaliza_o_pmib_e_os_dicionarios(monkeypatch):
 # ---------------------------------------------------------------------------
 # Medidas
 # ---------------------------------------------------------------------------
-def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
-    # Medidas da tela CTk (janela 1280x850, winfo_*), relativas à área da tela,
+def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
+    # Medidas da tela antiga (janela 1280x850, winfo_*), relativas à área da tela,
     # que começa 277 px à direita (a barra lateral). Ver capturas/e4.45.
     from sigft.app_qt import estilo
 

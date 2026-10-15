@@ -130,7 +130,7 @@ def test_esc_no_retry_excel_e_cancelar(qt_interface, qtbot):
 
 def _apertar_teclas(janela):
     """Return, Enter (teclado numérico) e Espaço onde o foco estiver -- o caso
-    de uma tecla perdida enquanto a pessoa ainda faz o login. No CTk nenhuma
+    de uma tecla perdida enquanto a pessoa ainda faz o login. Na interface antiga nenhuma
     tecla estava ligada e os CTkButton nunca pegam o foco: aqui nenhum botão
     pode ser o padrão (Enter) nem receber o foco (Espaço)."""
     from PySide6.QtCore import Qt
@@ -148,7 +148,7 @@ def _apertar_teclas(janela):
 
 
 def test_enter_e_espaco_nao_soltam_o_login(qt_interface, qtbot):
-    # No CTk nenhuma tecla estava ligada: um Enter ou Espaço perdido não pode
+    # Na interface antiga nenhuma tecla estava ligada: um Enter ou Espaço perdido não pode
     # soltar o robô (e começar o lote) antes de a pessoa terminar o login.
     tela = Tela()
     qtbot.addWidget(tela)

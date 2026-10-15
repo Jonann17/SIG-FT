@@ -1,6 +1,6 @@
 """Peças que todas as telas repetem: o quadro cinza, o rótulo, o botão.
 
-Nas telas CustomTkinter cada uma vinha com cor, fonte e tamanho escritos à
+Nas telas antigas cada uma vinha com cor, fonte e tamanho escritos à
 mão. Aqui a COR do quadro e dos botões vem da folha de estilo (objectName e
 variante); fonte e tamanho continuam por chamada, porque variam de tela a tela.
 """
@@ -117,7 +117,7 @@ def sem_tecla(botao) -> None:
     apertava; numa janela de diálogo o autoDefault fazia o mesmo com o Enter --
     nas que seguram o robô, soltando-o (e começando o lote) antes de a pessoa
     terminar o login. Esc e o "X" continuam valendo. Todo `botao` nasce assim
-    (decisão do polimento, pela paridade com o CTk); botões criados à mão
+    (decisão do polimento, pela paridade com a interface antiga); botões criados à mão
     (barra lateral, abas, seletores) chamam esta função. Era `dialogs.sem_tecla`,
     que continua com esse nome.
     """
@@ -131,7 +131,7 @@ def botao(texto: str, *, variante: str | None = None, largura: int | None = None
           negrito: bool = False, cor_texto: str | None = None, cor_fundo: str | None = None,
           cor_hover: str = estilo.AZUL_CTK_HOVER, largura_minima: int | None = None) -> QPushButton:
     """`cor_fundo` é o `fg_color` de um CTkButton pintado à mão; `cor_hover`, o
-    `hover_color` (sem ele, o CTk usa o do tema: AZUL_CTK_HOVER).
+    `hover_color` (sem ele, a interface antiga usa o do tema: AZUL_CTK_HOVER).
 
     `largura` FIXA a largura; `largura_minima` é o `width` do CTkButton de
     verdade: o botão tem pelo menos isso, e o texto que não cabe o alarga com
@@ -148,7 +148,7 @@ def botao(texto: str, *, variante: str | None = None, largura: int | None = None
         # Não basta `setFixedHeight`: ao aplicar a folha do app, o Qt troca a
         # altura mínima pelo `min-height` dela (28 px) e o botão encolhe. A
         # altura vai na folha do PRÓPRIO botão, que ganha da global. O
-        # `min-height` do Qt não conta a borda; o `height` do CTk conta.
+        # `min-height` do Qt não conta a borda; o `height` da interface antiga conta.
         interna = altura - 2 * estilo.BORDA_DA_VARIANTE.get(variante or "", 0)
         folha += f" min-height: {interna}px; max-height: {interna}px;"
     if largura_minima:
@@ -175,13 +175,13 @@ def botao(texto: str, *, variante: str | None = None, largura: int | None = None
 # Onde `pintar` guarda a folha com que a peça nasceu (a Criação de Fichas a
 # grava logo ao criar o botão; as outras peças, na primeira pintura).
 _FOLHA_BASE = "_folha_base"
-# O hover que os botões de arquivo das telas CTk mantinham depois do
+# O hover que os botões de arquivo das telas antigas mantinham depois do
 # `configure(fg_color=primary)`: o #454545 escrito à mão neles.
 HOVER_BOTAO_ARQUIVO = "#454545"
 
 
 def pintar(widget, folha: str) -> None:
-    """O `configure(fg_color=..., text_color=...)` do CTk numa peça com folha
+    """O `configure(fg_color=..., text_color=...)` da interface antiga numa peça com folha
     própria: a folha de quando ela nasceu + `folha`. Pintar de novo REFAZ a
     folha a partir dessa base, em vez de somar regra a regra a cada escolha."""
     base = widget.property(_FOLHA_BASE)
@@ -214,7 +214,7 @@ def fonte_tk(tupla, *, em_pontos: bool = False) -> QFont:
     """`("Roboto", 14, "bold")` do Tk em QFont.
 
     O mesmo número quer dizer coisas diferentes lá: num widget do
-    CustomTkinter é PIXEL (o CTk passa o tamanho negativo ao Tk); num widget
+    interface antiga é PIXEL (a interface antiga passa o tamanho negativo ao Tk); num widget
     cru do Tk (`tk.Listbox`, `ttk.Treeview`) é PONTO. `em_pontos=True` para os
     crus.
     """
@@ -289,13 +289,13 @@ def area_rolavel(layout_pai=None, *, cor: str | None = None, margem: int = 6,
 
     `cor=None` é o `fg_color="transparent"` (o uso mais comum nas telas); com
     cor, o quadro tem os cantos de 6 do CTkFrame. `margem` é o recuo do
-    conteúdo (6 = o canto, medido). A barra de rolagem é a do CTk (16 px, alça
+    conteúdo (6 = o canto, medido). A barra de rolagem é a da interface antiga (16 px, alça
     gray41 de 8) e aparece só quando há o que rolar -- a mesma decisão da barra
     lateral (main.py): lá ela é um traço sempre visível que não rola nada.
 
     `barra_sempre_visivel=True` é o CTkScrollableFrame como ele é, para a tela
     que precisa das mesmas larguras de lá:
-    * a barra SEMPRE à vista (o CTk reserva a faixa e desenha a alça cheia sem
+    * a barra SEMPRE à vista (a interface antiga reserva a faixa e desenha a alça cheia sem
       nada para rolar; sem ela os cartões saíam 11 a 16 px mais largos e o que
       é centrado andava), numa faixa de 17 px -- os 16 da barra + 1 até a borda
       direita --, com a alça de 8 a 4 px do começo da faixa;
@@ -340,7 +340,7 @@ def area_rolavel(layout_pai=None, *, cor: str | None = None, margem: int = 6,
 
 def barra_progresso(*, largura: int | None = None, altura: int = 8, cor: str | None = None,
                     fundo: str = estilo.TRILHO_CTK, barra: QProgressBar | None = None) -> QProgressBar:
-    """CTkProgressBar: `width`/`height`/`progress_color`/`fg_color` do CTk.
+    """CTkProgressBar: `width`/`height`/`progress_color`/`fg_color` da interface antiga.
 
     Padrão do tema: 200 x 8 (aqui a largura só é fixada se pedida), trilho
     #4A4D50, progresso azul, pontas redondas (corner_radius=1000 -> metade da
@@ -362,9 +362,9 @@ def barra_progresso(*, largura: int | None = None, altura: int = 8, cor: str | N
 
 
 def definir_progresso(barra: QProgressBar, fracao: float) -> None:
-    """O `progress_bar.set(fracao)` do CTk (0.0 a 1.0) numa barra de `barra_progresso`.
+    """O `progress_bar.set(fracao)` da interface antiga (0.0 a 1.0) numa barra de `barra_progresso`.
 
-    O CTk desenha o trecho cheio com as pontas redondas DENTRO da barra: com
+    A interface antiga desenha o trecho cheio com as pontas redondas DENTRO da barra: com
     raio r e largura L, ele vai até r + fracao * (L - 2r) + r -- em 0 já há um
     ponto de 2r, e em 40% de 200 x 8 o fim está em 84,8 (o `setValue` cru daria 80).
     Com a barra em modo indeterminado, não faz nada (lá o `set` também não aparece
@@ -398,8 +398,8 @@ def slider(*, minimo: int = 0, maximo: int = 100, largura: int = 200, cor_botao:
     """CTkSlider horizontal (`from_`/`to` inteiros; `number_of_steps` = a faixa).
 
     A cara vem da folha global; `cor_botao`/`cor_percorrido` são o
-    `button_color`/`progress_color` do CTk (o Analisador pinta os dois de
-    primary). O hover do botão, que o CTk deriva do tema, vira `cor_botao_hover`.
+    `button_color`/`progress_color` da interface antiga (o Analisador pinta os dois de
+    primary). O hover do botão, que a interface antiga deriva do tema, vira `cor_botao_hover`.
     """
     s = QSlider(Qt.Orientation.Horizontal)
     s.setRange(minimo, maximo)

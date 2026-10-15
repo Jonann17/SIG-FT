@@ -1,9 +1,9 @@
 """A leitura do mural de atividades: a aba "Atividades" do mapeamento.
 
-[2026-10-10] Morava nas duas Homes (`sigft/app/views/home.py`, CustomTkinter,
-e `sigft/app_qt/views/home.py`, Qt), copiada linha a linha. É regra de dados --
-achar o arquivo, abrir a planilha, mapear as colunas -- e não desenho: as duas
-interfaces DELEGAM para cá (`HomeView._ler_mural` e
+[2026-10-10] Morava nas duas Homes (a da interface antiga, que saiu em
+2026-10-15, e `sigft/app_qt/views/home.py`), copiada linha a linha. É regra de
+dados -- achar o arquivo, abrir a planilha, mapear as colunas -- e não desenho:
+a Home DELEGA para cá (`HomeView._ler_mural` e
 `HomeView._caminho_do_mapeamento`), e a regra se prova sem janela
 (`tests/test_mural_atividades.py`).
 

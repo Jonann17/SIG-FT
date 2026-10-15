@@ -37,7 +37,7 @@ import sys
 import pytest
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
-MAIN = RAIZ / "sigft" / "app" / "main.py"
+MAIN = RAIZ / "sigft" / "app_qt" / "main.py"
 CONFERENCIA = RAIZ / "sigft" / "app" / "conferencia.py"
 
 
@@ -56,7 +56,8 @@ CONFERENCIA = RAIZ / "sigft" / "app" / "conferencia.py"
 # Dois problemas, e cada um bastava para deixar passar o que passou em
 # 2026-09-21:
 #
-# 1. mediam `sigft/app/main.py`, e o bundle NAO roda aquele arquivo -- o
+# 1. mediam o `main.py` da interface (na epoca, `sigft/app/main.py`), e o
+#    bundle NAO roda aquele arquivo -- o
 #    `SIG-FT.spec` empacota o `frontend.py`. As flags estavam tratadas no
 #    lugar certo do arquivo errado;
 # 2. mediam TEXTO. Um `--smoke` citado num comentario satisfaz o `in fonte`
@@ -72,8 +73,8 @@ CONFERENCIA = RAIZ / "sigft" / "app" / "conferencia.py"
 def test_a_conferencia_nao_importa_nada_pesado():
     """O defeito de desenho que o proprio teste achou.
 
-    A primeira versao disto morava no `main.py`, que importa tkinter,
-    CustomTkinter, PIL e as 12 telas no topo. Rodar `--conferir-pacote` por la
+    A primeira versao disto morava no `main.py` da interface, que importava a
+    biblioteca grafica e as 12 telas no topo. Rodar `--conferir-pacote` por la
     significava pagar todos esses imports ANTES de conseguir relatar qualquer
     coisa -- ou seja, num bundle quebrado a conferencia quebrava junto, e o
     passo do CI morria com um traceback em vez de dizer o que faltava.
@@ -81,8 +82,9 @@ def test_a_conferencia_nao_importa_nada_pesado():
     Era o contrario do que ela existe para fazer.
     """
     arvore = ast.parse(CONFERENCIA.read_text(encoding="utf-8"))
-    pesados = {"tkinter", "customtkinter", "PIL", "pandas", "openpyxl",
-               "playwright", "requests"}
+    # (A Qt fica de fora da lista de proposito: `conferir_qt` a importa DENTRO
+    # da funcao, e o que falhar vira linha de FALHA no relatorio.)
+    pesados = {"PIL", "pandas", "openpyxl", "playwright", "requests"}
 
     for no in ast.walk(arvore):
         nomes = []
@@ -154,13 +156,13 @@ def test_a_conferencia_nao_usa_importlib_metadata():
 # C. As flags funcionam DE VERDADE, rodando o processo
 # =============================================================================
 #
-# Aqui nao ha .exe: estes testes rodam `python -m sigft.app.main --flag` num
+# Aqui nao ha .exe: estes testes rodam `python -m sigft.app_qt.main --flag` num
 # subprocesso. Isso prova o CAMINHO DE CODIGO das flags -- o parsing, o codigo
-# de saida, o arquivo gravado. O que so o Windows prova e que a janela do
-# CustomTkinter monta de verdade dentro do bundle.
+# de saida, o arquivo gravado. O que so o Windows prova e que a janela monta de
+# verdade dentro do bundle.
 
 def _rodar(*flags, cwd=None):
-    """Roda `python -m sigft.app.main <flags>` e devolve o resultado.
+    """Roda `python -m sigft.app_qt.main <flags>` e devolve o resultado.
 
     `cwd` e o diretorio de TRABALHO, e ele importa: a conferencia grava o
     relatorio nele, e o teste precisa que isso caia num `tmp_path` e nao na
@@ -170,13 +172,11 @@ def _rodar(*flags, cwd=None):
 
     ambiente = dict(os.environ, PYTHONPATH=str(RAIZ))
     return subprocess.run(  # noqa: S603
-        [sys.executable, "-m", "sigft.app.main", *flags],
+        [sys.executable, "-m", "sigft.app_qt.main", *flags],
         cwd=str(cwd or RAIZ), env=ambiente,
         capture_output=True, text=True, timeout=120)
 
 
-@pytest.mark.skipif(
-    not (RAIZ / "sigft" / "app" / "main.py").is_file(), reason="sem o main")
 def test_conferir_pacote_grava_o_arquivo_e_sai_com_codigo(tmp_path):
     """O contrato que o workflow consome: arquivo + codigo de saida."""
     resultado = _rodar("--conferir-pacote", cwd=tmp_path)

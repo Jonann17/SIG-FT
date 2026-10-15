@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """O icone do SIG-FT: um arquivo so, e com os tamanhos que o Windows usa.
 
-DOIS PAPEIS QUE E FACIL CONFUNDIR (e o comentario do main.py ja avisava):
+DOIS PAPEIS QUE E FACIL CONFUNDIR (e o comentario do main.py ja avisava;
+desde 2026-10-15 o main.py e o da interface Qt, `sigft/app_qt/main.py`):
 
     ICONE  -> barra de tarefas, barra de titulo, o .exe, o instalador.
               NUNCA aparece dentro da tela.
@@ -33,9 +34,10 @@ import struct
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 
 ICONE = RAIZ / "assets" / "icone-sig-ft.ico"
-# Nao vai para a splash (ver o teste la embaixo): serve de fallback do Tk
-# fora do Windows, onde `iconbitmap` nao aceita `.ico`.
+# O icone da JANELA na Qt (`setWindowIcon` aceita PNG em todo sistema). Nao vai
+# para a splash (ver o teste la embaixo).
 LOGO_DE_RESERVA = RAIZ / "assets" / "icone-sig-ft.png"
+MAIN = RAIZ / "sigft" / "app_qt" / "main.py"
 LOGO_DA_SPLASH = LOGO_DE_RESERVA
 LOGO_DA_GE = RAIZ / "assets" / "logo.png"
 
@@ -103,9 +105,13 @@ def test_o_icone_tem_TODOS_os_tamanhos_que_o_windows_usa():
 # passam a mostrar desenhos diferentes -- e ninguem percebe ate instalar.
 
 def test_a_janela_usa_o_icone_novo():
-    main = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
+    """O mesmo desenho do `.ico`, no formato que a janela Qt usa."""
+    main = MAIN.read_text(encoding="utf-8")
+    janela = main[main.index("class SIG_FT_App"):main.index("def _montar_sidebar")]
 
-    assert f'ARQUIVO_DO_ICONE = os.path.join("assets", "{ICONE.name}")' in main
+    assert ICONE.stem == LOGO_DE_RESERVA.stem
+    assert f'os.path.join("assets", "{LOGO_DE_RESERVA.name}")' in janela
+    assert "setWindowIcon" in janela
 
 
 def test_o_executavel_usa_o_MESMO_icone():
@@ -181,23 +187,24 @@ def test_a_splash_CONTINUA_com_a_GE_vernova_e_a_barra_de_progresso():
     Ou seja: a decisao de 2026-09-04 continua inteira -- o desenho do SIG-FT
     nunca aparece DENTRO da janela, nem na splash. La e a GE Vernova.
     """
-    main = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
-    splash = main[main.index("class SplashScreen"):main.index("class SIG_FT_App")]
+    main = MAIN.read_text(encoding="utf-8")
+    splash = main[main.index("class SplashScreen"):]
+    splash = splash[:splash.index("\ndef ")]
 
     assert "logo.png" in splash, "a splash perdeu o logo da GE Vernova"
     assert LOGO_DA_SPLASH.name not in splash, (
         f"a splash voltou a mostrar o {LOGO_DA_SPLASH.name} -- ela tem de "
         f"ficar como era antes"
     )
-    assert "ARQUIVO_DO_ICONE_PNG" not in splash
 
 
 def test_a_splash_mantem_a_barra_de_progresso():
     """"...com a barra de progresso" -- a outra metade do "igual antes"."""
-    main = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
-    splash = main[main.index("class SplashScreen"):main.index("class SIG_FT_App")]
+    main = MAIN.read_text(encoding="utf-8")
+    splash = main[main.index("class SplashScreen"):]
+    splash = splash[:splash.index("\ndef ")]
 
-    assert "CTkProgressBar" in splash, "a splash perdeu a barra de progresso"
+    assert "QProgressBar" in splash, "a splash perdeu a barra de progresso"
 
 
 def test_a_barra_lateral_CONTINUA_com_a_GE_vernova():
@@ -205,10 +212,10 @@ def test_a_barra_lateral_CONTINUA_com_a_GE_vernova():
 
     A metade da decisao que e facil atropelar ao trocar a outra.
     """
-    main = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
-    app = main[main.index("class SIG_FT_App"):]
+    main = MAIN.read_text(encoding="utf-8")
+    barra = main[main.index("def _montar_sidebar"):main.index("def show_frame")]
 
-    assert "logo.png" in app, (
+    assert "logo.png" in barra, (
         "a barra lateral perdeu o simbolo da GE Vernova"
     )
 

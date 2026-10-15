@@ -188,14 +188,17 @@ def test_erro_numa_ficha_nao_derruba_as_outras(monkeypatch):
 # =============================================================================
 # E. A fronteira que não pode ser cruzada
 # =============================================================================
-def test_o_servico_de_conferencia_NAO_importa_tkinter():
-    """Princípio nº 2 da arquitetura: serviço nunca importa interface.
-    Também é o que permite estes testes rodarem sem tela nenhuma."""
+def test_o_servico_de_conferencia_NAO_importa_interface():
+    """Princípio nº 2 da arquitetura: serviço nunca importa interface (nem a
+    Qt, nem a biblioteca da interface antiga, que saiu do SIG-FT em
+    2026-10-15). Também é o que permite estes testes rodarem sem tela nenhuma."""
     import ast
     import inspect
 
-    # AST e nao substring: a palavra "tkinter" aparece no docstring do
-    # modulo, explicando justamente por que ela nao pode ser importada.
+    from test_sem_interface_antiga import MODULOS_PROIBIDOS
+
+    # AST e nao substring: o docstring do modulo cita a biblioteca grafica,
+    # explicando justamente por que ela nao pode ser importada.
     arvore = ast.parse(inspect.getsource(conf))
     importados = set()
     for no in ast.walk(arvore):
@@ -203,5 +206,4 @@ def test_o_servico_de_conferencia_NAO_importa_tkinter():
             importados.update(a.name.split(".")[0] for a in no.names)
         elif isinstance(no, ast.ImportFrom) and no.module:
             importados.add(no.module.split(".")[0])
-    assert "tkinter" not in importados
-    assert "customtkinter" not in importados
+    assert not importados & (MODULOS_PROIBIDOS | {"PySide6", "shiboken6"})

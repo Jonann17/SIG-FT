@@ -19,7 +19,7 @@ QUEM LÊ ISTO NÃO É ENGENHEIRO DO SIG-FT
    (`montar_validar_ficha`) manda escrevê-la em português e PARA O
    FORNECEDOR — reescrevê-la aqui só afastaria o texto de quem vai lê-lo.
 
-Como `autospec_conferencia`, este módulo **não importa tkinter**: um teste
+Como `autospec_conferencia`, este módulo **não importa Tk**: um teste
 verifica por AST. A tela só escolhe onde salvar.
 """
 import os
@@ -155,7 +155,7 @@ class RelatorioAnalise:
 
         O `openpyxl` é importado AQUI dentro, e não no topo: assim o módulo
         continua importável (e testável) sem a dependência pesada, igual ao
-        que `sigft/app/file_dialogs.py` faz com o tkinter.
+        que `sigft/app/file_dialogs.py` faz com o Tk.
         """
         if not self._fichas:
             return None

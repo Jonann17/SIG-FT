@@ -83,8 +83,8 @@ def test_backend_que_nao_carregou_nao_abre_dialogo(tela, monkeypatch):
     assert chamou == []
 
 
-def test_medidas_iguais_as_do_customtkinter(qt_interface, qtbot):
-    # Medidas da tela antiga (CustomTkinter, 1280x850, sondadas com winfo_*),
+def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
+    # Medidas da tela antiga (interface antiga, 1280x850, sondadas com winfo_*),
     # relativas à área da tela: título em (20, 10) dentro da tela posta com
     # padx/pady=20; cartão 20 px abaixo do conteúdo; botões 50/40/32 de altura
     # com 30/20/10 px de espaço entre as peças; console 20 px abaixo do conteúdo.

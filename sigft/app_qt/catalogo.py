@@ -1,8 +1,7 @@
 """Os dados da navegação, sem widget nenhum.
 
-Até o corte, cópia do que mora em `sigft/app/views/home.py` e
-`sigft/app/main.py` (módulos que importam o customtkinter). O teste
-`tests/test_qt_catalogo.py` compara por AST e falha se alguém mudar um lado só.
+Eram cópia dos da interface antiga (a Home e o `main.py` dela), que saiu do
+SIG-FT em 2026-10-15; `tests/test_qt_catalogo.py` trava os valores.
 """
 from __future__ import annotations
 

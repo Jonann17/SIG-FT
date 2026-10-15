@@ -1,10 +1,9 @@
 """Sem console, o `print` vai para `Documentos\\SIG-FT\\logs\\sigft.log`.
 
-Esta é a cópia COMPARTILHADA de `_desviar_saida_para_arquivo` de
-`sigft/app/main.py`, para a interface Qt (`sigft/app_qt/main.py`) fazer o mesmo
-sem importar a interface CustomTkinter. A cópia de `sigft/app/main.py` continua
-onde está porque `tests/test_distribuicao_box.py` a trava lá; as duas se juntam
-no corte (Etapa 6), quando `sigft/app/` sair.
+Nasceu como cópia do `_desviar_saida_para_arquivo` da interface antiga, para a
+Qt (`sigft/app_qt/main.py`) fazer o mesmo sem importá-la. Desde 2026-10-15 a
+interface antiga saiu, e esta é a única (`tests/test_distribuicao_box.py` e
+`tests/test_saida_log.py` a travam).
 
 Só biblioteca padrão: nenhum import de interface aqui.
 """

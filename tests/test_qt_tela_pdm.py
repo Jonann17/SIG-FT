@@ -3,7 +3,7 @@
 Backends, serviços e IA são dublês: o que se prova é a TELA -- textos, as três
 abas, as validações na ordem da tela antiga, os argumentos que chegam aos
 serviços, as mensagens do fim (pela thread da interface), a janela de seleção
-dos códigos e a geometria contra o CustomTkinter.
+dos códigos e a geometria contra a interface antiga.
 """
 import sys
 import threading
@@ -723,7 +723,7 @@ def test_limpeza(tela, qtbot, pdm):
 
 
 # ---------------------------------------------------------------------------
-# Geometria contra o CustomTkinter
+# Geometria contra a interface antiga
 # ---------------------------------------------------------------------------
 @pytest.fixture
 def tela_medida(qt_interface, qtbot, monkeypatch):
@@ -751,7 +751,7 @@ def _perto(a, b, tol):
 
 
 # A única altura que depende da FONTE é a do título (Roboto 24 negrito: 29 px
-# aqui e no CTk), e ela empurra tudo o que vem abaixo. As outras alturas, as
+# aqui e na interface antiga), e ela empurra tudo o que vem abaixo. As outras alturas, as
 # larguras e os x são fixos (rótulos de 28, campos e botões com altura dada).
 # Os testes de medida descontam do `y` o que o título passar de 29 -- no
 # máximo 2 px --, e a tolerância fica só aí (e na altura da área, que cede o
@@ -775,8 +775,8 @@ def _medidor(t):
     return g, desvio
 
 
-def test_medidas_iguais_as_do_customtkinter(tela_medida, qtbot):
-    # Medidas da tela antiga (CustomTkinter, janela 1280x850, winfo_* -- aqui
+def test_medidas_iguais_as_do_interface_antiga(tela_medida, qtbot):
+    # Medidas da tela antiga (interface antiga, janela 1280x850, winfo_* -- aqui
     # relativas à área da tela, 277 px à direita da barra lateral). Ver
     # capturas/e4.6. Larguras de texto: ±8 (Roboto do Qt × do Tk; o hinting
     # muda com a ordem dos testes, que mexem na fonte do app).

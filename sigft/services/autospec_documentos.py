@@ -27,7 +27,7 @@ O desenho novo tem duas pontas, e as duas moram aqui:
 O texto extraido continua existindo mesmo quando o PDF vai inteiro: e contra
 ele que a prova devolvida pela IA e conferida (`autospec_evidencia`).
 
-Sem tkinter, sem SDK de IA, sem Excel: so arquivo e texto.
+Sem Tk, sem SDK de IA, sem Excel: so arquivo e texto.
 """
 import os
 import re

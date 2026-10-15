@@ -37,9 +37,10 @@ entrada no spec passa a arrastar o teste junto, automaticamente.
 
 E por isso ele roda o processo DE VERDADE, com `subprocess`, em vez de ler o
 fonte: um despacho precoce so vale se acontecer antes dos imports pesados, e
-isso nenhuma leitura de AST prova. Aqui prova sozinho -- neste container nao
-ha tkinter, entao um despacho que chegue tarde demais morre com
-`ModuleNotFoundError`, que e exatamente o sintoma de um bundle quebrado.
+isso nenhuma leitura de AST prova.
+
+[2026-10-15] A interface e so a Qt: o `main.py` de que este arquivo fala virou
+`sigft/app_qt/main.py`, e os testes abaixo olham ele.
 """
 import ast
 import pathlib
@@ -92,7 +93,7 @@ def test_a_conferencia_funciona_PELO_PONTO_DE_ENTRADA_DO_BUNDLE(tmp_path):
     """O caso exato que pendurou o Release.
 
     Roda o script que o spec empacota, com a flag, e exige que ele RESPONDA.
-    Antes do conserto este teste morria com `ModuleNotFoundError: tkinter`,
+    Antes do conserto este teste morria com `ModuleNotFoundError: Tk`,
     que e o mesmo defeito que no Windows vira janela aberta e passo eterno.
     """
     entrada = _entrada_do_spec()
@@ -113,10 +114,10 @@ def test_pelo_ponto_de_entrada_do_bundle_NENHUM_import_pesado_acontece():
     """A propriedade que faz a conferencia servir para alguma coisa.
 
     Ela existe para dizer O QUE FALTA num bundle quebrado. Se ela paga o
-    `import tkinter` antes de responder, ela quebra junto com o bundle que
+    `import Tk` antes de responder, ela quebra junto com o bundle que
     deveria diagnosticar -- e o CI recebe um traceback no lugar do relatorio.
 
-    Neste container nao ha tkinter: se o despacho chegar tarde, aparece aqui.
+    Neste container nao ha Tk: se o despacho chegar tarde, aparece aqui.
     """
     entrada = _entrada_do_spec()
 
@@ -130,9 +131,9 @@ def test_pelo_ponto_de_entrada_do_bundle_NENHUM_import_pesado_acontece():
 
 
 def test_a_conferencia_tambem_funciona_pelo_modulo(tmp_path):
-    """`python -m sigft.app.main` e a forma nova de abrir. Nao pode regredir."""
+    """`python -m sigft.app_qt.main` abre a interface direto. Nao pode regredir."""
     saida = subprocess.run(
-        [sys.executable, "-m", "sigft.app.main", "--conferir-pacote"],
+        [sys.executable, "-m", "sigft.app_qt.main", "--conferir-pacote"],
         cwd=tmp_path, capture_output=True, text=True, timeout=TEMPO_LIMITE_S,
         env={**__import__("os").environ, "PYTHONPATH": str(RAIZ)},
     )
@@ -170,7 +171,7 @@ def test_a_conferencia_GRAVA_o_arquivo_pelo_ponto_de_entrada(tmp_path):
 # no Windows.
 
 def _fontes_dos_pontos_de_entrada() -> dict[str, str]:
-    caminhos = {_entrada_do_spec(), "sigft/app/main.py"}
+    caminhos = {_entrada_do_spec(), "sigft/app_qt/main.py"}
     return {c: (RAIZ / c).read_text(encoding="utf-8") for c in sorted(caminhos)}
 
 
@@ -223,7 +224,7 @@ def test_o_despacho_precoce_NAO_depende_de_dunder_name_no_modulo_importado():
     bundle com outro ponto de entrada, a resposta e sempre nao -- e o codigo
     protegido por essa condicao vira codigo morto, em silencio.
     """
-    fonte = (RAIZ / "sigft" / "app" / "main.py").read_text(encoding="utf-8")
+    fonte = (RAIZ / "sigft" / "app_qt" / "main.py").read_text(encoding="utf-8")
     arvore = ast.parse(fonte)
 
     for no in ast.walk(arvore):
@@ -255,7 +256,7 @@ def test_o_spec_e_a_fonte_de_verdade_do_ponto_de_entrada():
 # =============================================================================
 # As secoes acima provam que a flag nao e ignorada pelo ponto de entrada. Falta
 # provar para ONDE ela vai, e isso pede executar o despachante. Da para fazer
-# sem display: o que se troca e o `_smoke`, nao o tkinter.
+# sem display: o que se troca e o `_smoke`, nao o Tk.
 
 def test_smoke_vai_para_o_smoke_e_NAO_abre_a_janela(monkeypatch):
     """A metade do defeito que nao penduraria o CI: abriria a janela.
@@ -264,7 +265,7 @@ def test_smoke_vai_para_o_smoke_e_NAO_abre_a_janela(monkeypatch):
     dele. Se cair no `main()`, o `.exe` abre a janela e o passo espera para
     sempre -- o mesmo sintoma do `--conferir-pacote`.
     """
-    from sigft.app import main as modulo
+    from sigft.app_qt import main as modulo
 
     chamou = []
     monkeypatch.setattr(sys, "argv", ["SIG-FT.exe", "--smoke"])
@@ -282,7 +283,7 @@ def test_smoke_vai_para_o_smoke_e_NAO_abre_a_janela(monkeypatch):
 
 def test_o_codigo_de_falha_do_smoke_chega_ao_processo(monkeypatch):
     """Sem isto o CI ficaria verde com a janela quebrada."""
-    from sigft.app import main as modulo
+    from sigft.app_qt import main as modulo
 
     monkeypatch.setattr(sys, "argv", ["SIG-FT.exe", "--smoke"])
     monkeypatch.setattr(modulo, "_smoke", lambda: 1)
@@ -295,7 +296,7 @@ def test_o_codigo_de_falha_do_smoke_chega_ao_processo(monkeypatch):
 
 def test_sem_flag_nenhuma_o_app_abre_normalmente(monkeypatch):
     """O caminho do usuario: clicar no atalho tem de abrir o aplicativo."""
-    from sigft.app import main as modulo
+    from sigft.app_qt import main as modulo
 
     abriu = []
     monkeypatch.setattr(sys, "argv", ["SIG-FT.exe"])
@@ -412,46 +413,11 @@ def test_os_passos_que_abrem_o_exe_tem_limite_de_tempo(nome_do_passo):
 # arquivo. A regra tem um dono agora (`conferencia.gravar_relatorio`), em vez
 # de estar implementada num lugar e esquecida no outro.
 
-def test_o_smoke_GRAVA_o_motivo_da_falha(monkeypatch, tmp_path):
-    """Sem isto, um smoke vermelho e um beco sem saida.
-
-    Falhar sem diagnostico nao e melhor que nao checar: custa o mesmo build e
-    nao diz nada.
-    """
-    from sigft.app import conferencia
-    from sigft.app import main as modulo
-
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(
-        modulo, "SIG_FT_App",
-        lambda: (_ for _ in ()).throw(RuntimeError("widget orfao aqui")))
-
-    assert modulo._smoke() == 1
-
-    relatorio = (tmp_path / conferencia.ARQUIVO_JANELA).read_text(encoding="utf-8")
-    assert "widget orfao aqui" in relatorio, "o motivo nao foi gravado"
-    assert "RuntimeError" in relatorio
-    assert "Traceback" in relatorio, (
-        "sem a pilha nao da para saber QUAL widget/import quebrou"
-    )
-
-
-def test_o_smoke_grava_tambem_quando_da_certo(monkeypatch, tmp_path):
-    """O passo imprime o arquivo sempre. Se ele so existisse na falha, o
-    workflow teria de tratar o caso 'nao existe' -- e um arquivo velho de outro
-    build seria lido como se fosse deste."""
-    from sigft.app import conferencia
-    from sigft.app import main as modulo
-
-    class _JanelaFalsa:
-        def update_idletasks(self): pass
-        def destroy(self): pass
-
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(modulo, "SIG_FT_App", _JanelaFalsa)
-
-    assert modulo._smoke() == 0
-    assert (tmp_path / conferencia.ARQUIVO_JANELA).is_file()
+# [2026-10-15] Os dois testes que ficavam aqui (o motivo gravado na falha e o
+# arquivo gravado tambem no sucesso) dublavam a janela da interface antiga. Na
+# Qt eles estao em `tests/test_qt_smoke.py`:
+# test_grava_o_motivo_quando_a_janela_nao_monta e
+# test_grava_o_relatorio_tambem_quando_da_certo.
 
 
 def test_o_workflow_IMPRIME_o_relatorio_da_janela():
@@ -491,55 +457,30 @@ def test_os_dois_relatorios_sobem_como_artefato():
 # Um checador que nao reproduz a ordem de abertura reprova o que funciona -- e
 # vale menos que nenhum, porque manda consertar o que nao esta quebrado.
 
-def test_o_smoke_CARREGA_os_backends_antes_de_montar_a_janela(monkeypatch, tmp_path):
+def test_o_smoke_CARREGA_os_backends_antes_de_montar_a_janela(qt_interface, monkeypatch, tmp_path):
     """A ordem que o splash faz, e que o `_smoke` tem de repetir."""
-    from sigft.app import main as modulo
+    from sigft.app_qt import main as modulo
 
     ordem = []
 
-    class _JanelaFalsa:
-        def __init__(self): ordem.append("janela")
-        def update_idletasks(self): pass
-        def destroy(self): pass
+    def _janela():
+        ordem.append("janela")
+        raise RuntimeError("so a ordem interessa aqui")
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(modulo, "SIG_FT_App", _JanelaFalsa)
-    monkeypatch.setattr(
-        "sigft.app.backends.carregar_todos",
-        lambda **kw: ordem.append("backends"))
-
-    assert modulo._smoke() == 0
-    assert ordem == ["backends", "janela"], (
-        f"a ordem foi {ordem}. Montar a janela antes dos backends reproduz o "
-        f"defeito do run #3: as views leem `backends.x` no __init__ e acham None."
-    )
-
-
-def test_o_smoke_RELATA_um_backend_que_nao_carregou(monkeypatch, tmp_path):
-    """Um backend que nao importa no bundle nao pode passar em silencio.
-
-    Ele nao REPROVA o smoke, e isso e deliberado: `carregar_todos` continua
-    depois de uma falha de proposito, porque um backend quebrado deixa UMA
-    tela sem funcionar e nao o aplicativo sem abrir. O checador espelha o
-    contrato do aplicativo em vez de inventar um mais rigido -- mas o relatorio
-    diz, em letra grande, para a falha nao virar surpresa do usuario.
-    """
-    from sigft.app import conferencia
-    from sigft.app import main as modulo
-
-    class _JanelaFalsa:
-        def update_idletasks(self): pass
-        def destroy(self): pass
-
-    def _falha_um(ao_falhar=None, **kw):
-        ao_falhar("AutoSpec RAG", ImportError("No module named 'faiss'"))
-
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(modulo, "SIG_FT_App", _JanelaFalsa)
-    monkeypatch.setattr("sigft.app.backends.carregar_todos", _falha_um)
+    # Sem a folha de estilo do app na QApplication da suíte: ela ficaria para
+    # os testes seguintes (as medidas dos diálogos mudam com ela).
+    monkeypatch.setattr(modulo, "_preparar_qt", lambda: None)
+    monkeypatch.setattr(modulo, "SIG_FT_App", _janela)
+    monkeypatch.setattr(modulo.backends, "carregar_todos", lambda **kw: ordem.append("backends"))
 
     modulo._smoke()
 
-    relatorio = (tmp_path / conferencia.ARQUIVO_JANELA).read_text(encoding="utf-8")
-    assert "AutoSpec RAG" in relatorio
-    assert "faiss" in relatorio
+    assert ordem == ["backends", "janela"], (
+        f"a ordem foi {ordem}. Montar a janela antes dos backends reproduz o "
+        f"defeito do run #3: as views leem `backends.x` e acham None."
+    )
+
+
+# O backend que nao carregou vira AVISO no relatorio, sem reprovar (o contrato
+# de `carregar_todos`): na Qt, `tests/test_qt_smoke.py::test_aviso_de_backend_vai_para_o_relatorio`.

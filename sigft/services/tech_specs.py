@@ -2165,7 +2165,7 @@ class TechSpecsAutomation:
 
 
 # =============================================================================
-# CLASSE 3: CONTROLADOR / ORQUESTRADOR (A Ponte com o Frontend customtkinter)
+# CLASSE 3: CONTROLADOR / ORQUESTRADOR (A Ponte com o Frontend interface antiga)
 # =============================================================================
 class TechSpecsController:
     def __init__(self):

@@ -1,6 +1,6 @@
 r"""A lista de fichas da tela de correção de PDM, e a PRÉVIA (E5, parte 1).
 
-O que a tela mostra e o que ela calcula, fora do tkinter. Ler o `_STATUS_PMIB`,
+O que a tela mostra e o que ela calcula, fora do Tk. Ler o `_STATUS_PMIB`,
 montar as linhas e estimar quanto se recupera são regras de negócio, e regra de
 negócio não vive na UI (princípio 2 da arquitetura).
 

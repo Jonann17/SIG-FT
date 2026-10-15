@@ -2,7 +2,7 @@
 
 O QTabWidget põe as abas coladas à esquerda e o painel começa embaixo delas. O
 CTkTabview não: a barra de botões (um CTkSegmentedButton) fica CENTRADA e
-entra 18 px no quadro. Medidas do CustomTkinter (ctk_tabview.py) conferidas na
+entra 18 px no quadro. Medidas da interface antiga (ctk_tabview.py) conferidas na
 captura da E3.1:
 
 * 10 px livres acima da barra (`_outer_spacing`); barra de 26 (`_button_height`;
@@ -21,7 +21,7 @@ desconhecido em `tab`/`set` levanta ValueError, como lá.
 Limites (o que o CTkTabview também não faz, ou que nenhuma tela usa):
 * a largura de cada botão é fixada quando a aba é criada (texto + 14): mudar o
   texto ou a fonte depois não a refaz; não há `delete`, `rename` nem `insert`;
-* sem teclado: os botões não pegam o foco nem trocam de aba por tecla, como no CTk;
+* sem teclado: os botões não pegam o foco nem trocam de aba por tecla, como na interface antiga;
 * só `anchor="n"` (barra em cima, centrada) -- o único que as telas usam;
 * a barra não encolhe: abas que não cabem na largura alargam o widget;
 * a altura pedida é a da MAIOR aba (a do QStackedWidget), a não ser com
@@ -58,7 +58,7 @@ class Abas(QWidget):
                  cor_nao_selecionada: str | None = None, cor_nao_selecionada_hover: str | None = None,
                  tamanho_fonte: int = 13, ao_mudar=None, altura_da_escolhida: bool = False) -> None:
         """Cores com os nomes do CTkTabview: `fg_color` (cor_fundo, padrão gray13 --
-        use `estilo.FUNDO_QUADRO_INTERNO_CTK` quando o CTk a punha dentro de um
+        use `estilo.FUNDO_QUADRO_INTERNO_CTK` quando a interface antiga a punha dentro de um
         CTkFrame de fundo padrão), `segmented_button_fg_color` (cor_barra, gray29),
         `segmented_button_selected_color`/`_hover_color`, e
         `segmented_button_unselected_color` (gray29) / `_hover_color` (gray41).
@@ -77,7 +77,7 @@ class Abas(QWidget):
         self.abas: dict[str, QWidget] = {}
         self.botoes: dict[str, QPushButton] = {}
 
-        # Grade de 4 linhas, como a do CTk: a barra ocupa as linhas 1-2 e o quadro
+        # Grade de 4 linhas, como a da interface antiga: a barra ocupa as linhas 1-2 e o quadro
         # as 2-3 -- as duas se sobrepõem na linha 2 (18 px).
         grade = QGridLayout(self)
         grade.setContentsMargins(0, 0, 0, 0)

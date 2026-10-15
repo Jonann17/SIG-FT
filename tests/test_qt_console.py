@@ -1,6 +1,7 @@
-import ast
 import threading
 from pathlib import Path
+
+import pytest
 
 from sigft.app_qt.widgets import console as qconsole
 
@@ -9,11 +10,39 @@ from sigft.app_qt.widgets import console as qconsole
 RAIZ = Path(__file__).resolve().parents[1]
 
 
-def test_prefixo_igual_ao_da_interface_atual():
-    arvore = ast.parse((RAIZ / "sigft/app/widgets/console.py").read_text(encoding="utf-8"))
-    atual = next(n.value.value for n in arvore.body
-                 if isinstance(n, ast.Assign) and n.targets[0].id == "PREFIXO_LINHA")
-    assert qconsole.PREFIXO_LINHA == atual
+def test_prefixo_e_formato_da_linha_sao_os_de_sempre():
+    """O `"> "` que as 12 telas escreviam desde o monolito (era comparado com o
+    console da interface antiga, que saiu em 2026-10-15; agora o valor fica
+    travado aqui)."""
+    assert qconsole.PREFIXO_LINHA == "> "
+    assert qconsole.formatar_linha("oi") == "> oi"
+
+
+@pytest.mark.parametrize("entrada, esperado", [
+    ("texto", "> texto"), (42, "> 42"), (3.5, "> 3.5"), (None, "> None"), ("", "> "),
+    ("com\nquebra", "> com\nquebra"), (ValueError("falhou"), "> falhou"),
+])
+def test_formatar_linha_aceita_qualquer_objeto(entrada, esperado):
+    """As telas antigas caíam numa f-string, que aceita qualquer coisa: um
+    TypeError aqui seria regressão num caminho de log -- o que só roda quando
+    algo já deu errado. (Portado de `test_app_widgets.py`.)"""
+    assert qconsole.formatar_linha(entrada) == esperado
+
+
+def test_log_aceita_o_protocolo_e_o_nivel_nao_muda_a_renderizacao(qt_interface, qtbot):
+    """`core/callbacks.py`: a UI ignora o nível. Dar cor/prefixo a `error`
+    seria mudar a aparência sem decisão. E `UICallbacks(log=console.log)`
+    funciona direto, sem adaptador. (Portado de `test_app_widgets.py`.)"""
+    from sigft.core.callbacks import UICallbacks
+
+    c = qconsole.ConsoleFrame()
+    qtbot.addWidget(c)
+    c.log("msg", "error", {"pmib": "123"})
+    for nivel in ("info", "warn", "error", "debug"):
+        c.log("igual", nivel=nivel, contexto={"a": 1})
+    UICallbacks(log=c.log).log("do serviço", nivel="info")
+    qtbot.waitUntil(lambda: c.blockCount() >= 6, timeout=2000)
+    assert c.toPlainText().splitlines() == ["> msg", *["> igual"] * 4, "> do serviço"]
 
 
 def test_linhas_de_thread_chegam_em_ordem(qt_interface, qtbot):
@@ -59,7 +88,7 @@ def test_widget_destruido_nao_derruba_o_worker(qt_interface, qtbot):
 
 
 def test_texto_comeca_onde_comeca_no_ctktextbox(qt_interface, qtbot):
-    # Medido nas capturas do polimento (Tradutor, PDM e Upload, CTk x Qt): no
+    # Medido nas capturas do polimento (Tradutor, PDM e Upload, interface antiga x Qt): no
     # CTkTextbox o texto começa 4 px mais à direita e 5 px mais abaixo que no
     # QPlainTextEdit cru (base da 1a linha e começo do ">"). O documento já tem
     # a margem de 4 do Qt; o recuo que falta vem da vista do console.
