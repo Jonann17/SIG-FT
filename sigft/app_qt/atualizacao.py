@@ -38,6 +38,7 @@ from sigft.app import theme
 from sigft.app.atualizacao_textos import (
     MSG_COMO_FUNCIONA,
     MSG_DOWNLOAD_CONFERIDO,
+    MSG_TAREFA_AO_ATUALIZAR,
     MSG_UAC,
     TEXTO_AGORA_NAO,
     TEXTO_ATUALIZANDO,
@@ -214,9 +215,11 @@ class JanelaAtualizacao(QDialog):
     """
 
     def __init__(self, master, *, info: updater.Atualizacao, versao_atual: str,
-                 disparar=_em_segundo_plano, fechar_app=_fechar_o_app):
+                 disparar=_em_segundo_plano, fechar_app=_fechar_o_app,
+                 tarefas_em_andamento=None):
         super().__init__(master)
         self.info = info
+        self._tarefas_em_andamento = tarefas_em_andamento
         self.fechada = False
         self._baixando = False
         self._disparar = disparar
@@ -335,6 +338,8 @@ class JanelaAtualizacao(QDialog):
 
     def atualizar(self) -> None:
         """Baixa em segundo plano; a janela acompanha pela barra."""
+        if not self._pode_fechar_o_app():
+            return
         self.botao_atualizar.setEnabled(False)
         self.botao_atualizar.setText(TEXTO_ATUALIZANDO)
         self.botao_agora_nao.setEnabled(False)
@@ -346,6 +351,19 @@ class JanelaAtualizacao(QDialog):
         self._faixa_barra.show()
         self._mostrar_status(msg_baixando(self.info))
         self._disparar(self._baixar_e_instalar)
+
+    def _pode_fechar_o_app(self) -> bool:
+        """Com tarefa em andamento, pergunta antes: o app fecha sozinho quando
+        o download termina, e um robô no meio do lote morreria ali. A mesma
+        regra do "X" da janela principal; Enter responde "Não"."""
+        tarefas = (self._tarefas_em_andamento or instancia.tarefas_em_andamento)()
+        if not tarefas:
+            return True
+        resposta = QMessageBox.question(
+            self, TITULO, MSG_TAREFA_AO_ATUALIZAR,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        return resposta == QMessageBox.StandardButton.Yes
 
     # -- o trabalho, na thread ------------------------------------------------
     def _baixar_e_instalar(self) -> None:
