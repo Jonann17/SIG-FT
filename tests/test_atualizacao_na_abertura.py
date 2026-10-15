@@ -127,6 +127,7 @@ def test_sem_permissao_da_politica_a_abertura_nao_toca_na_rede(monkeypatch):
 from tkinter import messagebox as caixa  # noqa: E402 -- o duble do conftest
 
 from sigft.app import atualizacao  # noqa: E402
+from sigft.app import atualizacao_textos as textos_atualizacao  # noqa: E402
 from sigft.core import rede  # noqa: E402
 
 
@@ -343,6 +344,7 @@ def sem_uac(monkeypatch):
 def _aviso(raiz, **kw):
     kw.setdefault("disparar", _sincrono)
     kw.setdefault("fechar_app", lambda janela: pytest.fail("fechou o app"))
+    kw.setdefault("tarefas_em_andamento", lambda: [])
     return atualizacao.JanelaAtualizacao(raiz, info=kw.pop("info", _info()),
                                          versao_atual="1.1.0", **kw)
 
@@ -401,6 +403,46 @@ def test_atualizar_BAIXA_INSTALA_e_so_entao_FECHA_o_app(monkeypatch, raiz, sem_u
 
     assert eventos == ["baixou", ("instalou", baixado), ("fechou", raiz)]
     assert aviso.barra.valor == 1.0
+
+
+def test_com_tarefa_em_andamento_atualizar_PERGUNTA_e_o_nao_nao_baixa(monkeypatch, raiz,
+                                                                      sem_uac):
+    """O app fecha sozinho depois do download, e um robo no meio do lote
+    morreria ali. O "X" da janela principal ja perguntava; agora o "Atualizar
+    agora" tambem."""
+    perguntas = []
+    monkeypatch.setattr(caixa, "askyesno",
+                        lambda *a, **k: perguntas.append((a, k)) or False)
+    disparos = []
+    aviso = _aviso(raiz, disparar=lambda *a: disparos.append(a),
+                   tarefas_em_andamento=lambda: ["robo-upload"])
+    aviso.botao_atualizar.kwargs["command"]()
+
+    assert len(perguntas) == 1
+    (titulo, msg), kw = perguntas[0]
+    assert titulo == atualizacao.TITULO and msg == textos_atualizacao.MSG_TAREFA_AO_ATUALIZAR
+    assert kw.get("parent") is aviso and kw.get("default") == "no"
+    assert disparos == []
+    assert aviso.botao_atualizar.kwargs.get("state", "normal") == "normal"
+
+
+def test_com_tarefa_em_andamento_o_sim_baixa_como_antes(monkeypatch, raiz, sem_uac):
+    monkeypatch.setattr(caixa, "askyesno", lambda *a, **k: True)
+    disparos = []
+    aviso = _aviso(raiz, disparar=lambda alvo, *a: disparos.append(alvo),
+                   tarefas_em_andamento=lambda: ["robo-upload"])
+    aviso.botao_atualizar.kwargs["command"]()
+
+    assert disparos == [aviso._baixar_e_instalar]
+
+
+def test_sem_tarefa_em_andamento_atualizar_NAO_pergunta(monkeypatch, raiz, sem_uac):
+    monkeypatch.setattr(caixa, "askyesno", lambda *a, **k: pytest.fail("perguntou"))
+    disparos = []
+    aviso = _aviso(raiz, disparar=lambda alvo, *a: disparos.append(alvo))
+    aviso.botao_atualizar.kwargs["command"]()
+
+    assert disparos == [aviso._baixar_e_instalar]
 
 
 def test_download_que_falha_NAO_fecha_o_app_e_deixa_tentar_de_novo(monkeypatch, raiz, sem_uac):
