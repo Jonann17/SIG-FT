@@ -15,6 +15,7 @@ from sigft.app import backends, theme
 from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO, msg_ficha_preenchida
 from sigft.app_qt.views import upload_tech_specs as tela_mod
 from sigft.app_qt.views._upload_comum import MSG_ROBO_OCUPADO
+from sigft.app_qt.widgets import revisao_portal
 
 ABA_IA = "Processamento IA (Gerar JSON)"
 ABA_WEB = "Robô Web (Preencher Portal)"
@@ -497,3 +498,63 @@ def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
         assert geo(t.btn_parar_web) == (326, 451, 350, 40)
     finally:
         qt_interface.setStyleSheet(anterior)
+
+
+# ---------------------------------------------------------------------------
+# Revisão antes do portal (R2)
+# ---------------------------------------------------------------------------
+def _ficha_ts(pmib, valor_num="12"):
+    return {"METADATA": {"PMIB": pmib}, "DADOS_TRATADOS": [
+        {"CARACTERISTICA_CHAVE": "DIAMETRO", "ACAO": "PREENCHER", "TIPO": "NUM",
+         "RESPOSTA_PT_FINAL": valor_num}]}
+
+
+@pytest.fixture
+def revisao(monkeypatch):
+    registro = SimpleNamespace(chamadas=[], resposta=revisao_portal.SEM_ERROS)
+
+    def perguntar(parent, problemas, total):
+        registro.chamadas.append((parent, [(p.ficha, p.campo, p.interno) for p in problemas], total))
+        return registro.resposta
+
+    monkeypatch.setattr(revisao_portal, "perguntar_revisao", perguntar)
+    return registro
+
+
+def _esperar_robo(tela, qtbot):
+    qtbot.waitUntil(lambda: tela.btn_web_mem.isEnabled() and not tela.btn_parar_web.isEnabled(), timeout=3000)
+    qtbot.wait(100)
+
+
+def test_revisao_tira_as_fichas_com_erro(tela, qtbot, monkeypatch, revisao):
+    ctrl = ControladorFalso()
+    _backend(monkeypatch, ctrl)
+    tela.caminho_status = "/d/s.xlsx"
+    boa, ruim = _ficha_ts("4500.1"), _ficha_ts("4500.2", valor_num="1" * 16)
+    tela._start_web_process([boa, ruim])
+    _esperar_robo(tela, qtbot)
+    assert revisao.chamadas == [(tela, [("4500.2", "DIAMETRO", "NumberValue_Input")], 2)]
+    assert ctrl.chamadas == [("rpa", [boa], "/d/s.xlsx")]
+    linhas = _texto(tela).splitlines()
+    assert linhas[0] == "> Revisão antes do portal: 1 problema(s) em 1 ficha(s) de 2."
+    assert linhas[1].startswith("> [!] 4500.2 · DIAMETRO (NumberValue_Input) · ")
+    assert linhas[3] == "> Iniciando fila de 1 fichas no navegador..."
+
+
+def test_revisao_sem_problema_nada_aparece(tela, qtbot, monkeypatch, revisao):
+    ctrl = ControladorFalso()
+    _backend(monkeypatch, ctrl)
+    tela.caminho_status = "/d/s.xlsx"
+    dados = [_ficha_ts("4500.1")]
+    tela._start_web_process(dados)
+    _esperar_robo(tela, qtbot)
+    assert revisao.chamadas == [] and ctrl.chamadas == [("rpa", dados, "/d/s.xlsx")]
+
+
+def test_revisao_cancelar_nao_abre_o_robo(tela, qtbot, monkeypatch, revisao):
+    revisao.resposta = None
+    ctrl = ControladorFalso()
+    _backend(monkeypatch, ctrl)
+    tela._start_web_process([_ficha_ts("4500.2", valor_num="1" * 16)])
+    qtbot.waitUntil(lambda: _texto(tela).endswith("> Cancelado na revisão antes do portal."), timeout=2000)
+    assert ctrl.chamadas == [] and tela.btn_web_mem.isEnabled() and not tela.btn_parar_web.isEnabled()

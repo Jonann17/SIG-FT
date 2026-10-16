@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QSizePolicy, QVBoxLayout
 
 from sigft.app import theme
 from sigft.app_qt import estilo
-from sigft.app_qt.widgets import abas, blocos, controles, pickers
+from sigft.app_qt.widgets import abas, blocos, controles, pickers, revisao_portal
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 
 ABA_WEB = "Robô Web (Preencher Portal)"
@@ -68,6 +68,18 @@ class TelaDeUpload(ModuleFrame):
             self.log(MSG_ROBO_OCUPADO)
             return True
         return False
+
+    # --- revisão antes do portal (R2) ---------------------------------------------
+    def _revisar_antes_do_portal(self, dados, conferir):
+        """No clique, antes de abrir o navegador: confere `dados` com as regras
+        do portal (`conferir`, de `sigft.core.pmib_regras`) e devolve a lista que
+        segue para o robô -- a MESMA, sem problema ou com "Seguir com todas";
+        sem as fichas com erro, se a pessoa pediu; `None` para não abrir o robô.
+        Só filtra: nenhuma ficha é alterada."""
+        seguem = revisao_portal.conferir_antes_do_portal(self, conferir(dados), len(dados), self.log)
+        if seguem is None or len(seguem) == len(dados):
+            return None if seguem is None else dados
+        return [dados[i] for i in seguem]
 
     def _inicio_do_robo(self) -> None:
         self._robo_ativo = True

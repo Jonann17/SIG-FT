@@ -22,6 +22,7 @@ from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO, m
 from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.views._upload_comum import ABA_WEB, TelaDeUpload, reabilitar
 from sigft.app_qt.widgets import blocos, dialogos_selecao
+from sigft.core import pmib_regras
 
 ABA_IA = "Processamento IA (Gerar JSON)"
 
@@ -237,6 +238,9 @@ class ModuloUploadTechSpecs(TelaDeUpload):
             return
         controlador = self._controlador()
         if controlador is None:
+            return
+        dados = self._revisar_antes_do_portal(dados, pmib_regras.conferir_tech_specs)
+        if dados is None:
             return
         self._inicio_do_robo()
         self.log(f"Iniciando fila de {len(dados)} fichas no navegador...")

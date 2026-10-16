@@ -218,6 +218,23 @@ def _isola_os_dados_do_usuario(monkeypatch, tmp_path_factory):
     _dados.esquecer_pasta()
 
 
+# 4. A janela "Revisão antes do portal" (R2, 2026-10-16) é um `exec()` modal:
+#    num teste de tela cujo dado viola uma regra do portal, ela abriria de
+#    verdade e a suíte ficaria parada para sempre, sem dizer onde. Esta guarda
+#    troca o `exec` por um erro com o motivo. Quem quer a janela troca
+#    `revisao_portal.perguntar_revisao` (ou o próprio `exec`) no teste.
+@pytest.fixture(autouse=True)
+def _revisao_antes_do_portal_nao_trava(monkeypatch):
+    modulo = sys.modules.get("sigft.app_qt.widgets.revisao_portal")
+    if modulo is not None:
+        def _exec(self):
+            raise AssertionError(
+                "A janela 'Revisão antes do portal' abriu num teste sem dublê: o dado do teste "
+                "viola uma regra do portal (ajuste o dado) ou o teste precisa trocar "
+                "`revisao_portal.perguntar_revisao`.")
+        monkeypatch.setattr(modulo.RevisaoAntesDoPortalDialog, "exec", _exec)
+
+
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_teardown(item, nextitem):
     """Depois de um teste Qt, recolhe o lixo NA HORA.

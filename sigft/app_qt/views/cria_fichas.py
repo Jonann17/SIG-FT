@@ -32,7 +32,7 @@ from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA, MSG_LOGIN_PAGINA_PRI
 from sigft.app.theme import COLORS
 from sigft.app_qt import estilo, file_dialogs, interface
 from sigft.app_qt.views.janelas import JanelaAcaoRobo, JanelaResumo, JanelaRevisaoPDM, JanelaSelecao
-from sigft.app_qt.widgets import blocos, controles
+from sigft.app_qt.widgets import blocos, controles, revisao_portal
 from sigft.app_qt.widgets.abas import Abas
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 # O catálogo de PDMs (2026-09-22): lê a planilha-mestra da Itaipu e faz o
@@ -40,7 +40,7 @@ from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 # conferências do que o portal gravou (`codigo_do_pdm`, `revisao_do_pdm`); as
 # classes do serviço (DataManager, GeminiCategorizer, AutomacaoPMIB) vêm por
 # `self.backend(...)`, que avisa se não carregaram.
-from sigft.core import pdm_catalogo
+from sigft.core import pdm_catalogo, pmib_regras
 from sigft.services import cria_fichas as cria_fichas_svc
 # 2026-10-08: o registro de calibração da escolha de PDM (IA x revisão).
 from sigft.services import cria_fichas_escolha
@@ -620,6 +620,9 @@ class ModuloCriaFichas(ModuleFrame):
         automacao = self.backend("AutomacaoPMIB")
         if automacao is None:
             return
+        lote = self._revisar_antes_do_portal(self.df_processed)
+        if lote is None:
+            return
         # O lote, o catálogo e o Excel saem daqui, do clique: uma revisão
         # confirmada com o robô rodando troca `df_processed`, e o resumo deste
         # robô (e o "Salvar no Excel" dele) é do lote DELE.
@@ -627,8 +630,23 @@ class ModuloCriaFichas(ModuleFrame):
         # mesmo depois de um Limpar (sem lote); quem o devolve é
         # `_robo_terminou`, e só com lote confirmado.
         self.btn_run_auto.setEnabled(False)
-        self._iniciar_robo(self._bot_worker, automacao, self.df_processed, self.catalogo,
+        self._iniciar_robo(self._bot_worker, automacao, lote, self.catalogo,
                            self._excel_do_lote, botao=None)
+
+    def _revisar_antes_do_portal(self, df):
+        """R2: as regras do portal no lote, antes de abrir o navegador.
+
+        Devolve o DataFrame que vai ao robô: o MESMO sem problema (ou com
+        "Seguir com todas"), só as linhas sem erro (índice refeito: o robô conta
+        "Item i/total" pelo índice), ou `None` para não abrir o robô. Só filtra:
+        `df_processed` (o lote confirmado, o do "Salvar no Excel") não muda.
+        """
+        linhas = [linha for _indice, linha in df.iterrows()]
+        problemas = pmib_regras.conferir_cria_fichas(linhas)
+        seguem = revisao_portal.conferir_antes_do_portal(self, problemas, len(linhas), self.log)
+        if seguem is None or len(seguem) == len(linhas):
+            return None if seguem is None else df
+        return df.iloc[seguem].reset_index(drop=True)
 
     # --- um robô por vez (criação ou edição) ----------------------------------------
     def _robo_ocupado(self) -> bool:
