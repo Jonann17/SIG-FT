@@ -331,6 +331,22 @@ def test_revisao_pdm_preenche_a_tabela(qt_interface, qtbot):
     j.close()
 
 
+def test_revisao_pdm_item_sem_resposta_da_ia_mostra_vazio_e_nao_nan(qt_interface, qtbot):
+    """Pendencia de 2026-10-08: o item que a IA nao respondeu chega so com
+    `pdm_escolhido`, e o DataFrame completa o resto com NaN -- a tabela
+    mostrava o texto "nan" em Descricao Curta, UN e Tipo. So a TELA muda: o
+    dado que segue para o robo continua como veio."""
+    nan = float("nan")
+    linha = {"descricao_original": "CAMERA IP", "pdm_escolhido": "NENHUM",
+             "descricao_curta": nan, "unidade": nan, "tipo": nan}
+    j, df = _revisao(qtbot, df=DfFalso([linha]))
+
+    assert [j.tree.topLevelItem(0).text(i) for i in range(7)] == [
+        "0", "CAMERA IP", "NENHUM", "", "", "", ""]
+    assert df.linhas[0]["unidade"] is nan, "a tela nao pode mexer no dado"
+    j.close()
+
+
 def test_revisao_pdm_editar_sem_selecao_avisa(qt_interface, qtbot, avisos):
     j, _ = _revisao(qtbot)
     j.botao_editar.click()

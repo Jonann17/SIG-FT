@@ -166,7 +166,9 @@ class ModuloUploadTechSpecs(TelaDeUpload):
             if sucesso:
                 if self._perguntar_se_continua():
                     self.tabview.set(ABA_WEB)
-                    self._start_web_process(self.dados_em_memoria)
+                    # A janela de seleção, como no Upload Condições: antes o
+                    # "Continuar" mandava tudo ao portal sem perguntar quais.
+                    self._pre_start_web(self.dados_em_memoria)
 
     # --- Robô Web (aba 2) -------------------------------------------------------
     def _pre_start_web(self, dados_json) -> None:
@@ -225,8 +227,10 @@ class ModuloUploadTechSpecs(TelaDeUpload):
             # DENTRO do try, como lá: um JSON que não é uma lista de fichas também
             # vira "Erro ao ler JSON" (fora dele, a exceção sumia no laço do Qt).
             self._pre_start_web(dados)
-        except Exception as e:  # noqa: BLE001 -- lá só ia para o log
+        except Exception as e:  # noqa: BLE001 -- vira mensagem para a pessoa
+            # Log e caixa, como o "Erro ao ler Excel" do Upload Condições.
             self.log(f"Erro ao ler JSON: {e}")
+            QMessageBox.critical(self, "Erro de Leitura", f"Falha ao ler JSON: {e}")
 
     def _start_web_process(self, dados) -> None:
         if self._robo_ocupado():

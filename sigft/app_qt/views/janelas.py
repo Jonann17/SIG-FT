@@ -374,10 +374,15 @@ class JanelaRevisaoPDM(_Janela):  # Esc não fecha: herdado de JanelaQueAbre
         linhas = [row for _index, row in self.df_dados.iterrows()]
         for posicao in escolha.ordem_para_revisao(linhas):
             index, row = indices[posicao], linhas[posicao]
-            _linha(self.tree, [index, row.get("descricao_original", ""), row.get("pdm_escolhido", ""),
-                               escolha.rotulo_de_confianca(row), row.get("descricao_curta", ""),
-                               row.get("unidade", ""), row.get("tipo", "")],
-                   chave=index)
+            # O item que a IA não respondeu chega só com o PDM, e o DataFrame
+            # completa o resto com NaN: na tela ele vira vazio, não "nan". Só a
+            # tela muda -- o dado que segue para o robô continua como veio.
+            textos = [escolha.texto_da_celula(row.get(coluna, "")) for coluna in (
+                "descricao_original", "pdm_escolhido")]
+            textos.append(escolha.rotulo_de_confianca(row))
+            textos += [escolha.texto_da_celula(row.get(coluna, "")) for coluna in (
+                "descricao_curta", "unidade", "tipo")]
+            _linha(self.tree, [index, *textos], chave=index)
 
     def _linha_do_df(self, item):
         return self.df_dados.loc[item.data(0, Qt.ItemDataRole.UserRole)]

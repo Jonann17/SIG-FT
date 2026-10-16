@@ -248,7 +248,8 @@ def test_ia_erro_fatal(tela, caixas, qtbot, monkeypatch):
     assert caixas.chamadas == []
 
 
-def test_ia_salva_o_json_e_vai_direto_ao_robo(tela, caixas, qtbot, monkeypatch):
+def test_ia_salva_o_json_e_abre_a_selecao_como_o_condicoes(tela, caixas, selecao, qtbot,
+                                                            monkeypatch):
     dados = [{"METADATA": {"PMIB": "1"}}]
     ctrl = ControladorFalso(resultados=dados)
     pedidos = []
@@ -266,8 +267,10 @@ def test_ia_salva_o_json_e_vai_direto_ao_robo(tela, caixas, qtbot, monkeypatch):
                                 "Dados salvos! Deseja pular para a Aba 2 e iniciar o Robô Web agora?")]
     assert "> Sucesso! 1 fichas geradas prontas para o robô." in _texto(tela)
     assert tela.dados_em_memoria == dados
-    # Lá a tela pula a janela de seleção: vai direto com tudo o que gerou.
-    assert tela.tabview.get() == ABA_WEB and iniciados == [dados]
+    # Pendência de 2026-10-11: antes o "Continuar" pulava a janela de seleção
+    # e mandava tudo ao portal; agora abre a mesma janela do Upload Condições.
+    assert tela.tabview.get() == ABA_WEB and iniciados == []
+    assert selecao[0].kw["itens"] == ["PMIB: 1 | N/A"]
 
 
 def test_ia_sem_salvar(tela, caixas, qtbot, monkeypatch):
@@ -372,13 +375,18 @@ def test_carregar_json(tela, monkeypatch, selecao, tmp_path):
     assert selecao[0].kw["itens"] == ["PMIB: Z | z.xlsx"]
 
 
-def test_carregar_json_quebrado_so_loga(tela, caixas, monkeypatch, selecao, tmp_path, qtbot):
+def test_carregar_json_quebrado_loga_e_avisa_como_o_condicoes(tela, caixas, monkeypatch, selecao,
+                                                                tmp_path, qtbot):
+    # Pendência de 2026-10-11: antes só ia para o log; o Upload Condições
+    # também abre a caixa "Erro de Leitura".
     arquivo = tmp_path / "r.json"
     arquivo.write_text("{quebrado", encoding="utf-8")
     monkeypatch.setattr(tela_mod.file_dialogs, "ask_open_file", lambda *a, **k: str(arquivo))
     tela.btn_web_file.click()
     qtbot.waitUntil(lambda: "Erro ao ler JSON" in _texto(tela), timeout=2000)
-    assert caixas.chamadas == [] and selecao == []
+    assert selecao == []
+    assert [(t, ti) for t, ti, _ in caixas.chamadas] == [("erro", "Erro de Leitura")]
+    assert caixas.chamadas[0][2].startswith("Falha ao ler JSON: ")
 
 
 def test_carregar_json_em_forma_de_dicionario_vai_para_o_console(tela, caixas, monkeypatch, selecao,
@@ -392,7 +400,9 @@ def test_carregar_json_em_forma_de_dicionario_vai_para_o_console(tela, caixas, m
     tela.btn_web_file.click()
     qtbot.waitUntil(lambda: "Erro ao ler JSON" in _texto(tela), timeout=2000)
     assert _texto(tela).splitlines() == ["> Erro ao ler JSON: 'str' object has no attribute 'get'"]
-    assert caixas.chamadas == [] and selecao == []
+    assert caixas.chamadas == [("erro", "Erro de Leitura",
+                                "Falha ao ler JSON: 'str' object has no attribute 'get'")]
+    assert selecao == []
 
 
 class ControladorQueEspera(ControladorFalso):

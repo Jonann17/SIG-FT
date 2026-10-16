@@ -210,6 +210,50 @@ def test_formatar_itens_sem_catalogo_nao_fala_de_candidatos():
     assert "CANDIDATOS" not in texto
 
 
+class _CatalogoQueAnota:
+    """Guarda a consulta que a busca recebeu."""
+
+    def __init__(self):
+        self.consultas = []
+
+    def candidatos(self, texto, *a, **k):
+        self.consultas.append(texto)
+        return []
+
+
+def _df_sem_marca():
+    return _DataFrameFalso([{
+        "DESCRIÇÃO": "PLAQUETA DE IDENTIFICACAO",
+        "MARCA/MODELO": float("nan"),   # célula vazia lida com dtype=str
+        "CÓDIGO DO MATERIAL": "123",
+        "UNID.": "PC",
+    }])
+
+
+def test_item_sem_marca_nao_vai_ao_prompt_como_nan():
+    """Pendência de 2026-10-09: `read_excel(dtype=str)` não preenche vazio, e
+    a célula sem marca chegava à IA como "- Marca/Modelo: nan"."""
+    cat = cria_fichas.GeminiCategorizer("")
+    texto = cat._formatar_itens(_df_sem_marca())
+
+    assert "- Marca/Modelo: \n" in texto
+    assert "nan" not in texto.lower()
+
+
+def test_item_sem_marca_nao_poe_nan_na_busca_do_catalogo():
+    """O mesmo "nan" entrava na consulta da busca (frente crua e o bloco de
+    candidatos), como se fosse uma palavra da descrição."""
+    catalogo = _CatalogoQueAnota()
+    cat = cria_fichas.GeminiCategorizer("")
+    cat._formatar_itens(_df_sem_marca(), catalogo=catalogo)
+    linha = next(iter(_df_sem_marca().iterrows()))[1]
+    cria_fichas.GeminiCategorizer._candidatos_do_item(linha, None, catalogo)
+
+    assert catalogo.consultas, "a busca nem foi chamada"
+    assert all("nan" not in c.lower() for c in catalogo.consultas), catalogo.consultas
+    assert all(c.strip() == "PLAQUETA DE IDENTIFICACAO" for c in catalogo.consultas)
+
+
 # =============================================================================
 # D. O lote é fatiado
 # =============================================================================

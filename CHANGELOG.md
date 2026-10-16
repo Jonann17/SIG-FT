@@ -12,6 +12,12 @@ Escreva cada linha pensando em quem usa o SIG-FT, não em quem o programa:
 "a busca do AutoSpec passa a funcionar com a VPN ligada" é útil; "refatorado o
 cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
+## 1.2.1 - 2026-10-16
+
+- Cria Fichas: na revisão dos PDMs, o item que a IA não respondeu mostra as colunas vazias, em vez de "nan" em Descrição Curta, UN e Tipo.
+- Cria Fichas: o item sem marca não vai mais para a IA (nem para a busca no catálogo) com a palavra "nan" no lugar da marca.
+- Upload Tech Specs: o "Continuar" depois de salvar o JSON abre a janela para escolher quais fichas enviar ao portal, como no Upload Condições, em vez de mandar todas. E um JSON que não abre mostra a caixa "Erro de Leitura", além do aviso no console.
+
 ## 1.2.0 - 2026-10-15
 
 **Interface nova**

@@ -412,6 +412,13 @@ def preparar_para_revisao(respostas, linhas, catalogo, interpretacoes, candidato
     return saida, contagem
 
 
+def _consulta_crua(descricao, row) -> str:
+    """A consulta da busca no catálogo: a descrição e a marca. A marca vem
+    limpa (`texto_da_celula`): a célula vazia, lida com `dtype=str`, é NaN, e
+    entrava na busca como a palavra "nan" (pendência de 2026-10-09)."""
+    return f"{descricao} {escolha.texto_da_celula(row.get('MARCA/MODELO'))}".strip()
+
+
 class GeminiCategorizer:
     def __init__(self, api_key):
         self.api_key = api_key
@@ -508,7 +515,7 @@ class GeminiCategorizer:
             descricao = row['DESCRIÇÃO']
             texto += f"\n### ITEM {posicao}\n"
             texto += f"- Descrição: {descricao}\n"
-            texto += f"- Marca/Modelo: {row['MARCA/MODELO']}\n"
+            texto += f"- Marca/Modelo: {escolha.texto_da_celula(row.get('MARCA/MODELO'))}\n"
             cod_mat = str(row['CÓDIGO DO MATERIAL']).strip() if pd.notna(row['CÓDIGO DO MATERIAL']) else ""
             texto += f"- Código do Material: {cod_mat}\n"
 
@@ -532,7 +539,7 @@ class GeminiCategorizer:
         quando a passada 1 disse o que o material é."""
         if catalogo is None:
             return []
-        consulta_crua = f"{linha['DESCRIÇÃO']} {linha.get('MARCA/MODELO', '') or ''}"
+        consulta_crua = _consulta_crua(linha['DESCRIÇÃO'], linha)
         if interpretacao is None:
             return catalogo.candidatos(consulta_crua)
         return catalogo.candidatos_em_duas_frentes(
@@ -554,7 +561,7 @@ class GeminiCategorizer:
         coluna MARCA/MODELO. `candidatos` já calculados (pelo `processar_lote`)
         são usados como vieram."""
         if candidatos is None:
-            consulta = f"{descricao} {row.get('MARCA/MODELO', '') or ''}"
+            consulta = _consulta_crua(descricao, row)
             candidatos = catalogo.candidatos(consulta)
         if not candidatos:
             # Dizer que não há candidato é informação, não ruído: sem esta
@@ -707,7 +714,7 @@ class GeminiCategorizer:
             if pre is not None:
                 achados = pre[posicao]
             else:
-                consulta = f"{row['DESCRIÇÃO']} {row.get('MARCA/MODELO', '') or ''}"
+                consulta = _consulta_crua(row['DESCRIÇÃO'], row)
                 achados = catalogo.candidatos(consulta)
             for candidato in achados:
                 classes.add(candidato.classe)
