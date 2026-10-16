@@ -278,6 +278,40 @@ def test_pacotes_monta_compila_renomeia_e_registra(cenario):
     assert [(a["de"], a["arquivo"]) for a in registrado] == [("1.2.0-rc.3", feitos[0].name)]
 
 
+def test_pacotes_publicam_tambem_um_zip_com_o_mesmo_instalador(cenario):
+    """2026-10-16: o proxy da empresa cortou o fim do `.bin` 3 de 3 vezes e
+    deixou passar o `.exe` completo. O pequeno passa a ir TAMBÉM num `.zip`
+    comum (sem senha: o proxy analisa como quiser), registrado numa chave nova
+    do `latest.json` que só o app novo lê -- o app instalado segue no `.bin`."""
+    import hashlib
+    import zipfile
+
+    raiz, instalador, bases, novo, latest = cenario
+    feitos = ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
+                        iss=instalador / "sigft.iss", latest=latest, executar=_ISCC(instalador / "Output"))
+
+    zipado = instalador / "Output" / "SIG-FT_Itaipu_Atualizacao_1.2.0-rc.3_para_1.2.0-rc.4.zip"
+    assert zipado.is_file()
+    with zipfile.ZipFile(zipado) as z:
+        assert z.namelist() == ["SIG-FT_Itaipu_Atualizacao_1.2.0-rc.3_para_1.2.0-rc.4.exe"]
+        assert z.read(z.namelist()[0]) == feitos[0].read_bytes()
+        assert z.testzip() is None
+    [entrada] = json.loads(latest.read_text(encoding="utf-8"))["atualizacoes"]
+    assert entrada["arquivo"] == feitos[0].name          # o app instalado segue igual
+    assert entrada["zip"] == {
+        "arquivo": zipado.name,
+        "sha256": hashlib.sha256(zipado.read_bytes()).hexdigest(),
+        "tamanho": zipado.stat().st_size,
+    }
+
+
+def test_o_zip_nao_tem_senha_nem_caminho():
+    # Sem senha: um zip que o proxy não consegue abrir seria contornar a
+    # análise da empresa. E só o nome do arquivo, sem pasta.
+    assert ga.nome_do_membro_do_zip("1.2.0", "1.2.1") == "SIG-FT_Itaipu_Atualizacao_1.2.0_para_1.2.1.exe"
+    assert "/" not in ga.nome_do_membro_do_zip("1.2.0", "1.2.1")
+
+
 def test_pacote_grande_demais_nao_compensa_e_fica_de_fora(cenario):
     raiz, instalador, bases, novo, latest = cenario
     novo["arquivos"]["_internal/modelo.bin"]["sha256"] = "modelo-reconvertido"  # 1000 de 1030 bytes
@@ -330,6 +364,8 @@ def test_o_release_gera_manifesto_bases_e_pacotes_e_publica_os_dois(tmp_path):
         assert f"tools/gerar_atualizacao.py {subcomando}" in texto
     publicar = texto[posicao["Publicar o Release"]:]
     assert '"arquivos.json#' in publicar and "installer/Output/*.bin" in publicar
+    # 2026-10-16: o mesmo pequeno também em .zip (ver `zipar`).
+    assert "installer/Output/*.zip" in publicar
 
 
 def test_guardar_artefatos_nao_reprova_o_release_e_nao_leva_o_instalador_a_toa():

@@ -199,6 +199,11 @@ class Atualizacao:
     # [2026-10-07] Com o pequeno, o completo do mesmo Release: é nele que o
     # download cai quando o pequeno não chega inteiro (ver `baixar`).
     completo: Atualizacao | None = None
+    # [2026-10-16] O pequeno em `.zip`: `sha256` é o do zip, `sha256_dentro` o
+    # do instalador que sai dele, e `reserva` o mesmo pequeno em `.bin` -- é
+    # nele que o download cai antes de ir ao completo (ver `baixar`).
+    sha256_dentro: str = ""
+    reserva: Atualizacao | None = None
 
     @property
     def tamanho_mb(self) -> float:
@@ -248,6 +253,17 @@ def _pacote_pequeno(release: dict, manifesto: dict | None,
     return None
 
 
+def _zip_do_pequeno(release: dict, entrada: dict) -> tuple[dict, dict] | None:
+    """[2026-10-16] O mesmo pequeno em `.zip` (chave `zip` da entrada do
+    `latest.json`): `(asset, dados)`, ou `None` se não veio ou não está no
+    Release -- aí fica o `.bin`."""
+    dados = entrada.get("zip")
+    if not isinstance(dados, dict) or not str(dados.get("sha256", "")).strip():
+        return None
+    asset = _asset(release, str(dados.get("arquivo", "")))
+    return (asset, dados) if asset is not None else None
+
+
 def interpretar_release(release: dict, manifesto: dict | None = None,
                         versao_atual: str | None = None) -> Atualizacao | None:
     """Monta a `Atualizacao` a partir do JSON do release. Função pura.
@@ -288,7 +304,7 @@ def interpretar_release(release: dict, manifesto: dict | None = None,
     )
     if (pequeno := _pacote_pequeno(release, manifesto, versao_atual)) is not None:
         asset_pequeno, entrada = pequeno
-        return Atualizacao(
+        bin_ = Atualizacao(
             nome_arquivo=str(asset_pequeno.get("name", "")),
             url_asset=str(asset_pequeno.get("url", "")),
             tamanho=int(asset_pequeno.get("size") or entrada.get("tamanho") or 0),
@@ -296,6 +312,22 @@ def interpretar_release(release: dict, manifesto: dict | None = None,
             incremental=True,
             tamanho_completo=completo.tamanho,
             completo=completo,
+            **comum,
+        )
+        zipado = _zip_do_pequeno(release, entrada)
+        if zipado is None:
+            return bin_
+        asset_zip, dados_zip = zipado
+        return Atualizacao(
+            nome_arquivo=str(asset_zip.get("name", "")),
+            url_asset=str(asset_zip.get("url", "")),
+            tamanho=int(asset_zip.get("size") or dados_zip.get("tamanho") or 0),
+            sha256=str(dados_zip["sha256"]).strip().lower(),
+            sha256_dentro=bin_.sha256,
+            incremental=True,
+            tamanho_completo=completo.tamanho,
+            completo=completo,
+            reserva=bin_,
             **comum,
         )
     return completo
@@ -445,6 +477,14 @@ def baixar(info: Atualizacao, *, progresso_cb: Progresso = _nada,
     try:
         return _baixar_arquivo(info, progresso_cb=progresso_cb, log_cb=log_cb)
     except (DownloadInterrompido, ArquivoInvalido, rede.FalhaDeRede) as erro:
+        if info.reserva is not None:
+            # [2026-10-16] O .zip não passou: o mesmo pequeno em .bin, e só
+            # depois o completo (a `reserva` traz o `completo` dela).
+            log_cb(f"A atualizacao pequena em .zip falhou -- {erro}")
+            log_cb("Vai a mesma atualizacao pequena em .bin.")
+            progresso_cb(0.0)
+            return baixar(info.reserva, progresso_cb=progresso_cb, log_cb=log_cb,
+                          ao_cair_no_completo=ao_cair_no_completo)
         if not info.incremental or info.completo is None:
             raise
         log_cb(f"A atualizacao pequena falhou -- {erro}")
@@ -534,9 +574,51 @@ def _baixar_arquivo(info: Atualizacao, *, progresso_cb: Progresso,
 
     destino.unlink(missing_ok=True)
     parcial.rename(destino)
+    if destino.suffix.lower() == ".zip":
+        destino = _abrir_zip(destino, info, log_cb=log_cb)
     progresso_cb(1.0)
     log_cb(f"Download concluido: {destino}")
     return destino
+
+
+def _abrir_zip(zipado: Path, info: Atualizacao, *, log_cb: Log) -> Path:
+    """[2026-10-16] Tira o instalador de dentro do `.zip` já conferido e
+    confere de novo (`sha256_dentro`). Recusa (`ArquivoInvalido`) zip com mais
+    de um arquivo, com pasta no nome ou que não abre; o zip nunca fica para
+    trás."""
+    import zipfile
+
+    try:
+        try:
+            with zipfile.ZipFile(zipado) as z:
+                membros = [m for m in z.infolist() if not m.is_dir()]
+                if len(membros) != 1:
+                    raise ArquivoInvalido(
+                        f"O .zip da atualizacao deveria ter um arquivo so, e tem {len(membros)}.")
+                membro = membros[0]
+                nome = membro.filename
+                if (Path(nome).name != nome or "\\" in nome or not nome.lower().endswith(".exe")):
+                    raise ArquivoInvalido(f"O .zip da atualizacao traz um nome inesperado: {nome!r}.")
+                destino = zipado.parent / nome
+                parcial = destino.with_suffix(destino.suffix + ".part")
+                digest = hashlib.sha256()
+                with z.open(membro) as origem, open(parcial, "wb") as saida:
+                    for bloco in iter(lambda: origem.read(1024 * 1024), b""):
+                        saida.write(bloco)
+                        digest.update(bloco)
+        except zipfile.BadZipFile as erro:
+            raise ArquivoInvalido(f"O .zip da atualizacao nao abre: {erro}") from erro
+        if info.sha256_dentro and digest.hexdigest() != info.sha256_dentro:
+            parcial.unlink(missing_ok=True)
+            raise ArquivoInvalido(
+                f"O instalador dentro do .zip nao confere com o publicado.\n"
+                f"  esperado: {info.sha256_dentro}\n  obtido:   {digest.hexdigest()}")
+        destino.unlink(missing_ok=True)
+        parcial.rename(destino)
+        log_cb("Instalador tirado do .zip e conferido (SHA256 confere).")
+        return destino
+    finally:
+        zipado.unlink(missing_ok=True)
 
 
 def empacotado() -> bool:

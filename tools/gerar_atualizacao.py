@@ -35,6 +35,7 @@ import posixpath
 import shutil
 import subprocess
 import sys
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -194,11 +195,40 @@ def nome_do_pacote(de: str, para: str) -> str:
     return f"SIG-FT_Itaipu_Atualizacao_{de}_para_{para}.bin"
 
 
-def registrar(latest: dict, de: str, pacote: Path) -> dict:
+def nome_do_zip(de: str, para: str) -> str:
+    return f"SIG-FT_Itaipu_Atualizacao_{de}_para_{para}.zip"
+
+
+def nome_do_membro_do_zip(de: str, para: str) -> str:
+    return f"SIG-FT_Itaipu_Atualizacao_{de}_para_{para}.exe"
+
+
+def zipar(pacote: Path, de: str, para: str) -> Path:
+    """O mesmo instalador pequeno dentro de um `.zip` comum, ao lado do `.bin`.
+
+    [2026-10-16] O proxy da empresa cortou o fim do `.bin` 3 de 3 vezes e deixou
+    passar o `.exe` completo; o `.zip` é a aposta de outro tipo de arquivo.
+    SEM SENHA, de propósito: um zip que o proxy não consegue abrir seria
+    contornar a análise da empresa. `ZIP_STORED`: o instalador já vem comprimido
+    (LZMA do Inno), comprimir de novo não ganha nada."""
+    destino = Path(pacote).parent / nome_do_zip(de, para)
+    destino.unlink(missing_ok=True)
+    with zipfile.ZipFile(destino, "w", compression=zipfile.ZIP_STORED) as z:
+        z.write(pacote, arcname=nome_do_membro_do_zip(de, para))
+    return destino
+
+
+def registrar(latest: dict, de: str, pacote: Path, zipado: Path | None = None) -> dict:
     """Acrescenta o instalador pequeno ao `latest.json`: o app escolhe a
-    entrada cujo `de` é a versão instalada."""
-    latest.setdefault("atualizacoes", []).append({
-        "de": de, "arquivo": Path(pacote).name, "sha256": sha256(pacote), "tamanho": Path(pacote).stat().st_size})
+    entrada cujo `de` é a versão instalada. O `.zip`, quando há, vai numa chave
+    nova (`zip`) que só o app de 2026-10-16 em diante lê; o app instalado
+    continua no `arquivo` (`.bin`) de sempre."""
+    entrada = {"de": de, "arquivo": Path(pacote).name, "sha256": sha256(pacote),
+               "tamanho": Path(pacote).stat().st_size}
+    if zipado is not None:
+        entrada["zip"] = {"arquivo": Path(zipado).name, "sha256": sha256(zipado),
+                          "tamanho": Path(zipado).stat().st_size}
+    latest.setdefault("atualizacoes", []).append(entrada)
     return latest
 
 
@@ -242,7 +272,7 @@ def pacotes(novo: dict, bases: Path, *, versao: str, numerica: str, iscc: str, i
         pacote = saida_iscc.parent / nome_do_pacote(de, versao)
         pacote.unlink(missing_ok=True)
         shutil.move(str(saida_iscc), str(pacote))
-        registrar(manifesto_latest, de, pacote)
+        registrar(manifesto_latest, de, pacote, zipar(pacote, de, versao))
         feitos.append(pacote)
         print(f"de {de}: {len(dif.copiar)} arquivo(s) a copiar ({dif.bytes_copiar / 1e6:.1f} MB de "
               f"{dif.bytes_total / 1e6:.1f} MB), {len(dif.remover)} a remover -> {pacote.name} "

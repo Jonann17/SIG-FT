@@ -850,3 +850,131 @@ def test_disco_cheio_no_pequeno_NAO_vira_download_do_completo(monkeypatch, tmp_p
 
     assert erro.value.errno == 28
     assert abrir.assets == ["77"]
+
+
+# =============================================================================
+# J. O pequeno em .zip  [2026-10-16]
+# =============================================================================
+# O proxy da empresa cortou o fim do `.bin` 3 de 3 vezes e deixou passar o
+# `.exe` completo. O Release passa a trazer o MESMO pequeno num `.zip` comum,
+# numa chave nova do `latest.json` (`zip`) que só o app novo lê. Ordem: zip ->
+# bin -> completo. Sem senha e sem remendo: o proxy analisa o que quiser.
+
+ZIPADO = "SIG-FT_Itaipu_Atualizacao_1.0.0_para_1.1.0.zip"
+MEMBRO = "SIG-FT_Itaipu_Atualizacao_1.0.0_para_1.1.0.exe"
+
+
+def _zip_com(membros):
+    import io
+    import zipfile
+
+    bruto = io.BytesIO()
+    with zipfile.ZipFile(bruto, "w", compression=zipfile.ZIP_STORED) as z:
+        for nome, dados in membros.items():
+            z.writestr(nome, dados)
+    return bruto.getvalue()
+
+
+def _tres_caminhos(pequeno, completo, zipado):
+    """zip (asset 78) -> bin (77) -> completo (42)."""
+    release = _release_com_pequeno()
+    release["assets"].append({
+        "name": ZIPADO, "url": "https://api.github.com/repos/luanccozer/SIG-FT/releases/assets/78",
+        "size": len(zipado)})
+    manifesto = {"sha256": hashlib.sha256(completo).hexdigest(),
+                 "atualizacoes": [{"de": "1.0.0", "arquivo": PACOTE,
+                                   "sha256": hashlib.sha256(pequeno).hexdigest(), "tamanho": len(pequeno),
+                                   "zip": {"arquivo": ZIPADO, "sha256": hashlib.sha256(zipado).hexdigest(),
+                                           "tamanho": len(zipado)}}]}
+    return updater.interpretar_release(release, manifesto, versao_atual="1.0.0")
+
+
+def test_com_o_zip_no_release_o_app_novo_escolhe_o_zip():
+    pequeno, completo = b"P" * 2_000_000, b"C" * 3_000_000
+    zipado = _zip_com({MEMBRO: pequeno})
+
+    info = _tres_caminhos(pequeno, completo, zipado)
+
+    assert info.nome_arquivo == ZIPADO and info.incremental is True
+    assert info.sha256 == hashlib.sha256(zipado).hexdigest()
+    assert info.sha256_dentro == hashlib.sha256(pequeno).hexdigest()
+    assert info.reserva is not None and info.reserva.nome_arquivo == PACOTE
+    assert info.completo is not None and info.completo.nome_arquivo == "SIG-FT_Itaipu_Setup_1.1.0.exe"
+
+
+def test_zip_listado_mas_ausente_do_release_fica_o_bin():
+    info = updater.interpretar_release(_release_com_pequeno(), {
+        "sha256": "ab" * 32,
+        "atualizacoes": [{"de": "1.0.0", "arquivo": PACOTE, "sha256": "cd" * 32, "tamanho": 1,
+                          "zip": {"arquivo": ZIPADO, "sha256": "ef" * 32, "tamanho": 1}}]},
+        versao_atual="1.0.0")
+
+    assert info.nome_arquivo == PACOTE and info.reserva is None
+
+
+def test_o_zip_baixado_e_conferido_aberto_e_vira_o_exe(monkeypatch, tmp_path):
+    monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
+    pequeno, completo = b"P" * 2_000_000, b"C" * 3_000_000
+    zipado = _zip_com({MEMBRO: pequeno})
+    abrir = _AbrirPorAsset({"78": _RespostaBinaria(zipado)})
+    monkeypatch.setattr(rede, "abrir", abrir)
+
+    destino = updater.baixar(_tres_caminhos(pequeno, completo, zipado))
+
+    assert abrir.assets == ["78"]
+    assert destino.name == MEMBRO and destino.read_bytes() == pequeno
+    assert sorted(p.name for p in tmp_path.iterdir()) == [MEMBRO], "o .zip nao fica para tras"
+
+
+def test_zip_cortado_cai_no_bin_e_nao_no_completo(monkeypatch, tmp_path):
+    monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
+    pequeno, completo = b"P" * 2_000_000, b"C" * 3_000_000
+    zipado = _zip_com({MEMBRO: pequeno})
+    abrir = _AbrirPorAsset({"78": _RespostaCortada(zipado, ate=len(zipado) - 2370),
+                            "77": _RespostaBinaria(pequeno)})
+    monkeypatch.setattr(rede, "abrir", abrir)
+    avisos, log = [], []
+
+    destino = updater.baixar(_tres_caminhos(pequeno, completo, zipado),
+                             ao_cair_no_completo=avisos.append, log_cb=log.append)
+
+    assert abrir.assets == ["78", "77"]
+    assert destino.read_bytes() == pequeno
+    assert avisos == [], "ainda nao e o completo"
+    assert any(".zip" in linha and "falhou" in linha for linha in log)
+
+
+def test_zip_e_bin_cortados_caem_no_completo(monkeypatch, tmp_path):
+    monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
+    pequeno, completo = b"P" * 2_000_000, b"C" * 3_000_000
+    zipado = _zip_com({MEMBRO: pequeno})
+    abrir = _AbrirPorAsset({"78": _RespostaCortada(zipado, ate=len(zipado) - 10),
+                            "77": _RespostaCortada(pequeno, ate=len(pequeno) - 10),
+                            "42": _RespostaBinaria(completo)})
+    monkeypatch.setattr(rede, "abrir", abrir)
+    avisos = []
+
+    destino = updater.baixar(_tres_caminhos(pequeno, completo, zipado), ao_cair_no_completo=avisos.append)
+
+    assert abrir.assets == ["78", "77", "42"] and destino.read_bytes() == completo
+    assert [a.nome_arquivo for a in avisos] == ["SIG-FT_Itaipu_Setup_1.1.0.exe"]
+    assert sorted(p.name for p in tmp_path.iterdir()) == [destino.name]
+
+
+@pytest.mark.parametrize("membros", [
+    {MEMBRO: b"X" * 2_000_000},                                  # o de dentro nao confere
+    {"../" + MEMBRO: b"P" * 2_000_000},                          # caminho para fora da pasta
+    {MEMBRO: b"P" * 2_000_000, "outro.exe": b"Q" * 10},         # mais de um arquivo
+], ids=["sha-de-dentro", "caminho", "dois-arquivos"])
+def test_zip_estranho_e_recusado_e_cai_no_bin(monkeypatch, tmp_path, membros):
+    monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
+    pequeno, completo = b"P" * 2_000_000, b"C" * 3_000_000
+    zipado = _zip_com(membros)
+    abrir = _AbrirPorAsset({"78": _RespostaBinaria(zipado), "77": _RespostaBinaria(pequeno)})
+    monkeypatch.setattr(rede, "abrir", abrir)
+
+    destino = updater.baixar(_tres_caminhos(pequeno, completo, zipado))
+
+    assert abrir.assets == ["78", "77"] and destino.read_bytes() == pequeno
+    assert sorted(p.name for p in tmp_path.iterdir()) == [destino.name]
+    assert not (tmp_path.parent / MEMBRO).exists()

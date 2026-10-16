@@ -314,6 +314,12 @@ jobs:
           for pacote in installer/Output/*.bin; do
             [ -e "$pacote" ] && ativos+=("$pacote#Atualizacao pequena (so o que mudou)")
           done
+          # [2026-10-16] O mesmo pequeno num .zip comum: o proxy da empresa
+          # cortou o fim do .bin 3 de 3 vezes. So o app novo le o .zip
+          # (chave `zip` do latest.json); o instalado segue no .bin.
+          for pacote in installer/Output/*.zip; do
+            [ -e "$pacote" ] && ativos+=("$pacote#Atualizacao pequena em .zip (so o que mudou)")
+          done
           if [ "$PRERELEASE" = "true" ]; then sinal="--prerelease"; else sinal="--prerelease=false"; fi
 
           if gh release view "$TAG" >/dev/null 2>&1; then
@@ -366,5 +372,6 @@ jobs:
           path: |
             installer/Output/*.exe
             installer/Output/*.bin
+            installer/Output/*.zip
           retention-days: 7
           if-no-files-found: warn
