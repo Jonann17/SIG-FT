@@ -169,6 +169,49 @@ def test_resolver_override_de_tarefa_vence_o_global(config_path):
     }
 
 
+def test_interpretacao_segue_o_modelo_do_cria_fichas_sem_global(config_path):
+    """O caso do Luan (2026-10-16): modo avançado com o Cria Fichas no
+    OpenRouter e nenhum global. A passada 1 (`interpretar_material`) caía no
+    Gemini DIRETO do `LLM_MODELOS_HOJE` -- que a VPN da empresa derruba
+    ("Connection aborted") -- enquanto o resto do lote ia pelo OpenRouter."""
+    selecao.definir_por_tarefa("categorizar_pdm", "openrouter", "google/gemini-3.8-flash",
+                               config_path=config_path)
+
+    assert selecao.resolver("interpretar_material", config_path=config_path) == {
+        "provider": "openrouter", "model": "google/gemini-3.8-flash"}
+
+
+def test_interpretacao_segue_o_cria_fichas_antes_do_global(config_path):
+    # Quem escolheu um modelo SÓ para o Cria Fichas escolheu para as duas
+    # passadas dele; o global é para as tarefas sem escolha própria.
+    selecao.definir_global("gemini", "modelo-global", config_path=config_path)
+    selecao.definir_por_tarefa("categorizar_pdm", "openrouter", "modelo-cria-fichas",
+                               config_path=config_path)
+
+    assert selecao.resolver("interpretar_material", config_path=config_path) == {
+        "provider": "openrouter", "model": "modelo-cria-fichas"}
+
+
+def test_interpretacao_com_escolha_propria_usa_a_propria(config_path):
+    selecao.definir_por_tarefa("categorizar_pdm", "openrouter", "modelo-cria-fichas",
+                               config_path=config_path)
+    # O painel não lista a passada 1 (não é tarefa de `LLM_MODELOS_HOJE`); um
+    # override dela só existe escrito à mão no arquivo -- e aí vale.
+    bruto = json.loads(config_path.read_text(encoding="utf-8"))
+    bruto["_modelos_ia"]["por_tarefa"]["interpretar_material"] = {
+        "provider": "gemini", "model": "modelo-da-passada-1"}
+    _escrever_json(config_path, bruto)
+
+    assert selecao.resolver("interpretar_material", config_path=config_path) == {
+        "provider": "gemini", "model": "modelo-da-passada-1"}
+
+
+def test_so_a_interpretacao_herda_do_cria_fichas(config_path):
+    selecao.definir_por_tarefa("categorizar_pdm", "openrouter", "modelo-cria-fichas",
+                               config_path=config_path)
+    assert selecao.resolver("condicoes", config_path=config_path) is None
+
+
 def test_resolver_tarefa_desconhecida_nao_levanta_so_nao_acha_override(config_path):
     selecao.definir_global("gemini", "modelo-global", config_path=config_path)
     # `resolver()` não valida `tarefa` -- uma tarefa que não existe em

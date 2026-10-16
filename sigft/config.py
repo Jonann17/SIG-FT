@@ -313,6 +313,15 @@ LLM_TASKS: dict[str, dict[str, str]] = {
     "interpretar_material": {"provider": PROVIDER_GEMINI, "model": "gemini-3-flash-preview"},
 }
 
+# Tarefa que SEGUE a escolha de outra no painel "Modelos de IA" quando não
+# tem escolha própria (2026-10-16). A passada 1 do Cria Fichas não aparece no
+# painel: sem isto ela caía no fallback (Gemini direto) mesmo com o Cria
+# Fichas apontado para o OpenRouter -- e a VPN da empresa derruba o Gemini
+# direto. Ordem: escolha da tarefa > escolha da tarefa que ela segue > global.
+LLM_TAREFA_SEGUE: dict[str, str] = {
+    "interpretar_material": "categorizar_pdm",
+}
+
 # Tabela de preços (US$ por 1M tokens) — SEED do UsageTracker (CP 3.4) para
 # ESTIMAR custo dos provedores diretos (via OpenRouter o custo vem REAL na
 # resposta). Fonte: docs/refatoracao/MODELOS_IA.md §2 (aimultiple, jul/2026) —

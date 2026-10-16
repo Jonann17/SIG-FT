@@ -166,8 +166,8 @@ def carregar(*, config_path: str | os.PathLike[str] = config.CONFIG_FILE) -> dic
 def resolver(
     tarefa: str, *, config_path: str | os.PathLike[str] = config.CONFIG_FILE
 ) -> dict[str, str] | None:
-    """Resolve a seleção para `tarefa`: override POR TAREFA > seleção
-    GLOBAL > `None` (nenhuma seleção salva -- quem chama, tipicamente
+    """Resolve a seleção para `tarefa`: override POR TAREFA > override da
+    tarefa que ela segue (`config.LLM_TAREFA_SEGUE`) > seleção GLOBAL > `None` (nenhuma seleção salva -- quem chama, tipicamente
     `core/llm/client.py:get_llm()`, decide o fallback embutido).
 
     Não valida `tarefa` contra `config.LLM_MODELOS_HOJE` -- ver docstring do
@@ -176,6 +176,11 @@ def resolver(
     override = estado["por_tarefa"].get(tarefa)
     if override is not None:
         return override
+    # A passada 1 do Cria Fichas segue o modelo escolhido para o Cria Fichas
+    # (`config.LLM_TAREFA_SEGUE`) antes de cair no global.
+    seguida = config.LLM_TAREFA_SEGUE.get(tarefa)
+    if seguida is not None and estado["por_tarefa"].get(seguida) is not None:
+        return estado["por_tarefa"][seguida]
     return estado["global"]
 
 
