@@ -110,6 +110,36 @@ def test_limpar_troca_nan_por_null_e_numpy_por_python():
         assert painel.limpar({"a": float("nan"), "b": [1, numpy.int64(2)], "c": "x"}) == {"a": None, "b": [1, 2], "c": "x"}
 
 
+def _mapeadora_com_atividades(caminho, colunas_atividades):
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    principal = wb.active
+    principal.title = "Acompanhamento Sobressalente"
+    principal.append(["título"])
+    principal.append(["N DOCUMENTO ITAIPU"])
+    principal.append(["LISTA-1"])
+    atv = wb.create_sheet("Atividades")
+    atv.append(colunas_atividades)
+    atv.append(["x"] * len(colunas_atividades))
+    wb.save(caminho)
+
+
+def test_aba_atividades_com_outras_colunas_nao_derruba_o_painel(tmp_path):
+    """Pendência do Luan de 2026-10-15: sem a aba o painel já seguia sem a
+    seção, mas uma aba com OUTRAS colunas dava `KeyError` em NV ou CODIGO
+    ITAIPU e o painel não saía. Agora segue sem a seção, como sem a aba."""
+    pytest.importorskip("pandas")
+    pytest.importorskip("openpyxl")
+    caminho = tmp_path / "mapeadora.xlsx"
+    with openpyxl_de_verdade(painel), pandas_de_verdade(painel):
+        _mapeadora_com_atividades(caminho, ["ATIVIDADE", "RESPONSAVEL", "PRAZO"])
+        dados = painel.ler_mapeadora(caminho)
+
+    assert len(dados["listas"]) == 1
+    assert dados["atividades"].empty
+
+
 # ===========================================================================
 # B. O template
 # ===========================================================================

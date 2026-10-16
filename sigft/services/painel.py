@@ -216,7 +216,9 @@ def ler_mapeadora(caminho) -> dict[str, pd.DataFrame]:
         atv["LISTA"] = atv["CODIGO ITAIPU"].where(atv["NV"] == 1).ffill()
         atv["GRUPO"] = atv["DESCRICAO"].where(atv["NV"] == 1).ffill()
         out["atividades"] = atv[atv["NV"] == 2].reset_index(drop=True)
-    except ValueError:
+    except (ValueError, KeyError):
+        # Sem a aba (ValueError) ou com OUTRAS colunas (KeyError em NV,
+        # CODIGO ITAIPU ou DESCRICAO): o painel sai sem a seção de atividades.
         out["atividades"] = pd.DataFrame()
     try:
         fu = pd.read_excel(caminho, sheet_name="Lista de preços Follow-up", dtype=object)

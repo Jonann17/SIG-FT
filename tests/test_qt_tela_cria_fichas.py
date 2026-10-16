@@ -825,6 +825,9 @@ def test_robo_erro_fatal_vira_log_e_devolve_o_botao(tela, robo, qtbot):
     _esperar_log(qtbot, tela, "> Erro Fatal na Thread do Robô:")
     qtbot.waitUntil(tela.btn_run_auto.isEnabled, timeout=2000)
     assert tela.resumos == [] and not tela.btn_save.isEnabled()
+    # Pendência de 2026-10-11: como o robô de edição, o erro fatal fecha o
+    # navegador (antes ele ficava aberto).
+    assert RoboFalso.instancias[0].saiu
 
 
 def test_robo_sem_o_backend_nao_comeca(tela, robo, monkeypatch):

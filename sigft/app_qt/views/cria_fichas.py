@@ -768,6 +768,11 @@ class ModuloCriaFichas(ModuleFrame):
 
         except Exception as e:  # noqa: BLE001 -- vira log, como lá
             self.log(f"Erro Fatal na Thread do Robô: {e}")
+            # Como o robô de edição: o erro fatal fecha o navegador.
+            try:
+                bot.driver.quit()
+            except Exception:  # noqa: BLE001 -- navegador já fechado (ou nem abriu)
+                pass
 
     def _fim_do_robo(self, resumo, excel=None) -> None:
         self.df_resumo_final = resumo

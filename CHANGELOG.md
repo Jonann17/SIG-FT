@@ -18,6 +18,9 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Cria Fichas: na revisão dos PDMs, o item que a IA não respondeu mostra as colunas vazias, em vez de "nan" em Descrição Curta, UN e Tipo.
 - Cria Fichas: o item sem marca não vai mais para a IA (nem para a busca no catálogo) com a palavra "nan" no lugar da marca.
 - Atualização automática: quem está na versão anterior volta a receber a **atualização pequena** (só o que mudou), em vez do instalador completo. Desde a 1.2.0-rc.5 o Release só montava o pequeno a partir da versão mais antiga da lista.
+- Cria Fichas: num erro fatal do robô de criação, o navegador fecha, como já fazia o robô de edição.
+- Gestão PMIB: uma aba "Atividades" com outras colunas na planilha de mapeamento não derruba mais o painel; ele sai sem a seção de atividades, como quando a aba não existe.
+- Instalação: aberto pelo `SIG-FT.bat` ou `SIG-FT.command` com o Python 3.12.0, o SIG-FT avisa que essa versão tem um defeito que impede algumas telas de abrir, e diz qual instalar.
 - Upload Tech Specs: o "Continuar" depois de salvar o JSON abre a janela para escolher quais fichas enviar ao portal, como no Upload Condições, em vez de mandar todas. E um JSON que não abre mostra a caixa "Erro de Leitura", além do aviso no console.
 
 ## 1.2.0 - 2026-10-15
