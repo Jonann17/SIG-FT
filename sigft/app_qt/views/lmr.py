@@ -16,9 +16,10 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMessageBox, QVBo
 from sigft.app import theme
 from sigft.app.textos_dialogos import MSG_LOGIN_LMR
 from sigft.app_qt import estilo, file_dialogs
-from sigft.app_qt.widgets import blocos, controles, pickers
+from sigft.app_qt.widgets import blocos, controles, pickers, revisao_portal
 from sigft.app_qt.widgets.dialogs import SelecaoComCaixasDialog
 from sigft.app_qt.widgets.module_frame import ModuleFrame
+from sigft.core import pmib_regras
 
 
 class DialogoDaAba(QDialog):
@@ -268,8 +269,38 @@ class ModuloLMR(ModuleFrame):
         if not selecionados:
             self.log("Seleção cancelada.")
             return
+        selecionados = self._revisar_antes_do_portal(modulo, selecionados, df_completo)
+        if not selecionados:
+            return
         self.log(f"{len(selecionados)} fichas selecionadas. Iniciando robô...")
         self._worker_lmr(modulo, selecionados, df_completo)
+
+    def _revisar_antes_do_portal(self, modulo, selecionados, df_completo):
+        """R2: as regras do portal nas fichas escolhidas, antes do navegador.
+
+        Roda na tarefa; a janela, na thread da interface. Os grupos saem da
+        MESMA função do robô (`agrupar_por_codigo`, sobre as linhas da ficha
+        filtradas como ele filtra). Devolve os PMIBs que seguem (só filtra) ou
+        `None` para não abrir o robô. Se a conferência em si falhar, o robô
+        segue como antes e o console diz que a revisão não rodou: ela é um
+        aviso, e o portal continua sendo o juiz.
+        """
+        try:
+            fichas = []
+            for pmib in selecionados:
+                linhas = df_completo[df_completo["PMIB"] == pmib].reset_index(drop=True)
+                fichas.append((pmib, modulo.agrupar_por_codigo(
+                    (linhas.loc[i, "Código_PMIB"], linhas.loc[i, "TAG_PMIB"]) for i in range(len(linhas)))))
+            problemas = pmib_regras.conferir_lmr(fichas)
+        except Exception as erro:  # noqa: BLE001 -- a revisão nunca derruba o robô
+            self.log(f"[!] Não consegui conferir as fichas antes do portal ({type(erro).__name__}: "
+                     f"{erro}). Seguindo sem a revisão.")
+            return selecionados
+        seguem = self._na_interface_e_esperar(lambda: revisao_portal.conferir_antes_do_portal(
+            self, problemas, len(selecionados), self.log))
+        if seguem is None:
+            return None
+        return [selecionados[i] for i in seguem]
 
     def _escolher_pmibs_e_esperar(self, pmibs) -> list[str]:
         """A janela de seleção abre na thread da interface; a tarefa espera.

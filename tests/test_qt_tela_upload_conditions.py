@@ -15,6 +15,7 @@ from sigft.app import backends, theme
 from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO, msg_falha_ao_salvar
 from sigft.app_qt.views import upload_conditions as tela_mod
 from sigft.app_qt.views._upload_comum import MSG_ROBO_OCUPADO
+from sigft.app_qt.widgets import revisao_portal
 
 ABA_IA = "Processamento IA (Gerar Excel)"
 ABA_WEB = "Robô Web (Preencher Portal)"
@@ -80,6 +81,15 @@ class AutomacaoFalsa:
 
     def fechar(self):
         self.chamadas.append("fechar")
+
+
+def _ficha(pmib):
+    """Uma ficha que passa na revisão antes do portal (R2): o robô sempre recebe
+    as chaves do JSON da IA, e a Descarte é obrigatória no portal. Os testes do
+    robô usavam `{"pmib_codigo": "A"}`, que hoje a revisão barra (o robô
+    digitaria a Legislação e o Descarte vazios): o dado mudou, não a regra."""
+    return {"pmib_codigo": pmib, "legislacao_es": "ley", "legislacao_pt": "lei",
+            "descarte_es": "reciclaje", "descarte_pt": "reciclagem"}
 
 
 def _backend(monkeypatch, processador=None, automacao=None):
@@ -414,7 +424,7 @@ def _rodar_robo(tela, qtbot, monkeypatch, auto, dados):
 
 def test_robo_completo(tela, qtbot, monkeypatch):
     auto = AutomacaoFalsa()
-    dados = [{"pmib_codigo": "A"}]
+    dados = [_ficha("A")]
     _rodar_robo(tela, qtbot, monkeypatch, auto, dados)
     assert auto.chamadas == ["iniciar", ("portal", "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"),
                              ("lista", dados, "/d/_STATUS_PMIB.xlsx"), "fechar"]
@@ -435,7 +445,7 @@ def test_robo_completo(tela, qtbot, monkeypatch):
 
 def test_robo_erro_critico_fecha_o_navegador(tela, qtbot, monkeypatch):
     auto = AutomacaoFalsa(falha=RuntimeError("portal fora do ar"))
-    _rodar_robo(tela, qtbot, monkeypatch, auto, [{"pmib_codigo": "A"}])
+    _rodar_robo(tela, qtbot, monkeypatch, auto, [_ficha("A")])
     assert "> Erro Crítico Web: portal fora do ar" in _texto(tela)
     assert auto.chamadas[-1] == "fechar"
     assert tela.avisos == []
@@ -515,7 +525,7 @@ def test_robo_que_nao_nasce_devolve_os_botoes(tela, qtbot, monkeypatch):
 
     monkeypatch.setattr(backends, "upload_conditions_backend", SimpleNamespace(UploadAutomation=quebra))
     tela.caminho_status = "/d/s.xlsx"
-    tela._start_web_process([{"pmib_codigo": "A"}])
+    tela._start_web_process([_ficha("A")])
     qtbot.waitUntil(lambda: tela.btn_web_mem.isEnabled() and tela.btn_web_file.isEnabled()
                     and not tela.btn_parar_web.isEnabled(), timeout=3000)
     qtbot.waitUntil(lambda: "Erro Crítico Web" in _texto(tela), timeout=2000)
@@ -531,7 +541,7 @@ def test_fechar_que_falha_loga_e_devolve_os_botoes(tela, qtbot, monkeypatch):
             raise OSError("navegador já fechado")
 
     auto = FechaQuebrando()
-    _rodar_robo(tela, qtbot, monkeypatch, auto, [{"pmib_codigo": "A"}])
+    _rodar_robo(tela, qtbot, monkeypatch, auto, [_ficha("A")])
     assert auto.chamadas[-1] == "fechar"
     assert _texto(tela).splitlines()[-2:] == ["> Fila de processamento web concluída.",
                                               "> Erro Crítico Web: navegador já fechado"]
@@ -557,7 +567,7 @@ def test_um_robo_por_vez(tela, caixas, qtbot, monkeypatch, selecao):
     monkeypatch.setattr(backends, "upload_conditions_backend",
                         SimpleNamespace(UploadAutomation=lambda: criados.append(1) or auto))
     tela.caminho_status = "/d/s.xlsx"
-    tela._start_web_process([{"pmib_codigo": "A"}])
+    tela._start_web_process([_ficha("A")])
     qtbot.waitUntil(lambda: any(c[0] == "lista" for c in auto.chamadas if isinstance(c, tuple)),
                     timeout=2000)
     # A IA termina enquanto o robô roda: salva, mas nem pergunta o "Continuar"
@@ -570,7 +580,7 @@ def test_um_robo_por_vez(tela, caixas, qtbot, monkeypatch, selecao):
     assert proc.chamadas[-1] == ("novo", "/d/novo.xlsx")
     assert selecao == []
     # Nem uma seleção antiga confirmada agora.
-    tela._start_web_process([{"pmib_codigo": "C"}])
+    tela._start_web_process([_ficha("C")])
     auto.liberar.set()
     qtbot.waitUntil(tela.btn_web_mem.isEnabled, timeout=3000)
     qtbot.wait(100)
@@ -579,7 +589,7 @@ def test_um_robo_por_vez(tela, caixas, qtbot, monkeypatch, selecao):
     # Terminado o primeiro, um novo pode começar.
     auto.liberar = threading.Event()
     auto.liberar.set()
-    tela._start_web_process([{"pmib_codigo": "D"}])
+    tela._start_web_process([_ficha("D")])
     qtbot.waitUntil(lambda: criados == [1, 1] and tela.btn_web_mem.isEnabled(), timeout=3000)
 
 
@@ -682,3 +692,73 @@ def test_escolher_de_novo_nao_acumula_folha(tela, monkeypatch):
     tela.btn_status.click()
     tela.btn_status.click()
     assert (tela.btn_status.styleSheet(), tela.lbl_status_status.styleSheet()) == folhas
+
+
+# ---------------------------------------------------------------------------
+# Revisão antes do portal (R2)
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def revisao(monkeypatch):
+    """A janela da revisão: registra o que ela recebeu e responde `resposta`."""
+    registro = SimpleNamespace(chamadas=[], resposta=revisao_portal.SEM_ERROS)
+
+    def perguntar(parent, problemas, total):
+        registro.chamadas.append((parent, [(p.ficha, p.interno) for p in problemas], total,
+                                  threading.current_thread() is threading.main_thread()))
+        return registro.resposta
+
+    monkeypatch.setattr(revisao_portal, "perguntar_revisao", perguntar)
+    return registro
+
+
+def test_revisao_tira_as_fichas_com_erro(tela, qtbot, monkeypatch, revisao):
+    auto = AutomacaoFalsa()
+    boa, ruim = _ficha("A"), {**_ficha("B"), "legislacao_pt": " "}
+    _rodar_robo(tela, qtbot, monkeypatch, auto, [ruim, boa])
+    assert revisao.chamadas == [(tela, [("B", "TextArea_TypeLegislationPT")], 2, True)]
+    assert auto.chamadas[2] == ("lista", [boa], "/d/_STATUS_PMIB.xlsx")
+    linhas = _texto(tela).splitlines()
+    assert linhas[:4] == [
+        "> Revisão antes do portal: 1 problema(s) em 1 ficha(s) de 2.",
+        "> [!] B · Legislação (PT) (TextArea_TypeLegislationPT) · '' · "
+        "está vazio; o portal não aceita este campo vazio",
+        "> Seguindo sem as 1 ficha(s) com erro: 1 vão ao portal.",
+        "> Iniciando fila de 1 fichas no navegador...",
+    ]
+
+
+def test_revisao_seguir_com_todas(tela, qtbot, monkeypatch, revisao):
+    revisao.resposta = revisao_portal.TODAS
+    auto = AutomacaoFalsa()
+    dados = [{**_ficha("B"), "descarte_pt": ""}, _ficha("A")]
+    _rodar_robo(tela, qtbot, monkeypatch, auto, dados)
+    assert auto.chamadas[2] == ("lista", dados, "/d/_STATUS_PMIB.xlsx")
+
+
+def test_revisao_sem_problema_nada_aparece(tela, qtbot, monkeypatch, revisao):
+    auto = AutomacaoFalsa()
+    _rodar_robo(tela, qtbot, monkeypatch, auto, [_ficha("A")])
+    assert revisao.chamadas == []
+    assert "Revisão antes do portal" not in _texto(tela)
+
+
+def test_revisao_cancelar_nao_abre_o_robo(tela, qtbot, monkeypatch, revisao):
+    revisao.resposta = None
+    criados = []
+    monkeypatch.setattr(backends, "upload_conditions_backend",
+                        SimpleNamespace(UploadAutomation=lambda: criados.append(1)))
+    tela.caminho_status = "/d/s.xlsx"
+    tela._start_web_process([{**_ficha("A"), "descarte_es": ""}])
+    assert criados == [] and tela.btn_web_mem.isEnabled() and not tela.btn_parar_web.isEnabled()
+    qtbot.waitUntil(lambda: _texto(tela).endswith("> Cancelado na revisão antes do portal."), timeout=2000)
+    assert "Iniciando fila" not in _texto(tela)
+
+
+def test_revisao_todas_com_erro_nao_abre_o_robo(tela, qtbot, monkeypatch, revisao, caixas):
+    criados = []
+    monkeypatch.setattr(backends, "upload_conditions_backend",
+                        SimpleNamespace(UploadAutomation=lambda: criados.append(1)))
+    tela._start_web_process([{"pmib_codigo": "A"}])
+    assert criados == [] and tela.btn_web_mem.isEnabled()
+    qtbot.waitUntil(lambda: _texto(tela).endswith("> " + revisao_portal.MSG_NADA_SOBROU), timeout=2000)
+    assert caixas.chamadas[-1][0] == "aviso"

@@ -18,7 +18,7 @@ from sigft.app import backends, theme
 from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA, MSG_LOGIN_PAGINA_PRINCIPAL
 from sigft.app_qt import estilo
 from sigft.app_qt.views import cria_fichas as tela_mod
-from sigft.app_qt.widgets import controles
+from sigft.app_qt.widgets import controles, revisao_portal
 from sigft.app_qt.views.janelas import DecisaoRobo
 
 COLORS = theme.COLORS
@@ -735,14 +735,75 @@ def robo(tela, monkeypatch, pd):
         original(titulo, msg, tipo, esperar=esperar)
 
     monkeypatch.setattr(tela, "avisar", avisar)
+    # `descricao_curta` e `codigo_projeto`: o que a IA sempre devolve, e que a
+    # revisão antes do portal (R2) exige -- sem eles o portal recusa o Salvar.
     tela.df_processed = pd.DataFrame([
         {"descricao_original": "VALVULA ESFERA 2 POL INOX", "pdm_escolhido": "PDM.1111.001 - VALVULA"},
         {"descricao_original": "MOTOR 50CV", "pdm_escolhido": "NENHUM"},
         {"descricao_original": "CABO FLEXIVEL", "pdm_escolhido": "PDM.3333.003 - CABO"},
         {"descricao_original": "PARAFUSO", "pdm_escolhido": "PDM.4444.004 - PARAFUSO"},
-    ])
+    ]).assign(descricao_curta="ITEM", codigo_projeto="PRJ-1")
     tela._pos_revisao_concluida(tela.df_processed)
     return estado
+
+
+# --- revisão antes do portal (R2) -------------------------------------------------------
+
+@pytest.fixture
+def revisao(monkeypatch):
+    registro = {"chamadas": [], "resposta": revisao_portal.SEM_ERROS}
+
+    def perguntar(parent, problemas, total):
+        registro["chamadas"].append((parent, [(p.ficha, p.interno) for p in problemas], total))
+        return registro["resposta"]
+
+    monkeypatch.setattr(revisao_portal, "perguntar_revisao", perguntar)
+    return registro
+
+
+def _lote_com_um_erro(tela, pd):
+    tela.df_processed = pd.DataFrame([
+        {"descricao_original": "VALVULA", "pdm_escolhido": "PDM.1 - V", "descricao_curta": "VALVULA",
+         "codigo_projeto": "P1"},
+        {"descricao_original": "CONEXÃO", "pdm_escolhido": "PDM.2 - C", "descricao_curta": "CONEXÃO",
+         "codigo_projeto": "P1"},
+        {"descricao_original": "CABO", "pdm_escolhido": "PDM.3 - C", "descricao_curta": "CABO",
+         "codigo_projeto": "P1"},
+    ])
+    tela._pos_revisao_concluida(tela.df_processed)
+
+
+def test_revisao_tira_as_fichas_com_erro(tela, robo, qtbot, pd, revisao):
+    _lote_com_um_erro(tela, pd)
+    RoboFalso.roteiro = {"VALVULA": [("SUCESSO", ("45.1", "PDM.1 - V, R0"))],
+                         "CABO": [("SUCESSO", ("45.3", "PDM.3 - C, R0"))]}
+    tela.btn_run_auto.click()
+    qtbot.waitUntil(lambda: bool(tela.resumos), timeout=3000)
+    assert revisao["chamadas"] == [(tela, [("CONEXÃO", "Input_ShortText")], 3)]
+    assert [i[0] for i in RoboFalso.instancias[0].itens] == ["VALVULA", "CABO"]
+    assert list(tela.df_resumo_final["descricao_original"]) == ["VALVULA", "CABO"]
+    _esperar_log(qtbot, tela, "> Processando Item 2/2: CABO...")   # índice refeito: 2 de 2
+    texto = _texto(tela)
+    assert "> Revisão antes do portal: 1 problema(s) em 1 ficha(s) de 3." in texto
+    assert "> [!] CONEXÃO · Texto breve do material (Input_ShortText) · 'CONEXÃO' · " in texto
+    # O lote confirmado continua inteiro: só o que foi ao robô é que encolheu.
+    assert len(tela.df_processed) == 3
+
+
+def test_revisao_cancelar_nao_abre_o_robo(tela, robo, qtbot, pd, revisao):
+    revisao["resposta"] = None
+    _lote_com_um_erro(tela, pd)
+    tela.btn_run_auto.click()
+    _esperar_log(qtbot, tela, "> Cancelado na revisão antes do portal.")
+    assert RoboFalso.instancias == [] and tela.btn_run_auto.isEnabled() and not tela._robo_ativo
+
+
+def test_revisao_sem_problema_nada_aparece(tela, robo, qtbot, revisao):
+    RoboFalso.roteiro = {"VALVULA ESFERA 2 POL INOX": [("SUCESSO", ("1", "P"))], "MOTOR 50CV": [("PULAR", None)],
+                         "CABO FLEXIVEL": [("SUCESSO", ("3", "P"))], "PARAFUSO": [("SUCESSO", ("4", "P"))]}
+    tela.btn_run_auto.click()
+    qtbot.waitUntil(lambda: bool(tela.resumos), timeout=3000)
+    assert revisao["chamadas"] == [] and "Revisão antes do portal" not in _texto(tela)
 
 
 def test_robo_completo(tela, robo, qtbot):

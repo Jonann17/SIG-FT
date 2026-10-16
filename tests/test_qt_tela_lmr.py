@@ -4,8 +4,11 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QDialog, QLineEdit
 
+from _pandas_de_verdade import pandas_de_verdade
 from sigft.app import backends
 from sigft.app_qt.views import lmr as tela_mod
+from sigft.app_qt.widgets import revisao_portal
+from sigft.services import lmr as lmr_servico
 
 
 class RoboFalso:
@@ -48,7 +51,8 @@ def tela(qt_interface, qtbot, monkeypatch):
     modulo = SimpleNamespace(
         listar_abas=lambda caminho: ["Plan1", "LMR"],
         LMRAutomation=lambda: robo,
-        marcar_status_pmib=marcar_status_pmib)
+        marcar_status_pmib=marcar_status_pmib,
+        agrupar_por_codigo=lmr_servico.agrupar_por_codigo)
     monkeypatch.setattr(backends, "lmr_backend", modulo)
 
     def abrir(*a, **k):
@@ -455,3 +459,71 @@ def test_pergunta_do_lmr_tem_o_sim_como_padrao(tela, monkeypatch):
                         lambda titulo, mensagem, **kw: pedidos.append((titulo, mensagem, kw)) or True)
     assert tela._perguntar_com_sim_padrao("Erro", "Tentar este item de novo?") is True
     assert pedidos == [("Erro", "Tentar este item de novo?", {"padrao_sim": True})]
+
+
+# --- revisão antes do portal (R2) ---------------------------------------------------
+@pytest.fixture
+def revisao(monkeypatch):
+    import threading
+    registro = SimpleNamespace(chamadas=[], resposta=revisao_portal.SEM_ERROS)
+
+    def perguntar(parent, problemas, total):
+        registro.chamadas.append((parent, [(p.ficha, p.interno) for p in problemas], total,
+                                  threading.current_thread() is threading.main_thread()))
+        return registro.resposta
+
+    monkeypatch.setattr(revisao_portal, "perguntar_revisao", perguntar)
+    return registro
+
+
+def _planilha(tela, monkeypatch, pd, tags_222):
+    df = pd.DataFrame({"PMIB": ["111"] + ["222"] * len(tags_222),
+                       "Código_PMIB": ["EQ-1"] + ["EQ-2"] * len(tags_222),
+                       "TAG_PMIB": ["T1"] + list(tags_222)})
+    tela.robo._carregar = lambda c, a: (True, df, ["111", "222"], "lidas 2 fichas")
+    monkeypatch.setattr(tela, "escolher_pmibs", lambda pmibs: ["111", "222"])
+    return df
+
+
+def test_revisao_tira_as_fichas_com_erro(tela, qtbot, monkeypatch, revisao):
+    with pandas_de_verdade() as pd:
+        df = _planilha(tela, monkeypatch, pd, ["T" * 151, "T3"])
+        tela.btn_run.click()
+        texto = _esperar_fim(tela, qtbot, "Automação LMR finalizada.")
+    assert revisao.chamadas == [(tela, [("222", "Input_Tag")], 2, True)]
+    assert ("lista", ("111",), df) in tela.robo.passos
+    ordem = ["Revisão antes do portal: 1 problema(s) em 1 ficha(s) de 2.",
+             "[!] 222 · Tag (código EQ-2) (Input_Tag) · ",
+             "Seguindo sem as 1 ficha(s) com erro: 1 vão ao portal.",
+             "1 fichas selecionadas. Iniciando robô...", "Iniciando navegador..."]
+    posicoes = [texto.index(linha) for linha in ordem]
+    assert posicoes == sorted(posicoes)
+
+
+def test_revisao_sem_problema_nada_aparece(tela, qtbot, monkeypatch, revisao):
+    with pandas_de_verdade() as pd:
+        _planilha(tela, monkeypatch, pd, ["T2", "T3"])
+        tela.btn_run.click()
+        texto = _esperar_fim(tela, qtbot, "Automação LMR finalizada.")
+    assert revisao.chamadas == [] and "Revisão antes do portal" not in texto
+    assert tela.robo.passos[-2][:2] == ("lista", ("111", "222"))
+
+
+def test_revisao_cancelar_nao_abre_o_robo(tela, qtbot, monkeypatch, revisao):
+    revisao.resposta = None
+    with pandas_de_verdade() as pd:
+        _planilha(tela, monkeypatch, pd, [""])
+        tela.btn_run.click()
+        qtbot.waitUntil(lambda: "Cancelado na revisão antes do portal." in tela.console.toPlainText(),
+                        timeout=3000)
+        qtbot.waitUntil(tela.btn_run.isEnabled, timeout=2000)
+    assert "driver" not in tela.robo.passos and "Iniciando robô" not in tela.console.toPlainText()
+
+
+def test_revisao_que_nao_consegue_conferir_segue_e_avisa(tela, qtbot, revisao):
+    # O dublê devolve "DF" no lugar do DataFrame: a conferência não roda, e o
+    # robô segue como antes (o portal continua sendo o juiz) -- dizendo isso.
+    tela.btn_run.click()
+    texto = _esperar_fim(tela, qtbot, "Automação LMR finalizada.")
+    assert "[!] Não consegui conferir as fichas antes do portal" in texto
+    assert ("lista", ("222",), "DF") in tela.robo.passos and revisao.chamadas == []

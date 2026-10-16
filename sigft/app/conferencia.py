@@ -57,6 +57,11 @@ MODULOS_ESSENCIAIS = [
     "lxml.etree",
     "sigft.core.excel.cirurgico",
     "playwright",
+    # as regras do portal conferidas antes do navegador (2026-10-16, R2). As
+    # quatro telas de robô as importam: faltando, a tela não abre.
+    "pydantic",
+    "pydantic_core",
+    "sigft.core.pmib_regras",
     "requests",
     "fitz",           # pymupdf: primeira camada da leitura de PDF
     "bs4",
