@@ -52,6 +52,8 @@ def _importa_sem_tk(modulo):
     "sigft.app_qt.widgets.pickers",
     "sigft.app_qt.widgets.blocos",
     "sigft.app_qt.widgets.dialogos_selecao",
+    "sigft.app_qt.widgets.revisao_portal",
+    "sigft.core.pmib_regras",
     "sigft.app_qt.widgets.abas",
     "sigft.app_qt.widgets.painel_janela",
     "sigft.app_qt.views.translator",
