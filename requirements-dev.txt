@@ -30,6 +30,13 @@ PySide6-Essentials>=6.9
 # verde de verdade: é a proteção da T1 deixando de rodar.
 lxml
 
+# pydantic -- desde 2026-10-16 e dependencia de PRODUCAO (esta no
+# requirements.txt: as regras do portal conferidas antes do navegador, em
+# `sigft/core/pmib_regras.py`). Fica aqui tambem porque o CI instala so este
+# arquivo, e os testes das regras e das quatro telas de robo precisam dele de
+# verdade (o conftest NAO o dubla). Mesma regra do lxml, acima.
+pydantic>=2
+
 # pyflakes -- a UNICA checagem que consegue olhar `frontend.py` neste ambiente.
 # Ele analisa a arvore sintatica sem executar nada, entao pega `NameError`
 # latente num arquivo que a suite nao pode importar (ele abre janela real) e
