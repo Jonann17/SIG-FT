@@ -172,6 +172,29 @@ def test_a_ultima_versao_normal_com_manifesto_entra_sempre():
     assert ga.escolher_bases(releases, "v1.2.1") == ["v1.2.1-rc.3", "v1.2.1-rc.2", "v1.2.1-rc.1", "v1.2.0"]
 
 
+def test_escolher_bases_imprime_sem_retorno_de_carro_no_windows(tmp_path, monkeypatch):
+    """Medido nos Releases 1.2.0-rc.5, rc.6, 1.2.0 e 1.2.1-rc.1: so a ULTIMA
+    base virava atualizacao pequena. No runner Windows o `print` sai com
+    `\r\n`, o `$(...)` do bash so corta o fim, e as outras tags chegavam ao
+    `gh release download` como "v1.2.0\r" -- "release not found". Quem estava
+    na versao anterior (quase todo mundo) recebia o instalador completo."""
+    import io
+    import json
+
+    releases = tmp_path / "releases.json"
+    releases.write_text(json.dumps([_rel("v1.2.0"), _rel("v1.2.0-rc.7", pre=True),
+                                    _rel("v1.2.0-rc.6", pre=True)]), encoding="utf-8")
+    bruto = io.BytesIO()
+    saida_do_windows = io.TextIOWrapper(bruto, encoding="cp1252", newline="\r\n")
+    monkeypatch.setattr(sys, "stdout", saida_do_windows)
+
+    ga.main(["escolher-bases", "--releases", str(releases), "--tag-atual", "v1.2.1-rc.1"])
+    saida_do_windows.flush()
+
+    assert b"\r" not in bruto.getvalue()
+    assert bruto.getvalue().decode().split() == ["v1.2.0", "v1.2.0-rc.7", "v1.2.0-rc.6"]
+
+
 def test_rascunho_e_versao_sem_manifesto_nao_sao_base():
     releases = [_rel("v1.3.0", draft=True), _rel("v1.2.0", com_manifesto=False), _rel("v1.1.1", com_manifesto=False)]
 

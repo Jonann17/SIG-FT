@@ -58,10 +58,14 @@ BASES_RECENTES = 3
 
 
 def _saida_utf8() -> None:
-    """O log do runner no Windows pode estar em cp1252."""
+    """O log do runner no Windows pode estar em cp1252. E a linha termina em
+    `\n`, nunca `\r\n`: o `escolher-bases` alimenta um `$(...)` do bash, que
+    só corta o fim -- com `\r\n` toda tag menos a última chegava ao
+    `gh release download` com um `\r` grudado ("release not found"), e só a
+    última base virava atualização pequena (Releases de 1.2.0-rc.5 a 1.2.1-rc.1)."""
     for fluxo in (sys.stdout, sys.stderr):
         try:
-            fluxo.reconfigure(encoding="utf-8", errors="replace")
+            fluxo.reconfigure(encoding="utf-8", errors="replace", newline="\n")
         except (AttributeError, ValueError):
             pass
 

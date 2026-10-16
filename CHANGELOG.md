@@ -17,6 +17,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Cria Fichas: a leitura do que cada material é (a primeira passada da IA) passa a usar o **mesmo modelo escolhido para o Cria Fichas** no painel "Modelos de IA". Antes ela ia sempre pelo Gemini direto, que a VPN da empresa derruba ("Connection aborted"), e o lote seguia só com a busca por palavras.
 - Cria Fichas: na revisão dos PDMs, o item que a IA não respondeu mostra as colunas vazias, em vez de "nan" em Descrição Curta, UN e Tipo.
 - Cria Fichas: o item sem marca não vai mais para a IA (nem para a busca no catálogo) com a palavra "nan" no lugar da marca.
+- Atualização automática: quem está na versão anterior volta a receber a **atualização pequena** (só o que mudou), em vez do instalador completo. Desde a 1.2.0-rc.5 o Release só montava o pequeno a partir da versão mais antiga da lista.
 - Upload Tech Specs: o "Continuar" depois de salvar o JSON abre a janela para escolher quais fichas enviar ao portal, como no Upload Condições, em vez de mandar todas. E um JSON que não abre mostra a caixa "Erro de Leitura", além do aviso no console.
 
 ## 1.2.0 - 2026-10-15
