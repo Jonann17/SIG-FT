@@ -176,6 +176,8 @@ def test_textos_iguais_aos_da_home_antiga():
         "condicoes": "Condições (Upload Condições):",
         "tech_specs": "Caract. Técnicas (Upload Specs):",
         "autospec": "AutoSpec (RAG):",
+        "interpretar_material": "Interpretar material (Cria Fichas):",
+        "traduzir_pdm": "Traduzir PDM (Planilhas PMIB):",
     }
 
 
@@ -512,9 +514,9 @@ def test_modo_avancado_mostra_as_tarefas_e_conta_os_overrides(home):
     assert not home.frame_modelos_ia_avancado.isVisibleTo(home.frame_modelos_ia)
     home.caixa_modo_avancado_ia.click()
     assert home.frame_modelos_ia_avancado.isVisibleTo(home.frame_modelos_ia)
-    assert list(home.menus_modelo_ia_por_tarefa) == sorted(sigft_config.LLM_MODELOS_HOJE)
+    assert list(home.menus_modelo_ia_por_tarefa) == list(sigft_config.TAREFAS_DO_PAINEL)
     assert [r.text() for r in home.rotulos_modelo_ia_por_tarefa.values()] == [
-        home_mod.ROTULOS_TAREFA_IA[t] for t in sorted(sigft_config.LLM_MODELOS_HOJE)]
+        home_mod.ROTULOS_TAREFA_IA[t] for t in sigft_config.TAREFAS_DO_PAINEL]
     menu = home.menus_modelo_ia_por_tarefa["categorizar_pdm"]
     assert menu.currentText() == NEUTRO_TAREFA
     _escolher(menu, "x-ai/grok-4.5" if "x-ai/grok-4.5" in _itens(menu) else _itens(menu)[1])
@@ -993,13 +995,15 @@ def test_medidas_do_painel_de_modelos_no_modo_avancado(com_folha, qtbot, rede, m
     tela = home_mod.HomeView(controller=Controller())
     qtbot.addWidget(tela)
     j = _exposta(qtbot, tela.abrir_janela_modelos_ia())
-    for i, tarefa in enumerate(sorted(sigft_config.LLM_MODELOS_HOJE)):
+    for i, tarefa in enumerate(sigft_config.TAREFAS_DO_PAINEL):
         y = 282 + 32 * i
         assert _geo(tela.rotulos_modelo_ia_por_tarefa[tarefa], j)[:3] == (36, y, 220), tarefa
         assert _geo(tela.menus_modelo_ia_por_tarefa[tarefa], j) == (261, y, 420, 28), tarefa
-    assert _geo(tela.entry_modelo_ia_livre, j)[1] == 460
+    # 7 tarefas desde 2026-10-16 (entraram a passada 1 do Cria Fichas e a
+    # tradução de PDM): duas linhas de 32 px a mais que as 5 da tela antiga.
+    assert _geo(tela.entry_modelo_ia_livre, j)[1] == 460 + 2 * 32
     resumo = _geo(tela.lbl_resumo_modelo_ia, j)
-    assert resumo[:2] == (36, 501)
+    assert resumo[:2] == (36, 501 + 2 * 32)
     assert _geo(tela.btn_aplicar_recomendados_ia, j)[1] == resumo[1] + resumo[3] + 10
 
 

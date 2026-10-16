@@ -85,6 +85,8 @@ ROTULOS_TAREFA_IA = {
     "condicoes": "Condições (Upload Condições):",
     "tech_specs": "Caract. Técnicas (Upload Specs):",
     "autospec": "AutoSpec (RAG):",
+    "interpretar_material": "Interpretar material (Cria Fichas):",
+    "traduzir_pdm": "Traduzir PDM (Planilhas PMIB):",
 }
 
 DESCRICAO_MODELOS_IA = (
@@ -686,7 +688,7 @@ class HomeView(QScrollArea):
         avancado = QVBoxLayout(self.frame_modelos_ia_avancado)
         avancado.setContentsMargins(0, 0, 0, 10)
         avancado.setSpacing(0)
-        for tarefa in sorted(sigft_config.LLM_MODELOS_HOJE):
+        for tarefa in sigft_config.TAREFAS_DO_PAINEL:
             linha = _linha(avancado, cima=2, baixo=2)
             rotulo = _rotulo(ROTULOS_TAREFA_IA.get(tarefa, tarefa), largura_minima=LARGURA_ROTULO_IA)
             linha.addWidget(rotulo)

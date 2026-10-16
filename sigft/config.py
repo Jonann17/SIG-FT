@@ -313,6 +313,12 @@ LLM_TASKS: dict[str, dict[str, str]] = {
     "interpretar_material": {"provider": PROVIDER_GEMINI, "model": "gemini-3-flash-preview"},
 }
 
+# As tarefas que o painel "Modelos de IA" lista no modo avançado (2026-10-16):
+# as de antes (`LLM_MODELOS_HOJE`) e as novas que só existem em `LLM_TASKS`
+# (`traduzir_pdm`, `interpretar_material`). Fora do painel, uma tarefa nova não
+# tinha como ganhar modelo próprio e caía no fallback (Gemini direto).
+TAREFAS_DO_PAINEL: tuple[str, ...] = tuple(sorted(set(LLM_MODELOS_HOJE) | set(LLM_TASKS)))
+
 # Tarefa que SEGUE a escolha de outra no painel "Modelos de IA" quando não
 # tem escolha própria (2026-10-16). A passada 1 do Cria Fichas não aparece no
 # painel: sem isto ela caía no fallback (Gemini direto) mesmo com o Cria

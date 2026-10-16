@@ -187,12 +187,12 @@ def resolver(
 def _validar_tarefa(tarefa: str) -> None:
     """Mesmo padrão de erro de `core/llm/client.py:get_llm()`/
     `config.get_task_config()`: `ValueError` com a lista de tarefas válidas
-    (`config.LLM_MODELOS_HOJE`) na mensagem."""
-    if tarefa not in config.LLM_MODELOS_HOJE:
-        tarefas_validas = ", ".join(sorted(config.LLM_MODELOS_HOJE))
+    (`config.TAREFAS_DO_PAINEL`) na mensagem."""
+    if tarefa not in config.TAREFAS_DO_PAINEL:
+        tarefas_validas = ", ".join(config.TAREFAS_DO_PAINEL)
         raise ValueError(
             f"Tarefa de IA desconhecida: {tarefa!r}. Tarefas configuradas em "
-            f"LLM_MODELOS_HOJE: {tarefas_validas}."
+            f"TAREFAS_DO_PAINEL: {tarefas_validas}."
         )
 
 

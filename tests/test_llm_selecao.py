@@ -195,12 +195,8 @@ def test_interpretacao_segue_o_cria_fichas_antes_do_global(config_path):
 def test_interpretacao_com_escolha_propria_usa_a_propria(config_path):
     selecao.definir_por_tarefa("categorizar_pdm", "openrouter", "modelo-cria-fichas",
                                config_path=config_path)
-    # O painel não lista a passada 1 (não é tarefa de `LLM_MODELOS_HOJE`); um
-    # override dela só existe escrito à mão no arquivo -- e aí vale.
-    bruto = json.loads(config_path.read_text(encoding="utf-8"))
-    bruto["_modelos_ia"]["por_tarefa"]["interpretar_material"] = {
-        "provider": "gemini", "model": "modelo-da-passada-1"}
-    _escrever_json(config_path, bruto)
+    selecao.definir_por_tarefa("interpretar_material", "gemini", "modelo-da-passada-1",
+                               config_path=config_path)
 
     assert selecao.resolver("interpretar_material", config_path=config_path) == {
         "provider": "gemini", "model": "modelo-da-passada-1"}
