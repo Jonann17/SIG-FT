@@ -50,6 +50,8 @@ como `.bin` (o app 1.1.1 baixa "o primeiro `.exe`" e não pode pegá-lo) e vira
 `.exe` depois do SHA256. O canal de testes (opção, desligado) faz o app
 oferecer também pré-lançamentos. Ver
 `docs/superpowers/specs/2026-10-07-atualizacao-incremental-design.md`.
+[2026-10-19] O mesmo pequeno vai também como `.exe` (o tipo que ele de fato
+é) e como `.zip`; o app novo tenta exe -> zip -> bin -> completo.
 
 ═══ Sobre o token ═══
 O repositório é privado, então a consulta exige autenticação. O token é
@@ -204,6 +206,7 @@ class Atualizacao:
     # nele que o download cai antes de ir ao completo (ver `baixar`).
     sha256_dentro: str = ""
     reserva: Atualizacao | None = None
+    # [2026-10-19] O `.exe` também tem `reserva` (o zip, ou o bin).
 
     @property
     def tamanho_mb(self) -> float:
@@ -230,10 +233,18 @@ def _asset(release: dict, nome: str) -> dict | None:
     return next((a for a in release.get("assets", []) if a.get("name") == nome), None)
 
 
+# [2026-10-19] Como começa o nome do instalador PEQUENO (o mesmo de
+# `tools/gerar_atualizacao.py`, com teste). Em `.exe`, ele não pode virar "o
+# instalador": só serve para quem tem a base dele.
+PREFIXO_DO_PEQUENO = "SIG-FT_Itaipu_Atualizacao_"
+
+
 def _instalador(release: dict) -> dict | None:
-    """O asset do instalador: o primeiro `.exe` do release."""
+    """O asset do instalador completo: o primeiro `.exe` do release que não é
+    um instalador pequeno -- este só serve para quem tem a base dele."""
     return next((a for a in release.get("assets", [])
-                 if str(a.get("name", "")).lower().endswith(".exe")), None)
+                 if str(a.get("name", "")).lower().endswith(".exe")
+                 and not str(a.get("name", "")).startswith(PREFIXO_DO_PEQUENO)), None)
 
 
 def _pacote_pequeno(release: dict, manifesto: dict | None,
@@ -253,11 +264,11 @@ def _pacote_pequeno(release: dict, manifesto: dict | None,
     return None
 
 
-def _zip_do_pequeno(release: dict, entrada: dict) -> tuple[dict, dict] | None:
-    """[2026-10-16] O mesmo pequeno em `.zip` (chave `zip` da entrada do
+def _outro_formato(release: dict, entrada: dict, chave: str) -> tuple[dict, dict] | None:
+    """O mesmo pequeno em outro formato (chave `zip` ou `exe` da entrada do
     `latest.json`): `(asset, dados)`, ou `None` se não veio ou não está no
-    Release -- aí fica o `.bin`."""
-    dados = entrada.get("zip")
+    Release -- aí fica o formato seguinte."""
+    dados = entrada.get(chave)
     if not isinstance(dados, dict) or not str(dados.get("sha256", "")).strip():
         return None
     asset = _asset(release, str(dados.get("arquivo", "")))
@@ -314,22 +325,25 @@ def interpretar_release(release: dict, manifesto: dict | None = None,
             completo=completo,
             **comum,
         )
-        zipado = _zip_do_pequeno(release, entrada)
-        if zipado is None:
-            return bin_
-        asset_zip, dados_zip = zipado
-        return Atualizacao(
-            nome_arquivo=str(asset_zip.get("name", "")),
-            url_asset=str(asset_zip.get("url", "")),
-            tamanho=int(asset_zip.get("size") or dados_zip.get("tamanho") or 0),
-            sha256=str(dados_zip["sha256"]).strip().lower(),
-            sha256_dentro=bin_.sha256,
-            incremental=True,
-            tamanho_completo=completo.tamanho,
-            completo=completo,
-            reserva=bin_,
-            **comum,
-        )
+        escolhido = bin_
+        # De trás para a frente: cada formato guarda o anterior como reserva.
+        for chave in ("zip", "exe"):
+            if (outro := _outro_formato(release, entrada, chave)) is None:
+                continue
+            asset_outro, dados = outro
+            escolhido = Atualizacao(
+                nome_arquivo=str(asset_outro.get("name", "")),
+                url_asset=str(asset_outro.get("url", "")),
+                tamanho=int(asset_outro.get("size") or dados.get("tamanho") or 0),
+                sha256=str(dados["sha256"]).strip().lower(),
+                sha256_dentro=bin_.sha256 if chave == "zip" else "",
+                incremental=True,
+                tamanho_completo=completo.tamanho,
+                completo=completo,
+                reserva=escolhido,
+                **comum,
+            )
+        return escolhido
     return completo
 
 
@@ -478,10 +492,10 @@ def baixar(info: Atualizacao, *, progresso_cb: Progresso = _nada,
         return _baixar_arquivo(info, progresso_cb=progresso_cb, log_cb=log_cb)
     except (DownloadInterrompido, ArquivoInvalido, rede.FalhaDeRede) as erro:
         if info.reserva is not None:
-            # [2026-10-16] O .zip não passou: o mesmo pequeno em .bin, e só
-            # depois o completo (a `reserva` traz o `completo` dela).
-            log_cb(f"A atualizacao pequena em .zip falhou -- {erro}")
-            log_cb("Vai a mesma atualizacao pequena em .bin.")
+            # [2026-10-16] Um formato do pequeno não passou: o formato
+            # seguinte, e só no fim o completo (a `reserva` traz o `completo`).
+            log_cb(f"A atualizacao pequena em {_extensao(info)} falhou -- {erro}")
+            log_cb(f"Vai a mesma atualizacao pequena em {_extensao(info.reserva)}.")
             progresso_cb(0.0)
             return baixar(info.reserva, progresso_cb=progresso_cb, log_cb=log_cb,
                           ao_cair_no_completo=ao_cair_no_completo)
@@ -492,6 +506,10 @@ def baixar(info: Atualizacao, *, progresso_cb: Progresso = _nada,
         ao_cair_no_completo(info.completo)
         progresso_cb(0.0)
         return _baixar_arquivo(info.completo, progresso_cb=progresso_cb, log_cb=log_cb)
+
+
+def _extensao(info: Atualizacao) -> str:
+    return Path(info.nome_arquivo).suffix.lower() or "?"
 
 
 def _mb_do_log(n_bytes: int) -> str:

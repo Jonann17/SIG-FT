@@ -312,6 +312,35 @@ def test_o_zip_nao_tem_senha_nem_caminho():
     assert "/" not in ga.nome_do_membro_do_zip("1.2.0", "1.2.1")
 
 
+def test_pacotes_publicam_tambem_o_pequeno_como_exe(cenario):
+    """2026-10-19: o pequeno É um `.exe` (o Inno o gera assim); o `.bin` é só o
+    nome que o protege do app 1.1.1. Vai também com o tipo verdadeiro, igual
+    byte a byte, numa chave nova (`exe`) que só o app novo lê."""
+    import hashlib
+
+    raiz, instalador, bases, novo, latest = cenario
+    feitos = ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
+                        iss=instalador / "sigft.iss", latest=latest, executar=_ISCC(instalador / "Output"))
+
+    exe = instalador / "Output" / "SIG-FT_Itaipu_Atualizacao_1.2.0-rc.3_para_1.2.0-rc.4.exe"
+    assert exe.is_file() and exe.read_bytes() == feitos[0].read_bytes()
+    assert exe.name.startswith(ga.PREFIXO_DO_PEQUENO)
+    [entrada] = json.loads(latest.read_text(encoding="utf-8"))["atualizacoes"]
+    assert entrada["arquivo"] == feitos[0].name          # o app instalado segue igual
+    assert entrada["exe"] == {"arquivo": exe.name, "sha256": hashlib.sha256(exe.read_bytes()).hexdigest(),
+                              "tamanho": exe.stat().st_size}
+
+
+def test_o_prefixo_do_pequeno_e_o_mesmo_no_app_e_no_gerador():
+    # O app reconhece o pequeno pelo começo do nome e NUNCA o toma pelo
+    # instalador completo (`updater._instalador`).
+    from sigft.services import updater
+
+    assert ga.PREFIXO_DO_PEQUENO == updater.PREFIXO_DO_PEQUENO
+    for nome in (ga.nome_do_pacote("1", "2"), ga.nome_do_zip("1", "2"), ga.nome_do_exe("1", "2")):
+        assert nome.startswith(ga.PREFIXO_DO_PEQUENO)
+
+
 def test_pacote_grande_demais_nao_compensa_e_fica_de_fora(cenario):
     raiz, instalador, bases, novo, latest = cenario
     novo["arquivos"]["_internal/modelo.bin"]["sha256"] = "modelo-reconvertido"  # 1000 de 1030 bytes
@@ -366,6 +395,12 @@ def test_o_release_gera_manifesto_bases_e_pacotes_e_publica_os_dois(tmp_path):
     assert '"arquivos.json#' in publicar and "installer/Output/*.bin" in publicar
     # 2026-10-16: o mesmo pequeno também em .zip (ver `zipar`).
     assert "installer/Output/*.zip" in publicar
+    # 2026-10-19: e em .exe -- só em pré-lançamento (o app 1.1.1 não os vê e
+    # escolhe "o primeiro .exe"), e num upload DEPOIS do resto, para o
+    # completo ficar na frente na lista de quem ainda escolhe pela posição.
+    upload_exe = publicar.index("installer/Output/SIG-FT_Itaipu_Atualizacao_*.exe")
+    assert publicar.index("gh release create") < upload_exe
+    assert publicar.rindex('if [ "$PRERELEASE" = "true" ]', 0, upload_exe) > publicar.index("gh release create")
 
 
 def test_guardar_artefatos_nao_reprova_o_release_e_nao_leva_o_instalador_a_toa():

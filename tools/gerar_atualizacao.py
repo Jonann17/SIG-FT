@@ -22,6 +22,8 @@ chamado pelo `.github/workflows/release.yml`:
 O instalador pequeno sai como `.bin`, e não `.exe`: o app 1.1.1 baixa "o
 primeiro `.exe` do Release", e não pode pegar um instalador que não serve para
 ele. O app novo confere o SHA256 e o renomeia antes de rodar.
+[2026-10-19] Vai também em `.zip` e em `.exe` (o tipo verdadeiro, igual byte a
+byte), em chaves que só o app novo lê; o `.exe` só sobe em pré-lançamento.
 
 Só stdlib. Escreve UTF-8 sem BOM no JSON (o app lê de volta) e COM BOM nos
 includes do Inno, que é como ele reconhece UTF-8 num arquivo `.iss`.
@@ -191,16 +193,38 @@ def escolher_bases(releases: list[dict], tag_atual: str) -> list[str]:
 # --------------------------------------------------------------------------
 # E. O registro no latest.json
 # --------------------------------------------------------------------------
+# O app reconhece o pequeno por este começo de nome e nunca o toma pelo
+# instalador completo (`sigft/services/updater.py`, `PREFIXO_DO_PEQUENO`).
+PREFIXO_DO_PEQUENO = "SIG-FT_Itaipu_Atualizacao_"
+
+
 def nome_do_pacote(de: str, para: str) -> str:
-    return f"SIG-FT_Itaipu_Atualizacao_{de}_para_{para}.bin"
+    return f"{PREFIXO_DO_PEQUENO}{de}_para_{para}.bin"
 
 
 def nome_do_zip(de: str, para: str) -> str:
-    return f"SIG-FT_Itaipu_Atualizacao_{de}_para_{para}.zip"
+    return f"{PREFIXO_DO_PEQUENO}{de}_para_{para}.zip"
+
+
+def nome_do_exe(de: str, para: str) -> str:
+    return f"{PREFIXO_DO_PEQUENO}{de}_para_{para}.exe"
 
 
 def nome_do_membro_do_zip(de: str, para: str) -> str:
-    return f"SIG-FT_Itaipu_Atualizacao_{de}_para_{para}.exe"
+    return nome_do_exe(de, para)
+
+
+def copiar_como_exe(pacote: Path, de: str, para: str) -> Path:
+    """[2026-10-19] O mesmo instalador pequeno com o nome do tipo que ele é.
+
+    O proxy da empresa deixa passar o completo, que é um `.exe`, e cortou o fim
+    do `.bin`. Isto NÃO esconde nada: é o mesmo executável, que o proxy analisa
+    como analisa o completo. Cópia, e não renome: o `.bin` segue para o app que
+    já está instalado."""
+    destino = Path(pacote).parent / nome_do_exe(de, para)
+    destino.unlink(missing_ok=True)
+    shutil.copyfile(pacote, destino)
+    return destino
 
 
 def zipar(pacote: Path, de: str, para: str) -> Path:
@@ -218,16 +242,18 @@ def zipar(pacote: Path, de: str, para: str) -> Path:
     return destino
 
 
-def registrar(latest: dict, de: str, pacote: Path, zipado: Path | None = None) -> dict:
+def registrar(latest: dict, de: str, pacote: Path, zipado: Path | None = None,
+              exe: Path | None = None) -> dict:
     """Acrescenta o instalador pequeno ao `latest.json`: o app escolhe a
     entrada cujo `de` é a versão instalada. O `.zip`, quando há, vai numa chave
     nova (`zip`) que só o app de 2026-10-16 em diante lê; o app instalado
     continua no `arquivo` (`.bin`) de sempre."""
     entrada = {"de": de, "arquivo": Path(pacote).name, "sha256": sha256(pacote),
                "tamanho": Path(pacote).stat().st_size}
-    if zipado is not None:
-        entrada["zip"] = {"arquivo": Path(zipado).name, "sha256": sha256(zipado),
-                          "tamanho": Path(zipado).stat().st_size}
+    for chave, outro in (("zip", zipado), ("exe", exe)):
+        if outro is not None:
+            entrada[chave] = {"arquivo": Path(outro).name, "sha256": sha256(outro),
+                              "tamanho": Path(outro).stat().st_size}
     latest.setdefault("atualizacoes", []).append(entrada)
     return latest
 
@@ -272,7 +298,8 @@ def pacotes(novo: dict, bases: Path, *, versao: str, numerica: str, iscc: str, i
         pacote = saida_iscc.parent / nome_do_pacote(de, versao)
         pacote.unlink(missing_ok=True)
         shutil.move(str(saida_iscc), str(pacote))
-        registrar(manifesto_latest, de, pacote, zipar(pacote, de, versao))
+        registrar(manifesto_latest, de, pacote, zipar(pacote, de, versao),
+                  copiar_como_exe(pacote, de, versao))
         feitos.append(pacote)
         print(f"de {de}: {len(dif.copiar)} arquivo(s) a copiar ({dif.bytes_copiar / 1e6:.1f} MB de "
               f"{dif.bytes_total / 1e6:.1f} MB), {len(dif.remover)} a remover -> {pacote.name} "
