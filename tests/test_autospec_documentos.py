@@ -266,3 +266,124 @@ def test_os_documentos_locais_nao_sao_mais_cortados_em_60_mil():
     texto = core.process_local_documents(["/tmp/manual.pdf"])
     assert texto.count("x") == 100_000 and texto.count("y") == 100_000
     assert [d.nome for d in core._documentos] == ["manual.pdf"]
+
+
+# =============================================================================
+# 5. Pagina sem texto vai como IMAGEM quando o PDF vai como texto  [2026-10-19]
+# =============================================================================
+# No caminho de texto (modelo que nao le PDF, ou documento grande demais para
+# ir inteiro) a pagina escaneada ou o desenho cotado chegava VAZIO a IA, e a
+# unica saida era o LlamaParse, que sobe o arquivo inteiro. Agora a pagina sem
+# texto vai como imagem (JPEG), ate `MAX_PAGINAS_IMAGEM` por ficha. Ideia do
+# RAG-Anything (HKUDS, MIT): mandar a pagina a um modelo com visao. Modelo sem
+# visao recusa o anexo, e a ficha cai para o texto, pela rede de sempre.
+
+TEXTO_LONGO = "Rated voltage 2000 V DC, breaking capacity 30 kA, IP65 enclosure."
+
+
+def _pdf_real(paginas_texto, total, nome="manual.pdf"):
+    pymupdf = pytest.importorskip("pymupdf")
+    pdf = pymupdf.open()
+    for i in range(total):
+        pagina = pdf.new_page()
+        if i in paginas_texto:
+            pagina.insert_text((72, 72), TEXTO_LONGO)
+        else:
+            pagina.draw_rect(pymupdf.Rect(100, 100, 400, 300), color=(0, 0, 0))  # o "desenho"
+    dados = pdf.tobytes()
+    pdf.close()
+    return docs.Documento(nome=nome, origem="LOCAL", mime="application/pdf", dados=dados,
+                          paginas=[TEXTO_LONGO if i in paginas_texto else "" for i in range(total)])
+
+
+def test_paginas_sem_texto_viram_imagem_jpeg_com_o_nome_e_a_pagina():
+    doc = _pdf_real({0, 2}, total=4)
+
+    anexos, vistas, deixadas = docs.paginas_em_imagem([doc])
+
+    assert [a.nome for a in anexos] == ["manual.pdf - pagina 2.jpg", "manual.pdf - pagina 4.jpg"]
+    assert all(a.mime == "image/jpeg" and a.dados[:3] == b"\xff\xd8\xff" for a in anexos)
+    assert [v.paginas_como_imagem for v in vistas] == [(2, 4)] and deixadas == 0
+
+
+def test_o_limite_de_paginas_imagem_e_por_ficha_e_o_resto_e_contado():
+    a, b = _pdf_real(set(), total=3, nome="a.pdf"), _pdf_real(set(), total=3, nome="b.pdf")
+
+    anexos, vistas, deixadas = docs.paginas_em_imagem([a, b], limite=4)
+
+    assert [x.nome for x in anexos] == ["a.pdf - pagina 1.jpg", "a.pdf - pagina 2.jpg",
+                                        "a.pdf - pagina 3.jpg", "b.pdf - pagina 1.jpg"]
+    assert [v.paginas_como_imagem for v in vistas] == [(1, 2, 3), (1,)] and deixadas == 2
+
+
+@pytest.mark.parametrize("doc", [
+    docs.Documento(nome="loja", origem="WEB", paginas=[""], mime="text/html", dados=b"<html>"),
+    docs.Documento(nome="ruim.pdf", origem="LOCAL", paginas=[""], mime="application/pdf",
+                   dados=b"nao e pdf"),
+    docs.Documento(nome="sumiu.pdf", origem="LOCAL", paginas=[""], mime="application/pdf",
+                   caminho="/nao/existe.pdf"),
+], ids=["html", "pdf-invalido", "arquivo-sumiu"])
+def test_o_que_nao_e_pdf_legivel_nao_vira_imagem_e_nao_quebra(doc):
+    assert docs.paginas_em_imagem([doc]) == ([], [], 0)
+
+
+def test_modelo_que_nao_le_pdf_recebe_o_texto_E_as_paginas_sem_texto_como_imagem():
+    llm = _LLMFake(aceita_pdf=False)
+    core = _core(llm)
+    core._documentos = [_pdf_real({0}, total=2)]
+    cb, registro = _logs()
+
+    core.generate_ai_response("X", "", "D", CAMPO, core._documentos[0].texto_marcado(), callbacks=cb)
+
+    chamada = llm.chamadas[0]
+    assert [a.nome for a in chamada["anexos"]] == ["manual.pdf - pagina 2.jpg"]
+    assert TEXTO_LONGO in chamada["prompt"]
+    assert "manual.pdf" in chamada["prompt"] and "IMAGEM" in chamada["prompt"]
+    assert any("imagem" in msg.lower() for _, msg in registro)
+
+
+def test_desligar_as_paginas_imagem_manda_so_o_texto():
+    llm = _LLMFake(aceita_pdf=False)
+    core = _core(llm)
+    core.enviar_paginas_imagem = False
+    core._documentos = [_pdf_real({0}, total=2)]
+
+    core.generate_ai_response("X", "", "D", CAMPO, core._documentos[0].texto_marcado())
+
+    assert not llm.chamadas[0]["anexos"]
+
+
+def test_modelo_sem_visao_que_recusa_a_imagem_cai_para_o_texto():
+    llm = _LLMFake(aceita_pdf=False, falhas=[ValueError("400: image input not supported")])
+    core = _core(llm)
+    core._documentos = [_pdf_real({0}, total=2)]
+
+    resultado = core.generate_ai_response("X", "", "D", CAMPO, core._documentos[0].texto_marcado())
+
+    assert resultado == {"empilhamento": "5"}
+    assert len(llm.chamadas) == 2 and not llm.chamadas[1]["anexos"]
+
+
+def test_quando_o_pdf_vai_inteiro_nenhuma_pagina_vai_de_novo_como_imagem():
+    llm = _LLMFake(aceita_pdf=True)
+    core = _core(llm)
+    core._documentos = [_pdf_real({0}, total=2)]
+
+    core.generate_ai_response("X", "", "D", CAMPO, core._documentos[0].texto_marcado())
+
+    assert [a.nome for a in llm.chamadas[0]["anexos"]] == ["manual.pdf"]
+
+
+class _Prova:
+    def __init__(self, fonte, pagina):
+        self.fonte, self.pagina = fonte, pagina
+
+
+def test_a_conferencia_aceita_a_pagina_que_foi_como_imagem_e_so_ela():
+    # A pagina 4 tambem nao tem texto, mas nao foi como imagem (passou do
+    # limite): um trecho "dela" seria invencao, e nao pode passar por leitura.
+    vista = docs.Documento(nome="manual.pdf", origem="LOCAL", mime="application/pdf",
+                           paginas=[TEXTO_LONGO, "", TEXTO_LONGO, ""], paginas_como_imagem=(2,))
+
+    assert autospec._documento_de_pagina_sem_texto(_Prova("manual.pdf", 2), [vista]) is vista
+    assert autospec._documento_de_pagina_sem_texto(_Prova("manual.pdf", 4), [vista]) is None

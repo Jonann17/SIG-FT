@@ -177,6 +177,7 @@ from __future__ import annotations
 import itertools
 import json
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, NamedTuple
@@ -673,7 +674,93 @@ def _limpar_e_parsear_json(texto: str | None) -> Any:
         if fim != -1 and fim >= inicio:
             limpo = limpo[inicio : fim + 1]
 
-    return json.loads(limpo)
+    try:
+        return json.loads(limpo)
+    except json.JSONDecodeError as erro_estrito:
+        # [2026-10-19] Leitura tolerante, SO quando a estrita falha: cada
+        # falha aqui custa uma chamada inteira de novo (retry), ou a resposta
+        # vazia. Se nada der certo, sobe o erro da leitura estrita, como antes.
+        resultado = _json_tolerante(texto)
+        if resultado is _NADA:
+            raise erro_estrito
+        return resultado
+
+
+# Sentinela de `_json_tolerante`: `None` e um JSON valido (`null`).
+_NADA = object()
+
+_BLOCO_THINK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _sem_virgula_sobrando(texto: str) -> str:
+    """Tira a virgula antes de `}`/`]` (`{"a": 1,}`), fora das strings."""
+    saida, em_string, escape = [], False, False
+    for i, c in enumerate(texto):
+        if em_string:
+            saida.append(c)
+            if escape:
+                escape = False
+            elif c == "\\":
+                escape = True
+            elif c == '"':
+                em_string = False
+            continue
+        if c == '"':
+            em_string = True
+        elif c == ",":
+            resto = texto[i + 1:].lstrip()
+            if resto[:1] in ("}", "]"):
+                continue
+        saida.append(c)
+    return "".join(saida)
+
+
+def _candidatos_balanceados(texto: str):
+    """Cada trecho `{...}`/`[...]` balanceado do texto, na ordem, contando as
+    chaves fora das strings. Trecho que nao fecha (resposta truncada) nao
+    vira candidato."""
+    for inicio, c in enumerate(texto):
+        if c not in "{[":
+            continue
+        pilha, em_string, escape = [], False, False
+        for fim in range(inicio, len(texto)):
+            d = texto[fim]
+            if em_string:
+                if escape:
+                    escape = False
+                elif d == "\\":
+                    escape = True
+                elif d == '"':
+                    em_string = False
+                continue
+            if d == '"':
+                em_string = True
+            elif d in "{[":
+                pilha.append("}" if d == "{" else "]")
+            elif d in "}]":
+                if not pilha or pilha.pop() != d:
+                    break
+                if not pilha:
+                    yield texto[inicio:fim + 1]
+                    break
+
+
+def _json_tolerante(texto: str):
+    """A resposta que a leitura estrita recusou, com tres consertos: tira o
+    bloco de raciocinio (`<think>...</think>` dos modelos que pensam em voz
+    alta), acha o JSON de verdade no meio da prosa (o primeiro trecho
+    balanceado que e JSON) e tira a virgula sobrando antes de fechar. Devolve
+    `_NADA` se nada der certo. Ideia do `_robust_json_parse` do RAG-Anything
+    (HKUDS, licenca MIT). JSON truncado continua falhando: completar o que a IA
+    nao mandou esconderia campos perdidos."""
+    limpo = _BLOCO_THINK.sub("", texto).replace("```json", "").replace("```", "")
+    for candidato in _candidatos_balanceados(limpo):
+        for versao in (candidato, _sem_virgula_sobrando(candidato)):
+            try:
+                return json.loads(versao)
+            except json.JSONDecodeError:
+                continue
+    return _NADA
 
 
 # =============================================================================

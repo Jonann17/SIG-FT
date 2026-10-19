@@ -41,6 +41,20 @@
 > Interruptor: `core.ler_pdf_nativo = False` volta ao caminho de texto (documento inteiro, sem
 > corte). Os limites de 60k/50k caracteres citados mais abaixo **não existem mais**.
 
+> ### 🆕 2026-10-19: tabela como tabela, página-imagem como imagem, JSON tolerante
+>
+> Ideias do RAG-Anything (HKUDS, licença MIT, github.com/HKUDS/RAG-Anything), sem a biblioteca:
+> ela traria MinerU + torch (GBs, modelos baixados em tempo de uso, que o proxy da empresa
+> bloqueia) e um grafo de conhecimento que não serve para uma ficha com poucos documentos.
+>
+> | O quê | Como | Onde |
+> |---|---|---|
+> | Tabela | cada tabela que o PyMuPDF detecta (`find_tables`) vai TAMBÉM em Markdown, **depois** do texto de sempre da página (a prova antiga continua achável). Até a página 150 | `autospec_documentos.tabelas_da_pagina`, `_ler_pdf_local` |
+> | Página-imagem | no caminho de TEXTO, a página sem texto (escaneada, desenho cotado) vai como JPEG (110 dpi), até 8 por ficha, e o prompt diz quais. Modelo sem visão recusa o anexo e a ficha cai para o texto, pela rede de sempre. A conferência aceita prova de página-imagem SÓ das páginas que foram (`paginas_como_imagem`) | `autospec_documentos.paginas_em_imagem`, `_preparar_envio`, `_documento_de_pagina_sem_texto` |
+> | JSON | quando a leitura estrita falha: tira o `<think>...</think>`, acha o JSON de verdade no meio da prosa (trecho balanceado) e tira a vírgula sobrando. Truncado continua falhando. Vale para todos os módulos | `core/llm/client.py` → `_json_tolerante` |
+>
+> Interruptor das páginas-imagem: `core.enviar_paginas_imagem = False`.
+
 > ### 🆕 2026-09-28: a IA confere as respostas do FORNECEDOR contra o datasheet
 >
 > Pedido do Luan; decisões dele e o porquê: [`docs/superpowers/specs/2026-09-28-autospec-conferencia-fornecedor-design.md`](../superpowers/specs/2026-09-28-autospec-conferencia-fornecedor-design.md).

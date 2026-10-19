@@ -200,6 +200,46 @@ def test_mais_robusto_que_upload_tech_specs_tolera_objeto_com_prosa():
     assert _limpar_e_parsear_json(texto) == {"x": 10}
 
 
+# --- Leitura tolerante, so quando a estrita falha  [2026-10-19] ---
+# Ideia do `_robust_json_parse` do RAG-Anything (HKUDS, MIT). Cada falha de
+# parse aqui custa uma chamada inteira de novo (retry) ou devolve a ficha
+# vazia. JSON truncado continua falhando: completar o que a IA nao mandou
+# esconderia campos perdidos.
+
+def test_bloco_de_raciocinio_think_antes_do_json_e_ignorado():
+    texto = '<think>O formato pedido e {"campo": valor}... vou montar.</think>\n{"a": 1}'
+    assert _limpar_e_parsear_json(texto) == {"a": 1}
+
+
+@pytest.mark.parametrize("texto, esperado", [
+    ('{"a": 1, "b": 2,}', {"a": 1, "b": 2}),
+    ('[1, 2, ]', [1, 2]),
+    ('{"a": [1, 2,], "b": {"c": 3,},}', {"a": [1, 2], "b": {"c": 3}}),
+])
+def test_virgula_sobrando_antes_de_fechar_e_tolerada(texto, esperado):
+    assert _limpar_e_parsear_json(texto) == esperado
+
+
+def test_virgula_com_fecha_chave_DENTRO_de_um_texto_nao_e_mexida():
+    assert _limpar_e_parsear_json('{"nota": "lista: a, b,}", "x": 1,}') == {"nota": "lista: a, b,}", "x": 1}
+
+
+def test_prosa_com_chaves_antes_do_json_acha_o_objeto_de_verdade():
+    texto = 'Usei o formato {campo: valor} pedido. Resposta: {"a": "x {y}", "b": 2} Fim.'
+    assert _limpar_e_parsear_json(texto) == {"a": "x {y}", "b": 2}
+
+
+def test_json_valido_nao_passa_pelo_conserto():
+    # Texto cujo conteudo tem ",}" -- a leitura estrita resolve, e o conserto
+    # nunca roda (ele mexeria em nada aqui, mas a regra e: estrita primeiro).
+    assert _limpar_e_parsear_json('{"a": "x,}"}') == {"a": "x,}"}
+
+
+def test_json_truncado_continua_falhando_mesmo_com_o_conserto():
+    with pytest.raises(json.JSONDecodeError):
+        _limpar_e_parsear_json('{"a": 1, "b": [1, 2')
+
+
 # =============================================================================
 # B. LLMClient.generate — retry, rate-limit, sleep, propagação de exceção,
 #    preenchimento de LLMResponse. Tudo com provider/sleep_fn/time_fn FAKES.
