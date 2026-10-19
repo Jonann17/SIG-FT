@@ -276,3 +276,35 @@ def test_tabela_em_markdown(linhas, esperado):
     from sigft.services import autospec_documentos
 
     assert autospec_documentos.tabela_em_markdown(linhas) == esperado
+
+
+def test_o_texto_da_celula_vem_do_get_text_da_pagina_e_nao_do_extract():
+    """2026-10-19, Release da 1.2.1-rc.5: o `extract()` do PyMuPDF 2.0 devolveu
+    "Tensaonominal" e "55\\n," para "Tensao nominal" e "5,5". O texto de cada
+    celula passa a vir do `get_text` da pagina, recortado na celula; do
+    `find_tables` fica so a posicao. Este teste vale em qualquer versao."""
+    from sigft.services import autospec_documentos
+
+    class _Linha:
+        def __init__(self, celulas):
+            self.cells = celulas
+
+    class _Tabela:
+        rows = [_Linha([(0, 0, 1, 1), (1, 0, 2, 1)]), _Linha([(0, 1, 1, 2), None])]
+
+        def extract(self):
+            return [["Tensaonominal", "55\n,"]]          # o que o 2.0 devolveu
+
+    class _Pagina:
+        texto = {(0, 0, 1, 1): "Tensao nominal", (1, 0, 2, 1): "5,5", (0, 1, 1, 2): " Peso\n"}
+
+        def find_tables(self):
+            return type("T", (), {"tables": [_Tabela()]})()
+
+        def get_text(self, modo, clip):
+            return self.texto[clip]
+
+    markdown = autospec_documentos.tabelas_da_pagina(_Pagina())
+
+    assert "| Tensao nominal | 5,5 |" in markdown and "| Peso |  |" in markdown
+    assert "Tensaonominal" not in markdown

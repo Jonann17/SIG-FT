@@ -218,6 +218,20 @@ def tabela_em_markdown(linhas):
     return "\n".join(corpo)
 
 
+def _linhas_da_tabela(pagina, tabela):
+    """O texto de cada celula, lido pelo `get_text` da pagina recortado na
+    celula (`clip`) -- e NAO pelo `tabela.extract()`.
+
+    [2026-10-19] O `extract()` do PyMuPDF 2.0 (o que o Release instala) monta
+    mal o texto da celula: "Tensao nominal" vira "Tensaonominal" e "5,5" vira
+    "55\\n," -- na tabela, um numero errado e pior que nenhum. O `get_text`
+    da pagina le certo nas duas versoes (1.28 e 2.0); do `find_tables` fica so
+    ONDE esta cada celula. Celula mesclada vem como `None`: fica vazia."""
+    return [[pagina.get_text("text", clip=celula).strip() if celula else ""
+             for celula in linha.cells]
+            for linha in tabela.rows]
+
+
 def tabelas_da_pagina(pagina):
     """As tabelas que o PyMuPDF detecta na `pagina`, em Markdown, cada uma com
     um rotulo; `""` sem tabela -- ou se a deteccao falhar: tabela e um extra,
@@ -229,7 +243,7 @@ def tabelas_da_pagina(pagina):
     blocos = []
     for tabela in achadas:
         try:
-            markdown = tabela_em_markdown(tabela.extract())
+            markdown = tabela_em_markdown(_linhas_da_tabela(pagina, tabela))
         except Exception:
             continue
         if markdown:
