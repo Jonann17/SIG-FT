@@ -63,6 +63,12 @@ começar nada.** Trocar a default exige permissão de admin — é ação do Lua
 | `tests/test_autospec_*.py`, `tests/test_llm_autospec_migration.py` | testes do módulo |
 | `tests/fixtures/prompts/autospec_prompt.txt` | fixture do prompt |
 | `docs/base-conhecimento/08-autospec-backend.md` | doc do módulo |
+| `sigft/services/autospec_documentos.py`, `autospec_evidencia.py`, `autospec_auditoria.py` | leitura e envio dos documentos, conferência da prova, conferência do fornecedor (da mesma frente; faltavam nesta tabela) |
+
+> **2026-10-19 — o Rafael cedeu o módulo ao Jonathan** (`Jonann17`), segundo o próprio Jonathan,
+> para a frente do Jonathan ajudar no AutoSpec. A partir daqui o Jonathan também edita os
+> arquivos 🟢 acima; cada mudança dele neles leva aviso no mural do `CLAUDE.md`, para a sessão do
+> Rafael não ser surpreendida. As zonas 🔴 continuam com as regras de sempre.
 
 🔴 **Compartilhado — conflito quase garantido se os dois mexerem junto:**
 

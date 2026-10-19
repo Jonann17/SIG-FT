@@ -826,6 +826,12 @@ def _ler_pdf_local(filepath):
             except Exception:
                 texto = ""
             if len(texto.strip()) >= MIN_CHARS_PAGINA_UTIL:
+                # Tabelas tambem como tabelas, depois do texto de sempre
+                # (2026-10-19). Ver `autospec_documentos.tabelas_da_pagina`.
+                if indice < autospec_documentos.MAX_PAGINAS_COM_TABELAS:
+                    tabelas = autospec_documentos.tabelas_da_pagina(documento[indice])
+                    if tabelas:
+                        texto = f"{texto.rstrip()}\n\n{tabelas}\n"
                 partes.append(texto)
                 todas.append(texto)
                 lidas += 1
@@ -1141,8 +1147,9 @@ def _documento_de_pagina_sem_texto(prova, anexados):
     documento inteiro) não tem texto -- a IA leu a imagem, e não há texto
     onde conferir o trecho. `None` em qualquer outro caso.
 
-    Só vale para documento que foi como PDF: no caminho de texto a IA não viu
-    a página-imagem, e um trecho dela seria invenção.
+    Só vale para documento que foi como PDF -- ou, no caminho de texto, para
+    a página que foi como IMAGEM (`paginas_como_imagem`, 2026-10-19): fora
+    disso a IA não viu a página-imagem, e um trecho dela seria invenção.
     """
     fonte = _normalizar_texto_busca(getattr(prova, "fonte", ""))
     if not fonte:
@@ -1150,6 +1157,13 @@ def _documento_de_pagina_sem_texto(prova, anexados):
     for documento in anexados or ():
         nomes = [_normalizar_texto_busca(documento.nome), _normalizar_texto_busca(documento.url)]
         if not any(n and (n in fonte or fonte in n) for n in nomes):
+            continue
+        # [2026-10-19] Documento que foi como TEXTO, com algumas paginas como
+        # imagem: so essas a IA viu.
+        como_imagem = getattr(documento, "paginas_como_imagem", ())
+        if como_imagem:
+            if prova.pagina and prova.pagina in como_imagem:
+                return documento
             continue
         if not documento.texto.strip():
             return documento
@@ -2982,7 +2996,24 @@ class AutoSpecCore:
             anexos = []
             contexto_final = self._contexto_de_texto(context, campos, cb)
             contexto_conferencia = contexto_final
-        return como_arquivo, anexos, contexto_final, contexto_conferencia
+
+        # [2026-10-19] O que foi como texto: a pagina sem texto (escaneada,
+        # desenho cotado) vai como imagem. A copia do documento que volta em
+        # `vistas` entra no que a conferencia trata como anexado -- e so as
+        # paginas que de fato foram. Ver `autospec_documentos.paginas_em_imagem`.
+        vistas = []
+        if getattr(self, "enviar_paginas_imagem", True):
+            imagens, vistas, deixadas = autospec_documentos.paginas_em_imagem(como_texto)
+            if imagens:
+                anexos = list(anexos) + imagens
+                contexto_final += "\n\n" + autospec_documentos.descrever_paginas_imagem(vistas)
+                cb.log(
+                    f"{len(imagens)} pagina(s) sem texto vao para a IA como imagem "
+                    f"({'; '.join(v.nome for v in vistas)})."
+                    + (f" Outras {deixadas} ficaram de fora (limite de "
+                       f"{autospec_documentos.MAX_PAGINAS_IMAGEM} por ficha)." if deixadas else "")
+                )
+        return list(como_arquivo) + vistas, anexos, contexto_final, contexto_conferencia
 
     def _chamar_ia(self, prompt, anexos, tags):
         """Uma chamada à IA. `anexos` só vai quando há anexo: os dublês de

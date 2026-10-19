@@ -31,7 +31,7 @@ Sem tkinter, sem SDK de IA, sem Excel: so arquivo e texto.
 """
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from sigft.core.llm.client import Anexo
 
@@ -89,6 +89,10 @@ class Documento:
     dados: bytes | None = None
     metodo: str = ""
     paginado: bool = True
+    # [2026-10-19] As paginas (1-based) que foram para a IA como IMAGEM, no
+    # caminho de texto (`paginas_em_imagem`). So nelas a prova pode citar uma
+    # pagina sem texto -- ver `autospec._documento_de_pagina_sem_texto`.
+    paginas_como_imagem: tuple = ()
 
     @property
     def texto(self):
@@ -176,6 +180,148 @@ def ler_documento(caminho, leitor, origem="LOCAL", nome=None, url="",
         dados=dados,
         metodo=metodo or "",
         paginado=str(metodo or "").startswith("PyMuPDF"),
+    )
+
+
+# =============================================================================
+# Tabelas como tabelas (2026-10-19)
+# =============================================================================
+# O `get_text()` do PyMuPDF entrega a tabela de especificacoes uma celula por
+# linha ("Tensao nominal\n220\nV\nCorrente\n..."): lendo texto, a IA perde
+# qual valor e de qual parametro. Cada tabela que o PyMuPDF detecta vai tambem
+# em Markdown, DEPOIS do texto de sempre da pagina -- depois, e nao no lugar:
+# a prova que a IA cita e conferida contra o texto, e o texto antigo continua
+# inteiro nele. Ideia (e o formato) do `format_table_body` do RAG-Anything
+# (HKUDS, licenca MIT, github.com/HKUDS/RAG-Anything).
+
+# Manual de centenas de paginas: a deteccao custa de 20 a 300 ms por pagina.
+# Passando disto, as paginas seguintes ficam so com o texto.
+MAX_PAGINAS_COM_TABELAS = 150
+
+
+def _celula(valor):
+    texto = " ".join(str(valor if valor is not None else "").split())
+    return texto.replace("|", "\\|")
+
+
+def tabela_em_markdown(linhas):
+    """A tabela (lista de linhas, cada uma lista de celulas) em Markdown; `""`
+    quando nao e tabela de verdade (uma linha so, uma coluna so, ou vazia)."""
+    linhas = [[_celula(c) for c in (linha or [])] for linha in (linhas or [])]
+    linhas = [linha for linha in linhas if any(linha)]
+    colunas = max((len(linha) for linha in linhas), default=0)
+    if len(linhas) < 2 or colunas < 2:
+        return ""
+    linhas = [linha + [""] * (colunas - len(linha)) for linha in linhas]
+    corpo = ["| " + " | ".join(linha) + " |" for linha in linhas]
+    corpo.insert(1, "| " + " | ".join(["---"] * colunas) + " |")
+    return "\n".join(corpo)
+
+
+def tabelas_da_pagina(pagina):
+    """As tabelas que o PyMuPDF detecta na `pagina`, em Markdown, cada uma com
+    um rotulo; `""` sem tabela -- ou se a deteccao falhar: tabela e um extra,
+    nunca motivo para perder a pagina."""
+    try:
+        achadas = pagina.find_tables().tables
+    except Exception:
+        return ""
+    blocos = []
+    for tabela in achadas:
+        try:
+            markdown = tabela_em_markdown(tabela.extract())
+        except Exception:
+            continue
+        if markdown:
+            blocos.append(f"[tabela {len(blocos) + 1} desta pagina]\n{markdown}")
+    return "\n\n".join(blocos)
+
+
+# =============================================================================
+# Pagina sem texto vai como IMAGEM, no caminho de texto (2026-10-19)
+# =============================================================================
+# Quando o PDF vai como texto (modelo que nao le PDF, ou documento grande
+# demais para ir inteiro), a pagina escaneada ou o desenho cotado chegava
+# VAZIO a IA, e a unica saida era o LlamaParse, que sobe o arquivo inteiro. A
+# pagina sem texto passa a ir como imagem, renderizada aqui mesmo pelo
+# PyMuPDF: sem OCR local, sem modelo novo. Modelo sem visao recusa o anexo e a
+# ficha cai para o texto, pela rede de sempre (`generate_ai_response`). Ideia
+# do RAG-Anything (HKUDS, licenca MIT): a pagina vai a um modelo com visao.
+
+# Por ficha, somando os documentos. Cada pagina, em JPEG a 110 dpi, fica em
+# 30 a 300 KB: 8 paginas nao pesam na chamada.
+MAX_PAGINAS_IMAGEM = 8
+DPI_PAGINA_IMAGEM = 110
+QUALIDADE_JPEG = 80
+
+
+def _abrir_pdf(documento):
+    """O PDF do documento aberto pelo PyMuPDF, ou `None` (sem PyMuPDF, sem
+    arquivo, ou arquivo que nao abre)."""
+    if documento.mime != "application/pdf":
+        return None
+    try:
+        import pymupdf
+    except ImportError:
+        try:
+            import fitz as pymupdf  # nome antigo do mesmo pacote
+        except ImportError:
+            return None
+    try:
+        if documento.dados is not None:
+            return pymupdf.open(stream=documento.dados, filetype="pdf")
+        if documento.caminho:
+            return pymupdf.open(documento.caminho)
+    except Exception:
+        return None
+    return None
+
+
+def paginas_em_imagem(documentos, limite=MAX_PAGINAS_IMAGEM):
+    """`(anexos, vistas, deixadas)`: as paginas sem texto dos `documentos`,
+    em JPEG, ate `limite` no total; para cada documento que mandou alguma, uma
+    copia dele com `paginas_como_imagem` (e a que a conferencia consulta); e
+    quantas paginas sem texto ficaram de fora pelo limite."""
+    anexos, vistas, deixadas = [], [], 0
+    for documento in documentos or []:
+        sem_texto = documento.paginas_sem_texto
+        if not sem_texto:
+            continue
+        pdf = _abrir_pdf(documento)
+        if pdf is None:
+            continue
+        enviadas = []
+        try:
+            for numero in sem_texto:
+                if len(anexos) >= limite:
+                    deixadas += 1
+                    continue
+                try:
+                    pixmap = pdf[numero - 1].get_pixmap(dpi=DPI_PAGINA_IMAGEM)
+                    dados = pixmap.tobytes("jpeg", jpg_quality=QUALIDADE_JPEG)
+                except Exception:
+                    continue
+                anexos.append(Anexo(nome=f"{documento.nome} - pagina {numero}.jpg",
+                                    mime="image/jpeg", dados=dados))
+                enviadas.append(numero)
+        finally:
+            try:
+                pdf.close()
+            except Exception:
+                pass
+        if enviadas:
+            vistas.append(replace(documento, paginas_como_imagem=tuple(enviadas)))
+    return anexos, vistas, deixadas
+
+
+def descrever_paginas_imagem(vistas):
+    """O trecho do prompt que diz a IA quais paginas vieram como imagem."""
+    linhas = [f"- {v.nome}: pagina(s) {', '.join(str(n) for n in v.paginas_como_imagem)}"
+              for v in vistas]
+    return (
+        "PAGINAS SEM TEXTO, ANEXADAS COMO IMAGEM (escaneadas, desenhos cotados, "
+        "graficos). Leia cada imagem; ao citar a prova, use o nome do documento e "
+        "o numero da pagina abaixo:\n" + "\n".join(linhas)
     )
 
 

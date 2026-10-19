@@ -203,3 +203,76 @@ def test_pdf_escaneado_COM_chave_recorre_a_nuvem_avisando_que_o_arquivo_sai(
 
     assert texto == "TEXTO VINDO DO OCR" and metodo == "LlamaParse"
     assert "SAI da rede" in registro.texto()
+
+
+# =============================================================================
+# Tabelas como tabelas  [2026-10-19]
+# =============================================================================
+# O `get_text()` entrega a tabela de especificacoes uma celula por linha
+# ("Tensao nominal\n220\nV\nCorrente\n..."): a IA lendo texto perde qual valor
+# e de qual parametro. A pagina passa a levar, DEPOIS do texto de sempre, cada
+# tabela detectada em Markdown. Depois, e nao no lugar: a prova que a IA cita e
+# conferida contra o texto, e o texto antigo continua inteiro nele. Ideia do
+# RAG-Anything (HKUDS, MIT): `format_table_body`.
+
+def _pdf_com_tabela(caminho, linhas):
+    doc = pymupdf.open()
+    pagina = doc.new_page()
+    pagina.insert_text((72, 60), "Datasheet XYZ-100. Especificacoes tecnicas do produto abaixo.")
+    x0, y0, largura, altura = 72, 90, 150, 22
+    for i, linha in enumerate(linhas):
+        for j, celula in enumerate(linha):
+            r = pymupdf.Rect(x0 + j * largura, y0 + i * altura, x0 + (j + 1) * largura, y0 + (i + 1) * altura)
+            pagina.draw_rect(r, color=(0, 0, 0), width=0.8)
+            pagina.insert_text((r.x0 + 4, r.y1 - 7), celula, fontsize=10)
+    doc.save(str(caminho))
+    doc.close()
+    return str(caminho)
+
+
+_LINHAS = [("Parametro", "Valor", "Unidade"), ("Tensao nominal", "220", "V"),
+           ("Corrente", "5,5", "A"), ("Peso", "12", "kg")]
+
+
+def test_tabela_do_pdf_vai_tambem_como_tabela_markdown(tmp_path):
+    texto, rel = autospec_backend._ler_pdf_local(_pdf_com_tabela(tmp_path / "t.pdf", _LINHAS))
+
+    assert "| Tensao nominal | 220 | V |" in texto
+    assert "| Parametro | Valor | Unidade |" in texto
+    assert "| --- | --- | --- |" in texto
+    assert "| Tensao nominal | 220 | V |" in rel.paginas[0]
+
+
+def test_a_tabela_vem_DEPOIS_do_texto_de_sempre_que_continua_inteiro(tmp_path):
+    texto, rel = autospec_backend._ler_pdf_local(_pdf_com_tabela(tmp_path / "t.pdf", _LINHAS))
+
+    assert "Tensao nominal\n220\nV" in texto          # a prova antiga continua achavel
+    assert texto.index("Tensao nominal\n220") < texto.index("| Tensao nominal |")
+
+
+def test_pagina_sem_tabela_fica_como_era(tmp_path):
+    texto, rel = autospec_backend._ler_pdf_local(_pdf(tmp_path / "s.pdf", {0}, total=1))
+
+    assert "|" not in texto and "[tabela" not in texto
+
+
+def test_falha_na_deteccao_de_tabela_nao_derruba_a_leitura(tmp_path, monkeypatch):
+    caminho = _pdf_com_tabela(tmp_path / "t.pdf", _LINHAS)
+    monkeypatch.setattr(pymupdf.Page, "find_tables", lambda self, *a, **k: 1 / 0)
+
+    texto, rel = autospec_backend._ler_pdf_local(caminho)
+
+    assert rel.paginas_lidas == 1 and "Tensao nominal" in texto and "| Tensao" not in texto
+
+
+@pytest.mark.parametrize("linhas, esperado", [
+    ([["a", "b"], ["1", "2"]], "| a | b |\n| --- | --- |\n| 1 | 2 |"),
+    ([["a|x", None], ["linha\nquebrada", " 2 "]], "| a\\|x |  |\n| --- | --- |\n| linha quebrada | 2 |"),
+    ([["so", "uma"]], ""),                       # uma linha so nao e tabela
+    ([["a"], ["b"]], ""),                        # uma coluna so nao e tabela
+    ([[None, None], ["", ""]], ""),              # tudo vazio
+])
+def test_tabela_em_markdown(linhas, esperado):
+    from sigft.services import autospec_documentos
+
+    assert autospec_documentos.tabela_em_markdown(linhas) == esperado
