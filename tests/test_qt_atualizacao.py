@@ -57,6 +57,14 @@ def processar(qt_interface):
     return rodar
 
 
+@pytest.fixture(autouse=True)
+def limpezas(monkeypatch):
+    """A limpeza da pasta de downloads, dublada: teste não mexe no %TEMP% real."""
+    chamadas = []
+    monkeypatch.setattr(updater, "limpar_downloads", lambda **kw: chamadas.append(kw) or 0)
+    return chamadas
+
+
 @pytest.fixture
 def caixas(monkeypatch):
     """As caixas de mensagem do Qt sao modais (bloqueiam): dubladas."""
@@ -160,6 +168,28 @@ def test_a_thread_da_consulta_e_DAEMON_e_nao_vira_tarefa(monkeypatch, qt_interfa
         liberar.set()
     assert vista["daemon"] is True
     assert vista["tarefas"] == []
+
+
+def test_a_abertura_LIMPA_os_instaladores_de_atualizacoes_anteriores(monkeypatch, raiz, processar,
+                                                                    caixas, limpezas):
+    # 2026-10-19: cada atualização deixava o instalador (até 326 MB) no %TEMP%.
+    monkeypatch.setattr(updater, "deve_verificar", lambda: True)
+    monkeypatch.setattr(updater, "checar", lambda versao, **kw: None)
+
+    atualizacao.verificar_na_abertura(raiz, versao_atual="1.1.0", disparar=_sincrono)
+
+    assert len(limpezas) == 1
+
+
+def test_limpeza_que_falha_nao_impede_a_consulta(monkeypatch, raiz, processar, caixas):
+    perguntas = []
+    monkeypatch.setattr(updater, "deve_verificar", lambda: True)
+    monkeypatch.setattr(updater, "limpar_downloads", lambda **kw: 1 / 0)
+    monkeypatch.setattr(updater, "checar", lambda versao, **kw: perguntas.append(versao))
+
+    atualizacao.verificar_na_abertura(raiz, versao_atual="1.1.0", disparar=_sincrono)
+
+    assert perguntas == ["1.1.0"]
 
 
 def test_sem_permissao_da_politica_a_abertura_nao_toca_na_rede(monkeypatch, raiz):

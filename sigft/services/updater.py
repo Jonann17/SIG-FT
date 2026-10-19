@@ -466,10 +466,46 @@ def checar(versao_atual: str, *, canal_testes: bool | None = None,
 
 # ──────────────────────────── baixar e instalar ─────────────────────────────
 
+def _pasta_de_download() -> Path:
+    return Path(tempfile.gettempdir()) / "SIG-FT_Update"
+
+
 def pasta_download() -> Path:
-    p = Path(tempfile.gettempdir()) / "SIG-FT_Update"
+    p = _pasta_de_download()
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+# O que a limpeza apaga: instaladores e downloads pela metade. O
+# `instalacao.log` fica -- é o diagnóstico da última instalação.
+_EXTENSOES_DE_DOWNLOAD = (".exe", ".bin", ".zip", ".part")
+
+
+def limpar_downloads(*, log_cb: Log = _nada) -> int:
+    """Apaga os instaladores que atualizações anteriores deixaram na pasta de
+    download. Devolve quantos bytes liberou.
+
+    [2026-10-19] Cada atualização deixava o instalador lá (326 MB o completo),
+    versão após versão. Arquivo em uso (o instalador que acabou de reabrir o
+    app ainda pode estar rodando) fica para a próxima vez, sem erro."""
+    pasta = _pasta_de_download()
+    if not pasta.is_dir():
+        return 0
+    apagados, liberados = 0, 0
+    for arquivo in pasta.iterdir():
+        if not arquivo.is_file() or not arquivo.name.lower().endswith(_EXTENSOES_DE_DOWNLOAD):
+            continue
+        try:
+            tamanho = arquivo.stat().st_size
+            arquivo.unlink()
+        except OSError:
+            continue
+        apagados += 1
+        liberados += tamanho
+    if apagados:
+        log_cb(f"Limpeza: {apagados} arquivo(s) de atualizacoes anteriores apagados "
+               f"({_mb_do_log(liberados)} MB liberados).")
+    return liberados
 
 
 def baixar(info: Atualizacao, *, progresso_cb: Progresso = _nada,
@@ -487,7 +523,10 @@ def baixar(info: Atualizacao, *, progresso_cb: Progresso = _nada,
     o proxy segurou o fim para analisar o arquivo, pedir só o resto seria
     passar por cima da análise. Erro de disco não troca de arquivo: sem espaço
     para o pequeno, não há para o completo.
+    [2026-10-19] Antes de baixar, apaga os instaladores de atualizações
+    anteriores (`limpar_downloads`).
     """
+    limpar_downloads(log_cb=log_cb)
     try:
         return _baixar_arquivo(info, progresso_cb=progresso_cb, log_cb=log_cb)
     except (DownloadInterrompido, ArquivoInvalido, rede.FalhaDeRede) as erro:
