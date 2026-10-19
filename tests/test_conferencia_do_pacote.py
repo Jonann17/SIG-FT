@@ -569,3 +569,14 @@ def test_a_conferencia_so_importa_stdlib_no_topo():
             no_topo.add((no.module or "").split(".")[0])
 
     assert no_topo <= set(sys.stdlib_module_names) | {"__future__"}, no_topo
+
+
+def test_o_codigo_do_sigft_vai_fora_do_exe():
+    """2026-10-19: medido entre a 1.2.1-rc.4 e a rc.5, 37,1 dos 38,6 MB da
+    atualização pequena eram o `SIG-FT.exe` -- o código do SIG-FT morava no
+    PYZ, dentro dele. Com `module_collection_mode={"sigft": "pyc"}`, mudar um
+    módulo muda só o `.pyc` dele, e a atualização pequena encolhe."""
+    from pathlib import Path
+
+    spec = (Path(__file__).resolve().parent.parent / "SIG-FT.spec").read_text(encoding="utf-8")
+    assert 'module_collection_mode={"sigft": "pyc"}' in spec

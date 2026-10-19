@@ -316,6 +316,17 @@ a = Analysis(
     excludes=["pytest", "_pytest", "mypy", "ruff", "torch", "transformers",
               "PySide6.QtNetwork", "tkinter", "_tkinter", "customtkinter"],
     noarchive=False,
+    # O código do SIG-FT FORA do `.exe` (2026-10-19), um `.pyc` por módulo em
+    # `_internal/sigft/`. Medido entre a 1.2.1-rc.4 e a rc.5: dos 38,6 MB que
+    # mudaram, 37,1 MB eram o `SIG-FT.exe` -- o PYZ, com TODO o Python do
+    # pacote, mora dentro dele, e uma linha mudada no SIG-FT trocava o `.exe`
+    # inteiro, e a atualização pequena levava os 37 MB. Com o código à parte,
+    # mudar um módulo muda só o `.pyc` dele (provado num build de teste: o
+    # `.exe` sai idêntico byte a byte). As bibliotecas de terceiros continuam
+    # no PYZ: só mudam quando uma dependência muda. O `__file__` de cada módulo
+    # continua sendo `_internal/sigft/.../x.pyc`, o mesmo caminho "virtual"
+    # que o PYZ já dava -- quem calcula pasta a partir dele não percebe.
+    module_collection_mode={"sigft": "pyc"},
 )
 
 # =============================================================================
