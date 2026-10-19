@@ -492,7 +492,10 @@ def test_persistencia_estrutura_completa_do_json_apos_uso_combinado(tmp_path, co
     # mural de atividades precisa (ele lê a planilha sem passar por diálogo, e
     # a memória de PASTA não serve para isso). [2026-10-05] "opcoes" entrou
     # com `set_opcao` -- o "Gerar painel ao terminar" do Gestão PMIB.
-    assert set(bruto.keys()) == {"ultimos", "categorias", "pastas_padrao", "arquivos", "opcoes"}
+    # [2026-10-19] "novidades" entrou com `set_ultima_versao_vista` -- a janela
+    # de novidades.
+    assert set(bruto.keys()) == {"ultimos", "categorias", "pastas_padrao", "arquivos", "opcoes",
+                                 "novidades"}
     assert bruto == {
         "ultimos": {"autospec.ficha": str(pasta_ultimo)},
         "categorias": {"excel": str(pasta_ultimo)},
@@ -501,6 +504,7 @@ def test_persistencia_estrutura_completa_do_json_apos_uso_combinado(tmp_path, co
         # -- as seções existem sempre, como as outras três.
         "arquivos": {},
         "opcoes": {},
+        "novidades": {},
     }
 
 
