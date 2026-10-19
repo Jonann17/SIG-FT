@@ -84,11 +84,19 @@ jobs:
       # PMIB: `test_pmib_manager_v2.py` roda o fluxo inteiro sobre o kit de
       # teste do cofre e o confere com o validador do kit (o "KIT OK" da T3).
       # Sem o pandas aqui, esse teste seria PULADO -- e um pulo nao e verde.
+      #
+      # E o pymupdf (2026-10-19). Os testes de leitura de PDF do AutoSpec
+      # (`test_autospec_leitura_pdf.py`, `test_autospec_documentos.py`) usam o
+      # pacote REAL (`importorskip`): sem ele aqui, eram PULADOS, e o defeito
+      # do PyMuPDF 2.0 nas tabelas ("5,5" virando "55\n,") so apareceu no
+      # Release, no Windows, ja com a versao sendo montada. No 3.12 a matriz
+      # instala o 2.0, o mesmo que o Release empacota; no 3.10, o mais novo que
+      # ainda o suporta.
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-          pip install requests openpyxl python-dotenv pandas
+          pip install requests openpyxl python-dotenv pandas pymupdf
 
       # `compileall` cobre o que o pytest nao importa -- inclusive o
       # frontend.py, que abre janela real e por isso nao pode ser importado.
