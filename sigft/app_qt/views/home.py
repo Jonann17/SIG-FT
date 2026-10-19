@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import html
 import threading
-from datetime import date
+from datetime import date, datetime
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -153,17 +153,23 @@ class _Texto(QLabel):
         super().__init__()
         self.texto_puro = ""
         self._altura_linha = altura_linha
+        self._fonte, self._cor = fonte, cor
         self.setTextFormat(Qt.TextFormat.RichText if altura_linha else Qt.TextFormat.PlainText)
         self.setWordWrap(True)
         self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.setMinimumHeight(blocos.ALTURA_MINIMA_ROTULO)
         if largura_maxima:
             self.setMaximumWidth(largura_maxima)
-        self.setStyleSheet(f"{blocos.folha_fonte_tk(fonte)} color: {estilo.cinza_tk(cor)};"
-                           " background: transparent;")
+        self._pintar(cor)
         self.definir(texto)
 
-    def definir(self, texto) -> None:
+    def _pintar(self, cor: str) -> None:
+        self.setStyleSheet(f"{blocos.folha_fonte_tk(self._fonte)} color: {estilo.cinza_tk(cor)};"
+                           " background: transparent;")
+
+    def definir(self, texto, *, cor: str | None = None) -> None:
+        """`cor` troca a cor só desta vez (um aviso); sem ela, volta a de nascença."""
+        self._pintar(cor or self._cor)
         self.texto_puro = str(texto)
         if self._altura_linha:
             self.setText(f'<div style="white-space: pre-wrap; line-height: {self._altura_linha}px">'
@@ -790,9 +796,10 @@ class HomeView(QScrollArea):
         pares = [(self._rotulo_modelo_ia(fav), fav["model"], provider) for fav in recomendados]
         ja_listados = {fav["model"] for fav in recomendados}
 
-        for model_id in catalogo.listar_modelos(
+        self._catalogo_ia = catalogo.consultar(
             provider, self.controller.api_keys, somente_cache=somente_cache, forcar=forcar,
-        ):
+        )
+        for model_id in self._catalogo_ia.modelos:
             if model_id not in ja_listados:
                 pares.append((model_id, model_id, provider))
         return pares
@@ -814,9 +821,12 @@ class HomeView(QScrollArea):
             self._pares_modelo_ia.append((f"(salvo) {provider} / {model_id}", model_id, provider))
             conhecidos.add(model_id)
 
-    def _recarregar_modelos_do_provider(self, estado_atual=None, forcar=False) -> None:
+    def _recarregar_modelos_do_provider(self, estado_atual=None, forcar=False,
+                                        erro_catalogo=None) -> None:
         """Repopula TODOS os menus de modelo com os do provedor atual. Na
-        montagem (`estado_atual`), pré-seleciona o que já estava salvo."""
+        montagem (`estado_atual`), pré-seleciona o que já estava salvo.
+        `erro_catalogo` é o motivo de o "Atualizar lista" ter falhado: vira
+        aviso no rótulo do catálogo, e a lista que havia continua."""
         provider = self._provider_ia_atual()
         self._pares_modelo_ia = self._modelos_do_provider_ia(provider, forcar=forcar)
         # As seleções gravadas entram SEMPRE, não só na montagem: trocar de
@@ -830,13 +840,25 @@ class HomeView(QScrollArea):
             # Conta só as entradas VINDAS do catálogo: nelas o rótulo é o
             # próprio id (recomendados trazem preço; as salvas, "(salvo)").
             do_catalogo = sum(1 for r, m, _p in self._pares_modelo_ia if r == m)
-            if do_catalogo > 0:
-                texto = f"{len(self._pares_modelo_ia)} modelos disponíveis ({do_catalogo} do catálogo do provedor)."
+            # O serviço diz de quando a lista é; a tela só escreve a data.
+            baixado_em = self._catalogo_ia.baixado_em
+            de_quando = (datetime.fromtimestamp(baixado_em).strftime("%d/%m")
+                         if baixado_em is not None else None)
+            if erro_catalogo and de_quando:
+                texto = (f"Não foi possível atualizar a lista de modelos ({erro_catalogo}). "
+                         f"Continua valendo a lista de {de_quando}.")
+            elif erro_catalogo:
+                texto = (f"Não foi possível baixar a lista de modelos ({erro_catalogo}). "
+                         "Enquanto isso valem os recomendados e o campo manual.")
+            elif do_catalogo > 0:
+                extra = f", lista de {de_quando}" if self._catalogo_ia.vencido and de_quando else ""
+                texto = (f"{len(self._pares_modelo_ia)} modelos disponíveis "
+                         f"({do_catalogo} do catálogo do provedor{extra}).")
             else:
                 texto = ("Catálogo ainda não baixado para este provedor. Clique em "
                          "\"Atualizar lista de modelos\". Enquanto isso valem os recomendados "
                          "e o campo manual.")
-            self.lbl_catalogo_ia.definir(texto)
+            self.lbl_catalogo_ia.definir(texto, cor=COLORS["danger"] if erro_catalogo else None)
 
         salvo_global = (estado_atual or {}).get("global") if estado_atual else None
         salvos_tarefa = (estado_atual or {}).get("por_tarefa", {}) if estado_atual else {}
@@ -898,19 +920,28 @@ class HomeView(QScrollArea):
                          daemon=True, name="sigft-catalogo-ia").start()
 
     def _worker_catalogo_ia(self, provider, chaves) -> None:
-        # `listar_modelos` não levanta (devolve [] em falha) e grava o cache; o
-        # desenho volta para a thread da interface por `na_interface`.
+        # `consultar` não levanta (o motivo de uma falha volta em `.erro`) e
+        # grava o cache; o desenho volta para a thread da interface por
+        # `na_interface`, e a resposta vai junto, guardada aqui.
+        resultado = None
         try:
-            catalogo.listar_modelos(provider, chaves, forcar=True)
+            resultado = catalogo.consultar(provider, chaves, forcar=True)
         finally:
+            self._catalogo_baixado_ia = (provider, resultado)
             interface.na_interface(self._catalogo_chegou)
 
     def _catalogo_chegou(self) -> None:
         """Na thread da interface: redesenha com o cache novo -- se o painel
-        ainda existe (a janela pode ter sido fechada e destruída no meio)."""
+        ainda existe (a janela pode ter sido fechada e destruída no meio). A
+        falha vira aviso só se o provedor ainda é o que foi buscado."""
         if not _vivo(self.frame_modelos_ia) or self.opt_provider_ia is None:
             return
-        self._recarregar_modelos_do_provider()
+        provider, resultado = getattr(self, "_catalogo_baixado_ia", (None, None))
+        erro = resultado.erro if resultado is not None else None
+        if erro and provider == self._provider_ia_atual():
+            self._recarregar_modelos_do_provider(erro_catalogo=erro)
+        else:
+            self._recarregar_modelos_do_provider()
 
     # ------------------------------------------------------------------
     # Precedência e resumo

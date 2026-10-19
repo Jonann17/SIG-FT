@@ -283,3 +283,111 @@ def test_forcar_vence_somente_cache():
 
     assert ids == ["gemini-3-flash", "gemini-3.1-pro"]
     assert len(registro) == 1
+
+
+# --- a lista que já havia não some (pendências de 2026-09-25) ----------------
+#
+# (b) A Home monta com `somente_cache` e tratava o cache vencido como ausente:
+#     um dia depois de baixado, o catálogo sumia. Para EXIBIR, o de ontem
+#     serve melhor que nenhum -- e `consultar` diz de quando ele é.
+# (a) A falha do "Atualizar lista" era muda: `[]` e nenhum motivo. Agora o
+#     motivo volta em `erro`, e a lista que já havia continua.
+
+_DIA = catalogo.TTL_PADRAO_SEGUNDOS
+
+
+def _baixar_gemini(quando):
+    return catalogo.listar_modelos(config.PROVIDER_GEMINI, {"GEMINI": "k"},
+                                   http_get=_get(_CORPO_GEMINI), time_fn=lambda: quando)
+
+
+def test_somente_cache_com_cache_vencido_devolve_a_lista_de_ontem_sem_tocar_a_rede():
+    _baixar_gemini(1000)
+    registro = []
+
+    resultado = catalogo.consultar(
+        config.PROVIDER_GEMINI, {"GEMINI": "k"}, somente_cache=True,
+        http_get=_get(_CORPO_GEMINI, registro=registro), time_fn=lambda: 1000 + _DIA + 1,
+    )
+
+    assert resultado.modelos == ["gemini-3-flash", "gemini-3.1-pro"]
+    assert resultado.baixado_em == 1000
+    assert resultado.vencido is True
+    assert resultado.erro is None
+    assert registro == []
+    assert catalogo.listar_modelos(config.PROVIDER_GEMINI, {"GEMINI": "k"}, somente_cache=True,
+                                   time_fn=lambda: 1000 + _DIA + 1) == resultado.modelos
+
+
+def test_cache_dentro_do_prazo_nao_e_vencido_e_diz_de_quando_e():
+    _baixar_gemini(1000)
+
+    resultado = catalogo.consultar(config.PROVIDER_GEMINI, {"GEMINI": "k"},
+                                   somente_cache=True, time_fn=lambda: 1001)
+
+    assert (resultado.baixado_em, resultado.vencido, resultado.erro) == (1000, False, None)
+
+
+def test_sem_cache_nenhum_consultar_vem_vazio_sem_data():
+    resultado = catalogo.consultar(config.PROVIDER_GEMINI, {"GEMINI": "k"},
+                                   somente_cache=True, time_fn=lambda: 0)
+
+    assert (resultado.modelos, resultado.baixado_em, resultado.erro) == ([], None, None)
+
+
+def test_atualizar_que_falha_devolve_o_motivo_e_mantem_a_lista_que_havia(capsys):
+    _baixar_gemini(1000)
+
+    resultado = catalogo.consultar(
+        config.PROVIDER_GEMINI, {"GEMINI": "k"}, forcar=True,
+        http_get=_get(None, erro=RuntimeError("proxy recusou a conexao")),
+        time_fn=lambda: 1000 + 2 * _DIA,
+    )
+
+    assert resultado.modelos == ["gemini-3-flash", "gemini-3.1-pro"]
+    assert resultado.baixado_em == 1000 and resultado.vencido is True
+    assert resultado.erro == "RuntimeError: proxy recusou a conexao"
+    assert "proxy recusou a conexao" in capsys.readouterr().out, "o motivo vai para o log"
+
+
+def test_atualizar_que_falha_sem_lista_anterior_devolve_vazio_com_o_motivo():
+    resultado = catalogo.consultar(
+        config.PROVIDER_OPENROUTER, {"OPENROUTER": "k"}, forcar=True,
+        http_get=_get(None, erro=RuntimeError("HTTP 401")), time_fn=lambda: 0,
+    )
+
+    assert resultado.modelos == [] and resultado.baixado_em is None
+    assert resultado.erro == "RuntimeError: HTTP 401"
+
+
+def test_o_motivo_nunca_mostra_a_chave(capsys):
+    # O Gemini leva a chave NA URL, e o HTTPError do `requests` repete a URL.
+    erro = RuntimeError("403 Client Error: Forbidden for url: "
+                        "https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSEGREDO")
+
+    resultado = catalogo.consultar(config.PROVIDER_GEMINI, {"GEMINI": "AIzaSEGREDO"}, forcar=True,
+                                   http_get=_get(None, erro=erro), time_fn=lambda: 0)
+
+    assert "AIzaSEGREDO" not in resultado.erro
+    assert "403 Client Error" in resultado.erro
+    assert "AIzaSEGREDO" not in capsys.readouterr().out
+
+
+def test_lista_vazia_do_provedor_tambem_vira_motivo_e_nao_apaga_a_que_havia():
+    _baixar_gemini(1000)
+
+    resultado = catalogo.consultar(config.PROVIDER_GEMINI, {"GEMINI": "k"}, forcar=True,
+                                   http_get=_get({"models": []}), time_fn=lambda: 2000)
+
+    assert resultado.modelos == ["gemini-3-flash", "gemini-3.1-pro"]
+    assert resultado.erro and "nenhum modelo" in resultado.erro
+
+
+def test_busca_automatica_com_cache_vencido_que_falha_fica_com_o_de_ontem():
+    _baixar_gemini(1000)
+
+    ids = catalogo.listar_modelos(config.PROVIDER_GEMINI, {"GEMINI": "k"},
+                                  http_get=_get(None, erro=RuntimeError("sem rede")),
+                                  time_fn=lambda: 1000 + _DIA + 1)
+
+    assert ids == ["gemini-3-flash", "gemini-3.1-pro"]

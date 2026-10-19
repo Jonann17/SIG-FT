@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 
 from sigft import _build_info
 from sigft.app import backends, theme
-from sigft.app_qt import atualizacao, catalogo, estilo, interface
+from sigft.app_qt import atualizacao, catalogo, estilo, interface, novidades
 from sigft.app_qt.views.aplicacao_lmr import ModuloAplicacaoLMR
 from sigft.app_qt.views.home import HomeView
 from sigft.app_qt.views.nao_migrada import TelaComErro, TelaNaoMigrada
@@ -176,6 +176,10 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         # Toda abertura do app instalado pergunta ao GitHub se há versão nova,
         # numa thread (a abertura não espera). Ver `sigft/app_qt/atualizacao.py`.
         atualizacao.verificar_na_abertura(self)
+        # Primeira abertura de uma versão nova: "O que mudou na vX", uma vez,
+        # depois de a janela aparecer. Pelo código-fonte não faz nada. Ver
+        # `sigft/app_qt/novidades.py` (tela) e `core/novidades.py` (regra).
+        novidades.agendar_na_abertura(self)
 
     # -- barra lateral --------------------------------------------------------
     def _montar_sidebar(self) -> QScrollArea:
