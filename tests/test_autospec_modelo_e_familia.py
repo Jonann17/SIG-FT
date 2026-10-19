@@ -226,3 +226,56 @@ def test_grau_de_protecao_no_titulo_nao_bloqueia_a_promocao():
         "Cisco Catalyst IE3200 Rugged Series Data Sheet — IP67 rated",
         "Rugged switches.", URL_CISCO)
     assert destino == "certo"
+
+
+# =============================================================================
+# A 2ª PASSADA (documentos conferidos) também recorta pelo modelo [2026-10-19]
+# =============================================================================
+# `_modelo_do_item` só era definido em `retrieve_context`, e
+# `processar_conferidos` não passa por ele (usa `contexto_das_urls`). Na 2ª
+# passada o lastro conferia contra o documento INTEIRO -- ou, pior, contra o
+# modelo do ÚLTIMO item da 1ª passada, que ficava esquecido na instância.
+def _core_2a_passada(modelo_na_planilha, gravados):
+    core = AutoSpecCore.__new__(AutoSpecCore)
+    core.usar_navegador_ultimo_recurso = False
+    missing = {"var_row_18": {"type": "text",
+                              "desc": "18 - DIMENSOES (Indicar o dimensional em mm.)",
+                              "ref": "M18"}}
+
+    def _analyze(ficha, status):
+        base = (object(), missing, "CONTROLADOR", "FAB", "desc", "cod")
+        return base + ((modelo_na_planilha,) if modelo_na_planilha is not None else ())
+
+    core.analyze_sheet = _analyze
+    core.contexto_das_urls = lambda urls, refs=(), callbacks=None: DATASHEET
+    # A IA dublada responde a MISTURA; o lastro de verdade decide.
+    core._resposta_da_ia = "168 x 150 x 85 mm"
+    core.generate_ai_response = lambda txt, fab, desc, falt, ctx, callbacks=None: (
+        core._filtrar_por_lastro({"var_row_18": core._resposta_da_ia}, falt, ctx, callbacks))
+
+    def _fill(wb, ficha, valores, campos, callbacks=None):
+        gravados.append(dict(valores))
+        return f"{ficha}_completed.xlsx"
+
+    core.fill_save = _fill
+    return core
+
+
+def test_a_2a_passada_reprova_a_mistura_de_dois_modelos():
+    gravados = []
+    core = _core_2a_passada("UCSCH1", gravados)
+    list(core.processar_conferidos({"A.xlsx": ["https://x/ds.pdf"]}, None))
+    assert gravados, "a ficha nem chegou a ser salva"
+    assert not gravados[0].get("var_row_18"), \
+        f"a mistura de modelos entrou na 2a passada como {gravados[0].get('var_row_18')!r}"
+
+
+def test_a_2a_passada_nao_herda_o_modelo_do_item_anterior():
+    """Item sem modelo na planilha depois de uma 1ª passada que terminou num
+    item UCECH1: o recorte não pode usar o modelo de OUTRA ficha."""
+    gravados = []
+    core = _core_2a_passada(None, gravados)
+    core._modelo_do_item = "UCECH1"          # sobra da 1a passada
+    core._resposta_da_ia = "168 x 150 x 55 mm"
+    list(core.processar_conferidos({"A.xlsx": ["https://x/ds.pdf"]}, None))
+    assert gravados and gravados[0].get("var_row_18") == "168 x 150 x 55 mm"

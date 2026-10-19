@@ -3808,6 +3808,15 @@ class AutoSpecCore:
                 try:
                     analise = self.analyze_sheet(ficha, status_pmib_path)
                     wb, missing, txt, fab, desc, cod = analise[:6]
+                    # RECORTE POR MODELO na 2a passada [2026-10-19]. O lastro
+                    # (`_filtrar_por_lastro` e a conferencia do fornecedor) le
+                    # `_modelo_do_item`, que so `retrieve_context` definia --
+                    # e esta passada nao passa por ele. Sem isto o lastro
+                    # conferia contra o documento inteiro, ou contra o modelo
+                    # do ULTIMO item da 1a passada, esquecido na instancia.
+                    # Por isso grava sempre, vazio inclusive.
+                    self._modelo_do_item = str(
+                        (analise[6] if len(analise) > 6 else "") or "").strip()
                     # Confere tambem (2026-09-28): esta passada REGRAVA o
                     # `_completed`, e sem a conferencia os "nao se aplica"
                     # corrigidos na 1a passada se perderiam.
