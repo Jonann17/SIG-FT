@@ -144,3 +144,53 @@ def ler(versao: str | None = None) -> Bloco | None:
         return b
     blocos = analisar(texto)
     return blocos[0] if blocos else None
+
+
+def para_mostrar_na_abertura(
+    versao_atual: str,
+    *,
+    empacotado: bool,
+    texto: str | None = None,
+    config_path=None,
+) -> Bloco | None:
+    """O bloco que a janela de novidades deve mostrar NESTA abertura, ou `None`.
+
+    Mostra uma vez por versão nova: quando a versão do build é diferente da
+    última que esta pessoa já viu (`prefs.get_ultima_versao_vista`). A versão
+    atual é gravada como vista ANTES de devolver o bloco -- e também quando a
+    decisão é não mostrar --, para não repetir. Não mostra:
+
+    * rodando pelo código-fonte (`empacotado=False`; nem grava);
+    * na primeira instalação (nunca viu versão nenhuma): só grava;
+    * sem bloco da versão no CHANGELOG (ou sem CHANGELOG): só grava;
+    * com a preferência ilegível, ou sem conseguir gravar -- mostrar sem
+      gravar seria mostrar em toda abertura.
+
+    Nunca levanta: a abertura do app não pode depender disto. `texto` é o
+    conteúdo do CHANGELOG (o teste o passa); `None` lê o do pacote. Sem a
+    queda para o bloco mais recente de `ler()`: aqui, bloco errado é pior
+    que nenhum.
+    """
+    if not empacotado:
+        return None
+    from sigft.core import prefs
+
+    try:
+        vista = prefs.get_ultima_versao_vista(config_path=config_path)
+    except Exception:  # noqa: BLE001 -- preferência ilegível: não mostra
+        return None
+    if vista == versao_atual:
+        return None
+    try:
+        prefs.set_ultima_versao_vista(versao_atual, config_path=config_path)
+    except Exception:  # noqa: BLE001 -- sem gravar, repetiria toda abertura
+        return None
+    if vista is None:
+        return None
+    if texto is None:
+        try:
+            with open(caminho_changelog(), encoding="utf-8") as f:
+                texto = f.read()
+        except OSError:
+            return None
+    return bloco_de(texto, versao_atual)

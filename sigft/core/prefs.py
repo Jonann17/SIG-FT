@@ -122,7 +122,7 @@ def _resolver(config_path):
 # `remember_*` a tenha gravado. Foi o que aconteceu com "arquivos" em
 # 2026-09-03: `remember_file` gravava, `get_last_file` lia `None`, e o mural
 # de atividades dizia "não encontrei o mapeamento" sem nenhum erro aparecer.
-_SECOES_ESTADO = ("ultimos", "categorias", "pastas_padrao", "arquivos", "opcoes")
+_SECOES_ESTADO = ("ultimos", "categorias", "pastas_padrao", "arquivos", "opcoes", "novidades")
 
 
 def _estado_vazio() -> dict[str, dict[str, str]]:
@@ -422,4 +422,33 @@ def set_opcao(
     """Guarda a opção `chave` (liga/desliga)."""
     estado = _carregar_estado(config_path)
     estado.setdefault(CHAVE_OPCOES, {})[chave] = bool(valor)
+    _salvar_estado(estado, config_path)
+
+
+# =============================================================================
+# Última versão do app que a pessoa já viu  [2026-10-19]
+# =============================================================================
+# A janela de novidades (`core/novidades.para_mostrar_na_abertura`) aparece
+# uma vez por versão nova: ela compara a versão do build com a guardada aqui.
+# Valor que não for texto (arquivo editado à mão) vale como "nunca gravado".
+CHAVE_NOVIDADES = "novidades"
+
+
+def get_ultima_versao_vista(
+    *,
+    config_path: str | os.PathLike[str] | None = None,
+) -> str | None:
+    """A última versão cujas novidades a pessoa já viu, ou `None`."""
+    valor = _carregar_estado(config_path).get(CHAVE_NOVIDADES, {}).get("ultima_versao_vista")
+    return valor if isinstance(valor, str) and valor else None
+
+
+def set_ultima_versao_vista(
+    versao: str,
+    *,
+    config_path: str | os.PathLike[str] | None = None,
+) -> None:
+    """Guarda `versao` como vista (a janela de novidades não repete)."""
+    estado = _carregar_estado(config_path)
+    estado.setdefault(CHAVE_NOVIDADES, {})["ultima_versao_vista"] = str(versao)
     _salvar_estado(estado, config_path)
