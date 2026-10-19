@@ -176,6 +176,9 @@ class ModuloCriaFichas(ModuleFrame):
         # Liga ao subir um robô (criação ou edição) e desliga no fim dele, os
         # dois na thread da interface: os dois robôs usam o navegador e o `self.bot`.
         self._robo_ativo = False
+        # [2026-10-19] O lote que o robô de criação já levou ao portal: mandar o
+        # MESMO de novo pergunta antes (`_confirmar_lote_repetido`).
+        self._lote_enviado = None
         self.janela_resumo = None
         self._df_da_janela_resumo = None
         super().__init__(parent, controller, titulo="Módulo de Criação", altura_console=None)
@@ -620,9 +623,12 @@ class ModuloCriaFichas(ModuleFrame):
         automacao = self.backend("AutomacaoPMIB")
         if automacao is None:
             return
+        if self.df_processed is self._lote_enviado and not self._confirmar_lote_repetido():
+            return
         lote = self._revisar_antes_do_portal(self.df_processed)
         if lote is None:
             return
+        self._lote_enviado = self.df_processed
         # O lote, o catálogo e o Excel saem daqui, do clique: uma revisão
         # confirmada com o robô rodando troca `df_processed`, e o resumo deste
         # robô (e o "Salvar no Excel" dele) é do lote DELE.
@@ -632,6 +638,23 @@ class ModuloCriaFichas(ModuleFrame):
         self.btn_run_auto.setEnabled(False)
         self._iniciar_robo(self._bot_worker, automacao, lote, self.catalogo,
                            self._excel_do_lote, botao=None)
+
+    def _confirmar_lote_repetido(self) -> bool:
+        """[2026-10-19] O lote confirmado já foi ao portal: repetir cria as
+        mesmas fichas outra vez. O botão não se desliga no fim do robô (ele
+        pode ter caído antes de criar nada, e refazer a revisão pode custar a
+        IA de novo); pergunta, com "Não" como padrão."""
+        resposta = QMessageBox.question(
+            self, "Lote já enviado",
+            "Este lote já foi enviado ao portal pelo robô.\n\n"
+            "Enviar de novo cria as mesmas fichas outra vez. Só continue se o "
+            "robô parou antes de criá-las.\n\nEnviar o mesmo lote de novo?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if resposta != QMessageBox.StandardButton.Yes:
+            self.log("O lote não foi enviado de novo ao portal.")
+            return False
+        return True
 
     def _revisar_antes_do_portal(self, df):
         """R2: as regras do portal no lote, antes de abrir o navegador.

@@ -19,6 +19,7 @@ from sigft.app_qt import estilo, file_dialogs
 from sigft.app_qt.widgets import blocos, controles, pickers, revisao_portal
 from sigft.app_qt.widgets.dialogs import SelecaoComCaixasDialog
 from sigft.app_qt.widgets.module_frame import ModuleFrame
+from sigft.app_qt.widgets.trava_robo import ComTravaDeRobo
 from sigft.core import pmib_regras
 
 
@@ -64,7 +65,9 @@ class DialogoDaAba(QDialog):
         return self.menu.currentText()
 
 
-class ModuloLMR(ModuleFrame):
+class ModuloLMR(ComTravaDeRobo, ModuleFrame):
+    NOME_DO_ROBO = "Upload de aplicações"
+
     def __init__(self, parent=None, controller=None, *, embutida=False, console_externo=None) -> None:
         # Antes do super(): o `_build_ui` roda lá dentro, e o seletor grava aqui.
         self.caminho_status_pmib = None
@@ -220,6 +223,8 @@ class ModuloLMR(ModuleFrame):
 
     # --- execução -----------------------------------------------------------------------
     def iniciar_lmr(self) -> None:
+        if self.robo_ocupado():
+            return
         # Antes do seletor: escolher o arquivo para depois ouvir que o módulo
         # não carregou seria pedir o trabalho à toa.
         modulo = self.backend("lmr_backend")
@@ -242,7 +247,7 @@ class ModuloLMR(ModuleFrame):
         if aba is None:
             return
         self.log(f"Lendo {nome} (aba '{aba}')...")
-        self.iniciar_tarefa(self._pre_processamento, modulo, excel_path, aba, botao=self.btn_run)
+        self.iniciar_com_trava(self._pre_processamento, modulo, excel_path, aba, botao=self.btn_run)
 
     def _pre_processamento(self, modulo, excel_path, aba) -> None:
         """Lê o Excel, pede as fichas e roda o robô, TUDO na mesma tarefa.

@@ -1050,6 +1050,14 @@ class PMIBManager:
             return
 
         ws = wb["Atividades"]
+        # [2026-10-19] O passo é opcional por si mesmo: com outro layout, as
+        # colunas fixas (`at.COL_*`) cairiam em cima das colunas da pessoa.
+        cabecalho = [c.value for c in ws[at.LINHA_CABECALHO]]
+        if not at.cabecalho_reconhecido(cabecalho):
+            yield (" -> Aba 'Atividades' com outro formato (esperava NV e CÓDIGO ITAIPU "
+                   "nas colunas A e B); passo pulado, nada foi gravado.")
+            wb.close()
+            return
 
         # ⚠️ DOIS workbooks, e isto não é desperdício.
         #

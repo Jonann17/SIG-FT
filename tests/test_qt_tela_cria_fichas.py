@@ -1454,3 +1454,62 @@ def test_a_tela_nao_confere_pdm_sozinha():
 
 def test_a_tela_delega_as_duas_passadas_ao_servico():
     assert {"classificar_para_revisao", "gravar_calibracao"} <= _chamadas_na_tela()
+
+
+# --- o mesmo lote de novo ao portal (decisão de 2026-10-19) -------------------------
+# Pendência de 2026-10-11: o "4. Robô Web" volta ligado no fim do robô, com o
+# MESMO lote, e um segundo clique criaria as mesmas fichas outra vez. Decisão
+# (Jonathan, com a liberdade que o Luan deu): o botão continua ligado -- o robô
+# pode ter caído antes de criar qualquer coisa, e desligá-lo obrigaria a refazer
+# a análise da IA, que custa --, mas mandar o MESMO lote de novo PERGUNTA antes,
+# com "Não" como padrão.
+
+def _rodar_um_lote(tela, robo, qtbot):
+    RoboFalso.roteiro = {d: [("PULAR", None)] for d in tela.df_processed["descricao_original"]}
+    tela.run_automation_thread()
+    qtbot.waitUntil(lambda: bool(tela.resumos), timeout=3000)
+    qtbot.waitUntil(tela.btn_run_auto.isEnabled, timeout=2000)
+
+
+def _responder(monkeypatch, resposta):
+    perguntas = []
+
+    def pergunta(parent, titulo, msg, botoes=None, padrao=None):
+        perguntas.append((titulo, msg, padrao))
+        return resposta
+
+    monkeypatch.setattr(tela_mod.QMessageBox, "question", pergunta)
+    return perguntas
+
+
+def test_o_mesmo_lote_de_novo_pergunta_e_o_nao_nao_abre_o_robo(tela, robo, qtbot, monkeypatch):
+    _rodar_um_lote(tela, robo, qtbot)
+    perguntas = _responder(monkeypatch, tela_mod.QMessageBox.StandardButton.No)
+
+    tela.run_automation_thread()
+
+    assert len(perguntas) == 1 and "já foi enviado" in perguntas[0][1]
+    assert perguntas[0][2] == tela_mod.QMessageBox.StandardButton.No      # o padrão é Não
+    assert len(RoboFalso.instancias) == 1 and tela.btn_run_auto.isEnabled()
+    _esperar_log(qtbot, tela, "não foi enviado de novo")
+
+
+def test_o_mesmo_lote_de_novo_com_sim_roda_outra_vez(tela, robo, qtbot, monkeypatch):
+    _rodar_um_lote(tela, robo, qtbot)
+    _responder(monkeypatch, tela_mod.QMessageBox.StandardButton.Yes)
+    tela.resumos.clear()
+
+    _rodar_um_lote(tela, robo, qtbot)
+
+    assert len(RoboFalso.instancias) == 2
+
+
+def test_lote_novo_depois_de_outra_revisao_nao_pergunta(tela, robo, qtbot, monkeypatch, pd):
+    _rodar_um_lote(tela, robo, qtbot)
+    perguntas = _responder(monkeypatch, tela_mod.QMessageBox.StandardButton.No)
+    tela._pos_revisao_concluida(tela.df_processed.copy())
+    tela.resumos.clear()
+
+    _rodar_um_lote(tela, robo, qtbot)
+
+    assert perguntas == [] and len(RoboFalso.instancias) == 2

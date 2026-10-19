@@ -16,9 +16,12 @@ from sigft.app.textos_dialogos import MSG_LOGIN_APAGAR_LMR, TEXTO_COMECAR_EXCLUS
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos, pickers
 from sigft.app_qt.widgets.module_frame import ModuleFrame
+from sigft.app_qt.widgets.trava_robo import ComTravaDeRobo
 
 
-class ModuloApagarLMR(ModuleFrame):
+class ModuloApagarLMR(ComTravaDeRobo, ModuleFrame):
+    NOME_DO_ROBO = "Exclusão de aplicações"
+
     def __init__(self, parent=None, controller=None, *, embutida=False, console_externo=None) -> None:
         # Antes do super(): o `_build_ui` roda lá dentro e cria o seletor, que
         # grava aqui quando a pessoa escolhe a planilha.
@@ -126,6 +129,8 @@ class ModuloApagarLMR(ModuleFrame):
 
     # --- execução -------------------------------------------------------------
     def iniciar_limpeza(self) -> None:
+        if self.robo_ocupado():
+            return
         pmib = self.entry_pmib.text().strip()
         if not pmib:
             QMessageBox.warning(self, "Aviso", "Digite o código PMIB.")
@@ -139,7 +144,7 @@ class ModuloApagarLMR(ModuleFrame):
                 "Confirmar", f"Tem certeza que deseja APAGAR todas as aplicações do PMIB {pmib}?"):
             return
         self.log(f"Preparando limpeza para: {pmib}...")
-        self.iniciar_tarefa(self._worker, modulo, pmib, botao=self.btn_run)
+        self.iniciar_com_trava(self._worker, modulo, pmib, botao=self.btn_run)
 
     def _worker(self, modulo, pmib) -> None:
         auto = modulo.ApagarLMRAutomation()

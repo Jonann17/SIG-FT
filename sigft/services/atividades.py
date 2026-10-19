@@ -65,6 +65,25 @@ COLUNAS_CALCULADAS = (
 )
 
 
+def _sem_acento(texto) -> str:
+    import unicodedata
+
+    decomposto = unicodedata.normalize("NFKD", str(texto or ""))
+    return " ".join("".join(c for c in decomposto if not unicodedata.combining(c)).upper().split())
+
+
+def cabecalho_reconhecido(cabecalho) -> bool:
+    """`True` se a linha de cabeçalho é a da aba que este módulo conhece:
+    `NV` na coluna A e `CÓDIGO ITAIPU` na B (sem ligar para acento, caixa e
+    espaço).
+
+    [2026-10-19] O passo 7 da Gestão PMIB escreve por NÚMERO de coluna
+    (`COL_*`): numa aba "Atividades" com outro layout, gravaria os totais por
+    cima das colunas da pessoa. Com outro cabeçalho, ele pula."""
+    valores = [_sem_acento(v) for v in list(cabecalho or ())[:COL_CODIGO_ITAIPU]]
+    return valores == ["NV", "CODIGO ITAIPU"]
+
+
 def _nivel(linha) -> int | None:
     """O `NV` da linha, ou `None` se não for um número."""
     valor = linha.get("nv")

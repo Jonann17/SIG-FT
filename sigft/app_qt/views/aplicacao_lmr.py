@@ -14,6 +14,7 @@ from sigft.app_qt.views.apagar_lmr import ModuloApagarLMR
 from sigft.app_qt.views.lmr import ModuloLMR
 from sigft.app_qt.widgets.abas import Abas
 from sigft.app_qt.widgets.module_frame import ModuleFrame
+from sigft.app_qt.widgets.trava_robo import TravaDeRobo
 
 ABA_UPLOAD = "Upload de Aplicações"
 ABA_EXCLUSAO = "Exclusão de Aplicações"
@@ -49,6 +50,11 @@ class ModuloAplicacaoLMR(ModuleFrame):
                                      console_externo=self.console)
         self.tela_exclusao = ModuloApagarLMR(controller=self.controller, embutida=True,
                                              console_externo=self.console)
+        # [2026-10-19] Um robô por vez NA SEÇÃO: os dois usam a mesma página
+        # do portal e o mesmo console. Ver `widgets/trava_robo.py`.
+        self.trava_robo = TravaDeRobo()
+        self.tela_upload.trava_robo = self.trava_robo
+        self.tela_exclusao.trava_robo = self.trava_robo
         for nome, tela in ((ABA_UPLOAD, self.tela_upload), (ABA_EXCLUSAO, self.tela_exclusao)):
             tela.layout().setContentsMargins(MARGEM_DA_ROLAGEM, MARGEM_DA_ROLAGEM,
                                              MARGEM_DIREITA_DA_ROLAGEM, MARGEM_DA_ROLAGEM)

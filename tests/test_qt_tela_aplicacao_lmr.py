@@ -125,3 +125,65 @@ def test_medidas_iguais_as_do_interface_antiga(folha, qtbot):
     imagem = t.grab().toImage()
     fundo = QColor(theme.COLORS["background"]).rgb()
     assert imagem.pixel(44, 400) == fundo and imagem.pixel(958, 400) == fundo
+
+
+# --- um robô por vez NA SEÇÃO (decisão de 2026-10-19) ---------------------------
+# Pendência de 2026-10-11: cada aba tinha o seu "um robô por vez", mas nada
+# impedia o Upload e a Exclusão de rodarem juntos, na MESMA página do portal e
+# no mesmo console. Agora as duas abas dividem uma trava.
+
+def test_trava_de_robo():
+    from sigft.app_qt.widgets.trava_robo import TravaDeRobo
+
+    trava = TravaDeRobo()
+    assert trava.ocupar("Upload") and trava.dono == "Upload"
+    assert not trava.ocupar("Exclusão") and trava.dono == "Upload"
+    trava.liberar()
+    assert trava.dono is None and trava.ocupar("Exclusão")
+
+
+def test_as_duas_abas_dividem_a_mesma_trava(qt_interface, qtbot):
+    secao = ModuloAplicacaoLMR()
+    qtbot.addWidget(secao)
+
+    assert secao.tela_upload.trava_robo is secao.tela_exclusao.trava_robo is not None
+
+
+def test_com_o_upload_rodando_a_exclusao_nao_comeca(qt_interface, qtbot, monkeypatch):
+    secao = ModuloAplicacaoLMR()
+    qtbot.addWidget(secao)
+    secao.trava_robo.ocupar("Upload de aplicações")
+    monkeypatch.setattr(secao.tela_exclusao, "backend",
+                        lambda nome: pytest.fail("nao devia nem carregar o modulo"))
+    secao.tela_exclusao.entry_pmib.setText("4500001.0001")
+
+    secao.tela_exclusao.iniciar_limpeza()
+
+    qtbot.waitUntil(lambda: "Upload de aplicações" in secao.console.toPlainText(), timeout=2000)
+    assert "está rodando" in secao.console.toPlainText()
+
+
+def test_com_a_exclusao_rodando_o_upload_nao_comeca(qt_interface, qtbot, monkeypatch):
+    secao = ModuloAplicacaoLMR()
+    qtbot.addWidget(secao)
+    secao.trava_robo.ocupar("Exclusão de aplicações")
+    monkeypatch.setattr(secao.tela_upload, "backend",
+                        lambda nome: pytest.fail("nao devia nem carregar o modulo"))
+
+    secao.tela_upload.iniciar_lmr()
+
+    qtbot.waitUntil(lambda: "Exclusão de aplicações" in secao.console.toPlainText(), timeout=2000)
+
+
+def test_a_trava_e_liberada_no_fim_da_tarefa_mesmo_com_erro(qt_interface, qtbot):
+    secao = ModuloAplicacaoLMR()
+    qtbot.addWidget(secao)
+    tela = secao.tela_exclusao
+
+    def falha():
+        raise RuntimeError("portal fora")
+
+    thread = tela.iniciar_com_trava(falha, botao=None)
+    thread.join(timeout=5)
+
+    assert secao.trava_robo.dono is None
