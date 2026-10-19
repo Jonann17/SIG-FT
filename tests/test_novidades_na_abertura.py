@@ -45,8 +45,25 @@ def test_mostra_UMA_vez_so(tmp_path):
 
 
 def test_primeira_instalacao_nao_mostra_e_grava(tmp_path):
+    assert not (tmp_path / "user_prefs.json").exists()
     assert _decidir(tmp_path) is None
     assert _vista(tmp_path) == "1.2.0"
+
+
+def test_quem_ja_usava_o_app_e_ATUALIZOU_ve_as_novidades(tmp_path):
+    """Decisao do Jonathan (2026-10-19): `user_prefs.json` que ja existe sem a
+    secao `novidades` e de quem usava uma versao anterior a esta janela. E
+    atualizacao, nao primeira instalacao -- senao a versao que traz a janela
+    nunca a mostraria."""
+    (tmp_path / "user_prefs.json").write_text(
+        json.dumps({"opcoes": {"gestao.painel": True}}), encoding="utf-8")
+
+    bloco = _decidir(tmp_path)
+
+    assert bloco is not None and bloco.versao == "1.2.0"
+    assert _vista(tmp_path) == "1.2.0"
+    assert prefs.get_opcao("gestao.painel", False,
+                           config_path=str(tmp_path / "user_prefs.json")) is True
 
 
 def test_pelo_codigo_fonte_nao_mostra_nem_grava(tmp_path):
@@ -92,7 +109,7 @@ def test_erro_ao_ler_a_preferencia_nao_mostra_e_nao_levanta(tmp_path, monkeypatc
     def explode(**kw):
         raise OSError("disco sumiu")
 
-    monkeypatch.setattr(prefs, "get_ultima_versao_vista", explode)
+    monkeypatch.setattr(prefs, "situacao_versao_vista", explode)
     assert _decidir(tmp_path) is None
 
 

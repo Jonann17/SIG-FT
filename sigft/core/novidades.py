@@ -161,7 +161,9 @@ def para_mostrar_na_abertura(
     decisão é não mostrar --, para não repetir. Não mostra:
 
     * rodando pelo código-fonte (`empacotado=False`; nem grava);
-    * na primeira instalação (nunca viu versão nenhuma): só grava;
+    * na primeira instalação (não há `user_prefs.json`): só grava. Arquivo
+      que existe SEM versão gravada é de quem usava uma versão anterior a
+      esta janela -- é atualização, e mostra (decisão do Jonathan, 2026-10-19);
     * sem bloco da versão no CHANGELOG (ou sem CHANGELOG): só grava;
     * com a preferência ilegível, ou sem conseguir gravar -- mostrar sem
       gravar seria mostrar em toda abertura.
@@ -176,7 +178,7 @@ def para_mostrar_na_abertura(
     from sigft.core import prefs
 
     try:
-        vista = prefs.get_ultima_versao_vista(config_path=config_path)
+        situacao, vista = prefs.situacao_versao_vista(config_path=config_path)
     except Exception:  # noqa: BLE001 -- preferência ilegível: não mostra
         return None
     if vista == versao_atual:
@@ -185,7 +187,7 @@ def para_mostrar_na_abertura(
         prefs.set_ultima_versao_vista(versao_atual, config_path=config_path)
     except Exception:  # noqa: BLE001 -- sem gravar, repetiria toda abertura
         return None
-    if vista is None:
+    if situacao in ("sem_arquivo", "ilegivel"):
         return None
     if texto is None:
         try:
