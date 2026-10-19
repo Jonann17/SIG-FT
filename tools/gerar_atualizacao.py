@@ -193,9 +193,13 @@ def escolher_bases(releases: list[dict], tag_atual: str) -> list[str]:
 # --------------------------------------------------------------------------
 # E. O registro no latest.json
 # --------------------------------------------------------------------------
-# O app reconhece o pequeno por este começo de nome e nunca o toma pelo
-# instalador completo (`sigft/services/updater.py`, `PREFIXO_DO_PEQUENO`).
+# O app reconhece o pequeno por estes começos de nome e nunca o toma pelo
+# instalador completo (`sigft/services/updater.py`, `PREFIXOS_DO_PEQUENO`).
 PREFIXO_DO_PEQUENO = "SIG-FT_Itaipu_Atualizacao_"
+# [2026-10-19] O pequeno em `.exe` tem OUTRO começo: a API do GitHub lista os
+# arquivos do Release em ordem ALFABÉTICA (medido na 1.2.1-rc.4), e o app até
+# a rc.4 toma "o primeiro `.exe`" pelo completo. `Update` vem depois de `Setup`.
+PREFIXO_DO_EXE_PEQUENO = "SIG-FT_Itaipu_Update_"
 
 
 def nome_do_pacote(de: str, para: str) -> str:
@@ -207,11 +211,11 @@ def nome_do_zip(de: str, para: str) -> str:
 
 
 def nome_do_exe(de: str, para: str) -> str:
-    return f"{PREFIXO_DO_PEQUENO}{de}_para_{para}.exe"
+    return f"{PREFIXO_DO_EXE_PEQUENO}{de}_para_{para}.exe"
 
 
 def nome_do_membro_do_zip(de: str, para: str) -> str:
-    return nome_do_exe(de, para)
+    return f"{PREFIXO_DO_PEQUENO}{de}_para_{para}.exe"
 
 
 def copiar_como_exe(pacote: Path, de: str, para: str) -> Path:

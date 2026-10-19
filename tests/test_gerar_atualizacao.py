@@ -322,9 +322,9 @@ def test_pacotes_publicam_tambem_o_pequeno_como_exe(cenario):
     feitos = ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
                         iss=instalador / "sigft.iss", latest=latest, executar=_ISCC(instalador / "Output"))
 
-    exe = instalador / "Output" / "SIG-FT_Itaipu_Atualizacao_1.2.0-rc.3_para_1.2.0-rc.4.exe"
+    exe = instalador / "Output" / "SIG-FT_Itaipu_Update_1.2.0-rc.3_para_1.2.0-rc.4.exe"
     assert exe.is_file() and exe.read_bytes() == feitos[0].read_bytes()
-    assert exe.name.startswith(ga.PREFIXO_DO_PEQUENO)
+    assert exe.name.startswith(ga.PREFIXO_DO_EXE_PEQUENO)
     [entrada] = json.loads(latest.read_text(encoding="utf-8"))["atualizacoes"]
     assert entrada["arquivo"] == feitos[0].name          # o app instalado segue igual
     assert entrada["exe"] == {"arquivo": exe.name, "sha256": hashlib.sha256(exe.read_bytes()).hexdigest(),
@@ -336,9 +336,9 @@ def test_o_prefixo_do_pequeno_e_o_mesmo_no_app_e_no_gerador():
     # instalador completo (`updater._instalador`).
     from sigft.services import updater
 
-    assert ga.PREFIXO_DO_PEQUENO == updater.PREFIXO_DO_PEQUENO
+    assert {ga.PREFIXO_DO_PEQUENO, ga.PREFIXO_DO_EXE_PEQUENO} == set(updater.PREFIXOS_DO_PEQUENO)
     for nome in (ga.nome_do_pacote("1", "2"), ga.nome_do_zip("1", "2"), ga.nome_do_exe("1", "2")):
-        assert nome.startswith(ga.PREFIXO_DO_PEQUENO)
+        assert nome.startswith(updater.PREFIXOS_DO_PEQUENO)
 
 
 def test_pacote_grande_demais_nao_compensa_e_fica_de_fora(cenario):
@@ -398,7 +398,7 @@ def test_o_release_gera_manifesto_bases_e_pacotes_e_publica_os_dois(tmp_path):
     # 2026-10-19: e em .exe -- só em pré-lançamento (o app 1.1.1 não os vê e
     # escolhe "o primeiro .exe"), e num upload DEPOIS do resto, para o
     # completo ficar na frente na lista de quem ainda escolhe pela posição.
-    upload_exe = publicar.index("installer/Output/SIG-FT_Itaipu_Atualizacao_*.exe")
+    upload_exe = publicar.index("installer/Output/SIG-FT_Itaipu_Update_*.exe")
     assert publicar.index("gh release create") < upload_exe
     assert publicar.rindex('if [ "$PRERELEASE" = "true" ]', 0, upload_exe) > publicar.index("gh release create")
 
@@ -415,3 +415,19 @@ def test_guardar_artefatos_nao_reprova_o_release_e_nao_leva_o_instalador_a_toa()
     assert "continue-on-error: true" in guardar and "continue-on-error: true" in quando_falha
     assert "*.exe" not in guardar
     assert "if: failure()" in quando_falha
+
+
+def test_na_lista_do_github_o_primeiro_exe_continua_sendo_o_completo():
+    """2026-10-19, medido na 1.2.1-rc.4: a API do GitHub lista os arquivos do
+    Release em ORDEM ALFABETICA, nao na ordem do upload. O pequeno em .exe
+    chamado `SIG-FT_Itaipu_Atualizacao_...` vinha antes do `SIG-FT_Itaipu_Setup_...`,
+    e o app ate a rc.4 (que pega "o primeiro .exe" como o completo) pegava o
+    pequeno. O nome do pequeno em .exe tem de vir DEPOIS do instalador."""
+    nomes = ["SIG-FT_Itaipu_Setup_1.2.1-rc.5.exe", "latest.json", "arquivos.json"]
+    for de in ("1.2.0", "1.2.1-rc.4"):
+        nomes += [ga.nome_do_pacote(de, "1.2.1-rc.5"), ga.nome_do_zip(de, "1.2.1-rc.5"),
+                  ga.nome_do_exe(de, "1.2.1-rc.5")]
+
+    primeiro_exe = next(n for n in sorted(nomes) if n.lower().endswith(".exe"))
+
+    assert primeiro_exe == "SIG-FT_Itaipu_Setup_1.2.1-rc.5.exe"

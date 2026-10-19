@@ -236,7 +236,9 @@ def _asset(release: dict, nome: str) -> dict | None:
 # [2026-10-19] Como começa o nome do instalador PEQUENO (o mesmo de
 # `tools/gerar_atualizacao.py`, com teste). Em `.exe`, ele não pode virar "o
 # instalador": só serve para quem tem a base dele.
-PREFIXO_DO_PEQUENO = "SIG-FT_Itaipu_Atualizacao_"
+# O `.exe` pequeno tem começo próprio (`Update`, que vem depois de `Setup` na
+# lista alfabética do GitHub): ver `tools/gerar_atualizacao.py`.
+PREFIXOS_DO_PEQUENO = ("SIG-FT_Itaipu_Atualizacao_", "SIG-FT_Itaipu_Update_")
 
 
 def _instalador(release: dict) -> dict | None:
@@ -244,7 +246,7 @@ def _instalador(release: dict) -> dict | None:
     um instalador pequeno -- este só serve para quem tem a base dele."""
     return next((a for a in release.get("assets", [])
                  if str(a.get("name", "")).lower().endswith(".exe")
-                 and not str(a.get("name", "")).startswith(PREFIXO_DO_PEQUENO)), None)
+                 and not str(a.get("name", "")).startswith(PREFIXOS_DO_PEQUENO)), None)
 
 
 def _pacote_pequeno(release: dict, manifesto: dict | None,

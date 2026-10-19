@@ -341,10 +341,11 @@ jobs:
           # byte a byte: o proxy da empresa deixa passar o completo, que e .exe,
           # e o analisa do mesmo jeito -- nada fica escondido. So o app novo le
           # (chave `exe` do latest.json). Por enquanto SO em pre-lancamento: o
-          # app 1.1.1 nao os ve, e ele (e a 1.2.0) escolhe "o primeiro .exe" --
-          # por isso este upload vem DEPOIS do resto, com o completo ja na frente.
+          # app 1.1.1 nao os ve, e ele (e a 1.2.0) escolhe "o primeiro .exe".
+          # A API lista os arquivos em ordem ALFABETICA (medido na rc.4): o
+          # nome comeca com "Update", que vem depois de "Setup".
           if [ "$PRERELEASE" = "true" ]; then
-            for pacote in installer/Output/SIG-FT_Itaipu_Atualizacao_*.exe; do
+            for pacote in installer/Output/SIG-FT_Itaipu_Update_*.exe; do
               [ -e "$pacote" ] && gh release upload "$TAG" "$pacote#Atualizacao pequena em .exe (so o que mudou)" --clobber
             done
           fi

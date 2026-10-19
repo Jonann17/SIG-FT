@@ -989,10 +989,13 @@ def test_zip_estranho_e_recusado_e_cai_no_bin(monkeypatch, tmp_path, membros):
 # proxy o analisa como analisa o completo. Chave nova `exe` no `latest.json`,
 # só o app novo lê. Ordem: exe -> zip -> bin -> completo.
 
+EXE_PEQUENO = "SIG-FT_Itaipu_Update_1.0.0_para_1.1.0.exe"
+
+
 def _quatro_caminhos(pequeno, completo, zipado, *, exe_antes=False):
     """exe (asset 79) -> zip (78) -> bin (77) -> completo (42)."""
     release = _release_com_pequeno()
-    asset_exe = {"name": MEMBRO, "size": len(pequeno),
+    asset_exe = {"name": EXE_PEQUENO, "size": len(pequeno),
                  "url": "https://api.github.com/repos/luanccozer/SIG-FT/releases/assets/79"}
     if exe_antes:
         release["assets"].insert(0, asset_exe)
@@ -1007,7 +1010,7 @@ def _quatro_caminhos(pequeno, completo, zipado, *, exe_antes=False):
                                    "tamanho": len(pequeno),
                                    "zip": {"arquivo": ZIPADO, "sha256": hashlib.sha256(zipado).hexdigest(),
                                            "tamanho": len(zipado)},
-                                   "exe": {"arquivo": MEMBRO, "sha256": sha_pequeno,
+                                   "exe": {"arquivo": EXE_PEQUENO, "sha256": sha_pequeno,
                                            "tamanho": len(pequeno)}}]}
     return updater.interpretar_release(release, manifesto, versao_atual="1.0.0")
 
@@ -1018,7 +1021,7 @@ def test_com_o_exe_no_release_o_app_novo_escolhe_o_exe_e_guarda_zip_e_bin():
 
     info = _quatro_caminhos(pequeno, completo, zipado)
 
-    assert info.nome_arquivo == MEMBRO and info.incremental is True
+    assert info.nome_arquivo == EXE_PEQUENO and info.incremental is True
     assert info.sha256 == hashlib.sha256(pequeno).hexdigest()
     assert info.reserva is not None and info.reserva.nome_arquivo == ZIPADO
     assert info.reserva.reserva is not None and info.reserva.reserva.nome_arquivo == PACOTE
@@ -1035,7 +1038,7 @@ def test_exe_listado_mas_ausente_do_release_fica_o_zip():
     manifesto = {"sha256": "ab" * 32, "atualizacoes": [{
         "de": "1.0.0", "arquivo": PACOTE, "sha256": sha_pequeno, "tamanho": len(pequeno),
         "zip": {"arquivo": ZIPADO, "sha256": hashlib.sha256(zipado).hexdigest(), "tamanho": len(zipado)},
-        "exe": {"arquivo": MEMBRO, "sha256": sha_pequeno, "tamanho": len(pequeno)}}]}
+        "exe": {"arquivo": EXE_PEQUENO, "sha256": sha_pequeno, "tamanho": len(pequeno)}}]}
 
     info = updater.interpretar_release(release, manifesto, versao_atual="1.0.0")
 
@@ -1051,7 +1054,7 @@ def test_o_completo_continua_sendo_o_completo_mesmo_com_o_pequeno_exe_na_frente(
     assert info.completo.nome_arquivo == "SIG-FT_Itaipu_Setup_1.1.0.exe"
     sem_base = updater.interpretar_release(
         {"tag_name": "v1.1.0", "assets": [
-            {"name": MEMBRO, "url": "https://api.github.com/x/assets/79", "size": 1},
+            {"name": EXE_PEQUENO, "url": "https://api.github.com/x/assets/79", "size": 1},
             {"name": "SIG-FT_Itaipu_Setup_1.1.0.exe", "url": "https://api.github.com/x/assets/42", "size": 2}]},
         None, versao_atual="0.9.0")
     assert sem_base.nome_arquivo == "SIG-FT_Itaipu_Setup_1.1.0.exe" and sem_base.incremental is False
@@ -1066,7 +1069,7 @@ def test_o_exe_baixado_e_conferido_e_usado_direto(monkeypatch, tmp_path):
     destino = updater.baixar(_quatro_caminhos(pequeno, completo, _zip_com({MEMBRO: pequeno})))
 
     assert abrir.assets == ["79"]
-    assert destino.name == MEMBRO and destino.read_bytes() == pequeno
+    assert destino.name == EXE_PEQUENO and destino.read_bytes() == pequeno
 
 
 def test_exe_cortado_cai_no_zip_depois_no_bin_depois_no_completo(monkeypatch, tmp_path):
