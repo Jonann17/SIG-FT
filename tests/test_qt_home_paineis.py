@@ -106,12 +106,18 @@ def rede(monkeypatch):
     chamadas.catalogo = {k: list(v) for k, v in CATALOGO.items()}
     chamadas.relatorio = RELATORIO
 
-    def listar(provider, chaves=None, *, forcar=False, somente_cache=False, **_kw):
+    chamadas.baixado_em, chamadas.vencido, chamadas.erro = None, False, None
+
+    def consultar(provider, chaves=None, *, forcar=False, somente_cache=False, **_kw):
         chamadas.append({"provider": provider, "forcar": forcar, "somente_cache": somente_cache,
                          "thread": threading.current_thread(), "chaves": chaves})
-        return list(chamadas.catalogo.get(provider, []))
+        modelos = list(chamadas.catalogo.get(provider, []))
+        return catalogo.Catalogo(modelos, chamadas.baixado_em if modelos else None,
+                                 chamadas.vencido if modelos else False,
+                                 chamadas.erro if forcar else None)
 
-    monkeypatch.setattr(catalogo, "listar_modelos", listar)
+    monkeypatch.setattr(catalogo, "consultar", consultar)
+    monkeypatch.setattr(catalogo, "listar_modelos", lambda *a, **k: consultar(*a, **k).modelos)
     monkeypatch.setattr(home_mod.llm_usage, "usage_report", lambda *a, **k: chamadas.relatorio)
     monkeypatch.setattr(updater, "canal_testes_ligado", lambda **k: False)
     return chamadas
@@ -472,6 +478,58 @@ def test_rotulo_do_catalogo(home, rede):
     assert _texto(home.lbl_catalogo_ia) == NAO_BAIXADO
 
 
+def _epoch(dia, mes):
+    from datetime import datetime
+    return datetime(2026, mes, dia, 9, 30).timestamp()
+
+
+def test_catalogo_vencido_continua_no_painel_e_diz_de_quando_e(home, rede):
+    # Pendência de 2026-09-25: um dia depois de baixado, o catálogo sumia.
+    rede.baixado_em, rede.vencido = _epoch(15, 10), True
+    home.abrir_janela_modelos_ia()
+    _escolher(home.opt_provider_ia, ROTULO_OPENROUTER)
+    favs = catalogo.modelos_recomendados("openrouter")
+    do_catalogo = [m for m in CATALOGO["openrouter"] if m not in {f["model"] for f in favs}]
+    assert do_catalogo[0] in _itens(home.opt_modelo_ia_global)
+    assert _texto(home.lbl_catalogo_ia) == (
+        f"{len(favs) + len(do_catalogo)} modelos disponíveis "
+        f"({len(do_catalogo)} do catálogo do provedor, lista de 15/10).")
+    assert not any(c["forcar"] for c in rede), "abrir o painel não vai à rede"
+
+
+def test_falha_ao_atualizar_vira_aviso_e_a_lista_que_havia_fica(home, qtbot, rede):
+    # Pendência de 2026-09-25: a falha era muda ("ainda não baixado", sem motivo).
+    rede.baixado_em, rede.vencido = _epoch(15, 10), True
+    home.abrir_janela_modelos_ia()
+    _escolher(home.opt_provider_ia, ROTULO_OPENROUTER)
+    itens_antes = _itens(home.opt_modelo_ia_global)
+    cor_normal = home.lbl_catalogo_ia.styleSheet()
+    rede.erro = "ProxyError: 407 Proxy Authentication Required"
+    home.btn_atualizar_catalogo_ia.click()
+    qtbot.waitUntil(lambda: "407" in _texto(home.lbl_catalogo_ia), timeout=3000)
+    assert _texto(home.lbl_catalogo_ia) == (
+        "Não foi possível atualizar a lista de modelos (ProxyError: 407 Proxy Authentication "
+        "Required). Continua valendo a lista de 15/10.")
+    assert _itens(home.opt_modelo_ia_global) == itens_antes
+    assert home.lbl_catalogo_ia.styleSheet() != cor_normal, "o aviso tem a cor de alerta"
+    # Trocar de provedor (ou atualizar de novo com sucesso) tira o aviso.
+    _escolher(home.opt_provider_ia, ROTULO_GEMINI)
+    assert "Não foi possível" not in _texto(home.lbl_catalogo_ia)
+    assert home.lbl_catalogo_ia.styleSheet() == cor_normal
+
+
+def test_falha_ao_atualizar_sem_lista_nenhuma_diz_o_motivo(home, qtbot, rede):
+    rede.catalogo = {}
+    rede.erro = "HTTPError: 401 Client Error: Unauthorized"
+    home.abrir_janela_modelos_ia()
+    _escolher(home.opt_provider_ia, ROTULO_OPENROUTER)
+    home.btn_atualizar_catalogo_ia.click()
+    qtbot.waitUntil(lambda: "401" in _texto(home.lbl_catalogo_ia), timeout=3000)
+    assert _texto(home.lbl_catalogo_ia) == (
+        "Não foi possível baixar a lista de modelos (HTTPError: 401 Client Error: Unauthorized). "
+        "Enquanto isso valem os recomendados e o campo manual.")
+
+
 def test_filtro_estreita_a_lista_sem_perder_a_escolha(home, qtbot):
     home.abrir_janela_modelos_ia()
     _escolher(home.opt_provider_ia, ROTULO_OPENROUTER)
@@ -624,8 +682,8 @@ def test_esc_e_enter_nao_salvam_a_selecao(home, qtbot, mensagens):
 
 
 def _catalogo_que_espera(monkeypatch, rede, liberar, vistos, novos=None):
-    """`listar_modelos` cuja busca de verdade (`forcar=True`) fica presa até `liberar`."""
-    antigo = catalogo.listar_modelos
+    """`consultar` cuja busca de verdade (`forcar=True`) fica presa até `liberar`."""
+    antigo = catalogo.consultar
 
     def lento(provider, chaves=None, *, forcar=False, **kw):
         if forcar:
@@ -635,7 +693,7 @@ def _catalogo_que_espera(monkeypatch, rede, liberar, vistos, novos=None):
                 rede.catalogo = novos
         return antigo(provider, chaves, forcar=forcar, **kw)
 
-    monkeypatch.setattr(catalogo, "listar_modelos", lento)
+    monkeypatch.setattr(catalogo, "consultar", lento)
 
 
 def test_roda_do_mouse_em_cima_do_menu_nao_troca_o_modelo(home, qtbot):
