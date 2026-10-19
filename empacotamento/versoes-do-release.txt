@@ -1,0 +1,146 @@
+# Versoes EXATAS que o Release instala (`pip install ... -c` deste arquivo).
+#
+# [2026-10-19] Ate aqui cada Release instalava a versao MAIS NOVA de cada
+# dependencia, e o que sai na maquina da empresa mudava sem ninguem pedir: na
+# 1.2.1-rc.5 entrou o PyMuPDF 2.0, que montava mal o texto das tabelas
+# ("5,5" virando "55\n,"), e a atualizacao pequena levava as bibliotecas que
+# mudaram. Fixadas, uma versao so muda quando alguem a troca AQUI, de
+# proposito -- e o CI e o Release testam a troca.
+#
+# Tirado do log do Release que gerou a 1.2.1-rc.5 (o que esta instalado nas
+# PCs de teste), as tres linhas "Successfully installed": dependencias do app,
+# ferramentas de teste e PyInstaller.
+#
+# So o Release usa: e Windows + Python 3.12. O CI (Linux, 3.10 e 3.12) e
+# quem roda pelo codigo-fonte (SIG-FT.bat) seguem o requirements.txt -- varias
+# destas versoes nao existem para o 3.10.
+#
+# Para atualizar uma dependencia: troque a linha dela, rode o Release como
+# pre-lancamento e confira.
+
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.5
+aiosignal==1.4.0
+aiosqlite==0.22.1
+altgraph==0.17.5
+annotated-types==0.8.0
+anyio==4.15.1
+ast-serialize==0.13.1
+attrs==26.1.0
+banks==2.5.1
+beautifulsoup4==4.15.0
+certifi==2026.10.18
+cffi==2.1.1
+charset_normalizer==3.5.2
+cloudpickle==3.1.2
+cryptography==50.0.2
+ctranslate2==4.8.3
+dataclasses-json==0.6.7
+deep-translator==1.11.4
+defusedxml==0.7.1
+deprecated==3.0.0
+dirtyjson==1.0.8
+et-xmlfile==2.0.0
+filetype==1.2.0
+flatbuffers==25.12.19
+frozenlist==1.8.0
+fsspec==2026.9.0
+google-ai-generativelanguage==0.6.15
+google-api-core==2.33.0
+google-api-python-client==2.201.0
+google-auth==2.62.0
+google-auth-httplib2==0.4.4
+google-generativeai==0.8.6
+googleapis-common-protos==1.75.0
+greenlet==3.5.6
+griffe==2.3.2
+griffecli==2.3.2
+griffelib==2.3.2
+grpcio==1.84.0
+grpcio-status==1.71.2
+h11==0.16.0
+httpcore==1.0.9
+httplib2==0.32.0
+httpx==0.28.1
+idna==3.20
+iniconfig==2.3.1
+jinja2==3.1.6
+joblib==1.6.0
+librt==0.16.0
+llama-cloud==0.1.46
+llama-cloud-services==0.6.94
+llama-index-core==0.14.25
+llama-index-instrumentation==0.6.0
+llama-index-workflows==2.26.0
+llama-parse==0.6.94
+lxml==6.1.3
+markupsafe==3.0.4
+marshmallow==3.26.2
+multidict==7.1.0
+mypy==2.4.0
+mypy-extensions==1.1.0
+nest-asyncio==1.6.0
+networkx==3.7
+nltk==3.10.3
+numpy==2.5.4
+onnxruntime==1.31.0
+openpyxl==3.1.5
+pandas==3.0.6
+pathspec==1.1.1
+pefile==2024.8.26
+pillow==13.0.0
+pip-system-certs==5.3
+playwright==1.64.0
+pluggy==1.7.0
+propcache==0.5.4
+proto-plus==1.28.2
+protobuf==5.29.6
+psutil==7.2.2
+pyasn1==0.6.4
+pyasn1-modules==0.4.2
+pycparser==3.11
+pydantic==2.14.1
+pydantic-core==2.50.1
+pyee==14.0.0
+pyflakes==4.0.3
+pygments==2.21.0
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.8
+pymupdf==2.0
+pymupdf-layout==2.0
+pymupdf4llm==2.0
+pyparsing==3.3.3
+pypdf2==3.0.1
+pyside6-essentials==6.12.0
+pytest==9.1.1
+pytest-qt==4.5.0
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.4
+pywin32==312
+pywin32-ctypes==0.2.3
+pyyaml==6.0.3
+regex==2026.9.29
+requests==2.34.2
+ruff==0.17.1
+sentencepiece==0.2.2
+setuptools==84.0.0
+shiboken6==6.12.0
+six==1.17.0
+soupsieve==3.0.3
+sqlalchemy==2.1.5
+tabulate==0.10.0
+tenacity==9.2.1
+tiktoken==0.14.0
+tinytag==2.3.2
+tqdm==4.70.1
+truststore==0.10.5
+typing-extensions==4.16.0
+typing-inspect==0.9.0
+typing-inspection==0.4.4
+tzdata==2026.5
+unidecode==1.4.0
+uritemplate==4.2.0
+urllib3==2.8.0
+wrapt==2.5.1
+xlwings==0.37.7
+yarl==1.25.1

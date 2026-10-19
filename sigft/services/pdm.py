@@ -348,7 +348,7 @@ def processar_pastas_fichas(arquivo_STATUS_PMIB, destino_fichas, lista_seleciona
 from sigft.core.rpa import ficha_layout
 
 # Reexportacao por ATRIBUICAO, e nao por `from ... import`: um import so usado
-# para reexportar e "importado e nao usado" para os linters, e o `# noqa` nao
+# para reexportar e "importado e nao usado" para os linters, e o comentario `noqa` nao
 # vale para o pyflakes nem, dentro de parenteses, para o ruff. Atribuir e
 # explicito -- diz "isto continua morando aqui de proposito".
 NOME_CANONICO_DA_ABA = ficha_layout.NOME_CANONICO_DA_ABA

@@ -580,3 +580,12 @@ def test_o_codigo_do_sigft_vai_fora_do_exe():
 
     spec = (Path(__file__).resolve().parent.parent / "SIG-FT.spec").read_text(encoding="utf-8")
     assert 'module_collection_mode={"sigft": "pyc"}' in spec
+
+
+def test_o_leitor_de_avif_do_pillow_fica_fora_do_pacote():
+    """2026-10-19: 7,9 MB que nenhum arquivo do SIG-FT usa; o Pillow aguenta a
+    falta dele (`AvifImagePlugin` importa `_avif` dentro de try/except)."""
+    from pathlib import Path
+
+    spec = (Path(__file__).resolve().parent.parent / "SIG-FT.spec").read_text(encoding="utf-8")
+    assert '"PIL._avif"' in spec

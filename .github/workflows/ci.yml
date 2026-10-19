@@ -40,9 +40,9 @@ jobs:
       PYTHONIOENCODING: "utf-8"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           # 3.10 e o MINIMO que o SIG-FT.bat aceita, e o alvo do ruff/mypy no
           # pyproject.toml. Testar no minimo e o que pega uso de sintaxe nova

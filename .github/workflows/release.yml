@@ -54,9 +54,9 @@ jobs:
       PYTHONIOENCODING: "utf-8"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -76,12 +76,15 @@ jobs:
             --entrada-versao "${{ inputs.versao }}" \
             --entrada-prerelease "${{ inputs.prerelease }}"
 
+      # [2026-10-19] Com as versoes EXATAS de `empacotamento/versoes-do-release.txt`
+      # (`-c`): sem ele, cada Release pegava a mais nova de cada dependencia, e
+      # foi assim que o PyMuPDF 2.0 entrou sem ninguem pedir. Ver o arquivo.
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
-          pip install "pyinstaller>=6,<7"
+          pip install -r requirements.txt -c empacotamento/versoes-do-release.txt
+          pip install -r requirements-dev.txt -c empacotamento/versoes-do-release.txt
+          pip install "pyinstaller>=6,<7" -c empacotamento/versoes-do-release.txt
 
       # O modelo do tradutor local da tela 4.2 (~218 MB). ANTES dos testes, para
       # que os testes com o modelo de verdade (tests/test_tradutor_local.py)
@@ -91,7 +94,7 @@ jobs:
       # muda quando alguem muda a revisao de proposito.
       - name: Cache do modelo do tradutor
         id: cache-tradutor
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: recursos/tradutor_pt_es
           key: tradutor-pt-es-${{ hashFiles('tools/preparar_tradutor.py') }}
@@ -142,7 +145,14 @@ jobs:
         run: |
           echo "::warning title=Sem UPDATE_TOKEN::O segredo UPDATE_TOKEN nao esta definido. Este build NAO tera atualizacao automatica - quem instalar precisara baixar as proximas versoes a mao. Veja a secao 'Rotacao do token' do docs/BUILD.md."
 
+      # PYTHONHASHSEED=0 (2026-10-19): o `base_library.zip` saia diferente a
+      # cada build com o MESMO conteudo -- a ordem das entradas vem de um `set`,
+      # que muda com o sorteio do hash do Python. Fixo o sorteio, o build sai
+      # identico byte a byte (provado em tres builds seguidos), e a
+      # atualizacao pequena deixa de levar o 1,4 MB dele toda vez.
       - name: Gerar o executavel (PyInstaller)
+        env:
+          PYTHONHASHSEED: "0"
         run: pyinstaller SIG-FT.spec --noconfirm --clean
 
       # ─── As tres conferencias, e o que cada uma pega ──────────────────────
@@ -364,7 +374,7 @@ jobs:
       - name: Guardar os artefatos do build
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: SIG-FT-${{ steps.versao.outputs.versao }}
           path: |
@@ -378,12 +388,15 @@ jobs:
       - name: Guardar o instalador quando o Release nao saiu
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: SIG-FT-${{ steps.versao.outputs.versao }}-instalador
           path: |
             installer/Output/*.exe
             installer/Output/*.bin
             installer/Output/*.zip
-          retention-days: 7
+          # 3 dias (eram 7, ate 2026-10-19): sao ~400 MB por run que falhou, e
+          # a cota de artefatos da conta lotou de novo na 1.2.1-rc.5. Da tempo
+          # de baixar e olhar; quem precisa de mais, roda de novo.
+          retention-days: 3
           if-no-files-found: warn

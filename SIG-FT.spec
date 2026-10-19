@@ -313,8 +313,14 @@ a = Analysis(
     # levaria o módulo, o Qt6Network e os plugins de TLS e de rede: 3,6 MB no
     # Windows. Se um dia alguém usar o QtNetwork, `tests/test_qt_no_pacote.py`
     # manda tirar esta linha antes que o `.exe` quebre.
+    #
+    # `PIL._avif` (2026-10-19): o leitor de imagem AVIF do Pillow, 7,9 MB no
+    # Windows. Nenhum arquivo do SIG-FT abre AVIF, e o Pillow aguenta a falta
+    # dele (`AvifImagePlugin`: `try: from . import _avif / except ImportError`,
+    # conferido no Pillow 13, o fixado em `empacotamento/versoes-do-release.txt`).
     excludes=["pytest", "_pytest", "mypy", "ruff", "torch", "transformers",
-              "PySide6.QtNetwork", "tkinter", "_tkinter", "customtkinter"],
+              "PySide6.QtNetwork", "tkinter", "_tkinter", "customtkinter",
+              "PIL._avif"],
     noarchive=False,
     # O código do SIG-FT FORA do `.exe` (2026-10-19), um `.pyc` por módulo em
     # `_internal/sigft/`. Medido entre a 1.2.1-rc.4 e a rc.5: dos 38,6 MB que
