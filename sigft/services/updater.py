@@ -51,7 +51,7 @@ como `.bin` (o app 1.1.1 baixa "o primeiro `.exe`" e não pode pegá-lo) e vira
 oferecer também pré-lançamentos. Ver
 `docs/superpowers/specs/2026-10-07-atualizacao-incremental-design.md`.
 [2026-10-19] O mesmo pequeno vai também como `.exe` (o tipo que ele de fato
-é) e como `.zip`; o app novo tenta exe -> zip -> bin -> completo.
+é) e como `.zip`; o app novo tenta zip -> exe -> bin -> completo.
 
 ═══ Sobre o token ═══
 O repositório é privado, então a consulta exige autenticação. O token é
@@ -328,8 +328,12 @@ def interpretar_release(release: dict, manifesto: dict | None = None,
             **comum,
         )
         escolhido = bin_
-        # De trás para a frente: cada formato guarda o anterior como reserva.
-        for chave in ("zip", "exe"):
+        # De trás para a frente: cada formato guarda o anterior como reserva,
+        # e o ÚLTIMO da tupla é o tentado primeiro. Ordem: zip -> exe -> bin.
+        # [2026-10-19] Medido na rede da empresa: o `.zip` chegou 2 de 2
+        # vezes, o `.exe` pequeno foi cortado no fim, como o `.bin`. O `.exe`
+        # fica de reserva, logo depois do `.zip`.
+        for chave in ("exe", "zip"):
             if (outro := _outro_formato(release, entrada, chave)) is None:
                 continue
             asset_outro, dados = outro

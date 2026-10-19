@@ -987,13 +987,18 @@ def test_zip_estranho_e_recusado_e_cai_no_bin(monkeypatch, tmp_path, membros):
 # pequeno também É um `.exe` (o Inno o gera assim; o `.bin` é só o nome que o
 # protege do app 1.1.1). Publicá-lo com o tipo verdadeiro não esconde nada: o
 # proxy o analisa como analisa o completo. Chave nova `exe` no `latest.json`,
-# só o app novo lê. Ordem: exe -> zip -> bin -> completo.
+# só o app novo lê.
+#
+# [2026-10-19] Ordem: zip -> exe -> bin -> completo. Medido na rede da
+# empresa (rc.3 -> rc.4 e rc.4 -> rc.5): o `.zip` chegou 2 de 2 vezes; o
+# `.exe` pequeno foi cortado no fim, como o `.bin` (3 de 3). O `.exe` fica
+# como reserva, por via das dúvidas, logo depois do `.zip`.
 
 EXE_PEQUENO = "SIG-FT_Itaipu_Update_1.0.0_para_1.1.0.exe"
 
 
 def _quatro_caminhos(pequeno, completo, zipado, *, exe_antes=False):
-    """exe (asset 79) -> zip (78) -> bin (77) -> completo (42)."""
+    """zip (asset 78) -> exe (79) -> bin (77) -> completo (42)."""
     release = _release_com_pequeno()
     asset_exe = {"name": EXE_PEQUENO, "size": len(pequeno),
                  "url": "https://api.github.com/repos/luanccozer/SIG-FT/releases/assets/79"}
@@ -1015,15 +1020,16 @@ def _quatro_caminhos(pequeno, completo, zipado, *, exe_antes=False):
     return updater.interpretar_release(release, manifesto, versao_atual="1.0.0")
 
 
-def test_com_o_exe_no_release_o_app_novo_escolhe_o_exe_e_guarda_zip_e_bin():
+def test_com_zip_e_exe_no_release_o_app_vai_no_zip_e_guarda_exe_e_bin():
     pequeno, completo = b"P" * 2_000_000, b"C" * 3_000_000
     zipado = _zip_com({MEMBRO: pequeno})
 
     info = _quatro_caminhos(pequeno, completo, zipado)
 
-    assert info.nome_arquivo == EXE_PEQUENO and info.incremental is True
-    assert info.sha256 == hashlib.sha256(pequeno).hexdigest()
-    assert info.reserva is not None and info.reserva.nome_arquivo == ZIPADO
+    assert info.nome_arquivo == ZIPADO and info.incremental is True
+    assert info.sha256_dentro == hashlib.sha256(pequeno).hexdigest()
+    assert info.reserva is not None and info.reserva.nome_arquivo == EXE_PEQUENO
+    assert info.reserva.sha256 == hashlib.sha256(pequeno).hexdigest()
     assert info.reserva.reserva is not None and info.reserva.reserva.nome_arquivo == PACOTE
     assert info.completo is not None and info.completo.nome_arquivo == "SIG-FT_Itaipu_Setup_1.1.0.exe"
 
@@ -1060,19 +1066,21 @@ def test_o_completo_continua_sendo_o_completo_mesmo_com_o_pequeno_exe_na_frente(
     assert sem_base.nome_arquivo == "SIG-FT_Itaipu_Setup_1.1.0.exe" and sem_base.incremental is False
 
 
-def test_o_exe_baixado_e_conferido_e_usado_direto(monkeypatch, tmp_path):
+def test_zip_cortado_cai_no_exe_que_e_usado_direto(monkeypatch, tmp_path):
     monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
     pequeno, completo = b"P" * 2_000_000, b"C" * 3_000_000
-    abrir = _AbrirPorAsset({"79": _RespostaBinaria(pequeno)})
+    zipado = _zip_com({MEMBRO: pequeno})
+    abrir = _AbrirPorAsset({"78": _RespostaCortada(zipado, ate=len(zipado) - 10),
+                            "79": _RespostaBinaria(pequeno)})
     monkeypatch.setattr(rede, "abrir", abrir)
 
-    destino = updater.baixar(_quatro_caminhos(pequeno, completo, _zip_com({MEMBRO: pequeno})))
+    destino = updater.baixar(_quatro_caminhos(pequeno, completo, zipado))
 
-    assert abrir.assets == ["79"]
+    assert abrir.assets == ["78", "79"]
     assert destino.name == EXE_PEQUENO and destino.read_bytes() == pequeno
 
 
-def test_exe_cortado_cai_no_zip_depois_no_bin_depois_no_completo(monkeypatch, tmp_path):
+def test_zip_cortado_cai_no_exe_depois_no_bin_depois_no_completo(monkeypatch, tmp_path):
     monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
     pequeno, completo = b"P" * 2_000_000, b"C" * 3_000_000
     zipado = _zip_com({MEMBRO: pequeno})
@@ -1086,7 +1094,7 @@ def test_exe_cortado_cai_no_zip_depois_no_bin_depois_no_completo(monkeypatch, tm
     destino = updater.baixar(_quatro_caminhos(pequeno, completo, zipado),
                              ao_cair_no_completo=avisos.append, log_cb=log.append)
 
-    assert abrir.assets == ["79", "78", "77", "42"] and destino.read_bytes() == completo
+    assert abrir.assets == ["78", "79", "77", "42"] and destino.read_bytes() == completo
     assert [a.nome_arquivo for a in avisos] == ["SIG-FT_Itaipu_Setup_1.1.0.exe"]
     assert any("em .exe falhou" in linha for linha in log)
     assert any("em .zip falhou" in linha for linha in log)
