@@ -20,6 +20,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Cria Fichas: o item sem marca não vai mais para a IA (nem para a busca no catálogo) com a palavra "nan" no lugar da marca.
 - Atualização automática: o Release passa a publicar a atualização pequena também em **.zip**, e o app tenta o .zip, depois o .bin e só então o instalador completo. Na rede da empresa o .bin chegava cortado no fim; o .zip é outra tentativa de a atualização pequena passar. Vale a partir da versão seguinte a esta.
 - Atualização automática: nas versões de teste, a atualização pequena sai também como **.exe** — o tipo que ela de fato é, igual ao instalador completo, que a rede da empresa deixa passar. O app tenta o .exe, depois o .zip, depois o .bin e só então o completo.
+- Atualização automática: o app passa a apagar os instaladores que as atualizações anteriores deixavam na pasta temporária do Windows (`%TEMP%\SIG-FT_Update`) — até 326 MB por atualização, que se acumulavam versão após versão. A limpeza acontece ao abrir o app e antes de cada download.
 - Atualização automática: quem está na versão anterior volta a receber a **atualização pequena** (só o que mudou), em vez do instalador completo. Desde a 1.2.0-rc.5 o Release só montava o pequeno a partir da versão mais antiga da lista.
 - Cria Fichas: num erro fatal do robô de criação, o navegador fecha, como já fazia o robô de edição.
 - Gestão PMIB: uma aba "Atividades" com outras colunas na planilha de mapeamento não derruba mais o painel; ele sai sem a seção de atividades, como quando a aba não existe.

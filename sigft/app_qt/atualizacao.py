@@ -97,8 +97,19 @@ def verificar_na_abertura(janela, *, versao_atual: str | None = None,
     """
     if not updater.deve_verificar():
         return False
-    disparar(_consultar, janela, versao_atual or _build_info.VERSAO, False, None)
+    disparar(_limpar_e_consultar, janela, versao_atual or _build_info.VERSAO)
     return True
+
+
+def _limpar_e_consultar(janela, versao_atual: str) -> None:
+    """Roda na THREAD. [2026-10-19] Antes da consulta, apaga os instaladores
+    que atualizações anteriores deixaram no %TEMP% (`updater.limpar_downloads`).
+    A limpeza é um extra: se falhar, vai para o log e a consulta segue."""
+    try:
+        updater.limpar_downloads(log_cb=_log)
+    except Exception as erro:  # noqa: BLE001 -- limpeza não segura a consulta
+        _log(f"Limpeza da pasta de atualizacao falhou: {erro}")
+    _consultar(janela, versao_atual, False, None)
 
 
 def procurar_agora(janela, *, versao_atual: str | None = None, ao_terminar=None,

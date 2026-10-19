@@ -1088,3 +1088,71 @@ def test_exe_cortado_cai_no_zip_depois_no_bin_depois_no_completo(monkeypatch, tm
     assert any("em .exe falhou" in linha for linha in log)
     assert any("em .zip falhou" in linha for linha in log)
     assert sorted(p.name for p in tmp_path.iterdir()) == [destino.name]
+
+
+# =============================================================================
+# L. A pasta de downloads não acumula instaladores  [2026-10-19]
+# =============================================================================
+# Cada atualização baixava o instalador para `%TEMP%\SIG-FT_Update` e o deixava
+# lá: 326 MB por atualização completa, versão após versão. Agora o app limpa a
+# pasta antes de baixar e na abertura. O `instalacao.log` fica: é diagnóstico.
+
+def _sujar(pasta):
+    for nome in ("SIG-FT_Itaipu_Setup_1.2.0.exe", "SIG-FT_Itaipu_Atualizacao_1.2.0_para_1.2.1.bin",
+                 "SIG-FT_Itaipu_Atualizacao_1.2.0_para_1.2.1.zip", "SIG-FT_Itaipu_Setup_1.2.1.exe.part",
+                 "instalacao.log"):
+        (pasta / nome).write_bytes(b"x" * 1000)
+
+
+def test_limpar_downloads_apaga_os_instaladores_e_fica_com_o_log(monkeypatch, tmp_path):
+    monkeypatch.setattr(updater, "_pasta_de_download", lambda: tmp_path)
+    _sujar(tmp_path)
+    log = []
+
+    liberados = updater.limpar_downloads(log_cb=log.append)
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["instalacao.log"]
+    assert liberados == 4000
+    assert any("4 arquivo" in linha for linha in log)
+
+
+def test_limpar_downloads_sem_pasta_nao_cria_nada(monkeypatch, tmp_path):
+    pasta = tmp_path / "nao_existe"
+    monkeypatch.setattr(updater, "_pasta_de_download", lambda: pasta)
+
+    assert updater.limpar_downloads() == 0
+    assert not pasta.exists()
+
+
+def test_limpar_downloads_pula_o_arquivo_em_uso(monkeypatch, tmp_path):
+    # No Windows, o instalador que acabou de reabrir o app ainda pode estar
+    # rodando: o arquivo dele está preso. Fica para a próxima vez, sem erro.
+    monkeypatch.setattr(updater, "_pasta_de_download", lambda: tmp_path)
+    _sujar(tmp_path)
+    preso = tmp_path / "SIG-FT_Itaipu_Setup_1.2.0.exe"
+    from pathlib import Path
+
+    unlink_real = Path.unlink
+
+    def unlink(self, *a, **k):
+        if self == preso:
+            raise PermissionError(32, "em uso")
+        return unlink_real(self, *a, **k)
+
+    monkeypatch.setattr(Path, "unlink", unlink)
+
+    updater.limpar_downloads()
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["SIG-FT_Itaipu_Setup_1.2.0.exe", "instalacao.log"]
+
+
+def test_baixar_limpa_a_pasta_antes(monkeypatch, tmp_path):
+    monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
+    monkeypatch.setattr(updater, "_pasta_de_download", lambda: tmp_path)
+    _sujar(tmp_path)
+    pequeno, completo = b"P" * 2_000_000, b"C" * 3_000_000
+    monkeypatch.setattr(rede, "abrir", _AbrirPorAsset({"78": _RespostaBinaria(_zip_com({MEMBRO: pequeno}))}))
+
+    destino = updater.baixar(_tres_caminhos(pequeno, completo, _zip_com({MEMBRO: pequeno})))
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([destino.name, "instalacao.log"])
