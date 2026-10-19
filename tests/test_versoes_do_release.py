@@ -56,3 +56,17 @@ def test_o_pyinstaller_do_release_roda_com_o_hash_fixo():
     passo = passo[:passo.index("- name:", 1)]
 
     assert 'PYTHONHASHSEED: "0"' in passo
+
+
+def test_o_pyinstaller_do_release_grava_uma_hora_fixa_no_exe():
+    """No Windows o PyInstaller grava a hora do build no cabeçalho do .exe, a
+    menos que SOURCE_DATE_EPOCH exista: sem ela, os 35,7 MB do SIG-FT.exe
+    entravam em toda atualização pequena (medido entre a rc.6 e a rc.7). O
+    valor é fixo: a data do commit mudaria a cada versão."""
+    import re
+
+    texto = (RAIZ / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    passo = texto[texto.index("- name: Gerar o executavel (PyInstaller)"):]
+    passo = passo[:passo.index("- name:", 1)]
+
+    assert re.search(r'SOURCE_DATE_EPOCH: "\d+"', passo), "precisa ser um numero fixo, nao uma expressao"

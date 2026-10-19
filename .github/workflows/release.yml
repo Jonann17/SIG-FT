@@ -150,9 +150,18 @@ jobs:
       # que muda com o sorteio do hash do Python. Fixo o sorteio, o build sai
       # identico byte a byte (provado em tres builds seguidos), e a
       # atualizacao pequena deixa de levar o 1,4 MB dele toda vez.
+      #
+      # SOURCE_DATE_EPOCH (2026-10-19): SO no Windows, o PyInstaller grava a
+      # HORA do build no cabecalho PE do SIG-FT.exe ("para aumentar a
+      # entropia", diz o comentario dele em building/api.py) -- a menos que
+      # esta variavel exista. Medido entre a 1.2.1-rc.6 e a rc.7: o codigo do
+      # SIG-FT ja mudava arquivo por arquivo, e o .exe (35,7 MB) mudava inteiro
+      # so por essa hora. O valor e FIXO de proposito: a data do commit
+      # mudaria a cada versao e o .exe voltaria a mudar junto.
       - name: Gerar o executavel (PyInstaller)
         env:
           PYTHONHASHSEED: "0"
+          SOURCE_DATE_EPOCH: "1792368000"
         run: pyinstaller SIG-FT.spec --noconfirm --clean
 
       # ─── As tres conferencias, e o que cada uma pega ──────────────────────
