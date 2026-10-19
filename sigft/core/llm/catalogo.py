@@ -26,9 +26,15 @@ Decisões que valem registro:
     entre a tela abrir e a tela travar.
 
   - **Nunca levanta.** Falha de rede, chave errada, proxy corporativo
-    bloqueando: devolve lista vazia e deixa a UI dizer "não consegui listar".
-    O painel de modelos não pode ser o motivo de a Home não abrir -- e o
-    campo de digitação manual continua lá como saída.
+    bloqueando: fica a lista que já havia (ou nenhuma) e o MOTIVO volta em
+    `Catalogo.erro`, para a UI dizer por que não atualizou. O painel de
+    modelos não pode ser o motivo de a Home não abrir -- e o campo de
+    digitação manual continua lá como saída.
+
+  - **Para exibir, o cache vencido ainda vale** (2026-10-19). O TTL decide
+    quando BUSCAR de novo, não o que MOSTRAR: um catálogo de ontem serve
+    melhor que nenhum, e `Catalogo.baixado_em` diz de quando ele é. Antes, um
+    dia depois de baixado, o catálogo sumia da Home.
 
   - **`http_get` injetável**, como em `providers/openrouter.py`: é o que
     permite testar os três provedores sem rede e sem `requests` instalado
@@ -42,7 +48,9 @@ da UI ser "modelos que dá para usar aqui" em vez de "tudo o que existe".
 from __future__ import annotations
 
 import json
+import re
 import time
+from dataclasses import dataclass, field
 
 from sigft import config
 from sigft.core.llm.providers import openrouter
@@ -89,7 +97,24 @@ def _http_get_real(url, headers=None, timeout=20):
     return rede.get(url, headers=headers or {}, timeout=timeout)
 
 
-def _ler_cache(caminho, ttl_segundos, agora):
+@dataclass(frozen=True)
+class Catalogo:
+    """O que `consultar` responde: a lista e o que a UI precisa dizer dela.
+
+    `baixado_em` é a hora (epoch) em que a lista veio do provedor -- `None`
+    quando não há lista. `vencido` diz que ela passou do TTL (é de ontem ou
+    mais). `erro` é o motivo, já sem chave, de a ÚLTIMA busca na rede não ter
+    trazido lista; `None` quando não houve busca ou ela deu certo.
+    """
+
+    modelos: list = field(default_factory=list)
+    baixado_em: float | None = None
+    vencido: bool = False
+    erro: str | None = None
+
+
+def _ler_cache(caminho):
+    """`(modelos, gravado_em)` do arquivo, de qualquer idade, ou `None`."""
     try:
         with open(caminho, encoding="utf-8") as arquivo:
             dados = json.load(arquivo)
@@ -101,9 +126,22 @@ def _ler_cache(caminho, ttl_segundos, agora):
     modelos = dados.get("modelos")
     if not isinstance(modelos, list) or not isinstance(gravado_em, (int, float)):
         return None
-    if agora - gravado_em > ttl_segundos:
-        return None
-    return [str(m) for m in modelos]
+    return [str(m) for m in modelos], gravado_em
+
+
+def _motivo(erro, chaves):
+    """O texto da falha para a tela e o log -- SEM chave nenhuma: o Gemini leva
+    a chave na URL, e o `HTTPError` do `requests` repete a URL."""
+    try:
+        from sigft.core import rede
+
+        texto = rede.resumo_erro(erro)
+    except Exception:
+        texto = f"{type(erro).__name__}: {erro}"
+    for valor in (chaves or {}).values():
+        if isinstance(valor, str) and len(valor) >= 4:
+            texto = texto.replace(valor, "***")
+    return re.sub(r"(key=)[^&\s]+", r"\1***", texto)
 
 
 def _gravar_cache(caminho, modelos, agora):
@@ -154,7 +192,7 @@ def _ids_do_openai_compat(chave, base_url, http_get, timeout):
     ]
 
 
-def listar_modelos(
+def consultar(
     provider,
     chaves=None,
     *,
@@ -165,7 +203,7 @@ def listar_modelos(
     time_fn=None,
     timeout=20,
 ):
-    """Ids de modelo que `provider` oferece para as chaves configuradas.
+    """`Catalogo` do `provider` para as chaves configuradas. Nunca levanta.
 
     `forcar=True` ignora o cache (é o que o botão "Atualizar lista" da UI
     usa). `somente_cache=True` NUNCA toca a rede -- é como a Home monta o
@@ -173,22 +211,29 @@ def listar_modelos(
     HTTP, ainda mais atrás de um proxy corporativo. Os dois juntos não fazem
     sentido; `forcar` vence.
 
-    Devolve sempre uma lista ORDENADA, e `[]` em qualquer falha -- nunca
-    levanta.
+    O cache vencido não é jogado fora: com `somente_cache` ele é a resposta
+    (`vencido=True`), e se a busca na rede falhar ele continua valendo, com o
+    motivo da falha em `erro` (que também vai para o log).
     """
     if provider not in CACHE_POR_PROVIDER:
-        return []
+        return Catalogo()
 
     chaves = chaves if chaves is not None else config.carregar_chaves()
     agora = (time_fn or time.time)()
     arquivo_cache = caminho_cache(provider)
 
+    lido = _ler_cache(arquivo_cache)
+    if lido is not None:
+        modelos_cache, gravado_em = lido
+        anterior = Catalogo(modelos_cache, gravado_em, agora - gravado_em > ttl_segundos)
+    else:
+        anterior = Catalogo()
+
     if not forcar:
-        do_cache = _ler_cache(arquivo_cache, ttl_segundos, agora)
-        if do_cache is not None:
-            return do_cache
+        if lido is not None and not anterior.vencido:
+            return anterior
         if somente_cache:
-            return []
+            return anterior
 
     obter = http_get or _http_get_real
     try:
@@ -211,16 +256,26 @@ def listar_modelos(
                 obter,
                 timeout,
             )
-    except Exception:
-        # Rede fora, chave errada, proxy corporativo barrando: a UI mostra
-        # "não consegui listar" e o campo de digitação manual continua lá.
-        # Cair aqui NUNCA pode impedir a Home de abrir.
-        return []
+        ids = sorted(set(ids))
+        erro = None if ids else "o provedor não devolveu nenhum modelo"
+    except Exception as e:
+        # Rede fora, chave errada, proxy corporativo barrando: fica a lista
+        # que havia, e o motivo vai para a UI e para o log. Cair aqui NUNCA
+        # pode impedir a Home de abrir.
+        ids, erro = [], _motivo(e, chaves)
 
-    ids = sorted(set(ids))
-    if ids:
-        _gravar_cache(arquivo_cache, ids, agora)
-    return ids
+    if erro:
+        print(f"[catalogo] lista de modelos de {provider} não atualizada: {erro}")
+        return Catalogo(anterior.modelos, anterior.baixado_em, anterior.vencido, erro)
+
+    _gravar_cache(arquivo_cache, ids, agora)
+    return Catalogo(ids, agora)
+
+
+def listar_modelos(provider, chaves=None, **kwargs):
+    """Só os ids de `consultar` -- uma lista ORDENADA, `[]` quando não há
+    nenhuma. Nunca levanta."""
+    return consultar(provider, chaves, **kwargs).modelos
 
 
 def modelos_recomendados(provider):
