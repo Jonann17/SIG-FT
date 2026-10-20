@@ -43,6 +43,7 @@ from sigft.app_qt.views.home import HomeView
 from sigft.app_qt.views.nao_migrada import TelaComErro, TelaNaoMigrada
 from sigft.app_qt.views.translator import ModuloTranslator
 from sigft.app_qt.widgets import blocos
+from sigft.app_qt.widgets.marca import Marca
 from sigft.core import instancia
 from sigft.core.saida_log import desviar_saida_para_arquivo
 
@@ -198,16 +199,13 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         lay.setContentsMargins(12, 26, 19, 12)  # 19 = 12 + os 7 px da faixa vazia
         lay.setSpacing(estilo.ESPACO_MENU)
 
-        logo = QLabel()
-        caminho_logo = resource_path(os.path.join("assets", "logo.png"))
-        if os.path.exists(caminho_logo):
-            logo.setPixmap(QPixmap(caminho_logo).scaledToWidth(
-                180, Qt.TransformationMode.SmoothTransformation))
-        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.addWidget(logo)
-        nome = QLabel("SIG-FT System", objectName="app_nome")
-        nome.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.addWidget(nome)
+        # O logo da GE Vernova e o nome do SIG-FT viraram um botão só: brilham
+        # sob o mouse e voltam à Home (sistema visual, 2026-10-20). Mesmas
+        # medidas dos dois rótulos de antes (`widgets/marca.py`).
+        self.marca = Marca(resource_path(os.path.join("assets", "logo.png")))
+        blocos.sem_tecla(self.marca)
+        self.marca.clicked.connect(self.show_home)
+        lay.addWidget(self.marca)
         lay.addSpacing(22)
         # O emoji virou ícone (Lucide, na cor do tema: sistema visual, 2026-10-20).
         home = QPushButton(" Home", objectName="home")

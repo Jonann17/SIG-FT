@@ -389,6 +389,8 @@ QPushButton[menu="true"]:hover, QPushButton[menu="true"][ativo="true"] {{ backgr
     color: {menu['texto']}; }}
 QPushButton[menu="true"][ativo="true"] {{ font-weight: bold; }}
 QPushButton[menu="true"]:disabled {{ color: {p['texto_suave']}; }}
+#marca, #marca:hover, #marca:pressed {{ background: transparent; border: none; padding: 0;
+    min-height: 0; }}
 #home {{ background: transparent; text-align: left; font-weight: bold;
          color: {p['texto']}; border: {BORDA_CONTROLE}px solid {p['borda']}; }}
 #home:hover, #home[ativo="true"] {{ background: {menu['fundo']}; color: {menu['texto']}; }}
