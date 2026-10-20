@@ -15,7 +15,14 @@ integrações do Linux (Wayland, EGL...) --, e a interface precisa de duas:
 
 Imagem: o app só carrega PNG (o logo e o ícone da janela), que o QtGui lê sem
 plugin. Medido no wheel 6.12 do Windows: saem 4,3 MB, entre plugins e o
-`Qt6Svg.dll` que só os de SVG usam.
+`Qt6Svg.dll` que só os de SVG usavam.
+
+Desde 2026-10-20 os ícones dos botões são SVG (`sigft/app_qt/icones.py`), mas
+desenhados pelo `QSvgRenderer` do MÓDULO QtSvg, que o spec pede nos
+`hiddenimports` e traz o `Qt6Svg.dll` de volta. Os plugins de SVG continuam
+fora: o `icones.py` não passa pelo `QIcon("x.svg")` nem pelo `QImage`, que são
+quem precisaria deles. O `--smoke` do Release desenha os ícones dentro do
+`.exe` e reprova se algum vier vazio.
 
 Por que um hook, e não um filtro no fim do spec, como o do navegador: a análise
 de dependências do PyInstaller roda DEPOIS dos hooks. Plugin tirado aqui não

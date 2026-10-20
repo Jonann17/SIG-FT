@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 
 from sigft import _build_info
 from sigft.app import backends
-from sigft.app_qt import atualizacao, catalogo, cursor, estilo, interface, novidades
+from sigft.app_qt import atualizacao, catalogo, cursor, estilo, icones, interface, novidades
 from sigft.app_qt.views.aplicacao_lmr import ModuloAplicacaoLMR
 from sigft.app_qt.views.home import HomeView
 from sigft.app_qt.views.nao_migrada import TelaComErro, TelaNaoMigrada
@@ -540,6 +540,15 @@ def _smoke() -> int:
     avisos: list[str] = []
     try:
         _preparar_qt()
+        # Os ícones desenham? Um SVG ou o QtSvg fora do `.exe` daria botões em
+        # branco SEM erro (2026-10-20: a mesma classe do pymupdf-layout, um
+        # arquivo que faltava só no pacote). Aqui o Release reprova.
+        if (sem_desenho := icones.conferir()):
+            relatorio = (f"[smoke] FALHOU: icones que nao desenham ({len(sem_desenho)}): "
+                         f"{', '.join(sem_desenho)} (pasta {icones.PASTA})")
+            gravar_relatorio(ARQUIVO_JANELA, relatorio)
+            print(relatorio)
+            return 1
         backends.carregar_todos(
             ao_falhar=lambda nome, erro: avisos.append(
                 f"[smoke] AVISO: o backend '{nome}' nao carregou: "

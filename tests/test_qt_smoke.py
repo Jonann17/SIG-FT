@@ -141,3 +141,18 @@ def test_uma_tela_quebrada_nao_esconde_as_outras(relatorio, monkeypatch):
     assert "Quebrada1" in texto and "falta o modulo um" in texto
     assert "Quebrada2" in texto and "falta o modulo dois" in texto
     assert "Inteira" in visitadas
+
+
+# -- os icones (sistema visual, Task 6, 2026-10-20) -----------------------------
+
+def test_icone_que_nao_desenha_reprova_o_smoke(relatorio, monkeypatch):
+    """Um SVG (ou o QtSvg) que ficou fora do `.exe` daria botoes em branco sem
+    erro nenhum -- a mesma classe do pymupdf-layout de 2026-10-20, um arquivo
+    que falta so no pacote. O smoke do Release desenha os icones e reprova."""
+    from sigft.app_qt import icones
+
+    monkeypatch.setattr(icones, "conferir", lambda: ["house"])
+
+    assert qmain._smoke() == 1
+    texto = _ler(relatorio)
+    assert "FALHOU" in texto and "house" in texto

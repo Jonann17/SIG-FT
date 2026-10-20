@@ -16,6 +16,8 @@ from sigft.app import tokens
 
 _RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PASTA_FONTES = os.path.join(_RAIZ, "assets", "fonts")
+# Os SVG do Lucide (`sigft/app_qt/icones.py`, 2026-10-20), pela mesma raiz.
+PASTA_ICONES = os.path.join(_RAIZ, "assets", "icons")
 
 # SEM o Roboto-Medium, de propósito: o negrito tem de ser SINTETIZADO a partir do
 # Regular, como no Tk. A interface antiga registra Regular e Medium (no Windows, com
@@ -80,6 +82,23 @@ TEMA_ATUAL = "escuro"
 def paleta_atual() -> dict[str, str]:
     """A paleta (`tokens.paleta`) do tema que está valendo."""
     return tokens.paleta(TEMA_ATUAL)
+
+
+# O texto do botão de perigo: branco nos dois temas (o `perigo_fundo` é o mesmo).
+TEXTO_SOBRE_PERIGO = "#FFFFFF"
+
+
+def cor_do_texto_da_variante(variante: str | None) -> str:
+    """A cor do texto de um botão da variante `variante` no tema atual, a mesma
+    da folha. É a cor do ÍCONE do botão (`icones.aplicar`, 2026-10-20): o ícone
+    acompanha o texto ao lado dele."""
+    p = paleta_atual()
+    variante = SINONIMOS_DE_VARIANTE.get(variante or "", variante or "")
+    if variante == "primario":
+        return p["texto_sobre_primaria"]
+    if variante == "perigo":
+        return TEXTO_SOBRE_PERIGO
+    return p["texto"]
 
 
 def definir_propriedade(widget, nome: str, valor) -> None:
@@ -334,7 +353,7 @@ QPushButton:disabled {{ color: {p['texto_suave']}; }}
 {_seletor_variante('primario', ':disabled')} {{ background: {p['superficie_alta']};
     border-color: {p['borda']}; color: {p['texto_suave']}; }}
 QPushButton[variante="perigo"] {{ background: {p['perigo_fundo']}; border-color: {p['perigo_fundo']};
-    color: #FFFFFF; }}
+    color: {TEXTO_SOBRE_PERIGO}; }}
 QPushButton[variante="perigo"]:hover {{ background: {perigo_hover}; border-color: {perigo_hover}; }}
 QPushButton[variante="perigo"]:disabled {{ background: {p['superficie_alta']};
     border-color: {p['borda']}; color: {p['texto_suave']}; }}
@@ -373,6 +392,7 @@ QLabel[papel="ok"] {{ color: {p['primaria']}; }}
 #card {{ background: {p['superficie']}; border: 1px solid {p['borda']}; border-radius: {raio_cartao}px; }}
 #card:hover {{ border: 1px solid {p['primaria']}; }}
 #card_titulo {{ color: {p['primaria']}; font-size: {f['secao']}px; font-weight: bold; background: transparent; }}
+#card_icone {{ background: transparent; }}
 #card_desc {{ color: {p['texto_suave']}; font-size: {f['legenda']}px; background: transparent; }}
 #console {{ background: {p['console_fundo']}; border: none; border-radius: {raio}px;
             color: {p['console_texto']}; font-family: {mono_fam}; font-size: 12px; }}
