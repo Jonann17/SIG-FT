@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 
 from sigft import _build_info
 from sigft.app import backends, theme
-from sigft.app_qt import atualizacao, catalogo, estilo, interface, novidades
+from sigft.app_qt import atualizacao, catalogo, cursor, estilo, interface, novidades
 from sigft.app_qt.views.aplicacao_lmr import ModuloAplicacaoLMR
 from sigft.app_qt.views.home import HomeView
 from sigft.app_qt.views.nao_migrada import TelaComErro, TelaNaoMigrada
@@ -431,6 +431,7 @@ def _preparar_qt() -> QApplication:
     interface.instalar()
     estilo.carregar_fontes()
     app.setStyleSheet(estilo.folha_de_estilo())
+    cursor.instalar(app)
     return app
 
 
