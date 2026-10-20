@@ -17,8 +17,24 @@ def test_hover_acende_e_apaga(qapp, qtbot):
     m = Marca(); qtbot.addWidget(m); m.show()
     _entrar(m)
     qtbot.waitUntil(lambda: m.graphicsEffect().blurRadius() >= 17, timeout=1000)
+    assert m.graphicsEffect().isEnabled()
     m.leaveEvent(QEvent(QEvent.Type.Leave))
     qtbot.waitUntil(lambda: m.graphicsEffect().blurRadius() <= 1, timeout=1000)
+    # Apagado, o efeito sai do desenho (não fica uma sombra de raio 0 pintando).
+    assert not m.graphicsEffect().isEnabled()
+
+
+def test_clique_em_cima_do_logo_e_do_nome_e_do_botao(qapp, qtbot):
+    # Os dois rótulos são transparentes ao mouse: o clique de verdade (com o
+    # teste de posição do Qt) cai no botão, e não no QLabel.
+    from PySide6.QtTest import QTest
+
+    m = Marca(); qtbot.addWidget(m); m.show()
+    cliques = []
+    m.clicked.connect(lambda: cliques.append(1))
+    for rotulo in (m.logo, m.nome):
+        QTest.mouseClick(m, Qt.MouseButton.LeftButton, pos=rotulo.geometry().center())
+    assert len(cliques) == 2
 
 
 def test_foco_acende_e_apaga(qapp, qtbot):
