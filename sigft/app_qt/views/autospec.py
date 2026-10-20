@@ -43,7 +43,7 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QSizePolicy, QWidget
 
 from sigft.app import backends
-from sigft.app_qt import estilo, file_dialogs, interface
+from sigft.app_qt import estilo, file_dialogs, icones, interface
 from sigft.app_qt.widgets import blocos, controles
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.services import autospec_conferencia as conferencia_txt
@@ -268,10 +268,10 @@ class ModuloAutoSpec(ModuleFrame):
 
         # Botão Add
         job.addSpacing(20)                              # f_refs (…, 5) + botão (15, …)
-        self.btn_add = blocos.botao(estilo.mono("⬇ Adicionar à Fila ⬇"), variante="primario",
+        self.btn_add = blocos.botao("Adicionar à Fila", variante="primario",
                                     altura=28, tamanho_fonte=13, negrito=True)
-        # O "⬇" sai da fonte de símbolos (só a seta, como no Tk), não do Noto Emoji.
-        estilo.botao_com_simbolos(self.btn_add)
+        # As setas "⬇" das pontas viraram o ícone (Lucide, na cor do tema, 2026-10-20).
+        icones.aplicar(self.btn_add, "arrow-down", tamanho=16)
         self.btn_add.clicked.connect(self.add_queue)
         _recuado(job, self.btn_add, 5, 5)               # padx=20 (15 já são do cartão)
 
@@ -461,10 +461,12 @@ class ModuloAutoSpec(ModuleFrame):
                 # O link é um botão (lá porque CTkLabel não tem clique nativo); o
                 # visual de link é feito à mão. O "&" do título vai dobrado: sozinho,
                 # o Qt o leria como mnemônico (some do texto e vira atalho Alt).
-                link = blocos.botao(estilo.mono("🔗") + " " + titulo.replace("&", "&&"),
+                link = blocos.botao(titulo.replace("&", "&&"),
                                     altura=22, tamanho_fonte=11,
                                     variante="fantasma")
                 link.setProperty("papel", "link")   # cor de link vem da folha (tokens `info`)
+                # O "🔗" virou o ícone, na cor do link (2026-10-20).
+                icones.aplicar(link, "external-link", papel_cor="info", tamanho=14)
                 # O sublinhado também é da folha (a regra `[papel="link"]`).
                 link.setStyleSheet(link.styleSheet() + " QPushButton { text-align: left;"
                                    f" padding: 0 {estilo.FOLGA_TEXTO_BOTAO_CTK}px; }}")

@@ -29,7 +29,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMessageBox, QSizePolicy, QVBoxLayout, QWidget
 
 from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA, MSG_LOGIN_PAGINA_PRINCIPAL
-from sigft.app_qt import estilo, file_dialogs, interface
+from sigft.app_qt import estilo, file_dialogs, icones, interface
 from sigft.app_qt.views.janelas import JanelaAcaoRobo, JanelaResumo, JanelaRevisaoPDM, JanelaSelecao
 from sigft.app_qt.widgets import blocos, controles, revisao_portal
 from sigft.app_qt.widgets.abas import Abas
@@ -87,20 +87,17 @@ def _titulo(texto: str):
     return _rotulo(texto, tamanho=16, negrito=True, papel="destaque")
 
 
-def _botao(texto: str, *, com_simbolo: bool = False, **kw):
-    """`blocos.botao` sem Enter: o Tk não ligava tecla nenhuma aos botões."""
-    b = blocos.botao(texto, **kw)
-    if com_simbolo:
-        # O "▶" do "Iniciar Robô de Edição": o Roboto não o tem, e o Noto Emoji
-        # desenharia o emoji "play" (um quadrado com o triângulo dentro).
-        estilo.botao_com_simbolos(b)
-    return b
+def _botao(texto: str, **kw):
+    """`blocos.botao` sem Enter: o Tk não ligava tecla nenhuma aos botões. (O
+    `com_simbolo`, a fonte do "▶", saiu em 2026-10-20: o "▶" virou ícone.)"""
+    return blocos.botao(texto, **kw)
 
 
 def _pintar(botao, variante: str) -> None:
     """O `configure(fg_color=...)` da interface antiga: troca a variante do botão
-    (a cor é da folha do tema)."""
+    (a cor é da folha do tema). O ícone, se o botão tem, segue a variante nova."""
     estilo.definir_variante(botao, variante)
+    icones.reaplicar(botao)
 
 
 def _cor_rotulo(rotulo, papel: str | None) -> None:
@@ -285,10 +282,12 @@ class ModuloCriaFichas(ModuleFrame):
                 b.setEnabled(False)
                 caixa.addWidget(b)
             grade.addWidget(coluna, 1)
-        self.btn_reset = _botao(estilo.mono("🗑️\nLimpar"), variante="perigo", largura=100,
+        self.btn_reset = _botao("Limpar", variante="perigo", largura=100,
                                 tamanho_fonte=14, negrito=True)
-        # sticky="nsew" nas duas linhas: a altura é a da grade (90), não a das
-        # duas linhas de texto (Ignored: o emoji não pode alargar a grade).
+        # O emoji da primeira linha virou o ícone (2026-10-20).
+        icones.aplicar(self.btn_reset, "trash-2")
+        # sticky="nsew" nas duas linhas: a altura é a da grade (90), não a do
+        # texto (Ignored: o conteúdo não pode alargar a grade).
         self.btn_reset.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Ignored)
         self.btn_reset.clicked.connect(self.resetar_processo)
         grade.addWidget(self.btn_reset)
@@ -336,9 +335,9 @@ class ModuloCriaFichas(ModuleFrame):
         self.rotulo_etapa2_edicao = _titulo("2. Execução em Massa")
         acoes.addWidget(self.rotulo_etapa2_edicao)
         acoes.addSpacing(20)                            # título (…, 10) + f_btns (10, …)
-        self.btn_run_edicao = _botao(estilo.mono("▶ Iniciar Robô de Edição"), variante="primario", altura=40,
-                                     tamanho_fonte=14, negrito=True,
-                                     com_simbolo=True)
+        self.btn_run_edicao = _botao("Iniciar Robô de Edição", variante="primario", altura=40,
+                                     tamanho_fonte=14, negrito=True)
+        icones.aplicar(self.btn_run_edicao, "play")   # era o "▶" (2026-10-20)
         self.btn_run_edicao.clicked.connect(self.run_edicao_thread)
         self.btn_run_edicao.setEnabled(False)
         acoes.addWidget(self.btn_run_edicao)

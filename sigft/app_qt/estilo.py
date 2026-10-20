@@ -549,21 +549,9 @@ QAbstractScrollArea[barra_nativa="true"] QScrollBar::sub-line {{
 """
 
 
-# --- E4.10: símbolos que o Roboto não tem ------------------------------------------
-# O "▶" da Criação de Fichas e o "⬇" do AutoSpec: o Roboto não os tem, e a reserva
-# da folha (Noto Emoji) desenha o EMOJI -- o triângulo/a seta dentro de um quadrado.
-# O Tk caía numa fonte de símbolos e mostrava só o desenho; estas são as de símbolos
-# de cada sistema (Windows, Linux, macOS), antes do Noto Emoji. Uso: na folha do
-# widget, `QPushButton { font-family: <FAMILIAS_COM_SIMBOLO>; }`. (Era local da
-# Criação de Fichas, E4.9.)
-FAMILIAS_COM_SIMBOLO = '"Roboto", "Segoe UI Symbol", "DejaVu Sans", "Apple Symbols", "Noto Emoji"'
-
-
-def botao_com_simbolos(botao) -> None:
-    """O botão com um símbolo que o Roboto não tem ("▶", "⬇"): acrescenta
-    `FAMILIAS_COM_SIMBOLO` à folha dele (só o desenho, como no Tk, e não o emoji
-    do Noto Emoji). Era repetido na Criação de Fichas e no AutoSpec."""
-    botao.setStyleSheet(f"{botao.styleSheet()} QPushButton {{ font-family: {FAMILIAS_COM_SIMBOLO}; }}")
+# (E4.10 tinha aqui `FAMILIAS_COM_SIMBOLO`/`botao_com_simbolos`, a fonte de
+# símbolos do "▶" e do "⬇" que o Roboto não tem. Os dois viraram ícone, em
+# `sigft/app_qt/icones.py`, em 2026-10-20, e a peça saiu.)
 
 
 # --- Cores que as telas e os widgets escreviam à mão (2026-10-20) -----------------

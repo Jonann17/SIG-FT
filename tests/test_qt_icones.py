@@ -129,3 +129,50 @@ def test_reaplicar_segue_a_variante_trocada(qapp):
     estilo.definir_variante(botao, "perigo")
     icones.reaplicar(botao)
     assert botao.icon().cacheKey() == icones.icone("trash-2", estilo.TEXTO_SOBRE_PERIGO).cacheKey()
+
+
+# --- onde os emoji viraram ícone ------------------------------------------------
+
+def test_menu_e_home_tem_icone(qt_interface, tmp_path, monkeypatch):
+    from sigft.app_qt import catalogo
+    from sigft.app_qt import main as qmain
+
+    monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))
+    janela = qmain.SIG_FT_App()
+    try:
+        assert janela.botao_home.property("icone") == "house"
+        assert janela.botao_home.text().strip() == "Home"
+        for alvo, botao in janela.botoes_menu.items():
+            assert botao.property("icone") == catalogo.ICONE_DA_TELA[alvo], alvo
+            assert not botao.icon().isNull(), alvo
+        home = janela.telas["Home"]
+        for alvo, card in home.cards.items():
+            assert card.icone.property("icone") == catalogo.ICONE_DA_TELA[alvo], alvo
+        for chave, botao in home.botoes_barra.items():
+            assert not botao.icon().isNull(), chave
+    finally:
+        janela.fechar_sem_perguntar = True
+        janela.close()
+        janela.deleteLater()
+
+
+@pytest.mark.parametrize("arquivo", sorted(
+    str(p.relative_to(RAIZ)) for p in (RAIZ / "sigft" / "app_qt").rglob("*.py")))
+def test_nenhum_botao_nasce_com_emoji(arquivo):
+    """O emoji num botão foi trocado pelo ícone: a guarda impede que volte.
+    Olha o primeiro argumento de `QPushButton(...)` e dos `*botao*(...)`."""
+    import re
+
+    emoji = re.compile("[\U0001F300-\U0001FAFF☀-➿⬀-⯿▶⏩-⏺]")
+    arvore = ast.parse((RAIZ / arquivo).read_text(encoding="utf-8"))
+    achados = []
+    for no in ast.walk(arvore):
+        if not isinstance(no, ast.Call) or not no.args:
+            continue
+        nome = getattr(no.func, "id", None) or getattr(no.func, "attr", "")
+        if nome != "QPushButton" and "botao" not in nome.lower():
+            continue
+        for parte in ast.walk(no.args[0]):
+            if isinstance(parte, ast.Constant) and isinstance(parte.value, str) and emoji.search(parte.value):
+                achados.append(f"{arquivo}:{no.lineno}: {parte.value!r}")
+    assert achados == []

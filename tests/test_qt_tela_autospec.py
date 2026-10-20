@@ -158,7 +158,8 @@ def test_monta_com_os_textos(tela):
     assert tela.btn_status.text() == "Selecionar _STATUS_PMIB"
     assert tela.btn_sheet.text() == "Selecionar Ficha (.xlsx)"
     assert tela.btn_refs.text() == "Adic. Manuais (.pdf)"
-    assert tela.btn_add.text().replace("︎", "") == "⬇ Adicionar à Fila ⬇"
+    # As setas das pontas viraram o ícone "arrow-down" (sistema visual, 2026-10-20).
+    assert tela.btn_add.text() == "Adicionar à Fila"
     assert tela.btn_run.text() == "INICIAR PROCESSAMENTO DA FILA"
     assert tela.btn_conf_salvar.text() == "SALVAR CONFERÊNCIA (.txt)"
     assert tela.btn_conf_importar.text() == "IMPORTAR CONFERÊNCIA (.txt)"
@@ -221,14 +222,13 @@ def test_cancelar_o_dialogo_nao_muda_nada(tela):
     assert tela.lbl_sheet.property("papel") == "legenda"
 
 
-def test_a_seta_do_adicionar_sai_da_fonte_de_simbolos(tela):
-    # O Roboto não tem o "⬇", e o Noto Emoji o desenha como emoji (a seta dentro
-    # de um quadrado). O Tk caía numa fonte de símbolos: só a seta. A mesma lista
-    # de famílias do "▶" da Criação de Fichas, agora no `estilo`.
-    from sigft.app_qt import estilo
-    folha = tela.btn_add.styleSheet()
-    assert estilo.FAMILIAS_COM_SIMBOLO in folha
-    assert folha.index("Segoe UI Symbol") < folha.index("DejaVu Sans") < folha.index("Noto Emoji")
+def test_a_seta_do_adicionar_e_o_icone(tela):
+    # Era o "⬇" do texto, numa fonte de símbolos (o Roboto não o tem, e o Noto
+    # Emoji o desenhava dentro de um quadrado). Desde 2026-10-20 é o ícone
+    # Lucide, na cor do texto do botão, e a fonte de símbolos saiu do `estilo`.
+    assert tela.btn_add.property("icone") == "arrow-down"
+    assert not tela.btn_add.icon().isNull()
+    assert "⬇" not in tela.btn_add.text()
 
 
 def test_enter_nao_dispara_nenhum_botao(tela, qtbot, monkeypatch):
@@ -507,9 +507,11 @@ def test_mostrar_a_conferencia_com_as_marcacoes(tela):
     cab = [r.text() for r in tela.cabecalhos_conf]
     assert cab[0].endswith(" FICHA_0084.xlsx  —  DISJUNTOR TRIPOLAR 400A")
     assert cab[0].replace("︎", "").startswith("📄 ")
-    links = {k: b.text().replace("︎", "") for k, b in tela.links_conf.items()}
-    assert links == {(0, 0): "🔗 3VA Datasheet", (0, 1): "🔗 Minnie Mouse T-shirt",
-                     (1, 0): "🔗 https://ex.org/rele.pdf"}       # sem título: a URL
+    # O "🔗" da frente virou o ícone "external-link" (sistema visual, 2026-10-20).
+    links = {k: b.text() for k, b in tela.links_conf.items()}
+    assert links == {(0, 0): "3VA Datasheet", (0, 1): "Minnie Mouse T-shirt",
+                     (1, 0): "https://ex.org/rele.pdf"}       # sem título: a URL
+    assert {b.property("icone") for b in tela.links_conf.values()} == {"external-link"}
     assert {k: c.isChecked() for k, c in tela.marcados_conf.items()} == {
         (0, 0): False, (0, 1): True, (1, 0): False}
     assert tela.rotulo_conf_vazia is None
@@ -523,7 +525,7 @@ def test_material_e_titulo_cortados_e_sem_mono_no_dado(tela):
     c.registrar("/lote/x.xlsx", material, [{"url": "https://a.b/c", "title": titulo}])
     tela._conferencia_mostrar(c)
     assert tela.cabecalhos_conf[0].text().endswith("  —  " + material[:60])
-    assert tela.links_conf[(0, 0)].text().endswith(" " + titulo[:70])
+    assert tela.links_conf[(0, 0)].text() == titulo[:70]   # sem o "🔗 " da frente (2026-10-20)
 
 
 def test_o_link_abre_no_navegador(tela, monkeypatch):
@@ -554,7 +556,6 @@ def test_titulo_com_e_comercial_aparece_inteiro_e_sem_atalho(tela):
     # botão ganha um atalho Alt (com este título, Alt+Espaço -- o menu da janela
     # no Windows). O título é o que a pessoa lê para julgar o documento.
     from PySide6.QtCore import Qt
-    from sigft.app_qt import estilo
     titulo = "Products & Solutions | R&S"
     c = conf_mod.Conferencia()
     c.registrar("/lote/x.xlsx", "MATERIAL", [{"url": "https://r-s.com/a", "title": titulo}])
@@ -564,7 +565,7 @@ def test_titulo_com_e_comercial_aparece_inteiro_e_sem_atalho(tela):
     # O texto como o Qt o desenha (mnemônicos processados) é o título inteiro.
     fm = link.fontMetrics()
     assert (fm.size(Qt.TextFlag.TextShowMnemonic, link.text())
-            == fm.size(0, estilo.mono("🔗") + " " + titulo))
+            == fm.size(0, titulo))   # o "🔗" virou ícone (2026-10-20)
 
 
 def test_rotulos_com_dado_da_pessoa_sao_texto_puro(tela):

@@ -115,7 +115,9 @@ def test_monta_com_os_textos(tela):
     assert tela.lbl_score.text() == "Nota Mínima: 90%"
     assert tela.slider.value() == 90 and (tela.slider.minimum(), tela.slider.maximum()) == (0, 100)
     # Revisão final: a engrenagem vai em preto e branco, como nas outras telas.
-    assert tela.btn_config.text() == tela_mod.estilo.mono("⚙️ Configurar Pesos")
+    # O "⚙️" virou o ícone "settings" (sistema visual, 2026-10-20).
+    assert tela.btn_config.text() == "Configurar Pesos"
+    assert tela.btn_config.property("icone") == "settings"
     assert "\ufe0f" not in tela.btn_config.text()
     assert tela.btn_run.text() == "INICIAR PROCESSAMENTO"
     assert tela.btn_relatorio.text() == "GERAR RELATÓRIO PARA O FORNECEDOR (.xlsx)"

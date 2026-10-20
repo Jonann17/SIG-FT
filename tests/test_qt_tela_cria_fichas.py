@@ -232,7 +232,8 @@ def test_monta_com_os_textos_e_estados(tela):
     assert tela.btn_run_auto.text() == "4. Robô Web"
     assert tela.btn_resumo.text() == "Ver Resumo"
     assert tela.btn_save.text() == "5. Salvar no Excel"
-    assert tela.btn_reset.text() == estilo.mono("🗑️\nLimpar")      # emoji fixo: preto e branco
+    # O "🗑️" da primeira linha virou o ícone "trash-2" (sistema visual, 2026-10-20).
+    assert tela.btn_reset.text() == "Limpar" and tela.btn_reset.property("icone") == "trash-2"
     for b in (tela.btn_run_ai, tela.btn_run_auto, tela.btn_resumo, tela.btn_save):
         assert not b.isEnabled()
     assert tela.btn_reset.isEnabled() and tela.btn_pmib.isEnabled()
@@ -245,7 +246,9 @@ def test_monta_com_os_textos_e_estados(tela):
     assert tela.btn_excel_edicao.text() == "Abrir Excel e Selecionar"
     assert tela.lbl_status_edicao.text() == "Nenhum item selecionado."
     assert tela.rotulo_etapa2_edicao.text() == "2. Execução em Massa"
-    assert tela.btn_run_edicao.text() == estilo.mono("▶ Iniciar Robô de Edição")
+    # O "▶" virou o ícone "play" (2026-10-20).
+    assert tela.btn_run_edicao.text() == "Iniciar Robô de Edição"
+    assert tela.btn_run_edicao.property("icone") == "play"
     assert not tela.btn_run_edicao.isEnabled()
     assert tela.progress_edicao.fracao == 0.0
 
@@ -272,10 +275,11 @@ def test_cores_dos_botoes_e_rotulos(tela):
         assert r.property("papel") is None and "color" not in _folha(r), r.text()
     assert "background" not in tela.progress.styleSheet()   # o progresso é a `primaria` da folha
     assert "background" not in tela.progress_edicao.styleSheet()
-    # O "▶" sai da fonte de símbolos (só o triângulo, como no Tk), não do Noto
-    # Emoji (o "play" dentro de um quadrado).
-    familias = _folha(tela.btn_run_edicao)
-    assert familias.index("Segoe UI Symbol") < familias.index("DejaVu Sans") < familias.index("Noto Emoji")
+    # O "▶" saía de uma fonte de símbolos (o Roboto não o tem, e o Noto Emoji
+    # desenhava o "play" dentro de um quadrado). Desde 2026-10-20 é o ícone
+    # Lucide, na cor do texto do botão: a fonte de símbolos saiu.
+    assert "font-family" not in _folha(tela.btn_run_edicao)
+    assert not tela.btn_run_edicao.icon().isNull()
     assert not hasattr(tela.chk_pular, "_cor_marcada")   # a caixa pinta com a paleta do tema
 
 
@@ -1269,7 +1273,6 @@ def test_tarefas_em_thread_comum(tela, robo, qtbot):
 # --- medidas --------------------------------------------------------------------------------
 
 def _medir(qt_interface, qtbot, altura=850):
-    from sigft.app_qt import estilo
 
     qt_interface.setStyleSheet(estilo.folha_de_estilo())
     t = tela_mod.ModuloCriaFichas(None, None)

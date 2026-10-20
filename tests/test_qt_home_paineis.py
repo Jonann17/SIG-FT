@@ -162,7 +162,8 @@ def _janelas_abertas(home):
 def test_textos_iguais_aos_da_home_antiga():
     """Os textos que a Home da interface antiga mostrava (eram comparados com
     ela; ela saiu em 2026-10-15, e os valores ficam travados aqui)."""
-    assert home_mod.TEXTO_BOTAO_ATUALIZACOES == "\U0001F504  Atualizações"
+    # Sem o emoji desde 2026-10-20: o desenho é o ícone (`ICONE_DA_BARRA`).
+    assert home_mod.TEXTO_BOTAO_ATUALIZACOES == "Atualizações"
     assert home_mod.TEXTO_CANAL_TESTES == "Versões de teste"
     assert home_mod.HomeView.ROTULO_PROVIDER_IA == {
         "gemini": "Gemini (chave direta do Google)",
@@ -215,17 +216,19 @@ def test_desenho_do_mural_igual_ao_da_home_antiga():
 
 def test_barra_na_ordem_e_com_as_cores_da_tela_antiga(home):
     # 2026-10-20: cada botão da barra é uma variante (a cor é da folha do tema).
+    # 2026-10-20: o emoji da frente do texto virou o ícone Lucide do botão.
     esperado = [
-        ("atividades", "\U0001F4CB  Atividades do dia", "primario"),
-        ("modelos", "\U0001F916  Modelos de IA", "primario"),
-        ("gastos", "\U0001F4B0  Gastos de IA", "primario"),
-        ("chaves", "\U0001F511  Chaves de API", "secundario"),
-        ("atualizacoes", home_mod.TEXTO_BOTAO_ATUALIZACOES, "secundario"),
+        ("atividades", "Atividades do dia", "primario", "clipboard-check"),
+        ("modelos", "Modelos de IA", "primario", "bot"),
+        ("gastos", "Gastos de IA", "primario", "circle-dollar-sign"),
+        ("chaves", "Chaves de API", "secundario", "key-round"),
+        ("atualizacoes", home_mod.TEXTO_BOTAO_ATUALIZACOES, "secundario", "refresh-cw"),
     ]
-    assert list(home.botoes_barra) == [chave for chave, _t, _c in esperado]
-    for chave, texto, cor in esperado:
+    assert list(home.botoes_barra) == [chave for chave, _t, _c, _i in esperado]
+    for chave, texto, cor, icone in esperado:
         botao = home.botoes_barra[chave]
-        assert botao.text() == estilo.mono(texto)
+        assert botao.text() == texto
+        assert botao.property("icone") == icone and not botao.icon().isNull(), chave
         assert botao.property("variante") == cor, chave
         assert "background" not in botao.styleSheet(), chave
     assert home.btn_atualizacoes is home.botoes_barra["atualizacoes"]
@@ -240,14 +243,14 @@ def test_atualizacoes_pergunta_agora_e_o_botao_volta_ao_normal(home, monkeypatch
     home.btn_atualizacoes.click()
 
     assert not home.btn_atualizacoes.isEnabled(), "dois cliques seriam duas consultas"
-    assert home.btn_atualizacoes.text() == estilo.mono("\U0001F504  Procurando...")
+    assert home.btn_atualizacoes.text() == "Procurando..."   # sem emoji: o ícone fica (2026-10-20)
     [(janela, kw)] = pedidos
     assert janela is home.controller, "o aviso nasce da janela principal, não da Home"
 
     kw["ao_terminar"]()
 
     assert home.btn_atualizacoes.isEnabled()
-    assert home.btn_atualizacoes.text() == estilo.mono(home_mod.TEXTO_BOTAO_ATUALIZACOES)
+    assert home.btn_atualizacoes.text() == home_mod.TEXTO_BOTAO_ATUALIZACOES
 
 
 def test_versoes_de_teste_e_a_caixa_do_ctk_e_lembra(qt_interface, qtbot, rede, monkeypatch):
@@ -342,7 +345,8 @@ def test_area_de_chaves_com_os_campos_e_os_valores_atuais(home):
     assert [r.text() for r in home.rotulos_chaves_api.values()] == [r for _k, r in home_mod.CHAVES_API]
     assert home.entries["GEMINI"].text() == CHAVES["GEMINI"]
     assert home.entries["LLAMA"].text() == ""
-    assert home.lbl_titulo_chaves_api.text() == estilo.mono("🔑 Configuração de Chaves API (Global)")
+    # O emoji do título saiu em 2026-10-20 (o ícone fica no botão da barra).
+    assert home.lbl_titulo_chaves_api.text() == "Configuração de Chaves API (Global)"
     assert home.btn_salvar_chaves.text() == "Salvar Chaves"
 
 
@@ -422,7 +426,7 @@ def test_sem_chave_nenhuma_o_painel_explica(qt_interface, qtbot, rede, mensagens
 
 def test_provedores_com_chave_e_o_primeiro_quando_nada_salvo(home, rede):
     home.abrir_janela_modelos_ia()
-    assert home.lbl_titulo_modelos_ia.text() == estilo.mono("🤖 Modelos de IA")
+    assert home.lbl_titulo_modelos_ia.text() == "Modelos de IA"   # sem o emoji (2026-10-20)
     assert _itens(home.opt_provider_ia) == [ROTULO_GEMINI, ROTULO_OPENROUTER]
     assert home.opt_provider_ia.currentText() == ROTULO_GEMINI
     favs = catalogo.modelos_recomendados("gemini")
@@ -821,7 +825,7 @@ def test_gastos_mostra_o_relatorio_e_atualiza(home, rede):
     from sigft.core.llm import usage
 
     home.abrir_janela_gastos_ia()
-    assert home.lbl_titulo_gastos_ia.text() == estilo.mono("💰 Gastos de IA")
+    assert home.lbl_titulo_gastos_ia.text() == "Gastos de IA"   # sem o emoji (2026-10-20)
     assert _texto(home.lbl_gastos_ia) == usage.formatar_relatorio_texto(RELATORIO)
     rede.relatorio = {}
     home.btn_atualizar_gastos_ia.click()

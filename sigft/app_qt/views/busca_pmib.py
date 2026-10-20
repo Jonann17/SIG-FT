@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QRadioButton, QVBoxLayout, QWidget,
 )
 
-from sigft.app_qt import estilo, file_dialogs, interface
+from sigft.app_qt import estilo, file_dialogs, icones, interface
 from sigft.app_qt.widgets import blocos, controles
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.core import plataforma
@@ -144,9 +144,10 @@ class CartaoResultado(QFrame):
         linha_botoes = QHBoxLayout()
         linha_botoes.setContentsMargins(5, 0, 0, 0)     # botões: padx=15 (10 já vêm do cartão)
         linha_botoes.setSpacing(10)                     # "Abrir Arquivo": padx=(0, 10)
-        self.botao_arquivo = _botao_cinza(estilo.mono("📄 Abrir Arquivo"), 120)
+        # Os emoji dos dois botões viraram ícone (Lucide, 2026-10-20).
+        self.botao_arquivo = icones.aplicar(_botao_cinza("Abrir Arquivo", 120), "file", tamanho=14)
         self.botao_arquivo.clicked.connect(lambda: abrir_arquivo(caminho_arq))
-        self.botao_pasta = _botao_cinza(estilo.mono("📁 Abrir Pasta"), 120)
+        self.botao_pasta = icones.aplicar(_botao_cinza("Abrir Pasta", 120), "folder-open", tamanho=14)
         self.botao_pasta.clicked.connect(lambda: abrir_pasta(caminho_pasta))
         linha_botoes.addWidget(self.botao_arquivo)
         linha_botoes.addWidget(self.botao_pasta)
@@ -300,8 +301,9 @@ class ModuloBuscaPMIB(ModuleFrame):
         linha.addSpacing(5)
         linha.addWidget(self.entry_termo)
         linha.addSpacing(15)                            # campo (…, 5) + botão (10, …)
-        self.btn_search = blocos.botao(estilo.mono("🔍 PESQUISAR"), variante="primario", largura=150,
+        self.btn_search = blocos.botao("PESQUISAR", variante="primario", largura=150,
                                        altura=28, negrito=True)
+        icones.aplicar(self.btn_search, "search", tamanho=16)   # era o "🔍" (2026-10-20)
         self.btn_search.clicked.connect(self.iniciar_busca)
         linha.addWidget(self.btn_search)
         linha.addStretch()

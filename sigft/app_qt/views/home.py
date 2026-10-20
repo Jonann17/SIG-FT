@@ -36,9 +36,8 @@ from shiboken6 import isValid
 
 from sigft import config as sigft_config
 from sigft.app import textos_dicas
-from sigft.app_qt import atualizacao, estilo, interface
-from sigft.app_qt.catalogo import MODULOS
-from sigft.app_qt.estilo import mono
+from sigft.app_qt import atualizacao, estilo, icones, interface
+from sigft.app_qt.catalogo import ICONE_DA_TELA, MODULOS
 from sigft.app_qt.widgets import blocos, controles, dialogs, mural
 from sigft.app_qt.widgets.module_frame import aplicar_dicas
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
@@ -48,9 +47,10 @@ from sigft.core.llm import usage as llm_usage
 from sigft.services import updater
 
 # O botão da barra que procura versão nova. Constante porque dois lugares
-# precisam concordar: quem cria o botão e quem o devolve ao normal.
-TEXTO_BOTAO_ATUALIZACOES = "\U0001F504  Atualizações"
-TEXTO_PROCURANDO = "\U0001F504  Procurando..."
+# precisam concordar: quem cria o botão e quem o devolve ao normal. Sem emoji
+# desde 2026-10-20: o desenho é o ícone (`ICONE_DA_BARRA`).
+TEXTO_BOTAO_ATUALIZACOES = "Atualizações"
+TEXTO_PROCURANDO = "Procurando..."
 # [2026-10-07] O canal de testes: marcada, a atualização oferece também
 # pré-lançamentos. Ver services/updater.py.
 TEXTO_CANAL_TESTES = "Versões de teste"
@@ -58,11 +58,17 @@ TEXTO_CANAL_TESTES = "Versões de teste"
 # A barra (`_criar_barra_de_botoes` de lá): chave, texto, variante do botão e o que
 # abre. A cor de cada um é a da variante, na folha do tema. O "Atualizações" vem depois, fora da lista, porque o texto muda.
 BARRA = [
-    ("atividades", "\U0001F4CB  Atividades do dia", "primario", "abrir_mural_atividades"),
-    ("modelos", "\U0001F916  Modelos de IA", "primario", "abrir_janela_modelos_ia"),
-    ("gastos", "\U0001F4B0  Gastos de IA", "primario", "abrir_janela_gastos_ia"),
-    ("chaves", "\U0001F511  Chaves de API", "secundario", "abrir_janela_chaves_api"),
+    ("atividades", "Atividades do dia", "primario", "abrir_mural_atividades"),
+    ("modelos", "Modelos de IA", "primario", "abrir_janela_modelos_ia"),
+    ("gastos", "Gastos de IA", "primario", "abrir_janela_gastos_ia"),
+    ("chaves", "Chaves de API", "secundario", "abrir_janela_chaves_api"),
 ]
+# O ícone de cada botão da barra (Lucide, `sigft/app_qt/icones.py`): era o
+# emoji do começo do texto até 2026-10-20.
+ICONE_DA_BARRA = {
+    "atividades": "clipboard-check", "modelos": "bot", "gastos": "circle-dollar-sign",
+    "chaves": "key-round", "atualizacoes": "refresh-cw",
+}
 COR_BOTAO_ATUALIZACOES = "secundario"   # variante (2026-10-20)
 
 # As chaves do painel "Chaves de API" (o `keys_info` de lá, sem o valor padrão,
@@ -128,8 +134,9 @@ def _rotulo(texto: str, fonte: tuple = FONTE_CTK, *, largura_minima: int | None 
 
 
 def _titulo_painel(texto: str) -> QLabel:
-    """O título em negrito com emoji dos painéis (rótulo fixo: o emoji vai em P&B)."""
-    return _rotulo(mono(texto), FONTE_TITULO_PAINEL)
+    """O título em negrito dos painéis. O emoji da frente saiu em 2026-10-20: o
+    ícone fica no botão da barra que abre o painel."""
+    return _rotulo(texto, FONTE_TITULO_PAINEL)
 
 
 class _Texto(QLabel):
@@ -264,7 +271,16 @@ class _Card(QFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
-        layout.addWidget(QLabel(titulo, objectName="card_titulo"))
+        # O ícone da tela ao lado do título, na cor dele (`primaria`): o mesmo
+        # do menu (`catalogo.ICONE_DA_TELA`, 2026-10-20).
+        topo = QHBoxLayout()
+        topo.setContentsMargins(0, 0, 0, 0)
+        topo.setSpacing(8)
+        self.icone = QLabel(objectName="card_icone")
+        icones.aplicar(self.icone, ICONE_DA_TELA.get(alvo, ""), papel_cor="primaria", tamanho=18)
+        topo.addWidget(self.icone)
+        topo.addWidget(QLabel(titulo, objectName="card_titulo"), 1)
+        layout.addLayout(topo)
         desc = QLabel(descricao, objectName="card_desc")
         desc.setWordWrap(True)
         layout.addWidget(desc)
@@ -379,7 +395,7 @@ class HomeView(QScrollArea):
         barra.setSpacing(0)
         self.botoes_barra = {}
         for chave, texto, variante, metodo in BARRA:
-            botao = self._botao_da_barra(texto, variante)
+            botao = self._botao_da_barra(texto, variante, ICONE_DA_BARRA[chave])
             botao.clicked.connect(lambda _=False, m=metodo: getattr(self, m)())
             self.botoes_barra[chave] = botao
             barra.addWidget(botao)
@@ -388,7 +404,8 @@ class HomeView(QScrollArea):
         # [2026-09-25] Fora da lista porque o texto muda enquanto procura. A
         # abertura do app já pergunta sozinha, mas CALADA; este botão é o
         # caminho que responde.
-        self.btn_atualizacoes = self._botao_da_barra(TEXTO_BOTAO_ATUALIZACOES, COR_BOTAO_ATUALIZACOES)
+        self.btn_atualizacoes = self._botao_da_barra(
+            TEXTO_BOTAO_ATUALIZACOES, COR_BOTAO_ATUALIZACOES, ICONE_DA_BARRA["atualizacoes"])
         self.btn_atualizacoes.clicked.connect(self.procurar_atualizacoes)
         self.botoes_barra["atualizacoes"] = self.btn_atualizacoes
         barra.addWidget(self.btn_atualizacoes)
@@ -409,10 +426,11 @@ class HomeView(QScrollArea):
         return barra
 
     @staticmethod
-    def _botao_da_barra(texto: str, variante: str):
+    def _botao_da_barra(texto: str, variante: str, icone: str):
         # height=40, font=("Roboto", 13, "bold"); a largura é a do CTkButton.
-        botao = blocos.botao(mono(texto), variante=variante, altura=estilo.ALTURA_BOTAO_BARRA,
+        botao = blocos.botao(texto, variante=variante, altura=estilo.ALTURA_BOTAO_BARRA,
                              tamanho_fonte=13, negrito=True, largura_minima=estilo.LARGURA_BOTAO_CTK)
+        icones.aplicar(botao, icone)
         dialogs.sem_tecla(botao)
         return botao
 
@@ -426,12 +444,12 @@ class HomeView(QScrollArea):
         """Pergunta ao GitHub agora e SEMPRE responde (ver `app_qt/atualizacao.py`)."""
         botao = self.btn_atualizacoes
         botao.setEnabled(False)
-        botao.setText(mono(TEXTO_PROCURANDO))
+        botao.setText(TEXTO_PROCURANDO)
 
         def ao_terminar():
             if _vivo(botao):
                 botao.setEnabled(True)
-                botao.setText(mono(TEXTO_BOTAO_ATUALIZACOES))
+                botao.setText(TEXTO_BOTAO_ATUALIZACOES)
 
         atualizacao.procurar_agora(self.controller, ao_terminar=ao_terminar)
 
@@ -544,7 +562,7 @@ class HomeView(QScrollArea):
         """O painel de configuração das chaves de API, dentro de `parent`."""
         _casca, quadro, coluna = _painel(parent)
         self.frame_chaves_api = quadro
-        self.lbl_titulo_chaves_api = _titulo_painel("🔑 Configuração de Chaves API (Global)")
+        self.lbl_titulo_chaves_api = _titulo_painel("Configuração de Chaves API (Global)")
         _empilhar(coluna, self.lbl_titulo_chaves_api, cima=10, baixo=10)
 
         # [SEGURANÇA] Sem valores padrão escritos aqui: as chaves vêm do .env ou
@@ -616,7 +634,7 @@ class HomeView(QScrollArea):
         # Guardado para o painel se remontar ONDE estava (`_recarregar_painel_modelos_ia`).
         self._parent_modelos_ia = parent
 
-        self.lbl_titulo_modelos_ia = _titulo_painel("🤖 Modelos de IA")
+        self.lbl_titulo_modelos_ia = _titulo_painel("Modelos de IA")
         _empilhar(coluna, self.lbl_titulo_modelos_ia, cima=10, baixo=10)
         self.lbl_descricao_modelos_ia = _Texto(DESCRICAO_MODELOS_IA, papel="legenda",
                                                altura_linha=LINHA_TK_ROBOTO_12)
@@ -736,7 +754,8 @@ class HomeView(QScrollArea):
 
         # --- 7. BOTÕES ---
         linha = _linha(coluna, cima=10, baixo=15)
-        self.btn_aplicar_recomendados_ia = _botao(mono("✨ Aplicar recomendados"), variante="primario")
+        self.btn_aplicar_recomendados_ia = _botao("Aplicar recomendados", variante="primario")
+        icones.aplicar(self.btn_aplicar_recomendados_ia, "sparkles")
         self.btn_aplicar_recomendados_ia.clicked.connect(self._aplicar_recomendados_ia)
         linha.addWidget(self.btn_aplicar_recomendados_ia)
         linha.addSpacing(10)
@@ -1083,7 +1102,7 @@ class HomeView(QScrollArea):
         pasta de logs". Sem registros, a mensagem amigável do próprio relatório."""
         _casca, quadro, coluna = _painel(parent)
         self.frame_gastos_ia = quadro
-        self.lbl_titulo_gastos_ia = _titulo_painel("💰 Gastos de IA")
+        self.lbl_titulo_gastos_ia = _titulo_painel("Gastos de IA")
         _empilhar(coluna, self.lbl_titulo_gastos_ia, cima=10, baixo=10)
 
         self.lbl_gastos_ia = _Texto("Carregando...", altura_linha=LINHA_TK_ROBOTO_12)

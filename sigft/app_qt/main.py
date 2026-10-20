@@ -209,7 +209,9 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         nome.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(nome)
         lay.addSpacing(22)
-        home = QPushButton(estilo.mono("  🏠  Home"), objectName="home")
+        # O emoji virou ícone (Lucide, na cor do tema: sistema visual, 2026-10-20).
+        home = QPushButton(" Home", objectName="home")
+        icones.aplicar(home, catalogo.ICONE_DA_TELA["Home"], tamanho=16)
         self.botao_home = home
         blocos.sem_tecla(home)   # os botões da barra (CTkButton) nunca pegam o foco
         home.clicked.connect(self.show_home)
@@ -225,9 +227,10 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
                 lay.addSpacing(5)
                 continue
             _tipo, texto, alvo = item
-            botao = QPushButton(f"  {texto}")
+            botao = QPushButton(f" {texto}")
             blocos.sem_tecla(botao)
             botao.setProperty("menu", True)
+            icones.aplicar(botao, catalogo.ICONE_DA_TELA[alvo], tamanho=16)
             botao.setEnabled(alvo not in catalogo.TELAS_BLOQUEADAS)
             botao.setToolTip(catalogo.dica_do_menu(alvo))
             botao.clicked.connect(lambda _=False, a=alvo: self.show_frame(a))

@@ -29,9 +29,14 @@ def test_clique_no_card_inteiro_navega(qt_interface, qtbot):
 
 
 def test_icones_da_barra_em_preto_e_branco(qt_interface, qtbot):
+    # Era o emoji do texto, com o seletor preto e branco (U+FE0E). Desde
+    # 2026-10-20 é um ícone Lucide de traço, na cor do texto do botão.
     home = HomeView(controller=Controller())
     qtbot.addWidget(home)
-    assert "\ufe0e" in home.botoes_barra["atividades"].text()
+    botao = home.botoes_barra["atividades"]
+    assert botao.property("icone") == "clipboard-check"
+    assert not botao.icon().isNull()
+    assert botao.text() == "Atividades do dia"
 
 
 def test_canal_de_testes_lembra_a_escolha(qt_interface, qtbot, monkeypatch):

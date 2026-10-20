@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QVBoxLayout,
 )
 
-from sigft.app_qt import estilo, interface
+from sigft.app_qt import estilo, icones, interface
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets import pickers as app_pickers
 from sigft.app_qt.widgets.module_frame import ModuleFrame
@@ -171,8 +171,9 @@ class ModuloAnalyzer(ModuleFrame):
         controles.addWidget(self.slider)
         controles.addStretch()
         # Botão de Configurar Pesos
-        self.btn_config = blocos.botao(estilo.mono("⚙️ Configurar Pesos"), largura=150, altura=28, tamanho_fonte=12,
+        self.btn_config = blocos.botao("Configurar Pesos", largura=150, altura=28, tamanho_fonte=12,
                                        variante="secundario")
+        icones.aplicar(self.btn_config, "settings", tamanho=16)   # era o emoji (2026-10-20)
         self.btn_config.clicked.connect(self.abrir_config_pesos)
         controles.addWidget(self.btn_config)
         criterios.addLayout(controles)

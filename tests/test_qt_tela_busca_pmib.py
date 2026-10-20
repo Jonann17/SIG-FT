@@ -68,7 +68,8 @@ def test_monta_com_os_textos(tela):
         "DESCRIÇÃO", "CÓDIGO DO MATERIAL", "CÓDIGO CMI", "MARCA/MODELO", "CÓDIGO PMIB"]
     assert tela.opt_coluna.currentText() == "DESCRIÇÃO"
     assert tela.entry_termo.placeholderText() == "Digite o que deseja encontrar..."
-    assert tela.btn_search.text() == estilo.mono("🔍 PESQUISAR")
+    # O "🔍" virou o ícone "search" (sistema visual, 2026-10-20).
+    assert tela.btn_search.text() == "PESQUISAR" and tela.btn_search.property("icone") == "search"
     assert tela.tipo_busca == "direcionada"
 
 
@@ -193,8 +194,9 @@ def test_janela_de_resultados(janela):
     assert c1.texto_caminho.isReadOnly() and c1.texto_amostra.isReadOnly()
     # Sem amostra, sem a caixa da amostra.
     assert c2.texto_amostra is None
-    assert c1.botao_arquivo.text() == estilo.mono("📄 Abrir Arquivo")
-    assert c1.botao_pasta.text() == estilo.mono("📁 Abrir Pasta")
+    # Os emoji dos botões viraram ícone Lucide (2026-10-20); o texto fica.
+    assert c1.botao_arquivo.text() == "Abrir Arquivo" and c1.botao_arquivo.property("icone") == "file"
+    assert c1.botao_pasta.text() == "Abrir Pasta" and c1.botao_pasta.property("icone") == "folder-open"
     assert janela.botao_fechar.text() == "Fechar"
 
 
