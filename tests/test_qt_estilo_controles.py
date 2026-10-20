@@ -41,11 +41,11 @@ def test_caixa_marcada_e_fundo_de_dialogo_como_no_ctk():
 
 
 def test_home_e_dialogos_usam_primario_onde_o_ctk_pintava_primary():
-    # E5.1: a barra pinta a cor da interface antiga no próprio botão (fg_color, com o hover
-    # do tema, que nenhuma variante tem); modelos e gastos continuam primary.
+    # 2026-10-20: a barra guarda a VARIANTE (a cor é da folha do tema); modelos e gastos
+    # são primários.
     from sigft.app_qt.views import home
     cores = {chave: cor for chave, _t, cor, _metodo in home.BARRA}
-    assert cores["modelos"] == theme.COLORS["primary"] and cores["gastos"] == theme.COLORS["primary"]
+    assert cores["modelos"] == "primario" and cores["gastos"] == "primario"
 
 
 # --- Aplicada a widgets de verdade (paridade medida nas capturas de 2026-10-08) ---

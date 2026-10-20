@@ -466,7 +466,8 @@ class ModuloAutoSpec(ModuleFrame):
                 # o Qt o leria como mnemônico (some do texto e vira atalho Alt).
                 link = blocos.botao(estilo.mono("🔗") + " " + titulo.replace("&", "&&"),
                                     altura=22, tamanho_fonte=11,
-                                    cor_texto=COR_LINK, cor_fundo="transparent", cor_hover=COR_LINK_HOVER)
+                                    variante="fantasma")
+                link.setProperty("papel", "link")   # cor de link vem da folha (tokens `info`)
                 link.setStyleSheet(link.styleSheet() + " QPushButton { text-align: left;"
                                    f" padding: 0 {estilo.FOLGA_TEXTO_BOTAO_CTK}px;"
                                    " text-decoration: underline; }")

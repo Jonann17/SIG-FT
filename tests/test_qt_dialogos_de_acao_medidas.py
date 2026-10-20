@@ -38,14 +38,11 @@ def test_excel_travado(qt_interface, qtbot):
 
 
 def test_tentar_novamente_com_o_hover_do_tema(qt_interface, qtbot):
-    # interface antiga: fg_color=primary SEM hover_color -> o hover é o do tema (#14375E),
-    # não o primary_hover da variante "primario".
-    from sigft.app import theme
-
+    # 2026-10-20: o botão não pinta mais a cor da interface antiga; é a variante
+    # "primario" e o hover vem da folha do tema.
     d = dialogs.RetryLockDialog(None, mensagem=MSG_EXCEL_BLOQUEADO, evento_espera=threading.Event(),
                                 resultado={})
     qtbot.addWidget(d)
     folha = d.botao_repetir.styleSheet()
-    assert d.botao_repetir.property("variante") is None
-    assert f"background: {theme.COLORS['primary']}" in folha
-    assert f"QPushButton:hover {{ background: {estilo.AZUL_CTK_HOVER}; }}" in folha
+    assert d.botao_repetir.property("variante") == "primario"
+    assert "background" not in folha

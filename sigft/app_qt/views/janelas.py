@@ -39,7 +39,6 @@ from PySide6.QtWidgets import (
 )
 
 from sigft.app import theme
-from sigft.app.theme import COLORS
 from sigft.app_qt import estilo, interface
 from sigft.app_qt.widgets import blocos, dialogos_selecao, dialogs
 # 2026-10-08: o que a revisão de PDMs mostra (confiança, ordem, "por quê",
@@ -86,12 +85,11 @@ def _rotulo(texto: str, fonte: tuple = theme.FONTE_CORPO, *, cor: str = COR_TEXT
     return r
 
 
-def _botao(texto: str, *, fundo: str | None = None, hover: str = estilo.AZUL_CTK_HOVER) -> QPushButton:
+def _botao(texto: str, *, variante: str | None = None) -> QPushButton:
     """CTkButton padrão destas janelas: 28 de altura e `width` 140 que o texto
-    largo alarga (`largura_minima`). `fundo` sem `hover` = o hover do tema: é o
-    que a interface antiga faz com `fg_color` sem `hover_color`."""
-    b = blocos.botao(texto, altura=28, largura_minima=estilo.LARGURA_BOTAO_CTK,
-                     cor_fundo=fundo, cor_hover=hover)
+    largo alarga (`largura_minima`). A cor vem da `variante` (2026-10-20): quem
+    pinta é a folha do tema, não o botão."""
+    b = blocos.botao(texto, altura=28, largura_minima=estilo.LARGURA_BOTAO_CTK, variante=variante)
     # Enter não aperta botão nenhum: o Tk não ligava tecla nestas janelas.
     b.setAutoDefault(False)
     b.setDefault(False)
@@ -247,9 +245,9 @@ class JanelaEscolherPDM(_Janela):
         layout.addSpacing(10)
 
         self.lbl_contagem = _rotulo("", cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO), alinhar="esquerda")
-        self.botao_usar = _botao("USAR ESTE PDM", fundo=COLORS["accent"])
+        self.botao_usar = _botao("USAR ESTE PDM", variante="primario")
         self.botao_usar.clicked.connect(self.confirmar)
-        self.botao_cancelar = _botao("Cancelar", fundo="#3A3A3A")
+        self.botao_cancelar = _botao("Cancelar", variante="secundario")
         self.botao_cancelar.clicked.connect(self.cancelar)
         # pack(side="right", padx=5) dos dois: 10 entre eles, 5 da borda.
         rodape = _faixa(self.lbl_contagem, None, self.botao_usar, self.botao_cancelar)
@@ -335,7 +333,7 @@ class JanelaRevisaoPDM(_Janela):  # Esc não fecha: herdado de JanelaQueAbre
                               alinhar="esquerda")
         self.botao_editar = _botao("Editar PDM Selecionado")
         self.botao_editar.clicked.connect(self.editar_pdm)
-        self.botao_confirmar = _botao("CONFIRMAR E AVANÇAR >>", fundo=VERDE_TK)
+        self.botao_confirmar = _botao("CONFIRMAR E AVANÇAR >>", variante="primario")
         self.botao_confirmar.clicked.connect(self.confirmar)
         # pack(side="right", padx=5) dos dois botões.
         faixa = _faixa(self.rotulo, None, self.botao_editar, self.botao_confirmar)
@@ -488,13 +486,13 @@ class DialogoAcaoRobo(_IgnoraEsc, QDialog):
         botoes.setSpacing(10)
         self.botao_retry = _botao("[0] Tentar Novamente (Mesmo PDM)")
         self.botao_retry.clicked.connect(lambda: self._responder("RETRY"))
-        self.botao_pular = _botao("[1] Pular este Item", fundo="#B8860B", hover="#DAA520")
+        self.botao_pular = _botao("[1] Pular este Item", variante="secundario")
         self.botao_pular.clicked.connect(lambda: self._responder("SKIP"))
         self.entry_pdm = QLineEdit()
         self.entry_pdm.setPlaceholderText("Novo código PDM...")
         self.botao_mudar = _botao("[2] Mudar PDM e Tentar")
         self.botao_mudar.clicked.connect(self._mudar_pdm)
-        self.botao_parar = _botao("[3] Parar Automação e Salvar", fundo=VERMELHO_TK, hover="#8B0000")
+        self.botao_parar = _botao("[3] Parar Automação e Salvar", variante="perigo")
         self.botao_parar.clicked.connect(lambda: self._responder("STOP"))
         botoes.addWidget(self.botao_retry)
         botoes.addWidget(self.botao_pular)
@@ -630,7 +628,7 @@ class JanelaRevisaoEdicao(_Janela):
         layout.addSpacing(10 + 15)
         self.atualizar_tabela()
 
-        self.botao_concluir = _botao("Concluir Revisão", fundo=COLORS["primary"])
+        self.botao_concluir = _botao("Concluir Revisão", variante="primario")
         self.botao_concluir.clicked.connect(self.close)
         layout.addWidget(self.botao_concluir, 0, Qt.AlignmentFlag.AlignHCenter)
         self._abrir()
@@ -679,7 +677,7 @@ class _PopupEdicao(_Janela):
         layout.addSpacing(5)
         layout.addWidget(self.entry_alvo)
         layout.addSpacing(5 + 20)
-        self.botao_salvar = _botao("Salvar Alteração", fundo=COLORS["primary"])
+        self.botao_salvar = _botao("Salvar Alteração", variante="primario")
         self.botao_salvar.clicked.connect(self.salvar)
         layout.addWidget(self.botao_salvar, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addStretch()

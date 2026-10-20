@@ -91,7 +91,7 @@ class JanelaPesos(QDialog):
                                              tela.max_var_points, folga=5)
 
         self.btn_salvar = blocos.botao("Salvar Pesos", largura=estilo.LARGURA_BOTAO_CTK, altura=28,
-                                       cor_fundo=COLORS["primary"])
+                                       variante="primario")
         # Enter num campo não salva: no Tk o Enter não fazia nada aqui.
         self.btn_salvar.setAutoDefault(False)
         self.btn_salvar.setDefault(False)
@@ -181,7 +181,7 @@ class ModuloAnalyzer(ModuleFrame):
         controles.addStretch()
         # Botão de Configurar Pesos
         self.btn_config = blocos.botao(estilo.mono("⚙️ Configurar Pesos"), largura=150, altura=28, tamanho_fonte=12,
-                                       cor_fundo=COR_BOTAO_CONFIG, cor_hover=COR_BOTAO_CONFIG_HOVER)
+                                       variante="secundario")
         self.btn_config.clicked.connect(self.abrir_config_pesos)
         controles.addWidget(self.btn_config)
         criterios.addLayout(controles)
@@ -235,8 +235,7 @@ class ModuloAnalyzer(ModuleFrame):
         # --- AÇÃO ---
         corpo.addSpacing(40)                     # cartão (…, 10) + botão (30, …)
         self.btn_run = blocos.botao("INICIAR PROCESSAMENTO", largura=300, altura=50, tamanho_fonte=15,
-                                    negrito=True, cor_fundo=COLORS["primary"],
-                                    cor_hover=COLORS["primary_hover"], cor_texto=COLORS["text_white"])
+                                    negrito=True, variante="primario")
         self.btn_run.clicked.connect(self.iniciar_analise)
         corpo.addWidget(self.btn_run, alignment=Qt.AlignmentFlag.AlignHCenter)
         corpo.addSpacing(8)
@@ -245,8 +244,7 @@ class ModuloAnalyzer(ModuleFrame):
         # existe relatorio depois de um lote rodar, e botao que promete o que
         # nao tem e pior que botao ausente.
         self.btn_relatorio = blocos.botao("GERAR RELATÓRIO PARA O FORNECEDOR (.xlsx)", largura=300,
-                                          altura=36, tamanho_fonte=12, cor_fundo=COLORS["primary"],
-                                          cor_hover=COLORS["primary_hover"])
+                                          altura=36, tamanho_fonte=12, variante="primario")
         self.btn_relatorio.setEnabled(False)
         self.btn_relatorio.clicked.connect(self._gerar_relatorio)
         corpo.addWidget(self.btn_relatorio, alignment=Qt.AlignmentFlag.AlignHCenter)

@@ -207,9 +207,9 @@ class FileQueueList(QWidget):
         coluna.addSpacing(5)
         # fg_color sem hover_color lá: o hover é o do tema (padrão de `cor_hover`).
         self.botao_adicionar = blocos.botao(texto_adicionar, largura=estilo.LARGURA_BOTAO_CTK, altura=28,
-                                            cor_fundo=COR_BOTAO_SELECAO)
+                                            variante="secundario")
         self.botao_remover = blocos.botao("Remover Seleção", largura=estilo.LARGURA_BOTAO_CTK, altura=28,
-                                          cor_fundo=theme.COLORS["danger"])
+                                          variante="perigo")
         self.botao_limpar = blocos.botao("Limpar Tudo", variante="contorno",
                                          largura=estilo.LARGURA_BOTAO_CTK, altura=28,
                                          cor_texto=estilo.TEXTO_BOTAO_CTK)

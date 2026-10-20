@@ -143,7 +143,7 @@ class ModuloCorrecaoPDM(ModuleFrame):
         self.rotulo_acoes.setStyleSheet(
             "QLabel { font-size: 12px; font-weight: bold; background: transparent;"
             f" color: {controles.COR_TEXTO_CTK}; }}")
-        self.btn_so_revisao = _botao("Só atualizar a revisão", 170, cor_fundo=COLORS["accent"])
+        self.btn_so_revisao = _botao("Só atualizar a revisão", 170, variante="primario")
         self.btn_so_revisao.clicked.connect(self._acao_so_revisao)
         self.btn_escolher_pdm = _botao("Escolher PDM...", 140, variante="cinza")
         self.btn_escolher_pdm.clicked.connect(self._acao_escolher_pdm)
@@ -175,9 +175,9 @@ class ModuloCorrecaoPDM(ModuleFrame):
         self.chk_apagar_vazias.setChecked(True)
         self.chk_conferir = controles.Interruptor("Conferir cada ficha antes de salvar",
                                                   cor_ligado=COLORS["primary"])
-        self.btn_parar = _botao("Parar", 90, cor_fundo=COR_PARAR, cor_hover=COR_PARAR_HOVER)
+        self.btn_parar = _botao("Parar", 90, variante="perigo")
         self.btn_parar.clicked.connect(self._parar)
-        self.btn_rodar = _botao("INICIAR CORREÇÃO", 190, cor_fundo=COLORS["accent"],
+        self.btn_rodar = _botao("INICIAR CORREÇÃO", 190, variante="primario",
                                 tamanho_fonte=13, negrito=True)
         self.btn_rodar.clicked.connect(self._rodar)
         rodape.addWidget(self.chk_apagar_vazias)

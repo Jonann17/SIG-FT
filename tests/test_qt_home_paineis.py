@@ -211,21 +211,20 @@ def test_desenho_do_mural_igual_ao_da_home_antiga():
 # =============================================================================
 
 def test_barra_na_ordem_e_com_as_cores_da_tela_antiga(home):
-    # CTkButton(fg_color=cor) sem hover_color: o hover é o do tema (#14375E).
+    # 2026-10-20: cada botão da barra é uma variante (a cor é da folha do tema).
     esperado = [
-        ("atividades", "\U0001F4CB  Atividades do dia", COLORS["accent"]),
-        ("modelos", "\U0001F916  Modelos de IA", COLORS["primary"]),
-        ("gastos", "\U0001F4B0  Gastos de IA", COLORS["primary"]),
-        ("chaves", "\U0001F511  Chaves de API", "#3A3A3A"),
-        ("atualizacoes", home_mod.TEXTO_BOTAO_ATUALIZACOES, "#3A3A3A"),
+        ("atividades", "\U0001F4CB  Atividades do dia", "primario"),
+        ("modelos", "\U0001F916  Modelos de IA", "primario"),
+        ("gastos", "\U0001F4B0  Gastos de IA", "primario"),
+        ("chaves", "\U0001F511  Chaves de API", "secundario"),
+        ("atualizacoes", home_mod.TEXTO_BOTAO_ATUALIZACOES, "secundario"),
     ]
     assert list(home.botoes_barra) == [chave for chave, _t, _c in esperado]
     for chave, texto, cor in esperado:
         botao = home.botoes_barra[chave]
         assert botao.text() == estilo.mono(texto)
-        folha = botao.styleSheet()
-        assert f"background: {cor}" in folha, chave
-        assert f"QPushButton:hover {{ background: {estilo.AZUL_CTK_HOVER}; }}" in folha, chave
+        assert botao.property("variante") == cor, chave
+        assert "background" not in botao.styleSheet(), chave
     assert home.btn_atualizacoes is home.botoes_barra["atualizacoes"]
 
 

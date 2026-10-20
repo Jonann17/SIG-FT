@@ -56,16 +56,16 @@ TEXTO_PROCURANDO = "\U0001F504  Procurando..."
 # pré-lançamentos. Ver services/updater.py.
 TEXTO_CANAL_TESTES = "Versões de teste"
 
-# A barra (`_criar_barra_de_botoes` de lá): chave, texto, cor de fundo e o que
+# A barra (`_criar_barra_de_botoes` de lá): chave, texto, variante do botão e o que
 # abre. CTkButton(fg_color=cor) SEM hover_color: o hover é o do tema (#14375E),
 # em todos. O "Atualizações" vem depois, fora da lista, porque o texto muda.
 BARRA = [
-    ("atividades", "\U0001F4CB  Atividades do dia", COLORS["accent"], "abrir_mural_atividades"),
-    ("modelos", "\U0001F916  Modelos de IA", COLORS["primary"], "abrir_janela_modelos_ia"),
-    ("gastos", "\U0001F4B0  Gastos de IA", COLORS["primary"], "abrir_janela_gastos_ia"),
-    ("chaves", "\U0001F511  Chaves de API", "#3A3A3A", "abrir_janela_chaves_api"),
+    ("atividades", "\U0001F4CB  Atividades do dia", "primario", "abrir_mural_atividades"),
+    ("modelos", "\U0001F916  Modelos de IA", "primario", "abrir_janela_modelos_ia"),
+    ("gastos", "\U0001F4B0  Gastos de IA", "primario", "abrir_janela_gastos_ia"),
+    ("chaves", "\U0001F511  Chaves de API", "secundario", "abrir_janela_chaves_api"),
 ]
-COR_BOTAO_ATUALIZACOES = "#3A3A3A"
+COR_BOTAO_ATUALIZACOES = "secundario"   # variante (2026-10-20)
 
 # As chaves do painel "Chaves de API" (o `keys_info` de lá, sem o valor padrão,
 # que é sempre vazio: as chaves vêm do .env ou do api_config.json).
@@ -180,10 +180,10 @@ class _Texto(QLabel):
             self.setText(self.texto_puro)
 
 
-def _botao(texto: str, *, cor_fundo: str | None = None, variante: str | None = None,
+def _botao(texto: str, *, variante: str | None = None,
            largura_minima: int = estilo.LARGURA_BOTAO_CTK, **kw):
     """CTkButton de 28 px: largura 140 (ou o texto + 7 de cada lado), sem foco."""
-    b = blocos.botao(texto, variante=variante, cor_fundo=cor_fundo, altura=28,
+    b = blocos.botao(texto, variante=variante, altura=28,
                      largura_minima=largura_minima, **kw)
     dialogs.sem_tecla(b)
     return b
@@ -391,8 +391,8 @@ class HomeView(QScrollArea):
         barra = QHBoxLayout()
         barra.setSpacing(0)
         self.botoes_barra = {}
-        for chave, texto, cor, metodo in BARRA:
-            botao = self._botao_da_barra(texto, cor)
+        for chave, texto, variante, metodo in BARRA:
+            botao = self._botao_da_barra(texto, variante)
             botao.clicked.connect(lambda _=False, m=metodo: getattr(self, m)())
             self.botoes_barra[chave] = botao
             barra.addWidget(botao)
@@ -422,9 +422,9 @@ class HomeView(QScrollArea):
         return barra
 
     @staticmethod
-    def _botao_da_barra(texto: str, cor: str):
+    def _botao_da_barra(texto: str, variante: str):
         # height=40, font=("Roboto", 13, "bold"); a largura é a do CTkButton.
-        botao = blocos.botao(mono(texto), cor_fundo=cor, altura=estilo.ALTURA_BOTAO_BARRA,
+        botao = blocos.botao(mono(texto), variante=variante, altura=estilo.ALTURA_BOTAO_BARRA,
                              tamanho_fonte=13, negrito=True, largura_minima=estilo.LARGURA_BOTAO_CTK)
         dialogs.sem_tecla(botao)
         return botao
@@ -580,7 +580,7 @@ class HomeView(QScrollArea):
             self.entries[key_id] = entry
             self.rotulos_chaves_api[key_id] = rotulo
 
-        self.btn_salvar_chaves = _botao("Salvar Chaves", cor_fundo=VERDE_TK)
+        self.btn_salvar_chaves = _botao("Salvar Chaves", variante="primario")
         self.btn_salvar_chaves.clicked.connect(self.salvar_chaves_api)
         _empilhar(coluna, self.btn_salvar_chaves, cima=10, baixo=10, centro=True)
 
@@ -753,7 +753,7 @@ class HomeView(QScrollArea):
         self.btn_aplicar_recomendados_ia.clicked.connect(self._aplicar_recomendados_ia)
         linha.addWidget(self.btn_aplicar_recomendados_ia)
         linha.addSpacing(10)
-        self.btn_salvar_selecao_ia = _botao("Salvar seleção", cor_fundo=VERDE_TK)
+        self.btn_salvar_selecao_ia = _botao("Salvar seleção", variante="primario")
         self.btn_salvar_selecao_ia.clicked.connect(self._salvar_selecao_modelos_ia)
         linha.addWidget(self.btn_salvar_selecao_ia)
         linha.addStretch()

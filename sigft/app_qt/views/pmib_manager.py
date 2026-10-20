@@ -113,7 +113,7 @@ class NovasListasDialog(QDialog):
                                             tamanho_fonte=13)
         # fg_color="gray" e hover #555555, escritos à mão na tela antiga.
         self.botao_ignorar = blocos.botao("Ignorar (Não Adicionar)", largura_minima=150, tamanho_fonte=13,
-                                          cor_fundo=estilo.cinza_tk("gray"), cor_hover="#555555")
+                                          variante="secundario")
         # Ela segura o worker: nenhuma tecla aperta um botão (Enter ou Espaço
         # não confirmam nem ignoram as listas no lugar da pessoa).
         for b in (self.botao_marcar, self.botao_desmarcar, self.botao_confirmar, self.botao_ignorar):

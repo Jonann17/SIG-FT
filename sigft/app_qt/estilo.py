@@ -275,6 +275,8 @@ QPushButton[variante="perigo"]:disabled {{ background: {p['superficie_alta']};
 QPushButton[variante="fantasma"] {{ background: transparent; border-color: transparent; color: {p['texto']}; }}
 QPushButton[variante="fantasma"]:hover {{ background: {p['superficie_alta']}; }}
 QPushButton[variante="fantasma"]:disabled {{ color: {p['texto_suave']}; }}
+QPushButton[variante="fantasma"][papel="link"] {{ color: {p['info']}; text-decoration: underline; }}
+QPushButton[variante="fantasma"][papel="link"]:disabled {{ color: {p['texto_suave']}; }}
 QPushButton[menu="true"] {{ background: transparent; text-align: left; padding: 0 10px; border: none;
     color: {p['texto']}; min-height: {ALTURA_BOTAO_MENU}px; max-height: {ALTURA_BOTAO_MENU}px;
     font-size: {f['legenda']}px; }}

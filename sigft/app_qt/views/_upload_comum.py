@@ -178,10 +178,10 @@ class TelaDeUpload(ModuleFrame):
         direita; os dois com padx=5, dentro do padx=10 da linha."""
         # width=200 lá, mas o CTkButton cresce até caber o texto (202 na interface antiga).
         self.btn_ia = blocos.botao("INICIAR PROCESSAMENTO IA", largura_minima=200, altura=40,
-                                   tamanho_fonte=13, negrito=True, cor_fundo=theme.COLORS["primary"])
+                                   tamanho_fonte=13, negrito=True, variante="primario")
         self.btn_ia.clicked.connect(self._start_ia_process)
         self.btn_parar_ia = blocos.botao("PARAR", largura=100, altura=40, tamanho_fonte=13, negrito=True,
-                                         cor_fundo=theme.COLORS["danger"])
+                                         variante="perigo")
         self.btn_parar_ia.setEnabled(False)
         self.btn_parar_ia.clicked.connect(self._stop_ia_process)
         linha = QHBoxLayout()
@@ -206,7 +206,7 @@ class TelaDeUpload(ModuleFrame):
         self.btn_web_file.clicked.connect(self._start_web_from_file)
         # fg_color danger sem hover_color lá: o hover é o do tema.
         self.btn_parar_web = blocos.botao("PARAR ROBÔ WEB", largura=350, altura=40, tamanho_fonte=13,
-                                          negrito=True, cor_fundo=theme.COLORS["danger"])
+                                          negrito=True, variante="perigo")
         self.btn_parar_web.setEnabled(False)
         self.btn_parar_web.clicked.connect(self._stop_web_process)
         # texto (…, 20) + memória (10, …); memória (…, 10) + arquivo (10, …);

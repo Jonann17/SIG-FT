@@ -126,6 +126,24 @@ def sem_tecla(botao) -> None:
     botao.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
 
+_VARIANTE_DA_COR = {
+    theme.COLORS["primary"].upper(): "primario", theme.COLORS["accent"].upper(): "primario",
+    "#008000": "primario", "#2E7D32": "primario",
+    theme.COLORS["danger"].upper(): "perigo", "#8B2E2E": "perigo", "#D32F2F": "perigo",
+    "TRANSPARENT": "fantasma",
+}
+
+
+def variante_da_cor(cor: str | None) -> str | None:
+    """A variante de botão que ocupa o lugar de uma cor de fundo escrita à mão
+    (2026-10-20): a cor passou a ser decisão da folha do tema, que muda no claro/escuro.
+    Verde e azul-marca viram `primario`; vermelho, `perigo`; `transparent`,
+    `fantasma`; qualquer outra (os cinzas) é `secundario`. `None` fica `None`."""
+    if not cor:
+        return None
+    return _VARIANTE_DA_COR.get(cor.upper(), "secundario")
+
+
 def botao(texto: str, *, variante: str | None = None, largura: int | None = None,
           altura: int | None = None, tamanho_fonte: int | None = None,
           negrito: bool = False, cor_texto: str | None = None, cor_fundo: str | None = None,
@@ -137,6 +155,8 @@ def botao(texto: str, *, variante: str | None = None, largura: int | None = None
     verdade: o botão tem pelo menos isso, e o texto que não cabe o alarga com
     `FOLGA_TEXTO_BOTAO_CTK` de cada lado (o "Editar PDM Selecionado" de 140 sai
     com 151 lá)."""
+    if cor_fundo and not variante:
+        variante = variante_da_cor(cor_fundo)
     b = QPushButton(texto)
     sem_tecla(b)
     if variante:
@@ -162,10 +182,9 @@ def botao(texto: str, *, variante: str | None = None, largura: int | None = None
     if negrito:
         folha += " font-weight: bold;"
     extra = ""
-    if cor_fundo:
-        folha += f" background: {cor_fundo};"
-        extra += f" QPushButton:hover {{ background: {cor_hover}; }}"
-    if cor_texto:
+    # `cor_fundo`, `cor_hover` e `cor_texto` junto dele já não pintam nada: a folha do
+    # tema decide pela variante. Só o `cor_texto` SOZINHO continua valendo.
+    if cor_texto and not cor_fundo:
         folha += f" color: {cor_texto};"
         # A folha do botão ganha da do app em TODOS os estados: sem repetir o
         # desabilitado aqui, o texto ficaria com `cor_texto` mesmo desligado.

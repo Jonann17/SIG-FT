@@ -45,10 +45,8 @@ def _esquecer(chave: int, *_sinal) -> None:
 
 
 
-def _botao(texto: str, *, largura: int | None = None, variante: str | None = None,
-           cor: str | None = None):
-    # `cor`: fg_color sem hover_color na interface antiga -> o hover é o do tema.
-    b = blocos.botao(texto, variante=variante, largura=largura, altura=28, cor_fundo=cor)
+def _botao(texto: str, *, largura: int | None = None, variante: str | None = None):
+    b = blocos.botao(texto, variante=variante, largura=largura, altura=28)
     # Enter não confirma sozinho: o Tk não ligava tecla nenhuma nestas janelas.
     b.setAutoDefault(False)
     b.setDefault(False)
@@ -183,7 +181,7 @@ class SelecaoMultiplaDialog(JanelaQueAbre):
         self.botao_todos = None
         botoes = []
         if com_selecionar_todos:
-            self.botao_todos = _botao("Selecionar Todos", largura=150, cor="#3A3A3A")
+            self.botao_todos = _botao("Selecionar Todos", largura=150, variante="secundario")
             self.botao_todos.clicked.connect(self.selecionar_todos)
             botoes.append(self.botao_todos)
         self.botao_confirmar = _botao(texto_confirmar, largura=150, variante="primario")
@@ -267,7 +265,7 @@ class TabelaSelecaoDialog(JanelaQueAbre):
         botoes = [self.botao_confirmar]
         self.botao_cancelar = None
         if com_cancelar:
-            self.botao_cancelar = _botao("Cancelar", largura=140, cor="#3A3A3A")
+            self.botao_cancelar = _botao("Cancelar", largura=140, variante="secundario")
             self.botao_cancelar.clicked.connect(self.reject)
             botoes.append(self.botao_cancelar)
         layout.addLayout(_linha_de_botoes(*botoes))

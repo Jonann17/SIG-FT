@@ -135,7 +135,7 @@ class RetryLockDialog(_DialogoDeAcaoManual):
         linha.setSpacing(20)
         linha.addStretch()
         # fg_color=primary SEM hover_color lá: o hover é o do tema (#14375E).
-        self.botao_repetir = blocos.botao("Tentar Novamente", cor_fundo=theme.COLORS["primary"],
+        self.botao_repetir = blocos.botao("Tentar Novamente", variante="primario",
                                           largura=150, altura=40)
         self.botao_cancelar = blocos.botao("Ignorar e Continuar", variante="contorno", largura=150, altura=40)
         for botao in (self.botao_repetir, self.botao_cancelar):

@@ -81,7 +81,7 @@ class RevisaoAntesDoPortalDialog(QDialog):
         self.botoes = [
             self._botao(TEXTO_SEM_ERROS, SEM_ERROS, variante="primario"),
             self._botao(TEXTO_TODAS, TODAS),
-            self._botao(TEXTO_CANCELAR, None, cor="#3A3A3A"),
+            self._botao(TEXTO_CANCELAR, None, variante="secundario"),
         ]
         linha = QHBoxLayout()
         linha.setContentsMargins(0, 0, 0, 0)
@@ -102,9 +102,8 @@ class RevisaoAntesDoPortalDialog(QDialog):
         r.setStyleSheet(f"QLabel {{ {blocos.folha_fonte_tk(fonte)}{cor_css} background: transparent; }}")
         return r
 
-    def _botao(self, texto: str, decisao: str | None, *, variante: str | None = None,
-               cor: str | None = None):
-        b = blocos.botao(texto, variante=variante, largura=LARGURA_BOTAO, altura=28, cor_fundo=cor)
+    def _botao(self, texto: str, decisao: str | None, *, variante: str | None = None):
+        b = blocos.botao(texto, variante=variante, largura=LARGURA_BOTAO, altura=28)
         b.clicked.connect(lambda: self._decidir(decisao))
         return b
 

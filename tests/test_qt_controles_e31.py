@@ -234,13 +234,15 @@ def test_tabela_com_as_cores_do_windows(qt_interface, monkeypatch):
 
 
 def test_botao_com_cor_de_fundo_e_hover_do_tema(qt_interface, qtbot):
+    # 2026-10-20: botão não carrega cor própria; `cor_fundo` vira variante e a cor
+    # (e o hover) são da folha do tema, que muda no claro/escuro.
     b = blocos.botao("Adicionar", cor_fundo="#3A3A3A", altura=28)
     qtbot.addWidget(b)
-    assert "background: #3A3A3A" in b.styleSheet()
-    assert f"QPushButton:hover {{ background: {estilo.AZUL_CTK_HOVER}; }}" in b.styleSheet()
+    assert b.property("variante") == "secundario"
+    assert "background" not in b.styleSheet() and "hover" not in b.styleSheet()
     c = blocos.botao("x", cor_fundo="#3A3A3A", cor_hover="#454545")
     qtbot.addWidget(c)
-    assert "#454545" in c.styleSheet()
+    assert "#454545" not in c.styleSheet()
 
 
 def test_uma_cor_de_trilho_so(qt_interface):

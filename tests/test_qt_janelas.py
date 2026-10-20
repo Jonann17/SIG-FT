@@ -13,7 +13,6 @@ import pytest
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QAbstractItemView, QApplication, QMessageBox
 
-from sigft.app import theme
 from sigft.app_qt import estilo
 from sigft.app_qt.views import janelas
 from sigft.app_qt.widgets import dialogos_selecao
@@ -853,16 +852,18 @@ def test_medidas_revisao_edicao_e_popup(folha, qtbot):
 def test_cores_dos_botoes_do_interface_antiga(qt_interface, qtbot):
     d = janelas.DialogoAcaoRobo(None, "e", "p")
     qtbot.addWidget(d)
-    assert "#B8860B" in d.botao_pular.styleSheet() and "#DAA520" in d.botao_pular.styleSheet()
-    assert "#FF0000" in d.botao_parar.styleSheet() and "#8B0000" in d.botao_parar.styleSheet()
+    # 2026-10-20: os botões guardam a variante, não a cor (a folha do tema pinta).
+    assert d.botao_pular.property("variante") == "secundario"
+    assert d.botao_parar.property("variante") == "perigo"
+    assert "background" not in d.botao_pular.styleSheet() + d.botao_parar.styleSheet()
     assert "#FF0000" in d.rotulo_erro.styleSheet()
     j = janelas.JanelaEscolherPDM(None, _catalogo())
     qtbot.addWidget(j)
-    assert theme.COLORS["accent"] in j.botao_usar.styleSheet()
-    assert "#3A3A3A" in j.botao_cancelar.styleSheet()
+    assert j.botao_usar.property("variante") == "primario"
+    assert j.botao_cancelar.property("variante") == "secundario"
     j.close()
     r, _ = _revisao(qtbot)
-    assert "#008000" in r.botao_confirmar.styleSheet()  # "green" do Tk
+    assert r.botao_confirmar.property("variante") == "primario"  # era o "green" do Tk
     r.close()
 
 
