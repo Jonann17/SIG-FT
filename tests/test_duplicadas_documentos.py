@@ -365,3 +365,99 @@ def test_espera_a_tabela_recarregar_em_vez_de_conferir_uma_vez_so():
     portal = _PortalDeDocumentos(engine)
 
     assert docs.associar(portal, ["BOTÕES ACE SCHMERSAL"]).ok
+
+
+# =============================================================================
+# Autoconferência (2026-10-20): a SEGUNDA leitura, pelo texto do painel
+# =============================================================================
+# Log de 2026-10-19: "Associado: 8660.003" e, em seguida, "zero linha no painel
+# b10-DocumentsandImages_Content" -- em SEIS fichas. O leitor não mudou desde
+# agosto; o portal mudou.
+class _EngineComTextoNoPainel(_EngineComTabelaIlegivel):
+    """Tabela num formato que o leitor não conhece, mas o texto está lá."""
+
+    def __init__(self, *args, dentro_do_dialogo=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.dentro_do_dialogo = dentro_do_dialogo
+        self.perguntas_de_texto = []
+
+    def contar(self, seletor):
+        if "normalize-space(text())=" in seletor:
+            self.perguntas_de_texto.append(seletor)
+            assert "not(ancestor::*[@role='dialog'])" in seletor
+            assert "b10-DocumentsandImages_Content" in seletor, "sempre no painel"
+            alvo = seletor.split("normalize-space(text())='")[1].split("'")[0]
+            return 0 if self.dentro_do_dialogo else int(alvo in self.na_ficha)
+        return super().contar(seletor)
+
+
+PAINEL = "b10-DocumentsandImages_Content"
+
+
+def test_tabela_ilegivel_mas_texto_no_painel_FECHA_a_secao():
+    engine = _EngineComTextoNoPainel(catalogo=["8660.003"])
+    portal = _PortalDeDocumentos(engine)
+    logs = []
+
+    resultado = docs.associar(portal, ["8660.003"], logs.append, escopo=PAINEL)
+
+    assert resultado.ok
+    assert "conferido pelo texto" in resultado.detalhe
+    assert "[Autoconferência]" in "\n".join(logs)
+
+
+def test_texto_so_dentro_do_dialogo_NAO_conta():
+    """A busca do diálogo de associar mostra o mesmo texto; ela não prova
+    nada sobre a ficha."""
+    engine = _EngineComTextoNoPainel(catalogo=["8660.003"], dentro_do_dialogo=True)
+    portal = _PortalDeDocumentos(engine)
+
+    resultado = docs.associar(portal, ["8660.003"], escopo=PAINEL)
+
+    assert not resultado.ok
+    assert resultado.detalhe == "não li a tabela"
+
+
+def test_sem_escopo_nao_procura_texto_na_pagina_inteira():
+    engine = _EngineComTextoNoPainel(catalogo=["8660.003"])
+    portal = _PortalDeDocumentos(engine)
+
+    resultado = docs.associar(portal, ["8660.003"])
+
+    assert not resultado.ok
+    assert engine.perguntas_de_texto == []
+
+
+def test_pelo_texto_o_que_falta_e_nomeado():
+    """'s200' não estava no catálogo (log de 2026-10-19, ficha 1430)."""
+    engine = _EngineComTextoNoPainel(catalogo=["8660.003"])
+    portal = _PortalDeDocumentos(engine)
+    logs = []
+
+    resultado = docs.associar(portal, ["8660.003", "s200"], logs.append, escopo=PAINEL)
+
+    assert not resultado.ok
+    assert "s200" in "\n".join(logs)
+    assert resultado.detalhe == "1 não associados"
+
+
+def test_tabela_ilegivel_tira_FOTO_do_painel_no_modo_de_auditoria():
+    class _Auditoria:
+        def __init__(self):
+            self.blocos = []
+
+        def bloco(self, titulo, conteudo):
+            self.blocos.append((titulo, conteudo))
+
+    class _EngineComHtml(_EngineComTabelaIlegivel):
+        def html_do_elemento(self, seletor):
+            assert PAINEL in seletor
+            return "<div>painel</div>"
+
+    engine = _EngineComHtml(catalogo=["8660.003"])
+    portal = _PortalDeDocumentos(engine)
+    auditoria = _Auditoria()
+
+    docs.associar(portal, ["8660.003"], escopo=PAINEL, log_auditoria=auditoria)
+
+    assert any("Documentos depois de associar" in t for t, _c in auditoria.blocos)

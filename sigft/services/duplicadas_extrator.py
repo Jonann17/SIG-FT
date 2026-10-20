@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import time
 
+from sigft import config
 from sigft.core.rpa import seletores_duplicada as sel
 from sigft.services import duplicadas_spec as spec
 
@@ -144,6 +145,42 @@ def esperar_abas_da_lista(portal, espera=ESPERA_DAS_ABAS):
     return False
 
 
+PAUSA_APOS_RECARREGAR = 3.0
+
+
+def recarregar_lista(portal, callback_log=None):
+    """A lista não montou: fecha o que estiver por cima e RECARREGA. `True`
+    se as abas apareceram depois.
+
+    ⚠️ Log de 2026-10-19: as fichas 4500063671.1431 e .1432 saíram com
+    "nenhuma aba de status na tela" logo depois de um upload de imagem que
+    falhou com o formulário aberto. `ir_para_lista` não ajuda aqui: ele só
+    navega quando a URL é OUTRA, e o portal é uma SPA cuja URL não muda (§0 de
+    `docs/PORTAL_COMO_ELE_SE_COMPORTA.md`). Daí o `goto` incondicional.
+
+    ESC antes: um diálogo aberto cobre a tela, e recarregar com ele pode
+    pedir confirmação de saída.
+    """
+    def _log(mensagem):
+        if callback_log:
+            callback_log(mensagem)
+
+    _log("   [Autoconferência] A lista de fichas não montou (nenhuma aba de "
+         "status). Fechando o que estiver aberto e recarregando a página.")
+    for _ in range(2):
+        try:
+            portal.engine.press("ESCAPE")
+        except Exception:  # noqa: BLE001 -- sem foco; segue
+            pass
+    try:
+        portal.engine.goto(config.PORTAL_URL)
+    except Exception as erro:  # noqa: BLE001 -- recarregar não derruba o lote
+        _log(f"   [!] Não consegui recarregar a página: {type(erro).__name__}: {erro}")
+        return False
+    time.sleep(PAUSA_APOS_RECARREGAR)
+    return esperar_abas_da_lista(portal)
+
+
 def localizar_aba_da_ficha(portal, pmib, callback_log=None):
     """Nome da aba de status onde `pmib` aparece, ou `None`.
 
@@ -162,7 +199,8 @@ def localizar_aba_da_ficha(portal, pmib, callback_log=None):
 
     # A LISTA PRIMEIRO. Sem isto, "a tela ainda não montou" vira "esta aba não
     # existe" -- ver `esperar_abas_da_lista`.
-    esperar_abas_da_lista(portal)
+    if not esperar_abas_da_lista(portal):
+        recarregar_lista(portal, callback_log)
 
     alvo = sel.XPATH_LINHA_ACAO_VISUALIZAR.format(pmib=pmib)
     tentadas = []

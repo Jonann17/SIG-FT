@@ -32,12 +32,21 @@ class _EngineDeCondicoes:
     """
 
     def __init__(self, valores=None, marcados=(), some_ao_ler=(),
-                 nao_aceita=(), esvazia_ao_salvar=()):
+                 nao_aceita=(), esvazia_ao_salvar=(), so_digitado=(),
+                 esvazia_na_troca=()):
         self.valores = dict(valores or {})
         self.marcados = set(marcados)
         self.some_ao_ler = set(some_ao_ler)
         self.nao_aceita = set(nao_aceita)
         self.esvazia_ao_salvar = set(esvazia_ao_salvar)
+        # `so_digitado`: o campo com MÁSCARA -- o `fill` (valor de uma vez)
+        # não fica, só a digitação tecla a tecla. Hipótese do log de
+        # 2026-10-19 para o volume que sumia.
+        self.so_digitado = set(so_digitado)
+        # `esvazia_na_troca`: valor que some quando se troca de sub-aba.
+        self.esvazia_na_troca = set(esvazia_na_troca)
+        self.digitadas = []
+        self.teclas = []
         self.escritas = []
         self.cliques = []
 
@@ -56,8 +65,20 @@ class _EngineDeCondicoes:
     def fill(self, seletor, texto):
         sufixo = self._sufixo(seletor)
         self.escritas.append((sufixo, texto))
-        if sufixo not in self.nao_aceita:
+        if sufixo not in self.nao_aceita and sufixo not in self.so_digitado:
             self.valores[sufixo] = texto
+
+    def clear(self, seletor):
+        self.valores[self._sufixo(seletor)] = ""
+
+    def type_text(self, seletor, texto):
+        sufixo = self._sufixo(seletor)
+        self.digitadas.append((sufixo, texto))
+        if sufixo not in self.nao_aceita:
+            self.valores[sufixo] = self.valores.get(sufixo, "") + texto
+
+    def press(self, teclas):
+        self.teclas.append(teclas)
 
     def esta_marcado(self, seletor):
         sufixo = self._sufixo(seletor)
@@ -100,6 +121,9 @@ class _PortalDeCondicoes:
 
     def safe_click(self, seletor):
         self.engine.cliques.append(seletor)
+        if "Title" in seletor:   # troca de sub-aba
+            for sufixo in self.engine.esvazia_na_troca:
+                self.engine.valores[sufixo] = ""
 
     def safe_fill(self, seletor, texto):
         self.engine.fill(seletor, texto)
@@ -257,7 +281,9 @@ def test_uma_subaba_ruim_nao_impede_as_outras():
 
     cond.escrever(portal, UM_CAMPO_DE_CADA, lambda _m: None)
 
-    assert len(portal.salvos) == 4, "as 4 sub-abas foram tentadas"
+    # `set` e não `len == 4`: desde a autoconferência (2026-10-20) a sub-aba
+    # que perdeu o valor é salva UMA segunda vez, no reparo.
+    assert set(portal.salvos) == set(UM_CAMPO_DE_CADA), "as 4 sub-abas foram tentadas"
     assert engine.valores.get("TextArea_DiscardTypePT") == "Sucata"
 
 
@@ -366,3 +392,112 @@ def test_booleano_marcado_NAO_conta_como_preenchido():
     resultado = cond.escrever(portal, {}, lambda _m: None)
 
     assert resultado.pendente is True
+
+
+# =============================================================================
+# 4. Autoconferência (pedido de 2026-10-20) — o log de 2026-10-19
+# =============================================================================
+# *"Seria bom que nosso robô faça sua autocomprovação: quando completa uma aba,
+# repasse de volta verificando seu campo."* No log de 2026-10-19 o portal
+# confirmou Armazenamento com o volume em branco em três fichas.
+def test_campo_com_mascara_e_REESCRITO_tecla_a_tecla_antes_de_salvar():
+    portal, engine = _tela(so_digitado=["Input_PackingLength"])
+    linhas = []
+
+    resultado = cond.escrever(portal, UM_CAMPO_DE_CADA, linhas.append)
+
+    assert engine.valores["Input_PackingLength"] == "40"
+    assert ("Input_PackingLength", "40") in engine.digitadas
+    assert "TAB" in engine.teclas, "sem o blur o OutSystems não recebe o change"
+    assert "corrigido na segunda tentativa" in "\n".join(linhas)
+    assert "Armazenamento: " not in (resultado.detalhe or "")
+
+
+def test_campo_que_PEGOU_no_fill_nao_e_redigitado():
+    """O que funciona hoje não muda: a segunda forma é só para o que falhou."""
+    portal, engine = _tela()
+
+    cond.escrever(portal, UM_CAMPO_DE_CADA, lambda _m: None)
+
+    assert engine.digitadas == []
+
+
+def test_o_log_diz_o_que_pedi_e_o_que_ficou():
+    """"Pedi 40, ficou ''" e "pedi 40, ficou 4" são defeitos diferentes."""
+    portal, _ = _tela(nao_aceita=["Input_PackingLength"])
+    linhas = []
+
+    resultado = cond.escrever(portal, UM_CAMPO_DE_CADA, linhas.append)
+
+    assert resultado.ok is False
+    assert "Input_PackingLength (pedi '40', ficou '')" in "\n".join(linhas)
+
+
+def test_campo_que_some_ao_salvar_e_reparado_e_salvo_de_novo():
+    """O toast confirmou e o valor não ficou: UMA rodada de reparo."""
+    portal, engine = _tela()
+    sumiu = {"vez": 0}
+    salvar_original = portal.salvar_e_confirmar
+
+    def salva_perdendo_na_primeira(nome_secao="", callback_log=None, **kw):
+        if nome_secao == "Armazenamento" and sumiu["vez"] == 0:
+            sumiu["vez"] = 1
+            engine.valores["Input_PackingLength"] = ""
+        return salvar_original(nome_secao, callback_log, **kw)
+
+    portal.salvar_e_confirmar = salva_perdendo_na_primeira
+    linhas = []
+
+    cond.escrever(portal, UM_CAMPO_DE_CADA, linhas.append)
+
+    assert portal.salvos.count("Armazenamento") == 2
+    assert engine.valores["Input_PackingLength"] == "40"
+    assert "[Armazenamento] 2 campo(s), salvo e conferido." in "\n".join(linhas)
+
+
+def test_numero_que_a_mascara_formatou_NAO_e_divergencia():
+    assert cond.mesmo_valor("40", "40,00")
+    assert cond.mesmo_valor("2,5", "2,50")
+    assert cond.mesmo_valor("1000", "1.000,00")
+    assert not cond.mesmo_valor("40", "4")
+    assert not cond.mesmo_valor("40", "")
+    assert not cond.mesmo_valor("Caixa", "caixa ")
+
+
+def test_REPASSE_final_pega_valor_que_sumiu_ao_trocar_de_subaba():
+    """Conferido com a sub-aba aberta, perdido quando o robô foi para a
+    seguinte: só voltando lá se vê."""
+    portal, _ = _tela(esvazia_na_troca=["Input_PackingLength"])
+    linhas = []
+
+    resultado = cond.escrever(portal, UM_CAMPO_DE_CADA, linhas.append)
+
+    assert resultado.ok is False
+    assert "mudaram depois de salvos" in resultado.detalhe
+    assert "Repasse" in "\n".join(linhas)
+
+
+def test_REPASSE_volta_CLICANDO_em_Armazenamento():
+    """Na ida Armazenamento não se clica (já vem aberta); na volta, sim --
+    senão a releitura olharia a tela de Descarte."""
+    portal, engine = _tela()
+
+    cond.escrever(portal, UM_CAMPO_DE_CADA, lambda _m: None)
+
+    alvo = sel.XPATH_CONDICOES_SUBABA.format(posicao=sel.POSICAO_ARMAZENAMENTO)
+    assert alvo in engine.cliques
+
+
+def test_REPASSE_limpo_diz_que_conferiu():
+    portal, _ = _tela()
+    linhas = []
+    completo = {
+        aba: dict(campos, **{s[:-2] + "ES": v for s, v in campos.items()
+                             if s.endswith("PT")})
+        for aba, campos in UM_CAMPO_DE_CADA.items()
+    }
+
+    resultado = cond.escrever(portal, completo, linhas.append)
+
+    assert resultado.ok is True
+    assert "Repasse final: 4 sub-aba(s) relidas" in "\n".join(linhas)

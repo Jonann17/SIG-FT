@@ -122,6 +122,22 @@ fechar.
 
 **`atualizar_ficha_concluida(pmib_alvo, secoes_concluidas, callback_log=None)`**: Abre openpyxl, busca dinâmico colunas por nome (INFO. GERAIS, CONDIÇÕES, CARACT. TÉCNICAS, etc.), preenche com "COMPLETO" apenas seções com True em dicionário secoes_concluidas, retry loop se PermissionError (sleep 5s).
 
+### 🆕 Autoconferência (2026-10-20)
+
+Pedido do usuário depois do log de 2026-10-19: *"quando completa uma aba,
+repasse de volta verificando seu campo"*.
+
+| Seção | O que o robô confere sozinho | Onde |
+|---|---|---|
+| Condições | antes de salvar relê e redigita (tecla a tecla + TAB) o que não pegou; depois de salvar relê e, se faltar, redigita e salva de novo (uma vez); no fim **repassa** as sub-abas salvas, voltando também em Armazenamento | `duplicadas_condicoes.autoconferir`, `_salvar_e_conferir`, `repassar` |
+| Documentos | tabela com zero linha → confere pelo texto no painel (fora de `role="dialog"`) e, no modo de auditoria, fotografa o painel | `duplicadas_documentos.presentes_pelo_texto` |
+| Imagens | upload que falha → ESC no formulário e nova tentativa; o formulário sempre sai fechado | `duplicadas_imagens.fechar_formulario` |
+| Lista | nenhuma aba de status → ESC, `goto` da lista e nova espera | `duplicadas_extrator.recarregar_lista` |
+
+Número com máscara ("40" lido como "40,00") **não** é divergência
+(`mesmo_valor`). O log diz o que se pediu e o que ficou. O que ainda precisa ser
+validado no portal está em `PENDENCIAS.md` (2026-10-20).
+
 ## Fluxo Detalhado
 
 **Fase 1 - Montagem de Fila**:
