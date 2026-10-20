@@ -900,6 +900,13 @@ XPATH_CONDICOES_ABRIR_SECAO = "//*[contains(@id, 'Conditions_Header')]//button"
 # que o módulo antigo usa e o que `upload_conditions` usa (lá com o id inteiro,
 # que este projeto proíbe). Armazenamento é a aba que já vem aberta.
 XPATH_CONDICOES_SUBABA = "//*[contains(@id, 'Title')]/div[{posicao}]"
+# Posição de Armazenamento no cabeçalho, para VOLTAR a ela. No mapa abaixo a
+# posição dela é `None` ("já vem aberta") e continua sendo: só o repasse final
+# (`duplicadas_condicoes.repassar`) precisa voltar depois de passar pelas
+# outras. Lida do HTML da ficha alvo em edição no log de 2026-10-19:
+# `b10-b17-Title` tem cinco `div`, a primeira "Condições de armazenamento" e a
+# segunda "Condições financeiras" (que o robô não copia).
+POSICAO_ARMAZENAMENTO = 1
 
 # Nome da sub-aba -> (posição no cabeçalho, campos de TEXTO, campos BOOLEANOS).
 # `None` na posição = a aba que já está aberta quando a seção abre.

@@ -65,6 +65,14 @@ MODULOS = [
 
 TELAS_BLOQUEADAS = frozenset({"CorrecaoPDM"})
 
+
+def dica_do_menu(alvo: str) -> str:
+    """A dica do botão do menu lateral: a mesma descrição do cartão da Home."""
+    descricao = next((d for chave, _t, d in MODULOS if chave == alvo), "")
+    if alvo in TELAS_BLOQUEADAS:
+        return (descricao + "\n\n" if descricao else "") + "Bloqueado nesta versão."
+    return descricao
+
 MSG_TAREFA_EM_ANDAMENTO = (
     "Há uma tarefa em andamento (um robô, uma tradução ou uma consulta à IA).\n\n"
     "Se fechar agora, ela é interrompida no ponto em que está, e uma planilha "

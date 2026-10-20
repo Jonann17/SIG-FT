@@ -192,6 +192,39 @@ def subir_uma(portal, legenda, caminho, callback_log=None):
                                      sel.ABA_DOCUMENTOS_EDICAO, callback_log)
 
 
+TENTATIVAS_DE_FECHAR = 3
+
+
+def fechar_formulario(portal, callback_log=None):
+    """Fecha o formulário de "Adicionar imagens" se ele ficou aberto.
+
+    `True` quando a tela ficou livre. ESC é o mesmo recurso que já fecha a
+    lista do PDM (`duplicadas_pdm`); e com o formulário fechado ele não faz
+    nada -- por isso dá para chamar sempre, sem perguntar antes.
+    """
+    _log = _log_de(callback_log)
+    for _ in range(TENTATIVAS_DE_FECHAR):
+        try:
+            if not portal.engine.contar(sel.XPATH_IMAGENS_CONTAINER):
+                return True
+        except Exception:  # noqa: BLE001 -- tela remontando
+            pass
+        try:
+            portal.engine.press("ESCAPE")
+        except Exception:  # noqa: BLE001 -- sem foco; a próxima volta tenta
+            pass
+        time.sleep(PAUSA_APOS_UPLOAD / 2)
+    try:
+        livre = not portal.engine.contar(sel.XPATH_IMAGENS_CONTAINER)
+    except Exception:  # noqa: BLE001
+        livre = False
+    if not livre:
+        _log("      [Erro] O formulário de imagens ficou aberto e não fechou "
+             "com ESC. Feche à mão: ele cobre a tela e trava o que vem "
+             "depois.")
+    return livre
+
+
 def _abrir_formulario(portal):
     """Clica em "Adicionar imagens". Duas âncoras: o link e, se ele não casar,
     o próprio rótulo -- a captura do usuário mostra só o `<span>`, sem revelar
@@ -235,9 +268,27 @@ def copiar(portal, imagens, pmib_alvo="", callback_log=None):
         subidas = 0
         for legenda, caminho in arquivos:
             descricao = legenda or pmib_alvo
-            if subir_uma(portal, descricao, caminho, callback_log):
+            entrou = subir_uma(portal, descricao, caminho, callback_log)
+            if not entrou:
+                # AUTOCONFERÊNCIA COM REPARO: o upload que falha deixa o
+                # formulário ABERTO, e ele cobre a tela. No log de 2026-10-19
+                # foi uma cadeia: o FilePond não apareceu, a imagem seguinte
+                # "não achou 'Adicionar imagens'" e as DUAS fichas seguintes
+                # não acharam nem a lista. Fechar e tentar de novo, uma vez.
+                fechar_formulario(portal, callback_log)
+                _log(f"      [Autoconferência] Imagens: "
+                     f"{os.path.basename(caminho)} não entrou -- fechei o "
+                     f"formulário e vou tentar de novo.")
+                entrou = subir_uma(portal, descricao, caminho, callback_log)
+                if not entrou:
+                    fechar_formulario(portal, callback_log)
+            if entrou:
                 subidas += 1
                 _log(f"      Imagem enviada: {descricao[:50] or '(sem legenda)'}")
+
+        # Saída LIMPA, aconteça o que acontecer: a próxima seção (e a próxima
+        # ficha) não pode herdar um formulário aberto por cima da tela.
+        fechar_formulario(portal, callback_log)
 
         faltaram = len(imagens) - subidas
         if faltaram:

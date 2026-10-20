@@ -232,12 +232,28 @@ def _linhas_da_tabela(pagina, tabela):
             for linha in tabela.rows]
 
 
+def _achar_tabelas(pagina):
+    """`find_tables` SEM a análise de layout por IA (`use_layout=False`).
+
+    [2026-10-20] No PyMuPDF 2.0 o padrão é `use_layout=True`, que roda um
+    modelo ONNX do `pymupdf-layout` em cada página. O instalador não leva
+    esse pacote (ver `SIG-FT.spec`, `excludes`), mas quem roda pelo
+    `SIG-FT.bat` o tem: sem fixar aqui, a mesma ficha sairia com tabelas
+    diferentes conforme o jeito de abrir o app. O `TypeError` é o PyMuPDF
+    anterior ao parâmetro.
+    """
+    try:
+        return pagina.find_tables(use_layout=False).tables
+    except TypeError:
+        return pagina.find_tables().tables
+
+
 def tabelas_da_pagina(pagina):
     """As tabelas que o PyMuPDF detecta na `pagina`, em Markdown, cada uma com
     um rotulo; `""` sem tabela -- ou se a deteccao falhar: tabela e um extra,
     nunca motivo para perder a pagina."""
     try:
-        achadas = pagina.find_tables().tables
+        achadas = _achar_tabelas(pagina)
     except Exception:
         return ""
     blocos = []
@@ -276,10 +292,10 @@ def _abrir_pdf(documento):
         return None
     try:
         import pymupdf
-    except ImportError:
+    except Exception:  # não só ImportError: ver `_ler_pdf_local`, 2026-10-20
         try:
             import fitz as pymupdf  # nome antigo do mesmo pacote
-        except ImportError:
+        except Exception:
             return None
     try:
         if documento.dados is not None:

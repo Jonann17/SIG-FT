@@ -476,6 +476,12 @@ def escrever_subaba(portal, nome, campos, callback_log=None):
     Texto vazio é PULADO de propósito: a ficha alvo nasce vazia, então
     escrever "" não acrescenta nada -- e um `fill("")` a mais é uma chance a
     mais de disparar validação do portal sem motivo.
+
+    ⚠️ `safe_fill` ENGOLE a falha (contrato do motor): um campo que não
+    aceitou o `fill` paga 20 s e some em silêncio. Foi o que o log de
+    2026-10-19 mostrou -- Armazenamento levando 106 s numa sub-aba que
+    escreve em 6 -- e é por isso que `escrever` confere a sub-aba ANTES de
+    salvar (`autoconferir`): é lá que um campo que não pegou ganha nome.
     """
     _log = _log_de(callback_log)
     falhas = []
@@ -496,19 +502,48 @@ def escrever_subaba(portal, nome, campos, callback_log=None):
     return falhas
 
 
-def conferir_subaba(portal, nome, campos, callback_log=None):
-    """Relê a sub-aba e devolve os sufixos que NÃO ficaram como se pediu.
+def _numero(texto):
+    """"2,5" -> 2.5; `None` se não for número. Vírgula é o decimal do portal."""
+    bruto = "".join(str(texto or "").split())
+    if not bruto:
+        return None
+    if "," in bruto:
+        bruto = bruto.replace(".", "").replace(",", ".")
+    try:
+        return float(bruto)
+    except ValueError:
+        return None
 
-    É a validação que o usuário pediu antes de sair da página. O toast prova
-    que o portal aceitou o salvamento; só a releitura prova que o VALOR ficou.
+
+def mesmo_valor(esperado, atual):
+    """O campo ficou com o que se pediu?
+
+    Igualdade de texto, e um afrouxamento só para NÚMERO: os campos de volume
+    e peso têm máscara numérica (`InputMaskReact.MaskNumber`), e uma máscara
+    que mostra "40,00" para o "40" que se digitou guardou o valor certo.
+    Acusar isso de divergência mandaria o usuário conferir o que está certo.
+    """
+    if str(atual).strip() == str(esperado).strip():
+        return True
+    a, b = _numero(esperado), _numero(atual)
+    return a is not None and b is not None and a == b
+
+
+def divergencias_da_subaba(portal, nome, campos, callback_log=None):
+    """Relê a sub-aba e devolve `[(sufixo, esperado, lido)]` do que NÃO ficou.
+
+    `lido` vai junto para o log: "pedi 40, ficou ''" (a máscara apagou) e
+    "pedi 40, ficou 4" (perdeu tecla) são defeitos diferentes, e só o valor
+    lido diz qual dos dois aconteceu.
     """
     divergentes = []
     for sufixo, esperado in campos.items():
         seletor = _seletor(sufixo)
         try:
             if isinstance(esperado, bool):
-                if bool(portal.engine.esta_marcado(seletor)) != esperado:
-                    divergentes.append(sufixo)
+                marcado = bool(portal.engine.esta_marcado(seletor))
+                if marcado != esperado:
+                    divergentes.append((sufixo, esperado, marcado))
                 continue
             if not str(esperado).strip():
                 continue
@@ -520,11 +555,180 @@ def conferir_subaba(portal, nome, campos, callback_log=None):
             atual = portal.valor_se_existir(seletor)
             if atual is None:
                 continue
-            if str(atual).strip() != str(esperado).strip():
-                divergentes.append(sufixo)
+            if not mesmo_valor(esperado, atual):
+                divergentes.append((sufixo, esperado, atual))
         except Exception:  # noqa: BLE001 -- não dá para conferir; não inventa falha
             continue
     return divergentes
+
+
+def conferir_subaba(portal, nome, campos, callback_log=None):
+    """Relê a sub-aba e devolve os sufixos que NÃO ficaram como se pediu.
+
+    É a validação que o usuário pediu antes de sair da página. O toast prova
+    que o portal aceitou o salvamento; só a releitura prova que o VALOR ficou.
+    """
+    return [s for s, _e, _a in divergencias_da_subaba(portal, nome, campos,
+                                                       callback_log)]
+
+
+def descrever_divergencias(divergencias, limite=4):
+    """`Input_PackingLength (pedi '40', ficou '')`, para o log."""
+    partes = []
+    for sufixo, esperado, atual in divergencias[:limite]:
+        if isinstance(esperado, bool):
+            partes.append(f"{sufixo} (pedi {'marcado' if esperado else 'desmarcado'}, "
+                          f"ficou {'marcado' if atual else 'desmarcado'})")
+        else:
+            partes.append(f"{sufixo} (pedi {str(esperado)!r}, ficou {str(atual)!r})")
+    resto = len(divergencias) - limite
+    return ", ".join(partes) + (f" e mais {resto}" if resto > 0 else "")
+
+
+def redigitar(portal, sufixo, valor, callback_log=None):
+    """Segunda forma de escrever um campo que NÃO pegou: tecla a tecla.
+
+    O `fill` põe o valor de uma vez. Num campo com máscara (`MaskNumber`) a
+    máscara escuta o TECLADO, e o valor posto de uma vez pode ser desfeito por
+    ela -- é a hipótese mais forte para os campos de volume que sumiram no log
+    de 2026-10-19 (ver `docs/refatoracao/PENDENCIAS.md`). Por isso esta forma
+    só entra no REPARO: o campo que já ficou com o `fill` não passa por aqui,
+    e o que funciona hoje não muda.
+
+    O TAB no fim é o `blur`: é dele que nasce o `change` que o OutSystems
+    escuta (ver `duplicadas_injetor.limpar_caracteristicas`).
+    """
+    _log = _log_de(callback_log)
+    seletor = _seletor(sufixo)
+    try:
+        if isinstance(valor, bool):
+            return bool(portal.check_or_uncheck(seletor, valor, callback_log))
+        portal.engine.clear(seletor)
+        portal.engine.type_text(seletor, str(valor))
+        portal.engine.press("TAB")
+        time.sleep(PAUSA_APOS_ESCREVER)
+        return True
+    except Exception as erro:  # noqa: BLE001
+        _log(f"      [!] Não consegui redigitar {sufixo}: {type(erro).__name__}: {erro}")
+        return False
+
+
+def autoconferir(portal, nome, campos, callback_log=None):
+    """Confere a sub-aba e REESCREVE o que não ficou. Devolve o que sobrou.
+
+    É a autoconferência que o usuário pediu em 2026-10-20: *"quando completa
+    uma aba, repasse de volta verificando seu campo"*. Uma rodada de reparo
+    só -- se a segunda forma de escrever também não pega, insistir não muda o
+    resultado e atrasa as outras fichas do lote.
+    """
+    _log = _log_de(callback_log)
+    divergencias = divergencias_da_subaba(portal, nome, campos, callback_log)
+    if not divergencias:
+        return []
+    _log(f"      [Autoconferência] {nome}: {len(divergencias)} campo(s) não "
+         f"ficaram -- {descrever_divergencias(divergencias)}. Reescrevendo "
+         f"tecla a tecla.")
+    for sufixo, esperado, _atual in divergencias:
+        redigitar(portal, sufixo, esperado, callback_log)
+    sobra = divergencias_da_subaba(
+        portal, nome, {s: campos[s] for s, _e, _a in divergencias}, callback_log)
+    if not sobra:
+        _log(f"      [Autoconferência] {nome}: corrigido na segunda tentativa.")
+    return sobra
+
+
+def _salvar_e_conferir(portal, nome, campos, callback_log=None):
+    """Salva a sub-aba e confere. `(salvou, divergencias)`.
+
+    Se a releitura depois do salvamento acusar campo, faz UMA rodada de
+    reparo (reescreve tecla a tecla, salva de novo, confere de novo). O toast
+    prova que o portal aceitou o SALVAR; não prova que o valor ficou -- no
+    log de 2026-10-19 o portal confirmou Armazenamento três vezes com o
+    volume em branco.
+    """
+    _log = _log_de(callback_log)
+    # O nome da sub-aba VAI CRU (e não "Condições / Armazenamento") porque
+    # é a chave de `PALAVRA_DA_SECAO` no portal: com ela, o toast é
+    # casado pela palavra da seção e um toast remanescente de OUTRA
+    # sub-aba não confirma esta.
+    #
+    # `ancora` = um campo DESTA sub-aba. É o que faz o robô clicar o
+    # SALVAR de Condições em vez do primeiro da tela -- sem isso, em
+    # 2026-08-20 as quatro sub-abas saíram "salvas e conferidas" com a
+    # ficha vazia, porque o botão clicado era o de Informações Gerais e a
+    # releitura via o formulário NÃO GRAVADO.
+    if not portal.salvar_e_confirmar(nome, callback_log,
+                                     ancora=ancora_da_subaba(nome)):
+        return False, []
+    divergencias = divergencias_da_subaba(portal, nome, campos, callback_log)
+    if not divergencias:
+        return True, []
+
+    _log(f"      [Autoconferência] {nome}: depois de salvar, "
+         f"{len(divergencias)} campo(s) não ficaram -- "
+         f"{descrever_divergencias(divergencias)}. Reescrevendo e salvando "
+         f"de novo.")
+    for sufixo, esperado, _atual in divergencias:
+        redigitar(portal, sufixo, esperado, callback_log)
+    if not portal.salvar_e_confirmar(nome, callback_log,
+                                     ancora=ancora_da_subaba(nome)):
+        return False, divergencias
+    return True, divergencias_da_subaba(portal, nome, campos, callback_log)
+
+
+def reabrir_subaba(portal, nome, callback_log=None):
+    """Como `abrir_subaba`, mas VOLTA também para Armazenamento.
+
+    `abrir_subaba` não clica em Armazenamento porque ela já vem aberta com a
+    seção -- certo na ida, errado na volta: depois de Descarte, "não clicar"
+    deixaria a releitura de Armazenamento olhando para a tela de Descarte, e
+    todo campo sairia `None` (= "não está na tela", não confere) -- um repasse
+    que passa sem ter olhado.
+    """
+    posicao = sel.CONDICOES_POR_SUBABA[nome]["posicao"]
+    if posicao is None:
+        posicao = sel.POSICAO_ARMAZENAMENTO
+    portal.safe_click(sel.XPATH_CONDICOES_SUBABA.format(posicao=posicao))
+    time.sleep(PAUSA_TROCA_SUBABA)
+
+
+def repassar(portal, escritas, callback_log=None):
+    """O REPASSE FINAL: volta em cada sub-aba já salva e relê tudo.
+
+    `escritas` = `{sub-aba: campos}` das que saíram salvas e conferidas.
+    Devolve `{sub-aba: [divergências]}` só das que mudaram depois.
+
+    Por que de novo, se cada uma já foi conferida ao salvar: a conferência
+    de cada sub-aba é feita com ELA aberta, logo depois do SALVAR. O que este
+    repasse pega é o que se perde DEPOIS -- ao trocar de sub-aba o portal
+    remonta o formulário com o que o SERVIDOR tem, e um valor que só existia
+    na tela some ali. É o que o usuário pediu: *"repasse de volta verificando
+    seu campo"*.
+    """
+    _log = _log_de(callback_log)
+    perdidas = {}
+    lidas = 0
+    for nome, campos in escritas.items():
+        reabrir_subaba(portal, nome, callback_log)
+        divergencias = divergencias_da_subaba(portal, nome, campos, callback_log)
+        textos = [s for s, v in campos.items()
+                  if not isinstance(v, bool) and str(v).strip()]
+        if textos and all(portal.valor_se_existir(_seletor(s)) is None
+                          for s in textos):
+            _log(f"      [!] Repasse: não consegui reabrir {nome} -- nenhum "
+                 f"campo dela está na tela. Confira à mão.")
+            perdidas[nome] = [(s, campos[s], None) for s in textos]
+            continue
+        lidas += 1
+        if divergencias:
+            perdidas[nome] = divergencias
+            _log(f"      [Erro] Repasse: em {nome}, {len(divergencias)} campo(s) "
+                 f"mudaram DEPOIS de salvos -- "
+                 f"{descrever_divergencias(divergencias)}.")
+    if escritas and not perdidas:
+        _log(f"      [Autoconferência] Repasse final: {lidas} sub-aba(s) "
+             f"relidas, tudo como se pediu.")
+    return perdidas
 
 
 def conferir_ja_preenchida(portal, callback_log=None):
@@ -636,6 +840,7 @@ def escrever(portal, condicoes, callback_log=None):
 
     abrir_secao(portal, callback_log)
     problemas = []
+    salvas = {}
 
     for nome in sel.CONDICOES_POR_SUBABA:
         campos = condicoes.get(nome) or {}
@@ -647,29 +852,30 @@ def escrever(portal, condicoes, callback_log=None):
         if falhas:
             problemas.append(f"{nome}: não escrevi {', '.join(falhas[:4])}")
 
-        # O nome da sub-aba VAI CRU (e não "Condições / Armazenamento") porque
-        # é a chave de `PALAVRA_DA_SECAO` no portal: com ela, o toast é
-        # casado pela palavra da seção e um toast remanescente de OUTRA
-        # sub-aba não confirma esta.
-        #
-        # `ancora` = um campo DESTA sub-aba. É o que faz o robô clicar o
-        # SALVAR de Condições em vez do primeiro da tela -- sem isso, em
-        # 2026-08-20 as quatro sub-abas saíram "salvas e conferidas" com a
-        # ficha vazia, porque o botão clicado era o de Informações Gerais e a
-        # releitura via o formulário NÃO GRAVADO.
-        if not portal.salvar_e_confirmar(nome, callback_log,
-                                         ancora=ancora_da_subaba(nome)):
+        # AUTOCONFERÊNCIA ANTES DE SALVAR: o campo que o `fill` não pegou é
+        # reescrito AQUI, enquanto ainda dá -- salvar primeiro gravaria o
+        # buraco e só depois o descobriria.
+        autoconferir(portal, nome, campos, callback_log)
+
+        salvou, divergencias = _salvar_e_conferir(portal, nome, campos,
+                                                  callback_log)
+        if not salvou:
             problemas.append(f"{nome}: o portal não confirmou o salvamento")
             continue
 
-        divergentes = conferir_subaba(portal, nome, campos, callback_log)
-        if divergentes:
-            _log(f"      [Erro] {nome}: {len(divergentes)} campo(s) não ficaram "
-                 f"como se pediu: {', '.join(divergentes[:4])}"
-                 f"{' …' if len(divergentes) > 4 else ''}.")
-            problemas.append(f"{nome}: {len(divergentes)} campo(s) divergentes")
+        if divergencias:
+            _log(f"      [Erro] {nome}: {len(divergencias)} campo(s) não ficaram "
+                 f"como se pediu: {descrever_divergencias(divergencias)}.")
+            problemas.append(f"{nome}: {len(divergencias)} campo(s) divergentes")
         else:
             _log(f"      [{nome}] {len(campos)} campo(s), salvo e conferido.")
+            salvas[nome] = campos
+
+    # O REPASSE: de volta em cada sub-aba que fechou, depois de passar pelas
+    # outras. Só as que fecharam -- a que já saiu com erro está no log.
+    for nome, divergencias in repassar(portal, salvas, callback_log).items():
+        problemas.append(f"{nome}: {len(divergencias)} campo(s) mudaram "
+                         f"depois de salvos")
 
     # ⚠️ O ESPANHOL QUE SOBROU. Desde 2026-08-24 o espanhol vem do balão do
     # tooltip (`espanhol_dos_baloes`), então esta lista é RESÍDUO, não regra:

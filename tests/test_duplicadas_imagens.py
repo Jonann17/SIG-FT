@@ -414,3 +414,88 @@ def test_subir_uma_NAO_confirma_com_o_upload_em_andamento(monkeypatch, tmp_path)
     assert entrou is False
     assert portal.salvos == []      # nada de "Confirmar"
     assert "NÃO cliquei em Confirmar" in "\n".join(logs)
+
+
+# =============================================================================
+# Autoconferência (2026-10-20): formulário preso se fecha e a imagem é tentada
+# de novo -- a cadeia do log de 2026-10-19 (FilePond sumiu → "Não achei
+# 'Adicionar imagens'" → as duas fichas seguintes sem lista).
+# =============================================================================
+class _EngineComFormulario(_EngineDeImagens):
+    def __init__(self, *args, falhas_de_upload=0, esc_fecha=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.aberto = False
+        self.falhas_de_upload = falhas_de_upload
+        self.esc_fecha = esc_fecha
+        self.teclas = []
+
+    def contar(self, seletor):
+        if seletor == sel.XPATH_IMAGENS_CONTAINER:
+            return int(self.aberto)
+        if "Adicionar imagens" in seletor:
+            return 0 if self.aberto else 1   # o formulário cobre o link
+        return super().contar(seletor)
+
+    def click(self, seletor):
+        super().click(seletor)
+        if "Adicionar imagens" in seletor:
+            self.aberto = True
+
+    def enviar_arquivo(self, seletor, caminho):
+        if self.falhas_de_upload:
+            self.falhas_de_upload -= 1
+            raise TimeoutError("Timeout 20000ms exceeded")
+        super().enviar_arquivo(seletor, caminho)
+
+    def press(self, teclas):
+        self.teclas.append(teclas)
+        if teclas == "ESCAPE" and self.esc_fecha:
+            self.aberto = False
+
+
+class _PortalComFormulario(_PortalDeImagens):
+    def clicar_e_confirmar(self, seletor_botao, nome="", callback_log=None, **_k):
+        self.engine.aberto = False
+        return super().clicar_e_confirmar(seletor_botao, nome, callback_log)
+
+
+def _tela_com_formulario(slides=("Botão",), **kwargs):
+    engine = _EngineComFormulario(slides, {i: PNG for i in range(1, len(slides) + 1)},
+                                  **kwargs)
+    return _PortalComFormulario(engine), engine
+
+
+def test_upload_que_falha_FECHA_o_formulario_e_tenta_de_novo():
+    portal, engine = _tela_com_formulario(falhas_de_upload=1)
+    lidas = imgs.ler_da_original(portal, lambda _m: None)
+    linhas = []
+
+    resultado = imgs.copiar(portal, lidas, "", linhas.append)
+
+    assert resultado.ok is True
+    assert "ESCAPE" in engine.teclas
+    assert "[Autoconferência] Imagens" in "\n".join(linhas)
+    assert len(engine.enviados) == 1
+
+
+def test_a_imagem_SEGUINTE_nao_herda_o_formulario_preso():
+    """Sem fechar, a 2ª imagem dava "Não achei 'Adicionar imagens'"."""
+    portal, engine = _tela_com_formulario(slides=("A", "B"), falhas_de_upload=2)
+    lidas = imgs.ler_da_original(portal, lambda _m: None)
+    linhas = []
+
+    resultado = imgs.copiar(portal, lidas, "", linhas.append)
+
+    assert "Não achei 'Adicionar imagens'" not in "\n".join(linhas)
+    assert resultado.detalhe == "1 de 2 não subiram"
+    assert engine.aberto is False, "a ficha seguinte recebe a tela livre"
+
+
+def test_formulario_que_nao_fecha_vira_erro_no_log():
+    portal, _ = _tela_com_formulario(falhas_de_upload=5, esc_fecha=False)
+    lidas = imgs.ler_da_original(portal, lambda _m: None)
+    linhas = []
+
+    imgs.copiar(portal, lidas, "", linhas.append)
+
+    assert "Feche à mão" in "\n".join(linhas)

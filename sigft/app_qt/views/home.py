@@ -35,11 +35,13 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from sigft import config as sigft_config
+from sigft.app import textos_dicas
 from sigft.app.theme import COLORS
 from sigft.app_qt import atualizacao, estilo, interface
 from sigft.app_qt.catalogo import MODULOS
 from sigft.app_qt.estilo import mono
 from sigft.app_qt.widgets import blocos, controles, dialogs, mural
+from sigft.app_qt.widgets.module_frame import aplicar_dicas
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
 from sigft.core import plataforma
 from sigft.core.llm import catalogo, selecao
@@ -359,6 +361,18 @@ class HomeView(QScrollArea):
         layout.addLayout(self._cards())
         layout.addStretch()
         self.setWidget(corpo)
+        self._aplicar_dicas()
+
+    def _aplicar_dicas(self) -> None:
+        """As dicas de `sigft/app/textos_dicas.py`. Chamada de novo a cada
+        painel aberto: os botões dele só existem depois de montado."""
+        aplicar_dicas(self)
+        for chave, botao in self.botoes_barra.items():
+            dica = textos_dicas.DICAS_DA_BARRA_DA_HOME.get(chave)
+            if dica and not botao.toolTip():
+                botao.setToolTip(dica)
+        if not self.caixa_canal_testes.toolTip():
+            self.caixa_canal_testes.setToolTip(textos_dicas.DICAS_DA_BARRA_DA_HOME["canal_testes"])
 
     def criar_texto_simples(self, texto: str) -> QLabel:
         """CTkLabel(font=("Arial", 14), wraplength=800) da Home."""
@@ -459,6 +473,7 @@ class HomeView(QScrollArea):
             velha.deleteLater()
         janela = JanelaPainel(self, titulo=titulo, montar=montar, geometria=geometria)
         self._janelas[chave] = janela
+        self._aplicar_dicas()
         return janela
 
     def _janela_aberta(self, chave: str) -> bool:
@@ -958,6 +973,7 @@ class HomeView(QScrollArea):
             pai.layout().removeWidget(casca)
             casca.deleteLater()
         self.criar_painel_modelos_ia(pai)
+        self._aplicar_dicas()
 
     def _escolheu_favorito_global_ia(self, _escolha) -> None:
         """Escolher na lista DESISTE do modelo manual -- vale sempre o último

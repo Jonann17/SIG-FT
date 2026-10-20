@@ -242,6 +242,9 @@ QPushButton[variante="contorno"]:hover, QPushButton[variante="contorno_padrao"]:
 #subtitulo_home {{ font-size: 16px; color: {cinza_tk('gray70')}; }}
 #texto_simples {{ font-size: 14px; }}
 #titulo_modulo {{ font-size: 24px; font-weight: bold; color: {c['text_white']}; }}
+#faixa_atividade_texto {{ color: {c['text_light']}; font-size: 12px; font-weight: bold; }}
+#faixa_atividade_texto[estado="ok"] {{ color: {c['accent']}; }}
+#faixa_atividade_texto[estado="erro"] {{ color: #EF5350; }}
 #card {{ background: {theme.COR_CARTAO}; border: 1px solid #333333; border-radius: 8px; }}
 #card:hover {{ border: 1px solid {c['accent']}; }}
 #card_titulo {{ color: {c['accent']}; font-size: 15px; font-weight: bold; background: transparent; }}

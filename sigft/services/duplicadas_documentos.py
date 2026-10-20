@@ -32,6 +32,7 @@ from __future__ import annotations
 import time
 
 from sigft.core.rpa import seletores_duplicada as sel
+from sigft.services import duplicadas_extrator as extrator
 from sigft.services.duplicadas_injetor import ResultadoDaSecao, _literal, _log_de
 
 PAUSA_ABERTURA_DIALOGO = 2.0
@@ -177,7 +178,43 @@ def esperar_associacao(portal, desejados, escopo=None,
     return vistos
 
 
-def associar(portal, descricoes, callback_log=None, escopo=None):
+# O texto do documento em QUALQUER elemento do painel, fora de diálogo. É a
+# segunda leitura (`presentes_pelo_texto`), para quando a tabela não tem a
+# forma que `ja_associados` espera.
+XPATH_TEXTO_NO_PAINEL = (
+    "//*[normalize-space(text())={texto}][not(ancestor::*[@role='dialog'])]"
+)
+
+
+def presentes_pelo_texto(portal, desejados, escopo):
+    """Dos `desejados`, quais aparecem ESCRITOS no painel de documentos.
+
+    Existe por causa do log de 2026-10-19: em SEIS fichas seguidas a tabela
+    leu zero linha logo depois de "Associado: 8660.003". O leitor não mudou
+    desde 2026-08-25, quando fechava; o que mudou foi o portal (os ids de
+    painel viraram nomes, `b10-DocumentsandImages_Content`). Esta leitura não
+    depende do formato da tabela -- só de o texto estar no painel.
+
+    Só com `escopo`: sem ele, a página inteira inclui a busca do diálogo de
+    associar e as características, e "achei o texto" não provaria nada. E só
+    fora de `role="dialog"`, pelo mesmo motivo.
+    """
+    if not escopo:
+        return []
+    achados = []
+    painel = sel.XPATH_PAINEL_POR_ID.format(id=_literal(escopo))
+    for descricao in desejados:
+        try:
+            if portal.engine.contar(
+                    painel + XPATH_TEXTO_NO_PAINEL.format(texto=_literal(descricao))):
+                achados.append(descricao)
+        except Exception:  # noqa: BLE001 -- ler não derruba a ficha
+            continue
+    return achados
+
+
+def associar(portal, descricoes, callback_log=None, escopo=None,
+             log_auditoria=None):
     """Associa todos os documentos da original e CONFERE o resultado."""
     _log = _log_de(callback_log)
     desejados = [" ".join(str(d).split()) for d in (descricoes or []) if str(d).strip()]
@@ -228,6 +265,31 @@ def associar(portal, descricoes, callback_log=None, escopo=None):
     # associação (a única das três coisas que sabemos ter acontecido) manda o
     # usuário conferir o que está certo.
     if nao_entraram and not agora:
+        # A FOTO, para a próxima rodada consertar o leitor com o HTML real em
+        # vez de hipótese. Só com o modo de auditoria (vai para o arquivo).
+        extrator.fotografar(
+            portal, "ALVO em EDIÇÃO. Documentos depois de associar "
+                    "(a tabela leu zero linha)", log_auditoria,
+            seletor=(sel.XPATH_PAINEL_POR_ID.format(id=_literal(escopo))
+                     if escopo else None))
+
+        # A SEGUNDA LEITURA (autoconferência): procurar o texto no painel.
+        vistos = presentes_pelo_texto(portal, desejados, escopo)
+        if vistos and len(vistos) == len(desejados):
+            _log(f"      [Autoconferência] Documentos: a tabela não tem a forma "
+                 f"que o robô conhece, mas os {len(vistos)} documento(s) estão "
+                 f"escritos no painel -- associação conferida pelo texto.")
+            return ResultadoDaSecao("documentos", True,
+                                    f"{len(vistos)} associado(s), conferido pelo texto")
+        if vistos:
+            faltam = [d for d in desejados if d not in vistos]
+            _log(f"      [Erro] Documentos: conferido pelo texto do painel, "
+                 f"{len(faltam)} NÃO estão lá: "
+                 f"{', '.join(d[:40] for d in faltam[:3])}"
+                 f"{' …' if len(faltam) > 3 else ''}. Associe à mão.")
+            return ResultadoDaSecao("documentos", False,
+                                    f"{len(faltam)} não associados")
+
         _log(f"      [Erro] Não consegui ler a tabela de documentos da ficha "
              f"(zero linha no painel {escopo or 'sem escopo'}) depois de "
              f"associar. NÃO sei dizer se a associação pegou -- confira no "

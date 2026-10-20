@@ -18,13 +18,22 @@ from PySide6.QtWidgets import (
     QLabel, QMessageBox, QProgressBar, QScrollArea, QVBoxLayout, QWidget,
 )
 
-from sigft.app import backends, theme
+from sigft.app import backends, textos_dicas, theme
 from sigft.app_qt import interface
+from sigft.app_qt.widgets.atividade import FaixaDeAtividade
 from sigft.app_qt.widgets.console import ConsoleFrame
 from sigft.app_qt.widgets.espera import DialogosDeEspera
 
 # O padx/pady=20 com que o `show_frame` da interface antiga põe cada tela na janela.
 MARGEM_DA_TELA = 20
+
+
+def aplicar_dicas(tela) -> None:
+    """Põe em cada botão da tela a dica de `sigft/app/textos_dicas.py`."""
+    for atributo, dica in textos_dicas.dicas_da_classe(type(tela)).items():
+        widget = getattr(tela, atributo, None)
+        if widget is not None and not widget.toolTip():
+            widget.setToolTip(dica)
 
 
 def _reabilitar(botao) -> None:
@@ -85,6 +94,8 @@ class ModuleFrame(DialogosDeEspera, QWidget):
             rolagem.viewport().setAutoFillBackground(False)
             raiz.setContentsMargins(0, 0, 0, 0)
             raiz.addWidget(rolagem)
+            self.atividade = FaixaDeAtividade()
+            raiz.addWidget(self.atividade)
         else:
             self.header = QWidget()
             linha_header = QVBoxLayout(self.header)
@@ -104,11 +115,18 @@ class ModuleFrame(DialogosDeEspera, QWidget):
                 self.progress_bar.setRange(0, 1000)
                 self.progress_bar.setTextVisible(False)
                 raiz.addWidget(self.progress_bar)
+            # A faixa "Rodando…" fica entre o conteúdo e o console: é onde o
+            # olho já está quando se clica no botão. Escondida quando nada roda.
+            self.atividade = FaixaDeAtividade()
+            raiz.addWidget(self.atividade)
             self.console = ConsoleFrame(altura=altura_console)
             raiz.addWidget(self.console, 0 if altura_console is not None else 1)
 
+        self._tarefas_rodando = 0
+        self._tarefa_falhou = False
         if construir:
             self._build_ui()
+            aplicar_dicas(self)
 
     def _build_ui(self) -> None:
         raise NotImplementedError(f"{type(self).__name__} precisa implementar _build_ui().")
@@ -137,20 +155,45 @@ class ModuleFrame(DialogosDeEspera, QWidget):
             return None
 
     def iniciar_tarefa(self, alvo, *args, botao=None) -> threading.Thread:
-        """Roda `alvo(*args)` numa thread comum. Chamar da thread da interface."""
+        """Roda `alvo(*args)` numa thread comum. Chamar da thread da interface.
+
+        Liga a faixa "Rodando…" (`FaixaDeAtividade`) e a desliga quando a
+        última tarefa da tela acaba, dizendo se ela terminou bem ou com erro.
+        """
         if botao is not None:
             botao.setEnabled(False)
+        if self._tarefas_rodando == 0:
+            self._tarefa_falhou = False
+            self.atividade.comecar()
+        self._tarefas_rodando += 1
 
         def rodar() -> None:
+            ok = True
             try:
                 alvo(*args)
             except Exception as erro:  # noqa: BLE001 -- vira log, e o botão volta
+                ok = False
                 self.log(f"[ERRO] {type(erro).__name__}: {erro}")
                 traceback.print_exc()
             finally:
                 if botao is not None:
                     interface.na_interface(_reabilitar, botao)
+                interface.na_interface(self._tarefa_acabou, ok)
 
         thread = threading.Thread(target=rodar, name=f"tarefa:{type(self).__name__}")
         thread.start()
         return thread
+
+    def _tarefa_acabou(self, ok: bool) -> None:
+        """Na thread da interface. A tela pode ter sido fechada antes."""
+        try:
+            self._tarefas_rodando = max(self._tarefas_rodando - 1, 0)
+            self._tarefa_falhou = self._tarefa_falhou or not ok
+            if self._tarefas_rodando == 0:
+                self.atividade.terminar(ok=not self._tarefa_falhou)
+        except RuntimeError:
+            pass  # widget já destruído pelo Qt
+
+    def informar_progresso(self, atual: int, total: int, rotulo: str = "item") -> None:
+        """"Ficha 3 de 8" na faixa. Chamável de qualquer thread."""
+        interface.na_interface(self.atividade.progresso, atual, total, rotulo)

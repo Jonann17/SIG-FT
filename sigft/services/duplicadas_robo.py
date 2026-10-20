@@ -652,7 +652,8 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
         if extrator.abrir_secao(portal, sel.ABA_DOCUMENTOS_EDICAO, callback_log):
             resultado.registrar(documentos.associar(
                 portal, docs_da_original, callback_log,
-                escopo=extrator.id_do_painel(portal, sel.ABA_DOCUMENTOS_EDICAO)))
+                escopo=extrator.id_do_painel(portal, sel.ABA_DOCUMENTOS_EDICAO),
+                log_auditoria=log_auditoria))
             resultado.registrar(imagens.copiar(
                 portal, imagens_da_original, ficha.pmib, callback_log))
         else:

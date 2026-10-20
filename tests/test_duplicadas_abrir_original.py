@@ -331,3 +331,51 @@ def test_a_espera_olha_a_ABA_DA_FICHA_e_nunca_a_url():
     engine.contar = contar
     assert extrator.abrir_original_em_visualizacao(portal, pmib) is True
     assert any("Condições" in s for s in perguntado), perguntado
+
+
+# ===========================================================================
+# Autoconferência (2026-10-20): lista que não montou é RECARREGADA
+# ===========================================================================
+# Log de 2026-10-19: 1431 e 1432 perdidas com "nenhuma aba de status na tela",
+# logo depois de um formulário de imagem preso aberto.
+class _EngineQueSoMontaRecarregando(_EngineFalso):
+    def __init__(self):
+        super().__init__([])
+        self.urls = []
+
+    def goto(self, url):
+        self.urls.append(url)
+        self.existentes = ["'Em Elaboração'", "-View"]
+
+
+def test_lista_sem_abas_e_RECARREGADA_e_a_ficha_e_achada():
+    from sigft import config
+    engine = _EngineQueSoMontaRecarregando()
+    portal = _PortalFalso(engine)
+    logs = []
+
+    achada = extrator.localizar_aba_da_ficha(portal, "4500063671.1240", logs.append)
+
+    assert achada == "Em Elaboração"
+    assert engine.urls == [config.PORTAL_URL]
+    assert engine.teclas[:2] == ["ESCAPE", "ESCAPE"], "fecha o diálogo antes"
+    assert "[Autoconferência]" in "\n".join(logs)
+
+
+def test_lista_que_monta_sozinha_NAO_recarrega():
+    engine = _EngineQueSoMontaRecarregando()
+    engine.existentes = ["'Em Elaboração'", "-View"]
+    portal = _PortalFalso(engine)
+
+    extrator.localizar_aba_da_ficha(portal, "4500063671.1240")
+
+    assert engine.urls == []
+
+
+def test_recarregar_que_falha_nao_derruba_o_lote():
+    engine = _EngineFalso([])        # sem `goto`: AttributeError
+    portal = _PortalFalso(engine)
+    logs = []
+
+    assert extrator.localizar_aba_da_ficha(portal, "x", logs.append) is None
+    assert "nenhuma aba de status" in "\n".join(logs)

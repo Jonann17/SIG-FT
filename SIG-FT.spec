@@ -318,9 +318,21 @@ a = Analysis(
     # Windows. Nenhum arquivo do SIG-FT abre AVIF, e o Pillow aguenta a falta
     # dele (`AvifImagePlugin`: `try: from . import _avif / except ImportError`,
     # conferido no Pillow 13, o fixado em `empacotamento/versoes-do-release.txt`).
+    #
+    # `pymupdf.layout`, `pymupdf4llm` e `onnxruntime` (2026-10-20): o PyMuPDF
+    # 2.0 traz os dois primeiros como dependência OBRIGATÓRIA, e o
+    # `pymupdf/layout/__init__.py` carrega um modelo ONNX no IMPORT
+    # (`activate()`). O PyInstaller levava o código sem os arquivos do modelo,
+    # e `import pymupdf` levantava `FileNotFoundError: .../layout_rf2.4.1+imf1.yaml`
+    # -- o AutoSpec não lia PDF nenhum da rc.5 à rc.7. O PyMuPDF aguenta a
+    # falta dos dois (`try: import pymupdf.layout / except ImportError` e o
+    # mesmo para o `pymupdf4llm`, conferido no 2.0), e o SIG-FT não usa
+    # nenhum deles (as tabelas saem do `find_tables(use_layout=False)`). O
+    # `onnxruntime` só vinha por eles. Juntos, ~120 MB a menos no pacote.
+    # Trava: `tests/test_pymupdf_sem_layout.py`.
     excludes=["pytest", "_pytest", "mypy", "ruff", "torch", "transformers",
               "PySide6.QtNetwork", "tkinter", "_tkinter", "customtkinter",
-              "PIL._avif"],
+              "PIL._avif", "pymupdf.layout", "pymupdf4llm", "onnxruntime"],
     noarchive=False,
     # O código do SIG-FT FORA do `.exe` (2026-10-19), um `.pyc` por módulo em
     # `_internal/sigft/`. Medido entre a 1.2.1-rc.4 e a rc.5: dos 38,6 MB que
