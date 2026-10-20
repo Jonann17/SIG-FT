@@ -105,6 +105,15 @@ o leitor de tela leem).
 
 ### Splash e logo
 
+**Logo da barra lateral com hover (pedido do Jonathan, 2026-10-20).** O bloco
+logo + "SIG-FT" vira um botão: passar o mouse acende um brilho verde suave
+(`QGraphicsDropShadowEffect` cor `primaria`, raio animado 0 → 18 px em 150 ms
+por `QPropertyAnimation`, e o deslocamento −1 px), com a mãozinha e a dica
+"Voltar ao início"; clicar leva à Home (`show_home`). Com o teclado: mesmo
+brilho no foco. Sem animação para quem desliga animações no Windows
+(`QStyleHints`/`SPI_GETCLIENTAREAANIMATION`): o brilho aparece direto, sem
+transição.
+
 O logo da GE Vernova fica (é a regra de `docs/DISTRIBUICAO.md`). O splash é
 refeito com os tokens: fundo `fundo`, logo, nome "SIG-FT", versão e a barra de
 carregamento na cor `primaria`. Sem arte nova de logo nesta parte.
