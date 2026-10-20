@@ -184,6 +184,24 @@ Orquestra o pipeline RAG completo.
 
 ## Pontos de atenção
 
+> ### 🆕 2026-10-20: o log diz onde o tempo foi e como o LlamaParse acabou
+>
+> Log do Luan na 1.2.1-rc.8: ficha de 5min 03s sem pista do passo. Só relato;
+> nenhum passo mudou.
+>
+> - Cada ficha termina com `-> Tempos: <passo> <duração> | ... (total X)`, o mais
+>   demorado primeiro (`_Cronometro`, `_linha_de_tempos`). O contexto sai partido
+>   em "documentos locais" e "busca na web" (`retrieve_context` grava
+>   `_tempos_do_contexto`).
+> - LlamaParse: "leu N caracteres em X", "respondeu em X, mas sem texto" ou
+>   "falhou depois de X: <motivo>" (`motivo_da_falha_de_rede`: proxy, certificado,
+>   sem resposta a tempo, chave, limite de uso, rede/DNS). Para o motivo chegar, a
+>   chamada passa `ignore_errors=False`: com o padrão a biblioteca dava `print` e
+>   devolvia vazio. O desfecho é o mesmo (texto vazio, a ficha segue).
+> - ⚠️ O `llama_parse` 0.6.94 espera até `max_timeout=2000` s por padrão, e o
+>   mesmo valor vira o timeout do cliente HTTP. Não foi mexido (pedido: só
+>   relatar); se o log mostrar LlamaParse levando minutos, é aí.
+
 > ### 🔴 Duas pendências REAIS e ainda abertas (confirmadas no código em 2026-08-11)
 >
 > As duas foram registradas em `PENDENCIAS.md`, endereçadas a um checkpoint que **fechou sem

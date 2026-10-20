@@ -4,6 +4,7 @@ import json
 import hashlib
 import unicodedata
 import tempfile
+import time
 import openpyxl
 from openpyxl.styles import Font
 import PyPDF2
@@ -28,7 +29,7 @@ from sigft.core.llm import prompts
 # `RelatorioLote`. Ver docstring de `process_queue` para como isso convive
 # com o contrato de generator que `frontend.py` já consome.
 from sigft.core.callbacks import UICallbacks
-from sigft.core.relatorio_lote import RelatorioLote
+from sigft.core.relatorio_lote import RelatorioLote, formatar_duracao
 from sigft.core import rede
 # Retrieval (2026-08-11): recorta o contexto antes de mandar para a IA. Modulo
 # separado porque este arquivo ja passou de 1.500 linhas -- e porque o
@@ -67,6 +68,45 @@ GENERATIVE_FIELDS = [
 # `fill_save`) continuam corretos sem alteração; os 2 acessos DIRETOS de
 # `analyze_sheet` (txt_brv/fab, logo abaixo) precisaram do mesmo split — ver
 # docs/refatoracao/PENDENCIAS.md, entrada do CP 2.4.
+
+
+# O relógio dos tempos do log (2026-10-20). Nome próprio para o teste trocar
+# por um relógio previsível; `monotonic` porque o relógio do Windows pode
+# andar para trás (sincronização) e um tempo negativo no log engana.
+_agora = time.monotonic
+
+
+def motivo_da_falha_de_rede(erro):
+    """O porquê de uma falha de rede, em português, para o log.
+
+    [2026-10-20] Pedido do Jonathan: *"que o log seja diferenciado: falhou por
+    tal, trabalhou tanto ou falhou o proxy"*. Na rede da empresa a mesma
+    falha aparece com cara diferente conforme a camada (o proxy devolve 403
+    no CONNECT; a inspeção TLS troca o certificado; o DNS não resolve), e o
+    remédio de cada uma é outro -- daí separar.
+
+    Olha o NOME da classe e o texto, sem importar o `httpx`: as bibliotecas
+    de rede embrulham umas às outras, e o nome (`ProxyError`,
+    `ConnectTimeout`) é o que sobrevive ao embrulho.
+    """
+    nomes = {c.__name__ for c in type(erro).__mro__}
+    texto = str(erro)
+    minusculo = texto.lower()
+    if "ProxyError" in nomes or "tunnel" in minusculo or "proxy" in minusculo:
+        return f"o proxy da empresa bloqueou a conexao ({texto[:120]})"
+    if "certificate" in minusculo or "ssl" in minusculo:
+        return f"o certificado da conexao foi recusado ({texto[:120]})"
+    if (nomes & {"TimeoutError", "TimeoutException", "ConnectTimeout", "ReadTimeout",
+                 "WriteTimeout", "PoolTimeout", "Timeout"} or "timed out" in minusculo):
+        return "a LlamaCloud nao respondeu a tempo"
+    if "401" in texto or "api key" in minusculo or "unauthorized" in minusculo:
+        return "a chave do LlamaParse foi recusada (confira em Chaves de API)"
+    if "429" in texto or "too many requests" in minusculo:
+        return "limite de uso da LlamaCloud atingido"
+    if (nomes & {"ConnectError", "ConnectionError", "NetworkError"} or "getaddrinfo" in minusculo
+            or "name or service not known" in minusculo):
+        return f"sem conexao com a LlamaCloud (rede ou DNS: {texto[:120]})"
+    return f"{type(erro).__name__}: {texto[:160]}"
 
 
 # Extensões que o LlamaParse consegue OCRar. Regras de negócio §2.3/§6.1:
@@ -743,6 +783,40 @@ MIN_CHARS_PAGINA_UTIL = 40
 
 # Cobertura abaixo disto marca o documento como leitura INCOMPLETA no log.
 COBERTURA_MINIMA_ACEITAVEL = 0.80
+
+
+class _Cronometro:
+    """Os passos de UMA ficha: `passo(nome)` fecha o trecho desde a última
+    marca com aquele nome; `linha()` é o que vai para o log."""
+
+    def __init__(self):
+        self.tempos = {}
+        self._inicio = self._marca = _agora()
+
+    def passo(self, nome):
+        agora = _agora()
+        self.tempos[nome] = self.tempos.get(nome, 0.0) + (agora - self._marca)
+        self._marca = agora
+
+    def trocar(self, nome, detalhe):
+        """`nome` sai e entram as partes dele (somam o mesmo tempo)."""
+        self.tempos.pop(nome, None)
+        self.tempos.update(detalhe)
+
+    def linha(self):
+        return _linha_de_tempos(self.tempos, _agora() - self._inicio)
+
+
+def _linha_de_tempos(tempos, total):
+    """`-> Tempos: documentos locais 4min 12s | IA 38,0s | ... (total 5min 03s)`.
+
+    O passo mais demorado PRIMEIRO: é ele que se lê. Passo de zero segundo
+    some (ficha sem conferência do fornecedor não ganha "0,0s").
+    """
+    partes = [f"{nome} {formatar_duracao(seg)}"
+              for nome, seg in sorted(tempos.items(), key=lambda par: -par[1])
+              if seg >= 0.05]
+    return f" -> Tempos: {' | '.join(partes) or '-'}  (total {formatar_duracao(total)})"
 
 
 class RelatorioLeitura:
@@ -1692,14 +1766,30 @@ class PDFProcessor:
                 f"LlamaParse (o arquivo SAI da rede).",
                 nivel="warn",
             )
+            # O RELATO (2026-10-20): quanto levou e como acabou -- leu, voltou
+            # vazio ou falhou, e por quê. O que o LlamaParse FAZ não mudou.
+            # `ignore_errors=False` é a única diferença na chamada: com o padrão
+            # (True) a biblioteca dá `print` no erro e devolve lista vazia, e
+            # num app sem console o motivo sumia -- o log do Luan de
+            # 2026-10-20 (ficha de 5 min) não tinha como dizer se era o proxy.
+            # O desfecho é o mesmo de antes: o erro cai no `except` abaixo e a
+            # ficha segue sem o texto.
+            inicio = _agora()
             try:
-                parser = LlamaParse(result_type="text")
+                parser = LlamaParse(result_type="text", ignore_errors=False)
                 documents = parser.load_data(filepath)
                 text_content = "\n".join([doc.text for doc in documents])
                 method_used = "LlamaParse"
+                decorrido = formatar_duracao(_agora() - inicio)
+                if text_content.strip():
+                    cb.log(f"LlamaParse leu {nome}: {len(text_content)} caracteres em {decorrido}.")
+                else:
+                    cb.log(f"LlamaParse respondeu em {decorrido}, mas sem texto (0 caracteres): "
+                           f"{nome}.", nivel="warn")
             except Exception as e:
                 cb.log(
-                    f"LlamaParse falhou em {nome} ({type(e).__name__}: {e}).",
+                    f"LlamaParse falhou em {nome} depois de {formatar_duracao(_agora() - inicio)}: "
+                    f"{motivo_da_falha_de_rede(e)}.",
                     nivel="warn",
                 )
 
@@ -2630,8 +2720,16 @@ class AutoSpecCore:
         self._modelo_do_item = str(modelo or "").strip()
         cb = callbacks or _callbacks_silenciosos()
 
+        # Onde o tempo do contexto vai (2026-10-20): documentos locais (onde
+        # mora o LlamaParse) e busca na web. `process_queue` põe na linha
+        # "Tempos" da ficha.
+        self._tempos_do_contexto = {}
+        inicio = _agora()
+
         # 1. Processar Locais
         local_txt = self.process_local_documents(refs_locais, callbacks=cb)
+        self._tempos_do_contexto["documentos locais"] = _agora() - inicio
+        inicio = _agora()
 
         # FABRICANTE DO PDF ANEXADO (2026-09-24, pedido do usuario). Planilha
         # sem fabricante pulava a busca web por falta de ancora -- com o nome
@@ -2656,6 +2754,7 @@ class AutoSpecCore:
                 "— o contexto virá só dos documentos locais.",
                 nivel="warn",
             )
+            self._tempos_do_contexto["busca na web"] = _agora() - inicio
             return (local_txt + "\n\n" + web_txt), sources
 
         # 2026-08-12: era `[fab, cod_mat]` — a razão social inteira e o código
@@ -2683,6 +2782,7 @@ class AutoSpecCore:
                 "planilha, ou anexe o manual — o contexto virá só dos documentos locais.",
                 nivel="warn",
             )
+            self._tempos_do_contexto["busca na web"] = _agora() - inicio
             return (local_txt + "\n\n" + web_txt), sources
 
         queries = self._montar_queries_busca(txt_brv, fab, cod_mat, modelo=modelo)
@@ -2772,6 +2872,7 @@ class AutoSpecCore:
                 nivel="warn",
             )
 
+        self._tempos_do_contexto["busca na web"] = _agora() - inicio
         return (local_txt + "\n\n" + web_txt), sources
 
     def process_local_documents(self, paths, callbacks=None):
@@ -3968,9 +4069,15 @@ class AutoSpecCore:
 
                 yield f"\n[{i+1}/{len(queue)}] {fname}..."
 
+                # ONDE O TEMPO FOI (2026-10-20): ficha de 5 min no log do Luan
+                # e nenhuma pista de em qual passo. Só relata; nenhum passo
+                # muda. Ver `_linha_de_tempos`.
+                cronometro = _Cronometro()
+
                 try:
                     # 1. Analisa Ficha
                     analise = self.analyze_sheet(ficha, status_pmib_path)
+                    cronometro.passo("leitura da ficha")
                     # Tolera o contrato de 6 elementos: `process_queue` é
                     # substituído por fake em teste, e um fake antigo devolve
                     # a tupla curta.
@@ -3993,9 +4100,16 @@ class AutoSpecCore:
                                f"fornecedor para conferir. Coletando contexto...")
 
                     # 2. Contexto
+                    self._tempos_do_contexto = {}
                     full_ctx, sources = self.retrieve_context(
                         txt, fab, cod, refs, callbacks=callbacks, modelo=modelo
                     )
+                    cronometro.passo("documentos e busca")
+                    # Os sub-passos, quando o contexto os mediu, trocam o
+                    # passo inteiro (somam o mesmo tempo, com mais detalhe).
+                    detalhe = getattr(self, "_tempos_do_contexto", None) or {}
+                    if detalhe:
+                        cronometro.trocar("documentos e busca", detalhe)
                     fab = fab or getattr(self, "_fabricante_do_documento", "")
                     yield from _flush()
                     if sources: yield f" -> Fontes Web: {len(sources)}"
@@ -4011,9 +4125,11 @@ class AutoSpecCore:
                         ai_resp = self.generate_ai_response(
                             txt, fab, desc, missing, full_ctx, callbacks=callbacks
                         )
+                        cronometro.passo("IA")
                         yield from _flush()
                         if self._registrar_falha_da_ia(fname, lote):
                             yield from _flush()
+                            yield cronometro.linha()
                             continue
 
                     # P-04: rastreabilidade campo->fonte. As regras de negócio
@@ -4068,6 +4184,7 @@ class AutoSpecCore:
                                f"contra o(s) documento(s)...")
                         auditoria = self.auditar_respostas_do_fornecedor(
                             txt, fab, desc, respostas, full_ctx, callbacks=callbacks)
+                        cronometro.passo("conferencia do fornecedor")
                         yield from _flush()
                     campos, valores = self._mesclar_auditoria(missing, ai_resp, auditoria)
 
@@ -4079,10 +4196,12 @@ class AutoSpecCore:
                                 documentos=self.duvidosos, refs_locais=refs,
                             )
                         yield from _flush()
+                        yield cronometro.linha()
                         continue
 
                     # 4. Salvar
                     out_path = self.fill_save(wb, ficha, valores, campos, callbacks=callbacks)
+                    cronometro.passo("salvar")
                     yield f" -> Salvo: {os.path.basename(out_path)}"
                     lote.sucesso(fname, f"salvo como {os.path.basename(out_path)}")
                     # `getattr`: teste substitui `analyze_sheet`/`retrieve_context`
@@ -4095,11 +4214,16 @@ class AutoSpecCore:
                             documentos=self.duvidosos, refs_locais=refs,
                         )
                     yield from _flush()
+                    yield cronometro.linha()
 
                 except Exception as e:
                     yield f" -> ERRO: {e}"
                     lote.falha(fname, f"{type(e).__name__}: {e}")
                     yield from _flush()
+                    # O passo que estourou leva o tempo até aqui com o nome
+                    # "até o erro": é justamente o que se quer saber.
+                    cronometro.passo("ate o erro")
+                    yield cronometro.linha()
 
         yield from _flush()
         for linha in autospec_conferencia.resumo_para_console(self.conferencia):
