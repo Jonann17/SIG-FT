@@ -153,7 +153,10 @@ def botao(texto: str, *, variante: str | None = None, largura: int | None = None
         folha += f" min-height: {interna}px; max-height: {interna}px;"
     if largura_minima:
         folga = estilo.FOLGA_TEXTO_BOTAO_CTK
-        folha += f" min-width: {largura_minima - 2 * folga}px; padding: 0 {folga}px;"
+        # O `min-width` do Qt também não conta a borda (1 px em toda variante
+        # desde 2026-10-20): a largura pedida continua sendo a total.
+        borda = estilo.BORDA_DA_VARIANTE.get(variante or "", 0)
+        folha += f" min-width: {largura_minima - 2 * folga - 2 * borda}px; padding: 0 {folga}px;"
     if tamanho_fonte:
         folha += f" font-size: {tamanho_fonte}px;"
     if negrito:

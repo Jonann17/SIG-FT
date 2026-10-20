@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from sigft.app import theme, tokens
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos
 
@@ -54,23 +55,27 @@ FOLGA_TEXTO = 7             # de cada lado do texto (estilo.FOLGA_TEXTO_BOTAO_CT
 
 class Abas(QWidget):
     def __init__(self, parent=None, *, cor_fundo: str | None = None, cor_barra: str | None = None,
-                 cor_selecionada: str = estilo.AZUL_CTK, cor_selecionada_hover: str = estilo.AZUL_CTK_HOVER,
+                 cor_selecionada: str = tokens.ESCURO["marca"],
+                 cor_selecionada_hover: str = theme.COLORS["primary_hover"],
                  cor_nao_selecionada: str | None = None, cor_nao_selecionada_hover: str | None = None,
                  tamanho_fonte: int = 13, ao_mudar=None, altura_da_escolhida: bool = False) -> None:
-        """Cores com os nomes do CTkTabview: `fg_color` (cor_fundo, padrão gray13 --
+        """Cores com os nomes do CTkTabview: `fg_color` (cor_fundo, padrão `estilo.FUNDO_QUADRO_CTK` --
         use `estilo.FUNDO_QUADRO_INTERNO_CTK` quando a interface antiga a punha dentro de um
         CTkFrame de fundo padrão), `segmented_button_fg_color` (cor_barra, gray29),
         `segmented_button_selected_color`/`_hover_color`, e
         `segmented_button_unselected_color` (gray29) / `_hover_color` (gray41).
         `ao_mudar(nome)` é o `command` do CTkTabview: só no clique da pessoa.
+        Padrões desde 2026-10-20 (sistema visual): quadro `superficie`, barra e
+        não escolhida `superficie_alta`, `borda` sob o mouse, escolhida `marca`
+        (texto `texto` sobre ela: 6,3:1). Tema escuro até a troca de tema existir.
         `altura_da_escolhida`: a altura pedida é a da aba escolhida (ver o topo)."""
         super().__init__(parent)
         c = estilo.cinza_tk
         self.cor_fundo = c(cor_fundo or estilo.FUNDO_QUADRO_CTK)
-        self.cor_barra = c(cor_barra or "gray29")
+        self.cor_barra = c(cor_barra or tokens.ESCURO["superficie_alta"])
         self._cor_sel, self._cor_sel_hover = c(cor_selecionada), c(cor_selecionada_hover)
-        self._cor_nao_sel = c(cor_nao_selecionada or "gray29")
-        self._cor_nao_sel_hover = c(cor_nao_selecionada_hover or "gray41")
+        self._cor_nao_sel = c(cor_nao_selecionada or tokens.ESCURO["superficie_alta"])
+        self._cor_nao_sel_hover = c(cor_nao_selecionada_hover or tokens.ESCURO["borda"])
         self._tamanho_fonte = tamanho_fonte
         self._ao_mudar = ao_mudar
         self._altura_da_escolhida = altura_da_escolhida
@@ -177,7 +182,7 @@ class Abas(QWidget):
         r = CANTO
         self.barra.setStyleSheet(
             f"#barra_abas {{ background: {self.cor_barra}; border-radius: {r}px; }}"
-            f" #barra_abas QPushButton {{ background: {self._cor_nao_sel}; color: {estilo.TEXTO_BOTAO_CTK};"
+            f" #barra_abas QPushButton {{ background: {self._cor_nao_sel}; color: {tokens.ESCURO['texto']};"
             f" border: {BORDA_BOTAO}px solid {self.cor_barra}; border-radius: 0;"
             f" padding: 0 {FOLGA_TEXTO - BORDA_BOTAO}px; font-size: {self._tamanho_fonte}px;"
             f" min-height: {ALTURA_BARRA_VISIVEL - 2 * BORDA_BOTAO}px;"
@@ -185,7 +190,7 @@ class Abas(QWidget):
             f" #barra_abas QPushButton:hover {{ background: {self._cor_nao_sel_hover}; }}"
             f" #barra_abas QPushButton:checked {{ background: {self._cor_sel}; border-radius: {r}px; }}"
             f" #barra_abas QPushButton:checked:hover {{ background: {self._cor_sel_hover}; }}"
-            f" #barra_abas QPushButton:disabled {{ color: {estilo.cinza_tk('gray60')}; }}")
+            f" #barra_abas QPushButton:disabled {{ color: {tokens.ESCURO['texto_suave']}; }}")
         botoes = list(self.botoes.values())
         for i, botao in enumerate(botoes):
             # Cantos de fora arredondados nos botões das pontas; o selecionado

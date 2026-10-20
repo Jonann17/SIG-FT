@@ -78,6 +78,7 @@ def test_selecao_com_caixas(qt_interface, qtbot):
 
 
 def test_selecao_com_caixas_tem_as_medidas_e_a_cara_da_janela_do_ctk(qt_interface, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Janela antiga de 450x600 (sigft/app/views/lmr.py), medida na captura de 2026-10-08:
     # rótulo 14 negrito em y=10 (28 de altura); quadro rolável #212121 em (10, 53),
     # 430x494; caixas de 24 px a cada 28 px, a primeira em (16, 61); "Todos" 80x28
@@ -101,9 +102,9 @@ def test_selecao_com_caixas_tem_as_medidas_e_a_cara_da_janela_do_ctk(qt_interfac
 
     assert (d.width(), d.height()) == (450, 600)
     assert caixa(d.rotulo)[1:4:2] == (10, 28)
-    assert caixa(d.quadro) == (10, 53, 430, 494)
-    assert caixa(d.botao_todos) == (10, 562, 80, 28)
-    assert caixa(d.botao_confirmar) == (290, 562, 150, 28)
+    assert caixa(d.quadro) == (10, 53, 430, 490)
+    assert caixa(d.botao_todos) == (10, 558, 80, 32)
+    assert caixa(d.botao_confirmar) == (290, 558, 150, 32)
     linha = d.lista.visualItemRect(d.lista.item(0))
     origem = d.lista.viewport().mapTo(d, linha.topLeft())
     assert (origem.x(), origem.y(), linha.height()) == (16, 59, 28)
@@ -111,7 +112,7 @@ def test_selecao_com_caixas_tem_as_medidas_e_a_cara_da_janela_do_ctk(qt_interfac
     d.lista.item(1).setCheckState(Qt.CheckState.Checked)
     imagem = d.grab().toImage()
     cor = lambda x, y: imagem.pixelColor(x, y).name().upper()  # noqa: E731
-    assert cor(200, 300) == "#212121"
+    assert cor(200, 300) == "#1C2024"                         # superficie (2026-10-20; era gray13)
     assert cor(17, 73) == estilo.BORDA_CTK                      # borda da caixa desmarcada
     assert cor(22, 92) == theme.COLORS["primary"].upper()       # caixa marcada cheia de primary
 

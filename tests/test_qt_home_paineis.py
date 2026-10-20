@@ -1007,21 +1007,23 @@ def test_medidas_da_home(com_folha, qtbot, rede, mensagens):
 
 
 def test_medidas_do_painel_de_chaves(com_folha, qtbot, rede, mensagens):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     tela = home_mod.HomeView(controller=Controller())
     qtbot.addWidget(tela)
     j = _exposta(qtbot, tela.abrir_janela_chaves_api())
-    assert _geo(tela.frame_chaves_api, j) == (26, 26, 697, 320)
+    assert _geo(tela.frame_chaves_api, j) == (26, 26, 697, 348)
     assert _geo(tela.lbl_titulo_chaves_api, j)[:2] == (36, 36)
     for i, chave in enumerate(tela.entries):
-        y = 76 + 32 * i
-        assert _geo(tela.rotulos_chaves_api[chave], j) == (36, y, 140, 28), chave
-        assert _geo(tela.entries[chave], j) == (181, y, 527, 28), chave
+        y = 76 + 36 * i
+        assert _geo(tela.rotulos_chaves_api[chave], j) == (36, y, 140, 32), chave
+        assert _geo(tela.entries[chave], j) == (181, y, 527, 32), chave
     x, y, w, h = _geo(tela.btn_salvar_chaves, j)
-    assert (y, w, h) == (308, 140, 28) and abs(x - 304) <= 1
+    assert (y, w, h) == (336, 140, 28) and abs(x - 304) <= 1
     assert _geo(j.botao_fechar, j) == (320, 480, 120, 28)
 
 
 def test_medidas_do_painel_de_modelos(com_folha, qtbot, rede, mensagens):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     selecao.definir_global("openrouter", "x-ai/grok-4.5", config_path=sigft_config.CONFIG_FILE)
     tela = home_mod.HomeView(controller=Controller())
     qtbot.addWidget(tela)
@@ -1030,21 +1032,21 @@ def test_medidas_do_painel_de_modelos(com_folha, qtbot, rede, mensagens):
     assert _geo(tela.lbl_titulo_modelos_ia, j)[:2] == (36, 36)
     assert _geo(tela.lbl_descricao_modelos_ia, j)[:2] == (36, 74)
     assert _geo(tela.lbl_descricao_modelos_ia, j)[3] == 30  # duas linhas de 15, como o Tk
-    assert _geo(tela.opt_provider_ia, j) == (261, 114, 300, 28)
-    assert _geo(tela.btn_atualizar_catalogo_ia, j)[:2] == (571, 114)
-    assert _geo(tela.lbl_catalogo_ia, j)[1::2] == (147, 28)
-    assert _geo(tela.entry_filtro_modelo_ia, j) == (261, 180, 300, 28)
-    assert _geo(tela.opt_modelo_ia_global, j) == (261, 213, 420, 28)
-    assert _geo(tela.caixa_modo_avancado_ia, j)[:2] == (36, 251)
+    assert _geo(tela.opt_provider_ia, j) == (261, 114, 300, 32)
+    assert _geo(tela.btn_atualizar_catalogo_ia, j)[:2] == (571, 116)
+    assert _geo(tela.lbl_catalogo_ia, j)[1::2] == (151, 28)
+    assert _geo(tela.entry_filtro_modelo_ia, j) == (261, 184, 300, 32)
+    assert _geo(tela.opt_modelo_ia_global, j) == (261, 221, 420, 32)
+    assert _geo(tela.caixa_modo_avancado_ia, j)[:2] == (36, 263)
     assert _geo(tela.caixa_modo_avancado_ia, j)[3] == 24
     x, y, w, h = _geo(tela.entry_modelo_ia_livre, j)
-    assert (y, w, h) == (290, 300, 28)
-    assert _geo(tela.btn_limpar_modelo_ia, j) == (x + 305, 290, 70, 28)
-    assert _geo(tela.lbl_resumo_modelo_ia, j)[:2] == (36, 331)
-    assert _geo(tela.btn_aplicar_recomendados_ia, j)[:2] == (36, 369)
+    assert (y, w, h) == (302, 300, 32)
+    assert _geo(tela.btn_limpar_modelo_ia, j) == (x + 305, 304, 70, 28)
+    assert _geo(tela.lbl_resumo_modelo_ia, j)[:2] == (36, 347)
+    assert _geo(tela.btn_aplicar_recomendados_ia, j)[:2] == (36, 385)
     ap = _geo(tela.btn_aplicar_recomendados_ia, j)
-    assert _geo(tela.btn_salvar_selecao_ia, j)[:2] == (ap[0] + ap[2] + 10, 369)
-    assert _geo(tela.frame_modelos_ia, j)[3] == 386
+    assert _geo(tela.btn_salvar_selecao_ia, j)[:2] == (ap[0] + ap[2] + 10, 385)
+    assert _geo(tela.frame_modelos_ia, j)[3] == 402
 
 
 def test_medidas_do_painel_de_modelos_no_modo_avancado(com_folha, qtbot, rede, mensagens):
@@ -1055,14 +1057,14 @@ def test_medidas_do_painel_de_modelos_no_modo_avancado(com_folha, qtbot, rede, m
     qtbot.addWidget(tela)
     j = _exposta(qtbot, tela.abrir_janela_modelos_ia())
     for i, tarefa in enumerate(sigft_config.TAREFAS_DO_PAINEL):
-        y = 282 + 32 * i
+        y = 294 + 36 * i
         assert _geo(tela.rotulos_modelo_ia_por_tarefa[tarefa], j)[:3] == (36, y, 220), tarefa
-        assert _geo(tela.menus_modelo_ia_por_tarefa[tarefa], j) == (261, y, 420, 28), tarefa
+        assert _geo(tela.menus_modelo_ia_por_tarefa[tarefa], j) == (261, y, 420, 32), tarefa
     # 7 tarefas desde 2026-10-16 (entraram a passada 1 do Cria Fichas e a
-    # tradução de PDM): duas linhas de 32 px a mais que as 5 da tela antiga.
-    assert _geo(tela.entry_modelo_ia_livre, j)[1] == 460 + 2 * 32
+    # tradução de PDM): duas linhas de 36 px (32 desde 2026-10-20 + 4) a mais que as 5 da tela antiga.
+    assert _geo(tela.entry_modelo_ia_livre, j)[1] == 492 + 2 * 36
     resumo = _geo(tela.lbl_resumo_modelo_ia, j)
-    assert resumo[:2] == (36, 501 + 2 * 32)
+    assert resumo[:2] == (36, 537 + 2 * 36)
     assert _geo(tela.btn_aplicar_recomendados_ia, j)[1] == resumo[1] + resumo[3] + 10
 
 

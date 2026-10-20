@@ -1,7 +1,10 @@
-"""A aparência do SIG-FT em Qt: a paleta de `theme.py` virando folha de estilo.
+"""A aparência do SIG-FT em Qt: os tokens de `sigft/app/tokens.py` virando folha de estilo.
 
-As CORES continuam morando em `sigft/app/theme.py` -- este módulo só as lê.
-Duas paletas seria o jeito de as duas interfaces divergirem sem ninguém ver.
+As CORES moram em `tokens.py` (dois temas, mesmos papéis) -- este módulo só as lê.
+`folha_de_estilo(tema)` monta a folha do app inteiro para "escuro" ou "claro"
+(2026-10-20, sistema visual). As constantes `*_CTK` que sobraram são as que os
+widgets pintados à mão (`widgets/controles.py`, `blocos.py`...) ainda leem; a
+interface antiga saiu em 2026-10-15 e elas saem junto com a cor crua das telas.
 """
 from __future__ import annotations
 
@@ -9,7 +12,7 @@ import os
 import re
 import sys
 
-from sigft.app import theme
+from sigft.app import tokens
 
 _RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PASTA_FONTES = os.path.join(_RAIZ, "assets", "fonts")
@@ -40,36 +43,45 @@ ALTURA_BOTAO_BARRA = 40
 LARGURA_BOTAO_CTK = 140
 FOLGA_TEXTO_BOTAO_CTK = 7
 
-# Tema "dark-blue" da interface antiga (interface antiga/assets/themes/dark-blue.json),
-# o que `sigft/app/main.py` usa: é o que pinta tudo o que as telas antigas não
-# coloriam à mão.
+# Sistema visual (2026-10-20): botão e campo com 32 px de altura TOTAL (borda de
+# 1 px incluída), raio 6. No QSS o `min-height` NÃO conta a borda: 32 - 2.
+ALTURA_BOTAO = 32
+ALTURA_CAMPO = 32
+BORDA_CONTROLE = 1
+# O nome antigo continua importável (teste de medida, telas); o valor é o novo.
+ALTURA_CAMPO_CTK = ALTURA_CAMPO
+
+# Espessura da borda (px) de cada variante de botão. `blocos.botao` desconta isto
+# da altura: no Qt o `min-height` da folha NÃO inclui a borda, e a altura pedida é
+# a total. Desde 2026-10-20 TODA variante tem borda de 1 (no primário e no perigo
+# ela tem a cor do fundo; no fantasma, transparente): os botões têm a mesma altura
+# qualquer que seja a variante. "" é o botão sem variante (= secundário).
+BORDA_DA_VARIANTE = {nome: BORDA_CONTROLE for nome in (
+    "", "primario", "secundario", "perigo", "fantasma",
+    "acento", "cinza", "neutro", "contorno", "contorno_padrao")}
+
+# Item escolhido (e sob o mouse) do menu lateral: `marca` a 25% sobre a
+# superfície da barra, valores da spec (2026-10-20). O texto: `texto` no escuro
+# (10,3:1) e a própria marca no claro (6,6:1) -- `texto` claro sobre a marca
+# pura dava 2,2:1.
+MENU_ESCOLHIDO = {
+    "escuro": {"fundo": "#0F3A3F", "texto": tokens.ESCURO["texto"]},
+    "claro": {"fundo": "#E3F1F2", "texto": tokens.CLARO["marca"]},
+}
+
+# --- Cores que os widgets pintados à mão ainda leem --------------------------------
+# Tema "dark-blue" da interface antiga. NÃO entram mais na folha do app (que é dos
+# tokens); continuam aqui porque `widgets/controles.py`, `blocos.py`, `abas.py` e
+# algumas telas os importam pelo nome. Saem quando essas peças lerem os tokens.
 AZUL_CTK = "#1F538D"
 AZUL_CTK_HOVER = "#14375E"
-# CTkButton do mesmo tema: borda (índice 1 = escuro) de um botão com
-# `border_width` e sem `border_color`, e texto de um botão desabilitado (gray60).
 BORDA_CTK = "#949A9F"
 TEXTO_DESABILITADO_CTK = "gray60"
-# Texto de um CTkButton (e das abas e do CTkOptionMenu) que não diz `text_color`:
-# o do tema, que NÃO é o text_light (#E0E0E0) de theme.py. Botão que lá passava
-# text_color=COLORS["text_light"] (menu e Home da barra lateral, glossário) diz
-# isso aqui também, com a cor explícita.
 TEXTO_BOTAO_CTK = "#DCE4EE"
-# CTkEntry do mesmo tema: altura 28 (borda incluída), borda 2 #565B5E, fundo
-# #343638, texto gray84, dica (placeholder) gray62, fonte 13. Lá o Entry do Tk vai
-# na grade com padx=6 e pady=(2, 3): a caixa do texto tem 23 px, 1 px mais perto
-# do topo. Aqui: borda 2 + padding (0, 3, 1, 3) + 23 de conteúdo = 28, e o texto
-# começa no mesmo x (medido: 8 px da borda de fora, nas duas capturas).
-ALTURA_CAMPO_CTK = 28
-BORDA_CAMPO_CTK = 2
-# CTkOptionMenu: 28 de altura, fonte 13 e texto #DCE4EE. O desenho (a parte
-# escura da seta) é de `widgets.controles.MenuDeOpcoes`; a lista que abre é o
-# DropdownMenu do tema (fundo gray20, texto gray84, gray28 sob o mouse).
-ALTURA_MENU_CTK = 28
-
-# Espessura da borda (px) de cada variante de botão que tem borda. `blocos.botao`
-# desconta isto da altura: no Qt o `min-height` da folha NÃO inclui a borda, e no
-# interface antiga `height` é a altura total do botão, borda incluída.
-BORDA_DA_VARIANTE = {"contorno": 1, "contorno_padrao": 1}
+# Altura do menu de opções (`widgets.controles.MenuDeOpcoes`, que o desenha): a
+# de campo desde 2026-10-20 (era os 28 do CTkOptionMenu); a regra QComboBox da
+# folha já dá 32, e o `sizeHint` dele tem de dizer o mesmo.
+ALTURA_MENU_CTK = ALTURA_CAMPO
 
 _SELETOR_TEXTO = "\ufe0e"   # U+FE0E: pede a forma de texto (preto e branco)
 _SELETOR_EMOJI = "\ufe0f"   # U+FE0F: pede a forma de emoji (colorida)
@@ -174,237 +186,277 @@ def carregar_fontes() -> list[str]:
     return familias
 
 
-def folha_de_estilo() -> str:
-    """A folha QSS do app inteiro, montada a partir de `theme.py`."""
-    c = theme.COLORS
+
+
+def _escurecer(cor: str, fator: float) -> str:
+    """`cor` ("#RRGGBB") com cada canal multiplicado por `1 - fator`: o hover do
+    botão de perigo, que não tem token próprio (o `perigo` claro é texto, e o
+    branco sobre ele não chega a 4,5:1)."""
+    cor = cor.lstrip("#")
+    canais = (round(int(cor[i:i + 2], 16) * (1 - fator)) for i in (0, 2, 4))
+    return "#" + "".join(f"{c:02X}" for c in canais)
+
+
+# Variantes antigas que a folha trata como as novas (2026-10-20): as telas ainda
+# passam esses nomes, e `blocos.botao` os troca na Task 4 do plano.
+SINONIMOS_DE_VARIANTE = {
+    "acento": "primario",
+    "cinza": "secundario", "neutro": "secundario",
+    "contorno": "secundario", "contorno_padrao": "secundario",
+}
+
+
+def _seletor_variante(variante: str, estado: str = "") -> str:
+    """`QPushButton[variante="..."]` da variante e de cada sinônimo dela, com o
+    nome novo POR ÚLTIMO (o teste procura a regra pelo nome novo seguido de "{")."""
+    nomes = [antiga for antiga, nova in SINONIMOS_DE_VARIANTE.items() if nova == variante]
+    nomes.append(variante)
+    return ", ".join(f'QPushButton[variante="{n}"]{estado}' for n in nomes)
+
+
+def folha_de_estilo(tema: str = "escuro") -> str:
+    """A folha QSS do app inteiro no `tema` ("escuro" ou "claro"), dos tokens.
+
+    Sem argumento, o escuro: é o que a abertura (`main._preparar_qt`) aplica até
+    a escolha de tema existir."""
+    p = tokens.paleta(tema)
+    menu = MENU_ESCOLHIDO["claro" if tema == "claro" else "escuro"]
+    f = tokens.FONTE
+    raio, raio_cartao = tokens.RAIO["controle"], tokens.RAIO["cartao"]
     fam = '"Roboto", "Noto Emoji"'
-    # Notas que não cabem dentro da folha (comentário nela vazaria "gray" no QSS):
-    # * variante "contorno": o "Ignorar e Continuar" de sigft/app/widgets/dialogs.py
-    #   (borda #555 e texto COR_TEXTO_APOIO, escritos à mão); "contorno_padrao": botão
-    #   transparente com border_width=1, sem border_color (a do tema) e com
-    #   text_color=text_light escrito à mão -- o glossário do Tradutor;
-    # * texto dos botões: TEXTO_BOTAO_CTK (o do tema) na regra geral; text_light só
-    #   onde a interface antiga o escrevia (menu, Home, contorno_padrao). A barra da Home não o
-    #   escreve: lá é #DCE4EE (medido na captura), e não branco; e a largura dos
-    #   botões dela é a do CTkButton (LARGURA_BOTAO_CTK);
-    # * QLineEdit: o CTkEntry do tema (ver ALTURA_CAMPO_CTK). min/max-height não
-    #   contam borda nem padding: 28 - 2*2 - 1;
-    # * #console: CTkTextbox do tema dark-blue -- fg gray20, border_width 0, texto gray84.
-    # * variante "cinza": o #3A3A3A com hover #454545 que as telas antigas escreviam à mão
-    #   ("Todos", "Cancelar"); "neutro" é o mesmo fundo com o hover do tema (Home).
-    # * #quadro_caixas/#lista_caixas: o CTkScrollableFrame da seleção de fichas
-    #   (fundo gray13, cantos 6) e o CTkScrollbar dele (`folha_rolagem_ctk`). As
-    #   linhas são de `dialogs._DelegadoDaCaixa`.
-    # * abas: não há regra de QTabWidget -- o CTkTabview é `widgets/abas.Abas`.
-    # * QCheckBox::indicator: width/height NÃO contam a borda -- 18 + 2*3 = os 24 da
-    #   CTkCheckBox (com 20 saía 26). Sem imagem, a marcada não tem o "v" de lá.
-    # * #notas_atualizacao: o CTkTextbox das notas do aviso de atualização (fundo
-    #   gray20, sem borda, cantos 6, texto gray84, Roboto 12); o texto começa 8 px
-    #   à esquerda e 11 px abaixo da borda (medido na E5.2).
+    mono_fam = '"Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono", monospace'
+    altura_botao = ALTURA_BOTAO - 2 * BORDA_CONTROLE
+    altura_campo = ALTURA_CAMPO - 2 * BORDA_CONTROLE
+    perigo_hover = _escurecer(p["perigo_fundo"], 0.15)
+    # Notas que não cabem dentro da folha (comentário de QSS também é texto dela):
+    # * botão sem variante = secundário (contorno `borda`, texto `texto`); as
+    #   variantes antigas são sinônimos (SINONIMOS_DE_VARIANTE). O primário tem o
+    #   texto ESCURO no tema escuro (branco sobre o verde vivo dava 3,1:1);
+    # * perigo: fundo `perigo_fundo` e texto branco (5,3:1), nos dois temas;
+    # * papéis de texto: QLabel[papel=...]. O "aviso" ganha o fundo `superficie`
+    #   (pílula): a cor de aviso só chega a 4,5:1 sobre a superfície no claro
+    #   (4,2 sobre o fundo). O "ok" usa `primaria`, e não `sucesso`, pelo mesmo
+    #   motivo (sucesso claro sobre o fundo: 4,2; primária: 4,9);
+    # * #console: escuro nos DOIS temas (é saída de terminal), fonte mono;
+    # * QCheckBox::indicator: width/height NÃO contam a borda -- 20 + 2*2 = 24;
+    # * #quadro_caixas/#lista_caixas: a seleção de fichas; as linhas são de
+    #   `dialogs._DelegadoDaCaixa`; abas: não há regra de QTabWidget, é `widgets/abas`.
     return f"""
-QMainWindow, #conteudo, #tela {{ background: {c['background']}; }}
-QDialog {{ background: {cinza_tk('gray10')}; }}
-QWidget {{ font-family: {fam}; color: {c['text_light']}; }}
-#sidebar, #sidebar_interno {{ background: {c['sidebar']}; border: none; }}
-#secao {{ color: {cinza_tk('gray50')}; font-size: 11px; font-weight: bold; padding-left: 10px; }}
-#app_nome {{ color: {cinza_tk('gray60')}; font-size: 13px; }}
-QPushButton {{ border-radius: 6px; color: {TEXTO_BOTAO_CTK}; background: {AZUL_CTK};
-               border: none; padding: 0 14px; min-height: 28px; font-size: 13px; }}
-QPushButton:hover {{ background: {AZUL_CTK_HOVER}; }}
-QPushButton[variante="primario"] {{ background: {c['primary']}; }}
-QPushButton[variante="primario"]:hover {{ background: {c['primary_hover']}; }}
-QPushButton:disabled {{ color: {cinza_tk(TEXTO_DESABILITADO_CTK)}; }}
-QPushButton[menu="true"] {{ background: transparent; text-align: left; padding: 0 10px;
-    color: {c['text_light']}; min-height: {ALTURA_BOTAO_MENU}px; max-height: {ALTURA_BOTAO_MENU}px; font-size: 12px; }}
-QPushButton[menu="true"]:hover {{ background: {c['primary']}; }}
-QPushButton[menu="true"]:disabled {{ color: {cinza_tk('gray45')}; }}
+QMainWindow, #conteudo, #tela {{ background: {p['fundo']}; }}
+QDialog {{ background: {p['fundo']}; }}
+QWidget {{ font-family: {fam}; color: {p['texto']}; }}
+QToolTip {{ background: {p['superficie_alta']}; color: {p['texto']}; border: 1px solid {p['borda']};
+    padding: 4px 8px; }}
+#sidebar, #sidebar_interno {{ background: {p['superficie']}; border: none; }}
+#secao {{ color: {p['texto_suave']}; font-size: 11px; font-weight: bold; padding-left: 10px; }}
+#app_nome {{ color: {p['texto_suave']}; font-size: {f['corpo']}px; }}
+QPushButton {{ border-radius: {raio}px; color: {p['texto']}; background: transparent;
+    border: {BORDA_CONTROLE}px solid {p['borda']}; padding: 0 14px;
+    min-height: {altura_botao}px; font-size: {f['corpo']}px; }}
+QPushButton:hover {{ background: {p['superficie_alta']}; }}
+QPushButton:pressed {{ background: {p['borda']}; }}
+QPushButton:disabled {{ color: {p['texto_suave']}; }}
+{_seletor_variante('secundario')} {{ background: transparent; border-color: {p['borda']};
+    color: {p['texto']}; }}
+{_seletor_variante('secundario', ':hover')} {{ background: {p['superficie_alta']}; }}
+{_seletor_variante('primario')} {{ background: {p['primaria']}; border-color: {p['primaria']};
+    color: {p['texto_sobre_primaria']}; }}
+{_seletor_variante('primario', ':hover')} {{ background: {p['primaria_hover']};
+    border-color: {p['primaria_hover']}; }}
+{_seletor_variante('primario', ':disabled')} {{ background: {p['superficie_alta']};
+    border-color: {p['borda']}; color: {p['texto_suave']}; }}
+QPushButton[variante="perigo"] {{ background: {p['perigo_fundo']}; border-color: {p['perigo_fundo']};
+    color: #FFFFFF; }}
+QPushButton[variante="perigo"]:hover {{ background: {perigo_hover}; border-color: {perigo_hover}; }}
+QPushButton[variante="perigo"]:disabled {{ background: {p['superficie_alta']};
+    border-color: {p['borda']}; color: {p['texto_suave']}; }}
+QPushButton[variante="fantasma"] {{ background: transparent; border-color: transparent; color: {p['texto']}; }}
+QPushButton[variante="fantasma"]:hover {{ background: {p['superficie_alta']}; }}
+QPushButton[menu="true"] {{ background: transparent; text-align: left; padding: 0 10px; border: none;
+    color: {p['texto']}; min-height: {ALTURA_BOTAO_MENU}px; max-height: {ALTURA_BOTAO_MENU}px;
+    font-size: {f['legenda']}px; }}
+QPushButton[menu="true"]:hover, QPushButton[menu="true"][ativo="true"] {{ background: {menu['fundo']};
+    color: {menu['texto']}; }}
+QPushButton[menu="true"][ativo="true"] {{ font-weight: bold; }}
+QPushButton[menu="true"]:disabled {{ color: {p['texto_suave']}; }}
 #home {{ background: transparent; text-align: left; font-weight: bold;
-         color: {c['text_light']}; border: 1px solid {cinza_tk('gray30')}; }}
-#home:hover {{ background: {c['primary']}; }}
-QPushButton[barra="true"] {{ min-height: {ALTURA_BOTAO_BARRA}px;
-    min-width: {LARGURA_BOTAO_CTK - 2 * FOLGA_TEXTO_BOTAO_CTK}px; padding: 0 {FOLGA_TEXTO_BOTAO_CTK}px;
+         color: {p['texto']}; border: {BORDA_CONTROLE}px solid {p['borda']}; }}
+#home:hover, #home[ativo="true"] {{ background: {menu['fundo']}; color: {menu['texto']}; }}
+QPushButton[barra="true"] {{ min-height: {ALTURA_BOTAO_BARRA - 2 * BORDA_CONTROLE}px;
+    min-width: {LARGURA_BOTAO_CTK - 2 * FOLGA_TEXTO_BOTAO_CTK - 2 * BORDA_CONTROLE}px; padding: 0 {FOLGA_TEXTO_BOTAO_CTK}px;
     font-weight: bold; }}
-QPushButton[variante="acento"] {{ background: {c['accent']}; }}
-QPushButton[variante="acento"]:hover {{ background: {c['accent_hover']}; }}
-QPushButton[variante="neutro"] {{ background: #3A3A3A; }}
-QPushButton[variante="neutro"]:hover {{ background: #4A4A4A; }}
-QPushButton[variante="cinza"] {{ background: #3A3A3A; }}
-QPushButton[variante="cinza"]:hover {{ background: #454545; }}
-QPushButton[variante="perigo"] {{ background: {c['danger']}; }}
-QPushButton[variante="perigo"]:hover {{ background: #B71C1C; }}  /* o hover_color das telas antigas */
-QPushButton[variante="contorno"] {{ background: transparent;
-    border: {BORDA_DA_VARIANTE['contorno']}px solid #555555; color: {cinza_tk('gray')}; }}
-QPushButton[variante="contorno_padrao"] {{ background: transparent;
-    border: {BORDA_DA_VARIANTE['contorno_padrao']}px solid {BORDA_CTK}; color: {c['text_light']}; }}
-QPushButton[variante="contorno"]:hover, QPushButton[variante="contorno_padrao"]:hover {{
-    background: {AZUL_CTK_HOVER}; }}
+QLabel[papel="legenda"] {{ color: {p['texto_suave']}; font-size: {f['legenda']}px; }}
+QLabel[papel="secao"] {{ font-size: {f['secao']}px; font-weight: bold; }}
+QLabel[papel="titulo"] {{ font-size: {f['titulo']}px; font-weight: bold; }}
+QLabel[papel="aviso"] {{ color: {p['aviso']}; background: {p['superficie']};
+    border-radius: {raio}px; padding: 2px 6px; }}
+QLabel[papel="erro"] {{ color: {p['perigo']}; }}
+QLabel[papel="ok"] {{ color: {p['primaria']}; }}
 #titulo_home {{ font-size: 32px; font-weight: bold; }}
-#subtitulo_home {{ font-size: 16px; color: {cinza_tk('gray70')}; }}
+#subtitulo_home {{ font-size: 16px; color: {p['texto_suave']}; }}
 #texto_simples {{ font-size: 14px; }}
-#titulo_modulo {{ font-size: 24px; font-weight: bold; color: {c['text_white']}; }}
-#faixa_atividade_texto {{ color: {c['text_light']}; font-size: 12px; font-weight: bold; }}
-#faixa_atividade_texto[estado="ok"] {{ color: {c['accent']}; }}
-#faixa_atividade_texto[estado="erro"] {{ color: #EF5350; }}
-#card {{ background: {theme.COR_CARTAO}; border: 1px solid #333333; border-radius: 8px; }}
-#card:hover {{ border: 1px solid {c['accent']}; }}
-#card_titulo {{ color: {c['accent']}; font-size: 15px; font-weight: bold; background: transparent; }}
-#card_desc {{ color: {cinza_tk('gray70')}; font-size: 12px; background: transparent; }}
-#console {{ background: {cinza_tk('gray20')}; border: none; border-radius: 6px;
-            color: {cinza_tk('gray84')}; font-family: "Consolas", "Menlo", monospace; font-size: 12px; }}
-#notas_atualizacao {{ background: {cinza_tk('gray20')}; border: none; border-radius: 6px;
-    color: {cinza_tk('gray84')}; font-size: 12px; padding: 5px 4px 3px 4px; }}
+#titulo_modulo {{ font-size: {f['titulo']}px; font-weight: bold; color: {p['texto']}; }}
+#faixa_atividade_texto {{ color: {p['texto']}; font-size: {f['legenda']}px; font-weight: bold; }}
+#faixa_atividade_texto[estado="ok"] {{ color: {p['primaria']}; }}
+#faixa_atividade_texto[estado="erro"] {{ color: {p['perigo']}; }}
+#card {{ background: {p['superficie']}; border: 1px solid {p['borda']}; border-radius: {raio_cartao}px; }}
+#card:hover {{ border: 1px solid {p['primaria']}; }}
+#card_titulo {{ color: {p['primaria']}; font-size: {f['secao']}px; font-weight: bold; background: transparent; }}
+#card_desc {{ color: {p['texto_suave']}; font-size: {f['legenda']}px; background: transparent; }}
+#console {{ background: {p['console_fundo']}; border: none; border-radius: {raio}px;
+            color: {p['console_texto']}; font-family: {mono_fam}; font-size: 12px; }}
+#notas_atualizacao {{ background: {p['superficie_alta']}; border: none; border-radius: {raio}px;
+    color: {p['texto']}; font-size: 12px; padding: 5px 4px 3px 4px; }}
 QCheckBox {{ font-size: 12px; }}
-QCheckBox::indicator {{ width: 18px; height: 18px; border: 3px solid #949A9F;
-                        border-radius: 6px; background: transparent; }}
-QCheckBox::indicator:checked {{ background: {AZUL_CTK}; border-color: {AZUL_CTK}; }}
-QProgressBar {{ background: #333333; border: none; border-radius: 5px; max-height: 12px; }}
-QProgressBar::chunk {{ background: {c['primary']}; border-radius: 5px; }}
-QLineEdit {{ background: #343638; border: {BORDA_CAMPO_CTK}px solid #565B5E; border-radius: 6px;
-             color: {cinza_tk('gray84')}; placeholder-text-color: {cinza_tk('gray62')};
-             font-size: 13px; padding: 0 3px 1px 3px;
-             min-height: {ALTURA_CAMPO_CTK - 2 * BORDA_CAMPO_CTK - 1}px;
-             max-height: {ALTURA_CAMPO_CTK - 2 * BORDA_CAMPO_CTK - 1}px; }}
-QLineEdit:disabled {{ color: {cinza_tk('gray45')}; }}
-QComboBox {{ background: {AZUL_CTK}; border-radius: 6px; padding: 0 10px; border: none;
-             color: {TEXTO_BOTAO_CTK}; font-size: 13px;
-             min-height: {ALTURA_MENU_CTK}px; max-height: {ALTURA_MENU_CTK}px; }}
-QComboBox QAbstractItemView {{ background: {cinza_tk('gray20')}; color: {cinza_tk('gray84')};
-    selection-background-color: {cinza_tk('gray28')}; border: none; outline: none; }}
-QListWidget {{ background: #1E1E1E; color: {c['text_light']}; border: none; }}
-QListWidget::item:selected {{ background: {c['primary']}; color: white; }}
-#quadro_caixas {{ background: {cinza_tk('gray13')}; border-radius: 6px; }}
-#lista_caixas {{ background: transparent; border: none; font-size: 13px; }}
-{folha_rolagem_ctk('#lista_caixas', margem_vertical=4)}
-#cartao {{ background: {theme.COR_CARTAO}; border-radius: 8px; }}
+QCheckBox::indicator {{ width: 20px; height: 20px; border: 2px solid {p['texto_suave']};
+                        border-radius: {raio}px; background: transparent; }}
+QCheckBox::indicator:hover {{ border-color: {p['primaria']}; }}
+QCheckBox::indicator:checked {{ background: {p['primaria']}; border-color: {p['primaria']}; }}
+QCheckBox::indicator:disabled {{ border-color: {p['borda']}; }}
+QProgressBar {{ background: {p['superficie_alta']}; border: none; border-radius: 5px; max-height: 12px; }}
+QProgressBar::chunk {{ background: {p['primaria']}; border-radius: 5px; }}
+QLineEdit {{ background: {p['superficie_alta']}; border: {BORDA_CONTROLE}px solid {p['borda']};
+             border-radius: {raio}px; color: {p['texto']}; placeholder-text-color: {p['texto_suave']};
+             font-size: {f['corpo']}px; padding: 0 6px;
+             min-height: {altura_campo}px; max-height: {altura_campo}px; }}
+QLineEdit:focus {{ border-color: {p['primaria']}; }}
+QLineEdit:disabled {{ color: {p['texto_suave']}; }}
+QComboBox {{ background: {p['superficie_alta']}; border: {BORDA_CONTROLE}px solid {p['borda']};
+             border-radius: {raio}px; padding: 0 10px; color: {p['texto']}; font-size: {f['corpo']}px;
+             min-height: {altura_campo}px; max-height: {altura_campo}px; }}
+QComboBox:focus, QComboBox:on {{ border-color: {p['primaria']}; }}
+QComboBox:disabled {{ color: {p['texto_suave']}; }}
+QComboBox QAbstractItemView {{ background: {p['superficie']}; color: {p['texto']};
+    selection-background-color: {menu['fundo']}; selection-color: {menu['texto']};
+    border: 1px solid {p['borda']}; outline: none; }}
+QListWidget {{ background: {p['superficie']}; color: {p['texto']}; border: none; }}
+QListWidget::item:selected {{ background: {menu['fundo']}; color: {menu['texto']}; }}
+#quadro_caixas {{ background: {p['superficie']}; border-radius: {raio}px; }}
+#lista_caixas {{ background: transparent; border: none; font-size: {f['corpo']}px; }}
+{folha_rolagem_ctk('#lista_caixas', margem_vertical=4, tema=tema)}
+#cartao {{ background: {p['superficie']}; border-radius: {raio_cartao}px; }}
 QScrollArea {{ border: none; background: transparent; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; }}
-QScrollBar::handle:vertical {{ background: #4A4D50; border-radius: 5px; min-height: 30px; }}
+QScrollBar::handle:vertical {{ background: {p['borda']}; border-radius: 5px; min-height: 30px; }}
+QScrollBar::handle:vertical:hover {{ background: {p['texto_suave']}; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
-""" + _folha_e31()
+""" + _folha_e31(tema)
 
 
 # --- E3.1: rádio, slider, barra de progresso, abas, área rolável, tabela ---------
-# (Interruptor/CTkSwitch, CTkOptionMenu e a caixa de marcar são de
-# `widgets/controles.py`.) Medidos nas capturas da E3.1 (`capturas/e3.1/`).
-# TRILHO_CTK é o `fg_color` escuro de CTkProgressBar e CTkSlider (a parte vazia);
-# o slider pinta a parte percorrida de #AAB0B5 e o botão de AZUL_CTK.
+# (Interruptor/CTkSwitch, CTkOptionMenu e a caixa de marcar pintada são de
+# `widgets/controles.py`.) As MEDIDAS seguem as da E3.1; as cores, os tokens.
+# TRILHO_CTK é o `fg_color` escuro de CTkProgressBar e CTkSlider (a parte vazia),
+# que `blocos` e `controles` ainda pintam à mão.
 TRILHO_CTK = "#4A4D50"
-PERCORRIDO_SLIDER_CTK = "#AAB0B5"
-# CTkRadioButton 22x22: borda 3 desmarcado, 6 marcado. No Qt `width`/`height` do
+# Rádio 22x22: borda 3 desmarcado, 6 marcado. No Qt `width`/`height` do
 # ::indicator NÃO contam a borda.
 TAMANHO_RADIO_CTK = 22
-# O `width=100` padrão do CTkRadioButton é largura MÍNIMA: "Português" e "English"
-# ocupam 100 (e empurram o vizinho para o mesmo x de lá); o texto maior alarga.
-# No QSS o `min-width` do rádio conta só o texto: os 22 da bolinha e os 6 do vão
-# vêm por fora (era um `setMinimumWidth` local do PDM).
+# Largura MÍNIMA do rádio: "Português" e "English" ocupam 100; o texto maior
+# alarga. No QSS o `min-width` conta só o texto: os 22 da bolinha e os 6 do vão
+# vêm por fora.
 LARGURA_RADIO_CTK = 100
 VAO_TEXTO_RADIO_CTK = 6
-# CTkSlider: 16 de altura, trilho de 4 (16 - 2 * border_width 6), botão redondo de
-# 16; o centro do botão anda de 8 a largura - 8, o trilho vai de 6 a largura - 6.
+# Slider: 16 de altura, trilho de 4, botão redondo de 16; o centro do botão anda
+# de 8 a largura - 8, o trilho vai de 6 a largura - 6.
 ALTURA_SLIDER_CTK = 16
-# CTkScrollbar: faixa de 16 px, alça de 8 (border_spacing 4 de cada lado), gray41;
-# gray53 sob o mouse. A alça começa 10 px abaixo do topo do quadro (canto 6 + 4).
+# Barra de rolagem das listas: faixa de 16 px, alça de 8 (4 de cada lado).
 LARGURA_ROLAGEM_CTK = 16
-# CTkFrame: fundo gray13; dentro de outro CTkFrame de fundo padrão, gray16.
-FUNDO_QUADRO_CTK = "gray13"
-FUNDO_QUADRO_INTERNO_CTK = "gray16"
+# Fundo do quadro das abas (`widgets/abas.Abas`) e de painéis: 2026-10-20, dos
+# tokens -- o gray13/gray16 da CTk (#212121/#292929) brigava com o fundo novo.
+# Na CTk o quadro era INVISÍVEL: gray13 era o próprio fundo antigo (#212121), e o
+# gray16 de dentro de um cartão era quase o cartão (#2B2B2B). Mantido: quadro
+# sobre a tela = `fundo` (os cartões `superficie` de dentro continuam se vendo);
+# quadro dentro de um cartão = `superficie`. Tema escuro até a troca de tema.
+FUNDO_QUADRO_CTK = tokens.ESCURO["fundo"]
+FUNDO_QUADRO_INTERNO_CTK = tokens.ESCURO["superficie"]
 
-# ttk.Treeview e tk.Listbox crus: as telas NÃO os estilizam (não há ttk.Style no
-# app), então cada sistema os desenha com o tema nativo do Tk -- tabela branca de
-# texto preto. No Windows (onde o app roda) é o tema "vista": cabeçalho branco com
-# divisórias claras e seleção na cor de destaque do sistema; nos outros, o tema
-# "default" do Tk (medido na captura do Linux).
-TABELA_TK = {
-    "win32": {"cabecalho": "#FFFFFF", "divisoria": "#E5E5E5", "selecao": "#0078D7",
-              "texto_selecao": "#FFFFFF", "selecao_lista": "#0078D7",
-              "texto_selecao_lista": "#FFFFFF", "borda_lista": "#828790"},
-    "outro": {"cabecalho": "#D9D9D9", "divisoria": "#A3A3A3", "selecao": "#4A6984",
-              "texto_selecao": "#FFFFFF", "selecao_lista": "#C3C3C3",
-              "texto_selecao_lista": "#000000", "borda_lista": "#A3A3A3"},
-}
-# Linha da tabela e altura do cabeçalho: 20 px (medido). TkDefaultFont: Segoe UI
-# 9 pt (12 px) no Windows.
-ALTURA_LINHA_TABELA_TK = 20
+# Linha da tabela (QTreeView) e altura do cabeçalho: 24 px, degrau da escala de
+# espaço (2026-10-20; era o Treeview nativo do Tk, de 20 px).
+ALTURA_LINHA_TABELA = 24
 # tk.Listbox: cada linha tem a altura da fonte + 2 * selectborderwidth, que é 1 no
 # X11 e 0 no Windows. Folga de cima e de baixo de cada item.
 FOLGA_LINHA_LISTA_TK = 0 if sys.platform == "win32" else 1
 
 
-def folha_rolagem_ctk(seletor: str = "", *, margem_vertical: int = 4) -> str:
-    """O CTkScrollbar: faixa de 16 px, alça gray41 de 8 (border_spacing 4 dos
-    lados), gray53 sob o mouse, sem setas. `seletor` prefixa as regras (ex.:
-    "#lista_caixas"); vazio, a folha vale para a própria QScrollBar (folha local).
-    `margem_vertical`: onde a alça começa e acaba -- 4 do border_spacing, mais o
-    canto do quadro quando a barra vai da borda de cima à de baixo dele."""
-    p = f"{seletor} " if seletor else ""
+def folha_rolagem_ctk(seletor: str = "", *, margem_vertical: int = 4, tema: str = "escuro") -> str:
+    """A barra de rolagem das listas: faixa de 16 px, alça de 8 (4 dos lados) na
+    cor `borda`, `texto_suave` sob o mouse, sem setas. `seletor` prefixa as regras
+    (ex.: "#lista_caixas"); vazio, a folha vale para a própria QScrollBar (folha
+    local). `margem_vertical`: onde a alça começa e acaba -- 4, mais o canto do
+    quadro quando a barra vai da borda de cima à de baixo dele."""
+    p = tokens.paleta(tema)
+    pre = f"{seletor} " if seletor else ""
     folga = (LARGURA_ROLAGEM_CTK - 8) // 2
-    return (f"{p}QScrollBar:vertical {{ width: {LARGURA_ROLAGEM_CTK}px; background: transparent;"
+    return (f"{pre}QScrollBar:vertical {{ width: {LARGURA_ROLAGEM_CTK}px; background: transparent;"
             f" margin: {margem_vertical}px {folga}px; }}\n"
-            f"{p}QScrollBar::handle:vertical {{ background: {cinza_tk('gray41')}; border-radius: 4px;"
+            f"{pre}QScrollBar::handle:vertical {{ background: {p['borda']}; border-radius: 4px;"
             " min-height: 20px; }\n"
-            f"{p}QScrollBar::handle:vertical:hover {{ background: {cinza_tk('gray53')}; }}\n"
-            f"{p}QScrollBar::add-line:vertical, {p}QScrollBar::sub-line:vertical {{ height: 0; }}\n"
-            f"{p}QScrollBar::add-page:vertical, {p}QScrollBar::sub-page:vertical {{ background: transparent; }}")
+            f"{pre}QScrollBar::handle:vertical:hover {{ background: {p['texto_suave']}; }}\n"
+            f"{pre}QScrollBar::add-line:vertical, {pre}QScrollBar::sub-line:vertical {{ height: 0; }}\n"
+            f"{pre}QScrollBar::add-page:vertical, {pre}QScrollBar::sub-page:vertical {{ background: transparent; }}")
 
 
-def _folha_e31() -> str:
-    """Rádio, slider, tabela (ttk.Treeview) e lista crua (tk.Listbox) -- E3.1.
+def _folha_e31(tema: str = "escuro") -> str:
+    """Rádio, slider, tabela (QTreeView) e lista clara -- E3.1, nas cores do tema.
 
     Num bloco à parte da folha principal só para as duas frentes da migração não
-    mexerem nas mesmas linhas. Medidas: ver as constantes no topo do módulo.
+    mexerem nas mesmas linhas. Medidas: ver as constantes acima.
     """
-    t = TABELA_TK["win32" if sys.platform == "win32" else "outro"]
+    p = tokens.paleta(tema)
+    menu = MENU_ESCOLHIDO["claro" if tema == "claro" else "escuro"]
     raio_radio = TAMANHO_RADIO_CTK // 2
-    trilho = (ALTURA_SLIDER_CTK - 4) // 2  # 6: o border_width do CTkSlider
-    # Notas fora da folha (um comentário dentro dela vazaria "gray" no QSS):
-    # * rádio: desmarcado borda 3 #949A9F, marcado borda 6 azul (o miolo é o
-    #   fundo), borda azul-escura sob o mouse nos dois; texto gray84, 6 px depois;
-    #   100 de largura no mínimo (LARGURA_RADIO_CTK);
+    trilho = (ALTURA_SLIDER_CTK - 4) // 2  # 6: recuo do trilho nas pontas
+    # Notas fora da folha:
+    # * rádio: desmarcado borda 3 `texto_suave`, marcado borda 6 `primaria` (o
+    #   miolo é o fundo), borda `primaria_hover` sob o mouse; texto 6 px depois;
     # * slider: o sulco é transparente e as duas metades (sub-page/add-page) é que
     #   desenham o trilho de 4 px, recuado 6 px das pontas -- assim o botão anda
-    #   a largura inteira (centro de 8 a largura - 8), como na interface antiga;
-    # * tabela/lista claras: as cores do Tk nativo (TABELA_TK). Barras de rolagem
-    #   claras na tabela e em toda lista com `barra_nativa` (as do tk.Listbox):
-    #   a ttk/tk.Scrollbar é a do sistema, que no Windows ignora cores.
+    #   a largura inteira (centro de 8 a largura - 8);
+    # * tabela e lista "claro": eram as cores do Tk nativo (tabela branca de texto
+    #   preto); desde 2026-10-20 seguem o tema, como o resto. A propriedade
+    #   `claro` ficou com o nome (as telas a põem), mas a lista não é mais clara
+    #   no tema escuro. Barras de rolagem da tabela e de `barra_nativa`, idem.
     return f"""
-QRadioButton {{ font-size: 13px; color: {cinza_tk('gray84')}; spacing: {VAO_TEXTO_RADIO_CTK}px;
+QRadioButton {{ font-size: 13px; color: {p['texto']}; spacing: {VAO_TEXTO_RADIO_CTK}px;
     background: transparent; min-width: {LARGURA_RADIO_CTK - TAMANHO_RADIO_CTK - VAO_TEXTO_RADIO_CTK}px; }}
-QRadioButton:disabled {{ color: {cinza_tk('gray45')}; }}
+QRadioButton:disabled {{ color: {p['texto_suave']}; }}
 QRadioButton::indicator {{ width: {TAMANHO_RADIO_CTK - 6}px; height: {TAMANHO_RADIO_CTK - 6}px;
-    border: 3px solid {BORDA_CTK}; border-radius: {raio_radio}px; background: transparent; }}
+    border: 3px solid {p['texto_suave']}; border-radius: {raio_radio}px; background: transparent; }}
 QRadioButton::indicator:checked {{ width: {TAMANHO_RADIO_CTK - 12}px; height: {TAMANHO_RADIO_CTK - 12}px;
-    border: 6px solid {AZUL_CTK}; }}
-QRadioButton::indicator:hover {{ border-color: {AZUL_CTK_HOVER}; }}
+    border: 6px solid {p['primaria']}; }}
+QRadioButton::indicator:hover {{ border-color: {p['primaria_hover']}; }}
 QSlider:horizontal {{ min-height: {ALTURA_SLIDER_CTK}px; max-height: {ALTURA_SLIDER_CTK}px;
     background: transparent; }}
 QSlider::groove:horizontal {{ height: {ALTURA_SLIDER_CTK}px; background: transparent; border: none; }}
-QSlider::sub-page:horizontal {{ background: {PERCORRIDO_SLIDER_CTK}; border-radius: 2px;
+QSlider::sub-page:horizontal {{ background: {p['primaria']}; border-radius: 2px;
     margin: {trilho}px 0 {trilho}px {trilho}px; }}
-QSlider::add-page:horizontal {{ background: {TRILHO_CTK}; border-radius: 2px;
+QSlider::add-page:horizontal {{ background: {p['borda']}; border-radius: 2px;
     margin: {trilho}px {trilho}px {trilho}px 0; }}
 QSlider::handle:horizontal {{ width: {ALTURA_SLIDER_CTK}px; height: {ALTURA_SLIDER_CTK}px;
-    border-radius: {ALTURA_SLIDER_CTK // 2}px; background: {AZUL_CTK}; }}
-QSlider::handle:horizontal:hover {{ background: {AZUL_CTK_HOVER}; }}
-QTreeView {{ background: #FFFFFF; color: #000000; border: none; outline: none;
-    font-family: "Segoe UI", "Roboto", "Noto Emoji"; font-size: 12px;
-    selection-background-color: {t['selecao']}; selection-color: {t['texto_selecao']}; }}
-QTreeView::item {{ height: {ALTURA_LINHA_TABELA_TK}px; padding-left: 1px; border: none; }}
-QTreeView::item:selected {{ background: {t['selecao']}; color: {t['texto_selecao']}; }}
-QHeaderView {{ background: #FFFFFF; }}
-QHeaderView::section {{ background: {t['cabecalho']}; color: #000000; padding: 0 4px;
-    border: none; border-right: 1px solid {t['divisoria']}; border-bottom: 1px solid {t['divisoria']};
-    height: {ALTURA_LINHA_TABELA_TK}px; font-family: "Segoe UI", "Roboto"; font-size: 12px; }}
-QListWidget[claro="true"] {{ background: #FFFFFF; color: #000000; border: 1px solid {t['borda_lista']}; }}
-QListWidget[claro="true"]::item:selected {{ background: {t['selecao_lista']}; color: {t['texto_selecao_lista']}; }}
-QTreeView QScrollBar, QAbstractScrollArea[barra_nativa="true"] QScrollBar {{ background: #F0F0F0; border: none; }}
-QTreeView QScrollBar:vertical, QAbstractScrollArea[barra_nativa="true"] QScrollBar:vertical {{ width: 17px; }}
-QTreeView QScrollBar:horizontal, QAbstractScrollArea[barra_nativa="true"] QScrollBar:horizontal {{ height: 17px; }}
+    border-radius: {ALTURA_SLIDER_CTK // 2}px; background: {p['primaria']}; }}
+QSlider::handle:horizontal:hover {{ background: {p['primaria_hover']}; }}
+QTreeView {{ background: {p['superficie']}; color: {p['texto']}; border: none;
+    outline: none; font-size: 12px; alternate-background-color: {p['superficie_alta']};
+    selection-background-color: {menu['fundo']}; selection-color: {menu['texto']}; }}
+QTreeView::item {{ height: {ALTURA_LINHA_TABELA}px; padding-left: 4px; border: none; }}
+QTreeView::item:hover {{ background: {p['superficie_alta']}; }}
+QTreeView::item:selected {{ background: {menu['fundo']}; color: {menu['texto']}; }}
+QHeaderView {{ background: {p['superficie_alta']}; }}
+QHeaderView::section {{ background: {p['superficie_alta']}; color: {p['texto']}; padding: 0 6px;
+    border: none; border-right: 1px solid {p['borda']}; border-bottom: 1px solid {p['borda']};
+    height: {ALTURA_LINHA_TABELA}px; font-size: 12px; font-weight: bold; }}
+QListWidget[claro="true"] {{ background: {p['superficie']}; color: {p['texto']}; border: 1px solid {p['borda']}; }}
+QListWidget[claro="true"]::item:selected {{ background: {menu['fundo']}; color: {menu['texto']}; }}
+QTreeView QScrollBar, QAbstractScrollArea[barra_nativa="true"] QScrollBar {{ background: {p['superficie']}; border: none; }}
+QTreeView QScrollBar:vertical, QAbstractScrollArea[barra_nativa="true"] QScrollBar:vertical {{ width: 12px; }}
+QTreeView QScrollBar:horizontal, QAbstractScrollArea[barra_nativa="true"] QScrollBar:horizontal {{ height: 12px; }}
 QTreeView QScrollBar::handle:vertical, QAbstractScrollArea[barra_nativa="true"] QScrollBar::handle:vertical,
 QTreeView QScrollBar::handle:horizontal, QAbstractScrollArea[barra_nativa="true"] QScrollBar::handle:horizontal {{
-    background: #C2C2C2; border-radius: 0; min-height: 20px; min-width: 20px; margin: 2px; }}
+    background: {p['borda']}; border-radius: 4px; min-height: 20px; min-width: 20px; margin: 2px; }}
 QTreeView QScrollBar::handle:vertical:hover, QAbstractScrollArea[barra_nativa="true"] QScrollBar::handle:vertical:hover,
 QTreeView QScrollBar::handle:horizontal:hover, QAbstractScrollArea[barra_nativa="true"] QScrollBar::handle:horizontal:hover {{
-    background: #A8A8A8; }}
+    background: {p['texto_suave']}; }}
 QTreeView QScrollBar::add-line, QTreeView QScrollBar::sub-line,
 QAbstractScrollArea[barra_nativa="true"] QScrollBar::add-line,
 QAbstractScrollArea[barra_nativa="true"] QScrollBar::sub-line {{

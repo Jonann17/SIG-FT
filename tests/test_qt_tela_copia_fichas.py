@@ -393,6 +393,7 @@ def test_robo_sem_fila_nao_faz_nada(tela, robo):
 # --- medidas ----------------------------------------------------------------------
 
 def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Medidas da tela antiga (1280x850, winfo_*), x relativo à área da tela (a barra
     # lateral tem 277 px): título (40, 30) h29; quadro rolável (40, 69) 923x458,
     # conteúdo recuado 6 (largura 900) e barra de 16 em x=946; cartão 1 (46, 85)
@@ -409,25 +410,25 @@ def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
         t.resize(1003, 850)
         t.show()
         qtbot.waitExposed(t)
-        qtbot.waitUntil(lambda: t.area.height() == 458, timeout=1000)
+        qtbot.waitUntil(lambda: t.area.height() == 460, timeout=1000)
 
         def r(w):
             p = w.mapTo(t, w.rect().topLeft())
             return (p.x(), p.y(), w.width(), w.height())
 
-        assert r(t.label_titulo)[:2] == (40, 30) and r(t.label_titulo)[3] == 29
-        assert r(t.area) == (40, 69, 923, 458)
+        assert r(t.label_titulo)[:2] == (40, 30) and r(t.label_titulo)[3] == 27
+        assert r(t.area) == (40, 67, 923, 460)
         assert r(t.area.verticalScrollBar())[0] == 946
-        assert r(t.cartao_config) == (46, 85, 900, 96)
-        assert r(t.rotulo_etapa1)[:2] == (61, 95) and r(t.rotulo_etapa1)[3] == 28
-        assert r(t.btn_status) == (61, 143, 250, 28)
-        assert r(t.lbl_status)[:2] == (326, 143) and r(t.lbl_status)[3] == 28
-        assert r(t.cartao_acoes) == (46, 201, 900, 178)
-        assert r(t.rotulo_etapa2)[:2] == (61, 211)
-        assert r(t.btn_resumo) == (61, 259, 430, 40)
-        assert r(t.btn_robo_novo) == (501, 259, 430, 40)
-        assert r(t.switch_auditoria)[:2] == (61, 317) and r(t.switch_auditoria)[3] == 24
-        assert r(t.progress) == (61, 356, 870, 8)
+        assert r(t.cartao_config) == (46, 83, 900, 96)
+        assert r(t.rotulo_etapa1)[:2] == (61, 93) and r(t.rotulo_etapa1)[3] == 28
+        assert r(t.btn_status) == (61, 141, 250, 28)
+        assert r(t.lbl_status)[:2] == (326, 141) and r(t.lbl_status)[3] == 28
+        assert r(t.cartao_acoes) == (46, 199, 900, 178)
+        assert r(t.rotulo_etapa2)[:2] == (61, 209)
+        assert r(t.btn_resumo) == (61, 257, 430, 40)
+        assert r(t.btn_robo_novo) == (501, 257, 430, 40)
+        assert r(t.switch_auditoria)[:2] == (61, 315) and r(t.switch_auditoria)[3] == 24
+        assert r(t.progress) == (61, 354, 870, 8)
         # set(0): só o ponto de 8 px da ponta redonda (8/870 da faixa 0-1000).
         assert t.progress.value() == 9
         assert r(t.console) == (40, 537, 923, 283)
@@ -436,7 +437,8 @@ def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
 
 
 @pytest.mark.parametrize("altura_janela, rolavel, console", [
-    (850, 458, 283), (700, 346, 245), (600, 271, 220), (1000, 571, 320), (640, 301, 230),
+    # 2026-10-20: o título de 22 (27 px, era 29) sobra 2 px para repartir; a CTk saiu em 2026-10-15.
+    (850, 460, 283), (700, 347, 246), (600, 272, 221), (1000, 572, 321), (640, 302, 231),
 ])
 def test_quadro_e_console_dividem_a_altura_como_o_grid_do_tk(qt_interface, qtbot, altura_janela,
                                                             rolavel, console):
@@ -476,12 +478,14 @@ def test_medidas_da_pausa_de_login(qt_interface, qtbot):
         assert (b.y(), b.height()) == (185, 45)
         assert abs(b.center().x() - 225) <= 1
         # 195 na interface antiga: texto + 7 de cada lado (a largura do texto muda com a fonte).
+        # 2026-10-20: mais a borda de 1 px que todo botão ganhou no sistema visual.
         # O texto medido como o Qt mede o do botão (`size`, que arredonda a
         # largura de cada letra; o `horizontalAdvance` pode dar 1 px a menos).
         from PySide6.QtCore import Qt
 
         texto = d.botao.fontMetrics().size(Qt.TextFlag.TextShowMnemonic, d.botao.text()).width()
-        assert b.width() == max(estilo.LARGURA_BOTAO_CTK, texto + 2 * estilo.FOLGA_TEXTO_BOTAO_CTK)
+        folgas = 2 * estilo.FOLGA_TEXTO_BOTAO_CTK + 2 * estilo.BORDA_CONTROLE
+        assert b.width() == max(estilo.LARGURA_BOTAO_CTK, texto + folgas)
         r = d.rotulo.geometry()
         assert (r.y(), r.height()) == (30, 125)        # o texto centrado em 92,5, como lá
     finally:

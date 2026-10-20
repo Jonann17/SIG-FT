@@ -210,6 +210,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         lay.addWidget(nome)
         lay.addSpacing(22)
         home = QPushButton(estilo.mono("  🏠  Home"), objectName="home")
+        self.botao_home = home
         blocos.sem_tecla(home)   # os botões da barra (CTkButton) nunca pegam o foco
         home.clicked.connect(self.show_home)
         home.setToolTip("Volta à tela inicial: os módulos, as chaves de API e os modelos de IA.")
@@ -258,6 +259,20 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
             self.telas[nome] = tela
             self.pilha.addWidget(tela)
         self.pilha.setCurrentWidget(tela)
+        self._marcar_no_menu(nome)
+
+    def _marcar_no_menu(self, nome: str) -> None:
+        """O item da tela aberta fica marcado no menu (`ativo`, que a folha pinta
+        com a marca a 25%: sistema visual, 2026-10-20). A Home marca o botão dela."""
+        botoes = {**self.botoes_menu, "Home": self.botao_home}
+        for alvo, botao in botoes.items():
+            ativo = alvo == nome
+            if bool(botao.property("ativo")) == ativo:
+                continue
+            botao.setProperty("ativo", ativo)
+            # Propriedade dinâmica não repinta sozinha: a folha é reaplicada.
+            botao.style().unpolish(botao)
+            botao.style().polish(botao)
 
     def show_modulo(self, nome: str) -> None:
         self.show_frame(nome)

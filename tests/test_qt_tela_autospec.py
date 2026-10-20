@@ -811,61 +811,63 @@ def _r(t, w):
 
 
 def test_medidas_iguais_as_do_interface_antiga(tela_medida):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Tela antiga 1280x850 (winfo_*), x relativo à área da tela (a barra lateral
     # tem 277 px). Header (40, 30); quadro rolável em (40, 79) 923x601 com o
     # conteúdo recuado 6 (900 de largura); console de 120 em y=700.
     t = tela_medida
     assert _r(t, t.label_titulo)[:2] == (40, 30)
-    assert _r(t, t.area) == (40, 79, 923, 601)
+    assert _r(t, t.area) == (40, 77, 923, 603)
     assert _r(t, t.console) == (40, 700, 923, 120)
     # 1. Arquivo de Referência
-    assert _r(t, t.cartao_status) == (46, 95, 900, 91)
-    assert _r(t, t.rotulo_secao1)[:2] == (61, 105) and _r(t, t.rotulo_secao1)[3] == 28
-    assert _r(t, t.lbl_status)[:2] == (61, 143) and _r(t, t.lbl_status)[3] == 28
+    assert _r(t, t.cartao_status) == (46, 93, 900, 91)
+    assert _r(t, t.rotulo_secao1)[:2] == (61, 103) and _r(t, t.rotulo_secao1)[3] == 28
+    assert _r(t, t.lbl_status)[:2] == (61, 141) and _r(t, t.lbl_status)[3] == 28
     x, y, w, h = _r(t, t.btn_status)
-    assert (y, h, x + w) == (143, 28, 931) and abs(w - 157) <= 6
+    assert (y, h, x + w) == (141, 28, 931) and abs(w - 157) <= 6
     # 2. Adicionar Tarefa à Fila (borda de 1 px que não empurra o conteúdo)
-    assert _r(t, t.cartao_job) == (46, 206, 900, 182)
-    assert _r(t, t.rotulo_secao2)[:2] == (61, 216)
-    assert _r(t, t.lbl_sheet)[:2] == (61, 259) and _r(t, t.btn_sheet) == (751, 259, 180, 28)
-    assert _r(t, t.lbl_refs)[:2] == (61, 297) and _r(t, t.btn_refs) == (751, 297, 180, 28)
-    assert _r(t, t.btn_add) == (66, 345, 860, 28)
+    assert _r(t, t.cartao_job) == (46, 204, 900, 182)
+    assert _r(t, t.rotulo_secao2)[:2] == (61, 214)
+    assert _r(t, t.lbl_sheet)[:2] == (61, 257) and _r(t, t.btn_sheet) == (751, 257, 180, 28)
+    assert _r(t, t.lbl_refs)[:2] == (61, 295) and _r(t, t.btn_refs) == (751, 295, 180, 28)
+    assert _r(t, t.btn_add) == (66, 343, 860, 28)
     # Fila de Processamento: quadro rolável interno de 870x212 (a barra mede 200)
-    assert _r(t, t.cartao_fila) == (46, 408, 900, 275)
-    assert _r(t, t.rotulo_fila)[:2] == (61, 418)
-    assert _r(t, t.queue_frame) == (61, 456, 870, 212)
+    assert _r(t, t.cartao_fila) == (46, 406, 900, 275)
+    assert _r(t, t.rotulo_fila)[:2] == (61, 416)
+    assert _r(t, t.queue_frame) == (61, 454, 870, 212)
     x, y, w, h = _r(t, t.rotulo_fila_vazia)
-    assert (y, h) == (472, 28) and abs((x + w / 2) - 490.5) <= 1
+    assert (y, h) == (470, 28) and abs((x + w / 2) - 490.5) <= 1
     # Conferência do fornecedor e INICIAR
-    assert _r(t, t.chk_fornecedor)[:2] == (76, 708) and _r(t, t.chk_fornecedor)[3] == 24
-    assert _r(t, t.rotulo_fornecedor)[:2] == (104, 734) and _r(t, t.rotulo_fornecedor)[3] == 42
-    assert _r(t, t.btn_run) == (76, 796, 840, 50)
+    assert _r(t, t.chk_fornecedor)[:2] == (76, 706) and _r(t, t.chk_fornecedor)[3] == 24
+    assert _r(t, t.rotulo_fornecedor)[:2] == (104, 732) and _r(t, t.rotulo_fornecedor)[3] == 42
+    assert _r(t, t.btn_run) == (76, 794, 840, 50)
     # 5. Conferência de documentos
-    assert _r(t, t.frm_conf) == (46, 876, 900, 407)
-    assert _r(t, t.rotulo_conf_titulo)[:2] == (61, 886)
-    assert _r(t, t.rotulo_conf_explicacao)[:2] == (61, 916) and _r(t, t.rotulo_conf_explicacao)[3] == 42
-    assert _r(t, t.lista_conf) == (61, 966, 870, 212)
-    assert _r(t, t.rotulo_conf_vazia)[:2] == (77, 982) and _r(t, t.rotulo_conf_vazia)[3] == 42
+    assert _r(t, t.frm_conf) == (46, 874, 900, 407)
+    assert _r(t, t.rotulo_conf_titulo)[:2] == (61, 884)
+    assert _r(t, t.rotulo_conf_explicacao)[:2] == (61, 914) and _r(t, t.rotulo_conf_explicacao)[3] == 42
+    assert _r(t, t.lista_conf) == (61, 964, 870, 212)
+    assert _r(t, t.rotulo_conf_vazia)[:2] == (77, 980) and _r(t, t.rotulo_conf_vazia)[3] == 42
     # SALVAR/IMPORTAR: pack(side="left", expand) -- a SOBRA é repartida igual,
     # não a largura (lá 418 e 432 para pedidos de 171 e 185).
     xs, ys, ws, hs = _r(t, t.btn_conf_salvar)
     xi, yi, wi, hi = _r(t, t.btn_conf_importar)
-    assert (xs, ys, hs, yi, hi) == (66, 1188, 32, 1188, 32)
+    assert (xs, ys, hs, yi, hi) == (66, 1186, 32, 1186, 32)
     assert xi == xs + ws + 10 and xi + wi == 926
     pedido_s = t.btn_conf_salvar.sizeHint().width()
     pedido_i = t.btn_conf_importar.sizeHint().width()
     assert abs((ws - pedido_s) - (wi - pedido_i)) <= 1
-    assert _r(t, t.btn_conf) == (66, 1228, 860, 40)
-    # Rolagem: o conteúdo tem 1208 de altura, como lá (619 para rolar).
-    assert t.area.verticalScrollBar().maximum() == 1208 - 589
+    assert _r(t, t.btn_conf) == (66, 1226, 860, 40)
+    # Rolagem: o conteúdo tem 1208 de altura, como lá (617 para rolar; 619 com o título de 24).
+    assert t.area.verticalScrollBar().maximum() == 1208 - 591
 
 
 def test_o_que_rola_some_6_px_antes_da_borda_como_no_ctk(tela_medida):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # O canvas do CTkScrollableFrame fica 6 px para dentro do quadro: o que rola
     # é cortado ali (lá o 1º cartão, rolado, não aparece entre y=79 e 85). A
     # barra continua com a altura toda.
     t = tela_medida
-    for area, altura in ((t.area, 601), (t.queue_frame, 212), (t.lista_conf, 212)):
+    for area, altura in ((t.area, 603), (t.queue_frame, 212), (t.lista_conf, 212)):
         vista = area.viewport()
         assert (vista.y(), vista.height()) == (6, altura - 12)
         barra = area.verticalScrollBar()
@@ -886,6 +888,7 @@ def test_salvar_e_importar_nao_encolhem_abaixo_do_pedido(tela_medida):
 
 
 def test_medidas_das_linhas_da_fila_e_da_conferencia(tela_medida, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # interface antiga: linha da fila 2 abaixo do topo do quadro interno (462 + 2), rótulo com
     # padx 5, "X" 30x25 a 5 da barra; conferência: cabeçalho a (6, 8) do quadro
     # interno (h28), linhas de 24 com a caixa de 25 e o link de 22 (810).
@@ -895,12 +898,12 @@ def test_medidas_das_linhas_da_fila_e_da_conferencia(tela_medida, qtbot):
     t.update_queue_ui()
     (r1, x1), (r2, _x2) = t.linhas_fila
     # O layout novo se arruma no laço de eventos: espera a 1ª linha chegar lá.
-    qtbot.waitUntil(lambda: _r(t, r1)[:2] == (72, 464), timeout=2000)
-    assert _r(t, r1)[:2] == (72, 464) and _r(t, r1)[3] == 28
-    assert _r(t, x1) == (879, 465, 30, 25)
-    assert _r(t, r2)[1] == 496
+    qtbot.waitUntil(lambda: _r(t, r1)[:2] == (72, 462), timeout=2000)
+    assert _r(t, r1)[:2] == (72, 462) and _r(t, r1)[3] == 28
+    assert _r(t, x1) == (879, 463, 30, 25)
+    assert _r(t, r2)[1] == 494
     t._conferencia_mostrar(_conferencia())
-    base_y = 972
+    base_y = 970
     c1, c2 = t.cabecalhos_conf
     qtbot.waitUntil(lambda: _r(t, c1)[1] == base_y + 8, timeout=2000)
     assert _r(t, c1) == (73, base_y + 8, 835, 28)

@@ -1,4 +1,4 @@
-from sigft.app import theme
+from sigft.app import theme, tokens
 from sigft.app_qt import estilo
 
 
@@ -7,26 +7,35 @@ def _qss():
 
 
 def test_botao_padrao_e_o_azul_do_interface_antiga():
+    # 2026-10-20: o botão sem variante é o SECUNDÁRIO do sistema visual (contorno
+    # `borda`, texto `texto`); o azul do tema da CTk (que saiu em 2026-10-15) não
+    # entra mais na folha.
     assert "QPushButton {" in _qss()
-    assert estilo.AZUL_CTK == "#1F538D" and estilo.AZUL_CTK_HOVER == "#14375E"
     trecho = _qss().split("QPushButton {", 1)[1].split("}", 1)[0]
-    assert estilo.AZUL_CTK in trecho
+    assert tokens.ESCURO["borda"] in trecho and tokens.ESCURO["texto"] in trecho
+    assert estilo.AZUL_CTK not in trecho
 
 
 def test_variante_primario_usa_a_cor_da_marca():
-    assert f'QPushButton[variante="primario"] {{ background: {theme.COLORS["primary"]}' in _qss()
+    # 2026-10-20: o primário é o token `primaria` (verde), com o texto escuro; a
+    # `marca` fica para a barra lateral e o item escolhido do menu.
+    assert f'QPushButton[variante="primario"] {{ background: {tokens.ESCURO["primaria"]}' in _qss()
 
 
 def test_campos_abas_listas_e_cartao():
     qss = _qss()
-    for trecho in ("QLineEdit", "#343638", "#565B5E", "QListWidget", "#1E1E1E", "#cartao", theme.COR_CARTAO, "QComboBox"):
+    # 2026-10-20: as cores do CTkEntry (#343638, #565B5E) e da lista (#1E1E1E) viraram tokens.
+    p = tokens.ESCURO
+    for trecho in ("QLineEdit", p["superficie_alta"], p["borda"], "QListWidget", p["superficie"],
+                   "#cartao", theme.COR_CARTAO, "QComboBox"):
         assert trecho in qss, trecho
 
 
 def test_caixa_marcada_e_fundo_de_dialogo_como_no_ctk():
     qss = _qss()
-    assert f"QCheckBox::indicator:checked {{ background: {estilo.AZUL_CTK}" in qss
-    assert f"QDialog {{ background: {estilo.cinza_tk('gray10')}" in qss
+    # 2026-10-20: marcada em `primaria`; o diálogo no `fundo` (era o azul e o gray10 da CTk).
+    assert f"QCheckBox::indicator:checked {{ background: {tokens.ESCURO['primaria']}" in qss
+    assert f"QDialog {{ background: {tokens.ESCURO['fundo']}" in qss
 
 
 def test_home_e_dialogos_usam_primario_onde_o_ctk_pintava_primary():
@@ -61,16 +70,15 @@ def _cor_do_texto(botao) -> str:
 
 
 def test_texto_do_botao_comum_e_o_do_tema_do_ctk(qt_interface, qtbot):
-    # CTkButton sem text_color pinta #DCE4EE (dark-blue.json), e não o
-    # text_light (#E0E0E0) do theme.py. Medido: seletor de arquivo e barra da Home.
+    # CTkButton sem text_color pintava #DCE4EE (dark-blue.json). Desde 2026-10-20
+    # o texto do botão comum e da barra da Home é o token `texto`.
     from PySide6.QtWidgets import QPushButton
 
     comum, barra = QPushButton("Selecionar"), QPushButton("Chaves de API")
     barra.setProperty("barra", True)
     recipiente = _sob_a_folha(qtbot, comum, barra)  # noqa: F841 -- segura os filhos vivos
-    assert estilo.TEXTO_BOTAO_CTK == "#DCE4EE"
-    assert _cor_do_texto(comum) == "#DCE4EE"
-    assert _cor_do_texto(barra) == "#DCE4EE"
+    assert _cor_do_texto(comum) == tokens.ESCURO["texto"]
+    assert _cor_do_texto(barra) == tokens.ESCURO["texto"]
 
 
 def test_menu_home_e_glossario_mantem_o_text_light_que_o_ctk_escrevia(qt_interface, qtbot):
@@ -87,16 +95,17 @@ def test_menu_home_e_glossario_mantem_o_text_light_que_o_ctk_escrevia(qt_interfa
 
 def test_campo_de_texto_e_o_ctkentry_do_tema(qt_interface, qtbot):
     # CTkEntry: 28 px de altura com a borda, fonte 13, dica gray62. Sem folha
-    # própria no campo: é a regra global que dá isso.
+    # própria no campo: é a regra global que dá isso. 2026-10-20: 32 px (o campo
+    # do sistema visual), dica `texto_suave` e texto `texto`.
     from PySide6.QtGui import QPalette
     from PySide6.QtWidgets import QLineEdit
 
     campo = QLineEdit()
     campo.setPlaceholderText("Ex: 4500063671.1234")
     recipiente = _sob_a_folha(qtbot, campo)  # noqa: F841 -- segura os filhos vivos
-    assert campo.height() == estilo.ALTURA_CAMPO_CTK == 28
-    assert campo.sizeHint().height() == 28
+    assert campo.height() == estilo.ALTURA_CAMPO_CTK == 32
+    assert campo.sizeHint().height() == 32
     assert campo.font().pixelSize() == 13
     paleta = campo.palette()
-    assert paleta.color(QPalette.ColorRole.PlaceholderText).name().upper() == estilo.cinza_tk("gray62")
-    assert paleta.color(QPalette.ColorRole.Text).name().upper() == estilo.cinza_tk("gray84")
+    assert paleta.color(QPalette.ColorRole.PlaceholderText).name().upper() == tokens.ESCURO["texto_suave"]
+    assert paleta.color(QPalette.ColorRole.Text).name().upper() == tokens.ESCURO["texto"]

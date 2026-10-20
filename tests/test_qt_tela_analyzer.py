@@ -443,6 +443,7 @@ def test_janela_de_pesos_com_texto_invalido(tela, qtbot, monkeypatch):
 
 # -- medidas -----------------------------------------------------------------------------
 def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Medidas da tela antiga (1280x850, winfo_*), com x relativo à área da tela (a
     # barra lateral tem 277 px), como no Tradutor: título (40, 30); área rolável
     # em y=79 com o conteúdo recuado 6 (y=85, largura 900); subtítulo h28;
@@ -465,24 +466,25 @@ def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
             return (p.x(), p.y(), w.width(), w.height())
 
         assert r(t.label_titulo)[:2] == (40, 30)
-        assert r(t.area)[:2] == (40, 79) and r(t.area)[2] == 923
-        assert r(t.lbl_subtitulo)[1] == 85 and r(t.lbl_subtitulo)[3] == 28
-        assert r(t.cartao_criterios) == (46, 143, 900, 81)
-        assert r(t.cartao_arquivos) == (46, 244, 900, 167)
-        assert r(t.lbl_score)[:2] == (61, 191) and r(t.lbl_score)[3] == 28
-        assert r(t.slider) == (61 + r(t.lbl_score)[2] + 20, 197, 300, 16)
-        assert r(t.btn_config) == (781, 191, 150, 28)
-        assert r(t.picker_files.botao) == (61, 292, 200, 28)
-        assert r(t.picker_out.botao)[1] == 330 and r(t.picker_pmib.botao)[1] == 368
+        assert r(t.area)[:2] == (40, 77) and r(t.area)[2] == 923
+        assert r(t.lbl_subtitulo)[1] == 83 and r(t.lbl_subtitulo)[3] == 28
+        assert r(t.cartao_criterios) == (46, 141, 900, 81)
+        assert r(t.cartao_arquivos) == (46, 242, 900, 179)
+        assert r(t.lbl_score)[:2] == (61, 189) and r(t.lbl_score)[3] == 28
+        assert r(t.slider) == (61 + r(t.lbl_score)[2] + 20, 195, 300, 16)
+        assert r(t.btn_config) == (781, 189, 150, 28)
+        assert r(t.picker_files.botao) == (61, 290, 200, 32)
+        assert r(t.picker_out.botao)[1] == 332 and r(t.picker_pmib.botao)[1] == 374
         assert r(t.picker_files.label_status)[0] == 276
-        assert r(t.btn_run) == (346, 451, 300, 50)
-        assert r(t.btn_relatorio) == (346, 509, 300, 36)
+        assert r(t.btn_run) == (346, 461, 300, 50)
+        assert r(t.btn_relatorio) == (346, 519, 300, 36)
         assert r(t.console) == (40, 670, 923, 150)
     finally:
         qt_interface.setStyleSheet(anterior)
 
 
 def test_medidas_da_janela_de_pesos(qt_interface, qtbot, monkeypatch):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # interface antiga: quadro rolável em (10,10) 480x632, conteúdo recuado 6 (largura 457);
     # título h28 a +10; linhas de 28 a cada 32 (rótulo 250, campo 80 encostado à
     # direita); "Salvar Pesos" 140x28 em (180, 662).
@@ -506,12 +508,13 @@ def test_medidas_da_janela_de_pesos(qt_interface, qtbot, monkeypatch):
         assert r(win.area) == (10, 10, 480, 632)
         assert r(win.titulo)[1] == 26
         assert r(win.rotulos[0])[:2] == (16, 66) and r(win.rotulos[0])[2] == 250
-        assert r(win.rotulos[1])[1] == 98
+        assert r(win.rotulos[1])[1] == 102
         campo = t.entries_pesos["texto_breve_material"]
-        assert r(campo) == (393, 66, 80, 28)
+        assert r(campo) == (393, 66, 80, 32)
         assert r(win.btn_salvar) == (180, 662, 140, 28)
-        # "Pontos Totais": 121 abaixo da última linha (866 -> 987 na interface antiga).
-        assert r(t.entry_max_vars)[1] == r(win.rotulos[-1])[1] + 121
+        # "Pontos Totais": 121 abaixo da última linha (866 -> 987 na interface antiga);
+        # 125 desde 2026-10-20 (campo e botão de 32 no sistema visual).
+        assert r(t.entry_max_vars)[1] == r(win.rotulos[-1])[1] + 125
     finally:
         qt_interface.setStyleSheet(anterior)
 

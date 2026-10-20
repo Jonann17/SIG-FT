@@ -275,6 +275,7 @@ def com_folha(qt_interface):
 
 
 def test_medidas_iguais_as_do_interface_antiga(com_folha, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Medidas da tela antiga (interface antiga, janela 1280x850, sondadas com
     # winfo_*), já na origem da tela Qt (que começa no x=277 da janela e inclui
     # o padx/pady=20 do `show_frame`): título em (40, 30); quadro dos parâmetros
@@ -290,18 +291,18 @@ def test_medidas_iguais_as_do_interface_antiga(com_folha, qtbot):
         return p.x(), p.y(), w.width(), w.height()
 
     assert geo(t.label_titulo)[:2] == (40, 30)
-    assert geo(t.content)[1] == 74
+    assert geo(t.content)[1] == 72
     cartao = t.rotulo_secao.parentWidget()
-    assert geo(cartao) == (40, 79, 923, 167)
-    assert geo(t.rotulo_secao)[:2] == (55, 89)
-    assert [geo(r)[:3] for r in t.rotulos_linha] == [(55, 127, 150), (55, 165, 150), (55, 203, 150)]
-    assert geo(t.entry_pasta) == (210, 127, 400, 28)
+    assert geo(cartao) == (40, 77, 923, 179)
+    assert geo(t.rotulo_secao)[:2] == (55, 87)
+    assert [geo(r)[:3] for r in t.rotulos_linha] == [(55, 127, 150), (55, 169, 150), (55, 211, 150)]
+    assert geo(t.entry_pasta) == (210, 125, 400, 32)
     assert geo(t.btn_pasta) == (615, 127, 100, 28)
     assert geo(t.rb_direc)[0] == 205
-    assert geo(t.opt_coluna)[1:] == (165, 140, 28)
-    assert geo(t.entry_termo) == (210, 203, 400, 28)
-    assert geo(t.btn_search) == (625, 203, 150, 28)
-    assert geo(t.console) == (40, 271, 923, 539)
+    assert geo(t.opt_coluna)[1:] == (167, 140, 32)
+    assert geo(t.entry_termo) == (210, 209, 400, 32)
+    assert geo(t.btn_search) == (625, 211, 150, 28)
+    assert geo(t.console) == (40, 281, 923, 529)
 
 
 def test_medidas_da_janela_de_resultados(com_folha, qtbot):

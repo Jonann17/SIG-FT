@@ -105,3 +105,100 @@ def test_folha_usa_a_paleta_do_theme():
                 theme.COLORS["accent"], theme.COR_CARTAO):
         assert cor in qss
     assert "gray" not in qss.replace("Roboto", "")  # nenhum cinza nomeado do Tk vazou
+
+
+# --- Sistema visual (2026-10-20): a folha sai dos tokens, por tema ----------------
+
+from sigft.app import tokens  # noqa: E402
+
+
+def _regra(folha, seletor):
+    achado = re.search(re.escape(seletor) + r"\s*\{([^}]*)\}", folha)
+    assert achado, seletor
+    return achado.group(1)
+
+
+@pytest.mark.parametrize("tema", ["escuro", "claro"])
+def test_folha_usa_a_paleta_do_tema(tema):
+    p = tokens.paleta(tema)
+    folha = estilo.folha_de_estilo(tema)
+    assert p["fundo"] in _regra(folha, "QMainWindow, #conteudo, #tela")
+    assert p["primaria"] in _regra(folha, 'QPushButton[variante="primario"]')
+    assert p["texto_sobre_primaria"] in _regra(folha, 'QPushButton[variante="primario"]')
+    assert p["perigo_fundo"] in _regra(folha, 'QPushButton[variante="perigo"]')
+    assert p["console_fundo"] in _regra(folha, "#console")
+
+
+def test_variantes_antigas_viram_as_novas():
+    folha = estilo.folha_de_estilo("escuro")
+    for antiga in ("acento", "cinza", "neutro", "contorno", "contorno_padrao"):
+        assert f'[variante="{antiga}"]' in folha
+
+
+def test_folhas_dos_dois_temas_sao_diferentes():
+    assert estilo.folha_de_estilo("escuro") != estilo.folha_de_estilo("claro")
+
+
+def test_sem_argumento_e_o_tema_escuro():
+    # A abertura (`main._preparar_qt`) chama sem tema até a escolha existir (Task 7).
+    assert estilo.folha_de_estilo() == estilo.folha_de_estilo("escuro")
+
+
+@pytest.mark.parametrize("tema", ["escuro", "claro"])
+def test_botao_padrao_e_o_secundario_com_32_de_altura(tema):
+    p = tokens.paleta(tema)
+    regra = _regra(estilo.folha_de_estilo(tema), "QPushButton")
+    assert f"solid {p['borda']}" in regra and f"color: {p['texto']}" in regra
+    assert "border-radius: 6px" in regra and "padding: 0 14px" in regra
+    # min-height não conta a borda de 1 px: 30 + 2 = os 32 da spec.
+    assert f"min-height: {estilo.ALTURA_BOTAO - 2}px" in regra and estilo.ALTURA_BOTAO == 32
+
+
+@pytest.mark.parametrize("tema,fundo,texto", [
+    ("escuro", "#0F3A3F", tokens.ESCURO["texto"]),
+    ("claro", "#E3F1F2", "#035D67"),
+])
+def test_item_escolhido_do_menu_e_a_marca_a_25_por_cento(tema, fundo, texto):
+    regra = _regra(estilo.folha_de_estilo(tema), 'QPushButton[menu="true"][ativo="true"]')
+    assert fundo in regra and texto in regra
+    assert tokens.contraste(texto, fundo) >= 4.5
+
+
+@pytest.mark.parametrize("tema", ["escuro", "claro"])
+def test_campos_marcadores_e_progresso_nas_cores_do_tema(tema):
+    p = tokens.paleta(tema)
+    folha = estilo.folha_de_estilo(tema)
+    campo = _regra(folha, "QLineEdit")
+    assert p["superficie_alta"] in campo and p["borda"] in campo
+    assert p["primaria"] in _regra(folha, "QLineEdit:focus")
+    assert p["superficie_alta"] in _regra(folha, "QComboBox")
+    assert p["primaria"] in _regra(folha, "QCheckBox::indicator:checked")
+    assert p["primaria"] in _regra(folha, "QRadioButton::indicator:checked")
+    assert p["primaria"] in _regra(folha, "QProgressBar::chunk")
+    tabela = _regra(folha, "QTreeView")
+    assert p["superficie"] in tabela and p["texto"] in tabela
+    assert "#FFFFFF; color: #000000" not in folha  # o Treeview nativo do Tk saiu
+
+
+@pytest.mark.parametrize("tema", ["escuro", "claro"])
+def test_papeis_de_texto(tema):
+    p = tokens.paleta(tema)
+    folha = estilo.folha_de_estilo(tema)
+    legenda = _regra(folha, 'QLabel[papel="legenda"]')
+    assert p["texto_suave"] in legenda and "font-size: 12px" in legenda
+    assert "font-size: 15px" in _regra(folha, 'QLabel[papel="secao"]')
+    assert "font-size: 22px" in _regra(folha, 'QLabel[papel="titulo"]')
+    aviso = _regra(folha, 'QLabel[papel="aviso"]')
+    # Aviso só sobre a superfície: no claro ele não chega a 4,5:1 sobre o fundo.
+    assert p["aviso"] in aviso and p["superficie"] in aviso
+    assert tokens.contraste(p["aviso"], p["superficie"]) >= 4.5
+    assert p["perigo"] in _regra(folha, 'QLabel[papel="erro"]')
+    ok = _regra(folha, 'QLabel[papel="ok"]')
+    assert p["primaria"] in ok and tokens.contraste(p["primaria"], p["fundo"]) >= 4.5
+
+
+def test_quadro_das_abas_sai_dos_tokens():
+    # O gray13 (#212121) da CTk brigava com o fundo novo (2026-10-20). Lá o quadro
+    # era invisível (gray13 = o fundo antigo): continua, agora com os tokens.
+    assert estilo.FUNDO_QUADRO_CTK == tokens.ESCURO["fundo"]
+    assert estilo.FUNDO_QUADRO_INTERNO_CTK == tokens.ESCURO["superficie"]

@@ -11,7 +11,7 @@ As medidas vêm das capturas do tema dark-blue (demo lado a lado em
 import pytest
 from PySide6.QtWidgets import QLabel, QRadioButton, QVBoxLayout, QWidget
 
-from sigft.app import theme
+from sigft.app import theme, tokens
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets.abas import Abas
@@ -102,7 +102,8 @@ def test_abas_nao_apaga_o_fundo_do_que_vai_dentro(qt_interface, qtbot, folha_do_
         return QColor(imagem.pixel(p.x() + dx, p.y() + dy)).name().upper()
 
     assert cor(quadro_cartao, 3, quadro_cartao.height() // 2) == theme.COR_CARTAO.upper()
-    assert cor(botao, 5, 25) == theme.COLORS["primary"].upper()
+    # 2026-10-20: o primário é o token `primaria` (a folha do sistema visual).
+    assert cor(botao, 5, 25) == tokens.ESCURO["primaria"].upper()
 
 
 def test_abas_cores_por_parametro(qt_interface, qtbot):
@@ -117,8 +118,10 @@ def test_abas_cores_por_parametro(qt_interface, qtbot):
     assert "#161616" in folha and theme.COLORS["primary"] in folha
     padrao = Abas()
     qtbot.addWidget(padrao)
-    assert estilo.cinza_tk("gray13") in padrao.quadro.styleSheet()  # CTkFrame fg_color
-    assert estilo.cinza_tk("gray29") in padrao.barra.styleSheet()
+    # 2026-10-20: os padrões vêm dos tokens (eram gray13 e gray29 da CTk, que saiu em 2026-10-15).
+    assert estilo.FUNDO_QUADRO_CTK in padrao.quadro.styleSheet()
+    assert tokens.ESCURO["superficie_alta"] in padrao.barra.styleSheet()
+    assert tokens.ESCURO["marca"] in padrao.barra.styleSheet()  # a aba escolhida
 
 
 # --- área rolável e barra de progresso ---------------------------------------
@@ -184,11 +187,16 @@ def test_slider_com_as_cores_da_tela(qt_interface, qtbot):
 
 
 def test_tabela_e_lista_crua_com_as_cores_do_tk(qt_interface):
-    import sys
-    t = estilo.TABELA_TK["win32" if sys.platform == "win32" else "outro"]
+    # 2026-10-20: a tabela e a lista "clara" eram o Tk nativo (branca, texto preto);
+    # agora seguem o tema, como o resto. A seleção é a do menu (marca a 25%).
     qss = estilo.folha_de_estilo()
-    assert f"selection-background-color: {t['selecao']}" in qss
-    assert "QTreeView { background: #FFFFFF; color: #000000;" in qss
+    p = tokens.ESCURO
+    selecao = estilo.MENU_ESCOLHIDO["escuro"]["fundo"]
+    assert f"selection-background-color: {selecao}" in qss
+    assert f"QTreeView {{ background: {p['superficie']}; color: {p['texto']};" in qss
+    superficie = p["superficie"]
+    assert f'QListWidget[claro="true"] {{ background: {superficie}' in qss
+    assert "#FFFFFF; color: #000000" not in qss
 
 
 def test_fonte_tk_pixel_ou_ponto(qt_interface):
@@ -215,12 +223,14 @@ def test_barra_indeterminada_liga_e_desliga(qt_interface, qtbot):
 
 
 def test_tabela_com_as_cores_do_windows(qt_interface, monkeypatch):
+    # 2026-10-20: a tabela era a do tema nativo do Tk, diferente no Windows
+    # (seleção #0078D7) e no Linux. Agora é a do tema do app, a mesma nos dois.
     import sys
     monkeypatch.setattr(sys, "platform", "win32")
-    qss = estilo.folha_de_estilo()
-    assert "selection-background-color: #0078D7" in qss
+    no_windows = estilo.folha_de_estilo()
     monkeypatch.setattr(sys, "platform", "linux")
-    assert "#0078D7" not in estilo.folha_de_estilo()
+    assert estilo.folha_de_estilo() == no_windows
+    assert "#0078D7" not in no_windows
 
 
 def test_botao_com_cor_de_fundo_e_hover_do_tema(qt_interface, qtbot):

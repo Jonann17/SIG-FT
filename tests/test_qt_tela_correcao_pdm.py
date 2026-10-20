@@ -549,6 +549,7 @@ def com_folha(qt_interface):
 
 
 def test_medidas_iguais_as_do_interface_antiga(com_folha, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Medidas da tela antiga (interface antiga, janela 1280x850, sondadas com
     # winfo_*), já na origem da tela Qt (x=277 da janela, com o padx/pady=20 do
     # `show_frame`). Ver capturas/e4.8. Textos: ±6 px (fonte do Tk x Qt).
@@ -558,7 +559,7 @@ def test_medidas_iguais_as_do_interface_antiga(com_folha, qtbot):
     t.show()
     qtbot.waitExposed(t)
     # A faixa do console é ajustada no resizeEvent; o layout reflui logo depois.
-    qtbot.waitUntil(lambda: t.content.height() == 521, timeout=2000)
+    qtbot.waitUntil(lambda: t.content.height() == 522, timeout=2000)
 
     def geo(w):
         p = w.mapTo(t, w.rect().topLeft())
@@ -568,22 +569,22 @@ def test_medidas_iguais_as_do_interface_antiga(com_folha, qtbot):
         return all(abs(x - y) <= tol for x, y in zip(a, b))
 
     assert geo(t.label_titulo)[:2] == (40, 30)
-    assert perto(geo(t.label_titulo), (40, 30, 205, 29))
-    assert perto(geo(t.label_subtitulo), (245, 30, 449, 28))
-    assert geo(t.content) == (40, 79, 923, 521)
-    assert geo(t.btn_status) == (55, 91, 200, 28)
-    assert geo(t.lbl_status)[:2] == (265, 91) and geo(t.lbl_status)[3] == 28
+    assert perto(geo(t.label_titulo), (40, 30, 186, 28))
+    assert perto(geo(t.label_subtitulo), (226, 30, 444, 28))
+    assert geo(t.content) == (40, 78, 923, 522)
+    assert geo(t.btn_status) == (55, 90, 200, 28)
+    assert geo(t.lbl_status)[:2] == (265, 90) and geo(t.lbl_status)[3] == 28
     x, y, _w, h = geo(t.btn_catalogo)
-    assert (y, h, geo(t.btn_catalogo)[2]) == (91, 28, 210) and abs(x - 390) <= 4
+    assert (y, h, geo(t.btn_catalogo)[2]) == (90, 28, 210) and abs(x - 390) <= 4
     assert perto(geo(t.rotulo_acoes), (40, 141, 148, 28))
     assert perto(geo(t.btn_so_revisao), (202, 141, 170, 28))
     assert geo(t.btn_so_revisao)[2:] == (170, 28)
     assert geo(t.btn_escolher_pdm)[0] - sum(geo(t.btn_so_revisao)[::2]) == 8
-    assert geo(t.btn_escolher_pdm)[1:] == (141, 140, 28)
+    assert geo(t.btn_escolher_pdm)[1:] == (140, 140, 28)
     assert geo(t.btn_limpar)[0] - sum(geo(t.btn_escolher_pdm)[::2]) == 8
-    assert geo(t.btn_limpar)[1:] == (141, 90, 28)
+    assert geo(t.btn_limpar)[1:] == (140, 90, 28)
     # Tabela 908 + a barra de 15; altura 371.
-    assert geo(t.tabela) == (40, 175, 923, 371)
+    assert geo(t.tabela) == (40, 174, 923, 372)
     assert perto(geo(t.chk_apagar_vazias), (40, 558, 237, 24))
     assert geo(t.chk_conferir)[0] - sum(geo(t.chk_apagar_vazias)[::2]) == 20
     assert geo(t.chk_conferir)[1] == 558
@@ -595,13 +596,14 @@ def test_medidas_iguais_as_do_interface_antiga(com_folha, qtbot):
 
 
 def test_console_divide_a_sobra_como_a_grade_do_tk(com_folha, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Tk: a sobra da altura vai 3/4 para o conteúdo e 1/4 para a linha do console.
     t = tela_mod.ModuloCorrecaoPDM()
     qtbot.addWidget(t)
     t.resize(1003, 950)
     t.show()
     qtbot.waitExposed(t)
-    qtbot.waitUntil(lambda: t.content.height() == 521 + 75, timeout=2000)
+    qtbot.waitUntil(lambda: t.content.height() == 522 + 75, timeout=2000)
     # Linha do console +25: ele desce 75 (o conteúdo) + 12 (metade dos 25).
     assert abs(t.console.mapTo(t, t.console.rect().topLeft()).y() - (645 + 75 + 12)) <= 1
 

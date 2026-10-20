@@ -199,6 +199,7 @@ def test_embutida_escreve_no_console_do_pai(qt_interface, qtbot):
 
 
 def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Medidas da tela antiga (interface antiga, 1280x850, sondadas com winfo_*):
     # cartão 20 px abaixo do conteúdo; entre as peças, a SOMA dos pady vizinhos
     # (5, 30, 25, 5, 30, 20) e 20 px nas pontas; campo do PMIB 250x28; botão
@@ -222,9 +223,9 @@ def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
 
         cartao = t.btn_run.parentWidget()
         assert pos(cartao).y() - pos(t.content).y() == 20
-        assert (t.entry_pmib.width(), t.entry_pmib.height()) == (250, 28)
+        assert (t.entry_pmib.width(), t.entry_pmib.height()) == (250, 32)
         assert (t.btn_run.width(), t.btn_run.height()) == (350, 50)
-        assert (t.picker_status.botao.width(), t.picker_status.botao.height()) == (220, 28)
+        assert (t.picker_status.botao.width(), t.picker_status.botao.height()) == (220, 32)
         r = t._rotulos
         assert pos(r["atencao"]).y() - pos(cartao).y() == 20
         assert pos(r["irreversivel"]).y() - base(r["atencao"]) == 5

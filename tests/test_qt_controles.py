@@ -68,12 +68,14 @@ def test_menu_de_opcoes_pinta_como_o_ctkoptionmenu(qt_interface, qtbot):
     menu = _na_folha(qtbot, controles.MenuDeOpcoes(["Plan1", "LMR"]))
     menu.setFixedWidth(300)
     assert isinstance(menu, QComboBox)
-    assert menu.height() == 28 and menu.sizeHint().height() == 28
+    # 2026-10-20: 32, a altura de campo do sistema visual (a regra QComboBox da folha);
+    # era os 28 do CTkOptionMenu, que saiu com a interface antiga em 2026-10-15.
+    assert menu.height() == 32 and menu.sizeHint().height() == 32
     imagem = menu.grab().toImage()
-    # Parte do texto #1F538D, parte da seta (28 px, a altura) #14375E.
+    # Parte do texto #1F538D, parte da seta (32 px, a altura, desde 2026-10-20) #14375E.
     assert _cor(imagem, 150, 3) == estilo.AZUL_CTK
     assert _cor(imagem, 300 - 26, 3) == estilo.AZUL_CTK_HOVER
-    assert _cor(imagem, 300 - 30, 3) == estilo.AZUL_CTK
+    assert _cor(imagem, 300 - 34, 3) == estilo.AZUL_CTK
     # A seta é um "v" de #DCE4EE no meio da parte escura.
     cores_da_seta = {_cor(imagem, x, y) for x in range(280, 293) for y in range(10, 18)}
     assert estilo.TEXTO_BOTAO_CTK in cores_da_seta

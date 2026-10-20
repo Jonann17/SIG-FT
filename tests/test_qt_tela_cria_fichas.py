@@ -1285,6 +1285,7 @@ def _r(t, w):
 
 
 def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Medidas da tela antiga (janela 1280x850, winfo_*, x menos os 277 da barra
     # lateral): título (40, 30) h29; Tabview (40, 69) 923x471, aba (46, 112)
     # 911x422; área rolável recuada 6 (largura 888), barra em x=940;
@@ -1296,39 +1297,40 @@ def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
     anterior = qt_interface.styleSheet()
     try:
         t = _medir(qt_interface, qtbot)
-        qtbot.waitUntil(lambda: t.abas.height() == 471, timeout=1000)
-        assert _r(t, t.label_titulo)[:2] == (40, 30) and _r(t, t.label_titulo)[3] == 29
-        assert _r(t, t.abas) == (40, 69, 923, 471)
-        assert _r(t, t.abas.tab("Criação de Fichas")) == (46, 112, 911, 422)
+        qtbot.waitUntil(lambda: t.abas.height() == 472, timeout=1000)
+        assert _r(t, t.label_titulo)[:2] == (40, 30) and _r(t, t.label_titulo)[3] == 27
+        assert _r(t, t.abas) == (40, 67, 923, 472)
+        assert _r(t, t.abas.tab("Criação de Fichas")) == (46, 110, 911, 423)
         assert _r(t, t.area_criacao.verticalScrollBar())[0] == 940
-        assert _r(t, t.cartao_config) == (52, 128, 888, 172)
-        assert _r(t, t.rotulo_etapa1)[:2] == (67, 138) and _r(t, t.rotulo_etapa1)[3] == 28
+        assert _r(t, t.cartao_config) == (52, 126, 888, 176)
+        assert _r(t, t.rotulo_etapa1)[:2] == (67, 136) and _r(t, t.rotulo_etapa1)[3] == 28
         assert _r(t, t.rotulo_projeto) == (67, 181, 150, 28)
-        assert _r(t, t.entry_projeto) == (217, 181, 698, 28)
-        assert _r(t, t.rotulo_pmib) == (67, 219, 150, 28)
-        assert _r(t, t.btn_pmib) == (217, 219, 200, 28)
-        assert _r(t, t.lbl_status)[:2] == (427, 219) and _r(t, t.lbl_status)[3] == 28
+        assert _r(t, t.entry_projeto) == (217, 179, 698, 32)
+        assert _r(t, t.rotulo_pmib) == (67, 221, 150, 28)
+        assert _r(t, t.btn_pmib) == (217, 221, 200, 28)
+        assert _r(t, t.lbl_status)[:2] == (427, 221) and _r(t, t.lbl_status)[3] == 28
         x, y, w, h = _r(t, t.chk_pular)
-        assert (x, y, h) == (67, 264, 24)
+        assert (x, y, h) == (67, 266, 24)
         xb, yb, wb, hb = _r(t, t.btn_pdm)
-        assert (xb, yb, hb) == (x + w + 20, 262, 28)
+        assert (xb, yb, hb) == (x + w + 20, 264, 28)
         assert abs(wb - 231) <= 6                                  # texto + 7 de cada lado
         assert _r(t, t.lbl_status_pdm)[0] == xb + wb + 20
-        assert _r(t, t.cartao_acoes) == (52, 320, 888, 196)
-        assert _r(t, t.rotulo_etapa2)[:2] == (67, 330)
-        assert _r(t, t.btn_run_ai) == (67, 378, 374, 40)
-        assert _r(t, t.btn_run_auto) == (451, 378, 359, 40)
-        assert _r(t, t.btn_resumo) == (67, 428, 374, 40)
-        assert _r(t, t.btn_save) == (451, 428, 359, 40)
-        assert _r(t, t.btn_reset) == (825, 378, 100, 90)
-        assert _r(t, t.progress) == (67, 493, 858, 8)
+        assert _r(t, t.cartao_acoes) == (52, 322, 888, 196)
+        assert _r(t, t.rotulo_etapa2)[:2] == (67, 332)
+        assert _r(t, t.btn_run_ai) == (67, 380, 374, 40)
+        assert _r(t, t.btn_run_auto) == (451, 380, 359, 40)
+        assert _r(t, t.btn_resumo) == (67, 430, 374, 40)
+        assert _r(t, t.btn_save) == (451, 430, 359, 40)
+        assert _r(t, t.btn_reset) == (825, 380, 100, 90)
+        assert _r(t, t.progress) == (67, 495, 858, 8)
         assert t.progress.value() == 9                             # set(0): o ponto de 8 px
-        assert _r(t, t.console) == (40, 550, 923, 270)
+        assert _r(t, t.console) == (40, 549, 923, 271)
     finally:
         qt_interface.setStyleSheet(anterior)
 
 
 def test_medidas_da_aba_de_edicao(qt_interface, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # interface antiga: cartões com padx=10 -> (62, 128) 868x134 e (62, 282) 868x146;
     # "Novo Código do Projeto:" 180 de largura, campo (257, 181) 648x28;
     # botão (257, 224) 200x28, rótulo em x=467; Iniciar (77, 340) 838x40;
@@ -1339,24 +1341,25 @@ def test_medidas_da_aba_de_edicao(qt_interface, qtbot):
         t.abas.botoes["Editar código do projeto"].click()
         assert t.abas.get() == "Editar código do projeto"
         qtbot.waitUntil(lambda: t.cartao_config_edicao.width() == 868, timeout=1000)
-        assert _r(t, t.cartao_config_edicao) == (62, 128, 868, 134)
-        assert _r(t, t.rotulo_etapa1_edicao)[:2] == (77, 138)
+        assert _r(t, t.cartao_config_edicao) == (62, 126, 868, 138)
+        assert _r(t, t.rotulo_etapa1_edicao)[:2] == (77, 136)
         assert _r(t, t.rotulo_novo_projeto) == (77, 181, 180, 28)
-        assert _r(t, t.entry_novo_projeto) == (257, 181, 648, 28)
-        assert _r(t, t.rotulo_excel_edicao) == (77, 224, 180, 28)
-        assert _r(t, t.btn_excel_edicao) == (257, 224, 200, 28)
-        assert _r(t, t.lbl_status_edicao)[:2] == (467, 224)
-        assert _r(t, t.cartao_acoes_edicao) == (62, 282, 868, 146)
-        assert _r(t, t.rotulo_etapa2_edicao)[:2] == (77, 292)
-        assert _r(t, t.btn_run_edicao) == (77, 340, 838, 40)
-        assert _r(t, t.progress_edicao) == (77, 405, 838, 8)
+        assert _r(t, t.entry_novo_projeto) == (257, 179, 648, 32)
+        assert _r(t, t.rotulo_excel_edicao) == (77, 226, 180, 28)
+        assert _r(t, t.btn_excel_edicao) == (257, 226, 200, 28)
+        assert _r(t, t.lbl_status_edicao)[:2] == (467, 226)
+        assert _r(t, t.cartao_acoes_edicao) == (62, 284, 868, 146)
+        assert _r(t, t.rotulo_etapa2_edicao)[:2] == (77, 294)
+        assert _r(t, t.btn_run_edicao) == (77, 342, 838, 40)
+        assert _r(t, t.progress_edicao) == (77, 407, 838, 8)
         assert _r(t, t.area_edicao.verticalScrollBar())[0] == 940
     finally:
         qt_interface.setStyleSheet(anterior)
 
 
 @pytest.mark.parametrize("altura_janela, abas, console", [
-    (850, 471, 270), (700, 358, 233), (600, 283, 208), (1000, 583, 308), (640, 313, 218), (500, 209, 182),
+    # 2026-10-20: título de 22 e campos/botões de 32 do sistema visual; a CTk saiu em 2026-10-15.
+    (850, 472, 271), (700, 360, 233), (600, 285, 208), (1000, 585, 308), (640, 315, 218), (500, 210, 183),
 ])
 def test_abas_e_console_dividem_a_altura_como_o_grid_do_tk(qt_interface, qtbot, altura_janela, abas, console):
     # grid do Tk: linha 1 (Tabview, weight=3, pede 261) e linha 2 (console,

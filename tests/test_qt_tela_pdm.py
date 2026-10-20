@@ -776,6 +776,7 @@ def _medidor(t):
 
 
 def test_medidas_iguais_as_do_interface_antiga(tela_medida, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Medidas da tela antiga (interface antiga, janela 1280x850, winfo_* -- aqui
     # relativas à área da tela, 277 px à direita da barra lateral). Ver
     # capturas/e4.6. Larguras de texto: ±8 (Roboto do Qt × do Tk; o hinting
@@ -787,92 +788,94 @@ def test_medidas_iguais_as_do_interface_antiga(tela_medida, qtbot):
     assert (x, y, largura, altura + desvio) == (40, 79, 923, 571)
     assert _geo(t, t.console) == (40, 670, 923, 150)
     # Configuração global
-    assert g(t.cartao_config) == (46, 95, 900, 119)
+    assert g(t.cartao_config) == (46, 95, 900, 123)
     assert g(r["config"])[:2] == (61, 105)
-    assert g(r["destino"]) == (61, 138, 190, 28)
-    assert g(t.entry_dest) == (256, 138, 350, 28)
-    assert g(t.btn_sel_destino) == (611, 138, 100, 28)
-    assert g(r["sam_gm"]) == (61, 171, 190, 28)
-    assert g(t.btn_sam_gm) == (256, 171, 100, 28)
-    assert g(t.lbl_sam_gm_status)[:2] == (376, 171)
+    assert g(r["destino"]) == (61, 138, 190, 32)
+    assert g(t.entry_dest) == (256, 138, 350, 32)
+    assert g(t.btn_sel_destino) == (611, 140, 100, 28)
+    assert g(r["sam_gm"]) == (61, 175, 190, 28)
+    assert g(t.btn_sam_gm) == (256, 175, 100, 28)
+    assert g(t.lbl_sam_gm_status)[:2] == (376, 175)
     # Abas: a barra 10 px abaixo do topo, o quadro da aba em (6, 43)
-    assert g(t.tabview) == (46, 234, 900, 571)
-    assert g(t.tabview.barra)[1] == 244
+    assert g(t.tabview) == (46, 238, 900, 579)
+    assert g(t.tabview.barra)[1] == 248
     centro_barra = g(t.tabview.barra)[0] + g(t.tabview.barra)[2] / 2
     assert abs(centro_barra - (46 + 450)) <= 1
     # Aba 1
-    assert g(r["itaipu"]) == (72, 287, 240, 28)
-    assert g(t.entry_pdms_itaipu) == (317, 287, 280, 28)
-    assert g(t.btn_buscar_itaipu) == (602, 287, 80, 28)
-    assert g(t.quadro_regen) == (72, 321, 848, 70)
-    assert g(r["regen"])[:2] == (82, 327)
+    assert g(r["itaipu"]) == (72, 291, 240, 32)
+    assert g(t.entry_pdms_itaipu) == (317, 291, 280, 32)
+    assert g(t.btn_buscar_itaipu) == (602, 293, 80, 28)
+    assert g(t.quadro_regen) == (72, 329, 848, 70)
+    assert g(r["regen"])[:2] == (82, 335)
     assert _perto(g(t.btn_regenerar), (720, 327, 190, 28), 8) and sum(g(t.btn_regenerar)[::2]) == 910
-    assert g(r["regen_desc"])[:2] == (82, 355)
-    assert g(t.quadro_from) == (72, 403, 848, 70)
+    assert g(r["regen_desc"])[:2] == (82, 363)
+    assert g(t.quadro_from) == (72, 411, 848, 70)
     assert _perto(g(t.btn_from_itaipu), (705, 409, 205, 28), 8) and sum(g(t.btn_from_itaipu)[::2]) == 910
-    assert g(r["from_desc"])[:2] == (82, 437)
-    assert g(t.quadro_mod) == (72, 485, 848, 308)
-    assert g(r["mod"])[:2] == (82, 490)
-    assert g(r["mod_desc"])[:2] == (82, 523)
-    assert _perto(g(t.rb_lote), (92, 556, 158, 22), 4)
-    assert _perto(g(t.rb_especifico), (270, 556, 206, 22), 4)
+    assert g(r["from_desc"])[:2] == (82, 445)
+    assert g(t.quadro_mod) == (72, 493, 848, 312)
+    assert g(r["mod"])[:2] == (82, 498)
+    assert g(r["mod_desc"])[:2] == (82, 531)
+    assert _perto(g(t.rb_lote), (92, 564, 156, 22), 4)
+    assert _perto(g(t.rb_especifico), (268, 564, 202, 22), 4)
     assert _perto(g(t.btn_modificados), (390, 593, 211, 28), 8)
-    assert g(r["traduzir"])[:2] == (82, 646)
-    assert g(r["traduzir_desc"])[:2] == (82, 679)
-    assert g(r["en"]) == (82, 712, 240, 28)
-    assert g(t.entry_destino_en) == (327, 712, 280, 28)
-    assert g(t.btn_buscar_en) == (612, 712, 80, 28)
-    assert _perto(g(t.btn_traduzir), (347, 755, 298, 28), 8)
+    assert g(r["traduzir"])[:2] == (82, 654)
+    assert g(r["traduzir_desc"])[:2] == (82, 687)
+    assert g(r["en"]) == (82, 720, 240, 32)
+    assert g(t.entry_destino_en) == (327, 720, 280, 32)
+    assert g(t.btn_buscar_en) == (612, 722, 80, 28)
+    assert _perto(g(t.btn_traduzir), (349, 767, 293, 28), 8)
     for b in (t.btn_modificados, t.btn_traduzir):  # centrados no quadro
         assert abs(g(b)[0] + g(b)[2] / 2 - (72 + 424)) <= 1
 
 
 def test_medidas_da_aba_2(tela_medida, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     t, r = tela_medida, tela_medida._rotulos
     g, _desvio = _medidor(t)
     t.tabview.set("Criar planilhas PMIB")
-    qtbot.waitUntil(lambda: g(t.tabview)[3] == 481, timeout=2000)
-    assert g(t.quadro_fichas) == (72, 287, 848, 258)
-    assert g(r["fichas"])[:2] == (82, 292)
-    assert g(r["fonte"]) == (82, 333, 240, 28)
+    qtbot.waitUntil(lambda: g(t.tabview)[3] == 485, timeout=2000)
+    assert g(t.quadro_fichas) == (72, 291, 848, 262)
+    assert g(r["fichas"])[:2] == (82, 296)
+    assert g(r["fonte"]) == (82, 337, 240, 28)
     assert _perto(g(t.rb_fonte_planilha), (332, 336, 128, 22), 4)
     assert _perto(g(t.rb_fonte_pasta), (480, 336, 284, 22), 4)
-    assert g(t.btn_pmib) == (82, 377, 240, 28)
-    assert g(t.lbl_pmib_status)[:2] == (337, 377)
-    assert g(r["destino_fichas"]) == (82, 421, 240, 28)
-    assert g(t.entry_destino_fichas) == (327, 421, 280, 28)
-    assert g(t.btn_buscar_fichas) == (612, 421, 80, 28)
-    assert g(t.btn_template) == (82, 465, 240, 28)
-    assert g(t.lbl_template_status)[:2] == (337, 465)
-    assert g(r["idioma"]) == (82, 509, 240, 28)
-    assert _perto(g(t.rb_pt), (332, 512, 100, 22), 4)
-    assert _perto(g(t.rb_en), (452, 512, 100, 22), 4)
-    assert _perto(g(r["idioma_dica"])[:2], (572, 509), 4)
-    assert g(t.quadro_exec) == (72, 565, 848, 134)
-    assert g(r["selecao"]) == (82, 575, 120, 28)
-    assert _perto(g(t.rb_todos), (212, 578, 112, 22), 4)
-    assert _perto(g(t.rb_selecionar), (344, 578, 170, 22), 4)
-    assert g(r["saida"]) == (82, 613, 120, 28)
-    assert _perto(g(t.rb_apenas), (212, 616, 181, 22), 4)
-    assert _perto(g(t.rb_com_pastas), (413, 616, 185, 22), 4)
+    assert g(t.btn_pmib) == (82, 381, 240, 28)
+    assert g(t.lbl_pmib_status)[:2] == (337, 381)
+    assert g(r["destino_fichas"]) == (82, 425, 240, 32)
+    assert g(t.entry_destino_fichas) == (327, 425, 280, 32)
+    assert g(t.btn_buscar_fichas) == (612, 427, 80, 28)
+    assert g(t.btn_template) == (82, 473, 240, 28)
+    assert g(t.lbl_template_status)[:2] == (337, 473)
+    assert g(r["idioma"]) == (82, 517, 240, 28)
+    assert _perto(g(t.rb_pt), (332, 520, 100, 22), 4)
+    assert _perto(g(t.rb_en), (452, 520, 100, 22), 4)
+    assert _perto(g(r["idioma_dica"])[:2], (572, 517), 4)
+    assert g(t.quadro_exec) == (72, 573, 848, 134)
+    assert g(r["selecao"]) == (82, 583, 120, 28)
+    assert _perto(g(t.rb_todos), (212, 586, 111, 22), 4)
+    assert _perto(g(t.rb_selecionar), (343, 586, 169, 22), 4)
+    assert g(r["saida"]) == (82, 621, 120, 28)
+    assert _perto(g(t.rb_apenas), (212, 624, 178, 22), 4)
+    assert _perto(g(t.rb_com_pastas), (410, 624, 183, 22), 4)
     assert _perto(g(t.btn_criar_fichas), (409, 661, 174, 28), 8)
 
 
 def test_medidas_da_aba_3(tela_medida, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     t, r = tela_medida, tela_medida._rotulos
     g, _desvio = _medidor(t)
     t.tabview.botoes["Excluir Duplicados"].click()
-    qtbot.waitUntil(lambda: g(t.tabview)[3] == 261, timeout=2000)
+    qtbot.waitUntil(lambda: g(t.tabview)[3] == 265, timeout=2000)
     # Rótulo centrado (lá 431 de largura; o texto do Qt sai uns px mais curto).
     x, y, w, h = g(r["limpeza"])
-    assert (y, h) == (297, 28) and abs(w - 431) <= 16 and abs(x + w / 2 - (280 + 431 / 2)) <= 1
-    assert g(r["clean"]) == (62, 353, 240, 28)
-    assert g(t.entry_clean) == (307, 353, 280, 28)
-    assert g(t.btn_buscar_clean) == (592, 353, 80, 28)
-    assert g(t.btn_exec_clean) == (346, 419, 300, 40)
+    assert (y, h) == (301, 28) and abs(w - 431) <= 16 and abs(x + w / 2 - (280 + 431 / 2)) <= 1
+    assert g(r["clean"]) == (62, 357, 240, 32)
+    assert g(t.entry_clean) == (307, 357, 280, 32)
+    assert g(t.btn_buscar_clean) == (592, 359, 80, 28)
+    assert g(t.btn_exec_clean) == (346, 427, 300, 40)
     # E volta ao tamanho da aba 1
     t.tabview.set("Processar PDMs")
-    qtbot.waitUntil(lambda: g(t.tabview)[3] == 571, timeout=2000)
+    qtbot.waitUntil(lambda: g(t.tabview)[3] == 579, timeout=2000)
 
 
 NOME_LONGO = ("Lista de PDMs SAM-GM revisao final aprovada pelo cliente em setembro de 2026 "
@@ -880,6 +883,7 @@ NOME_LONGO = ("Lista de PDMs SAM-GM revisao final aprovada pelo cliente em setem
 
 
 def test_nome_de_arquivo_longo_nao_alarga_o_formulario(tela_medida, qtbot, monkeypatch):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Um nome de ~85 caracteres ou mais empurrava o formulário além da janela
     # (os botões "Executar" da aba 1 saíam da tela). Agora o nome é elidido no
     # rótulo e o caminho completo fica no tooltip.
@@ -890,7 +894,7 @@ def test_nome_de_arquivo_longo_nao_alarga_o_formulario(tela_medida, qtbot, monke
     t.tabview.set("Criar planilhas PMIB")
     t.btn_pmib.click()
     t.btn_template.click()
-    qtbot.waitUntil(lambda: _geo(t, t.tabview)[3] == 481, timeout=2000)
+    qtbot.waitUntil(lambda: _geo(t, t.tabview)[3] == 485, timeout=2000)
     assert _geo(t, t.cartao_config)[2] == 900
     assert t.area.widget().width() == t.area.viewport().width()
     for rotulo in (t.lbl_sam_gm_status, t.lbl_pmib_status, t.lbl_template_status):
