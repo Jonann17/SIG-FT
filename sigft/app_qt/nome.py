@@ -59,12 +59,18 @@ def _ler(chave: str):
         return None
 
 
+# Gravar já falhou nesta sessão: não pergunta mais (a resposta não ficaria
+# guardada, e a pergunta voltaria a cada abertura).
+_sem_gravar: list = []
+
+
 def _gravar(chave: str, valor: str) -> None:
     from sigft.core import prefs
 
     try:
         prefs.gravar_preferencia(chave, valor, config_path=_arquivo_de_prefs())
     except Exception:  # noqa: BLE001 -- lembrar não pode derrubar a abertura
+        _sem_gravar.append(chave)
         _log.warning("nao consegui gravar a preferencia %s", chave, exc_info=True)
 
 
@@ -77,7 +83,7 @@ def precisa_perguntar() -> bool:
     """Sem nome e sem o registro de que já se perguntou. Arquivo que não se
     deixa ler não pergunta: perguntaria a cada abertura sem conseguir lembrar."""
     nome, ja = _ler(CHAVE_NOME), _ler(CHAVE_JA_PERGUNTOU)
-    if nome is None or ja is None:
+    if nome is None or ja is None or _sem_gravar:
         return False
     return not nome.strip() and not ja
 
@@ -95,9 +101,12 @@ def recusar() -> None:
 
 
 def saudacao(agora: datetime, quem: str) -> str:
-    """Bom dia (até 12h), Boa tarde (até 18h), Boa noite; mais o nome, se houver.
-    As faixas são as da spec (2026-10-20): a madrugada já é "Bom dia"."""
-    if agora.hour < 12:
+    """Boa noite (até 5h), Bom dia (até 12h), Boa tarde (até 18h), Boa noite;
+    mais o nome, se houver. A spec dizia "Bom dia até 12h"; às 2h soava
+    estranho e a madrugada virou "Boa noite" (2026-10-20)."""
+    if agora.hour < 5:
+        inicio = "Boa noite"
+    elif agora.hour < 12:
         inicio = "Bom dia"
     elif agora.hour < 18:
         inicio = "Boa tarde"

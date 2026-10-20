@@ -18,6 +18,7 @@ RAIZ = pathlib.Path(__file__).resolve().parent.parent
 def prefs_temporarias(tmp_path, monkeypatch):
     arquivo = tmp_path / "p.json"
     monkeypatch.setattr(nome, "_arquivo_de_prefs", lambda: arquivo)
+    monkeypatch.setattr(nome, "_sem_gravar", [])
     return arquivo
 
 
@@ -30,8 +31,11 @@ def test_saudacao_pelo_relogio():
 
 
 def test_saudacao_nas_viradas():
-    # Bom dia até 12h (a madrugada também), Boa tarde até 18h, Boa noite depois.
-    assert nome.saudacao(datetime(2026, 10, 20, 0, 30), "") == "Bom dia"
+    # Boa noite até 5h (às 2h "Bom dia" soa estranho), Bom dia até 12h, Boa
+    # tarde até 18h, Boa noite depois.
+    assert nome.saudacao(datetime(2026, 10, 20, 0, 30), "") == "Boa noite"
+    assert nome.saudacao(datetime(2026, 10, 20, 4, 59), "") == "Boa noite"
+    assert nome.saudacao(datetime(2026, 10, 20, 5), "") == "Bom dia"
     assert nome.saudacao(datetime(2026, 10, 20, 11, 59), "") == "Bom dia"
     assert nome.saudacao(datetime(2026, 10, 20, 12), "") == "Boa tarde"
     assert nome.saudacao(datetime(2026, 10, 20, 17, 59), "") == "Boa tarde"
@@ -77,6 +81,9 @@ def test_gravar_que_falha_nao_derruba(prefs_temporarias, monkeypatch):
     monkeypatch.setattr(prefs, "gravar_preferencia", quebra)
     nome.guardar("Ana")
     nome.recusar()
+    # Prefs que se leem mas não se gravam: perguntar de novo a cada abertura
+    # seria pior que não perguntar. Uma falha de gravar basta para parar.
+    assert not nome.precisa_perguntar()
 
 
 def test_ler_que_falha_vale_sem_nome_e_sem_perguntar(prefs_temporarias, monkeypatch):
@@ -93,8 +100,12 @@ def test_ler_que_falha_vale_sem_nome_e_sem_perguntar(prefs_temporarias, monkeypa
 
 def test_o_nome_nao_vai_para_o_log(qt_interface, qtbot, tmp_path, monkeypatch):
     """Só aparece na tela: nada de log, planilha, IA ou portal."""
+    # Quem lê o nome por qualquer caminho: a função, o import direto dela ou a
+    # chave das preferências.
+    sinais = ("nome.guardado(", "import guardado", "CHAVE_NOME",
+              'ler_preferencia("nome"', "ler_preferencia('nome'")
     usos = [p for p in (RAIZ / "sigft").rglob("*.py")
-            if "nome.guardado(" in p.read_text(encoding="utf-8")]
+            if any(s in p.read_text(encoding="utf-8") for s in sinais)]
     permitidos = {"sigft/app_qt/nome.py", "sigft/app_qt/views/home.py"}
     assert {p.relative_to(RAIZ).as_posix() for p in usos} <= permitidos
 
@@ -298,6 +309,19 @@ def test_clicar_na_saudacao_troca_o_nome(qt_interface, qtbot, prefs_temporarias,
     caixa.campo.setText("Bia")
     caixa.botao_salvar.click()
     assert tela.label_titulo.text() == "Boa noite, Bia"
+
+
+def test_apertar_e_arrastar_para_fora_nao_abre_a_pergunta(qt_interface, qtbot, prefs_temporarias):
+    # Como um botão: a troca é no soltar, e soltar fora da saudação desiste.
+    from PySide6.QtCore import QPoint, Qt
+
+    tela = _home(qtbot)
+    tela.show()
+    rotulo = tela.label_titulo
+    qtbot.mousePress(rotulo, Qt.MouseButton.LeftButton)
+    assert getattr(tela, "_pergunta_do_nome", None) is None
+    qtbot.mouseRelease(rotulo, Qt.MouseButton.LeftButton, pos=QPoint(-5, -5))
+    assert getattr(tela, "_pergunta_do_nome", None) is None
 
 
 def test_nome_comprido_nao_alarga_a_home(qt_interface, qtbot, prefs_temporarias):

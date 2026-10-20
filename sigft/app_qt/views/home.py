@@ -292,10 +292,12 @@ class _Saudacao(blocos.RotuloElidido):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip(nome.DICA_DA_SAUDACAO)
 
-    def mousePressEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
-        if evento.button() == Qt.MouseButton.LeftButton:
+    def mouseReleaseEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
+        # No soltar, como um botão: quem aperta e arrasta para fora desiste.
+        if (evento.button() == Qt.MouseButton.LeftButton
+                and self.rect().contains(evento.position().toPoint())):
             self._ao_clicar()
-        super().mousePressEvent(evento)
+        super().mouseReleaseEvent(evento)
 
 
 class _Card(QFrame):
