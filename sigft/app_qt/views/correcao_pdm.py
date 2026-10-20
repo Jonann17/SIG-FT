@@ -392,6 +392,7 @@ class ModuloCorrecaoPDM(ModuleFrame):
 
     def _progresso(self, atual, total, item=None) -> None:
         interface.na_interface(self._definir_progresso, (atual / total) if total else 0)
+        self.informar_progresso(atual, total, "ficha")
 
     def _definir_progresso(self, fracao: float) -> None:
         self._fracao = fracao

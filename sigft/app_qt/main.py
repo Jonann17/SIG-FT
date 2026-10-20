@@ -212,6 +212,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         home = QPushButton(estilo.mono("  🏠  Home"), objectName="home")
         blocos.sem_tecla(home)   # os botões da barra (CTkButton) nunca pegam o foco
         home.clicked.connect(self.show_home)
+        home.setToolTip("Volta à tela inicial: os módulos, as chaves de API e os modelos de IA.")
         lay.addWidget(home)
         lay.addSpacing(6)
 
@@ -227,6 +228,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
             blocos.sem_tecla(botao)
             botao.setProperty("menu", True)
             botao.setEnabled(alvo not in catalogo.TELAS_BLOQUEADAS)
+            botao.setToolTip(catalogo.dica_do_menu(alvo))
             botao.clicked.connect(lambda _=False, a=alvo: self.show_frame(a))
             self.botoes_menu[alvo] = botao
             lay.addWidget(botao)

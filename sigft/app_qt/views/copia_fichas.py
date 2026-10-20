@@ -320,6 +320,11 @@ class ModuloCopiaFichas(ModuleFrame):
         except RuntimeError:
             pass  # tela já destruída
 
+    def _progresso_do_lote(self, fracao: float, total: int) -> None:
+        """A barra da tela e o "Ficha 3 de 8" da faixa. Thread do robô."""
+        interface.na_interface(self._definir_progresso, fracao)
+        self.informar_progresso(round(fracao * total), total, "ficha")
+
     def _worker_robo_novo(self, gravar_auditoria: bool, fichas, caminho_status) -> None:
         # Import tardio de propósito: puxa o Playwright, e quem nunca clica
         # neste botão não deve pagar por isso na abertura do aplicativo.
@@ -348,7 +353,7 @@ class ModuloCopiaFichas(ModuleFrame):
             resultados = duplicadas_robo.processar_lote(
                 fichas,
                 callback_log=registrar,
-                callback_progresso=lambda fracao: interface.na_interface(self._definir_progresso, fracao),
+                callback_progresso=lambda fracao: self._progresso_do_lote(fracao, len(fichas)),
                 portal=portal,
                 log_auditoria=log_auditoria,
             )
