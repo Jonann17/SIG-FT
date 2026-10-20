@@ -118,6 +118,28 @@ O logo da GE Vernova fica (é a regra de `docs/DISTRIBUICAO.md`). O splash é
 refeito com os tokens: fundo `fundo`, logo, nome "SIG-FT", versão e a barra de
 carregamento na cor `primaria`. Sem arte nova de logo nesta parte.
 
+### Nome no saudação da Home (decisão do Jonathan, 2026-10-20)
+
+Hoje o SIG-FT não sabe quem o usa (o usuário do Windows é a matrícula, ex.
+`560083605`). A Home passa a dizer "Bom dia, <nome>" com o nome que a pessoa
+dá **uma vez**:
+
+- **Quando:** na primeira abertura do SIG-FT que não tenha nome guardado --
+  o que cobre a instalação nova e a primeira abertura depois de uma
+  atualização (o app abre sozinho ao fim dos dois). NÃO no instalador: ele
+  roda como administrador e para a máquina inteira, e o nome é de cada
+  pessoa.
+- **Onde fica:** `user_prefs.json` (`core/prefs.py`), em `Documentos\SIG-FT`,
+  como as outras preferências.
+- **Pergunta:** uma caixa curta, "Como podemos te chamar?", campo de texto,
+  botões "Salvar" (primário) e "Agora não" (secundário).
+- **"Agora não" ou fechar:** saudação sem nome ("Bom dia") e um registro de
+  que já se perguntou -- não pergunta de novo. A pessoa troca ou dá o nome
+  depois, clicando na saudação da Home (dica: "Mudar como te chamamos").
+- **Saudação pelo relógio:** Bom dia (até 12h), Boa tarde (até 18h), Boa
+  noite.
+- **O nome só aparece na tela.** Não vai para log, planilha, IA ou portal.
+
 ## Componentes que mudam
 
 | Onde | O quê |
