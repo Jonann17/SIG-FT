@@ -26,6 +26,7 @@ from shiboken6 import isValid
 
 from sigft import _build_info
 from sigft.app.atualizacao_textos import data_br, notas_para_exibir
+from sigft.app_qt import nome as nome_da_pessoa
 from sigft.app_qt.widgets import blocos
 from sigft.core import novidades
 from sigft.services import updater
@@ -89,6 +90,12 @@ def mostrar_se_houver(janela, *, versao_atual: str, empacotado: bool,
     try:
         if not janela.isVisible() or _aviso_de_atualizacao_aberto(janela):
             return None
+        # [2026-10-20] A pergunta do nome vem antes (`app_qt/nome.py`): com ela
+        # na tela, as novidades esperam a resposta em vez de abrir por cima.
+        if (pergunta := nome_da_pessoa.pergunta_aberta(janela)) is not None:
+            pergunta.finished.connect(partial(_mostrar_depois_da_pergunta, janela,
+                                              versao_atual, empacotado, config_path))
+            return None
         bloco = novidades.para_mostrar_na_abertura(
             versao_atual, empacotado=empacotado, config_path=config_path)
         if bloco is None:
@@ -102,6 +109,12 @@ def mostrar_se_houver(janela, *, versao_atual: str, empacotado: bool,
     except Exception as erro:  # noqa: BLE001 -- novidade não derruba o app
         _log(f"nao foi possivel mostrar as novidades: {erro}")
         return None
+
+
+def _mostrar_depois_da_pergunta(janela, versao_atual, empacotado, config_path, _codigo=None):
+    if isValid(janela):
+        mostrar_se_houver(janela, versao_atual=versao_atual, empacotado=empacotado,
+                          config_path=config_path)
 
 
 def _rotulo(texto: str, *, tamanho: int, papel: str | None = None, negrito: bool = False) -> QLabel:

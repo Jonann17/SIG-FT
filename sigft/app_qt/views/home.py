@@ -36,7 +36,7 @@ from shiboken6 import isValid
 
 from sigft import config as sigft_config
 from sigft.app import textos_dicas
-from sigft.app_qt import atualizacao, estilo, icones, interface, tema
+from sigft.app_qt import atualizacao, estilo, icones, interface, nome, tema
 from sigft.app_qt.catalogo import ICONE_DA_TELA, MODULOS
 from sigft.app_qt.widgets import blocos, controles, dialogs, mural
 from sigft.app_qt.widgets.module_frame import aplicar_dicas
@@ -272,6 +272,32 @@ def _vivo(widget) -> bool:
     return widget is not None and isValid(widget)
 
 
+def _agora() -> datetime:
+    """O relógio da saudação. Função para os testes fixarem a hora."""
+    return datetime.now()
+
+
+class _Saudacao(blocos.RotuloElidido):
+    """O título da Home: "Bom dia, <nome>" (2026-10-20). Clicar troca o nome.
+
+    Elide à direita: um nome comprido (até `nome.LIMITE` letras, na fonte de
+    32 px do título) não empurra o seletor de tema nem abre rolagem
+    horizontal; `text()` continua sendo a saudação inteira."""
+
+    MODO = Qt.TextElideMode.ElideRight
+
+    def __init__(self, ao_clicar) -> None:
+        super().__init__("", objectName="titulo_home")
+        self._ao_clicar = ao_clicar
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip(nome.DICA_DA_SAUDACAO)
+
+    def mousePressEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
+        if evento.button() == Qt.MouseButton.LeftButton:
+            self._ao_clicar()
+        super().mousePressEvent(evento)
+
+
 class _Card(QFrame):
     def __init__(self, alvo, titulo, descricao, ao_clicar) -> None:
         super().__init__(objectName="card")
@@ -349,11 +375,15 @@ class HomeView(QScrollArea):
         layout.setSpacing(0)
 
         # --- CABEÇALHO --- (pady (20, 5); (0, 20); 10; os de baixo somam)
-        self.label_titulo = QLabel("SIG-FT", objectName="titulo_home")
+        # [2026-10-20] O título virou a saudação ("Bom dia, <nome>"), com a
+        # mesma fonte e altura do "SIG-FT" de antes (o nome do app já está na
+        # barra lateral). Ver `sigft/app_qt/nome.py`.
+        self._pergunta_do_nome = None
+        self.label_titulo = _Saudacao(self.mudar_nome)
+        self.atualizar_saudacao()
         linha_titulo = QHBoxLayout()
         linha_titulo.setSpacing(0)
-        linha_titulo.addWidget(self.label_titulo)
-        linha_titulo.addStretch()
+        linha_titulo.addWidget(self.label_titulo, 1)
         linha_titulo.addWidget(self._criar_seletor_tema(), 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(linha_titulo)
         layout.addSpacing(5)
@@ -438,6 +468,25 @@ class HomeView(QScrollArea):
         barra.addWidget(self.caixa_canal_testes)
         barra.addStretch()
         return barra
+
+    # =====================================================================
+    # SAUDAÇÃO  [2026-10-20]
+    # =====================================================================
+    def atualizar_saudacao(self) -> None:
+        """Recalcula a saudação pelo relógio e pelo nome guardado. A janela
+        chama ao mostrar a Home: "Bom dia" vira "Boa tarde" sem reabrir."""
+        self.label_titulo.setText(nome.saudacao(_agora(), nome.guardado()))
+
+    def mudar_nome(self) -> None:
+        """Clicar na saudação: a pergunta do nome, com o nome de agora no campo."""
+        if self._pergunta_do_nome is not None and isValid(self._pergunta_do_nome):
+            self._pergunta_do_nome.raise_()
+            self._pergunta_do_nome.activateWindow()
+            return
+        caixa = nome.PerguntaDoNome(self)
+        self._pergunta_do_nome = caixa
+        caixa.finished.connect(self.atualizar_saudacao)
+        caixa.open()
 
     # =====================================================================
     # SELETOR DE TEMA  [2026-10-20]

@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 from sigft import _build_info
 from sigft.app import backends
 from sigft.app_qt import atualizacao, catalogo, cursor, estilo, icones, interface, novidades, tema
+from sigft.app_qt import nome as nome_da_pessoa
 from sigft.app_qt.views.aplicacao_lmr import ModuloAplicacaoLMR
 from sigft.app_qt.views.home import HomeView
 from sigft.app_qt.views.nao_migrada import TelaComErro, TelaNaoMigrada
@@ -263,6 +264,9 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
                     return  # sem cache: a próxima visita tenta montar de novo
             self.telas[nome] = tela
             self.pilha.addWidget(tela)
+        # [2026-10-20] A saudação segue o relógio: recalcula a cada volta à Home.
+        if hasattr(tela, "atualizar_saudacao"):
+            tela.atualizar_saudacao()
         self.pilha.setCurrentWidget(tela)
         self._marcar_no_menu(nome)
 
@@ -477,6 +481,16 @@ def _tema_da_linha_de_comando(argv: list[str]) -> str | None:
     return None
 
 
+def _redesenhar_saudacao(principal: SIG_FT_App):
+    """O que roda quando a pessoa responde a pergunta do nome: a Home (se já
+    montada) refaz a saudação."""
+    def redesenhar() -> None:
+        home = principal.telas.get("Home")
+        if home is not None and hasattr(home, "atualizar_saudacao"):
+            home.atualizar_saudacao()
+    return redesenhar
+
+
 def main() -> None:
     instancia.preparar()
 
@@ -519,6 +533,11 @@ def main() -> None:
         janela.append(principal)
         principal.show()
         splash.close()
+        # [2026-10-20] "Como podemos te chamar?", uma vez, logo depois de a
+        # janela aparecer (antes das novidades, que esperam a resposta). Daqui,
+        # e não do `SIG_FT_App`, para nenhum teste que monta a janela travar
+        # na pergunta. Ver `sigft/app_qt/nome.py`.
+        nome_da_pessoa.perguntar_na_abertura(principal, depois=_redesenhar_saudacao(principal))
 
     splash.pronta.connect(abrir_principal)
     splash.show()
