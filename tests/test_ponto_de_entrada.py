@@ -470,7 +470,8 @@ def test_o_smoke_CARREGA_os_backends_antes_de_montar_a_janela(qt_interface, monk
     monkeypatch.chdir(tmp_path)
     # Sem a folha de estilo do app na QApplication da suíte: ela ficaria para
     # os testes seguintes (as medidas dos diálogos mudam com ela).
-    monkeypatch.setattr(modulo, "_preparar_qt", lambda: None)
+    # 2026-10-20: o smoke passa o `--tema` da linha de comando (None sem ele).
+    monkeypatch.setattr(modulo, "_preparar_qt", lambda *_: None)
     monkeypatch.setattr(modulo, "SIG_FT_App", _janela)
     monkeypatch.setattr(modulo.backends, "carregar_todos", lambda **kw: ordem.append("backends"))
 

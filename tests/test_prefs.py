@@ -493,9 +493,10 @@ def test_persistencia_estrutura_completa_do_json_apos_uso_combinado(tmp_path, co
     # a memória de PASTA não serve para isso). [2026-10-05] "opcoes" entrou
     # com `set_opcao` -- o "Gerar painel ao terminar" do Gestão PMIB.
     # [2026-10-19] "novidades" entrou com `set_ultima_versao_vista` -- a janela
-    # de novidades.
+    # de novidades. [2026-10-20] "preferencias" entrou com `gravar_preferencia`
+    # -- o tema da interface (escuro/claro/sistema).
     assert set(bruto.keys()) == {"ultimos", "categorias", "pastas_padrao", "arquivos", "opcoes",
-                                 "novidades"}
+                                 "novidades", "preferencias"}
     assert bruto == {
         "ultimos": {"autospec.ficha": str(pasta_ultimo)},
         "categorias": {"excel": str(pasta_ultimo)},
@@ -505,6 +506,7 @@ def test_persistencia_estrutura_completa_do_json_apos_uso_combinado(tmp_path, co
         "arquivos": {},
         "opcoes": {},
         "novidades": {},
+        "preferencias": {},
     }
 
 
@@ -607,3 +609,33 @@ def test_opcao_corrompida_no_arquivo_cai_no_padrao(tmp_path):
     config_path.write_text('{"opcoes": {"pmib_manager.gerar_painel": "talvez"}}', encoding="utf-8")
 
     assert prefs.get_opcao("pmib_manager.gerar_painel", True, config_path=config_path) is True
+
+
+# =============================================================================
+# Preferências de texto  [2026-10-20]
+# =============================================================================
+# O tema da interface (escuro/claro/sistema) é a primeira: `get_opcao` só guarda
+# booleano, e o tema tem três valores.
+
+def test_preferencia_nunca_gravada_e_o_padrao(config_path):
+    assert prefs.ler_preferencia("tema", "escuro", config_path=config_path) == "escuro"
+
+
+def test_preferencia_gravada_volta(config_path):
+    prefs.gravar_preferencia("tema", "claro", config_path=config_path)
+    assert prefs.ler_preferencia("tema", "escuro", config_path=config_path) == "claro"
+    dados = json.loads(config_path.read_text(encoding="utf-8"))
+    assert dados["preferencias"] == {"tema": "claro"}
+
+
+def test_preferencia_nao_apaga_as_outras_secoes(config_path):
+    prefs.set_opcao("x", True, config_path=config_path)
+    prefs.gravar_preferencia("tema", "claro", config_path=config_path)
+    assert prefs.get_opcao("x", False, config_path=config_path) is True
+
+
+@pytest.mark.parametrize("bruto", ['{"preferencias": {"tema": 3}}', '{"preferencias": []}',
+                                   '{"preferencias": {"tema": ""}}', "nao e json"])
+def test_preferencia_ilegivel_e_o_padrao(config_path, bruto):
+    config_path.write_text(bruto, encoding="utf-8")
+    assert prefs.ler_preferencia("tema", "escuro", config_path=config_path) == "escuro"

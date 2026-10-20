@@ -336,8 +336,10 @@ def area_rolavel(layout_pai=None, *, fundo: str | None = None, margem: int = 6,
     layout.setSpacing(0)
     layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     area.setWidget(interno)
-    # A alça começa no canto do quadro (margem) + os 4 do border_spacing.
-    folha_barra = estilo.folha_rolagem_ctk(margem_vertical=margem + 4)
+    # A alça começa no canto do quadro (margem) + os 4 do border_spacing. Só as
+    # medidas: a cor da alça é a da folha do app, que a troca de tema regera
+    # (2026-10-20); a desta folha local ficaria no tema da criação.
+    folha_barra = estilo.folha_rolagem_ctk(margem_vertical=margem + 4, cores=False)
     if barra_sempre_visivel:
         area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         folga = estilo.LARGURA_ROLAGEM_CTK - 8 - 4   # o que sobra da faixa depois da alça

@@ -122,7 +122,8 @@ def _resolver(config_path):
 # `remember_*` a tenha gravado. Foi o que aconteceu com "arquivos" em
 # 2026-09-03: `remember_file` gravava, `get_last_file` lia `None`, e o mural
 # de atividades dizia "não encontrei o mapeamento" sem nenhum erro aparecer.
-_SECOES_ESTADO = ("ultimos", "categorias", "pastas_padrao", "arquivos", "opcoes", "novidades")
+_SECOES_ESTADO = ("ultimos", "categorias", "pastas_padrao", "arquivos", "opcoes", "novidades",
+                  "preferencias")
 
 
 def _estado_vazio() -> dict[str, dict[str, str]]:
@@ -422,6 +423,40 @@ def set_opcao(
     """Guarda a opção `chave` (liga/desliga)."""
     estado = _carregar_estado(config_path)
     estado.setdefault(CHAVE_OPCOES, {})[chave] = bool(valor)
+    _salvar_estado(estado, config_path)
+
+
+# =============================================================================
+# Preferências de texto  [2026-10-20]
+# =============================================================================
+# Uma escolha com mais de dois valores, que `get_opcao` (só booleano) não
+# guarda. A primeira é o tema da interface ("escuro", "claro" ou "sistema",
+# `sigft/app_qt/tema.py`). Mesma tolerância: valor que não for texto não vazio
+# vale como "nunca gravado"; validar o VALOR (se é um tema que existe) é de
+# quem lê.
+CHAVE_PREFERENCIAS = "preferencias"
+
+
+def ler_preferencia(
+    chave: str,
+    padrao: str,
+    *,
+    config_path: str | os.PathLike[str] | None = None,
+) -> str:
+    """A preferência guardada sob `chave`, ou `padrao` se nunca foi gravada."""
+    valor = _carregar_estado(config_path).get(CHAVE_PREFERENCIAS, {}).get(chave)
+    return valor if isinstance(valor, str) and valor else padrao
+
+
+def gravar_preferencia(
+    chave: str,
+    valor: str,
+    *,
+    config_path: str | os.PathLike[str] | None = None,
+) -> None:
+    """Guarda a preferência `chave` (texto)."""
+    estado = _carregar_estado(config_path)
+    estado.setdefault(CHAVE_PREFERENCIAS, {})[chave] = str(valor)
     _salvar_estado(estado, config_path)
 
 

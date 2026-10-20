@@ -75,13 +75,32 @@ MENU_ESCOLHIDO = {
 # 2026-10-20: o único lugar que diz qual tema está valendo. As peças desenhadas
 # com QPainter (`widgets/controles.py`, o delegado das caixas) leem a paleta por
 # `paleta_atual()` NA HORA DE PINTAR; o resto da cor está na folha. A troca de
-# tema (Task 7 do plano) muda só isto e reaplica a folha.
+# tema (`sigft/app_qt/tema.py`) muda só isto e reaplica a folha: as funções de
+# folha abaixo, sem `tema=`, leem este valor NA CHAMADA.
 TEMA_ATUAL = "escuro"
+
+
+def _tema(tema: str | None) -> str:
+    """O tema pedido ou, sem pedido, o que está valendo agora."""
+    return TEMA_ATUAL if tema is None else tema
 
 
 def paleta_atual() -> dict[str, str]:
     """A paleta (`tokens.paleta`) do tema que está valendo."""
     return tokens.paleta(TEMA_ATUAL)
+
+
+# O papel de cor que não é chave da paleta: o texto do item escolhido do menu
+# (`MENU_ESCOLHIDO`), que é `texto` no escuro e a `marca` no claro.
+PAPEL_MENU_ESCOLHIDO = "menu_escolhido"
+
+
+def cor_do_papel(papel: str) -> str | None:
+    """A cor do `papel` no tema atual: uma chave da paleta ou
+    `PAPEL_MENU_ESCOLHIDO`. Papel desconhecido: `None` (quem pede decide)."""
+    if papel == PAPEL_MENU_ESCOLHIDO:
+        return MENU_ESCOLHIDO["claro" if TEMA_ATUAL == "claro" else "escuro"]["texto"]
+    return paleta_atual().get(papel)
 
 
 # O texto do botão de perigo: branco nos dois temas (o `perigo_fundo` é o mesmo).
@@ -299,11 +318,12 @@ def _seletor_variante(variante: str, estado: str = "") -> str:
     return ", ".join(f'QPushButton[variante="{n}"]{estado}' for n in nomes)
 
 
-def folha_de_estilo(tema: str = "escuro") -> str:
+def folha_de_estilo(tema: str | None = None) -> str:
     """A folha QSS do app inteiro no `tema` ("escuro" ou "claro"), dos tokens.
 
-    Sem argumento, o escuro: é o que a abertura (`main._preparar_qt`) aplica até
-    a escolha de tema existir."""
+    Sem argumento, o tema que está valendo (`TEMA_ATUAL`, que `tema.aplicar`
+    define)."""
+    tema = _tema(tema)
     p = tokens.paleta(tema)
     menu = MENU_ESCOLHIDO["claro" if tema == "claro" else "escuro"]
     f = tokens.FONTE
@@ -464,30 +484,40 @@ ALTURA_LINHA_TABELA = 24
 FOLGA_LINHA_LISTA_TK = 0 if sys.platform == "win32" else 1
 
 
-def folha_rolagem_ctk(seletor: str = "", *, margem_vertical: int = 4, tema: str = "escuro") -> str:
+def folha_rolagem_ctk(seletor: str = "", *, margem_vertical: int = 4, tema: str | None = None,
+                      cores: bool = True) -> str:
     """A barra de rolagem das listas: faixa de 16 px, alça de 8 (4 dos lados) na
     cor `borda`, `texto_suave` sob o mouse, sem setas. `seletor` prefixa as regras
     (ex.: "#lista_caixas"); vazio, a folha vale para a própria QScrollBar (folha
     local). `margem_vertical`: onde a alça começa e acaba -- 4, mais o canto do
-    quadro quando a barra vai da borda de cima à de baixo dele."""
-    p = tokens.paleta(tema)
+    quadro quando a barra vai da borda de cima à de baixo dele.
+
+    `cores=False`: só as medidas. É o que a folha LOCAL de um widget deve usar
+    (2026-10-20): ela não é regerada na troca de tema, e a cor da alça vem então
+    da regra `QScrollBar::handle` da folha do app (as mesmas `borda` e
+    `texto_suave`), que é."""
+    p = tokens.paleta(_tema(tema))
     pre = f"{seletor} " if seletor else ""
     folga = (LARGURA_ROLAGEM_CTK - 8) // 2
+    alca = f" background: {p['borda']};" if cores else ""
+    alca_sobre = (f"{pre}QScrollBar::handle:vertical:hover {{ background: {p['texto_suave']}; }}\n"
+                  if cores else "")
     return (f"{pre}QScrollBar:vertical {{ width: {LARGURA_ROLAGEM_CTK}px; background: transparent;"
             f" margin: {margem_vertical}px {folga}px; }}\n"
-            f"{pre}QScrollBar::handle:vertical {{ background: {p['borda']}; border-radius: 4px;"
+            f"{pre}QScrollBar::handle:vertical {{{alca} border-radius: 4px;"
             " min-height: 20px; }\n"
-            f"{pre}QScrollBar::handle:vertical:hover {{ background: {p['texto_suave']}; }}\n"
+            f"{alca_sobre}"
             f"{pre}QScrollBar::add-line:vertical, {pre}QScrollBar::sub-line:vertical {{ height: 0; }}\n"
             f"{pre}QScrollBar::add-page:vertical, {pre}QScrollBar::sub-page:vertical {{ background: transparent; }}")
 
 
-def _folha_e31(tema: str = "escuro") -> str:
+def _folha_e31(tema: str | None = None) -> str:
     """Rádio, slider, tabela (QTreeView) e lista clara -- E3.1, nas cores do tema.
 
     Num bloco à parte da folha principal só para as duas frentes da migração não
     mexerem nas mesmas linhas. Medidas: ver as constantes acima.
     """
+    tema = _tema(tema)
     p = tokens.paleta(tema)
     menu = MENU_ESCOLHIDO["claro" if tema == "claro" else "escuro"]
     raio_radio = TAMANHO_RADIO_CTK // 2
@@ -563,7 +593,7 @@ MARCA_HOVER = "#047A83"
 TEXTO_SOBRE_MARCA = "#FFFFFF"
 
 
-def _folha_telas(tema: str = "escuro") -> str:
+def _folha_telas(tema: str | None = None) -> str:
     """Papéis, cartões, abas, mural e janelas -- as cores que eram das telas.
 
     Num bloco à parte pelo mesmo motivo do `_folha_e31`. Notas fora da folha:
@@ -571,8 +601,11 @@ def _folha_telas(tema: str = "escuro") -> str:
       fundo, na superfície e na superfície alta, nos dois temas (teste);
     * o cartão com borda (`#cartao[borda=...]`): o do AutoSpec que chama a atenção;
     * abas: medidas na folha local de `widgets/abas.py`; aqui só as cores;
-    * mural: `COR_DA_FAIXA`/`COR_DA_CRITICIDADE` (acima), por propriedade.
+    * mural: `COR_DA_FAIXA`/`COR_DA_CRITICIDADE` (acima), por propriedade;
+    * seletor de tema da Home (`#seletor_tema`): o botão do tema escolhido tem
+      `ativo`, pintado como o item escolhido do menu.
     """
+    tema = _tema(tema)
     p = tokens.paleta(tema)
     menu = MENU_ESCOLHIDO["claro" if tema == "claro" else "escuro"]
     faixas = COR_DA_FAIXA["claro" if tema == "claro" else "escuro"]
@@ -601,6 +634,9 @@ def _folha_telas(tema: str = "escuro") -> str:
         f'#barra_abas QPushButton:checked {{ background: {p["marca"]}; color: {TEXTO_SOBRE_MARCA}; }}',
         f'#barra_abas QPushButton:checked:hover {{ background: {MARCA_HOVER}; }}',
         f'#barra_abas QPushButton:disabled {{ color: {p["texto_suave"]}; }}',
+        # Seletor de tema da Home (Task 7): o escolhido como o item do menu.
+        f'#seletor_tema QPushButton[ativo="true"] {{ background: {menu["fundo"]}; color: {menu["texto"]};'
+        f' border-color: {menu["fundo"]}; }}',
         # Busca PMIB: o cartão de cada achado, mais fundo que a lista onde está.
         f'#cartao_resultado {{ background: {p["fundo"]}; border: 1px solid {p["borda"]};'
         f' border-radius: 8px; }}',

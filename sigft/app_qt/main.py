@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 
 from sigft import _build_info
 from sigft.app import backends
-from sigft.app_qt import atualizacao, catalogo, cursor, estilo, icones, interface, novidades
+from sigft.app_qt import atualizacao, catalogo, cursor, estilo, icones, interface, novidades, tema
 from sigft.app_qt.views.aplicacao_lmr import ModuloAplicacaoLMR
 from sigft.app_qt.views.home import HomeView
 from sigft.app_qt.views.nao_migrada import TelaComErro, TelaNaoMigrada
@@ -211,7 +211,10 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         lay.addSpacing(22)
         # O emoji virou ícone (Lucide, na cor do tema: sistema visual, 2026-10-20).
         home = QPushButton(" Home", objectName="home")
-        icones.aplicar(home, catalogo.ICONE_DA_TELA["Home"], tamanho=16)
+        # O ícone acompanha o texto do item escolhido (e sob o mouse): a marca
+        # no claro (2026-10-20).
+        icones.aplicar(home, catalogo.ICONE_DA_TELA["Home"], tamanho=16,
+                       papel_cor_ativo=estilo.PAPEL_MENU_ESCOLHIDO)
         self.botao_home = home
         blocos.sem_tecla(home)   # os botões da barra (CTkButton) nunca pegam o foco
         home.clicked.connect(self.show_home)
@@ -230,7 +233,8 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
             botao = QPushButton(f" {texto}")
             blocos.sem_tecla(botao)
             botao.setProperty("menu", True)
-            icones.aplicar(botao, catalogo.ICONE_DA_TELA[alvo], tamanho=16)
+            icones.aplicar(botao, catalogo.ICONE_DA_TELA[alvo], tamanho=16,
+                           papel_cor_ativo=estilo.PAPEL_MENU_ESCOLHIDO)
             botao.setEnabled(alvo not in catalogo.TELAS_BLOQUEADAS)
             botao.setToolTip(catalogo.dica_do_menu(alvo))
             botao.clicked.connect(lambda _=False, a=alvo: self.show_frame(a))
@@ -273,9 +277,11 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
             if bool(botao.property("ativo")) == ativo:
                 continue
             botao.setProperty("ativo", ativo)
-            # Propriedade dinâmica não repinta sozinha: a folha é reaplicada.
+            # Propriedade dinâmica não repinta sozinha: a folha é reaplicada,
+            # e o ícone, que segue o `ativo`, é repintado.
             botao.style().unpolish(botao)
             botao.style().polish(botao)
+            icones.reaplicar(botao)
 
     def show_modulo(self, nome: str) -> None:
         self.show_frame(nome)
@@ -448,14 +454,29 @@ def _criar_qapplication() -> QApplication:
         qInstallMessageHandler(anterior)
 
 
-def _preparar_qt() -> QApplication:
+def _preparar_qt(escolha_tema: str | None = None) -> QApplication:
+    """A QApplication pronta: tradução, fontes, cursor e o tema.
+
+    O tema é o guardado nas preferências (`tema.escolhido`), ou `escolha_tema`
+    (o `--smoke --tema claro`), sem gravar: a abertura só lê."""
     app = QApplication.instance() or _criar_qapplication()
     _instalar_traducao(app)
     interface.instalar()
     estilo.carregar_fontes()
-    app.setStyleSheet(estilo.folha_de_estilo())
+    tema.aplicar(app, escolha_tema or tema.escolhido(), gravar=False)
+    tema.seguir_o_sistema(app)
     cursor.instalar(app)
     return app
+
+
+def _tema_da_linha_de_comando(argv: list[str]) -> str | None:
+    """O `--tema X` (ou `--tema=X`) da linha de comando, se houver."""
+    for i, arg in enumerate(argv):
+        if arg == "--tema" and i + 1 < len(argv):
+            return argv[i + 1]
+        if arg.startswith("--tema="):
+            return arg.split("=", 1)[1]
+    return None
 
 
 def main() -> None:
@@ -542,7 +563,8 @@ def _smoke() -> int:
 
     avisos: list[str] = []
     try:
-        _preparar_qt()
+        # `--smoke --tema claro`: o smoke também no claro, sem gravar a escolha.
+        _preparar_qt(_tema_da_linha_de_comando(sys.argv))
         # Os ícones desenham? Um SVG ou o QtSvg fora do `.exe` daria botões em
         # branco SEM erro (2026-10-20: a mesma classe do pymupdf-layout, um
         # arquivo que faltava só no pacote). Aqui o Release reprova.

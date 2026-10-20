@@ -140,7 +140,9 @@ def test_folhas_dos_dois_temas_sao_diferentes():
 
 
 def test_sem_argumento_e_o_tema_escuro():
-    # A abertura (`main._preparar_qt`) chama sem tema até a escolha existir (Task 7).
+    # Sem argumento é o tema que está valendo (`TEMA_ATUAL`, Task 7), que na
+    # suíte é o escuro; a troca é coberta em `test_qt_tema.py`.
+    assert estilo.TEMA_ATUAL == "escuro"
     assert estilo.folha_de_estilo() == estilo.folha_de_estilo("escuro")
 
 

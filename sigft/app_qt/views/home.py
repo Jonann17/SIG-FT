@@ -29,14 +29,14 @@ from datetime import date, datetime
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QScrollArea,
+    QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QScrollArea,
     QVBoxLayout, QWidget,
 )
 from shiboken6 import isValid
 
 from sigft import config as sigft_config
 from sigft.app import textos_dicas
-from sigft.app_qt import atualizacao, estilo, icones, interface
+from sigft.app_qt import atualizacao, estilo, icones, interface, tema
 from sigft.app_qt.catalogo import ICONE_DA_TELA, MODULOS
 from sigft.app_qt.widgets import blocos, controles, dialogs, mural
 from sigft.app_qt.widgets.module_frame import aplicar_dicas
@@ -70,6 +70,15 @@ ICONE_DA_BARRA = {
     "chaves": "key-round", "atualizacoes": "refresh-cw",
 }
 COR_BOTAO_ATUALIZACOES = "secundario"   # variante (2026-10-20)
+
+# O seletor de tema (2026-10-20): escolha, texto, ícone e dica. Na linha do
+# título, à direita: a barra de botões já ocupa a largura da Home a 1280 px.
+SELETOR_TEMA = (
+    ("escuro", "Escuro", "moon", "Tema escuro: fundo grafite, o padrão do SIG-FT."),
+    ("claro", "Claro", "sun", "Tema claro: fundo branco, para ambiente bem iluminado."),
+    ("sistema", "Sistema", "monitor",
+     "Segue o tema do Windows (claro ou escuro) e muda junto quando ele mudar."),
+)
 
 # As chaves do painel "Chaves de API" (o `keys_info` de lá, sem o valor padrão,
 # que é sempre vazio: as chaves vêm do .env ou do api_config.json).
@@ -341,7 +350,12 @@ class HomeView(QScrollArea):
 
         # --- CABEÇALHO --- (pady (20, 5); (0, 20); 10; os de baixo somam)
         self.label_titulo = QLabel("SIG-FT", objectName="titulo_home")
-        layout.addWidget(self.label_titulo)
+        linha_titulo = QHBoxLayout()
+        linha_titulo.setSpacing(0)
+        linha_titulo.addWidget(self.label_titulo)
+        linha_titulo.addStretch()
+        linha_titulo.addWidget(self._criar_seletor_tema(), 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addLayout(linha_titulo)
         layout.addSpacing(5)
         self.label_subtitulo = QLabel("Sistema Integrado de Gestão de Fichas Técnicas - GE Vernova",
                                       objectName="subtitulo_home")
@@ -424,6 +438,38 @@ class HomeView(QScrollArea):
         barra.addWidget(self.caixa_canal_testes)
         barra.addStretch()
         return barra
+
+    # =====================================================================
+    # SELETOR DE TEMA  [2026-10-20]
+    # =====================================================================
+    def _criar_seletor_tema(self) -> QFrame:
+        """Três botões (Escuro, Claro, Sistema); o da escolha atual fica `ativo`,
+        pintado como o item escolhido do menu, e o ícone dele acompanha."""
+        quadro = QFrame(objectName="seletor_tema")
+        linha = QHBoxLayout(quadro)
+        linha.setContentsMargins(0, 0, 0, 0)
+        linha.setSpacing(4)
+        self.botoes_tema = {}
+        for escolha, texto, icone, dica in SELETOR_TEMA:
+            botao = blocos.botao(texto, variante="secundario", tamanho_fonte=12)
+            icones.aplicar(botao, icone, papel_cor_ativo=estilo.PAPEL_MENU_ESCOLHIDO, tamanho=16)
+            botao.setToolTip(dica)
+            dialogs.sem_tecla(botao)
+            botao.clicked.connect(lambda _=False, e=escolha: self.escolher_tema(e))
+            self.botoes_tema[escolha] = botao
+            linha.addWidget(botao)
+        self._marcar_tema(tema.escolhido())
+        return quadro
+
+    def _marcar_tema(self, escolha: str) -> None:
+        for chave, botao in self.botoes_tema.items():
+            estilo.definir_propriedade(botao, "ativo", chave == escolha)
+            icones.reaplicar(botao)
+
+    def escolher_tema(self, escolha: str) -> None:
+        """Troca o tema do app inteiro e lembra a escolha (`tema.aplicar`)."""
+        tema.aplicar(QApplication.instance(), escolha)
+        self._marcar_tema(tema.escolhido())
 
     @staticmethod
     def _botao_da_barra(texto: str, variante: str, icone: str):
