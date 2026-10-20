@@ -92,7 +92,13 @@ echo
 echo "=================================================================="
 echo "SIG-FT check :: [2/2] pytest   (testes)"
 echo "=================================================================="
-"$PY" -m pytest -q
+# Em paralelo quando o pytest-xdist esta instalado (requirements-dev.txt):
+# 8 min -> ~1,5 min. Sem ele, o de sempre.
+if "$PY" -c "import xdist" >/dev/null 2>&1; then
+    "$PY" -m pytest -q -n auto
+else
+    "$PY" -m pytest -q
+fi
 echo "OK: pytest passou."
 echo
 

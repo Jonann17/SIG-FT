@@ -122,7 +122,8 @@ jobs:
         run: |
           python -m ruff check .
           python -m pyflakes frontend.py
-          python -m pytest -q
+          # `-n auto` (pytest-xdist): era 13 min em um nucleo so (rc.8).
+          python -m pytest -q -n auto
 
       - name: Carimbar versao e embutir o token
         id: carimbo
