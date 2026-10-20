@@ -801,12 +801,17 @@ def _ler_pdf_local(filepath):
     preserva a ordem de leitura do layout e ainda informa, por página, se há
     imagem — que é o sinal de "esta página aqui é digitalizada".
     """
+    # `Exception`, e não só `ImportError` (2026-10-20): no instalador da
+    # 1.2.1-rc.5 a rc.7, `import pymupdf` levantava `FileNotFoundError` (o
+    # `pymupdf-layout` sem os arquivos de modelo), e a ficha inteira caía em
+    # vez de seguir pela próxima camada da cascata. PyMuPDF que não importa é
+    # PyMuPDF ausente.
     try:
         import pymupdf  # import preguiçoso: o módulo importa sem a dependência
-    except ImportError:
+    except Exception:
         try:
             import fitz as pymupdf  # nome antigo do mesmo pacote
-        except ImportError:
+        except Exception:
             return "", None
 
     try:

@@ -14,6 +14,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
 ## 1.2.1 - 2026-10-16
 
+- AutoSpecAI: **volta a ler os PDFs** no SIG-FT instalado. Da 1.2.1-rc.5 à rc.7, todo manual local falhava com "No such file or directory: ...pymupdf\\layout...\\layout_rf2.4.1+imf1.yaml" e a ficha inteira caía. Uma biblioteca que veio junto com a nova versão do leitor de PDF (e que o SIG-FT não usa) entrava no instalador sem os arquivos dela; ela saiu, e o instalador fica cerca de 120 MB menor.
 - Cria Fichas: a leitura do que cada material é (a primeira passada da IA) passa a usar o **mesmo modelo escolhido para o Cria Fichas** no painel "Modelos de IA". Antes ela ia sempre pelo Gemini direto, que a VPN da empresa derruba ("Connection aborted"), e o lote seguia só com a busca por palavras.
 - Modelos de IA: o modo avançado do painel passa a mostrar também **"Interpretar material (Cria Fichas)"** e **"Traduzir PDM (Planilhas PMIB)"**, que antes não apareciam e por isso não tinham como receber um modelo próprio.
 - Cria Fichas: na revisão dos PDMs, o item que a IA não respondeu mostra as colunas vazias, em vez de "nan" em Descrição Curta, UN e Tipo.
