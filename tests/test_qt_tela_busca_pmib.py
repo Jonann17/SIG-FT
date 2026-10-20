@@ -336,17 +336,18 @@ def test_medidas_da_janela_de_resultados(com_folha, qtbot):
     assert geo(c2.botao_arquivo)[1] == geo(c2.texto_caminho)[1] + 72 + 2
 
 
-def test_menu_de_coluna_pinta_o_cinza_da_tela_antiga(qt_interface, qtbot):
-    # CTkOptionMenu(fg_color="#3A3A3A", button_color="#454545"); o padrão segue azul.
+def test_menu_de_coluna_pinta_com_a_paleta_do_tema(qt_interface, qtbot):
+    # 2026-10-20: o menu não tem mais cor própria (era o #3A3A3A/#454545 da tela
+    # antiga): o da coluna e o padrão pintam igual, com a paleta do tema.
     from sigft.app_qt.widgets import controles
 
     t = tela_mod.ModuloBuscaPMIB()
     qtbot.addWidget(t)
     padrao = controles.MenuDeOpcoes(["a"])
     qtbot.addWidget(padrao)
-    for menu, fundo, seta in ((t.opt_coluna, "#3a3a3a", "#454545"),
-                              (padrao, estilo.AZUL_CTK.lower(), estilo.AZUL_CTK_HOVER.lower())):
+    fundo = estilo.paleta_atual()["superficie_alta"].lower()
+    for menu in (t.opt_coluna, padrao):
         menu.resize(140, 28)
         img = menu.grab().toImage()
         assert img.pixelColor(20, 3).name() == fundo
-        assert img.pixelColor(menu.width() - 4, 3).name() == seta
+        assert img.pixelColor(menu.width() - 4, 3).name() == fundo

@@ -16,15 +16,12 @@ from PySide6.QtWidgets import (
     QRadioButton, QVBoxLayout, QWidget,
 )
 
-from sigft.app import theme
 from sigft.app_qt import estilo, file_dialogs, interface
 from sigft.app_qt.widgets import blocos, controles
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.core import plataforma
 
 COLUNAS = ["DESCRIÇÃO", "CÓDIGO DO MATERIAL", "CÓDIGO CMI", "MARCA/MODELO", "CÓDIGO PMIB"]
-# O #3A3A3A/#454545 que a tela antiga escrevia à mão nos botões e no menu.
-CINZA, CINZA_SETA = "#3A3A3A", "#454545"
 LARGURA_ROTULO = 150
 
 
@@ -45,18 +42,18 @@ def _altura_do_textbox(texto, largura_em_caracteres=90, altura_da_linha=20, folg
 
 
 def _rotulo_da_linha(texto: str, largura: int | None = LARGURA_ROTULO) -> QLabel:
-    """CTkLabel de uma linha, `anchor="w"`, texto gray84 (o do tema), fonte 13."""
+    """CTkLabel de uma linha, `anchor="w"`, o texto comum da folha, fonte 13."""
     r = QLabel(texto)
     r.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     r.setFixedHeight(blocos.ALTURA_MINIMA_ROTULO)
     if largura:
         r.setFixedWidth(largura)
-    r.setStyleSheet(f"font-size: 13px; background: transparent; color: {controles.COR_TEXTO_CTK};")
+    r.setStyleSheet("font-size: 13px; background: transparent;")
     return r
 
 
 def _botao_cinza(texto: str, largura: int) -> QPushButton:
-    """O CTkButton #3A3A3A (hover #454545) que a tela escrevia à mão: a variante "cinza".
+    """O CTkButton cinza que a tela escrevia à mão: a variante "cinza".
 
     Sem o padding de 14 da folha do app (regra própria, somada à do `blocos`):
     o texto que passa da largura transborda centrado, como na interface antiga, em vez de
@@ -67,9 +64,13 @@ def _botao_cinza(texto: str, largura: int) -> QPushButton:
     return b
 
 
-def _caixa_de_texto(texto: str, *, fonte: tuple, cor: str) -> QPlainTextEdit:
-    """CTkTextbox transparente, sem borda e desabilitado (dá para selecionar e copiar)."""
+def _caixa_de_texto(texto: str, *, fonte: tuple, papel: str | None = None) -> QPlainTextEdit:
+    """CTkTextbox transparente, sem borda e desabilitado (dá para selecionar e copiar).
+    A cor do texto e a da seleção são do `#cartao_resultado` da folha (`papel`:
+    "legenda" para o texto suave)."""
     caixa = QPlainTextEdit()
+    if papel:
+        caixa.setProperty("papel", papel)
     caixa.setReadOnly(True)
     caixa.setFrameShape(QFrame.Shape.NoFrame)
     caixa.setPlainText(texto)
@@ -81,9 +82,8 @@ def _caixa_de_texto(texto: str, *, fonte: tuple, cor: str) -> QPlainTextEdit:
     # sai 2 px mais à direita e 3 abaixo do que no Qt (medido nas capturas):
     # padding 9/8 em cima/à esquerda, e a soma vertical continua 12 (a folga).
     caixa.setStyleSheet(
-        f"QPlainTextEdit {{ background: transparent; border: none; color: {cor};"
-        " padding: 9px 6px 3px 8px;"
-        f" selection-background-color: {estilo.AZUL_CTK}; {blocos.folha_fonte_tk(fonte)} }}")
+        "QPlainTextEdit { background: transparent; border: none;"
+        f" padding: 9px 6px 3px 8px; {blocos.folha_fonte_tk(fonte)} }}")
     caixa.viewport().setStyleSheet("background: transparent;")
     return caixa
 
@@ -93,9 +93,8 @@ class CartaoResultado(QFrame):
 
     def __init__(self, resultado: dict, *, abrir_arquivo, abrir_pasta) -> None:
         super().__init__()
+        # Fundo, borda e cantos: a regra `#cartao_resultado` da folha.
         self.setObjectName("cartao_resultado")
-        self.setStyleSheet("#cartao_resultado { background: #1E1E1E; border: 1px solid #3A3A3A;"
-                           " border-radius: 8px; }")
         cod_itaipu = resultado.get("codigo_itaipu", "N/A")
         coluna = resultado.get("coluna_match", "N/A")
         amostra = resultado.get("amostra", "")
@@ -115,28 +114,28 @@ class CartaoResultado(QFrame):
         self.campo_pmib.setReadOnly(True)
         self.campo_pmib.setFixedSize(450, 28)
         self.campo_pmib.setStyleSheet(
-            "QLineEdit { background: transparent; border: none; color: #FFFFFF; padding: 0 0 0 4px;"
+            "QLineEdit { background: transparent; border: none; padding: 0 0 0 4px;"
             " min-height: 28px; max-height: 28px; font-size: 14px; font-weight: bold; }")
         linha_topo.addWidget(self.campo_pmib)
         linha_topo.addSpacing(5)                        # rótulo: padx=5
         self.rotulo_coluna = QLabel(f"| Match na coluna: {coluna}")
         self.rotulo_coluna.setFixedHeight(28)
-        self.rotulo_coluna.setStyleSheet(
-            f"font-size: 12px; background: transparent; color: {estilo.cinza_tk('gray')};")
+        self.rotulo_coluna.setProperty("papel", "legenda")
+        self.rotulo_coluna.setStyleSheet("font-size: 12px; background: transparent;")
         linha_topo.addWidget(self.rotulo_coluna)
         linha_topo.addStretch()
         layout.addLayout(linha_topo)
 
         layout.addSpacing(7)                            # f_top (…, 5) + caminho (2, …)
         self.texto_caminho = _caixa_de_texto(estilo.mono("📂 Caminho:") + f"\n{caminho_arq}",
-                                             fonte=("Consolas", 11), cor="#A0A0A0")
+                                             fonte=("Consolas", 11), papel="legenda")
         layout.addWidget(self.texto_caminho)
 
         self.texto_amostra = None
         if amostra:
             layout.addSpacing(4)                        # caminho (…, 2) + amostra (2, …)
             self.texto_amostra = _caixa_de_texto(estilo.mono("🔎 Amostra: ") + amostra,
-                                                 fonte=("Roboto", 12), cor="#E0E0E0")
+                                                 fonte=("Roboto", 12))
             layout.addWidget(self.texto_amostra)
             layout.addSpacing(5)                        # amostra (…, 5) + botões (0, …)
         else:
@@ -168,8 +167,7 @@ class JanelaResultados(QWidget):
         self.setObjectName("janela_resultados")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        # CTkToplevel do tema dark-blue: fundo gray10.
-        self.setStyleSheet(f"#janela_resultados {{ background: {estilo.cinza_tk('gray10')}; }}")
+        # O fundo do tema: a regra `#janela_resultados` da folha.
         self.setWindowTitle(f"Resultados da Busca: {len(resultados)} encontrados")
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.resize(900, 650)
@@ -179,11 +177,11 @@ class JanelaResultados(QWidget):
         layout.setContentsMargins(20, 15, 20, 20)
         layout.setSpacing(0)
         self.rotulo_titulo = blocos.rotulo("Resultados Encontrados", tamanho=18, negrito=True,
-                                           cor=theme.COLORS.get("accent", "#00C975"))
+                                           papel="destaque")
         self.rotulo_titulo.setFixedHeight(blocos.ALTURA_MINIMA_ROTULO)
         layout.addWidget(self.rotulo_titulo)
         layout.addSpacing(5)
-        self.area, lista = blocos.area_rolavel(cor=theme.COR_CARTAO)
+        self.area, lista = blocos.area_rolavel(fundo="cartao")
         # O conteúdo do CTkScrollableFrame vai até a barra de rolagem, sem os
         # 6 px do canto à direita (medido: cartão de 817 = 860 - 6 - 16 - 1 - 20).
         lista.setContentsMargins(6, 6, 1, 6)
@@ -254,7 +252,7 @@ class ModuloBuscaPMIB(ModuleFrame):
         corpo.setSpacing(0)
         corpo.setContentsMargins(15, 10, 15, 15)        # título pady=(10, 5); termo (5, 15); padx=15
         self.rotulo_secao = blocos.rotulo("1. Parâmetros de Busca", tamanho=14, negrito=True,
-                                          cor=theme.COLORS["accent"], alinhar="esquerda")
+                                          papel="destaque", alinhar="esquerda")
         corpo.addWidget(self.rotulo_secao)
         self.rotulos_linha: list[QLabel] = []
 
@@ -288,7 +286,7 @@ class ModuloBuscaPMIB(ModuleFrame):
         self.rotulo_coluna = _rotulo_da_linha("Coluna Alvo:", largura=None)
         linha.addWidget(self.rotulo_coluna)
         linha.addSpacing(5)
-        self.opt_coluna = controles.MenuDeOpcoes(COLUNAS, cor=CINZA, cor_seta=CINZA_SETA)
+        self.opt_coluna = controles.MenuDeOpcoes(COLUNAS)
         self.opt_coluna.setFixedWidth(140)              # `width` padrão do CTkOptionMenu
         linha.addWidget(self.opt_coluna)
         linha.addStretch()

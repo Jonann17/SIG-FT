@@ -856,7 +856,7 @@ def test_cores_dos_botoes_do_interface_antiga(qt_interface, qtbot):
     assert d.botao_pular.property("variante") == "secundario"
     assert d.botao_parar.property("variante") == "perigo"
     assert "background" not in d.botao_pular.styleSheet() + d.botao_parar.styleSheet()
-    assert "#FF0000" in d.rotulo_erro.styleSheet()
+    assert d.rotulo_erro.property("papel") == "erro"   # o vermelho é da folha (2026-10-20)
     j = janelas.JanelaEscolherPDM(None, _catalogo())
     qtbot.addWidget(j)
     assert j.botao_usar.property("variante") == "primario"

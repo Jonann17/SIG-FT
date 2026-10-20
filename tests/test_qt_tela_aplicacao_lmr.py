@@ -61,7 +61,7 @@ def _caixa_do_botao_segmentado(imagem, topo, base, x0, x1):
     from PySide6.QtGui import QColor
     from sigft.app import theme
     # 2026-10-20: o fundo da tela e o quadro do Tabview vêm do mesmo token, `fundo`
-    # (estilo.FUNDO_QUADRO_CTK): o quadro volta a ser invisível, como na CTk. A barra
+    # (a regra `#quadro_abas` da folha): o quadro volta a ser invisível, como na CTk. A barra
     # (`superficie_alta`) fica ~17 acima dele por canal: tolerância de 6.
     fundos = [QColor(theme.COLORS["background"])]
 

@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtCore import Qt, QTimer
 
-from sigft.app import backends, theme
+from sigft.app import backends
 from sigft.app_qt.views import pdm as tela_mod
 
 ABAS = ["Processar PDMs", "Criar planilhas PMIB", "Excluir Duplicados"]
@@ -233,9 +233,9 @@ def test_seletores_de_arquivo(tela, monkeypatch):
     assert tela.lbl_pmib_status.text() == "_STATUS_PMIB.xlsx"
     assert tela.lbl_template_status.text() == "Template FT.xlsx"
     for rotulo in (tela.lbl_sam_gm_status, tela.lbl_pmib_status, tela.lbl_template_status):
-        assert theme.COLORS["accent"] in rotulo.styleSheet()
+        assert rotulo.property("papel") == "ok"  # cor da folha pelo papel (2026-10-20)
     for botao in (tela.btn_sam_gm, tela.btn_pmib, tela.btn_template):
-        assert theme.COLORS["primary"] in botao.styleSheet()
+        assert botao.property("variante") == "primario"
 
 
 def test_cancelar_o_seletor_de_arquivo_nao_mexe_em_nada(tela, monkeypatch):
@@ -244,7 +244,7 @@ def test_cancelar_o_seletor_de_arquivo_nao_mexe_em_nada(tela, monkeypatch):
         botao.click()
     assert tela.path_sam_gm == tela.path_status_pmib == tela.path_template == ""
     assert tela.lbl_pmib_status.text() == "Nenhum arquivo selecionado"
-    assert theme.COLORS["primary"] not in tela.btn_pmib.styleSheet()
+    assert tela.btn_pmib.property("variante") != "primario"
 
 
 def test_seletores_de_pasta(tela, monkeypatch):

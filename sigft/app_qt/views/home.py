@@ -36,7 +36,6 @@ from shiboken6 import isValid
 
 from sigft import config as sigft_config
 from sigft.app import textos_dicas
-from sigft.app.theme import COLORS
 from sigft.app_qt import atualizacao, estilo, interface
 from sigft.app_qt.catalogo import MODULOS
 from sigft.app_qt.estilo import mono
@@ -57,8 +56,7 @@ TEXTO_PROCURANDO = "\U0001F504  Procurando..."
 TEXTO_CANAL_TESTES = "Versões de teste"
 
 # A barra (`_criar_barra_de_botoes` de lá): chave, texto, variante do botão e o que
-# abre. CTkButton(fg_color=cor) SEM hover_color: o hover é o do tema (#14375E),
-# em todos. O "Atualizações" vem depois, fora da lista, porque o texto muda.
+# abre. A cor de cada um é a da variante, na folha do tema. O "Atualizações" vem depois, fora da lista, porque o texto muda.
 BARRA = [
     ("atividades", "\U0001F4CB  Atividades do dia", "primario", "abrir_mural_atividades"),
     ("modelos", "\U0001F916  Modelos de IA", "primario", "abrir_janela_modelos_ia"),
@@ -100,16 +98,10 @@ SEM_PROVEDOR_IA = (
     "Nenhum provedor de IA tem chave configurada acima. Configure ao menos uma "
     "chave (ex.: Gemini ou OpenRouter) para escolher o modelo aqui.")
 
-# --- aparência (tema dark-blue da interface antiga e o que as telas escreviam à mão) ---------
-# CTkLabel sem `text_color`: o texto do tema (gray84), não o text_light.
-COR_TEXTO_CTK = controles.COR_TEXTO_CTK
+# --- aparência (as cores são da folha do tema, desde 2026-10-20) ---------------
 FONTE_CTK = ("Roboto", 13)                 # CTkFont() do tema
 FONTE_TITULO_PAINEL = ("Arial", 16, "bold")
 FONTE_DICA = ("Roboto", 12)
-# "green" do Tk 8.6 é o do W3C, e não o do X11.
-VERDE_TK = "#008000"
-# CTkFrame(fg_color=("gray90", "gray16"), corner_radius=10) dos três painéis.
-FUNDO_PAINEL = estilo.cinza_tk("gray16")
 # O Tk dá 15 px por linha ao Roboto 12 (o "linespace" da fonte); o Qt, 14. Num
 # texto de 11 linhas (o relatório de gastos) seriam 11 px a menos. Os rótulos de
 # várias linhas fixam a linha do Tk (como a caixa de notas da atualização).
@@ -128,11 +120,11 @@ LARGURA_LIMPAR = 70
 # =============================================================================
 # Peças
 # =============================================================================
-def _rotulo(texto: str, fonte: tuple = FONTE_CTK, *, cor: str = COR_TEXTO_CTK,
-            largura_minima: int | None = None) -> QLabel:
-    """CTkLabel de uma linha, `anchor="w"` (`blocos.rotulo_tk`, com a fonte e a cor
-    padrão do CTkLabel); `largura_minima` é o `width=` (o texto maior alarga)."""
-    return blocos.rotulo_tk(texto, fonte, cor, largura_minima=largura_minima)
+def _rotulo(texto: str, fonte: tuple = FONTE_CTK, *, largura_minima: int | None = None) -> QLabel:
+    """CTkLabel de uma linha, `anchor="w"` (`blocos.rotulo_tk`, com a fonte
+    padrão do CTkLabel e o texto comum); `largura_minima` é o `width=` (o texto
+    maior alarga)."""
+    return blocos.rotulo_tk(texto, fonte, largura_minima=largura_minima)
 
 
 def _titulo_painel(texto: str) -> QLabel:
@@ -147,31 +139,28 @@ class _Texto(QLabel):
     ocupa a largura até `largura_maxima` e quebra linha nela, como o
     `wraplength` de lá. `altura_linha` fixa a altura da linha do Tk (texto rico
     com `white-space: pre-wrap`, que guarda os espaços do começo das linhas).
-    `texto_puro` é o texto que a pessoa lê.
+    `texto_puro` é o texto que a pessoa lê; `papel`, o papel de texto da folha
+    (sem ele, o texto comum).
     """
 
-    def __init__(self, texto: str = "", fonte: tuple = FONTE_DICA, *, cor: str = COR_TEXTO_CTK,
+    def __init__(self, texto: str = "", fonte: tuple = FONTE_DICA, *, papel: str | None = None,
                  largura_maxima: int | None = QUEBRA_PAINEL, altura_linha: int | None = None) -> None:
         super().__init__()
         self.texto_puro = ""
         self._altura_linha = altura_linha
-        self._fonte, self._cor = fonte, cor
+        self._fonte, self._papel = fonte, papel
         self.setTextFormat(Qt.TextFormat.RichText if altura_linha else Qt.TextFormat.PlainText)
         self.setWordWrap(True)
         self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.setMinimumHeight(blocos.ALTURA_MINIMA_ROTULO)
         if largura_maxima:
             self.setMaximumWidth(largura_maxima)
-        self._pintar(cor)
+        self.setStyleSheet(f"{blocos.folha_fonte_tk(self._fonte)} background: transparent;")
         self.definir(texto)
 
-    def _pintar(self, cor: str) -> None:
-        self.setStyleSheet(f"{blocos.folha_fonte_tk(self._fonte)} color: {estilo.cinza_tk(cor)};"
-                           " background: transparent;")
-
-    def definir(self, texto, *, cor: str | None = None) -> None:
-        """`cor` troca a cor só desta vez (um aviso); sem ela, volta a de nascença."""
-        self._pintar(cor or self._cor)
+    def definir(self, texto, *, papel: str | None = None) -> None:
+        """`papel` troca o papel só desta vez (um erro); sem ele, volta o de nascença."""
+        estilo.definir_papel(self, papel or self._papel)
         self.texto_puro = str(texto)
         if self._altura_linha:
             self.setText(f'<div style="white-space: pre-wrap; line-height: {self._altura_linha}px">'
@@ -190,17 +179,17 @@ def _botao(texto: str, *, variante: str | None = None,
 
 
 def _botao_cinza(texto: str, *, largura_minima: int = estilo.LARGURA_BOTAO_CTK):
-    """fg_color="#3A3A3A", hover_color="#454545": a variante "cinza"."""
+    """O botão cinza que a tela escrevia à mão: a variante "cinza" (= secundário)."""
     return _botao(texto, variante="cinza", largura_minima=largura_minima)
 
 
 def _menu(opcoes: list[str], largura: int) -> controles.MenuDeOpcoes:
-    """CTkOptionMenu(fg_color="#3A3A3A", button_color="#454545", width=largura).
+    """CTkOptionMenu(width=largura), com as cores da paleta (`controles.MenuDeOpcoes`).
 
     Sem foco (as setas do teclado trocariam a escolha sem abrir o menu; a interface antiga
     não tem teclado ali) e sem roda (ver `MenuDeOpcoes.wheelEvent`).
     """
-    m = controles.MenuDeOpcoes(opcoes, cor="#3A3A3A", cor_seta="#454545")
+    m = controles.MenuDeOpcoes(opcoes)
     m.setFixedWidth(largura)
     m.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     return m
@@ -219,7 +208,7 @@ def _trocar_opcoes(menu, valores: list[str]) -> None:
 
 
 def _painel(parent):
-    """O quadro dos painéis: CTkFrame gray16 com cantos de 10, `pack(padx=10,
+    """O quadro dos painéis: CTkFrame com cantos de 10 (`#painel_home`, a superfície), `pack(padx=10,
     pady=10)` no conteúdo da JanelaPainel. Devolve (casca, quadro, coluna); a
     coluna já tem os `padx=10` que todos os filhos usam lá."""
     casca = QWidget()
@@ -227,7 +216,6 @@ def _painel(parent):
     caixa.setContentsMargins(10, 10, 10, 10)
     caixa.setSpacing(0)
     quadro = QFrame(objectName="painel_home")
-    quadro.setStyleSheet(f"#painel_home {{ background: {FUNDO_PAINEL}; border-radius: 10px; }}")
     caixa.addWidget(quadro)
     coluna = QVBoxLayout(quadro)
     coluna.setContentsMargins(10, 0, 10, 0)
@@ -337,7 +325,6 @@ class HomeView(QScrollArea):
 
         # --- CABEÇALHO --- (pady (20, 5); (0, 20); 10; os de baixo somam)
         self.label_titulo = QLabel("SIG-FT", objectName="titulo_home")
-        self.label_titulo.setStyleSheet(f"color: {COR_TEXTO_CTK};")
         layout.addWidget(self.label_titulo)
         layout.addSpacing(5)
         self.label_subtitulo = QLabel("Sistema Integrado de Gestão de Fichas Técnicas - GE Vernova",
@@ -381,7 +368,7 @@ class HomeView(QScrollArea):
         r.setMaximumWidth(QUEBRA_PAINEL)
         r.setMinimumHeight(blocos.ALTURA_MINIMA_ROTULO)
         r.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        r.setStyleSheet(f"{blocos.folha_fonte_tk(('Arial', 14))} color: {COR_TEXTO_CTK};")
+        r.setStyleSheet(blocos.folha_fonte_tk(("Arial", 14)))
         return r
 
     # =====================================================================
@@ -631,7 +618,7 @@ class HomeView(QScrollArea):
 
         self.lbl_titulo_modelos_ia = _titulo_painel("🤖 Modelos de IA")
         _empilhar(coluna, self.lbl_titulo_modelos_ia, cima=10, baixo=10)
-        self.lbl_descricao_modelos_ia = _Texto(DESCRICAO_MODELOS_IA, cor="gray70",
+        self.lbl_descricao_modelos_ia = _Texto(DESCRICAO_MODELOS_IA, papel="legenda",
                                                altura_linha=LINHA_TK_ROBOTO_12)
         _empilhar_texto(coluna, self.lbl_descricao_modelos_ia, baixo=10)
 
@@ -641,7 +628,7 @@ class HomeView(QScrollArea):
             if self.controller.get_key(chave_id)
         )
         if not providers_com_chave:
-            self.lbl_sem_provedor_ia = _Texto(SEM_PROVEDOR_IA, cor=COLORS["danger"],
+            self.lbl_sem_provedor_ia = _Texto(SEM_PROVEDOR_IA, papel="erro",
                                               altura_linha=LINHA_TK_ROBOTO_12)
             _empilhar_texto(coluna, self.lbl_sem_provedor_ia, baixo=15)
             return
@@ -669,7 +656,7 @@ class HomeView(QScrollArea):
         linha.addWidget(self.btn_atualizar_catalogo_ia)
         linha.addStretch()
 
-        self.lbl_catalogo_ia = _Texto("", ("Roboto", 11), cor="gray60")
+        self.lbl_catalogo_ia = _Texto("", ("Roboto", 11), papel="legenda")
         _empilhar_texto(coluna, self.lbl_catalogo_ia)
 
         # --- 2. FILTRO --- (o OpenRouter tem centenas de modelos e o menu não
@@ -697,7 +684,7 @@ class HomeView(QScrollArea):
 
         # --- 4. MODO AVANÇADO ---
         self.caixa_modo_avancado_ia = controles.CaixaDeMarcar(
-            "Configurar por tarefa (modo avançado)", cor_marcada=COLORS["primary"])
+            "Configurar por tarefa (modo avançado)")
         self.caixa_modo_avancado_ia.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.caixa_modo_avancado_ia.setChecked(bool(estado_atual["por_tarefa"]))
         self.caixa_modo_avancado_ia.toggled.connect(lambda _v: self._toggle_modelos_ia_modo_avancado())
@@ -741,7 +728,7 @@ class HomeView(QScrollArea):
         linha.addStretch()
 
         # --- 6. RESUMO ---
-        self.lbl_resumo_modelo_ia = _Texto("", cor="gray70", altura_linha=LINHA_TK_ROBOTO_12)
+        self.lbl_resumo_modelo_ia = _Texto("", papel="legenda", altura_linha=LINHA_TK_ROBOTO_12)
         _empilhar_texto(coluna, self.lbl_resumo_modelo_ia, cima=8)
 
         # Popula as listas a partir do cache e restaura a seleção salva.
@@ -873,7 +860,7 @@ class HomeView(QScrollArea):
                 texto = ("Catálogo ainda não baixado para este provedor. Clique em "
                          "\"Atualizar lista de modelos\". Enquanto isso valem os recomendados "
                          "e o campo manual.")
-            self.lbl_catalogo_ia.definir(texto, cor=COLORS["danger"] if erro_catalogo else None)
+            self.lbl_catalogo_ia.definir(texto, papel="erro" if erro_catalogo else None)
 
         salvo_global = (estado_atual or {}).get("global") if estado_atual else None
         salvos_tarefa = (estado_atual or {}).get("por_tarefa", {}) if estado_atual else {}

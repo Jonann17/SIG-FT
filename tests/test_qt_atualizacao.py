@@ -784,7 +784,7 @@ def test_caixa_de_notas_e_barra_com_o_estilo_compartilhado(raiz, qtbot, sem_uac)
 
 
 def blocos_barra_folha():
-    from sigft.app import theme
     from sigft.app_qt.widgets import blocos
 
-    return blocos.barra_progresso(largura=530, altura=8, cor=theme.COLORS["accent"]).styleSheet()
+    # 2026-10-20: sem `cor` -- o progresso é a `primaria` da folha.
+    return blocos.barra_progresso(largura=530, altura=8).styleSheet()

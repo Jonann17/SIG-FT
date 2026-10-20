@@ -197,8 +197,14 @@ def test_papeis_de_texto(tema):
     assert p["primaria"] in ok and tokens.contraste(p["primaria"], p["fundo"]) >= 4.5
 
 
-def test_quadro_das_abas_sai_dos_tokens():
+@pytest.mark.parametrize("tema", ["escuro", "claro"])
+def test_quadro_das_abas_sai_dos_tokens(tema):
     # O gray13 (#212121) da CTk brigava com o fundo novo (2026-10-20). Lá o quadro
-    # era invisível (gray13 = o fundo antigo): continua, agora com os tokens.
-    assert estilo.FUNDO_QUADRO_CTK == tokens.ESCURO["fundo"]
-    assert estilo.FUNDO_QUADRO_INTERNO_CTK == tokens.ESCURO["superficie"]
+    # era invisível (gray13 = o fundo antigo): continua, com os tokens. As
+    # constantes FUNDO_QUADRO_CTK/_INTERNO_CTK saíram (Task 5): a cor é a regra
+    # `#quadro_abas` da folha, que segue o tema.
+    p = tokens.paleta(tema)
+    folha = estilo.folha_de_estilo(tema)
+    assert f"#quadro_abas {{ background: {p['fundo']};" in folha
+    assert f'#quadro_abas[interno="true"] {{ background: {p["superficie"]}; }}' in folha
+    assert not hasattr(estilo, "FUNDO_QUADRO_CTK") and not hasattr(estilo, "TRILHO_CTK")

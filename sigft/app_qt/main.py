@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from sigft import _build_info
-from sigft.app import backends, theme
+from sigft.app import backends
 from sigft.app_qt import atualizacao, catalogo, cursor, estilo, interface, novidades
 from sigft.app_qt.views.aplicacao_lmr import ModuloAplicacaoLMR
 from sigft.app_qt.views.home import HomeView
@@ -333,8 +333,9 @@ class SplashScreen(QWidget):
     def __init__(self) -> None:
         super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.SplashScreen)
         self.setFixedSize(500, 350)
+        # O fundo é o da regra `#conteudo` da folha (o `fundo` do tema).
         self.setObjectName("conteudo")
-        self.setStyleSheet(f"background: {theme.COLORS['background']};")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(50, 50, 50, 20)
         logo = QLabel()
@@ -346,17 +347,19 @@ class SplashScreen(QWidget):
         lay.addWidget(logo)
         titulo = QLabel("SIG-FT System")
         titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        titulo.setStyleSheet("color: gray; font-size: 16px;")
+        titulo.setProperty("papel", "legenda")
+        titulo.setStyleSheet("font-size: 16px;")
         lay.addWidget(titulo)
         lay.addStretch()
         self.status = QLabel("Iniciando...")
         self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status.setStyleSheet(f"color: {theme.COLORS['accent']}; font-size: 12px;")
+        self.status.setProperty("papel", "ok")
+        self.status.setStyleSheet("font-size: 12px;")
         lay.addWidget(self.status)
         self.barra = QProgressBar()
         self.barra.setRange(0, 1000)
         self.barra.setTextVisible(False)
-        self.barra.setStyleSheet(f"QProgressBar::chunk {{ background: {theme.COLORS['accent']}; }}")
+        # A cor do progresso é a da folha (`primaria`).
         lay.addWidget(self.barra)
 
     def carregar(self) -> None:

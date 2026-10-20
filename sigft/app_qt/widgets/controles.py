@@ -3,8 +3,9 @@
 O QSS pinta fundo, borda e texto, mas não desenha o botão redondo de um
 CTkSwitch, a seta do CTkOptionMenu nem o "v" de uma CTkCheckBox (sem imagem,
 a caixa marcada do QSS é só um quadrado cheio). Aqui eles são desenhados à
-mão, com as medidas e as cores do tema dark-blue
-(interface antiga/assets/themes/dark-blue.json), o que o app antigo usa.
+mão, com as medidas do tema dark-blue da interface antiga. As CORES, desde
+2026-10-20, são as da paleta do tema atual (`estilo.paleta_atual()`), lidas na
+hora de pintar: nenhuma peça daqui guarda cor, e a troca de tema as alcança.
 """
 from __future__ import annotations
 
@@ -20,22 +21,27 @@ from sigft.app_qt import estilo
 LARGURA_TRILHO, ALTURA_TRILHO, BORDA_TRILHO = 36, 18, 3
 VAO_TEXTO_INTERRUPTOR = 6
 ALTURA_INTERRUPTOR = 24
-COR_TRILHO = estilo.TRILHO_CTK   # CTkSwitch fg_color (o mesmo da barra e do slider)
-COR_BOTAO_INTERRUPTOR = "#D5D9DE"
-COR_BOTAO_INTERRUPTOR_HOVER = "#FFFFFF"   # gray100
-COR_TEXTO_CTK = estilo.cinza_tk("gray84")
-COR_TEXTO_DESLIGADO_CTK = estilo.cinza_tk("gray45")
 
-# CTkOptionMenu: 28 de altura; a parte da seta é um quadrado da altura, mais
-# escura (button_color), que escurece mais no hover (button_hover_color).
+# Os papéis (tokens) de cada parte. Interruptor: trilho `borda` (desligado) ou
+# `primaria` (ligado); botão `texto_suave` desligado e `texto_sobre_primaria`
+# ligado (contrasta com o trilho nos dois temas), `texto` sob o mouse.
+# Menu: corpo `superficie_alta` e borda `borda` (`primaria` sob o mouse), como o
+# QComboBox da folha; a seta e o texto em `texto`. Caixa: borda `texto_suave`,
+# marcada `primaria` com o "v" `texto_sobre_primaria`, `primaria_hover` sob o
+# mouse. Texto desligado: `texto_suave`, como no resto da folha.
+
+# CTkOptionMenu: a altura de campo (32); a seta num quadrado da altura.
 ALTURA_MENU = estilo.ALTURA_MENU_CTK
-COR_SETA_MENU_HOVER = "#1E2C40"
 
-# CTkCheckBox: caixa de 24 com borda 3 #949A9F e cantos de 6; marcada, enche
-# da cor e ganha o "v" gray90.
+# CTkCheckBox: caixa de 24 com borda 3 e cantos de 6; marcada, enche da cor e
+# ganha o "v".
 LADO_CAIXA, BORDA_CAIXA, RAIO_CAIXA = 24, 3, 6
-COR_BORDA_CAIXA = estilo.BORDA_CTK
-COR_MARCA_CAIXA = estilo.cinza_tk("gray90")
+
+
+def cor_do_texto(habilitado: bool) -> QColor:
+    """O texto de um controle pintado: `texto`, ou `texto_suave` desligado."""
+    p = estilo.paleta_atual()
+    return QColor(p["texto"] if habilitado else p["texto_suave"])
 
 
 def _pintor(widget) -> QPainter:
@@ -47,14 +53,11 @@ def _pintor(widget) -> QPainter:
 class Interruptor(QCheckBox):
     """CTkSwitch: um QCheckBox (isChecked, toggled) com a cara do interruptor.
 
-    `cor_ligado` é o `progress_color` da interface antiga (o padrão do tema é o azul).
-    Clicar no texto também alterna, como lá.
+    Clicar no texto também alterna, como lá. Ligado, o trilho é `primaria`.
     """
 
-    def __init__(self, texto: str, parent=None, *, cor_ligado: str = estilo.AZUL_CTK,
-                 tamanho_fonte: int = 13) -> None:
+    def __init__(self, texto: str, parent=None, *, tamanho_fonte: int = 13) -> None:
         super().__init__(texto, parent)
-        self._cor_ligado = cor_ligado
         # A folha do widget ganha da global (QCheckBox 12 px): o tamanho é o pedido.
         self.setStyleSheet(f"font-size: {tamanho_fonte}px;")
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
@@ -72,17 +75,20 @@ class Interruptor(QCheckBox):
 
     def paintEvent(self, _evento) -> None:  # noqa: N802 -- nome do Qt
         pintor = _pintor(self)
+        p = estilo.paleta_atual()
+        ligado = self.isChecked()
         y0 = (self.height() - ALTURA_TRILHO) / 2
         miolo = QRectF(BORDA_TRILHO, y0 + BORDA_TRILHO,
                        LARGURA_TRILHO - 2 * BORDA_TRILHO, ALTURA_TRILHO - 2 * BORDA_TRILHO)
         pintor.setPen(Qt.PenStyle.NoPen)
-        pintor.setBrush(QColor(self._cor_ligado if self.isChecked() else COR_TRILHO))
+        pintor.setBrush(QColor(p["primaria"] if ligado else p["borda"]))
         pintor.drawRoundedRect(miolo, miolo.height() / 2, miolo.height() / 2)
-        x_botao = LARGURA_TRILHO - ALTURA_TRILHO if self.isChecked() else 0
+        x_botao = LARGURA_TRILHO - ALTURA_TRILHO if ligado else 0
         sobre = self.isEnabled() and self.underMouse()
-        pintor.setBrush(QColor(COR_BOTAO_INTERRUPTOR_HOVER if sobre else COR_BOTAO_INTERRUPTOR))
+        botao = "texto" if sobre else ("texto_sobre_primaria" if ligado else "texto_suave")
+        pintor.setBrush(QColor(p[botao]))
         pintor.drawEllipse(QRectF(x_botao, y0, ALTURA_TRILHO, ALTURA_TRILHO))
-        pintor.setPen(QColor(COR_TEXTO_CTK if self.isEnabled() else COR_TEXTO_DESLIGADO_CTK))
+        pintor.setPen(cor_do_texto(self.isEnabled()))
         pintor.setFont(self.font())
         x_texto = LARGURA_TRILHO + VAO_TEXTO_INTERRUPTOR
         pintor.drawText(QRectF(x_texto, 0, self.width() - x_texto, self.height()),
@@ -91,16 +97,14 @@ class Interruptor(QCheckBox):
 
 
 class MenuDeOpcoes(QComboBox):
-    """CTkOptionMenu: a lista que abre continua a do Qt; o botão é o da interface antiga.
+    """CTkOptionMenu: a lista que abre continua a do Qt; o botão é pintado aqui.
 
-    `cor`/`cor_seta` são o `fg_color`/`button_color` da interface antiga (a Busca PMIB pinta
-    o menu de #3A3A3A/#454545); o escurecer da seta sob o mouse é o do tema.
+    Desde 2026-10-20 com a cara do QComboBox da folha (corpo `superficie_alta`,
+    borda `borda`, que fica `primaria` sob o mouse) e a seta "v" à direita.
     """
 
-    def __init__(self, opcoes: list[str] | None = None, parent=None, *,
-                 cor: str = estilo.AZUL_CTK, cor_seta: str = estilo.AZUL_CTK_HOVER) -> None:
+    def __init__(self, opcoes: list[str] | None = None, parent=None) -> None:
         super().__init__(parent)
-        self._cor, self._cor_seta = cor, cor_seta
         if opcoes:
             self.addItems(opcoes)
         self.setFixedHeight(ALTURA_MENU)
@@ -119,19 +123,18 @@ class MenuDeOpcoes(QComboBox):
 
     def paintEvent(self, _evento) -> None:  # noqa: N802 -- nome do Qt
         pintor = _pintor(self)
+        p = estilo.paleta_atual()
         largura, altura = self.width(), self.height()
-        inteiro = QPainterPath()
-        inteiro.addRoundedRect(QRectF(0, 0, largura, altura), 6, 6)
-        pintor.setClipPath(inteiro)
-        pintor.fillRect(QRectF(0, 0, largura - altura, altura), QColor(self._cor))
         sobre = self.isEnabled() and self.underMouse()
-        pintor.fillRect(QRectF(largura - altura, 0, altura, altura),
-                        QColor(COR_SETA_MENU_HOVER if sobre else self._cor_seta))
-        pintor.setClipping(False)
-        # A seta: no Windows e no Linux a interface antiga a desenha com a fonte de formas dele
-        # (não com o polígono do macOS). Medida na captura: um "v" de 9x5 px com
-        # traço de 2, no meio do quadrado escuro (1 px abaixo do centro).
-        cor_texto = QColor(estilo.TEXTO_BOTAO_CTK if self.isEnabled() else estilo.cinza_tk("gray60"))
+        borda = estilo.BORDA_CONTROLE
+        inteiro = QPainterPath()
+        inteiro.addRoundedRect(QRectF(borda / 2, borda / 2, largura - borda, altura - borda), 6, 6)
+        pintor.setPen(QPen(QColor(p["primaria"] if sobre else p["borda"]), borda))
+        pintor.setBrush(QColor(p["superficie_alta"]))
+        pintor.drawPath(inteiro)
+        # A seta: um "v" de 9x5 px com traço de 2 (o da interface antiga, medido
+        # na captura), no meio do quadrado da direita (1 px abaixo do centro).
+        cor_texto = cor_do_texto(self.isEnabled())
         cx, cy = largura - altura / 2, altura / 2 + 1
         caneta = QPen(cor_texto, 2)
         caneta.setCapStyle(Qt.PenCapStyle.RoundCap)
@@ -149,23 +152,26 @@ class MenuDeOpcoes(QComboBox):
         pintor.end()
 
 
-def pintar_caixa(pintor: QPainter, x: float, y: float, marcada: bool, cor_marcada: str,
+def pintar_caixa(pintor: QPainter, x: float, y: float, marcada: bool, *, sobre: bool = False,
                  lado: int = LADO_CAIXA) -> None:
     """Desenha uma CTkCheckBox de `lado` px (24, o do tema, ou o `checkbox_width`
     da tela) com o canto de cima à esquerda em (x, y). Borda e cantos não mudam
-    com o lado, como na interface antiga."""
+    com o lado, como na interface antiga. `sobre`: o mouse em cima (a cor de
+    marcada vira `primaria_hover`)."""
+    p = estilo.paleta_atual()
+    cor_marcada = p["primaria_hover"] if sobre else p["primaria"]
     pintor.save()
     pintor.setRenderHint(QPainter.RenderHint.Antialiasing)
     metade = BORDA_CAIXA / 2
     quadro = QRectF(x + metade, y + metade, lado - BORDA_CAIXA, lado - BORDA_CAIXA)
-    pintor.setPen(QPen(QColor(cor_marcada if marcada else COR_BORDA_CAIXA), BORDA_CAIXA))
+    pintor.setPen(QPen(QColor(cor_marcada if marcada else p["texto_suave"]), BORDA_CAIXA))
     pintor.setBrush(QColor(cor_marcada) if marcada else Qt.BrushStyle.NoBrush)
     pintor.drawRoundedRect(quadro, RAIO_CAIXA - metade, RAIO_CAIXA - metade)
     if marcada:
         # draw_checkmark da interface antiga: tamanho 0.58 da caixa, raio tamanho/2.8, traço lado/8.
         raio = round(lado * 0.58) / 2.8
         cx, cy = x + lado / 2, y + lado / 2
-        caneta = QPen(QColor(COR_MARCA_CAIXA), round(lado / 8))
+        caneta = QPen(QColor(p["texto_sobre_primaria"]), round(lado / 8))
         caneta.setCapStyle(Qt.PenCapStyle.RoundCap)
         caneta.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
         pintor.setPen(caneta)
@@ -185,15 +191,12 @@ VAO_TEXTO_CAIXA = 6
 class CaixaDeMarcar(QCheckBox):
     """CTkCheckBox: um QCheckBox (isChecked, toggled) com a caixa e o "v" da interface antiga.
 
-    Clicar no texto também alterna, como lá. `cor_marcada`/`cor_hover` são o
-    `fg_color`/`hover_color` da interface antiga (o padrão do tema é o azul).
+    Clicar no texto também alterna, como lá. Cores: as de `pintar_caixa`.
     """
 
     def __init__(self, texto: str, parent=None, *, tamanho_fonte: int = 13,
-                 cor_marcada: str = estilo.AZUL_CTK, cor_hover: str = estilo.AZUL_CTK_HOVER,
                  lado: int = LADO_CAIXA) -> None:
         super().__init__(texto, parent)
-        self._cor_marcada, self._cor_hover = cor_marcada, cor_hover
         self._lado = lado   # `checkbox_width`/`checkbox_height` da interface antiga (E4.10: 18 no AutoSpec)
         # A folha do widget ganha da global (QCheckBox 12 px): o tamanho é o pedido.
         self.setStyleSheet(f"font-size: {tamanho_fonte}px; background: transparent;")
@@ -217,11 +220,11 @@ class CaixaDeMarcar(QCheckBox):
         marcada = self.isChecked()
         if sobre and not marcada:
             pintor.setPen(Qt.PenStyle.NoPen)
-            pintor.setBrush(QColor(self._cor_hover))
+            pintor.setBrush(QColor(estilo.paleta_atual()["primaria_hover"]))
             pintor.drawRoundedRect(QRectF(BORDA_CAIXA, y + BORDA_CAIXA, lado - 2 * BORDA_CAIXA,
                                           lado - 2 * BORDA_CAIXA), RAIO_CAIXA / 2, RAIO_CAIXA / 2)
-        pintar_caixa(pintor, 0, y, marcada, self._cor_hover if sobre else self._cor_marcada, lado)
-        pintor.setPen(QColor(COR_TEXTO_CTK if self.isEnabled() else COR_TEXTO_DESLIGADO_CTK))
+        pintar_caixa(pintor, 0, y, marcada, sobre=sobre, lado=lado)
+        pintor.setPen(cor_do_texto(self.isEnabled()))
         pintor.setFont(self.font())
         x_texto = lado + VAO_TEXTO_CAIXA
         pintor.drawText(QRectF(x_texto, 0, self.width() - x_texto, self.height()),

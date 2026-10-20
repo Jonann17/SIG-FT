@@ -1,8 +1,9 @@
 """Peças que todas as telas repetem: o quadro cinza, o rótulo, o botão.
 
 Nas telas antigas cada uma vinha com cor, fonte e tamanho escritos à
-mão. Aqui a COR do quadro e dos botões vem da folha de estilo (objectName e
-variante); fonte e tamanho continuam por chamada, porque variam de tela a tela.
+mão. Aqui a COR vem toda da folha de estilo (objectName, `variante` dos botões,
+`papel` dos rótulos -- desde 2026-10-20 nenhuma peça daqui tem cor própria);
+fonte e tamanho continuam por chamada, porque variam de tela a tela.
 """
 from __future__ import annotations
 
@@ -14,7 +15,6 @@ from PySide6.QtWidgets import (
     QFrame, QLabel, QProgressBar, QPushButton, QScrollArea, QSlider, QVBoxLayout, QWidget,
 )
 
-from sigft.app import theme
 from sigft.app_qt import estilo
 
 # "esquerda" é o anchor="w" do CTkLabel: encostado à esquerda, centrado na vertical.
@@ -94,18 +94,21 @@ class RotuloElidido(QLabel):
         pintor.end()
 
 
-def rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, cor: str | None = None,
+def rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, papel: str | None = None,
            alinhar: str = "centro", elidir: bool = False) -> QLabel:
-    """`elidir=True`: um `RotuloElidido` (uma linha) para nome de arquivo ou pasta."""
+    """`elidir=True`: um `RotuloElidido` (uma linha) para nome de arquivo ou pasta.
+
+    `papel` é o papel de texto da folha (`legenda`, `destaque`, `aviso`, `erro`,
+    `ok`...): a cor sai dela, e não do rótulo (2026-10-20, tema claro/escuro)."""
     etiqueta = RotuloElidido(texto) if elidir else QLabel(texto)
+    if papel:
+        etiqueta.setProperty("papel", papel)
     etiqueta.setAlignment(_ALINHAMENTO[alinhar])
     etiqueta.setWordWrap(not elidir)
     etiqueta.setMinimumHeight(ALTURA_MINIMA_ROTULO)
     folha = f"font-size: {tamanho}px; background: transparent;"
     if negrito:
         folha += " font-weight: bold;"
-    if cor:
-        folha += f" color: {cor};"
     etiqueta.setStyleSheet(folha)
     return etiqueta
 
@@ -126,14 +129,6 @@ def sem_tecla(botao) -> None:
     botao.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
 
-_VARIANTE_DA_COR = {
-    theme.COLORS["primary"].upper(): "primario", theme.COLORS["accent"].upper(): "primario",
-    "#008000": "primario", "#2E7D32": "primario",
-    theme.COLORS["danger"].upper(): "perigo", "#8B2E2E": "perigo", "#D32F2F": "perigo",
-    "TRANSPARENT": "fantasma",
-}
-
-
 def variante_da_cor(cor: str | None) -> str | None:
     """A variante de botão que ocupa o lugar de uma cor de fundo escrita à mão
     (2026-10-20): a cor passou a ser decisão da folha do tema, que muda no claro/escuro.
@@ -141,15 +136,17 @@ def variante_da_cor(cor: str | None) -> str | None:
     `fantasma`; qualquer outra (os cinzas) é `secundario`. `None` fica `None`."""
     if not cor:
         return None
-    return _VARIANTE_DA_COR.get(cor.upper(), "secundario")
+    return estilo.VARIANTE_DA_COR.get(cor.upper(), "secundario")
 
 
 def botao(texto: str, *, variante: str | None = None, largura: int | None = None,
           altura: int | None = None, tamanho_fonte: int | None = None,
-          negrito: bool = False, cor_texto: str | None = None, cor_fundo: str | None = None,
-          cor_hover: str = estilo.AZUL_CTK_HOVER, largura_minima: int | None = None) -> QPushButton:
-    """`cor_fundo` é o `fg_color` de um CTkButton pintado à mão; `cor_hover`, o
-    `hover_color` (sem ele, a interface antiga usa o do tema: AZUL_CTK_HOVER).
+          negrito: bool = False, cor_fundo: str | None = None,
+          largura_minima: int | None = None) -> QPushButton:
+    """A cor é da variante, na folha do tema. `cor_fundo` (o `fg_color` de um
+    CTkButton pintado à mão) ainda é aceito e vira variante (`variante_da_cor`),
+    mas nenhuma tela o passa (guarda em `tests/test_qt_botoes.py`); o
+    `cor_texto` e o `cor_hover` saíram em 2026-10-20.
 
     `largura` FIXA a largura; `largura_minima` é o `width` do CTkButton de
     verdade: o botão tem pelo menos isso, e o texto que não cabe o alarga com
@@ -181,25 +178,14 @@ def botao(texto: str, *, variante: str | None = None, largura: int | None = None
         folha += f" font-size: {tamanho_fonte}px;"
     if negrito:
         folha += " font-weight: bold;"
-    extra = ""
-    # `cor_fundo`, `cor_hover` e `cor_texto` junto dele já não pintam nada: a folha do
-    # tema decide pela variante. Só o `cor_texto` SOZINHO continua valendo.
-    if cor_texto and not cor_fundo:
-        folha += f" color: {cor_texto};"
-        # A folha do botão ganha da do app em TODOS os estados: sem repetir o
-        # desabilitado aqui, o texto ficaria com `cor_texto` mesmo desligado.
-        extra += f" QPushButton:disabled {{ color: {estilo.cinza_tk(estilo.TEXTO_DESABILITADO_CTK)}; }}"
     if folha:
-        b.setStyleSheet(f"QPushButton {{{folha} }}{extra}")
+        b.setStyleSheet(f"QPushButton {{{folha} }}")
     return b
 
 
 # Onde `pintar` guarda a folha com que a peça nasceu (a Criação de Fichas a
 # grava logo ao criar o botão; as outras peças, na primeira pintura).
 _FOLHA_BASE = "_folha_base"
-# O hover que os botões de arquivo das telas antigas mantinham depois do
-# `configure(fg_color=primary)`: o #454545 escrito à mão neles.
-HOVER_BOTAO_ARQUIVO = "#454545"
 
 
 def pintar(widget, folha: str) -> None:
@@ -214,13 +200,12 @@ def pintar(widget, folha: str) -> None:
 
 
 def marcar_arquivo_escolhido(botao, rotulo, caminho: str) -> None:
-    """Arquivo escolhido: o nome em verde no rótulo (um `RotuloElidido`: elidido
-    se for longo, com o caminho completo no tooltip) e o botão na cor primária;
-    o hover continua o cinza, como o `configure(fg_color=...)` de lá."""
+    """Arquivo escolhido: o nome no papel `ok` (verde) no rótulo (um
+    `RotuloElidido`: elidido se for longo, com o caminho completo no tooltip) e
+    o botão na variante `primario` -- as cores são da folha do tema."""
     rotulo.mostrar_caminho(caminho)
-    pintar(rotulo, f"color: {theme.COLORS['accent']};")
-    pintar(botao, f"QPushButton {{ background: {theme.COLORS['primary']}; }}"
-                  f" QPushButton:hover {{ background: {HOVER_BOTAO_ARQUIVO}; }}")
+    estilo.definir_papel(rotulo, "ok")
+    estilo.definir_variante(botao, "primario")
 
 
 # --- E3.1: fonte de tupla do Tk, área rolável, barra de progresso, slider -----
@@ -268,11 +253,13 @@ def folha_fonte_tk(tupla, *, em_pontos: bool = False) -> str:
     return f"font-family: {familias}; font-size: {tamanho}; font-weight: {peso};"
 
 
-def rotulo_tk(texto: str, fonte: tuple, cor: str, *, direita: bool = False, largura: int | None = None,
-              largura_minima: int | None = None, quebra: int | None = None) -> QLabel:
-    """CTkLabel com a fonte em tupla do Tk (`("Roboto", 13)`, pixels) e a cor
-    por nome do Tk ("gray70"): 28 px de altura no mínimo, texto centrado na
-    vertical, encostado à esquerda (`direita`: o `anchor="e"`).
+def rotulo_tk(texto: str, fonte: tuple, papel: str | None = None, *, direita: bool = False,
+              largura: int | None = None, largura_minima: int | None = None,
+              quebra: int | None = None) -> QLabel:
+    """CTkLabel com a fonte em tupla do Tk (`("Roboto", 13)`, pixels) e o
+    `papel` de texto da folha (a cor sai dela; sem papel, o texto comum): 28 px
+    de altura no mínimo, texto centrado na vertical, encostado à esquerda
+    (`direita`: o `anchor="e"`).
 
     Texto PURO, como o do CTkLabel: em AutoText o QLabel tomaria um "Trocar <a>
     por <b> no PDM" (texto da planilha) por HTML e engoliria as "tags".
@@ -286,7 +273,9 @@ def rotulo_tk(texto: str, fonte: tuple, cor: str, *, direita: bool = False, larg
     horizontal = Qt.AlignmentFlag.AlignRight if direita else Qt.AlignmentFlag.AlignLeft
     r.setAlignment(horizontal | Qt.AlignmentFlag.AlignVCenter)
     r.setMinimumHeight(ALTURA_MINIMA_ROTULO)
-    r.setStyleSheet(f"{folha_fonte_tk(fonte)} color: {estilo.cinza_tk(cor)}; background: transparent;")
+    if papel:
+        r.setProperty("papel", papel)
+    r.setStyleSheet(f"{folha_fonte_tk(fonte)} background: transparent;")
     if largura_minima:
         r.setMinimumWidth(largura_minima)
     if largura:
@@ -305,12 +294,13 @@ def geometria_tk(texto: str) -> tuple[int, int]:
     return int(largura), int(altura)
 
 
-def area_rolavel(layout_pai=None, *, cor: str | None = None, margem: int = 6,
+def area_rolavel(layout_pai=None, *, fundo: str | None = None, margem: int = 6,
                  barra_sempre_visivel: bool = False):
     """CTkScrollableFrame: devolve `(area, layout)` -- os filhos vão no `layout`.
 
-    `cor=None` é o `fg_color="transparent"` (o uso mais comum nas telas); com
-    cor, o quadro tem os cantos de 6 do CTkFrame. `margem` é o recuo do
+    `fundo=None` é o `fg_color="transparent"` (o uso mais comum nas telas);
+    `"cartao"` (a superfície) e `"tela"` (o fundo) são regras
+    `QScrollArea[fundo=...]` da folha. Os cantos são os de 6 do CTkFrame. `margem` é o recuo do
     conteúdo (6 = o canto, medido). A barra de rolagem é a da interface antiga (16 px, alça
     gray41 de 8) e aparece só quando há o que rolar -- a mesma decisão da barra
     lateral (main.py): lá ela é um traço sempre visível que não rola nada.
@@ -334,8 +324,9 @@ def area_rolavel(layout_pai=None, *, cor: str | None = None, margem: int = 6,
     area.setWidgetResizable(True)
     area.setFrameShape(QFrame.Shape.NoFrame)
     area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    fundo = estilo.cinza_tk(cor) if cor else "transparent"
-    area.setStyleSheet(f"#area_rolavel {{ background: {fundo}; border: none; border-radius: 6px; }}")
+    if fundo:
+        area.setProperty("fundo", fundo)
+    area.setStyleSheet("#area_rolavel { border: none; border-radius: 6px; }")
     area.viewport().setObjectName("area_rolavel_vista")
     area.viewport().setStyleSheet("#area_rolavel_vista { background: transparent; }")
     interno = QWidget(objectName="area_rolavel_interno")
@@ -360,14 +351,14 @@ def area_rolavel(layout_pai=None, *, cor: str | None = None, margem: int = 6,
     return area, layout
 
 
-def barra_progresso(*, largura: int | None = None, altura: int = 8, cor: str | None = None,
-                    fundo: str = estilo.TRILHO_CTK, barra: QProgressBar | None = None) -> QProgressBar:
-    """CTkProgressBar: `width`/`height`/`progress_color`/`fg_color` da interface antiga.
+def barra_progresso(*, largura: int | None = None, altura: int = 8,
+                    barra: QProgressBar | None = None) -> QProgressBar:
+    """CTkProgressBar: `width`/`height` da interface antiga.
 
-    Padrão do tema: 200 x 8 (aqui a largura só é fixada se pedida), trilho
-    #4A4D50, progresso azul, pontas redondas (corner_radius=1000 -> metade da
-    altura). Faixa 0-1000, sem texto. `barra=` estiliza uma que já existe (ex.:
-    `ModuleFrame.progress_bar`).
+    200 x 8 (aqui a largura só é fixada se pedida), pontas redondas
+    (corner_radius=1000 -> metade da altura); trilho e progresso são as cores
+    da folha (`superficie_alta` e `primaria`). Faixa 0-1000, sem texto.
+    `barra=` estiliza uma que já existe (ex.: `ModuleFrame.progress_bar`).
     """
     barra = barra or QProgressBar()
     barra.setRange(0, 1000)
@@ -377,9 +368,9 @@ def barra_progresso(*, largura: int | None = None, altura: int = 8, cor: str | N
         barra.setFixedWidth(largura)
     raio = altura // 2
     barra.setStyleSheet(
-        f"QProgressBar {{ background: {fundo}; border: none; border-radius: {raio}px;"
+        f"QProgressBar {{ border: none; border-radius: {raio}px;"
         f" min-height: {altura}px; max-height: {altura}px; }}"
-        f" QProgressBar::chunk {{ background: {cor or estilo.AZUL_CTK}; border-radius: {raio}px; }}")
+        f" QProgressBar::chunk {{ border-radius: {raio}px; }}")
     return barra
 
 
@@ -415,26 +406,15 @@ def modo_indeterminado(barra: QProgressBar, ligado: bool) -> None:
         barra.setValue(0)
 
 
-def slider(*, minimo: int = 0, maximo: int = 100, largura: int = 200, cor_botao: str | None = None,
-           cor_percorrido: str | None = None, cor_botao_hover: str | None = None) -> QSlider:
+def slider(*, minimo: int = 0, maximo: int = 100, largura: int = 200) -> QSlider:
     """CTkSlider horizontal (`from_`/`to` inteiros; `number_of_steps` = a faixa).
 
-    A cara vem da folha global; `cor_botao`/`cor_percorrido` são o
-    `button_color`/`progress_color` da interface antiga (o Analisador pinta os dois de
-    primary). O hover do botão, que a interface antiga deriva do tema, vira `cor_botao_hover`.
+    A cara, cores incluídas, vem da folha global (`primaria` no botão e no
+    trecho percorrido, desde 2026-10-20).
     """
     s = QSlider(Qt.Orientation.Horizontal)
     s.setRange(minimo, maximo)
     s.setFixedSize(largura, estilo.ALTURA_SLIDER_CTK)
-    folha = ""
-    if cor_botao:
-        folha += f" QSlider::handle:horizontal {{ background: {cor_botao}; }}"
-    if cor_botao_hover:
-        folha += f" QSlider::handle:horizontal:hover {{ background: {cor_botao_hover}; }}"
-    if cor_percorrido:
-        folha += f" QSlider::sub-page:horizontal {{ background: {cor_percorrido}; }}"
-    if folha:
-        s.setStyleSheet(folha.strip())
     return s
 
 

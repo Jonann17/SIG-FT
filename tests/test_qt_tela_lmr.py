@@ -126,7 +126,6 @@ def test_erro_na_janela_de_selecao_vira_log(tela, qtbot, monkeypatch):
 
 
 def test_textos_e_caixa_da_linha_inicial(tela):
-    from sigft.app import theme
     assert tela.label_titulo.text() == "Automação LMR"
     assert tela.btn_run.text() == "Selecionar Excel e Iniciar"
     assert tela.picker_status.botao.text() == "Selecionar _STATUS_PMIB"
@@ -134,11 +133,11 @@ def test_textos_e_caixa_da_linha_inicial(tela):
     assert tela.caminho_status_pmib is None
     r = tela._rotulos
     assert r["titulo"].text() == "Preenchimento Automático de LMR (Aplicações)"
-    assert theme.COLORS["accent"] in r["titulo"].styleSheet()
+    assert r["titulo"].property("papel") == "destaque"   # a cor é da folha (2026-10-20)
     assert r["info"].text().startswith("Este módulo lê uma aba de um arquivo Excel")
-    assert "#808080" in r["info"].styleSheet()                      # "gray" do Tk
+    assert r["info"].property("papel") == "legenda"                 # era o "gray" do Tk
     assert r["marcar"].text() == "Marcar o resultado no _STATUS_PMIB (opcional):"
-    assert "#B3B3B3" in r["desligado"].styleSheet() and "font-size: 11px" in r["desligado"].styleSheet()
+    assert r["desligado"].property("papel") == "legenda" and "font-size: 11px" in r["desligado"].styleSheet()
     assert r["script"].text() == "O script pedirá:\n1. Arquivo Excel LMR\n2. Seleção das Fichas (Checkbox)"
     assert isinstance(tela.caixa_linha_inicial, QCheckBox)
     assert tela.caixa_linha_inicial.text() == "Começar de um código específico"
@@ -447,7 +446,7 @@ def test_janela_da_aba_tem_as_medidas_do_ctk(folha, qtbot):
     assert (d.width(), d.height()) == (420, 220)
     assert caixa(d.rotulo_arquivo)[1::2] == (20, 28)
     assert caixa(d.rotulo_pergunta)[1::2] == (52, 28)
-    assert "#B3B3B3" in d.rotulo_pergunta.styleSheet()
+    assert d.rotulo_pergunta.property("papel") == "legenda"   # era o gray70 (2026-10-20)
     assert caixa(d.menu) == (60, 97, 300, 32)
     assert caixa(d.botao_ler) == (60, 148, 300, 32)
     assert caixa(d.botao_cancelar) == (60, 189, 300, 32)

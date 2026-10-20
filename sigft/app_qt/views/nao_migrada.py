@@ -16,7 +16,8 @@ class TelaNaoMigrada(QWidget):
         self.mensagem = QLabel(
             f"A tela \"{nome}\" não está disponível nesta versão do SIG-FT.")
         self.mensagem.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.mensagem.setStyleSheet("font-size: 16px; color: #B3B3B3;")
+        self.mensagem.setProperty("papel", "legenda")
+        self.mensagem.setStyleSheet("font-size: 16px;")
         layout.addWidget(self.mensagem)
 
 
@@ -36,5 +37,5 @@ class TelaComErro(QWidget):
         self.mensagem.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.mensagem.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.mensagem.setWordWrap(True)
-        self.mensagem.setStyleSheet("font-size: 15px; color: #E0E0E0;")
+        self.mensagem.setStyleSheet("font-size: 15px;")
         layout.addWidget(self.mensagem)

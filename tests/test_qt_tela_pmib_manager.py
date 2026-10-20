@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from sigft.app import backends, theme
+from sigft.app import backends
 from sigft.app_qt.views import pmib_manager as tela_mod
 from sigft.core.prefs import CHAVE_MAPEAMENTO
 
@@ -176,9 +176,9 @@ def test_seletores_de_arquivo(tela, monkeypatch):
     assert tela.lbl_master_status.text() == "Mapeamento.xlsx"
     assert tela.lbl_autorizados.text() == "sobressalentes_autorizados_1.xlsx"
     for rotulo in (tela.lbl_api_status, tela.lbl_master_status, tela.lbl_autorizados):
-        assert theme.COLORS["accent"] in rotulo.styleSheet()
+        assert rotulo.property("papel") == "ok"  # cor da folha pelo papel (2026-10-20)
     for botao in (tela.btn_api, tela.btn_master, tela.btn_autorizados):
-        assert theme.COLORS["primary"] in botao.styleSheet()
+        assert botao.property("variante") == "primario"
     # O mapeamento fica lembrado para o mural da Home.
     assert tela.lembrados == [(CHAVE_MAPEAMENTO, "/d/Mapeamento.xlsx")]
 

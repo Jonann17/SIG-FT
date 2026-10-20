@@ -13,7 +13,6 @@ import pytest
 from PySide6.QtWidgets import QMessageBox
 
 from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA
-from sigft.app.theme import COLORS
 from sigft.app_qt import catalogo, estilo
 from sigft.app_qt.views import correcao_pdm as tela_mod
 from sigft.services.correcao_pdm_planilha import FichaParaCorrigir
@@ -120,7 +119,7 @@ def test_selecionar_status(tela, monkeypatch):
     assert pedidos == [(("correcao_pdm.status_pmib", "excel"),
                         {"titulo": "Selecione o _STATUS_PMIB", "filetypes": [("Excel", "*.xlsx *.xlsm")]})]
     assert tela.lbl_status.text() == "3 ficha(s)"
-    assert COLORS["accent"].lower() in tela.lbl_status.styleSheet().lower()
+    assert tela.lbl_status.property("papel") == "ok"   # o verde é da folha (2026-10-20)
     assert [linha[0] for linha in _linhas(tela)] == ["100001", "100002", "100003"]
 
 
@@ -167,7 +166,7 @@ def test_selecionar_catalogo(tela, monkeypatch):
     assert pedidos == [(("correcao_pdm.sam_gm", "excel"),
                         {"titulo": "Selecione a planilha de PDMs", "filetypes": [("Excel", "*.xlsx *.xlsm")]})]
     assert tela.lbl_catalogo.text() == "1234 PDMs"
-    assert COLORS["accent"].lower() in tela.lbl_catalogo.styleSheet().lower()
+    assert tela.lbl_catalogo.property("papel") == "ok"   # o verde é da folha (2026-10-20)
     assert previas and all(isinstance(c, CatalogoFalso) for c in previas)
 
 

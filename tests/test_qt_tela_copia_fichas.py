@@ -4,7 +4,6 @@ import threading
 
 import pytest
 
-from sigft.app import theme
 from sigft.app.textos_dialogos import MSG_LOGIN_LOTE
 from sigft.app_qt.views import copia_fichas as tela_mod
 from sigft.services import duplicadas, duplicadas_robo
@@ -83,9 +82,10 @@ def test_cores_dos_botoes_e_rotulos(tela):
     assert tela.btn_status.property("variante") == "cinza"
     assert tela.btn_resumo.property("variante") == "cinza"
     assert tela.btn_robo_novo.property("variante") == "primario"
-    assert theme.COLORS["accent"] in tela.rotulo_etapa1.styleSheet()
-    assert "#808080" in tela.lbl_status.styleSheet()        # text_color="gray" do Tk
-    assert theme.COLORS["accent"] in tela.progress.styleSheet()
+    # 2026-10-20: as cores são da folha, pelo papel (eram o accent e o "gray" do Tk).
+    assert tela.rotulo_etapa1.property("papel") == "destaque"
+    assert tela.lbl_status.property("papel") == "legenda"
+    assert "background" not in tela.progress.styleSheet()    # o progresso é a `primaria` da folha
 
 
 # --- leitura da planilha --------------------------------------------------------
@@ -142,10 +142,9 @@ def test_leitura_monta_a_fila_e_abre_a_selecao(tela, qtbot, monkeypatch):
     assert fila is tela.fila_completa and cb == tela._pos_selecao and na_interface
     assert tela.lbl_status.text() == ("Planilha carregada. Encontradas 2 duplicadas. "
                                       "(1 sem dados para o robô. Ver log.)")
-    assert theme.COLORS["accent"] in tela.lbl_status.styleSheet()
-    # Depois da leitura o botão fica com o fundo primary (o hover continua o #454545).
-    assert f"background: {theme.COLORS['primary']}" in tela.btn_status.styleSheet()
-    assert "#454545" in tela.btn_status.styleSheet()
+    assert tela.lbl_status.property("papel") == "ok"
+    # Depois da leitura o botão fica primário (a variante; a cor é da folha).
+    assert tela.btn_status.property("variante") == "primario"
 
 
 def test_leitura_sem_duplicadas_nao_abre_a_selecao(tela, qtbot, monkeypatch):
@@ -164,7 +163,7 @@ def test_falha_na_leitura_vira_log_e_devolve_o_botao(tela, qtbot, monkeypatch):
     qtbot.waitUntil(tela.btn_status.isEnabled, timeout=2000)
     assert tela.selecoes == []
     assert tela.lbl_status.text() == "Aguardando seleção..."
-    assert theme.COLORS["primary"] not in tela.btn_status.styleSheet()
+    assert tela.btn_status.property("variante") != "primario"
 
 
 def test_leitura_em_thread_comum(tela, qtbot, monkeypatch):

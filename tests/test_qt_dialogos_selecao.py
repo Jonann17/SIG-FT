@@ -105,7 +105,10 @@ def test_selecao_multipla_estilo_da_lista_vira_folha(qt_interface, qtbot):
                       "highlightthickness": 0, "borderwidth": 0})
     qtbot.addWidget(dlg)
     folha = dlg.listbox.styleSheet()
-    assert "#1E1E1E" in folha and "#035D67" in folha and "white" in folha
+    # 2026-10-20: as cores do tk.Listbox não viram mais folha (são as do tema);
+    # só a borda conta: `borderwidth=0`, sem a borda da folha.
+    assert "#1E1E1E" not in folha and "#035D67" not in folha
+    assert dlg.listbox.property("com_borda") is False
     # tk.Listbox: tamanho positivo é PONTO; CTkLabel: pixel.
     assert dlg.listbox.font().pointSize() == 12
     assert dlg.rotulo.font().pixelSize() == 14 and dlg.rotulo.font().bold()

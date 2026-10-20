@@ -7,9 +7,11 @@ da interface antiga: contador grande na faixa, barra colorida da criticidade à
 esquerda de cada cartão, o prazo em destaque à direita, faixas em ordem de
 urgência.
 
-As tabelas de cor, rótulo e explicação eram CÓPIA das de lá; o teste
+As tabelas de rótulo e explicação eram CÓPIA das de lá; o teste
 `test_desenho_do_mural_igual_ao_da_home_antiga` trava os valores, e
-`tests/test_mural_nomes_do_servico.py` cobra as faixas.
+`tests/test_mural_nomes_do_servico.py` cobra as faixas. As CORES, desde
+2026-10-20, são da folha (`estilo.COR_DA_FAIXA`/`COR_DA_CRITICIDADE`, uma por
+tema): aqui cada peça só diz a faixa ou a criticidade, por propriedade.
 
 As medidas são as do `pack` de lá: cada CTkLabel tem pelo menos 28 px de altura
 (o `height` padrão) com o texto centrado, e os `pady` de vizinhos SOMAM -- por
@@ -25,16 +27,17 @@ from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos
 from sigft.services import atividades as at
 
-# Cor de cada faixa. Vermelho e laranja vêm do tema; as demais seguem a paleta.
+# A propriedade `faixa` de cada faixa: o seletor `QLabel[faixa=...]` e
+# `#regua_faixa[faixa=...]` da folha, com a cor de cada tema
+# (`estilo.COR_DA_FAIXA`). Roxo na travada, vermelho, laranja, verde-água,
+# verde e o texto suave nas demais.
 COR_FAIXA = {
-    at.ATRASADA: theme.COLORS["danger"],
-    # Roxo, deliberadamente fora da escala vermelho->laranja->verde do prazo:
-    # travada nao e "mais atrasada", e outra natureza de problema.
-    at.TRAVADA: "#B07CE8",
-    at.DEVERIA_TER_COMECADO: theme.COLORS["warning"],
-    at.EM_ANDAMENTO: theme.COLORS["primary_hover"],
-    at.COMECA_HOJE: theme.COLORS["accent"],
-    at.PROXIMOS_DIAS: theme.COR_TEXTO_APOIO_CLARO,
+    at.ATRASADA: "atrasada",
+    at.TRAVADA: "travada",
+    at.DEVERIA_TER_COMECADO: "deveria_ter_comecado",
+    at.EM_ANDAMENTO: "em_andamento",
+    at.COMECA_HOJE: "comeca_hoje",
+    at.PROXIMOS_DIAS: "proximos_dias",
 }
 
 ROTULO_FAIXA = {
@@ -55,29 +58,34 @@ EXPLICACAO_FAIXA = {
     at.PROXIMOS_DIAS: "para se preparar",
 }
 
-# Criticidade 1 a 5 -> cor da barra lateral. A escala vai do neutro ao
-# vermelho, para que "muito crítico" salte sem precisar ler o número.
-COR_CRITICIDADE = {
-    5: "#D32F2F",
-    4: "#FF6F3C",
-    3: "#FFA726",
-    2: "#4DA3A9",
-    1: "#5A5A5A",
-}
-COR_CRITICIDADE_PADRAO = "#3A3A3A"
-
-# CTkLabel sem `text_color`: o texto do tema (gray84).
-_COR_TEXTO = estilo.cinza_tk("gray84")
+# Criticidade 1 a 5 -> a barra lateral (`#barra_criticidade[criticidade=...]`
+# na folha). A escala vai do neutro ao vermelho, para que "muito crítico" salte
+# sem precisar ler o número; sem criticidade (ou ilegível), a cor da borda.
+COR_CRITICIDADE = {nivel: estilo.COR_DA_CRITICIDADE.get(nivel, "texto_suave") for nivel in range(1, 6)}
+COR_CRITICIDADE_PADRAO = "borda"
 # `wraplength` dos rótulos de lá.
 _QUEBRA_ERRO = 740
 _QUEBRA_CARTAO = 560
 
 
-def _cor_da_criticidade(valor) -> str:
+def _nivel_da_criticidade(valor) -> int:
+    """1 a 5, ou 0 quando a planilha não traz um desses números."""
     try:
-        return COR_CRITICIDADE.get(int(valor or 0), COR_CRITICIDADE_PADRAO)
+        nivel = int(valor or 0)
     except (TypeError, ValueError):
-        return COR_CRITICIDADE_PADRAO
+        return 0
+    return nivel if nivel in COR_CRITICIDADE else 0
+
+
+def _cor_da_criticidade(valor) -> str:
+    """A cor da barra (o token `texto_suave`/`borda` nos níveis que seguem o tema)."""
+    return COR_CRITICIDADE.get(_nivel_da_criticidade(valor), COR_CRITICIDADE_PADRAO)
+
+
+def _na_faixa(rotulo, faixa):
+    """O rótulo na cor da faixa (`QLabel[faixa=...]` da folha)."""
+    rotulo.setProperty("faixa", COR_FAIXA[faixa])
+    return rotulo
 
 
 def _caixa(layout, item, *, padx=(0, 0), pady=(0, 0), horizontal: bool = False):
@@ -101,7 +109,7 @@ def montar(parent, gavetas, quando: str, erro: str | None = None) -> None:
     """
     layout = parent.layout()
     if erro:
-        _caixa(layout, blocos.rotulo_tk(erro, theme.FONTE_CORPO, theme.COLORS["danger"], quebra=_QUEBRA_ERRO),
+        _caixa(layout, blocos.rotulo_tk(erro, theme.FONTE_CORPO, "erro", quebra=_QUEBRA_ERRO),
                padx=(14, 14), pady=(14, 14))
         return
 
@@ -109,16 +117,16 @@ def montar(parent, gavetas, quando: str, erro: str | None = None) -> None:
 
     cabecalho = QHBoxLayout()
     cabecalho.setSpacing(0)
-    cabecalho.addWidget(blocos.rotulo_tk(quando, theme.FONTE_SECAO, theme.COLORS["text_light"]))
+    cabecalho.addWidget(blocos.rotulo_tk(quando, theme.FONTE_SECAO))
     cabecalho.addSpacing(12)
     cabecalho.addWidget(blocos.rotulo_tk(f"{total} atividade(s) pedindo atenção",
-                                theme.FONTE_CORPO_MIUDO, theme.COR_TEXTO_APOIO))
+                                theme.FONTE_CORPO_MIUDO, "legenda"))
     cabecalho.addStretch()
     _caixa(layout, cabecalho, padx=(14, 14), pady=(4, 12))
 
     if total == 0:
         _caixa(layout, blocos.rotulo_tk("Nada pendente para hoje nem para os próximos dias.",
-                               theme.FONTE_SUBTITULO, theme.COLORS["accent"]),
+                               theme.FONTE_SUBTITULO, "ok"),
                padx=(14, 14), pady=(24, 24))
         return
 
@@ -130,19 +138,19 @@ def montar(parent, gavetas, quando: str, erro: str | None = None) -> None:
 
 
 def _faixa(layout, faixa, itens) -> None:
-    cor = COR_FAIXA[faixa]
 
     # Cabeçalho da faixa: contador GRANDE à esquerda, rótulo e explicação à
     # direita. O número vem primeiro porque é o que se lê de relance.
     barra = QHBoxLayout()
     barra.setSpacing(0)
-    barra.addWidget(blocos.rotulo_tk(str(len(itens)), ("Roboto", 30, "bold"), cor, largura=48, direita=True),
+    barra.addWidget(_na_faixa(blocos.rotulo_tk(str(len(itens)), ("Roboto", 30, "bold"), largura=48,
+                                               direita=True), faixa),
                     0, Qt.AlignmentFlag.AlignVCenter)
     barra.addSpacing(10)
     textos = QVBoxLayout()
     textos.setSpacing(0)
-    textos.addWidget(blocos.rotulo_tk(ROTULO_FAIXA[faixa], ("Roboto", 14, "bold"), cor))
-    textos.addWidget(blocos.rotulo_tk(EXPLICACAO_FAIXA[faixa], theme.FONTE_CORPO_MIUDO, theme.COR_TEXTO_APOIO))
+    textos.addWidget(_na_faixa(blocos.rotulo_tk(ROTULO_FAIXA[faixa], ("Roboto", 14, "bold")), faixa))
+    textos.addWidget(blocos.rotulo_tk(EXPLICACAO_FAIXA[faixa], theme.FONTE_CORPO_MIUDO, "legenda"))
     barra.addLayout(textos)
     barra.addStretch()
     _caixa(layout, barra, padx=(14, 14), pady=(16, 6))
@@ -150,7 +158,7 @@ def _faixa(layout, faixa, itens) -> None:
     # Régua fina na cor da faixa, separando o cabeçalho dos cartões.
     regua = QFrame(objectName="regua_faixa")
     regua.setFixedHeight(2)
-    regua.setStyleSheet(f"#regua_faixa {{ background: {estilo.cinza_tk(cor)}; border: none; }}")
+    regua.setProperty("faixa", COR_FAIXA[faixa])
     _caixa(layout, regua, padx=(14, 14), pady=(0, 6))
 
     for item in itens:
@@ -170,13 +178,11 @@ def _cartao(layout, item, faixa) -> None:
     # grave, sem ler uma palavra.
     barra = QFrame(objectName="barra_criticidade")
     barra.setFixedWidth(6)
-    barra.setStyleSheet(f"#barra_criticidade {{ background: {_cor_da_criticidade(item.get('criticidade'))};"
-                        " border: none; border-radius: 3px; }")
+    barra.setProperty("criticidade", str(_nivel_da_criticidade(item.get("criticidade"))))
     grade.addWidget(barra)
     grade.addSpacing(8)
 
-    corpo = QFrame(objectName="corpo_cartao")
-    corpo.setStyleSheet(f"#corpo_cartao {{ background: {theme.COR_CARTAO}; border-radius: 6px; }}")
+    corpo = QFrame(objectName="corpo_cartao")   # a superfície, de cantos 6 (folha)
     grade.addWidget(corpo, 1)
     coluna = QVBoxLayout(corpo)
     coluna.setContentsMargins(0, 0, 0, 0)
@@ -185,14 +191,14 @@ def _cartao(layout, item, faixa) -> None:
     # O GRUPO (nível 1), acima da descrição e em corpo menor: lê-se primeiro
     # a frente, depois a tarefa.
     if item.get("_grupo"):
-        _caixa(coluna, blocos.rotulo_tk(str(item["_grupo"]), ("Roboto", 11, "bold"), theme.COR_TEXTO_APOIO_CLARO,
+        _caixa(coluna, blocos.rotulo_tk(str(item["_grupo"]), ("Roboto", 11, "bold"), "legenda",
                                quebra=_QUEBRA_CARTAO),
                padx=(10, 10), pady=(8, 0), horizontal=True).addStretch()
 
     topo = QHBoxLayout()
     topo.setSpacing(0)
     topo.addWidget(blocos.rotulo_tk(str(item.get("descricao") or "(sem descrição)"), theme.FONTE_CORPO,
-                           _COR_TEXTO, quebra=_QUEBRA_CARTAO), 0, Qt.AlignmentFlag.AlignVCenter)
+                           quebra=_QUEBRA_CARTAO), 0, Qt.AlignmentFlag.AlignVCenter)
     topo.addStretch()
 
     # O PRAZO, à direita, em duas alturas: a frase relativa ("venceu há 4 dias",
@@ -200,10 +206,11 @@ def _cartao(layout, item, faixa) -> None:
     # quando?". As duas frases vêm PRONTAS do serviço.
     prazos = QVBoxLayout()
     prazos.setSpacing(0)
-    prazos.addWidget(blocos.rotulo_tk(at.frase_do_prazo(faixa, item.get("_dias")), ("Roboto", 12, "bold"),
-                             COR_FAIXA[faixa], direita=True), 0, Qt.AlignmentFlag.AlignRight)
+    prazos.addWidget(_na_faixa(blocos.rotulo_tk(at.frase_do_prazo(faixa, item.get("_dias")),
+                                                ("Roboto", 12, "bold"), direita=True), faixa),
+                     0, Qt.AlignmentFlag.AlignRight)
     if item.get("_termino"):
-        prazos.addWidget(blocos.rotulo_tk(str(item["_termino"]), theme.FONTE_CORPO_MIUDO, theme.COR_TEXTO_APOIO,
+        prazos.addWidget(blocos.rotulo_tk(str(item["_termino"]), theme.FONTE_CORPO_MIUDO, "legenda",
                                  direita=True), 0, Qt.AlignmentFlag.AlignRight)
     topo.addSpacing(10)
     topo.addLayout(prazos)
@@ -217,7 +224,7 @@ def _cartao(layout, item, faixa) -> None:
     if item.get("criticidade"):
         partes.append(f"criticidade {item['criticidade']}")
     if partes:
-        _caixa(coluna, blocos.rotulo_tk("   ·   ".join(partes), theme.FONTE_CORPO_MIUDO, theme.COR_TEXTO_APOIO_CLARO),
+        _caixa(coluna, blocos.rotulo_tk("   ·   ".join(partes), theme.FONTE_CORPO_MIUDO, "legenda"),
                padx=(10, 10), pady=(0, 8), horizontal=True).addStretch()
 
     _caixa(layout, linha, padx=(14, 14), pady=(3, 3))

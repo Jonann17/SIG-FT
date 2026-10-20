@@ -85,7 +85,6 @@ def test_selecao_com_caixas_tem_as_medidas_e_a_cara_da_janela_do_ctk(qt_interfac
     # em (10, 562) e "CONFIRMAR" 150x28 em (290, 562).
     from PySide6.QtCore import QPoint, Qt
 
-    from sigft.app import theme
     from sigft.app_qt import estilo
 
     d = qd.SelecaoComCaixasDialog(None, titulo="Selecione as Fichas",
@@ -113,8 +112,10 @@ def test_selecao_com_caixas_tem_as_medidas_e_a_cara_da_janela_do_ctk(qt_interfac
     imagem = d.grab().toImage()
     cor = lambda x, y: imagem.pixelColor(x, y).name().upper()  # noqa: E731
     assert cor(200, 300) == "#1C2024"                         # superficie (2026-10-20; era gray13)
-    assert cor(17, 73) == estilo.BORDA_CTK                      # borda da caixa desmarcada
-    assert cor(22, 92) == theme.COLORS["primary"].upper()       # caixa marcada cheia de primary
+    # 2026-10-20: a caixa pintada usa a paleta do tema (eram #949A9F e o primary da CTk).
+    p = estilo.paleta_atual()
+    assert cor(17, 73) == p["texto_suave"]                      # borda da caixa desmarcada
+    assert cor(22, 92) == p["primaria"]                         # caixa marcada cheia da primária
 
     # Clicar no TEXTO marca, como na CTkCheckBox; fora dele, não.
     retangulo = d.lista.visualItemRect(d.lista.item(2))

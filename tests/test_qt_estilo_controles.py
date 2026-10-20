@@ -11,11 +11,12 @@ def test_botao_padrao_e_o_azul_do_interface_antiga():
     # `borda`, texto `texto`); o azul do tema da CTk (que saiu em 2026-10-15) não
     # entra mais na folha.
     assert "QPushButton {" in _qss()
-    # As constantes da CTk continuam até os widgets pintados à mão migrarem (Task 5).
-    assert estilo.AZUL_CTK == "#1F538D" and estilo.AZUL_CTK_HOVER == "#14375E"
+    # As constantes da CTk saíram quando os widgets pintados à mão passaram a ler a
+    # paleta (2026-10-20, Task 5): nada mais as usava.
+    assert not hasattr(estilo, "AZUL_CTK") and not hasattr(estilo, "AZUL_CTK_HOVER")
     trecho = _qss().split("QPushButton {", 1)[1].split("}", 1)[0]
     assert tokens.ESCURO["borda"] in trecho and tokens.ESCURO["texto"] in trecho
-    assert estilo.AZUL_CTK not in trecho
+    assert "#1F538D" not in _qss()
 
 
 def test_variante_primario_usa_a_cor_da_marca():
@@ -79,8 +80,8 @@ def test_texto_do_botao_comum_e_o_do_tema_do_ctk(qt_interface, qtbot):
     comum, barra = QPushButton("Selecionar"), QPushButton("Chaves de API")
     barra.setProperty("barra", True)
     recipiente = _sob_a_folha(qtbot, comum, barra)  # noqa: F841 -- segura os filhos vivos
-    # A constante da CTk continua até os widgets pintados à mão migrarem (Task 5).
-    assert estilo.TEXTO_BOTAO_CTK == "#DCE4EE"
+    # A constante da CTk (#DCE4EE) saiu em 2026-10-20 (Task 5): nada mais a usava.
+    assert not hasattr(estilo, "TEXTO_BOTAO_CTK")
     assert _cor_do_texto(comum) == tokens.ESCURO["texto"]
     assert _cor_do_texto(barra) == tokens.ESCURO["texto"]
 

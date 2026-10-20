@@ -29,7 +29,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMessageBox, QSizePolicy, QVBoxLayout, QWidget
 
 from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA, MSG_LOGIN_PAGINA_PRINCIPAL
-from sigft.app.theme import COLORS
 from sigft.app_qt import estilo, file_dialogs, interface
 from sigft.app_qt.views.janelas import JanelaAcaoRobo, JanelaResumo, JanelaRevisaoPDM, JanelaSelecao
 from sigft.app_qt.widgets import blocos, controles, revisao_portal
@@ -58,10 +57,9 @@ PLACEHOLDER_PROJETO = (
     "Especificar subsistema | #ST00=B01MSE00&EPB020 / 08934100BAX00-FS00PB-51 | "
     "Evento de Pagamento: 2835 / 2835 a / 2836")
 
-# Os cinzas que a tela escrevia à mão: #3A3A3A/#454545 é a variante "cinza";
-# #2B2B2B é o botão de PDMs "apagado" (a cor do cartão) no modo "Pular IA".
-CINZA, CINZA_HOVER, CINZA_APAGADO = "#3A3A3A", "#454545", "#2B2B2B"
-COR_ROTULO_APOIO = estilo.cinza_tk("gray")          # text_color="gray" do Tk
+# Os cinzas que a tela escrevia à mão são a variante "secundario" (o botão de
+# PDMs "apagado" no modo "Pular IA" é ela desligada); o verde/azul de "arquivo
+# escolhido", a "primario"; o texto cinza dos rótulos, o papel "legenda".
 # O grid da tela antiga: linha 1 (Tabview, weight=3) e linha 2 (console,
 # weight=1). O Tk dá a cada linha o que ela PEDE e reparte a sobra (ou a
 # falta) pelos pesos. Pedidos medidos na interface antiga: Tabview 261, CTkTextbox 200.
@@ -71,12 +69,12 @@ PESO_ABAS, PESO_CONSOLE = 3, 1
 RECUO_ROLAGEM = 6
 
 
-def _rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, cor: str = controles.COR_TEXTO_CTK,
+def _rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, papel: str | None = None,
             largura: int | None = None, elidir: bool = False):
     """CTkLabel de uma linha, anchor="w", 28 px de altura (`width` fixa se pedida).
-    Sem `cor`, a do CTkLabel sem text_color (gray84), e não o text_light do app.
+    Sem `papel`, o texto comum da folha.
     `elidir=True`: nome de arquivo que, longo, é elidido em vez de alargar a tela."""
-    r = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, cor=cor, alinhar="esquerda",
+    r = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, papel=papel, alinhar="esquerda",
                       elidir=elidir)
     r.setWordWrap(False)
     r.setFixedHeight(blocos.ALTURA_MINIMA_ROTULO)
@@ -86,7 +84,7 @@ def _rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, cor: str = 
 
 
 def _titulo(texto: str):
-    return _rotulo(texto, tamanho=16, negrito=True, cor=COLORS["accent"])
+    return _rotulo(texto, tamanho=16, negrito=True, papel="destaque")
 
 
 def _botao(texto: str, *, com_simbolo: bool = False, **kw):
@@ -96,23 +94,22 @@ def _botao(texto: str, *, com_simbolo: bool = False, **kw):
         # O "▶" do "Iniciar Robô de Edição": o Roboto não o tem, e o Noto Emoji
         # desenharia o emoji "play" (um quadrado com o triângulo dentro).
         estilo.botao_com_simbolos(b)
-    b.setProperty("_folha_base", b.styleSheet())
     return b
 
 
-def _pintar(botao, fundo: str, hover: str) -> None:
-    """O `configure(fg_color=...)` da interface antiga: troca o fundo, mantém o resto da folha
-    (`blocos.pintar`). `hover` é o hover_color que o botão já tinha (o configure
-    não o mudava)."""
-    blocos.pintar(botao, f"QPushButton {{ background: {fundo}; }} QPushButton:hover {{ background: {hover}; }}")
+def _pintar(botao, variante: str) -> None:
+    """O `configure(fg_color=...)` da interface antiga: troca a variante do botão
+    (a cor é da folha do tema)."""
+    estilo.definir_variante(botao, variante)
 
 
-def _cor_rotulo(rotulo, cor: str) -> None:
-    rotulo.setStyleSheet(f"font-size: 13px; background: transparent; color: {cor};")
+def _cor_rotulo(rotulo, papel: str | None) -> None:
+    """O `configure(text_color=...)`: troca o papel de texto do rótulo."""
+    estilo.definir_papel(rotulo, papel)
 
 
 def _cartao(corpo, *, fim: int, recuo: int = 0):
-    """CTkFrame #2B2B2B de cantos 8: peças com padx=15, título com pady 10.
+    """O cartão (`blocos.cartao`): peças com padx=15, título com pady 10.
     `recuo` é o padx do próprio cartão (10 na aba de edição)."""
     linha = QHBoxLayout()
     linha.setContentsMargins(recuo, 0, recuo, 0)
@@ -139,8 +136,8 @@ def _area_da_aba(aba: QWidget):
 
 
 def _barra():
-    """CTkProgressBar(progress_color=accent), pack(fill="x", padx=15, pady=15), em 0."""
-    barra = blocos.barra_progresso(barra=blocos.BarraDeProgresso(), cor=COLORS["accent"])
+    """CTkProgressBar (a cor é a da folha), pack(fill="x", padx=15, pady=15), em 0."""
+    barra = blocos.barra_progresso(barra=blocos.BarraDeProgresso())
     barra.definir(0)
     return barra
 
@@ -195,7 +192,7 @@ class ModuloCriaFichas(ModuleFrame):
     # --- montagem -------------------------------------------------------------
     def _build_ui(self) -> None:
         # Tabview dentro de um CTkFrame de fundo padrão: o quadro é gray16.
-        self.abas = Abas(cor_fundo=estilo.FUNDO_QUADRO_INTERNO_CTK)
+        self.abas = Abas(interno=True)
         self.content_layout.addWidget(self.abas)
         self.aba_criacao = self.abas.add(ABA_CRIACAO)
         self.aba_edicao = self.abas.add(ABA_EDICAO)
@@ -231,16 +228,14 @@ class ModuloCriaFichas(ModuleFrame):
         self.btn_pmib.clicked.connect(self.selecionar_excel_pmib)
         linha.addWidget(self.btn_pmib)
         linha.addSpacing(10)                            # lbl_status: padx=10
-        self.lbl_status = _rotulo("Aguardando...", cor=COR_ROTULO_APOIO)
+        self.lbl_status = _rotulo("Aguardando...", papel="legenda")
         linha.addWidget(self.lbl_status)
         linha.addStretch()
         config.addSpacing(15)                           # f_pmib (…, 5) + f_opts (10, …)
 
         # Checkbox Pular IA e Botão PDM
         linha = _linha(config)
-        self.chk_pular = controles.CaixaDeMarcar("Pular IA (Dados já no Excel)",
-                                                 cor_marcada=COLORS["primary"],
-                                                 cor_hover=COLORS["primary_hover"])
+        self.chk_pular = controles.CaixaDeMarcar("Pular IA (Dados já no Excel)")
         self.chk_pular.toggled.connect(self._toggle_pdm_button)
         linha.addWidget(self.chk_pular)
         linha.addSpacing(20)                            # btn_pdm: padx=20
@@ -251,7 +246,7 @@ class ModuloCriaFichas(ModuleFrame):
         self.btn_pdm.clicked.connect(self.selecionar_excel_pdm)
         linha.addWidget(self.btn_pdm)
         linha.addSpacing(20)
-        self.lbl_status_pdm = _rotulo("", cor=COR_ROTULO_APOIO, elidir=True)
+        self.lbl_status_pdm = _rotulo("", papel="legenda", elidir=True)
         linha.addWidget(self.lbl_status_pdm)
         linha.addStretch()
 
@@ -267,18 +262,17 @@ class ModuloCriaFichas(ModuleFrame):
         # (uniform, CONTANDO o padx de cada célula: (0, 5) e (5, 15)); a 2 é o
         # Limpar de 100 px, das duas linhas.
         grade = _linha(acoes)
-        branco = COLORS["text_white"]
         self.btn_run_ai = _botao("3. Analisar (IA)", variante="primario", altura=40, tamanho_fonte=14,
-                                 negrito=True, cor_texto=branco)
+                                 negrito=True)
         self.btn_run_ai.clicked.connect(self.run_ai_thread)
         self.btn_run_auto = _botao("4. Robô Web", variante="primario", altura=40, tamanho_fonte=14,
-                                   negrito=True, cor_texto=branco)
+                                   negrito=True)
         self.btn_run_auto.clicked.connect(self.run_automation_thread)
         self.btn_resumo = _botao("Ver Resumo", variante="cinza", altura=40, tamanho_fonte=12,
-                                 negrito=True, cor_texto=branco)
+                                 negrito=True)
         self.btn_resumo.clicked.connect(self.abrir_resumo_manual)
         self.btn_save = _botao("5. Salvar no Excel", variante="primario", altura=40, tamanho_fonte=12,
-                               negrito=True, cor_texto=branco)
+                               negrito=True)
         self.btn_save.clicked.connect(self.salvar_excel)
         for (cima, baixo), margens in (((self.btn_run_ai, self.btn_resumo), (0, 0, 5, 0)),
                                        ((self.btn_run_auto, self.btn_save), (5, 0, 15, 0))):
@@ -292,7 +286,7 @@ class ModuloCriaFichas(ModuleFrame):
                 caixa.addWidget(b)
             grade.addWidget(coluna, 1)
         self.btn_reset = _botao(estilo.mono("🗑️\nLimpar"), variante="perigo", largura=100,
-                                tamanho_fonte=14, negrito=True, cor_texto=branco)
+                                tamanho_fonte=14, negrito=True)
         # sticky="nsew" nas duas linhas: a altura é a da grade (90), não a das
         # duas linhas de texto (Ignored: o emoji não pode alargar a grade).
         self.btn_reset.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Ignored)
@@ -331,7 +325,7 @@ class ModuloCriaFichas(ModuleFrame):
         self.btn_excel_edicao.clicked.connect(self.selecionar_excel_edicao)
         linha.addWidget(self.btn_excel_edicao)
         linha.addSpacing(10)                            # lbl_status_edicao: padx=10
-        self.lbl_status_edicao = _rotulo("Nenhum item selecionado.", cor=COR_ROTULO_APOIO)
+        self.lbl_status_edicao = _rotulo("Nenhum item selecionado.", papel="legenda")
         linha.addWidget(self.lbl_status_edicao)
         linha.addStretch()
 
@@ -343,7 +337,7 @@ class ModuloCriaFichas(ModuleFrame):
         acoes.addWidget(self.rotulo_etapa2_edicao)
         acoes.addSpacing(20)                            # título (…, 10) + f_btns (10, …)
         self.btn_run_edicao = _botao(estilo.mono("▶ Iniciar Robô de Edição"), variante="primario", altura=40,
-                                     tamanho_fonte=14, negrito=True, cor_texto=COLORS["text_white"],
+                                     tamanho_fonte=14, negrito=True,
                                      com_simbolo=True)
         self.btn_run_edicao.clicked.connect(self.run_edicao_thread)
         self.btn_run_edicao.setEnabled(False)
@@ -372,13 +366,13 @@ class ModuloCriaFichas(ModuleFrame):
     def _toggle_pdm_button(self, *_marcada) -> None:
         if self.chk_pular.isChecked():
             self.btn_pdm.setEnabled(False)
-            _pintar(self.btn_pdm, CINZA_APAGADO, CINZA_HOVER)  # Cor "apagada"
+            _pintar(self.btn_pdm, "secundario")  # desligado: a cor "apagada" da folha
             if not self._ia_em_andamento:
                 self.btn_run_ai.setEnabled(True)
             self.btn_run_ai.setText("3. Processar (Direto)")
         else:
             self.btn_pdm.setEnabled(True)
-            _pintar(self.btn_pdm, CINZA, CINZA_HOVER)
+            _pintar(self.btn_pdm, "secundario")
             self.btn_run_ai.setText("3. Analisar (IA)")
 
     def selecionar_excel_pmib(self) -> None:
@@ -416,11 +410,11 @@ class ModuloCriaFichas(ModuleFrame):
         self.df_data_selecionado = self.df_data_completo.iloc[indices].copy().reset_index(drop=True)
         self.log(f"Selecionado: {len(self.df_data_selecionado)} itens.")
         self.lbl_status.setText(f"{len(self.df_data_selecionado)} itens selecionados")
-        _cor_rotulo(self.lbl_status, COLORS["accent"])
-        _pintar(self.btn_pmib, COLORS["primary"], CINZA_HOVER)  # Marca visual de sucesso
+        _cor_rotulo(self.lbl_status, "ok")
+        _pintar(self.btn_pmib, "primario")  # Marca visual de sucesso
         self._toggle_pdm_button()
         if not self.chk_pular.isChecked():
-            _pintar(self.btn_pdm, CINZA, CINZA_HOVER)
+            _pintar(self.btn_pdm, "secundario")
 
     def selecionar_excel_pdm(self) -> None:
         path = file_dialogs.ask_open_file("cria_fichas.excel_pdm", "excel",
@@ -429,12 +423,12 @@ class ModuloCriaFichas(ModuleFrame):
             self.file_path_pdm = path
             if not self._ia_em_andamento:
                 self.btn_run_ai.setEnabled(True)
-            _pintar(self.btn_pdm, COLORS["primary"], CINZA_HOVER)
+            _pintar(self.btn_pdm, "primario")
 
             # Pega apenas o nome do arquivo final (ex: "planilha.xlsx") ignorando as pastas
             nome_arquivo = path.split("/")[-1]
             self.lbl_status_pdm.mostrar_caminho(path, f"Selecionado: {nome_arquivo}")
-            _cor_rotulo(self.lbl_status_pdm, COLORS["accent"])
+            _cor_rotulo(self.lbl_status_pdm, "ok")
             self.log(f"PDMs carregados: {nome_arquivo}")
 
     # --- IA: clique -> worker -> revisão (uma cadeia, o botão desligado nela toda)
@@ -610,7 +604,7 @@ class ModuloCriaFichas(ModuleFrame):
         # um segundo robô.
         if not self._robo_ativo:
             self.btn_run_auto.setEnabled(True)
-        _pintar(self.btn_run_auto, COLORS["accent"], COLORS["primary_hover"])
+        _pintar(self.btn_run_auto, "primario")
         self.btn_run_ai.setEnabled(False)
         self.btn_run_ai.setText("3. Analisar (OK)")
 
@@ -959,13 +953,13 @@ class ModuloCriaFichas(ModuleFrame):
 
         # 2. Reseta a UI visualmente
         self.lbl_status.setText("Aguardando...")
-        _cor_rotulo(self.lbl_status, COR_ROTULO_APOIO)
-        _pintar(self.btn_pmib, CINZA, CINZA_HOVER)
+        _cor_rotulo(self.lbl_status, "legenda")
+        _pintar(self.btn_pmib, "secundario")
 
         self.lbl_status_pdm.setText("")
-        _cor_rotulo(self.lbl_status_pdm, COR_ROTULO_APOIO)
+        _cor_rotulo(self.lbl_status_pdm, "legenda")
         if not self.chk_pular.isChecked():
-            _pintar(self.btn_pdm, CINZA, CINZA_HOVER)
+            _pintar(self.btn_pdm, "secundario")
 
         self.entry_projeto.clear()
 
@@ -979,7 +973,7 @@ class ModuloCriaFichas(ModuleFrame):
         self.btn_run_ai.setEnabled(False)
         self.btn_run_ai.setText("3. Analisar (IA)")
         self.btn_run_auto.setEnabled(False)
-        _pintar(self.btn_run_auto, COLORS["primary"], COLORS["primary_hover"])
+        _pintar(self.btn_run_auto, "primario")
         self.btn_resumo.setEnabled(False)
         self.btn_save.setEnabled(False)
 
@@ -987,8 +981,8 @@ class ModuloCriaFichas(ModuleFrame):
         self.df_edicao_completo = None
         self.df_edicao_selecionado = None
         self.lbl_status_edicao.setText("Nenhum item selecionado.")
-        _cor_rotulo(self.lbl_status_edicao, COR_ROTULO_APOIO)
-        _pintar(self.btn_excel_edicao, CINZA, CINZA_HOVER)
+        _cor_rotulo(self.lbl_status_edicao, "legenda")
+        _pintar(self.btn_excel_edicao, "secundario")
         self.entry_novo_projeto.clear()
         self.progress_edicao.definir(0)
         self.btn_run_edicao.setEnabled(False)
@@ -1034,8 +1028,8 @@ class ModuloCriaFichas(ModuleFrame):
 
         self.log(f"Aba Edição: Selecionado {qtd} fichas para editar.")
         self.lbl_status_edicao.setText(f"{qtd} fichas selecionadas")
-        _cor_rotulo(self.lbl_status_edicao, COLORS["accent"])
-        _pintar(self.btn_excel_edicao, COLORS["primary"], CINZA_HOVER)
+        _cor_rotulo(self.lbl_status_edicao, "ok")
+        _pintar(self.btn_excel_edicao, "primario")
         self.btn_run_edicao.setEnabled(qtd > 0)
 
     def run_edicao_thread(self) -> None:

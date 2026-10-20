@@ -106,45 +106,54 @@ def test_abas_nao_apaga_o_fundo_do_que_vai_dentro(qt_interface, qtbot, folha_do_
     assert cor(botao, 5, 25) == tokens.ESCURO["primaria"].upper()
 
 
-def test_abas_cores_por_parametro(qt_interface, qtbot):
-    # As telas pintam fg_color="#2B2B2B", segmented_button_fg_color="#161616" e
-    # o selecionado em primary.
-    abas = Abas(cor_fundo="#2B2B2B", cor_barra="#161616", cor_selecionada=theme.COLORS["primary"],
-                cor_selecionada_hover=theme.COLORS["primary_hover"])
+def test_abas_sem_cor_propria(qt_interface, qtbot):
+    # 2026-10-20: as cores das abas saíram dos parâmetros (as telas pintavam
+    # "#2B2B2B"/"#161616" à mão) e foram para a folha do tema. Só sobra dizer se
+    # o quadro vai dentro de um cartão (`interno`: a superfície).
+    abas = Abas(interno=True)
     qtbot.addWidget(abas)
     abas.add("A")
-    assert "#2B2B2B" in abas.quadro.styleSheet()
-    folha = abas.barra.styleSheet()
-    assert "#161616" in folha and theme.COLORS["primary"] in folha
+    assert abas.quadro.property("interno") is True
+    for folha in (abas.quadro.styleSheet(), abas.barra.styleSheet()):
+        assert "#" not in folha.replace("#barra_abas", "").replace("#quadro_abas", "")
     padrao = Abas()
     qtbot.addWidget(padrao)
-    # 2026-10-20: os padrões vêm dos tokens (eram gray13 e gray29 da CTk, que saiu em 2026-10-15).
-    assert estilo.FUNDO_QUADRO_CTK in padrao.quadro.styleSheet()
-    assert tokens.ESCURO["superficie_alta"] in padrao.barra.styleSheet()
-    assert tokens.ESCURO["marca"] in padrao.barra.styleSheet()  # a aba escolhida
+    assert padrao.quadro.property("interno") is None
+    qss = estilo.folha_de_estilo()
+    p = tokens.ESCURO
+    assert f"#quadro_abas {{ background: {p['fundo']};" in qss
+    assert f'#quadro_abas[interno="true"] {{ background: {p["superficie"]}; }}' in qss
+    assert f"#barra_abas {{ background: {p['superficie_alta']}; }}" in qss
+    assert f"#barra_abas QPushButton:checked {{ background: {p['marca']};" in qss  # a aba escolhida
+    with pytest.raises(TypeError):
+        Abas(cor_fundo="#2B2B2B")
 
 
 # --- área rolável e barra de progresso ---------------------------------------
 
 def test_area_rolavel_devolve_area_e_layout(qt_interface, qtbot):
-    area, layout = blocos.area_rolavel(cor="#2B2B2B")
+    # 2026-10-20: o fundo é um papel (`fundo="cartao"`, regra da folha), não uma cor.
+    area, layout = blocos.area_rolavel(fundo="cartao")
     qtbot.addWidget(area)
     layout.addWidget(QLabel("linha"))
     assert area.widgetResizable()
     assert area.widget().layout() is layout
-    assert "#2B2B2B" in area.styleSheet()
+    assert area.property("fundo") == "cartao" and "background" not in area.styleSheet()
+    assert f'QScrollArea[fundo="cartao"] {{ background: {tokens.ESCURO["superficie"]}; }}' \
+        in estilo.folha_de_estilo()
     transparente, _ = blocos.area_rolavel()
     qtbot.addWidget(transparente)
-    assert "transparent" in transparente.styleSheet()
+    assert transparente.property("fundo") is None
 
 
 def test_barra_progresso_do_ctkprogressbar(qt_interface, qtbot):
-    barra = blocos.barra_progresso(largura=600, altura=12, cor=theme.COLORS["primary"])
+    barra = blocos.barra_progresso(largura=600, altura=12)
     qtbot.addWidget(barra)
     assert (barra.width(), barra.height()) == (600, 12)
     assert not barra.isTextVisible()
     folha = barra.styleSheet()
-    assert theme.COLORS["primary"] in folha and estilo.TRILHO_CTK in folha
+    # 2026-10-20: trilho e progresso são as cores da folha (QProgressBar), não da barra.
+    assert "background" not in folha
     assert "border-radius: 6px" in folha  # metade da altura: corner_radius=1000
     # set(0.4) da interface antiga numa barra de 200 x 8: o cheio termina em 8 + 0.4 * 192 = 84,8
     # (medido: 384 numa barra em x=300), não em 80.
@@ -158,7 +167,7 @@ def test_barra_progresso_do_ctkprogressbar(qt_interface, qtbot):
     assert curta.value() == 1000
     padrao = blocos.barra_progresso()
     qtbot.addWidget(padrao)
-    assert padrao.height() == 8 and estilo.AZUL_CTK in padrao.styleSheet()
+    assert padrao.height() == 8 and "background" not in padrao.styleSheet()
 
 
 # --- folha global: rádio, slider, tabela e lista crua ----------------------
@@ -179,11 +188,14 @@ def test_radio_e_slider_com_as_medidas_do_ctk(qt_interface, qtbot, folha_do_app)
         assert trecho in qss, trecho
 
 
-def test_slider_com_as_cores_da_tela(qt_interface, qtbot):
-    # Analisador: button_color e progress_color = primary.
-    s = blocos.slider(cor_botao=theme.COLORS["primary"], cor_percorrido=theme.COLORS["primary"])
+def test_slider_sem_cor_propria(qt_interface, qtbot):
+    # 2026-10-20: o Analisador pintava botão e trecho percorrido à mão; agora as
+    # duas cores são a `primaria` da folha.
+    s = blocos.slider()
     qtbot.addWidget(s)
-    assert s.styleSheet().count(theme.COLORS["primary"]) == 2
+    assert s.styleSheet() == ""
+    qss = estilo.folha_de_estilo()
+    assert f"border-radius: {estilo.ALTURA_SLIDER_CTK // 2}px; background: {tokens.ESCURO['primaria']}" in qss
 
 
 def test_tabela_e_lista_crua_com_as_cores_do_tk(qt_interface):
@@ -240,14 +252,16 @@ def test_botao_com_cor_de_fundo_e_hover_do_tema(qt_interface, qtbot):
     qtbot.addWidget(b)
     assert b.property("variante") == "secundario"
     assert "background" not in b.styleSheet() and "hover" not in b.styleSheet()
-    c = blocos.botao("x", cor_fundo="#3A3A3A", cor_hover="#454545")
-    qtbot.addWidget(c)
-    assert "#454545" not in c.styleSheet()
+    with pytest.raises(TypeError):   # o `cor_hover` saiu em 2026-10-20
+        blocos.botao("x", cor_fundo="#3A3A3A", cor_hover="#454545")
 
 
 def test_uma_cor_de_trilho_so(qt_interface):
+    # 2026-10-20: o trilho do interruptor é o `borda` da paleta, o mesmo do
+    # slider (add-page) na folha; o TRILHO_CTK da CTk não pinta mais nada.
     from sigft.app_qt.widgets import controles
-    assert controles.COR_TRILHO == estilo.TRILHO_CTK
+    assert not hasattr(controles, "COR_TRILHO")
+    assert f"QSlider::add-page:horizontal {{ background: {tokens.ESCURO['borda']};" in estilo.folha_de_estilo()
 
 
 def test_sem_regras_de_qtabwidget(qt_interface):
@@ -260,7 +274,7 @@ def test_area_rolavel_nao_apaga_o_fundo_dos_filhos(qt_interface, qtbot, folha_do
     # e o botão dentro da área perdiam o fundo.
     from PySide6.QtGui import QImage
 
-    area, layout = blocos.area_rolavel(cor="#2B2B2B")
+    area, layout = blocos.area_rolavel(fundo="cartao")
     cartao = blocos.cartao(layout)
     botao = blocos.botao("Gerar", variante="perigo", largura=120, altura=40)
     cartao.addWidget(botao)

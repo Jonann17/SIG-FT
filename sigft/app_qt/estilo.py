@@ -69,15 +69,81 @@ MENU_ESCOLHIDO = {
     "claro": {"fundo": "#E3F1F2", "texto": tokens.CLARO["marca"]},
 }
 
-# --- Cores que os widgets pintados à mão ainda leem --------------------------------
-# Tema "dark-blue" da interface antiga. NÃO entram mais na folha do app (que é dos
-# tokens); continuam aqui porque `widgets/controles.py`, `blocos.py`, `abas.py` e
-# algumas telas os importam pelo nome. Saem quando essas peças lerem os tokens.
-AZUL_CTK = "#1F538D"
-AZUL_CTK_HOVER = "#14375E"
-BORDA_CTK = "#949A9F"
-TEXTO_DESABILITADO_CTK = "gray60"
-TEXTO_BOTAO_CTK = "#DCE4EE"
+# --- O tema de agora ------------------------------------------------------------
+# 2026-10-20: o único lugar que diz qual tema está valendo. As peças desenhadas
+# com QPainter (`widgets/controles.py`, o delegado das caixas) leem a paleta por
+# `paleta_atual()` NA HORA DE PINTAR; o resto da cor está na folha. A troca de
+# tema (Task 7 do plano) muda só isto e reaplica a folha.
+TEMA_ATUAL = "escuro"
+
+
+def paleta_atual() -> dict[str, str]:
+    """A paleta (`tokens.paleta`) do tema que está valendo."""
+    return tokens.paleta(TEMA_ATUAL)
+
+
+def definir_propriedade(widget, nome: str, valor) -> None:
+    """`setProperty` que a folha enxerga na hora: o Qt só reavalia os seletores
+    `[nome="..."]` de um widget já polido quando ele é repolido."""
+    widget.setProperty(nome, valor)
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+    widget.update()
+
+
+def definir_papel(rotulo, papel: str | None) -> None:
+    """Troca o papel de texto (`QLabel[papel=...]`) de um rótulo já na tela;
+    `None` volta à cor do texto comum."""
+    definir_propriedade(rotulo, "papel", papel)
+
+
+def definir_variante(botao, variante: str | None) -> None:
+    """Troca a variante (`QPushButton[variante=...]`) de um botão já na tela."""
+    definir_propriedade(botao, "variante", variante)
+
+
+# --- Cores do mural de atividades (2026-10-20) -------------------------------------
+# A cor de cada faixa é a do TEXTO do cabeçalho e do prazo, sobre o `fundo` e
+# sobre a `superficie` -- por isso duas, uma por tema, cada uma com 4,5:1 nos
+# dois fundos (teste em `test_qt_sem_cor_crua.py`). O roxo da "travada" é
+# deliberadamente fora da escala vermelho->laranja->verde do prazo: travada não
+# é "mais atrasada", é outra natureza de problema. O laranja e o verde-água do
+# claro são mais escuros que os tokens `aviso`/`primaria_hover`, que não chegam
+# a 4,5:1 sobre o fundo claro.
+COR_DA_FAIXA = {
+    "escuro": {"atrasada": tokens.ESCURO["perigo"], "travada": "#B07CE8",
+               "deveria_ter_comecado": tokens.ESCURO["aviso"], "em_andamento": "#4DA3A9",
+               "comeca_hoje": tokens.ESCURO["primaria"], "proximos_dias": tokens.ESCURO["texto_suave"]},
+    "claro": {"atrasada": tokens.CLARO["perigo"], "travada": "#7B3FC4",
+              "deveria_ter_comecado": "#9A5C00", "em_andamento": "#047A83",
+              "comeca_hoje": tokens.CLARO["primaria"], "proximos_dias": tokens.CLARO["texto_suave"]},
+}
+# A barra lateral de cada cartão, da criticidade 1 (neutra) à 5 (vermelho): não é
+# texto, a mesma escala nos dois temas; a 1 e a sem criticidade seguem o tema.
+COR_DA_CRITICIDADE = {5: "#D32F2F", 4: "#FF6F3C", 3: "#FFA726", 2: "#4DA3A9"}
+
+# --- Cores de fundo que as telas escreviam à mão (2026-10-20) ---------------------
+# `blocos.variante_da_cor` troca cada uma pela variante de botão que a substitui;
+# nenhuma tela passa mais `cor_fundo` (guarda em `tests/test_qt_botoes.py`), a
+# tabela fica para o `cor_fundo` que ainda chegar de fora.
+VERDE_TK = "#008000"
+VERDE_ESCURO = "#2E7D32"
+VERMELHO_PARAR = "#8B2E2E"
+VERMELHO_CRITICO = "#D32F2F"
+AZUL_MARCA_ANTIGO = "#035D67"
+VARIANTE_DA_COR = {
+    tokens.ESCURO["marca"]: "primario", AZUL_MARCA_ANTIGO: "primario",
+    tokens.ESCURO["sucesso"]: "primario", VERDE_TK: "primario", VERDE_ESCURO: "primario",
+    tokens.ESCURO["perigo_fundo"]: "perigo", VERMELHO_PARAR: "perigo", VERMELHO_CRITICO: "perigo",
+    "TRANSPARENT": "fantasma",
+}
+
+# As cores do tema "dark-blue" da CTk que os widgets pintados à mão liam
+# (AZUL_CTK, AZUL_CTK_HOVER, BORDA_CTK, TEXTO_BOTAO_CTK, TEXTO_DESABILITADO_CTK,
+# TRILHO_CTK, FUNDO_QUADRO_CTK, FUNDO_QUADRO_INTERNO_CTK) saíram em 2026-10-20:
+# toda peça lê a paleta (`paleta_atual()`) ou a folha. A varredura
+# `tests/test_qt_sem_cor_crua.py` acusa o nome que voltar fora daqui.
+
 # Altura do menu de opções (`widgets.controles.MenuDeOpcoes`, que o desenha): a
 # de campo desde 2026-10-20 (era os 28 do CTkOptionMenu); a regra QComboBox da
 # folha já dá 32, e o `sizeHint` dele tem de dizer o mesmo.
@@ -345,15 +411,12 @@ QScrollBar:vertical {{ background: transparent; width: 10px; }}
 QScrollBar::handle:vertical {{ background: {p['borda']}; border-radius: 5px; min-height: 30px; }}
 QScrollBar::handle:vertical:hover {{ background: {p['texto_suave']}; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
-""" + _folha_e31(tema)
+""" + _folha_e31(tema) + _folha_telas(tema)
 
 
 # --- E3.1: rádio, slider, barra de progresso, abas, área rolável, tabela ---------
 # (Interruptor/CTkSwitch, CTkOptionMenu e a caixa de marcar pintada são de
 # `widgets/controles.py`.) As MEDIDAS seguem as da E3.1; as cores, os tokens.
-# TRILHO_CTK é o `fg_color` escuro de CTkProgressBar e CTkSlider (a parte vazia),
-# que `blocos` e `controles` ainda pintam à mão.
-TRILHO_CTK = "#4A4D50"
 # Rádio 22x22: borda 3 desmarcado, 6 marcado. No Qt `width`/`height` do
 # ::indicator NÃO contam a borda.
 TAMANHO_RADIO_CTK = 22
@@ -367,14 +430,11 @@ VAO_TEXTO_RADIO_CTK = 6
 ALTURA_SLIDER_CTK = 16
 # Barra de rolagem das listas: faixa de 16 px, alça de 8 (4 de cada lado).
 LARGURA_ROLAGEM_CTK = 16
-# Fundo do quadro das abas (`widgets/abas.Abas`) e de painéis: 2026-10-20, dos
-# tokens -- o gray13/gray16 da CTk (#212121/#292929) brigava com o fundo novo.
-# Na CTk o quadro era INVISÍVEL: gray13 era o próprio fundo antigo (#212121), e o
-# gray16 de dentro de um cartão era quase o cartão (#2B2B2B). Mantido: quadro
-# sobre a tela = `fundo` (os cartões `superficie` de dentro continuam se vendo);
-# quadro dentro de um cartão = `superficie`. Tema escuro até a troca de tema.
-FUNDO_QUADRO_CTK = tokens.ESCURO["fundo"]
-FUNDO_QUADRO_INTERNO_CTK = tokens.ESCURO["superficie"]
+# Fundo do quadro das abas (`widgets/abas.Abas`): regra `#quadro_abas` de
+# `_folha_telas`. Na CTk o quadro era INVISÍVEL (gray13 era o próprio fundo
+# antigo). Mantido: quadro sobre a tela = `fundo` (os cartões `superficie` de
+# dentro continuam se vendo); quadro dentro de um cartão (`Abas(interno=True)`)
+# = `superficie`.
 
 # Linha da tabela (QTreeView) e altura do cabeçalho: 24 px, degrau da escala de
 # espaço (2026-10-20; era o Treeview nativo do Tk, de 20 px).
@@ -484,3 +544,73 @@ def botao_com_simbolos(botao) -> None:
     `FAMILIAS_COM_SIMBOLO` à folha dele (só o desenho, como no Tk, e não o emoji
     do Noto Emoji). Era repetido na Criação de Fichas e no AutoSpec."""
     botao.setStyleSheet(f"{botao.styleSheet()} QPushButton {{ font-family: {FAMILIAS_COM_SIMBOLO}; }}")
+
+
+# --- Cores que as telas e os widgets escreviam à mão (2026-10-20) -----------------
+# Cada cor que morava num `setStyleSheet` de tela virou regra aqui, por
+# objectName ou propriedade: assim a troca de tema alcança tudo. O hover da aba
+# escolhida (o `primary_hover` antigo, a marca mais clara): branco sobre ele dá
+# 5,1:1; sobre a marca, 7,6:1 -- o branco serve nos dois temas.
+MARCA_HOVER = "#047A83"
+TEXTO_SOBRE_MARCA = "#FFFFFF"
+
+
+def _folha_telas(tema: str = "escuro") -> str:
+    """Papéis, cartões, abas, mural e janelas -- as cores que eram das telas.
+
+    Num bloco à parte pelo mesmo motivo do `_folha_e31`. Notas fora da folha:
+    * `destaque`: título de seção em verde (a `primaria`): 4,7:1 ou mais no
+      fundo, na superfície e na superfície alta, nos dois temas (teste);
+    * o cartão com borda (`#cartao[borda=...]`): o do AutoSpec que chama a atenção;
+    * abas: medidas na folha local de `widgets/abas.py`; aqui só as cores;
+    * mural: `COR_DA_FAIXA`/`COR_DA_CRITICIDADE` (acima), por propriedade.
+    """
+    p = tokens.paleta(tema)
+    menu = MENU_ESCOLHIDO["claro" if tema == "claro" else "escuro"]
+    faixas = COR_DA_FAIXA["claro" if tema == "claro" else "escuro"]
+    raio, raio_cartao = tokens.RAIO["controle"], tokens.RAIO["cartao"]
+    regras = [
+        f'QLabel[papel="destaque"] {{ color: {p["primaria"]}; }}',
+        f'QLabel[papel="texto"] {{ color: {p["texto"]}; }}',
+        # O título do módulo tem regra por objectName (ganha do papel): o
+        # vermelho da ação destrutiva (Apagar LMR) precisa da sua.
+        f'#titulo_modulo[papel="erro"] {{ color: {p["perigo"]}; }}',
+        f'#cartao[borda="destaque"] {{ border: 1px solid {p["primaria"]}; }}',
+        f'#cartao[borda="aviso"] {{ border: 1px solid {p["aviso"]}; }}',
+        f'#cartao[fundo="alto"] {{ background: {p["superficie_alta"]}; }}',
+        f'QScrollArea[fundo="cartao"] {{ background: {p["superficie"]}; }}',
+        f'QScrollArea[fundo="tela"] {{ background: {p["fundo"]}; }}',
+        f'#janela_resultados, #janela_painel, #topo_revisao {{ background: {p["fundo"]}; }}',
+        f'#painel_home {{ background: {p["superficie"]}; border-radius: {raio_cartao}px; }}',
+        f'#quadro_pdm {{ background: {p["superficie_alta"]}; }}',
+        # Abas (widgets/abas.py)
+        f'#quadro_abas {{ background: {p["fundo"]}; border-radius: {raio}px; }}',
+        f'#quadro_abas[interno="true"] {{ background: {p["superficie"]}; }}',
+        f'#barra_abas {{ background: {p["superficie_alta"]}; }}',
+        f'#barra_abas QPushButton {{ background: {p["superficie_alta"]}; color: {p["texto"]};'
+        f' border-color: {p["superficie_alta"]}; }}',
+        f'#barra_abas QPushButton:hover {{ background: {p["borda"]}; }}',
+        f'#barra_abas QPushButton:checked {{ background: {p["marca"]}; color: {TEXTO_SOBRE_MARCA}; }}',
+        f'#barra_abas QPushButton:checked:hover {{ background: {MARCA_HOVER}; }}',
+        f'#barra_abas QPushButton:disabled {{ color: {p["texto_suave"]}; }}',
+        # Busca PMIB: o cartão de cada achado, mais fundo que a lista onde está.
+        f'#cartao_resultado {{ background: {p["fundo"]}; border: 1px solid {p["borda"]};'
+        f' border-radius: 8px; }}',
+        f'#cartao_resultado QPlainTextEdit {{ color: {p["texto"]};'
+        f' selection-background-color: {menu["fundo"]}; selection-color: {menu["texto"]}; }}',
+        f'#cartao_resultado QPlainTextEdit[papel="legenda"] {{ color: {p["texto_suave"]}; }}',
+        f'QPlainTextEdit#caixa_texto {{ background: {p["superficie_alta"]}; color: {p["texto"]}; }}',
+        f'QPlainTextEdit#caixa_texto QScrollBar::handle:vertical {{ background: {p["borda"]}; }}',
+        f'QPlainTextEdit#caixa_texto QScrollBar::handle:vertical:hover {{ background: {p["texto_suave"]}; }}',
+        f'QListWidget[com_borda="true"] {{ border: 1px solid {p["borda"]}; }}',
+        # Mural de atividades (widgets/mural.py)
+        f'#corpo_cartao {{ background: {p["superficie"]}; border-radius: {raio}px; }}',
+        f'#barra_criticidade {{ background: {p["borda"]}; border: none; border-radius: 3px; }}',
+        f'#barra_criticidade[criticidade="1"] {{ background: {p["texto_suave"]}; }}',
+    ]
+    for nivel, cor in COR_DA_CRITICIDADE.items():
+        regras.append(f'#barra_criticidade[criticidade="{nivel}"] {{ background: {cor}; }}')
+    for faixa, cor in faixas.items():
+        regras.append(f'QLabel[faixa="{faixa}"] {{ color: {cor}; }}')
+        regras.append(f'#regua_faixa[faixa="{faixa}"] {{ background: {cor}; border: none; }}')
+    return "\n" + "\n".join(regras) + "\n"

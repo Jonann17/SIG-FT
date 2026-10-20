@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QMessageBox
 
-from sigft.app import backends, theme
+from sigft.app import backends
 from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO, msg_ficha_preenchida
 from sigft.app_qt.views import upload_tech_specs as tela_mod
 from sigft.app_qt.views._upload_comum import MSG_ROBO_OCUPADO
@@ -168,8 +168,8 @@ def test_seletores(tela, monkeypatch):
     assert tela.lbl_status_status.text() == "_STATUS_PMIB.xlsx"
     assert tela.lbl_master_status.text() == "PDMs SAM-GM.xlsx"
     for rotulo, botao in ((tela.lbl_status_status, tela.btn_status), (tela.lbl_master_status, tela.btn_master)):
-        assert theme.COLORS["accent"] in rotulo.styleSheet()
-        assert theme.COLORS["primary"] in botao.styleSheet()
+        assert rotulo.property("papel") == "ok"  # cor da folha pelo papel (2026-10-20)
+        assert botao.property("variante") == "primario"
 
 
 def test_fila_loga_as_tres_acoes(tela, monkeypatch, qtbot):

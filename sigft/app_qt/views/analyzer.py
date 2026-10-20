@@ -28,22 +28,15 @@ from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QVBoxLayout,
 )
 
-from sigft.app import theme
-from sigft.app.theme import COLORS
 from sigft.app_qt import estilo, interface
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets import pickers as app_pickers
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.services import analyzer_relatorio
 
-# CTkButton "Configurar Pesos": fg_color/hover_color escritos à mão lá.
-COR_BOTAO_CONFIG = "#3A3A3A"
-COR_BOTAO_CONFIG_HOVER = "#454545"
-
-
-def _rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, cor: str | None = None,
+def _rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, papel: str | None = None,
             alinhar: str = "esquerda") -> QLabel:
-    etiqueta = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, cor=cor, alinhar=alinhar)
+    etiqueta = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, papel=papel, alinhar=alinhar)
     etiqueta.setWordWrap(False)
     return etiqueta
 
@@ -61,8 +54,8 @@ class JanelaPesos(QDialog):
         raiz = QVBoxLayout(self)
         raiz.setContentsMargins(10, 10, 10, 0)   # scroll: padx=10, pady=10
         raiz.setSpacing(0)
-        # fg_color padrão do CTkScrollableFrame no tema dark-blue: gray13 (medido), cantos de 6.
-        self.area, corpo = blocos.area_rolavel(raiz, cor="gray13", barra_sempre_visivel=True)
+        # O CTkScrollableFrame de fundo padrão (o fundo da janela), cantos de 6.
+        self.area, corpo = blocos.area_rolavel(raiz, fundo="tela", barra_sempre_visivel=True)
         raiz.addSpacing(20)                      # scroll (…, 10) + salvar (10, …)
 
         self.titulo = _rotulo("Pesos dos Campos Fixos", tamanho=14, negrito=True, alinhar="centro")
@@ -83,7 +76,7 @@ class JanelaPesos(QDialog):
         # Campo Especial: Variáveis Dinâmicas
         corpo.addSpacing(10)                     # traço (10, …); a última linha já pôs os seus 2
         corpo.addWidget(_rotulo("--------------------------------",
-                                cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO), alinhar="centro"))
+                                papel="legenda", alinhar="centro"))
         corpo.addSpacing(15)                     # traço (…, 10) + título (5, …)
         corpo.addWidget(_rotulo("Configuração Global", tamanho=14, negrito=True, alinhar="centro"))
         corpo.addSpacing(5)                      # título (…, 5); a linha põe os seus 5
@@ -155,7 +148,7 @@ class ModuloAnalyzer(ModuleFrame):
         self.area, corpo = blocos.area_rolavel(self.content_layout, barra_sempre_visivel=True)
 
         self.lbl_subtitulo = _rotulo("Validação e Pontuação de Fichas Técnicas via IA", tamanho=16,
-                                     cor=COLORS["text_light"], alinhar="centro")
+                                     alinhar="centro")
         corpo.addWidget(self.lbl_subtitulo)
         corpo.addSpacing(30)                     # subtítulo (…, 20) + cartão (10, …)
 
@@ -163,18 +156,16 @@ class ModuloAnalyzer(ModuleFrame):
         criterios = self._cartao(corpo)
         self.cartao_criterios = criterios.parentWidget()
         criterios.addWidget(_rotulo("1. Critérios de Aprovação e Pesos", tamanho=14, negrito=True,
-                                    cor=COLORS["accent"]))
+                                    papel="destaque"))
         criterios.addSpacing(10)                 # título (…, 5) + controles (5, …)
         controles = QHBoxLayout()
         controles.setContentsMargins(0, 0, 0, 0)
         controles.setSpacing(0)
         self.lbl_score = _rotulo(f"Nota Mínima: {int(self.score_value)}%", tamanho=12, negrito=True,
-                                 cor=COLORS["primary"])
+                                 papel="destaque")
         controles.addWidget(self.lbl_score)
         controles.addSpacing(20)                 # padx=(0, 20)
-        self.slider = blocos.slider(minimo=0, maximo=100, largura=300, cor_botao=COLORS["primary"],
-                                    cor_percorrido=COLORS["primary"],
-                                    cor_botao_hover=estilo.AZUL_CTK_HOVER)
+        self.slider = blocos.slider(minimo=0, maximo=100, largura=300)
         self.slider.setValue(int(self.score_value))
         self.slider.valueChanged.connect(self._update_slider_label)
         controles.addWidget(self.slider)
@@ -192,7 +183,7 @@ class ModuloAnalyzer(ModuleFrame):
         arquivos = self._cartao(corpo)
         self.cartao_arquivos = arquivos.parentWidget()
         arquivos.addWidget(_rotulo("2. Seleção de Arquivos e Pastas", tamanho=14, negrito=True,
-                                   cor=COLORS["accent"]))
+                                   papel="destaque"))
 
         # [CP 7.2] Cada seletor declara a sua chave da memoria de caminhos UMA
         # vez, aqui; a tela nunca chama file_dialogs.
@@ -252,7 +243,7 @@ class ModuloAnalyzer(ModuleFrame):
 
     @staticmethod
     def _cartao(corpo) -> QVBoxLayout:
-        """CTkFrame #2B2B2B de cantos 8; as peças vão com padx=15 e começam com pady 10."""
+        """O cartão (`blocos.cartao`); as peças vão com padx=15 e começam com pady 10."""
         layout = blocos.cartao(corpo)
         layout.setContentsMargins(15, 10, 15, 0)
         layout.setSpacing(0)

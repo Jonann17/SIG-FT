@@ -18,7 +18,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox, QStyle
 
 from sigft import config as sigft_config
-from sigft.app.theme import COLORS
 from sigft.app_qt import estilo
 from sigft.app_qt.views import home as home_mod
 from sigft.app_qt.widgets import controles
@@ -188,10 +187,11 @@ def test_textos_iguais_aos_da_home_antiga():
 
 
 def test_desenho_do_mural_igual_ao_da_home_antiga():
-    # 2026-10-20: "atrasada" usa danger, que agora vem do token perigo_fundo (#C9302C).
-    assert mural_qt.COR_FAIXA == {
-        "atrasada": "#C9302C", "travada": "#B07CE8", "deveria_ter_comecado": "#FFA726",
-        "em_andamento": "#047A83", "comeca_hoje": "#00C975", "proximos_dias": "gray70"}
+    # 2026-10-20: a faixa diz o seu nome (a propriedade `faixa`); a cor é da folha,
+    # uma por tema (`estilo.COR_DA_FAIXA`), com o roxo da travada mantido no escuro.
+    assert mural_qt.COR_FAIXA == {f: f for f in (
+        "atrasada", "travada", "deveria_ter_comecado", "em_andamento", "comeca_hoje", "proximos_dias")}
+    assert estilo.COR_DA_FAIXA["escuro"]["travada"] == "#B07CE8"
     assert mural_qt.ROTULO_FAIXA == {
         "atrasada": "ATRASADO", "travada": "TRAVADA", "deveria_ter_comecado": "DEVERIA TER COMEÇADO",
         "em_andamento": "EM ANDAMENTO", "comeca_hoje": "COMEÇA HOJE", "proximos_dias": "PRÓXIMOS 7 DIAS"}
@@ -202,8 +202,11 @@ def test_desenho_do_mural_igual_ao_da_home_antiga():
         "em_andamento": "alguém está tocando agora",
         "comeca_hoje": "entra na fila de hoje",
         "proximos_dias": "para se preparar"}
-    assert mural_qt.COR_CRITICIDADE == {5: "#D32F2F", 4: "#FF6F3C", 3: "#FFA726", 2: "#4DA3A9", 1: "#5A5A5A"}
-    assert mural_qt.COR_CRITICIDADE_PADRAO == "#3A3A3A"
+    # A escala de 2 a 5 é a mesma nos dois temas; a 1 e a sem criticidade seguem o
+    # tema (`texto_suave` e `borda`; eram os cinzas #5A5A5A e #3A3A3A).
+    assert mural_qt.COR_CRITICIDADE == {5: "#D32F2F", 4: "#FF6F3C", 3: "#FFA726", 2: "#4DA3A9",
+                                        1: "texto_suave"}
+    assert mural_qt.COR_CRITICIDADE_PADRAO == "borda"
 
 
 # =============================================================================
@@ -511,11 +514,13 @@ def test_falha_ao_atualizar_vira_aviso_e_a_lista_que_havia_fica(home, qtbot, red
         "Não foi possível atualizar a lista de modelos (ProxyError: 407 Proxy Authentication "
         "Required). Continua valendo a lista de 15/10.")
     assert _itens(home.opt_modelo_ia_global) == itens_antes
-    assert home.lbl_catalogo_ia.styleSheet() != cor_normal, "o aviso tem a cor de alerta"
+    # 2026-10-20: a cor de alerta é o papel `erro` da folha (a folha local não muda).
+    assert home.lbl_catalogo_ia.property("papel") == "erro", "o aviso tem a cor de alerta"
+    assert home.lbl_catalogo_ia.styleSheet() == cor_normal
     # Trocar de provedor (ou atualizar de novo com sucesso) tira o aviso.
     _escolher(home.opt_provider_ia, ROTULO_GEMINI)
     assert "Não foi possível" not in _texto(home.lbl_catalogo_ia)
-    assert home.lbl_catalogo_ia.styleSheet() == cor_normal
+    assert home.lbl_catalogo_ia.property("papel") == "legenda"
 
 
 def test_falha_ao_atualizar_sem_lista_nenhuma_diz_o_motivo(home, qtbot, rede):
@@ -890,7 +895,7 @@ def test_mural_com_erro_mostra_so_o_erro(qt_interface, qtbot):
     mural_qt.montar(pai, {f: [] for f in at.FAIXAS}, "09/10/2026", "Nao encontrei o arquivo.")
     [rotulo] = pai.findChildren(QLabel)
     assert _texto(rotulo) == "Nao encontrei o arquivo."
-    assert COLORS["danger"].lower() in rotulo.styleSheet().lower()
+    assert rotulo.property("papel") == "erro"   # o vermelho é da folha (2026-10-20)
 
 
 def test_mural_vazio_diz_que_nada_esta_pendente(qt_interface, qtbot):
@@ -923,7 +928,8 @@ def test_mural_faixas_na_ordem_de_urgencia_e_sem_as_vazias(qt_interface, qtbot):
 
 def test_cor_da_barra_de_criticidade():
     assert mural_qt._cor_da_criticidade(5) == "#D32F2F"
-    assert mural_qt._cor_da_criticidade("1") == "#5A5A5A"
+    assert mural_qt._cor_da_criticidade("1") == "texto_suave"   # o tema decide (2026-10-20)
+    assert mural_qt._nivel_da_criticidade("muito") == 0
     assert mural_qt._cor_da_criticidade("muito") == mural_qt.COR_CRITICIDADE_PADRAO
     assert mural_qt._cor_da_criticidade(None) == mural_qt.COR_CRITICIDADE_PADRAO
 

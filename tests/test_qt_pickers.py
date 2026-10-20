@@ -1,4 +1,3 @@
-from sigft.app import theme
 from sigft.app_qt.widgets import pickers
 
 
@@ -12,7 +11,9 @@ def test_arquivo_escolhido_fica_verde_e_avisa(qt_interface, qtbot):
     linha.botao.click()
     assert linha.valor == "/tmp/pasta/STATUS.xlsx"
     assert linha.label_status.text() == "STATUS.xlsx"
-    assert theme.COLORS["accent"] in linha.label_status.styleSheet()
+    # 2026-10-20: o verde é o papel `ok` da folha do tema, não uma cor no rótulo.
+    assert linha.label_status.property("papel") == "ok"
+    assert linha.botao.property("variante") == "primario"
     assert avisos == ["/tmp/pasta/STATUS.xlsx"]
 
 
@@ -97,13 +98,13 @@ def _dialogo_que_devolve(valor, registro=None):
 
 
 def test_comeca_vazio_e_cinza(qt_interface, qtbot):
-    from sigft.app_qt.estilo import cinza_tk
-
     linha = pickers.FilePickerRow(chave="x.y", categoria="excel", texto_botao="Selecionar")
     qtbot.addWidget(linha)
     assert linha.valor is None
     assert linha.label_status.text() == pickers.TEXTO_SEM_ARQUIVO
-    assert cinza_tk(theme.COR_TEXTO_APOIO) in linha.label_status.styleSheet()
+    # 2026-10-20: o cinza é o papel `legenda` da folha; o botão, o secundário.
+    assert linha.label_status.property("papel") == "legenda"
+    assert linha.botao.property("variante") == "secundario"
 
 
 def test_callback_nao_dispara_quando_o_usuario_cancela(qt_interface, qtbot):

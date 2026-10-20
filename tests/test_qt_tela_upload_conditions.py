@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QMessageBox
 
-from sigft.app import backends, theme
+from sigft.app import backends
 from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO, msg_falha_ao_salvar
 from sigft.app_qt.views import upload_conditions as tela_mod
 from sigft.app_qt.views._upload_comum import MSG_ROBO_OCUPADO
@@ -210,8 +210,8 @@ def test_selecionar_status(tela, monkeypatch):
                          {"titulo": "Selecione _STATUS_PMIB", "filetypes": [("Excel", "*.xlsx;*.xlsm")]})]
     assert tela.caminho_status == "/d/pasta/_STATUS_PMIB.xlsx"
     assert tela.lbl_status_status.text() == "_STATUS_PMIB.xlsx"
-    assert theme.COLORS["accent"] in tela.lbl_status_status.styleSheet()
-    assert theme.COLORS["primary"] in tela.btn_status.styleSheet()
+    assert tela.lbl_status_status.property("papel") == "ok"  # cor da folha pelo papel (2026-10-20)
+    assert tela.btn_status.property("variante") == "primario"
 
 
 def test_cancelar_o_seletor_de_status_nao_mexe(tela, monkeypatch):
@@ -395,8 +395,8 @@ def test_selecao_de_fichas(tela, selecao, monkeypatch):
     assert kw["geometria"] == "500x400" and kw["modal"] and kw["com_selecionar_todos"]
     assert kw["devolver_indices"] and kw["fonte_lista"] == ("Consolas", 12)
     assert kw["fonte_instrucao"] == ("Roboto", 14, "bold")
-    assert kw["estilo_lista"]["bg"] == "#1E1E1E"
-    assert kw["estilo_lista"]["selectbackground"] == theme.COLORS["primary"]
+    # 2026-10-20: a lista não passa mais cor (são as da folha); só a borda.
+    assert kw["estilo_lista"] == {"highlightthickness": 0, "borderwidth": 0}
     kw["ao_confirmar"]([2, 0])
     assert iniciados == [[{"pmib_codigo": "C"}, {"pmib_codigo": "A"}]]
     kw["ao_confirmar"]([])

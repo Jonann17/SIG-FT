@@ -208,7 +208,7 @@ def test_seletores_usam_a_memoria_de_caminhos(tela):
     assert tela.temp_refs == ["/m/a.pdf", "/m/b.txt"]
     assert tela.lbl_refs.text() == "Manuais: 2 arquivos"
     for rotulo in (tela.lbl_status, tela.lbl_sheet, tela.lbl_refs):
-        assert "#FFFFFF" in rotulo.styleSheet()
+        assert rotulo.property("papel") is None   # o texto comum da folha (era #FFFFFF; 2026-10-20)
 
 
 def test_cancelar_o_dialogo_nao_muda_nada(tela):
@@ -218,7 +218,7 @@ def test_cancelar_o_dialogo_nao_muda_nada(tela):
     assert tela.status_pmib_path is None and tela.temp_sheet is None and tela.temp_refs == []
     assert tela.lbl_status.text() == "Nenhum _STATUS_PMIB selecionado"
     assert tela.lbl_sheet.text() == "Ficha: [Nenhuma]"
-    assert "#808080" in tela.lbl_sheet.styleSheet()
+    assert tela.lbl_sheet.property("papel") == "legenda"
 
 
 def test_a_seta_do_adicionar_sai_da_fonte_de_simbolos(tela):
@@ -263,7 +263,7 @@ def test_adicionar_a_fila_e_remover(tela):
                           {"sheet": "/lote/b.xlsx", "refs": []}]
     # Os temporários voltam ao começo depois de cada "Adicionar".
     assert tela.temp_sheet is None and tela.temp_refs == []
-    assert tela.lbl_sheet.text() == "Ficha: [Nenhuma]" and "#808080" in tela.lbl_sheet.styleSheet()
+    assert tela.lbl_sheet.text() == "Ficha: [Nenhuma]" and tela.lbl_sheet.property("papel") == "legenda"
     assert tela.lbl_refs.text() == "Manuais: 0 arquivos"
     assert tela.rotulo_fila_vazia is None
     assert [r.text() for r, _ in tela.linhas_fila] == ["#1: a.xlsx (+2 manuais)", "#2: b.xlsx (+0 manuais)"]

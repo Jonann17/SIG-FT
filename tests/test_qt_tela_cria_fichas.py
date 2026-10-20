@@ -18,7 +18,7 @@ from sigft.app import backends, theme
 from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA, MSG_LOGIN_PAGINA_PRINCIPAL
 from sigft.app_qt import estilo
 from sigft.app_qt.views import cria_fichas as tela_mod
-from sigft.app_qt.widgets import controles, revisao_portal
+from sigft.app_qt.widgets import revisao_portal
 from sigft.app_qt.views.janelas import DecisaoRobo
 
 COLORS = theme.COLORS
@@ -256,26 +256,27 @@ def test_cores_dos_botoes_e_rotulos(tela):
     for b in (tela.btn_run_ai, tela.btn_run_auto, tela.btn_save, tela.btn_run_edicao):
         assert b.property("variante") == "primario"
     assert tela.btn_reset.property("variante") == "perigo"
+    # 2026-10-20: nenhum botão ou rótulo tem cor própria (a folha do tema pinta pela
+    # variante e pelo papel; uma cor escrita aqui ficaria escura no tema claro).
     for b in (tela.btn_run_ai, tela.btn_run_auto, tela.btn_resumo, tela.btn_save, tela.btn_reset,
               tela.btn_run_edicao):
-        assert f"color: {COLORS['text_white']}" in _folha(b)
+        assert "color" not in _folha(b)
     assert "font-size: 14px" in _folha(tela.btn_run_ai) and "bold" in _folha(tela.btn_run_ai)
     assert "font-size: 12px" in _folha(tela.btn_resumo) and "font-size: 12px" in _folha(tela.btn_save)
     for r in (tela.rotulo_etapa1, tela.rotulo_etapa2, tela.rotulo_etapa1_edicao, tela.rotulo_etapa2_edicao):
-        assert COLORS["accent"] in _folha(r) and "16px" in _folha(r)
-    assert "#808080" in _folha(tela.lbl_status) and "#808080" in _folha(tela.lbl_status_edicao)
-    # CTkLabel sem text_color: o gray84 do tema (#D6D6D6), não o text_light do app.
+        assert r.property("papel") == "destaque" and "16px" in _folha(r)
+    assert tela.lbl_status.property("papel") == "legenda"
+    assert tela.lbl_status_edicao.property("papel") == "legenda"
+    # CTkLabel sem text_color: o texto comum da folha.
     for r in (tela.rotulo_projeto, tela.rotulo_pmib, tela.rotulo_novo_projeto, tela.rotulo_excel_edicao):
-        assert f"color: {controles.COR_TEXTO_CTK}" in _folha(r), r.text()
-    assert controles.COR_TEXTO_CTK == "#D6D6D6"
-    assert COLORS["accent"] in tela.progress.styleSheet()
-    assert COLORS["accent"] in tela.progress_edicao.styleSheet()
+        assert r.property("papel") is None and "color" not in _folha(r), r.text()
+    assert "background" not in tela.progress.styleSheet()   # o progresso é a `primaria` da folha
+    assert "background" not in tela.progress_edicao.styleSheet()
     # O "▶" sai da fonte de símbolos (só o triângulo, como no Tk), não do Noto
     # Emoji (o "play" dentro de um quadrado).
     familias = _folha(tela.btn_run_edicao)
     assert familias.index("Segoe UI Symbol") < familias.index("DejaVu Sans") < familias.index("Noto Emoji")
-    assert tela.chk_pular._cor_marcada == COLORS["primary"]
-    assert tela.chk_pular._cor_hover == COLORS["primary_hover"]
+    assert not hasattr(tela.chk_pular, "_cor_marcada")   # a caixa pinta com a paleta do tema
 
 
 def test_enter_nao_dispara_nenhum_botao(tela):
@@ -290,10 +291,11 @@ def test_enter_nao_dispara_nenhum_botao(tela):
 def test_pular_ia_desliga_o_pdm_e_liga_o_processar(tela):
     tela.chk_pular.click()
     assert tela.chk_pular.isChecked()
-    assert not tela.btn_pdm.isEnabled() and "background: #2B2B2B" in _folha(tela.btn_pdm)
+    # 2026-10-20: "apagado" é o secundário desligado (era o #2B2B2B escrito à mão).
+    assert not tela.btn_pdm.isEnabled() and tela.btn_pdm.property("variante") == "secundario"
     assert tela.btn_run_ai.isEnabled() and tela.btn_run_ai.text() == "3. Processar (Direto)"
     tela.chk_pular.click()
-    assert tela.btn_pdm.isEnabled() and "background: #3A3A3A" in _folha(tela.btn_pdm)
+    assert tela.btn_pdm.isEnabled() and tela.btn_pdm.property("variante") == "secundario"
     # Desmarcar não desliga o botão (como lá): só volta o texto.
     assert tela.btn_run_ai.isEnabled() and tela.btn_run_ai.text() == "3. Analisar (IA)"
 
@@ -357,10 +359,9 @@ def test_pos_selecao_numera_do_zero_e_marca_o_botao(tela, qtbot, pd):
     assert list(tela.df_data_selecionado.index) == [0, 1, 2]
     assert list(tela.df_data_selecionado["DESCRIÇÃO"]) == ["ITEM 2", "ITEM 4", "ITEM 5"]
     assert tela.lbl_status.text() == "3 itens selecionados"
-    assert COLORS["accent"] in _folha(tela.lbl_status)
-    assert f"background: {COLORS['primary']}" in _folha(tela.btn_pmib)
-    assert "#454545" in _folha(tela.btn_pmib)          # o hover continua o de antes
-    assert "background: #3A3A3A" in _folha(tela.btn_pdm)
+    assert tela.lbl_status.property("papel") == "ok"
+    assert tela.btn_pmib.property("variante") == "primario"
+    assert tela.btn_pdm.property("variante") == "secundario"
     _esperar_log(qtbot, tela, "> Selecionado: 3 itens.")
 
 
@@ -372,9 +373,9 @@ def test_planilha_de_pdms(tela, qtbot, monkeypatch):
     assert pedidos == [(("cria_fichas.excel_pdm", "excel"), {"filetypes": [("Arquivos Excel", "*.xlsx;*.xls")]})]
     assert tela.file_path_pdm == "/d/pdms/PDM_MASTER.xlsx"
     assert tela.btn_run_ai.isEnabled()
-    assert f"background: {COLORS['primary']}" in _folha(tela.btn_pdm)
+    assert tela.btn_pdm.property("variante") == "primario"
     assert tela.lbl_status_pdm.text() == "Selecionado: PDM_MASTER.xlsx"
-    assert COLORS["accent"] in _folha(tela.lbl_status_pdm)
+    assert tela.lbl_status_pdm.property("papel") == "ok"
     _esperar_log(qtbot, tela, "> PDMs carregados: PDM_MASTER.xlsx")
 
 
@@ -453,7 +454,7 @@ def test_revisao_confirmada_libera_o_robo(tela, qtbot, pd):
     tela.revisoes[0].confirmar(revisado)
     assert tela.df_processed is revisado
     assert tela.btn_run_auto.isEnabled()
-    assert f"background: {COLORS['accent']}" in _folha(tela.btn_run_auto)
+    assert tela.btn_run_auto.property("variante") == "primario"
     assert not tela.btn_run_ai.isEnabled() and tela.btn_run_ai.text() == "3. Analisar (OK)"
     _esperar_log(qtbot, tela, "> Revisão OK. 3 itens prontos.")
     # Depois da cadeia, o "Pular IA" volta a religar o botão (como lá).
@@ -1051,13 +1052,13 @@ def test_limpar_volta_tudo_ao_comeco(tela, qtbot, pd):
     assert tela.catalogo is None
     assert tela.df_edicao_completo is None and tela.df_edicao_selecionado is None
     assert tela.entry_projeto.text() == "" and tela.entry_novo_projeto.text() == ""
-    assert tela.lbl_status.text() == "Aguardando..." and "#808080" in _folha(tela.lbl_status)
+    assert tela.lbl_status.text() == "Aguardando..." and tela.lbl_status.property("papel") == "legenda"
     assert tela.lbl_status_pdm.text() == ""
-    assert "background: #3A3A3A" in _folha(tela.btn_pmib) and "background: #3A3A3A" in _folha(tela.btn_pdm)
+    assert tela.btn_pmib.property("variante") == "secundario" and tela.btn_pdm.property("variante") == "secundario"
     assert tela.btn_run_ai.text() == "3. Analisar (IA)"
     for b in (tela.btn_run_ai, tela.btn_run_auto, tela.btn_resumo, tela.btn_save, tela.btn_run_edicao):
         assert not b.isEnabled()
-    assert f"background: {COLORS['primary']}" in _folha(tela.btn_run_auto)
+    assert tela.btn_run_auto.property("variante") == "primario"
     assert tela.progress.fracao == 0.0 and tela.progress_edicao.fracao == 0.0
     assert tela.lbl_status_edicao.text() == "Nenhum item selecionado."
     _esperar_log(qtbot, tela, "> Sistema limpo. Pronto para iniciar um novo lote.")
@@ -1102,8 +1103,8 @@ def test_pos_selecao_edicao(tela, qtbot, pd):
     tela.df_edicao_completo = pd.DataFrame({"DESCRIÇÃO": ["A", "B", "C"], "CÓDIGO PMIB": ["1", "2", "3"]})
     tela.pos_selecao_edicao([0, 2])
     assert tela.lbl_status_edicao.text() == "2 fichas selecionadas"
-    assert COLORS["accent"] in _folha(tela.lbl_status_edicao)
-    assert f"background: {COLORS['primary']}" in _folha(tela.btn_excel_edicao)
+    assert tela.lbl_status_edicao.property("papel") == "ok"
+    assert tela.btn_excel_edicao.property("variante") == "primario"
     assert tela.btn_run_edicao.isEnabled()
     _esperar_log(qtbot, tela, "> Aba Edição: Selecionado 2 fichas para editar.")
     tela.pos_selecao_edicao([])

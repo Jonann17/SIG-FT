@@ -74,9 +74,8 @@ def _rodar(tela, qtbot, robo, pmib, ultima):
 
 
 def test_titulo_vermelho_e_textos(tela):
-    from sigft.app import theme
     assert tela.label_titulo.text() == "Apagar Aplicações LMR"
-    assert theme.COLORS["danger"] in tela.label_titulo.styleSheet()
+    assert tela.label_titulo.property("papel") == "erro"   # o vermelho é da folha (2026-10-20)
     assert tela.entry_pmib.placeholderText() == "Ex: 4500063671.1234"
     assert tela.entry_pmib.width() == 250
     assert tela.btn_run.text() == "INICIAR LIMPEZA"
