@@ -637,6 +637,8 @@ def _folha_telas(tema: str | None = None) -> str:
         # Seletor de tema da Home (Task 7): o escolhido como o item do menu.
         f'#seletor_tema QPushButton[ativo="true"] {{ background: {menu["fundo"]}; color: {menu["texto"]};'
         f' border-color: {menu["fundo"]}; }}',
+        # Mouse em cima: o texto acompanha o ícone, que já vai para a cor do menu.
+        f'#seletor_tema QPushButton:hover {{ color: {menu["texto"]}; }}',
         # Busca PMIB: o cartão de cada achado, mais fundo que a lista onde está.
         f'#cartao_resultado {{ background: {p["fundo"]}; border: 1px solid {p["borda"]};'
         f' border-radius: 8px; }}',

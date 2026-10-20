@@ -72,8 +72,9 @@ def efetivo(escolha: str) -> str:
     return "claro" if escolha == "claro" else "escuro"
 
 
-def aplicar(app, escolha: str, *, gravar: bool = True) -> None:
-    """Troca o tema do app inteiro para `escolha` (inválida: escuro).
+def aplicar(app, escolha: str, *, gravar: bool = True) -> str:
+    """Troca o tema do app inteiro para `escolha` (inválida: escuro) e devolve
+    a escolha que valeu -- que é a que o seletor marca, mesmo se gravar falhar.
 
     `gravar=False` não mexe nas preferências: é a abertura (que acabou de lê-las)
     e o `--smoke --tema`. Gravar que falha (pasta só de leitura) não impede a
@@ -92,6 +93,7 @@ def aplicar(app, escolha: str, *, gravar: bool = True) -> None:
         icones.reaplicar(janela)
         janela.update()
     mudou.emit(estilo.TEMA_ATUAL)
+    return escolha
 
 
 _seguindo: list = []
@@ -105,7 +107,8 @@ def seguir_o_sistema(app) -> None:
 
     def _ao_mudar(_esquema) -> None:
         if escolhido() == "sistema":
-            aplicar(app, "sistema", gravar=False)
+            # O app de agora, e não o da primeira chamada: a ligação é uma só.
+            aplicar(QGuiApplication.instance() or app, "sistema", gravar=False)
 
     try:
         QGuiApplication.styleHints().colorSchemeChanged.connect(_ao_mudar)

@@ -468,8 +468,8 @@ class HomeView(QScrollArea):
 
     def escolher_tema(self, escolha: str) -> None:
         """Troca o tema do app inteiro e lembra a escolha (`tema.aplicar`)."""
-        tema.aplicar(QApplication.instance(), escolha)
-        self._marcar_tema(tema.escolhido())
+        # Marca o que VALEU, não o que está nas prefs: gravar pode ter falhado.
+        self._marcar_tema(tema.aplicar(QApplication.instance(), escolha))
 
     @staticmethod
     def _botao_da_barra(texto: str, variante: str, icone: str):

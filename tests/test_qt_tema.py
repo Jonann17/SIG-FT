@@ -118,8 +118,15 @@ def test_aplicar_avisa_quem_desenhou(volta_ao_escuro):
 def test_gravar_que_falha_nao_impede_a_troca(volta_ao_escuro, monkeypatch, tmp_path):
     # Pasta de dados somente-leitura (ou disco cheio): o tema muda igual.
     monkeypatch.setattr(tema, "_arquivo_de_prefs", lambda: tmp_path / "nao_ha" / "p.json")
-    tema.aplicar(volta_ao_escuro, "claro")
+    # E devolve o que valeu: é o que o seletor da Home marca (as prefs ainda
+    # dizem o antigo).
+    assert tema.aplicar(volta_ao_escuro, "claro") == "claro"
     assert estilo.TEMA_ATUAL == "claro"
+
+
+def test_aplicar_devolve_a_escolha_valida(volta_ao_escuro):
+    assert tema.aplicar(volta_ao_escuro, "sistema", gravar=False) == "sistema"
+    assert tema.aplicar(volta_ao_escuro, "roxo", gravar=False) == "escuro"
 
 
 # --- item 1 herdado: as folhas seguem o TEMA_ATUAL lido na chamada ----------------
