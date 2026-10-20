@@ -230,7 +230,8 @@ def folha_de_estilo(tema: str = "escuro") -> str:
     perigo_hover = _escurecer(p["perigo_fundo"], 0.15)
     # Notas que não cabem dentro da folha (comentário de QSS também é texto dela):
     # * botão sem variante = secundário (contorno `borda`, texto `texto`); as
-    #   variantes antigas são sinônimos (SINONIMOS_DE_VARIANTE). O primário tem o
+    #   variantes antigas são sinônimos (SINONIMOS_DE_VARIANTE). Cada variante que
+    #   diz `color:` repete o `:disabled` (mesma especificidade: a regra de depois ganha). O primário tem o
     #   texto ESCURO no tema escuro (branco sobre o verde vivo dava 3,1:1);
     # * perigo: fundo `perigo_fundo` e texto branco (5,3:1), nos dois temas;
     # * papéis de texto: QLabel[papel=...]. O "aviso" ganha o fundo `superficie`
@@ -259,6 +260,7 @@ QPushButton:disabled {{ color: {p['texto_suave']}; }}
 {_seletor_variante('secundario')} {{ background: transparent; border-color: {p['borda']};
     color: {p['texto']}; }}
 {_seletor_variante('secundario', ':hover')} {{ background: {p['superficie_alta']}; }}
+{_seletor_variante('secundario', ':disabled')} {{ color: {p['texto_suave']}; }}
 {_seletor_variante('primario')} {{ background: {p['primaria']}; border-color: {p['primaria']};
     color: {p['texto_sobre_primaria']}; }}
 {_seletor_variante('primario', ':hover')} {{ background: {p['primaria_hover']};
@@ -272,6 +274,7 @@ QPushButton[variante="perigo"]:disabled {{ background: {p['superficie_alta']};
     border-color: {p['borda']}; color: {p['texto_suave']}; }}
 QPushButton[variante="fantasma"] {{ background: transparent; border-color: transparent; color: {p['texto']}; }}
 QPushButton[variante="fantasma"]:hover {{ background: {p['superficie_alta']}; }}
+QPushButton[variante="fantasma"]:disabled {{ color: {p['texto_suave']}; }}
 QPushButton[menu="true"] {{ background: transparent; text-align: left; padding: 0 10px; border: none;
     color: {p['texto']}; min-height: {ALTURA_BOTAO_MENU}px; max-height: {ALTURA_BOTAO_MENU}px;
     font-size: {f['legenda']}px; }}

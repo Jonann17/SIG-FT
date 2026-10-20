@@ -11,6 +11,8 @@ def test_botao_padrao_e_o_azul_do_interface_antiga():
     # `borda`, texto `texto`); o azul do tema da CTk (que saiu em 2026-10-15) não
     # entra mais na folha.
     assert "QPushButton {" in _qss()
+    # As constantes da CTk continuam até os widgets pintados à mão migrarem (Task 5).
+    assert estilo.AZUL_CTK == "#1F538D" and estilo.AZUL_CTK_HOVER == "#14375E"
     trecho = _qss().split("QPushButton {", 1)[1].split("}", 1)[0]
     assert tokens.ESCURO["borda"] in trecho and tokens.ESCURO["texto"] in trecho
     assert estilo.AZUL_CTK not in trecho
@@ -77,6 +79,8 @@ def test_texto_do_botao_comum_e_o_do_tema_do_ctk(qt_interface, qtbot):
     comum, barra = QPushButton("Selecionar"), QPushButton("Chaves de API")
     barra.setProperty("barra", True)
     recipiente = _sob_a_folha(qtbot, comum, barra)  # noqa: F841 -- segura os filhos vivos
+    # A constante da CTk continua até os widgets pintados à mão migrarem (Task 5).
+    assert estilo.TEXTO_BOTAO_CTK == "#DCE4EE"
     assert _cor_do_texto(comum) == tokens.ESCURO["texto"]
     assert _cor_do_texto(barra) == tokens.ESCURO["texto"]
 
@@ -109,3 +113,29 @@ def test_campo_de_texto_e_o_ctkentry_do_tema(qt_interface, qtbot):
     paleta = campo.palette()
     assert paleta.color(QPalette.ColorRole.PlaceholderText).name().upper() == tokens.ESCURO["texto_suave"]
     assert paleta.color(QPalette.ColorRole.Text).name().upper() == tokens.ESCURO["texto"]
+
+
+def test_botao_desligado_muda_a_cor_do_texto_em_toda_variante(qt_interface, qtbot):
+    # Revisão da Task 3 (2026-10-20): a regra da variante que diz `color:` vinha
+    # depois de `QPushButton:disabled`, com a mesma especificidade, e o botão
+    # "cinza"/"fantasma" desligado saía igual ao ligado. Pintado de verdade.
+    from PySide6.QtWidgets import QPushButton
+
+    def texto_pintado(botao):
+        imagem = botao.grab().toImage()
+        fundo = imagem.pixelColor(2, botao.height() // 2).name()
+        cores = {imagem.pixelColor(x, y).name()
+                 for x in range(imagem.width()) for y in range(imagem.height())}
+        return cores - {fundo}
+
+    for variante in (None, "secundario", "cinza", "neutro", "contorno", "contorno_padrao",
+                     "fantasma", "primario", "acento", "perigo"):
+        ligado, desligado = QPushButton("Executar WWW"), QPushButton("Executar WWW")
+        if variante:
+            ligado.setProperty("variante", variante)
+            desligado.setProperty("variante", variante)
+        desligado.setEnabled(False)
+        recipiente = _sob_a_folha(qtbot, ligado, desligado)  # noqa: F841 -- segura vivos
+        assert _cor_do_texto(desligado) == tokens.ESCURO["texto_suave"], variante
+        assert _cor_do_texto(ligado) != _cor_do_texto(desligado), variante
+        assert texto_pintado(ligado) != texto_pintado(desligado), variante
