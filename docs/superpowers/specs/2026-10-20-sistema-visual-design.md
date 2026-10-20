@@ -57,6 +57,8 @@ papel que cumpre.
 | `info` | `#3B9EFF` | `#0B6BCB` |
 | `console_fundo` | `#0E1012` | `#0E1012` |
 
+Nota (2026-10-20): `aviso` claro mudou de `#B26A00` para `#AA6600`; o original media 4,24:1 sobre `superficie` (`#FFFFFF`), o novo mede 4,56:1.
+
 O console fica escuro nos dois temas: é saída de terminal, e log é mais legível
 assim. As cores de log por nível (erro, aviso, ok) vêm de `perigo`, `aviso` e
 `sucesso`.
