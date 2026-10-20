@@ -43,3 +43,11 @@ def test_console_e_escuro_nos_dois_temas():
 
 def test_tema_desconhecido_cai_no_escuro():
     assert tokens.paleta("roxo") is tokens.ESCURO
+
+
+def test_colors_antigo_vem_dos_tokens():
+    from sigft.app import theme
+    assert theme.COLORS["background"] == tokens.ESCURO["fundo"]
+    assert theme.COLORS["accent"] == tokens.ESCURO["sucesso"]
+    assert theme.COLORS["danger"] == tokens.ESCURO["perigo_fundo"]
+    assert theme.COR_CARTAO == tokens.ESCURO["superficie"]

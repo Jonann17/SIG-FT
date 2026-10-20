@@ -11,7 +11,7 @@ enquanto a Fase 7 não termina — o teste de coerência entre os dois está em
 """
 from __future__ import annotations
 
-from sigft.app import theme
+from sigft.app import theme, tokens
 
 
 # =============================================================================
@@ -35,18 +35,20 @@ def test_paleta_tem_as_10_chaves_esperadas():
 
 def test_cores_da_identidade_ge_vernova_nao_mudaram():
     # Os quatro valores citados nominalmente na regra da Fase 7 do plano.
-    assert theme.COLORS["primary"] == "#035D67"
-    assert theme.COLORS["accent"] == "#00C975"
-    assert theme.COLORS["sidebar"] == "#161616"
-    assert theme.COLORS["background"] == "#212121"
+    # 2026-10-20: a fidelidade à CTk caiu em 2026-10-15; o valor vem do token.
+    assert theme.COLORS["primary"] == tokens.ESCURO["marca"]
+    assert theme.COLORS["accent"] == tokens.ESCURO["sucesso"]
+    assert theme.COLORS["sidebar"] == tokens.ESCURO["superficie"]
+    assert theme.COLORS["background"] == tokens.ESCURO["fundo"]
 
 
 def test_demais_cores_nao_mudaram():
     assert theme.COLORS["primary_hover"] == "#047A83"
-    assert theme.COLORS["accent_hover"] == "#00E085"
-    assert theme.COLORS["danger"] == "#D32F2F"
-    assert theme.COLORS["warning"] == "#FFA726"
-    assert theme.COLORS["text_light"] == "#E0E0E0"
+    # 2026-10-20: os demais valores também vêm dos tokens (a CTk saiu em 10-15).
+    assert theme.COLORS["accent_hover"] == tokens.ESCURO["primaria_hover"]
+    assert theme.COLORS["danger"] == tokens.ESCURO["perigo_fundo"]
+    assert theme.COLORS["warning"] == tokens.ESCURO["aviso"]
+    assert theme.COLORS["text_light"] == tokens.ESCURO["texto"]
     assert theme.COLORS["text_white"] == "#FFFFFF"
 
 
@@ -58,7 +60,8 @@ def test_toda_cor_e_hexadecimal_de_6_digitos():
 
 
 def test_cor_do_cartao_interno_e_a_que_o_frontend_repetia():
-    assert theme.COR_CARTAO == "#2B2B2B"
+    # 2026-10-20: o cartão deixou de repetir o #2B2B2B da CTk; vem do token.
+    assert theme.COR_CARTAO == tokens.ESCURO["superficie"]
 
 
 # =============================================================================
@@ -120,4 +123,5 @@ def test_theme_e_biblioteca_padrao_pura():
         elif isinstance(no, ast.ImportFrom) and no.module:
             importados.add(no.module.split(".")[0])
 
-    assert importados <= {"__future__"}, importados
+    # 2026-10-20: theme deriva de tokens (também puro, sem biblioteca gráfica).
+    assert importados <= {"__future__", "sigft"}, importados

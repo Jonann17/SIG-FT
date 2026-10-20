@@ -188,8 +188,9 @@ def test_textos_iguais_aos_da_home_antiga():
 
 
 def test_desenho_do_mural_igual_ao_da_home_antiga():
+    # 2026-10-20: "atrasada" usa danger, que agora vem do token perigo_fundo (#C9302C).
     assert mural_qt.COR_FAIXA == {
-        "atrasada": "#D32F2F", "travada": "#B07CE8", "deveria_ter_comecado": "#FFA726",
+        "atrasada": "#C9302C", "travada": "#B07CE8", "deveria_ter_comecado": "#FFA726",
         "em_andamento": "#047A83", "comeca_hoje": "#00C975", "proximos_dias": "gray70"}
     assert mural_qt.ROTULO_FAIXA == {
         "atrasada": "ATRASADO", "travada": "TRAVADA", "deveria_ter_comecado": "DEVERIA TER COMEÇADO",

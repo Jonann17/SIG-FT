@@ -60,11 +60,20 @@ def _caixa_do_botao_segmentado(imagem, topo, base, x0, x1):
     """Retângulo dos pixels que NÃO são o fundo da tela, na faixa das abas."""
     from PySide6.QtGui import QColor
     from sigft.app import theme
-    fundo = QColor(theme.COLORS["background"]).rgb()
+    # 2026-10-20: o fundo da tela agora vem do token (#14171A) e o quadro do Tabview
+    # segue "gray13" (#212121, ainda não migrado); os dois contam como "fundo".
+    # A borda arredondada do quadro mistura os dois (antialias): tolerância de 16 por canal.
+    fundos = [QColor(theme.COLORS["background"]), QColor("#212121")]
+
+    def e_fundo(pixel):
+        c = QColor(pixel)
+        return any(max(abs(c.red() - f.red()), abs(c.green() - f.green()),
+                       abs(c.blue() - f.blue())) <= 16 for f in fundos)
+
     xs, ys = [], []
     for y in range(topo, base):
         for x in range(x0, x1):
-            if imagem.pixel(x, y) != fundo:
+            if not e_fundo(imagem.pixel(x, y)):
                 xs.append(x)
                 ys.append(y)
     return min(xs), min(ys), max(xs) + 1, max(ys) + 1
@@ -115,15 +124,18 @@ def test_medidas_iguais_as_do_interface_antiga(folha, qtbot):
         assert QColor(foto.pixel(b.x() + 5, b.y() + 25)).name().upper() != theme.COR_CARTAO.upper()
         # ...e a área rolável é transparente: acima do cartão, o fundo da tela
         # (não a paleta clara do Qt, que o QScrollArea liga no widget de dentro).
-        fundo = theme.COLORS["background"].upper()
+        # 2026-10-20: o fundo da tela vem do token, e o quadro do Tabview ainda é "gray13"
+        # (#212121): o que aparece atrás da área rolável é o quadro, não mais o fundo.
+        fundo = "#212121"
         assert QColor(foto.pixel(c.x() + 100, c.y() - 10)).name().upper() == fundo
         assert QColor(foto.pixel(p.x() + 2, p.y() + vista.height() - 3)).name().upper() == fundo
 
-    # O quadro do Tabview é da cor do fundo: nada pintado ao lado da área.
+    # O quadro do Tabview é liso (gray13, #212121 desde que o fundo virou token): nada
+    # pintado ao lado da área.
     from PySide6.QtGui import QColor
     from sigft.app import theme
     imagem = t.grab().toImage()
-    fundo = QColor(theme.COLORS["background"]).rgb()
+    fundo = QColor("#212121").rgb()
     assert imagem.pixel(44, 400) == fundo and imagem.pixel(958, 400) == fundo
 
 
@@ -187,3 +199,4 @@ def test_a_trava_e_liberada_no_fim_da_tarefa_mesmo_com_erro(qt_interface, qtbot)
     thread.join(timeout=5)
 
     assert secao.trava_robo.dono is None
+
