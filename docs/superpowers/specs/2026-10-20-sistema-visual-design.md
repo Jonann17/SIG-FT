@@ -7,9 +7,12 @@ que te parezca mejor").
 
 O redesenho foi dividido em três partes, cada uma com spec, plano e versão:
 
-1. **Sistema visual (A + B)** — este documento.
+1. **Sistema visual (A + B)** — este documento, em duas etapas, cada uma
+   numa versão: **1a** o sistema visual, **1b** as ferramentas de uso
+   (§ "Etapa 1b"). Separadas para que, se algo quebrar, se saiba o quê.
 2. Home tipo tablero (C, metade 1).
-3. Telas com passos guiados (C, metade 2).
+3. Telas com passos guiados (C, metade 2) — leva junto o "continuar de onde
+   parou" (§ "Para a parte 3").
 
 A ordem importa: os passos guiados feitos antes do sistema visual seriam
 refeitos depois.
@@ -139,6 +142,48 @@ dá **uma vez**:
 - **Saudação pelo relógio:** Bom dia (até 12h), Boa tarde (até 18h), Boa
   noite.
 - **O nome só aparece na tela.** Não vai para log, planilha, IA ou portal.
+
+## Etapa 1b: ferramentas de uso (escolhidas pelo Jonathan, 2026-10-20)
+
+Vêm DEPOIS da 1a, já com os tokens e ícones novos. Nenhuma mexe em robô.
+
+1. **Aviso do Windows** quando uma tarefa termina ou pede algo, só se a
+   janela do SIG-FT não estiver em foco: "Upload duplicadas terminou: 6 de 8
+   sem pendência" / "Faça o login no portal e aperte Continuar". Clicar traz
+   a janela para a frente. `QSystemTrayIcon.showMessage` (vira notificação
+   nativa do Windows; nenhuma dependência nova). Ganchos: o fim da tarefa
+   (`ModuleFrame._tarefa_acabou`) e as esperas (`DialogosDeEspera.
+   pausar_e_esperar` e irmãs). Liga/desliga na Home; ligado por padrão.
+2. **Janela de resumo no fim do lote**: as linhas de erro e aviso que a
+   tarefa escreveu no console (o mesmo critério de nível do item 5),
+   agrupadas por ficha quando a linha traz o código PMIB; botões "Copiar
+   lista" e "Abrir log". Abre só se houve erro ou aviso; tarefa limpa
+   continua só com a faixa "Terminou". Não depende de cada serviço devolver
+   um resultado estruturado (a maioria não devolve): lê o que já se loga.
+3. **Arrastar o arquivo** para a linha de seleção (`FilePickerRow`) ou para
+   o botão que abre o diálogo de arquivo (helper `aceitar_arquivo(widget,
+   chave, extensões, ao_receber)` nas telas que usam botão). Extensão errada:
+   o widget fica vermelho e não aceita. **Últimos arquivos**: até 5 por
+   chave de diálogo, num menu ao lado do botão; vão para o
+   `user_prefs.json` (hoje ele guarda só PASTAS: é uma chave nova, com o
+   mesmo cuidado de caminho que sumiu).
+4. **Ctrl+K**: caixa de busca no meio da janela com os 12 módulos e as
+   ações da Home ("Modelos de IA", "Chaves de API", "Abrir logs", "Tema
+   claro"…); filtra enquanto se digita (sem acento, sem caixa), setas e
+   Enter. Lista das ações num lugar só (`catalogo.py`).
+5. **Filtro do console**: "Tudo / Avisos / Erros", busca de texto e "Copiar".
+   O nível vem do parâmetro `nivel` do protocolo de log quando o serviço o
+   manda, e senão das marcas que os serviços já escrevem (`[Erro]`, `[ERRO]`,
+   `❌`, `Falha` → erro; `[Aviso]`, `[!]`, `[Autoconferência]` → aviso). A
+   lista de marcas fica num lugar só e tem teste com linhas reais dos logs.
+6. **Tamanho da letra**: Normal / Grande (+2 px em toda a escala), na Home,
+   aplicado na hora como o tema. Sai dos tokens.
+
+## Para a parte 3: continuar de onde parou
+
+Item 9 da lista de 2026-10-20: a tela de passos lembra o passo e os arquivos
+escolhidos; reabrir o app oferece "Continuar o lote de ontem (passo 2 de 4)?".
+Fica registrado aqui para não se perder; o desenho é da parte 3.
 
 ## Componentes que mudam
 
