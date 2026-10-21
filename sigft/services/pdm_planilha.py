@@ -11,8 +11,8 @@ diferentes misturados numa ficha só.
 
 Aqui mora o que decide, para cada material, QUAIS perguntas entram na ficha e
 o que avisar: funções puras sobre o catálogo (`core/pdm_catalogo.py`),
-testáveis sem Excel. Quem escreve a ficha é `services/pdm.py`; quem regenera
-as pastas é `services/pdm_regeneracao.py`.
+testáveis sem Excel. Quem escreve a ficha é `services/pdm.py`. (A pasta de
+PDMs Modificados e a regeneração dela sairam do SIG-FT em 2026-10-21.)
 
 As regras numeradas (1 a 9) são as da seção 5 de
 `docs/superpowers/specs/2026-09-23-planilhas-pmib-da-planilha-design.md`.
@@ -50,14 +50,6 @@ _AJUDA_VAZIA = {"", "NAN", "NONE"}
 # lê. Aqui ela só é RETIRADA, para sobrar o título.
 _RE_REVISAO_NO_FIM = re.compile(r",\s*R\d+\s*$", re.IGNORECASE)
 _RE_CODIGO = re.compile(r"PDM\.\d{4}\.\d{3}", re.IGNORECASE)
-
-# `\ / : * ? " < > |` não entram em nome de arquivo no Windows. Três títulos da
-# planilha de 23/09/2026 têm "/" (`EXTENSAO/TRONCO TORRE`...), e é por eles que
-# o fatiamento antigo falha: a barra vira separador de pasta.
-_PROIBIDOS_NO_NOME = re.compile(r'[\\/:*?"<>|]')
-
-# " - R<n>" no fim do nome, antes da extensão ou do "_formatado".
-_RE_REVISAO_NO_NOME = re.compile(r" - R(\d+)(?:_formatado)?\.[A-Za-z]+$", re.IGNORECASE)
 
 
 class PDMRecusado(ValueError):
@@ -214,26 +206,3 @@ def perguntas_do_pdm(catalogo, pdm_usado) -> PerguntasDoPDM:
         causa=f"{codigo} esta na R{no_portal} no portal, mas a planilha so tem a R{pdm.revisao}",
         consequencia=f"a ficha saiu com a R{pdm.revisao}; exporte uma planilha nova da Itaipu",
     )
-
-
-# =============================================================================
-# Nome de arquivo com a revisão (regeneração das pastas e método antigo)
-# =============================================================================
-def nome_de_arquivo(pdm, sufixo="") -> str:
-    """`"PDM_1650_001 - ACUMULADOR - R2" + sufixo + ".xlsx"`.
-
-    O código vem primeiro, na forma que o método antigo procura
-    (`PDM_1650_001`), seguido de " - ": é o que as guardas antigas de "já
-    existe" esperam. Sem revisão legível, fica sem o " - R<n>"."""
-    base = f"{pdm.codigo.replace('.', '_')} - {pdm.titulo}"
-    if pdm.revisao is not None:
-        base += f" - R{pdm.revisao}"
-    base = " ".join(_PROIBIDOS_NO_NOME.sub("-", base).split()).rstrip(". ")
-    return f"{base}{sufixo}.xlsx"
-
-
-def revisao_no_nome(nome_arquivo) -> int | None:
-    """O `n` de `" - R<n>"` no fim do nome (antes da extensão ou do
-    `_formatado`), ou `None` quando o nome não traz revisão."""
-    achado = _RE_REVISAO_NO_NOME.search(os.path.basename(str(nome_arquivo or "")))
-    return int(achado.group(1)) if achado else None

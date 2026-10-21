@@ -203,19 +203,15 @@ BASE_BOX = Path.home() / "Box" / "CMI - Consórcio Itaipu" / "11 - Ger. Engenhar
 # (via `_pasta_valida`), não aqui: este dict é só a TABELA de candidatos.
 PASTAS_PADRAO_SEED: dict[str, Path] = {
     "sobressalentes_pmib": BASE_BOX / "SOBRESSALENTES - PMIB",  # fichas/STATUS
-    "pdms_modificados": BASE_BOX / "PDMs modificados",
     "templates_ficha": BASE_BOX / "Templates",  # template da ficha
 }
 
 # chave de campo ("<modulo>.<campo>", dot-separated minúsculo) -> nome lógico
-# de `PASTAS_PADRAO_SEED`, usado no passo 3 de `get_initial_dir`. Populado
-# com as 3 chaves que a etapa SEGUINTE (migração de `frontend.ModuloPDM`) vai
-# usar — nomes de campo ilustrativos (mas já alinhados aos atributos reais de
-# `frontend.ModuloPDM`: `caminho_destino`, `path_template`/`_sel_template`,
-# `path_status_pmib`/`_sel_status_pmib`), ajustáveis por aquela etapa se
-# necessário (ver docs/refatoracao/PENDENCIAS.md).
+# de `PASTAS_PADRAO_SEED`, usado no passo 3 de `get_initial_dir`: os
+# seletores do template e do `_STATUS_PMIB` da tela Planilhas PMIB. [2026-10-21]
+# Saiu a terceira, `pdm.caminho_destino` -> "pdms_modificados", com a pasta de
+# PDMs Modificados.
 PASTAS_PADRAO_POR_CHAVE: dict[str, str] = {
-    "pdm.caminho_destino": "pdms_modificados",
     "pdm.template": "templates_ficha",
     "pdm.status_pmib": "sobressalentes_pmib",
 }
@@ -296,7 +292,7 @@ def get_default_dir(
     config_path: str | os.PathLike[str] | None = None,
 ) -> str | None:
     """Devolve a pasta padrão de nome lógico `nome` (ex.:
-    ``"pdms_modificados"``), nesta ordem:
+    ``"templates_ficha"``), nesta ordem:
 
       1. Override salvo pelo usuário (`pastas_padrao[nome]` — gravado via
          `set_default_dir`, tipicamente pelo futuro painel "Pastas padrão" da

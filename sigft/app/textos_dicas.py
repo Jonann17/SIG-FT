@@ -76,14 +76,10 @@ DICAS: dict[str, dict[str, str]] = {
         "btn_run_edicao": f"Troca o código de projeto das fichas no portal, em massa. {PORTAL}",
     },
     "ModuloPDM": {
-        "btn_regenerar": "Regenera as pastas de trabalho de PDMs.",
-        "btn_from_itaipu": "Cria os PDMs \"From Itaipu\" fatiando a lista geral por sistema.",
-        "btn_modificados": "Cria as planilhas de PDMs Modificados.",
-        "btn_traduzir": "Traduz a pasta de PDMs Modificados para inglês.",
         "btn_pmib": "Escolha o _STATUS_PMIB que lista as fichas a criar.",
         "btn_template": "Escolha o template de ficha (.xlsx) que será preenchido.",
+        "btn_sam_gm": "Escolha a planilha de PDMs (SAM-GM): dela saem as características de cada ficha.",
         "btn_criar_fichas": "Gera as planilhas de ficha PMIB a partir do template escolhido.",
-        "btn_exec_clean": "Procura arquivos duplicados na pasta escolhida e os apaga.",
     },
     "ModuloPMIBManager": {
         "btn_api": "Escolha o histórico exportado do Aconex DocManager (.xlsx).",

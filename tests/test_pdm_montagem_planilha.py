@@ -1,14 +1,11 @@
-r"""A ficha montada pela PLANILHA de PDMs, e a escolha por revisão no método antigo.
+r"""A ficha montada pela PLANILHA de PDMs.
 
 Com openpyxl REAL (ver `tests/_openpyxl_de_verdade.py`): o que se confere é a
 ficha que o fornecedor abre, célula a célula.
 """
 from __future__ import annotations
 
-import ast
-import inspect
 import os
-import textwrap
 
 import pytest
 
@@ -81,7 +78,7 @@ def test_ficha_pela_planilha_tem_as_perguntas_da_C79_em_ordem_e_sem_nan(tmp_path
     ]
 
 
-def test_ficha_pela_planilha_tem_a_mesma_geometria_do_metodo_antigo(tmp_path, openpyxl_real):
+def test_ficha_pela_planilha_tem_a_geometria_da_ficha(tmp_path, openpyxl_real):
     saida = tmp_path / "fichas"
     saida.mkdir()
 
@@ -162,48 +159,33 @@ def test_planilha_sem_caracteristicas_para_antes_de_comecar(tmp_path, openpyxl_r
 
 
 # =============================================================================
-# B. Método antigo: mais de um arquivo do mesmo PDM na pasta
+# B. O template é lido do disco uma vez só (CP 4.3)
 # =============================================================================
-def _pdm_formatado(caminho, openpyxl, pergunta):
-    wb = openpyxl.Workbook()
-    wb.active.cell(row=1, column=1, value=pergunta)
-    wb.save(caminho)
-
-
-def test_metodo_antigo_usa_o_arquivo_de_revisao_mais_alta(tmp_path, openpyxl_real):
-    """A pasta EN traduzida antes e depois de uma regeneração fica com as duas
-    versões do mesmo PDM. Antes, a escolha dependia da ordem do disco."""
-    pasta = tmp_path / "modificados"
-    pasta.mkdir()
-    _pdm_formatado(pasta / "PDM_1650_001 - ACUMULADOR_formatado.xlsx", openpyxl_real, "1 - VELHA:")
-    _pdm_formatado(pasta / "PDM_1650_001 - ACUMULADOR - R2_formatado.xlsx", openpyxl_real, "1 - NOVA:")
-    _pdm_formatado(pasta / "PDM_1650_001 - ACUMULADOR - R1_formatado.xlsx", openpyxl_real, "1 - MEIO:")
+def test_o_template_e_lido_do_disco_uma_unica_vez(tmp_path, openpyxl_real, monkeypatch):
+    """Cada ficha reabre o template de `BytesIO`: com 3 fichas, nenhuma
+    leitura dele vem do disco (os bytes foram lidos antes do laço)."""
     saida = tmp_path / "fichas"
     saida.mkdir()
-    logs = []
+    template = _template(tmp_path, openpyxl_real)
+    origens = []
+    real = pdm.load_workbook
 
-    pdm.aplicar_templates_fichas(
-        [("4500063671.0071", "PDM.1650.001 - ACUMULADOR", str(saida))],
-        str(pasta), _template(tmp_path, openpyxl_real), log_callback=logs.append)
+    def espiao(fonte, *args, **kwargs):
+        origens.append("disco" if isinstance(fonte, (str, os.PathLike)) else "memoria")
+        return real(fonte, *args, **kwargs)
 
-    assert _perguntas_da_ficha(saida / "4500063671.0071.xlsx", openpyxl_real) == ["1 - NOVA:"]
-    assert "3 arquivos do PDM_1650_001 na pasta" in "\n".join(logs)
+    monkeypatch.setattr(pdm, "load_workbook", espiao)
+    lista = [(f"4500063671.000{i}", "PDM.1650.001 - ACUMULADOR, , R2", str(saida)) for i in range(3)]
 
+    msg, _ = pdm.aplicar_templates_fichas_da_planilha(lista, _catalogo(ACUMULADOR), template)
 
-# =============================================================================
-# C. Uma implementação por conceito
-# =============================================================================
-def _chama(funcao, nome):
-    arvore = ast.parse(textwrap.dedent(inspect.getsource(funcao)))
-    return any(isinstance(no, ast.Call)
-               and getattr(no.func, "attr", getattr(no.func, "id", None)) == nome
-               for no in ast.walk(arvore))
+    assert msg == "Fichas geradas: 3"
+    assert origens == ["memoria"] * 3
 
 
-def test_o_passo_formatar_monta_a_pergunta_pela_mesma_regra():
-    """O "(nan)" saía de `processar_arquivo_pdm`; a regra da pergunta é uma só."""
-    assert _chama(pdm.processar_arquivo_pdm, "montar_pergunta")
+def test_template_que_nao_abre_vira_mensagem_e_nao_excecao(tmp_path):
+    msg, log = pdm.aplicar_templates_fichas_da_planilha(
+        [], _catalogo(ACUMULADOR), str(tmp_path / "nao_existe.xlsx"))
 
-
-def test_o_passo_formatar_usa_a_mesma_tabela_da_regeneracao():
-    assert _chama(pdm.salvar_tabela_formatada, "formatar_tabela_de_perguntas")
+    assert "Erro ao abrir template" in msg
+    assert log and "Erro ao abrir template" in log[0]

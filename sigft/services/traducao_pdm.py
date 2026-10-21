@@ -60,10 +60,8 @@ como reserva. Injetá-lo é o que permite testar tudo isto sem rede.
 import json
 import os
 import re
-import shutil
 import time
 
-from sigft.core.excel import locking
 
 NOME_GLOSSARIO = "_GLOSSARIO_PT_EN.txt"
 NOME_CACHE = "_CACHE_TRADUCAO.json"
@@ -75,11 +73,6 @@ NOME_CACHE = "_CACHE_TRADUCAO.json"
 # mesmo existe -- "Model:", "PT-100", uma pergunta que ja estava em ingles. Com
 # 5 frases tecnicas em portugues seguidas voltando identicas, nao e coincidencia.
 MIN_TEXTOS_PARA_DESCONFIAR = 5
-
-# De quantos em quantos arquivos o cache vai para o disco. Com 1192 PDMs numa
-# pasta, gravar so no fim significa perder HORAS de traducao paga se o usuario
-# fechar o app, a rede cair ou o Excel travar um arquivo no meio.
-SALVAR_CACHE_A_CADA = 10
 
 # Quantos textos vao ao motor de uma vez na passada de preparo.
 #
@@ -307,182 +300,6 @@ def traduzir_textos(textos, traduzir, glossario=None, cache=None):
             continue
         saida.append(f"{prefixo}{resolvidos.get(miolo, miolo)}{sufixo}")
     return saida
-
-
-def traduzir_pasta(pasta_origem, pasta_destino, traduzir=None, callbacks=None,
-                   retry_lock=None):
-    """Traduz todos os PDMs Modificados de uma pasta. Generator de linhas de
-    log, mesmo contrato dos outros serviços do projeto.
-
-    Cada arquivo é **copiado** e só as células de descrição são reescritas —
-    assim toda a formatação (mescla, bordas, altura, fonte 8) sobrevive sem
-    precisar ser refeita.
-    """
-    import openpyxl
-
-    if traduzir is None:
-        traduzir = motor_padrao(callbacks=callbacks)
-
-    os.makedirs(pasta_destino, exist_ok=True)
-    caminho_glossario = criar_glossario_exemplo(pasta_destino)
-    glossario = carregar_glossario(caminho_glossario)
-    cache = Cache(pasta_destino)
-
-    arquivos = sorted(
-        os.path.join(pasta_origem, nome)
-        for nome in os.listdir(pasta_origem)
-        if nome.lower().endswith((".xlsx", ".xlsm", ".xls"))
-        and not nome.startswith("~$") and not nome.startswith("_")
-    ) if os.path.isdir(pasta_origem) else []
-
-    if not arquivos:
-        yield f"Nenhum PDM encontrado em: {pasta_origem}"
-        return 0
-
-    total = len(arquivos)
-    yield f"Traduzindo {total} PDM(s) para ingles..."
-    if glossario:
-        yield f"   glossario com {len(glossario)} termo(s): {os.path.basename(caminho_glossario)}"
-
-    # O motor e ESPIONADO, nao alterado: quantos textos foram enviados e
-    # quantos voltaram DIFERENTES do que entrou. E o unico jeito de perceber um
-    # tradutor mudo sem depender de qual motor esta por baixo -- vale para a
-    # `deep_translator` sem rede, para uma IA que devolve o prompt de volta, e
-    # para qualquer motor que alguem injete amanha.
-    medida = {"enviados": 0, "mudaram": 0}
-
-    def motor_medido(textos):
-        saida = traduzir(textos)
-        medida["enviados"] += len(textos)
-        medida["mudaram"] += sum(
-            1 for entrou, saiu in zip(textos, saida) if str(saiu or "") != entrou)
-        return saida
-
-    # ---------------------------------------------------------------------
-    # PASSADA 1 -- juntar os textos da pasta e traduzir em lotes grandes.
-    # Ver TEXTOS_POR_LOTE. Nada e escrito aqui: so o cache e preenchido.
-    # ---------------------------------------------------------------------
-    unicos = []
-    vistos = set()
-    for caminho in arquivos:
-        try:
-            # `read_only`: a leitura de 1192 planilhas e o custo desta passada,
-            # e o modo somente-leitura do openpyxl e varias vezes mais rapido.
-            wb_leitura = openpyxl.load_workbook(caminho, read_only=True)
-            for linha in wb_leitura.active.iter_rows(min_col=1, max_col=1, values_only=True):
-                _, miolo, _ = partes_da_pergunta(linha[0])
-                if miolo and miolo not in vistos and miolo not in glossario \
-                        and not cache.buscar(miolo):
-                    vistos.add(miolo)
-                    unicos.append(miolo)
-            wb_leitura.close()
-        except Exception:
-            # Arquivo ilegivel aqui nao e problema: a passada 2 abre o mesmo
-            # arquivo e reporta a falha com nome e motivo.
-            continue
-
-    if unicos:
-        lotes = (len(unicos) + TEXTOS_POR_LOTE - 1) // TEXTOS_POR_LOTE
-        yield (f"   {len(unicos)} pergunta(s) diferente(s) em {total} arquivo(s) "
-               f"-> {lotes} ida(s) ao tradutor")
-        for numero, inicio in enumerate(range(0, len(unicos), TEXTOS_POR_LOTE), start=1):
-            pedaco = unicos[inicio:inicio + TEXTOS_POR_LOTE]
-            try:
-                traduzir_textos(pedaco, motor_medido, glossario, cache)
-            except Exception as e:
-                cache.salvar()
-                yield f"PARADO: o tradutor falhou. {type(e).__name__}: {e}"
-                return 0
-            cache.salvar()
-            yield f"   traduzindo... lote {numero} de {lotes}"
-
-            if (medida["enviados"] >= MIN_TEXTOS_PARA_DESCONFIAR
-                    and medida["mudaram"] == 0):
-                # Melhor lugar possivel para descobrir isto: nenhum arquivo
-                # foi escrito ainda.
-                yield (f"PARADO antes de escrever qualquer arquivo: "
-                       f"{medida['enviados']} textos foram ao tradutor e os "
-                       f"{medida['enviados']} voltaram identicos.")
-                yield ("   O tradutor nao esta respondendo. Verifique: (1) a chave "
-                       "de IA em 'Modelos de IA'; (2) se a rede da empresa deixa "
-                       "sair para o tradutor.")
-                return 0
-
-    # ---------------------------------------------------------------------
-    # PASSADA 2 -- escrever os arquivos. Com o cache cheio, esta passada
-    # normalmente nao fala com o tradutor nenhuma vez.
-    # ---------------------------------------------------------------------
-    traduzidos = 0
-    sem_mudanca = []
-    for indice, caminho in enumerate(arquivos, start=1):
-        nome = os.path.basename(caminho)
-        destino = os.path.join(pasta_destino, nome)
-        try:
-            shutil.copy2(caminho, destino)
-            wb = openpyxl.load_workbook(destino)
-            ws = wb.active
-
-            linhas = list(range(1, ws.max_row + 1))
-            originais = [ws.cell(row=i, column=1).value for i in linhas]
-            novos = traduzir_textos(originais, motor_medido, glossario, cache)
-
-            mudou = 0
-            for i, antigo, novo in zip(linhas, originais, novos):
-                if antigo and novo != antigo:
-                    ws.cell(row=i, column=1, value=novo)
-                    mudou += 1
-
-            # `salvar_perguntando` e nao `wb.save` direto: e a regra do
-            # projeto (tests/test_excel_travado_pergunta.py) -- com a planilha
-            # aberta no Excel, o usuario ganha a janela "feche o arquivo" em
-            # vez de um erro no meio do lote.
-            locking.salvar_perguntando(wb, destino, retry_lock=retry_lock)
-            wb.close()
-            traduzidos += 1
-            if mudou:
-                yield f"   [{indice}/{total}] OK  {nome} ({mudou} pergunta(s))"
-            else:
-                # NAO diga "OK ... (0 pergunta(s))". Foi essa linha, repetida
-                # 1192 vezes, que fez a pasta inteira parecer pronta.
-                sem_mudanca.append(destino)
-                yield f"   [{indice}/{total}] AVISO  {nome}: nenhuma pergunta mudou"
-        except Exception as e:
-            # Um arquivo ruim nao pode derrubar a pasta -- e a pasta e o
-            # trabalho de um dia inteiro de traducao.
-            if os.path.exists(destino):
-                try:
-                    os.remove(destino)
-                except Exception:
-                    pass
-            yield f"   [{indice}/{total}] FALHA  {nome}: {type(e).__name__}: {e}"
-
-        # Cache no disco de tempos em tempos. Ver SALVAR_CACHE_A_CADA.
-        if indice % SALVAR_CACHE_A_CADA == 0:
-            cache.salvar()
-
-        # O TRADUTOR ESTA MUDO? Perceber isso no arquivo 1, e nao no 1192º.
-        if (medida["enviados"] >= MIN_TEXTOS_PARA_DESCONFIAR
-                and medida["mudaram"] == 0):
-            # As copias em portugues sao lixo que PARECE resultado. Sair
-            # deixando-as e convidar alguem a monta-las numa ficha.
-            for lixo in sem_mudanca:
-                try:
-                    os.remove(lixo)
-                except Exception:
-                    pass
-            cache.salvar()
-            yield (f"PARADO no arquivo {indice} de {total}: nada foi traduzido. "
-                   f"{medida['enviados']} textos foram ao tradutor e os "
-                   f"{medida['enviados']} voltaram identicos.")
-            yield ("   O tradutor nao esta respondendo. Verifique: (1) a chave "
-                   "de IA em 'Modelos de IA'; (2) se a rede da empresa deixa "
-                   "sair para o tradutor.")
-            yield "   As copias em portugues geradas ate aqui foram apagadas."
-            return 0
-
-    cache.salvar()
-    yield f"Traducao concluida: {traduzidos} de {total} arquivo(s)."
-    return traduzidos
 
 
 # =============================================================================
