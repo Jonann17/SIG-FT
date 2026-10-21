@@ -235,6 +235,17 @@ def _revisao_antes_do_portal_nao_trava(monkeypatch):
         monkeypatch.setattr(modulo.RevisaoAntesDoPortalDialog, "exec", _exec)
 
 
+# 6. [2026-10-21] A janela de resumo do fim do lote (`app_qt/widgets/resumo_lote`)
+#    abre sozinha quando uma tarefa escreve erro ou aviso no console. Dezenas de
+#    testes de tela rodam tarefa com erro DE PROPÓSITO; sem esta guarda, cada um
+#    deixaria uma janela aberta por cima do seguinte. Quem testa a janela tira a
+#    variável (`monkeypatch.delenv`). O nome é `sigft.app.resumo_lote.ENV_DESLIGAR`
+#    (teste em tests/test_resumo_lote.py).
+@pytest.fixture(autouse=True)
+def _sem_janelas_do_fim_da_tarefa(monkeypatch):
+    monkeypatch.setenv("SIGFT_SEM_RESUMO_DO_LOTE", "1")
+
+
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_teardown(item, nextitem):
     """Depois de um teste Qt, recolhe o lixo NA HORA.
