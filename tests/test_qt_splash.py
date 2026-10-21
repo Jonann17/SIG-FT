@@ -71,13 +71,16 @@ def test_cantos_arredondados(qt_interface, qtbot, prefs):
     assert _cor(imagem, 12, 12) == tokens.CLARO["fundo"].upper()
 
 
-def test_titulo_e_versao(qt_interface, qtbot, prefs):
+def test_titulo_e_versao(qt_interface, qtbot, prefs, monkeypatch):
     prefs("escuro")
+    # O Release reescreve o `_build_info` (`tools/preparar_build.py`): a splash
+    # mostra exatamente o número dele.
+    monkeypatch.setattr(_build_info, "VERSAO", "1.2.1-rc.9")
     splash = _splash(qtbot)
     assert splash.titulo.text() == "SIG-FT"
     fonte = splash.titulo.font()
     assert fonte.pixelSize() == 22 and fonte.bold()
-    assert _build_info.VERSAO in splash.versao.text()
+    assert splash.versao.text() == "versão 1.2.1-rc.9"
     cor = splash.versao.palette().color(splash.versao.foregroundRole()).name().upper()
     assert cor == tokens.ESCURO["texto_suave"].upper()
 

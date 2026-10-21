@@ -437,8 +437,9 @@ class SplashScreen(QWidget):
 
 
 def _texto_da_versao() -> str:
-    """"versão X.Y.Z" do `_build_info`; sem ela (rodando do código-fonte com
-    um `_build_info` incompleto), um texto que não quebra a abertura."""
+    """"versão X.Y.Z" do `_build_info` (o Release reescreve; do código-fonte
+    é o padrão commitado). `_build_info` sem `VERSAO`: um texto que não
+    quebra a abertura."""
     versao = getattr(_build_info, "VERSAO", "") or ""
     return f"versão {versao}" if versao else "versão de desenvolvimento"
 
