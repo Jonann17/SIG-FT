@@ -271,16 +271,10 @@ def test_criar_fichas_da_planilha(tela, qtbot, pdm, monkeypatch):
 
 
 def test_criar_fichas_em_ingles_traduz_pela_planilha(tela, qtbot, pdm, monkeypatch):
-    """[2026-10-21] Sem aviso: a ficha em inglês sai da planilha, e a tela
-    entrega ao serviço o motor de tradução padrão (trocável)."""
-    pedidos = []
-
-    def motor_padrao(api_key=None, callbacks=None):
-        pedidos.append((api_key, threading.current_thread() is threading.main_thread()))
-        callbacks.log("motor pronto")
-        return "MOTOR"
-
-    _modulo_falso(monkeypatch, "traducao_pdm", motor_padrao=motor_padrao)
+    """[2026-10-21] Sem aviso: a ficha em inglês sai da planilha. A tela passa
+    o idioma e `traduzir=None` (o motor padrão, que o serviço monta depois de
+    ler o glossário)."""
+    _modulo_falso(monkeypatch, "traducao_pdm", motor_padrao=lambda **k: pytest.fail("quem monta e o servico"))
     monkeypatch.setattr(tela_mod.pdm_catalogo, "carregar", lambda p: "CAT")
     _preencher(tela)
     tela.rb_en.click()
@@ -288,10 +282,8 @@ def test_criar_fichas_em_ingles_traduz_pela_planilha(tela, qtbot, pdm, monkeypat
     tela.rb_pt.click()  # mudar depois do clique não muda o lote
     assert _esperar_aviso(tela, qtbot)[:3] == (
         "info", "Fim", "Processo de criação de fichas finalizado.\n\n3 fichas da planilha")
-    assert pedidos == [(None, False)]   # sem api_key: a do provedor escolhido; na tarefa
     assert pdm.chamadas[1] == ("templates_planilha", (["d1"], "CAT", "/d/T.xlsx"),
-                               {"retry_lock": tela.perguntar_retry_excel, "idioma": "en", "traduzir": "MOTOR"})
-    qtbot.waitUntil(lambda: "motor pronto" in _texto(tela), timeout=2000)
+                               {"retry_lock": tela.perguntar_retry_excel, "idioma": "en", "traduzir": None})
 
 
 def test_criar_fichas_em_portugues_nao_monta_o_motor(tela, qtbot, pdm, monkeypatch):

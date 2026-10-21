@@ -50,9 +50,10 @@ Sem abas desde 2026-10-21. De cima para baixo:
 A tela valida os campos no clique (planilha, STATUS_PMIB, pasta de destino,
 template), lê a planilha numa tarefa (`pdm_catalogo.carregar`; ilegível para o
 lote antes de criar qualquer subpasta), prepara as pastas e chama o montador.
-Em inglês ela monta o motor de tradução padrão
-(`traducao_pdm.motor_padrao(callbacks=...)`, sem `api_key`: `get_llm` resolve
-a chave do provedor escolhido em "Modelos de IA") e o passa ao serviço.
+Em inglês ela passa o idioma com `traduzir=None`: o serviço monta o motor
+padrão (`traducao_pdm.motor_padrao(callbacks=..., glossario=...)`, depois de
+ler o glossário, para os termos irem à IA; sem `api_key`, `get_llm` resolve a
+chave do provedor escolhido em "Modelos de IA").
 
 ## Entradas e Saídas
 
@@ -93,13 +94,16 @@ a chave do provedor escolhido em "Modelos de IA") e o passa ao serviço.
 
   **`idioma="en"` (2026-10-21)**: antes da primeira ficha, as perguntas de
   todas as fichas do lote vão ao motor `traduzir` (`list[str] -> list[str]`;
-  sem ele, `traducao_pdm.motor_padrao`), cada texto uma vez, em lotes de 60,
+  sem ele, `traducao_pdm.motor_padrao` com o glossário), cada texto uma vez,
+  em lotes de 60,
   com o glossário e o cache de `pasta_traducao` (sem ela,
   `traducao_pdm.pasta_da_traducao()` = `Documentos\SIG-FT\traducao_pdm\`). A
   aba da ficha ganha o nome `Standard Technical Sheet`. Pergunta que não
   traduziu fica em português, com `lote.aviso` na ficha ("N pergunta(s) sem
-  traducao"); lote do motor que falha vira aviso no log. O lote nunca para por
-  causa do tradutor.
+  traducao"); lote do motor que falha vira aviso no log, e todas as respostas
+  iguais à entrada (tradutor mudo) também, uma vez só, sem ir para o cache.
+  Pasta da tradução sem escrita: aviso, glossário vazio, a tradução segue. O
+  lote nunca para por causa do tradutor.
 
 O laço de montagem é `_montar_fichas` (uma implementação: template da memória,
 aba resolvida uma vez, `RelatorioLote`, `locking.salvar_perguntando`).

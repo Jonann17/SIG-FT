@@ -23,7 +23,6 @@ from sigft.app_qt.widgets import blocos, dialogos_selecao
 from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.core import pdm_catalogo
-from sigft.core.callbacks import from_legacy
 
 TEXTO_NENHUM_ARQUIVO = "Nenhum arquivo selecionado"
 EXCEL = [("Excel", "*.xlsx *.xls")]
@@ -336,19 +335,16 @@ class ModuloPDM(ModuleFrame):
             self.avisar("Aviso", "Nenhum código foi processado.")
             return
 
-        # Em inglês, o motor de tradução padrão (IA, com a reserva): a tela só o
-        # escolhe, o serviço traduz. SEM `api_key=`: `get_llm` resolve a chave
-        # do provedor escolhido para `traduzir_pdm` em "Modelos de IA". Trocar
-        # de motor (um tradutor local) é trocar só esta linha.
-        traduzir = None
-        if idioma == "en":
-            from sigft.services import traducao_pdm
-            traduzir = traducao_pdm.motor_padrao(callbacks=from_legacy(callback_log=self.log))
         # O idioma vai para o serviço, e não o nome da aba: quem sabe como a
-        # aba se chama em inglês é o serviço (`NOME_DA_ABA_EM_INGLES`).
+        # aba se chama em inglês é o serviço (`NOME_DA_ABA_EM_INGLES`). Em
+        # inglês, `traduzir=None` é o motor padrão (IA com a reserva), que o
+        # serviço monta DEPOIS de ler o glossário, para os termos dele irem à
+        # IA; sem `api_key`, `get_llm` resolve a chave do provedor escolhido
+        # para `traduzir_pdm` em "Modelos de IA". Outro motor (um tradutor
+        # local) entra aqui, como `traduzir=`.
         msg_res, _logs = modulo.aplicar_templates_fichas_da_planilha(
             dados_pastas, catalogo, template, log_callback=self.log, retry_lock=self.perguntar_retry_excel,
-            idioma=idioma, traduzir=traduzir)
+            idioma=idioma, traduzir=None)
         self.log(msg_res)
         self.log(">>> Processo de criação de fichas finalizado!")
         self.avisar("Fim", f"Processo de criação de fichas finalizado.\n\n{msg_res}")

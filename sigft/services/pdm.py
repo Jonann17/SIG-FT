@@ -335,11 +335,19 @@ def _preparar_ingles(lista_dados, catalogo, callbacks, traduzir, pasta_traducao)
     português e o aviso sai no log."""
     from sigft.services import traducao_pdm
 
-    if traduzir is None:
-        traduzir = traducao_pdm.motor_padrao(callbacks=callbacks)
     pasta = pasta_traducao or traducao_pdm.pasta_da_traducao()
-    glossario = traducao_pdm.carregar_glossario(traducao_pdm.criar_glossario_exemplo(pasta))
+    try:
+        glossario = traducao_pdm.carregar_glossario(traducao_pdm.criar_glossario_exemplo(pasta))
+    except OSError as e:
+        # Pasta sem escrita (ou embaixo de um arquivo): sem glossário, mas as
+        # fichas saem. O cache já tolera não conseguir gravar.
+        callbacks.log(f"AVISO: nao consegui abrir o glossario em {pasta} "
+                      f"({type(e).__name__}: {e}); sigo sem ele.", nivel="warn")
+        glossario = {}
     cache = traducao_pdm.Cache(pasta)
+    if traduzir is None:
+        # Depois do glossário: os termos dele vão à IA como vocabulário.
+        traduzir = traducao_pdm.motor_padrao(callbacks=callbacks, glossario=glossario)
 
     perguntas = []
     for _pmib, pdm_nome, _pasta in lista_dados:

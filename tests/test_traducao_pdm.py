@@ -219,12 +219,53 @@ def test_o_cache_vai_para_o_disco_ao_fim_do_preparo(tmp_path):
     assert tp.Cache(str(tmp_path)).buscar("Vazão") == "EN:Vazão"
 
 
-def test_resposta_igual_a_entrada_NAO_vai_para_o_cache(tmp_path):
-    """Um tradutor mudo devolve o texto de entrada. Guardar isso no cache
-    congelaria o português: a próxima rodada nem perguntaria de novo."""
+def test_pergunta_cujo_nome_comeca_por_numero_e_traduzida_e_fica_no_cache(tmp_path):
+    """Revisão de 2026-10-21: o miolo "4-20 mA SAIDA" era quebrado DE NOVO
+    ("4-" + "20 mA SAIDA"), a chave do cache nunca casava e a pergunta ficava
+    em português, reenviada a cada rodada."""
+    chamou = []
+
+    def motor(textos):
+        chamou.append(list(textos))
+        return [f"EN {t}" for t in textos]
+
     cache = tp.Cache(str(tmp_path))
-    tp.traduzir_textos(["1 - Vazão:", "2 - Peso:"], lambda t: [t[0], None], {}, cache)
+    tp.preparar_traducao(["3 - 4-20 mA SAIDA:"], motor, {}, cache)
+    assert chamou == [["4-20 mA SAIDA"]]
+    assert tp.traducao_conhecida(["3 - 4-20 mA SAIDA:"], {}, cache) == (["3 - EN 4-20 mA SAIDA:"], 0)
+
+    segundo = tp.Cache(str(tmp_path))      # a próxima rodada, do disco
+    tp.preparar_traducao(["3 - 4-20 mA SAIDA:"], motor, {}, segundo)
+    assert len(chamou) == 1, "a segunda rodada deveria sair do cache"
+
+
+def test_traducao_igual_a_entrada_e_valida_e_vai_para_o_cache(tmp_path):
+    """"NCM", "PT-100": traduzem para eles mesmos. Não podem contar como
+    "sem tradução" a cada rodada."""
+    cache = tp.Cache(str(tmp_path))
+    avisos = []
+    tp.preparar_traducao(["1 - NCM:", "2 - Vazão:"], lambda t: [t[0], "Flow rate"], {}, cache,
+                         avisar=avisos.append)
+    assert cache.buscar("NCM") == "NCM" and cache.buscar("Vazão") == "Flow rate"
+    assert avisos == []
+
+
+def test_resposta_vazia_nao_vai_para_o_cache(tmp_path):
+    cache = tp.Cache(str(tmp_path))
+    tp.preparar_traducao(["1 - Vazão:", "2 - Peso:"], lambda t: [None, ""], {}, cache)
     assert cache.buscar("Vazão") is None and cache.buscar("Peso") is None
+
+
+def test_tradutor_mudo_avisa_UMA_vez_e_nao_congela_o_portugues(tmp_path, monkeypatch):
+    """Tudo voltou igual à entrada: é o tradutor sem rede ou sem chave. Um
+    aviso só no lote, e nada no cache (a próxima rodada pergunta de novo)."""
+    monkeypatch.setattr(tp, "TEXTOS_POR_LOTE", 2)
+    cache = tp.Cache(str(tmp_path))
+    avisos = []
+    textos = [f"{i} - CARACTERISTICA {i}:" for i in range(1, 7)]
+    tp.preparar_traducao(textos, lambda t: list(t), {}, cache, avisar=avisos.append)
+    assert len(avisos) == 1 and "identic" in avisos[0]
+    assert cache.buscar("CARACTERISTICA 1") is None
 
 
 def test_traducao_conhecida_usa_glossario_e_cache_e_conta_o_que_faltou(tmp_path):

@@ -325,4 +325,26 @@ def test_em_ingles_sem_motor_usa_o_motor_padrao(tmp_path, openpyxl_real, monkeyp
                           [("4500063671.0071", "PDM.1650.001 - ACUMULADOR, , R2")], None)
 
     assert len(pedidos) == 1 and "callbacks" in pedidos[0]
+    # O glossário chega à IA como vocabulário (o motor é montado depois dele).
+    assert "NORMAS TECNICAS APLICAVEIS" in pedidos[0]["glossario"]
     assert _perguntas_em_ingles(saida / "4500063671.0071.xlsx", openpyxl_real)[0].startswith("1 - EN ")
+
+
+def test_pasta_da_traducao_sem_escrita_nao_impede_as_fichas(tmp_path, openpyxl_real):
+    """Revisão de 2026-10-21: a pasta do glossário embaixo de um ARQUIVO
+    (sem como criar) levantava até a tela, e nenhuma ficha saía. Agora é um
+    aviso, o glossário fica vazio e a tradução segue."""
+    arquivo = tmp_path / "isto_e_um_arquivo"
+    arquivo.write_text("x", encoding="utf-8")
+    saida = tmp_path / "fichas"
+    saida.mkdir()
+    logs = []
+
+    msg, _ = pdm.aplicar_templates_fichas_da_planilha(
+        [("4500063671.0071", "PDM.1650.001 - ACUMULADOR, , R2", str(saida))],
+        _catalogo(ACUMULADOR), _template(tmp_path, openpyxl_real), log_callback=logs.append,
+        idioma="en", traduzir=_motor(), pasta_traducao=str(arquivo / "traducao"))
+
+    assert msg == "Fichas geradas: 1"
+    assert _perguntas_em_ingles(saida / "4500063671.0071.xlsx", openpyxl_real)[0].startswith("1 - EN ")
+    assert any("glossario" in linha.lower() and linha.startswith("AVISO") for linha in logs), logs

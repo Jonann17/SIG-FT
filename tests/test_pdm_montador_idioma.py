@@ -267,9 +267,9 @@ def _metodo(nome):
     pytest.fail(f"metodo {nome} nao existe na tela do PDM")
 
 
-def test_a_tela_passa_o_IDIOMA_e_o_motor_e_nao_o_nome_da_aba():
+def test_a_tela_passa_o_IDIOMA_e_nao_o_nome_da_aba():
     """A tela não pode saber como se chama a aba em inglês, nem traduzir por
-    conta própria: passa o idioma escolhido e o motor de tradução."""
+    conta própria: passa o idioma escolhido (o motor padrão é do serviço)."""
     chamadas = [
         no for no in ast.walk(_metodo("_tarefa_fichas"))
         if isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)
@@ -277,7 +277,7 @@ def test_a_tela_passa_o_IDIOMA_e_o_motor_e_nao_o_nome_da_aba():
     ]
     assert chamadas, "a tela nao chama mais o montador?"
     nomeados = {k.arg for c in chamadas for k in c.keywords}
-    assert {"idioma", "traduzir"} <= nomeados, f"argumentos repassados: {sorted(nomeados)}"
+    assert "idioma" in nomeados, f"argumentos repassados: {sorted(nomeados)}"
     fonte = VIEW.read_text(encoding="utf-8")
     assert "Standard Technical Sheet" not in fonte
     assert "GoogleTranslator" not in fonte and "traduzir_textos" not in fonte

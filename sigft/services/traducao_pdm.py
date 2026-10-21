@@ -45,8 +45,8 @@ TRÊS CAMADAS ANTES DO MOTOR
    vez, vale sempre". Os termos soltos também são passados ao motor como
    vocabulário obrigatório.
 2. **Cache** (`_CACHE_TRADUCAO.json`, crescido pela máquina). Rerodar o lote
-   não paga tradução de novo. Resposta igual à entrada NÃO entra: seria o
-   português congelado como se fosse tradução.
+   não paga tradução de novo. Resposta igual à entrada entra ("NCM"), menos
+   quando TODAS voltaram iguais: aí é o tradutor mudo, e um aviso só sai.
 3. **Dedupe** dentro da rodada: `Fabricante`, `Modelo` e `Peso` aparecem em
    dezenas de PDMs e vão ao motor **uma vez só**.
 
@@ -67,6 +67,10 @@ import time
 
 NOME_GLOSSARIO = "_GLOSSARIO_PT_EN.txt"
 NOME_CACHE = "_CACHE_TRADUCAO.json"
+
+# Quantas respostas, todas iguais à entrada, fazem o tradutor parecer mudo
+# (texto que traduz para ele mesmo existe, "NCM", "PT-100"; 5 seguidas não).
+MIN_TEXTOS_PARA_DESCONFIAR = 5
 
 # Pasta, dentro da pasta de dados do usuário, do glossário e do cache.
 NOME_DA_PASTA = "traducao_pdm"
@@ -278,9 +282,9 @@ def traduzir_textos(textos, traduzir, glossario=None, cache=None):
         for miolo, traducao in zip(pendentes, traduzidos):
             texto = str(traducao or miolo)
             resolvidos[miolo] = texto
-            # Igual à entrada não é tradução que se guarde: um motor mudo
-            # (sem rede, sem chave) congelaria o português no cache.
-            if cache is not None and texto != miolo:
+            # Resposta vazia não é tradução. Igual à entrada é ("NCM",
+            # "PT-100"); o tradutor mudo é tratado em `preparar_traducao`.
+            if cache is not None and traducao:
                 cache.guardar(miolo, texto)
 
     saida = []
@@ -319,17 +323,45 @@ def preparar_traducao(textos, traduzir, glossario, cache, avisar=None):
         if miolo and miolo not in glossario and not cache.buscar(miolo) and miolo not in novos:
             novos.append(miolo)
 
+    # O motor recebe os MIOLOS, sem passar de novo por `partes_da_pergunta`:
+    # "4-20 mA SAIDA" seria quebrado em "4-" + "20 mA SAIDA", e a chave do
+    # cache nunca casaria (revisão de 2026-10-21).
     falhas = 0
+    enviados = mudaram = 0
+    iguais = []      # traduções iguais à entrada: válidas, salvo tradutor mudo
     for inicio in range(0, len(novos), TEXTOS_POR_LOTE):
         pedaco = novos[inicio:inicio + TEXTOS_POR_LOTE]
         try:
-            traduzir_textos(pedaco, traduzir, glossario, cache)
+            traduzidos = list(traduzir(pedaco))
         except Exception as e:  # noqa: BLE001 -- qualquer falha do motor vira aviso
             falhas += 1
             if avisar is not None:
                 avisar(f"AVISO: o tradutor falhou em {len(pedaco)} pergunta(s) "
                        f"({type(e).__name__}: {e}); elas ficam em portugues.")
+            continue
+        for miolo, traducao in zip(pedaco, traduzidos):
+            if not traducao:
+                continue
+            texto = str(traducao)
+            enviados += 1
+            if texto == miolo:
+                iguais.append(miolo)
+            else:
+                mudaram += 1
+                cache.guardar(miolo, texto)
         cache.salvar()
+
+    if enviados >= MIN_TEXTOS_PARA_DESCONFIAR and mudaram == 0:
+        # Tudo voltou igual: é o tradutor sem rede ou sem chave, não um lote
+        # de siglas. Nada vai para o cache (a próxima rodada pergunta de novo).
+        if avisar is not None:
+            avisar(f"AVISO: as {enviados} pergunta(s) voltaram identicas do tradutor; "
+                   "ele parece fora do ar (veja a chave de IA em 'Modelos de IA' e a rede). "
+                   "Elas ficam em portugues.")
+    else:
+        for miolo in iguais:
+            cache.guardar(miolo, miolo)
+    cache.salvar()
     return falhas
 
 
