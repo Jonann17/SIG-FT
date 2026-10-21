@@ -701,6 +701,7 @@ def _folha_telas(tema: str | None = None) -> str:
 def _folha_ferramentas(tema: str | None = None) -> str:
     """As ferramentas da etapa 1b (2026-10-21).
 
+    * a barrinha que redimensiona o console (`widgets/puxador_console.py`);
     * barra do console (`widgets/console.py`): a paleta ESCURA nos dois temas,
       porque ela fica dentro do console, que é escuro sempre;
     * arrastar arquivo (`widgets/arrastar.py`): borda `primaria` quando o arquivo
@@ -727,6 +728,13 @@ def _folha_ferramentas(tema: str | None = None) -> str:
         f" min-height: 18px; max-height: 22px; font-size: {f['legenda']}px;"
         f" placeholder-text-color: {e['texto_suave']}; }}",
         f"#barra_console QLineEdit:focus {{ border-color: {e['primaria']}; }}",
+        # A barrinha que muda o tamanho do console (widgets/puxador_console.py):
+        # parada, só a marca no meio; com o mouse em cima ou arrastando, a faixa
+        # toda na `borda` e a marca na `primaria`.
+        "#puxador_console { background: transparent; border-radius: 3px; }",
+        f'#puxador_console[ativo="true"] {{ background: {p["borda"]}; }}',
+        f"#puxador_console_marca {{ background: {p['borda']}; border-radius: 1px; }}",
+        f'#puxador_console_marca[ativo="true"] {{ background: {p["primaria"]}; }}',
         # Arrastar arquivo: depois das variantes (mesma especificidade, esta ganha).
         f'QPushButton[arrasto="aceito"], QListWidget[arrasto="aceito"] {{ border: 1px solid {p["primaria"]}; }}',
         f'QPushButton[arrasto="recusado"], QListWidget[arrasto="recusado"] '

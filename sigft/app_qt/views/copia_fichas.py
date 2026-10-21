@@ -165,9 +165,14 @@ class ModuloCopiaFichas(ModuleFrame):
         self._repartir_altura()
         super().resizeEvent(evento)
 
+    def _console_voltou_ao_padrao(self) -> None:
+        self._repartir_altura()
+
     def _repartir_altura(self) -> None:
         """Quadro rolável × console como o grid do Tk: cada um com o que pede,
         a sobra repartida 3:1 (o Tk trunca a parte do quadro; o resto é do console)."""
+        if self.altura_console_escolhida is not None:
+            return   # a pessoa arrastou a barrinha: a altura é a dela (ModuleFrame)
         margens = self.layout().contentsMargins()
         disponivel = (self.height() - margens.top() - margens.bottom()
                       - self.header.sizeHint().height() - 10 - 10)

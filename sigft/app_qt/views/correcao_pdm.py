@@ -225,12 +225,21 @@ class ModuloCorrecaoPDM(ModuleFrame):
         raiz.addWidget(self.faixa_console)
         self.faixa_console.setFixedHeight(theme.ALTURA_CONSOLE)
 
+    def _alvos_do_console(self) -> list:
+        # A barrinha muda a faixa E o console (que tem altura fixa dentro dela).
+        return [self.faixa_console, self.console]
+
+    def _console_voltou_ao_padrao(self) -> None:
+        self._repartir_altura()
+
     def resizeEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
         super().resizeEvent(evento)
         self._repartir_altura()
 
     def _repartir_altura(self) -> None:
         """A sobra de altura repartida como a grade do Tk (pesos 3 e 1)."""
+        if self.altura_console_escolhida is not None:
+            return   # a pessoa arrastou a barrinha: a altura é a dela (ModuleFrame)
         raiz = self.layout()
         margens = raiz.contentsMargins()
         disponivel = (self.height() - margens.top() - margens.bottom()

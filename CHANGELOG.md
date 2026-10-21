@@ -14,6 +14,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
 ## 1.2.1 - 2026-10-16
 
+- Interface: o console embaixo das telas pode ser **aumentado ou diminuído** arrastando a barrinha entre ele e a tela; cada tela lembra o tamanho, e o duplo clique na barrinha volta ao padrão.
 - Interface: **tema claro**. Na Home, à direita do título, escolha Escuro, Claro ou Sistema (segue o tema do Windows). A troca é na hora, sem fechar o app, e fica lembrada.
 - Interface: cores novas, com contraste medido para ler bem nos dois temas; botões com o mesmo jeito em todas as telas (principal, secundário, perigo), e botão desligado com cara de desligado.
 - Interface: **ícones** no menu, na Home e nos botões, no lugar dos emojis, na cor do tema.
