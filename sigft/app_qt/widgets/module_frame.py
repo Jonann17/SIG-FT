@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from sigft.app import backends, textos_dicas, theme
 from sigft.app import resumo_lote as resumo_regras
 from sigft.app_qt import interface
+from sigft.app_qt.widgets import arrastar
 from sigft.app_qt.widgets.atividade import FaixaDeAtividade
 from sigft.app_qt.widgets.console import ConsoleFrame
 from sigft.app_qt.widgets.espera import DialogosDeEspera
@@ -47,6 +48,11 @@ def _reabilitar(botao) -> None:
 
 
 class ModuleFrame(DialogosDeEspera, QWidget):
+    # Os botões da tela que recebem arquivo arrastado (2026-10-21): tuplas
+    # `arrastar.Arrastavel(atributo, chave, extensoes, varios)`. A tela só declara;
+    # a montagem liga (`arrastar.ligar_arrastaveis`).
+    ARRASTAVEIS: tuple = ()
+
     def __init__(
         self,
         parent=None,
@@ -131,9 +137,11 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         self._tarefa_falhou = False
         # A linha do console em que o lote atual começou (`console.marca`).
         self._marca_console = 0
+        self.receptores_de_arquivo: dict = {}
         if construir:
             self._build_ui()
             aplicar_dicas(self)
+            self.receptores_de_arquivo = arrastar.ligar_arrastaveis(self, self.ARRASTAVEIS)
 
     def _build_ui(self) -> None:
         raise NotImplementedError(f"{type(self).__name__} precisa implementar _build_ui().")

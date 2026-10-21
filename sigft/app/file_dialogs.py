@@ -29,7 +29,12 @@ Cada uma faz 3 coisas em torno do diálogo:
      resultante via `sigft.core.prefs.remember_dir(chave, categoria, pasta)`
      e devolve o resultado (normalizado — ver "Contrato de retorno" abaixo);
      se o usuário CANCELOU (resultado vazio): NÃO grava nada, devolve o
-     vazio tal qual.
+     vazio tal qual. Os dois de ABRIR guardam também o arquivo nos últimos
+     arquivos da chave (`prefs.lembrar_recente`, 2026-10-21).
+
+Um arquivo ENTREGUE (`entregar`, o arrastar e os "Últimos arquivos", 2026-10-21)
+toma o lugar do diálogo uma vez nos dois de abrir: ver a seção logo abaixo de
+`_eh_vazio`.
 
 Override contextual de `initialdir` (2ª metade do CP 1.5)
 -----------------------------------------------------------
@@ -118,6 +123,51 @@ def _eh_vazio(resultado: object) -> bool:
         return False
 
 
+# --- arquivo entregue sem diálogo  [2026-10-21] -------------------------------
+# Arrastar um arquivo para o botão, ou escolher um dos "Últimos arquivos", faz a
+# tela receber o arquivo SEM abrir o diálogo, pelo mesmo caminho do clique: quem
+# recebeu entrega (`entregar`) e clica o botão; o `ask_open_file(chave)` do clique
+# acha a entrega e devolve o arquivo como se a pessoa o tivesse escolhido
+# (lembrando pasta e recentes). Assim nenhuma tela muda o seu `selecionar_...`.
+# Quem entrega descarta depois do clique (`descartar`): a entrega vale uma vez.
+_entregues: dict[str, tuple[str, ...]] = {}
+
+
+def entregar(chave: str, caminhos) -> None:
+    _entregues[chave] = tuple(str(c) for c in caminhos)
+
+
+def descartar(chave: str) -> None:
+    _entregues.pop(chave, None)
+
+
+def pendente(chave: str) -> tuple[str, ...] | None:
+    """A entrega que espera o `ask_open_file(chave)`, se houver."""
+    return _entregues.get(chave)
+
+
+def extensoes_de(filetypes) -> tuple[str, ...] | None:
+    """`[("Excel", "*.xlsx;*.xlsm")]` -> `(".xlsx", ".xlsm")`. `"*.*"` ou nada:
+    `None`, que aceita qualquer extensão."""
+    if not filetypes:
+        return None
+    achadas: list[str] = []
+    for _nome, padrao in filetypes:
+        for parte in str(padrao).replace(";", " ").split():
+            if parte in ("*", "*.*"):
+                return None
+            if parte.startswith("*."):
+                achadas.append(parte[1:].lower())
+    return tuple(dict.fromkeys(achadas)) or None
+
+
+def extensao_aceita(caminho, extensoes) -> bool:
+    """`extensoes=None` aceita qualquer uma; senão, sem olhar a caixa."""
+    if extensoes is None:
+        return True
+    return os.path.splitext(str(caminho))[1].lower() in {e.lower() for e in extensoes}
+
+
 def _resolver_initialdir(
     chave: str,
     categoria: str,
@@ -165,14 +215,18 @@ def ask_open_file(
     escolhido, ou `""` se o usuário cancelar (os `if p:` das telas).
     """
     fn = _resolver_dialog_fn("ask_open_file", dialog_fn)
-    initial = _resolver_initialdir(chave, categoria, initialdir, config_path=config_path)
-
-    resultado = fn(initialdir=initial, title=titulo, filetypes=filetypes)
+    entregue = _entregues.pop(chave, None)
+    if entregue:
+        resultado = entregue[0]
+    else:
+        initial = _resolver_initialdir(chave, categoria, initialdir, config_path=config_path)
+        resultado = fn(initialdir=initial, title=titulo, filetypes=filetypes)
     if _eh_vazio(resultado):
         return ""
 
     caminho = str(resultado)
     prefs.remember_dir(chave, categoria, os.path.dirname(caminho), config_path=config_path)
+    prefs.lembrar_recente(chave, caminho, config_path=config_path)
     return caminho
 
 
@@ -197,9 +251,12 @@ def ask_open_files(
     mesma pasta (a UI/OS já os apresenta assim, por ser 1 diálogo só).
     """
     fn = _resolver_dialog_fn("ask_open_files", dialog_fn)
-    initial = _resolver_initialdir(chave, categoria, initialdir, config_path=config_path)
-
-    resultado = fn(initialdir=initial, title=titulo, filetypes=filetypes)
+    entregue = _entregues.pop(chave, None)
+    if entregue:
+        resultado = entregue
+    else:
+        initial = _resolver_initialdir(chave, categoria, initialdir, config_path=config_path)
+        resultado = fn(initialdir=initial, title=titulo, filetypes=filetypes)
     if _eh_vazio(resultado):
         return ()
 
@@ -212,6 +269,9 @@ def ask_open_files(
         caminhos = tuple(str(item) for item in resultado)
 
     prefs.remember_dir(chave, categoria, os.path.dirname(caminhos[0]), config_path=config_path)
+    # De trás para frente: o primeiro escolhido fica no topo dos recentes.
+    for caminho in reversed(caminhos[:prefs.LIMITE_RECENTES]):
+        prefs.lembrar_recente(chave, caminho, config_path=config_path)
     return caminhos
 
 

@@ -14,6 +14,13 @@ from PySide6.QtWidgets import QApplication, QFileDialog
 
 from sigft.app import file_dialogs as _base
 
+# A entrega sem diálogo e as extensões (2026-10-21): os mesmos nomes para as telas.
+entregar = _base.entregar
+descartar = _base.descartar
+pendente = _base.pendente
+extensoes_de = _base.extensoes_de
+extensao_aceita = _base.extensao_aceita
+
 
 def filtro_qt(filetypes) -> str:
     """`[("Excel", "*.xlsx;*.xlsm")]` (o formato das telas) -> `"Excel (*.xlsx *.xlsm)"` (Qt)."""

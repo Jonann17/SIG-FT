@@ -668,8 +668,12 @@ def _folha_ferramentas(tema: str | None = None) -> str:
     """As ferramentas da etapa 1b (2026-10-21).
 
     * barra do console (`widgets/console.py`): a paleta ESCURA nos dois temas,
-      porque ela fica dentro do console, que é escuro sempre.
+      porque ela fica dentro do console, que é escuro sempre;
+    * arrastar arquivo (`widgets/arrastar.py`): borda `primaria` quando o arquivo
+      serve, `perigo` (borda e texto) quando não serve; a seta dos recentes.
     """
+    tema = _tema(tema)
+    p = tokens.paleta(tema)
     e = tokens.ESCURO
     f = tokens.FONTE
     regras = [
@@ -685,6 +689,14 @@ def _folha_ferramentas(tema: str | None = None) -> str:
         f" min-height: 18px; max-height: 18px; font-size: {f['legenda']}px;"
         f" placeholder-text-color: {e['texto_suave']}; }}",
         f"#barra_console QLineEdit:focus {{ border-color: {e['primaria']}; }}",
+        # Arrastar arquivo: depois das variantes (mesma especificidade, esta ganha).
+        f'QPushButton[arrasto="aceito"], QListWidget[arrasto="aceito"] {{ border: 1px solid {p["primaria"]}; }}',
+        f'QPushButton[arrasto="recusado"], QListWidget[arrasto="recusado"] '
+        f'{{ border: 1px solid {p["perigo"]}; color: {p["perigo"]}; }}',
+        f'#seta_recentes {{ background: transparent; border: none; color: {p["texto_suave"]};'
+        f' padding: 0 4px; font-size: {f["corpo"]}px; }}',
+        f'#seta_recentes:hover {{ color: {p["texto"]}; }}',
+        "#seta_recentes::menu-indicator { image: none; width: 0; }",
     ]
     return "\n" + "\n".join(regras) + "\n"
 

@@ -495,8 +495,9 @@ def test_persistencia_estrutura_completa_do_json_apos_uso_combinado(tmp_path, co
     # [2026-10-19] "novidades" entrou com `set_ultima_versao_vista` -- a janela
     # de novidades. [2026-10-20] "preferencias" entrou com `gravar_preferencia`
     # -- o tema da interface (escuro/claro/sistema).
+    # [2026-10-21] "recentes" entrou com `lembrar_recente` -- os últimos arquivos de cada diálogo.
     assert set(bruto.keys()) == {"ultimos", "categorias", "pastas_padrao", "arquivos", "opcoes",
-                                 "novidades", "preferencias"}
+                                 "novidades", "preferencias", "recentes"}
     assert bruto == {
         "ultimos": {"autospec.ficha": str(pasta_ultimo)},
         "categorias": {"excel": str(pasta_ultimo)},
@@ -507,6 +508,7 @@ def test_persistencia_estrutura_completa_do_json_apos_uso_combinado(tmp_path, co
         "opcoes": {},
         "novidades": {},
         "preferencias": {},
+        "recentes": {},
     }
 
 
