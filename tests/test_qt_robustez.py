@@ -94,6 +94,9 @@ def test_tela_que_falha_ao_montar_vira_tela_de_erro(qt_interface, qtbot, tmp_pat
     assert isinstance(janela.pilha.currentWidget(), TelaComErro)
     assert "faltou coluna" in janela.pilha.currentWidget().mensagem.text()
     assert "Analyzer" not in janela.telas  # a próxima visita tenta de novo
+    # O menu marca a tela que falhou, e não deixa marcada a anterior (Home).
+    assert janela.botoes_menu["Analyzer"].property("ativo") is True
+    assert not janela.botao_home.property("ativo")
 
 
 def test_tela_que_falha_diz_onde_esta_o_log(qt_interface, qtbot):

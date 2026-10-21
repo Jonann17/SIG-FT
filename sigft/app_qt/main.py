@@ -261,6 +261,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
                     erro_tela = TelaComErro(nome, erro)
                     self.pilha.addWidget(erro_tela)
                     self.pilha.setCurrentWidget(erro_tela)
+                    self._marcar_no_menu(nome)  # o menu marca a tela que falhou, não a anterior
                     return  # sem cache: a próxima visita tenta montar de novo
             self.telas[nome] = tela
             self.pilha.addWidget(tela)
