@@ -359,8 +359,13 @@ def preparar_traducao(textos, traduzir, glossario, cache, avisar=None):
                    "ele parece fora do ar (veja a chave de IA em 'Modelos de IA' e a rede). "
                    "Elas ficam em portugues.")
     else:
+        # Igual à entrada só vai para o cache com prova de que o tradutor está
+        # vivo (outra pergunta desta rodada mudou) ou quando é um termo de uma
+        # palavra só (sigla, código: "NCM", "IP65"). Sem isso, um lote pequeno
+        # com o tradutor mudo congelaria o português no cache (2026-10-21).
         for miolo in iguais:
-            cache.guardar(miolo, miolo)
+            if mudaram > 0 or len(miolo.split()) == 1:
+                cache.guardar(miolo, miolo)
     cache.salvar()
     return falhas
 

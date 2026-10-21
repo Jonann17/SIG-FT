@@ -268,6 +268,16 @@ def test_tradutor_mudo_avisa_UMA_vez_e_nao_congela_o_portugues(tmp_path, monkeyp
     assert cache.buscar("CARACTERISTICA 1") is None
 
 
+def test_lote_pequeno_com_tradutor_mudo_nao_congela_frase_em_portugues(tmp_path):
+    """Abaixo do limiar do "tradutor mudo" (rodadas seguintes, quase tudo no
+    cache): frase que volta igual e nada mais mudou fica FORA do cache; a
+    sigla de uma palavra só, dentro."""
+    cache = tp.Cache(str(tmp_path))
+    tp.preparar_traducao(["1 - TENSAO NOMINAL:", "2 - NCM:"], lambda t: list(t), {}, cache)
+    assert cache.buscar("TENSAO NOMINAL") is None
+    assert cache.buscar("NCM") == "NCM"
+
+
 def test_traducao_conhecida_usa_glossario_e_cache_e_conta_o_que_faltou(tmp_path):
     cache = tp.Cache(str(tmp_path))
     cache.guardar("Vazão (l/min)", "Flow rate (l/min)")
