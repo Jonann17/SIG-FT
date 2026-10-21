@@ -14,6 +14,7 @@ from __future__ import annotations
 import threading
 import traceback
 
+from PySide6.QtCore import QPoint, QTimer
 from PySide6.QtWidgets import (
     QLabel, QMessageBox, QProgressBar, QScrollArea, QVBoxLayout, QWidget,
 )
@@ -22,6 +23,7 @@ from sigft.app import backends, textos_dicas, theme
 from sigft.app import resumo_lote as resumo_regras
 from sigft.app_qt import aviso_windows, interface
 from sigft.app_qt.widgets import arrastar
+from sigft.app_qt.widgets import puxador_console
 from sigft.app_qt.widgets.atividade import FaixaDeAtividade
 from sigft.app_qt.widgets.console import ConsoleFrame
 from sigft.app_qt.widgets.espera import DialogosDeEspera
@@ -73,6 +75,14 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         self.embutida = embutida
         # O nome que o resumo e o aviso do Windows dão à tela (2026-10-21).
         self.titulo_da_tela = resumo_regras.nome_da_tela(titulo)
+        # O console que a pessoa redimensiona (2026-10-21): a altura escolhida
+        # arrastando a barrinha (`None` = a da tela) e a barrinha.
+        self.altura_console_escolhida: int | None = None
+        self.puxador_console = None
+        self._padrao_do_console: list = []
+        self._gravar_console = QTimer(self)
+        self._gravar_console.setSingleShot(True)
+        self._gravar_console.timeout.connect(self._gravar_altura_do_console)
         raiz = QVBoxLayout(self)
         # As medidas da interface antiga somadas: `show_frame` põe a tela inteira
         # com padx=20/pady=20 (sigft/app/main.py), e o `ModuleFrame` de lá põe
@@ -142,6 +152,109 @@ class ModuleFrame(DialogosDeEspera, QWidget):
             self._build_ui()
             aplicar_dicas(self)
             self.receptores_de_arquivo = arrastar.ligar_arrastaveis(self, self.ARRASTAVEIS)
+            if not embutida and self.console is not None:
+                self._ligar_puxador_do_console()
+
+    # -- o console redimensionável (2026-10-21) ------------------------------------
+    def _alvos_do_console(self) -> list:
+        """As peças que levam a altura escolhida. A Correção de PDM soma a faixa
+        em que o console fica."""
+        return [self.console]
+
+    def _console_voltou_ao_padrao(self) -> None:
+        """Gancho das telas que repartem a altura no `resizeEvent`."""
+
+    def _ligar_puxador_do_console(self) -> None:
+        # Medido no fim da montagem, ANTES do primeiro `_repartir_altura` (que só
+        # vem no `resizeEvent`) da Criação, da Cópia e da Correção: lá o mínimo e
+        # o máximo guardados não são a altura da tela. Voltar ao padrão ainda dá
+        # certo porque elas recalculam no `_console_voltou_ao_padrao`, depois de
+        # devolvidos o mínimo e o máximo.
+        self._padrao_do_console = [(w, w.minimumHeight(), w.maximumHeight())
+                                   for w in self._alvos_do_console()]
+        self.puxador_console = puxador_console.PuxadorDoConsole(self)
+        guardada = puxador_console.ler_altura(self)
+        if guardada is not None:
+            # O mínimo de agora é o da fonte antes do polimento: a escolha fica
+            # como foi guardada, e o `_ajustar_console_ao_espaco` (no resize e na
+            # troca de fonte) acerta o mínimo de verdade.
+            self.altura_console_escolhida = guardada
+            self._aplicar_altura_do_console(max(guardada, self._altura_minima_do_console()))
+
+    def _altura_minima_do_console(self) -> int:
+        return puxador_console.altura_minima_do_console(self.console)
+
+    def altura_do_console(self) -> int:
+        """A altura da peça de fora do console (na Correção de PDM, a faixa)."""
+        return self._alvos_do_console()[0].height()
+
+    def base_do_console_global(self) -> int:
+        """O y global do fim da peça de fora do console: o que não se mexe
+        quando o console muda de altura."""
+        alvo = self._alvos_do_console()[0]
+        return alvo.mapToGlobal(QPoint(0, alvo.height())).y()
+
+    def limites_do_console(self) -> tuple[int, int]:
+        """(mínimo, máximo) da altura agora: o máximo deixa ao conteúdo o que
+        ele pede, e nunca menos que `MIN_CONTEUDO`."""
+        minimo = self._altura_minima_do_console()
+        return minimo, max(minimo, self._altura_que_cabe())
+
+    def _altura_que_cabe(self) -> int:
+        """A maior altura do console com o resto da tela no mínimo dela: a
+        folga do layout (altura da tela menos o mínimo do layout, que já conta
+        o console de agora) vai toda para o console, menos o que falta para o
+        conteúdo ter `MIN_CONTEUDO`. Medir a folga, e não a altura do conteúdo,
+        conta também o vão vazio das telas de conteúdo com peso 0 (Busca e
+        Gestão), em que a sobra não vai para o conteúdo."""
+        folga = self.height() - self.layout().minimumSize().height()
+        falta = max(0, puxador_console.MIN_CONTEUDO - self.content.minimumSizeHint().height())
+        return self.altura_do_console() + folga - falta
+
+    def _aplicar_altura_do_console(self, altura: int) -> None:
+        for widget in self._alvos_do_console():
+            if widget.minimumHeight() != altura or widget.maximumHeight() != altura:
+                widget.setFixedHeight(altura)
+
+    def escolher_altura_do_console(self, altura: int) -> None:
+        """A altura que a pessoa arrastou. Grava daqui a pouco."""
+        self.altura_console_escolhida = int(altura)
+        self._aplicar_altura_do_console(self.altura_console_escolhida)
+        self._gravar_console.start(puxador_console.MS_PARA_GRAVAR)
+
+    def console_ao_padrao(self) -> None:
+        """O duplo clique: a altura da tela de volta, e o guardado esquecido."""
+        self.altura_console_escolhida = None
+        for widget, minimo, maximo in self._padrao_do_console:
+            widget.setMinimumHeight(minimo)
+            widget.setMaximumHeight(maximo)
+        self._console_voltou_ao_padrao()
+        self._gravar_console.stop()
+        puxador_console.gravar_altura(self, None)
+
+    def _gravar_altura_do_console(self) -> None:
+        if self.puxador_console is not None:
+            puxador_console.gravar_altura(self, self.altura_console_escolhida)
+
+    def _ajustar_console_ao_espaco(self) -> None:
+        """Janela menor: o console escolhido encolhe até o conteúdo ter o que
+        pede; janela maior: volta à altura escolhida. A escolha fica."""
+        if self.altura_console_escolhida is None or self.puxador_console is None:
+            return
+        minimo = self._altura_minima_do_console()
+        altura = max(minimo, min(self.altura_console_escolhida, self._altura_que_cabe()))
+        self._aplicar_altura_do_console(altura)
+
+    def resizeEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
+        super().resizeEvent(evento)
+        self._ajustar_console_ao_espaco()
+
+    def hideEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
+        # Escondeu (trocou de tela, fechou o app) com a gravação esperando: grava já.
+        if self._gravar_console.isActive():
+            self._gravar_console.stop()
+            self._gravar_altura_do_console()
+        super().hideEvent(evento)
 
     def _build_ui(self) -> None:
         raise NotImplementedError(f"{type(self).__name__} precisa implementar _build_ui().")
