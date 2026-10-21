@@ -66,7 +66,7 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         self.controller = controller
         self.embutida = embutida
         # O nome que o resumo e o aviso do Windows dão à tela (2026-10-21).
-        self.titulo_da_tela = titulo
+        self.titulo_da_tela = resumo_regras.nome_da_tela(titulo)
         raiz = QVBoxLayout(self)
         # As medidas da interface antiga somadas: `show_frame` põe a tela inteira
         # com padx=20/pady=20 (sigft/app/main.py), e o `ModuleFrame` de lá põe

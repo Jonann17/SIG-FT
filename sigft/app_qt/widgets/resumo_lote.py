@@ -35,7 +35,7 @@ class JanelaResumoDoLote(QDialog):
     def __init__(self, parent, titulo: str, pares) -> None:
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        self.setWindowTitle(f"Resumo: {titulo}")
+        self.setWindowTitle(f"Resumo: {resumo_lote.nome_da_tela(titulo)}")
         self.resize(760, 480)
         self._titulo = titulo
         self._pares = [(str(texto), nivel) for texto, nivel in pares]
@@ -88,6 +88,57 @@ class JanelaResumoDoLote(QDialog):
         self._volta = QTimer(self)
         self._volta.setSingleShot(True)
         self._volta.timeout.connect(self._texto_do_copiar)
+        # A caixa modal pela qual o resumo espera (`mostrar_quando_livre`), e o
+        # relógio que confere de novo depois que ela fecha: filho da janela,
+        # morre com ela e não chama ninguém depois.
+        self._esperando = None
+        self._espera = QTimer(self)
+        self._espera.setSingleShot(True)
+        self._espera.timeout.connect(self.mostrar_quando_livre)
+
+    def mostrar_quando_livre(self) -> None:
+        """Mostra já, ou espera a caixa modal aberta fechar (2026-10-21).
+
+        O fim da tarefa pode chegar com uma caixa modal na frente ("Salvar
+        Resultados", um `avisar`): aberto por cima dela, o resumo ficaria ao
+        lado de uma caixa que ele mesmo impede de responder."""
+        if self.isVisible():
+            return
+        modal = QApplication.activeModalWidget()
+        if modal is not None and modal is not self:
+            if modal is not self._esperando:
+                self._soltar_modal()
+                self._esperando = modal
+                # Métodos ligados: o Qt desfaz a ligação se o resumo morrer antes.
+                fim = getattr(modal, "finished", None)
+                if fim is not None:
+                    fim.connect(self._modal_fechou)
+                modal.destroyed.connect(self._modal_fechou)
+            return
+        self._soltar_modal()
+        self.show()
+        self.raise_()
+
+    def _modal_fechou(self, *_args) -> None:
+        # Na volta do laço: dá tempo de a caixa sair da pilha de modais (ou de
+        # a próxima, se houver uma em seguida, entrar nela).
+        self._espera.start(0)
+
+    def _soltar_modal(self) -> None:
+        """Desfaz as ligações com a caixa esperada: a caixa pode viver mais que o
+        resumo (que fecha e é apagado), e o aviso dela não pode chegar aqui."""
+        modal, self._esperando = self._esperando, None
+        if modal is None:
+            return
+        for sinal in (getattr(modal, "finished", None), getattr(modal, "destroyed", None)):
+            try:
+                sinal.disconnect(self._modal_fechou)
+            except (AttributeError, RuntimeError, TypeError):
+                pass  # sem o sinal, já desligado, ou a caixa já foi apagada
+
+    def closeEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
+        self._soltar_modal()
+        super().closeEvent(evento)
 
     def _pintar_cores(self, *_tema) -> None:
         for item, nivel in self._itens:
@@ -119,8 +170,14 @@ class JanelaResumoDoLote(QDialog):
 
 
 def abrir_resumo(tela, titulo: str, pares) -> JanelaResumoDoLote:
-    """Abre (sem prender ninguém: a tarefa já acabou) e devolve a janela."""
+    """Abre (sem prender ninguém: a tarefa já acabou) e devolve a janela.
+
+    Um resumo por tela: o do lote anterior, ainda aberto (ou à espera de uma
+    caixa modal), fecha. Com uma caixa modal na frente, a janela espera ela
+    fechar (`mostrar_quando_livre`)."""
+    if tela is not None:
+        for antiga in tela.findChildren(JanelaResumoDoLote, options=Qt.FindChildOption.FindDirectChildrenOnly):
+            antiga.close()
     janela = JanelaResumoDoLote(tela, titulo, pares)
-    janela.show()
-    janela.raise_()
+    janela.mostrar_quando_livre()
     return janela

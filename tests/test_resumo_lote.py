@@ -69,3 +69,45 @@ def test_desligado_pelo_ambiente(monkeypatch):
 
 def test_os_testes_rodam_com_o_resumo_desligado():
     assert os.environ.get(r.ENV_DESLIGAR) == "1"   # tests/conftest.py
+
+
+# -- revisão de 2026-10-21 ---------------------------------------------------
+def test_falha_do_relatorio_lote_conta_uma_vez():
+    """O `RelatorioLote` loga a falha duas vezes: na linha do item, com a
+    duração, e no resumo do fim, sem ela. O resumo conta uma."""
+    from sigft.core.callbacks import UICallbacks
+    from sigft.core.relatorio_lote import RelatorioLote
+
+    pares = []
+    relogio = iter([0.0, 0.0, 1.24, 1.24, 1.24, 1.24])
+    lote = RelatorioLote(UICallbacks(log=lambda msg, nivel="info", contexto=None:
+                                     pares.append((msg, n.classificar(msg, nivel)))),
+                         titulo="Upload", total=1, time_fn=lambda: next(relogio))
+    with lote:
+        with lote.item("4500063671.0002"):
+            raise TimeoutError("sem resposta")
+    textos_com_erro = [t for t, nivel in pares if nivel == n.ERRO]
+    assert len(textos_com_erro) == 2                     # o item e o resumo do fim
+    grupos = r.agrupar(pares)
+    assert r.contar(grupos) == (1, 0)
+    assert grupos[0].linhas[0][0] == "❌ 4500063671.0002: TimeoutError: sem resposta (1,2s)"
+
+
+def test_duracao_em_minutos_e_horas_tambem_e_ignorada():
+    for duracao in ("3min 04s", "1h 02min"):
+        pares = [(f"❌ 4500063671.0002: falhou ({duracao})", n.ERRO),
+                 ("     ❌ 4500063671.0002: falhou", n.ERRO)]
+        assert r.contar(r.agrupar(pares)) == (1, 0)
+
+
+def test_codigo_nao_e_pedaco_de_numero_maior():
+    assert r.codigo_pmib("[Erro] pedido 12345678901.5 recusado") == ""
+    assert r.codigo_pmib("[Erro] 4500063671.0002 recusado") == "4500063671.0002"
+    grupos = r.agrupar([("[Erro] pedido 12345678901.5 recusado", n.ERRO)])
+    assert [g.rotulo for g in grupos] == [r.SEM_CODIGO]
+
+
+def test_nome_da_tela_sem_modulo_no_comeco():
+    assert r.nome_da_tela("Módulo: Cópia de Fichas PMIB") == "Cópia de Fichas PMIB"
+    assert r.nome_da_tela("Módulo de Criação") == "Módulo de Criação"
+    assert r.nome_da_tela("Upload duplicadas") == "Upload duplicadas"

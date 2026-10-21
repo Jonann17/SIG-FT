@@ -9,19 +9,34 @@ com o nível de `niveis_log`.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
 from sigft.app import niveis_log
-from sigft.core.excel import pmib_codes
 from sigft.core.log_execucao import nome_de_arquivo
 
 # Os testes desligam a janela (tests/conftest.py): dezenas de testes de tela rodam
 # tarefa com erro DE PROPÓSITO, e cada um deixaria uma janela por cima do seguinte.
 ENV_DESLIGAR = "SIGFT_SEM_RESUMO_DO_LOTE"
 SEM_CODIGO = "Sem código PMIB"
+
+# O código PMIB completo da linha. Local, e não `pmib_codes.find_pmib_code_in_text`:
+# aquele acha o fim de um número mais longo ("12345678901.5" dava "2345678901.5");
+# aqui o código não pode vir colado a outro dígito (revisão de 2026-10-21).
+_CODIGO_PMIB = re.compile(r"(?<!\d)\d{10}\.\d+")
+
+# A duração que o `RelatorioLote` cola no fim da linha do item
+# (`core/relatorio_lote.formatar_duracao`: "1,2s", "3min 04s", "1h 02min").
+# O resumo do fim do lote repete a falha SEM ela; para não contar a mesma falha
+# duas vezes, a comparação ignora esse final (revisão de 2026-10-21).
+_DURACAO_NO_FIM = re.compile(r"\s*\((\d+,\d+s|\d+min \d+s|\d+h \d+min)\)$")
+
+# O começo "Módulo:" de alguns títulos de tela, que no título da janela daria
+# "Resumo: Módulo: Cópia..." (revisão de 2026-10-21).
+_PREFIXO_MODULO = re.compile(r"^\s*módulo\s*:\s*", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -32,6 +47,17 @@ class Grupo:
     @property
     def rotulo(self) -> str:
         return self.codigo or SEM_CODIGO
+
+
+def nome_da_tela(titulo: str) -> str:
+    """O título da tela sem o "Módulo:" do começo."""
+    return _PREFIXO_MODULO.sub("", str(titulo)).strip() or str(titulo).strip()
+
+
+def codigo_pmib(texto: str) -> str:
+    """O primeiro código PMIB completo de `texto`, ou ""."""
+    achado = _CODIGO_PMIB.search(texto)
+    return achado.group(0) if achado else ""
 
 
 def ligado() -> bool:
@@ -63,17 +89,19 @@ def frase_do_fim(titulo: str, erros: int, avisos: int, *, falhou: bool = False) 
 def agrupar(pares: Iterable[tuple[str, str]]) -> list[Grupo]:
     """As linhas de erro e aviso de `pares` (texto, nível), por código PMIB, na
     ordem em que cada código apareceu; as sem código no fim. Linha repetida no
-    mesmo grupo entra uma vez (o resumo do `RelatorioLote` repete as falhas)."""
+    mesmo grupo entra uma vez, comparada sem a duração do fim: o resumo do
+    `RelatorioLote` repete as falhas sem ela. Fica o texto da primeira."""
     por_codigo: dict[str, list[tuple[str, str]]] = {}
     vistos: set[tuple[str, str]] = set()
     for texto, nivel in pares:
         if nivel not in (niveis_log.ERRO, niveis_log.AVISO):
             continue
         texto = str(texto).strip()
-        codigo = pmib_codes.find_pmib_code_in_text(texto) or ""
-        if (codigo, texto) in vistos:
+        codigo = codigo_pmib(texto)
+        chave = (codigo, _DURACAO_NO_FIM.sub("", texto))
+        if chave in vistos:
             continue
-        vistos.add((codigo, texto))
+        vistos.add(chave)
         por_codigo.setdefault(codigo, []).append((texto, nivel))
     grupos = [Grupo(codigo, tuple(linhas)) for codigo, linhas in por_codigo.items() if codigo]
     if "" in por_codigo:

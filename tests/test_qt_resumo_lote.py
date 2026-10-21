@@ -110,3 +110,44 @@ def test_abrir_resumo_mostra_a_janela(qt_interface, qtbot):
     j = janela_mod.abrir_resumo(tela, "x", [("[Erro] a", "erro")])
     assert j.isVisible()
     j.close()
+
+
+# -- revisão de 2026-10-21 ---------------------------------------------------
+def test_titulo_sem_modulo_duplo(qt_interface, qtbot):
+    j = janela_mod.JanelaResumoDoLote(None, "Módulo: Cópia de Fichas PMIB", [("[Erro] a", "erro")])
+    qtbot.addWidget(j)
+    assert j.windowTitle() == "Resumo: Cópia de Fichas PMIB"
+    tela = Tela(titulo="Módulo: Cópia de Fichas PMIB")
+    qtbot.addWidget(tela)
+    assert tela.titulo_da_tela == "Cópia de Fichas PMIB"
+
+
+def test_com_caixa_modal_aberta_espera_ela_fechar(qt_interface, qtbot):
+    from PySide6.QtWidgets import QDialog
+    tela = Tela(titulo="x")
+    qtbot.addWidget(tela)
+    caixa = QDialog(tela)
+    caixa.setModal(True)
+    caixa.show()
+    qtbot.waitUntil(lambda: QApplication.activeModalWidget() is caixa, timeout=2000)
+    j = janela_mod.abrir_resumo(tela, "x", [("[Erro] a", "erro")])
+    assert not j.isVisible()
+    caixa.accept()
+    qtbot.waitUntil(j.isVisible, timeout=2000)
+    j.close()
+
+
+def test_um_resumo_por_tela(qt_interface, qtbot):
+    tela = Tela(titulo="x")
+    qtbot.addWidget(tela)
+    outra = Tela(titulo="y")
+    qtbot.addWidget(outra)
+    primeiro = janela_mod.abrir_resumo(tela, "x", [("[Erro] a", "erro")])
+    da_outra = janela_mod.abrir_resumo(outra, "y", [("[Erro] c", "erro")])
+    segundo = janela_mod.abrir_resumo(tela, "x", [("[Erro] b", "erro")])
+    assert not primeiro.isVisible()
+    visiveis = [w for w in tela.findChildren(janela_mod.JanelaResumoDoLote) if w.isVisible()]
+    assert visiveis == [segundo]
+    assert da_outra.isVisible()                          # o da outra tela fica
+    segundo.close()
+    da_outra.close()
