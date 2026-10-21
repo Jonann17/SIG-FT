@@ -14,7 +14,7 @@ from __future__ import annotations
 import threading
 import traceback
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QPoint, QTimer
 from PySide6.QtWidgets import (
     QLabel, QMessageBox, QProgressBar, QScrollArea, QVBoxLayout, QWidget,
 )
@@ -165,28 +165,51 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         """Gancho das telas que repartem a altura no `resizeEvent`."""
 
     def _ligar_puxador_do_console(self) -> None:
+        # Medido no fim da montagem, ANTES do primeiro `_repartir_altura` (que só
+        # vem no `resizeEvent`) da Criação, da Cópia e da Correção: lá o mínimo e
+        # o máximo guardados não são a altura da tela. Voltar ao padrão ainda dá
+        # certo porque elas recalculam no `_console_voltou_ao_padrao`, depois de
+        # devolvidos o mínimo e o máximo.
         self._padrao_do_console = [(w, w.minimumHeight(), w.maximumHeight())
                                    for w in self._alvos_do_console()]
         self.puxador_console = puxador_console.PuxadorDoConsole(self)
         guardada = puxador_console.ler_altura(self)
         if guardada is not None:
-            self.altura_console_escolhida = max(guardada, self._altura_minima_do_console())
-            self._aplicar_altura_do_console(self.altura_console_escolhida)
+            # O mínimo de agora é o da fonte antes do polimento: a escolha fica
+            # como foi guardada, e o `_ajustar_console_ao_espaco` (no resize e na
+            # troca de fonte) acerta o mínimo de verdade.
+            self.altura_console_escolhida = guardada
+            self._aplicar_altura_do_console(max(guardada, self._altura_minima_do_console()))
 
     def _altura_minima_do_console(self) -> int:
         return puxador_console.altura_minima_do_console(self.console)
 
     def altura_do_console(self) -> int:
-        """A altura do console que se vê (na Correção de PDM a faixa pode ser maior)."""
-        return self.console.height()
+        """A altura da peça de fora do console (na Correção de PDM, a faixa)."""
+        return self._alvos_do_console()[0].height()
+
+    def base_do_console_global(self) -> int:
+        """O y global do fim da peça de fora do console: o que não se mexe
+        quando o console muda de altura."""
+        alvo = self._alvos_do_console()[0]
+        return alvo.mapToGlobal(QPoint(0, alvo.height())).y()
 
     def limites_do_console(self) -> tuple[int, int]:
         """(mínimo, máximo) da altura agora: o máximo deixa ao conteúdo o que
         ele pede, e nunca menos que `MIN_CONTEUDO`."""
         minimo = self._altura_minima_do_console()
-        pede = max(puxador_console.MIN_CONTEUDO, self.content.minimumSizeHint().height())
-        maximo = self.altura_do_console() + self.content.height() - pede
-        return minimo, max(minimo, maximo)
+        return minimo, max(minimo, self._altura_que_cabe())
+
+    def _altura_que_cabe(self) -> int:
+        """A maior altura do console com o resto da tela no mínimo dela: a
+        folga do layout (altura da tela menos o mínimo do layout, que já conta
+        o console de agora) vai toda para o console, menos o que falta para o
+        conteúdo ter `MIN_CONTEUDO`. Medir a folga, e não a altura do conteúdo,
+        conta também o vão vazio das telas de conteúdo com peso 0 (Busca e
+        Gestão), em que a sobra não vai para o conteúdo."""
+        folga = self.height() - self.layout().minimumSize().height()
+        falta = max(0, puxador_console.MIN_CONTEUDO - self.content.minimumSizeHint().height())
+        return self.altura_do_console() + folga - falta
 
     def _aplicar_altura_do_console(self, altura: int) -> None:
         for widget in self._alvos_do_console():
@@ -219,9 +242,7 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         if self.altura_console_escolhida is None or self.puxador_console is None:
             return
         minimo = self._altura_minima_do_console()
-        pede = max(puxador_console.MIN_CONTEUDO, self.content.minimumSizeHint().height())
-        cabe = self.altura_do_console() + self.content.height() - pede
-        altura = max(minimo, min(self.altura_console_escolhida, cabe))
+        altura = max(minimo, min(self.altura_console_escolhida, self._altura_que_cabe()))
         self._aplicar_altura_do_console(altura)
 
     def resizeEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt

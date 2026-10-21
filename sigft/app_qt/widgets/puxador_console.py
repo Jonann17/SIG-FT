@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, QPoint, Qt, QTimer
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sigft.app_qt.widgets.console import ALTURA_BARRA, RECUO_TEXTO_CTK
@@ -104,10 +104,18 @@ class PuxadorDoConsole(QWidget):
         self.marca.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         lay.addWidget(self.marca, 0, Qt.AlignmentFlag.AlignCenter)
         self._tela = tela
-        self._y0: float | None = None
-        self._altura0 = 0
+        # Arrastando: onde a barrinha foi pega (px abaixo do topo dela) e a base
+        # das peças do console na tela (y global), que não sai do lugar.
+        self._pega: float | None = None
+        self._base = 0
         self._limites = (0, 0)
         self._vigiados: list[QWidget] = []
+        # Letra ou tema trocados: o mínimo do console pode ter subido. A conta
+        # espera o Qt terminar de repolir (um disparo só por troca).
+        self._reajuste = QTimer(self)
+        self._reajuste.setSingleShot(True)
+        self._reajuste.setInterval(0)
+        self._reajuste.timeout.connect(self._reajustar)
         self._vigiar()
         self.reposicionar()
 
@@ -123,7 +131,17 @@ class PuxadorDoConsole(QWidget):
         if evento.type() in (QEvent.Type.Move, QEvent.Type.Resize,
                              QEvent.Type.Show, QEvent.Type.Hide):
             self.reposicionar()
+        elif evento.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange) \
+                and obj is self._tela.console:
+            self._reajuste.start()
         return False
+
+    def _reajustar(self) -> None:
+        try:
+            self._tela._ajustar_console_ao_espaco()
+            self.reposicionar()
+        except RuntimeError:
+            pass  # tela destruída antes do disparo
 
     def reposicionar(self) -> None:
         console = self._tela.console
@@ -150,7 +168,7 @@ class PuxadorDoConsole(QWidget):
         super().enterEvent(evento)
 
     def leaveEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
-        if self._y0 is None:
+        if self._pega is None:
             self._destacar(False)
         super().leaveEvent(evento)
 
@@ -158,25 +176,29 @@ class PuxadorDoConsole(QWidget):
     def mousePressEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
         if evento.button() != Qt.MouseButton.LeftButton:
             return super().mousePressEvent(evento)
-        self._y0 = evento.globalPosition().y()
-        self._altura0 = self._tela.altura_do_console()
+        self._pega = evento.globalPosition().y() - self.mapToGlobal(QPoint(0, 0)).y()
+        self._base = self._tela.base_do_console_global()
         self._limites = self._tela.limites_do_console()
         self._destacar(True)
         evento.accept()
 
     def mouseMoveEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
-        if self._y0 is None:
+        if self._pega is None:
             return super().mouseMoveEvent(evento)
         minimo, maximo = self._limites
-        # Para cima (y menor) o console cresce.
-        altura = self._altura0 + round(self._y0 - evento.globalPosition().y())
+        # A barrinha vai para onde o cursor está; o console ocupa da barrinha
+        # até a base. Na Correção de PDM a faixa é maior que o console centrado
+        # nela: no primeiro movimento o console passa a encher a faixa, e a
+        # barrinha segue o cursor sem pular (revisão de 2026-10-21).
+        topo = evento.globalPosition().y() - self._pega
+        altura = self._base - round(topo) - ALTURA_PUXADOR - FOLGA_ATE_O_CONSOLE
         self._tela.escolher_altura_do_console(max(minimo, min(altura, maximo)))
         evento.accept()
 
     def mouseReleaseEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
-        if self._y0 is None:
+        if self._pega is None:
             return super().mouseReleaseEvent(evento)
-        self._y0 = None
+        self._pega = None
         if not self.underMouse():
             self._destacar(False)
         evento.accept()
@@ -184,6 +206,6 @@ class PuxadorDoConsole(QWidget):
     def mouseDoubleClickEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
         if evento.button() != Qt.MouseButton.LeftButton:
             return super().mouseDoubleClickEvent(evento)
-        self._y0 = None
+        self._pega = None
         self._tela.console_ao_padrao()
         evento.accept()

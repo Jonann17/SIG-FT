@@ -222,9 +222,7 @@ def _telas_com_console():
             ModuloUploadTechSpecs]
 
 
-@pytest.mark.parametrize("indice", range(12))
-def test_toda_tela_com_console_arrasta_e_volta(qt_interface, qtbot, prefs_do_teste, indice):
-    classe = _telas_com_console()[indice]
+def _aberta_de_verdade(qtbot, classe):
     t = classe()
     qtbot.addWidget(t)
     t.resize(1003, 850)
@@ -232,21 +230,46 @@ def test_toda_tela_com_console_arrasta_e_volta(qt_interface, qtbot, prefs_do_tes
     qtbot.waitExposed(t)
     QApplication.processEvents()
     QApplication.processEvents()
+    return t
+
+
+@pytest.mark.parametrize("indice", range(12))
+def test_toda_tela_com_console_arrasta_e_volta(qt_interface, qtbot, prefs_do_teste, indice):
+    classe = _telas_com_console()[indice]
+    t = _aberta_de_verdade(qtbot, classe)
     p = t.puxador_console
     assert p is not None and p.isVisible(), classe.__name__
     assert _topo(p, t) + p.height() <= _topo(t.console, t)
     padrao = t.console.height()
-    arrastar(p, 40)
-    assert t.console.height() == padrao - 40, classe.__name__
-    # Para cima: até o conteúdo ficar com o que pede. Na Busca e na Gestão o
-    # console já tem toda a sobra (conteúdo com peso 0): lá ele só diminui.
-    _, maximo = t.limites_do_console()
-    arrastar(p, -80)
-    assert t.console.height() == min(padrao + 40, maximo), classe.__name__
+    # A barrinha segue o cursor: 30 para baixo, depois 10 para cima (cabe em
+    # toda tela: na Busca e na Gestão o console já tem toda a sobra e só
+    # diminui, mas os 30 de antes liberam espaço).
+    inicio = _topo(p, t)
+    arrastar(p, 30)
+    assert abs(_topo(p, t) - (inicio + 30)) <= 1, classe.__name__
+    arrastar(p, -10)
+    assert abs(_topo(p, t) - (inicio + 20)) <= 1, classe.__name__
+    assert _topo(p, t) + p.height() <= _topo(t.console, t)
     QTest.mouseDClick(p, Qt.MouseButton.LeftButton)
     QApplication.processEvents()
     QApplication.processEvents()
     assert t.console.height() == padrao, classe.__name__
+    assert _topo(p, t) == inicio, classe.__name__
+
+
+def test_correcao_de_pdm_um_pixel_para_cima_sobe_um_pixel(qt_interface, qtbot, prefs_do_teste):
+    """A faixa da Correção é maior que o console centrado nela (200 x 150 a
+    1003x850): a barrinha não pode pular quando o console passa a enchê-la."""
+    from sigft.app_qt.views.correcao_pdm import ModuloCorrecaoPDM
+
+    t = _aberta_de_verdade(qtbot, ModuloCorrecaoPDM)
+    p = t.puxador_console
+    assert t.faixa_console.height() > t.console.height()      # o caso da revisão
+    inicio = _topo(p, t)
+    arrastar(p, -1)
+    assert _topo(p, t) == inicio - 1
+    assert t.console.height() == t.faixa_console.height()
+    assert _topo(p, t) + p.height() <= _topo(t.console, t)
 
 
 # --- tema e letra -------------------------------------------------------------------
@@ -308,6 +331,30 @@ def test_letra_grande_sobe_o_minimo_e_arrasta(qt_interface, qtbot, prefs_do_test
         assert t.console.height() == puxador_mod.altura_minima_do_console(t.console)
         arrastar(t.puxador_console, -60)
         assert t.console.height() == puxador_mod.altura_minima_do_console(t.console) + 60
+    finally:
+        letra.aplicar(qt_interface, "normal", gravar=False)
+        qt_interface.setStyleSheet(anterior)
+
+
+def test_letra_grande_sobe_a_altura_guardada_que_ficou_abaixo_do_minimo(
+        qt_interface, qtbot, prefs_do_teste, tmp_path, monkeypatch):
+    from sigft.app_qt import estilo, letra
+    from sigft.core import prefs
+
+    monkeypatch.setattr(letra, "_arquivo_de_prefs", lambda: tmp_path / "l.json")
+    anterior = qt_interface.styleSheet()
+    qt_interface.setStyleSheet(estilo.folha_de_estilo())
+    try:
+        sonda = _aberta(qtbot, OutraTela)
+        normal = puxador_mod.altura_minima_do_console(sonda.console)
+        prefs.gravar_preferencia("console.Tela", str(normal), config_path=str(prefs_do_teste))
+        t = _aberta(qtbot)
+        assert t.console.height() == normal
+        letra.aplicar(qt_interface, "grande", gravar=False)
+        minimo = puxador_mod.altura_minima_do_console(t.console)
+        assert minimo > normal
+        qtbot.waitUntil(lambda: t.console.height() == minimo, timeout=2000)
+        assert t.altura_console_escolhida == normal          # a escolha fica
     finally:
         letra.aplicar(qt_interface, "normal", gravar=False)
         qt_interface.setStyleSheet(anterior)
