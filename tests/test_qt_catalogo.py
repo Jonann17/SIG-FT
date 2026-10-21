@@ -12,8 +12,8 @@ MODULOS_DA_HOME = [('CriaFichas',
   'edição do código de projeto em massa.'),
  ('PDM',
   'Planilhas PMIB',
-  'Fatia a lista geral de PDMs da Itaipu por sistema, aplica o template das fichas e organiza as pastas de '
-  'trabalho.'),
+  'Cria as planilhas das fichas PMIB a partir do template, com as características da planilha de PDMs, em '
+  'português ou em inglês.'),
  ('Analyzer',
   'Analyzer (IA)',
   'Dá nota às fichas preenchidas e separa as que passam das que voltam para correção. Gera o relatório de '

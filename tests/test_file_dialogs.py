@@ -165,11 +165,11 @@ def test_ask_directory_sucesso_grava_a_propria_pasta_sem_aplicar_dirname(tmp_pat
     pasta.mkdir()
 
     resultado = file_dialogs.ask_directory(
-        "pdm.caminho_destino", "pasta", config_path=config_path, dialog_fn=_DialogSpy(str(pasta))
+        "pdm.destino_fichas", "pasta", config_path=config_path, dialog_fn=_DialogSpy(str(pasta))
     )
 
     assert resultado == str(pasta)
-    assert prefs.get_initial_dir("pdm.caminho_destino", "pasta", config_path=config_path) == str(pasta)
+    assert prefs.get_initial_dir("pdm.destino_fichas", "pasta", config_path=config_path) == str(pasta)
 
 
 def test_remember_dir_e_gravado_na_chave_e_categoria_certas(tmp_path, config_path):

@@ -8,63 +8,72 @@
 ## O problema
 
 O SIG-FT tem **dois templates** de ficha — PT-BR e inglês —, mas as
-características técnicas coladas dentro deles vêm sempre da **mesma** pasta de
-PDMs Modificados, que está em português. A tradução era feita **à mão**, ficha
-a ficha.
+características técnicas coladas dentro deles vêm da planilha de PDMs (SAM-GM),
+que está em português. A tradução era feita **à mão**, ficha a ficha.
 
-## O desenho (decisões do usuário, 2026-08-28)
+## O desenho
+
+Decisões do usuário em 2026-08-28; a fonte mudou em 2026-10-21 (pedido do
+Luan: a tela ficou só com a planilha de PDMs e a criação das planilhas PMIB).
 
 | Pergunta | Decisão |
 |---|---|
 | Como o app sabe o idioma? | **Seletor explícito na tela** (Português / English). Deduzir do nome do arquivo do template quebraria em silêncio no dia em que alguém o renomeasse — e ficha montada no idioma errado não se denuncia sozinha |
-| Qual motor de tradução? | **IA primeiro, `deep_translator` de reserva.** A IA entende termo técnico de hidrelétrica; a `deep_translator` é a cadeia (Google → MyMemory) que o fluxo do espanhol usava até a 1.1.0 (desde a 1.2.0 o espanhol é traduzido no próprio computador, ver `docs/base-conhecimento/04-translator-backend.md`) |
+| De onde vêm as perguntas em inglês? | **Da planilha de PDMs, traduzidas na hora** (desde 2026-10-21). Antes era uma pasta de PDMs Modificados traduzida num passo à parte, que saiu do SIG-FT |
+| Qual motor de tradução? | **IA primeiro, `deep_translator` de reserva** (`traducao_pdm.motor_padrao`). O motor é **injetado** no montador (`traduzir: list[str] -> list[str]`): trocar por um tradutor local é trocar o que a tela passa, sem mexer no montador |
 | Como corrigir termo errado? | **Glossário editável**, consultado antes do motor |
-| Onde ficam os traduzidos? | Pasta paralela, escolhida na tela |
+| Onde ficam glossário e cache? | Numa pasta fixa: **`Documentos\SIG-FT\traducao_pdm\`** (a pasta de dados do usuário; `SIGFT_DADOS_DIR` muda a raiz). Fora da pasta do programa, para a atualização não apagar o que você corrigiu |
+| E se o tradutor falhar? | A pergunta que não traduziu **fica em português**, com aviso no log da ficha; o lote nunca para por causa do tradutor |
 
 ## O fluxo, agora
 
 ```
-PDMs Modificados/                     (português, como sempre)
+PDMs_SAM-GM_<data>.xlsx               (a planilha de PDMs, no painel de cima)
       │
-      │  Aba 1, passo 3: "Traduzir PDMs Modificados para inglês"
+      │  "Criar planilhas PMIB", Idioma da ficha = English
+      │  pdm.aplicar_templates_fichas_da_planilha(idioma="en", traduzir=motor)
+      │
+      │  1. junta as perguntas de TODAS as fichas do lote
+      │  2. traducao_pdm.preparar_traducao(): o que é novo vai ao motor,
+      │     cada texto uma vez, em lotes de 60       + _GLOSSARIO_PT_EN.txt
+      │                                              + _CACHE_TRADUCAO.json
+      │  3. cada ficha: traducao_pdm.traducao_conhecida()
       ▼
-PDMs Modificados EN/                  + _GLOSSARIO_PT_EN.txt
-      │                               + _CACHE_TRADUCAO.json
-      │  Aba 2, idioma = English
-      ▼
-Ficha em inglês
+Ficha em inglês                       (aba "Standard Technical Sheet")
 ```
 
-O idioma escolhido na aba 2 decide **qual pasta** o montador usa. Em
-português, nada muda: quem não tocar no seletor tem exatamente o
-comportamento de sempre.
+Em português, nada muda: quem não tocar no seletor tem exatamente o
+comportamento de sempre, e o tradutor nem é montado.
 
 ## O que o serviço faz, e por quê
 
-`sigft/services/traducao_pdm.py`. Os arquivos traduzidos mantêm **nome e
-geometria** dos originais, e isso não é estética:
-
-- **o nome**, porque o montador acha o PDM por *substring* do id
-  (`PDM_1234_001`) no nome do arquivo — renomear quebraria o casamento em
-  silêncio;
-- **a célula**, porque o montador lê `cell(linha, 1)` — escrever noutra coluna
-  geraria fichas em branco, e ninguém perceberia até abrir uma.
-
-Cada arquivo é **copiado** e só a célula da descrição é reescrita: mescla,
-bordas, altura 32 e fonte 8 sobrevivem sem precisar ser refeitas.
+`sigft/services/traducao_pdm.py`, chamado pelo montador
+(`sigft/services/pdm.py`).
 
 **Só o miolo da pergunta viaja.** Em `"1 - Pressão de trabalho (bar):"`, o
 `"1 - "` é numeração e o `":"` é pontuação — mandar os dois para um tradutor é
-pedir para ele inventar. A unidade viaja **junto** com a descrição, de
-propósito: `"Pressão (bar)"` dá ao motor o contexto que `"Pressão"` sozinho
-não dá.
+pedir para ele inventar. A instrução entre parênteses viaja **junto** com o
+nome, de propósito: é o que o fornecedor lê para saber o que responder.
+
+**Tudo antes da primeira ficha.** As perguntas se repetem muito entre PDMs
+(`FABRICANTE`, `MODELO`, `DIMENSOES`): juntando o lote inteiro antes, cada uma
+vai ao motor uma vez, e as idas ao motor caem de "uma por ficha" para "uma a
+cada 60 textos novos". Um lote que o motor recusa (rede, chave, resposta torta)
+vira um aviso no log, e os outros lotes seguem.
+
+**O que não traduziu, fica em português, e é dito.** Cada ficha com pergunta
+sem tradução ganha um aviso no log ("4500063671.0071: 3 pergunta(s) sem
+traducao: ficaram em portugues na ficha em ingles"), que vai para o Resumo do
+fim do lote. Resposta do motor igual à entrada **não** entra no cache: um
+tradutor mudo (sem rede, sem chave) congelaria o português lá, e a próxima
+rodada nem perguntaria de novo.
 
 ### Três camadas antes do motor
 
 | Camada | Arquivo | Quem mantém |
 |---|---|---|
-| **Glossário** — frase inteira que estiver lá é usada verbatim, sem chamar o motor; termo solto vira vocabulário obrigatório no prompt | `_GLOSSARIO_PT_EN.txt` | **você**, editando à mão |
-| **Cache** — rerodar a pasta não paga tradução de novo | `_CACHE_TRADUCAO.json` | a máquina |
+| **Glossário** — frase inteira que estiver lá é usada verbatim, sem chamar o motor; termo solto vira vocabulário obrigatório no prompt | `_GLOSSARIO_PT_EN.txt` (criado com exemplos na primeira ficha em inglês) | **você**, editando à mão |
+| **Cache** — rerodar o lote não paga tradução de novo | `_CACHE_TRADUCAO.json` | a máquina |
 | **Dedupe** — `Fabricante`, `Modelo`, `Peso` aparecem em dezenas de PDMs e vão ao motor uma vez só | (em memória) | — |
 
 Separar glossário de cache é deliberado: o glossário é **curado por gente** e
@@ -77,7 +86,7 @@ conferência do AutoSpec.
 
 ## Um defeito antigo que saiu junto
 
-`aplicar_templates_fichas` fazia `wb_target["Ficha Técnica Padrão"]` — **nome
+O montador fazia `wb_target["Ficha Técnica Padrão"]` — **nome
 de aba fixo**. Um template com a aba noutro nome levantava `KeyError` dentro
 do laço, e o `except` genérico transformava isso em `"ERRO ao gerar ficha
 {pmib}"` **uma vez por ficha**: num lote de 200 materiais, 200 linhas
@@ -170,7 +179,7 @@ tem `Standard Technical Sheet` — ou seja, **ele renomeava à mão, ficha a
 ficha**. Perguntado em 2026-09-03, respondeu: renomear automaticamente. Feito.
 
 A regra mora no **serviço**, não na tela: a tela passa o `idioma` (que é o que
-o usuário escolheu no seletor) e `aplicar_templates_fichas` decide o nome, a
+o usuário escolheu no seletor) e o montador decide o nome, a
 partir de `pdm.NOME_DA_ABA_EM_INGLES`. Princípio nº 2 — regra de negócio
 duplicada é regra que diverge. Um teste por AST recusa a string
 `"Standard Technical Sheet"` dentro de `views/pdm.py`.
@@ -190,6 +199,11 @@ seguro.
 
 ## Verificação
 
+> Registro de 2026-09-03, quando as perguntas em inglês vinham da pasta
+> traduzida. Desde 2026-10-21 os testes do caminho pela planilha estão em
+> `tests/test_pdm_montagem_planilha.py` (seção C), `tests/test_traducao_pdm.py`
+> (seção D) e `tests/test_pdm_montador_idioma.py`, sempre com motor falso.
+
 - **72 testes** (46 do serviço de tradução, 18 do montador/idioma, 8 do
   layout/analyzer nos dois idiomas). Suíte inteira: **2889 passando**.
 - **Ponta a ponta com o template EN REAL** (`e2e`, openpyxl de verdade): as 17
@@ -208,7 +222,8 @@ seguro.
 
 | Item | Nota |
 |---|---|
-| Rodar com o **motor de verdade** (IA/`deep_translator`) | o contêiner do Claude na web não tem `deep_translator` nem chave de IA; a qualidade da tradução técnica só dá para julgar na sua máquina. É o único item que sobrou do desenho |
+| Rodar com o **motor de verdade** (IA/`deep_translator`) | o contêiner do Claude na web não tem `deep_translator` nem chave de IA; a qualidade da tradução técnica só dá para julgar na sua máquina. Vale de novo para o caminho pela planilha (2026-10-21): um lote real em inglês, olhando as perguntas na ficha e o aviso das que ficaram em português |
+| Motor local (sem IA) | o dono pode preferir um tradutor local; o montador já aceita qualquer `list[str] -> list[str]`, então é trocar o `motor_padrao` que a tela passa |
 | ~~Renomear a aba no idioma inglês~~ | ✅ **feito em 2026-09-03**, decidido pelo usuário — ver acima |
 | Semear o glossário com os termos do AutoSpec | o `GLOSSARIO_MULTILINGUE` do AutoSpec tem 71 termos PT/EN/DE/ES/FR/IT que serviriam de partida |
 | **Analisar** ficha em inglês de volta | ✅ auditado em 2026-09-03 — ver abaixo. Falta só medir o validador de IA contra uma ficha em inglês **respondida por fornecedor** (a que temos veio com a coluna das respostas em branco) |

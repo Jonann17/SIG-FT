@@ -1,4 +1,5 @@
-r"""A tela do módulo 2 com a fonte "planilha de PDMs" e a regeneração das pastas.
+r"""A tela do módulo 2: as fichas saem da planilha de PDMs (a única fonte desde
+2026-10-21, quando a pasta de PDMs Modificados e a regeneração sairam).
 
 Por AST, sobre a tela Qt (`sigft/app_qt/views/pdm.py`; a interface antiga
 saiu em 2026-10-15). Na Qt o clique valida e o trabalho roda numa tarefa
@@ -37,43 +38,25 @@ def _textos(raiz):
             if isinstance(no, ast.Constant) and isinstance(no.value, str)]
 
 
-def test_a_fonte_padrao_das_perguntas_e_a_planilha():
-    """O grupo de opções nasce com a planilha escolhida."""
-    assert "self.fonte_perguntas = _Opcoes('planilha', self)" in ast.unparse(_metodo("_build_tab2"))
+def test_nao_ha_escolha_de_fonte_nem_pasta_de_pdms_modificados():
+    """A fonte das características é sempre a planilha do painel de cima."""
+    fonte = VIEW.read_text(encoding="utf-8")
+    for proibido in ("fonte_perguntas", "entry_dest.", "entry_dest =", "aplicar_templates_fichas(",
+                     "pdm_regeneracao", "traduzir_pasta", "logica_excluir_duplicados"):
+        assert proibido not in fonte, proibido
 
 
-def test_a_aba_2_oferece_as_duas_fontes():
-    textos = _textos(_metodo("_build_tab2"))
-    assert "planilha" in textos
-    assert "pasta" in textos
-
-
-def test_planilha_com_ingles_e_recusado_antes_de_comecar():
-    """A ficha em inglês precisa das perguntas TRADUZIDAS, que só existem na
-    pasta. Pela planilha sairia ficha em inglês com perguntas em português, o
-    erro que não se denuncia sozinho."""
-    assert any("A ficha em inglês usa a pasta traduzida" in t
-               for t in _textos(_metodo("_op2_executar")))
-
-
-def test_a_aba_2_carrega_o_catalogo_e_chama_o_montador_da_planilha():
+def test_a_criacao_carrega_o_catalogo_e_chama_o_montador_da_planilha():
     assert "self._tarefa_fichas" in ast.unparse(_metodo("_op2_executar"))
     metodo = _metodo("_tarefa_fichas")
     assert _chamadas(metodo, "carregar")
     assert _chamadas(metodo, "aplicar_templates_fichas_da_planilha")
 
 
-def test_a_aba_1_tem_a_regeneracao_e_ela_chama_o_servico():
-    assert "_op1_regenerar" in ast.dump(_metodo("_build_tab1"))
-    assert "self._tarefa_regenerar" in ast.unparse(_metodo("_op1_regenerar"))
-    assert _chamadas(_metodo("_tarefa_regenerar"), "regenerar_pastas")
-
-
 def test_o_seletor_da_planilha_fica_no_painel_de_cima():
-    """As duas abas usam a planilha: o seletor subiu da aba 1 para o painel."""
     assert "_painel_global" in ast.dump(_metodo("_build_ui"))
     assert "_sel_sam_gm" in ast.dump(_metodo("_painel_global"))
-    assert "_sel_sam_gm" not in ast.dump(_metodo("_build_tab1"))
+    assert "_sel_sam_gm" not in ast.dump(_metodo("_build_fichas"))
 
 
 def test_a_tela_nao_decide_pergunta_revisao_nem_nome_de_arquivo():
@@ -88,12 +71,12 @@ def test_as_chamadas_aos_servicos_batem_com_a_assinatura():
     """Um `log_callback=` que virasse `callback=` no serviço só quebraria no
     clique; os serviços são importáveis, então dá para conferir aqui."""
     from sigft.core import pdm_catalogo
-    from sigft.services import pdm, pdm_regeneracao
+    from sigft.services import pdm
 
     alvos = {
         "aplicar_templates_fichas_da_planilha": pdm.aplicar_templates_fichas_da_planilha,
-        "aplicar_templates_fichas": pdm.aplicar_templates_fichas,
-        "regenerar_pastas": pdm_regeneracao.regenerar_pastas,
+        "processar_pastas_fichas": pdm.processar_pastas_fichas,
+        "codigos_pmib_da_lista": pdm.codigos_pmib_da_lista,
         "carregar": pdm_catalogo.carregar,
     }
     problemas = []

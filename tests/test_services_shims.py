@@ -73,7 +73,7 @@ MODULOS_SHIM = [
     ("apagar_lmr_backend", "apagar_lmr", "ApagarLMRAutomation"),
     ("lmr_backend", "lmr", "LMRAutomation"),
     ("search_pmib_backend", "search", "PMIBSearcher"),
-    ("pdm_backend", "pdm", "extrair_pdm_id"),
+    ("pdm_backend", "pdm", "aplicar_templates_fichas_da_planilha"),
     ("translator_backend", "translator", "TechnicalTranslator"),
     ("analyzer_backend", "analyzer", "DatasheetAnalyzer"),
     ("analyzer_backend", "analyzer", "CONFIG_MAP"),
@@ -236,8 +236,7 @@ def test_monkeypatch_pelo_nome_antigo_e_visivel_pelo_nome_novo(monkeypatch):
 # =============================================================================
 # Canários comportamentais leves: o shim não só "existe", funciona de ponta
 # a ponta através do nome antigo (sem duplicar as suítes de caracterização
-# já existentes -- test_pdm_backend_characterization.py,
-# test_apagar_lmr_backend_migration.py -- que continuam rodando, agora
+# já existentes -- test_apagar_lmr_backend_migration.py -- que continua rodando, agora
 # contra o código em sigft/services/, sem nenhuma edição).
 # =============================================================================
 def test_canario_instancia_classe_trivial_pelo_nome_antigo():
@@ -255,11 +254,14 @@ def test_canario_instancia_classe_trivial_pelo_nome_antigo():
 
 
 def test_canario_chama_funcao_pura_pelo_nome_antigo_e_bate_com_modulo_novo():
+    # [2026-10-21] Era `extrair_pdm_id`, que saiu com a pasta de PDMs
+    # Modificados; `nome_da_aba_da_ficha` é pura e continua no `pdm`.
     import pdm_backend
     from sigft.services import pdm as pdm_novo
 
-    resultado_antigo = pdm_backend.extrair_pdm_id("PDM_1234_005 - Motor Elétrico.xlsx")
-    resultado_novo = pdm_novo.extrair_pdm_id("PDM_1234_005 - Motor Elétrico.xlsx")
+    from types import SimpleNamespace
 
-    assert resultado_antigo == "PDM_1234_005"
-    assert resultado_antigo == resultado_novo
+    wb = SimpleNamespace(worksheets=[SimpleNamespace(title="Instruções"),
+                                     SimpleNamespace(title="Ficha Técnica Padrão")])
+    assert pdm_backend.nome_da_aba_da_ficha(wb) == "Ficha Técnica Padrão"
+    assert pdm_backend.nome_da_aba_da_ficha is pdm_novo.nome_da_aba_da_ficha

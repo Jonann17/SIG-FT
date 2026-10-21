@@ -302,9 +302,10 @@ LLM_TASKS: dict[str, dict[str, str]] = {
     "tech_specs": {"provider": PROVIDER_GEMINI, "model": "gemini-3-flash-preview"},
     # RAG (contexto longo); subir p/ modelo forte se a geração exigir
     "autospec": {"provider": PROVIDER_GEMINI, "model": "gemini-3-flash-preview"},
-    # [2026-08-28] traducao PT->EN das perguntas dos PDMs Modificados, para a
-    # ficha em ingles. Frases curtas, em lote, volume baixo (roda uma vez por
-    # pasta e o resultado fica em cache) -- o modelo padrao dá conta.
+    # [2026-08-28] traducao PT->EN das perguntas dos PDMs, para a ficha em
+    # ingles (desde 2026-10-21 tiradas da planilha de PDMs, no lote de fichas).
+    # Frases curtas, em lote, volume baixo (o resultado fica em cache) -- o
+    # modelo padrao dá conta.
     "traduzir_pdm": {"provider": PROVIDER_GEMINI, "model": "gemini-3-flash-preview"},
     # [2026-10-08] passada 1 da escolha de PDM (Cria Fichas): diz o que cada
     # material E, no vocabulario do catalogo, antes da busca. Sem catalogo no

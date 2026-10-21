@@ -43,10 +43,10 @@ def config_path(tmp_path) -> Path:
 # A. PASTAS_PADRAO_SEED / PASTAS_PADRAO_POR_CHAVE (decisão de produto nº 7)
 # =============================================================================
 
-def test_pastas_padrao_seed_tem_exatamente_as_3_chaves_da_decisao_7():
+def test_pastas_padrao_seed_tem_exatamente_as_chaves_da_decisao_7():
+    # [2026-10-21] "pdms_modificados" saiu com a pasta de PDMs Modificados.
     assert set(prefs.PASTAS_PADRAO_SEED) == {
         "sobressalentes_pmib",
-        "pdms_modificados",
         "templates_ficha",
     }
 
@@ -67,13 +67,11 @@ def test_pastas_padrao_seed_base_box_e_a_estrutura_da_decisao_7():
 def test_pastas_padrao_seed_subpastas_literais_da_decisao_7():
     # Nomes copiados literalmente do texto da decisão nº 7 / CP 1.5.
     assert prefs.PASTAS_PADRAO_SEED["sobressalentes_pmib"] == prefs.BASE_BOX / "SOBRESSALENTES - PMIB"
-    assert prefs.PASTAS_PADRAO_SEED["pdms_modificados"] == prefs.BASE_BOX / "PDMs modificados"
     assert prefs.PASTAS_PADRAO_SEED["templates_ficha"] == prefs.BASE_BOX / "Templates"
 
 
-def test_pastas_padrao_por_chave_tem_as_3_chaves_do_modulo_pdm():
+def test_pastas_padrao_por_chave_tem_as_chaves_do_modulo_pdm():
     assert set(prefs.PASTAS_PADRAO_POR_CHAVE) == {
-        "pdm.caminho_destino",
         "pdm.template",
         "pdm.status_pmib",
     }
@@ -86,14 +84,13 @@ def test_pastas_padrao_por_chave_aponta_so_para_nomes_existentes_no_seed():
 
 def test_pastas_padrao_por_chave_mapeamento_exato():
     assert prefs.PASTAS_PADRAO_POR_CHAVE == {
-        "pdm.caminho_destino": "pdms_modificados",
         "pdm.template": "templates_ficha",
         "pdm.status_pmib": "sobressalentes_pmib",
     }
 
 
 def test_pastas_padrao_seed_reais_atravessam_get_default_dir_sem_quebrar(config_path):
-    # Os 3 nomes REAIS do seed (sem monkeypatch nenhum) devem atravessar
+    # Os nomes REAIS do seed (sem monkeypatch nenhum) devem atravessar
     # `get_default_dir` sem levantar exceção, EM QUALQUER MÁQUINA.
     #
     # A asserção é de CONTRATO, não de ambiente: o resultado é `None` (Box não
@@ -485,7 +482,7 @@ def test_persistencia_estrutura_completa_do_json_apos_uso_combinado(tmp_path, co
     pasta_padrao.mkdir()
 
     prefs.remember_dir("autospec.ficha", "excel", str(pasta_ultimo), config_path=config_path)
-    prefs.set_default_dir("pdms_modificados", str(pasta_padrao), config_path=config_path)
+    prefs.set_default_dir("templates_ficha", str(pasta_padrao), config_path=config_path)
 
     bruto = json.loads(config_path.read_text(encoding="utf-8"))
     # [2026-09-03] Eram 3 seções; "arquivos" entrou com `remember_file`, que o
@@ -501,7 +498,7 @@ def test_persistencia_estrutura_completa_do_json_apos_uso_combinado(tmp_path, co
     assert bruto == {
         "ultimos": {"autospec.ficha": str(pasta_ultimo)},
         "categorias": {"excel": str(pasta_ultimo)},
-        "pastas_padrao": {"pdms_modificados": str(pasta_padrao)},
+        "pastas_padrao": {"templates_ficha": str(pasta_padrao)},
         # Vazias porque este teste não chamou `remember_file` nem `set_opcao`
         # -- as seções existem sempre, como as outras três.
         "arquivos": {},

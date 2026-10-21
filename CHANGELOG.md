@@ -65,6 +65,8 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Upload Condições: a mesma **revisão antes do portal**: medidas, pesos, umidade, temperaturas e empilhamento com mais de 30 caracteres, medida, peso ou umidade negativos, cuidados com mais de 500 caracteres ou só num idioma, textos com mais de 1000, legislação e descarte vazios, e logística reversa que se aplica sem o texto.
 - Upload Tech Specs: a mesma **revisão antes do portal**: texto com mais de 1000 caracteres, número com mais de 15 e intervalo sem mínimo ou máximo (ou com um deles com mais de 15).
 - Upload LMR: a mesma **revisão antes do portal**: código do equipamento com mais de 200 caracteres, tag vazia (ou a célula vazia que viraria "nan" no portal) e tag com mais de 150.
+- Planilhas PMIB: a tela fica só com a planilha de PDMs (SAM-GM) e a criação das planilhas PMIB; saem as abas Processar PDMs e Excluir Duplicados e tudo dos PDMs Modificados.
+- Planilhas PMIB: a ficha em inglês sai direto da planilha de PDMs, traduzindo as características (antes exigia a pasta de PDMs traduzidos). O glossário e a memória da tradução ficam em Documentos\SIG-FT\traducao_pdm; a pergunta que o tradutor não traduzir fica em português, com aviso no log, e o lote não para.
 
 ## 1.2.0 - 2026-10-15
 

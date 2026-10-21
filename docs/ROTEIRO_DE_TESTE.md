@@ -163,25 +163,17 @@ Sete defeitos corrigidos e quatro decisões suas. O que vale conferir na prátic
 
 ### 3.4b — Planilhas PMIB direto da planilha de PDMs (2026-09-24)
 
-As fichas agora saem direto da planilha de PDMs que a Itaipu exporta (a
-`PDMs_SAM-GM_<data>.xlsx`), sem depender das pastas "From Itaipu" e "PDMs
-Modificados" estarem em dia. A pasta continua disponível como método antigo, e
-um botão novo regenera as duas pastas a partir da planilha.
+As fichas saem direto da planilha de PDMs que a Itaipu exporta (a
+`PDMs_SAM-GM_<data>.xlsx`). Desde 2026-10-21 é o único caminho: a tela não tem
+mais abas, nem as pastas "From Itaipu" e "PDMs Modificados".
 
 | # | O que fazer | Esperado |
 |---|---|---|
-| 1 | Tela **2. Planilhas PMIB**, painel de cima: **Planilha de PDMs (SAM-GM)** → escolher a exportação da Itaipu | O nome do arquivo aparece ao lado do botão |
-| 2 | Aba **Criar planilhas PMIB**, fonte **Planilha de PDMs** (já vem marcada), um `_STATUS_PMIB` real, o template PT, idioma Português. **Executar: Criar Fichas PMIB** | O log traz `Planilha de PDMs: <arquivo>, exportada em <data>: <n> PDM(s).` e cada ficha diz `(PDM.xxxx.xxx R<n>, <k> perguntas)` |
+| 1 | Tela **2. Planilhas PMIB**, painel de cima: **Planilha de PDMs (SAM-GM)** → escolher a exportação da Itaipu | O nome do arquivo aparece ao lado do botão. Logo abaixo, sem abas, a **Configuração das Fichas PMIB** |
+| 2 | Um `_STATUS_PMIB` real, o template PT, idioma Português. **Executar: Criar Fichas PMIB** | O log traz `Planilha de PDMs: <arquivo>, exportada em <data>: <n> PDM(s).` e cada ficha diz `(PDM.xxxx.xxx R<n>, <k> perguntas)` |
 | 3 | Abrir uma ficha gerada no passo 2 | A partir da linha 79, as perguntas na ordem do PDM (a da coluna SECUENCIA da planilha) e **nenhuma com "(nan)"**. Pergunta sem texto de ajuda sai como `3 - PESO:` |
 | 4 | Olhar o fim do log do passo 2 | Se algum PDM do STATUS estiver numa revisão diferente da planilha, aparece a lista `PDM precisa subir de revisao no portal (n):` (ou `Planilha atras do portal, exporte uma nova da Itaipu (n):`). A ficha sai mesmo assim, com a revisão da planilha |
-| 5 | Repetir o passo 2 com a fonte **Pasta de PDMs Modificados (método antigo)** | As fichas saem como antes. Se a pasta tiver mais de um arquivo do mesmo PDM, o log avisa qual usou: o de revisão mais alta no nome |
-| 6 | Fonte **Planilha de PDMs** com idioma **English** | Recusado antes de começar: a ficha em inglês usa a pasta traduzida |
-| 7 | Criar duas pastas **NOVAS** e copiar para elas 3 arquivos antigos seus: 3 da pasta Modificados de produção para uma, 3 da From Itaipu de produção para a outra. Aba **Processar PDMs**: **Pasta dos PDMs Modificados** (painel de cima) e **Pasta (PDMs From Itaipu)** apontando para as pastas novas. **Executar: Regenerar as pastas** | Os 3 de cada pasta aparecem como `atualizado: sem revisao no nome -> R<n>`, e os arquivos antigos estão na subpasta `_versoes_antigas` (nada é apagado). Todos os outros PDMs saem `novo:`, com a revisão no nome: `PDM_1650_001 - ACUMULADOR - R2_formatado.xlsx` numa pasta, `PDM_1650_001 - ACUMULADOR - R2.xlsx` na outra. O resumo de cada pasta termina com `0 falha(s)` |
-| 8 | **Executar: Regenerar as pastas** de novo, sem mudar nada | Tudo `ja em dia (R<n>)`: 0 novo(s), 0 atualizado(s) |
-| 9 | Abrir um arquivo da pasta From Itaipu regenerada | O cabeçalho da planilha nas linhas 1 a 6, o painel congelado, o filtro só sobre as linhas do PDM e as linhas na ordem da SECUENCIA |
-
-Com o 7 e o 8 conferidos, regenerar as pastas de produção é o mesmo botão: cada
-arquivo desatualizado vai para a `_versoes_antigas` da própria pasta.
+| 5 | Idioma **English**, o template em inglês | Ver a etapa 3c: as perguntas saem traduzidas da planilha |
 
 **Erros que valem anotar:**
 
@@ -408,21 +400,21 @@ isso só quem conhece o vocabulário da casa julga.
 
 **Passos**
 
-1. Módulo **PDM's**, aba 1. Aponte a pasta de *PDMs Modificados* que já existe
-   e escolha uma pasta nova de destino (ex.: `PDMs Modificados EN`).
-   ⚠️ Origem e destino **não podem ser a mesma pasta** — o app recusa, mas
-   confira mesmo assim: seria apagar o original de tudo.
-2. Clique em **"Traduzir PDMs Modificados para inglês"**.
-3. Abra `_GLOSSARIO_PT_EN.txt` na pasta de destino. Ele já vem com os termos
-   tirados das suas próprias fichas (`NORMAS TECNICAS APLICAVEIS =
+1. Tela **2. Planilhas PMIB**: a planilha de PDMs no painel de cima, um
+   `_STATUS_PMIB` com 2 ou 3 materiais, a pasta de destino e o **template em
+   inglês**. Idioma da ficha: **English**. **Executar: Criar Fichas PMIB**.
+2. No log: `Traduzindo as perguntas para ingles (glossario e cache em ...)`,
+   com a pasta `Documentos\SIG-FT\traducao_pdm`. Se o tradutor falhar, a
+   linha `AVISO: o tradutor falhou ...` diz por quê, e cada ficha com pergunta
+   em português ganha o aviso `N pergunta(s) sem traducao`. O lote não para.
+3. Abra `_GLOSSARIO_PT_EN.txt` nessa pasta. Ele já vem com os termos tirados
+   das suas próprias fichas (`NORMAS TECNICAS APLICAVEIS =
    APPLICABLE TECHNICAL STANDARDS` e mais 6).
-4. Abra 2 ou 3 dos `.xlsx` traduzidos e **leia as perguntas**. É aqui que você
-   é insubstituível.
+4. Abra 2 ou 3 das fichas geradas e **leia as perguntas**. É aqui que você é
+   insubstituível.
 5. Achou tradução ruim? Ponha a **pergunta inteira** no glossário (sem o
-   número e sem os dois pontos), apague o `_CACHE_TRADUCAO.json` e rode de
+   número e sem os dois pontos), apague o `_CACHE_TRADUCAO.json` e gere de
    novo. A sua linha vence o tradutor, hoje e sempre.
-6. Aba 2: escolha **English**, aponte a pasta EN e o template em inglês, e
-   gere as fichas.
 
 **O que conferir na ficha gerada**
 

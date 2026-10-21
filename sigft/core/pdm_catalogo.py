@@ -7,8 +7,9 @@ Até 2026-09-22, para escolher entre 1193 PDMs, a IA recebia DUAS das 24
 colunas da planilha-mestra (`PDMs_SAM-GM_1193.xlsx`): o código e o título.
 Tudo o mais era descartado -- inclusive as **18,9 características distintas
 por PDM** (média medida no arquivo real; máximo 74), que o app já lia, mas só
-depois, para montar o template da ficha
-(`services/pdm.processar_arquivo_pdm`).
+depois, para montar o template da ficha (pelo antigo
+`processar_arquivo_pdm`, que saiu em 2026-10-21; hoje é
+`services/pdm.aplicar_templates_fichas_da_planilha`).
 
 Isso deixava a IA sem como desempatar os casos que mais aparecem:
 

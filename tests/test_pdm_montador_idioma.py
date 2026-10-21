@@ -1,6 +1,6 @@
 r"""O montador da ficha e o template em inglês (2026-08-28).
 
-`aplicar_templates_fichas` fazia `wb_target["Ficha Técnica Padrão"]` — nome de
+O montador fazia `wb_target["Ficha Técnica Padrão"]` — nome de
 aba **fixo**. Um template cuja aba se chame outra coisa levanta `KeyError`
 dentro do laço, e o `except` genérico transforma isso em
 `"ERRO ao gerar ficha {pmib}"` — **uma vez por ficha**, sem dizer em momento
@@ -114,6 +114,20 @@ def test_nenhuma_aba_reconhecida_LEVANTA_com_os_nomes_encontrados(openpyxl_real)
     assert "aba" in mensagem.lower()
 
 
+# O lote pela planilha de PDMs (desde 2026-10-21 a única fonte das perguntas).
+from sigft.core.pdm_catalogo import PDM, Caracteristica, CatalogoPDM, Identidade  # noqa: E402
+
+PMIB = "4500063671.0071"
+PDM_USADO = "PDM.1234.001 - BOMBA, , R1"
+
+
+def _catalogo(pergunta="Vazão", ajuda="l/min"):
+    pdm_ = PDM(codigo="PDM.1234.001", classe="1234", titulo="BOMBA", nome_base="BOMBA", revisao=1,
+               caracteristicas_em_ordem=(Caracteristica(nome=pergunta, ajuda=ajuda, sequencia=1, linha=7),),
+               identidades=(Identidade(1, "BOMBA", "BOMBA"),))
+    return CatalogoPDM(pdms=[pdm_], exportado_em="23/09/2026", origem="/pdms/PDMs_SAM-GM.xlsx")
+
+
 def test_o_lote_PARA_quando_o_template_nao_serve(tmp_path, openpyxl_real):
     """Template errado é problema do template, não de cada ficha: falhar 200
     vezes esconde a causa. Uma mensagem, e para."""
@@ -122,16 +136,9 @@ def test_o_lote_PARA_quando_o_template_nao_serve(tmp_path, openpyxl_real):
     # duas que o montador precisa de fato escolher, e não consegue.
     template = tmp_path / "template.xlsx"
     _workbook(["Plan1", "Plan2"]).save(template)
-    pasta_pdms = tmp_path / "pdms"
-    pasta_pdms.mkdir()
-    # O PDM fonte precisa EXISTIR: sem ele o laço para em "PDM fonte não
-    # encontrado" e nunca chega a abrir o template.
-    import openpyxl
-    openpyxl.Workbook().save(pasta_pdms / "PDM_1234_001_formatado.xlsx")
 
-    resumo, log = pdm.aplicar_templates_fichas(
-        [("4500063671.0071", "PDM.1234.001 - X", str(tmp_path))],
-        str(pasta_pdms), str(template))
+    resumo, log = pdm.aplicar_templates_fichas_da_planilha(
+        [(PMIB, PDM_USADO, str(tmp_path))], _catalogo(), str(template))
 
     texto = resumo + "\n".join(log)
     assert "aba" in texto.lower()
@@ -143,46 +150,36 @@ def test_template_bom_continua_gerando_a_ficha(tmp_path, openpyxl_real):
     import openpyxl
     template = tmp_path / "template.xlsx"
     _workbook(["Ficha Técnica Padrão"]).save(template)
-
-    pasta_pdms = tmp_path / "pdms"
-    pasta_pdms.mkdir()
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.cell(row=1, column=1, value="1 - Vazão (l/min):")
-    wb.save(pasta_pdms / "PDM_1234_001_formatado.xlsx")
-
     destino = tmp_path / "saida"
     destino.mkdir()
-    resumo, _ = pdm.aplicar_templates_fichas(
-        [("4500063671.0071", "PDM.1234.001 - X", str(destino))],
-        str(pasta_pdms), str(template))
+
+    resumo, _ = pdm.aplicar_templates_fichas_da_planilha(
+        [(PMIB, PDM_USADO, str(destino))], _catalogo(), str(template))
 
     assert "1" in resumo
-    gerada = openpyxl.load_workbook(destino / "4500063671.0071.xlsx")["Ficha Técnica Padrão"]
+    gerada = openpyxl.load_workbook(destino / f"{PMIB}.xlsx")["Ficha Técnica Padrão"]
     assert gerada.cell(row=79, column=3).value == "1 - Vazão (l/min):"
 
 
-def test_a_ficha_em_INGLES_e_montada_com_os_PDMs_traduzidos(tmp_path, openpyxl_real):
-    """O teste que fecha o pedido: template EN + pasta EN = ficha com as
-    perguntas em inglês, na mesma célula de sempre."""
+def test_template_com_a_aba_em_ingles_tambem_gera_a_ficha(tmp_path, openpyxl_real):
+    """O template EN pode ter a aba com nome traduzido: as perguntas vão para
+    ela, na mesma célula de sempre."""
     import openpyxl
     template = tmp_path / "template_en.xlsx"
     _workbook(["Standard Datasheet"]).save(template)
-
-    pasta_en = tmp_path / "pdms_en"
-    pasta_en.mkdir()
-    wb = openpyxl.Workbook()
-    wb.active.cell(row=1, column=1, value="1 - Flow rate (l/min):")
-    wb.save(pasta_en / "PDM_1234_001_formatado.xlsx")
-
     destino = tmp_path / "saida"
     destino.mkdir()
-    pdm.aplicar_templates_fichas(
-        [("4500063671.0071", "PDM.1234.001 - X", str(destino))],
-        str(pasta_en), str(template))
 
-    gerada = openpyxl.load_workbook(destino / "4500063671.0071.xlsx")["Standard Datasheet"]
-    assert gerada.cell(row=79, column=3).value == "1 - Flow rate (l/min):"
+    pdm.aplicar_templates_fichas_da_planilha(
+        [(PMIB, PDM_USADO, str(destino))], _catalogo(), str(template))
+
+    gerada = openpyxl.load_workbook(destino / f"{PMIB}.xlsx")["Standard Datasheet"]
+    assert gerada.cell(row=79, column=3).value == "1 - Vazão (l/min):"
+
+
+def test_o_nome_escolhido_e_o_que_a_Itaipu_usa():
+    """Não é invenção: é o nome da aba na ficha que o usuário entregou."""
+    assert pdm.NOME_DA_ABA_EM_INGLES == "Standard Technical Sheet"
 
 
 # =============================================================================
@@ -196,31 +193,29 @@ def test_a_ficha_em_INGLES_e_montada_com_os_PDMs_traduzidos(tmp_path, openpyxl_r
 #
 # A regra "inglês -> qual nome" mora no SERVIÇO, não na tela: a tela passa o
 # IDIOMA (que é o que o usuário escolheu) e o serviço decide o nome. Princípio
-# nº 2 do projeto — UI não contém regra de negócio.
+# nº 2 do projeto — UI não contém regra de negócio. [2026-10-21] A ficha em
+# inglês sai da planilha, com as perguntas traduzidas por um motor injetado.
 
-def _template_e_pdm(tmp_path, nome_da_aba):
-    import openpyxl
+def _motor_falso(textos):
+    return [{"Vazão (l/min)": "Flow rate (l/min)"}.get(t, t) for t in textos]
+
+
+def _montar(tmp_path, nome_da_aba, **kw):
     template = tmp_path / "template.xlsx"
     _workbook([nome_da_aba]).save(template)
-    pasta = tmp_path / "pdms"
-    pasta.mkdir()
-    wb = openpyxl.Workbook()
-    wb.active.cell(row=1, column=1, value="1 - Flow rate (l/min):")
-    wb.save(pasta / "PDM_1234_001_formatado.xlsx")
     destino = tmp_path / "saida"
     destino.mkdir()
-    return template, pasta, destino
+    resultado = pdm.aplicar_templates_fichas_da_planilha(
+        [(PMIB, PDM_USADO, str(destino))], _catalogo(), str(template),
+        pasta_traducao=str(tmp_path / "traducao"), **kw)
+    return destino / f"{PMIB}.xlsx", resultado
 
 
 def test_em_INGLES_a_aba_da_ficha_gerada_e_renomeada(tmp_path, openpyxl_real):
     import openpyxl
-    template, pasta, destino = _template_e_pdm(tmp_path, "Ficha Técnica Padrão")
+    gerada, _ = _montar(tmp_path, "Ficha Técnica Padrão", idioma="en", traduzir=_motor_falso)
 
-    pdm.aplicar_templates_fichas(
-        [("4500063671.0071", "PDM.1234.001 - X", str(destino))],
-        str(pasta), str(template), idioma="en")
-
-    wb = openpyxl.load_workbook(destino / "4500063671.0071.xlsx")
+    wb = openpyxl.load_workbook(gerada)
     assert pdm.NOME_DA_ABA_EM_INGLES in wb.sheetnames
     assert "Ficha Técnica Padrão" not in wb.sheetnames
 
@@ -228,117 +223,69 @@ def test_em_INGLES_a_aba_da_ficha_gerada_e_renomeada(tmp_path, openpyxl_real):
 def test_em_PORTUGUES_o_nome_da_aba_NAO_e_tocado(tmp_path, openpyxl_real):
     """O caminho de sempre não pode mudar por causa disto."""
     import openpyxl
-    template, pasta, destino = _template_e_pdm(tmp_path, "Ficha Técnica Padrão")
+    gerada, _ = _montar(tmp_path, "Ficha Técnica Padrão")   # sem `idioma`: português
 
-    pdm.aplicar_templates_fichas(
-        [("4500063671.0071", "PDM.1234.001 - X", str(destino))],
-        str(pasta), str(template))          # sem `idioma`: o padrão é português
-
-    wb = openpyxl.load_workbook(destino / "4500063671.0071.xlsx")
-    assert wb.sheetnames == ["Ficha Técnica Padrão"]
+    assert openpyxl.load_workbook(gerada).sheetnames == ["Ficha Técnica Padrão"]
 
 
-def test_o_conteudo_continua_na_aba_depois_de_renomeada(tmp_path, openpyxl_real):
-    """Renomear não pode custar a ficha: as perguntas têm de continuar lá,
-    na mesma célula."""
+def test_o_conteudo_traduzido_fica_na_aba_renomeada(tmp_path, openpyxl_real):
+    """Renomear não pode custar a ficha: as perguntas, já em inglês, ficam
+    na mesma célula de sempre."""
     import openpyxl
-    template, pasta, destino = _template_e_pdm(tmp_path, "Ficha Técnica Padrão")
+    gerada, _ = _montar(tmp_path, "Ficha Técnica Padrão", idioma="en", traduzir=_motor_falso)
 
-    pdm.aplicar_templates_fichas(
-        [("4500063671.0071", "PDM.1234.001 - X", str(destino))],
-        str(pasta), str(template), idioma="en")
-
-    gerada = openpyxl.load_workbook(destino / "4500063671.0071.xlsx")[pdm.NOME_DA_ABA_EM_INGLES]
-    assert gerada.cell(row=79, column=3).value == "1 - Flow rate (l/min):"
+    ws = openpyxl.load_workbook(gerada)[pdm.NOME_DA_ABA_EM_INGLES]
+    assert ws.cell(row=79, column=3).value == "1 - Flow rate (l/min):"
 
 
 def test_template_que_JA_esta_em_ingles_nao_quebra(tmp_path, openpyxl_real):
     """Se alguém consertar o template, o rename vira no-op — e não um erro de
     'já existe uma aba com esse nome'."""
     import openpyxl
-    template, pasta, destino = _template_e_pdm(tmp_path, pdm.NOME_DA_ABA_EM_INGLES)
-
-    resumo, log = pdm.aplicar_templates_fichas(
-        [("4500063671.0071", "PDM.1234.001 - X", str(destino))],
-        str(pasta), str(template), idioma="en")
+    gerada, (resumo, log) = _montar(tmp_path, pdm.NOME_DA_ABA_EM_INGLES, idioma="en",
+                                    traduzir=_motor_falso)
 
     assert "1" in resumo, log
-    wb = openpyxl.load_workbook(destino / "4500063671.0071.xlsx")
-    assert wb.sheetnames == [pdm.NOME_DA_ABA_EM_INGLES]
-
-
-def test_o_nome_escolhido_e_o_que_a_Itaipu_usa():
-    """Não é invenção: é o nome da aba na ficha que o usuário entregou."""
-    assert pdm.NOME_DA_ABA_EM_INGLES == "Standard Technical Sheet"
-
-
-def test_a_tela_passa_o_IDIOMA_e_nao_o_nome_da_aba():
-    """A tela não pode saber como se chama a aba em inglês — isso é regra de
-    negócio, e regra de negócio duplicada é regra que diverge.
-
-    Procura o argumento nomeado NA CHAMADA, e não a palavra "idioma" solta no
-    método: `idioma_ficha` já aparece ali por outro motivo (escolher a pasta),
-    e um `in` sobre o dump inteiro passaria sem que nada fosse repassado."""
-    chamadas = [
-        no for no in ast.walk(_metodo("_tarefa_fichas"))
-        if isinstance(no, ast.Call)
-        and isinstance(no.func, ast.Attribute)
-        and no.func.attr == "aplicar_templates_fichas"
-    ]
-    assert chamadas, "a tela nao chama mais o montador?"
-    nomeados = {k.arg for c in chamadas for k in c.keywords}
-    assert "idioma" in nomeados, f"argumentos repassados: {sorted(nomeados)}"
-    assert "Standard Technical Sheet" not in VIEW.read_text(encoding="utf-8")
+    assert openpyxl.load_workbook(gerada).sheetnames == [pdm.NOME_DA_ABA_EM_INGLES]
 
 
 # =============================================================================
 # A tela (por AST — a tela Qt, `sigft/app_qt/views/pdm.py`)
 # =============================================================================
-import ast
-import pathlib
+import ast  # noqa: E402
+import pathlib  # noqa: E402
 
 VIEW = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app_qt" / "views" / "pdm.py"
 
 
-def _classe_pdm():
-    arvore = ast.parse(VIEW.read_text(encoding="utf-8"))
-    for no in ast.walk(arvore):
-        if isinstance(no, ast.ClassDef) and no.name.startswith("Modulo"):
-            return no
-    pytest.fail("a classe da tela do PDM sumiu")
-
-
 def _metodo(nome):
-    for no in _classe_pdm().body:
-        if isinstance(no, ast.FunctionDef) and no.name == nome:
-            return no
+    for no in ast.walk(ast.parse(VIEW.read_text(encoding="utf-8"))):
+        if isinstance(no, ast.ClassDef) and no.name == "ModuloPDM":
+            for item in no.body:
+                if isinstance(item, ast.FunctionDef) and item.name == nome:
+                    return item
     pytest.fail(f"metodo {nome} nao existe na tela do PDM")
 
 
-def test_a_tela_tem_o_seletor_de_idioma_e_o_botao_de_traduzir():
+def test_a_tela_passa_o_IDIOMA_e_nao_o_nome_da_aba():
+    """A tela não pode saber como se chama a aba em inglês, nem traduzir por
+    conta própria: passa o idioma escolhido (o motor padrão é do serviço)."""
+    chamadas = [
+        no for no in ast.walk(_metodo("_tarefa_fichas"))
+        if isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)
+        and no.func.attr == "aplicar_templates_fichas_da_planilha"
+    ]
+    assert chamadas, "a tela nao chama mais o montador?"
+    nomeados = {k.arg for c in chamadas for k in c.keywords}
+    assert "idioma" in nomeados, f"argumentos repassados: {sorted(nomeados)}"
     fonte = VIEW.read_text(encoding="utf-8")
-    assert "idioma_ficha" in fonte
-    assert "_op1_traduzir" in fonte
+    assert "Standard Technical Sheet" not in fonte
+    assert "GoogleTranslator" not in fonte and "traduzir_textos" not in fonte
 
 
-def test_o_montador_recebe_a_pasta_do_IDIOMA_escolhido():
-    """O erro que isto impede é o pior possível aqui: ficha em inglês montada
-    com as perguntas em português, que não se denuncia sozinha."""
-    fonte = ast.unparse(_metodo("_op2_executar"))
-    assert "self.entry_destino_en.text() if em_ingles else self.entry_dest.text()" in fonte
-    assert "self.idioma_ficha.get()" in fonte
-
-
-def test_traduzir_recusa_gravar_por_cima_da_pasta_de_origem():
-    """Origem == destino apagaria os PDMs em português — e eles são a fonte
-    de tudo, inclusive de uma retradução futura."""
-    fonte = ast.dump(_metodo("_op1_traduzir"))
-    assert "abspath" in fonte
-
-
-def test_a_tela_usa_o_servico_e_nao_traduz_por_conta_propria():
-    """Princípio nº 2: a tela escolhe pasta e mostra log; quem traduz é o
-    serviço."""
-    fonte = VIEW.read_text(encoding="utf-8")
-    assert "traducao_pdm.traduzir_pasta" in fonte
-    assert "GoogleTranslator" not in fonte
+def test_a_tela_NAO_amarra_a_traducao_a_chave_do_Gemini():
+    """`traduzir_pdm` nasceu depois do multi-provedor. Sem `api_key`, `get_llm`
+    resolve a chave do provedor REALMENTE escolhido em "Modelos de IA";
+    a tela passar `get_key("GEMINI")` mandaria a chave ao provedor errado."""
+    assert "get_key" not in ast.dump(_metodo("_tarefa_fichas"))
+    assert "get_key" not in ast.dump(_metodo("_op2_executar"))

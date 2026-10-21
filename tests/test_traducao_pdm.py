@@ -1,12 +1,12 @@
-r"""Tradução dos PDMs Modificados para inglês (2026-08-28).
+r"""Tradução das perguntas dos PDMs para inglês (2026-08-28; da planilha desde 2026-10-21).
 
 **Por que existe** (pedido do usuário): o SIG-FT tem dois templates de ficha —
-PT-BR e inglês — mas as características técnicas coladas dentro deles vêm
-sempre da mesma pasta de *PDMs Modificados*, que está em português. Hoje a
-tradução dessas perguntas é feita **na mão**, ficha a ficha.
+PT-BR e inglês — mas as características técnicas vêm da planilha de PDMs, em
+português. Traduzir essas perguntas na mão, ficha a ficha, era o trabalho.
 
-O desenho aprovado: traduzir a pasta inteira uma vez, guardar numa pasta
-paralela, e o montador da ficha escolhe a pasta pelo idioma do template.
+Desde 2026-10-21 a ficha em inglês sai direto da planilha: o montador traduz
+as perguntas do lote (glossário e cache na pasta de dados do usuário). Antes
+era preciso traduzir uma pasta de PDMs Modificados, que saiu do SIG-FT.
 
 **O que este arquivo NÃO testa:** o motor de tradução de verdade (IA ou
 `deep_translator`). Ele é injetado, sempre. Um teste que dependesse da
@@ -154,106 +154,138 @@ def test_cache_corrompido_nao_derruba_a_traducao(tmp_path):
 
 
 # =============================================================================
-# D. Traduzir a pasta inteira
+# D. Traduzir as perguntas da planilha (2026-10-21)
 # =============================================================================
-def _pdm_falso(pasta, nome, perguntas):
-    """Um PDM Modificado como `salvar_tabela_formatada` o grava: descrição na
-    coluna 1 (mesclada 1–10), resposta na 11 (mesclada 11–20), vazia."""
-    import openpyxl
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    for i, pergunta in enumerate(perguntas, start=1):
-        ws.merge_cells(start_row=i, start_column=1, end_row=i, end_column=10)
-        ws.cell(row=i, column=1, value=pergunta)
-        ws.merge_cells(start_row=i, start_column=11, end_row=i, end_column=20)
-    caminho = os.path.join(pasta, nome)
-    wb.save(caminho)
-    return caminho
+# A ficha em inglês sai da planilha de PDMs: as perguntas de todas as fichas
+# do lote são traduzidas ANTES de montar (`preparar_traducao`, em lotes, sem
+# repetir texto), e cada ficha só consulta o que ficou pronto
+# (`traducao_conhecida`). O que não traduziu fica em português e é contado:
+# uma falha do tradutor nunca derruba o lote.
+def test_o_glossario_e_o_cache_moram_na_pasta_de_dados_do_usuario(monkeypatch, tmp_path):
+    from sigft.core import dados_usuario
+
+    monkeypatch.setattr(dados_usuario, "pasta_dados", lambda: tmp_path)
+    assert tp.pasta_da_traducao() == str(tmp_path / "traducao_pdm")
 
 
-@pytest.fixture
-def openpyxl_real():
-    """A suíte stuba o openpyxl; estes testes precisam do de verdade."""
-    import importlib
-    import sys
-    guardado = sys.modules.get("openpyxl")
-    for nome in [n for n in list(sys.modules) if n.startswith("openpyxl")]:
-        del sys.modules[nome]
-    try:
-        modulo = importlib.import_module("openpyxl")
-        if not hasattr(modulo, "Workbook") or "Mock" in type(modulo).__name__:
-            pytest.skip("openpyxl real nao disponivel")
-        yield modulo
-    finally:
-        for nome in [n for n in list(sys.modules) if n.startswith("openpyxl")]:
-            del sys.modules[nome]
-        if guardado is not None:
-            sys.modules["openpyxl"] = guardado
+def test_preparar_manda_ao_motor_so_o_que_falta_uma_vez_cada(tmp_path):
+    chamou = []
+
+    def motor(textos):
+        chamou.append(list(textos))
+        return [f"EN:{t}" for t in textos]
+
+    cache = tp.Cache(str(tmp_path))
+    cache.guardar("Peso (kg)", "Weight (kg)")
+    falhas = tp.preparar_traducao(
+        ["1 - Peso (kg):", "2 - Vazão (l/min):", "1 - Vazão (l/min):", "3 - Modelo:"],
+        motor, {"Modelo": "Model"}, cache)
+    assert falhas == 0
+    assert chamou == [["Vazão (l/min)"]]
+    assert cache.buscar("Vazão (l/min)") == "EN:Vazão (l/min)"
 
 
-def test_a_pasta_traduzida_ganha_um_arquivo_por_PDM(tmp_path, openpyxl_real):
-    origem, destino = tmp_path / "pt", tmp_path / "en"
-    origem.mkdir()
-    _pdm_falso(str(origem), "PDM_1234_001_formatado.xlsx", ["1 - Vazão (l/min):"])
-    _pdm_falso(str(origem), "PDM_5678_002_formatado.xlsx", ["1 - Peso (kg):"])
+def test_preparar_vai_em_lotes(tmp_path, monkeypatch):
+    monkeypatch.setattr(tp, "TEXTOS_POR_LOTE", 2)
+    chamou = []
 
-    linhas = list(tp.traduzir_pasta(str(origem), str(destino), traduzir=_falso({})))
-    gerados = sorted(os.listdir(destino))
-    assert "PDM_1234_001_formatado.xlsx" in gerados
-    assert "PDM_5678_002_formatado.xlsx" in gerados
-    assert any("2" in l and "PDM" in l for l in linhas)
+    def motor(textos):
+        chamou.append(len(textos))
+        return [f"EN:{t}" for t in textos]
 
-
-def test_o_NOME_do_arquivo_e_preservado(tmp_path, openpyxl_real):
-    """O montador acha o PDM por SUBSTRING do id (`PDM_1234_001`) no nome do
-    arquivo. Renomear na tradução quebraria o casamento em silêncio."""
-    origem, destino = tmp_path / "pt", tmp_path / "en"
-    origem.mkdir()
-    _pdm_falso(str(origem), "PDM_1234_001_formatado.xlsx", ["1 - Vazão:"])
-    list(tp.traduzir_pasta(str(origem), str(destino), traduzir=_falso({})))
-    assert os.path.exists(destino / "PDM_1234_001_formatado.xlsx")
+    tp.preparar_traducao([f"{i} - P{i}:" for i in range(1, 6)], motor, {}, tp.Cache(str(tmp_path)))
+    assert chamou == [2, 2, 1]
 
 
-def test_o_conteudo_traduzido_fica_na_MESMA_celula(tmp_path, openpyxl_real):
-    """O montador lê `cell(i, 1)`. Traduzir para outra célula geraria fichas
-    em branco, e ninguém perceberia até abrir uma."""
-    origem, destino = tmp_path / "pt", tmp_path / "en"
-    origem.mkdir()
-    _pdm_falso(str(origem), "PDM_1234_001_formatado.xlsx",
-               ["1 - Vazão (l/min):", "2 - Peso (kg):"])
-    list(tp.traduzir_pasta(str(origem), str(destino),
-                           traduzir=_falso({"Vazão (l/min)": "Flow rate (l/min)",
-                                            "Peso (kg)": "Weight (kg)"})))
-    ws = openpyxl_real.load_workbook(destino / "PDM_1234_001_formatado.xlsx").active
-    assert ws.cell(row=1, column=1).value == "1 - Flow rate (l/min):"
-    assert ws.cell(row=2, column=1).value == "2 - Weight (kg):"
+def test_lote_que_falha_nao_derruba_e_os_outros_seguem(tmp_path, monkeypatch):
+    monkeypatch.setattr(tp, "TEXTOS_POR_LOTE", 2)
+    avisos = []
+
+    def motor(textos):
+        if "P1" in textos:
+            raise OSError("rede bloqueada")
+        return [f"EN:{t}" for t in textos]
+
+    cache = tp.Cache(str(tmp_path))
+    falhas = tp.preparar_traducao(["1 - P1:", "2 - P2:", "3 - P3:"], motor, {}, cache,
+                                  avisar=avisos.append)
+    assert falhas == 1
+    assert cache.buscar("P1") is None and cache.buscar("P3") == "EN:P3"
+    assert len(avisos) == 1 and "rede bloqueada" in avisos[0]
 
 
-def test_linha_vazia_no_meio_nao_vira_traducao(tmp_path, openpyxl_real):
-    origem, destino = tmp_path / "pt", tmp_path / "en"
-    origem.mkdir()
-    _pdm_falso(str(origem), "PDM_1234_001_formatado.xlsx",
-               ["1 - Vazão:", None, "3 - Peso:"])
-    list(tp.traduzir_pasta(str(origem), str(destino), traduzir=_falso({})))
-    ws = openpyxl_real.load_workbook(destino / "PDM_1234_001_formatado.xlsx").active
-    assert ws.cell(row=2, column=1).value in (None, "")
+def test_o_cache_vai_para_o_disco_ao_fim_do_preparo(tmp_path):
+    tp.preparar_traducao(["1 - Vazão:"], lambda t: [f"EN:{x}" for x in t], {}, tp.Cache(str(tmp_path)))
+    assert tp.Cache(str(tmp_path)).buscar("Vazão") == "EN:Vazão"
 
 
-def test_pasta_de_origem_vazia_avisa_em_vez_de_fingir_sucesso(tmp_path, openpyxl_real):
-    origem, destino = tmp_path / "pt", tmp_path / "en"
-    origem.mkdir()
-    linhas = list(tp.traduzir_pasta(str(origem), str(destino), traduzir=_falso({})))
-    assert any("nenhum" in l.lower() for l in linhas)
+def test_pergunta_cujo_nome_comeca_por_numero_e_traduzida_e_fica_no_cache(tmp_path):
+    """Revisão de 2026-10-21: o miolo "4-20 mA SAIDA" era quebrado DE NOVO
+    ("4-" + "20 mA SAIDA"), a chave do cache nunca casava e a pergunta ficava
+    em português, reenviada a cada rodada."""
+    chamou = []
+
+    def motor(textos):
+        chamou.append(list(textos))
+        return [f"EN {t}" for t in textos]
+
+    cache = tp.Cache(str(tmp_path))
+    tp.preparar_traducao(["3 - 4-20 mA SAIDA:"], motor, {}, cache)
+    assert chamou == [["4-20 mA SAIDA"]]
+    assert tp.traducao_conhecida(["3 - 4-20 mA SAIDA:"], {}, cache) == (["3 - EN 4-20 mA SAIDA:"], 0)
+
+    segundo = tp.Cache(str(tmp_path))      # a próxima rodada, do disco
+    tp.preparar_traducao(["3 - 4-20 mA SAIDA:"], motor, {}, segundo)
+    assert len(chamou) == 1, "a segunda rodada deveria sair do cache"
 
 
-def test_um_arquivo_ilegivel_nao_derruba_a_pasta(tmp_path, openpyxl_real):
-    origem, destino = tmp_path / "pt", tmp_path / "en"
-    origem.mkdir()
-    (origem / "quebrado.xlsx").write_text("isto nao e um xlsx")
-    _pdm_falso(str(origem), "PDM_1234_001_formatado.xlsx", ["1 - Vazão:"])
-    linhas = list(tp.traduzir_pasta(str(origem), str(destino), traduzir=_falso({})))
-    assert os.path.exists(destino / "PDM_1234_001_formatado.xlsx")
-    assert any("quebrado.xlsx" in l for l in linhas)
+def test_traducao_igual_a_entrada_e_valida_e_vai_para_o_cache(tmp_path):
+    """"NCM", "PT-100": traduzem para eles mesmos. Não podem contar como
+    "sem tradução" a cada rodada."""
+    cache = tp.Cache(str(tmp_path))
+    avisos = []
+    tp.preparar_traducao(["1 - NCM:", "2 - Vazão:"], lambda t: [t[0], "Flow rate"], {}, cache,
+                         avisar=avisos.append)
+    assert cache.buscar("NCM") == "NCM" and cache.buscar("Vazão") == "Flow rate"
+    assert avisos == []
+
+
+def test_resposta_vazia_nao_vai_para_o_cache(tmp_path):
+    cache = tp.Cache(str(tmp_path))
+    tp.preparar_traducao(["1 - Vazão:", "2 - Peso:"], lambda t: [None, ""], {}, cache)
+    assert cache.buscar("Vazão") is None and cache.buscar("Peso") is None
+
+
+def test_tradutor_mudo_avisa_UMA_vez_e_nao_congela_o_portugues(tmp_path, monkeypatch):
+    """Tudo voltou igual à entrada: é o tradutor sem rede ou sem chave. Um
+    aviso só no lote, e nada no cache (a próxima rodada pergunta de novo)."""
+    monkeypatch.setattr(tp, "TEXTOS_POR_LOTE", 2)
+    cache = tp.Cache(str(tmp_path))
+    avisos = []
+    textos = [f"{i} - CARACTERISTICA {i}:" for i in range(1, 7)]
+    tp.preparar_traducao(textos, lambda t: list(t), {}, cache, avisar=avisos.append)
+    assert len(avisos) == 1 and "identic" in avisos[0]
+    assert cache.buscar("CARACTERISTICA 1") is None
+
+
+def test_lote_pequeno_com_tradutor_mudo_nao_congela_frase_em_portugues(tmp_path):
+    """Abaixo do limiar do "tradutor mudo" (rodadas seguintes, quase tudo no
+    cache): frase que volta igual e nada mais mudou fica FORA do cache; a
+    sigla de uma palavra só, dentro."""
+    cache = tp.Cache(str(tmp_path))
+    tp.preparar_traducao(["1 - TENSAO NOMINAL:", "2 - NCM:"], lambda t: list(t), {}, cache)
+    assert cache.buscar("TENSAO NOMINAL") is None
+    assert cache.buscar("NCM") == "NCM"
+
+
+def test_traducao_conhecida_usa_glossario_e_cache_e_conta_o_que_faltou(tmp_path):
+    cache = tp.Cache(str(tmp_path))
+    cache.guardar("Vazão (l/min)", "Flow rate (l/min)")
+    saida, faltaram = tp.traducao_conhecida(
+        ["1 - Vazão (l/min):", "2 - Modelo:", "3 - Peso (kg):", None, ""],
+        {"Modelo": "Model"}, cache)
+    assert saida == ["1 - Flow rate (l/min):", "2 - Model:", "3 - Peso (kg):", None, ""]
+    assert faltaram == 1
 
 
 # =============================================================================
@@ -397,111 +429,8 @@ def test_os_termos_da_casa_sao_carregaveis_como_glossario(tmp_path):
 #      **texto original**. Nada muda no arquivo, e `traduzir_pasta` reporta OK.
 #
 # A causa nº 1 se conserta. A nº 2 é de FEITIO: um tradutor que devolve a
-# entrada é indistinguível de um que traduziu bem um texto já em inglês. O que
-# não pode acontecer é o programa não perceber por 1192 arquivos seguidos.
-
-def test_tradutor_que_devolve_o_ORIGINAL_nao_e_sucesso(tmp_path, openpyxl_real):
-    """Reprodução exata do que o usuário viu."""
-    import openpyxl
-    origem = tmp_path / "pt"
-    origem.mkdir()
-    wb = openpyxl.Workbook()
-    for i, texto in enumerate([
-        "1 - FAIXA DE TEMPERATURA DE USO (Indicar a faixa em (°C).):",
-        "2 - SINAL DE ENTRADA (Indicar o sinal do item em (mV, V).):",
-        "3 - TENSAO DE ALIMENTACAO (Indicar a tensão em (V).):",
-        "4 - PROTECAO (Indicar as proteções do item.):",
-        "5 - APLICACAO (Indicar a aplicação do item.):",
-        "6 - DIMENSOES (Indicar as dimensões em (mm).):",
-    ], start=1):
-        wb.active.cell(row=i, column=1, value=texto)
-    wb.save(origem / "PDM_1650_001 - ACUMULADOR_formatado.xlsx")
-
-    def motor_mudo(textos):
-        return list(textos)          # o que a deep_translator faz sem rede
-
-    linhas = list(traducao_pasta_ate_o_fim(tmp_path, origem, motor_mudo))
-    texto = "\n".join(linhas)
-
-    # 1. nao pode se anunciar como sucesso
-    assert "0 pergunta" not in texto, f"ainda diz 'OK (0 pergunta(s))':\n{texto}"
-    assert "concluida" not in texto.lower(), f"declarou conclusao:\n{texto}"
-    # 2. tem de dizer que PAROU, e por que
-    assert "PARADO" in texto, texto
-    assert "identicos" in texto or "identicas" in texto, texto
-    # 3. e tem de dizer o que fazer a respeito
-    assert "chave de IA" in texto and "rede" in texto, texto
-    # 4. nao pode deixar copia em portugues se passando por traducao
-    assert not list((tmp_path / "en").glob("PDM_*.xlsx")), \
-        "sobrou copia em portugues na pasta de destino"
-
-
-def test_o_lote_PARA_no_primeiro_arquivo_e_nao_no_1192o(tmp_path, openpyxl_real):
-    """1192 arquivos errados custam horas e enchem a pasta de lixo que parece
-    bom. Ao perceber que o tradutor está mudo, o lote tem de parar."""
-    import openpyxl
-    origem = tmp_path / "pt"
-    origem.mkdir()
-    for n in range(1, 21):
-        wb = openpyxl.Workbook()
-        for i in range(1, 7):
-            wb.active.cell(row=i, column=1,
-                           value=f"{i} - CARACTERISTICA {n}.{i} (Indicar o valor do item.):")
-        wb.save(origem / f"PDM_1650_{n:03d}_formatado.xlsx")
-
-    visitados = []
-
-    def motor_mudo(textos):
-        visitados.append(len(textos))
-        return list(textos)
-
-    list(traducao_pasta_ate_o_fim(tmp_path, origem, motor_mudo))
-
-    assert len(visitados) <= 3, (
-        f"o lote visitou {len(visitados)} arquivos antes de perceber que o "
-        "tradutor estava mudo")
-    assert len(list((tmp_path / "en").glob("PDM_*.xlsx"))) <= 3
-
-
-def test_traducao_de_VERDADE_nao_e_confundida_com_falha(tmp_path, openpyxl_real):
-    """A guarda não pode custar o caminho feliz: com o motor funcionando, o
-    lote inteiro tem de rodar."""
-    import openpyxl
-    origem = tmp_path / "pt"
-    origem.mkdir()
-    for n in range(1, 6):
-        wb = openpyxl.Workbook()
-        for i in range(1, 7):
-            wb.active.cell(row=i, column=1, value=f"{i} - CARACTERISTICA {n}.{i}:")
-        wb.save(origem / f"PDM_1650_{n:03d}_formatado.xlsx")
-
-    linhas = list(traducao_pasta_ate_o_fim(tmp_path, origem, _falso({})))
-
-    assert len(list((tmp_path / "en").glob("PDM_*.xlsx"))) == 5, "\n".join(linhas)
-    assert any("5 de 5" in linha for linha in linhas), "\n".join(linhas)
-
-
-def test_uma_pergunta_que_ja_esta_em_INGLES_nao_dispara_o_alarme(tmp_path, openpyxl_real):
-    """O ponto cego honesto desta guarda: texto que traduz para ele mesmo.
-    Um arquivo com POUCAS linhas assim não pode ser tratado como falha — por
-    isso o alarme exige um número mínimo de textos."""
-    import openpyxl
-    origem = tmp_path / "pt"
-    origem.mkdir()
-    wb = openpyxl.Workbook()
-    wb.active.cell(row=1, column=1, value="1 - Model:")
-    wb.active.cell(row=2, column=1, value="2 - Manufacturer:")
-    wb.save(origem / "PDM_1650_001_formatado.xlsx")
-
-    linhas = list(traducao_pasta_ate_o_fim(tmp_path, origem, lambda t: list(t)))
-
-    assert (tmp_path / "en" / "PDM_1650_001_formatado.xlsx").exists(), "\n".join(linhas)
-
-
-def traducao_pasta_ate_o_fim(tmp_path, origem, motor):
-    """Roda `traduzir_pasta` esgotando o generator, devolvendo as linhas."""
-    return tp.traduzir_pasta(str(origem), str(tmp_path / "en"), traduzir=motor)
-
+# entrada é indistinguível de um que traduziu bem um texto já em inglês. Por
+# isso a reserva LEVANTA quando nada passou, em vez de devolver o original.
 
 def test_deep_translator_sem_rede_LEVANTA_em_vez_de_devolver_o_original(monkeypatch):
     """Na origem do problema: quando Google E MyMemory falham para TODOS os
@@ -527,32 +456,6 @@ def test_deep_translator_sem_rede_LEVANTA_em_vez_de_devolver_o_original(monkeypa
         tp._traduzir_com_deep_translator(["Pressão de trabalho", "Vazão nominal"])
 
     assert "rede" in str(erro.value).lower() or "tradutor" in str(erro.value).lower()
-
-
-def test_a_tela_NAO_amarra_a_traducao_a_chave_do_Gemini():
-    """`traduzir_pdm` nasceu depois do multi-provedor. A tela passava
-    `get_key("GEMINI")` — o padrão legado dos 5 módulos migrados, em que o
-    provedor era sempre o Gemini.
-
-    Quem escolher OpenRouter (ou o provedor da empresa) para esta tarefa em
-    "Modelos de IA" receberia a chave do Gemini enviada ao provedor errado:
-    erro de autenticação, queda silenciosa para a `deep_translator` e uma
-    pasta traduzida pelo Google Tradutor sem ninguém ter pedido.
-
-    Sem `api_key`, `get_llm` resolve a chave do provedor REALMENTE escolhido
-    (`config.CHAVE_POR_PROVIDER`) — é o mesmo `.env`/`api_config.json`."""
-    import ast
-    import pathlib
-
-    view = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app_qt" / "views" / "pdm.py"
-    arvore = ast.parse(view.read_text(encoding="utf-8"))
-    metodo = next(
-        (no for no in ast.walk(arvore)
-         if isinstance(no, ast.FunctionDef) and no.name == "_op1_traduzir"), None)
-    assert metodo is not None, "o metodo de traduzir sumiu da tela"
-    assert "get_key" not in ast.dump(metodo), (
-        "a tela ainda escolhe a chave por conta propria; quem resolve chave por "
-        "provedor e o get_llm")
 
 
 # =============================================================================
