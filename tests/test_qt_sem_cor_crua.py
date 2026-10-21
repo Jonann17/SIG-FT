@@ -23,14 +23,24 @@ NOME_DE_COR = re.compile(
 PERMITIDOS = {"sigft/app_qt/estilo.py"}
 
 
+# Caminho absoluto: relativo à pasta de onde o pytest roda, um teste que muda a
+# pasta (os.chdir) antes deste, no mesmo processo do xdist, fazia a varredura
+# não achar arquivo nenhum e passar vazia -- foi assim que a folha da splash
+# (2026-10-20) passou pelo check.sh duas vezes.
+RAIZ = pathlib.Path(__file__).resolve().parent.parent
+
+
 def _linhas_de_codigo():
-    for p in sorted(pathlib.Path("sigft/app_qt").rglob("*.py")):
-        if str(p).replace("\\", "/") in PERMITIDOS:
+    arquivos = sorted((RAIZ / "sigft" / "app_qt").rglob("*.py"))
+    assert len(arquivos) > 20, "a varredura não achou as telas"
+    for p in arquivos:
+        relativo = p.relative_to(RAIZ).as_posix()
+        if relativo in PERMITIDOS:
             continue
         for n, linha in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
             # A linha que é só comentário não conta.
             if not linha.lstrip().startswith("#"):
-                yield f"{p}:{n}", linha
+                yield f"{relativo}:{n}", linha
 
 
 def test_nenhuma_tela_tem_cor_propria():

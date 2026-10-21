@@ -356,21 +356,11 @@ class SplashScreen(QWidget):
         # O fundo é desenhado no `paintEvent` (os cantos arredondados): fora
         # do cartão, a janela é transparente.
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self._paleta = p = tokens.paleta(tema.efetivo(tema.escolhido()))
+        self._paleta = tokens.paleta(tema.efetivo(tema.escolhido()))
         self.setObjectName("splash")
         # Folha própria, por cima da do app: a cor de cada peça é a do tema
-        # guardado, qualquer que seja a folha aplicada. O trilho da barra é a
-        # `borda`: a `superficie_alta` some sobre o `fundo` claro.
-        self.setStyleSheet(f"""
-            QLabel {{ background: transparent; }}
-            QLabel#splash_titulo {{ color: {p['texto']}; font-size: {tokens.FONTE['titulo']}px;
-                                    font-weight: bold; }}
-            QLabel#splash_versao {{ color: {p['texto_suave']}; font-size: {tokens.FONTE['legenda']}px; }}
-            QLabel#splash_status {{ color: {p['texto_suave']}; font-size: {tokens.FONTE['legenda']}px; }}
-            QProgressBar {{ background: {p['borda']}; border: none; border-radius: 2px;
-                            min-height: 4px; max-height: 4px; }}
-            QProgressBar::chunk {{ background: {p['primaria']}; border-radius: 2px; }}
-        """)
+        # guardado, qualquer que seja a folha aplicada (`estilo.folha_da_splash`).
+        self.setStyleSheet(estilo.folha_da_splash(tema.efetivo(tema.escolhido())))
         lay = QVBoxLayout(self)
         lay.setContentsMargins(50, 50, 50, 30)
         lay.setSpacing(tokens.ESPACO[1])

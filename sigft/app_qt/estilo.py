@@ -662,3 +662,20 @@ def _folha_telas(tema: str | None = None) -> str:
         regras.append(f'QLabel[faixa="{faixa}"] {{ color: {cor}; }}')
         regras.append(f'#regua_faixa[faixa="{faixa}"] {{ background: {cor}; border: none; }}')
     return "\n" + "\n".join(regras) + "\n"
+
+
+def folha_da_splash(tema: str | None = None) -> str:
+    """A folha da splash (Task 10), no `tema` (sem ele, `TEMA_ATUAL`). Mora aqui
+    porque cor fora do `estilo.py` reprova (`tests/test_qt_sem_cor_crua.py`).
+    O trilho da barra é a `borda`: a `superficie_alta` some sobre o `fundo` claro."""
+    p = tokens.paleta(tema or TEMA_ATUAL)
+    return f"""
+        QLabel {{ background: transparent; }}
+        QLabel#splash_titulo {{ color: {p['texto']}; font-size: {tokens.FONTE['titulo']}px;
+                                font-weight: bold; }}
+        QLabel#splash_versao {{ color: {p['texto_suave']}; font-size: {tokens.FONTE['legenda']}px; }}
+        QLabel#splash_status {{ color: {p['texto_suave']}; font-size: {tokens.FONTE['legenda']}px; }}
+        QProgressBar {{ background: {p['borda']}; border: none; border-radius: 2px;
+                        min-height: 4px; max-height: 4px; }}
+        QProgressBar::chunk {{ background: {p['primaria']}; border-radius: 2px; }}
+    """

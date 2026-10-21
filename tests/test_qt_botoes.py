@@ -40,7 +40,11 @@ def _chamadas_de_botao_com_cor_fundo(fonte: str) -> list[int]:
 
 def test_ninguem_passa_cor_fundo_novo():
     """Uso novo de cor crua no botão reprova: use `variante=`."""
-    usos = [f"{p}:{n}" for p in pathlib.Path("sigft/app_qt").rglob("*.py")
+    # Caminho absoluto: relativo, um os.chdir de outro teste no mesmo processo
+    # deixava a varredura vazia (ver `test_qt_sem_cor_crua.py`).
+    arquivos = list((pathlib.Path(__file__).resolve().parent.parent / "sigft" / "app_qt").rglob("*.py"))
+    assert len(arquivos) > 20
+    usos = [f"{p}:{n}" for p in arquivos
             for n in _chamadas_de_botao_com_cor_fundo(p.read_text(encoding="utf-8"))]
     assert usos == []
 
