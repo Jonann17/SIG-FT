@@ -9,6 +9,14 @@ from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QWidget
 from sigft.app_qt import aviso_windows as aviso
 
 
+class _Mostrados(list):
+    """(título, texto) de cada aviso; `na_thread_da_interface`, um bool por aviso."""
+
+    def __init__(self):
+        super().__init__()
+        self.na_thread_da_interface = []
+
+
 @pytest.fixture
 def mostrados(monkeypatch, tmp_path):
     """O aviso ligado, o SIG-FT fora de foco e o `_mostrar` trocado por uma lista:
@@ -16,8 +24,15 @@ def mostrados(monkeypatch, tmp_path):
     monkeypatch.delenv(aviso.ENV_DESLIGAR, raising=False)
     monkeypatch.setattr(aviso, "_arquivo_de_prefs", lambda: tmp_path / "p.json")
     monkeypatch.setattr(aviso, "_em_foco", lambda janela: False)
-    lista = []
-    monkeypatch.setattr(aviso, "_mostrar", lambda janela, titulo, texto: lista.append((titulo, texto)) or True)
+    lista = _Mostrados()
+
+    def falso(janela, titulo, texto):
+        # Guarda onde o aviso saiu: o Qt só aceita a bandeja na thread da interface.
+        lista.na_thread_da_interface.append(threading.current_thread() is threading.main_thread())
+        lista.append((titulo, texto))
+        return True
+
+    monkeypatch.setattr(aviso, "_mostrar", falso)
     return lista
 
 
@@ -106,6 +121,20 @@ def test_clicar_no_aviso_traz_a_janela(qt_interface, qtbot, monkeypatch):
     assert trazidas == [janela]
 
 
+def test_em_foco_de_verdade_minimizada_ou_escondida_nao_conta(qt_interface, qtbot):
+    """O `_em_foco` real, sem troca. Só os casos negativos: offscreen o
+    `applicationState` não fica `ApplicationActive` de forma confiável."""
+    minimizada = QWidget()
+    qtbot.addWidget(minimizada)
+    minimizada.show()
+    minimizada.setWindowState(Qt.WindowState.WindowMinimized)
+    assert minimizada.isMinimized()
+    assert aviso._em_foco(minimizada) is False
+    escondida = QWidget()
+    qtbot.addWidget(escondida)
+    assert aviso._em_foco(escondida) is False
+
+
 def test_trazer_para_frente_tira_o_minimizado(qt_interface, qtbot):
     janela = QWidget()
     qtbot.addWidget(janela)
@@ -167,6 +196,7 @@ def test_pausa_avisa_com_a_primeira_linha(qt_interface, qtbot, mostrados):
     t.start()
     qtbot.waitUntil(lambda: bool(mostrados), timeout=2000)
     assert mostrados == [(aviso.TITULO_ESPERA, "Faça o login no portal e aperte Continuar.")]
+    assert mostrados.na_thread_da_interface == [True]     # chamada veio do worker
     qtbot.waitUntil(lambda: any(isinstance(w, qd.PausaLoginDialog) and w.isVisible()
                                 for w in QApplication.topLevelWidgets()), timeout=2000)
     _aberto(qd.PausaLoginDialog).botao.click()
@@ -182,6 +212,7 @@ def test_excel_travado_avisa(qt_interface, qtbot, mostrados):
     t.start()
     qtbot.waitUntil(lambda: bool(mostrados), timeout=2000)
     assert mostrados == [(aviso.TITULO_ESPERA, espera.TEXTO_ESPERA_EXCEL)]
+    assert mostrados.na_thread_da_interface == [True]     # chamada veio do worker
     qtbot.waitUntil(lambda: any(isinstance(w, qd.RetryLockDialog) and w.isVisible()
                                 for w in QApplication.topLevelWidgets()), timeout=2000)
     _aberto(qd.RetryLockDialog).close()
