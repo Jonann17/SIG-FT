@@ -6,7 +6,9 @@ planilhas PMIB embaixo), as validações, os argumentos que chegam aos serviços
 as mensagens do fim (pela thread da interface), a janela de seleção dos
 códigos e a geometria.
 """
+import sys
 import threading
+from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import Qt, QTimer
@@ -45,8 +47,11 @@ class PdmFalso:
             self.segurar.wait(3)
         return list(self.dados_pastas), "3 pastas preparadas"
 
-    def aplicar_templates_fichas_da_planilha(self, dados, catalogo, template, log_callback=None, retry_lock=None):
-        self._reg("templates_planilha", dados, catalogo, template, retry_lock=retry_lock)
+    def aplicar_templates_fichas_da_planilha(self, dados, catalogo, template, log_callback=None, retry_lock=None,
+                                             idioma="pt", traduzir=None, pasta_traducao=None):
+        self._reg("templates_planilha", dados, catalogo, template, retry_lock=retry_lock, idioma=idioma,
+                  traduzir=traduzir)
+        log_callback("montando...")
         return "3 fichas da planilha", []
 
 
@@ -74,6 +79,14 @@ def _texto(tela):
 def _esperar_aviso(tela, qtbot, n=1):
     qtbot.waitUntil(lambda: len(tela.avisos) >= n, timeout=3000)
     return tela.avisos[n - 1]
+
+
+def _modulo_falso(monkeypatch, nome, **funcoes):
+    modulo = SimpleNamespace(**funcoes)
+    monkeypatch.setitem(sys.modules, f"sigft.services.{nome}", modulo)
+    import sigft.services as servicos
+    monkeypatch.setattr(servicos, nome, modulo, raising=False)
+    return modulo
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +120,7 @@ def test_monta_com_os_textos_e_os_padroes(tela):
     assert tela.entry_destino_fichas.text() == ""
 
 
-IDIOMA_DICA = "(English usa a pasta de PDMs traduzidos)"
+IDIOMA_DICA = "(English traduz as características da planilha)"
 
 # O que saiu em 2026-10-21 (pedido do Luan): as abas "Processar PDMs" e
 # "Excluir Duplicados", a pasta de PDMs Modificados e a escolha da fonte.
@@ -246,7 +259,8 @@ def test_criar_fichas_da_planilha(tela, qtbot, pdm, monkeypatch):
     assert carregados == ["/d/s.xlsx"]
     assert pdm.chamadas == [
         ("pastas", ("/d/_STATUS_PMIB.xlsx", "/fichas", None), {"criar_subpastas": False}),
-        ("templates_planilha", (["d1"], "CATALOGO", "/d/T.xlsx"), {"retry_lock": tela.perguntar_retry_excel}),
+        ("templates_planilha", (["d1"], "CATALOGO", "/d/T.xlsx"),
+         {"retry_lock": tela.perguntar_retry_excel, "idioma": "pt", "traduzir": None}),
     ]
     assert pdm.threads == [False, False]
     qtbot.waitUntil(lambda: ">>> Processo de criação de fichas finalizado!" in _texto(tela), timeout=2000)
@@ -254,6 +268,39 @@ def test_criar_fichas_da_planilha(tela, qtbot, pdm, monkeypatch):
     ordem = ["> Lendo a planilha de PDMs...", "> Preparando diretórios (Modo: Apenas Planilhas)...",
              "> 3 pastas preparadas", "> 3 fichas da planilha", "> >>> Processo de criação de fichas finalizado!"]
     assert [texto.index(x) for x in ordem] == sorted(texto.index(x) for x in ordem)
+
+
+def test_criar_fichas_em_ingles_traduz_pela_planilha(tela, qtbot, pdm, monkeypatch):
+    """[2026-10-21] Sem aviso: a ficha em inglês sai da planilha, e a tela
+    entrega ao serviço o motor de tradução padrão (trocável)."""
+    pedidos = []
+
+    def motor_padrao(api_key=None, callbacks=None):
+        pedidos.append((api_key, threading.current_thread() is threading.main_thread()))
+        callbacks.log("motor pronto")
+        return "MOTOR"
+
+    _modulo_falso(monkeypatch, "traducao_pdm", motor_padrao=motor_padrao)
+    monkeypatch.setattr(tela_mod.pdm_catalogo, "carregar", lambda p: "CAT")
+    _preencher(tela)
+    tela.rb_en.click()
+    tela.btn_criar_fichas.click()
+    tela.rb_pt.click()  # mudar depois do clique não muda o lote
+    assert _esperar_aviso(tela, qtbot)[:3] == (
+        "info", "Fim", "Processo de criação de fichas finalizado.\n\n3 fichas da planilha")
+    assert pedidos == [(None, False)]   # sem api_key: a do provedor escolhido; na tarefa
+    assert pdm.chamadas[1] == ("templates_planilha", (["d1"], "CAT", "/d/T.xlsx"),
+                               {"retry_lock": tela.perguntar_retry_excel, "idioma": "en", "traduzir": "MOTOR"})
+    qtbot.waitUntil(lambda: "motor pronto" in _texto(tela), timeout=2000)
+
+
+def test_criar_fichas_em_portugues_nao_monta_o_motor(tela, qtbot, pdm, monkeypatch):
+    _modulo_falso(monkeypatch, "traducao_pdm", motor_padrao=lambda **k: pytest.fail("nao traduz"))
+    monkeypatch.setattr(tela_mod.pdm_catalogo, "carregar", lambda p: "CAT")
+    _preencher(tela)
+    tela.btn_criar_fichas.click()
+    _esperar_aviso(tela, qtbot)
+    assert pdm.chamadas[1][2]["traduzir"] is None and pdm.chamadas[1][2]["idioma"] == "pt"
 
 
 def test_criar_fichas_com_subpastas(tela, qtbot, pdm, monkeypatch):

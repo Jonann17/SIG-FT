@@ -233,7 +233,7 @@ def _montar_fichas(lista_dados, obter_perguntas, bytes_template, *, callbacks,
     nome_da_aba = None
     erro_de_template = None
     divergencias = []
-    em_ingles = str(idioma or "pt").strip().lower().startswith("en")
+    em_ingles = _em_ingles(idioma)
     # CP 4.4: `RelatorioLote` (início com total/contexto, linha por item,
     # resumo final com as falhas listadas).
     with RelatorioLote(callbacks, titulo=titulo, total=len(lista_dados),
@@ -324,14 +324,59 @@ def _listar_divergencias(callbacks, divergencias):
                 callbacks.log(f"   {pmib}: {causa}", nivel="warn")
 
 
+def _em_ingles(idioma):
+    return str(idioma or "pt").strip().lower().startswith("en")
+
+
+def _preparar_ingles(lista_dados, catalogo, callbacks, traduzir, pasta_traducao):
+    """Traduz, ANTES de montar a primeira ficha, todas as perguntas do lote
+    (cada uma uma vez, em lotes) e devolve `textos -> (traduzidos, faltaram)`
+    para cada ficha consultar. Não levanta: o que não traduziu fica em
+    português e o aviso sai no log."""
+    from sigft.services import traducao_pdm
+
+    if traduzir is None:
+        traduzir = traducao_pdm.motor_padrao(callbacks=callbacks)
+    pasta = pasta_traducao or traducao_pdm.pasta_da_traducao()
+    glossario = traducao_pdm.carregar_glossario(traducao_pdm.criar_glossario_exemplo(pasta))
+    cache = traducao_pdm.Cache(pasta)
+
+    perguntas = []
+    for _pmib, pdm_nome, _pasta in lista_dados:
+        try:
+            perguntas.extend(pdm_planilha.perguntas_do_pdm(catalogo, pdm_nome).linhas)
+        except pdm_planilha.PDMRecusado:
+            continue   # a montagem conta a falha deste material, com o motivo
+    callbacks.log(f"Traduzindo as perguntas para ingles (glossario e cache em {pasta})...",
+                  nivel="info")
+
+    def avisar(linha):
+        callbacks.log(linha, nivel="warn")
+
+    traducao_pdm.preparar_traducao(perguntas, traduzir, glossario, cache, avisar=avisar)
+
+    def traduzidas(textos):
+        return traducao_pdm.traducao_conhecida(textos, glossario, cache)
+
+    return traduzidas
+
+
 def aplicar_templates_fichas_da_planilha(lista_dados, catalogo, path_template,
-                                         log_callback=None, retry_lock=None):
+                                         log_callback=None, retry_lock=None, idioma="pt",
+                                         traduzir=None, pasta_traducao=None):
     """As perguntas vêm da PLANILHA de PDMs (`catalogo`, de
     `pdm_catalogo.carregar`): revisão vigente, ordem da SECUENCIA, sem
-    "(nan)". Sempre em português: a ficha em inglês usa a pasta traduzida
-    (decisão do usuário, 2026-09-23). Regras em `services/pdm_planilha.py`."""
+    "(nan)". Regras em `services/pdm_planilha.py`.
+
+    `idioma="en"` (2026-10-21): as perguntas saem traduzidas pelo motor
+    `traduzir` (`list[str] -> list[str]`; sem ele, `traducao_pdm.motor_padrao`),
+    com o glossário e o cache de `pasta_traducao` (sem ela,
+    `traducao_pdm.pasta_da_traducao()`), e a aba da ficha ganha o nome em
+    inglês. Pergunta que não traduziu fica em português, com aviso no log:
+    o lote não para por causa do tradutor."""
     callbacks = from_legacy(callback_log=log_callback)
     log = []
+    em_ingles = _em_ingles(idioma)
     try:
         pdm_planilha.conferir_catalogo(catalogo)
     except pdm_planilha.PDMRecusado as e:
@@ -343,26 +388,39 @@ def aplicar_templates_fichas_da_planilha(lista_dados, catalogo, path_template,
     except Exception as e:
         return f"Erro ao abrir template: {e}", [f"Erro ao abrir template: {e}"]
 
+    traducao = None
+    if em_ingles:
+        traducao = _preparar_ingles(lista_dados, catalogo, callbacks, traduzir, pasta_traducao)
+
     def obter(pmib, pdm_nome):
         try:
             resultado = pdm_planilha.perguntas_do_pdm(catalogo, pdm_nome)
         except pdm_planilha.PDMRecusado as e:
             raise _Recusado(str(e), f"FALHA: {pmib}: {e}") from e
         pdm_do_item = resultado.pdm
+        textos = list(resultado.linhas)
+        avisos = []
+        if traducao is not None:
+            textos, faltaram = traducao(textos)
+            if faltaram:
+                avisos.append((f"{faltaram} pergunta(s) sem traducao",
+                               "ficaram em portugues na ficha em ingles"))
+        if resultado.divergencia:
+            avisos.append((resultado.causa, resultado.consequencia))
         return _Perguntas(
-            linhas=[(texto, None) for texto in resultado.linhas],
+            linhas=[(texto, None) for texto in textos],
             detalhe=(f"({pdm_do_item.codigo} R{pdm_do_item.revisao}, "
                      f"{len(resultado.linhas)} perguntas)"),
-            avisos=([(resultado.causa, resultado.consequencia)]
-                    if resultado.divergencia else []),
+            avisos=avisos,
             divergencia=resultado.divergencia,
             causa_da_divergencia=resultado.causa,
         )
 
     count, erro_de_template, divergencias = _montar_fichas(
         lista_dados, obter, bytes_template, callbacks=callbacks,
-        retry_lock=retry_lock, idioma="pt",
-        titulo="Montando fichas a partir da planilha de PDMs",
+        retry_lock=retry_lock, idioma=idioma,
+        titulo=("Montando fichas em ingles a partir da planilha de PDMs" if em_ingles
+                else "Montando fichas a partir da planilha de PDMs"),
         contexto={"planilha": catalogo.origem, "template": path_template},
         log=log,
     )

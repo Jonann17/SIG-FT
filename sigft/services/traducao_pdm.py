@@ -1,22 +1,20 @@
-r"""Traduz os *PDMs Modificados* para inglês, para a ficha em inglês.
+r"""Traduz as perguntas dos PDMs para inglês, para a ficha em inglês.
 
 O PROBLEMA
 ------------------------------------------------------------------------
 O SIG-FT tem dois templates de ficha técnica — PT-BR e inglês —, mas as
-características técnicas coladas dentro deles vêm sempre da **mesma** pasta de
-PDMs Modificados, que está em português. Traduzir isso ficha a ficha, à mão,
-era o trabalho que este módulo elimina.
+características técnicas coladas dentro deles vêm da planilha de PDMs
+(SAM-GM), que está em português. Traduzir isso ficha a ficha, à mão, era o
+trabalho que este módulo elimina.
 
-O DESENHO (aprovado pelo usuário em 2026-08-28)
+O DESENHO (2026-10-21; antes era uma pasta de PDMs Modificados traduzida)
 ------------------------------------------------------------------------
-Traduzir a pasta inteira **uma vez**, gravar numa pasta paralela, e deixar o
-montador (`pdm.aplicar_templates_fichas`) escolher a pasta pelo idioma do
-template. Os arquivos traduzidos mantêm **nome e geometria** dos originais:
-
-- o nome, porque o montador acha o PDM por SUBSTRING do id (`PDM_1234_001`)
-  no nome do arquivo — renomear quebraria o casamento em silêncio;
-- a célula, porque o montador lê `cell(linha, 1)` — escrever noutra coluna
-  geraria fichas em branco, e ninguém perceberia até abrir uma.
+O montador (`pdm.aplicar_templates_fichas_da_planilha`, com `idioma="en"`)
+junta as perguntas de todas as fichas do lote e chama `preparar_traducao`
+UMA vez, antes de montar a primeira: o que é novo vai ao motor em lotes de
+`TEXTOS_POR_LOTE`, sem repetir texto. Depois, cada ficha pega as traduções
+prontas com `traducao_conhecida`. O que não traduziu fica em português e é
+contado, para o log avisar: uma falha do tradutor nunca derruba o lote.
 
 O QUE É TRADUZIDO, E O QUE NÃO É
 ------------------------------------------------------------------------
@@ -24,8 +22,7 @@ Cada pergunta tem a forma `"1 - NOME (Instrução de preenchimento):"`. O
 `"1 - "` é numeração da lista e o `":"` é pontuação — mandar os dois para um
 tradutor é pedir para ele inventar. Só o miolo viaja.
 
-A FORMA REAL, conferida em 2026-09-03 contra as fichas que o usuário entregou
-(e diferente do que este arquivo dizia antes):
+A FORMA REAL, conferida em 2026-09-03 contra as fichas que o usuário entregou:
 
     9 - TIPO CONSTRUTIVO (Indicar o tipo construtivo do item. Nota: Material
     especifico de compra com (Número de desenho, referência, nome usual,
@@ -47,15 +44,20 @@ TRÊS CAMADAS ANTES DO MOTOR
    estiver ali é usada **verbatim, sem chamar o motor** — é o "corrigiu uma
    vez, vale sempre". Os termos soltos também são passados ao motor como
    vocabulário obrigatório.
-2. **Cache** (`_CACHE_TRADUCAO.json`, crescido pela máquina). Rerodar a pasta
-   não paga tradução de novo.
+2. **Cache** (`_CACHE_TRADUCAO.json`, crescido pela máquina). Rerodar o lote
+   não paga tradução de novo. Resposta igual à entrada NÃO entra: seria o
+   português congelado como se fosse tradução.
 3. **Dedupe** dentro da rodada: `Fabricante`, `Modelo` e `Peso` aparecem em
-   dezenas de PDMs e vão ao motor **uma vez só** — no caminho da
-   `deep_translator`, cada item custa 1 segundo de espera.
+   dezenas de PDMs e vão ao motor **uma vez só**.
+
+Os dois arquivos moram em `pasta_da_traducao()`: `Documentos\SIG-FT\traducao_pdm`
+(a pasta de dados do usuário, fora da pasta do programa: a atualização não
+apaga o que ele corrigiu).
 
 O motor é **injetado** (`traduzir: list[str] -> list[str]`). Quem monta o de
 produção é `motor_padrao()`, no fim do arquivo: IA primeiro, `deep_translator`
-como reserva. Injetá-lo é o que permite testar tudo isto sem rede.
+como reserva. Injetá-lo é o que permite testar tudo isto sem rede, e trocar o
+motor (um tradutor local, por exemplo) sem mexer no montador.
 """
 import json
 import os
@@ -66,27 +68,13 @@ import time
 NOME_GLOSSARIO = "_GLOSSARIO_PT_EN.txt"
 NOME_CACHE = "_CACHE_TRADUCAO.json"
 
-# Quantos textos precisam ter ido ao motor, sem NENHUM voltar diferente, para o
-# lote parar e acusar. Ver `TraducaoIndisponivel` e a secao F dos testes.
-#
-# Por que um MINIMO, e nao "parou de mudar, aborta": texto que traduz para ele
-# mesmo existe -- "Model:", "PT-100", uma pergunta que ja estava em ingles. Com
-# 5 frases tecnicas em portugues seguidas voltando identicas, nao e coincidencia.
-MIN_TEXTOS_PARA_DESCONFIAR = 5
+# Pasta, dentro da pasta de dados do usuário, do glossário e do cache.
+NOME_DA_PASTA = "traducao_pdm"
 
-# Quantos textos vao ao motor de uma vez na passada de preparo.
-#
-# POR QUE A PASSADA DE PREPARO EXISTE. Sem ela, `traduzir_pasta` faz UMA
-# chamada ao motor por ARQUIVO -- 1192 chamadas numa pasta real, cada uma
-# pagando o tempo de ida e volta da rede (2 a 4 s), o que sozinho ja da mais de
-# uma hora so de espera. As perguntas tambem se repetem MUITO entre PDMs
-# ("FABRICANTE", "MODELO", "DIMENSOES", "NORMAS TECNICAS APLICAVEIS"), e a
-# repeticao so era aproveitada DEPOIS de o arquivo anterior ter sido traduzido.
-#
-# Juntando a pasta inteira antes, a repeticao e descontada de uma vez e o
-# numero de idas ao motor cai de "uma por arquivo" para "uma a cada 60 textos
-# NOVOS". De quebra, um tradutor mudo e descoberto antes de o primeiro arquivo
-# ser escrito.
+# Quantos textos vao ao motor de uma vez em `preparar_traducao`. As perguntas
+# se repetem MUITO entre PDMs ("FABRICANTE", "MODELO", "DIMENSOES"): juntando
+# o lote inteiro antes, a repeticao e descontada de uma vez, e o numero de
+# idas ao motor cai de "uma por ficha" para "uma a cada 60 textos NOVOS".
 TEXTOS_POR_LOTE = 60
 
 
@@ -105,7 +93,7 @@ _PREFIXO = re.compile(r"^\s*(\d+\s*-\s*)")
 _SUFIXO = re.compile(r"([:.\s]+)$")
 
 CABECALHO_GLOSSARIO = """\
-# GLOSSARIO PT -> EN  (SIG-FT, traducao dos PDMs Modificados)
+# GLOSSARIO PT -> EN  (SIG-FT, perguntas dos PDMs na ficha em ingles)
 #
 # COMO USAR
 #   Uma correcao por linha, no formato:   portugues = ingles
@@ -226,7 +214,7 @@ def criar_glossario_exemplo(pasta):
 # Cache
 # =============================================================================
 class Cache:
-    """Traduções já feitas, guardadas ao lado dos arquivos traduzidos.
+    """Traduções já feitas, guardadas na pasta da tradução.
 
     Separado do glossário de propósito: o glossário é **curado por gente** e
     vence tudo; o cache é **crescido pela máquina** e só evita repetir
@@ -290,7 +278,9 @@ def traduzir_textos(textos, traduzir, glossario=None, cache=None):
         for miolo, traducao in zip(pendentes, traduzidos):
             texto = str(traducao or miolo)
             resolvidos[miolo] = texto
-            if cache is not None:
+            # Igual à entrada não é tradução que se guarde: um motor mudo
+            # (sem rede, sem chave) congelaria o português no cache.
+            if cache is not None and texto != miolo:
                 cache.guardar(miolo, texto)
 
     saida = []
@@ -303,6 +293,68 @@ def traduzir_textos(textos, traduzir, glossario=None, cache=None):
 
 
 # =============================================================================
+# O lote da ficha em inglês (2026-10-21)
+# =============================================================================
+def pasta_da_traducao():
+    """`Documentos\\SIG-FT\\traducao_pdm`: o glossário e o cache da ficha em
+    inglês. Fora da pasta do programa, para a atualização não apagar o que o
+    usuário corrigiu (mesma casa do glossário PT->ES, `traducao_respostas`)."""
+    from sigft.core import dados_usuario
+
+    return str(dados_usuario.pasta_dados() / NOME_DA_PASTA)
+
+
+def preparar_traducao(textos, traduzir, glossario, cache, avisar=None):
+    """Põe no `cache` a tradução de tudo o que `textos` tem de novo, em lotes
+    de `TEXTOS_POR_LOTE`, cada miolo uma vez. Devolve quantos lotes falharam.
+
+    NUNCA levanta: lote que o motor recusa (rede, chave, resposta torta) fica
+    sem tradução, `avisar(linha)` diz por quê, e os outros lotes seguem. O
+    cache vai para o disco no fim, e também depois de cada lote (o trabalho
+    pago não se perde se o app fechar no meio)."""
+    glossario = glossario or {}
+    novos = []
+    for texto in textos:
+        _, miolo, _ = partes_da_pergunta(texto)
+        if miolo and miolo not in glossario and not cache.buscar(miolo) and miolo not in novos:
+            novos.append(miolo)
+
+    falhas = 0
+    for inicio in range(0, len(novos), TEXTOS_POR_LOTE):
+        pedaco = novos[inicio:inicio + TEXTOS_POR_LOTE]
+        try:
+            traduzir_textos(pedaco, traduzir, glossario, cache)
+        except Exception as e:  # noqa: BLE001 -- qualquer falha do motor vira aviso
+            falhas += 1
+            if avisar is not None:
+                avisar(f"AVISO: o tradutor falhou em {len(pedaco)} pergunta(s) "
+                       f"({type(e).__name__}: {e}); elas ficam em portugues.")
+        cache.salvar()
+    return falhas
+
+
+def traducao_conhecida(textos, glossario, cache):
+    """`(traduzidos, faltaram)`: cada texto com o miolo trocado pelo do
+    glossário ou do cache, na mesma ordem. O que não tem tradução fica como
+    veio (em português) e conta em `faltaram`. Não chama motor nenhum."""
+    glossario = glossario or {}
+    saida = []
+    faltaram = 0
+    for texto in textos:
+        prefixo, miolo, sufixo = partes_da_pergunta(texto)
+        if not miolo:
+            saida.append(texto)
+            continue
+        traducao = glossario.get(miolo) or cache.buscar(miolo)
+        if traducao:
+            saida.append(f"{prefixo}{traducao}{sufixo}")
+        else:
+            saida.append(texto)
+            faltaram += 1
+    return saida, faltaram
+
+
+# =============================================================================
 # O motor de produção
 # =============================================================================
 def motor_padrao(api_key=None, callbacks=None, glossario=None):
@@ -312,7 +364,10 @@ def motor_padrao(api_key=None, callbacks=None, glossario=None):
     hidrelétrica muito melhor que o Google Tradutor ("vazão" vira *flow rate*,
     não *outflow*), e traduz em lote — enquanto a `deep_translator` cobra 1
     segundo de espera por item. A reserva existe porque a chave de IA pode
-    faltar, e uma pasta inteira não pode ficar sem tradução por causa disso.
+    faltar, e um lote inteiro não pode ficar sem tradução por causa disso.
+
+    É só UM motor possível: o montador recebe qualquer `list[str] ->
+    list[str]`, e trocar por um tradutor local é trocar o que a tela passa.
     """
     # O aviso da queda para a reserva sai UMA vez por execucao, e nao uma por
     # arquivo. Na rodada de 2026-09-03 o usuario recebeu a mesma linha de

@@ -1,12 +1,12 @@
-r"""Tradução dos PDMs Modificados para inglês (2026-08-28).
+r"""Tradução das perguntas dos PDMs para inglês (2026-08-28; da planilha desde 2026-10-21).
 
 **Por que existe** (pedido do usuário): o SIG-FT tem dois templates de ficha —
-PT-BR e inglês — mas as características técnicas coladas dentro deles vêm
-sempre da mesma pasta de *PDMs Modificados*, que está em português. Hoje a
-tradução dessas perguntas é feita **na mão**, ficha a ficha.
+PT-BR e inglês — mas as características técnicas vêm da planilha de PDMs, em
+português. Traduzir essas perguntas na mão, ficha a ficha, era o trabalho.
 
-O desenho aprovado: traduzir a pasta inteira uma vez, guardar numa pasta
-paralela, e o montador da ficha escolhe a pasta pelo idioma do template.
+Desde 2026-10-21 a ficha em inglês sai direto da planilha: o montador traduz
+as perguntas do lote (glossário e cache na pasta de dados do usuário). Antes
+era preciso traduzir uma pasta de PDMs Modificados, que saiu do SIG-FT.
 
 **O que este arquivo NÃO testa:** o motor de tradução de verdade (IA ou
 `deep_translator`). Ele é injetado, sempre. Um teste que dependesse da
@@ -151,6 +151,90 @@ def test_o_cache_sobrevive_entre_execucoes(tmp_path):
 def test_cache_corrompido_nao_derruba_a_traducao(tmp_path):
     (tmp_path / tp.NOME_CACHE).write_text("{isto não é json", encoding="utf-8")
     assert tp.Cache(str(tmp_path)).buscar("qualquer") is None
+
+
+# =============================================================================
+# D. Traduzir as perguntas da planilha (2026-10-21)
+# =============================================================================
+# A ficha em inglês sai da planilha de PDMs: as perguntas de todas as fichas
+# do lote são traduzidas ANTES de montar (`preparar_traducao`, em lotes, sem
+# repetir texto), e cada ficha só consulta o que ficou pronto
+# (`traducao_conhecida`). O que não traduziu fica em português e é contado:
+# uma falha do tradutor nunca derruba o lote.
+def test_o_glossario_e_o_cache_moram_na_pasta_de_dados_do_usuario(monkeypatch, tmp_path):
+    from sigft.core import dados_usuario
+
+    monkeypatch.setattr(dados_usuario, "pasta_dados", lambda: tmp_path)
+    assert tp.pasta_da_traducao() == str(tmp_path / "traducao_pdm")
+
+
+def test_preparar_manda_ao_motor_so_o_que_falta_uma_vez_cada(tmp_path):
+    chamou = []
+
+    def motor(textos):
+        chamou.append(list(textos))
+        return [f"EN:{t}" for t in textos]
+
+    cache = tp.Cache(str(tmp_path))
+    cache.guardar("Peso (kg)", "Weight (kg)")
+    falhas = tp.preparar_traducao(
+        ["1 - Peso (kg):", "2 - Vazão (l/min):", "1 - Vazão (l/min):", "3 - Modelo:"],
+        motor, {"Modelo": "Model"}, cache)
+    assert falhas == 0
+    assert chamou == [["Vazão (l/min)"]]
+    assert cache.buscar("Vazão (l/min)") == "EN:Vazão (l/min)"
+
+
+def test_preparar_vai_em_lotes(tmp_path, monkeypatch):
+    monkeypatch.setattr(tp, "TEXTOS_POR_LOTE", 2)
+    chamou = []
+
+    def motor(textos):
+        chamou.append(len(textos))
+        return [f"EN:{t}" for t in textos]
+
+    tp.preparar_traducao([f"{i} - P{i}:" for i in range(1, 6)], motor, {}, tp.Cache(str(tmp_path)))
+    assert chamou == [2, 2, 1]
+
+
+def test_lote_que_falha_nao_derruba_e_os_outros_seguem(tmp_path, monkeypatch):
+    monkeypatch.setattr(tp, "TEXTOS_POR_LOTE", 2)
+    avisos = []
+
+    def motor(textos):
+        if "P1" in textos:
+            raise OSError("rede bloqueada")
+        return [f"EN:{t}" for t in textos]
+
+    cache = tp.Cache(str(tmp_path))
+    falhas = tp.preparar_traducao(["1 - P1:", "2 - P2:", "3 - P3:"], motor, {}, cache,
+                                  avisar=avisos.append)
+    assert falhas == 1
+    assert cache.buscar("P1") is None and cache.buscar("P3") == "EN:P3"
+    assert len(avisos) == 1 and "rede bloqueada" in avisos[0]
+
+
+def test_o_cache_vai_para_o_disco_ao_fim_do_preparo(tmp_path):
+    tp.preparar_traducao(["1 - Vazão:"], lambda t: [f"EN:{x}" for x in t], {}, tp.Cache(str(tmp_path)))
+    assert tp.Cache(str(tmp_path)).buscar("Vazão") == "EN:Vazão"
+
+
+def test_resposta_igual_a_entrada_NAO_vai_para_o_cache(tmp_path):
+    """Um tradutor mudo devolve o texto de entrada. Guardar isso no cache
+    congelaria o português: a próxima rodada nem perguntaria de novo."""
+    cache = tp.Cache(str(tmp_path))
+    tp.traduzir_textos(["1 - Vazão:", "2 - Peso:"], lambda t: [t[0], None], {}, cache)
+    assert cache.buscar("Vazão") is None and cache.buscar("Peso") is None
+
+
+def test_traducao_conhecida_usa_glossario_e_cache_e_conta_o_que_faltou(tmp_path):
+    cache = tp.Cache(str(tmp_path))
+    cache.guardar("Vazão (l/min)", "Flow rate (l/min)")
+    saida, faltaram = tp.traducao_conhecida(
+        ["1 - Vazão (l/min):", "2 - Modelo:", "3 - Peso (kg):", None, ""],
+        {"Modelo": "Model"}, cache)
+    assert saida == ["1 - Flow rate (l/min):", "2 - Model:", "3 - Peso (kg):", None, ""]
+    assert faltaram == 1
 
 
 # =============================================================================

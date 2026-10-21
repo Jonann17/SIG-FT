@@ -180,3 +180,112 @@ def test_template_com_a_aba_em_ingles_tambem_gera_a_ficha(tmp_path, openpyxl_rea
 def test_o_nome_escolhido_e_o_que_a_Itaipu_usa():
     """Não é invenção: é o nome da aba na ficha que o usuário entregou."""
     assert pdm.NOME_DA_ABA_EM_INGLES == "Standard Technical Sheet"
+
+
+# =============================================================================
+# O NOME DA ABA NA SAÍDA (decisão do usuário, 2026-09-03)
+# =============================================================================
+# O template `Technical_Sheet_of_PDM-R3.xlsx` traz a aba com o nome em
+# PORTUGUÊS. A ficha em inglês que o usuário entrega ao fornecedor
+# (`4500063671.0052_enUS.xlsx`) tem "Standard Technical Sheet" — ou seja, ele
+# renomeia à mão, ficha a ficha. Perguntado, respondeu: renomear
+# automaticamente.
+#
+# A regra "inglês -> qual nome" mora no SERVIÇO, não na tela: a tela passa o
+# IDIOMA (que é o que o usuário escolheu) e o serviço decide o nome. Princípio
+# nº 2 do projeto — UI não contém regra de negócio. [2026-10-21] A ficha em
+# inglês sai da planilha, com as perguntas traduzidas por um motor injetado.
+
+def _motor_falso(textos):
+    return [{"Vazão (l/min)": "Flow rate (l/min)"}.get(t, t) for t in textos]
+
+
+def _montar(tmp_path, nome_da_aba, **kw):
+    template = tmp_path / "template.xlsx"
+    _workbook([nome_da_aba]).save(template)
+    destino = tmp_path / "saida"
+    destino.mkdir()
+    resultado = pdm.aplicar_templates_fichas_da_planilha(
+        [(PMIB, PDM_USADO, str(destino))], _catalogo(), str(template),
+        pasta_traducao=str(tmp_path / "traducao"), **kw)
+    return destino / f"{PMIB}.xlsx", resultado
+
+
+def test_em_INGLES_a_aba_da_ficha_gerada_e_renomeada(tmp_path, openpyxl_real):
+    import openpyxl
+    gerada, _ = _montar(tmp_path, "Ficha Técnica Padrão", idioma="en", traduzir=_motor_falso)
+
+    wb = openpyxl.load_workbook(gerada)
+    assert pdm.NOME_DA_ABA_EM_INGLES in wb.sheetnames
+    assert "Ficha Técnica Padrão" not in wb.sheetnames
+
+
+def test_em_PORTUGUES_o_nome_da_aba_NAO_e_tocado(tmp_path, openpyxl_real):
+    """O caminho de sempre não pode mudar por causa disto."""
+    import openpyxl
+    gerada, _ = _montar(tmp_path, "Ficha Técnica Padrão")   # sem `idioma`: português
+
+    assert openpyxl.load_workbook(gerada).sheetnames == ["Ficha Técnica Padrão"]
+
+
+def test_o_conteudo_traduzido_fica_na_aba_renomeada(tmp_path, openpyxl_real):
+    """Renomear não pode custar a ficha: as perguntas, já em inglês, ficam
+    na mesma célula de sempre."""
+    import openpyxl
+    gerada, _ = _montar(tmp_path, "Ficha Técnica Padrão", idioma="en", traduzir=_motor_falso)
+
+    ws = openpyxl.load_workbook(gerada)[pdm.NOME_DA_ABA_EM_INGLES]
+    assert ws.cell(row=79, column=3).value == "1 - Flow rate (l/min):"
+
+
+def test_template_que_JA_esta_em_ingles_nao_quebra(tmp_path, openpyxl_real):
+    """Se alguém consertar o template, o rename vira no-op — e não um erro de
+    'já existe uma aba com esse nome'."""
+    import openpyxl
+    gerada, (resumo, log) = _montar(tmp_path, pdm.NOME_DA_ABA_EM_INGLES, idioma="en",
+                                    traduzir=_motor_falso)
+
+    assert "1" in resumo, log
+    assert openpyxl.load_workbook(gerada).sheetnames == [pdm.NOME_DA_ABA_EM_INGLES]
+
+
+# =============================================================================
+# A tela (por AST — a tela Qt, `sigft/app_qt/views/pdm.py`)
+# =============================================================================
+import ast  # noqa: E402
+import pathlib  # noqa: E402
+
+VIEW = pathlib.Path(__file__).resolve().parents[1] / "sigft" / "app_qt" / "views" / "pdm.py"
+
+
+def _metodo(nome):
+    for no in ast.walk(ast.parse(VIEW.read_text(encoding="utf-8"))):
+        if isinstance(no, ast.ClassDef) and no.name == "ModuloPDM":
+            for item in no.body:
+                if isinstance(item, ast.FunctionDef) and item.name == nome:
+                    return item
+    pytest.fail(f"metodo {nome} nao existe na tela do PDM")
+
+
+def test_a_tela_passa_o_IDIOMA_e_o_motor_e_nao_o_nome_da_aba():
+    """A tela não pode saber como se chama a aba em inglês, nem traduzir por
+    conta própria: passa o idioma escolhido e o motor de tradução."""
+    chamadas = [
+        no for no in ast.walk(_metodo("_tarefa_fichas"))
+        if isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute)
+        and no.func.attr == "aplicar_templates_fichas_da_planilha"
+    ]
+    assert chamadas, "a tela nao chama mais o montador?"
+    nomeados = {k.arg for c in chamadas for k in c.keywords}
+    assert {"idioma", "traduzir"} <= nomeados, f"argumentos repassados: {sorted(nomeados)}"
+    fonte = VIEW.read_text(encoding="utf-8")
+    assert "Standard Technical Sheet" not in fonte
+    assert "GoogleTranslator" not in fonte and "traduzir_textos" not in fonte
+
+
+def test_a_tela_NAO_amarra_a_traducao_a_chave_do_Gemini():
+    """`traduzir_pdm` nasceu depois do multi-provedor. Sem `api_key`, `get_llm`
+    resolve a chave do provedor REALMENTE escolhido em "Modelos de IA";
+    a tela passar `get_key("GEMINI")` mandaria a chave ao provedor errado."""
+    assert "get_key" not in ast.dump(_metodo("_tarefa_fichas"))
+    assert "get_key" not in ast.dump(_metodo("_op2_executar"))

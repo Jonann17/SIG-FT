@@ -189,3 +189,140 @@ def test_template_que_nao_abre_vira_mensagem_e_nao_excecao(tmp_path):
 
     assert "Erro ao abrir template" in msg
     assert log and "Erro ao abrir template" in log[0]
+
+
+# =============================================================================
+# C. A ficha em inglês pela planilha (2026-10-21)
+# =============================================================================
+# O tradutor é injetado (`traduzir: list[str] -> list[str]`), sempre: o motor
+# de verdade (IA, ou o que o dono escolher depois) não entra na suíte.
+def _motor(chamadas=None, falhar=False, mudo=()):
+    def traduzir(textos):
+        if chamadas is not None:
+            chamadas.append(list(textos))
+        if falhar:
+            raise OSError("rede bloqueada")
+        return [None if t in mudo else f"EN {t}" for t in textos]
+    return traduzir
+
+
+def _em_ingles(tmp_path, openpyxl, lista, traduzir, **kw):
+    saida = tmp_path / "fichas"
+    saida.mkdir(exist_ok=True)
+    lista = [(pmib, pdm_usado, str(saida)) for pmib, pdm_usado in lista]
+    resultado = pdm.aplicar_templates_fichas_da_planilha(
+        lista, _catalogo(ACUMULADOR, DISJUNTOR), _template(tmp_path, openpyxl),
+        idioma="en", traduzir=traduzir, pasta_traducao=str(tmp_path / "traducao"), **kw)
+    return saida, resultado
+
+
+def _perguntas_em_ingles(caminho, openpyxl):
+    ws = openpyxl.load_workbook(caminho)[pdm.NOME_DA_ABA_EM_INGLES]
+    return [ws.cell(row=linha, column=3).value for linha in range(79, ws.max_row + 1)
+            if ws.cell(row=linha, column=3).value]
+
+
+def test_em_ingles_as_perguntas_da_planilha_saem_traduzidas(tmp_path, openpyxl_real):
+    saida, (msg, _) = _em_ingles(tmp_path, openpyxl_real,
+                                 [("4500063671.0071", "PDM.1650.001 - ACUMULADOR, , R2")], _motor())
+
+    assert msg == "Fichas geradas: 1"
+    # O número e os dois-pontos não vão ao tradutor; a instrução vai junto.
+    assert _perguntas_em_ingles(saida / "4500063671.0071.xlsx", openpyxl_real) == [
+        "1 - EN DIMENSOES (Indicar as dimensoes.):",
+        "2 - EN MATERIAL (Indicar o material.):",
+        "3 - EN PESO:",
+    ]
+
+
+def test_em_ingles_cada_pergunta_vai_uma_vez_ao_tradutor_no_lote_todo(tmp_path, openpyxl_real):
+    """Duas fichas do mesmo PDM: as 3 perguntas viajam uma vez, antes de
+    montar a primeira ficha."""
+    chamadas = []
+    _em_ingles(tmp_path, openpyxl_real,
+               [("4500063671.0001", "PDM.1650.001 - ACUMULADOR, , R2"),
+                ("4500063671.0002", "PDM.1650.001 - ACUMULADOR, , R2")], _motor(chamadas))
+
+    assert chamadas == [["DIMENSOES (Indicar as dimensoes.)", "MATERIAL (Indicar o material.)", "PESO"]]
+
+
+def test_em_portugues_o_tradutor_nao_e_chamado(tmp_path, openpyxl_real):
+    saida = tmp_path / "fichas"
+    saida.mkdir()
+
+    def proibido(textos):
+        pytest.fail("ficha em portugues nao traduz")
+
+    msg, _ = pdm.aplicar_templates_fichas_da_planilha(
+        [("4500063671.0071", "PDM.1650.001 - ACUMULADOR, , R2", str(saida))],
+        _catalogo(ACUMULADOR), _template(tmp_path, openpyxl_real), traduzir=proibido,
+        pasta_traducao=str(tmp_path / "traducao"))
+
+    assert msg == "Fichas geradas: 1"
+    assert not (tmp_path / "traducao").exists()
+
+
+def test_tradutor_fora_do_ar_deixa_em_portugues_avisa_e_NAO_para(tmp_path, openpyxl_real):
+    logs = []
+    saida, (msg, _) = _em_ingles(tmp_path, openpyxl_real,
+                                 [("4500063671.0071", "PDM.1650.001 - ACUMULADOR, , R2")],
+                                 _motor(falhar=True), log_callback=logs.append)
+    texto = "\n".join(logs)
+
+    assert msg == "Fichas geradas: 1"
+    assert _perguntas_em_ingles(saida / "4500063671.0071.xlsx", openpyxl_real) == [
+        "1 - DIMENSOES (Indicar as dimensoes.):",
+        "2 - MATERIAL (Indicar o material.):",
+        "3 - PESO:",
+    ]
+    assert "rede bloqueada" in texto
+    assert "4500063671.0071: 3 pergunta(s) sem traducao" in texto
+    assert "ficaram em portugues" in texto
+
+
+def test_so_a_pergunta_que_nao_traduziu_fica_em_portugues(tmp_path, openpyxl_real):
+    logs = []
+    saida, _ = _em_ingles(tmp_path, openpyxl_real,
+                          [("4500063671.0071", "PDM.1650.001 - ACUMULADOR, , R2")],
+                          _motor(mudo={"PESO"}), log_callback=logs.append)
+
+    assert _perguntas_em_ingles(saida / "4500063671.0071.xlsx", openpyxl_real) == [
+        "1 - EN DIMENSOES (Indicar as dimensoes.):",
+        "2 - EN MATERIAL (Indicar o material.):",
+        "3 - PESO:",
+    ]
+    assert "4500063671.0071: 1 pergunta(s) sem traducao" in "\n".join(logs)
+
+
+def test_o_glossario_vence_o_tradutor_e_o_cache_evita_a_segunda_viagem(tmp_path, openpyxl_real):
+    pasta = tmp_path / "traducao"
+    pasta.mkdir()
+    (pasta / "_GLOSSARIO_PT_EN.txt").write_text("PESO = WEIGHT\n", encoding="utf-8")
+    chamadas = []
+    lista = [("4500063671.0071", "PDM.1650.001 - ACUMULADOR, , R2")]
+
+    saida, _ = _em_ingles(tmp_path, openpyxl_real, lista, _motor(chamadas))
+    assert _perguntas_em_ingles(saida / "4500063671.0071.xlsx", openpyxl_real)[2] == "3 - WEIGHT:"
+    assert ["PESO"] not in chamadas and len(chamadas) == 1
+
+    _em_ingles(tmp_path, openpyxl_real, lista, _motor(chamadas))
+    assert len(chamadas) == 1, "a segunda rodada deveria sair do cache"
+
+
+def test_sem_glossario_a_pasta_ganha_o_de_exemplo(tmp_path, openpyxl_real):
+    _em_ingles(tmp_path, openpyxl_real, [("4500063671.0071", "PDM.1650.001 - ACUMULADOR, , R2")], _motor())
+    assert (tmp_path / "traducao" / "_GLOSSARIO_PT_EN.txt").exists()
+    assert (tmp_path / "traducao" / "_CACHE_TRADUCAO.json").exists()
+
+
+def test_em_ingles_sem_motor_usa_o_motor_padrao(tmp_path, openpyxl_real, monkeypatch):
+    from sigft.services import traducao_pdm
+
+    pedidos = []
+    monkeypatch.setattr(traducao_pdm, "motor_padrao",
+                        lambda **k: pedidos.append(k) or _motor())
+    saida, _ = _em_ingles(tmp_path, openpyxl_real,
+                          [("4500063671.0071", "PDM.1650.001 - ACUMULADOR, , R2")], None)
+
+    assert len(pedidos) == 1 and "callbacks" in pedidos[0]
+    assert _perguntas_em_ingles(saida / "4500063671.0071.xlsx", openpyxl_real)[0].startswith("1 - EN ")

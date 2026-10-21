@@ -2,7 +2,8 @@
 
 Duas coisas, desde 2026-10-21 (pedido do Luan): o painel de cima com a
 planilha de PDMs (SAM-GM) e, abaixo dele, a criação das planilhas PMIB, que
-monta cada ficha a partir do template com as características da planilha.
+monta cada ficha a partir do template com as características da planilha
+(em inglês, traduzidas pelo serviço).
 Sairam as abas "Processar PDMs" (fatiar From Itaipu, PDMs Modificados,
 traduzir a pasta, regenerar) e "Excluir Duplicados", e com elas tudo da pasta
 de PDMs Modificados; com uma aba só, a tela deixou de ter abas.
@@ -22,6 +23,7 @@ from sigft.app_qt.widgets import blocos, dialogos_selecao
 from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.core import pdm_catalogo
+from sigft.core.callbacks import from_legacy
 
 TEXTO_NENHUM_ARQUIVO = "Nenhum arquivo selecionado"
 EXCEL = [("Excel", "*.xlsx *.xls")]
@@ -204,7 +206,8 @@ class ModuloPDM(ModuleFrame):
         self.idioma_ficha = _Opcoes("pt", self)
         self.rb_pt = self.idioma_ficha.adicionar("Português", "pt")
         self.rb_en = self.idioma_ficha.adicionar("English", "en")
-        r["idioma_dica"] = _rotulo("(English usa a pasta de PDMs traduzidos)", tamanho=11, papel="legenda")
+        r["idioma_dica"] = _rotulo("(English traduz as características da planilha)", tamanho=11,
+                                   papel="legenda")
         q.addLayout(_linha(r["idioma"], 10, self.rb_pt, 20, self.rb_en, 20, r["idioma_dica"]))
         lay.addSpacing(20)                              # frm_files (…, 10) + frm_exec (10, …)
 
@@ -258,12 +261,10 @@ class ModuloPDM(ModuleFrame):
 
     # --- Criar planilhas PMIB ---------------------------------------------------
     def _op2_executar(self) -> None:
-        # As características vêm sempre da planilha de PDMs do painel de cima.
+        # As características vêm sempre da planilha de PDMs do painel de cima;
+        # em inglês, o serviço as traduz (2026-10-21).
         idioma = self.idioma_ficha.get()
         planilha = self.path_sam_gm
-        if idioma == "en":
-            return self.avisar("Aviso", "A ficha em inglês ainda não sai da planilha de PDMs. "
-                                        "Escolha o idioma Português.", tipo="aviso")
         if not planilha:
             return self.avisar("Aviso", "Selecione a planilha de PDMs no painel de cima.", tipo="aviso")
 
@@ -335,8 +336,19 @@ class ModuloPDM(ModuleFrame):
             self.avisar("Aviso", "Nenhum código foi processado.")
             return
 
+        # Em inglês, o motor de tradução padrão (IA, com a reserva): a tela só o
+        # escolhe, o serviço traduz. SEM `api_key=`: `get_llm` resolve a chave
+        # do provedor escolhido para `traduzir_pdm` em "Modelos de IA". Trocar
+        # de motor (um tradutor local) é trocar só esta linha.
+        traduzir = None
+        if idioma == "en":
+            from sigft.services import traducao_pdm
+            traduzir = traducao_pdm.motor_padrao(callbacks=from_legacy(callback_log=self.log))
+        # O idioma vai para o serviço, e não o nome da aba: quem sabe como a
+        # aba se chama em inglês é o serviço (`NOME_DA_ABA_EM_INGLES`).
         msg_res, _logs = modulo.aplicar_templates_fichas_da_planilha(
-            dados_pastas, catalogo, template, log_callback=self.log, retry_lock=self.perguntar_retry_excel)
+            dados_pastas, catalogo, template, log_callback=self.log, retry_lock=self.perguntar_retry_excel,
+            idioma=idioma, traduzir=traduzir)
         self.log(msg_res)
         self.log(">>> Processo de criação de fichas finalizado!")
         self.avisar("Fim", f"Processo de criação de fichas finalizado.\n\n{msg_res}")
