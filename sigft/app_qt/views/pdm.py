@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLineEdit, QRad
 from sigft.app_qt import estilo, file_dialogs
 from sigft.app_qt.widgets import blocos, dialogos_selecao
 from sigft.app_qt.widgets.abas import Abas
+from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.core import pdm_catalogo, prefs
 from sigft.core.callbacks import from_legacy
@@ -101,6 +102,12 @@ class _Opcoes(QButtonGroup):
 
 # =============================================================================
 class ModuloPDM(ModuleFrame):
+    # Arrastar arquivo do Explorer para os botões (2026-10-21, etapa 1b).
+    ARRASTAVEIS = (
+        Arrastavel("btn_sam_gm", "pdm.sam_gm", (".xlsx", ".xls")),
+        Arrastavel("btn_pmib", "pdm.status_pmib", (".xlsx", ".xls")),
+        Arrastavel("btn_template", "pdm.template", (".xlsx", ".xls")),
+    )
     def __init__(self, parent=None, controller=None) -> None:
         # Os caminhos de ARQUIVO (os StringVar sem campo visível de lá).
         self.path_sam_gm = self.path_status_pmib = self.path_template = ""

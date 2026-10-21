@@ -21,12 +21,18 @@ from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO, m
 from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.views._upload_comum import ABA_WEB, TelaDeUpload, reabilitar
 from sigft.app_qt.widgets import blocos, dialogos_selecao
+from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.core import pmib_regras
 
 ABA_IA = "Processamento IA (Gerar JSON)"
 
 
 class ModuloUploadTechSpecs(TelaDeUpload):
+    # Arrastar arquivo do Explorer para os botões (2026-10-21, etapa 1b).
+    ARRASTAVEIS = (
+        Arrastavel("btn_status", "upload_tech_specs.status_pmib", (".xlsx", ".xlsm")),
+        Arrastavel("btn_master", "upload_tech_specs.master", (".xlsx", ".xlsm")),
+    )
     ABA_IA = ABA_IA
     TEXTO_CONFIG = "Configuração Global"
     MARGENS_CONFIG = (15, 10, 15, 15)               # padx=15; título (10, 0); linha (10, 15)

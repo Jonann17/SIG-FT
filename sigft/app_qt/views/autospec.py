@@ -45,6 +45,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QSizePolicy, QWi
 from sigft.app import backends
 from sigft.app_qt import estilo, file_dialogs, icones, interface
 from sigft.app_qt.widgets import blocos, controles
+from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.services import autospec_conferencia as conferencia_txt
 
@@ -216,6 +217,13 @@ class _DoisBotoesQueCrescem(QWidget):
 # MÓDULO 8: AUTO SPEC AI (INTERFACE GE VERNOVA)
 # =============================================================================
 class ModuloAutoSpec(ModuleFrame):
+    # Arrastar arquivo do Explorer para os botões (2026-10-21, etapa 1b).
+    ARRASTAVEIS = (
+        Arrastavel("btn_status", "autospec.status_pmib", (".xlsx",)),
+        Arrastavel("btn_sheet", "autospec.ficha", (".xlsx",)),
+        Arrastavel("btn_refs", "autospec.manuais", (".pdf", ".txt"), varios=True),
+        Arrastavel("btn_conf_importar", "autospec.conferencia", (".txt",)),
+    )
     def __init__(self, parent=None, controller=None) -> None:
         # Variáveis de Estado
         self.queue: list[dict] = []
@@ -468,8 +476,9 @@ class ModuloAutoSpec(ModuleFrame):
                 # O "🔗" virou o ícone, na cor do link (2026-10-20).
                 icones.aplicar(link, "external-link", papel_cor="info", tamanho=14)
                 # O sublinhado também é da folha (a regra `[papel="link"]`).
-                link.setStyleSheet(link.styleSheet() + " QPushButton { text-align: left;"
-                                   f" padding: 0 {estilo.FOLGA_TEXTO_BOTAO_CTK}px; }}")
+                # Por `pintar` (2026-10-21): parte da folha de antes do aumento da letra.
+                blocos.pintar(link, "QPushButton { text-align: left;"
+                              f" padding: 0 {estilo.FOLGA_TEXTO_BOTAO_CTK}px; }}")
                 _sem_largura_minima(link)
                 link.clicked.connect(lambda *_, u=url: webbrowser.open(u))
                 self.links_conf[(i_pend, i_doc)] = link
@@ -673,7 +682,7 @@ class ModuloAutoSpec(ModuleFrame):
             _sem_largura_minima(rotulo)
             botao = blocos.botao("X", variante="perigo", largura=30, altura=25)
             # Sem o padding de 14 da folha do app: num botão de 30 ele cortaria o "X".
-            botao.setStyleSheet(botao.styleSheet() + " QPushButton { padding: 0; }")
+            blocos.pintar(botao, "QPushButton { padding: 0; }")
             botao.clicked.connect(lambda *_, x=i: self.remove_queue(x))
 
             f = QWidget()

@@ -22,6 +22,7 @@ from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO, m
 from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.views._upload_comum import ABA_WEB, URL_PORTAL, TelaDeUpload, reabilitar
 from sigft.app_qt.widgets import blocos, dialogos_selecao
+from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.core import pmib_regras
 from sigft.core.excel.pmib_codes import normalize_pmib
 
@@ -51,6 +52,8 @@ def ler_resultados_excel(caminho: str) -> list[dict]:
 
 
 class ModuloUploadConditions(TelaDeUpload):
+    # Arrastar arquivo do Explorer para o botão (2026-10-21, etapa 1b).
+    ARRASTAVEIS = (Arrastavel("btn_status", "upload_conditions.status_pmib", (".xlsx", ".xlsm")),)
     ABA_IA = ABA_IA
     TEXTO_CONFIG = "Configuração Global (Requerido para IA e Web)"
     MARGENS_CONFIG = (15, 10, 15, 10)               # padx=15; título (10, 5); linha (5, 10)

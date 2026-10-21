@@ -33,6 +33,7 @@ from sigft.app_qt import estilo, file_dialogs, icones, interface
 from sigft.app_qt.views.janelas import JanelaAcaoRobo, JanelaResumo, JanelaRevisaoPDM, JanelaSelecao
 from sigft.app_qt.widgets import blocos, controles, revisao_portal
 from sigft.app_qt.widgets.abas import Abas
+from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 # O catálogo de PDMs (2026-09-22): lê a planilha-mestra da Itaipu e faz o
 # pré-filtro de candidatos por item. `cria_fichas_svc` entra pelas
@@ -143,6 +144,12 @@ def _barra():
 # MÓDULO 1: CRIA FICHAS NO PMIB (INTERFACE GE VERNOVA)
 # =============================================================================
 class ModuloCriaFichas(ModuleFrame):
+    # Arrastar arquivo do Explorer para os botões (2026-10-21, etapa 1b).
+    ARRASTAVEIS = (
+        Arrastavel("btn_pmib", "cria_fichas.excel_pmib", (".xlsx",)),
+        Arrastavel("btn_pdm", "cria_fichas.excel_pdm", (".xlsx", ".xls")),
+        Arrastavel("btn_excel_edicao", "cria_fichas.excel_edicao", (".xlsx",)),
+    )
     def __init__(self, parent=None, controller=None) -> None:
         # Variáveis de Estado
         self.file_path_excel = None

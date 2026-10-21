@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 
 from sigft.app_qt import file_dialogs
 from sigft.app_qt import estilo
-from sigft.app_qt.widgets import blocos
+from sigft.app_qt.widgets import arrastar, blocos
 
 TEXTO_SEM_ARQUIVO = "Nenhum arquivo selecionado"
 TEXTO_SEM_PASTA = "Nenhuma pasta selecionada"
@@ -90,6 +90,20 @@ class _LinhaSeletora(QWidget):
         if self._ao_escolher is not None:
             self._ao_escolher(self._valor)
 
+    def _ligar_arrasto(self, chave: str, filetypes, *, varios: bool) -> None:
+        """Arrastar arquivo para a linha e a seta dos últimos arquivos, ao lado do
+        botão (2026-10-21). A seta só aparece quando há recente: sem recente a
+        linha tem as medidas de sempre."""
+        self.receptor = arrastar.aceitar_arquivo(self, chave, file_dialogs.extensoes_de(filetypes),
+                                                 self._abrir_dialogo, varios=varios, destaque=self.botao,
+                                                 alvo=self.botao)
+        self.seta_recentes = arrastar.botao_de_recentes(self.receptor)
+        self.layout().insertWidget(1, self.seta_recentes)
+        self._mostrar_seta()
+
+    def _mostrar_seta(self) -> None:
+        self.seta_recentes.setVisible(self.receptor.tem_recentes())
+
 
 class FilePickerRow(_LinhaSeletora):
     def __init__(self, parent=None, *, chave: str, categoria: str, texto_botao: str,
@@ -99,6 +113,7 @@ class FilePickerRow(_LinhaSeletora):
         self._titulo, self._filetypes, self._dialog_fn = titulo, filetypes, dialog_fn
         super().__init__(parent, texto_botao=texto_botao, texto_vazio=texto_vazio,
                          ao_escolher=ao_escolher, **kwargs)
+        self._ligar_arrasto(chave, filetypes, varios=False)
 
     def _abrir_dialogo(self) -> None:
         caminho = file_dialogs.ask_open_file(self._chave, self._categoria, titulo=self._titulo,
@@ -106,6 +121,7 @@ class FilePickerRow(_LinhaSeletora):
         if not caminho:
             return  # cancelar não apaga o que já estava escolhido
         self.definir(caminho, os.path.basename(caminho))
+        self._mostrar_seta()
         self._notificar()
 
 
@@ -117,6 +133,7 @@ class MultiFilePickerRow(_LinhaSeletora):
         self._titulo, self._filetypes, self._dialog_fn = titulo, filetypes, dialog_fn
         super().__init__(parent, texto_botao=texto_botao, texto_vazio=texto_vazio,
                          ao_escolher=ao_escolher, **kwargs)
+        self._ligar_arrasto(chave, filetypes, varios=True)
 
     def _abrir_dialogo(self) -> None:
         caminhos = file_dialogs.ask_open_files(self._chave, self._categoria, titulo=self._titulo,
@@ -124,6 +141,7 @@ class MultiFilePickerRow(_LinhaSeletora):
         if not caminhos:
             return
         self.definir(tuple(caminhos), f"{len(caminhos)} arquivos selecionados")
+        self._mostrar_seta()
         self._notificar()
 
 
@@ -212,6 +230,10 @@ class FileQueueList(QWidget):
         self.botao_adicionar.clicked.connect(self.adicionar)
         self.botao_remover.clicked.connect(self.remover_selecionados)
         self.botao_limpar.clicked.connect(self.limpar)
+        # Arrastar várias fichas do Explorer para a fila (2026-10-21).
+        self.receptor = arrastar.aceitar_arquivo(self, chave, file_dialogs.extensoes_de(filetypes),
+                                                 self.adicionar, varios=True, destaque=self.listbox,
+                                                 alvo=self.botao_adicionar)
 
     # -- API pública ---------------------------------------------------------
     @property

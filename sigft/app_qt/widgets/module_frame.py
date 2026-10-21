@@ -19,10 +19,13 @@ from PySide6.QtWidgets import (
 )
 
 from sigft.app import backends, textos_dicas, theme
-from sigft.app_qt import interface
+from sigft.app import resumo_lote as resumo_regras
+from sigft.app_qt import aviso_windows, interface
+from sigft.app_qt.widgets import arrastar
 from sigft.app_qt.widgets.atividade import FaixaDeAtividade
 from sigft.app_qt.widgets.console import ConsoleFrame
 from sigft.app_qt.widgets.espera import DialogosDeEspera
+from sigft.app_qt.widgets import resumo_lote as janela_de_resumo
 
 # O padx/pady=20 com que o `show_frame` da interface antiga põe cada tela na janela.
 MARGEM_DA_TELA = 20
@@ -45,6 +48,11 @@ def _reabilitar(botao) -> None:
 
 
 class ModuleFrame(DialogosDeEspera, QWidget):
+    # Os botões da tela que recebem arquivo arrastado (2026-10-21): tuplas
+    # `arrastar.Arrastavel(atributo, chave, extensoes, varios)`. A tela só declara;
+    # a montagem liga (`arrastar.ligar_arrastaveis`).
+    ARRASTAVEIS: tuple = ()
+
     def __init__(
         self,
         parent=None,
@@ -63,6 +71,8 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         self.setObjectName("tela")
         self.controller = controller
         self.embutida = embutida
+        # O nome que o resumo e o aviso do Windows dão à tela (2026-10-21).
+        self.titulo_da_tela = resumo_regras.nome_da_tela(titulo)
         raiz = QVBoxLayout(self)
         # As medidas da interface antiga somadas: `show_frame` põe a tela inteira
         # com padx=20/pady=20 (sigft/app/main.py), e o `ModuleFrame` de lá põe
@@ -125,9 +135,13 @@ class ModuleFrame(DialogosDeEspera, QWidget):
 
         self._tarefas_rodando = 0
         self._tarefa_falhou = False
+        # A linha do console em que o lote atual começou (`console.marca`).
+        self._marca_console = 0
+        self.receptores_de_arquivo: dict = {}
         if construir:
             self._build_ui()
             aplicar_dicas(self)
+            self.receptores_de_arquivo = arrastar.ligar_arrastaveis(self, self.ARRASTAVEIS)
 
     def _build_ui(self) -> None:
         raise NotImplementedError(f"{type(self).__name__} precisa implementar _build_ui().")
@@ -165,6 +179,7 @@ class ModuleFrame(DialogosDeEspera, QWidget):
             botao.setEnabled(False)
         if self._tarefas_rodando == 0:
             self._tarefa_falhou = False
+            self._marca_console = self._marca_do_console()
             self.atividade.comecar()
         self._tarefas_rodando += 1
 
@@ -192,8 +207,47 @@ class ModuleFrame(DialogosDeEspera, QWidget):
             self._tarefa_falhou = self._tarefa_falhou or not ok
             if self._tarefas_rodando == 0:
                 self.atividade.terminar(ok=not self._tarefa_falhou)
+                self._fim_do_lote()
         except RuntimeError:
             pass  # widget já destruído pelo Qt
+
+    def _marca_do_console(self) -> int:
+        # A tela embutida usa o console da tela de fora (`console_externo`), que
+        # pode não ser um `ConsoleFrame`: sem `marca`, não há resumo.
+        marca = getattr(self.console, "marca", None)
+        return marca() if callable(marca) else 0
+
+    def pares_do_lote(self) -> list[tuple[str, str]]:
+        """(mensagem, nível) do que o lote que acabou escreveu no console."""
+        linhas = getattr(self.console, "linhas", None)
+        if not callable(linhas):
+            return []
+        return [(linha.msg, linha.nivel) for linha in linhas(desde=self._marca_console)]
+
+    def _fim_do_lote(self) -> None:
+        """Na thread da interface, quando a ÚLTIMA tarefa da tela acaba: com erro
+        ou aviso no console, a janela de resumo (2026-10-21). E o aviso do Windows,
+        se o SIG-FT está fora de foco. Nunca levanta: o fim da tarefa já
+        aconteceu, e um defeito aqui não pode prender o botão."""
+        try:
+            pares = self.pares_do_lote()
+            grupos = resumo_regras.agrupar(pares)
+        except Exception:  # noqa: BLE001 -- vira traceback no log
+            traceback.print_exc()
+            return
+        # O aviso do Windows ANTES do resumo: o foco é lido antes de a janela
+        # nova aparecer, e um defeito num não cala o outro (2026-10-21).
+        try:
+            erros, avisos = resumo_regras.contar(grupos)
+            aviso_windows.avisar(self.window(), resumo_regras.frase_do_fim(
+                self.titulo_da_tela, erros, avisos, falhou=self._tarefa_falhou))
+        except Exception:  # noqa: BLE001 -- vira traceback no log
+            traceback.print_exc()
+        try:
+            if grupos and resumo_regras.ligado():
+                janela_de_resumo.abrir_resumo(self, self.titulo_da_tela, pares)
+        except Exception:  # noqa: BLE001 -- vira traceback no log
+            traceback.print_exc()
 
     def informar_progresso(self, atual: int, total: int, rotulo: str = "item") -> None:
         """"Ficha 3 de 8" na faixa. Chamável de qualquer thread."""

@@ -30,7 +30,7 @@ def test_formatar_linha_aceita_qualquer_objeto(entrada, esperado):
 
 
 def test_log_aceita_o_protocolo_e_o_nivel_nao_muda_a_renderizacao(qt_interface, qtbot):
-    """`core/callbacks.py`: a UI ignora o nível. Dar cor/prefixo a `error`
+    """`core/callbacks.py`: o nível não muda a RENDERIZAÇÃO (só o filtro o usa, 2026-10-21). Dar cor/prefixo a `error`
     seria mudar a aparência sem decisão. E `UICallbacks(log=console.log)`
     funciona direto, sem adaptador. (Portado de `test_app_widgets.py`.)"""
     from sigft.core.callbacks import UICallbacks
@@ -112,3 +112,142 @@ def test_texto_comeca_onde_comeca_no_ctktextbox(qt_interface, qtbot):
         assert barra.mapTo(c, barra.rect().topLeft()).y() == 0
     finally:
         qt_interface.setStyleSheet(anterior)
+
+
+# --- filtro, busca e Copiar (2026-10-21, etapa 1b) ---------------------------------
+
+MISTURA = [
+    ("tudo certo", "info"),
+    ("[Erro] Ficha 4500063671.0001 não encontrada", "info"),
+    ("[Aviso] tabela vazia", "info"),
+    ("Tensão nominal gravada", "info"),
+    ("❌ 4500063671.0002: TimeoutError", "error"),
+]
+
+
+def _console_com(qtbot, linhas):
+    c = qconsole.ConsoleFrame()
+    qtbot.addWidget(c)
+    for msg, nivel in linhas:
+        c.log(msg, nivel)
+    qtbot.waitUntil(lambda: c.blockCount() >= len(linhas), timeout=2000)
+    return c
+
+
+def test_filtro_erros_e_avisos(qt_interface, qtbot):
+    c = _console_com(qtbot, MISTURA)
+    c.filtrar("erros")
+    assert c.toPlainText().splitlines() == ["> [Erro] Ficha 4500063671.0001 não encontrada",
+                                            "> ❌ 4500063671.0002: TimeoutError"]
+    assert c.barra.botoes["erros"].isChecked()
+    c.filtrar("avisos")   # avisos E erros: tudo o que pede atenção
+    assert len(c.toPlainText().splitlines()) == 3
+    c.barra.botoes["tudo"].click()
+    assert len(c.toPlainText().splitlines()) == 5
+
+
+def test_busca_sem_acento_e_sem_caixa(qt_interface, qtbot):
+    c = _console_com(qtbot, MISTURA)
+    c.barra.campo.setText("TENSAO")
+    qtbot.waitUntil(lambda: c.toPlainText().splitlines() == ["> Tensão nominal gravada"],
+                    timeout=2000)
+    c.barra.campo.clear()
+    qtbot.waitUntil(lambda: len(c.toPlainText().splitlines()) == 5, timeout=2000)
+
+
+def test_busca_espera_a_pessoa_parar_de_digitar(qt_interface, qtbot, monkeypatch):
+    # Revisão de 2026-10-21: redesenhar 20.000 linhas a cada tecla pesa. O campo
+    # espera `MS_DA_BUSCA` sem tecla nova e redesenha UMA vez.
+    c = _console_com(qtbot, MISTURA)
+    redesenhos = []
+    original = c._redesenhar
+    monkeypatch.setattr(c, "_redesenhar", lambda: (redesenhos.append(1), original()))
+    for parcial in ("T", "TE", "TEN", "TENS", "TENSAO"):
+        c.barra.campo.setText(parcial)
+    assert redesenhos == [] and len(c.toPlainText().splitlines()) == 5
+    qtbot.waitUntil(lambda: c.toPlainText().splitlines() == ["> Tensão nominal gravada"],
+                    timeout=2000)
+    assert redesenhos == [1]
+    assert qconsole.MS_DA_BUSCA == 150
+
+
+def test_filtro_por_botao_e_imediato(qt_interface, qtbot):
+    c = _console_com(qtbot, MISTURA)
+    c.barra.botoes["erros"].click()
+    assert len(c.toPlainText().splitlines()) == 2
+
+
+def test_linha_nova_respeita_o_filtro(qt_interface, qtbot):
+    c = qconsole.ConsoleFrame()
+    qtbot.addWidget(c)
+    c.filtrar("erros")
+    c.log("comum")
+    c.log("[ERRO] ruim")
+    qtbot.waitUntil(lambda: "ruim" in c.toPlainText(), timeout=2000)
+    assert c.toPlainText().splitlines() == ["> [ERRO] ruim"]
+    assert [linha.msg for linha in c.linhas()] == ["comum", "[ERRO] ruim"]   # guardou as duas
+
+
+def test_copiar_leva_o_que_esta_a_vista(qt_interface, qtbot):
+    from PySide6.QtWidgets import QApplication
+
+    c = _console_com(qtbot, MISTURA)
+    c.filtrar("erros")
+    c.barra.copiar.click()
+    assert QApplication.clipboard().text() == c.toPlainText()
+    assert c.barra.copiar.text() == qconsole.TEXTO_COPIADO
+
+
+def test_copiar_sem_nada_a_vista_nao_mexe_na_area_de_transferencia(qt_interface, qtbot):
+    from PySide6.QtWidgets import QApplication
+
+    QApplication.clipboard().setText("o que a pessoa tinha copiado")
+    c = _console_com(qtbot, [("tudo certo", "info")])
+    c.filtrar("erros")
+    assert c.toPlainText() == ""
+    assert c.copiar() is False
+    c.barra.copiar.click()
+    assert QApplication.clipboard().text() == "o que a pessoa tinha copiado"
+    assert c.barra.copiar.text() == qconsole.TEXTO_COPIAR
+
+
+def test_marca_e_linhas_desde(qt_interface, qtbot):
+    c = qconsole.ConsoleFrame()
+    qtbot.addWidget(c)
+    c.log("antes")
+    marca = c.marca()
+    c.log("[Erro] depois", "info")
+    assert [(linha.msg, linha.nivel) for linha in c.linhas(desde=marca)] == [("[Erro] depois", "erro")]
+
+
+def test_limpar_esquece_as_linhas_mas_nao_a_contagem(qt_interface, qtbot):
+    c = qconsole.ConsoleFrame()
+    qtbot.addWidget(c)
+    c.log("a")
+    marca = c.marca()
+    c.clear()
+    assert c.linhas() == [] and c.toPlainText() == ""
+    c.log("b")
+    assert [linha.msg for linha in c.linhas(desde=marca)] == ["b"]
+
+
+def test_barra_fica_embaixo_sem_mudar_a_altura(qt_interface, qtbot):
+    c = qconsole.ConsoleFrame(altura=150)
+    qtbot.addWidget(c)
+    c.resize(400, 150)
+    c.show()
+    qtbot.waitExposed(c)
+    vista = c.viewport().geometry()
+    assert c.height() == 150
+    assert c.barra.geometry().top() == vista.bottom() + 1
+    assert c.barra.height() == qconsole.ALTURA_BARRA
+    assert c.barra.geometry().right() == vista.right()   # não cobre a barra de rolagem
+
+
+def test_barra_e_escura_nos_dois_temas():
+    from sigft.app import tokens
+    from sigft.app_qt import estilo
+
+    for tema in ("escuro", "claro"):
+        assert f"#barra_console {{ background: {tokens.ESCURO['console_fundo']}; }}" in \
+            estilo.folha_de_estilo(tema)

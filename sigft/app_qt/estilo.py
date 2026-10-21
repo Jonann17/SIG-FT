@@ -78,6 +78,31 @@ MENU_ESCOLHIDO = {
 # tema (`sigft/app_qt/tema.py`) muda só isto e reaplica a folha: as funções de
 # folha abaixo, sem `tema=`, leem este valor NA CHAMADA.
 TEMA_ATUAL = "escuro"
+# O aumento da letra que está valendo, em px (`letra.aplicar` muda; 0 = normal).
+AUMENTO_LETRA = 0
+# Só px (fix round 1, 2026-10-21): o aumento é de 2 PIXELS. Um tamanho em pt
+# (nenhuma folha do app usa) fica como está, em vez de crescer 2 pt.
+_TAMANHO_DE_LETRA = re.compile(r"(font-size:\s*)(\d+)(px)")
+# Onde `letra` guarda, numa peça com folha própria, a folha de ANTES do aumento e
+# a que ela pôs (para refazer a partir da base, nunca somar duas vezes).
+PROP_FOLHA_BASE = "_letra_folha_base"
+PROP_FOLHA_POSTA = "_letra_folha_posta"
+
+
+def ajustar_tamanhos(folha: str, aumento: int) -> str:
+    """Soma `aumento` a cada `font-size` em px de `folha`. Com 0, a mesma folha."""
+    if not aumento or not folha:
+        return folha
+    return _TAMANHO_DE_LETRA.sub(
+        lambda m: f"{m.group(1)}{int(m.group(2)) + aumento}{m.group(3)}", folha)
+
+
+def folha_sem_aumento(widget) -> str:
+    """A folha própria de `widget` como a tela a escreveu, sem o aumento da letra."""
+    folha = widget.styleSheet()
+    if folha and widget.property(PROP_FOLHA_POSTA) == folha:
+        return widget.property(PROP_FOLHA_BASE) or ""
+    return folha
 
 
 def _tema(tema: str | None) -> str:
@@ -319,7 +344,16 @@ def _seletor_variante(variante: str, estado: str = "") -> str:
 
 
 def folha_de_estilo(tema: str | None = None) -> str:
-    """A folha QSS do app inteiro no `tema` ("escuro" ou "claro"), dos tokens.
+    """A folha QSS do app inteiro no `tema` ("escuro" ou "claro"), dos tokens, com
+    o aumento da letra que está valendo (`AUMENTO_LETRA`, 2026-10-21).
+
+    Sem argumento, o tema que está valendo (`TEMA_ATUAL`, que `tema.aplicar`
+    define)."""
+    return ajustar_tamanhos(_folha_base(tema), AUMENTO_LETRA)
+
+
+def _folha_base(tema: str | None = None) -> str:
+    """A folha QSS do app inteiro no `tema`, dos tokens, sem o aumento da letra.
 
     Sem argumento, o tema que está valendo (`TEMA_ATUAL`, que `tema.aplicar`
     define)."""
@@ -453,7 +487,7 @@ QScrollBar:vertical {{ background: transparent; width: 10px; }}
 QScrollBar::handle:vertical {{ background: {p['borda']}; border-radius: 5px; min-height: 30px; }}
 QScrollBar::handle:vertical:hover {{ background: {p['texto_suave']}; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
-""" + _folha_e31(tema) + _folha_telas(tema)
+""" + _folha_e31(tema) + _folha_telas(tema) + _folha_ferramentas(tema)
 
 
 # --- E3.1: rádio, slider, barra de progresso, abas, área rolável, tabela ---------
@@ -604,8 +638,8 @@ def _folha_telas(tema: str | None = None) -> str:
     * o cartão com borda (`#cartao[borda=...]`): o do AutoSpec que chama a atenção;
     * abas: medidas na folha local de `widgets/abas.py`; aqui só as cores;
     * mural: `COR_DA_FAIXA`/`COR_DA_CRITICIDADE` (acima), por propriedade;
-    * seletor de tema da Home (`#seletor_tema`): o botão do tema escolhido tem
-      `ativo`, pintado como o item escolhido do menu.
+    * seletores de tema e de letra da Home (`#seletor_tema`, `#seletor_letra`):
+      o botão da escolha atual tem `ativo`, pintado como o item escolhido do menu.
     """
     tema = _tema(tema)
     p = tokens.paleta(tema)
@@ -637,10 +671,10 @@ def _folha_telas(tema: str | None = None) -> str:
         f'#barra_abas QPushButton:checked:hover {{ background: {MARCA_HOVER}; }}',
         f'#barra_abas QPushButton:disabled {{ color: {p["texto_suave"]}; }}',
         # Seletor de tema da Home (Task 7): o escolhido como o item do menu.
-        f'#seletor_tema QPushButton[ativo="true"] {{ background: {menu["fundo"]}; color: {menu["texto"]};'
-        f' border-color: {menu["fundo"]}; }}',
+        f'#seletor_tema QPushButton[ativo="true"], #seletor_letra QPushButton[ativo="true"] '
+        f'{{ background: {menu["fundo"]}; color: {menu["texto"]}; border-color: {menu["fundo"]}; }}',
         # Mouse em cima: o texto acompanha o ícone, que já vai para a cor do menu.
-        f'#seletor_tema QPushButton:hover {{ color: {menu["texto"]}; }}',
+        f'#seletor_tema QPushButton:hover, #seletor_letra QPushButton:hover {{ color: {menu["texto"]}; }}',
         # Busca PMIB: o cartão de cada achado, mais fundo que a lista onde está.
         f'#cartao_resultado {{ background: {p["fundo"]}; border: 1px solid {p["borda"]};'
         f' border-radius: 8px; }}',
@@ -661,6 +695,54 @@ def _folha_telas(tema: str | None = None) -> str:
     for faixa, cor in faixas.items():
         regras.append(f'QLabel[faixa="{faixa}"] {{ color: {cor}; }}')
         regras.append(f'#regua_faixa[faixa="{faixa}"] {{ background: {cor}; border: none; }}')
+    return "\n" + "\n".join(regras) + "\n"
+
+
+def _folha_ferramentas(tema: str | None = None) -> str:
+    """As ferramentas da etapa 1b (2026-10-21).
+
+    * barra do console (`widgets/console.py`): a paleta ESCURA nos dois temas,
+      porque ela fica dentro do console, que é escuro sempre;
+    * arrastar arquivo (`widgets/arrastar.py`): borda `primaria` quando o arquivo
+      serve, `perigo` (borda e texto) quando não serve; a seta dos recentes;
+    * Ctrl+K (`widgets/paleta.py`): cartão `superficie` com borda; item escolhido
+      como o do menu.
+    """
+    tema = _tema(tema)
+    p = tokens.paleta(tema)
+    e = tokens.ESCURO
+    f = tokens.FONTE
+    menu = MENU_ESCOLHIDO["claro" if tema == "claro" else "escuro"]
+    raio, raio_cartao = tokens.RAIO["controle"], tokens.RAIO["cartao"]
+    regras = [
+        f"#barra_console {{ background: {e['console_fundo']}; }}",
+        f"#barra_console QPushButton {{ background: transparent; color: {e['texto_suave']};"
+        f" border: 1px solid transparent; border-radius: 4px; padding: 0 8px;"
+        f" min-height: 18px; max-height: 22px; font-size: {f['legenda']}px; }}",
+        f"#barra_console QPushButton:hover {{ color: {e['texto']}; }}",
+        f"#barra_console QPushButton:checked {{ color: {e['texto']}; background: {e['superficie_alta']};"
+        f" border-color: {e['borda']}; }}",
+        f"#barra_console QLineEdit {{ background: {e['superficie_alta']}; color: {e['texto']};"
+        f" border: 1px solid {e['borda']}; border-radius: 4px; padding: 0 6px;"
+        f" min-height: 18px; max-height: 22px; font-size: {f['legenda']}px;"
+        f" placeholder-text-color: {e['texto_suave']}; }}",
+        f"#barra_console QLineEdit:focus {{ border-color: {e['primaria']}; }}",
+        # Arrastar arquivo: depois das variantes (mesma especificidade, esta ganha).
+        f'QPushButton[arrasto="aceito"], QListWidget[arrasto="aceito"] {{ border: 1px solid {p["primaria"]}; }}',
+        f'QPushButton[arrasto="recusado"], QListWidget[arrasto="recusado"] '
+        f'{{ border: 1px solid {p["perigo"]}; color: {p["perigo"]}; }}',
+        f'#seta_recentes {{ background: transparent; border: none; color: {p["texto_suave"]};'
+        f' padding: 0 4px; font-size: {f["corpo"]}px; }}',
+        f'#seta_recentes:hover {{ color: {p["texto"]}; }}',
+        "#seta_recentes::menu-indicator { image: none; width: 0; }",
+        # Ctrl+K (widgets/paleta.py)
+        f'#paleta {{ background: {p["superficie"]}; border: 1px solid {p["borda"]};'
+        f' border-radius: {raio_cartao}px; }}',
+        f'#lista_paleta {{ background: {p["superficie"]}; border: none; outline: none;'
+        f' font-size: {f["corpo"]}px; }}',
+        f'#lista_paleta::item {{ padding: 6px 8px; border-radius: {raio}px; }}',
+        f'#lista_paleta::item:selected {{ background: {menu["fundo"]}; color: {menu["texto"]}; }}',
+    ]
     return "\n" + "\n".join(regras) + "\n"
 
 

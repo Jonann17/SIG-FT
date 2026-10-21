@@ -72,7 +72,10 @@ def test_nome_longo_e_elidido_com_o_caminho_no_tooltip(qt_interface, qtbot):
     qtbot.addWidget(linha)
     minima = linha.minimumSizeHint().width()
     linha.botao.click()
-    assert linha.minimumSizeHint().width() <= minima, "o nome longo alargava a linha"
+    # [2026-10-21] Escolher grava um recente, e a seta "▾" dos últimos arquivos
+    # aparece ao lado do botão: a largura dela entra na conta; a do nome, não.
+    seta = linha.seta_recentes.sizeHint().width() if not linha.seta_recentes.isHidden() else 0
+    assert linha.minimumSizeHint().width() <= minima + seta, "o nome longo alargava a linha"
     assert linha.label_status.text() == nome and linha.label_status.toolTip() == "/tmp/" + nome
     linha.limpar()
     assert linha.label_status.toolTip() == ""

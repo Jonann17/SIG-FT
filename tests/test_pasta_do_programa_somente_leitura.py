@@ -395,9 +395,10 @@ def test_o_botao_da_pasta_de_logs_abre_a_pasta_de_DADOS(instalado, monkeypatch):
     Explorer mostrava era a do programa, onde nada chega a ser gravado."""
     _programa, dados = instalado
     from sigft.app_qt.views import home
+    from sigft.core import plataforma
 
     abertas = []
-    monkeypatch.setattr(home.plataforma, "abrir_pasta_criando_se_preciso", abertas.append)
+    monkeypatch.setattr(plataforma, "abrir_pasta_criando_se_preciso", abertas.append)
     home.HomeView._abrir_pasta_logs_gastos_ia(object())
 
     assert abertas == [str(dados / "logs")]

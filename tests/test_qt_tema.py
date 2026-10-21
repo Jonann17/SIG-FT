@@ -420,3 +420,24 @@ def test_com_sistema_escolhido_a_troca_do_windows_troca_o_app(volta_ao_escuro, m
     tema.aplicar(volta_ao_escuro, "escuro")
     tema._seguindo[0](None)   # escolha fixa: o Windows não manda
     assert estilo.TEMA_ATUAL == "escuro"
+
+
+def test_botao_do_interruptor_ligado_aparece_no_cartao_branco(volta_ao_escuro, qtbot):
+    # 2026-10-21: no claro o botão branco do ligado, maior que o trilho, sumia
+    # pela metade no cartão branco. O contorno na cor do trilho o desenha
+    # inteiro: o topo do botão (fora do trilho) não pode ser a cor do fundo.
+    qapp = volta_ao_escuro
+    tema.aplicar(qapp, "claro", gravar=False)
+    raiz = QWidget()
+    raiz.setStyleSheet(f"background: {tokens.CLARO['superficie']};")
+    chave = controles.Interruptor("Ligar", raiz)
+    chave.resize(chave.sizeHint())
+    chave.setChecked(True)
+    qtbot.addWidget(raiz)
+    raiz.show()
+    qtbot.waitExposed(raiz)
+    imagem = chave.grab().toImage()
+    y0 = (chave.height() - 18) // 2
+    x_centro = 36 - 18 + 9  # centro do botão, ligado à direita do trilho
+    fundo = _cor(imagem, chave.width() - 1, 0)
+    assert _cor(imagem, x_centro, y0) != fundo

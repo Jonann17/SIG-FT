@@ -123,7 +123,7 @@ def _resolver(config_path):
 # 2026-09-03: `remember_file` gravava, `get_last_file` lia `None`, e o mural
 # de atividades dizia "não encontrei o mapeamento" sem nenhum erro aparecer.
 _SECOES_ESTADO = ("ultimos", "categorias", "pastas_padrao", "arquivos", "opcoes", "novidades",
-                  "preferencias")
+                  "preferencias", "recentes")
 
 
 def _estado_vazio() -> dict[str, dict[str, str]]:
@@ -458,6 +458,61 @@ def gravar_preferencia(
     estado = _carregar_estado(config_path)
     estado.setdefault(CHAVE_PREFERENCIAS, {})[chave] = str(valor)
     _salvar_estado(estado, config_path)
+
+
+# =============================================================================
+# Últimos arquivos de cada diálogo  [2026-10-21]
+# =============================================================================
+# O menu "Últimos arquivos" ao lado do botão que abre o diálogo (etapa 1b do
+# sistema visual): até `LIMITE_RECENTES` caminhos COMPLETOS por chave de
+# diálogo, o mais novo primeiro. Mesma lição do "arquivos" de 2026-09-03: a seção
+# está em `_SECOES_ESTADO`, senão some ao carregar. Mesma tolerância do resto:
+# lista adulterada à mão (não lista, item que não é texto) vale como vazia, nunca
+# levanta. Arquivo que sumiu do disco não aparece no menu, mas o caminho fica
+# gravado: pode ser um Box que ainda não sincronizou.
+CHAVE_RECENTES = "recentes"
+LIMITE_RECENTES = 5
+
+
+def _lista_de_caminhos(valor: object) -> list[str]:
+    """Os textos não vazios de `valor`, se for lista; senão, lista vazia."""
+    if not isinstance(valor, list):
+        return []
+    return [c for c in valor if isinstance(c, str) and c]
+
+
+def lembrar_recente(
+    chave: str,
+    caminho: str | os.PathLike[str],
+    *,
+    config_path: str | os.PathLike[str] | None = None,
+) -> None:
+    """Põe `caminho` no topo dos recentes de `chave` (sem repetir)."""
+    if not caminho:
+        return
+    caminho = os.fspath(caminho)
+    estado = _carregar_estado(config_path)
+    secao = estado.setdefault(CHAVE_RECENTES, {})
+    anteriores = _lista_de_caminhos(secao.get(chave))
+    lista = [caminho] + [c for c in anteriores if os.path.normcase(c) != os.path.normcase(caminho)]
+    secao[chave] = lista[:LIMITE_RECENTES]
+    _salvar_estado(estado, config_path)
+
+
+def recentes(
+    chave: str,
+    *,
+    conferir_disco: bool = True,
+    config_path: str | os.PathLike[str] | None = None,
+) -> list[str]:
+    """Os recentes de `chave` que ainda existem no disco, o mais novo primeiro.
+
+    `conferir_disco=False` devolve os gravados sem olhar o disco: é para quem só
+    quer saber SE há recente na montagem da tela, onde um caminho de rede fora
+    do ar travaria a interface."""
+    valor = _carregar_estado(config_path).get(CHAVE_RECENTES, {}).get(chave)
+    lista = _lista_de_caminhos(valor)
+    return [c for c in lista if os.path.isfile(c)] if conferir_disco else lista
 
 
 # =============================================================================

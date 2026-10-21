@@ -5,6 +5,10 @@ SIG-FT em 2026-10-15; `tests/test_qt_catalogo.py` trava os valores.
 """
 from __future__ import annotations
 
+from typing import NamedTuple
+
+from sigft.app import busca
+
 MENU = [
     ("secao", "Início da Ficha"),
     ("botao", "1. Cria Fichas PMIB", "CriaFichas"),
@@ -90,6 +94,110 @@ def dica_do_menu(alvo: str) -> str:
     if alvo in TELAS_BLOQUEADAS:
         return (descricao + "\n\n" if descricao else "") + "Bloqueado nesta versão."
     return descricao
+
+
+# --- Ctrl+K (etapa 1b, 2026-10-21) ------------------------------------------------
+
+class Comando(NamedTuple):
+    """Um item da caixa do Ctrl+K."""
+    chave: str          # "tela:CriaFichas" ou "acao:modelos"
+    texto: str
+    icone: str          # nome de `icones.NOMES`
+    palavras: str = ""  # o que mais a busca acha (o texto do menu, sinônimos)
+    bloqueado: bool = False  # aparece apagado e não se escolhe (como no menu)
+    dica: str = ""
+
+
+class AcaoDaHome(NamedTuple):
+    """Um botão da barra da Home, que o Ctrl+K também oferece."""
+    chave: str
+    texto: str          # o do botão (os testes de medida da Home o travam)
+    icone: str          # nome de `icones.NOMES`
+    variante: str       # a variante do botão (a cor vem da folha do tema)
+    metodo: str         # o método da `HomeView` que a faz
+    palavras: str = ""  # o que mais a busca do Ctrl+K acha
+
+
+# As ações da Home NUM LUGAR SÓ (2026-10-21): a barra da Home
+# (`views/home.BARRA`, `ICONE_DA_BARRA`, `TEXTO_BOTAO_ATUALIZACOES`), o Ctrl+K
+# (`ACOES`) e quem faz cada uma (`main.ACAO_NA_HOME`) saem daqui. Na ordem dos
+# botões; o "Atualizações" fecha a barra (o texto dele muda enquanto procura).
+ACOES_DA_HOME = (
+    AcaoDaHome("atividades", "Atividades do dia", "clipboard-check", "primario",
+               "abrir_mural_atividades", "mural"),
+    AcaoDaHome("modelos", "Modelos de IA", "bot", "primario",
+               "abrir_janela_modelos_ia", "ia llm provedor"),
+    AcaoDaHome("gastos", "Gastos de IA", "circle-dollar-sign", "primario",
+               "abrir_janela_gastos_ia", "custo uso"),
+    AcaoDaHome("chaves", "Chaves de API", "key-round", "secundario",
+               "abrir_janela_chaves_api", "api key senha"),
+    AcaoDaHome("atualizacoes", "Atualizações", "refresh-cw", "secundario",
+               "procurar_atualizacoes", "procurar versao nova atualizar"),
+)
+
+# O seletor de tema da Home (2026-10-20): escolha, texto, ícone e dica. O Ctrl+K
+# oferece os três como "Tema: <texto>" e os faz por `HomeView.escolher_tema`.
+SELETOR_TEMA = (
+    ("escuro", "Escuro", "moon", "Tema escuro: fundo grafite, o padrão do SIG-FT."),
+    ("claro", "Claro", "sun", "Tema claro: fundo branco, para ambiente bem iluminado."),
+    ("sistema", "Sistema", "monitor",
+     "Segue o tema do Windows (claro ou escuro) e muda junto quando ele mudar."),
+)
+
+# O seletor de letra da Home (2026-10-21, etapa 1b): escolha, texto e dica. Na
+# linha do título, à direita do de tema; sem ícone no botão (o pacote Lucide do
+# SIG-FT não tem um de letra). O Ctrl+K oferece os dois como "Letra: <texto>" e os
+# faz por `HomeView.escolher_letra`. As escolhas são as de `letra.TAMANHOS`.
+SELETOR_LETRA = (
+    ("normal", "Normal", "Letra do tamanho de sempre."),
+    ("grande", "Grande", "Letra 2 px maior em todo o SIG-FT, para ler com mais folga."),
+)
+
+# As ações do Ctrl+K além dos módulos: chave, texto, ícone e palavras. Quem faz
+# cada uma é `main.SIG_FT_App.executar_comando`; `tests/test_qt_paleta.py` cobra
+# que toda chave tenha quem a faça.
+ACOES = (
+    ("inicio", "Início", "house", "home tela inicial"),
+    *((a.chave, a.texto, a.icone, a.palavras) for a in ACOES_DA_HOME),
+    ("logs", "Abrir logs", "folder-open", "pasta log"),
+    *((f"tema_{escolha}", f"Tema: {texto}", icone, "aparencia cor")
+      for escolha, texto, icone, _dica in SELETOR_TEMA),
+    *((f"letra_{escolha}", f"Letra: {texto}", "settings", "tamanho fonte aparencia")
+      for escolha, texto, _dica in SELETOR_LETRA),
+)
+
+
+SUFIXO_BLOQUEADO = " (bloqueado)"
+
+
+def comandos() -> list[Comando]:
+    """Os módulos (na ordem dos cartões da Home) e as ações. O módulo bloqueado
+    aparece como no menu: apagado, com a mesma dica, e não se escolhe."""
+    no_menu = {item[2]: item[1] for item in MENU if item[0] == "botao"}
+    lista = []
+    for alvo, titulo, _descricao in MODULOS:
+        bloqueado = alvo in TELAS_BLOQUEADAS
+        lista.append(Comando(
+            f"tela:{alvo}", titulo + (SUFIXO_BLOQUEADO if bloqueado else ""), ICONE_DA_TELA[alvo],
+            f"{no_menu.get(alvo, '')} {alvo}", bloqueado=bloqueado, dica=dica_do_menu(alvo)))
+    lista += [Comando(f"acao:{chave}", texto, icone, palavras) for chave, texto, icone, palavras in ACOES]
+    return lista
+
+
+def filtrar(lista, consulta: str) -> list[Comando]:
+    """Os comandos que têm TODAS as palavras da `consulta` (sem acento, sem caixa)
+    no texto ou nas palavras; os que COMEÇAM pela primeira vêm antes (ordem
+    estável: no empate, a da lista)."""
+    termos = busca.normalizar(consulta).split()
+    if not termos:
+        return list(lista)
+
+    def onde(comando: Comando) -> str:
+        return busca.normalizar(f"{comando.texto} {comando.palavras}")
+
+    achados = [c for c in lista if all(t in onde(c) for t in termos)]
+    return sorted(achados, key=lambda c: not busca.normalizar(c.texto).startswith(termos[0]))
+
 
 MSG_TAREFA_EM_ANDAMENTO = (
     "Há uma tarefa em andamento (um robô, uma tradução ou uma consulta à IA).\n\n"

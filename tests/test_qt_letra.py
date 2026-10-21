@@ -1,0 +1,327 @@
+"""Letra Normal / Grande, aplicada na hora como o tema (2026-10-21, etapa 1b)."""
+import re
+
+import pytest
+from PySide6.QtCore import QPoint
+from PySide6.QtWidgets import QApplication
+
+from sigft.app import tokens
+from sigft.app_qt import catalogo, estilo, letra
+from sigft.app_qt.widgets import blocos
+
+
+class Controller:
+    api_keys: dict = {}
+
+
+@pytest.fixture
+def letra_temporaria(qt_interface, tmp_path, monkeypatch):
+    monkeypatch.setattr(letra, "_arquivo_de_prefs", lambda: tmp_path / "p.json")
+    anterior = qt_interface.styleSheet()
+    yield qt_interface
+    letra.aplicar(qt_interface, "normal", gravar=False)
+    qt_interface.setStyleSheet(anterior)
+
+
+def _tamanhos(folha):
+    return [int(t) for t in re.findall(r"font-size:\s*(\d+)px", folha)]
+
+
+def test_ajustar_tamanhos():
+    # Só px (fix round 1, 2026-10-21): o aumento é de 2 PIXELS; um pt fica como está.
+    folha = "a { font-size: 12px; } b { font-size: 9pt; }"
+    assert estilo.ajustar_tamanhos(folha, 2) == "a { font-size: 14px; } b { font-size: 9pt; }"
+    assert estilo.ajustar_tamanhos(folha, 0) == folha
+
+
+def test_normal_e_a_folha_de_sempre():
+    # No Normal nada muda: a folha do app é a mesma de antes da letra existir.
+    assert estilo.AUMENTO_LETRA == 0
+    assert estilo.folha_de_estilo("escuro") == estilo._folha_base("escuro")
+
+
+def test_grande_soma_2_em_toda_a_escala_da_folha(letra_temporaria):
+    normal = estilo.folha_de_estilo()
+    letra.aplicar(letra_temporaria, "grande")
+    assert _tamanhos(letra_temporaria.styleSheet()) == \
+        [t + tokens.AUMENTO_DA_LETRA["grande"] for t in _tamanhos(normal)]
+    assert letra.escolhido() == "grande"
+
+
+def test_peca_com_folha_propria_cresce_e_volta(letra_temporaria, qtbot):
+    rotulo = blocos.rotulo("Olá", tamanho=13)
+    qtbot.addWidget(rotulo)
+    letra.aplicar(letra_temporaria, "grande")
+    assert "font-size: 15px" in rotulo.styleSheet()
+    letra.aplicar(letra_temporaria, "normal")
+    assert "font-size: 13px" in rotulo.styleSheet()
+
+
+def test_peca_criada_depois_nasce_grande(letra_temporaria, qtbot):
+    letra.aplicar(letra_temporaria, "grande")
+    botao = blocos.botao("Salvar", tamanho_fonte=12)
+    qtbot.addWidget(botao)
+    botao.show()
+    qtbot.waitExposed(botao)
+    assert "font-size: 14px" in botao.styleSheet()
+
+
+def test_pintar_depois_nao_soma_duas_vezes(letra_temporaria, qtbot):
+    botao = blocos.botao("Salvar", tamanho_fonte=12)
+    qtbot.addWidget(botao)
+    botao.show()
+    qtbot.waitExposed(botao)
+    letra.aplicar(letra_temporaria, "grande")
+    blocos.pintar(botao, "QPushButton { font-weight: bold; }")
+    QApplication.processEvents()
+    assert "font-size: 14px" in botao.styleSheet()
+    assert "font-size: 16px" not in botao.styleSheet()
+
+
+def test_normal_nao_deixa_vigia(letra_temporaria):
+    letra.aplicar(letra_temporaria, "grande")
+    assert len(letra._vigia) == 1
+    letra.aplicar(letra_temporaria, "normal")
+    assert letra._vigia == []
+
+
+def test_preferencia_que_nao_se_le_e_normal(monkeypatch):
+    from sigft.core import prefs
+
+    def quebra(*_a, **_k):
+        raise OSError("disco fora")
+
+    monkeypatch.setattr(prefs, "ler_preferencia", quebra)
+    assert letra.escolhido() == "normal"
+
+
+def test_letra_e_tema_juntos(letra_temporaria, tmp_path, monkeypatch):
+    # O tema regera a folha do app: a letra grande tem de continuar nela.
+    from sigft.app_qt import tema
+
+    monkeypatch.setattr(tema, "_arquivo_de_prefs", lambda: tmp_path / "t.json")
+    atual = estilo.TEMA_ATUAL
+    try:
+        letra.aplicar(letra_temporaria, "grande")
+        tema.aplicar(letra_temporaria, "claro")
+        grande = tokens.AUMENTO_DA_LETRA["grande"]
+        assert _tamanhos(letra_temporaria.styleSheet()) == \
+            [t + grande for t in _tamanhos(estilo._folha_base("claro"))]
+        letra.aplicar(letra_temporaria, "normal")
+        assert letra_temporaria.styleSheet() == estilo._folha_base("claro")
+    finally:
+        estilo.TEMA_ATUAL = atual
+
+
+def test_largura_fixa_alarga_no_grande_e_volta_igual(letra_temporaria, qtbot):
+    # Botão de largura fixa: com a letra grande, o texto não pode ser cortado;
+    # no normal, a largura de sempre, ao pixel (fix round 1, 2026-10-21).
+    letra.aplicar(letra_temporaria, "normal", gravar=False)
+    botao = blocos.botao("APLICAR AUTORIZAÇÕES", largura=200, tamanho_fonte=12, negrito=True)
+    rotulo = blocos.rotulo("Pasta dos PDMs Modificados:", tamanho=13)
+    rotulo.setFixedWidth(190)
+    for w in (botao, rotulo):
+        qtbot.addWidget(w)
+        w.show()
+        qtbot.waitExposed(w)
+    letra.aplicar(letra_temporaria, "grande")
+    for w in (botao, rotulo):
+        assert w.width() >= w.sizeHint().width()
+        assert w.minimumWidth() == w.maximumWidth()
+    letra.aplicar(letra_temporaria, "normal")
+    assert (botao.minimumWidth(), botao.maximumWidth()) == (200, 200)
+    assert (rotulo.minimumWidth(), rotulo.maximumWidth()) == (190, 190)
+
+
+def test_rotulo_elidido_nao_alarga(letra_temporaria, qtbot):
+    rotulo = blocos.RotuloElidido("um_nome_de_arquivo_bem_comprido_mesmo.xlsx")
+    rotulo.setFixedWidth(80)
+    qtbot.addWidget(rotulo)
+    letra.aplicar(letra_temporaria, "grande")
+    assert rotulo.width() == 80
+
+
+def test_regra_somada_depois_nao_dobra_o_aumento(letra_temporaria, qtbot):
+    # A busca e o AutoSpec somam uma regra à folha do botão: por `blocos.pintar`,
+    # que parte da folha de antes do aumento (fix round 1, 2026-10-21). Somada à
+    # mão sobre a folha já aumentada, um novo aumento a contaria duas vezes.
+    from sigft.app_qt.views import busca_pmib
+
+    botao = busca_pmib._botao_cinza("Abrir Pasta", 120)
+    assert botao.property("_folha_base") is not None        # feita por `pintar`
+    assert botao.styleSheet().endswith("QPushButton { padding: 0; }")
+    link = blocos.botao("Datasheet", tamanho_fonte=11)
+    qtbot.addWidget(link)
+    qtbot.addWidget(botao)
+    link.show()
+    qtbot.waitExposed(link)
+    letra.aplicar(letra_temporaria, "grande")
+    blocos.pintar(link, "QPushButton { text-align: left; }")
+    letra.aplicar(letra_temporaria, "normal")
+    letra.aplicar(letra_temporaria, "grande")
+    QApplication.processEvents()
+    assert "font-size: 13px" in link.styleSheet() and "15px" not in link.styleSheet()
+
+
+def test_escolha_invalida_e_normal(tmp_path, monkeypatch):
+    monkeypatch.setattr(letra, "_arquivo_de_prefs", lambda: tmp_path / "p.json")
+    (tmp_path / "p.json").write_text('{"preferencias": {"letra": "enorme"}}', encoding="utf-8")
+    assert letra.escolhido() == "normal"
+
+
+def test_seletor_de_letra_num_lugar_so():
+    # Como o de tema (2026-10-21): a Home e o Ctrl+K saem de `catalogo.SELETOR_LETRA`.
+    from sigft.app_qt.views import home as home_mod
+
+    assert home_mod.SELETOR_LETRA is catalogo.SELETOR_LETRA
+    assert tuple(e for e, *_ in catalogo.SELETOR_LETRA) == letra.TAMANHOS
+    na_paleta = {a[0]: a[1] for a in catalogo.ACOES}
+    for escolha, texto, _dica in catalogo.SELETOR_LETRA:
+        assert na_paleta[f"letra_{escolha}"] == f"Letra: {texto}"
+
+
+def test_seletor_na_home_marca_e_aplica(letra_temporaria, qtbot):
+    from sigft.app_qt.views import home as home_mod
+
+    tela = home_mod.HomeView(controller=Controller())
+    qtbot.addWidget(tela)
+    assert set(tela.botoes_letra) == set(letra.TAMANHOS)
+    assert tela.botoes_letra["normal"].property("ativo") is True
+    tela.botoes_letra["grande"].click()
+    assert estilo.AUMENTO_LETRA == tokens.AUMENTO_DA_LETRA["grande"]
+    assert tela.botoes_letra["grande"].property("ativo") is True
+    assert tela.botoes_letra["normal"].property("ativo") is False
+
+
+@pytest.mark.parametrize("escolha", ["normal", "grande"])
+def test_seletores_cabem_na_linha_do_titulo(letra_temporaria, qtbot, escolha):
+    # A barra de botões já ocupa quase toda a Home a 1280 px: tema e letra ficam
+    # na linha do título, à direita, sem rolagem horizontal nem mexer no título.
+    from sigft.app_qt.views import home as home_mod
+
+    letra.aplicar(letra_temporaria, escolha, gravar=False)
+    tela = home_mod.HomeView(controller=Controller())
+    qtbot.addWidget(tela)
+    tela.resize(1280 - estilo.LARGURA_BARRA_LATERAL, 850)
+    tela.show()
+    qtbot.waitExposed(tela)
+    corpo = tela.widget()
+    assert corpo.minimumSizeHint().width() <= tela.viewport().width()
+    qtbot.waitUntil(lambda: corpo.width() == tela.viewport().width(), timeout=1000)
+    # Com a letra grande o vigia refaz as folhas no `Polish`, e o primeiro layout
+    # se acerta depois: vale o estado assentado (sobram 8 px a 1280, 2026-10-21).
+    qtbot.waitUntil(lambda: not tela.horizontalScrollBar().isVisible(), timeout=1000)
+    titulo = tela.label_titulo.geometry()
+    if escolha == "normal":
+        assert (titulo.x(), titulo.y(), titulo.height()) == (46, 46, 38)
+    for botao in [*tela.botoes_tema.values(), *tela.botoes_letra.values()]:
+        topo = botao.mapTo(corpo, QPoint(0, 0))
+        assert topo.y() >= titulo.y() and topo.y() + botao.height() <= titulo.y() + titulo.height()
+        assert topo.x() + botao.width() <= corpo.width() - 57
+    # Nenhum botão da barra espremido abaixo do texto (o `min-width` de 140 deixa
+    # o layout cortar o texto em vez de rolar): com a letra grande o "Versões de
+    # teste" desce para a linha de baixo e a barra cabe inteira.
+    for botao in tela.botoes_barra.values():
+        assert botao.width() >= botao.sizeHint().width()
+    caixa = tela.caixa_canal_testes
+    assert caixa.width() >= caixa.sizeHint().width()
+    assert caixa.mapTo(corpo, QPoint(0, 0)).x() + caixa.width() <= corpo.width() - 57
+    abaixo = caixa.mapTo(corpo, QPoint(0, 0)).y() >= \
+        tela.btn_atualizacoes.mapTo(corpo, QPoint(0, 0)).y() + tela.btn_atualizacoes.height()
+    assert abaixo is (escolha == "grande")
+
+
+def test_troca_na_hora_leva_a_caixa_e_traz_de_volta(letra_temporaria, qtbot):
+    from sigft.app_qt.views import home as home_mod
+
+    letra.aplicar(letra_temporaria, "normal", gravar=False)   # a folha do app, como na abertura
+    tela = home_mod.HomeView(controller=Controller())
+    qtbot.addWidget(tela)
+    tela.resize(1280 - estilo.LARGURA_BARRA_LATERAL, 850)
+    tela.show()
+    qtbot.waitExposed(tela)
+    caixa = tela.caixa_canal_testes
+    antes = caixa.geometry()
+    tela.escolher_letra("grande")
+    qtbot.waitUntil(lambda: caixa.y() > tela.btn_atualizacoes.y() + tela.btn_atualizacoes.height(),
+                    timeout=1000)
+    tela.escolher_letra("normal")
+    qtbot.waitUntil(lambda: caixa.geometry() == antes, timeout=1000)
+
+
+def test_seletor_marca_a_letra_que_esta_valendo(letra_temporaria, qtbot):
+    # `--smoke --letra grande` não grava: o seletor marca a que vale, não a das prefs.
+    from sigft.app_qt.views import home as home_mod
+
+    letra.aplicar(letra_temporaria, "grande", gravar=False)
+    assert letra.escolhido() == "normal" and letra.atual() == "grande"
+    tela = home_mod.HomeView(controller=Controller())
+    qtbot.addWidget(tela)
+    assert tela.botoes_letra["grande"].property("ativo") is True
+
+
+def test_opcao_da_linha_de_comando():
+    from sigft.app_qt import main as qmain
+
+    assert qmain._opcao_da_linha_de_comando(["f", "--smoke", "--letra", "grande"], "--letra") == "grande"
+    assert qmain._opcao_da_linha_de_comando(["f", "--letra=grande"], "--letra") == "grande"
+    assert qmain._opcao_da_linha_de_comando(["f", "--smoke"], "--letra") is None
+    assert qmain._tema_da_linha_de_comando(["f", "--tema", "claro"]) == "claro"
+
+
+# --- as 12 telas com a letra grande (fix round 1, 2026-10-21) -----------------
+
+def _cortados(tela):
+    """Os textos (botão, rótulo de uma linha, caixa) mais estreitos que o pedido."""
+    from PySide6.QtWidgets import QCheckBox, QLabel, QPushButton
+
+    achados = set()
+    for tipo in (QPushButton, QLabel, QCheckBox):
+        for w in tela.findChildren(tipo):
+            if not w.isVisible() or not w.text().strip():
+                continue
+            if isinstance(w, QLabel) and (w.wordWrap() or isinstance(w, blocos.RotuloElidido)):
+                continue
+            if w.width() < w.sizeHint().width():
+                achados.add(w.text())
+    return achados
+
+
+def _varrer(janela, qtbot):
+    from PySide6.QtWidgets import QAbstractScrollArea
+
+    cortados, rolando = {}, []
+    for alvo in ["Home", *(m[0] for m in catalogo.MODULOS if m[0] not in catalogo.TELAS_BLOQUEADAS)]:
+        janela.show_home() if alvo == "Home" else janela.show_frame(alvo)
+        qtbot.wait(30)
+        tela = janela.telas[alvo]
+        for area in [tela, *tela.findChildren(QAbstractScrollArea)]:
+            if isinstance(area, QAbstractScrollArea) and area.isVisible() \
+                    and area.horizontalScrollBar().isVisible():
+                rolando.append(f"{alvo}:{type(area).__name__}")
+        cortados[alvo] = _cortados(tela)
+    return cortados, rolando
+
+
+def test_nenhuma_tela_corta_texto_nem_rola_de_lado_com_a_letra_grande(
+        letra_temporaria, qtbot, tmp_path, monkeypatch):
+    from sigft.app_qt import main as qmain
+
+    monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))
+    letra.aplicar(letra_temporaria, "normal", gravar=False)
+    janela = qmain.SIG_FT_App()
+    janela.fechar_sem_perguntar = True
+    qtbot.addWidget(janela)
+    janela.resize(1280, 850)
+    janela.show()
+    qtbot.waitExposed(janela)
+    normal, rolando_normal = _varrer(janela, qtbot)
+    letra.aplicar(letra_temporaria, "grande", gravar=False)
+    grande, rolando_grande = _varrer(janela, qtbot)
+    assert rolando_normal == [] and rolando_grande == []
+    # O que já ficava apertado no normal (o "Limpar" de 100 px da Criação de
+    # Fichas, travado pelo teste de medidas) não conta; o resto, nada cortado.
+    assert {alvo: textos - normal[alvo] for alvo, textos in grande.items() if textos - normal[alvo]} == {}
+    letra.aplicar(letra_temporaria, "normal", gravar=False)
+    de_volta, _ = _varrer(janela, qtbot)
+    assert de_volta == normal

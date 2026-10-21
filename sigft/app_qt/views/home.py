@@ -36,49 +36,49 @@ from shiboken6 import isValid
 
 from sigft import config as sigft_config
 from sigft.app import textos_dicas
-from sigft.app_qt import atualizacao, estilo, icones, interface, nome, tema
-from sigft.app_qt.catalogo import ICONE_DA_TELA, MODULOS
+from sigft.app_qt import atualizacao, aviso_windows, estilo, icones, interface, letra, nome, pasta_de_logs, tema
+from sigft.app_qt.catalogo import ACOES_DA_HOME, ICONE_DA_TELA, MODULOS, SELETOR_LETRA, SELETOR_TEMA
 from sigft.app_qt.widgets import blocos, controles, dialogs, mural
 from sigft.app_qt.widgets.module_frame import aplicar_dicas
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
-from sigft.core import plataforma
 from sigft.core.llm import catalogo, selecao
 from sigft.core.llm import usage as llm_usage
 from sigft.services import updater
 
+# A barra e o seletor de tema saem de `catalogo` (2026-10-21): as ações da
+# Home moram num lugar só (`catalogo.ACOES_DA_HOME`), de onde saem também o
+# Ctrl+K e o `main.ACAO_NA_HOME`. Os nomes daqui continuam (testes e quem lê).
+_ATUALIZACOES = next(a for a in ACOES_DA_HOME if a.chave == "atualizacoes")
 # O botão da barra que procura versão nova. Constante porque dois lugares
 # precisam concordar: quem cria o botão e quem o devolve ao normal. Sem emoji
 # desde 2026-10-20: o desenho é o ícone (`ICONE_DA_BARRA`).
-TEXTO_BOTAO_ATUALIZACOES = "Atualizações"
+TEXTO_BOTAO_ATUALIZACOES = _ATUALIZACOES.texto
 TEXTO_PROCURANDO = "Procurando..."
 # [2026-10-07] O canal de testes: marcada, a atualização oferece também
 # pré-lançamentos. Ver services/updater.py.
 TEXTO_CANAL_TESTES = "Versões de teste"
+# [2026-10-21] O aviso do Windows (`app_qt/aviso_windows.py`): na linha do
+# subtítulo, à direita (a barra de botões não tem mais largura a 1280 px e a
+# linha do título já tem os seletores de tema e de letra).
+TEXTO_AVISOS_WINDOWS = "Avisar no Windows"
+DICA_AVISOS_WINDOWS = ("Com o SIG-FT atrás de outra janela, um aviso do Windows diz quando uma "
+                       "tarefa termina ou quando o robô espera você (o login no portal, por exemplo).")
 
 # A barra (`_criar_barra_de_botoes` de lá): chave, texto, variante do botão e o que
-# abre. A cor de cada um é a da variante, na folha do tema. O "Atualizações" vem depois, fora da lista, porque o texto muda.
-BARRA = [
-    ("atividades", "Atividades do dia", "primario", "abrir_mural_atividades"),
-    ("modelos", "Modelos de IA", "primario", "abrir_janela_modelos_ia"),
-    ("gastos", "Gastos de IA", "primario", "abrir_janela_gastos_ia"),
-    ("chaves", "Chaves de API", "secundario", "abrir_janela_chaves_api"),
-]
+# abre. A cor de cada um é a da variante, na folha do tema. O "Atualizações" vem
+# depois, fora da lista, porque o texto muda.
+BARRA = [(a.chave, a.texto, a.variante, a.metodo) for a in ACOES_DA_HOME if a is not _ATUALIZACOES]
 # O ícone de cada botão da barra (Lucide, `sigft/app_qt/icones.py`): era o
 # emoji do começo do texto até 2026-10-20.
-ICONE_DA_BARRA = {
-    "atividades": "clipboard-check", "modelos": "bot", "gastos": "circle-dollar-sign",
-    "chaves": "key-round", "atualizacoes": "refresh-cw",
-}
-COR_BOTAO_ATUALIZACOES = "secundario"   # variante (2026-10-20)
+ICONE_DA_BARRA = {a.chave: a.icone for a in ACOES_DA_HOME}
+COR_BOTAO_ATUALIZACOES = _ATUALIZACOES.variante   # variante (2026-10-20)
+# Com a letra grande o "Versões de teste" vai para baixo da barra, a esta
+# distância (2026-10-21, `HomeView._arrumar_barra`).
+ESPACO_SOB_A_BARRA = 8
 
-# O seletor de tema (2026-10-20): escolha, texto, ícone e dica. Na linha do
-# título, à direita: a barra de botões já ocupa a largura da Home a 1280 px.
-SELETOR_TEMA = (
-    ("escuro", "Escuro", "moon", "Tema escuro: fundo grafite, o padrão do SIG-FT."),
-    ("claro", "Claro", "sun", "Tema claro: fundo branco, para ambiente bem iluminado."),
-    ("sistema", "Sistema", "monitor",
-     "Segue o tema do Windows (claro ou escuro) e muda junto quando ele mudar."),
-)
+# O seletor de tema (2026-10-20): escolha, texto, ícone e dica (`catalogo.SELETOR_TEMA`).
+# Na linha do título, à direita: a barra de botões já ocupa a largura da Home a 1280 px.
+# O de letra (2026-10-21, `catalogo.SELETOR_LETRA`) vem logo depois, na mesma linha.
 
 # As chaves do painel "Chaves de API" (o `keys_info` de lá, sem o valor padrão,
 # que é sempre vazio: as chaves vêm do .env ou do api_config.json).
@@ -387,13 +387,22 @@ class HomeView(QScrollArea):
         linha_titulo.setSpacing(0)
         linha_titulo.addWidget(self.label_titulo, 1)
         linha_titulo.addWidget(self._criar_seletor_tema(), 0, Qt.AlignmentFlag.AlignVCenter)
+        linha_titulo.addSpacing(12)
+        linha_titulo.addWidget(self._criar_seletor_letra(), 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(linha_titulo)
         layout.addSpacing(5)
         self.label_subtitulo = QLabel("Sistema Integrado de Gestão de Fichas Técnicas - GE Vernova",
                                       objectName="subtitulo_home")
         self.label_subtitulo.setMinimumHeight(blocos.ALTURA_MINIMA_ROTULO)
         self.label_subtitulo.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        layout.addWidget(self.label_subtitulo)
+        # [2026-10-21] A caixa do aviso do Windows divide a linha do subtítulo: mais
+        # baixa que os 28 px da linha, que fica com a altura de antes.
+        linha_subtitulo = QHBoxLayout()
+        linha_subtitulo.setContentsMargins(0, 0, 0, 0)
+        linha_subtitulo.setSpacing(0)
+        linha_subtitulo.addWidget(self.label_subtitulo, 1)
+        linha_subtitulo.addWidget(self._criar_caixa_avisos(), 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addLayout(linha_subtitulo)
         layout.addSpacing(30)
         resumo = ("Clique num módulo abaixo para abri-lo. Os botões desta barra "
                   "abrem painéis em janela, para a Home ficar limpa.")
@@ -404,6 +413,9 @@ class HomeView(QScrollArea):
         # --- BARRA DE BOTÕES --- [2026-09-03] Os painéis de configuração e de
         # gastos de IA saíram da Home e viraram janelas.
         layout.addLayout(self._criar_barra_de_botoes())
+        # [2026-10-21] A linha de baixo da barra: vazia (não ocupa nada) com a
+        # letra normal; com a grande, recebe o "Versões de teste" (`_arrumar_barra`).
+        layout.addLayout(self._linha_sob_a_barra)
         layout.addSpacing(16)
 
         # --- MÓDULOS, CLICÁVEIS ---
@@ -469,7 +481,35 @@ class HomeView(QScrollArea):
         self.caixa_canal_testes.toggled.connect(self._lembrar_canal_testes)
         barra.addWidget(self.caixa_canal_testes)
         barra.addStretch()
+        self._barra = barra
+        self._linha_sob_a_barra = QHBoxLayout()
+        self._linha_sob_a_barra.setContentsMargins(0, 0, 0, 0)
+        self._linha_sob_a_barra.addStretch()
+        self._arrumar_barra()
         return barra
+
+    def _arrumar_barra(self) -> None:
+        """Com a letra grande, o "Versões de teste" desce para a linha de baixo.
+
+        A 1280 px a barra já ocupa a largura toda da Home, e com +2 px os botões
+        pedem 38 px a mais do que há. O `min-width` deles (os 140 da interface
+        antiga) deixa o layout ESPREMER o botão e cortar o texto, em vez de
+        rolar; descer a caixa devolve a folga (2026-10-21). Com a letra normal a
+        caixa fica na barra, com as medidas de sempre."""
+        caixa = self.caixa_canal_testes
+        embaixo = self._linha_sob_a_barra.indexOf(caixa) >= 0
+        if bool(estilo.AUMENTO_LETRA) == embaixo:
+            return
+        # A margem vai e volta com a caixa: a linha vazia, mesmo sem nada, ocuparia
+        # a margem de cima e desceria os cartões.
+        if embaixo:
+            self._linha_sob_a_barra.removeWidget(caixa)
+            self._linha_sob_a_barra.setContentsMargins(0, 0, 0, 0)
+            self._barra.insertWidget(self._barra.count() - 1, caixa)   # antes do stretch
+        else:
+            self._barra.removeWidget(caixa)
+            self._linha_sob_a_barra.insertWidget(0, caixa)
+            self._linha_sob_a_barra.setContentsMargins(0, ESPACO_SOB_A_BARRA, 0, 0)
 
     # =====================================================================
     # SAUDAÇÃO  [2026-10-20]
@@ -522,6 +562,45 @@ class HomeView(QScrollArea):
         # Marca o que VALEU, não o que está nas prefs: gravar pode ter falhado.
         self._marcar_tema(tema.aplicar(QApplication.instance(), escolha))
 
+    # =====================================================================
+    # SELETOR DE LETRA  [2026-10-21]
+    # =====================================================================
+    def _criar_seletor_letra(self) -> QFrame:
+        """Normal e Grande; o da escolha atual fica `ativo`, como no de tema."""
+        quadro = QFrame(objectName="seletor_letra")
+        linha = QHBoxLayout(quadro)
+        linha.setContentsMargins(0, 0, 0, 0)
+        linha.setSpacing(4)
+        self.botoes_letra = {}
+        for escolha, texto, dica in SELETOR_LETRA:
+            botao = blocos.botao(texto, variante="secundario", tamanho_fonte=12)
+            botao.setToolTip(dica)
+            dialogs.sem_tecla(botao)
+            # O mesmo padrão do seletor de tema: a Home vive o app inteiro.
+            botao.clicked.connect(lambda _=False, e=escolha: self.escolher_letra(e))
+            self.botoes_letra[escolha] = botao
+            linha.addWidget(botao)
+        self._marcar_letra(letra.atual())
+        # A troca pode vir de fora da Home (o Ctrl+K sem a Home montada, a
+        # abertura): o aviso marca o seletor e arruma a barra. Método ligado,
+        # não `lambda` (aviso do mural de 2026-10-14).
+        letra.mudou.connect(self._letra_mudou)
+        return quadro
+
+    def _marcar_letra(self, escolha: str) -> None:
+        for chave, botao in self.botoes_letra.items():
+            estilo.definir_propriedade(botao, "ativo", chave == escolha)
+
+    def escolher_letra(self, escolha: str) -> None:
+        """Troca a letra do app inteiro e lembra a escolha (`letra.aplicar`); o
+        `letra.mudou` marca o seletor e arruma a barra (`_letra_mudou`)."""
+        letra.aplicar(QApplication.instance(), escolha)
+
+    def _letra_mudou(self, escolha: str) -> None:
+        # Marca o que VALEU, não o que está nas prefs: gravar pode ter falhado.
+        self._marcar_letra(escolha)
+        self._arrumar_barra()
+
     @staticmethod
     def _botao_da_barra(texto: str, variante: str, icone: str):
         # height=40, font=("Roboto", 13, "bold"); a largura é a do CTkButton.
@@ -530,6 +609,16 @@ class HomeView(QScrollArea):
         icones.aplicar(botao, icone)
         dialogs.sem_tecla(botao)
         return botao
+
+    def _criar_caixa_avisos(self):
+        """"Avisar no Windows", marcada por padrão (`aviso_windows.ligado`)."""
+        caixa = controles.CaixaDeMarcar(TEXTO_AVISOS_WINDOWS, tamanho_fonte=12)
+        caixa.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        caixa.setChecked(aviso_windows.ligado())
+        caixa.setToolTip(DICA_AVISOS_WINDOWS)
+        caixa.toggled.connect(aviso_windows.ligar)
+        self.caixa_avisos_windows = caixa
+        return caixa
 
     def _lembrar_canal_testes(self, ligado: bool) -> None:
         try:
@@ -1229,11 +1318,7 @@ class HomeView(QScrollArea):
     def _abrir_pasta_logs_gastos_ia(self) -> None:
         """Abre `Documentos\\SIG-FT\\logs\\` no explorador, criando-a se ainda
         não existir (nenhuma tarefa de IA rodou ainda)."""
-        from sigft.core.dados_usuario import pasta_logs
-
-        pasta = str(pasta_logs())
-        try:
-            plataforma.abrir_pasta_criando_se_preciso(pasta)
-        except Exception as e:
-            QMessageBox.critical(self._janela_de(getattr(self, "frame_gastos_ia", None)), "Erro",
-                                 f"Não foi possível abrir a pasta de logs: {e}")
+        # O mesmo ajudante do "Abrir logs" do Ctrl+K (2026-10-21). O pai só é
+        # procurado se der erro.
+        pasta_de_logs.abrir(
+            lambda: self._janela_de(getattr(self, "frame_gastos_ia", None)))
