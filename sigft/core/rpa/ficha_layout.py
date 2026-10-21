@@ -178,7 +178,8 @@ MAX_LINHAS_VAZIAS_SEGUIDAS = 25
 # Acréscimo ADITIVO nesta zona compartilhada: nenhum valor existente mudou.
 #
 # Mora aqui pela mesma razão do `CONFIG_MAP`: é LAYOUT da ficha, e havia TRÊS
-# módulos resolvendo por conta própria — `pdm.aplicar_templates_fichas`,
+# módulos resolvendo por conta própria — o montador de `pdm` (hoje
+# `aplicar_templates_fichas_da_planilha`),
 # `upload_conditions.extrair_dados_brutos_excel` e `AutoSpecCore.fill_save` —,
 # os dois últimos exigindo o nome literal `"Ficha Técnica Padrão"`. É
 # exatamente o caminho que fez o `CONFIG_MAP` acabar duplicado com ranges
