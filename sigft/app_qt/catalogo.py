@@ -23,6 +23,24 @@ MENU = [
     ("botao", "9. Search", "SearchPMIB"),
 ]
 
+# O ícone de cada tela, no menu e no card da Home (sistema visual, 2026-10-20):
+# nomes de `sigft/app_qt/icones.NOMES` (Lucide).
+ICONE_DA_TELA = {
+    "Home": "house",
+    "CriaFichas": "file-plus",
+    "PDM": "table",
+    "Analyzer": "chart-column",
+    "UploadConditions": "upload",
+    "Translator": "languages",
+    "UploadSpecs": "list",
+    "CorrecaoPDM": "wrench",
+    "CopiaFichas": "copy",
+    "AutoSpec": "sparkles",
+    "LMR": "tag",
+    "PMIBManager": "folder-kanban",
+    "SearchPMIB": "search",
+}
+
 MODULOS = [
     ("CriaFichas", "Cria Fichas PMIB",
      "Lê a lista de materiais, escolhe o PDM de cada item com IA e cria as "

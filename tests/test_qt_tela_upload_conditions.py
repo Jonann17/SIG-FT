@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QMessageBox
 
-from sigft.app import backends, theme
+from sigft.app import backends
 from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO, msg_falha_ao_salvar
 from sigft.app_qt.views import upload_conditions as tela_mod
 from sigft.app_qt.views._upload_comum import MSG_ROBO_OCUPADO
@@ -210,8 +210,8 @@ def test_selecionar_status(tela, monkeypatch):
                          {"titulo": "Selecione _STATUS_PMIB", "filetypes": [("Excel", "*.xlsx;*.xlsm")]})]
     assert tela.caminho_status == "/d/pasta/_STATUS_PMIB.xlsx"
     assert tela.lbl_status_status.text() == "_STATUS_PMIB.xlsx"
-    assert theme.COLORS["accent"] in tela.lbl_status_status.styleSheet()
-    assert theme.COLORS["primary"] in tela.btn_status.styleSheet()
+    assert tela.lbl_status_status.property("papel") == "ok"  # cor da folha pelo papel (2026-10-20)
+    assert tela.btn_status.property("variante") == "primario"
 
 
 def test_cancelar_o_seletor_de_status_nao_mexe(tela, monkeypatch):
@@ -395,8 +395,8 @@ def test_selecao_de_fichas(tela, selecao, monkeypatch):
     assert kw["geometria"] == "500x400" and kw["modal"] and kw["com_selecionar_todos"]
     assert kw["devolver_indices"] and kw["fonte_lista"] == ("Consolas", 12)
     assert kw["fonte_instrucao"] == ("Roboto", 14, "bold")
-    assert kw["estilo_lista"]["bg"] == "#1E1E1E"
-    assert kw["estilo_lista"]["selectbackground"] == theme.COLORS["primary"]
+    # 2026-10-20: a lista não passa mais cor (são as da folha); só a borda.
+    assert kw["estilo_lista"] == {"highlightthickness": 0, "borderwidth": 0}
     kw["ao_confirmar"]([2, 0])
     assert iniciados == [[{"pmib_codigo": "C"}, {"pmib_codigo": "A"}]]
     kw["ao_confirmar"]([])
@@ -618,6 +618,7 @@ def test_ler_resultados_excel_normaliza_o_pmib_e_os_dicionarios(monkeypatch):
 # Medidas
 # ---------------------------------------------------------------------------
 def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Medidas da tela antiga (janela 1280x850, winfo_*), relativas à área da tela,
     # que começa 277 px à direita (a barra lateral). Ver capturas/e4.45.
     from sigft.app_qt import estilo
@@ -639,35 +640,35 @@ def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
             return p.x(), p.y(), w.width(), w.height()
 
         assert geo(t.label_titulo)[:2] == (40, 30)
-        assert geo(t.rotulo_config.parentWidget()) == (40, 89, 923, 86)
-        assert geo(t.rotulo_config)[:2] == (55, 99) and geo(t.rotulo_config)[3] == 28
-        assert geo(t.btn_status) == (55, 137, 200, 28)
-        assert geo(t.lbl_status_status) == (265, 137, 95, 28)
+        assert geo(t.rotulo_config.parentWidget()) == (40, 87, 923, 86)
+        assert geo(t.rotulo_config)[:2] == (55, 97) and geo(t.rotulo_config)[3] == 28
+        assert geo(t.btn_status) == (55, 135, 200, 28)
+        assert geo(t.lbl_status_status) == (265, 135, 95, 28)
         # 370 lá: o texto do Roboto no Qt sai 4 px mais estreito.
-        assert geo(t.switch_completos) == (572, 139, 366, 24)
-        assert geo(t.tabview) == (40, 195, 923, 445)
-        assert geo(t.tabview.tab(ABA_IA))[:2] == (46, 238)
+        assert geo(t.switch_completos) == (572, 137, 366, 24)
+        assert geo(t.tabview) == (40, 193, 923, 447)
+        assert geo(t.tabview.tab(ABA_IA))[:2] == (46, 236)
         cartao = t.fila_fichas.parentWidget()
         # A barra do CTkScrollableFrame fica sempre à vista (polimento A4): o
         # cartão tem os 868 de lá (era 884 com a barra só quando havia o que rolar).
-        assert geo(cartao) == (62, 254, 868, 258)
-        assert geo(t.fila_fichas.label_contador)[:2] == (72, 264)
-        assert geo(t.fila_fichas)[:2] == (72, 297) and geo(t.fila_fichas)[3] == 210
+        assert geo(cartao) == (62, 252, 868, 258)
+        assert geo(t.fila_fichas.label_contador)[:2] == (72, 262)
+        assert geo(t.fila_fichas)[:2] == (72, 295) and geo(t.fila_fichas)[3] == 210
         # O botão cresce até caber o texto: 202 lá; o negrito do Roboto no Qt sai
         # ~8 px mais largo que o do Tk, por isso 210 (o par fica centrado igual).
         # Sintetizado do Regular, o único registrado; era 212 medido com o
         # Roboto-Medium do ~/.fonts do contêiner, que o app não tem
         # (tests/test_qt_fontes_dos_testes.py).
-        assert geo(t.btn_ia)[1:] == (527, 210, 40)
-        assert geo(t.btn_parar_ia)[1:] == (527, 100, 40)
+        assert geo(t.btn_ia)[1:] == (525, 212, 40)
+        assert geo(t.btn_parar_ia)[1:] == (525, 100, 40)
         assert geo(t.console) == (40, 670, 923, 150)
 
         t.tabview.set(ABA_WEB)
         qtbot.wait(20)
-        assert geo(t.rotulo_web)[1] == 258 and geo(t.rotulo_web)[3] == 28
-        assert geo(t.btn_web_mem) == (326, 316, 350, 40)
-        assert geo(t.btn_web_file) == (326, 376, 350, 40)
-        assert geo(t.btn_parar_web) == (326, 446, 350, 40)
+        assert geo(t.rotulo_web)[1] == 256 and geo(t.rotulo_web)[3] == 28
+        assert geo(t.btn_web_mem) == (326, 314, 350, 40)
+        assert geo(t.btn_web_file) == (326, 374, 350, 40)
+        assert geo(t.btn_parar_web) == (326, 444, 350, 40)
     finally:
         qt_interface.setStyleSheet(anterior)
 

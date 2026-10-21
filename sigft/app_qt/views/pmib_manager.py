@@ -19,9 +19,8 @@ import webbrowser
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMessageBox, QVBoxLayout
 
-from sigft.app import theme
 from sigft.app.textos_dialogos import MSG_LOGIN_CONFERIR_AUTORIZACOES, texto_dos_avisos
-from sigft.app_qt import estilo, file_dialogs, interface
+from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.widgets import blocos, controles, dialogs
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.core import prefs
@@ -49,9 +48,9 @@ LARGURA_QUEBRA_PORTAL = 480
 
 
 def _rotulo_status():
-    """O "Nenhum arquivo selecionado" cinza ao lado de cada botão de arquivo. É
+    """O "Nenhum arquivo selecionado" em legenda ao lado de cada botão de arquivo. É
     um `blocos.RotuloElidido`: um nome comprido não alarga a tela."""
-    return blocos.rotulo(TEXTO_NENHUM_ARQUIVO, cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO), alinhar="esquerda",
+    return blocos.rotulo(TEXTO_NENHUM_ARQUIVO, papel="legenda", alinhar="esquerda",
                          elidir=True)
 
 
@@ -79,16 +78,16 @@ class NovasListasDialog(QDialog):
         layout.setSpacing(0)
         layout.addSpacing(15)                           # título: pady=(15, …)
         self.rotulo_titulo = blocos.rotulo("Novas Listas de Sobressalentes Encontradas na base de dados:",
-                                           tamanho=16, negrito=True, cor=theme.COLORS["accent"])
+                                           tamanho=16, negrito=True, papel="destaque")
         layout.addWidget(self.rotulo_titulo)
         layout.addSpacing(5)                            # título (…, 5) + instrução (0, …)
         self.rotulo_instrucao = blocos.rotulo(
             "Selecione abaixo quais você deseja adicionar à Planilha de Mapeamento.",
-            cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO))
+            papel="legenda")
         layout.addWidget(self.rotulo_instrucao)
         layout.addSpacing(15)                           # instrução (…, 10) + lista (5, …)
 
-        self.area, lista = blocos.area_rolavel(cor=theme.COR_CARTAO)
+        self.area, lista = blocos.area_rolavel(fundo="cartao")
         self.caixas: dict = {}
         for indice, texto in itens:
             caixa = controles.CaixaDeMarcar(texto, tamanho_fonte=12)
@@ -111,9 +110,9 @@ class NovasListasDialog(QDialog):
         self.botao_desmarcar = blocos.botao("Desmarcar Todas", largura_minima=120, variante="cinza", tamanho_fonte=13)
         self.botao_confirmar = blocos.botao("Confirmar Seleção", largura_minima=150, variante="primario",
                                             tamanho_fonte=13)
-        # fg_color="gray" e hover #555555, escritos à mão na tela antiga.
+        # O cinza escrito à mão na tela antiga: a variante secundária.
         self.botao_ignorar = blocos.botao("Ignorar (Não Adicionar)", largura_minima=150, tamanho_fonte=13,
-                                          cor_fundo=estilo.cinza_tk("gray"), cor_hover="#555555")
+                                          variante="secundario")
         # Ela segura o worker: nenhuma tecla aperta um botão (Enter ou Espaço
         # não confirmam nem ignoram as listas no lugar da pessoa).
         for b in (self.botao_marcar, self.botao_desmarcar, self.botao_confirmar, self.botao_ignorar):
@@ -186,7 +185,7 @@ class ModuloPMIBManager(ModuleFrame):
         raiz.insertSpacing(3, 10)                       # conteúdo (…, 5) + barra (5, …)
         raiz.insertSpacing(5, 10)                       # barra (…, 5) + console (5, …)
         # CTkProgressBar(width=600, height=12, progress_color=primary), centrada.
-        blocos.barra_progresso(barra=self.progress_bar, largura=600, altura=12, cor=theme.COLORS["primary"])
+        blocos.barra_progresso(barra=self.progress_bar, largura=600, altura=12)
         raiz.setAlignment(self.progress_bar, Qt.AlignmentFlag.AlignHCenter)
         self._definir_progresso(0)
 
@@ -210,7 +209,7 @@ class ModuloPMIBManager(ModuleFrame):
     def _quadro_gestao(self, r) -> None:
         corpo = self._cartao()
         r["config"] = blocos.rotulo("Configuração de Gestão de Fichas PMIB", tamanho=16, negrito=True,
-                                    cor=theme.COLORS["accent"], alinhar="esquerda")
+                                    papel="destaque", alinhar="esquerda")
         corpo.addWidget(r["config"])
         corpo.addSpacing(13)                            # título (…, 5) + linha (8, …)
 
@@ -225,7 +224,7 @@ class ModuloPMIBManager(ModuleFrame):
         # 2. Pasta Raiz (rótulo + campo + Buscar)
         linha = QHBoxLayout()
         linha.setSpacing(0)
-        r["raiz"] = blocos.rotulo("2. Pasta Raiz (Arquivos _STATUS_PMIB):", cor=controles.COR_TEXTO_CTK,
+        r["raiz"] = blocos.rotulo("2. Pasta Raiz (Arquivos _STATUS_PMIB):",
                                   alinhar="esquerda")
         r["raiz"].setWordWrap(False)
         r["raiz"].setFixedWidth(280)
@@ -252,8 +251,7 @@ class ModuloPMIBManager(ModuleFrame):
         corpo.addSpacing(28)                            # linha (…, 8) + iniciar (20, …)
 
         self.btn_run = blocos.botao("INICIAR PROCESSO DE GESTÃO", variante="primario", largura=350,
-                                    altura=50, tamanho_fonte=14, negrito=True,
-                                    cor_texto=theme.COLORS["text_white"])
+                                    altura=50, tamanho_fonte=14, negrito=True,)
         self.btn_run.clicked.connect(self.iniciar_gestao)
         corpo.addWidget(self.btn_run, alignment=Qt.AlignmentFlag.AlignHCenter)
         corpo.addSpacing(8)                             # iniciar (…, 8) + painel (0, …)
@@ -286,12 +284,12 @@ class ModuloPMIBManager(ModuleFrame):
         # script `apto_para_entrega_att.py`, com os caminhos fixos no código).
         corpo = self._cartao()
         r["autorizacoes"] = blocos.rotulo("Autorizações de entrega de Itaipu", tamanho=16, negrito=True,
-                                          cor=theme.COLORS["accent"], alinhar="esquerda")
+                                          papel="destaque", alinhar="esquerda")
         corpo.addWidget(r["autorizacoes"])
         r["descricao_aut"] = blocos.rotulo(
             "Grava AUTORIZADO nos _STATUS_PMIB da Pasta Raiz (passo 2) para cada PMIB do "
             "export de Itaipu (sobressalentes_autorizados_AAAAMMDDhhmm.xlsx).",
-            cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO), alinhar="esquerda")
+            papel="legenda", alinhar="esquerda")
         r["descricao_aut"].setMaximumWidth(LARGURA_QUEBRA_DESCRICAO)
         r["descricao_aut"].setMinimumHeight(ALTURA_DESCRICAO_CTK)
         corpo.addWidget(r["descricao_aut"])
@@ -304,7 +302,7 @@ class ModuloPMIBManager(ModuleFrame):
         self.lbl_autorizados = _rotulo_status()
         linha = self._linha_arquivo(self.btn_autorizados, self.lbl_autorizados)
         self.btn_aplicar = blocos.botao("APLICAR AUTORIZAÇÕES", variante="primario", largura=200,
-                                        tamanho_fonte=12, negrito=True, cor_texto=theme.COLORS["text_white"])
+                                        tamanho_fonte=12, negrito=True)
         self.btn_aplicar.clicked.connect(self.aplicar_autorizacoes)
         linha.addWidget(self.btn_aplicar)               # pack(side="right")
         corpo.addLayout(linha)
@@ -319,7 +317,7 @@ class ModuloPMIBManager(ModuleFrame):
         r["descricao_portal"] = blocos.rotulo(
             "Ou confira no portal: o SIG-FT abre cada ficha física ainda sem AUTORIZADO e lê o "
             "código SAP de recebimento. Precisa do login no PMIB.",
-            cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO), alinhar="esquerda")
+            papel="legenda", alinhar="esquerda")
         # O texto é mais longo que 480 px, então o CTkLabel ocupa os 480 inteiros;
         # o QLabel com quebra prefere a metade disso se ninguém fixar.
         r["descricao_portal"].setFixedWidth(LARGURA_QUEBRA_PORTAL)
@@ -327,7 +325,7 @@ class ModuloPMIBManager(ModuleFrame):
         linha_portal.addWidget(r["descricao_portal"])    # pack(side="left")
         linha_portal.addStretch()
         self.btn_conferir = blocos.botao("CONFERIR NO PORTAL", variante="primario", largura=200,
-                                         tamanho_fonte=12, negrito=True, cor_texto=theme.COLORS["text_white"])
+                                         tamanho_fonte=12, negrito=True)
         self.btn_conferir.clicked.connect(self.conferir_no_portal)
         linha_portal.addWidget(self.btn_conferir)        # pack(side="right")
         corpo.addLayout(linha_portal)                    # pady=(0, 15): a margem do cartão

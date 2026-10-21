@@ -7,12 +7,10 @@ thread do robô fica presa em `Event.wait()` para sempre.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QRect, QSize, Qt
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QStyledItemDelegate, QVBoxLayout,
 )
 
-from sigft.app import theme
 from sigft.app.textos_dialogos import MSG_EXCEL_BLOQUEADO, TEXTO_CONTINUAR
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos, controles
@@ -86,7 +84,7 @@ class _DialogoDeAcaoManual(SoltaAoFechar, QDialog):
         self.rotulo.setWordWrap(True)
         self.rotulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.rotulo.setMaximumWidth(LARGURA_QUEBRA_TEXTO)
-        self.rotulo.setStyleSheet(f"font-size: 13px; color: {controles.COR_TEXTO_CTK};")
+        self.rotulo.setStyleSheet("font-size: 13px;")
         # Numa linha com sobras dos lados (e não com `alignment`): com alinhamento,
         # o QLabel com quebra escolhe uma largura estreita e quebra cedo demais.
         linha_texto = QHBoxLayout()
@@ -134,8 +132,7 @@ class RetryLockDialog(_DialogoDeAcaoManual):
         linha = QHBoxLayout()
         linha.setSpacing(20)
         linha.addStretch()
-        # fg_color=primary SEM hover_color lá: o hover é o do tema (#14375E).
-        self.botao_repetir = blocos.botao("Tentar Novamente", cor_fundo=theme.COLORS["primary"],
+        self.botao_repetir = blocos.botao("Tentar Novamente", variante="primario",
                                           largura=150, altura=40)
         self.botao_cancelar = blocos.botao("Ignorar e Continuar", variante="contorno", largura=150, altura=40)
         for botao in (self.botao_repetir, self.botao_cancelar):
@@ -169,9 +166,8 @@ class _DelegadoDaCaixa(QStyledItemDelegate):
     Clicar na caixa OU no texto alterna, como lá; o resto da linha, não.
     """
 
-    def __init__(self, parent, *, cor_marcada: str) -> None:
+    def __init__(self, parent) -> None:
         super().__init__(parent)
-        self._cor_marcada = cor_marcada
 
     @staticmethod
     def _marcada(index) -> bool:
@@ -184,9 +180,9 @@ class _DelegadoDaCaixa(QStyledItemDelegate):
     def paint(self, pintor, option, index) -> None:
         r = option.rect
         # pack(pady=2): a caixa fica 2 px abaixo do topo da linha de 28.
-        controles.pintar_caixa(pintor, r.x(), r.y() + 2, self._marcada(index), self._cor_marcada)
+        controles.pintar_caixa(pintor, r.x(), r.y() + 2, self._marcada(index))
         pintor.save()
-        pintor.setPen(QColor(controles.COR_TEXTO_CTK))
+        pintor.setPen(controles.cor_do_texto(True))
         pintor.setFont(option.font)
         x_texto = r.x() + controles.LADO_CAIXA + controles.VAO_TEXTO_CAIXA
         pintor.drawText(QRect(x_texto, r.y(), r.right() - x_texto, r.height()),
@@ -221,8 +217,7 @@ class SelecaoComCaixasDialog(IgnoraEsc, QDialog):
     Esc não fecha (`IgnoraEsc`): as fichas podem ter sido marcadas uma a uma.
     """
 
-    def __init__(self, parent, *, titulo: str, mensagem: str, itens: list[str],
-                 cor_caixa: str = theme.COLORS["primary"]) -> None:
+    def __init__(self, parent, *, titulo: str, mensagem: str, itens: list[str]) -> None:
         super().__init__(parent)
         self.setWindowTitle(titulo)
         self.resize(450, 600)
@@ -231,16 +226,16 @@ class SelecaoComCaixasDialog(IgnoraEsc, QDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addSpacing(10)                           # rótulo: pady=10
-        self.rotulo = blocos.rotulo(mensagem, tamanho=14, negrito=True, cor=controles.COR_TEXTO_CTK)
+        self.rotulo = blocos.rotulo(mensagem, tamanho=14, negrito=True)
         layout.addWidget(self.rotulo)
         layout.addSpacing(15)                           # rótulo (…, 10) + quadro (5, …)
-        # CTkScrollableFrame(padx=10): quadro #212121 de cantos 6; a lista começa
+        # CTkScrollableFrame(padx=10): quadro de cantos 6 (`#quadro_caixas` da folha); a lista começa
         # 6 px para dentro, e a barra de rolagem (16 px) encosta 1 px da borda.
         self.quadro = QFrame(objectName="quadro_caixas")
         dentro = QVBoxLayout(self.quadro)
         dentro.setContentsMargins(6, 6, 1, 6)
         self.lista = QListWidget(objectName="lista_caixas")
-        self.lista.setItemDelegate(_DelegadoDaCaixa(self.lista, cor_marcada=cor_caixa))
+        self.lista.setItemDelegate(_DelegadoDaCaixa(self.lista))
         self.lista.setSelectionMode(QListWidget.SelectionMode.NoSelection)
         self.lista.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.lista.setUniformItemSizes(True)
@@ -260,8 +255,7 @@ class SelecaoComCaixasDialog(IgnoraEsc, QDialog):
         linha.setContentsMargins(10, 0, 10, 0)          # Todos: padx=10; CONFIRMAR: padx=10
         self.botao_todos = blocos.botao("Todos", variante="cinza", largura=80)
         self.botao_todos.clicked.connect(self._marcar_todos)
-        self.botao_confirmar = blocos.botao("CONFIRMAR", variante="acento", largura=150,
-                                            cor_texto="#161616")
+        self.botao_confirmar = blocos.botao("CONFIRMAR", variante="acento", largura=150)
         self.botao_confirmar.clicked.connect(self.accept)
         linha.addWidget(self.botao_todos)
         linha.addStretch()

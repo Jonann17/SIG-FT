@@ -25,9 +25,8 @@ from PySide6.QtWidgets import QDialog, QLabel, QTextEdit, QVBoxLayout
 from shiboken6 import isValid
 
 from sigft import _build_info
-from sigft.app import theme
 from sigft.app.atualizacao_textos import data_br, notas_para_exibir
-from sigft.app_qt import estilo
+from sigft.app_qt import nome as nome_da_pessoa
 from sigft.app_qt.widgets import blocos
 from sigft.core import novidades
 from sigft.services import updater
@@ -41,7 +40,6 @@ TEXTO_OK = "OK"
 # e pintar. Não é pausa da abertura -- o timer roda no laço de eventos.
 ATRASO_MS = 1500
 
-_COR_ROTULO_CTK = estilo.cinza_tk("gray84")
 _LARGURA_DO_TEXTO = 530
 
 
@@ -92,6 +90,12 @@ def mostrar_se_houver(janela, *, versao_atual: str, empacotado: bool,
     try:
         if not janela.isVisible() or _aviso_de_atualizacao_aberto(janela):
             return None
+        # [2026-10-20] A pergunta do nome vem antes (`app_qt/nome.py`): com ela
+        # na tela, as novidades esperam a resposta em vez de abrir por cima.
+        if (pergunta := nome_da_pessoa.pergunta_aberta(janela)) is not None:
+            pergunta.finished.connect(partial(_mostrar_depois_da_pergunta, janela,
+                                              versao_atual, empacotado, config_path))
+            return None
         bloco = novidades.para_mostrar_na_abertura(
             versao_atual, empacotado=empacotado, config_path=config_path)
         if bloco is None:
@@ -107,8 +111,14 @@ def mostrar_se_houver(janela, *, versao_atual: str, empacotado: bool,
         return None
 
 
-def _rotulo(texto: str, *, tamanho: int, cor: str, negrito: bool = False) -> QLabel:
-    rotulo = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, cor=cor, alinhar="esquerda")
+def _mostrar_depois_da_pergunta(janela, versao_atual, empacotado, config_path, _codigo=None):
+    if isValid(janela):
+        mostrar_se_houver(janela, versao_atual=versao_atual, empacotado=empacotado,
+                          config_path=config_path)
+
+
+def _rotulo(texto: str, *, tamanho: int, papel: str | None = None, negrito: bool = False) -> QLabel:
+    rotulo = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, papel=papel, alinhar="esquerda")
     rotulo.setWordWrap(True)
     rotulo.setMaximumWidth(_LARGURA_DO_TEXTO)
     return rotulo
@@ -136,12 +146,11 @@ class JanelaNovidades(QDialog):
         lay.setSpacing(0)
 
         lay.addSpacing(20)
-        self.rotulo_titulo = _rotulo(titulo_da_janela(bloco), tamanho=16, negrito=True,
-                                     cor=_COR_ROTULO_CTK)
+        self.rotulo_titulo = _rotulo(titulo_da_janela(bloco), tamanho=16, negrito=True)
         lay.addWidget(self.rotulo_titulo)
         lay.addSpacing(4)
         self.rotulo_resumo = _rotulo(subtitulo_da_janela(bloco), tamanho=13,
-                                     cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO_CLARO))
+                                     papel="legenda")
         lay.addWidget(self.rotulo_resumo)
         lay.addSpacing(14)
 

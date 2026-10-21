@@ -3,7 +3,6 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from sigft.app import theme
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos
 
@@ -33,12 +32,15 @@ def test_botao_fica_com_a_altura_pedida(com_folha, qtbot, variante, altura):
     assert b.width() == 200
 
 
-def test_cor_do_texto_nao_vale_para_o_botao_desligado(com_folha, qtbot):
-    b = blocos.botao("x", altura=40, cor_texto="#FFFFFF")
+def test_botao_nao_tem_cor_de_texto_propria(com_folha, qtbot):
+    # 2026-10-20: o `cor_texto` saiu (cor só na folha do tema; uma cor escrita no
+    # botão ficaria escura no tema claro). Ligado e desligado, quem pinta o texto
+    # é a regra da variante.
+    b = blocos.botao("x", altura=40)
     qtbot.addWidget(b)
-    folha = b.styleSheet()
-    assert "color: #FFFFFF" in folha
-    assert f"QPushButton:disabled {{ color: {estilo.cinza_tk('gray60')}; }}" in folha
+    assert "color" not in b.styleSheet()
+    with pytest.raises(TypeError):
+        blocos.botao("x", cor_texto="#FFFFFF")
 
 
 def test_rotulo_com_quebra_ocupa_a_largura_do_cartao(com_folha, qtbot):
@@ -48,7 +50,7 @@ def test_rotulo_com_quebra_ocupa_a_largura_do_cartao(com_folha, qtbot):
     tela.resize(800, 400)
     corpo = blocos.cartao(QVBoxLayout(tela))
     texto = "Primeira linha bem comprida do texto de apoio.\nSegunda.\nTerceira linha."
-    corpo.addWidget(r := blocos.rotulo(texto, cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO)))
+    corpo.addWidget(r := blocos.rotulo(texto, papel="legenda"))
     qtbot.addWidget(tela)
     tela.show()
     qtbot.waitExposed(tela)
@@ -113,10 +115,11 @@ def test_rotulo_elidido_sem_espaco_corta_no_meio_e_nao_alarga(com_folha, qtbot):
 
 
 def test_rotulo_elidido_desenha_o_texto_visivel(com_folha, qtbot):
-    # O que se vê é o texto elidido, na cor da folha do rótulo.
+    # O que se vê é o texto elidido, na cor da folha do rótulo (o papel `ok`,
+    # verde, desde 2026-10-20: o rótulo não tem mais cor própria).
     from PySide6.QtGui import QColor
 
-    r = blocos.rotulo(NOME_LONGO, alinhar="esquerda", cor="#00FF00", elidir=True)
+    r = blocos.rotulo(NOME_LONGO, alinhar="esquerda", papel="ok", elidir=True)
     tela = _linha_de_arquivo(r)
     qtbot.addWidget(tela)
     tela.resize(400, 40)
@@ -140,7 +143,7 @@ def test_area_rolavel_com_a_barra_sempre_visivel_e_o_recorte_do_ctk(com_folha, q
     tela = QWidget()
     raiz = QVBoxLayout(tela)
     raiz.setContentsMargins(0, 0, 0, 0)
-    area, corpo = blocos.area_rolavel(raiz, cor="gray13", barra_sempre_visivel=True)
+    area, corpo = blocos.area_rolavel(raiz, fundo="tela", barra_sempre_visivel=True)
     rotulo = blocos.rotulo("linha", alinhar="esquerda")
     corpo.addWidget(rotulo)
     qtbot.addWidget(tela)
@@ -163,7 +166,7 @@ def test_area_rolavel_com_a_barra_sempre_visivel_e_o_recorte_do_ctk(com_folha, q
 
 
 def test_area_rolavel_sem_o_parametro_continua_igual(com_folha, qtbot):
-    area, corpo = blocos.area_rolavel(cor="gray13")
+    area, corpo = blocos.area_rolavel(fundo="tela")
     qtbot.addWidget(area)
     assert area.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
     margens = corpo.contentsMargins()
@@ -193,7 +196,9 @@ def test_marcar_arquivo_escolhido_nao_acumula(com_folha, qtbot):
     blocos.marcar_arquivo_escolhido(b, r, "/d/c.xlsx")
     assert (b.styleSheet(), r.styleSheet()) == folhas
     assert r.text() == "c.xlsx" and r.toolTip() == "/d/c.xlsx"
-    assert theme.COLORS["accent"] in r.styleSheet() and theme.COLORS["primary"] in b.styleSheet()
+    # 2026-10-20: a cor é da folha do tema, pelo papel e pela variante.
+    assert r.property("papel") == "ok" and b.property("variante") == "primario"
+    assert "color" not in r.styleSheet() and "background" not in b.styleSheet()
 
 
 def test_botao_nao_pega_foco_e_nenhuma_tecla_o_aperta(com_folha, qtbot):

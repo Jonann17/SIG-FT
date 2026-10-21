@@ -18,7 +18,7 @@ from sigft.app import backends, theme
 from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA, MSG_LOGIN_PAGINA_PRINCIPAL
 from sigft.app_qt import estilo
 from sigft.app_qt.views import cria_fichas as tela_mod
-from sigft.app_qt.widgets import controles, revisao_portal
+from sigft.app_qt.widgets import revisao_portal
 from sigft.app_qt.views.janelas import DecisaoRobo
 
 COLORS = theme.COLORS
@@ -232,7 +232,8 @@ def test_monta_com_os_textos_e_estados(tela):
     assert tela.btn_run_auto.text() == "4. Robô Web"
     assert tela.btn_resumo.text() == "Ver Resumo"
     assert tela.btn_save.text() == "5. Salvar no Excel"
-    assert tela.btn_reset.text() == estilo.mono("🗑️\nLimpar")      # emoji fixo: preto e branco
+    # O "🗑️" da primeira linha virou o ícone "trash-2" (sistema visual, 2026-10-20).
+    assert tela.btn_reset.text() == "Limpar" and tela.btn_reset.property("icone") == "trash-2"
     for b in (tela.btn_run_ai, tela.btn_run_auto, tela.btn_resumo, tela.btn_save):
         assert not b.isEnabled()
     assert tela.btn_reset.isEnabled() and tela.btn_pmib.isEnabled()
@@ -245,7 +246,9 @@ def test_monta_com_os_textos_e_estados(tela):
     assert tela.btn_excel_edicao.text() == "Abrir Excel e Selecionar"
     assert tela.lbl_status_edicao.text() == "Nenhum item selecionado."
     assert tela.rotulo_etapa2_edicao.text() == "2. Execução em Massa"
-    assert tela.btn_run_edicao.text() == estilo.mono("▶ Iniciar Robô de Edição")
+    # O "▶" virou o ícone "play" (2026-10-20).
+    assert tela.btn_run_edicao.text() == "Iniciar Robô de Edição"
+    assert tela.btn_run_edicao.property("icone") == "play"
     assert not tela.btn_run_edicao.isEnabled()
     assert tela.progress_edicao.fracao == 0.0
 
@@ -256,26 +259,28 @@ def test_cores_dos_botoes_e_rotulos(tela):
     for b in (tela.btn_run_ai, tela.btn_run_auto, tela.btn_save, tela.btn_run_edicao):
         assert b.property("variante") == "primario"
     assert tela.btn_reset.property("variante") == "perigo"
+    # 2026-10-20: nenhum botão ou rótulo tem cor própria (a folha do tema pinta pela
+    # variante e pelo papel; uma cor escrita aqui ficaria escura no tema claro).
     for b in (tela.btn_run_ai, tela.btn_run_auto, tela.btn_resumo, tela.btn_save, tela.btn_reset,
               tela.btn_run_edicao):
-        assert f"color: {COLORS['text_white']}" in _folha(b)
+        assert "color" not in _folha(b)
     assert "font-size: 14px" in _folha(tela.btn_run_ai) and "bold" in _folha(tela.btn_run_ai)
     assert "font-size: 12px" in _folha(tela.btn_resumo) and "font-size: 12px" in _folha(tela.btn_save)
     for r in (tela.rotulo_etapa1, tela.rotulo_etapa2, tela.rotulo_etapa1_edicao, tela.rotulo_etapa2_edicao):
-        assert COLORS["accent"] in _folha(r) and "16px" in _folha(r)
-    assert "#808080" in _folha(tela.lbl_status) and "#808080" in _folha(tela.lbl_status_edicao)
-    # CTkLabel sem text_color: o gray84 do tema (#D6D6D6), não o text_light do app.
+        assert r.property("papel") == "destaque" and "16px" in _folha(r)
+    assert tela.lbl_status.property("papel") == "legenda"
+    assert tela.lbl_status_edicao.property("papel") == "legenda"
+    # CTkLabel sem text_color: o texto comum da folha.
     for r in (tela.rotulo_projeto, tela.rotulo_pmib, tela.rotulo_novo_projeto, tela.rotulo_excel_edicao):
-        assert f"color: {controles.COR_TEXTO_CTK}" in _folha(r), r.text()
-    assert controles.COR_TEXTO_CTK == "#D6D6D6"
-    assert COLORS["accent"] in tela.progress.styleSheet()
-    assert COLORS["accent"] in tela.progress_edicao.styleSheet()
-    # O "▶" sai da fonte de símbolos (só o triângulo, como no Tk), não do Noto
-    # Emoji (o "play" dentro de um quadrado).
-    familias = _folha(tela.btn_run_edicao)
-    assert familias.index("Segoe UI Symbol") < familias.index("DejaVu Sans") < familias.index("Noto Emoji")
-    assert tela.chk_pular._cor_marcada == COLORS["primary"]
-    assert tela.chk_pular._cor_hover == COLORS["primary_hover"]
+        assert r.property("papel") is None and "color" not in _folha(r), r.text()
+    assert "background" not in tela.progress.styleSheet()   # o progresso é a `primaria` da folha
+    assert "background" not in tela.progress_edicao.styleSheet()
+    # O "▶" saía de uma fonte de símbolos (o Roboto não o tem, e o Noto Emoji
+    # desenhava o "play" dentro de um quadrado). Desde 2026-10-20 é o ícone
+    # Lucide, na cor do texto do botão: a fonte de símbolos saiu.
+    assert "font-family" not in _folha(tela.btn_run_edicao)
+    assert not tela.btn_run_edicao.icon().isNull()
+    assert not hasattr(tela.chk_pular, "_cor_marcada")   # a caixa pinta com a paleta do tema
 
 
 def test_enter_nao_dispara_nenhum_botao(tela):
@@ -290,10 +295,11 @@ def test_enter_nao_dispara_nenhum_botao(tela):
 def test_pular_ia_desliga_o_pdm_e_liga_o_processar(tela):
     tela.chk_pular.click()
     assert tela.chk_pular.isChecked()
-    assert not tela.btn_pdm.isEnabled() and "background: #2B2B2B" in _folha(tela.btn_pdm)
+    # 2026-10-20: "apagado" é o secundário desligado (era o #2B2B2B escrito à mão).
+    assert not tela.btn_pdm.isEnabled() and tela.btn_pdm.property("variante") == "secundario"
     assert tela.btn_run_ai.isEnabled() and tela.btn_run_ai.text() == "3. Processar (Direto)"
     tela.chk_pular.click()
-    assert tela.btn_pdm.isEnabled() and "background: #3A3A3A" in _folha(tela.btn_pdm)
+    assert tela.btn_pdm.isEnabled() and tela.btn_pdm.property("variante") == "secundario"
     # Desmarcar não desliga o botão (como lá): só volta o texto.
     assert tela.btn_run_ai.isEnabled() and tela.btn_run_ai.text() == "3. Analisar (IA)"
 
@@ -357,10 +363,9 @@ def test_pos_selecao_numera_do_zero_e_marca_o_botao(tela, qtbot, pd):
     assert list(tela.df_data_selecionado.index) == [0, 1, 2]
     assert list(tela.df_data_selecionado["DESCRIÇÃO"]) == ["ITEM 2", "ITEM 4", "ITEM 5"]
     assert tela.lbl_status.text() == "3 itens selecionados"
-    assert COLORS["accent"] in _folha(tela.lbl_status)
-    assert f"background: {COLORS['primary']}" in _folha(tela.btn_pmib)
-    assert "#454545" in _folha(tela.btn_pmib)          # o hover continua o de antes
-    assert "background: #3A3A3A" in _folha(tela.btn_pdm)
+    assert tela.lbl_status.property("papel") == "ok"
+    assert tela.btn_pmib.property("variante") == "primario"
+    assert tela.btn_pdm.property("variante") == "secundario"
     _esperar_log(qtbot, tela, "> Selecionado: 3 itens.")
 
 
@@ -372,9 +377,9 @@ def test_planilha_de_pdms(tela, qtbot, monkeypatch):
     assert pedidos == [(("cria_fichas.excel_pdm", "excel"), {"filetypes": [("Arquivos Excel", "*.xlsx;*.xls")]})]
     assert tela.file_path_pdm == "/d/pdms/PDM_MASTER.xlsx"
     assert tela.btn_run_ai.isEnabled()
-    assert f"background: {COLORS['primary']}" in _folha(tela.btn_pdm)
+    assert tela.btn_pdm.property("variante") == "primario"
     assert tela.lbl_status_pdm.text() == "Selecionado: PDM_MASTER.xlsx"
-    assert COLORS["accent"] in _folha(tela.lbl_status_pdm)
+    assert tela.lbl_status_pdm.property("papel") == "ok"
     _esperar_log(qtbot, tela, "> PDMs carregados: PDM_MASTER.xlsx")
 
 
@@ -453,7 +458,7 @@ def test_revisao_confirmada_libera_o_robo(tela, qtbot, pd):
     tela.revisoes[0].confirmar(revisado)
     assert tela.df_processed is revisado
     assert tela.btn_run_auto.isEnabled()
-    assert f"background: {COLORS['accent']}" in _folha(tela.btn_run_auto)
+    assert tela.btn_run_auto.property("variante") == "primario"
     assert not tela.btn_run_ai.isEnabled() and tela.btn_run_ai.text() == "3. Analisar (OK)"
     _esperar_log(qtbot, tela, "> Revisão OK. 3 itens prontos.")
     # Depois da cadeia, o "Pular IA" volta a religar o botão (como lá).
@@ -1051,13 +1056,13 @@ def test_limpar_volta_tudo_ao_comeco(tela, qtbot, pd):
     assert tela.catalogo is None
     assert tela.df_edicao_completo is None and tela.df_edicao_selecionado is None
     assert tela.entry_projeto.text() == "" and tela.entry_novo_projeto.text() == ""
-    assert tela.lbl_status.text() == "Aguardando..." and "#808080" in _folha(tela.lbl_status)
+    assert tela.lbl_status.text() == "Aguardando..." and tela.lbl_status.property("papel") == "legenda"
     assert tela.lbl_status_pdm.text() == ""
-    assert "background: #3A3A3A" in _folha(tela.btn_pmib) and "background: #3A3A3A" in _folha(tela.btn_pdm)
+    assert tela.btn_pmib.property("variante") == "secundario" and tela.btn_pdm.property("variante") == "secundario"
     assert tela.btn_run_ai.text() == "3. Analisar (IA)"
     for b in (tela.btn_run_ai, tela.btn_run_auto, tela.btn_resumo, tela.btn_save, tela.btn_run_edicao):
         assert not b.isEnabled()
-    assert f"background: {COLORS['primary']}" in _folha(tela.btn_run_auto)
+    assert tela.btn_run_auto.property("variante") == "primario"
     assert tela.progress.fracao == 0.0 and tela.progress_edicao.fracao == 0.0
     assert tela.lbl_status_edicao.text() == "Nenhum item selecionado."
     _esperar_log(qtbot, tela, "> Sistema limpo. Pronto para iniciar um novo lote.")
@@ -1102,8 +1107,8 @@ def test_pos_selecao_edicao(tela, qtbot, pd):
     tela.df_edicao_completo = pd.DataFrame({"DESCRIÇÃO": ["A", "B", "C"], "CÓDIGO PMIB": ["1", "2", "3"]})
     tela.pos_selecao_edicao([0, 2])
     assert tela.lbl_status_edicao.text() == "2 fichas selecionadas"
-    assert COLORS["accent"] in _folha(tela.lbl_status_edicao)
-    assert f"background: {COLORS['primary']}" in _folha(tela.btn_excel_edicao)
+    assert tela.lbl_status_edicao.property("papel") == "ok"
+    assert tela.btn_excel_edicao.property("variante") == "primario"
     assert tela.btn_run_edicao.isEnabled()
     _esperar_log(qtbot, tela, "> Aba Edição: Selecionado 2 fichas para editar.")
     tela.pos_selecao_edicao([])
@@ -1268,7 +1273,6 @@ def test_tarefas_em_thread_comum(tela, robo, qtbot):
 # --- medidas --------------------------------------------------------------------------------
 
 def _medir(qt_interface, qtbot, altura=850):
-    from sigft.app_qt import estilo
 
     qt_interface.setStyleSheet(estilo.folha_de_estilo())
     t = tela_mod.ModuloCriaFichas(None, None)
@@ -1285,6 +1289,7 @@ def _r(t, w):
 
 
 def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Medidas da tela antiga (janela 1280x850, winfo_*, x menos os 277 da barra
     # lateral): título (40, 30) h29; Tabview (40, 69) 923x471, aba (46, 112)
     # 911x422; área rolável recuada 6 (largura 888), barra em x=940;
@@ -1296,39 +1301,40 @@ def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
     anterior = qt_interface.styleSheet()
     try:
         t = _medir(qt_interface, qtbot)
-        qtbot.waitUntil(lambda: t.abas.height() == 471, timeout=1000)
-        assert _r(t, t.label_titulo)[:2] == (40, 30) and _r(t, t.label_titulo)[3] == 29
-        assert _r(t, t.abas) == (40, 69, 923, 471)
-        assert _r(t, t.abas.tab("Criação de Fichas")) == (46, 112, 911, 422)
+        qtbot.waitUntil(lambda: t.abas.height() == 472, timeout=1000)
+        assert _r(t, t.label_titulo)[:2] == (40, 30) and _r(t, t.label_titulo)[3] == 27
+        assert _r(t, t.abas) == (40, 67, 923, 472)
+        assert _r(t, t.abas.tab("Criação de Fichas")) == (46, 110, 911, 423)
         assert _r(t, t.area_criacao.verticalScrollBar())[0] == 940
-        assert _r(t, t.cartao_config) == (52, 128, 888, 172)
-        assert _r(t, t.rotulo_etapa1)[:2] == (67, 138) and _r(t, t.rotulo_etapa1)[3] == 28
+        assert _r(t, t.cartao_config) == (52, 126, 888, 176)
+        assert _r(t, t.rotulo_etapa1)[:2] == (67, 136) and _r(t, t.rotulo_etapa1)[3] == 28
         assert _r(t, t.rotulo_projeto) == (67, 181, 150, 28)
-        assert _r(t, t.entry_projeto) == (217, 181, 698, 28)
-        assert _r(t, t.rotulo_pmib) == (67, 219, 150, 28)
-        assert _r(t, t.btn_pmib) == (217, 219, 200, 28)
-        assert _r(t, t.lbl_status)[:2] == (427, 219) and _r(t, t.lbl_status)[3] == 28
+        assert _r(t, t.entry_projeto) == (217, 179, 698, 32)
+        assert _r(t, t.rotulo_pmib) == (67, 221, 150, 28)
+        assert _r(t, t.btn_pmib) == (217, 221, 200, 28)
+        assert _r(t, t.lbl_status)[:2] == (427, 221) and _r(t, t.lbl_status)[3] == 28
         x, y, w, h = _r(t, t.chk_pular)
-        assert (x, y, h) == (67, 264, 24)
+        assert (x, y, h) == (67, 266, 24)
         xb, yb, wb, hb = _r(t, t.btn_pdm)
-        assert (xb, yb, hb) == (x + w + 20, 262, 28)
+        assert (xb, yb, hb) == (x + w + 20, 264, 28)
         assert abs(wb - 231) <= 6                                  # texto + 7 de cada lado
         assert _r(t, t.lbl_status_pdm)[0] == xb + wb + 20
-        assert _r(t, t.cartao_acoes) == (52, 320, 888, 196)
-        assert _r(t, t.rotulo_etapa2)[:2] == (67, 330)
-        assert _r(t, t.btn_run_ai) == (67, 378, 374, 40)
-        assert _r(t, t.btn_run_auto) == (451, 378, 359, 40)
-        assert _r(t, t.btn_resumo) == (67, 428, 374, 40)
-        assert _r(t, t.btn_save) == (451, 428, 359, 40)
-        assert _r(t, t.btn_reset) == (825, 378, 100, 90)
-        assert _r(t, t.progress) == (67, 493, 858, 8)
+        assert _r(t, t.cartao_acoes) == (52, 322, 888, 196)
+        assert _r(t, t.rotulo_etapa2)[:2] == (67, 332)
+        assert _r(t, t.btn_run_ai) == (67, 380, 374, 40)
+        assert _r(t, t.btn_run_auto) == (451, 380, 359, 40)
+        assert _r(t, t.btn_resumo) == (67, 430, 374, 40)
+        assert _r(t, t.btn_save) == (451, 430, 359, 40)
+        assert _r(t, t.btn_reset) == (825, 380, 100, 90)
+        assert _r(t, t.progress) == (67, 495, 858, 8)
         assert t.progress.value() == 9                             # set(0): o ponto de 8 px
-        assert _r(t, t.console) == (40, 550, 923, 270)
+        assert _r(t, t.console) == (40, 549, 923, 271)
     finally:
         qt_interface.setStyleSheet(anterior)
 
 
 def test_medidas_da_aba_de_edicao(qt_interface, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # interface antiga: cartões com padx=10 -> (62, 128) 868x134 e (62, 282) 868x146;
     # "Novo Código do Projeto:" 180 de largura, campo (257, 181) 648x28;
     # botão (257, 224) 200x28, rótulo em x=467; Iniciar (77, 340) 838x40;
@@ -1339,24 +1345,25 @@ def test_medidas_da_aba_de_edicao(qt_interface, qtbot):
         t.abas.botoes["Editar código do projeto"].click()
         assert t.abas.get() == "Editar código do projeto"
         qtbot.waitUntil(lambda: t.cartao_config_edicao.width() == 868, timeout=1000)
-        assert _r(t, t.cartao_config_edicao) == (62, 128, 868, 134)
-        assert _r(t, t.rotulo_etapa1_edicao)[:2] == (77, 138)
+        assert _r(t, t.cartao_config_edicao) == (62, 126, 868, 138)
+        assert _r(t, t.rotulo_etapa1_edicao)[:2] == (77, 136)
         assert _r(t, t.rotulo_novo_projeto) == (77, 181, 180, 28)
-        assert _r(t, t.entry_novo_projeto) == (257, 181, 648, 28)
-        assert _r(t, t.rotulo_excel_edicao) == (77, 224, 180, 28)
-        assert _r(t, t.btn_excel_edicao) == (257, 224, 200, 28)
-        assert _r(t, t.lbl_status_edicao)[:2] == (467, 224)
-        assert _r(t, t.cartao_acoes_edicao) == (62, 282, 868, 146)
-        assert _r(t, t.rotulo_etapa2_edicao)[:2] == (77, 292)
-        assert _r(t, t.btn_run_edicao) == (77, 340, 838, 40)
-        assert _r(t, t.progress_edicao) == (77, 405, 838, 8)
+        assert _r(t, t.entry_novo_projeto) == (257, 179, 648, 32)
+        assert _r(t, t.rotulo_excel_edicao) == (77, 226, 180, 28)
+        assert _r(t, t.btn_excel_edicao) == (257, 226, 200, 28)
+        assert _r(t, t.lbl_status_edicao)[:2] == (467, 226)
+        assert _r(t, t.cartao_acoes_edicao) == (62, 284, 868, 146)
+        assert _r(t, t.rotulo_etapa2_edicao)[:2] == (77, 294)
+        assert _r(t, t.btn_run_edicao) == (77, 342, 838, 40)
+        assert _r(t, t.progress_edicao) == (77, 407, 838, 8)
         assert _r(t, t.area_edicao.verticalScrollBar())[0] == 940
     finally:
         qt_interface.setStyleSheet(anterior)
 
 
 @pytest.mark.parametrize("altura_janela, abas, console", [
-    (850, 471, 270), (700, 358, 233), (600, 283, 208), (1000, 583, 308), (640, 313, 218), (500, 209, 182),
+    # 2026-10-20: título de 22 e campos/botões de 32 do sistema visual; a CTk saiu em 2026-10-15.
+    (850, 472, 271), (700, 360, 233), (600, 285, 208), (1000, 585, 308), (640, 315, 218), (500, 210, 183),
 ])
 def test_abas_e_console_dividem_a_altura_como_o_grid_do_tk(qt_interface, qtbot, altura_janela, abas, console):
     # grid do Tk: linha 1 (Tabview, weight=3, pede 261) e linha 2 (console,

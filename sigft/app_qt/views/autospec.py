@@ -16,7 +16,8 @@ atributos da tela antiga (`_build_conferencia`, `_conferencia_mostrar`,
 `lista_conf`, `btn_conf`, `btn_conf_salvar`, `btn_conf_importar`), e com as
 três coisas de fora da classe: `webbrowser`, o import de
 `autospec_conferencia as conferencia_txt` no topo (fora do carregamento
-preguiçoso, de propósito) e `COLORS["warning"]`. `_novo_core` continua sendo a
+preguiçoso, de propósito) e o papel `aviso` da folha (era a cor de aviso
+escrita na tela, até 2026-10-20). `_novo_core` continua sendo a
 ÚNICA construção do `AutoSpecCore`, usada pelos dois workers.
 
 Os invariantes que `tests/test_autospec_conferencia_tela.py` provava na tela
@@ -42,8 +43,7 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QSizePolicy, QWidget
 
 from sigft.app import backends
-from sigft.app.theme import COLORS
-from sigft.app_qt import estilo, file_dialogs, interface
+from sigft.app_qt import estilo, file_dialogs, icones, interface
 from sigft.app_qt.widgets import blocos, controles
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.services import autospec_conferencia as conferencia_txt
@@ -54,48 +54,43 @@ ALTURA_CONSOLE = 120
 # e o que rola some 6 px antes da borda (`blocos.area_rolavel(barra_sempre_visivel=True)`:
 # na fila e na conferência, as linhas ficam dentro do retângulo escuro de cantos redondos).
 RECUO_ROLAGEM = 6
-# Os dois quadros roláveis de dentro (fila e conferência): fundo #1E1E1E e
-# 212 de altura. Lá pedem 150 e 190, mas a CTkScrollbar vertical mede 200 e
-# manda na linha do grid: 200 + 2 * 6 (medido nas duas).
-COR_LISTA = "#1E1E1E"
+# Os dois quadros roláveis de dentro (fila e conferência): mais fundos que o
+# cartão (o `fundo` do tema, `area_rolavel(fundo="tela")`) e 212 de altura. Lá
+# pedem 150 e 190, mas a CTkScrollbar vertical mede 200 e manda na linha do
+# grid: 200 + 2 * 6 (medido nas duas).
 ALTURA_QUADRO_INTERNO = 212
-# CTkLabel sem `text_color`: gray84 (o do tema); "gray" do Tk = #808080.
-COR_ROTULO = controles.COR_TEXTO_CTK
-CINZA = estilo.cinza_tk("gray")
 # Rótulos com `wraplength`: Roboto 11 no Tk tem 14 px por linha (3 linhas =
 # 42, medido); o Qt usa 13. A altura mínima é a medida lá (3 linhas).
 ALTURA_LINHA_PEQUENA = 14
 ALTURA_TEXTO_3_LINHAS = 3 * ALTURA_LINHA_PEQUENA
 QUEBRA_TEXTOS = 680
 QUEBRA_CONFERENCIA_VAZIA = 650
-# O link da conferência: CTkButton transparente com cara de link, escrito à mão lá.
-COR_LINK = "#6FB3FF"
-COR_LINK_HOVER = "#333333"
 # CTkCheckBox(text="", width=24, checkbox_width=18, checkbox_height=18): a
 # caixa de 18, o vão de 6 e o rótulo vazio de 1 px -- 25 x 24 medidos.
 LADO_CAIXA_CONF = 18
 TAMANHO_CAIXA_CONF = QSize(25, 24)
 
 
-def _rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, cor: str = COR_ROTULO,
+def _rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, papel: str | None = None,
             alinhar: str = "esquerda") -> QLabel:
     """CTkLabel de uma linha, `anchor="w"`, 28 px de altura.
 
     Texto PURO: estes rótulos mostram dado da pessoa (nome de arquivo, material),
     e no formato automático o QLabel leria um "<b>...</b>" como HTML."""
-    r = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, cor=cor, alinhar=alinhar)
+    r = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, papel=papel, alinhar=alinhar)
     r.setTextFormat(Qt.TextFormat.PlainText)
     r.setWordWrap(False)
     r.setFixedHeight(blocos.ALTURA_MINIMA_ROTULO)
     return r
 
 
-def _pintar(rotulo: QLabel, cor: str, *, tamanho: int = 13) -> None:
-    """O `configure(text_color=...)` do CTkLabel."""
-    rotulo.setStyleSheet(f"font-size: {tamanho}px; background: transparent; color: {cor};")
+def _pintar(rotulo: QLabel, papel: str | None) -> None:
+    """O `configure(text_color=...)` do CTkLabel: o papel de texto da folha
+    (`legenda`), ou o texto comum com `None`."""
+    estilo.definir_papel(rotulo, papel)
 
 
-def _texto_quebrado(texto: str, *, cor: str, quebra: int, tamanho: int = 11) -> QLabel:
+def _texto_quebrado(texto: str, *, quebra: int, papel: str | None = None, tamanho: int = 11) -> QLabel:
     """CTkLabel com `wraplength` e `justify="left"`: quebra em `quebra` px, com
     a linha de 14 px do Tk. Texto FIXO da tela (vai como HTML)."""
     r = QLabel()
@@ -108,21 +103,24 @@ def _texto_quebrado(texto: str, *, cor: str, quebra: int, tamanho: int = 11) -> 
     # pode caber em 2: o resto da tela não sobe por isso.
     r.setMinimumHeight(ALTURA_TEXTO_3_LINHAS)
     r.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-    r.setStyleSheet(f"font-size: {tamanho}px; background: transparent; color: {cor};")
+    if papel:
+        r.setProperty("papel", papel)
+    r.setStyleSheet(f"font-size: {tamanho}px; background: transparent;")
     return r
 
 
 def _cartao(corpo, *, borda: str | None = None, fim: int = 15):
-    """CTkFrame #2B2B2B de cantos 8: peças com padx=15, título com pady 10.
+    """O cartão (`blocos.cartao`): peças com padx=15, título com pady 10.
 
-    `borda` = o `border_width=1` + `border_color` da tela antiga. Lá a borda é desenhada
+    `borda` = o `border_width=1` da tela antiga, pelo papel: "destaque" (a
+    `primaria`) ou "aviso" -- regra `#cartao[borda=...]` da folha. Lá a borda é desenhada
     no canvas e não empurra os filhos; aqui ela come 1 px do conteúdo, que sai
     das margens."""
     layout = blocos.cartao(corpo)
     quadro = layout.parentWidget()
     folga = 0
     if borda:
-        quadro.setStyleSheet(f"#cartao {{ border: 1px solid {borda}; }}")
+        quadro.setProperty("borda", borda)
         folga = 1
     layout.setContentsMargins(15 - folga, 10 - folga, 15 - folga, fim - folga)
     layout.setSpacing(0)
@@ -238,13 +236,13 @@ class ModuloAutoSpec(ModuleFrame):
         corpo.addSpacing(10)                            # frm_status: pady=10
         self.cartao_status, status = _cartao(corpo)
         self.rotulo_secao1 = _rotulo("1. Arquivo de Referência", tamanho=14, negrito=True,
-                                     cor=COLORS["accent"])
+                                     papel="destaque")
         status.addWidget(self.rotulo_secao1)
         status.addSpacing(10)                           # título (…, 10); a linha: pady=(0, 15)
         linha = QHBoxLayout()
         linha.setContentsMargins(0, 0, 0, 0)
         linha.setSpacing(0)
-        self.lbl_status = _rotulo("Nenhum _STATUS_PMIB selecionado", cor=CINZA)
+        self.lbl_status = _rotulo("Nenhum _STATUS_PMIB selecionado", papel="legenda")
         _sem_largura_minima(self.lbl_status)
         linha.addWidget(self.lbl_status, 1)
         self.btn_status = blocos.botao("Selecionar _STATUS_PMIB", variante="cinza", altura=28,
@@ -255,9 +253,9 @@ class ModuloAutoSpec(ModuleFrame):
 
         # --- SEÇÃO 2: MONTADOR DE FILA ---
         corpo.addSpacing(20)                            # frm_status (…, 10) + frm_job (10, …)
-        self.cartao_job, job = _cartao(corpo, borda=COLORS["primary"])
+        self.cartao_job, job = _cartao(corpo, borda="destaque")
         self.rotulo_secao2 = _rotulo("2. Adicionar Tarefa à Fila", tamanho=14, negrito=True,
-                                     cor=COLORS["accent"])
+                                     papel="destaque")
         job.addWidget(self.rotulo_secao2)
 
         # A) Ficha Alvo   B) Manuais
@@ -270,11 +268,10 @@ class ModuloAutoSpec(ModuleFrame):
 
         # Botão Add
         job.addSpacing(20)                              # f_refs (…, 5) + botão (15, …)
-        self.btn_add = blocos.botao(estilo.mono("⬇ Adicionar à Fila ⬇"), variante="primario",
-                                    altura=28, tamanho_fonte=13, negrito=True,
-                                    cor_texto=COLORS["text_white"])
-        # O "⬇" sai da fonte de símbolos (só a seta, como no Tk), não do Noto Emoji.
-        estilo.botao_com_simbolos(self.btn_add)
+        self.btn_add = blocos.botao("Adicionar à Fila", variante="primario",
+                                    altura=28, tamanho_fonte=13, negrito=True)
+        # As setas "⬇" das pontas viraram o ícone (Lucide, na cor do tema, 2026-10-20).
+        icones.aplicar(self.btn_add, "arrow-down", tamanho=16)
         self.btn_add.clicked.connect(self.add_queue)
         _recuado(job, self.btn_add, 5, 5)               # padx=20 (15 já são do cartão)
 
@@ -282,12 +279,12 @@ class ModuloAutoSpec(ModuleFrame):
         corpo.addSpacing(20)
         self.cartao_fila, fila = _cartao(corpo)
         self.rotulo_fila = _rotulo("Fila de Processamento", tamanho=14, negrito=True,
-                                   cor=COLORS["accent"])
+                                   papel="destaque")
         fila.addWidget(self.rotulo_fila)
         fila.addSpacing(10)
         # Fundo mais escuro para a lista
         self.queue_frame, self._layout_fila = blocos.area_rolavel(
-            fila, cor=COR_LISTA, margem=RECUO_ROLAGEM, barra_sempre_visivel=True)
+            fila, fundo="tela", margem=RECUO_ROLAGEM, barra_sempre_visivel=True)
         self.queue_frame.setFixedHeight(ALTURA_QUADRO_INTERNO)
         self.update_queue_ui()
 
@@ -310,12 +307,12 @@ class ModuloAutoSpec(ModuleFrame):
             "azul, com a resposta original no comentário da célula. Divergência vai "
             "só para o log: a ficha do fornecedor não é alterada. Usa uma chamada "
             "de IA a mais por ficha que tenha resposta do fornecedor.",
-            cor=CINZA, quebra=QUEBRA_TEXTOS)
+            papel="legenda", quebra=QUEBRA_TEXTOS)
         _recuado(corpo, self.rotulo_fornecedor, 58, natural=True)
 
         corpo.addSpacing(20)                            # texto (…, 0) + botão (20, …)
         self.btn_run = blocos.botao("INICIAR PROCESSAMENTO DA FILA", variante="acento", altura=50,
-                                    tamanho_fonte=15, negrito=True, cor_texto="#FFFFFF")
+                                    tamanho_fonte=15, negrito=True)
         self.btn_run.clicked.connect(self.run_process)
         _recuado(corpo, self.btn_run, 30, 30)
 
@@ -326,12 +323,12 @@ class ModuloAutoSpec(ModuleFrame):
         corpo.addSpacing(10)                            # frm_conf: pady=10
 
     def _linha_de_arquivo(self, layout, texto: str, texto_botao: str, acao):
-        """Rótulo cinza à esquerda (fill/expand) e o botão de 180 à direita (o
-        #3A3A3A/#454545 escrito à mão lá = a variante "cinza")."""
+        """Rótulo de legenda à esquerda (fill/expand) e o botão de 180 à direita
+        (o cinza escrito à mão lá = a variante "cinza")."""
         linha = QHBoxLayout()
         linha.setContentsMargins(0, 0, 0, 0)
         linha.setSpacing(0)
-        rotulo = _rotulo(texto, cor=CINZA)
+        rotulo = _rotulo(texto, papel="legenda")
         _sem_largura_minima(rotulo)
         linha.addWidget(rotulo, 1)
         botao = blocos.botao(texto_botao, variante="cinza", altura=28, tamanho_fonte=12,
@@ -372,9 +369,9 @@ class ModuloAutoSpec(ModuleFrame):
         # Uma 2ª passada por vez (ver `_conferencia_processar`).
         self._conf_em_andamento = False
 
-        self.frm_conf, conf = _cartao(corpo, borda=COLORS["warning"])
+        self.frm_conf, conf = _cartao(corpo, borda="aviso")
         self.rotulo_conf_titulo = _rotulo("5. Conferência de documentos", tamanho=14, negrito=True,
-                                          cor=COLORS["warning"])
+                                          papel="aviso")
         conf.addWidget(self.rotulo_conf_titulo)
         conf.addSpacing(2)                              # título: pady=(10, 2)
         self.rotulo_conf_explicacao = _texto_quebrado(
@@ -383,12 +380,12 @@ class ModuloAutoSpec(ModuleFrame):
             "produto. Abra o link, confira, e marque os que são deste material.\n"
             "Não precisa terminar agora: salve em .txt e importe depois para "
             "continuar de onde parou.",
-            cor="#CCCCCC", quebra=QUEBRA_TEXTOS)
+            quebra=QUEBRA_TEXTOS)
         _recuado(conf, self.rotulo_conf_explicacao, 0, natural=True)
         conf.addSpacing(8)                              # texto: pady=(0, 8)
 
         self.lista_conf, self._layout_conf = blocos.area_rolavel(
-            conf, cor=COR_LISTA, margem=RECUO_ROLAGEM, barra_sempre_visivel=True)
+            conf, fundo="tela", margem=RECUO_ROLAGEM, barra_sempre_visivel=True)
         self.lista_conf.setFixedHeight(ALTURA_QUADRO_INTERNO)
         conf.addSpacing(10)                             # lista: pady=(0, 10)
 
@@ -407,7 +404,7 @@ class ModuloAutoSpec(ModuleFrame):
 
         self.btn_conf = blocos.botao(
             "PROCESSAR OS DOCUMENTOS MARCADOS", variante="acento", altura=40, tamanho_fonte=13,
-            negrito=True, cor_texto="#FFFFFF")
+            negrito=True)
         self.btn_conf.clicked.connect(self._conferencia_processar)
         _recuado(conf, self.btn_conf, 5, 5)             # padx=20, pady=(0, 15)
         self._conferencia_mostrar(None)
@@ -435,7 +432,7 @@ class ModuloAutoSpec(ModuleFrame):
                 "Nenhuma conferência pendente.\n\n"
                 "Se você salvou uma conferência anterior em .txt, use "
                 "IMPORTAR CONFERÊNCIA para continuar de onde parou.",
-                cor=CINZA, quebra=QUEBRA_CONFERENCIA_VAZIA)
+                papel="legenda", quebra=QUEBRA_CONFERENCIA_VAZIA)
             lista.addSpacing(10)                        # pady=10
             lista.addWidget(_em_caixa(self.rotulo_conf_vazia, 10, 0), 0, Qt.AlignmentFlag.AlignLeft)
             lista.addSpacing(10)
@@ -446,7 +443,7 @@ class ModuloAutoSpec(ModuleFrame):
         for i_pend, pendencia in enumerate(conferencia.pendencias):
             # O emoji é da tela (mono); nome e material são dado da pessoa.
             cabecalho = _rotulo(estilo.mono("📄") + f" {pendencia.nome_curto}  —  {pendencia.material[:60]}",
-                                tamanho=12, negrito=True, cor=COLORS["accent"])
+                                tamanho=12, negrito=True, papel="destaque")
             _sem_largura_minima(cabecalho)
             lista.addSpacing(folga + 8)                 # pady=(8, 2)
             lista.addWidget(_em_caixa(cabecalho, 6, 6))
@@ -464,12 +461,15 @@ class ModuloAutoSpec(ModuleFrame):
                 # O link é um botão (lá porque CTkLabel não tem clique nativo); o
                 # visual de link é feito à mão. O "&" do título vai dobrado: sozinho,
                 # o Qt o leria como mnemônico (some do texto e vira atalho Alt).
-                link = blocos.botao(estilo.mono("🔗") + " " + titulo.replace("&", "&&"),
+                link = blocos.botao(titulo.replace("&", "&&"),
                                     altura=22, tamanho_fonte=11,
-                                    cor_texto=COR_LINK, cor_fundo="transparent", cor_hover=COR_LINK_HOVER)
+                                    variante="fantasma")
+                link.setProperty("papel", "link")   # cor de link vem da folha (tokens `info`)
+                # O "🔗" virou o ícone, na cor do link (2026-10-20).
+                icones.aplicar(link, "external-link", papel_cor="info", tamanho=14)
+                # O sublinhado também é da folha (a regra `[papel="link"]`).
                 link.setStyleSheet(link.styleSheet() + " QPushButton { text-align: left;"
-                                   f" padding: 0 {estilo.FOLGA_TEXTO_BOTAO_CTK}px;"
-                                   " text-decoration: underline; }")
+                                   f" padding: 0 {estilo.FOLGA_TEXTO_BOTAO_CTK}px; }}")
                 _sem_largura_minima(link)
                 link.clicked.connect(lambda *_, u=url: webbrowser.open(u))
                 self.links_conf[(i_pend, i_doc)] = link
@@ -615,7 +615,7 @@ class ModuloAutoSpec(ModuleFrame):
         if p:
             self.status_pmib_path = p
             self.lbl_status.setText(os.path.basename(p))
-            _pintar(self.lbl_status, COLORS["text_white"])
+            _pintar(self.lbl_status, None)
 
     def sel_sheet(self) -> None:
         p = file_dialogs.ask_open_file("autospec.ficha", "excel", titulo="Selecione a Ficha Técnica",
@@ -623,7 +623,7 @@ class ModuloAutoSpec(ModuleFrame):
         if p:
             self.temp_sheet = p
             self.lbl_sheet.setText(f"Ficha: {os.path.basename(p)}")
-            _pintar(self.lbl_sheet, COLORS["text_white"])
+            _pintar(self.lbl_sheet, None)
 
     def sel_refs(self) -> None:
         ps = file_dialogs.ask_open_files("autospec.manuais", "pdf", titulo="Selecione Manuais/PDFs",
@@ -631,7 +631,7 @@ class ModuloAutoSpec(ModuleFrame):
         if ps:
             self.temp_refs = list(ps)
             self.lbl_refs.setText(f"Manuais: {len(ps)} arquivos")
-            _pintar(self.lbl_refs, COLORS["text_white"])
+            _pintar(self.lbl_refs, None)
 
     def add_queue(self) -> None:
         if not self.temp_sheet:
@@ -644,9 +644,9 @@ class ModuloAutoSpec(ModuleFrame):
         self.temp_sheet = None
         self.temp_refs = []
         self.lbl_sheet.setText("Ficha: [Nenhuma]")
-        _pintar(self.lbl_sheet, CINZA)
+        _pintar(self.lbl_sheet, "legenda")
         self.lbl_refs.setText("Manuais: 0 arquivos")
-        _pintar(self.lbl_refs, CINZA)
+        _pintar(self.lbl_refs, "legenda")
         self.update_queue_ui()
 
     def remove_queue(self, idx: int) -> None:
@@ -660,7 +660,7 @@ class ModuloAutoSpec(ModuleFrame):
         lista = self._layout_fila
 
         if not self.queue:
-            self.rotulo_fila_vazia = _rotulo("Fila vazia.", cor=CINZA, alinhar="centro")
+            self.rotulo_fila_vazia = _rotulo("Fila vazia.", papel="legenda", alinhar="centro")
             lista.addSpacing(10)                        # pady=10, centrado
             lista.addWidget(self.rotulo_fila_vazia, 0, Qt.AlignmentFlag.AlignHCenter)
             lista.addSpacing(10)

@@ -29,20 +29,22 @@ import traceback
 
 from dotenv import load_dotenv
 from PySide6.QtCore import Qt, QtMsgType, Signal, qInstallMessageHandler
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar,
     QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 from sigft import _build_info
-from sigft.app import backends, theme
-from sigft.app_qt import atualizacao, catalogo, cursor, estilo, interface, novidades
+from sigft.app import backends, tokens
+from sigft.app_qt import atualizacao, catalogo, cursor, estilo, icones, interface, novidades, tema
+from sigft.app_qt import nome as nome_da_pessoa
 from sigft.app_qt.views.aplicacao_lmr import ModuloAplicacaoLMR
 from sigft.app_qt.views.home import HomeView
 from sigft.app_qt.views.nao_migrada import TelaComErro, TelaNaoMigrada
 from sigft.app_qt.views.translator import ModuloTranslator
 from sigft.app_qt.widgets import blocos
+from sigft.app_qt.widgets.marca import Marca
 from sigft.core import instancia
 from sigft.core.saida_log import desviar_saida_para_arquivo
 
@@ -198,18 +200,21 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         lay.setContentsMargins(12, 26, 19, 12)  # 19 = 12 + os 7 px da faixa vazia
         lay.setSpacing(estilo.ESPACO_MENU)
 
-        logo = QLabel()
-        caminho_logo = resource_path(os.path.join("assets", "logo.png"))
-        if os.path.exists(caminho_logo):
-            logo.setPixmap(QPixmap(caminho_logo).scaledToWidth(
-                180, Qt.TransformationMode.SmoothTransformation))
-        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.addWidget(logo)
-        nome = QLabel("SIG-FT System", objectName="app_nome")
-        nome.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.addWidget(nome)
+        # O logo da GE Vernova e o nome do SIG-FT viraram um botão só: brilham
+        # sob o mouse e voltam à Home (sistema visual, 2026-10-20). Mesmas
+        # medidas dos dois rótulos de antes (`widgets/marca.py`).
+        self.marca = Marca(resource_path(os.path.join("assets", "logo.png")))
+        blocos.sem_tecla(self.marca)
+        self.marca.clicked.connect(self.show_home)
+        lay.addWidget(self.marca)
         lay.addSpacing(22)
-        home = QPushButton(estilo.mono("  🏠  Home"), objectName="home")
+        # O emoji virou ícone (Lucide, na cor do tema: sistema visual, 2026-10-20).
+        home = QPushButton(" Home", objectName="home")
+        # O ícone acompanha o texto do item escolhido (e sob o mouse): a marca
+        # no claro (2026-10-20).
+        icones.aplicar(home, catalogo.ICONE_DA_TELA["Home"], tamanho=16,
+                       papel_cor_ativo=estilo.PAPEL_MENU_ESCOLHIDO)
+        self.botao_home = home
         blocos.sem_tecla(home)   # os botões da barra (CTkButton) nunca pegam o foco
         home.clicked.connect(self.show_home)
         home.setToolTip("Volta à tela inicial: os módulos, as chaves de API e os modelos de IA.")
@@ -224,9 +229,11 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
                 lay.addSpacing(5)
                 continue
             _tipo, texto, alvo = item
-            botao = QPushButton(f"  {texto}")
+            botao = QPushButton(f" {texto}")
             blocos.sem_tecla(botao)
             botao.setProperty("menu", True)
+            icones.aplicar(botao, catalogo.ICONE_DA_TELA[alvo], tamanho=16,
+                           papel_cor_ativo=estilo.PAPEL_MENU_ESCOLHIDO)
             botao.setEnabled(alvo not in catalogo.TELAS_BLOQUEADAS)
             botao.setToolTip(catalogo.dica_do_menu(alvo))
             botao.clicked.connect(lambda _=False, a=alvo: self.show_frame(a))
@@ -254,10 +261,30 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
                     erro_tela = TelaComErro(nome, erro)
                     self.pilha.addWidget(erro_tela)
                     self.pilha.setCurrentWidget(erro_tela)
+                    self._marcar_no_menu(nome)  # o menu marca a tela que falhou, não a anterior
                     return  # sem cache: a próxima visita tenta montar de novo
             self.telas[nome] = tela
             self.pilha.addWidget(tela)
+        # [2026-10-20] A saudação segue o relógio: recalcula a cada volta à Home.
+        if hasattr(tela, "atualizar_saudacao"):
+            tela.atualizar_saudacao()
         self.pilha.setCurrentWidget(tela)
+        self._marcar_no_menu(nome)
+
+    def _marcar_no_menu(self, nome: str) -> None:
+        """O item da tela aberta fica marcado no menu (`ativo`, que a folha pinta
+        com a marca a 25%: sistema visual, 2026-10-20). A Home marca o botão dela."""
+        botoes = {**self.botoes_menu, "Home": self.botao_home}
+        for alvo, botao in botoes.items():
+            ativo = alvo == nome
+            if bool(botao.property("ativo")) == ativo:
+                continue
+            botao.setProperty("ativo", ativo)
+            # Propriedade dinâmica não repinta sozinha: a folha é reaplicada,
+            # e o ícone, que segue o `ativo`, é repintado.
+            botao.style().unpolish(botao)
+            botao.style().polish(botao)
+            icones.reaplicar(botao)
 
     def show_modulo(self, nome: str) -> None:
         self.show_frame(nome)
@@ -311,38 +338,68 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
 
 
 class SplashScreen(QWidget):
-    """A splash de hoje, sem as pausas artificiais: o progresso é o real."""
+    """A splash, sem as pausas artificiais: o progresso é o real.
+
+    Sistema visual (2026-10-20): fundo `fundo`, o logo da GE Vernova no centro,
+    "SIG-FT" 22 em negrito, a versão em `texto_suave` e uma barra de 4 px em
+    `primaria`, num cartão de cantos 10. Ela aparece ANTES da janela principal:
+    a paleta vem do tema guardado (`tema.escolhido`), lido aqui mesmo, para quem
+    usa o claro não ver a abertura escura (o `_preparar_qt`, que roda antes,
+    aplica o mesmo tema à folha do app).
+    """
 
     pronta = Signal()
 
     def __init__(self) -> None:
         super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.SplashScreen)
         self.setFixedSize(500, 350)
-        self.setObjectName("conteudo")
-        self.setStyleSheet(f"background: {theme.COLORS['background']};")
+        # O fundo é desenhado no `paintEvent` (os cantos arredondados): fora
+        # do cartão, a janela é transparente.
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._paleta = tokens.paleta(tema.efetivo(tema.escolhido()))
+        self.setObjectName("splash")
+        # Folha própria, por cima da do app: a cor de cada peça é a do tema
+        # guardado, qualquer que seja a folha aplicada (`estilo.folha_da_splash`).
+        self.setStyleSheet(estilo.folha_da_splash(tema.efetivo(tema.escolhido())))
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(50, 50, 50, 20)
+        lay.setContentsMargins(50, 50, 50, 30)
+        lay.setSpacing(tokens.ESPACO[1])
+        lay.addStretch()
         logo = QLabel()
         caminho = resource_path(os.path.join("assets", "logo.png"))
         if os.path.exists(caminho):
             logo.setPixmap(QPixmap(caminho).scaledToWidth(
-                300, Qt.TransformationMode.SmoothTransformation))
+                260, Qt.TransformationMode.SmoothTransformation))
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(logo)
-        titulo = QLabel("SIG-FT System")
-        titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        titulo.setStyleSheet("color: gray; font-size: 16px;")
-        lay.addWidget(titulo)
+        lay.addSpacing(tokens.ESPACO[3])
+        self.titulo = QLabel("SIG-FT")
+        self.titulo.setObjectName("splash_titulo")
+        self.titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(self.titulo)
+        self.versao = QLabel(_texto_da_versao())
+        self.versao.setObjectName("splash_versao")
+        self.versao.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(self.versao)
         lay.addStretch()
         self.status = QLabel("Iniciando...")
+        self.status.setObjectName("splash_status")
         self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status.setStyleSheet(f"color: {theme.COLORS['accent']}; font-size: 12px;")
         lay.addWidget(self.status)
         self.barra = QProgressBar()
         self.barra.setRange(0, 1000)
         self.barra.setTextVisible(False)
-        self.barra.setStyleSheet(f"QProgressBar::chunk {{ background: {theme.COLORS['accent']}; }}")
+        self.barra.setFixedHeight(4)
         lay.addWidget(self.barra)
+
+    def paintEvent(self, _evento) -> None:  # noqa: N802 -- nome do Qt
+        pintor = QPainter(self)
+        pintor.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        pintor.setPen(Qt.PenStyle.NoPen)
+        pintor.setBrush(QColor(self._paleta["fundo"]))
+        raio = tokens.RAIO["cartao"]
+        pintor.drawRoundedRect(self.rect(), raio, raio)
+        pintor.end()
 
     def carregar(self) -> None:
         threading.Thread(target=self._carregar, name="splash", daemon=True).start()
@@ -368,6 +425,14 @@ class SplashScreen(QWidget):
             # e sem janela. Tela com backend ausente mostra o motivo sozinha
             # (`backends.falhas`).
             interface.na_interface(self.pronta.emit)
+
+
+def _texto_da_versao() -> str:
+    """"versão X.Y.Z" do `_build_info` (o Release reescreve; do código-fonte
+    é o padrão commitado). `_build_info` sem `VERSAO`: um texto que não
+    quebra a abertura."""
+    versao = getattr(_build_info, "VERSAO", "") or ""
+    return f"versão {versao}" if versao else "versão de desenvolvimento"
 
 
 def _instalar_traducao(app) -> bool:
@@ -427,14 +492,39 @@ def _criar_qapplication() -> QApplication:
         qInstallMessageHandler(anterior)
 
 
-def _preparar_qt() -> QApplication:
+def _preparar_qt(escolha_tema: str | None = None) -> QApplication:
+    """A QApplication pronta: tradução, fontes, cursor e o tema.
+
+    O tema é o guardado nas preferências (`tema.escolhido`), ou `escolha_tema`
+    (o `--smoke --tema claro`), sem gravar: a abertura só lê."""
     app = QApplication.instance() or _criar_qapplication()
     _instalar_traducao(app)
     interface.instalar()
     estilo.carregar_fontes()
-    app.setStyleSheet(estilo.folha_de_estilo())
+    tema.aplicar(app, escolha_tema or tema.escolhido(), gravar=False)
+    tema.seguir_o_sistema(app)
     cursor.instalar(app)
     return app
+
+
+def _tema_da_linha_de_comando(argv: list[str]) -> str | None:
+    """O `--tema X` (ou `--tema=X`) da linha de comando, se houver."""
+    for i, arg in enumerate(argv):
+        if arg == "--tema" and i + 1 < len(argv):
+            return argv[i + 1]
+        if arg.startswith("--tema="):
+            return arg.split("=", 1)[1]
+    return None
+
+
+def _redesenhar_saudacao(principal: SIG_FT_App):
+    """O que roda quando a pessoa responde a pergunta do nome: a Home (se já
+    montada) refaz a saudação."""
+    def redesenhar() -> None:
+        home = principal.telas.get("Home")
+        if home is not None and hasattr(home, "atualizar_saudacao"):
+            home.atualizar_saudacao()
+    return redesenhar
 
 
 def main() -> None:
@@ -479,6 +569,11 @@ def main() -> None:
         janela.append(principal)
         principal.show()
         splash.close()
+        # [2026-10-20] "Como podemos te chamar?", uma vez, logo depois de a
+        # janela aparecer (antes das novidades, que esperam a resposta). Daqui,
+        # e não do `SIG_FT_App`, para nenhum teste que monta a janela travar
+        # na pergunta. Ver `sigft/app_qt/nome.py`.
+        nome_da_pessoa.perguntar_na_abertura(principal, depois=_redesenhar_saudacao(principal))
 
     splash.pronta.connect(abrir_principal)
     splash.show()
@@ -521,7 +616,17 @@ def _smoke() -> int:
 
     avisos: list[str] = []
     try:
-        _preparar_qt()
+        # `--smoke --tema claro`: o smoke também no claro, sem gravar a escolha.
+        _preparar_qt(_tema_da_linha_de_comando(sys.argv))
+        # Os ícones desenham? Um SVG ou o QtSvg fora do `.exe` daria botões em
+        # branco SEM erro (2026-10-20: a mesma classe do pymupdf-layout, um
+        # arquivo que faltava só no pacote). Aqui o Release reprova.
+        if (sem_desenho := icones.conferir()):
+            relatorio = (f"[smoke] FALHOU: icones que nao desenham ({len(sem_desenho)}): "
+                         f"{', '.join(sem_desenho)} (pasta {icones.PASTA})")
+            gravar_relatorio(ARQUIVO_JANELA, relatorio)
+            print(relatorio)
+            return 1
         backends.carregar_todos(
             ao_falhar=lambda nome, erro: avisos.append(
                 f"[smoke] AVISO: o backend '{nome}' nao carregou: "

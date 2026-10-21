@@ -14,6 +14,12 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
 ## 1.2.1 - 2026-10-16
 
+- Interface: **tema claro**. Na Home, à direita do título, escolha Escuro, Claro ou Sistema (segue o tema do Windows). A troca é na hora, sem fechar o app, e fica lembrada.
+- Interface: cores novas, com contraste medido para ler bem nos dois temas; botões com o mesmo jeito em todas as telas (principal, secundário, perigo), e botão desligado com cara de desligado.
+- Interface: **ícones** no menu, na Home e nos botões, no lugar dos emojis, na cor do tema.
+- Interface: a Home cumprimenta pelo nome ("Bom dia, Ana"). O SIG-FT pergunta o nome uma vez só, na primeira abertura depois de instalar ou atualizar; "Agora não" não pergunta mais, e clicar na saudação troca o nome. O nome só aparece na tela.
+- Interface: o logo no alto do menu acende com o mouse em cima e, clicado, volta para a Home.
+- Interface: a tela de carregamento abre no tema escolhido, com o número da versão.
 - AutoSpecAI: o log diz **onde o tempo de cada ficha foi** (ex.: "Tempos: documentos locais 4min 12s | IA 38,0s | busca na web 12,0s (total 5min 03s)"), e o LlamaParse diz como acabou: leu (quantos caracteres, em quanto tempo), respondeu sem texto, ou falhou e por quê (o proxy da empresa bloqueou, sem conexão, certificado recusado, sem resposta a tempo, chave recusada, limite de uso). Antes, uma falha do LlamaParse sumia sem deixar o motivo. O AutoSpec continua fazendo o mesmo de antes; só passou a contar.
 - AutoSpecAI: **volta a ler os PDFs** no SIG-FT instalado. Da 1.2.1-rc.5 à rc.7, todo manual local falhava com "No such file or directory: ...pymupdf\\layout...\\layout_rf2.4.1+imf1.yaml" e a ficha inteira caía. Uma biblioteca que veio junto com a nova versão do leitor de PDF (e que o SIG-FT não usa) entrava no instalador sem os arquivos dela; ela saiu, e o instalador fica cerca de 120 MB menor.
 - Cria Fichas: a leitura do que cada material é (a primeira passada da IA) passa a usar o **mesmo modelo escolhido para o Cria Fichas** no painel "Modelos de IA". Antes ela ia sempre pelo Gemini direto, que a VPN da empresa derruba ("Connection aborted"), e o lote seguia só com a busca por palavras.

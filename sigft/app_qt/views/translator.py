@@ -11,8 +11,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMessageBox
 
-from sigft.app import backends, theme
-from sigft.app_qt import estilo, file_dialogs, interface
+from sigft.app import backends
+from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.core import plataforma
@@ -32,19 +32,17 @@ class ModuloTranslator(ModuleFrame):
         corpo.setSpacing(0)
         corpo.setContentsMargins(20, 20, 20, 20)        # título: pady=(20, …); glossário: (…, 20)
         corpo.addWidget(blocos.rotulo("Tradução Automática de Características", tamanho=16,
-                                      negrito=True, cor=theme.COLORS["accent"]))
+                                      negrito=True, papel="destaque"))
         corpo.addSpacing(10)                            # título (…, 10) + descrição (0, …)
         corpo.addWidget(blocos.rotulo(
             "Selecione as planilhas para traduzir do Português para Espanhol.\n"
             "O sistema cria uma nova aba traduzida.\n"
             "A tradução roda neste computador: nenhuma resposta sai daqui.",
-            cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO)))
+            papel="legenda"))
         self.btn_run = blocos.botao("Selecionar Arquivos e Iniciar", variante="primario",
-                                    largura=300, altura=50, tamanho_fonte=14, negrito=True,
-                                    cor_texto=theme.COLORS["text_white"])
+                                    largura=300, altura=50, tamanho_fonte=14, negrito=True,)
         self.btn_run.clicked.connect(self.iniciar_traducao)
-        self.btn_stop = blocos.botao("PARAR AGORA", variante="perigo", largura=200, altura=40,
-                                     cor_texto=theme.COLORS["text_white"])
+        self.btn_stop = blocos.botao("PARAR AGORA", variante="perigo", largura=200, altura=40,)
         self.btn_stop.setEnabled(False)
         self.btn_stop.clicked.connect(self.parar_traducao)
         # Lá: fg_color="transparent", border_width=1 e texto text_light.

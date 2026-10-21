@@ -34,7 +34,6 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from sigft import _build_info
-from sigft.app import theme
 from sigft.app.atualizacao_textos import (
     MSG_COMO_FUNCIONA,
     MSG_DOWNLOAD_CONFERIDO,
@@ -66,8 +65,6 @@ __all__ = [
     "resumo_da_versao", "verificar_na_abertura",
 ]
 
-# Texto de um CTkLabel que não diz `text_color` (tema dark-blue): gray84.
-_COR_ROTULO_CTK = estilo.cinza_tk("gray84")
 # `wraplength=530` dos rótulos que quebram linha na janela antiga.
 _LARGURA_DO_TEXTO = 530
 
@@ -203,11 +200,12 @@ def _fechar_o_app(janela_principal) -> None:
 
 # ───────────────────────────── a janela do aviso ────────────────────────────
 
-def _rotulo(texto: str, *, tamanho: int, cor: str, negrito: bool = False,
+def _rotulo(texto: str, *, tamanho: int, papel: str | None = None, negrito: bool = False,
             quebra: bool = False) -> QLabel:
     """O CTkLabel com `anchor="w"`: 28 px de altura mínima, texto à esquerda.
-    Com `quebra`, o `wraplength=530` (largura máxima do texto)."""
-    rotulo = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, cor=cor, alinhar="esquerda")
+    Com `quebra`, o `wraplength=530` (largura máxima do texto). `papel`: o
+    papel de texto da folha (sem ele, o texto comum)."""
+    rotulo = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, papel=papel, alinhar="esquerda")
     rotulo.setWordWrap(quebra)
     if quebra:
         rotulo.setMaximumWidth(_LARGURA_DO_TEXTO)
@@ -252,17 +250,15 @@ class JanelaAtualizacao(QDialog):
 
         # Título: pady=(20, 4).
         lay.addSpacing(20)
-        self.rotulo_titulo = _rotulo(titulo_do_aviso(info), tamanho=16, negrito=True,
-                                     cor=_COR_ROTULO_CTK)
+        self.rotulo_titulo = _rotulo(titulo_do_aviso(info), tamanho=16, negrito=True)
         lay.addWidget(self.rotulo_titulo)
         lay.addSpacing(4)
         self.rotulo_resumo = _rotulo(resumo_da_versao(info, versao_atual), tamanho=13,
-                                     cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO_CLARO),
-                                     quebra=True)
+                                     papel="legenda", quebra=True)
         lay.addWidget(self.rotulo_resumo)
         # "O que mudou:": pady=(14, 4).
         lay.addSpacing(14)
-        lay.addWidget(_rotulo(TEXTO_O_QUE_MUDOU, tamanho=14, negrito=True, cor=_COR_ROTULO_CTK))
+        lay.addWidget(_rotulo(TEXTO_O_QUE_MUDOU, tamanho=14, negrito=True))
         lay.addSpacing(4)
 
         # As notas são quem ENCOLHE quando a parte de baixo cresce (UAC + erro
@@ -282,14 +278,12 @@ class JanelaAtualizacao(QDialog):
         lay.addSpacing(10)
         self.rotulo_uac = None
         if updater.precisa_elevacao():
-            self.rotulo_uac = _rotulo(MSG_UAC, tamanho=12, cor=theme.COLORS["warning"],
-                                      quebra=True)
+            self.rotulo_uac = _rotulo(MSG_UAC, tamanho=12, papel="aviso", quebra=True)
             lay.addWidget(self.rotulo_uac)
             lay.addSpacing(10)
 
         # Status: pady=(10, 4) (os 10 de cima já foram).
-        self.rotulo_status = _rotulo(MSG_COMO_FUNCIONA, tamanho=12,
-                                     cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO), quebra=True)
+        self.rotulo_status = _rotulo(MSG_COMO_FUNCIONA, tamanho=12, papel="legenda", quebra=True)
         lay.addWidget(self.rotulo_status)
         lay.addSpacing(4)
 
@@ -300,9 +294,9 @@ class JanelaAtualizacao(QDialog):
         faixa = QVBoxLayout(self._faixa_barra)
         faixa.setContentsMargins(0, 0, 0, 6)
         faixa.setSpacing(0)
-        # CTkProgressBar(width=530) do tema, progresso na cor `accent`; o valor
-        # aqui é o percentual (0 a 100).
-        self.barra = blocos.barra_progresso(largura=530, altura=8, cor=theme.COLORS["accent"])
+        # CTkProgressBar(width=530), progresso na cor da folha (`primaria`); o
+        # valor aqui é o percentual (0 a 100).
+        self.barra = blocos.barra_progresso(largura=530, altura=8)
         self.barra.setRange(0, 100)
         self.barra.setValue(0)
         faixa.addWidget(self.barra, 0, Qt.AlignmentFlag.AlignHCenter)
@@ -319,8 +313,7 @@ class JanelaAtualizacao(QDialog):
                                             altura=40, tamanho_fonte=14, negrito=True)
         self.botao_atualizar.clicked.connect(self.atualizar)
         self.botao_agora_nao = blocos.botao(TEXTO_AGORA_NAO, variante="contorno", largura=150,
-                                            altura=40,
-                                            cor_texto=estilo.cinza_tk(theme.COR_TEXTO_APOIO))
+                                            altura=40)
         self.botao_agora_nao.clicked.connect(self.agora_nao)
         botoes.addWidget(self.botao_atualizar)
         botoes.addWidget(self.botao_agora_nao)
@@ -406,13 +399,13 @@ class JanelaAtualizacao(QDialog):
         interface.na_interface(self.barra.setValue, percentual)
 
     # -- de volta à interface ---------------------------------------------------
-    def _mostrar_status(self, texto: str, cor: str | None = None) -> None:
+    def _mostrar_status(self, texto: str, papel: str | None = None) -> None:
+        """O status em texto comum (`papel=None`) ou no papel pedido (`erro`)."""
         self.rotulo_status.setText(texto)
-        self.rotulo_status.setStyleSheet(
-            f"font-size: 12px; background: transparent; color: {cor or theme.COLORS['text_light']};")
+        estilo.definir_papel(self.rotulo_status, papel)
 
     def _falhou(self, erro: BaseException) -> None:
-        self._mostrar_status(msg_falhou(erro), cor=theme.COLORS["danger"])
+        self._mostrar_status(msg_falhou(erro), papel="erro")
         self.barra.setValue(0)
         self.botao_atualizar.setEnabled(True)
         self.botao_atualizar.setText(TEXTO_TENTAR_DE_NOVO)

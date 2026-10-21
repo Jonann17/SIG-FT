@@ -131,13 +131,17 @@ def test_subclasse_sem_build_ui_falha_com_mensagem_util(qt_interface):
 
 
 def test_cor_do_titulo_pode_ser_trocada_e_controller_fica_acessivel(qt_interface, qtbot):
-    """O `ModuloApagarLMR` usa vermelho -- é ação destrutiva."""
-    from sigft.app import theme
+    """O `ModuloApagarLMR` usa vermelho -- é ação destrutiva. Desde 2026-10-20 o
+    título diz o PAPEL (`erro`) e a cor é da folha do tema (some no tema claro)."""
+    from sigft.app import tokens
+    from sigft.app_qt import estilo
 
     controlador = object()
-    tela = TelaQueConta(cor_titulo=theme.COLORS["danger"], controller=controlador)
+    tela = TelaQueConta(papel_titulo="erro", controller=controlador)
     qtbot.addWidget(tela)
-    assert theme.COLORS["danger"] in tela.label_titulo.styleSheet()
+    assert tela.label_titulo.property("papel") == "erro"
+    assert "color" not in tela.label_titulo.styleSheet()
+    assert f'#titulo_modulo[papel="erro"] {{ color: {tokens.ESCURO["perigo"]}; }}' in estilo.folha_de_estilo()
     assert tela.controller is controlador
 
 

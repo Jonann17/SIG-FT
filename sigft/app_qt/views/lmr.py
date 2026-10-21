@@ -13,9 +13,8 @@ import os
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMessageBox, QVBoxLayout
 
-from sigft.app import theme
 from sigft.app.textos_dialogos import MSG_LOGIN_LMR
-from sigft.app_qt import estilo, file_dialogs
+from sigft.app_qt import file_dialogs
 from sigft.app_qt.widgets import blocos, controles, pickers, revisao_portal
 from sigft.app_qt.widgets.dialogs import SelecaoComCaixasDialog
 from sigft.app_qt.widgets.module_frame import ModuleFrame
@@ -40,12 +39,11 @@ class DialogoDaAba(QDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addSpacing(20)                           # arquivo: pady=(20, …)
-        self.rotulo_arquivo = blocos.rotulo(nome_arquivo, tamanho=12, negrito=True,
-                                            cor=controles.COR_TEXTO_CTK)
+        self.rotulo_arquivo = blocos.rotulo(nome_arquivo, tamanho=12, negrito=True)
         layout.addWidget(self.rotulo_arquivo)
         layout.addSpacing(4)                            # arquivo (…, 4) + pergunta (0, …)
         self.rotulo_pergunta = blocos.rotulo("Qual aba contém as aplicações de LMR?", tamanho=12,
-                                             cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO_CLARO))
+                                             papel="legenda")
         layout.addWidget(self.rotulo_pergunta)
         layout.addSpacing(17)                           # pergunta (…, 12) + menu (5, …)
         self.menu = controles.MenuDeOpcoes(abas)
@@ -78,7 +76,6 @@ class ModuloLMR(ComTravaDeRobo, ModuleFrame):
         # Espaços verticais do `pack` da tela antiga. O pady de dois vizinhos
         # SOMA no Tk, por isso o espaçamento automático do cartão vai a zero e
         # cada espaço é a soma escrita à mão.
-        cinza_claro = estilo.cinza_tk(theme.COR_TEXTO_APOIO_CLARO)
         self._rotulos = r = {}
 
         self.content_layout.addSpacing(20)              # cartão: pady=20
@@ -86,7 +83,7 @@ class ModuloLMR(ComTravaDeRobo, ModuleFrame):
         corpo.setSpacing(0)
         corpo.setContentsMargins(20, 20, 20, 20)        # título: pady=(20, …); "O script": (…, 20)
         r["titulo"] = blocos.rotulo("Preenchimento Automático de LMR (Aplicações)", tamanho=16,
-                                    negrito=True, cor=theme.COLORS["accent"])
+                                    negrito=True, papel="destaque")
         corpo.addWidget(r["titulo"])
         corpo.addSpacing(10)                            # título (…, 10) + texto (0, …)
         r["info"] = blocos.rotulo(
@@ -94,13 +91,13 @@ class ModuloLMR(ComTravaDeRobo, ModuleFrame):
             "Você escolhe a aba depois de selecionar o arquivo.\n"
             "Colunas esperadas: FICHA PMIB, CÓDIGO LMR e TAG LMR.\n"
             "Será solicitado login no navegador durante o processo.",
-            cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO))
+            papel="legenda")
         corpo.addWidget(r["info"])
         # _STATUS_PMIB opcional: quem só quer cadastrar no portal continua
         # clicando direto em "Selecionar Excel e Iniciar".
         corpo.addSpacing(20)                            # texto (…, 20) + marcar (0, …)
         r["marcar"] = blocos.rotulo("Marcar o resultado no _STATUS_PMIB (opcional):",
-                                    negrito=True, cor=theme.COLORS["text_light"])
+                                    negrito=True)
         corpo.addWidget(r["marcar"])
         corpo.addSpacing(6)                             # marcar (…, 6) + seletor (0, …)
         self.picker_status = pickers.FilePickerRow(
@@ -113,8 +110,7 @@ class ModuloLMR(ComTravaDeRobo, ModuleFrame):
         corpo.addWidget(self.picker_status, alignment=Qt.AlignmentFlag.AlignHCenter)
         corpo.addSpacing(30)                            # seletor (…, 20) + iniciar (10, …)
         self.btn_run = blocos.botao("Selecionar Excel e Iniciar", variante="primario", largura=300,
-                                    altura=50, tamanho_fonte=14, negrito=True,
-                                    cor_texto=theme.COLORS["text_white"])
+                                    altura=50, tamanho_fonte=14, negrito=True,)
         self.btn_run.clicked.connect(self.iniciar_lmr)
         corpo.addWidget(self.btn_run, alignment=Qt.AlignmentFlag.AlignHCenter)
         corpo.addSpacing(14)                            # iniciar (…, 10) + linha do código (4, …)
@@ -123,12 +119,12 @@ class ModuloLMR(ComTravaDeRobo, ModuleFrame):
         r["desligado"] = blocos.rotulo(
             "Desligado, processa a ficha inteira desde o começo.\n"
             "O número conta CÓDIGOS LMR (não linhas do Excel): o mesmo código\n"
-            "espalhado pela planilha é uma aplicação só.", tamanho=11, cor=cinza_claro)
+            "espalhado pela planilha é uma aplicação só.", tamanho=11, papel="legenda")
         corpo.addWidget(r["desligado"])
         corpo.addSpacing(20)                            # explicação (…, 10) + "O script" (10, …)
         r["script"] = blocos.rotulo(
             "O script pedirá:\n1. Arquivo Excel LMR\n2. Seleção das Fichas (Checkbox)",
-            tamanho=12, cor=cinza_claro)
+            tamanho=12, papel="legenda")
         corpo.addWidget(r["script"])
         self.content_layout.addSpacing(20)
         self.content_layout.addStretch()
@@ -144,7 +140,7 @@ class ModuloLMR(ComTravaDeRobo, ModuleFrame):
         linha.setSpacing(0)
         linha.addStretch()
         self.caixa_linha_inicial = controles.Interruptor(
-            "Começar de um código específico", cor_ligado=theme.COLORS["accent"], tamanho_fonte=12)
+            "Começar de um código específico", tamanho_fonte=12)
         self.caixa_linha_inicial.toggled.connect(self._alternar_linha_inicial)
         linha.addWidget(self.caixa_linha_inicial)
         linha.addSpacing(10)                            # interruptor: padx=(0, 10)

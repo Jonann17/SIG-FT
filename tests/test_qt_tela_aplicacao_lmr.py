@@ -60,17 +60,27 @@ def _caixa_do_botao_segmentado(imagem, topo, base, x0, x1):
     """Retângulo dos pixels que NÃO são o fundo da tela, na faixa das abas."""
     from PySide6.QtGui import QColor
     from sigft.app import theme
-    fundo = QColor(theme.COLORS["background"]).rgb()
+    # 2026-10-20: o fundo da tela e o quadro do Tabview vêm do mesmo token, `fundo`
+    # (a regra `#quadro_abas` da folha): o quadro volta a ser invisível, como na CTk. A barra
+    # (`superficie_alta`) fica ~17 acima dele por canal: tolerância de 6.
+    fundos = [QColor(theme.COLORS["background"])]
+
+    def e_fundo(pixel):
+        c = QColor(pixel)
+        return any(max(abs(c.red() - f.red()), abs(c.green() - f.green()),
+                       abs(c.blue() - f.blue())) <= 6 for f in fundos)
+
     xs, ys = [], []
     for y in range(topo, base):
         for x in range(x0, x1):
-            if imagem.pixel(x, y) != fundo:
+            if not e_fundo(imagem.pixel(x, y)):
                 xs.append(x)
                 ys.append(y)
     return min(xs), min(ys), max(xs) + 1, max(ys) + 1
 
 
 def test_medidas_iguais_as_do_interface_antiga(folha, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Na captura da interface antiga (coordenadas da tela, que aqui inclui a margem de 20 do
     # show_frame): conteúdo em (40, 79), 923 de largura; o botão segmentado
     # (137 + 150) x 27 centrado no conteúdo, 10 px abaixo do topo dele
@@ -84,12 +94,12 @@ def test_medidas_iguais_as_do_interface_antiga(folha, qtbot):
     qtbot.waitExposed(t)
 
     conteudo = _pos(t.content, t)
-    assert (conteudo.x(), conteudo.y(), t.content.width()) == (40, 79, 923)
+    assert (conteudo.x(), conteudo.y(), t.content.width()) == (40, 77, 923)
     assert t.console.y() == 670 and t.console.height() == 150
 
     imagem = t.grab().toImage()
     esq, topo, dir_, base = _caixa_do_botao_segmentado(imagem, 79, 121, 40, 963)
-    assert topo == 89 and base == 116                      # 27 de altura
+    assert topo == 87 and base == 114                      # 27 de altura
     assert abs((esq + dir_) / 2 - (40 + 923 / 2)) <= 1      # centrado
     assert abs((dir_ - esq) - 287) <= 4                     # 137 + 150 (fonte)
     larguras = [b.width() for b in t.abas.botoes.values()]
@@ -102,8 +112,8 @@ def test_medidas_iguais_as_do_interface_antiga(folha, qtbot):
         rolagem = tela.content.parentWidget().parentWidget()  # viewport -> QScrollArea
         vista = rolagem.viewport()
         p = _pos(vista, t)
-        assert p.x() == 52 and p.y() == 128
-        assert vista.width() == 888 and vista.height() == 510
+        assert p.x() == 52 and p.y() == 126
+        assert vista.width() == 888 and vista.height() == 512
         cartao = tela.btn_run.parentWidget()
         assert _pos(cartao, t).y() - p.y() == 20
         # O cartão e o botão grande mantêm o fundo dentro da aba.
@@ -115,11 +125,13 @@ def test_medidas_iguais_as_do_interface_antiga(folha, qtbot):
         assert QColor(foto.pixel(b.x() + 5, b.y() + 25)).name().upper() != theme.COR_CARTAO.upper()
         # ...e a área rolável é transparente: acima do cartão, o fundo da tela
         # (não a paleta clara do Qt, que o QScrollArea liga no widget de dentro).
+        # 2026-10-20: o quadro do Tabview é o token `fundo`, o mesmo da tela.
         fundo = theme.COLORS["background"].upper()
         assert QColor(foto.pixel(c.x() + 100, c.y() - 10)).name().upper() == fundo
         assert QColor(foto.pixel(p.x() + 2, p.y() + vista.height() - 3)).name().upper() == fundo
 
-    # O quadro do Tabview é da cor do fundo: nada pintado ao lado da área.
+    # O quadro do Tabview é liso (o token `fundo` desde 2026-10-20): nada pintado
+    # ao lado da área.
     from PySide6.QtGui import QColor
     from sigft.app import theme
     imagem = t.grab().toImage()
@@ -187,3 +199,4 @@ def test_a_trava_e_liberada_no_fim_da_tarefa_mesmo_com_erro(qt_interface, qtbot)
     thread.join(timeout=5)
 
     assert secao.trava_robo.dono is None
+

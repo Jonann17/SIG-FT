@@ -1,8 +1,9 @@
 """Seletores de arquivo/pasta da interface Qt — mesma API da interface antiga.
 
 A tela declara `chave`/`categoria` uma vez e nunca mais pensa em memória de
-pastas (é o CP 7.2). Rótulo cinza "Nenhum arquivo selecionado" que vira o nome
-em verde, botão cinza que vira `primary`: o comportamento de hoje.
+pastas (é o CP 7.2). Rótulo de legenda "Nenhum arquivo selecionado" que vira o
+nome em verde (papel `ok`), botão secundário que vira `primario`: as cores são
+da folha do tema (2026-10-20).
 """
 from __future__ import annotations
 
@@ -13,20 +14,15 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QHBoxLayout, QLabel, QListWidget, QPushButton, QVBoxLayout, QWidget,
 )
 
-from sigft.app import theme
 from sigft.app_qt import file_dialogs
 from sigft.app_qt import estilo
-from sigft.app_qt.estilo import cinza_tk
 from sigft.app_qt.widgets import blocos
 
-COR_BOTAO_SELECAO = "#3A3A3A"
-COR_BOTAO_SELECAO_HOVER = "#454545"
 TEXTO_SEM_ARQUIVO = "Nenhum arquivo selecionado"
 TEXTO_SEM_PASTA = "Nenhuma pasta selecionada"
 
-# A fila de fichas (`FileQueueList`): a lista é um `tk.Listbox` cru lá, com as
-# cores escritas à mão; fonte "Segoe UI" 11 (PONTOS -- widget cru do Tk).
-COR_FUNDO_LISTA = "#1E1E1E"
+# A fila de fichas (`FileQueueList`): a lista é um `tk.Listbox` cru lá; fonte
+# "Segoe UI" 11 (PONTOS -- widget cru do Tk). As cores são as do QListWidget da folha.
 FONTE_LISTA = ("Segoe UI", 11)
 # O emoji e os DOIS espaços são literais do app antigo.
 PREFIXO_ITEM = " 📊  "
@@ -49,9 +45,13 @@ class _LinhaSeletora(QWidget):
         self.botao = QPushButton(texto_botao)
         blocos.sem_tecla(self.botao)   # como o CTkButton: nunca pega o foco
         self.botao.setFixedWidth(largura_botao)
+        # 12 px, a fonte do botão de lá; a cor é a da variante (`_pintar`).
+        self.botao.setStyleSheet("QPushButton { font-size: 12px; }")
         self.botao.clicked.connect(self._abrir_dialogo)
         # Elidido: um nome comprido não alarga o formulário (o caminho vai no tooltip).
         self.label_status = blocos.RotuloElidido()
+        # 13 px: a fonte padrão do CTkLabel; sem ela o rótulo pegava a do app.
+        self.label_status.setStyleSheet("background: transparent; font-size: 13px;")
         linha.addWidget(self.botao)
         linha.addSpacing(15)
         linha.addWidget(self.label_status)
@@ -59,15 +59,12 @@ class _LinhaSeletora(QWidget):
         linha.addStretch()
         self.limpar()
 
-    def _pintar(self, cor: str, cor_texto: str) -> None:
-        if self._pintar_botao or cor == COR_BOTAO_SELECAO:
-            hover = COR_BOTAO_SELECAO_HOVER if cor == COR_BOTAO_SELECAO else theme.COLORS["primary_hover"]
-            self.botao.setStyleSheet(
-                f"QPushButton {{ background: {cor}; font-size: 12px; }}"
-                f" QPushButton:hover {{ background: {hover}; }}")
-        # 13 px: a fonte padrão do CTkLabel; sem ela o rótulo pegava a do app.
-        self.label_status.setStyleSheet(
-            f"color: {cor_texto}; background: transparent; font-size: 13px;")
+    def _pintar(self, escolhido: bool) -> None:
+        """Vazio: botão `secundario` e rótulo `legenda`. Escolhido: rótulo `ok` e,
+        se a linha pinta o botão (`pintar_botao`), botão `primario`."""
+        if not escolhido or self._pintar_botao:
+            estilo.definir_variante(self.botao, "primario" if escolhido else "secundario")
+        estilo.definir_papel(self.label_status, "ok" if escolhido else "legenda")
 
     @property
     def valor(self):
@@ -77,14 +74,14 @@ class _LinhaSeletora(QWidget):
         self._valor = None
         self.label_status.setText(self._texto_vazio)
         self.label_status.setToolTip("")
-        self._pintar(COR_BOTAO_SELECAO, cinza_tk(theme.COR_TEXTO_APOIO))
+        self._pintar(False)
 
     def definir(self, valor, rotulo: str) -> None:
         """`valor` é o caminho (ou a tupla de caminhos): vai inteiro no tooltip."""
         self._valor = valor
         caminhos = "\n".join(valor) if isinstance(valor, (tuple, list)) else str(valor)
         self.label_status.mostrar_caminho(caminhos, rotulo)
-        self._pintar(theme.COLORS["primary"], theme.COLORS["accent"])
+        self._pintar(True)
 
     def _abrir_dialogo(self) -> None:
         raise NotImplementedError
@@ -185,13 +182,9 @@ class FileQueueList(QWidget):
         # A tk.Scrollbar fica sempre à vista, ao lado da lista.
         self.listbox.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.listbox.setFont(blocos.fonte_tk(FONTE_LISTA, em_pontos=True))
-        # A barra de rolagem fica a escura do app: lá a tela pedia uma tk.Scrollbar
-        # escura (bg=COR_CARTAO, troughcolor=#3A3A3A) -- o Windows ignora essas
-        # cores e a desenha clara, mas a intenção escrita era a escura.
+        # Cores (fundo, texto, seleção) e a barra de rolagem: as do QListWidget da folha.
         self.listbox.setStyleSheet(
-            f"QListWidget {{ background: {COR_FUNDO_LISTA}; color: {theme.COLORS['text_light']};"
-            f" border: none; outline: none; {blocos.folha_fonte_tk(FONTE_LISTA, em_pontos=True)} }}"
-            f" QListWidget::item:selected {{ background: {theme.COLORS['primary']}; color: white; }}"
+            f"QListWidget {{ border: none; outline: none; {blocos.folha_fonte_tk(FONTE_LISTA, em_pontos=True)} }}"
             f" QListWidget::item {{ padding: {estilo.FOLGA_LINHA_LISTA_TK}px 0; }}"
             " QListWidget::item:hover:!selected { background: transparent; }")
         # pack(side="left", padx=(5, 0), pady=5) da lista e da barra.
@@ -205,14 +198,12 @@ class FileQueueList(QWidget):
         coluna.setContentsMargins(0, 0, 0, 0)
         coluna.setSpacing(10)  # pady=5 de cada botão: 5 + 5 entre dois
         coluna.addSpacing(5)
-        # fg_color sem hover_color lá: o hover é o do tema (padrão de `cor_hover`).
         self.botao_adicionar = blocos.botao(texto_adicionar, largura=estilo.LARGURA_BOTAO_CTK, altura=28,
-                                            cor_fundo=COR_BOTAO_SELECAO)
+                                            variante="secundario")
         self.botao_remover = blocos.botao("Remover Seleção", largura=estilo.LARGURA_BOTAO_CTK, altura=28,
-                                          cor_fundo=theme.COLORS["danger"])
+                                          variante="perigo")
         self.botao_limpar = blocos.botao("Limpar Tudo", variante="contorno",
-                                         largura=estilo.LARGURA_BOTAO_CTK, altura=28,
-                                         cor_texto=estilo.TEXTO_BOTAO_CTK)
+                                         largura=estilo.LARGURA_BOTAO_CTK, altura=28)
         for botao in (self.botao_adicionar, self.botao_remover, self.botao_limpar):
             coluna.addWidget(botao)
         coluna.addStretch()

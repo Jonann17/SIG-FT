@@ -18,7 +18,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox, QStyle
 
 from sigft import config as sigft_config
-from sigft.app.theme import COLORS
 from sigft.app_qt import estilo
 from sigft.app_qt.views import home as home_mod
 from sigft.app_qt.widgets import controles
@@ -163,7 +162,8 @@ def _janelas_abertas(home):
 def test_textos_iguais_aos_da_home_antiga():
     """Os textos que a Home da interface antiga mostrava (eram comparados com
     ela; ela saiu em 2026-10-15, e os valores ficam travados aqui)."""
-    assert home_mod.TEXTO_BOTAO_ATUALIZACOES == "\U0001F504  Atualizações"
+    # Sem o emoji desde 2026-10-20: o desenho é o ícone (`ICONE_DA_BARRA`).
+    assert home_mod.TEXTO_BOTAO_ATUALIZACOES == "Atualizações"
     assert home_mod.TEXTO_CANAL_TESTES == "Versões de teste"
     assert home_mod.HomeView.ROTULO_PROVIDER_IA == {
         "gemini": "Gemini (chave direta do Google)",
@@ -188,9 +188,11 @@ def test_textos_iguais_aos_da_home_antiga():
 
 
 def test_desenho_do_mural_igual_ao_da_home_antiga():
-    assert mural_qt.COR_FAIXA == {
-        "atrasada": "#D32F2F", "travada": "#B07CE8", "deveria_ter_comecado": "#FFA726",
-        "em_andamento": "#047A83", "comeca_hoje": "#00C975", "proximos_dias": "gray70"}
+    # 2026-10-20: a faixa diz o seu nome (a propriedade `faixa`); a cor é da folha,
+    # uma por tema (`estilo.COR_DA_FAIXA`), com o roxo da travada mantido no escuro.
+    assert mural_qt.COR_FAIXA == {f: f for f in (
+        "atrasada", "travada", "deveria_ter_comecado", "em_andamento", "comeca_hoje", "proximos_dias")}
+    assert estilo.COR_DA_FAIXA["escuro"]["travada"] == "#B07CE8"
     assert mural_qt.ROTULO_FAIXA == {
         "atrasada": "ATRASADO", "travada": "TRAVADA", "deveria_ter_comecado": "DEVERIA TER COMEÇADO",
         "em_andamento": "EM ANDAMENTO", "comeca_hoje": "COMEÇA HOJE", "proximos_dias": "PRÓXIMOS 7 DIAS"}
@@ -201,8 +203,11 @@ def test_desenho_do_mural_igual_ao_da_home_antiga():
         "em_andamento": "alguém está tocando agora",
         "comeca_hoje": "entra na fila de hoje",
         "proximos_dias": "para se preparar"}
-    assert mural_qt.COR_CRITICIDADE == {5: "#D32F2F", 4: "#FF6F3C", 3: "#FFA726", 2: "#4DA3A9", 1: "#5A5A5A"}
-    assert mural_qt.COR_CRITICIDADE_PADRAO == "#3A3A3A"
+    # A escala de 2 a 5 é a mesma nos dois temas; a 1 e a sem criticidade seguem o
+    # tema (`texto_suave` e `borda`; eram os cinzas #5A5A5A e #3A3A3A).
+    assert mural_qt.COR_CRITICIDADE == {5: "#D32F2F", 4: "#FF6F3C", 3: "#FFA726", 2: "#4DA3A9",
+                                        1: "texto_suave"}
+    assert mural_qt.COR_CRITICIDADE_PADRAO == "borda"
 
 
 # =============================================================================
@@ -210,21 +215,22 @@ def test_desenho_do_mural_igual_ao_da_home_antiga():
 # =============================================================================
 
 def test_barra_na_ordem_e_com_as_cores_da_tela_antiga(home):
-    # CTkButton(fg_color=cor) sem hover_color: o hover é o do tema (#14375E).
+    # 2026-10-20: cada botão da barra é uma variante (a cor é da folha do tema).
+    # 2026-10-20: o emoji da frente do texto virou o ícone Lucide do botão.
     esperado = [
-        ("atividades", "\U0001F4CB  Atividades do dia", COLORS["accent"]),
-        ("modelos", "\U0001F916  Modelos de IA", COLORS["primary"]),
-        ("gastos", "\U0001F4B0  Gastos de IA", COLORS["primary"]),
-        ("chaves", "\U0001F511  Chaves de API", "#3A3A3A"),
-        ("atualizacoes", home_mod.TEXTO_BOTAO_ATUALIZACOES, "#3A3A3A"),
+        ("atividades", "Atividades do dia", "primario", "clipboard-check"),
+        ("modelos", "Modelos de IA", "primario", "bot"),
+        ("gastos", "Gastos de IA", "primario", "circle-dollar-sign"),
+        ("chaves", "Chaves de API", "secundario", "key-round"),
+        ("atualizacoes", home_mod.TEXTO_BOTAO_ATUALIZACOES, "secundario", "refresh-cw"),
     ]
-    assert list(home.botoes_barra) == [chave for chave, _t, _c in esperado]
-    for chave, texto, cor in esperado:
+    assert list(home.botoes_barra) == [chave for chave, _t, _c, _i in esperado]
+    for chave, texto, cor, icone in esperado:
         botao = home.botoes_barra[chave]
-        assert botao.text() == estilo.mono(texto)
-        folha = botao.styleSheet()
-        assert f"background: {cor}" in folha, chave
-        assert f"QPushButton:hover {{ background: {estilo.AZUL_CTK_HOVER}; }}" in folha, chave
+        assert botao.text() == texto
+        assert botao.property("icone") == icone and not botao.icon().isNull(), chave
+        assert botao.property("variante") == cor, chave
+        assert "background" not in botao.styleSheet(), chave
     assert home.btn_atualizacoes is home.botoes_barra["atualizacoes"]
 
 
@@ -237,14 +243,14 @@ def test_atualizacoes_pergunta_agora_e_o_botao_volta_ao_normal(home, monkeypatch
     home.btn_atualizacoes.click()
 
     assert not home.btn_atualizacoes.isEnabled(), "dois cliques seriam duas consultas"
-    assert home.btn_atualizacoes.text() == estilo.mono("\U0001F504  Procurando...")
+    assert home.btn_atualizacoes.text() == "Procurando..."   # sem emoji: o ícone fica (2026-10-20)
     [(janela, kw)] = pedidos
     assert janela is home.controller, "o aviso nasce da janela principal, não da Home"
 
     kw["ao_terminar"]()
 
     assert home.btn_atualizacoes.isEnabled()
-    assert home.btn_atualizacoes.text() == estilo.mono(home_mod.TEXTO_BOTAO_ATUALIZACOES)
+    assert home.btn_atualizacoes.text() == home_mod.TEXTO_BOTAO_ATUALIZACOES
 
 
 def test_versoes_de_teste_e_a_caixa_do_ctk_e_lembra(qt_interface, qtbot, rede, monkeypatch):
@@ -339,7 +345,8 @@ def test_area_de_chaves_com_os_campos_e_os_valores_atuais(home):
     assert [r.text() for r in home.rotulos_chaves_api.values()] == [r for _k, r in home_mod.CHAVES_API]
     assert home.entries["GEMINI"].text() == CHAVES["GEMINI"]
     assert home.entries["LLAMA"].text() == ""
-    assert home.lbl_titulo_chaves_api.text() == estilo.mono("🔑 Configuração de Chaves API (Global)")
+    # O emoji do título saiu em 2026-10-20 (o ícone fica no botão da barra).
+    assert home.lbl_titulo_chaves_api.text() == "Configuração de Chaves API (Global)"
     assert home.btn_salvar_chaves.text() == "Salvar Chaves"
 
 
@@ -419,7 +426,7 @@ def test_sem_chave_nenhuma_o_painel_explica(qt_interface, qtbot, rede, mensagens
 
 def test_provedores_com_chave_e_o_primeiro_quando_nada_salvo(home, rede):
     home.abrir_janela_modelos_ia()
-    assert home.lbl_titulo_modelos_ia.text() == estilo.mono("🤖 Modelos de IA")
+    assert home.lbl_titulo_modelos_ia.text() == "Modelos de IA"   # sem o emoji (2026-10-20)
     assert _itens(home.opt_provider_ia) == [ROTULO_GEMINI, ROTULO_OPENROUTER]
     assert home.opt_provider_ia.currentText() == ROTULO_GEMINI
     favs = catalogo.modelos_recomendados("gemini")
@@ -511,11 +518,13 @@ def test_falha_ao_atualizar_vira_aviso_e_a_lista_que_havia_fica(home, qtbot, red
         "Não foi possível atualizar a lista de modelos (ProxyError: 407 Proxy Authentication "
         "Required). Continua valendo a lista de 15/10.")
     assert _itens(home.opt_modelo_ia_global) == itens_antes
-    assert home.lbl_catalogo_ia.styleSheet() != cor_normal, "o aviso tem a cor de alerta"
+    # 2026-10-20: a cor de alerta é o papel `erro` da folha (a folha local não muda).
+    assert home.lbl_catalogo_ia.property("papel") == "erro", "o aviso tem a cor de alerta"
+    assert home.lbl_catalogo_ia.styleSheet() == cor_normal
     # Trocar de provedor (ou atualizar de novo com sucesso) tira o aviso.
     _escolher(home.opt_provider_ia, ROTULO_GEMINI)
     assert "Não foi possível" not in _texto(home.lbl_catalogo_ia)
-    assert home.lbl_catalogo_ia.styleSheet() == cor_normal
+    assert home.lbl_catalogo_ia.property("papel") == "legenda"
 
 
 def test_falha_ao_atualizar_sem_lista_nenhuma_diz_o_motivo(home, qtbot, rede):
@@ -816,7 +825,7 @@ def test_gastos_mostra_o_relatorio_e_atualiza(home, rede):
     from sigft.core.llm import usage
 
     home.abrir_janela_gastos_ia()
-    assert home.lbl_titulo_gastos_ia.text() == estilo.mono("💰 Gastos de IA")
+    assert home.lbl_titulo_gastos_ia.text() == "Gastos de IA"   # sem o emoji (2026-10-20)
     assert _texto(home.lbl_gastos_ia) == usage.formatar_relatorio_texto(RELATORIO)
     rede.relatorio = {}
     home.btn_atualizar_gastos_ia.click()
@@ -890,7 +899,7 @@ def test_mural_com_erro_mostra_so_o_erro(qt_interface, qtbot):
     mural_qt.montar(pai, {f: [] for f in at.FAIXAS}, "09/10/2026", "Nao encontrei o arquivo.")
     [rotulo] = pai.findChildren(QLabel)
     assert _texto(rotulo) == "Nao encontrei o arquivo."
-    assert COLORS["danger"].lower() in rotulo.styleSheet().lower()
+    assert rotulo.property("papel") == "erro"   # o vermelho é da folha (2026-10-20)
 
 
 def test_mural_vazio_diz_que_nada_esta_pendente(qt_interface, qtbot):
@@ -923,7 +932,8 @@ def test_mural_faixas_na_ordem_de_urgencia_e_sem_as_vazias(qt_interface, qtbot):
 
 def test_cor_da_barra_de_criticidade():
     assert mural_qt._cor_da_criticidade(5) == "#D32F2F"
-    assert mural_qt._cor_da_criticidade("1") == "#5A5A5A"
+    assert mural_qt._cor_da_criticidade("1") == "texto_suave"   # o tema decide (2026-10-20)
+    assert mural_qt._nivel_da_criticidade("muito") == 0
     assert mural_qt._cor_da_criticidade("muito") == mural_qt.COR_CRITICIDADE_PADRAO
     assert mural_qt._cor_da_criticidade(None) == mural_qt.COR_CRITICIDADE_PADRAO
 
@@ -1006,21 +1016,23 @@ def test_medidas_da_home(com_folha, qtbot, rede, mensagens):
 
 
 def test_medidas_do_painel_de_chaves(com_folha, qtbot, rede, mensagens):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     tela = home_mod.HomeView(controller=Controller())
     qtbot.addWidget(tela)
     j = _exposta(qtbot, tela.abrir_janela_chaves_api())
-    assert _geo(tela.frame_chaves_api, j) == (26, 26, 697, 320)
+    assert _geo(tela.frame_chaves_api, j) == (26, 26, 697, 348)
     assert _geo(tela.lbl_titulo_chaves_api, j)[:2] == (36, 36)
     for i, chave in enumerate(tela.entries):
-        y = 76 + 32 * i
-        assert _geo(tela.rotulos_chaves_api[chave], j) == (36, y, 140, 28), chave
-        assert _geo(tela.entries[chave], j) == (181, y, 527, 28), chave
+        y = 76 + 36 * i
+        assert _geo(tela.rotulos_chaves_api[chave], j) == (36, y, 140, 32), chave
+        assert _geo(tela.entries[chave], j) == (181, y, 527, 32), chave
     x, y, w, h = _geo(tela.btn_salvar_chaves, j)
-    assert (y, w, h) == (308, 140, 28) and abs(x - 304) <= 1
+    assert (y, w, h) == (336, 140, 28) and abs(x - 304) <= 1
     assert _geo(j.botao_fechar, j) == (320, 480, 120, 28)
 
 
 def test_medidas_do_painel_de_modelos(com_folha, qtbot, rede, mensagens):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     selecao.definir_global("openrouter", "x-ai/grok-4.5", config_path=sigft_config.CONFIG_FILE)
     tela = home_mod.HomeView(controller=Controller())
     qtbot.addWidget(tela)
@@ -1029,21 +1041,21 @@ def test_medidas_do_painel_de_modelos(com_folha, qtbot, rede, mensagens):
     assert _geo(tela.lbl_titulo_modelos_ia, j)[:2] == (36, 36)
     assert _geo(tela.lbl_descricao_modelos_ia, j)[:2] == (36, 74)
     assert _geo(tela.lbl_descricao_modelos_ia, j)[3] == 30  # duas linhas de 15, como o Tk
-    assert _geo(tela.opt_provider_ia, j) == (261, 114, 300, 28)
-    assert _geo(tela.btn_atualizar_catalogo_ia, j)[:2] == (571, 114)
-    assert _geo(tela.lbl_catalogo_ia, j)[1::2] == (147, 28)
-    assert _geo(tela.entry_filtro_modelo_ia, j) == (261, 180, 300, 28)
-    assert _geo(tela.opt_modelo_ia_global, j) == (261, 213, 420, 28)
-    assert _geo(tela.caixa_modo_avancado_ia, j)[:2] == (36, 251)
+    assert _geo(tela.opt_provider_ia, j) == (261, 114, 300, 32)
+    assert _geo(tela.btn_atualizar_catalogo_ia, j)[:2] == (571, 116)
+    assert _geo(tela.lbl_catalogo_ia, j)[1::2] == (151, 28)
+    assert _geo(tela.entry_filtro_modelo_ia, j) == (261, 184, 300, 32)
+    assert _geo(tela.opt_modelo_ia_global, j) == (261, 221, 420, 32)
+    assert _geo(tela.caixa_modo_avancado_ia, j)[:2] == (36, 263)
     assert _geo(tela.caixa_modo_avancado_ia, j)[3] == 24
     x, y, w, h = _geo(tela.entry_modelo_ia_livre, j)
-    assert (y, w, h) == (290, 300, 28)
-    assert _geo(tela.btn_limpar_modelo_ia, j) == (x + 305, 290, 70, 28)
-    assert _geo(tela.lbl_resumo_modelo_ia, j)[:2] == (36, 331)
-    assert _geo(tela.btn_aplicar_recomendados_ia, j)[:2] == (36, 369)
+    assert (y, w, h) == (302, 300, 32)
+    assert _geo(tela.btn_limpar_modelo_ia, j) == (x + 305, 304, 70, 28)
+    assert _geo(tela.lbl_resumo_modelo_ia, j)[:2] == (36, 347)
+    assert _geo(tela.btn_aplicar_recomendados_ia, j)[:2] == (36, 385)
     ap = _geo(tela.btn_aplicar_recomendados_ia, j)
-    assert _geo(tela.btn_salvar_selecao_ia, j)[:2] == (ap[0] + ap[2] + 10, 369)
-    assert _geo(tela.frame_modelos_ia, j)[3] == 386
+    assert _geo(tela.btn_salvar_selecao_ia, j)[:2] == (ap[0] + ap[2] + 10, 385)
+    assert _geo(tela.frame_modelos_ia, j)[3] == 402
 
 
 def test_medidas_do_painel_de_modelos_no_modo_avancado(com_folha, qtbot, rede, mensagens):
@@ -1054,14 +1066,14 @@ def test_medidas_do_painel_de_modelos_no_modo_avancado(com_folha, qtbot, rede, m
     qtbot.addWidget(tela)
     j = _exposta(qtbot, tela.abrir_janela_modelos_ia())
     for i, tarefa in enumerate(sigft_config.TAREFAS_DO_PAINEL):
-        y = 282 + 32 * i
+        y = 294 + 36 * i
         assert _geo(tela.rotulos_modelo_ia_por_tarefa[tarefa], j)[:3] == (36, y, 220), tarefa
-        assert _geo(tela.menus_modelo_ia_por_tarefa[tarefa], j) == (261, y, 420, 28), tarefa
+        assert _geo(tela.menus_modelo_ia_por_tarefa[tarefa], j) == (261, y, 420, 32), tarefa
     # 7 tarefas desde 2026-10-16 (entraram a passada 1 do Cria Fichas e a
-    # tradução de PDM): duas linhas de 32 px a mais que as 5 da tela antiga.
-    assert _geo(tela.entry_modelo_ia_livre, j)[1] == 460 + 2 * 32
+    # tradução de PDM): duas linhas de 36 px (32 desde 2026-10-20 + 4) a mais que as 5 da tela antiga.
+    assert _geo(tela.entry_modelo_ia_livre, j)[1] == 492 + 2 * 36
     resumo = _geo(tela.lbl_resumo_modelo_ia, j)
-    assert resumo[:2] == (36, 501 + 2 * 32)
+    assert resumo[:2] == (36, 537 + 2 * 36)
     assert _geo(tela.btn_aplicar_recomendados_ia, j)[1] == resumo[1] + resumo[3] + 10
 
 

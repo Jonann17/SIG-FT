@@ -13,7 +13,6 @@ import pytest
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QAbstractItemView, QApplication, QMessageBox
 
-from sigft.app import theme
 from sigft.app_qt import estilo
 from sigft.app_qt.views import janelas
 from sigft.app_qt.widgets import dialogos_selecao
@@ -772,6 +771,7 @@ def _mostrar(qtbot, j, largura, altura):
 
 
 def test_medidas_acao_robo(folha, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     d = janelas.DialogoAcaoRobo(None, "erro", "PDM.A")
     qtbot.addWidget(d)
     _mostrar(qtbot, d, 500, 350)
@@ -780,22 +780,23 @@ def test_medidas_acao_robo(folha, qtbot):
     assert _geo(d.rotulo_pdm, d)[1] == 123
     assert _geo(d.botao_retry, d) == [20, 171, 460, 28]
     assert _geo(d.botao_pular, d) == [20, 209, 460, 28]
-    assert _geo(d.botao_parar, d) == [20, 285, 460, 28]
+    assert _geo(d.botao_parar, d) == [20, 289, 460, 28]
     entrada, mudar = _geo(d.entry_pdm, d), _geo(d.botao_mudar, d)
-    assert entrada[:2] == [20, 247] and entrada[3] == 28
-    assert mudar[1] == 247 and mudar[0] + mudar[2] == 480 and mudar[3] == 28
+    assert entrada[:2] == [20, 247] and entrada[3] == 32
+    assert mudar[1] == 249 and mudar[0] + mudar[2] == 480 and mudar[3] == 28
     assert mudar[0] - (entrada[0] + entrada[2]) == 5
     assert mudar[2] >= 140
     d.botao_pular.click()
 
 
 def test_medidas_escolher_pdm(folha, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     j = janelas.JanelaEscolherPDM(None, _catalogo())
     qtbot.addWidget(j)
     _mostrar(qtbot, j, 900, 560)
     assert _geo(j.rotulo, j)[:2] == [10, 10]
-    assert _geo(j.entry_busca, j) == [10, 44, 880, 28]
-    assert _geo(j.lista, j) == [10, 88, 880, 424]
+    assert _geo(j.entry_busca, j) == [10, 44, 880, 32]
+    assert _geo(j.lista, j) == [10, 92, 880, 420]
     assert _geo(j.lbl_contagem, j)[:2] == [10, 522]
     assert _geo(j.botao_usar, j) == [595, 522, 140, 28]
     assert _geo(j.botao_cancelar, j) == [745, 522, 140, 28]
@@ -828,6 +829,7 @@ def test_medidas_resumo(folha, qtbot):
 
 
 def test_medidas_revisao_edicao_e_popup(folha, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     j = janelas.JanelaRevisaoEdicao(None, _fila())
     qtbot.addWidget(j)
     _mostrar(qtbot, j, 900, 500)
@@ -839,10 +841,10 @@ def test_medidas_revisao_edicao_e_popup(folha, qtbot):
     pop = j.popup
     _mostrar(qtbot, pop, 400, 300)
     assert _geo(pop.rotulo_orig, pop) == [20, 15, 360, 28]
-    assert _geo(pop.entry_orig, pop) == [20, 48, 360, 28]
-    assert _geo(pop.rotulo_alvo, pop) == [20, 96, 360, 28]
-    assert _geo(pop.entry_alvo, pop) == [20, 129, 360, 28]
-    assert _geo(pop.botao_salvar, pop) == [130, 182, 140, 28]
+    assert _geo(pop.entry_orig, pop) == [20, 48, 360, 32]
+    assert _geo(pop.rotulo_alvo, pop) == [20, 100, 360, 28]
+    assert _geo(pop.entry_alvo, pop) == [20, 133, 360, 32]
+    assert _geo(pop.botao_salvar, pop) == [130, 190, 140, 28]
     pop.close()
     j.close()
 
@@ -850,16 +852,18 @@ def test_medidas_revisao_edicao_e_popup(folha, qtbot):
 def test_cores_dos_botoes_do_interface_antiga(qt_interface, qtbot):
     d = janelas.DialogoAcaoRobo(None, "e", "p")
     qtbot.addWidget(d)
-    assert "#B8860B" in d.botao_pular.styleSheet() and "#DAA520" in d.botao_pular.styleSheet()
-    assert "#FF0000" in d.botao_parar.styleSheet() and "#8B0000" in d.botao_parar.styleSheet()
-    assert "#FF0000" in d.rotulo_erro.styleSheet()
+    # 2026-10-20: os botões guardam a variante, não a cor (a folha do tema pinta).
+    assert d.botao_pular.property("variante") == "secundario"
+    assert d.botao_parar.property("variante") == "perigo"
+    assert "background" not in d.botao_pular.styleSheet() + d.botao_parar.styleSheet()
+    assert d.rotulo_erro.property("papel") == "erro"   # o vermelho é da folha (2026-10-20)
     j = janelas.JanelaEscolherPDM(None, _catalogo())
     qtbot.addWidget(j)
-    assert theme.COLORS["accent"] in j.botao_usar.styleSheet()
-    assert "#3A3A3A" in j.botao_cancelar.styleSheet()
+    assert j.botao_usar.property("variante") == "primario"
+    assert j.botao_cancelar.property("variante") == "secundario"
     j.close()
     r, _ = _revisao(qtbot)
-    assert "#008000" in r.botao_confirmar.styleSheet()  # "green" do Tk
+    assert r.botao_confirmar.property("variante") == "primario"  # era o "green" do Tk
     r.close()
 
 

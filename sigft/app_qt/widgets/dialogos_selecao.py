@@ -45,10 +45,8 @@ def _esquecer(chave: int, *_sinal) -> None:
 
 
 
-def _botao(texto: str, *, largura: int | None = None, variante: str | None = None,
-           cor: str | None = None):
-    # `cor`: fg_color sem hover_color na interface antiga -> o hover é o do tema.
-    b = blocos.botao(texto, variante=variante, largura=largura, altura=28, cor_fundo=cor)
+def _botao(texto: str, *, largura: int | None = None, variante: str | None = None):
+    b = blocos.botao(texto, variante=variante, largura=largura, altura=28)
     # Enter não confirma sozinho: o Tk não ligava tecla nenhuma nestas janelas.
     b.setAutoDefault(False)
     b.setDefault(False)
@@ -125,9 +123,9 @@ class SelecaoMultiplaDialog(JanelaQueAbre):
     """Lista simples para escolher vários textos (o `tk.Listbox` da interface antiga).
 
     Devolve os TEXTOS marcados, ou as POSIÇÕES com `devolver_indices=True`.
-    `estilo_lista` são as opções do `tk.Listbox` que as telas passavam (bg, fg,
-    selectbackground, selectforeground, borderwidth); sem ele, a lista crua do
-    Tk: branca de texto preto (folha global, `claro`). `fonte_lista` é de
+    `estilo_lista` são as opções do `tk.Listbox` que as telas passavam; desde
+    2026-10-20 só o `borderwidth` vale (as cores são as da folha). Sem ele, a
+    lista crua do Tk (folha global, `claro`). `fonte_lista` é de
     widget cru do Tk (PONTOS); `fonte_instrucao`, de CTkLabel (pixels).
     """
 
@@ -163,14 +161,15 @@ class SelecaoMultiplaDialog(JanelaQueAbre):
         fonte = fonte_lista or theme.FONTE_CONSOLE
         self.listbox.setFont(blocos.fonte_tk(fonte, em_pontos=True))
         if estilo_lista:
-            folha = _folha_da_listbox(estilo_lista)
+            # 2026-10-20: as cores da lista são as do QListWidget da folha (o tema);
+            # das opções do tk.Listbox só a borda continua valendo, na cor `borda`.
+            self.listbox.setProperty("com_borda", int(estilo_lista.get("borderwidth", 1)) > 0)
         else:
-            # A Listbox crua: branca, e com a barra de rolagem clara do sistema.
+            # A Listbox crua (com borda), com a barra de rolagem do sistema.
             self.listbox.setProperty("claro", True)
             self.listbox.setProperty("barra_nativa", True)
-            folha = ""
         self.listbox.setStyleSheet(
-            f"QListWidget {{ {blocos.folha_fonte_tk(fonte, em_pontos=True)} outline: none; }} {folha}"
+            f"QListWidget {{ {blocos.folha_fonte_tk(fonte, em_pontos=True)} outline: none; }}"
             f" QListWidget::item {{ padding: {estilo.FOLGA_LINHA_LISTA_TK}px 0; }}"
             " QListWidget::item:hover:!selected { background: transparent; }")
         self.listbox.addItems([str(item) for item in itens])
@@ -183,7 +182,7 @@ class SelecaoMultiplaDialog(JanelaQueAbre):
         self.botao_todos = None
         botoes = []
         if com_selecionar_todos:
-            self.botao_todos = _botao("Selecionar Todos", largura=150, cor="#3A3A3A")
+            self.botao_todos = _botao("Selecionar Todos", largura=150, variante="secundario")
             self.botao_todos.clicked.connect(self.selecionar_todos)
             botoes.append(self.botao_todos)
         self.botao_confirmar = _botao(texto_confirmar, largura=150, variante="primario")
@@ -206,18 +205,6 @@ class SelecaoMultiplaDialog(JanelaQueAbre):
     def confirmar(self) -> None:
         escolha = self.indices if self._devolver_indices else self.selecionados
         self._confirmar_com(escolha, self._ao_confirmar)
-
-
-def _folha_da_listbox(opcoes: dict) -> str:
-    """As opções do `tk.Listbox` em folha de estilo do QListWidget."""
-    fundo = estilo.cinza_tk(opcoes.get("bg", "#FFFFFF"))
-    texto = estilo.cinza_tk(opcoes.get("fg", "#000000"))
-    selecao = estilo.cinza_tk(opcoes.get("selectbackground", "#0078D7"))
-    texto_selecao = estilo.cinza_tk(opcoes.get("selectforeground", "white"))
-    borda = int(opcoes.get("borderwidth", 1))
-    linha = f"border: {borda}px solid #A0A0A0;" if borda else "border: none;"
-    return (f"QListWidget {{ background: {fundo}; color: {texto}; {linha} }}"
-            f" QListWidget::item:selected {{ background: {selecao}; color: {texto_selecao}; }}")
 
 
 class TabelaSelecaoDialog(JanelaQueAbre):
@@ -267,7 +254,7 @@ class TabelaSelecaoDialog(JanelaQueAbre):
         botoes = [self.botao_confirmar]
         self.botao_cancelar = None
         if com_cancelar:
-            self.botao_cancelar = _botao("Cancelar", largura=140, cor="#3A3A3A")
+            self.botao_cancelar = _botao("Cancelar", largura=140, variante="secundario")
             self.botao_cancelar.clicked.connect(self.reject)
             botoes.append(self.botao_cancelar)
         layout.addLayout(_linha_de_botoes(*botoes))
@@ -400,13 +387,13 @@ class ArquivosTravadosDialog(SoltaAoFechar, QDialog):
         layout.addWidget(self.rotulo_explicacao)
         layout.addSpacing(6 + 4)
 
-        area, lista = blocos.area_rolavel(cor=theme.COR_CARTAO)
+        area, lista = blocos.area_rolavel(fundo="cartao")
         self.area = area
         for nome, motivo, o_que_fazer in self.itens:
             lista.addSpacing(8)
             r_nome = blocos.rotulo(nome, tamanho=14, negrito=True, alinhar="esquerda")
             r_motivo = blocos.rotulo(f"Motivo: {motivo}. {o_que_fazer}", tamanho=12,
-                                     cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO_CLARO), alinhar="esquerda")
+                                     papel="legenda", alinhar="esquerda")
             for r in (r_nome, r_motivo):
                 r.setContentsMargins(10, 0, 10, 0)
                 lista.addWidget(r)
@@ -415,7 +402,7 @@ class ArquivosTravadosDialog(SoltaAoFechar, QDialog):
         layout.addSpacing(4 + 6)
 
         self.rotulo_rodape = blocos.rotulo(textos["rodape"], tamanho=12,
-                                           cor=estilo.cinza_tk(theme.COR_TEXTO_APOIO), alinhar="esquerda")
+                                           papel="legenda", alinhar="esquerda")
         layout.addWidget(self.rotulo_rodape)
         layout.addSpacing(4 + 4)
 

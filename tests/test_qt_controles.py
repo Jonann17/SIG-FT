@@ -1,13 +1,12 @@
 """Interruptor (CTkSwitch) e menu de opções (CTkOptionMenu) desenhados à mão.
 
-As medidas e cores vêm do tema dark-blue da interface antiga
-(interface antiga/assets/themes/dark-blue.json) e da captura da tela LMR de
-2026-10-08 (Xvfb, 1280x850).
+As medidas vêm do tema dark-blue da interface antiga e da captura da tela LMR
+de 2026-10-08 (Xvfb, 1280x850). As cores, desde 2026-10-20, são as da paleta do
+tema (`estilo.paleta_atual()`): a fidelidade à CTk caiu com a saída dela.
 """
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QCheckBox, QComboBox, QStyle, QStyleOptionButton
 
-from sigft.app import theme
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import controles
 
@@ -38,18 +37,21 @@ def test_interruptor_e_uma_caixa_de_marcar_com_as_medidas_do_ctkswitch(qt_interf
 
 
 def test_interruptor_desenha_trilho_e_botao_como_o_ctk(qt_interface, qtbot):
-    chave = _na_folha(qtbot, controles.Interruptor("Ligar", cor_ligado=theme.COLORS["accent"]))
+    p = estilo.paleta_atual()
+    chave = _na_folha(qtbot, controles.Interruptor("Ligar"))
     chave.resize(chave.sizeHint())
     y0 = (chave.height() - 18) // 2
     desligado = chave.grab().toImage()
-    # Desligado: botão (#D5D9DE, 18 px) à esquerda, trilho #4A4D50 (30x12) à direita dele.
-    assert _cor(desligado, 9, y0 + 9) == "#D5D9DE"
-    assert _cor(desligado, 27, y0 + 9) == "#4A4D50"
-    assert _cor(desligado, 27, y0 + 1) != "#4A4D50"   # o trilho é mais baixo que o botão
+    # Desligado: botão (18 px, `texto_suave`) à esquerda, trilho (30x12, `borda`)
+    # à direita dele. 2026-10-20: cores da paleta (eram #D5D9DE/#4A4D50 da CTk).
+    assert _cor(desligado, 9, y0 + 9) == p["texto_suave"]
+    assert _cor(desligado, 27, y0 + 9) == p["borda"]
+    assert _cor(desligado, 27, y0 + 1) != p["borda"]   # o trilho é mais baixo que o botão
     chave.setChecked(True)
     ligado = chave.grab().toImage()
-    assert _cor(ligado, 27, y0 + 9) == "#D5D9DE"
-    assert _cor(ligado, 9, y0 + 9) == theme.COLORS["accent"].upper()
+    # Ligado: trilho `primaria`, botão `texto_sobre_primaria` (contrasta nos dois temas).
+    assert _cor(ligado, 27, y0 + 9) == p["texto_sobre_primaria"]
+    assert _cor(ligado, 9, y0 + 9) == p["primaria"]
 
 
 def test_interruptor_alterna_clicando_no_texto(qt_interface, qtbot):
@@ -68,15 +70,20 @@ def test_menu_de_opcoes_pinta_como_o_ctkoptionmenu(qt_interface, qtbot):
     menu = _na_folha(qtbot, controles.MenuDeOpcoes(["Plan1", "LMR"]))
     menu.setFixedWidth(300)
     assert isinstance(menu, QComboBox)
-    assert menu.height() == 28 and menu.sizeHint().height() == 28
+    # 2026-10-20: 32, a altura de campo do sistema visual (a regra QComboBox da folha);
+    # era os 28 do CTkOptionMenu, que saiu com a interface antiga em 2026-10-15.
+    assert menu.height() == 32 and menu.sizeHint().height() == 32
     imagem = menu.grab().toImage()
-    # Parte do texto #1F538D, parte da seta (28 px, a altura) #14375E.
-    assert _cor(imagem, 150, 3) == estilo.AZUL_CTK
-    assert _cor(imagem, 300 - 26, 3) == estilo.AZUL_CTK_HOVER
-    assert _cor(imagem, 300 - 30, 3) == estilo.AZUL_CTK
-    # A seta é um "v" de #DCE4EE no meio da parte escura.
+    p = estilo.paleta_atual()
+    # 2026-10-20: a cara do QComboBox da folha (era o azul #1F538D/#14375E da CTk):
+    # corpo `superficie_alta` inteiro (a seta não tem mais quadrado próprio) e a
+    # borda de 1 px `borda`.
+    assert _cor(imagem, 150, 3) == p["superficie_alta"]
+    assert _cor(imagem, 300 - 26, 3) == p["superficie_alta"]
+    assert _cor(imagem, 150, 0) == p["borda"]
+    # A seta é um "v" na cor do texto, no quadrado da direita.
     cores_da_seta = {_cor(imagem, x, y) for x in range(280, 293) for y in range(10, 18)}
-    assert estilo.TEXTO_BOTAO_CTK in cores_da_seta
+    assert p["texto"] in cores_da_seta
     assert menu.currentText() == "Plan1"
 
 

@@ -22,15 +22,12 @@ from PySide6.QtWidgets import QHBoxLayout, QSizePolicy
 
 from sigft import config as sigft_config
 from sigft.app.textos_dialogos import MSG_LOGIN_LOTE
-from sigft.app.theme import COLORS
 from sigft.app_qt import estilo, file_dialogs, interface
 from sigft.app_qt.views.janelas import JanelaRevisaoEdicao, JanelaSelecaoDuplicadas
 from sigft.app_qt.widgets import blocos, controles
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.services import duplicadas
 
-# O #3A3A3A/#454545 que a tela escrevia à mão (a variante "cinza").
-COR_HOVER_CINZA = "#454545"
 # O grid da tela antiga: linha 1 (quadro rolável, weight=3) e linha 2 (console,
 # weight=1). O Tk dá a cada linha o que ela PEDE e reparte a sobra (ou a
 # falta) pelos pesos -- não a altura toda, como o stretch do Qt. Pedidos
@@ -41,9 +38,9 @@ PESO_ROLAVEL, PESO_CONSOLE = 3, 1
 RECUO_ROLAGEM = 6
 
 
-def _rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, cor: str | None = None):
+def _rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, papel: str | None = None):
     """CTkLabel de uma linha, anchor="w", 28 px de altura."""
-    r = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, cor=cor, alinhar="esquerda")
+    r = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, papel=papel, alinhar="esquerda")
     r.setWordWrap(False)
     r.setFixedHeight(blocos.ALTURA_MINIMA_ROTULO)
     return r
@@ -93,7 +90,7 @@ class ModuloCopiaFichas(ModuleFrame):
         config = self._cartao(corpo, fim=10)
         self.cartao_config = config.parentWidget()
         self.rotulo_etapa1 = _rotulo("1. Selecionar Arquivo Base", tamanho=16, negrito=True,
-                                     cor=COLORS["accent"])
+                                     papel="destaque")
         config.addWidget(self.rotulo_etapa1)
         config.addSpacing(20)                           # título (…, 10) + f_pmib (10, …)
 
@@ -101,11 +98,10 @@ class ModuloCopiaFichas(ModuleFrame):
         linha.setContentsMargins(0, 0, 0, 0)
         linha.setSpacing(0)
         self.btn_status = blocos.botao("Selecionar _STATUS_PMIB", variante="cinza", largura=250, altura=28)
-        self._folha_btn_status = self.btn_status.styleSheet()
         self.btn_status.clicked.connect(self.selecionar_excel_pmib)
         linha.addWidget(self.btn_status)
         linha.addSpacing(15)                            # lbl_status: padx=15
-        self.lbl_status = _rotulo("Aguardando seleção...", cor=estilo.cinza_tk("gray"))
+        self.lbl_status = _rotulo("Aguardando seleção...", papel="legenda")
         linha.addWidget(self.lbl_status)
         linha.addStretch()
         config.addLayout(linha)
@@ -114,7 +110,7 @@ class ModuloCopiaFichas(ModuleFrame):
         corpo.addSpacing(20)                            # frm_config (…, 10) + frm_action (10, …)
         acoes = self._cartao(corpo, fim=15)
         self.cartao_acoes = acoes.parentWidget()
-        self.rotulo_etapa2 = _rotulo("2. Execução", tamanho=16, negrito=True, cor=COLORS["accent"])
+        self.rotulo_etapa2 = _rotulo("2. Execução", tamanho=16, negrito=True, papel="destaque")
         acoes.addWidget(self.rotulo_etapa2)
         acoes.addSpacing(20)                            # título (…, 10) + grade (10, …)
 
@@ -142,13 +138,13 @@ class ModuloCopiaFichas(ModuleFrame):
         # aparece no console mais o HTML de cada seção que o robô visita. O
         # HTML vai só para o arquivo; o console continua legível.
         self.switch_auditoria = controles.Interruptor(
-            "Gravar log de auditoria (com a estrutura das telas)", cor_ligado=COLORS["primary"])
+            "Gravar log de auditoria (com a estrutura das telas)")
         self.switch_auditoria.setChecked(True)
         acoes.addWidget(self.switch_auditoria, 0, Qt.AlignmentFlag.AlignLeft)
         acoes.addSpacing(15)                            # interruptor (…, 0) + barra (15, …)
 
-        # Progresso: CTkProgressBar(progress_color=accent), pack(fill="x", pady=15).
-        self.progress = blocos.barra_progresso(barra=blocos.BarraDeProgresso(), cor=COLORS["accent"])
+        # Progresso: CTkProgressBar (a cor é a da folha), pack(fill="x", pady=15).
+        self.progress = blocos.barra_progresso(barra=blocos.BarraDeProgresso())
         self.progress.definir(0)
         acoes.addWidget(self.progress)
 
@@ -156,7 +152,7 @@ class ModuloCopiaFichas(ModuleFrame):
 
     @staticmethod
     def _cartao(corpo, *, fim: int):
-        """CTkFrame #2B2B2B de cantos 8: peças com padx=15, título com pady 10."""
+        """O cartão (`blocos.cartao`): peças com padx=15, título com pady 10."""
         layout = blocos.cartao(corpo)
         layout.setContentsMargins(15, 10, 15, fim)
         layout.setSpacing(0)
@@ -239,23 +235,22 @@ class ModuloCopiaFichas(ModuleFrame):
 
     def _pos_leitura_sucesso(self) -> None:
         self.btn_status.setEnabled(not self._robo_ativo)
-        # Lá: configure(fg_color=primary) -- o hover_color continua o #454545.
-        self.btn_status.setStyleSheet(
-            self._folha_btn_status + f" QPushButton {{ background: {COLORS['primary']}; }}"
-            f" QPushButton:hover {{ background: {COR_HOVER_CINZA}; }}")
+        # Lá: configure(fg_color=primary) -- aqui, a variante primária.
+        estilo.definir_variante(self.btn_status, "primario")
         texto = f"Planilha carregada. Encontradas {len(self.fila_completa)} duplicadas."
         if self.impedidas:
             texto += f" ({len(self.impedidas)} sem dados para o robô. Ver log.)"
         self.lbl_status.setText(texto)
-        self._pintar_status(COLORS["accent"])
+        self._pintar_status("ok")
         self.log(f"{len(self.fila_completa)} fichas identificadas como cópia.")
 
         if self.fila_completa:
             # Abre imediatamente a janela para selecionar quais processar
             self.janela_selecao = JanelaSelecaoDuplicadas(self, self.fila_completa, self._pos_selecao)
 
-    def _pintar_status(self, cor: str) -> None:
-        self.lbl_status.setStyleSheet(f"font-size: 13px; background: transparent; color: {cor};")
+    def _pintar_status(self, papel: str | None) -> None:
+        """O `configure(text_color=...)` do rótulo de status: o papel de texto."""
+        estilo.definir_papel(self.lbl_status, papel)
 
     def _pos_selecao(self, selecionados) -> None:
         self.fila_selecionada = selecionados

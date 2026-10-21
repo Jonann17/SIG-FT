@@ -17,7 +17,6 @@ import json
 
 from PySide6.QtWidgets import QMessageBox, QVBoxLayout
 
-from sigft.app import theme
 from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO, msg_ficha_preenchida
 from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.views._upload_comum import ABA_WEB, TelaDeUpload, reabilitar
@@ -61,7 +60,7 @@ class ModuloUploadTechSpecs(TelaDeUpload):
         # 1. Seletor do Master PDM
         corpo = self._cartao_na_aba(rolavel, (15, 10, 15, 15))
         self.rotulo_referencia = blocos.rotulo("Referência para IA", tamanho=14, negrito=True,
-                                               cor=theme.COLORS["accent"], alinhar="esquerda")
+                                               papel="destaque", alinhar="esquerda")
         self.rotulo_referencia.setWordWrap(False)
         corpo.addWidget(self.rotulo_referencia)
         corpo.addSpacing(10)                            # título (…, 5) + linha (5, …)
@@ -200,8 +199,7 @@ class ModuloUploadTechSpecs(TelaDeUpload):
             fonte_instrucao=("Roboto", 14, "bold"),
             fonte_lista=("Consolas", 11),
             estilo_lista={
-                "bg": "#1E1E1E", "fg": "white",
-                "selectbackground": theme.COLORS["primary"],
+                # As cores da lista são as da folha (2026-10-20); só a borda vale.
                 "highlightthickness": 0, "borderwidth": 0,
             },
             ao_confirmar=confirmar,

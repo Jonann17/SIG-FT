@@ -1,7 +1,6 @@
 """`FileQueueList` da interface Qt: mesma API da interface antiga (E3.1)."""
 import pytest
 
-from sigft.app import theme
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import pickers
 
@@ -78,7 +77,10 @@ def test_selecao_estendida_e_cores_da_lista(qt_interface, qtbot):
     assert fila.listbox.selectionMode() == QAbstractItemView.SelectionMode.ExtendedSelection
     assert fila.botao_adicionar.text() == "Adicionar JSONs"
     folha = fila.listbox.styleSheet()
-    assert pickers.COR_FUNDO_LISTA in folha and theme.COLORS["primary"] in folha
+    # 2026-10-20: fundo, texto e seleção são os do QListWidget da folha do tema
+    # (eram #1E1E1E e o primary escritos aqui).
+    assert "background" not in folha.replace("background: transparent", "")
+    assert "color" not in folha
     # tk.Listbox("Segoe UI", 11): 11 PONTOS
     assert fila.listbox.font().pointSize() == 11
 

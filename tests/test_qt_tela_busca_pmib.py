@@ -68,7 +68,8 @@ def test_monta_com_os_textos(tela):
         "DESCRIÇÃO", "CÓDIGO DO MATERIAL", "CÓDIGO CMI", "MARCA/MODELO", "CÓDIGO PMIB"]
     assert tela.opt_coluna.currentText() == "DESCRIÇÃO"
     assert tela.entry_termo.placeholderText() == "Digite o que deseja encontrar..."
-    assert tela.btn_search.text() == estilo.mono("🔍 PESQUISAR")
+    # O "🔍" virou o ícone "search" (sistema visual, 2026-10-20).
+    assert tela.btn_search.text() == "PESQUISAR" and tela.btn_search.property("icone") == "search"
     assert tela.tipo_busca == "direcionada"
 
 
@@ -193,8 +194,9 @@ def test_janela_de_resultados(janela):
     assert c1.texto_caminho.isReadOnly() and c1.texto_amostra.isReadOnly()
     # Sem amostra, sem a caixa da amostra.
     assert c2.texto_amostra is None
-    assert c1.botao_arquivo.text() == estilo.mono("📄 Abrir Arquivo")
-    assert c1.botao_pasta.text() == estilo.mono("📁 Abrir Pasta")
+    # Os emoji dos botões viraram ícone Lucide (2026-10-20); o texto fica.
+    assert c1.botao_arquivo.text() == "Abrir Arquivo" and c1.botao_arquivo.property("icone") == "file"
+    assert c1.botao_pasta.text() == "Abrir Pasta" and c1.botao_pasta.property("icone") == "folder-open"
     assert janela.botao_fechar.text() == "Fechar"
 
 
@@ -275,6 +277,7 @@ def com_folha(qt_interface):
 
 
 def test_medidas_iguais_as_do_interface_antiga(com_folha, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Medidas da tela antiga (interface antiga, janela 1280x850, sondadas com
     # winfo_*), já na origem da tela Qt (que começa no x=277 da janela e inclui
     # o padx/pady=20 do `show_frame`): título em (40, 30); quadro dos parâmetros
@@ -290,18 +293,18 @@ def test_medidas_iguais_as_do_interface_antiga(com_folha, qtbot):
         return p.x(), p.y(), w.width(), w.height()
 
     assert geo(t.label_titulo)[:2] == (40, 30)
-    assert geo(t.content)[1] == 74
+    assert geo(t.content)[1] == 72
     cartao = t.rotulo_secao.parentWidget()
-    assert geo(cartao) == (40, 79, 923, 167)
-    assert geo(t.rotulo_secao)[:2] == (55, 89)
-    assert [geo(r)[:3] for r in t.rotulos_linha] == [(55, 127, 150), (55, 165, 150), (55, 203, 150)]
-    assert geo(t.entry_pasta) == (210, 127, 400, 28)
+    assert geo(cartao) == (40, 77, 923, 179)
+    assert geo(t.rotulo_secao)[:2] == (55, 87)
+    assert [geo(r)[:3] for r in t.rotulos_linha] == [(55, 127, 150), (55, 169, 150), (55, 211, 150)]
+    assert geo(t.entry_pasta) == (210, 125, 400, 32)
     assert geo(t.btn_pasta) == (615, 127, 100, 28)
     assert geo(t.rb_direc)[0] == 205
-    assert geo(t.opt_coluna)[1:] == (165, 140, 28)
-    assert geo(t.entry_termo) == (210, 203, 400, 28)
-    assert geo(t.btn_search) == (625, 203, 150, 28)
-    assert geo(t.console) == (40, 271, 923, 539)
+    assert geo(t.opt_coluna)[1:] == (167, 140, 32)
+    assert geo(t.entry_termo) == (210, 209, 400, 32)
+    assert geo(t.btn_search) == (625, 211, 150, 28)
+    assert geo(t.console) == (40, 281, 923, 529)
 
 
 def test_medidas_da_janela_de_resultados(com_folha, qtbot):
@@ -335,17 +338,18 @@ def test_medidas_da_janela_de_resultados(com_folha, qtbot):
     assert geo(c2.botao_arquivo)[1] == geo(c2.texto_caminho)[1] + 72 + 2
 
 
-def test_menu_de_coluna_pinta_o_cinza_da_tela_antiga(qt_interface, qtbot):
-    # CTkOptionMenu(fg_color="#3A3A3A", button_color="#454545"); o padrão segue azul.
+def test_menu_de_coluna_pinta_com_a_paleta_do_tema(qt_interface, qtbot):
+    # 2026-10-20: o menu não tem mais cor própria (era o #3A3A3A/#454545 da tela
+    # antiga): o da coluna e o padrão pintam igual, com a paleta do tema.
     from sigft.app_qt.widgets import controles
 
     t = tela_mod.ModuloBuscaPMIB()
     qtbot.addWidget(t)
     padrao = controles.MenuDeOpcoes(["a"])
     qtbot.addWidget(padrao)
-    for menu, fundo, seta in ((t.opt_coluna, "#3a3a3a", "#454545"),
-                              (padrao, estilo.AZUL_CTK.lower(), estilo.AZUL_CTK_HOVER.lower())):
+    fundo = estilo.paleta_atual()["superficie_alta"].lower()
+    for menu in (t.opt_coluna, padrao):
         menu.resize(140, 28)
         img = menu.grab().toImage()
         assert img.pixelColor(20, 3).name() == fundo
-        assert img.pixelColor(menu.width() - 4, 3).name() == seta
+        assert img.pixelColor(menu.width() - 4, 3).name() == fundo

@@ -13,8 +13,6 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QSizePolicy, QVBoxLayout
 
-from sigft.app import theme
-from sigft.app_qt import estilo
 from sigft.app_qt.widgets import abas, blocos, controles, pickers, revisao_portal
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 
@@ -97,20 +95,18 @@ class TelaDeUpload(ModuleFrame):
         self.content_layout.addSpacing(10)              # quadro global: pady=10
         self._quadro_global()
         self.content_layout.addSpacing(20)              # quadro (…, 10) + abas (10, …)
-        self.tabview = abas.Abas(cor_fundo="#2B2B2B", cor_barra="#161616",
-                                 cor_selecionada=theme.COLORS["primary"],
-                                 cor_selecionada_hover=theme.COLORS["primary_hover"])
+        self.tabview = abas.Abas()
         self.content_layout.addWidget(self.tabview, 1)
         self.content_layout.addSpacing(10)              # abas: pady=(…, 10)
         self._build_tab1(self.tabview.add(self.ABA_IA).layout())
         self._build_tab2(self.tabview.add(ABA_WEB).layout())
 
     def _linha_arquivo(self, texto_botao, ao_clicar):
-        """Botão cinza de 200 + "Não selecionado" cinza (padx=10), à esquerda."""
+        """Botão cinza de 200 + "Não selecionado" em legenda (padx=10), à esquerda."""
         botao = blocos.botao(texto_botao, variante="cinza", largura=200, altura=28, tamanho_fonte=12)
         botao.clicked.connect(ao_clicar)
         # Elidido: um nome comprido não alarga a tela (passava de 1280 para 1682 px).
-        rotulo = blocos.rotulo(TEXTO_NAO_SELECIONADO, cor=estilo.cinza_tk("gray"), alinhar="esquerda",
+        rotulo = blocos.rotulo(TEXTO_NAO_SELECIONADO, papel="legenda", alinhar="esquerda",
                                elidir=True)
         linha = QHBoxLayout()
         linha.setSpacing(0)
@@ -126,14 +122,13 @@ class TelaDeUpload(ModuleFrame):
         corpo.setSpacing(0)
         corpo.setContentsMargins(*self.MARGENS_CONFIG)
         self.rotulo_config = blocos.rotulo(self.TEXTO_CONFIG, tamanho=14, negrito=True,
-                                           cor=theme.COLORS["accent"], alinhar="esquerda")
+                                           papel="destaque", alinhar="esquerda")
         self.rotulo_config.setWordWrap(False)
         corpo.addWidget(self.rotulo_config)
         corpo.addSpacing(10)                            # título + linha (5+5 ou 0+10 lá)
         linha, self.btn_status, self.lbl_status_status = self._linha_arquivo(
             "Selecionar _STATUS_PMIB", self._sel_status)
-        self.switch_completos = controles.Interruptor(self.TEXTO_INTERRUPTOR,
-                                                      cor_ligado=theme.COLORS["primary"])
+        self.switch_completos = controles.Interruptor(self.TEXTO_INTERRUPTOR)
         linha.addWidget(self.switch_completos)
         linha.addSpacing(10)                            # interruptor: pack(side="right", padx=10)
         corpo.addLayout(linha)
@@ -152,7 +147,7 @@ class TelaDeUpload(ModuleFrame):
 
     @staticmethod
     def _cartao_na_aba(rolavel, margens) -> QVBoxLayout:
-        """Quadro #2B2B2B com padx=10 dentro da área rolável."""
+        """O cartão (`blocos.cartao`) com padx=10 dentro da área rolável."""
         recuo = QVBoxLayout()
         recuo.setContentsMargins(10, 0, 10, 0)
         rolavel.addLayout(recuo)
@@ -178,10 +173,10 @@ class TelaDeUpload(ModuleFrame):
         direita; os dois com padx=5, dentro do padx=10 da linha."""
         # width=200 lá, mas o CTkButton cresce até caber o texto (202 na interface antiga).
         self.btn_ia = blocos.botao("INICIAR PROCESSAMENTO IA", largura_minima=200, altura=40,
-                                   tamanho_fonte=13, negrito=True, cor_fundo=theme.COLORS["primary"])
+                                   tamanho_fonte=13, negrito=True, variante="primario")
         self.btn_ia.clicked.connect(self._start_ia_process)
         self.btn_parar_ia = blocos.botao("PARAR", largura=100, altura=40, tamanho_fonte=13, negrito=True,
-                                         cor_fundo=theme.COLORS["danger"])
+                                         variante="perigo")
         self.btn_parar_ia.setEnabled(False)
         self.btn_parar_ia.clicked.connect(self._stop_ia_process)
         linha = QHBoxLayout()
@@ -196,7 +191,7 @@ class TelaDeUpload(ModuleFrame):
 
     def _build_tab2(self, aba: QVBoxLayout) -> None:
         aba.addSpacing(20)                              # texto: pady=20
-        self.rotulo_web = blocos.rotulo(self.TEXTO_WEB, tamanho=14, cor=controles.COR_TEXTO_CTK)
+        self.rotulo_web = blocos.rotulo(self.TEXTO_WEB, tamanho=14)
         aba.addWidget(self.rotulo_web)
         self.btn_web_mem = blocos.botao("Usar Dados Recém Processados (Memória)", variante="primario",
                                         largura=350, altura=40, tamanho_fonte=13, negrito=True)
@@ -206,7 +201,7 @@ class TelaDeUpload(ModuleFrame):
         self.btn_web_file.clicked.connect(self._start_web_from_file)
         # fg_color danger sem hover_color lá: o hover é o do tema.
         self.btn_parar_web = blocos.botao("PARAR ROBÔ WEB", largura=350, altura=40, tamanho_fonte=13,
-                                          negrito=True, cor_fundo=theme.COLORS["danger"])
+                                          negrito=True, variante="perigo")
         self.btn_parar_web.setEnabled(False)
         self.btn_parar_web.clicked.connect(self._stop_web_process)
         # texto (…, 20) + memória (10, …); memória (…, 10) + arquivo (10, …);

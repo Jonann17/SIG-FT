@@ -11,7 +11,6 @@ import functools
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos, dialogs
 
 # O conteúdo do CTkScrollableFrame começa 6 px para dentro (o canto do quadro).
@@ -49,7 +48,8 @@ class JanelaPainel(QWidget):
         super().__init__(master, Qt.WindowType.Window)
         self.setObjectName("janela_painel")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(f"#janela_painel {{ background: {estilo.cinza_tk('gray10')}; }}")
+        # O fundo (o `fundo` do tema; era o gray10 do CTkToplevel) é a regra
+        # `#janela_painel` da folha.
         self.setWindowTitle(titulo)
         self.resize(*blocos.geometria_tk(geometria))
 

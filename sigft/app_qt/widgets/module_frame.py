@@ -51,7 +51,7 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         controller=None,
         *,
         titulo: str,
-        cor_titulo: str | None = None,
+        papel_titulo: str | None = None,
         peso_conteudo: int = 1,
         altura_console: int | None = theme.ALTURA_CONSOLE,
         com_progresso: bool = False,
@@ -101,8 +101,9 @@ class ModuleFrame(DialogosDeEspera, QWidget):
             linha_header = QVBoxLayout(self.header)
             linha_header.setContentsMargins(0, 0, 0, 0)
             self.label_titulo = QLabel(titulo, objectName="titulo_modulo")
-            if cor_titulo:
-                self.label_titulo.setStyleSheet(f"color: {cor_titulo};")
+            if papel_titulo:
+                # A cor é da folha: `#titulo_modulo[papel=...]` (2026-10-20).
+                self.label_titulo.setProperty("papel", papel_titulo)
             linha_header.addWidget(self.label_titulo)
             # SEM `setFixedHeight(theme.ALTURA_HEADER)`: lá o título entra no
             # header com `pack`, e o quadro encolhe até a altura do título

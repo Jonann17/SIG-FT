@@ -20,32 +20,29 @@ converte.)
 """
 from __future__ import annotations
 
+from sigft.app import tokens
+
 # =============================================================================
-# Paleta — GE Vernova
+# Paleta -- derivada dos tokens (2026-10-20)
 # =============================================================================
-# Copiada literalmente de `frontend.py` (dict `COLORS`). A ordem das chaves e
-# os valores em hexadecimal são os mesmos; mudar qualquer um deles é redesign,
-# e redesign está fora da Fase 7.
+# Os nomes das chaves seguem os de sempre (muitos arquivos importam `COLORS`),
+# mas os valores vêm de `tokens.ESCURO`: a interface inteira muda de paleta
+# sem tocar em cada importador. A fidelidade à CTk caiu em 2026-10-15.
 COLORS: dict[str, str] = {
-    "primary": "#035D67",
+    "primary": tokens.ESCURO["marca"],
     "primary_hover": "#047A83",
-    "accent": "#00C975",
-    "accent_hover": "#00E085",
-    "danger": "#D32F2F",
-    # Acrescentada em 2026-08-13 para a secao de conferencia do AutoSpec.
-    # Aditiva: nenhuma cor existente mudou.
-    "warning": "#FFA726",
-    "sidebar": "#161616",
-    "background": "#212121",
-    "text_light": "#E0E0E0",
+    "accent": tokens.ESCURO["sucesso"],
+    "accent_hover": tokens.ESCURO["primaria_hover"],
+    "danger": tokens.ESCURO["perigo_fundo"],
+    "warning": tokens.ESCURO["aviso"],
+    "sidebar": tokens.ESCURO["superficie"],
+    "background": tokens.ESCURO["fundo"],
+    "text_light": tokens.ESCURO["texto"],
     "text_white": "#FFFFFF",
 }
 
-# Cinza do "cartão" interno das telas: o `fg_color="#2B2B2B"` que aparece
-# ~20 vezes no `frontend.py`, sempre com `corner_radius=8`, sempre no frame
-# que agrupa um bloco de controles. Nunca esteve no `COLORS` — mas é cor de
-# tema como qualquer outra, e sem nome vira literal espalhado.
-COR_CARTAO: str = "#2B2B2B"
+# Fundo do "cartão" interno das telas (bloco que agrupa controles).
+COR_CARTAO: str = tokens.ESCURO["superficie"]
 
 # Cinza usado em texto de apoio (descrições sob um título). No `frontend.py`
 # aparece como as strings literais "gray" e "gray70", que são nomes de cor do

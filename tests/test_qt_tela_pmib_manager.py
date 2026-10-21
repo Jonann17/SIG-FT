@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from sigft.app import backends, theme
+from sigft.app import backends
 from sigft.app_qt.views import pmib_manager as tela_mod
 from sigft.core.prefs import CHAVE_MAPEAMENTO
 
@@ -176,9 +176,9 @@ def test_seletores_de_arquivo(tela, monkeypatch):
     assert tela.lbl_master_status.text() == "Mapeamento.xlsx"
     assert tela.lbl_autorizados.text() == "sobressalentes_autorizados_1.xlsx"
     for rotulo in (tela.lbl_api_status, tela.lbl_master_status, tela.lbl_autorizados):
-        assert theme.COLORS["accent"] in rotulo.styleSheet()
+        assert rotulo.property("papel") == "ok"  # cor da folha pelo papel (2026-10-20)
     for botao in (tela.btn_api, tela.btn_master, tela.btn_autorizados):
-        assert theme.COLORS["primary"] in botao.styleSheet()
+        assert botao.property("variante") == "primario"
     # O mapeamento fica lembrado para o mural da Home.
     assert tela.lembrados == [(CHAVE_MAPEAMENTO, "/d/Mapeamento.xlsx")]
 
@@ -607,6 +607,7 @@ def test_texto_dos_avisos_mora_nos_textos_dos_dialogos():
 # Geometria contra a interface antiga
 # ---------------------------------------------------------------------------
 def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot, monkeypatch):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Medidas da tela antiga (interface antiga, janela 1280x850, winfo_* da tela;
     # aqui relativas à área da tela, que começa 277 px à direita -- a barra
     # lateral -- e no topo). Ver capturas/e4.2.
@@ -629,48 +630,49 @@ def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot, monkeypatch)
         r = t._rotulos
         cartao1, cartao2 = r["config"].parentWidget(), r["autorizacoes"].parentWidget()
         assert geo(t.label_titulo)[:2] == (40, 30)
-        assert geo(cartao1) == (40, 84, 923, 301)
-        assert geo(r["config"])[:2] == (55, 99) and geo(r["config"])[3] == 28
+        assert geo(cartao1) == (40, 82, 923, 317)
+        assert geo(r["config"])[:2] == (55, 97) and geo(r["config"])[3] == 28
         # O botão cresce até caber o texto (286 lá; a medida do texto do Roboto
         # no Qt sai 3 px menor); o rótulo vem 15 px depois.
         x, y, w, h = geo(t.btn_api)
-        assert (x, y, h) == (55, 140, 28) and abs(w - 286) <= 4
-        assert geo(t.lbl_api_status)[:2] == (x + w + 15, 140)
-        assert geo(r["raiz"]) == (55, 184, 280, 28)
-        assert geo(t.entry_root) == (340, 184, 300, 28)
-        assert geo(t.btn_buscar) == (645, 184, 80, 28)
-        assert geo(t.btn_master) == (55, 228, 280, 28)
-        assert geo(t.lbl_master_status)[:2] == (350, 228)
-        assert geo(t.btn_run) == (326, 284, 350, 50)
+        assert (x, y, h) == (55, 138, 32) and abs(w - 286) <= 4
+        assert geo(t.lbl_api_status)[:2] == (x + w + 15, 138)
+        assert geo(r["raiz"]) == (55, 186, 280, 32)
+        assert geo(t.entry_root) == (340, 186, 300, 32)
+        assert geo(t.btn_buscar) == (645, 186, 80, 32)
+        assert geo(t.btn_master) == (55, 234, 280, 32)
+        assert geo(t.lbl_master_status)[:2] == (350, 234)
+        assert geo(t.btn_run) == (326, 294, 350, 50)
         # Caixa (160 lá: 24 + 6 + texto) e "Gerar painel" a 20 px, o par
         # centrado no cartão: lá a caixa começa em 331 e o botão em 511.
         x, y, w, h = geo(t.caixa_gerar_painel)
-        assert (y, h) == (344, 24) and abs(w - 160) <= 4 and abs(x - 331) <= 2
+        assert (y, h) == (356, 24) and abs(w - 160) <= 4 and abs(x - 331) <= 2
         bx, by, bw, bh = geo(t.btn_painel)
-        assert (by, bw, bh) == (342, 160, 28) and bx - (x + w) == 20
+        assert (by, bw, bh) == (352, 160, 32) and bx - (x + w) == 20
         assert abs((x + bx + bw) / 2 - (40 + 923 / 2)) <= 1
-        assert geo(cartao2)[:3] == (40, 395, 923)
-        assert geo(r["autorizacoes"])[:2] == (55, 410)
-        assert geo(r["descricao_aut"])[:2] == (55, 438) and geo(r["descricao_aut"])[3] == 34
-        assert geo(t.btn_autorizados) == (55, 480, 280, 28)
-        assert geo(t.lbl_autorizados)[:2] == (350, 480)
-        assert geo(t.btn_aplicar) == (748, 480, 200, 28)
+        assert geo(cartao2)[:3] == (40, 409, 923)
+        assert geo(r["autorizacoes"])[:2] == (55, 424)
+        assert geo(r["descricao_aut"])[:2] == (55, 452) and geo(r["descricao_aut"])[3] == 34
+        assert geo(t.btn_autorizados) == (55, 494, 280, 32)
+        assert geo(t.lbl_autorizados)[:2] == (350, 494)
+        assert geo(t.btn_aplicar) == (748, 494, 200, 32)
         # [2026-10-14] A linha nova do CONFERIR NO PORTAL, nas duas telas com o
         # mesmo empacotamento: pady=(0, 15) depois da linha do export, descrição
         # com wraplength=480 (duas linhas do Tk: 34 px) e o botão à direita.
         # O cartão cresce 15 + 34 = 49 px (era 128 na captura e4.2), e a barra
         # e o console descem o mesmo tanto. Medidas da tela Qt; a captura da
         # tela antiga com a linha nova ainda não foi feita.
-        assert geo(r["descricao_portal"]) == (55, 523, 480, 34)
-        assert geo(t.btn_conferir) == (748, 526, 200, 28)
-        assert geo(cartao2)[3] == 128 + 49
-        assert geo(t.progress_bar) == (201, 543 + 49, 600, 12)
-        assert geo(t.console) == (40, 565 + 49, 923, 245 - 49)
+        assert geo(r["descricao_portal"]) == (55, 541, 480, 34)
+        assert geo(t.btn_conferir) == (748, 542, 200, 32)
+        assert geo(cartao2)[3] == 132 + 49  # 132: as linhas de botões de 32 (2026-10-20)
+        assert geo(t.progress_bar) == (201, 561 + 49, 600, 12)
+        assert geo(t.console) == (40, 583 + 49, 923, 227 - 49)
     finally:
         qt_interface.setStyleSheet(anterior)
 
 
 def test_popup_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     from sigft.app_qt import estilo
 
     anterior = qt_interface.styleSheet()
@@ -688,14 +690,14 @@ def test_popup_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
 
         assert (d.width(), d.height()) == (750, 550)
         assert geo(d.rotulo_titulo)[1] == 15 and geo(d.rotulo_instrucao)[1] == 48
-        assert geo(d.area) == (20, 91, 710, 396)
+        assert geo(d.area) == (20, 91, 710, 392)
         caixas = list(d.caixas.values())
         assert geo(caixas[0])[:2] == (36, 103) and geo(caixas[0])[3] == 24
         assert geo(caixas[1])[1] - geo(caixas[0])[1] == 36
-        assert geo(d.botao_marcar) == (25, 507, 120, 28)
-        assert geo(d.botao_desmarcar) == (155, 507, 120, 28)
-        assert geo(d.botao_ignorar) == (415, 507, 150, 28)
-        assert geo(d.botao_confirmar) == (575, 507, 150, 28)
+        assert geo(d.botao_marcar) == (25, 503, 120, 32)
+        assert geo(d.botao_desmarcar) == (155, 503, 120, 32)
+        assert geo(d.botao_ignorar) == (415, 503, 150, 32)
+        assert geo(d.botao_confirmar) == (575, 503, 150, 32)
     finally:
         qt_interface.setStyleSheet(anterior)
 

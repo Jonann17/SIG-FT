@@ -29,17 +29,15 @@ from datetime import date, datetime
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QScrollArea,
+    QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QScrollArea,
     QVBoxLayout, QWidget,
 )
 from shiboken6 import isValid
 
 from sigft import config as sigft_config
 from sigft.app import textos_dicas
-from sigft.app.theme import COLORS
-from sigft.app_qt import atualizacao, estilo, interface
-from sigft.app_qt.catalogo import MODULOS
-from sigft.app_qt.estilo import mono
+from sigft.app_qt import atualizacao, estilo, icones, interface, nome, tema
+from sigft.app_qt.catalogo import ICONE_DA_TELA, MODULOS
 from sigft.app_qt.widgets import blocos, controles, dialogs, mural
 from sigft.app_qt.widgets.module_frame import aplicar_dicas
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
@@ -49,23 +47,38 @@ from sigft.core.llm import usage as llm_usage
 from sigft.services import updater
 
 # O botão da barra que procura versão nova. Constante porque dois lugares
-# precisam concordar: quem cria o botão e quem o devolve ao normal.
-TEXTO_BOTAO_ATUALIZACOES = "\U0001F504  Atualizações"
-TEXTO_PROCURANDO = "\U0001F504  Procurando..."
+# precisam concordar: quem cria o botão e quem o devolve ao normal. Sem emoji
+# desde 2026-10-20: o desenho é o ícone (`ICONE_DA_BARRA`).
+TEXTO_BOTAO_ATUALIZACOES = "Atualizações"
+TEXTO_PROCURANDO = "Procurando..."
 # [2026-10-07] O canal de testes: marcada, a atualização oferece também
 # pré-lançamentos. Ver services/updater.py.
 TEXTO_CANAL_TESTES = "Versões de teste"
 
-# A barra (`_criar_barra_de_botoes` de lá): chave, texto, cor de fundo e o que
-# abre. CTkButton(fg_color=cor) SEM hover_color: o hover é o do tema (#14375E),
-# em todos. O "Atualizações" vem depois, fora da lista, porque o texto muda.
+# A barra (`_criar_barra_de_botoes` de lá): chave, texto, variante do botão e o que
+# abre. A cor de cada um é a da variante, na folha do tema. O "Atualizações" vem depois, fora da lista, porque o texto muda.
 BARRA = [
-    ("atividades", "\U0001F4CB  Atividades do dia", COLORS["accent"], "abrir_mural_atividades"),
-    ("modelos", "\U0001F916  Modelos de IA", COLORS["primary"], "abrir_janela_modelos_ia"),
-    ("gastos", "\U0001F4B0  Gastos de IA", COLORS["primary"], "abrir_janela_gastos_ia"),
-    ("chaves", "\U0001F511  Chaves de API", "#3A3A3A", "abrir_janela_chaves_api"),
+    ("atividades", "Atividades do dia", "primario", "abrir_mural_atividades"),
+    ("modelos", "Modelos de IA", "primario", "abrir_janela_modelos_ia"),
+    ("gastos", "Gastos de IA", "primario", "abrir_janela_gastos_ia"),
+    ("chaves", "Chaves de API", "secundario", "abrir_janela_chaves_api"),
 ]
-COR_BOTAO_ATUALIZACOES = "#3A3A3A"
+# O ícone de cada botão da barra (Lucide, `sigft/app_qt/icones.py`): era o
+# emoji do começo do texto até 2026-10-20.
+ICONE_DA_BARRA = {
+    "atividades": "clipboard-check", "modelos": "bot", "gastos": "circle-dollar-sign",
+    "chaves": "key-round", "atualizacoes": "refresh-cw",
+}
+COR_BOTAO_ATUALIZACOES = "secundario"   # variante (2026-10-20)
+
+# O seletor de tema (2026-10-20): escolha, texto, ícone e dica. Na linha do
+# título, à direita: a barra de botões já ocupa a largura da Home a 1280 px.
+SELETOR_TEMA = (
+    ("escuro", "Escuro", "moon", "Tema escuro: fundo grafite, o padrão do SIG-FT."),
+    ("claro", "Claro", "sun", "Tema claro: fundo branco, para ambiente bem iluminado."),
+    ("sistema", "Sistema", "monitor",
+     "Segue o tema do Windows (claro ou escuro) e muda junto quando ele mudar."),
+)
 
 # As chaves do painel "Chaves de API" (o `keys_info` de lá, sem o valor padrão,
 # que é sempre vazio: as chaves vêm do .env ou do api_config.json).
@@ -100,16 +113,10 @@ SEM_PROVEDOR_IA = (
     "Nenhum provedor de IA tem chave configurada acima. Configure ao menos uma "
     "chave (ex.: Gemini ou OpenRouter) para escolher o modelo aqui.")
 
-# --- aparência (tema dark-blue da interface antiga e o que as telas escreviam à mão) ---------
-# CTkLabel sem `text_color`: o texto do tema (gray84), não o text_light.
-COR_TEXTO_CTK = controles.COR_TEXTO_CTK
+# --- aparência (as cores são da folha do tema, desde 2026-10-20) ---------------
 FONTE_CTK = ("Roboto", 13)                 # CTkFont() do tema
 FONTE_TITULO_PAINEL = ("Arial", 16, "bold")
 FONTE_DICA = ("Roboto", 12)
-# "green" do Tk 8.6 é o do W3C, e não o do X11.
-VERDE_TK = "#008000"
-# CTkFrame(fg_color=("gray90", "gray16"), corner_radius=10) dos três painéis.
-FUNDO_PAINEL = estilo.cinza_tk("gray16")
 # O Tk dá 15 px por linha ao Roboto 12 (o "linespace" da fonte); o Qt, 14. Num
 # texto de 11 linhas (o relatório de gastos) seriam 11 px a menos. Os rótulos de
 # várias linhas fixam a linha do Tk (como a caixa de notas da atualização).
@@ -128,16 +135,17 @@ LARGURA_LIMPAR = 70
 # =============================================================================
 # Peças
 # =============================================================================
-def _rotulo(texto: str, fonte: tuple = FONTE_CTK, *, cor: str = COR_TEXTO_CTK,
-            largura_minima: int | None = None) -> QLabel:
-    """CTkLabel de uma linha, `anchor="w"` (`blocos.rotulo_tk`, com a fonte e a cor
-    padrão do CTkLabel); `largura_minima` é o `width=` (o texto maior alarga)."""
-    return blocos.rotulo_tk(texto, fonte, cor, largura_minima=largura_minima)
+def _rotulo(texto: str, fonte: tuple = FONTE_CTK, *, largura_minima: int | None = None) -> QLabel:
+    """CTkLabel de uma linha, `anchor="w"` (`blocos.rotulo_tk`, com a fonte
+    padrão do CTkLabel e o texto comum); `largura_minima` é o `width=` (o texto
+    maior alarga)."""
+    return blocos.rotulo_tk(texto, fonte, largura_minima=largura_minima)
 
 
 def _titulo_painel(texto: str) -> QLabel:
-    """O título em negrito com emoji dos painéis (rótulo fixo: o emoji vai em P&B)."""
-    return _rotulo(mono(texto), FONTE_TITULO_PAINEL)
+    """O título em negrito dos painéis. O emoji da frente saiu em 2026-10-20: o
+    ícone fica no botão da barra que abre o painel."""
+    return _rotulo(texto, FONTE_TITULO_PAINEL)
 
 
 class _Texto(QLabel):
@@ -147,31 +155,28 @@ class _Texto(QLabel):
     ocupa a largura até `largura_maxima` e quebra linha nela, como o
     `wraplength` de lá. `altura_linha` fixa a altura da linha do Tk (texto rico
     com `white-space: pre-wrap`, que guarda os espaços do começo das linhas).
-    `texto_puro` é o texto que a pessoa lê.
+    `texto_puro` é o texto que a pessoa lê; `papel`, o papel de texto da folha
+    (sem ele, o texto comum).
     """
 
-    def __init__(self, texto: str = "", fonte: tuple = FONTE_DICA, *, cor: str = COR_TEXTO_CTK,
+    def __init__(self, texto: str = "", fonte: tuple = FONTE_DICA, *, papel: str | None = None,
                  largura_maxima: int | None = QUEBRA_PAINEL, altura_linha: int | None = None) -> None:
         super().__init__()
         self.texto_puro = ""
         self._altura_linha = altura_linha
-        self._fonte, self._cor = fonte, cor
+        self._fonte, self._papel = fonte, papel
         self.setTextFormat(Qt.TextFormat.RichText if altura_linha else Qt.TextFormat.PlainText)
         self.setWordWrap(True)
         self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.setMinimumHeight(blocos.ALTURA_MINIMA_ROTULO)
         if largura_maxima:
             self.setMaximumWidth(largura_maxima)
-        self._pintar(cor)
+        self.setStyleSheet(f"{blocos.folha_fonte_tk(self._fonte)} background: transparent;")
         self.definir(texto)
 
-    def _pintar(self, cor: str) -> None:
-        self.setStyleSheet(f"{blocos.folha_fonte_tk(self._fonte)} color: {estilo.cinza_tk(cor)};"
-                           " background: transparent;")
-
-    def definir(self, texto, *, cor: str | None = None) -> None:
-        """`cor` troca a cor só desta vez (um aviso); sem ela, volta a de nascença."""
-        self._pintar(cor or self._cor)
+    def definir(self, texto, *, papel: str | None = None) -> None:
+        """`papel` troca o papel só desta vez (um erro); sem ele, volta o de nascença."""
+        estilo.definir_papel(self, papel or self._papel)
         self.texto_puro = str(texto)
         if self._altura_linha:
             self.setText(f'<div style="white-space: pre-wrap; line-height: {self._altura_linha}px">'
@@ -180,27 +185,27 @@ class _Texto(QLabel):
             self.setText(self.texto_puro)
 
 
-def _botao(texto: str, *, cor_fundo: str | None = None, variante: str | None = None,
+def _botao(texto: str, *, variante: str | None = None,
            largura_minima: int = estilo.LARGURA_BOTAO_CTK, **kw):
     """CTkButton de 28 px: largura 140 (ou o texto + 7 de cada lado), sem foco."""
-    b = blocos.botao(texto, variante=variante, cor_fundo=cor_fundo, altura=28,
+    b = blocos.botao(texto, variante=variante, altura=28,
                      largura_minima=largura_minima, **kw)
     dialogs.sem_tecla(b)
     return b
 
 
 def _botao_cinza(texto: str, *, largura_minima: int = estilo.LARGURA_BOTAO_CTK):
-    """fg_color="#3A3A3A", hover_color="#454545": a variante "cinza"."""
+    """O botão cinza que a tela escrevia à mão: a variante "cinza" (= secundário)."""
     return _botao(texto, variante="cinza", largura_minima=largura_minima)
 
 
 def _menu(opcoes: list[str], largura: int) -> controles.MenuDeOpcoes:
-    """CTkOptionMenu(fg_color="#3A3A3A", button_color="#454545", width=largura).
+    """CTkOptionMenu(width=largura), com as cores da paleta (`controles.MenuDeOpcoes`).
 
     Sem foco (as setas do teclado trocariam a escolha sem abrir o menu; a interface antiga
     não tem teclado ali) e sem roda (ver `MenuDeOpcoes.wheelEvent`).
     """
-    m = controles.MenuDeOpcoes(opcoes, cor="#3A3A3A", cor_seta="#454545")
+    m = controles.MenuDeOpcoes(opcoes)
     m.setFixedWidth(largura)
     m.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     return m
@@ -219,7 +224,7 @@ def _trocar_opcoes(menu, valores: list[str]) -> None:
 
 
 def _painel(parent):
-    """O quadro dos painéis: CTkFrame gray16 com cantos de 10, `pack(padx=10,
+    """O quadro dos painéis: CTkFrame com cantos de 10 (`#painel_home`, a superfície), `pack(padx=10,
     pady=10)` no conteúdo da JanelaPainel. Devolve (casca, quadro, coluna); a
     coluna já tem os `padx=10` que todos os filhos usam lá."""
     casca = QWidget()
@@ -227,7 +232,6 @@ def _painel(parent):
     caixa.setContentsMargins(10, 10, 10, 10)
     caixa.setSpacing(0)
     quadro = QFrame(objectName="painel_home")
-    quadro.setStyleSheet(f"#painel_home {{ background: {FUNDO_PAINEL}; border-radius: 10px; }}")
     caixa.addWidget(quadro)
     coluna = QVBoxLayout(quadro)
     coluna.setContentsMargins(10, 0, 10, 0)
@@ -268,6 +272,34 @@ def _vivo(widget) -> bool:
     return widget is not None and isValid(widget)
 
 
+def _agora() -> datetime:
+    """O relógio da saudação. Função para os testes fixarem a hora."""
+    return datetime.now()
+
+
+class _Saudacao(blocos.RotuloElidido):
+    """O título da Home: "Bom dia, <nome>" (2026-10-20). Clicar troca o nome.
+
+    Elide à direita: um nome comprido (até `nome.LIMITE` letras, na fonte de
+    32 px do título) não empurra o seletor de tema nem abre rolagem
+    horizontal; `text()` continua sendo a saudação inteira."""
+
+    MODO = Qt.TextElideMode.ElideRight
+
+    def __init__(self, ao_clicar) -> None:
+        super().__init__("", objectName="titulo_home")
+        self._ao_clicar = ao_clicar
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip(nome.DICA_DA_SAUDACAO)
+
+    def mouseReleaseEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
+        # No soltar, como um botão: quem aperta e arrasta para fora desiste.
+        if (evento.button() == Qt.MouseButton.LeftButton
+                and self.rect().contains(evento.position().toPoint())):
+            self._ao_clicar()
+        super().mouseReleaseEvent(evento)
+
+
 class _Card(QFrame):
     def __init__(self, alvo, titulo, descricao, ao_clicar) -> None:
         super().__init__(objectName="card")
@@ -276,7 +308,16 @@ class _Card(QFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
-        layout.addWidget(QLabel(titulo, objectName="card_titulo"))
+        # O ícone da tela ao lado do título, na cor dele (`primaria`): o mesmo
+        # do menu (`catalogo.ICONE_DA_TELA`, 2026-10-20).
+        topo = QHBoxLayout()
+        topo.setContentsMargins(0, 0, 0, 0)
+        topo.setSpacing(8)
+        self.icone = QLabel(objectName="card_icone")
+        icones.aplicar(self.icone, ICONE_DA_TELA.get(alvo, ""), papel_cor="primaria", tamanho=18)
+        topo.addWidget(self.icone)
+        topo.addWidget(QLabel(titulo, objectName="card_titulo"), 1)
+        layout.addLayout(topo)
         desc = QLabel(descricao, objectName="card_desc")
         desc.setWordWrap(True)
         layout.addWidget(desc)
@@ -336,9 +377,17 @@ class HomeView(QScrollArea):
         layout.setSpacing(0)
 
         # --- CABEÇALHO --- (pady (20, 5); (0, 20); 10; os de baixo somam)
-        self.label_titulo = QLabel("SIG-FT", objectName="titulo_home")
-        self.label_titulo.setStyleSheet(f"color: {COR_TEXTO_CTK};")
-        layout.addWidget(self.label_titulo)
+        # [2026-10-20] O título virou a saudação ("Bom dia, <nome>"), com a
+        # mesma fonte e altura do "SIG-FT" de antes (o nome do app já está na
+        # barra lateral). Ver `sigft/app_qt/nome.py`.
+        self._pergunta_do_nome = None
+        self.label_titulo = _Saudacao(self.mudar_nome)
+        self.atualizar_saudacao()
+        linha_titulo = QHBoxLayout()
+        linha_titulo.setSpacing(0)
+        linha_titulo.addWidget(self.label_titulo, 1)
+        linha_titulo.addWidget(self._criar_seletor_tema(), 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addLayout(linha_titulo)
         layout.addSpacing(5)
         self.label_subtitulo = QLabel("Sistema Integrado de Gestão de Fichas Técnicas - GE Vernova",
                                       objectName="subtitulo_home")
@@ -381,7 +430,7 @@ class HomeView(QScrollArea):
         r.setMaximumWidth(QUEBRA_PAINEL)
         r.setMinimumHeight(blocos.ALTURA_MINIMA_ROTULO)
         r.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        r.setStyleSheet(f"{blocos.folha_fonte_tk(('Arial', 14))} color: {COR_TEXTO_CTK};")
+        r.setStyleSheet(blocos.folha_fonte_tk(("Arial", 14)))
         return r
 
     # =====================================================================
@@ -391,8 +440,8 @@ class HomeView(QScrollArea):
         barra = QHBoxLayout()
         barra.setSpacing(0)
         self.botoes_barra = {}
-        for chave, texto, cor, metodo in BARRA:
-            botao = self._botao_da_barra(texto, cor)
+        for chave, texto, variante, metodo in BARRA:
+            botao = self._botao_da_barra(texto, variante, ICONE_DA_BARRA[chave])
             botao.clicked.connect(lambda _=False, m=metodo: getattr(self, m)())
             self.botoes_barra[chave] = botao
             barra.addWidget(botao)
@@ -401,7 +450,8 @@ class HomeView(QScrollArea):
         # [2026-09-25] Fora da lista porque o texto muda enquanto procura. A
         # abertura do app já pergunta sozinha, mas CALADA; este botão é o
         # caminho que responde.
-        self.btn_atualizacoes = self._botao_da_barra(TEXTO_BOTAO_ATUALIZACOES, COR_BOTAO_ATUALIZACOES)
+        self.btn_atualizacoes = self._botao_da_barra(
+            TEXTO_BOTAO_ATUALIZACOES, COR_BOTAO_ATUALIZACOES, ICONE_DA_BARRA["atualizacoes"])
         self.btn_atualizacoes.clicked.connect(self.procurar_atualizacoes)
         self.botoes_barra["atualizacoes"] = self.btn_atualizacoes
         barra.addWidget(self.btn_atualizacoes)
@@ -421,11 +471,63 @@ class HomeView(QScrollArea):
         barra.addStretch()
         return barra
 
+    # =====================================================================
+    # SAUDAÇÃO  [2026-10-20]
+    # =====================================================================
+    def atualizar_saudacao(self) -> None:
+        """Recalcula a saudação pelo relógio e pelo nome guardado. A janela
+        chama ao mostrar a Home: "Bom dia" vira "Boa tarde" sem reabrir."""
+        self.label_titulo.setText(nome.saudacao(_agora(), nome.guardado()))
+
+    def mudar_nome(self) -> None:
+        """Clicar na saudação: a pergunta do nome, com o nome de agora no campo."""
+        if self._pergunta_do_nome is not None and isValid(self._pergunta_do_nome):
+            self._pergunta_do_nome.raise_()
+            self._pergunta_do_nome.activateWindow()
+            return
+        caixa = nome.PerguntaDoNome(self)
+        self._pergunta_do_nome = caixa
+        caixa.finished.connect(self.atualizar_saudacao)
+        caixa.open()
+
+    # =====================================================================
+    # SELETOR DE TEMA  [2026-10-20]
+    # =====================================================================
+    def _criar_seletor_tema(self) -> QFrame:
+        """Três botões (Escuro, Claro, Sistema); o da escolha atual fica `ativo`,
+        pintado como o item escolhido do menu, e o ícone dele acompanha."""
+        quadro = QFrame(objectName="seletor_tema")
+        linha = QHBoxLayout(quadro)
+        linha.setContentsMargins(0, 0, 0, 0)
+        linha.setSpacing(4)
+        self.botoes_tema = {}
+        for escolha, texto, icone, dica in SELETOR_TEMA:
+            botao = blocos.botao(texto, variante="secundario", tamanho_fonte=12)
+            icones.aplicar(botao, icone, papel_cor_ativo=estilo.PAPEL_MENU_ESCOLHIDO, tamanho=16)
+            botao.setToolTip(dica)
+            dialogs.sem_tecla(botao)
+            botao.clicked.connect(lambda _=False, e=escolha: self.escolher_tema(e))
+            self.botoes_tema[escolha] = botao
+            linha.addWidget(botao)
+        self._marcar_tema(tema.escolhido())
+        return quadro
+
+    def _marcar_tema(self, escolha: str) -> None:
+        for chave, botao in self.botoes_tema.items():
+            estilo.definir_propriedade(botao, "ativo", chave == escolha)
+            icones.reaplicar(botao)
+
+    def escolher_tema(self, escolha: str) -> None:
+        """Troca o tema do app inteiro e lembra a escolha (`tema.aplicar`)."""
+        # Marca o que VALEU, não o que está nas prefs: gravar pode ter falhado.
+        self._marcar_tema(tema.aplicar(QApplication.instance(), escolha))
+
     @staticmethod
-    def _botao_da_barra(texto: str, cor: str):
+    def _botao_da_barra(texto: str, variante: str, icone: str):
         # height=40, font=("Roboto", 13, "bold"); a largura é a do CTkButton.
-        botao = blocos.botao(mono(texto), cor_fundo=cor, altura=estilo.ALTURA_BOTAO_BARRA,
+        botao = blocos.botao(texto, variante=variante, altura=estilo.ALTURA_BOTAO_BARRA,
                              tamanho_fonte=13, negrito=True, largura_minima=estilo.LARGURA_BOTAO_CTK)
+        icones.aplicar(botao, icone)
         dialogs.sem_tecla(botao)
         return botao
 
@@ -439,12 +541,12 @@ class HomeView(QScrollArea):
         """Pergunta ao GitHub agora e SEMPRE responde (ver `app_qt/atualizacao.py`)."""
         botao = self.btn_atualizacoes
         botao.setEnabled(False)
-        botao.setText(mono(TEXTO_PROCURANDO))
+        botao.setText(TEXTO_PROCURANDO)
 
         def ao_terminar():
             if _vivo(botao):
                 botao.setEnabled(True)
-                botao.setText(mono(TEXTO_BOTAO_ATUALIZACOES))
+                botao.setText(TEXTO_BOTAO_ATUALIZACOES)
 
         atualizacao.procurar_agora(self.controller, ao_terminar=ao_terminar)
 
@@ -557,7 +659,7 @@ class HomeView(QScrollArea):
         """O painel de configuração das chaves de API, dentro de `parent`."""
         _casca, quadro, coluna = _painel(parent)
         self.frame_chaves_api = quadro
-        self.lbl_titulo_chaves_api = _titulo_painel("🔑 Configuração de Chaves API (Global)")
+        self.lbl_titulo_chaves_api = _titulo_painel("Configuração de Chaves API (Global)")
         _empilhar(coluna, self.lbl_titulo_chaves_api, cima=10, baixo=10)
 
         # [SEGURANÇA] Sem valores padrão escritos aqui: as chaves vêm do .env ou
@@ -580,7 +682,7 @@ class HomeView(QScrollArea):
             self.entries[key_id] = entry
             self.rotulos_chaves_api[key_id] = rotulo
 
-        self.btn_salvar_chaves = _botao("Salvar Chaves", cor_fundo=VERDE_TK)
+        self.btn_salvar_chaves = _botao("Salvar Chaves", variante="primario")
         self.btn_salvar_chaves.clicked.connect(self.salvar_chaves_api)
         _empilhar(coluna, self.btn_salvar_chaves, cima=10, baixo=10, centro=True)
 
@@ -629,9 +731,9 @@ class HomeView(QScrollArea):
         # Guardado para o painel se remontar ONDE estava (`_recarregar_painel_modelos_ia`).
         self._parent_modelos_ia = parent
 
-        self.lbl_titulo_modelos_ia = _titulo_painel("🤖 Modelos de IA")
+        self.lbl_titulo_modelos_ia = _titulo_painel("Modelos de IA")
         _empilhar(coluna, self.lbl_titulo_modelos_ia, cima=10, baixo=10)
-        self.lbl_descricao_modelos_ia = _Texto(DESCRICAO_MODELOS_IA, cor="gray70",
+        self.lbl_descricao_modelos_ia = _Texto(DESCRICAO_MODELOS_IA, papel="legenda",
                                                altura_linha=LINHA_TK_ROBOTO_12)
         _empilhar_texto(coluna, self.lbl_descricao_modelos_ia, baixo=10)
 
@@ -641,7 +743,7 @@ class HomeView(QScrollArea):
             if self.controller.get_key(chave_id)
         )
         if not providers_com_chave:
-            self.lbl_sem_provedor_ia = _Texto(SEM_PROVEDOR_IA, cor=COLORS["danger"],
+            self.lbl_sem_provedor_ia = _Texto(SEM_PROVEDOR_IA, papel="erro",
                                               altura_linha=LINHA_TK_ROBOTO_12)
             _empilhar_texto(coluna, self.lbl_sem_provedor_ia, baixo=15)
             return
@@ -669,7 +771,7 @@ class HomeView(QScrollArea):
         linha.addWidget(self.btn_atualizar_catalogo_ia)
         linha.addStretch()
 
-        self.lbl_catalogo_ia = _Texto("", ("Roboto", 11), cor="gray60")
+        self.lbl_catalogo_ia = _Texto("", ("Roboto", 11), papel="legenda")
         _empilhar_texto(coluna, self.lbl_catalogo_ia)
 
         # --- 2. FILTRO --- (o OpenRouter tem centenas de modelos e o menu não
@@ -697,7 +799,7 @@ class HomeView(QScrollArea):
 
         # --- 4. MODO AVANÇADO ---
         self.caixa_modo_avancado_ia = controles.CaixaDeMarcar(
-            "Configurar por tarefa (modo avançado)", cor_marcada=COLORS["primary"])
+            "Configurar por tarefa (modo avançado)")
         self.caixa_modo_avancado_ia.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.caixa_modo_avancado_ia.setChecked(bool(estado_atual["por_tarefa"]))
         self.caixa_modo_avancado_ia.toggled.connect(lambda _v: self._toggle_modelos_ia_modo_avancado())
@@ -741,7 +843,7 @@ class HomeView(QScrollArea):
         linha.addStretch()
 
         # --- 6. RESUMO ---
-        self.lbl_resumo_modelo_ia = _Texto("", cor="gray70", altura_linha=LINHA_TK_ROBOTO_12)
+        self.lbl_resumo_modelo_ia = _Texto("", papel="legenda", altura_linha=LINHA_TK_ROBOTO_12)
         _empilhar_texto(coluna, self.lbl_resumo_modelo_ia, cima=8)
 
         # Popula as listas a partir do cache e restaura a seleção salva.
@@ -749,11 +851,12 @@ class HomeView(QScrollArea):
 
         # --- 7. BOTÕES ---
         linha = _linha(coluna, cima=10, baixo=15)
-        self.btn_aplicar_recomendados_ia = _botao(mono("✨ Aplicar recomendados"), variante="primario")
+        self.btn_aplicar_recomendados_ia = _botao("Aplicar recomendados", variante="primario")
+        icones.aplicar(self.btn_aplicar_recomendados_ia, "sparkles")
         self.btn_aplicar_recomendados_ia.clicked.connect(self._aplicar_recomendados_ia)
         linha.addWidget(self.btn_aplicar_recomendados_ia)
         linha.addSpacing(10)
-        self.btn_salvar_selecao_ia = _botao("Salvar seleção", cor_fundo=VERDE_TK)
+        self.btn_salvar_selecao_ia = _botao("Salvar seleção", variante="primario")
         self.btn_salvar_selecao_ia.clicked.connect(self._salvar_selecao_modelos_ia)
         linha.addWidget(self.btn_salvar_selecao_ia)
         linha.addStretch()
@@ -873,7 +976,7 @@ class HomeView(QScrollArea):
                 texto = ("Catálogo ainda não baixado para este provedor. Clique em "
                          "\"Atualizar lista de modelos\". Enquanto isso valem os recomendados "
                          "e o campo manual.")
-            self.lbl_catalogo_ia.definir(texto, cor=COLORS["danger"] if erro_catalogo else None)
+            self.lbl_catalogo_ia.definir(texto, papel="erro" if erro_catalogo else None)
 
         salvo_global = (estado_atual or {}).get("global") if estado_atual else None
         salvos_tarefa = (estado_atual or {}).get("por_tarefa", {}) if estado_atual else {}
@@ -1096,7 +1199,7 @@ class HomeView(QScrollArea):
         pasta de logs". Sem registros, a mensagem amigável do próprio relatório."""
         _casca, quadro, coluna = _painel(parent)
         self.frame_gastos_ia = quadro
-        self.lbl_titulo_gastos_ia = _titulo_painel("💰 Gastos de IA")
+        self.lbl_titulo_gastos_ia = _titulo_painel("Gastos de IA")
         _empilhar(coluna, self.lbl_titulo_gastos_ia, cima=10, baixo=10)
 
         self.lbl_gastos_ia = _Texto("Carregando...", altura_linha=LINHA_TK_ROBOTO_12)

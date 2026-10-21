@@ -16,7 +16,6 @@ import time
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QWidget
 
-from sigft.app import theme
 from sigft.app_qt.widgets import blocos
 
 # Quanto o "Terminou" fica na tela antes de a faixa sumir.
@@ -39,7 +38,7 @@ class FaixaDeAtividade(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(12)
         self.rotulo = QLabel(objectName="faixa_atividade_texto")
-        self.barra: QProgressBar = blocos.barra_progresso(altura=8, cor=theme.COLORS["accent"])
+        self.barra: QProgressBar = blocos.barra_progresso(altura=8)
         lay.addWidget(self.rotulo)
         lay.addWidget(self.barra, 1)
         self._inicio = 0.0

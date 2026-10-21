@@ -11,9 +11,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMessageBox
 
-from sigft.app import theme
 from sigft.app.textos_dialogos import MSG_LOGIN_APAGAR_LMR, TEXTO_COMECAR_EXCLUSAO
-from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos, pickers
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.app_qt.widgets.trava_robo import ComTravaDeRobo
@@ -27,15 +25,13 @@ class ModuloApagarLMR(ComTravaDeRobo, ModuleFrame):
         # grava aqui quando a pessoa escolhe a planilha.
         self.caminho_status = None
         super().__init__(parent, controller, titulo="Apagar Aplicações LMR",
-                         cor_titulo=theme.COLORS["danger"],
+                         papel_titulo="erro",
                          embutida=embutida, console_externo=console_externo)
 
     def _build_ui(self) -> None:
         # Espaços verticais do `pack` da tela antiga. O pady de dois vizinhos
         # SOMA no Tk, por isso o espaçamento automático do cartão vai a zero e
         # cada espaço é a soma escrita à mão.
-        cinza = estilo.cinza_tk(theme.COR_TEXTO_APOIO)
-        cinza_claro = estilo.cinza_tk(theme.COR_TEXTO_APOIO_CLARO)
         self._rotulos = r = {}
 
         self.content_layout.addSpacing(20)              # cartão: pady=20
@@ -43,12 +39,12 @@ class ModuloApagarLMR(ComTravaDeRobo, ModuleFrame):
         corpo.setSpacing(0)
         corpo.setContentsMargins(20, 20, 20, 20)        # aviso: pady=(20, …); passos: (…, 20)
         r["atencao"] = blocos.rotulo("ATENÇÃO: AÇÃO DESTRUTIVA", tamanho=16, negrito=True,
-                                     cor=theme.COLORS["danger"])
+                                     papel="erro")
         corpo.addWidget(r["atencao"])
         corpo.addSpacing(5)                             # aviso (…, 5) + irreversível (0, …)
         r["irreversivel"] = blocos.rotulo(
             "Esta ferramenta apaga TODAS as aplicações LMR de uma ficha.\nO processo é irreversível.",
-            cor=cinza)
+            papel="legenda")
         corpo.addWidget(r["irreversivel"])
         corpo.addSpacing(30)                            # irreversível (…, 20) + linha do PMIB (10, …)
         corpo.addLayout(self._linha_pmib())
@@ -56,7 +52,7 @@ class ModuloApagarLMR(ComTravaDeRobo, ModuleFrame):
         r["opcional"] = blocos.rotulo(
             "Opcional: informe o _STATUS_PMIB para LIMPAR a marcação da coluna\n"
             "\"APLICAÇÃO - LMR\" das fichas que forem apagadas com sucesso.",
-            tamanho=12, cor=cinza_claro)
+            tamanho=12, papel="legenda")
         corpo.addWidget(r["opcional"])
         corpo.addSpacing(5)                             # opcional (…, 5) + seletor (0, …)
         self.picker_status = pickers.FilePickerRow(
@@ -70,15 +66,14 @@ class ModuloApagarLMR(ComTravaDeRobo, ModuleFrame):
         corpo.addWidget(self.picker_status, alignment=Qt.AlignmentFlag.AlignHCenter)
         corpo.addSpacing(30)                            # seletor (…, 10) + iniciar (20, …)
         self.btn_run = blocos.botao("INICIAR LIMPEZA", variante="perigo", largura=350, altura=50,
-                                    tamanho_fonte=14, negrito=True,
-                                    cor_texto=theme.COLORS["text_white"])
+                                    tamanho_fonte=14, negrito=True,)
         self.btn_run.clicked.connect(self.iniciar_limpeza)
         corpo.addWidget(self.btn_run, alignment=Qt.AlignmentFlag.AlignHCenter)
         corpo.addSpacing(20)                            # iniciar (…, 20) + passos (0, …)
         r["passos"] = blocos.rotulo(
             "O robô irá:\n1. Abrir o navegador\n2. Solicitar login manual\n3. Acessar a ficha\n"
             "4. Clicar em todas as lixeiras até esvaziar a lista.",
-            tamanho=12, cor=cinza_claro)
+            tamanho=12, papel="legenda")
         corpo.addWidget(r["passos"])
         self.content_layout.addSpacing(20)
         self.content_layout.addStretch()

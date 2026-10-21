@@ -46,7 +46,10 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, co
 # =============================================================================
 datas = [
     # O ícone da janela e o logo do splash. `resource_path` os acha tanto no
-    # .py quanto dentro do .exe.
+    # .py quanto dentro do .exe. Leva junto `assets/icons` (2026-10-20): os SVG
+    # do Lucide que os botões e o menu desenham (`sigft/app_qt/icones.py`, que
+    # os procura em `_internal/assets/icons`) e a LICENSE deles (ISC). O
+    # `--smoke` do Release reprova se algum não desenhar dentro do `.exe`.
     ("assets", "assets"),
     # O CHANGELOG: é dele que sai o "o que há de novo" mostrado depois de uma
     # atualização (`sigft/core/novidades.py`). Sem ele no bundle, a janela de
@@ -256,6 +259,14 @@ hiddenimports += ["ctranslate2", "sentencepiece"]
 # para não depender disso, junto com o `_elementpath` que o `etree` carrega por
 # dentro. Sem ele, o app abre e a primeira gravação de planilha falha.
 hiddenimports += ["lxml.etree", "lxml._elementpath"]
+
+# Os ícones da interface (2026-10-20, `sigft/app_qt/icones.py`) são SVG
+# desenhados pelo `QSvgRenderer`: o módulo QtSvg e o `Qt6Svg.dll` têm de ir.
+# A análise o acha pelo import do `icones.py`; declarado por extenso para não
+# depender disso. NÃO precisa dos plugins de SVG (`imageformats/qsvg`,
+# `iconengines/qsvgicon`), que o hook do QtGui continua tirando: o desenho é
+# feito pelo módulo, sem passar pelo carregador de imagem do Qt.
+hiddenimports += ["PySide6.QtSvg"]
 
 
 # Ícone do executável.

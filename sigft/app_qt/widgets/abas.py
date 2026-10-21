@@ -37,7 +37,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos
 
 ESPACO_ACIMA = 10
@@ -53,24 +52,15 @@ FOLGA_TEXTO = 7             # de cada lado do texto (estilo.FOLGA_TEXTO_BOTAO_CT
 
 
 class Abas(QWidget):
-    def __init__(self, parent=None, *, cor_fundo: str | None = None, cor_barra: str | None = None,
-                 cor_selecionada: str = estilo.AZUL_CTK, cor_selecionada_hover: str = estilo.AZUL_CTK_HOVER,
-                 cor_nao_selecionada: str | None = None, cor_nao_selecionada_hover: str | None = None,
-                 tamanho_fonte: int = 13, ao_mudar=None, altura_da_escolhida: bool = False) -> None:
-        """Cores com os nomes do CTkTabview: `fg_color` (cor_fundo, padrão gray13 --
-        use `estilo.FUNDO_QUADRO_INTERNO_CTK` quando a interface antiga a punha dentro de um
-        CTkFrame de fundo padrão), `segmented_button_fg_color` (cor_barra, gray29),
-        `segmented_button_selected_color`/`_hover_color`, e
-        `segmented_button_unselected_color` (gray29) / `_hover_color` (gray41).
+    def __init__(self, parent=None, *, interno: bool = False, tamanho_fonte: int = 13,
+                 ao_mudar=None, altura_da_escolhida: bool = False) -> None:
+        """As cores são da folha (`_folha_telas` em `estilo.py`), desde 2026-10-20:
+        quadro `fundo` -- ou `superficie` com `interno=True`, quando as abas vão
+        dentro de um cartão --, barra e aba não escolhida `superficie_alta`,
+        `borda` sob o mouse, escolhida `marca` com texto branco (7,6:1).
         `ao_mudar(nome)` é o `command` do CTkTabview: só no clique da pessoa.
         `altura_da_escolhida`: a altura pedida é a da aba escolhida (ver o topo)."""
         super().__init__(parent)
-        c = estilo.cinza_tk
-        self.cor_fundo = c(cor_fundo or estilo.FUNDO_QUADRO_CTK)
-        self.cor_barra = c(cor_barra or "gray29")
-        self._cor_sel, self._cor_sel_hover = c(cor_selecionada), c(cor_selecionada_hover)
-        self._cor_nao_sel = c(cor_nao_selecionada or "gray29")
-        self._cor_nao_sel_hover = c(cor_nao_selecionada_hover or "gray41")
         self._tamanho_fonte = tamanho_fonte
         self._ao_mudar = ao_mudar
         self._altura_da_escolhida = altura_da_escolhida
@@ -88,8 +78,8 @@ class Abas(QWidget):
         grade.setRowStretch(3, 1)
 
         self.quadro = QFrame(objectName="quadro_abas")
-        self.quadro.setStyleSheet(
-            f"#quadro_abas {{ background: {self.cor_fundo}; border-radius: {CANTO}px; }}")
+        if interno:
+            self.quadro.setProperty("interno", True)
         dentro = QVBoxLayout(self.quadro)
         # 25 = o que sobra da barra dentro do quadro (19) + o canto (6).
         dentro.setContentsMargins(CANTO, ALTURA_BARRA_VISIVEL - SOBRA_DA_BARRA + CANTO, CANTO, CANTO)
@@ -173,19 +163,16 @@ class Abas(QWidget):
             self._ao_mudar(nome)
 
     def _pintar_barra(self) -> None:
-        """Folha da barra e largura de cada botão (texto + 14, como o CTkButton)."""
+        """Folha da barra (só as medidas: as cores são da folha do app) e
+        largura de cada botão (texto + 14, como o CTkButton)."""
         r = CANTO
         self.barra.setStyleSheet(
-            f"#barra_abas {{ background: {self.cor_barra}; border-radius: {r}px; }}"
-            f" #barra_abas QPushButton {{ background: {self._cor_nao_sel}; color: {estilo.TEXTO_BOTAO_CTK};"
-            f" border: {BORDA_BOTAO}px solid {self.cor_barra}; border-radius: 0;"
-            f" padding: 0 {FOLGA_TEXTO - BORDA_BOTAO}px; font-size: {self._tamanho_fonte}px;"
+            f"#barra_abas {{ border-radius: {r}px; }}"
+            f" #barra_abas QPushButton {{ border-width: {BORDA_BOTAO}px; border-style: solid;"
+            f" border-radius: 0; padding: 0 {FOLGA_TEXTO - BORDA_BOTAO}px; font-size: {self._tamanho_fonte}px;"
             f" min-height: {ALTURA_BARRA_VISIVEL - 2 * BORDA_BOTAO}px;"
             f" max-height: {ALTURA_BARRA_VISIVEL - 2 * BORDA_BOTAO}px; }}"
-            f" #barra_abas QPushButton:hover {{ background: {self._cor_nao_sel_hover}; }}"
-            f" #barra_abas QPushButton:checked {{ background: {self._cor_sel}; border-radius: {r}px; }}"
-            f" #barra_abas QPushButton:checked:hover {{ background: {self._cor_sel_hover}; }}"
-            f" #barra_abas QPushButton:disabled {{ color: {estilo.cinza_tk('gray60')}; }}")
+            f" #barra_abas QPushButton:checked {{ border-radius: {r}px; }}")
         botoes = list(self.botoes.values())
         for i, botao in enumerate(botoes):
             # Cantos de fora arredondados nos botões das pontas; o selecionado

@@ -23,7 +23,6 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMessageBox, QVBoxLay
 
 from sigft.app import theme
 from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA
-from sigft.app.theme import COLORS
 from sigft.app_qt import estilo, file_dialogs, interface
 from sigft.app_qt.views.janelas import JanelaEscolherPDM
 from sigft.app_qt.widgets import blocos, controles, dialogos_selecao
@@ -42,8 +41,8 @@ COLUNAS = (
     ("Prévia", 230),
 )
 
-# O #3A3A3A/#454545 escrito à mão nos botões de lá é a variante "cinza".
-COR_PARAR, COR_PARAR_HOVER = "#8B2E2E", "#A03838"
+# O cinza escrito à mão nos botões de lá é a variante "cinza"; o vermelho do
+# "Parar", a "perigo".
 
 # A grade da tela de lá: conteúdo com peso 3, console com peso 1 e
 # `sticky="ew"` -- o console NÃO estica: fica com 150 px, centrado na linha
@@ -70,17 +69,19 @@ class _ReaplicaProgresso(QObject):
         return False
 
 
-def _rotulo(texto: str, cor: str | None = None) -> QLabel:
-    """CTkLabel de uma linha (28 de altura, fonte 13), na cor pedida."""
+def _rotulo(texto: str, papel: str = "legenda") -> QLabel:
+    """CTkLabel de uma linha (28 de altura, fonte 13), no papel de texto pedido."""
     r = QLabel(texto)
     r.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     r.setFixedHeight(blocos.ALTURA_MINIMA_ROTULO)
-    _pintar(r, cor or estilo.cinza_tk(theme.COR_TEXTO_APOIO))
+    r.setStyleSheet("QLabel { font-size: 13px; background: transparent; }")
+    _pintar(r, papel)
     return r
 
 
-def _pintar(rotulo: QLabel, cor: str) -> None:
-    rotulo.setStyleSheet(f"QLabel {{ font-size: 13px; background: transparent; color: {cor}; }}")
+def _pintar(rotulo: QLabel, papel: str | None) -> None:
+    """O `configure(text_color=...)`: o papel de texto da folha."""
+    estilo.definir_papel(rotulo, papel)
 
 
 def _botao(texto: str, largura: int, **kw):
@@ -108,7 +109,7 @@ class ModuloCorrecaoPDM(ModuleFrame):
         lay = self.content_layout
         lay.setSpacing(0)
 
-        # --- arquivos: CTkFrame #2B2B2B de canto 8, linha com padx=15/pady=12
+        # --- arquivos: o cartão (`blocos.cartao`), linha com padx=15/pady=12
         quadro = QFrame(objectName="cartao")
         linha = QHBoxLayout(quadro)
         linha.setContentsMargins(15, 12, 15, 12)
@@ -141,9 +142,8 @@ class ModuloCorrecaoPDM(ModuleFrame):
         # texto). Sem isto os três botões chegavam 12 px para a esquerda.
         self.rotulo_acoes.setMinimumWidth(LARGURA_ROTULO_ACOES)
         self.rotulo_acoes.setStyleSheet(
-            "QLabel { font-size: 12px; font-weight: bold; background: transparent;"
-            f" color: {controles.COR_TEXTO_CTK}; }}")
-        self.btn_so_revisao = _botao("Só atualizar a revisão", 170, cor_fundo=COLORS["accent"])
+            "QLabel { font-size: 12px; font-weight: bold; background: transparent; }")
+        self.btn_so_revisao = _botao("Só atualizar a revisão", 170, variante="primario")
         self.btn_so_revisao.clicked.connect(self._acao_so_revisao)
         self.btn_escolher_pdm = _botao("Escolher PDM...", 140, variante="cinza")
         self.btn_escolher_pdm.clicked.connect(self._acao_escolher_pdm)
@@ -170,14 +170,12 @@ class ModuloCorrecaoPDM(ModuleFrame):
         rodape = QHBoxLayout()
         rodape.setContentsMargins(0, 0, 0, 0)
         rodape.setSpacing(0)
-        self.chk_apagar_vazias = controles.Interruptor("Apagar as que ficarem em branco",
-                                                       cor_ligado=COLORS["primary"])
+        self.chk_apagar_vazias = controles.Interruptor("Apagar as que ficarem em branco")
         self.chk_apagar_vazias.setChecked(True)
-        self.chk_conferir = controles.Interruptor("Conferir cada ficha antes de salvar",
-                                                  cor_ligado=COLORS["primary"])
-        self.btn_parar = _botao("Parar", 90, cor_fundo=COR_PARAR, cor_hover=COR_PARAR_HOVER)
+        self.chk_conferir = controles.Interruptor("Conferir cada ficha antes de salvar")
+        self.btn_parar = _botao("Parar", 90, variante="perigo")
         self.btn_parar.clicked.connect(self._parar)
-        self.btn_rodar = _botao("INICIAR CORREÇÃO", 190, cor_fundo=COLORS["accent"],
+        self.btn_rodar = _botao("INICIAR CORREÇÃO", 190, variante="primario",
                                 tamanho_fonte=13, negrito=True)
         self.btn_rodar.clicked.connect(self._rodar)
         rodape.addWidget(self.chk_apagar_vazias)
@@ -253,7 +251,7 @@ class ModuloCorrecaoPDM(ModuleFrame):
             return
 
         self.lbl_status.setText(f"{len(self.fichas)} ficha(s)")
-        _pintar(self.lbl_status, COLORS["accent"])
+        _pintar(self.lbl_status, "ok")
         if not self.fichas:
             self.log("Nenhuma ficha encontrada. Confira se a aba é a "
                      "'Lista de Materiais' e se há a coluna CÓDIGO PMIB.")
@@ -272,7 +270,7 @@ class ModuloCorrecaoPDM(ModuleFrame):
             QMessageBox.critical(self, "Erro", f"Não consegui ler o catálogo:\n{erro}")
             return
         self.lbl_catalogo.setText(f"{len(self.catalogo)} PDMs")
-        _pintar(self.lbl_catalogo, COLORS["accent"])
+        _pintar(self.lbl_catalogo, "ok")
         self._redesenhar()
 
     # -- tabela ------------------------------------------------------------

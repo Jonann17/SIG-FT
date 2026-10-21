@@ -20,6 +20,18 @@ def test_abre_na_home_e_cria_telas_so_na_visita(app_qt):
     assert app_qt.pilha.currentWidget() is app_qt.telas["Analyzer"]
 
 
+def test_menu_marca_a_tela_aberta(app_qt):
+    # Sistema visual (2026-10-20): a folha pinta o item `ativo` com a marca a 25%.
+    assert app_qt.botao_home.property("ativo") is True
+    app_qt.show_frame("Analyzer")
+    assert app_qt.botoes_menu["Analyzer"].property("ativo") is True
+    assert not app_qt.botao_home.property("ativo")
+    assert [a for a, b in app_qt.botoes_menu.items() if b.property("ativo")] == ["Analyzer"]
+    app_qt.show_home()
+    assert app_qt.botao_home.property("ativo") is True
+    assert not app_qt.botoes_menu["Analyzer"].property("ativo")
+
+
 def test_tela_nao_registrada_mostra_aviso(app_qt, monkeypatch):
     # Desde a E4.10 todas as telas do menu estão em `TELAS`; o aviso continua
     # sendo o caminho de uma chave sem fábrica.
@@ -160,11 +172,14 @@ def test_main_prepara_dados_e_navegador_antes_da_splash(qt_interface, monkeypatc
     monkeypatch.setattr(navegador, "preparar_ambiente_do_rpa",
                         lambda: eventos.append("navegador") or None)
     monkeypatch.setattr(qmain, "_preparar_qt",
-                        lambda: type("A", (), {"exec": lambda self: eventos.append("exec")})())
+                        lambda: eventos.append("qt") or type(
+                            "A", (), {"exec": lambda self: eventos.append("exec")})())
     monkeypatch.setattr(qmain, "SplashScreen", SplashFalsa)
     qmain.main()
     assert eventos.index("migrou") < eventos.index("splash")
     assert eventos.index("navegador") < eventos.index("splash")
+    # 2026-10-20: o tema guardado vale antes da splash (ela abre na cor dele).
+    assert eventos.index("qt") < eventos.index("splash")
     assert eventos[-1] == ("encerrar", 0)
     saida = capsys.readouterr().out
     assert "[SIG-FT] Configuracao importada para a pasta de dados: api_config.json" in saida

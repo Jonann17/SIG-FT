@@ -126,7 +126,6 @@ def test_erro_na_janela_de_selecao_vira_log(tela, qtbot, monkeypatch):
 
 
 def test_textos_e_caixa_da_linha_inicial(tela):
-    from sigft.app import theme
     assert tela.label_titulo.text() == "Automação LMR"
     assert tela.btn_run.text() == "Selecionar Excel e Iniciar"
     assert tela.picker_status.botao.text() == "Selecionar _STATUS_PMIB"
@@ -134,11 +133,11 @@ def test_textos_e_caixa_da_linha_inicial(tela):
     assert tela.caminho_status_pmib is None
     r = tela._rotulos
     assert r["titulo"].text() == "Preenchimento Automático de LMR (Aplicações)"
-    assert theme.COLORS["accent"] in r["titulo"].styleSheet()
+    assert r["titulo"].property("papel") == "destaque"   # a cor é da folha (2026-10-20)
     assert r["info"].text().startswith("Este módulo lê uma aba de um arquivo Excel")
-    assert "#808080" in r["info"].styleSheet()                      # "gray" do Tk
+    assert r["info"].property("papel") == "legenda"                 # era o "gray" do Tk
     assert r["marcar"].text() == "Marcar o resultado no _STATUS_PMIB (opcional):"
-    assert "#B3B3B3" in r["desligado"].styleSheet() and "font-size: 11px" in r["desligado"].styleSheet()
+    assert r["desligado"].property("papel") == "legenda" and "font-size: 11px" in r["desligado"].styleSheet()
     assert r["script"].text() == "O script pedirá:\n1. Arquivo Excel LMR\n2. Seleção das Fichas (Checkbox)"
     assert isinstance(tela.caixa_linha_inicial, QCheckBox)
     assert tela.caixa_linha_inicial.text() == "Começar de um código específico"
@@ -387,6 +386,7 @@ def _pos(w, base):
 
 
 def test_medidas_iguais_as_do_interface_antiga(folha, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Tela antiga avulsa (interface antiga, 1280x850, sondada com winfo_*): cartão
     # 20 px abaixo do conteúdo; entre as peças, a SOMA dos pady vizinhos (10, 20,
     # 6, 30, 14, 8, 20) e 20 nas pontas; seletor 240x28; botão 300x50; linha do
@@ -410,13 +410,13 @@ def test_medidas_iguais_as_do_interface_antiga(folha, qtbot):
     assert y(r["info"]) - base(r["titulo"]) == 10
     assert y(r["marcar"]) - base(r["info"]) == 20 and r["marcar"].height() == 28
     assert y(t.picker_status) - base(r["marcar"]) == 6
-    assert (t.picker_status.botao.width(), t.picker_status.botao.height()) == (240, 28)
+    assert (t.picker_status.botao.width(), t.picker_status.botao.height()) == (240, 32)
     assert y(t.btn_run) - base(t.picker_status) == 30
     assert (t.btn_run.width(), t.btn_run.height()) == (300, 50)
     assert y(t.entry_linha_inicial) - base(t.btn_run) == 14
-    assert (t.entry_linha_inicial.width(), t.entry_linha_inicial.height()) == (70, 28)
+    assert (t.entry_linha_inicial.width(), t.entry_linha_inicial.height()) == (70, 32)
     assert t.caixa_linha_inicial.height() == 24
-    assert y(t.caixa_linha_inicial) - y(t.entry_linha_inicial) == 2
+    assert y(t.caixa_linha_inicial) - y(t.entry_linha_inicial) == (402 - 398)
     assert y(r["desligado"]) - base(t.entry_linha_inicial) == 8
     assert y(r["script"]) - base(r["desligado"]) == 20
     assert base(cartao) - base(r["script"]) == 20
@@ -431,6 +431,7 @@ def test_medidas_iguais_as_do_interface_antiga(folha, qtbot):
 
 
 def test_janela_da_aba_tem_as_medidas_do_ctk(folha, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # CTkToplevel 420x220: nome do arquivo (12 negrito) em y=20, pergunta (12, gray70)
     # em y=52, menu 300x28 em (60, 97), "Ler esta aba" em (60, 145), "Cancelar" em (60, 183).
     d = tela_mod.DialogoDaAba(None, nome_arquivo="LMR_Aplicacoes_2026.xlsx", abas=["Plan1", "LMR"])
@@ -445,10 +446,10 @@ def test_janela_da_aba_tem_as_medidas_do_ctk(folha, qtbot):
     assert (d.width(), d.height()) == (420, 220)
     assert caixa(d.rotulo_arquivo)[1::2] == (20, 28)
     assert caixa(d.rotulo_pergunta)[1::2] == (52, 28)
-    assert "#B3B3B3" in d.rotulo_pergunta.styleSheet()
-    assert caixa(d.menu) == (60, 97, 300, 28)
-    assert caixa(d.botao_ler) == (60, 145, 300, 28)
-    assert caixa(d.botao_cancelar) == (60, 183, 300, 28)
+    assert d.rotulo_pergunta.property("papel") == "legenda"   # era o gray70 (2026-10-20)
+    assert caixa(d.menu) == (60, 97, 300, 32)
+    assert caixa(d.botao_ler) == (60, 148, 300, 32)
+    assert caixa(d.botao_cancelar) == (60, 189, 300, 32)
     assert d.botao_ler.text() == "Ler esta aba" and d.botao_cancelar.text() == "Cancelar"
     assert d.aba_escolhida() == "Plan1"
 

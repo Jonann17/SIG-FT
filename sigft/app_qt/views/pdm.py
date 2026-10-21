@@ -17,9 +17,8 @@ import os
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLineEdit, QRadioButton, QVBoxLayout
 
-from sigft.app import theme
 from sigft.app_qt import estilo, file_dialogs
-from sigft.app_qt.widgets import blocos, controles, dialogos_selecao
+from sigft.app_qt.widgets import blocos, dialogos_selecao
 from sigft.app_qt.widgets.abas import Abas
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.core import pdm_catalogo, prefs
@@ -27,18 +26,15 @@ from sigft.core.callbacks import from_legacy
 
 TEXTO_NENHUM_ARQUIVO = "Nenhum arquivo selecionado"
 EXCEL = [("Excel", "*.xlsx *.xls")]
-# Fundo dos quadros de dentro das abas (fg escrito à mão na tela antiga).
-FUNDO_QUADRO = "#333333"
-COR_TEXTO = controles.COR_TEXTO_CTK          # CTkLabel sem text_color: gray84
-COR_APOIO = estilo.cinza_tk(theme.COR_TEXTO_APOIO)
 
 
 # --- peças -------------------------------------------------------------------
 def _rotulo(texto: str, *, largura: int | None = None, tamanho: int = 13, negrito: bool = False,
-            cor: str = COR_TEXTO, elidir: bool = False):
+            papel: str | None = None, elidir: bool = False):
     """CTkLabel de uma linha, `anchor="w"` (sem quebra: lá o texto não quebra).
     `elidir`: o rótulo de um nome de arquivo (`blocos.RotuloElidido`)."""
-    r = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, cor=cor, alinhar="esquerda", elidir=elidir)
+    r = blocos.rotulo(texto, tamanho=tamanho, negrito=negrito, papel=papel, alinhar="esquerda",
+                      elidir=elidir)
     r.setWordWrap(False)
     if largura:
         r.setFixedWidth(largura)
@@ -54,9 +50,10 @@ def _botao(texto: str, *, largura: int = estilo.LARGURA_BOTAO_CTK, variante: str
 
 
 def _quadro(layout_pai, margens):
-    """CTkFrame #333333 de cantos 8 (os quadros de dentro das abas)."""
+    """CTkFrame de cantos 8 (os quadros de dentro das abas): a `superficie_alta`,
+    um degrau acima do quadro das abas (regra `#quadro_pdm` da folha)."""
     quadro = QFrame(objectName="quadro_pdm")
-    quadro.setStyleSheet(f"#quadro_pdm {{ background: {FUNDO_QUADRO}; border-radius: 8px; }}")
+    quadro.setStyleSheet("#quadro_pdm { border-radius: 8px; }")
     layout = QVBoxLayout(quadro)
     layout.setContentsMargins(*margens)
     layout.setSpacing(0)
@@ -141,10 +138,7 @@ class ModuloPDM(ModuleFrame):
         # --- ABAS DE OPERAÇÃO ---
         # O CTkTabview (dentro do formulário que rola) tem a altura da aba
         # ESCOLHIDA; o QStackedWidget teria a da maior.
-        self.tabview = Abas(cor_fundo=theme.COR_CARTAO, cor_barra="#161616",
-                            cor_selecionada=theme.COLORS["primary"],
-                            cor_selecionada_hover=theme.COLORS["primary_hover"],
-                            altura_da_escolhida=True)
+        self.tabview = Abas(interno=True, altura_da_escolhida=True)
         self._build_tab1(self.tabview.add("Processar PDMs"))
         self._build_tab2(self.tabview.add("Criar planilhas PMIB"))
         self._build_tab3(self.tabview.add("Excluir Duplicados"))
@@ -159,7 +153,7 @@ class ModuloPDM(ModuleFrame):
         self.cartao_config = layout.parentWidget()
         layout.setContentsMargins(15, 10, 15, 15)       # padx=15; título pady=(10, …); f_plan (…, 15)
         layout.setSpacing(0)
-        r["config"] = _rotulo("Configuração Global", tamanho=14, negrito=True, cor=theme.COLORS["accent"])
+        r["config"] = _rotulo("Configuração Global", tamanho=14, negrito=True, papel="destaque")
         layout.addWidget(r["config"])
         layout.addSpacing(5)                            # título (…, 5)
 
@@ -176,7 +170,7 @@ class ModuloPDM(ModuleFrame):
         r["sam_gm"] = _rotulo("Planilha de PDMs (SAM-GM):", largura=190)
         self.btn_sam_gm = _botao("Selecionar", largura=100, variante="cinza")
         self.btn_sam_gm.clicked.connect(self._sel_sam_gm)
-        self.lbl_sam_gm_status = _rotulo(TEXTO_NENHUM_ARQUIVO, cor=COR_APOIO, elidir=True)
+        self.lbl_sam_gm_status = _rotulo(TEXTO_NENHUM_ARQUIVO, papel="legenda", elidir=True)
         layout.addLayout(_linha(r["sam_gm"], 5, self.btn_sam_gm, 20, self.lbl_sam_gm_status))
 
     def _campo_de_pasta(self, layout, chave_rotulo, texto, *, largura_rotulo=240):
@@ -219,7 +213,7 @@ class ModuloPDM(ModuleFrame):
         self._cabecalho_com_botao(q, "regen", "Regenerar as pastas a partir da planilha", self.btn_regenerar)
         r["regen_desc"] = _rotulo(
             "Com a revisão no nome (PDM_1650_001 - ACUMULADOR - R2_formatado.xlsx); "
-            "a versão antiga vai para _versoes_antigas, nada é apagado.", tamanho=11, cor=COR_APOIO)
+            "a versão antiga vai para _versoes_antigas, nada é apagado.", tamanho=11, papel="legenda")
         q.addWidget(r["regen_desc"])
         lay.addSpacing(12)                              # pady=6 de cada quadro
 
@@ -229,7 +223,7 @@ class ModuloPDM(ModuleFrame):
         self.btn_from_itaipu.clicked.connect(self._op1_from_itaipu)
         self._cabecalho_com_botao(q, "from", "1. Fatiar Arquivo Geral (From Itaipu)", self.btn_from_itaipu)
         r["from_desc"] = _rotulo("Usa a planilha do painel de cima; só cria os PDMs que faltam na pasta.",
-                                 tamanho=11, cor=COR_APOIO)
+                                 tamanho=11, papel="legenda")
         q.addWidget(r["from_desc"])
         lay.addSpacing(12)
 
@@ -239,7 +233,7 @@ class ModuloPDM(ModuleFrame):
         q.addWidget(r["mod"])
         q.addSpacing(5)                                 # título: pady=5
         r["mod_desc"] = _rotulo("Utiliza a 'Pasta (PDMs From Itaipu)' como base para leitura.",
-                                tamanho=11, cor=COR_APOIO)
+                                tamanho=11, papel="legenda")
         q.addWidget(r["mod_desc"])
         q.addSpacing(5)                                 # rádios: pady=5
         self.modo_proc = _Opcoes("todos", self)
@@ -261,7 +255,7 @@ class ModuloPDM(ModuleFrame):
         r["traduzir_desc"] = _rotulo(
             "Lê a 'Pasta dos PDMs Modificados' e grava a versão em inglês noutra pasta.\n"
             "Rode uma vez; o resultado fica em cache e o glossário editável "
-            "(_GLOSSARIO_PT_EN.txt) corrige termo técnico de vez.", tamanho=11, cor=COR_APOIO)
+            "(_GLOSSARIO_PT_EN.txt) corrige termo técnico de vez.", tamanho=11, papel="legenda")
         q.addWidget(r["traduzir_desc"])
         q.addSpacing(5)                                 # f_en: pady=5
         self.entry_destino_en, self.btn_buscar_en = self._campo_de_pasta(
@@ -298,7 +292,7 @@ class ModuloPDM(ModuleFrame):
         # STATUS_PMIB (botão + rótulo)
         self.btn_pmib = _botao("Selecionar STATUS_PMIB (.xlsx)", largura=240, variante="cinza", tamanho_fonte=12)
         self.btn_pmib.clicked.connect(self._sel_status_pmib)
-        self.lbl_pmib_status = _rotulo(TEXTO_NENHUM_ARQUIVO, cor=COR_APOIO, elidir=True)
+        self.lbl_pmib_status = _rotulo(TEXTO_NENHUM_ARQUIVO, papel="legenda", elidir=True)
         q.addLayout(_linha(self.btn_pmib, 15, self.lbl_pmib_status))
         q.addSpacing(16)
 
@@ -311,7 +305,7 @@ class ModuloPDM(ModuleFrame):
         # Template (botão + rótulo)
         self.btn_template = _botao("Selecionar Template (.xlsx)", largura=240, variante="cinza", tamanho_fonte=12)
         self.btn_template.clicked.connect(self._sel_template)
-        self.lbl_template_status = _rotulo(TEXTO_NENHUM_ARQUIVO, cor=COR_APOIO, elidir=True)
+        self.lbl_template_status = _rotulo(TEXTO_NENHUM_ARQUIVO, papel="legenda", elidir=True)
         q.addLayout(_linha(self.btn_template, 15, self.lbl_template_status))
         q.addSpacing(16)
 
@@ -322,7 +316,7 @@ class ModuloPDM(ModuleFrame):
         self.idioma_ficha = _Opcoes("pt", self)
         self.rb_pt = self.idioma_ficha.adicionar("Português", "pt")
         self.rb_en = self.idioma_ficha.adicionar("English", "en")
-        r["idioma_dica"] = _rotulo("(English usa a pasta de PDMs traduzidos)", tamanho=11, cor=COR_APOIO)
+        r["idioma_dica"] = _rotulo("(English usa a pasta de PDMs traduzidos)", tamanho=11, papel="legenda")
         q.addLayout(_linha(r["idioma"], 10, self.rb_pt, 20, self.rb_en, 20, r["idioma_dica"]))
         lay.addSpacing(20)                              # frm_files (…, 10) + frm_exec (10, …)
 

@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtWidgets import QMessageBox
 
-from sigft.app import backends, theme
+from sigft.app import backends
 from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO, msg_ficha_preenchida
 from sigft.app_qt.views import upload_tech_specs as tela_mod
 from sigft.app_qt.views._upload_comum import MSG_ROBO_OCUPADO
@@ -168,8 +168,8 @@ def test_seletores(tela, monkeypatch):
     assert tela.lbl_status_status.text() == "_STATUS_PMIB.xlsx"
     assert tela.lbl_master_status.text() == "PDMs SAM-GM.xlsx"
     for rotulo, botao in ((tela.lbl_status_status, tela.btn_status), (tela.lbl_master_status, tela.btn_master)):
-        assert theme.COLORS["accent"] in rotulo.styleSheet()
-        assert theme.COLORS["primary"] in botao.styleSheet()
+        assert rotulo.property("papel") == "ok"  # cor da folha pelo papel (2026-10-20)
+        assert botao.property("variante") == "primario"
 
 
 def test_fila_loga_as_tres_acoes(tela, monkeypatch, qtbot):
@@ -445,6 +445,7 @@ def test_um_robo_por_vez(tela, caixas, qtbot, monkeypatch):
 # Medidas
 # ---------------------------------------------------------------------------
 def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
+    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
     # Medidas da tela antiga (janela 1280x850), relativas à área da tela (277 px
     # à direita, a barra lateral). Ver capturas/e4.45.
     from sigft.app_qt import estilo
@@ -465,37 +466,37 @@ def test_medidas_iguais_as_do_interface_antiga(qt_interface, qtbot):
             p = w.mapTo(t, w.rect().topLeft())
             return p.x(), p.y(), w.width(), w.height()
 
-        assert geo(t.rotulo_config.parentWidget()) == (40, 89, 923, 91)
-        assert geo(t.rotulo_config)[:2] == (55, 99)
-        assert geo(t.btn_status) == (55, 137, 200, 28)
-        assert geo(t.lbl_status_status) == (265, 137, 95, 28)
+        assert geo(t.rotulo_config.parentWidget()) == (40, 87, 923, 91)
+        assert geo(t.rotulo_config)[:2] == (55, 97)
+        assert geo(t.btn_status) == (55, 135, 200, 28)
+        assert geo(t.lbl_status_status) == (265, 135, 95, 28)
         # 303 lá: o texto do Roboto no Qt sai 4 px mais estreito.
-        assert geo(t.switch_completos) == (639, 139, 299, 24)
-        assert geo(t.tabview) == (40, 200, 923, 440)
-        assert geo(t.rotulo_referencia.parentWidget())[:2] == (62, 259)
+        assert geo(t.switch_completos) == (639, 137, 299, 24)
+        assert geo(t.tabview) == (40, 198, 923, 442)
+        assert geo(t.rotulo_referencia.parentWidget())[:2] == (62, 257)
         assert geo(t.rotulo_referencia.parentWidget())[3] == 91
-        assert geo(t.rotulo_referencia)[:2] == (77, 269)
-        assert geo(t.btn_master) == (77, 307, 200, 28)
-        assert geo(t.lbl_master_status) == (287, 307, 95, 28)
+        assert geo(t.rotulo_referencia)[:2] == (77, 267)
+        assert geo(t.btn_master) == (77, 305, 200, 28)
+        assert geo(t.lbl_master_status) == (287, 305, 95, 28)
         cartao = t.fila_fichas.parentWidget()
-        assert geo(cartao)[:2] == (62, 365) and geo(cartao)[3] == 253
-        assert geo(t.fila_fichas.label_contador)[:2] == (72, 370)
-        assert geo(t.fila_fichas)[:2] == (72, 403) and geo(t.fila_fichas)[3] == 210
+        assert geo(cartao)[:2] == (62, 363) and geo(cartao)[3] == 253
+        assert geo(t.fila_fichas.label_contador)[:2] == (72, 368)
+        assert geo(t.fila_fichas)[:2] == (72, 401) and geo(t.fila_fichas)[3] == 210
         # A aba rola (lá também): os botões ficam abaixo da parte visível.
         assert geo(t.btn_ia)[1] - geo(cartao)[1] == 268
         # 202 lá: o negrito do Roboto no Qt (sintetizado do Regular, o único
         # registrado) sai ~8 px mais largo que o do Tk. Era 212 medido com o
         # Roboto-Medium do ~/.fonts do contêiner; o app e o Release dão 210
         # (tests/test_qt_fontes_dos_testes.py).
-        assert geo(t.btn_ia)[2:] == (210, 40)
+        assert geo(t.btn_ia)[2:] == (212, 40)
         assert geo(t.console) == (40, 670, 923, 150)
 
         t.tabview.set(ABA_WEB)
         qtbot.wait(20)
-        assert geo(t.rotulo_web)[1] == 263
-        assert geo(t.btn_web_mem) == (326, 321, 350, 40)
-        assert geo(t.btn_web_file) == (326, 381, 350, 40)
-        assert geo(t.btn_parar_web) == (326, 451, 350, 40)
+        assert geo(t.rotulo_web)[1] == 261
+        assert geo(t.btn_web_mem) == (326, 319, 350, 40)
+        assert geo(t.btn_web_file) == (326, 379, 350, 40)
+        assert geo(t.btn_parar_web) == (326, 449, 350, 40)
     finally:
         qt_interface.setStyleSheet(anterior)
 
