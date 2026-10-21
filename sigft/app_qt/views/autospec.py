@@ -45,6 +45,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QSizePolicy, QWi
 from sigft.app import backends
 from sigft.app_qt import estilo, file_dialogs, icones, interface
 from sigft.app_qt.widgets import blocos, controles
+from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.services import autospec_conferencia as conferencia_txt
 
@@ -216,6 +217,13 @@ class _DoisBotoesQueCrescem(QWidget):
 # MÓDULO 8: AUTO SPEC AI (INTERFACE GE VERNOVA)
 # =============================================================================
 class ModuloAutoSpec(ModuleFrame):
+    # Arrastar arquivo do Explorer para os botões (2026-10-21, etapa 1b).
+    ARRASTAVEIS = (
+        Arrastavel("btn_status", "autospec.status_pmib", (".xlsx",)),
+        Arrastavel("btn_sheet", "autospec.ficha", (".xlsx",)),
+        Arrastavel("btn_refs", "autospec.manuais", (".pdf", ".txt"), varios=True),
+        Arrastavel("btn_conf_importar", "autospec.conferencia", (".txt",)),
+    )
     def __init__(self, parent=None, controller=None) -> None:
         # Variáveis de Estado
         self.queue: list[dict] = []

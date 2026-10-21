@@ -25,6 +25,7 @@ from sigft.app.textos_dialogos import MSG_LOGIN_LOTE
 from sigft.app_qt import estilo, file_dialogs, interface
 from sigft.app_qt.views.janelas import JanelaRevisaoEdicao, JanelaSelecaoDuplicadas
 from sigft.app_qt.widgets import blocos, controles
+from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.services import duplicadas
 
@@ -50,6 +51,8 @@ def _rotulo(texto: str, *, tamanho: int = 13, negrito: bool = False, papel: str 
 # MÓDULO 7: UPLOAD DE FICHAS DUPLICADAS (INTERFACE GE VERNOVA)
 # =============================================================================
 class ModuloCopiaFichas(ModuleFrame):
+    # Arrastar arquivo do Explorer para o botão (2026-10-21, etapa 1b).
+    ARRASTAVEIS = (Arrastavel("btn_status", "copia_fichas.status_pmib", (".xlsx", ".xlsm")),)
     def __init__(self, parent=None, controller=None) -> None:
         # Variáveis de Estado
         self.caminho_status = None

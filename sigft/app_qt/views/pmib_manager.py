@@ -22,6 +22,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMessageBox, QVBo
 from sigft.app.textos_dialogos import MSG_LOGIN_CONFERIR_AUTORIZACOES, texto_dos_avisos
 from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.widgets import blocos, controles, dialogs
+from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.core import prefs
 from sigft.core.excel import travas
@@ -168,6 +169,12 @@ class NovasListasDialog(QDialog):
 
 
 class ModuloPMIBManager(ModuleFrame):
+    # Arrastar arquivo do Explorer para os botões (2026-10-21, etapa 1b).
+    ARRASTAVEIS = (
+        Arrastavel("btn_api", "pmib_manager.api", (".xlsx", ".xls")),
+        Arrastavel("btn_master", "pmib_manager.master", (".xlsx", ".xls")),
+        Arrastavel("btn_autorizados", "pmib_manager.autorizados", (".xlsx",)),
+    )
     def __init__(self, parent=None, controller=None) -> None:
         # Os caminhos escolhidos (os StringVar de lá). A Pasta Raiz é o campo.
         self.path_api = self.path_master = self.path_autorizados = ""

@@ -26,6 +26,7 @@ from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA
 from sigft.app_qt import estilo, file_dialogs, interface
 from sigft.app_qt.views.janelas import JanelaEscolherPDM
 from sigft.app_qt.widgets import blocos, controles, dialogos_selecao
+from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.core import pdm_catalogo
 from sigft.services import correcao_pdm as correcao_svc
@@ -94,6 +95,11 @@ def _botao(texto: str, largura: int, **kw):
 
 
 class ModuloCorrecaoPDM(ModuleFrame):
+    # Arrastar arquivo do Explorer para os botões (2026-10-21, etapa 1b).
+    ARRASTAVEIS = (
+        Arrastavel("btn_status", "correcao_pdm.status_pmib", (".xlsx", ".xlsm")),
+        Arrastavel("btn_catalogo", "correcao_pdm.sam_gm", (".xlsx", ".xlsm")),
+    )
     def __init__(self, parent=None, controller=None) -> None:
         self.fichas = []          # list[FichaParaCorrigir]
         self.catalogo = None
