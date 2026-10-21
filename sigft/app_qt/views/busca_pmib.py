@@ -60,7 +60,8 @@ def _botao_cinza(texto: str, largura: int) -> QPushButton:
     ser cortado pela margem ("Buscar Pasta" em 100 px, "Abrir Arquivo" em 120).
     """
     b = blocos.botao(texto, variante="cinza", largura=largura, altura=28)
-    b.setStyleSheet(b.styleSheet() + " QPushButton { padding: 0; }")
+    # Por `pintar` (2026-10-21): parte da folha de antes do aumento da letra.
+    blocos.pintar(b, "QPushButton { padding: 0; }")
     return b
 
 

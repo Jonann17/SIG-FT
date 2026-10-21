@@ -11,17 +11,25 @@ e `aplicar` faz a troca inteira na hora:
 3. peça criada depois (tela aberta pela primeira vez) ou que trocou de folha
    (`blocos.pintar`, a repintura do tema): um vigia no app ajusta no
    `Polish`/`StyleChange`. O vigia só existe com a letra grande: no normal nada
-   muda, nem as medidas.
+   muda, nem as medidas;
+4. botão ou rótulo de uma linha com largura FIXA (fix round 1, 2026-10-21): com
+   a letra grande o texto passaria da largura e seria cortado ("APLICAR
+   AUTORIZAÇÕES" em 200 px), então a largura sobe até o `sizeHint`; no normal
+   volta à de antes, guardada na peça. O rótulo que elide (`RotuloElidido`) e o
+   de várias linhas ficam como estão: estreitar é o trabalho deles.
+
+No fim, `mudou` avisa quem arruma a tela pelo tamanho (a barra da Home).
 """
 from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import QEvent, QObject, Qt, Signal
+from PySide6.QtWidgets import QAbstractButton, QLabel, QWidget
 
 from sigft.app import tokens
 from sigft.app_qt import estilo
+from sigft.app_qt.widgets.blocos import RotuloElidido
 
 _log = logging.getLogger(__name__)
 
@@ -29,7 +37,18 @@ TAMANHOS = ("normal", "grande")
 PADRAO = "normal"
 CHAVE_PREFERENCIA = "letra"
 _PROP_FONTE_BASE = "_letra_fonte_base"
+_PROP_LARGURA_FIXA = "_letra_largura_fixa"
+_SEM_LIMITE = 16777215   # o QWIDGETSIZE_MAX do Qt: largura máxima "solta"
 _TIPOS_VIGIADOS = (QEvent.Type.Polish, QEvent.Type.StyleChange)
+
+
+class _Avisador(QObject):
+    mudou = Signal(str)
+
+
+_avisador = _Avisador()
+# Emite a escolha que valeu, depois da troca inteira (como `tema.mudou`).
+mudou = _avisador.mudou
 
 
 def _arquivo_de_prefs():
@@ -66,7 +85,13 @@ def aumento(escolha: str) -> int:
 
 def ajustar_widget(widget: QWidget, aumento_px: int) -> None:
     """Refaz a folha própria (e a fonte em pixel) de `widget` com `aumento_px`,
-    sempre a partir da de antes do aumento: chamar duas vezes não soma duas."""
+    sempre a partir da de antes do aumento: chamar duas vezes não soma duas.
+    Depois, a largura fixa (`_ajustar_largura`)."""
+    _ajustar_folha_e_fonte(widget, aumento_px)
+    _ajustar_largura(widget, aumento_px)
+
+
+def _ajustar_folha_e_fonte(widget: QWidget, aumento_px: int) -> None:
     folha = widget.styleSheet()
     if folha:
         base = estilo.folha_sem_aumento(widget)
@@ -89,6 +114,29 @@ def ajustar_widget(widget: QWidget, aumento_px: int) -> None:
     if fonte.pixelSize() != base_px + aumento_px:
         fonte.setPixelSize(base_px + aumento_px)
         widget.setFont(fonte)
+
+
+def _texto_de_largura_fixa(widget: QWidget) -> bool:
+    if not isinstance(widget, (QAbstractButton, QLabel)) or isinstance(widget, RotuloElidido):
+        return False
+    if isinstance(widget, QLabel) and widget.wordWrap():
+        return False
+    largura = widget.maximumWidth()
+    return widget.minimumWidth() == largura < _SEM_LIMITE and bool(widget.text())
+
+
+def _ajustar_largura(widget: QWidget, aumento_px: int) -> None:
+    """Largura fixa com a letra grande: no mínimo o `sizeHint` (o texto inteiro).
+    No normal, a largura de antes, ao pixel; peça nunca alargada: nada muda."""
+    original = widget.property(_PROP_LARGURA_FIXA)
+    if original is None:
+        if not aumento_px or not _texto_de_largura_fixa(widget):
+            return
+        original = widget.maximumWidth()
+    alvo = max(original, widget.sizeHint().width()) if aumento_px else original
+    if (widget.minimumWidth(), widget.maximumWidth()) != (alvo, alvo):
+        widget.setFixedWidth(alvo)
+    widget.setProperty(_PROP_LARGURA_FIXA, original if aumento_px else None)
 
 
 class _Vigia(QObject):
@@ -133,9 +181,14 @@ def aplicar(app, escolha: str, *, gravar: bool = True) -> str:
     estilo.AUMENTO_LETRA = aumento(escolha)
     _vigiar(app, bool(estilo.AUMENTO_LETRA))
     app.setStyleSheet(estilo.folha_de_estilo())
-    for widget in app.allWidgets():
-        try:
-            ajustar_widget(widget, estilo.AUMENTO_LETRA)
-        except RuntimeError:
-            pass   # peça já destruída
+    # Duas passadas: a largura mede o texto com a fonte NOVA, e a de uma peça
+    # pode vir da folha do pai (as abas), refeita na primeira passada.
+    widgets = app.allWidgets()
+    for ajuste in (_ajustar_folha_e_fonte, _ajustar_largura):
+        for widget in widgets:
+            try:
+                ajuste(widget, estilo.AUMENTO_LETRA)
+            except RuntimeError:
+                pass   # peça já destruída
+    mudou.emit(escolha)
     return escolha

@@ -28,8 +28,9 @@ def _tamanhos(folha):
 
 
 def test_ajustar_tamanhos():
+    # Só px (fix round 1, 2026-10-21): o aumento é de 2 PIXELS; um pt fica como está.
     folha = "a { font-size: 12px; } b { font-size: 9pt; }"
-    assert estilo.ajustar_tamanhos(folha, 2) == "a { font-size: 14px; } b { font-size: 11pt; }"
+    assert estilo.ajustar_tamanhos(folha, 2) == "a { font-size: 14px; } b { font-size: 9pt; }"
     assert estilo.ajustar_tamanhos(folha, 0) == folha
 
 
@@ -82,6 +83,84 @@ def test_normal_nao_deixa_vigia(letra_temporaria):
     assert len(letra._vigia) == 1
     letra.aplicar(letra_temporaria, "normal")
     assert letra._vigia == []
+
+
+def test_preferencia_que_nao_se_le_e_normal(monkeypatch):
+    from sigft.core import prefs
+
+    def quebra(*_a, **_k):
+        raise OSError("disco fora")
+
+    monkeypatch.setattr(prefs, "ler_preferencia", quebra)
+    assert letra.escolhido() == "normal"
+
+
+def test_letra_e_tema_juntos(letra_temporaria, tmp_path, monkeypatch):
+    # O tema regera a folha do app: a letra grande tem de continuar nela.
+    from sigft.app_qt import tema
+
+    monkeypatch.setattr(tema, "_arquivo_de_prefs", lambda: tmp_path / "t.json")
+    atual = estilo.TEMA_ATUAL
+    try:
+        letra.aplicar(letra_temporaria, "grande")
+        tema.aplicar(letra_temporaria, "claro")
+        grande = tokens.AUMENTO_DA_LETRA["grande"]
+        assert _tamanhos(letra_temporaria.styleSheet()) == \
+            [t + grande for t in _tamanhos(estilo._folha_base("claro"))]
+        letra.aplicar(letra_temporaria, "normal")
+        assert letra_temporaria.styleSheet() == estilo._folha_base("claro")
+    finally:
+        estilo.TEMA_ATUAL = atual
+
+
+def test_largura_fixa_alarga_no_grande_e_volta_igual(letra_temporaria, qtbot):
+    # Botão de largura fixa: com a letra grande, o texto não pode ser cortado;
+    # no normal, a largura de sempre, ao pixel (fix round 1, 2026-10-21).
+    letra.aplicar(letra_temporaria, "normal", gravar=False)
+    botao = blocos.botao("APLICAR AUTORIZAÇÕES", largura=200, tamanho_fonte=12, negrito=True)
+    rotulo = blocos.rotulo("Pasta dos PDMs Modificados:", tamanho=13)
+    rotulo.setFixedWidth(190)
+    for w in (botao, rotulo):
+        qtbot.addWidget(w)
+        w.show()
+        qtbot.waitExposed(w)
+    letra.aplicar(letra_temporaria, "grande")
+    for w in (botao, rotulo):
+        assert w.width() >= w.sizeHint().width()
+        assert w.minimumWidth() == w.maximumWidth()
+    letra.aplicar(letra_temporaria, "normal")
+    assert (botao.minimumWidth(), botao.maximumWidth()) == (200, 200)
+    assert (rotulo.minimumWidth(), rotulo.maximumWidth()) == (190, 190)
+
+
+def test_rotulo_elidido_nao_alarga(letra_temporaria, qtbot):
+    rotulo = blocos.RotuloElidido("um_nome_de_arquivo_bem_comprido_mesmo.xlsx")
+    rotulo.setFixedWidth(80)
+    qtbot.addWidget(rotulo)
+    letra.aplicar(letra_temporaria, "grande")
+    assert rotulo.width() == 80
+
+
+def test_regra_somada_depois_nao_dobra_o_aumento(letra_temporaria, qtbot):
+    # A busca e o AutoSpec somam uma regra à folha do botão: por `blocos.pintar`,
+    # que parte da folha de antes do aumento (fix round 1, 2026-10-21). Somada à
+    # mão sobre a folha já aumentada, um novo aumento a contaria duas vezes.
+    from sigft.app_qt.views import busca_pmib
+
+    botao = busca_pmib._botao_cinza("Abrir Pasta", 120)
+    assert botao.property("_folha_base") is not None        # feita por `pintar`
+    assert botao.styleSheet().endswith("QPushButton { padding: 0; }")
+    link = blocos.botao("Datasheet", tamanho_fonte=11)
+    qtbot.addWidget(link)
+    qtbot.addWidget(botao)
+    link.show()
+    qtbot.waitExposed(link)
+    letra.aplicar(letra_temporaria, "grande")
+    blocos.pintar(link, "QPushButton { text-align: left; }")
+    letra.aplicar(letra_temporaria, "normal")
+    letra.aplicar(letra_temporaria, "grande")
+    QApplication.processEvents()
+    assert "font-size: 13px" in link.styleSheet() and "15px" not in link.styleSheet()
 
 
 def test_escolha_invalida_e_normal(tmp_path, monkeypatch):
@@ -188,3 +267,61 @@ def test_opcao_da_linha_de_comando():
     assert qmain._opcao_da_linha_de_comando(["f", "--letra=grande"], "--letra") == "grande"
     assert qmain._opcao_da_linha_de_comando(["f", "--smoke"], "--letra") is None
     assert qmain._tema_da_linha_de_comando(["f", "--tema", "claro"]) == "claro"
+
+
+# --- as 12 telas com a letra grande (fix round 1, 2026-10-21) -----------------
+
+def _cortados(tela):
+    """Os textos (botão, rótulo de uma linha, caixa) mais estreitos que o pedido."""
+    from PySide6.QtWidgets import QCheckBox, QLabel, QPushButton
+
+    achados = set()
+    for tipo in (QPushButton, QLabel, QCheckBox):
+        for w in tela.findChildren(tipo):
+            if not w.isVisible() or not w.text().strip():
+                continue
+            if isinstance(w, QLabel) and (w.wordWrap() or isinstance(w, blocos.RotuloElidido)):
+                continue
+            if w.width() < w.sizeHint().width():
+                achados.add(w.text())
+    return achados
+
+
+def _varrer(janela, qtbot):
+    from PySide6.QtWidgets import QAbstractScrollArea
+
+    cortados, rolando = {}, []
+    for alvo in ["Home", *(m[0] for m in catalogo.MODULOS if m[0] not in catalogo.TELAS_BLOQUEADAS)]:
+        janela.show_home() if alvo == "Home" else janela.show_frame(alvo)
+        qtbot.wait(30)
+        tela = janela.telas[alvo]
+        for area in [tela, *tela.findChildren(QAbstractScrollArea)]:
+            if isinstance(area, QAbstractScrollArea) and area.isVisible() \
+                    and area.horizontalScrollBar().isVisible():
+                rolando.append(f"{alvo}:{type(area).__name__}")
+        cortados[alvo] = _cortados(tela)
+    return cortados, rolando
+
+
+def test_nenhuma_tela_corta_texto_nem_rola_de_lado_com_a_letra_grande(
+        letra_temporaria, qtbot, tmp_path, monkeypatch):
+    from sigft.app_qt import main as qmain
+
+    monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))
+    letra.aplicar(letra_temporaria, "normal", gravar=False)
+    janela = qmain.SIG_FT_App()
+    janela.fechar_sem_perguntar = True
+    qtbot.addWidget(janela)
+    janela.resize(1280, 850)
+    janela.show()
+    qtbot.waitExposed(janela)
+    normal, rolando_normal = _varrer(janela, qtbot)
+    letra.aplicar(letra_temporaria, "grande", gravar=False)
+    grande, rolando_grande = _varrer(janela, qtbot)
+    assert rolando_normal == [] and rolando_grande == []
+    # O que já ficava apertado no normal (o "Limpar" de 100 px da Criação de
+    # Fichas, travado pelo teste de medidas) não conta; o resto, nada cortado.
+    assert {alvo: textos - normal[alvo] for alvo, textos in grande.items() if textos - normal[alvo]} == {}
+    letra.aplicar(letra_temporaria, "normal", gravar=False)
+    de_volta, _ = _varrer(janela, qtbot)
+    assert de_volta == normal

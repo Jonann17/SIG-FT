@@ -568,6 +568,10 @@ class HomeView(QScrollArea):
             self.botoes_letra[escolha] = botao
             linha.addWidget(botao)
         self._marcar_letra(letra.atual())
+        # A troca pode vir de fora da Home (o Ctrl+K sem a Home montada, a
+        # abertura): o aviso marca o seletor e arruma a barra. Método ligado,
+        # não `lambda` (aviso do mural de 2026-10-14).
+        letra.mudou.connect(self._letra_mudou)
         return quadro
 
     def _marcar_letra(self, escolha: str) -> None:
@@ -575,9 +579,13 @@ class HomeView(QScrollArea):
             estilo.definir_propriedade(botao, "ativo", chave == escolha)
 
     def escolher_letra(self, escolha: str) -> None:
-        """Troca a letra do app inteiro e lembra a escolha (`letra.aplicar`)."""
+        """Troca a letra do app inteiro e lembra a escolha (`letra.aplicar`); o
+        `letra.mudou` marca o seletor e arruma a barra (`_letra_mudou`)."""
+        letra.aplicar(QApplication.instance(), escolha)
+
+    def _letra_mudou(self, escolha: str) -> None:
         # Marca o que VALEU, não o que está nas prefs: gravar pode ter falhado.
-        self._marcar_letra(letra.aplicar(QApplication.instance(), escolha))
+        self._marcar_letra(escolha)
         self._arrumar_barra()
 
     @staticmethod

@@ -476,8 +476,9 @@ class ModuloAutoSpec(ModuleFrame):
                 # O "🔗" virou o ícone, na cor do link (2026-10-20).
                 icones.aplicar(link, "external-link", papel_cor="info", tamanho=14)
                 # O sublinhado também é da folha (a regra `[papel="link"]`).
-                link.setStyleSheet(link.styleSheet() + " QPushButton { text-align: left;"
-                                   f" padding: 0 {estilo.FOLGA_TEXTO_BOTAO_CTK}px; }}")
+                # Por `pintar` (2026-10-21): parte da folha de antes do aumento da letra.
+                blocos.pintar(link, "QPushButton { text-align: left;"
+                              f" padding: 0 {estilo.FOLGA_TEXTO_BOTAO_CTK}px; }}")
                 _sem_largura_minima(link)
                 link.clicked.connect(lambda *_, u=url: webbrowser.open(u))
                 self.links_conf[(i_pend, i_doc)] = link
@@ -681,7 +682,7 @@ class ModuloAutoSpec(ModuleFrame):
             _sem_largura_minima(rotulo)
             botao = blocos.botao("X", variante="perigo", largura=30, altura=25)
             # Sem o padding de 14 da folha do app: num botão de 30 ele cortaria o "X".
-            botao.setStyleSheet(botao.styleSheet() + " QPushButton { padding: 0; }")
+            blocos.pintar(botao, "QPushButton { padding: 0; }")
             botao.clicked.connect(lambda *_, x=i: self.remove_queue(x))
 
             f = QWidget()

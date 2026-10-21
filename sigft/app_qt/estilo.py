@@ -80,7 +80,9 @@ MENU_ESCOLHIDO = {
 TEMA_ATUAL = "escuro"
 # O aumento da letra que está valendo, em px (`letra.aplicar` muda; 0 = normal).
 AUMENTO_LETRA = 0
-_TAMANHO_DE_LETRA = re.compile(r"(font-size:\s*)(\d+)(px|pt)")
+# Só px (fix round 1, 2026-10-21): o aumento é de 2 PIXELS. Um tamanho em pt
+# (nenhuma folha do app usa) fica como está, em vez de crescer 2 pt.
+_TAMANHO_DE_LETRA = re.compile(r"(font-size:\s*)(\d+)(px)")
 # Onde `letra` guarda, numa peça com folha própria, a folha de ANTES do aumento e
 # a que ela pôs (para refazer a partir da base, nunca somar duas vezes).
 PROP_FOLHA_BASE = "_letra_folha_base"
@@ -88,7 +90,7 @@ PROP_FOLHA_POSTA = "_letra_folha_posta"
 
 
 def ajustar_tamanhos(folha: str, aumento: int) -> str:
-    """Soma `aumento` a cada `font-size` de `folha` (px e pt). Com 0, a mesma folha."""
+    """Soma `aumento` a cada `font-size` em px de `folha`. Com 0, a mesma folha."""
     if not aumento or not folha:
         return folha
     return _TAMANHO_DE_LETRA.sub(
