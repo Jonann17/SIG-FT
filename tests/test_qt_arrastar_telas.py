@@ -73,6 +73,13 @@ def test_soltar_no_botao_chega_ao_selecionar_da_tela(qt_interface, qtbot, monkey
 def test_casos_cobrem_todo_arrastavel_declarado():
     declarados = {(t, a.atributo, a.chave) for t, classe in CLASSES.items() for a in classe.ARRASTAVEIS}
     assert declarados == {(t, atributo, chave) for t, atributo, chave, _f, _e in CASOS}
+    # E cada declaração bate com o caso: um ou vários arquivos, e a extensão.
+    casos = {(t, atributo): (funcao, extensao) for t, atributo, _c, funcao, extensao in CASOS}
+    for t, classe in CLASSES.items():
+        for a in classe.ARRASTAVEIS:
+            funcao, extensao = casos[(t, a.atributo)]
+            assert a.varios == (funcao == "ask_open_files"), (t, a.atributo)
+            assert extensao in a.extensoes, (t, a.atributo)
 
 
 def test_botao_que_inicia_robo_nao_aceita_arrasto():
