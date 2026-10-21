@@ -36,49 +36,39 @@ from shiboken6 import isValid
 
 from sigft import config as sigft_config
 from sigft.app import textos_dicas
-from sigft.app_qt import atualizacao, estilo, icones, interface, nome, tema
-from sigft.app_qt.catalogo import ICONE_DA_TELA, MODULOS
+from sigft.app_qt import atualizacao, estilo, icones, interface, nome, pasta_de_logs, tema
+from sigft.app_qt.catalogo import ACOES_DA_HOME, ICONE_DA_TELA, MODULOS, SELETOR_TEMA
 from sigft.app_qt.widgets import blocos, controles, dialogs, mural
 from sigft.app_qt.widgets.module_frame import aplicar_dicas
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
-from sigft.core import plataforma
 from sigft.core.llm import catalogo, selecao
 from sigft.core.llm import usage as llm_usage
 from sigft.services import updater
 
+# A barra e o seletor de tema saem de `catalogo` (2026-10-21): as ações da
+# Home moram num lugar só (`catalogo.ACOES_DA_HOME`), de onde saem também o
+# Ctrl+K e o `main.ACAO_NA_HOME`. Os nomes daqui continuam (testes e quem lê).
+_ATUALIZACOES = next(a for a in ACOES_DA_HOME if a.chave == "atualizacoes")
 # O botão da barra que procura versão nova. Constante porque dois lugares
 # precisam concordar: quem cria o botão e quem o devolve ao normal. Sem emoji
 # desde 2026-10-20: o desenho é o ícone (`ICONE_DA_BARRA`).
-TEXTO_BOTAO_ATUALIZACOES = "Atualizações"
+TEXTO_BOTAO_ATUALIZACOES = _ATUALIZACOES.texto
 TEXTO_PROCURANDO = "Procurando..."
 # [2026-10-07] O canal de testes: marcada, a atualização oferece também
 # pré-lançamentos. Ver services/updater.py.
 TEXTO_CANAL_TESTES = "Versões de teste"
 
 # A barra (`_criar_barra_de_botoes` de lá): chave, texto, variante do botão e o que
-# abre. A cor de cada um é a da variante, na folha do tema. O "Atualizações" vem depois, fora da lista, porque o texto muda.
-BARRA = [
-    ("atividades", "Atividades do dia", "primario", "abrir_mural_atividades"),
-    ("modelos", "Modelos de IA", "primario", "abrir_janela_modelos_ia"),
-    ("gastos", "Gastos de IA", "primario", "abrir_janela_gastos_ia"),
-    ("chaves", "Chaves de API", "secundario", "abrir_janela_chaves_api"),
-]
+# abre. A cor de cada um é a da variante, na folha do tema. O "Atualizações" vem
+# depois, fora da lista, porque o texto muda.
+BARRA = [(a.chave, a.texto, a.variante, a.metodo) for a in ACOES_DA_HOME if a is not _ATUALIZACOES]
 # O ícone de cada botão da barra (Lucide, `sigft/app_qt/icones.py`): era o
 # emoji do começo do texto até 2026-10-20.
-ICONE_DA_BARRA = {
-    "atividades": "clipboard-check", "modelos": "bot", "gastos": "circle-dollar-sign",
-    "chaves": "key-round", "atualizacoes": "refresh-cw",
-}
-COR_BOTAO_ATUALIZACOES = "secundario"   # variante (2026-10-20)
+ICONE_DA_BARRA = {a.chave: a.icone for a in ACOES_DA_HOME}
+COR_BOTAO_ATUALIZACOES = _ATUALIZACOES.variante   # variante (2026-10-20)
 
-# O seletor de tema (2026-10-20): escolha, texto, ícone e dica. Na linha do
-# título, à direita: a barra de botões já ocupa a largura da Home a 1280 px.
-SELETOR_TEMA = (
-    ("escuro", "Escuro", "moon", "Tema escuro: fundo grafite, o padrão do SIG-FT."),
-    ("claro", "Claro", "sun", "Tema claro: fundo branco, para ambiente bem iluminado."),
-    ("sistema", "Sistema", "monitor",
-     "Segue o tema do Windows (claro ou escuro) e muda junto quando ele mudar."),
-)
+# O seletor de tema (2026-10-20): escolha, texto, ícone e dica (`catalogo.SELETOR_TEMA`).
+# Na linha do título, à direita: a barra de botões já ocupa a largura da Home a 1280 px.
 
 # As chaves do painel "Chaves de API" (o `keys_info` de lá, sem o valor padrão,
 # que é sempre vazio: as chaves vêm do .env ou do api_config.json).
@@ -1229,11 +1219,7 @@ class HomeView(QScrollArea):
     def _abrir_pasta_logs_gastos_ia(self) -> None:
         """Abre `Documentos\\SIG-FT\\logs\\` no explorador, criando-a se ainda
         não existir (nenhuma tarefa de IA rodou ainda)."""
-        from sigft.core.dados_usuario import pasta_logs
-
-        pasta = str(pasta_logs())
-        try:
-            plataforma.abrir_pasta_criando_se_preciso(pasta)
-        except Exception as e:
-            QMessageBox.critical(self._janela_de(getattr(self, "frame_gastos_ia", None)), "Erro",
-                                 f"Não foi possível abrir a pasta de logs: {e}")
+        # O mesmo ajudante do "Abrir logs" do Ctrl+K (2026-10-21). O pai só é
+        # procurado se der erro.
+        pasta_de_logs.abrir(
+            lambda: self._janela_de(getattr(self, "frame_gastos_ia", None)))

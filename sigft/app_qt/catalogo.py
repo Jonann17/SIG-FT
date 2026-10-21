@@ -104,31 +104,71 @@ class Comando(NamedTuple):
     texto: str
     icone: str          # nome de `icones.NOMES`
     palavras: str = ""  # o que mais a busca acha (o texto do menu, sinônimos)
+    bloqueado: bool = False  # aparece apagado e não se escolhe (como no menu)
+    dica: str = ""
 
 
-# As ações além dos módulos: chave, texto, ícone e palavras. Quem faz cada uma é
-# `main.SIG_FT_App.executar_comando`; `tests/test_qt_paleta.py` cobra que toda
-# chave tenha quem a faça.
+class AcaoDaHome(NamedTuple):
+    """Um botão da barra da Home, que o Ctrl+K também oferece."""
+    chave: str
+    texto: str          # o do botão (os testes de medida da Home o travam)
+    icone: str          # nome de `icones.NOMES`
+    variante: str       # a variante do botão (a cor vem da folha do tema)
+    metodo: str         # o método da `HomeView` que a faz
+    palavras: str = ""  # o que mais a busca do Ctrl+K acha
+
+
+# As ações da Home NUM LUGAR SÓ (2026-10-21): a barra da Home
+# (`views/home.BARRA`, `ICONE_DA_BARRA`, `TEXTO_BOTAO_ATUALIZACOES`), o Ctrl+K
+# (`ACOES`) e quem faz cada uma (`main.ACAO_NA_HOME`) saem daqui. Na ordem dos
+# botões; o "Atualizações" fecha a barra (o texto dele muda enquanto procura).
+ACOES_DA_HOME = (
+    AcaoDaHome("atividades", "Atividades do dia", "clipboard-check", "primario",
+               "abrir_mural_atividades", "mural"),
+    AcaoDaHome("modelos", "Modelos de IA", "bot", "primario",
+               "abrir_janela_modelos_ia", "ia llm provedor"),
+    AcaoDaHome("gastos", "Gastos de IA", "circle-dollar-sign", "primario",
+               "abrir_janela_gastos_ia", "custo uso"),
+    AcaoDaHome("chaves", "Chaves de API", "key-round", "secundario",
+               "abrir_janela_chaves_api", "api key senha"),
+    AcaoDaHome("atualizacoes", "Atualizações", "refresh-cw", "secundario",
+               "procurar_atualizacoes", "procurar versao nova atualizar"),
+)
+
+# O seletor de tema da Home (2026-10-20): escolha, texto, ícone e dica. O Ctrl+K
+# oferece os três como "Tema: <texto>" e os faz por `HomeView.escolher_tema`.
+SELETOR_TEMA = (
+    ("escuro", "Escuro", "moon", "Tema escuro: fundo grafite, o padrão do SIG-FT."),
+    ("claro", "Claro", "sun", "Tema claro: fundo branco, para ambiente bem iluminado."),
+    ("sistema", "Sistema", "monitor",
+     "Segue o tema do Windows (claro ou escuro) e muda junto quando ele mudar."),
+)
+
+# As ações do Ctrl+K além dos módulos: chave, texto, ícone e palavras. Quem faz
+# cada uma é `main.SIG_FT_App.executar_comando`; `tests/test_qt_paleta.py` cobra
+# que toda chave tenha quem a faça.
 ACOES = (
     ("inicio", "Início", "house", "home tela inicial"),
-    ("atividades", "Atividades do dia", "clipboard-check", "mural"),
-    ("modelos", "Modelos de IA", "bot", "ia llm provedor"),
-    ("gastos", "Gastos de IA", "circle-dollar-sign", "custo uso"),
-    ("chaves", "Chaves de API", "key-round", "api key senha"),
-    ("atualizacoes", "Procurar atualizações", "refresh-cw", "versao nova atualizar"),
+    *((a.chave, a.texto, a.icone, a.palavras) for a in ACOES_DA_HOME),
     ("logs", "Abrir logs", "folder-open", "pasta log"),
-    ("tema_escuro", "Tema escuro", "moon", "aparencia cor"),
-    ("tema_claro", "Tema claro", "sun", "aparencia cor"),
-    ("tema_sistema", "Tema do sistema", "monitor", "aparencia cor windows"),
+    *((f"tema_{escolha}", f"Tema: {texto}", icone, "aparencia cor")
+      for escolha, texto, icone, _dica in SELETOR_TEMA),
 )
 
 
+SUFIXO_BLOQUEADO = " (bloqueado)"
+
+
 def comandos() -> list[Comando]:
-    """Os módulos liberados (na ordem dos cartões da Home) e as ações. O módulo
-    bloqueado fica fora: `show_frame` o recusaria."""
+    """Os módulos (na ordem dos cartões da Home) e as ações. O módulo bloqueado
+    aparece como no menu: apagado, com a mesma dica, e não se escolhe."""
     no_menu = {item[2]: item[1] for item in MENU if item[0] == "botao"}
-    lista = [Comando(f"tela:{alvo}", titulo, ICONE_DA_TELA[alvo], f"{no_menu.get(alvo, '')} {alvo}")
-             for alvo, titulo, _descricao in MODULOS if alvo not in TELAS_BLOQUEADAS]
+    lista = []
+    for alvo, titulo, _descricao in MODULOS:
+        bloqueado = alvo in TELAS_BLOQUEADAS
+        lista.append(Comando(
+            f"tela:{alvo}", titulo + (SUFIXO_BLOQUEADO if bloqueado else ""), ICONE_DA_TELA[alvo],
+            f"{no_menu.get(alvo, '')} {alvo}", bloqueado=bloqueado, dica=dica_do_menu(alvo)))
     lista += [Comando(f"acao:{chave}", texto, icone, palavras) for chave, texto, icone, palavras in ACOES]
     return lista
 

@@ -23,6 +23,7 @@ from sigft.app_qt.views import home as home_mod
 from sigft.app_qt.widgets import controles
 from sigft.app_qt.widgets import mural as mural_qt
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
+from sigft.core import plataforma
 from sigft.core.llm import catalogo, selecao
 from sigft.services import atividades as at
 from sigft.services import updater
@@ -846,7 +847,7 @@ def test_abrir_pasta_de_logs_abre_a_pasta_de_dados(home, monkeypatch, mensagens)
     from sigft.core.dados_usuario import pasta_logs
 
     abertas = []
-    monkeypatch.setattr(home_mod.plataforma, "abrir_pasta_criando_se_preciso", abertas.append)
+    monkeypatch.setattr(plataforma, "abrir_pasta_criando_se_preciso", abertas.append)
     home.abrir_janela_gastos_ia()
     home.btn_pasta_logs_ia.click()
     assert abertas == [str(pasta_logs())]
@@ -857,7 +858,7 @@ def test_abrir_pasta_de_logs_que_falha_avisa(home, monkeypatch, mensagens):
     def quebra(_pasta):
         raise OSError("sem explorador")
 
-    monkeypatch.setattr(home_mod.plataforma, "abrir_pasta_criando_se_preciso", quebra)
+    monkeypatch.setattr(plataforma, "abrir_pasta_criando_se_preciso", quebra)
     home.abrir_janela_gastos_ia()
     home.btn_pasta_logs_ia.click()
     [(tipo, titulo, texto, _pai)] = mensagens

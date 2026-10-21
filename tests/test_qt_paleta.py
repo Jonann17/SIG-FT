@@ -9,11 +9,15 @@ from sigft.app_qt import main as qmain
 from sigft.app_qt.widgets.paleta import PaletaDeComandos
 
 
-def test_comandos_tem_os_modulos_liberados_e_as_acoes():
+def test_comandos_tem_os_modulos_e_as_acoes():
+    # Fix round 1 (2026-10-21): o módulo bloqueado aparece, apagado, como no menu.
     chaves = [c.chave for c in catalogo.comandos()]
     modulos = [c for c in chaves if c.startswith("tela:")]
-    assert len(modulos) == len(catalogo.MODULOS) - len(catalogo.TELAS_BLOQUEADAS)
-    assert "tela:CorrecaoPDM" not in chaves
+    assert len(modulos) == len(catalogo.MODULOS)
+    bloqueados = [c for c in catalogo.comandos() if c.bloqueado]
+    assert [c.chave for c in bloqueados] == ["tela:CorrecaoPDM"]
+    assert bloqueados[0].texto.endswith(" (bloqueado)")
+    assert bloqueados[0].dica == catalogo.dica_do_menu("CorrecaoPDM")
     assert {f"acao:{acao[0]}" for acao in catalogo.ACOES} <= set(chaves)
     assert len(chaves) == len(set(chaves))
 
@@ -34,6 +38,7 @@ def test_texto_dos_comandos_sem_travessao():
     ("CONDIÇÕES", "tela:UploadConditions"),
     ("4.2", "tela:Translator"),
     ("tema claro", "acao:tema_claro"),
+    ("procurar", "acao:atualizacoes"),
     ("chaves", "acao:chaves"),
     ("search", "tela:SearchPMIB"),
     ("inicio", "acao:inicio"),
@@ -95,6 +100,51 @@ def test_clicar_num_item_escolhe(qt_interface, qtbot):
     qtbot.mouseClick(p.lista.viewport(), Qt.MouseButton.LeftButton,
                      pos=p.lista.visualItemRect(item).center())
     assert escolhas == ["acao:chaves"]
+
+
+def test_modulo_bloqueado_aparece_apagado_e_nao_se_escolhe(qt_interface, qtbot):
+    p, escolhas = _paleta(qtbot)
+    qtbot.keyClicks(p.campo, "correcao")
+    assert p.lista.count() == 1
+    item = p.lista.item(0)
+    assert not item.flags() & Qt.ItemFlag.ItemIsEnabled
+    assert item.toolTip() == catalogo.dica_do_menu("CorrecaoPDM")
+    assert p.lista.currentRow() == -1
+    qtbot.keyClick(p.campo, Qt.Key.Key_Down)
+    qtbot.keyClick(p.campo, Qt.Key.Key_Return)
+    assert escolhas == [] and p.isVisible()
+
+
+def test_setas_pulam_o_modulo_bloqueado(qt_interface, qtbot):
+    p, escolhas = _paleta(qtbot)
+    qtbot.keyClicks(p.campo, "pdm")             # Planilhas (PDM), Correção de PDM (bloqueado)
+    chaves = [p.lista.item(i).data(Qt.ItemDataRole.UserRole) for i in range(p.lista.count())]
+    assert chaves == ["tela:PDM", "tela:CorrecaoPDM"]
+    qtbot.keyClick(p.campo, Qt.Key.Key_Down)    # não para no bloqueado
+    assert p.lista.currentItem().data(Qt.ItemDataRole.UserRole) == "tela:PDM"
+    p, escolhas = _paleta(qtbot)
+    for _ in range(5):                          # 0 -> 1, 2, 3, 4, (5 bloqueado) 6
+        qtbot.keyClick(p.campo, Qt.Key.Key_Down)
+    assert p.lista.currentItem().data(Qt.ItemDataRole.UserRole) == "tela:Translator"
+    qtbot.keyClick(p.campo, Qt.Key.Key_Up)
+    assert p.lista.currentItem().data(Qt.ItemDataRole.UserRole) == "tela:UploadSpecs"
+
+
+def test_acoes_da_home_num_lugar_so():
+    """A barra da Home, o Ctrl+K e quem faz cada ação saem de `catalogo.ACOES_DA_HOME`."""
+    from sigft.app_qt.views import home
+
+    acoes = catalogo.ACOES_DA_HOME
+    assert [(a.chave, a.texto, a.variante, a.metodo) for a in acoes if a.chave != "atualizacoes"] \
+        == list(home.BARRA)
+    assert home.ICONE_DA_BARRA == {a.chave: a.icone for a in acoes}
+    assert home.TEXTO_BOTAO_ATUALIZACOES == next(a.texto for a in acoes if a.chave == "atualizacoes")
+    assert home.SELETOR_TEMA is catalogo.SELETOR_TEMA
+    assert qmain.ACAO_NA_HOME == {a.chave: a.metodo for a in acoes}
+    na_paleta = {a[0]: (a[1], a[2]) for a in catalogo.ACOES}
+    for a in acoes:
+        assert na_paleta[a.chave] == (a.texto, a.icone)
+        assert callable(getattr(home.HomeView, a.metodo))
 
 
 def test_esc_fecha_sem_escolher(qt_interface, qtbot):
@@ -222,6 +272,17 @@ def test_tema_pela_paleta_marca_o_seletor_da_home(volta_ao_escuro, janela):
     assert estilo.TEMA_ATUAL == "claro" and tema.escolhido() == "claro"
     assert home.botoes_tema["claro"].property("ativo") is True
     assert home.botoes_tema["escuro"].property("ativo") is False
+
+
+def test_abrir_logs_usa_o_mesmo_ajudante_da_home(janela, monkeypatch):
+    from sigft.app_qt import pasta_de_logs
+    from sigft.app_qt.views import home as home_mod
+
+    chamadas = []
+    monkeypatch.setattr(pasta_de_logs, "abrir", lambda pai=None: chamadas.append(pai))
+    janela.executar_comando("acao:logs")
+    home_mod.HomeView._abrir_pasta_logs_gastos_ia(janela.telas["Home"])
+    assert len(chamadas) == 2
 
 
 def test_comando_desconhecido_nao_derruba(janela):

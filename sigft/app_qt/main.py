@@ -38,7 +38,7 @@ from shiboken6 import isValid
 
 from sigft import _build_info
 from sigft.app import backends, tokens
-from sigft.app_qt import atualizacao, catalogo, cursor, estilo, icones, interface, novidades, tema
+from sigft.app_qt import atualizacao, catalogo, cursor, estilo, icones, interface, novidades, pasta_de_logs, tema
 from sigft.app_qt import nome as nome_da_pessoa
 from sigft.app_qt.views.aplicacao_lmr import ModuloAplicacaoLMR
 from sigft.app_qt.views.home import HomeView
@@ -47,7 +47,7 @@ from sigft.app_qt.views.translator import ModuloTranslator
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets.marca import Marca
 from sigft.app_qt.widgets.paleta import PaletaDeComandos
-from sigft.core import instancia, plataforma
+from sigft.core import instancia
 from sigft.core.saida_log import desviar_saida_para_arquivo
 
 # Sem console (o .exe), `print` e traceback vão para `logs/sigft.log`: é o canal
@@ -135,15 +135,10 @@ TELAS = {
     "SearchPMIB": _busca_pmib,
 }
 
-# Ctrl+K (etapa 1b, 2026-10-21): o método da Home que cada `acao:` chama. As
-# outras ações (`inicio`, `logs`, `tema_*`) estão em `executar_comando`.
-ACAO_NA_HOME = {
-    "atividades": "abrir_mural_atividades",
-    "modelos": "abrir_janela_modelos_ia",
-    "gastos": "abrir_janela_gastos_ia",
-    "chaves": "abrir_janela_chaves_api",
-    "atualizacoes": "procurar_atualizacoes",
-}
+# Ctrl+K (etapa 1b, 2026-10-21): o método da Home que cada `acao:` chama, da
+# lista única `catalogo.ACOES_DA_HOME`. As outras ações (`inicio`, `logs`,
+# `tema_*`) estão em `executar_comando`.
+ACAO_NA_HOME = {acao.chave: acao.metodo for acao in catalogo.ACOES_DA_HOME}
 
 
 def resource_path(relativo: str) -> str:
@@ -356,12 +351,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
 
     def abrir_pasta_de_logs(self) -> None:
         """`Documentos\\SIG-FT\\logs\\` no explorador (criada se faltar)."""
-        from sigft.core.dados_usuario import pasta_logs
-
-        try:
-            plataforma.abrir_pasta_criando_se_preciso(str(pasta_logs()))
-        except Exception as erro:  # noqa: BLE001 -- vira aviso
-            QMessageBox.critical(self, "Erro", f"Não foi possível abrir a pasta de logs: {erro}")
+        pasta_de_logs.abrir(self)
 
     # -- chaves de API ----------------------------------------------------------
     def load_keys(self) -> None:

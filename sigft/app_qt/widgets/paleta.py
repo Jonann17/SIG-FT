@@ -61,9 +61,13 @@ class PaletaDeComandos(QDialog):
         for comando in catalogo.filtrar(self._comandos, consulta):
             item = QListWidgetItem(icones.icone(comando.icone, cor), comando.texto)
             item.setData(Qt.ItemDataRole.UserRole, comando.chave)
+            if comando.dica:
+                item.setToolTip(comando.dica)
+            if comando.bloqueado:
+                # Como o botão do menu: apagado e fora do alcance das setas e do Enter.
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled & ~Qt.ItemFlag.ItemIsSelectable)
             self.lista.addItem(item)
-        if self.lista.count():
-            self.lista.setCurrentRow(0)
+        self.lista.setCurrentRow(next(iter(self._linhas_que_se_escolhem()), -1))
         self.vazio.setVisible(self.lista.count() == 0)
 
     def eventFilter(self, obj, evento) -> bool:  # noqa: N802 -- nome do Qt
@@ -77,11 +81,17 @@ class PaletaDeComandos(QDialog):
                 return True
         return super().eventFilter(obj, evento)
 
+    def _linhas_que_se_escolhem(self) -> list[int]:
+        return [i for i in range(self.lista.count())
+                if self.lista.item(i).flags() & Qt.ItemFlag.ItemIsEnabled]
+
     def _mover(self, passo: int) -> None:
-        if not self.lista.count():
-            return
-        linha = min(max(self.lista.currentRow() + passo, 0), self.lista.count() - 1)
-        self.lista.setCurrentRow(linha)
+        """A próxima linha que se escolhe no sentido do `passo`; no fim, fica."""
+        atual = self.lista.currentRow()
+        linhas = self._linhas_que_se_escolhem()
+        adiante = [i for i in linhas if i > atual] if passo > 0 else [i for i in reversed(linhas) if i < atual]
+        if adiante:
+            self.lista.setCurrentRow(adiante[0])
 
     def _clicou(self, item) -> None:
         self.lista.setCurrentItem(item)
@@ -95,7 +105,7 @@ class PaletaDeComandos(QDialog):
         """Fecha a caixa e SÓ ENTÃO avisa a escolha: a ação que abre janela
         (Chaves de API) já não encontra o popup segurando teclado e mouse."""
         item = self.lista.currentItem()
-        if item is None:
+        if item is None or not item.flags() & Qt.ItemFlag.ItemIsEnabled:
             return
         chave = item.data(Qt.ItemDataRole.UserRole)
         self.accept()
