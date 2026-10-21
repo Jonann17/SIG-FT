@@ -219,6 +219,57 @@ A interface Qt (`sigft/app_qt/`) tem um sistema visual próprio; a spec está em
   lido por `nome.py` e `views/home.py`, e há teste que trava isso.
 - **Splash**: no tema escolhido, com a versão do `_build_info`.
 
+### Ferramentas de uso (etapa 1b, 2026-10-21)
+
+- **Nível das linhas** (`sigft/app/niveis_log.py`, sem Qt): `classificar(msg, nivel)`;
+  o `nivel` do protocolo vence quando é `error`/`warn` (ou sinônimo), senão a marca
+  que ABRE a primeira linha, sem caixa e como palavra inteira: `[Erro`, `❌`, `Falha`,
+  `Erro` → erro; `[Aviso]`, `[!]`, `[Autoconferência]`, `[Atenção]`, `Aviso`, `⚠` →
+  aviso (`Erros:`, `Avisos: 2`, `0 falha(s)` seguem info). Tag nova de serviço sem
+  nível decidido, ou texto de log que abre com Erro/Aviso/Falha e cai em info,
+  reprova `tests/test_niveis_log.py`.
+- **Console** (`widgets/console.py`): guarda cada linha com nível e número (`marca()`,
+  `linhas(desde=)`); barra na margem de BAIXO: Tudo / Avisos (avisos e erros) / Erros,
+  busca sem acento que espera 150 ms sem tecla, Copiar (só o que está à vista; sem
+  nada à vista não mexe na área de transferência). A altura do console e o começo do
+  texto não mudaram, mas a barra ocupa ~28 px da área de texto (no AutoSpec sobram
+  umas 5 linhas). O console continua escuro no tema claro, de propósito.
+- **Resumo do lote** (`sigft/app/resumo_lote.py` + `widgets/resumo_lote.py`): no fim
+  da última tarefa da tela (`ModuleFrame._fim_do_lote`), se houve erro ou aviso, a
+  janela agrupada por código PMIB (regex própria, "Sem código PMIB" para o resto),
+  com "Copiar lista" e "Abrir log" (grava em `logs\resumos\`). A mesma linha repetida
+  só com a duração no fim (falha do `RelatorioLote`) conta uma vez. Com uma caixa
+  modal aberta, espera ela fechar; uma janela de resumo por tela. Desligada nos
+  testes (`SIGFT_SEM_RESUMO_DO_LOTE`, conftest).
+- **Arrastar e recentes** (`widgets/arrastar.py`): o soltar é aceito na hora e
+  entregue depois (`QTimer.singleShot`, para não prender o Explorer): ENTREGA o
+  arquivo à chave do diálogo (`file_dialogs.entregar`) e clica o botão; o
+  `ask_open_file(chave)` acha a entrega e não abre o diálogo. Extensão errada pinta
+  o alvo de vermelho; botão desligado recusa. Tela com botão declara `ARRASTAVEIS`
+  (8 telas; Tradutor e LMR não têm); `FilePickerRow`, `MultiFilePickerRow` e
+  `FileQueueList` já aceitam. Últimos 5 por chave em `user_prefs.json` (seção
+  `recentes`), na seta ao lado da linha (só aparece com recente; não olha o disco
+  na montagem) ou no botão direito.
+- **Ctrl+K** (`widgets/paleta.py`): itens de `catalogo.comandos()` (os módulos, o
+  bloqueado apagado e sem clique, + `catalogo.ACOES`, derivadas de
+  `catalogo.ACOES_DA_HOME`, `SELETOR_TEMA` e `SELETOR_LETRA`: uma fonte só para a
+  Home e a caixa), filtro `catalogo.filtrar`; quem faz é `SIG_FT_App.executar_comando`.
+  No Linux/Mac um campo de texto com foco fica com o Ctrl+K (apaga até o fim da
+  linha); no Windows a caixa abre.
+- **Letra** (`sigft/app_qt/letra.py`): Normal / Grande (`tokens.AUMENTO_DA_LETRA`),
+  aplicada na hora como o tema, com o sinal `letra.mudou`: a folha do app e cada
+  folha própria ganham +2 px (só `px`); botão e rótulo de uma linha com largura fixa
+  alargam até o `sizeHint` e voltam ao pixel no Normal; um vigia ajusta peça nova só
+  com a letra grande. Regra somada à folha de uma peça entra por `blocos.pintar`
+  (senão o aumento dobra). Na Home, com a Grande, o "Versões de teste" desce para
+  baixo da barra. Smoke: `--letra grande`.
+- **Aviso do Windows** (`sigft/app_qt/aviso_windows.py`): `QSystemTrayIcon.showMessage`
+  fora de foco, no fim da tarefa e nas esperas (`widgets/espera.py`: login, Excel
+  travado, arquivos travados, sim/não, pedir texto). O ícone da bandeja acende no
+  aviso e some ao clicar ou quando o SIG-FT volta a ser o app ativo. "Avisar no
+  Windows" na linha do subtítulo da Home. Nunca nos testes nem no `--smoke`
+  (`SIGFT_SEM_AVISO_DO_WINDOWS`, conftest e `main._smoke`).
+
 ## Pontos de Atenção
 
 - **Threading + Tkinter**: Todos os atualizamentos de UI de threads secundárias usam `self.after(0, lambda: ...)`. Sem isso, causam travamentos ou crashes.
