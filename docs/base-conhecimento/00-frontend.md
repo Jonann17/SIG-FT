@@ -189,6 +189,36 @@ Fluxo principal de criação:
 - **Portal PMIB**: RPA via Selenium (ChromeDriver) para automação de formulários; uso extensivo de XPaths e `active_element` (Tab navigation)
 - **APIs Externas**: Gemini (Google AI); chaves gerenciadas via `controller.get_key()`
 
+## Sistema visual (2026-10-20)
+
+A interface Qt (`sigft/app_qt/`) tem um sistema visual próprio; a spec está em
+`docs/superpowers/specs/2026-10-20-sistema-visual-design.md`.
+
+- **Tokens** (`sigft/app/tokens.py`): as paletas `ESCURO` e `CLARO` (papéis
+  `fundo`, `superficie`, `superficie_alta`, `borda`, `texto`, `texto_suave`,
+  `marca`, `primaria`, `perigo`, `aviso`, `info`...), `FONTE`, `ESPACO`, `RAIO` e
+  `contraste()`. Texto sobre fundo tem contraste de pelo menos 4,5:1, e há teste que mede.
+  `theme.COLORS` é derivado deles.
+- **Folha de estilo** (`sigft/app_qt/estilo.py`): `folha_de_estilo(tema)` monta
+  a folha do app a partir dos tokens; sem argumento vale `estilo.TEMA_ATUAL`.
+  Cor só entra por **papel** (`definir_papel`) ou **variante** de botão
+  (`primario`, `secundario`, `perigo`, `fantasma`), nunca hexadecimal na tela:
+  `tests/test_qt_sem_cor_crua.py` acusa.
+- **Ícones** (`sigft/app_qt/icones.py`, SVG Lucide em `assets/icons`, licença ISC):
+  `icones.aplicar(botao, nome)` desenha na cor do tema; `icones.reaplicar(raiz)`
+  repinta a árvore na troca de tema. Botão não leva emoji
+  (há teste).
+- **Tema** (`sigft/app_qt/tema.py`): escuro / claro / sistema, escolhido no
+  seletor da Home e guardado nas preferências (`core/prefs.ler_preferencia`).
+  `tema.aplicar` troca a folha do app, repinta os ícones e emite `tema.mudou`.
+  Widget que guarde cor calculada na criação precisa ouvir `tema.mudou`.
+- **Marca** (`widgets/marca.py`): logo + "SIG-FT System" no alto do menu,
+  com brilho sob o mouse; clique volta à Home.
+- **Saudação** (`sigft/app_qt/nome.py`): "Bom dia, <nome>", nome perguntado uma
+  vez (aberto pelo lançador, nunca nos testes nem no `--smoke`). O nome só é
+  lido por `nome.py` e `views/home.py`, e há teste que trava isso.
+- **Splash**: no tema escolhido, com a versão do `_build_info`.
+
 ## Pontos de Atenção
 
 - **Threading + Tkinter**: Todos os atualizamentos de UI de threads secundárias usam `self.after(0, lambda: ...)`. Sem isso, causam travamentos ou crashes.

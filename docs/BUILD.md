@@ -449,7 +449,7 @@ número sai do fecho das dependências de cada DLL, como o PyInstaller faz):
 |---|---|---|
 | `opengl32sw.dll` | 20,6 MB | OpenGL por software, do Qt Quick e do QOpenGLWidget; a interface é QtWidgets puro, que desenha sem OpenGL |
 | traduções do Qt, menos a `qtbase_pt_BR` | 6,7 MB | o app carrega uma (`_instalar_traducao`, em `sigft/app_qt/main.py`) |
-| plugins de imagem, SVG, toque, `qdirect2d`..., e o `Qt6Svg.dll` | 4,3 MB | o app só carrega PNG, que o QtGui lê sem plugin |
+| plugins de imagem, SVG, toque, `qdirect2d`... | ~4 MB | o app carrega PNG, que o QtGui lê sem plugin; os ícones SVG são desenhados pelo módulo QtSvg (`QSvgRenderer`), que não precisa dos plugins. O `Qt6Svg.dll` VOLTOU ao pacote em 2026-10-20 (ícones do sistema visual), via `hiddenimports` |
 | o módulo QtNetwork, o `Qt6Network.dll` e os plugins de TLS e de rede | 3,6 MB | ninguém o importa; quem o puxava era um import condicional do `PySide6/__init__.py` |
 | **a Qt no pacote** | **78,4 → 43,2 MB** | |
 
