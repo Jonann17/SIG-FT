@@ -244,6 +244,9 @@ def _revisao_antes_do_portal_nao_trava(monkeypatch):
 @pytest.fixture(autouse=True)
 def _sem_janelas_do_fim_da_tarefa(monkeypatch):
     monkeypatch.setenv("SIGFT_SEM_RESUMO_DO_LOTE", "1")
+    # [2026-10-21] O aviso do Windows (`app_qt/aviso_windows.py`) NUNCA nos
+    # testes: a notificação sairia na máquina de quem roda a suíte.
+    monkeypatch.setenv("SIGFT_SEM_AVISO_DO_WINDOWS", "1")
 
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)

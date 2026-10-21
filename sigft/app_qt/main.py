@@ -691,6 +691,11 @@ def _smoke() -> int:
     """
     from sigft.app.conferencia import ARQUIVO_JANELA, gravar_relatorio
 
+    # [2026-10-21] O smoke nunca solta o aviso do Windows (`aviso_windows`):
+    # roda no Release e no CI, e numa máquina com bandeja a notificação sairia.
+    from sigft.app_qt import aviso_windows
+
+    os.environ[aviso_windows.ENV_DESLIGAR] = "1"
     avisos: list[str] = []
     try:
         # `--smoke --tema claro --letra grande`: o smoke também no claro e com a

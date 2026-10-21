@@ -36,7 +36,7 @@ from shiboken6 import isValid
 
 from sigft import config as sigft_config
 from sigft.app import textos_dicas
-from sigft.app_qt import atualizacao, estilo, icones, interface, letra, nome, pasta_de_logs, tema
+from sigft.app_qt import atualizacao, aviso_windows, estilo, icones, interface, letra, nome, pasta_de_logs, tema
 from sigft.app_qt.catalogo import ACOES_DA_HOME, ICONE_DA_TELA, MODULOS, SELETOR_LETRA, SELETOR_TEMA
 from sigft.app_qt.widgets import blocos, controles, dialogs, mural
 from sigft.app_qt.widgets.module_frame import aplicar_dicas
@@ -57,6 +57,12 @@ TEXTO_PROCURANDO = "Procurando..."
 # [2026-10-07] O canal de testes: marcada, a atualização oferece também
 # pré-lançamentos. Ver services/updater.py.
 TEXTO_CANAL_TESTES = "Versões de teste"
+# [2026-10-21] O aviso do Windows (`app_qt/aviso_windows.py`): na linha do
+# subtítulo, à direita (a barra de botões não tem mais largura a 1280 px e a
+# linha do título já tem os seletores de tema e de letra).
+TEXTO_AVISOS_WINDOWS = "Avisar no Windows"
+DICA_AVISOS_WINDOWS = ("Com o SIG-FT atrás de outra janela, um aviso do Windows diz quando uma "
+                       "tarefa termina ou quando o robô espera você (o login no portal, por exemplo).")
 
 # A barra (`_criar_barra_de_botoes` de lá): chave, texto, variante do botão e o que
 # abre. A cor de cada um é a da variante, na folha do tema. O "Atualizações" vem
@@ -389,7 +395,14 @@ class HomeView(QScrollArea):
                                       objectName="subtitulo_home")
         self.label_subtitulo.setMinimumHeight(blocos.ALTURA_MINIMA_ROTULO)
         self.label_subtitulo.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        layout.addWidget(self.label_subtitulo)
+        # [2026-10-21] A caixa do aviso do Windows divide a linha do subtítulo: mais
+        # baixa que os 28 px da linha, que fica com a altura de antes.
+        linha_subtitulo = QHBoxLayout()
+        linha_subtitulo.setContentsMargins(0, 0, 0, 0)
+        linha_subtitulo.setSpacing(0)
+        linha_subtitulo.addWidget(self.label_subtitulo, 1)
+        linha_subtitulo.addWidget(self._criar_caixa_avisos(), 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addLayout(linha_subtitulo)
         layout.addSpacing(30)
         resumo = ("Clique num módulo abaixo para abri-lo. Os botões desta barra "
                   "abrem painéis em janela, para a Home ficar limpa.")
@@ -596,6 +609,16 @@ class HomeView(QScrollArea):
         icones.aplicar(botao, icone)
         dialogs.sem_tecla(botao)
         return botao
+
+    def _criar_caixa_avisos(self):
+        """"Avisar no Windows", marcada por padrão (`aviso_windows.ligado`)."""
+        caixa = controles.CaixaDeMarcar(TEXTO_AVISOS_WINDOWS, tamanho_fonte=12)
+        caixa.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        caixa.setChecked(aviso_windows.ligado())
+        caixa.setToolTip(DICA_AVISOS_WINDOWS)
+        caixa.toggled.connect(aviso_windows.ligar)
+        self.caixa_avisos_windows = caixa
+        return caixa
 
     def _lembrar_canal_testes(self, ligado: bool) -> None:
         try:

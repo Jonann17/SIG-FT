@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 
 from sigft.app import backends, textos_dicas, theme
 from sigft.app import resumo_lote as resumo_regras
-from sigft.app_qt import interface
+from sigft.app_qt import aviso_windows, interface
 from sigft.app_qt.widgets import arrastar
 from sigft.app_qt.widgets.atividade import FaixaDeAtividade
 from sigft.app_qt.widgets.console import ConsoleFrame
@@ -226,12 +226,18 @@ class ModuleFrame(DialogosDeEspera, QWidget):
 
     def _fim_do_lote(self) -> None:
         """Na thread da interface, quando a ÚLTIMA tarefa da tela acaba: com erro
-        ou aviso no console, a janela de resumo (2026-10-21). Nunca levanta: o fim
-        da tarefa já aconteceu, e um defeito aqui não pode prender o botão."""
+        ou aviso no console, a janela de resumo (2026-10-21). E o aviso do Windows,
+        se o SIG-FT está fora de foco. Nunca levanta: o fim da tarefa já
+        aconteceu, e um defeito aqui não pode prender o botão."""
         try:
             pares = self.pares_do_lote()
-            if resumo_regras.ligado() and resumo_regras.agrupar(pares):
+            grupos = resumo_regras.agrupar(pares)
+            if grupos and resumo_regras.ligado():
                 janela_de_resumo.abrir_resumo(self, self.titulo_da_tela, pares)
+            # O aviso do Windows, só com o SIG-FT fora de foco (2026-10-21).
+            erros, avisos = resumo_regras.contar(grupos)
+            aviso_windows.avisar(self.window(), resumo_regras.frase_do_fim(
+                self.titulo_da_tela, erros, avisos, falhou=self._tarefa_falhou))
         except Exception:  # noqa: BLE001 -- vira traceback no log
             traceback.print_exc()
 
