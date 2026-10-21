@@ -172,11 +172,14 @@ def test_main_prepara_dados_e_navegador_antes_da_splash(qt_interface, monkeypatc
     monkeypatch.setattr(navegador, "preparar_ambiente_do_rpa",
                         lambda: eventos.append("navegador") or None)
     monkeypatch.setattr(qmain, "_preparar_qt",
-                        lambda: type("A", (), {"exec": lambda self: eventos.append("exec")})())
+                        lambda: eventos.append("qt") or type(
+                            "A", (), {"exec": lambda self: eventos.append("exec")})())
     monkeypatch.setattr(qmain, "SplashScreen", SplashFalsa)
     qmain.main()
     assert eventos.index("migrou") < eventos.index("splash")
     assert eventos.index("navegador") < eventos.index("splash")
+    # 2026-10-20: o tema guardado vale antes da splash (ela abre na cor dele).
+    assert eventos.index("qt") < eventos.index("splash")
     assert eventos[-1] == ("encerrar", 0)
     saida = capsys.readouterr().out
     assert "[SIG-FT] Configuracao importada para a pasta de dados: api_config.json" in saida

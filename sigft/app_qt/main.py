@@ -29,14 +29,14 @@ import traceback
 
 from dotenv import load_dotenv
 from PySide6.QtCore import Qt, QtMsgType, Signal, qInstallMessageHandler
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar,
     QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 from sigft import _build_info
-from sigft.app import backends
+from sigft.app import backends, tokens
 from sigft.app_qt import atualizacao, catalogo, cursor, estilo, icones, interface, novidades, tema
 from sigft.app_qt import nome as nome_da_pessoa
 from sigft.app_qt.views.aplicacao_lmr import ModuloAplicacaoLMR
@@ -337,41 +337,78 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
 
 
 class SplashScreen(QWidget):
-    """A splash de hoje, sem as pausas artificiais: o progresso é o real."""
+    """A splash, sem as pausas artificiais: o progresso é o real.
+
+    Sistema visual (2026-10-20): fundo `fundo`, o logo da GE Vernova no centro,
+    "SIG-FT" 22 em negrito, a versão em `texto_suave` e uma barra de 4 px em
+    `primaria`, num cartão de cantos 10. Ela aparece ANTES da janela principal:
+    a paleta vem do tema guardado (`tema.escolhido`), lido aqui mesmo, para quem
+    usa o claro não ver a abertura escura (o `_preparar_qt`, que roda antes,
+    aplica o mesmo tema à folha do app).
+    """
 
     pronta = Signal()
 
     def __init__(self) -> None:
         super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.SplashScreen)
         self.setFixedSize(500, 350)
-        # O fundo é o da regra `#conteudo` da folha (o `fundo` do tema).
-        self.setObjectName("conteudo")
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        # O fundo é desenhado no `paintEvent` (os cantos arredondados): fora
+        # do cartão, a janela é transparente.
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._paleta = p = tokens.paleta(tema.efetivo(tema.escolhido()))
+        self.setObjectName("splash")
+        # Folha própria, por cima da do app: a cor de cada peça é a do tema
+        # guardado, qualquer que seja a folha aplicada. O trilho da barra é a
+        # `borda`: a `superficie_alta` some sobre o `fundo` claro.
+        self.setStyleSheet(f"""
+            QLabel {{ background: transparent; }}
+            QLabel#splash_titulo {{ color: {p['texto']}; font-size: {tokens.FONTE['titulo']}px;
+                                    font-weight: bold; }}
+            QLabel#splash_versao {{ color: {p['texto_suave']}; font-size: {tokens.FONTE['legenda']}px; }}
+            QLabel#splash_status {{ color: {p['texto_suave']}; font-size: {tokens.FONTE['legenda']}px; }}
+            QProgressBar {{ background: {p['borda']}; border: none; border-radius: 2px;
+                            min-height: 4px; max-height: 4px; }}
+            QProgressBar::chunk {{ background: {p['primaria']}; border-radius: 2px; }}
+        """)
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(50, 50, 50, 20)
+        lay.setContentsMargins(50, 50, 50, 30)
+        lay.setSpacing(tokens.ESPACO[1])
+        lay.addStretch()
         logo = QLabel()
         caminho = resource_path(os.path.join("assets", "logo.png"))
         if os.path.exists(caminho):
             logo.setPixmap(QPixmap(caminho).scaledToWidth(
-                300, Qt.TransformationMode.SmoothTransformation))
+                260, Qt.TransformationMode.SmoothTransformation))
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(logo)
-        titulo = QLabel("SIG-FT System")
-        titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        titulo.setProperty("papel", "legenda")
-        titulo.setStyleSheet("font-size: 16px;")
-        lay.addWidget(titulo)
+        lay.addSpacing(tokens.ESPACO[3])
+        self.titulo = QLabel("SIG-FT")
+        self.titulo.setObjectName("splash_titulo")
+        self.titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(self.titulo)
+        self.versao = QLabel(_texto_da_versao())
+        self.versao.setObjectName("splash_versao")
+        self.versao.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(self.versao)
         lay.addStretch()
         self.status = QLabel("Iniciando...")
+        self.status.setObjectName("splash_status")
         self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status.setProperty("papel", "ok")
-        self.status.setStyleSheet("font-size: 12px;")
         lay.addWidget(self.status)
         self.barra = QProgressBar()
         self.barra.setRange(0, 1000)
         self.barra.setTextVisible(False)
-        # A cor do progresso é a da folha (`primaria`).
+        self.barra.setFixedHeight(4)
         lay.addWidget(self.barra)
+
+    def paintEvent(self, _evento) -> None:  # noqa: N802 -- nome do Qt
+        pintor = QPainter(self)
+        pintor.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        pintor.setPen(Qt.PenStyle.NoPen)
+        pintor.setBrush(QColor(self._paleta["fundo"]))
+        raio = tokens.RAIO["cartao"]
+        pintor.drawRoundedRect(self.rect(), raio, raio)
+        pintor.end()
 
     def carregar(self) -> None:
         threading.Thread(target=self._carregar, name="splash", daemon=True).start()
@@ -397,6 +434,13 @@ class SplashScreen(QWidget):
             # e sem janela. Tela com backend ausente mostra o motivo sozinha
             # (`backends.falhas`).
             interface.na_interface(self.pronta.emit)
+
+
+def _texto_da_versao() -> str:
+    """"versão X.Y.Z" do `_build_info`; sem ela (rodando do código-fonte com
+    um `_build_info` incompleto), um texto que não quebra a abertura."""
+    versao = getattr(_build_info, "VERSAO", "") or ""
+    return f"versão {versao}" if versao else "versão de desenvolvimento"
 
 
 def _instalar_traducao(app) -> bool:
