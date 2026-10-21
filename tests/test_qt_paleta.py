@@ -245,13 +245,14 @@ def test_a_paleta_fechada_abre_de_novo(janela, qtbot):
 def test_toda_acao_tem_quem_faca(janela, monkeypatch):
     feitos = []
     home = janela.telas["Home"]
-    for metodo in {*qmain.ACAO_NA_HOME.values(), "escolher_tema"}:
+    for metodo in {*qmain.ACAO_NA_HOME.values(), "escolher_tema", "escolher_letra"}:
         monkeypatch.setattr(home, metodo, lambda *a, m=metodo: feitos.append((m, a)))
     monkeypatch.setattr(janela, "abrir_pasta_de_logs", lambda: feitos.append(("logs", ())))
     janela.show_frame("Translator")
     for chave, *_resto in catalogo.ACOES:
         janela.executar_comando(f"acao:{chave}")
     assert ("escolher_tema", ("claro",)) in feitos
+    assert ("escolher_letra", ("grande",)) in feitos
     assert ("abrir_janela_chaves_api", ()) in feitos
     assert len(feitos) == len(catalogo.ACOES) - 1      # "inicio" só navega
     assert janela.pilha.currentWidget() is janela.telas["Home"]

@@ -78,6 +78,29 @@ MENU_ESCOLHIDO = {
 # tema (`sigft/app_qt/tema.py`) muda só isto e reaplica a folha: as funções de
 # folha abaixo, sem `tema=`, leem este valor NA CHAMADA.
 TEMA_ATUAL = "escuro"
+# O aumento da letra que está valendo, em px (`letra.aplicar` muda; 0 = normal).
+AUMENTO_LETRA = 0
+_TAMANHO_DE_LETRA = re.compile(r"(font-size:\s*)(\d+)(px|pt)")
+# Onde `letra` guarda, numa peça com folha própria, a folha de ANTES do aumento e
+# a que ela pôs (para refazer a partir da base, nunca somar duas vezes).
+PROP_FOLHA_BASE = "_letra_folha_base"
+PROP_FOLHA_POSTA = "_letra_folha_posta"
+
+
+def ajustar_tamanhos(folha: str, aumento: int) -> str:
+    """Soma `aumento` a cada `font-size` de `folha` (px e pt). Com 0, a mesma folha."""
+    if not aumento or not folha:
+        return folha
+    return _TAMANHO_DE_LETRA.sub(
+        lambda m: f"{m.group(1)}{int(m.group(2)) + aumento}{m.group(3)}", folha)
+
+
+def folha_sem_aumento(widget) -> str:
+    """A folha própria de `widget` como a tela a escreveu, sem o aumento da letra."""
+    folha = widget.styleSheet()
+    if folha and widget.property(PROP_FOLHA_POSTA) == folha:
+        return widget.property(PROP_FOLHA_BASE) or ""
+    return folha
 
 
 def _tema(tema: str | None) -> str:
@@ -319,7 +342,16 @@ def _seletor_variante(variante: str, estado: str = "") -> str:
 
 
 def folha_de_estilo(tema: str | None = None) -> str:
-    """A folha QSS do app inteiro no `tema` ("escuro" ou "claro"), dos tokens.
+    """A folha QSS do app inteiro no `tema` ("escuro" ou "claro"), dos tokens, com
+    o aumento da letra que está valendo (`AUMENTO_LETRA`, 2026-10-21).
+
+    Sem argumento, o tema que está valendo (`TEMA_ATUAL`, que `tema.aplicar`
+    define)."""
+    return ajustar_tamanhos(_folha_base(tema), AUMENTO_LETRA)
+
+
+def _folha_base(tema: str | None = None) -> str:
+    """A folha QSS do app inteiro no `tema`, dos tokens, sem o aumento da letra.
 
     Sem argumento, o tema que está valendo (`TEMA_ATUAL`, que `tema.aplicar`
     define)."""
@@ -604,8 +636,8 @@ def _folha_telas(tema: str | None = None) -> str:
     * o cartão com borda (`#cartao[borda=...]`): o do AutoSpec que chama a atenção;
     * abas: medidas na folha local de `widgets/abas.py`; aqui só as cores;
     * mural: `COR_DA_FAIXA`/`COR_DA_CRITICIDADE` (acima), por propriedade;
-    * seletor de tema da Home (`#seletor_tema`): o botão do tema escolhido tem
-      `ativo`, pintado como o item escolhido do menu.
+    * seletores de tema e de letra da Home (`#seletor_tema`, `#seletor_letra`):
+      o botão da escolha atual tem `ativo`, pintado como o item escolhido do menu.
     """
     tema = _tema(tema)
     p = tokens.paleta(tema)
@@ -637,10 +669,10 @@ def _folha_telas(tema: str | None = None) -> str:
         f'#barra_abas QPushButton:checked:hover {{ background: {MARCA_HOVER}; }}',
         f'#barra_abas QPushButton:disabled {{ color: {p["texto_suave"]}; }}',
         # Seletor de tema da Home (Task 7): o escolhido como o item do menu.
-        f'#seletor_tema QPushButton[ativo="true"] {{ background: {menu["fundo"]}; color: {menu["texto"]};'
-        f' border-color: {menu["fundo"]}; }}',
+        f'#seletor_tema QPushButton[ativo="true"], #seletor_letra QPushButton[ativo="true"] '
+        f'{{ background: {menu["fundo"]}; color: {menu["texto"]}; border-color: {menu["fundo"]}; }}',
         # Mouse em cima: o texto acompanha o ícone, que já vai para a cor do menu.
-        f'#seletor_tema QPushButton:hover {{ color: {menu["texto"]}; }}',
+        f'#seletor_tema QPushButton:hover, #seletor_letra QPushButton:hover {{ color: {menu["texto"]}; }}',
         # Busca PMIB: o cartão de cada achado, mais fundo que a lista onde está.
         f'#cartao_resultado {{ background: {p["fundo"]}; border: 1px solid {p["borda"]};'
         f' border-radius: 8px; }}',

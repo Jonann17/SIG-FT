@@ -38,7 +38,9 @@ from shiboken6 import isValid
 
 from sigft import _build_info
 from sigft.app import backends, tokens
-from sigft.app_qt import atualizacao, catalogo, cursor, estilo, icones, interface, novidades, pasta_de_logs, tema
+from sigft.app_qt import (
+    atualizacao, catalogo, cursor, estilo, icones, interface, letra, novidades, pasta_de_logs, tema,
+)
 from sigft.app_qt import nome as nome_da_pessoa
 from sigft.app_qt.views.aplicacao_lmr import ModuloAplicacaoLMR
 from sigft.app_qt.views.home import HomeView
@@ -346,6 +348,13 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
                 home.escolher_tema(escolha)
             else:
                 tema.aplicar(QApplication.instance(), escolha)
+        elif alvo.startswith("letra_"):
+            # Pela Home, como o tema: ela chama `letra.aplicar` e marca o seletor.
+            escolha = alvo.removeprefix("letra_")
+            if home is not None:
+                home.escolher_letra(escolha)
+            else:
+                letra.aplicar(QApplication.instance(), escolha)
         elif alvo == "logs":
             self.abrir_pasta_de_logs()
 
@@ -553,29 +562,36 @@ def _criar_qapplication() -> QApplication:
         qInstallMessageHandler(anterior)
 
 
-def _preparar_qt(escolha_tema: str | None = None) -> QApplication:
-    """A QApplication pronta: tradução, fontes, cursor e o tema.
+def _preparar_qt(escolha_tema: str | None = None, escolha_letra: str | None = None) -> QApplication:
+    """A QApplication pronta: tradução, fontes, cursor, a letra e o tema.
 
-    O tema é o guardado nas preferências (`tema.escolhido`), ou `escolha_tema`
-    (o `--smoke --tema claro`), sem gravar: a abertura só lê."""
+    Letra e tema são os guardados nas preferências, ou os da linha de comando
+    (`--smoke --tema claro --letra grande`), sem gravar: a abertura só lê. A
+    letra vem antes: a folha que o tema aplica já sai com o aumento."""
     app = QApplication.instance() or _criar_qapplication()
     _instalar_traducao(app)
     interface.instalar()
     estilo.carregar_fontes()
+    letra.aplicar(app, escolha_letra or letra.escolhido(), gravar=False)
     tema.aplicar(app, escolha_tema or tema.escolhido(), gravar=False)
     tema.seguir_o_sistema(app)
     cursor.instalar(app)
     return app
 
 
-def _tema_da_linha_de_comando(argv: list[str]) -> str | None:
-    """O `--tema X` (ou `--tema=X`) da linha de comando, se houver."""
+def _opcao_da_linha_de_comando(argv: list[str], nome: str) -> str | None:
+    """O valor de `nome X` (ou `nome=X`) da linha de comando, se houver."""
     for i, arg in enumerate(argv):
-        if arg == "--tema" and i + 1 < len(argv):
+        if arg == nome and i + 1 < len(argv):
             return argv[i + 1]
-        if arg.startswith("--tema="):
+        if arg.startswith(nome + "="):
             return arg.split("=", 1)[1]
     return None
+
+
+def _tema_da_linha_de_comando(argv: list[str]) -> str | None:
+    """O `--tema X` (ou `--tema=X`) da linha de comando, se houver."""
+    return _opcao_da_linha_de_comando(argv, "--tema")
 
 
 def _redesenhar_saudacao(principal: SIG_FT_App):
@@ -677,8 +693,10 @@ def _smoke() -> int:
 
     avisos: list[str] = []
     try:
-        # `--smoke --tema claro`: o smoke também no claro, sem gravar a escolha.
-        _preparar_qt(_tema_da_linha_de_comando(sys.argv))
+        # `--smoke --tema claro --letra grande`: o smoke também no claro e com a
+        # letra grande, sem gravar a escolha.
+        _preparar_qt(_tema_da_linha_de_comando(sys.argv),
+                     _opcao_da_linha_de_comando(sys.argv, "--letra"))
         # Os ícones desenham? Um SVG ou o QtSvg fora do `.exe` daria botões em
         # branco SEM erro (2026-10-20: a mesma classe do pymupdf-layout, um
         # arquivo que faltava só no pacote). Aqui o Release reprova.

@@ -194,7 +194,9 @@ def pintar(widget, folha: str) -> None:
     folha a partir dessa base, em vez de somar regra a regra a cada escolha."""
     base = widget.property(_FOLHA_BASE)
     if base is None:
-        base = widget.styleSheet()
+        # A folha de antes do aumento da letra (2026-10-21): o aumento é refeito
+        # depois, pelo vigia de `letra.py`; somado aqui, ele contaria duas vezes.
+        base = estilo.folha_sem_aumento(widget)
         widget.setProperty(_FOLHA_BASE, base)
     widget.setStyleSheet(f"{base} {folha}".strip())
 

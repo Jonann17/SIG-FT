@@ -36,8 +36,8 @@ from shiboken6 import isValid
 
 from sigft import config as sigft_config
 from sigft.app import textos_dicas
-from sigft.app_qt import atualizacao, estilo, icones, interface, nome, pasta_de_logs, tema
-from sigft.app_qt.catalogo import ACOES_DA_HOME, ICONE_DA_TELA, MODULOS, SELETOR_TEMA
+from sigft.app_qt import atualizacao, estilo, icones, interface, letra, nome, pasta_de_logs, tema
+from sigft.app_qt.catalogo import ACOES_DA_HOME, ICONE_DA_TELA, MODULOS, SELETOR_LETRA, SELETOR_TEMA
 from sigft.app_qt.widgets import blocos, controles, dialogs, mural
 from sigft.app_qt.widgets.module_frame import aplicar_dicas
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
@@ -66,9 +66,13 @@ BARRA = [(a.chave, a.texto, a.variante, a.metodo) for a in ACOES_DA_HOME if a is
 # emoji do começo do texto até 2026-10-20.
 ICONE_DA_BARRA = {a.chave: a.icone for a in ACOES_DA_HOME}
 COR_BOTAO_ATUALIZACOES = _ATUALIZACOES.variante   # variante (2026-10-20)
+# Com a letra grande o "Versões de teste" vai para baixo da barra, a esta
+# distância (2026-10-21, `HomeView._arrumar_barra`).
+ESPACO_SOB_A_BARRA = 8
 
 # O seletor de tema (2026-10-20): escolha, texto, ícone e dica (`catalogo.SELETOR_TEMA`).
 # Na linha do título, à direita: a barra de botões já ocupa a largura da Home a 1280 px.
+# O de letra (2026-10-21, `catalogo.SELETOR_LETRA`) vem logo depois, na mesma linha.
 
 # As chaves do painel "Chaves de API" (o `keys_info` de lá, sem o valor padrão,
 # que é sempre vazio: as chaves vêm do .env ou do api_config.json).
@@ -377,6 +381,8 @@ class HomeView(QScrollArea):
         linha_titulo.setSpacing(0)
         linha_titulo.addWidget(self.label_titulo, 1)
         linha_titulo.addWidget(self._criar_seletor_tema(), 0, Qt.AlignmentFlag.AlignVCenter)
+        linha_titulo.addSpacing(12)
+        linha_titulo.addWidget(self._criar_seletor_letra(), 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(linha_titulo)
         layout.addSpacing(5)
         self.label_subtitulo = QLabel("Sistema Integrado de Gestão de Fichas Técnicas - GE Vernova",
@@ -394,6 +400,9 @@ class HomeView(QScrollArea):
         # --- BARRA DE BOTÕES --- [2026-09-03] Os painéis de configuração e de
         # gastos de IA saíram da Home e viraram janelas.
         layout.addLayout(self._criar_barra_de_botoes())
+        # [2026-10-21] A linha de baixo da barra: vazia (não ocupa nada) com a
+        # letra normal; com a grande, recebe o "Versões de teste" (`_arrumar_barra`).
+        layout.addLayout(self._linha_sob_a_barra)
         layout.addSpacing(16)
 
         # --- MÓDULOS, CLICÁVEIS ---
@@ -459,7 +468,35 @@ class HomeView(QScrollArea):
         self.caixa_canal_testes.toggled.connect(self._lembrar_canal_testes)
         barra.addWidget(self.caixa_canal_testes)
         barra.addStretch()
+        self._barra = barra
+        self._linha_sob_a_barra = QHBoxLayout()
+        self._linha_sob_a_barra.setContentsMargins(0, 0, 0, 0)
+        self._linha_sob_a_barra.addStretch()
+        self._arrumar_barra()
         return barra
+
+    def _arrumar_barra(self) -> None:
+        """Com a letra grande, o "Versões de teste" desce para a linha de baixo.
+
+        A 1280 px a barra já ocupa a largura toda da Home, e com +2 px os botões
+        pedem 38 px a mais do que há. O `min-width` deles (os 140 da interface
+        antiga) deixa o layout ESPREMER o botão e cortar o texto, em vez de
+        rolar; descer a caixa devolve a folga (2026-10-21). Com a letra normal a
+        caixa fica na barra, com as medidas de sempre."""
+        caixa = self.caixa_canal_testes
+        embaixo = self._linha_sob_a_barra.indexOf(caixa) >= 0
+        if bool(estilo.AUMENTO_LETRA) == embaixo:
+            return
+        # A margem vai e volta com a caixa: a linha vazia, mesmo sem nada, ocuparia
+        # a margem de cima e desceria os cartões.
+        if embaixo:
+            self._linha_sob_a_barra.removeWidget(caixa)
+            self._linha_sob_a_barra.setContentsMargins(0, 0, 0, 0)
+            self._barra.insertWidget(self._barra.count() - 1, caixa)   # antes do stretch
+        else:
+            self._barra.removeWidget(caixa)
+            self._linha_sob_a_barra.insertWidget(0, caixa)
+            self._linha_sob_a_barra.setContentsMargins(0, ESPACO_SOB_A_BARRA, 0, 0)
 
     # =====================================================================
     # SAUDAÇÃO  [2026-10-20]
@@ -511,6 +548,37 @@ class HomeView(QScrollArea):
         """Troca o tema do app inteiro e lembra a escolha (`tema.aplicar`)."""
         # Marca o que VALEU, não o que está nas prefs: gravar pode ter falhado.
         self._marcar_tema(tema.aplicar(QApplication.instance(), escolha))
+
+    # =====================================================================
+    # SELETOR DE LETRA  [2026-10-21]
+    # =====================================================================
+    def _criar_seletor_letra(self) -> QFrame:
+        """Normal e Grande; o da escolha atual fica `ativo`, como no de tema."""
+        quadro = QFrame(objectName="seletor_letra")
+        linha = QHBoxLayout(quadro)
+        linha.setContentsMargins(0, 0, 0, 0)
+        linha.setSpacing(4)
+        self.botoes_letra = {}
+        for escolha, texto, dica in SELETOR_LETRA:
+            botao = blocos.botao(texto, variante="secundario", tamanho_fonte=12)
+            botao.setToolTip(dica)
+            dialogs.sem_tecla(botao)
+            # O mesmo padrão do seletor de tema: a Home vive o app inteiro.
+            botao.clicked.connect(lambda _=False, e=escolha: self.escolher_letra(e))
+            self.botoes_letra[escolha] = botao
+            linha.addWidget(botao)
+        self._marcar_letra(letra.atual())
+        return quadro
+
+    def _marcar_letra(self, escolha: str) -> None:
+        for chave, botao in self.botoes_letra.items():
+            estilo.definir_propriedade(botao, "ativo", chave == escolha)
+
+    def escolher_letra(self, escolha: str) -> None:
+        """Troca a letra do app inteiro e lembra a escolha (`letra.aplicar`)."""
+        # Marca o que VALEU, não o que está nas prefs: gravar pode ter falhado.
+        self._marcar_letra(letra.aplicar(QApplication.instance(), escolha))
+        self._arrumar_barra()
 
     @staticmethod
     def _botao_da_barra(texto: str, variante: str, icone: str):

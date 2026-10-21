@@ -49,6 +49,11 @@ FONTE = {"titulo": 22, "secao": 15, "corpo": 13, "legenda": 12}
 ESPACO = (4, 8, 12, 16, 24)
 RAIO = {"controle": 6, "cartao": 10}
 
+# Tamanho da letra (etapa 1b, 2026-10-21): "grande" soma 2 px a TODA a escala (a
+# de cima e cada `font-size` da folha e das peças), aplicado na hora
+# (`sigft/app_qt/letra.py`).
+AUMENTO_DA_LETRA = {"normal": 0, "grande": 2}
+
 
 def paleta(tema: str) -> dict[str, str]:
     """Paleta do tema ("escuro" ou "claro"); qualquer outro valor cai no escuro."""

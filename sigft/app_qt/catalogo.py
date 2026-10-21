@@ -144,6 +144,15 @@ SELETOR_TEMA = (
      "Segue o tema do Windows (claro ou escuro) e muda junto quando ele mudar."),
 )
 
+# O seletor de letra da Home (2026-10-21, etapa 1b): escolha, texto e dica. Na
+# linha do título, à direita do de tema; sem ícone no botão (o pacote Lucide do
+# SIG-FT não tem um de letra). O Ctrl+K oferece os dois como "Letra: <texto>" e os
+# faz por `HomeView.escolher_letra`. As escolhas são as de `letra.TAMANHOS`.
+SELETOR_LETRA = (
+    ("normal", "Normal", "Letra do tamanho de sempre."),
+    ("grande", "Grande", "Letra 2 px maior em todo o SIG-FT, para ler com mais folga."),
+)
+
 # As ações do Ctrl+K além dos módulos: chave, texto, ícone e palavras. Quem faz
 # cada uma é `main.SIG_FT_App.executar_comando`; `tests/test_qt_paleta.py` cobra
 # que toda chave tenha quem a faça.
@@ -153,6 +162,8 @@ ACOES = (
     ("logs", "Abrir logs", "folder-open", "pasta log"),
     *((f"tema_{escolha}", f"Tema: {texto}", icone, "aparencia cor")
       for escolha, texto, icone, _dica in SELETOR_TEMA),
+    *((f"letra_{escolha}", f"Letra: {texto}", "settings", "tamanho fonte aparencia")
+      for escolha, texto, _dica in SELETOR_LETRA),
 )
 
 
