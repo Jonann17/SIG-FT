@@ -87,7 +87,13 @@ class Interruptor(QCheckBox):
         sobre = self.isEnabled() and self.underMouse()
         botao = "texto" if sobre else ("texto_sobre_primaria" if ligado else "texto_suave")
         pintor.setBrush(QColor(p[botao]))
-        pintor.drawEllipse(QRectF(x_botao, y0, ALTURA_TRILHO, ALTURA_TRILHO))
+        # Contorno na cor do trilho: o botão branco do ligado é maior que o
+        # trilho e, sem contorno, sumia pela metade no cartão branco do tema
+        # claro (2026-10-21).
+        contorno = QPen(QColor(p["primaria"] if ligado else p["borda"]))
+        contorno.setWidthF(1.0)
+        pintor.setPen(contorno)
+        pintor.drawEllipse(QRectF(x_botao + 0.5, y0 + 0.5, ALTURA_TRILHO - 1, ALTURA_TRILHO - 1))
         pintor.setPen(cor_do_texto(self.isEnabled()))
         pintor.setFont(self.font())
         x_texto = LARGURA_TRILHO + VAO_TEXTO_INTERRUPTOR
