@@ -95,7 +95,8 @@ class _LinhaSeletora(QWidget):
         botão (2026-10-21). A seta só aparece quando há recente: sem recente a
         linha tem as medidas de sempre."""
         self.receptor = arrastar.aceitar_arquivo(self, chave, file_dialogs.extensoes_de(filetypes),
-                                                 self._abrir_dialogo, varios=varios, destaque=self.botao)
+                                                 self._abrir_dialogo, varios=varios, destaque=self.botao,
+                                                 alvo=self.botao)
         self.seta_recentes = arrastar.botao_de_recentes(self.receptor)
         self.layout().insertWidget(1, self.seta_recentes)
         self._mostrar_seta()
@@ -231,7 +232,8 @@ class FileQueueList(QWidget):
         self.botao_limpar.clicked.connect(self.limpar)
         # Arrastar várias fichas do Explorer para a fila (2026-10-21).
         self.receptor = arrastar.aceitar_arquivo(self, chave, file_dialogs.extensoes_de(filetypes),
-                                                 self.adicionar, varios=True, destaque=self.listbox)
+                                                 self.adicionar, varios=True, destaque=self.listbox,
+                                                 alvo=self.botao_adicionar)
 
     # -- API pública ---------------------------------------------------------
     @property

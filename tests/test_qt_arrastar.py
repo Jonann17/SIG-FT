@@ -65,8 +65,12 @@ def test_soltar_no_botao_entrega_sem_dialogo(qt_interface, qtbot, planilha):
     arrastar.aceitar_arquivo(botao, "t.status", (".xlsx",))
     mover, solta = _arrastar(botao, planilha)
     assert mover.isAccepted() and solta.isAccepted()
-    assert len(selecionar.recebidos) == 1 and _mesmo(selecionar.recebidos[0], planilha)
     assert botao.property("arrasto") == ""
+    # A tela recebe DEPOIS do soltar (o Explorer não fica preso no handler da tela).
+    assert selecionar.recebidos == []
+    qtbot.waitUntil(lambda: len(selecionar.recebidos) == 1)
+    assert _mesmo(selecionar.recebidos[0], planilha)
+    assert file_dialogs.pendente("t.status") is None
     assert len(prefs.recentes("t.status")) == 1
 
 
@@ -84,6 +88,7 @@ def test_extensao_errada_fica_vermelho_e_nao_aceita(qt_interface, qtbot, tmp_pat
     QApplication.sendEvent(botao, QDragLeaveEvent())
     assert botao.property("arrasto") == ""
     _arrastar(botao, pdf)                 # soltar mesmo assim
+    QApplication.processEvents()
     assert selecionar.recebidos == []
 
 
@@ -102,6 +107,7 @@ def test_dois_arquivos_so_onde_aceita_varios(qt_interface, qtbot, tmp_path):
     arrastar.aceitar_arquivo(varios, "t.varios", (".xlsx",), varios=True)
     _arrastar(um, a, b)
     _arrastar(varios, a, b)
+    qtbot.waitUntil(lambda: len(sel_varios.recebidos) == 1)
     assert sel_um.recebidos == []
     assert len(sel_varios.recebidos[0]) == 2
 
@@ -147,6 +153,7 @@ def test_linha_de_selecao_aceita_arrasto_e_mostra_a_seta(qt_interface, qtbot, pl
     qtbot.addWidget(linha)
     assert linha.seta_recentes.isHidden()        # sem recente: nada muda na linha
     _arrastar(linha, planilha)
+    qtbot.waitUntil(lambda: linha.valor is not None)
     assert _mesmo(linha.valor, planilha)
     assert linha.botao.property("variante") == "primario"
     assert len(avisos) == 1
@@ -172,6 +179,7 @@ def test_fila_de_fichas_aceita_varios(qt_interface, qtbot, tmp_path):
     fila = pickers.FileQueueList(chave="t.fila", filetypes=[("Excel", "*.xlsx")], dialog_fn=_nao_abre)
     qtbot.addWidget(fila)
     _arrastar(fila, a, b)
+    qtbot.waitUntil(lambda: len(fila.arquivos) == 2)
     assert [os.path.basename(c) for c in fila.arquivos] == ["a.xlsx", "b.xlsx"]
 
 
@@ -228,3 +236,82 @@ def test_recente_que_sumiu_depois_do_menu_aberto_nao_entrega(qt_interface, qtbot
     assert selecionar.recebidos == []
     assert file_dialogs.pendente("t.k") is None
     menu.deleteLater()
+
+
+# --- rodada de correção 1 (revisão da Task 3, 2026-10-21) ---------------------
+
+def test_botao_desligado_recusa_arrasto_e_recente(qt_interface, qtbot, planilha):
+    prefs.lembrar_recente("t.k", str(planilha))
+    botao = QPushButton("x")
+    qtbot.addWidget(botao)
+    botao.setEnabled(False)
+    receptor = arrastar.aceitar_arquivo(botao, "t.k", (".xlsx",))
+    assert not receptor.aceita([str(planilha)])
+
+
+def test_linha_com_botao_desligado_nao_abre_nada(qt_interface, qtbot, planilha):
+    prefs.lembrar_recente("t.linha", str(planilha))
+    linha = pickers.FilePickerRow(chave="t.linha", categoria="excel", texto_botao="Selecionar",
+                                  filetypes=[("Excel", "*.xlsx")], dialog_fn=_nao_abre)
+    qtbot.addWidget(linha)
+    linha.botao.setEnabled(False)
+    mover, _ = _arrastar(linha, planilha)
+    QApplication.processEvents()
+    assert not mover.isAccepted()
+    assert linha.botao.property("arrasto") == ""
+    assert linha.valor is None
+    menu = linha.seta_recentes.menu()
+    menu.aboutToShow.emit()
+    menu.actions()[0].trigger()
+    QApplication.processEvents()
+    assert linha.valor is None
+
+
+def test_seta_na_montagem_nao_olha_o_disco(qt_interface, qtbot, tmp_path, monkeypatch):
+    """Um Box/UNC fora do ar travaria a montagem da tela: a seta decide pela
+    lista gravada, e o disco só é olhado quando o menu abre."""
+    sumido = str(tmp_path / "offline" / "STATUS.xlsx")
+    prefs.lembrar_recente("t.linha", sumido)
+    olhados = []
+    isfile = os.path.isfile
+    monkeypatch.setattr(os.path, "isfile", lambda c: olhados.append(c) or isfile(c))
+    linha = pickers.FilePickerRow(chave="t.linha", categoria="excel", texto_botao="Selecionar",
+                                  filetypes=[("Excel", "*.xlsx")], dialog_fn=_nao_abre)
+    qtbot.addWidget(linha)
+    assert sumido not in olhados
+    assert not linha.seta_recentes.isHidden()
+    menu = linha.seta_recentes.menu()
+    menu.aboutToShow.emit()
+    assert [(a.text(), a.isEnabled()) for a in menu.actions()] == [(arrastar.TEXTO_SEM_RECENTES, False)]
+
+
+def test_tela_que_falha_no_soltar_nao_deixa_entrega_para_o_proximo_clique(qt_interface, qtbot, planilha):
+    abertos = []
+    botao = QPushButton("x")
+    qtbot.addWidget(botao)
+
+    def falha():
+        raise RuntimeError("a tela quebrou")
+
+    receptor = arrastar.aceitar_arquivo(botao, "t.k", (".xlsx",), falha)
+    with qtbot.captureExceptions() as erros:
+        _arrastar(botao, planilha)
+        qtbot.waitUntil(lambda: len(erros) == 1)
+    assert file_dialogs.pendente("t.k") is None
+    file_dialogs.ask_open_file("t.k", "excel", dialog_fn=lambda **_: abertos.append(1) or "")
+    assert abertos == [1]
+    assert receptor is not None
+
+
+def test_tela_que_usa_outra_chave_nao_deixa_entrega(qt_interface, qtbot, planilha):
+    abertos = []
+    botao = QPushButton("x")
+    qtbot.addWidget(botao)
+    outra = _Selecionar("t.outra")
+    botao.clicked.connect(outra)
+    arrastar.aceitar_arquivo(botao, "t.k", (".xlsx",))
+    _arrastar(botao, planilha)
+    qtbot.waitUntil(lambda: len(outra.recebidos) == 1)
+    assert outra.recebidos == [""]
+    file_dialogs.ask_open_file("t.k", "excel", dialog_fn=lambda **_: abertos.append(1) or "")
+    assert abertos == [1]

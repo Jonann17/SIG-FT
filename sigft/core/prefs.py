@@ -502,11 +502,17 @@ def lembrar_recente(
 def recentes(
     chave: str,
     *,
+    conferir_disco: bool = True,
     config_path: str | os.PathLike[str] | None = None,
 ) -> list[str]:
-    """Os recentes de `chave` que ainda existem no disco, o mais novo primeiro."""
+    """Os recentes de `chave` que ainda existem no disco, o mais novo primeiro.
+
+    `conferir_disco=False` devolve os gravados sem olhar o disco: é para quem só
+    quer saber SE há recente na montagem da tela, onde um caminho de rede fora
+    do ar travaria a interface."""
     valor = _carregar_estado(config_path).get(CHAVE_RECENTES, {}).get(chave)
-    return [c for c in _lista_de_caminhos(valor) if os.path.isfile(c)]
+    lista = _lista_de_caminhos(valor)
+    return [c for c in lista if os.path.isfile(c)] if conferir_disco else lista
 
 
 # =============================================================================

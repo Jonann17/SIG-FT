@@ -63,3 +63,10 @@ def test_arquivo_antigo_sem_a_secao_carrega_e_guarda_o_resto(tmp_path, config_pa
     assert prefs.get_initial_dir("k", "excel", config_path=config_path) == str(pasta)
     assert prefs.ler_preferencia("tema", "escuro", config_path=config_path) == "claro"
     assert prefs.ler_preferencia("nome", "", config_path=config_path) == "Ana"
+
+
+def test_sem_conferir_disco_devolve_os_gravados(tmp_path, config_path):
+    sumido = str(tmp_path / "sumiu.xlsx")
+    prefs.lembrar_recente("k", sumido, config_path=config_path)
+    assert prefs.recentes("k", config_path=config_path) == []
+    assert prefs.recentes("k", conferir_disco=False, config_path=config_path) == [sumido]

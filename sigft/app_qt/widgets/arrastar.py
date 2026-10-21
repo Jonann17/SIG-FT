@@ -7,7 +7,12 @@ um arquivo nele, ou escolher um dos últimos, ENTREGA o arquivo
 `ask_open_file(chave)` do clique acha a entrega e não abre o diálogo
 (`sigft/app/file_dialogs.py`): nenhuma tela muda o seu `selecionar_...`.
 Extensão errada: o widget fica vermelho (`arrasto="recusado"`, cor da folha) e
-o soltar não é aceito.
+o soltar não é aceito. Botão desligado (`alvo`) não recebe nada.
+
+A tela recebe DEPOIS do soltar, no próximo giro do laço de eventos: no Windows
+o Explorer fica congelado até o `dropEvent` voltar, e o `selecionar_...` da tela
+pode abrir caixa de mensagem ou ler um Excel demorado. A cor do arrasto é na
+hora.
 
 As telas que usam botão declaram `ARRASTAVEIS` (o `ModuleFrame` liga na
 montagem, com os últimos arquivos no botão direito). Os sinais vão a métodos
@@ -18,7 +23,7 @@ from __future__ import annotations
 import os
 from typing import NamedTuple
 
-from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer
 from PySide6.QtWidgets import QMenu, QToolButton
 
 from sigft.app_qt import estilo, file_dialogs
@@ -52,7 +57,7 @@ class Receptor(QObject):
     """Filtro de eventos no `widget`: aceita o arrasto e entrega o arquivo."""
 
     def __init__(self, widget, chave: str, extensoes, ao_receber=None, *, varios: bool = False,
-                 destaque=None) -> None:
+                 destaque=None, alvo=None) -> None:
         super().__init__(widget)
         self.widget = widget
         self.chave = chave
@@ -60,11 +65,17 @@ class Receptor(QObject):
         self.varios = varios
         self._ao_receber = ao_receber
         self.destaque = destaque if destaque is not None else widget
+        # Quem precisa estar ligado para receber: o botão que o arquivo aciona
+        # (na linha de seleção o filtro fica na linha, mas quem abre é o botão).
+        self.alvo = alvo if alvo is not None else widget
         self._ok = False
+        self._a_receber: list[str] | None = None
         widget.setAcceptDrops(True)
         widget.installEventFilter(self)
 
     def aceita(self, caminhos) -> bool:
+        if not self.alvo.isEnabled():
+            return False
         if not caminhos or (len(caminhos) > 1 and not self.varios):
             return False
         return all(os.path.isfile(c) and file_dialogs.extensao_aceita(c, self.extensoes) for c in caminhos)
@@ -78,8 +89,16 @@ class Receptor(QObject):
         finally:
             file_dialogs.descartar(self.chave)
 
+    def _receber_adiado(self) -> None:
+        caminhos, self._a_receber = self._a_receber, None
+        if caminhos and self.alvo.isEnabled():
+            self.receber(caminhos)
+
     def tem_recentes(self) -> bool:
-        return bool(prefs.recentes(self.chave))
+        """Se há recente GRAVADO, sem olhar o disco: chamado na montagem da tela,
+        e um Box/UNC fora do ar travaria a tela. O disco é olhado quando o menu
+        abre (`preencher_menu`), que mostra "Nenhum arquivo recente" se todos sumiram."""
+        return bool(prefs.recentes(self.chave, conferir_disco=False))
 
     def preencher_menu(self, menu: QMenu) -> None:
         menu.clear()
@@ -131,7 +150,10 @@ class Receptor(QObject):
             caminhos = caminhos_do_arrasto(evento.mimeData())
             if self._ok and self.aceita(caminhos):
                 evento.acceptProposedAction()
-                self.receber(caminhos)
+                # Depois de o soltar voltar (ver o docstring do módulo). Método
+                # ligado com o receptor de contexto: nada de lambda com a tela.
+                self._a_receber = list(caminhos)
+                QTimer.singleShot(0, self, self._receber_adiado)
             else:
                 evento.ignore()
             self._ok = False
@@ -172,8 +194,9 @@ def botao_de_recentes(receptor: Receptor) -> QToolButton:
 
 
 def aceitar_arquivo(widget, chave: str, extensoes, ao_receber=None, *, varios: bool = False,
-                    destaque=None, menu_de_contexto: bool = False) -> Receptor:
-    receptor = Receptor(widget, chave, extensoes, ao_receber, varios=varios, destaque=destaque)
+                    destaque=None, alvo=None, menu_de_contexto: bool = False) -> Receptor:
+    receptor = Receptor(widget, chave, extensoes, ao_receber, varios=varios, destaque=destaque,
+                        alvo=alvo)
     if menu_de_contexto:
         receptor.ligar_menu_de_contexto()
     return receptor
