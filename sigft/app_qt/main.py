@@ -29,11 +29,12 @@ import traceback
 
 from dotenv import load_dotenv
 from PySide6.QtCore import Qt, QtMsgType, Signal, qInstallMessageHandler
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QColor, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar,
     QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
+from shiboken6 import isValid
 
 from sigft import _build_info
 from sigft.app import backends, tokens
@@ -45,7 +46,8 @@ from sigft.app_qt.views.nao_migrada import TelaComErro, TelaNaoMigrada
 from sigft.app_qt.views.translator import ModuloTranslator
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets.marca import Marca
-from sigft.core import instancia
+from sigft.app_qt.widgets.paleta import PaletaDeComandos
+from sigft.core import instancia, plataforma
 from sigft.core.saida_log import desviar_saida_para_arquivo
 
 # Sem console (o .exe), `print` e traceback vão para `logs/sigft.log`: é o canal
@@ -133,6 +135,16 @@ TELAS = {
     "SearchPMIB": _busca_pmib,
 }
 
+# Ctrl+K (etapa 1b, 2026-10-21): o método da Home que cada `acao:` chama. As
+# outras ações (`inicio`, `logs`, `tema_*`) estão em `executar_comando`.
+ACAO_NA_HOME = {
+    "atividades": "abrir_mural_atividades",
+    "modelos": "abrir_janela_modelos_ia",
+    "gastos": "abrir_janela_gastos_ia",
+    "chaves": "abrir_janela_chaves_api",
+    "atualizacoes": "procurar_atualizacoes",
+}
+
 
 def resource_path(relativo: str) -> str:
     base = getattr(sys, "_MEIPASS", _RAIZ)
@@ -174,6 +186,15 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
 
         self.telas: dict[str, QWidget] = {}
         self.show_frame("Home")
+
+        # Ctrl+K: a caixa de busca dos módulos e das ações (etapa 1b, 2026-10-21).
+        # Contexto de janela (o padrão): vale em qualquer tela. Campo de texto
+        # que usa o Ctrl+K como "apagar até o fim da linha" (Qt no Linux e no
+        # Mac; no Windows não há essa tecla) ganha dele quando tem o foco: o Qt
+        # pergunta ao campo antes (ShortcutOverride), e decidimos não roubar.
+        self._paleta = None
+        self.atalho_paleta = QShortcut(QKeySequence("Ctrl+K"), self)
+        self.atalho_paleta.activated.connect(self.abrir_paleta)
 
         # Toda abertura do app instalado pergunta ao GitHub se há versão nova,
         # numa thread (a abertura não espera). Ver `sigft/app_qt/atualizacao.py`.
@@ -291,6 +312,56 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
 
     def show_home(self) -> None:
         self.show_frame("Home")
+
+    # -- Ctrl+K ------------------------------------------------------------------
+    def abrir_paleta(self) -> PaletaDeComandos:
+        """Abre a caixa do Ctrl+K; já aberta, devolve a mesma."""
+        if self._paleta is not None and isValid(self._paleta) and self._paleta.isVisible():
+            self._paleta.raise_()
+            return self._paleta
+        paleta = PaletaDeComandos(self, catalogo.comandos())
+        paleta.escolheu.connect(self.executar_comando)
+        self._paleta = paleta
+        paleta.abrir_sobre(self)
+        return paleta
+
+    def _home_view(self):
+        home = self.telas.get("Home")
+        return home if isinstance(home, HomeView) else None
+
+    def executar_comando(self, chave: str) -> None:
+        """Faz o comando `chave` do Ctrl+K (`catalogo.comandos`). Desconhecido: nada."""
+        tipo, _, alvo = chave.partition(":")
+        if tipo == "tela":
+            if alvo:
+                self.show_frame(alvo)
+            return
+        if tipo != "acao":
+            return
+        home = self._home_view()
+        if alvo == "inicio":
+            self.show_home()
+        elif alvo in ACAO_NA_HOME:
+            if home is not None:
+                getattr(home, ACAO_NA_HOME[alvo])()
+        elif alvo.startswith("tema_"):
+            # Pela Home, que chama `tema.aplicar` e marca o seletor dela.
+            escolha = alvo.removeprefix("tema_")
+            if home is not None:
+                home.escolher_tema(escolha)
+            else:
+                tema.aplicar(QApplication.instance(), escolha)
+        elif alvo == "logs":
+            self.abrir_pasta_de_logs()
+
+    def abrir_pasta_de_logs(self) -> None:
+        """`Documentos\\SIG-FT\\logs\\` no explorador (criada se faltar)."""
+        from sigft.core.dados_usuario import pasta_logs
+
+        try:
+            plataforma.abrir_pasta_criando_se_preciso(str(pasta_logs()))
+        except Exception as erro:  # noqa: BLE001 -- vira aviso
+            QMessageBox.critical(self, "Erro", f"Não foi possível abrir a pasta de logs: {erro}")
 
     # -- chaves de API ----------------------------------------------------------
     def load_keys(self) -> None:

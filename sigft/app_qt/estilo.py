@@ -670,12 +670,16 @@ def _folha_ferramentas(tema: str | None = None) -> str:
     * barra do console (`widgets/console.py`): a paleta ESCURA nos dois temas,
       porque ela fica dentro do console, que é escuro sempre;
     * arrastar arquivo (`widgets/arrastar.py`): borda `primaria` quando o arquivo
-      serve, `perigo` (borda e texto) quando não serve; a seta dos recentes.
+      serve, `perigo` (borda e texto) quando não serve; a seta dos recentes;
+    * Ctrl+K (`widgets/paleta.py`): cartão `superficie` com borda; item escolhido
+      como o do menu.
     """
     tema = _tema(tema)
     p = tokens.paleta(tema)
     e = tokens.ESCURO
     f = tokens.FONTE
+    menu = MENU_ESCOLHIDO["claro" if tema == "claro" else "escuro"]
+    raio, raio_cartao = tokens.RAIO["controle"], tokens.RAIO["cartao"]
     regras = [
         f"#barra_console {{ background: {e['console_fundo']}; }}",
         f"#barra_console QPushButton {{ background: transparent; color: {e['texto_suave']};"
@@ -697,6 +701,13 @@ def _folha_ferramentas(tema: str | None = None) -> str:
         f' padding: 0 4px; font-size: {f["corpo"]}px; }}',
         f'#seta_recentes:hover {{ color: {p["texto"]}; }}',
         "#seta_recentes::menu-indicator { image: none; width: 0; }",
+        # Ctrl+K (widgets/paleta.py)
+        f'#paleta {{ background: {p["superficie"]}; border: 1px solid {p["borda"]};'
+        f' border-radius: {raio_cartao}px; }}',
+        f'#lista_paleta {{ background: {p["superficie"]}; border: none; outline: none;'
+        f' font-size: {f["corpo"]}px; }}',
+        f'#lista_paleta::item {{ padding: 6px 8px; border-radius: {raio}px; }}',
+        f'#lista_paleta::item:selected {{ background: {menu["fundo"]}; color: {menu["texto"]}; }}',
     ]
     return "\n" + "\n".join(regras) + "\n"
 

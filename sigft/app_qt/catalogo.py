@@ -5,6 +5,10 @@ SIG-FT em 2026-10-15; `tests/test_qt_catalogo.py` trava os valores.
 """
 from __future__ import annotations
 
+from typing import NamedTuple
+
+from sigft.app import busca
+
 MENU = [
     ("secao", "Início da Ficha"),
     ("botao", "1. Cria Fichas PMIB", "CriaFichas"),
@@ -90,6 +94,59 @@ def dica_do_menu(alvo: str) -> str:
     if alvo in TELAS_BLOQUEADAS:
         return (descricao + "\n\n" if descricao else "") + "Bloqueado nesta versão."
     return descricao
+
+
+# --- Ctrl+K (etapa 1b, 2026-10-21) ------------------------------------------------
+
+class Comando(NamedTuple):
+    """Um item da caixa do Ctrl+K."""
+    chave: str          # "tela:CriaFichas" ou "acao:modelos"
+    texto: str
+    icone: str          # nome de `icones.NOMES`
+    palavras: str = ""  # o que mais a busca acha (o texto do menu, sinônimos)
+
+
+# As ações além dos módulos: chave, texto, ícone e palavras. Quem faz cada uma é
+# `main.SIG_FT_App.executar_comando`; `tests/test_qt_paleta.py` cobra que toda
+# chave tenha quem a faça.
+ACOES = (
+    ("inicio", "Início", "house", "home tela inicial"),
+    ("atividades", "Atividades do dia", "clipboard-check", "mural"),
+    ("modelos", "Modelos de IA", "bot", "ia llm provedor"),
+    ("gastos", "Gastos de IA", "circle-dollar-sign", "custo uso"),
+    ("chaves", "Chaves de API", "key-round", "api key senha"),
+    ("atualizacoes", "Procurar atualizações", "refresh-cw", "versao nova atualizar"),
+    ("logs", "Abrir logs", "folder-open", "pasta log"),
+    ("tema_escuro", "Tema escuro", "moon", "aparencia cor"),
+    ("tema_claro", "Tema claro", "sun", "aparencia cor"),
+    ("tema_sistema", "Tema do sistema", "monitor", "aparencia cor windows"),
+)
+
+
+def comandos() -> list[Comando]:
+    """Os módulos liberados (na ordem dos cartões da Home) e as ações. O módulo
+    bloqueado fica fora: `show_frame` o recusaria."""
+    no_menu = {item[2]: item[1] for item in MENU if item[0] == "botao"}
+    lista = [Comando(f"tela:{alvo}", titulo, ICONE_DA_TELA[alvo], f"{no_menu.get(alvo, '')} {alvo}")
+             for alvo, titulo, _descricao in MODULOS if alvo not in TELAS_BLOQUEADAS]
+    lista += [Comando(f"acao:{chave}", texto, icone, palavras) for chave, texto, icone, palavras in ACOES]
+    return lista
+
+
+def filtrar(lista, consulta: str) -> list[Comando]:
+    """Os comandos que têm TODAS as palavras da `consulta` (sem acento, sem caixa)
+    no texto ou nas palavras; os que COMEÇAM pela primeira vêm antes (ordem
+    estável: no empate, a da lista)."""
+    termos = busca.normalizar(consulta).split()
+    if not termos:
+        return list(lista)
+
+    def onde(comando: Comando) -> str:
+        return busca.normalizar(f"{comando.texto} {comando.palavras}")
+
+    achados = [c for c in lista if all(t in onde(c) for t in termos)]
+    return sorted(achados, key=lambda c: not busca.normalizar(c.texto).startswith(termos[0]))
+
 
 MSG_TAREFA_EM_ANDAMENTO = (
     "Há uma tarefa em andamento (um robô, uma tradução ou uma consulta à IA).\n\n"
