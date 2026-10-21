@@ -122,7 +122,8 @@ jobs:
         run: |
           python -m ruff check .
           python -m pyflakes frontend.py
-          python -m pytest -q
+          # `-n auto` (pytest-xdist): era 13 min em um nucleo so (rc.8).
+          python -m pytest -q -n auto
 
       - name: Carimbar versao e embutir o token
         id: carimbo
@@ -318,6 +319,32 @@ jobs:
             --versao "${{ steps.versao.outputs.versao }}" \
             --numerica "${{ steps.versao.outputs.numerica }}" --iscc "$ISCC"
 
+      # [2026-10-20] O QUE MUDOU DENTRO DO SIG-FT.exe. Na rc.9 a atualizacao
+      # pequena levou o .exe inteiro (34 MB) sem biblioteca nenhuma ter mudado,
+      # e o .exe so dizia "mudou". Este passo lista cada entrada dele (o
+      # bootloader com os recursos PE, cada arquivo do PKG e cada modulo do
+      # PYZ) com o hash, publica a lista no Release e, se a versao anterior
+      # tambem publicou, imprime no log o que difere. Num build em Linux, dois
+      # ambientes novos deram o mesmo executavel byte a byte: a causa e do
+      # Windows ou do SIG-FT.spec, e so a lista do .exe real diz qual.
+      # Diagnostico: falhar aqui nao barra o Release.
+      - name: Conteudo do .exe (diagnostico da atualizacao pequena)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.versao.outputs.tag }}
+        shell: bash
+        run: |
+          python tools/conteudo_do_exe.py dist/SIG-FT/SIG-FT.exe > conteudo-do-exe.json
+          for tag in $(gh release list --limit 15 --json tagName -q '.[].tagName'); do
+            [ "$tag" = "$TAG" ] && continue
+            if gh release download "$tag" -p conteudo-do-exe.json -O anterior.json --clobber 2>/dev/null; then
+              echo "=== SIG-FT.exe: $tag -> $TAG ==="
+              python tools/conteudo_do_exe.py --comparar anterior.json conteudo-do-exe.json | head -80
+              break
+            fi
+          done
+
       - name: Publicar o Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -329,6 +356,8 @@ jobs:
           ativos=("$INSTALADOR#Instalador do SIG-FT Itaipu"
                   "latest.json#Manifesto (versao + SHA256)"
                   "arquivos.json#Arquivos desta versao (base da atualizacao pequena)")
+          # Diagnostico do .exe (passo anterior); pode faltar se ele falhou.
+          [ -s conteudo-do-exe.json ] && ativos+=("conteudo-do-exe.json#Conteudo do SIG-FT.exe (diagnostico)")
           # `.bin`, e nao `.exe`: o app 1.1.1 baixa o primeiro .exe do Release.
           for pacote in installer/Output/*.bin; do
             [ -e "$pacote" ] && ativos+=("$pacote#Atualizacao pequena (so o que mudou)")

@@ -113,7 +113,12 @@ jobs:
         run: python -m ruff check .
 
       - name: Testes (pytest)
-        run: python -m pytest -q
+        # `-n auto`: um processo por nucleo do runner (pytest-xdist). Era o
+        # passo de 7 a 8,5 min do CI.
+        # `--durations=25` (2026-10-20): com `-n auto` o CI nao baixou (7 a
+        # 8 min, como antes), e 93% da suite acaba em 2,5 min: o fim e um
+        # punhado de testes lentos no runner. A lista diz quais.
+        run: python -m pytest -q -n auto --durations=25
 
       # Erro no CHANGELOG so apareceria na hora de publicar, com a tag ja
       # criada -- e desfazer isso exige apagar o Release e a tag. Aqui aparece
