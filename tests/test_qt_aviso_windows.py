@@ -158,6 +158,30 @@ def test_fim_da_tarefa_avisa_com_a_contagem(qt_interface, qtbot, mostrados):
     assert mostrados == [(aviso.TITULO_FIM, "Upload duplicadas terminou com 1 erro.")]
 
 
+def test_defeito_no_resumo_nao_cala_o_aviso(qt_interface, qtbot, mostrados, monkeypatch):
+    # 2026-10-21: o resumo e o aviso tinham um try só; o resumo quebrando
+    # levava o aviso junto. Cada um tem o seu, e o aviso vem antes.
+    from sigft.app import resumo_lote as regras
+    from sigft.app_qt.widgets import resumo_lote as janela_mod
+    from sigft.app_qt.widgets.module_frame import ModuleFrame
+
+    monkeypatch.delenv(regras.ENV_DESLIGAR, raising=False)
+
+    def quebra(*_a, **_k):
+        raise ValueError("defeito de proposito")
+    monkeypatch.setattr(janela_mod, "abrir_resumo", quebra)
+
+    class Tela(ModuleFrame):
+        def _build_ui(self):
+            pass
+
+    tela = Tela(titulo="Upload duplicadas")
+    qtbot.addWidget(tela)
+    tela.iniciar_tarefa(tela.log, "[Erro] Ficha 4500063671.0001 não encontrada").join(3)
+    qtbot.waitUntil(lambda: bool(mostrados), timeout=2000)
+    assert mostrados == [(aviso.TITULO_FIM, "Upload duplicadas terminou com 1 erro.")]
+
+
 def test_fim_da_tarefa_tira_o_modulo_do_titulo(qt_interface, qtbot, mostrados):
     from sigft.app_qt.widgets.module_frame import ModuleFrame
 

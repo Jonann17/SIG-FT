@@ -718,13 +718,13 @@ def _folha_ferramentas(tema: str | None = None) -> str:
         f"#barra_console {{ background: {e['console_fundo']}; }}",
         f"#barra_console QPushButton {{ background: transparent; color: {e['texto_suave']};"
         f" border: 1px solid transparent; border-radius: 4px; padding: 0 8px;"
-        f" min-height: 18px; max-height: 18px; font-size: {f['legenda']}px; }}",
+        f" min-height: 18px; max-height: 22px; font-size: {f['legenda']}px; }}",
         f"#barra_console QPushButton:hover {{ color: {e['texto']}; }}",
         f"#barra_console QPushButton:checked {{ color: {e['texto']}; background: {e['superficie_alta']};"
         f" border-color: {e['borda']}; }}",
         f"#barra_console QLineEdit {{ background: {e['superficie_alta']}; color: {e['texto']};"
         f" border: 1px solid {e['borda']}; border-radius: 4px; padding: 0 6px;"
-        f" min-height: 18px; max-height: 18px; font-size: {f['legenda']}px;"
+        f" min-height: 18px; max-height: 22px; font-size: {f['legenda']}px;"
         f" placeholder-text-color: {e['texto_suave']}; }}",
         f"#barra_console QLineEdit:focus {{ border-color: {e['primaria']}; }}",
         # Arrastar arquivo: depois das variantes (mesma especificidade, esta ganha).

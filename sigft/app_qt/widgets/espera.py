@@ -52,8 +52,10 @@ class DialogosDeEspera:
                 # da tela. O worker não toca no diálogo depois do `evento`.
                 dialogo.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
                 self._dialogo_aberto = dialogo  # segura a referência enquanto está aberto
-                dialogo.show()
+                # O aviso antes do show(): a caixa ativa a janela ao aparecer,
+                # e o foco seria lido como "no SIG-FT" (2026-10-21).
                 self._avisar_que_espera(aviso)
+                dialogo.show()
             except Exception:  # noqa: BLE001 -- o worker não pode ficar preso
                 # `interface._rodar` engole a exceção; sem o `set()` o worker
                 # esperaria para sempre. Resposta segura: login segue, Excel

@@ -232,12 +232,20 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         try:
             pares = self.pares_do_lote()
             grupos = resumo_regras.agrupar(pares)
-            if grupos and resumo_regras.ligado():
-                janela_de_resumo.abrir_resumo(self, self.titulo_da_tela, pares)
-            # O aviso do Windows, só com o SIG-FT fora de foco (2026-10-21).
+        except Exception:  # noqa: BLE001 -- vira traceback no log
+            traceback.print_exc()
+            return
+        # O aviso do Windows ANTES do resumo: o foco é lido antes de a janela
+        # nova aparecer, e um defeito num não cala o outro (2026-10-21).
+        try:
             erros, avisos = resumo_regras.contar(grupos)
             aviso_windows.avisar(self.window(), resumo_regras.frase_do_fim(
                 self.titulo_da_tela, erros, avisos, falhou=self._tarefa_falhou))
+        except Exception:  # noqa: BLE001 -- vira traceback no log
+            traceback.print_exc()
+        try:
+            if grupos and resumo_regras.ligado():
+                janela_de_resumo.abrir_resumo(self, self.titulo_da_tela, pares)
         except Exception:  # noqa: BLE001 -- vira traceback no log
             traceback.print_exc()
 
