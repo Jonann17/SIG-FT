@@ -453,7 +453,7 @@ QScrollBar:vertical {{ background: transparent; width: 10px; }}
 QScrollBar::handle:vertical {{ background: {p['borda']}; border-radius: 5px; min-height: 30px; }}
 QScrollBar::handle:vertical:hover {{ background: {p['texto_suave']}; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
-""" + _folha_e31(tema) + _folha_telas(tema)
+""" + _folha_e31(tema) + _folha_telas(tema) + _folha_ferramentas(tema)
 
 
 # --- E3.1: rádio, slider, barra de progresso, abas, área rolável, tabela ---------
@@ -661,6 +661,31 @@ def _folha_telas(tema: str | None = None) -> str:
     for faixa, cor in faixas.items():
         regras.append(f'QLabel[faixa="{faixa}"] {{ color: {cor}; }}')
         regras.append(f'#regua_faixa[faixa="{faixa}"] {{ background: {cor}; border: none; }}')
+    return "\n" + "\n".join(regras) + "\n"
+
+
+def _folha_ferramentas(tema: str | None = None) -> str:
+    """As ferramentas da etapa 1b (2026-10-21).
+
+    * barra do console (`widgets/console.py`): a paleta ESCURA nos dois temas,
+      porque ela fica dentro do console, que é escuro sempre.
+    """
+    e = tokens.ESCURO
+    f = tokens.FONTE
+    regras = [
+        f"#barra_console {{ background: {e['console_fundo']}; }}",
+        f"#barra_console QPushButton {{ background: transparent; color: {e['texto_suave']};"
+        f" border: 1px solid transparent; border-radius: 4px; padding: 0 8px;"
+        f" min-height: 18px; max-height: 18px; font-size: {f['legenda']}px; }}",
+        f"#barra_console QPushButton:hover {{ color: {e['texto']}; }}",
+        f"#barra_console QPushButton:checked {{ color: {e['texto']}; background: {e['superficie_alta']};"
+        f" border-color: {e['borda']}; }}",
+        f"#barra_console QLineEdit {{ background: {e['superficie_alta']}; color: {e['texto']};"
+        f" border: 1px solid {e['borda']}; border-radius: 4px; padding: 0 6px;"
+        f" min-height: 18px; max-height: 18px; font-size: {f['legenda']}px;"
+        f" placeholder-text-color: {e['texto_suave']}; }}",
+        f"#barra_console QLineEdit:focus {{ border-color: {e['primaria']}; }}",
+    ]
     return "\n" + "\n".join(regras) + "\n"
 
 
