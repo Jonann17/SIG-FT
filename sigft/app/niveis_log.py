@@ -30,9 +30,12 @@ NIVEL_DO_PROTOCOLO = {
 # Comparadas sem caixa, no começo da linha. Marca que termina em letra só vale
 # como palavra inteira: "Falha ao salvar" é erro; "Falhas:" (título do resumo do
 # lote) não. "[erro" sem o colchete de fechar pega "[Erro Estrutural]" e
-# "[ERRO FATAL AO SALVAR]".
-MARCAS_DE_ERRO = ("[erro", "❌", "falha")
-MARCAS_DE_AVISO = ("[aviso]", "[!]", "[autoconferência]", "[atenção]", "aviso:", "⚠")
+# "[ERRO FATAL AO SALVAR]". "erro" e "aviso" soltos, como palavra inteira, pegam
+# as linhas de serviço que abrem sem colchete ("Erro: Arquivo Excel aberto.",
+# "ERRO: Não abriu aba Condições.", "Aviso Crítico: ...", revisão de 2026-10-21);
+# "Erros:" e "Errors" continuam informação.
+MARCAS_DE_ERRO = ("[erro", "❌", "falha", "erro")
+MARCAS_DE_AVISO = ("[aviso]", "[!]", "[autoconferência]", "[atenção]", "aviso", "⚠")
 
 # O que pode vir antes da marca: recuo, o "->" das telas, seta e marcador.
 _ABERTURA = re.compile(r"^[\s>\-→•]+")

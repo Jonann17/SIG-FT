@@ -149,9 +149,32 @@ def test_filtro_erros_e_avisos(qt_interface, qtbot):
 def test_busca_sem_acento_e_sem_caixa(qt_interface, qtbot):
     c = _console_com(qtbot, MISTURA)
     c.barra.campo.setText("TENSAO")
-    assert c.toPlainText().splitlines() == ["> Tensão nominal gravada"]
+    qtbot.waitUntil(lambda: c.toPlainText().splitlines() == ["> Tensão nominal gravada"],
+                    timeout=2000)
     c.barra.campo.clear()
-    assert len(c.toPlainText().splitlines()) == 5
+    qtbot.waitUntil(lambda: len(c.toPlainText().splitlines()) == 5, timeout=2000)
+
+
+def test_busca_espera_a_pessoa_parar_de_digitar(qt_interface, qtbot, monkeypatch):
+    # Revisão de 2026-10-21: redesenhar 20.000 linhas a cada tecla pesa. O campo
+    # espera `MS_DA_BUSCA` sem tecla nova e redesenha UMA vez.
+    c = _console_com(qtbot, MISTURA)
+    redesenhos = []
+    original = c._redesenhar
+    monkeypatch.setattr(c, "_redesenhar", lambda: (redesenhos.append(1), original()))
+    for parcial in ("T", "TE", "TEN", "TENS", "TENSAO"):
+        c.barra.campo.setText(parcial)
+    assert redesenhos == [] and len(c.toPlainText().splitlines()) == 5
+    qtbot.waitUntil(lambda: c.toPlainText().splitlines() == ["> Tensão nominal gravada"],
+                    timeout=2000)
+    assert redesenhos == [1]
+    assert qconsole.MS_DA_BUSCA == 150
+
+
+def test_filtro_por_botao_e_imediato(qt_interface, qtbot):
+    c = _console_com(qtbot, MISTURA)
+    c.barra.botoes["erros"].click()
+    assert len(c.toPlainText().splitlines()) == 2
 
 
 def test_linha_nova_respeita_o_filtro(qt_interface, qtbot):
@@ -173,6 +196,19 @@ def test_copiar_leva_o_que_esta_a_vista(qt_interface, qtbot):
     c.barra.copiar.click()
     assert QApplication.clipboard().text() == c.toPlainText()
     assert c.barra.copiar.text() == qconsole.TEXTO_COPIADO
+
+
+def test_copiar_sem_nada_a_vista_nao_mexe_na_area_de_transferencia(qt_interface, qtbot):
+    from PySide6.QtWidgets import QApplication
+
+    QApplication.clipboard().setText("o que a pessoa tinha copiado")
+    c = _console_com(qtbot, [("tudo certo", "info")])
+    c.filtrar("erros")
+    assert c.toPlainText() == ""
+    assert c.copiar() is False
+    c.barra.copiar.click()
+    assert QApplication.clipboard().text() == "o que a pessoa tinha copiado"
+    assert c.barra.copiar.text() == qconsole.TEXTO_COPIAR
 
 
 def test_marca_e_linhas_desde(qt_interface, qtbot):

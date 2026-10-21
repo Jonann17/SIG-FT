@@ -37,7 +37,37 @@ LINHAS_REAIS = [
     ("✅ 3 sucesso(s) · ❌ 1 falha(s) · ⏭️ 0 pulado(s)", n.INFO),
     ("   Falhas:", n.INFO),
     ("▶️ Gerando fichas PMIB: 8 item(ns).", n.INFO),
+    # Linhas que abrem com "Erro"/"Aviso" SOLTOS, sem colchete (revisão de 2026-10-21)
+    # services/upload_conditions.py:1139
+    ("Erro: Arquivo Excel aberto.", n.ERRO),
+    # services/tech_specs.py:2227
+    ("Erro ao salvar JSON: PermissionError", n.ERRO),
+    # services/tech_specs.py:2296
+    ("Erro fatal na automação: TimeoutException", n.ERRO),
+    # services/upload_conditions.py:810
+    ("ERRO: Não abriu aba Condições. TimeoutException", n.ERRO),
+    # services/lmr.py:641
+    ("Erro no Cód 4500063671.1234: KeyError('A')", n.ERRO),
+    # services/tech_specs.py:1750
+    ("Erro geral 4500063671.1234: TimeoutException", n.ERRO),
+    # services/tech_specs.py:787
+    ("Erro leitura ficha ficha_1234.xlsx: BadZipFile", n.ERRO),
+    # services/cria_fichas.py:439
+    ("AVISO: Nenhuma API Key fornecida.", n.AVISO),
+    # services/upload_conditions.py:1162
+    ("Aviso Crítico: PMIB 4500063671.1234 NÃO encontrado na planilha.", n.AVISO),
+    # services/tech_specs.py:2289
+    ("Aviso: Não encontrei as colunas de status.", n.AVISO),
 ]
+
+
+# Palavra inteira: resumo e plural não são erro nem aviso.
+@pytest.mark.parametrize("linha", [
+    "Erros: 0", "Errors found: none", "Avisos: 2", "0 falha(s)", "Falhas:",
+    "Errônea a leitura?", "Avisou o usuário",
+])
+def test_palavra_inteira_nao_pega_plural_nem_resumo(linha):
+    assert n.classificar(linha) == n.INFO
 
 
 @pytest.mark.parametrize("linha, esperado", LINHAS_REAIS)
@@ -85,8 +115,8 @@ _TAG = re.compile(r"^\s*(?:->\s*)?(\[(?:[A-ZÀ-Ý!][^\]{}\\]{0,28}|i)\])")
 _FUNCOES_DE_REGEX = {"compile", "sub", "match", "search", "findall", "split", "fullmatch", "finditer"}
 
 
-def _tags_que_abrem_log():
-    tags = {}
+def _textos_que_abrem_log():
+    """(onde, texto do começo) de cada string que abre um log de serviço/core."""
     pastas = [RAIZ / "sigft" / "services", RAIZ / "sigft" / "core"]
     for arquivo in sorted(p for pasta in pastas for p in pasta.rglob("*.py")):
         for no in ast.walk(ast.parse(arquivo.read_text(encoding="utf-8"))):
@@ -105,9 +135,15 @@ def _tags_que_abrem_log():
                     texto = alvo.values[0].value
                 else:
                     continue
-                achado = _TAG.match(texto)
-                if achado:
-                    tags.setdefault(achado.group(1), f"{arquivo.relative_to(RAIZ)}:{no.lineno}")
+                yield f"{arquivo.relative_to(RAIZ)}:{no.lineno}", texto
+
+
+def _tags_que_abrem_log():
+    tags = {}
+    for onde, texto in _textos_que_abrem_log():
+        achado = _TAG.match(texto)
+        if achado:
+            tags.setdefault(achado.group(1), onde)
     return tags
 
 
@@ -117,3 +153,20 @@ def test_toda_tag_de_log_dos_servicos_tem_nivel_decidido():
     sem_decisao = {tag: onde for tag, onde in tags.items()
                    if tag not in TAGS_INFORMATIVAS and n.nivel_da_marca(tag + " x") == n.INFO}
     assert sem_decisao == {}
+
+
+# Linha de log que abre com "Erro"/"Aviso"/"Falha" SOLTOS (sem colchete), como
+# palavra inteira. Revisão de 2026-10-21: ~15 delas caíam em "info".
+_PALAVRA = re.compile(r"^\s*(?:->\s*)?((?:erro|aviso|falha)\b)", re.IGNORECASE)
+
+
+def _palavras_que_abrem_log():
+    return {onde: texto for onde, texto in _textos_que_abrem_log() if _PALAVRA.match(texto)}
+
+
+def test_toda_linha_que_abre_com_erro_aviso_ou_falha_tem_nivel():
+    achados = _palavras_que_abrem_log()
+    assert len(achados) > 10, "a varredura não achou os logs"
+    caiu_em_info = {onde: texto for onde, texto in achados.items()
+                    if n.nivel_da_marca(texto) == n.INFO}
+    assert caiu_em_info == {}

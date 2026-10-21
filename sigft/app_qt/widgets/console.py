@@ -48,6 +48,9 @@ TEXTO_COPIAR = "Copiar"
 TEXTO_COPIADO = "Copiado"
 DICA_COPIAR = "Copia as linhas que estão à vista, com o filtro e a busca de agora."
 MS_DO_COPIADO = 1500
+# A busca espera a pessoa parar de digitar: redesenhar até `MAX_LINHAS` linhas a
+# cada tecla pesa (revisão de 2026-10-21). Os botões do filtro são imediatos.
+MS_DA_BUSCA = 150
 
 
 class Linha(NamedTuple):
@@ -90,7 +93,11 @@ class BarraDoConsole(QWidget):
         self.campo = QLineEdit()
         self.campo.setPlaceholderText(TEXTO_BUSCA)
         self.campo.setClearButtonEnabled(True)
-        self.campo.textChanged.connect(self._buscou)
+        self.campo.textChanged.connect(self._digitou)
+        self._espera_da_busca = QTimer(self)
+        self._espera_da_busca.setSingleShot(True)
+        self._espera_da_busca.setInterval(MS_DA_BUSCA)
+        self._espera_da_busca.timeout.connect(self._buscou)
         lay.addWidget(self.campo, 1)
         self.copiar = QPushButton(TEXTO_COPIAR)
         blocos.sem_tecla(self.copiar)
@@ -109,11 +116,15 @@ class BarraDoConsole(QWidget):
     def _escolheu_filtro(self, indice: int) -> None:
         self.parentWidget().filtrar(FILTROS[indice][0])
 
-    def _buscou(self, texto: str) -> None:
-        self.parentWidget().buscar(texto)
+    def _digitou(self, _texto: str) -> None:
+        self._espera_da_busca.start()   # recomeça a cada tecla
+
+    def _buscou(self) -> None:
+        self.parentWidget().buscar(self.campo.text())
 
     def _copiar(self) -> None:
-        self.parentWidget().copiar()
+        if not self.parentWidget().copiar():
+            return
         self.copiar.setText(TEXTO_COPIADO)
         self._volta.start(MS_DO_COPIADO)
 
@@ -134,13 +145,15 @@ class ConsoleFrame(QPlainTextEdit):
         # margem é a da barra do filtro (`_posicionar_barra`).
         esquerda, cima = RECUO_TEXTO_CTK
         self.setViewportMargins(esquerda, cima, 0, ALTURA_BARRA)
-        self._pendentes: deque[Linha] = deque()
-        self._linhas: deque[Linha] = deque(maxlen=MAX_LINHAS)
+        # Cada linha vai junto com o texto já normalizado (`busca.normalizar`):
+        # a busca não normaliza de novo as 20.000 linhas a cada consulta.
+        self._pendentes: deque[tuple[Linha, str]] = deque()
+        self._linhas: deque[tuple[Linha, str]] = deque(maxlen=MAX_LINHAS)
         self._seq = 0
         self._trava = threading.Lock()
         self._agendado = False
         self._filtro = "tudo"
-        self._busca = ""
+        self._busca = ""   # já normalizada
         self.barra = BarraDoConsole(self)
         self._posicionar_barra()
 
@@ -149,11 +162,12 @@ class ConsoleFrame(QPlainTextEdit):
         """Assinatura do protocolo `core/callbacks.py`. Qualquer thread."""
         texto = f"{msg}"
         nivel_da_linha = niveis_log.classificar(texto, nivel)
+        normalizada = busca.normalizar(texto)
         with self._trava:
             self._seq += 1
-            linha = Linha(self._seq, texto, nivel_da_linha)
-            self._linhas.append(linha)
-            self._pendentes.append(linha)
+            item = (Linha(self._seq, texto, nivel_da_linha), normalizada)
+            self._linhas.append(item)
+            self._pendentes.append(item)
             if self._agendado:
                 return
             self._agendado = True
@@ -177,7 +191,7 @@ class ConsoleFrame(QPlainTextEdit):
             linhas = list(self._pendentes)
             self._pendentes.clear()
             self._agendado = False
-        visiveis = [linha for linha in linhas if self._passa(linha)]
+        visiveis = [linha for linha, normalizada in linhas if self._passa(linha, normalizada)]
         if not visiveis:
             return
         try:
@@ -195,14 +209,14 @@ class ConsoleFrame(QPlainTextEdit):
     def linhas(self, desde: int = 0) -> list[Linha]:
         """As linhas guardadas depois da `marca` `desde`, na ordem."""
         with self._trava:
-            return [linha for linha in self._linhas if linha.seq > desde]
+            return [linha for linha, _ in self._linhas if linha.seq > desde]
 
     # -- filtro, busca, copiar -------------------------------------------------
-    def _passa(self, linha: Linha) -> bool:
+    def _passa(self, linha: Linha, normalizada: str) -> bool:
         niveis = NIVEIS_DO_FILTRO[self._filtro]
         if niveis is not None and linha.nivel not in niveis:
             return False
-        return not self._busca or busca.contem(linha.msg, self._busca)
+        return not self._busca or self._busca in normalizada
 
     def filtrar(self, filtro: str) -> None:
         if filtro not in NIVEIS_DO_FILTRO:
@@ -212,17 +226,24 @@ class ConsoleFrame(QPlainTextEdit):
         self._redesenhar()
 
     def buscar(self, texto: str) -> None:
-        self._busca = str(texto or "").strip()
+        self._busca = busca.normalizar(texto or "").strip()
         self._redesenhar()
 
-    def copiar(self) -> None:
-        QApplication.clipboard().setText(self.toPlainText())
+    def copiar(self) -> bool:
+        """Copia o que está à vista. Nada à vista: a área de transferência fica
+        como estava e devolve False (o botão não diz "Copiado")."""
+        texto = self.toPlainText()
+        if not texto:
+            return False
+        QApplication.clipboard().setText(texto)
+        return True
 
     def _redesenhar(self) -> None:
         with self._trava:
             todas = list(self._linhas)
             self._pendentes.clear()   # já entram no redesenho
-        self.setPlainText("\n".join(formatar_linha(linha.msg) for linha in todas if self._passa(linha)))
+        self.setPlainText("\n".join(formatar_linha(linha.msg) for linha, normalizada in todas
+                                    if self._passa(linha, normalizada)))
         self._rolar_para_o_fim()
 
     def clear(self) -> None:  # noqa: D401 -- o `clear` do Qt, que as telas chamam
