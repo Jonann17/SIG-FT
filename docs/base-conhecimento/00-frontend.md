@@ -209,7 +209,7 @@ A interface Qt (`sigft/app_qt/`) tem um sistema visual próprio; a spec está em
   repinta a árvore na troca de tema. Botão não leva emoji
   (há teste).
 - **Tema** (`sigft/app_qt/tema.py`): escuro / claro / sistema, escolhido no
-  seletor da Home e guardado nas preferências (`core/prefs.ler_preferencia`).
+  seletor da Configuração (Aparência) e guardado nas preferências (`core/prefs.ler_preferencia`).
   `tema.aplicar` troca a folha do app, repinta os ícones e emite `tema.mudou`.
   Widget que guarde cor calculada na criação precisa ouvir `tema.mudou`.
 - **Marca** (`widgets/marca.py`): logo + "SIG-FT System" no alto do menu,
@@ -261,14 +261,57 @@ A interface Qt (`sigft/app_qt/`) tem um sistema visual próprio; a spec está em
   folha própria ganham +2 px (só `px`); botão e rótulo de uma linha com largura fixa
   alargam até o `sizeHint` e voltam ao pixel no Normal; um vigia ajusta peça nova só
   com a letra grande. Regra somada à folha de uma peça entra por `blocos.pintar`
-  (senão o aumento dobra). Na Home, com a Grande, o "Versões de teste" desce para
-  baixo da barra. Smoke: `--letra grande`.
+  (senão o aumento dobra). Smoke: `--letra grande`.
 - **Aviso do Windows** (`sigft/app_qt/aviso_windows.py`): `QSystemTrayIcon.showMessage`
   fora de foco, no fim da tarefa e nas esperas (`widgets/espera.py`: login, Excel
   travado, arquivos travados, sim/não, pedir texto). O ícone da bandeja acende no
-  aviso e some ao clicar ou quando o SIG-FT volta a ser o app ativo. "Avisar no
-  Windows" na linha do subtítulo da Home. Nunca nos testes nem no `--smoke`
+  aviso e some ao clicar ou quando o SIG-FT volta a ser o app ativo. Liga e desliga
+  na Configuração, em Avisos. Nunca nos testes nem no `--smoke`
   (`SIGFT_SEM_AVISO_DO_WINDOWS`, conftest e `main._smoke`).
+
+### Configuração e idioma (2026-10-22)
+
+- **Engrenagem** (`views/configuracao.py`, `JanelaConfiguracao`, uma `JanelaPainel`): à direita do
+  título da Home (`HomeView.btn_configuracao`, `abrir_configuracao`) e no Ctrl+K. Seções e ordem em
+  `catalogo.SECOES_DA_CONFIGURACAO`; os botões que vieram da barra em
+  `catalogo.ACOES_DA_CONFIGURACAO`. Nenhuma regra nova: tema e letra pela Home
+  (`escolher_tema`/`escolher_letra`), nome por `nome.guardar`, aviso por `aviso_windows.ligar`,
+  canal de testes por `updater`, Chaves/Modelos/atualização pelos métodos da Home.
+- **Idioma** (`sigft/app/idioma.py`, sem Qt): `t("texto em português", **valores)`; a chave é o
+  próprio texto; `es`/`en` em `sigft/app/idiomas/*.json`; sem tradução vale o português. Constante de
+  módulo em `marcar(...)` e `t()` onde aparece. Só a interface muda; console, portal e planilhas não.
+  O idioma vale ao abrir: `main._preparar_qt` (`--idioma` no smoke), a pergunta da primeira abertura
+  (`escolha_de_idioma.py`, antes da splash) e o "Reiniciar agora" (`reinicio.py`, recusa com tarefa
+  rodando). Os botões do Qt seguem o idioma (`main.LOCALE_DO_QT`; `qtbase_pt_BR`/`qtbase_es` no pacote).
+- **Ferramenta** `tools/textos_da_interface.py`: o que falta e sobra nos catálogos, `t(f"...")`,
+  `--literais <arquivo>` (o que a guarda acusa), `--faltando es` (JSON para preencher), `--arrumar`.
+- **Guardas:** `tests/test_textos_da_interface.py` (catálogos completos, mesmos `{valores}`, sem
+  travessão, e todo `sigft/app_qt` sem texto de interface fora de `t()`, exceto `NAO_E_INTERFACE`, com
+  o motivo); `tests/test_qt_idioma_telas.py` (cada parte montada em `es`/`en` sem português à vista);
+  `tests/test_qt_idioma_varredura.py` (as 12 telas sem corte nem rolagem lateral). Os testes rodam em
+  português (conftest); a largura fixa alarga fora do português (`letra._pede_folga`).
+- **Tela nova ou texto novo:** escreva em português dentro de `t()`, rode a ferramenta e preencha
+  `es` e `en` seguindo o glossário abaixo.
+
+**Glossário** (não se traduzem: SIG-FT, PMIB, Portal PMIB, PDM, SAM-GM, STATUS_PMIB, LMR, TAG,
+AutoSpec, Analyzer, PMIB Manager, Search, Gestão PMIB, Excel, PDF, JSON, RDS-PP, Aconex, Box,
+GE Vernova, Itaipu, nomes de provedor de IA, os nomes dos idiomas):
+
+| pt | es | en |
+|---|---|---|
+| ficha (técnica) | ficha (técnica) | (technical) sheet |
+| planilha | planilla | spreadsheet |
+| robô | robot | robot |
+| característica técnica | característica técnica | technical characteristic |
+| lote | lote | batch |
+| console | consola | console |
+| Configuração | Configuración | Settings |
+| Chaves de API / Modelos de IA / Gastos de IA | Claves de API / Modelos de IA / Gastos de IA | API keys / AI models / AI costs |
+| versão de teste | versión de prueba | test version |
+| fornecedor | proveedor | supplier |
+| pasta / arquivo / tela | carpeta / archivo / pantalla | folder / file / screen |
+
+Espanhol com "usted"; inglês com imperativo simples; tradução curta (no máximo uns 20% a mais).
 
 ## Pontos de Atenção
 
