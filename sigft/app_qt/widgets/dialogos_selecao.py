@@ -34,6 +34,7 @@ from sigft.app.textos_dialogos import TEXTOS_TRAVADOS
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets.dialogs import IgnoraEsc, SoltaAoFechar, sem_tecla
+from sigft.app_qt import propriedades
 
 # Diálogo aberto sem pai (ou cujo pai some) precisa de uma referência viva
 # enquanto está na tela; sai daqui quando fecha. Chave = id(): a conexão que o
@@ -348,7 +349,7 @@ def linha_ttk(tree: QTreeWidget, valores, chave=None) -> QTreeWidgetItem:
     `UserRole` da coluna 0; cada célula com o anchor da sua coluna."""
     item = QTreeWidgetItem([str(v) for v in valores])
     item.setData(0, Qt.ItemDataRole.UserRole, chave)
-    for i, centro in enumerate(tree.property("_alinhamentos") or []):
+    for i, centro in enumerate(propriedades.ler(tree, "_alinhamentos") or []):
         item.setTextAlignment(i, Qt.AlignmentFlag.AlignCenter if centro
                               else Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     tree.addTopLevelItem(item)

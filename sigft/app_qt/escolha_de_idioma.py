@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout
 
 from sigft.app import idioma
 from sigft.app_qt.widgets import blocos
+from sigft.app_qt import propriedades
 
 ENV_DESLIGAR = "SIGFT_SEM_PERGUNTA_DO_IDIOMA"
 # Nos dois idiomas de propósito: quem abre ainda não escolheu nenhum.
@@ -54,7 +55,7 @@ class PerguntaDoIdioma(QDialog):
         lay.addLayout(linha)
 
     def _escolher(self) -> None:
-        self.escolha = self.sender().property("escolha")
+        self.escolha = propriedades.ler(self.sender(), "escolha")
         self.accept()
 
 

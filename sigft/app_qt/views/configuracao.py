@@ -30,6 +30,7 @@ from sigft.app_qt.widgets import blocos, controles, dialogs
 from sigft.app_qt.widgets.module_frame import aplicar_dicas
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
 from sigft.services import updater
+from sigft.app_qt import propriedades
 
 TITULO = marcar("Configuração")
 GEOMETRIA = "720x620"
@@ -137,7 +138,7 @@ class JanelaConfiguracao(JanelaPainel):
 
     def _clicou_tema(self) -> None:
         # Pela Home, que aplica e marca esta janela (`HomeView.escolher_tema`).
-        self.home.escolher_tema(self.sender().property("escolha"))
+        self.home.escolher_tema(propriedades.ler(self.sender(), "escolha"))
 
     def marcar_tema(self, escolha: str) -> None:
         """Marca o tema que VALEU, não o das prefs: gravar pode ter falhado."""
@@ -161,7 +162,7 @@ class JanelaConfiguracao(JanelaPainel):
         return quadro
 
     def _clicou_letra(self) -> None:
-        self.home.escolher_letra(self.sender().property("escolha"))
+        self.home.escolher_letra(propriedades.ler(self.sender(), "escolha"))
 
     def marcar_letra(self, escolha: str) -> None:
         for chave, botao in self.botoes_letra.items():
@@ -193,7 +194,7 @@ class JanelaConfiguracao(JanelaPainel):
 
     def _clicou_idioma(self) -> None:
         # Guardado no clique (como tema e letra): fechar pelo X também vale.
-        self._marcar_idioma(idioma.guardar(self.sender().property("escolha")))
+        self._marcar_idioma(idioma.guardar(propriedades.ler(self.sender(), "escolha")))
 
     def _marcar_idioma(self, codigo: str) -> None:
         for chave, botao in self.botoes_idioma.items():

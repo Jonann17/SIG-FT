@@ -230,6 +230,7 @@ CONVERTIDOS: tuple[str, ...] = (
     "sigft/app_qt/novidades.py",
     "sigft/app_qt/pasta_de_logs.py",
     "sigft/app_qt/reinicio.py",
+    "sigft/app_qt/propriedades.py",
     "sigft/app_qt/tema.py",
     "sigft/app_qt/views/__init__.py",
     "sigft/app_qt/views/configuracao.py",

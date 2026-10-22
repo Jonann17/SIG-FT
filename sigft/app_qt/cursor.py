@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import QAbstractButton, QComboBox, QTabBar
+from sigft.app_qt import propriedades
 
 CLICAVEIS = (QAbstractButton, QComboBox, QTabBar)
 
@@ -45,7 +46,7 @@ class MaozinhaNoClicavel(QObject):
                 obj.setProperty(_PROPRIEDADE, True)
                 aplicar(obj)
         elif tipo == QEvent.Type.EnabledChange:
-            if isinstance(obj, CLICAVEIS) and obj.property(_PROPRIEDADE):
+            if isinstance(obj, CLICAVEIS) and propriedades.ler(obj, _PROPRIEDADE):
                 aplicar(obj)
         return False
 

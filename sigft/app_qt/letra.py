@@ -32,6 +32,7 @@ from PySide6.QtWidgets import QAbstractButton, QApplication, QLabel, QWidget
 from sigft.app import idioma, tokens
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets.blocos import RotuloElidido
+from sigft.app_qt import propriedades
 
 _log = logging.getLogger(__name__)
 
@@ -113,7 +114,7 @@ def _ajustar_folha_e_fonte(widget: QWidget, aumento_px: int) -> None:
     if not widget.testAttribute(Qt.WidgetAttribute.WA_SetFont):
         return
     fonte = widget.font()
-    base_px = widget.property(_PROP_FONTE_BASE)
+    base_px = propriedades.ler(widget, _PROP_FONTE_BASE)
     if base_px is None:
         if fonte.pixelSize() <= 0:
             return   # fonte em pontos: o tamanho vem da folha, que já foi ajustada
@@ -137,7 +138,7 @@ def _ajustar_largura(widget: QWidget, aumento_px: int) -> None:
     """Largura fixa com folga (`_pede_folga`): no mínimo o `sizeHint` (o texto
     inteiro). Sem folga, a largura de antes, ao pixel; peça nunca alargada: nada muda."""
     folga = _pede_folga(aumento_px)
-    original = widget.property(_PROP_LARGURA_FIXA)
+    original = propriedades.ler(widget, _PROP_LARGURA_FIXA)
     if original is None:
         if not folga or not _texto_de_largura_fixa(widget):
             return

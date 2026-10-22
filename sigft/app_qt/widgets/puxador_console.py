@@ -24,6 +24,7 @@ from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from sigft.app.idioma import marcar, t
 from sigft.app_qt.widgets.console import ALTURA_BARRA, RECUO_TEXTO_CTK
+from sigft.app_qt import propriedades
 
 _log = logging.getLogger(__name__)
 
@@ -157,7 +158,7 @@ class PuxadorDoConsole(QWidget):
 
     # -- destaque (hover e arrasto) ----------------------------------------------
     def _destacar(self, ligado: bool) -> None:
-        if bool(self.property("ativo")) == ligado:
+        if bool(propriedades.ler(self, "ativo")) == ligado:
             return
         for widget in (self, self.marca):
             widget.setProperty("ativo", ligado)

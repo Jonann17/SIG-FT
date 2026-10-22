@@ -53,6 +53,7 @@ from sigft.app_qt.widgets.marca import Marca
 from sigft.app_qt.widgets.paleta import PaletaDeComandos
 from sigft.core import instancia
 from sigft.core.saida_log import desviar_saida_para_arquivo
+from sigft.app_qt import propriedades
 
 # Sem console (o .exe), `print` e traceback vão para `logs/sigft.log`: é o canal
 # de diagnóstico da primeira execução em máquina nova. No import, antes de
@@ -297,7 +298,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         botoes = {**self.botoes_menu, "Home": self.botao_home}
         for alvo, botao in botoes.items():
             ativo = alvo == nome
-            if bool(botao.property("ativo")) == ativo:
+            if bool(propriedades.ler(botao, "ativo")) == ativo:
                 continue
             botao.setProperty("ativo", ativo)
             # Propriedade dinâmica não repinta sozinha: a folha é reaplicada,

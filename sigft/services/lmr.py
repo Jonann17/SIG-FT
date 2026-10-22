@@ -291,7 +291,7 @@ class LMRAutomation:
 
             # Limpeza
             df_completo['PMIB'] = df_completo['PMIB'].str.strip()
-            df_completo.dropna(subset=['PMIB'], inplace=True)
+            df_completo = df_completo.dropna(subset=['PMIB'])
 
             pmibs_unicos = df_completo['PMIB'].unique().tolist()
             return True, df_completo, pmibs_unicos, (

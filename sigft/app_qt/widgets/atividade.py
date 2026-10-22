@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QWidget
 
 from sigft.app.idioma import marcar, t
 from sigft.app_qt.widgets import blocos
+from sigft.app_qt import propriedades
 
 # Quanto o "Terminou" fica na tela antes de a faixa sumir.
 SEGUNDOS_DO_FIM = 12
@@ -106,7 +107,7 @@ class FaixaDeAtividade(QWidget):
         if self._avanco:
             partes.insert(1, self._avanco)
         self.rotulo.setText("  ·  ".join(partes))
-        if self.rotulo.property("estado") != "rodando":
+        if propriedades.ler(self.rotulo, "estado") != "rodando":
             self.rotulo.setProperty("estado", "rodando")
             self._repolir()
 

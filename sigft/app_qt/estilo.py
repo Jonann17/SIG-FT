@@ -13,6 +13,7 @@ import re
 import sys
 
 from sigft.app import tokens
+from sigft.app_qt import propriedades
 
 _RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PASTA_FONTES = os.path.join(_RAIZ, "assets", "fonts")
@@ -100,8 +101,8 @@ def ajustar_tamanhos(folha: str, aumento: int) -> str:
 def folha_sem_aumento(widget) -> str:
     """A folha própria de `widget` como a tela a escreveu, sem o aumento da letra."""
     folha = widget.styleSheet()
-    if folha and widget.property(PROP_FOLHA_POSTA) == folha:
-        return widget.property(PROP_FOLHA_BASE) or ""
+    if folha and propriedades.ler(widget, PROP_FOLHA_POSTA) == folha:
+        return propriedades.ler(widget, PROP_FOLHA_BASE) or ""
     return folha
 
 
