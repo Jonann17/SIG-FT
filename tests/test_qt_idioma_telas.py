@@ -260,6 +260,29 @@ def test_lmr_pmib_manager_e_busca(janela, codigo):
             assert ainda_em_portugues(principal.telas[alvo], codigo) == set(), alvo
 
 
+@pytest.mark.parametrize("codigo", IDIOMAS)
+def test_dialogos_auxiliares_de_lmr_pmib_manager_e_busca(qt_interface, qtbot, codigo):
+    """As janelas que as telas da Task 9 abrem (pendência da revisão dela,
+    2026-10-22): "Escolha a aba", "Novas Listas Encontradas" e os resultados da
+    busca, montadas no idioma."""
+    from sigft.app_qt.views import busca_pmib, lmr, pmib_manager
+
+    with em_idioma(codigo):
+        busca = busca_pmib.ModuloBuscaPMIB(None, None)
+        qtbot.addWidget(busca)
+        resultado = {"codigo_itaipu": "4500063671.0012", "coluna_match": "DESCRIÇÃO", "amostra": "ROLAMENTO",
+                     "caminho_arquivo": "/fichas/UG01/a.xlsx", "caminho_pasta": "/fichas/UG01"}
+        janelas = [
+            lmr.DialogoDaAba(None, nome_arquivo="LMR_Aplicacoes_2026.xlsx", abas=["Plan1", "LMR"]),
+            pmib_manager.NovasListasDialog(None, itens=[(0, "[L-1]  -  Lista 1")],
+                                           evento_espera=threading.Event(), resultado={}),
+            busca_pmib.JanelaResultados(busca, [resultado]),
+        ]
+        for janela in janelas:
+            qtbot.addWidget(janela)
+            assert ainda_em_portugues(janela, codigo) == set(), type(janela).__name__
+
+
 @pytest.mark.parametrize("codigo, esperado", [("es", "Ficha 3 de 8"), ("en", "Sheet 3 of 8")])
 def test_avanco_da_faixa_de_atividade_no_idioma(qt_interface, qtbot, codigo, esperado):
     """O "Ficha 3 de 8" da faixa: o rótulo (marcado em `atividade`) e a frase

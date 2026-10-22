@@ -266,6 +266,11 @@ def _interface_em_portugues(monkeypatch):
     _idioma.definir(_idioma.PADRAO)
     yield
     _idioma.definir(_idioma.PADRAO)
+    # A largura fixa alarga fora do português (`letra._pede_folga`): o vigia que um
+    # teste de idioma ligou não pode ficar para o próximo.
+    _letra = sys.modules.get("sigft.app_qt.letra")
+    if _letra is not None:
+        _letra.reavaliar_vigia()
 
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)

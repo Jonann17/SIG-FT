@@ -4,6 +4,7 @@ import re
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from _varredura import varrer
 from sigft.app import tokens
 from sigft.app_qt import catalogo, estilo, letra
 from sigft.app_qt.widgets import blocos
@@ -217,38 +218,6 @@ def test_opcao_da_linha_de_comando():
 
 # --- as 12 telas com a letra grande (fix round 1, 2026-10-21) -----------------
 
-def _cortados(tela):
-    """Os textos (botão, rótulo de uma linha, caixa) mais estreitos que o pedido."""
-    from PySide6.QtWidgets import QCheckBox, QLabel, QPushButton
-
-    achados = set()
-    for tipo in (QPushButton, QLabel, QCheckBox):
-        for w in tela.findChildren(tipo):
-            if not w.isVisible() or not w.text().strip():
-                continue
-            if isinstance(w, QLabel) and (w.wordWrap() or isinstance(w, blocos.RotuloElidido)):
-                continue
-            if w.width() < w.sizeHint().width():
-                achados.add(w.text())
-    return achados
-
-
-def _varrer(janela, qtbot):
-    from PySide6.QtWidgets import QAbstractScrollArea
-
-    cortados, rolando = {}, []
-    for alvo in ["Home", *(m[0] for m in catalogo.MODULOS if m[0] not in catalogo.TELAS_BLOQUEADAS)]:
-        janela.show_home() if alvo == "Home" else janela.show_frame(alvo)
-        qtbot.wait(30)
-        tela = janela.telas[alvo]
-        for area in [tela, *tela.findChildren(QAbstractScrollArea)]:
-            if isinstance(area, QAbstractScrollArea) and area.isVisible() \
-                    and area.horizontalScrollBar().isVisible():
-                rolando.append(f"{alvo}:{type(area).__name__}")
-        cortados[alvo] = _cortados(tela)
-    return cortados, rolando
-
-
 def test_nenhuma_tela_corta_texto_nem_rola_de_lado_com_a_letra_grande(
         letra_temporaria, qtbot, tmp_path, monkeypatch):
     from sigft.app_qt import main as qmain
@@ -261,13 +230,59 @@ def test_nenhuma_tela_corta_texto_nem_rola_de_lado_com_a_letra_grande(
     janela.resize(1280, 850)
     janela.show()
     qtbot.waitExposed(janela)
-    normal, rolando_normal = _varrer(janela, qtbot)
+    normal, rolando_normal = varrer(janela, qtbot)
     letra.aplicar(letra_temporaria, "grande", gravar=False)
-    grande, rolando_grande = _varrer(janela, qtbot)
+    grande, rolando_grande = varrer(janela, qtbot)
     assert rolando_normal == [] and rolando_grande == []
     # O que já ficava apertado no normal (o "Limpar" de 100 px da Criação de
     # Fichas, travado pelo teste de medidas) não conta; o resto, nada cortado.
     assert {alvo: textos - normal[alvo] for alvo, textos in grande.items() if textos - normal[alvo]} == {}
     letra.aplicar(letra_temporaria, "normal", gravar=False)
-    de_volta, _ = _varrer(janela, qtbot)
+    de_volta, _ = varrer(janela, qtbot)
     assert de_volta == normal
+
+
+# --- fora do português (2026-10-22) ------------------------------------------
+
+def test_largura_fixa_alarga_em_outro_idioma_com_a_letra_normal(letra_temporaria, qtbot):
+    # As larguras fixas foram medidas no português; em espanhol e inglês o texto
+    # tem outro tamanho. O mesmo ajuste da letra grande vale fora do português.
+    from sigft.app import idioma
+
+    try:
+        idioma.definir("es")
+        letra.aplicar(letra_temporaria, "normal", gravar=False)
+        assert len(letra._vigia) == 1
+        botao = blocos.botao("APLICAR LAS AUTORIZACIONES DE ENTREGA", largura=200, tamanho_fonte=12,
+                             negrito=True)
+        qtbot.addWidget(botao)
+        botao.show()
+        qtbot.waitExposed(botao)
+        qtbot.waitUntil(lambda: botao.width() >= botao.sizeHint().width(), timeout=1000)
+        assert botao.minimumWidth() == botao.maximumWidth()
+    finally:
+        idioma.definir("pt")
+        letra.aplicar(letra_temporaria, "normal", gravar=False)
+    assert letra._vigia == []
+
+
+def test_em_portugues_com_a_letra_normal_a_largura_fixa_e_a_de_sempre(letra_temporaria, qtbot):
+    letra.aplicar(letra_temporaria, "normal", gravar=False)
+    assert letra._vigia == []
+    botao = blocos.botao("APLICAR LAS AUTORIZACIONES DE ENTREGA", largura=200, tamanho_fonte=12, negrito=True)
+    qtbot.addWidget(botao)
+    botao.show()
+    qtbot.waitExposed(botao)
+    assert (botao.minimumWidth(), botao.maximumWidth()) == (200, 200)
+
+
+def test_reavaliar_o_vigia_segue_o_idioma(letra_temporaria):
+    from sigft.app import idioma
+
+    letra.aplicar(letra_temporaria, "normal", gravar=False)
+    idioma.definir("en")
+    letra.reavaliar_vigia(letra_temporaria)
+    assert len(letra._vigia) == 1
+    idioma.definir("pt")
+    letra.reavaliar_vigia(letra_temporaria)
+    assert letra._vigia == []
