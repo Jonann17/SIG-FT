@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from sigft import _build_info
-from sigft.app import backends, tokens
+from sigft.app import backends, idioma, tokens
 from sigft.app_qt import (
     atualizacao, catalogo, cursor, estilo, icones, interface, letra, novidades, pasta_de_logs, tema,
 )
@@ -708,6 +708,14 @@ def _smoke() -> int:
         if (sem_desenho := icones.conferir()):
             relatorio = (f"[smoke] FALHOU: icones que nao desenham ({len(sem_desenho)}): "
                          f"{', '.join(sem_desenho)} (pasta {icones.PASTA})")
+            gravar_relatorio(ARQUIVO_JANELA, relatorio)
+            print(relatorio)
+            return 1
+        # Os catálogos de idioma se leem? Fora do `.exe`, o app abriria só em
+        # português, sem erro: a mesma classe dos ícones (2026-10-22).
+        if (sem_catalogo := idioma.conferir()):
+            relatorio = (f"[smoke] FALHOU: catalogos de idioma que nao se leem: "
+                         f"{', '.join(sem_catalogo)} (pasta {idioma.PASTA_CATALOGOS})")
             gravar_relatorio(ARQUIVO_JANELA, relatorio)
             print(relatorio)
             return 1

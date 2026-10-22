@@ -59,6 +59,11 @@ datas = [
     # `sigft/assets/`, que é onde `services/painel.caminho_do_template` procura
     # (ao lado do pacote, inclusive dentro do .exe).
     (os.path.join("sigft", "assets", "painel_template.html"), os.path.join("sigft", "assets")),
+    # Os catálogos de tradução da interface (2026-10-22, `sigft/app/idioma.py`).
+    # Vão para `sigft/app/idiomas/`, onde o `idioma` os procura
+    # (`Path(__file__).parent / "idiomas"`, também dentro do .exe). Sem eles o app
+    # abre em português sem aviso: o `--smoke` do Release reprova (`idioma.conferir`).
+    (os.path.join("sigft", "app", "idiomas"), os.path.join("sigft", "app", "idiomas")),
 ]
 
 # =============================================================================

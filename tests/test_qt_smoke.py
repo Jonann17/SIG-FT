@@ -156,3 +156,14 @@ def test_icone_que_nao_desenha_reprova_o_smoke(relatorio, monkeypatch):
     assert qmain._smoke() == 1
     texto = _ler(relatorio)
     assert "FALHOU" in texto and "house" in texto
+
+
+def test_catalogo_de_idioma_que_nao_se_le_reprova_o_smoke(relatorio, monkeypatch):
+    """Sem o `es.json` no `.exe` o app abriria em português, sem erro nenhum."""
+    from sigft.app import idioma
+
+    monkeypatch.setattr(idioma, "conferir", lambda: ["es"])
+
+    assert qmain._smoke() == 1
+    texto = _ler(relatorio)
+    assert "FALHOU" in texto and "catalogos de idioma" in texto and "es" in texto

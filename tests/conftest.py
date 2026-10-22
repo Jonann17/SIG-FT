@@ -249,6 +249,19 @@ def _sem_janelas_do_fim_da_tarefa(monkeypatch):
     monkeypatch.setenv("SIGFT_SEM_AVISO_DO_WINDOWS", "1")
 
 
+# 7. [2026-10-22] O idioma da interface (`sigft/app/idioma.py`) é estado do
+#    processo. Todo teste começa e termina em português, onde `t(x) == x`: é por
+#    isso que os testes que comparam texto literal continuam valendo. Quem testa
+#    outro idioma usa `tests/_idioma.em_idioma(...)`.
+@pytest.fixture(autouse=True)
+def _interface_em_portugues():
+    from sigft.app import idioma as _idioma
+
+    _idioma.definir(_idioma.PADRAO)
+    yield
+    _idioma.definir(_idioma.PADRAO)
+
+
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_teardown(item, nextitem):
     """Depois de um teste Qt, recolhe o lixo NA HORA.

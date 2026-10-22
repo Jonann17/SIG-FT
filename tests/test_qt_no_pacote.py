@@ -292,6 +292,19 @@ def test_as_fontes_da_interface_vao_para_onde_o_estilo_as_procura(spec_executado
         assert destino == f"{esperado}/{nome}", (nome, destino)
 
 
+
+def test_os_catalogos_de_idioma_vao_para_onde_o_idioma_os_procura(spec_executado):
+    """`idioma.PASTA_CATALOGOS` sai de `__file__`: no pacote, `_MEIPASS/sigft/app/
+    idioma.pyc` -> `_MEIPASS/sigft/app/idiomas`. Os catálogos têm de cair aí."""
+    from sigft.app import idioma
+
+    esperado = Path(os.path.relpath(idioma.PASTA_CATALOGOS, RAIZ)).as_posix()
+    for codigo in ("es", "en"):
+        arquivo = RAIZ / esperado / f"{codigo}.json"
+        assert arquivo.exists(), arquivo
+        destino = _destino_no_pacote(spec_executado["analysis"]["datas"], arquivo)
+        assert destino == f"{esperado}/{codigo}.json", (codigo, destino)
+
 # -- D. as licencas do Qt (LGPLv3) vao no pacote -----------------------------------
 
 # SHA-256 dos textos oficiais da FSF (gnu.org/licenses/lgpl-3.0.txt e
