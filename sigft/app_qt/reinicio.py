@@ -6,7 +6,8 @@ abrir. Com uma tarefa rodando (robô, tradução, IA), NÃO reinicia: diz por qu
 e nada fecha.
 
 No `.exe` a instância nova é o próprio `SIG-FT.exe`; do código-fonte, o
-`frontend.py` com o mesmo Python. Os argumentos vão juntos, menos o `--smoke`.
+`frontend.py` com o mesmo Python. Os argumentos vão juntos, menos o `--smoke` e
+os que só valem no smoke e nas capturas (`OPCOES_DO_SMOKE`, com o valor).
 Nunca nos testes (`ENV_DESLIGAR`, conftest) nem no `--smoke`.
 """
 from __future__ import annotations
@@ -32,9 +33,26 @@ MSG_NAO_REABRIU = (
 )
 
 
+# Opções com valor que só valem no smoke e nas capturas. Ficam de fora ao
+# reabrir: a instância nova abre no que está guardado, senão um `--idioma xx`
+# passado à mão ganharia do idioma que a pessoa acabou de escolher
+# (revisão da Task 3, 2026-10-22).
+OPCOES_DO_SMOKE = ("--idioma", "--tema", "--letra")
+
+
 def comando_para_reabrir(*, congelado: bool, executavel: str, argv: list[str], raiz: str) -> list[str]:
     """A linha de comando da instância nova."""
-    extras = [arg for arg in argv[1:] if arg != "--smoke"]
+    extras: list[str] = []
+    pular_valor = False
+    for arg in argv[1:]:
+        if pular_valor:
+            pular_valor = False
+        elif arg == "--smoke" or ("=" in arg and arg.split("=", 1)[0] in OPCOES_DO_SMOKE):
+            pass  # `--idioma=es`: opção e valor num argumento só
+        elif arg in OPCOES_DO_SMOKE:
+            pular_valor = True
+        else:
+            extras.append(arg)
     if congelado:
         return [executavel, *extras]
     return [executavel, os.path.join(raiz, "frontend.py"), *extras]
@@ -43,6 +61,11 @@ def comando_para_reabrir(*, congelado: bool, executavel: str, argv: list[str], r
 def _abrir_processo(comando: list[str], pasta: str) -> None:
     """Abre o processo solto deste: o fim do atual não o leva junto."""
     opcoes: dict = {"cwd": pasta, "close_fds": True}
+    if getattr(sys, "frozen", False):
+        # PyInstaller 6: a cópia independente do mesmo `.exe` precisa refazer o
+        # ambiente dela; sem isso herda a pasta temporária do pai, que some
+        # quando o pai fecha.
+        opcoes["env"] = {**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"}
     if os.name == "nt":
         opcoes["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     else:

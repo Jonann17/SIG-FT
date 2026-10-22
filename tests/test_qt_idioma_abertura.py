@@ -1,5 +1,6 @@
 """O idioma na abertura e na engrenagem (2026-10-22): a pergunta da primeira
 abertura, a seção Idioma da janela Configuração, o reinício e a tradução do Qt."""
+import os
 import sys
 
 import pytest
@@ -151,14 +152,43 @@ def test_as_pontas_da_traducao_do_qt_andam_juntas():
 def test_comando_para_reabrir():
     import os
 
+    # `--tema`, `--letra` e `--idioma` (com o valor, separado ou com `=`) só valem no smoke e
+    # nas capturas: a instância nova abre no que está guardado, senão o `--idioma xx` passado
+    # à mão ganharia do idioma que a pessoa acabou de escolher (revisão da Task 3, 2026-10-22).
     assert reinicio.comando_para_reabrir(congelado=True, executavel=r"C:\SIG-FT\SIG-FT.exe",
-                                         argv=[r"C:\SIG-FT\SIG-FT.exe", "--tema", "claro"],
-                                         raiz=r"C:\SIG-FT") == [r"C:\SIG-FT\SIG-FT.exe", "--tema", "claro"]
+                                         argv=[r"C:\SIG-FT\SIG-FT.exe", "--tema", "claro", "--outro"],
+                                         raiz=r"C:\SIG-FT") == [r"C:\SIG-FT\SIG-FT.exe", "--outro"]
     assert reinicio.comando_para_reabrir(congelado=False, executavel="/venv/bin/python",
-                                         argv=["/repo/sigft/app_qt/main.py", "--smoke", "--letra", "grande"],
+                                         argv=["/repo/sigft/app_qt/main.py", "--smoke", "--letra", "grande",
+                                               "--idioma=es", "--idioma", "en", "--tema=escuro", "--x"],
                                          raiz="/repo") == ["/venv/bin/python",
-                                                           os.path.join("/repo", "frontend.py"),
-                                                           "--letra", "grande"]
+                                                           os.path.join("/repo", "frontend.py"), "--x"]
+
+
+def _popen_capturado(monkeypatch):
+    chamadas = []
+    monkeypatch.setattr(reinicio.subprocess, "Popen", lambda comando, **opcoes: chamadas.append(opcoes))
+    return chamadas
+
+
+def test_no_exe_a_instancia_nova_nasce_com_ambiente_proprio(monkeypatch):
+    # PyInstaller 6: para abrir uma cópia independente do mesmo `.exe`, o filho
+    # precisa de `PYINSTALLER_RESET_ENVIRONMENT=1`, senão herda a pasta temporária
+    # do pai, que some quando o pai fecha (revisão da Task 3).
+    chamadas = _popen_capturado(monkeypatch)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    reinicio._abrir_processo(["SIG-FT.exe"], "/pasta")
+    [opcoes] = chamadas
+    assert opcoes["env"]["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+    assert opcoes["env"]["PATH"] == os.environ["PATH"]
+
+
+def test_do_codigo_fonte_herda_o_ambiente(monkeypatch):
+    chamadas = _popen_capturado(monkeypatch)
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    reinicio._abrir_processo(["python", "frontend.py"], "/pasta")
+    [opcoes] = chamadas
+    assert "env" not in opcoes
 
 
 class _Janela:
@@ -177,8 +207,10 @@ def test_reiniciar_abre_outra_e_fecha_esta(monkeypatch):
     monkeypatch.setattr(instancia, "tarefas_em_andamento", lambda: [])
     janela = _Janela()
     assert reinicio.reiniciar(janela) is True
-    [(comando, _pasta)] = abertos
+    [(comando, pasta)] = abertos
     assert comando[0] == sys.executable
+    assert comando[1] == os.path.join(qmain._RAIZ, "frontend.py")
+    assert pasta == qmain._RAIZ
     assert janela.fechar_sem_perguntar and janela.fechada
 
 
