@@ -198,3 +198,26 @@ def test_janelas_auxiliares(qt_interface, qtbot, codigo):
                      janelas.JanelaRevisaoEdicao(None, fila)):
             qtbot.addWidget(peca)
             assert ainda_em_portugues(peca, codigo) == set(), type(peca).__name__
+
+
+@pytest.mark.parametrize("codigo", IDIOMAS)
+def test_uploads_e_tradutor(janela, codigo):
+    with em_idioma(codigo):
+        principal = janela()
+        for alvo in ("UploadConditions", "Translator", "UploadSpecs"):
+            principal.show_frame(alvo)
+            assert ainda_em_portugues(principal.telas[alvo], codigo) == set(), alvo
+
+
+@pytest.mark.parametrize("codigo", IDIOMAS)
+def test_pausa_de_login_dos_uploads_no_idioma(qt_interface, codigo):
+    """A janela de pausa não está na tela montada: a guarda em tela não a vê."""
+    from sigft.app import idioma
+    from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO
+    from sigft.app_qt.views.upload_conditions import ModuloUploadConditions
+    from sigft.app_qt.views.upload_tech_specs import ModuloUploadTechSpecs
+
+    with em_idioma(codigo):
+        esperado = idioma.catalogo(codigo)[MSG_LOGIN_SOLTAR_ROBO]
+        for tela in (ModuloUploadConditions, ModuloUploadTechSpecs):
+            assert tela._mensagem_da_pausa(LOGIN_NECESSARIO) == esperado, tela.__name__

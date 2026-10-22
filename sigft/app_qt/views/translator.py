@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMessageBox
 
 from sigft.app import backends
+from sigft.app.idioma import t
 from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets.module_frame import ModuleFrame
@@ -21,7 +22,7 @@ from sigft.core import plataforma
 class ModuloTranslator(ModuleFrame):
     def __init__(self, parent=None, controller=None) -> None:
         self.tradutor = None  # nasce no primeiro clique, não aqui
-        super().__init__(parent, controller, titulo="Tradutor Técnico (PT -> ES)")
+        super().__init__(parent, controller, titulo=t("Tradutor Técnico (PT -> ES)"))
 
     def _build_ui(self) -> None:
         # Espaços verticais do `pack` da tela antiga (pady de cada peça). O pady
@@ -31,22 +32,22 @@ class ModuloTranslator(ModuleFrame):
         corpo = blocos.cartao(self.content_layout)
         corpo.setSpacing(0)
         corpo.setContentsMargins(20, 20, 20, 20)        # título: pady=(20, …); glossário: (…, 20)
-        corpo.addWidget(blocos.rotulo("Tradução Automática de Características", tamanho=16,
+        corpo.addWidget(blocos.rotulo(t("Tradução Automática de Características"), tamanho=16,
                                       negrito=True, papel="destaque"))
         corpo.addSpacing(10)                            # título (…, 10) + descrição (0, …)
         corpo.addWidget(blocos.rotulo(
-            "Selecione as planilhas para traduzir do Português para Espanhol.\n"
-            "O sistema cria uma nova aba traduzida.\n"
-            "A tradução roda neste computador: nenhuma resposta sai daqui.",
+            t("Selecione as planilhas para traduzir do Português para Espanhol.\n"
+              "O sistema cria uma nova aba traduzida.\n"
+              "A tradução roda neste computador: nenhuma resposta sai daqui."),
             papel="legenda"))
-        self.btn_run = blocos.botao("Selecionar Arquivos e Iniciar", variante="primario",
+        self.btn_run = blocos.botao(t("Selecionar Arquivos e Iniciar"), variante="primario",
                                     largura=300, altura=50, tamanho_fonte=14, negrito=True,)
         self.btn_run.clicked.connect(self.iniciar_traducao)
-        self.btn_stop = blocos.botao("PARAR AGORA", variante="perigo", largura=200, altura=40,)
+        self.btn_stop = blocos.botao(t("PARAR AGORA"), variante="perigo", largura=200, altura=40,)
         self.btn_stop.setEnabled(False)
         self.btn_stop.clicked.connect(self.parar_traducao)
         # Lá: fg_color="transparent", border_width=1 e texto text_light.
-        self.btn_glossario = blocos.botao("Abrir glossário (correções de termos)",
+        self.btn_glossario = blocos.botao(t("Abrir glossário (correções de termos)"),
                                           variante="contorno_padrao", largura=300, altura=32)
         self.btn_glossario.clicked.connect(self.abrir_glossario)
         # descrição (…, 20) + iniciar (10, …); iniciar (…, 10) + parar (10, …);
@@ -69,7 +70,7 @@ class ModuloTranslator(ModuleFrame):
         if self._tradutor() is None:
             return
         files = file_dialogs.ask_open_files("translator.fichas", "excel",
-                                            titulo="Selecione as Fichas (.xlsx)",
+                                            titulo=t("Selecione as Fichas (.xlsx)"),
                                             filetypes=[("Excel", "*.xlsx")])
         if not files:
             return
@@ -91,7 +92,7 @@ class ModuloTranslator(ModuleFrame):
             self.log(f"Abrindo o glossário: {caminho}")
             plataforma.abrir_no_sistema(caminho)
         except Exception as e:  # noqa: BLE001 -- vira aviso
-            QMessageBox.critical(self, "Glossário", f"Não consegui abrir o glossário: {e}")
+            QMessageBox.critical(self, t("Glossário"), t("Não consegui abrir o glossário: {erro}", erro=e))
 
     def _worker(self, files) -> None:
         ultimo_erro = ""
@@ -103,7 +104,8 @@ class ModuloTranslator(ModuleFrame):
                     return
                 if msg == "ABORTADO":
                     self.log("Tradução não iniciada.")
-                    self.avisar("Tradutor", ultimo_erro or "A tradução não pôde começar.", tipo="erro")
+                    # O `ultimo_erro` vem do serviço (é do console): vai como veio.
+                    self.avisar(t("Tradutor"), ultimo_erro or t("A tradução não pôde começar."), tipo="erro")
                     return
                 if msg in status:
                     continue
@@ -111,7 +113,7 @@ class ModuloTranslator(ModuleFrame):
                     ultimo_erro = msg
                 self.log(msg)
             self.log("Tradução em lote finalizada.")
-            self.avisar("Sucesso", "Processo concluído.")
+            self.avisar(t("Sucesso"), t("Processo concluído."))
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"Erro Fatal: {e}")
         finally:

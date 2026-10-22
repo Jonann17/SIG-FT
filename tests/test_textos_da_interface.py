@@ -240,6 +240,11 @@ CONVERTIDOS: tuple[str, ...] = (
     "sigft/app_qt/views/cria_fichas.py",
     "sigft/app_qt/views/janelas.py",
     "sigft/app_qt/views/pdm.py",
+    # Task 7: Upload Condições, Tradutor, Upload Specs
+    "sigft/app_qt/views/_upload_comum.py",
+    "sigft/app_qt/views/translator.py",
+    "sigft/app_qt/views/upload_conditions.py",
+    "sigft/app_qt/views/upload_tech_specs.py",
 )
 
 # Literais que a varredura acusa e que ficam em português de propósito, por
@@ -304,6 +309,12 @@ NAO_E_INTERFACE: dict[str, set[str]] = {
         "Catálogo",
         "VERIFICAR (PULADO)",
         "O robô já está trabalhando no portal (criação ou edição). Espere ele terminar antes de iniciar outro.",
+    },
+    # Task 7. A mensagem do robô ocupado das telas de upload só vai ao console
+    # (`_robo_ocupado`), que não muda de idioma (como a do Cria Fichas).
+    "sigft/app_qt/views/_upload_comum.py": {
+        "O robô já está preenchendo uma fila no portal. Espere ele terminar "
+        "(ou use PARAR ROBÔ WEB) antes de iniciar outra.",
     },
 }
 

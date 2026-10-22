@@ -13,16 +13,20 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QSizePolicy, QVBoxLayout
 
+from sigft.app.idioma import marcar, t
 from sigft.app_qt.widgets import abas, blocos, controles, pickers, revisao_portal
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 
-ABA_WEB = "Robô Web (Preencher Portal)"
+# O nome da aba é também a chave dela no `abas.Abas` (`add`, `set`): quem
+# põe e quem escolhe a aba usa o MESMO `t(ABA_WEB)`.
+ABA_WEB = marcar("Robô Web (Preencher Portal)")
 URL_PORTAL = "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
-TEXTO_NAO_SELECIONADO = "Não selecionado"
+TEXTO_NAO_SELECIONADO = marcar("Não selecionado")
 # O tk.Listbox da fila tem as 10 linhas padrão: 200 px medidos na tela antiga.
 ALTURA_LISTA_FILA = 200
 # Um robô por vez: o "Continuar" do fim da IA (ou uma seleção antiga
 # confirmada agora) não sobe um segundo navegador com o primeiro rodando.
+# Vai ao console (`_robo_ocupado`), por isso fica em português, sem `marcar`.
 MSG_ROBO_OCUPADO = ("O robô já está preenchendo uma fila no portal. Espere ele terminar "
                     "(ou use PARAR ROBÔ WEB) antes de iniciar outra.")
 
@@ -41,7 +45,10 @@ class TelaDeUpload(ModuleFrame):
     `_build_tab1` (que chama `_area_da_aba_ia`, `_fila_de_fichas` e
     `_linha_acoes_ia`) e os comandos `_sel_status`, `_start_ia_process`,
     `_stop_ia_process`, `_pre_start_web`, `_start_web_from_file` e
-    `_stop_web_process`."""
+    `_stop_web_process`.
+
+    Os textos de classe são marcados (`marcar`) nas filhas e traduzidos aqui,
+    onde viram widget (`t(self.TEXTO_CONFIG)`...)."""
 
     ABA_IA = ""
     TEXTO_CONFIG = ""
@@ -98,15 +105,15 @@ class TelaDeUpload(ModuleFrame):
         self.tabview = abas.Abas()
         self.content_layout.addWidget(self.tabview, 1)
         self.content_layout.addSpacing(10)              # abas: pady=(…, 10)
-        self._build_tab1(self.tabview.add(self.ABA_IA).layout())
-        self._build_tab2(self.tabview.add(ABA_WEB).layout())
+        self._build_tab1(self.tabview.add(t(self.ABA_IA)).layout())
+        self._build_tab2(self.tabview.add(t(ABA_WEB)).layout())
 
     def _linha_arquivo(self, texto_botao, ao_clicar):
         """Botão cinza de 200 + "Não selecionado" em legenda (padx=10), à esquerda."""
         botao = blocos.botao(texto_botao, variante="cinza", largura=200, altura=28, tamanho_fonte=12)
         botao.clicked.connect(ao_clicar)
         # Elidido: um nome comprido não alarga a tela (passava de 1280 para 1682 px).
-        rotulo = blocos.rotulo(TEXTO_NAO_SELECIONADO, papel="legenda", alinhar="esquerda",
+        rotulo = blocos.rotulo(t(TEXTO_NAO_SELECIONADO), papel="legenda", alinhar="esquerda",
                                elidir=True)
         linha = QHBoxLayout()
         linha.setSpacing(0)
@@ -121,14 +128,14 @@ class TelaDeUpload(ModuleFrame):
         corpo = blocos.cartao(self.content_layout)
         corpo.setSpacing(0)
         corpo.setContentsMargins(*self.MARGENS_CONFIG)
-        self.rotulo_config = blocos.rotulo(self.TEXTO_CONFIG, tamanho=14, negrito=True,
+        self.rotulo_config = blocos.rotulo(t(self.TEXTO_CONFIG), tamanho=14, negrito=True,
                                            papel="destaque", alinhar="esquerda")
         self.rotulo_config.setWordWrap(False)
         corpo.addWidget(self.rotulo_config)
         corpo.addSpacing(10)                            # título + linha (5+5 ou 0+10 lá)
         linha, self.btn_status, self.lbl_status_status = self._linha_arquivo(
-            "Selecionar _STATUS_PMIB", self._sel_status)
-        self.switch_completos = controles.Interruptor(self.TEXTO_INTERRUPTOR)
+            t("Selecionar _STATUS_PMIB"), self._sel_status)
+        self.switch_completos = controles.Interruptor(t(self.TEXTO_INTERRUPTOR))
         linha.addWidget(self.switch_completos)
         linha.addSpacing(10)                            # interruptor: pack(side="right", padx=10)
         corpo.addLayout(linha)
@@ -158,7 +165,7 @@ class TelaDeUpload(ModuleFrame):
 
     def _fila_de_fichas(self, corpo, **kw) -> None:
         """O FileQueueList (as duas cópias idênticas de lá): contador, 5 px, fila."""
-        self.fila_fichas = pickers.FileQueueList(categoria="excel", titulo_dialogo="Selecione as Fichas PMIB",
+        self.fila_fichas = pickers.FileQueueList(categoria="excel", titulo_dialogo=t("Selecione as Fichas PMIB"),
                                                  ao_mudar=self._logar_mudanca_na_fila, **kw)
         self.fila_fichas.listbox.setFixedHeight(ALTURA_LISTA_FILA)
         # Lá a área rolável não estica o que tem dentro: a fila fica com a
@@ -172,10 +179,10 @@ class TelaDeUpload(ModuleFrame):
         """INICIAR (pack expand=True: centrado no que sobra) e PARAR encostado à
         direita; os dois com padx=5, dentro do padx=10 da linha."""
         # width=200 lá, mas o CTkButton cresce até caber o texto (202 na interface antiga).
-        self.btn_ia = blocos.botao("INICIAR PROCESSAMENTO IA", largura_minima=200, altura=40,
+        self.btn_ia = blocos.botao(t("INICIAR PROCESSAMENTO IA"), largura_minima=200, altura=40,
                                    tamanho_fonte=13, negrito=True, variante="primario")
         self.btn_ia.clicked.connect(self._start_ia_process)
-        self.btn_parar_ia = blocos.botao("PARAR", largura=100, altura=40, tamanho_fonte=13, negrito=True,
+        self.btn_parar_ia = blocos.botao(t("PARAR"), largura=100, altura=40, tamanho_fonte=13, negrito=True,
                                          variante="perigo")
         self.btn_parar_ia.setEnabled(False)
         self.btn_parar_ia.clicked.connect(self._stop_ia_process)
@@ -191,16 +198,16 @@ class TelaDeUpload(ModuleFrame):
 
     def _build_tab2(self, aba: QVBoxLayout) -> None:
         aba.addSpacing(20)                              # texto: pady=20
-        self.rotulo_web = blocos.rotulo(self.TEXTO_WEB, tamanho=14)
+        self.rotulo_web = blocos.rotulo(t(self.TEXTO_WEB), tamanho=14)
         aba.addWidget(self.rotulo_web)
-        self.btn_web_mem = blocos.botao("Usar Dados Recém Processados (Memória)", variante="primario",
+        self.btn_web_mem = blocos.botao(t("Usar Dados Recém Processados (Memória)"), variante="primario",
                                         largura=350, altura=40, tamanho_fonte=13, negrito=True)
         self.btn_web_mem.clicked.connect(lambda: self._pre_start_web(self.dados_em_memoria))
-        self.btn_web_file = blocos.botao(self.TEXTO_CARREGAR, variante="cinza",
+        self.btn_web_file = blocos.botao(t(self.TEXTO_CARREGAR), variante="cinza",
                                          largura=350, altura=40, tamanho_fonte=13, negrito=True)
         self.btn_web_file.clicked.connect(self._start_web_from_file)
         # fg_color danger sem hover_color lá: o hover é o do tema.
-        self.btn_parar_web = blocos.botao("PARAR ROBÔ WEB", largura=350, altura=40, tamanho_fonte=13,
+        self.btn_parar_web = blocos.botao(t("PARAR ROBÔ WEB"), largura=350, altura=40, tamanho_fonte=13,
                                           negrito=True, variante="perigo")
         self.btn_parar_web.setEnabled(False)
         self.btn_parar_web.clicked.connect(self._stop_web_process)
@@ -219,8 +226,9 @@ class TelaDeUpload(ModuleFrame):
         return self.fila_fichas.arquivos
 
     def _confirmar(self, mensagem: str) -> bool:
-        """O askyesno "Confirmar" dos botões PARAR (Sim é o padrão, como no Tk)."""
-        resposta = QMessageBox.question(self, "Confirmar", mensagem,
+        """O askyesno "Confirmar" dos botões PARAR (Sim é o padrão, como no Tk).
+        `mensagem` chega traduzida."""
+        resposta = QMessageBox.question(self, t("Confirmar"), mensagem,
                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                         QMessageBox.StandardButton.Yes)
         return resposta == QMessageBox.StandardButton.Yes
@@ -231,6 +239,6 @@ class TelaDeUpload(ModuleFrame):
         if self._robo_ocupado():
             return False
         resposta = QMessageBox.question(
-            self, "Continuar", "Dados salvos! Deseja pular para a Aba 2 e iniciar o Robô Web agora?",
+            self, t("Continuar"), t("Dados salvos! Deseja pular para a Aba 2 e iniciar o Robô Web agora?"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes)
         return resposta == QMessageBox.StandardButton.Yes

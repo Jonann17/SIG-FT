@@ -17,6 +17,7 @@ import json
 
 from PySide6.QtWidgets import QMessageBox, QVBoxLayout
 
+from sigft.app.idioma import marcar, t
 from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO, msg_ficha_preenchida
 from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.views._upload_comum import ABA_WEB, TelaDeUpload, reabilitar
@@ -24,7 +25,7 @@ from sigft.app_qt.widgets import blocos, dialogos_selecao
 from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.core import pmib_regras
 
-ABA_IA = "Processamento IA (Gerar JSON)"
+ABA_IA = marcar("Processamento IA (Gerar JSON)")
 
 
 class ModuloUploadTechSpecs(TelaDeUpload):
@@ -34,11 +35,11 @@ class ModuloUploadTechSpecs(TelaDeUpload):
         Arrastavel("btn_master", "upload_tech_specs.master", (".xlsx", ".xlsm")),
     )
     ABA_IA = ABA_IA
-    TEXTO_CONFIG = "Configuração Global"
+    TEXTO_CONFIG = marcar("Configuração Global")
     MARGENS_CONFIG = (15, 10, 15, 15)               # padx=15; título (10, 0); linha (10, 15)
-    TEXTO_INTERRUPTOR = "Forçar processamento de fichas 'COMPLETO'"
-    TEXTO_WEB = "Lê um arquivo JSON pronto e inicia o Selenium para preencher o Portal Itaipu."
-    TEXTO_CARREGAR = "Carregar JSON Salvo no Computador"
+    TEXTO_INTERRUPTOR = marcar("Forçar processamento de fichas 'COMPLETO'")
+    TEXTO_WEB = marcar("Lê um arquivo JSON pronto e inicia o Selenium para preencher o Portal Itaipu.")
+    TEXTO_CARREGAR = marcar("Carregar JSON Salvo no Computador")
 
     def __init__(self, parent=None, controller=None) -> None:
         # Antes do super(): o `_build_ui` roda lá dentro.
@@ -46,7 +47,7 @@ class ModuloUploadTechSpecs(TelaDeUpload):
         self.dados_em_memoria: list = []  # o JSON, caso a pessoa queira rodar o robô em seguida
         self.caminho_status = ""
         self.caminho_master = ""
-        super().__init__(parent, controller, titulo="Upload Características Técnicas")
+        super().__init__(parent, controller, titulo=t("Upload Características Técnicas"))
         self.api_key = self._chave()
 
     def _controlador(self):
@@ -65,19 +66,19 @@ class ModuloUploadTechSpecs(TelaDeUpload):
 
         # 1. Seletor do Master PDM
         corpo = self._cartao_na_aba(rolavel, (15, 10, 15, 15))
-        self.rotulo_referencia = blocos.rotulo("Referência para IA", tamanho=14, negrito=True,
+        self.rotulo_referencia = blocos.rotulo(t("Referência para IA"), tamanho=14, negrito=True,
                                                papel="destaque", alinhar="esquerda")
         self.rotulo_referencia.setWordWrap(False)
         corpo.addWidget(self.rotulo_referencia)
         corpo.addSpacing(10)                            # título (…, 5) + linha (5, …)
         linha, self.btn_master, self.lbl_master_status = self._linha_arquivo(
-            "Selecionar PDM's SAM-GM", self._sel_master)
+            t("Selecionar PDM's SAM-GM"), self._sel_master)
         corpo.addLayout(linha)
         rolavel.addSpacing(15)                          # referência (…, 5) + fichas (10, …)
 
         # 2. Área de Fichas: o mesmo FileQueueList do Upload de Condições.
         corpo = self._cartao_na_aba(rolavel, (10, 5, 10, 5))   # contador (5, 0); fila pady=5
-        self._fila_de_fichas(corpo, chave="upload_tech_specs.fichas", rotulo="Fichas Selecionadas",
+        self._fila_de_fichas(corpo, chave="upload_tech_specs.fichas", rotulo=t("Fichas Selecionadas"),
                              filetypes=[("Excel", "*.xlsx;*.xlsm")])
         rolavel.addSpacing(15)                          # fichas (…, 10) + ações (5, …)
 
@@ -88,7 +89,7 @@ class ModuloUploadTechSpecs(TelaDeUpload):
     # --- seleção de arquivos (aba 1) --------------------------------------------
     def _sel_status(self) -> None:
         path = file_dialogs.ask_open_file("upload_tech_specs.status_pmib", "excel",
-                                          titulo="Selecione _STATUS_PMIB",
+                                          titulo=t("Selecione _STATUS_PMIB"),
                                           filetypes=[("Excel", "*.xlsx;*.xlsm")])
         if path:
             self.caminho_status = path
@@ -96,7 +97,7 @@ class ModuloUploadTechSpecs(TelaDeUpload):
 
     def _sel_master(self) -> None:
         path = file_dialogs.ask_open_file("upload_tech_specs.master", "excel",
-                                          titulo="Selecione Master PDMs (Template)",
+                                          titulo=t("Selecione Master PDMs (Template)"),
                                           filetypes=[("Excel", "*.xlsx;*.xlsm")])
         if path:
             self.caminho_master = path
@@ -113,8 +114,8 @@ class ModuloUploadTechSpecs(TelaDeUpload):
 
     def _stop_ia_process(self) -> None:
         """Dispara o sinal de parada no Backend"""
-        if self._confirmar("Deseja realmente interromper o processo da IA?\n"
-                           "O que já foi processado será salvo."):
+        if self._confirmar(t("Deseja realmente interromper o processo da IA?\n"
+                             "O que já foi processado será salvo.")):
             self.log("Sinal de parada enviado! Aguarde o término do item atual...")
             self.btn_parar_ia.setEnabled(False)
             if self.tech_controller is not None:
@@ -125,13 +126,13 @@ class ModuloUploadTechSpecs(TelaDeUpload):
         status_file, master_file = self.caminho_status, self.caminho_master
         files = self.lista_fichas_paths
         if not status_file:
-            QMessageBox.warning(self, "Aviso", "Por favor, selecione a planilha de _STATUS_PMIB.")
+            QMessageBox.warning(self, t("Aviso"), t("Por favor, selecione a planilha de _STATUS_PMIB."))
             return
         if not master_file:
-            QMessageBox.warning(self, "Aviso", "Por favor, selecione a planilha Master PDMs.")
+            QMessageBox.warning(self, t("Aviso"), t("Por favor, selecione a planilha Master PDMs."))
             return
         if not files:
-            QMessageBox.warning(self, "Aviso", "Por favor, adicione pelo menos uma ficha à lista.")
+            QMessageBox.warning(self, t("Aviso"), t("Por favor, adicione pelo menos uma ficha à lista."))
             return
         controlador = self._controlador()
         if controlador is None:
@@ -158,20 +159,20 @@ class ModuloUploadTechSpecs(TelaDeUpload):
     def _on_ia_finished(self, resultados) -> None:
         reabilitar((self.btn_ia, True), (self.btn_parar_ia, False))
         if not resultados:
-            QMessageBox.information(self, "Aviso", "Nenhum dado gerado. Verifique o console.")
+            QMessageBox.information(self, t("Aviso"), t("Nenhum dado gerado. Verifique o console."))
             return
 
         self.dados_em_memoria = resultados
         self.log(f"Sucesso! {len(resultados)} fichas geradas prontas para o robô.")
 
         save_path = file_dialogs.ask_save_file("upload_tech_specs.salvar_json", "json",
-                                               titulo="Salvar JSON de Resultados", defaultextension=".json",
+                                               titulo=t("Salvar JSON de Resultados"), defaultextension=".json",
                                                filetypes=[("JSON", "*.json")])
         if save_path:
             sucesso = self.tech_controller.salvar_json(resultados, save_path, callback_log=self.log)
             if sucesso:
                 if self._perguntar_se_continua():
-                    self.tabview.set(ABA_WEB)
+                    self.tabview.set(t(ABA_WEB))
                     # A janela de seleção, como no Upload Condições: antes o
                     # "Continuar" mandava tudo ao portal sem perguntar quais.
                     self._pre_start_web(self.dados_em_memoria)
@@ -182,7 +183,7 @@ class ModuloUploadTechSpecs(TelaDeUpload):
         if self._robo_ocupado():
             return
         if not dados_json:
-            QMessageBox.warning(self, "Aviso", "Não há dados para iniciar a automação.")
+            QMessageBox.warning(self, t("Aviso"), t("Não há dados para iniciar a automação."))
             return
 
         def confirmar(indices):
@@ -194,10 +195,11 @@ class ModuloUploadTechSpecs(TelaDeUpload):
 
         dialogos_selecao.SelecaoMultiplaDialog(
             self,
-            itens=[f"PMIB: {item.get('METADATA', {}).get('PMIB', 'N/A')} | "
-                   f"{item.get('METADATA', {}).get('ARQUIVO_ORIGEM', 'N/A')}" for item in dados_json],
-            titulo="Selecione as Fichas para Processar",
-            instrucao="Selecione quais fichas do JSON deseja enviar para o site:",
+            # Só exibição (`devolver_indices`): a escolha volta como posição.
+            itens=[t("PMIB: {pmib} | {arquivo}", pmib=item.get('METADATA', {}).get('PMIB', 'N/A'),
+                     arquivo=item.get('METADATA', {}).get('ARQUIVO_ORIGEM', 'N/A')) for item in dados_json],
+            titulo=t("Selecione as Fichas para Processar"),
+            instrucao=t("Selecione quais fichas do JSON deseja enviar para o site:"),
             geometria="600x450",
             modal=True,
             com_selecionar_todos=True,
@@ -213,8 +215,8 @@ class ModuloUploadTechSpecs(TelaDeUpload):
 
     def _stop_web_process(self) -> None:
         """Envia o sinal para o Backend parar o robô."""
-        if self._confirmar("Deseja interromper o robô?\n"
-                           "Ele vai parar de forma segura antes da próxima ficha/ação."):
+        if self._confirmar(t("Deseja interromper o robô?\n"
+                             "Ele vai parar de forma segura antes da próxima ficha/ação.")):
             self.log("Sinal de parada enviado ao robô! Aguardando o ciclo atual fechar...")
             self.btn_parar_web.setEnabled(False)
             if self.tech_controller is not None:
@@ -222,7 +224,7 @@ class ModuloUploadTechSpecs(TelaDeUpload):
 
     def _start_web_from_file(self) -> None:
         json_file = file_dialogs.ask_open_file("upload_tech_specs.json_resultados", "json",
-                                               titulo="Selecione JSON de Resultados",
+                                               titulo=t("Selecione JSON de Resultados"),
                                                filetypes=[("JSON", "*.json")])
         if not json_file:
             return
@@ -235,7 +237,7 @@ class ModuloUploadTechSpecs(TelaDeUpload):
         except Exception as e:  # noqa: BLE001 -- vira mensagem para a pessoa
             # Log e caixa, como o "Erro ao ler Excel" do Upload Condições.
             self.log(f"Erro ao ler JSON: {e}")
-            QMessageBox.critical(self, "Erro de Leitura", f"Falha ao ler JSON: {e}")
+            QMessageBox.critical(self, t("Erro de Leitura"), t("Falha ao ler JSON: {erro}", erro=e))
 
     def _start_web_process(self, dados) -> None:
         if self._robo_ocupado():
@@ -255,9 +257,10 @@ class ModuloUploadTechSpecs(TelaDeUpload):
 
     @staticmethod
     def _mensagem_da_pausa(estado_ou_pmib) -> str:
-        """Login, ou a ficha que o robô acabou de preencher (a pessoa confere e segue)."""
+        """Login, ou a ficha que o robô acabou de preencher (a pessoa confere e
+        segue); já no idioma da sessão."""
         if estado_ou_pmib == LOGIN_NECESSARIO:
-            return MSG_LOGIN_SOLTAR_ROBO
+            return t(MSG_LOGIN_SOLTAR_ROBO)
         return msg_ficha_preenchida(estado_ou_pmib)
 
     def _worker_web(self, controlador, dados, caminho_status) -> None:
@@ -269,7 +272,7 @@ class ModuloUploadTechSpecs(TelaDeUpload):
             controlador.executar_pipeline_rpa(dados, caminho_status, callback_log=self.log,
                                               callback_pause=pause_callback)
             self.log("Fila de processamento concluída (ou interrompida).")
-            self.avisar("Aviso", "A fila de automação foi finalizada!")
+            self.avisar(t("Aviso"), t("A fila de automação foi finalizada!"))
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"Erro Crítico Web: {e}")
         finally:
