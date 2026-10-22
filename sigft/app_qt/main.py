@@ -137,10 +137,10 @@ TELAS = {
     "SearchPMIB": _busca_pmib,
 }
 
-# Ctrl+K (etapa 1b, 2026-10-21): o método da Home que cada `acao:` chama, da
-# lista única `catalogo.ACOES_DA_HOME`. As outras ações (`inicio`, `logs`,
-# `tema_*`) estão em `executar_comando`.
-ACAO_NA_HOME = {acao.chave: acao.metodo for acao in catalogo.ACOES_DA_HOME}
+# Ctrl+K (etapa 1b, 2026-10-21): o método da Home que cada `acao:` chama, das
+# listas únicas de `catalogo` (a barra, a engrenagem e a janela Configuração). As
+# outras ações (`inicio`, `logs`, `tema_*`, `letra_*`) estão em `executar_comando`.
+ACAO_NA_HOME = {acao.chave: acao.metodo for acao in catalogo.ACOES_QUE_A_HOME_FAZ}
 
 
 def resource_path(relativo: str) -> str:

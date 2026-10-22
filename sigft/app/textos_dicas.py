@@ -98,7 +98,6 @@ DICAS: dict[str, dict[str, str]] = {
         "btn_glossario": "Abre a lista de termos que a tradução sempre corrige.",
     },
     "HomeView": {
-        "btn_atualizacoes": "Pergunta agora se há versão nova do SIG-FT.",
         "btn_salvar_chaves": "Grava as chaves de API neste computador (Documentos\\SIG-FT).",
         "btn_atualizar_catalogo_ia": "Baixa do provedor a lista atual de modelos e preços.",
         "btn_aplicar_recomendados_ia": "Escolhe para cada tarefa o modelo recomendado.",
@@ -106,16 +105,20 @@ DICAS: dict[str, dict[str, str]] = {
         "btn_atualizar_gastos_ia": "Recalcula o gasto com IA a partir dos logs deste computador.",
         "btn_pasta_logs_ia": "Abre a pasta de logs do SIG-FT no Explorador.",
     },
+    # A janela Configuração (2026-10-22): os botões que vieram da barra da Home.
+    "JanelaConfiguracao": {
+        "btn_modelos": "Escolhe qual modelo de IA cada módulo usa.",
+        "btn_chaves": "Cadastra as chaves de API (Gemini, OpenRouter, busca na web).",
+        "caixa_canal_testes": "Marcado, o aviso de atualização oferece também as versões de teste (rc).",
+        "btn_atualizacoes": "Pergunta agora se há versão nova do SIG-FT.",
+    },
 }
 
 
-# Os botões da barra da Home, pela CHAVE de `home.BARRA` (+ a caixa de testes).
+# Os botões da barra da Home, pela CHAVE de `home.BARRA`.
 DICAS_DA_BARRA_DA_HOME: dict[str, str] = {
     "atividades": "Mostra o que cada pessoa tem para fazer hoje, lido da planilha de mapeamento.",
-    "modelos": "Escolhe qual modelo de IA cada módulo usa.",
     "gastos": "Mostra quanto se gastou com IA neste computador.",
-    "chaves": "Cadastra as chaves de API (Gemini, OpenRouter, busca na web).",
-    "canal_testes": "Marcado, o aviso de atualização oferece também as versões de teste (rc).",
 }
 
 

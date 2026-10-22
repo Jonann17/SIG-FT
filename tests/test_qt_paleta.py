@@ -131,15 +131,16 @@ def test_setas_pulam_o_modulo_bloqueado(qt_interface, qtbot):
 
 
 def test_acoes_da_home_num_lugar_so():
-    """A barra da Home, o Ctrl+K e quem faz cada ação saem de `catalogo.ACOES_DA_HOME`."""
-    from sigft.app_qt.views import home
+    """A barra da Home, a janela Configuração, o Ctrl+K e quem faz cada ação saem de
+    `catalogo` (`ACOES_DA_HOME`, `ACAO_CONFIGURACAO`, `ACOES_DA_CONFIGURACAO`)."""
+    from sigft.app_qt.views import configuracao, home
 
-    acoes = catalogo.ACOES_DA_HOME
-    assert [(a.chave, a.texto, a.variante, a.metodo) for a in acoes if a.chave != "atualizacoes"] \
-        == list(home.BARRA)
-    assert home.ICONE_DA_BARRA == {a.chave: a.icone for a in acoes}
-    assert home.TEXTO_BOTAO_ATUALIZACOES == next(a.texto for a in acoes if a.chave == "atualizacoes")
-    assert home.SELETOR_TEMA is catalogo.SELETOR_TEMA
+    assert [(a.chave, a.texto, a.variante, a.metodo) for a in catalogo.ACOES_DA_HOME] == list(home.BARRA)
+    assert home.ICONE_DA_BARRA == {a.chave: a.icone for a in catalogo.ACOES_DA_HOME}
+    assert configuracao.ACAO == {a.chave: a for a in catalogo.ACOES_DA_CONFIGURACAO}
+    assert home.TEXTO_BOTAO_ATUALIZACOES == configuracao.ACAO["atualizacoes"].texto
+    assert configuracao.SELETOR_TEMA is catalogo.SELETOR_TEMA
+    acoes = catalogo.ACOES_QUE_A_HOME_FAZ
     assert qmain.ACAO_NA_HOME == {a.chave: a.metodo for a in acoes}
     na_paleta = {a[0]: (a[1], a[2]) for a in catalogo.ACOES}
     for a in acoes:
@@ -267,12 +268,12 @@ def volta_ao_escuro(qapp, tmp_path, monkeypatch):
     qapp.setStyleSheet(folha)
 
 
-def test_tema_pela_paleta_marca_o_seletor_da_home(volta_ao_escuro, janela):
-    home = janela.telas["Home"]
+def test_tema_pela_paleta_marca_o_seletor_da_configuracao(volta_ao_escuro, janela):
+    config = janela.telas["Home"].abrir_configuracao()
     janela.executar_comando("acao:tema_claro")
     assert estilo.TEMA_ATUAL == "claro" and tema.escolhido() == "claro"
-    assert home.botoes_tema["claro"].property("ativo") is True
-    assert home.botoes_tema["escuro"].property("ativo") is False
+    assert config.botoes_tema["claro"].property("ativo") is True
+    assert config.botoes_tema["escuro"].property("ativo") is False
 
 
 def test_abrir_logs_usa_o_mesmo_ajudante_da_home(janela, monkeypatch):

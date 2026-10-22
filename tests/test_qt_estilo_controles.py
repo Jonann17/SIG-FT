@@ -43,9 +43,9 @@ def test_caixa_marcada_e_fundo_de_dialogo_como_no_ctk():
 
 def test_home_e_dialogos_usam_primario_onde_o_ctk_pintava_primary():
     # 2026-10-20: a barra guarda a VARIANTE (a cor é da folha do tema); modelos e gastos
-    # são primários.
-    from sigft.app_qt.views import home
-    cores = {chave: cor for chave, _t, cor, _metodo in home.BARRA}
+    # são primários. 2026-10-22: "Modelos de IA" foi para a janela Configuração.
+    from sigft.app_qt import catalogo
+    cores = {a.chave: a.variante for a in (*catalogo.ACOES_DA_CONFIGURACAO, *catalogo.ACOES_DA_HOME)}
     assert cores["modelos"] == "primario" and cores["gastos"] == "primario"
 
 

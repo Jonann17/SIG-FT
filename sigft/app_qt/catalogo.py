@@ -118,24 +118,42 @@ class AcaoDaHome(NamedTuple):
     palavras: str = ""  # o que mais a busca do Ctrl+K acha
 
 
-# As ações da Home NUM LUGAR SÓ (2026-10-21): a barra da Home
-# (`views/home.BARRA`, `ICONE_DA_BARRA`, `TEXTO_BOTAO_ATUALIZACOES`), o Ctrl+K
-# (`ACOES`) e quem faz cada uma (`main.ACAO_NA_HOME`) saem daqui. Na ordem dos
-# botões; o "Atualizações" fecha a barra (o texto dele muda enquanto procura).
+# As ações da Home NUM LUGAR SÓ (2026-10-21; a engrenagem, 2026-10-22): a barra
+# da Home (`views/home.BARRA`), a janela Configuração (`views/configuracao`), o
+# Ctrl+K (`ACOES`) e quem faz cada uma (`main.ACAO_NA_HOME`) saem daqui. Todas
+# são métodos da `HomeView`.
 ACOES_DA_HOME = (
     AcaoDaHome("atividades", "Atividades do dia", "clipboard-check", "primario",
                "abrir_mural_atividades", "mural"),
-    AcaoDaHome("modelos", "Modelos de IA", "bot", "primario",
-               "abrir_janela_modelos_ia", "ia llm provedor"),
     AcaoDaHome("gastos", "Gastos de IA", "circle-dollar-sign", "primario",
                "abrir_janela_gastos_ia", "custo uso"),
+)
+# A engrenagem, à direita do título da Home, e o item do Ctrl+K que abre a janela.
+ACAO_CONFIGURACAO = AcaoDaHome("configuracao", "Configuração", "settings", "fantasma",
+                               "abrir_configuracao", "engrenagem opcoes preferencias ajustes")
+# Os botões que moram na janela Configuração: saíram da barra da Home em 2026-10-22.
+ACOES_DA_CONFIGURACAO = (
+    AcaoDaHome("modelos", "Modelos de IA", "bot", "primario",
+               "abrir_janela_modelos_ia", "ia llm provedor"),
     AcaoDaHome("chaves", "Chaves de API", "key-round", "secundario",
                "abrir_janela_chaves_api", "api key senha"),
-    AcaoDaHome("atualizacoes", "Atualizações", "refresh-cw", "secundario",
+    AcaoDaHome("atualizacoes", "Procurar atualizações", "refresh-cw", "secundario",
                "procurar_atualizacoes", "procurar versao nova atualizar"),
 )
+# Tudo o que a Home faz pelo Ctrl+K, na ordem da caixa.
+ACOES_QUE_A_HOME_FAZ = (ACAO_CONFIGURACAO, *ACOES_DA_HOME, *ACOES_DA_CONFIGURACAO)
 
-# O seletor de tema da Home (2026-10-20): escolha, texto, ícone e dica. O Ctrl+K
+# As seções da janela Configuração, de cima para baixo: chave e título. A chave
+# é o método que monta a seção (`JanelaConfiguracao._secao_<chave>`).
+SECOES_DA_CONFIGURACAO = (
+    ("aparencia", "Aparência"),
+    ("nome", "Seu nome"),
+    ("avisos", "Avisos"),
+    ("ia", "Inteligência artificial"),
+    ("atualizacoes", "Atualizações"),
+)
+
+# O seletor de tema da janela Configuração (2026-10-20): escolha, texto, ícone e dica. O Ctrl+K
 # oferece os três como "Tema: <texto>" e os faz por `HomeView.escolher_tema`.
 SELETOR_TEMA = (
     ("escuro", "Escuro", "moon", "Tema escuro: fundo grafite, o padrão do SIG-FT."),
@@ -144,8 +162,8 @@ SELETOR_TEMA = (
      "Segue o tema do Windows (claro ou escuro) e muda junto quando ele mudar."),
 )
 
-# O seletor de letra da Home (2026-10-21, etapa 1b): escolha, texto e dica. Na
-# linha do título, à direita do de tema; sem ícone no botão (o pacote Lucide do
+# O seletor de letra da janela Configuração (2026-10-21, etapa 1b): escolha, texto e dica.
+# Na seção Aparência, abaixo do de tema; sem ícone no botão (o pacote Lucide do
 # SIG-FT não tem um de letra). O Ctrl+K oferece os dois como "Letra: <texto>" e os
 # faz por `HomeView.escolher_letra`. As escolhas são as de `letra.TAMANHOS`.
 SELETOR_LETRA = (
@@ -158,7 +176,7 @@ SELETOR_LETRA = (
 # que toda chave tenha quem a faça.
 ACOES = (
     ("inicio", "Início", "house", "home tela inicial"),
-    *((a.chave, a.texto, a.icone, a.palavras) for a in ACOES_DA_HOME),
+    *((a.chave, a.texto, a.icone, a.palavras) for a in ACOES_QUE_A_HOME_FAZ),
     ("logs", "Abrir logs", "folder-open", "pasta log"),
     *((f"tema_{escolha}", f"Tema: {texto}", icone, "aparencia cor")
       for escolha, texto, icone, _dica in SELETOR_TEMA),

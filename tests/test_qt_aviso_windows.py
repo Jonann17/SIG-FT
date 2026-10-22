@@ -260,21 +260,6 @@ def test_textos_do_aviso_sem_travessao():
         assert "—" not in texto and "–" not in texto
 
 
-def test_caixa_da_home_liga_e_desliga(qt_interface, qtbot, tmp_path, monkeypatch):
-    from sigft.app_qt.views import home as home_mod
-
-    class Controller:
-        api_keys: dict = {}
-
-    monkeypatch.setattr(aviso, "_arquivo_de_prefs", lambda: tmp_path / "p.json")
-    tela = home_mod.HomeView(controller=Controller())
-    qtbot.addWidget(tela)
-    assert tela.caixa_avisos_windows.text() == home_mod.TEXTO_AVISOS_WINDOWS
-    assert tela.caixa_avisos_windows.isChecked()
-    tela.caixa_avisos_windows.setChecked(False)
-    assert aviso.ligado() is False
-
-
 def test_o_smoke_desliga_o_aviso(monkeypatch):
     """O `--smoke` (Release e CI) nunca avisa, nem numa máquina com bandeja."""
     from sigft.app_qt import main as qmain

@@ -2,7 +2,6 @@
 import re
 
 import pytest
-from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QApplication
 
 from sigft.app import tokens
@@ -170,94 +169,40 @@ def test_escolha_invalida_e_normal(tmp_path, monkeypatch):
 
 
 def test_seletor_de_letra_num_lugar_so():
-    # Como o de tema (2026-10-21): a Home e o Ctrl+K saem de `catalogo.SELETOR_LETRA`.
-    from sigft.app_qt.views import home as home_mod
+    # Como o de tema: a janela Configuração e o Ctrl+K saem de `catalogo.SELETOR_LETRA`.
+    from sigft.app_qt.views import configuracao as config_mod
 
-    assert home_mod.SELETOR_LETRA is catalogo.SELETOR_LETRA
+    assert config_mod.SELETOR_LETRA is catalogo.SELETOR_LETRA
     assert tuple(e for e, *_ in catalogo.SELETOR_LETRA) == letra.TAMANHOS
     na_paleta = {a[0]: a[1] for a in catalogo.ACOES}
     for escolha, texto, _dica in catalogo.SELETOR_LETRA:
         assert na_paleta[f"letra_{escolha}"] == f"Letra: {texto}"
 
 
-def test_seletor_na_home_marca_e_aplica(letra_temporaria, qtbot):
+def _configuracao(qtbot):
     from sigft.app_qt.views import home as home_mod
 
     tela = home_mod.HomeView(controller=Controller())
     qtbot.addWidget(tela)
-    assert set(tela.botoes_letra) == set(letra.TAMANHOS)
-    assert tela.botoes_letra["normal"].property("ativo") is True
-    tela.botoes_letra["grande"].click()
+    return tela.abrir_configuracao()
+
+
+def test_seletor_da_configuracao_marca_e_aplica(letra_temporaria, qtbot):
+    config = _configuracao(qtbot)
+    assert set(config.botoes_letra) == set(letra.TAMANHOS)
+    assert config.botoes_letra["normal"].property("ativo") is True
+    config.botoes_letra["grande"].click()
     assert estilo.AUMENTO_LETRA == tokens.AUMENTO_DA_LETRA["grande"]
-    assert tela.botoes_letra["grande"].property("ativo") is True
-    assert tela.botoes_letra["normal"].property("ativo") is False
-
-
-@pytest.mark.parametrize("escolha", ["normal", "grande"])
-def test_seletores_cabem_na_linha_do_titulo(letra_temporaria, qtbot, escolha):
-    # A barra de botões já ocupa quase toda a Home a 1280 px: tema e letra ficam
-    # na linha do título, à direita, sem rolagem horizontal nem mexer no título.
-    from sigft.app_qt.views import home as home_mod
-
-    letra.aplicar(letra_temporaria, escolha, gravar=False)
-    tela = home_mod.HomeView(controller=Controller())
-    qtbot.addWidget(tela)
-    tela.resize(1280 - estilo.LARGURA_BARRA_LATERAL, 850)
-    tela.show()
-    qtbot.waitExposed(tela)
-    corpo = tela.widget()
-    assert corpo.minimumSizeHint().width() <= tela.viewport().width()
-    qtbot.waitUntil(lambda: corpo.width() == tela.viewport().width(), timeout=1000)
-    # Com a letra grande o vigia refaz as folhas no `Polish`, e o primeiro layout
-    # se acerta depois: vale o estado assentado (sobram 8 px a 1280, 2026-10-21).
-    qtbot.waitUntil(lambda: not tela.horizontalScrollBar().isVisible(), timeout=1000)
-    titulo = tela.label_titulo.geometry()
-    if escolha == "normal":
-        assert (titulo.x(), titulo.y(), titulo.height()) == (46, 46, 38)
-    for botao in [*tela.botoes_tema.values(), *tela.botoes_letra.values()]:
-        topo = botao.mapTo(corpo, QPoint(0, 0))
-        assert topo.y() >= titulo.y() and topo.y() + botao.height() <= titulo.y() + titulo.height()
-        assert topo.x() + botao.width() <= corpo.width() - 57
-    # Nenhum botão da barra espremido abaixo do texto (o `min-width` de 140 deixa
-    # o layout cortar o texto em vez de rolar): com a letra grande o "Versões de
-    # teste" desce para a linha de baixo e a barra cabe inteira.
-    for botao in tela.botoes_barra.values():
-        assert botao.width() >= botao.sizeHint().width()
-    caixa = tela.caixa_canal_testes
-    assert caixa.width() >= caixa.sizeHint().width()
-    assert caixa.mapTo(corpo, QPoint(0, 0)).x() + caixa.width() <= corpo.width() - 57
-    abaixo = caixa.mapTo(corpo, QPoint(0, 0)).y() >= \
-        tela.btn_atualizacoes.mapTo(corpo, QPoint(0, 0)).y() + tela.btn_atualizacoes.height()
-    assert abaixo is (escolha == "grande")
-
-
-def test_troca_na_hora_leva_a_caixa_e_traz_de_volta(letra_temporaria, qtbot):
-    from sigft.app_qt.views import home as home_mod
-
-    letra.aplicar(letra_temporaria, "normal", gravar=False)   # a folha do app, como na abertura
-    tela = home_mod.HomeView(controller=Controller())
-    qtbot.addWidget(tela)
-    tela.resize(1280 - estilo.LARGURA_BARRA_LATERAL, 850)
-    tela.show()
-    qtbot.waitExposed(tela)
-    caixa = tela.caixa_canal_testes
-    antes = caixa.geometry()
-    tela.escolher_letra("grande")
-    qtbot.waitUntil(lambda: caixa.y() > tela.btn_atualizacoes.y() + tela.btn_atualizacoes.height(),
-                    timeout=1000)
-    tela.escolher_letra("normal")
-    qtbot.waitUntil(lambda: caixa.geometry() == antes, timeout=1000)
+    assert config.botoes_letra["grande"].property("ativo") is True
+    assert config.botoes_letra["normal"].property("ativo") is False
 
 
 def test_seletor_marca_a_letra_que_esta_valendo(letra_temporaria, qtbot):
     # `--smoke --letra grande` não grava: o seletor marca a que vale, não a das prefs.
-    from sigft.app_qt.views import home as home_mod
-
     letra.aplicar(letra_temporaria, "grande", gravar=False)
     assert letra.escolhido() == "normal" and letra.atual() == "grande"
-    tela = home_mod.HomeView(controller=Controller())
-    qtbot.addWidget(tela)
-    assert tela.botoes_letra["grande"].property("ativo") is True
+    config = _configuracao(qtbot)
+    assert config.botoes_letra["grande"].property("ativo") is True
 
 
 def test_opcao_da_linha_de_comando():

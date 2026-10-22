@@ -106,7 +106,9 @@ def test_o_nome_nao_vai_para_o_log(qt_interface, qtbot, tmp_path, monkeypatch):
               'ler_preferencia("nome"', "ler_preferencia('nome'")
     usos = [p for p in (RAIZ / "sigft").rglob("*.py")
             if any(s in p.read_text(encoding="utf-8") for s in sinais)]
-    permitidos = {"sigft/app_qt/nome.py", "sigft/app_qt/views/home.py"}
+    # 2026-10-22: o campo "Seu nome" da janela Configuração mostra o nome guardado (só tela).
+    permitidos = {"sigft/app_qt/nome.py", "sigft/app_qt/views/home.py",
+                  "sigft/app_qt/views/configuracao.py"}
     assert {p.relative_to(RAIZ).as_posix() for p in usos} <= permitidos
 
 
