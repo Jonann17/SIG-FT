@@ -153,3 +153,23 @@ def test_ctrl_k_traduzido_acha_tambem_em_portugues(codigo, texto_do_tema, palavr
         for consulta in (f"aparencia {nome_do_tema}", f"{palavra_traduzida} {nome_do_tema}"):
             assert "acao:tema_escuro" in [c.chave for c in catalogo.filtrar(lista, consulta)], consulta
         assert "acao:configuracao" in [c.chave for c in catalogo.filtrar(lista, "engrenagem")]
+        # Os nomes em português (menu, módulo, texto da ação) também acham.
+        em_portugues = {"tradutor": "tela:Translator", "configuracao": "acao:configuracao",
+                        "escuro": "acao:tema_escuro", "planilhas": "tela:PDM",
+                        "chaves": "acao:chaves", "busca": "tela:SearchPMIB",
+                        "duplicadas": "tela:CopiaFichas", "inicio": "acao:inicio",
+                        "letra grande": "acao:letra_grande"}
+        for consulta, chave in em_portugues.items():
+            assert chave in [c.chave for c in catalogo.filtrar(lista, consulta)], consulta
+
+
+def test_ctrl_k_em_portugues_nao_duplica_as_palavras():
+    """Em português as palavras da busca são só as originais: nada repetido."""
+    from sigft.app_qt import catalogo
+
+    no_menu = {item[2]: item[1] for item in catalogo.MENU if item[0] == "botao"}
+    palavras = {c.chave: c.palavras for c in catalogo.comandos()}
+    for alvo, _titulo, _descricao in catalogo.MODULOS:
+        assert palavras[f"tela:{alvo}"] == f"{no_menu.get(alvo, '')} {alvo}"
+    for acao in catalogo.ACOES:
+        assert palavras[f"acao:{acao.chave}"] == acao.palavras

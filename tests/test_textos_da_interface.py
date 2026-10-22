@@ -264,7 +264,8 @@ NAO_E_INTERFACE: dict[str, set[str]] = {
     # A pergunta da primeira abertura é bilíngue de propósito: vem antes de haver idioma.
     "sigft/app_qt/escolha_de_idioma.py": {"Idioma / Language"},
     "sigft/app_qt/main.py": {
-        # A chave da tela inicial (`TELAS`, `show_frame`), não texto.
+        # Só a CHAVE da tela inicial (`TELAS`, `show_frame`, `telas["Home"]`), não texto:
+        # o botão do menu mostra `t('Home')`.
         "Home",
         # O título da janela: nome do produto e a versão.
         "f'SIG-FT v{_build_info.VERSAO} - GE Vernova'",

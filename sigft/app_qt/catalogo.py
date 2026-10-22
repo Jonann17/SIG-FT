@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-from sigft.app import busca
+from sigft.app import busca, idioma
 from sigft.app.idioma import marcar, t
 
 MENU = [
@@ -204,18 +204,34 @@ SUFIXO_BLOQUEADO = marcar(" (bloqueado)")
 def comandos() -> list[Comando]:
     """Os módulos (na ordem dos cartões da Home) e as ações, no idioma da sessão.
     O módulo bloqueado aparece como no menu: apagado, com a mesma dica, e não se
-    escolhe. A busca acha pelas palavras traduzidas E pelas em português."""
-    no_menu = {item[2]: t(item[1]) for item in MENU if item[0] == "botao"}
+    escolhe. A busca acha pelas palavras traduzidas E pelas em português (o
+    nome do módulo, o texto da ação e as palavras): quem trocou de idioma e
+    ainda digita em português acha (revisão da Task 5, 2026-10-22)."""
+    menu_pt = {item[2]: item[1] for item in MENU if item[0] == "botao"}
     lista = []
     for alvo, titulo, _descricao in MODULOS:
         bloqueado = alvo in TELAS_BLOQUEADAS
+        palavras = _com_o_portugues(
+            f"{t(menu_pt.get(alvo, ''))} {alvo}", f"{menu_pt.get(alvo, '')} {titulo}")
         lista.append(Comando(
             f"tela:{alvo}", t(titulo) + (t(SUFIXO_BLOQUEADO) if bloqueado else ""), ICONE_DA_TELA[alvo],
-            f"{no_menu.get(alvo, '')} {alvo}", bloqueado=bloqueado, dica=dica_do_menu(alvo)))
+            palavras, bloqueado=bloqueado, dica=dica_do_menu(alvo)))
     for acao in ACOES:
-        texto = t(acao.texto, nome=t(acao.nome)) if acao.nome else t(acao.texto)
-        lista.append(Comando(f"acao:{acao.chave}", texto, acao.icone, f"{t(acao.palavras)} {acao.palavras}"))
+        if acao.nome:
+            texto, texto_pt = t(acao.texto, nome=t(acao.nome)), acao.texto.format(nome=acao.nome)
+        else:
+            texto, texto_pt = t(acao.texto), acao.texto
+        palavras = _com_o_portugues(t(acao.palavras), f"{acao.palavras} {texto_pt}")
+        lista.append(Comando(f"acao:{acao.chave}", texto, acao.icone, palavras))
     return lista
+
+
+def _com_o_portugues(palavras: str, em_portugues: str) -> str:
+    """As palavras da busca e, se o idioma não é o português, as originais: em
+    português não duplica (o texto já é o original)."""
+    if idioma.atual() == idioma.PADRAO:
+        return palavras
+    return f"{palavras} {em_portugues}"
 
 
 def filtrar(lista, consulta: str) -> list[Comando]:
