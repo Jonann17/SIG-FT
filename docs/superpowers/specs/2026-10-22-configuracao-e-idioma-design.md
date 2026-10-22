@@ -4,10 +4,11 @@ Pedido do Jonathan, 2026-10-21/22: juntar numa engrenagem tudo o que hoje é
 configurável e espalhado pela Home, e deixar o app em **espanhol, português e
 inglês**, perguntado na primeira abertura e trocável na engrenagem.
 
-São duas partes, nesta ordem, cada uma com o seu plano:
+São duas partes, entregues **juntas, num PR só e numa rc só** (decisão do
+Jonathan, 2026-10-22), com um plano único:
 
 - **Parte A: a engrenagem.** Pequena, e é onde o idioma vai morar.
-- **Parte B: o idioma.** Grande (cerca de 1.300 textos de interface), feita por etapas.
+- **Parte B: o idioma.** Grande (cerca de 1.300 textos de interface).
 
 ## Decisões (tomadas com o Jonathan)
 
@@ -36,8 +37,7 @@ e a janela com as seis seções.
      `letra.aplicar`).
   2. **Idioma**: Español / Português / English, "O idioma muda na próxima vez
      que o SIG-FT abrir" e "Reiniciar agora" (só habilitado quando a escolha
-     difere do idioma em uso). Na Parte A a seção existe com o idioma fixo em
-     português e os botões desabilitados com a dica "Em breve"; a Parte B liga.
+     difere do idioma em uso).
   3. **Seu nome**: campo com o nome do saudação (`nome.guardar` ao sair do campo
      ou Enter; vazio tira o nome). A Home atualiza o saudação na hora.
   4. **Avisos**: "Avisar no Windows quando uma tarefa terminar ou pedir algo"
@@ -116,7 +116,7 @@ e a janela com as seis seções.
   (`app/textos_dicas.py`) e o catálogo de módulos (`catalogo.py`) entram cedo:
   são os mais vistos.
 
-### Etapas (cada uma é um PR)
+### Ordem das tarefas (tudo no mesmo PR)
 
 1. Infraestrutura (`idioma.py`, catálogos, ferramenta, testes) + caixa da
    primeira abertura + seção Idioma da engrenagem ligada + menu lateral, Home,
@@ -143,6 +143,6 @@ que travam textos passam a comparar com `t(...)` no idioma português.
 
 ## Entrega
 
-Parte A: um PR e uma rc. Parte B: um PR por etapa; a rc sai quando a etapa 1
-estiver pronta (o app já pergunta e troca o idioma nas partes mais vistas), as
-seguintes completam.
+Um PR só (engrenagem + idioma completo nas 12 telas) e uma rc só, depois da
+revisão final da branch inteira. A ordem das tarefas acima é a ordem do plano;
+nenhuma vai à branch oficial antes das outras.
