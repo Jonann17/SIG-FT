@@ -16,11 +16,14 @@ from PySide6.QtWidgets import (
     QRadioButton, QVBoxLayout, QWidget,
 )
 
+from sigft.app.idioma import t
 from sigft.app_qt import estilo, file_dialogs, icones, interface
 from sigft.app_qt.widgets import blocos, controles
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.core import plataforma
 
+# Nomes de coluna das planilhas pesquisadas: o menu "Coluna Alvo" os mostra e
+# o serviço procura por eles. Dado, não interface: ficam em português.
 COLUNAS = ["DESCRIÇÃO", "CÓDIGO DO MATERIAL", "CÓDIGO CMI", "MARCA/MODELO", "CÓDIGO PMIB"]
 LARGURA_ROTULO = 150
 
@@ -119,7 +122,7 @@ class CartaoResultado(QFrame):
             " min-height: 28px; max-height: 28px; font-size: 14px; font-weight: bold; }")
         linha_topo.addWidget(self.campo_pmib)
         linha_topo.addSpacing(5)                        # rótulo: padx=5
-        self.rotulo_coluna = QLabel(f"| Match na coluna: {coluna}")
+        self.rotulo_coluna = QLabel(t("| Match na coluna: {coluna}", coluna=coluna))
         self.rotulo_coluna.setFixedHeight(28)
         self.rotulo_coluna.setProperty("papel", "legenda")
         self.rotulo_coluna.setStyleSheet("font-size: 12px; background: transparent;")
@@ -128,14 +131,14 @@ class CartaoResultado(QFrame):
         layout.addLayout(linha_topo)
 
         layout.addSpacing(7)                            # f_top (…, 5) + caminho (2, …)
-        self.texto_caminho = _caixa_de_texto(estilo.mono("📂 Caminho:") + f"\n{caminho_arq}",
+        self.texto_caminho = _caixa_de_texto(estilo.mono("📂 " + t("Caminho:")) + f"\n{caminho_arq}",
                                              fonte=("Consolas", 11), papel="legenda")
         layout.addWidget(self.texto_caminho)
 
         self.texto_amostra = None
         if amostra:
             layout.addSpacing(4)                        # caminho (…, 2) + amostra (2, …)
-            self.texto_amostra = _caixa_de_texto(estilo.mono("🔎 Amostra: ") + amostra,
+            self.texto_amostra = _caixa_de_texto(estilo.mono("🔎 " + t("Amostra: ")) + amostra,
                                                  fonte=("Roboto", 12))
             layout.addWidget(self.texto_amostra)
             layout.addSpacing(5)                        # amostra (…, 5) + botões (0, …)
@@ -146,9 +149,9 @@ class CartaoResultado(QFrame):
         linha_botoes.setContentsMargins(5, 0, 0, 0)     # botões: padx=15 (10 já vêm do cartão)
         linha_botoes.setSpacing(10)                     # "Abrir Arquivo": padx=(0, 10)
         # Os emoji dos dois botões viraram ícone (Lucide, 2026-10-20).
-        self.botao_arquivo = icones.aplicar(_botao_cinza("Abrir Arquivo", 120), "file", tamanho=14)
+        self.botao_arquivo = icones.aplicar(_botao_cinza(t("Abrir Arquivo"), 120), "file", tamanho=14)
         self.botao_arquivo.clicked.connect(lambda: abrir_arquivo(caminho_arq))
-        self.botao_pasta = icones.aplicar(_botao_cinza("Abrir Pasta", 120), "folder-open", tamanho=14)
+        self.botao_pasta = icones.aplicar(_botao_cinza(t("Abrir Pasta"), 120), "folder-open", tamanho=14)
         self.botao_pasta.clicked.connect(lambda: abrir_pasta(caminho_pasta))
         linha_botoes.addWidget(self.botao_arquivo)
         linha_botoes.addWidget(self.botao_pasta)
@@ -170,7 +173,7 @@ class JanelaResultados(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         # O fundo do tema: a regra `#janela_resultados` da folha.
-        self.setWindowTitle(f"Resultados da Busca: {len(resultados)} encontrados")
+        self.setWindowTitle(t("Resultados da Busca: {n} encontrados", n=len(resultados)))
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.resize(900, 650)
 
@@ -178,7 +181,7 @@ class JanelaResultados(QWidget):
         # título pady=(15, 5); quadro padx=20, pady=(0, 15); "Fechar" pady=(0, 20).
         layout.setContentsMargins(20, 15, 20, 20)
         layout.setSpacing(0)
-        self.rotulo_titulo = blocos.rotulo("Resultados Encontrados", tamanho=18, negrito=True,
+        self.rotulo_titulo = blocos.rotulo(t("Resultados Encontrados"), tamanho=18, negrito=True,
                                            papel="destaque")
         self.rotulo_titulo.setFixedHeight(blocos.ALTURA_MINIMA_ROTULO)
         layout.addWidget(self.rotulo_titulo)
@@ -203,7 +206,7 @@ class JanelaResultados(QWidget):
             self.cartoes.append(cartao)
         lista.addSpacing(8)
 
-        self.botao_fechar = _botao_cinza("Fechar", 150)
+        self.botao_fechar = _botao_cinza(t("Fechar"), 150)
         self.botao_fechar.clicked.connect(self.close)
         layout.addWidget(self.botao_fechar, 0, Qt.AlignmentFlag.AlignHCenter)
 
@@ -214,14 +217,14 @@ class JanelaResultados(QWidget):
             self.tela.log(f"Abrindo arquivo: {os.path.basename(caminho)}")
             plataforma.abrir_no_sistema(caminho)
         else:
-            QMessageBox.critical(self, "Erro", "Arquivo não encontrado.")
+            QMessageBox.critical(self, t("Erro"), t("Arquivo não encontrado."))
 
     def abrir_pasta(self, pasta: str) -> None:
         if os.path.exists(pasta):
             self.tela.log(f"Abrindo pasta: {pasta}")
             plataforma.abrir_no_sistema(pasta)
         else:
-            QMessageBox.critical(self, "Erro", "Pasta não encontrada.")
+            QMessageBox.critical(self, t("Erro"), t("Pasta não encontrada."))
 
 
 class ModuloBuscaPMIB(ModuleFrame):
@@ -229,7 +232,7 @@ class ModuloBuscaPMIB(ModuleFrame):
         self.janela_resultados = None
         # Console sem altura fixa (lá: row 2 com weight=1, sticky="nsew") e
         # conteúdo só com o necessário (row 1, weight=0).
-        super().__init__(parent, controller, titulo="Search PMIB (Buscador de Sobressalentes)",
+        super().__init__(parent, controller, titulo=t("Search PMIB (Buscador de Sobressalentes)"),
                          peso_conteudo=0, altura_console=None)
         # A tela antiga não é um ModuleFrame da interface antiga: tem grid próprio. Header
         # pady=10, conteúdo pady=5, console pady=(15, 20) -- no grid cada linha
@@ -253,29 +256,30 @@ class ModuloBuscaPMIB(ModuleFrame):
         self.content_layout.addSpacing(5)
         corpo.setSpacing(0)
         corpo.setContentsMargins(15, 10, 15, 15)        # título pady=(10, 5); termo (5, 15); padx=15
-        self.rotulo_secao = blocos.rotulo("1. Parâmetros de Busca", tamanho=14, negrito=True,
+        self.rotulo_secao = blocos.rotulo(t("1. Parâmetros de Busca"), tamanho=14, negrito=True,
                                           papel="destaque", alinhar="esquerda")
         corpo.addWidget(self.rotulo_secao)
         self.rotulos_linha: list[QLabel] = []
 
         # 1. Seleção da Pasta Raiz
         corpo.addSpacing(10)                            # título (…, 5) + linha (5, …)
-        linha = self._linha(corpo, "Pasta Raiz da Busca:")
+        linha = self._linha(corpo, t("Pasta Raiz da Busca:"))
         self.entry_pasta = QLineEdit()
         self.entry_pasta.setFixedWidth(400)
         linha.addSpacing(5)                             # campo: padx=5
         linha.addWidget(self.entry_pasta)
         linha.addSpacing(5)
-        self.btn_pasta = _botao_cinza("Buscar Pasta", 100)
+        self.btn_pasta = _botao_cinza(t("Buscar Pasta"), 100)
         self.btn_pasta.clicked.connect(self._selecionar_pasta)
         linha.addWidget(self.btn_pasta)
         linha.addStretch()
 
         # 2. Modo de Busca e Coluna
         corpo.addSpacing(10)
-        linha = self._linha(corpo, "Modo de Busca:")
-        self.rb_direc = QRadioButton("Direcionada (Rápida)")
-        self.rb_geral = QRadioButton("Generalista (Lenta)")
+        linha = self._linha(corpo, t("Modo de Busca:"))
+        # O modo sai de qual rádio está marcado (`tipo_busca`), nunca do texto.
+        self.rb_direc = QRadioButton(t("Direcionada (Rápida)"))
+        self.rb_geral = QRadioButton(t("Generalista (Lenta)"))
         self.rb_direc.setChecked(True)
         self._grupo_modo = QButtonGroup(self)
         for rb in (self.rb_direc, self.rb_geral):
@@ -285,7 +289,7 @@ class ModuloBuscaPMIB(ModuleFrame):
         linha.addSpacing(15)                            # padx=(0, 15)
         linha.addWidget(self.rb_geral)
         linha.addSpacing(30)                            # rádio (…, 20) + rótulo (10, …)
-        self.rotulo_coluna = _rotulo_da_linha("Coluna Alvo:", largura=None)
+        self.rotulo_coluna = _rotulo_da_linha(t("Coluna Alvo:"), largura=None)
         linha.addWidget(self.rotulo_coluna)
         linha.addSpacing(5)
         self.opt_coluna = controles.MenuDeOpcoes(COLUNAS)
@@ -295,14 +299,14 @@ class ModuloBuscaPMIB(ModuleFrame):
 
         # 3. Termo de Busca
         corpo.addSpacing(10)
-        linha = self._linha(corpo, "Termo Procurado:")
+        linha = self._linha(corpo, t("Termo Procurado:"))
         self.entry_termo = QLineEdit()
         self.entry_termo.setFixedWidth(400)
-        self.entry_termo.setPlaceholderText("Digite o que deseja encontrar...")
+        self.entry_termo.setPlaceholderText(t("Digite o que deseja encontrar..."))
         linha.addSpacing(5)
         linha.addWidget(self.entry_termo)
         linha.addSpacing(15)                            # campo (…, 5) + botão (10, …)
-        self.btn_search = blocos.botao("PESQUISAR", variante="primario", largura=150,
+        self.btn_search = blocos.botao(t("PESQUISAR"), variante="primario", largura=150,
                                        altura=28, negrito=True)
         icones.aplicar(self.btn_search, "search", tamanho=16)   # era o "🔍" (2026-10-20)
         self.btn_search.clicked.connect(self.iniciar_busca)
@@ -323,7 +327,7 @@ class ModuloBuscaPMIB(ModuleFrame):
         self.opt_coluna.setEnabled(self.tipo_busca != "generalista")
 
     def _selecionar_pasta(self) -> None:
-        p = file_dialogs.ask_directory("search.pasta_raiz", "pasta", titulo="Selecione a Pasta Raiz de Busca")
+        p = file_dialogs.ask_directory("search.pasta_raiz", "pasta", titulo=t("Selecione a Pasta Raiz de Busca"))
         if p:
             self.entry_pasta.setText(p)
 
@@ -334,10 +338,10 @@ class ModuloBuscaPMIB(ModuleFrame):
         coluna = self.opt_coluna.currentText()
 
         if not pasta:
-            QMessageBox.warning(self, "Atenção", "Selecione a pasta raiz antes de pesquisar.")
+            QMessageBox.warning(self, t("Atenção"), t("Selecione a pasta raiz antes de pesquisar."))
             return
         if not termo:
-            QMessageBox.warning(self, "Atenção", "Digite o termo que deseja pesquisar.")
+            QMessageBox.warning(self, t("Atenção"), t("Digite o termo que deseja pesquisar."))
             return
         modulo = self.backend("search_pmib_backend")
         if modulo is None:
@@ -363,7 +367,7 @@ class ModuloBuscaPMIB(ModuleFrame):
     def _mostrar_janela_resultados(self, resultados) -> None:
         """Abre a janela com um cartão por resultado (ou avisa que não há nenhum)."""
         if not resultados:
-            QMessageBox.information(self, "Resultados", "Nenhum material encontrado com esses parâmetros.")
+            QMessageBox.information(self, t("Resultados"), t("Nenhum material encontrado com esses parâmetros."))
             return
         self.janela_resultados = JanelaResultados(self, resultados)
         # WA_DeleteOnClose: fechada, a janela some; a referência não pode sobrar.

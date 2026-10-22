@@ -249,6 +249,12 @@ CONVERTIDOS: tuple[str, ...] = (
     "sigft/app_qt/views/autospec.py",
     "sigft/app_qt/views/copia_fichas.py",
     "sigft/app_qt/views/correcao_pdm.py",
+    # Task 9: Aplicação LMR, PMIB Manager, Busca PMIB
+    "sigft/app_qt/views/apagar_lmr.py",
+    "sigft/app_qt/views/aplicacao_lmr.py",
+    "sigft/app_qt/views/busca_pmib.py",
+    "sigft/app_qt/views/lmr.py",
+    "sigft/app_qt/views/pmib_manager.py",
 )
 
 # Literais que a varredura acusa e que ficam em português de propósito, por
@@ -335,6 +341,20 @@ NAO_E_INTERFACE: dict[str, set[str]] = {
         "mudar o status das fichas.",
         "f'[Robô novo] Falha: {type(erro).__name__}: {erro}'",
     },
+    # Task 9. O `NOME_DO_ROBO` de cada aba da Aplicação LMR só aparece no console
+    # (`ComTravaDeRobo.robo_ocupado`), que não muda de idioma.
+    "sigft/app_qt/views/apagar_lmr.py": {"Exclusão de aplicações"},
+    "sigft/app_qt/views/lmr.py": {"Upload de aplicações"},
+    # Busca PMIB: os nomes de coluna das planilhas pesquisadas (o menu "Coluna
+    # Alvo" os mostra e o serviço procura por eles) são dado. "PMIB: {código}" é
+    # o termo do glossário e o código achado: igual em todo idioma.
+    "sigft/app_qt/views/busca_pmib.py": {
+        "DESCRIÇÃO",
+        "CÓDIGO DO MATERIAL",
+        "CÓDIGO CMI",
+        "CÓDIGO PMIB",
+        "f'PMIB: {cod_itaipu}'",
+    },
 }
 
 
@@ -354,3 +374,10 @@ def test_o_que_fica_em_portugues_ainda_existe():
         fonte = (RAIZ / arquivo).read_text(encoding="utf-8")
         achados = {u.texto for u in ferramenta.literais_soltos(fonte, arquivo)}
         assert textos <= achados, (arquivo, textos - achados)
+
+
+def test_toda_a_interface_esta_na_guarda():
+    """Arquivo novo em `sigft/app_qt` (ou um que ficou de fora) entra na guarda:
+    texto de interface sem `t()` não volta escondido."""
+    todos = {p.relative_to(RAIZ).as_posix() for p in ferramenta.arquivos(RAIZ)}
+    assert todos - set(CONVERTIDOS) == set()

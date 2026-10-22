@@ -10,14 +10,17 @@ próprios, escrevendo no console desta seção.
 """
 from __future__ import annotations
 
+from sigft.app.idioma import marcar, t
 from sigft.app_qt.views.apagar_lmr import ModuloApagarLMR
 from sigft.app_qt.views.lmr import ModuloLMR
 from sigft.app_qt.widgets.abas import Abas
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.app_qt.widgets.trava_robo import TravaDeRobo
 
-ABA_UPLOAD = "Upload de Aplicações"
-ABA_EXCLUSAO = "Exclusão de Aplicações"
+# O nome da aba é também a chave dela no `abas.Abas` (`add`, `set`): quem põe
+# e quem escolhe a aba usa o MESMO `t(ABA_X)` (2026-10-22).
+ABA_UPLOAD = marcar("Upload de Aplicações")
+ABA_EXCLUSAO = marcar("Exclusão de Aplicações")
 
 # A área rolável de cada aba, medida na captura da interface antiga: o CTkScrollableFrame
 # põe o canvas a 6 px (corner_radius) da borda do quadro da aba -- que o `Abas`
@@ -36,7 +39,7 @@ class ModuloAplicacaoLMR(ModuleFrame):
     def __init__(self, parent=None, controller=None) -> None:
         # O conteúdo é o Tabview, que precisa do espaço; o console fica com a
         # altura padrão embaixo, como nas outras telas.
-        super().__init__(parent, controller, titulo="Aplicação LMR", peso_conteudo=3)
+        super().__init__(parent, controller, titulo=t("Aplicação LMR"), peso_conteudo=3)
 
     def _build_ui(self) -> None:
         # `self.console` já existe aqui: o ModuleFrame cria o console antes de
@@ -58,7 +61,7 @@ class ModuloAplicacaoLMR(ModuleFrame):
         for nome, tela in ((ABA_UPLOAD, self.tela_upload), (ABA_EXCLUSAO, self.tela_exclusao)):
             tela.layout().setContentsMargins(MARGEM_DA_ROLAGEM, MARGEM_DA_ROLAGEM,
                                              MARGEM_DIREITA_DA_ROLAGEM, MARGEM_DA_ROLAGEM)
-            self.abas.add(nome).layout().addWidget(tela)
+            self.abas.add(t(nome)).layout().addWidget(tela)
 
         # Abrir direto na tela que APAGA seria um convite ao erro.
-        self.abas.set(ABA_UPLOAD)
+        self.abas.set(t(ABA_UPLOAD))

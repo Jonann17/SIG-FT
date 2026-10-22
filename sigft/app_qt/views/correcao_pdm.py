@@ -27,6 +27,7 @@ from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA
 from sigft.app_qt import estilo, file_dialogs, interface
 from sigft.app_qt.views.janelas import JanelaEscolherPDM
 from sigft.app_qt.widgets import blocos, controles, dialogos_selecao
+from sigft.app_qt.widgets.atividade import ROTULO_FICHA
 from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.core import pdm_catalogo
@@ -408,7 +409,7 @@ class ModuloCorrecaoPDM(ModuleFrame):
 
     def _progresso(self, atual, total, item=None) -> None:
         interface.na_interface(self._definir_progresso, (atual / total) if total else 0)
-        self.informar_progresso(atual, total, "ficha")
+        self.informar_progresso(atual, total, ROTULO_FICHA)
 
     def _definir_progresso(self, fracao: float) -> None:
         self._fracao = fracao

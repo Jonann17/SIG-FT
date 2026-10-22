@@ -27,6 +27,7 @@ from sigft.app_qt import estilo, file_dialogs, interface
 from sigft.app_qt.views.janelas import JanelaRevisaoEdicao, JanelaSelecaoDuplicadas
 from sigft.app_qt.widgets import blocos, controles
 from sigft.app_qt.widgets.arrastar import Arrastavel
+from sigft.app_qt.widgets.atividade import ROTULO_FICHA
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.services import duplicadas
 
@@ -327,7 +328,7 @@ class ModuloCopiaFichas(ModuleFrame):
     def _progresso_do_lote(self, fracao: float, total: int) -> None:
         """A barra da tela e o "Ficha 3 de 8" da faixa. Thread do robô."""
         interface.na_interface(self._definir_progresso, fracao)
-        self.informar_progresso(round(fracao * total), total, "ficha")
+        self.informar_progresso(round(fracao * total), total, ROTULO_FICHA)
 
     def _worker_robo_novo(self, gravar_auditoria: bool, fichas, caminho_status) -> None:
         # Import tardio de propósito: puxa o Playwright, e quem nunca clica

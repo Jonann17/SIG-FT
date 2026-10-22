@@ -16,11 +16,17 @@ import time
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QWidget
 
-from sigft.app.idioma import t
+from sigft.app.idioma import marcar, t
 from sigft.app_qt.widgets import blocos
 
 # Quanto o "Terminou" fica na tela antes de a faixa sumir.
 SEGUNDOS_DO_FIM = 12
+
+# O que se conta no "Ficha 3 de 8": a tela passa um destes (marcados), e a
+# faixa traduz na hora de mostrar. Rótulo que não está aqui aparece como veio
+# (2026-10-22).
+ROTULO_ITEM = marcar("item")
+ROTULO_FICHA = marcar("ficha")
 
 
 def relogio(segundos: float) -> str:
@@ -66,11 +72,11 @@ class FaixaDeAtividade(QWidget):
         self._atualizar()
         self.show()
 
-    def progresso(self, atual: int, total: int, rotulo: str = "item") -> None:
+    def progresso(self, atual: int, total: int, rotulo: str = ROTULO_ITEM) -> None:
         if not self.rodando or total <= 0:
             return
         atual = min(max(int(atual), 0), int(total))
-        self._avanco = f"{rotulo.capitalize()} {atual} de {total}"
+        self._avanco = t("{rotulo} {atual} de {total}", rotulo=t(rotulo).capitalize(), atual=atual, total=total)
         if self.barra.maximum() == 0:
             self.barra.setRange(0, 1000)
         blocos.definir_progresso(self.barra, atual / total)

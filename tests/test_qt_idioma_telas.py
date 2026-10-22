@@ -249,3 +249,29 @@ def test_correcao_duplicadas_e_autospec(janela, codigo):
             assert ainda_em_portugues(principal.telas[alvo], codigo) == set(), alvo
         correcao = qmain.TELAS["CorrecaoPDM"](principal.pilha, principal)
         assert ainda_em_portugues(correcao, codigo) == set()
+
+
+@pytest.mark.parametrize("codigo", IDIOMAS)
+def test_lmr_pmib_manager_e_busca(janela, codigo):
+    with em_idioma(codigo):
+        principal = janela()
+        for alvo in ("LMR", "PMIBManager", "SearchPMIB"):
+            principal.show_frame(alvo)
+            assert ainda_em_portugues(principal.telas[alvo], codigo) == set(), alvo
+
+
+@pytest.mark.parametrize("codigo, esperado", [("es", "Ficha 3 de 8"), ("en", "Sheet 3 of 8")])
+def test_avanco_da_faixa_de_atividade_no_idioma(qt_interface, qtbot, codigo, esperado):
+    """O "Ficha 3 de 8" da faixa: o rótulo (marcado em `atividade`) e a frase
+    passam por `t()` (pendência das Tasks 4/8; em espanhol a frase é a mesma)."""
+    from sigft.app_qt.widgets import atividade
+
+    with em_idioma(codigo):
+        faixa = atividade.FaixaDeAtividade()
+        qtbot.addWidget(faixa)
+        faixa.comecar()
+        faixa.progresso(3, 8, atividade.ROTULO_FICHA)
+        assert esperado in faixa.rotulo.text()
+        faixa.progresso(1, 2)
+        assert {"es": "Ítem 1 de 2", "en": "Item 1 of 2"}[codigo] in faixa.rotulo.text()
+        faixa.terminar()
