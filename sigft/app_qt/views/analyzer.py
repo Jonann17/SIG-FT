@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QVBoxLayout,
 )
 
+from sigft.app.idioma import t
 from sigft.app_qt import estilo, icones, interface
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets import pickers as app_pickers
@@ -48,7 +49,7 @@ class JanelaPesos(QDialog):
 
     def __init__(self, tela: ModuloAnalyzer, config_map: dict) -> None:
         super().__init__(tela)
-        self.setWindowTitle("Configuração de Pesos")
+        self.setWindowTitle(t("Configuração de Pesos"))
         self.resize(*blocos.geometria_tk("500x700"))
         self.setModal(False)
         raiz = QVBoxLayout(self)
@@ -58,7 +59,7 @@ class JanelaPesos(QDialog):
         self.area, corpo = blocos.area_rolavel(raiz, fundo="tela", barra_sempre_visivel=True)
         raiz.addSpacing(20)                      # scroll (…, 10) + salvar (10, …)
 
-        self.titulo = _rotulo("Pesos dos Campos Fixos", tamanho=14, negrito=True, alinhar="centro")
+        self.titulo = _rotulo(t("Pesos dos Campos Fixos"), tamanho=14, negrito=True, alinhar="centro")
         corpo.addSpacing(10)
         corpo.addWidget(self.titulo)
         corpo.addSpacing(10)                     # título (…, 10)
@@ -78,12 +79,12 @@ class JanelaPesos(QDialog):
         corpo.addWidget(_rotulo("--------------------------------",
                                 papel="legenda", alinhar="centro"))
         corpo.addSpacing(15)                     # traço (…, 10) + título (5, …)
-        corpo.addWidget(_rotulo("Configuração Global", tamanho=14, negrito=True, alinhar="centro"))
+        corpo.addWidget(_rotulo(t("Configuração Global"), tamanho=14, negrito=True, alinhar="centro"))
         corpo.addSpacing(5)                      # título (…, 5); a linha põe os seus 5
-        _, tela.entry_max_vars = self._linha(corpo, "Pontos Totais (Specs Técnicas):",
+        _, tela.entry_max_vars = self._linha(corpo, t("Pontos Totais (Specs Técnicas):"),
                                              tela.max_var_points, folga=5)
 
-        self.btn_salvar = blocos.botao("Salvar Pesos", largura=estilo.LARGURA_BOTAO_CTK, altura=28,
+        self.btn_salvar = blocos.botao(t("Salvar Pesos"), largura=estilo.LARGURA_BOTAO_CTK, altura=28,
                                        variante="primario")
         # Enter num campo não salva: no Tk o Enter não fazia nada aqui.
         self.btn_salvar.setAutoDefault(False)
@@ -136,7 +137,7 @@ class ModuloAnalyzer(ModuleFrame):
         self.relatorio_analise = None
         self._parar_de_perguntar_desc = False
         self.janela_pesos = None
-        super().__init__(parent, controller, titulo="Technical Datasheet Analyzer")
+        super().__init__(parent, controller, titulo=t("Technical Datasheet Analyzer"))
 
     def _chave_gemini(self) -> str:
         return self.controller.get_key("GEMINI") if self.controller is not None else ""
@@ -147,7 +148,7 @@ class ModuloAnalyzer(ModuleFrame):
         # centrado andaria 5 px.
         self.area, corpo = blocos.area_rolavel(self.content_layout, barra_sempre_visivel=True)
 
-        self.lbl_subtitulo = _rotulo("Validação e Pontuação de Fichas Técnicas via IA", tamanho=16,
+        self.lbl_subtitulo = _rotulo(t("Validação e Pontuação de Fichas Técnicas via IA"), tamanho=16,
                                      alinhar="centro")
         corpo.addWidget(self.lbl_subtitulo)
         corpo.addSpacing(30)                     # subtítulo (…, 20) + cartão (10, …)
@@ -155,13 +156,13 @@ class ModuloAnalyzer(ModuleFrame):
         # --- CONTAINER 1: CRITÉRIOS ---
         criterios = self._cartao(corpo)
         self.cartao_criterios = criterios.parentWidget()
-        criterios.addWidget(_rotulo("1. Critérios de Aprovação e Pesos", tamanho=14, negrito=True,
+        criterios.addWidget(_rotulo(t("1. Critérios de Aprovação e Pesos"), tamanho=14, negrito=True,
                                     papel="destaque"))
         criterios.addSpacing(10)                 # título (…, 5) + controles (5, …)
         controles = QHBoxLayout()
         controles.setContentsMargins(0, 0, 0, 0)
         controles.setSpacing(0)
-        self.lbl_score = _rotulo(f"Nota Mínima: {int(self.score_value)}%", tamanho=12, negrito=True,
+        self.lbl_score = _rotulo(t("Nota Mínima: {nota}%", nota=int(self.score_value)), tamanho=12, negrito=True,
                                  papel="destaque")
         controles.addWidget(self.lbl_score)
         controles.addSpacing(20)                 # padx=(0, 20)
@@ -171,7 +172,7 @@ class ModuloAnalyzer(ModuleFrame):
         controles.addWidget(self.slider)
         controles.addStretch()
         # Botão de Configurar Pesos
-        self.btn_config = blocos.botao("Configurar Pesos", largura=150, altura=28, tamanho_fonte=12,
+        self.btn_config = blocos.botao(t("Configurar Pesos"), largura=150, altura=28, tamanho_fonte=12,
                                        variante="secundario")
         icones.aplicar(self.btn_config, "settings", tamanho=16)   # era o emoji (2026-10-20)
         self.btn_config.clicked.connect(self.abrir_config_pesos)
@@ -183,7 +184,7 @@ class ModuloAnalyzer(ModuleFrame):
         # --- CONTAINER 2: SELEÇÃO ---
         arquivos = self._cartao(corpo)
         self.cartao_arquivos = arquivos.parentWidget()
-        arquivos.addWidget(_rotulo("2. Seleção de Arquivos e Pastas", tamanho=14, negrito=True,
+        arquivos.addWidget(_rotulo(t("2. Seleção de Arquivos e Pastas"), tamanho=14, negrito=True,
                                    papel="destaque"))
 
         # [CP 7.2] Cada seletor declara a sua chave da memoria de caminhos UMA
@@ -192,31 +193,31 @@ class ModuloAnalyzer(ModuleFrame):
         self.picker_files = app_pickers.MultiFilePickerRow(
             chave="analyzer.fichas",
             categoria="excel",
-            texto_botao="Selecionar Fichas (.xlsx)",
+            texto_botao=t("Selecionar Fichas (.xlsx)"),
             largura_botao=200,
-            titulo="Selecione as Fichas Técnicas",
+            titulo=t("Selecione as Fichas Técnicas"),
             filetypes=[("Excel", "*.xlsx")],
             ao_escolher=self._ao_escolher_fichas,
         )
         # B) Pasta de Saída
         self.picker_out = app_pickers.FolderPickerRow(
             chave="analyzer.saida",
-            texto_botao="Pasta de Saída",
+            texto_botao=t("Pasta de Saída"),
             largura_botao=200,
-            titulo="Selecione Pasta de Saída",
+            titulo=t("Selecione Pasta de Saída"),
             ao_escolher=self._ao_escolher_saida,
         )
         # C) PMIB (Opcional)
         self.picker_pmib = app_pickers.FilePickerRow(
             chave="analyzer.status_pmib",
             categoria="excel",
-            texto_botao="STATUS_PMIB (Opcional)",
+            texto_botao=t("STATUS_PMIB (Opcional)"),
             largura_botao=200,
-            titulo="Selecione STATUS_PMIB",
+            titulo=t("Selecione STATUS_PMIB"),
             filetypes=[("Excel", "*.xlsx")],
             # Texto proprio desta tela -- ela avisa qual e o padrao quando
             # nada e escolhido, e isso e informacao util, nao ruido.
-            texto_vazio="Não selecionado (Padrão: sem contexto)",
+            texto_vazio=t("Não selecionado (Padrão: sem contexto)"),
             ao_escolher=self._ao_escolher_pmib,
         )
         for picker in (self.picker_files, self.picker_out, self.picker_pmib):
@@ -226,7 +227,7 @@ class ModuloAnalyzer(ModuleFrame):
 
         # --- AÇÃO ---
         corpo.addSpacing(40)                     # cartão (…, 10) + botão (30, …)
-        self.btn_run = blocos.botao("INICIAR PROCESSAMENTO", largura=300, altura=50, tamanho_fonte=15,
+        self.btn_run = blocos.botao(t("INICIAR PROCESSAMENTO"), largura=300, altura=50, tamanho_fonte=15,
                                     negrito=True, variante="primario")
         self.btn_run.clicked.connect(self.iniciar_analise)
         corpo.addWidget(self.btn_run, alignment=Qt.AlignmentFlag.AlignHCenter)
@@ -235,7 +236,7 @@ class ModuloAnalyzer(ModuleFrame):
         # Relatorio para o FORNECEDOR (2026-08-26). Nasce desabilitado: so
         # existe relatorio depois de um lote rodar, e botao que promete o que
         # nao tem e pior que botao ausente.
-        self.btn_relatorio = blocos.botao("GERAR RELATÓRIO PARA O FORNECEDOR (.xlsx)", largura=300,
+        self.btn_relatorio = blocos.botao(t("GERAR RELATÓRIO PARA O FORNECEDOR (.xlsx)"), largura=300,
                                           altura=36, tamanho_fonte=12, variante="primario")
         self.btn_relatorio.setEnabled(False)
         self.btn_relatorio.clicked.connect(self._gerar_relatorio)
@@ -260,7 +261,7 @@ class ModuloAnalyzer(ModuleFrame):
         """
         if not self.relatorio_analise:
             QMessageBox.information(
-                self, "Relatório", "Rode uma análise primeiro. Ainda não há pendências para relatar.")
+                self, t("Relatório"), t("Rode uma análise primeiro. Ainda não há pendências para relatar."))
             return
         destino = self.selected_output or os.getcwd()
         try:
@@ -269,16 +270,16 @@ class ModuloAnalyzer(ModuleFrame):
             )
         except Exception as e:  # noqa: BLE001 -- vira aviso, como lá
             self.log(f"Nao consegui gerar o relatorio: {e}")
-            QMessageBox.critical(self, "Relatório", f"Não consegui gerar o arquivo:\n{e}")
+            QMessageBox.critical(self, t("Relatório"), t("Não consegui gerar o arquivo:\n{erro}", erro=e))
             return
         if not caminho:
             QMessageBox.information(
-                self, "Relatório", "Nenhuma ficha ficou com pendência. Não há o que relatar.")
+                self, t("Relatório"), t("Nenhuma ficha ficou com pendência. Não há o que relatar."))
             return
         self.log(f"Relatorio gerado: {caminho}")
         QMessageBox.information(
-            self, "Relatório", f"{len(self.relatorio_analise)} ficha(s) com pendência.\n\n"
-                               f"Arquivo:\n{caminho}")
+            self, t("Relatório"), t("{n} ficha(s) com pendência.\n\nArquivo:\n{caminho}",
+                                    n=len(self.relatorio_analise), caminho=caminho))
 
     # --- Janela de Configuração de Pesos -----------------------------------------------
     def abrir_config_pesos(self) -> None:
@@ -301,17 +302,17 @@ class ModuloAnalyzer(ModuleFrame):
             novos = {key: float(entry.text()) for key, entry in self.entries_pesos.items()}
             max_vars = float(self.entry_max_vars.text())
         except ValueError:
-            QMessageBox.critical(window, "Erro", "Certifique-se de usar apenas números (ponto para decimais).")
+            QMessageBox.critical(window, t("Erro"), t("Certifique-se de usar apenas números (ponto para decimais)."))
             return
         self.custom_weights.update(novos)
         self.max_var_points = max_vars
-        QMessageBox.information(window, "Sucesso", "Pesos atualizados para esta sessão.")
+        QMessageBox.information(window, t("Sucesso"), t("Pesos atualizados para esta sessão."))
         window.close()
 
     # --- Callbacks UI ------------------------------------------------------------------
     def _update_slider_label(self, value) -> None:
         self.score_value = value
-        self.lbl_score.setText(f"Nota Mínima: {int(value)}%")
+        self.lbl_score.setText(t("Nota Mínima: {nota}%", nota=int(value)))
 
     # [CP 7.2] Os pickers cuidam do dialogo, da memoria de caminho e das duas
     # mudancas de cor. Sobra a esta tela so guardar o que foi escolhido.
@@ -329,10 +330,10 @@ class ModuloAnalyzer(ModuleFrame):
         if self.backend("analyzer_backend") is None:
             return
         if not self.selected_files:
-            QMessageBox.warning(self, "Faltam Dados", "Selecione as Fichas.")
+            QMessageBox.warning(self, t("Faltam Dados"), t("Selecione as Fichas."))
             return
         if not self.selected_output:
-            QMessageBox.warning(self, "Faltam Dados", "Selecione a Pasta de Saída.")
+            QMessageBox.warning(self, t("Faltam Dados"), t("Selecione a Pasta de Saída."))
             return
 
         self.log(f"Iniciando análise de {len(self.selected_files)} arquivos...")
@@ -370,11 +371,12 @@ class ModuloAnalyzer(ModuleFrame):
             return None
 
         texto = self.pedir_texto(
-            "Descrição do material",
-            f"A ficha {arquivo} tem o código PMIB {codigo}, que não está "
-            "no _STATUS_PMIB.\n\nSe você souber a descrição do material, "
-            "digite abaixo. Ela entra no contexto que vai para a IA.\n\n"
-            "CANCELAR segue sem descrição e não pergunta mais nesta rodada.",
+            t("Descrição do material"),
+            t("A ficha {arquivo} tem o código PMIB {codigo}, que não está "
+              "no _STATUS_PMIB.\n\nSe você souber a descrição do material, "
+              "digite abaixo. Ela entra no contexto que vai para a IA.\n\n"
+              "CANCELAR segue sem descrição e não pergunta mais nesta rodada.",
+              arquivo=arquivo, codigo=codigo),
         )
 
         if texto is None:      # Cancelar (≠ de OK com campo vazio)
@@ -450,12 +452,13 @@ class ModuloAnalyzer(ModuleFrame):
             if falhas:
                 self.log(f"NAO concluidas ({len(falhas)}): {', '.join(falhas)}")
                 self.avisar(
-                    "Análise finalizada com pendências",
-                    f"{len(falhas)} de {len(arquivos)} ficha(s) não foram "
-                    "processadas.\nVeja o console para o motivo de cada uma.",
+                    t("Análise finalizada com pendências"),
+                    t("{falhas} de {total} ficha(s) não foram "
+                      "processadas.\nVeja o console para o motivo de cada uma.",
+                      falhas=len(falhas), total=len(arquivos)),
                     tipo="aviso",
                 )
             else:
-                self.avisar("Sucesso", "Análise finalizada.")
+                self.avisar(t("Sucesso"), t("Análise finalizada."))
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"Erro Fatal: {e}")

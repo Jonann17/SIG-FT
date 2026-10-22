@@ -173,3 +173,28 @@ def test_ctrl_k_em_portugues_nao_duplica_as_palavras():
         assert palavras[f"tela:{alvo}"] == f"{no_menu.get(alvo, '')} {alvo}"
     for acao in catalogo.ACOES:
         assert palavras[f"acao:{acao.chave}"] == acao.palavras
+
+
+@pytest.mark.parametrize("codigo", IDIOMAS)
+def test_cria_fichas_planilhas_e_analyzer(janela, codigo):
+    with em_idioma(codigo):
+        principal = janela()
+        for alvo in ("CriaFichas", "PDM", "Analyzer"):
+            principal.show_frame(alvo)
+            assert ainda_em_portugues(principal.telas[alvo], codigo) == set(), alvo
+
+
+@pytest.mark.parametrize("codigo", IDIOMAS)
+def test_janelas_auxiliares(qt_interface, qtbot, codigo):
+    from sigft.app_qt.views import janelas
+    from sigft.core.pdm_catalogo import PDM, CatalogoPDM
+
+    catalogo = CatalogoPDM([PDM(codigo="PDM.4820.004", classe="4820", titulo="VALVULA ESFERA",
+                                caracteristicas=("DIAMETRO",))])
+    fila = [{"descricao": "Válvula", "pmib_original": "4500063671.0001", "pmib_alvo": "4500063671.0002"}]
+    with em_idioma(codigo):
+        for peca in (janelas.JanelaEscolherPDM(None, catalogo),
+                     janelas.DialogoAcaoRobo(None, "erro", "PDM.4820.004"),
+                     janelas.JanelaRevisaoEdicao(None, fila)):
+            qtbot.addWidget(peca)
+            assert ainda_em_portugues(peca, codigo) == set(), type(peca).__name__

@@ -235,6 +235,11 @@ CONVERTIDOS: tuple[str, ...] = (
     "sigft/app_qt/views/configuracao.py",
     "sigft/app_qt/views/home.py",
     "sigft/app_qt/views/nao_migrada.py",
+    # Task 6: Cria Fichas, Planilhas PMIB, Analyzer e as janelas auxiliares
+    "sigft/app_qt/views/analyzer.py",
+    "sigft/app_qt/views/cria_fichas.py",
+    "sigft/app_qt/views/janelas.py",
+    "sigft/app_qt/views/pdm.py",
 )
 
 # Literais que a varredura acusa e que ficam em português de propósito, por
@@ -283,6 +288,22 @@ NAO_E_INTERFACE: dict[str, set[str]] = {
         'f"[smoke] bloqueadas no menu (nao visitadas): {\', \'.join(bloqueadas)}"',
         "f'[smoke] FALHOU: telas que nao abriram ({len(quebradas)}): '",
         "f'[smoke] a janela principal Qt montou, as {len(linhas)} telas abriram e ela fechou sem erro.'",
+    },
+    # Task 6. Cria Fichas: colunas e aba que o `data_manager` lê e grava na planilha
+    # ("DESCRIÇÃO", "CÓDIGO PMIB", "Lista de Materiais"), valores padrão que vão ao
+    # portal e à planilha no "Pular IA" (origem, tipo, unidade, fabricação) e o
+    # status gravado no resumo/Excel ("VERIFICAR (PULADO)"). A mensagem do robô
+    # ocupado só vai ao console (`_robo_ocupado`), que não muda de idioma.
+    "sigft/app_qt/views/cria_fichas.py": {
+        "DESCRIÇÃO",
+        "CÓDIGO PMIB",
+        "Lista de Materiais",
+        "Nacional",
+        "Não Reparável",
+        "Unidade",
+        "Catálogo",
+        "VERIFICAR (PULADO)",
+        "O robô já está trabalhando no portal (criação ou edição). Espere ele terminar antes de iniciar outro.",
     },
 }
 
