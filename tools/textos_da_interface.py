@@ -89,6 +89,14 @@ class Uso(NamedTuple):
     texto: str
 
 
+# Numa f-string, uma palavra minúscula de 3+ letras na parte fixa já é texto,
+# mesmo sem espaço nem acento: `f"com {pessoa}"` sobrava, porque "com" sozinho
+# parece identificador (revisão da Task 4, 2026-10-22). Colada a ponto, barra,
+# hífen ou dois-pontos não conta: extensão (`.xlsx`), caminho, nome de thread
+# (`tarefa:{nome}`). Folha de estilo (`_FOLHA`) também não.
+_PALAVRA_MINUSCULA = re.compile(r"(?<![\w./\\-])[a-zà-ÿ]{3,}(?![\w./\\:-])")
+
+
 def parece_texto(valor: str) -> bool:
     """A heurística do "texto de interface" (ver o docstring do módulo)."""
     texto = valor.strip()
@@ -205,7 +213,7 @@ def literais_soltos(fonte: str, arquivo: str = "") -> list[Uso]:
             achados.append(Uso(arquivo, no.lineno, no.value))
         elif isinstance(no, ast.JoinedStr):
             fixo = "".join(p.value for p in no.values if isinstance(p, ast.Constant))
-            if parece_texto(fixo):
+            if parece_texto(fixo) or (_PALAVRA_MINUSCULA.search(fixo) and not _FOLHA.search(fixo)):
                 achados.append(Uso(arquivo, no.lineno, ast.unparse(no)))
     return sorted(achados, key=lambda u: u.linha)
 

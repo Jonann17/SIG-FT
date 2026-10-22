@@ -53,3 +53,29 @@ def test_frases_do_resumo_e_dicas_no_idioma(codigo):
         dicas = textos_dicas.dicas_da_classe(type("ModuloCopiaFichas", (), {}))
         assert "{portal}" not in dicas["btn_robo_novo"]
         assert traducoes[textos_dicas.PORTAL] in dicas["btn_robo_novo"]
+
+
+@pytest.mark.parametrize("codigo, linha_do_cartao, cabecalho", [
+    ("es", "con Luan   ·   Em andamento   ·   criticidad 5", "1 actividad(es) que requieren atención"),
+    ("en", "with Luan   ·   Em andamento   ·   criticality 5", "Activities needing attention: 1"),
+])
+def test_mural_com_um_cartao(qt_interface, qtbot, codigo, linha_do_cartao, cabecalho):
+    """O cartão do mural no idioma da sessão: "com"/"criticidade" traduzidos, o
+    que vem da planilha (pessoa, status, nível) como veio (revisão da Task 4)."""
+    from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+
+    from sigft.app_qt.widgets import mural
+    from sigft.services import atividades as at
+
+    with em_idioma(codigo):
+        pai = QWidget()
+        QVBoxLayout(pai)
+        qtbot.addWidget(pai)
+        gavetas = {f: [] for f in at.FAIXAS}
+        gavetas[at.ATRASADA] = [{"descricao": "Revisar fichas", "_dias": -4, "_termino": None,
+                                 "com_quem": "Luan", "status": "Em andamento", "criticidade": 5}]
+        mural.montar(pai, gavetas, "09/10/2026")
+        textos = [r.text() for r in pai.findChildren(QLabel)]
+        assert linha_do_cartao in textos
+        assert cabecalho in textos
+        assert ainda_em_portugues(pai, codigo) == set()

@@ -108,6 +108,16 @@ def test_t_com_texto_por_palavra_chave_e_chave():
     # A marca por linha isenta a linha inteira (e só ela).
     ('A = "Dado da planilha"  # nao-e-interface\nB = "Texto de tela"', ["Texto de tela"]),
     ('A = ("Dado em duas "  # nao-e-interface\n     "linhas")', []),
+    # f-string cuja parte fixa tem uma palavra minúscula de 3+ letras é texto,
+    # mesmo curta (revisão da Task 4: "com {pessoa}" no cartão do mural).
+    ('r = f"com {pessoa}"', ["f'com {pessoa}'"]),
+    ('r = f"criticidade {nivel}"', ["f'criticidade {nivel}'"]),
+    # Extensão, caminho e separador não são palavra.
+    ('r = f"{nome}.xlsx"', []),
+    ('r = f"{a}/{b}"', []),
+    ('r = f"{a} ({b})"', []),
+    ('r = f"tarefa:{nome}"', []),
+    ('r = f"font-size: {n}px; background: transparent;"', []),
 ])
 def test_a_varredura_pega_o_que_deve(fonte, achados):
     assert [u.texto for u in ferramenta.literais_soltos(fonte, "x.py")] == achados

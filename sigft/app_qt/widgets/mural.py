@@ -221,11 +221,11 @@ def _cartao(layout, item, faixa) -> None:
 
     partes = []
     if item.get("com_quem"):
-        partes.append(f"com {item['com_quem']}")
+        partes.append(t("com {pessoa}", pessoa=item["com_quem"]))
     if item.get("status"):
         partes.append(str(item["status"]))
     if item.get("criticidade"):
-        partes.append(f"criticidade {item['criticidade']}")
+        partes.append(t("criticidade {nivel}", nivel=item["criticidade"]))
     if partes:
         _caixa(coluna, blocos.rotulo_tk("   ·   ".join(partes), theme.FONTE_CORPO_MIUDO, "legenda"),
                padx=(10, 10), pady=(0, 8), horizontal=True).addStretch()
