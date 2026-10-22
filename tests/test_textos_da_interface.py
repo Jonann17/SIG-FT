@@ -212,6 +212,29 @@ CONVERTIDOS: tuple[str, ...] = (
     "sigft/app_qt/widgets/resumo_lote.py",
     "sigft/app_qt/widgets/revisao_portal.py",
     "sigft/app_qt/widgets/trava_robo.py",
+    # Task 5: textos compartilhados II
+    "sigft/app/atualizacao_textos.py",
+    "sigft/app_qt/__init__.py",
+    "sigft/app_qt/atualizacao.py",
+    "sigft/app_qt/aviso_windows.py",
+    "sigft/app_qt/catalogo.py",
+    "sigft/app_qt/cursor.py",
+    "sigft/app_qt/escolha_de_idioma.py",
+    "sigft/app_qt/estilo.py",
+    "sigft/app_qt/file_dialogs.py",
+    "sigft/app_qt/icones.py",
+    "sigft/app_qt/interface.py",
+    "sigft/app_qt/letra.py",
+    "sigft/app_qt/main.py",
+    "sigft/app_qt/nome.py",
+    "sigft/app_qt/novidades.py",
+    "sigft/app_qt/pasta_de_logs.py",
+    "sigft/app_qt/reinicio.py",
+    "sigft/app_qt/tema.py",
+    "sigft/app_qt/views/__init__.py",
+    "sigft/app_qt/views/configuracao.py",
+    "sigft/app_qt/views/home.py",
+    "sigft/app_qt/views/nao_migrada.py",
 )
 
 # Literais que a varredura acusa e que ficam em português de propósito, por
@@ -229,6 +252,37 @@ NAO_E_INTERFACE: dict[str, set[str]] = {
         "Seguindo com todas as fichas, inclusive as com erro.",
     },
     "sigft/app_qt/widgets/trava_robo.py": {"outro robô"},
+    # Task 5. Chaves de tela (`TELAS`, `show_frame`, `ICONE_DA_TELA`), não texto.
+    "sigft/app_qt/catalogo.py": {"Translator"},
+    # Nome do arquivo de fonte e família de fonte (nome de fonte, não texto).
+    "sigft/app_qt/estilo.py": {
+        "Roboto-Regular.ttf",
+        "NotoEmoji-Regular.ttf",
+        '"Roboto", "Noto Emoji"',
+        '"Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono", monospace',
+    },
+    # A pergunta da primeira abertura é bilíngue de propósito: vem antes de haver idioma.
+    "sigft/app_qt/escolha_de_idioma.py": {"Idioma / Language"},
+    "sigft/app_qt/main.py": {
+        # A chave da tela inicial (`TELAS`, `show_frame`), não texto.
+        "Home",
+        # O título da janela: nome do produto e a versão.
+        "f'SIG-FT v{_build_info.VERSAO} - GE Vernova'",
+        # O aviso de quando a Qt não sobe: antes de o idioma valer.
+        "f'A Qt não conseguiu iniciar:\\n{texto}'",
+        # O relatório do --smoke: quem lê é o Release, não a pessoa.
+        "f'[smoke] FALHOU: a interface Qt nao abriu: {texto}'",
+        "f'  FALHOU  {chave}: {type(tela.erro).__name__}: {tela.erro}'",
+        'f"[smoke] FALHOU: icones que nao desenham ({len(sem_desenho)}): '
+        '{\', \'.join(sem_desenho)} (pasta {icones.PASTA})"',
+        'f"[smoke] FALHOU: catalogos de idioma que nao se leem: '
+        '{\', \'.join(sem_catalogo)} (pasta {idioma.PASTA_CATALOGOS})"',
+        'f"[smoke] AVISO: o backend \'{nome}\' nao carregou: {type(erro).__name__}: {erro}"',
+        "[smoke] telas visitadas:",
+        'f"[smoke] bloqueadas no menu (nao visitadas): {\', \'.join(bloqueadas)}"',
+        "f'[smoke] FALHOU: telas que nao abriram ({len(quebradas)}): '",
+        "f'[smoke] a janela principal Qt montou, as {len(linhas)} telas abriram e ela fechou sem erro.'",
+    },
 }
 
 

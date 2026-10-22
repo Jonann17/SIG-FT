@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QMessageBox
 
+from sigft.app.idioma import t
 from sigft.core import plataforma
 
 
@@ -20,4 +21,5 @@ def abrir(pai=None) -> None:
         plataforma.abrir_pasta_criando_se_preciso(str(pasta_logs()))
     except Exception as erro:  # noqa: BLE001 -- vira aviso
         janela = pai() if callable(pai) else pai
-        QMessageBox.critical(janela, "Erro", f"Não foi possível abrir a pasta de logs: {erro}")
+        QMessageBox.critical(janela, t("Erro"),
+                             t("Não foi possível abrir a pasta de logs: {erro}", erro=erro))

@@ -21,6 +21,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLineEdit, QVBoxLayout, QWidget
 
 from sigft.app import idioma
+from sigft.app.idioma import marcar, t
 from sigft.app_qt import aviso_windows, estilo, icones, letra, nome, reinicio, tema
 from sigft.app_qt.catalogo import (
     ACOES_DA_CONFIGURACAO, SECOES_DA_CONFIGURACAO, SELETOR_LETRA, SELETOR_TEMA,
@@ -30,18 +31,18 @@ from sigft.app_qt.widgets.module_frame import aplicar_dicas
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
 from sigft.services import updater
 
-TITULO = "Configuração"
+TITULO = marcar("Configuração")
 GEOMETRIA = "720x620"
 # A coluna dos títulos das seções, à esquerda.
 LARGURA_TITULO_SECAO = 190
 ESPACO_ENTRE_SECOES = 18
 LARGURA_CAMPO_NOME = 360
-TEXTO_AVISOS_WINDOWS = "Avisar no Windows quando uma tarefa terminar ou pedir algo"
-DICA_AVISOS_WINDOWS = ("Com o SIG-FT atrás de outra janela, um aviso do Windows diz quando uma "
-                       "tarefa termina ou quando o robô espera você (o login no portal, por exemplo).")
-TEXTO_CANAL_TESTES = "Receber versões de teste"
-TEXTO_IDIOMA_AO_REINICIAR = "O idioma muda na próxima vez que o SIG-FT abrir."
-TEXTO_REINICIAR = "Reiniciar agora"
+TEXTO_AVISOS_WINDOWS = marcar("Avisar no Windows quando uma tarefa terminar ou pedir algo")
+DICA_AVISOS_WINDOWS = marcar("Com o SIG-FT atrás de outra janela, um aviso do Windows diz quando uma "
+                             "tarefa termina ou quando o robô espera você (o login no portal, por exemplo).")
+TEXTO_CANAL_TESTES = marcar("Receber versões de teste")
+TEXTO_IDIOMA_AO_REINICIAR = marcar("O idioma muda na próxima vez que o SIG-FT abrir.")
+TEXTO_REINICIAR = marcar("Reiniciar agora")
 # Os botões que vieram da barra da Home, pela chave (`catalogo.ACOES_DA_CONFIGURACAO`).
 ACAO = {a.chave: a for a in ACOES_DA_CONFIGURACAO}
 
@@ -53,7 +54,7 @@ def _sem_conteudo(_pai) -> None:
 
 class JanelaConfiguracao(JanelaPainel):
     def __init__(self, home) -> None:
-        super().__init__(home, titulo=TITULO, montar=_sem_conteudo, geometria=GEOMETRIA)
+        super().__init__(home, titulo=t(TITULO), montar=_sem_conteudo, geometria=GEOMETRIA)
         self.home = home
         # Chave da seção -> o rótulo do título dela, na ordem de `SECOES_DA_CONFIGURACAO`.
         self.secoes: dict = {}
@@ -65,7 +66,7 @@ class JanelaConfiguracao(JanelaPainel):
         grade.setColumnMinimumWidth(0, LARGURA_TITULO_SECAO)
         grade.setColumnStretch(1, 1)
         for linha, (chave, titulo) in enumerate(SECOES_DA_CONFIGURACAO):
-            rotulo = blocos.rotulo(titulo, tamanho=15, negrito=True, papel="destaque",
+            rotulo = blocos.rotulo(t(titulo), tamanho=15, negrito=True, papel="destaque",
                                    alinhar="esquerda")
             rotulo.setWordWrap(False)
             self.secoes[chave] = rotulo
@@ -108,7 +109,7 @@ class JanelaConfiguracao(JanelaPainel):
     @staticmethod
     def _botao_de_acao(chave: str):
         acao = ACAO[chave]
-        botao = blocos.botao(acao.texto, variante=acao.variante, altura=32,
+        botao = blocos.botao(t(acao.texto), variante=acao.variante, altura=32,
                              largura_minima=estilo.LARGURA_BOTAO_CTK)
         icones.aplicar(botao, acao.icone)
         dialogs.sem_tecla(botao)
@@ -125,7 +126,7 @@ class JanelaConfiguracao(JanelaPainel):
         quadro, linha = self._seletor("seletor_tema")
         self.botoes_tema = {}
         for escolha, texto, icone, dica in SELETOR_TEMA:
-            botao = self._botao_de_escolha(texto, escolha, dica)
+            botao = self._botao_de_escolha(t(texto), escolha, t(dica))
             icones.aplicar(botao, icone, papel_cor_ativo=estilo.PAPEL_MENU_ESCOLHIDO, tamanho=16)
             botao.clicked.connect(self._clicou_tema)
             self.botoes_tema[escolha] = botao
@@ -148,7 +149,7 @@ class JanelaConfiguracao(JanelaPainel):
         quadro, linha = self._seletor("seletor_letra")
         self.botoes_letra = {}
         for escolha, texto, dica in SELETOR_LETRA:
-            botao = self._botao_de_escolha(texto, escolha, dica)
+            botao = self._botao_de_escolha(t(texto), escolha, t(dica))
             botao.clicked.connect(self._clicou_letra)
             self.botoes_letra[escolha] = botao
             linha.addWidget(botao)
@@ -179,10 +180,10 @@ class JanelaConfiguracao(JanelaPainel):
             linha.addWidget(botao)
         linha.addStretch()
         coluna.addWidget(quadro)
-        self.aviso_idioma = blocos.rotulo(TEXTO_IDIOMA_AO_REINICIAR, tamanho=12, papel="legenda",
+        self.aviso_idioma = blocos.rotulo(t(TEXTO_IDIOMA_AO_REINICIAR), tamanho=12, papel="legenda",
                                           alinhar="esquerda")
         coluna.addWidget(self.aviso_idioma)
-        self.btn_reiniciar = blocos.botao(TEXTO_REINICIAR, variante="primario", altura=32,
+        self.btn_reiniciar = blocos.botao(t(TEXTO_REINICIAR), variante="primario", altura=32,
                                           largura_minima=estilo.LARGURA_BOTAO_CTK)
         dialogs.sem_tecla(self.btn_reiniciar)
         self.btn_reiniciar.clicked.connect(self._reiniciar)
@@ -208,7 +209,7 @@ class JanelaConfiguracao(JanelaPainel):
         # O nome só aparece na saudação da Home (`nome.py`): nunca vai para log.
         self.campo_nome = QLineEdit(nome.guardado())
         self.campo_nome.setMaxLength(nome.LIMITE)
-        self.campo_nome.setPlaceholderText(nome.TITULO)
+        self.campo_nome.setPlaceholderText(t(nome.TITULO))
         self.campo_nome.setMaximumWidth(LARGURA_CAMPO_NOME)
         self.campo_nome.editingFinished.connect(self._guardar_nome)
         return self.campo_nome
@@ -229,10 +230,10 @@ class JanelaConfiguracao(JanelaPainel):
 
     # --- Avisos -----------------------------------------------------------------
     def _secao_avisos(self) -> QWidget:
-        caixa = controles.CaixaDeMarcar(TEXTO_AVISOS_WINDOWS, tamanho_fonte=12)
+        caixa = controles.CaixaDeMarcar(t(TEXTO_AVISOS_WINDOWS), tamanho_fonte=12)
         caixa.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         caixa.setChecked(aviso_windows.ligado())
-        caixa.setToolTip(DICA_AVISOS_WINDOWS)
+        caixa.setToolTip(t(DICA_AVISOS_WINDOWS))
         caixa.toggled.connect(aviso_windows.ligar)
         self.caixa_avisos_windows = caixa
         return caixa
@@ -261,7 +262,7 @@ class JanelaConfiguracao(JanelaPainel):
     # --- Atualizações -------------------------------------------------------------
     def _secao_atualizacoes(self) -> QWidget:
         caixa, coluna = self._coluna()
-        self.caixa_canal_testes = controles.CaixaDeMarcar(TEXTO_CANAL_TESTES, tamanho_fonte=12)
+        self.caixa_canal_testes = controles.CaixaDeMarcar(t(TEXTO_CANAL_TESTES), tamanho_fonte=12)
         self.caixa_canal_testes.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         try:
             ligado = updater.canal_testes_ligado()

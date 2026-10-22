@@ -26,12 +26,13 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 from shiboken6 import isValid
 
+from sigft.app.idioma import marcar, t
 from sigft.app_qt import estilo, icones
 
 ENV_DESLIGAR = "SIGFT_SEM_AVISO_DO_WINDOWS"
 CHAVE_OPCAO = "avisos_do_windows"
-TITULO_FIM = "SIG-FT"
-TITULO_ESPERA = "O SIG-FT está esperando você"
+TITULO_FIM = "SIG-FT"          # o nome do app: não se traduz
+TITULO_ESPERA = marcar("O SIG-FT está esperando você")
 MS_NA_TELA = 10_000
 LIMITE_DO_TEXTO = 180
 
@@ -88,7 +89,8 @@ def avisar(janela, texto, *, titulo: str = TITULO_FIM) -> bool:
         return False
     if not ligado() or _em_foco(janela):
         return False
-    return _mostrar(janela, titulo, primeira_linha(texto))
+    # O título é traduzido aqui (constante marcada); o texto já chega traduzido.
+    return _mostrar(janela, t(titulo), primeira_linha(texto))
 
 
 def trazer_para_frente(janela) -> None:

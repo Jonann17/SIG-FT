@@ -18,16 +18,17 @@ import sys
 
 from PySide6.QtWidgets import QMessageBox
 
+from sigft.app.idioma import marcar, t
 from sigft.core import instancia
 
 ENV_DESLIGAR = "SIGFT_SEM_REINICIO"
-TITULO = "Reiniciar o SIG-FT"
-MSG_TAREFA_EM_ANDAMENTO = (
+TITULO = marcar("Reiniciar o SIG-FT")
+MSG_TAREFA_EM_ANDAMENTO = marcar(
     "Há uma tarefa em andamento (um robô, uma tradução ou uma consulta à IA).\n\n"
     "Espere ela terminar e clique de novo em Reiniciar agora. O idioma novo já "
     "está guardado e vale também na próxima vez que você abrir o SIG-FT."
 )
-MSG_NAO_REABRIU = (
+MSG_NAO_REABRIU = marcar(
     "Não consegui abrir o SIG-FT de novo ({erro}).\n\n"
     "O idioma novo já está guardado: feche e abra o SIG-FT para ele valer."
 )
@@ -79,7 +80,7 @@ def reiniciar(janela, *, pai=None) -> bool:
     if "--smoke" in sys.argv or os.environ.get(ENV_DESLIGAR):
         return False
     if instancia.tarefas_em_andamento():
-        QMessageBox.information(pai or janela, TITULO, MSG_TAREFA_EM_ANDAMENTO)
+        QMessageBox.information(pai or janela, t(TITULO), t(MSG_TAREFA_EM_ANDAMENTO))
         return False
     # A raiz do projeto é a do `main` (`_RAIZ`, a única calculada com `__file__`,
     # ver tests/test_app_recursos.py). Import aqui: o `main` importa as telas,
@@ -93,7 +94,7 @@ def reiniciar(janela, *, pai=None) -> bool:
     try:
         _abrir_processo(comando, pasta)
     except OSError as erro:
-        QMessageBox.warning(pai or janela, TITULO, MSG_NAO_REABRIU.format(erro=erro))
+        QMessageBox.warning(pai or janela, t(TITULO), t(MSG_NAO_REABRIU, erro=erro))
         return False
     # Já conferimos que não há tarefa: fechar sem a pergunta de "tarefa em andamento".
     janela.fechar_sem_perguntar = True

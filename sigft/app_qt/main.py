@@ -38,6 +38,7 @@ from shiboken6 import isValid
 
 from sigft import _build_info
 from sigft.app import backends, idioma, tokens
+from sigft.app.idioma import t
 from sigft.app_qt import (
     atualizacao, catalogo, cursor, escolha_de_idioma, estilo, icones, interface, letra, novidades,
     pasta_de_logs, tema,
@@ -228,7 +229,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         lay.addWidget(self.marca)
         lay.addSpacing(22)
         # O emoji virou ícone (Lucide, na cor do tema: sistema visual, 2026-10-20).
-        home = QPushButton(" Home", objectName="home")
+        home = QPushButton(f" {t('Home')}", objectName="home")
         # O ícone acompanha o texto do item escolhido (e sob o mouse): a marca
         # no claro (2026-10-20).
         icones.aplicar(home, catalogo.ICONE_DA_TELA["Home"], tamanho=16,
@@ -236,7 +237,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         self.botao_home = home
         blocos.sem_tecla(home)   # os botões da barra (CTkButton) nunca pegam o foco
         home.clicked.connect(self.show_home)
-        home.setToolTip("Volta à tela inicial: os módulos, as chaves de API e os modelos de IA.")
+        home.setToolTip(t("Volta à tela inicial: os módulos, a engrenagem da configuração e os gastos de IA."))
         lay.addWidget(home)
         lay.addSpacing(6)
 
@@ -244,11 +245,11 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         for item in catalogo.MENU:
             if item[0] == "secao":
                 lay.addSpacing(20)
-                lay.addWidget(QLabel(item[1].upper(), objectName="secao"))
+                lay.addWidget(QLabel(t(item[1]).upper(), objectName="secao"))
                 lay.addSpacing(5)
                 continue
             _tipo, texto, alvo = item
-            botao = QPushButton(f" {texto}")
+            botao = QPushButton(f" {t(texto)}")
             blocos.sem_tecla(botao)
             botao.setProperty("menu", True)
             icones.aplicar(botao, catalogo.ICONE_DA_TELA[alvo], tamanho=16,
@@ -399,7 +400,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
     def closeEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
         if not self.fechar_sem_perguntar and instancia.tarefas_em_andamento():
             resposta = QMessageBox.question(
-                self, "Fechar o SIG-FT", catalogo.MSG_TAREFA_EM_ANDAMENTO,
+                self, t("Fechar o SIG-FT"), t(catalogo.MSG_TAREFA_EM_ANDAMENTO),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             if resposta != QMessageBox.StandardButton.Yes:
@@ -453,7 +454,7 @@ class SplashScreen(QWidget):
         self.versao.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(self.versao)
         lay.addStretch()
-        self.status = QLabel("Iniciando...")
+        self.status = QLabel(t("Iniciando..."))
         self.status.setObjectName("splash_status")
         self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(self.status)
@@ -479,16 +480,17 @@ class SplashScreen(QWidget):
         inicio = time.time()
 
         def progredir(exibido, fracao):
-            interface.na_interface(self.status.setText, f"Carregando: {exibido}...")
+            interface.na_interface(self.status.setText, t("Carregando: {nome}...", nome=exibido))
             interface.na_interface(self.barra.setValue, int(fracao * 1000))
 
         def falhar(exibido, erro):
             print(f"Erro ao carregar {exibido}: {erro}")
-            interface.na_interface(self.status.setText, f"Erro em {exibido}")
+            interface.na_interface(self.status.setText, t("Erro em {nome}", nome=exibido))
 
         try:
             backends.carregar_todos(ao_progredir=progredir, ao_falhar=falhar)
-            interface.na_interface(self.status.setText, f"Concluído em {time.time() - inicio:.1f}s")
+            interface.na_interface(self.status.setText,
+                                   t("Concluído em {segundos}s", segundos=f"{time.time() - inicio:.1f}"))
         except BaseException:  # noqa: BLE001 -- inclui SystemExit de um backend no import
             traceback.print_exc()
         finally:
@@ -503,7 +505,7 @@ def _texto_da_versao() -> str:
     é o padrão commitado). `_build_info` sem `VERSAO`: um texto que não
     quebra a abertura."""
     versao = getattr(_build_info, "VERSAO", "") or ""
-    return f"versão {versao}" if versao else "versão de desenvolvimento"
+    return t("versão {versao}", versao=versao) if versao else t("versão de desenvolvimento")
 
 
 # A tradução dos botões padrão do Qt ("Sim", "Não", "Cancelar") de cada idioma da
@@ -669,8 +671,8 @@ def main() -> None:
             traceback.print_exception(erro)
             # Sai com 1: o `SIG-FT.bat` e o `.command` esperam este processo e
             # deixam a janela preta aberta com "Encerrado com erro".
-            QMessageBox.critical(None, "SIG-FT", catalogo.MSG_ABERTURA_FALHOU.format(
-                erro=f"{type(erro).__name__}: {erro}"))
+            QMessageBox.critical(None, "SIG-FT", t(
+                catalogo.MSG_ABERTURA_FALHOU, erro=f"{type(erro).__name__}: {erro}"))
             instancia.encerrar(1)
             return
         janela.append(principal)

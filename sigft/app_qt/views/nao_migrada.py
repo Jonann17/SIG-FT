@@ -4,6 +4,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from sigft.app.idioma import t
+
 
 class TelaNaoMigrada(QWidget):
     """Uma chave do menu sem fábrica em `TELAS`. Desde a E4.10 todas as telas
@@ -14,7 +16,7 @@ class TelaNaoMigrada(QWidget):
         self.setObjectName("tela")
         layout = QVBoxLayout(self)
         self.mensagem = QLabel(
-            f"A tela \"{nome}\" não está disponível nesta versão do SIG-FT.")
+            t("A tela \"{nome}\" não está disponível nesta versão do SIG-FT.", nome=nome))
         self.mensagem.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.mensagem.setProperty("papel", "legenda")
         self.mensagem.setStyleSheet("font-size: 16px;")
@@ -30,10 +32,11 @@ class TelaComErro(QWidget):
         # O `--smoke` lê o motivo (com a pilha) daqui para o relatório do Release.
         self.erro = erro
         layout = QVBoxLayout(self)
-        self.mensagem = QLabel(
-            f"A tela \"{nome}\" não conseguiu abrir.\n\n{type(erro).__name__}: {erro}\n\n"
+        self.mensagem = QLabel(t(
+            "A tela \"{nome}\" não conseguiu abrir.\n\n{erro}\n\n"
             "O detalhe está em Documentos\\SIG-FT\\logs\\sigft.log. "
-            "Mande esse arquivo para quem cuida do SIG-FT.")
+            "Mande esse arquivo para quem cuida do SIG-FT.",
+            nome=nome, erro=f"{type(erro).__name__}: {erro}"))
         self.mensagem.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.mensagem.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.mensagem.setWordWrap(True)

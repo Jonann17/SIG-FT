@@ -26,6 +26,7 @@ from shiboken6 import isValid
 
 from sigft import _build_info
 from sigft.app.atualizacao_textos import data_br, notas_para_exibir
+from sigft.app.idioma import marcar, t
 from sigft.app_qt import nome as nome_da_pessoa
 from sigft.app_qt.widgets import blocos
 from sigft.core import novidades
@@ -33,7 +34,7 @@ from sigft.services import updater
 
 __all__ = ["JanelaNovidades", "agendar_na_abertura", "mostrar_se_houver"]
 
-TITULO = "Novidades do SIG-FT"
+TITULO = marcar("Novidades do SIG-FT")
 TEXTO_OK = "OK"
 
 # Quanto esperar depois de montar a janela principal: tempo de ela aparecer
@@ -44,13 +45,13 @@ _LARGURA_DO_TEXTO = 530
 
 
 def titulo_da_janela(bloco: novidades.Bloco) -> str:
-    return f"O que mudou na v{bloco.versao}"
+    return t("O que mudou na v{versao}", versao=bloco.versao)
 
 
 def subtitulo_da_janela(bloco: novidades.Bloco) -> str:
-    texto = f"Você está usando a versão {bloco.versao} do SIG-FT"
+    texto = t("Você está usando a versão {versao} do SIG-FT", versao=bloco.versao)
     if bloco.data:
-        texto += f", publicada em {data_br(bloco.data)}"
+        texto += t(", publicada em {data}", data=data_br(bloco.data))
     return texto + "."
 
 
@@ -136,7 +137,7 @@ class JanelaNovidades(QDialog):
     def __init__(self, master, *, bloco: novidades.Bloco):
         super().__init__(master)
         self.bloco = bloco
-        self.setWindowTitle(TITULO)
+        self.setWindowTitle(t(TITULO))
         self.resize(580, 480)
         self.setModal(False)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)

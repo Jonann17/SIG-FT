@@ -174,9 +174,10 @@ def test_seletor_de_letra_num_lugar_so():
 
     assert config_mod.SELETOR_LETRA is catalogo.SELETOR_LETRA
     assert tuple(e for e, *_ in catalogo.SELETOR_LETRA) == letra.TAMANHOS
-    na_paleta = {a[0]: a[1] for a in catalogo.ACOES}
+    # O texto do Ctrl+K é "Letra: {nome}" traduzido em `comandos()` (idioma, 2026-10-22).
+    na_paleta = {c.chave: c.texto for c in catalogo.comandos()}
     for escolha, texto, _dica in catalogo.SELETOR_LETRA:
-        assert na_paleta[f"letra_{escolha}"] == f"Letra: {texto}"
+        assert na_paleta[f"acao:letra_{escolha}"] == f"Letra: {texto}"
 
 
 def _configuracao(qtbot):

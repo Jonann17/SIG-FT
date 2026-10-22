@@ -79,3 +79,77 @@ def test_mural_com_um_cartao(qt_interface, qtbot, codigo, linha_do_cartao, cabec
         assert linha_do_cartao in textos
         assert cabecalho in textos
         assert ainda_em_portugues(pai, codigo) == set()
+
+
+@pytest.fixture
+def janela(qt_interface, qtbot, tmp_path, monkeypatch):
+    """A janela principal, montada DENTRO do idioma do teste (cada tela lê os textos ao nascer)."""
+    from sigft.app_qt import main as qmain
+
+    monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))
+
+    def montar():
+        principal = qmain.SIG_FT_App()
+        principal.fechar_sem_perguntar = True
+        qtbot.addWidget(principal)
+        return principal
+    return montar
+
+
+@pytest.mark.parametrize("codigo", IDIOMAS)
+def test_menu_home_configuracao_e_ctrl_k(janela, codigo, monkeypatch):
+    with em_idioma(codigo):
+        principal = janela()
+        home = principal.telas["Home"]
+        monkeypatch.setattr(principal, "get_key", lambda _chave: "chave-de-teste")
+        abertas = [home.abrir_configuracao(), home.abrir_janela_chaves_api(),
+                   home.abrir_janela_modelos_ia(), home.abrir_janela_gastos_ia()]
+        assert ainda_em_portugues(principal, codigo) == set()
+        for aberta in abertas:
+            assert ainda_em_portugues(aberta, codigo) == set(), aberta.windowTitle()
+        paleta = principal.abrir_paleta()
+        assert ainda_em_portugues(paleta, codigo) == set()
+        paleta.close()
+
+
+@pytest.mark.parametrize("codigo", IDIOMAS)
+def test_splash_pergunta_do_nome_e_do_idioma(qt_interface, qtbot, codigo):
+    from sigft.app_qt import escolha_de_idioma, nome
+    from sigft.app_qt.main import SplashScreen
+
+    with em_idioma(codigo):
+        for peca in (SplashScreen(), nome.PerguntaDoNome(), escolha_de_idioma.PerguntaDoIdioma()):
+            qtbot.addWidget(peca)
+            assert ainda_em_portugues(peca, codigo) == set(), type(peca).__name__
+
+
+@pytest.mark.parametrize("codigo", IDIOMAS)
+def test_saudacao_no_idioma(codigo):
+    from datetime import datetime
+
+    from sigft.app import idioma
+    from sigft.app_qt import nome
+
+    with em_idioma(codigo):
+        manha = nome.saudacao(datetime(2026, 10, 22, 9), "Ana")
+        assert manha == f"{idioma.t('Bom dia')}, Ana" and not manha.startswith("Bom dia")
+
+
+@pytest.mark.parametrize("codigo, texto_do_tema, palavra_traduzida", [
+    ("es", "Tema: Oscuro", "apariencia"),
+    ("en", "Theme: Dark", "appearance"),
+])
+def test_ctrl_k_traduzido_acha_tambem_em_portugues(codigo, texto_do_tema, palavra_traduzida):
+    """O Ctrl+K busca pelo texto traduzido e pelas palavras no idioma E em
+    português: quem trocou de idioma e ainda digita em português acha."""
+    from sigft.app_qt import catalogo
+
+    with em_idioma(codigo):
+        lista = catalogo.comandos()
+        textos = {c.chave: c.texto for c in lista}
+        assert textos["acao:tema_escuro"] == texto_do_tema
+        assert textos["tela:CriaFichas"] != "Cria Fichas PMIB"
+        nome_do_tema = texto_do_tema.split()[-1]
+        for consulta in (f"aparencia {nome_do_tema}", f"{palavra_traduzida} {nome_do_tema}"):
+            assert "acao:tema_escuro" in [c.chave for c in catalogo.filtrar(lista, consulta)], consulta
+        assert "acao:configuracao" in [c.chave for c in catalogo.filtrar(lista, "engrenagem")]
