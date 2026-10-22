@@ -473,6 +473,10 @@ class HomeView(QScrollArea):
         """Recalcula a saudação pelo relógio e pelo nome guardado. A janela
         chama ao mostrar a Home: "Bom dia" vira "Boa tarde" sem reabrir."""
         self.label_titulo.setText(nome.saudacao(_agora(), nome.guardado()))
+        # [2026-10-22] O nome pode ter mudado pela saudação: o campo "Seu nome"
+        # da janela Configuração aberta acompanha.
+        if (janela := self._configuracao_viva()) is not None:
+            janela.mostrar_nome()
 
     def mudar_nome(self) -> None:
         """Clicar na saudação: a pergunta do nome, com o nome de agora no campo."""

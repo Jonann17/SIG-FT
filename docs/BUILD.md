@@ -437,8 +437,9 @@ deixava a Qt de fora de propósito; agora ela vai, e só o que a interface usa.
 `Qt6Widgets`), os `.pyd` e o runtime do MSVC que vem no wheel --, em
 `_internal\PySide6` e `_internal\shiboken6`; dois tipos de plugin, a plataforma
 (`qwindows`, mais as sem tela `qoffscreen` e `qminimal`) e o estilo nativo
-(`qmodernwindowsstyle`: "windows11" e "windowsvista"); a tradução
-`qtbase_pt_BR` (os "Sim"/"Não"/"Cancelar" dos diálogos); as fontes, em
+(`qmodernwindowsstyle`: "windows11" e "windowsvista"); as traduções
+`qtbase_pt_BR` e `qtbase_es` (os "Sim"/"Não"/"Cancelar" dos diálogos, no idioma
+escolhido; o inglês é o do próprio Qt, 2026-10-22); as fontes, em
 `_internal\assets\fonts`; e as licenças, em `_internal\licencas`.
 
 **O que fica de fora, e quanto pesa** -- medido no wheel 6.12 do Windows, que é o
@@ -448,7 +449,7 @@ número sai do fecho das dependências de cada DLL, como o PyInstaller faz):
 | Fora | Windows | Por quê |
 |---|---|---|
 | `opengl32sw.dll` | 20,6 MB | OpenGL por software, do Qt Quick e do QOpenGLWidget; a interface é QtWidgets puro, que desenha sem OpenGL |
-| traduções do Qt, menos a `qtbase_pt_BR` | 6,7 MB | o app carrega uma (`_instalar_traducao`, em `sigft/app_qt/main.py`) |
+| traduções do Qt, menos a `qtbase_pt_BR` e a `qtbase_es` | 6,7 MB | o app carrega a do idioma escolhido (`_instalar_traducao`, em `sigft/app_qt/main.py`) |
 | plugins de imagem, SVG, toque, `qdirect2d`... | ~4 MB | o app carrega PNG, que o QtGui lê sem plugin; os ícones SVG são desenhados pelo módulo QtSvg (`QSvgRenderer`), que não precisa dos plugins. O `Qt6Svg.dll` VOLTOU ao pacote em 2026-10-20 (ícones do sistema visual), via `hiddenimports` |
 | o módulo QtNetwork, o `Qt6Network.dll` e os plugins de TLS e de rede | 3,6 MB | ninguém o importa; quem o puxava era um import condicional do `PySide6/__init__.py` |
 | **a Qt no pacote** | **78,4 → 43,2 MB** | |
@@ -481,6 +482,7 @@ Esperado no Windows:
   OK     Qt: plataforma 'windows' (...\_internal\PySide6\plugins\platforms\qwindows.dll)
   OK     Qt: estilo nativo 'windowsvista'
   OK     Qt: traducao pt_BR (...\_internal\PySide6\translations\qtbase_pt_BR.qm)
+  OK     Qt: traducao es (...\_internal\PySide6\translations\qtbase_es.qm)
   OK     Qt: fontes Roboto-Regular.ttf, NotoEmoji-Regular.ttf (...\_internal\assets\fonts)
 ```
 
@@ -576,9 +578,10 @@ A caixa traz o motivo, que também vai para `Documentos\SIG-FT\logs\sigft.log`.
 Para ver o que falta no pacote, rode `SIG-FT.exe --conferir-pacote` de uma pasta
 onde se possa gravar e leia as linhas `Qt` do `conferencia-do-pacote.txt`.
 
-**Os diálogos aparecem em inglês ("Yes"/"No"/"Cancel").** A tradução
-`qtbase_pt_BR.qm` não entrou no pacote: a linha `Qt: traducao pt_BR` da
-`--conferir-pacote` diz onde ela foi procurada.
+**Os diálogos aparecem em inglês ("Yes"/"No"/"Cancel") com o SIG-FT em
+português ou espanhol.** A tradução `qtbase_pt_BR.qm` (ou `qtbase_es.qm`) não
+entrou no pacote: as linhas `Qt: traducao pt_BR` e `Qt: traducao es` da
+`--conferir-pacote` dizem onde ela foi procurada.
 
 **O `.exe` abre sem ícone/logo.**
 `assets/` não entrou no bundle. Confira a linha `("assets", "assets")` em

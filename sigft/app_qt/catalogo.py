@@ -147,6 +147,7 @@ ACOES_QUE_A_HOME_FAZ = (ACAO_CONFIGURACAO, *ACOES_DA_HOME, *ACOES_DA_CONFIGURACA
 # é o método que monta a seção (`JanelaConfiguracao._secao_<chave>`).
 SECOES_DA_CONFIGURACAO = (
     ("aparencia", "Aparência"),
+    ("idioma", "Idioma"),
     ("nome", "Seu nome"),
     ("avisos", "Avisos"),
     ("ia", "Inteligência artificial"),

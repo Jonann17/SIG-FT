@@ -39,7 +39,8 @@ from shiboken6 import isValid
 from sigft import _build_info
 from sigft.app import backends, idioma, tokens
 from sigft.app_qt import (
-    atualizacao, catalogo, cursor, estilo, icones, interface, letra, novidades, pasta_de_logs, tema,
+    atualizacao, catalogo, cursor, escolha_de_idioma, estilo, icones, interface, letra, novidades,
+    pasta_de_logs, tema,
 )
 from sigft.app_qt import nome as nome_da_pessoa
 from sigft.app_qt.views.aplicacao_lmr import ModuloAplicacaoLMR
@@ -505,14 +506,27 @@ def _texto_da_versao() -> str:
     return f"versão {versao}" if versao else "versão de desenvolvimento"
 
 
+# A tradução dos botões padrão do Qt ("Sim", "Não", "Cancelar") de cada idioma da
+# interface (2026-10-22). O inglês não tem: o Qt já é inglês. O `SIG-FT.spec`
+# leva estas e a `--conferir-pacote` confere (`conferencia.TRADUCOES_DA_QT`).
+LOCALE_DO_QT = {"pt": "pt_BR", "es": "es"}
+
+
 def _instalar_traducao(app) -> bool:
-    """Botões dos diálogos do Qt em português ("Sim", "Não", "Cancelar").
-    Sem isto o QMessageBox mostra "Yes"/"No"/"Cancel"."""
+    """Botões dos diálogos do Qt no idioma da sessão (`idioma.atual()`). Troca a
+    instalada antes, se houver. `True` se instalou uma."""
     from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
 
+    anterior = getattr(app, "_tradutor_qt", None)
+    if anterior is not None:
+        app.removeTranslator(anterior)
+        app._tradutor_qt = None
+    local = LOCALE_DO_QT.get(idioma.atual())
+    if local is None:
+        return False
     tradutor = QTranslator(app)
     pasta = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
-    if tradutor.load(QLocale("pt_BR"), "qtbase", "_", pasta):
+    if tradutor.load(QLocale(local), "qtbase", "_", pasta):
         app.installTranslator(tradutor)
         app._tradutor_qt = tradutor  # segura a referência
         return True
@@ -562,13 +576,17 @@ def _criar_qapplication() -> QApplication:
         qInstallMessageHandler(anterior)
 
 
-def _preparar_qt(escolha_tema: str | None = None, escolha_letra: str | None = None) -> QApplication:
-    """A QApplication pronta: tradução, fontes, cursor, a letra e o tema.
+def _preparar_qt(escolha_tema: str | None = None, escolha_letra: str | None = None,
+                 escolha_idioma: str | None = None) -> QApplication:
+    """A QApplication pronta: idioma, tradução do Qt, fontes, cursor, a letra e o tema.
 
-    Letra e tema são os guardados nas preferências, ou os da linha de comando
-    (`--smoke --tema claro --letra grande`), sem gravar: a abertura só lê. A
-    letra vem antes: a folha que o tema aplica já sai com o aumento."""
+    Idioma, letra e tema são os guardados nas preferências, ou os da linha de
+    comando (`--smoke --idioma es --tema claro --letra grande`), sem gravar: a
+    abertura só lê. O idioma vem primeiro (a tradução do Qt e a largura das
+    peças dependem dele); a letra antes do tema (a folha que o tema aplica já
+    sai com o aumento)."""
     app = QApplication.instance() or _criar_qapplication()
+    idioma.definir(escolha_idioma or idioma.escolhido() or idioma.PADRAO)
     _instalar_traducao(app)
     interface.instalar()
     estilo.carregar_fontes()
@@ -577,6 +595,14 @@ def _preparar_qt(escolha_tema: str | None = None, escolha_letra: str | None = No
     tema.seguir_o_sistema(app)
     cursor.instalar(app)
     return app
+
+
+def _aplicar_idioma(app, codigo: str) -> None:
+    """O idioma escolhido na primeira abertura, antes de a janela principal
+    existir: a sessão, a tradução do Qt e a largura das peças (`letra`)."""
+    idioma.definir(codigo)
+    _instalar_traducao(app)
+    letra.aplicar(app, letra.atual(), gravar=False)
 
 
 def _opcao_da_linha_de_comando(argv: list[str], nome: str) -> str | None:
@@ -629,6 +655,10 @@ def main() -> None:
               "so o robo do portal vai reclamar de navegador quando for usado.")
 
     app = _preparar_qt()
+    # [2026-10-22] Sem idioma escolhido (instalação nova ou atualização): a pergunta,
+    # antes da splash e da janela principal, que já nascem no idioma escolhido.
+    if (escolhido := escolha_de_idioma.perguntar_na_abertura()) is not None:
+        _aplicar_idioma(app, escolhido)
     splash = SplashScreen()
     janela: list[SIG_FT_App] = []
 
@@ -698,10 +728,12 @@ def _smoke() -> int:
     os.environ[aviso_windows.ENV_DESLIGAR] = "1"
     avisos: list[str] = []
     try:
-        # `--smoke --tema claro --letra grande`: o smoke também no claro e com a
-        # letra grande, sem gravar a escolha.
+        # `--smoke --tema claro --letra grande --idioma es`: o smoke também no
+        # claro, com a letra grande e em outro idioma (`--idioma es`), sem gravar
+        # a escolha.
         _preparar_qt(_tema_da_linha_de_comando(sys.argv),
-                     _opcao_da_linha_de_comando(sys.argv, "--letra"))
+                     _opcao_da_linha_de_comando(sys.argv, "--letra"),
+                     _opcao_da_linha_de_comando(sys.argv, "--idioma"))
         # Os ícones desenham? Um SVG ou o QtSvg fora do `.exe` daria botões em
         # branco SEM erro (2026-10-20: a mesma classe do pymupdf-layout, um
         # arquivo que faltava só no pacote). Aqui o Release reprova.

@@ -254,8 +254,14 @@ def _sem_janelas_do_fim_da_tarefa(monkeypatch):
 #    isso que os testes que comparam texto literal continuam valendo. Quem testa
 #    outro idioma usa `tests/_idioma.em_idioma(...)`.
 @pytest.fixture(autouse=True)
-def _interface_em_portugues():
+def _interface_em_portugues(monkeypatch):
     from sigft.app import idioma as _idioma
+
+    # A pergunta da primeira abertura e o "Reiniciar agora" nunca nos testes: a
+    # pasta de dados de cada teste é nova (sem idioma escolhido), e um reinício
+    # abriria outro SIG-FT de verdade. Quem testa tira a variável.
+    monkeypatch.setenv("SIGFT_SEM_PERGUNTA_DO_IDIOMA", "1")
+    monkeypatch.setenv("SIGFT_SEM_REINICIO", "1")
 
     _idioma.definir(_idioma.PADRAO)
     yield

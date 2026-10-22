@@ -138,6 +138,32 @@ def test_seu_nome_guarda_e_a_saudacao_muda_na_hora(home):
     assert "," not in home.label_titulo.text()
 
 
+def test_seu_nome_mostra_o_que_foi_guardado(home):
+    # [2026-10-22] O campo mostra o nome como ficou guardado (aparado), e não
+    # o que foi digitado: senão o campo e a saudação contam coisas diferentes.
+    janela = home.abrir_configuracao()
+    janela.campo_nome.setText("  Ana  ")
+    janela.campo_nome.editingFinished.emit()
+    assert janela.campo_nome.text() == "Ana"
+
+
+def test_seu_nome_acompanha_a_troca_pela_saudacao_da_home(home):
+    # Clicar na saudação da Home troca o nome (`PerguntaDoNome`); ao fechar a
+    # pergunta, a Home refaz a saudação, e o campo da janela aberta acompanha.
+    janela = home.abrir_configuracao()
+    nome.guardar("Bia")
+    home.atualizar_saudacao()
+    assert janela.campo_nome.text() == "Bia"
+
+
+def test_seu_nome_nao_atropela_o_que_esta_sendo_digitado(home):
+    janela = home.abrir_configuracao()
+    janela.campo_nome.setText("Car")
+    janela.campo_nome.setModified(True)      # a pessoa digitando, sem sair do campo
+    home.atualizar_saudacao()
+    assert janela.campo_nome.text() == "Car"
+
+
 def test_aviso_do_windows_liga_e_desliga(home):
     janela = home.abrir_configuracao()
     caixa = janela.caixa_avisos_windows
@@ -222,6 +248,17 @@ def _cortados(janela):
     return achados
 
 
+def test_a_barra_de_rolagem_so_aparece_quando_ha_o_que_rolar(home, qtbot):
+    # [2026-10-22] O `JanelaPainel` deixa a barra sempre à vista (a faixa do
+    # CTkScrollableFrame); aqui ela aparecia cheia, sem nada para rolar.
+    janela = home.abrir_configuracao()
+    qtbot.waitExposed(janela)
+    assert janela.area.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    barra = janela.area.verticalScrollBar()
+    qtbot.waitUntil(lambda: barra.maximum() == 0, timeout=1000)
+    assert not barra.isVisible()
+
+
 @pytest.mark.parametrize("escolha", ["normal", "grande"])
 def test_nada_corta_nem_rola_de_lado(home, qtbot, escolha):
     letra.aplicar(QApplication.instance(), escolha, gravar=False)
@@ -235,7 +272,8 @@ def test_nenhum_botao_nem_caixa_pega_o_foco(home):
     # Como os da Home: um Espaço perdido não troca o tema nem fecha a janela.
     janela = home.abrir_configuracao()
     controles_ = janela.findChildren(QPushButton) + janela.findChildren(QCheckBox)
-    assert len(controles_) >= 9
+    # [2026-10-22] 13: os 3 de idioma e o "Reiniciar agora" da seção Idioma a mais.
+    assert len(controles_) >= 13
     for controle in controles_:
         assert controle.focusPolicy() == Qt.FocusPolicy.NoFocus, controle.text()
 
@@ -259,3 +297,39 @@ def test_ctrl_k_abre_a_configuracao(qt_interface, qtbot, tmp_path, monkeypatch, 
     principal.executar_comando("acao:configuracao")
     janela = principal.telas["Home"]._janelas["configuracao"]
     assert janela.isVisible()
+
+
+# --- a seção Idioma (Task 3) ----------------------------------------------------------
+
+@pytest.fixture
+def prefs_do_idioma(tmp_path, monkeypatch):
+    from sigft.app import idioma
+
+    monkeypatch.setattr(idioma, "_arquivo_de_prefs", lambda: tmp_path / "idioma.json")
+    return idioma
+
+
+def test_idioma_guarda_no_clique_e_so_entao_libera_o_reiniciar(home, prefs_do_idioma):
+    idioma = prefs_do_idioma
+    janela = home.abrir_configuracao()
+    assert [b.text() for b in janela.botoes_idioma.values()] == ["Español", "Português", "English"]
+    assert janela.botoes_idioma["pt"].property("ativo") is True
+    assert not janela.btn_reiniciar.isEnabled(), "o idioma escolhido é o que está valendo"
+    assert janela.aviso_idioma.text() == config_mod.TEXTO_IDIOMA_AO_REINICIAR
+    janela.botoes_idioma["es"].click()
+    assert idioma.escolhido() == "es"
+    assert janela.botoes_idioma["es"].property("ativo") is True
+    assert janela.btn_reiniciar.isEnabled()
+    janela.botoes_idioma["pt"].click()
+    assert not janela.btn_reiniciar.isEnabled()
+
+
+def test_reiniciar_agora_chama_o_reinicio_com_a_janela_principal(home, prefs_do_idioma, monkeypatch):
+    from sigft.app_qt import reinicio
+
+    pedidos = []
+    monkeypatch.setattr(reinicio, "reiniciar", lambda janela, pai=None: pedidos.append((janela, pai)))
+    janela = home.abrir_configuracao()
+    janela.botoes_idioma["en"].click()
+    janela.btn_reiniciar.click()
+    assert pedidos == [(home.controller, janela)]

@@ -20,7 +20,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLineEdit, QVBoxLayout, QWidget
 
-from sigft.app_qt import aviso_windows, estilo, icones, letra, nome, tema
+from sigft.app import idioma
+from sigft.app_qt import aviso_windows, estilo, icones, letra, nome, reinicio, tema
 from sigft.app_qt.catalogo import (
     ACOES_DA_CONFIGURACAO, SECOES_DA_CONFIGURACAO, SELETOR_LETRA, SELETOR_TEMA,
 )
@@ -39,6 +40,8 @@ TEXTO_AVISOS_WINDOWS = "Avisar no Windows quando uma tarefa terminar ou pedir al
 DICA_AVISOS_WINDOWS = ("Com o SIG-FT atrás de outra janela, um aviso do Windows diz quando uma "
                        "tarefa termina ou quando o robô espera você (o login no portal, por exemplo).")
 TEXTO_CANAL_TESTES = "Receber versões de teste"
+TEXTO_IDIOMA_AO_REINICIAR = "O idioma muda na próxima vez que o SIG-FT abrir."
+TEXTO_REINICIAR = "Reiniciar agora"
 # Os botões que vieram da barra da Home, pela chave (`catalogo.ACOES_DA_CONFIGURACAO`).
 ACAO = {a.chave: a for a in ACOES_DA_CONFIGURACAO}
 
@@ -69,6 +72,10 @@ class JanelaConfiguracao(JanelaPainel):
             grade.addWidget(rotulo, linha, 0, Qt.AlignmentFlag.AlignTop)
             grade.addWidget(getattr(self, f"_secao_{chave}")(), linha, 1, Qt.AlignmentFlag.AlignTop)
         self._layout_conteudo.addWidget(quadro)
+        # [2026-10-22] A barra só quando há o que rolar: o `JanelaPainel` a deixa
+        # sempre à vista (a faixa do CTkScrollableFrame), e aqui ela aparecia
+        # cheia, sem nada para rolar. Com a letra grande ela volta se precisar.
+        self.area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         aplicar_dicas(self)
 
     # --- peças ----------------------------------------------------------------------
@@ -159,6 +166,43 @@ class JanelaConfiguracao(JanelaPainel):
         for chave, botao in self.botoes_letra.items():
             estilo.definir_propriedade(botao, "ativo", chave == escolha)
 
+    # --- Idioma -----------------------------------------------------------------
+    def _secao_idioma(self) -> QWidget:
+        caixa, coluna = self._coluna()
+        quadro, linha = self._seletor("seletor_idioma")
+        self.botoes_idioma = {}
+        for codigo in idioma.IDIOMAS:
+            # O nome de cada idioma no próprio idioma (`idioma.NOMES`): não se traduz.
+            botao = self._botao_de_escolha(idioma.NOMES[codigo], codigo)
+            botao.clicked.connect(self._clicou_idioma)
+            self.botoes_idioma[codigo] = botao
+            linha.addWidget(botao)
+        linha.addStretch()
+        coluna.addWidget(quadro)
+        self.aviso_idioma = blocos.rotulo(TEXTO_IDIOMA_AO_REINICIAR, tamanho=12, papel="legenda",
+                                          alinhar="esquerda")
+        coluna.addWidget(self.aviso_idioma)
+        self.btn_reiniciar = blocos.botao(TEXTO_REINICIAR, variante="primario", altura=32,
+                                          largura_minima=estilo.LARGURA_BOTAO_CTK)
+        dialogs.sem_tecla(self.btn_reiniciar)
+        self.btn_reiniciar.clicked.connect(self._reiniciar)
+        coluna.addWidget(self.btn_reiniciar, 0, Qt.AlignmentFlag.AlignLeft)
+        self._marcar_idioma(idioma.escolhido() or idioma.atual())
+        return caixa
+
+    def _clicou_idioma(self) -> None:
+        # Guardado no clique (como tema e letra): fechar pelo X também vale.
+        self._marcar_idioma(idioma.guardar(self.sender().property("escolha")))
+
+    def _marcar_idioma(self, codigo: str) -> None:
+        for chave, botao in self.botoes_idioma.items():
+            estilo.definir_propriedade(botao, "ativo", chave == codigo)
+        # Só faz sentido reiniciar para um idioma diferente do que está valendo.
+        self.btn_reiniciar.setEnabled(codigo != idioma.atual())
+
+    def _reiniciar(self) -> None:
+        reinicio.reiniciar(self.home.controller, pai=self)
+
     # --- Seu nome ---------------------------------------------------------------
     def _secao_nome(self) -> QWidget:
         # O nome só aparece na saudação da Home (`nome.py`): nunca vai para log.
@@ -172,7 +216,16 @@ class JanelaConfiguracao(JanelaPainel):
     def _guardar_nome(self) -> None:
         """Sair do campo ou Enter: guarda (vazio tira o nome) e a Home refaz a saudação."""
         nome.guardar(self.campo_nome.text())
+        # O campo passa a mostrar o que ficou guardado (aparado): é o mesmo nome
+        # da saudação. O `setText` também zera o "sendo digitado" (`isModified`).
+        self.campo_nome.setText(nome.guardado())
         self.home.atualizar_saudacao()
+
+    def mostrar_nome(self) -> None:
+        """O nome guardado no campo, quando ele muda por fora (a saudação da
+        Home, 2026-10-22). Não atropela o que a pessoa está digitando."""
+        if not self.campo_nome.isModified() and self.campo_nome.text() != nome.guardado():
+            self.campo_nome.setText(nome.guardado())
 
     # --- Avisos -----------------------------------------------------------------
     def _secao_avisos(self) -> QWidget:

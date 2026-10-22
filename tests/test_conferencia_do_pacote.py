@@ -415,7 +415,7 @@ def test_a_trava_diz_qual_tela_nao_conseguiu_ler(monkeypatch):
 # `find_spec` acha `PySide6.QtCore` sem carregar o `QtCore.pyd` nem as DLLs do
 # Qt: um pacote sem `Qt6Core.dll` passaria na lista acima e so morreria na
 # abertura. `conferir_qt` importa de verdade e confere o que a janela le do
-# disco -- o plugin da plataforma, o estilo nativo, a traducao pt_BR e as
+# disco -- o plugin da plataforma, o estilo nativo, as traducoes pt_BR e es e as
 # fontes --, para que um pacote incompleto pare o Release com o nome do que
 # falta, e nao numa janela que nao abre.
 
@@ -494,6 +494,16 @@ def test_a_conferencia_reprova_sem_a_traducao_pt_br(monkeypatch, tmp_path):
 
     assert ok is False
     assert _linha(relatorio, "pt_BR").lstrip().startswith("FALHA")
+
+
+def test_a_conferencia_reprova_sem_a_traducao_es(monkeypatch, tmp_path):
+    """Sem ela, em espanhol, os dialogos saem com "Yes"/"No"/"Cancel"."""
+    conferencia = _qt_com_pasta_trocada(monkeypatch, "TranslationsPath", tmp_path)
+
+    relatorio, ok = conferencia.conferir_qt()
+
+    assert ok is False
+    assert _linha(relatorio, "traducao es").lstrip().startswith("FALHA")
 
 
 def test_a_conferencia_reprova_sem_as_fontes(monkeypatch, tmp_path):

@@ -8,7 +8,8 @@ os textos vêm de `sigft/app/atualizacao_textos.py`, o trabalho de rede de
   Pergunta numa thread e, havendo versão nova, abre a `JanelaAtualizacao`.
   Falha de rede ou de token é ENGOLIDA (vai para o `sigft.log`): a abertura
   do app não pode depender do GitHub;
-* `procurar_agora(janela, ao_terminar=...)` -- o botão "Atualizações" da Home.
+* `procurar_agora(janela, ao_terminar=...)` -- o botão "Procurar atualizações"
+  da janela Configuração (a engrenagem da Home, 2026-10-22) e o Ctrl+K.
   O mesmo caminho, mas FALANDO: diz que a versão é a mais recente, mostra o
   erro, ou explica por que esta cópia não se atualiza por aqui;
 * `JanelaAtualizacao` -- o aviso: a versão nova, o que mudou, "Atualizar
@@ -111,10 +112,12 @@ def _limpar_e_consultar(janela, versao_atual: str) -> None:
 
 def procurar_agora(janela, *, versao_atual: str | None = None, ao_terminar=None,
                    disparar=_em_segundo_plano) -> None:
-    """O botão "Atualizações": a mesma pergunta, mas que SEMPRE responde.
+    """O botão "Procurar atualizações" (janela Configuração): a mesma pergunta,
+    mas que SEMPRE responde.
 
     `ao_terminar` roda na thread da interface quando a resposta chega, seja
-    ela qual for -- a Home o usa para devolver o botão ao normal.
+    ela qual for -- a Home (`procurar_atualizacoes`) o usa para devolver o botão
+    da janela Configuração ao normal.
     """
     versao = versao_atual or _build_info.VERSAO
     motivo = updater.motivo_para_nao_verificar()
@@ -166,7 +169,7 @@ def _avisar_erro(janela, erro: BaseException) -> None:
 def _mostrar_aviso(janela, info: updater.Atualizacao, versao_atual: str):
     """Abre o aviso -- ou traz para a frente o que já estiver aberto.
 
-    A pergunta da abertura e o botão da Home podem responder quase juntos; dois
+    A pergunta da abertura e o botão da Configuração podem responder quase juntos; dois
     avisos, cada um com o seu "Atualizar agora", seriam dois downloads.
     """
     aberta = getattr(janela, "_janela_de_atualizacao", None)
