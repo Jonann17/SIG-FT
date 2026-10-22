@@ -245,6 +245,10 @@ CONVERTIDOS: tuple[str, ...] = (
     "sigft/app_qt/views/translator.py",
     "sigft/app_qt/views/upload_conditions.py",
     "sigft/app_qt/views/upload_tech_specs.py",
+    # Task 8: Correção de PDM, Upload duplicadas, AutoSpec
+    "sigft/app_qt/views/autospec.py",
+    "sigft/app_qt/views/copia_fichas.py",
+    "sigft/app_qt/views/correcao_pdm.py",
 )
 
 # Literais que a varredura acusa e que ficam em português de propósito, por
@@ -315,6 +319,21 @@ NAO_E_INTERFACE: dict[str, set[str]] = {
     "sigft/app_qt/views/_upload_comum.py": {
         "O robô já está preenchendo uma fila no portal. Espere ele terminar "
         "(ou use PARAR ROBÔ WEB) antes de iniciar outra.",
+    },
+    # Task 8. Upload duplicadas: as linhas `registrar(...)` do robô vão ao console
+    # e ao log de auditoria (`registrar` é o `log_auditoria.envolver(self.log)`),
+    # que não mudam de idioma. "Sem Descrição" é o valor que entra na fila
+    # (`descricao` do item, que o robô e o log usam): dado.
+    "sigft/app_qt/views/copia_fichas.py": {
+        "Sem Descrição",
+        "f'[Robô novo] {len(fichas)} ficha(s) na fila. Abrindo o navegador...'",
+        "[Robô novo] Marcando o _STATUS_PMIB...",
+        "f'[Robô novo] {len(concluidas)} de {len(resultados)} sem pendência; "
+        "{marcadas} linha(s) marcada(s) na planilha'",
+        "f', {len(falhas)} falha(s).'",
+        "[Robô novo] Confira no portal o que o log marcou como pendência antes de "
+        "mudar o status das fichas.",
+        "f'[Robô novo] Falha: {type(erro).__name__}: {erro}'",
     },
 }
 

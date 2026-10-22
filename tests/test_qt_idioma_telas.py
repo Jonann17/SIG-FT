@@ -221,3 +221,31 @@ def test_pausa_de_login_dos_uploads_no_idioma(qt_interface, codigo):
         esperado = idioma.catalogo(codigo)[MSG_LOGIN_SOLTAR_ROBO]
         for tela in (ModuloUploadConditions, ModuloUploadTechSpecs):
             assert tela._mensagem_da_pausa(LOGIN_NECESSARIO) == esperado, tela.__name__
+
+
+@pytest.mark.parametrize("codigo", IDIOMAS)
+def test_aba_do_robo_das_specs_no_idioma(janela, codigo):
+    """O "Continuar" seleciona a aba do robô pelo nome; fora do português o nome
+    é o traduzido, e `add` e `set` usam o mesmo `t(ABA_WEB)` (revisão da Task 7)."""
+    from sigft.app import idioma
+    from sigft.app_qt.views._upload_comum import ABA_WEB
+
+    with em_idioma(codigo):
+        principal = janela()
+        principal.show_frame("UploadSpecs")
+        tela = principal.telas["UploadSpecs"]
+        tela.tabview.set(idioma.t(ABA_WEB))
+        assert tela.tabview.get() == idioma.catalogo(codigo)[ABA_WEB]
+
+
+@pytest.mark.parametrize("codigo", IDIOMAS)
+def test_correcao_duplicadas_e_autospec(janela, codigo):
+    from sigft.app_qt import main as qmain
+
+    with em_idioma(codigo):
+        principal = janela()
+        for alvo in ("CopiaFichas", "AutoSpec"):
+            principal.show_frame(alvo)
+            assert ainda_em_portugues(principal.telas[alvo], codigo) == set(), alvo
+        correcao = qmain.TELAS["CorrecaoPDM"](principal.pilha, principal)
+        assert ainda_em_portugues(correcao, codigo) == set()

@@ -43,6 +43,7 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QSizePolicy, QWidget
 
 from sigft.app import backends
+from sigft.app.idioma import t
 from sigft.app_qt import estilo, file_dialogs, icones, interface
 from sigft.app_qt.widgets import blocos, controles
 from sigft.app_qt.widgets.arrastar import Arrastavel
@@ -232,7 +233,7 @@ class ModuloAutoSpec(ModuleFrame):
         self.status_pmib_path = None
         self.linhas_fila: list[tuple[QLabel, object]] = []
         self.rotulo_fila_vazia = None
-        super().__init__(parent, controller, titulo="AutoSpec AI (RAG & Geração)",
+        super().__init__(parent, controller, titulo=t("AutoSpec AI (RAG & Geração)"),
                          altura_console=ALTURA_CONSOLE)
 
     def _build_ui(self) -> None:
@@ -243,17 +244,17 @@ class ModuloAutoSpec(ModuleFrame):
         # --- SEÇÃO 1: STATUS PMIB ---
         corpo.addSpacing(10)                            # frm_status: pady=10
         self.cartao_status, status = _cartao(corpo)
-        self.rotulo_secao1 = _rotulo("1. Arquivo de Referência", tamanho=14, negrito=True,
+        self.rotulo_secao1 = _rotulo(t("1. Arquivo de Referência"), tamanho=14, negrito=True,
                                      papel="destaque")
         status.addWidget(self.rotulo_secao1)
         status.addSpacing(10)                           # título (…, 10); a linha: pady=(0, 15)
         linha = QHBoxLayout()
         linha.setContentsMargins(0, 0, 0, 0)
         linha.setSpacing(0)
-        self.lbl_status = _rotulo("Nenhum _STATUS_PMIB selecionado", papel="legenda")
+        self.lbl_status = _rotulo(t("Nenhum _STATUS_PMIB selecionado"), papel="legenda")
         _sem_largura_minima(self.lbl_status)
         linha.addWidget(self.lbl_status, 1)
-        self.btn_status = blocos.botao("Selecionar _STATUS_PMIB", variante="cinza", altura=28,
+        self.btn_status = blocos.botao(t("Selecionar _STATUS_PMIB"), variante="cinza", altura=28,
                                        tamanho_fonte=12, largura_minima=estilo.LARGURA_BOTAO_CTK)
         self.btn_status.clicked.connect(self.sel_status)
         linha.addWidget(self.btn_status)
@@ -262,21 +263,21 @@ class ModuloAutoSpec(ModuleFrame):
         # --- SEÇÃO 2: MONTADOR DE FILA ---
         corpo.addSpacing(20)                            # frm_status (…, 10) + frm_job (10, …)
         self.cartao_job, job = _cartao(corpo, borda="destaque")
-        self.rotulo_secao2 = _rotulo("2. Adicionar Tarefa à Fila", tamanho=14, negrito=True,
+        self.rotulo_secao2 = _rotulo(t("2. Adicionar Tarefa à Fila"), tamanho=14, negrito=True,
                                      papel="destaque")
         job.addWidget(self.rotulo_secao2)
 
         # A) Ficha Alvo   B) Manuais
         job.addSpacing(15)                              # título (…, 10) + f_sheet (5, …)
         self.lbl_sheet, self.btn_sheet = self._linha_de_arquivo(
-            job, "Ficha: [Nenhuma]", "Selecionar Ficha (.xlsx)", self.sel_sheet)
+            job, t("Ficha: {nome}", nome=t("[Nenhuma]")), t("Selecionar Ficha (.xlsx)"), self.sel_sheet)
         job.addSpacing(10)                              # f_sheet (…, 5) + f_refs (5, …)
         self.lbl_refs, self.btn_refs = self._linha_de_arquivo(
-            job, "Manuais: 0 arquivos", "Adic. Manuais (.pdf)", self.sel_refs)
+            job, t("Manuais: {n} arquivos", n=0), t("Adic. Manuais (.pdf)"), self.sel_refs)
 
         # Botão Add
         job.addSpacing(20)                              # f_refs (…, 5) + botão (15, …)
-        self.btn_add = blocos.botao("Adicionar à Fila", variante="primario",
+        self.btn_add = blocos.botao(t("Adicionar à Fila"), variante="primario",
                                     altura=28, tamanho_fonte=13, negrito=True)
         # As setas "⬇" das pontas viraram o ícone (Lucide, na cor do tema, 2026-10-20).
         icones.aplicar(self.btn_add, "arrow-down", tamanho=16)
@@ -286,7 +287,7 @@ class ModuloAutoSpec(ModuleFrame):
         # --- SEÇÃO 3: VISUALIZAÇÃO DA FILA ---
         corpo.addSpacing(20)
         self.cartao_fila, fila = _cartao(corpo)
-        self.rotulo_fila = _rotulo("Fila de Processamento", tamanho=14, negrito=True,
+        self.rotulo_fila = _rotulo(t("Fila de Processamento"), tamanho=14, negrito=True,
                                    papel="destaque")
         fila.addWidget(self.rotulo_fila)
         fila.addSpacing(10)
@@ -305,21 +306,21 @@ class ModuloAutoSpec(ModuleFrame):
         self._conferir_fornecedor = True
         corpo.addSpacing(25)                            # frm_queue (…, 10) + caixa (15, …)
         self.chk_fornecedor = controles.CaixaDeMarcar(
-            "Conferir as respostas do fornecedor contra o datasheet", tamanho_fonte=13)
+            t("Conferir as respostas do fornecedor contra o datasheet"), tamanho_fonte=13)
         self.chk_fornecedor.setChecked(True)
         self.chk_fornecedor.toggled.connect(self._ao_marcar_conferencia_fornecedor)
         _recuado(corpo, self.chk_fornecedor, 30, natural=True)
         corpo.addSpacing(2)
         self.rotulo_fornecedor = _texto_quebrado(
-            "\"Não se aplica\" que o documento prova vira o valor do documento, em "
-            "azul, com a resposta original no comentário da célula. Divergência vai "
-            "só para o log: a ficha do fornecedor não é alterada. Usa uma chamada "
-            "de IA a mais por ficha que tenha resposta do fornecedor.",
+            t("\"Não se aplica\" que o documento prova vira o valor do documento, em "
+              "azul, com a resposta original no comentário da célula. Divergência vai "
+              "só para o log: a ficha do fornecedor não é alterada. Usa uma chamada "
+              "de IA a mais por ficha que tenha resposta do fornecedor."),
             papel="legenda", quebra=QUEBRA_TEXTOS)
         _recuado(corpo, self.rotulo_fornecedor, 58, natural=True)
 
         corpo.addSpacing(20)                            # texto (…, 0) + botão (20, …)
-        self.btn_run = blocos.botao("INICIAR PROCESSAMENTO DA FILA", variante="acento", altura=50,
+        self.btn_run = blocos.botao(t("INICIAR PROCESSAMENTO DA FILA"), variante="acento", altura=50,
                                     tamanho_fonte=15, negrito=True)
         self.btn_run.clicked.connect(self.run_process)
         _recuado(corpo, self.btn_run, 30, 30)
@@ -378,16 +379,16 @@ class ModuloAutoSpec(ModuleFrame):
         self._conf_em_andamento = False
 
         self.frm_conf, conf = _cartao(corpo, borda="aviso")
-        self.rotulo_conf_titulo = _rotulo("5. Conferência de documentos", tamanho=14, negrito=True,
+        self.rotulo_conf_titulo = _rotulo(t("5. Conferência de documentos"), tamanho=14, negrito=True,
                                           papel="aviso")
         conf.addWidget(self.rotulo_conf_titulo)
         conf.addSpacing(2)                              # título: pady=(10, 2)
         self.rotulo_conf_explicacao = _texto_quebrado(
-            "Estes documentos citam o fabricante OU o código, mas não os dois — "
-            "podem ser o datasheet certo num distribuidor, ou a página de outro "
-            "produto. Abra o link, confira, e marque os que são deste material.\n"
-            "Não precisa terminar agora: salve em .txt e importe depois para "
-            "continuar de onde parou.",
+            t("Estes documentos citam o fabricante OU o código, mas não os dois — "
+              "podem ser o datasheet certo num distribuidor, ou a página de outro "
+              "produto. Abra o link, confira, e marque os que são deste material.\n"
+              "Não precisa terminar agora: salve em .txt e importe depois para "
+              "continuar de onde parou."),
             quebra=QUEBRA_TEXTOS)
         _recuado(conf, self.rotulo_conf_explicacao, 0, natural=True)
         conf.addSpacing(8)                              # texto: pady=(0, 8)
@@ -398,11 +399,11 @@ class ModuloAutoSpec(ModuleFrame):
         conf.addSpacing(10)                             # lista: pady=(0, 10)
 
         self.btn_conf_salvar = blocos.botao(
-            "SALVAR CONFERÊNCIA (.txt)", variante="primario", altura=32, tamanho_fonte=12,
+            t("SALVAR CONFERÊNCIA (.txt)"), variante="primario", altura=32, tamanho_fonte=12,
             largura_minima=estilo.LARGURA_BOTAO_CTK)
         self.btn_conf_salvar.clicked.connect(lambda: self._conferencia_salvar())
         self.btn_conf_importar = blocos.botao(
-            "IMPORTAR CONFERÊNCIA (.txt)", variante="primario", altura=32, tamanho_fonte=12,
+            t("IMPORTAR CONFERÊNCIA (.txt)"), variante="primario", altura=32, tamanho_fonte=12,
             largura_minima=estilo.LARGURA_BOTAO_CTK)
         self.btn_conf_importar.clicked.connect(self._conferencia_importar)
         self._linha_botoes_conf = _DoisBotoesQueCrescem(self.btn_conf_salvar, self.btn_conf_importar,
@@ -411,7 +412,7 @@ class ModuloAutoSpec(ModuleFrame):
         conf.addSpacing(8)                              # linha: pady=(0, 8)
 
         self.btn_conf = blocos.botao(
-            "PROCESSAR OS DOCUMENTOS MARCADOS", variante="acento", altura=40, tamanho_fonte=13,
+            t("PROCESSAR OS DOCUMENTOS MARCADOS"), variante="acento", altura=40, tamanho_fonte=13,
             negrito=True)
         self.btn_conf.clicked.connect(self._conferencia_processar)
         _recuado(conf, self.btn_conf, 5, 5)             # padx=20, pady=(0, 15)
@@ -437,9 +438,9 @@ class ModuloAutoSpec(ModuleFrame):
         lista = self._layout_conf
         if not conferencia:
             self.rotulo_conf_vazia = _texto_quebrado(
-                "Nenhuma conferência pendente.\n\n"
-                "Se você salvou uma conferência anterior em .txt, use "
-                "IMPORTAR CONFERÊNCIA para continuar de onde parou.",
+                t("Nenhuma conferência pendente.\n\n"
+                  "Se você salvou uma conferência anterior em .txt, use "
+                  "IMPORTAR CONFERÊNCIA para continuar de onde parou."),
                 papel="legenda", quebra=QUEBRA_CONFERENCIA_VAZIA)
             lista.addSpacing(10)                        # pady=10
             lista.addWidget(_em_caixa(self.rotulo_conf_vazia, 10, 0), 0, Qt.AlignmentFlag.AlignLeft)
@@ -511,7 +512,7 @@ class ModuloAutoSpec(ModuleFrame):
         """
         if not self.conferencia:
             if not automatico:
-                QMessageBox.information(self, "Conferência", "Não há conferência para salvar.")
+                QMessageBox.information(self, t("Conferência"), t("Não há conferência para salvar."))
             return None
         try:
             caminho = conferencia_txt.salvar_txt(
@@ -520,32 +521,32 @@ class ModuloAutoSpec(ModuleFrame):
         except Exception as e:  # noqa: BLE001 -- vira aviso, como lá
             self.log(f"Nao consegui salvar o .txt da conferencia: {e}")
             if not automatico:
-                QMessageBox.critical(self, "Conferência", f"Não consegui salvar:\n{e}")
+                QMessageBox.critical(self, t("Conferência"), t("Não consegui salvar:\n{erro}", erro=e))
             return None
         self.log(f"Conferencia salva em: {caminho}")
         if not automatico:
-            QMessageBox.information(self, "Conferência", f"Conferência salva em:\n{caminho}")
+            QMessageBox.information(self, t("Conferência"), t("Conferência salva em:\n{caminho}", caminho=caminho))
         return caminho
 
     def _conferencia_importar(self) -> None:
         """Retoma uma conferência salva — inclusive de outra sessão do app."""
         caminho = file_dialogs.ask_open_file(
             "autospec.conferencia", "txt",
-            titulo="Selecione o .txt da conferência",
-            filetypes=[("Texto", "*.txt"), ("Todos", "*.*")],
+            titulo=t("Selecione o .txt da conferência"),
+            filetypes=[(t("Texto"), "*.txt"), (t("Todos"), "*.*")],
         )
         if not caminho:
             return
         try:
             conferencia, marcados = conferencia_txt.carregar_txt(caminho)
         except Exception as e:  # noqa: BLE001 -- vira aviso, como lá
-            QMessageBox.critical(self, "Conferência", f"Não consegui ler o arquivo:\n{e}")
+            QMessageBox.critical(self, t("Conferência"), t("Não consegui ler o arquivo:\n{erro}", erro=e))
             return
         if not conferencia:
             QMessageBox.warning(
-                self, "Conferência",
-                "Não encontrei nenhum documento neste arquivo.\n\n"
-                "Ele precisa ter as linhas 'FICHA:' e os links marcados com [ ] ou [x].",
+                self, t("Conferência"),
+                t("Não encontrei nenhum documento neste arquivo.\n\n"
+                  "Ele precisa ter as linhas 'FICHA:' e os links marcados com [ ] ou [x]."),
             )
             return
 
@@ -558,9 +559,9 @@ class ModuloAutoSpec(ModuleFrame):
             self.log(f" -> AVISO: nao encontrei a ficha {ficha}")
         if ausentes:
             QMessageBox.warning(
-                self, "Conferência",
-                f"{len(ausentes)} ficha(s) não estão mais no caminho gravado no "
-                "arquivo.\nElas vão falhar no processamento — veja o console.",
+                self, t("Conferência"),
+                t("{n} ficha(s) não estão mais no caminho gravado no "
+                  "arquivo.\nElas vão falhar no processamento — veja o console.", n=len(ausentes)),
             )
 
     def _conferencia_processar(self) -> None:
@@ -573,14 +574,14 @@ class ModuloAutoSpec(ModuleFrame):
         # _STATUS_PMIB — e a 2ª passada lê a planilha de status ficha a ficha.
         if not self.status_pmib_path:
             QMessageBox.critical(
-                self, "Erro", "Selecione o arquivo _STATUS_PMIB (seção 1) antes de "
-                              "processar a conferência."
+                self, t("Erro"), t("Selecione o arquivo _STATUS_PMIB (seção 1) antes de "
+                                   "processar a conferência.")
             )
             return
         selecao = self.conferencia.selecao_por_ficha(self._marcacoes())
         if not selecao:
             QMessageBox.information(
-                self, "Conferência", "Marque ao menos um documento antes de processar."
+                self, t("Conferência"), t("Marque ao menos um documento antes de processar.")
             )
             return
         # Uma passada por vez: ela regrava o `_completed` de cada ficha, e duas ao
@@ -611,7 +612,7 @@ class ModuloAutoSpec(ModuleFrame):
             # limpar aqui repetiria a perda que o .txt veio consertar.
             self.log("Os documentos nao marcados continuam na lista. Se for parar "
                      "agora, use SALVAR CONFERENCIA (.txt).")
-            self.avisar("Sucesso", "Documentos conferidos processados.")
+            self.avisar(t("Sucesso"), t("Documentos conferidos processados."))
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"ERRO na conferência: {e}")
         finally:
@@ -619,7 +620,7 @@ class ModuloAutoSpec(ModuleFrame):
 
     # --- Seletores (Lógica Mantida) -------------------------------------------------
     def sel_status(self) -> None:
-        p = file_dialogs.ask_open_file("autospec.status_pmib", "excel", titulo="Selecione _STATUS_PMIB",
+        p = file_dialogs.ask_open_file("autospec.status_pmib", "excel", titulo=t("Selecione _STATUS_PMIB"),
                                        filetypes=[("Excel", "*.xlsx")])
         if p:
             self.status_pmib_path = p
@@ -627,24 +628,24 @@ class ModuloAutoSpec(ModuleFrame):
             _pintar(self.lbl_status, None)
 
     def sel_sheet(self) -> None:
-        p = file_dialogs.ask_open_file("autospec.ficha", "excel", titulo="Selecione a Ficha Técnica",
+        p = file_dialogs.ask_open_file("autospec.ficha", "excel", titulo=t("Selecione a Ficha Técnica"),
                                        filetypes=[("Excel", "*.xlsx")])
         if p:
             self.temp_sheet = p
-            self.lbl_sheet.setText(f"Ficha: {os.path.basename(p)}")
+            self.lbl_sheet.setText(t("Ficha: {nome}", nome=os.path.basename(p)))
             _pintar(self.lbl_sheet, None)
 
     def sel_refs(self) -> None:
-        ps = file_dialogs.ask_open_files("autospec.manuais", "pdf", titulo="Selecione Manuais/PDFs",
-                                         filetypes=[("Docs", "*.pdf *.txt")])
+        ps = file_dialogs.ask_open_files("autospec.manuais", "pdf", titulo=t("Selecione Manuais/PDFs"),
+                                         filetypes=[(t("Docs"), "*.pdf *.txt")])
         if ps:
             self.temp_refs = list(ps)
-            self.lbl_refs.setText(f"Manuais: {len(ps)} arquivos")
+            self.lbl_refs.setText(t("Manuais: {n} arquivos", n=len(ps)))
             _pintar(self.lbl_refs, None)
 
     def add_queue(self) -> None:
         if not self.temp_sheet:
-            QMessageBox.warning(self, "Aviso", "Selecione pelo menos a Ficha Técnica (.xlsx).")
+            QMessageBox.warning(self, t("Aviso"), t("Selecione pelo menos a Ficha Técnica (.xlsx)."))
             return
 
         self.queue.append({'sheet': self.temp_sheet, 'refs': self.temp_refs})
@@ -652,9 +653,9 @@ class ModuloAutoSpec(ModuleFrame):
         # Reset Temp
         self.temp_sheet = None
         self.temp_refs = []
-        self.lbl_sheet.setText("Ficha: [Nenhuma]")
+        self.lbl_sheet.setText(t("Ficha: {nome}", nome=t("[Nenhuma]")))
         _pintar(self.lbl_sheet, "legenda")
-        self.lbl_refs.setText("Manuais: 0 arquivos")
+        self.lbl_refs.setText(t("Manuais: {n} arquivos", n=0))
         _pintar(self.lbl_refs, "legenda")
         self.update_queue_ui()
 
@@ -669,7 +670,7 @@ class ModuloAutoSpec(ModuleFrame):
         lista = self._layout_fila
 
         if not self.queue:
-            self.rotulo_fila_vazia = _rotulo("Fila vazia.", papel="legenda", alinhar="centro")
+            self.rotulo_fila_vazia = _rotulo(t("Fila vazia."), papel="legenda", alinhar="centro")
             lista.addSpacing(10)                        # pady=10, centrado
             lista.addWidget(self.rotulo_fila_vazia, 0, Qt.AlignmentFlag.AlignHCenter)
             lista.addSpacing(10)
@@ -678,7 +679,8 @@ class ModuloAutoSpec(ModuleFrame):
         for i, item in enumerate(self.queue):
             fname = os.path.basename(item['sheet'])
             n_refs = len(item['refs'])
-            rotulo = _rotulo(f"#{i+1}: {fname} (+{n_refs} manuais)", tamanho=12)
+            rotulo = _rotulo(t("#{numero}: {nome} (+{n} manuais)", numero=i + 1, nome=fname, n=n_refs),
+                            tamanho=12)
             _sem_largura_minima(rotulo)
             botao = blocos.botao("X", variante="perigo", largura=30, altura=25)
             # Sem o padding de 14 da folha do app: num botão de 30 ele cortaria o "X".
@@ -702,10 +704,10 @@ class ModuloAutoSpec(ModuleFrame):
         if self.backend("autospec_backend") is None:
             return
         if not self.status_pmib_path:
-            QMessageBox.critical(self, "Erro", "Selecione o arquivo _STATUS_PMIB.")
+            QMessageBox.critical(self, t("Erro"), t("Selecione o arquivo _STATUS_PMIB."))
             return
         if not self.queue:
-            QMessageBox.critical(self, "Erro", "Adicione itens à fila.")
+            QMessageBox.critical(self, t("Erro"), t("Adicione itens à fila."))
             return
         # A fila do lote é a do clique: o que se acrescentar (ou tirar) durante o
         # lote não mexe na lista que a thread está percorrendo.
@@ -770,4 +772,4 @@ class ModuloAutoSpec(ModuleFrame):
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"ERRO FATAL: {e}")
             return
-        self.avisar("Sucesso", "Todas as tarefas da fila foram processadas.")
+        self.avisar(t("Sucesso"), t("Todas as tarefas da fila foram processadas."))

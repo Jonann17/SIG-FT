@@ -21,6 +21,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy
 
 from sigft import config as sigft_config
+from sigft.app.idioma import t
 from sigft.app.textos_dialogos import MSG_LOGIN_LOTE
 from sigft.app_qt import estilo, file_dialogs, interface
 from sigft.app_qt.views.janelas import JanelaRevisaoEdicao, JanelaSelecaoDuplicadas
@@ -67,7 +68,7 @@ class ModuloCopiaFichas(ModuleFrame):
         # desliga só na thread da interface, e segura os botões que a seleção
         # e a leitura religariam no meio do lote.
         self._robo_ativo = False
-        super().__init__(parent, controller, titulo="Módulo: Cópia de Fichas PMIB", altura_console=None)
+        super().__init__(parent, controller, titulo=t("Módulo: Cópia de Fichas PMIB"), altura_console=None)
         # Lá a tela não é o ModuleFrame: header pady=10, quadro rolável pady=0,
         # console pady=10, dentro do padx/pady=20 do `show_frame`. Os pady
         # vizinhos SOMAM: 10 entre header e quadro, 10 entre quadro e console.
@@ -92,7 +93,7 @@ class ModuloCopiaFichas(ModuleFrame):
         corpo.addSpacing(10)                            # frm_config: pady=10
         config = self._cartao(corpo, fim=10)
         self.cartao_config = config.parentWidget()
-        self.rotulo_etapa1 = _rotulo("1. Selecionar Arquivo Base", tamanho=16, negrito=True,
+        self.rotulo_etapa1 = _rotulo(t("1. Selecionar Arquivo Base"), tamanho=16, negrito=True,
                                      papel="destaque")
         config.addWidget(self.rotulo_etapa1)
         config.addSpacing(20)                           # título (…, 10) + f_pmib (10, …)
@@ -100,11 +101,11 @@ class ModuloCopiaFichas(ModuleFrame):
         linha = QHBoxLayout()
         linha.setContentsMargins(0, 0, 0, 0)
         linha.setSpacing(0)
-        self.btn_status = blocos.botao("Selecionar _STATUS_PMIB", variante="cinza", largura=250, altura=28)
+        self.btn_status = blocos.botao(t("Selecionar _STATUS_PMIB"), variante="cinza", largura=250, altura=28)
         self.btn_status.clicked.connect(self.selecionar_excel_pmib)
         linha.addWidget(self.btn_status)
         linha.addSpacing(15)                            # lbl_status: padx=15
-        self.lbl_status = _rotulo("Aguardando seleção...", papel="legenda")
+        self.lbl_status = _rotulo(t("Aguardando seleção..."), papel="legenda")
         linha.addWidget(self.lbl_status)
         linha.addStretch()
         config.addLayout(linha)
@@ -113,7 +114,7 @@ class ModuloCopiaFichas(ModuleFrame):
         corpo.addSpacing(20)                            # frm_config (…, 10) + frm_action (10, …)
         acoes = self._cartao(corpo, fim=15)
         self.cartao_acoes = acoes.parentWidget()
-        self.rotulo_etapa2 = _rotulo("2. Execução", tamanho=16, negrito=True, papel="destaque")
+        self.rotulo_etapa2 = _rotulo(t("2. Execução"), tamanho=16, negrito=True, papel="destaque")
         acoes.addWidget(self.rotulo_etapa2)
         acoes.addSpacing(20)                            # título (…, 10) + grade (10, …)
 
@@ -121,14 +122,14 @@ class ModuloCopiaFichas(ModuleFrame):
         grade = QHBoxLayout()
         grade.setContentsMargins(0, 0, 0, 0)
         grade.setSpacing(10)
-        self.btn_resumo = blocos.botao("1. Revisar / Editar Fichas", variante="cinza", altura=40)
+        self.btn_resumo = blocos.botao(t("1. Revisar / Editar Fichas"), variante="cinza", altura=40)
         self.btn_resumo.clicked.connect(self.abrir_revisao)
         # CP 5.5: aqui havia TRÊS botões -- "2. Iniciar Robô Web" (o robô em
         # Selenium), "3. Salvar 'COMPLETO' no Excel" e este. Os dois primeiros
         # saíram com o Selenium; quem marca o COMPLETO agora é
         # `duplicadas_robo.marcar_status_na_planilha`, seção por seção, e o
         # robô já a chama sozinho no fim do lote.
-        self.btn_robo_novo = blocos.botao("2. Iniciar Robô Web", variante="primario", altura=40)
+        self.btn_robo_novo = blocos.botao(t("2. Iniciar Robô Web"), variante="primario", altura=40)
         self.btn_robo_novo.clicked.connect(self.run_robo_novo_thread)
         for b in (self.btn_resumo, self.btn_robo_novo):
             b.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
@@ -141,7 +142,7 @@ class ModuloCopiaFichas(ModuleFrame):
         # aparece no console mais o HTML de cada seção que o robô visita. O
         # HTML vai só para o arquivo; o console continua legível.
         self.switch_auditoria = controles.Interruptor(
-            "Gravar log de auditoria (com a estrutura das telas)")
+            t("Gravar log de auditoria (com a estrutura das telas)"))
         self.switch_auditoria.setChecked(True)
         acoes.addWidget(self.switch_auditoria, 0, Qt.AlignmentFlag.AlignLeft)
         acoes.addSpacing(15)                            # interruptor (…, 0) + barra (15, …)
@@ -245,9 +246,9 @@ class ModuloCopiaFichas(ModuleFrame):
         self.btn_status.setEnabled(not self._robo_ativo)
         # Lá: configure(fg_color=primary) -- aqui, a variante primária.
         estilo.definir_variante(self.btn_status, "primario")
-        texto = f"Planilha carregada. Encontradas {len(self.fila_completa)} duplicadas."
+        texto = t("Planilha carregada. Encontradas {n} duplicadas.", n=len(self.fila_completa))
         if self.impedidas:
-            texto += f" ({len(self.impedidas)} sem dados para o robô. Ver log.)"
+            texto += t(" ({n} sem dados para o robô. Ver log.)", n=len(self.impedidas))
         self.lbl_status.setText(texto)
         self._pintar_status("ok")
         self.log(f"{len(self.fila_completa)} fichas identificadas como cópia.")
@@ -262,7 +263,7 @@ class ModuloCopiaFichas(ModuleFrame):
 
     def _pos_selecao(self, selecionados) -> None:
         self.fila_selecionada = selecionados
-        self.lbl_status.setText(f"{len(self.fila_selecionada)} fichas na fila para processar.")
+        self.lbl_status.setText(t("{n} fichas na fila para processar.", n=len(self.fila_selecionada)))
         self.log(f"Fila final configurada com {len(self.fila_selecionada)} fichas.")
 
         ligado = bool(self.fila_selecionada) and not self._robo_ativo
@@ -351,7 +352,7 @@ class ModuloCopiaFichas(ModuleFrame):
 
             # O portal exige login manual: a janela nasce na thread da
             # interface e este worker espera o "Continuar".
-            self.pausar_e_esperar(MSG_LOGIN_LOTE)
+            self.pausar_e_esperar(t(MSG_LOGIN_LOTE))
 
             resultados = duplicadas_robo.processar_lote(
                 fichas,

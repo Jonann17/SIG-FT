@@ -22,6 +22,7 @@ from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMessageBox, QVBoxLayout, QWidget
 
 from sigft.app import theme
+from sigft.app.idioma import marcar, t
 from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA
 from sigft.app_qt import estilo, file_dialogs, interface
 from sigft.app_qt.views.janelas import JanelaEscolherPDM
@@ -34,12 +35,14 @@ from sigft.services import correcao_pdm_planilha as planilha_svc
 
 URL_LISTA_DE_FICHAS = "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
 
+# Os nomes vão em `marcar` e são traduzidos onde a tabela é montada (`t(c)`):
+# ninguém procura a coluna pelo nome, só pela posição (2026-10-22).
 COLUNAS = (
-    ("Ficha", 150),
-    ("Descrição", 250),
-    ("PDM atual", 260),
-    ("PDM novo", 260),
-    ("Prévia", 230),
+    (marcar("Ficha"), 150),
+    (marcar("Descrição"), 250),
+    (marcar("PDM atual"), 260),
+    (marcar("PDM novo"), 260),
+    (marcar("Prévia"), 230),
 )
 
 # O cinza escrito à mão nos botões de lá é a variante "cinza"; o vermelho do
@@ -106,7 +109,7 @@ class ModuloCorrecaoPDM(ModuleFrame):
         self.automacao = None
         self._fracao = 0.0
         self._janela_pdm = None
-        super().__init__(parent, controller, titulo="Correção de PDM",
+        super().__init__(parent, controller, titulo=t("Correção de PDM"),
                          altura_console=theme.ALTURA_CONSOLE)
 
     # -- montagem ----------------------------------------------------------
@@ -120,12 +123,12 @@ class ModuloCorrecaoPDM(ModuleFrame):
         linha = QHBoxLayout(quadro)
         linha.setContentsMargins(15, 12, 15, 12)
         linha.setSpacing(0)
-        self.btn_status = _botao("Selecionar _STATUS_PMIB", 200, variante="cinza", tamanho_fonte=12)
+        self.btn_status = _botao(t("Selecionar _STATUS_PMIB"), 200, variante="cinza", tamanho_fonte=12)
         self.btn_status.clicked.connect(self._sel_status)
-        self.lbl_status = _rotulo("Não selecionado")
-        self.btn_catalogo = _botao("Planilha de PDMs (opcional)", 210, variante="cinza", tamanho_fonte=12)
+        self.lbl_status = _rotulo(t("Não selecionado"))
+        self.btn_catalogo = _botao(t("Planilha de PDMs (opcional)"), 210, variante="cinza", tamanho_fonte=12)
         self.btn_catalogo.clicked.connect(self._sel_catalogo)
-        self.lbl_catalogo = _rotulo("sem catálogo")
+        self.lbl_catalogo = _rotulo(t("sem catálogo"))
         linha.addWidget(self.btn_status)
         linha.addSpacing(10)                  # rótulo padx=10
         linha.addWidget(self.lbl_status)
@@ -141,7 +144,7 @@ class ModuloCorrecaoPDM(ModuleFrame):
         acoes = QHBoxLayout()
         acoes.setContentsMargins(0, 0, 0, 0)
         acoes.setSpacing(0)
-        self.rotulo_acoes = QLabel("Nas fichas selecionadas:")
+        self.rotulo_acoes = QLabel(t("Nas fichas selecionadas:"))
         self.rotulo_acoes.setFixedHeight(blocos.ALTURA_MINIMA_ROTULO)
         # 148 medidos lá e ~136 no Qt: a 12 px o negrito sintetizado do Qt não
         # alarga as letras, e o do Tk soma ~0,5 px por letra (13 px nas 24 do
@@ -149,11 +152,11 @@ class ModuloCorrecaoPDM(ModuleFrame):
         self.rotulo_acoes.setMinimumWidth(LARGURA_ROTULO_ACOES)
         self.rotulo_acoes.setStyleSheet(
             "QLabel { font-size: 12px; font-weight: bold; background: transparent; }")
-        self.btn_so_revisao = _botao("Só atualizar a revisão", 170, variante="primario")
+        self.btn_so_revisao = _botao(t("Só atualizar a revisão"), 170, variante="primario")
         self.btn_so_revisao.clicked.connect(self._acao_so_revisao)
-        self.btn_escolher_pdm = _botao("Escolher PDM...", 140, variante="cinza")
+        self.btn_escolher_pdm = _botao(t("Escolher PDM..."), 140, variante="cinza")
         self.btn_escolher_pdm.clicked.connect(self._acao_escolher_pdm)
-        self.btn_limpar = _botao("Limpar", 90, variante="cinza")
+        self.btn_limpar = _botao(t("Limpar"), 90, variante="cinza")
         self.btn_limpar.clicked.connect(self._acao_limpar)
         acoes.addWidget(self.rotulo_acoes)
         acoes.addSpacing(10 + 4)              # padx=(0, 10) do rótulo + padx=4 do botão
@@ -167,7 +170,7 @@ class ModuloCorrecaoPDM(ModuleFrame):
         lay.addSpacing(6)                     # pady=(0, 6)
 
         # --- a tabela (ttk.Treeview com a barra vertical empacotada ao lado)
-        self.tabela = dialogos_selecao.tabela_ttk([(c, largura, "w") for c, largura in COLUNAS],
+        self.tabela = dialogos_selecao.tabela_ttk([(t(c), largura, "w") for c, largura in COLUNAS],
                                                   barra_horizontal=False)
         lay.addWidget(self.tabela, 1)
         lay.addSpacing(10)                    # rodapé pady=(10, 0)
@@ -176,12 +179,12 @@ class ModuloCorrecaoPDM(ModuleFrame):
         rodape = QHBoxLayout()
         rodape.setContentsMargins(0, 0, 0, 0)
         rodape.setSpacing(0)
-        self.chk_apagar_vazias = controles.Interruptor("Apagar as que ficarem em branco")
+        self.chk_apagar_vazias = controles.Interruptor(t("Apagar as que ficarem em branco"))
         self.chk_apagar_vazias.setChecked(True)
-        self.chk_conferir = controles.Interruptor("Conferir cada ficha antes de salvar")
-        self.btn_parar = _botao("Parar", 90, variante="perigo")
+        self.chk_conferir = controles.Interruptor(t("Conferir cada ficha antes de salvar"))
+        self.btn_parar = _botao(t("Parar"), 90, variante="perigo")
         self.btn_parar.clicked.connect(self._parar)
-        self.btn_rodar = _botao("INICIAR CORREÇÃO", 190, variante="primario",
+        self.btn_rodar = _botao(t("INICIAR CORREÇÃO"), 190, variante="primario",
                                 tamanho_fonte=13, negrito=True)
         self.btn_rodar.clicked.connect(self._rodar)
         rodape.addWidget(self.chk_apagar_vazias)
@@ -208,8 +211,8 @@ class ModuloCorrecaoPDM(ModuleFrame):
         linha.setContentsMargins(0, 0, 0, 0)
         linha.setSpacing(0)
         linha.addWidget(self.label_titulo)
-        self.label_subtitulo = _rotulo("  troca o PDM da ficha e repõe as "
-                                       "características que o PDM novo também tem")
+        self.label_subtitulo = _rotulo(t("  troca o PDM da ficha e repõe as "
+                                         "características que o PDM novo também tem"))
         linha.addWidget(self.label_subtitulo)
         linha.addStretch()
         cabecalho.addLayout(linha)
@@ -255,17 +258,17 @@ class ModuloCorrecaoPDM(ModuleFrame):
     def _sel_status(self) -> None:
         caminho = file_dialogs.ask_open_file(
             "correcao_pdm.status_pmib", "excel",
-            titulo="Selecione o _STATUS_PMIB",
+            titulo=t("Selecione o _STATUS_PMIB"),
             filetypes=[("Excel", "*.xlsx *.xlsm")])
         if not caminho:
             return
         try:
             self.fichas = planilha_svc.ler_fichas_do_arquivo(caminho)
         except Exception as erro:  # noqa: BLE001 -- planilha do usuário
-            QMessageBox.critical(self, "Erro", f"Não consegui ler a planilha:\n{erro}")
+            QMessageBox.critical(self, t("Erro"), t("Não consegui ler a planilha:\n{erro}", erro=erro))
             return
 
-        self.lbl_status.setText(f"{len(self.fichas)} ficha(s)")
+        self.lbl_status.setText(t("{n} ficha(s)", n=len(self.fichas)))
         _pintar(self.lbl_status, "ok")
         if not self.fichas:
             self.log("Nenhuma ficha encontrada. Confira se a aba é a "
@@ -275,16 +278,16 @@ class ModuloCorrecaoPDM(ModuleFrame):
     def _sel_catalogo(self) -> None:
         caminho = file_dialogs.ask_open_file(
             "correcao_pdm.sam_gm", "excel",
-            titulo="Selecione a planilha de PDMs",
+            titulo=t("Selecione a planilha de PDMs"),
             filetypes=[("Excel", "*.xlsx *.xlsm")])
         if not caminho:
             return
         try:
             self.catalogo = pdm_catalogo.carregar(caminho)
         except Exception as erro:  # noqa: BLE001
-            QMessageBox.critical(self, "Erro", f"Não consegui ler o catálogo:\n{erro}")
+            QMessageBox.critical(self, t("Erro"), t("Não consegui ler o catálogo:\n{erro}", erro=erro))
             return
-        self.lbl_catalogo.setText(f"{len(self.catalogo)} PDMs")
+        self.lbl_catalogo.setText(t("{n} PDMs", n=len(self.catalogo)))
         _pintar(self.lbl_catalogo, "ok")
         self._redesenhar()
 
@@ -325,8 +328,8 @@ class ModuloCorrecaoPDM(ModuleFrame):
     def _acao_escolher_pdm(self) -> None:
         if self.catalogo is None:
             QMessageBox.information(
-                self, "Catálogo",
-                "Selecione antes a planilha de PDMs: é dela que sai a busca.")
+                self, t("Catálogo"),
+                t("Selecione antes a planilha de PDMs: é dela que sai a busca."))
             return
         # Já aberta: traz para a frente em vez de abrir outra por cima.
         if self._janela_pdm is not None and self._janela_pdm.isVisible():
@@ -358,17 +361,17 @@ class ModuloCorrecaoPDM(ModuleFrame):
         lote = planilha_svc.lote(self.fichas)
         if not lote:
             QMessageBox.information(
-                self, "Nada a fazer",
-                "Nenhuma ficha tem PDM novo. Use 'Só atualizar a revisão' ou "
-                "'Escolher PDM...' antes.")
+                self, t("Nada a fazer"),
+                t("Nenhuma ficha tem PDM novo. Use 'Só atualizar a revisão' ou "
+                  "'Escolher PDM...' antes."))
             return
         # Operação destrutiva: o Enter fica no "Não" (lá o askyesno o punha no "Sim").
         if not self.perguntar_sim_nao(
-                "Confirmar",
-                f"{len(lote)} ficha(s) vão ter o PDM trocado no portal.\n\n"
-                "O portal apaga as características técnicas na troca. O robô "
-                "fotografa antes e repõe o que couber, e o que não voltar sai "
-                "no relatório.\n\nSeguir?", padrao_sim=False):
+                t("Confirmar"),
+                t("{n} ficha(s) vão ter o PDM trocado no portal.\n\n"
+                  "O portal apaga as características técnicas na troca. O robô "
+                  "fotografa antes e repõe o que couber, e o que não voltar sai "
+                  "no relatório.\n\nSeguir?", n=len(lote)), padrao_sim=False):
             return
         self.iniciar_tarefa(self._worker, lote, botao=self.btn_rodar)
 
@@ -385,7 +388,7 @@ class ModuloCorrecaoPDM(ModuleFrame):
         try:
             self.automacao.iniciar()
             self.automacao.abrir_portal(URL_LISTA_DE_FICHAS)
-            self.pausar_e_esperar(MSG_LOGIN_NOVA_FICHA)
+            self.pausar_e_esperar(t(MSG_LOGIN_NOVA_FICHA))
 
             conferir, apagar_vazias = self._na_interface_e_esperar(self._ler_interruptores)
             resultados = correcao_svc.corrigir_lote(
@@ -412,22 +415,22 @@ class ModuloCorrecaoPDM(ModuleFrame):
         blocos.definir_progresso(self.progress, fracao)
 
     def _pausa_de_conferencia(self, pmib) -> None:
-        self.pausar_e_esperar(f"Confira a ficha {pmib} no portal antes de salvar.")
+        self.pausar_e_esperar(t("Confira a ficha {pmib} no portal antes de salvar.", pmib=pmib))
 
     def _oferecer_relatorio(self, resultados) -> None:
         """Salva o relatório num arquivo, se o usuário quiser (no console ele rola e some)."""
         # Enter = "Sim", como o askyesno de lá: recusar sem querer perde a lista do que não voltou.
-        if not self.perguntar_sim_nao("Relatório", "Salvar o relatório num arquivo?", padrao_sim=True):
+        if not self.perguntar_sim_nao(t("Relatório"), t("Salvar o relatório num arquivo?"), padrao_sim=True):
             return
         caminho = file_dialogs.ask_save_file(
-            "correcao_pdm.relatorio", "texto", titulo="Salvar relatorio",
-            defaultextension=".txt", filetypes=[("Texto", "*.txt")])
+            "correcao_pdm.relatorio", "texto", titulo=t("Salvar relatorio"),
+            defaultextension=".txt", filetypes=[(t("Texto"), "*.txt")])
         if not caminho:
             return
         try:
             with open(caminho, "w", encoding="utf-8") as arquivo:
                 arquivo.write("\n".join(correcao_svc.relatorio_do_lote(resultados)))
         except OSError as erro:
-            QMessageBox.critical(self, "Erro", f"Não consegui salvar:\n{erro}")
+            QMessageBox.critical(self, t("Erro"), t("Não consegui salvar:\n{erro}", erro=erro))
             return
         self.log(f"Relatório salvo em {caminho}")
