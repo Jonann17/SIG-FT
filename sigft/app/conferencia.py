@@ -351,7 +351,7 @@ def conferir_qt() -> tuple[str, bool]:
     `find_spec` (em `conferir_pacote`) acha `PySide6.QtCore` sem carregar o
     `QtCore.pyd` nem as DLLs do Qt: um pacote sem o `Qt6Core.dll` passaria lá e
     só morreria na abertura. Aqui o import é de verdade, e depois vem o que a
-    janela lê do disco: o plugin da plataforma (carregado), o estilo nativo, a
+    janela lê do disco: o plugin da plataforma (carregado), o estilo nativo,
     as traduções pt_BR e es e as fontes. Tudo sem criar a `QApplication` -- que, sem o
     plugin da plataforma, travaria em vez de responder.
     """

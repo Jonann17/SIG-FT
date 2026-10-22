@@ -246,3 +246,18 @@ def test_nos_testes_nunca_reinicia(monkeypatch):
     monkeypatch.setattr(reinicio, "_abrir_processo", lambda *a: abertos.append(a))
     assert reinicio.reiniciar(_Janela()) is False      # o conftest desliga
     assert abertos == []
+
+
+def test_aplicar_idioma_de_verdade_liga_traducao_e_folga(qt_interface):
+    """O caminho real da primeira abertura (revisao final, 2026-10-22): escolher es
+    liga a traducao do Qt e o vigia de largura de `letra`, sem precisar reiniciar."""
+    from sigft.app_qt import letra
+    app = QApplication.instance()
+    try:
+        qmain._aplicar_idioma(app, "es")
+        assert idioma.atual() == "es"
+        assert letra._vigia
+        assert QApplication.translate("QPlatformTheme", "Cancel") == "Cancelar"
+    finally:
+        qmain._aplicar_idioma(app, "pt")
+        letra.reavaliar_vigia()
