@@ -49,6 +49,29 @@ def test_acusa_f_string_dentro_de_t():
     assert [u.linha for u in fstrings] == [1, 2]
 
 
+def test_acusa_t_com_texto_montado():
+    """Texto montado (`+`, `%`, `.format`, f-string) vira OUTRA chave a cada valor:
+    a tradução nunca casa. `t(CONSTANTE)` e `t(self.X)` continuam valendo: são o
+    jeito de mostrar uma constante marcada."""
+    fonte = ('t("A " + x)\nt("A " + "B")\nt(texto=f"F {n}")\nt("Oi %s" % n)\n'
+             't("Oi {}".format(n))\nt(CONSTANTE)\nt(self.TITULO)\nmarcar(VARIAVEL)\n')
+    chaves, ruins = ferramenta.chaves_do_codigo(fonte, "x.py")
+    assert chaves == []
+    assert [u.linha for u in ruins] == [1, 2, 3, 4, 5, 8]
+
+
+def test_metodo_de_outro_objeto_com_o_mesmo_nome_nao_conta():
+    """`self.barra.marcar(filtro)` (o console) não é o `marcar` do idioma."""
+    chaves, ruins = ferramenta.chaves_do_codigo('self.barra.marcar(filtro)\nobj.t("X")\n', "x.py")
+    assert chaves == [] and ruins == []
+
+
+def test_t_com_texto_por_palavra_chave_e_chave():
+    chaves, ruins = ferramenta.chaves_do_codigo('t(texto="Salvar")\nt(texto="Ficha {n}", n=1)\n', "x.py")
+    assert [u.texto for u in chaves] == ["Salvar", "Ficha {n}"]
+    assert ruins == []
+
+
 @pytest.mark.parametrize("fonte, achados", [
     ('X = "Texto solto"', ["Texto solto"]),
     ('QLabel(f"Arquivo: {n}")', ["f'Arquivo: {n}'"]),
@@ -72,6 +95,19 @@ def test_acusa_f_string_dentro_de_t():
     ('e = "Não abriu.\\n\\n{erro}"', ["Não abriu.\n\n{erro}"]),
     ('def f():\n    """Docstring Não Conta."""\n', []),
     ('rotulo(texto, papel="Legenda Grande")', []),
+    # Frase toda em minúsculas é texto, não identificador (revisão da Task 2).
+    ('v = "nenhum arquivo selecionado"', ["nenhum arquivo selecionado"]),
+    # Padrão de arquivo do diálogo não é texto (o nome do filtro, sim).
+    ('f = "*.xlsx *.xlsm"', []),
+    # Chave de dicionário e termo de comparação são dado, não interface.
+    ('d = {"Chave Solta": 1}', []),
+    ('if x == "Valor Do Portal": pass', []),
+    ('if "Texto Qualquer" in x: pass', []),
+    # O valor do dicionário continua sendo visto.
+    ('d = {"k": "Texto do valor"}', ["Texto do valor"]),
+    # A marca por linha isenta a linha inteira (e só ela).
+    ('A = "Dado da planilha"  # nao-e-interface\nB = "Texto de tela"', ["Texto de tela"]),
+    ('A = ("Dado em duas "  # nao-e-interface\n     "linhas")', []),
 ])
 def test_a_varredura_pega_o_que_deve(fonte, achados):
     assert [u.texto for u in ferramenta.literais_soltos(fonte, "x.py")] == achados
@@ -111,6 +147,9 @@ def test_nenhum_f_string_dentro_de_t():
     assert [f"{u.arquivo}:{u.linha}" for u in fstrings] == []
 
 
+# Chave literal no texto (não um valor) se escreve `{{` e `}}`, no código E no
+# catálogo: `t()` chama `str.format` quando há valores, e `{x}` solto seria lido
+# como um valor que falta.
 def _campos(texto):
     return sorted(nome for _lit, nome, _fmt, _conv in string.Formatter().parse(texto) if nome)
 

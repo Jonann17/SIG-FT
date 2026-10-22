@@ -17,7 +17,8 @@ A terceira é heurística: um literal "parece texto" quando tem espaço, começa
 com maiúscula seguida de minúscula, tem letra acentuada ou termina em ":" ou
 "...". Fica de fora o que é identificador (`"primario"`, `"CriaFichas"`,
 `"GEMINI"`), folha de estilo, nome de fonte, docstring, e o que vai para log,
-`print`, `objectName`, propriedade, chave de dicionário ou exceção. Palavra
+`print`, `objectName`, propriedade, chave de dicionário, comparação ou
+exceção, e a linha com a marca `# nao-e-interface`. Palavra
 única toda em maiúsculas e sem acento ("ATRASADO") escapa: a conferência em
 tela (`tests/_idioma.py`) a pega quando a constante está marcada.
 
@@ -47,6 +48,9 @@ ARQUIVOS_DE_TEXTO = (
     "sigft/app/resumo_lote.py",
 )
 FUNCOES_DE_TRADUCAO = frozenset({"t", "marcar"})
+# `t()`/`marcar()` contam chamados soltos ou pelo módulo (`idioma.t`): um método
+# de outro objeto com o mesmo nome (`self.barra.marcar(filtro)`) não é tradução.
+DONOS_DA_TRADUCAO = frozenset({None, "idioma", "_idioma"})
 # Chamadas cujos argumentos nunca são interface: log, saída, identificadores.
 CHAMADAS_SEM_INTERFACE = frozenset({
     "log", "_log", "print", "logar", "setObjectName", "setProperty", "property",
@@ -66,7 +70,9 @@ NOMES_DE_FONTE = frozenset({
     "Cascadia Mono",
 })
 _IDENTIFICADOR = re.compile(
-    r"^[a-z0-9_.:\-/\\*%<>= ]+$"          # chave, objectName, caminho, formato
+    r"^[a-z0-9_.:\-/\\*%<>=]+$"           # chave, objectName, caminho, formato (sem espaço:
+                                           # "nenhum arquivo selecionado" é texto)
+    r"|^\*\.\w+(\s+\*\.\w+)*$"               # padrão de arquivo: "*.xlsx *.xlsm"
     r"|^[A-Z0-9_]+$"                       # constante, chave de API
     r"|^[A-Z][a-z0-9]*[A-Z][A-Za-z0-9]*$"  # CamelCase: nome de tela ou de classe
 )
@@ -116,28 +122,57 @@ def _docstrings(arvore: ast.AST) -> set[int]:
     return achadas
 
 
+def _texto_da_chamada(no: ast.Call) -> ast.expr | None:
+    """O texto de um `t()`/`marcar()`: o 1º argumento ou o `texto=`."""
+    if no.args:
+        return no.args[0]
+    return next((k.value for k in no.keywords if k.arg == "texto"), None)
+
+
+def _montado(no: ast.expr) -> bool:
+    """Texto montado na hora (f-string, `+`, `%`, `"...".format`): vira outra
+    chave a cada valor, e a tradução nunca casa."""
+    if isinstance(no, (ast.JoinedStr, ast.BinOp)):
+        return True
+    return isinstance(no, ast.Call) and isinstance(no.func, ast.Attribute) \
+        and isinstance(no.func.value, (ast.Constant, ast.JoinedStr, ast.BinOp))
+
+
 def chaves_do_codigo(fonte: str, arquivo: str = "") -> tuple[list[Uso], list[Uso]]:
-    """`(chaves, fstrings)`: o 1º argumento literal de cada `t()`/`marcar()`, e os
-    `t(f"...")`/`marcar(f"...")`, que não viram chave."""
-    chaves_, fstrings = [], []
+    """`(chaves, ruins)`: o texto literal de cada `t()`/`marcar()` (1º argumento ou
+    `texto=`), e as chamadas que não viram chave: `t()` com texto montado
+    (`t(f"...")`, `t("A " + x)`, `t("%s" % x)`, `t("{}".format(x))`) e `marcar()`
+    com qualquer coisa que não seja um literal. `t(CONSTANTE)` e `t(self.X)` não
+    entram em nenhuma das duas: é como se mostra uma constante marcada."""
+    chaves_, ruins = [], []
     for no in ast.walk(ast.parse(fonte)):
-        if not isinstance(no, ast.Call) or not no.args:
+        if not isinstance(no, ast.Call):
             continue
-        nome, _dono = _nome_da_chamada(no)
-        if nome not in FUNCOES_DE_TRADUCAO:
+        nome, dono = _nome_da_chamada(no)
+        if nome not in FUNCOES_DE_TRADUCAO or dono not in DONOS_DA_TRADUCAO:
             continue
-        primeiro = no.args[0]
-        if isinstance(primeiro, ast.Constant) and isinstance(primeiro.value, str):
-            chaves_.append(Uso(arquivo, no.lineno, primeiro.value))
-        elif isinstance(primeiro, ast.JoinedStr):
-            fstrings.append(Uso(arquivo, no.lineno, ast.unparse(primeiro)))
-    return chaves_, fstrings
+        texto = _texto_da_chamada(no)
+        if texto is None:
+            continue
+        if isinstance(texto, ast.Constant) and isinstance(texto.value, str):
+            chaves_.append(Uso(arquivo, no.lineno, texto.value))
+        elif _montado(texto) or nome == "marcar":
+            ruins.append(Uso(arquivo, no.lineno, ast.unparse(texto)))
+    return chaves_, ruins
+
+
+# Marca de linha para o literal que é dado e não interface, quando listá-lo em
+# `NAO_E_INTERFACE` seria pior (o mesmo dado repetido, por exemplo). Vale para a
+# linha onde está, ou para qualquer linha de um literal que ocupa várias.
+MARCA_NAO_E_INTERFACE = "# nao-e-interface"
 
 
 def literais_soltos(fonte: str, arquivo: str = "") -> list[Uso]:
     """Os literais que parecem texto de interface e não passam por tradução."""
     arvore = ast.parse(fonte)
     pulados = _docstrings(arvore)
+    linhas = fonte.splitlines()
+    marcadas = {i for i, linha in enumerate(linhas, 1) if MARCA_NAO_E_INTERFACE in linha}
     for no in ast.walk(arvore):
         dentro = []
         if isinstance(no, ast.Call):
@@ -151,6 +186,10 @@ def literais_soltos(fonte: str, arquivo: str = "") -> list[Uso]:
             dentro.append(no.exc)
         elif isinstance(no, ast.Subscript):
             dentro.append(no.slice)
+        elif isinstance(no, ast.Dict):
+            dentro += [chave for chave in no.keys if chave is not None]
+        elif isinstance(no, ast.Compare):
+            dentro += [no.left, *no.comparators]
         elif isinstance(no, ast.JoinedStr):
             pulados.update(id(parte) for parte in no.values)
         for raiz in dentro:
@@ -158,6 +197,9 @@ def literais_soltos(fonte: str, arquivo: str = "") -> list[Uso]:
     achados = []
     for no in ast.walk(arvore):
         if id(no) in pulados:
+            continue
+        if marcadas and hasattr(no, "lineno") \
+                and marcadas & set(range(no.lineno, (no.end_lineno or no.lineno) + 1)):
             continue
         if isinstance(no, ast.Constant) and isinstance(no.value, str) and parece_texto(no.value):
             achados.append(Uso(arquivo, no.lineno, no.value))
@@ -241,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
     _usadas, fstrings = chaves()
     problemas = 0
     for uso in fstrings:
-        print(f"f-string em t(): {uso.arquivo}:{uso.linha}: {uso.texto}")
+        print(f"texto montado em t()/marcar(): {uso.arquivo}:{uso.linha}: {uso.texto}")
         problemas += 1
     for codigo in IDIOMAS_COM_CATALOGO:
         falta, sobra = faltando(codigo), sobrando(codigo)

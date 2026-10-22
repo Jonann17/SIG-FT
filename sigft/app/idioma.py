@@ -139,11 +139,23 @@ def t(texto: str, **valores) -> str:
     traduzido = catalogo(_atual).get(texto, texto) if _atual != PADRAO else texto
     if not valores:
         return traduzido
+    # Qualquer erro do `format` (valor que falta, `{0}`, `{x.y}`, chave solta)
+    # cai no português; se nem ele casa, o texto vai sem os valores. Montar a
+    # tela vale mais que o texto perfeito: uma linha no log, nunca exceção.
     try:
         return traduzido.format(**valores)
-    except (KeyError, IndexError, ValueError):
-        _log.warning("traducao com valores que nao casam com o portugues: %r", texto)
-        return texto.format(**valores)
+    except Exception:  # noqa: BLE001
+        pass
+    if traduzido is not texto:
+        try:
+            resultado = texto.format(**valores)
+        except Exception:  # noqa: BLE001
+            pass
+        else:
+            _log.warning("traducao com valores que nao casam com o portugues: %r", texto)
+            return resultado
+    _log.warning("texto com valores que nao casam (vai sem os valores): %r", texto)
+    return texto
 
 
 def marcar(texto: str) -> str:

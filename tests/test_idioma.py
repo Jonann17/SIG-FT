@@ -53,6 +53,29 @@ def test_traducao_com_valor_que_nao_casa_cai_no_portugues(catalogos):
     assert idioma.t("Abrir {nome}", nome="x.xlsx") == "Abrir x.xlsx"
 
 
+@pytest.mark.parametrize("traducao", ["Abrir {0}", "Abrir {nome!z}", "Abrir {nome.x}", "Abrir {"])
+def test_traducao_que_nao_formata_cai_no_portugues(catalogos, traducao):
+    """Qualquer erro do `format` na tradução (IndexError, ValueError, AttributeError...)
+    vale o português, nunca derruba a tela."""
+    idioma.catalogo("es")["Abrir {nome}"] = traducao
+    idioma.definir("es")
+    assert idioma.t("Abrir {nome}", nome="x.xlsx") == "Abrir x.xlsx"
+
+
+def test_portugues_que_nao_formata_volta_sem_valores(catalogos, caplog):
+    """Nem o português casa com os valores: devolve o texto como está e deixa UMA
+    linha no log, em vez de levantar no meio da montagem da tela."""
+    with caplog.at_level("WARNING", logger=idioma.__name__):
+        assert idioma.t("Ficha {atual}", outro=1) == "Ficha {atual}"
+    assert len(caplog.records) == 1
+    caplog.clear()
+    idioma.catalogo("es")["Ficha {atual}"] = "Ficha {nada}"
+    idioma.definir("es")
+    with caplog.at_level("WARNING", logger=idioma.__name__):
+        assert idioma.t("Ficha {atual}", outro=1) == "Ficha {atual}"
+    assert len(caplog.records) == 1
+
+
 def test_sem_valores_as_chaves_ficam_como_estao(catalogos):
     assert idioma.t("Use {nome} no campo") == "Use {nome} no campo"
 
