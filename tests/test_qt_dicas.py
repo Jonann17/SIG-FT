@@ -52,9 +52,10 @@ def test_toda_dica_aponta_para_um_botao_que_existe(todas_as_telas):
 def test_a_dica_chega_ao_botao(todas_as_telas):
     _janela, instancias = todas_as_telas
     tela = instancias["ModuloCopiaFichas"]
-    assert tela.btn_robo_novo.toolTip() == textos_dicas.DICAS["ModuloCopiaFichas"]["btn_robo_novo"]
+    # A dica crua tem o lugar `{portal}` (2026-10-22): compara com a montada.
+    assert tela.btn_robo_novo.toolTip() == textos_dicas.dicas_da_classe(type(tela))["btn_robo_novo"]
     upload = instancias["ModuloUploadConditions"]
-    assert upload.btn_ia.toolTip() == textos_dicas.DICAS["TelaDeUpload"]["btn_ia"]
+    assert upload.btn_ia.toolTip() == textos_dicas.dicas_da_classe(type(upload))["btn_ia"]
 
 
 def test_painel_da_home_aberto_depois_tambem_ganha_dica(todas_as_telas):

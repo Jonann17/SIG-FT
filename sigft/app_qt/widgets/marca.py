@@ -28,13 +28,14 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from sigft.app.idioma import marcar, t
 from sigft.app_qt import estilo, tema
 
 BRILHO_MAXIMO = 18
 DURACAO_MS = 150
 LARGURA_LOGO = 180
 NOME = "SIG-FT System"
-DICA = "Voltar ao início"
+DICA = marcar("Voltar ao início")
 # A opacidade do brilho por tema. O símbolo da GE tem as letras VAZADAS (o
 # fundo aparece por elas), e a sombra preenche o vazado: no escuro, a
 # `primaria` (#00C975) inteira apagava o "GE" dentro do círculo. A meia força
@@ -51,8 +52,8 @@ class Marca(QPushButton):
     def __init__(self, caminho_logo: str | None = None, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("marca")
-        self.setToolTip(DICA)
-        self.setAccessibleName("SIG-FT, voltar ao início")
+        self.setToolTip(t(DICA))
+        self.setAccessibleName(t("SIG-FT, voltar ao início"))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFlat(True)
 

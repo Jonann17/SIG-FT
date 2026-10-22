@@ -16,17 +16,18 @@ from PySide6.QtWidgets import (
 )
 
 from sigft.app import niveis_log, resumo_lote
+from sigft.app.idioma import marcar, t
 from sigft.app_qt import estilo, tema
 from sigft.app_qt.widgets import blocos
 from sigft.core import plataforma
 from sigft.core.dados_usuario import pasta_logs
 
-TEXTO_COPIAR = "Copiar lista"
-TEXTO_COPIADO = "Copiado"
-TEXTO_LOG = "Abrir log"
-TEXTO_FECHAR = "Fechar"
-DICA_COPIAR = "Copia a lista agrupada por ficha, para colar num e-mail ou numa planilha."
-DICA_LOG = "Grava num arquivo tudo o que esta tarefa escreveu no console e abre o arquivo."
+TEXTO_COPIAR = marcar("Copiar lista")
+TEXTO_COPIADO = marcar("Copiado")
+TEXTO_LOG = marcar("Abrir log")
+TEXTO_FECHAR = marcar("Fechar")
+DICA_COPIAR = marcar("Copia a lista agrupada por ficha, para colar num e-mail ou numa planilha.")
+DICA_LOG = marcar("Grava num arquivo tudo o que esta tarefa escreveu no console e abre o arquivo.")
 PASTA_DOS_RESUMOS = "resumos"
 MS_DO_COPIADO = 1500
 
@@ -35,7 +36,7 @@ class JanelaResumoDoLote(QDialog):
     def __init__(self, parent, titulo: str, pares) -> None:
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        self.setWindowTitle(f"Resumo: {resumo_lote.nome_da_tela(titulo)}")
+        self.setWindowTitle(t("Resumo: {tela}", tela=resumo_lote.nome_da_tela(titulo)))
         self.resize(760, 480)
         self._titulo = titulo
         self._pares = [(str(texto), nivel) for texto, nivel in pares]
@@ -45,7 +46,7 @@ class JanelaResumoDoLote(QDialog):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(16, 16, 16, 16)
         lay.setSpacing(12)
-        self.rotulo = blocos.rotulo(f"Terminou com {resumo_lote.frase_da_contagem(erros, avisos)}.",
+        self.rotulo = blocos.rotulo(t("Terminou com {contagem}.", contagem=resumo_lote.frase_da_contagem(erros, avisos)),
                                     tamanho=15, negrito=True, alinhar="esquerda")
         lay.addWidget(self.rotulo)
 
@@ -71,13 +72,13 @@ class JanelaResumoDoLote(QDialog):
 
         linha = QHBoxLayout()
         linha.setSpacing(8)
-        self.botao_copiar = blocos.botao(TEXTO_COPIAR, variante="secundario")
-        self.botao_copiar.setToolTip(DICA_COPIAR)
+        self.botao_copiar = blocos.botao(t(TEXTO_COPIAR), variante="secundario")
+        self.botao_copiar.setToolTip(t(DICA_COPIAR))
         self.botao_copiar.clicked.connect(self.copiar)
-        self.botao_log = blocos.botao(TEXTO_LOG, variante="secundario")
-        self.botao_log.setToolTip(DICA_LOG)
+        self.botao_log = blocos.botao(t(TEXTO_LOG), variante="secundario")
+        self.botao_log.setToolTip(t(DICA_LOG))
         self.botao_log.clicked.connect(self.abrir_log)
-        self.botao_fechar = blocos.botao(TEXTO_FECHAR, variante="primario")
+        self.botao_fechar = blocos.botao(t(TEXTO_FECHAR), variante="primario")
         self.botao_fechar.clicked.connect(self.close)
         linha.addWidget(self.botao_copiar)
         linha.addWidget(self.botao_log)
@@ -148,12 +149,12 @@ class JanelaResumoDoLote(QDialog):
     def copiar(self) -> str:
         texto = resumo_lote.texto_para_copiar(self._titulo, self.grupos)
         QApplication.clipboard().setText(texto)
-        self.botao_copiar.setText(TEXTO_COPIADO)
+        self.botao_copiar.setText(t(TEXTO_COPIADO))
         self._volta.start(MS_DO_COPIADO)
         return texto
 
     def _texto_do_copiar(self) -> None:
-        self.botao_copiar.setText(TEXTO_COPIAR)
+        self.botao_copiar.setText(t(TEXTO_COPIAR))
 
     def abrir_log(self):
         """Grava TUDO o que o lote escreveu (não só os problemas) em
@@ -164,7 +165,7 @@ class JanelaResumoDoLote(QDialog):
                                              pasta_logs() / PASTA_DOS_RESUMOS, datetime.now())
             plataforma.abrir_no_sistema(caminho)
         except Exception as erro:  # noqa: BLE001 -- vira aviso, a janela segue
-            QMessageBox.warning(self, TEXTO_LOG, f"Não consegui abrir o log: {erro}")
+            QMessageBox.warning(self, t(TEXTO_LOG), t("Não consegui abrir o log: {erro}", erro=erro))
             return None
         return caminho
 

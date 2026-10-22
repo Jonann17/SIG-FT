@@ -16,12 +16,13 @@ from pathlib import Path
 from typing import Iterable
 
 from sigft.app import niveis_log
+from sigft.app.idioma import marcar, t
 from sigft.core.log_execucao import nome_de_arquivo
 
 # Os testes desligam a janela (tests/conftest.py): dezenas de testes de tela rodam
 # tarefa com erro DE PROPÓSITO, e cada um deixaria uma janela por cima do seguinte.
 ENV_DESLIGAR = "SIGFT_SEM_RESUMO_DO_LOTE"
-SEM_CODIGO = "Sem código PMIB"
+SEM_CODIGO = marcar("Sem código PMIB")
 
 # O código PMIB completo da linha. Local, e não `pmib_codes.find_pmib_code_in_text`:
 # aquele acha o fim de um número mais longo ("12345678901.5" dava "2345678901.5");
@@ -35,8 +36,9 @@ _CODIGO_PMIB = re.compile(r"(?<!\d)\d{10}\.\d+")
 _DURACAO_NO_FIM = re.compile(r"\s*\((\d+,\d+s|\d+min \d+s|\d+h \d+min)\)$")
 
 # O começo "Módulo:" de alguns títulos de tela, que no título da janela daria
-# "Resumo: Módulo: Cópia..." (revisão de 2026-10-21).
-_PREFIXO_MODULO = re.compile(r"^\s*módulo\s*:\s*", re.IGNORECASE)
+# "Resumo: Módulo: Cópia..." (revisão de 2026-10-21). Também em inglês
+# ("Module:"): o título da tela chega traduzido (2026-10-22).
+_PREFIXO_MODULO = re.compile(r"^\s*(módulo|module)\s*:\s*", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -46,7 +48,7 @@ class Grupo:
 
     @property
     def rotulo(self) -> str:
-        return self.codigo or SEM_CODIGO
+        return self.codigo or t(SEM_CODIGO)
 
 
 def nome_da_tela(titulo: str) -> str:
@@ -64,26 +66,25 @@ def ligado() -> bool:
     return not os.environ.get(ENV_DESLIGAR)
 
 
-def contagem(n: int, singular: str, plural: str) -> str:
-    return f"{n} {singular if n == 1 else plural}"
-
-
 def frase_da_contagem(erros: int, avisos: int) -> str:
+    """"2 erros e 1 aviso", no idioma da sessão. Singular e plural são chaves
+    inteiras (cada idioma faz o seu plural)."""
     partes = []
     if erros:
-        partes.append(contagem(erros, "erro", "erros"))
+        partes.append(t("{n} erro", n=erros) if erros == 1 else t("{n} erros", n=erros))
     if avisos:
-        partes.append(contagem(avisos, "aviso", "avisos"))
-    return " e ".join(partes) if partes else "nenhum erro nem aviso"
+        partes.append(t("{n} aviso", n=avisos) if avisos == 1 else t("{n} avisos", n=avisos))
+    return t(" e ").join(partes) if partes else t("nenhum erro nem aviso")
 
 
 def frase_do_fim(titulo: str, erros: int, avisos: int, *, falhou: bool = False) -> str:
     """A frase do aviso do Windows no fim da tarefa."""
     if falhou:
-        return f"{titulo} parou com erro. Veja o console."
+        return t("{titulo} parou com erro. Veja o console.", titulo=titulo)
     if erros or avisos:
-        return f"{titulo} terminou com {frase_da_contagem(erros, avisos)}."
-    return f"{titulo} terminou sem erro nem aviso."
+        return t("{titulo} terminou com {contagem}.", titulo=titulo,
+                 contagem=frase_da_contagem(erros, avisos))
+    return t("{titulo} terminou sem erro nem aviso.", titulo=titulo)
 
 
 def agrupar(pares: Iterable[tuple[str, str]]) -> list[Grupo]:

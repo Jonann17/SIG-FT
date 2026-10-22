@@ -177,12 +177,49 @@ def test_catalogo_na_forma_do_arrumar(codigo):
 # --- 3. a guarda ----------------------------------------------------------------------
 
 # Os arquivos já convertidos. Cada tarefa do plano acrescenta os seus.
-CONVERTIDOS: tuple[str, ...] = ()
+CONVERTIDOS: tuple[str, ...] = (
+    # Task 4: textos compartilhados I
+    "sigft/app/textos_dialogos.py",
+    "sigft/app/textos_dicas.py",
+    "sigft/app/resumo_lote.py",
+    "sigft/app_qt/widgets/__init__.py",
+    "sigft/app_qt/widgets/abas.py",
+    "sigft/app_qt/widgets/arrastar.py",
+    "sigft/app_qt/widgets/atividade.py",
+    "sigft/app_qt/widgets/blocos.py",
+    "sigft/app_qt/widgets/console.py",
+    "sigft/app_qt/widgets/controles.py",
+    "sigft/app_qt/widgets/dialogos_selecao.py",
+    "sigft/app_qt/widgets/dialogs.py",
+    "sigft/app_qt/widgets/espera.py",
+    "sigft/app_qt/widgets/marca.py",
+    "sigft/app_qt/widgets/module_frame.py",
+    "sigft/app_qt/widgets/mural.py",
+    "sigft/app_qt/widgets/painel_janela.py",
+    "sigft/app_qt/widgets/paleta.py",
+    "sigft/app_qt/widgets/pickers.py",
+    "sigft/app_qt/widgets/puxador_console.py",
+    "sigft/app_qt/widgets/resumo_lote.py",
+    "sigft/app_qt/widgets/revisao_portal.py",
+    "sigft/app_qt/widgets/trava_robo.py",
+)
 
 # Literais que a varredura acusa e que ficam em português de propósito, por
 # arquivo. Copie o texto como a ferramenta o imprime (sem as aspas do repr). Cada
 # bloco diz por quê: dado de planilha, valor do portal, relatório do --smoke...
-NAO_E_INTERFACE: dict[str, set[str]] = {}
+NAO_E_INTERFACE: dict[str, set[str]] = {
+    # O cabeçalho do arquivo de log do "Abrir log" (formato de data do log): o
+    # arquivo guarda o console, que não muda de idioma.
+    "sigft/app/resumo_lote.py": {"f'%d/%m/%Y %H:%M:%S'"},
+    # O nome do produto na marca do menu: não se traduz.
+    "sigft/app_qt/widgets/marca.py": {"SIG-FT System"},
+    # Só vão ao console (o console não muda de idioma: spec, "O que muda de idioma").
+    "sigft/app_qt/widgets/revisao_portal.py": {
+        "Cancelado na revisão antes do portal.",
+        "Seguindo com todas as fichas, inclusive as com erro.",
+    },
+    "sigft/app_qt/widgets/trava_robo.py": {"outro robô"},
+}
 
 
 @pytest.mark.parametrize("arquivo", CONVERTIDOS)

@@ -22,6 +22,7 @@ import logging
 from PySide6.QtCore import QEvent, QPoint, Qt, QTimer
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
+from sigft.app.idioma import marcar, t
 from sigft.app_qt.widgets.console import ALTURA_BARRA, RECUO_TEXTO_CTK
 
 _log = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ ALTURA_PUXADOR = 6
 # (Criação, Cópia, Gestão de Sobressalentes); 6 + 2 cabem nele.
 FOLGA_ATE_O_CONSOLE = 2
 LARGURA_MARCA = 36
-DICA = "Arraste para mudar o tamanho do console. Duplo clique volta ao tamanho padrão."
+DICA = marcar("Arraste para mudar o tamanho do console. Duplo clique volta ao tamanho padrão.")
 # O que a tela guarda para o conteúdo, no mínimo, quando o console cresce.
 MIN_CONTEUDO = 120
 # Espera depois do último movimento antes de gravar (e ao esconder a tela, na hora).
@@ -94,7 +95,7 @@ class PuxadorDoConsole(QWidget):
         self.setObjectName("puxador_console")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setCursor(Qt.CursorShape.SplitVCursor)
-        self.setToolTip(DICA)
+        self.setToolTip(t(DICA))
         self.setFixedHeight(ALTURA_PUXADOR)
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 2, 0, 2)

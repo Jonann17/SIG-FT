@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QDialog, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QStyledItemDelegate, QVBoxLayout,
 )
 
+from sigft.app.idioma import t
 from sigft.app.textos_dialogos import MSG_EXCEL_BLOQUEADO, TEXTO_CONTINUAR
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos, controles
@@ -98,8 +99,10 @@ class _DialogoDeAcaoManual(SoltaAoFechar, QDialog):
 class PausaLoginDialog(_DialogoDeAcaoManual):
     """"Ação Manual Necessária" com um botão: continuar a automação."""
 
-    def __init__(self, parent, *, mensagem: str, evento_espera, texto_botao: str = TEXTO_CONTINUAR) -> None:
-        super().__init__(parent, titulo="Ação Manual Necessária", mensagem=mensagem,
+    def __init__(self, parent, *, mensagem: str, evento_espera, texto_botao: str | None = None) -> None:
+        # Quem chama traduz o que passa; o padrão é traduzido aqui (2026-10-22).
+        texto_botao = texto_botao if texto_botao is not None else t(TEXTO_CONTINUAR)
+        super().__init__(parent, titulo=t("Ação Manual Necessária"), mensagem=mensagem,
                          largura=450, altura=250, pady_texto=30)
         self._evento = evento_espera
         # height=45 e FONTE_BOTAO (Roboto 14 bold); a largura é a do CTkButton:
@@ -123,8 +126,9 @@ class PausaLoginDialog(_DialogoDeAcaoManual):
 class RetryLockDialog(_DialogoDeAcaoManual):
     """"Arquivo Bloqueado": Tentar Novamente × Ignorar e Continuar (chave "retry")."""
 
-    def __init__(self, parent, *, mensagem: str = MSG_EXCEL_BLOQUEADO, evento_espera, resultado: dict) -> None:
-        super().__init__(parent, titulo="Arquivo Bloqueado", mensagem=mensagem,
+    def __init__(self, parent, *, mensagem: str | None = None, evento_espera, resultado: dict) -> None:
+        mensagem = mensagem if mensagem is not None else t(MSG_EXCEL_BLOQUEADO)
+        super().__init__(parent, titulo=t("Arquivo Bloqueado"), mensagem=mensagem,
                          largura=450, altura=200, pady_texto=20)
         self._evento = evento_espera
         self._resultado = resultado
@@ -132,9 +136,9 @@ class RetryLockDialog(_DialogoDeAcaoManual):
         linha = QHBoxLayout()
         linha.setSpacing(20)
         linha.addStretch()
-        self.botao_repetir = blocos.botao("Tentar Novamente", variante="primario",
+        self.botao_repetir = blocos.botao(t("Tentar Novamente"), variante="primario",
                                           largura=150, altura=40)
-        self.botao_cancelar = blocos.botao("Ignorar e Continuar", variante="contorno", largura=150, altura=40)
+        self.botao_cancelar = blocos.botao(t("Ignorar e Continuar"), variante="contorno", largura=150, altura=40)
         for botao in (self.botao_repetir, self.botao_cancelar):
             sem_tecla(botao)
             linha.addWidget(botao)
@@ -253,9 +257,9 @@ class SelecaoComCaixasDialog(IgnoraEsc, QDialog):
         layout.addSpacing(15)                           # quadro (…, 5) + botões (10, …)
         linha = QHBoxLayout()
         linha.setContentsMargins(10, 0, 10, 0)          # Todos: padx=10; CONFIRMAR: padx=10
-        self.botao_todos = blocos.botao("Todos", variante="cinza", largura=80)
+        self.botao_todos = blocos.botao(t("Todos"), variante="cinza", largura=80)
         self.botao_todos.clicked.connect(self._marcar_todos)
-        self.botao_confirmar = blocos.botao("CONFIRMAR", variante="acento", largura=150)
+        self.botao_confirmar = blocos.botao(t("CONFIRMAR"), variante="acento", largura=150)
         self.botao_confirmar.clicked.connect(self.accept)
         linha.addWidget(self.botao_todos)
         linha.addStretch()

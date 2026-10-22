@@ -16,6 +16,7 @@ import time
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QWidget
 
+from sigft.app.idioma import t
 from sigft.app_qt.widgets import blocos
 
 # Quanto o "Terminou" fica na tela antes de a faixa sumir.
@@ -81,12 +82,12 @@ class FaixaDeAtividade(QWidget):
         self._relogio.stop()
         decorrido = relogio(time.monotonic() - self._inicio)
         if ok:
-            self.rotulo.setText(f"✓  Terminou em {decorrido}")
+            self.rotulo.setText("✓  " + t("Terminou em {tempo}", tempo=decorrido))
             self.rotulo.setProperty("estado", "ok")
             self.barra.setRange(0, 1000)
             blocos.definir_progresso(self.barra, 1.0)
         else:
-            self.rotulo.setText(f"✗  Parou com erro depois de {decorrido}. Veja o console.")
+            self.rotulo.setText("✗  " + t("Parou com erro depois de {tempo}. Veja o console.", tempo=decorrido))
             self.rotulo.setProperty("estado", "erro")
             self.barra.setRange(0, 1000)
             self.barra.setValue(0)
@@ -95,7 +96,7 @@ class FaixaDeAtividade(QWidget):
 
     # -- desenho ----------------------------------------------------------------
     def _atualizar(self) -> None:
-        partes = ["⏳  Rodando", relogio(time.monotonic() - self._inicio)]
+        partes = ["⏳  " + t("Rodando"), relogio(time.monotonic() - self._inicio)]
         if self._avanco:
             partes.insert(1, self._avanco)
         self.rotulo.setText("  ·  ".join(partes))

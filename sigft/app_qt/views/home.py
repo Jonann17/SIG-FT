@@ -401,7 +401,7 @@ class HomeView(QScrollArea):
         painel aberto: os botões dele só existem depois de montado."""
         aplicar_dicas(self)
         for chave, botao in self.botoes_barra.items():
-            dica = textos_dicas.DICAS_DA_BARRA_DA_HOME.get(chave)
+            dica = textos_dicas.dica_da_barra(chave)
             if dica and not botao.toolTip():
                 botao.setToolTip(dica)
 

@@ -16,10 +16,11 @@ from PySide6.QtWidgets import (
     QApplication, QDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem, QVBoxLayout,
 )
 
+from sigft.app.idioma import marcar, t
 from sigft.app_qt import catalogo, estilo, icones
 
-TEXTO_DICA = "Buscar módulo ou ação"
-TEXTO_VAZIO = "Nada com esse nome."
+TEXTO_DICA = marcar("Buscar módulo ou ação")
+TEXTO_VAZIO = marcar("Nada com esse nome.")
 LARGURA = 560
 ALTURA_LISTA = 320
 
@@ -38,7 +39,7 @@ class PaletaDeComandos(QDialog):
         lay.setContentsMargins(12, 12, 12, 12)
         lay.setSpacing(8)
         self.campo = QLineEdit()
-        self.campo.setPlaceholderText(TEXTO_DICA)
+        self.campo.setPlaceholderText(t(TEXTO_DICA))
         self.campo.installEventFilter(self)
         self.campo.textChanged.connect(self._filtrar)
         lay.addWidget(self.campo)
@@ -47,7 +48,7 @@ class PaletaDeComandos(QDialog):
         self.lista.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.lista.itemClicked.connect(self._clicou)
         lay.addWidget(self.lista)
-        self.vazio = QLabel(TEXTO_VAZIO)
+        self.vazio = QLabel(t(TEXTO_VAZIO))
         self.vazio.setProperty("papel", "legenda")
         lay.addWidget(self.vazio)
         app = QApplication.instance()

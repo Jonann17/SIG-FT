@@ -11,6 +11,7 @@ import functools
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
+from sigft.app.idioma import t
 from sigft.app_qt.widgets import blocos, dialogs
 
 # O conteúdo do CTkScrollableFrame começa 6 px para dentro (o canto do quadro).
@@ -70,7 +71,7 @@ class JanelaPainel(QWidget):
         montar(self.conteudo)
 
         # primary com hover primary_hover: é a variante "primario" da folha.
-        self.botao_fechar = blocos.botao("Fechar", variante="primario", largura=120, altura=28)
+        self.botao_fechar = blocos.botao(t("Fechar"), variante="primario", largura=120, altura=28)
         # Nenhuma tecla o aperta (o CTkButton nunca pega o foco): um Espaço
         # perdido fecharia o painel e jogaria fora as chaves digitadas.
         dialogs.sem_tecla(self.botao_fechar)
