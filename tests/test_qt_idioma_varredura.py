@@ -15,7 +15,6 @@ import threading
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QApplication, QToolTip, QWidget
 
 from _idioma import em_idioma
@@ -114,10 +113,19 @@ def test_janelas_auxiliares_nao_cortam_texto_em_outro_idioma(montar, qtbot, qt_i
 
 
 def _largura_da_dica(qtbot, texto: str) -> int:
-    """A largura da dica como o Qt a mostra (a `QTipLabel`, com a folha do app)."""
-    QToolTip.showText(QPoint(0, 0), texto)
-    qtbot.wait(5)
-    rotulo = next(w for w in QApplication.topLevelWidgets() if w.metaObject().className() == "QTipLabel")
+    """A largura da dica como o Qt a mostra (a `QTipLabel`, com a folha do app).
+
+    Mostrada no meio da tela de verdade, não em (0, 0): no Windows do Release
+    (offscreen) o (0, 0) não cai em tela nenhuma, o Qt não mostra a dica e a
+    `QTipLabel` nem existe (2026-10-23)."""
+    QToolTip.showText(QApplication.primaryScreen().geometry().center(), texto)
+
+    def _rotulo():
+        return next((w for w in QApplication.topLevelWidgets()
+                     if w.metaObject().className() == "QTipLabel" and w.isVisible()), None)
+
+    qtbot.waitUntil(lambda: _rotulo() is not None, timeout=2000)
+    rotulo = _rotulo()
     largura = rotulo.width()
     QToolTip.hideText()
     return largura
