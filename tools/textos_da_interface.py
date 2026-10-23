@@ -165,8 +165,30 @@ def chaves_do_codigo(fonte: str, arquivo: str = "") -> tuple[list[Uso], list[Uso
         if isinstance(texto, ast.Constant) and isinstance(texto.value, str):
             chaves_.append(Uso(arquivo, no.lineno, texto.value))
         elif _montado(texto) or nome == "marcar":
-            ruins.append(Uso(arquivo, no.lineno, ast.unparse(texto)))
+            ruins.append(Uso(arquivo, no.lineno, _texto_do_codigo(texto)))
     return chaves_, ruins
+
+
+def _parte_do_fstring(parte) -> str:
+    if isinstance(parte, ast.Constant):
+        return repr(parte.value)[1:-1].replace("{", "{{").replace("}", "}}")
+    texto = "{" + ast.unparse(parte.value)
+    if parte.conversion != -1:
+        texto += "!" + chr(parte.conversion)
+    if parte.format_spec is not None:
+        texto += ":" + "".join(_parte_do_fstring(p) for p in parte.format_spec.values)
+    return texto + "}"
+
+
+def _texto_do_codigo(no) -> str:
+    """O trecho como `ast.unparse` o escrevia até o Python 3.11. No 3.12 (PEP 701)
+    a f-string com aspas dentro sai com outras aspas, e `NAO_E_INTERFACE` (que
+    guarda esse texto) deixaria de casar conforme a versão (CI de 2026-10-23)."""
+    if not isinstance(no, ast.JoinedStr):
+        return ast.unparse(no)
+    corpo = "".join(_parte_do_fstring(parte) for parte in no.values)
+    aspa = '"' if "'" in corpo and '"' not in corpo else "'"
+    return "f" + aspa + corpo + aspa
 
 
 # Marca de linha para o literal que é dado e não interface, quando listá-lo em
@@ -214,7 +236,7 @@ def literais_soltos(fonte: str, arquivo: str = "") -> list[Uso]:
         elif isinstance(no, ast.JoinedStr):
             fixo = "".join(p.value for p in no.values if isinstance(p, ast.Constant))
             if parece_texto(fixo) or (_PALAVRA_MINUSCULA.search(fixo) and not _FOLHA.search(fixo)):
-                achados.append(Uso(arquivo, no.lineno, ast.unparse(no)))
+                achados.append(Uso(arquivo, no.lineno, _texto_do_codigo(no)))
     return sorted(achados, key=lambda u: u.linha)
 
 

@@ -382,3 +382,17 @@ def test_toda_a_interface_esta_na_guarda():
     texto de interface sem `t()` não volta escondido."""
     todos = {p.relative_to(RAIZ).as_posix() for p in ferramenta.arquivos(RAIZ)}
     assert todos - set(CONVERTIDOS) == set()
+
+
+@pytest.mark.parametrize("codigo, esperado", [
+    ("""f"a: {', '.join(x)}" """, """f"a: {', '.join(x)}\""""),
+    ('f"Arquivo: {n!r:>5}"', "f'Arquivo: {n!r:>5}'"),
+    ('f"chave {{x}} e\\n{y}"', "f'chave {{x}} e\\n{y}'"),
+])
+def test_texto_da_fstring_nao_muda_com_a_versao_do_python(codigo, esperado):
+    # No 3.12 (PEP 701) o `ast.unparse` troca as aspas da f-string que tem aspas
+    # dentro, e o `NAO_E_INTERFACE` deixava de casar só no CI de 3.12 (2026-10-23).
+    import ast
+
+    no = ast.parse(codigo.strip(), mode="eval").body
+    assert ferramenta._texto_do_codigo(no) == esperado
