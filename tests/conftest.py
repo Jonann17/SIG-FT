@@ -254,6 +254,37 @@ def _sem_janelas_do_fim_da_tarefa(monkeypatch):
 #    isso que os testes que comparam texto literal continuam valendo. Quem testa
 #    outro idioma usa `tests/_idioma.em_idioma(...)`.
 @pytest.fixture(autouse=True)
+def _sem_janela_esquecida():
+    """Janela de topo que o teste criou e deixou aberta sai no fim dele.
+
+    Release 1.3.0 (2026-10-23): no Windows um worker caiu (access violation no
+    `paintEvent` de um menu) repintando peças de janelas que testes anteriores
+    deixaram vivas; cada troca de folha do app repinta todas as que sobram. O
+    que já existia antes do teste (app, fixture de módulo) não é tocado.
+    """
+    _qtw = sys.modules.get("PySide6.QtWidgets")
+    app = _qtw.QApplication.instance() if _qtw is not None else None
+    antes = {id(w) for w in app.topLevelWidgets()} if app is not None else set()
+    yield
+    _qtw = sys.modules.get("PySide6.QtWidgets")
+    app = _qtw.QApplication.instance() if _qtw is not None else None
+    if app is None:
+        return
+    from PySide6.QtCore import QEvent
+    from shiboken6 import isValid
+
+    sobras = [w for w in app.topLevelWidgets() if id(w) not in antes and isValid(w)]
+    for janela in sobras:
+        try:
+            janela.close()
+            janela.deleteLater()
+        except RuntimeError:
+            pass  # já destruída no meio do caminho
+    if sobras:
+        app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+@pytest.fixture(autouse=True)
 def _interface_em_portugues(monkeypatch):
     from sigft.app import idioma as _idioma
 
