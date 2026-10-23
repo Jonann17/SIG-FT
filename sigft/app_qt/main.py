@@ -677,7 +677,9 @@ def main() -> None:
             instancia.encerrar(1)
             return
         janela.append(principal)
-        principal.show()
+        # [2026-10-23] Abre maximizada (a tela inteira, com a barra do Windows à
+        # vista); o "restaurar" volta ao 1280x850 do `resize`.
+        principal.showMaximized()
         splash.close()
         # [2026-10-20] "Como podemos te chamar?", uma vez, logo depois de a
         # janela aparecer (antes das novidades, que esperam a resposta). Daqui,
