@@ -246,9 +246,9 @@ PLATAFORMA_PADRAO = {"win32": "windows", "darwin": "cocoa", "linux": "xcb"}
 # sem avisar ninguém. No Linux o estilo, o Fusion, já vem dentro do QtWidgets.
 ESTILO_NATIVO = {"win32": "windowsvista", "darwin": "macos"}
 
-# A tradução que `_instalar_traducao` (sigft/app_qt/main.py) carrega: os "Sim",
-# "Não" e "Cancelar" dos diálogos.
-TRADUCAO_DA_QT = ("pt_BR", "qtbase")
+# As traduções que `_instalar_traducao` (sigft/app_qt/main.py) carrega: os "Sim",
+# "Não" e "Cancelar" dos diálogos em português e em espanhol (o inglês é o do Qt).
+TRADUCOES_DA_QT = (("pt_BR", "qtbase"), ("es", "qtbase"))
 
 
 def plataformas_do_qt(ambiente=None, sistema: str | None = None) -> list[str]:
@@ -321,13 +321,17 @@ def _conferir_estilo() -> tuple[str, bool] | None:
 def _conferir_traducao() -> tuple[str, bool]:
     from PySide6.QtCore import QLocale, QTranslator
 
-    idioma, catalogo = TRADUCAO_DA_QT
     pasta = _pasta_do_qt("TranslationsPath")
-    tradutor = QTranslator()
-    if tradutor.load(QLocale(idioma), catalogo, "_", pasta):
-        return f"  OK     Qt: traducao {idioma} ({tradutor.filePath()})", True
-    return (f"  FALHA  Qt: a traducao {idioma} ({catalogo}_{idioma}.qm) nao esta em {pasta} "
-            "-- os dialogos sairiam em ingles"), False
+    linhas, tudo_certo = [], True
+    for idioma, catalogo in TRADUCOES_DA_QT:
+        tradutor = QTranslator()
+        if tradutor.load(QLocale(idioma), catalogo, "_", pasta):
+            linhas.append(f"  OK     Qt: traducao {idioma} ({tradutor.filePath()})")
+        else:
+            linhas.append(f"  FALHA  Qt: a traducao {idioma} ({catalogo}_{idioma}.qm) nao esta em "
+                          f"{pasta} -- os dialogos sairiam em ingles")
+            tudo_certo = False
+    return "\n".join(linhas), tudo_certo
 
 
 def _conferir_fontes() -> tuple[str, bool]:
@@ -347,8 +351,8 @@ def conferir_qt() -> tuple[str, bool]:
     `find_spec` (em `conferir_pacote`) acha `PySide6.QtCore` sem carregar o
     `QtCore.pyd` nem as DLLs do Qt: um pacote sem o `Qt6Core.dll` passaria lá e
     só morreria na abertura. Aqui o import é de verdade, e depois vem o que a
-    janela lê do disco: o plugin da plataforma (carregado), o estilo nativo, a
-    tradução pt_BR e as fontes. Tudo sem criar a `QApplication` -- que, sem o
+    janela lê do disco: o plugin da plataforma (carregado), o estilo nativo,
+    as traduções pt_BR e es e as fontes. Tudo sem criar a `QApplication` -- que, sem o
     plugin da plataforma, travaria em vez de responder.
     """
     for nome in MODULOS_DA_QT:

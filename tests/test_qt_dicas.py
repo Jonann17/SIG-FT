@@ -30,10 +30,12 @@ def todas_as_telas(qt_interface, qtbot, tmp_path, monkeypatch):
     home.abrir_janela_chaves_api()
     home.abrir_janela_modelos_ia()
     home.abrir_janela_gastos_ia()
+    config = home.abrir_configuracao()
     instancias = {type(home).__name__: home}
     for tela in janela.findChildren(ModuleFrame):
         for classe in type(tela).__mro__:
             instancias.setdefault(classe.__name__, tela)
+    instancias["JanelaConfiguracao"] = config
     return janela, instancias
 
 
@@ -50,9 +52,10 @@ def test_toda_dica_aponta_para_um_botao_que_existe(todas_as_telas):
 def test_a_dica_chega_ao_botao(todas_as_telas):
     _janela, instancias = todas_as_telas
     tela = instancias["ModuloCopiaFichas"]
-    assert tela.btn_robo_novo.toolTip() == textos_dicas.DICAS["ModuloCopiaFichas"]["btn_robo_novo"]
+    # A dica crua tem o lugar `{portal}` (2026-10-22): compara com a montada.
+    assert tela.btn_robo_novo.toolTip() == textos_dicas.dicas_da_classe(type(tela))["btn_robo_novo"]
     upload = instancias["ModuloUploadConditions"]
-    assert upload.btn_ia.toolTip() == textos_dicas.DICAS["TelaDeUpload"]["btn_ia"]
+    assert upload.btn_ia.toolTip() == textos_dicas.dicas_da_classe(type(upload))["btn_ia"]
 
 
 def test_painel_da_home_aberto_depois_tambem_ganha_dica(todas_as_telas):
@@ -61,7 +64,9 @@ def test_painel_da_home_aberto_depois_tambem_ganha_dica(todas_as_telas):
     assert home.btn_salvar_chaves.toolTip()
     assert home.btn_salvar_selecao_ia.toolTip()
     assert all(b.toolTip() for b in home.botoes_barra.values())
-    assert home.caixa_canal_testes.toolTip()
+    # 2026-10-22: a caixa de versões de teste foi para a janela Configuração.
+    assert instancias["JanelaConfiguracao"].caixa_canal_testes.toolTip()
+    assert home.btn_configuracao.toolTip() == "Configuração"
 
 
 def test_todo_botao_do_menu_lateral_tem_dica(todas_as_telas):

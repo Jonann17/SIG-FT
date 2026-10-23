@@ -26,15 +26,16 @@ from typing import NamedTuple
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer
 from PySide6.QtWidgets import QMenu, QToolButton
 
+from sigft.app.idioma import marcar, t
 from sigft.app_qt import estilo, file_dialogs
 from sigft.core import prefs
 
 ACEITO = "aceito"
 RECUSADO = "recusado"
-TEXTO_SEM_RECENTES = "Nenhum arquivo recente"
-DICA_ARRASTAR = "Dá para arrastar o arquivo até aqui. Botão direito: últimos arquivos."
+TEXTO_SEM_RECENTES = marcar("Nenhum arquivo recente")
+DICA_ARRASTAR = marcar("Dá para arrastar o arquivo até aqui. Botão direito: últimos arquivos.")
 SETA_RECENTES = "▾"
-DICA_RECENTES = "Últimos arquivos usados aqui"
+DICA_RECENTES = marcar("Últimos arquivos usados aqui")
 
 
 class Arrastavel(NamedTuple):
@@ -104,7 +105,7 @@ class Receptor(QObject):
         menu.clear()
         lista = prefs.recentes(self.chave)
         if not lista:
-            menu.addAction(TEXTO_SEM_RECENTES).setEnabled(False)
+            menu.addAction(t(TEXTO_SEM_RECENTES)).setEnabled(False)
         for caminho in lista:
             acao = menu.addAction(os.path.basename(caminho))
             acao.setData(caminho)
@@ -186,7 +187,7 @@ def botao_de_recentes(receptor: Receptor) -> QToolButton:
     seta = QToolButton()
     seta.setObjectName("seta_recentes")
     seta.setText(estilo.mono(SETA_RECENTES))
-    seta.setToolTip(DICA_RECENTES)
+    seta.setToolTip(t(DICA_RECENTES))
     seta.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     seta.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
     seta.setMenu(MenuDeRecentes(receptor, seta))
@@ -213,6 +214,7 @@ def ligar_arrastaveis(tela, arrastaveis) -> dict[str, Receptor]:
         receptores[item.atributo] = aceitar_arquivo(widget, item.chave, item.extensoes,
                                                     varios=item.varios, menu_de_contexto=True)
         dica = widget.toolTip()
-        if DICA_ARRASTAR not in dica:
-            widget.setToolTip(f"{dica}\n\n{DICA_ARRASTAR}" if dica else DICA_ARRASTAR)
+        dica_de_arrasto = t(DICA_ARRASTAR)
+        if dica_de_arrasto not in dica:
+            widget.setToolTip(f"{dica}\n\n{dica_de_arrasto}" if dica else dica_de_arrasto)
     return receptores

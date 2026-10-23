@@ -20,24 +20,27 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QMessageBox, QVBoxLayout
 
 from sigft.app import theme
+from sigft.app.idioma import marcar, t
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets.dialogos_selecao import linha_ttk, tabela_ttk
 from sigft.core import pmib_regras
 
-TITULO = "Revisão antes do portal"
+# [2026-10-22] O que vai à janela é marcado e traduzido nela; o que vai ao
+# console (`log`) fica em português, como todo o console.
+TITULO = marcar("Revisão antes do portal")
 SEM_ERROS = "sem_erros"
 TODAS = "todas"
-TEXTO_SEM_ERROS = "Seguir sem as fichas com erro"
-TEXTO_TODAS = "Seguir com todas"
-TEXTO_CANCELAR = "Cancelar"
-EXPLICACAO = ("O portal deve recusar os campos abaixo. Nada foi corrigido: "
-              "o robô recebe os dados como vieram.")
+TEXTO_SEM_ERROS = marcar("Seguir sem as fichas com erro")
+TEXTO_TODAS = marcar("Seguir com todas")
+TEXTO_CANCELAR = marcar("Cancelar")
+EXPLICACAO = marcar("O portal deve recusar os campos abaixo. Nada foi corrigido: "
+                    "o robô recebe os dados como vieram.")
 MSG_CANCELADO = "Cancelado na revisão antes do portal."
 MSG_TODAS = "Seguindo com todas as fichas, inclusive as com erro."
-MSG_NADA_SOBROU = "Todas as fichas têm erro: nenhuma vai ao portal, e o robô não abre."
+MSG_NADA_SOBROU = marcar("Todas as fichas têm erro: nenhuma vai ao portal, e o robô não abre.")
 # Ficha | Campo | Valor | O que o portal vai recusar (as larguras esticam com a janela).
-COLUNAS = [("Ficha", 160, "w"), ("Campo", 250, "w"), ("Valor", 180, "w"),
-           ("O que o portal vai recusar", 490, "w")]
+COLUNAS = [(marcar("Ficha"), 160, "w"), (marcar("Campo"), 250, "w"), (marcar("Valor"), 180, "w"),
+           (marcar("O que o portal vai recusar"), 490, "w")]
 GEOMETRIA = "1150x520"
 LARGURA_BOTAO = 210
 
@@ -48,7 +51,7 @@ class RevisaoAntesDoPortalDialog(QDialog):
     def __init__(self, parent, problemas, total: int) -> None:
         super().__init__(parent)
         self.decisao: str | None = None
-        self.setWindowTitle(TITULO)
+        self.setWindowTitle(t(TITULO))
         self.resize(*blocos.geometria_tk(GEOMETRIA))
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.setModal(True)
@@ -57,15 +60,16 @@ class RevisaoAntesDoPortalDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 10, 0, 10)
         layout.setSpacing(0)
-        self.titulo = self._rotulo(TITULO, theme.FONTE_SECAO)
+        self.titulo = self._rotulo(t(TITULO), theme.FONTE_SECAO)
         layout.addWidget(self.titulo)
         self.contagem = self._rotulo(pmib_regras.resumo(problemas, total), theme.FONTE_CORPO)
         layout.addWidget(self.contagem)
-        self.explicacao = self._rotulo(EXPLICACAO, theme.FONTE_CORPO_MIUDO, papel="legenda")
+        self.explicacao = self._rotulo(t(EXPLICACAO), theme.FONTE_CORPO_MIUDO, papel="legenda")
         layout.addWidget(self.explicacao)
         layout.addSpacing(10)
 
-        self.tabela = tabela_ttk(COLUNAS, selecao="browse")
+        self.tabela = tabela_ttk([(t(nome), largura, ancora) for nome, largura, ancora in COLUNAS],
+                                 selecao="browse")
         for p in problemas:
             item = linha_ttk(self.tabela, [p.ficha, f"{p.campo} ({p.interno})", p.valor, p.mensagem])
             for coluna, texto in enumerate((p.ficha, f"{p.campo} ({p.interno})", p.valor, p.mensagem)):
@@ -77,9 +81,9 @@ class RevisaoAntesDoPortalDialog(QDialog):
         layout.addSpacing(20)
 
         self.botoes = [
-            self._botao(TEXTO_SEM_ERROS, SEM_ERROS, variante="primario"),
-            self._botao(TEXTO_TODAS, TODAS),
-            self._botao(TEXTO_CANCELAR, None, variante="secundario"),
+            self._botao(t(TEXTO_SEM_ERROS), SEM_ERROS, variante="primario"),
+            self._botao(t(TEXTO_TODAS), TODAS),
+            self._botao(t(TEXTO_CANCELAR), None, variante="secundario"),
         ]
         linha = QHBoxLayout()
         linha.setContentsMargins(0, 0, 0, 0)
@@ -159,7 +163,7 @@ def conferir_antes_do_portal(parent, problemas, total: int, log, *, perguntar=No
     seguem = [i for i in todas if i not in com_erro]
     if not seguem:
         log(MSG_NADA_SOBROU)
-        QMessageBox.warning(parent, TITULO, MSG_NADA_SOBROU)
+        QMessageBox.warning(parent, t(TITULO), t(MSG_NADA_SOBROU))
         return None
     log(f"Seguindo sem as {len(com_erro)} ficha(s) com erro: {len(seguem)} vão ao portal.")
     return seguem

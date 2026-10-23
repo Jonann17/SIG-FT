@@ -36,80 +36,65 @@ from shiboken6 import isValid
 
 from sigft import config as sigft_config
 from sigft.app import textos_dicas
-from sigft.app_qt import atualizacao, aviso_windows, estilo, icones, interface, letra, nome, pasta_de_logs, tema
-from sigft.app_qt.catalogo import ACOES_DA_HOME, ICONE_DA_TELA, MODULOS, SELETOR_LETRA, SELETOR_TEMA
+from sigft.app.idioma import marcar, t
+from sigft.app_qt import atualizacao, estilo, icones, interface, letra, nome, pasta_de_logs, tema
+from sigft.app_qt.catalogo import ACAO_CONFIGURACAO, ACOES_DA_CONFIGURACAO, ACOES_DA_HOME, ICONE_DA_TELA, MODULOS
 from sigft.app_qt.widgets import blocos, controles, dialogs, mural
 from sigft.app_qt.widgets.module_frame import aplicar_dicas
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
 from sigft.core.llm import catalogo, selecao
 from sigft.core.llm import usage as llm_usage
-from sigft.services import updater
 
-# A barra e o seletor de tema saem de `catalogo` (2026-10-21): as ações da
-# Home moram num lugar só (`catalogo.ACOES_DA_HOME`), de onde saem também o
-# Ctrl+K e o `main.ACAO_NA_HOME`. Os nomes daqui continuam (testes e quem lê).
-_ATUALIZACOES = next(a for a in ACOES_DA_HOME if a.chave == "atualizacoes")
-# O botão da barra que procura versão nova. Constante porque dois lugares
-# precisam concordar: quem cria o botão e quem o devolve ao normal. Sem emoji
-# desde 2026-10-20: o desenho é o ícone (`ICONE_DA_BARRA`).
+# A barra e a engrenagem saem de `catalogo` (2026-10-21; a engrenagem, 2026-10-22):
+# as ações da Home moram num lugar só (`catalogo.ACOES_DA_HOME`, `ACAO_CONFIGURACAO`
+# e `ACOES_DA_CONFIGURACAO`), de onde saem também o Ctrl+K e o `main.ACAO_NA_HOME`.
+_ATUALIZACOES = next(a for a in ACOES_DA_CONFIGURACAO if a.chave == "atualizacoes")
+# O texto do botão que procura versão nova (na janela Configuração desde
+# 2026-10-22). Constante porque dois lugares precisam concordar: quem o põe em
+# "Procurando..." e quem o devolve (`HomeView.procurar_atualizacoes`).
 TEXTO_BOTAO_ATUALIZACOES = _ATUALIZACOES.texto
-TEXTO_PROCURANDO = "Procurando..."
-# [2026-10-07] O canal de testes: marcada, a atualização oferece também
-# pré-lançamentos. Ver services/updater.py.
-TEXTO_CANAL_TESTES = "Versões de teste"
-# [2026-10-21] O aviso do Windows (`app_qt/aviso_windows.py`): na linha do
-# subtítulo, à direita (a barra de botões não tem mais largura a 1280 px e a
-# linha do título já tem os seletores de tema e de letra).
-TEXTO_AVISOS_WINDOWS = "Avisar no Windows"
-DICA_AVISOS_WINDOWS = ("Com o SIG-FT atrás de outra janela, um aviso do Windows diz quando uma "
-                       "tarefa termina ou quando o robô espera você (o login no portal, por exemplo).")
+TEXTO_PROCURANDO = marcar("Procurando...")
 
 # A barra (`_criar_barra_de_botoes` de lá): chave, texto, variante do botão e o que
-# abre. A cor de cada um é a da variante, na folha do tema. O "Atualizações" vem
-# depois, fora da lista, porque o texto muda.
-BARRA = [(a.chave, a.texto, a.variante, a.metodo) for a in ACOES_DA_HOME if a is not _ATUALIZACOES]
-# O ícone de cada botão da barra (Lucide, `sigft/app_qt/icones.py`): era o
-# emoji do começo do texto até 2026-10-20.
+# abre. A cor de cada um é a da variante, na folha do tema. Desde 2026-10-22 só
+# "Atividades do dia" e "Gastos de IA": o resto foi para a janela Configuração.
+BARRA = [(a.chave, a.texto, a.variante, a.metodo) for a in ACOES_DA_HOME]
+# O ícone de cada botão da barra (Lucide, `sigft/app_qt/icones.py`).
 ICONE_DA_BARRA = {a.chave: a.icone for a in ACOES_DA_HOME}
-COR_BOTAO_ATUALIZACOES = _ATUALIZACOES.variante   # variante (2026-10-20)
-# Com a letra grande o "Versões de teste" vai para baixo da barra, a esta
-# distância (2026-10-21, `HomeView._arrumar_barra`).
-ESPACO_SOB_A_BARRA = 8
-
-# O seletor de tema (2026-10-20): escolha, texto, ícone e dica (`catalogo.SELETOR_TEMA`).
-# Na linha do título, à direita: a barra de botões já ocupa a largura da Home a 1280 px.
-# O de letra (2026-10-21, `catalogo.SELETOR_LETRA`) vem logo depois, na mesma linha.
+# A engrenagem (2026-10-22): quadrada, só o ícone, à direita do título.
+LADO_ENGRENAGEM = 36
+TAMANHO_ICONE_ENGRENAGEM = 20
 
 # As chaves do painel "Chaves de API" (o `keys_info` de lá, sem o valor padrão,
 # que é sempre vazio: as chaves vêm do .env ou do api_config.json).
 CHAVES_API = (
-    ("GEMINI", "Gemini API Key:"),
-    ("GOOGLE_SEARCH", "Google Search API:"),
-    ("GOOGLE_CSE", "Google CSE ID:"),
-    ("LLAMA", "LlamaCloud API:"),
+    ("GEMINI", marcar("Gemini API Key:")),
+    ("GOOGLE_SEARCH", marcar("Google Search API:")),
+    ("GOOGLE_CSE", marcar("Google CSE ID:")),
+    ("LLAMA", marcar("LlamaCloud API:")),
     # [CP 3.2] Gateway OpenRouter (padrão) + endpoint OpenAI-compatível da
     # futura IA interna da empresa.
-    ("OPENROUTER", "OpenRouter API Key:"),
-    ("EMPRESA_LLM_BASE_URL", "IA Empresa (Base URL):"),
-    ("EMPRESA_LLM_API_KEY", "IA Empresa (API Key):"),
+    ("OPENROUTER", marcar("OpenRouter API Key:")),
+    ("EMPRESA_LLM_BASE_URL", marcar("IA Empresa (Base URL):")),
+    ("EMPRESA_LLM_API_KEY", marcar("IA Empresa (API Key):")),
 )
 
 ROTULOS_TAREFA_IA = {
-    "categorizar_pdm": "Categorizar PDM (Cria Fichas):",
-    "validar_ficha": "Validar ficha (Analyzer):",
-    "condicoes": "Condições (Upload Condições):",
-    "tech_specs": "Caract. Técnicas (Upload Specs):",
-    "autospec": "AutoSpec (RAG):",
-    "interpretar_material": "Interpretar material (Cria Fichas):",
-    "traduzir_pdm": "Traduzir PDM (Planilhas PMIB):",
+    "categorizar_pdm": marcar("Categorizar PDM (Cria Fichas):"),
+    "validar_ficha": marcar("Validar ficha (Analyzer):"),
+    "condicoes": marcar("Condições (Upload Condições):"),
+    "tech_specs": marcar("Caract. Técnicas (Upload Specs):"),
+    "autospec": marcar("AutoSpec (RAG):"),
+    "interpretar_material": marcar("Interpretar material (Cria Fichas):"),
+    "traduzir_pdm": marcar("Traduzir PDM (Planilhas PMIB):"),
 }
 
-DESCRICAO_MODELOS_IA = (
+DESCRICAO_MODELOS_IA = marcar(
     "Escolha primeiro COM QUAL CHAVE trabalhar; a lista de modelos passa a ser a daquele "
     "provedor. \"Aplicar recomendados\" usa os modelos sugeridos em "
     "docs/refatoracao/MODELOS_IA.md, que são mais econômicos. Valide a qualidade numa amostra "
     "antes de rodar em lote.")
-SEM_PROVEDOR_IA = (
+SEM_PROVEDOR_IA = marcar(
     "Nenhum provedor de IA tem chave configurada acima. Configure ao menos uma "
     "chave (ex.: Gemini ou OpenRouter) para escolher o modelo aqui.")
 
@@ -281,7 +266,7 @@ class _Saudacao(blocos.RotuloElidido):
     """O título da Home: "Bom dia, <nome>" (2026-10-20). Clicar troca o nome.
 
     Elide à direita: um nome comprido (até `nome.LIMITE` letras, na fonte de
-    32 px do título) não empurra o seletor de tema nem abre rolagem
+    32 px do título) não empurra a engrenagem (janela Configuração) nem abre rolagem
     horizontal; `text()` continua sendo a saudação inteira."""
 
     MODO = Qt.TextElideMode.ElideRight
@@ -290,7 +275,7 @@ class _Saudacao(blocos.RotuloElidido):
         super().__init__("", objectName="titulo_home")
         self._ao_clicar = ao_clicar
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip(nome.DICA_DA_SAUDACAO)
+        self.setToolTip(t(nome.DICA_DA_SAUDACAO))
 
     def mouseReleaseEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
         # No soltar, como um botão: quem aperta e arrasta para fora desiste.
@@ -342,9 +327,9 @@ class HomeView(QScrollArea):
     # (O comentário longo estava na Home da interface antiga, no histórico do
     # repositório: `sigft/app/views/home.py`, removida em 2026-10-15.)
     ROTULO_PROVIDER_IA = {
-        "gemini": "Gemini (chave direta do Google)",
-        "openrouter": "OpenRouter (vários modelos, uma chave)",
-        "openai_compat": "AMP / IA da empresa",
+        "gemini": marcar("Gemini (chave direta do Google)"),
+        "openrouter": marcar("OpenRouter (vários modelos, uma chave)"),
+        "openai_compat": marcar("AMP / IA da empresa"),
     }
 
     def __init__(self, parent=None, controller=None) -> None:
@@ -386,26 +371,17 @@ class HomeView(QScrollArea):
         linha_titulo = QHBoxLayout()
         linha_titulo.setSpacing(0)
         linha_titulo.addWidget(self.label_titulo, 1)
-        linha_titulo.addWidget(self._criar_seletor_tema(), 0, Qt.AlignmentFlag.AlignVCenter)
-        linha_titulo.addSpacing(12)
-        linha_titulo.addWidget(self._criar_seletor_letra(), 0, Qt.AlignmentFlag.AlignVCenter)
+        linha_titulo.addWidget(self._criar_engrenagem(), 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(linha_titulo)
         layout.addSpacing(5)
-        self.label_subtitulo = QLabel("Sistema Integrado de Gestão de Fichas Técnicas - GE Vernova",
+        self.label_subtitulo = QLabel(t("Sistema Integrado de Gestão de Fichas Técnicas - GE Vernova"),
                                       objectName="subtitulo_home")
         self.label_subtitulo.setMinimumHeight(blocos.ALTURA_MINIMA_ROTULO)
         self.label_subtitulo.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        # [2026-10-21] A caixa do aviso do Windows divide a linha do subtítulo: mais
-        # baixa que os 28 px da linha, que fica com a altura de antes.
-        linha_subtitulo = QHBoxLayout()
-        linha_subtitulo.setContentsMargins(0, 0, 0, 0)
-        linha_subtitulo.setSpacing(0)
-        linha_subtitulo.addWidget(self.label_subtitulo, 1)
-        linha_subtitulo.addWidget(self._criar_caixa_avisos(), 0, Qt.AlignmentFlag.AlignVCenter)
-        layout.addLayout(linha_subtitulo)
+        layout.addWidget(self.label_subtitulo)
         layout.addSpacing(30)
-        resumo = ("Clique num módulo abaixo para abri-lo. Os botões desta barra "
-                  "abrem painéis em janela, para a Home ficar limpa.")
+        resumo = t("Clique num módulo abaixo para abri-lo. Os botões desta barra "
+                   "abrem painéis em janela, para a Home ficar limpa.")
         self.label_texto = self.criar_texto_simples(resumo)
         layout.addWidget(self.label_texto)
         layout.addSpacing(10)
@@ -413,9 +389,6 @@ class HomeView(QScrollArea):
         # --- BARRA DE BOTÕES --- [2026-09-03] Os painéis de configuração e de
         # gastos de IA saíram da Home e viraram janelas.
         layout.addLayout(self._criar_barra_de_botoes())
-        # [2026-10-21] A linha de baixo da barra: vazia (não ocupa nada) com a
-        # letra normal; com a grande, recebe o "Versões de teste" (`_arrumar_barra`).
-        layout.addLayout(self._linha_sob_a_barra)
         layout.addSpacing(16)
 
         # --- MÓDULOS, CLICÁVEIS ---
@@ -429,11 +402,9 @@ class HomeView(QScrollArea):
         painel aberto: os botões dele só existem depois de montado."""
         aplicar_dicas(self)
         for chave, botao in self.botoes_barra.items():
-            dica = textos_dicas.DICAS_DA_BARRA_DA_HOME.get(chave)
+            dica = textos_dicas.dica_da_barra(chave)
             if dica and not botao.toolTip():
                 botao.setToolTip(dica)
-        if not self.caixa_canal_testes.toolTip():
-            self.caixa_canal_testes.setToolTip(textos_dicas.DICAS_DA_BARRA_DA_HOME["canal_testes"])
 
     def criar_texto_simples(self, texto: str) -> QLabel:
         """CTkLabel(font=("Arial", 14), wraplength=800) da Home."""
@@ -446,70 +417,55 @@ class HomeView(QScrollArea):
         return r
 
     # =====================================================================
-    # BARRA DE BOTÕES  [2026-09-03]
+    # BARRA DE BOTÕES  [2026-09-03; 2026-10-22: só atividades e gastos]
     # =====================================================================
     def _criar_barra_de_botoes(self) -> QHBoxLayout:
         barra = QHBoxLayout()
         barra.setSpacing(0)
         self.botoes_barra = {}
         for chave, texto, variante, metodo in BARRA:
-            botao = self._botao_da_barra(texto, variante, ICONE_DA_BARRA[chave])
+            botao = self._botao_da_barra(t(texto), variante, ICONE_DA_BARRA[chave])
             botao.clicked.connect(lambda _=False, m=metodo: getattr(self, m)())
             self.botoes_barra[chave] = botao
             barra.addWidget(botao)
             barra.addSpacing(10)                        # pack(side="left", padx=(0, 10))
-
-        # [2026-09-25] Fora da lista porque o texto muda enquanto procura. A
-        # abertura do app já pergunta sozinha, mas CALADA; este botão é o
-        # caminho que responde.
-        self.btn_atualizacoes = self._botao_da_barra(
-            TEXTO_BOTAO_ATUALIZACOES, COR_BOTAO_ATUALIZACOES, ICONE_DA_BARRA["atualizacoes"])
-        self.btn_atualizacoes.clicked.connect(self.procurar_atualizacoes)
-        self.botoes_barra["atualizacoes"] = self.btn_atualizacoes
-        barra.addWidget(self.btn_atualizacoes)
-        barra.addSpacing(10)
-
-        # [2026-10-07] O canal de testes, desmarcado por padrão: marcado, o
-        # aviso de atualização oferece também pré-lançamentos.
-        self.caixa_canal_testes = controles.CaixaDeMarcar(TEXTO_CANAL_TESTES, tamanho_fonte=12)
-        self.caixa_canal_testes.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        try:
-            ligado = updater.canal_testes_ligado()
-        except Exception:  # noqa: BLE001 -- preferência é conveniência
-            ligado = False
-        self.caixa_canal_testes.setChecked(bool(ligado))
-        self.caixa_canal_testes.toggled.connect(self._lembrar_canal_testes)
-        barra.addWidget(self.caixa_canal_testes)
         barra.addStretch()
-        self._barra = barra
-        self._linha_sob_a_barra = QHBoxLayout()
-        self._linha_sob_a_barra.setContentsMargins(0, 0, 0, 0)
-        self._linha_sob_a_barra.addStretch()
-        self._arrumar_barra()
         return barra
 
-    def _arrumar_barra(self) -> None:
-        """Com a letra grande, o "Versões de teste" desce para a linha de baixo.
+    # =====================================================================
+    # ENGRENAGEM  [2026-10-22]
+    # =====================================================================
+    def _criar_engrenagem(self):
+        """A engrenagem: abre a janela Configuração. Botão fantasma quadrado, só
+        o ícone; o nome vai na dica e no nome acessível (leitor de tela)."""
+        botao = blocos.botao("", variante=ACAO_CONFIGURACAO.variante, largura=LADO_ENGRENAGEM,
+                             altura=LADO_ENGRENAGEM)
+        icones.aplicar(botao, ACAO_CONFIGURACAO.icone, tamanho=TAMANHO_ICONE_ENGRENAGEM)
+        botao.setToolTip(t(ACAO_CONFIGURACAO.texto))
+        botao.setAccessibleName(t(ACAO_CONFIGURACAO.texto))
+        dialogs.sem_tecla(botao)
+        botao.clicked.connect(self.abrir_configuracao)
+        self.btn_configuracao = botao
+        return botao
 
-        A 1280 px a barra já ocupa a largura toda da Home, e com +2 px os botões
-        pedem 38 px a mais do que há. O `min-width` deles (os 140 da interface
-        antiga) deixa o layout ESPREMER o botão e cortar o texto, em vez de
-        rolar; descer a caixa devolve a folga (2026-10-21). Com a letra normal a
-        caixa fica na barra, com as medidas de sempre."""
-        caixa = self.caixa_canal_testes
-        embaixo = self._linha_sob_a_barra.indexOf(caixa) >= 0
-        if bool(estilo.AUMENTO_LETRA) == embaixo:
-            return
-        # A margem vai e volta com a caixa: a linha vazia, mesmo sem nada, ocuparia
-        # a margem de cima e desceria os cartões.
-        if embaixo:
-            self._linha_sob_a_barra.removeWidget(caixa)
-            self._linha_sob_a_barra.setContentsMargins(0, 0, 0, 0)
-            self._barra.insertWidget(self._barra.count() - 1, caixa)   # antes do stretch
-        else:
-            self._barra.removeWidget(caixa)
-            self._linha_sob_a_barra.insertWidget(0, caixa)
-            self._linha_sob_a_barra.setContentsMargins(0, ESPACO_SOB_A_BARRA, 0, 0)
+    def abrir_configuracao(self):
+        """A janela Configuração (a engrenagem e o Ctrl+K); aberta, vem para a frente.
+        Fechada (só escondida), dá lugar a uma nova, com o que vale agora."""
+        aberta = self._trazer_para_frente("configuracao")
+        if aberta is not None:
+            return aberta
+        velha = self._janelas.pop("configuracao", None)
+        if _vivo(velha):
+            velha.deleteLater()
+        from sigft.app_qt.views.configuracao import JanelaConfiguracao
+
+        janela = JanelaConfiguracao(self)
+        self._janelas["configuracao"] = janela
+        return janela
+
+    def _configuracao_viva(self):
+        janela = self._janelas.get("configuracao")
+        return janela if _vivo(janela) else None
 
     # =====================================================================
     # SAUDAÇÃO  [2026-10-20]
@@ -518,6 +474,10 @@ class HomeView(QScrollArea):
         """Recalcula a saudação pelo relógio e pelo nome guardado. A janela
         chama ao mostrar a Home: "Bom dia" vira "Boa tarde" sem reabrir."""
         self.label_titulo.setText(nome.saudacao(_agora(), nome.guardado()))
+        # [2026-10-22] O nome pode ter mudado pela saudação: o campo "Seu nome"
+        # da janela Configuração aberta acompanha.
+        if (janela := self._configuracao_viva()) is not None:
+            janela.mostrar_nome()
 
     def mudar_nome(self) -> None:
         """Clicar na saudação: a pergunta do nome, com o nome de agora no campo."""
@@ -530,77 +490,6 @@ class HomeView(QScrollArea):
         caixa.finished.connect(self.atualizar_saudacao)
         caixa.open()
 
-    # =====================================================================
-    # SELETOR DE TEMA  [2026-10-20]
-    # =====================================================================
-    def _criar_seletor_tema(self) -> QFrame:
-        """Três botões (Escuro, Claro, Sistema); o da escolha atual fica `ativo`,
-        pintado como o item escolhido do menu, e o ícone dele acompanha."""
-        quadro = QFrame(objectName="seletor_tema")
-        linha = QHBoxLayout(quadro)
-        linha.setContentsMargins(0, 0, 0, 0)
-        linha.setSpacing(4)
-        self.botoes_tema = {}
-        for escolha, texto, icone, dica in SELETOR_TEMA:
-            botao = blocos.botao(texto, variante="secundario", tamanho_fonte=12)
-            icones.aplicar(botao, icone, papel_cor_ativo=estilo.PAPEL_MENU_ESCOLHIDO, tamanho=16)
-            botao.setToolTip(dica)
-            dialogs.sem_tecla(botao)
-            botao.clicked.connect(lambda _=False, e=escolha: self.escolher_tema(e))
-            self.botoes_tema[escolha] = botao
-            linha.addWidget(botao)
-        self._marcar_tema(tema.escolhido())
-        return quadro
-
-    def _marcar_tema(self, escolha: str) -> None:
-        for chave, botao in self.botoes_tema.items():
-            estilo.definir_propriedade(botao, "ativo", chave == escolha)
-            icones.reaplicar(botao)
-
-    def escolher_tema(self, escolha: str) -> None:
-        """Troca o tema do app inteiro e lembra a escolha (`tema.aplicar`)."""
-        # Marca o que VALEU, não o que está nas prefs: gravar pode ter falhado.
-        self._marcar_tema(tema.aplicar(QApplication.instance(), escolha))
-
-    # =====================================================================
-    # SELETOR DE LETRA  [2026-10-21]
-    # =====================================================================
-    def _criar_seletor_letra(self) -> QFrame:
-        """Normal e Grande; o da escolha atual fica `ativo`, como no de tema."""
-        quadro = QFrame(objectName="seletor_letra")
-        linha = QHBoxLayout(quadro)
-        linha.setContentsMargins(0, 0, 0, 0)
-        linha.setSpacing(4)
-        self.botoes_letra = {}
-        for escolha, texto, dica in SELETOR_LETRA:
-            botao = blocos.botao(texto, variante="secundario", tamanho_fonte=12)
-            botao.setToolTip(dica)
-            dialogs.sem_tecla(botao)
-            # O mesmo padrão do seletor de tema: a Home vive o app inteiro.
-            botao.clicked.connect(lambda _=False, e=escolha: self.escolher_letra(e))
-            self.botoes_letra[escolha] = botao
-            linha.addWidget(botao)
-        self._marcar_letra(letra.atual())
-        # A troca pode vir de fora da Home (o Ctrl+K sem a Home montada, a
-        # abertura): o aviso marca o seletor e arruma a barra. Método ligado,
-        # não `lambda` (aviso do mural de 2026-10-14).
-        letra.mudou.connect(self._letra_mudou)
-        return quadro
-
-    def _marcar_letra(self, escolha: str) -> None:
-        for chave, botao in self.botoes_letra.items():
-            estilo.definir_propriedade(botao, "ativo", chave == escolha)
-
-    def escolher_letra(self, escolha: str) -> None:
-        """Troca a letra do app inteiro e lembra a escolha (`letra.aplicar`); o
-        `letra.mudou` marca o seletor e arruma a barra (`_letra_mudou`)."""
-        letra.aplicar(QApplication.instance(), escolha)
-
-    def _letra_mudou(self, escolha: str) -> None:
-        # Marca o que VALEU, não o que está nas prefs: gravar pode ter falhado.
-        self._marcar_letra(escolha)
-        self._arrumar_barra()
-
     @staticmethod
     def _botao_da_barra(texto: str, variante: str, icone: str):
         # height=40, font=("Roboto", 13, "bold"); a largura é a do CTkButton.
@@ -610,32 +499,31 @@ class HomeView(QScrollArea):
         dialogs.sem_tecla(botao)
         return botao
 
-    def _criar_caixa_avisos(self):
-        """"Avisar no Windows", marcada por padrão (`aviso_windows.ligado`)."""
-        caixa = controles.CaixaDeMarcar(TEXTO_AVISOS_WINDOWS, tamanho_fonte=12)
-        caixa.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        caixa.setChecked(aviso_windows.ligado())
-        caixa.setToolTip(DICA_AVISOS_WINDOWS)
-        caixa.toggled.connect(aviso_windows.ligar)
-        self.caixa_avisos_windows = caixa
-        return caixa
+    def escolher_tema(self, escolha: str) -> str:
+        """Troca o tema do app inteiro e lembra a escolha (`tema.aplicar`). A janela
+        Configuração, se existe, marca o que VALEU (gravar pode ter falhado)."""
+        valeu = tema.aplicar(QApplication.instance(), escolha)
+        if (janela := self._configuracao_viva()) is not None:
+            janela.marcar_tema(valeu)
+        return valeu
 
-    def _lembrar_canal_testes(self, ligado: bool) -> None:
-        try:
-            updater.ligar_canal_testes(bool(ligado))
-        except Exception:  # noqa: BLE001 -- lembrar não pode atrapalhar o clique
-            pass
+    def escolher_letra(self, escolha: str) -> None:
+        """Troca a letra do app inteiro e lembra a escolha (`letra.aplicar`); o
+        `letra.mudou` marca o seletor da janela Configuração."""
+        letra.aplicar(QApplication.instance(), escolha)
 
-    def procurar_atualizacoes(self) -> None:
-        """Pergunta ao GitHub agora e SEMPRE responde (ver `app_qt/atualizacao.py`)."""
-        botao = self.btn_atualizacoes
-        botao.setEnabled(False)
-        botao.setText(TEXTO_PROCURANDO)
+    def procurar_atualizacoes(self, botao=None) -> None:
+        """Pergunta ao GitHub agora e SEMPRE responde (ver `app_qt/atualizacao.py`).
+        `botao` é o da janela Configuração, que fica em "Procurando..." até a
+        resposta; o Ctrl+K chama sem botão."""
+        if botao is not None:
+            botao.setEnabled(False)
+            botao.setText(t(TEXTO_PROCURANDO))
 
         def ao_terminar():
             if _vivo(botao):
                 botao.setEnabled(True)
-                botao.setText(TEXTO_BOTAO_ATUALIZACOES)
+                botao.setText(t(TEXTO_BOTAO_ATUALIZACOES))
 
         atualizacao.procurar_agora(self.controller, ao_terminar=ao_terminar)
 
@@ -677,15 +565,15 @@ class HomeView(QScrollArea):
         return widget.window() if _vivo(widget) else self
 
     def abrir_janela_chaves_api(self):
-        return self._abrir_painel("chaves", titulo="Chaves de API",
+        return self._abrir_painel("chaves", titulo=t("Chaves de API"),
                                   montar=self.criar_area_config_api, geometria="760x520")
 
     def abrir_janela_modelos_ia(self):
-        return self._abrir_painel("modelos", titulo="Modelos de IA",
+        return self._abrir_painel("modelos", titulo=t("Modelos de IA"),
                                   montar=self.criar_painel_modelos_ia, geometria="900x680")
 
     def abrir_janela_gastos_ia(self):
-        return self._abrir_painel("gastos", titulo="Gastos de IA",
+        return self._abrir_painel("gastos", titulo=t("Gastos de IA"),
                                   montar=self.criar_painel_gastos_ia, geometria="860x600")
 
     # =====================================================================
@@ -700,7 +588,7 @@ class HomeView(QScrollArea):
             return aberta
         gavetas, erro = self._ler_mural()
         return self._abrir_painel(
-            "atividades", titulo="Atividades do dia",
+            "atividades", titulo=t("Atividades do dia"),
             montar=lambda pai: mural.montar(pai, gavetas, date.today().strftime("%d/%m/%Y"), erro),
             geometria="820x640")
 
@@ -732,7 +620,7 @@ class HomeView(QScrollArea):
         grade.setColumnStretch(1, 1)
         self.cards: dict[str, _Card] = {}
         for indice, (alvo, titulo, descricao) in enumerate(MODULOS):
-            card = _Card(alvo, titulo, descricao, self._ir)
+            card = _Card(alvo, t(titulo), t(descricao), self._ir)
             self.cards[alvo] = card
             grade.addWidget(card, indice // 2, indice % 2)
         return grade
@@ -748,7 +636,7 @@ class HomeView(QScrollArea):
         """O painel de configuração das chaves de API, dentro de `parent`."""
         _casca, quadro, coluna = _painel(parent)
         self.frame_chaves_api = quadro
-        self.lbl_titulo_chaves_api = _titulo_painel("Configuração de Chaves API (Global)")
+        self.lbl_titulo_chaves_api = _titulo_painel(t("Configuração de Chaves API (Global)"))
         _empilhar(coluna, self.lbl_titulo_chaves_api, cima=10, baixo=10)
 
         # [SEGURANÇA] Sem valores padrão escritos aqui: as chaves vêm do .env ou
@@ -758,7 +646,7 @@ class HomeView(QScrollArea):
         self.rotulos_chaves_api = {}
         for key_id, texto in CHAVES_API:
             linha = _linha(coluna, cima=2, baixo=2)
-            rotulo = _rotulo(texto, largura_minima=LARGURA_ROTULO_CHAVE)
+            rotulo = _rotulo(t(texto), largura_minima=LARGURA_ROTULO_CHAVE)
             linha.addWidget(rotulo)
             entry = QLineEdit()
             entry.setEchoMode(QLineEdit.EchoMode.Password)
@@ -771,7 +659,7 @@ class HomeView(QScrollArea):
             self.entries[key_id] = entry
             self.rotulos_chaves_api[key_id] = rotulo
 
-        self.btn_salvar_chaves = _botao("Salvar Chaves", variante="primario")
+        self.btn_salvar_chaves = _botao(t("Salvar Chaves"), variante="primario")
         self.btn_salvar_chaves.clicked.connect(self.salvar_chaves_api)
         _empilhar(coluna, self.btn_salvar_chaves, cima=10, baixo=10, centro=True)
 
@@ -791,8 +679,8 @@ class HomeView(QScrollArea):
             pass
 
         primeiro = next(iter(self.entries.values()), None)
-        QMessageBox.information(self._janela_de(primeiro), "Sucesso",
-                                "Chaves API salvas com sucesso!\nTodos os módulos usarão as novas chaves.")
+        QMessageBox.information(self._janela_de(primeiro), t("Sucesso"),
+                                t("Chaves API salvas com sucesso!\nTodos os módulos usarão as novas chaves."))
 
     # =====================================================================
     # PAINEL "MODELOS DE IA" (Checkpoint 3.3 do plano de refatoração)
@@ -820,9 +708,9 @@ class HomeView(QScrollArea):
         # Guardado para o painel se remontar ONDE estava (`_recarregar_painel_modelos_ia`).
         self._parent_modelos_ia = parent
 
-        self.lbl_titulo_modelos_ia = _titulo_painel("Modelos de IA")
+        self.lbl_titulo_modelos_ia = _titulo_painel(t("Modelos de IA"))
         _empilhar(coluna, self.lbl_titulo_modelos_ia, cima=10, baixo=10)
-        self.lbl_descricao_modelos_ia = _Texto(DESCRICAO_MODELOS_IA, papel="legenda",
+        self.lbl_descricao_modelos_ia = _Texto(t(DESCRICAO_MODELOS_IA), papel="legenda",
                                                altura_linha=LINHA_TK_ROBOTO_12)
         _empilhar_texto(coluna, self.lbl_descricao_modelos_ia, baixo=10)
 
@@ -832,7 +720,7 @@ class HomeView(QScrollArea):
             if self.controller.get_key(chave_id)
         )
         if not providers_com_chave:
-            self.lbl_sem_provedor_ia = _Texto(SEM_PROVEDOR_IA, papel="erro",
+            self.lbl_sem_provedor_ia = _Texto(t(SEM_PROVEDOR_IA), papel="erro",
                                               altura_linha=LINHA_TK_ROBOTO_12)
             _empilhar_texto(coluna, self.lbl_sem_provedor_ia, baixo=15)
             return
@@ -847,7 +735,7 @@ class HomeView(QScrollArea):
         self._provider_por_rotulo = {self._rotulo_provider_ia(p): p for p in providers_com_chave}
 
         linha = _linha(coluna, baixo=5)
-        linha.addWidget(_rotulo("Provedor (chave a usar):", largura_minima=LARGURA_ROTULO_IA))
+        linha.addWidget(_rotulo(t("Provedor (chave a usar):"), largura_minima=LARGURA_ROTULO_IA))
         linha.addSpacing(5)
         self.opt_provider_ia = _menu(list(self._provider_por_rotulo), LARGURA_MENU_PROVEDOR)
         self.opt_provider_ia.setCurrentText(self._rotulo_provider_ia(provider_salvo))
@@ -855,7 +743,7 @@ class HomeView(QScrollArea):
             lambda _i: self._trocou_provider_ia(self.opt_provider_ia.currentText()))
         linha.addWidget(self.opt_provider_ia)
         linha.addSpacing(10)
-        self.btn_atualizar_catalogo_ia = _botao_cinza("Atualizar lista de modelos")
+        self.btn_atualizar_catalogo_ia = _botao_cinza(t("Atualizar lista de modelos"))
         self.btn_atualizar_catalogo_ia.clicked.connect(self._atualizar_catalogo_ia)
         linha.addWidget(self.btn_atualizar_catalogo_ia)
         linha.addStretch()
@@ -866,10 +754,10 @@ class HomeView(QScrollArea):
         # --- 2. FILTRO --- (o OpenRouter tem centenas de modelos e o menu não
         # tem busca)
         linha = _linha(coluna, cima=5, baixo=5)
-        linha.addWidget(_rotulo("Filtrar modelos:", largura_minima=LARGURA_ROTULO_IA))
+        linha.addWidget(_rotulo(t("Filtrar modelos:"), largura_minima=LARGURA_ROTULO_IA))
         linha.addSpacing(5)
         self.entry_filtro_modelo_ia = QLineEdit()
-        self.entry_filtro_modelo_ia.setPlaceholderText("ex.: flash, haiku, minimax (vazio mostra todos)")
+        self.entry_filtro_modelo_ia.setPlaceholderText(t("ex.: flash, haiku, minimax (vazio mostra todos)"))
         self.entry_filtro_modelo_ia.setFixedWidth(LARGURA_CAMPO_IA)
         self.entry_filtro_modelo_ia.textChanged.connect(lambda _t: self._refiltrar_modelos_ia())
         linha.addWidget(self.entry_filtro_modelo_ia)
@@ -877,7 +765,7 @@ class HomeView(QScrollArea):
 
         # --- 3. MODELO PADRÃO ---
         linha = _linha(coluna, baixo=5)
-        linha.addWidget(_rotulo("Modelo padrão (todas as tarefas):", largura_minima=LARGURA_ROTULO_IA))
+        linha.addWidget(_rotulo(t("Modelo padrão (todas as tarefas):"), largura_minima=LARGURA_ROTULO_IA))
         linha.addSpacing(5)
         self.opt_modelo_ia_global = _menu([self._rotulo_padrao_sistema_ia()], LARGURA_MENU_MODELO)
         self.opt_modelo_ia_global.activated.connect(
@@ -888,7 +776,7 @@ class HomeView(QScrollArea):
 
         # --- 4. MODO AVANÇADO ---
         self.caixa_modo_avancado_ia = controles.CaixaDeMarcar(
-            "Configurar por tarefa (modo avançado)")
+            t("Configurar por tarefa (modo avançado)"))
         self.caixa_modo_avancado_ia.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.caixa_modo_avancado_ia.setChecked(bool(estado_atual["por_tarefa"]))
         self.caixa_modo_avancado_ia.toggled.connect(lambda _v: self._toggle_modelos_ia_modo_avancado())
@@ -902,31 +790,31 @@ class HomeView(QScrollArea):
         avancado.setSpacing(0)
         for tarefa in sigft_config.TAREFAS_DO_PAINEL:
             linha = _linha(avancado, cima=2, baixo=2)
-            rotulo = _rotulo(ROTULOS_TAREFA_IA.get(tarefa, tarefa), largura_minima=LARGURA_ROTULO_IA)
+            rotulo = _rotulo(t(ROTULOS_TAREFA_IA.get(tarefa, tarefa)), largura_minima=LARGURA_ROTULO_IA)
             linha.addWidget(rotulo)
             linha.addSpacing(5)
-            menu = _menu(["Usar o global"], LARGURA_MENU_MODELO)
+            menu = _menu([t("Usar o global")], LARGURA_MENU_MODELO)
             menu.activated.connect(lambda _i: self._atualizar_resumo_modelo_ia())
             linha.addWidget(menu)
             linha.addStretch()
             self.menus_modelo_ia_por_tarefa[tarefa] = menu
             self.rotulos_modelo_ia_por_tarefa[tarefa] = rotulo
-            self.opts_modelo_ia.append((menu, "Usar o global"))
+            self.opts_modelo_ia.append((menu, t("Usar o global")))
         coluna.addWidget(self.frame_modelos_ia_avancado)
         self.frame_modelos_ia_avancado.setVisible(self.caixa_modo_avancado_ia.isChecked())
 
         # --- 5. MANUAL --- a saída para um id que não está na lista; o
         # provedor dele é o escolhido lá em cima.
         linha = _linha(coluna, cima=10, baixo=5)
-        linha.addWidget(_rotulo("Modelo manual (se não estiver na lista):", largura_minima=LARGURA_ROTULO_IA))
+        linha.addWidget(_rotulo(t("Modelo manual (se não estiver na lista):"), largura_minima=LARGURA_ROTULO_IA))
         linha.addSpacing(5)
         self.entry_modelo_ia_livre = QLineEdit()
-        self.entry_modelo_ia_livre.setPlaceholderText("id exato, ex.: meta-llama/llama-4")
+        self.entry_modelo_ia_livre.setPlaceholderText(t("id exato, ex.: meta-llama/llama-4"))
         self.entry_modelo_ia_livre.setFixedWidth(LARGURA_CAMPO_IA)
         self.entry_modelo_ia_livre.textChanged.connect(lambda _t: self._atualizar_resumo_modelo_ia())
         linha.addWidget(self.entry_modelo_ia_livre)
         linha.addSpacing(5)
-        self.btn_limpar_modelo_ia = _botao_cinza("Limpar", largura_minima=LARGURA_LIMPAR)
+        self.btn_limpar_modelo_ia = _botao_cinza(t("Limpar"), largura_minima=LARGURA_LIMPAR)
         self.btn_limpar_modelo_ia.clicked.connect(self._limpar_modelo_ia_livre)
         linha.addWidget(self.btn_limpar_modelo_ia)
         linha.addStretch()
@@ -940,12 +828,12 @@ class HomeView(QScrollArea):
 
         # --- 7. BOTÕES ---
         linha = _linha(coluna, cima=10, baixo=15)
-        self.btn_aplicar_recomendados_ia = _botao("Aplicar recomendados", variante="primario")
+        self.btn_aplicar_recomendados_ia = _botao(t("Aplicar recomendados"), variante="primario")
         icones.aplicar(self.btn_aplicar_recomendados_ia, "sparkles")
         self.btn_aplicar_recomendados_ia.clicked.connect(self._aplicar_recomendados_ia)
         linha.addWidget(self.btn_aplicar_recomendados_ia)
         linha.addSpacing(10)
-        self.btn_salvar_selecao_ia = _botao("Salvar seleção", variante="primario")
+        self.btn_salvar_selecao_ia = _botao(t("Salvar seleção"), variante="primario")
         self.btn_salvar_selecao_ia.clicked.connect(self._salvar_selecao_modelos_ia)
         linha.addWidget(self.btn_salvar_selecao_ia)
         linha.addStretch()
@@ -954,10 +842,10 @@ class HomeView(QScrollArea):
     # Rótulos
     # ------------------------------------------------------------------
     def _rotulo_padrao_sistema_ia(self) -> str:
-        return "Padrão do sistema (modelos atuais)"
+        return t("Padrão do sistema (modelos atuais)")
 
     def _rotulo_provider_ia(self, provider) -> str:
-        return self.ROTULO_PROVIDER_IA.get(provider, provider)
+        return t(self.ROTULO_PROVIDER_IA[provider]) if provider in self.ROTULO_PROVIDER_IA else provider
 
     @staticmethod
     def _provider_ia_da_selecao(estado_atual):
@@ -982,11 +870,12 @@ class HomeView(QScrollArea):
     def _rotulo_modelo_ia(self, fav) -> str:
         """Rótulo de um favorito curado -- com preço, que é o que ele acrescenta
         sobre o id cru do catálogo."""
-        tier_legivel = {"padrao": "Padrão", "economia": "Economia", "poder": "Poder"}.get(fav["tier"], fav["tier"])
-        return (
-            f"{fav['rotulo']} ({tier_legivel}, "
-            f"${fav['preco_input']:.2f} / ${fav['preco_output']:.2f} por 1M tokens)"
-        )
+        tier_legivel = {"padrao": t("Padrão"), "economia": t("Economia"), "poder": t("Poder")}.get(
+            fav["tier"], fav["tier"])
+        # O `rotulo` do favorito vem de `core/llm`: é nome de modelo, fica como veio.
+        return t("{rotulo} ({tier}, ${entrada} / ${saida} por 1M tokens)", rotulo=fav["rotulo"],
+                 tier=tier_legivel, entrada=f"{fav['preco_input']:.2f}",
+                 saida=f"{fav['preco_output']:.2f}")
 
     # ------------------------------------------------------------------
     # Lista de modelos do provedor escolhido
@@ -1025,7 +914,8 @@ class HomeView(QScrollArea):
                 continue
             model_id = entrada["model"]
             provider = entrada.get("provider") or self._provider_ia_atual()
-            self._pares_modelo_ia.append((f"(salvo) {provider} / {model_id}", model_id, provider))
+            self._pares_modelo_ia.append(
+                (t("(salvo) {provider} / {modelo}", provider=provider, modelo=model_id), model_id, provider))
             conhecidos.add(model_id)
 
     def _recarregar_modelos_do_provider(self, estado_atual=None, forcar=False,
@@ -1052,19 +942,20 @@ class HomeView(QScrollArea):
             de_quando = (datetime.fromtimestamp(baixado_em).strftime("%d/%m")
                          if baixado_em is not None else None)
             if erro_catalogo and de_quando:
-                texto = (f"Não foi possível atualizar a lista de modelos ({erro_catalogo}). "
-                         f"Continua valendo a lista de {de_quando}.")
+                texto = t("Não foi possível atualizar a lista de modelos ({erro}). "
+                          "Continua valendo a lista de {data}.", erro=erro_catalogo, data=de_quando)
             elif erro_catalogo:
-                texto = (f"Não foi possível baixar a lista de modelos ({erro_catalogo}). "
-                         "Enquanto isso valem os recomendados e o campo manual.")
+                texto = t("Não foi possível baixar a lista de modelos ({erro}). "
+                          "Enquanto isso valem os recomendados e o campo manual.", erro=erro_catalogo)
             elif do_catalogo > 0:
-                extra = f", lista de {de_quando}" if self._catalogo_ia.vencido and de_quando else ""
-                texto = (f"{len(self._pares_modelo_ia)} modelos disponíveis "
-                         f"({do_catalogo} do catálogo do provedor{extra}).")
+                extra = (t(", lista de {data}", data=de_quando)
+                         if self._catalogo_ia.vencido and de_quando else "")
+                texto = t("{n} modelos disponíveis ({do_catalogo} do catálogo do provedor{extra}).",
+                          n=len(self._pares_modelo_ia), do_catalogo=do_catalogo, extra=extra)
             else:
-                texto = ("Catálogo ainda não baixado para este provedor. Clique em "
-                         "\"Atualizar lista de modelos\". Enquanto isso valem os recomendados "
-                         "e o campo manual.")
+                texto = t("Catálogo ainda não baixado para este provedor. Clique em "
+                          "\"Atualizar lista de modelos\". Enquanto isso valem os recomendados "
+                          "e o campo manual.")
             self.lbl_catalogo_ia.definir(texto, papel="erro" if erro_catalogo else None)
 
         salvo_global = (estado_atual or {}).get("global") if estado_atual else None
@@ -1077,7 +968,7 @@ class HomeView(QScrollArea):
             self._preselecionar_modelo_ia(self.opt_modelo_ia_global, salvo_global,
                                           self._rotulo_padrao_sistema_ia())
             for tarefa, menu in self.menus_modelo_ia_por_tarefa.items():
-                self._preselecionar_modelo_ia(menu, salvos_tarefa.get(tarefa), "Usar o global")
+                self._preselecionar_modelo_ia(menu, salvos_tarefa.get(tarefa), t("Usar o global"))
 
         self._refiltrar_modelos_ia()
         self._atualizar_resumo_modelo_ia()
@@ -1120,7 +1011,7 @@ class HomeView(QScrollArea):
         tarefa da pessoa, não segura o fechamento do app."""
         provider = self._provider_ia_atual()
         if self.lbl_catalogo_ia is not None:
-            self.lbl_catalogo_ia.definir("Buscando a lista de modelos do provedor...")
+            self.lbl_catalogo_ia.definir(t("Buscando a lista de modelos do provedor..."))
         # A thread recebe uma CÓPIA das chaves e não toca em nada da Home.
         chaves = dict(self.controller.api_keys)
         threading.Thread(target=self._worker_catalogo_ia, args=(provider, chaves),
@@ -1190,11 +1081,11 @@ class HomeView(QScrollArea):
         provider = self._provider_ia_atual()
         manual = self.entry_modelo_ia_livre.text().strip()
         if manual:
-            return provider, manual, "campo manual"
+            return provider, manual, marcar("campo manual")
         model_id, provider_do_modelo = self._id_do_rotulo_modelo_ia(self.opt_modelo_ia_global.currentText())
         if model_id is None:
-            return None, None, "padrão do sistema"
-        return provider_do_modelo, model_id, "lista de modelos"
+            return None, None, marcar("padrão do sistema")
+        return provider_do_modelo, model_id, marcar("lista de modelos")
 
     def _atualizar_resumo_modelo_ia(self) -> None:
         if self.lbl_resumo_modelo_ia is None:
@@ -1202,9 +1093,10 @@ class HomeView(QScrollArea):
 
         provider, model, origem = self._modelo_ia_global_efetivo()
         if provider is None:
-            linha = "Ao salvar: todas as tarefas voltam ao padrão do sistema (modelos atuais)."
+            linha = t("Ao salvar: todas as tarefas voltam ao padrão do sistema (modelos atuais).")
         else:
-            linha = f"Ao salvar: {provider} / {model}  (veio do {origem})"
+            linha = t("Ao salvar: {provider} / {modelo}  (veio do {origem})", provider=provider,
+                      modelo=model, origem=t(origem))
 
         if self.menus_modelo_ia_por_tarefa and self.caixa_modo_avancado_ia.isChecked():
             com_override = [
@@ -1212,10 +1104,8 @@ class HomeView(QScrollArea):
                 if self._id_do_rotulo_modelo_ia(menu.currentText())[0] is not None
             ]
             if com_override:
-                linha += (
-                    f"  |  {len(com_override)} tarefa(s) com modelo próprio "
-                    f"({', '.join(sorted(com_override))}), que vence o padrão acima."
-                )
+                linha += t("  |  {n} tarefa(s) com modelo próprio ({tarefas}), que vence o padrão acima.",
+                           n=len(com_override), tarefas=", ".join(sorted(com_override)))
 
         self.lbl_resumo_modelo_ia.definir(linha)
 
@@ -1232,10 +1122,11 @@ class HomeView(QScrollArea):
             chaves = ", ".join(sigft_config.CHAVE_POR_PROVIDER[p] for p in faltando)
             # "Não" é o botão padrão: um Enter não aplica às cegas.
             resposta = QMessageBox.question(
-                self._janela_de(self.frame_modelos_ia), "Chave de API faltando",
-                f"Os modelos recomendados exigem {chaves}, que ainda não está configurada "
-                "no painel de chaves acima.\n\nSe aplicar assim, os módulos que dependem "
-                "desse provedor vão falhar até a chave ser preenchida.\n\nAplicar mesmo assim?",
+                self._janela_de(self.frame_modelos_ia), t("Chave de API faltando"),
+                t("Os modelos recomendados exigem {chaves}, que ainda não está configurada "
+                  "no painel de chaves acima.\n\nSe aplicar assim, os módulos que dependem "
+                  "desse provedor vão falhar até a chave ser preenchida.\n\nAplicar mesmo assim?",
+                  chaves=chaves),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             if resposta != QMessageBox.StandardButton.Yes:
@@ -1244,11 +1135,11 @@ class HomeView(QScrollArea):
         selecao.aplicar_recomendados(config_path=sigft_config.CONFIG_FILE)
         self._recarregar_painel_modelos_ia()
         QMessageBox.information(
-            self._janela_de(self.frame_modelos_ia), "Recomendados aplicados",
-            "Os modelos recomendados (docs/refatoracao/MODELOS_IA.md) foram aplicados: Gemini 3 Flash "
-            "Preview como padrão global, com Grok 4.5 para a classificação de PDM.\n\n"
-            "São modelos mais econômicos que os usados até agora. Vale validar a qualidade "
-            "num punhado de fichas (comparando com o resultado anterior) antes de rodar em lote.",
+            self._janela_de(self.frame_modelos_ia), t("Recomendados aplicados"),
+            t("Os modelos recomendados (docs/refatoracao/MODELOS_IA.md) foram aplicados: Gemini 3 Flash "
+              "Preview como padrão global, com Grok 4.5 para a classificação de PDM.\n\n"
+              "São modelos mais econômicos que os usados até agora. Vale validar a qualidade "
+              "num punhado de fichas (comparando com o resultado anterior) antes de rodar em lote."),
         )
 
     def _salvar_selecao_modelos_ia(self) -> None:
@@ -1272,9 +1163,9 @@ class HomeView(QScrollArea):
 
         self._recarregar_painel_modelos_ia()
         QMessageBox.information(
-            self._janela_de(self.frame_modelos_ia), "Seleção salva",
-            "Seleção de modelos de IA salva. A próxima execução de cada módulo já usa o modelo "
-            "escolhido. Não é preciso reiniciar o SIG-FT.",
+            self._janela_de(self.frame_modelos_ia), t("Seleção salva"),
+            t("Seleção de modelos de IA salva. A próxima execução de cada módulo já usa o modelo "
+              "escolhido. Não é preciso reiniciar o SIG-FT."),
         )
 
     # =========================================================================
@@ -1288,19 +1179,19 @@ class HomeView(QScrollArea):
         pasta de logs". Sem registros, a mensagem amigável do próprio relatório."""
         _casca, quadro, coluna = _painel(parent)
         self.frame_gastos_ia = quadro
-        self.lbl_titulo_gastos_ia = _titulo_painel("Gastos de IA")
+        self.lbl_titulo_gastos_ia = _titulo_painel(t("Gastos de IA"))
         _empilhar(coluna, self.lbl_titulo_gastos_ia, cima=10, baixo=10)
 
-        self.lbl_gastos_ia = _Texto("Carregando...", altura_linha=LINHA_TK_ROBOTO_12)
+        self.lbl_gastos_ia = _Texto(t("Carregando..."), altura_linha=LINHA_TK_ROBOTO_12)
         _empilhar_texto(coluna, self.lbl_gastos_ia, baixo=10)
         self._atualizar_texto_gastos_ia()
 
         linha = _linha(coluna, baixo=15)
-        self.btn_atualizar_gastos_ia = _botao_cinza("Atualizar")
+        self.btn_atualizar_gastos_ia = _botao_cinza(t("Atualizar"))
         self.btn_atualizar_gastos_ia.clicked.connect(self._atualizar_texto_gastos_ia)
         linha.addWidget(self.btn_atualizar_gastos_ia)
         linha.addSpacing(10)
-        self.btn_pasta_logs_ia = _botao_cinza("Abrir pasta de logs")
+        self.btn_pasta_logs_ia = _botao_cinza(t("Abrir pasta de logs"))
         self.btn_pasta_logs_ia.clicked.connect(self._abrir_pasta_logs_gastos_ia)
         linha.addWidget(self.btn_pasta_logs_ia)
         linha.addStretch()
@@ -1312,7 +1203,7 @@ class HomeView(QScrollArea):
             relatorio = llm_usage.usage_report()
             texto = llm_usage.formatar_relatorio_texto(relatorio)
         except Exception as e:
-            texto = f"Não foi possível carregar os gastos de IA agora ({e})."
+            texto = t("Não foi possível carregar os gastos de IA agora ({erro}).", erro=e)
         self.lbl_gastos_ia.definir(texto)
 
     def _abrir_pasta_logs_gastos_ia(self) -> None:

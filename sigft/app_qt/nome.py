@@ -25,6 +25,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QVBoxLayout
 from shiboken6 import isValid
 
+from sigft.app.idioma import marcar, t
 from sigft.app_qt import tema
 from sigft.app_qt.widgets import blocos
 
@@ -34,12 +35,12 @@ CHAVE_NOME = "nome"
 CHAVE_JA_PERGUNTOU = "ja_perguntou_nome"
 LIMITE = 40
 
-TITULO = "Seu nome"
-PERGUNTA = "Como podemos te chamar?"
-EXPLICACAO = "Ele só aparece na saudação da Home. Dá para mudar depois, clicando nela."
-TEXTO_SALVAR = "Salvar"
-TEXTO_AGORA_NAO = "Agora não"
-DICA_DA_SAUDACAO = "Mudar como te chamamos"
+TITULO = marcar("Seu nome")
+PERGUNTA = marcar("Como podemos te chamar?")
+EXPLICACAO = marcar("Ele só aparece na saudação da Home. Dá para mudar depois, clicando nela.")
+TEXTO_SALVAR = marcar("Salvar")
+TEXTO_AGORA_NAO = marcar("Agora não")
+DICA_DA_SAUDACAO = marcar("Mudar como te chamamos")
 
 
 def _arquivo_de_prefs():
@@ -103,17 +104,18 @@ def recusar() -> None:
 def saudacao(agora: datetime, quem: str) -> str:
     """Boa noite (até 5h), Bom dia (até 12h), Boa tarde (até 18h), Boa noite;
     mais o nome, se houver. A spec dizia "Bom dia até 12h"; às 2h soava
-    estranho e a madrugada virou "Boa noite" (2026-10-20)."""
+    estranho e a madrugada virou "Boa noite" (2026-10-20). No idioma da sessão
+    (2026-10-22); o nome vai como a pessoa o escreveu."""
     if agora.hour < 5:
-        inicio = "Boa noite"
+        inicio = marcar("Boa noite")
     elif agora.hour < 12:
-        inicio = "Bom dia"
+        inicio = marcar("Bom dia")
     elif agora.hour < 18:
-        inicio = "Boa tarde"
+        inicio = marcar("Boa tarde")
     else:
-        inicio = "Boa noite"
+        inicio = marcar("Boa noite")
     quem = (quem or "").strip()
-    return f"{inicio}, {quem}" if quem else inicio
+    return t("{saudacao}, {nome}", saudacao=t(inicio), nome=quem) if quem else t(inicio)
 
 
 class PerguntaDoNome(QDialog):
@@ -125,7 +127,7 @@ class PerguntaDoNome(QDialog):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle(TITULO)
+        self.setWindowTitle(t(TITULO))
         self.setModal(True)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self._respondida = False
@@ -133,16 +135,16 @@ class PerguntaDoNome(QDialog):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(24, 20, 24, 20)
         lay.setSpacing(0)
-        lay.addWidget(blocos.rotulo(PERGUNTA, tamanho=16, negrito=True, alinhar="esquerda"))
+        lay.addWidget(blocos.rotulo(t(PERGUNTA), tamanho=16, negrito=True, alinhar="esquerda"))
         lay.addSpacing(4)
-        explicacao = blocos.rotulo(EXPLICACAO, tamanho=13, papel="legenda", alinhar="esquerda")
+        explicacao = blocos.rotulo(t(EXPLICACAO), tamanho=13, papel="legenda", alinhar="esquerda")
         explicacao.setWordWrap(True)
         lay.addWidget(explicacao)
         lay.addSpacing(14)
 
         self.campo = QLineEdit(guardado())
         self.campo.setMaxLength(LIMITE)
-        self.campo.setPlaceholderText("Seu nome")
+        self.campo.setPlaceholderText(t(TITULO))
         self.campo.setMinimumWidth(320)
         self.campo.returnPressed.connect(self._salvar)
         lay.addWidget(self.campo)
@@ -151,10 +153,10 @@ class PerguntaDoNome(QDialog):
         botoes = QHBoxLayout()
         botoes.setSpacing(10)
         botoes.addStretch()
-        self.botao_agora_nao = blocos.botao(TEXTO_AGORA_NAO, variante="secundario", largura=120)
+        self.botao_agora_nao = blocos.botao(t(TEXTO_AGORA_NAO), variante="secundario", largura=120)
         self.botao_agora_nao.setAutoDefault(False)
         self.botao_agora_nao.clicked.connect(self.reject)
-        self.botao_salvar = blocos.botao(TEXTO_SALVAR, variante="primario", largura=120,
+        self.botao_salvar = blocos.botao(t(TEXTO_SALVAR), variante="primario", largura=120,
                                          negrito=True)
         self.botao_salvar.setAutoDefault(False)
         self.botao_salvar.clicked.connect(self._salvar)

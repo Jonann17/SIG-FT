@@ -18,6 +18,7 @@ import ast
 
 from PySide6.QtWidgets import QMessageBox, QVBoxLayout
 
+from sigft.app.idioma import marcar, t
 from sigft.app.textos_dialogos import LOGIN_NECESSARIO, MSG_LOGIN_SOLTAR_ROBO, msg_falha_ao_salvar
 from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.views._upload_comum import ABA_WEB, URL_PORTAL, TelaDeUpload, reabilitar
@@ -26,7 +27,7 @@ from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.core import pmib_regras
 from sigft.core.excel.pmib_codes import normalize_pmib
 
-ABA_IA = "Processamento IA (Gerar Excel)"
+ABA_IA = marcar("Processamento IA (Gerar Excel)")
 # Colunas que o Excel de resultados guarda como texto de dicionário.
 COLUNAS_DICIONARIO = ["dimensoes", "controle_temperatura", "nocivo", "peso", "protecao",
                       "outros_cuidados", "logistica_reversa"]
@@ -55,11 +56,11 @@ class ModuloUploadConditions(TelaDeUpload):
     # Arrastar arquivo do Explorer para o botão (2026-10-21, etapa 1b).
     ARRASTAVEIS = (Arrastavel("btn_status", "upload_conditions.status_pmib", (".xlsx", ".xlsm")),)
     ABA_IA = ABA_IA
-    TEXTO_CONFIG = "Configuração Global (Requerido para IA e Web)"
+    TEXTO_CONFIG = marcar("Configuração Global (Requerido para IA e Web)")
     MARGENS_CONFIG = (15, 10, 15, 10)               # padx=15; título (10, 5); linha (5, 10)
-    TEXTO_INTERRUPTOR = "Forçar processamento de fichas com status 'COMPLETO'"
-    TEXTO_WEB = "Lê um arquivo Excel com os resultados e inicia o Selenium para preencher o Portal."
-    TEXTO_CARREGAR = "Carregar 'resultados_api_pmib.xlsx'"
+    TEXTO_INTERRUPTOR = marcar("Forçar processamento de fichas com status 'COMPLETO'")
+    TEXTO_WEB = marcar("Lê um arquivo Excel com os resultados e inicia o Selenium para preencher o Portal.")
+    TEXTO_CARREGAR = marcar("Carregar 'resultados_api_pmib.xlsx'")
 
     def __init__(self, parent=None, controller=None) -> None:
         # Antes do super(): o `_build_ui` roda lá dentro.
@@ -68,7 +69,7 @@ class ModuloUploadConditions(TelaDeUpload):
         # Referências aos processos ativos (para poder parar)
         self.processor_ativo = None
         self.automacao_ativa = None
-        super().__init__(parent, controller, titulo="Upload de Condições no PMIB")
+        super().__init__(parent, controller, titulo=t("Upload de Condições no PMIB"))
         self.api_key = self._chave()
 
     # --- montagem (o resto é da base) -------------------------------------------
@@ -77,7 +78,7 @@ class ModuloUploadConditions(TelaDeUpload):
         rolavel.addSpacing(10)                          # quadro das fichas: pady=10
         corpo = self._cartao_na_aba(rolavel, (10, 10, 10, 5))   # contador (10, 0); fila pady=5
         # [CP 7.2] Uma das 2 cópias idênticas da fila de fichas -- o FileQueueList.
-        self._fila_de_fichas(corpo, chave="upload_conditions.fichas", rotulo="Planilhas PMIB Selecionadas",
+        self._fila_de_fichas(corpo, chave="upload_conditions.fichas", rotulo=t("Planilhas PMIB Selecionadas"),
                              filetypes=[("Excel", "*.xlsx;*.xls")])
         rolavel.addSpacing(15)                          # quadro (…, 10) + ações (5, …)
         rolavel.addLayout(self._linha_acoes_ia())
@@ -86,7 +87,7 @@ class ModuloUploadConditions(TelaDeUpload):
     # --- seleção de arquivos ----------------------------------------------------
     def _sel_status(self) -> None:
         path = file_dialogs.ask_open_file("upload_conditions.status_pmib", "excel",
-                                          titulo="Selecione _STATUS_PMIB",
+                                          titulo=t("Selecione _STATUS_PMIB"),
                                           filetypes=[("Excel", "*.xlsx;*.xlsm")])
         if path:
             self.caminho_status = path
@@ -99,14 +100,14 @@ class ModuloUploadConditions(TelaDeUpload):
 
     # --- IA (aba 1) -------------------------------------------------------------
     def _stop_ia_process(self) -> None:
-        if self._confirmar("Deseja interromper a IA?\nO que já foi processado será mantido."):
+        if self._confirmar(t("Deseja interromper a IA?\nO que já foi processado será mantido.")):
             self.log("Sinal de parada enviado! Aguarde o término do arquivo atual...")
             self.btn_parar_ia.setEnabled(False)
             if self.processor_ativo:
                 self.processor_ativo.solicitar_parada()
 
     def _stop_web_process(self) -> None:
-        if self._confirmar("Deseja interromper o robô?\nEle vai parar antes da próxima ficha."):
+        if self._confirmar(t("Deseja interromper o robô?\nEle vai parar antes da próxima ficha.")):
             self.log("Sinal de parada enviado ao robô! Aguardando o ciclo atual fechar...")
             self.btn_parar_web.setEnabled(False)
             if self.automacao_ativa:
@@ -116,11 +117,11 @@ class ModuloUploadConditions(TelaDeUpload):
         status_file = self.caminho_status
         files = self.lista_fichas_paths
         if not status_file:
-            QMessageBox.warning(self, "Aviso",
-                                "Por favor, selecione a planilha de _STATUS_PMIB na Configuração Global.")
+            QMessageBox.warning(self, t("Aviso"),
+                                t("Por favor, selecione a planilha de _STATUS_PMIB na Configuração Global."))
             return
         if not files:
-            QMessageBox.warning(self, "Aviso", "Por favor, adicione pelo menos uma ficha à lista.")
+            QMessageBox.warning(self, t("Aviso"), t("Por favor, adicione pelo menos uma ficha à lista."))
             return
         modulo = self.backend("upload_conditions_backend")
         if modulo is None:
@@ -166,17 +167,18 @@ class ModuloUploadConditions(TelaDeUpload):
         self.processor_ativo = None
 
         if not resultados:
-            QMessageBox.information(self, "Aviso", "Nenhum dado gerado. Verifique o console.")
+            QMessageBox.information(self, t("Aviso"), t("Nenhum dado gerado. Verifique o console."))
             return
 
         self.dados_em_memoria = resultados
         self.log(f"Sucesso! {len(resultados)} fichas processadas.")
 
-        # Pergunta de Salvamento (o askyesnocancel: Sim / Não / Cancelar)
+        # Pergunta de Salvamento (o askyesnocancel: Sim / Não / Cancelar). O texto
+        # cita os botões da Qt: a tradução cita os do idioma (SÍ/NO, YES/NO).
         modo_salvar = QMessageBox.question(
-            self, "Salvar Resultados",
-            "Como deseja salvar as fichas processadas?\n\nSIM = Novo Arquivo Excel\n"
-            "NÃO = Anexar a um Excel Existente",
+            self, t("Salvar Resultados"),
+            t("Como deseja salvar as fichas processadas?\n\nSIM = Novo Arquivo Excel\n"
+              "NÃO = Anexar a um Excel Existente"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Yes)
 
@@ -185,13 +187,13 @@ class ModuloUploadConditions(TelaDeUpload):
         msg_salvar = ""
         if modo_salvar == QMessageBox.StandardButton.Yes:
             caminho_final = file_dialogs.ask_save_file("upload_conditions.salvar_novo", "excel",
-                                                       titulo="Salvar Novo Arquivo", defaultextension=".xlsx",
+                                                       titulo=t("Salvar Novo Arquivo"), defaultextension=".xlsx",
                                                        filetypes=[("Excel", "*.xlsx")])
             if caminho_final:
                 sucesso_salvar, msg_salvar = processor.salvar_novo_arquivo(resultados, caminho_final)
         elif modo_salvar == QMessageBox.StandardButton.No:
             caminho_final = file_dialogs.ask_open_file("upload_conditions.anexar", "excel",
-                                                       titulo="Selecionar arquivo para ANEXAR",
+                                                       titulo=t("Selecionar arquivo para ANEXAR"),
                                                        filetypes=[("Excel", "*.xlsx")])
             if caminho_final:
                 sucesso_salvar, msg_salvar = processor.anexar_a_arquivo_existente(resultados, caminho_final)
@@ -200,25 +202,25 @@ class ModuloUploadConditions(TelaDeUpload):
             self.log(msg_salvar)
             if sucesso_salvar:
                 if self._perguntar_se_continua():
-                    self.tabview.set(ABA_WEB)
+                    self.tabview.set(t(ABA_WEB))
                     self._pre_start_web(self.dados_em_memoria)
             else:
-                QMessageBox.critical(self, "Erro ao Salvar", msg_salvar)
+                QMessageBox.critical(self, t("Erro ao Salvar"), msg_salvar)
 
     # --- Robô Web (aba 2) -------------------------------------------------------
     def _pre_start_web(self, dados_dict_lista) -> None:
         if self._robo_ocupado():
             return
         if not self.caminho_status:
-            QMessageBox.warning(self, "Aviso",
-                                "Selecione o _STATUS_PMIB na Configuração Global antes de iniciar o Robô.")
+            QMessageBox.warning(self, t("Aviso"),
+                                t("Selecione o _STATUS_PMIB na Configuração Global antes de iniciar o Robô."))
             return
         if not dados_dict_lista:
-            QMessageBox.warning(self, "Aviso", "Não há dados para iniciar a automação.")
+            QMessageBox.warning(self, t("Aviso"), t("Não há dados para iniciar a automação."))
             return
 
         # A escolha volta como POSIÇÃO (`devolver_indices`), para reencontrar o
-        # item na lista de origem.
+        # item na lista de origem: o texto dos itens é só exibição (traduzido).
         def confirmar(indices):
             selecionados_finais = [dados_dict_lista[i] for i in indices]
             if selecionados_finais:
@@ -228,9 +230,9 @@ class ModuloUploadConditions(TelaDeUpload):
 
         dialogos_selecao.SelecaoMultiplaDialog(
             self,
-            itens=[f" Ficha PMIB: {item.get('pmib_codigo', 'N/A')}" for item in dados_dict_lista],
-            titulo="Selecione as Fichas para Processar",
-            instrucao="Selecione quais PMIBs deseja preencher no portal:",
+            itens=[t(" Ficha PMIB: {pmib}", pmib=item.get('pmib_codigo', 'N/A')) for item in dados_dict_lista],
+            titulo=t("Selecione as Fichas para Processar"),
+            instrucao=t("Selecione quais PMIBs deseja preencher no portal:"),
             geometria="500x400",
             modal=True,
             com_selecionar_todos=True,
@@ -246,7 +248,7 @@ class ModuloUploadConditions(TelaDeUpload):
 
     def _start_web_from_file(self) -> None:
         excel_file = file_dialogs.ask_open_file("upload_conditions.excel_resultados", "excel",
-                                                titulo="Selecione Excel de Resultados",
+                                                titulo=t("Selecione Excel de Resultados"),
                                                 filetypes=[("Excel", "*.xlsx;*.xls")])
         if not excel_file:
             return
@@ -258,7 +260,7 @@ class ModuloUploadConditions(TelaDeUpload):
             self._pre_start_web(dados)
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"Erro ao ler Excel: {e}")
-            QMessageBox.critical(self, "Erro de Leitura", f"Falha ao ler Excel: {e}")
+            QMessageBox.critical(self, t("Erro de Leitura"), t("Falha ao ler Excel: {erro}", erro=e))
 
     def _start_web_process(self, dados) -> None:
         if self._robo_ocupado():
@@ -275,9 +277,9 @@ class ModuloUploadConditions(TelaDeUpload):
 
     @staticmethod
     def _mensagem_da_pausa(section_name) -> str:
-        """Login, ou a aba que o portal recusou salvar."""
+        """Login, ou a aba que o portal recusou salvar (já no idioma da sessão)."""
         if section_name == LOGIN_NECESSARIO:
-            return MSG_LOGIN_SOLTAR_ROBO
+            return t(MSG_LOGIN_SOLTAR_ROBO)
         return msg_falha_ao_salvar(section_name)
 
     def _worker_web(self, modulo, dados, status_file) -> None:
@@ -303,7 +305,7 @@ class ModuloUploadConditions(TelaDeUpload):
             auto.processar_lista(dados, status_file, callback_ask=ask_callback, callback_log=self.log,
                                  callback_pause=pause_callback)
             self.log("Fila de processamento web concluída.")
-            self.avisar("Aviso", "A fila de automação foi finalizada!")
+            self.avisar(t("Aviso"), t("A fila de automação foi finalizada!"))
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"Erro Crítico Web: {e}")
         finally:

@@ -59,6 +59,11 @@ datas = [
     # `sigft/assets/`, que é onde `services/painel.caminho_do_template` procura
     # (ao lado do pacote, inclusive dentro do .exe).
     (os.path.join("sigft", "assets", "painel_template.html"), os.path.join("sigft", "assets")),
+    # Os catálogos de tradução da interface (2026-10-22, `sigft/app/idioma.py`).
+    # Vão para `sigft/app/idiomas/`, onde o `idioma` os procura
+    # (`Path(__file__).parent / "idiomas"`, também dentro do .exe). Sem eles o app
+    # abre em português sem aviso: o `--smoke` do Release reprova (`idioma.conferir`).
+    (os.path.join("sigft", "app", "idiomas"), os.path.join("sigft", "app", "idiomas")),
 ]
 
 # =============================================================================
@@ -429,8 +434,9 @@ if _ANTES_G != len(a.datas):
 # Windows, que é o que vai no instalador:
 #
 #   * as traduções: o PyInstaller leva as ~100 do Qt (`qt_*` e `qtbase_*`,
-#     7 MB), e a interface carrega UMA, a `qtbase_pt_BR` -- os "Sim", "Não" e
-#     "Cancelar" dos diálogos (`_instalar_traducao`, em sigft/app_qt/main.py);
+#     7 MB), e a interface carrega a do idioma escolhido: `qtbase_pt_BR` ou
+#     `qtbase_es` (o inglês não precisa) -- os "Sim", "Não" e "Cancelar" dos
+#     diálogos (`_instalar_traducao`, em sigft/app_qt/main.py);
 #   * o `opengl32sw.dll` (20,6 MB, só no Windows): o OpenGL por software que o
 #     Qt usa no Qt Quick e no QOpenGLWidget quando a placa de vídeo não serve.
 #     A interface é QtWidgets puro, que desenha sem OpenGL.
@@ -438,7 +444,7 @@ if _ANTES_G != len(a.datas):
 # Com os plugins e o QtNetwork (nos `excludes`), a parte do Qt no pacote do
 # Windows cai de 78,4 para 43,2 MB (ver docs/BUILD.md, "A interface Qt dentro
 # do pacote").
-_TRADUCAO_DO_QT = "qtbase_pt_BR.qm"
+_TRADUCOES_DO_QT = {"qtbase_pt_BR.qm", "qtbase_es.qm"}
 
 
 def _qt_que_a_interface_nao_usa(entrada):
@@ -447,7 +453,7 @@ def _qt_que_a_interface_nao_usa(entrada):
         return False
     pasta, _, nome = destino.rpartition("/")
     if pasta.endswith("/translations"):     # PySide6/translations ou PySide6/Qt/translations
-        return nome != _TRADUCAO_DO_QT
+        return nome not in _TRADUCOES_DO_QT
     return nome.lower() == "opengl32sw.dll"
 
 

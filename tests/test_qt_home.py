@@ -39,17 +39,6 @@ def test_icones_da_barra_em_preto_e_branco(qt_interface, qtbot):
     assert botao.text() == "Atividades do dia"
 
 
-def test_canal_de_testes_lembra_a_escolha(qt_interface, qtbot, monkeypatch):
-    from sigft.services import updater
-    gravado = []
-    monkeypatch.setattr(updater, "canal_testes_ligado", lambda: False)
-    monkeypatch.setattr(updater, "ligar_canal_testes", gravado.append)
-    home = HomeView(controller=Controller())
-    qtbot.addWidget(home)
-    home.caixa_canal_testes.setChecked(True)
-    assert gravado == [True]
-
-
 def test_titulo_do_card_fica_no_topo_quando_o_vizinho_e_mais_alto(qt_interface, qtbot):
     # Na interface antiga (grid sticky="nsew" + pack no topo) a sobra do card mais baixo da
     # linha fica EMBAIXO; o título não desce para o meio do card.

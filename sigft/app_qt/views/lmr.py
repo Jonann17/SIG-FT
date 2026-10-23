@@ -13,6 +13,7 @@ import os
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMessageBox, QVBoxLayout
 
+from sigft.app.idioma import t
 from sigft.app.textos_dialogos import MSG_LOGIN_LMR
 from sigft.app_qt import file_dialogs
 from sigft.app_qt.widgets import blocos, controles, pickers, revisao_portal
@@ -32,7 +33,7 @@ class DialogoDaAba(QDialog):
 
     def __init__(self, parent, *, nome_arquivo: str, abas: list[str]) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Escolha a aba")
+        self.setWindowTitle(t("Escolha a aba"))
         self.setFixedSize(420, 220)
         # Espaços do `pack` de lá; o pady de dois vizinhos SOMA no Tk.
         layout = QVBoxLayout(self)
@@ -42,7 +43,7 @@ class DialogoDaAba(QDialog):
         self.rotulo_arquivo = blocos.rotulo(nome_arquivo, tamanho=12, negrito=True)
         layout.addWidget(self.rotulo_arquivo)
         layout.addSpacing(4)                            # arquivo (…, 4) + pergunta (0, …)
-        self.rotulo_pergunta = blocos.rotulo("Qual aba contém as aplicações de LMR?", tamanho=12,
+        self.rotulo_pergunta = blocos.rotulo(t("Qual aba contém as aplicações de LMR?"), tamanho=12,
                                              papel="legenda")
         layout.addWidget(self.rotulo_pergunta)
         layout.addSpacing(17)                           # pergunta (…, 12) + menu (5, …)
@@ -50,11 +51,11 @@ class DialogoDaAba(QDialog):
         self.menu.setFixedWidth(300)
         layout.addWidget(self.menu, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addSpacing(20)                           # menu (…, 5) + ler (15, …)
-        self.botao_ler = blocos.botao("Ler esta aba", variante="primario", largura=300)
+        self.botao_ler = blocos.botao(t("Ler esta aba"), variante="primario", largura=300)
         self.botao_ler.clicked.connect(self.accept)
         layout.addWidget(self.botao_ler, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addSpacing(10)                           # ler (…, 5) + cancelar (5, …)
-        self.botao_cancelar = blocos.botao("Cancelar", variante="cinza", largura=300)
+        self.botao_cancelar = blocos.botao(t("Cancelar"), variante="cinza", largura=300)
         self.botao_cancelar.clicked.connect(self.reject)
         layout.addWidget(self.botao_cancelar, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addStretch()
@@ -64,12 +65,13 @@ class DialogoDaAba(QDialog):
 
 
 class ModuloLMR(ComTravaDeRobo, ModuleFrame):
+    # Só vai ao console (`ComTravaDeRobo.robo_ocupado`): fica em português.
     NOME_DO_ROBO = "Upload de aplicações"
 
     def __init__(self, parent=None, controller=None, *, embutida=False, console_externo=None) -> None:
         # Antes do super(): o `_build_ui` roda lá dentro, e o seletor grava aqui.
         self.caminho_status_pmib = None
-        super().__init__(parent, controller, titulo="Automação LMR",
+        super().__init__(parent, controller, titulo=t("Automação LMR"),
                          embutida=embutida, console_externo=console_externo)
 
     def _build_ui(self) -> None:
@@ -82,34 +84,34 @@ class ModuloLMR(ComTravaDeRobo, ModuleFrame):
         corpo = blocos.cartao(self.content_layout)
         corpo.setSpacing(0)
         corpo.setContentsMargins(20, 20, 20, 20)        # título: pady=(20, …); "O script": (…, 20)
-        r["titulo"] = blocos.rotulo("Preenchimento Automático de LMR (Aplicações)", tamanho=16,
+        r["titulo"] = blocos.rotulo(t("Preenchimento Automático de LMR (Aplicações)"), tamanho=16,
                                     negrito=True, papel="destaque")
         corpo.addWidget(r["titulo"])
         corpo.addSpacing(10)                            # título (…, 10) + texto (0, …)
         r["info"] = blocos.rotulo(
-            "Este módulo lê uma aba de um arquivo Excel e cadastra as aplicações no Portal PMIB.\n"
-            "Você escolhe a aba depois de selecionar o arquivo.\n"
-            "Colunas esperadas: FICHA PMIB, CÓDIGO LMR e TAG LMR.\n"
-            "Será solicitado login no navegador durante o processo.",
+            t("Este módulo lê uma aba de um arquivo Excel e cadastra as aplicações no Portal PMIB.\n"
+              "Você escolhe a aba depois de selecionar o arquivo.\n"
+              "Colunas esperadas: FICHA PMIB, CÓDIGO LMR e TAG LMR.\n"
+              "Será solicitado login no navegador durante o processo."),
             papel="legenda")
         corpo.addWidget(r["info"])
         # _STATUS_PMIB opcional: quem só quer cadastrar no portal continua
         # clicando direto em "Selecionar Excel e Iniciar".
         corpo.addSpacing(20)                            # texto (…, 20) + marcar (0, …)
-        r["marcar"] = blocos.rotulo("Marcar o resultado no _STATUS_PMIB (opcional):",
+        r["marcar"] = blocos.rotulo(t("Marcar o resultado no _STATUS_PMIB (opcional):"),
                                     negrito=True)
         corpo.addWidget(r["marcar"])
         corpo.addSpacing(6)                             # marcar (…, 6) + seletor (0, …)
         self.picker_status = pickers.FilePickerRow(
-            chave="lmr.status_pmib", categoria="excel", texto_botao="Selecionar _STATUS_PMIB",
-            largura_botao=240, titulo="Selecione o _STATUS_PMIB",
+            chave="lmr.status_pmib", categoria="excel", texto_botao=t("Selecionar _STATUS_PMIB"),
+            largura_botao=240, titulo=t("Selecione o _STATUS_PMIB"),
             filetypes=[("Excel", "*.xlsx *.xlsm")],
-            texto_vazio="Nenhum (o lote não será marcado na planilha)",
+            texto_vazio=t("Nenhum (o lote não será marcado na planilha)"),
             ao_escolher=self._ao_escolher_status)
         # Lá o seletor é `pack` sem `fill`: centrado, com a largura natural.
         corpo.addWidget(self.picker_status, alignment=Qt.AlignmentFlag.AlignHCenter)
         corpo.addSpacing(30)                            # seletor (…, 20) + iniciar (10, …)
-        self.btn_run = blocos.botao("Selecionar Excel e Iniciar", variante="primario", largura=300,
+        self.btn_run = blocos.botao(t("Selecionar Excel e Iniciar"), variante="primario", largura=300,
                                     altura=50, tamanho_fonte=14, negrito=True,)
         self.btn_run.clicked.connect(self.iniciar_lmr)
         corpo.addWidget(self.btn_run, alignment=Qt.AlignmentFlag.AlignHCenter)
@@ -117,13 +119,13 @@ class ModuloLMR(ComTravaDeRobo, ModuleFrame):
         corpo.addLayout(self._linha_do_codigo())
         corpo.addSpacing(8)                             # linha do código (…, 8) + explicação (0, …)
         r["desligado"] = blocos.rotulo(
-            "Desligado, processa a ficha inteira desde o começo.\n"
-            "O número conta CÓDIGOS LMR (não linhas do Excel): o mesmo código\n"
-            "espalhado pela planilha é uma aplicação só.", tamanho=11, papel="legenda")
+            t("Desligado, processa a ficha inteira desde o começo.\n"
+              "O número conta CÓDIGOS LMR (não linhas do Excel): o mesmo código\n"
+              "espalhado pela planilha é uma aplicação só."), tamanho=11, papel="legenda")
         corpo.addWidget(r["desligado"])
         corpo.addSpacing(20)                            # explicação (…, 10) + "O script" (10, …)
         r["script"] = blocos.rotulo(
-            "O script pedirá:\n1. Arquivo Excel LMR\n2. Seleção das Fichas (Checkbox)",
+            t("O script pedirá:\n1. Arquivo Excel LMR\n2. Seleção das Fichas (Checkbox)"),
             tamanho=12, papel="legenda")
         corpo.addWidget(r["script"])
         self.content_layout.addSpacing(20)
@@ -140,7 +142,7 @@ class ModuloLMR(ComTravaDeRobo, ModuleFrame):
         linha.setSpacing(0)
         linha.addStretch()
         self.caixa_linha_inicial = controles.Interruptor(
-            "Começar de um código específico", tamanho_fonte=12)
+            t("Começar de um código específico"), tamanho_fonte=12)
         self.caixa_linha_inicial.toggled.connect(self._alternar_linha_inicial)
         linha.addWidget(self.caixa_linha_inicial)
         linha.addSpacing(10)                            # interruptor: padx=(0, 10)
@@ -185,8 +187,8 @@ class ModuloLMR(ComTravaDeRobo, ModuleFrame):
         return aba
 
     def escolher_pmibs(self, pmibs: list[str]) -> list[str]:
-        dialogo = SelecaoComCaixasDialog(self, titulo="Selecione as Fichas",
-                                         mensagem="Selecione os PMIBs para processar:", itens=pmibs)
+        dialogo = SelecaoComCaixasDialog(self, titulo=t("Selecione as Fichas"),
+                                         mensagem=t("Selecione os PMIBs para processar:"), itens=pmibs)
         # Fechar no "X" é "nenhuma": o que estiver marcado não vale.
         escolhidos = dialogo.selecionados() if dialogo.exec() else []
         dialogo.deleteLater()
@@ -226,17 +228,17 @@ class ModuloLMR(ComTravaDeRobo, ModuleFrame):
         modulo = self.backend("lmr_backend")
         if modulo is None:
             return
-        excel_path = file_dialogs.ask_open_file("lmr.excel", "excel", titulo="Selecione o Excel LMR",
+        excel_path = file_dialogs.ask_open_file("lmr.excel", "excel", titulo=t("Selecione o Excel LMR"),
                                                 filetypes=[("Excel", "*.xlsx")])
         if not excel_path:
             return
         try:
             abas = modulo.listar_abas(excel_path)
         except Exception as e:  # noqa: BLE001 -- vira aviso
-            QMessageBox.critical(self, "Erro", f"Não consegui ler as abas do arquivo:\n{e}")
+            QMessageBox.critical(self, t("Erro"), t("Não consegui ler as abas do arquivo:\n{erro}", erro=e))
             return
         if not abas:
-            QMessageBox.critical(self, "Erro", "O arquivo não tem nenhuma aba.")
+            QMessageBox.critical(self, t("Erro"), t("O arquivo não tem nenhuma aba."))
             return
         nome = os.path.basename(excel_path)
         aba = self.escolher_aba(nome, abas)
@@ -258,7 +260,7 @@ class ModuloLMR(ComTravaDeRobo, ModuleFrame):
             ok, df_completo, pmibs_unicos, msg = automator.carregar_dados_excel(excel_path, aba)
             self.log(msg)
             if not ok:
-                self.avisar("Erro", f"Falha ao ler Excel:\n{msg}", tipo="erro")
+                self.avisar(t("Erro"), t("Falha ao ler Excel:\n{msg}", msg=msg), tipo="erro")
                 return
             if not pmibs_unicos:
                 self.log("Nenhum PMIB encontrado.")
@@ -333,7 +335,7 @@ class ModuloLMR(ComTravaDeRobo, ModuleFrame):
             auto.iniciar_driver()
             self.log("Carregando portal...")
             auto.abrir_portal()
-            self.pausar_e_esperar(MSG_LOGIN_LMR)
+            self.pausar_e_esperar(t(MSG_LOGIN_LMR))
             # Lido DEPOIS do login, como lá (a pessoa pode ligar o interruptor
             # enquanto loga), mas na thread da interface: é widget.
             linha_inicio = self._na_interface_e_esperar(self._linha_inicial_escolhida)
@@ -344,7 +346,7 @@ class ModuloLMR(ComTravaDeRobo, ModuleFrame):
             self.log("Automação LMR finalizada.")
             # DEPOIS do portal e com try/except próprio (ver o método).
             self._marcar_status_do_lote(modulo, completas, incompletas)
-            self.avisar("Sucesso", "Processo concluído.")
+            self.avisar(t("Sucesso"), t("Processo concluído."))
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"Erro Fatal LMR: {e}")
         finally:

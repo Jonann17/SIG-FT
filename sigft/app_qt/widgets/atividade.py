@@ -16,10 +16,18 @@ import time
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QWidget
 
+from sigft.app.idioma import marcar, t
 from sigft.app_qt.widgets import blocos
+from sigft.app_qt import propriedades
 
 # Quanto o "Terminou" fica na tela antes de a faixa sumir.
 SEGUNDOS_DO_FIM = 12
+
+# O que se conta no "Ficha 3 de 8": a tela passa um destes (marcados), e a
+# faixa traduz na hora de mostrar. Rótulo que não está aqui aparece como veio
+# (2026-10-22).
+ROTULO_ITEM = marcar("item")
+ROTULO_FICHA = marcar("ficha")
 
 
 def relogio(segundos: float) -> str:
@@ -65,11 +73,11 @@ class FaixaDeAtividade(QWidget):
         self._atualizar()
         self.show()
 
-    def progresso(self, atual: int, total: int, rotulo: str = "item") -> None:
+    def progresso(self, atual: int, total: int, rotulo: str = ROTULO_ITEM) -> None:
         if not self.rodando or total <= 0:
             return
         atual = min(max(int(atual), 0), int(total))
-        self._avanco = f"{rotulo.capitalize()} {atual} de {total}"
+        self._avanco = t("{rotulo} {atual} de {total}", rotulo=t(rotulo).capitalize(), atual=atual, total=total)
         if self.barra.maximum() == 0:
             self.barra.setRange(0, 1000)
         blocos.definir_progresso(self.barra, atual / total)
@@ -81,12 +89,12 @@ class FaixaDeAtividade(QWidget):
         self._relogio.stop()
         decorrido = relogio(time.monotonic() - self._inicio)
         if ok:
-            self.rotulo.setText(f"✓  Terminou em {decorrido}")
+            self.rotulo.setText("✓  " + t("Terminou em {tempo}", tempo=decorrido))
             self.rotulo.setProperty("estado", "ok")
             self.barra.setRange(0, 1000)
             blocos.definir_progresso(self.barra, 1.0)
         else:
-            self.rotulo.setText(f"✗  Parou com erro depois de {decorrido}. Veja o console.")
+            self.rotulo.setText("✗  " + t("Parou com erro depois de {tempo}. Veja o console.", tempo=decorrido))
             self.rotulo.setProperty("estado", "erro")
             self.barra.setRange(0, 1000)
             self.barra.setValue(0)
@@ -95,11 +103,11 @@ class FaixaDeAtividade(QWidget):
 
     # -- desenho ----------------------------------------------------------------
     def _atualizar(self) -> None:
-        partes = ["⏳  Rodando", relogio(time.monotonic() - self._inicio)]
+        partes = ["⏳  " + t("Rodando"), relogio(time.monotonic() - self._inicio)]
         if self._avanco:
             partes.insert(1, self._avanco)
         self.rotulo.setText("  ·  ".join(partes))
-        if self.rotulo.property("estado") != "rodando":
+        if propriedades.ler(self.rotulo, "estado") != "rodando":
             self.rotulo.setProperty("estado", "rodando")
             self._repolir()
 

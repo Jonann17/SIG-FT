@@ -2,9 +2,9 @@
 import re
 
 import pytest
-from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QApplication
 
+from _varredura import varrer
 from sigft.app import tokens
 from sigft.app_qt import catalogo, estilo, letra
 from sigft.app_qt.widgets import blocos
@@ -170,94 +170,41 @@ def test_escolha_invalida_e_normal(tmp_path, monkeypatch):
 
 
 def test_seletor_de_letra_num_lugar_so():
-    # Como o de tema (2026-10-21): a Home e o Ctrl+K saem de `catalogo.SELETOR_LETRA`.
-    from sigft.app_qt.views import home as home_mod
+    # Como o de tema: a janela Configuração e o Ctrl+K saem de `catalogo.SELETOR_LETRA`.
+    from sigft.app_qt.views import configuracao as config_mod
 
-    assert home_mod.SELETOR_LETRA is catalogo.SELETOR_LETRA
+    assert config_mod.SELETOR_LETRA is catalogo.SELETOR_LETRA
     assert tuple(e for e, *_ in catalogo.SELETOR_LETRA) == letra.TAMANHOS
-    na_paleta = {a[0]: a[1] for a in catalogo.ACOES}
+    # O texto do Ctrl+K é "Letra: {nome}" traduzido em `comandos()` (idioma, 2026-10-22).
+    na_paleta = {c.chave: c.texto for c in catalogo.comandos()}
     for escolha, texto, _dica in catalogo.SELETOR_LETRA:
-        assert na_paleta[f"letra_{escolha}"] == f"Letra: {texto}"
+        assert na_paleta[f"acao:letra_{escolha}"] == f"Letra: {texto}"
 
 
-def test_seletor_na_home_marca_e_aplica(letra_temporaria, qtbot):
+def _configuracao(qtbot):
     from sigft.app_qt.views import home as home_mod
 
     tela = home_mod.HomeView(controller=Controller())
     qtbot.addWidget(tela)
-    assert set(tela.botoes_letra) == set(letra.TAMANHOS)
-    assert tela.botoes_letra["normal"].property("ativo") is True
-    tela.botoes_letra["grande"].click()
+    return tela.abrir_configuracao()
+
+
+def test_seletor_da_configuracao_marca_e_aplica(letra_temporaria, qtbot):
+    config = _configuracao(qtbot)
+    assert set(config.botoes_letra) == set(letra.TAMANHOS)
+    assert config.botoes_letra["normal"].property("ativo") is True
+    config.botoes_letra["grande"].click()
     assert estilo.AUMENTO_LETRA == tokens.AUMENTO_DA_LETRA["grande"]
-    assert tela.botoes_letra["grande"].property("ativo") is True
-    assert tela.botoes_letra["normal"].property("ativo") is False
-
-
-@pytest.mark.parametrize("escolha", ["normal", "grande"])
-def test_seletores_cabem_na_linha_do_titulo(letra_temporaria, qtbot, escolha):
-    # A barra de botões já ocupa quase toda a Home a 1280 px: tema e letra ficam
-    # na linha do título, à direita, sem rolagem horizontal nem mexer no título.
-    from sigft.app_qt.views import home as home_mod
-
-    letra.aplicar(letra_temporaria, escolha, gravar=False)
-    tela = home_mod.HomeView(controller=Controller())
-    qtbot.addWidget(tela)
-    tela.resize(1280 - estilo.LARGURA_BARRA_LATERAL, 850)
-    tela.show()
-    qtbot.waitExposed(tela)
-    corpo = tela.widget()
-    assert corpo.minimumSizeHint().width() <= tela.viewport().width()
-    qtbot.waitUntil(lambda: corpo.width() == tela.viewport().width(), timeout=1000)
-    # Com a letra grande o vigia refaz as folhas no `Polish`, e o primeiro layout
-    # se acerta depois: vale o estado assentado (sobram 8 px a 1280, 2026-10-21).
-    qtbot.waitUntil(lambda: not tela.horizontalScrollBar().isVisible(), timeout=1000)
-    titulo = tela.label_titulo.geometry()
-    if escolha == "normal":
-        assert (titulo.x(), titulo.y(), titulo.height()) == (46, 46, 38)
-    for botao in [*tela.botoes_tema.values(), *tela.botoes_letra.values()]:
-        topo = botao.mapTo(corpo, QPoint(0, 0))
-        assert topo.y() >= titulo.y() and topo.y() + botao.height() <= titulo.y() + titulo.height()
-        assert topo.x() + botao.width() <= corpo.width() - 57
-    # Nenhum botão da barra espremido abaixo do texto (o `min-width` de 140 deixa
-    # o layout cortar o texto em vez de rolar): com a letra grande o "Versões de
-    # teste" desce para a linha de baixo e a barra cabe inteira.
-    for botao in tela.botoes_barra.values():
-        assert botao.width() >= botao.sizeHint().width()
-    caixa = tela.caixa_canal_testes
-    assert caixa.width() >= caixa.sizeHint().width()
-    assert caixa.mapTo(corpo, QPoint(0, 0)).x() + caixa.width() <= corpo.width() - 57
-    abaixo = caixa.mapTo(corpo, QPoint(0, 0)).y() >= \
-        tela.btn_atualizacoes.mapTo(corpo, QPoint(0, 0)).y() + tela.btn_atualizacoes.height()
-    assert abaixo is (escolha == "grande")
-
-
-def test_troca_na_hora_leva_a_caixa_e_traz_de_volta(letra_temporaria, qtbot):
-    from sigft.app_qt.views import home as home_mod
-
-    letra.aplicar(letra_temporaria, "normal", gravar=False)   # a folha do app, como na abertura
-    tela = home_mod.HomeView(controller=Controller())
-    qtbot.addWidget(tela)
-    tela.resize(1280 - estilo.LARGURA_BARRA_LATERAL, 850)
-    tela.show()
-    qtbot.waitExposed(tela)
-    caixa = tela.caixa_canal_testes
-    antes = caixa.geometry()
-    tela.escolher_letra("grande")
-    qtbot.waitUntil(lambda: caixa.y() > tela.btn_atualizacoes.y() + tela.btn_atualizacoes.height(),
-                    timeout=1000)
-    tela.escolher_letra("normal")
-    qtbot.waitUntil(lambda: caixa.geometry() == antes, timeout=1000)
+    assert config.botoes_letra["grande"].property("ativo") is True
+    assert config.botoes_letra["normal"].property("ativo") is False
 
 
 def test_seletor_marca_a_letra_que_esta_valendo(letra_temporaria, qtbot):
     # `--smoke --letra grande` não grava: o seletor marca a que vale, não a das prefs.
-    from sigft.app_qt.views import home as home_mod
-
     letra.aplicar(letra_temporaria, "grande", gravar=False)
     assert letra.escolhido() == "normal" and letra.atual() == "grande"
-    tela = home_mod.HomeView(controller=Controller())
-    qtbot.addWidget(tela)
-    assert tela.botoes_letra["grande"].property("ativo") is True
+    config = _configuracao(qtbot)
+    assert config.botoes_letra["grande"].property("ativo") is True
 
 
 def test_opcao_da_linha_de_comando():
@@ -271,38 +218,6 @@ def test_opcao_da_linha_de_comando():
 
 # --- as 12 telas com a letra grande (fix round 1, 2026-10-21) -----------------
 
-def _cortados(tela):
-    """Os textos (botão, rótulo de uma linha, caixa) mais estreitos que o pedido."""
-    from PySide6.QtWidgets import QCheckBox, QLabel, QPushButton
-
-    achados = set()
-    for tipo in (QPushButton, QLabel, QCheckBox):
-        for w in tela.findChildren(tipo):
-            if not w.isVisible() or not w.text().strip():
-                continue
-            if isinstance(w, QLabel) and (w.wordWrap() or isinstance(w, blocos.RotuloElidido)):
-                continue
-            if w.width() < w.sizeHint().width():
-                achados.add(w.text())
-    return achados
-
-
-def _varrer(janela, qtbot):
-    from PySide6.QtWidgets import QAbstractScrollArea
-
-    cortados, rolando = {}, []
-    for alvo in ["Home", *(m[0] for m in catalogo.MODULOS if m[0] not in catalogo.TELAS_BLOQUEADAS)]:
-        janela.show_home() if alvo == "Home" else janela.show_frame(alvo)
-        qtbot.wait(30)
-        tela = janela.telas[alvo]
-        for area in [tela, *tela.findChildren(QAbstractScrollArea)]:
-            if isinstance(area, QAbstractScrollArea) and area.isVisible() \
-                    and area.horizontalScrollBar().isVisible():
-                rolando.append(f"{alvo}:{type(area).__name__}")
-        cortados[alvo] = _cortados(tela)
-    return cortados, rolando
-
-
 def test_nenhuma_tela_corta_texto_nem_rola_de_lado_com_a_letra_grande(
         letra_temporaria, qtbot, tmp_path, monkeypatch):
     from sigft.app_qt import main as qmain
@@ -315,13 +230,59 @@ def test_nenhuma_tela_corta_texto_nem_rola_de_lado_com_a_letra_grande(
     janela.resize(1280, 850)
     janela.show()
     qtbot.waitExposed(janela)
-    normal, rolando_normal = _varrer(janela, qtbot)
+    normal, rolando_normal = varrer(janela, qtbot)
     letra.aplicar(letra_temporaria, "grande", gravar=False)
-    grande, rolando_grande = _varrer(janela, qtbot)
+    grande, rolando_grande = varrer(janela, qtbot)
     assert rolando_normal == [] and rolando_grande == []
     # O que já ficava apertado no normal (o "Limpar" de 100 px da Criação de
     # Fichas, travado pelo teste de medidas) não conta; o resto, nada cortado.
     assert {alvo: textos - normal[alvo] for alvo, textos in grande.items() if textos - normal[alvo]} == {}
     letra.aplicar(letra_temporaria, "normal", gravar=False)
-    de_volta, _ = _varrer(janela, qtbot)
+    de_volta, _ = varrer(janela, qtbot)
     assert de_volta == normal
+
+
+# --- fora do português (2026-10-22) ------------------------------------------
+
+def test_largura_fixa_alarga_em_outro_idioma_com_a_letra_normal(letra_temporaria, qtbot):
+    # As larguras fixas foram medidas no português; em espanhol e inglês o texto
+    # tem outro tamanho. O mesmo ajuste da letra grande vale fora do português.
+    from sigft.app import idioma
+
+    try:
+        idioma.definir("es")
+        letra.aplicar(letra_temporaria, "normal", gravar=False)
+        assert len(letra._vigia) == 1
+        botao = blocos.botao("APLICAR LAS AUTORIZACIONES DE ENTREGA", largura=200, tamanho_fonte=12,
+                             negrito=True)
+        qtbot.addWidget(botao)
+        botao.show()
+        qtbot.waitExposed(botao)
+        qtbot.waitUntil(lambda: botao.width() >= botao.sizeHint().width(), timeout=1000)
+        assert botao.minimumWidth() == botao.maximumWidth()
+    finally:
+        idioma.definir("pt")
+        letra.aplicar(letra_temporaria, "normal", gravar=False)
+    assert letra._vigia == []
+
+
+def test_em_portugues_com_a_letra_normal_a_largura_fixa_e_a_de_sempre(letra_temporaria, qtbot):
+    letra.aplicar(letra_temporaria, "normal", gravar=False)
+    assert letra._vigia == []
+    botao = blocos.botao("APLICAR LAS AUTORIZACIONES DE ENTREGA", largura=200, tamanho_fonte=12, negrito=True)
+    qtbot.addWidget(botao)
+    botao.show()
+    qtbot.waitExposed(botao)
+    assert (botao.minimumWidth(), botao.maximumWidth()) == (200, 200)
+
+
+def test_reavaliar_o_vigia_segue_o_idioma(letra_temporaria):
+    from sigft.app import idioma
+
+    letra.aplicar(letra_temporaria, "normal", gravar=False)
+    idioma.definir("en")
+    letra.reavaliar_vigia(letra_temporaria)
+    assert len(letra._vigia) == 1
+    idioma.definir("pt")
+    letra.reavaliar_vigia(letra_temporaria)
+    assert letra._vigia == []

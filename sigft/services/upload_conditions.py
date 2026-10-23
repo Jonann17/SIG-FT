@@ -105,7 +105,7 @@ class ConditionsProcessor:
             # tratava vírgula decimal) — ver docs/refatoracao/PENDENCIAS.md.
             df[column_to_find] = df[column_to_find].apply(pmib_codes.normalize_pmib)
 
-            df.set_index(column_to_find, inplace=True)
+            df = df.set_index(column_to_find)
             return df, f"Carregado: {len(df)} registros."
         except Exception as e:
             return None, str(e)
@@ -400,7 +400,7 @@ class ConditionsProcessor:
             # 4. Remover duplicatas (baseado no código PMIB)
             # keep='last' garante que a versão recém processada pela IA substitua a antiga
             if 'pmib_codigo' in df_final.columns:
-                df_final.drop_duplicates(subset=['pmib_codigo'], keep='last', inplace=True)
+                df_final = df_final.drop_duplicates(subset=['pmib_codigo'], keep='last')
 
             # 5. Salvar -- CP 1.3: delega para locking.save_with_retry (única
             # implementação de retry de PermissionError). `pandas.DataFrame`

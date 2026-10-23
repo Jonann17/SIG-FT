@@ -21,10 +21,11 @@ from PySide6.QtWidgets import (
 
 from sigft.app import backends, textos_dicas, theme
 from sigft.app import resumo_lote as resumo_regras
+from sigft.app.idioma import t
 from sigft.app_qt import aviso_windows, interface
 from sigft.app_qt.widgets import arrastar
 from sigft.app_qt.widgets import puxador_console
-from sigft.app_qt.widgets.atividade import FaixaDeAtividade
+from sigft.app_qt.widgets.atividade import ROTULO_ITEM, FaixaDeAtividade
 from sigft.app_qt.widgets.console import ConsoleFrame
 from sigft.app_qt.widgets.espera import DialogosDeEspera
 from sigft.app_qt.widgets import resumo_lote as janela_de_resumo
@@ -274,12 +275,12 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         except backends.BackendIndisponivel as erro:
             self.log(f"[ERRO] {erro}")
             if interface.na_thread_da_interface():
-                QMessageBox.warning(self, "Módulo indisponível", str(erro))
+                QMessageBox.warning(self, t("Módulo indisponível"), str(erro))
             else:
                 # As telas leem o backend dentro do worker; um QMessageBox criado
                 # fora da thread da interface derruba o app (macOS).
                 interface.na_interface(
-                    QMessageBox.warning, self, "Módulo indisponível", str(erro))
+                    QMessageBox.warning, self, t("Módulo indisponível"), str(erro))
             return None
 
     def iniciar_tarefa(self, alvo, *args, botao=None) -> threading.Thread:
@@ -362,6 +363,6 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         except Exception:  # noqa: BLE001 -- vira traceback no log
             traceback.print_exc()
 
-    def informar_progresso(self, atual: int, total: int, rotulo: str = "item") -> None:
+    def informar_progresso(self, atual: int, total: int, rotulo: str = ROTULO_ITEM) -> None:
         """"Ficha 3 de 8" na faixa. Chamável de qualquer thread."""
         interface.na_interface(self.atividade.progresso, atual, total, rotulo)

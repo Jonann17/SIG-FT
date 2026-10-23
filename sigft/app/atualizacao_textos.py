@@ -8,32 +8,36 @@ Texto de interface é aparência: palavra por palavra como estava. As frases que
 antes eram f-strings soltas dentro das funções viraram funções `msg_*` daqui,
 para as duas interfaces não divergirem sem ninguém ver.
 
-Só biblioteca padrão (o `updater` entra só na anotação de tipo).
+Só biblioteca padrão (o `updater` entra só na anotação de tipo) e o `idioma`
+(2026-10-22): constante em `marcar`, traduzida onde aparece; as frases `msg_*`
+já saem no idioma da sessão. As notas do CHANGELOG ficam como vieram.
 """
 from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING
 
+from sigft.app.idioma import marcar, t
+
 if TYPE_CHECKING:  # pragma: no cover
     from sigft.services.updater import Atualizacao
 
-TITULO = "Atualização do SIG-FT"
+TITULO = marcar("Atualização do SIG-FT")
 
-MSG_UAC = (
+MSG_UAC = marcar(
     "O SIG-FT está instalado para todos os usuários, então o Windows vai pedir "
     "permissão de administrador. Se o pedido for recusado, o SIG-FT fecha sem "
     "atualizar: é só abri-lo de novo."
 )
 
-MSG_COMO_FUNCIONA = (
+MSG_COMO_FUNCIONA = marcar(
     "Ao atualizar, o SIG-FT fecha, instala a versão nova e abre de novo sozinho. "
     "Suas chaves de API e preferências continuam onde estão."
 )
 
 # "Atualizar agora" com um robô rodando: o app fecha sozinho quando o download
 # termina, e a tarefa morre ali. Mesmo aviso do "X" da janela principal.
-MSG_TAREFA_AO_ATUALIZAR = (
+MSG_TAREFA_AO_ATUALIZAR = marcar(
     "Há uma tarefa em andamento (um robô, uma tradução ou uma consulta à IA).\n\n"
     "Para instalar a atualização, o SIG-FT fecha sozinho quando o download "
     "termina. A tarefa é interrompida no ponto em que estiver, e uma planilha "
@@ -42,13 +46,13 @@ MSG_TAREFA_AO_ATUALIZAR = (
     "Atualizar mesmo assim?"
 )
 
-MSG_DOWNLOAD_CONFERIDO = "Download conferido. Abrindo o instalador..."
+MSG_DOWNLOAD_CONFERIDO = marcar("Download conferido. Abrindo o instalador...")
 
-TEXTO_ATUALIZAR = "Atualizar agora"
-TEXTO_ATUALIZANDO = "Atualizando..."
-TEXTO_TENTAR_DE_NOVO = "Tentar de novo"
-TEXTO_AGORA_NAO = "Agora não"
-TEXTO_O_QUE_MUDOU = "O que mudou:"
+TEXTO_ATUALIZAR = marcar("Atualizar agora")
+TEXTO_ATUALIZANDO = marcar("Atualizando...")
+TEXTO_TENTAR_DE_NOVO = marcar("Tentar de novo")
+TEXTO_AGORA_NAO = marcar("Agora não")
+TEXTO_O_QUE_MUDOU = marcar("O que mudou:")
 
 
 def notas_para_exibir(notas: str | None) -> str:
@@ -72,7 +76,8 @@ def notas_para_exibir(notas: str | None) -> str:
         texto = texto.replace("**", "").replace("`", "")
         if texto:
             paragrafos.append(texto)
-    return "\n\n".join(paragrafos) or "(Esta versão não trouxe notas.)"
+    # As notas vêm do CHANGELOG e ficam como vieram; só o "sem notas" é da interface.
+    return "\n\n".join(paragrafos) or t("(Esta versão não trouxe notas.)")
 
 
 def data_br(iso: str) -> str:
@@ -101,19 +106,21 @@ def resumo_da_versao(info: Atualizacao, versao_atual: str) -> str:
 
     [2026-10-07] Com o instalador pequeno, o tamanho é o DELE, comparado com o
     do completo: é o ganho que a pessoa precisa ver."""
-    partes = [f"Você está na v{versao_atual}."]
-    detalhe = f"A v{info.versao}"
+    partes = [t("Você está na v{versao}.", versao=versao_atual)]
     if info.publicado_em:
-        detalhe += f" saiu em {data_br(info.publicado_em)}"
+        detalhe = t("A v{versao} saiu em {data}", versao=info.versao, data=data_br(info.publicado_em))
+    else:
+        detalhe = t("A v{versao}", versao=info.versao)
     if info.incremental and info.tamanho:
         partes.append(detalhe + ".")
-        pequeno = f"A atualização tem {mb(info.tamanho_mb)} MB: só o que mudou"
         if info.tamanho_completo:
-            pequeno += f" (o instalador completo tem {mb(info.tamanho_completo_mb)} MB)"
-        partes.append(pequeno + ".")
+            partes.append(t("A atualização tem {mb} MB: só o que mudou (o instalador completo tem "
+                            "{completo} MB).", mb=mb(info.tamanho_mb), completo=mb(info.tamanho_completo_mb)))
+        else:
+            partes.append(t("A atualização tem {mb} MB: só o que mudou.", mb=mb(info.tamanho_mb)))
         return " ".join(partes)
     if info.tamanho:
-        detalhe += f" e tem {mb(info.tamanho_mb)} MB"
+        detalhe = t("{detalhe} e tem {mb} MB", detalhe=detalhe, mb=mb(info.tamanho_mb))
     partes.append(detalhe + ".")
     return " ".join(partes)
 
@@ -122,33 +129,33 @@ def resumo_da_versao(info: Atualizacao, versao_atual: str) -> str:
 
 def titulo_do_aviso(info: Atualizacao) -> str:
     """[2026-10-07] Pelo canal de testes chega pré-lançamento: o título diz."""
-    titulo = "Nova versão de teste disponível" if info.prerelease else "Nova versão disponível"
-    return f"{titulo}: v{info.versao}"
+    if info.prerelease:
+        return t("Nova versão de teste disponível: v{versao}", versao=info.versao)
+    return t("Nova versão disponível: v{versao}", versao=info.versao)
 
 
 def msg_sem_verificar(versao_atual: str, motivo: str) -> str:
-    return f"Você está na v{versao_atual}.\n\n{motivo}"
+    return t("Você está na v{versao}.\n\n{motivo}", versao=versao_atual, motivo=motivo)
 
 
 def msg_em_dia(versao_atual: str) -> str:
-    return f"Você já está na versão mais recente (v{versao_atual})."
+    return t("Você já está na versão mais recente (v{versao}).", versao=versao_atual)
 
 
 def msg_erro_ao_procurar(erro: BaseException) -> str:
-    return f"Não foi possível procurar atualizações.\n\n{erro}"
+    return t("Não foi possível procurar atualizações.\n\n{erro}", erro=erro)
 
 
 def msg_baixando(info: Atualizacao) -> str:
-    return f"Baixando a v{info.versao} ({mb(info.tamanho_mb)} MB)..."
+    return t("Baixando a v{versao} ({mb} MB)...", versao=info.versao, mb=mb(info.tamanho_mb))
 
 
 def msg_caiu_no_completo(completo: Atualizacao) -> str:
-    return (f"A atualização pequena falhou. Baixando o instalador completo "
-            f"({mb(completo.tamanho_mb)} MB)...")
+    return t("A atualização pequena falhou. Baixando o instalador completo ({mb} MB)...",
+             mb=mb(completo.tamanho_mb))
 
 
 def msg_falhou(erro: BaseException) -> str:
-    return (f"Não foi possível atualizar: {erro_curto(erro)}\n\nO SIG-FT "
-            f"continua nesta versão. Tente de novo; se o erro se repetir, avise "
-            f"quem cuida do SIG-FT. O detalhe completo fica no log "
-            f"(Documentos\\SIG-FT\\logs\\sigft.log).")
+    return t("Não foi possível atualizar: {erro}\n\nO SIG-FT continua nesta versão. Tente de novo; "
+             "se o erro se repetir, avise quem cuida do SIG-FT. O detalhe completo fica no log "
+             "(Documentos\\SIG-FT\\logs\\sigft.log).", erro=erro_curto(erro))

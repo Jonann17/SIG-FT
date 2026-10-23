@@ -14,14 +14,15 @@ import traceback
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QInputDialog, QMessageBox
 
-from sigft.app.textos_dialogos import MSG_EXCEL_BLOQUEADO, TEXTO_CONTINUAR, msg_excel_bloqueado
+from sigft.app.idioma import marcar, t
+from sigft.app.textos_dialogos import MSG_EXCEL_BLOQUEADO, msg_excel_bloqueado
 from sigft.app_qt import aviso_windows, interface
 from sigft.app_qt.widgets import dialogos_selecao, dialogs
 
 # O que o aviso do Windows diz em cada espera (2026-10-21). A pausa do login usa a
 # primeira linha da própria mensagem.
-TEXTO_ESPERA_EXCEL = "Um arquivo do Excel está aberto e trava a gravação. Feche o arquivo e escolha Repetir."
-TEXTO_ESPERA_TRAVADOS = "Alguns arquivos não puderam ser gravados. Escolha Repetir ou Seguir."
+TEXTO_ESPERA_EXCEL = marcar("Um arquivo do Excel está aberto e trava a gravação. Feche o arquivo e escolha Repetir.")
+TEXTO_ESPERA_TRAVADOS = marcar("Alguns arquivos não puderam ser gravados. Escolha Repetir ou Seguir.")
 
 
 class DialogosDeEspera:
@@ -67,15 +68,16 @@ class DialogosDeEspera:
         evento.wait()
         return resultado
 
-    def pausar_e_esperar(self, mensagem: str, texto_botao: str = TEXTO_CONTINUAR) -> None:
+    def pausar_e_esperar(self, mensagem: str, texto_botao: str | None = None) -> None:
+        # `texto_botao=None`: o diálogo põe o padrão traduzido (`PausaLoginDialog`).
         self._abrir_e_esperar(lambda evento, _res: dialogs.PausaLoginDialog(
             self, mensagem=mensagem, evento_espera=evento, texto_botao=texto_botao),
             aviso=aviso_windows.primeira_linha(mensagem))
 
     def perguntar_retry_excel(self, caminho: object = None) -> bool:
-        mensagem = msg_excel_bloqueado(caminho) if caminho is not None else MSG_EXCEL_BLOQUEADO
+        mensagem = msg_excel_bloqueado(caminho) if caminho is not None else t(MSG_EXCEL_BLOQUEADO)
         resultado = self._abrir_e_esperar(lambda evento, res: dialogs.RetryLockDialog(
-            self, mensagem=mensagem, evento_espera=evento, resultado=res), aviso=TEXTO_ESPERA_EXCEL)
+            self, mensagem=mensagem, evento_espera=evento, resultado=res), aviso=t(TEXTO_ESPERA_EXCEL))
         return bool(resultado.get("retry", False))
 
     def perguntar_arquivos_travados(self, falhas, momento) -> bool:
@@ -86,7 +88,7 @@ class DialogosDeEspera:
         itens = [(f.nome, f.diagnostico.motivo, f.diagnostico.o_que_fazer) for f in falhas]
         resultado = self._abrir_e_esperar(lambda evento, res: dialogos_selecao.ArquivosTravadosDialog(
             self, itens=itens, momento=momento, evento_espera=evento, resultado=res),
-            aviso=TEXTO_ESPERA_TRAVADOS)
+            aviso=t(TEXTO_ESPERA_TRAVADOS))
         return bool(resultado.get("repetir", False))
 
     # -- perguntas e avisos simples ------------------------------------------
@@ -123,13 +125,13 @@ class DialogosDeEspera:
 
         def perguntar():
             return QMessageBox.question(self, titulo, mensagem, sim | nao, sim if padrao_sim else nao) == sim
-        return bool(self._na_interface_e_esperar(perguntar, aviso=f"{titulo}: responda Sim ou Não."))
+        return bool(self._na_interface_e_esperar(perguntar, aviso=t("{titulo}: responda Sim ou Não.", titulo=titulo)))
 
     def pedir_texto(self, titulo: str, mensagem: str) -> str | None:
         def pedir():
             texto, ok = QInputDialog.getText(self, titulo, mensagem)
             return texto if ok else None
-        return self._na_interface_e_esperar(pedir, aviso=f"{titulo}: o SIG-FT espera a sua resposta.")
+        return self._na_interface_e_esperar(pedir, aviso=t("{titulo}: o SIG-FT espera a sua resposta.", titulo=titulo))
 
     def avisar(self, titulo: str, mensagem: str, tipo: str = "info", *, esperar: bool = False) -> None:
         """Mostra e segue: o worker não espera a pessoa fechar o aviso.
@@ -142,7 +144,7 @@ class DialogosDeEspera:
                   "erro": QMessageBox.critical}[tipo]
         if esperar:
             self._na_interface_e_esperar(lambda: funcao(self, titulo, mensagem),
-                                         aviso=f"{titulo}: aperte OK para seguir.")
+                                         aviso=t("{titulo}: aperte OK para seguir.", titulo=titulo))
             return
         if interface.na_thread_da_interface():
             funcao(self, titulo, mensagem)

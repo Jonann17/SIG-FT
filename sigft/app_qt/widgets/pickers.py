@@ -14,12 +14,14 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QHBoxLayout, QLabel, QListWidget, QPushButton, QVBoxLayout, QWidget,
 )
 
+from sigft.app.idioma import marcar, t
 from sigft.app_qt import file_dialogs
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import arrastar, blocos
 
-TEXTO_SEM_ARQUIVO = "Nenhum arquivo selecionado"
-TEXTO_SEM_PASTA = "Nenhuma pasta selecionada"
+# Os padrões do rótulo vazio; quem passa `texto_vazio` passa já traduzido (2026-10-22).
+TEXTO_SEM_ARQUIVO = marcar("Nenhum arquivo selecionado")
+TEXTO_SEM_PASTA = marcar("Nenhuma pasta selecionada")
 
 # A fila de fichas (`FileQueueList`): a lista é um `tk.Listbox` cru lá; fonte
 # "Segoe UI" 11 (PONTOS -- widget cru do Tk). As cores são as do QListWidget da folha.
@@ -107,10 +109,11 @@ class _LinhaSeletora(QWidget):
 
 class FilePickerRow(_LinhaSeletora):
     def __init__(self, parent=None, *, chave: str, categoria: str, texto_botao: str,
-                 titulo: str | None = None, filetypes=None, texto_vazio: str = TEXTO_SEM_ARQUIVO,
+                 titulo: str | None = None, filetypes=None, texto_vazio: str | None = None,
                  ao_escolher=None, dialog_fn=None, **kwargs) -> None:
         self._chave, self._categoria = chave, categoria
         self._titulo, self._filetypes, self._dialog_fn = titulo, filetypes, dialog_fn
+        texto_vazio = texto_vazio if texto_vazio is not None else t(TEXTO_SEM_ARQUIVO)
         super().__init__(parent, texto_botao=texto_botao, texto_vazio=texto_vazio,
                          ao_escolher=ao_escolher, **kwargs)
         self._ligar_arrasto(chave, filetypes, varios=False)
@@ -127,10 +130,11 @@ class FilePickerRow(_LinhaSeletora):
 
 class MultiFilePickerRow(_LinhaSeletora):
     def __init__(self, parent=None, *, chave: str, categoria: str, texto_botao: str,
-                 titulo: str | None = None, filetypes=None, texto_vazio: str = TEXTO_SEM_ARQUIVO,
+                 titulo: str | None = None, filetypes=None, texto_vazio: str | None = None,
                  ao_escolher=None, dialog_fn=None, **kwargs) -> None:
         self._chave, self._categoria = chave, categoria
         self._titulo, self._filetypes, self._dialog_fn = titulo, filetypes, dialog_fn
+        texto_vazio = texto_vazio if texto_vazio is not None else t(TEXTO_SEM_ARQUIVO)
         super().__init__(parent, texto_botao=texto_botao, texto_vazio=texto_vazio,
                          ao_escolher=ao_escolher, **kwargs)
         self._ligar_arrasto(chave, filetypes, varios=True)
@@ -140,17 +144,18 @@ class MultiFilePickerRow(_LinhaSeletora):
                                                filetypes=self._filetypes, dialog_fn=self._dialog_fn)
         if not caminhos:
             return
-        self.definir(tuple(caminhos), f"{len(caminhos)} arquivos selecionados")
+        self.definir(tuple(caminhos), t("{n} arquivos selecionados", n=len(caminhos)))
         self._mostrar_seta()
         self._notificar()
 
 
 class FolderPickerRow(_LinhaSeletora):
     def __init__(self, parent=None, *, chave: str, categoria: str = "pasta", texto_botao: str,
-                 titulo: str | None = None, texto_vazio: str = TEXTO_SEM_PASTA,
+                 titulo: str | None = None, texto_vazio: str | None = None,
                  ao_escolher=None, dialog_fn=None, **kwargs) -> None:
         self._chave, self._categoria = chave, categoria
         self._titulo, self._dialog_fn = titulo, dialog_fn
+        texto_vazio = texto_vazio if texto_vazio is not None else t(TEXTO_SEM_PASTA)
         super().__init__(parent, texto_botao=texto_botao, texto_vazio=texto_vazio,
                          ao_escolher=ao_escolher, **kwargs)
 
@@ -176,9 +181,12 @@ class FileQueueList(QWidget):
     """
 
     def __init__(self, parent=None, *, chave: str, categoria: str = "excel",
-                 rotulo: str = "Planilhas PMIB Selecionadas", titulo_dialogo: str | None = None,
-                 filetypes=None, texto_adicionar: str = "Adicionar Fichas",
+                 rotulo: str | None = None, titulo_dialogo: str | None = None,
+                 filetypes=None, texto_adicionar: str | None = None,
                  prefixo_item: str = PREFIXO_ITEM, ao_mudar=None, dialog_fn=None) -> None:
+        # Quem chama traduz o que passa; os padrões são traduzidos aqui (2026-10-22).
+        rotulo = rotulo if rotulo is not None else t("Planilhas PMIB Selecionadas")
+        texto_adicionar = texto_adicionar if texto_adicionar is not None else t("Adicionar Fichas")
         super().__init__(parent)
         self._chave, self._categoria = chave, categoria
         self._rotulo, self._titulo_dialogo, self._filetypes = rotulo, titulo_dialogo, filetypes
@@ -218,9 +226,9 @@ class FileQueueList(QWidget):
         coluna.addSpacing(5)
         self.botao_adicionar = blocos.botao(texto_adicionar, largura=estilo.LARGURA_BOTAO_CTK, altura=28,
                                             variante="secundario")
-        self.botao_remover = blocos.botao("Remover Seleção", largura=estilo.LARGURA_BOTAO_CTK, altura=28,
+        self.botao_remover = blocos.botao(t("Remover Seleção"), largura=estilo.LARGURA_BOTAO_CTK, altura=28,
                                           variante="perigo")
-        self.botao_limpar = blocos.botao("Limpar Tudo", variante="contorno",
+        self.botao_limpar = blocos.botao(t("Limpar Tudo"), variante="contorno",
                                          largura=estilo.LARGURA_BOTAO_CTK, altura=28)
         for botao in (self.botao_adicionar, self.botao_remover, self.botao_limpar):
             coluna.addWidget(botao)

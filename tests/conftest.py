@@ -249,6 +249,30 @@ def _sem_janelas_do_fim_da_tarefa(monkeypatch):
     monkeypatch.setenv("SIGFT_SEM_AVISO_DO_WINDOWS", "1")
 
 
+# 7. [2026-10-22] O idioma da interface (`sigft/app/idioma.py`) é estado do
+#    processo. Todo teste começa e termina em português, onde `t(x) == x`: é por
+#    isso que os testes que comparam texto literal continuam valendo. Quem testa
+#    outro idioma usa `tests/_idioma.em_idioma(...)`.
+@pytest.fixture(autouse=True)
+def _interface_em_portugues(monkeypatch):
+    from sigft.app import idioma as _idioma
+
+    # A pergunta da primeira abertura e o "Reiniciar agora" nunca nos testes: a
+    # pasta de dados de cada teste é nova (sem idioma escolhido), e um reinício
+    # abriria outro SIG-FT de verdade. Quem testa tira a variável.
+    monkeypatch.setenv("SIGFT_SEM_PERGUNTA_DO_IDIOMA", "1")
+    monkeypatch.setenv("SIGFT_SEM_REINICIO", "1")
+
+    _idioma.definir(_idioma.PADRAO)
+    yield
+    _idioma.definir(_idioma.PADRAO)
+    # A largura fixa alarga fora do português (`letra._pede_folga`): o vigia que um
+    # teste de idioma ligou não pode ficar para o próximo.
+    _letra = sys.modules.get("sigft.app_qt.letra")
+    if _letra is not None:
+        _letra.reavaliar_vigia()
+
+
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_teardown(item, nextitem):
     """Depois de um teste Qt, recolhe o lixo NA HORA.

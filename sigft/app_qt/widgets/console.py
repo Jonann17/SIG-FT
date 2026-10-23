@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from sigft.app import busca, niveis_log, theme
+from sigft.app.idioma import marcar, t
 from sigft.app_qt import interface
 from sigft.app_qt.widgets import blocos
 
@@ -36,17 +37,17 @@ MAX_LINHAS = 20_000
 RECUO_TEXTO_CTK = (4, 5)
 # A barra do filtro, na margem de baixo da vista (2026-10-21).
 ALTURA_BARRA = 28
-FILTROS = (("tudo", "Tudo"), ("avisos", "Avisos"), ("erros", "Erros"))
+FILTROS = (("tudo", marcar("Tudo")), ("avisos", marcar("Avisos")), ("erros", marcar("Erros")))
 # "Avisos" mostra avisos E erros: tudo o que pede atenção.
 NIVEIS_DO_FILTRO = {
     "tudo": None,
     "avisos": frozenset({niveis_log.AVISO, niveis_log.ERRO}),
     "erros": frozenset({niveis_log.ERRO}),
 }
-TEXTO_BUSCA = "Buscar no console"
-TEXTO_COPIAR = "Copiar"
-TEXTO_COPIADO = "Copiado"
-DICA_COPIAR = "Copia as linhas que estão à vista, com o filtro e a busca de agora."
+TEXTO_BUSCA = marcar("Buscar no console")
+TEXTO_COPIAR = marcar("Copiar")
+TEXTO_COPIADO = marcar("Copiado")
+DICA_COPIAR = marcar("Copia as linhas que estão à vista, com o filtro e a busca de agora.")
 MS_DO_COPIADO = 1500
 # A busca espera a pessoa parar de digitar: redesenhar até `MAX_LINHAS` linhas a
 # cada tecla pesa (revisão de 2026-10-21). Os botões do filtro são imediatos.
@@ -81,7 +82,7 @@ class BarraDoConsole(QWidget):
         self.grupo.setExclusive(True)
         self.botoes: dict[str, QPushButton] = {}
         for indice, (chave, texto) in enumerate(FILTROS):
-            botao = QPushButton(texto)
+            botao = QPushButton(t(texto))
             blocos.sem_tecla(botao)
             botao.setCheckable(True)
             self.grupo.addButton(botao, indice)
@@ -91,7 +92,7 @@ class BarraDoConsole(QWidget):
         self.grupo.idClicked.connect(self._escolheu_filtro)
         lay.addSpacing(8)
         self.campo = QLineEdit()
-        self.campo.setPlaceholderText(TEXTO_BUSCA)
+        self.campo.setPlaceholderText(t(TEXTO_BUSCA))
         self.campo.setClearButtonEnabled(True)
         self.campo.textChanged.connect(self._digitou)
         self._espera_da_busca = QTimer(self)
@@ -99,9 +100,9 @@ class BarraDoConsole(QWidget):
         self._espera_da_busca.setInterval(MS_DA_BUSCA)
         self._espera_da_busca.timeout.connect(self._buscou)
         lay.addWidget(self.campo, 1)
-        self.copiar = QPushButton(TEXTO_COPIAR)
+        self.copiar = QPushButton(t(TEXTO_COPIAR))
         blocos.sem_tecla(self.copiar)
-        self.copiar.setToolTip(DICA_COPIAR)
+        self.copiar.setToolTip(t(DICA_COPIAR))
         self.copiar.clicked.connect(self._copiar)
         lay.addWidget(self.copiar)
         self._volta = QTimer(self)
@@ -125,11 +126,11 @@ class BarraDoConsole(QWidget):
     def _copiar(self) -> None:
         if not self.parentWidget().copiar():
             return
-        self.copiar.setText(TEXTO_COPIADO)
+        self.copiar.setText(t(TEXTO_COPIADO))
         self._volta.start(MS_DO_COPIADO)
 
     def _texto_do_copiar(self) -> None:
-        self.copiar.setText(TEXTO_COPIAR)
+        self.copiar.setText(t(TEXTO_COPIAR))
 
 
 class ConsoleFrame(QPlainTextEdit):

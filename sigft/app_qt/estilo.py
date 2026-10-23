@@ -13,6 +13,7 @@ import re
 import sys
 
 from sigft.app import tokens
+from sigft.app_qt import propriedades
 
 _RAIZ = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PASTA_FONTES = os.path.join(_RAIZ, "assets", "fonts")
@@ -100,8 +101,8 @@ def ajustar_tamanhos(folha: str, aumento: int) -> str:
 def folha_sem_aumento(widget) -> str:
     """A folha própria de `widget` como a tela a escreveu, sem o aumento da letra."""
     folha = widget.styleSheet()
-    if folha and widget.property(PROP_FOLHA_POSTA) == folha:
-        return widget.property(PROP_FOLHA_BASE) or ""
+    if folha and propriedades.ler(widget, PROP_FOLHA_POSTA) == folha:
+        return propriedades.ler(widget, PROP_FOLHA_BASE) or ""
     return folha
 
 
@@ -638,7 +639,8 @@ def _folha_telas(tema: str | None = None) -> str:
     * o cartão com borda (`#cartao[borda=...]`): o do AutoSpec que chama a atenção;
     * abas: medidas na folha local de `widgets/abas.py`; aqui só as cores;
     * mural: `COR_DA_FAIXA`/`COR_DA_CRITICIDADE` (acima), por propriedade;
-    * seletores de tema e de letra da Home (`#seletor_tema`, `#seletor_letra`):
+    * seletores de tema, letra e idioma da janela Configuração (`#seletor_tema`,
+      `#seletor_letra`, `#seletor_idioma`):
       o botão da escolha atual tem `ativo`, pintado como o item escolhido do menu.
     """
     tema = _tema(tema)
@@ -670,11 +672,13 @@ def _folha_telas(tema: str | None = None) -> str:
         f'#barra_abas QPushButton:checked {{ background: {p["marca"]}; color: {TEXTO_SOBRE_MARCA}; }}',
         f'#barra_abas QPushButton:checked:hover {{ background: {MARCA_HOVER}; }}',
         f'#barra_abas QPushButton:disabled {{ color: {p["texto_suave"]}; }}',
-        # Seletor de tema da Home (Task 7): o escolhido como o item do menu.
-        f'#seletor_tema QPushButton[ativo="true"], #seletor_letra QPushButton[ativo="true"] '
+        # Seletores da janela Configuração: o escolhido como o item do menu.
+        f'#seletor_tema QPushButton[ativo="true"], #seletor_letra QPushButton[ativo="true"], '
+        f'#seletor_idioma QPushButton[ativo="true"] '
         f'{{ background: {menu["fundo"]}; color: {menu["texto"]}; border-color: {menu["fundo"]}; }}',
         # Mouse em cima: o texto acompanha o ícone, que já vai para a cor do menu.
-        f'#seletor_tema QPushButton:hover, #seletor_letra QPushButton:hover {{ color: {menu["texto"]}; }}',
+        f'#seletor_tema QPushButton:hover, #seletor_letra QPushButton:hover, '
+        f'#seletor_idioma QPushButton:hover {{ color: {menu["texto"]}; }}',
         # Busca PMIB: o cartão de cada achado, mais fundo que a lista onde está.
         f'#cartao_resultado {{ background: {p["fundo"]}; border: 1px solid {p["borda"]};'
         f' border-radius: 8px; }}',

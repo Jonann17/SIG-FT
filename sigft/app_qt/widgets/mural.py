@@ -23,6 +23,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QWidget
 
 from sigft.app import theme
+from sigft.app.idioma import marcar, t
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos
 from sigft.services import atividades as at
@@ -40,22 +41,24 @@ COR_FAIXA = {
     at.PROXIMOS_DIAS: "proximos_dias",
 }
 
+# [2026-10-22] Marcados e traduzidos onde vão à tela (`_faixa`). "ATRASADO" e
+# "TRAVADA" também: a guarda não vê palavra única em maiúsculas.
 ROTULO_FAIXA = {
-    at.ATRASADA: "ATRASADO",
-    at.TRAVADA: "TRAVADA",
-    at.DEVERIA_TER_COMECADO: "DEVERIA TER COMEÇADO",
-    at.EM_ANDAMENTO: "EM ANDAMENTO",
-    at.COMECA_HOJE: "COMEÇA HOJE",
-    at.PROXIMOS_DIAS: "PRÓXIMOS 7 DIAS",
+    at.ATRASADA: marcar("ATRASADO"),
+    at.TRAVADA: marcar("TRAVADA"),
+    at.DEVERIA_TER_COMECADO: marcar("DEVERIA TER COMEÇADO"),
+    at.EM_ANDAMENTO: marcar("EM ANDAMENTO"),
+    at.COMECA_HOJE: marcar("COMEÇA HOJE"),
+    at.PROXIMOS_DIAS: marcar("PRÓXIMOS 7 DIAS"),
 }
 
 EXPLICACAO_FAIXA = {
-    at.ATRASADA: "a previsão de término já passou",
-    at.TRAVADA: "começou e parou; precisa de alguém para destravar",
-    at.DEVERIA_TER_COMECADO: "a data de início passou e ninguém começou",
-    at.EM_ANDAMENTO: "alguém está tocando agora",
-    at.COMECA_HOJE: "entra na fila de hoje",
-    at.PROXIMOS_DIAS: "para se preparar",
+    at.ATRASADA: marcar("a previsão de término já passou"),
+    at.TRAVADA: marcar("começou e parou; precisa de alguém para destravar"),
+    at.DEVERIA_TER_COMECADO: marcar("a data de início passou e ninguém começou"),
+    at.EM_ANDAMENTO: marcar("alguém está tocando agora"),
+    at.COMECA_HOJE: marcar("entra na fila de hoje"),
+    at.PROXIMOS_DIAS: marcar("para se preparar"),
 }
 
 # Criticidade 1 a 5 -> a barra lateral (`#barra_criticidade[criticidade=...]`
@@ -119,13 +122,13 @@ def montar(parent, gavetas, quando: str, erro: str | None = None) -> None:
     cabecalho.setSpacing(0)
     cabecalho.addWidget(blocos.rotulo_tk(quando, theme.FONTE_SECAO))
     cabecalho.addSpacing(12)
-    cabecalho.addWidget(blocos.rotulo_tk(f"{total} atividade(s) pedindo atenção",
+    cabecalho.addWidget(blocos.rotulo_tk(t("{total} atividade(s) pedindo atenção", total=total),
                                 theme.FONTE_CORPO_MIUDO, "legenda"))
     cabecalho.addStretch()
     _caixa(layout, cabecalho, padx=(14, 14), pady=(4, 12))
 
     if total == 0:
-        _caixa(layout, blocos.rotulo_tk("Nada pendente para hoje nem para os próximos dias.",
+        _caixa(layout, blocos.rotulo_tk(t("Nada pendente para hoje nem para os próximos dias."),
                                theme.FONTE_SUBTITULO, "ok"),
                padx=(14, 14), pady=(24, 24))
         return
@@ -149,8 +152,8 @@ def _faixa(layout, faixa, itens) -> None:
     barra.addSpacing(10)
     textos = QVBoxLayout()
     textos.setSpacing(0)
-    textos.addWidget(_na_faixa(blocos.rotulo_tk(ROTULO_FAIXA[faixa], ("Roboto", 14, "bold")), faixa))
-    textos.addWidget(blocos.rotulo_tk(EXPLICACAO_FAIXA[faixa], theme.FONTE_CORPO_MIUDO, "legenda"))
+    textos.addWidget(_na_faixa(blocos.rotulo_tk(t(ROTULO_FAIXA[faixa]), ("Roboto", 14, "bold")), faixa))
+    textos.addWidget(blocos.rotulo_tk(t(EXPLICACAO_FAIXA[faixa]), theme.FONTE_CORPO_MIUDO, "legenda"))
     barra.addLayout(textos)
     barra.addStretch()
     _caixa(layout, barra, padx=(14, 14), pady=(16, 6))
@@ -197,7 +200,7 @@ def _cartao(layout, item, faixa) -> None:
 
     topo = QHBoxLayout()
     topo.setSpacing(0)
-    topo.addWidget(blocos.rotulo_tk(str(item.get("descricao") or "(sem descrição)"), theme.FONTE_CORPO,
+    topo.addWidget(blocos.rotulo_tk(str(item.get("descricao") or t("(sem descrição)")), theme.FONTE_CORPO,
                            quebra=_QUEBRA_CARTAO), 0, Qt.AlignmentFlag.AlignVCenter)
     topo.addStretch()
 
@@ -218,11 +221,11 @@ def _cartao(layout, item, faixa) -> None:
 
     partes = []
     if item.get("com_quem"):
-        partes.append(f"com {item['com_quem']}")
+        partes.append(t("com {pessoa}", pessoa=item["com_quem"]))
     if item.get("status"):
         partes.append(str(item["status"]))
     if item.get("criticidade"):
-        partes.append(f"criticidade {item['criticidade']}")
+        partes.append(t("criticidade {nivel}", nivel=item["criticidade"]))
     if partes:
         _caixa(coluna, blocos.rotulo_tk("   ·   ".join(partes), theme.FONTE_CORPO_MIUDO, "legenda"),
                padx=(10, 10), pady=(0, 8), horizontal=True).addStretch()

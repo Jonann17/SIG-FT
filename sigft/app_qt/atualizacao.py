@@ -8,7 +8,8 @@ os textos vêm de `sigft/app/atualizacao_textos.py`, o trabalho de rede de
   Pergunta numa thread e, havendo versão nova, abre a `JanelaAtualizacao`.
   Falha de rede ou de token é ENGOLIDA (vai para o `sigft.log`): a abertura
   do app não pode depender do GitHub;
-* `procurar_agora(janela, ao_terminar=...)` -- o botão "Atualizações" da Home.
+* `procurar_agora(janela, ao_terminar=...)` -- o botão "Procurar atualizações"
+  da janela Configuração (a engrenagem da Home, 2026-10-22) e o Ctrl+K.
   O mesmo caminho, mas FALANDO: diz que a versão é a mais recente, mostra o
   erro, ou explica por que esta cópia não se atualiza por aqui;
 * `JanelaAtualizacao` -- o aviso: a versão nova, o que mudou, "Atualizar
@@ -55,6 +56,7 @@ from sigft.app.atualizacao_textos import (
     resumo_da_versao,
     titulo_do_aviso,
 )
+from sigft.app.idioma import t
 from sigft.app_qt import estilo, interface
 from sigft.app_qt.widgets import blocos
 from sigft.core import instancia
@@ -111,17 +113,19 @@ def _limpar_e_consultar(janela, versao_atual: str) -> None:
 
 def procurar_agora(janela, *, versao_atual: str | None = None, ao_terminar=None,
                    disparar=_em_segundo_plano) -> None:
-    """O botão "Atualizações": a mesma pergunta, mas que SEMPRE responde.
+    """O botão "Procurar atualizações" (janela Configuração): a mesma pergunta,
+    mas que SEMPRE responde.
 
     `ao_terminar` roda na thread da interface quando a resposta chega, seja
-    ela qual for -- a Home o usa para devolver o botão ao normal.
+    ela qual for -- a Home (`procurar_atualizacoes`) o usa para devolver o botão
+    da janela Configuração ao normal.
     """
     versao = versao_atual or _build_info.VERSAO
     motivo = updater.motivo_para_nao_verificar()
     if motivo is not None:
         if ao_terminar is not None:
             ao_terminar()
-        QMessageBox.information(janela, TITULO, msg_sem_verificar(versao, motivo))
+        QMessageBox.information(janela, t(TITULO), msg_sem_verificar(versao, motivo))
         return
     disparar(_consultar, janela, versao, True, ao_terminar)
 
@@ -156,17 +160,17 @@ def _consultar(janela, versao_atual: str, falar: bool, ao_terminar) -> None:
 
 
 def _avisar_em_dia(janela, versao_atual: str) -> None:
-    QMessageBox.information(janela, TITULO, msg_em_dia(versao_atual))
+    QMessageBox.information(janela, t(TITULO), msg_em_dia(versao_atual))
 
 
 def _avisar_erro(janela, erro: BaseException) -> None:
-    QMessageBox.warning(janela, TITULO, msg_erro_ao_procurar(erro))
+    QMessageBox.warning(janela, t(TITULO), msg_erro_ao_procurar(erro))
 
 
 def _mostrar_aviso(janela, info: updater.Atualizacao, versao_atual: str):
     """Abre o aviso -- ou traz para a frente o que já estiver aberto.
 
-    A pergunta da abertura e o botão da Home podem responder quase juntos; dois
+    A pergunta da abertura e o botão da Configuração podem responder quase juntos; dois
     avisos, cada um com o seu "Atualizar agora", seriam dois downloads.
     """
     aberta = getattr(janela, "_janela_de_atualizacao", None)
@@ -236,7 +240,7 @@ class JanelaAtualizacao(QDialog):
         self._master = master
         self._ultimo_percentual = -1
 
-        self.setWindowTitle(TITULO)
+        self.setWindowTitle(t(TITULO))
         self.resize(580, 560)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)   # "-topmost"
         self.setWindowModality(Qt.WindowModality.ApplicationModal)     # o grab_set
@@ -258,7 +262,7 @@ class JanelaAtualizacao(QDialog):
         lay.addWidget(self.rotulo_resumo)
         # "O que mudou:": pady=(14, 4).
         lay.addSpacing(14)
-        lay.addWidget(_rotulo(TEXTO_O_QUE_MUDOU, tamanho=14, negrito=True))
+        lay.addWidget(_rotulo(t(TEXTO_O_QUE_MUDOU), tamanho=14, negrito=True))
         lay.addSpacing(4)
 
         # As notas são quem ENCOLHE quando a parte de baixo cresce (UAC + erro
@@ -278,12 +282,12 @@ class JanelaAtualizacao(QDialog):
         lay.addSpacing(10)
         self.rotulo_uac = None
         if updater.precisa_elevacao():
-            self.rotulo_uac = _rotulo(MSG_UAC, tamanho=12, papel="aviso", quebra=True)
+            self.rotulo_uac = _rotulo(t(MSG_UAC), tamanho=12, papel="aviso", quebra=True)
             lay.addWidget(self.rotulo_uac)
             lay.addSpacing(10)
 
         # Status: pady=(10, 4) (os 10 de cima já foram).
-        self.rotulo_status = _rotulo(MSG_COMO_FUNCIONA, tamanho=12, papel="legenda", quebra=True)
+        self.rotulo_status = _rotulo(t(MSG_COMO_FUNCIONA), tamanho=12, papel="legenda", quebra=True)
         lay.addWidget(self.rotulo_status)
         lay.addSpacing(4)
 
@@ -309,10 +313,10 @@ class JanelaAtualizacao(QDialog):
         botoes = QHBoxLayout(self.quadro_botoes)
         botoes.setContentsMargins(0, 0, 0, 0)
         botoes.setSpacing(20)
-        self.botao_atualizar = blocos.botao(TEXTO_ATUALIZAR, variante="primario", largura=170,
+        self.botao_atualizar = blocos.botao(t(TEXTO_ATUALIZAR), variante="primario", largura=170,
                                             altura=40, tamanho_fonte=14, negrito=True)
         self.botao_atualizar.clicked.connect(self.atualizar)
-        self.botao_agora_nao = blocos.botao(TEXTO_AGORA_NAO, variante="contorno", largura=150,
+        self.botao_agora_nao = blocos.botao(t(TEXTO_AGORA_NAO), variante="contorno", largura=150,
                                             altura=40)
         self.botao_agora_nao.clicked.connect(self.agora_nao)
         botoes.addWidget(self.botao_atualizar)
@@ -345,7 +349,7 @@ class JanelaAtualizacao(QDialog):
         if not self._pode_fechar_o_app():
             return
         self.botao_atualizar.setEnabled(False)
-        self.botao_atualizar.setText(TEXTO_ATUALIZANDO)
+        self.botao_atualizar.setText(t(TEXTO_ATUALIZANDO))
         self.botao_agora_nao.setEnabled(False)
         # Fechar no "X" no meio do download não cancela nada (o download não
         # tem como parar no meio), então o "X" e o Esc ficam mudos até terminar.
@@ -364,7 +368,7 @@ class JanelaAtualizacao(QDialog):
         if not tarefas:
             return True
         resposta = QMessageBox.question(
-            self, TITULO, MSG_TAREFA_AO_ATUALIZAR,
+            self, t(TITULO), t(MSG_TAREFA_AO_ATUALIZAR),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         return resposta == QMessageBox.StandardButton.Yes
@@ -376,7 +380,7 @@ class JanelaAtualizacao(QDialog):
             caminho = updater.baixar(self.info, progresso_cb=self._ao_progredir,
                                      log_cb=_log,
                                      ao_cair_no_completo=self._ao_cair_no_completo)
-            interface.na_interface(self._mostrar_status, MSG_DOWNLOAD_CONFERIDO)
+            interface.na_interface(self._mostrar_status, t(MSG_DOWNLOAD_CONFERIDO))
             updater.instalar(caminho, log_cb=_log)
         except Exception as erro:  # noqa: BLE001 -- vira mensagem na janela
             _log(f"a atualizacao falhou: {erro}")
@@ -408,7 +412,7 @@ class JanelaAtualizacao(QDialog):
         self._mostrar_status(msg_falhou(erro), papel="erro")
         self.barra.setValue(0)
         self.botao_atualizar.setEnabled(True)
-        self.botao_atualizar.setText(TEXTO_TENTAR_DE_NOVO)
+        self.botao_atualizar.setText(t(TEXTO_TENTAR_DE_NOVO))
         self.botao_agora_nao.setEnabled(True)
         self._baixando = False
 

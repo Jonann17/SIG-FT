@@ -311,19 +311,19 @@ def test_a_alca_da_area_rolavel_pinta_no_tema_novo(volta_ao_escuro, qtbot):
     assert tokens.CLARO["borda"] in cores
 
 
-# --- o seletor da Home --------------------------------------------------------------
+# --- o seletor da janela Configuração ----------------------------------------------
 
-def test_home_tem_o_seletor_de_tema(volta_ao_escuro, qt_interface, tmp_path, monkeypatch):
+def test_a_configuracao_tem_o_seletor_de_tema(volta_ao_escuro, qt_interface, tmp_path, monkeypatch):
     janela = _janela(qt_interface, tmp_path, monkeypatch)
     try:
-        home = janela.telas["Home"]
-        assert set(home.botoes_tema) == set(tema.TEMAS)
+        config = janela.telas["Home"].abrir_configuracao()
+        assert set(config.botoes_tema) == set(tema.TEMAS)
         icone_esperado = {"escuro": "moon", "claro": "sun", "sistema": "monitor"}
-        for escolha, botao in home.botoes_tema.items():
+        for escolha, botao in config.botoes_tema.items():
             assert botao.property("icone") == icone_esperado[escolha]
             assert botao.toolTip()
             assert "—" not in botao.toolTip() and "–" not in botao.toolTip()
-        assert home.botoes_tema["escuro"].property("ativo") is True
+        assert config.botoes_tema["escuro"].property("ativo") is True
     finally:
         _fechar(janela)
 
@@ -340,50 +340,22 @@ def test_clicar_claro_muda_o_fundo_da_tela(volta_ao_escuro, qt_interface, qtbot,
         qtbot.waitExposed(janela)
         janela.show_frame("Translator")
         janela.show_frame("Home")
-        home = janela.telas["Home"]
+        config = janela.telas["Home"].abrir_configuracao()
         tela = janela.findChild(QWidget, "tela")
         assert tela is not None
         assert tela.palette().color(tela.backgroundRole()).name().upper() == tokens.ESCURO["fundo"]
 
-        qtbot.mouseClick(home.botoes_tema["claro"], Qt.MouseButton.LeftButton)
+        qtbot.mouseClick(config.botoes_tema["claro"], Qt.MouseButton.LeftButton)
 
         assert estilo.TEMA_ATUAL == "claro"
         assert tema.escolhido() == "claro"
         assert tela.palette().color(tela.backgroundRole()).name().upper() == tokens.CLARO["fundo"]
-        assert home.botoes_tema["claro"].property("ativo") is True
-        assert home.botoes_tema["escuro"].property("ativo") is False
-        assert home.botoes_tema["claro"].icon().cacheKey() == \
+        assert config.botoes_tema["claro"].property("ativo") is True
+        assert config.botoes_tema["escuro"].property("ativo") is False
+        assert config.botoes_tema["claro"].icon().cacheKey() == \
             icones.icone("sun", estilo.MENU_ESCOLHIDO["claro"]["texto"], 16).cacheKey()
     finally:
         _fechar(janela)
-
-
-def test_o_seletor_cabe_na_linha_do_titulo_sem_alargar_a_home(qt_interface, qtbot):
-    # A barra de botões já ocupa quase toda a largura da Home a 1280 px: o
-    # seletor fica na linha do título, à direita, e a Home não ganha rolagem
-    # horizontal nem mexe no título (46, 46, h 38).
-    from sigft.app_qt.views import home as home_mod
-
-    class Controller:
-        api_keys: dict = {}
-
-    qt_interface.setStyleSheet(estilo.folha_de_estilo("escuro"))
-    tela = home_mod.HomeView(controller=Controller())
-    qtbot.addWidget(tela)
-    tela.resize(1280 - estilo.LARGURA_BARRA_LATERAL, 850)
-    tela.show()
-    qtbot.waitExposed(tela)
-    corpo = tela.widget()
-    assert corpo.minimumSizeHint().width() <= tela.viewport().width()
-    qtbot.waitUntil(lambda: corpo.width() == tela.viewport().width(), timeout=1000)
-    titulo = tela.label_titulo.geometry()
-    for botao in tela.botoes_tema.values():
-        from PySide6.QtCore import QPoint
-
-        caixa = botao.geometry()
-        topo = botao.mapTo(corpo, QPoint(0, 0))
-        assert topo.y() >= 46 and topo.y() + caixa.height() <= 46 + titulo.height()
-        assert topo.x() + caixa.width() <= corpo.width() - 57
 
 
 # --- a abertura e o --smoke --tema ---------------------------------------------------

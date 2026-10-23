@@ -18,13 +18,14 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLineEdit, QRadioButton, QVBoxLayout
 
+from sigft.app.idioma import marcar, t
 from sigft.app_qt import estilo, file_dialogs
 from sigft.app_qt.widgets import blocos, dialogos_selecao
 from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.core import pdm_catalogo
 
-TEXTO_NENHUM_ARQUIVO = "Nenhum arquivo selecionado"
+TEXTO_NENHUM_ARQUIVO = marcar("Nenhum arquivo selecionado")
 EXCEL = [("Excel", "*.xlsx *.xls")]
 
 
@@ -111,7 +112,7 @@ class ModuloPDM(ModuleFrame):
     def __init__(self, parent=None, controller=None) -> None:
         # Os caminhos de ARQUIVO (os StringVar sem campo visível de lá).
         self.path_sam_gm = self.path_status_pmib = self.path_template = ""
-        super().__init__(parent, controller, titulo="Gerenciador de PDMs")
+        super().__init__(parent, controller, titulo=t("Gerenciador de PDMs"))
         # Header, conteúdo e console com 20 px entre eles. O conteúdo fica com
         # a sobra e rola; o console tem a altura padrão
         # (tests/test_pdm_tela_layout.py).
@@ -147,16 +148,16 @@ class ModuloPDM(ModuleFrame):
         self.cartao_config = layout.parentWidget()
         layout.setContentsMargins(15, 10, 15, 15)       # padx=15; título pady=(10, …); f_plan (…, 15)
         layout.setSpacing(0)
-        r["config"] = _rotulo("Configuração Global", tamanho=14, negrito=True, papel="destaque")
+        r["config"] = _rotulo(t("Configuração Global"), tamanho=14, negrito=True, papel="destaque")
         layout.addWidget(r["config"])
         layout.addSpacing(5)                            # título (…, 5)
 
         # A planilha de PDMs (SAM-GM): de onde vêm as características de
         # cada ficha.
-        r["sam_gm"] = _rotulo("Planilha de PDMs (SAM-GM):", largura=190)
-        self.btn_sam_gm = _botao("Selecionar", largura=100, variante="cinza")
+        r["sam_gm"] = _rotulo(t("Planilha de PDMs (SAM-GM):"), largura=190)
+        self.btn_sam_gm = _botao(t("Selecionar"), largura=100, variante="cinza")
         self.btn_sam_gm.clicked.connect(self._sel_sam_gm)
-        self.lbl_sam_gm_status = _rotulo(TEXTO_NENHUM_ARQUIVO, papel="legenda", elidir=True)
+        self.lbl_sam_gm_status = _rotulo(t(TEXTO_NENHUM_ARQUIVO), papel="legenda", elidir=True)
         layout.addLayout(_linha(r["sam_gm"], 5, self.btn_sam_gm, 20, self.lbl_sam_gm_status))
 
     def _campo_de_pasta(self, layout, chave_rotulo, texto, *, largura_rotulo=240):
@@ -164,7 +165,7 @@ class ModuloPDM(ModuleFrame):
         self._rotulos[chave_rotulo] = _rotulo(texto, largura=largura_rotulo)
         campo = QLineEdit()
         campo.setFixedWidth(280)
-        botao = _botao("Buscar", largura=80)
+        botao = _botao(t("Buscar"), largura=80)
         layout.addLayout(_linha(self._rotulos[chave_rotulo], 5, campo, 5, botao))
         return campo, botao
 
@@ -174,57 +175,57 @@ class ModuloPDM(ModuleFrame):
 
         # --- SEÇÃO 1: Configuração de Arquivos e Pastas ---
         self.quadro_fichas, q = _quadro(lay, (10, 5, 10, 8))
-        r["fichas"] = _rotulo("Configuração das Fichas PMIB", tamanho=14, negrito=True)
+        r["fichas"] = _rotulo(t("Configuração das Fichas PMIB"), tamanho=14, negrito=True)
         q.addWidget(r["fichas"])
         q.addSpacing(13)                                # título (…, 5) + linha (8, …)
 
         # STATUS_PMIB (botão + rótulo)
-        self.btn_pmib = _botao("Selecionar STATUS_PMIB (.xlsx)", largura=240, variante="cinza", tamanho_fonte=12)
+        self.btn_pmib = _botao(t("Selecionar STATUS_PMIB (.xlsx)"), largura=240, variante="cinza", tamanho_fonte=12)
         self.btn_pmib.clicked.connect(self._sel_status_pmib)
-        self.lbl_pmib_status = _rotulo(TEXTO_NENHUM_ARQUIVO, papel="legenda", elidir=True)
+        self.lbl_pmib_status = _rotulo(t(TEXTO_NENHUM_ARQUIVO), papel="legenda", elidir=True)
         q.addLayout(_linha(self.btn_pmib, 15, self.lbl_pmib_status))
         q.addSpacing(16)
 
         # Destino das fichas (campo + Buscar)
         self.entry_destino_fichas, self.btn_buscar_fichas = self._campo_de_pasta(
-            q, "destino_fichas", "Pasta Destino das Fichas:")
+            q, "destino_fichas", t("Pasta Destino das Fichas:"))
         self.btn_buscar_fichas.clicked.connect(self._buscar_destino_fichas)
         q.addSpacing(16)
 
         # Template (botão + rótulo)
-        self.btn_template = _botao("Selecionar Template (.xlsx)", largura=240, variante="cinza", tamanho_fonte=12)
+        self.btn_template = _botao(t("Selecionar Template (.xlsx)"), largura=240, variante="cinza", tamanho_fonte=12)
         self.btn_template.clicked.connect(self._sel_template)
-        self.lbl_template_status = _rotulo(TEXTO_NENHUM_ARQUIVO, papel="legenda", elidir=True)
+        self.lbl_template_status = _rotulo(t(TEXTO_NENHUM_ARQUIVO), papel="legenda", elidir=True)
         q.addLayout(_linha(self.btn_template, 15, self.lbl_template_status))
         q.addSpacing(16)
 
         # IDIOMA DA FICHA (2026-08-28). Explícito, e não deduzido do nome do
         # template: deduzir quebraria em silêncio no dia em que alguém
         # renomeasse o arquivo.
-        r["idioma"] = _rotulo("Idioma da ficha:", largura=240)
+        r["idioma"] = _rotulo(t("Idioma da ficha:"), largura=240)
         self.idioma_ficha = _Opcoes("pt", self)
         self.rb_pt = self.idioma_ficha.adicionar("Português", "pt")
         self.rb_en = self.idioma_ficha.adicionar("English", "en")
-        r["idioma_dica"] = _rotulo("(English traduz as características da planilha)", tamanho=11,
+        r["idioma_dica"] = _rotulo(t("(English traduz as características da planilha)"), tamanho=11,
                                    papel="legenda")
         q.addLayout(_linha(r["idioma"], 10, self.rb_pt, 20, self.rb_en, 20, r["idioma_dica"]))
         lay.addSpacing(20)                              # frm_files (…, 10) + frm_exec (10, …)
 
         # --- SEÇÃO 2: Modo de Execução ---
         self.quadro_exec, q = _quadro(lay, (10, 10, 10, 10))
-        r["selecao"] = _rotulo("Seleção de Itens:", largura=120, tamanho=12, negrito=True)
+        r["selecao"] = _rotulo(t("Seleção de Itens:"), largura=120, tamanho=12, negrito=True)
         self.modo_pmib = _Opcoes("todos", self)
-        self.rb_todos = self.modo_pmib.adicionar("Todos da Lista", "todos")
-        self.rb_selecionar = self.modo_pmib.adicionar("Selecionar Manualmente", "selecionar")
+        self.rb_todos = self.modo_pmib.adicionar(t("Todos da Lista"), "todos")
+        self.rb_selecionar = self.modo_pmib.adicionar(t("Selecionar Manualmente"), "selecionar")
         q.addLayout(_linha(r["selecao"], 10, self.rb_todos, 20, self.rb_selecionar))
         q.addSpacing(10)                                # f_rad (…, 5) + f_out (5, …)
-        r["saida"] = _rotulo("Formato de Saída:", largura=120, tamanho=12, negrito=True)
+        r["saida"] = _rotulo(t("Formato de Saída:"), largura=120, tamanho=12, negrito=True)
         self.modo_saida_fichas = _Opcoes("apenas_planilhas", self)
-        self.rb_apenas = self.modo_saida_fichas.adicionar("Apenas Planilhas (Padrão)", "apenas_planilhas")
-        self.rb_com_pastas = self.modo_saida_fichas.adicionar("Criar Subpastas + Planilhas", "com_pastas")
+        self.rb_apenas = self.modo_saida_fichas.adicionar(t("Apenas Planilhas (Padrão)"), "apenas_planilhas")
+        self.rb_com_pastas = self.modo_saida_fichas.adicionar(t("Criar Subpastas + Planilhas"), "com_pastas")
         q.addLayout(_linha(r["saida"], 10, self.rb_apenas, 20, self.rb_com_pastas))
         q.addSpacing(20)                                # f_out (…, 10) + botão (10, …)
-        self.btn_criar_fichas = _botao("Executar: Criar Fichas PMIB", variante="primario")
+        self.btn_criar_fichas = _botao(t("Executar: Criar Fichas PMIB"), variante="primario")
         self.btn_criar_fichas.clicked.connect(self._op2_executar)
         q.addWidget(self.btn_criar_fichas, alignment=Qt.AlignmentFlag.AlignHCenter)
         lay.addSpacing(10)                              # frm_exec: pady=10
@@ -238,22 +239,22 @@ class ModuloPDM(ModuleFrame):
             campo.setText(pasta)
 
     def _buscar_destino_fichas(self) -> None:
-        self._escolher_pasta(self.entry_destino_fichas, "pdm.destino_fichas", "Pasta onde as fichas serão criadas")
+        self._escolher_pasta(self.entry_destino_fichas, "pdm.destino_fichas", t("Pasta onde as fichas serão criadas"))
 
     def _sel_sam_gm(self) -> None:
-        f = file_dialogs.ask_open_file("pdm.sam_gm", "excel", titulo="Selecione o PDM's SAM-GM", filetypes=EXCEL)
+        f = file_dialogs.ask_open_file("pdm.sam_gm", "excel", titulo=t("Selecione o PDM's SAM-GM"), filetypes=EXCEL)
         if f:
             self.path_sam_gm = f
             blocos.marcar_arquivo_escolhido(self.btn_sam_gm, self.lbl_sam_gm_status, f)
 
     def _sel_status_pmib(self) -> None:
-        f = file_dialogs.ask_open_file("pdm.status_pmib", "excel", titulo="Selecione o STATUS_PMIB", filetypes=EXCEL)
+        f = file_dialogs.ask_open_file("pdm.status_pmib", "excel", titulo=t("Selecione o STATUS_PMIB"), filetypes=EXCEL)
         if f:
             self.path_status_pmib = f
             blocos.marcar_arquivo_escolhido(self.btn_pmib, self.lbl_pmib_status, f)
 
     def _sel_template(self) -> None:
-        f = file_dialogs.ask_open_file("pdm.template", "excel", titulo="Selecione o Template", filetypes=EXCEL)
+        f = file_dialogs.ask_open_file("pdm.template", "excel", titulo=t("Selecione o Template"), filetypes=EXCEL)
         if f:
             self.path_template = f
             blocos.marcar_arquivo_escolhido(self.btn_template, self.lbl_template_status, f)
@@ -265,17 +266,17 @@ class ModuloPDM(ModuleFrame):
         idioma = self.idioma_ficha.get()
         planilha = self.path_sam_gm
         if not planilha:
-            return self.avisar("Aviso", "Selecione a planilha de PDMs no painel de cima.", tipo="aviso")
+            return self.avisar(t("Aviso"), t("Selecione a planilha de PDMs no painel de cima."), tipo="aviso")
 
         status_pmib = self.path_status_pmib
         destino_fichas = self.entry_destino_fichas.text()
         template = self.path_template
         if not status_pmib:
-            return self.avisar("Aviso", "Por favor, busque o arquivo STATUS_PMIB na tela.", tipo="aviso")
+            return self.avisar(t("Aviso"), t("Por favor, busque o arquivo STATUS_PMIB na tela."), tipo="aviso")
         if not destino_fichas:
-            return self.avisar("Aviso", "Por favor, busque a Pasta Destino das Fichas na tela.", tipo="aviso")
+            return self.avisar(t("Aviso"), t("Por favor, busque a Pasta Destino das Fichas na tela."), tipo="aviso")
         if not template:
-            return self.avisar("Aviso", "Por favor, busque o Template Ficha Técnica na tela.", tipo="aviso")
+            return self.avisar(t("Aviso"), t("Por favor, busque o Template Ficha Técnica na tela."), tipo="aviso")
         modulo = self.backend("pdm_backend")
         if modulo is None:
             return None
@@ -288,7 +289,7 @@ class ModuloPDM(ModuleFrame):
                 try:
                     codigos = modulo.codigos_pmib_da_lista(status_pmib)
                 except ValueError as erro:
-                    return self.avisar("Erro", str(erro), tipo="erro")
+                    return self.avisar(t("Erro"), str(erro), tipo="erro")
                 # Modal (o `grab_set` de lá): a tela não tem o que fazer sem a
                 # resposta; `esperar()` é o `wait_window`.
                 lista_sel = self._escolher_codigos(codigos)
@@ -296,7 +297,7 @@ class ModuloPDM(ModuleFrame):
                     self.log("Seleção manual de códigos cancelada.")
                     return None
             except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
-                return self.avisar("Erro", f"Ocorreu um erro ao ler o STATUS_PMIB:\n{e}", tipo="erro")
+                return self.avisar(t("Erro"), t("Ocorreu um erro ao ler o STATUS_PMIB:\n{erro}", erro=e), tipo="erro")
 
         criar_pastas = self.modo_saida_fichas.get() == "com_pastas"
         self.iniciar_tarefa(self._tarefa_fichas, modulo, planilha, idioma,
@@ -309,7 +310,7 @@ class ModuloPDM(ModuleFrame):
         # Sem Esc (o diálogo compartilhado o ignora): a lista pode ter dezenas
         # de códigos marcados um a um. "X" continua cancelando.
         dialogo = dialogos_selecao.SelecaoMultiplaDialog(
-            self, itens=codigos, titulo="Selecione os Códigos PMIB", instrucao="Selecione um ou mais códigos:",
+            self, itens=codigos, titulo=t("Selecione os Códigos PMIB"), instrucao=t("Selecione um ou mais códigos:"),
             geometria="400x500", fonte_instrucao=("Roboto", 14), fonte_lista=("Consolas", 11), modal=True,
             ao_confirmar=escolhidos.extend)
         dialogo.esperar()
@@ -324,7 +325,7 @@ class ModuloPDM(ModuleFrame):
             catalogo = pdm_catalogo.carregar(planilha)
         except Exception as e:  # noqa: BLE001 -- a mensagem vai inteira para a pessoa
             self.log(f"ERRO ao ler a planilha de PDMs: {e}")
-            self.avisar("Erro", f"Não consegui ler a planilha de PDMs:\n{e}", tipo="erro")
+            self.avisar(t("Erro"), t("Não consegui ler a planilha de PDMs:\n{erro}", erro=e), tipo="erro")
             return
 
         self.log(f"Preparando diretórios (Modo: {'Com Pastas' if criar_pastas else 'Apenas Planilhas'})...")
@@ -332,7 +333,7 @@ class ModuloPDM(ModuleFrame):
                                                            criar_subpastas=criar_pastas)
         self.log(msg)
         if not dados_pastas:
-            self.avisar("Aviso", "Nenhum código foi processado.")
+            self.avisar(t("Aviso"), t("Nenhum código foi processado."))
             return
 
         # O idioma vai para o serviço, e não o nome da aba: quem sabe como a
@@ -347,4 +348,4 @@ class ModuloPDM(ModuleFrame):
             idioma=idioma, traduzir=None)
         self.log(msg_res)
         self.log(">>> Processo de criação de fichas finalizado!")
-        self.avisar("Fim", f"Processo de criação de fichas finalizado.\n\n{msg_res}")
+        self.avisar(t("Fim"), t("Processo de criação de fichas finalizado.\n\n{resultado}", resultado=msg_res))

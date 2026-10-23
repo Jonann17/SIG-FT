@@ -29,10 +29,12 @@ from PySide6.QtWidgets import (
 )
 
 from sigft.app import theme
+from sigft.app.idioma import t
 from sigft.app.textos_dialogos import TEXTOS_TRAVADOS
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets.dialogs import IgnoraEsc, SoltaAoFechar, sem_tecla
+from sigft.app_qt import propriedades
 
 # Diálogo aberto sem pai (ou cujo pai some) precisa de uma referência viva
 # enquanto está na tela; sai daqui quando fecha. Chave = id(): a conexão que o
@@ -129,12 +131,16 @@ class SelecaoMultiplaDialog(JanelaQueAbre):
     widget cru do Tk (PONTOS); `fonte_instrucao`, de CTkLabel (pixels).
     """
 
-    def __init__(self, parent=None, *, itens, titulo: str = "Seleção",
-                 instrucao: str = "Selecione um ou mais itens:", geometria: str = "500x500",
-                 texto_confirmar: str = "Confirmar Seleção", modal: bool = False,
+    def __init__(self, parent=None, *, itens, titulo: str | None = None,
+                 instrucao: str | None = None, geometria: str = "500x500",
+                 texto_confirmar: str | None = None, modal: bool = False,
                  com_selecionar_todos: bool = False, devolver_indices: bool = False,
                  estilo_lista: dict | None = None, fonte_lista: tuple | None = None,
                  fonte_instrucao: tuple | None = None, ao_confirmar=None) -> None:
+        # Quem chama traduz o que passa; os padrões são traduzidos aqui (2026-10-22).
+        titulo = titulo if titulo is not None else t("Seleção")
+        instrucao = instrucao if instrucao is not None else t("Selecione um ou mais itens:")
+        texto_confirmar = texto_confirmar if texto_confirmar is not None else t("Confirmar Seleção")
         super().__init__(parent, titulo=titulo, geometria=geometria, modal=modal)
         self._ao_confirmar = ao_confirmar
         self._devolver_indices = devolver_indices
@@ -182,7 +188,7 @@ class SelecaoMultiplaDialog(JanelaQueAbre):
         self.botao_todos = None
         botoes = []
         if com_selecionar_todos:
-            self.botao_todos = _botao("Selecionar Todos", largura=150, variante="secundario")
+            self.botao_todos = _botao(t("Selecionar Todos"), largura=150, variante="secundario")
             self.botao_todos.clicked.connect(self.selecionar_todos)
             botoes.append(self.botao_todos)
         self.botao_confirmar = _botao(texto_confirmar, largura=150, variante="primario")
@@ -215,11 +221,14 @@ class TabelaSelecaoDialog(JanelaQueAbre):
     `{"coluna": {"width": 150, "anchor": "center"}}` (120 sem largura).
     """
 
-    def __init__(self, parent=None, *, colunas, linhas, titulo: str = "Seleção de Itens",
-                 instrucao: str = "Selecione as linhas para processar:", geometria: str = "900x600",
+    def __init__(self, parent=None, *, colunas, linhas, titulo: str | None = None,
+                 instrucao: str | None = None, geometria: str = "900x600",
                  larguras: dict | None = None, preselecionar_tudo: bool = False,
-                 texto_confirmar: str = "Confirmar Seleção", com_cancelar: bool = True,
+                 texto_confirmar: str | None = None, com_cancelar: bool = True,
                  modal: bool = True, ao_confirmar=None) -> None:
+        titulo = titulo if titulo is not None else t("Seleção de Itens")
+        instrucao = instrucao if instrucao is not None else t("Selecione as linhas para processar:")
+        texto_confirmar = texto_confirmar if texto_confirmar is not None else t("Confirmar Seleção")
         super().__init__(parent, titulo=titulo, geometria=geometria, modal=modal)
         self._ao_confirmar = ao_confirmar
         colunas = list(colunas)
@@ -254,7 +263,7 @@ class TabelaSelecaoDialog(JanelaQueAbre):
         botoes = [self.botao_confirmar]
         self.botao_cancelar = None
         if com_cancelar:
-            self.botao_cancelar = _botao("Cancelar", largura=140, variante="secundario")
+            self.botao_cancelar = _botao(t("Cancelar"), largura=140, variante="secundario")
             self.botao_cancelar.clicked.connect(self.reject)
             botoes.append(self.botao_cancelar)
         layout.addLayout(_linha_de_botoes(*botoes))
@@ -276,7 +285,7 @@ class TabelaSelecaoDialog(JanelaQueAbre):
         selecionados = self.selecionados
         if not selecionados:
             # Confirmar sem nada seria um cancelamento silencioso.
-            QMessageBox.warning(self, "Aviso", "Selecione ao menos um item.")
+            QMessageBox.warning(self, t("Aviso"), t("Selecione ao menos um item."))
             return
         self._confirmar_com(selecionados, self._ao_confirmar)
 
@@ -340,7 +349,7 @@ def linha_ttk(tree: QTreeWidget, valores, chave=None) -> QTreeWidgetItem:
     `UserRole` da coluna 0; cada célula com o anchor da sua coluna."""
     item = QTreeWidgetItem([str(v) for v in valores])
     item.setData(0, Qt.ItemDataRole.UserRole, chave)
-    for i, centro in enumerate(tree.property("_alinhamentos") or []):
+    for i, centro in enumerate(propriedades.ler(tree, "_alinhamentos") or []):
         item.setTextAlignment(i, Qt.AlignmentFlag.AlignCenter if centro
                               else Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     tree.addTopLevelItem(item)
@@ -376,14 +385,14 @@ class ArquivosTravadosDialog(SoltaAoFechar, QDialog):
         self._evento = evento_espera
         self._resultado = resultado
         self._decidido = False
-        self.setWindowTitle(textos["titulo"])
+        self.setWindowTitle(t(textos["titulo"]))
         self.resize(620, 380)
 
         layout = QVBoxLayout(self)
         # pady do Tk somados: (16, 6) | 4 | (6, 4) | (4, 16).
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(0)
-        self.rotulo_explicacao = blocos.rotulo(textos["explicacao"], tamanho=13, alinhar="esquerda")
+        self.rotulo_explicacao = blocos.rotulo(t(textos["explicacao"]), tamanho=13, alinhar="esquerda")
         layout.addWidget(self.rotulo_explicacao)
         layout.addSpacing(6 + 4)
 
@@ -392,7 +401,7 @@ class ArquivosTravadosDialog(SoltaAoFechar, QDialog):
         for nome, motivo, o_que_fazer in self.itens:
             lista.addSpacing(8)
             r_nome = blocos.rotulo(nome, tamanho=14, negrito=True, alinhar="esquerda")
-            r_motivo = blocos.rotulo(f"Motivo: {motivo}. {o_que_fazer}", tamanho=12,
+            r_motivo = blocos.rotulo(t("Motivo: {motivo}. {o_que_fazer}", motivo=motivo, o_que_fazer=o_que_fazer), tamanho=12,
                                      papel="legenda", alinhar="esquerda")
             for r in (r_nome, r_motivo):
                 r.setContentsMargins(10, 0, 10, 0)
@@ -401,14 +410,14 @@ class ArquivosTravadosDialog(SoltaAoFechar, QDialog):
         layout.addWidget(area, 1)
         layout.addSpacing(4 + 6)
 
-        self.rotulo_rodape = blocos.rotulo(textos["rodape"], tamanho=12,
+        self.rotulo_rodape = blocos.rotulo(t(textos["rodape"]), tamanho=12,
                                            papel="legenda", alinhar="esquerda")
         layout.addWidget(self.rotulo_rodape)
         layout.addSpacing(4 + 4)
 
-        self.botao_repetir = blocos.botao(textos["repetir"], variante="primario", largura=170, altura=40,
+        self.botao_repetir = blocos.botao(t(textos["repetir"]), variante="primario", largura=170, altura=40,
                                           tamanho_fonte=14, negrito=True)
-        self.botao_seguir = blocos.botao(textos["seguir"], variante="contorno", largura=170, altura=40)
+        self.botao_seguir = blocos.botao(t(textos["seguir"]), variante="contorno", largura=170, altura=40)
         for b in (self.botao_repetir, self.botao_seguir):
             sem_tecla(b)  # nem Enter nem Espaço decidem: o worker espera a pessoa escolher
         self.botao_repetir.clicked.connect(self.repetir)

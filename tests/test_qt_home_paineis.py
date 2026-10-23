@@ -19,8 +19,8 @@ from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox, QStyle
 
 from sigft import config as sigft_config
 from sigft.app_qt import estilo
+from sigft.app_qt.views import configuracao as config_mod
 from sigft.app_qt.views import home as home_mod
-from sigft.app_qt.widgets import controles
 from sigft.app_qt.widgets import mural as mural_qt
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
 from sigft.core import plataforma
@@ -164,8 +164,9 @@ def test_textos_iguais_aos_da_home_antiga():
     """Os textos que a Home da interface antiga mostrava (eram comparados com
     ela; ela saiu em 2026-10-15, e os valores ficam travados aqui)."""
     # Sem o emoji desde 2026-10-20: o desenho é o ícone (`ICONE_DA_BARRA`).
-    assert home_mod.TEXTO_BOTAO_ATUALIZACOES == "Atualizações"
-    assert home_mod.TEXTO_CANAL_TESTES == "Versões de teste"
+    # 2026-10-22: o botão e a caixa foram para a janela Configuração, com o texto da spec.
+    assert config_mod.ACAO["atualizacoes"].texto == "Procurar atualizações"
+    assert config_mod.TEXTO_CANAL_TESTES == "Receber versões de teste"
     assert home_mod.HomeView.ROTULO_PROVIDER_IA == {
         "gemini": "Gemini (chave direta do Google)",
         "openrouter": "OpenRouter (vários modelos, uma chave)",
@@ -218,12 +219,10 @@ def test_desenho_do_mural_igual_ao_da_home_antiga():
 def test_barra_na_ordem_e_com_as_cores_da_tela_antiga(home):
     # 2026-10-20: cada botão da barra é uma variante (a cor é da folha do tema).
     # 2026-10-20: o emoji da frente do texto virou o ícone Lucide do botão.
+    # 2026-10-22: modelos, chaves e atualizações foram para a janela Configuração.
     esperado = [
         ("atividades", "Atividades do dia", "primario", "clipboard-check"),
-        ("modelos", "Modelos de IA", "primario", "bot"),
         ("gastos", "Gastos de IA", "primario", "circle-dollar-sign"),
-        ("chaves", "Chaves de API", "secundario", "key-round"),
-        ("atualizacoes", home_mod.TEXTO_BOTAO_ATUALIZACOES, "secundario", "refresh-cw"),
     ]
     assert list(home.botoes_barra) == [chave for chave, _t, _c, _i in esperado]
     for chave, texto, cor, icone in esperado:
@@ -232,68 +231,29 @@ def test_barra_na_ordem_e_com_as_cores_da_tela_antiga(home):
         assert botao.property("icone") == icone and not botao.icon().isNull(), chave
         assert botao.property("variante") == cor, chave
         assert "background" not in botao.styleSheet(), chave
-    assert home.btn_atualizacoes is home.botoes_barra["atualizacoes"]
 
 
-def test_atualizacoes_pergunta_agora_e_o_botao_volta_ao_normal(home, monkeypatch):
-    from sigft.app_qt import atualizacao
-
-    pedidos = []
-    monkeypatch.setattr(atualizacao, "procurar_agora",
-                        lambda janela, **kw: pedidos.append((janela, kw)))
-    home.btn_atualizacoes.click()
-
-    assert not home.btn_atualizacoes.isEnabled(), "dois cliques seriam duas consultas"
-    assert home.btn_atualizacoes.text() == "Procurando..."   # sem emoji: o ícone fica (2026-10-20)
-    [(janela, kw)] = pedidos
-    assert janela is home.controller, "o aviso nasce da janela principal, não da Home"
-
-    kw["ao_terminar"]()
-
-    assert home.btn_atualizacoes.isEnabled()
-    assert home.btn_atualizacoes.text() == home_mod.TEXTO_BOTAO_ATUALIZACOES
-
-
-def test_versoes_de_teste_e_a_caixa_do_ctk_e_lembra(qt_interface, qtbot, rede, monkeypatch):
-    escolhas = []
-    monkeypatch.setattr(updater, "canal_testes_ligado", lambda **k: True)
-    monkeypatch.setattr(updater, "ligar_canal_testes", lambda ligado, **k: escolhas.append(ligado))
-    tela = home_mod.HomeView(controller=Controller())
-    qtbot.addWidget(tela)
-    caixa = tela.caixa_canal_testes
-    assert isinstance(caixa, controles.CaixaDeMarcar)  # o "v" pintado, como na interface antiga
-    assert caixa.text() == home_mod.TEXTO_CANAL_TESTES
-    assert caixa.isChecked()
-    caixa.click()
-    assert escolhas == [False]
-
-
-def test_versoes_de_teste_preferencia_ilegivel_e_desmarcada(qt_interface, qtbot, rede, monkeypatch):
-    def quebra(**_k):
-        raise OSError("sem permissão")
-
-    monkeypatch.setattr(updater, "canal_testes_ligado", quebra)
-    monkeypatch.setattr(updater, "ligar_canal_testes", lambda *a, **k: quebra())
-    tela = home_mod.HomeView(controller=Controller())
-    qtbot.addWidget(tela)
-    assert not tela.caixa_canal_testes.isChecked()
-    tela.caixa_canal_testes.click()  # lembrar não pode atrapalhar o clique
-    assert tela.caixa_canal_testes.isChecked()
-
-
-@pytest.mark.parametrize("chave, titulo, tamanho", [
-    ("chaves", "Chaves de API", (760, 520)),
-    ("modelos", "Modelos de IA", (900, 680)),
-    ("gastos", "Gastos de IA", (860, 600)),
-    ("atividades", "Atividades do dia", (820, 640)),
+@pytest.mark.parametrize("abrir, titulo, tamanho", [
+    ("abrir_janela_chaves_api", "Chaves de API", (760, 520)),
+    ("abrir_janela_modelos_ia", "Modelos de IA", (900, 680)),
+    ("abrir_janela_gastos_ia", "Gastos de IA", (860, 600)),
+    ("abrir_mural_atividades", "Atividades do dia", (820, 640)),
 ])
-def test_cada_botao_abre_o_seu_painel_em_janela(home, monkeypatch, chave, titulo, tamanho):
+def test_cada_painel_abre_em_janela(home, monkeypatch, abrir, titulo, tamanho):
+    # Desde 2026-10-22 chaves e modelos abrem pela janela Configuração; o método é o mesmo.
     monkeypatch.setattr(home_mod.HomeView, "_ler_mural", lambda self: ({f: [] for f in at.FAIXAS}, None))
-    home.botoes_barra[chave].click()
+    getattr(home, abrir)()
     [janela] = _janelas_abertas(home)
     assert janela.windowTitle() == titulo
     assert (janela.width(), janela.height()) == tamanho
     assert janela.windowModality() == Qt.WindowModality.NonModal
+
+
+def test_os_botoes_da_barra_abrem_atividades_e_gastos(home, monkeypatch):
+    monkeypatch.setattr(home_mod.HomeView, "_ler_mural", lambda self: ({f: [] for f in at.FAIXAS}, None))
+    for chave, titulo in (("atividades", "Atividades do dia"), ("gastos", "Gastos de IA")):
+        home.botoes_barra[chave].click()
+        assert titulo in [j.windowTitle() for j in _janelas_abertas(home)]
 
 
 @pytest.mark.parametrize("abrir", ["abrir_janela_chaves_api", "abrir_janela_modelos_ia",
@@ -732,8 +692,9 @@ def test_nenhum_controle_dos_paineis_pega_o_foco(home, monkeypatch):
 
     monkeypatch.setattr(home_mod.HomeView, "_ler_mural", lambda self: ({f: [] for f in at.FAIXAS}, None))
     janelas = [home.abrir_janela_chaves_api(), home.abrir_janela_modelos_ia(),
-               home.abrir_janela_gastos_ia(), home.abrir_mural_atividades()]
-    controles_ = [home.caixa_canal_testes, *home.botoes_barra.values()]
+               home.abrir_janela_gastos_ia(), home.abrir_mural_atividades(),
+               home.abrir_configuracao()]
+    controles_ = [home.btn_configuracao, *home.botoes_barra.values()]
     for janela in janelas:
         controles_ += janela.findChildren(QPushButton) + janela.findChildren(QCheckBox)
         controles_ += janela.findChildren(QComboBox)
@@ -989,7 +950,8 @@ def test_medidas_da_home(com_folha, qtbot, rede, mensagens):
     # interface antiga: a Home é um CTkScrollableFrame no grid(padx=20, pady=20), o conteúdo
     # 6 px para dentro (o canto): (26, 26) na origem da tela Qt (x 277 da janela).
     # Título (46, 46) h 38; subtítulo (46, 89) h 28; texto (46, 147) h 28; barra
-    # y 185 h 40 a partir de x 46, 10 px entre os botões; caixa y 193 h 24;
+    # y 185 h 40 a partir de x 46, 10 px entre os botões; a engrenagem à
+    # direita do título (2026-10-22: tema, letra e a caixa saíram da Home);
     # cards (52, 247) e (502, 247), 438 de largura.
     tela = home_mod.HomeView(controller=Controller())
     qtbot.addWidget(tela)
@@ -1006,9 +968,9 @@ def test_medidas_da_home(com_folha, qtbot, rede, mensagens):
     for anterior, botao in zip(botoes, botoes[1:]):
         assert _geo(botao, corpo)[0] == _geo(anterior, corpo)[0] + anterior.width() + 10
         assert _geo(botao, corpo)[1::2] == (185, 40)
-    caixa = _geo(tela.caixa_canal_testes, corpo)
-    assert caixa[0] == _geo(botoes[-1], corpo)[0] + botoes[-1].width() + 10
-    assert caixa[1::2] == (193, 24)
+    engrenagem = _geo(tela.btn_configuracao, corpo)
+    assert engrenagem[0] + engrenagem[2] == corpo.width() - 57
+    assert 46 <= engrenagem[1] and engrenagem[1] + engrenagem[3] <= 46 + 38
     cards = list(tela.cards.values())
     assert _geo(cards[0], corpo)[:3] == (52, 247, 438)
     assert _geo(cards[1], corpo)[:3] == (502, 247, 438)

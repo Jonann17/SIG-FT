@@ -19,6 +19,7 @@ import webbrowser
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMessageBox, QVBoxLayout
 
+from sigft.app.idioma import marcar, t
 from sigft.app.textos_dialogos import MSG_LOGIN_CONFERIR_AUTORIZACOES, texto_dos_avisos
 from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.widgets import blocos, controles, dialogs
@@ -33,7 +34,7 @@ from sigft.core.prefs import CHAVE_MAPEAMENTO
 # [2026-10-05, T7] A caixa "Gerar painel ao terminar", lembrada entre aberturas.
 OPCAO_GERAR_PAINEL = "pmib_manager.gerar_painel"
 
-TEXTO_NENHUM_ARQUIVO = "Nenhum arquivo selecionado"
+TEXTO_NENHUM_ARQUIVO = marcar("Nenhum arquivo selecionado")
 
 # Os botões de arquivo pedem width=280, mas o CTkButton CRESCE até caber o
 # texto com 7 px de cada lado (medido: 272 px de texto -> 286): é o
@@ -51,7 +52,7 @@ LARGURA_QUEBRA_PORTAL = 480
 def _rotulo_status():
     """O "Nenhum arquivo selecionado" em legenda ao lado de cada botão de arquivo. É
     um `blocos.RotuloElidido`: um nome comprido não alarga a tela."""
-    return blocos.rotulo(TEXTO_NENHUM_ARQUIVO, papel="legenda", alinhar="esquerda",
+    return blocos.rotulo(t(TEXTO_NENHUM_ARQUIVO), papel="legenda", alinhar="esquerda",
                          elidir=True)
 
 
@@ -69,7 +70,7 @@ class NovasListasDialog(QDialog):
         super().__init__(parent)
         self._evento, self._resultado = evento_espera, resultado
         self._decidido = False
-        self.setWindowTitle("Novas Listas Encontradas")
+        self.setWindowTitle(t("Novas Listas Encontradas"))
         self.resize(750, 550)
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
 
@@ -78,12 +79,12 @@ class NovasListasDialog(QDialog):
         layout.setContentsMargins(20, 0, 20, 0)
         layout.setSpacing(0)
         layout.addSpacing(15)                           # título: pady=(15, …)
-        self.rotulo_titulo = blocos.rotulo("Novas Listas de Sobressalentes Encontradas na base de dados:",
+        self.rotulo_titulo = blocos.rotulo(t("Novas Listas de Sobressalentes Encontradas na base de dados:"),
                                            tamanho=16, negrito=True, papel="destaque")
         layout.addWidget(self.rotulo_titulo)
         layout.addSpacing(5)                            # título (…, 5) + instrução (0, …)
         self.rotulo_instrucao = blocos.rotulo(
-            "Selecione abaixo quais você deseja adicionar à Planilha de Mapeamento.",
+            t("Selecione abaixo quais você deseja adicionar à Planilha de Mapeamento."),
             papel="legenda")
         layout.addWidget(self.rotulo_instrucao)
         layout.addSpacing(15)                           # instrução (…, 10) + lista (5, …)
@@ -107,12 +108,12 @@ class NovasListasDialog(QDialog):
 
         # Fonte padrão do CTkButton (13) e a folga de texto dele: com a da folha
         # do app, "Ignorar (Não Adicionar)" não cabe nos 150.
-        self.botao_marcar = blocos.botao("Marcar Todas", largura_minima=120, variante="cinza", tamanho_fonte=13)
-        self.botao_desmarcar = blocos.botao("Desmarcar Todas", largura_minima=120, variante="cinza", tamanho_fonte=13)
-        self.botao_confirmar = blocos.botao("Confirmar Seleção", largura_minima=150, variante="primario",
+        self.botao_marcar = blocos.botao(t("Marcar Todas"), largura_minima=120, variante="cinza", tamanho_fonte=13)
+        self.botao_desmarcar = blocos.botao(t("Desmarcar Todas"), largura_minima=120, variante="cinza", tamanho_fonte=13)
+        self.botao_confirmar = blocos.botao(t("Confirmar Seleção"), largura_minima=150, variante="primario",
                                             tamanho_fonte=13)
         # O cinza escrito à mão na tela antiga: a variante secundária.
-        self.botao_ignorar = blocos.botao("Ignorar (Não Adicionar)", largura_minima=150, tamanho_fonte=13,
+        self.botao_ignorar = blocos.botao(t("Ignorar (Não Adicionar)"), largura_minima=150, tamanho_fonte=13,
                                           variante="secundario")
         # Ela segura o worker: nenhuma tecla aperta um botão (Enter ou Espaço
         # não confirmam nem ignoram as listas no lugar da pessoa).
@@ -178,7 +179,7 @@ class ModuloPMIBManager(ModuleFrame):
     def __init__(self, parent=None, controller=None) -> None:
         # Os caminhos escolhidos (os StringVar de lá). A Pasta Raiz é o campo.
         self.path_api = self.path_master = self.path_autorizados = ""
-        super().__init__(parent, controller, titulo="Gestão de Sobressalentes",
+        super().__init__(parent, controller, titulo=t("Gestão de Sobressalentes"),
                          peso_conteudo=0, altura_console=None, com_progresso=True)
         # Lá a tela não é o ModuleFrame: header pady=10, conteúdo pady=5,
         # barra pady=5 e console pady=(5, 20), dentro do padx/pady=20 do
@@ -215,13 +216,13 @@ class ModuloPMIBManager(ModuleFrame):
 
     def _quadro_gestao(self, r) -> None:
         corpo = self._cartao()
-        r["config"] = blocos.rotulo("Configuração de Gestão de Fichas PMIB", tamanho=16, negrito=True,
+        r["config"] = blocos.rotulo(t("Configuração de Gestão de Fichas PMIB"), tamanho=16, negrito=True,
                                     papel="destaque", alinhar="esquerda")
         corpo.addWidget(r["config"])
         corpo.addSpacing(13)                            # título (…, 5) + linha (8, …)
 
         # 1. Histórico do Aconex (botão + rótulo)
-        self.btn_api = blocos.botao("1. Selecionar Histórico Aconex DocManager (.xlsx)",
+        self.btn_api = blocos.botao(t("1. Selecionar Histórico Aconex DocManager (.xlsx)"),
                                     largura_minima=LARGURA_BOTAO_ARQUIVO, variante="cinza", tamanho_fonte=12)
         self.btn_api.clicked.connect(self._sel_api)
         self.lbl_api_status = _rotulo_status()
@@ -231,7 +232,7 @@ class ModuloPMIBManager(ModuleFrame):
         # 2. Pasta Raiz (rótulo + campo + Buscar)
         linha = QHBoxLayout()
         linha.setSpacing(0)
-        r["raiz"] = blocos.rotulo("2. Pasta Raiz (Arquivos _STATUS_PMIB):",
+        r["raiz"] = blocos.rotulo(t("2. Pasta Raiz (Arquivos _STATUS_PMIB):"),
                                   alinhar="esquerda")
         r["raiz"].setWordWrap(False)
         r["raiz"].setFixedWidth(280)
@@ -241,7 +242,7 @@ class ModuloPMIBManager(ModuleFrame):
         self.entry_root.setFixedWidth(300)
         linha.addWidget(self.entry_root)
         linha.addSpacing(5)
-        self.btn_buscar = blocos.botao("Buscar", largura=80)
+        self.btn_buscar = blocos.botao(t("Buscar"), largura=80)
         self.btn_buscar.clicked.connect(self._sel_root)
         linha.addWidget(self.btn_buscar)
         linha.addStretch()
@@ -249,7 +250,7 @@ class ModuloPMIBManager(ModuleFrame):
         corpo.addSpacing(16)
 
         # 3. Planilha de mapeamento (botão + rótulo)
-        self.btn_master = blocos.botao("3. Selecionar Mapeamento Sobressalentes (.xlsx)",
+        self.btn_master = blocos.botao(t("3. Selecionar Mapeamento Sobressalentes (.xlsx)"),
                                        largura_minima=LARGURA_BOTAO_ARQUIVO, variante="cinza",
                                        tamanho_fonte=12)
         self.btn_master.clicked.connect(self._sel_master)
@@ -257,7 +258,7 @@ class ModuloPMIBManager(ModuleFrame):
         corpo.addLayout(self._linha_arquivo(self.btn_master, self.lbl_master_status))
         corpo.addSpacing(28)                            # linha (…, 8) + iniciar (20, …)
 
-        self.btn_run = blocos.botao("INICIAR PROCESSO DE GESTÃO", variante="primario", largura=350,
+        self.btn_run = blocos.botao(t("INICIAR PROCESSO DE GESTÃO"), variante="primario", largura=350,
                                     altura=50, tamanho_fonte=14, negrito=True,)
         self.btn_run.clicked.connect(self.iniciar_gestao)
         corpo.addWidget(self.btn_run, alignment=Qt.AlignmentFlag.AlignHCenter)
@@ -270,10 +271,10 @@ class ModuloPMIBManager(ModuleFrame):
             gerar_por_padrao = prefs.get_opcao(OPCAO_GERAR_PAINEL, True)
         except Exception:  # noqa: BLE001 -- preferência é conveniência: nunca impede a tela de abrir
             gerar_por_padrao = True
-        self.caixa_gerar_painel = controles.CaixaDeMarcar("Gerar painel ao terminar", tamanho_fonte=12)
+        self.caixa_gerar_painel = controles.CaixaDeMarcar(t("Gerar painel ao terminar"), tamanho_fonte=12)
         self.caixa_gerar_painel.setChecked(bool(gerar_por_padrao))
         self.caixa_gerar_painel.toggled.connect(self._lembrar_gerar_painel)
-        self.btn_painel = blocos.botao("Gerar painel", largura_minima=160, variante="cinza", tamanho_fonte=12)
+        self.btn_painel = blocos.botao(t("Gerar painel"), largura_minima=160, variante="cinza", tamanho_fonte=12)
         self.btn_painel.clicked.connect(self.gerar_painel)
         # Lá o quadro é `pack` sem `fill` (centrado); caixa e botão com padx=10.
         linha = QHBoxLayout()
@@ -290,25 +291,25 @@ class ModuloPMIBManager(ModuleFrame):
         # Itaipu manda vira AUTORIZADO nos `_STATUS_PMIB` da Pasta Raiz (era o
         # script `apto_para_entrega_att.py`, com os caminhos fixos no código).
         corpo = self._cartao()
-        r["autorizacoes"] = blocos.rotulo("Autorizações de entrega de Itaipu", tamanho=16, negrito=True,
+        r["autorizacoes"] = blocos.rotulo(t("Autorizações de entrega de Itaipu"), tamanho=16, negrito=True,
                                           papel="destaque", alinhar="esquerda")
         corpo.addWidget(r["autorizacoes"])
         r["descricao_aut"] = blocos.rotulo(
-            "Grava AUTORIZADO nos _STATUS_PMIB da Pasta Raiz (passo 2) para cada PMIB do "
-            "export de Itaipu (sobressalentes_autorizados_AAAAMMDDhhmm.xlsx).",
+            t("Grava AUTORIZADO nos _STATUS_PMIB da Pasta Raiz (passo 2) para cada PMIB do "
+              "export de Itaipu (sobressalentes_autorizados_AAAAMMDDhhmm.xlsx)."),
             papel="legenda", alinhar="esquerda")
         r["descricao_aut"].setMaximumWidth(LARGURA_QUEBRA_DESCRICAO)
         r["descricao_aut"].setMinimumHeight(ALTURA_DESCRICAO_CTK)
         corpo.addWidget(r["descricao_aut"])
         corpo.addSpacing(8)                             # linha: pady=(8, 15)
 
-        self.btn_autorizados = blocos.botao("4. Selecionar export de autorizados (.xlsx)",
+        self.btn_autorizados = blocos.botao(t("4. Selecionar export de autorizados (.xlsx)"),
                                             largura_minima=LARGURA_BOTAO_ARQUIVO, variante="cinza",
                                             tamanho_fonte=12)
         self.btn_autorizados.clicked.connect(self._sel_autorizados)
         self.lbl_autorizados = _rotulo_status()
         linha = self._linha_arquivo(self.btn_autorizados, self.lbl_autorizados)
-        self.btn_aplicar = blocos.botao("APLICAR AUTORIZAÇÕES", variante="primario", largura=200,
+        self.btn_aplicar = blocos.botao(t("APLICAR AUTORIZAÇÕES"), variante="primario", largura=200,
                                         tamanho_fonte=12, negrito=True)
         self.btn_aplicar.clicked.connect(self.aplicar_autorizacoes)
         linha.addWidget(self.btn_aplicar)               # pack(side="right")
@@ -322,8 +323,8 @@ class ModuloPMIBManager(ModuleFrame):
         linha_portal = QHBoxLayout()
         linha_portal.setSpacing(0)
         r["descricao_portal"] = blocos.rotulo(
-            "Ou confira no portal: o SIG-FT abre cada ficha física ainda sem AUTORIZADO e lê o "
-            "código SAP de recebimento. Precisa do login no PMIB.",
+            t("Ou confira no portal: o SIG-FT abre cada ficha física ainda sem AUTORIZADO e lê o "
+              "código SAP de recebimento. Precisa do login no PMIB."),
             papel="legenda", alinhar="esquerda")
         # O texto é mais longo que 480 px, então o CTkLabel ocupa os 480 inteiros;
         # o QLabel com quebra prefere a metade disso se ninguém fixar.
@@ -331,7 +332,7 @@ class ModuloPMIBManager(ModuleFrame):
         r["descricao_portal"].setMinimumHeight(ALTURA_DESCRICAO_CTK)    # duas linhas do Tk
         linha_portal.addWidget(r["descricao_portal"])    # pack(side="left")
         linha_portal.addStretch()
-        self.btn_conferir = blocos.botao("CONFERIR NO PORTAL", variante="primario", largura=200,
+        self.btn_conferir = blocos.botao(t("CONFERIR NO PORTAL"), variante="primario", largura=200,
                                          tamanho_fonte=12, negrito=True)
         self.btn_conferir.clicked.connect(self.conferir_no_portal)
         linha_portal.addWidget(self.btn_conferir)        # pack(side="right")
@@ -350,20 +351,20 @@ class ModuloPMIBManager(ModuleFrame):
 
     # --- seletores ------------------------------------------------------------
     def _sel_api(self) -> None:
-        f = file_dialogs.ask_open_file("pmib_manager.api", "excel", titulo="Selecione a Base de Dados API",
+        f = file_dialogs.ask_open_file("pmib_manager.api", "excel", titulo=t("Selecione a Base de Dados API"),
                                        filetypes=[("Excel", "*.xlsx *.xls")])
         if f:
             self.path_api = f
             blocos.marcar_arquivo_escolhido(self.btn_api, self.lbl_api_status, f)
 
     def _sel_root(self) -> None:
-        pasta = file_dialogs.ask_directory("pmib_manager.pasta_raiz", "pasta", titulo="Selecione a Pasta Raiz")
+        pasta = file_dialogs.ask_directory("pmib_manager.pasta_raiz", "pasta", titulo=t("Selecione a Pasta Raiz"))
         # Lá o campo recebia o "" do cancelar e apagava o caminho já escolhido.
         if pasta:
             self.entry_root.setText(pasta)
 
     def _sel_master(self) -> None:
-        f = file_dialogs.ask_open_file("pmib_manager.master", "excel", titulo="Selecione a Planilha Mestra",
+        f = file_dialogs.ask_open_file("pmib_manager.master", "excel", titulo=t("Selecione a Planilha Mestra"),
                                        filetypes=[("Excel", "*.xlsx *.xls")])
         if f:
             self.path_master = f
@@ -377,7 +378,7 @@ class ModuloPMIBManager(ModuleFrame):
 
     def _sel_autorizados(self) -> None:
         f = file_dialogs.ask_open_file("pmib_manager.autorizados", "excel",
-                                       titulo="Selecione o export de autorizados de Itaipu",
+                                       titulo=t("Selecione o export de autorizados de Itaipu"),
                                        filetypes=[("Excel", "*.xlsx")])
         if f:
             self.path_autorizados = f
@@ -415,10 +416,10 @@ class ModuloPMIBManager(ModuleFrame):
         root_folder = self.entry_root.text()
         master_path = self.path_master
         if not root_folder:
-            QMessageBox.warning(self, "Aviso", "Por favor, selecione a Pasta Raiz (Passo 2).")
+            QMessageBox.warning(self, t("Aviso"), t("Por favor, selecione a Pasta Raiz (Passo 2)."))
             return
         if not master_path:
-            QMessageBox.warning(self, "Aviso", "Por favor, selecione a Planilha de mapeamento (Passo 3).")
+            QMessageBox.warning(self, t("Aviso"), t("Por favor, selecione a Planilha de mapeamento (Passo 3)."))
             return
         self._travar_botoes(True)
         self.iniciar_tarefa(self._tarefa_painel, root_folder, master_path)
@@ -458,11 +459,11 @@ class ModuloPMIBManager(ModuleFrame):
         export = self.path_autorizados
         root_folder = self.entry_root.text()
         if not export:
-            QMessageBox.warning(self, "Aviso",
-                                "Por favor, selecione o export de autorizados de Itaipu (Passo 4).")
+            QMessageBox.warning(self, t("Aviso"),
+                                t("Por favor, selecione o export de autorizados de Itaipu (Passo 4)."))
             return
         if not root_folder:
-            QMessageBox.warning(self, "Aviso", "Por favor, selecione a Pasta Raiz dos _STATUS_PMIB (Passo 2).")
+            QMessageBox.warning(self, t("Aviso"), t("Por favor, selecione a Pasta Raiz dos _STATUS_PMIB (Passo 2)."))
             return
         self._travar_botoes(True)
         self.iniciar_tarefa(self._worker_autorizados, export, root_folder)
@@ -485,15 +486,15 @@ class ModuloPMIBManager(ModuleFrame):
                 nao_gravados = travas.quantos_no_resumo(linha) or nao_gravados
             self._progresso(1.0)
             if erros:
-                self.avisar("Aviso", "As autorizações não foram aplicadas. Veja o motivo no log.", tipo="aviso")
+                self.avisar(t("Aviso"), t("As autorizações não foram aplicadas. Veja o motivo no log."), tipo="aviso")
             elif avisos:
-                texto = texto_dos_avisos("As autorizações foram aplicadas", avisos, nao_gravados)
-                self.avisar("Concluído com avisos", texto, tipo="aviso")
+                texto = texto_dos_avisos(t("As autorizações foram aplicadas"), avisos, nao_gravados)
+                self.avisar(t("Concluído com avisos"), texto, tipo="aviso")
             else:
-                self.avisar("Sucesso", "Autorizações de Itaipu aplicadas.")
+                self.avisar(t("Sucesso"), t("Autorizações de Itaipu aplicadas."))
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"[ERRO FATAL]: {e}")
-            self.avisar("Erro", f"Ocorreu um erro ao aplicar as autorizações:\n{e}", tipo="erro")
+            self.avisar(t("Erro"), t("Ocorreu um erro ao aplicar as autorizações:\n{erro}", erro=e), tipo="erro")
         finally:
             self._destravar()
 
@@ -501,7 +502,7 @@ class ModuloPMIBManager(ModuleFrame):
     def conferir_no_portal(self) -> None:
         root_folder = self.entry_root.text()
         if not root_folder:
-            QMessageBox.warning(self, "Aviso", "Por favor, selecione a Pasta Raiz dos _STATUS_PMIB (Passo 2).")
+            QMessageBox.warning(self, t("Aviso"), t("Por favor, selecione a Pasta Raiz dos _STATUS_PMIB (Passo 2)."))
             return
         self._travar_botoes(True)
         self.iniciar_tarefa(self._worker_conferir_portal, root_folder)
@@ -519,7 +520,7 @@ class ModuloPMIBManager(ModuleFrame):
             conferencia.iniciar_navegador()
             self.log("Carregando portal...")
             conferencia.abrir_portal()
-            self.pausar_e_esperar(MSG_LOGIN_CONFERIR_AUTORIZACOES)
+            self.pausar_e_esperar(t(MSG_LOGIN_CONFERIR_AUTORIZACOES))
             erros = avisos = nao_gravados = 0
             for linha in conferencia.executar(root_folder, callback_travados=self.perguntar_arquivos_travados):
                 self.log(linha)
@@ -528,15 +529,15 @@ class ModuloPMIBManager(ModuleFrame):
                 nao_gravados = travas.quantos_no_resumo(linha) or nao_gravados
             self._progresso(1.0)
             if erros:
-                self.avisar("Aviso", "A conferência no portal não terminou. Veja o motivo no log.", tipo="aviso")
+                self.avisar(t("Aviso"), t("A conferência no portal não terminou. Veja o motivo no log."), tipo="aviso")
             elif avisos:
-                texto = texto_dos_avisos("A conferência no portal terminou", avisos, nao_gravados)
-                self.avisar("Concluído com avisos", texto, tipo="aviso")
+                texto = texto_dos_avisos(t("A conferência no portal terminou"), avisos, nao_gravados)
+                self.avisar(t("Concluído com avisos"), texto, tipo="aviso")
             else:
-                self.avisar("Sucesso", "Conferência no portal concluída.")
+                self.avisar(t("Sucesso"), t("Conferência no portal concluída."))
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"[ERRO FATAL]: {e}")
-            self.avisar("Erro", f"Ocorreu um erro na conferência no portal:\n{e}", tipo="erro")
+            self.avisar(t("Erro"), t("Ocorreu um erro na conferência no portal:\n{erro}", erro=e), tipo="erro")
         finally:
             conferencia.fechar_navegador()
             self._destravar()
@@ -548,13 +549,13 @@ class ModuloPMIBManager(ModuleFrame):
         root_folder = self.entry_root.text()
         master_path = self.path_master
         if not api_path:
-            QMessageBox.warning(self, "Aviso", "Por favor, selecione a Base do Aconex (Passo 1).")
+            QMessageBox.warning(self, t("Aviso"), t("Por favor, selecione a Base do Aconex (Passo 1)."))
             return
         if not root_folder:
-            QMessageBox.warning(self, "Aviso", "Por favor, selecione a Pasta Raiz (Passo 2).")
+            QMessageBox.warning(self, t("Aviso"), t("Por favor, selecione a Pasta Raiz (Passo 2)."))
             return
         if not master_path:
-            QMessageBox.warning(self, "Aviso", "Por favor, selecione a Planilha de mapeamento (Passo 3).")
+            QMessageBox.warning(self, t("Aviso"), t("Por favor, selecione a Planilha de mapeamento (Passo 3)."))
             return
         # 2. O backend no clique: se não carregou, diz o motivo e não trava nada.
         modulo = self.backend("pmib_manager_backend")
@@ -620,21 +621,21 @@ class ModuloPMIBManager(ModuleFrame):
 
             if sucesso_total and avisos:
                 self._progresso(1.0)
-                texto = texto_dos_avisos("O processo de Gestão PMIB terminou", avisos, nao_gravados)
-                self.avisar("Concluído com avisos", texto, tipo="aviso")
+                texto = texto_dos_avisos(t("O processo de Gestão PMIB terminou"), avisos, nao_gravados)
+                self.avisar(t("Concluído com avisos"), texto, tipo="aviso")
             elif sucesso_total:
                 self._progresso(1.0)
-                self.avisar("Sucesso", "Processo de Gestão PMIB finalizado com sucesso!")
+                self.avisar(t("Sucesso"), t("Processo de Gestão PMIB finalizado com sucesso!"))
             else:
                 # Não dá mais para dizer "nenhuma alteração foi salva": os
                 # `_STATUS_PMIB` e a mapeadora são gravados ao longo do fluxo,
                 # e o que foi gravado antes do erro continua gravado.
-                self.avisar("Aviso", "O processo foi interrompido ou terminou com erros.\n\n"
-                                     "O que foi gravado antes do erro continua gravado. "
-                                     "Veja o log para saber o que faltou.", tipo="aviso")
+                self.avisar(t("Aviso"), t("O processo foi interrompido ou terminou com erros.\n\n"
+                                          "O que foi gravado antes do erro continua gravado. "
+                                          "Veja o log para saber o que faltou."), tipo="aviso")
         except Exception as e:  # noqa: BLE001 -- mesmo texto da tela antiga
             self.log(f"[ERRO FATAL]: {e}")
-            self.avisar("Erro", f"Ocorreu um erro fatal durante a execução:\n{e}", tipo="erro")
+            self.avisar(t("Erro"), t("Ocorreu um erro fatal durante a execução:\n{erro}", erro=e), tipo="erro")
         finally:
             # Reativa os botões ao final de tudo (seja erro ou sucesso)
             self._destravar()

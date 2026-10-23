@@ -10,13 +10,15 @@ e `aplicar` faz a troca inteira na hora:
    uma é refeita a partir da folha de antes do aumento, guardada nela;
 3. peça criada depois (tela aberta pela primeira vez) ou que trocou de folha
    (`blocos.pintar`, a repintura do tema): um vigia no app ajusta no
-   `Polish`/`StyleChange`. O vigia só existe com a letra grande: no normal nada
-   muda, nem as medidas;
+   `Polish`/`StyleChange`. O vigia só existe com a letra grande (ou fora do
+   português, item 4): no normal em português nada muda, nem as medidas;
 4. botão ou rótulo de uma linha com largura FIXA (fix round 1, 2026-10-21): com
    a letra grande o texto passaria da largura e seria cortado ("APLICAR
    AUTORIZAÇÕES" em 200 px), então a largura sobe até o `sizeHint`; no normal
    volta à de antes, guardada na peça. O rótulo que elide (`RotuloElidido`) e o
    de várias linhas ficam como estão: estreitar é o trabalho deles.
+   Fora do português (2026-10-22) vale o mesmo, com a letra normal também: as
+   larguras fixas foram medidas no português (`_pede_folga`).
 
 No fim, `mudou` avisa quem arruma a tela pelo tamanho (a barra da Home).
 """
@@ -25,11 +27,12 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import QEvent, QObject, Qt, Signal
-from PySide6.QtWidgets import QAbstractButton, QLabel, QWidget
+from PySide6.QtWidgets import QAbstractButton, QApplication, QLabel, QWidget
 
-from sigft.app import tokens
+from sigft.app import idioma, tokens
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets.blocos import RotuloElidido
+from sigft.app_qt import propriedades
 
 _log = logging.getLogger(__name__)
 
@@ -83,6 +86,12 @@ def aumento(escolha: str) -> int:
     return tokens.AUMENTO_DA_LETRA[_valida(escolha)]
 
 
+def _pede_folga(aumento_px: int) -> bool:
+    """Largura fixa alarga até caber o texto: com a letra grande, ou num idioma
+    que não é o português (as larguras fixas foram medidas nele)."""
+    return bool(aumento_px) or idioma.atual() != idioma.PADRAO
+
+
 def ajustar_widget(widget: QWidget, aumento_px: int) -> None:
     """Refaz a folha própria (e a fonte em pixel) de `widget` com `aumento_px`,
     sempre a partir da de antes do aumento: chamar duas vezes não soma duas.
@@ -105,7 +114,7 @@ def _ajustar_folha_e_fonte(widget: QWidget, aumento_px: int) -> None:
     if not widget.testAttribute(Qt.WidgetAttribute.WA_SetFont):
         return
     fonte = widget.font()
-    base_px = widget.property(_PROP_FONTE_BASE)
+    base_px = propriedades.ler(widget, _PROP_FONTE_BASE)
     if base_px is None:
         if fonte.pixelSize() <= 0:
             return   # fonte em pontos: o tamanho vem da folha, que já foi ajustada
@@ -126,32 +135,37 @@ def _texto_de_largura_fixa(widget: QWidget) -> bool:
 
 
 def _ajustar_largura(widget: QWidget, aumento_px: int) -> None:
-    """Largura fixa com a letra grande: no mínimo o `sizeHint` (o texto inteiro).
-    No normal, a largura de antes, ao pixel; peça nunca alargada: nada muda."""
-    original = widget.property(_PROP_LARGURA_FIXA)
+    """Largura fixa com folga (`_pede_folga`): no mínimo o `sizeHint` (o texto
+    inteiro). Sem folga, a largura de antes, ao pixel; peça nunca alargada: nada muda."""
+    folga = _pede_folga(aumento_px)
+    original = propriedades.ler(widget, _PROP_LARGURA_FIXA)
     if original is None:
-        if not aumento_px or not _texto_de_largura_fixa(widget):
+        if not folga or not _texto_de_largura_fixa(widget):
             return
         original = widget.maximumWidth()
-    alvo = max(original, widget.sizeHint().width()) if aumento_px else original
+    alvo = max(original, widget.sizeHint().width()) if folga else original
     if (widget.minimumWidth(), widget.maximumWidth()) != (alvo, alvo):
         widget.setFixedWidth(alvo)
-    widget.setProperty(_PROP_LARGURA_FIXA, original if aumento_px else None)
+    widget.setProperty(_PROP_LARGURA_FIXA, original if folga else None)
 
 
 class _Vigia(QObject):
-    """Ajusta a peça que nasce ou troca de folha com a letra grande valendo."""
+    """Ajusta a peça que nasce ou troca de folha com a letra grande valendo, ou
+    fora do português (só a largura fixa, aí)."""
 
     def eventFilter(self, obj, evento) -> bool:  # noqa: N802 -- nome do Qt
-        if evento.type() in _TIPOS_VIGIADOS and estilo.AUMENTO_LETRA and isinstance(obj, QWidget):
+        if evento.type() in _TIPOS_VIGIADOS and isinstance(obj, QWidget) \
+                and _pede_folga(estilo.AUMENTO_LETRA):
             try:
-                ajustar_widget(obj, estilo.AUMENTO_LETRA)
+                if estilo.AUMENTO_LETRA:
+                    _ajustar_folha_e_fonte(obj, estilo.AUMENTO_LETRA)
+                _ajustar_largura(obj, estilo.AUMENTO_LETRA)
             except RuntimeError:
                 pass   # peça já destruída
         return False
 
 
-# O vigia instalado no app (no máximo um; nenhum com a letra normal).
+# O vigia instalado no app (no máximo um; nenhum com a letra normal em português).
 _vigia: list = []
 
 
@@ -162,6 +176,14 @@ def _vigiar(app, ligado: bool) -> None:
         _vigia.append(vigia)
     elif not ligado and _vigia:
         app.removeEventFilter(_vigia.pop())
+
+
+def reavaliar_vigia(app=None) -> None:
+    """Liga ou desliga o vigia pelo estado de agora (letra e idioma), sem refazer
+    folha nenhuma: para quem troca o idioma sem passar por `aplicar` (os testes)."""
+    app = app or QApplication.instance()
+    if app is not None:
+        _vigiar(app, _pede_folga(estilo.AUMENTO_LETRA))
 
 
 def aplicar(app, escolha: str, *, gravar: bool = True) -> str:
@@ -179,7 +201,7 @@ def aplicar(app, escolha: str, *, gravar: bool = True) -> str:
         except Exception:  # noqa: BLE001 -- lembrar não pode impedir a troca
             _log.warning("nao consegui gravar o tamanho de letra escolhido", exc_info=True)
     estilo.AUMENTO_LETRA = aumento(escolha)
-    _vigiar(app, bool(estilo.AUMENTO_LETRA))
+    _vigiar(app, _pede_folga(estilo.AUMENTO_LETRA))
     app.setStyleSheet(estilo.folha_de_estilo())
     # Duas passadas: a largura mede o texto com a fonte NOVA, e a de uma peça
     # pode vir da folha do pai (as abas), refeita na primeira passada.

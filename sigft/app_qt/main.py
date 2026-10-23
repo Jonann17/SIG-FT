@@ -37,9 +37,11 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from sigft import _build_info
-from sigft.app import backends, tokens
+from sigft.app import backends, idioma, tokens
+from sigft.app.idioma import t
 from sigft.app_qt import (
-    atualizacao, catalogo, cursor, estilo, icones, interface, letra, novidades, pasta_de_logs, tema,
+    atualizacao, catalogo, cursor, escolha_de_idioma, estilo, icones, interface, letra, novidades,
+    pasta_de_logs, tema,
 )
 from sigft.app_qt import nome as nome_da_pessoa
 from sigft.app_qt.views.aplicacao_lmr import ModuloAplicacaoLMR
@@ -51,6 +53,7 @@ from sigft.app_qt.widgets.marca import Marca
 from sigft.app_qt.widgets.paleta import PaletaDeComandos
 from sigft.core import instancia
 from sigft.core.saida_log import desviar_saida_para_arquivo
+from sigft.app_qt import propriedades
 
 # Sem console (o .exe), `print` e traceback vão para `logs/sigft.log`: é o canal
 # de diagnóstico da primeira execução em máquina nova. No import, antes de
@@ -137,10 +140,10 @@ TELAS = {
     "SearchPMIB": _busca_pmib,
 }
 
-# Ctrl+K (etapa 1b, 2026-10-21): o método da Home que cada `acao:` chama, da
-# lista única `catalogo.ACOES_DA_HOME`. As outras ações (`inicio`, `logs`,
-# `tema_*`) estão em `executar_comando`.
-ACAO_NA_HOME = {acao.chave: acao.metodo for acao in catalogo.ACOES_DA_HOME}
+# Ctrl+K (etapa 1b, 2026-10-21): o método da Home que cada `acao:` chama, das
+# listas únicas de `catalogo` (a barra, a engrenagem e a janela Configuração). As
+# outras ações (`inicio`, `logs`, `tema_*`, `letra_*`) estão em `executar_comando`.
+ACAO_NA_HOME = {acao.chave: acao.metodo for acao in catalogo.ACOES_QUE_A_HOME_FAZ}
 
 
 def resource_path(relativo: str) -> str:
@@ -227,7 +230,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         lay.addWidget(self.marca)
         lay.addSpacing(22)
         # O emoji virou ícone (Lucide, na cor do tema: sistema visual, 2026-10-20).
-        home = QPushButton(" Home", objectName="home")
+        home = QPushButton(f" {t('Home')}", objectName="home")
         # O ícone acompanha o texto do item escolhido (e sob o mouse): a marca
         # no claro (2026-10-20).
         icones.aplicar(home, catalogo.ICONE_DA_TELA["Home"], tamanho=16,
@@ -235,7 +238,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         self.botao_home = home
         blocos.sem_tecla(home)   # os botões da barra (CTkButton) nunca pegam o foco
         home.clicked.connect(self.show_home)
-        home.setToolTip("Volta à tela inicial: os módulos, as chaves de API e os modelos de IA.")
+        home.setToolTip(t("Volta à tela inicial: os módulos, a engrenagem da configuração e os gastos de IA."))
         lay.addWidget(home)
         lay.addSpacing(6)
 
@@ -243,11 +246,11 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         for item in catalogo.MENU:
             if item[0] == "secao":
                 lay.addSpacing(20)
-                lay.addWidget(QLabel(item[1].upper(), objectName="secao"))
+                lay.addWidget(QLabel(t(item[1]).upper(), objectName="secao"))
                 lay.addSpacing(5)
                 continue
             _tipo, texto, alvo = item
-            botao = QPushButton(f" {texto}")
+            botao = QPushButton(f" {t(texto)}")
             blocos.sem_tecla(botao)
             botao.setProperty("menu", True)
             icones.aplicar(botao, catalogo.ICONE_DA_TELA[alvo], tamanho=16,
@@ -295,7 +298,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         botoes = {**self.botoes_menu, "Home": self.botao_home}
         for alvo, botao in botoes.items():
             ativo = alvo == nome
-            if bool(botao.property("ativo")) == ativo:
+            if bool(propriedades.ler(botao, "ativo")) == ativo:
                 continue
             botao.setProperty("ativo", ativo)
             # Propriedade dinâmica não repinta sozinha: a folha é reaplicada,
@@ -398,7 +401,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
     def closeEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
         if not self.fechar_sem_perguntar and instancia.tarefas_em_andamento():
             resposta = QMessageBox.question(
-                self, "Fechar o SIG-FT", catalogo.MSG_TAREFA_EM_ANDAMENTO,
+                self, t("Fechar o SIG-FT"), t(catalogo.MSG_TAREFA_EM_ANDAMENTO),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             if resposta != QMessageBox.StandardButton.Yes:
@@ -452,7 +455,7 @@ class SplashScreen(QWidget):
         self.versao.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(self.versao)
         lay.addStretch()
-        self.status = QLabel("Iniciando...")
+        self.status = QLabel(t("Iniciando..."))
         self.status.setObjectName("splash_status")
         self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(self.status)
@@ -478,16 +481,17 @@ class SplashScreen(QWidget):
         inicio = time.time()
 
         def progredir(exibido, fracao):
-            interface.na_interface(self.status.setText, f"Carregando: {exibido}...")
+            interface.na_interface(self.status.setText, t("Carregando: {nome}...", nome=exibido))
             interface.na_interface(self.barra.setValue, int(fracao * 1000))
 
         def falhar(exibido, erro):
             print(f"Erro ao carregar {exibido}: {erro}")
-            interface.na_interface(self.status.setText, f"Erro em {exibido}")
+            interface.na_interface(self.status.setText, t("Erro em {nome}", nome=exibido))
 
         try:
             backends.carregar_todos(ao_progredir=progredir, ao_falhar=falhar)
-            interface.na_interface(self.status.setText, f"Concluído em {time.time() - inicio:.1f}s")
+            interface.na_interface(self.status.setText,
+                                   t("Concluído em {segundos}s", segundos=f"{time.time() - inicio:.1f}"))
         except BaseException:  # noqa: BLE001 -- inclui SystemExit de um backend no import
             traceback.print_exc()
         finally:
@@ -502,17 +506,30 @@ def _texto_da_versao() -> str:
     é o padrão commitado). `_build_info` sem `VERSAO`: um texto que não
     quebra a abertura."""
     versao = getattr(_build_info, "VERSAO", "") or ""
-    return f"versão {versao}" if versao else "versão de desenvolvimento"
+    return t("versão {versao}", versao=versao) if versao else t("versão de desenvolvimento")
+
+
+# A tradução dos botões padrão do Qt ("Sim", "Não", "Cancelar") de cada idioma da
+# interface (2026-10-22). O inglês não tem: o Qt já é inglês. O `SIG-FT.spec`
+# leva estas e a `--conferir-pacote` confere (`conferencia.TRADUCOES_DA_QT`).
+LOCALE_DO_QT = {"pt": "pt_BR", "es": "es"}
 
 
 def _instalar_traducao(app) -> bool:
-    """Botões dos diálogos do Qt em português ("Sim", "Não", "Cancelar").
-    Sem isto o QMessageBox mostra "Yes"/"No"/"Cancel"."""
+    """Botões dos diálogos do Qt no idioma da sessão (`idioma.atual()`). Troca a
+    instalada antes, se houver. `True` se instalou uma."""
     from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
 
+    anterior = getattr(app, "_tradutor_qt", None)
+    if anterior is not None:
+        app.removeTranslator(anterior)
+        app._tradutor_qt = None
+    local = LOCALE_DO_QT.get(idioma.atual())
+    if local is None:
+        return False
     tradutor = QTranslator(app)
     pasta = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
-    if tradutor.load(QLocale("pt_BR"), "qtbase", "_", pasta):
+    if tradutor.load(QLocale(local), "qtbase", "_", pasta):
         app.installTranslator(tradutor)
         app._tradutor_qt = tradutor  # segura a referência
         return True
@@ -562,13 +579,17 @@ def _criar_qapplication() -> QApplication:
         qInstallMessageHandler(anterior)
 
 
-def _preparar_qt(escolha_tema: str | None = None, escolha_letra: str | None = None) -> QApplication:
-    """A QApplication pronta: tradução, fontes, cursor, a letra e o tema.
+def _preparar_qt(escolha_tema: str | None = None, escolha_letra: str | None = None,
+                 escolha_idioma: str | None = None) -> QApplication:
+    """A QApplication pronta: idioma, tradução do Qt, fontes, cursor, a letra e o tema.
 
-    Letra e tema são os guardados nas preferências, ou os da linha de comando
-    (`--smoke --tema claro --letra grande`), sem gravar: a abertura só lê. A
-    letra vem antes: a folha que o tema aplica já sai com o aumento."""
+    Idioma, letra e tema são os guardados nas preferências, ou os da linha de
+    comando (`--smoke --idioma es --tema claro --letra grande`), sem gravar: a
+    abertura só lê. O idioma vem primeiro (a tradução do Qt e a largura das
+    peças dependem dele); a letra antes do tema (a folha que o tema aplica já
+    sai com o aumento)."""
     app = QApplication.instance() or _criar_qapplication()
+    idioma.definir(escolha_idioma or idioma.escolhido() or idioma.PADRAO)
     _instalar_traducao(app)
     interface.instalar()
     estilo.carregar_fontes()
@@ -577,6 +598,14 @@ def _preparar_qt(escolha_tema: str | None = None, escolha_letra: str | None = No
     tema.seguir_o_sistema(app)
     cursor.instalar(app)
     return app
+
+
+def _aplicar_idioma(app, codigo: str) -> None:
+    """O idioma escolhido na primeira abertura, antes de a janela principal
+    existir: a sessão, a tradução do Qt e a largura das peças (`letra`)."""
+    idioma.definir(codigo)
+    _instalar_traducao(app)
+    letra.aplicar(app, letra.atual(), gravar=False)
 
 
 def _opcao_da_linha_de_comando(argv: list[str], nome: str) -> str | None:
@@ -629,6 +658,10 @@ def main() -> None:
               "so o robo do portal vai reclamar de navegador quando for usado.")
 
     app = _preparar_qt()
+    # [2026-10-22] Sem idioma escolhido (instalação nova ou atualização): a pergunta,
+    # antes da splash e da janela principal, que já nascem no idioma escolhido.
+    if (escolhido := escolha_de_idioma.perguntar_na_abertura()) is not None:
+        _aplicar_idioma(app, escolhido)
     splash = SplashScreen()
     janela: list[SIG_FT_App] = []
 
@@ -639,12 +672,14 @@ def main() -> None:
             traceback.print_exception(erro)
             # Sai com 1: o `SIG-FT.bat` e o `.command` esperam este processo e
             # deixam a janela preta aberta com "Encerrado com erro".
-            QMessageBox.critical(None, "SIG-FT", catalogo.MSG_ABERTURA_FALHOU.format(
-                erro=f"{type(erro).__name__}: {erro}"))
+            QMessageBox.critical(None, "SIG-FT", t(
+                catalogo.MSG_ABERTURA_FALHOU, erro=f"{type(erro).__name__}: {erro}"))
             instancia.encerrar(1)
             return
         janela.append(principal)
-        principal.show()
+        # [2026-10-23] Abre maximizada (a tela inteira, com a barra do Windows à
+        # vista); o "restaurar" volta ao 1280x850 do `resize`.
+        principal.showMaximized()
         splash.close()
         # [2026-10-20] "Como podemos te chamar?", uma vez, logo depois de a
         # janela aparecer (antes das novidades, que esperam a resposta). Daqui,
@@ -698,16 +733,26 @@ def _smoke() -> int:
     os.environ[aviso_windows.ENV_DESLIGAR] = "1"
     avisos: list[str] = []
     try:
-        # `--smoke --tema claro --letra grande`: o smoke também no claro e com a
-        # letra grande, sem gravar a escolha.
+        # `--smoke --tema claro --letra grande --idioma es`: o smoke também no
+        # claro, com a letra grande e em outro idioma (`--idioma es`), sem gravar
+        # a escolha.
         _preparar_qt(_tema_da_linha_de_comando(sys.argv),
-                     _opcao_da_linha_de_comando(sys.argv, "--letra"))
+                     _opcao_da_linha_de_comando(sys.argv, "--letra"),
+                     _opcao_da_linha_de_comando(sys.argv, "--idioma"))
         # Os ícones desenham? Um SVG ou o QtSvg fora do `.exe` daria botões em
         # branco SEM erro (2026-10-20: a mesma classe do pymupdf-layout, um
         # arquivo que faltava só no pacote). Aqui o Release reprova.
         if (sem_desenho := icones.conferir()):
             relatorio = (f"[smoke] FALHOU: icones que nao desenham ({len(sem_desenho)}): "
                          f"{', '.join(sem_desenho)} (pasta {icones.PASTA})")
+            gravar_relatorio(ARQUIVO_JANELA, relatorio)
+            print(relatorio)
+            return 1
+        # Os catálogos de idioma se leem? Fora do `.exe`, o app abriria só em
+        # português, sem erro: a mesma classe dos ícones (2026-10-22).
+        if (sem_catalogo := idioma.conferir()):
+            relatorio = (f"[smoke] FALHOU: catalogos de idioma que nao se leem: "
+                         f"{', '.join(sem_catalogo)} (pasta {idioma.PASTA_CATALOGOS})")
             gravar_relatorio(ARQUIVO_JANELA, relatorio)
             print(relatorio)
             return 1

@@ -32,6 +32,7 @@ from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QAbstractButton, QLabel, QWidget
 
 from sigft.app_qt import estilo
+from sigft.app_qt import propriedades
 
 _log = logging.getLogger(__name__)
 
@@ -104,18 +105,18 @@ def conferir() -> list[str]:
 
 
 def _cor(widget: QWidget) -> str:
-    papel = widget.property("icone_cor")
-    destacado = bool(widget.property("ativo")) or (
-        bool(widget.property("icone_sob_mouse")) and widget.isEnabled())
-    if destacado and widget.property("icone_cor_ativo"):
-        papel = widget.property("icone_cor_ativo")
+    papel = propriedades.ler(widget, "icone_cor")
+    destacado = bool(propriedades.ler(widget, "ativo")) or (
+        bool(propriedades.ler(widget, "icone_sob_mouse")) and widget.isEnabled())
+    if destacado and propriedades.ler(widget, "icone_cor_ativo"):
+        papel = propriedades.ler(widget, "icone_cor_ativo")
     if papel:
         cor = estilo.cor_do_papel(papel)
         if cor is not None:
             return cor
         # Papel errado não derruba a tela: o ícone sai na cor do texto do botão.
-        _log.warning("icone %r: papel de cor desconhecido %r", widget.property("icone"), papel)
-    return estilo.cor_do_texto_da_variante(widget.property("variante"))
+        _log.warning("icone %r: papel de cor desconhecido %r", propriedades.ler(widget, "icone"), papel)
+    return estilo.cor_do_texto_da_variante(propriedades.ler(widget, "variante"))
 
 
 class _SegueOMouse(QObject):
@@ -132,8 +133,8 @@ class _SegueOMouse(QObject):
 
 
 def _pintar(widget: QWidget) -> None:
-    nome = widget.property("icone")
-    tamanho = int(widget.property("icone_tamanho") or TAMANHO_PADRAO)
+    nome = propriedades.ler(widget, "icone")
+    tamanho = int(propriedades.ler(widget, "icone_tamanho") or TAMANHO_PADRAO)
     desenho = icone(nome, _cor(widget), tamanho)
     if isinstance(widget, QAbstractButton):
         widget.setIcon(desenho)
@@ -153,7 +154,7 @@ def aplicar(widget: QWidget, nome: str, *, papel_cor: str | None = None,
     widget.setProperty("icone_cor", papel_cor)
     widget.setProperty("icone_cor_ativo", papel_cor_ativo)
     widget.setProperty("icone_tamanho", tamanho)
-    if papel_cor_ativo and not widget.property("icone_segue_mouse"):
+    if papel_cor_ativo and not propriedades.ler(widget, "icone_segue_mouse"):
         widget.setProperty("icone_segue_mouse", True)
         widget.installEventFilter(_SegueOMouse(widget))
     _pintar(widget)
@@ -164,5 +165,5 @@ def reaplicar(raiz: QWidget) -> None:
     """Repinta, com a paleta do tema de agora, todo ícone posto por `aplicar`
     em `raiz` e nos filhos dela. A troca de tema chama isto (Task 7)."""
     for widget in [raiz, *raiz.findChildren(QWidget)]:
-        if widget.property("icone"):
+        if propriedades.ler(widget, "icone"):
             _pintar(widget)

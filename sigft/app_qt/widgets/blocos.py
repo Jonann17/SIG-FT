@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from sigft.app_qt import estilo
+from sigft.app_qt import propriedades
 
 # "esquerda" é o anchor="w" do CTkLabel: encostado à esquerda, centrado na vertical.
 _ALINHAMENTO = {
@@ -192,7 +193,7 @@ def pintar(widget, folha: str) -> None:
     """O `configure(fg_color=..., text_color=...)` da interface antiga numa peça com folha
     própria: a folha de quando ela nasceu + `folha`. Pintar de novo REFAZ a
     folha a partir dessa base, em vez de somar regra a regra a cada escolha."""
-    base = widget.property(_FOLHA_BASE)
+    base = propriedades.ler(widget, _FOLHA_BASE)
     if base is None:
         # A folha de antes do aumento da letra (2026-10-21): o aumento é refeito
         # depois, pelo vigia de `letra.py`; somado aqui, ele contaria duas vezes.

@@ -28,6 +28,7 @@ import pandas as pd
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMessageBox, QSizePolicy, QVBoxLayout, QWidget
 
+from sigft.app.idioma import marcar, t
 from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA, MSG_LOGIN_PAGINA_PRINCIPAL
 from sigft.app_qt import estilo, file_dialogs, icones, interface
 from sigft.app_qt.views.janelas import JanelaAcaoRobo, JanelaResumo, JanelaRevisaoPDM, JanelaSelecao
@@ -45,15 +46,16 @@ from sigft.services import cria_fichas as cria_fichas_svc
 # 2026-10-08: o registro de calibração da escolha de PDM (IA x revisão).
 from sigft.services import cria_fichas_escolha
 
-ABA_CRIACAO = "Criação de Fichas"
-ABA_EDICAO = "Editar código do projeto"
+ABA_CRIACAO = marcar("Criação de Fichas")
+ABA_EDICAO = marcar("Editar código do projeto")
 URL_LISTA = "https://apps.itaipu.gov.br/PMIB/PMIB_DatasheetList"
-MSG_PREPARO = "Certifique-se de que a tela do navegador está na lista principal antes de clicar em OK."
+MSG_PREPARO = marcar("Certifique-se de que a tela do navegador está na lista principal antes de clicar em OK.")
 # Um robô por vez: a criação e a edição usam o mesmo navegador (`self.bot`), e
-# uma revisão confirmada no meio não pode subir um segundo robô.
+# uma revisão confirmada no meio não pode subir um segundo robô. Vai ao console
+# (`_robo_ocupado`), por isso fica em português, sem `marcar`.
 MSG_ROBO_OCUPADO = ("O robô já está trabalhando no portal (criação ou edição). "
                     "Espere ele terminar antes de iniciar outro.")
-PLACEHOLDER_PROJETO = (
+PLACEHOLDER_PROJETO = marcar(
     "Ex: SERVIÇOS AUXILIARES ELÉTRICOS / CAP.05 - CONVERSORES ESTÁTICOS DE FREQUENCIA / "
     "Especificar subsistema | #ST00=B01MSE00&EPB020 / 08934100BAX00-FS00PB-51 | "
     "Evento de Pagamento: 2835 / 2835 a / 2836")
@@ -182,7 +184,7 @@ class ModuloCriaFichas(ModuleFrame):
         self._lote_enviado = None
         self.janela_resumo = None
         self._df_da_janela_resumo = None
-        super().__init__(parent, controller, titulo="Módulo de Criação", altura_console=None)
+        super().__init__(parent, controller, titulo=t("Módulo de Criação"), altura_console=None)
         # Lá a tela não é o ModuleFrame: header pady=10, Tabview pady=0,
         # console pady=10, dentro do padx/pady=20 do `show_frame`. Os pady
         # vizinhos SOMAM: 10 entre header e abas, 10 entre abas e console.
@@ -198,8 +200,8 @@ class ModuloCriaFichas(ModuleFrame):
         # Tabview dentro de um CTkFrame de fundo padrão: o quadro é gray16.
         self.abas = Abas(interno=True)
         self.content_layout.addWidget(self.abas)
-        self.aba_criacao = self.abas.add(ABA_CRIACAO)
-        self.aba_edicao = self.abas.add(ABA_EDICAO)
+        self.aba_criacao = self.abas.add(t(ABA_CRIACAO))
+        self.aba_edicao = self.abas.add(t(ABA_EDICAO))
         self._build_ui_criacao()
         self._build_ui_edicao()
 
@@ -210,42 +212,42 @@ class ModuloCriaFichas(ModuleFrame):
         corpo.addSpacing(10)                            # frm_config: pady=10
         config = _cartao(corpo, fim=10)
         self.cartao_config = config.parentWidget()
-        self.rotulo_etapa1 = _titulo("1. Configuração Inicial")
+        self.rotulo_etapa1 = _titulo(t("1. Configuração Inicial"))
         config.addWidget(self.rotulo_etapa1)
         config.addSpacing(15)                           # título (…, 10) + f_proj (5, …)
 
         # Código do Projeto
         linha = _linha(config)
-        self.rotulo_projeto = _rotulo("Código do Projeto:", largura=150)
+        self.rotulo_projeto = _rotulo(t("Código do Projeto:"), largura=150)
         linha.addWidget(self.rotulo_projeto)
         self.entry_projeto = QLineEdit()  # o visual (28 px) é o do CTkEntry, na folha do app
-        self.entry_projeto.setPlaceholderText(PLACEHOLDER_PROJETO)
+        self.entry_projeto.setPlaceholderText(t(PLACEHOLDER_PROJETO))
         linha.addWidget(self.entry_projeto, 1)
         linha.addSpacing(10)                            # entry: padx=(0, 10)
         config.addSpacing(10)                           # f_proj (…, 5) + f_pmib (5, …)
 
         # Botão Selecionar PMIB
         linha = _linha(config)
-        self.rotulo_pmib = _rotulo("Arquivo STATUS_PMIB:", largura=150)
+        self.rotulo_pmib = _rotulo(t("Arquivo STATUS_PMIB:"), largura=150)
         linha.addWidget(self.rotulo_pmib)
-        self.btn_pmib = _botao("Selecionar Excel (.xlsx)", variante="cinza", largura=200, altura=28)
+        self.btn_pmib = _botao(t("Selecionar Excel (.xlsx)"), variante="cinza", largura=200, altura=28)
         self.btn_pmib.clicked.connect(self.selecionar_excel_pmib)
         linha.addWidget(self.btn_pmib)
         linha.addSpacing(10)                            # lbl_status: padx=10
-        self.lbl_status = _rotulo("Aguardando...", papel="legenda")
+        self.lbl_status = _rotulo(t("Aguardando..."), papel="legenda")
         linha.addWidget(self.lbl_status)
         linha.addStretch()
         config.addSpacing(15)                           # f_pmib (…, 5) + f_opts (10, …)
 
         # Checkbox Pular IA e Botão PDM
         linha = _linha(config)
-        self.chk_pular = controles.CaixaDeMarcar("Pular IA (Dados já no Excel)")
+        self.chk_pular = controles.CaixaDeMarcar(t("Pular IA (Dados já no Excel)"))
         self.chk_pular.toggled.connect(self._toggle_pdm_button)
         linha.addWidget(self.chk_pular)
         linha.addSpacing(20)                            # btn_pdm: padx=20
         # Texto de 2026-09-22: o módulo aceita a planilha-mestra da Itaipu
         # (PDMs SAM-GM) direto -- é dela que vêm a classe FSC e as características.
-        self.btn_pdm = _botao("Selecionar planilha de PDMs (mestra)", variante="cinza",
+        self.btn_pdm = _botao(t("Selecionar planilha de PDMs (mestra)"), variante="cinza",
                               largura_minima=estilo.LARGURA_BOTAO_CTK, altura=28)
         self.btn_pdm.clicked.connect(self.selecionar_excel_pdm)
         linha.addWidget(self.btn_pdm)
@@ -258,7 +260,7 @@ class ModuloCriaFichas(ModuleFrame):
         corpo.addSpacing(20)                            # frm_config (…, 10) + frm_action (10, …)
         acoes = _cartao(corpo, fim=15)
         self.cartao_acoes = acoes.parentWidget()
-        self.rotulo_etapa2 = _titulo("2. Execução")
+        self.rotulo_etapa2 = _titulo(t("2. Execução"))
         acoes.addWidget(self.rotulo_etapa2)
         acoes.addSpacing(20)                            # título (…, 10) + grade (10, …)
 
@@ -266,16 +268,16 @@ class ModuloCriaFichas(ModuleFrame):
         # (uniform, CONTANDO o padx de cada célula: (0, 5) e (5, 15)); a 2 é o
         # Limpar de 100 px, das duas linhas.
         grade = _linha(acoes)
-        self.btn_run_ai = _botao("3. Analisar (IA)", variante="primario", altura=40, tamanho_fonte=14,
+        self.btn_run_ai = _botao(t("3. Analisar (IA)"), variante="primario", altura=40, tamanho_fonte=14,
                                  negrito=True)
         self.btn_run_ai.clicked.connect(self.run_ai_thread)
-        self.btn_run_auto = _botao("4. Robô Web", variante="primario", altura=40, tamanho_fonte=14,
+        self.btn_run_auto = _botao(t("4. Robô Web"), variante="primario", altura=40, tamanho_fonte=14,
                                    negrito=True)
         self.btn_run_auto.clicked.connect(self.run_automation_thread)
-        self.btn_resumo = _botao("Ver Resumo", variante="cinza", altura=40, tamanho_fonte=12,
+        self.btn_resumo = _botao(t("Ver Resumo"), variante="cinza", altura=40, tamanho_fonte=12,
                                  negrito=True)
         self.btn_resumo.clicked.connect(self.abrir_resumo_manual)
-        self.btn_save = _botao("5. Salvar no Excel", variante="primario", altura=40, tamanho_fonte=12,
+        self.btn_save = _botao(t("5. Salvar no Excel"), variante="primario", altura=40, tamanho_fonte=12,
                                negrito=True)
         self.btn_save.clicked.connect(self.salvar_excel)
         for (cima, baixo), margens in (((self.btn_run_ai, self.btn_resumo), (0, 0, 5, 0)),
@@ -289,7 +291,7 @@ class ModuloCriaFichas(ModuleFrame):
                 b.setEnabled(False)
                 caixa.addWidget(b)
             grade.addWidget(coluna, 1)
-        self.btn_reset = _botao("Limpar", variante="perigo", largura=100,
+        self.btn_reset = _botao(t("Limpar"), variante="perigo", largura=100,
                                 tamanho_fonte=14, negrito=True)
         # O emoji da primeira linha virou o ícone (2026-10-20).
         icones.aplicar(self.btn_reset, "trash-2")
@@ -311,27 +313,27 @@ class ModuloCriaFichas(ModuleFrame):
         corpo.addSpacing(10)                            # frm_config: pady=10, padx=10
         config = _cartao(corpo, fim=10, recuo=10)
         self.cartao_config_edicao = config.parentWidget()
-        self.rotulo_etapa1_edicao = _titulo("1. Configuração da Edição")
+        self.rotulo_etapa1_edicao = _titulo(t("1. Configuração da Edição"))
         config.addWidget(self.rotulo_etapa1_edicao)
         config.addSpacing(15)                           # título (…, 10) + f_proj (5, …)
 
         linha = _linha(config)
-        self.rotulo_novo_projeto = _rotulo("Novo Código do Projeto:", largura=180)
+        self.rotulo_novo_projeto = _rotulo(t("Novo Código do Projeto:"), largura=180)
         linha.addWidget(self.rotulo_novo_projeto)
         self.entry_novo_projeto = QLineEdit()
-        self.entry_novo_projeto.setPlaceholderText("Ex: NOVO CÓDIGO AQUI...")
+        self.entry_novo_projeto.setPlaceholderText(t("Ex: NOVO CÓDIGO AQUI..."))
         linha.addWidget(self.entry_novo_projeto, 1)
         linha.addSpacing(10)                            # entry: padx=(0, 10)
         config.addSpacing(15)                           # f_proj (…, 5) + f_excel (10, …)
 
         linha = _linha(config)
-        self.rotulo_excel_edicao = _rotulo("Selecionar Fichas (Excel):", largura=180)
+        self.rotulo_excel_edicao = _rotulo(t("Selecionar Fichas (Excel):"), largura=180)
         linha.addWidget(self.rotulo_excel_edicao)
-        self.btn_excel_edicao = _botao("Abrir Excel e Selecionar", variante="cinza", largura=200, altura=28)
+        self.btn_excel_edicao = _botao(t("Abrir Excel e Selecionar"), variante="cinza", largura=200, altura=28)
         self.btn_excel_edicao.clicked.connect(self.selecionar_excel_edicao)
         linha.addWidget(self.btn_excel_edicao)
         linha.addSpacing(10)                            # lbl_status_edicao: padx=10
-        self.lbl_status_edicao = _rotulo("Nenhum item selecionado.", papel="legenda")
+        self.lbl_status_edicao = _rotulo(t("Nenhum item selecionado."), papel="legenda")
         linha.addWidget(self.lbl_status_edicao)
         linha.addStretch()
 
@@ -339,10 +341,10 @@ class ModuloCriaFichas(ModuleFrame):
         corpo.addSpacing(20)                            # frm_config (…, 10) + frm_action (10, …)
         acoes = _cartao(corpo, fim=15, recuo=10)
         self.cartao_acoes_edicao = acoes.parentWidget()
-        self.rotulo_etapa2_edicao = _titulo("2. Execução em Massa")
+        self.rotulo_etapa2_edicao = _titulo(t("2. Execução em Massa"))
         acoes.addWidget(self.rotulo_etapa2_edicao)
         acoes.addSpacing(20)                            # título (…, 10) + f_btns (10, …)
-        self.btn_run_edicao = _botao("Iniciar Robô de Edição", variante="primario", altura=40,
+        self.btn_run_edicao = _botao(t("Iniciar Robô de Edição"), variante="primario", altura=40,
                                      tamanho_fonte=14, negrito=True)
         icones.aplicar(self.btn_run_edicao, "play")   # era o "▶" (2026-10-20)
         self.btn_run_edicao.clicked.connect(self.run_edicao_thread)
@@ -380,11 +382,11 @@ class ModuloCriaFichas(ModuleFrame):
             _pintar(self.btn_pdm, "secundario")  # desligado: a cor "apagada" da folha
             if not self._ia_em_andamento:
                 self.btn_run_ai.setEnabled(True)
-            self.btn_run_ai.setText("3. Processar (Direto)")
+            self.btn_run_ai.setText(t("3. Processar (Direto)"))
         else:
             self.btn_pdm.setEnabled(True)
             _pintar(self.btn_pdm, "secundario")
-            self.btn_run_ai.setText("3. Analisar (IA)")
+            self.btn_run_ai.setText(t("3. Analisar (IA)"))
 
     def selecionar_excel_pmib(self) -> None:
         # Antes do diálogo: escolher o arquivo para depois ouvir que o módulo
@@ -412,7 +414,7 @@ class ModuloCriaFichas(ModuleFrame):
 
             JanelaSelecao(self, df, self.pos_selecao)
         else:
-            QMessageBox.critical(self, "Erro", erro)
+            QMessageBox.critical(self, t("Erro"), erro)
 
     def pos_selecao(self, indices) -> None:
         # `reset_index(drop=True)`: o número do item é a CHAVE do casamento da
@@ -420,7 +422,7 @@ class ModuloCriaFichas(ModuleFrame):
         # ser 1, 2, 3 -- não o número da linha na planilha inteira.
         self.df_data_selecionado = self.df_data_completo.iloc[indices].copy().reset_index(drop=True)
         self.log(f"Selecionado: {len(self.df_data_selecionado)} itens.")
-        self.lbl_status.setText(f"{len(self.df_data_selecionado)} itens selecionados")
+        self.lbl_status.setText(t("{n} itens selecionados", n=len(self.df_data_selecionado)))
         _cor_rotulo(self.lbl_status, "ok")
         _pintar(self.btn_pmib, "primario")  # Marca visual de sucesso
         self._toggle_pdm_button()
@@ -429,7 +431,7 @@ class ModuloCriaFichas(ModuleFrame):
 
     def selecionar_excel_pdm(self) -> None:
         path = file_dialogs.ask_open_file("cria_fichas.excel_pdm", "excel",
-                                          filetypes=[("Arquivos Excel", "*.xlsx;*.xls")])
+                                          filetypes=[(t("Arquivos Excel"), "*.xlsx;*.xls")])
         if path:
             self.file_path_pdm = path
             if not self._ia_em_andamento:
@@ -438,7 +440,7 @@ class ModuloCriaFichas(ModuleFrame):
 
             # Pega apenas o nome do arquivo final (ex: "planilha.xlsx") ignorando as pastas
             nome_arquivo = path.split("/")[-1]
-            self.lbl_status_pdm.mostrar_caminho(path, f"Selecionado: {nome_arquivo}")
+            self.lbl_status_pdm.mostrar_caminho(path, t("Selecionado: {nome}", nome=nome_arquivo))
             _cor_rotulo(self.lbl_status_pdm, "ok")
             self.log(f"PDMs carregados: {nome_arquivo}")
 
@@ -446,11 +448,11 @@ class ModuloCriaFichas(ModuleFrame):
     def run_ai_thread(self) -> None:
         cod_proj = self.entry_projeto.text()
         if not cod_proj:
-            QMessageBox.warning(self, "Aviso", "Preencha o Código do Projeto.")
+            QMessageBox.warning(self, t("Aviso"), t("Preencha o Código do Projeto."))
             return
         pular = self.chk_pular.isChecked()
         if not pular and not self.file_path_pdm:
-            QMessageBox.warning(self, "Aviso", "Selecione o arquivo de PDMs antes de iniciar a IA.")
+            QMessageBox.warning(self, t("Aviso"), t("Selecione o arquivo de PDMs antes de iniciar a IA."))
             return
         categorizador = None
         if not pular:
@@ -586,7 +588,7 @@ class ModuloCriaFichas(ModuleFrame):
             janela = JanelaRevisaoPDM(self, df, confirmar, catalogo=catalogo)
             janela.finished.connect(self._revisao_fechada)
         else:
-            QMessageBox.critical(self, "Erro", "Nenhum dado processado.")
+            QMessageBox.critical(self, t("Erro"), t("Nenhum dado processado."))
             self._fim_da_cadeia_da_ia()
 
     def _revisao_fechada(self, resultado) -> None:
@@ -617,7 +619,7 @@ class ModuloCriaFichas(ModuleFrame):
             self.btn_run_auto.setEnabled(True)
         _pintar(self.btn_run_auto, "primario")
         self.btn_run_ai.setEnabled(False)
-        self.btn_run_ai.setText("3. Analisar (OK)")
+        self.btn_run_ai.setText(t("3. Analisar (OK)"))
 
     # --- robô de criação ---------------------------------------------------------
     def run_automation_thread(self) -> None:
@@ -650,10 +652,10 @@ class ModuloCriaFichas(ModuleFrame):
         pode ter caído antes de criar nada, e refazer a revisão pode custar a
         IA de novo); pergunta, com "Não" como padrão."""
         resposta = QMessageBox.question(
-            self, "Lote já enviado",
-            "Este lote já foi enviado ao portal pelo robô.\n\n"
-            "Enviar de novo cria as mesmas fichas outra vez. Só continue se o "
-            "robô parou antes de criá-las.\n\nEnviar o mesmo lote de novo?",
+            self, t("Lote já enviado"),
+            t("Este lote já foi enviado ao portal pelo robô.\n\n"
+              "Enviar de novo cria as mesmas fichas outra vez. Só continue se o "
+              "robô parou antes de criá-las.\n\nEnviar o mesmo lote de novo?"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         if resposta != QMessageBox.StandardButton.Yes:
@@ -722,7 +724,7 @@ class ModuloCriaFichas(ModuleFrame):
             bot.abrir_portal(URL_LISTA)
             # A instrução de QUAL página abrir: a janela nasce na thread da
             # interface e este worker espera o "Continuar".
-            self.pausar_e_esperar(MSG_LOGIN_NOVA_FICHA)
+            self.pausar_e_esperar(t(MSG_LOGIN_NOVA_FICHA))
             self.log("Iniciando Robô...")
             sucessos = []
             total = len(df)
@@ -771,14 +773,14 @@ class ModuloCriaFichas(ModuleFrame):
                         if escolha == "RETRY":
                             self.log(" -> 🔄 Retentativa solicitada pelo usuário.")
                             # SEGURA o robô até o OK (a pessoa arruma o navegador).
-                            self.avisar("Preparo", MSG_PREPARO, esperar=True)
+                            self.avisar(t("Preparo"), t(MSG_PREPARO), esperar=True)
                             # O loop 'while' continua (retry = True)
 
                         elif escolha == "CHANGE_PDM":
                             novo_pdm = decisao.novo_pdm
                             self.log(f" -> ✏️ PDM alterado pelo usuário para: {novo_pdm}")
                             row_atual['pdm_escolhido'] = novo_pdm
-                            self.avisar("Preparo", MSG_PREPARO, esperar=True)
+                            self.avisar(t("Preparo"), t(MSG_PREPARO), esperar=True)
                             # O loop 'while' continua com o 'row_atual' modificado
 
                         elif escolha == "SKIP":
@@ -919,27 +921,27 @@ class ModuloCriaFichas(ModuleFrame):
                                                              lista)
 
                 if ok:
-                    QMessageBox.information(self, "Sucesso", f"Planilha atualizada!\n{msg}")
+                    QMessageBox.information(self, t("Sucesso"), t("Planilha atualizada!\n{mensagem}", mensagem=msg))
                     self.log(f"✅ Excel salvo com sucesso: {msg}")
                     salvo_com_sucesso = True
                 elif "ABERTO" in msg.upper() or "PERMISSION" in msg.upper():
                     # Erro de permissão (arquivo aberto): o `askretrycancel` de lá.
                     botoes = QMessageBox.StandardButton.Retry | QMessageBox.StandardButton.Cancel
                     resposta = QMessageBox.warning(
-                        self, "Arquivo Aberto",
-                        "O arquivo Excel está ABERTO ou bloqueado.\n\nPor favor, FECHE o arquivo "
-                        "_STATUS_PMIB no Excel e clique em 'Repetir' para tentar salvar novamente.",
+                        self, t("Arquivo Aberto"),
+                        t("O arquivo Excel está ABERTO ou bloqueado.\n\nPor favor, FECHE o arquivo "
+                          "_STATUS_PMIB no Excel e clique em 'Repetir' para tentar salvar novamente."),
                         botoes)
                     if resposta != QMessageBox.StandardButton.Retry:  # "Cancelar" ou o "X"
                         self.log("⚠️ Salvamento cancelado pelo usuário. Os dados não foram gravados no Excel.")
                         break
                 else:
                     # Outro erro inesperado (ex: aba não encontrada). Interrompe o loop.
-                    QMessageBox.critical(self, "Erro ao Salvar", msg)
+                    QMessageBox.critical(self, t("Erro ao Salvar"), msg)
                     self.log(f"❌ Erro ao salvar Excel: {msg}")
                     break
         else:
-            QMessageBox.warning(self, "Aviso", "Não há dados processados para salvar.")
+            QMessageBox.warning(self, t("Aviso"), t("Não há dados processados para salvar."))
 
     def resetar_processo(self) -> None:
         """Limpa todo o estado do módulo para iniciar um novo lote limpo."""
@@ -963,7 +965,7 @@ class ModuloCriaFichas(ModuleFrame):
             self.bot = None
 
         # 2. Reseta a UI visualmente
-        self.lbl_status.setText("Aguardando...")
+        self.lbl_status.setText(t("Aguardando..."))
         _cor_rotulo(self.lbl_status, "legenda")
         _pintar(self.btn_pmib, "secundario")
 
@@ -982,7 +984,7 @@ class ModuloCriaFichas(ModuleFrame):
 
         # 3. Retorna os botões da Criação
         self.btn_run_ai.setEnabled(False)
-        self.btn_run_ai.setText("3. Analisar (IA)")
+        self.btn_run_ai.setText(t("3. Analisar (IA)"))
         self.btn_run_auto.setEnabled(False)
         _pintar(self.btn_run_auto, "primario")
         self.btn_resumo.setEnabled(False)
@@ -991,7 +993,7 @@ class ModuloCriaFichas(ModuleFrame):
         # 4. Limpa as variáveis e visuais da Aba de Edição
         self.df_edicao_completo = None
         self.df_edicao_selecionado = None
-        self.lbl_status_edicao.setText("Nenhum item selecionado.")
+        self.lbl_status_edicao.setText(t("Nenhum item selecionado."))
         _cor_rotulo(self.lbl_status_edicao, "legenda")
         _pintar(self.btn_excel_edicao, "secundario")
         self.entry_novo_projeto.clear()
@@ -1018,8 +1020,8 @@ class ModuloCriaFichas(ModuleFrame):
             df_valido = df_valido.dropna(subset=['CÓDIGO PMIB'])
 
             if df_valido.empty:
-                QMessageBox.warning(self, "Aviso", "Nenhum CÓDIGO PMIB encontrado nesta planilha. "
-                                                   "Certifique-se de que as fichas já foram criadas.")
+                QMessageBox.warning(self, t("Aviso"), t("Nenhum CÓDIGO PMIB encontrado nesta planilha. "
+                                                        "Certifique-se de que as fichas já foram criadas."))
                 return
 
             self.df_edicao_completo = df_valido.reset_index(drop=True)
@@ -1031,14 +1033,14 @@ class ModuloCriaFichas(ModuleFrame):
 
             JanelaSelecao(self, self.df_edicao_completo, self.pos_selecao_edicao)
         else:
-            QMessageBox.critical(self, "Erro", erro)
+            QMessageBox.critical(self, t("Erro"), erro)
 
     def pos_selecao_edicao(self, indices) -> None:
         self.df_edicao_selecionado = self.df_edicao_completo.iloc[indices].copy()
         qtd = len(self.df_edicao_selecionado)
 
         self.log(f"Aba Edição: Selecionado {qtd} fichas para editar.")
-        self.lbl_status_edicao.setText(f"{qtd} fichas selecionadas")
+        self.lbl_status_edicao.setText(t("{n} fichas selecionadas", n=qtd))
         _cor_rotulo(self.lbl_status_edicao, "ok")
         _pintar(self.btn_excel_edicao, "primario")
         self.btn_run_edicao.setEnabled(qtd > 0)
@@ -1048,11 +1050,11 @@ class ModuloCriaFichas(ModuleFrame):
             return
         novo_projeto = self.entry_novo_projeto.text().strip()
         if not novo_projeto:
-            QMessageBox.warning(self, "Aviso", "Preencha o Novo Código do Projeto.")
+            QMessageBox.warning(self, t("Aviso"), t("Preencha o Novo Código do Projeto."))
             return
 
         if self.df_edicao_selecionado is None or self.df_edicao_selecionado.empty:
-            QMessageBox.warning(self, "Aviso", "Selecione ao menos uma ficha no Excel para editar.")
+            QMessageBox.warning(self, t("Aviso"), t("Selecione ao menos uma ficha no Excel para editar."))
             return
 
         # Extrai automaticamente a lista de PMIBs da coluna do DataFrame
@@ -1074,7 +1076,7 @@ class ModuloCriaFichas(ModuleFrame):
             bot.iniciar_driver()
             bot.abrir_portal(URL_LISTA)
             # A instrução da página PRINCIPAL; o worker espera o "Continuar".
-            self.pausar_e_esperar(MSG_LOGIN_PAGINA_PRINCIPAL)
+            self.pausar_e_esperar(t(MSG_LOGIN_PAGINA_PRINCIPAL))
 
             self.log(f"Iniciando Edição em Massa de {len(lista_pmibs)} fichas...")
 
@@ -1094,7 +1096,7 @@ class ModuloCriaFichas(ModuleFrame):
             self.log("Edição em massa concluída!")
             # Espera o OK, como o showinfo de lá: o navegador fecha e o botão
             # volta depois que a pessoa leu.
-            self.avisar("Concluído", "Processo de edição em massa finalizado. Verifique o log.", esperar=True)
+            self.avisar(t("Concluído"), t("Processo de edição em massa finalizado. Verifique o log."), esperar=True)
 
         except Exception as e:  # noqa: BLE001 -- vira log, como lá
             self.log(f"Erro Fatal na Edição: {e}")

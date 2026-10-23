@@ -154,15 +154,15 @@ def test_o_qtnetwork_fica_de_fora_porque_ninguem_o_usa(spec_executado):
 
 # -- B. so o que a interface usa -------------------------------------------------
 
-def test_o_pacote_leva_so_a_traducao_pt_br_do_qt(spec_executado):
-    """`_instalar_traducao` (sigft/app_qt/main.py) carrega so o `qtbase_pt_BR`;
-    o PyInstaller traria as ~100 traducoes do Qt (7 MB no Windows)."""
+def test_o_pacote_leva_so_as_traducoes_do_qt_que_a_interface_usa(spec_executado):
+    """`_instalar_traducao` (sigft/app_qt/main.py) carrega `qtbase_pt_BR` ou
+    `qtbase_es`; o PyInstaller traria as ~100 traducoes do Qt (7 MB no Windows)."""
     dados = {destino for destino, _origem, _tipo in spec_executado["datas"]}
 
     assert "PySide6/translations/qtbase_pt_BR.qm" in dados
     assert "PySide6/Qt/translations/qtbase_pt_BR.qm" in dados
-    assert not dados & {"PySide6/translations/qtbase_de.qm", "PySide6/translations/qt_pt_BR.qm",
-                        "PySide6/Qt/translations/qtbase_es.qm"}
+    assert "PySide6/Qt/translations/qtbase_es.qm" in dados
+    assert not dados & {"PySide6/translations/qtbase_de.qm", "PySide6/translations/qt_pt_BR.qm"}
     # O filtro e da Qt: traducao de outro pacote e dado comum fica.
     assert {"outro_pacote/translations/app_de.qm", "assets/logo.png"} <= dados
 
@@ -291,6 +291,19 @@ def test_as_fontes_da_interface_vao_para_onde_o_estilo_as_procura(spec_executado
         destino = _destino_no_pacote(spec_executado["analysis"]["datas"], RAIZ / esperado / nome)
         assert destino == f"{esperado}/{nome}", (nome, destino)
 
+
+
+def test_os_catalogos_de_idioma_vao_para_onde_o_idioma_os_procura(spec_executado):
+    """`idioma.PASTA_CATALOGOS` sai de `__file__`: no pacote, `_MEIPASS/sigft/app/
+    idioma.pyc` -> `_MEIPASS/sigft/app/idiomas`. Os catálogos têm de cair aí."""
+    from sigft.app import idioma
+
+    esperado = Path(os.path.relpath(idioma.PASTA_CATALOGOS, RAIZ)).as_posix()
+    for codigo in ("es", "en"):
+        arquivo = RAIZ / esperado / f"{codigo}.json"
+        assert arquivo.exists(), arquivo
+        destino = _destino_no_pacote(spec_executado["analysis"]["datas"], arquivo)
+        assert destino == f"{esperado}/{codigo}.json", (codigo, destino)
 
 # -- D. as licencas do Qt (LGPLv3) vao no pacote -----------------------------------
 
