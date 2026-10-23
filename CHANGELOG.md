@@ -12,7 +12,7 @@ Escreva cada linha pensando em quem usa o SIG-FT, não em quem o programa:
 "a busca do AutoSpec passa a funcionar com a VPN ligada" é útil; "refatorado o
 cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
-## 1.2.1 - 2026-10-16
+## 1.3.0 - 2026-10-23
 
 - Interface: o console embaixo das telas pode ser **aumentado ou diminuído** arrastando a barrinha entre ele e a tela; cada tela lembra o tamanho, e o duplo clique na barrinha volta ao padrão.
 - Interface: **tema claro**. Na Configuração (a engrenagem à direita do título da Home), em Aparência, escolha Escuro, Claro ou Sistema (segue o tema do Windows). A troca é na hora, sem fechar o app, e fica lembrada.
