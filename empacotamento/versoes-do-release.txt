@@ -146,3 +146,15 @@ urllib3==2.8.0
 wrapt==2.5.1
 xlwings==0.37.7
 yarl==1.25.1
+
+# [2026-10-21] Os que JA VEM no Python da imagem do runner (hostedtoolcache):
+# o pip os da por "already satisfied" e nao os reinstala, entao sem linha aqui
+# a versao era a da imagem do dia. Na 1.2.1-rc.12 a imagem era outra
+# (20261007 contra 20261018 na rc.11), o platformdirs veio 4.12.4 em vez de
+# 4.13.4, o filelock mudou, e o SIG-FT.exe inteiro (37 MB) foi na atualizacao
+# pequena. O passo "Instalar dependencias" os instala por nome com este -c.
+click==8.5.0
+colorama==0.4.6
+filelock==4.2.4
+packaging==26.3
+platformdirs==4.13.4
