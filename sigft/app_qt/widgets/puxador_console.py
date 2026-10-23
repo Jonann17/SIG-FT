@@ -130,11 +130,17 @@ class PuxadorDoConsole(QWidget):
             widget = widget.parentWidget()
 
     def eventFilter(self, obj, evento) -> bool:  # noqa: N802 -- nome do Qt
+        # O Qt pode entregar evento à barrinha quando o objeto Python dela já foi
+        # desmontado (sem `_tela`): no Release 1.3.0 (Windows, 2026-10-23) o
+        # AttributeError aqui dentro derrubou o processo. Sem tela, nada a fazer.
+        tela = self.__dict__.get("_tela")
+        if tela is None:
+            return False
         if evento.type() in (QEvent.Type.Move, QEvent.Type.Resize,
                              QEvent.Type.Show, QEvent.Type.Hide):
             self.reposicionar()
         elif evento.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange) \
-                and obj is self._tela.console:
+                and obj is tela.console:
             self._reajuste.start()
         return False
 
@@ -146,14 +152,17 @@ class PuxadorDoConsole(QWidget):
             pass  # tela destruída antes do disparo
 
     def reposicionar(self) -> None:
-        console = self._tela.console
+        tela = self.__dict__.get("_tela")
+        if tela is None:
+            return
+        console = tela.console
         try:
-            topo = console.mapTo(self._tela, console.rect().topLeft())
+            topo = console.mapTo(tela, console.rect().topLeft())
         except RuntimeError:
             return  # console destruído com a tela
         self.setGeometry(topo.x(), topo.y() - FOLGA_ATE_O_CONSOLE - ALTURA_PUXADOR,
                          console.width(), ALTURA_PUXADOR)
-        self.setVisible(console.isVisibleTo(self._tela) and console.height() > 0)
+        self.setVisible(console.isVisibleTo(tela) and console.height() > 0)
         self.raise_()
 
     # -- destaque (hover e arrasto) ----------------------------------------------

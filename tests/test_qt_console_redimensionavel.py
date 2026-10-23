@@ -358,3 +358,17 @@ def test_letra_grande_sobe_a_altura_guardada_que_ficou_abaixo_do_minimo(
     finally:
         letra.aplicar(qt_interface, "normal", gravar=False)
         qt_interface.setStyleSheet(anterior)
+
+
+def test_evento_depois_que_o_python_largou_a_barrinha_nao_quebra(qt_interface, qtbot, prefs_do_teste):
+    # Release 1.3.0 no Windows (2026-10-23): o Qt entregou um Resize do console à
+    # barrinha depois que o objeto Python dela já não tinha `_tela` (o dicionário
+    # do invólucro limpo antes do C++ sair). O AttributeError dentro do filtro de
+    # eventos derrubou o processo. Sem a tela, a barrinha não faz nada.
+    t = _aberta(qtbot)
+    p = t.puxador_console
+    del p._tela
+    t.console.resize(t.console.width(), t.console.height() + 10)
+    QApplication.processEvents()
+    assert p.eventFilter(t.console, QEvent(QEvent.Type.Resize)) is False
+    p.reposicionar()
