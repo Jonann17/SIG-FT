@@ -184,3 +184,18 @@ def test_main_prepara_dados_e_navegador_antes_da_splash(qt_interface, monkeypatc
     saida = capsys.readouterr().out
     assert "[SIG-FT] Configuracao importada para a pasta de dados: api_config.json" in saida
     assert "[SIG-FT] Nenhum Chrome/Edge encontrado." in saida
+
+
+def test_smoke_nao_deixa_a_janela_viva(qt_interface, monkeypatch, tmp_path):
+    # Release 1.3.0 (2026-10-23): cada smoke deixava a janela principal inteira
+    # viva (~700 peças). Com várias na mesma sessão de testes, cada troca de folha
+    # do app repintava todas, os testes ficavam lentos e, no Windows, o processo
+    # caiu pintando uma peça de uma janela dessas.
+    from PySide6.QtWidgets import QApplication
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))
+    monkeypatch.setattr(qmain.backends, "carregar_todos", lambda **k: None)
+    antes = len(QApplication.allWidgets())
+    assert qmain._smoke() == 0
+    assert len(QApplication.allWidgets()) <= antes

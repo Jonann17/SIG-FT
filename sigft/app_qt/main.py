@@ -28,7 +28,7 @@ import time
 import traceback
 
 from dotenv import load_dotenv
-from PySide6.QtCore import Qt, QtMsgType, Signal, qInstallMessageHandler
+from PySide6.QtCore import QEvent, Qt, QtMsgType, Signal, qInstallMessageHandler
 from PySide6.QtGui import QColor, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar,
@@ -764,6 +764,12 @@ def _smoke() -> int:
         janela.fechar_sem_perguntar = True
         linhas, quebradas = _visitar_telas(janela)
         janela.close()
+        # [2026-10-23] Fechar só esconde: a janela (~700 peças) ficava viva. Nos
+        # testes, que rodam o smoke várias vezes na mesma sessão, cada troca de
+        # folha do app repintava todas as que sobraram, e no Release (Windows) o
+        # processo caiu pintando uma delas. Aqui ela sai de vez.
+        janela.deleteLater()
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     except Exception as erro:  # noqa: BLE001 -- é o que se quer relatar
         relatorio = "\n".join(avisos + [
             f"[smoke] FALHOU: {type(erro).__name__}: {erro}", "",
