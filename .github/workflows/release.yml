@@ -85,6 +85,7 @@ jobs:
           pip install -r requirements.txt -c empacotamento/versoes-do-release.txt
           pip install -r requirements-dev.txt -c empacotamento/versoes-do-release.txt
           pip install "pyinstaller>=6,<7" -c empacotamento/versoes-do-release.txt
+          pip install click colorama filelock packaging platformdirs -c empacotamento/versoes-do-release.txt
 
       # O modelo do tradutor local da tela 4.2 (~218 MB). ANTES dos testes, para
       # que os testes com o modelo de verdade (tests/test_tradutor_local.py)

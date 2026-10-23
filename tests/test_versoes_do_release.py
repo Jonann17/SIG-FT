@@ -34,6 +34,20 @@ def test_as_dependencias_que_ja_mudaram_sozinhas_estao_fixadas():
     assert {"pymupdf", "pyside6-essentials", "pandas", "numpy", "pyinstaller"} <= nomes
 
 
+def test_os_pacotes_que_vem_na_imagem_do_runner_sao_fixados_e_instalados():
+    """2026-10-21: platformdirs e filelock vinham do Python da imagem do runner
+    (o pip diz "already satisfied" e não reinstala); com outra imagem, outra
+    versão, e o SIG-FT.exe inteiro na atualização pequena da 1.2.1-rc.12."""
+    nomes = {l.split("==")[0].lower() for l in _linhas()}
+    da_imagem = {"click", "colorama", "filelock", "packaging", "platformdirs"}
+    assert da_imagem <= nomes
+    texto = (RAIZ / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    passo = texto[texto.index("- name: Instalar dependencias"):]
+    passo = passo[:passo.index("- name:", 1)]
+    linha = next(l for l in passo.splitlines() if "pip install click" in l)
+    assert all(nome in linha.split() for nome in da_imagem)
+
+
 def test_nenhuma_dependencia_direta_do_requirements_ficou_sem_versao():
     """Uma dependência nova no `requirements.txt` sem linha aqui entraria na
     versão mais nova do dia -- exatamente o que este arquivo existe para evitar."""

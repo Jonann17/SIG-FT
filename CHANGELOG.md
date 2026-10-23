@@ -14,6 +14,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
 ## 1.3.0 - 2026-10-23
 
+- Atualização automática: a atualização pequena deixa de levar o `SIG-FT.exe` inteiro (37 MB) quando nada nele mudou. Duas bibliotecas vinham na versão que o servidor de compilação tivesse no dia, e a troca delas refazia o `.exe`; agora as versões são fixas, como as demais.
 - Interface: o console embaixo das telas pode ser **aumentado ou diminuído** arrastando a barrinha entre ele e a tela; cada tela lembra o tamanho, e o duplo clique na barrinha volta ao padrão.
 - Interface: **tema claro**. Na Configuração (a engrenagem à direita do título da Home), em Aparência, escolha Escuro, Claro ou Sistema (segue o tema do Windows). A troca é na hora, sem fechar o app, e fica lembrada.
 - Interface: cores novas, com contraste medido para ler bem nos dois temas; botões com o mesmo jeito em todas as telas (principal, secundário, perigo), e botão desligado com cara de desligado.
