@@ -52,7 +52,11 @@ pydantic>=2
 # Wheel pura: instala pelo pip sem binario de sistema (ao contrario do
 # Tesseract), o que importa porque o SIG-FT.bat so resolve o que o pip resolve.
 pymupdf
-PyPDF2
+# pypdf: a rede de seguranca do AutoSpec quando o PyMuPDF falha. Era o PyPDF2,
+# abandonado desde 2022 e com uma falha conhecida (PDF montado de proposito que
+# trava a leitura em laco infinito, GHSA-4vvm-4w3v-6mr8); o pypdf e o sucessor
+# dele, do mesmo projeto, com a mesma `PdfReader` (2026-10-26).
+pypdf
 beautifulsoup4
 requests
 python-dotenv

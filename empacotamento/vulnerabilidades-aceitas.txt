@@ -1,0 +1,7 @@
+# Vulnerabilidades conhecidas que o job "auditoria" do CI aceita, uma por linha:
+#   <ID do aviso>  <pacote>  -- <por que nao se aplica ao SIG-FT>
+# O job roda o pip-audit sobre o versoes-do-release.txt (o que vai no .exe) e
+# reprova qualquer aviso que nao esteja aqui. Entra so com o motivo escrito;
+# quando a correcao sair, a linha sai e a versao sobe (2026-10-26).
+
+PYSEC-2022-252  deep-translator  -- o aviso e de 2022: a conta do autor no PyPI foi tomada e saiu UMA versao maliciosa, retirada em seguida. O aviso nao lista versao corrigida, entao o pip-audit acusa todas; a 1.11.4 fixada aqui e posterior e e a do projeto legitimo. So a reserva do traducao_pdm usa o pacote.
