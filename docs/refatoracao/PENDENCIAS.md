@@ -851,3 +851,13 @@ endpoint do portal por fora da tela.
 | 2026-10-22 | Engrenagem e idioma (Task 6) | Janela de pesos do Analyzer: os rótulos vêm das chaves do `CONFIG_MAP` (zona compartilhada, `ficha_layout.py`) e ficam em português. Traduzir é decisão de produto e pede combinar com o Rafael. | Decisão de produto |
 | 2026-10-22 | Engrenagem e idioma (Task 5) | "Copiar lista" do resumo do lote copia no idioma da sessão; o arquivo do "Abrir log" fica em português. | Informativo |
 | 2026-10-22 | Engrenagem e idioma (Task 3) | **Testar no Windows real o "Reiniciar agora"** pelo `.exe` e pelo `SIG-FT.bat` (a janela preta do `.bat` fecha e o novo processo abre sem ela). | Validação manual antes do Release |
+
+## 2026-10-26 — Aconex ao vivo no SIG-FT: código copiado do DocManager, por enquanto
+
+Decisão do Luan no desenho da conferência de revisões das listas (workflow com o AMP):
+a conexão ao vivo com o Aconex entra no SIG-FT **copiando** o código do DocManager, que
+é o caminho mais fácil agora. Trocar a cópia por um pacote compartilhado está nos planos.
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-10-26 | Desenho do Aconex ao vivo (brainstorming do workflow AMP) | **Trocar a cópia do código do DocManager por um pacote compartilhado pelos dois repositórios.** O SIG-FT vai copiar do DocManager (`luanccozer/DocManager`): o login OAuth no Oracle Lobby e a leitura do cofre de credenciais (`Documentos\DocManager_Itaipu\credenciais.json`, cifrado pela DPAPI); a conexão pela rede da CMI (proxy PAC do GlobalProtect, `truststore` para o Zscaler); a busca e o download no register; e o motor do Status Real (`calcular_status_real`, a "batalha de versões", com `calcula_status_consolidado`), que passa a preencher o STATUS REAL da mapeadora. Até virar pacote, toda correção feita num lado (rede, autenticação, regras de status) tem de ser levada à mão para o outro. | Pacote compartilhado (nos planos do Luan) |
