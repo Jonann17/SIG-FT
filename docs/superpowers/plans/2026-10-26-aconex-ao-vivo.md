@@ -43,7 +43,7 @@ pytest e pytest-qt. No cofre, o Power BI em Power Query M + DAX, com o `.pbip` g
 
 ---
 
-### Tarefa 1: Power BI e protótipo do painel contam a família de aprovação (no cofre)
+### Task 1: Power BI e protótipo do painel contam a família de aprovação (no cofre)
 
 Esta tarefa roda no **cofre** (`C:\Users\LCCoz\OneDrive\Documents\Obsidian\Sobressalentes-Itaipu`), não
 no SIG-FT, numa máquina com Power BI Desktop. O ambiente de teste está descrito na memória
@@ -73,7 +73,7 @@ no SIG-FT, numa máquina com Power BI Desktop. O ambiente de teste está descrit
 
 ---
 
-### Tarefa 2: o motor do STATUS REAL, copiado do DocManager
+### Task 2: o motor do STATUS REAL, copiado do DocManager
 
 **Files:**
 - Create: `sigft/core/aconex/__init__.py` e `sigft/core/aconex/_docmanager/__init__.py`
@@ -138,7 +138,7 @@ def test_revisoes_iguais(a, b, esperado): ...
 
 ---
 
-### Tarefa 3: o painel HTML do SIG-FT conta a família de aprovação
+### Task 3: o painel HTML do SIG-FT conta a família de aprovação
 
 **Files:**
 - Modify: `sigft/services/painel.py:494`. O registro de cada lista ganha `"aprov": status_real.eh_aprovacao(m.get("STATUS REAL"))`.
@@ -158,7 +158,7 @@ def test_revisoes_iguais(a, b, esperado): ...
 
 ---
 
-### Tarefa 4: o Gestão PMIB grava o STATUS REAL
+### Task 4: o Gestão PMIB grava o STATUS REAL
 
 **Files:**
 - Modify: `sigft/services/pmib_manager.py`:
@@ -191,7 +191,7 @@ def test_revisoes_iguais(a, b, esperado): ...
 
 ---
 
-### Tarefa 5: lista nova exige PB020
+### Task 5: lista nova exige PB020
 
 **Files:**
 - Modify: `sigft/services/pmib_manager.py:867-875`. O filtro de `df_novos_cand` passa a usar a função nova.
@@ -223,7 +223,7 @@ def test_e_lista_de_sobressalentes(codigo, titulo, esperado):
 
 ---
 
-### Tarefa 6: credenciais do Aconex (lê o cofre do DocManager)
+### Task 6: credenciais do Aconex (lê o cofre do DocManager)
 
 **Files:**
 - Create: `sigft/core/aconex/credenciais.py`. Copie de `docmanager/services/credenciais.py` só `_dpapi`, `decifrar` e a parte de leitura do `Cofre`, com o mesmo cabeçalho de origem da Tarefa 2.
@@ -253,7 +253,7 @@ def test_e_lista_de_sobressalentes(codigo, titulo, esperado):
 
 ---
 
-### Tarefa 7: cliente do Aconex
+### Task 7: cliente do Aconex
 
 **Files:**
 - Modify: `sigft/core/rede.py`. `abrir(...)` ganha `data: dict | None = None`, repassado ao `sessao.request(...)`.
@@ -297,7 +297,7 @@ def test_e_lista_de_sobressalentes(codigo, titulo, esperado):
 
 ---
 
-### Tarefa 8: diagnóstico do Aconex (prova as buscas)
+### Task 8: diagnóstico do Aconex (prova as buscas)
 
 **Files:**
 - Create: `sigft/core/aconex/diagnostico.py`
@@ -331,7 +331,7 @@ As Tarefas 9 e 10 não dependem do G1: usam só a busca exata e o download, que 
 
 ---
 
-### Tarefa 9: serviço da Conferência de Revisões
+### Task 9: serviço da Conferência de Revisões
 
 **Files:**
 - Create: `sigft/services/conferencia_revisoes.py`
@@ -389,7 +389,7 @@ As Tarefas 9 e 10 não dependem do G1: usam só a busca exata e o download, que 
 
 ---
 
-### Tarefa 10: tela Conferência de Revisões
+### Task 10: tela Conferência de Revisões
 
 **Files:**
 - Create: `sigft/app_qt/views/conferencia_revisoes.py`. Use como modelo a estrutura de `sigft/app_qt/views/correcao_pdm.py` (serviço importado direto, tela fina).
@@ -430,7 +430,7 @@ As Tarefas 9 e 10 não dependem do G1: usam só a busca exata e o download, que 
 
 ---
 
-### Tarefa 11: Gestão PMIB com o histórico ao vivo (depois do G1)
+### Task 11: Gestão PMIB com o histórico ao vivo (depois do G1)
 
 **Antes de começar:** anote aqui o resultado do G1, isto é, as sintaxes de `search_query` que funcionaram
 para Tracking ID e para PB020/SOBRESSALENTES. Se alguma das duas não funcionar, avise o Luan **antes** de
@@ -474,7 +474,7 @@ seguir, como manda a §4.2 da spec. Nesse caso, `FonteAoVivo.carregar` usa a ext
 
 ---
 
-### Tarefa 12: fechamento e validação ao vivo (G2)
+### Task 12: fechamento e validação ao vivo (G2)
 
 **Files:**
 - Modify: `CHANGELOG.md` (bloco da versão nova)
