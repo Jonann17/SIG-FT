@@ -263,3 +263,110 @@ def test_modulo_nao_importa_interface():
              for n in ast.walk(arvore) if isinstance(n, (ast.Import, ast.ImportFrom))
              for a in (n.names if isinstance(n, ast.Import) else [n])}
     assert not any(n and n.split(".")[0] in MODULOS_PROIBIDOS | {"PySide6"} for n in nomes)
+
+
+# --- correções da revisão (2026-10-26) ----------------------------------------------
+
+def _travar_por_fora(pasta):
+    """Pega a trava como se fosse outra instância do SIG-FT. Um segundo descritor
+    conflita mesmo dentro do mesmo processo, nos dois mecanismos."""
+    import os
+
+    fd = os.open(pasta / diario.ARQUIVO_TRAVA, os.O_RDWR | os.O_CREAT)
+    if sys.platform == "win32":
+        import msvcrt
+
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    return fd
+
+
+def test_segunda_instancia_fica_sem_diario_e_nao_mexe_em_nada(ambiente):
+    import os
+
+    _escrever(ambiente.pasta, "ABERTURA versao=1.3.0")
+    (ambiente.pasta / diario.ARQUIVO_QUEDA).write_text("rastro da primeira\n", encoding="utf-8")
+    antes = _texto(ambiente.pasta)
+    fd = _travar_por_fora(ambiente.pasta)
+    try:
+        assert _abrir(ambiente.pasta) is None
+        assert not diario.ligado()
+        assert diario.aviso_pendente() is None
+        assert _texto(ambiente.pasta) == antes
+        queda = (ambiente.pasta / diario.ARQUIVO_QUEDA).read_text(encoding="utf-8")
+        assert queda == "rastro da primeira\n"
+        assert not (ambiente.pasta / diario.ARQUIVO_QUEDA_ANTERIOR).exists()
+        assert ambiente.faulthandler.arquivo is None
+    finally:
+        os.close(fd)   # a primeira instância fechou: a trava fica livre
+    assert _abrir(ambiente.pasta) == diario.CAIU
+    assert diario.ligado()
+
+
+def test_a_trava_e_solta_no_esquecer(ambiente):
+    import os
+
+    _abrir(ambiente.pasta)
+    with pytest.raises(OSError):
+        _travar_por_fora(ambiente.pasta)
+    diario.esquecer()
+    os.close(_travar_por_fora(ambiente.pasta))
+
+
+def test_rotacao_que_falha_ainda_grava_a_linha(ambiente, monkeypatch):
+    grande = "x" * (diario.LIMITE_BYTES + 1) + "\n"
+    (ambiente.pasta / diario.ARQUIVO).write_text(grande, encoding="utf-8")
+
+    def recusar(*_a, **_k):
+        raise PermissionError("arquivo aberto por outro programa")
+
+    monkeypatch.setattr(diario.os, "replace", recusar)
+    _abrir(ambiente.pasta)
+    assert diario.ligado()
+    assert " ABERTURA " in _texto(ambiente.pasta).splitlines()[-1]
+
+
+@pytest.mark.parametrize("rabo", ["\x00\x00\x00", "2026-10-25 09:00:01 FECHAM"])
+def test_rabo_rasgado_nao_esconde_a_abertura_seguinte(ambiente, rabo):
+    # Falta de luz: a última linha ficou pela metade (ou em bytes NUL), sem o \n.
+    texto = _linha("ABERTURA versao=1.3.0") + _linha("FECHAMENTO pela janela") + rabo
+    (ambiente.pasta / diario.ARQUIVO).write_text(texto, encoding="utf-8")
+    assert _abrir(ambiente.pasta) == diario.NORMAL
+    diario.esquecer()   # esta sessão é morta de fora
+    assert _abrir(ambiente.pasta) == diario.ENCERRADO
+
+
+def test_nul_no_comeco_da_linha_nao_esconde_o_evento():
+    assert diario.classificar(["\x00\x00" + _linha("ABERTURA a")]) == diario.ENCERRADO
+
+
+def test_queda_log_que_nao_pode_ser_movido_nao_e_apagado(ambiente, monkeypatch):
+    _escrever(ambiente.pasta, "ABERTURA versao=1.3.0")
+    (ambiente.pasta / diario.ARQUIVO_QUEDA).write_text("Fatal Python error: x\n", encoding="utf-8")
+
+    def recusar(*_a, **_k):
+        raise PermissionError("arquivo aberto por outro programa")
+
+    monkeypatch.setattr(diario.os, "replace", recusar)
+    assert _abrir(ambiente.pasta) == diario.CAIU
+    assert ambiente.faulthandler.arquivo == diario.ARQUIVO_QUEDA
+    diario.esquecer()   # fecha o queda.log para ler o que ficou
+    queda = (ambiente.pasta / diario.ARQUIVO_QUEDA).read_text(encoding="utf-8")
+    assert queda.startswith("Fatal Python error: x")
+
+
+def test_segundo_abrir_nao_empilha_os_ganchos(ambiente, monkeypatch):
+    vistos = []
+    monkeypatch.setattr(sys, "excepthook", lambda tipo, valor, rastro: vistos.append(tipo))
+    _abrir(ambiente.pasta)
+    _abrir(ambiente.pasta)
+    try:
+        raise ValueError("de proposito")
+    except ValueError:
+        sys.excepthook(*sys.exc_info())
+    assert vistos == [ValueError]
+    assert _texto(ambiente.pasta).count("ERRO NAO TRATADO (thread principal)") == 1

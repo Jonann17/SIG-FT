@@ -20,6 +20,9 @@ ele, e com `ERRO NAO TRATADO` ou `queda.log` não vazio, caiu; sem nada, foi
 encerrado de fora (Gerenciador de Tarefas, desligamento, falta de luz). O
 `queda.log` com rastro vira `queda.log.anterior` antes de o novo ser aberto.
 
+Duas instâncias abertas: a primeira prende `logs\\diario.trava` pelo processo
+todo; a segunda fica sem diário e não toca em nada (2026-10-26).
+
 Passou de `LIMITE_BYTES`, o arquivo vira `diario.log.1` (uma cópia só) e
 recomeça; a leitura da sessão anterior junta os dois.
 
@@ -46,6 +49,7 @@ ARQUIVO = "diario.log"
 ARQUIVO_VELHO = "diario.log.1"
 ARQUIVO_QUEDA = "queda.log"
 ARQUIVO_QUEDA_ANTERIOR = "queda.log.anterior"
+ARQUIVO_TRAVA = "diario.trava"
 LIMITE_BYTES = 1024 * 1024
 
 ABERTURA = "ABERTURA"
@@ -64,12 +68,18 @@ _pasta: Path | None = None        # None: diário desligado nesta sessão
 _anterior: str | None = None
 _dispensado = False
 _arquivo_queda = None             # o queda.log aberto, onde o faulthandler escreve
+_trava: int | None = None         # descritor do diario.trava, preso pelo processo todo
+
+# Marca dos ganchos do diário: um segundo `abrir` no mesmo processo vê que o
+# gancho de agora já é o nosso e não empilha outro por cima (2026-10-26).
+_MARCA_GANCHO = "_gancho_do_diario"
 
 
 def classificar(linhas: list[str], houve_queda: bool = False) -> str | None:
     """Como a última sessão de `linhas` acabou: `NORMAL`, `CAIU` ou `ENCERRADO`.
     `None` quando não há `ABERTURA` (primeira vez, ou diário apagado)."""
-    eventos = [m.group(1) for linha in linhas if (m := _EVENTO.match(linha))]
+    # Falta de luz pode deixar bytes NUL no começo de uma linha: não escondem o evento.
+    eventos = [m.group(1) for linha in linhas if (m := _EVENTO.match(linha.lstrip("\x00")))]
     if ABERTURA not in eventos:
         return None
     ultima = len(eventos) - 1 - eventos[::-1].index(ABERTURA)
@@ -100,13 +110,71 @@ def _houve_queda(pasta: Path) -> bool:
         return False
 
 
-def _guardar_queda_anterior(pasta: Path) -> None:
-    """O `queda.log` com rastro vira `queda.log.anterior` (o vazio é só reaberto)."""
+def _guardar_queda_anterior(pasta: Path) -> bool:
+    """O `queda.log` com rastro vira `queda.log.anterior` (o vazio é só reaberto).
+    `True` se moveu; `False` se não havia rastro ou se o sistema recusou."""
     try:
         if _houve_queda(pasta):
             os.replace(pasta / ARQUIVO_QUEDA, pasta / ARQUIVO_QUEDA_ANTERIOR)
+            return True
     except OSError:
         pass
+    return False
+
+
+def _travar(pasta: Path) -> int | None:
+    """Prende `diario.trava` para este processo (2026-10-26). Sem ela, uma segunda
+    instância leria a sessão viva da primeira como "encerrada de fora", apagaria o
+    `queda.log` dela e misturaria as duas sessões no diário.
+
+    Devolve o descritor (fica aberto até `esquecer`); `None` quando nem deu para
+    abrir o arquivo da trava (segue sem trava, como antes). Trava já presa por
+    outra instância levanta `_OcupadoPorOutra`."""
+    try:
+        fd = os.open(pasta / ARQUIVO_TRAVA, os.O_RDWR | os.O_CREAT)
+    except OSError:
+        return None
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        raise _OcupadoPorOutra from None
+    return fd
+
+
+class _OcupadoPorOutra(Exception):
+    """Outra instância do SIG-FT segura o diário."""
+
+
+def _soltar_trava() -> None:
+    global _trava
+    if _trava is not None:
+        try:
+            os.close(_trava)   # fechar solta a trava nos dois mecanismos
+        except OSError:
+            pass
+    _trava = None
+
+
+def _termina_sem_quebra(arquivo: Path) -> bool:
+    """O último byte é `\n` (ou o arquivo está vazio ou não existe)."""
+    try:
+        with open(arquivo, "rb") as entrada:
+            entrada.seek(0, os.SEEK_END)
+            if entrada.tell() == 0:
+                return True
+            entrada.seek(-1, os.SEEK_END)
+            return entrada.read(1) == b"\n"
+    except FileNotFoundError:
+        return True
 
 
 def _gravar(evento: str) -> bool:
@@ -119,10 +187,15 @@ def _gravar(evento: str) -> bool:
         try:
             if arquivo.stat().st_size > LIMITE_BYTES:
                 os.replace(arquivo, _pasta / ARQUIVO_VELHO)
-        except FileNotFoundError:
+        except OSError:
+            # Não existe ainda, ou o sistema recusou a rotação (arquivo aberto por
+            # antivírus ou editor): a linha entra assim mesmo e a próxima tenta de novo.
             pass
+        # Falta de luz deixa a última linha pela metade (ou em bytes NUL), sem o
+        # `\n`: sem quebrar antes, este evento grudaria nela e sumiria da leitura.
+        inicio = "" if _termina_sem_quebra(arquivo) else "\n"
         with open(arquivo, "a", encoding="utf-8") as saida:
-            saida.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {evento}\n")
+            saida.write(f"{inicio}{time.strftime('%Y-%m-%d %H:%M:%S')} {evento}\n")
         return True
     except Exception:  # noqa: BLE001 -- o diário nunca derruba o app
         return False
@@ -143,10 +216,28 @@ def registrar_fechamento() -> None:
     _gravar(FECHAMENTO)
 
 
-def _instalar_ganchos(pasta: Path) -> None:
+def _instalar_ganchos(pasta: Path, *, queda_guardada: bool) -> None:
     """Erro não tratado (thread principal e threads) e queda dura vão para o diário.
-    Cada gancho chama o que havia antes: o traceback continua saindo onde saía."""
+    Cada gancho chama o que havia antes: o traceback continua saindo onde saía.
+
+    `queda_guardada` falso com o `queda.log` ainda com rastro (o sistema recusou
+    movê-lo): reabre em modo "a", para não apagar a prova da queda anterior."""
     global _arquivo_queda
+    _ligar_excepthooks()
+    # No Windows o `faulthandler` também grava exceções que o processo sobrevive
+    # (as do sistema, tratadas mais acima): `queda.log` com texto não é queda
+    # sozinho. Com `FECHAMENTO` depois, `classificar` dá NORMAL do mesmo jeito.
+    modo = "a" if not queda_guardada and _houve_queda(pasta) else "w"
+    try:
+        _arquivo_queda = open(pasta / ARQUIVO_QUEDA, modo, encoding="utf-8")
+        faulthandler.enable(_arquivo_queda, all_threads=True)
+    except Exception:  # noqa: BLE001 -- sem o rastro da queda dura, o resto segue
+        _arquivo_queda = None
+
+
+def _ligar_excepthooks() -> None:
+    """Embrulha `sys.excepthook` e `threading.excepthook`, cada um só se o de agora
+    ainda não for o do diário (um segundo `abrir` não empilha outro)."""
     anterior_python = sys.excepthook
     anterior_thread = threading.excepthook
 
@@ -160,13 +251,12 @@ def _instalar_ganchos(pasta: Path) -> None:
             registrar_erro(args.exc_type, args.exc_value, args.exc_traceback, onde=f"thread {nome}")
         anterior_thread(args)
 
-    sys.excepthook = _no_python
-    threading.excepthook = _na_thread
-    try:
-        _arquivo_queda = open(pasta / ARQUIVO_QUEDA, "w", encoding="utf-8")
-        faulthandler.enable(_arquivo_queda, all_threads=True)
-    except Exception:  # noqa: BLE001 -- sem o rastro da queda dura, o resto segue
-        _arquivo_queda = None
+    setattr(_no_python, _MARCA_GANCHO, True)
+    setattr(_na_thread, _MARCA_GANCHO, True)
+    if not getattr(anterior_python, _MARCA_GANCHO, False):
+        sys.excepthook = _no_python
+    if not getattr(anterior_thread, _MARCA_GANCHO, False):
+        threading.excepthook = _na_thread
 
 
 def abrir(*, versao: str, idioma: str, pasta: str | os.PathLike[str] | None = None,
@@ -175,7 +265,7 @@ def abrir(*, versao: str, idioma: str, pasta: str | os.PathLike[str] | None = No
     liga os ganchos de erro e o `faulthandler`. Devolve a situação da anterior
     (`NORMAL`, `CAIU`, `ENCERRADO`) ou `None`. Nunca levanta: qualquer falha deixa
     o diário desligado nesta sessão."""
-    global _pasta, _anterior
+    global _pasta, _anterior, _trava
     esquecer()
     if os.environ.get(ENV_DESLIGAR):
         return None
@@ -185,20 +275,27 @@ def abrir(*, versao: str, idioma: str, pasta: str | os.PathLike[str] | None = No
 
             pasta = pasta_logs()
         pasta = Path(pasta)
+        try:
+            _trava = _travar(pasta)
+        except _OcupadoPorOutra:
+            # Outra instância está aberta: esta fica sem diário e não toca em nada.
+            return None
         anterior = classificar(_ler_linhas(pasta), _houve_queda(pasta))
-        _guardar_queda_anterior(pasta)
+        queda_guardada = _guardar_queda_anterior(pasta)
         _pasta = pasta
         detalhe = (f"versao={versao} idioma={idioma} sistema={platform.platform()} "
                    f"python={platform.python_version()}")
         if not _gravar(f"{ABERTURA} {detalhe}"):
             _pasta = None
+            _soltar_trava()
             return None
         _anterior = anterior
         if ganchos:
-            _instalar_ganchos(pasta)
+            _instalar_ganchos(pasta, queda_guardada=queda_guardada)
         return anterior
     except Exception:  # noqa: BLE001 -- o diário nunca impede a abertura
         _pasta = None
+        _soltar_trava()
         return None
 
 
@@ -224,8 +321,10 @@ def dispensar_aviso() -> None:
 
 
 def esquecer() -> None:
-    """Zera o estado (desliga o `faulthandler` e fecha o `queda.log`, se abertos).
-    Os ganchos de `sys`/`threading` ficam: quem testa os devolve (`monkeypatch`)."""
+    """Zera o estado (desliga o `faulthandler`, fecha o `queda.log` e solta a trava).
+    Os ganchos de `sys`/`threading` ficam: quem testa os devolve (`monkeypatch`).
+    Teste de gancho usa o dublê de `faulthandler` da fixture; teste do app mantém
+    `SIGFT_SEM_DIARIO` posta (o `faulthandler` de verdade é o do pytest)."""
     global _pasta, _anterior, _dispensado, _arquivo_queda
     if _arquivo_queda is not None:
         try:
@@ -236,4 +335,5 @@ def esquecer() -> None:
             _arquivo_queda.close()
         except Exception:  # noqa: BLE001
             pass
+    _soltar_trava()
     _pasta, _anterior, _dispensado, _arquivo_queda = None, None, False, None
