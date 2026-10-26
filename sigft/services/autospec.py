@@ -7,7 +7,7 @@ import tempfile
 import time
 import openpyxl
 from openpyxl.styles import Font
-import PyPDF2
+import pypdf
 from bs4 import BeautifulSoup
 
 # Integração LlamaParse
@@ -868,7 +868,7 @@ def _ler_pdf_local(filepath):
 
     Devolve `(texto, RelatorioLeitura)` ou `("", None)` quando o PyMuPDF não
     está instalado ou não conseguiu abrir o arquivo — nesse caso quem chama
-    cai para o PyPDF2.
+    cai para o pypdf.
 
     Por que PyMuPDF e não PyPDF2 como primeira opção: o PyPDF2 entrega texto
     corrido e **desmancha tabelas**, e datasheet é quase só tabela. O PyMuPDF
@@ -1746,17 +1746,17 @@ class PDFProcessor:
                 cb.log(relatorio.resumo(nome), nivel=relatorio.nivel_log())
 
         if not text_content and is_pdf:
-            # PyMuPDF ausente/falhou: PyPDF2 continua como rede de segurança.
+            # PyMuPDF ausente/falhou: pypdf (o sucessor do PyPDF2) continua como rede de segurança.
             try:
                 with open(filepath, 'rb') as f:
-                    reader = PyPDF2.PdfReader(f)
+                    reader = pypdf.PdfReader(f)
                     for page in reader.pages:
                         t = page.extract_text()
                         if t: text_content += t + "\n"
                 if text_content:
-                    method_used = "PyPDF2"
+                    method_used = "pypdf"
             except Exception as e:
-                cb.log(f"PyPDF2 falhou em {nome} ({type(e).__name__}: {e}).", nivel="warn")
+                cb.log(f"pypdf falhou em {nome} ({type(e).__name__}: {e}).", nivel="warn")
 
         if not text_content and ocr_possivel and self.llama_key:
             # Última camada: nuvem. Só quando NADA local funcionou — PDF

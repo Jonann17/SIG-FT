@@ -143,3 +143,23 @@ jobs:
           print(f"CHANGELOG ok: {len(blocos)} versao(oes), a mais recente e a "
                 f"v{blocos[0].versao}.")
           PY
+
+  # Dependencias com vulnerabilidade conhecida (2026-10-26). Job a parte: um
+  # aviso novo publicado hoje reprova este job sem esconder o resultado dos
+  # testes. Olha o versoes-do-release.txt, que e exatamente o que vai no .exe.
+  # Aviso que nao se aplica entra no vulnerabilidades-aceitas.txt, com o motivo.
+  auditoria:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Instalar o pip-audit
+        run: python -m pip install pip-audit
+      - name: Auditar as versoes do Release
+        run: |
+          ignorar=$(grep -v '^\s*#' empacotamento/vulnerabilidades-aceitas.txt | awk 'NF {print "--ignore-vuln " $1}')
+          grep -v '^\s*#' empacotamento/versoes-do-release.txt | grep '==' > /tmp/versoes.txt
+          pip-audit -r /tmp/versoes.txt --no-deps --disable-pip --progress-spinner off $ignorar
