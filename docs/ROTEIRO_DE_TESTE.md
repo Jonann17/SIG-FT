@@ -607,6 +607,67 @@ antes — mande o log. Anote o tempo da ficha para comparar com uma rodada antig
 
 ---
 
+## Etapa 5b — Aconex ao vivo e Conferência de Revisões (2026-10-26, sem portal)
+
+A partir da **1.3.1-rc.1**. É a validação na GE do desenho
+`docs/superpowers/specs/2026-10-26-aconex-ao-vivo-design.md` (portões G1 e G2,
+§10), e o que ela responder decide a Tarefa 11 do plano (ver
+`docs/ACONEX_AO_VIVO.md`). Nada aqui toca o portal.
+
+**Antes de começar:**
+
+- o SIG-FT 1.3.1-rc.1 instalado (caixa "Versões de teste" marcada, ou o
+  instalador do Release, à mão);
+- o **DocManager com o seu perfil do Aconex cadastrado nesta conta do
+  Windows**: o SIG-FT lê o mesmo `Documentos\DocManager_Itaipu\credenciais.json`;
+- a planilha de mapeamento e a pasta raiz dos `_STATUS_PMIB`, as mesmas do
+  Gestão PMIB.
+
+**5b.1 — Testar conexão (G1).** Abra "10. Conferência de Revisões". A mapeadora
+e a pasta raiz já vêm as do Gestão PMIB. Clique em **"Testar conexão com o
+Aconex"**. O console escreve 7 linhas, `OK` ou `FALHOU`:
+
+| Sonda | O que prova |
+|---|---|
+| Login no Aconex | o perfil do DocManager funciona nesta máquina |
+| Register inteiro (busca vazia) | quantos documentos o projeto tem: é a referência das outras |
+| Busca exata do código, com histórico | a busca que o download usa |
+| Busca pelo Tracking ID (duas sintaxes) | se dá para seguir uma lista renomeada sem baixar o histórico inteiro |
+| Busca por título e por código | se dá para achar as listas PB020/SOBRESSALENTES no servidor |
+
+Uma sintaxe que o Aconex ignora devolve o register inteiro e aparece como
+`FALHOU ... a sintaxe não filtrou`. **Copie as 7 linhas e mande**: elas decidem
+a Tarefa 11.
+
+**5b.2 — Gestão PMIB com o STATUS REAL.** Numa **cópia** da mapeadora, rode o
+Gestão PMIB com o extrato do dia, como sempre.
+
+1. O log deve trazer linhas "STATUS REAL de <código>: <antes> → <depois>".
+2. Escolha 3 listas (uma Aprovado, uma Para Assinatura e uma Em Processo) e
+   confira o STATUS REAL contra o status real que o DocManager mostra.
+3. Lista nova: só aparece a com PB020 no código; planilha de comissionamento
+   com "sobressalentes" no título não aparece.
+4. Power BI: atualize e confira "Listas Aprovadas" antes e depois (na base de
+   26/10: 93 listas, 67 aprovadas, 25 aprovadas sem fichas).
+
+**5b.3 — Conferência no Box de verdade.** Clique em **"Conferir revisões"**.
+
+1. Os totais por categoria batem com a mapeadora (na leitura de 26/10: 4
+   aprovadas e 1 não aprovada com divergência, 42 em dia, 48 sem
+   `_STATUS_PMIB`; os números mudam com a mapeadora).
+2. Os PDFs vão para a pasta do `_STATUS_PMIB` de cada lista, com o nome
+   `<código>[<revisão>].pdf`.
+3. **Rode de novo**: a segunda rodada não baixa nada (tudo "já existia").
+
+**5b.4 — Sem cofre.** Numa conta do Windows sem o DocManager: "Conferir
+revisões" mostra as listas e avisa "Sem conexão com o Aconex: as listas
+aparecem, mas nada foi baixado."
+
+O "Gestão PMIB ao vivo" (sem o extrato) chega com a Tarefa 11 e ganha os
+passos dele aqui.
+
+---
+
 ## Etapa 6 — Me mandar o resultado
 
 Copie e preencha:
@@ -655,6 +716,16 @@ ETAPA 5 — Portal, motor Playwright
   5.2 Smoke ............................... [ 13 OK / falhou: ______ ]
   5.3 Mesmas 5 tarefas .................... [ OK / falhou: ______ ]
       login foi dispensado na 2ª vez? ..... [ sim / não ]
+
+ETAPA 5b — Aconex ao vivo e Conferência de Revisões
+  5b.1 Testar conexão ..................... [ colei as 7 linhas / falhou: ______ ]
+  5b.2 STATUS REAL igual ao do DocManager . [ ___ de 3 / falhou: ______ ]
+       lista nova só com PB020? ........... [ sim / não: ______ ]
+       Power BI igual antes e depois? ..... [ sim / não: ______ ]
+  5b.3 Categorias conferem? ............... [ sim / não: ______ ]
+       PDFs nas pastas certas? ............ [ sim / não: ______ ]
+       2ª rodada não baixou nada? ......... [ sim / não ]
+  5b.4 Sem cofre: avisou e não baixou? .... [ sim / não testei ]
       mais rápido, igual ou mais lento? ... [ ______ ]
 ```
 

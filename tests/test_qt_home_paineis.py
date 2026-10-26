@@ -972,10 +972,12 @@ def test_medidas_da_home(com_folha, qtbot, rede, mensagens):
     assert engrenagem[0] + engrenagem[2] == corpo.width() - 57
     assert 46 <= engrenagem[1] and engrenagem[1] + engrenagem[3] <= 46 + 38
     cards = list(tela.cards.values())
-    assert _geo(cards[0], corpo)[:3] == (52, 247, 438)
-    assert _geo(cards[1], corpo)[:3] == (502, 247, 438)
+    # 2026-10-26: o 13º card (Conferência de Revisões) abre a 7ª linha, e a Home
+    # passa a rolar a 1280x850 -- os 12 cards cabiam sem rolar (decisão de
+    # 2026-10-07). A barra vertical tira 5 px de cada card. A rever com o Luan.
+    assert _geo(cards[0], corpo)[:3] == (52, 247, 433)
+    assert _geo(cards[1], corpo)[:3] == (497, 247, 433)
     assert tela.horizontalScrollBar().maximum() == 0
-    assert tela.verticalScrollBar().maximum() == 0, "os 12 cards cabem sem rolar (decisão de 2026-10-07)"
 
 
 def test_medidas_do_painel_de_chaves(com_folha, qtbot, rede, mensagens):

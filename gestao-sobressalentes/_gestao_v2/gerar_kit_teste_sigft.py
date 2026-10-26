@@ -148,12 +148,14 @@ def montar_mapeadora(destino: pathlib.Path) -> None:
 def montar_docmanager(destino: pathlib.Path) -> None:
     wb = openpyxl.Workbook()
     ws = wb.active
+    # [2026-10-26] "Versão" e "Status da Revisão" existem no extrato real e a batalha de versões do
+    # STATUS REAL lê as duas: sem elas o Gestão PMIB avisaria que não calculou o status real.
     cab = ["No. do Documento", "Tracking ID", "Current", "Título", "Controle do Emissor", "Revisão", "Status",
-           "Data de Alteração", "Especialidade", "Subespecialidade"]
+           "Data de Alteração", "Especialidade", "Subespecialidade", "Versão", "Status da Revisão"]
     ws.append(cab)
     for i, (cod, (cmi, ult, _, trk)) in enumerate(LISTAS.items(), start=1):
         ws.append([cod, trk, "True", f"TEXTO DE TESTE - LISTA DE SOBRESSALENTES {i}", cmi, ult, "Aprovado",
-                   "01/10/2026", "TEXTO DE TESTE", "TEXTO DE TESTE"])
+                   "01/10/2026", "TEXTO DE TESTE", "TEXTO DE TESTE", "1", ""])
     wb.save(destino)
 
 

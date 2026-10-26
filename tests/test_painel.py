@@ -153,6 +153,15 @@ def test_o_template_e_copia_sem_mudanca_do_prototipo():
     assert painel.caminho_do_template().read_bytes() == (COFRE / "_scripts" / "prototipo_template.html").read_bytes()
 
 
+def test_template_conta_lista_aprovada_pela_marca_do_servico():
+    """[2026-10-26] O STATUS REAL passou a distinguir Aprovado, Aprovado com
+    Comentários e Para Assinatura: comparar com o texto "APROVADO" deixaria de
+    contar as duas últimas. A conta usa a marca `aprov` que o serviço calcula."""
+    html = painel.caminho_do_template().read_text(encoding="utf-8")
+    assert 'l.sr === "APROVADO"' not in html
+    assert "l.aprov" in html
+
+
 def test_o_template_nao_depende_de_rede():
     import re
 
@@ -180,6 +189,31 @@ def _validador_do_painel():
     modulo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modulo)
     return modulo
+
+
+@precisa_do_kit
+def test_lista_aprovada_pela_familia_de_aprovacao(tmp_path):
+    """[2026-10-26] Para Assinatura e o antigo APROVADO contam como lista
+    aprovada; Em Processo, não. Antes só o texto "APROVADO" contava."""
+    pytest.importorskip("pandas")
+    pytest.importorskip("openpyxl")
+    kit = tmp_path / "kit"
+    shutil.copytree(KIT, kit)
+    valores = {"#ST00=TESTE01&MPB020": "Para Assinatura", "#ST00=TESTE02&MPB020": "APROVADO",
+               "#ST00=TESTE03&MPB020": "Em Processo"}
+
+    with openpyxl_de_verdade(painel) as openpyxl_real, pandas_de_verdade(painel):
+        livro = openpyxl_real.load_workbook(kit / "mapeadora_sintetica.xlsx")
+        aba = livro["Acompanhamento Sobressalente"]
+        cabecalho = [c.value for c in aba[2]]
+        col_doc, col_sr = cabecalho.index("N° DOCUMENTO ITAIPU") + 1, cabecalho.index("STATUS REAL") + 1
+        for linha in range(3, aba.max_row + 1):
+            aba.cell(linha, col_sr).value = valores[aba.cell(linha, col_doc).value]
+        livro.save(kit / "mapeadora_sintetica.xlsx")
+        dados = painel.montar(HOJE, kit / "status", kit / "mapeadora_sintetica.xlsx")
+
+    aprovadas = {lista["l"]: lista["aprov"] for lista in dados["listas"] if lista["l"] in valores}
+    assert aprovadas == {"#ST00=TESTE01&MPB020": True, "#ST00=TESTE02&MPB020": True, "#ST00=TESTE03&MPB020": False}
 
 
 @precisa_do_kit

@@ -120,6 +120,11 @@ def _busca_pmib(parent, controller):
     return ModuloBuscaPMIB(parent, controller)
 
 
+def _conferencia_revisoes(parent, controller):
+    from sigft.app_qt.views.conferencia_revisoes import ModuloConferenciaRevisoes
+    return ModuloConferenciaRevisoes(parent, controller)
+
+
 # Registro das telas migradas: nome -> fábrica(parent, controller). O teste
 # `tests/test_qt_registro_telas.py` cobra que todo item do menu esteja aqui.
 TELAS = {
@@ -138,6 +143,7 @@ TELAS = {
     "AutoSpec": _autospec,
     "PMIBManager": _pmib_manager,
     "SearchPMIB": _busca_pmib,
+    "ConferenciaRevisoes": _conferencia_revisoes,
 }
 
 # Ctrl+K (etapa 1b, 2026-10-21): o método da Home que cada `acao:` chama, das

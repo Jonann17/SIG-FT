@@ -12,6 +12,15 @@ Escreva cada linha pensando em quem usa o SIG-FT, não em quem o programa:
 "a busca do AutoSpec passa a funcionar com a VPN ligada" é útil; "refatorado o
 cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
+## 1.3.1 - 2026-10-26
+
+- Conferência de Revisões: **tela nova**, no menu "10. Conferência de Revisões" (seção Gestão). Lê a planilha de mapeamento e aponta as listas cuja revisão em uso ficou para trás da última revisão emitida no Aconex, separadas pelo STATUS REAL: aprovadas primeiro, depois em processo, não aprovadas e outros, com os totais de "Em dia" e "Sem _STATUS_PMIB". Mostra quando a mapeadora foi salva e avisa quando não foi hoje: rode o Gestão PMIB antes, para ver as revisões mais recentes.
+- Conferência de Revisões: com o Aconex, **baixa a revisão vigente** de cada lista com divergência para a pasta do `_STATUS_PMIB` dela, com o nome `<código>[<revisão>].pdf`, e também o PDF da revisão em uso, se ele não estiver lá. Nunca sobrescreve nem apaga: o arquivo que já existe fica como está. Quando o Aconex está numa revisão mais nova que a da mapeadora, a linha avisa.
+- Conferência de Revisões: o acesso ao Aconex usa o **perfil cadastrado no DocManager** nesta conta do Windows. Com dois ou mais perfis, o SIG-FT pergunta uma vez qual usar e lembra a escolha. Sem perfil ou sem conexão, as listas aparecem do mesmo jeito e nada é baixado. O botão **"Testar conexão com o Aconex"** escreve no console quais buscas funcionam.
+- Gestão PMIB: a coluna **STATUS REAL** da planilha de mapeamento passa a ser preenchida pelo SIG-FT, com a mesma batalha de versões do DocManager (Aprovado, Aprovado com Comentários, Para Assinatura, Em Processo, Não Aprovado...), sem o status consolidado. Cada mudança aparece no log, com o valor de antes e o de depois.
+- Gestão PMIB: **lista nova** só é sugerida com PB020 no código, SOBRESSALENTES no título e sem PREÇO ou PREÇOS. A lista do SMF (`...PB020-01`) deixa de ser barrada, e as planilhas de comissionamento com "sobressalentes" no título deixam de ser sugeridas.
+- Gestão PMIB: o **painel de sobressalentes** conta como aprovada toda a família de aprovação (Aprovado, Aprovado com Comentários e Para Assinatura), e não só "APROVADO".
+
 ## 1.3.0 - 2026-10-23
 
 - Atualização automática: a atualização pequena deixa de levar o `SIG-FT.exe` inteiro (37 MB) quando nada nele mudou. Duas bibliotecas vinham na versão que o servidor de compilação tivesse no dia, e a troca delas refazia o `.exe`; agora as versões são fixas, como as demais.

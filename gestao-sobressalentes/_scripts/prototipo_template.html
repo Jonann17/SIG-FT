@@ -299,7 +299,7 @@ function interno() {
   const entregues = F.filter(i => i.en), fis = F.filter(i => i.t === "FÍSICA E DOCUMENTAL");
   const valor = F.reduce((s, i) => s + (i.v || 0), 0), valorEnt = F.filter(i => i.en).reduce((s, i) => s + (i.v || 0), 0);
   const pend = F.filter(i => i.pe !== "—");
-  const semFicha = L.filter(l => !F.some(i => i.l === l.l) && l.sr === "APROVADO").length;
+  const semFicha = L.filter(l => !F.some(i => i.l === l.l) && l.aprov).length;
   kpi("kpi-int", [
     {rot: "Fichas no PMIB", val: fmt(nP(F)), det: `${fmt(new Set(F.map(i => i.l)).size)} listas com ficha · ${semFicha} listas aprovadas ainda sem ficha`},
     {rot: "Emitidas para Itaipu", val: fmt(nP(emit)), det: `${pct(nP(emit), nP(F))} · ${fmt(nP(F.filter(i => i.st === "APROVADO")))} aprovadas · ${fmt(nP(F.filter(i => i.st === "EM CORREÇÃO")))} em correção`},
