@@ -852,12 +852,15 @@ endpoint do portal por fora da tela.
 | 2026-10-22 | Engrenagem e idioma (Task 5) | "Copiar lista" do resumo do lote copia no idioma da sessão; o arquivo do "Abrir log" fica em português. | Informativo |
 | 2026-10-22 | Engrenagem e idioma (Task 3) | **Testar no Windows real o "Reiniciar agora"** pelo `.exe` e pelo `SIG-FT.bat` (a janela preta do `.bat` fecha e o novo processo abre sem ela). | Validação manual antes do Release |
 
-## 2026-10-26 — Aconex ao vivo no SIG-FT: código copiado do DocManager, por enquanto
+## 2026-10-26 — Aconex ao vivo no SIG-FT: a cópia do DocManager e o rastreio por PB021
 
-Decisão do Luan no desenho da conferência de revisões das listas (workflow com o AMP):
-a conexão ao vivo com o Aconex entra no SIG-FT **copiando** o código do DocManager, que
-é o caminho mais fácil agora. Trocar a cópia por um pacote compartilhado está nos planos.
+Duas pendências do desenho da conferência de revisões das listas (workflow com o AMP,
+`docs/superpowers/specs/2026-10-26-aconex-ao-vivo-design.md`). Primeira: a conexão ao vivo com o Aconex
+entra no SIG-FT **copiando** o código do DocManager, que é o caminho mais fácil agora, e trocar a cópia
+por um pacote compartilhado está nos planos do Luan. Segunda: o rastreio ainda separa as listas de
+preços pelo título, e deve passar a usar o código PB021 quando a migração delas acontecer.
 
 | Data | Descoberto em | Descrição | Destino proposto |
 |---|---|---|---|
-| 2026-10-26 | Desenho do Aconex ao vivo (brainstorming do workflow AMP) | **Trocar a cópia do código do DocManager por um pacote compartilhado pelos dois repositórios.** O SIG-FT vai copiar do DocManager (`luanccozer/DocManager`): o login OAuth no Oracle Lobby e a leitura do cofre de credenciais (`Documentos\DocManager_Itaipu\credenciais.json`, cifrado pela DPAPI); a conexão pela rede da CMI (proxy PAC do GlobalProtect, `truststore` para o Zscaler); a busca e o download no register; e o motor do Status Real (`calcular_status_real`, a "batalha de versões", com `calcula_status_consolidado`), que passa a preencher o STATUS REAL da mapeadora. Até virar pacote, toda correção feita num lado (rede, autenticação, regras de status) tem de ser levada à mão para o outro. | Pacote compartilhado (nos planos do Luan) |
+| 2026-10-26 | Desenho do Aconex ao vivo (brainstorming do workflow AMP) | **Trocar a cópia do código do DocManager por um pacote compartilhado pelos dois repositórios.** O SIG-FT vai copiar do DocManager (`luanccozer/DocManager`): o login OAuth no Oracle Lobby e a leitura do cofre de credenciais (`Documentos\DocManager_Itaipu\credenciais.json`, cifrado pela DPAPI); a busca e o download no register; e o caminho do Status Real (`resolver_linha_da_verdade` → `calcular_status_real`, a "batalha de versões", **sem** o consolidado), que passa a preencher o STATUS REAL da mapeadora. A rede da CMI (proxy PAC do GlobalProtect, `truststore` para o Zscaler) **não** é copiada: o SIG-FT já tem a mesma solução em `sigft/core/rede.py`, e o DocManager a dele em `docmanager/services/rede.py` -- duas implementações que também cabem no pacote. Até virar pacote, toda correção feita num lado (autenticação, regras de status, rede) tem de ser levada à mão para o outro. Desenho: `docs/superpowers/specs/2026-10-26-aconex-ao-vivo-design.md`. | Pacote compartilhado (nos planos do Luan) |
+| 2026-10-26 | Desenho do Aconex ao vivo (pedido do Luan) | **Quando as listas de preços migrarem para o código PB021, passar o rastreio a usar o código.** Hoje as listas com preços ainda usam PB020 e se separam pelo título. Por isso a regra de lista nova do Gestão PMIB passa a ser "PB020 no código + SOBRESSALENTES no título + nada de PREÇO/PREÇOS" (desenho de 2026-10-26, §4.3), e `lista_precos.eh_lista_de_precos` reconhece a lista de preços pelo título. A migração de todas para PB021 ainda não aconteceu. Quando acontecer: lista de sobressalentes = PB020; lista de preços = PB021 (`lista_precos` acha e pareia pelo código); o teste de PREÇO no título deixa de ser necessário. Conferir antes, no histórico do Aconex, se não sobrou nenhuma lista de preços vigente em PB020. | Quando a migração para PB021 acontecer |
