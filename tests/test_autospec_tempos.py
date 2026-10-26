@@ -103,7 +103,7 @@ def _core_com_llama(monkeypatch, classe):
     core.llama_key = "chave"
     monkeypatch.setattr(autospec, "LlamaParse", classe)
     monkeypatch.setattr(autospec, "_ler_pdf_local", lambda caminho: ("", None))
-    monkeypatch.setattr(autospec.PyPDF2, "PdfReader", lambda caminho: type(
+    monkeypatch.setattr(autospec.pypdf, "PdfReader", lambda caminho: type(
         "R", (), {"pages": []})())
     return core
 

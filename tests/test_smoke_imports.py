@@ -21,7 +21,7 @@ arquivo, que:
   1. a raiz do repositório está em `sys.path` (os módulos vivem soltos na
      raiz, não dentro de um pacote instalável);
   2. toda dependência pesada ausente neste ambiente (pandas, openpyxl,
-     selenium, google-generativeai, langchain*, llama_parse, PyPDF2, bs4,
+     selenium, google-generativeai, langchain*, llama_parse, pypdf, bs4,
      xlwings, deep_translator, unidecode) está stubada em `sys.modules` via
      `unittest.mock.MagicMock` — suficiente aqui porque este teste só
      IMPORTA os módulos, nunca chama as funções/classes neles definidas (ao

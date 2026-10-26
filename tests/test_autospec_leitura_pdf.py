@@ -122,7 +122,7 @@ def test_pagina_com_migalha_de_texto_NAO_conta_como_lida(tmp_path):
 
 
 def test_arquivo_ilegivel_devolve_relatorio_None(tmp_path):
-    """Quem chama cai para o PyPDF2 — não pode explodir."""
+    """Quem chama cai para o pypdf — não pode explodir."""
     ruim = tmp_path / "nao_e_pdf.pdf"
     ruim.write_bytes(b"isto nao e um PDF")
     texto, rel = autospec_backend._ler_pdf_local(str(ruim))

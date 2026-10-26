@@ -4,7 +4,7 @@ de importação (CP 0.2) do plano de refatoração — ver
 docs/refatoracao/PLANO_REFATORACAO.md.
 
 Este ambiente de teste NÃO tem as dependências pesadas de produção instaladas
-(pandas, openpyxl, playwright, google-generativeai, llama_parse, PyPDF2, bs4,
+(pandas, openpyxl, playwright, google-generativeai, llama_parse, pypdf, bs4,
 xlwings, deep_translator, unidecode etc.) — só a stdlib,
 `requests` e (depois de instalado só para rodar os testes) `pytest`.
 [CP 3.2] `langchain-google-genai`/`langchain-core` foram REMOVIDOS de
@@ -108,7 +108,7 @@ _HEAVY_MODULES = [
     # ambiente de teste — `providers/openai_compat.py`/`openrouter.py`
     # dependem disso para os testes injetarem `http_post`/`http_get` fakes
     # sem precisar do pacote de verdade em produção).
-    "PyPDF2",
+    "pypdf",
     "bs4",
     "llama_parse",
     # [CP 0.2] translator_backend.py — tradução PT->ES via Excel COM.
