@@ -101,3 +101,10 @@ def test_ordem_das_categorias_poe_as_aprovadas_primeiro():
     ("0", "0A", False), ("0B", "0C", False), ("", "", False), (None, "0", False), ("0", None, False)])
 def test_revisoes_iguais(a, b, esperado):
     assert status_real.revisoes_iguais(a, b) is esperado
+
+
+def test_colunas_que_faltam_para_a_batalha(pandas_real):
+    completo = _h().evento("0", 1, "Aprovado", "01/03/2026", current=True).build()
+    assert status_real.colunas_que_faltam(completo) == []
+    assert status_real.colunas_que_faltam(completo.drop(columns=["Versão", "Status da Revisão"])) == [
+        "Versão", "Status da Revisão"]

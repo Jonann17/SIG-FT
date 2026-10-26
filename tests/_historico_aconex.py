@@ -7,6 +7,8 @@ exercitam exatamente o que os motores recebem em produção.
 """
 from __future__ import annotations
 
+import contextlib
+
 import pandas as pd
 
 COLUNAS_ACONEX = [
@@ -61,3 +63,31 @@ def base(*builders: HistoricoBuilder) -> pd.DataFrame:
     return df.astype(str).fillna("")
 
 
+
+
+@contextlib.contextmanager
+def motor_com_pandas_real(*outros_modulos):
+    """O pandas de verdade no motor copiado do DocManager e nos `outros_modulos`.
+
+    O `constants.py` calcula `DATA_CORTE_FLUXO = pd.Timestamp(...)` ao ser
+    importado: sob o dublê do conftest, a constante nasceria dublê. Dentro do
+    bloco, os módulos copiados são recarregados com o pandas real (na ordem de
+    dependência) e a fachada `status_real` também."""
+    import importlib
+
+    from _pandas_de_verdade import pandas_de_verdade
+    from sigft.core.aconex import status_real
+    from sigft.core.aconex._docmanager import (
+        comissionamento,
+        constants,
+        excecoes,
+        normalize,
+        status_engine,
+        truth_line,
+    )
+
+    import _historico_aconex
+    with pandas_de_verdade(_historico_aconex, *outros_modulos) as real:
+        for modulo in (constants, normalize, excecoes, comissionamento, truth_line, status_engine, status_real):
+            importlib.reload(modulo)
+        yield real

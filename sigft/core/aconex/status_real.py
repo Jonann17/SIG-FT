@@ -32,6 +32,17 @@ _REPROVACAO = frozenset(_chave(s) for s in constants.STATUS_REPROVACAO_UPPER)
 _EM_PROCESSO = "EM PROCESSO"  # o motor devolve o literal "Em Processo" (status_engine.py)
 
 
+# As colunas do histórico que a linha da verdade e a batalha leem.
+COLUNAS_DO_HISTORICO = (constants.COL_TRACKING, constants.COL_DOC_ITAIPU, constants.COL_CURRENT,
+                        constants.COL_REVISAO, constants.COL_VERSAO, constants.COL_STATUS,
+                        constants.COL_STATUS_REVISAO, constants.COL_DATA, constants.COL_TITULO)
+
+
+def colunas_que_faltam(historico: pd.DataFrame) -> list[str]:
+    """As colunas de `COLUNAS_DO_HISTORICO` que o histórico não tem (vazio = dá para calcular)."""
+    return [c for c in COLUNAS_DO_HISTORICO if c not in historico.columns]
+
+
 def status_real_do_documento(historico: pd.DataFrame) -> str:
     """O status real de um documento. `historico` são todas as linhas de UM Tracking ID,
     com as colunas do extrato do DocManager."""
