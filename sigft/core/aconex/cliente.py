@@ -1,14 +1,19 @@
-# Copiado em parte de luanccozer/DocManager@c9683d2 (docmanager/aconex_backend.py): as constantes, CAMPOS_STRING, MAPA_COLUNAS, ORDEM_COLUNAS, _parse_pagina, classificar_fonte e montar_dataframe (aqui `tabela`). O token, a paginacao e o download viraram o ClienteAconex, sobre o core/rede do SIG-FT. Nao edite aqui sem levar ao DocManager -- PENDENCIAS 2026-10-26.
+# Copiado em parte de luanccozer/DocManager@c9683d2 (docmanager/aconex_backend.py): as constantes, CAMPOS_STRING, MAPA_COLUNAS, ORDEM_COLUNAS, _parse_pagina, classificar_fonte e montar_dataframe (aqui `tabela`); a navegacao entre as paginas segue _baixar_pagina e extrair_base, a versao vigente segue _buscar_doc_atual e o TotalResults segue tools/probe_download_aconex.py. O token, a paginacao e o download viraram o ClienteAconex, sobre o core/rede do SIG-FT. Nao edite aqui sem levar ao DocManager -- PENDENCIAS 2026-10-26.
 """O cliente da API de documentos do Aconex: token OAuth, busca paginada, versões
 de um código e download.
 
 As requisições passam pelo `sigft/core/rede.py`, que já resolve a rede da CMI
-(PAC do GlobalProtect, certificado do Zscaler). Regras fixadas no desenho
-(`docs/superpowers/specs/2026-10-26-aconex-ao-vivo-design.md`, §4.2 e §8):
+(PAC do GlobalProtect, certificado do Zscaler) e refaz a cascata de rotas a cada
+requisição. A navegação entre as páginas é a do DocManager (KB §18.2 e §28):
 
-* 401 numa página: pede token novo e repete uma vez; o segundo 401 é erro;
-* 503 (limite de volume ou de frequência): espera 5, 15 e 45 s; depois, erro;
-* a paginação acaba no HTTP 400 ou na primeira página vazia (como no DocManager);
+* páginas de 500, ordenadas por docno; a paginação acaba no HTTP 400, na página
+  vazia ou na página com menos itens que o `page_size` (a última);
+* cada página tem 5 tentativas, com 5, 15, 30 e 60 s de espera entre elas (HTTP
+  fora do esperado, XML truncado, rede); o 401 renova o token sem gastar
+  tentativa, até 3 vezes, porque o token expira no meio de uma extração longa;
+* depois da 5ª tentativa, `ErroAconex`: resultado parcial nunca passa por completo;
+* a versão vigente de um código sai da busca exata do download do DocManager
+  (código entre aspas, sem histórico, uma página de 25);
 * nenhuma mensagem de `ErroAconex` traz o segredo ou o token.
 """
 from __future__ import annotations
@@ -67,9 +72,13 @@ ORDEM_COLUNAS = [
     "Current", "Idioma", "Control CMI", "Disciplina (Modelo)",
 ]
 
-PAGE_SIZE = 500          # o register só aceita 25/50/.../500
-PAGE_SIZE_VERSOES = 50   # as versões de um código cabem com folga
-ESPERAS_503 = (5, 15, 45)
+PAGE_SIZE = 500          # o register só aceita 25/50/.../500 (KB §24 do DocManager)
+PAGE_SIZE_EXATA = 25     # a busca exata de um código (`_buscar_doc_atual`)
+SORT_FIELD = "docno"
+SORT_DIRECTION = "ASC"
+TENTATIVAS_POR_PAGINA = 5
+ESPERAS_BACKOFF = (5, 15, 30, 60)   # segundos entre tentativas
+RENOVACOES_POR_PAGINA = 3
 TIMEOUT_DOWNLOAD = 180
 
 
@@ -84,6 +93,14 @@ class Versao:
     revisao: str
     versao: int
     current: bool
+
+
+@dataclass(frozen=True)
+class Pagina:
+    """A página 1 de uma busca e o `TotalResults` da busca inteira (`None` quando a
+    resposta não traz o atributo)."""
+    registros: list
+    total: int | None
 
 
 def _tag_local(tag: str) -> str:
@@ -103,6 +120,14 @@ def _parse_pagina(conteudo: bytes) -> list[dict]:
             if item:
                 docs.append(item)
     return docs
+
+
+def _total_de(conteudo: bytes) -> int | None:
+    """O `TotalResults` do elemento raiz, como lê a sonda do DocManager."""
+    try:
+        return int(ET.fromstring(conteudo).attrib.get("TotalResults", ""))
+    except ValueError:
+        return None
 
 
 def _ler_versoes(conteudo: bytes) -> list[Versao]:
@@ -207,51 +232,68 @@ class ClienteAconex:
             raise ErroAconex("O Aconex respondeu sem o token de acesso.")
         return token
 
-    def _get(self, url: str, *, params: dict | None = None, timeout: int = 60, xml: bool = True):
-        """GET autenticado: renova o token uma vez no 401 e espera no 503."""
+    def _baixar_pagina(self, params: dict, ler):
+        """UMA página com retentativas e backoff progressivo (o `_baixar_pagina` do
+        DocManager). Devolve `(itens, fim_da_paginacao)`; o 400 é o fim normal.
+
+        Renovar o token (401) não gasta tentativa: expirar depois de meia hora de
+        paginação é o esperado. A reconexão do DocManager (sessão nova pela cascata)
+        aqui é de graça: o `rede.abrir` refaz a cascata a cada requisição."""
         self.conectar()
-        renovou = False
-        esperas = iter(ESPERAS_503)
-        while True:
-            cabecalhos = {"Authorization": f"Bearer {self._token}"}
-            if xml:
-                cabecalhos["Accept"] = "application/xml"
-            resposta = self._requisitar(url, metodo="GET", headers=cabecalhos, params=params, timeout=timeout)
-            if resposta.status_code == 401:
-                if renovou:
-                    raise ErroAconex("O Aconex recusou as credenciais (HTTP 401).")
-                renovou = True
-                self._log("Token do Aconex expirado. Renovando...")
-                self._token = self._pedir_token()
-                continue
-            if resposta.status_code == 503:
-                espera = next(esperas, None)
-                if espera is None:
-                    raise ErroAconex("O Aconex continua acima do limite de uso (HTTP 503). Tente mais tarde.")
-                self._log(f"Aconex acima do limite de uso (HTTP 503): esperando {espera} s...")
+        pagina = params["page_number"]
+        ultimo_erro, renovacoes, tentativa = "", 0, 0
+        while tentativa < TENTATIVAS_POR_PAGINA:
+            try:
+                resposta = self._requisitar(self._register, metodo="GET", params=params, timeout=60,
+                                            headers={"Authorization": f"Bearer {self._token}",
+                                                     "Accept": "application/xml"})
+            except ErroAconex as erro:   # rede/SSL/timeout em todas as rotas
+                ultimo_erro = str(erro)
+                self._log(f" [Erro de conexão] tentativa {tentativa + 1}/{TENTATIVAS_POR_PAGINA}...")
+            else:
+                if resposta.status_code == 200:
+                    try:
+                        return ler(resposta.content), False
+                    except ET.ParseError:   # XML truncado: vale retentar
+                        ultimo_erro = f"XML inválido na página {pagina}"
+                        self._log(f" [{ultimo_erro}] tentativa {tentativa + 1}/{TENTATIVAS_POR_PAGINA}...")
+                elif resposta.status_code == 400:
+                    return [], True          # fim normal da paginação
+                elif resposta.status_code == 401 and renovacoes < RENOVACOES_POR_PAGINA:
+                    renovacoes += 1
+                    self._log("Token expirado. Renovando...")
+                    try:
+                        self._token = self._pedir_token()
+                        continue             # não consome tentativa
+                    except ErroAconex:
+                        ultimo_erro = "não foi possível renovar o token"
+                else:
+                    ultimo_erro = f"HTTP {resposta.status_code}"
+                    self._log(f" [Erro {resposta.status_code}] tentativa {tentativa + 1}/{TENTATIVAS_POR_PAGINA}...")
+            tentativa += 1
+            if tentativa < TENTATIVAS_POR_PAGINA:
+                espera = ESPERAS_BACKOFF[min(tentativa - 1, len(ESPERAS_BACKOFF) - 1)]
+                self._log(f" Aguardando {espera}s antes de tentar de novo...")
                 self._esperar(espera)
-                continue
-            return resposta
+        raise ErroAconex(f"A busca no Aconex falhou na página {pagina} após "
+                         f"{TENTATIVAS_POR_PAGINA} tentativas ({ultimo_erro}).")
 
     def _paginas(self, search_query: str, historico: bool, campos: str, page_size: int, ler) -> list:
+        """Todas as páginas da busca, no laço do `extrair_base` do DocManager."""
         itens, pagina = [], 1
         while True:
             params = {"search_query": search_query, "return_fields": campos, "search_type": "PAGED",
                       "page_size": page_size, "page_number": pagina,
-                      "show_document_history": "true" if historico else "false",
-                      "sort_field": "docno", "sort_direction": "ASC"}
-            resposta = self._get(self._register, params=params)
-            if resposta.status_code == 400:      # fim normal da paginação
-                return itens
-            if resposta.status_code != 200:
-                raise ErroAconex(f"A busca no Aconex falhou (HTTP {resposta.status_code}).")
-            try:
-                lidos = ler(resposta.content)
-            except ET.ParseError:
-                raise ErroAconex(f"Resposta ilegível do Aconex na página {pagina}.") from None
-            if not lidos:
+                      "sort_field": SORT_FIELD, "sort_direction": SORT_DIRECTION}
+            if historico:
+                params["show_document_history"] = "true"
+            lidos, fim = self._baixar_pagina(params, ler)
+            if fim or not lidos:
                 return itens
             itens.extend(lidos)
+            self._log(f"Página {pagina}: +{len(lidos)} docs (total {len(itens)})")
+            if len(lidos) < page_size:
+                return itens         # a última página
             pagina += 1
 
     def buscar(self, search_query: str, *, historico: bool, campos: str = CAMPOS_STRING,
@@ -259,12 +301,29 @@ class ClienteAconex:
         """Os registros de todas as páginas da busca (campos como o XML os nomeia)."""
         return self._paginas(search_query, historico, campos, page_size, _parse_pagina)
 
+    def primeira_pagina(self, search_query: str, *, historico: bool, campos: str = CAMPOS_STRING,
+                        page_size: int = PAGE_SIZE_EXATA) -> Pagina:
+        """Só a página 1 e o `TotalResults`: o jeito da sonda do DocManager
+        (`tools/probe_download_aconex.py`) de saber quantos vieram sem paginar."""
+        params = {"search_query": search_query, "return_fields": campos, "search_type": "PAGED",
+                  "page_size": page_size, "page_number": 1}
+        if historico:
+            params["show_document_history"] = "true"
+        pagina, fim = self._baixar_pagina(params, lambda c: Pagina(_parse_pagina(c), _total_de(c)))
+        return Pagina([], 0) if fim else pagina
+
     def versoes_do_codigo(self, codigo: str) -> list[Versao]:
         """Todas as versões do documento de código exato (busca entre aspas, com histórico)."""
-        return self._paginas(f'"{codigo}"', True, CAMPOS_DAS_VERSOES, PAGE_SIZE_VERSOES, _ler_versoes)
+        return self._paginas(f'"{codigo}"', True, CAMPOS_DAS_VERSOES, PAGE_SIZE_EXATA, _ler_versoes)
 
     def versao_vigente(self, codigo: str) -> Versao | None:
-        return next((v for v in self.versoes_do_codigo(codigo) if v.current), None)
+        """A versão vigente, pela busca exata do download do DocManager (`_buscar_doc_atual`):
+        sem histórico o register já devolve só a corrente. Fica com a `current` ou, sem
+        ela, com a primeira."""
+        params = {"search_query": f'"{codigo}"', "return_fields": CAMPOS_DAS_VERSOES,
+                  "search_type": "PAGED", "page_size": PAGE_SIZE_EXATA, "page_number": 1}
+        versoes, _fim = self._baixar_pagina(params, _ler_versoes)
+        return next((v for v in versoes if v.current), versoes[0] if versoes else None)
 
     def versao(self, codigo: str, revisao: str) -> Versao | None:
         """A versão de maior número entre as da `revisao` (comparada sem caixa nem espaço)."""
@@ -272,8 +331,20 @@ class ClienteAconex:
         return max(da_revisao, key=lambda v: v.versao, default=None)
 
     def baixar(self, document_id: str) -> bytes:
-        """O PDF da versão (`/markedup`, o caminho provado no DocManager)."""
-        resposta = self._get(f"{self._register}/{document_id}/markedup", timeout=TIMEOUT_DOWNLOAD, xml=False)
+        """O PDF da versão (`/markedup`, como o `baixar_documentos` do DocManager). O 401
+        renova o token uma vez: o cliente pode ter ficado aberto além da validade dele."""
+        self.conectar()
+        url = f"{self._register}/{document_id}/markedup"
+
+        def pedir():
+            return self._requisitar(url, metodo="GET", timeout=TIMEOUT_DOWNLOAD,
+                                    headers={"Authorization": f"Bearer {self._token}"})
+
+        resposta = pedir()
+        if resposta.status_code == 401:
+            self._log("Token expirado. Renovando...")
+            self._token = self._pedir_token()
+            resposta = pedir()
         if resposta.status_code != 200 or not resposta.content:
             raise ErroAconex(f"O download do documento {document_id} falhou (HTTP {resposta.status_code}).")
         return resposta.content

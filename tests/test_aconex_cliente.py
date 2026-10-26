@@ -1,9 +1,10 @@
 """O cliente do Aconex: token OAuth, busca paginada, versões de um código e download.
 
 Copiado do DocManager (`docmanager/aconex_backend.py`) e ligado ao `sigft/core/rede.py`.
-Nenhum teste toca a rede: o `abrir` é um dublê que guarda cada chamada e devolve
-respostas sintéticas, no formato que o Aconex devolve. O segredo e o token nunca
-aparecem numa mensagem de erro.
+A navegação entre as páginas é a do DocManager: `_baixar_pagina`, o laço do
+`extrair_base` e a busca exata do `_buscar_doc_atual`. Nenhum teste toca a rede: o
+`abrir` é um dublê que guarda cada chamada e devolve respostas sintéticas, no formato
+que o Aconex devolve. O segredo e o token nunca aparecem numa mensagem de erro.
 """
 from __future__ import annotations
 
@@ -56,16 +57,21 @@ def _doc(document_id, numero, revisao, versao, current):
     return f'<Document DocumentId="{document_id}">{corpo}</Document>'
 
 
-def _pagina(*docs):
-    xml = "<RegisterSearch><SearchResults>" + "".join(docs) + "</SearchResults></RegisterSearch>"
+def _pagina(*docs, total=None):
+    atributo = f' TotalResults="{total}"' if total is not None else ""
+    xml = f"<RegisterSearch{atributo}><SearchResults>" + "".join(docs) + "</SearchResults></RegisterSearch>"
     return _Resposta(200, xml.encode("utf-8"))
 
 
 FIM = _Resposta(400, b"<Error>fim da paginacao</Error>")
 
 
+def _buscas(aconex):
+    return [c for c in aconex.chamadas if c["url"] != cl.AUTH_URL]
+
+
 def test_token_vai_no_formulario_e_volta_no_bearer():
-    aconex = _Aconex(_token("tok1"), _pagina(_doc("1", "#IT-1", "0", 1, True)), FIM)
+    aconex = _Aconex(_token("tok1"), _pagina(_doc("1", "#IT-1", "0", 1, True)))
     cl.ClienteAconex(PERFIL, abrir=aconex).buscar('"#IT-1"', historico=True)
     token, busca = aconex.chamadas[0], aconex.chamadas[1]
     assert token["url"] == cl.AUTH_URL and token["metodo"] == "POST"
@@ -77,45 +83,64 @@ def test_token_vai_no_formulario_e_volta_no_bearer():
     assert busca["headers"]["Accept"] == "application/xml"
     assert busca["params"]["search_query"] == '"#IT-1"'
     assert busca["params"]["show_document_history"] == "true"
-    assert busca["params"]["page_number"] == 1
+    assert busca["params"]["page_number"] == 1 and busca["params"]["page_size"] == 500
+    assert busca["params"]["sort_field"] == "docno" and busca["params"]["sort_direction"] == "ASC"
 
 
-def test_sem_historico_nao_pede_o_historico():
-    aconex = _Aconex(_token(), _pagina(_doc("1", "#IT-1", "0", 1, True)), FIM)
+def test_sem_historico_nao_manda_o_parametro():
+    """Como na busca exata do DocManager: sem `show_document_history`, só a versão corrente."""
+    aconex = _Aconex(_token(), _pagina(_doc("1", "#IT-1", "0", 1, True)))
     cl.ClienteAconex(PERFIL, abrir=aconex).buscar('"#IT-1"', historico=False)
-    assert aconex.chamadas[1]["params"]["show_document_history"] == "false"
+    assert "show_document_history" not in aconex.chamadas[1]["params"]
 
 
-def test_buscar_pagina_ate_o_400_do_fim():
+def test_buscar_para_na_pagina_curta():
+    """A página com menos itens que o `page_size` é a última: a seguinte nem é pedida."""
     aconex = _Aconex(_token(),
                      _pagina(_doc("1", "#IT-1", "0", 1, False), _doc("2", "#IT-1", "0A", 2, True)),
-                     _pagina(_doc("3", "#IT-2", "0", 1, True)), FIM)
-    registros = cl.ClienteAconex(PERFIL, abrir=aconex).buscar("", historico=True)
+                     _pagina(_doc("3", "#IT-2", "0", 1, True)))
+    registros = cl.ClienteAconex(PERFIL, abrir=aconex).buscar("", historico=True, page_size=2)
     assert [r["DocumentNumber"] for r in registros] == ["#IT-1", "#IT-1", "#IT-2"]
-    assert [c["params"]["page_number"] for c in aconex.chamadas[1:]] == [1, 2, 3]
+    assert [c["params"]["page_number"] for c in _buscas(aconex)] == [1, 2]
+
+
+def test_buscar_para_no_400_do_fim():
+    aconex = _Aconex(_token(), _pagina(_doc("1", "#IT-1", "0", 1, True)), _pagina(_doc("2", "#IT-2", "0", 1, True)), FIM)
+    registros = cl.ClienteAconex(PERFIL, abrir=aconex).buscar("", historico=True, page_size=1)
+    assert len(registros) == 2
+    assert [c["params"]["page_number"] for c in _buscas(aconex)] == [1, 2, 3]
 
 
 def test_pagina_vazia_tambem_encerra():
     aconex = _Aconex(_token(), _pagina(_doc("1", "#IT-1", "0", 1, True)), _pagina())
-    registros = cl.ClienteAconex(PERFIL, abrir=aconex).buscar('"#IT-1"', historico=False)
+    registros = cl.ClienteAconex(PERFIL, abrir=aconex).buscar('"#IT-1"', historico=False, page_size=1)
     assert len(registros) == 1
-    assert len(aconex.chamadas) == 3
+    assert len(_buscas(aconex)) == 2
 
 
-def test_401_renova_o_token_uma_vez():
-    aconex = _Aconex(_token("tok1"), _Resposta(401), _token("tok2"), _pagina(_doc("1", "#IT-1", "0", 1, True)), FIM)
-    registros = cl.ClienteAconex(PERFIL, abrir=aconex).buscar('"#IT-1"', historico=True)
+def test_401_renova_o_token_sem_gastar_tentativa():
+    esperas = []
+    aconex = _Aconex(_token("tok1"), _Resposta(401), _token("tok2"), _pagina(_doc("1", "#IT-1", "0", 1, True)))
+    registros = cl.ClienteAconex(PERFIL, abrir=aconex, esperar=esperas.append).buscar('"#IT-1"', historico=True)
     assert len(registros) == 1
     assert aconex.chamadas[3]["headers"]["Authorization"] == "Bearer tok2"
+    assert esperas == []
 
 
-def test_401_duas_vezes_vira_erro_sem_segredo():
-    aconex = _Aconex(_token("tok1"), _Resposta(401), _token("tok2"), _Resposta(401))
+def test_401_que_nao_passa_vira_erro_sem_segredo():
+    """Três renovações sem gastar tentativa; depois o 401 gasta as cinco, como no DocManager."""
+    esperas = []
+    respostas = [_token("tok1")]
+    for i in range(cl.RENOVACOES_POR_PAGINA):
+        respostas += [_Resposta(401), _token(f"tok{i + 2}")]
+    respostas += [_Resposta(401) for _ in range(cl.TENTATIVAS_POR_PAGINA)]
+    aconex = _Aconex(*respostas)
     with pytest.raises(cl.ErroAconex) as erro:
-        cl.ClienteAconex(PERFIL, abrir=aconex).buscar('"#IT-1"', historico=True)
+        cl.ClienteAconex(PERFIL, abrir=aconex, esperar=esperas.append).buscar('"#IT-1"', historico=True)
     texto = str(erro.value)
-    assert "401" in texto
-    assert "s3gr3d0" not in texto and "tok1" not in texto and "tok2" not in texto
+    assert "401" in texto and "5 tentativas" in texto
+    assert "s3gr3d0" not in texto and not any(f"tok{i}" in texto for i in range(1, 5))
+    assert esperas == [5, 15, 30, 60]
 
 
 def test_token_recusado_vira_erro_sem_segredo():
@@ -127,40 +152,85 @@ def test_token_recusado_vira_erro_sem_segredo():
 
 def test_503_espera_e_tenta_de_novo():
     esperas = []
-    aconex = _Aconex(_token(), _Resposta(503), _Resposta(503), _pagina(_doc("1", "#IT-1", "0", 1, True)), FIM)
+    aconex = _Aconex(_token(), _Resposta(503), _Resposta(503), _pagina(_doc("1", "#IT-1", "0", 1, True)))
     registros = cl.ClienteAconex(PERFIL, abrir=aconex, esperar=esperas.append).buscar('"#IT-1"', historico=True)
     assert len(registros) == 1
     assert esperas == [5, 15]
 
 
-def test_503_quatro_vezes_vira_erro():
+def test_cinco_falhas_viram_erro_e_nada_parcial_volta():
+    """A falha no meio da paginação não devolve a base truncada como completa (KB §28 do DocManager)."""
     esperas = []
-    aconex = _Aconex(_token(), *[_Resposta(503) for _ in range(4)])
-    with pytest.raises(cl.ErroAconex):
-        cl.ClienteAconex(PERFIL, abrir=aconex, esperar=esperas.append).buscar('"#IT-1"', historico=True)
-    assert esperas == [5, 15, 45]
+    aconex = _Aconex(_token(), _pagina(_doc("1", "#IT-1", "0", 1, True)), *[_Resposta(503) for _ in range(5)])
+    with pytest.raises(cl.ErroAconex) as erro:
+        cl.ClienteAconex(PERFIL, abrir=aconex, esperar=esperas.append).buscar("", historico=True, page_size=1)
+    assert "página 2" in str(erro.value) and "5 tentativas" in str(erro.value)
+    assert esperas == [5, 15, 30, 60]
 
 
-def test_falha_de_rede_vira_erro_aconex():
+def test_xml_truncado_tenta_de_novo():
+    esperas = []
+    aconex = _Aconex(_token(), _Resposta(200, b"<RegisterSearch><Search"), _pagina(_doc("1", "#IT-1", "0", 1, True)))
+    registros = cl.ClienteAconex(PERFIL, abrir=aconex, esperar=esperas.append).buscar('"#IT-1"', historico=True)
+    assert len(registros) == 1 and esperas == [5]
+
+
+def test_falha_de_rede_na_pagina_tenta_de_novo():
+    esperas = []
+    aconex = _Aconex(_token(), rede.FalhaDeRede("nenhuma rota respondeu"), _pagina(_doc("1", "#IT-1", "0", 1, True)))
+    registros = cl.ClienteAconex(PERFIL, abrir=aconex, esperar=esperas.append).buscar('"#IT-1"', historico=True)
+    assert len(registros) == 1 and esperas == [5]
+
+
+def test_falha_de_rede_no_token_vira_erro_aconex():
     aconex = _Aconex(rede.FalhaDeRede("nenhuma rota respondeu"))
     with pytest.raises(cl.ErroAconex):
         cl.ClienteAconex(PERFIL, abrir=aconex).buscar('"#IT-1"', historico=True)
 
 
+def test_versao_vigente_usa_a_busca_exata_do_docmanager():
+    aconex = _Aconex(_token(), _pagina(_doc("111", "#IT-1", "0B", 2, True)))
+    cl.ClienteAconex(PERFIL, abrir=aconex).versao_vigente("#IT-1")
+    assert aconex.chamadas[1]["params"] == {
+        "search_query": '"#IT-1"', "return_fields": "docno,current,filename,revision,versionnumber",
+        "search_type": "PAGED", "page_size": 25, "page_number": 1}
+    assert len(aconex.chamadas) == 2
+
+
 def test_versao_vigente_escolhe_a_current():
-    aconex = _Aconex(_token(), _pagina(_doc("111", "#IT-1", "0A", 1, False), _doc("222", "#IT-1", "0B", 2, True)), FIM)
+    aconex = _Aconex(_token(), _pagina(_doc("111", "#IT-1", "0A", 1, False), _doc("222", "#IT-1", "0B", 2, True)))
     assert cl.ClienteAconex(PERFIL, abrir=aconex).versao_vigente("#IT-1") == cl.Versao("222", "#IT-1", "0B", 2, True)
 
 
-def test_versao_vigente_sem_current_devolve_none():
-    aconex = _Aconex(_token(), _pagina(_doc("111", "#IT-1", "0A", 1, False)), FIM)
-    assert cl.ClienteAconex(PERFIL, abrir=aconex).versao_vigente("#IT-1") is None
+def test_versao_vigente_sem_current_fica_com_a_primeira():
+    aconex = _Aconex(_token(), _pagina(_doc("111", "#IT-1", "0A", 1, False)))
+    assert cl.ClienteAconex(PERFIL, abrir=aconex).versao_vigente("#IT-1") == cl.Versao("111", "#IT-1", "0A", 1, False)
+
+
+def test_versao_vigente_de_codigo_que_nao_existe_devolve_none():
+    aconex = _Aconex(_token(), _pagina())
+    assert cl.ClienteAconex(PERFIL, abrir=aconex).versao_vigente("#NADA") is None
 
 
 def test_versao_por_revisao_normalizada_pega_a_maior_versao():
     aconex = _Aconex(_token(), _pagina(_doc("111", "#IT-1", "0A", 1, False), _doc("112", "#IT-1", "0A", 2, False),
-                                       _doc("222", "#IT-1", "0B", 3, True)), FIM)
+                                       _doc("222", "#IT-1", "0B", 3, True)))
     assert cl.ClienteAconex(PERFIL, abrir=aconex).versao("#IT-1", "0a") == cl.Versao("112", "#IT-1", "0A", 2, False)
+    assert aconex.chamadas[1]["params"]["show_document_history"] == "true"
+
+
+def test_primeira_pagina_traz_o_total_do_register():
+    """Como a sonda do DocManager: a página 1 de 25 e o `TotalResults`, sem paginar."""
+    aconex = _Aconex(_token(), _pagina(_doc("1", "#IT-1", "0", 1, True), total=1234))
+    pagina = cl.ClienteAconex(PERFIL, abrir=aconex).primeira_pagina("title:SOBRESSALENTES", historico=False)
+    assert pagina.total == 1234 and len(pagina.registros) == 1
+    assert aconex.chamadas[1]["params"]["page_number"] == 1 and aconex.chamadas[1]["params"]["page_size"] == 25
+    assert len(aconex.chamadas) == 2
+
+
+def test_primeira_pagina_sem_total_devolve_none():
+    aconex = _Aconex(_token(), _pagina(_doc("1", "#IT-1", "0", 1, True)))
+    assert cl.ClienteAconex(PERFIL, abrir=aconex).primeira_pagina("", historico=False).total is None
 
 
 def test_baixar_usa_markedup_e_devolve_bytes():
@@ -170,6 +240,12 @@ def test_baixar_usa_markedup_e_devolve_bytes():
     assert aconex.chamadas[1]["timeout"] == 180
 
 
+def test_baixar_renova_o_token_no_401():
+    aconex = _Aconex(_token("tok1"), _Resposta(401), _token("tok2"), _Resposta(200, b"%PDF"))
+    assert cl.ClienteAconex(PERFIL, abrir=aconex).baixar("222") == b"%PDF"
+    assert aconex.chamadas[3]["headers"]["Authorization"] == "Bearer tok2"
+
+
 def test_baixar_com_erro_vira_erro_aconex():
     aconex = _Aconex(_token(), _Resposta(404))
     with pytest.raises(cl.ErroAconex):
@@ -177,7 +253,7 @@ def test_baixar_com_erro_vira_erro_aconex():
 
 
 def test_token_e_reaproveitado_entre_chamadas():
-    aconex = _Aconex(_token(), _pagina(_doc("1", "#IT-1", "0", 1, True)), FIM, _Resposta(200, b"%PDF"))
+    aconex = _Aconex(_token(), _pagina(_doc("1", "#IT-1", "0", 1, True)), _Resposta(200, b"%PDF"))
     cliente = cl.ClienteAconex(PERFIL, abrir=aconex)
     cliente.versao_vigente("#IT-1")
     cliente.baixar("1")
@@ -204,7 +280,7 @@ def test_tabela_tem_as_colunas_do_extrato():
 
 
 def test_conectar_pede_o_token_uma_vez():
-    aconex = _Aconex(_token("tok1"), _pagina(_doc("1", "#IT-1", "0", 1, True)), FIM)
+    aconex = _Aconex(_token("tok1"), _pagina(_doc("1", "#IT-1", "0", 1, True)))
     cliente = cl.ClienteAconex(PERFIL, abrir=aconex)
     cliente.conectar()
     cliente.versao_vigente("#IT-1")
