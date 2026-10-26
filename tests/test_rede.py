@@ -298,7 +298,7 @@ class _SessaoFalsa:
         self._registro.append({
             "metodo": metodo, "proxies": dict(self.proxies),
             "trust_env": self.trust_env, "verify": self.verify,
-            "json": kwargs.get("json"),
+            "json": kwargs.get("json"), "data": kwargs.get("data"),
         })
         resultado = self._roteiro.pop(0)
         if isinstance(resultado, Exception):
@@ -428,6 +428,16 @@ def test_abrir_faz_POST_quando_pedido(so_direta):
 
     assert registro[0]["metodo"] == "POST"
     assert registro[0]["json"] == {"a": 1}
+
+
+def test_abrir_repassa_data_do_formulario(so_direta):
+    """O token do Aconex vai num formulario urlencoded (`data`), nao em JSON."""
+    registro = []
+
+    rede.abrir("https://x.com", metodo="POST", data={"grant_type": "client_credentials"},
+               _fabrica_sessao=_fabrica([_RespostaFalsa()], registro))
+
+    assert registro[0]["data"] == {"grant_type": "client_credentials"}
 
 
 def test_o_status_esperado_pode_ser_outro(so_direta):
