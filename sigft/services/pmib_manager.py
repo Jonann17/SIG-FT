@@ -199,6 +199,17 @@ PULADO_MAPEADORA = " -> Pulado: a planilha de mapeamento está fora desta rodada
 AVISO_SEM_STATUS_REAL = "[AVISO] Coluna 'STATUS REAL' não encontrada na mapeadora: o status real não foi gravado."
 
 
+def e_lista_de_sobressalentes(codigo, titulo):
+    """[2026-10-26] Uma lista nova de sobressalentes: código com PB020, título com
+    SOBRESSALENTES e sem PREÇO/PREÇOS (com ou sem acento). Planilhas de comissionamento
+    com "sobressalentes" no título deixam de ser sugeridas, e o teste do `-01` saiu (a
+    lista do SMF é `...PB020-01`). Quando as listas de preços migrarem para PB021, o
+    rastreio passa a ser pelo código (PENDENCIAS 2026-10-26)."""
+    titulo_normalizado = autorizacao.normalizar(titulo)
+    return ("PB020" in str(codigo or "").upper() and "SOBRESSALENTES" in titulo_normalizado
+            and "PRECO" not in titulo_normalizado)
+
+
 def historico_do_documento(df_api, codigo):
     """Todas as linhas do Tracking ID do `codigo` no histórico do Aconex, ou `None`
     se o código não aparece nele. É o histórico inteiro do documento: o Tracking ID
@@ -897,12 +908,13 @@ class PMIBManager:
 
         # B. Identificar Novos
         df_vigentes = df_api[df_api['Current'] == True]
-        df_novos_cand = df_vigentes[
-            (df_vigentes['Título'].str.contains('SOBRESSALENTES', case=False, na=False)) &
-            (~df_vigentes['Título'].str.contains('PREÇOS', case=False, na=False)) &
-            (~df_vigentes['Título'].str.contains('PREÇO', case=False, na=False)) &
-            (~df_vigentes['No. do Documento'].str.endswith('-01', na=False))
-        ].copy()
+        # [2026-10-26] PB020 no código, SOBRESSALENTES no título, nada de PREÇO
+        # (`e_lista_de_sobressalentes`). Série booleana com o índice: com zero
+        # linhas, uma lista vazia selecionaria colunas, não linhas.
+        mascara = pd.Series([e_lista_de_sobressalentes(c, t) for c, t in
+                             zip(df_vigentes['No. do Documento'], df_vigentes['Título'])],
+                            index=df_vigentes.index, dtype=bool)
+        df_novos_cand = df_vigentes[mascara].copy()
 
         df_reais_novos = df_novos_cand[~df_novos_cand['Tracking ID'].isin(tracking_ids_existentes)]
 
