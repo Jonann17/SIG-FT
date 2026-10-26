@@ -95,6 +95,7 @@ MODULOS_ESSENCIAIS = [
     "sigft.app_qt.views.autospec",
     "sigft.app_qt.views.pmib_manager",
     "sigft.app_qt.views.busca_pmib",
+    "sigft.app_qt.views.conferencia_revisoes",
 ]
 
 # A frase que a conferência traduz dentro do .exe, e o que a tradução tem de

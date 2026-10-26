@@ -116,6 +116,12 @@ def sondar(cliente: ClienteAconex, codigo: str) -> list[Sonda]:
     return sondas
 
 
+def linha(sonda: Sonda) -> str:
+    """A sonda numa linha, para o terminal e para o console da tela:
+    `OK      Login no Aconex: token recebido`."""
+    return f"{'OK' if sonda.ok else 'FALHOU':<8}{sonda.nome}: {sonda.detalhe}"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m sigft.core.aconex.diagnostico",
                                      description="Prova quais buscas do Aconex funcionam.")
@@ -134,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     for sonda in sondar(ClienteAconex(perfil), args.codigo):
-        print(f"{'OK' if sonda.ok else 'FALHOU':<8}{sonda.nome}: {sonda.detalhe}")
+        print(linha(sonda))
     return 0
 
 
