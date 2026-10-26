@@ -166,9 +166,9 @@ def test_por_categoria_na_ordem(tmp_path):
         _status_pmib(tmp_path, codigo, subpasta=codigo)
     conferencia = cr.conferir(_mapeadora(
         tmp_path,
-        _lista("A", status_real="Não Aprovado", link=f"A/A_STATUS_PMIB.xlsx"),
-        _lista("B", status_real="Em Processo", link=f"B/B_STATUS_PMIB.xlsx"),
-        _lista("C", status_real="Aprovado", link=f"C/C_STATUS_PMIB.xlsx")), None)
+        _lista("A", status_real="Não Aprovado", link="A/A_STATUS_PMIB.xlsx"),
+        _lista("B", status_real="Em Processo", link="B/B_STATUS_PMIB.xlsx"),
+        _lista("C", status_real="Aprovado", link="C/C_STATUS_PMIB.xlsx")), None)
     grupos = conferencia.por_categoria()
     assert list(grupos) == ["aprovada", "em_processo", "nao_aprovada", "outros"]
     assert {c: [i.lista.codigo for i in itens] for c, itens in grupos.items()} == {
