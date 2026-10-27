@@ -8,14 +8,22 @@ vão: o nó de modelo do n8n trabalha com texto, e o n8n não precisa ler o Box.
 """
 from __future__ import annotations
 
+import json
+import re
+import textwrap
+import traceback
+import zipfile
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+from typing import Literal
 
 from openpyxl import load_workbook
 
 from sigft import config
+from sigft.core import dados_usuario
 from sigft.core.aconex.status_real import revisoes_iguais
+from sigft.core.amp.cliente import RespostaAmp
 from sigft.core.excel import headers
 from sigft.services import status_pmib_arquivos
 from sigft.services.conferencia_revisoes import (
@@ -28,6 +36,18 @@ from sigft.services.conferencia_revisoes import (
 
 CHAVE_DO_CABECALHO = "CÓDIGO DO MATERIAL"
 LINHAS_PARA_O_CABECALHO = 10
+CORPO_NO_DIAGNOSTICO = 1500   # caracteres do corpo da resposta que o diagnóstico mostra
+MATERIAIS_NO_ECO = 10
+TRECHO_MINIMO = 20            # linha do documento que o diagnóstico procura no que o AMP devolveu
+CAMPOS_DO_WORKFLOW = ("ok", "modo", "etapa", "erro", "execucao", "versao_workflow")
+ARQUIVOS_DO_REPOSITORIO = (
+    ("sigft/services/revisao_amp.py", "a rodada, o pedido e este diagnóstico"),
+    ("sigft/core/amp/cliente.py", "a chamada ao webhook"),
+    ("amp/revisao_de_listas/pedido.md", "o pedido ao agente"),
+    ("amp/revisao_de_listas/workflow_revisao_de_listas.json", "o workflow do n8n (gerado por gerar_workflow.py)"),
+    ("docs/superpowers/specs/2026-10-27-amp-revisao-de-listas-design.md", "o desenho"),
+)
+_RESERVADOS = re.compile(r'[<>:"/\\|?*]')   # os mesmos de conferencia_revisoes.nome_do_pdf
 
 
 @dataclass(frozen=True)
@@ -53,6 +73,15 @@ class ListaParaAmp:
     pdf_atual: Path | None
     revisao_atual: str
     falta: str = ""
+
+
+@dataclass(frozen=True)
+class ResultadoAmp:
+    lista: ListaParaAmp
+    situacao: Literal["pronto", "falhou", "falta", "parado"]
+    html: Path | None
+    detalhe: str
+    diagnostico: str = ""   # só na falha: o texto para colar numa conversa nova
 
 
 def texto_do_pdf(caminho: Path, *, abrir=None) -> TextoPdf:
@@ -182,3 +211,245 @@ def montar_pedido(lista: ListaParaAmp, versao_sigft: str, *, ler_pdf=texto_do_pd
                         "linha_de_revisao": tabela.linha_de_revisao, "linhas": tabela.linhas, "tsv": tabela.tsv},
         "origem": {"sigft": versao_sigft},
     }
+
+
+def nome_do_html(codigo: str, em_uso: str, atual: str) -> str:
+    """`<código>[<em uso>-<atual>] revisao AMP.html`; sem revisão em uso, `[-<atual>]`. Só os
+    reservados do Windows viram `_`."""
+    return _RESERVADOS.sub("_", f"{codigo}[{em_uso}-{atual}] revisao AMP") + ".html"
+
+
+def gravar_html(pasta: Path, nome: str, html: str) -> Path:
+    """Grava num arquivo novo; se o nome existir, acrescenta " (2)", " (3)"... O `"x"` do
+    `open` garante que nada é sobrescrito, nem o que alguém gravou no meio do caminho."""
+    base = Path(nome)
+    numero = 1
+    while True:
+        destino = pasta / (nome if numero == 1 else f"{base.stem} ({numero}){base.suffix}")
+        try:
+            with open(destino, "x", encoding="utf-8", newline="") as arquivo:
+                arquivo.write(html)
+            return destino
+        except FileExistsError:
+            numero += 1
+
+
+def _trechos_do_documento(pedido: dict | None) -> list[str]:
+    """As linhas dos PDFs e as células do `_STATUS_PMIB` que foram no pedido, a partir de
+    `TRECHO_MINIMO` caracteres e das mais longas para as mais curtas: o que o diagnóstico
+    procura e tira do que o AMP devolveu (o erro do nó de modelo pode repetir o documento)."""
+    if not pedido:
+        return []
+    textos = [str((pedido.get(chave) or {}).get("texto") or "") for chave in ("revisao_em_uso", "revisao_atual")]
+    status = pedido.get("status_pmib") or {}
+    textos += [str(status.get("linha_de_revisao") or ""), *str(status.get("tsv") or "").split("\t")]
+    trechos = {linha.strip() for texto in textos for linha in texto.splitlines()}
+    return sorted((t for t in trechos if len(t) >= TRECHO_MINIMO), key=len, reverse=True)
+
+
+def _sem_trechos(texto: str, trechos: list[str]) -> str:
+    for trecho in trechos:
+        if trecho in texto:
+            texto = texto.replace(trecho, "<trecho do documento>")
+    return texto
+
+
+def _corpo(resposta: RespostaAmp) -> str:
+    """Do JSON do workflow, só os campos dele: o `html` e o `texto` podem repetir o documento,
+    e deles vai o tamanho. De outra coisa (a página de um proxy), o texto como veio."""
+    try:
+        dados = json.loads(resposta.corpo)
+    except ValueError:
+        dados = None
+    if not isinstance(dados, dict):
+        return resposta.corpo
+    return json.dumps({chave: valor if chave in CAMPOS_DO_WORKFLOW else f"<{len(str(valor))} caracteres, fora daqui>"
+                       for chave, valor in dados.items()}, ensure_ascii=False)
+
+
+def _numeros_do_pedido(pedido: dict | None) -> list[str]:
+    if not pedido:
+        return ["  nada: o pedido não chegou a ser montado"]
+    linhas = []
+    for chave, rotulo in (("revisao_em_uso", "revisão em uso"), ("revisao_atual", "revisão atual")):
+        parte = pedido.get(chave)
+        linhas.append(f"  {rotulo}: {parte['arquivo']}, {parte['paginas']} páginas, {len(str(parte['texto']))} "
+                      "caracteres" if parte else f"  {rotulo}: nenhuma")
+    status = pedido.get("status_pmib") or {}
+    linhas.append(f"  _STATUS_PMIB: {status.get('arquivo')}, aba {status.get('aba')}, {status.get('linhas')} linhas, "
+                  f"{len(str(status.get('tsv') or ''))} caracteres")
+    linhas.append(f"  o pedido inteiro: {len(json.dumps(pedido, ensure_ascii=False))} caracteres")
+    return linhas
+
+
+def _numeros_da_resposta(resposta: RespostaAmp | None, trechos: list[str]) -> list[str]:
+    if resposta is None:
+        return ["  nenhuma: a lista não chegou a ser mandada"]
+    http = f"HTTP {resposta.http}" if resposta.http is not None else "sem resposta HTTP"
+    linhas = [f"  {http} em {resposta.segundos:.1f} s"]
+    if resposta.execucao:
+        linhas.append(f"  execução do n8n: {resposta.execucao}")
+    if resposta.erro:
+        linhas.append(f"  erro: {_sem_trechos(resposta.erro, trechos)}")
+    corpo = _sem_trechos(_corpo(resposta), trechos)[:CORPO_NO_DIAGNOSTICO]
+    linhas.append(f"  corpo (até {CORPO_NO_DIAGNOSTICO} caracteres):")
+    linhas.append(textwrap.indent(corpo, "    ") if corpo.strip() else "    (vazio)")
+    return linhas
+
+
+def diagnostico(lista: ListaParaAmp, pedido: dict | None, resposta: RespostaAmp | None, *, url: str,
+                chave_posta: bool, versao_sigft: str, erro: str = "") -> str:
+    """O texto para colar numa conversa nova (o Claude na web, no PC da GE, com o repositório
+    do SIG-FT), §8 do desenho: do que foi mandado, só os números; da resposta, o corpo cortado
+    e só os campos do workflow; o endereço, sem a chave. Nunca vai texto de documento."""
+    dados = lista.item.lista
+    trechos = _trechos_do_documento(pedido)
+    linhas = [
+        "SIG-FT · Revisão no AMP · diagnóstico",
+        f"SIG-FT {versao_sigft} · {datetime.now():%d/%m/%Y %H:%M:%S}",
+        "",
+        f"Lista: {dados.codigo} ({lista.item.categoria})",
+        f"  revisão em uso: {dados.revisao_em_uso or 'nenhuma'} · revisão atual: {lista.revisao_atual}",
+        f"  STATUS REAL: {dados.status_real or '(vazio)'} · STATUS DA REVISÃO: {dados.status_da_revisao or '(vazio)'}",
+        "",
+        "Chamada",
+        f"  endereço: {url or '(não configurado)'}",
+        f"  chave: {'posta' if chave_posta else 'não posta'}",
+        "",
+        "O que foi mandado (só os números: o texto dos documentos fica fora daqui)",
+        *_numeros_do_pedido(pedido),
+        "",
+        "Resposta",
+        *_numeros_da_resposta(resposta, trechos),
+    ]
+    if erro:
+        linhas += ["", "Erro no SIG-FT", textwrap.indent(_sem_trechos(erro, trechos), "  ")]
+    linhas += ["", "Onde está o código (repositório luanccozer/SIG-FT)",
+               *(f"  {caminho}: {papel}" for caminho, papel in ARQUIVOS_DO_REPOSITORIO)]
+    return "\n".join(linhas) + "\n"
+
+
+def _resumo_do_pedido(pedido: dict) -> str:
+    paginas = [str(parte["paginas"]) for parte in (pedido.get("revisao_em_uso"), pedido.get("revisao_atual")) if parte]
+    linhas = (pedido.get("status_pmib") or {}).get("linhas")
+    return f"{' + '.join(paginas)} página(s), {linhas} linha(s) do _STATUS_PMIB"
+
+
+def _falhou(lista: ListaParaAmp, pedido: dict | None, resposta: RespostaAmp | None, detalhe: str, log_cb, *,
+            erro: str = "", **contexto) -> ResultadoAmp:
+    detalhe = _sem_trechos(detalhe, _trechos_do_documento(pedido)) or "falha sem mensagem"
+    log_cb(f"  ✗ {lista.item.lista.codigo}: {detalhe}")
+    return ResultadoAmp(lista, "falhou", None, detalhe, diagnostico(lista, pedido, resposta, erro=erro, **contexto))
+
+
+def _revisar(lista: ListaParaAmp, cliente, montar, log_cb, **contexto) -> ResultadoAmp:
+    dados = lista.item.lista
+    if lista.falta:
+        log_cb(f"  - {dados.codigo}: {lista.falta}")
+        return ResultadoAmp(lista, "falta", None, lista.falta)
+    try:
+        pedido = montar(lista, contexto["versao_sigft"])
+    except (ValueError, OSError, zipfile.BadZipFile) as erro:
+        log_cb(f"  - {dados.codigo}: falta: {erro}")
+        return ResultadoAmp(lista, "falta", None, f"falta: {erro}")
+    except Exception as erro:  # noqa: BLE001 -- PDF corrompido (o PyMuPDF levanta RuntimeError) ou defeito
+        return _falhou(lista, None, None, f"ao montar o pedido: {type(erro).__name__}: {erro}", log_cb,
+                       erro="".join(traceback.format_exception(erro)).rstrip(), **contexto)
+    log_cb(f"  → {dados.codigo}: no AMP ({_resumo_do_pedido(pedido)})...")
+    resposta = cliente.revisar(pedido)
+    if not resposta.ok:
+        return _falhou(lista, pedido, resposta, resposta.erro, log_cb, **contexto)
+    nome = nome_do_html(dados.codigo, dados.revisao_em_uso, lista.revisao_atual)
+    try:
+        caminho = gravar_html(lista.item.pasta, nome, resposta.html)
+    except OSError as erro:
+        return _falhou(lista, pedido, resposta, f"o HTML não foi gravado: {erro}", log_cb,
+                       erro=f"o HTML não foi gravado: {erro}", **contexto)
+    log_cb(f"  ✓ {dados.codigo} → {caminho.name} ({resposta.segundos:.0f} s)")
+    return ResultadoAmp(lista, "pronto", caminho, caminho.name)
+
+
+def _gravar_diagnostico(resultado: ResultadoAmp, log_cb) -> None:
+    """Em `logs\\amp\\<AAAAMMDD-HHMMSS> <código>.txt`. Não gravar não para a rodada."""
+    nome = _RESERVADOS.sub("_", f"{datetime.now():%Y%m%d-%H%M%S} {resultado.lista.item.lista.codigo}") + ".txt"
+    try:
+        pasta = dados_usuario.pasta_logs() / "amp"
+        pasta.mkdir(parents=True, exist_ok=True)
+        log_cb(f"    diagnóstico em {gravar_html(pasta, nome, resultado.diagnostico)}")
+    except OSError as erro:
+        log_cb(f"    ! o diagnóstico não foi gravado: {erro}")
+
+
+def revisar_listas(listas: list[ListaParaAmp], cliente, *, versao_sigft: str, url: str, chave_posta: bool, log_cb,
+                   progress_cb=None, cancelado_cb=None, gravar_diagnostico: bool = True,
+                   montar=montar_pedido) -> list[ResultadoAmp]:
+    """Uma lista por vez (§7 do desenho). A que tem falta, ou cujo arquivo não se lê, não é
+    chamada; a falha de uma não para as outras e deixa o diagnóstico em `logs\\amp\\`;
+    `cancelado_cb()` é lido entre as listas, e as que sobram ficam "parado"."""
+    contexto = {"versao_sigft": versao_sigft, "url": url, "chave_posta": chave_posta}
+    log_cb(f"Revisando {len(listas)} lista(s) no AMP, uma por vez...")
+    resultados: list[ResultadoAmp] = []
+    parado = False
+    for n, lista in enumerate(listas):
+        if not parado and cancelado_cb is not None and cancelado_cb():
+            parado = True
+            log_cb("Revisão no AMP parada pelo usuário.")
+        if parado:
+            resultados.append(ResultadoAmp(lista, "parado", None, "parado antes de ir ao AMP"))
+            continue
+        if progress_cb:
+            progress_cb(min(0.05 + n / len(listas) * 0.9, 0.95))
+        resultado = _revisar(lista, cliente, montar, log_cb, **contexto)
+        if resultado.diagnostico and gravar_diagnostico:
+            _gravar_diagnostico(resultado, log_cb)
+        resultados.append(resultado)
+    if progress_cb:
+        progress_cb(1.0)
+    contagem = {s: sum(r.situacao == s for r in resultados) for s in ("pronto", "falhou", "falta", "parado")}
+    log_cb(f"AMP: {contagem['pronto']} HTML pronto(s), {contagem['falhou']} falha(s), "
+           f"{contagem['falta']} com falta, {contagem['parado']} parada(s).")
+    return resultados
+
+
+def codigos_para_eco(listas: list[ListaParaAmp], *, ler_status=status_pmib_em_tsv) -> list[str]:
+    """Os códigos das listas e até `MATERIAIS_NO_ECO` CÓDIGOS DO MATERIAL do primeiro
+    `_STATUS_PMIB` que se lê e tem algum: os campos que a LMR temia ver mascarados (§10)."""
+    codigos = [lista.item.lista.codigo for lista in listas]
+    for lista in listas:
+        if lista.status_pmib is None:
+            continue
+        try:
+            materiais = ler_status(lista.status_pmib).codigos_material
+        except (ValueError, OSError, zipfile.BadZipFile):
+            continue
+        if materiais:
+            return codigos + materiais[:MATERIAIS_NO_ECO]
+    return codigos
+
+
+def _linha(marca: str, nome: str, detalhe: str) -> str:
+    """No formato do diagnóstico do Aconex: `OK      Ping: workflow 2026-10-27`."""
+    return f"{marca:<8}{nome}: {detalhe}"
+
+
+def testar_conexao(cliente, listas: list[ListaParaAmp], *, ler_status=status_pmib_em_tsv) -> list[str]:
+    """As linhas do "Testar conexão com o AMP". O `ping` vê a rede, a chave e o workflow
+    publicado; passando, o `eco` manda os códigos e passa quando todos voltam iguais."""
+    ping = cliente.ping()
+    if not ping.ok:
+        return [_linha("FALHOU", "Ping", ping.erro)]
+    linhas = [_linha("OK", "Ping", f"workflow {ping.versao_workflow or '(sem versão)'} "
+                                   f"({ping.segundos:.1f} s, execução {ping.execucao or '?'})")]
+    codigos = codigos_para_eco(listas, ler_status=ler_status)
+    if not codigos:
+        return linhas + [_linha("--", "Eco", "não mandado: nenhuma lista na conferência "
+                                             "(rode a Conferência de Revisões e teste de novo)")]
+    eco = cliente.eco(codigos)
+    if not eco.ok:
+        return linhas + [_linha("FALHOU", "Eco", eco.erro)]
+    faltando = [codigo for codigo in codigos if codigo not in eco.texto]
+    if faltando:
+        return linhas + [_linha("FALHOU", "Eco", f"{len(faltando)} de {len(codigos)} códigos não voltaram iguais "
+                                                 f"(mascarado pelo AMP?): {', '.join(faltando[:3])}")]
+    return linhas + [_linha("OK", "Eco", f"os {len(codigos)} códigos voltaram iguais "
+                                         f"({eco.segundos:.1f} s, execução {eco.execucao or '?'})")]
