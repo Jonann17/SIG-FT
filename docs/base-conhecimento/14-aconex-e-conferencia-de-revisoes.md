@@ -190,9 +190,19 @@ confere o HTML e cola.
   texto}`; o `_STATUS_PMIB` é `{arquivo, aba, linha_de_revisao, linhas, tsv}`.
 - Falha do agente: HTTP 502 com `{ok: false, modo, etapa, erro, execucao}`.
 
+A revisão vai **uma vez só**, pela rota que o `ping` achou (`ClienteAmp.revisar`; o ping vai antes
+na primeira lista). A cascata do `rede.abrir` manda de novo pela rota seguinte quando o tempo esgota
+ou a conexão cai, e na revisão cada repetição seria outra execução do agente; por isso o tempo
+esgotado ("o AMP não respondeu em 15 min") e a conexão cortada ("caiu depois de N s") viram erro.
+
 O texto de cada PDF sai do PyMuPDF com `--- página N ---` antes de cada página (o agente cita a
 página). PDF sem texto em nenhuma página é "falta: PDF sem texto (só imagem)". O `_STATUS_PMIB` vai
-inteiro: a linha de revisão, o cabeçalho e as linhas, com as colunas separadas por tabulação.
+inteiro: a linha de revisão, o cabeçalho e as linhas, com as colunas separadas por tabulação. A
+`lista` leva a `data_de_hoje` (dd/mm/aaaa, do computador): a linha de revisão nova tem a DATA DE
+ALTERAÇÃO, e o modelo não sabe que dia é.
+
+A aba só começa com a Conferência parada (`ModuleFrame.rodando()`): no meio do download, a última
+conferência ainda está sem os PDFs, e um deles pode estar pela metade.
 
 **As listas** (`listas_para_amp`): as da conferência que têm pasta, na ordem das categorias. A
 revisão atual é a do download desta sessão (a que o Aconex devolveu); sem download, a ÚLTIMA

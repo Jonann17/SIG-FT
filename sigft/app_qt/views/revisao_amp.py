@@ -28,6 +28,7 @@ CHAVE_DO_WEBHOOK = "AMP_WEBHOOK_CHAVE"
 
 TITULO = marcar("Revisão no AMP")
 AVISO_SEM_CONFERENCIA = marcar("Confira as revisões antes.")
+AVISO_CONFERENCIA_RODANDO = marcar("A conferência ainda está rodando: espere ela terminar.")
 AVISO_SEM_CHAVE = marcar("Configure o endereço e a chave do webhook do AMP em Configuração → Chaves de API.")
 EXPLICACAO = marcar("Manda ao AMP, uma por vez, as listas da última conferência (aba Conferência de "
                     "Revisões). Cada uma volta como um HTML na pasta do _STATUS_PMIB, com o que mudou e a "
@@ -148,6 +149,11 @@ class ModuloRevisaoAmp(ModuleFrame):
 
     # -- a revisão ---------------------------------------------------------
     def _revisar(self) -> None:
+        # Com a Conferência ainda baixando, a última conferência está sem os downloads, e
+        # um PDF pode estar pela metade.
+        if getattr(self.fonte, "rodando", lambda: False)():
+            self.avisar(t(TITULO), t(AVISO_CONFERENCIA_RODANDO), "aviso")
+            return
         ultima = getattr(self.fonte, "ultima", None)
         if ultima is None:
             self.avisar(t(TITULO), t(AVISO_SEM_CONFERENCIA), "aviso")

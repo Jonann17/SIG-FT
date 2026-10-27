@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 
 import pytest
+import requests
 
 from sigft.core import rede
 from sigft.core.amp import cliente as am
@@ -31,18 +32,30 @@ class _Resposta:
 
 
 class _Abrir:
-    """Dublê do `rede.abrir`: guarda cada chamada e responde da fila."""
+    """Dublê do `rede.abrir`: guarda cada chamada e responde da fila. Devolve, como o de
+    verdade, a sessão da rota que respondeu; o que vai por ela entra na mesma fila."""
 
     def __init__(self, *respostas):
         self.respostas = list(respostas)
         self.chamadas = []
 
-    def __call__(self, url, **kw):
-        self.chamadas.append({"url": url, **kw})
+    def _responder(self, chamada):
+        self.chamadas.append(chamada)
         resposta = self.respostas.pop(0)
         if isinstance(resposta, BaseException):
             raise resposta
-        return None, resposta
+        return resposta
+
+    def __call__(self, url, **kw):
+        return _Sessao(self), self._responder({"via": "abrir", "url": url, **kw})
+
+
+class _Sessao:
+    def __init__(self, abrir):
+        self._abrir = abrir
+
+    def request(self, metodo, url, **kw):
+        return self._abrir._responder({"via": "sessao", "metodo": metodo, "url": url, **kw})
 
 
 def _relogio(*instantes):
@@ -54,6 +67,11 @@ def _cliente(*respostas, relogio=None):
     abrir = _Abrir(*respostas)
     extra = {"relogio": relogio} if relogio else {}
     return am.ClienteAmp(URL, CHAVE, abrir=abrir, **extra), abrir
+
+
+def _revisando(*respostas, relogio=None):
+    """A revisão acha a rota com um ping antes: ele vem primeiro na fila."""
+    return _cliente(_Resposta(200, PING), *respostas, relogio=relogio)
 
 
 def test_a_chave_vai_no_cabecalho_e_nao_no_corpo():
@@ -75,13 +93,13 @@ def test_ping_le_a_versao_e_a_execucao():
 
 
 def test_revisar_com_html_passa():
-    cliente, _abrir = _cliente(_Resposta(200, {"ok": True, "modo": "revisar", "html": HTML, "execucao": "9"}))
+    cliente, _abrir = _revisando(_Resposta(200, {"ok": True, "modo": "revisar", "html": HTML, "execucao": "9"}))
     resposta = cliente.revisar({"modo": "revisar"})
     assert resposta.ok and resposta.html == HTML
 
 
 def test_resposta_que_nao_e_json_vira_erro_com_o_corpo():
-    cliente, _abrir = _cliente(_Resposta(200, None, "<html><body>Login do proxy</body></html>"))
+    cliente, _abrir = _revisando(_Resposta(200, None, "<html><body>Login do proxy</body></html>"))
     resposta = cliente.revisar({"modo": "revisar"})
     assert not resposta.ok
     assert resposta.erro == "o AMP não respondeu JSON (HTTP 200)"
@@ -90,13 +108,13 @@ def test_resposta_que_nao_e_json_vira_erro_com_o_corpo():
 
 def test_502_do_agente_traz_etapa_e_erro():
     dados = {"ok": False, "modo": "revisar", "etapa": "agente", "erro": "model timeout", "execucao": "77"}
-    cliente, _abrir = _cliente(_Resposta(502, dados))
+    cliente, _abrir = _revisando(_Resposta(502, dados))
     resposta = cliente.revisar({"modo": "revisar"})
     assert (resposta.ok, resposta.http, resposta.erro, resposta.execucao) == (False, 502, "model timeout", "77")
 
 
 def test_200_sem_html_e_falha():
-    cliente, _abrir = _cliente(_Resposta(200, {"ok": True, "modo": "revisar", "html": "Não consegui ler.", "execucao": "5"}))
+    cliente, _abrir = _revisando(_Resposta(200, {"ok": True, "modo": "revisar", "html": "Não consegui ler.", "execucao": "5"}))
     resposta = cliente.revisar({"modo": "revisar"})
     assert (resposta.ok, resposta.erro) == (False, "o agente não devolveu HTML")
 
@@ -133,6 +151,51 @@ def test_tempo_por_modo():
 
 
 def test_erro_nao_mostra_a_chave():
-    cliente, _abrir = _cliente(_Resposta(500, None, f"erro interno {CHAVE}"))
+    cliente, _abrir = _revisando(_Resposta(500, None, f"erro interno {CHAVE}"))
     resposta = cliente.revisar({"modo": "revisar"})
     assert CHAVE not in resposta.erro
+
+
+# --- a revisão vai uma vez só (revisão final do ramo, 2026-10-27) -------------------------
+# A cascata do `rede.abrir` manda de novo pela rota seguinte quando o tempo esgota ou a
+# conexão cai. Na revisão, cada repetição seria uma execução nova do agente no AMP.
+
+def test_revisar_vai_uma_vez_so_pela_rota_do_ping():
+    cliente, abrir = _revisando(_Resposta(200, {"ok": True, "modo": "revisar", "html": HTML}))
+    assert cliente.revisar({"modo": "revisar", "lista": {"codigo": "X"}}).ok
+    assert [(c["via"], c["json"]["modo"]) for c in abrir.chamadas] == [("abrir", "ping"), ("sessao", "revisar")]
+    revisao = abrir.chamadas[1]
+    assert (revisao["metodo"], revisao["url"], revisao["timeout"]) == ("POST", URL, 900)
+    assert revisao["headers"][am.CABECALHO_CHAVE] == CHAVE
+
+
+def test_a_segunda_revisao_usa_a_mesma_rota_sem_outro_ping():
+    cliente, abrir = _revisando(_Resposta(200, {"ok": True, "modo": "revisar", "html": HTML}),
+                                _Resposta(200, {"ok": True, "modo": "revisar", "html": HTML}))
+    cliente.revisar({"modo": "revisar"})
+    cliente.revisar({"modo": "revisar"})
+    assert [c["via"] for c in abrir.chamadas] == ["abrir", "sessao", "sessao"]
+
+
+def test_tempo_esgotado_na_revisao_nao_repete():
+    cliente, abrir = _revisando(requests.exceptions.ReadTimeout("read timed out"),
+                                relogio=_relogio(0.0, 0.1, 5.0, 905.0))
+    resposta = cliente.revisar({"modo": "revisar"})
+    assert (resposta.ok, resposta.modo, resposta.http) == (False, "revisar", None)
+    assert resposta.erro.startswith("o AMP não respondeu em 15 min")
+    assert len(abrir.chamadas) == 2
+
+
+def test_conexao_que_cai_no_meio_diz_quanto_tempo_passou():
+    cliente, abrir = _revisando(requests.exceptions.ConnectionError("Connection aborted."),
+                                relogio=_relogio(0.0, 0.1, 5.0, 65.0))
+    resposta = cliente.revisar({"modo": "revisar"})
+    assert resposta.erro.startswith("a conexão com o AMP caiu depois de 60 s")
+    assert len(abrir.chamadas) == 2
+
+
+def test_revisar_com_o_ping_recusado_nao_manda_a_lista():
+    cliente, abrir = _cliente(_Resposta(403, None, "Authorization data is wrong!"))
+    resposta = cliente.revisar({"modo": "revisar"})
+    assert (resposta.ok, resposta.modo, resposta.erro) == (False, "revisar", "o AMP recusou a chave (HTTP 403)")
+    assert len(abrir.chamadas) == 1

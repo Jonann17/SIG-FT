@@ -200,3 +200,13 @@ def test_testar_conexao_sem_conferencia_vai_sem_listas(qt_interface, qtbot, serv
     t.btn_testar_amp.click()
     qtbot.waitUntil(lambda: bool(servico.testes), timeout=5000)
     assert servico.testes == [[]]
+
+
+def test_conferencia_rodando_avisa_e_nao_chama(qt_interface, qtbot, servico, avisos, ultima):
+    # Ainda baixando: a última conferência está sem os downloads, e um PDF pode estar pela
+    # metade (revisão final do ramo, 2026-10-27).
+    t = tela_mod.ModuloRevisaoAmp(controller=_Controller(), fonte=SimpleNamespace(ultima=ultima, rodando=lambda: True))
+    qtbot.addWidget(t)
+    t.btn_amp.click()
+    assert avisos == [("Revisão no AMP", "A conferência ainda está rodando: espere ela terminar.")]
+    assert servico.chamadas == []

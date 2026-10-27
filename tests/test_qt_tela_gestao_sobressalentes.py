@@ -64,3 +64,18 @@ def test_a_conferencia_saiu_do_menu_e_dos_cards():
     for lugar in (telas_do_menu, [m[0] for m in catalogo.MODULOS], catalogo.ICONE_DA_TELA, qmain.TELAS):
         assert "ConferenciaRevisoes" not in lugar
     assert len(catalogo.MODULOS) == 12
+
+
+def test_a_tela_diz_se_tem_tarefa_rodando(qt_interface, qtbot):
+    # A Revisão no AMP pergunta isso à Conferência antes de começar.
+    import threading
+
+    secao = ModuloGestaoSobressalentes()
+    qtbot.addWidget(secao)
+    conferencia = secao.tela_conferencia
+    assert conferencia.rodando() is False
+    liberar = threading.Event()
+    conferencia.iniciar_tarefa(liberar.wait)
+    assert conferencia.rodando() is True
+    liberar.set()
+    qtbot.waitUntil(lambda: not conferencia.rodando(), timeout=3000)

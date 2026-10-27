@@ -52,6 +52,7 @@
   "A atualização pequena falhou. Baixando o instalador completo ({mb} MB)...": "La actualización pequeña falló. Descargando el instalador completo ({mb} MB)...",
   "A atualização tem {mb} MB: só o que mudou (o instalador completo tem {completo} MB).": "La actualización tiene {mb} MB: solo lo que cambió (el instalador completo tiene {completo} MB).",
   "A atualização tem {mb} MB: só o que mudou.": "La actualización tiene {mb} MB: solo lo que cambió.",
+  "A conferência ainda está rodando: espere ela terminar.": "La verificación todavía está en curso: espere a que termine.",
   "A conferência no portal não terminou. Veja o motivo no log.": "La revisión en el portal no terminó. Vea el motivo en el log.",
   "A conferência no portal terminou": "La revisión en el portal terminó",
   "A ficha {arquivo} tem o código PMIB {codigo}, que não está no _STATUS_PMIB.\n\nSe você souber a descrição do material, digite abaixo. Ela entra no contexto que vai para a IA.\n\nCANCELAR segue sem descrição e não pergunta mais nesta rodada.": "La ficha {arquivo} tiene el código PMIB {codigo}, que no está en el _STATUS_PMIB.\n\nSi conoce la descripción del material, escríbala abajo. Entra en el contexto que va a la IA.\n\nCANCELAR sigue sin descripción y no vuelve a preguntar en esta ronda.",

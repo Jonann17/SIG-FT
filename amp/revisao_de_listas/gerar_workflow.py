@@ -65,7 +65,8 @@ const status = corpo.status_pmib || {};
 const partes = [
   PEDIDO,
   secao('LISTA', `Código: ${lista.codigo || ''}\\nRevisão em uso: ${lista.revisao_em_uso || '(nenhuma)'}\\n`
-    + `Revisão atual: ${lista.revisao_atual || ''}\\nSTATUS REAL: ${lista.status_real || ''}`),
+    + `Revisão atual: ${lista.revisao_atual || ''}\\nSTATUS REAL: ${lista.status_real || ''}\\n`
+    + `Data de hoje: ${lista.data_de_hoje || ''}`),
   secao(`REVISÃO EM USO (${emUso ? emUso.arquivo : 'não há'})`,
     emUso ? emUso.texto : 'A lista ainda não tem revisão em uso: compare só a revisão atual com a _STATUS_PMIB.'),
   secao(`REVISÃO ATUAL (${atual.arquivo || ''})`, atual.texto || ''),

@@ -90,3 +90,8 @@ no lugar do diagnóstico. Se o SIG-FT nem abriu a aba, cole o fim de `Documentos
 | HTTP 502, `etapa: agente` | o modelo falhou: veja a execução no n8n; confira se o GEV LLM Model está ligado |
 | "o AMP não respondeu JSON" | algo no caminho devolveu uma página (login, proxy): a resposta está no diagnóstico |
 | "o agente não devolveu HTML" | o modelo respondeu texto: melhore o pedido ou troque o modelo |
+| "a conexão com o AMP caiu depois de N s" | algo no caminho (um proxy) corta a chamada longa; o n8n pode ter seguido, veja a execução. Se cair sempre perto do mesmo tempo, o workflow tem de responder logo e o SIG-FT buscar o resultado depois: desenho novo |
+| "o AMP não respondeu em 15 min" | o agente demorou demais: veja a execução no n8n (PDF muito grande?) |
+
+A revisão de cada lista vai **uma vez só**: o SIG-FT não repete a chamada sozinho, porque cada
+repetição seria outra execução do agente no AMP.

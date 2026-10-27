@@ -267,6 +267,11 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         if self.console is not None:
             self.console.log(msg, nivel, contexto)
 
+    def rodando(self) -> bool:
+        """Alguma tarefa da tela (`iniciar_tarefa`) ainda roda. A aba ao lado pergunta
+        antes de usar o que esta produz (a Revisão no AMP espera a Conferência)."""
+        return self._tarefas_rodando > 0
+
     def backend(self, nome: str):
         """O backend `nome`, ou `None` depois de avisar a pessoa do porquê.
 

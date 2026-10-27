@@ -52,6 +52,7 @@
   "A atualização pequena falhou. Baixando o instalador completo ({mb} MB)...": "The small update failed. Downloading the full installer ({mb} MB)...",
   "A atualização tem {mb} MB: só o que mudou (o instalador completo tem {completo} MB).": "The update is {mb} MB: only what changed (the full installer is {completo} MB).",
   "A atualização tem {mb} MB: só o que mudou.": "The update is {mb} MB: only what changed.",
+  "A conferência ainda está rodando: espere ela terminar.": "The check is still running: wait for it to finish.",
   "A conferência no portal não terminou. Veja o motivo no log.": "The portal review did not finish. See the reason in the log.",
   "A conferência no portal terminou": "The portal review finished",
   "A ficha {arquivo} tem o código PMIB {codigo}, que não está no _STATUS_PMIB.\n\nSe você souber a descrição do material, digite abaixo. Ela entra no contexto que vai para a IA.\n\nCANCELAR segue sem descrição e não pergunta mais nesta rodada.": "Sheet {arquivo} has PMIB code {codigo}, which is not in _STATUS_PMIB.\n\nIf you know the material description, type it below. It goes into the context sent to the AI.\n\nCANCEL continues without a description and stops asking for this run.",

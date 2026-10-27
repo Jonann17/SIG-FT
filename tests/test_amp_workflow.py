@@ -78,3 +78,10 @@ def test_o_pedido_carrega_as_regras_da_equipe():
     codigo = monta["parameters"]["jsCode"]
     for termo in ("SEM_LISTA_STATUS_PMIB", "OBSERVAÇÕES", "DOCUMENTAL", "a conferir", "tabulação"):
         assert termo in codigo
+
+
+def test_a_data_de_hoje_vai_na_secao_lista():
+    # A linha de revisão nova leva a DATA DE ALTERAÇÃO, e o modelo não sabe que dia é hoje.
+    codigo = next(n for n in _workflow()["nodes"] if n["name"] == "Monta o pedido")["parameters"]["jsCode"]
+    assert "Data de hoje: ${lista.data_de_hoje" in codigo
+    assert "data de hoje, que vem na seção LISTA" in codigo

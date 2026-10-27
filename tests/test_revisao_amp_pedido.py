@@ -177,10 +177,13 @@ def test_pedido_tem_os_tres_conteudos_e_a_lista(tmp_path):
     [lista] = ra.listas_para_amp(_conferencia(cr.ItemConferencia(_lista(), "aprovada", pasta)), [], tmp_path, None)
     tabela = ra.TabelaStatus("Lista de Materiais", LINHA_DE_REVISAO, 3, "ITEM\tQTD.", ["MAT-1"])
     pedido = ra.montar_pedido(lista, "1.3.1-rc.2", ler_pdf=lambda c: ra.TextoPdf(2, f"--- página 1 ---\n{c.name}"),
-                              ler_status=lambda _c: tabela)
+                              ler_status=lambda _c: tabela, hoje=datetime(2026, 10, 27).date())
     assert pedido["modo"] == "revisar"
+    # A data de hoje vai junto: a linha de revisão nova leva a DATA DE ALTERAÇÃO, e o modelo
+    # não sabe que dia é (revisão final do ramo, 2026-10-27).
     assert pedido["lista"] == {"codigo": CODIGO, "revisao_em_uso": "0A", "revisao_atual": "0B",
-                               "status_real": "Aprovado", "status_da_revisao": "Em Processo", "categoria": "aprovada"}
+                               "status_real": "Aprovado", "status_da_revisao": "Em Processo", "categoria": "aprovada",
+                               "data_de_hoje": "27/10/2026"}
     assert pedido["revisao_em_uso"]["arquivo"] == cr.nome_do_pdf(CODIGO, "0A")
     assert pedido["revisao_atual"] == {"arquivo": cr.nome_do_pdf(CODIGO, "0B"), "paginas": 2,
                                        "texto": f"--- página 1 ---\n{cr.nome_do_pdf(CODIGO, '0B')}"}

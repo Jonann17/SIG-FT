@@ -190,9 +190,10 @@ def listas_para_amp(conferencia: Conferencia, downloads: list[Download], pasta_m
 
 
 def montar_pedido(lista: ListaParaAmp, versao_sigft: str, *, ler_pdf=texto_do_pdf,
-                  ler_status=status_pmib_em_tsv) -> dict:
+                  ler_status=status_pmib_em_tsv, hoje: date | None = None) -> dict:
     """O JSON do modo `revisar` (§4 do desenho). Erro de leitura (`ValueError`, `OSError`)
-    sobe: quem roda a lista o transforma em "falta"."""
+    sobe: quem roda a lista o transforma em "falta". A data de hoje vai junto: a linha de
+    revisão nova leva a DATA DE ALTERAÇÃO, e o modelo não sabe que dia é."""
     dados = lista.item.lista
     em_uso = None
     if lista.pdf_em_uso is not None:
@@ -204,7 +205,8 @@ def montar_pedido(lista: ListaParaAmp, versao_sigft: str, *, ler_pdf=texto_do_pd
         "modo": "revisar",
         "lista": {"codigo": dados.codigo, "revisao_em_uso": dados.revisao_em_uso,
                   "revisao_atual": lista.revisao_atual, "status_real": dados.status_real,
-                  "status_da_revisao": dados.status_da_revisao, "categoria": lista.item.categoria},
+                  "status_da_revisao": dados.status_da_revisao, "categoria": lista.item.categoria,
+                  "data_de_hoje": (hoje or date.today()).strftime("%d/%m/%Y")},
         "revisao_em_uso": em_uso,
         "revisao_atual": {"arquivo": lista.pdf_atual.name, "paginas": texto.paginas, "texto": texto.texto},
         "status_pmib": {"arquivo": lista.status_pmib.name, "aba": tabela.aba,

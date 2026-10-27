@@ -29,7 +29,7 @@ O texto de cada PDF traz a marca "--- página N ---" no começo de cada página.
 - Nas linhas que continuam, preserve o que a equipe já preencheu: código PMIB, status, autorização e
   as demais colunas de andamento.
 - No fim, a linha de revisão passa a "REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: <revisão
-  atual> - DATA DE ALTERAÇÃO: <data de hoje>".
+  atual> - DATA DE ALTERAÇÃO: <a data de hoje, que vem na seção LISTA>".
 - Cite a página do PDF de onde saiu cada mudança. O que não tiver certeza, marque "a conferir". Não
   invente.
 

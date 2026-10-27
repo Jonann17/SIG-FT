@@ -4,13 +4,16 @@ Três modos: `ping` (rede, chave e workflow publicado, sem chamar o modelo), `ec
 devolve os códigos que recebeu, para ver se o AMP os mascara) e `revisar` (uma lista). A chave
 vai no cabeçalho `X-SIGFT-Chave`, nunca no corpo, no log ou numa mensagem. Nenhuma falha levanta
 exceção: volta uma `RespostaAmp` com `ok` falso e um `erro` legível, que o diagnóstico usa.
-Desenho: `docs/superpowers/specs/2026-10-27-amp-revisao-de-listas-design.md`, §7 e §8.
+
+A revisão vai uma vez só, pela rota que o `ping` achou: a cascata do `rede.abrir` manda a
+requisição de novo pela rota seguinte quando o tempo esgota ou a conexão cai, e cada repetição
+seria uma execução nova do agente no AMP (revisão final do ramo, 2026-10-27). Desenho: `docs/superpowers/specs/2026-10-27-amp-revisao-de-listas-design.md`, §7 e §8.
 """
 from __future__ import annotations
 
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from sigft.core import rede
 
@@ -55,6 +58,7 @@ class ClienteAmp:
         self._abrir = abrir or rede.abrir
         self._relogio = relogio
         self._log = log_cb
+        self._sessao = None      # a sessão da rota que já respondeu (o `rede.abrir` a devolve)
 
     def ping(self) -> RespostaAmp:
         return self._chamar({"modo": "ping"})
@@ -63,25 +67,45 @@ class ClienteAmp:
         return self._chamar({"modo": "eco", "codigos": list(codigos)})
 
     def revisar(self, pedido: dict) -> RespostaAmp:
-        return self._chamar(pedido)
+        """Uma lista, numa requisição só, pela rota do `ping` (na primeira vez, o ping vai antes).
+        Tempo esgotado ou conexão cortada vira erro, e não outra tentativa: o agente pode estar
+        rodando no AMP."""
+        if self._sessao is None:
+            ping = self.ping()
+            if not ping.ok:
+                return replace(ping, modo="revisar")
+        inicio = self._relogio()
+        try:
+            resposta = self._sessao.request("POST", self._url, json=pedido, timeout=TEMPOS["revisar"],
+                                            headers=self._cabecalhos())
+        except Exception as erro:  # noqa: BLE001 -- vira diagnóstico, sem repetir
+            segundos = self._relogio() - inicio
+            return RespostaAmp(False, "revisar", None, segundos, "",
+                               erro=self._sem_chave(_falha_da_revisao(erro, segundos)))
+        return self._interpretar("revisar", resposta, self._relogio() - inicio)
 
     def _sem_chave(self, texto: str) -> str:
         return texto.replace(self._chave, "***") if self._chave else texto
+
+    def _cabecalhos(self) -> dict:
+        return {CABECALHO_CHAVE: self._chave, "Accept": "application/json"}
 
     def _chamar(self, corpo: dict) -> RespostaAmp:
         modo = str(corpo.get("modo") or "revisar")
         inicio = self._relogio()
         try:
-            _sessao, resposta = self._abrir(self._url, metodo="POST", json=corpo, timeout=TEMPOS[modo],
-                                            headers={CABECALHO_CHAVE: self._chave, "Accept": "application/json"},
-                                            status_ok=None, log_cb=self._log)
+            sessao, resposta = self._abrir(self._url, metodo="POST", json=corpo, timeout=TEMPOS[modo],
+                                           headers=self._cabecalhos(), status_ok=None, log_cb=self._log)
         except rede.FalhaDeRede as erro:
             return RespostaAmp(False, modo, None, self._relogio() - inicio, "",
                                erro=self._sem_chave(f"Sem conexão com o AMP: {rede.resumo_erro(erro)}"))
         except Exception as erro:  # noqa: BLE001 -- o cliente não levanta: a falha vira diagnóstico
             return RespostaAmp(False, modo, None, self._relogio() - inicio, "",
                                erro=self._sem_chave(f"Falha ao chamar o AMP: {type(erro).__name__}: {erro}"))
-        segundos = self._relogio() - inicio
+        self._sessao = sessao
+        return self._interpretar(modo, resposta, self._relogio() - inicio)
+
+    def _interpretar(self, modo: str, resposta, segundos: float) -> RespostaAmp:
         status = getattr(resposta, "status_code", None)
         texto = self._sem_chave(str(getattr(resposta, "text", "") or ""))
         try:
@@ -102,3 +126,17 @@ class ClienteAmp:
         if modo == "revisar" and not _TEM_HTML.search(str(dados.get("html") or "")):
             return RespostaAmp(False, modo, status, segundos, texto, dados, "o agente não devolveu HTML")
         return RespostaAmp(True, modo, status, segundos, texto, dados)
+
+
+def _falha_da_revisao(erro: BaseException, segundos: float) -> str:
+    """A revisão que não voltou, sem repetir: o tempo esgotado e a conexão que caiu no meio
+    (um proxy que corta chamada longa) dizem quanto tempo passou."""
+    import requests
+
+    if isinstance(erro, requests.exceptions.ReadTimeout):
+        return (f"o AMP não respondeu em {TEMPOS['revisar'] // 60} min; a execução pode seguir no n8n "
+                "(veja em Executions)")
+    if isinstance(erro, requests.exceptions.ConnectionError):
+        return (f"a conexão com o AMP caiu depois de {segundos:.0f} s ({rede.resumo_erro(erro)}): "
+                "um proxy que corta chamada longa?")
+    return f"Falha ao chamar o AMP: {type(erro).__name__}: {erro}"
