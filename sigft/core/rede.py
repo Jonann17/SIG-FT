@@ -338,6 +338,7 @@ def estrategias(proxy: str | None = None, url: str = "",
 
 def abrir(url: str, *, metodo: str = "GET", headers: dict | None = None,
           params: dict | None = None, json: object | None = None,
+          data: dict | None = None,
           timeout: int = 30, stream: bool = False, proxy: str | None = None,
           log_cb: Log = _nada, status_ok: Iterable[int] | None = (200,),
           _fabrica_sessao=None):
@@ -359,6 +360,9 @@ def abrir(url: str, *, metodo: str = "GET", headers: dict | None = None,
 
     `metodo` cobre GET e POST porque o SIG-FT precisa dos dois — o provedor
     compatível com OpenAI manda POST, o catálogo de modelos manda GET.
+
+    `data` manda um formulário urlencoded em vez de JSON: é assim que o token
+    OAuth do Aconex é pedido.
 
     `_fabrica_sessao` existe para o teste: é a costura por onde a suíte injeta
     um dublê de `requests.Session` e observa como cada rota foi configurada.
@@ -393,7 +397,7 @@ def abrir(url: str, *, metodo: str = "GET", headers: dict | None = None,
             sessao.verify = verificar_ssl
             try:
                 resp = sessao.request(metodo, url, headers=headers or {},
-                                      params=params, json=json,
+                                      params=params, json=json, data=data,
                                       timeout=timeout, stream=stream)
             except requests.exceptions.SSLError as e:
                 houve_ssl = True

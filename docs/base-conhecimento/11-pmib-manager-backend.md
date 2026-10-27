@@ -19,6 +19,7 @@ O roteiro `gestao-sobressalentes/07 - Diagnostico/Tarefa SIG-FT - Calculo e Grav
 | Passo | O que mudou |
 |---|---|
 | 2. Buscar `_STATUS_PMIB` | `status_pmib_arquivos.listar()` ignora pastas de teste/obsoletas/cópias (`testes_autospec`, `00 - OBSOLETO`, `10- TESTES`, `DATASHEETS`, `BACKUP`; nomes com `~$`, `- Copy`, `CÓPIA`, `COMENT`, `RESPOSTA`) — **cada ignorado aparece no log com o motivo**. Dois vivos com o mesmo código: fica o modificado por último, com `[AVISO]`. Defeito que motivou: o link "Abrir Box" de `#ST00=B01BMU10&EPB020` apontava para a cópia de `testes_autospec/`. |
+| 4. Atualizar a mapeadora (desde 2026-10-26) | **Lista nova** (Substep B) = `e_lista_de_sobressalentes(codigo, titulo)`: PB020 no código, SOBRESSALENTES no título e nada de PREÇO/PREÇOS, com ou sem acento. Saiu o teste do `-01`, que barrava a lista do SMF (`...PB020-01`); planilha de comissionamento com "sobressalentes" no título deixou de ser sugerida. **STATUS REAL** (Substep D): deixou de ser coluna de pessoa. Para cada linha, `historico_do_documento` junta todas as linhas do Tracking ID do código no histórico do Aconex, e `core/aconex/status_real.status_real_do_documento` aplica a batalha de versões do DocManager (`resolver_linha_da_verdade` → `calcular_status_real`, sem o consolidado). Cada mudança vai ao log ("STATUS REAL de X: antes → depois"); código fora do histórico fica como estava. Sem a coluna STATUS REAL na mapeadora, ou com um histórico sem as colunas da batalha (`Versão`, `Status da Revisão`...), sai um `[AVISO]` e o STATUS REAL não é gravado; o resto da etapa segue. Ver `14-aconex-e-conferencia-de-revisoes.md`. |
 | 5. Ler cada `_STATUS_PMIB` | **Antes** de ler, `_atualizar_autorizacao()` recalcula e **grava** em cada linha a `SITUAÇÃO DA AUTORIZAÇÃO` e os `DIAS DE ATRASO` pela regra de `services/autorizacao.py` (15 dias úteis do e-mail; antes eram 14 corridos e só contados para a mapeadora). Só as células que mudaram, pelo editor cirúrgico (`StatusPMIB` → `core/excel/cirurgico.py`): comentários em thread e listas suspensas ficam. Grava o nome definido `sigft_calculado_em` (data do cálculo). Arquivo sem a coluna SITUAÇÃO (layout antigo) não é gravado — o log diz. Arquivo que não grava (aberto no Excel, Box fora do ar...): ver **Arquivo travado** abaixo. Também lê a **revisão em uso** na linha de texto acima do cabeçalho. |
 | `_calcula_fichas` | Só total de fichas e contagem por STATUS (PMIB distinto, sem DUPLICADO) — o que a cascata usa. Saíram as contagens que iam para a mapeadora e o bloco dos 14 dias / "Atualizar template". |
 | 6. Gravar na mapeadora | A mapeadora virou **cadastro** (decisão do Luan, 05/10/2026): grava só `LINK DA PLANILHA`, a cascata da `SITUAÇÃO NO PMIB` (agora a função pura `situacao_no_pmib`) e a `REVISÃO EM USO` (lida do `_STATUS_PMIB`; quando é igual à ÚLTIMA REVISÃO EMITIDA, grava o valor de lá, com o mesmo tipo, para a formatação condicional G≠C não acender à toa). Nenhuma contagem. As contagens saem dos `_STATUS_PMIB` pelo Power BI v2. |
@@ -175,9 +176,7 @@ Gerenciador de PMIB.
 - **Substep A (linha 332-341)**: mapeia códigos existentes → tracking_ids_existentes
 - **Substep B (linha 343-352)**: identifica novos candidatos
   - Filtra vigentes (Current=True)
-  - Contém 'SOBRESSALENTES' no Título
-  - Não contém 'PREÇOS' ou 'PREÇO'
-  - Não termina com '-01'
+  - [2026-10-26] `e_lista_de_sobressalentes`: PB020 no código, 'SOBRESSALENTES' no Título e sem 'PREÇO'/'PREÇOS' (o teste antigo do '-01' saiu; ver a tabela v2 acima)
   - Tracking ID não está em tracking_ids_existentes
 - **Substep C (linha 354-381)**: inserção interativa
   - Callback `callback_confirm(df_reais_novos)` retorna DataFrame selecionado

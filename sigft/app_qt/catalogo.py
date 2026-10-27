@@ -26,6 +26,7 @@ MENU = [
     ("secao", marcar("Gestão")),
     ("botao", marcar("8. PMIB Manager"), "PMIBManager"),
     ("botao", marcar("9. Search"), "SearchPMIB"),
+    ("botao", marcar("10. Conferência de Revisões"), "ConferenciaRevisoes"),
 ]
 
 # O ícone de cada tela, no menu e no card da Home (sistema visual, 2026-10-20):
@@ -44,6 +45,7 @@ ICONE_DA_TELA = {
     "LMR": "tag",
     "PMIBManager": "folder-kanban",
     "SearchPMIB": "search",
+    "ConferenciaRevisoes": "clipboard-check",
 }
 
 MODULOS = [
@@ -81,6 +83,9 @@ MODULOS = [
     ("PMIBManager", marcar("PMIB Manager"),
      marcar("Atualiza o mapeamento a partir do Aconex: renomeia arquivos pelo RDS-PP, "
             "calcula o avanço, e mantém as abas de lista de preços e de atividades.")),
+    ("ConferenciaRevisoes", marcar("Conferência de Revisões"),
+     marcar("Aponta as listas cuja revisão em uso ficou para trás no Aconex, separadas pelo "
+            "Status Real, e baixa a revisão vigente para a pasta de cada uma.")),
     ("SearchPMIB", marcar("Busca PMIB"),
      marcar("Procura um código ou descrição nas planilhas de uma pasta inteira, sem "
             "abrir arquivo por arquivo.")),

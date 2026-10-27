@@ -10,6 +10,7 @@ from copy import copy
 import warnings
 
 from sigft import config
+from sigft.core.aconex import status_real
 from sigft.core.excel import headers, locking, status_sheet, travas
 from sigft.services import autorizacao, status_pmib_arquivos
 
@@ -195,6 +196,31 @@ CONSEQUENCIA_MAPEADORA = ("não gravada: link, situação no PMIB, revisão em u
                           "e Atividades ficaram como estavam")
 PULADO_MAPEADORA = " -> Pulado: a planilha de mapeamento está fora desta rodada."
 
+AVISO_SEM_STATUS_REAL = "[AVISO] Coluna 'STATUS REAL' não encontrada na mapeadora: o status real não foi gravado."
+
+
+def e_lista_de_sobressalentes(codigo, titulo):
+    """[2026-10-26] Uma lista nova de sobressalentes: código com PB020, título com
+    SOBRESSALENTES e sem PREÇO/PREÇOS (com ou sem acento). Planilhas de comissionamento
+    com "sobressalentes" no título deixam de ser sugeridas, e o teste do `-01` saiu (a
+    lista do SMF é `...PB020-01`). Quando as listas de preços migrarem para PB021, o
+    rastreio passa a ser pelo código (PENDENCIAS 2026-10-26)."""
+    titulo_normalizado = autorizacao.normalizar(titulo)
+    return ("PB020" in str(codigo or "").upper() and "SOBRESSALENTES" in titulo_normalizado
+            and "PRECO" not in titulo_normalizado)
+
+
+def historico_do_documento(df_api, codigo):
+    """Todas as linhas do Tracking ID do `codigo` no histórico do Aconex, ou `None`
+    se o código não aparece nele. É o histórico inteiro do documento: o Tracking ID
+    amarra as revisões mesmo quando o código muda."""
+    if 'No. do Documento' not in df_api.columns or 'Tracking ID' not in df_api.columns:
+        return None
+    achado = df_api[df_api['No. do Documento'].astype(str).str.strip() == str(codigo).strip()]
+    if achado.empty:
+        return None
+    return df_api[df_api['Tracking ID'] == achado['Tracking ID'].iloc[0]]
+
 
 @dataclass
 class _Rodada:
@@ -275,6 +301,21 @@ class PMIBManager:
             return df_atual['No. do Documento'].iloc[0].strip()
 
         return codigo_limpo
+
+    @staticmethod
+    def _gravar_status_real(celula, codigo, df_api):
+        """[2026-10-26] Grava na `celula` o STATUS REAL do `codigo`, pela batalha de
+        versões do DocManager. Generator: devolve no log a mudança (antes → depois)
+        ou o código que não está no histórico (e que fica como estava)."""
+        historico = historico_do_documento(df_api, codigo)
+        if historico is None:
+            yield f" -> STATUS REAL de {codigo}: fora do histórico do Aconex, não mudou."
+            return
+        novo = status_real.status_real_do_documento(historico)
+        antes = str(celula.value).strip() if celula.value is not None else ""
+        if novo != antes:
+            celula.value = novo
+            yield f" -> STATUS REAL de {codigo}: {antes or '(vazio)'} → {novo}"
 
     def _renomear_arquivo_status_pmib(self, caminho_original, new_codigo_rdspp):
         """`(sucesso, mensagem, caminho_final, falha)`. Sem sucesso, o arquivo
@@ -756,8 +797,10 @@ class PMIBManager:
         # foi retirado da aba. O Gestão PMIB grava só o LINK DA PLANILHA, a
         # cascata da SITUAÇÃO NO PMIB e a REVISÃO EM USO (lida do próprio
         # `_STATUS_PMIB`). Colunas achadas pelo nome da linha 2; a que não
-        # existir é pulada, sem erro. As de pessoas (STATUS REAL, RESPONSÁVEL,
-        # OBSERVAÇÃO...) e a fórmula do CÓDIGO DO PROJETO nunca são tocadas.
+        # existir é pulada, sem erro. As de pessoas (RESPONSÁVEL, OBSERVAÇÃO...)
+        # e a fórmula do CÓDIGO DO PROJETO nunca são tocadas. [2026-10-26] O
+        # STATUS REAL deixou de ser coluna de pessoa: a etapa 4 o grava pela
+        # batalha de versões do DocManager (`core/aconex/status_real.py`).
         #
         # A mapeadora é gravada pelo openpyxl: não tem comentário em thread nem
         # lista suspensa de extensão (as mensagens de validação são padrão e
@@ -865,12 +908,13 @@ class PMIBManager:
 
         # B. Identificar Novos
         df_vigentes = df_api[df_api['Current'] == True]
-        df_novos_cand = df_vigentes[
-            (df_vigentes['Título'].str.contains('SOBRESSALENTES', case=False, na=False)) &
-            (~df_vigentes['Título'].str.contains('PREÇOS', case=False, na=False)) &
-            (~df_vigentes['Título'].str.contains('PREÇO', case=False, na=False)) &
-            (~df_vigentes['No. do Documento'].str.endswith('-01', na=False))
-        ].copy()
+        # [2026-10-26] PB020 no código, SOBRESSALENTES no título, nada de PREÇO
+        # (`e_lista_de_sobressalentes`). Série booleana com o índice: com zero
+        # linhas, uma lista vazia selecionaria colunas, não linhas.
+        mascara = pd.Series([e_lista_de_sobressalentes(c, t) for c, t in
+                             zip(df_vigentes['No. do Documento'], df_vigentes['Título'])],
+                            index=df_vigentes.index, dtype=bool)
+        df_novos_cand = df_vigentes[mascara].copy()
 
         df_reais_novos = df_novos_cand[~df_novos_cand['Tracking ID'].isin(tracking_ids_existentes)]
 
@@ -909,6 +953,17 @@ class PMIBManager:
                 yield (" -> Inserção ignorada ou nenhuma lista selecionada.", 0.60)
 
         # D. Atualizar Metadados
+        # [2026-10-26] e o STATUS REAL, pela batalha de versões do DocManager, sem o
+        # consolidado (desenho do Aconex ao vivo, §4.4). Toda mudança vai para o log.
+        col_status_real = col_indices.get('STATUS REAL')
+        if col_status_real is None:
+            yield AVISO_SEM_STATUS_REAL
+        elif faltam := status_real.colunas_que_faltam(df_api):
+            # Um histórico incompleto (o extrato sintético do kit não tem 'Versão')
+            # não derruba a etapa: os metadados seguem, o STATUS REAL fica como estava.
+            yield (f"[AVISO] O histórico do Aconex não tem {', '.join(faltam)}: "
+                   "o status real não foi gravado.")
+            col_status_real = None
         count_update = 0
         for row_idx in range(3, ws.max_row + 1):
             codigo_planilha = ws.cell(row=row_idx, column=doc_col + 1).value
@@ -928,6 +983,10 @@ class PMIBManager:
                             val = dados_reais[col_api].iloc[0]
                             ws.cell(row=row_idx, column=col_indices[col_mestra] + 1).value = val
                     count_update += 1
+
+                if col_status_real is not None:
+                    yield from self._gravar_status_real(ws.cell(row=row_idx, column=col_status_real + 1),
+                                                        novo_codigo, df_api)
 
         self._gravar_mapeadora(wb, caminho_gerenciadora)
         yield f" -> Metadados atualizados ({count_update} linhas)."

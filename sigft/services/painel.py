@@ -48,6 +48,7 @@ import zipfile
 
 import pandas as pd
 
+from sigft.core.aconex import status_real
 from sigft.services import autorizacao, status_pmib_arquivos
 
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
@@ -492,6 +493,9 @@ def montar(hoje: dt.date, raiz, mapeadora, callback_log=None) -> dict:
                        "nome": nome_exibicao(s["SISTEMA"]) if s.get("SISTEMA") else nome_curto(m.get("DESCRICAO"), lst),
                        "area": sem_prefixo(s["AREA"]) if s.get("AREA") else None,
                        "et": m.get("ESPECIFICACAO TECNICA"), "cap": m.get("CAPITULO"), "sr": m.get("STATUS REAL"),
+                       # [2026-10-26] lista aprovada = família de aprovação do STATUS REAL
+                       # (Aprovado, Aprovado com Comentários, Para Assinatura e o antigo APROVADO)
+                       "aprov": status_real.eh_aprovacao(m.get("STATUS REAL")),
                        "rev": str(m.get("ULTIMA REVISAO EMITIDA")),
                        "resp": m.get("RESPONSAVEL") if isinstance(m.get("RESPONSAVEL"), str) else None,
                        "proc": m.get("PROCUREMENT") if isinstance(m.get("PROCUREMENT"), str) else None,

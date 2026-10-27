@@ -150,7 +150,7 @@ def test_a_aplicacao_LMR_e_dado_tecnico_e_nao_gestao():
 
 def test_a_gestao_ficou_com_o_que_e_gestao():
     """E não vazia: uma seção sem botão nenhum é um rótulo solto na tela."""
-    assert _secoes_da_barra_lateral()["Gestão"] == ["PMIBManager", "SearchPMIB"]
+    assert _secoes_da_barra_lateral()["Gestão"] == ["PMIBManager", "SearchPMIB", "ConferenciaRevisoes"]
 
 
 def test_nenhuma_secao_da_barra_lateral_fica_vazia():

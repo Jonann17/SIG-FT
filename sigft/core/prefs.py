@@ -262,6 +262,21 @@ def get_initial_dir(
     return None
 
 
+def ultima_pasta(
+    chave: str,
+    *,
+    config_path: str | os.PathLike[str] | None = None,
+) -> str | None:
+    """A última pasta escolhida para `chave`, SE ainda existir: só a camada 1 de
+    `get_initial_dir`, sem cair na da categoria nem na padrão.
+
+    Serve à tela que PREENCHE um campo com a escolha de outra tela (a Conferência
+    de Revisões começa na pasta raiz do Gestão PMIB): ali, a pasta de outra coisa
+    não seria um ponto de partida, seria um erro.
+    """
+    return _pasta_valida(_carregar_estado(config_path)["ultimos"].get(chave))
+
+
 def remember_dir(
     chave: str,
     categoria: str,
