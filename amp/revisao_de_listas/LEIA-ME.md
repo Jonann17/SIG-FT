@@ -1,7 +1,7 @@
 # Revisão das listas pelo AMP (n8n)
 
-O workflow que o SIG-FT chama na tela **Conferência de Revisões** → **Revisar no AMP**. Para cada
-lista com divergência, o agente lê:
+O workflow que o SIG-FT chama no **PMIB Manager**, aba **Revisão no AMP** → **Revisar no AMP**. Para
+cada lista com divergência da última conferência (aba **Conferência de Revisões**), o agente lê:
 - o texto das duas revisões do PDF;
 - o `_STATUS_PMIB`.
 
@@ -31,9 +31,11 @@ Desenho: `docs/superpowers/specs/2026-10-27-amp-revisao-de-listas-design.md`.
 5. **Endereço.** No nó **Webhook do SIG-FT**, aba *Production URL*, copie o endereço. Ele termina em
    `/webhook/sigft-revisao-listas`.
 6. **No SIG-FT.** Na engrenagem (Configuração) → **Chaves de API**:
-   - **AMP (endereço do webhook):** o endereço do passo 5;
-   - **AMP (chave do webhook):** o valor do passo 2.
-7. **Testar.** Na tela **Conferência de Revisões**, clique em **Testar conexão com o AMP**:
+   - **AMP Webhook (URL):** o endereço do passo 5;
+   - **AMP Webhook (chave):** o valor do passo 2.
+7. **Testar.** No PMIB Manager, aba **Revisão no AMP**, clique em **Testar conexão com o AMP**. O eco
+   usa os códigos da última conferência: rode a aba **Conferência de Revisões** antes (sem ela, só o
+   ping vai):
    - o **ping** prova a rede, a chave e o workflow publicado;
    - o **eco** manda códigos das listas ao modelo e confere se voltaram iguais. Esse é o teste de
      mascaramento: se voltar `FALHOU ... mascarado`, o AMP está escondendo códigos, e a tabela
@@ -51,9 +53,10 @@ Mantenha o pedido curto: os agentes do AMP já sabem montar o HTML.
 ## Se der errado
 
 Cada lista que falha gera um **diagnóstico**:
-- aparece no console da tela;
+- o console mostra a falha e onde o diagnóstico foi gravado;
 - fica gravado em `Documentos\SIG-FT\logs\amp\`;
-- o botão **Copiar diagnóstico** junta o de todas as falhas da rodada.
+- o botão **Copiar diagnóstico** junta o de todas as falhas da rodada, já com uma abertura que diz ao
+  Claude o que é o texto.
 
 O diagnóstico **não leva texto de documento nem a chave**. Leva:
 - a versão do SIG-FT;
@@ -68,13 +71,16 @@ Para pedir ajuda numa conversa nova (o Claude na web, no PC da GE, com o reposit
 cole isto e, embaixo, o diagnóstico:
 
 ```text
-Estou testando a revisão das listas pelo AMP no SIG-FT (tela Conferência de Revisões → Revisar no
-AMP). A chamada ao workflow do n8n falhou. Leia, no repositório:
+Estou testando a revisão das listas pelo AMP no SIG-FT (PMIB Manager, aba Revisão no AMP). A
+chamada ao workflow do n8n falhou. Leia, no repositório:
 - amp/revisao_de_listas/LEIA-ME.md e docs/superpowers/specs/2026-10-27-amp-revisao-de-listas-design.md
 - sigft/core/amp/cliente.py e sigft/services/revisao_amp.py
 Diga a causa provável e o que eu faço: no n8n, no SIG-FT ou no código. Não peça os documentos:
 eles não podem sair da GE. O diagnóstico do SIG-FT está abaixo.
 ```
+
+Se o que falhou foi o **Testar conexão com o AMP**, cole as duas linhas do console (`Ping` e `Eco`)
+no lugar do diagnóstico. Se o SIG-FT nem abriu a aba, cole o fim de `Documentos\SIG-FT\logs\sigft.log`.
 
 | Sintoma no diagnóstico | Onde olhar |
 |---|---|

@@ -140,6 +140,12 @@ O `LEIA-ME.md` da pasta ensina a fazer, nesta ordem:
 
 ## 7. No SIG-FT
 
+> **Atualização de 27/10 (correção do Luan, na execução):** a Conferência de Revisões e a Revisão no
+> AMP viraram **abas do PMIB Manager** (Gestão PMIB, Conferência de Revisões, Revisão no AMP), no
+> padrão da Aplicação LMR, e não telas do menu. Os botões abaixo moram na aba **Revisão no AMP**, com
+> uma tabela própria (a coluna "AMP" é dela). Os rótulos das chaves ficaram "AMP Webhook (URL)" e
+> "AMP Webhook (chave)", que cabem na coluna de rótulos do painel.
+
 - **Configuração → Chaves de API:** "AMP (endereço do webhook)" e "AMP (chave do webhook)", no mesmo
   mecanismo das outras chaves (`ENV_VAR_POR_CHAVE`; variáveis `SIGFT_AMP_WEBHOOK_URL` e
   `SIGFT_AMP_WEBHOOK_CHAVE`). A chave nunca vai para o repositório, o log ou o diagnóstico.

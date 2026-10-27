@@ -23,11 +23,11 @@ MONTA = "Monta o pedido"
 AGENTE = "Agente da revisão"
 
 NOTA = """## Para ligar (uma vez)
-1. **Credencial:** no nó **Webhook do SIG-FT**, crie uma *Header Auth* com o nome `X-SIGFT-Chave` e um valor longo e aleatório. O mesmo valor vai no SIG-FT: Configuração → Chaves de API → "AMP (chave do webhook)".
+1. **Credencial:** no nó **Webhook do SIG-FT**, crie uma *Header Auth* com o nome `X-SIGFT-Chave` e um valor longo e aleatório. O mesmo valor vai no SIG-FT: Configuração → Chaves de API → "AMP Webhook (chave)".
 2. **Modelo:** no nó **Agente da revisão**, clique em **Model** e ligue um **GEV LLM Model** (sugestão: Claude Sonnet 5.5).
 3. **Salve e publique** o workflow.
-4. Copie a **Production URL** do webhook para o SIG-FT: "AMP (endereço do webhook)".
-5. No SIG-FT, tela Conferência de Revisões: **Testar conexão com o AMP**. O ping e o eco devem passar.
+4. Copie a **Production URL** do webhook para o SIG-FT: "AMP Webhook (URL)".
+5. No SIG-FT, PMIB Manager, aba Revisão no AMP: **Testar conexão com o AMP**. O ping e o eco devem passar.
 
 Ver `amp/revisao_de_listas/LEIA-ME.md` no repositório do SIG-FT."""
 
