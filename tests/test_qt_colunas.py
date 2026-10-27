@@ -26,7 +26,7 @@ def _ordem(tabela):
 
 
 def _acao(menu, chave):
-    return next(a for a in menu.actions() if a.data() == chave)
+    return next(a for a in menu.actions() if a.data() == INTERNAS.index(chave))
 
 
 def test_instalar_liga_o_cabecalho(qt_interface, qtbot):
@@ -187,3 +187,96 @@ def test_revisao_antes_do_portal_lembra_em_outro_idioma(qt_interface, qtbot):
         assert [nova.colunas.colunas[cab.logicalIndex(p)] for p in range(cab.count())] == [
             "motivo", "ficha", "campo", "valor"]
         assert cab.isSectionHidden(2)
+
+
+# -- fix round (revisão da Task 3) ---------------------------------------------------------
+def _gravacoes(monkeypatch):
+    feitas = []
+    original = colunas_mod._gravar
+
+    def _registrar(chave, valor):
+        feitas.append((chave, valor))
+        original(chave, valor)
+
+    monkeypatch.setattr(colunas_mod, "_gravar", _registrar)
+    return feitas
+
+
+def _mostrada(qtbot, largura=1200):
+    tabela, colunas = _tabela(qtbot)
+    tabela.resize(largura, 300)
+    tabela.show()
+    qtbot.waitExposed(tabela)
+    return tabela, colunas
+
+
+def test_arrastar_a_com_c_esticando_nao_grava_a_largura_esticada(qt_interface, qtbot, monkeypatch):
+    tabela, colunas = _mostrada(qtbot)
+    cabecalho = tabela.header()
+    cabecalho.resizeSection(0, 200)          # quem usa arrasta a borda de A
+    assert cabecalho.stretchLastSection()    # e C passa a esticar
+    esticada = cabecalho.sectionSize(2)
+    assert esticada > 300
+    colunas.gravar()
+    guardado = prefs.ler_colunas("teste")
+    assert guardado[0]["largura"] == 200
+    assert guardado[2]["largura"] is None    # a esticada não é a largura de quem usa
+    tabela.close()
+    nova, _ = _mostrada(qtbot, largura=700)
+    assert nova.header().sectionSize(0) == 200
+    # C volta à de nascença (e estica de novo), não aos 500+ da janela larga.
+    assert nova.header().sectionSize(2) < esticada
+    assert nova.header().stretchLastSection()
+
+
+def test_redimensionar_a_janela_nao_grava(qt_interface, qtbot, monkeypatch):
+    tabela, colunas = _mostrada(qtbot)
+    tabela.header().resizeSection(0, 200)
+    colunas.gravar()
+    feitas = _gravacoes(monkeypatch)
+    for largura in (900, 1400, 800, 1300):
+        tabela.resize(largura, 300)
+        qtbot.wait(20)
+        assert not colunas._gravar_depois.isActive()
+    qtbot.wait(colunas_mod.MS_PARA_GRAVAR + 100)
+    assert feitas == []
+    assert prefs.ler_colunas("teste")[2]["largura"] is None
+
+
+def test_esconder_a_ultima_faz_a_do_meio_ser_a_que_estica(qt_interface, qtbot, monkeypatch):
+    tabela, colunas = _mostrada(qtbot)
+    tabela.header().resizeSection(0, 200)
+    colunas.mostrar_coluna("alvo", False)
+    guardado = prefs.ler_colunas("teste")
+    assert guardado[1]["largura"] is None    # agora é a "original" que estica
+    feitas = _gravacoes(monkeypatch)
+    tabela.resize(1500, 300)
+    qtbot.wait(colunas_mod.MS_PARA_GRAVAR + 100)
+    assert feitas == []
+
+
+def test_colunas_de_mesmo_nome_marcam_a_coluna_certa(qt_interface, qtbot):
+    tabela = qd.tabela_ttk([(titulo, 120, "w") for titulo in ("A", "B", "C")])
+    qtbot.addWidget(tabela)
+    colunas = colunas_mod.instalar_colunas(tabela, "teste_repetidas", ("x", "y", "x"))
+    menu = colunas.montar_menu()
+    acoes = [a for a in menu.actions() if a.isCheckable()]
+    assert [a.data() for a in acoes] == [0, 1, 2]
+    acoes[2].setChecked(False)
+    assert tabela.header().isSectionHidden(2)
+    assert not tabela.header().isSectionHidden(0)
+
+
+def test_botao_direito_no_cabecalho_abre_o_menu(qt_interface, qtbot):
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QApplication, QMenu
+
+    tabela, _ = _mostrada(qtbot)
+    cabecalho = tabela.header()
+    cabecalho.customContextMenuRequested.emit(QPoint(10, 5))
+    menu = QApplication.activePopupWidget() or cabecalho.findChild(QMenu)
+    assert isinstance(menu, QMenu)
+    textos = [a.text() for a in menu.actions() if not a.isSeparator()]
+    assert textos == ["Descrição", "PMIB Original", "PMIB Alvo", "Restaurar colunas"]
+    menu.close()
+    qtbot.wait(10)

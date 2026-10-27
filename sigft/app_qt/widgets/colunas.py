@@ -14,6 +14,12 @@ Na tabela com `EsticaColunas` (`dialogos_selecao.tabela_ttk`, a sobra repartida
 igual), mexer nas colunas o desliga e a última coluna passa a esticar; o
 "Restaurar colunas" o religa.
 
+A coluna que ESTICA (a última visível, com `stretchLastSection`) não tem largura
+de quem usa: a dela é a sobra da janela. Não se registra nem se grava (vai
+`largura: None`, e ao reabrir ela fica com a de nascença e volta a esticar) --
+senão a sobra de uma janela larga virava barra horizontal numa janela estreita,
+e cada redimensionamento da janela regravava as preferências.
+
 Uso: `instalar_colunas(tabela, "selecao_duplicadas", ("descricao", ...))`.
 """
 from __future__ import annotations
@@ -145,6 +151,39 @@ class ColunasLembradas(QObject):
                                 not cabecalho.isSectionHidden(logico)))
         return lista
 
+    def _que_estica(self) -> int | None:
+        """O índice lógico da coluna que estica (a última visível), ou `None`
+        se nenhuma estica."""
+        cabecalho = self._cabecalho
+        if not cabecalho.stretchLastSection():
+            return None
+        for posicao in range(cabecalho.count() - 1, -1, -1):
+            logico = cabecalho.logicalIndex(posicao)
+            if not cabecalho.isSectionHidden(logico):
+                return logico
+        return None
+
+    def _para_gravar(self) -> list[Coluna]:
+        """O `estado()` sem a largura da coluna que estica (é a sobra da janela)."""
+        estica = self._que_estica()
+        cabecalho = self._cabecalho
+        lista = []
+        for posicao, coluna in enumerate(self.estado()):
+            if cabecalho.logicalIndex(posicao) == estica:
+                coluna = coluna._replace(largura=None)
+            lista.append(coluna)
+        return lista
+
+    def _logicos(self, lista: Sequence[Coluna], padrao: bool) -> list[int]:
+        """O índice lógico de cada item de `lista`. Chave repetida pega a próxima
+        coluna com aquele nome, não sempre a primeira."""
+        if padrao:
+            return list(range(len(lista)))
+        livres: dict[str, list[int]] = {}
+        for logico, chave in enumerate(self.colunas):
+            livres.setdefault(chave, []).append(logico)
+        return [livres[coluna.chave].pop(0) for coluna in lista]
+
     def _soltar_esticador(self) -> None:
         """Daqui em diante vale a largura de quem mexeu: a sobra repartida igual
         (`EsticaColunas`) para, e a última coluna estica."""
@@ -167,8 +206,7 @@ class ColunasLembradas(QObject):
             lista = [Coluna(c, self._padrao.get(i), True) for i, c in enumerate(self.colunas)]
         self._aplicando = True
         try:
-            for posicao, coluna in enumerate(lista):
-                logico = self.colunas.index(coluna.chave)
+            for posicao, (coluna, logico) in enumerate(zip(lista, self._logicos(lista, padrao))):
                 if cabecalho.visualIndex(logico) != posicao:
                     cabecalho.moveSection(cabecalho.visualIndex(logico), posicao)
                 if coluna.largura:
@@ -187,6 +225,8 @@ class ColunasLembradas(QObject):
 
     # -- o que quem usa faz --------------------------------------------------------------
     def _redimensionou(self, logico: int, _antes: int, agora: int) -> None:
+        if logico == self._que_estica():
+            return   # a sobra da janela, não a largura de quem usa
         if agora > 0 and logico < len(self.colunas):
             self._larguras[logico] = agora
         if self._ocupado() or agora <= 0:
@@ -203,12 +243,16 @@ class ColunasLembradas(QObject):
     def mostrar_coluna(self, chave: str, visivel: bool) -> bool:
         """Mostra ou esconde a coluna `chave` e grava. A última visível não se
         esconde: devolve `False` e nada muda."""
-        visiveis = [c.chave for c in self.estado() if c.visivel]
-        if not visivel and visiveis == [chave]:
+        return self._mostrar_logico(self.colunas.index(chave), visivel)
+
+    def _mostrar_logico(self, logico: int, visivel: bool) -> bool:
+        cabecalho = self._cabecalho
+        visiveis = [i for i in range(len(self.colunas)) if not cabecalho.isSectionHidden(i)]
+        if not visivel and visiveis == [logico]:
             return False
         self._aplicando = True
         try:
-            self._cabecalho.setSectionHidden(self.colunas.index(chave), not visivel)
+            cabecalho.setSectionHidden(logico, not visivel)
         finally:
             self._aplicando = False
         self._soltar_esticador()
@@ -217,7 +261,7 @@ class ColunasLembradas(QObject):
 
     def gravar(self) -> None:
         self._gravar_depois.stop()
-        _gravar(self.chave, descrever(self.estado()))
+        _gravar(self.chave, descrever(self._para_gravar()))
 
     def restaurar(self, *_args) -> None:
         """"Restaurar colunas": esquece o guardado e volta ao padrão."""
@@ -229,17 +273,20 @@ class ColunasLembradas(QObject):
     def montar_menu(self) -> QMenu:
         """Uma linha marcável por coluna (na ordem da tela) e "Restaurar colunas"."""
         menu = QMenu(self._cabecalho)
+        cabecalho = self._cabecalho
         estado = self.estado()
-        visiveis = [c.chave for c in estado if c.visivel]
+        visiveis = [c for c in estado if c.visivel]
         modelo = self._tabela.model()
-        for coluna in estado:
-            logico = self.colunas.index(coluna.chave)
+        for posicao, coluna in enumerate(estado):
+            # O dado da ação é o índice LÓGICO: com duas colunas de mesmo nome,
+            # `colunas.index(chave)` apontaria sempre a primeira.
+            logico = cabecalho.logicalIndex(posicao)
             texto = str(modelo.headerData(logico, Qt.Orientation.Horizontal) or coluna.chave)
             acao = menu.addAction(texto)
             acao.setCheckable(True)
             acao.setChecked(coluna.visivel)
-            acao.setData(coluna.chave)
-            acao.setEnabled(not (coluna.visivel and visiveis == [coluna.chave]))
+            acao.setData(logico)
+            acao.setEnabled(not (coluna.visivel and len(visiveis) == 1))
             acao.toggled.connect(self._marcou)
         menu.addSeparator()
         restaurar = menu.addAction(t(TEXTO_RESTAURAR))
@@ -249,7 +296,7 @@ class ColunasLembradas(QObject):
     def _marcou(self, marcado: bool) -> None:
         acao = self.sender()
         if acao is not None:
-            self.mostrar_coluna(acao.data(), marcado)
+            self._mostrar_logico(int(acao.data()), marcado)
 
     def _abrir_menu(self, posicao) -> None:
         menu = self.montar_menu()

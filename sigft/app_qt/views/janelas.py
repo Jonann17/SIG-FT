@@ -122,7 +122,13 @@ def _faixa(*widgets, espaco: int = 0) -> QHBoxLayout:
 def JanelaSelecao(parent, dataframe, callback_confirmar):  # noqa: N802 -- nome de lá
     """Escolher linhas de uma planilha. O callback recebe os ÍNDICES do
     DataFrame em `int` (o `[int(i) for i in tree.selection()]` de lá): o
-    ModuloCriaFichas indexa o DataFrame com eles."""
+    ModuloCriaFichas indexa o DataFrame com eles.
+
+    Colunas lembradas: a chave `selecao_de_itens` é UMA só para toda planilha,
+    de propósito (o arranjo de quem usa vale de uma planilha para a outra), e a
+    chave de cada coluna é o nome dela na planilha. Planilha com outras colunas
+    não estraga nada: `colunas.juntar` ignora a guardada que não existe nesta e
+    põe a nova no fim, visível."""
     return dialogos_selecao.TabelaSelecaoDialog.de_dataframe(
         parent,
         dataframe,
