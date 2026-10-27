@@ -33,6 +33,7 @@ def diario_em(monkeypatch, tmp_path):
     eventos dados (sem os ganchos: o teste é da interface)."""
     monkeypatch.delenv(diario.ENV_DESLIGAR, raising=False)
     monkeypatch.setattr(diario, "faulthandler", _FaultFalso())
+    monkeypatch.setattr(diario, "_esperar", lambda segundos: None)
     monkeypatch.setattr(sys, "excepthook", sys.excepthook)
     monkeypatch.setattr(threading, "excepthook", threading.excepthook)
     diario.esquecer()
@@ -177,8 +178,53 @@ def test_main_abre_o_diario_depois_do_idioma_e_antes_da_splash(qt_interface, mon
     monkeypatch.setattr(qmain, "_preparar_qt", lambda: eventos.append("qt") or app_falso)
     monkeypatch.setattr(escolha_de_idioma, "perguntar_na_abertura",
                         lambda: eventos.append("idioma") or None)
+    argumentos = []
     monkeypatch.setattr(diario, "abrir",
-                        lambda **k: eventos.append(("diario", k["versao"], k["idioma"])))
+                        lambda **k: argumentos.append(k)
+                        or eventos.append(("diario", k["versao"], k["idioma"])))
     monkeypatch.setattr(qmain, "SplashScreen", SplashFalsa)
     qmain.main()
     assert eventos == ["qt", "idioma", ("diario", _build_info.VERSAO, idioma.atual()), "splash"]
+    # Os ganchos de erro e o `faulthandler` ficam ligados no app de verdade.
+    assert argumentos[0].get("ganchos", True) is True
+
+
+def test_janela_que_nao_monta_deixa_a_sessao_como_caiu(qt_interface, monkeypatch, diario_em):
+    """O `except` da abertura sai com `encerrar(1)` sem passar pelos ganchos: sem
+    gravar ali, a proxima sessao diria "encerrado de fora" (2026-10-27)."""
+    from sigft.core import dados_usuario
+    from sigft.core.rpa import navegador
+
+    pasta = diario_em()
+    ligados = []
+
+    class SplashFalsa:
+        pronta = type("S", (), {"connect": lambda self, f: ligados.append(f)})()
+
+        def show(self):
+            pass
+
+        def carregar(self):
+            ligados[0]()
+
+        def close(self):
+            pass
+
+    def quebra():
+        raise ValueError("api_config.json corrompido")
+
+    monkeypatch.setattr(instancia, "preparar", lambda: None)
+    monkeypatch.setattr(instancia, "encerrar", lambda codigo=0: None)
+    monkeypatch.setattr(dados_usuario, "migrar_se_preciso", lambda: [])
+    monkeypatch.setattr(navegador, "preparar_ambiente_do_rpa", lambda: None)
+    monkeypatch.setattr(qmain, "_preparar_qt", lambda: type("A", (), {"exec": lambda self: None})())
+    monkeypatch.setattr(escolha_de_idioma, "perguntar_na_abertura", lambda: None)
+    # O diário já foi aberto pela fixture; o do `main()` não reabre (seria a pasta real).
+    monkeypatch.setattr(diario, "abrir", lambda **k: None)
+    monkeypatch.setattr(qmain, "SplashScreen", SplashFalsa)
+    monkeypatch.setattr(qmain, "SIG_FT_App", quebra)
+    monkeypatch.setattr(qmain.QMessageBox, "critical", lambda *a, **k: None)
+    qmain.main()
+    texto = (pasta / diario.ARQUIVO).read_text(encoding="utf-8")
+    assert "abertura da janela" in texto and "api_config.json corrompido" in texto
+    assert diario.classificar(texto.splitlines()) == diario.CAIU

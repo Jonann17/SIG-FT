@@ -678,6 +678,10 @@ def main() -> None:
             principal = SIG_FT_App()
         except Exception as erro:  # noqa: BLE001 -- vira aviso, e não fantasma
             traceback.print_exception(erro)
+            # [2026-10-27] Para os ganchos o erro foi tratado: sem esta linha, a
+            # próxima sessão diria "encerrado de fora" em vez de "caiu".
+            diario.registrar_erro(type(erro), erro, erro.__traceback__,
+                                  onde="abertura da janela")
             # Sai com 1: o `SIG-FT.bat` e o `.command` esperam este processo e
             # deixam a janela preta aberta com "Encerrado com erro".
             QMessageBox.critical(None, "SIG-FT", t(

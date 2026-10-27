@@ -290,6 +290,8 @@ NAO_E_INTERFACE: dict[str, set[str]] = {
         "Home",
         # O título da janela: nome do produto e a versão.
         "f'SIG-FT v{_build_info.VERSAO} - GE Vernova'",
+        # O `onde` do erro no diário de quedas: linha de log, não tela (2026-10-27).
+        "abertura da janela",
         # O aviso de quando a Qt não sobe: antes de o idioma valer.
         "f'A Qt não conseguiu iniciar:\\n{texto}'",
         # O relatório do --smoke: quem lê é o Release, não a pessoa.

@@ -661,6 +661,31 @@ def test_fechar_o_app_ENCERRA_o_processo(monkeypatch, raiz):
     assert not raiz.isVisible()
 
 
+def test_fechar_o_app_grava_o_fechamento_no_diario(monkeypatch, raiz, tmp_path):
+    """O `instancia.encerrar` nao passa pelo `closeEvent`: sem gravar aqui, a
+    sessao seguinte a toda atualizacao avisaria "encerrado de fora" (2026-10-27)."""
+    from sigft.core import diario, instancia
+
+    class _FaultFalso:
+        def enable(self, arquivo, all_threads=True):
+            pass
+
+        def disable(self):
+            pass
+
+    monkeypatch.delenv(diario.ENV_DESLIGAR, raising=False)
+    monkeypatch.setattr(diario, "faulthandler", _FaultFalso())
+    monkeypatch.setattr(instancia, "encerrar", lambda codigo=0: None)
+    diario.esquecer()
+    try:
+        diario.abrir(versao="1.3.1", idioma="pt", pasta=tmp_path, ganchos=False)
+        atualizacao._fechar_o_app(raiz)
+        ultima = (tmp_path / diario.ARQUIVO).read_text(encoding="utf-8").splitlines()[-1]
+        assert ultima.endswith(diario.FECHAMENTO)
+    finally:
+        diario.esquecer()
+
+
 # =============================================================================
 # E. Paridade visual com a JanelaAtualizacao da interface antiga
 # =============================================================================

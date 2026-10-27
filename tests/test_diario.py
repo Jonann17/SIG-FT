@@ -39,6 +39,7 @@ def ambiente(monkeypatch, tmp_path):
     monkeypatch.delenv(diario.ENV_DESLIGAR, raising=False)
     falso = _FaultFalso()
     monkeypatch.setattr(diario, "faulthandler", falso)
+    monkeypatch.setattr(diario, "_esperar", lambda segundos: None)   # trava presa: sem espera real
     # Os ganchos que o `abrir` troca voltam ao que eram no fim do teste.
     monkeypatch.setattr(sys, "excepthook", sys.excepthook)
     monkeypatch.setattr(threading, "excepthook", threading.excepthook)
@@ -305,6 +306,39 @@ def test_segunda_instancia_fica_sem_diario_e_nao_mexe_em_nada(ambiente):
         os.close(fd)   # a primeira instância fechou: a trava fica livre
     assert _abrir(ambiente.pasta) == diario.CAIU
     assert diario.ligado()
+
+
+def test_trava_solta_entre_tentativas_abre_o_diario(ambiente, monkeypatch):
+    # Reinício pelo idioma (2026-10-27): o processo novo chega ao `abrir` enquanto
+    # o velho ainda segura a trava. Ele espera um pouco em vez de desistir.
+    import os
+
+    _escrever(ambiente.pasta, "ABERTURA versao=1.3.0", "FECHAMENTO pela janela")
+    fd = _travar_por_fora(ambiente.pasta)
+    esperas = []
+
+    def esperar(segundos):
+        esperas.append(segundos)
+        if len(esperas) == 2:
+            os.close(fd)   # o processo velho terminou
+
+    monkeypatch.setattr(diario, "_esperar", esperar)
+    assert _abrir(ambiente.pasta) == diario.NORMAL
+    assert diario.ligado()
+    assert esperas == [diario.ESPERA_TRAVA] * 2
+
+
+def test_trava_presa_o_tempo_todo_desiste_depois_das_tentativas(ambiente, monkeypatch):
+    import os
+
+    esperas = []
+    monkeypatch.setattr(diario, "_esperar", esperas.append)
+    fd = _travar_por_fora(ambiente.pasta)
+    try:
+        assert _abrir(ambiente.pasta) is None
+    finally:
+        os.close(fd)
+    assert len(esperas) == diario.TENTATIVAS_TRAVA - 1
 
 
 def test_a_trava_e_solta_no_esquecer(ambiente):

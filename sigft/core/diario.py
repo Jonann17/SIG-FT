@@ -21,7 +21,9 @@ encerrado de fora (Gerenciador de Tarefas, desligamento, falta de luz). O
 `queda.log` com rastro vira `queda.log.anterior` antes de o novo ser aberto.
 
 Duas instâncias abertas: a primeira prende `logs\\diario.trava` pelo processo
-todo; a segunda fica sem diário e não toca em nada (2026-10-26).
+todo; a segunda fica sem diário e não toca em nada (2026-10-26). Antes de
+desistir ela tenta `TENTATIVAS_TRAVA` vezes: no reinício pelo idioma, o processo
+velho ainda pode estar soltando a trava (2026-10-27).
 
 Passou de `LIMITE_BYTES`, o arquivo vira `diario.log.1` (uma cópia só) e
 recomeça; a leitura da sessão anterior junta os dois.
@@ -51,6 +53,11 @@ ARQUIVO_QUEDA = "queda.log"
 ARQUIVO_QUEDA_ANTERIOR = "queda.log.anterior"
 ARQUIVO_TRAVA = "diario.trava"
 LIMITE_BYTES = 1024 * 1024
+# Reinício pelo idioma (`app_qt/reinicio.py`): o processo novo pode chegar ao
+# `abrir` com o velho ainda segurando a trava. Tenta algumas vezes antes de
+# desistir (2026-10-27).
+TENTATIVAS_TRAVA = 5
+ESPERA_TRAVA = 0.2
 
 ABERTURA = "ABERTURA"
 FECHAMENTO = "FECHAMENTO pela janela"
@@ -148,6 +155,23 @@ def _travar(pasta: Path) -> int | None:
         os.close(fd)
         raise _OcupadoPorOutra from None
     return fd
+
+
+def _esperar(segundos: float) -> None:
+    time.sleep(segundos)
+
+
+def _travar_com_paciencia(pasta: Path) -> int | None:
+    """`_travar` até `TENTATIVAS_TRAVA` vezes, com `ESPERA_TRAVA` entre elas.
+    Presa em todas: `_OcupadoPorOutra`, como `_travar`."""
+    for tentativa in range(TENTATIVAS_TRAVA):
+        try:
+            return _travar(pasta)
+        except _OcupadoPorOutra:
+            if tentativa == TENTATIVAS_TRAVA - 1:
+                raise
+            _esperar(ESPERA_TRAVA)
+    return None
 
 
 class _OcupadoPorOutra(Exception):
@@ -276,7 +300,7 @@ def abrir(*, versao: str, idioma: str, pasta: str | os.PathLike[str] | None = No
             pasta = pasta_logs()
         pasta = Path(pasta)
         try:
-            _trava = _travar(pasta)
+            _trava = _travar_com_paciencia(pasta)
         except _OcupadoPorOutra:
             # Outra instância está aberta: esta fica sem diário e não toca em nada.
             return None
