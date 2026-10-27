@@ -23,9 +23,7 @@ biblioteca padrão (`faulthandler`, `threading`, `platform`). Nenhuma dependênc
 ## Global Constraints
 
 - Código, comentários, docs e commits em **português**; mensagem de commit **sem acento**; pé
-  do commit com as duas linhas
-  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` e
-  `Claude-Session: https://claude.ai/code/session_01RSbK7jX9qvsvyZKqnojmij`;
+  do commit com as linhas de atribuicao da sessao (vem no lembrete da sessao); o
   autor `git -c user.name=Jonathan -c user.email=jas.espinola.2022@aluno.unila.edu.br commit`.
   Nada de `git add -A`; nada de `git push`; não trocar de branch
   (`jonathan/diario-colunas-menu`).
@@ -653,8 +651,7 @@ git add sigft/core/diario.py tests/test_diario.py
 git -c user.name=Jonathan -c user.email=jas.espinola.2022@aluno.unila.edu.br commit -F - <<'EOF'
 Diario de quedas: abertura, fechamento, erro nao tratado e queda dura
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01RSbK7jX9qvsvyZKqnojmij
+<linhas de atribuicao da sessao>
 EOF
 ```
 
@@ -1087,8 +1084,7 @@ git add sigft/app_qt/main.py sigft/app_qt/views/home.py tests/conftest.py tests/
 git -c user.name=Jonathan -c user.email=jas.espinola.2022@aluno.unila.edu.br commit -F - <<'EOF'
 Diario de quedas no app: abertura, fechamento e aviso no topo da Home
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01RSbK7jX9qvsvyZKqnojmij
+<linhas de atribuicao da sessao>
 EOF
 ```
 
@@ -1956,8 +1952,7 @@ git add sigft/core/prefs.py sigft/app_qt/widgets/colunas.py sigft/app_qt/widgets
 git -c user.name=Jonathan -c user.email=jas.espinola.2022@aluno.unila.edu.br commit -F - <<'EOF'
 Colunas lembradas na selecao de fichas e no Resumo do lote
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01RSbK7jX9qvsvyZKqnojmij
+<linhas de atribuicao da sessao>
 EOF
 ```
 
@@ -2648,8 +2643,7 @@ git add assets/icons/chevrons-left.svg assets/icons/chevrons-right.svg sigft/app
 git -c user.name=Jonathan -c user.email=jas.espinola.2022@aluno.unila.edu.br commit -F - <<'EOF'
 Menu lateral recolhivel, lembrado, com a acao no Ctrl+K
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01RSbK7jX9qvsvyZKqnojmij
+<linhas de atribuicao da sessao>
 EOF
 ```
 
@@ -2742,8 +2736,7 @@ git add CHANGELOG.md docs/base-conhecimento/00-frontend.md
 git -c user.name=Jonathan -c user.email=jas.espinola.2022@aluno.unila.edu.br commit -F - <<'EOF'
 CHANGELOG 1.3.1 e base de conhecimento: diario, colunas e menu recolhivel
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01RSbK7jX9qvsvyZKqnojmij
+<linhas de atribuicao da sessao>
 EOF
 ```
 

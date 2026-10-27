@@ -385,7 +385,9 @@ a = Analysis(
     #     tempo: ~2,5 s nos dois);
     #   * caminho mais comprido: o `.pyc` mais fundo (do `llama_cloud`) tem
     #     169 caracteres a partir de `_internal`, e cabe nos 260 do Windows
-    #     só porque a pasta de instalação é curta;
+    #     só porque a pasta de instalação é curta (Program Files: ~200; só
+    #     para mim, em AppData\Local\Programs: ~225, e passa de 260 com um
+    #     nome de usuário do Windows de mais de ~40 letras);
     #   * a PRIMEIRA atualização depois desta ainda é grande, uma última vez:
     #     o `.exe` muda (perde o PYZ) e todos os `.pyc` das bibliotecas são
     #     novos. Daí em diante, dependência que muda leva só os arquivos dela.
