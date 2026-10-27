@@ -150,3 +150,78 @@ def test_folha_tem_as_regras_do_menu_recolhido():
     assert "#traco_secao" in folha
     assert 'QPushButton[menu="true"][recolhido="true"]' in folha
     assert '#home[recolhido="true"]' in folha
+
+
+def _fora_da_vista(janela) -> list[str]:
+    """Os itens do menu (marca, botões, seta) que passam da borda da vista, de lado."""
+    vista = janela.barra_lateral.viewport()
+    largura = vista.width()
+    itens = [("marca", janela.marca), ("Home", janela.botao_home), ("seta", janela.botao_menu),
+             *janela.botoes_menu.items()]
+    fora = []
+    for nome, w in itens:
+        esquerda = w.mapTo(vista, w.rect().topLeft()).x()
+        if esquerda < 0 or esquerda + w.width() > largura:
+            fora.append(f"{nome}: {esquerda}+{w.width()} > {largura}")
+    # O conteúdo inteiro (margens incluídas) também cabe: mais largo que a vista,
+    # ele é cortado à direita e a roda com Shift ainda o rola de lado.
+    if janela.barra_lateral.widget().width() > largura:
+        fora.append(f"conteudo: {janela.barra_lateral.widget().width()} > {largura}")
+    if janela.barra_lateral.horizontalScrollBar().maximum() > 0:
+        fora.append("rola de lado")
+    return fora
+
+
+def test_recolhido_em_janela_baixa_nada_passa_da_borda(montar, qtbot):
+    """Janela baixa (1280x450): a barra de rolagem vertical aparece e come 10 px da
+    vista. A seta e o símbolo (36 px) mais as margens (8 + 8) passavam de 50 px e
+    o conteúdo perdia 2 px (revisão da Task 4, 2026-10-27)."""
+    janela = montar()
+    janela.resize(1280, 450)
+    janela.recolher_menu(True)
+    qtbot.wait(50)
+    assert janela.barra_lateral.verticalScrollBar().isVisible()
+    assert _fora_da_vista(janela) == []
+    assert not janela.barra_lateral.horizontalScrollBar().isVisible()
+
+
+def test_recolhido_em_janela_alta_continua_centrado(montar, qtbot):
+    """Sem a barra de rolagem, a seta e os botões ficam no meio da barra."""
+    janela = montar()
+    janela.recolher_menu(True)
+    qtbot.wait(50)
+    assert not janela.barra_lateral.verticalScrollBar().isVisible()
+    vista = janela.barra_lateral.viewport().width()
+    for w in (janela.botao_menu, *janela.botoes_menu.values()):
+        esquerda = w.mapTo(janela.barra_lateral.viewport(), w.rect().topLeft()).x()
+        assert abs(esquerda - (vista - esquerda - w.width())) <= 1
+    assert _fora_da_vista(janela) == []
+
+
+def test_letra_e_tema_trocados_com_o_menu_recolhido_nao_estragam_os_textos(montar, qtbot, qt_interface):
+    janela = montar()
+    janela.recolher_menu(True)
+    letra.aplicar(qt_interface, "grande", gravar=False)
+    tema.aplicar(qt_interface, "claro", gravar=False)
+    qtbot.wait(20)
+    for botao in janela.botoes_menu.values():
+        assert botao.text() == ""
+    janela.recolher_menu(False)
+    qtbot.wait(20)
+    for alvo, botao in janela.botoes_menu.items():
+        assert botao.toolTip() == catalogo.dica_do_menu(alvo)
+    assert {b.text().strip() for b in janela.botoes_menu.values()} == _nomes_do_menu()
+    assert janela.botao_home.text().strip() == t("Home")
+    assert cortados(janela.barra_lateral) == set()
+
+
+def test_modulo_bloqueado_continua_desligado_depois_de_recolher_e_expandir(montar):
+    janela = montar()
+    bloqueados = [a for a in janela.botoes_menu if a in catalogo.TELAS_BLOQUEADAS]
+    assert bloqueados   # hoje, a Correção de PDM
+    assert all(not janela.botoes_menu[a].isEnabled() for a in bloqueados)
+    janela.recolher_menu(True)
+    assert all(not janela.botoes_menu[a].isEnabled() for a in bloqueados)
+    janela.recolher_menu(False)
+    assert all(not janela.botoes_menu[a].isEnabled() for a in bloqueados)
+    assert all(b.isEnabled() for a, b in janela.botoes_menu.items() if a not in bloqueados)

@@ -35,8 +35,9 @@ ARQUIVOS_DE_FONTE = ("Roboto-Regular.ttf", "NotoEmoji-Regular.ttf")
 # captura: o fundo do conteúdo começa em x=277. Os módulos começam no mesmo x.
 LARGURA_BARRA_LATERAL = 277
 
-# O menu lateral recolhido (2026-10-26): só os ícones. 60 = 8 de margem de cada
-# lado e os botões de 44, com o ícone de 16 no meio.
+# O menu lateral recolhido (2026-10-26): só os ícones. 60 = 7 de margem de cada
+# lado e os botões de 46, com o ícone de 16 no meio; com a barra de rolagem
+# (janela baixa), 7 + 36 + 7 = 50 (`main.MARGENS_DA_BARRA_RECOLHIDA`).
 LARGURA_BARRA_RECOLHIDA = 60
 
 # Medidas que a interface antiga aplica hoje (decisão: espaçamento igual ao atual).

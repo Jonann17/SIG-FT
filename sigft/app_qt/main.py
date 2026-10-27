@@ -164,7 +164,11 @@ def _arquivo_de_chaves() -> str:
 # estado e o lado do botão do pé (a seta).
 CHAVE_MENU_RECOLHIDO = "menu_recolhido"
 MARGENS_DA_BARRA = (12, 26, 19, 12)            # 19 = 12 + os 7 px da faixa vazia
-MARGENS_DA_BARRA_RECOLHIDA = (8, 26, 8, 12)
+# Recolhida, 7 de cada lado (2026-10-27): na janela baixa a barra de rolagem
+# vertical (10 px, a da folha) come a vista, que cai para 50 px; a seta e o
+# símbolo da marca têm 36, e 7 + 36 + 7 cabe nos 50. Com 8 o conteúdo passava
+# 2 px da vista. Sem a rolagem, os botões esticam para 46, no meio.
+MARGENS_DA_BARRA_RECOLHIDA = (7, 26, 7, 12)
 LADO_BOTAO_MENU = 36
 
 
