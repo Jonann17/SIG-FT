@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 from PySide6.QtCore import QEvent, Qt, QtMsgType, Signal, qInstallMessageHandler
 from PySide6.QtGui import QColor, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar,
+    QApplication, QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar,
     QPushButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 from shiboken6 import isValid
@@ -160,6 +160,32 @@ def _arquivo_de_chaves() -> str:
     return caminho_config()
 
 
+# O menu lateral recolhível (2026-10-26): a preferência, as margens de cada
+# estado e o lado do botão do pé (a seta).
+CHAVE_MENU_RECOLHIDO = "menu_recolhido"
+MARGENS_DA_BARRA = (12, 26, 19, 12)            # 19 = 12 + os 7 px da faixa vazia
+MARGENS_DA_BARRA_RECOLHIDA = (8, 26, 8, 12)
+LADO_BOTAO_MENU = 36
+
+
+def _menu_recolhido_guardado() -> bool:
+    from sigft.core import prefs
+
+    try:
+        return prefs.get_opcao(CHAVE_MENU_RECOLHIDO, False)
+    except Exception:  # noqa: BLE001 -- preferência é conveniência
+        return False
+
+
+def _guardar_menu_recolhido(valor: bool) -> None:
+    from sigft.core import prefs
+
+    try:
+        prefs.set_opcao(CHAVE_MENU_RECOLHIDO, bool(valor))
+    except Exception:  # noqa: BLE001 -- lembrar não pode atrapalhar o clique
+        pass
+
+
 class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
     def __init__(self) -> None:
         super().__init__()
@@ -180,6 +206,8 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         linha.setContentsMargins(0, 0, 0, 0)
         linha.setSpacing(0)
         linha.addWidget(self._montar_sidebar())
+        # [2026-10-26] O menu abre como ficou da última vez (recolhido ou não).
+        self.recolher_menu(_menu_recolhido_guardado(), gravar=False)
         self.pilha = QStackedWidget(objectName="conteudo")
         linha.addWidget(self.pilha, 1)
         self.setCentralWidget(central)
@@ -212,14 +240,23 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         # SEMPRE visível (um traço cinza que não rola nada quando tudo cabe).
         # Aqui a faixa fica vazia -- margem direita maior --, e a barra do Qt só
         # aparece quando há o que rolar: a mesma largura sem o traço inútil, e os
-        # botões com a largura que já tinham (246).
+        # botões com a largura que já tinham (246). Recolhida (2026-10-26):
+        # `LARGURA_BARRA_RECOLHIDA`, em `recolher_menu`.
         area.setFixedWidth(estilo.LARGURA_BARRA_LATERAL)
         area.setWidgetResizable(True)
         area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.barra_lateral = area
         interno = QWidget(objectName="sidebar_interno")
         lay = QVBoxLayout(interno)
-        lay.setContentsMargins(12, 26, 19, 12)  # 19 = 12 + os 7 px da faixa vazia
+        lay.setContentsMargins(*MARGENS_DA_BARRA)
         lay.setSpacing(estilo.ESPACO_MENU)
+        self._lay_barra = lay
+        # [2026-10-26] O que o menu recolhido troca (`recolher_menu`): cada botão com
+        # o nome e a dica de quando está aberto; os títulos de seção e o traço fino
+        # que fica no lugar deles.
+        self._nomes_do_menu: list[tuple[QPushButton, str, str]] = []
+        self._rotulos_secao: list[QLabel] = []
+        self._tracos_secao: list[QFrame] = []
 
         # O logo da GE Vernova e o nome do SIG-FT viraram um botão só: brilham
         # sob o mouse e voltam à Home (sistema visual, 2026-10-20). Mesmas
@@ -230,7 +267,8 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         lay.addWidget(self.marca)
         lay.addSpacing(22)
         # O emoji virou ícone (Lucide, na cor do tema: sistema visual, 2026-10-20).
-        home = QPushButton(f" {t('Home')}", objectName="home")
+        nome_home = t("Home")
+        home = QPushButton(f" {nome_home}", objectName="home")
         # O ícone acompanha o texto do item escolhido (e sob o mouse): a marca
         # no claro (2026-10-20).
         icones.aplicar(home, catalogo.ICONE_DA_TELA["Home"], tamanho=16,
@@ -238,7 +276,10 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         self.botao_home = home
         blocos.sem_tecla(home)   # os botões da barra (CTkButton) nunca pegam o foco
         home.clicked.connect(self.show_home)
-        home.setToolTip(t("Volta à tela inicial: os módulos, a engrenagem da configuração e os gastos de IA."))
+        dica_home = t("Volta à tela inicial: os módulos, a engrenagem da configuração e os gastos de IA.")
+        home.setToolTip(dica_home)
+        home.setAccessibleName(nome_home)
+        self._nomes_do_menu.append((home, nome_home, dica_home))
         lay.addWidget(home)
         lay.addSpacing(6)
 
@@ -246,23 +287,82 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         for item in catalogo.MENU:
             if item[0] == "secao":
                 lay.addSpacing(20)
-                lay.addWidget(QLabel(t(item[1]).upper(), objectName="secao"))
+                rotulo = QLabel(t(item[1]).upper(), objectName="secao")
+                traco = QFrame(objectName="traco_secao")
+                traco.setFixedHeight(1)
+                traco.hide()
+                lay.addWidget(rotulo)
+                lay.addWidget(traco)
+                self._rotulos_secao.append(rotulo)
+                self._tracos_secao.append(traco)
                 lay.addSpacing(5)
                 continue
             _tipo, texto, alvo = item
-            botao = QPushButton(f" {t(texto)}")
+            nome = t(texto)
+            botao = QPushButton(f" {nome}")
             blocos.sem_tecla(botao)
             botao.setProperty("menu", True)
             icones.aplicar(botao, catalogo.ICONE_DA_TELA[alvo], tamanho=16,
                            papel_cor_ativo=estilo.PAPEL_MENU_ESCOLHIDO)
             botao.setEnabled(alvo not in catalogo.TELAS_BLOQUEADAS)
-            botao.setToolTip(catalogo.dica_do_menu(alvo))
+            dica = catalogo.dica_do_menu(alvo)
+            botao.setToolTip(dica)
+            botao.setAccessibleName(nome)
             botao.clicked.connect(lambda _=False, a=alvo: self.show_frame(a))
             self.botoes_menu[alvo] = botao
+            self._nomes_do_menu.append((botao, nome, dica))
             lay.addWidget(botao)
         lay.addStretch()
+        # [2026-10-26] A seta do pé recolhe e expande o menu (o ícone e a dica
+        # dizem o que o clique faz: `recolher_menu`).
+        self.botao_menu = blocos.botao("", variante="fantasma", largura=LADO_BOTAO_MENU,
+                                       altura=estilo.ALTURA_BOTAO_MENU)
+        self.botao_menu.clicked.connect(self.alternar_menu)
+        lay.addWidget(self.botao_menu, 0, Qt.AlignmentFlag.AlignRight)
         area.setWidget(interno)
         return area
+
+    def recolher_menu(self, recolhido: bool, *, gravar: bool = True) -> None:
+        """O menu lateral só com os ícones (`recolhido`) ou com os nomes (2026-10-26).
+
+        Recolhido: a barra fica com `LARGURA_BARRA_RECOLHIDA`, a marca vira só o
+        logo, cada botão mostra só o ícone e leva o nome na dica (a dica de sempre
+        vem depois do nome), e cada seção vira um traço fino. O item da tela aberta
+        continua `ativo`. A área das telas ocupa o espaço que sobra (o layout já
+        estica). `gravar`: lembra nas preferências (`menu_recolhido`)."""
+        recolhido = bool(recolhido)
+        self.menu_recolhido = recolhido
+        self.barra_lateral.setFixedWidth(
+            estilo.LARGURA_BARRA_RECOLHIDA if recolhido else estilo.LARGURA_BARRA_LATERAL)
+        self._lay_barra.setContentsMargins(
+            *(MARGENS_DA_BARRA_RECOLHIDA if recolhido else MARGENS_DA_BARRA))
+        self.marca.recolher(recolhido)
+        for rotulo in self._rotulos_secao:
+            rotulo.setVisible(not recolhido)
+        for traco in self._tracos_secao:
+            traco.setVisible(recolhido)
+        for botao, nome, dica in self._nomes_do_menu:
+            if recolhido:
+                botao.setText("")
+                botao.setToolTip(f"{nome}\n\n{dica}" if dica else nome)
+            else:
+                botao.setText(f" {nome}")
+                botao.setToolTip(dica)
+            estilo.definir_propriedade(botao, "recolhido", recolhido)
+        icones.aplicar(self.botao_menu,
+                       catalogo.ICONE_EXPANDIR_MENU if recolhido else catalogo.ICONE_RECOLHER_MENU,
+                       tamanho=16)
+        dica_seta = t(catalogo.TEXTO_EXPANDIR_MENU if recolhido else catalogo.TEXTO_RECOLHER_MENU)
+        self.botao_menu.setToolTip(dica_seta)
+        self.botao_menu.setAccessibleName(dica_seta)
+        self._lay_barra.setAlignment(
+            self.botao_menu, Qt.AlignmentFlag.AlignHCenter if recolhido else Qt.AlignmentFlag.AlignRight)
+        if gravar:
+            _guardar_menu_recolhido(recolhido)
+
+    def alternar_menu(self, *_args) -> None:
+        """A seta do pé do menu e o "Recolher menu"/"Expandir menu" do Ctrl+K."""
+        self.recolher_menu(not self.menu_recolhido)
 
     # -- navegação ------------------------------------------------------------
     def show_frame(self, nome: str) -> None:
@@ -319,7 +419,7 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
         if self._paleta is not None and isValid(self._paleta) and self._paleta.isVisible():
             self._paleta.raise_()
             return self._paleta
-        paleta = PaletaDeComandos(self, catalogo.comandos())
+        paleta = PaletaDeComandos(self, catalogo.comandos(menu_recolhido=self.menu_recolhido))
         paleta.escolheu.connect(self.executar_comando)
         self._paleta = paleta
         paleta.abrir_sobre(self)
@@ -360,6 +460,8 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
                 letra.aplicar(QApplication.instance(), escolha)
         elif alvo == "logs":
             self.abrir_pasta_de_logs()
+        elif alvo == "menu":
+            self.alternar_menu()
 
     def abrir_pasta_de_logs(self) -> None:
         """`Documentos\\SIG-FT\\logs\\` no explorador (criada se faltar)."""

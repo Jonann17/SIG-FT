@@ -35,6 +35,10 @@ ARQUIVOS_DE_FONTE = ("Roboto-Regular.ttf", "NotoEmoji-Regular.ttf")
 # captura: o fundo do conteúdo começa em x=277. Os módulos começam no mesmo x.
 LARGURA_BARRA_LATERAL = 277
 
+# O menu lateral recolhido (2026-10-26): só os ícones. 60 = 8 de margem de cada
+# lado e os botões de 44, com o ícone de 16 no meio.
+LARGURA_BARRA_RECOLHIDA = 60
+
 # Medidas que a interface antiga aplica hoje (decisão: espaçamento igual ao atual).
 ALTURA_BOTAO_MENU = 35
 ESPACO_MENU = 4
@@ -424,11 +428,14 @@ QPushButton[menu="true"]:hover, QPushButton[menu="true"][ativo="true"] {{ backgr
     color: {menu['texto']}; }}
 QPushButton[menu="true"][ativo="true"] {{ font-weight: bold; }}
 QPushButton[menu="true"]:disabled {{ color: {p['texto_suave']}; }}
+QPushButton[menu="true"][recolhido="true"] {{ text-align: center; padding: 0; }}
+#traco_secao {{ background: {p['borda']}; border: none; }}
 #marca, #marca:hover, #marca:pressed {{ background: transparent; border: none; padding: 0;
     min-height: 0; }}
 #home {{ background: transparent; text-align: left; font-weight: bold;
          color: {p['texto']}; border: {BORDA_CONTROLE}px solid {p['borda']}; }}
 #home:hover, #home[ativo="true"] {{ background: {menu['fundo']}; color: {menu['texto']}; }}
+#home[recolhido="true"] {{ text-align: center; padding: 0; }}
 QPushButton[barra="true"] {{ min-height: {ALTURA_BOTAO_BARRA - 2 * BORDA_CONTROLE}px;
     min-width: {LARGURA_BOTAO_CTK - 2 * FOLGA_TEXTO_BOTAO_CTK - 2 * BORDA_CONTROLE}px; padding: 0 {FOLGA_TEXTO_BOTAO_CTK}px;
     font-weight: bold; }}

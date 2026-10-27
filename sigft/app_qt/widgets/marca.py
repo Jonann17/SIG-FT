@@ -34,6 +34,9 @@ from sigft.app_qt import estilo, tema
 BRILHO_MAXIMO = 18
 DURACAO_MS = 150
 LARGURA_LOGO = 180
+# Na barra recolhida (2026-10-26) a marca vira só o símbolo da GE: o quadrado da
+# esquerda do `logo.png` (o círculo com o "GE"), nesta largura.
+LARGURA_LOGO_RECOLHIDO = 36
 NOME = "SIG-FT System"
 DICA = marcar("Voltar ao início")
 # A opacidade do brilho por tema. O símbolo da GE tem as letras VAZADAS (o
@@ -62,8 +65,9 @@ class Marca(QPushButton):
         lay.setSpacing(estilo.ESPACO_MENU)
         self.logo = QLabel()
         caminho = caminho_logo or LOGO_PADRAO
-        if os.path.exists(caminho):
-            self.logo.setPixmap(QPixmap(caminho).scaledToWidth(
+        self._original = QPixmap(caminho) if os.path.exists(caminho) else QPixmap()
+        if not self._original.isNull():
+            self.logo.setPixmap(self._original.scaledToWidth(
                 LARGURA_LOGO, Qt.TransformationMode.SmoothTransformation))
         self.logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.nome = QLabel(NOME, objectName="app_nome")
@@ -98,6 +102,21 @@ class Marca(QPushButton):
 
     def minimumSizeHint(self):  # noqa: N802 -- nome do Qt
         return self.layout().minimumSize()
+
+    # -- barra recolhida (2026-10-26) ----------------------------------------
+    def recolher(self, recolhida: bool) -> None:
+        """Recolhida: só o símbolo da GE, sem o nome. Expandida: como nasceu."""
+        self.nome.setVisible(not recolhida)
+        if not self._original.isNull():
+            if recolhida:
+                lado = self._original.height()
+                desenho = self._original.copy(0, 0, lado, lado).scaledToWidth(
+                    LARGURA_LOGO_RECOLHIDO, Qt.TransformationMode.SmoothTransformation)
+            else:
+                desenho = self._original.scaledToWidth(
+                    LARGURA_LOGO, Qt.TransformationMode.SmoothTransformation)
+            self.logo.setPixmap(desenho)
+        self.updateGeometry()
 
     # -- cor ----------------------------------------------------------------
     def _pintar_cor(self, _tema: str | None = None) -> None:
