@@ -241,6 +241,73 @@ def test_limpar_restos_conta_apaga_e_deixa_o_que_esta_em_uso(tmp_path, monkeypat
     assert sorted(_retrato(tmp_path)) == ["SIG-FT.exe", "_internal/em_uso.dll" + pa.SUFIXO_ANTIGO]
 
 
+def test_desfazer_que_nao_renomeia_de_volta_copia_o_original(cenario, monkeypatch):
+    """[2026-10-27, revisao] O `.sigft-old` preso (antivirus) nao renomeia de
+    volta: o desfazer COPIA, e o original volta inteiro."""
+    instalada, nova, novo, zipado = cenario
+    antes = _retrato(instalada)
+    (nova / "SIG-FT.exe").write_bytes(b"estragado")  # nao confere -> desfaz
+    renomear = Path.rename
+
+    def rename_preso(self, alvo):
+        if self.name.endswith(pa.SUFIXO_ANTIGO):
+            raise PermissionError(32, "em uso")
+        return renomear(self, alvo)
+
+    monkeypatch.setattr(Path, "rename", rename_preso)
+    with pytest.raises(pa.ErroPacote):
+        pa.aplicar(zipado, instalada, _manifesto(nova, "1.1"))
+    depois = {k: v for k, v in _retrato(instalada).items() if not k.endswith(pa.SUFIXO_ANTIGO)}
+    assert depois == antes
+
+
+def _zip_com(tmp_path, alterados, removidos, conteudo):
+    nova = tmp_path / "nova_sobreposta"
+    for rel, dados in conteudo.items():
+        _escrever(nova, rel, dados)
+    saida = tmp_path / "saida_sobreposta"
+    saida.mkdir()
+    zipado = saida / pa.nome_pacote("1.0", "1.1")
+    with zipfile.ZipFile(zipado, "w") as z:
+        z.writestr(pa.MANIFESTO, json.dumps({"de": "1.0", "para": "1.1",
+                                             "alterados": alterados, "removidos": removidos}))
+        for rel in alterados:
+            z.write(nova / rel, pa.PASTA_NO_ZIP + rel)
+    return nova, zipado
+
+
+def test_caminho_em_alterados_e_removidos_nao_apaga_o_original(tmp_path):
+    """[2026-10-27, revisao] A troca so de caixa (`PIL/x.pyd` -> `pil/x.pyd`)
+    no Windows e o MESMO arquivo nas duas listas. O removido que coincide com
+    um alterado (sem caixa) e ignorado; sem isso, o desfazer apagava o original."""
+    instalada = tmp_path / "instalada"
+    _escrever(instalada, "a.dll", b"OLD")
+    nova, zipado = _zip_com(tmp_path, ["a.dll"], ["a.dll", "A.DLL"], {"a.dll": b"NEW"})
+    pa.aplicar(zipado, instalada, _manifesto(nova, "1.1"))
+    assert _retrato(instalada) == {"a.dll": b"NEW", "a.dll" + pa.SUFIXO_ANTIGO: b"OLD"}
+
+
+def test_caminho_duplicado_em_alterados_e_recusado_sem_tocar_em_nada(tmp_path):
+    instalada = tmp_path / "instalada"
+    _escrever(instalada, "a.dll", b"OLD")
+    nova, zipado = _zip_com(tmp_path, ["a.dll", "A.dll"], [], {"a.dll": b"NEW", "A.dll": b"NEW"})
+    with pytest.raises(pa.ErroPacote):
+        pa.aplicar(zipado, instalada, _manifesto(nova, "1.1"))
+    assert _retrato(instalada) == {"a.dll": b"OLD"}
+
+
+def test_afastar_nunca_apaga_o_antigo_que_esta_rodada_criou(tmp_path, monkeypatch):
+    """Mesmo que o caminho chegue duas vezes ao afastamento, o `.sigft-old`
+    criado nesta rodada nao e apagado: o segundo vai para `.1.sigft-old`."""
+    _escrever(tmp_path, "a.dll", b"OLD")
+    reservados: set = set()
+    primeiro = pa._afastar(tmp_path / "a.dll", reservados)
+    _escrever(tmp_path, "a.dll", b"NEW")
+    segundo = pa._afastar(tmp_path / "a.dll", reservados)
+    assert primeiro != segundo
+    assert primeiro.read_bytes() == b"OLD" and segundo.read_bytes() == b"NEW"
+
+
 def test_o_modulo_nao_importa_qt_nem_fora_da_stdlib():
     # Roda no runner do Release, que chama o script sem o ambiente do app.
     import ast

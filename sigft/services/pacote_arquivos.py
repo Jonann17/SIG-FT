@@ -135,18 +135,26 @@ def montar(pasta: Path, alterados: Iterable[str], removidos: Iterable[str], de: 
 # --------------------------------------------------------------------------
 # Aplicar (no app)
 # --------------------------------------------------------------------------
-def _afastar(caminho: Path) -> Path:
-    """Renomeia o arquivo (em uso ou não) para fora do caminho, e devolve o novo nome."""
+def _afastar(caminho: Path, reservados: set | None = None) -> Path:
+    """Renomeia o arquivo (em uso ou não) para fora do caminho, e devolve o novo nome.
+
+    Um `.sigft-old` de uma atualização ANTERIOR é apagado para dar lugar; um que
+    ESTA rodada criou (`reservados`, comparado sem caixa, como o Windows) nunca:
+    ele pode ser a única cópia do original, que o desfazer devolve."""
+    reservados = set() if reservados is None else reservados
     alvo = caminho.with_name(caminho.name + SUFIXO_ANTIGO)
     n = 1
-    while alvo.exists():
-        try:
-            alvo.unlink()  # resto de uma atualização anterior
-            break
-        except OSError:  # ainda em uso: escolhe outro nome
-            alvo = caminho.with_name(f"{caminho.name}.{n}{SUFIXO_ANTIGO}")
-            n += 1
+    while alvo.exists() or str(alvo).casefold() in reservados:
+        if str(alvo).casefold() not in reservados:
+            try:
+                alvo.unlink()  # resto de uma atualização anterior
+                break
+            except OSError:  # ainda em uso: escolhe outro nome
+                pass
+        alvo = caminho.with_name(f"{caminho.name}.{n}{SUFIXO_ANTIGO}")
+        n += 1
     caminho.rename(alvo)
+    reservados.add(str(alvo).casefold())
     return alvo
 
 
@@ -160,7 +168,22 @@ def _ler_manifesto(z: zipfile.ZipFile, novo: Mapping) -> dict:
     for chave in ("alterados", "removidos"):
         if not isinstance(info.get(chave), list):
             raise ErroPacote(f"o {MANIFESTO} do pacote nao tem a lista {chave!r}")
-    return info
+    # [2026-10-27, revisao] Caminhos comparados sem caixa, como o Windows os vê.
+    # Dois alterados que são o mesmo arquivo: pacote estragado. Um removido que é
+    # um alterado (a troca só de caixa, `PIL/x.pyd` -> `pil/x.pyd`): o arquivo
+    # fica, com o conteúdo novo -- removê-lo depois apagaria o que acabou de entrar.
+    vistos: set[str] = set()
+    for rel in info["alterados"]:
+        if str(rel).casefold() in vistos:
+            raise ErroPacote(f"o pacote traz duas vezes o mesmo arquivo: {rel!r}")
+        vistos.add(str(rel).casefold())
+    removidos, ja = [], set()
+    for rel in info["removidos"]:
+        chave = str(rel).casefold()
+        if chave not in vistos and chave not in ja:
+            removidos.append(rel)
+            ja.add(chave)
+    return {**info, "removidos": removidos}
 
 
 def aplicar(arquivo_zip: Path, pasta: Path, novo_manifesto: Mapping) -> list[str]:
@@ -173,6 +196,7 @@ def aplicar(arquivo_zip: Path, pasta: Path, novo_manifesto: Mapping) -> list[str
     pasta = Path(pasta)
     feitos: list[tuple[Path, Path | None]] = []
     pastas_criadas: list[Path] = []
+    reservados: set[str] = set()
     try:
         with zipfile.ZipFile(arquivo_zip) as z:
             info = _ler_manifesto(z, novo_manifesto)
@@ -182,15 +206,15 @@ def aplicar(arquivo_zip: Path, pasta: Path, novo_manifesto: Mapping) -> list[str
             for rel, destino in alterados:
                 faltam = [p for p in [destino.parent, *destino.parent.parents]
                           if p != pasta and pasta in p.parents and not p.exists()]
+                pastas_criadas.extend(reversed(faltam))  # antes: mkdir pode falhar no meio
                 destino.parent.mkdir(parents=True, exist_ok=True)
-                pastas_criadas.extend(reversed(faltam))
-                antigo = _afastar(destino) if destino.exists() else None
+                antigo = _afastar(destino, reservados) if destino.exists() else None
                 feitos.append((destino, antigo))
                 with z.open(PASTA_NO_ZIP + rel) as origem, destino.open("wb") as saida:
                     shutil.copyfileobj(origem, saida, _BLOCO)
             for _rel, destino in removidos:
                 if destino.is_file():
-                    feitos.append((destino, _afastar(destino)))
+                    feitos.append((destino, _afastar(destino, reservados)))
 
         versao = novo_manifesto.get("versao")
         for rel, esperado in novo_manifesto["arquivos"].items():
@@ -205,25 +229,36 @@ def aplicar(arquivo_zip: Path, pasta: Path, novo_manifesto: Mapping) -> list[str
         raise ErroPacote(f"atualizacao por arquivos desfeita: {erro}") from erro
 
 
+def _devolver(antigo: Path, destino: Path) -> None:
+    """Põe o original de volta. Se o rename falhar (antivírus segurando o
+    `.sigft-old`), COPIA: o `.sigft-old` nunca fica como a única cópia, que o
+    `limpar_restos` da próxima abertura apagaria. [2026-10-27, revisao]"""
+    try:
+        antigo.rename(destino)
+    except OSError:
+        shutil.copy2(antigo, destino)
+
+
 def _desfazer(feitos: list[tuple[Path, Path | None]], pastas_criadas: list[Path]) -> None:
     for destino, antigo in reversed(feitos):
         try:
             if destino.exists():
                 destino.unlink()
             if antigo is not None:
-                antigo.rename(destino)
+                _devolver(antigo, destino)
         except OSError:
             continue  # o que der para voltar, volta; o resto o instalador conserta
     for pasta in reversed(pastas_criadas):  # a mais funda primeiro
         try:
             pasta.rmdir()
-        except OSError:
+        except OSError:  # não existe (o mkdir parou antes) ou não está vazia
             continue
 
 
 def limpar_restos(pasta: Path) -> int:
     """Apaga os `.sigft-old` que a última atualização deixou e devolve quantos.
-    O que ainda estiver em uso fica para a próxima abertura."""
+    O que ainda estiver em uso fica para a próxima abertura. (O desfazer nunca
+    deixa um `.sigft-old` como única cópia: ver `_desfazer`.)"""
     apagados = 0
     for resto in Path(pasta).rglob(f"*{SUFIXO_ANTIGO}"):
         try:
