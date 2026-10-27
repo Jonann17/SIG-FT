@@ -93,9 +93,10 @@ MODULOS_ESSENCIAIS = [
     "sigft.app_qt.views.correcao_pdm",
     "sigft.app_qt.views.copia_fichas",
     "sigft.app_qt.views.autospec",
-    "sigft.app_qt.views.pmib_manager",
+    # O PMIB Manager é a seção de abas: ela importa a Gestão PMIB, a Conferência
+    # de Revisões e a Revisão no AMP (2026-10-27).
+    "sigft.app_qt.views.gestao_sobressalentes",
     "sigft.app_qt.views.busca_pmib",
-    "sigft.app_qt.views.conferencia_revisoes",
 ]
 
 # A frase que a conferência traduz dentro do .exe, e o que a tradução tem de

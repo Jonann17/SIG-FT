@@ -176,11 +176,19 @@ class ModuloPMIBManager(ModuleFrame):
         Arrastavel("btn_master", "pmib_manager.master", (".xlsx", ".xls")),
         Arrastavel("btn_autorizados", "pmib_manager.autorizados", (".xlsx",)),
     )
-    def __init__(self, parent=None, controller=None) -> None:
+    def __init__(self, parent=None, controller=None, *, embutida=False, console_externo=None,
+                 progresso_externo=None) -> None:
         # Os caminhos escolhidos (os StringVar de lá). A Pasta Raiz é o campo.
         self.path_api = self.path_master = self.path_autorizados = ""
         super().__init__(parent, controller, titulo=t("Gestão de Sobressalentes"),
-                         peso_conteudo=0, altura_console=None, com_progresso=True)
+                         peso_conteudo=0, altura_console=None, com_progresso=True,
+                         embutida=embutida, console_externo=console_externo,
+                         progresso_externo=progresso_externo)
+        if embutida:
+            # [2026-10-27] Na aba "Gestão PMIB" da seção (`gestao_sobressalentes.py`):
+            # o console e a barra são os dela, e os quadros ficam em cima.
+            self.content_layout.addStretch(1)
+            return
         # Lá a tela não é o ModuleFrame: header pady=10, conteúdo pady=5,
         # barra pady=5 e console pady=(5, 20), dentro do padx/pady=20 do
         # `show_frame`. Os pady vizinhos SOMAM: 15 entre header e conteúdo,

@@ -86,7 +86,7 @@ Cada módulo herda de `ctk.CTkFrame` e segue padrão: `__init__(parent, controll
 | 8 | `ModuloAutoSpec` | "6. AutoSpec AI (RAG)" | `autospec_backend` | Geração automática de specs via RAG (Retrieval-Augmented Generation) |
 | 9 | `ModuloLMR` | "7.1. LMR (Upload)" | `lmr_backend` | Upload e gestão de Lista de Materiais para Reposição (LMR) |
 | 10 | `ModuloApagarLMR` | "7.2. Apagar LMR" | `apagar_lmr_backend` | Limpeza/exclusão de entradas LMR |
-| 11 | `ModuloPMIBManager` | "8. PMIB Manager" | `pmib_manager_backend` | Gerenciamento geral de fichas PMIB (busca, edição em massa) |
+| 11 | `ModuloPMIBManager` | "8. PMIB Manager" | `pmib_manager_backend` | Gerenciamento geral de fichas PMIB (busca, edição em massa). Desde 2026-10-27 o menu abre a seção `ModuloGestaoSobressalentes` (`views/gestao_sobressalentes.py`), com as abas Gestão PMIB (esta tela), Conferência de Revisões e Revisão no AMP: ver `14-aconex-e-conferencia-de-revisoes.md` |
 | 12 | `ModuloBuscaPMIB` | "9. Search" | `search_pmib_backend` | Busca avançada no portal PMIB |
 
 **Detalhes de ModuloCriaFichas** (principal):

@@ -212,13 +212,13 @@ def _telas_com_console():
     from sigft.app_qt.views.correcao_pdm import ModuloCorrecaoPDM
     from sigft.app_qt.views.cria_fichas import ModuloCriaFichas
     from sigft.app_qt.views.pdm import ModuloPDM
-    from sigft.app_qt.views.pmib_manager import ModuloPMIBManager
+    from sigft.app_qt.views.gestao_sobressalentes import ModuloGestaoSobressalentes
     from sigft.app_qt.views.translator import ModuloTranslator
     from sigft.app_qt.views.upload_conditions import ModuloUploadConditions
     from sigft.app_qt.views.upload_tech_specs import ModuloUploadTechSpecs
     return [ModuloAnalyzer, ModuloAplicacaoLMR, ModuloAutoSpec, ModuloBuscaPMIB,
             ModuloCopiaFichas, ModuloCorrecaoPDM, ModuloCriaFichas, ModuloPDM,
-            ModuloPMIBManager, ModuloTranslator, ModuloUploadConditions,
+            ModuloGestaoSobressalentes, ModuloTranslator, ModuloUploadConditions,
             ModuloUploadTechSpecs]
 
 

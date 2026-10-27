@@ -609,7 +609,8 @@ antes — mande o log. Anote o tempo da ficha para comparar com uma rodada antig
 
 ## Etapa 5b — Aconex ao vivo e Conferência de Revisões (2026-10-26, sem portal)
 
-A partir da **1.3.1-rc.1**. É a validação na GE do desenho
+A partir da **1.3.1-rc.1**; desde a **1.3.1-rc.2**, a Conferência é a aba **Conferência de Revisões**
+do PMIB Manager (na rc.1 era o item 10 do menu). É a validação na GE do desenho
 `docs/superpowers/specs/2026-10-26-aconex-ao-vivo-design.md` (portões G1 e G2,
 §10), e o que ela responder decide a Tarefa 11 do plano (ver
 `docs/ACONEX_AO_VIVO.md`). Nada aqui toca o portal.
@@ -623,7 +624,7 @@ A partir da **1.3.1-rc.1**. É a validação na GE do desenho
 - a planilha de mapeamento e a pasta raiz dos `_STATUS_PMIB`, as mesmas do
   Gestão PMIB.
 
-**5b.1 — Testar conexão (G1).** Abra "10. Conferência de Revisões". A mapeadora
+**5b.1 — Testar conexão (G1).** Abra o **PMIB Manager**, aba **Conferência de Revisões**. A mapeadora
 e a pasta raiz já vêm as do Gestão PMIB. Clique em **"Testar conexão com o
 Aconex"**. O console escreve 7 linhas, `OK` ou `FALHOU`:
 
@@ -665,6 +666,60 @@ aparecem, mas nada foi baixado."
 
 O "Gestão PMIB ao vivo" (sem o extrato) chega com a Tarefa 11 e ganha os
 passos dele aqui.
+
+---
+
+## Etapa 5c — Revisão das listas no AMP (2026-10-27, sem portal)
+
+A partir da **1.3.1-rc.2**. É a validação na GE da peça 2
+(`docs/superpowers/specs/2026-10-27-amp-revisao-de-listas-design.md`, §9). O AMP só
+existe dentro da rede da GE: estes passos são no PC da GE. Nenhum arquivo é alterado:
+o resultado é um HTML novo na pasta de cada lista.
+
+**Antes de começar:**
+
+- o SIG-FT 1.3.1-rc.2 instalado;
+- o workflow `amp/revisao_de_listas/workflow_revisao_de_listas.json` importado e
+  **publicado** no n8n do AMP, com a credencial e o modelo ligados (passo a passo em
+  `amp/revisao_de_listas/LEIA-ME.md`);
+- em Configuração → Chaves de API: **AMP Webhook (URL)** com a *Production URL* do
+  webhook e **AMP Webhook (chave)** com o mesmo valor da credencial `X-SIGFT-Chave`;
+- a 5b.3 feita **nesta sessão do SIG-FT**: a Revisão no AMP parte da última conferência.
+
+**5c.1 — Testar conexão.** PMIB Manager → aba **Revisão no AMP** → **"Testar conexão com
+o AMP"**. O console escreve duas linhas:
+
+| Linha | O que prova |
+|---|---|
+| `OK      Ping: workflow 2026-10-27 ...` | a rede, a chave e o workflow publicado |
+| `OK      Eco: os N códigos voltaram iguais` | o AMP não mascara os códigos das listas nem os CÓDIGOS DO MATERIAL |
+
+`HTTP 401/403` é chave diferente da credencial; `HTTP 404`, workflow não publicado ou
+a URL de teste no lugar da *Production URL*. **`FALHOU  Eco: ... (mascarado pelo AMP?)`:
+pare aqui e mande as duas linhas**: com código mascarado, a tabela remontada não serve.
+
+**5c.2 — Uma lista.** Clique em **"Revisar no AMP"**. A rodada manda as listas da
+conferência uma por vez (até 15 minutos cada); para o primeiro teste, clique em
+**"Parar"** logo que a primeira lista for ao AMP: as outras ficam "parado".
+
+1. A coluna **AMP** da lista vira "HTML pronto: ...", e o arquivo
+   `<código>[<em uso>-<atual>] revisao AMP.html` aparece na pasta do `_STATUS_PMIB`.
+   Dois cliques na linha abrem o HTML.
+2. O HTML traz o resumo, o que mudou (com a página e o item de origem), as
+   divergências e o `_STATUS_PMIB` inteiro remontado.
+3. Anote o tempo: o console diz os segundos da lista.
+
+**5c.3 — Conferir o HTML.** Com os dois PDFs e o `_STATUS_PMIB` abertos, confira 5
+itens do "que mudou" contra as páginas citadas. Copie a tabela remontada e cole numa
+**cópia** do `_STATUS_PMIB` (nunca no original nesta fase): as colunas caem no lugar?
+
+**5c.4 — Se falhar.** A coluna AMP diz "falhou: ..." e o botão **"Copiar
+diagnóstico"** liga. Copie, abra uma conversa nova com o Claude (com o repositório
+luanccozer/SIG-FT) e cole: o texto traz os números do pedido, a resposta do n8n, o
+número da execução e onde está o código, sem texto de documento e sem a chave. O
+mesmo texto fica em `Documentos\SIG-FT\logs\amp\`, e a tabela de sintomas está no
+`amp/revisao_de_listas/LEIA-ME.md`. Com o número da execução, o n8n mostra (menu
+*Executions*) em que nó parou.
 
 ---
 
@@ -716,6 +771,7 @@ ETAPA 5 — Portal, motor Playwright
   5.2 Smoke ............................... [ 13 OK / falhou: ______ ]
   5.3 Mesmas 5 tarefas .................... [ OK / falhou: ______ ]
       login foi dispensado na 2ª vez? ..... [ sim / não ]
+      mais rápido, igual ou mais lento? ... [ ______ ]
 
 ETAPA 5b — Aconex ao vivo e Conferência de Revisões
   5b.1 Testar conexão ..................... [ colei as 7 linhas / falhou: ______ ]
@@ -726,7 +782,15 @@ ETAPA 5b — Aconex ao vivo e Conferência de Revisões
        PDFs nas pastas certas? ............ [ sim / não: ______ ]
        2ª rodada não baixou nada? ......... [ sim / não ]
   5b.4 Sem cofre: avisou e não baixou? .... [ sim / não testei ]
-      mais rápido, igual ou mais lento? ... [ ______ ]
+
+ETAPA 5c — Revisão das listas no AMP
+  5c.1 Ping .............................. [ OK / falhou: ______ ]
+       Eco: códigos voltaram iguais? ..... [ sim / mascarado: ______ ]
+  5c.2 HTML gravado na pasta? ............ [ sim / falhou: ______ ]
+       tempo da lista .................... [ ____ s ]
+  5c.3 5 itens conferem com os PDFs? ..... [ ___ de 5 ]
+       tabela colou no lugar? ............ [ sim / não: ______ ]
+  5c.4 Falhou? colei o diagnóstico ....... [ não falhou / colei na conversa ]
 ```
 
 ---

@@ -259,6 +259,9 @@ CONVERTIDOS: tuple[str, ...] = (
     "sigft/app_qt/views/pmib_manager.py",
     # Aconex ao vivo (2026-10-26): Conferência de Revisões
     "sigft/app_qt/views/conferencia_revisoes.py",
+    # Revisão das listas pelo AMP (2026-10-27): as abas do PMIB Manager
+    "sigft/app_qt/views/gestao_sobressalentes.py",
+    "sigft/app_qt/views/revisao_amp.py",
 )
 
 # Literais que a varredura acusa e que ficam em português de propósito, por

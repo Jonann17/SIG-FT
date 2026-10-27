@@ -177,6 +177,7 @@ def test_textos_iguais_aos_da_home_antiga():
         ("GOOGLE_CSE", "Google CSE ID:"), ("LLAMA", "LlamaCloud API:"),
         ("OPENROUTER", "OpenRouter API Key:"), ("EMPRESA_LLM_BASE_URL", "IA Empresa (Base URL):"),
         ("EMPRESA_LLM_API_KEY", "IA Empresa (API Key):"),
+        ("AMP_WEBHOOK_URL", "AMP Webhook (URL):"), ("AMP_WEBHOOK_CHAVE", "AMP Webhook (chave):"),
     ]
     assert home_mod.ROTULOS_TAREFA_IA == {
         "categorizar_pdm": "Categorizar PDM (Cria Fichas):",
@@ -972,12 +973,12 @@ def test_medidas_da_home(com_folha, qtbot, rede, mensagens):
     assert engrenagem[0] + engrenagem[2] == corpo.width() - 57
     assert 46 <= engrenagem[1] and engrenagem[1] + engrenagem[3] <= 46 + 38
     cards = list(tela.cards.values())
-    # 2026-10-26: o 13º card (Conferência de Revisões) abre a 7ª linha, e a Home
-    # passa a rolar a 1280x850 -- os 12 cards cabiam sem rolar (decisão de
-    # 2026-10-07). A barra vertical tira 5 px de cada card. A rever com o Luan.
-    assert _geo(cards[0], corpo)[:3] == (52, 247, 433)
-    assert _geo(cards[1], corpo)[:3] == (497, 247, 433)
+    # 2026-10-27: a Conferência de Revisões virou aba do PMIB Manager (correção do
+    # Luan), e a Home voltou aos 12 cards.
+    assert _geo(cards[0], corpo)[:3] == (52, 247, 438)
+    assert _geo(cards[1], corpo)[:3] == (502, 247, 438)
     assert tela.horizontalScrollBar().maximum() == 0
+    assert tela.verticalScrollBar().maximum() == 0, "os 12 cards cabem sem rolar (decisão de 2026-10-07)"
 
 
 def test_medidas_do_painel_de_chaves(com_folha, qtbot, rede, mensagens):
@@ -985,14 +986,15 @@ def test_medidas_do_painel_de_chaves(com_folha, qtbot, rede, mensagens):
     tela = home_mod.HomeView(controller=Controller())
     qtbot.addWidget(tela)
     j = _exposta(qtbot, tela.abrir_janela_chaves_api())
-    assert _geo(tela.frame_chaves_api, j) == (26, 26, 697, 348)
+    # 2026-10-27: nove chaves (as duas do webhook do AMP), duas linhas de 36 a mais.
+    assert _geo(tela.frame_chaves_api, j) == (26, 26, 697, 420)
     assert _geo(tela.lbl_titulo_chaves_api, j)[:2] == (36, 36)
     for i, chave in enumerate(tela.entries):
         y = 76 + 36 * i
         assert _geo(tela.rotulos_chaves_api[chave], j) == (36, y, 140, 32), chave
         assert _geo(tela.entries[chave], j) == (181, y, 527, 32), chave
     x, y, w, h = _geo(tela.btn_salvar_chaves, j)
-    assert (y, w, h) == (336, 140, 28) and abs(x - 304) <= 1
+    assert (y, w, h) == (408, 140, 28) and abs(x - 304) <= 1
     assert _geo(j.botao_fechar, j) == (320, 480, 120, 28)
 
 

@@ -1,6 +1,7 @@
-# Aconex no SIG-FT e a Conferência de Revisões
+# Aconex no SIG-FT, a Conferência de Revisões e a Revisão no AMP
 
-> Escrito em 2026-10-26, na 1.3.1-rc.1. Desenho:
+> Escrito em 2026-10-26, na 1.3.1-rc.1; a peça 2 (Revisão no AMP) entrou em
+> 2026-10-27, na 1.3.1-rc.2, e está na última seção. Desenho da peça 1:
 > `docs/superpowers/specs/2026-10-26-aconex-ao-vivo-design.md`. Plano e o que
 > falta: `docs/superpowers/plans/2026-10-26-aconex-ao-vivo.md` e
 > `docs/ACONEX_AO_VIVO.md`.
@@ -8,8 +9,8 @@
 ## Propósito
 
 É a peça 1 do workflow que avisa quando uma lista de sobressalentes muda entre
-revisões (a peça 2, a leitura dos PDFs, roda no AMP da GE). Esta peça faz três
-coisas:
+revisões (a peça 2, a leitura dos PDFs pelo AMP da GE, está em "Peça 2: revisão no
+AMP", no fim). Esta peça faz três coisas:
 
 1. lê o Aconex **ao vivo**, com o perfil que o DocManager já guarda;
 2. calcula o **STATUS REAL** de cada lista pela batalha de versões do DocManager e
@@ -31,7 +32,8 @@ coisas:
 | serviço | `sigft/services/conferencia_revisoes.py` | a mapeadora, a regra da conferência e os downloads |
 | serviço | `sigft/services/pmib_manager.py` | STATUS REAL e regra PB020 (ver `11-pmib-manager-backend.md`) |
 | serviço | `sigft/services/painel.py` | o painel marca `aprov` por lista com `eh_aprovacao` |
-| tela | `sigft/app_qt/views/conferencia_revisoes.py` | `ModuloConferenciaRevisoes` (menu 10) e `perfil_do_aconex` |
+| tela | `sigft/app_qt/views/conferencia_revisoes.py` | `ModuloConferenciaRevisoes` (a aba Conferência de Revisões do PMIB Manager), `UltimaConferencia` e `perfil_do_aconex` |
+| tela | `sigft/app_qt/views/gestao_sobressalentes.py` | a seção do PMIB Manager (menu 8): Gestão PMIB, Conferência de Revisões e Revisão no AMP em abas, com um console e uma barra |
 
 ## Credenciais
 
@@ -127,10 +129,14 @@ uma varredura por conferência, só no primeiro link quebrado).
 4. `ErroAconex`, código fora do Aconex ou erro ao gravar: linha "falhou", e o resto
    continua. `cancelado_cb` para o laço entre as listas.
 
-**A tela:** mapeadora e pasta raiz começam nas do Gestão PMIB; mostra quando a
+**A tela** é a aba Conferência de Revisões do PMIB Manager (era o item 10 do menu
+até a rc.1). Mapeadora e pasta raiz começam nas do Gestão PMIB; mostra quando a
 mapeadora foi salva e avisa se não foi hoje; totais por categoria, "Em dia" e
-"Sem `_STATUS_PMIB`"; uma aba por categoria (código, revisão em uso, última
-revisão emitida, status da revisão, STATUS REAL e PDF). Sem perfil, ou com o login
+"Sem `_STATUS_PMIB`"; uma aba por categoria, em `widgets/abas` (código, revisão em
+uso, última revisão emitida, status da revisão, STATUS REAL e PDF; as larguras somam
+850 para caber na aba a 1280x850). Cada rodada fica em `ultima`
+(`UltimaConferencia`: mapeadora, conferência, downloads e pasta raiz), de onde a
+Revisão no AMP parte. Sem perfil, ou com o login
 recusado, as listas aparecem e o console avisa
 "[AVISO] Sem conexão com o Aconex: as listas aparecem, mas nada foi baixado.".
 
@@ -154,3 +160,88 @@ hyperlink relativo), `test_qt_tela_conferencia_revisoes.py`,
 `test_pmib_manager_status_real.py`, `test_pmib_manager_lista_nova.py` e
 `test_painel.py`. Nenhum toca a rede: o `abrir` e o cliente são dublês. O
 `tests/_historico_aconex.py` monta históricos sintéticos (`HistoricoBuilder`).
+
+## Peça 2: revisão no AMP
+
+> Desde a 1.3.1-rc.2. Desenho: `docs/superpowers/specs/2026-10-27-amp-revisao-de-listas-design.md`;
+> plano: `docs/superpowers/plans/2026-10-27-amp-revisao-de-listas.md`. O AMP (a IA da GE) só
+> existe dentro da rede da GE: nenhum teste daqui chama a rede.
+
+Para cada lista com divergência da última conferência, o agente do AMP lê o PDF da revisão em uso,
+o da revisão atual e o `_STATUS_PMIB`, e devolve um HTML com o que mudou e o `_STATUS_PMIB`
+remontado. Ele roda num workflow do n8n do AMP; o SIG-FT manda **texto**: os arquivos não vão (o nó
+de modelo trabalha com texto, e o n8n não precisa ler o Box). Nada é aplicado no Excel: o Luan
+confere o HTML e cola.
+
+| Camada | Arquivo | O quê |
+|---|---|---|
+| n8n | `amp/revisao_de_listas/` | o pedido ao agente (`pedido.md`, onde se melhora o agente), o gerador do `.json` e o `LEIA-ME.md` (ligar no n8n, sintomas de falha, o texto para a conversa nova) |
+| core | `sigft/core/amp/cliente.py` | `ClienteAmp` (`ping`, `eco`, `revisar`) e `RespostaAmp`; a chave vai no cabeçalho `X-SIGFT-Chave`, e nenhuma falha levanta |
+| serviço | `sigft/services/revisao_amp.py` | as listas e os arquivos (`listas_para_amp`), o texto do PDF e o `_STATUS_PMIB` em tabulação, o pedido, a rodada, o diagnóstico e o teste de conexão |
+| tela | `sigft/app_qt/views/revisao_amp.py` | `ModuloRevisaoAmp`, a aba Revisão no AMP |
+
+**O contrato do webhook** (`POST` com JSON; a chave no cabeçalho):
+
+- `{"modo": "ping"}` → `{ok, modo, versao_workflow, execucao}`, sem chamar o modelo;
+- `{"modo": "eco", "codigos": [...]}` → `{ok, modo, texto, versao_workflow, execucao}`: o modelo
+  devolve os códigos, e o SIG-FT confere se voltaram iguais (mascaramento);
+- `{"modo": "revisar", "lista", "revisao_em_uso" (ou `null`), "revisao_atual", "status_pmib",
+  "origem"}` → `{ok, modo, html, versao_workflow, execucao}`. Cada revisão é `{arquivo, paginas,
+  texto}`; o `_STATUS_PMIB` é `{arquivo, aba, linha_de_revisao, linhas, tsv}`.
+- Falha do agente: HTTP 502 com `{ok: false, modo, etapa, erro, execucao}`.
+
+A revisão vai **uma vez só**, pela rota que o `ping` achou (`ClienteAmp.revisar`; o ping vai antes
+na primeira lista). A cascata do `rede.abrir` manda de novo pela rota seguinte quando o tempo esgota
+ou a conexão cai, e na revisão cada repetição seria outra execução do agente; por isso o tempo
+esgotado ("o AMP não respondeu em 15 min") e a conexão cortada ("caiu depois de N s") viram erro.
+
+O texto de cada PDF sai do PyMuPDF com `--- página N ---` antes de cada página (o agente cita a
+página). PDF sem texto em nenhuma página é "falta: PDF sem texto (só imagem)". O `_STATUS_PMIB` vai
+inteiro: a linha de revisão, o cabeçalho e as linhas, com as colunas separadas por tabulação. A
+`lista` leva a `data_de_hoje` (dd/mm/aaaa, do computador): a linha de revisão nova tem a DATA DE
+ALTERAÇÃO, e o modelo não sabe que dia é.
+
+A aba só começa com a Conferência parada (`ModuleFrame.rodando()`): no meio do download, a última
+conferência ainda está sem os PDFs, e um deles pode estar pela metade.
+
+**As listas** (`listas_para_amp`): as da conferência que têm pasta, na ordem das categorias. A
+revisão atual é a do download desta sessão (a que o Aconex devolveu); sem download, a ÚLTIMA
+REVISÃO EMITIDA, pelo nome do padrão na pasta. Faltando o `_STATUS_PMIB`, o PDF da revisão atual
+ou o da revisão em uso (quando há revisão em uso), a lista fica com a falta e não é chamada.
+
+**A rodada** (`revisar_listas`), uma lista por vez:
+
+1. falta, ou erro ao ler (`ValueError`, `OSError`, `BadZipFile`): "falta: <motivo>", sem chamar;
+2. outra exceção ao montar o pedido (PDF corrompido: o PyMuPDF levanta `RuntimeError`): "falhou",
+   com o traceback no diagnóstico;
+3. resposta boa: o HTML vai para `<código>[<em uso>-<atual>] revisao AMP.html`, na pasta da lista,
+   com `open(..., "x")`. **Nunca sobrescreve:** o nome que existe ganha " (2)", " (3)"...;
+4. resposta ruim: "falhou", e o diagnóstico vai para
+   `Documentos\SIG-FT\logs\amp\<AAAAMMDD-HHMMSS> <código>.txt`;
+5. `cancelado_cb` é lido entre as listas, e as que sobram ficam "parado". `resultado_cb` recebe
+   cada lista quando ela acaba: a tabela da aba anda junto.
+
+**O diagnóstico** (`diagnostico`; o botão usa `diagnosticos_para_copiar`) é para colar numa conversa
+nova com o Claude, no PC da GE, com o repositório. Leva a versão e a hora, a lista e as revisões, o
+endereço (e só se a chave está posta), o que foi mandado **só em números** (páginas e caracteres de
+cada texto, linhas do `_STATUS_PMIB`, o tamanho do pedido), o HTTP, o tempo, o número da execução do
+n8n, o erro, o corpo da resposta (até 1500 caracteres: do JSON do workflow, só os campos dele, e do
+`html` e do `texto` só o tamanho) e os arquivos do repositório. **Nunca leva texto de documento:**
+além do filtro de campos, toda linha dos PDFs e célula do `_STATUS_PMIB` com 20 caracteres ou mais
+que volte no erro ou no corpo vira `<trecho do documento>`. A chave sai do corpo e do erro já no
+cliente.
+
+**O teste de conexão** (`testar_conexao`): o `ping`; passando, o `eco` com os códigos das listas e
+até 10 CÓDIGOS DO MATERIAL do primeiro `_STATUS_PMIB` que se lê. Sem conferência na sessão, só o
+ping (`--      Eco: não mandado`).
+
+**A aba:** o endereço e a chave saem de Configuração → Chaves de API (`AMP_WEBHOOK_URL` e
+`AMP_WEBHOOK_CHAVE`; variáveis `SIGFT_AMP_WEBHOOK_URL` e `SIGFT_AMP_WEBHOOK_CHAVE`). Sem os dois, um
+aviso, e nada é chamado; sem conferência, "Confira as revisões antes.". A tabela tem uma linha por
+lista e a coluna AMP ("na fila", "HTML pronto: ...", "falhou: ...", a falta, "parado"); dois
+cliques abrem o HTML. "Copiar diagnóstico" só liga com falha na rodada.
+
+**Testes:** `test_amp_workflow.py` (o `.json` sai do pedido; os nós e o contrato),
+`test_amp_cliente.py`, `test_revisao_amp_pedido.py`, `test_revisao_amp_rodada.py`,
+`test_qt_tela_revisao_amp.py` e `test_qt_tela_gestao_sobressalentes.py`. O que só a GE prova (o
+modelo do AMP num workflow, PDF grande) está na Etapa 5c do roteiro.
