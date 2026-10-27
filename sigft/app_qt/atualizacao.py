@@ -59,7 +59,7 @@ from sigft.app.atualizacao_textos import (
 from sigft.app.idioma import t
 from sigft.app_qt import estilo, interface
 from sigft.app_qt.widgets import blocos
-from sigft.core import instancia
+from sigft.core import diario, instancia
 from sigft.services import updater
 
 __all__ = [
@@ -194,11 +194,15 @@ def _fechar_o_app(janela_principal) -> None:
     perguntaria por "tarefa em andamento", e uma thread comum viva seguraria o
     processo com os arquivos do app em uso. É o mesmo encerramento do "X" da
     janela principal -- uma implementação só.
+
+    Sem o `closeEvent`, o `FECHAMENTO` do diário é gravado aqui (2026-10-27):
+    sem ele, a sessão seguinte a toda atualização diria "encerrado de fora".
     """
     try:
         janela_principal.hide()
     except Exception:  # noqa: BLE001
         pass
+    diario.registrar_fechamento()   # nunca levanta
     instancia.encerrar(0)
 
 

@@ -313,6 +313,33 @@ GE Vernova, Itaipu, nomes de provedor de IA, os nomes dos idiomas):
 
 Espanhol com "usted"; inglês com imperativo simples; tradução curta (no máximo uns 20% a mais).
 
+### Diário, colunas e menu recolhível (2026-10-26)
+
+- **Diário de quedas** (`sigft/core/diario.py`, sem Qt): `main()` chama `diario.abrir(versao=, idioma=)`
+  depois da pergunta do idioma e antes da janela; ele lê a sessão anterior (`classificar`: `NORMAL`,
+  `CAIU`, `ENCERRADO`) ANTES de gravar a nova `ABERTURA`, e liga `sys.excepthook`,
+  `threading.excepthook` e o `faulthandler` (`logs/queda.log`; o com rastro vira `queda.log.anterior`).
+  `SIG_FT_App.closeEvent` aceito grava `FECHAMENTO pela janela`. Passou de 1 MB, vira `diario.log.1`.
+  Nunca levanta. A Home mostra `aviso_sessao` (cartão `#cartao[borda="aviso"]`) quando
+  `diario.aviso_pendente()`; "Entendido" é `diario.dispensar_aviso()`. Nos testes vem desligado
+  (`SIGFT_SEM_DIARIO`, no `conftest`); quem testa tira a variável e troca o `faulthandler` por um dublê.
+- **Colunas lembradas** (`sigft/app_qt/widgets/colunas.py`): `instalar_colunas(tabela, chave,
+  colunas_internas)` liga mover, largura e o menu do botão direito (esconder, "Restaurar colunas");
+  guarda em `prefs` (seção `colunas`) pela chave da tabela e pela chave interna de cada coluna.
+  `juntar` (pura) ignora coluna sumida, põe a nova no fim e trata preferência estragada como padrão.
+  Na `tabela_ttk`, mexer desliga o `EsticaColunas` e a última coluna estica (e grava largura `None`,
+  para voltar esticando); restaurar o religa.
+  Usam: `TabelaSelecaoDialog(chave_colunas=, colunas_internas=)` (`selecao_de_itens`,
+  `selecao_duplicadas`) e a Revisão antes do portal (`widgets/revisao_portal.py`, chave
+  `revisao_portal`). O Resumo do lote ficou como estava (decisão de 2026-10-26).
+- **Menu recolhível** (`SIG_FT_App.recolher_menu`/`alternar_menu`): barra com
+  `estilo.LARGURA_BARRA_RECOLHIDA`, só ícones (o nome na dica, antes da dica de sempre), seções como
+  `#traco_secao`, a marca só com o símbolo (`Marca.recolher`). Margens de 7 de cada lado
+  (`MARGENS_DA_BARRA_RECOLHIDA`): na janela baixa a barra de rolagem come 10 px e a seta (36) ainda
+  cabe. Lembrado em `prefs.get_opcao("menu_recolhido")`; Ctrl+K `acao:menu` (o texto diz "Recolher
+  menu" ou "Expandir menu", `catalogo.comandos(menu_recolhido=)`). Cor só pela folha
+  (`QPushButton[menu="true"][recolhido="true"]`, `#home[recolhido="true"]`).
+
 ## Pontos de Atenção
 
 - **Threading + Tkinter**: Todos os atualizamentos de UI de threads secundárias usam `self.after(0, lambda: ...)`. Sem isso, causam travamentos ou crashes.

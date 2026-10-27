@@ -247,6 +247,10 @@ def _sem_janelas_do_fim_da_tarefa(monkeypatch):
     # [2026-10-21] O aviso do Windows (`app_qt/aviso_windows.py`) NUNCA nos
     # testes: a notificação sairia na máquina de quem roda a suíte.
     monkeypatch.setenv("SIGFT_SEM_AVISO_DO_WINDOWS", "1")
+    # [2026-10-26] O diário de quedas (`sigft/core/diario.py`) NUNCA nos testes: o
+    # `main()` dos testes gravaria no `logs/` e trocaria o `faulthandler` do pytest.
+    # Quem testa o diário tira a variável e usa uma pasta temporária.
+    monkeypatch.setenv("SIGFT_SEM_DIARIO", "1")
 
 
 # 7. [2026-10-22] O idioma da interface (`sigft/app/idioma.py`) é estado do

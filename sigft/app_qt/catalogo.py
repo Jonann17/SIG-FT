@@ -174,6 +174,14 @@ SELETOR_LETRA = (
 )
 
 
+# O menu lateral recolhível (2026-10-26): o botão do pé do menu e a ação do Ctrl+K
+# (`acao:menu`, que alterna). O texto e o ícone dizem o que o clique FAZ.
+TEXTO_RECOLHER_MENU = marcar("Recolher menu")
+TEXTO_EXPANDIR_MENU = marcar("Expandir menu")
+ICONE_RECOLHER_MENU = "chevrons-left"
+ICONE_EXPANDIR_MENU = "chevrons-right"
+
+
 class AcaoDoCtrlK(NamedTuple):
     """Uma ação da caixa do Ctrl+K (além dos módulos)."""
     chave: str
@@ -190,6 +198,8 @@ ACOES = (
     AcaoDoCtrlK("inicio", marcar("Início"), "house", marcar("home tela inicial")),
     *(AcaoDoCtrlK(a.chave, a.texto, a.icone, a.palavras) for a in ACOES_QUE_A_HOME_FAZ),
     AcaoDoCtrlK("logs", marcar("Abrir logs"), "folder-open", marcar("pasta log")),
+    AcaoDoCtrlK("menu", TEXTO_RECOLHER_MENU, ICONE_RECOLHER_MENU,
+                marcar("menu lateral barra esconder mostrar recolher expandir")),
     *(AcaoDoCtrlK(f"tema_{escolha}", marcar("Tema: {nome}"), icone, marcar("aparencia cor"), texto)
       for escolha, texto, icone, _dica in SELETOR_TEMA),
     *(AcaoDoCtrlK(f"letra_{escolha}", marcar("Letra: {nome}"), "settings",
@@ -201,12 +211,13 @@ ACOES = (
 SUFIXO_BLOQUEADO = marcar(" (bloqueado)")
 
 
-def comandos() -> list[Comando]:
+def comandos(*, menu_recolhido: bool = False) -> list[Comando]:
     """Os módulos (na ordem dos cartões da Home) e as ações, no idioma da sessão.
     O módulo bloqueado aparece como no menu: apagado, com a mesma dica, e não se
     escolhe. A busca acha pelas palavras traduzidas E pelas em português (o
     nome do módulo, o texto da ação e as palavras): quem trocou de idioma e
-    ainda digita em português acha (revisão da Task 5, 2026-10-22)."""
+    ainda digita em português acha (revisão da Task 5, 2026-10-22).
+    `menu_recolhido`: a ação do menu lateral diz "Expandir menu" (2026-10-26)."""
     menu_pt = {item[2]: item[1] for item in MENU if item[0] == "botao"}
     lista = []
     for alvo, titulo, _descricao in MODULOS:
@@ -217,12 +228,15 @@ def comandos() -> list[Comando]:
             f"tela:{alvo}", t(titulo) + (t(SUFIXO_BLOQUEADO) if bloqueado else ""), ICONE_DA_TELA[alvo],
             palavras, bloqueado=bloqueado, dica=dica_do_menu(alvo)))
     for acao in ACOES:
+        texto_marcado, icone = acao.texto, acao.icone
+        if acao.chave == "menu" and menu_recolhido:
+            texto_marcado, icone = TEXTO_EXPANDIR_MENU, ICONE_EXPANDIR_MENU
         if acao.nome:
-            texto, texto_pt = t(acao.texto, nome=t(acao.nome)), acao.texto.format(nome=acao.nome)
+            texto, texto_pt = t(texto_marcado, nome=t(acao.nome)), texto_marcado.format(nome=acao.nome)
         else:
-            texto, texto_pt = t(acao.texto), acao.texto
+            texto, texto_pt = t(texto_marcado), texto_marcado
         palavras = _com_o_portugues(t(acao.palavras), f"{acao.palavras} {texto_pt}")
-        lista.append(Comando(f"acao:{acao.chave}", texto, acao.icone, palavras))
+        lista.append(Comando(f"acao:{acao.chave}", texto, icone, palavras))
     return lista
 
 

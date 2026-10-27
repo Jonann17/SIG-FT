@@ -33,6 +33,7 @@ from sigft.app.idioma import t
 from sigft.app.textos_dialogos import TEXTOS_TRAVADOS
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import blocos
+from sigft.app_qt.widgets.colunas import instalar_colunas
 from sigft.app_qt.widgets.dialogs import IgnoraEsc, SoltaAoFechar, sem_tecla
 from sigft.app_qt import propriedades
 
@@ -219,13 +220,16 @@ class TabelaSelecaoDialog(JanelaQueAbre):
     `linhas` são pares `(chave, valores)`; volta a CHAVE (em texto, como o iid
     do Treeview) -- nunca a posição visual. `larguras` como na interface antiga:
     `{"coluna": {"width": 150, "anchor": "center"}}` (120 sem largura).
+    `chave_colunas` liga as colunas lembradas (`widgets/colunas.py`); `colunas_internas` é a chave
+    de cada coluna quando o texto mostrado é traduzido.
     """
 
     def __init__(self, parent=None, *, colunas, linhas, titulo: str | None = None,
                  instrucao: str | None = None, geometria: str = "900x600",
                  larguras: dict | None = None, preselecionar_tudo: bool = False,
                  texto_confirmar: str | None = None, com_cancelar: bool = True,
-                 modal: bool = True, ao_confirmar=None) -> None:
+                 modal: bool = True, ao_confirmar=None, chave_colunas: str | None = None,
+                 colunas_internas=None) -> None:
         titulo = titulo if titulo is not None else t("Seleção de Itens")
         instrucao = instrucao if instrucao is not None else t("Selecione as linhas para processar:")
         texto_confirmar = texto_confirmar if texto_confirmar is not None else t("Confirmar Seleção")
@@ -251,6 +255,13 @@ class TabelaSelecaoDialog(JanelaQueAbre):
             item = linha_ttk(self.tree, valores, chave=str(chave))
             if preselecionar_tudo:
                 item.setSelected(True)
+        # [2026-10-26] Colunas lembradas (`widgets/colunas.py`), quando quem abre dá a
+        # chave da tabela. A chave de cada coluna é `colunas_internas` (o texto
+        # mostrado muda com o idioma) ou, sem ela, o próprio nome da coluna.
+        self.colunas = None
+        if chave_colunas:
+            internas = colunas_internas if colunas_internas is not None else colunas
+            self.colunas = instalar_colunas(self.tree, chave_colunas, [str(c) for c in internas])
 
         quadro = QHBoxLayout()
         quadro.setContentsMargins(10, 0, 10, 0)  # padx=10, pady=10
@@ -293,21 +304,43 @@ class TabelaSelecaoDialog(JanelaQueAbre):
 class EsticaColunas(QObject):
     """O ttk.Treeview estica as colunas (`stretch=True`, o padrão) para ocupar a
     largura: a sobra é repartida IGUALMENTE entre elas. Encolher abaixo das
-    larguras pedidas, não -- aí aparece a rolagem horizontal."""
+    larguras pedidas, não -- aí aparece a rolagem horizontal.
+
+    [2026-10-26] As colunas lembradas (`widgets/colunas.py`) o desligam quando a
+    pessoa mexe nas colunas (vale a largura dela) e o religam no "Restaurar
+    colunas". `ajustando` diz que a mudança de largura é daqui, e não de quem usa."""
 
     def __init__(self, tree: QTreeWidget, base: list[int]) -> None:
         super().__init__(tree)
         self._tree, self._base = tree, base
+        self.ligado = True
+        self.ajustando = False
         tree.viewport().installEventFilter(self)
 
     def eventFilter(self, objeto, evento) -> bool:  # noqa: N802 -- nome do Qt
-        if evento.type() == QEvent.Type.Resize and self._base:
-            sobra = self._tree.viewport().width() - sum(self._base)
-            extra = max(0, sobra) // len(self._base)
-            resto = max(0, sobra) - extra * len(self._base)
+        if evento.type() == QEvent.Type.Resize:
+            self.esticar()
+        return False
+
+    def esticar(self) -> None:
+        if not self.ligado or not self._base:
+            return
+        sobra = self._tree.viewport().width() - sum(self._base)
+        extra = max(0, sobra) // len(self._base)
+        resto = max(0, sobra) - extra * len(self._base)
+        self.ajustando = True
+        try:
             for i, largura in enumerate(self._base):
                 self._tree.setColumnWidth(i, largura + extra + (resto if i == len(self._base) - 1 else 0))
-        return False
+        finally:
+            self.ajustando = False
+
+    def desligar(self) -> None:
+        self.ligado = False
+
+    def ligar(self) -> None:
+        self.ligado = True
+        self.esticar()
 
 
 def tabela_ttk(colunas, *, selecao: str = "extended", barra_horizontal: bool = True) -> QTreeWidget:
