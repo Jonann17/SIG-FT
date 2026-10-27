@@ -634,7 +634,8 @@ Aconex"**. O console escreve 7 linhas, `OK` ou `FALHOU`:
 | Register inteiro (busca vazia) | quantos documentos o projeto tem: é a referência das outras |
 | Busca exata do código, com histórico | a busca que o download usa |
 | Busca pelo Tracking ID (duas sintaxes) | se dá para seguir uma lista renomeada sem baixar o histórico inteiro |
-| Busca por título e por código | se dá para achar as listas PB020/SOBRESSALENTES no servidor |
+| Busca por título | se dá para achar as listas de sobressalentes no servidor (`title:SOBRESSALENTES`) |
+| Listas novas | das que vieram pelo título, quantas têm PB020 no código e não são de preços (conferido no SIG-FT: o Aconex devolve HTTP 500 ao coringa no código) |
 
 Uma sintaxe que o Aconex ignora devolve o register inteiro e aparece como
 `FALHOU ... a sintaxe não filtrou`. **Copie as 7 linhas e mande**: elas decidem

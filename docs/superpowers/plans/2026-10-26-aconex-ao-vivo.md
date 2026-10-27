@@ -432,6 +432,24 @@ As Tarefas 9 e 10 não dependem do G1: usam só a busca exata e o download, que 
 
 ### Task 11: Gestão PMIB com o histórico ao vivo (depois do G1)
 
+**Resultado do G1 (2026-10-27, Luan na GE, 1.3.1-rc.2, perfil Luan Cozer, lista `#ST00=B01BMU10&EPB020`):**
+
+| Sonda | Resultado |
+|---|---|
+| Login | OK |
+| Register inteiro | 9819 documentos |
+| Busca exata, com histórico | 7 versões |
+| `trackingid:<id>` e `trackingid:"<id>"` | 15 versões cada (a exata trouxe 7) |
+| `title:SOBRESSALENTES` | 96 de 9819 |
+| `docno:*PB020*` | HTTP 500 em 5 de 5 tentativas |
+
+Leitura: as duas buscas que a tarefa precisa funcionam. O **Tracking ID** é obrigatório, não opcional:
+a busca exata perde mais da metade das versões da lista (as que tiveram outro código). O **coringa no
+código não existe** para o Aconex (500 é do servidor; o limite de frequência é 503), e não faz falta:
+a lista nova exige SOBRESSALENTES no título, então `title:SOBRESSALENTES` (página de 500) traz todas, e o
+PB020 e o "sem PREÇO" se conferem no SIG-FT com `e_lista_de_sobressalentes`. A extração completa fica
+de fora. O diagnóstico já foi trocado para essa forma (sonda "Listas novas").
+
 **Antes de começar:** anote aqui o resultado do G1, isto é, as sintaxes de `search_query` que funcionaram
 para Tracking ID e para PB020/SOBRESSALENTES. Se alguma das duas não funcionar, avise o Luan **antes** de
 seguir, como manda a §4.2 da spec. Nesse caso, `FonteAoVivo.carregar` usa a extração completa

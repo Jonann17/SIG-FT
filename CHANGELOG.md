@@ -29,6 +29,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Interface: na seleção de fichas (Upload e Upload duplicadas) e na janela **Revisão antes do portal**, as colunas podem ser **reordenadas** (arrastando o cabeçalho), **alargadas** (arrastando a borda) e **escondidas** (botão direito no cabeçalho). O SIG-FT lembra do jeito que ficou, também ao trocar de idioma, e "Restaurar colunas" volta ao padrão.
 - Interface: o **menu lateral recolhe** para só os ícones, dando mais espaço às telas: a seta no pé do menu, ou "Recolher menu" no Ctrl+K. O nome de cada tela aparece na dica, a tela aberta continua destacada, e o SIG-FT lembra se o menu estava recolhido.
 - Atualização automática: as bibliotecas também saem de dentro do `SIG-FT.exe`; a atualização pequena passa a levar só os arquivos da biblioteca que mudou, em vez do `.exe` inteiro (38 MB). A primeira depois desta ainda é grande (o `.exe` muda uma última vez); as seguintes ficam pequenas.
+- Conferência de Revisões: o **"Testar conexão com o Aconex"** deixa de pedir ao Aconex a busca por código com coringa (`docno:*PB020*`), que ele recusa com erro 500, e passa a contar as listas novas entre as que a busca por título traz (PB020 no código, sem PREÇO). Cada sonda tenta 2 vezes, e não 5: o teste não fica mais quase 2 minutos parado num erro do Aconex.
 
 ## 1.3.0 - 2026-10-23
 
