@@ -886,3 +886,18 @@ rc.1 não funcionou lá: o Luan pediu para terminar a peça 2 antes de olhar.
 | 2026-10-27 | Peça 2, Tarefa 5 | Na aba Gestão PMIB, a 1280x850, o "CONFERIR NO PORTAL" fica abaixo da dobra: com as três abas na seção, a aba rola. Saídas, se incomodar: console menor por padrão na seção, ou quadros mais baixos na Gestão. | Polimento, se o Luan pedir |
 | 2026-10-27 | Peça 2, Tarefa 4 | Revisão no AMP: se o HTML não puder ser gravado (caminho longo no Box, pasta só de leitura), a resposta do AMP se perde. A lista vira "falhou", o diagnóstico diz o motivo, e ela tem de ser rodada de novo. Saída, se acontecer: gravar numa pasta de reserva. | Se acontecer |
 | 2026-10-27 | Peça 2, Tarefa 5 | Revisão no AMP: não dá para escolher uma lista; a rodada manda todas as da última conferência ("Parar" vale entre elas). | Se o Luan pedir |
+
+## 2026-10-27 — pytest 9.2 apaga atributos dos dubles do conftest
+
+O `requirements-dev.txt` fixa `pytest<9.2`. A 9.2.0 grava como "valor antigo" de
+`monkeypatch.setattr` o que esta no `__dict__` da instancia; um `MagicMock` cria os
+filhos sob demanda, fora do `__dict__`, entao o `undo` faz `delattr` e o filho some
+do duble compartilhado (`sys.modules["openpyxl"]`, `["pypdf"]`). Os testes que fazem
+`monkeypatch.setattr(<modulo>.openpyxl, "load_workbook", ...)` (ficha_layout,
+autospec_tempos, autospec_match_pmib, status_sheet) quebram os que vem depois no
+mesmo processo. **Saida para tirar a trava:** os dubles do conftest viram uma
+subclasse de `MagicMock` que guarda o filho no `__dict__` na primeira leitura, ou
+esses testes passam a trocar o nome no modulo de producao
+(`monkeypatch.setattr(autospec_backend, "openpyxl", falso)`) em vez de mexer no
+duble. Depois, rodar a suite com a 9.2 e tirar o `<9.2`.
+

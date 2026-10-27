@@ -7,7 +7,15 @@
 # teste roda os testes de caracterização SEM as dependências pesadas de
 # produção instaladas (ver tests/conftest.py, que faz stub delas via
 # unittest.mock para permitir importar os módulos *_backend.py).
-pytest
+# [2026-10-27] pytest < 9.2: a 9.2.0 (saiu 2026-10-27 21:30 UTC) mudou o
+# `monkeypatch.setattr`: o valor antigo passa a ser lido do `__dict__` da
+# instancia, e o atributo que um MagicMock cria sob demanda nao mora la. No
+# `undo` o pytest o APAGA do dublê compartilhado do conftest (`openpyxl`,
+# `pypdf`...), e os testes seguintes no mesmo processo veem
+# "MagicMock ... has no attribute 'load_workbook'". Medido: 4-5 falhas no CI
+# (3.10 e 3.12), reproduzidas aqui com a 9.2.0 e ausentes com a 9.1.1, na
+# branch oficial tambem. A saida de verdade esta no PENDENCIAS (2026-10-27).
+pytest<9.2
 # pytest-xdist (2026-10-20): roda a suite em paralelo (`-n auto`). Medido:
 # 8min 22s -> 1min 34s num conteiner de 4 nucleos, mesmo resultado. O CI e o
 # Release usam; o `scripts/check.sh` usa se estiver instalado.
