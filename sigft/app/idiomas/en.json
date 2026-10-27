@@ -579,6 +579,7 @@
   "Repetir": "Retry",
   "Repetir só estes": "Retry only these",
   "Resolva o motivo e clique em Repetir só estes: o SIG-FT relê cada um e grava de novo. Se seguir, eles ficam para a próxima rodada.": "Fix the cause and click Retry only these: SIG-FT rereads each one and saves again. If you continue, they wait for the next round.",
+  "Restaurar colunas": "Reset columns",
   "Resultados": "Results",
   "Resultados Encontrados": "Results found",
   "Resultados da Busca: {n} encontrados": "Search results: {n} found",

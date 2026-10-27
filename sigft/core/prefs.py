@@ -123,7 +123,7 @@ def _resolver(config_path):
 # 2026-09-03: `remember_file` gravava, `get_last_file` lia `None`, e o mural
 # de atividades dizia "não encontrei o mapeamento" sem nenhum erro aparecer.
 _SECOES_ESTADO = ("ultimos", "categorias", "pastas_padrao", "arquivos", "opcoes", "novidades",
-                  "preferencias", "recentes")
+                  "preferencias", "recentes", "colunas")
 
 
 def _estado_vazio() -> dict[str, dict[str, str]]:
@@ -579,3 +579,38 @@ def situacao_versao_vista(
     if not isinstance(valor, str) or not valor:
         return "ilegivel", None
     return "vista", valor
+
+
+# =============================================================================
+# Colunas lembradas de cada tabela  [2026-10-26]
+# =============================================================================
+# Ordem, largura e visibilidade das colunas de uma tabela da interface
+# (`sigft/app_qt/widgets/colunas.py`), pela CHAVE da tabela. O valor é o que
+# `colunas.descrever` monta (uma lista de dicts); validar é de quem lê
+# (`colunas.juntar`), que trata valor estragado como "nunca gravado".
+CHAVE_COLUNAS = "colunas"
+
+
+def ler_colunas(
+    chave: str,
+    *,
+    config_path: str | os.PathLike[str] | None = None,
+) -> object:
+    """O que foi guardado para a tabela `chave`, cru; `None` se nada."""
+    return _carregar_estado(config_path).get(CHAVE_COLUNAS, {}).get(chave)
+
+
+def gravar_colunas(
+    chave: str,
+    valor: object,
+    *,
+    config_path: str | os.PathLike[str] | None = None,
+) -> None:
+    """Guarda `valor` para a tabela `chave`; `None` apaga (o "Restaurar colunas")."""
+    estado = _carregar_estado(config_path)
+    secao = estado.setdefault(CHAVE_COLUNAS, {})
+    if valor is None:
+        secao.pop(chave, None)
+    else:
+        secao[chave] = valor
+    _salvar_estado(estado, config_path)

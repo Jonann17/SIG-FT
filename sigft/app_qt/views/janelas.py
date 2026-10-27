@@ -131,6 +131,8 @@ def JanelaSelecao(parent, dataframe, callback_confirmar):  # noqa: N802 -- nome 
         geometria="900x600",
         com_cancelar=False,
         ao_confirmar=lambda chaves: callback_confirmar([int(i) for i in chaves]),
+        # As colunas são as da planilha: o nome delas é a chave (não se traduz).
+        chave_colunas="selecao_de_itens",
     )
 
 
@@ -162,6 +164,8 @@ def JanelaSelecaoDuplicadas(parent, fila_completa, callback_confirmar):  # noqa:
         },
         preselecionar_tudo=True,
         ao_confirmar=_confirmar,
+        chave_colunas="selecao_duplicadas",
+        colunas_internas=("descricao", "pmib_original", "pmib_alvo"),
     )
 
 

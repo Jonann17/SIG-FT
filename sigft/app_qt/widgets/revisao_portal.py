@@ -22,6 +22,7 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QMessageBox, QVBoxLa
 from sigft.app import theme
 from sigft.app.idioma import marcar, t
 from sigft.app_qt.widgets import blocos
+from sigft.app_qt.widgets.colunas import instalar_colunas
 from sigft.app_qt.widgets.dialogos_selecao import linha_ttk, tabela_ttk
 from sigft.core import pmib_regras
 
@@ -41,6 +42,11 @@ MSG_NADA_SOBROU = marcar("Todas as fichas têm erro: nenhuma vai ao portal, e o 
 # Ficha | Campo | Valor | O que o portal vai recusar (as larguras esticam com a janela).
 COLUNAS = [(marcar("Ficha"), 160, "w"), (marcar("Campo"), 250, "w"), (marcar("Valor"), 180, "w"),
            (marcar("O que o portal vai recusar"), 490, "w")]
+# [2026-10-26] A chave interna de cada coluna de `COLUNAS`, na mesma ordem: é por
+# ela que as colunas lembradas (`widgets/colunas.py`) guardam a ordem, a largura e
+# o que está escondido; o título muda com o idioma, a chave não.
+CHAVE_COLUNAS = "revisao_portal"
+COLUNAS_INTERNAS = ("ficha", "campo", "valor", "motivo")
 GEOMETRIA = "1150x520"
 LARGURA_BOTAO = 210
 
@@ -74,6 +80,7 @@ class RevisaoAntesDoPortalDialog(QDialog):
             item = linha_ttk(self.tabela, [p.ficha, f"{p.campo} ({p.interno})", p.valor, p.mensagem])
             for coluna, texto in enumerate((p.ficha, f"{p.campo} ({p.interno})", p.valor, p.mensagem)):
                 item.setToolTip(coluna, texto)
+        self.colunas = instalar_colunas(self.tabela, CHAVE_COLUNAS, COLUNAS_INTERNAS)
         quadro = QHBoxLayout()
         quadro.setContentsMargins(10, 0, 10, 0)
         quadro.addWidget(self.tabela)
