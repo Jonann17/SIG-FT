@@ -111,18 +111,15 @@ def _autospec(parent, controller):
 
 
 def _pmib_manager(parent, controller):
-    from sigft.app_qt.views.pmib_manager import ModuloPMIBManager
-    return ModuloPMIBManager(parent, controller)
+    # 2026-10-27: uma seção de abas (Gestão PMIB, Conferência de Revisões e
+    # Revisão no AMP), como a Aplicação LMR.
+    from sigft.app_qt.views.gestao_sobressalentes import ModuloGestaoSobressalentes
+    return ModuloGestaoSobressalentes(parent, controller)
 
 
 def _busca_pmib(parent, controller):
     from sigft.app_qt.views.busca_pmib import ModuloBuscaPMIB
     return ModuloBuscaPMIB(parent, controller)
-
-
-def _conferencia_revisoes(parent, controller):
-    from sigft.app_qt.views.conferencia_revisoes import ModuloConferenciaRevisoes
-    return ModuloConferenciaRevisoes(parent, controller)
 
 
 # Registro das telas migradas: nome -> fábrica(parent, controller). O teste
@@ -143,7 +140,6 @@ TELAS = {
     "AutoSpec": _autospec,
     "PMIBManager": _pmib_manager,
     "SearchPMIB": _busca_pmib,
-    "ConferenciaRevisoes": _conferencia_revisoes,
 }
 
 # Ctrl+K (etapa 1b, 2026-10-21): o método da Home que cada `acao:` chama, das

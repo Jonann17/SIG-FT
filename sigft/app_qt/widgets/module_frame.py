@@ -69,6 +69,7 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         construir: bool = True,
         embutida: bool = False,
         console_externo=None,
+        progresso_externo=None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("tela")
@@ -103,7 +104,9 @@ class ModuleFrame(DialogosDeEspera, QWidget):
             # ROLÁVEL -- numa aba sobra menos altura, e o que não cabe sumiria.
             self.header = None
             self.label_titulo = None
-            self.progress_bar = None
+            # A barra, como o console, é a da tela de fora (o PMIB Manager tem
+            # uma para as três abas); sem ela, nenhuma.
+            self.progress_bar = progresso_externo
             self.console = console_externo
             rolagem = QScrollArea()
             rolagem.setWidgetResizable(True)

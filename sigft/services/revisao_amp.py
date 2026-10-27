@@ -381,11 +381,12 @@ def _gravar_diagnostico(resultado: ResultadoAmp, log_cb) -> None:
 
 
 def revisar_listas(listas: list[ListaParaAmp], cliente, *, versao_sigft: str, url: str, chave_posta: bool, log_cb,
-                   progress_cb=None, cancelado_cb=None, gravar_diagnostico: bool = True,
+                   progress_cb=None, cancelado_cb=None, resultado_cb=None, gravar_diagnostico: bool = True,
                    montar=montar_pedido) -> list[ResultadoAmp]:
     """Uma lista por vez (§7 do desenho). A que tem falta, ou cujo arquivo não se lê, não é
     chamada; a falha de uma não para as outras e deixa o diagnóstico em `logs\\amp\\`;
-    `cancelado_cb()` é lido entre as listas, e as que sobram ficam "parado"."""
+    `cancelado_cb()` é lido entre as listas, e as que sobram ficam "parado".
+    `resultado_cb(resultado)` recebe cada lista assim que ela acaba."""
     contexto = {"versao_sigft": versao_sigft, "url": url, "chave_posta": chave_posta}
     log_cb(f"Revisando {len(listas)} lista(s) no AMP, uma por vez...")
     resultados: list[ResultadoAmp] = []
@@ -395,20 +396,35 @@ def revisar_listas(listas: list[ListaParaAmp], cliente, *, versao_sigft: str, ur
             parado = True
             log_cb("Revisão no AMP parada pelo usuário.")
         if parado:
-            resultados.append(ResultadoAmp(lista, "parado", None, "parado antes de ir ao AMP"))
-            continue
-        if progress_cb:
-            progress_cb(min(0.05 + n / len(listas) * 0.9, 0.95))
-        resultado = _revisar(lista, cliente, montar, log_cb, **contexto)
-        if resultado.diagnostico and gravar_diagnostico:
-            _gravar_diagnostico(resultado, log_cb)
+            resultado = ResultadoAmp(lista, "parado", None, "parado antes de ir ao AMP")
+        else:
+            if progress_cb:
+                progress_cb(min(0.05 + n / len(listas) * 0.9, 0.95))
+            resultado = _revisar(lista, cliente, montar, log_cb, **contexto)
+            if resultado.diagnostico and gravar_diagnostico:
+                _gravar_diagnostico(resultado, log_cb)
         resultados.append(resultado)
+        if resultado_cb is not None:
+            resultado_cb(resultado)
     if progress_cb:
         progress_cb(1.0)
     contagem = {s: sum(r.situacao == s for r in resultados) for s in ("pronto", "falhou", "falta", "parado")}
     log_cb(f"AMP: {contagem['pronto']} HTML pronto(s), {contagem['falhou']} falha(s), "
            f"{contagem['falta']} com falta, {contagem['parado']} parada(s).")
     return resultados
+
+
+def diagnosticos_para_copiar(resultados: list[ResultadoAmp]) -> str:
+    """O texto do "Copiar diagnóstico": uma abertura para a conversa nova (o Claude na web, com o
+    repositório do SIG-FT) e o diagnóstico de cada lista que falhou. Sem falha, vazio."""
+    falhas = [r.diagnostico for r in resultados if r.diagnostico]
+    if not falhas:
+        return ""
+    abertura = (f"SIG-FT · Revisão no AMP: {len(falhas)} lista(s) falharam nesta rodada.\n"
+                "Cole este texto numa conversa nova com o Claude, com o repositório luanccozer/SIG-FT, e peça "
+                "para achar a causa. Não vai texto de documento nem a chave do webhook.\n")
+    separador = "\n" + "=" * 72 + "\n\n"
+    return abertura + separador + separador.join(falhas)
 
 
 def codigos_para_eco(listas: list[ListaParaAmp], *, ler_status=status_pmib_em_tsv) -> list[str]:

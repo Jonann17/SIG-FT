@@ -171,6 +171,34 @@ def test_cancelar_entre_as_listas(tmp_path):
     assert len(cliente.pedidos) == 1
 
 
+def test_cada_resultado_sai_antes_da_proxima_lista(tmp_path):
+    # A tela mostra cada lista quando ela volta: são até 15 minutos por lista.
+    vistos, ja_vistos_na_chamada = [], []
+    cliente = _Cliente(_ok(), _falha())
+    revisar = cliente.revisar
+
+    def espiar(pedido):
+        ja_vistos_na_chamada.append(len(vistos))
+        return revisar(pedido)
+
+    cliente.revisar = espiar
+    resultados = _rodar([_lista(tmp_path), _lista(tmp_path, OUTRO)], cliente, resultado_cb=vistos.append,
+                        gravar_diagnostico=False)
+    assert vistos == resultados and ja_vistos_na_chamada == [0, 1]
+
+
+def test_diagnosticos_para_copiar_juntam_so_as_falhas(tmp_path):
+    terceira = _lista(tmp_path / "c", "#ST00=Z01MPB020&MPB020")
+    resultados = _rodar([_lista(tmp_path), terceira, _lista(tmp_path, OUTRO)],
+                        _Cliente(_falha("model timeout"), _ok(), _falha("o AMP recusou a chave (HTTP 403)")),
+                        gravar_diagnostico=False)
+    texto = ra.diagnosticos_para_copiar(resultados)
+    assert texto.startswith("SIG-FT · Revisão no AMP: 2 lista(s) falharam nesta rodada.")
+    assert "conversa nova com o Claude" in texto and "luanccozer/SIG-FT" in texto
+    assert texto.index(resultados[0].diagnostico) < texto.index(resultados[2].diagnostico)
+    assert ra.diagnosticos_para_copiar([resultados[1]]) == ""
+
+
 def test_codigos_para_eco_junta_listas_e_materiais(tmp_path):
     tabela = ra.TabelaStatus("Lista de Materiais", "", 15, "", [f"MAT-{i}" for i in range(15)])
     codigos = ra.codigos_para_eco([_lista(tmp_path), _lista(tmp_path, OUTRO)], ler_status=lambda _c: tabela)
