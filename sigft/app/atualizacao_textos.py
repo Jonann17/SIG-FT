@@ -48,6 +48,10 @@ MSG_TAREFA_AO_ATUALIZAR = marcar(
 
 MSG_DOWNLOAD_CONFERIDO = marcar("Download conferido. Abrindo o instalador...")
 
+# [2026-10-27] A atualização por arquivos: o próprio SIG-FT aplica e se reabre.
+MSG_APLICANDO = marcar("Aplicando a atualização…")
+MSG_REABRINDO = marcar("Atualizado. Reabrindo o SIG-FT…")
+
 TEXTO_ATUALIZAR = marcar("Atualizar agora")
 TEXTO_ATUALIZANDO = marcar("Atualizando...")
 TEXTO_TENTAR_DE_NOVO = marcar("Tentar de novo")
@@ -159,3 +163,12 @@ def msg_falhou(erro: BaseException) -> str:
     return t("Não foi possível atualizar: {erro}\n\nO SIG-FT continua nesta versão. Tente de novo; "
              "se o erro se repetir, avise quem cuida do SIG-FT. O detalhe completo fica no log "
              "(Documentos\\SIG-FT\\logs\\sigft.log).", erro=erro_curto(erro))
+
+
+def msg_instalador_nao_iniciou(erro: BaseException) -> str:
+    """[2026-10-27] O instalador saiu (ou não respondeu) antes de avisar que
+    subiu (`updater.InstaladorNaoIniciou`): o SIG-FT ficou aberto."""
+    return t("O instalador não chegou a começar, e o SIG-FT continua aberto, nesta versão.\n\n"
+             "{erro}\n\nCostuma ser o antivírus, a política da empresa ou o pedido de permissão "
+             "do Windows recusado. Tente de novo; se o erro se repetir, avise quem cuida do SIG-FT.",
+             erro=erro_curto(erro))

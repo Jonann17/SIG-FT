@@ -813,3 +813,137 @@ def blocos_barra_folha():
 
     # 2026-10-20: sem `cor` -- o progresso é a `primaria` da folha.
     return blocos.barra_progresso(largura=530, altura=8).styleSheet()
+
+
+# =============================================================================
+# H. A atualizacao por ARQUIVOS, e o instalador que avisa que subiu  [2026-10-27]
+# =============================================================================
+# Ver docs/superpowers/specs/2026-10-27-atualizacao-como-cmi-design.md.
+
+@pytest.fixture
+def por_arquivos(monkeypatch):
+    """Pasta gravavel com pacote de arquivos: `aplicar_por_arquivos` e `reabrir` dublados."""
+    eventos = []
+    monkeypatch.setattr(updater, "pode_por_arquivos", lambda info: True)
+    monkeypatch.setattr(updater, "reabrir", lambda exe: eventos.append(("reabriu", exe)))
+    return eventos
+
+
+def test_por_arquivos_aplica_REABRE_e_fecha_sem_instalador(monkeypatch, raiz, qtbot, processar,
+                                                           sem_uac, tmp_path, por_arquivos):
+    exe = tmp_path / "SIG-FT.exe"
+    vistos = []
+
+    def aplicar(info, *, progresso_cb, log_cb):
+        processar()
+        vistos.append(aviso.rotulo_status.text())
+        progresso_cb(1.0)
+        por_arquivos.append("aplicou")
+        return exe
+
+    monkeypatch.setattr(updater, "aplicar_por_arquivos", aplicar)
+    monkeypatch.setattr(updater, "baixar", lambda *a, **k: pytest.fail("baixou o instalador"))
+    monkeypatch.setattr(updater, "instalar", lambda *a, **k: pytest.fail("rodou o instalador"))
+
+    aviso = _aviso(raiz, qtbot, fechar_app=lambda janela: por_arquivos.append(("fechou", janela)))
+    aviso.botao_atualizar.click()
+    processar()
+
+    assert vistos == [textos.MSG_APLICANDO]
+    assert por_arquivos == ["aplicou", ("reabriu", exe), ("fechou", raiz)]
+    assert aviso.rotulo_status.text() == textos.MSG_REABRINDO
+
+
+def test_por_arquivos_que_falha_cai_no_instalador(monkeypatch, raiz, qtbot, processar, sem_uac,
+                                                  tmp_path, por_arquivos):
+    from sigft.services import pacote_arquivos
+
+    def falha(info, **kw):
+        raise pacote_arquivos.ErroPacote("SIG-FT.exe nao confere com a versao 1.2.0")
+
+    log = []
+    monkeypatch.setattr(atualizacao, "_log", log.append)
+    monkeypatch.setattr(updater, "aplicar_por_arquivos", falha)
+    monkeypatch.setattr(updater, "baixar", lambda info, **kw: por_arquivos.append("baixou")
+                        or tmp_path / "Setup.exe")
+    monkeypatch.setattr(updater, "instalar", lambda caminho, **kw: por_arquivos.append("instalou"))
+
+    aviso = _aviso(raiz, qtbot, fechar_app=lambda janela: por_arquivos.append("fechou"))
+    aviso.botao_atualizar.click()
+    processar()
+
+    assert por_arquivos == ["baixou", "instalou", "fechou"]
+    assert any("nao confere" in str(linha) for linha in log), "o motivo vai para o log"
+
+
+def test_sem_poder_por_arquivos_nem_tenta(monkeypatch, raiz, qtbot, processar, sem_uac, tmp_path):
+    eventos = []
+    monkeypatch.setattr(updater, "pode_por_arquivos", lambda info: False)
+    monkeypatch.setattr(updater, "aplicar_por_arquivos",
+                        lambda *a, **k: pytest.fail("aplicou sem poder"))
+    monkeypatch.setattr(updater, "baixar", lambda info, **kw: tmp_path / "Setup.exe")
+    monkeypatch.setattr(updater, "instalar", lambda caminho, **kw: eventos.append("instalou"))
+
+    aviso = _aviso(raiz, qtbot, fechar_app=lambda janela: eventos.append("fechou"))
+    aviso.botao_atualizar.click()
+    processar()
+
+    assert eventos == ["instalou", "fechou"]
+
+
+def test_instalador_que_nao_iniciou_deixa_o_app_ABERTO_com_o_erro(monkeypatch, raiz, qtbot,
+                                                                 processar, sem_uac, tmp_path):
+    monkeypatch.setattr(updater, "pode_por_arquivos", lambda info: False)
+    monkeypatch.setattr(updater, "baixar", lambda info, **kw: tmp_path / "Setup.exe")
+
+    def nao_subiu(caminho, **kw):
+        raise updater.InstaladorNaoIniciou(
+            f"O instalador terminou antes de comecar (codigo 1223). Detalhes em "
+            f"{tmp_path / 'instalacao.log'}.", codigo=1223,
+            log=tmp_path / "instalacao.log")
+
+    monkeypatch.setattr(updater, "instalar", nao_subiu)
+
+    aviso = _aviso(raiz, qtbot)   # fechar_app falha o teste
+    aviso.show()
+    aviso.botao_atualizar.click()
+    processar()
+
+    status = aviso.rotulo_status.text()
+    assert "1223" in status and "instalacao.log" in status
+    assert status.startswith(textos.msg_instalador_nao_iniciou(
+        updater.InstaladorNaoIniciou("x", log=tmp_path / "instalacao.log")).split("\n")[0])
+    assert aviso.rotulo_status.property("papel") == "erro"
+    assert aviso.botao_atualizar.isEnabled() and aviso.botao_atualizar.text() == "Tentar de novo"
+
+
+def test_a_abertura_limpa_os_restos_da_atualizacao_por_arquivos(monkeypatch, raiz, processar,
+                                                                caixas, tmp_path):
+    limpos = []
+    monkeypatch.setattr(updater, "deve_verificar", lambda: True)
+    monkeypatch.setattr(updater, "checar", lambda versao, **kw: None)
+    monkeypatch.setattr(updater, "empacotado", lambda: True)
+    monkeypatch.setattr(updater, "pasta_instalacao", lambda: tmp_path)
+    from sigft.services import pacote_arquivos
+
+    monkeypatch.setattr(pacote_arquivos, "limpar_restos", lambda pasta: limpos.append(pasta) or 0)
+
+    atualizacao.verificar_na_abertura(raiz, versao_atual="1.1.0", disparar=_sincrono)
+
+    assert limpos == [tmp_path]
+
+
+def test_limpar_restos_que_falha_nao_impede_a_consulta(monkeypatch, raiz, processar, caixas,
+                                                       tmp_path):
+    perguntas = []
+    monkeypatch.setattr(updater, "deve_verificar", lambda: True)
+    monkeypatch.setattr(updater, "checar", lambda versao, **kw: perguntas.append(versao))
+    monkeypatch.setattr(updater, "empacotado", lambda: True)
+    monkeypatch.setattr(updater, "pasta_instalacao", lambda: tmp_path)
+    from sigft.services import pacote_arquivos
+
+    monkeypatch.setattr(pacote_arquivos, "limpar_restos", lambda pasta: 1 / 0)
+
+    atualizacao.verificar_na_abertura(raiz, versao_atual="1.1.0", disparar=_sincrono)
+
+    assert perguntas == ["1.1.0"]

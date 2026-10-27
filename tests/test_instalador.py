@@ -480,3 +480,46 @@ def test_o_pequeno_sem_versao_de_origem_nao_compila(iss):
 def test_o_pequeno_nao_recria_atalhos(iss_pequeno):
     # Os atalhos ja existem (vieram do completo); [Tasks] perguntaria de novo.
     assert "[Icons]" not in iss_pequeno and "[Tasks]" not in iss_pequeno
+
+
+# =============================================================================
+# J. O instalador avisa que SUBIU (`/SINAL`)  [2026-10-27]
+# =============================================================================
+# Ver docs/superpowers/specs/2026-10-27-atualizacao-como-cmi-design.md. O app
+# so fecha depois que o `InitializeSetup` cria o arquivo de `/SINAL`; se o
+# nome do parametro divergir, o arquivo nunca aparece e TODA atualizacao pelo
+# instalador termina em `InstaladorNaoIniciou` depois de 10 minutos.
+
+def _initialize_setup(texto):
+    m = re.search(r"function\s+InitializeSetup\s*\(\s*\)\s*:\s*Boolean;(.*?)\nend;",
+                  texto, re.S | re.I)
+    return m.group(1) if m else None
+
+
+def test_o_parametro_do_sinal_e_O_MESMO_que_o_app_manda(iss):
+    from sigft.services import updater
+
+    corpo = _initialize_setup(iss)
+    assert corpo is not None, "sem InitializeSetup, o app espera o sinal ate o tempo limite"
+    m = re.search(r"\{param:(\w+)\|", corpo)
+    assert m and m.group(1).upper() == updater.PARAM_SINAL.upper()
+    assert "SaveStringToFile" in corpo
+    assert re.search(r"Result\s*:=\s*True", corpo)
+
+
+@pytest.mark.parametrize("modo", ["iss_pequeno", "iss_completo"])
+def test_os_dois_modos_criam_o_sinal(modo, request):
+    assert _initialize_setup(request.getfixturevalue(modo)) is not None
+
+
+def test_a_chave_do_desinstalador_e_a_que_o_app_regrava(iss):
+    """A atualizacao por arquivos regrava `DisplayVersion` (e `DisplayName`)
+    onde o pequeno vai conferir a versao instalada."""
+    from sigft.services import updater
+
+    m = re.search(r"ChaveDesinstalar\s*=\s*'([^']+)'", iss)
+    assert m and m.group(1) == updater.CHAVE_DESINSTALAR
+    assert _diretiva(iss, "AppId").lstrip("{") in updater.CHAVE_DESINSTALAR
+    assert _diretiva(iss, "AppVerName") == "{#AppName} {#MyAppVersion}"
+    assert re.search(r'#define AppName "([^"]+)"', iss).group(1) == updater.NOME_APP
+    assert re.search(r'#define AppExe "([^"]+)"', iss).group(1) == updater.EXECUTAVEL

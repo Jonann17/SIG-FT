@@ -213,6 +213,23 @@ begin
   Result := ExpandConstant('{param:REABRIR|0}') = '1';
 end;
 
+// [2026-10-27] O instalador avisa que SUBIU, nos dois modos (pequeno e
+// completo). A atualizacao automatica passa /SINAL=<arquivo> (PARAM_SINAL em
+// sigft/services/updater.py) e so fecha o SIG-FT depois que este arquivo
+// existe; se o instalador morrer antes (antivirus, politica, UAC recusado), o
+// app continua aberto e diz por que. Copiado do CMI Suite (e do DocManager).
+// Sem /SINAL (instalacao a mao), nada muda. Quem fecha o app que ainda estiver
+// aberto continua sendo o CloseApplications=force.
+function InitializeSetup(): Boolean;
+var
+  Sinal: String;
+begin
+  Sinal := ExpandConstant('{param:SINAL|}');
+  if Sinal <> '' then
+    SaveStringToFile(Sinal, 'pronto', False);
+  Result := True;
+end;
+
 #ifdef Atualizacao
 // [2026-10-07] O instalador PEQUENO so serve para a versao de onde a
 // diferenca foi calculada (VersaoDe): sobre outra, ele deixaria uma mistura

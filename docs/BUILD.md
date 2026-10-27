@@ -100,6 +100,37 @@ Até a 1.1.1, toda atualização baixava e reinstalava o pacote inteiro (316 MB 
   bibliotecas, e por isso muda em toda versão. Os `RECORD` do numpy e do tqdm
   também mudam a cada build (os lançadores `.exe` que o pip gera), mas são KB.
 
+### Atualização por arquivos e o `/SINAL` (desde a 1.3.1)
+
+Pedido do Jonathan depois de a pequena da 1.3.1-rc.1 cair no completo na
+máquina do Luan: o método do CMI Suite. Spec:
+`docs/superpowers/specs/2026-10-27-atualizacao-como-cmi-design.md`.
+
+- **No Release**, ao lado de cada pequeno, o `.zip` só com os arquivos:
+  `SIG-FT_Itaipu_Arquivos_<de>_para_<para>.zip` (`manifesto.json` +
+  `arquivos/<caminho>`, `sigft/services/pacote_arquivos.py`), na chave
+  `arquivos` da mesma entrada do `latest.json` (`arquivo`, `sha256`,
+  `tamanho`). O `arquivos.json` de todo Release é o manifesto da versão nova.
+- **No app** (`updater.pode_por_arquivos`): com o pacote no Release, o app
+  empacotado e a pasta do programa **gravável de verdade** (instalação "só
+  para mim", em `AppData\Local\Programs`), `updater.aplicar_por_arquivos`
+  baixa o `arquivos.json` (conferido pelo `digest` da API) e o zip (conferido
+  pelo SHA256 do `latest.json`), aplica com o app aberto (renomeia o antigo
+  para `.sigft-old`, escreve o novo, confere a pasta contra o `arquivos.json`
+  novo, desfaz tudo se algo falhar), regrava `DisplayVersion`/`DisplayName` no
+  HKCU (a chave `ChaveDesinstalar` do `.iss`: o pequeno seguinte confere ali),
+  **reabre** o `.exe` desacoplado e fecha. Os `.sigft-old` são apagados na
+  abertura seguinte. Qualquer falha vai para o `sigft.log` e cai na corrente
+  de sempre (zip → exe → bin → completo).
+- **Pelo instalador**, `updater.instalar` passa `/SINAL=<%TEMP%\SIG-FT_Update\instalador_pronto.txt>`
+  e **espera** o `InitializeSetup` do `.iss` criar o arquivo (até 10 min). Se
+  o instalador sair antes, `InstaladorNaoIniciou` com o código de saída e o
+  `instalacao.log`, e o app fica aberto com o erro na janela. No disparo
+  elevado (erro 740 → `ShellExecute`) não há o processo: só o sinal e o tempo
+  limite contam.
+- Os apps já instalados ignoram a chave `arquivos` e o `/SINAL` sem efeito: o
+  `.iss` só cria o arquivo quando recebe o parâmetro.
+
 ### Canal de testes (desde a 1.2.0)
 
 Caixa **"Versões de teste"** ao lado do botão "Atualizações" da tela inicial
