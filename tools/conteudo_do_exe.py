@@ -3,9 +3,16 @@
 Por que existe (2026-10-20): a atualização pequena da 1.2.1-rc.9 levou o
 `SIG-FT.exe` inteiro (34 MB) sem nenhuma biblioteca ter mudado. O executável
 do PyInstaller é o "bootloader" (o `.exe` de verdade) com um arquivo PKG
-grudado no fim, e dentro do PKG vai o PYZ (todo o Python de terceiros).
-Comparar o `.exe` inteiro só diz "mudou"; comparar entrada por entrada diz O
-QUÊ mudou -- que é o que falta para consertar na origem.
+grudado no fim, e dentro do PKG vai o PYZ (até a 1.3.1-rc.1, todo o Python de
+terceiros). Comparar o `.exe` inteiro só diz "mudou"; comparar entrada por
+entrada diz O QUÊ mudou -- que é o que falta para consertar na origem.
+
+Foi esta lista que achou a última causa (2026-10-27): da 1.3.0 para a
+1.3.1-rc.1 só o `PYZ.pyz` mudou, porque bibliotecas mudaram. Desde então o
+`SIG-FT.spec` usa `noarchive=True`, o PYZ sai vazio (a seção `pyz` desta
+lista também) e o `.exe` só deve mudar com o bootloader, os módulos de
+arranque e os runtime hooks do PyInstaller, ou o `frontend.py`. Uma linha
+`pyz: +` de novo quer dizer que alguém tirou o `noarchive`.
 
 Uso:
     python tools/conteudo_do_exe.py dist/SIG-FT/SIG-FT.exe > conteudo-do-exe.json

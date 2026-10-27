@@ -72,7 +72,21 @@ _DADOS_DA_ANALISE = [
     ("PySide6/Qt/translations/qtbase_es.qm", "/l/PySide6/Qt/translations/qtbase_es.qm", "DATA"),
     ("outro_pacote/translations/app_de.qm", "/l/outro_pacote/translations/app_de.qm", "DATA"),
     ("assets/logo.png", str(RAIZ / "assets" / "logo.png"), "DATA"),
+] + [
+    # Com `noarchive=True` (2026-10-27) todo modulo puro chega aqui, em
+    # `a.datas`, como `.pyc` solto -- inclusive os que moram nas pastas que os
+    # filtros do spec olham (Qt, Google, Playwright).
+    (destino, "/build/localpycs/0/" + destino, "DATA") for destino in (
+        "PySide6/__init__.pyc",
+        "PySide6/support/deprecated.pyc",
+        "googleapiclient/discovery_cache/__init__.pyc",
+        "googleapiclient/discovery_cache/base.pyc",
+        "playwright/sync_api/__init__.pyc",
+        "sigft/app_qt/estilo.pyc",
+        "encodings/cp1252.pyc",
+    )
 ]
+_PYCS_DA_ANALISE = [d[0] for d in _DADOS_DA_ANALISE if d[0].endswith(".pyc")]
 
 
 @pytest.fixture
@@ -135,6 +149,17 @@ def _importa_qtnetwork(arquivo: Path) -> bool:
             if no.module == "PySide6" and any(a.name == "QtNetwork" for a in no.names):
                 return True
     return False
+
+
+def test_o_python_vai_solto_e_nenhum_filtro_do_spec_tira_um_pyc(spec_executado):
+    """`noarchive=True` (2026-10-27): as bibliotecas saem do `.exe` como `.pyc`
+    em `a.datas`. Os filtros que o spec aplica DEPOIS da analise (navegador,
+    descritores do Google, Qt que a interface nao usa) passam por eles -- e
+    nenhum pode levar um modulo junto, ou o app abriria sem ele."""
+    assert spec_executado["analysis"]["noarchive"] is True
+    entregues = {d[0] for d in spec_executado["datas"]}
+
+    assert set(_PYCS_DA_ANALISE) <= entregues, sorted(set(_PYCS_DA_ANALISE) - entregues)
 
 
 def test_o_qtnetwork_fica_de_fora_porque_ninguem_o_usa(spec_executado):

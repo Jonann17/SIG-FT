@@ -23,11 +23,11 @@ ARMADILHA que o Corella documentou e que vale para o SIG-FT tambem: o
 terminal -- nem a saida nem o codigo de saida chegam por uma chamada direta do
 PowerShell. Por isso `--conferir-pacote` GRAVA UM ARQUIVO, e o workflow o le.
 
-E a outra, medida no Corella: modulo Python puro NAO vira pasta em `_internal/`.
-O PyInstaller so deixa la o que tem extensao binaria ou arquivo de dados; o
-resto vai para dentro do PYZ. Uma conferencia que procurasse `_internal/requests`
-reprovaria um build perfeitamente bom. A pergunta certa nunca foi "o arquivo
-esta la?", e sim "o aplicativo consegue importar?".
+E a outra, medida no Corella: modulo Python puro NAO vira pasta em `_internal/`
+quando vai para o PYZ. Desde 2026-10-27 o SIG-FT.spec usa `noarchive=True` e
+todo modulo vira `.pyc` solto -- mas a pergunta certa continua nunca tendo sido
+"o arquivo esta la?" (um pacote pode ser so `.pyd`, ou namespace sem pasta
+propria), e sim "o aplicativo consegue importar?".
 """
 import ast
 import pathlib
@@ -581,15 +581,24 @@ def test_a_conferencia_so_importa_stdlib_no_topo():
     assert no_topo <= set(sys.stdlib_module_names) | {"__future__"}, no_topo
 
 
-def test_o_codigo_do_sigft_vai_fora_do_exe():
-    """2026-10-19: medido entre a 1.2.1-rc.4 e a rc.5, 37,1 dos 38,6 MB da
-    atualização pequena eram o `SIG-FT.exe` -- o código do SIG-FT morava no
-    PYZ, dentro dele. Com `module_collection_mode={"sigft": "pyc"}`, mudar um
-    módulo muda só o `.pyc` dele, e a atualização pequena encolhe."""
+def test_todo_o_python_vai_fora_do_exe():
+    """O `SIG-FT.exe` so muda quando muda o bootloader, o Python ou o
+    `frontend.py` -- nunca porque uma biblioteca mudou.
+
+    2026-10-19: medido entre a 1.2.1-rc.4 e a rc.5, 37,1 dos 38,6 MB da
+    atualizacao pequena eram o `SIG-FT.exe` -- o codigo do SIG-FT morava no
+    PYZ, dentro dele (consertado com `module_collection_mode={"sigft": "pyc"}`).
+    2026-10-27: entre a 1.3.0 e a 1.3.1-rc.1, o `PYZ.pyz` foi a unica entrada
+    do `.exe` que mudou (certifi e nltk novos, PyPDF2 fora) e a atualizacao
+    pequena foi de ~1,5 para ~38 MB. Com `noarchive=True` todo modulo puro,
+    do SIG-FT e de terceiros, vira `.pyc` solto em `_internal/` e o PYZ sai
+    vazio. Voltar a `noarchive=False` devolve as bibliotecas ao `.exe`."""
+    import re
     from pathlib import Path
 
     spec = (Path(__file__).resolve().parent.parent / "SIG-FT.spec").read_text(encoding="utf-8")
-    assert 'module_collection_mode={"sigft": "pyc"}' in spec
+    codigo = "\n".join(linha.split("#", 1)[0] for linha in spec.splitlines())
+    assert re.findall(r"\bnoarchive\s*=\s*(\w+)", codigo) == ["True"]
 
 
 def test_o_leitor_de_avif_do_pillow_fica_fora_do_pacote():

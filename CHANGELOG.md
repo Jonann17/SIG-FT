@@ -23,6 +23,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Interface: o SIG-FT guarda um **diário** de cada abertura e fechamento em `Documentos\SIG-FT\logs\diario.log`. Se da última vez ele fechou de forma inesperada, ou foi encerrado sem fechar a janela (pelo Gerenciador de Tarefas ou ao desligar o computador), a Home avisa no topo, com o botão "Abrir o registro" para mandar o arquivo a quem cuida do SIG-FT; "Entendido" tira o aviso.
 - Interface: na seleção de fichas (Upload e Upload duplicadas) e na janela **Revisão antes do portal**, as colunas podem ser **reordenadas** (arrastando o cabeçalho), **alargadas** (arrastando a borda) e **escondidas** (botão direito no cabeçalho). O SIG-FT lembra do jeito que ficou, também ao trocar de idioma, e "Restaurar colunas" volta ao padrão.
 - Interface: o **menu lateral recolhe** para só os ícones, dando mais espaço às telas: a seta no pé do menu, ou "Recolher menu" no Ctrl+K. O nome de cada tela aparece na dica, a tela aberta continua destacada, e o SIG-FT lembra se o menu estava recolhido.
+- Atualização automática: as bibliotecas também saem de dentro do `SIG-FT.exe`; a atualização pequena passa a levar só os arquivos da biblioteca que mudou, em vez do `.exe` inteiro (38 MB). A primeira depois desta ainda é grande (o `.exe` muda uma última vez); as seguintes ficam pequenas.
 
 ## 1.3.0 - 2026-10-23
 

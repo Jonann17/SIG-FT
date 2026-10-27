@@ -152,10 +152,12 @@ def conferir_pacote(modulos: list[str] | None = None) -> tuple[str, bool]:
     * `find_spec` **não importa** o módulo, o que importa num app que não pode
       carregar o pandas inteiro só para conferir.
 
-    E a pergunta certa nunca foi "o arquivo está lá?": módulo Python puro não
-    vira pasta em `_internal/` — o PyInstaller só deixa lá o que tem extensão
-    binária ou arquivo de dados, e o resto vai para dentro do PYZ. Uma
-    conferência por arquivo reprovaria um build perfeitamente bom.
+    E a pergunta certa nunca foi "o arquivo está lá?". Até a 1.3.1-rc.1 o módulo
+    Python puro de terceiros não virava pasta em `_internal/` — ia para dentro
+    do PYZ, e uma conferência por arquivo reprovaria um build perfeitamente
+    bom. Desde 2026-10-27 (`noarchive=True` no `SIG-FT.spec`) todo módulo vira
+    `.pyc` solto, mas `find_spec` responde igual nos dois formatos — e é a
+    pergunta que importa: o aplicativo consegue importar?
     """
     alvos = list(modulos if modulos is not None else MODULOS_ESSENCIAIS)
 

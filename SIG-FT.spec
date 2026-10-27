@@ -349,18 +349,56 @@ a = Analysis(
     excludes=["pytest", "_pytest", "mypy", "ruff", "torch", "transformers",
               "PySide6.QtNetwork", "tkinter", "_tkinter", "customtkinter",
               "PIL._avif", "pymupdf.layout", "pymupdf4llm", "onnxruntime"],
-    noarchive=False,
-    # O código do SIG-FT FORA do `.exe` (2026-10-19), um `.pyc` por módulo em
-    # `_internal/sigft/`. Medido entre a 1.2.1-rc.4 e a rc.5: dos 38,6 MB que
-    # mudaram, 37,1 MB eram o `SIG-FT.exe` -- o PYZ, com TODO o Python do
-    # pacote, mora dentro dele, e uma linha mudada no SIG-FT trocava o `.exe`
-    # inteiro, e a atualização pequena levava os 37 MB. Com o código à parte,
-    # mudar um módulo muda só o `.pyc` dele (provado num build de teste: o
-    # `.exe` sai idêntico byte a byte). As bibliotecas de terceiros continuam
-    # no PYZ: só mudam quando uma dependência muda. O `__file__` de cada módulo
-    # continua sendo `_internal/sigft/.../x.pyc`, o mesmo caminho "virtual"
-    # que o PYZ já dava -- quem calcula pasta a partir dele não percebe.
-    module_collection_mode={"sigft": "pyc"},
+    # TODO o Python FORA do `.exe`: um `.pyc` por módulo em `_internal/`.
+    #
+    # 1º passo (2026-10-19), só o SIG-FT: `module_collection_mode={"sigft":
+    # "pyc"}`. Medido entre a 1.2.1-rc.4 e a rc.5: dos 38,6 MB que mudaram,
+    # 37,1 MB eram o `SIG-FT.exe` -- o PYZ, com TODO o Python do pacote, mora
+    # dentro dele, e uma linha mudada no SIG-FT trocava o `.exe` inteiro. Com o
+    # código à parte, mudar um módulo muda só o `.pyc` dele (provado num build
+    # de teste: o `.exe` sai idêntico byte a byte).
+    #
+    # 2º passo (2026-10-27), as bibliotecas também: `noarchive=True`. Medido
+    # entre a 1.3.0 e a 1.3.1-rc.1 (`conteudo-do-exe.json` e `arquivos.json`
+    # do Release): o `PYZ.pyz` foi a ÚNICA entrada do `.exe` que mudou --
+    # `certifi` e `nltk` subiram e o `PyPDF2` saiu --, e a atualização pequena
+    # foi de ~1,5 MB para ~38 MB só por isso. Com `noarchive`, o PyInstaller
+    # 6.x (`_get_module_collection_mode`, em `building/build_main.py`) troca o
+    # modo PYZ por PYC para TODO módulo puro: o PYZ sai vazio, o
+    # `base_library.zip` (a stdlib de arranque) deixa de existir e vira `.pyc`
+    # solto também, e o `{"sigft": "pyc"}` ficou redundante (saiu). Dentro do
+    # `.exe` sobra o bootloader, o `frontend.py` compilado, os módulos de
+    # arranque do PyInstaller (`pyimod*`, `pyiboot01_bootstrap`) e os runtime
+    # hooks (`pyi_rth_*`): ele só muda quando muda o PyInstaller (ou o
+    # pyinstaller-hooks-contrib), o Python, o ícone/versão ou o `frontend.py`.
+    # Provado com ESTE spec num build em Linux (PyInstaller 6.22.3, Python
+    # 3.13): PYZ com 0 módulos, sem `base_library.zip`, executável de 100 KB
+    # (33,9 MB sem a opção), e `--conferir-pacote` e `--smoke` passam.
+    #
+    # O preço, aceito:
+    #   * muito mais arquivos em disco: no mesmo build, de 572 para 5660
+    #     (~5100 `.pyc`), e +51 MB, porque o `.pyc` solto não é comprimido
+    #     como no PYZ (o instalador comprime tudo de novo);
+    #   * a abertura pode ficar um pouco mais lenta: um arquivo por módulo
+    #     em vez de um arquivo só, e o antivírus do Windows olha cada um na
+    #     1ª vez (no Linux, com o disco quente, o `--smoke` levou o mesmo
+    #     tempo: ~2,5 s nos dois);
+    #   * caminho mais comprido: o `.pyc` mais fundo (do `llama_cloud`) tem
+    #     169 caracteres a partir de `_internal`, e cabe nos 260 do Windows
+    #     só porque a pasta de instalação é curta;
+    #   * a PRIMEIRA atualização depois desta ainda é grande, uma última vez:
+    #     o `.exe` muda (perde o PYZ) e todos os `.pyc` das bibliotecas são
+    #     novos. Daí em diante, dependência que muda leva só os arquivos dela.
+    #
+    # O `__file__` de cada módulo continua sendo `_internal/<pacote>/x.pyc`, o
+    # mesmo caminho "virtual" que o PYZ já dava -- quem calcula pasta a partir
+    # dele não percebe. Os `.pyc` entram em `a.datas` (destino
+    # `pacote/modulo.pyc`), então os filtros de `a.datas` lá embaixo passam
+    # por eles: nenhum casa com um `.pyc` (navegador, descritores do Google e
+    # traduções/OpenGL do Qt são todos arquivos de dados ou DLLs), e os
+    # `excludes` acima agem antes, na análise. Trava:
+    # `tests/test_conferencia_do_pacote.py` (`noarchive=True`).
+    noarchive=True,
 )
 
 # =============================================================================
@@ -464,6 +502,8 @@ print(f"[SIG-FT] Qt que a interface nao usa, fora do pacote: "
       f"{_ANTES_QT - len(a.datas) - len(a.binaries)} arquivos")
 
 
+# Com `noarchive=True` o `a.pure` sai vazio (ver o comentário no Analysis): o
+# PYZ continua existindo dentro do `.exe`, mas sem módulo nenhum.
 pyz = PYZ(a.pure)
 
 exe = EXE(
