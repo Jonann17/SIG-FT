@@ -14,8 +14,11 @@ por planilhas Excel.
 ### Windows (uso normal, desde a v1.0.0)
 
 **Baixe o instalador** na [página de Releases](https://github.com/luanccozer/SIG-FT/releases)
-e execute. Ele pergunta se quer instalar para todos os usuários (pede senha de
-administrador) ou só para você (não pede, e as atualizações rodam sem popup).
+e execute. Ele instala só para você (em AppData, sem senha de administrador),
+e as atualizações rodam sem popup. Quem tinha o SIG-FT instalado para todos os
+usuários (Program Files) passa para a instalação só sua na próxima atualização
+completa: o Windows pede a senha de administrador uma vez, para remover a cópia
+antiga.
 
 Depois disso o app **se atualiza sozinho**: toda vez que abre, ele confere se
 saiu versão nova e, se saiu, avisa, mostra o que mudou e instala com um clique

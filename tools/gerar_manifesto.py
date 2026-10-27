@@ -56,9 +56,12 @@ COMO_INSTALAR = """
 
 ### Como instalar
 
-Baixe o `SIG-FT_Itaipu_Setup_*.exe` abaixo e execute. O instalador pergunta se
-quer instalar **para todos os usuários**, que pede senha de administrador, ou
-**somente para você**, que não pede e deixa as atualizações silenciosas.
+Baixe o `SIG-FT_Itaipu_Setup_*.exe` abaixo e execute. O instalador instala
+**só para você** (em AppData), sem pedir senha de administrador, e as
+atualizações seguintes rodam sem pedido de permissão do Windows. Quem tinha o
+SIG-FT instalado **para todos os usuários** (Program Files) passa para a
+instalação só sua: o Windows pede a senha de administrador uma vez, para
+remover a cópia antiga. `Documentos\\SIG-FT` (chaves, preferências) não é tocado.
 
 > ### ⚠️ "O Windows protegeu o computador"
 >

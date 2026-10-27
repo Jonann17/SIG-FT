@@ -69,6 +69,10 @@ Dois furos fechados juntos (spec
   atualizar. Agora `instalar` passa `/SINAL=<arquivo>` e espera o
   `InitializeSetup` do `.iss` criá-lo (até `ESPERA_INSTALADOR_S`); se o
   processo sair antes, `InstaladorNaoIniciou`, e o app fica aberto.
+* **Sempre "só para mim".** O instalador é `lowest` sem pergunta, e `instalar`
+  passa `/CURRENTUSER`. Quem está em Program Files (pasta sem escrita) recebe
+  direto o COMPLETO (`checar`): ele instala a cópia da pessoa e remove a de
+  Program Files com o desinstalador antigo, elevado (UAC uma vez).
 
 ═══ Sobre o token ═══
 O repositório é privado, então a consulta exige autenticação. O token é
@@ -537,7 +541,17 @@ def checar(versao_atual: str, *, canal_testes: bool | None = None,
     finally:
         sessao.close()
 
-    info = interpretar_release(release, manifesto, versao_atual)
+    # [2026-10-27] Pasta do programa sem escrita = a instalação antiga "para
+    # todos" (Program Files). O pequeno é por usuário (o `PrepareToInstall` do
+    # `.iss` lê HKCU) e a recusaria -- com o app já fechado pelo `/SINAL`, ele
+    # reabriria e escolheria o pequeno de novo, sem fim; os arquivos nem dá
+    # para gravar. Vai direto o COMPLETO, que instala só para a pessoa e
+    # remove a cópia de Program Files (`MigrarDaInstalacaoParaTodos`).
+    para_todos = precisa_elevacao()
+    if para_todos:
+        log_cb("SIG-FT instalado para todos os usuarios: vai o instalador completo, que o "
+               "passa para a instalacao so sua.")
+    info = interpretar_release(release, manifesto, None if para_todos else versao_atual)
     if info is None:
         log_cb(f"O release v{versao_remota} existe, mas nao tem instalador (.exe) "
                f"publicado. Avise quem cuida do build.")
@@ -905,6 +919,13 @@ ARG_REABRIR = "/REABRIR=1"
 ARGS_INSTALADOR = ["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
                    "/CLOSEAPPLICATIONS", ARG_REABRIR]
 
+# [2026-10-27] O escopo, explícito como no CMI Suite (`instalador.py`), mas
+# só um: o SIG-FT agora se instala sempre por usuário. Quem estava em Program
+# Files é migrado pelo próprio instalador completo (`installer/sigft.iss`,
+# `MigrarDaInstalacaoParaTodos`): instala a cópia da pessoa e roda elevado o
+# desinstalador antigo. Fora do `.exe` não há escopo a passar.
+ESCOPO_INSTALADOR = "/CURRENTUSER"
+
 # [2026-10-27] O `/SINAL=<arquivo>`: o `InitializeSetup` do `.iss` cria o
 # arquivo logo ao subir, e só então o app fecha (ver `instalar`). O nome do
 # parâmetro tem de bater com o do `.iss` (`tests/test_instalador.py`).
@@ -947,7 +968,11 @@ def instalar(caminho: Path | str, *, log_cb: Log = _nada,
        credenciais de quem pediu: o app reabriria como administrador -- e, com
        a senha de outra pessoa no UAC, na conta dela, sem as chaves de API.
        O `runas` fica só para o executável que o exigir no manifesto (erro
-       740 no `CreateProcess`).
+       740 no `CreateProcess`). [2026-10-27] Com o instalador sempre por
+       usuário (`ESCOPO_INSTALADOR`), o único UAC da corrente é o do
+       desinstalador antigo de Program Files, que o próprio `.iss` pede no
+       fim (migração) -- o instalador e o app reaberto ficam na conta de quem
+       usa.
 
     (Houve um terceiro, soltar o mutex do `AppMutex` antes do disparo: em
     `/SILENT` o Inno que o achava abortava calado. Saiu junto com o próprio
@@ -960,10 +985,15 @@ def instalar(caminho: Path | str, *, log_cb: Log = _nada,
     sinal = pasta / ARQUIVO_SINAL
     sinal.unlink(missing_ok=True)   # o de uma atualização anterior não conta
     args = [*ARGS_INSTALADOR, f"/LOG={log}", f"/{PARAM_SINAL}={sinal}"]
+    if empacotado():
+        # [2026-10-27] Sempre só para a pessoa (o `.iss` é `lowest`, e o
+        # explícito vale mesmo se alguém compilar com outro padrão).
+        args.append(ESCOPO_INSTALADOR)
 
     if precisa_elevacao():
-        log_cb("A instalacao vai pedir permissao de administrador (o app esta "
-               "instalado para todos os usuarios). Confirme na janela do Windows.")
+        log_cb("O SIG-FT esta instalado para todos os usuarios: a versao nova vai para a "
+               "instalacao so sua, e o Windows pede a senha de administrador uma vez, para "
+               "remover a copia antiga. Recusado, a versao nova funciona do mesmo jeito.")
 
     log_cb(f"Disparando o instalador {caminho.name} (sinal em {sinal}).")
     processo = None

@@ -118,26 +118,93 @@ def test_nenhum_default_de_versao_tem_sufixo(iss):
 
 
 # =============================================================================
-# C. O escopo da instalacao -- o que voce pediu
+# C. O escopo da instalacao: sempre "so para mim"  [2026-10-27]
 # =============================================================================
+#
+# Ate 2026-10-27 o padrao era Program Files (`admin`) e o instalador PERGUNTAVA
+# o escopo (`dialog`). O usuario pediu o contrario: "eliminar o que esta em
+# Program Files e basear tudo so no que fazemos agora". A atualizacao por
+# arquivos (a do CMI Suite) so funciona com a pasta do programa gravavel, e
+# isso so existe na instalacao por usuario.
+#
+# Quem ja estava em Program Files e MIGRADO pelo instalador completo: instala
+# a copia do usuario e, no `ssPostInstall`, roda elevado o desinstalador
+# antigo. Sem isso, ficariam duas copias, e o atalho publico abriria a velha,
+# que ofereceria a atualizacao de novo, sem fim.
 
-def test_o_instalador_PERGUNTA_o_escopo(iss):
-    """Pedido do usuario: Program Files como padrao, mas ele PERGUNTA.
-
-    Quem nao tem senha de administrador escolhe "somente para mim", vai para
-    %LOCALAPPDATA%\\Programs, e ai a atualizacao automatica roda sem nenhum
-    popup do UAC.
-    """
-    assert (_diretiva(iss, "PrivilegesRequired") or "").lower() == "admin"
-
-    permitido = (_diretiva(iss, "PrivilegesRequiredOverridesAllowed") or "").lower()
-    assert "dialog" in permitido, (
-        "sem `dialog` o instalador NAO pergunta -- exige admin e pronto"
-    )
+def _codigo(texto):
+    m = re.search(r"^\[Code\]$(.*)", texto, re.M | re.S)
+    assert m, "o .iss nao tem [Code]"
+    return m.group(1)
 
 
-def test_o_padrao_e_program_files(iss):
-    assert "{autopf}" in (_diretiva(iss, "DefaultDirName") or "")
+def _rotina(texto, cabecalho):
+    """O corpo de uma `function`/`procedure` do [Code], ate o `end;` da coluna 0."""
+    m = re.search(rf"{cabecalho}.*?\nbegin\n(.*?)\nend;", _codigo(texto), re.S | re.I)
+    return m.group(1) if m else None
+
+
+def test_o_instalador_e_SEMPRE_por_usuario_sem_pergunta(iss):
+    assert (_diretiva(iss, "PrivilegesRequired") or "").lower() == "lowest"
+
+    permitido = (_diretiva(iss, "PrivilegesRequiredOverridesAllowed") or "").lower().split()
+    assert "dialog" not in permitido, "com `dialog` o instalador volta a perguntar o escopo"
+    assert permitido == ["commandline"], "o app passa /CURRENTUSER explicito: a linha de comando tem de valer"
+
+
+def test_a_pasta_padrao_e_a_do_usuario(iss):
+    """Com `lowest`, `{autopf}` e `%LOCALAPPDATA%\\Programs`; um `{pf}` ou
+    `{commonpf}` fixo levaria a Program Files, sem permissao de escrita."""
+    pasta = _diretiva(iss, "DefaultDirName") or ""
+    assert pasta.startswith("{autopf}")
+
+
+def test_a_migracao_roda_DEPOIS_de_instalar_a_copia_do_usuario(iss):
+    corpo = _rotina(iss, r"procedure\s+CurStepChanged\s*\(\s*CurStep\s*:\s*TSetupStep\s*\);")
+    assert corpo is not None, "sem CurStepChanged, a copia de Program Files fica para tras"
+    assert re.search(r"CurStep\s*=\s*ssPostInstall", corpo)
+    assert "MigrarDaInstalacaoParaTodos" in corpo
+
+
+def test_a_migracao_le_o_desinstalador_da_chave_em_HKLM(iss):
+    corpo = _rotina(iss, r"function\s+DesinstaladorParaTodos\b[^;]*;")
+    assert corpo is not None
+    assert "HKLM64" in corpo and "HKLM32" in corpo
+    assert "ChaveDesinstalar" in corpo and "'UninstallString'" in corpo
+    assert "HKCU" not in corpo, "a chave do usuario e a da copia NOVA -- nunca desinstale ela"
+
+
+def test_a_migracao_desinstala_ELEVADO_silencioso_e_ESPERA(iss):
+    corpo = _rotina(iss, r"procedure\s+MigrarDaInstalacaoParaTodos\s*;")
+    assert corpo is not None
+    chamada = re.search(r"ShellExec\((.*?)\);", corpo, re.S)
+    assert chamada, "o desinstalador antigo tem de ser chamado com ShellExec (runas)"
+    args = chamada.group(1)
+    assert "'runas'" in args, "Program Files e HKLM so saem com administrador"
+    for parametro in ("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"):
+        assert parametro in args
+    assert "ewWaitUntilTerminated" in args
+    # Instalado elevado pela TI (/ALLUSERS), a chave de HKLM e a da propria
+    # instalacao: desinstala-la apagaria o que acabou de ser instalado.
+    assert re.search(r"if\s+IsAdminInstallMode\s+or", corpo)
+
+
+def test_a_migracao_que_falha_NAO_derruba_a_instalacao(iss):
+    """UAC recusado ou desinstalador com erro: a copia do usuario ja esta
+    instalada e funciona. So vai para o log -- nada de `Abort` nem excecao."""
+    corpo = _rotina(iss, r"procedure\s+MigrarDaInstalacaoParaTodos\s*;")
+    assert "Log(" in corpo
+    for proibido in ("Abort", "RaiseException", "MsgBox"):
+        assert proibido not in corpo
+
+
+def test_o_InitializeSetup_continua_criando_o_sinal_sem_relancar(iss):
+    """A migracao e no fim; o InitializeSetup so cria o /SINAL, logo ao subir
+    -- e e ele que fecha o app antigo antes de a migracao rodar."""
+    corpo = _initialize_setup(iss)
+    assert "SaveStringToFile" in corpo
+    assert "ShellExec" not in corpo and "Exec(" not in corpo
+    assert re.search(r"Result\s*:=\s*True", corpo)
 
 
 # =============================================================================

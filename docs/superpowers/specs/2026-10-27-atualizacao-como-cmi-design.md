@@ -89,8 +89,12 @@ escreve `[atualizacao] …` no `sigft.log` e uma linha no diário.
 
 ## Fora do escopo
 
-Mudar o padrão do instalador para "só para mim"; atualizar o DocManager ou o
-Corella; o canal de testes.
+Atualizar o DocManager ou o Corella; o canal de testes. (O padrão do
+instalador mudou depois, no mesmo dia, a pedido do usuário: sempre "só para
+mim", sem pergunta, com a migração de quem estava em Program Files -- ver o
+comentário do escopo em `installer/sigft.iss` e `MigrarDaInstalacaoParaTodos`.
+Pasta sem escrita recebe direto o instalador completo, nunca o pequeno nem os
+arquivos: `updater.checar`.)
 
 ## O que não dá para provar aqui
 

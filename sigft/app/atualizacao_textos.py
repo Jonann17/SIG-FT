@@ -25,9 +25,10 @@ if TYPE_CHECKING:  # pragma: no cover
 TITULO = marcar("Atualização do SIG-FT")
 
 MSG_UAC = marcar(
-    "O SIG-FT está instalado para todos os usuários, então o Windows vai pedir "
-    "permissão de administrador. Se o pedido for recusado, o SIG-FT fecha sem "
-    "atualizar: é só abri-lo de novo."
+    "O SIG-FT está instalado para todos os usuários. Esta atualização o passa "
+    "para a instalação só sua: o Windows vai pedir a senha de administrador uma "
+    "vez, para remover a cópia antiga. Se o pedido for recusado, a versão nova "
+    "funciona do mesmo jeito."
 )
 
 MSG_COMO_FUNCIONA = marcar(

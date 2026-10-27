@@ -570,6 +570,26 @@ def test_se_o_windows_EXIGIR_elevacao_no_disparo_cai_no_runas(disparo, tmp_path)
     assert updater.ARG_REABRIR in disparo["args_elevado"]
 
 
+
+@pytest.mark.parametrize("gravavel", [True, False])
+def test_o_app_empacotado_pede_SEMPRE_so_para_mim(disparo, tmp_path, monkeypatch, gravavel):
+    """[2026-10-27] O instalador e por usuario, e o app diz isso explicito --
+    tambem em Program Files: e o instalador completo que migra essa copia."""
+    monkeypatch.setattr(updater, "empacotado", lambda: True)
+    monkeypatch.setattr(updater, "precisa_elevacao", lambda: not gravavel)
+
+    updater.instalar(tmp_path / "Setup.exe")
+
+    assert updater.ESCOPO_INSTALADOR == "/CURRENTUSER"
+    assert "/CURRENTUSER" in disparo["args"]
+    assert "/ALLUSERS" not in disparo["args"]
+
+
+def test_fora_do_exe_nao_ha_escopo_a_passar(disparo, tmp_path):
+    updater.instalar(tmp_path / "Setup.exe")
+
+    assert not {"/CURRENTUSER", "/ALLUSERS"} & set(disparo["args"])
+
 def test_outro_erro_do_disparo_NAO_vira_pedido_de_elevacao(disparo, tmp_path):
     disparo["erro"] = OSError(2, "arquivo nao encontrado")
 
@@ -651,6 +671,51 @@ def test_checar_passa_a_versao_instalada_e_escolhe_o_pequeno(com_token, monkeypa
 
     assert info.incremental is True and info.nome_arquivo == PACOTE
 
+
+
+def test_instalado_para_todos_vai_DIRETO_o_completo(com_token, monkeypatch):
+    """[2026-10-27] Pasta sem escrita = a instalacao antiga em Program Files.
+    O pequeno e por usuario (o `PrepareToInstall` le HKCU) e a recusaria --
+    com o app ja fechado pelo /SINAL, ele reabriria e pegaria o pequeno de
+    novo, sem fim. Os arquivos nem da para gravar. So o completo, que migra."""
+    release = _release_com_pequeno()
+    release["assets"].append({"name": "latest.json", "url": "https://api.github.com/x/assets/99", "size": 9})
+    release["assets"].append({"name": "arquivos.json", "url": "https://api.github.com/x/assets/98", "size": 9})
+    release["assets"].append({"name": "SIG-FT_Itaipu_Arquivos_1.0.0_para_1.1.0.zip",
+                              "url": "https://api.github.com/x/assets/97", "size": 9})
+    manifesto = _manifesto_com_pequeno()
+    manifesto["atualizacoes"][0]["arquivos"] = {
+        "arquivo": "SIG-FT_Itaipu_Arquivos_1.0.0_para_1.1.0.zip", "sha256": "ee" * 32}
+    resposta = _Resposta(conteudo=json.dumps(manifesto).encode("utf-8"))
+    monkeypatch.setattr(rede, "abrir", _abrir_devolvendo(_Resposta(release), _Sessao(resposta)))
+    monkeypatch.setattr(updater, "precisa_elevacao", lambda: True)
+    registro = []
+
+    info = updater.checar("1.0.0", canal_testes=False, log_cb=registro.append)
+
+    assert info.incremental is False and info.nome_arquivo == "SIG-FT_Itaipu_Setup_1.1.0.exe"
+    assert info.arquivos is None and info.manifesto_arquivos is None
+    assert not updater.pode_por_arquivos(info)
+    assert any("para todos" in linha for linha in registro)
+
+
+def test_com_a_pasta_gravavel_o_mesmo_release_da_o_pequeno_e_os_arquivos(com_token, monkeypatch):
+    """O par do teste de cima: so a pasta sem escrita tira o pequeno."""
+    release = _release_com_pequeno()
+    release["assets"].append({"name": "latest.json", "url": "https://api.github.com/x/assets/99", "size": 9})
+    release["assets"].append({"name": "arquivos.json", "url": "https://api.github.com/x/assets/98", "size": 9})
+    release["assets"].append({"name": "SIG-FT_Itaipu_Arquivos_1.0.0_para_1.1.0.zip",
+                              "url": "https://api.github.com/x/assets/97", "size": 9})
+    manifesto = _manifesto_com_pequeno()
+    manifesto["atualizacoes"][0]["arquivos"] = {
+        "arquivo": "SIG-FT_Itaipu_Arquivos_1.0.0_para_1.1.0.zip", "sha256": "ee" * 32}
+    resposta = _Resposta(conteudo=json.dumps(manifesto).encode("utf-8"))
+    monkeypatch.setattr(rede, "abrir", _abrir_devolvendo(_Resposta(release), _Sessao(resposta)))
+    monkeypatch.setattr(updater, "precisa_elevacao", lambda: False)
+
+    info = updater.checar("1.0.0", canal_testes=False)
+
+    assert info.incremental is True and info.arquivos is not None
 
 def test_o_pequeno_baixado_vira_exe_depois_de_conferido(monkeypatch, tmp_path):
     monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
