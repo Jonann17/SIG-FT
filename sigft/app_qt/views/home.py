@@ -42,6 +42,7 @@ from sigft.app_qt.catalogo import ACAO_CONFIGURACAO, ACOES_DA_CONFIGURACAO, ACOE
 from sigft.app_qt.widgets import blocos, controles, dialogs, mural
 from sigft.app_qt.widgets.module_frame import aplicar_dicas
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
+from sigft.core import diario
 from sigft.core.llm import catalogo, selecao
 from sigft.core.llm import usage as llm_usage
 
@@ -54,6 +55,16 @@ _ATUALIZACOES = next(a for a in ACOES_DA_CONFIGURACAO if a.chave == "atualizacoe
 # "Procurando..." e quem o devolve (`HomeView.procurar_atualizacoes`).
 TEXTO_BOTAO_ATUALIZACOES = _ATUALIZACOES.texto
 TEXTO_PROCURANDO = marcar("Procurando...")
+# O aviso da sessão anterior no topo da Home (2026-10-26): o diário de quedas
+# (`sigft/core/diario.py`) diz se a última sessão caiu ou foi encerrada de fora.
+AVISO_DA_SESSAO = {
+    diario.CAIU: marcar("Da última vez, o SIG-FT fechou de forma inesperada."),
+    diario.ENCERRADO: marcar("Da última vez, o SIG-FT foi encerrado sem fechar a janela "
+                             "(pelo Gerenciador de Tarefas ou ao desligar o computador)."),
+}
+TEXTO_ABRIR_REGISTRO = marcar("Abrir o registro")
+TEXTO_ENTENDIDO = marcar("Entendido")
+DICA_ABRIR_REGISTRO = marcar("Abre a pasta de logs, onde fica o diário do SIG-FT (diario.log).")
 
 # A barra (`_criar_barra_de_botoes` de lá): chave, texto, variante do botão e o que
 # abre. A cor de cada um é a da variante, na folha do tema. Desde 2026-10-22 só
@@ -361,6 +372,13 @@ class HomeView(QScrollArea):
         layout.setContentsMargins(46, 46, 57, 20)
         layout.setSpacing(0)
 
+        # --- AVISO DA SESSÃO ANTERIOR --- [2026-10-26] Só quando a última sessão
+        # caiu ou foi encerrada de fora; sem janela modal.
+        self.aviso_sessao = self._criar_aviso_da_sessao()
+        if self.aviso_sessao is not None:
+            layout.addWidget(self.aviso_sessao)
+            layout.addSpacing(16)
+
         # --- CABEÇALHO --- (pady (20, 5); (0, 20); 10; os de baixo somam)
         # [2026-10-20] O título virou a saudação ("Bom dia, <nome>"), com a
         # mesma fonte e altura do "SIG-FT" de antes (o nome do app já está na
@@ -415,6 +433,43 @@ class HomeView(QScrollArea):
         r.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         r.setStyleSheet(blocos.folha_fonte_tk(("Arial", 14)))
         return r
+
+    # =====================================================================
+    # AVISO DA SESSÃO ANTERIOR  [2026-10-26]
+    # =====================================================================
+    def _criar_aviso_da_sessao(self):
+        """O cartão com borda de aviso, o texto e os botões "Abrir o registro" e
+        "Entendido". `None` quando a sessão anterior fechou normal (ou o diário
+        está desligado, ou outra instância segura o diário), ou quando o aviso já
+        foi dispensado."""
+        texto = AVISO_DA_SESSAO.get(diario.aviso_pendente())
+        if texto is None:
+            return None
+        quadro = QFrame(objectName="cartao")
+        quadro.setProperty("borda", "aviso")
+        linha = QHBoxLayout(quadro)
+        linha.setContentsMargins(14, 10, 14, 10)
+        linha.setSpacing(10)
+        self.lbl_aviso_sessao = blocos.rotulo(t(texto), alinhar="esquerda")
+        linha.addWidget(self.lbl_aviso_sessao, 1)
+        self.btn_abrir_registro = blocos.botao(t(TEXTO_ABRIR_REGISTRO), variante="secundario")
+        self.btn_abrir_registro.setToolTip(t(DICA_ABRIR_REGISTRO))
+        self.btn_abrir_registro.clicked.connect(self.abrir_registro)
+        linha.addWidget(self.btn_abrir_registro)
+        self.btn_entendido = blocos.botao(t(TEXTO_ENTENDIDO), variante="primario")
+        self.btn_entendido.clicked.connect(self.dispensar_aviso_da_sessao)
+        linha.addWidget(self.btn_entendido)
+        return quadro
+
+    def abrir_registro(self) -> None:
+        """A pasta de logs (o `diario.log` e o `queda.log.anterior`), como o "Abrir logs"."""
+        pasta_de_logs.abrir(self)
+
+    def dispensar_aviso_da_sessao(self) -> None:
+        """"Entendido": o aviso some até a próxima queda."""
+        diario.dispensar_aviso()
+        if _vivo(self.aviso_sessao):
+            self.aviso_sessao.hide()
 
     # =====================================================================
     # BARRA DE BOTÕES  [2026-09-03; 2026-10-22: só atividades e gastos]

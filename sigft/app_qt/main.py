@@ -51,7 +51,7 @@ from sigft.app_qt.views.translator import ModuloTranslator
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets.marca import Marca
 from sigft.app_qt.widgets.paleta import PaletaDeComandos
-from sigft.core import instancia
+from sigft.core import diario, instancia
 from sigft.core.saida_log import desviar_saida_para_arquivo
 from sigft.app_qt import propriedades
 
@@ -408,6 +408,9 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
                 evento.ignore()
                 return
         evento.accept()
+        # [2026-10-26] O diário de quedas: esta sessão fechou pela janela. O "Não"
+        # da pergunta acima não chega aqui. Sem diário aberto, não faz nada.
+        diario.registrar_fechamento()
 
 
 class SplashScreen(QWidget):
@@ -662,6 +665,11 @@ def main() -> None:
     # antes da splash e da janela principal, que já nascem no idioma escolhido.
     if (escolhido := escolha_de_idioma.perguntar_na_abertura()) is not None:
         _aplicar_idioma(app, escolhido)
+    # [2026-10-26] O diário de quedas (`sigft/core/diario.py`): lê como a sessão
+    # anterior acabou (a Home avisa se caiu ou foi encerrada de fora), marca esta
+    # abertura e liga os ganchos de erro e o `faulthandler`. Depois do idioma (a
+    # linha da abertura o leva) e antes da janela. Nunca levanta.
+    diario.abrir(versao=_build_info.VERSAO, idioma=idioma.atual())
     splash = SplashScreen()
     janela: list[SIG_FT_App] = []
 
