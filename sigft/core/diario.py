@@ -6,7 +6,12 @@ Este diário diz: uma linha por evento, com data e hora, em
 `Documentos\\SIG-FT\\logs\\diario.log`:
 
 * `ABERTURA` na abertura, com a versão, o idioma e o sistema;
-* `FECHAMENTO pela janela` quando a janela principal fecha (o `closeEvent` aceito);
+* `FECHAMENTO pela janela` quando a janela principal fecha (o `closeEvent` aceito)
+  e quando o app fecha para se atualizar (uma linha por sessão: `registrar_fechamento`
+  chamado de novo não repete);
+* `ATUALIZACAO ...` (2026-10-27) logo antes de o app fechar para se atualizar: o
+  caminho (por arquivos, instalador pequeno ou completo), as versões e, no
+  instalador, o `.exe` e o log dele (`registrar_evento`, genérico);
 * `ERRO NAO TRATADO (thread ...)` com o traceback, pelo `sys.excepthook` e pelo
   `threading.excepthook` (os robôs rodam em threads). As linhas do traceback vêm
   com 4 espaços na frente: só a linha que começa pela data é evento.
@@ -62,6 +67,7 @@ ESPERA_TRAVA = 0.2
 ABERTURA = "ABERTURA"
 FECHAMENTO = "FECHAMENTO pela janela"
 ERRO = "ERRO NAO TRATADO"
+ATUALIZACAO = "ATUALIZACAO"
 
 # Como a sessão anterior acabou (`classificar`).
 NORMAL = "normal"
@@ -69,13 +75,15 @@ CAIU = "caiu"
 ENCERRADO = "encerrado"
 
 # Só a linha que COMEÇA pela data é evento (o traceback vem recuado).
-_EVENTO = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} (ABERTURA|FECHAMENTO|ERRO NAO TRATADO)\b")
+_EVENTO = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} "
+                     r"(ABERTURA|FECHAMENTO|ERRO NAO TRATADO|ATUALIZACAO)\b")
 
 _pasta: Path | None = None        # None: diário desligado nesta sessão
 _anterior: str | None = None
 _dispensado = False
 _arquivo_queda = None             # o queda.log aberto, onde o faulthandler escreve
 _trava: int | None = None         # descritor do diario.trava, preso pelo processo todo
+_fechamento_gravado = False       # o FECHAMENTO desta sessão já está no disco
 
 # Marca dos ganchos do diário: um segundo `abrir` no mesmo processo vê que o
 # gancho de agora já é o nosso e não empilha outro por cima (2026-10-26).
@@ -236,8 +244,24 @@ def registrar_erro(tipo, valor, rastro, *, onde: str = "") -> None:
 
 
 def registrar_fechamento() -> None:
-    """A janela principal fechou (o `closeEvent` aceito)."""
-    _gravar(FECHAMENTO)
+    """A janela principal fechou (o `closeEvent` aceito), ou o app fecha para se
+    atualizar. Uma vez por sessão: a atualização grava na thread, antes de o
+    instalador poder matar o app (`CloseApplications=force`), e o `_fechar_o_app`
+    grava de novo na thread da interface (2026-10-27). Nunca levanta."""
+    global _fechamento_gravado
+    if _fechamento_gravado:
+        return
+    if _gravar(FECHAMENTO):
+        _fechamento_gravado = True
+
+
+def registrar_evento(texto: str) -> None:
+    """Uma linha avulsa no diário (2026-10-27), como `ATUALIZACAO ...`. Nunca levanta;
+    sem diário aberto, não faz nada."""
+    try:
+        _gravar(str(texto))
+    except Exception:  # noqa: BLE001 -- o diário nunca derruba o app
+        pass
 
 
 def _instalar_ganchos(pasta: Path, *, queda_guardada: bool) -> None:
@@ -349,7 +373,8 @@ def esquecer() -> None:
     Os ganchos de `sys`/`threading` ficam: quem testa os devolve (`monkeypatch`).
     Teste de gancho usa o dublê de `faulthandler` da fixture; teste do app mantém
     `SIGFT_SEM_DIARIO` posta (o `faulthandler` de verdade é o do pytest)."""
-    global _pasta, _anterior, _dispensado, _arquivo_queda
+    global _pasta, _anterior, _dispensado, _arquivo_queda, _fechamento_gravado
+    _fechamento_gravado = False
     if _arquivo_queda is not None:
         try:
             faulthandler.disable()

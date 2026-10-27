@@ -75,6 +75,39 @@ Release tem o asset) e a URL do `arquivos.json`. O fluxo:
    com o código e o caminho do log (`instalacao.log`), e a janela mostra o erro
    com o app aberto.
 
+### O escopo do instalador e os apps antigos (revisão de 2026-10-27)
+
+O instalador COMPLETO é sempre "só para mim" (`PrivilegesRequired=lowest`,
+`PrivilegesRequiredOverridesAllowed=commandline`), e quem estava em Program
+Files é migrado por ele (`MigrarDaInstalacaoParaTodos`). O PEQUENO, não: ele
+volta ao que saiu até a 1.3.1-rc.4 (`admin` + `dialog commandline`). Os apps
+1.2.0 a 1.3.1-rc.4 em Program Files escolhem o pequeno sempre que o `de` dele
+é a versão deles, e não passam `/CURRENTUSER` nem `/SINAL`; com `lowest`, o
+`VersaoInstalada` leria HKCU, não acharia nada, recusaria e reabriria o app
+velho, que ofereceria a mesma atualização de novo, sem fim. Com `dialog`
+permitido, o `UsePreviousPrivileges` do Inno reaproveita o escopo da
+instalação existente: Program Files atualiza em Program Files, a do usuário no
+perfil. O app novo passa sempre `/CURRENTUSER`. A cópia de Program Files que o
+pequeno levar à 1.3.1-rc.6 ou depois tem a pasta sem escrita, e a atualização
+seguinte dela é o completo (`checar`), que migra.
+
+Dois cuidados a mais na escolha:
+
+- `checar` (no Windows, app empacotado, pasta gravável) lê o `DisplayVersion`
+  de HKCU; diferente da versão que roda (ou ausente), vai só o completo, com o
+  motivo no log. O pequeno o confere e recusaria; os arquivos deixariam
+  registro e pasta em versões diferentes.
+- `_registrar_versao` só regrava HKCU quando o `InstallLocation` dele (ou o
+  `Inno Setup: App Path`) é a pasta atualizada, comparada sem caixa e sem a
+  barra do fim; o resultado vai para o log.
+- O pacote de arquivos não depende do pequeno: faltando o asset do pequeno, a
+  atualização é o completo com os arquivos por cima (`interpretar_release`).
+
+A migração recusada (UAC negado, sem a senha) mostra uma caixa só, fora do
+modo silencioso: a cópia nova funciona, a antiga continua em Program Files, e
+sai por Configurações > Aplicativos > SIG-FT Itaipu, com a senha de
+administrador. No silencioso, só o log.
+
 ## Inno (`installer/sigft.iss`)
 
 `InitializeSetup` cria o arquivo de `/SINAL` (se passado) logo ao subir, nos
@@ -85,7 +118,13 @@ continua fechando o app se ele ainda estiver aberto na hora de copiar.
 
 Mesma janela. Textos novos (com `t()`): "Aplicando a atualização…", "Atualizado.
 Reabrindo o SIG-FT…", e a explicação do `InstaladorNaoIniciou`. Cada passo
-escreve `[atualizacao] …` no `sigft.log` e uma linha no diário.
+escreve `[atualizacao] …` no `sigft.log`. No diário (`diario.log`), na thread,
+logo antes de mandar fechar (o arquivo do `/SINAL` apareceu, ou os arquivos
+foram aplicados): `ATUALIZACAO <por arquivos | pelo instalador pequeno |
+pelo instalador completo> v<de> -> v<para>`, com `(exe=..., log=...)` no
+instalador, e o `FECHAMENTO` -- ali, e não só na thread da interface, porque o
+`CloseApplications=force` pode matar o app antes. O diário grava o
+`FECHAMENTO` uma vez por sessão.
 
 ## Fora do escopo
 
@@ -94,7 +133,8 @@ instalador mudou depois, no mesmo dia, a pedido do usuário: sempre "só para
 mim", sem pergunta, com a migração de quem estava em Program Files -- ver o
 comentário do escopo em `installer/sigft.iss` e `MigrarDaInstalacaoParaTodos`.
 Pasta sem escrita recebe direto o instalador completo, nunca o pequeno nem os
-arquivos: `updater.checar`.)
+arquivos: `updater.checar`. O pequeno ficou com o escopo de antes, por causa
+dos apps antigos: ver "O escopo do instalador e os apps antigos".)
 
 ## O que não dá para provar aqui
 

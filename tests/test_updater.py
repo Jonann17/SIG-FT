@@ -1330,6 +1330,36 @@ def test_sem_digest_o_arquivos_json_vai_sem_sha():
     assert info.manifesto_arquivos.sha256 == ""
 
 
+@pytest.mark.parametrize("sem", ["asset", "entrada"])
+def test_o_pacote_de_arquivos_vem_MESMO_sem_o_instalador_pequeno(sem):
+    """[2026-10-27, M4] O zip de arquivos nao depende do pequeno: faltando o
+    asset dele (ou a entrada nem o listando), a atualizacao e o completo, com
+    os arquivos por cima -- o app aplica os arquivos e, se falharem, cai no
+    completo."""
+    release = _release_com_arquivos()
+    release["assets"] = [a for a in release["assets"] if a["name"] != PACOTE]
+    manifesto = _manifesto_com_arquivos()
+    if sem == "entrada":
+        entrada = manifesto["atualizacoes"][0]
+        for chave in ("arquivo", "sha256", "tamanho"):
+            entrada.pop(chave)
+
+    info = updater.interpretar_release(release, manifesto, versao_atual="1.0.0")
+
+    assert info.incremental is False and info.nome_arquivo == "SIG-FT_Itaipu_Setup_1.1.0.exe"
+    assert info.arquivos is not None and info.arquivos.nome_arquivo == PACOTE_ARQUIVOS
+    assert info.manifesto_arquivos is not None
+
+
+def test_sem_o_pequeno_e_de_outra_versao_nao_ha_arquivos():
+    release = _release_com_arquivos()
+    release["assets"] = [a for a in release["assets"] if a["name"] != PACOTE]
+
+    info = updater.interpretar_release(release, _manifesto_com_arquivos(), versao_atual="0.9.0")
+
+    assert info.arquivos is None and not info.incremental
+
+
 # -- pode_por_arquivos --------------------------------------------------------
 
 @pytest.fixture
@@ -1418,7 +1448,8 @@ def por_arquivos(monkeypatch, tmp_path):
     monkeypatch.setattr(updater, "pasta_instalacao", lambda: velha)
     monkeypatch.setattr(updater, "pasta_download", lambda: downloads)
     registrados = []
-    monkeypatch.setattr(updater, "_registrar_versao", registrados.append)
+    monkeypatch.setattr(updater, "_registrar_versao",
+                        lambda versao, pasta, **kw: registrados.append(versao))
     abrir = _AbrirPorAsset({"90": _RespostaBinaria(zip_bytes), "91": _RespostaBinaria(arquivos_json)})
     monkeypatch.setattr(rede, "abrir", abrir)
     manifesto = _manifesto_com_arquivos(sha=hashlib.sha256(zip_bytes).hexdigest())
@@ -1516,15 +1547,17 @@ def test_sem_pacote_aplicar_por_arquivos_recusa(instalado_em):
 
 class _WinregFalso:
     HKEY_CURRENT_USER = "HKCU"
+    KEY_READ = 1
     KEY_SET_VALUE = 2
     REG_SZ = 1
 
-    def __init__(self):
+    def __init__(self, valores=None):
         self.gravados = []
         self.chaves = []
+        self.valores = dict(valores or {})
 
     def OpenKey(self, raiz, chave, reservado, acesso):  # noqa: N802 -- nome do winreg
-        self.chaves.append((raiz, chave))
+        self.chaves.append((raiz, chave, acesso))
         dono = self
 
         class _Chave:
@@ -1536,8 +1569,20 @@ class _WinregFalso:
 
         return _Chave()
 
+    def QueryValueEx(self, chave, nome):  # noqa: N802
+        if nome not in self.valores:
+            raise FileNotFoundError(2, "valor nao existe")
+        return self.valores[nome], self.REG_SZ
+
     def SetValueEx(self, chave, nome, reservado, tipo, valor):  # noqa: N802
         self.gravados.append((nome, valor))
+
+
+PASTA_DO_USUARIO = r"C:\Users\ana\AppData\Local\Programs\SIG-FT Itaipu"
+
+
+def _lendo(valores):
+    return lambda nome: valores.get(nome)
 
 
 def test_fora_do_windows_o_registro_nao_e_tocado(monkeypatch):
@@ -1545,34 +1590,137 @@ def test_fora_do_windows_o_registro_nao_e_tocado(monkeypatch):
     monkeypatch.setitem(sys.modules, "winreg", falso)
     monkeypatch.setattr(updater.sys, "platform", "linux")
 
-    updater._registrar_versao("1.1.0")
+    updater._registrar_versao("1.1.0", PASTA_DO_USUARIO)
 
     assert falso.chaves == [] and falso.gravados == []
 
 
-def test_no_windows_grava_a_versao_na_chave_do_desinstalador_do_usuario(monkeypatch):
+@pytest.mark.parametrize("registrada", [
+    PASTA_DO_USUARIO + "\\",                                  # o Inno grava com a barra no fim
+    PASTA_DO_USUARIO.lower(),                                   # caixa diferente
+    PASTA_DO_USUARIO.replace("\\", "/"),
+])
+def test_grava_a_versao_quando_HKCU_aponta_para_a_pasta_atualizada(monkeypatch, registrada):
+    falso = _WinregFalso({"InstallLocation": registrada})
+    monkeypatch.setitem(sys.modules, "winreg", falso)
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+    log = []
+
+    updater._registrar_versao("1.1.0", PASTA_DO_USUARIO, log_cb=log.append)
+
+    assert ("HKCU", updater.CHAVE_DESINSTALAR, falso.KEY_SET_VALUE) in falso.chaves
+    assert ("DisplayVersion", "1.1.0") in falso.gravados
+    assert ("DisplayName", f"{updater.NOME_APP} 1.1.0") in falso.gravados
+    assert any("gravad" in linha for linha in log)
+
+
+def test_sem_InstallLocation_vale_o_App_Path_do_Inno(monkeypatch):
     falso = _WinregFalso()
     monkeypatch.setitem(sys.modules, "winreg", falso)
     monkeypatch.setattr(updater.sys, "platform", "win32")
 
-    updater._registrar_versao("1.1.0")
+    updater._registrar_versao("1.1.0", PASTA_DO_USUARIO,
+                              ler=_lendo({"Inno Setup: App Path": PASTA_DO_USUARIO}))
 
-    assert falso.chaves == [("HKCU", updater.CHAVE_DESINSTALAR)]
     assert ("DisplayVersion", "1.1.0") in falso.gravados
-    assert ("DisplayName", f"{updater.NOME_APP} 1.1.0") in falso.gravados
+
+
+@pytest.mark.parametrize("valores, motivo", [
+    ({}, "nao tem"),
+    ({"InstallLocation": r"C:\Program Files\SIG-FT Itaipu\\"}, "outra pasta"),
+])
+def test_HKCU_que_NAO_e_desta_pasta_nao_e_regravado(monkeypatch, valores, motivo):
+    """[2026-10-27, I2] Com duas copias (a de Program Files e a do usuario),
+    regravar HKCU as cegas daria a versao de uma a outra."""
+    falso = _WinregFalso()
+    monkeypatch.setitem(sys.modules, "winreg", falso)
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+    log = []
+
+    updater._registrar_versao("1.1.0", PASTA_DO_USUARIO, log_cb=log.append, ler=_lendo(valores))
+
+    assert falso.gravados == []
+    assert any("nao regravad" in linha and motivo in linha for linha in log), log
 
 
 def test_registro_que_falha_nao_derruba_a_atualizacao(monkeypatch):
     falso = _WinregFalso()
 
     def recusa(*a, **k):
-        raise FileNotFoundError(2, "chave nao existe (instalado para todos)")
+        raise PermissionError(5, "acesso negado")
 
     falso.OpenKey = recusa
     monkeypatch.setitem(sys.modules, "winreg", falso)
     monkeypatch.setattr(updater.sys, "platform", "win32")
+    log = []
 
-    updater._registrar_versao("1.1.0")   # nao levanta
+    updater._registrar_versao("1.1.0", PASTA_DO_USUARIO, log_cb=log.append,
+                              ler=_lendo({"InstallLocation": PASTA_DO_USUARIO}))   # nao levanta
+
+    assert any("falhou" in linha for linha in log)
+
+
+def test_a_leitura_padrao_le_a_chave_do_desinstalador_em_HKCU(monkeypatch):
+    falso = _WinregFalso({"DisplayVersion": "1.0.0"})
+    monkeypatch.setitem(sys.modules, "winreg", falso)
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+
+    assert updater._ler_registro_usuario("DisplayVersion") == "1.0.0"
+    assert updater._ler_registro_usuario("InstallLocation") is None
+    assert falso.chaves[0] == ("HKCU", updater.CHAVE_DESINSTALAR, falso.KEY_READ)
+
+
+def test_a_leitura_padrao_fora_do_windows_e_None(monkeypatch):
+    monkeypatch.setattr(updater.sys, "platform", "linux")
+
+    assert updater._ler_registro_usuario("DisplayVersion") is None
+
+
+# -- checar confere o registro antes do pequeno e dos arquivos (I2) -----------
+
+@pytest.fixture
+def checar_no_windows(com_token, monkeypatch):
+    """Release com pequeno e arquivos; app empacotado no Windows, pasta gravavel."""
+    release = _release_com_arquivos()
+    release["assets"].append({"name": "latest.json", "url": "https://api.github.com/x/assets/99", "size": 9})
+    resposta = _Resposta(conteudo=json.dumps(_manifesto_com_arquivos()).encode("utf-8"))
+    monkeypatch.setattr(rede, "abrir", _abrir_devolvendo(_Resposta(release), _Sessao(resposta)))
+    monkeypatch.setattr(updater, "precisa_elevacao", lambda: False)
+    monkeypatch.setattr(updater, "empacotado", lambda: True)
+    monkeypatch.setattr(updater, "_no_windows", lambda: True)
+
+
+def test_registro_com_a_versao_que_roda_mantem_o_pequeno_e_os_arquivos(checar_no_windows):
+    lidos = []
+
+    info = updater.checar("1.0.0", canal_testes=False,
+                          ler_registro=lambda nome: lidos.append(nome) or "1.0.0")
+
+    assert info.incremental and info.arquivos is not None
+    assert lidos == ["DisplayVersion"]
+
+
+@pytest.mark.parametrize("registrada", ["0.9.0", None])
+def test_registro_com_OUTRA_versao_vai_so_o_completo(checar_no_windows, registrada):
+    """[2026-10-27, I2] O pequeno confere `DisplayVersion` e recusaria; os
+    arquivos aplicados deixariam o registro numa versao e a pasta noutra."""
+    log = []
+
+    info = updater.checar("1.0.0", canal_testes=False, log_cb=log.append,
+                          ler_registro=lambda nome: registrada)
+
+    assert info.incremental is False and info.nome_arquivo == "SIG-FT_Itaipu_Setup_1.1.0.exe"
+    assert info.arquivos is None
+    assert any("registro" in linha and "completo" in linha for linha in log), log
+
+
+def test_fora_do_windows_o_registro_nem_e_lido(checar_no_windows, monkeypatch):
+    monkeypatch.setattr(updater, "_no_windows", lambda: False)
+
+    info = updater.checar("1.0.0", canal_testes=False,
+                          ler_registro=lambda nome: pytest.fail("leu o registro"))
+
+    assert info.incremental
 
 
 # =============================================================================

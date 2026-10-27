@@ -208,6 +208,8 @@ def _fechar_o_app(janela_principal) -> None:
 
     Sem o `closeEvent`, o `FECHAMENTO` do diário é gravado aqui (2026-10-27):
     sem ele, a sessão seguinte a toda atualização diria "encerrado de fora".
+    A thread já o gravou (`JanelaAtualizacao._anotar_no_diario`); o diário
+    grava uma vez por sessão, então chamar de novo não repete a linha.
     """
     try:
         janela_principal.hide()
@@ -253,7 +255,9 @@ class JanelaAtualizacao(QDialog):
         self._disparar = disparar
         self._fechar_app = fechar_app
         self._master = master
+        self._versao_atual = versao_atual
         self._ultimo_percentual = -1
+        self._caiu_no_completo = False
 
         self.setWindowTitle(t(TITULO))
         self.resize(580, 560)
@@ -370,6 +374,7 @@ class JanelaAtualizacao(QDialog):
         # tem como parar no meio), então o "X" e o Esc ficam mudos até terminar.
         self._baixando = True
         self._ultimo_percentual = -1
+        self._caiu_no_completo = False
         self.barra.setValue(0)
         self._faixa_barra.show()
         self._mostrar_status(msg_baixando(self.info))
@@ -407,7 +412,22 @@ class JanelaAtualizacao(QDialog):
             _log(f"a atualizacao falhou: {erro}")
             interface.na_interface(self._falhou, erro)
             return
+        pequeno = self.info.incremental and not self._caiu_no_completo
+        qual = "pelo instalador pequeno" if pequeno else "pelo instalador completo"  # nao-e-interface
+        log = updater.caminho_log_instalacao()
+        self._anotar_no_diario(qual, f" (exe={caminho.name}, log={log})")  # nao-e-interface
         interface.na_interface(self._fechar_app, self._master)
+
+    def _anotar_no_diario(self, caminho: str, detalhe: str = "") -> None:
+        """Roda na THREAD, logo antes de mandar fechar para atualizar
+        (2026-10-27): `ATUALIZACAO <caminho> v<de> -> v<para>` e o FECHAMENTO.
+        Aqui, e não só no `_fechar_o_app`: o `CloseApplications=force` do
+        instalador pode matar o app antes de a thread da interface rodar, e a
+        sessão seguinte diria "encerrado de fora". O diário não repete o
+        FECHAMENTO quando o `_fechar_o_app` grava de novo. Nunca levanta."""
+        de, para = self._versao_atual, self.info.versao
+        diario.registrar_evento(f"{diario.ATUALIZACAO} {caminho} v{de} -> v{para}{detalhe}")  # nao-e-interface
+        diario.registrar_fechamento()
 
     def _por_arquivos(self) -> bool:
         """Roda na THREAD. `True` se aplicou, reabriu e mandou fechar."""
@@ -427,6 +447,8 @@ class JanelaAtualizacao(QDialog):
             interface.na_interface(self.barra.setValue, 0)
             interface.na_interface(self._mostrar_status, msg_baixando(self.info))
             return False
+        # Antes de reabrir: o processo novo lê a sessão anterior ao abrir.
+        self._anotar_no_diario("por arquivos")  # nao-e-interface
         interface.na_interface(self._mostrar_status, t(MSG_REABRINDO))
         try:
             updater.reabrir(exe)
@@ -441,6 +463,7 @@ class JanelaAtualizacao(QDialog):
     def _ao_cair_no_completo(self, completo: updater.Atualizacao) -> None:
         """Roda na THREAD: o pequeno falhou e o download virou o do completo
         (a barra recomeça pelo `progresso_cb` do serviço)."""
+        self._caiu_no_completo = True
         interface.na_interface(self._mostrar_status, msg_caiu_no_completo(completo))
 
     def _ao_progredir(self, fracao: float) -> None:

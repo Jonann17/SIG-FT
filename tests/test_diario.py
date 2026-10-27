@@ -404,3 +404,42 @@ def test_segundo_abrir_nao_empilha_os_ganchos(ambiente, monkeypatch):
         sys.excepthook(*sys.exc_info())
     assert vistos == [ValueError]
     assert _texto(ambiente.pasta).count("ERRO NAO TRATADO (thread principal)") == 1
+
+
+# --- eventos avulsos e o fechamento de quem atualiza (2026-10-27) ---------------------
+
+def test_registrar_evento_grava_uma_linha_com_data(ambiente):
+    _abrir(ambiente.pasta)
+    diario.registrar_evento(f"{diario.ATUALIZACAO} por arquivos v1.3.0 -> v1.3.1")
+    ultima = _texto(ambiente.pasta).splitlines()[-1]
+    assert diario._EVENTO.match(ultima), "a linha de atualizacao e evento, como as outras"
+    assert ultima.endswith("ATUALIZACAO por arquivos v1.3.0 -> v1.3.1")
+
+
+def test_registrar_evento_sem_diario_nao_levanta(ambiente, monkeypatch):
+    monkeypatch.setenv(diario.ENV_DESLIGAR, "1")
+    _abrir(ambiente.pasta)
+    diario.registrar_evento("ATUALIZACAO qualquer")   # nao levanta
+    monkeypatch.setattr(diario, "_gravar", lambda evento: 1 / 0)
+    diario.registrar_evento("ATUALIZACAO qualquer")   # nem quando a gravacao explode
+    assert not (ambiente.pasta / diario.ARQUIVO).exists()
+
+
+def test_atualizacao_e_depois_fechamento_e_normal():
+    linhas = [_linha("ABERTURA versao=1.3.0"), _linha("ATUALIZACAO pelo instalador completo"),
+              _linha("FECHAMENTO pela janela")]
+    assert diario.classificar(linhas) == diario.NORMAL
+
+
+def test_fechamento_registrado_duas_vezes_grava_UMA_linha(ambiente):
+    """A atualizacao grava o FECHAMENTO na thread, antes de o instalador poder
+    matar o app (`CloseApplications=force`); o `_fechar_o_app` grava de novo
+    na thread da interface. Uma linha so."""
+    _abrir(ambiente.pasta)
+    diario.registrar_fechamento()
+    diario.registrar_fechamento()
+    assert _texto(ambiente.pasta).count(diario.FECHAMENTO) == 1
+    diario.esquecer()
+    _abrir(ambiente.pasta)
+    diario.registrar_fechamento()
+    assert _texto(ambiente.pasta).count(diario.FECHAMENTO) == 2, "cada sessao tem o seu"

@@ -69,10 +69,22 @@ Dois furos fechados juntos (spec
   atualizar. Agora `instalar` passa `/SINAL=<arquivo>` e espera o
   `InitializeSetup` do `.iss` criá-lo (até `ESPERA_INSTALADOR_S`); se o
   processo sair antes, `InstaladorNaoIniciou`, e o app fica aberto.
-* **Sempre "só para mim".** O instalador é `lowest` sem pergunta, e `instalar`
-  passa `/CURRENTUSER`. Quem está em Program Files (pasta sem escrita) recebe
-  direto o COMPLETO (`checar`): ele instala a cópia da pessoa e remove a de
-  Program Files com o desinstalador antigo, elevado (UAC uma vez).
+* **Sempre "só para mim".** O instalador COMPLETO é `lowest` sem pergunta, e
+  `instalar` passa `/CURRENTUSER`. Quem está em Program Files (pasta sem
+  escrita) recebe direto o COMPLETO (`checar`): ele instala a cópia da pessoa e
+  remove a de Program Files com o desinstalador antigo, elevado (UAC uma vez).
+* **O PEQUENO fica com o escopo de antes** (`admin` + `dialog commandline`,
+  como até a 1.3.1-rc.4). Os apps 1.2.0 a 1.3.1-rc.4 em Program Files escolhem
+  o pequeno quando o `de` dele é a versão deles, sem `/CURRENTUSER` nem
+  `/SINAL`; com `lowest`, ele leria HKCU, recusaria e reabriria o app velho,
+  que o ofereceria de novo, sem fim. Com `dialog`, o Inno reaproveita o escopo
+  da instalação existente (`UsePreviousPrivileges`). A cópia de Program Files
+  que ele atualizar passa a ter este código, e a atualização seguinte dela é o
+  completo, que migra.
+* **O registro tem de ser desta pasta.** `checar` (no Windows, empacotado)
+  só oferece o pequeno e os arquivos quando o `DisplayVersion` de HKCU é a
+  versão que roda; senão, só o completo. `_registrar_versao` só regrava HKCU
+  quando o `InstallLocation` dele é a pasta atualizada.
 
 ═══ Sobre o token ═══
 O repositório é privado, então a consulta exige autenticação. O token é
@@ -304,6 +316,17 @@ def _instalador(release: dict) -> dict | None:
                  and not str(a.get("name", "")).startswith(PREFIXOS_DO_PEQUENO)), None)
 
 
+def _entrada_da_versao(manifesto: dict | None, versao_atual: str | None) -> dict | None:
+    """[2026-10-27] A entrada de `atualizacoes` do `latest.json` feita a partir
+    de `versao_atual`, ou `None`. Sem olhar o Release: o pacote de arquivos
+    vale mesmo quando o pequeno da mesma entrada não está lá (M4)."""
+    atual = str(versao_atual or "").strip().lstrip("vV")
+    if not atual or not manifesto:
+        return None
+    return next((e for e in manifesto.get("atualizacoes") or []
+                 if isinstance(e, dict) and str(e.get("de", "")).lstrip("vV") == atual), None)
+
+
 def _pacote_pequeno(release: dict, manifesto: dict | None,
                     versao_atual: str | None) -> tuple[dict, dict] | None:
     """O instalador pequeno que serve para `versao_atual`: `(asset, entrada do
@@ -433,6 +456,12 @@ def interpretar_release(release: dict, manifesto: dict | None = None,
             escolhido = dataclasses.replace(escolhido, arquivos=por_arquivos[0],
                                             manifesto_arquivos=por_arquivos[1])
         return escolhido
+    # [2026-10-27, M4] Sem o pequeno no Release, o pacote de arquivos vale do
+    # mesmo jeito: o app o aplica e, se falhar, cai no completo.
+    if ((entrada := _entrada_da_versao(manifesto, versao_atual)) is not None
+            and (por_arquivos := _pacote_de_arquivos(release, entrada, comum)) is not None):
+        return dataclasses.replace(completo, arquivos=por_arquivos[0],
+                                   manifesto_arquivos=por_arquivos[1])
     return completo
 
 
@@ -463,7 +492,8 @@ def _mais_nova(releases) -> dict | None:
 
 
 def checar(versao_atual: str, *, canal_testes: bool | None = None,
-           log_cb: Log = _nada) -> Atualizacao | None:
+           log_cb: Log = _nada,
+           ler_registro: Callable[[str], str | None] | None = None) -> Atualizacao | None:
     """A `Atualizacao` se houver versão mais nova; `None` se já está em dia.
 
     Levanta `SemToken` (build sem token, ou token recusado) ou
@@ -475,6 +505,10 @@ def checar(versao_atual: str, *, canal_testes: bool | None = None,
     sem que ninguém receba. [2026-10-07] Com o canal de testes ligado
     (`canal_testes`; `None` = a preferência salva), consulta `/releases` e fica
     com a versão mais nova, pré-lançamento inclusive.
+
+    [2026-10-27] `ler_registro` (costura do teste; padrão
+    `_ler_registro_usuario`) lê a chave do desinstalador em HKCU: ver o
+    comentário do `DisplayVersion` abaixo.
     """
     if canal_testes is None:
         canal_testes = canal_testes_ligado()
@@ -548,10 +582,22 @@ def checar(versao_atual: str, *, canal_testes: bool | None = None,
     # para gravar. Vai direto o COMPLETO, que instala só para a pessoa e
     # remove a cópia de Program Files (`MigrarDaInstalacaoParaTodos`).
     para_todos = precisa_elevacao()
+    so_completo = para_todos
     if para_todos:
         log_cb("SIG-FT instalado para todos os usuarios: vai o instalador completo, que o "
                "passa para a instalacao so sua.")
-    info = interpretar_release(release, manifesto, None if para_todos else versao_atual)
+    elif _no_windows() and empacotado():
+        # [2026-10-27, I2] O pequeno confere `DisplayVersion` em HKCU
+        # (`PrepareToInstall`) e a atualizacao por arquivos o regrava. Se ele
+        # nao diz a versao que roda (duas copias, registro de outra pasta, ou
+        # nenhum), o pequeno recusaria e os arquivos deixariam registro e
+        # pasta em versoes diferentes: vai so o completo, que acerta os dois.
+        registrada = (ler_registro or _ler_registro_usuario)("DisplayVersion")
+        if str(registrada or "").strip().lstrip("vV") != str(versao_atual).strip().lstrip("vV"):
+            so_completo = True
+            log_cb(f"O registro do Windows (HKCU) diz versao {registrada or '(nenhuma)'}, e o "
+                   f"SIG-FT aberto e a v{versao_atual}: vai so o instalador completo.")
+    info = interpretar_release(release, manifesto, None if so_completo else versao_atual)
     if info is None:
         log_cb(f"O release v{versao_remota} existe, mas nao tem instalador (.exe) "
                f"publicado. Avise quem cuida do build.")
@@ -865,18 +911,63 @@ def aplicar_por_arquivos(info: Atualizacao, *, progresso_cb: Progresso = _nada,
         zipado.unlink(missing_ok=True)
     log_cb(f"Atualizacao por arquivos aplicada: {len(alterados)} arquivo(s) trocado(s), "
            f"pasta conferida contra o {ARQUIVOS_DA_VERSAO} da v{info.versao}.")
-    _registrar_versao(info.versao)
+    _registrar_versao(info.versao, pasta, log_cb=log_cb)
     progresso_cb(1.0)
     return pasta / EXECUTAVEL
 
 
-def _registrar_versao(versao: str) -> None:
+def _no_windows() -> bool:
+    return sys.platform == "win32"
+
+
+def _ler_registro_usuario(nome: str) -> str | None:
+    """Um valor da chave do desinstalador em HKCU (`CHAVE_DESINSTALAR`), ou
+    `None` (fora do Windows, chave ou valor ausente, erro). Nunca levanta."""
+    if not _no_windows():
+        return None
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, CHAVE_DESINSTALAR, 0,
+                            winreg.KEY_READ) as chave:
+            valor, _tipo = winreg.QueryValueEx(chave, nome)
+    except OSError:
+        return None
+    return str(valor) if valor not in (None, "") else None
+
+
+def _pasta_normalizada(pasta: Path | str) -> str:
+    """Para comparar pastas do Windows: sem aspas, `/` vira `\\`, sem a barra
+    do fim, sem diferença de caixa."""
+    texto = os.path.normpath(str(pasta).strip().strip('"')).replace("/", "\\")
+    return texto.rstrip("\\").casefold()
+
+
+def _registrar_versao(versao: str, pasta: Path | str, *, log_cb: Log = _nada,
+                      ler: Callable[[str], str | None] | None = None) -> None:
     """Regrava `DisplayVersion` e `DisplayName` do desinstalador, como o Inno
     faria (só a instalação por usuário, HKCU). Melhor esforço, como o
     `_registrar_versao` do CMI Suite: o app se guia pelo `_build_info`, mas o
     instalador PEQUENO seguinte confere a versão instalada AQUI
-    (`PrepareToInstall` no `.iss`) -- sem regravar, ele recusaria a próxima."""
-    if sys.platform != "win32":
+    (`PrepareToInstall` no `.iss`) -- sem regravar, ele recusaria a próxima.
+
+    [2026-10-27, I2] Só quando a chave de HKCU é DESTA pasta: o
+    `InstallLocation` (ou o `Inno Setup: App Path`, que o Inno também grava)
+    tem de ser `pasta`. Com duas cópias (Program Files e a do usuário),
+    regravar às cegas daria a versão de uma à outra. O resultado (regravado,
+    não regravado e por quê, ou falhou) vai para `log_cb`. `ler` é a costura
+    do teste (padrão `_ler_registro_usuario`)."""
+    if not _no_windows():
+        return
+    ler = ler or _ler_registro_usuario
+    registrada = ler("InstallLocation") or ler("Inno Setup: App Path")
+    if not registrada:
+        log_cb("DisplayVersion nao regravado: a chave do SIG-FT em HKCU nao tem InstallLocation "
+               "(instalacao para todos, ou sem registro).")
+        return
+    if _pasta_normalizada(registrada) != _pasta_normalizada(pasta):
+        log_cb(f"DisplayVersion nao regravado: HKCU aponta para outra pasta ({registrada}); "
+               f"a atualizada e {pasta}.")
         return
     try:
         import winreg
@@ -885,8 +976,10 @@ def _registrar_versao(versao: str) -> None:
                             winreg.KEY_SET_VALUE) as chave:
             winreg.SetValueEx(chave, "DisplayVersion", 0, winreg.REG_SZ, versao)
             winreg.SetValueEx(chave, "DisplayName", 0, winreg.REG_SZ, f"{NOME_APP} {versao}")
-    except OSError:
-        pass
+    except OSError as erro:
+        log_cb(f"Regravar DisplayVersion em HKCU falhou: {erro}")
+        return
+    log_cb(f"DisplayVersion regravado em HKCU: v{versao}.")
 
 
 def _flags_desacoplado() -> int:
@@ -941,6 +1034,12 @@ _INTERVALO_SINAL_S = 0.2
 _ERRO_ELEVACAO_NECESSARIA = 740
 
 
+def caminho_log_instalacao() -> Path:
+    """O `/LOG=` que `instalar` passa ao instalador (sem criar a pasta): o
+    diário o cita na linha `ATUALIZACAO` (2026-10-27)."""
+    return _pasta_de_download() / ARQUIVO_LOG_INSTALACAO
+
+
 def instalar(caminho: Path | str, *, log_cb: Log = _nada,
              dormir: Callable[[float], None] = time.sleep,
              relogio: Callable[[], float] = time.monotonic,
@@ -981,7 +1080,7 @@ def instalar(caminho: Path | str, *, log_cb: Log = _nada,
     """
     caminho = Path(caminho)
     pasta = pasta_download()
-    log = pasta / ARQUIVO_LOG_INSTALACAO
+    log = pasta / ARQUIVO_LOG_INSTALACAO   # = caminho_log_instalacao()
     sinal = pasta / ARQUIVO_SINAL
     sinal.unlink(missing_ok=True)   # o de uma atualização anterior não conta
     args = [*ARGS_INSTALADOR, f"/LOG={log}", f"/{PARAM_SINAL}={sinal}"]

@@ -947,3 +947,112 @@ def test_limpar_restos_que_falha_nao_impede_a_consulta(monkeypatch, raiz, proces
     atualizacao.verificar_na_abertura(raiz, versao_atual="1.1.0", disparar=_sincrono)
 
     assert perguntas == ["1.1.0"]
+
+
+# =============================================================================
+# I. O diario de quem fecha para atualizar  [2026-10-27]
+# =============================================================================
+# Na thread, logo antes de mandar fechar: uma linha ATUALIZACAO (o caminho, as
+# versoes e, no instalador, o .exe e o log dele) e o FECHAMENTO -- antes de a
+# thread da interface rodar, porque o `CloseApplications=force` pode matar o
+# app primeiro. O `_fechar_o_app` grava de novo, e o diario nao repete.
+
+@pytest.fixture
+def diario_aberto(monkeypatch, tmp_path):
+    from sigft.core import diario, instancia
+
+    class _FaultFalso:
+        def enable(self, arquivo, all_threads=True):
+            pass
+
+        def disable(self):
+            pass
+
+    monkeypatch.delenv(diario.ENV_DESLIGAR, raising=False)
+    monkeypatch.setattr(diario, "faulthandler", _FaultFalso())
+    monkeypatch.setattr(instancia, "encerrar", lambda codigo=0: None)
+    monkeypatch.setattr(updater, "_pasta_de_download", lambda: tmp_path / "downloads")
+    diario.esquecer()
+    diario.abrir(versao="1.1.0", idioma="pt", pasta=tmp_path, ganchos=False)
+
+    def linhas():
+        return (tmp_path / diario.ARQUIVO).read_text(encoding="utf-8").splitlines()
+
+    yield linhas
+    diario.esquecer()
+
+
+def _sem_abertura(linhas):
+    return [linha.split(" ", 2)[2] for linha in linhas() if "ABERTURA" not in linha]
+
+
+def test_por_arquivos_grava_ATUALIZACAO_e_FECHAMENTO_antes_de_reabrir(
+        monkeypatch, raiz, qtbot, processar, sem_uac, tmp_path, por_arquivos, diario_aberto):
+    vistos = []
+    monkeypatch.setattr(updater, "aplicar_por_arquivos", lambda info, **kw: tmp_path / "SIG-FT.exe")
+    monkeypatch.setattr(updater, "reabrir", lambda exe: vistos.append(_sem_abertura(diario_aberto)))
+
+    aviso = _aviso(raiz, qtbot, fechar_app=atualizacao._fechar_o_app)
+    aviso.botao_atualizar.click()
+    processar()
+
+    from sigft.core import diario
+
+    esperado = [f"{diario.ATUALIZACAO} por arquivos v1.1.0 -> v1.2.0", diario.FECHAMENTO]
+    assert vistos == [esperado], "o novo processo abre lendo um fechamento normal"
+    assert _sem_abertura(diario_aberto) == esperado, "o _fechar_o_app nao repete o FECHAMENTO"
+
+
+@pytest.mark.parametrize("caiu, caminho", [(False, "pelo instalador pequeno"),
+                                           (True, "pelo instalador completo")])
+def test_instalador_grava_o_caminho_o_exe_e_o_log(monkeypatch, raiz, qtbot, processar, sem_uac,
+                                                  tmp_path, diario_aberto, caiu, caminho):
+    exe = tmp_path / ("Setup.exe" if caiu else "SIG-FT_Itaipu_Atualizacao_1.1.0_para_1.2.0.exe")
+    vistos = []
+
+    def baixar(info, *, progresso_cb, log_cb, ao_cair_no_completo):
+        if caiu:
+            ao_cair_no_completo(_info())
+        return exe
+
+    monkeypatch.setattr(updater, "pode_por_arquivos", lambda info: False)
+    monkeypatch.setattr(updater, "baixar", baixar)
+    monkeypatch.setattr(updater, "instalar", lambda c, **kw: None)
+    aviso = _aviso(raiz, qtbot, info=_info(incremental=True),
+                   fechar_app=lambda janela: vistos.append(_sem_abertura(diario_aberto)))
+    aviso.botao_atualizar.click()
+    processar()
+
+    from sigft.core import diario
+
+    log = updater.caminho_log_instalacao()
+    assert vistos == [[f"{diario.ATUALIZACAO} {caminho} v1.1.0 -> v1.2.0 "
+                       f"(exe={exe.name}, log={log})", diario.FECHAMENTO]]
+
+
+def test_completo_desde_o_inicio_e_o_completo(monkeypatch, raiz, qtbot, processar, sem_uac,
+                                              tmp_path, diario_aberto):
+    monkeypatch.setattr(updater, "pode_por_arquivos", lambda info: False)
+    monkeypatch.setattr(updater, "baixar", lambda info, **kw: tmp_path / "Setup.exe")
+    monkeypatch.setattr(updater, "instalar", lambda c, **kw: None)
+    aviso = _aviso(raiz, qtbot, fechar_app=lambda janela: None)
+    aviso.botao_atualizar.click()
+    processar()
+
+    assert "pelo instalador completo" in _sem_abertura(diario_aberto)[0]
+
+
+def test_instalador_que_nao_subiu_nao_grava_nada(monkeypatch, raiz, qtbot, processar, sem_uac,
+                                                 tmp_path, diario_aberto):
+    monkeypatch.setattr(updater, "pode_por_arquivos", lambda info: False)
+    monkeypatch.setattr(updater, "baixar", lambda info, **kw: tmp_path / "Setup.exe")
+
+    def nao_subiu(caminho, **kw):
+        raise updater.InstaladorNaoIniciou("saiu antes", codigo=1)
+
+    monkeypatch.setattr(updater, "instalar", nao_subiu)
+    aviso = _aviso(raiz, qtbot)
+    aviso.botao_atualizar.click()
+    processar()
+
+    assert _sem_abertura(diario_aberto) == []

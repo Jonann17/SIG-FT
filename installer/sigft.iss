@@ -103,8 +103,27 @@ UninstallDisplayIcon={app}\{#AppExe}
 ; So `commandline`, sem `dialog`: sem `dialog` o Inno nao pergunta. O app
 ; passa `/CURRENTUSER` explicito (`updater.instalar`); `/ALLUSERS` continua
 ; aceito para a TI, mas nada no SIG-FT o usa.
+;
+; [2026-10-27] EXCETO no PEQUENO (`#ifdef Atualizacao`), que volta ao que saiu
+; ate a 1.3.1-rc.4: `admin` + `dialog commandline`. Os apps 1.2.0 a
+; 1.3.1-rc.4 instalados em Program Files escolhem o pequeno sempre que o `de`
+; dele e a versao deles, e nao passam `/CURRENTUSER` nem `/SINAL`. Com
+; `lowest`, o `VersaoInstalada` leria HKCU, nao acharia nada, recusaria e
+; reabriria o app velho (`/REABRIR`) -- que ofereceria a mesma atualizacao de
+; novo, sem fim. Com `dialog` permitido, o `UsePreviousPrivileges` (padrao
+; `yes`) do Inno reaproveita o escopo da instalacao existente: quem estava
+; "para todos" atualiza em Program Files, quem estava "so para mim" atualiza
+; no perfil, como antes. O app novo passa sempre `/CURRENTUSER`, entao uma
+; instalacao por usuario continua por usuario. A copia de Program Files que o
+; pequeno levar a 1.3.1-rc.6 ou depois tem a pasta sem escrita, e a
+; atualizacao seguinte dela e o COMPLETO (`updater.checar`), que migra.
+#ifdef Atualizacao
+PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=dialog commandline
+#else
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=commandline
+#endif
 
 ; --- Atualizacao por cima da versao anterior ------------------------------
 ; O Windows nao deixa sobrescrever um .exe em execucao: o SIG-FT aberto tem de
@@ -282,10 +301,16 @@ begin
   Result := Exe <> '';
 end;
 
+// [2026-10-27] Recusada (UAC negado, sem a senha de administrador) ou com
+// erro, a migracao AVISA quem esta vendo, uma vez: sem isso a pessoa ficaria
+// com duas copias sem saber, e o atalho publico abriria a velha. No modo
+// silencioso (a atualizacao automatica), so o log -- caixa ali nao tem quem
+// leia, e a proxima atualizacao completa tenta de novo.
 procedure MigrarDaInstalacaoParaTodos;
 var
   Exe: String;
   Codigo: Integer;
+  Removida: Boolean;
 begin
   // Rodando elevado (/ALLUSERS da TI), a instalacao E a de HKLM: nada a migrar.
   if IsAdminInstallMode or not DesinstaladorParaTodos(Exe) then
@@ -296,6 +321,7 @@ begin
     Exit;
   end;
   Log('Migracao: removendo a copia para todos os usuarios (' + Exe + '), com o UAC.');
+  Removida := False;
   if not ShellExec('runas', Exe, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '',
                    SW_HIDE, ewWaitUntilTerminated, Codigo) then
     Log('Migracao: o desinstalador antigo nao rodou (' + SysErrorMessage(Codigo) +
@@ -303,7 +329,21 @@ begin
   else if Codigo <> 0 then
     Log(Format('Migracao: o desinstalador antigo saiu com o codigo %d. A copia so para voce ja esta instalada.', [Codigo]))
   else
+  begin
     Log('Migracao: a copia para todos os usuarios foi removida.');
+    Removida := True;
+  end;
+  if not Removida then
+  begin
+    if not WizardSilent then
+      MsgBox('A versao nova do SIG-FT Itaipu ja esta instalada so para voce e funciona normalmente.' + #13#10#13#10 +
+             'A copia antiga, instalada para todos os usuarios em Program Files, continua neste computador: ' +
+             'o Windows nao deu a permissao de administrador para remove-la.' + #13#10#13#10 +
+             'Para remove-la: Configuracoes > Aplicativos > SIG-FT Itaipu (a entrada que pede a senha de ' +
+             'administrador) > Desinstalar.', mbInformation, MB_OK)
+    else
+      Log('Migracao: modo silencioso, sem aviso na tela. A copia de Program Files continua; a proxima atualizacao completa tenta de novo.');
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -320,10 +360,11 @@ end;
 // do pequeno), na mesma visao em que esta instalacao vai gravar. Diferente:
 // nada e copiado, e o app volta a abrir; na abertura seguinte o app escolhe o
 // arquivo pelo que de fato esta instalado.
-// [2026-10-27] Com o instalador sempre por usuario, o pequeno so serve para a
-// instalacao "so para mim" (HKCU). Quem esta em Program Files e recusado aqui
-// -- por isso o app nem o oferece a essa pessoa: com a pasta sem escrita, vai
-// direto o completo, que faz a migracao (`updater.checar`).
+// [2026-10-27] O pequeno ficou com o escopo de antes (`admin` + `dialog`, ver
+// o [Setup]): em Program Files ele roda elevado e le HKLM; por usuario
+// (`/CURRENTUSER` do app novo, ou o escopo anterior reaproveitado pelo Inno
+// para o app antigo), le HKCU. O app novo em Program Files nem o oferece: com
+// a pasta sem escrita, vai direto o completo, que migra (`updater.checar`).
 function VersaoInstalada: String;
 begin
   Result := '';

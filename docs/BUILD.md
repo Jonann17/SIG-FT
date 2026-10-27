@@ -130,6 +130,19 @@ máquina do Luan: o método do CMI Suite. Spec:
   limite contam.
 - Os apps já instalados ignoram a chave `arquivos` e o `/SINAL` sem efeito: o
   `.iss` só cria o arquivo quando recebe o parâmetro.
+- **O escopo dos dois modos do `.iss`.** O completo é sempre "só para mim"
+  (`PrivilegesRequired=lowest`, `PrivilegesRequiredOverridesAllowed=commandline`)
+  e migra quem estava em Program Files (desinstala a cópia antiga, elevado; o
+  UAC recusado mostra uma caixa dizendo como removê-la à mão, e no silencioso
+  só o log). O pequeno (`/DAtualizacao=1`) ficou com o de até a 1.3.1-rc.4
+  (`admin` + `dialog commandline`): os apps 1.2.0 a 1.3.1-rc.4 em Program Files
+  o rodam sem `/CURRENTUSER`, e com `lowest` ele recusaria e reabriria o app
+  velho, sem fim. A cópia de Program Files atualizada assim recebe o completo
+  na vez seguinte (pasta sem escrita), que migra.
+- **O registro.** No Windows, o app só oferece o pequeno e os arquivos quando
+  o `DisplayVersion` de HKCU é a versão que está rodando (senão, o completo, e
+  o motivo no `sigft.log`), e só regrava HKCU quando o `InstallLocation` dele é
+  a pasta atualizada.
 
 ### Canal de testes (desde a 1.2.0)
 
@@ -168,6 +181,8 @@ inicial: ele faz a mesma pergunta e sempre responde.
 | o que o instalador fez | `%TEMP%\SIG-FT_Update\instalacao.log` |
 | o instalador baixado (o completo ou o pequeno, já como `.exe`) | `%TEMP%\SIG-FT_Update\` |
 | por que o pequeno não instalou (versão de origem diferente) | `%TEMP%\SIG-FT_Update\instalacao.log`, linha `Atualizacao recusada` |
+| por qual caminho a última atualização saiu (arquivos, pequeno, completo) | `Documentos\SIG-FT\logs\diario.log`, linha `ATUALIZACAO` |
+| a migração de Program Files | `%TEMP%\SIG-FT_Update\instalacao.log`, linhas `Migracao:` |
 
 ### Sem permissão para criar tag?
 

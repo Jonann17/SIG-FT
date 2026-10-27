@@ -144,12 +144,27 @@ def _rotina(texto, cabecalho):
     return m.group(1) if m else None
 
 
-def test_o_instalador_e_SEMPRE_por_usuario_sem_pergunta(iss):
-    assert (_diretiva(iss, "PrivilegesRequired") or "").lower() == "lowest"
+def test_o_instalador_COMPLETO_e_SEMPRE_por_usuario_sem_pergunta(iss_completo):
+    assert (_diretiva(iss_completo, "PrivilegesRequired") or "").lower() == "lowest"
 
-    permitido = (_diretiva(iss, "PrivilegesRequiredOverridesAllowed") or "").lower().split()
+    permitido = (_diretiva(iss_completo, "PrivilegesRequiredOverridesAllowed") or "").lower().split()
     assert "dialog" not in permitido, "com `dialog` o instalador volta a perguntar o escopo"
     assert permitido == ["commandline"], "o app passa /CURRENTUSER explicito: a linha de comando tem de valer"
+
+
+def test_o_PEQUENO_volta_ao_escopo_de_ate_a_rc4(iss_pequeno):
+    """[2026-10-27, C1] Os apps 1.2.0 a 1.3.1-rc.4 em Program Files escolhem o
+    PEQUENO quando o `de` dele e a versao deles, e nao passam `/CURRENTUSER`
+    nem `/SINAL`. Com `lowest`, o `VersaoInstalada` leria HKCU, nao acharia
+    nada, recusaria e reabriria o app velho -- que ofereceria o pequeno de
+    novo, sem fim. O pequeno fica com o escopo de antes (`admin` + `dialog`,
+    e o `UsePreviousPrivileges` do Inno reaproveita o escopo da instalacao
+    existente); o app novo passa `/CURRENTUSER`, e a copia de Program Files
+    que ele atualizar recebe o COMPLETO na vez seguinte, que migra."""
+    assert (_diretiva(iss_pequeno, "PrivilegesRequired") or "").lower() == "admin"
+    permitido = (_diretiva(iss_pequeno, "PrivilegesRequiredOverridesAllowed") or "").lower().split()
+    assert sorted(permitido) == ["commandline", "dialog"]
+    assert "UsePreviousPrivileges=no" not in iss_pequeno
 
 
 def test_a_pasta_padrao_e_a_do_usuario(iss):
@@ -191,11 +206,27 @@ def test_a_migracao_desinstala_ELEVADO_silencioso_e_ESPERA(iss):
 
 def test_a_migracao_que_falha_NAO_derruba_a_instalacao(iss):
     """UAC recusado ou desinstalador com erro: a copia do usuario ja esta
-    instalada e funciona. So vai para o log -- nada de `Abort` nem excecao."""
+    instalada e funciona. Vai para o log -- nada de `Abort` nem excecao."""
     corpo = _rotina(iss, r"procedure\s+MigrarDaInstalacaoParaTodos\s*;")
     assert "Log(" in corpo
-    for proibido in ("Abort", "RaiseException", "MsgBox"):
+    for proibido in ("Abort", "RaiseException"):
         assert proibido not in corpo
+
+
+def test_a_migracao_recusada_AVISA_quem_esta_vendo_e_so_loga_no_silencioso(iss):
+    """[2026-10-27, I1] Sem o aviso, quem recusou o UAC (ou nao tem a senha)
+    ficaria com duas copias sem saber. Uma caixa so, informativa, e so fora
+    do modo silencioso; no silencioso, so o log."""
+    corpo = _rotina(iss, r"procedure\s+MigrarDaInstalacaoParaTodos\s*;")
+    assert corpo.count("MsgBox(") == 1
+    aviso = re.search(r"if\s+not\s+WizardSilent\s+then\s+MsgBox\((.*?)\)\s*else\s+Log\(", corpo, re.S)
+    assert aviso, "a caixa so aparece fora do silencioso, e o silencioso vai para o log"
+    texto = aviso.group(1)
+    assert "mbInformation" in texto
+    for trecho in ("Program Files", "Aplicativos", "SIG-FT Itaipu", "administrador"):
+        assert trecho in texto
+    # So quando a remocao NAO aconteceu.
+    assert re.search(r"if\s+not\s+Removida\s+then", corpo)
 
 
 def test_o_InitializeSetup_continua_criando_o_sinal_sem_relancar(iss):
