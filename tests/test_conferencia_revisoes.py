@@ -150,6 +150,13 @@ def test_pasta_pelo_link_relativo(tmp_path):
     assert cr.resolver_pasta(LINK, tmp_path, CODIGO, None) == arquivo.parent
 
 
+def test_resolver_status_pmib_devolve_o_arquivo(tmp_path):
+    arquivo = _status_pmib(tmp_path)
+    assert cr.resolver_status_pmib(LINK, tmp_path, CODIGO, None) == arquivo
+    movido = _status_pmib(tmp_path / "raiz", subpasta="Movida")
+    assert cr.resolver_status_pmib("Antiga/x_STATUS_PMIB.xlsx", tmp_path, CODIGO, tmp_path / "raiz") == movido
+
+
 def test_pasta_pelo_codigo_quando_o_link_quebrou(tmp_path):
     arquivo = _status_pmib(tmp_path / "raiz", subpasta="Movida")
     assert cr.resolver_pasta("Antiga/x_STATUS_PMIB.xlsx", tmp_path, CODIGO, tmp_path / "raiz") == arquivo.parent

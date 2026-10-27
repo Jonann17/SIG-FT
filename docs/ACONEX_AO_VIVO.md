@@ -11,7 +11,11 @@ desenho.
 | `docs/superpowers/plans/2026-10-26-aconex-ao-vivo.md` | o plano: 12 tarefas, com os testes de cada uma |
 | `docs/base-conhecimento/14-aconex-e-conferencia-de-revisoes.md` | o que o código faz hoje |
 | `docs/ROTEIRO_DE_TESTE.md`, Etapa 5b | o teste na GE (portões G1 e G2) |
-| `docs/refatoracao/PENDENCIAS.md`, seção 2026-10-26 | pendências desta frente |
+| `docs/refatoracao/PENDENCIAS.md`, seções 2026-10-26 e 2026-10-27 | pendências desta frente |
+| `docs/superpowers/specs/2026-10-27-amp-revisao-de-listas-design.md` | o desenho da peça 2 (Revisão no AMP) |
+| `docs/superpowers/plans/2026-10-27-amp-revisao-de-listas.md` | o plano da peça 2: 6 tarefas |
+| `amp/revisao_de_listas/LEIA-ME.md` | ligar o workflow no n8n, e o que fazer quando ele falha |
+| `docs/ROTEIRO_DE_TESTE.md`, Etapa 5c | o teste da peça 2 na GE |
 
 ## O que é
 
@@ -36,7 +40,7 @@ aplicar as mudanças.
 | 7 | cliente do Aconex (token, busca paginada, download) sobre `core/rede` |
 | 8 | navegação de páginas igual à do DocManager e o diagnóstico das buscas |
 | 9 | serviço da Conferência de Revisões |
-| 10 | tela "10. Conferência de Revisões" e o botão "Testar conexão com o Aconex" |
+| 10 | tela "10. Conferência de Revisões" e o botão "Testar conexão com o Aconex" (na rc.2 virou aba do PMIB Manager) |
 
 Validação só de leitura na mapeadora real, em 26/10: 95 listas, 47 com link (46
 resolvem direto, nenhum codificado com `%`); a conferência deu 4 aprovadas e 1 não
@@ -47,8 +51,38 @@ aprovada com divergência, 42 em dia e 48 sem `_STATUS_PMIB`.
 - **Tarefa 11**, Gestão PMIB com o histórico ao vivo. **Parada no portão G1.**
 - **Tarefa 12**, fechamento e validação ao vivo (G2). Parte dela já saiu na rc.1:
   o bloco do CHANGELOG, a base de conhecimento e a Etapa 5b do roteiro.
-- A peça 2 (AMP), com desenho próprio. O que passa para ela está na §5.6 do
-  desenho.
+- A peça 2 (AMP): feita na 1.3.1-rc.2; falta a validação na GE (seção abaixo).
+
+## Onde parou a peça 2 (2026-10-27)
+
+**Feito, no pré-lançamento 1.3.1-rc.2** (plano `2026-10-27-amp-revisao-de-listas.md`):
+
+| Tarefa | Entregou |
+|---|---|
+| 1 | o workflow do n8n (`amp/revisao_de_listas/`): o pedido ao agente, o gerador do `.json` e o LEIA-ME |
+| 2 | o pedido de cada lista: o texto dos PDFs por página e o `_STATUS_PMIB` em tabulação |
+| 3 | o cliente do webhook (`core/amp/cliente.py`): ping, eco e revisar |
+| 4 | a rodada, o HTML sem sobrescrever e o diagnóstico copiável |
+| 5 | o PMIB Manager em abas (correção do Luan) e a aba Revisão no AMP; as chaves do webhook |
+| 6 | changelog, roteiro (Etapa 5c), base de conhecimento e pendências |
+
+**Nunca rodou de verdade:** o AMP só existe na rede da GE. Nada aqui provou que o nó de
+modelo responde ao pedido inteiro, nem o tamanho de PDF que ele aguenta.
+
+**Como continuar a peça 2:**
+
+1. **Etapa 5c do roteiro, na GE**, com a rc.2: importar e publicar o workflow (LEIA-ME),
+   pôr o endereço e a chave, "Testar conexão com o AMP" (o eco é o teste de
+   mascaramento), uma lista e a conferência do HTML.
+2. **Se falhar,** o Luan cola o "Copiar diagnóstico" numa conversa nova: o texto já diz o
+   que ler no repositório, e as causas prováveis estão na tabela de sintomas do LEIA-ME.
+3. **Se o agente errar** (item inventado, página errada, andamento da equipe apagado):
+   melhore `amp/revisao_de_listas/pedido.md`, rode o gerador e reimporte. O pedido diz o
+   que se quer, não como montar o HTML: os agentes do AMP já têm o formato deles.
+4. **PDF grande:** o pedido vai num prompt só. Se o modelo recusar pelo tamanho (o
+   diagnóstico mostra os caracteres), a saída é dividir por páginas no workflow: desenho
+   novo.
+5. **A peça 3** (aplicar sozinho no Excel) fica para quando o Luan confiar no HTML.
 
 ## Como continuar
 
@@ -80,8 +114,9 @@ aprovada com divergência, 42 em dia e 48 sem `_STATUS_PMIB`.
    7 (máquina sem cofre pede o extrato) do G2 entram na Etapa 5b; a
    `11-pmib-manager-backend.md` ganha a fonte ao vivo; o bloco da próxima versão
    vai no CHANGELOG.
-5. **Release:** `.claude/skills/sigft-lancar-versao/`. O próximo pré-lançamento
-   desta versão é a `1.3.1-rc.2`. Release normal só com o "sim" explícito do Luan.
+5. **Release:** `.claude/skills/sigft-lancar-versao/`. A `1.3.1-rc.2` levou a peça 2; o
+   próximo pré-lançamento desta versão é a `1.3.1-rc.3`. Release normal só com o "sim"
+   explícito do Luan.
 
 ## Decisões já tomadas
 
@@ -98,10 +133,10 @@ pequena.
   por sonda, e a sonda "Register inteiro" como referência para dizer se a sintaxe
   filtrou. A busca exata vazia pula só as sondas do Tracking ID. *Custo:* uma
   requisição a mais.
-- **A Home rola com 13 cartões** numa janela de 1280x850. Os 12 cabiam sem rolar
-  (decisão de 07/10). `test_medidas_da_home` foi atualizado com o porquê. **Está
-  para rever com o Luan:** encolher os cartões, ou juntar a Conferência ao PMIB
-  Manager. *Custo:* a Home rola.
+- **A Conferência é aba do PMIB Manager** (correção do Luan em 27/10), ao lado da Gestão
+  PMIB e da Revisão no AMP, no padrão da Aplicação LMR (`views/gestao_sobressalentes.py`):
+  a Home voltou aos 12 cartões sem rolar. *Custo:* na aba Gestão PMIB, a 1280x850, o
+  "CONFERIR NO PORTAL" fica abaixo da dobra, e a aba rola.
 - **Sem perfil, ou com o login recusado,** a conferência mostra as listas e só
   avisa no console (`[AVISO]`, que entra no resumo do fim do lote). *Custo:* o
   aviso não salta numa caixa.
@@ -153,7 +188,10 @@ Também em `PENDENCIAS.md` (2026-10-26). Nenhuma impede o uso.
   `tests/test_qt_home_paineis.py` (medidas da Home, se o número de cartões muda),
   as traduções (`python tools/textos_da_interface.py --faltando es` e `en`) e
   nenhuma área rolando de lado (`test_qt_idioma_varredura.py`, `test_qt_letra.py`).
-  Termine com `QT_QPA_PLATFORM=offscreen python frontend.py --smoke`.
+  Aba nova numa seção (o PMIB Manager) também: `test_qt_arrastar_telas.py` acha o botão
+  na tela embutida, `test_qt_console_redimensionavel.py` lista a seção, e as tabelas
+  têm de caber na aba (`test_as_tabelas_cabem_na_aba`: as colunas esticam, mas não
+  encolhem). Termine com `QT_QPA_PLATFORM=offscreen python frontend.py --smoke`.
 - **`core/aconex/_docmanager/` é cópia.** Mudança no motor nasce no DocManager e vem
   copiada, com o cabeçalho de origem. O pacote compartilhado está nas pendências.
 - **O `conftest.py` dubla pandas e openpyxl.** Teste que precisa dos de verdade usa

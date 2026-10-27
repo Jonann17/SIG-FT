@@ -46,6 +46,14 @@ CLASSES = {
 }
 
 
+def _tela_com(tela, atributo):
+    """A tela que tem o botão: a própria ou uma embutida numa aba (o PMIB Manager é
+    uma seção de abas desde 2026-10-27, como a Aplicação LMR)."""
+    from sigft.app_qt.widgets.module_frame import ModuleFrame
+
+    return next(t for t in [tela, *tela.findChildren(ModuleFrame)] if getattr(t, atributo, None) is not None)
+
+
 @pytest.mark.parametrize("tela_chave, atributo, chave, funcao, extensao", CASOS)
 def test_soltar_no_botao_chega_ao_selecionar_da_tela(qt_interface, qtbot, monkeypatch, tmp_path,
                                                     tela_chave, atributo, chave, funcao, extensao):
@@ -58,8 +66,9 @@ def test_soltar_no_botao_chega_ao_selecionar_da_tela(qt_interface, qtbot, monkey
         return () if funcao == "ask_open_files" else ""   # "cancelou": a tela para ali
 
     monkeypatch.setattr(file_dialogs, funcao, falso)
-    tela = qmain.TELAS[tela_chave](None, None)
-    qtbot.addWidget(tela)
+    secao = qmain.TELAS[tela_chave](None, None)
+    qtbot.addWidget(secao)
+    tela = _tela_com(secao, atributo)
     monkeypatch.setattr(tela, "backend", lambda _nome: object())
     getattr(tela, atributo).setEnabled(True)
     receptor = tela.receptores_de_arquivo[atributo]

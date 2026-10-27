@@ -6,19 +6,25 @@ A tela é fina: a regra e os downloads estão em `services/conferencia_revisoes.
 o Aconex em `core/aconex/`. Ela usa o que o último Gestão PMIB deixou na mapeadora e
 não roda o Gestão sozinha. Desenho:
 `docs/superpowers/specs/2026-10-26-aconex-ao-vivo-design.md`, §5.
+
+Desde 2026-10-27 ela é a aba "Conferência de Revisões" do PMIB Manager
+(`gestao_sobressalentes.py`), e a última conferência (`ultima`) é o ponto de
+partida da aba "Revisão no AMP".
 """
 from __future__ import annotations
 
 import os
 import threading
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QTabWidget
+from PySide6.QtWidgets import QHBoxLayout, QInputDialog
 
 from sigft.app.idioma import marcar, t
 from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.widgets import blocos, dialogos_selecao
+from sigft.app_qt.widgets.abas import Abas
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.core import prefs
 from sigft.core.aconex.cliente import ClienteAconex, ErroAconex
@@ -43,14 +49,16 @@ NOME_DA_CATEGORIA = {
 }
 SITUACAO = {"baixado": marcar("baixado"), "ja_existia": marcar("já existia"), "falhou": marcar("falhou")}
 
-# Os nomes vão em `marcar` e são traduzidos onde a tabela é montada (`t(c)`).
+# Os nomes vão em `marcar` e são traduzidos onde a tabela é montada (`t(c)`). As larguras
+# somam 850: cabem na aba do PMIB Manager a 1280x850 (as colunas esticam, mas não
+# encolhem, e a tabela não tem barra de lado; com 1020 a coluna PDF ficava de fora).
 COLUNAS = (
-    (marcar("Código"), 200),
+    (marcar("Código"), 180),
     (marcar("Revisão em uso"), 100),
     (marcar("Última revisão emitida"), 140),
-    (marcar("Status da revisão"), 140),
-    (marcar("STATUS REAL"), 140),
-    (marcar("PDF"), 300),
+    (marcar("Status da revisão"), 120),
+    (marcar("STATUS REAL"), 100),
+    (marcar("PDF"), 210),
 )
 
 
@@ -93,13 +101,25 @@ def _linha(*widgets) -> QHBoxLayout:
     return linha_
 
 
+@dataclass(frozen=True)
+class UltimaConferencia:
+    """O que a última rodada de "Conferir revisões" deixou: a aba "Revisão no AMP" parte daqui."""
+    mapeadora: conferencia_svc.Mapeadora
+    conferencia: conferencia_svc.Conferencia
+    downloads: list
+    pasta_raiz: Path | None
+
+
 class ModuloConferenciaRevisoes(ModuleFrame):
-    def __init__(self, parent=None, controller=None) -> None:
+    def __init__(self, parent=None, controller=None, *, embutida=False, console_externo=None,
+                 progresso_externo=None) -> None:
         self.caminho_mapeadora = prefs.get_last_file(prefs.CHAVE_MAPEAMENTO) or ""
         self.pasta_raiz = prefs.ultima_pasta(CHAVE_PASTA_RAIZ) or ""
         self.tabelas = {}
+        self.ultima: UltimaConferencia | None = None
         self._cancelado = threading.Event()
-        super().__init__(parent, controller, titulo=t("Conferência de Revisões"), com_progresso=True)
+        super().__init__(parent, controller, titulo=t("Conferência de Revisões"), com_progresso=True,
+                         embutida=embutida, console_externo=console_externo, progresso_externo=progresso_externo)
 
     # -- montagem ----------------------------------------------------------
     def _build_ui(self) -> None:
@@ -132,13 +152,15 @@ class ModuloConferenciaRevisoes(ModuleFrame):
 
         self.lbl_totais = blocos.rotulo("", alinhar="esquerda", negrito=True)
         lay.addWidget(self.lbl_totais)
-        self.abas = QTabWidget()
+        # As abas do app (`widgets/abas`): a folha não tem regra de QTabWidget, e o nome
+        # das abas dele sumia no tema escuro (2026-10-27). A contagem fica nos totais.
+        self.abas = Abas()
         for categoria in ORDEM_DAS_CATEGORIAS:
             # Sem barra de lado: as colunas esticam até a largura da tela (`EsticaColunas`).
             tabela = dialogos_selecao.tabela_ttk([(t(c), largura, "w") for c, largura in COLUNAS],
                                                  barra_horizontal=False)
             self.tabelas[categoria] = tabela
-            self.abas.addTab(tabela, t(NOME_DA_CATEGORIA[categoria]))
+            self.abas.add(t(NOME_DA_CATEGORIA[categoria])).layout().addWidget(tabela)
         lay.addWidget(self.abas, 1)
 
         self._mostrar_arquivos()
@@ -199,8 +221,9 @@ class ModuloConferenciaRevisoes(ModuleFrame):
         except Exception as erro:  # noqa: BLE001 -- planilha do usuário
             self.log(f"[ERRO] Não consegui ler a mapeadora: {erro}")
             return
-        conferencia = conferencia_svc.conferir(mapeadora, Path(pasta_raiz) if pasta_raiz else None)
-        interface.na_interface(self._mostrar, mapeadora, conferencia, [])
+        raiz = Path(pasta_raiz) if pasta_raiz else None
+        conferencia = conferencia_svc.conferir(mapeadora, raiz)
+        interface.na_interface(self._mostrar, mapeadora, conferencia, [], raiz)
         self.log(f"{len(conferencia.itens)} lista(s) com divergência, {conferencia.em_dia} em dia e "
                  f"{conferencia.sem_status_pmib} sem _STATUS_PMIB.")
         if not any(item.pasta is not None for item in conferencia.itens):
@@ -210,7 +233,7 @@ class ModuloConferenciaRevisoes(ModuleFrame):
             return
         downloads = conferencia_svc.baixar(conferencia, cliente, log_cb=self.log, progress_cb=self._progresso,
                                            cancelado_cb=self._cancelado.is_set)
-        interface.na_interface(self._mostrar, mapeadora, conferencia, downloads)
+        interface.na_interface(self._mostrar, mapeadora, conferencia, downloads, raiz)
 
     def _cliente(self, perfil: PerfilAconex | None) -> ClienteAconex | None:
         """O cliente com o login feito, ou `None` depois de avisar que nada será baixado."""
@@ -231,8 +254,10 @@ class ModuloConferenciaRevisoes(ModuleFrame):
         self._cancelado.set()
         self.log("Parada pedida: termino a lista atual e paro.")
 
-    def _mostrar(self, mapeadora, conferencia, downloads) -> None:
-        """Os totais e uma tabela por categoria, na ordem da §5.2 (aprovadas primeiro)."""
+    def _mostrar(self, mapeadora, conferencia, downloads, pasta_raiz: Path | None = None) -> None:
+        """Os totais e uma tabela por categoria, na ordem da §5.2 (aprovadas primeiro). E a
+        conferência guardada para a "Revisão no AMP"."""
+        self.ultima = UltimaConferencia(mapeadora, conferencia, list(downloads), pasta_raiz)
         self._mostrar_data(mapeadora.salva_em)
         grupos = conferencia.por_categoria()
         totais = [f"{t(NOME_DA_CATEGORIA[c])}: {len(itens)}" for c, itens in grupos.items()]
@@ -242,8 +267,7 @@ class ModuloConferenciaRevisoes(ModuleFrame):
         por_codigo: dict = {}
         for d in downloads:
             por_codigo.setdefault(d.codigo, []).append(d)
-        for indice, (categoria, itens) in enumerate(grupos.items()):
-            self.abas.setTabText(indice, f"{t(NOME_DA_CATEGORIA[categoria])} ({len(itens)})")
+        for categoria, itens in grupos.items():
             tabela = self.tabelas[categoria]
             tabela.clear()
             for item in itens:

@@ -536,6 +536,10 @@ ENV_VAR_POR_CHAVE: dict[str, str] = {
     "OPENROUTER": "OPENROUTER_API_KEY",
     "EMPRESA_LLM_BASE_URL": "EMPRESA_LLM_BASE_URL",
     "EMPRESA_LLM_API_KEY": "EMPRESA_LLM_API_KEY",
+    # 2026-10-27: o webhook do workflow "Revisão das listas" no n8n da GE (o AMP),
+    # `amp/revisao_de_listas/`. A chave vai no cabeçalho X-SIGFT-Chave, nunca no log.
+    "AMP_WEBHOOK_URL": "SIGFT_AMP_WEBHOOK_URL",
+    "AMP_WEBHOOK_CHAVE": "SIGFT_AMP_WEBHOOK_CHAVE",
 }
 
 # CP 3.2: mapa provider -> chave LÓGICA de `ENV_VAR_POR_CHAVE` (consumido por

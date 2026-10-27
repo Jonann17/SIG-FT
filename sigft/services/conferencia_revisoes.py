@@ -118,16 +118,16 @@ def ler_mapeadora(caminho: str | Path) -> Mapeadora:
     return Mapeadora(caminho, datetime.fromtimestamp(caminho.stat().st_mtime), listas)
 
 
-def resolver_pasta(link: str, pasta_mapeadora: Path, codigo: str, pasta_raiz: Path | None,
-                   *, levantamento: dict | None = None) -> Path | None:
-    """A pasta do `_STATUS_PMIB` da lista: a do arquivo do link, se ele existir; senão a
-    do `_STATUS_PMIB` vivo com esse código na pasta raiz; senão `None`.
+def resolver_status_pmib(link: str, pasta_mapeadora: Path, codigo: str, pasta_raiz: Path | None,
+                         *, levantamento: dict | None = None) -> Path | None:
+    """O arquivo do `_STATUS_PMIB` da lista: o do link, se ele existir; senão o
+    `_STATUS_PMIB` vivo com esse código na pasta raiz; senão `None`.
 
     `levantamento` guarda a varredura da pasta raiz entre chamadas: ela só acontece no
     primeiro link quebrado, e uma vez por conferência."""
     alvo = Path(pasta_mapeadora) / link
     if alvo.is_file():
-        return alvo.parent
+        return alvo
     if pasta_raiz is None:
         return None
     if levantamento is None:
@@ -135,8 +135,14 @@ def resolver_pasta(link: str, pasta_mapeadora: Path, codigo: str, pasta_raiz: Pa
     if "vivos" not in levantamento:
         levantamento["vivos"] = {cod.strip().upper(): Path(caminho)
                                  for cod, caminho in status_pmib_arquivos.listar(pasta_raiz).vivos}
-    achado = levantamento["vivos"].get(codigo.strip().upper())
-    return achado.parent if achado is not None else None
+    return levantamento["vivos"].get(codigo.strip().upper())
+
+
+def resolver_pasta(link: str, pasta_mapeadora: Path, codigo: str, pasta_raiz: Path | None,
+                   *, levantamento: dict | None = None) -> Path | None:
+    """A pasta do `_STATUS_PMIB` da lista (`resolver_status_pmib`), ou `None`."""
+    arquivo = resolver_status_pmib(link, pasta_mapeadora, codigo, pasta_raiz, levantamento=levantamento)
+    return arquivo.parent if arquivo is not None else None
 
 
 def conferir(mapeadora: Mapeadora, pasta_raiz: Path | None) -> Conferencia:

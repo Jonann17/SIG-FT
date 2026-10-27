@@ -101,15 +101,22 @@ def _conferir(tela, qtbot, esperar):
     qtbot.waitUntil(tela.btn_conferir.isEnabled, timeout=5000)
 
 
-def test_tela_registrada_e_no_menu():
-    assert "ConferenciaRevisoes" in qmain.TELAS
-    item = ("botao", "10. Conferência de Revisões", "ConferenciaRevisoes")
-    assert catalogo.MENU[-1] == item
-    assert catalogo.MENU.index(("secao", "Gestão")) < catalogo.MENU.index(item)
-    assert catalogo.ICONE_DA_TELA["ConferenciaRevisoes"] == "clipboard-check"
-    assert ("ConferenciaRevisoes", "Conferência de Revisões",
-            "Aponta as listas cuja revisão em uso ficou para trás no Aconex, separadas pelo Status Real, "
-            "e baixa a revisão vigente para a pasta de cada uma.") in catalogo.MODULOS
+def test_e_aba_do_pmib_manager_e_nao_tela_do_menu():
+    # Correção do Luan (27/10): a Conferência mora numa aba do PMIB Manager
+    # (`views/gestao_sobressalentes.py`, testada em `test_qt_tela_gestao_sobressalentes.py`).
+    assert "ConferenciaRevisoes" not in qmain.TELAS
+    assert all(item[-1] != "ConferenciaRevisoes" for item in catalogo.MENU)
+
+
+def test_guarda_a_ultima_conferencia_para_a_revisao_no_amp(tela, qtbot, servico, tmp_path):
+    assert tela.ultima is None
+    tela.pasta_raiz = str(tmp_path)
+    _conferir(tela, qtbot, "lista(s) com divergência")
+    qtbot.waitUntil(lambda: tela.ultima is not None and bool(tela.ultima.downloads), timeout=5000)
+    assert tela.ultima.conferencia is servico.conferencia
+    assert tela.ultima.mapeadora.caminho.name == "Mapeamento Listas de Sobressalentes.xlsx"
+    assert tela.ultima.pasta_raiz == tmp_path
+    assert [d.codigo for d in tela.ultima.downloads] == ["#A"]
 
 
 def test_comeca_com_a_mapeadora_e_a_pasta_do_gestao(qt_interface, qtbot, mapeadora, servico, tmp_path):
@@ -123,10 +130,17 @@ def test_comeca_com_a_mapeadora_e_a_pasta_do_gestao(qt_interface, qtbot, mapeado
 
 
 def test_mostra_os_totais_por_categoria(tela, qtbot, servico):
+    # 2026-10-27: as categorias são `widgets/abas.Abas`, a convenção do app (a folha não
+    # tem regra de QTabWidget, e o nome das abas sumia no tema escuro); a contagem fica
+    # nos totais.
+    from sigft.app_qt.widgets.abas import Abas
+
     _conferir(tela, qtbot, "lista(s) com divergência")
-    assert [tela.abas.tabText(i) for i in range(tela.abas.count())] == [
-        "Aprovadas (2)", "Em processo (1)", "Não aprovadas (0)", "Outros (1)"]
-    assert "Em dia: 5" in tela.lbl_totais.text() and "Sem _STATUS_PMIB: 2" in tela.lbl_totais.text()
+    assert isinstance(tela.abas, Abas)
+    assert list(tela.abas.abas) == ["Aprovadas", "Em processo", "Não aprovadas", "Outros"]
+    assert tela.abas.get() == "Aprovadas"
+    assert tela.lbl_totais.text() == ("Aprovadas: 2  ·  Em processo: 1  ·  Não aprovadas: 0  ·  Outros: 1  ·  "
+                                      "Em dia: 5  ·  Sem _STATUS_PMIB: 2")
     aprovadas = tela.tabelas["aprovada"]
     assert aprovadas.topLevelItemCount() == 2
     assert [aprovadas.topLevelItem(0).text(i) for i in range(5)] == ["#A", "0", "0B", "Em Processo", "Aprovado"]
