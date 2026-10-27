@@ -160,6 +160,11 @@ Também em `PENDENCIAS.md` (2026-10-26). Nenhuma impede o uso.
   `tests/_pandas_de_verdade.py` ou `tests/_openpyxl_de_verdade.py`; módulo que
   calcula algo do pandas no import (o `constants.py` copiado) é recarregado dentro
   do bloco.
+- **O Release no Windows roda sem o teste de medidas da Busca PMIB** (`--deselect`
+  no `release.yml`, desde 26/10): o worker do runner caía nele (access violation no
+  `MenuDeOpcoes.paintEvent`) em toda tentativa da 1.3.1-rc.1, e uma vez no CI do
+  Ubuntu. A causa está em
+  aberto no `PENDENCIAS.md`; antes de um release normal, o `--deselect` sai.
 - **Na máquina pessoal do Luan:** os venvs do `%TEMP%` são corrompidos pela limpeza
   do Windows; os testes rodam num Python 3.13 com PySide6 fora do `%TEMP%`. Dois
   testes do tradutor (`test_caminho_longo_*`) falham lá por caminho longo e passam
