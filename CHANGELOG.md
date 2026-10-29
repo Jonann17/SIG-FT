@@ -12,7 +12,7 @@ Escreva cada linha pensando em quem usa o SIG-FT, não em quem o programa:
 "a busca do AutoSpec passa a funcionar com a VPN ligada" é útil; "refatorado o
 cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
-## 1.3.1 - 2026-10-27
+## 1.3.1 - 2026-10-29
 
 - PMIB Manager: a tela passa a ter **três abas**: Gestão PMIB (a de sempre), Conferência de Revisões e Revisão no AMP. As três escrevem no mesmo console e usam a mesma barra de progresso.
 - Conferência de Revisões: **aba nova** do PMIB Manager (na 1.3.1-rc.1 era o item "10. Conferência de Revisões" do menu). Lê a planilha de mapeamento e aponta as listas cuja revisão em uso ficou para trás da última revisão emitida no Aconex, separadas pelo STATUS REAL: aprovadas primeiro, depois em processo, não aprovadas e outros, com os totais de "Em dia" e "Sem _STATUS_PMIB". Mostra quando a mapeadora foi salva e avisa quando não foi hoje: rode o Gestão PMIB antes, para ver as revisões mais recentes.
