@@ -32,6 +32,7 @@ from sigft.app.idioma import t
 from sigft.app_qt import estilo, icones, interface
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets import pickers as app_pickers
+from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.services import analyzer_relatorio
 
@@ -143,6 +144,7 @@ class ModuloAnalyzer(ModuleFrame):
         return self.controller.get_key("GEMINI") if self.controller is not None else ""
 
     def _build_ui(self) -> None:
+        instalar_como_funciona(self, "Analyzer")
         # Lá o conteúdo é um CTkScrollableFrame transparente, com a barra SEMPRE
         # à vista: sem ela os cartões ficariam 11 px mais largos e o que é
         # centrado andaria 5 px.

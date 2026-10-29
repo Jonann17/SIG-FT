@@ -28,6 +28,7 @@ from sigft.app_qt import estilo, file_dialogs, interface
 from sigft.app_qt.views.janelas import JanelaEscolherPDM
 from sigft.app_qt.widgets import blocos, controles, dialogos_selecao
 from sigft.app_qt.widgets.atividade import ROTULO_FICHA
+from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
 from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.core import pdm_catalogo
@@ -116,6 +117,7 @@ class ModuloCorrecaoPDM(ModuleFrame):
     # -- montagem ----------------------------------------------------------
     def _build_ui(self) -> None:
         self._montar_cabecalho()
+        instalar_como_funciona(self, "CorrecaoPDM")
         lay = self.content_layout
         lay.setSpacing(0)
 

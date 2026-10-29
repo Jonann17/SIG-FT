@@ -26,6 +26,7 @@ class _Cliente:
         self.login_ok = login_ok
         self.respostas = respostas or {}
         self.consultas = []
+        self.pedidos = {}
 
     def conectar(self):
         if not self.login_ok:
@@ -33,6 +34,7 @@ class _Cliente:
 
     def primeira_pagina(self, consulta, *, historico, campos=None, page_size=None):
         self.consultas.append(consulta)
+        self.pedidos[consulta] = {"campos": campos, "page_size": page_size}
         resposta = self.respostas.get(consulta, Pagina([], 0))
         if isinstance(resposta, Exception):
             raise resposta
@@ -45,9 +47,17 @@ def _respostas_boas():
         f'"{CODIGO}"': Pagina([_reg(CODIGO, "777"), _reg(CODIGO, "777")], 2),
         "trackingid:777": Pagina([_reg(CODIGO, "777"), _reg("#ITA0=Y01TF009&BPB020", "777")], 3),
         'trackingid:"777"': Pagina([], 0),
-        "title:SOBRESSALENTES": Pagina([_reg(CODIGO, "777")], 140),
-        "docno:*PB020*": ErroAconex("A busca no Aconex falhou na página 1 após 5 tentativas (HTTP 500)."),
+        "title:SOBRESSALENTES": Pagina(_titulos(), 4),
     }
+
+
+def _titulos():
+    """A busca por título traz listas, a lista de preços e uma planilha de
+    comissionamento: só as duas primeiras são listas novas (`e_lista_de_sobressalentes`)."""
+    return [_reg(CODIGO, "777", f"LISTA DE SOBRESSALENTES {TITULO}"),
+            _reg("#ITA0=Y01TF002&BPB020-01", "778", f"LISTA DE SOBRESSALENTES {TITULO}"),
+            _reg("#ITA0=Y01TF001&BPB020-02", "779", f"LISTA DE SOBRESSALENTES COM PREÇOS {TITULO}"),
+            _reg("#ITA0=Y01TF001&BTB010", "780", f"PLANILHA DE COMISSIONAMENTO SOBRESSALENTES {TITULO}")]
 
 
 def test_sonda_ok_e_falha_por_etapa():
@@ -59,15 +69,55 @@ def test_sonda_ok_e_falha_por_etapa():
         ("Busca pelo Tracking ID (trackingid:<id>)", True),
         ('Busca pelo Tracking ID (trackingid:"<id>")', False),
         ("Busca por título (title:SOBRESSALENTES)", True),
-        ("Busca por código (docno:*PB020*)", False),
+        (diagnostico.SONDA_LISTAS_NOVAS, True),
     ]
     detalhes = {s.nome: s.detalhe for s in sondas}
     assert detalhes["Register inteiro (busca vazia)"] == "12000 documentos"
     assert detalhes["Busca exata do código, com histórico"] == "2 versões"
     assert detalhes["Busca pelo Tracking ID (trackingid:<id>)"] == "3 versões (a busca exata trouxe 2)"
     assert detalhes['Busca pelo Tracking ID (trackingid:"<id>")'] == "nenhum documento"
-    assert detalhes["Busca por título (title:SOBRESSALENTES)"] == "140 de 12000 documentos"
-    assert "HTTP 500" in detalhes["Busca por código (docno:*PB020*)"]
+    assert detalhes["Busca por título (title:SOBRESSALENTES)"] == "4 de 12000 documentos"
+    assert detalhes[diagnostico.SONDA_LISTAS_NOVAS] == "2 de 4 com título de sobressalentes"
+
+
+def test_nao_pede_mais_a_busca_por_codigo_com_coringa():
+    """[2026-10-27] `docno:*PB020*` volta HTTP 500 do Aconex (log do Luan, 5 de 5):
+    o PB020 se confere no SIG-FT, sobre a busca por título."""
+    cliente = _Cliente(respostas=_respostas_boas())
+    diagnostico.sondar(cliente, CODIGO)
+    assert not any(c.startswith("docno:") for c in cliente.consultas)
+
+
+def test_busca_por_titulo_pede_o_titulo_e_a_pagina_grande():
+    cliente = _Cliente(respostas=_respostas_boas())
+    diagnostico.sondar(cliente, CODIGO)
+    pedido = cliente.pedidos["title:SOBRESSALENTES"]
+    assert "title" in pedido["campos"].split(",") and "docno" in pedido["campos"].split(",")
+    assert pedido["page_size"] == 500
+
+
+def test_listas_novas_alem_da_primeira_pagina_avisa():
+    respostas = _respostas_boas()
+    respostas["title:SOBRESSALENTES"] = Pagina(_titulos(), 900)
+    sondas = diagnostico.sondar(_Cliente(respostas=respostas), CODIGO)
+    detalhe = {s.nome: s.detalhe for s in sondas}[diagnostico.SONDA_LISTAS_NOVAS]
+    assert detalhe == "2 de 4 com título de sobressalentes (só a 1ª página: 900 no total)"
+
+
+def test_nenhuma_lista_nova_falha():
+    respostas = _respostas_boas()
+    respostas["title:SOBRESSALENTES"] = Pagina(_titulos()[2:], 2)
+    sondas = diagnostico.sondar(_Cliente(respostas=respostas), CODIGO)
+    sonda = {s.nome: s for s in sondas}[diagnostico.SONDA_LISTAS_NOVAS]
+    assert not sonda.ok and sonda.detalhe == "0 de 2 com título de sobressalentes"
+
+
+def test_busca_por_titulo_que_falha_nao_inventa_listas_novas():
+    respostas = _respostas_boas()
+    respostas["title:SOBRESSALENTES"] = ErroAconex("A busca no Aconex falhou na página 1 após 2 tentativas (HTTP 500).")
+    sondas = diagnostico.sondar(_Cliente(respostas=respostas), CODIGO)
+    sonda = {s.nome: s for s in sondas}[diagnostico.SONDA_LISTAS_NOVAS]
+    assert not sonda.ok and sonda.detalhe == "sem a busca por título"
 
 
 def test_sintaxe_que_nao_filtra_e_falha():
@@ -119,7 +169,7 @@ def test_codigo_que_nao_existe_pula_so_o_tracking_id():
         ("Register inteiro (busca vazia)", True),
         ("Busca exata do código, com histórico", False),
         ("Busca por título (title:SOBRESSALENTES)", True),
-        ("Busca por código (docno:*PB020*)", False),
+        (diagnostico.SONDA_LISTAS_NOVAS, True),
     ]
     assert not any(c.startswith("trackingid") for c in cliente.consultas)
 
@@ -127,8 +177,11 @@ def test_codigo_que_nao_existe_pula_so_o_tracking_id():
 def test_main_imprime_uma_linha_por_sonda(monkeypatch, capsys):
     perfil = PerfilAconex("Luan Cozer", "A", "1", "s3gr3d0")
     monkeypatch.setattr(diagnostico, "ler_perfis", lambda: [perfil])
-    monkeypatch.setattr(diagnostico, "ClienteAconex", lambda p, **kw: _Cliente(respostas=_respostas_boas()))
+    criados = []
+    monkeypatch.setattr(diagnostico, "ClienteAconex",
+                        lambda p, **kw: criados.append(kw) or _Cliente(respostas=_respostas_boas()))
     assert diagnostico.main([CODIGO]) == 0
+    assert criados == [{"tentativas": diagnostico.TENTATIVAS_DO_DIAGNOSTICO}]
     linhas = capsys.readouterr().out.strip().splitlines()
     assert linhas[0] == "OK      Login no Aconex: token recebido"
     assert linhas[4] == 'FALHOU  Busca pelo Tracking ID (trackingid:"<id>"): nenhum documento'

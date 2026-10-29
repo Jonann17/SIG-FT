@@ -251,6 +251,16 @@ def _sem_janelas_do_fim_da_tarefa(monkeypatch):
     # `main()` dos testes gravaria no `logs/` e trocaria o `faulthandler` do pytest.
     # Quem testa o diário tira a variável e usa uma pasta temporária.
     monkeypatch.setenv("SIGFT_SEM_DIARIO", "1")
+    # [2026-10-28] O "Como funciona" (`app_qt/widgets/como_funciona.py`) fora dos
+    # testes de tela: os de medida conferem cada pixel contra a interface antiga,
+    # que não o tinha. Quem testa o bloco, ou varre as telas com ele (corte em
+    # pt/es/en e letra Grande), tira a variável. O nome é `ENV_DESLIGAR` de lá.
+    monkeypatch.setenv("SIGFT_SEM_COMO_FUNCIONA", "1")
+    # [2026-10-28] A boas-vindas (`sigft/app/boas_vindas.py`) nunca abre sozinha
+    # nos testes: a pasta de dados de cada teste é nova (sem rastro de uso), e a
+    # janela principal abriria nela em vez da Home. Quem testa a página tira a
+    # variável. O nome é `ENV_DESLIGAR` de lá.
+    monkeypatch.setenv("SIGFT_SEM_BOAS_VINDAS", "1")
 
 
 # 7. [2026-10-22] O idioma da interface (`sigft/app/idioma.py`) é estado do

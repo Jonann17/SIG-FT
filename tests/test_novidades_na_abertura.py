@@ -54,9 +54,14 @@ def test_quem_ja_usava_o_app_e_ATUALIZOU_ve_as_novidades(tmp_path):
     """Decisao do Jonathan (2026-10-19): `user_prefs.json` que ja existe sem a
     secao `novidades` e de quem usava uma versao anterior a esta janela. E
     atualizacao, nao primeira instalacao -- senao a versao que traz a janela
-    nunca a mostraria."""
+    nunca a mostraria.
+
+    [2026-10-28] Desde a boas-vindas, "quem ja usava" quer dizer arquivo com
+    RASTRO DE USO (`core/rastros_de_uso.py`): aqui, a ultima pasta de um
+    dialogo, que todo modulo grava."""
     (tmp_path / "user_prefs.json").write_text(
-        json.dumps({"opcoes": {"gestao.painel": True}}), encoding="utf-8")
+        json.dumps({"opcoes": {"gestao.painel": True},
+                    "ultimos": {"planilha": "C:/fichas"}}), encoding="utf-8")
 
     bloco = _decidir(tmp_path)
 
@@ -129,3 +134,28 @@ def test_gravar_a_versao_nao_apaga_as_outras_preferencias(tmp_path):
     prefs.set_opcao("gestao.painel", True, config_path=caminho)
     prefs.set_ultima_versao_vista("1.1.0", config_path=caminho)
     assert prefs.get_opcao("gestao.painel", False, config_path=caminho) is True
+
+
+def test_instalacao_nova_que_ja_gravou_idioma_e_nome_NAO_mostra(tmp_path):
+    """[2026-10-28] A pergunta do idioma (e a do nome) grava o `user_prefs.json`
+    antes desta decisao, com `novidades: {}`: "sem_registro", que parecia
+    atualizacao, e o changelog abria por cima da boas-vindas de quem acabou de
+    instalar. Sem rastro de uso e primeira instalacao: grava e nao mostra."""
+    (tmp_path / "user_prefs.json").write_text(json.dumps({
+        "opcoes": {"idioma_perguntado": True, "menu_recolhido": False},
+        "idioma": "es", "nome": {"nome": "Ana"}, "novidades": {},
+    }), encoding="utf-8")
+
+    assert _decidir(tmp_path) is None
+    assert _vista(tmp_path) == "1.2.0"
+    assert _decidir(tmp_path) is None
+
+
+def test_sem_registro_com_log_de_modulo_e_atualizacao(tmp_path):
+    (tmp_path / "user_prefs.json").write_text(json.dumps({"novidades": {}}), encoding="utf-8")
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "duplicadas_2026-08-18_14-32-05.log").write_text("x", encoding="utf-8")
+
+    bloco = _decidir(tmp_path)
+
+    assert bloco is not None and bloco.versao == "1.2.0"

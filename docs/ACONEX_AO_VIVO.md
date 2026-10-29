@@ -90,7 +90,13 @@ modelo responde ao pedido inteiro, nem o tamanho de PDF que ele aguenta.
    Aconex cadastrado no DocManager **naquela conta do Windows**. A máquina pessoal
    do Luan tem a pasta do DocManager, mas não o `credenciais.json`. O 5b.1 é o G1;
    o resto, a parte do G2 que já dá para testar.
-2. **Decidir a Tarefa 11 com as 7 linhas do G1.** O plano manda anotar no topo da
+2. **O G1 rodou em 2026-10-27** (Luan, na GE): Tracking ID e título funcionam,
+   `docno:*PB020*` dá HTTP 500. O resultado e a leitura estão no topo da Tarefa 11
+   do plano; o diagnóstico já busca as listas novas pelo título. **Falta só a
+   confirmação do Luan** de seguir com a busca ao vivo (não a extração completa).
+   O guia da API do Aconex está em `docs/ACONEX_API.md`.
+
+   O que valia antes do G1: **Decidir a Tarefa 11 com as 7 linhas do G1.** O plano manda anotar no topo da
    Tarefa 11 as sintaxes que funcionaram e **avisar o Luan antes de seguir** se a do
    Tracking ID ou a das listas falhar (§4.2 do desenho):
    - funcionaram: o `FonteAoVivo.carregar` usa a busca exata de cada código, segue o

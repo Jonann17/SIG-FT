@@ -168,6 +168,19 @@ def test_cinco_falhas_viram_erro_e_nada_parcial_volta():
     assert esperas == [5, 15, 30, 60]
 
 
+def test_tentativas_menores_desistem_antes_e_esperam_menos():
+    """[2026-10-27] O diagnostico pede menos tentativas: o 500 deterministico do
+    `docno:*PB020*` custava 4 esperas (110 s) numa sonda so, no log do Luan."""
+    esperas = []
+    aconex = _Aconex(_token(), _Resposta(500), _Resposta(500))
+    with pytest.raises(cl.ErroAconex) as erro:
+        cl.ClienteAconex(PERFIL, abrir=aconex, esperar=esperas.append,
+                         tentativas=2).primeira_pagina("x", historico=False)
+    assert "2 tentativas" in str(erro.value) and "HTTP 500" in str(erro.value)
+    assert esperas == [5]
+    assert len(aconex.chamadas) == 3
+
+
 def test_xml_truncado_tenta_de_novo():
     esperas = []
     aconex = _Aconex(_token(), _Resposta(200, b"<RegisterSearch><Search"), _pagina(_doc("1", "#IT-1", "0", 1, True)))

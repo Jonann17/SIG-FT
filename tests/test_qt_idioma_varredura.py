@@ -29,6 +29,7 @@ def montar(qt_interface, qtbot, tmp_path, monkeypatch):
     monkeypatch.setattr(letra, "_arquivo_de_prefs", lambda: tmp_path / "p.json")
     monkeypatch.setattr(tema, "_arquivo_de_prefs", lambda: tmp_path / "p.json")
     monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))
+    monkeypatch.delenv("SIGFT_SEM_COMO_FUNCIONA", raising=False)   # as telas com o "Como funciona"
     anterior = qt_interface.styleSheet()
 
     def _montar():

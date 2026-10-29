@@ -59,6 +59,8 @@ class ModuloUploadConditions(TelaDeUpload):
     TEXTO_CONFIG = marcar("Configuração Global (Requerido para IA e Web)")
     MARGENS_CONFIG = (15, 10, 15, 10)               # padx=15; título (10, 5); linha (5, 10)
     TEXTO_INTERRUPTOR = marcar("Forçar processamento de fichas com status 'COMPLETO'")
+    # O texto do "Como funciona" desta tela (`sigft/app/como_funciona.py`).
+    COMO_FUNCIONA = "UploadConditions"
     TEXTO_WEB = marcar("Lê um arquivo Excel com os resultados e inicia o Selenium para preencher o Portal.")
     TEXTO_CARREGAR = marcar("Carregar 'resultados_api_pmib.xlsx'")
 

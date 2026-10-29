@@ -340,6 +340,51 @@ Espanhol com "usted"; inglês com imperativo simples; tradução curta (no máxi
   menu" ou "Expandir menu", `catalogo.comandos(menu_recolhido=)`). Cor só pela folha
   (`QPushButton[menu="true"][recolhido="true"]`, `#home[recolhido="true"]`).
 
+### Ajuda para quem começa (2026-10-28)
+
+Desenho: `docs/superpowers/specs/2026-10-28-ajuda-para-quem-comeca-design.md`. Ideia do Corella
+Automation (v1.4.0), adaptada.
+
+- **"Como funciona"** (`sigft/app_qt/widgets/como_funciona.py`; os textos, sem Qt, em
+  `sigft/app/como_funciona.py`): logo abaixo do título de cada tela do menu, sempre no mesmo lugar,
+  uma frase curta à vista e o botão "Como funciona" (ícone `circle-help`, variante secundária), que
+  abre de 3 a 6 itens: o que a tela espera receber, o que ela muda, o que acontece se parar no meio.
+  Fechado na primeira vez; aberto ou fechado fica lembrado por tela (`prefs`,
+  `como_funciona_aberto.<tela>`). A tela chama `instalar_como_funciona(self, "<chave>")` no fim do
+  `_build_ui`; nas seções de abas (Aplicação LMR, PMIB Manager) o bloco segue a aba aberta, e a tela
+  embutida numa aba não ganha bloco. Nos testes vem desligado (`SIGFT_SEM_COMO_FUNCIONA`): os testes de
+  medida conferem cada pixel contra a interface antiga. A varredura de corte (`tests/_varredura.py`)
+  tira a variável e mede cada tela e cada aba também com o bloco aberto.
+- **Boas-vindas** (`sigft/app_qt/views/boas_vindas.py`, regra sem Qt em `sigft/app/boas_vindas.py`):
+  página da pilha (NÃO modal), registrada em `main.TELAS` com a chave `main.CHAVE_BOAS_VINDAS`
+  (`"BoasVindas"`) mas fora do menu lateral. `SIG_FT_App.__init__` monta a Home e, se
+  `boas_vindas.deve_mostrar_boas_vindas()`, mostra a página (`mostrar_boas_vindas`). A pergunta do
+  idioma já foi feita antes da janela; a do nome aparece por cima da página. Tem o título, uma frase,
+  3 cartões de caminho (`CAMINHOS`: Criar fichas novas → `CriaFichas`; Completar fichas que já existem
+  → `UploadConditions`; Acompanhar as listas de sobressalentes → `PMIBManager`), os lembretes do
+  "Como funciona" e do Ctrl+K e o botão "Ir para o início". Caminho cuja tela está em
+  `catalogo.TELAS_BLOQUEADAS` vem apagado (`#card:disabled`, `#card_titulo:disabled`), com a mesma
+  dica do menu (`catalogo.dica_do_menu`), e o clique não faz nada.
+  - **Quando aparece sozinha:** sem a opção `boas_vindas_vista` (`prefs`, seção `opcoes`) E sem
+    rastro de uso na pasta de dados (`rastros_de_uso`): entrada em `user_prefs.json` nas seções
+    `ultimos`, `categorias`, `pastas_padrao`, `arquivos`, `recentes` ou `colunas`
+    (`SECOES_DE_USO`); versão vista das novidades DIFERENTE da atual (a janela de novidades só
+    grava no app instalado e depois da decisão: versão anterior gravada é de quem atualizou);
+    `user_prefs.json` ilegível; arquivo em `logs/` que não seja da própria abertura
+    (`sigft.log`, `diario.*`, `queda.log*`), ou subpasta de `logs/` com arquivo; `api_config.json`
+    com alguma chave preenchida. Idioma, tema, letra, nome, a versão vista quando é a atual e as opções liga/desliga NÃO
+    contam: a primeira abertura os grava antes (ou logo depois) da decisão. Quem atualiza traz as
+    pastas no `user_prefs.json` (pela migração, se vier de antes da pasta de dados) e não vê.
+    Nunca levanta; na dúvida, a Home.
+  - **Vista:** "Ir para o início" e o clique num caminho gravam `boas_vindas_vista`
+    (`boas_vindas.marcar_vista`); só mostrar não grava (quem fecha o app sem escolher a vê de novo).
+  - **Reabre:** Ctrl+K `acao:boas_vindas` ("Boas-vindas"; acha em português também, como as outras
+    ações) e a seção **Ajuda** da janela Configuração ("Rever as boas-vindas", que fecha a janela).
+  - `main.PAGINAS_FORA_DO_MENU` (Home e boas-vindas): as páginas da pilha que não exigem botão no
+    menu nem cartão na Home (`tests/test_tela_correcao_pdm.py`).
+  - Nos testes não abre sozinha (`SIGFT_SEM_BOAS_VINDAS`, no `conftest`); quem testa a página tira a
+    variável. A varredura de corte (pt/es/en, letra Grande) passa por ela.
+
 ## Pontos de Atenção
 
 - **Threading + Tkinter**: Todos os atualizamentos de UI de threads secundárias usam `self.after(0, lambda: ...)`. Sem isso, causam travamentos ou crashes.

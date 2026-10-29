@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from sigft import _build_info
-from sigft.app import backends, idioma, tokens
+from sigft.app import backends, boas_vindas, idioma, tokens
 from sigft.app.idioma import t
 from sigft.app_qt import (
     atualizacao, catalogo, cursor, escolha_de_idioma, estilo, icones, interface, letra, novidades,
@@ -122,6 +122,20 @@ def _busca_pmib(parent, controller):
     return ModuloBuscaPMIB(parent, controller)
 
 
+def _boas_vindas(parent, controller):
+    # 2026-10-28: a página da primeira abertura, fora do menu lateral.
+    from sigft.app_qt.views.boas_vindas import BoasVindasView
+    return BoasVindasView(parent, controller)
+
+
+# A chave da boas-vindas na pilha (`TELAS`, `telas`): não é item do menu.
+CHAVE_BOAS_VINDAS = "BoasVindas"
+
+# As páginas da pilha que não são módulo: sem botão no menu e sem cartão na Home
+# (`tests/test_tela_correcao_pdm.py` exige os dois de todo o resto).
+PAGINAS_FORA_DO_MENU = frozenset({"Home", CHAVE_BOAS_VINDAS})
+
+
 # Registro das telas migradas: nome -> fábrica(parent, controller). O teste
 # `tests/test_qt_registro_telas.py` cobra que todo item do menu esteja aqui.
 TELAS = {
@@ -140,6 +154,8 @@ TELAS = {
     "AutoSpec": _autospec,
     "PMIBManager": _pmib_manager,
     "SearchPMIB": _busca_pmib,
+    # A boas-vindas (2026-10-28): página da pilha, fora do menu.
+    CHAVE_BOAS_VINDAS: _boas_vindas,
 }
 
 # Ctrl+K (etapa 1b, 2026-10-21): o método da Home que cada `acao:` chama, das
@@ -220,6 +236,12 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
 
         self.telas: dict[str, QWidget] = {}
         self.show_frame("Home")
+        # [2026-10-28] Quem nunca usou o SIG-FT abre na boas-vindas, e não na Home
+        # (que fica montada atrás: o tema, a letra e o Ctrl+K passam por ela). A
+        # pergunta do idioma já foi feita antes da janela; a do nome aparece por
+        # cima da página. Ver `sigft/app/boas_vindas.py`.
+        if boas_vindas.deve_mostrar_boas_vindas():
+            self.mostrar_boas_vindas()
 
         # Ctrl+K: a caixa de busca dos módulos e das ações (etapa 1b, 2026-10-21).
         # Contexto de janela (o padrão): vale em qualquer tela. Campo de texto
@@ -419,6 +441,12 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
     def show_home(self) -> None:
         self.show_frame("Home")
 
+    def mostrar_boas_vindas(self) -> None:
+        """A página da primeira abertura (2026-10-28); também pelo Ctrl+K e pela
+        Configuração. Mostrar não grava a vista: quem sai por um caminho ou por
+        "Ir para o início" grava."""
+        self.show_frame(CHAVE_BOAS_VINDAS)
+
     # -- Ctrl+K ------------------------------------------------------------------
     def abrir_paleta(self) -> PaletaDeComandos:
         """Abre a caixa do Ctrl+K; já aberta, devolve a mesma."""
@@ -468,6 +496,8 @@ class SIG_FT_App(QMainWindow):  # noqa: N801 -- mesmo nome da interface atual
             self.abrir_pasta_de_logs()
         elif alvo == "menu":
             self.alternar_menu()
+        elif alvo == "boas_vindas":
+            self.mostrar_boas_vindas()
 
     def abrir_pasta_de_logs(self) -> None:
         """`Documentos\\SIG-FT\\logs\\` no explorador (criada se faltar)."""

@@ -20,6 +20,7 @@ from sigft.app_qt.views.pmib_manager import ModuloPMIBManager
 from sigft.app_qt.views.revisao_amp import ModuloRevisaoAmp
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets.abas import Abas
+from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 
 # O nome da aba é também a chave dela no `abas.Abas` (`add`, `set`).
@@ -56,3 +57,7 @@ class ModuloGestaoSobressalentes(ModuleFrame):
                                              MARGEM_DIREITA_DA_ROLAGEM, MARGEM_DA_ROLAGEM)
             self.abas.add(t(nome)).layout().addWidget(tela)
         self.abas.set(t(ABA_GESTAO))
+        # O "Como funciona" da seção segue a aba aberta: cada uma tem a sua regra.
+        instalar_como_funciona(self, {t(ABA_GESTAO): "PMIBManager.gestao",
+                                      t(ABA_CONFERENCIA): "PMIBManager.conferencia",
+                                      t(ABA_AMP): "PMIBManager.amp"}, abas=self.abas)
