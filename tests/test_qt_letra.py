@@ -222,6 +222,8 @@ def test_nenhuma_tela_corta_texto_nem_rola_de_lado_com_a_letra_grande(
         letra_temporaria, qtbot, tmp_path, monkeypatch):
     from sigft.app_qt import main as qmain
 
+    monkeypatch.delenv("SIGFT_SEM_COMO_FUNCIONA", raising=False)   # as telas com o "Como funciona"
+
     monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))
     letra.aplicar(letra_temporaria, "normal", gravar=False)
     janela = qmain.SIG_FT_App()

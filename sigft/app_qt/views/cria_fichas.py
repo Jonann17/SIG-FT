@@ -35,6 +35,7 @@ from sigft.app_qt.views.janelas import JanelaAcaoRobo, JanelaResumo, JanelaRevis
 from sigft.app_qt.widgets import blocos, controles, revisao_portal
 from sigft.app_qt.widgets.abas import Abas
 from sigft.app_qt.widgets.arrastar import Arrastavel
+from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 # O catálogo de PDMs (2026-09-22): lê a planilha-mestra da Itaipu e faz o
 # pré-filtro de candidatos por item. `cria_fichas_svc` entra pelas
@@ -197,6 +198,7 @@ class ModuloCriaFichas(ModuleFrame):
 
     # --- montagem -------------------------------------------------------------
     def _build_ui(self) -> None:
+        instalar_como_funciona(self, "CriaFichas")
         # Tabview dentro de um CTkFrame de fundo padrão: o quadro é gray16.
         self.abas = Abas(interno=True)
         self.content_layout.addWidget(self.abas)

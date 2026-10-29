@@ -84,6 +84,7 @@ def test_mural_com_um_cartao(qt_interface, qtbot, codigo, linha_do_cartao, cabec
 @pytest.fixture
 def janela(qt_interface, qtbot, tmp_path, monkeypatch):
     """A janela principal, montada DENTRO do idioma do teste (cada tela lê os textos ao nascer)."""
+    monkeypatch.delenv("SIGFT_SEM_COMO_FUNCIONA", raising=False)   # as telas com o "Como funciona"
     from sigft.app_qt import main as qmain
 
     monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))

@@ -153,6 +153,7 @@ SECOES_DA_CONFIGURACAO = (
     ("avisos", marcar("Avisos")),
     ("ia", marcar("Inteligência artificial")),
     ("atualizacoes", marcar("Atualizações")),
+    ("ajuda", marcar("Ajuda")),
 )
 
 # O seletor de tema da janela Configuração (2026-10-20): escolha, texto, ícone e dica. O Ctrl+K
@@ -172,6 +173,13 @@ SELETOR_LETRA = (
     ("normal", marcar("Normal"), marcar("Letra do tamanho de sempre.")),
     ("grande", marcar("Grande"), marcar("Letra 2 px maior em todo o SIG-FT, para ler com mais folga.")),
 )
+
+
+# A boas-vindas (2026-10-28): o item do Ctrl+K e o botão da Configuração (Ajuda).
+TEXTO_BOAS_VINDAS = marcar("Boas-vindas")
+TEXTO_VER_BOAS_VINDAS = marcar("Rever as boas-vindas")
+DICA_VER_BOAS_VINDAS = marcar("A página da primeira abertura: os três caminhos para começar, o "
+                              "\"Como funciona\" de cada tela e o Ctrl+K.")
 
 
 # O menu lateral recolhível (2026-10-26): o botão do pé do menu e a ação do Ctrl+K
@@ -198,6 +206,9 @@ ACOES = (
     AcaoDoCtrlK("inicio", marcar("Início"), "house", marcar("home tela inicial")),
     *(AcaoDoCtrlK(a.chave, a.texto, a.icone, a.palavras) for a in ACOES_QUE_A_HOME_FAZ),
     AcaoDoCtrlK("logs", marcar("Abrir logs"), "folder-open", marcar("pasta log")),
+    # [2026-10-28] A página da primeira abertura (`views/boas_vindas.py`), de novo.
+    AcaoDoCtrlK("boas_vindas", TEXTO_BOAS_VINDAS, "circle-help",
+                marcar("bem-vindo comecar primeiros passos ajuda caminhos")),
     AcaoDoCtrlK("menu", TEXTO_RECOLHER_MENU, ICONE_RECOLHER_MENU,
                 marcar("menu lateral barra esconder mostrar recolher expandir")),
     *(AcaoDoCtrlK(f"tema_{escolha}", marcar("Tema: {nome}"), icone, marcar("aparencia cor"), texto)

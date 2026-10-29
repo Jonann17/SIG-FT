@@ -83,6 +83,13 @@ def _frames_de_main():
     return set(qmain.TELAS)
 
 
+def _fora_do_menu():
+    """A Home e a boas-vindas (2026-10-28): páginas da pilha, não módulos."""
+    from sigft.app_qt import main as qmain
+
+    return set(qmain.PAGINAS_FORA_DO_MENU)
+
+
 def _frames_da_barra_lateral():
     return [item[2] for item in catalogo.MENU if item[0] == "botao"]
 
@@ -94,13 +101,13 @@ def _frames_dos_cards():
 def test_toda_tela_registrada_tem_botao_na_barra_lateral():
     """Uma tela sem botão existe, compila, passa nos testes -- e o usuário não
     tem como chegar nela."""
-    faltando = _frames_de_main() - set(_frames_da_barra_lateral()) - {"Home"}
+    faltando = _frames_de_main() - set(_frames_da_barra_lateral()) - _fora_do_menu()
 
     assert not faltando, f"sem botao na barra lateral: {sorted(faltando)}"
 
 
 def test_toda_tela_registrada_tem_card_na_home():
-    faltando = _frames_de_main() - _frames_dos_cards() - {"Home"}
+    faltando = _frames_de_main() - _frames_dos_cards() - _fora_do_menu()
 
     assert not faltando, f"sem card na home: {sorted(faltando)}"
 

@@ -15,6 +15,7 @@ from sigft.app import backends
 from sigft.app.idioma import t
 from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.widgets import blocos
+from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.core import plataforma
 
@@ -25,6 +26,7 @@ class ModuloTranslator(ModuleFrame):
         super().__init__(parent, controller, titulo=t("Tradutor Técnico (PT -> ES)"))
 
     def _build_ui(self) -> None:
+        instalar_como_funciona(self, "Translator")  # nao-e-interface: a chave do texto
         # Espaços verticais do `pack` da tela antiga (pady de cada peça). O pady
         # de dois vizinhos SOMA no Tk, então o espaço entre eles é a soma dos
         # dois: por isso o espaçamento automático do cartão vai a zero.
