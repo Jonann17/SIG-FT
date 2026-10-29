@@ -47,6 +47,7 @@ from sigft.app.idioma import t
 from sigft.app_qt import estilo, file_dialogs, icones, interface
 from sigft.app_qt.widgets import blocos, controles
 from sigft.app_qt.widgets.arrastar import Arrastavel
+from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.services import autospec_conferencia as conferencia_txt
 
@@ -237,6 +238,7 @@ class ModuloAutoSpec(ModuleFrame):
                          altura_console=ALTURA_CONSOLE)
 
     def _build_ui(self) -> None:
+        instalar_como_funciona(self, "AutoSpec")
         # Content: CTkScrollableFrame transparente.
         self.area, corpo = blocos.area_rolavel(self.content_layout, margem=RECUO_ROLAGEM,
                                                barra_sempre_visivel=True)

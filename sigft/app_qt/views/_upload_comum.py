@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QSizePolicy, QVBoxLayout
 
 from sigft.app.idioma import marcar, t
 from sigft.app_qt.widgets import abas, blocos, controles, pickers, revisao_portal
+from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 
 # O nome da aba é também a chave dela no `abas.Abas` (`add`, `set`): quem
@@ -55,6 +56,7 @@ class TelaDeUpload(ModuleFrame):
     # Margens do quadro global (padx=15 e os pady do título e da linha de lá).
     MARGENS_CONFIG = (15, 10, 15, 10)
     TEXTO_INTERRUPTOR = ""
+    COMO_FUNCIONA = ""      # a chave do texto em `sigft/app/como_funciona.py`
     TEXTO_WEB = ""
     TEXTO_CARREGAR = ""
 
@@ -97,6 +99,7 @@ class TelaDeUpload(ModuleFrame):
 
     # --- montagem -------------------------------------------------------------
     def _build_ui(self) -> None:
+        instalar_como_funciona(self, self.COMO_FUNCIONA)
         # Espaços do `pack` de lá; o pady de dois vizinhos SOMA no Tk.
         self.content_layout.setSpacing(0)
         self.content_layout.addSpacing(10)              # quadro global: pady=10

@@ -38,6 +38,8 @@ class ModuloUploadTechSpecs(TelaDeUpload):
     TEXTO_CONFIG = marcar("Configuração Global")
     MARGENS_CONFIG = (15, 10, 15, 15)               # padx=15; título (10, 0); linha (10, 15)
     TEXTO_INTERRUPTOR = marcar("Forçar processamento de fichas 'COMPLETO'")
+    # O texto do "Como funciona" desta tela (`sigft/app/como_funciona.py`).
+    COMO_FUNCIONA = "UploadSpecs"
     TEXTO_WEB = marcar("Lê um arquivo JSON pronto e inicia o Selenium para preencher o Portal Itaipu.")
     TEXTO_CARREGAR = marcar("Carregar JSON Salvo no Computador")
 

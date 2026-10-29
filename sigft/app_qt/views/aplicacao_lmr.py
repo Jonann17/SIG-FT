@@ -14,6 +14,7 @@ from sigft.app.idioma import marcar, t
 from sigft.app_qt.views.apagar_lmr import ModuloApagarLMR
 from sigft.app_qt.views.lmr import ModuloLMR
 from sigft.app_qt.widgets.abas import Abas
+from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.app_qt.widgets.trava_robo import TravaDeRobo
 
@@ -65,3 +66,6 @@ class ModuloAplicacaoLMR(ModuleFrame):
 
         # Abrir direto na tela que APAGA seria um convite ao erro.
         self.abas.set(t(ABA_UPLOAD))
+        # O "Como funciona" da seção segue a aba aberta: cada uma tem a sua regra.
+        instalar_como_funciona(self, {t(ABA_UPLOAD): "LMR.upload", t(ABA_EXCLUSAO): "LMR.exclusao"},
+                               abas=self.abas)

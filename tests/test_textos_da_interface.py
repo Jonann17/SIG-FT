@@ -262,6 +262,11 @@ CONVERTIDOS: tuple[str, ...] = (
     # Revisão das listas pelo AMP (2026-10-27): as abas do PMIB Manager
     "sigft/app_qt/views/gestao_sobressalentes.py",
     "sigft/app_qt/views/revisao_amp.py",
+    # Ajuda para quem começa (2026-10-28): o "Como funciona" de cada tela
+    "sigft/app/como_funciona.py",
+    "sigft/app_qt/widgets/como_funciona.py",
+    # Ajuda para quem começa (2026-10-28): a boas-vindas
+    "sigft/app_qt/views/boas_vindas.py",
 )
 
 # Literais que a varredura acusa e que ficam em português de propósito, por

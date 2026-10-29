@@ -28,6 +28,7 @@ from sigft.app_qt.views.janelas import JanelaRevisaoEdicao, JanelaSelecaoDuplica
 from sigft.app_qt.widgets import blocos, controles
 from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.atividade import ROTULO_FICHA
+from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.services import duplicadas
 
@@ -82,6 +83,7 @@ class ModuloCopiaFichas(ModuleFrame):
 
     # --- montagem -------------------------------------------------------------
     def _build_ui(self) -> None:
+        instalar_como_funciona(self, "CopiaFichas")
         # Container Principal: CTkScrollableFrame transparente, com a barra
         # sempre à vista (a interface antiga reserva a faixa mesmo sem nada para rolar; sem
         # ela, os cartões ficariam 11 px mais largos). A barra da interface antiga fica 1 px

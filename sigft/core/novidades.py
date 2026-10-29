@@ -163,7 +163,13 @@ def para_mostrar_na_abertura(
     * rodando pelo código-fonte (`empacotado=False`; nem grava);
     * na primeira instalação (não há `user_prefs.json`): só grava. Arquivo
       que existe SEM versão gravada é de quem usava uma versão anterior a
-      esta janela -- é atualização, e mostra (decisão do Jonathan, 2026-10-19);
+      esta janela -- é atualização, e mostra (decisão do Jonathan, 2026-10-19)
+      --, MAS só se a pasta de dados tem rastro de uso
+      (`core/rastros_de_uso.py`, a mesma regra da boas-vindas). Sem rastro é
+      instalação nova que já gravou o arquivo antes desta decisão (a pergunta
+      do idioma grava `novidades: {}`): só grava, e o changelog não abre por
+      cima da boas-vindas de quem acabou de chegar (2026-10-28). Pasta que
+      não se lê vale como atualização, como antes;
     * sem bloco da versão no CHANGELOG (ou sem CHANGELOG): só grava;
     * com a preferência ilegível, ou sem conseguir gravar -- mostrar sem
       gravar seria mostrar em toda abertura.
@@ -183,11 +189,13 @@ def para_mostrar_na_abertura(
         return None
     if vista == versao_atual:
         return None
+    # Antes de gravar: gravada, a versão vista seria ela mesma um rastro.
+    instalacao_nova = situacao == "sem_registro" and not _ha_rastro_de_uso(config_path)
     try:
         prefs.set_ultima_versao_vista(versao_atual, config_path=config_path)
     except Exception:  # noqa: BLE001 -- sem gravar, repetiria toda abertura
         return None
-    if situacao in ("sem_arquivo", "ilegivel"):
+    if situacao in ("sem_arquivo", "ilegivel") or instalacao_nova:
         return None
     if texto is None:
         try:
@@ -196,3 +204,17 @@ def para_mostrar_na_abertura(
         except OSError:
             return None
     return bloco_de(texto, versao_atual)
+
+
+def _ha_rastro_de_uso(config_path) -> bool:
+    """A pasta do `user_prefs.json` mostra que alguém já usou o app? Na dúvida
+    (pasta que não se lê), `True`: o "sem_registro" de sempre, atualização."""
+    from pathlib import Path
+
+    from sigft.core import prefs
+    from sigft.core.rastros_de_uso import rastros_de_uso
+
+    try:
+        return bool(rastros_de_uso(Path(prefs._resolver(config_path)).parent))
+    except Exception:  # noqa: BLE001 -- novidade não derruba a abertura
+        return True

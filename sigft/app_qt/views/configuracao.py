@@ -24,7 +24,8 @@ from sigft.app import idioma
 from sigft.app.idioma import marcar, t
 from sigft.app_qt import aviso_windows, estilo, icones, letra, nome, reinicio, tema
 from sigft.app_qt.catalogo import (
-    ACOES_DA_CONFIGURACAO, SECOES_DA_CONFIGURACAO, SELETOR_LETRA, SELETOR_TEMA,
+    ACOES_DA_CONFIGURACAO, DICA_VER_BOAS_VINDAS, SECOES_DA_CONFIGURACAO, SELETOR_LETRA, SELETOR_TEMA,
+    TEXTO_VER_BOAS_VINDAS,
 )
 from sigft.app_qt.widgets import blocos, controles, dialogs
 from sigft.app_qt.widgets.module_frame import aplicar_dicas
@@ -286,3 +287,23 @@ class JanelaConfiguracao(JanelaPainel):
 
     def _procurar_atualizacoes(self) -> None:
         self.home.procurar_atualizacoes(self.btn_atualizacoes)
+
+    # --- Ajuda (2026-10-28) -------------------------------------------------------
+    def _secao_ajuda(self) -> QWidget:
+        caixa, coluna = self._coluna()
+        self.btn_boas_vindas = blocos.botao(t(TEXTO_VER_BOAS_VINDAS), variante="secundario", altura=32,
+                                            largura_minima=estilo.LARGURA_BOTAO_CTK)
+        icones.aplicar(self.btn_boas_vindas, "circle-help")
+        self.btn_boas_vindas.setToolTip(t(DICA_VER_BOAS_VINDAS))
+        dialogs.sem_tecla(self.btn_boas_vindas)
+        self.btn_boas_vindas.clicked.connect(self._rever_boas_vindas)
+        coluna.addWidget(self.btn_boas_vindas, 0, Qt.AlignmentFlag.AlignLeft)
+        return caixa
+
+    def _rever_boas_vindas(self) -> None:
+        """A página da primeira abertura, na janela principal; esta janela fecha
+        (ela ficaria por cima da página)."""
+        janela = getattr(self.home, "controller", None)
+        if janela is not None and hasattr(janela, "mostrar_boas_vindas"):
+            janela.mostrar_boas_vindas()
+        self.close()

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from sigft.app.idioma import t
 from sigft.app_qt import estilo, file_dialogs, icones, interface
 from sigft.app_qt.widgets import blocos, controles
+from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.core import plataforma
 
@@ -250,6 +251,7 @@ class ModuloBuscaPMIB(ModuleFrame):
         return "generalista" if self.rb_geral.isChecked() else "direcionada"
 
     def _build_ui(self) -> None:
+        instalar_como_funciona(self, "SearchPMIB")
         self.content_layout.setSpacing(0)
         self.content_layout.addSpacing(5)               # quadro: pady=5
         corpo = blocos.cartao(self.content_layout)
