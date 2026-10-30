@@ -12,6 +12,10 @@ Escreva cada linha pensando em quem usa o SIG-FT, não em quem o programa:
 "a busca do AutoSpec passa a funcionar com a VPN ligada" é útil; "refatorado o
 cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
+## 1.3.3 - 2026-10-30
+
+- Aplicação LMR: o relatório dos códigos que falharam (`erros_lmr.csv`) passa a ficar sempre em Documentos\SIG-FT\logs, e o console diz onde. Antes ele ia para a pasta de onde o SIG-FT foi aberto, e no programa instalado podia nem ser gravado, sem aviso.
+
 ## 1.3.2 - 2026-10-30
 
 - Atualização automática: passa a funcionar como a do DocManager, com dois caminhos só. Com o SIG-FT instalado só para você, ele baixa só os arquivos que mudaram, confere cada um pelo SHA256 e os troca sozinho, aberto; em qualquer outro caso (ou se algo falhar, com tudo voltando como estava), baixa o instalador completo. O instalador pequeno, que era a parte que mais falhava, saiu. Quem ainda está na 1.3.0 ou antes recebe o instalador completo uma vez; da 1.3.1 em diante, só os arquivos.
