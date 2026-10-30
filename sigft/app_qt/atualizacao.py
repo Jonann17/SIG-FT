@@ -258,7 +258,6 @@ class JanelaAtualizacao(QDialog):
         self._master = master
         self._versao_atual = versao_atual
         self._ultimo_percentual = -1
-        self._caiu_no_completo = False
 
         self.setWindowTitle(t(TITULO))
         self.resize(580, 560)
@@ -375,7 +374,6 @@ class JanelaAtualizacao(QDialog):
         # tem como parar no meio), então o "X" e o Esc ficam mudos até terminar.
         self._baixando = True
         self._ultimo_percentual = -1
-        self._caiu_no_completo = False
         self.barra.setValue(0)
         self._faixa_barra.show()
         self._mostrar_status(msg_baixando(self.info))
@@ -400,23 +398,20 @@ class JanelaAtualizacao(QDialog):
 
         [2026-10-27] Primeiro, quando dá (`updater.pode_por_arquivos`), a
         atualização por arquivos: o próprio app aplica, se reabre e fecha.
-        Qualquer falha nela vai para o log e cai na corrente de sempre."""
+        Qualquer falha nela vai para o log e cai no instalador completo (desde
+        2026-10-30 o único outro caminho, como no DocManager)."""
         if self._por_arquivos():
             return
         try:
-            caminho = updater.baixar(self.info, progresso_cb=self._ao_progredir,
-                                     log_cb=_log,
-                                     ao_cair_no_completo=self._ao_cair_no_completo)
+            caminho = updater.baixar(self.info, progresso_cb=self._ao_progredir, log_cb=_log)
             interface.na_interface(self._mostrar_status, t(MSG_DOWNLOAD_CONFERIDO))
             updater.instalar(caminho, log_cb=_log)
         except Exception as erro:  # noqa: BLE001 -- vira mensagem na janela
             _log(f"a atualizacao falhou: {erro}")
             interface.na_interface(self._falhou, erro)
             return
-        pequeno = self.info.incremental and not self._caiu_no_completo
-        qual = "pelo instalador pequeno" if pequeno else "pelo instalador completo"  # nao-e-interface
         log = updater.caminho_log_instalacao()
-        self._anotar_no_diario(qual, f" (exe={caminho.name}, log={log})")  # nao-e-interface
+        self._anotar_no_diario("pelo instalador completo", f" (exe={caminho.name}, log={log})")  # nao-e-interface
         interface.na_interface(self._fechar_app, self._master)
 
     def _anotar_no_diario(self, caminho: str, detalhe: str = "") -> None:
@@ -433,10 +428,14 @@ class JanelaAtualizacao(QDialog):
     def _por_arquivos(self) -> bool:
         """Roda na THREAD. `True` se aplicou, reabriu e mandou fechar."""
         try:
-            if not updater.pode_por_arquivos(self.info):
-                return False
+            pode = updater.pode_por_arquivos(self.info)
         except Exception as erro:  # noqa: BLE001 -- na dúvida, o instalador
             _log(f"nao deu para saber se a atualizacao por arquivos serve: {erro}")
+            pode = False
+        if not pode:
+            if self.info.arquivos is not None:
+                # O status do clique dizia o tamanho do zip: vai o completo.
+                interface.na_interface(self._mostrar_status, msg_baixando(self.info, so_completo=True))
             return False
         interface.na_interface(self._mostrar_status, t(MSG_APLICANDO))
         try:
@@ -446,7 +445,7 @@ class JanelaAtualizacao(QDialog):
             _log(f"a atualizacao por arquivos falhou, vai o instalador: {erro}")
             self._ultimo_percentual = -1
             interface.na_interface(self.barra.setValue, 0)
-            interface.na_interface(self._mostrar_status, msg_baixando(self.info))
+            interface.na_interface(self._mostrar_status, msg_caiu_no_completo(self.info))
             return False
         # Antes de reabrir: o processo novo lê a sessão anterior ao abrir.
         self._anotar_no_diario("por arquivos")  # nao-e-interface
@@ -465,12 +464,6 @@ class JanelaAtualizacao(QDialog):
         """Roda na THREAD: o zip já foi aplicado e a pasta está sendo conferida
         (a barra recomeça pelo `progresso_cb` do serviço)."""
         interface.na_interface(self._mostrar_status, t(MSG_CONFERINDO_ARQUIVOS))
-
-    def _ao_cair_no_completo(self, completo: updater.Atualizacao) -> None:
-        """Roda na THREAD: o pequeno falhou e o download virou o do completo
-        (a barra recomeça pelo `progresso_cb` do serviço)."""
-        self._caiu_no_completo = True
-        interface.na_interface(self._mostrar_status, msg_caiu_no_completo(completo))
 
     def _ao_progredir(self, fracao: float) -> None:
         """Roda na THREAD, a cada bloco de 256 KB. Só agenda quando o

@@ -408,7 +408,7 @@ def test_atualizar_BAIXA_INSTALA_e_so_entao_FECHA_o_app(monkeypatch, raiz, qtbot
     eventos = []
     baixado = tmp_path / "SIG-FT_Itaipu_Setup_1.2.0.exe"
 
-    def baixar(info, *, progresso_cb, log_cb, ao_cair_no_completo):
+    def baixar(info, *, progresso_cb, log_cb):
         eventos.append("baixou")
         progresso_cb(0.5)
         progresso_cb(1.0)
@@ -542,31 +542,61 @@ def test_download_que_falha_NAO_fecha_o_app_e_deixa_tentar_de_novo(monkeypatch, 
     assert aviso.fechada, "depois da falha, o X volta a fechar o aviso"
 
 
-def test_quando_o_pequeno_falha_a_janela_DIZ_que_baixa_o_completo(monkeypatch, raiz, qtbot,
-                                                                 processar, sem_uac, tmp_path):
-    completo = _info(tamanho=316_197_094)
+def test_quando_os_arquivos_falham_a_janela_DIZ_que_baixa_o_completo(monkeypatch, raiz, qtbot,
+                                                                    processar, sem_uac, tmp_path):
+    """[2026-10-30] Sem o pequeno, o unico caminho depois dos arquivos e o
+    completo: o status troca o tamanho do zip pelo do instalador."""
+    from sigft.services import pacote_arquivos
+
     vistos = []
 
-    def baixar(info, *, progresso_cb, log_cb, ao_cair_no_completo):
+    def falha(info, *, progresso_cb, log_cb, ao_conferir):
         progresso_cb(0.97)
-        ao_cair_no_completo(completo)
-        progresso_cb(0.0)
+        raise pacote_arquivos.ErroPacote("SIG-FT.exe nao confere")
+
+    def baixar(info, *, progresso_cb, log_cb):
         processar()
-        vistos.append((aviso.rotulo_status.text(), aviso.barra.value()))
+        vistos.append((aviso.rotulo_status.text(), aviso.barra.value(), info.nome_arquivo))
         return tmp_path / "Setup.exe"
 
+    monkeypatch.setattr(updater, "pode_por_arquivos", lambda info: True)
+    monkeypatch.setattr(updater, "aplicar_por_arquivos", falha)
     monkeypatch.setattr(updater, "baixar", baixar)
     monkeypatch.setattr(updater, "instalar", lambda *a, **k: None)
+    zipado = _info(nome_arquivo="SIG-FT_Itaipu_Arquivos_1.1.0_para_1.2.0.zip", tamanho=38_518_933)
     aviso = _aviso(raiz, qtbot, fechar_app=lambda janela: None,
-                   info=_info(nome_arquivo="SIG-FT_Itaipu_Atualizacao_1.1.0_para_1.2.0.bin",
-                              tamanho=38_518_933, incremental=True, tamanho_completo=316_197_094))
+                   info=_info(tamanho=316_197_094, arquivos=zipado,
+                              manifesto_arquivos=_info(nome_arquivo="arquivos.json")))
+    assert "36,7 MB" in aviso.rotulo_resumo.text()
     aviso.botao_atualizar.click()
     processar()
 
-    texto, barra = vistos[0]
+    texto, barra, nome = vistos[0]
     assert "pequena falhou" in texto
     assert "instalador completo (301,5 MB)" in texto
-    assert barra == 0
+    assert barra == 0 and nome == "SIG-FT_Itaipu_Setup_1.2.0.exe"
+
+
+def test_sem_poder_por_arquivos_o_status_diz_o_tamanho_do_completo(monkeypatch, raiz, qtbot,
+                                                                   processar, sem_uac, tmp_path):
+    vistos = []
+
+    def baixar(info, *, progresso_cb, log_cb):
+        processar()
+        vistos.append(aviso.rotulo_status.text())
+        return tmp_path / "Setup.exe"
+
+    monkeypatch.setattr(updater, "pode_por_arquivos", lambda info: False)
+    monkeypatch.setattr(updater, "baixar", baixar)
+    monkeypatch.setattr(updater, "instalar", lambda *a, **k: None)
+    zipado = _info(nome_arquivo="SIG-FT_Itaipu_Arquivos_1.1.0_para_1.2.0.zip", tamanho=38_518_933)
+    aviso = _aviso(raiz, qtbot, fechar_app=lambda janela: None,
+                   info=_info(tamanho=316_197_094, arquivos=zipado,
+                              manifesto_arquivos=_info(nome_arquivo="arquivos.json")))
+    aviso.botao_atualizar.click()
+    processar()
+
+    assert vistos == ["Baixando a v1.2.0 (301,5 MB)..."]
 
 
 def test_instalador_que_NAO_SOBE_nao_fecha_o_app(monkeypatch, raiz, qtbot, processar, sem_uac,
@@ -1007,30 +1037,22 @@ def test_por_arquivos_grava_ATUALIZACAO_e_FECHAMENTO_antes_de_reabrir(
     assert _sem_abertura(diario_aberto) == esperado, "o _fechar_o_app nao repete o FECHAMENTO"
 
 
-@pytest.mark.parametrize("caiu, caminho", [(False, "pelo instalador pequeno"),
-                                           (True, "pelo instalador completo")])
 def test_instalador_grava_o_caminho_o_exe_e_o_log(monkeypatch, raiz, qtbot, processar, sem_uac,
-                                                  tmp_path, diario_aberto, caiu, caminho):
-    exe = tmp_path / ("Setup.exe" if caiu else "SIG-FT_Itaipu_Atualizacao_1.1.0_para_1.2.0.exe")
+                                                  tmp_path, diario_aberto):
+    exe = tmp_path / "Setup.exe"
     vistos = []
 
-    def baixar(info, *, progresso_cb, log_cb, ao_cair_no_completo):
-        if caiu:
-            ao_cair_no_completo(_info())
-        return exe
-
     monkeypatch.setattr(updater, "pode_por_arquivos", lambda info: False)
-    monkeypatch.setattr(updater, "baixar", baixar)
+    monkeypatch.setattr(updater, "baixar", lambda info, **kw: exe)
     monkeypatch.setattr(updater, "instalar", lambda c, **kw: None)
-    aviso = _aviso(raiz, qtbot, info=_info(incremental=True),
-                   fechar_app=lambda janela: vistos.append(_sem_abertura(diario_aberto)))
+    aviso = _aviso(raiz, qtbot, fechar_app=lambda janela: vistos.append(_sem_abertura(diario_aberto)))
     aviso.botao_atualizar.click()
     processar()
 
     from sigft.core import diario
 
     log = updater.caminho_log_instalacao()
-    assert vistos == [[f"{diario.ATUALIZACAO} {caminho} v1.1.0 -> v1.2.0 "
+    assert vistos == [[f"{diario.ATUALIZACAO} pelo instalador completo v1.1.0 -> v1.2.0 "
                        f"(exe={exe.name}, log={log})", diario.FECHAMENTO]]
 
 

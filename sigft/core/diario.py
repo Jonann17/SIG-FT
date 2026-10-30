@@ -10,7 +10,7 @@ Este diário diz: uma linha por evento, com data e hora, em
   e quando o app fecha para se atualizar (uma linha por sessão: `registrar_fechamento`
   chamado de novo não repete);
 * `ATUALIZACAO ...` (2026-10-27) logo antes de o app fechar para se atualizar: o
-  caminho (por arquivos, instalador pequeno ou completo), as versões e, no
+  caminho (por arquivos ou pelo instalador completo), as versões e, no
   instalador, o `.exe` e o log dele (`registrar_evento`, genérico);
 * `ERRO NAO TRATADO (thread ...)` com o traceback, pelo `sys.excepthook` e pelo
   `threading.excepthook` (os robôs rodam em threads). As linhas do traceback vêm
