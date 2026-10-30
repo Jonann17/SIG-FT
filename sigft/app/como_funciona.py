@@ -136,6 +136,20 @@ TEXTOS: dict[str, Texto] = {
                    "pede o seu OK em cada uma."),
         ),
     ),
+    "UploadFotos": Texto(
+        marcar("Sobe as fotos de um subsistema nas fichas do portal e marca DOCUMENTOS E IMAGENS."),
+        (
+            marcar("Recebe a pasta de fotos (0071.jpg, 0071a.jpg…) e o _STATUS_PMIB, que diz de qual "
+                   "ficha é cada final de 4 dígitos."),
+            marcar("Foto fora do padrão, sem ficha ou com final repetido em duas fichas não sobe: o "
+                   "console lista cada uma."),
+            marcar("Ficha que já tem fotos: o robô as exclui antes de subir, ou pergunta, conforme o "
+                   "modo escolhido."),
+            marcar("Na planilha: COMPLETO se a ficha tem documentos; senão INCOMPLETO, com a nota "
+                   "\"Faltam documentos\"."),
+            marcar("Parar no meio termina a ficha atual; as seguintes não são tocadas."),
+        ),
+    ),
     "CopiaFichas": Texto(
         marcar("Copia uma ficha que já está no portal para as fichas duplicadas dela."),
         (

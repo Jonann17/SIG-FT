@@ -974,11 +974,13 @@ def test_medidas_da_home(com_folha, qtbot, rede, mensagens):
     assert 46 <= engrenagem[1] and engrenagem[1] + engrenagem[3] <= 46 + 38
     cards = list(tela.cards.values())
     # 2026-10-27: a Conferência de Revisões virou aba do PMIB Manager (correção do
-    # Luan), e a Home voltou aos 12 cards.
-    assert _geo(cards[0], corpo)[:3] == (52, 247, 438)
-    assert _geo(cards[1], corpo)[:3] == (502, 247, 438)
+    # Luan), e a Home voltou aos 12 cards. 2026-10-30: o Upload de Fotos é o 13º, por
+    # decisão do usuário -- a Home passa a rolar, e a barra vertical tira 5 px da
+    # largura dos cards (438 -> 433).
+    assert _geo(cards[0], corpo)[:3] == (52, 247, 433)
+    assert _geo(cards[1], corpo)[:3] == (497, 247, 433)
     assert tela.horizontalScrollBar().maximum() == 0
-    assert tela.verticalScrollBar().maximum() == 0, "os 12 cards cabem sem rolar (decisão de 2026-10-07)"
+    assert tela.verticalScrollBar().maximum() > 0, "13 cards: a Home rola (decisão de 2026-10-30)"
 
 
 def test_medidas_do_painel_de_chaves(com_folha, qtbot, rede, mensagens):

@@ -239,6 +239,36 @@ def _abrir_formulario(portal):
     return False
 
 
+def subir_arquivos(portal, arquivos, callback_log=None):
+    """Sobe `[(descricao, caminho), …]` na ficha aberta em edição, um por vez.
+    Devolve quantos entraram. Também usado pelo Upload de Fotos."""
+    _log = _log_de(callback_log)
+    subidas = 0
+    for descricao, caminho in arquivos:
+        entrou = subir_uma(portal, descricao, caminho, callback_log)
+        if not entrou:
+            # AUTOCONFERÊNCIA COM REPARO: o upload que falha deixa o
+            # formulário ABERTO, e ele cobre a tela. No log de 2026-10-19
+            # foi uma cadeia: o FilePond não apareceu, a imagem seguinte
+            # "não achou 'Adicionar imagens'" e as DUAS fichas seguintes
+            # não acharam nem a lista. Fechar e tentar de novo, uma vez.
+            fechar_formulario(portal, callback_log)
+            _log(f"      [Autoconferência] Imagens: "
+                 f"{os.path.basename(caminho)} não entrou -- fechei o "
+                 f"formulário e vou tentar de novo.")
+            entrou = subir_uma(portal, descricao, caminho, callback_log)
+            if not entrou:
+                fechar_formulario(portal, callback_log)
+        if entrou:
+            subidas += 1
+            _log(f"      Imagem enviada: {descricao[:50] or '(sem legenda)'}")
+
+    # Saída LIMPA, aconteça o que acontecer: a próxima seção (e a próxima
+    # ficha) não pode herdar um formulário aberto por cima da tela.
+    fechar_formulario(portal, callback_log)
+    return subidas
+
+
 def copiar(portal, imagens, pmib_alvo="", callback_log=None):
     """Sobe na ficha ALVO as imagens lidas da original.
 
@@ -265,30 +295,9 @@ def copiar(portal, imagens, pmib_alvo="", callback_log=None):
             _log(f"      [Aviso] {recusadas} imagem(ns) não são JPEG nem PNG e "
                  f"o portal as recusaria. Copie à mão.")
 
-        subidas = 0
-        for legenda, caminho in arquivos:
-            descricao = legenda or pmib_alvo
-            entrou = subir_uma(portal, descricao, caminho, callback_log)
-            if not entrou:
-                # AUTOCONFERÊNCIA COM REPARO: o upload que falha deixa o
-                # formulário ABERTO, e ele cobre a tela. No log de 2026-10-19
-                # foi uma cadeia: o FilePond não apareceu, a imagem seguinte
-                # "não achou 'Adicionar imagens'" e as DUAS fichas seguintes
-                # não acharam nem a lista. Fechar e tentar de novo, uma vez.
-                fechar_formulario(portal, callback_log)
-                _log(f"      [Autoconferência] Imagens: "
-                     f"{os.path.basename(caminho)} não entrou -- fechei o "
-                     f"formulário e vou tentar de novo.")
-                entrou = subir_uma(portal, descricao, caminho, callback_log)
-                if not entrou:
-                    fechar_formulario(portal, callback_log)
-            if entrou:
-                subidas += 1
-                _log(f"      Imagem enviada: {descricao[:50] or '(sem legenda)'}")
-
-        # Saída LIMPA, aconteça o que acontecer: a próxima seção (e a próxima
-        # ficha) não pode herdar um formulário aberto por cima da tela.
-        fechar_formulario(portal, callback_log)
+        subidas = subir_arquivos(
+            portal, [(legenda or pmib_alvo, caminho) for legenda, caminho in arquivos],
+            callback_log)
 
         faltaram = len(imagens) - subidas
         if faltaram:

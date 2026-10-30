@@ -125,7 +125,7 @@ def test_setas_pulam_o_modulo_bloqueado(qt_interface, qtbot):
     p, escolhas = _paleta(qtbot)
     for _ in range(5):                          # 0 -> 1, 2, 3, 4, (5 bloqueado) 6
         qtbot.keyClick(p.campo, Qt.Key.Key_Down)
-    assert p.lista.currentItem().data(Qt.ItemDataRole.UserRole) == "tela:Translator"
+    assert p.lista.currentItem().data(Qt.ItemDataRole.UserRole) == "tela:UploadFotos"
     qtbot.keyClick(p.campo, Qt.Key.Key_Up)
     assert p.lista.currentItem().data(Qt.ItemDataRole.UserRole) == "tela:UploadSpecs"
 

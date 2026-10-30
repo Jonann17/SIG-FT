@@ -20,6 +20,7 @@ MENU = [
     ("botao", marcar("4.2. Tradutor"), "Translator"),
     ("botao", marcar("4.3. Upload Specs"), "UploadSpecs"),
     ("botao", marcar("4.4. Correção de PDM"), "CorrecaoPDM"),
+    ("botao", marcar("4.5. Upload de Fotos"), "UploadFotos"),
     ("botao", marcar("5. Upload duplicadas"), "CopiaFichas"),
     ("botao", marcar("6. AutoSpec AI (RAG)"), "AutoSpec"),
     ("botao", marcar("7. Aplicação LMR"), "LMR"),
@@ -39,6 +40,7 @@ ICONE_DA_TELA = {
     "Translator": "languages",
     "UploadSpecs": "list",
     "CorrecaoPDM": "wrench",
+    "UploadFotos": "image",
     "CopiaFichas": "copy",
     "AutoSpec": "sparkles",
     "LMR": "tag",
@@ -66,6 +68,9 @@ MODULOS = [
      marcar("Troca ou atualiza o PDM das fichas no portal sem perder as "
             "características: fotografa antes, repõe o que o PDM novo também tem, e "
             "lista o que não voltou.")),
+    ("UploadFotos", marcar("Upload de Fotos"),
+     marcar("Sobe as fotos de uma pasta nas fichas pelo nome (0071, 0071a…), trocando as que "
+            "já estão lá, e marca DOCUMENTOS E IMAGENS no _STATUS_PMIB.")),
     ("Translator", marcar("Tradutor Técnico"),
      marcar("Traduz as características das fichas de português para espanhol, no "
             "próprio computador, e grava numa aba nova da própria planilha.")),

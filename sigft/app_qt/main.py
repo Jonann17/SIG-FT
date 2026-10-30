@@ -117,6 +117,11 @@ def _pmib_manager(parent, controller):
     return ModuloGestaoSobressalentes(parent, controller)
 
 
+def _upload_fotos(parent, controller):
+    from sigft.app_qt.views.upload_fotos import ModuloUploadFotos
+    return ModuloUploadFotos(parent, controller)
+
+
 def _busca_pmib(parent, controller):
     from sigft.app_qt.views.busca_pmib import ModuloBuscaPMIB
     return ModuloBuscaPMIB(parent, controller)
@@ -150,6 +155,7 @@ TELAS = {
     "UploadConditions": _upload_conditions,
     "UploadSpecs": _upload_specs,
     "CorrecaoPDM": _correcao_pdm,
+    "UploadFotos": _upload_fotos,
     "CopiaFichas": _copia_fichas,
     "AutoSpec": _autospec,
     "PMIBManager": _pmib_manager,

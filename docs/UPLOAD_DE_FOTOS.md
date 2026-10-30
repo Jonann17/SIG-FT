@@ -1,79 +1,62 @@
 # Caderno do módulo Upload de Fotos (RPA no PMIB)
 
-> Aberto em 2026-10-30, numa sessão na web. O desenho abaixo foi combinado com
-> o usuário; a parte de portal fica para uma sessão LOCAL com o navegador
-> ligado por MCP (`docs/OLHAR_O_PORTAL.md`). Nenhum código foi escrito ainda.
+> Aberto em 2026-10-30. Implementado no mesmo dia, numa sessão na web, a partir
+> das capturas de tela da aba "Documentos e imagens" em edição e do `pmib-mcp`
+> (o servidor MCP do PMIB, no Drive do usuário). **Ainda não rodou no portal
+> real** -- ver "O que falta" abaixo.
 
 ## O que o módulo faz
 
-Sobe as fotos dos materiais de um subsistema nas fichas do PMIB (aba
-"Documentos e imagens", em edição) e atualiza a coluna `DOCUMENTOS E IMAGENS`
-(`config.COL_DOCS_IMAGENS`) da `_STATUS_PMIB` daquele sistema.
+Tela **4.5. Upload de Fotos** (`sigft/app_qt/views/upload_fotos.py`, regra em
+`sigft/services/upload_fotos.py`). Para cada ficha do subsistema:
 
-## Decisões do usuário
+1. abre a ficha em edição e vai à aba "Documentos e imagens";
+2. se já há fotos: **exclui todas** (lixeira + confirmar, uma a uma, conferindo
+   que a linha saiu) ou **pergunta** -- excluir e subir / adicionar / pular;
+3. sobe as fotos da pasta pelo "Adicionar imagens" (o FilePond já validado na
+   ficha duplicada, `duplicadas_imagens.subir_arquivos`) e clica em CONFIRMAR;
+4. confere que o NOME de cada arquivo apareceu na tabela de imagens;
+5. vê se a ficha tem documento associado;
+6. passa para a próxima ficha.
 
-1. **Fotos:** uma pasta por subsistema. O NOME do arquivo já é a legenda:
-   4 últimos dígitos do código PMIB + letra em ordem alfabética --
-   `0052.jpg`, `0052a.jpg`, `0052b.png`, depois `0053.jpg`… A ordem de subida
-   é `0052`, `0052a`, `0052b`.
-2. **Ligação foto → ficha:** os 4 dígitos casam com o fim do código PMIB na
-   `_STATUS_PMIB` escolhida. Dois códigos com os mesmos 4 dígitos (contratos
-   diferentes) = ambíguo: vai para o relatório, NUNCA se adivinha.
-3. **Descrição da foto no portal:** o nome sem extensão (`0052a`), em PT e ES.
-4. **Fichas que já têm foto -- opção por sistema, escolhida na tela:**
-   - *Excluir todas antes*: apaga as fotos existentes e sobe as da pasta;
-   - *Perguntar por ficha*: pausa (callback `ask`) e oferece excluir e subir /
-     adicionar mesmo assim / pular.
-5. **STATUS PMIB:** o usuário escolhe o arquivo na tela (seletor com memória,
-   `sigft/app_qt/file_dialogs.py`).
-6. **Coluna `DOCUMENTOS E IMAGENS`:**
+No fim, a coluna `DOCUMENTOS E IMAGENS` do `_STATUS_PMIB`:
 
-   | Fotos | Documentos na ficha | Grava |
-   |---|---|---|
-   | todas subiram | há | `COMPLETO` |
-   | todas subiram | não há | `INCOMPLETO` + **nota de célula** "Faltam documentos" |
-   | alguma falhou | -- | não toca; a falha vai para o log |
+| Fotos | Documentos na ficha | Grava |
+|---|---|---|
+| todas subiram | há | `COMPLETO` (e tira a nota "Faltam documentos" que o SIG-FT tenha posto antes) |
+| todas subiram | não há | `INCOMPLETO` + nota de célula **"Faltam documentos"** |
+| alguma falhou / ficha pulada | -- | não toca; o motivo vai para o console |
 
-   Nota de célula REAL (o balão do Excel), escolha do usuário. O editor
-   cirúrgico (`core/excel/cirurgico.py`) ainda não sabe criar nota -- ensiná-lo
-   sem estragar os comentários em thread que as planilhas já têm. `wb.save`
-   do openpyxl está proibido aqui (apaga esses comentários; ver
-   `core/excel/status_sheet.py`, "Gravação sem perda").
+## Decisões
 
-## O que já existe e se reaproveita
+- **Pasta:** uma por subsistema; o NOME do arquivo é `<4 últimos dígitos do
+  PMIB><letra>` -- `0071.jpg`, `0071a.jpg`, `0071b.png`. Sobe nessa ordem (sem
+  letra primeiro). Fora do padrão, sem ficha na planilha ou com o final em duas
+  fichas (contratos diferentes): não sobe, e o console lista.
+- **Descrição no portal (PT e ES):** `imagens - 0071`, a que as fichas já
+  usam (captura de 2026-10-30); a letra fica no nome do arquivo.
+- **Nota de célula:** o editor cirúrgico ganhou `escrever_nota`
+  (`core/excel/cirurgico.py`). Só mexe em nota de autor "SIG-FT": nota ou
+  comentário em thread de uma pessoa na mesma célula fica como está.
+- **Tudo pela tela.** O `pmib-mcp` exclui/lista imagens chamando o servidor
+  (`ActionPMIBDataSheetImage_Delete`); o SIG-FT não faz isso -- a Itaipu proíbe
+  contato com o banco por fora da tela (regra do Luan, `core/rpa/respostas.py`).
+- **Home com 13 cards** (escolha do usuário, 2026-10-30): a Home passa a rolar.
 
-- `services/duplicadas_imagens.py`: `subir_uma`, `esperar_processamento`,
-  `fechar_formulario`, `extensao_de` -- o upload pelo FilePond, já validado no
-  portal real.
-- `core/rpa/seletores_duplicada.py`: `XPATH_IMAGENS_*`, `ABA_DOCUMENTOS_EDICAO`.
-- `services/duplicadas_extrator.py`: `abrir_secao`, `id_do_painel`.
-- `services/duplicadas_documentos.py`: `ja_associados(portal, escopo)` -- lê os
-  documentos da ficha em edição.
-- `PMIBPortal.pesquisar_e_abrir`, `aguardar_login_manual`, `clicar_e_confirmar`.
-- `core/excel/status_sheet.StatusPMIB` (+ `VALOR_COMPLETO`/`VALOR_INCOMPLETO`).
+## O que falta (sessão LOCAL, `docs/OLHAR_O_PORTAL.md`)
 
-## O que só o portal responde (primeira tarefa da sessão local)
+Os seletores abaixo saíram das capturas, não do DOM. Conferir numa ficha de
+teste com foto e documento:
 
-Na ficha aberta em EDIÇÃO, aba "Documentos e imagens", com foto E documento:
+1. `XPATH_TABELA_DE_IMAGENS` -- a tabela que tem o cabeçalho
+   "Pré-visualização" (e `XPATH_TABELA_DE_DOCUMENTOS`, "Arquivos anexados").
+   Se o portal estiver em espanhol, os cabeçalhos mudam.
+2. A lixeira (`fa-trash`) da linha da imagem e o diálogo de confirmação da
+   exclusão: o robô tenta `role=dialog` + CONFIRMAR e depois o CONFIRMAR
+   genérico do portal. Se não houver diálogo, ele só espera a linha sumir.
+3. A coluna "Nome" da tabela mostra o nome do arquivo exatamente como subiu
+   (`0071a.JPG`)? É a conferência do upload.
+4. Ficha SEM foto: a tabela de imagens some ou fica vazia? (O robô trata as
+   duas como "sem fotos".)
 
-1. Como as fotos que já existem aparecem em edição (lista? tabela? carrossel?)
-   e qual seletor as conta.
-2. Como se exclui uma foto: o botão/lixeira e o diálogo de confirmação
-   (`role='dialog'`, §3 de `PORTAL_COMO_ELE_SE_COMPORTA.md`) e a mensagem de
-   sucesso -- para entrar em `PALAVRA_DA_SECAO` se for outra.
-3. Se as fotos têm coluna "Descrição" no mesmo painel: aí `ja_associados`
-   contaria foto como documento, e o escopo precisa separar as duas tabelas.
-4. A legenda da foto existente é legível (para o modo *Perguntar* mostrar
-   quais fotos a ficha já tem)?
-
-## Ordem sugerida
-
-1. Sessão local: responder as 4 perguntas acima no DOM real.
-2. Serviço `sigft/services/upload_fotos.py` com TDD: montar o lote (parse dos
-   nomes, ligação pela STATUS, ambíguos), regra da coluna, depois o laço RPA.
-3. Nota de célula no `cirurgico.py`, com teste que prova que os comentários em
-   thread existentes sobrevivem.
-4. Tela `sigft/app_qt/views/upload_fotos.py` + registro em `TELAS`,
-   `catalogo.MENU`, `catalogo.MODULOS`, `conferencia.MODULOS_ESSENCIAIS`;
-   textos em `t()` com tradução es/en.
-5. Execução real numa ficha de teste antes de declarar pronto.
+A primeira execução real deve ser numa ficha só, no modo "Perguntar".
