@@ -634,7 +634,8 @@ Aconex"**. O console escreve 7 linhas, `OK` ou `FALHOU`:
 | Register inteiro (busca vazia) | quantos documentos o projeto tem: é a referência das outras |
 | Busca exata do código, com histórico | a busca que o download usa |
 | Busca pelo Tracking ID (duas sintaxes) | se dá para seguir uma lista renomeada sem baixar o histórico inteiro |
-| Busca por título e por código | se dá para achar as listas PB020/SOBRESSALENTES no servidor |
+| Busca por título | se dá para achar as listas de sobressalentes no servidor (`title:SOBRESSALENTES`) |
+| Listas novas | das que vieram pelo título, quantas têm PB020 no código e não são de preços (conferido no SIG-FT: o Aconex devolve HTTP 500 ao coringa no código) |
 
 Uma sintaxe que o Aconex ignora devolve o register inteiro e aparece como
 `FALHOU ... a sintaxe não filtrou`. **Copie as 7 linhas e mande**: elas decidem
@@ -720,6 +721,38 @@ número da execução e onde está o código, sem texto de documento e sem a cha
 mesmo texto fica em `Documentos\SIG-FT\logs\amp\`, e a tabela de sintomas está no
 `amp/revisao_de_listas/LEIA-ME.md`. Com o número da execução, o n8n mostra (menu
 *Executions*) em que nó parou.
+
+---
+
+## Etapa 5d — Atualização automática (2026-10-27, sem portal)
+
+A partir da **1.3.1-rc.6**, com a caixa **"Versões de teste"** marcada. Só no
+Windows. O caminho de cada atualização fica no `Documentos\SIG-FT\logs\diario.log`,
+na linha `ATUALIZACAO` (por arquivos, pelo instalador pequeno ou pelo completo), e
+os detalhes no `sigft.log` (linhas `[atualizacao]`).
+
+**5d.1 — Por arquivos (rc instalada só para você).** Com uma rc instalada em
+`AppData\Local\Programs\SIG-FT Itaipu`, atualize para a rc seguinte. A janela diz
+"Aplicando a atualização…", o SIG-FT fecha e abre sozinho, sem instalador e sem
+pedido de permissão. Confira: a versão nova na Home, a linha
+`ATUALIZACAO por arquivos v<de> -> v<para>` no diário, e em Configurações >
+Aplicativos o SIG-FT Itaipu com a versão nova.
+
+**5d.2 — Program Files: primeiro no lugar, depois a migração.** Numa máquina com o
+SIG-FT instalado **para todos** (Program Files) numa versão 1.2.0 a 1.3.1-rc.4:
+
+1. Atualize pelo app antigo. Vem o instalador pequeno (pede a senha de
+   administrador, como antes) e o SIG-FT reabre atualizado, **ainda em Program
+   Files**. Se ele reabrir na versão velha e oferecer a mesma atualização de novo,
+   pare e mande o `%TEMP%\SIG-FT_Update\instalacao.log`.
+2. Atualize de novo (a rc seguinte). Agora vem o **instalador completo**: ele
+   instala a cópia só sua e pede a senha de administrador uma vez, para remover a
+   de Program Files. Confira: a pasta de Program Files sumiu, o SIG-FT abre de
+   `AppData\Local\Programs`, e Documentos\SIG-FT (chaves, preferências) continua
+   igual. Recusando a senha: a cópia nova funciona, e a caixa (só no instalador
+   aberto à mão) diz como remover a antiga.
+3. **Fixe de novo o atalho na barra de tarefas**: o fixado apontava para Program
+   Files e deixa de abrir. Desafixe o velho e fixe o SIG-FT aberto.
 
 ---
 

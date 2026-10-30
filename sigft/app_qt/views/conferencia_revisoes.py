@@ -29,7 +29,7 @@ from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.core import prefs
 from sigft.core.aconex.cliente import ClienteAconex, ErroAconex
 from sigft.core.aconex.credenciais import PREFERENCIA_PERFIL, PerfilAconex, escolher_perfil, ler_perfis
-from sigft.core.aconex.diagnostico import linha, sondar
+from sigft.core.aconex.diagnostico import TENTATIVAS_DO_DIAGNOSTICO, linha, sondar
 from sigft.core.aconex.status_real import ORDEM_DAS_CATEGORIAS
 from sigft.services import conferencia_revisoes as conferencia_svc
 
@@ -294,5 +294,6 @@ class ModuloConferenciaRevisoes(ModuleFrame):
             return
         codigo = listas[0].codigo
         self.log(f"Testando o Aconex com o perfil {perfil.nome} e a lista {codigo}...")
-        for sonda in sondar(ClienteAconex(perfil, log_cb=self.log), codigo):
+        cliente = ClienteAconex(perfil, log_cb=self.log, tentativas=TENTATIVAS_DO_DIAGNOSTICO)
+        for sonda in sondar(cliente, codigo):
             self.log(linha(sonda))

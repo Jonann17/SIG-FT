@@ -190,8 +190,12 @@ class ClienteAconex:
     """Fala com o register do projeto em nome de um `PerfilAconex`. O token é pedido
     na primeira chamada e reaproveitado; `abrir` e `esperar` são injetáveis (testes)."""
 
-    def __init__(self, perfil: PerfilAconex, *, abrir=None, esperar=time.sleep, log_cb=lambda _m: None):
+    def __init__(self, perfil: PerfilAconex, *, abrir=None, esperar=time.sleep, log_cb=lambda _m: None,
+                 tentativas: int = TENTATIVAS_POR_PAGINA):
+        """`tentativas` por página: 5 na extração, como no DocManager; o diagnóstico
+        pede menos, porque sonda sintaxe e um HTTP 500 de sintaxe não passa esperando."""
         self._perfil = perfil
+        self._tentativas = max(1, tentativas)
         self._abrir = abrir or rede.abrir
         self._esperar = esperar
         self._log = log_cb
@@ -242,21 +246,21 @@ class ClienteAconex:
         self.conectar()
         pagina = params["page_number"]
         ultimo_erro, renovacoes, tentativa = "", 0, 0
-        while tentativa < TENTATIVAS_POR_PAGINA:
+        while tentativa < self._tentativas:
             try:
                 resposta = self._requisitar(self._register, metodo="GET", params=params, timeout=60,
                                             headers={"Authorization": f"Bearer {self._token}",
                                                      "Accept": "application/xml"})
             except ErroAconex as erro:   # rede/SSL/timeout em todas as rotas
                 ultimo_erro = str(erro)
-                self._log(f" [Erro de conexão] tentativa {tentativa + 1}/{TENTATIVAS_POR_PAGINA}...")
+                self._log(f" [Erro de conexão] tentativa {tentativa + 1}/{self._tentativas}...")
             else:
                 if resposta.status_code == 200:
                     try:
                         return ler(resposta.content), False
                     except ET.ParseError:   # XML truncado: vale retentar
                         ultimo_erro = f"XML inválido na página {pagina}"
-                        self._log(f" [{ultimo_erro}] tentativa {tentativa + 1}/{TENTATIVAS_POR_PAGINA}...")
+                        self._log(f" [{ultimo_erro}] tentativa {tentativa + 1}/{self._tentativas}...")
                 elif resposta.status_code == 400:
                     return [], True          # fim normal da paginação
                 elif resposta.status_code == 401 and renovacoes < RENOVACOES_POR_PAGINA:
@@ -269,14 +273,14 @@ class ClienteAconex:
                         ultimo_erro = "não foi possível renovar o token"
                 else:
                     ultimo_erro = f"HTTP {resposta.status_code}"
-                    self._log(f" [Erro {resposta.status_code}] tentativa {tentativa + 1}/{TENTATIVAS_POR_PAGINA}...")
+                    self._log(f" [Erro {resposta.status_code}] tentativa {tentativa + 1}/{self._tentativas}...")
             tentativa += 1
-            if tentativa < TENTATIVAS_POR_PAGINA:
+            if tentativa < self._tentativas:
                 espera = ESPERAS_BACKOFF[min(tentativa - 1, len(ESPERAS_BACKOFF) - 1)]
                 self._log(f" Aguardando {espera}s antes de tentar de novo...")
                 self._esperar(espera)
         raise ErroAconex(f"A busca no Aconex falhou na página {pagina} após "
-                         f"{TENTATIVAS_POR_PAGINA} tentativas ({ultimo_erro}).")
+                         f"{self._tentativas} tentativas ({ultimo_erro}).")
 
     def _paginas(self, search_query: str, historico: bool, campos: str, page_size: int, ler) -> list:
         """Todas as páginas da busca, no laço do `extrair_base` do DocManager."""

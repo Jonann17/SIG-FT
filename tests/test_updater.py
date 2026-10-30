@@ -16,6 +16,7 @@ pagou no DocManager e que estao travadas aqui:
 
 Nada aqui faz rede: a cascata de `core/rede.py` e dublada.
 """
+import dataclasses
 import hashlib
 import json
 import sys
@@ -474,6 +475,23 @@ def test_o_token_nunca_aparece_no_log_de_uma_falha(com_token, monkeypatch):
 # mesmo dia -- ele tambem travava a instalacao manual por causa do SIG-FT
 # fantasma --, e com ele os testes da ordem "solta o mutex, dispara".)
 
+class _ProcessoVivo:
+    """O `Popen` de um instalador que continua rodando."""
+
+    def poll(self):
+        return None
+
+
+def _criar_sinal(args):
+    """O que o `InitializeSetup` do `.iss` faz com o `/SINAL=`: cria o arquivo."""
+    from pathlib import Path
+
+    prefixo = f"/{updater.PARAM_SINAL}="
+    for arg in args:
+        if arg.startswith(prefixo):
+            Path(arg[len(prefixo):]).write_text("pronto", encoding="utf-8")
+
+
 @pytest.fixture
 def disparo(monkeypatch, tmp_path):
     """Registra, EM ORDEM, o que `instalar()` faz -- sem disparar nada."""
@@ -485,11 +503,13 @@ def disparo(monkeypatch, tmp_path):
         registro["args"] = list(args)
         if registro["erro"] is not None:
             raise registro["erro"]
-        return object()
+        _criar_sinal(args)   # o InitializeSetup do .iss
+        return _ProcessoVivo()
 
     def elevado(caminho, args):
         registro["eventos"].append("pediu elevacao")
         registro["args_elevado"] = list(args)
+        _criar_sinal(args)
 
     monkeypatch.setattr(updater.subprocess, "Popen", popen)
     monkeypatch.setattr(updater, "_disparar_elevado", elevado)
@@ -549,6 +569,26 @@ def test_se_o_windows_EXIGIR_elevacao_no_disparo_cai_no_runas(disparo, tmp_path)
     assert disparo["eventos"] == ["disparou o instalador", "pediu elevacao"]
     assert updater.ARG_REABRIR in disparo["args_elevado"]
 
+
+
+@pytest.mark.parametrize("gravavel", [True, False])
+def test_o_app_empacotado_pede_SEMPRE_so_para_mim(disparo, tmp_path, monkeypatch, gravavel):
+    """[2026-10-27] O instalador e por usuario, e o app diz isso explicito --
+    tambem em Program Files: e o instalador completo que migra essa copia."""
+    monkeypatch.setattr(updater, "empacotado", lambda: True)
+    monkeypatch.setattr(updater, "precisa_elevacao", lambda: not gravavel)
+
+    updater.instalar(tmp_path / "Setup.exe")
+
+    assert updater.ESCOPO_INSTALADOR == "/CURRENTUSER"
+    assert "/CURRENTUSER" in disparo["args"]
+    assert "/ALLUSERS" not in disparo["args"]
+
+
+def test_fora_do_exe_nao_ha_escopo_a_passar(disparo, tmp_path):
+    updater.instalar(tmp_path / "Setup.exe")
+
+    assert not {"/CURRENTUSER", "/ALLUSERS"} & set(disparo["args"])
 
 def test_outro_erro_do_disparo_NAO_vira_pedido_de_elevacao(disparo, tmp_path):
     disparo["erro"] = OSError(2, "arquivo nao encontrado")
@@ -631,6 +671,51 @@ def test_checar_passa_a_versao_instalada_e_escolhe_o_pequeno(com_token, monkeypa
 
     assert info.incremental is True and info.nome_arquivo == PACOTE
 
+
+
+def test_instalado_para_todos_vai_DIRETO_o_completo(com_token, monkeypatch):
+    """[2026-10-27] Pasta sem escrita = a instalacao antiga em Program Files.
+    O pequeno e por usuario (o `PrepareToInstall` le HKCU) e a recusaria --
+    com o app ja fechado pelo /SINAL, ele reabriria e pegaria o pequeno de
+    novo, sem fim. Os arquivos nem da para gravar. So o completo, que migra."""
+    release = _release_com_pequeno()
+    release["assets"].append({"name": "latest.json", "url": "https://api.github.com/x/assets/99", "size": 9})
+    release["assets"].append({"name": "arquivos.json", "url": "https://api.github.com/x/assets/98", "size": 9})
+    release["assets"].append({"name": "SIG-FT_Itaipu_Arquivos_1.0.0_para_1.1.0.zip",
+                              "url": "https://api.github.com/x/assets/97", "size": 9})
+    manifesto = _manifesto_com_pequeno()
+    manifesto["atualizacoes"][0]["arquivos"] = {
+        "arquivo": "SIG-FT_Itaipu_Arquivos_1.0.0_para_1.1.0.zip", "sha256": "ee" * 32}
+    resposta = _Resposta(conteudo=json.dumps(manifesto).encode("utf-8"))
+    monkeypatch.setattr(rede, "abrir", _abrir_devolvendo(_Resposta(release), _Sessao(resposta)))
+    monkeypatch.setattr(updater, "precisa_elevacao", lambda: True)
+    registro = []
+
+    info = updater.checar("1.0.0", canal_testes=False, log_cb=registro.append)
+
+    assert info.incremental is False and info.nome_arquivo == "SIG-FT_Itaipu_Setup_1.1.0.exe"
+    assert info.arquivos is None and info.manifesto_arquivos is None
+    assert not updater.pode_por_arquivos(info)
+    assert any("para todos" in linha for linha in registro)
+
+
+def test_com_a_pasta_gravavel_o_mesmo_release_da_o_pequeno_e_os_arquivos(com_token, monkeypatch):
+    """O par do teste de cima: so a pasta sem escrita tira o pequeno."""
+    release = _release_com_pequeno()
+    release["assets"].append({"name": "latest.json", "url": "https://api.github.com/x/assets/99", "size": 9})
+    release["assets"].append({"name": "arquivos.json", "url": "https://api.github.com/x/assets/98", "size": 9})
+    release["assets"].append({"name": "SIG-FT_Itaipu_Arquivos_1.0.0_para_1.1.0.zip",
+                              "url": "https://api.github.com/x/assets/97", "size": 9})
+    manifesto = _manifesto_com_pequeno()
+    manifesto["atualizacoes"][0]["arquivos"] = {
+        "arquivo": "SIG-FT_Itaipu_Arquivos_1.0.0_para_1.1.0.zip", "sha256": "ee" * 32}
+    resposta = _Resposta(conteudo=json.dumps(manifesto).encode("utf-8"))
+    monkeypatch.setattr(rede, "abrir", _abrir_devolvendo(_Resposta(release), _Sessao(resposta)))
+    monkeypatch.setattr(updater, "precisa_elevacao", lambda: False)
+
+    info = updater.checar("1.0.0", canal_testes=False)
+
+    assert info.incremental is True and info.arquivos is not None
 
 def test_o_pequeno_baixado_vira_exe_depois_de_conferido(monkeypatch, tmp_path):
     monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
@@ -1167,3 +1252,631 @@ def test_baixar_limpa_a_pasta_antes(monkeypatch, tmp_path):
     destino = updater.baixar(_tres_caminhos(pequeno, completo, _zip_com({MEMBRO: pequeno})))
 
     assert sorted(p.name for p in tmp_path.iterdir()) == sorted([destino.name, "instalacao.log"])
+
+
+# =============================================================================
+# M. A atualizacao por ARQUIVOS, aplicada pelo proprio app  [2026-10-27]
+# =============================================================================
+# Ver docs/superpowers/specs/2026-10-27-atualizacao-como-cmi-design.md. Com a
+# pasta do programa gravavel, o app baixa o `.zip` so com os arquivos que
+# mudaram (`pacote_arquivos`), aplica com ele mesmo aberto e se reabre. Sem
+# instalador, sem UAC. O que falhar cai na corrente de sempre.
+
+PACOTE_ARQUIVOS = "SIG-FT_Itaipu_Arquivos_1.0.0_para_1.1.0.zip"
+
+
+def _release_com_arquivos(*, com_zip=True, com_manifesto=True, digest=None):
+    release = _release_com_pequeno()
+    if com_zip:
+        release["assets"].append({
+            "name": PACOTE_ARQUIVOS, "size": 5_000,
+            "url": "https://api.github.com/repos/luanccozer/SIG-FT/releases/assets/90"})
+    if com_manifesto:
+        asset = {"name": "arquivos.json", "size": 800,
+                 "url": "https://api.github.com/repos/luanccozer/SIG-FT/releases/assets/91"}
+        if digest:
+            asset["digest"] = digest
+        release["assets"].append(asset)
+    return release
+
+
+def _manifesto_com_arquivos(sha="ef" * 32, *, com_chave=True):
+    manifesto = _manifesto_com_pequeno()
+    if com_chave:
+        manifesto["atualizacoes"][0]["arquivos"] = {
+            "arquivo": PACOTE_ARQUIVOS, "sha256": sha, "tamanho": 5_000}
+    return manifesto
+
+
+def test_com_a_chave_e_os_assets_a_atualizacao_traz_o_pacote_de_arquivos():
+    info = updater.interpretar_release(_release_com_arquivos(digest="sha256:" + "12" * 32),
+                                       _manifesto_com_arquivos(), versao_atual="1.0.0")
+
+    assert info.arquivos is not None and info.manifesto_arquivos is not None
+    assert info.arquivos.nome_arquivo == PACOTE_ARQUIVOS
+    assert info.arquivos.url_asset.endswith("/assets/90")
+    assert info.arquivos.sha256 == "ef" * 32
+    assert info.manifesto_arquivos.nome_arquivo == "arquivos.json"
+    assert info.manifesto_arquivos.url_asset.endswith("/assets/91")
+    assert info.manifesto_arquivos.sha256 == "12" * 32
+    # A corrente de sempre continua inteira por baixo.
+    assert info.incremental and info.completo is not None
+
+
+@pytest.mark.parametrize("release, manifesto", [
+    (_release_com_arquivos(), _manifesto_com_arquivos(com_chave=False)),   # latest.json velho
+    (_release_com_arquivos(com_zip=False), _manifesto_com_arquivos()),     # zip ausente
+    (_release_com_arquivos(com_manifesto=False), _manifesto_com_arquivos()),  # sem arquivos.json
+    (_release_com_arquivos(), _manifesto_com_arquivos(sha="")),            # sem SHA256
+])
+def test_sem_tudo_o_que_precisa_nao_ha_pacote_de_arquivos(release, manifesto):
+    info = updater.interpretar_release(release, manifesto, versao_atual="1.0.0")
+
+    assert info.arquivos is None and info.manifesto_arquivos is None
+    assert info.incremental   # o pequeno de sempre continua
+
+
+def test_de_outra_versao_nao_ha_pacote_de_arquivos():
+    info = updater.interpretar_release(_release_com_arquivos(), _manifesto_com_arquivos(),
+                                       versao_atual="0.9.0")
+
+    assert info.arquivos is None and not info.incremental
+
+
+def test_sem_digest_o_arquivos_json_vai_sem_sha():
+    info = updater.interpretar_release(_release_com_arquivos(), _manifesto_com_arquivos(),
+                                       versao_atual="1.0.0")
+
+    assert info.manifesto_arquivos.sha256 == ""
+
+
+@pytest.mark.parametrize("sem", ["asset", "entrada"])
+def test_o_pacote_de_arquivos_vem_MESMO_sem_o_instalador_pequeno(sem):
+    """[2026-10-27, M4] O zip de arquivos nao depende do pequeno: faltando o
+    asset dele (ou a entrada nem o listando), a atualizacao e o completo, com
+    os arquivos por cima -- o app aplica os arquivos e, se falharem, cai no
+    completo."""
+    release = _release_com_arquivos()
+    release["assets"] = [a for a in release["assets"] if a["name"] != PACOTE]
+    manifesto = _manifesto_com_arquivos()
+    if sem == "entrada":
+        entrada = manifesto["atualizacoes"][0]
+        for chave in ("arquivo", "sha256", "tamanho"):
+            entrada.pop(chave)
+
+    info = updater.interpretar_release(release, manifesto, versao_atual="1.0.0")
+
+    assert info.incremental is False and info.nome_arquivo == "SIG-FT_Itaipu_Setup_1.1.0.exe"
+    assert info.arquivos is not None and info.arquivos.nome_arquivo == PACOTE_ARQUIVOS
+    assert info.manifesto_arquivos is not None
+
+
+def test_sem_o_pequeno_e_de_outra_versao_nao_ha_arquivos():
+    release = _release_com_arquivos()
+    release["assets"] = [a for a in release["assets"] if a["name"] != PACOTE]
+
+    info = updater.interpretar_release(release, _manifesto_com_arquivos(), versao_atual="0.9.0")
+
+    assert info.arquivos is None and not info.incremental
+
+
+# -- pode_por_arquivos --------------------------------------------------------
+
+@pytest.fixture
+def instalado_em(monkeypatch, tmp_path):
+    pasta = tmp_path / "SIG-FT"
+    pasta.mkdir()
+    monkeypatch.setattr(updater, "empacotado", lambda: True)
+    monkeypatch.setattr(updater, "pasta_instalacao", lambda: pasta)
+    return pasta
+
+
+def _com_arquivos():
+    return updater.interpretar_release(_release_com_arquivos(), _manifesto_com_arquivos(),
+                                       versao_atual="1.0.0")
+
+
+def test_pode_por_arquivos_com_pacote_empacotado_e_pasta_gravavel(instalado_em):
+    assert updater.pode_por_arquivos(_com_arquivos()) is True
+
+
+def test_sem_pacote_nao_pode_por_arquivos(instalado_em):
+    assert updater.pode_por_arquivos(_info(b"x")) is False
+
+
+def test_rodando_do_codigo_fonte_nao_pode_por_arquivos(instalado_em, monkeypatch):
+    monkeypatch.setattr(updater, "empacotado", lambda: False)
+
+    assert updater.pode_por_arquivos(_com_arquivos()) is False
+
+
+def test_pasta_que_nao_aceita_escrita_nao_pode_por_arquivos(instalado_em, monkeypatch):
+    # Program Files: o `os.access` mente; o teste e escrevendo de verdade.
+    from pathlib import Path
+
+    touch_real = Path.touch
+
+    def touch(self, *a, **k):
+        if self.parent == instalado_em:
+            raise PermissionError(5, "acesso negado")
+        return touch_real(self, *a, **k)
+
+    monkeypatch.setattr(Path, "touch", touch)
+
+    assert updater.pode_por_arquivos(_com_arquivos()) is False
+    assert updater.precisa_elevacao() is True
+
+
+# -- aplicar_por_arquivos -----------------------------------------------------
+
+def _versoes(tmp_path):
+    """Uma pasta 1.0.0 instalada, a 1.1.0 montada ao lado, e o zip entre as duas."""
+    from sigft.services import pacote_arquivos
+
+    velha, nova, saida = tmp_path / "velha", tmp_path / "nova", tmp_path / "zip"
+    for pasta in (velha, nova, saida):
+        pasta.mkdir()
+    for rel, dados in {"SIG-FT.exe": b"exe 1.0", "_internal/base.dll": b"igual",
+                       "_internal/sumiu.pyd": b"velho"}.items():
+        (velha / rel).parent.mkdir(parents=True, exist_ok=True)
+        (velha / rel).write_bytes(dados)
+    for rel, dados in {"SIG-FT.exe": b"exe 1.1", "_internal/base.dll": b"igual",
+                       "_internal/novo.pyd": b"novo"}.items():
+        (nova / rel).parent.mkdir(parents=True, exist_ok=True)
+        (nova / rel).write_bytes(dados)
+    zipado = pacote_arquivos.montar(nova, ["SIG-FT.exe", "_internal/novo.pyd"],
+                                    ["_internal/sumiu.pyd"], "1.0.0", "1.1.0", saida)
+    arquivos_json = json.dumps({"versao": "1.1.0", "arquivos": {
+        p.relative_to(nova).as_posix(): {"sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+                                         "tamanho": p.stat().st_size}
+        for p in sorted(nova.rglob("*")) if p.is_file()}}).encode()
+    return velha, zipado.read_bytes(), arquivos_json
+
+
+def _retrato(pasta):
+    return {p.relative_to(pasta).as_posix(): p.read_bytes()
+            for p in sorted(pasta.rglob("*")) if p.is_file()}
+
+
+@pytest.fixture
+def por_arquivos(monkeypatch, tmp_path):
+    """A pasta instalada (1.0.0), o download dublado por asset e o registro do Windows."""
+    velha, zip_bytes, arquivos_json = _versoes(tmp_path)
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    monkeypatch.setattr(updater, "empacotado", lambda: True)
+    monkeypatch.setattr(updater, "pasta_instalacao", lambda: velha)
+    monkeypatch.setattr(updater, "pasta_download", lambda: downloads)
+    registrados = []
+    monkeypatch.setattr(updater, "_registrar_versao",
+                        lambda versao, pasta, **kw: registrados.append(versao))
+    abrir = _AbrirPorAsset({"90": _RespostaBinaria(zip_bytes), "91": _RespostaBinaria(arquivos_json)})
+    monkeypatch.setattr(rede, "abrir", abrir)
+    manifesto = _manifesto_com_arquivos(sha=hashlib.sha256(zip_bytes).hexdigest())
+    digest = "sha256:" + hashlib.sha256(arquivos_json).hexdigest()
+    info = updater.interpretar_release(_release_com_arquivos(digest=digest), manifesto,
+                                       versao_atual="1.0.0")
+    return {"pasta": velha, "info": info, "abrir": abrir, "registrados": registrados,
+            "downloads": downloads, "zip": zip_bytes, "json": arquivos_json}
+
+
+def test_aplicar_por_arquivos_troca_so_o_que_mudou_e_devolve_o_exe(por_arquivos):
+    log, progresso = [], []
+
+    exe = updater.aplicar_por_arquivos(por_arquivos["info"], progresso_cb=progresso.append,
+                                       log_cb=log.append)
+
+    pasta = por_arquivos["pasta"]
+    assert exe == pasta / updater.EXECUTAVEL
+    vivos = {k: v for k, v in _retrato(pasta).items() if not k.endswith(".sigft-old")}
+    assert vivos == {"SIG-FT.exe": b"exe 1.1", "_internal/base.dll": b"igual",
+                     "_internal/novo.pyd": b"novo"}
+    assert por_arquivos["abrir"].assets == ["91", "90"]   # o manifesto antes do zip
+    assert por_arquivos["registrados"] == ["1.1.0"]
+    assert progresso and progresso[-1] == 1.0
+    assert list(por_arquivos["downloads"].iterdir()) == [], "nada fica para tras no %TEMP%"
+    assert log, "cada passo vai para o log"
+
+
+def test_aplicar_por_arquivos_mostra_a_CONFERENCIA_na_barra_e_numa_linha_de_log(por_arquivos):
+    # Como o `_progresso_da_conferencia` do DocManager: depois do download a
+    # barra recomeca e acompanha a conferencia; o log ganha UMA linha dela.
+    log, progresso, conferindo = [], [], []
+
+    updater.aplicar_por_arquivos(
+        por_arquivos["info"], progresso_cb=progresso.append, log_cb=log.append,
+        ao_conferir=lambda: conferindo.append(len(progresso)))
+
+    assert len(conferindo) == 1
+    depois = progresso[conferindo[0]:]
+    assert depois[0] < 1.0 and depois == sorted(depois) and depois[-1] == 1.0
+    assert 0.0 in progresso[:conferindo[0]], "a barra recomeca depois do download"
+    linhas = [m for m in log if m.startswith("Conferindo")]
+    assert len(linhas) == 1 and "3" in linhas[0]
+
+
+def test_zip_que_nao_confere_nao_aplica_NADA(por_arquivos, monkeypatch):
+    antes = _retrato(por_arquivos["pasta"])
+    adulterado = por_arquivos["zip"][:-1] + bytes([por_arquivos["zip"][-1] ^ 0xFF])
+    por_arquivos["abrir"].respostas["90"] = _RespostaBinaria(adulterado)
+
+    with pytest.raises(updater.ArquivoInvalido):
+        updater.aplicar_por_arquivos(por_arquivos["info"], progresso_cb=lambda f: None,
+                                     log_cb=lambda m: None)
+
+    assert _retrato(por_arquivos["pasta"]) == antes
+    assert por_arquivos["registrados"] == []
+
+
+def test_arquivos_json_que_nao_confere_com_o_digest_nao_aplica_NADA(por_arquivos):
+    antes = _retrato(por_arquivos["pasta"])
+    por_arquivos["abrir"].respostas["91"] = _RespostaBinaria(por_arquivos["json"] + b" ")
+
+    with pytest.raises(updater.ArquivoInvalido):
+        updater.aplicar_por_arquivos(por_arquivos["info"], progresso_cb=lambda f: None,
+                                     log_cb=lambda m: None)
+
+    assert _retrato(por_arquivos["pasta"]) == antes
+    assert por_arquivos["abrir"].assets == ["91"], "o zip nem e baixado"
+
+
+def test_arquivos_json_ilegivel_vira_ErroPacote(por_arquivos):
+    from sigft.services import pacote_arquivos
+
+    pagina = b"<html>login</html>"
+    por_arquivos["abrir"].respostas["91"] = _RespostaBinaria(pagina)
+    info = por_arquivos["info"]
+    info = dataclasses.replace(info, manifesto_arquivos=dataclasses.replace(
+        info.manifesto_arquivos, sha256=""))
+
+    with pytest.raises(pacote_arquivos.ErroPacote):
+        updater.aplicar_por_arquivos(info, progresso_cb=lambda f: None, log_cb=lambda m: None)
+
+
+def test_pacote_que_nao_bate_com_a_versao_nova_e_desfeito(por_arquivos):
+    from sigft.services import pacote_arquivos
+
+    antes = _retrato(por_arquivos["pasta"])
+    errado = json.loads(por_arquivos["json"])
+    errado["arquivos"]["SIG-FT.exe"]["sha256"] = "00" * 32
+    dados = json.dumps(errado).encode()
+    por_arquivos["abrir"].respostas["91"] = _RespostaBinaria(dados)
+    info = por_arquivos["info"]
+    info = dataclasses.replace(info, manifesto_arquivos=dataclasses.replace(
+        info.manifesto_arquivos, sha256=hashlib.sha256(dados).hexdigest()))
+
+    with pytest.raises(pacote_arquivos.ErroPacote):
+        updater.aplicar_por_arquivos(info, progresso_cb=lambda f: None, log_cb=lambda m: None)
+
+    depois = {k: v for k, v in _retrato(por_arquivos["pasta"]).items() if not k.endswith(".sigft-old")}
+    assert depois == antes
+    assert por_arquivos["registrados"] == []
+
+
+def test_sem_pacote_aplicar_por_arquivos_recusa(instalado_em):
+    from sigft.services import pacote_arquivos
+
+    with pytest.raises(pacote_arquivos.ErroPacote):
+        updater.aplicar_por_arquivos(_info(b"x"), progresso_cb=lambda f: None, log_cb=lambda m: None)
+
+
+# -- o registro do Windows ----------------------------------------------------
+
+class _WinregFalso:
+    HKEY_CURRENT_USER = "HKCU"
+    KEY_READ = 1
+    KEY_SET_VALUE = 2
+    REG_SZ = 1
+
+    def __init__(self, valores=None):
+        self.gravados = []
+        self.chaves = []
+        self.valores = dict(valores or {})
+
+    def OpenKey(self, raiz, chave, reservado, acesso):  # noqa: N802 -- nome do winreg
+        self.chaves.append((raiz, chave, acesso))
+        dono = self
+
+        class _Chave:
+            def __enter__(self):
+                return dono
+
+            def __exit__(self, *a):
+                return False
+
+        return _Chave()
+
+    def QueryValueEx(self, chave, nome):  # noqa: N802
+        if nome not in self.valores:
+            raise FileNotFoundError(2, "valor nao existe")
+        return self.valores[nome], self.REG_SZ
+
+    def SetValueEx(self, chave, nome, reservado, tipo, valor):  # noqa: N802
+        self.gravados.append((nome, valor))
+
+
+PASTA_DO_USUARIO = r"C:\Users\ana\AppData\Local\Programs\SIG-FT Itaipu"
+
+
+def _lendo(valores):
+    return lambda nome: valores.get(nome)
+
+
+def test_fora_do_windows_o_registro_nao_e_tocado(monkeypatch):
+    falso = _WinregFalso()
+    monkeypatch.setitem(sys.modules, "winreg", falso)
+    monkeypatch.setattr(updater.sys, "platform", "linux")
+
+    updater._registrar_versao("1.1.0", PASTA_DO_USUARIO)
+
+    assert falso.chaves == [] and falso.gravados == []
+
+
+@pytest.mark.parametrize("registrada", [
+    PASTA_DO_USUARIO + "\\",                                  # o Inno grava com a barra no fim
+    PASTA_DO_USUARIO.lower(),                                   # caixa diferente
+    PASTA_DO_USUARIO.replace("\\", "/"),
+])
+def test_grava_a_versao_quando_HKCU_aponta_para_a_pasta_atualizada(monkeypatch, registrada):
+    falso = _WinregFalso({"InstallLocation": registrada})
+    monkeypatch.setitem(sys.modules, "winreg", falso)
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+    log = []
+
+    updater._registrar_versao("1.1.0", PASTA_DO_USUARIO, log_cb=log.append)
+
+    assert ("HKCU", updater.CHAVE_DESINSTALAR, falso.KEY_SET_VALUE) in falso.chaves
+    assert ("DisplayVersion", "1.1.0") in falso.gravados
+    assert ("DisplayName", f"{updater.NOME_APP} 1.1.0") in falso.gravados
+    assert any("gravad" in linha for linha in log)
+
+
+def test_sem_InstallLocation_vale_o_App_Path_do_Inno(monkeypatch):
+    falso = _WinregFalso()
+    monkeypatch.setitem(sys.modules, "winreg", falso)
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+
+    updater._registrar_versao("1.1.0", PASTA_DO_USUARIO,
+                              ler=_lendo({"Inno Setup: App Path": PASTA_DO_USUARIO}))
+
+    assert ("DisplayVersion", "1.1.0") in falso.gravados
+
+
+@pytest.mark.parametrize("valores, motivo", [
+    ({}, "nao tem"),
+    ({"InstallLocation": r"C:\Program Files\SIG-FT Itaipu\\"}, "outra pasta"),
+])
+def test_HKCU_que_NAO_e_desta_pasta_nao_e_regravado(monkeypatch, valores, motivo):
+    """[2026-10-27, I2] Com duas copias (a de Program Files e a do usuario),
+    regravar HKCU as cegas daria a versao de uma a outra."""
+    falso = _WinregFalso()
+    monkeypatch.setitem(sys.modules, "winreg", falso)
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+    log = []
+
+    updater._registrar_versao("1.1.0", PASTA_DO_USUARIO, log_cb=log.append, ler=_lendo(valores))
+
+    assert falso.gravados == []
+    assert any("nao regravad" in linha and motivo in linha for linha in log), log
+
+
+def test_registro_que_falha_nao_derruba_a_atualizacao(monkeypatch):
+    falso = _WinregFalso()
+
+    def recusa(*a, **k):
+        raise PermissionError(5, "acesso negado")
+
+    falso.OpenKey = recusa
+    monkeypatch.setitem(sys.modules, "winreg", falso)
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+    log = []
+
+    updater._registrar_versao("1.1.0", PASTA_DO_USUARIO, log_cb=log.append,
+                              ler=_lendo({"InstallLocation": PASTA_DO_USUARIO}))   # nao levanta
+
+    assert any("falhou" in linha for linha in log)
+
+
+def test_a_leitura_padrao_le_a_chave_do_desinstalador_em_HKCU(monkeypatch):
+    falso = _WinregFalso({"DisplayVersion": "1.0.0"})
+    monkeypatch.setitem(sys.modules, "winreg", falso)
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+
+    assert updater._ler_registro_usuario("DisplayVersion") == "1.0.0"
+    assert updater._ler_registro_usuario("InstallLocation") is None
+    assert falso.chaves[0] == ("HKCU", updater.CHAVE_DESINSTALAR, falso.KEY_READ)
+
+
+def test_a_leitura_padrao_fora_do_windows_e_None(monkeypatch):
+    monkeypatch.setattr(updater.sys, "platform", "linux")
+
+    assert updater._ler_registro_usuario("DisplayVersion") is None
+
+
+# -- checar confere o registro antes do pequeno e dos arquivos (I2) -----------
+
+@pytest.fixture
+def checar_no_windows(com_token, monkeypatch):
+    """Release com pequeno e arquivos; app empacotado no Windows, pasta gravavel."""
+    release = _release_com_arquivos()
+    release["assets"].append({"name": "latest.json", "url": "https://api.github.com/x/assets/99", "size": 9})
+    resposta = _Resposta(conteudo=json.dumps(_manifesto_com_arquivos()).encode("utf-8"))
+    monkeypatch.setattr(rede, "abrir", _abrir_devolvendo(_Resposta(release), _Sessao(resposta)))
+    monkeypatch.setattr(updater, "precisa_elevacao", lambda: False)
+    monkeypatch.setattr(updater, "empacotado", lambda: True)
+    monkeypatch.setattr(updater, "_no_windows", lambda: True)
+
+
+def test_registro_com_a_versao_que_roda_mantem_o_pequeno_e_os_arquivos(checar_no_windows):
+    lidos = []
+
+    info = updater.checar("1.0.0", canal_testes=False,
+                          ler_registro=lambda nome: lidos.append(nome) or "1.0.0")
+
+    assert info.incremental and info.arquivos is not None
+    assert lidos == ["DisplayVersion"]
+
+
+@pytest.mark.parametrize("registrada", ["0.9.0", None])
+def test_registro_com_OUTRA_versao_vai_so_o_completo(checar_no_windows, registrada):
+    """[2026-10-27, I2] O pequeno confere `DisplayVersion` e recusaria; os
+    arquivos aplicados deixariam o registro numa versao e a pasta noutra."""
+    log = []
+
+    info = updater.checar("1.0.0", canal_testes=False, log_cb=log.append,
+                          ler_registro=lambda nome: registrada)
+
+    assert info.incremental is False and info.nome_arquivo == "SIG-FT_Itaipu_Setup_1.1.0.exe"
+    assert info.arquivos is None
+    assert any("registro" in linha and "completo" in linha for linha in log), log
+
+
+def test_fora_do_windows_o_registro_nem_e_lido(checar_no_windows, monkeypatch):
+    monkeypatch.setattr(updater, "_no_windows", lambda: False)
+
+    info = updater.checar("1.0.0", canal_testes=False,
+                          ler_registro=lambda nome: pytest.fail("leu o registro"))
+
+    assert info.incremental
+
+
+# =============================================================================
+# N. O instalador avisa que SUBIU (`/SINAL`)  [2026-10-27]
+# =============================================================================
+# O app so fecha depois que o `InitializeSetup` do `.iss` cria o arquivo do
+# `/SINAL`. Se o instalador morrer antes (antivirus, politica, UAC recusado),
+# `InstaladorNaoIniciou`, e o app continua aberto dizendo por que.
+
+class _Relogio:
+    def __init__(self):
+        self.agora = 0.0
+        self.dormidas = 0
+
+    def __call__(self):
+        return self.agora
+
+    def dormir(self, segundos):
+        self.dormidas += 1
+        self.agora += segundos
+
+
+class _ProcessoFalso:
+    def __init__(self, sai_com=None, sai_depois=0):
+        self.sai_com, self.sai_depois, self.polls = sai_com, sai_depois, 0
+
+    def poll(self):
+        self.polls += 1
+        if self.sai_com is not None and self.polls > self.sai_depois:
+            return self.sai_com
+        return None
+
+
+@pytest.fixture
+def espera(monkeypatch, tmp_path):
+    monkeypatch.setattr(updater, "pasta_download", lambda: tmp_path)
+    monkeypatch.setattr(updater, "precisa_elevacao", lambda: False)
+    estado = {"processo": _ProcessoFalso(), "sinal_na_dormida": None, "args": None}
+    relogio = _Relogio()
+
+    def popen(args, **kw):
+        estado["args"] = list(args)
+        return estado["processo"]
+
+    def dormir(segundos):
+        relogio.dormir(segundos)
+        if estado["sinal_na_dormida"] == relogio.dormidas:
+            _criar_sinal(estado["args"])
+
+    monkeypatch.setattr(updater.subprocess, "Popen", popen)
+    estado["relogio"], estado["dormir"] = relogio, dormir
+    return estado
+
+
+def _instalar(espera, tmp_path, **kw):
+    updater.instalar(tmp_path / "Setup.exe", dormir=espera["dormir"], relogio=espera["relogio"], **kw)
+
+
+def test_o_instalador_recebe_o_SINAL_na_pasta_de_download(espera, tmp_path):
+    espera["sinal_na_dormida"] = 1
+
+    _instalar(espera, tmp_path)
+
+    sinais = [a for a in espera["args"] if a.startswith(f"/{updater.PARAM_SINAL}=")]
+    assert sinais == [f"/{updater.PARAM_SINAL}={tmp_path / updater.ARQUIVO_SINAL}"]
+
+
+def test_instalar_ESPERA_o_sinal_antes_de_voltar(espera, tmp_path):
+    espera["sinal_na_dormida"] = 3
+
+    _instalar(espera, tmp_path)
+
+    assert espera["relogio"].dormidas == 3
+    assert (tmp_path / updater.ARQUIVO_SINAL).exists()
+
+
+def test_sinal_velho_de_outra_atualizacao_nao_conta(espera, tmp_path):
+    (tmp_path / updater.ARQUIVO_SINAL).write_text("pronto")
+    espera["sinal_na_dormida"] = 2
+
+    _instalar(espera, tmp_path)
+
+    assert espera["relogio"].dormidas == 2
+
+
+def test_instalador_que_morre_antes_do_sinal_levanta_InstaladorNaoIniciou(espera, tmp_path):
+    espera["processo"] = _ProcessoFalso(sai_com=1223, sai_depois=2)   # 1223: UAC recusado
+
+    with pytest.raises(updater.InstaladorNaoIniciou) as erro:
+        _instalar(espera, tmp_path)
+
+    assert erro.value.codigo == 1223
+    assert erro.value.log == tmp_path / "instalacao.log"
+    assert "1223" in str(erro.value) and "instalacao.log" in str(erro.value)
+
+
+def test_instalador_que_nao_responde_desiste_no_tempo_limite(espera, tmp_path):
+    with pytest.raises(updater.InstaladorNaoIniciou) as erro:
+        _instalar(espera, tmp_path, espera_s=5)
+
+    assert erro.value.codigo is None
+    assert 5 <= espera["relogio"].agora <= 6
+
+
+def test_o_tempo_limite_padrao_e_de_dez_minutos():
+    assert updater.ESPERA_INSTALADOR_S == 10 * 60
+
+
+def test_disparo_elevado_espera_SO_o_sinal(espera, tmp_path, monkeypatch):
+    """Com o `ShellExecute` nao ha processo para perguntar se morreu: so o
+    sinal e o tempo limite contam."""
+    erro = OSError("requer elevacao")
+    erro.winerror = 740
+
+    def popen(args, **kw):
+        espera["args"] = list(args)
+        raise erro
+
+    monkeypatch.setattr(updater.subprocess, "Popen", popen)
+    monkeypatch.setattr(updater, "_disparar_elevado", lambda caminho, args: None)
+
+    with pytest.raises(updater.InstaladorNaoIniciou):
+        _instalar(espera, tmp_path, espera_s=3)
+
+    espera["sinal_na_dormida"] = 2
+    espera["relogio"].dormidas = 0
+    _instalar(espera, tmp_path, espera_s=30)   # com o sinal, volta
+
+
+# -- reabrir ------------------------------------------------------------------
+
+def test_reabrir_dispara_o_exe_desacoplado(monkeypatch, tmp_path):
+    chamadas = []
+    monkeypatch.setattr(updater.subprocess, "Popen",
+                        lambda args, **kw: chamadas.append((list(args), kw)) or _ProcessoVivo())
+
+    updater.reabrir(tmp_path / "SIG-FT.exe")
+
+    (args, kw), = chamadas
+    assert args == [str(tmp_path / "SIG-FT.exe")]
+    assert kw.get("close_fds") is True
+    assert kw.get("cwd") == str(tmp_path)

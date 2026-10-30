@@ -36,8 +36,11 @@ from shiboken6 import isValid
 
 from sigft import _build_info
 from sigft.app.atualizacao_textos import (
+    MSG_APLICANDO,
     MSG_COMO_FUNCIONA,
+    MSG_CONFERINDO_ARQUIVOS,
     MSG_DOWNLOAD_CONFERIDO,
+    MSG_REABRINDO,
     MSG_TAREFA_AO_ATUALIZAR,
     MSG_UAC,
     TEXTO_AGORA_NAO,
@@ -51,6 +54,7 @@ from sigft.app.atualizacao_textos import (
     msg_em_dia,
     msg_erro_ao_procurar,
     msg_falhou,
+    msg_instalador_nao_iniciou,
     msg_sem_verificar,
     notas_para_exibir,
     resumo_da_versao,
@@ -60,7 +64,7 @@ from sigft.app.idioma import t
 from sigft.app_qt import estilo, interface
 from sigft.app_qt.widgets import blocos
 from sigft.core import diario, instancia
-from sigft.services import updater
+from sigft.services import pacote_arquivos, updater
 
 __all__ = [
     "JanelaAtualizacao", "TITULO", "notas_para_exibir", "procurar_agora",
@@ -103,11 +107,19 @@ def verificar_na_abertura(janela, *, versao_atual: str | None = None,
 def _limpar_e_consultar(janela, versao_atual: str) -> None:
     """Roda na THREAD. [2026-10-19] Antes da consulta, apaga os instaladores
     que atualizações anteriores deixaram no %TEMP% (`updater.limpar_downloads`).
-    A limpeza é um extra: se falhar, vai para o log e a consulta segue."""
+    A limpeza é um extra: se falhar, vai para o log e a consulta segue.
+    [2026-10-27] E os `.sigft-old` que a atualização por arquivos deixou na
+    pasta do programa (`pacote_arquivos.limpar_restos`), só no app empacotado."""
     try:
         updater.limpar_downloads(log_cb=_log)
     except Exception as erro:  # noqa: BLE001 -- limpeza não segura a consulta
         _log(f"Limpeza da pasta de atualizacao falhou: {erro}")
+    try:
+        if updater.empacotado() and (pasta := updater.pasta_instalacao()) is not None:
+            if (apagados := pacote_arquivos.limpar_restos(pasta)):
+                _log(f"Limpeza: {apagados} resto(s) da atualizacao por arquivos apagados.")
+    except Exception as erro:  # noqa: BLE001 -- limpeza não segura a consulta
+        _log(f"Limpeza dos restos da atualizacao por arquivos falhou: {erro}")
     _consultar(janela, versao_atual, False, None)
 
 
@@ -197,6 +209,8 @@ def _fechar_o_app(janela_principal) -> None:
 
     Sem o `closeEvent`, o `FECHAMENTO` do diário é gravado aqui (2026-10-27):
     sem ele, a sessão seguinte a toda atualização diria "encerrado de fora".
+    A thread já o gravou (`JanelaAtualizacao._anotar_no_diario`); o diário
+    grava uma vez por sessão, então chamar de novo não repete a linha.
     """
     try:
         janela_principal.hide()
@@ -242,7 +256,9 @@ class JanelaAtualizacao(QDialog):
         self._disparar = disparar
         self._fechar_app = fechar_app
         self._master = master
+        self._versao_atual = versao_atual
         self._ultimo_percentual = -1
+        self._caiu_no_completo = False
 
         self.setWindowTitle(t(TITULO))
         self.resize(580, 560)
@@ -359,6 +375,7 @@ class JanelaAtualizacao(QDialog):
         # tem como parar no meio), então o "X" e o Esc ficam mudos até terminar.
         self._baixando = True
         self._ultimo_percentual = -1
+        self._caiu_no_completo = False
         self.barra.setValue(0)
         self._faixa_barra.show()
         self._mostrar_status(msg_baixando(self.info))
@@ -379,7 +396,13 @@ class JanelaAtualizacao(QDialog):
 
     # -- o trabalho, na thread ------------------------------------------------
     def _baixar_e_instalar(self) -> None:
-        """Roda na THREAD. Só fecha o app depois que o instalador SUBIU."""
+        """Roda na THREAD. Só fecha o app depois que o instalador SUBIU.
+
+        [2026-10-27] Primeiro, quando dá (`updater.pode_por_arquivos`), a
+        atualização por arquivos: o próprio app aplica, se reabre e fecha.
+        Qualquer falha nela vai para o log e cai na corrente de sempre."""
+        if self._por_arquivos():
+            return
         try:
             caminho = updater.baixar(self.info, progresso_cb=self._ao_progredir,
                                      log_cb=_log,
@@ -390,11 +413,63 @@ class JanelaAtualizacao(QDialog):
             _log(f"a atualizacao falhou: {erro}")
             interface.na_interface(self._falhou, erro)
             return
+        pequeno = self.info.incremental and not self._caiu_no_completo
+        qual = "pelo instalador pequeno" if pequeno else "pelo instalador completo"  # nao-e-interface
+        log = updater.caminho_log_instalacao()
+        self._anotar_no_diario(qual, f" (exe={caminho.name}, log={log})")  # nao-e-interface
         interface.na_interface(self._fechar_app, self._master)
+
+    def _anotar_no_diario(self, caminho: str, detalhe: str = "") -> None:
+        """Roda na THREAD, logo antes de mandar fechar para atualizar
+        (2026-10-27): `ATUALIZACAO <caminho> v<de> -> v<para>` e o FECHAMENTO.
+        Aqui, e não só no `_fechar_o_app`: o `CloseApplications=force` do
+        instalador pode matar o app antes de a thread da interface rodar, e a
+        sessão seguinte diria "encerrado de fora". O diário não repete o
+        FECHAMENTO quando o `_fechar_o_app` grava de novo. Nunca levanta."""
+        de, para = self._versao_atual, self.info.versao
+        diario.registrar_evento(f"{diario.ATUALIZACAO} {caminho} v{de} -> v{para}{detalhe}")  # nao-e-interface
+        diario.registrar_fechamento()
+
+    def _por_arquivos(self) -> bool:
+        """Roda na THREAD. `True` se aplicou, reabriu e mandou fechar."""
+        try:
+            if not updater.pode_por_arquivos(self.info):
+                return False
+        except Exception as erro:  # noqa: BLE001 -- na dúvida, o instalador
+            _log(f"nao deu para saber se a atualizacao por arquivos serve: {erro}")
+            return False
+        interface.na_interface(self._mostrar_status, t(MSG_APLICANDO))
+        try:
+            exe = updater.aplicar_por_arquivos(self.info, progresso_cb=self._ao_progredir,
+                                               log_cb=_log, ao_conferir=self._ao_conferir)
+        except Exception as erro:  # noqa: BLE001 -- cai no instalador
+            _log(f"a atualizacao por arquivos falhou, vai o instalador: {erro}")
+            self._ultimo_percentual = -1
+            interface.na_interface(self.barra.setValue, 0)
+            interface.na_interface(self._mostrar_status, msg_baixando(self.info))
+            return False
+        # Antes de reabrir: o processo novo lê a sessão anterior ao abrir.
+        self._anotar_no_diario("por arquivos")  # nao-e-interface
+        interface.na_interface(self._mostrar_status, t(MSG_REABRINDO))
+        try:
+            updater.reabrir(exe)
+            _log(f"SIG-FT atualizado reaberto: {exe}")
+        except Exception as erro:  # noqa: BLE001 -- os arquivos já são os novos
+            # Os arquivos já são os da versão nova: fechar assim mesmo, e a
+            # pessoa abre de novo à mão.
+            _log(f"nao foi possivel reabrir o SIG-FT ({exe}): {erro}")
+        interface.na_interface(self._fechar_app, self._master)
+        return True
+
+    def _ao_conferir(self) -> None:
+        """Roda na THREAD: o zip já foi aplicado e a pasta está sendo conferida
+        (a barra recomeça pelo `progresso_cb` do serviço)."""
+        interface.na_interface(self._mostrar_status, t(MSG_CONFERINDO_ARQUIVOS))
 
     def _ao_cair_no_completo(self, completo: updater.Atualizacao) -> None:
         """Roda na THREAD: o pequeno falhou e o download virou o do completo
         (a barra recomeça pelo `progresso_cb` do serviço)."""
+        self._caiu_no_completo = True
         interface.na_interface(self._mostrar_status, msg_caiu_no_completo(completo))
 
     def _ao_progredir(self, fracao: float) -> None:
@@ -413,7 +488,9 @@ class JanelaAtualizacao(QDialog):
         estilo.definir_papel(self.rotulo_status, papel)
 
     def _falhou(self, erro: BaseException) -> None:
-        self._mostrar_status(msg_falhou(erro), papel="erro")
+        texto = (msg_instalador_nao_iniciou(erro) if isinstance(erro, updater.InstaladorNaoIniciou)
+                 else msg_falhou(erro))
+        self._mostrar_status(texto, papel="erro")
         self.barra.setValue(0)
         self.botao_atualizar.setEnabled(True)
         self.botao_atualizar.setText(t(TEXTO_TENTAR_DE_NOVO))

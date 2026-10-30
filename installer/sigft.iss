@@ -18,7 +18,9 @@
 ;  ⚠️ Este arquivo tem testes: tests/test_instalador.py le as diretivas daqui
 ;  e reprova as armadilhas que ja custaram caro a alguem (o AppMutex que
 ;  travava a instalacao, a versao com sufixo, o [InstallDelete] largo demais,
-;  o AppUserModelID divergente e o app que nao reabria depois de atualizar).
+;  o AppUserModelID divergente e o app que nao reabria depois de atualizar),
+;  e a instalacao sempre "so para mim", com a migracao de quem estava em
+;  Program Files (secao C).
 ;  Verde nele nao prova que o instalador COMPILA -- so o Windows com o Inno
 ;  Setup diz isso.
 ; ============================================================================
@@ -89,12 +91,39 @@ SetupIconFile=..\assets\icone-sig-ft.ico
 UninstallDisplayIcon={app}\{#AppExe}
 
 ; --- Escopo da instalacao -------------------------------------------------
-; O padrao continua sendo "para todos" (Program Files, com admin), mas o
-; instalador PERGUNTA -- pedido do usuario. Quem nao tem senha de
-; administrador escolhe "somente para mim" e vai para %LOCALAPPDATA%\Programs;
-; ai a atualizacao automatica roda sem nenhum popup do UAC.
+; [2026-10-27] SEMPRE "so para mim", sem pergunta -- pedido do usuario
+; ("eliminar o que esta em Program Files e basear tudo so no que fazemos
+; agora"). Com `lowest`, {autopf} e %LOCALAPPDATA%\Programs: nao pede senha de
+; administrador, e a pasta do programa aceita escrita -- que e o que a
+; atualizacao por arquivos (a do CMI Suite, `updater.aplicar_por_arquivos`)
+; precisa. Ate aqui o padrao era Program Files com a pergunta do escopo
+; (`admin` + `dialog`); quem a respondeu "para todos" e MIGRADO na proxima
+; atualizacao completa (ver `MigrarDaInstalacaoParaTodos`, no [Code]).
+;
+; So `commandline`, sem `dialog`: sem `dialog` o Inno nao pergunta. O app
+; passa `/CURRENTUSER` explicito (`updater.instalar`); `/ALLUSERS` continua
+; aceito para a TI, mas nada no SIG-FT o usa.
+;
+; [2026-10-27] EXCETO no PEQUENO (`#ifdef Atualizacao`), que volta ao que saiu
+; ate a 1.3.1-rc.4: `admin` + `dialog commandline`. Os apps 1.2.0 a
+; 1.3.1-rc.4 instalados em Program Files escolhem o pequeno sempre que o `de`
+; dele e a versao deles, e nao passam `/CURRENTUSER` nem `/SINAL`. Com
+; `lowest`, o `VersaoInstalada` leria HKCU, nao acharia nada, recusaria e
+; reabriria o app velho (`/REABRIR`) -- que ofereceria a mesma atualizacao de
+; novo, sem fim. Com `dialog` permitido, o `UsePreviousPrivileges` (padrao
+; `yes`) do Inno reaproveita o escopo da instalacao existente: quem estava
+; "para todos" atualiza em Program Files, quem estava "so para mim" atualiza
+; no perfil, como antes. O app novo passa sempre `/CURRENTUSER`, entao uma
+; instalacao por usuario continua por usuario. A copia de Program Files que o
+; pequeno levar a 1.3.1-rc.6 ou depois tem a pasta sem escrita, e a
+; atualizacao seguinte dela e o COMPLETO (`updater.checar`), que migra.
+#ifdef Atualizacao
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog commandline
+#else
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=commandline
+#endif
 
 ; --- Atualizacao por cima da versao anterior ------------------------------
 ; O Windows nao deixa sobrescrever um .exe em execucao: o SIG-FT aberto tem de
@@ -213,6 +242,116 @@ begin
   Result := ExpandConstant('{param:REABRIR|0}') = '1';
 end;
 
+// [2026-10-27] O instalador avisa que SUBIU, nos dois modos (pequeno e
+// completo). A atualizacao automatica passa /SINAL=<arquivo> (PARAM_SINAL em
+// sigft/services/updater.py) e so fecha o SIG-FT depois que este arquivo
+// existe; se o instalador morrer antes (antivirus, politica, UAC recusado), o
+// app continua aberto e diz por que. Copiado do CMI Suite (e do DocManager).
+// Sem /SINAL (instalacao a mao), nada muda. Quem fecha o app que ainda estiver
+// aberto continua sendo o CloseApplications=force.
+function InitializeSetup(): Boolean;
+var
+  Sinal: String;
+begin
+  Sinal := ExpandConstant('{param:SINAL|}');
+  if Sinal <> '' then
+    SaveStringToFile(Sinal, 'pronto', False);
+  Result := True;
+end;
+
+// [2026-10-27] Migracao da instalacao "para todos" (Program Files) para a
+// "so para mim". O instalador agora e sempre por usuario (PrivilegesRequired=
+// lowest); quem tinha o SIG-FT em Program Files ficaria com DUAS copias, e o
+// atalho publico antigo continuaria abrindo a versao velha -- que ofereceria a
+// atualizacao de novo, sem fim. Entao, depois de instalar a copia do usuario
+// (ssPostInstall: os arquivos novos ja estao no lugar), se a chave do
+// desinstalador existe em HKLM, o desinstalador ANTIGO roda elevado (`runas`,
+// o UAC pede a senha uma vez), silencioso, e o instalador espera ele acabar.
+//
+// Por que e seguro:
+//   - o app antigo ja fechou: ele so fecha depois de ver o arquivo do /SINAL,
+//     que o InitializeSetup cria logo ao subir; e o CloseApplications=force
+//     fecha o que restar antes de copiar os arquivos;
+//   - o desinstalador antigo so mexe no que ELE instalou (o unins000.dat de
+//     Program Files): a pasta de Program Files, a chave em HKLM e os atalhos
+//     publicos (Menu Iniciar e Area de Trabalho comuns). Nunca Documentos\SIG-FT
+//     (chaves de API, preferencias, logs): nenhum .iss do SIG-FT alcanca essa
+//     pasta (tests/test_instalador.py, secao E), e os atalhos novos ficam no
+//     perfil do usuario, fora do alcance dele;
+//   - se o UAC for recusado ou a desinstalacao falhar, segue: a copia do
+//     usuario ja esta instalada e funciona. Fica so o registro no log do
+//     instalador -- e, na proxima atualizacao completa, nova tentativa.
+// Em /SILENT o `runas` ainda mostra o UAC: e o esperado, uma vez, para quem
+// tinha o SIG-FT para todos. Isto roda depois das entradas do [Run] (ordem do
+// Inno): o app reaberto ja e o novo, e a janela do UAC aparece sobre ele.
+const
+  ChaveDesinstalar = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{9F2C4A18-51D7-4E0B-9A3C-5B7E1D6A2C40}_is1';
+
+function DesinstaladorParaTodos(var Exe: String): Boolean;
+var
+  Comando: String;
+begin
+  Comando := '';
+  if IsWin64 then
+    RegQueryStringValue(HKLM64, ChaveDesinstalar, 'UninstallString', Comando);
+  if Comando = '' then
+    RegQueryStringValue(HKLM32, ChaveDesinstalar, 'UninstallString', Comando);
+  // O Inno grava o UninstallString com aspas: "C:\...\unins000.exe".
+  Exe := RemoveQuotes(Trim(Comando));
+  Result := Exe <> '';
+end;
+
+// [2026-10-27] Recusada (UAC negado, sem a senha de administrador) ou com
+// erro, a migracao AVISA quem esta vendo, uma vez: sem isso a pessoa ficaria
+// com duas copias sem saber, e o atalho publico abriria a velha. No modo
+// silencioso (a atualizacao automatica), so o log -- caixa ali nao tem quem
+// leia, e a proxima atualizacao completa tenta de novo.
+procedure MigrarDaInstalacaoParaTodos;
+var
+  Exe: String;
+  Codigo: Integer;
+  Removida: Boolean;
+begin
+  // Rodando elevado (/ALLUSERS da TI), a instalacao E a de HKLM: nada a migrar.
+  if IsAdminInstallMode or not DesinstaladorParaTodos(Exe) then
+    Exit;
+  if not FileExists(Exe) then
+  begin
+    Log('Migracao: chave da instalacao para todos aponta para ' + Exe + ', que nao existe. Nada a remover.');
+    Exit;
+  end;
+  Log('Migracao: removendo a copia para todos os usuarios (' + Exe + '), com o UAC.');
+  Removida := False;
+  if not ShellExec('runas', Exe, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '',
+                   SW_HIDE, ewWaitUntilTerminated, Codigo) then
+    Log('Migracao: o desinstalador antigo nao rodou (' + SysErrorMessage(Codigo) +
+        '; 1223 = UAC recusado). A copia so para voce ja esta instalada e funciona.')
+  else if Codigo <> 0 then
+    Log(Format('Migracao: o desinstalador antigo saiu com o codigo %d. A copia so para voce ja esta instalada.', [Codigo]))
+  else
+  begin
+    Log('Migracao: a copia para todos os usuarios foi removida.');
+    Removida := True;
+  end;
+  if not Removida then
+  begin
+    if not WizardSilent then
+      MsgBox('A versao nova do SIG-FT Itaipu ja esta instalada so para voce e funciona normalmente.' + #13#10#13#10 +
+             'A copia antiga, instalada para todos os usuarios em Program Files, continua neste computador: ' +
+             'o Windows nao deu a permissao de administrador para remove-la.' + #13#10#13#10 +
+             'Para remove-la: Configuracoes > Aplicativos > SIG-FT Itaipu (a entrada que pede a senha de ' +
+             'administrador) > Desinstalar.', mbInformation, MB_OK)
+    else
+      Log('Migracao: modo silencioso, sem aviso na tela. A copia de Program Files continua; a proxima atualizacao completa tenta de novo.');
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    MigrarDaInstalacaoParaTodos;
+end;
+
 #ifdef Atualizacao
 // [2026-10-07] O instalador PEQUENO so serve para a versao de onde a
 // diferenca foi calculada (VersaoDe): sobre outra, ele deixaria uma mistura
@@ -221,9 +360,11 @@ end;
 // do pequeno), na mesma visao em que esta instalacao vai gravar. Diferente:
 // nada e copiado, e o app volta a abrir; na abertura seguinte o app escolhe o
 // arquivo pelo que de fato esta instalado.
-const
-  ChaveDesinstalar = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{9F2C4A18-51D7-4E0B-9A3C-5B7E1D6A2C40}_is1';
-
+// [2026-10-27] O pequeno ficou com o escopo de antes (`admin` + `dialog`, ver
+// o [Setup]): em Program Files ele roda elevado e le HKLM; por usuario
+// (`/CURRENTUSER` do app novo, ou o escopo anterior reaproveitado pelo Inno
+// para o app antigo), le HKCU. O app novo em Program Files nem o oferece: com
+// a pasta sem escrita, vai direto o completo, que migra (`updater.checar`).
 function VersaoInstalada: String;
 begin
   Result := '';

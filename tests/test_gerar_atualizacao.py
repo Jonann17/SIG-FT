@@ -14,7 +14,9 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import shutil
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -305,6 +307,106 @@ def test_pacotes_publicam_tambem_um_zip_com_o_mesmo_instalador(cenario):
     }
 
 
+@pytest.fixture
+def cenario_com_dist(cenario):
+    """O `cenario` com a `dist/SIG-FT` e o CHANGELOG de verdade, e o `novo` e a
+    base tirados deles por `manifesto` -- como no release.yml."""
+    raiz, instalador, bases, _novo, latest = cenario
+    dist_base, dist = raiz / "base" / "SIG-FT", raiz / "dist" / "SIG-FT"
+    _escrever(dist_base, "SIG-FT.exe", b"exe antigo")
+    _escrever(dist_base, "_internal/modelo.bin", b"m" * 1000)
+    _escrever(dist_base, "_internal/sumiu.pyd", b"sumiu")
+    _escrever(dist, "SIG-FT.exe", b"exe novo")
+    _escrever(dist, "_internal/modelo.bin", b"m" * 1000)
+    _escrever(dist, "_internal/novo/mod.pyd", b"novo")
+    log_base, changelog = raiz / "CHANGELOG_base.md", raiz / "CHANGELOG.md"
+    log_base.write_bytes(b"# 1.2.0-rc.3")
+    changelog.write_bytes(b"# 1.2.0-rc.4")
+    for velho in bases.glob("*.json"):
+        velho.unlink()
+    (bases / "v1.2.0-rc.3.json").write_text(
+        json.dumps(ga.manifesto(dist_base, log_base, "1.2.0-rc.3")), encoding="utf-8")
+    novo = ga.manifesto(dist, changelog, "1.2.0-rc.4")
+    return raiz, instalador, bases, novo, latest, dist_base, dist, log_base, changelog
+
+
+def test_pacotes_publicam_tambem_o_zip_so_com_os_arquivos(cenario_com_dist):
+    """2026-10-27: o `.zip` que o próprio app aplica, com a MESMA diferença do
+    pequeno (o CHANGELOG de fora da dist incluído), na chave `arquivos` da
+    mesma entrada."""
+    raiz, instalador, bases, novo, latest, _db, dist, _lb, changelog = cenario_com_dist
+
+    feitos = ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
+                        iss=instalador / "sigft.iss", latest=latest, executar=_ISCC(instalador / "Output"),
+                        pasta=dist, changelog=changelog)
+
+    so_arquivos = instalador / "Output" / "SIG-FT_Itaipu_Arquivos_1.2.0-rc.3_para_1.2.0-rc.4.zip"
+    with zipfile.ZipFile(so_arquivos) as z:
+        assert json.loads(z.read("manifesto.json")) == {
+            "de": "1.2.0-rc.3", "para": "1.2.0-rc.4",
+            "alterados": ["CHANGELOG.md", "SIG-FT.exe", "_internal/novo/mod.pyd"],
+            "removidos": ["_internal/sumiu.pyd"]}
+        assert z.read("arquivos/CHANGELOG.md") == b"# 1.2.0-rc.4"
+        assert z.read("arquivos/SIG-FT.exe") == b"exe novo"
+        assert "arquivos/_internal/modelo.bin" not in z.namelist()
+    [entrada] = json.loads(latest.read_text(encoding="utf-8"))["atualizacoes"]
+    assert entrada["arquivo"] == feitos[0].name          # o app instalado segue igual
+    assert set(entrada) == {"de", "arquivo", "sha256", "tamanho", "zip", "exe", "arquivos"}
+    assert entrada["arquivos"] == {
+        "arquivo": so_arquivos.name,
+        "sha256": hashlib.sha256(so_arquivos.read_bytes()).hexdigest(),
+        "tamanho": so_arquivos.stat().st_size,
+    }
+
+
+def test_o_zip_so_com_os_arquivos_leva_a_instalacao_a_versao_nova(cenario_com_dist):
+    """De ponta a ponta: a pasta instalada da base (a dist + o CHANGELOG na
+    raiz, como o Inno a deixa) recebe o zip e confere com o `arquivos.json`
+    novo -- os caminhos do manifesto são os mesmos do instalador."""
+    from sigft.services import pacote_arquivos
+
+    raiz, instalador, bases, novo, latest, dist_base, dist, log_base, changelog = cenario_com_dist
+    ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
+               iss=instalador / "sigft.iss", latest=latest, executar=_ISCC(instalador / "Output"),
+               pasta=dist, changelog=changelog)
+    instalada = raiz / "instalada"
+    shutil.copytree(dist_base, instalada)
+    shutil.copyfile(log_base, instalada / "CHANGELOG.md")
+
+    pacote_arquivos.aplicar(instalador / "Output" / pacote_arquivos.nome_pacote("1.2.0-rc.3", "1.2.0-rc.4"),
+                            instalada, novo)
+    pacote_arquivos.limpar_restos(instalada)
+
+    assert ga.manifesto(instalada, None, "1.2.0-rc.4") == novo
+
+
+def test_pacote_grande_demais_tambem_nao_gera_o_zip_so_com_os_arquivos(cenario_com_dist):
+    # A mesma regra do pequeno: acima de LIMITE_FRACAO o completo serve igual.
+    raiz, instalador, bases, novo, latest, _db, dist, _lb, changelog = cenario_com_dist
+    novo["arquivos"]["_internal/modelo.bin"]["sha256"] = "modelo-reconvertido"
+
+    feitos = ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
+                        iss=instalador / "sigft.iss", latest=latest, executar=_ISCC(instalador / "Output"),
+                        pasta=dist, changelog=changelog)
+
+    assert feitos == []
+    assert not list(raiz.rglob("SIG-FT_Itaipu_Arquivos_*"))
+
+
+def test_zip_so_com_os_arquivos_que_falha_nao_derruba_o_pequeno(cenario_com_dist, capsys):
+    raiz, instalador, bases, novo, latest, _db, dist, _lb, changelog = cenario_com_dist
+    (dist / "SIG-FT.exe").unlink()  # some depois do manifesto
+
+    feitos = ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
+                        iss=instalador / "sigft.iss", latest=latest, executar=_ISCC(instalador / "Output"),
+                        pasta=dist, changelog=changelog)
+
+    assert len(feitos) == 1 and "::warning" in capsys.readouterr().out
+    [entrada] = json.loads(latest.read_text(encoding="utf-8"))["atualizacoes"]
+    assert "arquivos" not in entrada and "zip" in entrada
+    assert not list(raiz.rglob("SIG-FT_Itaipu_Arquivos_*"))
+
+
 def test_o_zip_nao_tem_senha_nem_caminho():
     # Sem senha: um zip que o proxy não consegue abrir seria contornar a
     # análise da empresa. E só o nome do arquivo, sem pasta.
@@ -394,13 +496,30 @@ def test_o_release_gera_manifesto_bases_e_pacotes_e_publica_os_dois(tmp_path):
     publicar = texto[posicao["Publicar o Release"]:]
     assert '"arquivos.json#' in publicar and "installer/Output/*.bin" in publicar
     # 2026-10-16: o mesmo pequeno também em .zip (ver `zipar`).
-    assert "installer/Output/*.zip" in publicar
+    assert "installer/Output/SIG-FT_Itaipu_Atualizacao_*.zip" in publicar
     # 2026-10-19: e em .exe -- só em pré-lançamento (o app 1.1.1 não os vê e
     # escolhe "o primeiro .exe"), e num upload DEPOIS do resto, para o
     # completo ficar na frente na lista de quem ainda escolhe pela posição.
     upload_exe = publicar.index("installer/Output/SIG-FT_Itaipu_Update_*.exe")
     assert publicar.index("gh release create") < upload_exe
     assert publicar.rindex('if [ "$PRERELEASE" = "true" ]', 0, upload_exe) > publicar.index("gh release create")
+
+
+def test_o_release_publica_o_zip_so_com_os_arquivos():
+    """2026-10-27: o `pacotes` recebe a dist e o CHANGELOG (os mesmos do
+    `manifesto`), e o `.zip` só com os arquivos sobe com o resto, com rótulo
+    próprio -- nunca no laço do pequeno em `.zip`."""
+    texto = (RAIZ / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    pacotes = texto[texto.index("tools/gerar_atualizacao.py pacotes"):]
+    assert "--pasta dist/SIG-FT --changelog CHANGELOG.md" in pacotes[:300]
+    publicar = texto[texto.index("- name: Publicar o Release"):]
+    laco = 'for pacote in installer/Output/SIG-FT_Itaipu_Arquivos_*.zip; do'
+    assert laco in publicar
+    assert '"$pacote#Atualizacao so com os arquivos' in publicar
+    # Antes do create/upload: vai no mesmo `ativos`, normal ou pré-lançamento.
+    assert publicar.index(laco) < publicar.index("gh release create")
+    assert "installer/Output/*.zip; do" not in publicar
+    assert ga.pacote_arquivos.nome_pacote("1", "2").startswith("SIG-FT_Itaipu_Arquivos_")
 
 
 def test_guardar_artefatos_nao_reprova_o_release_e_nao_leva_o_instalador_a_toa():

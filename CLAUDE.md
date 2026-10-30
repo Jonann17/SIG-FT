@@ -247,6 +247,7 @@ origem, a licença e o modo de atualizar estão em [`.claude/skills/VENDOR.md`](
 | `docs/base-conhecimento/08b-autospec-contexto-negocio.md` | regras de negócio do AutoSpecAI (o "porquê") + anexo de divergências |
 | `docs/AUTOSPEC_MELHORIAS.md` | **caderno da frente do AutoSpecAI** — achados abertos e o checklist de "não fechar sem" |
 | `docs/ACONEX_AO_VIVO.md` | **caderno da frente do Aconex ao vivo** — onde parou (Tarefas 11 e 12, portões G1 e G2), decisões tomadas e armadilhas |
+| `docs/ACONEX_API.md` | **a API do Aconex** (guia do Luan): credenciais, token, endpoints, limites, e o que o teste de conexão do SIG-FT aprendeu (sem coringa no `docno:`; o histórico segue o `TrackingId`) |
 | `docs/base-conhecimento/14-aconex-e-conferencia-de-revisoes.md` | o Aconex no SIG-FT (cofre do DocManager, cliente, STATUS REAL), a Conferência de Revisões e a Revisão no AMP |
 | `amp/revisao_de_listas/` | o workflow do n8n da Revisão no AMP: o pedido ao agente (`pedido.md`, onde se melhora o agente), o gerador do `.json` e o LEIA-ME (ligar no n8n e o que fazer quando falha) |
 | `docs/ROTEIRO_DE_TESTE.md` | roteiro de validação manual, do ZIP até o portal |

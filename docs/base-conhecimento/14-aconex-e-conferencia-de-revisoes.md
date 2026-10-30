@@ -146,9 +146,17 @@ recusado, as listas aparecem e o console avisa
 "Testar conexão com o Aconex" (usa o primeiro código da mapeadora). Sete sondas,
 cada uma com uma página só: login, register inteiro (busca vazia, a referência),
 busca exata com histórico, Tracking ID (`trackingid:<id>` e `trackingid:"<id>"`),
-título (`title:SOBRESSALENTES`) e código (`docno:*PB020*`). Uma sintaxe que o
-Aconex ignora devolve o register inteiro e falha com "a sintaxe não filtrou". O
-detalhe só tem contagens e status HTTP, nunca título nem dado de documento.
+título (`title:SOBRESSALENTES`, página de 500, com `docno` e `title`) e as listas
+novas que ela traz (`e_lista_de_sobressalentes`, conferida no SIG-FT). Uma sintaxe
+que o Aconex ignora devolve o register inteiro e falha com "a sintaxe não filtrou".
+O detalhe só tem contagens e status HTTP, nunca título nem dado de documento. O
+cliente do diagnóstico tenta cada sonda 2 vezes (a extração tenta 5).
+
+Até 2026-10-27 a última sonda era `docno:*PB020*`: no teste do Luan na GE ela voltou
+HTTP 500 em 5 de 5 tentativas (o Aconex não aceita o coringa no código; o limite de
+frequência seria 503), e as cinco tentativas com espera custavam quase 2 minutos.
+O mesmo teste mostrou que o Tracking ID traz 15 versões onde a busca exata traz 7.
+O guia da API, com o que o DocManager já validou, está em `docs/ACONEX_API.md`.
 
 ## Testes
 

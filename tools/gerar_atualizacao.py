@@ -24,6 +24,12 @@ primeiro `.exe` do Release", e não pode pegar um instalador que não serve para
 ele. O app novo confere o SHA256 e o renomeia antes de rodar.
 [2026-10-19] Vai também em `.zip` e em `.exe` (o tipo verdadeiro, igual byte a
 byte), em chaves que só o app novo lê; o `.exe` só sobe em pré-lançamento.
+[2026-10-27] E, de cada base, o `.zip` SÓ COM OS ARQUIVOS que o próprio app
+aplica, aberto (`sigft/services/pacote_arquivos.py`, chave `arquivos`). Ver
+`docs/superpowers/specs/2026-10-27-atualizacao-como-cmi-design.md`.
+
+Só stdlib e o `pacote_arquivos` (também só stdlib), que mora no pacote do app
+porque é ele quem APLICA: uma implementação só do formato.
 
 Só stdlib. Escreve UTF-8 sem BOM no JSON (o app lê de volta) e COM BOM nos
 includes do Inno, que é como ele reconhece UTF-8 num arquivo `.iss`.
@@ -31,7 +37,6 @@ includes do Inno, que é como ele reconhece UTF-8 num arquivo `.iss`.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import posixpath
 import shutil
@@ -40,6 +45,14 @@ import sys
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+
+RAIZ = Path(__file__).resolve().parent.parent
+# Rodado como script (`python tools/gerar_atualizacao.py`, no release.yml), o
+# `sys.path` só tem `tools/`. O mesmo jeito do `tools/gerar_manifesto.py`.
+if str(RAIZ) not in sys.path:
+    sys.path.insert(0, str(RAIZ))
+
+from sigft.services import pacote_arquivos  # noqa: E402 — depende do sys.path acima
 
 ARQUIVO_ARQUIVOS = "arquivos.json"
 NOME_CHANGELOG = "CHANGELOG.md"
@@ -73,12 +86,8 @@ def _saida_utf8() -> None:
             pass
 
 
-def sha256(caminho: Path) -> str:
-    digest = hashlib.sha256()
-    with open(caminho, "rb") as f:
-        for bloco in iter(lambda: f.read(1024 * 1024), b""):
-            digest.update(bloco)
-    return digest.hexdigest()
+# O mesmo SHA256 com que o app confere a pasta depois de aplicar.
+sha256 = pacote_arquivos.sha256
 
 
 # --------------------------------------------------------------------------
@@ -247,14 +256,15 @@ def zipar(pacote: Path, de: str, para: str) -> Path:
 
 
 def registrar(latest: dict, de: str, pacote: Path, zipado: Path | None = None,
-              exe: Path | None = None) -> dict:
+              exe: Path | None = None, arquivos: Path | None = None) -> dict:
     """Acrescenta o instalador pequeno ao `latest.json`: o app escolhe a
     entrada cujo `de` é a versão instalada. O `.zip`, quando há, vai numa chave
     nova (`zip`) que só o app de 2026-10-16 em diante lê; o app instalado
-    continua no `arquivo` (`.bin`) de sempre."""
+    continua no `arquivo` (`.bin`) de sempre. [2026-10-27] O `.zip` só com os
+arquivos (`pacote_arquivos.montar`) vai na chave `arquivos`."""
     entrada = {"de": de, "arquivo": Path(pacote).name, "sha256": sha256(pacote),
                "tamanho": Path(pacote).stat().st_size}
-    for chave, outro in (("zip", zipado), ("exe", exe)):
+    for chave, outro in (("zip", zipado), ("exe", exe), ("arquivos", arquivos)):
         if outro is not None:
             entrada[chave] = {"arquivo": Path(outro).name, "sha256": sha256(outro),
                               "tamanho": Path(outro).stat().st_size}
@@ -266,12 +276,23 @@ def registrar(latest: dict, de: str, pacote: Path, zipado: Path | None = None,
 # F. A orquestração
 # --------------------------------------------------------------------------
 def pacotes(novo: dict, bases: Path, *, versao: str, numerica: str, iscc: str, iss: Path,
-            latest: Path, executar=subprocess.run) -> list[Path]:
+            latest: Path, executar=subprocess.run, pasta: Path | None = None,
+            changelog: Path | None = None) -> list[Path]:
     """Um instalador pequeno por base. Devolve os `.bin` gerados.
 
     O que não compensa (nada mudou, ou muda mais de `LIMITE_FRACAO` do total) ou
     não compila fica de fora COM AVISO no log do workflow, sem derrubar o
     Release: o instalador completo já está pronto e serve para todo mundo.
+
+    [2026-10-27] Com `pasta` (a `dist/SIG-FT` de onde saiu o `novo`) e o
+    `changelog`, cada base ganha também o `.zip` só com os arquivos
+    (`pacote_arquivos.montar`, a MESMA diferença do instalador pequeno), na
+    chave `arquivos` da mesma entrada. As mesmas regras de fora valem para
+    ele: o que muda mais de `LIMITE_FRACAO` também não compensa como zip (o
+    completo serve igual, e não depende da versão instalada), e ele só nasce
+    depois que o ISCC gerou o pequeno -- a entrada do `latest.json` precisa do
+    `arquivo` (`.bin`) que o app instalado lê, e um zip sem entrada seria um
+    arquivo órfão no Release.
     """
     iss = Path(iss)
     saida_iscc = iss.parent / "Output" / SAIDA_DO_ISCC
@@ -302,12 +323,23 @@ def pacotes(novo: dict, bases: Path, *, versao: str, numerica: str, iscc: str, i
         pacote = saida_iscc.parent / nome_do_pacote(de, versao)
         pacote.unlink(missing_ok=True)
         shutil.move(str(saida_iscc), str(pacote))
+        so_arquivos = None
+        if pasta is not None:
+            try:
+                so_arquivos = pacote_arquivos.montar(
+                    pasta, dif.copiar, dif.remover, de, versao, pacote.parent,
+                    extras={NOME_CHANGELOG: Path(changelog)} if changelog is not None else None)
+            except (OSError, pacote_arquivos.ErroPacote) as erro:
+                # Como o ISCC que falha: o pequeno e o completo seguem servindo.
+                print(f"::warning::de {de}: o .zip so com os arquivos nao saiu ({erro}) -- fica o pequeno.")
+                (pacote.parent / pacote_arquivos.nome_pacote(de, versao)).unlink(missing_ok=True)
         registrar(manifesto_latest, de, pacote, zipar(pacote, de, versao),
-                  copiar_como_exe(pacote, de, versao))
+                  copiar_como_exe(pacote, de, versao), so_arquivos)
         feitos.append(pacote)
         print(f"de {de}: {len(dif.copiar)} arquivo(s) a copiar ({dif.bytes_copiar / 1e6:.1f} MB de "
               f"{dif.bytes_total / 1e6:.1f} MB), {len(dif.remover)} a remover -> {pacote.name} "
-              f"({pacote.stat().st_size / 1e6:.1f} MB)")
+              f"({pacote.stat().st_size / 1e6:.1f} MB)"
+              + (f" + {so_arquivos.name} ({so_arquivos.stat().st_size / 1e6:.1f} MB)" if so_arquivos else ""))
     if feitos:
         Path(latest).write_text(json.dumps(manifesto_latest, indent=2, ensure_ascii=False), encoding="utf-8")
     return feitos
@@ -339,6 +371,9 @@ def main(argv=None) -> None:
     p.add_argument("--iscc", required=True)
     p.add_argument("--iss", type=Path, default=Path("installer/sigft.iss"))
     p.add_argument("--latest", type=Path, default=Path("latest.json"))
+    p.add_argument("--pasta", type=Path, default=Path("dist/SIG-FT"),
+                   help="de onde saem os arquivos do .zip so com os arquivos")
+    p.add_argument("--changelog", type=Path, default=Path(NOME_CHANGELOG))
 
     args = ap.parse_args(argv)
     if args.comando == "manifesto":
@@ -353,7 +388,7 @@ def main(argv=None) -> None:
     else:
         novo = json.loads(args.novo.read_text(encoding="utf-8"))
         feitos = pacotes(novo, args.bases, versao=args.versao, numerica=args.numerica, iscc=args.iscc,
-                         iss=args.iss, latest=args.latest)
+                         iss=args.iss, latest=args.latest, pasta=args.pasta, changelog=args.changelog)
         print(f"{len(feitos)} instalador(es) pequeno(s).")
 
 

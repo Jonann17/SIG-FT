@@ -4,7 +4,8 @@ plano), numa máquina com o cofre do DocManager.
     python -m sigft.core.aconex.diagnostico "<código de uma lista>" [--perfil NOME]
 
 Imprime uma linha por sonda: login, register inteiro, busca exata do código, busca
-pelo Tracking ID e busca das listas de sobressalentes, uma tentativa por sintaxe do
+pelo Tracking ID, busca por título e as listas novas que ela traz (o PB020 se
+confere aqui: o Aconex devolve HTTP 500 ao coringa no código), uma tentativa por sintaxe do
 `search_query` documentada no Documents API Developer Guide
 (help.aconex.com/apis/api-guide-documents/, List Documents). Cada sonda lê só a
 página 1 e o `TotalResults`, como a sonda `tools/probe_download_aconex.py` do
@@ -24,8 +25,19 @@ from sigft.core.aconex.credenciais import PREFERENCIA_PERFIL, caminho_do_cofre, 
 
 CAMPOS = "docno,trackingId"
 SINTAXES_DO_TRACKING_ID = ("trackingid:{id}", 'trackingid:"{id}"')
-BUSCAS_DAS_LISTAS = (("Busca por título", "title:SOBRESSALENTES"),
-                     ("Busca por código", "docno:*PB020*"))
+# [2026-10-27] Teste do Luan na GE (1.3.1-rc.2): `docno:*PB020*` volta HTTP 500 em
+# 5 de 5 tentativas; `title:SOBRESSALENTES` filtra (96 de 9819). O Aconex não
+# aceita o coringa no código, e não precisa: a lista nova exige SOBRESSALENTES no
+# título, então a busca por título traz todas, e o PB020 (com o "sem PREÇO") se
+# confere no SIG-FT, pela mesma regra do Gestão PMIB (`e_lista_de_sobressalentes`).
+ROTULO_TITULO, BUSCA_POR_TITULO = "Busca por título", "title:SOBRESSALENTES"
+CAMPOS_DO_TITULO = "docno,title,trackingId"
+PAGINA_DO_TITULO = 500   # as ~100 listas cabem na página 1 (o register aceita até 500)
+SONDA_LISTAS_NOVAS = "Listas novas (PB020 no código, conferido no SIG-FT)"
+# Uma sonda prova sintaxe: um HTTP 500 de sintaxe não passa esperando 5, 15, 30 e
+# 60 s (no log do Luan, quase 2 min numa sonda só). Duas tentativas ainda cobrem
+# a queda de rede passageira.
+TENTATIVAS_DO_DIAGNOSTICO = 2
 
 
 @dataclass(frozen=True)
@@ -47,10 +59,12 @@ def _falha(erro: Exception) -> str:
     return f"erro inesperado ({type(erro).__name__})"
 
 
-def _pagina(cliente: ClienteAconex, consulta: str, historico: bool) -> tuple[Pagina | None, str]:
+def _pagina(cliente: ClienteAconex, consulta: str, historico: bool, *, campos: str = CAMPOS,
+            page_size: int | None = None) -> tuple[Pagina | None, str]:
     """A página 1 da busca, ou `None` e o texto da falha."""
+    extra = {"page_size": page_size} if page_size else {}
     try:
-        return cliente.primeira_pagina(consulta, historico=historico, campos=CAMPOS), ""
+        return cliente.primeira_pagina(consulta, historico=historico, campos=campos, **extra), ""
     except Exception as erro:  # noqa: BLE001 -- o diagnóstico relata, não derruba
         return None, _falha(erro)
 
@@ -108,12 +122,30 @@ def sondar(cliente: ClienteAconex, codigo: str) -> list[Sonda]:
                 f"Busca pelo Tracking ID ({sintaxe.format(id='<id>')})", pagina, falha, total,
                 lambda n: f"{_contar(n, 'versão', 'versões')} (a busca exata trouxe {versoes})"))
 
-    for rotulo, consulta in BUSCAS_DAS_LISTAS:
-        pagina, falha = _pagina(cliente, consulta, historico=False)
-        sondas.append(_sonda_de_filtro(
-            f"{rotulo} ({consulta})", pagina, falha, total,
-            lambda n: f"{n} de {total} documentos" if total is not None else _contar(n, "documento", "documentos")))
+    pagina, falha = _pagina(cliente, BUSCA_POR_TITULO, historico=False,
+                            campos=CAMPOS_DO_TITULO, page_size=PAGINA_DO_TITULO)
+    sondas.append(_sonda_de_filtro(
+        f"{ROTULO_TITULO} ({BUSCA_POR_TITULO})", pagina, falha, total,
+        lambda n: f"{n} de {total} documentos" if total is not None else _contar(n, "documento", "documentos")))
+    sondas.append(_sonda_das_listas_novas(pagina))
     return sondas
+
+
+def _sonda_das_listas_novas(pagina: Pagina | None) -> Sonda:
+    """Das que a busca por título trouxe, quantas são lista nova pela regra do Gestão
+    PMIB. Só conta: título e código não saem no `detalhe`."""
+    if pagina is None:
+        return Sonda(SONDA_LISTAS_NOVAS, False, "sem a busca por título")
+    # Import tardio: a regra mora no serviço do Gestão PMIB (uma implementação por
+    # conceito), que puxa pandas e openpyxl; o diagnóstico só precisa dela aqui.
+    from sigft.services.pmib_manager import e_lista_de_sobressalentes
+    lidas = len(pagina.registros)
+    novas = sum(1 for r in pagina.registros
+                if e_lista_de_sobressalentes(r.get("DocumentNumber"), r.get("Title")))
+    detalhe = f"{novas} de {lidas} com título de sobressalentes"
+    if pagina.total is not None and pagina.total > lidas:
+        detalhe += f" (só a 1ª página: {pagina.total} no total)"
+    return Sonda(SONDA_LISTAS_NOVAS, novas > 0, detalhe)
 
 
 def linha(sonda: Sonda) -> str:
@@ -139,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Há mais de um perfil no cofre. Escolha com --perfil: " + ", ".join(p.nome for p in perfis))
         return 1
 
-    for sonda in sondar(ClienteAconex(perfil), args.codigo):
+    for sonda in sondar(ClienteAconex(perfil, tentativas=TENTATIVAS_DO_DIAGNOSTICO), args.codigo):
         print(linha(sonda))
     return 0
 

@@ -12,7 +12,7 @@ Escreva cada linha pensando em quem usa o SIG-FT, não em quem o programa:
 "a busca do AutoSpec passa a funcionar com a VPN ligada" é útil; "refatorado o
 cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
-## 1.3.1 - 2026-10-27
+## 1.3.1 - 2026-10-29
 
 - PMIB Manager: a tela passa a ter **três abas**: Gestão PMIB (a de sempre), Conferência de Revisões e Revisão no AMP. As três escrevem no mesmo console e usam a mesma barra de progresso.
 - Conferência de Revisões: **aba nova** do PMIB Manager (na 1.3.1-rc.1 era o item "10. Conferência de Revisões" do menu). Lê a planilha de mapeamento e aponta as listas cuja revisão em uso ficou para trás da última revisão emitida no Aconex, separadas pelo STATUS REAL: aprovadas primeiro, depois em processo, não aprovadas e outros, com os totais de "Em dia" e "Sem _STATUS_PMIB". Mostra quando a mapeadora foi salva e avisa quando não foi hoje: rode o Gestão PMIB antes, para ver as revisões mais recentes.
@@ -31,6 +31,9 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Interface: cada tela tem, logo abaixo do título, uma frase curta sobre o que ela faz e o botão **"Como funciona"**, que mostra o que a tela espera receber, o que ela muda e o que acontece se parar no meio. Nas telas de abas o texto segue a aba aberta. Fechado na primeira vez; aberto ou fechado, o SIG-FT lembra por tela.
 - Interface: na primeira abertura de quem nunca usou o SIG-FT, uma página de **boas-vindas** aparece no lugar da Home, com três caminhos para começar (criar fichas novas, completar fichas que já existem, acompanhar as listas de sobressalentes) e os lembretes do "Como funciona" e do Ctrl+K. Quem já usava e atualiza não a vê. Para ver de novo: Ctrl+K, "Boas-vindas", ou a Configuração, em Ajuda.
 - Atualização automática: as bibliotecas também saem de dentro do `SIG-FT.exe`; a atualização pequena passa a levar só os arquivos da biblioteca que mudou, em vez do `.exe` inteiro (38 MB). A primeira depois desta ainda é grande (o `.exe` muda uma última vez); as seguintes ficam pequenas.
+- Atualização automática: com o SIG-FT instalado **só para você** (pasta em que ele pode escrever), a atualização passa a ser aplicada **pelo próprio SIG-FT**, sem instalador e sem pedido de permissão do Windows: ele baixa só os arquivos que mudaram, confere cada um, troca e abre de novo atualizado. Se algo falhar, tudo volta como estava e ele segue pelo instalador, como antes. E, pelo instalador, o SIG-FT só fecha depois que o instalador começou de fato: se o antivírus, a política da empresa ou um pedido de permissão recusado o impedirem, o SIG-FT continua aberto e diz o que aconteceu, em vez de fechar sem atualizar. Vale da próxima versão em diante.
+- Instalação: o instalador passa a instalar sempre só para você (em AppData, sem senha de administrador). Quem tem o SIG-FT instalado para todos (Program Files) recebe primeiro a atualização de sempre, no mesmo lugar, e a atualização completa seguinte o passa para a instalação só sua: o Windows pede a senha de administrador uma vez, para remover a cópia antiga (sem a senha, a cópia nova funciona do mesmo jeito, e o instalador diz como remover a antiga); Documentos\SIG-FT (chaves, preferências) não é tocado.
+- Conferência de Revisões: o **"Testar conexão com o Aconex"** deixa de pedir ao Aconex a busca por código com coringa (`docno:*PB020*`), que ele recusa com erro 500, e passa a contar as listas novas entre as que a busca por título traz (PB020 no código, sem PREÇO). Cada sonda tenta 2 vezes, e não 5: o teste não fica mais quase 2 minutos parado num erro do Aconex.
 
 ## 1.3.0 - 2026-10-23
 

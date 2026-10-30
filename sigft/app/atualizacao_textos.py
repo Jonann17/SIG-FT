@@ -25,9 +25,10 @@ if TYPE_CHECKING:  # pragma: no cover
 TITULO = marcar("Atualização do SIG-FT")
 
 MSG_UAC = marcar(
-    "O SIG-FT está instalado para todos os usuários, então o Windows vai pedir "
-    "permissão de administrador. Se o pedido for recusado, o SIG-FT fecha sem "
-    "atualizar: é só abri-lo de novo."
+    "O SIG-FT está instalado para todos os usuários. Esta atualização o passa "
+    "para a instalação só sua: o Windows vai pedir a senha de administrador uma "
+    "vez, para remover a cópia antiga. Se o pedido for recusado, a versão nova "
+    "funciona do mesmo jeito."
 )
 
 MSG_COMO_FUNCIONA = marcar(
@@ -47,6 +48,11 @@ MSG_TAREFA_AO_ATUALIZAR = marcar(
 )
 
 MSG_DOWNLOAD_CONFERIDO = marcar("Download conferido. Abrindo o instalador...")
+
+# [2026-10-27] A atualização por arquivos: o próprio SIG-FT aplica e se reabre.
+MSG_APLICANDO = marcar("Aplicando a atualização…")
+MSG_CONFERINDO_ARQUIVOS = marcar("Conferindo os arquivos…")
+MSG_REABRINDO = marcar("Atualizado. Reabrindo o SIG-FT…")
 
 TEXTO_ATUALIZAR = marcar("Atualizar agora")
 TEXTO_ATUALIZANDO = marcar("Atualizando...")
@@ -159,3 +165,12 @@ def msg_falhou(erro: BaseException) -> str:
     return t("Não foi possível atualizar: {erro}\n\nO SIG-FT continua nesta versão. Tente de novo; "
              "se o erro se repetir, avise quem cuida do SIG-FT. O detalhe completo fica no log "
              "(Documentos\\SIG-FT\\logs\\sigft.log).", erro=erro_curto(erro))
+
+
+def msg_instalador_nao_iniciou(erro: BaseException) -> str:
+    """[2026-10-27] O instalador saiu (ou não respondeu) antes de avisar que
+    subiu (`updater.InstaladorNaoIniciou`): o SIG-FT ficou aberto."""
+    return t("O instalador não chegou a começar, e o SIG-FT continua aberto, nesta versão.\n\n"
+             "{erro}\n\nCostuma ser o antivírus, a política da empresa ou o pedido de permissão "
+             "do Windows recusado. Tente de novo; se o erro se repetir, avise quem cuida do SIG-FT.",
+             erro=erro_curto(erro))
