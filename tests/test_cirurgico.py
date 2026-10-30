@@ -14,6 +14,7 @@ estar passando porque a fixture não tem o que apagar.
 from __future__ import annotations
 
 import io
+import re
 import shutil
 import warnings
 import zipfile
@@ -292,3 +293,79 @@ def test_grava_por_cima_do_mesmo_arquivo(tmp_path):
     cirurgico.gravar_celulas(arquivo, ABA, {(6, 11): "COMPLETO"})
 
     assert arquivo.stat().st_ino == inode
+
+
+# ===========================================================================
+# G. Nota de célula ("Faltam documentos", do Upload de Fotos)
+# ===========================================================================
+def _vml(caminho):
+    return _partes(caminho)["xl/drawings/vmlDrawing1.vml"].decode("utf-8")
+
+
+def test_nota_entra_ao_lado_dos_comentarios_em_thread_sem_tocar_neles(tmp_path):
+    arquivo = _copia(V2, tmp_path)
+    antes = _partes(arquivo)
+
+    pulados = cirurgico.gravar_celulas(arquivo, ABA, {(6, 11): "INCOMPLETO"},
+                                       notas={(6, 11): "Faltam documentos"})
+
+    depois = _partes(arquivo)
+    assert pulados == []
+    for parte in ("xl/threadedComments/threadedComment1.xml", "xl/persons/person.xml"):
+        assert depois[parte] == antes[parte], parte
+    # Os balões que já existiam continuam lá, letra por letra; só entrou um.
+    vml_antes = antes["xl/drawings/vmlDrawing1.vml"].decode()
+    formas = re.findall(r"<v:shape\b.*?</v:shape>", vml_antes, re.S)
+    assert all(forma in _vml(arquivo) for forma in formas)
+    assert _vml(arquivo).count("<v:shape ") == len(formas) + 1
+    with openpyxl_de_verdade():
+        aba = _ler(arquivo)
+        assert aba["K6"].value == "INCOMPLETO"
+        assert aba["K6"].comment.text == "Faltam documentos"
+        assert aba["D15"].comment is not None  # o comentário da pessoa continua
+
+
+def test_nota_em_celula_com_comentario_em_thread_nao_e_gravada(tmp_path):
+    arquivo = _copia(V2, tmp_path)
+    antes = _partes(arquivo)
+
+    pulados = cirurgico.gravar_celulas(arquivo, ABA, {}, notas={(15, 4): "Faltam documentos"})
+
+    assert pulados == ["D15"]
+    depois = _partes(arquivo)
+    for parte in ("xl/comments1.xml", "xl/drawings/vmlDrawing1.vml"):
+        assert depois[parte] == antes[parte], parte
+
+
+def test_nota_trocada_e_removida_leva_o_balao_junto(tmp_path):
+    arquivo = _copia(V2, tmp_path)
+    formas_antes = _vml(arquivo).count("<v:shape ")
+
+    cirurgico.gravar_celulas(arquivo, ABA, {}, notas={(6, 11): "Faltam documentos"})
+    cirurgico.gravar_celulas(arquivo, ABA, {}, notas={(6, 11): "Faltam documentos"})
+    assert _vml(arquivo).count("<v:shape ") == formas_antes + 1  # trocou, não duplicou
+    assert _partes(arquivo)["xl/comments1.xml"].count(b'ref="K6"') == 1
+
+    cirurgico.gravar_celulas(arquivo, ABA, {}, notas={(6, 11): None})
+    assert _vml(arquivo).count("<v:shape ") == formas_antes
+    assert b'ref="K6"' not in _partes(arquivo)["xl/comments1.xml"]
+
+
+def test_nota_em_planilha_sem_nenhum_comentario_cria_as_partes(tmp_path):
+    arquivo = tmp_path / "sem_notas.xlsx"
+    with openpyxl_de_verdade():
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        wb.active.title = ABA
+        wb.active["A1"] = "CÓDIGO PMIB"
+        wb.save(arquivo)
+
+    cirurgico.gravar_celulas(arquivo, ABA, {(2, 1): "INCOMPLETO"}, notas={(2, 1): "Faltam documentos"})
+
+    partes = _partes(arquivo)
+    assert "xl/comments1.xml" in partes and "xl/drawings/vmlDrawing1.vml" in partes
+    with openpyxl_de_verdade():
+        aba = _ler(arquivo)
+        assert aba["A2"].value == "INCOMPLETO"
+        assert aba["A2"].comment.text == "Faltam documentos"
