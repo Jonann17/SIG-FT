@@ -317,3 +317,101 @@ def test_o_modulo_nao_importa_qt_nem_fora_da_stdlib():
                   for n in ast.walk(arvore) if isinstance(n, (ast.Import, ast.ImportFrom))
                   for a in (n.names if isinstance(n, ast.Import) else [None])}
     assert importados <= {"__future__", "hashlib", "json", "shutil", "zipfile", "collections", "pathlib"}
+
+
+# -- conferir: SHA256 no que o pacote escreveu, tamanho no resto -------------
+# Copiado do `conferir` do DocManager (`docmanager/services/pacote.py`): ler
+# a pasta inteira com o antivirus abrindo cada arquivo levava minutos.
+
+def _pasta_conferida(tmp_path):
+    pasta = tmp_path / "pasta"
+    _escrever(pasta, "SIG-FT.exe", b"exe novo")
+    _escrever(pasta, "_internal/igual.pyd", b"igual")
+    return pasta, _manifesto(pasta, "1.1")
+
+
+def test_conferir_intocado_com_o_tamanho_certo_passa_mesmo_com_outro_conteudo(tmp_path):
+    pasta, novo = _pasta_conferida(tmp_path)
+    _escrever(pasta, "_internal/igual.pyd", b"IGUAL")  # mesmo tamanho, outro conteúdo
+
+    pa.conferir(pasta, novo, ["SIG-FT.exe"])  # por desenho: só o tamanho
+
+
+def test_conferir_intocado_com_outro_tamanho_falha(tmp_path):
+    pasta, novo = _pasta_conferida(tmp_path)
+    _escrever(pasta, "_internal/igual.pyd", b"igual mais longo")
+
+    with pytest.raises(pa.ErroPacote, match="igual.pyd"):
+        pa.conferir(pasta, novo, ["SIG-FT.exe"])
+
+
+def test_conferir_escrito_com_sha_errado_falha_mesmo_com_o_tamanho_certo(tmp_path):
+    pasta, novo = _pasta_conferida(tmp_path)
+    _escrever(pasta, "SIG-FT.exe", b"exe NOVO")
+
+    with pytest.raises(pa.ErroPacote, match="SIG-FT.exe"):
+        pa.conferir(pasta, novo, ["SIG-FT.exe"])
+
+
+def test_conferir_entrada_sem_tamanho_volta_ao_sha(tmp_path):
+    pasta, novo = _pasta_conferida(tmp_path)
+    _escrever(pasta, "_internal/igual.pyd", b"IGUAL")
+    del novo["arquivos"]["_internal/igual.pyd"]["tamanho"]
+
+    with pytest.raises(pa.ErroPacote, match="igual.pyd"):
+        pa.conferir(pasta, novo, [])
+    # O formato do CMI (o SHA puro) também.
+    puro = {"versao": "1.1", "arquivos": {k: v["sha256"] for k, v in novo["arquivos"].items()}}
+    with pytest.raises(pa.ErroPacote, match="igual.pyd"):
+        pa.conferir(pasta, puro, [])
+
+
+def test_conferir_arquivo_que_falta_falha(tmp_path):
+    pasta, novo = _pasta_conferida(tmp_path)
+    (pasta / "_internal" / "igual.pyd").unlink()
+
+    with pytest.raises(pa.ErroPacote, match="igual.pyd"):
+        pa.conferir(pasta, novo, ["SIG-FT.exe"])
+
+
+def test_conferir_chama_o_progresso_total_vezes_e_termina_em_total(tmp_path):
+    pasta, novo = _pasta_conferida(tmp_path)
+    vistos = []
+
+    pa.conferir(pasta, novo, ["SIG-FT.exe"], progresso=lambda feitos, total: vistos.append((feitos, total)))
+
+    assert vistos == [(1, 2), (2, 2)]
+
+
+def test_conferir_trocados_sem_diferenca_de_caixa(tmp_path):
+    # O Windows não distingue caixa: `sig-ft.EXE` no pacote é o `SIG-FT.exe`
+    # do manifesto, e ele foi ESCRITO -- vale o SHA, não o tamanho.
+    pasta, novo = _pasta_conferida(tmp_path)
+    _escrever(pasta, "SIG-FT.exe", b"exe NOVO")
+
+    with pytest.raises(pa.ErroPacote, match="SIG-FT.exe"):
+        pa.conferir(pasta, novo, ["sig-ft.EXE"])
+
+
+def test_aplicar_confere_intocado_pelo_tamanho_e_desfaz_tudo_quando_nao_bate(cenario):
+    instalada, _nova, novo, zipado = cenario
+    antes = _retrato(instalada)
+    novo["arquivos"]["_internal/igual.pyd"]["tamanho"] += 1  # a pasta não é a 1.0
+
+    with pytest.raises(pa.ErroPacote, match="igual.pyd"):
+        pa.aplicar(zipado, instalada, novo)
+
+    assert _retrato(instalada) == antes
+    assert not (instalada / "_internal" / "novo").exists()
+
+
+def test_aplicar_nao_le_o_intocado_e_repassa_o_progresso(cenario, monkeypatch):
+    instalada, _nova, novo, zipado = cenario
+    lidos, vistos = [], []
+    original = pa.sha256
+    monkeypatch.setattr(pa, "sha256", lambda caminho: lidos.append(caminho.name) or original(caminho))
+
+    pa.aplicar(zipado, instalada, novo, progresso=lambda f, t: vistos.append((f, t)))
+
+    assert sorted(lidos) == ["SIG-FT.exe", "modulo.pyd"]  # o `igual.pyd` não foi lido
+    assert vistos[-1] == (3, 3) and len(vistos) == 3

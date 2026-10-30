@@ -223,6 +223,7 @@
   "Condições (Upload Condições):": "Conditions (Upload Conditions):",
   "Confere a rede, a chave e o workflow publicado (ping) e se o AMP devolve os códigos sem mascarar (eco). Não manda documento.": "Checks the network, the key and the published workflow (ping), and whether AMP returns the codes unmasked (echo). No document is sent.",
   "Confere no próprio portal se as autorizações estão lá. {portal}": "Checks on the portal itself whether the authorizations are there. {portal}",
+  "Conferindo os arquivos…": "Checking the files…",
   "Conferir as respostas do fornecedor contra o datasheet": "Check the supplier's answers against the datasheet",
   "Conferir cada ficha antes de salvar": "Check each sheet before saving",
   "Conferir revisões": "Check revisions",

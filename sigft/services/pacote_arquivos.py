@@ -42,6 +42,17 @@ apagados na abertura seguinte (`limpar_restos`). Se qualquer passo falhar, ou
 se a pasta não bater com o `arquivos.json` da versão nova, tudo volta como
 estava (`aplicar` desfaz na ordem inversa) e levanta `ErroPacote` -- quem
 chama cai para o instalador.
+
+Conferência rápida (2026-10-30)
+-------------------------------
+`conferir` lê pelo SHA256 só o que o pacote ESCREVEU; o resto da pasta, que
+ele não tocou, é conferido pelo TAMANHO. Ler a pasta inteira (centenas de MB,
+milhares de arquivos) com o antivírus do Windows abrindo cada um levava
+minutos com a barra parada. É o `conferir` do DocManager
+(`docmanager/services/pacote.py`), que viu isso na 3.6.0 -> 3.6.1-rc.2. O
+tamanho ainda pega a pasta que não é a versão de origem (uma biblioteca de
+outra versão quase nunca tem o mesmo tamanho); a entrada sem tamanho (o
+formato do CMI) volta ao SHA256.
 """
 
 from __future__ import annotations
@@ -50,11 +61,11 @@ import hashlib
 import json
 import shutil
 import zipfile
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path, PurePath
 
 __all__ = ["SUFIXO_ANTIGO", "ErroPacote", "nome_pacote", "sha256", "montar",
-           "aplicar", "limpar_restos"]
+           "aplicar", "conferir", "limpar_restos"]
 
 SUFIXO_ANTIGO = ".sigft-old"
 PREFIXO = "SIG-FT_Itaipu_Arquivos_"
@@ -96,6 +107,13 @@ def _dentro(base: PurePath, relativo: str) -> Path:
         if parte in ("", ".", "..") or parte != parte.rstrip(". ") or "\x00" in parte:
             raise ErroPacote(f"caminho invalido no pacote: {relativo!r}")
     return Path(base).joinpath(*partes)
+
+
+def _tamanho_esperado(info) -> int | None:
+    """O `tamanho` da entrada, ou `None` (o formato do CMI não o traz)."""
+    if isinstance(info, Mapping) and isinstance(info.get("tamanho"), int):
+        return info["tamanho"]
+    return None
 
 
 def _sha_esperado(info) -> str:
@@ -186,9 +204,42 @@ def _ler_manifesto(z: zipfile.ZipFile, novo: Mapping) -> dict:
     return {**info, "removidos": removidos}
 
 
-def aplicar(arquivo_zip: Path, pasta: Path, novo_manifesto: Mapping) -> list[str]:
+Progresso = Callable[[int, int], None]
+
+
+def conferir(pasta: Path, novo_manifesto: Mapping, trocados: Iterable[str],
+             progresso: Progresso | None = None) -> None:
+    """Confere `pasta` contra `novo_manifesto`; ErroPacote no primeiro que não bate.
+
+    Os arquivos que o pacote ESCREVEU (`trocados`, comparados sem caixa, como
+    o Windows) vão pelo SHA256; os outros, pelo tamanho -- não foram tocados
+    (ver "Conferência rápida" no topo). Entrada sem tamanho volta ao SHA256;
+    arquivo que falta falha. `progresso(feitos, total)` a cada arquivo."""
+    pasta = Path(pasta)
+    trocados = {str(rel).casefold() for rel in trocados}
+    versao = novo_manifesto.get("versao")
+    itens = list(novo_manifesto["arquivos"].items())
+    total = len(itens)
+    for feitos, (rel, esperado) in enumerate(itens, 1):
+        caminho = _dentro(pasta, rel)
+        tamanho = _tamanho_esperado(esperado)
+        if not caminho.is_file():
+            confere = False
+        elif rel.casefold() in trocados or tamanho is None:
+            confere = sha256(caminho) == _sha_esperado(esperado)
+        else:
+            confere = caminho.stat().st_size == tamanho
+        if not confere:
+            raise ErroPacote(f"{rel} nao confere com a versao {versao}")
+        if progresso is not None:
+            progresso(feitos, total)
+
+
+def aplicar(arquivo_zip: Path, pasta: Path, novo_manifesto: Mapping,
+            progresso: Progresso | None = None) -> list[str]:
     """Aplica o pacote sobre `pasta` e confere contra `novo_manifesto` (o
-    `arquivos.json` da versão nova, já lido).
+    `arquivos.json` da versão nova, já lido), por `conferir` -- que recebe o
+    `progresso(feitos, total)`.
 
     Devolve os caminhos alterados. Em qualquer falha desfaz tudo, na ordem
     inversa, e levanta ErroPacote: a pasta fica como estava (menos os
@@ -216,11 +267,7 @@ def aplicar(arquivo_zip: Path, pasta: Path, novo_manifesto: Mapping) -> list[str
                 if destino.is_file():
                     feitos.append((destino, _afastar(destino, reservados)))
 
-        versao = novo_manifesto.get("versao")
-        for rel, esperado in novo_manifesto["arquivos"].items():
-            caminho = _dentro(pasta, rel)
-            if not caminho.is_file() or sha256(caminho) != _sha_esperado(esperado):
-                raise ErroPacote(f"{rel} nao confere com a versao {versao}")
+        conferir(pasta, novo_manifesto, info["alterados"], progresso)
         return list(info["alterados"])
     except Exception as erro:
         _desfazer(feitos, pastas_criadas)

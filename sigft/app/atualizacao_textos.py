@@ -51,6 +51,7 @@ MSG_DOWNLOAD_CONFERIDO = marcar("Download conferido. Abrindo o instalador...")
 
 # [2026-10-27] A atualização por arquivos: o próprio SIG-FT aplica e se reabre.
 MSG_APLICANDO = marcar("Aplicando a atualização…")
+MSG_CONFERINDO_ARQUIVOS = marcar("Conferindo os arquivos…")
 MSG_REABRINDO = marcar("Atualizado. Reabrindo o SIG-FT…")
 
 TEXTO_ATUALIZAR = marcar("Atualizar agora")

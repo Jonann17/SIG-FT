@@ -871,11 +871,21 @@ def pode_por_arquivos(info: Atualizacao) -> bool:
     return pasta is not None and _gravavel(pasta)
 
 
+def _sem_aviso() -> None:
+    """`ao_conferir` padrão: silencioso."""
+
+
 def aplicar_por_arquivos(info: Atualizacao, *, progresso_cb: Progresso = _nada,
-                         log_cb: Log = _nada) -> Path:
+                         log_cb: Log = _nada,
+                         ao_conferir: Callable[[], None] = _sem_aviso) -> Path:
     """Baixa o `arquivos.json` da versão nova e o zip de arquivos, confere os
     SHA256, aplica com o app ABERTO (`pacote_arquivos.aplicar`), regrava a
     versão no registro e devolve o `.exe` a reabrir.
+
+    A barra (`progresso_cb`) serve primeiro ao download do zip e depois à
+    conferência da pasta, que recomeça do zero; `ao_conferir()` avisa quando a
+    conferência começa (a janela troca o status). Ver
+    `_progresso_da_conferencia`.
 
     Levanta `ErroPacote`, `ArquivoInvalido`, `DownloadInterrompido` ou
     `rede.FalhaDeRede`; em qualquer caso a pasta fica como estava, e quem
@@ -906,7 +916,10 @@ def aplicar_por_arquivos(info: Atualizacao, *, progresso_cb: Progresso = _nada,
                              minimo=0, abrir_zip=False)
     try:
         log_cb("Aplicando os arquivos com o SIG-FT aberto...")
-        alterados = pacote_arquivos.aplicar(zipado, pasta, novo)
+        progresso_cb(0.0)
+        alterados = pacote_arquivos.aplicar(
+            zipado, pasta, novo,
+            progresso=_progresso_da_conferencia(progresso_cb, log_cb, ao_conferir))
     finally:
         zipado.unlink(missing_ok=True)
     log_cb(f"Atualizacao por arquivos aplicada: {len(alterados)} arquivo(s) trocado(s), "
@@ -914,6 +927,29 @@ def aplicar_por_arquivos(info: Atualizacao, *, progresso_cb: Progresso = _nada,
     _registrar_versao(info.versao, pasta, log_cb=log_cb)
     progresso_cb(1.0)
     return pasta / EXECUTAVEL
+
+
+def _progresso_da_conferencia(progresso_cb: Progresso, log_cb: Log,
+                              ao_conferir: Callable[[], None]) -> Callable[[int, int], None]:
+    """`progresso(feitos, total)` para o `pacote_arquivos.aplicar`, como o do
+    DocManager (`docmanager/services/updater.py`): a barra só muda quando o
+    percentual muda -- milhares de avisos entupiriam a fila da interface. Aqui
+    o log ganha UMA linha, no começo, e não uma por percentual; e
+    `ao_conferir()` é chamado uma vez, no primeiro arquivo."""
+    ultimo = [-1]
+
+    def progresso(feitos: int, total: int) -> None:
+        if ultimo[0] < 0:
+            ao_conferir()
+            log_cb(f"Conferindo os {total} arquivos instalados (SHA256 nos trocados, "
+                   "tamanho nos outros)...")
+        pct = int(feitos * 100 / total) if total else 100
+        if pct == ultimo[0]:
+            return
+        ultimo[0] = pct
+        progresso_cb(pct / 100)
+
+    return progresso
 
 
 def _no_windows() -> bool:

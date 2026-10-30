@@ -1478,6 +1478,23 @@ def test_aplicar_por_arquivos_troca_so_o_que_mudou_e_devolve_o_exe(por_arquivos)
     assert log, "cada passo vai para o log"
 
 
+def test_aplicar_por_arquivos_mostra_a_CONFERENCIA_na_barra_e_numa_linha_de_log(por_arquivos):
+    # Como o `_progresso_da_conferencia` do DocManager: depois do download a
+    # barra recomeca e acompanha a conferencia; o log ganha UMA linha dela.
+    log, progresso, conferindo = [], [], []
+
+    updater.aplicar_por_arquivos(
+        por_arquivos["info"], progresso_cb=progresso.append, log_cb=log.append,
+        ao_conferir=lambda: conferindo.append(len(progresso)))
+
+    assert len(conferindo) == 1
+    depois = progresso[conferindo[0]:]
+    assert depois[0] < 1.0 and depois == sorted(depois) and depois[-1] == 1.0
+    assert 0.0 in progresso[:conferindo[0]], "a barra recomeca depois do download"
+    linhas = [m for m in log if m.startswith("Conferindo")]
+    assert len(linhas) == 1 and "3" in linhas[0]
+
+
 def test_zip_que_nao_confere_nao_aplica_NADA(por_arquivos, monkeypatch):
     antes = _retrato(por_arquivos["pasta"])
     adulterado = por_arquivos["zip"][:-1] + bytes([por_arquivos["zip"][-1] ^ 0xFF])

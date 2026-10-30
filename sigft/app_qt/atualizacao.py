@@ -38,6 +38,7 @@ from sigft import _build_info
 from sigft.app.atualizacao_textos import (
     MSG_APLICANDO,
     MSG_COMO_FUNCIONA,
+    MSG_CONFERINDO_ARQUIVOS,
     MSG_DOWNLOAD_CONFERIDO,
     MSG_REABRINDO,
     MSG_TAREFA_AO_ATUALIZAR,
@@ -440,7 +441,7 @@ class JanelaAtualizacao(QDialog):
         interface.na_interface(self._mostrar_status, t(MSG_APLICANDO))
         try:
             exe = updater.aplicar_por_arquivos(self.info, progresso_cb=self._ao_progredir,
-                                               log_cb=_log)
+                                               log_cb=_log, ao_conferir=self._ao_conferir)
         except Exception as erro:  # noqa: BLE001 -- cai no instalador
             _log(f"a atualizacao por arquivos falhou, vai o instalador: {erro}")
             self._ultimo_percentual = -1
@@ -459,6 +460,11 @@ class JanelaAtualizacao(QDialog):
             _log(f"nao foi possivel reabrir o SIG-FT ({exe}): {erro}")
         interface.na_interface(self._fechar_app, self._master)
         return True
+
+    def _ao_conferir(self) -> None:
+        """Roda na THREAD: o zip já foi aplicado e a pasta está sendo conferida
+        (a barra recomeça pelo `progresso_cb` do serviço)."""
+        interface.na_interface(self._mostrar_status, t(MSG_CONFERINDO_ARQUIVOS))
 
     def _ao_cair_no_completo(self, completo: updater.Atualizacao) -> None:
         """Roda na THREAD: o pequeno falhou e o download virou o do completo

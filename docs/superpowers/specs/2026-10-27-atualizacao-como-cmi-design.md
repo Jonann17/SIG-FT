@@ -50,7 +50,14 @@ e **aplica** (no app):
 - cada arquivo a trocar é **renomeado** para `<nome>.sigft-old` (o Windows
   deixa renomear `.exe`/DLL em uso, não sobrescrever) e o novo é escrito;
 - removidos também viram `.sigft-old`;
-- no fim, confere a pasta contra o `arquivos.json` novo;
+- no fim, confere a pasta contra o `arquivos.json` novo (`conferir`): o que
+  o pacote **escreveu** pelo SHA256, o resto pelo **tamanho** (entrada sem
+  tamanho volta ao SHA256; arquivo que falta falha). Ler a pasta inteira,
+  centenas de MB em milhares de arquivos com o antivírus abrindo cada um,
+  levava minutos com a barra parada; é o `conferir` do DocManager
+  (`docmanager/services/pacote.py`). A barra acompanha a conferência depois
+  do download, a janela diz "Conferindo os arquivos…" e o log ganha uma
+  linha (2026-10-30);
 - qualquer falha **desfaz na ordem inversa** e levanta `ErroPacote`: a pasta
   fica como estava;
 - caminho do zip fora da pasta (zip-slip, absoluto, `..`) é recusado;

@@ -834,9 +834,13 @@ def test_por_arquivos_aplica_REABRE_e_fecha_sem_instalador(monkeypatch, raiz, qt
     exe = tmp_path / "SIG-FT.exe"
     vistos = []
 
-    def aplicar(info, *, progresso_cb, log_cb):
+    def aplicar(info, *, progresso_cb, log_cb, ao_conferir):
         processar()
         vistos.append(aviso.rotulo_status.text())
+        ao_conferir()            # a conferencia da pasta comeca
+        progresso_cb(0.5)
+        processar()
+        vistos.append((aviso.rotulo_status.text(), aviso.barra.value()))
         progresso_cb(1.0)
         por_arquivos.append("aplicou")
         return exe
@@ -849,7 +853,7 @@ def test_por_arquivos_aplica_REABRE_e_fecha_sem_instalador(monkeypatch, raiz, qt
     aviso.botao_atualizar.click()
     processar()
 
-    assert vistos == [textos.MSG_APLICANDO]
+    assert vistos == [textos.MSG_APLICANDO, (textos.MSG_CONFERINDO_ARQUIVOS, 50)]
     assert por_arquivos == ["aplicou", ("reabriu", exe), ("fechou", raiz)]
     assert aviso.rotulo_status.text() == textos.MSG_REABRINDO
 
