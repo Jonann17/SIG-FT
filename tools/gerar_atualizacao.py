@@ -13,36 +13,29 @@ chamado pelo `.github/workflows/release.yml`:
   manifesto       grava o `arquivos.json`: cada arquivo da pasta instalada, com
                   SHA256 e tamanho. Vai para o Release, e é a BASE da versão
                   seguinte;
-  escolher-bases  diz de quais versões anteriores sai um instalador pequeno (as 3
+  escolher-bases  diz de quais versões anteriores sai um `.zip` de arquivos (as 3
                   mais recentes com `arquivos.json`, e a última normal sempre);
-  pacotes         para cada base: a diferença, os includes do Inno, o ISCC em modo
-                  atualização (`installer/sigft.iss` com `/DAtualizacao=1`) e o
-                  registro no `latest.json`, que o app lê para escolher o arquivo.
+  pacotes         para cada base: a diferença, o `.zip` SÓ COM OS ARQUIVOS que o
+                  próprio app aplica, aberto (`sigft/services/pacote_arquivos.py`),
+                  e o registro no `latest.json` (chave `arquivos`), que o app lê
+                  para escolher o arquivo.
 
-O instalador pequeno sai como `.bin`, e não `.exe`: o app 1.1.1 baixa "o
-primeiro `.exe` do Release", e não pode pegar um instalador que não serve para
-ele. O app novo confere o SHA256 e o renomeia antes de rodar.
-[2026-10-19] Vai também em `.zip` e em `.exe` (o tipo verdadeiro, igual byte a
-byte), em chaves que só o app novo lê; o `.exe` só sobe em pré-lançamento.
-[2026-10-27] E, de cada base, o `.zip` SÓ COM OS ARQUIVOS que o próprio app
-aplica, aberto (`sigft/services/pacote_arquivos.py`, chave `arquivos`). Ver
+[2026-10-30] Até aqui cada base gerava também um instalador PEQUENO (o
+`installer/sigft.iss` em modo atualização, em `.bin`, `.zip` e `.exe`). Saiu:
+agora é como no DocManager -- o zip de arquivos, ou o instalador completo.
+A entrada do `latest.json` não traz mais `arquivo`/`sha256`: o app até a
+1.3.0, que procura o pequeno por elas, não acha nada e baixa o completo. Ver
 `docs/superpowers/specs/2026-10-27-atualizacao-como-cmi-design.md`.
 
 Só stdlib e o `pacote_arquivos` (também só stdlib), que mora no pacote do app
 porque é ele quem APLICA: uma implementação só do formato.
-
-Só stdlib. Escreve UTF-8 sem BOM no JSON (o app lê de volta) e COM BOM nos
-includes do Inno, que é como ele reconhece UTF-8 num arquivo `.iss`.
+Escreve UTF-8 sem BOM no JSON (o app lê de volta).
 """
 from __future__ import annotations
 
 import argparse
 import json
-import posixpath
-import shutil
-import subprocess
 import sys
-import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -56,14 +49,6 @@ from sigft.services import pacote_arquivos  # noqa: E402 — depende do sys.path
 
 ARQUIVO_ARQUIVOS = "arquivos.json"
 NOME_CHANGELOG = "CHANGELOG.md"
-
-# Os includes que o `installer/sigft.iss` lê em modo atualização. Nomes fixos,
-# ao lado do `.iss` (o `#include` procura primeiro na pasta dele): gerados a
-# cada build, fora do Git.
-INCLUDE_ARQUIVOS = "atualizacao_arquivos.iss"
-INCLUDE_REMOCOES = "atualizacao_remover.iss"
-# O que o ISCC grava em modo atualização (`OutputBaseFilename` do `.iss`).
-SAIDA_DO_ISCC = "SIG-FT_Itaipu_Atualizacao.exe"
 
 # Pacote que copia mais que isto do total não compensa: o completo, comprimido
 # inteiro, sai quase do mesmo tamanho e não depende da versão instalada.
@@ -114,19 +99,8 @@ def manifesto(pasta: Path, changelog: Path | None, versao: str) -> dict:
 class Diferenca:
     copiar: list[str]         # novos ou com hash diferente
     remover: list[str]        # estavam na base e sumiram
-    pastas_vazias: list[str]  # pastas da base que não existem mais (a mais funda primeiro)
     bytes_copiar: int
     bytes_total: int
-
-
-def _pastas(caminhos) -> set[str]:
-    pastas = set()
-    for caminho in caminhos:
-        pasta = posixpath.dirname(caminho)
-        while pasta:
-            pastas.add(pasta)
-            pasta = posixpath.dirname(pasta)
-    return pastas
 
 
 def diferenca(base: dict, novo: dict) -> Diferenca:
@@ -134,53 +108,16 @@ def diferenca(base: dict, novo: dict) -> Diferenca:
     copiar = sorted(c for c, info in depois.items()
                     if antes.get(c, {}).get("sha256") != info["sha256"])
     remover = sorted(c for c in antes if c not in depois)
-    sumidas = _pastas(antes) - _pastas(depois)
     return Diferenca(
         copiar=copiar,
         remover=remover,
-        pastas_vazias=sorted(sumidas, key=lambda p: (-p.count("/"), p)),
         bytes_copiar=sum(depois[c]["tamanho"] for c in copiar),
         bytes_total=sum(info["tamanho"] for info in depois.values()),
     )
 
 
 # --------------------------------------------------------------------------
-# C. Os includes do Inno
-# --------------------------------------------------------------------------
-def _inno(texto: str) -> str:
-    """`{` abre constante no Inno (`{app}`): o literal é `{{`. Aspas dentro de
-    um valor entre aspas dobram."""
-    return texto.replace("{", "{{").replace('"', '""')
-
-
-def _windows(caminho: str) -> str:
-    return caminho.replace("/", "\\")
-
-
-def include_arquivos(dif: Diferenca) -> str:
-    """O `[Files]` do instalador pequeno. Caminhos relativos ao `.iss`, como
-    os do completo (`..\\dist\\SIG-FT\\*` e `..\\CHANGELOG.md`)."""
-    linhas = ["; Gerado por tools/gerar_atualizacao.py -- nao editar."]
-    for caminho in dif.copiar:
-        origem = "..\\CHANGELOG.md" if caminho == NOME_CHANGELOG else "..\\dist\\SIG-FT\\" + _windows(caminho)
-        pasta = posixpath.dirname(caminho)
-        destino = "{app}" + ("\\" + _inno(_windows(pasta)) if pasta else "")
-        linhas.append(f'Source: "{_inno(origem)}"; DestDir: "{destino}"; Flags: ignoreversion')
-    return "\n".join(linhas) + "\n"
-
-
-def include_remocoes(dif: Diferenca) -> str:
-    """O `[InstallDelete]` do instalador pequeno: arquivo por arquivo, e as
-    pastas só se ficarem vazias. Nunca `{app}` nem `{app}\\_internal` inteiros
-    (é o completo que limpa a pasta toda)."""
-    linhas = ["; Gerado por tools/gerar_atualizacao.py -- nao editar."]
-    linhas += [f'Type: files; Name: "{{app}}\\{_inno(_windows(c))}"' for c in dif.remover]
-    linhas += [f'Type: dirifempty; Name: "{{app}}\\{_inno(_windows(p))}"' for p in dif.pastas_vazias]
-    return "\n".join(linhas) + "\n"
-
-
-# --------------------------------------------------------------------------
-# D. Quais versões anteriores viram base
+# C. Quais versões anteriores viram base
 # --------------------------------------------------------------------------
 def _tem_manifesto(release: dict) -> bool:
     return any(a.get("name") == ARQUIVO_ARQUIVOS for a in release.get("assets", []))
@@ -200,103 +137,35 @@ def escolher_bases(releases: list[dict], tag_atual: str) -> list[str]:
 
 
 # --------------------------------------------------------------------------
-# E. O registro no latest.json
+# D. O registro no latest.json
 # --------------------------------------------------------------------------
-# O app reconhece o pequeno por estes começos de nome e nunca o toma pelo
-# instalador completo (`sigft/services/updater.py`, `PREFIXOS_DO_PEQUENO`).
-PREFIXO_DO_PEQUENO = "SIG-FT_Itaipu_Atualizacao_"
-# [2026-10-19] O pequeno em `.exe` tem OUTRO começo: a API do GitHub lista os
-# arquivos do Release em ordem ALFABÉTICA (medido na 1.2.1-rc.4), e o app até
-# a rc.4 toma "o primeiro `.exe`" pelo completo. `Update` vem depois de `Setup`.
-PREFIXO_DO_EXE_PEQUENO = "SIG-FT_Itaipu_Update_"
+def registrar(latest: dict, de: str, arquivos: Path) -> dict:
+    """Acrescenta o `.zip` de arquivos ao `latest.json`: o app escolhe a
+    entrada cujo `de` é a versão instalada e lê a chave `arquivos`.
 
-
-def nome_do_pacote(de: str, para: str) -> str:
-    return f"{PREFIXO_DO_PEQUENO}{de}_para_{para}.bin"
-
-
-def nome_do_zip(de: str, para: str) -> str:
-    return f"{PREFIXO_DO_PEQUENO}{de}_para_{para}.zip"
-
-
-def nome_do_exe(de: str, para: str) -> str:
-    return f"{PREFIXO_DO_EXE_PEQUENO}{de}_para_{para}.exe"
-
-
-def nome_do_membro_do_zip(de: str, para: str) -> str:
-    return f"{PREFIXO_DO_PEQUENO}{de}_para_{para}.exe"
-
-
-def copiar_como_exe(pacote: Path, de: str, para: str) -> Path:
-    """[2026-10-19] O mesmo instalador pequeno com o nome do tipo que ele é.
-
-    O proxy da empresa deixa passar o completo, que é um `.exe`, e cortou o fim
-    do `.bin`. Isto NÃO esconde nada: é o mesmo executável, que o proxy analisa
-    como analisa o completo. Cópia, e não renome: o `.bin` segue para o app que
-    já está instalado."""
-    destino = Path(pacote).parent / nome_do_exe(de, para)
-    destino.unlink(missing_ok=True)
-    shutil.copyfile(pacote, destino)
-    return destino
-
-
-def zipar(pacote: Path, de: str, para: str) -> Path:
-    """O mesmo instalador pequeno dentro de um `.zip` comum, ao lado do `.bin`.
-
-    [2026-10-16] O proxy da empresa cortou o fim do `.bin` 3 de 3 vezes e deixou
-    passar o `.exe` completo; o `.zip` é a aposta de outro tipo de arquivo.
-    SEM SENHA, de propósito: um zip que o proxy não consegue abrir seria
-    contornar a análise da empresa. `ZIP_STORED`: o instalador já vem comprimido
-    (LZMA do Inno), comprimir de novo não ganha nada."""
-    destino = Path(pacote).parent / nome_do_zip(de, para)
-    destino.unlink(missing_ok=True)
-    with zipfile.ZipFile(destino, "w", compression=zipfile.ZIP_STORED) as z:
-        z.write(pacote, arcname=nome_do_membro_do_zip(de, para))
-    return destino
-
-
-def registrar(latest: dict, de: str, pacote: Path, zipado: Path | None = None,
-              exe: Path | None = None, arquivos: Path | None = None) -> dict:
-    """Acrescenta o instalador pequeno ao `latest.json`: o app escolhe a
-    entrada cujo `de` é a versão instalada. O `.zip`, quando há, vai numa chave
-    nova (`zip`) que só o app de 2026-10-16 em diante lê; o app instalado
-    continua no `arquivo` (`.bin`) de sempre. [2026-10-27] O `.zip` só com os
-arquivos (`pacote_arquivos.montar`) vai na chave `arquivos`."""
-    entrada = {"de": de, "arquivo": Path(pacote).name, "sha256": sha256(pacote),
-               "tamanho": Path(pacote).stat().st_size}
-    for chave, outro in (("zip", zipado), ("exe", exe), ("arquivos", arquivos)):
-        if outro is not None:
-            entrada[chave] = {"arquivo": Path(outro).name, "sha256": sha256(outro),
-                              "tamanho": Path(outro).stat().st_size}
+    [2026-10-30] Só `de` e `arquivos`: sem `arquivo` e `sha256` no topo da
+    entrada, o app até a 1.3.0 (que procura ali o instalador pequeno) não
+    escolhe nada e fica com o completo."""
+    entrada = {"de": de, "arquivos": {"arquivo": Path(arquivos).name, "sha256": sha256(arquivos),
+                                      "tamanho": Path(arquivos).stat().st_size}}
     latest.setdefault("atualizacoes", []).append(entrada)
     return latest
 
 
 # --------------------------------------------------------------------------
-# F. A orquestração
+# E. A orquestração
 # --------------------------------------------------------------------------
-def pacotes(novo: dict, bases: Path, *, versao: str, numerica: str, iscc: str, iss: Path,
-            latest: Path, executar=subprocess.run, pasta: Path | None = None,
-            changelog: Path | None = None) -> list[Path]:
-    """Um instalador pequeno por base. Devolve os `.bin` gerados.
+def pacotes(novo: dict, bases: Path, *, versao: str, latest: Path, pasta: Path,
+            saida: Path, changelog: Path | None = None) -> list[Path]:
+    """Um `.zip` de arquivos por base (`pacote_arquivos.montar`, em `saida`).
+    Devolve os gerados.
 
-    O que não compensa (nada mudou, ou muda mais de `LIMITE_FRACAO` do total) ou
-    não compila fica de fora COM AVISO no log do workflow, sem derrubar o
-    Release: o instalador completo já está pronto e serve para todo mundo.
-
-    [2026-10-27] Com `pasta` (a `dist/SIG-FT` de onde saiu o `novo`) e o
-    `changelog`, cada base ganha também o `.zip` só com os arquivos
-    (`pacote_arquivos.montar`, a MESMA diferença do instalador pequeno), na
-    chave `arquivos` da mesma entrada. As mesmas regras de fora valem para
-    ele: o que muda mais de `LIMITE_FRACAO` também não compensa como zip (o
-    completo serve igual, e não depende da versão instalada), e ele só nasce
-    depois que o ISCC gerou o pequeno -- a entrada do `latest.json` precisa do
-    `arquivo` (`.bin`) que o app instalado lê, e um zip sem entrada seria um
-    arquivo órfão no Release.
+    O que não compensa (nada mudou, ou muda mais de `LIMITE_FRACAO` do total:
+    o completo serve igual e não depende da versão instalada) ou não se monta
+    fica de fora COM AVISO no log do workflow, sem derrubar o Release.
     """
-    iss = Path(iss)
-    saida_iscc = iss.parent / "Output" / SAIDA_DO_ISCC
     manifesto_latest = json.loads(Path(latest).read_text(encoding="utf-8"))
+    Path(saida).mkdir(parents=True, exist_ok=True)
     feitos = []
     for arquivo_base in sorted(Path(bases).glob("*.json")):
         base = json.loads(arquivo_base.read_text(encoding="utf-8"))
@@ -305,41 +174,25 @@ def pacotes(novo: dict, bases: Path, *, versao: str, numerica: str, iscc: str, i
             continue
         dif = diferenca(base, novo)
         if not dif.copiar and not dif.remover:
-            print(f"de {de}: nada mudou -- sem instalador pequeno.")
+            print(f"de {de}: nada mudou -- sem atualizacao por arquivos.")
             continue
         fracao = dif.bytes_copiar / dif.bytes_total if dif.bytes_total else 1.0
         if fracao > LIMITE_FRACAO:
-            print(f"::warning::de {de}: o pequeno copiaria {fracao:.0%} do pacote -- fica so o completo.")
+            print(f"::warning::de {de}: os arquivos seriam {fracao:.0%} do pacote -- fica so o completo.")
             continue
-        (iss.parent / INCLUDE_ARQUIVOS).write_text(include_arquivos(dif), encoding="utf-8-sig")
-        (iss.parent / INCLUDE_REMOCOES).write_text(include_remocoes(dif), encoding="utf-8-sig")
-        saida_iscc.unlink(missing_ok=True)
-        resultado = executar([iscc, "/DAtualizacao=1", f"/DVersaoDe={de}", f"/DMyAppVersion={versao}",
-                              f"/DMyVersionInfo={numerica}", str(iss)])
-        if resultado.returncode != 0 or not saida_iscc.is_file():
-            print(f"::warning::de {de}: o ISCC nao gerou o instalador pequeno (codigo {resultado.returncode}) "
-                  "-- fica so o completo.")
+        try:
+            zipado = pacote_arquivos.montar(
+                pasta, dif.copiar, dif.remover, de, versao, Path(saida),
+                extras={NOME_CHANGELOG: Path(changelog)} if changelog is not None else None)
+        except (OSError, pacote_arquivos.ErroPacote) as erro:
+            print(f"::warning::de {de}: o .zip so com os arquivos nao saiu ({erro}) -- fica so o completo.")
+            (Path(saida) / pacote_arquivos.nome_pacote(de, versao)).unlink(missing_ok=True)
             continue
-        pacote = saida_iscc.parent / nome_do_pacote(de, versao)
-        pacote.unlink(missing_ok=True)
-        shutil.move(str(saida_iscc), str(pacote))
-        so_arquivos = None
-        if pasta is not None:
-            try:
-                so_arquivos = pacote_arquivos.montar(
-                    pasta, dif.copiar, dif.remover, de, versao, pacote.parent,
-                    extras={NOME_CHANGELOG: Path(changelog)} if changelog is not None else None)
-            except (OSError, pacote_arquivos.ErroPacote) as erro:
-                # Como o ISCC que falha: o pequeno e o completo seguem servindo.
-                print(f"::warning::de {de}: o .zip so com os arquivos nao saiu ({erro}) -- fica o pequeno.")
-                (pacote.parent / pacote_arquivos.nome_pacote(de, versao)).unlink(missing_ok=True)
-        registrar(manifesto_latest, de, pacote, zipar(pacote, de, versao),
-                  copiar_como_exe(pacote, de, versao), so_arquivos)
-        feitos.append(pacote)
+        registrar(manifesto_latest, de, zipado)
+        feitos.append(zipado)
         print(f"de {de}: {len(dif.copiar)} arquivo(s) a copiar ({dif.bytes_copiar / 1e6:.1f} MB de "
-              f"{dif.bytes_total / 1e6:.1f} MB), {len(dif.remover)} a remover -> {pacote.name} "
-              f"({pacote.stat().st_size / 1e6:.1f} MB)"
-              + (f" + {so_arquivos.name} ({so_arquivos.stat().st_size / 1e6:.1f} MB)" if so_arquivos else ""))
+              f"{dif.bytes_total / 1e6:.1f} MB), {len(dif.remover)} a remover -> {zipado.name} "
+              f"({zipado.stat().st_size / 1e6:.1f} MB)")
     if feitos:
         Path(latest).write_text(json.dumps(manifesto_latest, indent=2, ensure_ascii=False), encoding="utf-8")
     return feitos
@@ -367,13 +220,12 @@ def main(argv=None) -> None:
     p.add_argument("--novo", type=Path, default=Path(ARQUIVO_ARQUIVOS))
     p.add_argument("--bases", required=True, type=Path)
     p.add_argument("--versao", required=True)
-    p.add_argument("--numerica", required=True)
-    p.add_argument("--iscc", required=True)
-    p.add_argument("--iss", type=Path, default=Path("installer/sigft.iss"))
     p.add_argument("--latest", type=Path, default=Path("latest.json"))
     p.add_argument("--pasta", type=Path, default=Path("dist/SIG-FT"),
                    help="de onde saem os arquivos do .zip so com os arquivos")
     p.add_argument("--changelog", type=Path, default=Path(NOME_CHANGELOG))
+    p.add_argument("--saida", type=Path, default=Path("installer/Output"),
+                   help="onde os .zip sao gravados (o release.yml publica dali)")
 
     args = ap.parse_args(argv)
     if args.comando == "manifesto":
@@ -387,9 +239,9 @@ def main(argv=None) -> None:
             print(tag)
     else:
         novo = json.loads(args.novo.read_text(encoding="utf-8"))
-        feitos = pacotes(novo, args.bases, versao=args.versao, numerica=args.numerica, iscc=args.iscc,
-                         iss=args.iss, latest=args.latest, pasta=args.pasta, changelog=args.changelog)
-        print(f"{len(feitos)} instalador(es) pequeno(s).")
+        feitos = pacotes(novo, args.bases, versao=args.versao, latest=args.latest, pasta=args.pasta,
+                         saida=args.saida, changelog=args.changelog)
+        print(f"{len(feitos)} atualizacao(oes) por arquivos.")
 
 
 if __name__ == "__main__":

@@ -68,15 +68,26 @@ def test_o_resumo_sem_data_nem_tamanho_nao_inventa():
     assert resumo == "Você está na v1.1.0. A v1.2.0."
 
 
-def test_o_resumo_do_instalador_pequeno_compara_com_o_completo():
-    # [2026-10-07] O que a pessoa ganha com o pequeno tem de aparecer.
-    info = _info(nome_arquivo="SIG-FT_Itaipu_Atualizacao_1.1.0_para_1.2.0.bin", tamanho=12_900_000,
-                 incremental=True, tamanho_completo=316_017_517)
+def _com_arquivos(tamanho=12_900_000):
+    zipado = _info(nome_arquivo="SIG-FT_Itaipu_Arquivos_1.1.0_para_1.2.0.zip", tamanho=tamanho)
+    return _info(tamanho=316_017_517, arquivos=zipado, manifesto_arquivos=_info(nome_arquivo="arquivos.json"))
 
-    resumo = textos.resumo_da_versao(info, "1.1.0")
+
+def test_o_resumo_da_atualizacao_por_arquivos_compara_com_o_completo():
+    # [2026-10-07] O que a pessoa ganha com a atualizacao pequena tem de
+    # aparecer; desde 2026-10-30 ela e o .zip de arquivos.
+    resumo = textos.resumo_da_versao(_com_arquivos(), "1.1.0")
 
     assert resumo == ("Você está na v1.1.0. A v1.2.0 saiu em 25/09/2026. A atualização tem 12,3 MB: "
                       "só o que mudou (o instalador completo tem 301,4 MB).")
+
+
+def test_baixando_diz_o_tamanho_do_que_vai_mesmo_ser_baixado():
+    info = _com_arquivos()
+
+    assert textos.msg_baixando(info) == "Baixando a v1.2.0 (12,3 MB)..."
+    assert textos.msg_baixando(info, so_completo=True) == "Baixando a v1.2.0 (301,4 MB)..."
+    assert textos.msg_baixando(_info()) == "Baixando a v1.2.0 (105,1 MB)..."
 
 
 def test_as_notas_do_release_NAO_prometem_atualizacao_a_quem_esta_na_1_0_ou_1_1():

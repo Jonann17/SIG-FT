@@ -40,51 +40,37 @@ instalado perguntou. Quem chama agora é `sigft/app_qt/atualizacao.py`, na
 abertura da janela principal -- e há teste montando a janela de verdade
 (`tests/test_qt_atualizacao.py`) para isso não voltar.
 
-═══ E o sexto: atualizar era reinstalar tudo (2026-10-07) ═══
+═══ E o sexto: atualizar era reinstalar tudo (2026-10-07 a 2026-10-30) ═══
 O instalador completo tem centenas de MB, e entre duas versões quase tudo é
-igual. Cada Release traz agora também um instalador PEQUENO por versão de
-origem, só com os arquivos que mudaram (`tools/gerar_atualizacao.py`), listado
-no `latest.json` (`atualizacoes`). `interpretar_release` escolhe o pequeno
-quando o `de` dele é a versão instalada; senão, o completo. O pequeno chega
-como `.bin` (o app 1.1.1 baixa "o primeiro `.exe`" e não pode pegá-lo) e vira
-`.exe` depois do SHA256. O canal de testes (opção, desligado) faz o app
-oferecer também pré-lançamentos. Ver
-`docs/superpowers/specs/2026-10-07-atualizacao-incremental-design.md`.
-[2026-10-19] O mesmo pequeno vai também como `.exe` (o tipo que ele de fato
-é) e como `.zip`; o app novo tenta zip -> exe -> bin -> completo.
+igual. De 2026-10-07 a 2026-10-30 cada Release trouxe um instalador Inno
+PEQUENO por versão de origem (em `.bin`, `.zip` e `.exe`, por causa do proxy
+da empresa). Saiu: era a peça que mais falhava, e o método do DocManager
+(abaixo) faz o mesmo sem instalador. O app até a 1.3.0 procura o pequeno no
+`latest.json`, não acha e baixa o completo.
 
-═══ E o sétimo: o instalador que não sobe, e o método do CMI (2026-10-27) ═══
-Dois furos fechados juntos (spec
-`docs/superpowers/specs/2026-10-27-atualizacao-como-cmi-design.md`):
+═══ E o sétimo: o método do DocManager (2026-10-27; só ele desde 2026-10-30) ═══
+Spec: `docs/superpowers/specs/2026-10-27-atualizacao-como-cmi-design.md`.
 
 * **Atualização por arquivos.** Com a pasta do programa gravável (instalação
   "só para mim"), o app nem chama instalador: `aplicar_por_arquivos` baixa o
   `arquivos.json` da versão nova e o `SIG-FT_Itaipu_Arquivos_<de>_para_<para>.zip`
   (chave `arquivos` da entrada do `latest.json`), confere os SHA256, aplica
-  com o app aberto (`pacote_arquivos.aplicar`: renomeia, escreve, confere,
-  desfaz se falhar), regrava a versão no registro e devolve o `.exe` a
-  reabrir (`reabrir`). Qualquer falha cai na corrente acima.
-* **O instalador avisa que subiu.** Antes o app disparava o instalador e
-  fechava na hora; se o antivírus ou a política o matasse, o app sumia sem
-  atualizar. Agora `instalar` passa `/SINAL=<arquivo>` e espera o
-  `InitializeSetup` do `.iss` criá-lo (até `ESPERA_INSTALADOR_S`); se o
-  processo sair antes, `InstaladorNaoIniciou`, e o app fica aberto.
-* **Sempre "só para mim".** O instalador COMPLETO é `lowest` sem pergunta, e
+  com o app aberto (`pacote_arquivos.aplicar`: renomeia, escreve, confere --
+  SHA256 no que escreveu, tamanho no resto --, desfaz se falhar), regrava a
+  versão no registro e devolve o `.exe` a reabrir (`reabrir`). Qualquer falha
+  cai no instalador completo.
+* **O instalador avisa que subiu.** `instalar` passa `/SINAL=<arquivo>` e
+  espera o `InitializeSetup` do `.iss` criá-lo (até `ESPERA_INSTALADOR_S`);
+  se o processo sair antes, `InstaladorNaoIniciou`, e o app fica aberto.
+* **Sempre "só para mim".** O instalador é `lowest` sem pergunta, e
   `instalar` passa `/CURRENTUSER`. Quem está em Program Files (pasta sem
-  escrita) recebe direto o COMPLETO (`checar`): ele instala a cópia da pessoa e
-  remove a de Program Files com o desinstalador antigo, elevado (UAC uma vez).
-* **O PEQUENO fica com o escopo de antes** (`admin` + `dialog commandline`,
-  como até a 1.3.1-rc.4). Os apps 1.2.0 a 1.3.1-rc.4 em Program Files escolhem
-  o pequeno quando o `de` dele é a versão deles, sem `/CURRENTUSER` nem
-  `/SINAL`; com `lowest`, ele leria HKCU, recusaria e reabriria o app velho,
-  que o ofereceria de novo, sem fim. Com `dialog`, o Inno reaproveita o escopo
-  da instalação existente (`UsePreviousPrivileges`). A cópia de Program Files
-  que ele atualizar passa a ter este código, e a atualização seguinte dela é o
-  completo, que migra.
-* **O registro tem de ser desta pasta.** `checar` (no Windows, empacotado)
-  só oferece o pequeno e os arquivos quando o `DisplayVersion` de HKCU é a
-  versão que roda; senão, só o completo. `_registrar_versao` só regrava HKCU
-  quando o `InstallLocation` dele é a pasta atualizada.
+  escrita) recebe direto o completo (`checar`): ele instala a cópia da pessoa
+  e remove a de Program Files com o desinstalador antigo, elevado.
+* **O registro tem de ser desta pasta.** A atualização por arquivos regrava o
+  `DisplayVersion` de HKCU; `checar` (no Windows, empacotado) só a oferece
+  quando ele já diz a versão que roda -- senão, registro e pasta ficariam em
+  versões diferentes, e vai o completo, que acerta os dois.
+  `_registrar_versao` só regrava quando o `InstallLocation` é a pasta.
 
 ═══ Sobre o token ═══
 O repositório é privado, então a consulta exige autenticação. O token é
@@ -135,8 +121,8 @@ EXECUTAVEL = "SIG-FT.exe"
 NOME_APP = "SIG-FT Itaipu"
 # A chave do desinstalador (`ChaveDesinstalar` no `[Code]` do `.iss`): o Inno
 # grava ali `DisplayVersion` (do `AppVersion`) e `DisplayName` (do
-# `AppVerName`, "SIG-FT Itaipu <versao>"). O instalador pequeno confere a
-# versao instalada por ela; a atualizacao por arquivos a regrava.
+# `AppVerName`, "SIG-FT Itaipu <versao>"). A atualizacao por arquivos a
+# regrava, e `checar` a confere antes de oferece-la.
 CHAVE_DESINSTALAR = ("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
                      "{9F2C4A18-51D7-4E0B-9A3C-5B7E1D6A2C40}_is1")
 
@@ -243,34 +229,18 @@ class Atualizacao:
     sha256: str             # `""` quando o release não publicou o hash
     url_pagina: str
     publicado_em: str = ""
-    # [2026-10-07] O instalador pequeno (só o que mudou desde a versão
-    # instalada), e o tamanho do completo, para a janela comparar.
-    incremental: bool = False
-    tamanho_completo: int = 0
     # Veio pelo canal de testes.
     prerelease: bool = False
-    # [2026-10-07] Com o pequeno, o completo do mesmo Release: é nele que o
-    # download cai quando o pequeno não chega inteiro (ver `baixar`).
-    completo: Atualizacao | None = None
-    # [2026-10-16] O pequeno em `.zip`: `sha256` é o do zip, `sha256_dentro` o
-    # do instalador que sai dele, e `reserva` o mesmo pequeno em `.bin` -- é
-    # nele que o download cai antes de ir ao completo (ver `baixar`).
-    sha256_dentro: str = ""
-    reserva: Atualizacao | None = None
-    # [2026-10-19] O `.exe` também tem `reserva` (o zip, ou o bin).
     # [2026-10-27] O pacote só com os arquivos (`pacote_arquivos`), que o
     # próprio app aplica, e o `arquivos.json` da versão nova, contra o qual a
     # pasta é conferida depois. Os dois, ou nenhum (ver `_pacote_de_arquivos`).
+    # Sem eles, ou se falharem, vai o instalador completo (este objeto).
     arquivos: Atualizacao | None = None
     manifesto_arquivos: Atualizacao | None = None
 
     @property
     def tamanho_mb(self) -> float:
         return round(self.tamanho / (1024 * 1024), 1) if self.tamanho else 0.0
-
-    @property
-    def tamanho_completo_mb(self) -> float:
-        return round(self.tamanho_completo / (1024 * 1024), 1) if self.tamanho_completo else 0.0
 
 
 class SemToken(RuntimeError):
@@ -300,17 +270,16 @@ def _asset(release: dict, nome: str) -> dict | None:
     return next((a for a in release.get("assets", []) if a.get("name") == nome), None)
 
 
-# [2026-10-19] Como começa o nome do instalador PEQUENO (o mesmo de
-# `tools/gerar_atualizacao.py`, com teste). Em `.exe`, ele não pode virar "o
-# instalador": só serve para quem tem a base dele.
-# O `.exe` pequeno tem começo próprio (`Update`, que vem depois de `Setup` na
-# lista alfabética do GitHub): ver `tools/gerar_atualizacao.py`.
+# Como começava o nome do instalador PEQUENO (de 2026-10-07 a 2026-10-30).
+# Os Releases daquele tempo, que o canal de testes ainda vê, o trazem em
+# `.exe`: ele não pode virar "o instalador", só servia para quem tinha a base.
 PREFIXOS_DO_PEQUENO = ("SIG-FT_Itaipu_Atualizacao_", "SIG-FT_Itaipu_Update_")
 
 
 def _instalador(release: dict) -> dict | None:
     """O asset do instalador completo: o primeiro `.exe` do release que não é
-    um instalador pequeno -- este só serve para quem tem a base dele."""
+    um instalador pequeno (Releases até a 1.3.1) -- este só servia para quem
+    tinha a base dele."""
     return next((a for a in release.get("assets", [])
                  if str(a.get("name", "")).lower().endswith(".exe")
                  and not str(a.get("name", "")).startswith(PREFIXOS_DO_PEQUENO)), None)
@@ -318,8 +287,7 @@ def _instalador(release: dict) -> dict | None:
 
 def _entrada_da_versao(manifesto: dict | None, versao_atual: str | None) -> dict | None:
     """[2026-10-27] A entrada de `atualizacoes` do `latest.json` feita a partir
-    de `versao_atual`, ou `None`. Sem olhar o Release: o pacote de arquivos
-    vale mesmo quando o pequeno da mesma entrada não está lá (M4)."""
+    de `versao_atual`, ou `None`."""
     atual = str(versao_atual or "").strip().lstrip("vV")
     if not atual or not manifesto:
         return None
@@ -327,27 +295,9 @@ def _entrada_da_versao(manifesto: dict | None, versao_atual: str | None) -> dict
                  if isinstance(e, dict) and str(e.get("de", "")).lstrip("vV") == atual), None)
 
 
-def _pacote_pequeno(release: dict, manifesto: dict | None,
-                    versao_atual: str | None) -> tuple[dict, dict] | None:
-    """O instalador pequeno que serve para `versao_atual`: `(asset, entrada do
-    latest.json)`, ou `None`. Só vale com o SHA256 publicado e o arquivo
-    presente no Release -- na dúvida, o completo, que serve para todos."""
-    atual = str(versao_atual or "").strip().lstrip("vV")
-    if not atual or not manifesto:
-        return None
-    for entrada in manifesto.get("atualizacoes") or []:
-        if not isinstance(entrada, dict) or str(entrada.get("de", "")).lstrip("vV") != atual:
-            continue
-        asset = _asset(release, str(entrada.get("arquivo", "")))
-        if asset is not None and str(entrada.get("sha256", "")).strip():
-            return asset, entrada
-    return None
-
-
-def _outro_formato(release: dict, entrada: dict, chave: str) -> tuple[dict, dict] | None:
-    """O mesmo pequeno em outro formato (chave `zip` ou `exe` da entrada do
-    `latest.json`): `(asset, dados)`, ou `None` se não veio ou não está no
-    Release -- aí fica o formato seguinte."""
+def _sub_entrada(release: dict, entrada: dict, chave: str) -> tuple[dict, dict] | None:
+    """`(asset, dados)` da chave `chave` da entrada do `latest.json` (hoje só
+    `arquivos`), ou `None` se não veio, não tem SHA256 ou não está no Release."""
     dados = entrada.get(chave)
     if not isinstance(dados, dict) or not str(dados.get("sha256", "")).strip():
         return None
@@ -366,7 +316,7 @@ def _pacote_de_arquivos(release: dict, entrada: dict,
     `latest.json`, ou `None`. Só com os dois assets no Release e o SHA256 do
     zip publicado: sem ele, aplicar seria confiar num arquivo não conferido.
     O SHA256 do `arquivos.json` vem do `digest` da API (vazio se não vier)."""
-    if (outro := _outro_formato(release, entrada, "arquivos")) is None:
+    if (outro := _sub_entrada(release, entrada, "arquivos")) is None:
         return None
     asset_json = _asset(release, ARQUIVOS_DA_VERSAO)
     if asset_json is None:
@@ -375,7 +325,7 @@ def _pacote_de_arquivos(release: dict, entrada: dict,
     zipado = Atualizacao(
         nome_arquivo=str(asset_zip.get("name", "")), url_asset=str(asset_zip.get("url", "")),
         tamanho=int(asset_zip.get("size") or dados.get("tamanho") or 0),
-        sha256=str(dados["sha256"]).strip().lower(), incremental=True, **comum)
+        sha256=str(dados["sha256"]).strip().lower(), **comum)
     manifesto = Atualizacao(
         nome_arquivo=ARQUIVOS_DA_VERSAO, url_asset=str(asset_json.get("url", "")),
         tamanho=int(asset_json.get("size") or 0), sha256=_digest_sha256(asset_json), **comum)
@@ -390,8 +340,8 @@ def interpretar_release(release: dict, manifesto: dict | None = None,
     `digest` que a própria API do GitHub devolve; senão fica vazio — e aí o
     download ainda acontece, mas com aviso de que não deu para conferir.
 
-    [2026-10-07] Com `versao_atual`, escolhe o instalador PEQUENO quando o
-    `latest.json` traz um feito a partir dela (ver `_pacote_pequeno`).
+    [2026-10-27] Com `versao_atual`, anexa o pacote de arquivos quando o
+    `latest.json` traz um feito a partir dela (ver `_pacote_de_arquivos`).
     """
     asset = _instalador(release)
     if asset is None:
@@ -418,46 +368,6 @@ def interpretar_release(release: dict, manifesto: dict | None = None,
         sha256=sha,
         **comum,
     )
-    if (pequeno := _pacote_pequeno(release, manifesto, versao_atual)) is not None:
-        asset_pequeno, entrada = pequeno
-        bin_ = Atualizacao(
-            nome_arquivo=str(asset_pequeno.get("name", "")),
-            url_asset=str(asset_pequeno.get("url", "")),
-            tamanho=int(asset_pequeno.get("size") or entrada.get("tamanho") or 0),
-            sha256=str(entrada["sha256"]).strip().lower(),
-            incremental=True,
-            tamanho_completo=completo.tamanho,
-            completo=completo,
-            **comum,
-        )
-        escolhido = bin_
-        # De trás para a frente: cada formato guarda o anterior como reserva,
-        # e o ÚLTIMO da tupla é o tentado primeiro. Ordem: zip -> exe -> bin.
-        # [2026-10-19] Medido na rede da empresa: o `.zip` chegou 2 de 2
-        # vezes, o `.exe` pequeno foi cortado no fim, como o `.bin`. O `.exe`
-        # fica de reserva, logo depois do `.zip`.
-        for chave in ("exe", "zip"):
-            if (outro := _outro_formato(release, entrada, chave)) is None:
-                continue
-            asset_outro, dados = outro
-            escolhido = Atualizacao(
-                nome_arquivo=str(asset_outro.get("name", "")),
-                url_asset=str(asset_outro.get("url", "")),
-                tamanho=int(asset_outro.get("size") or dados.get("tamanho") or 0),
-                sha256=str(dados["sha256"]).strip().lower(),
-                sha256_dentro=bin_.sha256 if chave == "zip" else "",
-                incremental=True,
-                tamanho_completo=completo.tamanho,
-                completo=completo,
-                reserva=escolhido,
-                **comum,
-            )
-        if (por_arquivos := _pacote_de_arquivos(release, entrada, comum)) is not None:
-            escolhido = dataclasses.replace(escolhido, arquivos=por_arquivos[0],
-                                            manifesto_arquivos=por_arquivos[1])
-        return escolhido
-    # [2026-10-27, M4] Sem o pequeno no Release, o pacote de arquivos vale do
-    # mesmo jeito: o app o aplica e, se falhar, cai no completo.
     if ((entrada := _entrada_da_versao(manifesto, versao_atual)) is not None
             and (por_arquivos := _pacote_de_arquivos(release, entrada, comum)) is not None):
         return dataclasses.replace(completo, arquivos=por_arquivos[0],
@@ -576,22 +486,19 @@ def checar(versao_atual: str, *, canal_testes: bool | None = None,
         sessao.close()
 
     # [2026-10-27] Pasta do programa sem escrita = a instalação antiga "para
-    # todos" (Program Files). O pequeno é por usuário (o `PrepareToInstall` do
-    # `.iss` lê HKCU) e a recusaria -- com o app já fechado pelo `/SINAL`, ele
-    # reabriria e escolheria o pequeno de novo, sem fim; os arquivos nem dá
-    # para gravar. Vai direto o COMPLETO, que instala só para a pessoa e
-    # remove a cópia de Program Files (`MigrarDaInstalacaoParaTodos`).
+    # todos" (Program Files): os arquivos nem dá para gravar. Vai o completo,
+    # que instala só para a pessoa e remove a cópia de Program Files
+    # (`MigrarDaInstalacaoParaTodos`).
     para_todos = precisa_elevacao()
     so_completo = para_todos
     if para_todos:
         log_cb("SIG-FT instalado para todos os usuarios: vai o instalador completo, que o "
                "passa para a instalacao so sua.")
     elif _no_windows() and empacotado():
-        # [2026-10-27, I2] O pequeno confere `DisplayVersion` em HKCU
-        # (`PrepareToInstall`) e a atualizacao por arquivos o regrava. Se ele
-        # nao diz a versao que roda (duas copias, registro de outra pasta, ou
-        # nenhum), o pequeno recusaria e os arquivos deixariam registro e
-        # pasta em versoes diferentes: vai so o completo, que acerta os dois.
+        # [2026-10-27, I2] A atualizacao por arquivos regrava `DisplayVersion`
+        # em HKCU. Se ele nao diz a versao que roda (duas copias, registro de
+        # outra pasta, ou nenhum), registro e pasta ficariam em versoes
+        # diferentes: vai so o completo, que acerta os dois.
         registrada = (ler_registro or _ler_registro_usuario)("DisplayVersion")
         if str(registrada or "").strip().lstrip("vV") != str(versao_atual).strip().lstrip("vV"):
             so_completo = True
@@ -603,8 +510,9 @@ def checar(versao_atual: str, *, canal_testes: bool | None = None,
                f"publicado. Avise quem cuida do build.")
         return None
 
-    log_cb(f"Nova versao disponivel: v{info.versao} ({info.tamanho_mb} MB"
-           + (f", so o que mudou desde a v{versao_atual}" if info.incremental else "")
+    log_cb(f"Nova versao disponivel: v{info.versao} (instalador completo: {info.tamanho_mb} MB"
+           + (f"; so os arquivos que mudaram desde a v{versao_atual}: {info.arquivos.tamanho_mb} MB"
+              if info.arquivos is not None else "")
            + (", versao de teste" if info.prerelease else "") + ").")
     return info
 
@@ -654,46 +562,17 @@ def limpar_downloads(*, log_cb: Log = _nada) -> int:
 
 
 def baixar(info: Atualizacao, *, progresso_cb: Progresso = _nada,
-           log_cb: Log = _nada,
-           ao_cair_no_completo: Callable[[Atualizacao], None] = _nada) -> Path:
-    """Baixa o instalador e confere o SHA256. Devolve o caminho do arquivo.
+           log_cb: Log = _nada) -> Path:
+    """Baixa o instalador completo e confere o SHA256. Devolve o caminho do
+    arquivo.
 
     Usa o **endpoint de API do asset**, nunca o `browser_download_url`: em
     repositório privado só ele entrega o binário — ver o item 1 do cabeçalho.
-
-    [2026-10-07] O instalador pequeno é um atalho. Se ele não chega inteiro
-    (na rede da empresa, o proxy cortou o fim do da 1.2.0-rc.4, duas vezes)
-    ou não confere, baixa o completo do mesmo Release, que serve para qualquer
-    versão, e avisa `ao_cair_no_completo`. NÃO remenda o pedaço que faltou: se
-    o proxy segurou o fim para analisar o arquivo, pedir só o resto seria
-    passar por cima da análise. Erro de disco não troca de arquivo: sem espaço
-    para o pequeno, não há para o completo.
     [2026-10-19] Antes de baixar, apaga os instaladores de atualizações
     anteriores (`limpar_downloads`).
     """
     limpar_downloads(log_cb=log_cb)
-    try:
-        return _baixar_arquivo(info, progresso_cb=progresso_cb, log_cb=log_cb)
-    except (DownloadInterrompido, ArquivoInvalido, rede.FalhaDeRede) as erro:
-        if info.reserva is not None:
-            # [2026-10-16] Um formato do pequeno não passou: o formato
-            # seguinte, e só no fim o completo (a `reserva` traz o `completo`).
-            log_cb(f"A atualizacao pequena em {_extensao(info)} falhou -- {erro}")
-            log_cb(f"Vai a mesma atualizacao pequena em {_extensao(info.reserva)}.")
-            progresso_cb(0.0)
-            return baixar(info.reserva, progresso_cb=progresso_cb, log_cb=log_cb,
-                          ao_cair_no_completo=ao_cair_no_completo)
-        if not info.incremental or info.completo is None:
-            raise
-        log_cb(f"A atualizacao pequena falhou -- {erro}")
-        log_cb("Vai o instalador completo, que serve para qualquer versao.")
-        ao_cair_no_completo(info.completo)
-        progresso_cb(0.0)
-        return _baixar_arquivo(info.completo, progresso_cb=progresso_cb, log_cb=log_cb)
-
-
-def _extensao(info: Atualizacao) -> str:
-    return Path(info.nome_arquivo).suffix.lower() or "?"
+    return _baixar_arquivo(info, progresso_cb=progresso_cb, log_cb=log_cb)
 
 
 def _mb_do_log(n_bytes: int) -> str:
@@ -701,21 +580,15 @@ def _mb_do_log(n_bytes: int) -> str:
 
 
 def _baixar_arquivo(info: Atualizacao, *, progresso_cb: Progresso, log_cb: Log,
-                    minimo: int = TAMANHO_MINIMO_PLAUSIVEL, abrir_zip: bool = True) -> Path:
+                    minimo: int = TAMANHO_MINIMO_PLAUSIVEL) -> Path:
     """Um arquivo do Release, conferido. Ver `baixar`.
 
     [2026-10-27] A atualização por arquivos usa este mesmo download (uma
-    implementação só): `minimo=0`, porque o `arquivos.json` e o zip de
-    arquivos podem ter poucos KB (o SHA256 é quem separa a página de login),
-    e `abrir_zip=False`, porque o zip de arquivos é aplicado, não aberto."""
+    implementação só) com `minimo=0`: o `arquivos.json` e o zip de arquivos
+    podem ter poucos KB (o SHA256 é quem separa a página de login)."""
     import requests
 
-    nome = info.nome_arquivo
-    # O instalador pequeno chega como `.bin` (o app 1.1.1 baixa "o primeiro
-    # `.exe` do Release" e não pode pegá-lo); é um instalador como o outro.
-    if nome.lower().endswith(".bin"):
-        nome = nome[:-len(".bin")] + ".exe"
-    destino = pasta_download() / nome
+    destino = pasta_download() / info.nome_arquivo
     parcial = destino.with_suffix(destino.suffix + ".part")
     log_cb(f"Baixando {info.nome_arquivo} ({info.tamanho_mb} MB)...")
 
@@ -781,51 +654,9 @@ def _baixar_arquivo(info: Atualizacao, *, progresso_cb: Progresso, log_cb: Log,
 
     destino.unlink(missing_ok=True)
     parcial.rename(destino)
-    if abrir_zip and destino.suffix.lower() == ".zip":
-        destino = _abrir_zip(destino, info, log_cb=log_cb)
     progresso_cb(1.0)
     log_cb(f"Download concluido: {destino}")
     return destino
-
-
-def _abrir_zip(zipado: Path, info: Atualizacao, *, log_cb: Log) -> Path:
-    """[2026-10-16] Tira o instalador de dentro do `.zip` já conferido e
-    confere de novo (`sha256_dentro`). Recusa (`ArquivoInvalido`) zip com mais
-    de um arquivo, com pasta no nome ou que não abre; o zip nunca fica para
-    trás."""
-    import zipfile
-
-    try:
-        try:
-            with zipfile.ZipFile(zipado) as z:
-                membros = [m for m in z.infolist() if not m.is_dir()]
-                if len(membros) != 1:
-                    raise ArquivoInvalido(
-                        f"O .zip da atualizacao deveria ter um arquivo so, e tem {len(membros)}.")
-                membro = membros[0]
-                nome = membro.filename
-                if (Path(nome).name != nome or "\\" in nome or not nome.lower().endswith(".exe")):
-                    raise ArquivoInvalido(f"O .zip da atualizacao traz um nome inesperado: {nome!r}.")
-                destino = zipado.parent / nome
-                parcial = destino.with_suffix(destino.suffix + ".part")
-                digest = hashlib.sha256()
-                with z.open(membro) as origem, open(parcial, "wb") as saida:
-                    for bloco in iter(lambda: origem.read(1024 * 1024), b""):
-                        saida.write(bloco)
-                        digest.update(bloco)
-        except zipfile.BadZipFile as erro:
-            raise ArquivoInvalido(f"O .zip da atualizacao nao abre: {erro}") from erro
-        if info.sha256_dentro and digest.hexdigest() != info.sha256_dentro:
-            parcial.unlink(missing_ok=True)
-            raise ArquivoInvalido(
-                f"O instalador dentro do .zip nao confere com o publicado.\n"
-                f"  esperado: {info.sha256_dentro}\n  obtido:   {digest.hexdigest()}")
-        destino.unlink(missing_ok=True)
-        parcial.rename(destino)
-        log_cb("Instalador tirado do .zip e conferido (SHA256 confere).")
-        return destino
-    finally:
-        zipado.unlink(missing_ok=True)
 
 
 def empacotado() -> bool:
@@ -889,7 +720,7 @@ def aplicar_por_arquivos(info: Atualizacao, *, progresso_cb: Progresso = _nada,
 
     Levanta `ErroPacote`, `ArquivoInvalido`, `DownloadInterrompido` ou
     `rede.FalhaDeRede`; em qualquer caso a pasta fica como estava, e quem
-    chama cai na corrente do instalador (`baixar` + `instalar`)."""
+    chama cai no instalador completo (`baixar` + `instalar`)."""
     pasta = pasta_instalacao()
     if pasta is None or info.arquivos is None or info.manifesto_arquivos is None:
         raise pacote_arquivos.ErroPacote("atualizacao por arquivos indisponivel")
@@ -898,7 +729,7 @@ def aplicar_por_arquivos(info: Atualizacao, *, progresso_cb: Progresso = _nada,
     # O `arquivos.json` primeiro: sem ele nao ha como conferir a pasta depois,
     # e nao vale baixar o zip.
     caminho_json = _baixar_arquivo(info.manifesto_arquivos, progresso_cb=_nada, log_cb=log_cb,
-                                   minimo=0, abrir_zip=False)
+                                   minimo=0)
     try:
         try:
             novo = json.loads(caminho_json.read_text(encoding="utf-8-sig"))
@@ -913,7 +744,7 @@ def aplicar_por_arquivos(info: Atualizacao, *, progresso_cb: Progresso = _nada,
             f"o {ARQUIVOS_DA_VERSAO} baixado nao e o da v{info.versao}")
 
     zipado = _baixar_arquivo(info.arquivos, progresso_cb=progresso_cb, log_cb=log_cb,
-                             minimo=0, abrir_zip=False)
+                             minimo=0)
     try:
         log_cb("Aplicando os arquivos com o SIG-FT aberto...")
         progresso_cb(0.0)

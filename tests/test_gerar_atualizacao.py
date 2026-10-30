@@ -1,13 +1,16 @@
 r"""
 `tools/gerar_atualizacao.py` -- a metade do BUILD da atualização só com o que
-mudou. Ver `docs/superpowers/specs/2026-10-07-atualizacao-incremental-design.md`.
+mudou. Ver `docs/superpowers/specs/2026-10-27-atualizacao-como-cmi-design.md`.
 
   A. o manifesto de arquivos (`arquivos.json`);
   B. a diferença entre duas versões;
-  C. os includes que o Inno compila em modo atualização;
-  D. quais versões anteriores viram base de um instalador pequeno;
-  E. o registro no `latest.json`;
-  F. a orquestração (o ISCC é um dublê: só o Windows o roda).
+  C. quais versões anteriores viram base de um `.zip` de arquivos;
+  D. o registro no `latest.json`;
+  E. a orquestração;
+  F. a fiação no workflow.
+
+[2026-10-30] Sem o instalador pequeno (Inno em modo atualização): só o `.zip`
+de arquivos, como no DocManager.
 """
 from __future__ import annotations
 
@@ -85,16 +88,8 @@ def test_diferenca_copia_o_novo_e_o_mudado_e_remove_o_que_sumiu():
 
     assert d.copiar == ["CHANGELOG.md", "SIG-FT.exe", "_internal/novo.pyd"]
     assert d.remover == ["_internal/velho/x.pyd"]
-    assert d.pastas_vazias == ["_internal/velho"]
     assert d.bytes_copiar == 11 + 4 + 5
     assert d.bytes_total == 11 + 500 + 4 + 5
-
-
-def test_pastas_que_somem_saem_da_mais_funda_para_a_mais_rasa():
-    base = _man("1", **{"a__b__c__1.txt": ("x", 1), "a__2.txt": ("y", 1)})
-    novo = _man("2", **{"a__2.txt": ("y", 1)})
-
-    assert ga.diferenca(base, novo).pastas_vazias == ["a/b/c", "a/b"]
 
 
 def test_nada_mudou_e_diferenca_vazia():
@@ -102,54 +97,11 @@ def test_nada_mudou_e_diferenca_vazia():
 
     d = ga.diferenca(m, _man("2", **{"SIG-FT.exe": ("a", 1)}))
 
-    assert (d.copiar, d.remover, d.pastas_vazias, d.bytes_copiar) == ([], [], [], 0)
+    assert (d.copiar, d.remover, d.bytes_copiar) == ([], [], 0)
 
 
 # ===========================================================================
-# C. Os includes do Inno
-# ===========================================================================
-def test_include_de_arquivos_mapeia_dist_e_changelog_para_a_pasta_do_app():
-    d = ga.Diferenca(copiar=["SIG-FT.exe", "_internal/pacote/m.pyd", "CHANGELOG.md"], remover=[],
-                     pastas_vazias=[], bytes_copiar=0, bytes_total=0)
-
-    linhas = [linha for linha in ga.include_arquivos(d).splitlines() if linha.startswith("Source:")]
-
-    assert linhas == [
-        r'Source: "..\dist\SIG-FT\SIG-FT.exe"; DestDir: "{app}"; Flags: ignoreversion',
-        r'Source: "..\dist\SIG-FT\_internal\pacote\m.pyd"; DestDir: "{app}\_internal\pacote"; Flags: ignoreversion',
-        r'Source: "..\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion',
-    ]
-
-
-def test_include_escapa_chave_e_aspas_que_o_inno_leria_como_constante():
-    # `{` abre constante no Inno ({app}, {tmp}...): literal é `{{`. Aspas
-    # dentro de valor entre aspas dobram.
-    d = ga.Diferenca(copiar=['_internal/x{y}/a"b.txt'], remover=['_internal/{z}.dat'],
-                     pastas_vazias=['_internal/x{y}'], bytes_copiar=0, bytes_total=0)
-
-    arquivos = ga.include_arquivos(d)
-    remocoes = ga.include_remocoes(d)
-
-    assert r'Source: "..\dist\SIG-FT\_internal\x{{y}\a""b.txt"; DestDir: "{app}\_internal\x{{y}"' in arquivos
-    assert r'Type: files; Name: "{app}\_internal\{{z}.dat"' in remocoes
-    assert r'Type: dirifempty; Name: "{app}\_internal\x{{y}"' in remocoes
-
-
-def test_include_de_remocoes_apaga_arquivo_por_arquivo_e_nunca_a_pasta_do_app():
-    d = ga.Diferenca(copiar=[], remover=["_internal/velho/x.pyd", "solto.txt"],
-                     pastas_vazias=["_internal/velho"], bytes_copiar=0, bytes_total=0)
-
-    entradas = [linha for linha in ga.include_remocoes(d).splitlines() if linha.startswith("Type:")]
-
-    assert entradas == [
-        r'Type: files; Name: "{app}\_internal\velho\x.pyd"',
-        r'Type: files; Name: "{app}\solto.txt"',
-        r'Type: dirifempty; Name: "{app}\_internal\velho"',
-    ]
-
-
-# ===========================================================================
-# D. Quais versões anteriores viram base
+# C. Quais versões anteriores viram base
 # ===========================================================================
 def _rel(tag, *, pre=False, draft=False, com_manifesto=True):
     ativos = [{"name": "latest.json", "id": 1}]
@@ -204,114 +156,48 @@ def test_rascunho_e_versao_sem_manifesto_nao_sao_base():
 
 
 # ===========================================================================
-# E. O registro no latest.json
+# D. O registro no latest.json
 # ===========================================================================
-def test_registrar_acrescenta_de_arquivo_sha_e_tamanho(tmp_path):
-    pacote = tmp_path / "SIG-FT_Itaipu_Atualizacao_1.2.0-rc.3_para_1.2.0-rc.4.bin"
-    pacote.write_bytes(b"abc")
+def test_registrar_acrescenta_so_de_e_arquivos(tmp_path):
+    zipado = tmp_path / "SIG-FT_Itaipu_Arquivos_1.2.0-rc.3_para_1.2.0-rc.4.zip"
+    zipado.write_bytes(b"abc")
     latest = {"versao": "1.2.0-rc.4", "sha256": "do-completo"}
 
-    ga.registrar(latest, "1.2.0-rc.3", pacote)
-    ga.registrar(latest, "1.2.0-rc.2", pacote)
+    ga.registrar(latest, "1.2.0-rc.3", zipado)
+    ga.registrar(latest, "1.2.0-rc.2", zipado)
 
     assert latest["sha256"] == "do-completo"
-    assert latest["atualizacoes"][0] == {"de": "1.2.0-rc.3", "arquivo": pacote.name, "sha256": SHA_ABC, "tamanho": 3}
+    assert latest["atualizacoes"][0] == {
+        "de": "1.2.0-rc.3", "arquivos": {"arquivo": zipado.name, "sha256": SHA_ABC, "tamanho": 3}}
     assert [a["de"] for a in latest["atualizacoes"]] == ["1.2.0-rc.3", "1.2.0-rc.2"]
 
 
-def test_o_pacote_nao_termina_em_exe():
-    # O app 1.1.1 baixa "o primeiro .exe do Release": com o pequeno em .exe,
-    # ele poderia pegar um instalador que não serve para ele.
-    assert ga.nome_do_pacote("1.2.0-rc.3", "1.2.0-rc.4") == "SIG-FT_Itaipu_Atualizacao_1.2.0-rc.3_para_1.2.0-rc.4.bin"
+def test_a_entrada_nova_nao_engana_o_app_ate_a_1_3_0(tmp_path):
+    """[2026-10-30] O app 1.2.0 a 1.3.0 procura o instalador pequeno pelo
+    `arquivo` e pelo `sha256` da entrada (`_pacote_pequeno`): sem os dois, ele
+    não acha asset nenhum e baixa o completo. O nome do zip também não pode
+    ser tomado pelo instalador: não é `.exe`."""
+    zipado = tmp_path / "SIG-FT_Itaipu_Arquivos_1.3.0_para_1.3.2.zip"
+    zipado.write_bytes(b"zip")
+    entrada = ga.registrar({}, "1.3.0", zipado)["atualizacoes"][0]
+
+    assert "arquivo" not in entrada and "sha256" not in entrada
+    assert not entrada["arquivos"]["arquivo"].lower().endswith(".exe")
 
 
 # ===========================================================================
-# F. A orquestração
+# E. A orquestração
 # ===========================================================================
-class _ISCC:
-    """O ISCC de mentira: anota a linha de comando e "gera" o instalador."""
-
-    def __init__(self, saida: Path, codigo=0):
-        self.chamadas = []
-        self.saida = saida
-        self.codigo = codigo
-
-    def __call__(self, comando, **_kwargs):
-        self.chamadas.append(list(comando))
-        if self.codigo == 0:
-            self.saida.mkdir(parents=True, exist_ok=True)
-            (self.saida / "SIG-FT_Itaipu_Atualizacao.exe").write_bytes(b"instalador pequeno")
-
-        class _R:
-            returncode = self.codigo
-        return _R()
-
-
 @pytest.fixture
-def cenario(tmp_path):
-    instalador = tmp_path / "installer"
-    instalador.mkdir()
-    (instalador / "sigft.iss").write_text("; de mentira", encoding="utf-8")
-    bases = tmp_path / "bases"
+def cenario_com_dist(tmp_path):
+    """A `dist/SIG-FT` e o CHANGELOG de verdade, e o `novo` e a base tirados
+    deles por `manifesto` -- como no release.yml."""
+    raiz = tmp_path
+    bases = raiz / "bases"
     bases.mkdir()
-    novo = _man("1.2.0-rc.4", **{"SIG-FT.exe": ("A", 30), "_internal__modelo.bin": ("m", 1000)})
-    (bases / "v1.2.0-rc.3.json").write_text(json.dumps(
-        _man("1.2.0-rc.3", **{"SIG-FT.exe": ("a", 29), "_internal__modelo.bin": ("m", 1000),
-                              "_internal__sumiu.pyd": ("s", 5)})), encoding="utf-8")
-    latest = tmp_path / "latest.json"
+    saida = raiz / "installer" / "Output"
+    latest = raiz / "latest.json"
     latest.write_text(json.dumps({"versao": "1.2.0-rc.4"}), encoding="utf-8")
-    return tmp_path, instalador, bases, novo, latest
-
-
-def test_pacotes_monta_compila_renomeia_e_registra(cenario):
-    raiz, instalador, bases, novo, latest = cenario
-    iscc = _ISCC(instalador / "Output")
-
-    feitos = ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
-                        iss=instalador / "sigft.iss", latest=latest, executar=iscc)
-
-    assert iscc.chamadas == [["ISCC.exe", "/DAtualizacao=1", "/DVersaoDe=1.2.0-rc.3", "/DMyAppVersion=1.2.0-rc.4",
-                              "/DMyVersionInfo=1.2.0", str(instalador / "sigft.iss")]]
-    assert [p.name for p in feitos] == ["SIG-FT_Itaipu_Atualizacao_1.2.0-rc.3_para_1.2.0-rc.4.bin"]
-    assert feitos[0].read_bytes() == b"instalador pequeno"
-    assert "SIG-FT.exe" in (instalador / ga.INCLUDE_ARQUIVOS).read_text(encoding="utf-8-sig")
-    assert "sumiu.pyd" in (instalador / ga.INCLUDE_REMOCOES).read_text(encoding="utf-8-sig")
-    registrado = json.loads(latest.read_text(encoding="utf-8"))["atualizacoes"]
-    assert [(a["de"], a["arquivo"]) for a in registrado] == [("1.2.0-rc.3", feitos[0].name)]
-
-
-def test_pacotes_publicam_tambem_um_zip_com_o_mesmo_instalador(cenario):
-    """2026-10-16: o proxy da empresa cortou o fim do `.bin` 3 de 3 vezes e
-    deixou passar o `.exe` completo. O pequeno passa a ir TAMBÉM num `.zip`
-    comum (sem senha: o proxy analisa como quiser), registrado numa chave nova
-    do `latest.json` que só o app novo lê -- o app instalado segue no `.bin`."""
-    import hashlib
-    import zipfile
-
-    raiz, instalador, bases, novo, latest = cenario
-    feitos = ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
-                        iss=instalador / "sigft.iss", latest=latest, executar=_ISCC(instalador / "Output"))
-
-    zipado = instalador / "Output" / "SIG-FT_Itaipu_Atualizacao_1.2.0-rc.3_para_1.2.0-rc.4.zip"
-    assert zipado.is_file()
-    with zipfile.ZipFile(zipado) as z:
-        assert z.namelist() == ["SIG-FT_Itaipu_Atualizacao_1.2.0-rc.3_para_1.2.0-rc.4.exe"]
-        assert z.read(z.namelist()[0]) == feitos[0].read_bytes()
-        assert z.testzip() is None
-    [entrada] = json.loads(latest.read_text(encoding="utf-8"))["atualizacoes"]
-    assert entrada["arquivo"] == feitos[0].name          # o app instalado segue igual
-    assert entrada["zip"] == {
-        "arquivo": zipado.name,
-        "sha256": hashlib.sha256(zipado.read_bytes()).hexdigest(),
-        "tamanho": zipado.stat().st_size,
-    }
-
-
-@pytest.fixture
-def cenario_com_dist(cenario):
-    """O `cenario` com a `dist/SIG-FT` e o CHANGELOG de verdade, e o `novo` e a
-    base tirados deles por `manifesto` -- como no release.yml."""
-    raiz, instalador, bases, _novo, latest = cenario
     dist_base, dist = raiz / "base" / "SIG-FT", raiz / "dist" / "SIG-FT"
     _escrever(dist_base, "SIG-FT.exe", b"exe antigo")
     _escrever(dist_base, "_internal/modelo.bin", b"m" * 1000)
@@ -322,25 +208,25 @@ def cenario_com_dist(cenario):
     log_base, changelog = raiz / "CHANGELOG_base.md", raiz / "CHANGELOG.md"
     log_base.write_bytes(b"# 1.2.0-rc.3")
     changelog.write_bytes(b"# 1.2.0-rc.4")
-    for velho in bases.glob("*.json"):
-        velho.unlink()
     (bases / "v1.2.0-rc.3.json").write_text(
         json.dumps(ga.manifesto(dist_base, log_base, "1.2.0-rc.3")), encoding="utf-8")
     novo = ga.manifesto(dist, changelog, "1.2.0-rc.4")
-    return raiz, instalador, bases, novo, latest, dist_base, dist, log_base, changelog
+    return raiz, saida, bases, novo, latest, dist_base, dist, log_base, changelog
 
 
-def test_pacotes_publicam_tambem_o_zip_so_com_os_arquivos(cenario_com_dist):
-    """2026-10-27: o `.zip` que o próprio app aplica, com a MESMA diferença do
-    pequeno (o CHANGELOG de fora da dist incluído), na chave `arquivos` da
-    mesma entrada."""
-    raiz, instalador, bases, novo, latest, _db, dist, _lb, changelog = cenario_com_dist
+def _pacotes(cenario, **kwargs):
+    raiz, saida, bases, novo, latest, _db, dist, _lb, changelog = cenario
+    return ga.pacotes(kwargs.pop("novo", novo), bases, versao="1.2.0-rc.4", latest=latest, pasta=dist,
+                      saida=saida, changelog=changelog, **kwargs)
 
-    feitos = ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
-                        iss=instalador / "sigft.iss", latest=latest, executar=_ISCC(instalador / "Output"),
-                        pasta=dist, changelog=changelog)
 
-    so_arquivos = instalador / "Output" / "SIG-FT_Itaipu_Arquivos_1.2.0-rc.3_para_1.2.0-rc.4.zip"
+def test_pacotes_montam_o_zip_so_com_os_arquivos_e_registram(cenario_com_dist):
+    raiz, saida, bases, novo, latest, *_ = cenario_com_dist
+
+    feitos = _pacotes(cenario_com_dist)
+
+    so_arquivos = saida / "SIG-FT_Itaipu_Arquivos_1.2.0-rc.3_para_1.2.0-rc.4.zip"
+    assert feitos == [so_arquivos]
     with zipfile.ZipFile(so_arquivos) as z:
         assert json.loads(z.read("manifesto.json")) == {
             "de": "1.2.0-rc.3", "para": "1.2.0-rc.4",
@@ -350,13 +236,13 @@ def test_pacotes_publicam_tambem_o_zip_so_com_os_arquivos(cenario_com_dist):
         assert z.read("arquivos/SIG-FT.exe") == b"exe novo"
         assert "arquivos/_internal/modelo.bin" not in z.namelist()
     [entrada] = json.loads(latest.read_text(encoding="utf-8"))["atualizacoes"]
-    assert entrada["arquivo"] == feitos[0].name          # o app instalado segue igual
-    assert set(entrada) == {"de", "arquivo", "sha256", "tamanho", "zip", "exe", "arquivos"}
-    assert entrada["arquivos"] == {
+    assert entrada == {"de": "1.2.0-rc.3", "arquivos": {
         "arquivo": so_arquivos.name,
         "sha256": hashlib.sha256(so_arquivos.read_bytes()).hexdigest(),
         "tamanho": so_arquivos.stat().st_size,
-    }
+    }}
+    # Nada de instalador pequeno na saída.
+    assert [p.name for p in saida.iterdir()] == [so_arquivos.name]
 
 
 def test_o_zip_so_com_os_arquivos_leva_a_instalacao_a_versao_nova(cenario_com_dist):
@@ -365,161 +251,96 @@ def test_o_zip_so_com_os_arquivos_leva_a_instalacao_a_versao_nova(cenario_com_di
     novo -- os caminhos do manifesto são os mesmos do instalador."""
     from sigft.services import pacote_arquivos
 
-    raiz, instalador, bases, novo, latest, dist_base, dist, log_base, changelog = cenario_com_dist
-    ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
-               iss=instalador / "sigft.iss", latest=latest, executar=_ISCC(instalador / "Output"),
-               pasta=dist, changelog=changelog)
+    raiz, saida, bases, novo, latest, dist_base, dist, log_base, changelog = cenario_com_dist
+    _pacotes(cenario_com_dist)
     instalada = raiz / "instalada"
     shutil.copytree(dist_base, instalada)
     shutil.copyfile(log_base, instalada / "CHANGELOG.md")
 
-    pacote_arquivos.aplicar(instalador / "Output" / pacote_arquivos.nome_pacote("1.2.0-rc.3", "1.2.0-rc.4"),
+    pacote_arquivos.aplicar(saida / pacote_arquivos.nome_pacote("1.2.0-rc.3", "1.2.0-rc.4"),
                             instalada, novo)
     pacote_arquivos.limpar_restos(instalada)
 
     assert ga.manifesto(instalada, None, "1.2.0-rc.4") == novo
 
 
-def test_pacote_grande_demais_tambem_nao_gera_o_zip_so_com_os_arquivos(cenario_com_dist):
-    # A mesma regra do pequeno: acima de LIMITE_FRACAO o completo serve igual.
-    raiz, instalador, bases, novo, latest, _db, dist, _lb, changelog = cenario_com_dist
+def test_pacote_grande_demais_nao_compensa_e_fica_de_fora(cenario_com_dist):
+    raiz, saida, bases, novo, latest, *_ = cenario_com_dist
     novo["arquivos"]["_internal/modelo.bin"]["sha256"] = "modelo-reconvertido"
 
-    feitos = ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
-                        iss=instalador / "sigft.iss", latest=latest, executar=_ISCC(instalador / "Output"),
-                        pasta=dist, changelog=changelog)
-
-    assert feitos == []
+    assert _pacotes(cenario_com_dist, novo=novo) == []
     assert not list(raiz.rglob("SIG-FT_Itaipu_Arquivos_*"))
-
-
-def test_zip_so_com_os_arquivos_que_falha_nao_derruba_o_pequeno(cenario_com_dist, capsys):
-    raiz, instalador, bases, novo, latest, _db, dist, _lb, changelog = cenario_com_dist
-    (dist / "SIG-FT.exe").unlink()  # some depois do manifesto
-
-    feitos = ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
-                        iss=instalador / "sigft.iss", latest=latest, executar=_ISCC(instalador / "Output"),
-                        pasta=dist, changelog=changelog)
-
-    assert len(feitos) == 1 and "::warning" in capsys.readouterr().out
-    [entrada] = json.loads(latest.read_text(encoding="utf-8"))["atualizacoes"]
-    assert "arquivos" not in entrada and "zip" in entrada
-    assert not list(raiz.rglob("SIG-FT_Itaipu_Arquivos_*"))
-
-
-def test_o_zip_nao_tem_senha_nem_caminho():
-    # Sem senha: um zip que o proxy não consegue abrir seria contornar a
-    # análise da empresa. E só o nome do arquivo, sem pasta.
-    assert ga.nome_do_membro_do_zip("1.2.0", "1.2.1") == "SIG-FT_Itaipu_Atualizacao_1.2.0_para_1.2.1.exe"
-    assert "/" not in ga.nome_do_membro_do_zip("1.2.0", "1.2.1")
-
-
-def test_pacotes_publicam_tambem_o_pequeno_como_exe(cenario):
-    """2026-10-19: o pequeno É um `.exe` (o Inno o gera assim); o `.bin` é só o
-    nome que o protege do app 1.1.1. Vai também com o tipo verdadeiro, igual
-    byte a byte, numa chave nova (`exe`) que só o app novo lê."""
-    import hashlib
-
-    raiz, instalador, bases, novo, latest = cenario
-    feitos = ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
-                        iss=instalador / "sigft.iss", latest=latest, executar=_ISCC(instalador / "Output"))
-
-    exe = instalador / "Output" / "SIG-FT_Itaipu_Update_1.2.0-rc.3_para_1.2.0-rc.4.exe"
-    assert exe.is_file() and exe.read_bytes() == feitos[0].read_bytes()
-    assert exe.name.startswith(ga.PREFIXO_DO_EXE_PEQUENO)
-    [entrada] = json.loads(latest.read_text(encoding="utf-8"))["atualizacoes"]
-    assert entrada["arquivo"] == feitos[0].name          # o app instalado segue igual
-    assert entrada["exe"] == {"arquivo": exe.name, "sha256": hashlib.sha256(exe.read_bytes()).hexdigest(),
-                              "tamanho": exe.stat().st_size}
-
-
-def test_o_prefixo_do_pequeno_e_o_mesmo_no_app_e_no_gerador():
-    # O app reconhece o pequeno pelo começo do nome e NUNCA o toma pelo
-    # instalador completo (`updater._instalador`).
-    from sigft.services import updater
-
-    assert {ga.PREFIXO_DO_PEQUENO, ga.PREFIXO_DO_EXE_PEQUENO} == set(updater.PREFIXOS_DO_PEQUENO)
-    for nome in (ga.nome_do_pacote("1", "2"), ga.nome_do_zip("1", "2"), ga.nome_do_exe("1", "2")):
-        assert nome.startswith(updater.PREFIXOS_DO_PEQUENO)
-
-
-def test_pacote_grande_demais_nao_compensa_e_fica_de_fora(cenario):
-    raiz, instalador, bases, novo, latest = cenario
-    novo["arquivos"]["_internal/modelo.bin"]["sha256"] = "modelo-reconvertido"  # 1000 de 1030 bytes
-    iscc = _ISCC(instalador / "Output")
-
-    feitos = ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
-                        iss=instalador / "sigft.iss", latest=latest, executar=iscc)
-
-    assert feitos == [] and iscc.chamadas == []
     assert "atualizacoes" not in json.loads(latest.read_text(encoding="utf-8"))
 
 
-def test_iscc_que_falha_nao_derruba_o_release(cenario, capsys):
-    # O instalador completo já está pronto e serve para todo mundo: o pequeno
-    # que não compilou vira aviso no log do workflow, não erro.
-    raiz, instalador, bases, novo, latest = cenario
+def test_zip_que_falha_nao_derruba_o_release(cenario_com_dist, capsys):
+    # O completo já está pronto e serve para todo mundo: vira aviso, não erro.
+    raiz, saida, bases, novo, latest, _db, dist, *_ = cenario_com_dist
+    (dist / "SIG-FT.exe").unlink()  # some depois do manifesto
 
-    feitos = ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
-                        iss=instalador / "sigft.iss", latest=latest, executar=_ISCC(instalador / "Output", codigo=2))
-
-    assert feitos == []
+    assert _pacotes(cenario_com_dist) == []
     assert "::warning" in capsys.readouterr().out
+    assert not list(raiz.rglob("SIG-FT_Itaipu_Arquivos_*"))
+    assert "atualizacoes" not in json.loads(latest.read_text(encoding="utf-8"))
 
 
-def test_base_da_mesma_versao_e_ignorada(cenario):
-    raiz, instalador, bases, novo, latest = cenario
+def test_nada_mudou_nao_gera_zip(cenario_com_dist):
+    raiz, saida, bases, novo, latest, *_ = cenario_com_dist
+    (bases / "v1.2.0-rc.3.json").write_text(json.dumps(dict(novo, versao="1.2.0-rc.3")), encoding="utf-8")
+
+    assert _pacotes(cenario_com_dist) == []
+
+
+def test_base_da_mesma_versao_e_ignorada(cenario_com_dist):
+    raiz, saida, bases, novo, latest, *_ = cenario_com_dist
     (bases / "v1.2.0-rc.4.json").write_text(json.dumps(novo), encoding="utf-8")
-    iscc = _ISCC(instalador / "Output")
 
-    ga.pacotes(novo, bases, versao="1.2.0-rc.4", numerica="1.2.0", iscc="ISCC.exe",
-               iss=instalador / "sigft.iss", latest=latest, executar=iscc)
+    feitos = _pacotes(cenario_com_dist)
 
-    assert [c[2] for c in iscc.chamadas] == ["/DVersaoDe=1.2.0-rc.3"]
+    assert [p.name for p in feitos] == ["SIG-FT_Itaipu_Arquivos_1.2.0-rc.3_para_1.2.0-rc.4.zip"]
 
 
 # ===========================================================================
-# G. A fiação no workflow
+# F. A fiação no workflow
 # ===========================================================================
-def test_o_release_gera_manifesto_bases_e_pacotes_e_publica_os_dois(tmp_path):
+def test_o_release_gera_manifesto_bases_e_pacotes_e_publica(tmp_path):
     texto = (RAIZ / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     posicao = {nome: texto.index(f"- name: {nome}") for nome in (
         "Montar o instalador", "Gerar o manifesto e as notas do Release",
-        "Manifesto de arquivos e instaladores pequenos", "Publicar o Release")}
+        "Manifesto de arquivos e atualizacao por arquivos", "Publicar o Release")}
 
-    # O pequeno se registra no latest.json: ele tem de existir antes; e o
-    # Release so e publicado depois, com tudo.
+    # O zip se registra no latest.json: ele tem de existir antes; e o Release
+    # so e publicado depois, com tudo.
     assert (posicao["Montar o instalador"] < posicao["Gerar o manifesto e as notas do Release"]
-            < posicao["Manifesto de arquivos e instaladores pequenos"] < posicao["Publicar o Release"])
+            < posicao["Manifesto de arquivos e atualizacao por arquivos"] < posicao["Publicar o Release"])
     for subcomando in ("manifesto", "escolher-bases", "pacotes"):
         assert f"tools/gerar_atualizacao.py {subcomando}" in texto
     publicar = texto[posicao["Publicar o Release"]:]
-    assert '"arquivos.json#' in publicar and "installer/Output/*.bin" in publicar
-    # 2026-10-16: o mesmo pequeno também em .zip (ver `zipar`).
-    assert "installer/Output/SIG-FT_Itaipu_Atualizacao_*.zip" in publicar
-    # 2026-10-19: e em .exe -- só em pré-lançamento (o app 1.1.1 não os vê e
-    # escolhe "o primeiro .exe"), e num upload DEPOIS do resto, para o
-    # completo ficar na frente na lista de quem ainda escolhe pela posição.
-    upload_exe = publicar.index("installer/Output/SIG-FT_Itaipu_Update_*.exe")
-    assert publicar.index("gh release create") < upload_exe
-    assert publicar.rindex('if [ "$PRERELEASE" = "true" ]', 0, upload_exe) > publicar.index("gh release create")
+    assert '"arquivos.json#' in publicar
 
 
 def test_o_release_publica_o_zip_so_com_os_arquivos():
-    """2026-10-27: o `pacotes` recebe a dist e o CHANGELOG (os mesmos do
-    `manifesto`), e o `.zip` só com os arquivos sobe com o resto, com rótulo
-    próprio -- nunca no laço do pequeno em `.zip`."""
+    """O `pacotes` recebe a dist e o CHANGELOG (os mesmos do `manifesto`) e
+    grava em installer/Output, de onde o `.zip` sobe com o resto."""
     texto = (RAIZ / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     pacotes = texto[texto.index("tools/gerar_atualizacao.py pacotes"):]
-    assert "--pasta dist/SIG-FT --changelog CHANGELOG.md" in pacotes[:300]
+    assert "--pasta dist/SIG-FT --changelog CHANGELOG.md --saida installer/Output" in pacotes[:300]
     publicar = texto[texto.index("- name: Publicar o Release"):]
     laco = 'for pacote in installer/Output/SIG-FT_Itaipu_Arquivos_*.zip; do'
     assert laco in publicar
     assert '"$pacote#Atualizacao so com os arquivos' in publicar
     # Antes do create/upload: vai no mesmo `ativos`, normal ou pré-lançamento.
     assert publicar.index(laco) < publicar.index("gh release create")
-    assert "installer/Output/*.zip; do" not in publicar
     assert ga.pacote_arquivos.nome_pacote("1", "2").startswith("SIG-FT_Itaipu_Arquivos_")
+
+
+def test_o_release_nao_monta_nem_publica_o_instalador_pequeno():
+    """[2026-10-30] O pequeno saiu: nada de ISCC em modo atualização nem dos
+    `.bin`, `Atualizacao_*.zip` e `Update_*.exe`."""
+    texto = (RAIZ / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    for resto in ("/DAtualizacao", "--iscc", "Output/*.bin", "SIG-FT_Itaipu_Atualizacao_",
+                  "SIG-FT_Itaipu_Update_"):
+        assert resto not in texto, resto
 
 
 def test_guardar_artefatos_nao_reprova_o_release_e_nao_leva_o_instalador_a_toa():
@@ -534,19 +355,3 @@ def test_guardar_artefatos_nao_reprova_o_release_e_nao_leva_o_instalador_a_toa()
     assert "continue-on-error: true" in guardar and "continue-on-error: true" in quando_falha
     assert "*.exe" not in guardar
     assert "if: failure()" in quando_falha
-
-
-def test_na_lista_do_github_o_primeiro_exe_continua_sendo_o_completo():
-    """2026-10-19, medido na 1.2.1-rc.4: a API do GitHub lista os arquivos do
-    Release em ORDEM ALFABETICA, nao na ordem do upload. O pequeno em .exe
-    chamado `SIG-FT_Itaipu_Atualizacao_...` vinha antes do `SIG-FT_Itaipu_Setup_...`,
-    e o app ate a rc.4 (que pega "o primeiro .exe" como o completo) pegava o
-    pequeno. O nome do pequeno em .exe tem de vir DEPOIS do instalador."""
-    nomes = ["SIG-FT_Itaipu_Setup_1.2.1-rc.5.exe", "latest.json", "arquivos.json"]
-    for de in ("1.2.0", "1.2.1-rc.4"):
-        nomes += [ga.nome_do_pacote(de, "1.2.1-rc.5"), ga.nome_do_zip(de, "1.2.1-rc.5"),
-                  ga.nome_do_exe(de, "1.2.1-rc.5")]
-
-    primeiro_exe = next(n for n in sorted(nomes) if n.lower().endswith(".exe"))
-
-    assert primeiro_exe == "SIG-FT_Itaipu_Setup_1.2.1-rc.5.exe"

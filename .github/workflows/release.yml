@@ -298,22 +298,20 @@ jobs:
             --versao "${{ steps.versao.outputs.versao }}" \
             --tag "${{ steps.versao.outputs.tag }}"
 
-      # ─── Atualizacao so com o que mudou  [2026-10-07] ──────────────────────
+      # ─── Atualizacao so com o que mudou  [2026-10-07; 2026-10-30] ─────────
       # O `arquivos.json` (cada arquivo instalado, com SHA256) vai para o
       # Release e e a BASE da proxima versao. Contra o das versoes anteriores
       # (as 3 mais recentes que o publicaram, e a ultima normal sempre), o
-      # tools/gerar_atualizacao.py monta um instalador PEQUENO por base -- o
-      # mesmo installer/sigft.iss em modo atualizacao -- e o registra no
-      # latest.json, de onde o app escolhe o arquivo. Logica no script, e nao
-      # aqui, pela razao de sempre: YAML nao tem teste
-      # (tests/test_gerar_atualizacao.py). Pequeno que nao compensa ou nao
-      # compila vira aviso: o completo ja esta pronto e serve para todo mundo.
-      # Spec: docs/superpowers/specs/2026-10-07-atualizacao-incremental-design.md
-      # [2026-10-27] De cada base sai tambem o .zip SO COM OS ARQUIVOS
+      # tools/gerar_atualizacao.py monta o .zip SO COM OS ARQUIVOS
       # (SIG-FT_Itaipu_Arquivos_<de>_para_<para>.zip), que o proprio app
-      # aplica aberto -- sigft/services/pacote_arquivos.py, chave `arquivos`.
+      # aplica aberto (sigft/services/pacote_arquivos.py), e o registra no
+      # latest.json (chave `arquivos`). Logica no script, e nao aqui: YAML nao
+      # tem teste (tests/test_gerar_atualizacao.py). O que nao compensa vira
+      # aviso: o completo ja esta pronto e serve para todo mundo.
+      # [2026-10-30] O instalador PEQUENO (Inno em modo atualizacao) saiu:
+      # agora e como no DocManager, arquivos ou o completo.
       # Spec: docs/superpowers/specs/2026-10-27-atualizacao-como-cmi-design.md
-      - name: Manifesto de arquivos e instaladores pequenos
+      - name: Manifesto de arquivos e atualizacao por arquivos
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.versao.outputs.tag }}
@@ -329,9 +327,8 @@ jobs:
               || echo "::warning::nao consegui baixar o arquivos.json de $base"
           done
           python tools/gerar_atualizacao.py pacotes --bases bases \
-            --pasta dist/SIG-FT --changelog CHANGELOG.md \
-            --versao "${{ steps.versao.outputs.versao }}" \
-            --numerica "${{ steps.versao.outputs.numerica }}" --iscc "$ISCC"
+            --pasta dist/SIG-FT --changelog CHANGELOG.md --saida installer/Output \
+            --versao "${{ steps.versao.outputs.versao }}"
 
       # [2026-10-20] O QUE MUDOU DENTRO DO SIG-FT.exe. Na rc.9 a atualizacao
       # pequena levou o .exe inteiro (34 MB) sem biblioteca nenhuma ter mudado,
@@ -372,21 +369,10 @@ jobs:
                   "arquivos.json#Arquivos desta versao (base da atualizacao pequena)")
           # Diagnostico do .exe (passo anterior); pode faltar se ele falhou.
           [ -s conteudo-do-exe.json ] && ativos+=("conteudo-do-exe.json#Conteudo do SIG-FT.exe (diagnostico)")
-          # `.bin`, e nao `.exe`: o app 1.1.1 baixa o primeiro .exe do Release.
-          for pacote in installer/Output/*.bin; do
-            [ -e "$pacote" ] && ativos+=("$pacote#Atualizacao pequena (so o que mudou)")
-          done
-          # [2026-10-16] O mesmo pequeno num .zip comum: o proxy da empresa
-          # cortou o fim do .bin 3 de 3 vezes. So o app novo le o .zip
-          # (chave `zip` do latest.json); o instalado segue no .bin.
-          for pacote in installer/Output/SIG-FT_Itaipu_Atualizacao_*.zip; do
-            [ -e "$pacote" ] && ativos+=("$pacote#Atualizacao pequena em .zip (so o que mudou)")
-          done
           # [2026-10-27] O .zip so com os arquivos, que o app aplica sozinho
-          # (sem instalador). Nome sem o prefixo do pequeno e sem .exe: o app
-          # instalado ate a 1.3.1-rc.1 nao o ve (le `zip`, `exe` e `arquivo`
-          # do latest.json, e escolhe o completo pelo .exe). So o app novo
-          # le a chave `arquivos`.
+          # (sem instalador). Nome sem o prefixo do antigo pequeno e sem .exe:
+          # o app instalado ate a 1.3.1-rc.1 nao o ve (escolhe o completo pelo
+          # .exe). So o app novo le a chave `arquivos`.
           for pacote in installer/Output/SIG-FT_Itaipu_Arquivos_*.zip; do
             [ -e "$pacote" ] && ativos+=("$pacote#Atualizacao so com os arquivos (o app aplica)")
           done
@@ -406,18 +392,6 @@ jobs:
               --target "${{ github.sha }}" \
               --title "SIG-FT Itaipu v$VERSAO" \
               --notes-file notas_release.md "$sinal"
-          fi
-          # [2026-10-19] O mesmo pequeno com o tipo que ele e (.exe), igual
-          # byte a byte: o proxy da empresa deixa passar o completo, que e .exe,
-          # e o analisa do mesmo jeito -- nada fica escondido. So o app novo le
-          # (chave `exe` do latest.json). Por enquanto SO em pre-lancamento: o
-          # app 1.1.1 nao os ve, e ele (e a 1.2.0) escolhe "o primeiro .exe".
-          # A API lista os arquivos em ordem ALFABETICA (medido na rc.4): o
-          # nome comeca com "Update", que vem depois de "Setup".
-          if [ "$PRERELEASE" = "true" ]; then
-            for pacote in installer/Output/SIG-FT_Itaipu_Update_*.exe; do
-              [ -e "$pacote" ] && gh release upload "$TAG" "$pacote#Atualizacao pequena em .exe (so o que mudou)" --clobber
-            done
           fi
           echo "--- publicado ---"
           gh release view "$TAG"
@@ -453,7 +427,6 @@ jobs:
           name: SIG-FT-${{ steps.versao.outputs.versao }}-instalador
           path: |
             installer/Output/*.exe
-            installer/Output/*.bin
             installer/Output/*.zip
           # 3 dias (eram 7, ate 2026-10-19): sao ~400 MB por run que falhou, e
           # a cota de artefatos da conta lotou de novo na 1.2.1-rc.5. Da tempo

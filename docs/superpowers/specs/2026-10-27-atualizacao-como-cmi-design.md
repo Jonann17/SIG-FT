@@ -1,5 +1,17 @@
 # Atualização como a do CMI Suite (2026-10-27)
 
+> **2026-10-30: o pequeno saiu.** Pedido do Jonathan, depois da 1.3.1: *"quiero
+> que se actualice como el docmanager nomas ya y que tenga lo del sha; el resto
+> podemos scrappear"*. O instalador Inno pequeno (`/DAtualizacao=1`, `.bin`,
+> `.zip`, `.exe`) não é mais gerado nem escolhido: ficam só os dois caminhos do
+> DocManager 3.4, **os arquivos** (abaixo, com a conferência rápida) e **o
+> instalador completo** (com `/SINAL`, `/CURRENTUSER` e a migração de Program
+> Files). A entrada do `latest.json` tem só `de` e `arquivos`: o app até a
+> 1.3.0, que procura `arquivo` + `sha256` nela, não acha o pequeno e baixa o
+> completo (conferido contra `git show v1.2.0:` e `v1.3.0:sigft/services/updater.py`;
+> a 1.1.x nem lê `atualizacoes`). O que o texto abaixo diz do pequeno é a
+> história até aqui.
+
 Pedido do Jonathan, depois de a atualização pequena da 1.3.1-rc.1 falhar na
 máquina do Luan (caiu no completo): *"copia el mismo método que tiene el cmi
 suite para sus actualizaciones, ahí funciona super bien"*. Escolhida a opção

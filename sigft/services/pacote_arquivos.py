@@ -11,7 +11,8 @@ O mesmo módulo MONTA o pacote (no workflow de Release, via
 implementação só do formato: se as duas pontas tivessem cada uma a sua, a
 primeira divergência viraria uma instalação quebrada. A DIFERENÇA entre as
 versões não mora aqui: é a do `tools/gerar_atualizacao.py` (`diferenca`), a
-mesma do instalador pequeno, e chega a `montar` já calculada.
+que até 2026-10-30 também montava o instalador pequeno, e chega a `montar`
+já calculada.
 
 Só stdlib e sem Qt: roda no runner do Release, que chama o script sem o
 ambiente do app.

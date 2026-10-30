@@ -56,92 +56,55 @@ seguintes pela atualização automática.
    troca os arquivos e **reabre o SIG-FT** na conta de quem estava usando
    (`[Run]` com `runasoriginaluser`, só quando recebe `/REABRIR=1`).
 
-### Atualização pequena: só o que mudou (desde a 1.2.0)
+### Atualização pequena: só os arquivos que mudaram (como no DocManager)
 
 Até a 1.1.1, toda atualização baixava e reinstalava o pacote inteiro (316 MB na
-1.1.1, o tradutor sozinho com 218). Spec:
-`docs/superpowers/specs/2026-10-07-atualizacao-incremental-design.md`.
-
-- **No Release.** Além do instalador completo, o workflow publica o
-  `arquivos.json` (cada arquivo instalado, com SHA256) e, contra o `arquivos.json`
-  das versões anteriores (as 3 mais recentes que o publicaram, e a última normal
-  sempre), um **instalador pequeno** por versão de origem:
-  `SIG-FT_Itaipu_Atualizacao_<de>_para_<para>.bin`, com só os arquivos que
-  mudaram. É o mesmo `installer/sigft.iss` em modo atualização
-  (`/DAtualizacao=1 /DVersaoDe=...`): mesmo `AppId`, fecha e reabre o app como o
-  completo, e **recusa** instalar se a versão instalada não for a `de` dele. A
-  lista entra no `latest.json` (`atualizacoes`). Lógica em
-  `tools/gerar_atualizacao.py`.
-- **No app.** Se o `latest.json` traz um pequeno feito a partir da versão
-  instalada, o aviso oferece **ele** ("12,3 MB: só o que mudou"); senão, o
-  completo. Quem decide é o app instalado: a 1.1.1 só conhece o completo, então
-  a primeira atualização a partir dela ainda vem inteira.
-- **`.bin`, e não `.exe`**: o app 1.1.1 baixa "o primeiro `.exe` do Release". O
-  app novo confere o SHA256 e o renomeia antes de rodar.
-- **Pequeno que falha cai no completo** (`updater.baixar`, desde a 1.2.0-rc.5).
-  Na rede da empresa, o Zscaler cortou o fim do `.bin` da rc.4 duas vezes
-  (`IncompleteRead`: faltaram 883 bytes, depois 636 KB), e o completo, de 316 MB,
-  passa pelo mesmo caminho. Corte, arquivo que não confere ou rota que não
-  responde: o app baixa o completo do mesmo Release e diz isso na janela. Erro
-  de disco não troca de arquivo. O log diz quanto chegou e quanto tempo a
-  conexão ficou parada antes do corte.
-- **O app não remenda o download cortado** (pedido parcial só do que faltou),
-  de propósito: se o proxy segura o fim do arquivo para analisá-lo, pedir só o
-  resto seria contornar a análise da empresa. Se o Zscaler barrar o pequeno
-  sempre, o caminho é a TI liberar o endereço dos Releases ou o instalador
-  passar a ter assinatura digital.
-- Pequeno que não compensa (copiaria mais de 60% do pacote) ou que o ISCC não
-  compilou **não sai**, com `::warning` no run: o completo serve para todos.
-- A primeira versão com isto não tem base (ninguém publicou `arquivos.json`
-  antes): ela sai só com o completo, e a seguinte já traz o pequeno.
-- **Medido na 1.2.0-rc.4** (a partir da rc.3, mesmo código): **38,5 MB** contra
-  316 MB do completo, 4 arquivos de 2048. O piso é o `SIG-FT.exe` (~38 MB): no
-  onedir do PyInstaller ele leva TODO o código Python, o do SIG-FT e o das
-  bibliotecas, e por isso muda em toda versão. Os `RECORD` do numpy e do tqdm
-  também mudam a cada build (os lançadores `.exe` que o pip gera), mas são KB.
-
-### Atualização por arquivos e o `/SINAL` (desde a 1.3.1)
-
-Pedido do Jonathan depois de a pequena da 1.3.1-rc.1 cair no completo na
-máquina do Luan: o método do CMI Suite. Spec:
+1.1.1, o tradutor sozinho com 218). De 2026-10-07 a 2026-10-30 a saída foi um
+**instalador Inno pequeno** por versão de origem (`.bin`, `.zip` e `.exe`, por
+causa do proxy da empresa): ele saiu, era a peça que mais falhava. Desde a
+1.3.2 há só dois caminhos, como no DocManager: **os arquivos** ou **o
+instalador completo**. Spec:
 `docs/superpowers/specs/2026-10-27-atualizacao-como-cmi-design.md`.
 
-- **No Release**, ao lado de cada pequeno, o `.zip` só com os arquivos:
+- **No Release.** Além do instalador completo, o workflow publica o
+  `arquivos.json` (cada arquivo instalado, com SHA256 e tamanho) e, contra o
+  `arquivos.json` das versões anteriores (as 3 mais recentes que o publicaram,
+  e a última normal sempre), um `.zip` só com os arquivos por versão de origem:
   `SIG-FT_Itaipu_Arquivos_<de>_para_<para>.zip` (`manifesto.json` +
-  `arquivos/<caminho>`, `sigft/services/pacote_arquivos.py`), na chave
-  `arquivos` da mesma entrada do `latest.json` (`arquivo`, `sha256`,
-  `tamanho`). O `arquivos.json` de todo Release é o manifesto da versão nova.
+  `arquivos/<caminho>`, `sigft/services/pacote_arquivos.py`). A entrada do
+  `latest.json` (`atualizacoes`) tem só `de` e `arquivos` (`arquivo`,
+  `sha256`, `tamanho`). Lógica em `tools/gerar_atualizacao.py`. O que não
+  compensa (mais de 60% do pacote) não sai, com `::warning` no run.
 - **No app** (`updater.pode_por_arquivos`): com o pacote no Release, o app
   empacotado e a pasta do programa **gravável de verdade** (instalação "só
   para mim", em `AppData\Local\Programs`), `updater.aplicar_por_arquivos`
   baixa o `arquivos.json` (conferido pelo `digest` da API) e o zip (conferido
   pelo SHA256 do `latest.json`), aplica com o app aberto (renomeia o antigo
   para `.sigft-old`, escreve o novo, confere a pasta contra o `arquivos.json`
-  novo, desfaz tudo se algo falhar), regrava `DisplayVersion`/`DisplayName` no
-  HKCU (a chave `ChaveDesinstalar` do `.iss`: o pequeno seguinte confere ali),
-  **reabre** o `.exe` desacoplado e fecha. Os `.sigft-old` são apagados na
-  abertura seguinte. Qualquer falha vai para o `sigft.log` e cai na corrente
-  de sempre (zip → exe → bin → completo).
+  novo -- SHA256 no que escreveu, tamanho no resto --, desfaz tudo se algo
+  falhar), regrava `DisplayVersion`/`DisplayName` no HKCU, **reabre** o `.exe`
+  desacoplado e fecha. Os `.sigft-old` são apagados na abertura seguinte.
+  Qualquer falha vai para o `sigft.log` e cai no **instalador completo**.
+- **Os apps até a 1.3.0** procuram o instalador pequeno no `latest.json`
+  (`arquivo` + `sha256` da entrada), não acham e baixam o completo. Da 1.3.1
+  em diante, os arquivos.
+- **O app não remenda o download cortado** (pedido parcial só do que faltou),
+  de propósito: se o proxy segura o fim do arquivo para analisá-lo, pedir só o
+  resto seria contornar a análise da empresa.
 - **Pelo instalador**, `updater.instalar` passa `/SINAL=<%TEMP%\SIG-FT_Update\instalador_pronto.txt>`
   e **espera** o `InitializeSetup` do `.iss` criar o arquivo (até 10 min). Se
   o instalador sair antes, `InstaladorNaoIniciou` com o código de saída e o
   `instalacao.log`, e o app fica aberto com o erro na janela. No disparo
   elevado (erro 740 → `ShellExecute`) não há o processo: só o sinal e o tempo
   limite contam.
-- Os apps já instalados ignoram a chave `arquivos` e o `/SINAL` sem efeito: o
-  `.iss` só cria o arquivo quando recebe o parâmetro.
-- **O escopo dos dois modos do `.iss`.** O completo é sempre "só para mim"
+- **O escopo.** O instalador é sempre "só para mim"
   (`PrivilegesRequired=lowest`, `PrivilegesRequiredOverridesAllowed=commandline`)
   e migra quem estava em Program Files (desinstala a cópia antiga, elevado; o
   UAC recusado mostra uma caixa dizendo como removê-la à mão, e no silencioso
-  só o log). O pequeno (`/DAtualizacao=1`) ficou com o de até a 1.3.1-rc.4
-  (`admin` + `dialog commandline`): os apps 1.2.0 a 1.3.1-rc.4 em Program Files
-  o rodam sem `/CURRENTUSER`, e com `lowest` ele recusaria e reabriria o app
-  velho, sem fim. A cópia de Program Files atualizada assim recebe o completo
-  na vez seguinte (pasta sem escrita), que migra.
-- **O registro.** No Windows, o app só oferece o pequeno e os arquivos quando
-  o `DisplayVersion` de HKCU é a versão que está rodando (senão, o completo, e
-  o motivo no `sigft.log`), e só regrava HKCU quando o `InstallLocation` dele é
+  só o log). Pasta sem escrita recebe direto o completo (`updater.checar`).
+- **O registro.** No Windows, o app só oferece os arquivos quando o
+  `DisplayVersion` de HKCU é a versão que está rodando (senão, o completo, e o
+  motivo no `sigft.log`), e só regrava HKCU quando o `InstallLocation` dele é
   a pasta atualizada.
 
 ### Canal de testes (desde a 1.2.0)
@@ -150,7 +113,7 @@ Caixa **"Versões de teste"** ao lado do botão "Atualizações" da tela inicial
 (desmarcada por padrão; fica em `Documentos\SIG-FT\user_prefs.json`). Marcada, o
 app consulta `/releases` em vez de `/releases/latest` e oferece também
 **pré-lançamentos**. É como se testa uma rc pela atualização automática --
-inclusive o instalador pequeno -- antes de ela chegar a todo mundo.
+inclusive a atualização por arquivos -- antes de ela chegar a todo mundo.
 
 ### "O instalador detectou que o SIG-FT Itaipu está em execução", com ele fechado
 
@@ -179,9 +142,9 @@ inicial: ele faz a mesma pergunta e sempre responde.
 |---|---|
 | a pergunta, o download e o erro | `Documentos\SIG-FT\logs\sigft.log` (linhas `[atualizacao]`) |
 | o que o instalador fez | `%TEMP%\SIG-FT_Update\instalacao.log` |
-| o instalador baixado (o completo ou o pequeno, já como `.exe`) | `%TEMP%\SIG-FT_Update\` |
-| por que o pequeno não instalou (versão de origem diferente) | `%TEMP%\SIG-FT_Update\instalacao.log`, linha `Atualizacao recusada` |
-| por qual caminho a última atualização saiu (arquivos, pequeno, completo) | `Documentos\SIG-FT\logs\diario.log`, linha `ATUALIZACAO` |
+| o instalador completo baixado | `%TEMP%\SIG-FT_Update\` |
+| por que a atualização por arquivos não serviu | `Documentos\SIG-FT\logs\sigft.log`, linha `a atualizacao por arquivos falhou` |
+| por qual caminho a última atualização saiu (arquivos ou completo) | `Documentos\SIG-FT\logs\diario.log`, linha `ATUALIZACAO` |
 | a migração de Program Files | `%TEMP%\SIG-FT_Update\instalacao.log`, linhas `Migracao:` |
 
 ### Sem permissão para criar tag?

@@ -728,7 +728,7 @@ mesmo texto fica em `Documentos\SIG-FT\logs\amp\`, e a tabela de sintomas está 
 
 A partir da **1.3.1-rc.6**, com a caixa **"Versões de teste"** marcada. Só no
 Windows. O caminho de cada atualização fica no `Documentos\SIG-FT\logs\diario.log`,
-na linha `ATUALIZACAO` (por arquivos, pelo instalador pequeno ou pelo completo), e
+na linha `ATUALIZACAO` (por arquivos ou pelo instalador completo), e
 os detalhes no `sigft.log` (linhas `[atualizacao]`).
 
 **5d.1 — Por arquivos (rc instalada só para você).** Com uma rc instalada em
@@ -738,20 +738,17 @@ pedido de permissão. Confira: a versão nova na Home, a linha
 `ATUALIZACAO por arquivos v<de> -> v<para>` no diário, e em Configurações >
 Aplicativos o SIG-FT Itaipu com a versão nova.
 
-**5d.2 — Program Files: primeiro no lugar, depois a migração.** Numa máquina com o
-SIG-FT instalado **para todos** (Program Files) numa versão 1.2.0 a 1.3.1-rc.4:
+**5d.2 — Program Files: a migração.** Numa máquina com o SIG-FT instalado
+**para todos** (Program Files):
 
-1. Atualize pelo app antigo. Vem o instalador pequeno (pede a senha de
-   administrador, como antes) e o SIG-FT reabre atualizado, **ainda em Program
-   Files**. Se ele reabrir na versão velha e oferecer a mesma atualização de novo,
-   pare e mande o `%TEMP%\SIG-FT_Update\instalacao.log`.
-2. Atualize de novo (a rc seguinte). Agora vem o **instalador completo**: ele
-   instala a cópia só sua e pede a senha de administrador uma vez, para remover a
-   de Program Files. Confira: a pasta de Program Files sumiu, o SIG-FT abre de
-   `AppData\Local\Programs`, e Documentos\SIG-FT (chaves, preferências) continua
-   igual. Recusando a senha: a cópia nova funciona, e a caixa (só no instalador
-   aberto à mão) diz como remover a antiga.
-3. **Fixe de novo o atalho na barra de tarefas**: o fixado apontava para Program
+1. Atualize pelo app. Vem o **instalador completo** (desde a 1.3.2 não há mais
+   o instalador pequeno): ele instala a cópia só sua e pede a senha de
+   administrador uma vez, para remover a de Program Files. Confira: a pasta de
+   Program Files sumiu, o SIG-FT abre de `AppData\Local\Programs`, e
+   Documentos\SIG-FT (chaves, preferências) continua igual. Recusando a senha:
+   a cópia nova funciona, e a caixa (só no instalador aberto à mão) diz como
+   remover a antiga.
+2. **Fixe de novo o atalho na barra de tarefas**: o fixado apontava para Program
    Files e deixa de abrir. Desafixe o velho e fixe o SIG-FT aberto.
 
 ---
