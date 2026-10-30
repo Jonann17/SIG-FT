@@ -38,7 +38,7 @@ from sigft import config as sigft_config
 from sigft.app import textos_dicas
 from sigft.app.idioma import marcar, t
 from sigft.app_qt import atualizacao, estilo, icones, interface, letra, nome, pasta_de_logs, tema
-from sigft.app_qt.catalogo import ACAO_CONFIGURACAO, ACOES_DA_CONFIGURACAO, ACOES_DA_HOME, ICONE_DA_TELA, MODULOS
+from sigft.app_qt.catalogo import ACAO_CONFIGURACAO, ACAO_SUGESTOES, ACOES_DA_CONFIGURACAO, ACOES_DA_HOME, ICONE_DA_TELA, MODULOS
 from sigft.app_qt.widgets import blocos, controles, dialogs, mural
 from sigft.app_qt.widgets.module_frame import aplicar_dicas
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
@@ -392,6 +392,7 @@ class HomeView(QScrollArea):
         linha_titulo = QHBoxLayout()
         linha_titulo.setSpacing(0)
         linha_titulo.addWidget(self.label_titulo, 1)
+        linha_titulo.addWidget(self._criar_lampada(), 0, Qt.AlignmentFlag.AlignVCenter)
         linha_titulo.addWidget(self._criar_engrenagem(), 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(linha_titulo)
         layout.addSpacing(5)
@@ -519,6 +520,38 @@ class HomeView(QScrollArea):
 
         janela = JanelaConfiguracao(self)
         self._janelas["configuracao"] = janela
+        return janela
+
+    def _criar_lampada(self):
+        """[2026-10-30] A lâmpada, à esquerda da engrenagem e do mesmo jeito que
+        ela: abre a janela Sugestões."""
+        botao = blocos.botao("", variante=ACAO_SUGESTOES.variante, largura=LADO_ENGRENAGEM,
+                             altura=LADO_ENGRENAGEM)
+        icones.aplicar(botao, ACAO_SUGESTOES.icone, tamanho=TAMANHO_ICONE_ENGRENAGEM)
+        botao.setToolTip(t(ACAO_SUGESTOES.texto))
+        botao.setAccessibleName(t(ACAO_SUGESTOES.texto))
+        dialogs.sem_tecla(botao)
+        botao.clicked.connect(self.abrir_sugestoes)
+        self.btn_sugestoes = botao
+        return botao
+
+    def abrir_sugestoes(self):
+        """A janela Sugestões (a lâmpada e o Ctrl+K); uma só aberta por vez, como
+        a Configuração. O texto digitado fica nela enquanto o app estiver aberto:
+        fechar só esconde."""
+        aberta = self._trazer_para_frente("sugestoes")
+        if aberta is not None:
+            return aberta
+        velha = self._janelas.get("sugestoes")
+        if _vivo(velha):
+            velha.show()
+            velha.raise_()
+            velha.activateWindow()
+            return velha
+        from sigft.app_qt.views.sugestoes import JanelaSugestoes
+
+        janela = JanelaSugestoes(self)
+        self._janelas["sugestoes"] = janela
         return janela
 
     def _configuracao_viva(self):
