@@ -199,13 +199,19 @@ class TelaDeUpload(ModuleFrame):
         linha.addWidget(self.btn_parar_ia)
         return linha
 
+    def _start_web_da_memoria(self) -> None:
+        """O botão "Usar Dados Recém Processados (Memória)". Método, e não
+        `lambda` com `self` no sinal: a lambda segurava a tela (ciclo; ver
+        `widgets/fraco.py`)."""
+        self._pre_start_web(self.dados_em_memoria)
+
     def _build_tab2(self, aba: QVBoxLayout) -> None:
         aba.addSpacing(20)                              # texto: pady=20
         self.rotulo_web = blocos.rotulo(t(self.TEXTO_WEB), tamanho=14)
         aba.addWidget(self.rotulo_web)
         self.btn_web_mem = blocos.botao(t("Usar Dados Recém Processados (Memória)"), variante="primario",
                                         largura=350, altura=40, tamanho_fonte=13, negrito=True)
-        self.btn_web_mem.clicked.connect(lambda: self._pre_start_web(self.dados_em_memoria))
+        self.btn_web_mem.clicked.connect(self._start_web_da_memoria)
         self.btn_web_file = blocos.botao(t(self.TEXTO_CARREGAR), variante="cinza",
                                          largura=350, altura=40, tamanho_fonte=13, negrito=True)
         self.btn_web_file.clicked.connect(self._start_web_from_file)

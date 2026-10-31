@@ -14,7 +14,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
 ## 1.3.3 - 2026-10-30
 
-- Estabilidade: uma tela solta passa a sumir na hora, sem esperar o coletor de lixo do Python, que podia destruí-la no meio da pintura de um menu e derrubar o programa. Era a queda que travava os testes do instalador da versão (o teste de medidas da Busca PMIB, que estava fora do Release, voltou).
+- Estabilidade: uma tela solta passa a sumir na hora, sem esperar o coletor de lixo do Python, que podia destruí-la no meio da pintura de um menu e derrubar o programa. Era a queda que travava os testes do instalador da versão (o teste de medidas da Busca PMIB, que estava fora do Release, voltou). Vale para a Busca PMIB e, agora, também para a Home, o Analyzer, o Upload de Condições, o Upload de Características e a Correção de PDM.
 
 ## 1.3.2 - 2026-10-30
 
