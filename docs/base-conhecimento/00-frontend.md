@@ -234,6 +234,9 @@ A interface Qt (`sigft/app_qt/`) tem um sistema visual próprio; a spec está em
   nada à vista não mexe na área de transferência). A altura do console e o começo do
   texto não mudaram, mas a barra ocupa ~28 px da área de texto (no AutoSpec sobram
   umas 5 linhas). O console continua escuro no tema claro, de propósito.
+  Em janela baixa (notebook 1366x768 maximizado, ~690 px úteis) o console de altura
+  fixa cede até o mínimo do puxador (barra + duas linhas) em vez de empurrar a janela
+  para fora da tela (2026-10-31, `tests/test_qt_tela_1366.py`).
 - **Resumo do lote** (`sigft/app/resumo_lote.py` + `widgets/resumo_lote.py`): no fim
   da última tarefa da tela (`ModuleFrame._fim_do_lote`), se houve erro ou aviso, a
   janela agrupada por código PMIB (regex própria, "Sem código PMIB" para o resto),
