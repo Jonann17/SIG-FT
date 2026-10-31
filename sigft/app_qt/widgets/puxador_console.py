@@ -18,6 +18,7 @@ que falha vira aviso no log e nunca derruba a tela.
 from __future__ import annotations
 
 import logging
+import weakref
 
 from PySide6.QtCore import QEvent, QPoint, Qt, QTimer
 from PySide6.QtWidgets import QHBoxLayout, QWidget
@@ -105,7 +106,15 @@ class PuxadorDoConsole(QWidget):
         self.marca.setFixedSize(LARGURA_MARCA, ALTURA_PUXADOR - 4)
         self.marca.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         lay.addWidget(self.marca, 0, Qt.AlignmentFlag.AlignCenter)
-        self._tela = tela
+        # [2026-10-30] Fraca: a tela já segura a barrinha (filha dela e
+        # `tela.puxador_console`); uma referência forte de volta fechava um
+        # ciclo, e a tela só morria quando o coletor de lixo do Python passava
+        # -- num momento qualquer, inclusive DENTRO do `paintEvent` de uma
+        # peça dela. Foi o access violation do `MenuDeOpcoes.paintEvent` no
+        # Release (PENDENCIAS, 2026-10-26): o coletor destruía a janela inteira
+        # no meio da pintura. Com a referência fraca, a tela morre na hora em
+        # que o dono a solta, como qualquer widget.
+        self._ref_tela = weakref.ref(tela)
         # Arrastando: onde a barrinha foi pega (px abaixo do topo dela) e a base
         # das peças do console na tela (y global), que não sai do lugar.
         self._pega: float | None = None
@@ -121,6 +130,12 @@ class PuxadorDoConsole(QWidget):
         self._vigiar()
         self.reposicionar()
 
+    @property
+    def _tela(self):
+        """A tela dona, ou `None` se ela já se foi (ver o `__init__`)."""
+        ref = self.__dict__.get("_ref_tela")
+        return ref() if ref is not None else None
+
     # -- seguir o console --------------------------------------------------------
     def _vigiar(self) -> None:
         widget = self._tela.console
@@ -133,7 +148,7 @@ class PuxadorDoConsole(QWidget):
         # O Qt pode entregar evento à barrinha quando o objeto Python dela já foi
         # desmontado (sem `_tela`): no Release 1.3.0 (Windows, 2026-10-23) o
         # AttributeError aqui dentro derrubou o processo. Sem tela, nada a fazer.
-        tela = self.__dict__.get("_tela")
+        tela = self._tela
         if tela is None:
             return False
         if evento.type() in (QEvent.Type.Move, QEvent.Type.Resize,
@@ -145,14 +160,17 @@ class PuxadorDoConsole(QWidget):
         return False
 
     def _reajustar(self) -> None:
+        tela = self._tela
+        if tela is None:
+            return
         try:
-            self._tela._ajustar_console_ao_espaco()
+            tela._ajustar_console_ao_espaco()
             self.reposicionar()
         except RuntimeError:
             pass  # tela destruída antes do disparo
 
     def reposicionar(self) -> None:
-        tela = self.__dict__.get("_tela")
+        tela = self._tela
         if tela is None:
             return
         console = tela.console
