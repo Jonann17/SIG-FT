@@ -18,6 +18,8 @@ A tela é FINA, como lá: planilha, prévia e ações em massa em
 """
 from __future__ import annotations
 
+import weakref
+
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMessageBox, QVBoxLayout, QWidget
 
@@ -67,11 +69,14 @@ class _ReaplicaProgresso(QObject):
 
     def __init__(self, tela: ModuloCorrecaoPDM) -> None:
         super().__init__(tela)
-        self._tela = tela
+        # Fraca: a tela já segura este filtro (filho dela); a referência forte
+        # fechava um ciclo, como o do puxador do console (`widgets/fraco.py`).
+        self._ref_tela = weakref.ref(tela)
 
     def eventFilter(self, objeto, evento) -> bool:  # noqa: N802 -- nome do Qt
-        if evento.type() == QEvent.Type.Resize:
-            blocos.definir_progresso(objeto, self._tela._fracao)
+        tela = self._ref_tela()
+        if tela is not None and evento.type() == QEvent.Type.Resize:
+            blocos.definir_progresso(objeto, tela._fracao)
         return False
 
 

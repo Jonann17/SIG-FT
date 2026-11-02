@@ -21,10 +21,11 @@ from PySide6.QtWidgets import QWidget
 
 from sigft.app_qt import main as qmain
 
-# As telas que já morrem sozinhas. As que ainda têm ciclo próprio (callbacks
-# guardados em lista, `_ReaplicaProgresso._tela`) estão no PENDENCIAS.md
-# (2026-10-30); saindo de lá, entram aqui.
-SEM_CICLO = ["Translator", "LMR", "CriaFichas", "PDM", "CopiaFichas",
+# As telas que morrem sozinhas: todas menos o AutoSpec, que ainda tem um ciclo
+# próprio (closure; tela do Rafael, ver o PENDENCIAS.md, 2026-10-30). Callback
+# de filho que aponta para a tela usa `widgets/fraco.chamada_fraca`.
+SEM_CICLO = ["Home", "Translator", "LMR", "CriaFichas", "PDM", "Analyzer", "UploadConditions",
+             "UploadSpecs", "CorrecaoPDM", "CopiaFichas",
              "PMIBManager", "SearchPMIB"]
 
 
