@@ -78,16 +78,20 @@ def test_chave_da_preferencia_por_tela():
     assert como_funciona.chave_da_preferencia("LMR.upload") == "como_funciona_aberto.LMR.upload"
 
 
-def test_lmr_retoma_pela_posicao_e_nao_promete_onde_fica_o_csv():
+def test_lmr_retoma_pela_posicao_e_diz_onde_fica_o_csv():
     # O campo de inicio recebe a POSICAO (int, grupos de codigos LMR contados
-    # de 0, `LMRAutomation._resolver_linha_inicial`), nao um codigo LMR; e o
-    # erros_lmr.csv sai relativo ao cwd, entao o texto nao promete onde.
+    # de 0, `LMRAutomation._resolver_linha_inicial`), nao um codigo LMR. O
+    # erros_lmr.csv mora na pasta de logs desde 2026-10-30 (antes saia
+    # relativo ao cwd, e o texto nao podia prometer onde).
+    from sigft.services import lmr
+
     itens = como_funciona.TEXTOS["LMR.upload"].itens
     retomar = next(item for item in itens if item.startswith("Parou no meio?"))
     assert "posição" in retomar and "0 =" in retomar
     assert "todas as fichas" in retomar
     csv = next(item for item in itens if "erros_lmr.csv" in item)
-    assert "no erros_lmr.csv" not in csv
+    assert lmr.ARQUIVO_ERROS_LMR in csv
+    assert "Documentos\\SIG-FT\\logs" in csv
 
 
 def test_analyzer_relatorio_do_fornecedor_sai_pelo_botao():

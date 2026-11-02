@@ -891,7 +891,12 @@ rc.1 não funcionou lá: o Luan pediu para terminar a peça 2 antes de olhar.
 
 ## 2026-10-27 — pytest 9.2 apaga atributos dos dubles do conftest
 
-O `requirements-dev.txt` fixa `pytest<9.2`. A 9.2.0 grava como "valor antigo" de
+**RESOLVIDO (2026-10-30)**: os dubles do conftest viraram `_DubleDeModulo`, a
+subclasse de `MagicMock` sugerida abaixo, e a trava `<9.2` saiu do
+`requirements-dev.txt`. Suite verde com a 9.1.1 e a 9.2.0;
+`tests/test_conftest_dubles.py` reprova a volta. Texto original:
+
+~~O `requirements-dev.txt` fixa `pytest<9.2`. A 9.2.0 grava como "valor antigo" de
 `monkeypatch.setattr` o que esta no `__dict__` da instancia; um `MagicMock` cria os
 filhos sob demanda, fora do `__dict__`, entao o `undo` faz `delattr` e o filho some
 do duble compartilhado (`sys.modules["openpyxl"]`, `["pypdf"]`). Os testes que fazem
@@ -901,11 +906,11 @@ mesmo processo. **Saida para tirar a trava:** os dubles do conftest viram uma
 subclasse de `MagicMock` que guarda o filho no `__dict__` na primeira leitura, ou
 esses testes passam a trocar o nome no modulo de producao
 (`monkeypatch.setattr(autospec_backend, "openpyxl", falso)`) em vez de mexer no
-duble. Depois, rodar a suite com a 9.2 e tirar o `<9.2`.
+duble. Depois, rodar a suite com a 9.2 e tirar o `<9.2`.~~
 
 ## 2026-10-28 — ajuda para quem começa (fix round da Tanda B)
 
 | Data | Descoberto em | Descrição | Destino proposto |
 |---|---|---|---|
-| 2026-10-28 | Texto do "Como funciona" da Aplicação LMR | O `erros_lmr.csv` é gravado relativo ao diretório de trabalho (`services/lmr.py`, `to_csv("erros_lmr.csv")`): no app instalado ele cai onde o processo foi aberto (no `.exe`, possivelmente `Program Files`, onde usuário comum não escreve, e o `except` engole o erro em silêncio). O texto da tela não promete onde ele fica. Conserto: gravar em `Documentos\SIG-FT\logs\` (ou ao lado do Excel LMR) e dizer o caminho no console. | Frente da LMR (fora do escopo da ajuda) |
+| 2026-10-28 | Texto do "Como funciona" da Aplicação LMR | **RESOLVIDO (2026-10-30)**: grava em `Documentos\SIG-FT\logs\erros_lmr.csv` (`lmr.salvar_relatorio_de_erros`), o console diz o caminho (e o motivo, se falhar), e o "Como funciona" diz onde fica; `tests/test_lmr_erros_csv.py`. Texto original: ~~O `erros_lmr.csv` é gravado relativo ao diretório de trabalho (`services/lmr.py`, `to_csv("erros_lmr.csv")`): no app instalado ele cai onde o processo foi aberto (no `.exe`, possivelmente `Program Files`, onde usuário comum não escreve, e o `except` engole o erro em silêncio). O texto da tela não promete onde ele fica. Conserto: gravar em `Documentos\SIG-FT\logs\` (ou ao lado do Excel LMR) e dizer o caminho no console.~~ | Concluído |
 | 2026-10-28 | Medida do "Como funciona" fechado | Mesmo com o bloco compacto, Upload Specs e Upload Condições pedem 733 px de altura mínima de janela (738 com a letra Grande; 715 e 717 sem o bloco). Num 1366x768 com barra de tarefas sobram uns 700 px de área útil: essas telas já passavam antes do bloco. Saídas, se incomodar: console menor por padrão em tela baixa, ou o conteúdo da tela rolar. | Sistema visual, se alguém reclamar |
