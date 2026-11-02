@@ -163,6 +163,55 @@ def test_foto_que_nao_aparece_na_tabela_nao_e_ok(portal):
     assert "0071.JPG" in resultado.motivo and "0071a.JPG" in resultado.motivo
 
 
+def test_linhas_que_chegam_depois_do_cabecalho_ainda_sao_excluidas(portal):
+    # O OutSystems desenha a tabela antes dos dados: as primeiras leituras dão 0
+    # linhas. Contar cedo demais fazia o modo "substituir" subir por cima.
+    p = portal(fotos=["0071e.JPG", "0071c.JPG"])
+    reais, leituras = p.engine.contar, {"n": 0}
+
+    def contar_com_atraso(seletor):
+        if seletor == uf.XPATH_LINHAS_DE_IMAGEM and leituras["n"] < 4:
+            leituras["n"] += 1
+            return 0
+        return reais(seletor)
+    p.engine.contar = contar_com_atraso
+
+    resultado = uf.processar_ficha(p, "4500063671.0071", "0071", NOVAS, uf.MODO_SUBSTITUIR)
+
+    assert resultado.ok
+    assert p.engine.fotos == ["0071.JPG", "0071a.JPG"]
+
+
+def test_adicionar_com_nome_repetido_que_nao_sobe_nao_e_ok(portal):
+    # A foto antiga já se chama 0071.JPG: achar o nome na tabela não prova que a
+    # nova entrou. A conferência conta as linhas também.
+    p = portal(fotos=["0071.JPG", "0071a.JPG"], sobe=False)
+
+    resultado = uf.processar_ficha(p, "4500063671.0071", "0071", NOVAS, uf.MODO_PERGUNTAR,
+                                   lambda *_a: uf.ADICIONAR)
+
+    assert not resultado.ok
+
+
+def test_exclui_de_baixo_para_cima_e_a_principal_fica_por_ultimo(portal):
+    # Precaução: a primeira linha é a Principal, e tela desse tipo costuma
+    # recusar excluí-la enquanto houver outra.
+    p = portal(fotos=["0071e.JPG (principal)", "0071c.JPG", "0071d.JPG"])
+
+    def click(seletor):
+        if "fa-trash" in seletor:
+            p.engine.dialogo = "[last()]" in seletor or len(p.engine.fotos) == 1
+        elif "CONFIRMAR" in seletor and p.engine.dialogo:
+            p.engine.ordem.append(("excluiu", p.engine.fotos.pop()))
+            p.engine.dialogo = False
+    p.engine.click_raw = click
+
+    resultado = uf.processar_ficha(p, "4500063671.0071", "0071", NOVAS, uf.MODO_SUBSTITUIR)
+
+    assert resultado.ok
+    assert [passo[1] for passo in p.engine.ordem[:3]] == ["0071d.JPG", "0071c.JPG", "0071e.JPG (principal)"]
+
+
 def test_lixeira_que_nao_exclui_para_a_ficha_sem_subir(portal):
     p = portal(fotos=["0071.JPG"])
     p.engine.click_raw = lambda _s: None  # o clique "pega", mas nada sai da tabela

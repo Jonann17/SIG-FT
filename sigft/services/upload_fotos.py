@@ -169,6 +169,26 @@ def fotos_na_ficha(portal):
     return _contar(portal, XPATH_LINHAS_DE_IMAGEM)
 
 
+def fotos_ao_abrir(portal):
+    """As fotos da ficha recém-aberta, esperando os DADOS e não o cabeçalho.
+
+    O OutSystems desenha a tabela antes de as linhas chegarem: contar no
+    primeiro instante dava 0, e o modo "substituir" subia por cima das fotos
+    antigas. Espera aparecer alguma linha (ficha sem foto gasta a espera
+    inteira, ~10 s) e depois a contagem parar de mudar.
+    """
+    if not _esperar(lambda: fotos_na_ficha(portal) > 0, TENTATIVAS_DA_TABELA):
+        return 0
+    anterior = fotos_na_ficha(portal)
+    for _ in range(TENTATIVAS_DA_TABELA):
+        time.sleep(INTERVALO_S)
+        agora = fotos_na_ficha(portal)
+        if agora == anterior:
+            return agora
+        anterior = agora
+    return anterior
+
+
 def tem_documentos(portal):
     """A ficha aberta tem pelo menos um documento associado?"""
     return _contar(portal, XPATH_LINHAS_DE_DOCUMENTO) > 0
@@ -183,13 +203,17 @@ def foto_esta_na_tabela(portal, caminho):
 # 3. O que se faz na tela
 # ===========================================================================
 def excluir_uma(portal, callback_log=None):
-    """Clica na lixeira da PRIMEIRA foto e confirma. `True` só quando a linha
-    SAIU da tabela -- clicar não prova nada (§0, regra 6)."""
+    """Clica na lixeira da ÚLTIMA foto e confirma. `True` só quando a linha
+    SAIU da tabela -- clicar não prova nada (§0, regra 6).
+
+    De baixo para cima: a primeira linha é a Principal, e tela desse tipo
+    costuma recusar excluí-la enquanto houver outra. Assim ela sai por último.
+    """
     _log = _log_de(callback_log)
     antes = fotos_na_ficha(portal)
     if not antes:
         return True
-    lixeira = f"({XPATH_LINHAS_DE_IMAGEM})[1]{_REL_LIXEIRA}"
+    lixeira = f"({XPATH_LINHAS_DE_IMAGEM})[last()]{_REL_LIXEIRA}"
     try:
         portal.engine.scroll_to(lixeira)
         portal.engine.click_raw(lixeira)
@@ -253,13 +277,10 @@ def processar_ficha(portal, pmib, quatro, caminhos, modo=MODO_SUBSTITUIR,
     if not extrator.abrir_secao(portal, sel.ABA_DOCUMENTOS_EDICAO, callback_log):
         resultado.motivo = "não abri a aba Documentos e imagens"
         return resultado
-    # A tabela de imagens só existe com foto (ou nem assim, se o seletor
-    # errar). A espera é curta e o "não apareceu" vira linha no log.
-    if not _esperar(lambda: _contar(portal, XPATH_TABELA_DE_IMAGENS), TENTATIVAS_DA_TABELA):
-        _log("      A tabela de imagens não apareceu: considerei a ficha sem fotos.")
-
-    existentes = fotos_na_ficha(portal)
-    if existentes:
+    existentes = fotos_ao_abrir(portal)
+    if not existentes:
+        _log("      Nenhuma foto na tabela de imagens: a ficha está sem fotos.")
+    else:
         decisao = SUBSTITUIR
         if modo == MODO_PERGUNTAR and perguntar is not None:
             decisao = perguntar(pmib, existentes)
@@ -274,13 +295,21 @@ def processar_ficha(portal, pmib, quatro, caminhos, modo=MODO_SUBSTITUIR,
                 return resultado
 
     descricao = descricao_das_fotos(quatro)
+    antes = fotos_na_ficha(portal)
     imagens.subir_arquivos(portal, [(descricao, c) for c in caminhos], callback_log)
 
-    # A PROVA é o nome de cada arquivo na tabela, não o toast de cada um.
+    # A PROVA é a tabela, não o toast de cada um: o NOME de cada arquivo E o
+    # número de linhas -- no modo "adicionar" a foto antiga pode ter o mesmo
+    # nome da nova, e só o nome passaria com a nova fora.
     faltaram = [os.path.basename(c) for c in caminhos
                 if not _esperar(lambda c=c: foto_esta_na_tabela(portal, c), TENTATIVAS_DA_CONFERENCIA)]
     if faltaram:
         resultado.motivo = f"{len(faltaram)} de {len(caminhos)} foto(s) não apareceram na tabela: {', '.join(faltaram)}"
+        return resultado
+    esperado = antes + len(caminhos)
+    if not _esperar(lambda: fotos_na_ficha(portal) >= esperado, TENTATIVAS_DA_CONFERENCIA):
+        resultado.motivo = (f"a tabela tem {fotos_na_ficha(portal)} foto(s), esperava {esperado}: "
+                            f"alguma das novas não entrou")
         return resultado
 
     resultado.ok = True
