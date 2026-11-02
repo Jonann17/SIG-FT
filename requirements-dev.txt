@@ -26,7 +26,12 @@ pytest-qt
 # PRODUCAO (esta no requirements.txt: a interface oficial e a Qt). Fica aqui
 # tambem porque o CI instala so este arquivo, e a suite monta as telas Qt de
 # verdade. Mesma regra do lxml, logo abaixo.
-PySide6-Essentials>=6.9
+# <6.12 abaixo do Python 3.12: o 6.12.0 gasta uma referencia do `None` a cada
+# chamada que devolve None (QPainter.setPen...), e no 3.10/3.11 o processo cai
+# depois de alguns milhares de pinturas (tests/test_qt_pyside_refcount_none.py).
+# No 3.12+ o None e imortal: segue o mais novo (o .exe usa o 3.12).
+PySide6-Essentials>=6.9,<6.12 ; python_version < "3.12"
+PySide6-Essentials>=6.9 ; python_version >= "3.12"
 
 # lxml — desde 2026-10-05 é dependência de PRODUÇÃO (está no requirements.txt:
 # o editor cirúrgico que grava nos `_STATUS_PMIB`). Fica aqui também porque o CI
