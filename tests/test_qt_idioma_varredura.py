@@ -15,6 +15,7 @@ import threading
 from types import SimpleNamespace
 
 import pytest
+from PySide6.QtCore import QEvent
 from PySide6.QtWidgets import QApplication, QToolTip, QWidget
 
 from _idioma import em_idioma
@@ -111,6 +112,13 @@ def test_janelas_auxiliares_nao_cortam_texto_em_outro_idioma(montar, qtbot, qt_i
         assert {nome: cortados(j) for nome, j in janelas.items() if cortados(j)} == {}
         for janela in janelas.values():
             janela.close()
+        # [2026-10-30] A "Resultados" fecha com `WA_DeleteOnClose` (apagar fica
+        # para o laço de eventos) e é filha da tela da Busca, que morre quando o
+        # teste sai -- desde que a tela deixou de ficar presa num ciclo
+        # (`PuxadorDoConsole`). Pai solto com o apagar do filho ainda na fila
+        # derruba o processo (medido com dois `QWidget` puros), então o apagar
+        # é entregue aqui, com a tela ainda viva.
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def _largura_da_dica(qtbot, texto: str) -> int:
