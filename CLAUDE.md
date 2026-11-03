@@ -249,6 +249,6 @@ origem, a licença e o modo de atualizar estão em [`.claude/skills/VENDOR.md`](
 | `docs/ACONEX_AO_VIVO.md` | **caderno da frente do Aconex ao vivo** — onde parou (Tarefas 11 e 12, portões G1 e G2), decisões tomadas e armadilhas |
 | `docs/ACONEX_API.md` | **a API do Aconex** (guia do Luan): credenciais, token, endpoints, limites, e o que o teste de conexão do SIG-FT aprendeu (sem coringa no `docno:`; o histórico segue o `TrackingId`) |
 | `docs/base-conhecimento/14-aconex-e-conferencia-de-revisoes.md` | o Aconex no SIG-FT (cofre do DocManager, cliente, STATUS REAL), a Conferência de Revisões e a Revisão no AMP |
-| `amp/revisao_de_listas/` | o workflow do n8n da Revisão no AMP: o pedido ao agente (`pedido.md`, onde se melhora o agente), o gerador do `.json` e o LEIA-ME (ligar no n8n e o que fazer quando falha) |
+| `amp/revisao_de_listas/` | a Revisão no AMP: o agente mora no AMP (`agente.md` é a cópia; melhora-se lá), o gerador do workflow do n8n e o LEIA-ME (criar o agente, ligar o workflow, testar pelo PowerShell e o que fazer quando falha) |
 | `docs/ROTEIRO_DE_TESTE.md` | roteiro de validação manual, do ZIP até o portal |
 | `docs/ROTEIRO_CORRECAO_PDM.md` | validação do módulo de correção de PDM (a etapa E6 dele) |
