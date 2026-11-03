@@ -198,6 +198,13 @@ def subir_juntas(portal, legenda, caminhos, callback_log=None, *, timeout_confir
         return False
     time.sleep(PAUSA_APOS_UPLOAD)
 
+    # O FilePond LISTA os arquivos um por um: contar no primeiro instante dava
+    # "listou 1 de 7" com os 7 entrando (lote de 2026-11-03).
+    for _ in range(tentativas_do_formulario or TENTATIVAS_DO_FORMULARIO):
+        if portal.engine.contar(sel.XPATH_IMAGENS_ITEM_NA_LISTA) >= len(caminhos):
+            break
+        time.sleep(INTERVALO_DE_POLL)
+
     # ESPERA PELO FIM DO UPLOAD, e não por um relógio. Ver
     # `esperar_processamento`: clicar em "Confirmar" no meio do processamento é
     # o que fazia o portal não devolver toast nenhum.
@@ -250,14 +257,21 @@ def fechar_formulario(portal, callback_log=None):
         except Exception:  # noqa: BLE001 -- sem foco; a próxima volta tenta
             pass
         time.sleep(PAUSA_APOS_UPLOAD / 2)
+    # O ESC nem sempre fecha (lote de 2026-11-03): o CANCELAR do próprio diálogo.
+    try:
+        if portal.engine.contar(sel.XPATH_IMAGENS_CONTAINER) and portal.engine.contar(sel.XPATH_IMAGENS_CANCELAR):
+            portal.safe_click(f"({sel.XPATH_IMAGENS_CANCELAR})[1]")
+            time.sleep(PAUSA_APOS_UPLOAD / 2)
+    except Exception:  # noqa: BLE001 -- a conferência abaixo diz se fechou
+        pass
     try:
         livre = not portal.engine.contar(sel.XPATH_IMAGENS_CONTAINER)
     except Exception:  # noqa: BLE001
         livre = False
     if not livre:
         _log("      [Erro] O formulário de imagens ficou aberto e não fechou "
-             "com ESC. Feche à mão: ele cobre a tela e trava o que vem "
-             "depois.")
+             "nem com ESC nem com CANCELAR. Feche à mão: ele cobre a tela e "
+             "trava o que vem depois.")
     return livre
 
 

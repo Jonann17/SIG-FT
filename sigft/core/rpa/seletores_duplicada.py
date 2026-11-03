@@ -1449,6 +1449,13 @@ XPATH_IMAGENS_ABRIR_SPAN = "//span[normalize-space()='Adicionar imagens']"
 # E o portal responde com toast próprio: "A imagem foi adicionada com
 # sucesso!" (ver `PALAVRA_DA_SECAO`).
 XPATH_IMAGENS_CONFIRMAR = "//button[normalize-space()='Confirmar']"
+# O CANCELAR do mesmo diálogo (captura de 2026-10-30): o botão mais perto do
+# container do FilePond. É a saída quando o ESC não fecha -- no lote de
+# 2026-11-03, "ficou aberto e não fechou com ESC" travou a ficha seguinte.
+_CANCELAR = "button[normalize-space()='Cancelar' or normalize-space()='CANCELAR']"
+XPATH_IMAGENS_CANCELAR = (
+    f"//div[contains(@id, 'MultiUploadContainer')]/ancestor::*[.//{_CANCELAR}][1]//{_CANCELAR}"
+)
 
 # O `<li>` que o FilePond cria quando ACEITA o arquivo. É a prova de que o
 # upload entrou -- sem ela, "enviei o arquivo" é só "chamei a função".

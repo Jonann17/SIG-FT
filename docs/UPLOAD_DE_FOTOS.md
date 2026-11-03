@@ -58,6 +58,23 @@ Fica de fora: `PMIBPortal.pesquisar_e_abrir`, compartilhado por todos os
 módulos, ainda tem 4 s fixos depois da pesquisa (o motor mais paciente cobre o
 lápis que demora a aparecer).
 
+## O primeiro lote real (2026-11-03, 35 fichas, 17 ok)
+
+Rodou na versão `8da8c92` (sem a Velocidade do portal). O que o log mostrou:
+
+- **"As imagens foram adicionadas com sucesso!"** -- o aviso do envio de várias
+  fotos vem no PLURAL, e `PALAVRA_DA_SECAO` tinha "imagem" ("imagens" não
+  contém "imagem"). Todo envio múltiplo contava como falha. Virou "image".
+- A **recuperação** desse falso fracasso apertava ESC com o diálogo ainda
+  gravando e reenviava depois de 3 s: "não fechou com ESC",
+  `set_input_files Timeout` e foto faltando ou repetida. Agora espera o diálogo
+  fechar sozinho e a tabela (tempo da conferência); ESC falhando, CANCELAR.
+- **"O FilePond listou 1 de 7"**: ele lista um por um; agora espera listar todos.
+- Tempos fixos curtos para o portal lento (60 s de FilePond para 6-8 fotos, 15 s
+  por exclusão, 20 s para abrir a lista): a Velocidade do portal cobre, e o
+  FilePond ganha 10 s por foto do envio.
+- A conferência final acusa **foto repetida** (mesmo nome em duas linhas).
+
 ## O que falta (sessão LOCAL, `docs/OLHAR_O_PORTAL.md`)
 
 Os seletores abaixo saíram das capturas, não do DOM. Conferir numa ficha de

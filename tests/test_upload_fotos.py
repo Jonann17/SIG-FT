@@ -430,3 +430,71 @@ def test_portal_lento_espera_as_fotos_que_demoram_a_aparecer(portal):
 
     assert resultado.ok
     assert p.engine.fotos == ["0071.JPG", "0071a.JPG"]
+
+
+
+# ===========================================================================
+# 6. O log do lote de 35 fichas (2026-11-03)
+# ===========================================================================
+def test_envio_que_salva_devagar_nao_e_reenviado(portal, monkeypatch):
+    # O portal gravou o envio, mas o aviso veio tarde e a tabela demorou mais
+    # que 3 s: o robô reenviava tudo e a ficha ficava com foto repetida.
+    p = portal(fotos=[])
+    leituras = {"n": 0}
+
+    def _subir_lento(_portal, _descricao, caminhos, _log=None, **_tempos):
+        p.engine.envios.append(list(caminhos))
+        if len(p.engine.envios) == 1:
+            p.engine.pendentes = [c.rsplit("/", 1)[-1] for c in caminhos]
+            return False                           # "Não vi nenhuma mensagem de confirmação"
+        p.engine.fotos.extend(c.rsplit("/", 1)[-1] for c in caminhos)
+        return True
+    monkeypatch.setattr(uf.imagens, "subir_juntas", _subir_lento)
+    reais = p.engine.contar
+
+    def contar(seletor):
+        pendentes = getattr(p.engine, "pendentes", None)
+        if pendentes and "normalize-space()=" in seletor:
+            leituras["n"] += 1
+            if leituras["n"] > 20:                 # ~10 s depois, a tabela mostra
+                p.engine.fotos.extend(pendentes)
+                p.engine.pendentes = None
+        return reais(seletor)
+    p.engine.contar = contar
+
+    resultado = uf.processar_ficha(p, "4500063671.0071", "0071", NOVAS)
+
+    assert resultado.ok, resultado.motivo
+    assert len(p.engine.envios) == 1                # nada reenviado
+    assert sorted(p.engine.fotos) == ["0071.JPG", "0071a.JPG"]
+
+
+def test_foto_repetida_na_ficha_nao_e_ok(portal, monkeypatch):
+    p = portal(fotos=[])
+
+    def _subir_duas_vezes(_portal, _descricao, caminhos, _log=None, **_tempos):
+        p.engine.fotos.extend(2 * [c.rsplit("/", 1)[-1] for c in caminhos])
+        return True
+    monkeypatch.setattr(uf.imagens, "subir_juntas", _subir_duas_vezes)
+
+    resultado = uf.processar_ficha(p, "4500063671.0071", "0071", NOVAS)
+
+    assert not resultado.ok
+    assert "repetida" in resultado.motivo
+
+
+def test_envio_maior_ganha_mais_tempo_de_processamento(portal, monkeypatch):
+    # "O FilePond ainda estava processando depois de 60s" com 6 a 8 fotos.
+    p = portal(fotos=[])
+    tempos = []
+
+    def _subir(_portal, _descricao, caminhos, _log=None, **kwargs):
+        tempos.append((len(caminhos), kwargs["timeout_processamento"]))
+        p.engine.fotos.extend(c.rsplit("/", 1)[-1] for c in caminhos)
+        return True
+    monkeypatch.setattr(uf.imagens, "subir_juntas", _subir)
+
+    uf.subir_fotos(p, "x", [f"/f/0071{l}.JPG" for l in ["", *"abcdefghij"]])
+
+    (n1, t1), (n2, t2) = tempos
+    assert (n1, n2) == (10, 1) and t1 > t2

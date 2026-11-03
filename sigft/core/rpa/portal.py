@@ -275,7 +275,12 @@ PALAVRA_DA_SECAO = {
     # 2026-08-20, redação do usuário: "A imagem foi adicionada com sucesso!"
     # A seção se chama "Documentos e imagens" na edição, e é esse o nome que
     # os chamadores passam.
-    "Documentos e imagens": "imagem",
+    # ⚠️ "image", e não "imagem" (2026-11-03): o envio de VÁRIAS fotos responde
+    # no plural -- "As imagens foram adicionadas com sucesso!" --, e "imagens"
+    # não contém "imagem" (é m/n). No lote de 35 fichas, todo envio múltiplo
+    # contou como falha por causa de uma letra, a mesma armadilha do
+    # "caracteristica" acima. "image" casa imagem, imagens, imagen, imágenes.
+    "Documentos e imagens": "image",
     # 2026-09-28, redação do usuário: "As informações da aplicação LMR foram
     # adicionadas com sucesso!" -- a MESMA frase a cada código salvo (ver
     # `esperar_confirmacao_anterior_sumir`). "lmr" é sigla: sai igual se a

@@ -73,9 +73,6 @@ XPATH_IMAGEM_DE_NOME = XPATH_TABELA_DE_IMAGENS + "//tr[.//td[normalize-space()={
 TENTATIVAS_DA_TABELA = 20
 TENTATIVAS_DA_EXCLUSAO = 30
 TENTATIVAS_DA_CONFERENCIA = 30
-# Depois de um envio que falhou, quanto se espera a tabela mostrar o que ele
-# gravou antes de reenviar o resto (3 s).
-TENTATIVAS_DA_REVISAO = 6
 INTERVALO_S = 0.5
 # Teto de exclusões por ficha: uma lixeira que não exclui não pode girar
 # para sempre.
@@ -83,6 +80,9 @@ MAX_EXCLUSOES = 30
 # Tempos-base, em segundos, das esperas que não são em tentativas.
 MOTOR_S = 20          # cada clique/campo do motor (`criar_engine`)
 CONFIRMACAO_S = 20.0  # o aviso verde depois do CONFIRMAR (o portal usa 8 s)
+# O FilePond processa cada foto: o envio de 10 ganha mais tempo que o de 1. No
+# lote de 2026-11-03, 6 a 8 fotos passaram dos 60 s fixos.
+SEGUNDOS_POR_FOTO = 10
 
 
 @dataclass(frozen=True)
@@ -109,10 +109,6 @@ class Esperas:
     @property
     def conferencia(self):
         return self._vezes(TENTATIVAS_DA_CONFERENCIA)
-
-    @property
-    def revisao(self):
-        return self._vezes(TENTATIVAS_DA_REVISAO)
 
     @property
     def ficha(self):
@@ -322,24 +318,34 @@ def subir_fotos(portal, descricao, caminhos, callback_log=None, esperas=None):
     """Sobe em envios de até 10 (o limite do diálogo). Envio que falha é
     refeito foto a foto, e SÓ das que não estão na tabela.
 
-    O diálogo pode gravar parte do envio e mesmo assim não devolver o aviso
-    verde: reenviar tudo era foto repetida na ficha. Por isso NÃO se usa aqui a
-    autoconferência de `duplicadas_imagens.subir_arquivos`, que tenta de novo
-    sem olhar a tabela.
+    O diálogo pode gravar o envio e mesmo assim não devolver o aviso verde a
+    tempo: reenviar sem olhar era foto repetida na ficha. Por isso NÃO se usa
+    aqui a autoconferência de `duplicadas_imagens.subir_arquivos`.
+
+    No lote de 2026-11-03 (portal lento) o reenvio vinha cedo demais: ESC com o
+    diálogo ainda GRAVANDO ("não fechou com ESC"), 3 s de espera pela tabela, e
+    o reenvio em cima. Agora espera o diálogo fechar sozinho e a tabela mostrar
+    o que ele gravou -- o mesmo tempo da conferência -- antes de decidir.
     """
     e = esperas or Esperas()
-    tempos = {"timeout_confirmacao": e.confirmacao_s, "timeout_processamento": e.processamento_s,
-              "tentativas_do_formulario": e.formulario}
     tamanho = imagens.MAX_ARQUIVOS_POR_ENVIO
     for inicio in range(0, len(caminhos), tamanho):
         lote = caminhos[inicio:inicio + tamanho]
-        if imagens.subir_juntas(portal, descricao, lote, callback_log, **tempos):
+        if imagens.subir_juntas(portal, descricao, lote, callback_log, **_tempos_do_envio(e, len(lote))):
             continue
+        _esperar(lambda: not _contar(portal, sel.XPATH_IMAGENS_CONTAINER), e.conferencia)
         imagens.fechar_formulario(portal, callback_log)
-        _esperar(lambda lote=lote: all(foto_esta_na_tabela(portal, c) for c in lote), e.revisao)
+        _esperar(lambda lote=lote: all(foto_esta_na_tabela(portal, c) for c in lote), e.conferencia)
         for caminho in [c for c in lote if not foto_esta_na_tabela(portal, c)]:
-            if not imagens.subir_juntas(portal, descricao, [caminho], callback_log, **tempos):
+            if not imagens.subir_juntas(portal, descricao, [caminho], callback_log, **_tempos_do_envio(e, 1)):
+                _esperar(lambda: not _contar(portal, sel.XPATH_IMAGENS_CONTAINER), e.conferencia)
                 imagens.fechar_formulario(portal, callback_log)
+
+
+def _tempos_do_envio(esperas, quantas):
+    return {"timeout_confirmacao": esperas.confirmacao_s,
+            "timeout_processamento": esperas.processamento_s + SEGUNDOS_POR_FOTO * quantas * esperas.fator,
+            "tentativas_do_formulario": esperas.formulario}
 
 
 @dataclass
@@ -395,6 +401,13 @@ def processar_ficha(portal, pmib, quatro, caminhos, modo=MODO_SUBSTITUIR,
     faltaram = [os.path.basename(c) for c in caminhos if not foto_esta_na_tabela(portal, c)]
     if faltaram:
         resultado.motivo = f"{len(faltaram)} de {len(caminhos)} foto(s) não apareceram na tabela: {', '.join(faltaram)}"
+        return resultado
+    # Foto com o mesmo nome em duas linhas: um envio gravou e foi refeito. O
+    # ✅ esconderia; a pessoa precisa excluir a sobra.
+    repetidas = [os.path.basename(c) for c in caminhos
+                 if _contar(portal, XPATH_IMAGEM_DE_NOME.format(nome=extrator._literal_xpath(os.path.basename(c)))) > 1]
+    if repetidas:
+        resultado.motivo = f"foto(s) repetida(s) na ficha: {', '.join(repetidas)} -- exclua as sobras à mão"
         return resultado
     esperado = antes + len(caminhos)
     if not _esperar(lambda: fotos_na_ficha(portal) >= esperado, e.conferencia):
