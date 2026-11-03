@@ -204,6 +204,7 @@ CONVERTIDOS: tuple[str, ...] = (
     "sigft/app_qt/widgets/dialogs.py",
     "sigft/app_qt/widgets/webhook_amp.py",
     "sigft/app_qt/widgets/espera.py",
+    "sigft/app_qt/widgets/fraco.py",
     "sigft/app_qt/widgets/marca.py",
     "sigft/app_qt/widgets/module_frame.py",
     "sigft/app_qt/widgets/mural.py",
@@ -236,6 +237,7 @@ CONVERTIDOS: tuple[str, ...] = (
     "sigft/app_qt/tema.py",
     "sigft/app_qt/views/__init__.py",
     "sigft/app_qt/views/configuracao.py",
+    "sigft/app_qt/views/sugestoes.py",
     "sigft/app_qt/views/home.py",
     "sigft/app_qt/views/nao_migrada.py",
     # Task 6: Cria Fichas, Planilhas PMIB, Analyzer e as janelas auxiliares

@@ -122,9 +122,30 @@ _HEAVY_MODULES = [
     "xlwings",
 ]
 
+class _DubleDeModulo(MagicMock):
+    """[2026-10-30] Um `MagicMock` que guarda cada filho no `__dict__` na
+    primeira leitura.
+
+    O pytest 9.2 grava como "valor antigo" de `monkeypatch.setattr` o que
+    está no `__dict__` da instância. O `MagicMock` cria o filho sob demanda,
+    em `_mock_children`, fora do `__dict__`: para o pytest o atributo "não
+    existia", e o `undo` fazia `delattr` -- o filho sumia do dublê
+    compartilhado (`openpyxl.load_workbook`, `pypdf.PdfReader`) e os testes
+    seguintes do mesmo processo quebravam. Com o filho no `__dict__`, o
+    `undo` devolve o mesmo filho, nas duas versões do pytest. Os filhos são
+    da mesma classe (`_get_child_mock` usa `type(self)`), então vale em
+    qualquer profundidade."""
+
+    def __getattr__(self, nome):
+        filho = super().__getattr__(nome)
+        if not nome.startswith("_"):
+            self.__dict__[nome] = filho
+        return filho
+
+
 for _mod_name in _HEAVY_MODULES:
     if _mod_name not in sys.modules:
-        sys.modules[_mod_name] = MagicMock(name=_mod_name)
+        sys.modules[_mod_name] = _DubleDeModulo(name=_mod_name)
 
 # 2b. [2026-10-15] A interface antiga saiu do SIG-FT, e com ela os dublês
 #     escritos à mão das duas bibliotecas dela (`tests/ctk_falso.py` e

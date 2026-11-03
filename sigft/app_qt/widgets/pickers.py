@@ -18,6 +18,7 @@ from sigft.app.idioma import marcar, t
 from sigft.app_qt import file_dialogs
 from sigft.app_qt import estilo
 from sigft.app_qt.widgets import arrastar, blocos
+from sigft.app_qt.widgets.fraco import chamada_fraca
 
 # Os padrões do rótulo vazio; quem passa `texto_vazio` passa já traduzido (2026-10-22).
 TEXTO_SEM_ARQUIVO = marcar("Nenhum arquivo selecionado")
@@ -36,7 +37,8 @@ class _LinhaSeletora(QWidget):
         super().__init__(parent)
         self._texto_vazio = texto_vazio
         self._pintar_botao = pintar_botao
-        self._ao_escolher = ao_escolher
+        # Fraca: a tela dona segura a linha (ver `widgets/fraco.py`).
+        self._ao_escolher = chamada_fraca(ao_escolher)
         self._valor = None
         linha = QHBoxLayout(self)
         linha.setContentsMargins(0, 0, 0, 0)
@@ -191,7 +193,8 @@ class FileQueueList(QWidget):
         self._chave, self._categoria = chave, categoria
         self._rotulo, self._titulo_dialogo, self._filetypes = rotulo, titulo_dialogo, filetypes
         self._prefixo_item = prefixo_item
-        self._ao_mudar, self._dialog_fn = ao_mudar, dialog_fn
+        # `ao_mudar` fraco: a tela dona segura a fila (ver `widgets/fraco.py`).
+        self._ao_mudar, self._dialog_fn = chamada_fraca(ao_mudar), dialog_fn
         self._arquivos: list[str] = []
 
         # CTkLabel ("Roboto", 12, "bold"): pixels; altura mínima de CTkLabel.

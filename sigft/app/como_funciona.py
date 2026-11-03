@@ -177,8 +177,8 @@ TEXTOS: dict[str, Texto] = {
                    "LMR de cada ficha."),
             marcar("Parou no meio? Ligue Começar de um código específico e informe a posição (0 = 1º "
                    "código LMR da ficha); vale para todas as fichas."),
-            marcar("Os códigos que falharam aparecem no console e vão para um erros_lmr.csv, para "
-                   "conferir no portal."),
+            marcar("Os códigos que falharam aparecem no console e vão para o erros_lmr.csv, em "
+                   "Documentos\\SIG-FT\\logs, para conferir no portal."),
         ),
     ),
     "LMR.exclusao": Texto(

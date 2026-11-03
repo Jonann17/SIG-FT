@@ -99,6 +99,8 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         self.content_layout = QVBoxLayout(self.content)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
 
+        # Ver o console abaixo (2026-10-31): só o de altura fixa cede.
+        self._console_cede = False
         if embutida:
             # Dentro da aba de outra tela: sem cabeçalho nem console próprios, e
             # ROLÁVEL -- numa aba sobra menos altura, e o que não cabe sumiria.
@@ -145,6 +147,14 @@ class ModuleFrame(DialogosDeEspera, QWidget):
             self.atividade = FaixaDeAtividade()
             raiz.addWidget(self.atividade)
             self.console = ConsoleFrame(altura=altura_console)
+            self._console_cede = altura_console is not None
+            if altura_console is not None:
+                # [2026-10-31] Em janela baixa (notebook 1366x768 maximizado:
+                # ~690 px úteis) o console cede até o mínimo do puxador (a barra
+                # do filtro e duas linhas) em vez de empurrar a janela para fora
+                # da tela. Com espaço, continua com a altura de sempre (máximo).
+                self.console.setMinimumHeight(
+                    min(altura_console, puxador_console.altura_minima_do_console(self.console)))
             raiz.addWidget(self.console, 0 if altura_console is not None else 1)
 
         self._tarefas_rodando = 0
@@ -212,6 +222,13 @@ class ModuleFrame(DialogosDeEspera, QWidget):
         conta também o vão vazio das telas de conteúdo com peso 0 (Busca e
         Gestão), em que a sobra não vai para o conteúdo."""
         folga = self.height() - self.layout().minimumSize().height()
+        # [2026-10-31] O mínimo do layout conta o MÍNIMO do console, que só é a
+        # altura de agora quando ela está fixa (arrastada). Com o console no
+        # padrão, que cede até o mínimo do puxador em janela baixa, a diferença
+        # já está em uso e não é folga.
+        if self._console_cede:
+            alvo = self._alvos_do_console()[0]
+            folga -= max(0, alvo.height() - alvo.minimumHeight())
         falta = max(0, puxador_console.MIN_CONTEUDO - self.content.minimumSizeHint().height())
         return self.altura_do_console() + folga - falta
 
