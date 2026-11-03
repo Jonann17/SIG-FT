@@ -112,9 +112,9 @@ def test_env_var_por_chave_usa_os_nomes_atuais_exatos():
         "OPENROUTER": "OPENROUTER_API_KEY",
         "EMPRESA_LLM_BASE_URL": "EMPRESA_LLM_BASE_URL",
         "EMPRESA_LLM_API_KEY": "EMPRESA_LLM_API_KEY",
-        # 2026-10-27: o webhook do workflow "Revisão das listas" no n8n da GE (o AMP).
-        "AMP_WEBHOOK_URL": "SIGFT_AMP_WEBHOOK_URL",
-        "AMP_WEBHOOK_CHAVE": "SIGFT_AMP_WEBHOOK_CHAVE",
+        # 2026-11-03: o webhook do workflow "Revisão das listas", configurado na aba.
+        "AMP_REVISAO_LISTAS_URL": "SIGFT_AMP_REVISAO_LISTAS_URL",
+        "AMP_REVISAO_LISTAS_CHAVE": "SIGFT_AMP_REVISAO_LISTAS_CHAVE",
     }
 
 
@@ -436,8 +436,8 @@ def test_carregar_chaves_le_das_variaveis_de_ambiente(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "chave-openrouter-env")
     monkeypatch.setenv("EMPRESA_LLM_BASE_URL", "https://ia.empresa.exemplo/v1")
     monkeypatch.setenv("EMPRESA_LLM_API_KEY", "chave-empresa-env")
-    monkeypatch.setenv("SIGFT_AMP_WEBHOOK_URL", "https://ampworkflow.exemplo/webhook/sigft")
-    monkeypatch.setenv("SIGFT_AMP_WEBHOOK_CHAVE", "chave-amp-env")
+    monkeypatch.setenv("SIGFT_AMP_REVISAO_LISTAS_URL", "https://ampworkflow.exemplo/webhook/sigft")
+    monkeypatch.setenv("SIGFT_AMP_REVISAO_LISTAS_CHAVE", "chave-amp-env")
 
     chaves = sigft_config.carregar_chaves(CAMINHO_INEXISTENTE)
 
@@ -449,8 +449,8 @@ def test_carregar_chaves_le_das_variaveis_de_ambiente(monkeypatch):
         "OPENROUTER": "chave-openrouter-env",
         "EMPRESA_LLM_BASE_URL": "https://ia.empresa.exemplo/v1",
         "EMPRESA_LLM_API_KEY": "chave-empresa-env",
-        "AMP_WEBHOOK_URL": "https://ampworkflow.exemplo/webhook/sigft",
-        "AMP_WEBHOOK_CHAVE": "chave-amp-env",
+        "AMP_REVISAO_LISTAS_URL": "https://ampworkflow.exemplo/webhook/sigft",
+        "AMP_REVISAO_LISTAS_CHAVE": "chave-amp-env",
     }
 
 
@@ -467,8 +467,8 @@ def test_carregar_chaves_sem_env_e_sem_arquivo_retorna_none_em_todas():
         "OPENROUTER": None,
         "EMPRESA_LLM_BASE_URL": None,
         "EMPRESA_LLM_API_KEY": None,
-        "AMP_WEBHOOK_URL": None,
-        "AMP_WEBHOOK_CHAVE": None,
+        "AMP_REVISAO_LISTAS_URL": None,
+        "AMP_REVISAO_LISTAS_CHAVE": None,
     }
 
 
@@ -534,8 +534,8 @@ def test_json_corrompido_retorna_apenas_defaults_do_env(monkeypatch, tmp_path):
         "OPENROUTER": None,
         "EMPRESA_LLM_BASE_URL": None,
         "EMPRESA_LLM_API_KEY": None,
-        "AMP_WEBHOOK_URL": None,
-        "AMP_WEBHOOK_CHAVE": None,
+        "AMP_REVISAO_LISTAS_URL": None,
+        "AMP_REVISAO_LISTAS_CHAVE": None,
     }
 
 
@@ -560,8 +560,8 @@ def test_json_valido_mas_nao_e_objeto_tambem_cai_para_defaults(monkeypatch, tmp_
         "OPENROUTER": None,
         "EMPRESA_LLM_BASE_URL": None,
         "EMPRESA_LLM_API_KEY": None,
-        "AMP_WEBHOOK_URL": None,
-        "AMP_WEBHOOK_CHAVE": None,
+        "AMP_REVISAO_LISTAS_URL": None,
+        "AMP_REVISAO_LISTAS_CHAVE": None,
     }
 
 
@@ -580,8 +580,8 @@ def test_json_vazio_tambem_e_tratado_como_corrompido(tmp_path):
         "OPENROUTER": None,
         "EMPRESA_LLM_BASE_URL": None,
         "EMPRESA_LLM_API_KEY": None,
-        "AMP_WEBHOOK_URL": None,
-        "AMP_WEBHOOK_CHAVE": None,
+        "AMP_REVISAO_LISTAS_URL": None,
+        "AMP_REVISAO_LISTAS_CHAVE": None,
     }
 
 

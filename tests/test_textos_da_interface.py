@@ -202,6 +202,7 @@ CONVERTIDOS: tuple[str, ...] = (
     "sigft/app_qt/widgets/controles.py",
     "sigft/app_qt/widgets/dialogos_selecao.py",
     "sigft/app_qt/widgets/dialogs.py",
+    "sigft/app_qt/widgets/webhook_amp.py",
     "sigft/app_qt/widgets/espera.py",
     "sigft/app_qt/widgets/marca.py",
     "sigft/app_qt/widgets/module_frame.py",
