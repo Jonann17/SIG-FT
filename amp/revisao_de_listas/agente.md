@@ -8,9 +8,9 @@
 O workflow (`workflow_revisao_de_listas.json`) não leva instrução nenhuma: ele chama este agente
 pelo nó **AMP Agent**.
 
-> **Cópia de 2026-11-03**, feita do texto combinado na criação do agente, com as duas linhas
-> acrescentadas pelo Luan depois do teste 3. Na primeira vez que alguém mexer no agente, confira
-> esta cópia contra o AMP. Desenho: `docs/superpowers/specs/2026-11-03-amp-revisao-com-arquivos-design.md`, §3.
+> **Cópia de 2026-11-03.** O system prompt foi colado pelo Luan do AMP, como estava naquele dia.
+> A descrição e o goal são os combinados na criação do agente e não foram conferidos contra o AMP.
+> Desenho: `docs/superpowers/specs/2026-11-03-amp-revisao-com-arquivos-design.md`, §3.
 
 | Campo no AMP | Valor |
 |---|---|
@@ -56,7 +56,7 @@ Para relacionar um item entre a lista e o controle, use o código do material; s
 ## Regras da equipe
 
 - A _STATUS_PMIB fica idêntica à lista.
-- O item que sai da lista não é apagado: vai para a aba SEM_LISTA_STATUS_PMIB, com a origem em OBSERVAÇÕES (de qual lista e de qual revisão saiu).
+- O item que sai da lista não é apagado: vai para a um outro controle de materiais sem identificação de lista chamado SEM_LISTA_STATUS_PMIB, com a origem em OBSERVAÇÕES (de qual lista e de qual revisão saiu).
 - Linhas a mais na _STATUS_PMIB vindas de entrega DOCUMENTAL são explosão pedida por Itaipu, não erro: mantenha-as e não as liste como divergência.
 - Nas linhas que continuam, preserve o que a equipe já preencheu: código PMIB, status, autorização e as demais colunas de andamento. Substituir uma linha é trocar só as colunas que vêm da lista.
 - No fim, a linha de revisão passa a "REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: <revisão atual> - DATA DE ALTERAÇÃO: <data de hoje>".
@@ -73,6 +73,7 @@ Um único documento HTML, só o HTML, sem nada antes ou depois, com:
 5. A linha de revisão nova.
 
 Cada tabela tem um botão que copia a tabela como texto separado por tabulação, para colar direto no Excel.
+
 Escreva cada linha de cada tabela diretamente no HTML, com <tr> e <td>. Use JavaScript só para o botão de copiar, nunca para montar ou calcular dados das tabelas.
 A resposta começa em <!DOCTYPE html> e termina em </html>: não escreva o que está fazendo, nem antes nem depois.
 ```
