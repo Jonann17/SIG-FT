@@ -37,9 +37,10 @@ from shiboken6 import isValid
 from sigft import config as sigft_config
 from sigft.app import textos_dicas
 from sigft.app.idioma import marcar, t
-from sigft.app_qt import atualizacao, estilo, icones, interface, letra, nome, pasta_de_logs, tema
-from sigft.app_qt.catalogo import ACAO_CONFIGURACAO, ACOES_DA_CONFIGURACAO, ACOES_DA_HOME, ICONE_DA_TELA, MODULOS
+from sigft.app_qt import atualizacao, estilo, icones, interface, letra, nome, pasta_de_logs, propriedades, tema
+from sigft.app_qt.catalogo import ACAO_CONFIGURACAO, ACAO_SUGESTOES, ACOES_DA_CONFIGURACAO, ACOES_DA_HOME, ICONE_DA_TELA, MODULOS
 from sigft.app_qt.widgets import blocos, controles, dialogs, mural
+from sigft.app_qt.widgets.fraco import chamada_fraca
 from sigft.app_qt.widgets.module_frame import aplicar_dicas
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
 from sigft.core import diario
@@ -287,7 +288,8 @@ class _Saudacao(blocos.RotuloElidido):
 
     def __init__(self, ao_clicar) -> None:
         super().__init__("", objectName="titulo_home")
-        self._ao_clicar = ao_clicar
+        # Fraca: a Home segura este título (ver `widgets/fraco.py`).
+        self._ao_clicar = chamada_fraca(ao_clicar)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip(t(nome.DICA_DA_SAUDACAO))
 
@@ -303,7 +305,8 @@ class _Card(QFrame):
     def __init__(self, alvo, titulo, descricao, ao_clicar) -> None:
         super().__init__(objectName="card")
         self._alvo = alvo
-        self._ao_clicar = ao_clicar
+        # Fraca: a Home segura o card (ver `widgets/fraco.py`).
+        self._ao_clicar = chamada_fraca(ao_clicar)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
@@ -392,6 +395,7 @@ class HomeView(QScrollArea):
         linha_titulo = QHBoxLayout()
         linha_titulo.setSpacing(0)
         linha_titulo.addWidget(self.label_titulo, 1)
+        linha_titulo.addWidget(self._criar_lampada(), 0, Qt.AlignmentFlag.AlignVCenter)
         linha_titulo.addWidget(self._criar_engrenagem(), 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(linha_titulo)
         layout.addSpacing(5)
@@ -483,12 +487,18 @@ class HomeView(QScrollArea):
         self.botoes_barra = {}
         for chave, texto, variante, metodo in BARRA:
             botao = self._botao_da_barra(t(texto), variante, ICONE_DA_BARRA[chave])
-            botao.clicked.connect(lambda _=False, m=metodo: getattr(self, m)())
+            # O método pela propriedade, não por `lambda` com `self`: a
+            # lambda segurava a Home (ciclo; ver `widgets/fraco.py`).
+            botao.setProperty("metodo", metodo)
+            botao.clicked.connect(self._clicou_na_barra)
             self.botoes_barra[chave] = botao
             barra.addWidget(botao)
             barra.addSpacing(10)                        # pack(side="left", padx=(0, 10))
         barra.addStretch()
         return barra
+
+    def _clicou_na_barra(self) -> None:
+        getattr(self, propriedades.ler(self.sender(), "metodo"))()
 
     # =====================================================================
     # ENGRENAGEM  [2026-10-22]
@@ -519,6 +529,38 @@ class HomeView(QScrollArea):
 
         janela = JanelaConfiguracao(self)
         self._janelas["configuracao"] = janela
+        return janela
+
+    def _criar_lampada(self):
+        """[2026-10-30] A lâmpada, à esquerda da engrenagem e do mesmo jeito que
+        ela: abre a janela Sugestões."""
+        botao = blocos.botao("", variante=ACAO_SUGESTOES.variante, largura=LADO_ENGRENAGEM,
+                             altura=LADO_ENGRENAGEM)
+        icones.aplicar(botao, ACAO_SUGESTOES.icone, tamanho=TAMANHO_ICONE_ENGRENAGEM)
+        botao.setToolTip(t(ACAO_SUGESTOES.texto))
+        botao.setAccessibleName(t(ACAO_SUGESTOES.texto))
+        dialogs.sem_tecla(botao)
+        botao.clicked.connect(self.abrir_sugestoes)
+        self.btn_sugestoes = botao
+        return botao
+
+    def abrir_sugestoes(self):
+        """A janela Sugestões (a lâmpada e o Ctrl+K); uma só aberta por vez, como
+        a Configuração. O texto digitado fica nela enquanto o app estiver aberto:
+        fechar só esconde."""
+        aberta = self._trazer_para_frente("sugestoes")
+        if aberta is not None:
+            return aberta
+        velha = self._janelas.get("sugestoes")
+        if _vivo(velha):
+            velha.show()
+            velha.raise_()
+            velha.activateWindow()
+            return velha
+        from sigft.app_qt.views.sugestoes import JanelaSugestoes
+
+        janela = JanelaSugestoes(self)
+        self._janelas["sugestoes"] = janela
         return janela
 
     def _configuracao_viva(self):

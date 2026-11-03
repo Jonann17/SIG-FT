@@ -365,9 +365,11 @@ def test_evento_depois_que_o_python_largou_a_barrinha_nao_quebra(qt_interface, q
     # barrinha depois que o objeto Python dela já não tinha `_tela` (o dicionário
     # do invólucro limpo antes do C++ sair). O AttributeError dentro do filtro de
     # eventos derrubou o processo. Sem a tela, a barrinha não faz nada.
+    # [2026-10-30] A tela fica numa referência fraca (`_ref_tela`).
     t = _aberta(qtbot)
     p = t.puxador_console
-    del p._tela
+    del p._ref_tela
+    assert p._tela is None
     t.console.resize(t.console.width(), t.console.height() + 10)
     QApplication.processEvents()
     assert p.eventFilter(t.console, QEvent(QEvent.Type.Resize)) is False
