@@ -1,25 +1,30 @@
-"""O cliente do webhook do workflow "Revisão das listas" no n8n da GE (`amp/revisao_de_listas/`).
+"""O cliente dos workflows do AMP, a IA interna da GE, pelo n8n.
 
-Três modos: `ping` (rede, chave e workflow publicado, sem chamar o modelo), `eco` (o modelo
-devolve os códigos que recebeu, para ver se o AMP os mascara) e `revisar` (uma lista). A chave
-vai no cabeçalho `X-SIGFT-Chave`, nunca no corpo, no log ou numa mensagem. Nenhuma falha levanta
-exceção: volta uma `RespostaAmp` com `ok` falso e um `erro` legível, que o diagnóstico usa.
+Genérico desde 2026-11-03: sabe fazer o `ping` (rede, chave e workflow publicado, sem chamar o
+agente) e o `enviar` (campos e arquivos num POST multipart). O que vai em cada workflow é de quem
+chama: a revisão das listas monta o dela em `services/revisao_amp.py`, e um módulo novo, com
+outro agente, monta o seu. A chave vai no cabeçalho `X-SIGFT-Chave`, nunca no corpo, no log ou
+numa mensagem. Nenhuma falha levanta exceção: volta uma `RespostaAmp` com `ok` falso e um `erro`
+legível, que o diagnóstico usa.
 
-A revisão vai uma vez só, pela rota que o `ping` achou: a cascata do `rede.abrir` manda a
+O `enviar` vai uma vez só, pela rota que o `ping` achou: a cascata do `rede.abrir` manda a
 requisição de novo pela rota seguinte quando o tempo esgota ou a conexão cai, e cada repetição
-seria uma execução nova do agente no AMP (revisão final do ramo, 2026-10-27). Desenho: `docs/superpowers/specs/2026-10-27-amp-revisao-de-listas-design.md`, §7 e §8.
+seria uma execução nova do agente no AMP (revisão final do ramo, 2026-10-27). Desenho:
+`docs/superpowers/specs/2026-11-03-amp-revisao-com-arquivos-design.md`, §5.3 e §5.5.
 """
 from __future__ import annotations
 
-import re
 import time
+from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 
 from sigft.core import rede
 
 CABECALHO_CHAVE = "X-SIGFT-Chave"
-TEMPOS = {"ping": 30, "eco": 120, "revisar": 900}   # segundos de limite por chamada
-_TEM_HTML = re.compile(r"<html|<table", re.IGNORECASE)
+TEMPOS = {"ping": 30, "enviar": 900}   # segundos de limite por chamada
+TIPOS = {".pdf": "application/pdf",
+         ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 
 
 @dataclass(frozen=True)
@@ -37,10 +42,6 @@ class RespostaAmp:
         return str(self.dados.get("html") or "")
 
     @property
-    def texto(self) -> str:
-        return str(self.dados.get("texto") or "")
-
-    @property
     def execucao(self) -> str:
         return str(self.dados.get("execucao") or "")
 
@@ -48,9 +49,19 @@ class RespostaAmp:
     def versao_workflow(self) -> str:
         return str(self.dados.get("versao_workflow") or "")
 
+    @property
+    def arquivos(self) -> list[str]:
+        """Os nomes dos arquivos que chegaram ao agente, como o workflow os listou."""
+        nomes = self.dados.get("arquivos")
+        return [str(nome) for nome in nomes] if isinstance(nomes, list) else []
+
+
+def tipo_do_arquivo(caminho: Path) -> str:
+    return TIPOS.get(caminho.suffix.lower(), "application/octet-stream")
+
 
 class ClienteAmp:
-    """Chama o webhook em nome do SIG-FT. `abrir` e `relogio` são injetáveis (testes)."""
+    """Chama um webhook do AMP em nome do SIG-FT. `abrir` e `relogio` são injetáveis (testes)."""
 
     def __init__(self, url: str, chave: str, *, abrir=None, relogio=time.monotonic, log_cb=lambda _m: None):
         self._url = url
@@ -61,49 +72,52 @@ class ClienteAmp:
         self._sessao = None      # a sessão da rota que já respondeu (o `rede.abrir` a devolve)
 
     def ping(self) -> RespostaAmp:
-        return self._chamar({"modo": "ping"})
+        """Rede, chave e workflow publicado, sem chamar o agente. Acha a rota que o `enviar` usa."""
+        inicio = self._relogio()
+        try:
+            sessao, resposta = self._abrir(self._url, metodo="POST", json={"modo": "ping"}, timeout=TEMPOS["ping"],
+                                           headers=self._cabecalhos(), status_ok=None, log_cb=self._log)
+        except rede.FalhaDeRede as erro:
+            return RespostaAmp(False, "ping", None, self._relogio() - inicio, "",
+                               erro=self._sem_chave(f"Sem conexão com o AMP: {rede.resumo_erro(erro)}"))
+        except Exception as erro:  # noqa: BLE001 -- o cliente não levanta: a falha vira diagnóstico
+            return RespostaAmp(False, "ping", None, self._relogio() - inicio, "",
+                               erro=self._sem_chave(f"Falha ao chamar o AMP: {type(erro).__name__}: {erro}"))
+        self._sessao = sessao
+        return self._interpretar("ping", resposta, self._relogio() - inicio)
 
-    def eco(self, codigos: list[str]) -> RespostaAmp:
-        return self._chamar({"modo": "eco", "codigos": list(codigos)})
-
-    def revisar(self, pedido: dict) -> RespostaAmp:
-        """Uma lista, numa requisição só, pela rota do `ping` (na primeira vez, o ping vai antes).
-        Tempo esgotado ou conexão cortada vira erro, e não outra tentativa: o agente pode estar
-        rodando no AMP."""
+    def enviar(self, campos: dict[str, str], arquivos: dict[str, Path]) -> RespostaAmp:
+        """Os `campos` e os `arquivos` (campo do formulário -> arquivo) num POST multipart, numa
+        requisição só, pela rota do `ping` (na primeira vez, o ping vai antes). Cada arquivo vai com
+        o próprio nome e é fechado logo depois. Tempo esgotado ou conexão cortada vira erro, e não
+        outra tentativa: o agente pode estar rodando no AMP."""
+        modo = str(campos.get("modo") or "enviar")
         if self._sessao is None:
             ping = self.ping()
             if not ping.ok:
-                return replace(ping, modo="revisar")
+                return replace(ping, modo=modo)
         inicio = self._relogio()
-        try:
-            resposta = self._sessao.request("POST", self._url, json=pedido, timeout=TEMPOS["revisar"],
-                                            headers=self._cabecalhos())
-        except Exception as erro:  # noqa: BLE001 -- vira diagnóstico, sem repetir
-            segundos = self._relogio() - inicio
-            return RespostaAmp(False, "revisar", None, segundos, "",
-                               erro=self._sem_chave(_falha_da_revisao(erro, segundos)))
-        return self._interpretar("revisar", resposta, self._relogio() - inicio)
+        with ExitStack() as abertos:
+            try:
+                partes = {campo: (caminho.name, abertos.enter_context(open(caminho, "rb")), tipo_do_arquivo(caminho))
+                          for campo, caminho in arquivos.items()}
+            except OSError as erro:
+                return RespostaAmp(False, modo, None, 0.0, "",
+                                   erro=f"não consegui abrir um arquivo para mandar: {erro}")
+            try:
+                resposta = self._sessao.request("POST", self._url, data=dict(campos), files=partes,
+                                                timeout=TEMPOS["enviar"], headers=self._cabecalhos())
+            except Exception as erro:  # noqa: BLE001 -- vira diagnóstico, sem repetir
+                segundos = self._relogio() - inicio
+                return RespostaAmp(False, modo, None, segundos, "",
+                                   erro=self._sem_chave(_falha_do_envio(erro, segundos)))
+        return self._interpretar(modo, resposta, self._relogio() - inicio)
 
     def _sem_chave(self, texto: str) -> str:
         return texto.replace(self._chave, "***") if self._chave else texto
 
     def _cabecalhos(self) -> dict:
         return {CABECALHO_CHAVE: self._chave, "Accept": "application/json"}
-
-    def _chamar(self, corpo: dict) -> RespostaAmp:
-        modo = str(corpo.get("modo") or "revisar")
-        inicio = self._relogio()
-        try:
-            sessao, resposta = self._abrir(self._url, metodo="POST", json=corpo, timeout=TEMPOS[modo],
-                                           headers=self._cabecalhos(), status_ok=None, log_cb=self._log)
-        except rede.FalhaDeRede as erro:
-            return RespostaAmp(False, modo, None, self._relogio() - inicio, "",
-                               erro=self._sem_chave(f"Sem conexão com o AMP: {rede.resumo_erro(erro)}"))
-        except Exception as erro:  # noqa: BLE001 -- o cliente não levanta: a falha vira diagnóstico
-            return RespostaAmp(False, modo, None, self._relogio() - inicio, "",
-                               erro=self._sem_chave(f"Falha ao chamar o AMP: {type(erro).__name__}: {erro}"))
-        self._sessao = sessao
-        return self._interpretar(modo, resposta, self._relogio() - inicio)
 
     def _interpretar(self, modo: str, resposta, segundos: float) -> RespostaAmp:
         status = getattr(resposta, "status_code", None)
@@ -123,18 +137,16 @@ class ClienteAmp:
         if (status or 0) >= 400 or not dados.get("ok"):
             erro = self._sem_chave(str(dados.get("erro") or f"HTTP {status}"))
             return RespostaAmp(False, modo, status, segundos, texto, dados, erro)
-        if modo == "revisar" and not _TEM_HTML.search(str(dados.get("html") or "")):
-            return RespostaAmp(False, modo, status, segundos, texto, dados, "o agente não devolveu HTML")
         return RespostaAmp(True, modo, status, segundos, texto, dados)
 
 
-def _falha_da_revisao(erro: BaseException, segundos: float) -> str:
-    """A revisão que não voltou, sem repetir: o tempo esgotado e a conexão que caiu no meio
-    (um proxy que corta chamada longa) dizem quanto tempo passou."""
+def _falha_do_envio(erro: BaseException, segundos: float) -> str:
+    """O envio que não voltou, sem repetir: o tempo esgotado e a conexão que caiu no meio (um
+    proxy que corta chamada longa) dizem quanto tempo passou."""
     import requests
 
     if isinstance(erro, requests.exceptions.ReadTimeout):
-        return (f"o AMP não respondeu em {TEMPOS['revisar'] // 60} min; a execução pode seguir no n8n "
+        return (f"o AMP não respondeu em {TEMPOS['enviar'] // 60} min; a execução pode seguir no n8n "
                 "(veja em Executions)")
     if isinstance(erro, requests.exceptions.ConnectionError):
         return (f"a conexão com o AMP caiu depois de {segundos:.0f} s ({rede.resumo_erro(erro)}): "
