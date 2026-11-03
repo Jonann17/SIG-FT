@@ -880,6 +880,14 @@ _POLITICA_RETRY_POR_TAREFA: dict[str, dict[str, Any]] = {
         "min_interval_seconds": None,
         "temperature": None,
     },
+    # `docpack_pasta` (2026-11-03): a sugestao de pasta do DocPack. A pedido, uma
+    # lista por vez; falhou, os campos ficam como estavam e a pessoa digita.
+    "docpack_pasta": {
+        "max_retries": 1,
+        "retry_sleep_seconds": 2,
+        "min_interval_seconds": None,
+        "temperature": None,
+    },
 }
 
 

@@ -178,7 +178,8 @@ TAREFAS_DO_CP_3_1 = {
 #   Modificados, para a ficha em ingles.
 #   interpretar_material (2026-10-08): passada 1 da escolha de PDM do Cria
 #   Fichas -- diz o que o material E, antes da busca no catalogo.
-TAREFAS_ACRESCENTADAS_DEPOIS = {"traduzir_pdm", "interpretar_material"}
+#   docpack_pasta (2026-11-03): sugestao de pasta do DocPack.
+TAREFAS_ACRESCENTADAS_DEPOIS = {"traduzir_pdm", "interpretar_material", "docpack_pasta"}
 
 
 def test_llm_tasks_tem_exatamente_as_5_tarefas_do_cp_3_1():
@@ -199,6 +200,7 @@ def test_llm_tasks_provider_por_tarefa_segue_a_decisao():
         # acrescentadas depois do CP 3.1 -- ver TAREFAS_ACRESCENTADAS_DEPOIS
         "traduzir_pdm": sigft_config.PROVIDER_GEMINI,
         "interpretar_material": sigft_config.PROVIDER_GEMINI,
+        "docpack_pasta": sigft_config.PROVIDER_GEMINI,
     }
     assert sigft_config.PROVIDER_XAI == "xai"
     assert sigft_config.PROVIDER_GEMINI == "gemini"

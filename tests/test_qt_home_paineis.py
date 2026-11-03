@@ -187,6 +187,7 @@ def test_textos_iguais_aos_da_home_antiga():
         "autospec": "AutoSpec (RAG):",
         "interpretar_material": "Interpretar material (Cria Fichas):",
         "traduzir_pdm": "Traduzir PDM (Planilhas PMIB):",
+        "docpack_pasta": "Sugerir pasta (DocPack):",
     }
 
 
@@ -1036,11 +1037,12 @@ def test_medidas_do_painel_de_modelos_no_modo_avancado(com_folha, qtbot, rede, m
         y = 294 + 36 * i
         assert _geo(tela.rotulos_modelo_ia_por_tarefa[tarefa], j)[:3] == (36, y, 220), tarefa
         assert _geo(tela.menus_modelo_ia_por_tarefa[tarefa], j) == (261, y, 420, 32), tarefa
-    # 7 tarefas desde 2026-10-16 (entraram a passada 1 do Cria Fichas e a
-    # tradução de PDM): duas linhas de 36 px (32 desde 2026-10-20 + 4) a mais que as 5 da tela antiga.
-    assert _geo(tela.entry_modelo_ia_livre, j)[1] == 492 + 2 * 36
+    # 8 tarefas desde 2026-11-03 (entraram a passada 1 do Cria Fichas, a
+    # tradução de PDM e a pasta do DocPack): três linhas de 36 px (32 desde 2026-10-20 + 4) a mais
+    # que as 5 da tela antiga.
+    assert _geo(tela.entry_modelo_ia_livre, j)[1] == 492 + 3 * 36
     resumo = _geo(tela.lbl_resumo_modelo_ia, j)
-    assert resumo[:2] == (36, 537 + 2 * 36)
+    assert resumo[:2] == (36, 537 + 3 * 36)
     assert _geo(tela.btn_aplicar_recomendados_ia, j)[1] == resumo[1] + resumo[3] + 10
 
 
