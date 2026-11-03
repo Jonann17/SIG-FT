@@ -1,8 +1,11 @@
 # Peça 2, versão 2: a revisão das listas pelo agente do AMP, com os arquivos
 
 **Data:** 2026-11-03. **Origem:** a conversa de 03/11 com o Luan, em que ele corrigiu o desenho de
-27/10 e validou, no n8n da GE, cada parte do caminho novo (§2). **Aprovado pelo Luan em 03/11:** o
-caminho (§4) e o que muda no SIG-FT (§5).
+27/10 e validou, no n8n da GE, cada parte do caminho novo (§2). **Aprovado pelo Luan em 03/11:**
+- o caminho (§4);
+- o que muda no SIG-FT (§5);
+- o webhook dentro de cada módulo, por um botão que abre uma janela (§5.5);
+- o foco nos logs (§5.6).
 
 **O que este desenho substitui** em `2026-10-27-amp-revisao-de-listas-design.md`:
 - a §3, passo 2 (o agente montado dentro do workflow);
@@ -140,6 +143,7 @@ quando se souber o nome e a unidade do parâmetro: o Luan copia o nó com o Time
   mandado: o SIG-FT pede para conferir as marcas e clicar de novo. Com a Conferência ainda rodando, o
   aviso é o de hoje.
 - **Testar conexão com o AMP** faz só o `ping`. O eco sai do cliente, do serviço e da tela.
+- **O botão Webhook…** abre a janela do endereço e da chave deste workflow (§5.5).
 - **Ficam como estão:** "Copiar diagnóstico", "Parar", a coluna AMP e os dois cliques que abrem o
   HTML.
 
@@ -165,9 +169,10 @@ e o agente diz o que não conseguiu ler *(minha decisão)*.
 
 ### 5.3 A chamada
 
-- **`ClienteAmp.revisar`** manda o POST multipart pela rota que o `ping` achou, uma vez só, com 15 min
-  de limite, como hoje. Na primeira vez, o `ping` vai antes, também como hoje. Os arquivos são abertos
-  na hora de mandar e fechados em seguida.
+- **`ClienteAmp.enviar(campos, arquivos)`** manda o POST multipart pela rota que o `ping` achou, uma
+  vez só, com 15 min de limite, como hoje. Na primeira vez, o `ping` vai antes, também como hoje. Os
+  arquivos são abertos na hora de mandar e fechados em seguida. O cliente não sabe o que é uma lista
+  (§5.5): quem monta os campos e escolhe os arquivos é o serviço da revisão.
 - **O `ping` continua em JSON.** O workflow novo o entende, e o SIG-FT 1.3.2 já passa no "Testar
   conexão".
 - **A resposta é conferida como hoje:** `ok` verdadeiro e HTML presente. Há uma conferência a mais:
@@ -186,20 +191,103 @@ e o agente diz o que não conseguiu ler *(minha decisão)*.
   leva conteúdo de documento. O conteúdo só existe no `html`, que fica de fora.
 - **"Onde está o código"** passa a apontar para `agente.md` e para este desenho.
 
+### 5.5 O webhook de cada módulo
+
+O Luan, em 03/11: o endereço e a chave ficam **dentro de cada módulo**. Este é o workflow da revisão
+de listas, e outros workflows virão para chamar outros agentes, cada um com o seu par.
+
+- **Na aba:** a linha de hoje continua mostrando `Webhook do AMP: <endereço> · chave posta` (ou
+  `sem chave`, ou "não configurado"). Ao lado dos botões entra **Webhook…**, que abre uma janela
+  pequena com:
+  - **Endereço:** a Production URL do workflow;
+  - **Chave:** o valor da credencial `X-SIGFT-Chave`, mascarado;
+  - **Salvar** e **Cancelar**.
+- **A janela confere o endereço antes de salvar** *(minha decisão)*:
+  - se não começar por `https://`, ela avisa e não salva;
+  - se tiver `/webhook-test/`, ela avisa que esse é o endereço de teste, que só funciona com o n8n
+    escutando, e pede a Production URL. Foi o 404 do teste 4.
+- **Onde fica guardado:** no mesmo `Documentos\SIG-FT\api_config.json` das outras chaves, com nomes
+  deste workflow: `AMP_REVISAO_LISTAS_URL` e `AMP_REVISAO_LISTAS_CHAVE`. Um módulo futuro usa o seu
+  próprio par, sem tocar neste.
+- **Configuração → Chaves de API perde os dois campos do AMP** (`AMP Webhook (URL)` e
+  `AMP Webhook (chave)`).
+- **O que já foi configurado não se perde.** Se os nomes antigos (`AMP_WEBHOOK_URL` e
+  `AMP_WEBHOOK_CHAVE`) tiverem valor e os do módulo estiverem vazios, a aba adota os valores antigos e
+  os grava nos nomes novos, uma vez só.
+- **A chave nunca aparece:** nem no console, nem no log em arquivo, nem no diagnóstico. Só se diz se
+  está posta.
+- **Peças reaproveitáveis**, para os próximos módulos:
+  - a janela do webhook, que recebe o título e os dois nomes de chave;
+  - o `ClienteAmp`, que só sabe fazer o `ping` e o `enviar(campos, arquivos)`.
+
+  O que é da revisão de listas (a mensagem, os três arquivos, o HTML) fica no serviço dela,
+  `services/revisao_amp.py`.
+
+### 5.6 Os logs: ver o que está acontecendo
+
+O Luan, em 03/11: "uma coisa que devemos focar muito bem é nos logs, precisamos ver o que está
+acontecendo". O agente leva minutos por lista, e hoje o console fica mudo enquanto ele trabalha.
+
+**No console**, uma rodada se lê assim (exemplo):
+
+```text
+Revisão no AMP: 3 lista(s) marcada(s) de 5; ficaram fora 2: #AAA, #BBB
+Webhook: https://ampworkflow.gevernova.net/webhook/sigft-revisao-listas · chave posta
+Log desta rodada: Documentos\SIG-FT\logs\amp\amp_revisao_2026-11-03_14-32-05.log
+Ping: workflow 2026-11-03 (0,8 s, execução 369100)
+[1/3] #ST00=B04BMA10TB020&EPB020 · em uso 0C → atual 0
+    vai: #ST00=…[0C].pdf (412 KB), #ST00=…[0].pdf (455 KB), #ST00=…_STATUS_PMIB.xlsx (980 KB)
+    enviado; o agente está lendo (costuma levar alguns minutos)
+    … 0:30 esperando o AMP
+    … 1:00 esperando o AMP
+    resposta: HTTP 200 em 3:12 · execução 369101 · o workflow recebeu 3 arquivo(s)
+    ✓ HTML gravado: #ST00=B04BMA10TB020&EPB020[0C-0] revisao AMP.html (48 KB)
+[2/3] #CCC · em uso 0A → atual 0B
+    ✗ falhou: HTTP 502 (etapa agente): <erro do workflow> · execução 369102
+    diagnóstico em Documentos\SIG-FT\logs\amp\20261103-143910 #CCC.txt
+[3/3] #DDD · em uso 0 → atual 1
+    - falta: PDF da revisão atual
+Fim: 1 HTML pronto, 1 falha, 1 com falta, 0 parada(s), em 7:40
+```
+
+As regras desse log:
+- **Cada lista diz o que vai** (o nome e o tamanho de cada arquivo) e **o que voltou**: o HTTP, o
+  tempo, o **número da execução do n8n** e quantos arquivos o workflow recebeu. O número da execução
+  vai também nas que deram certo: com ele se acha a execução no n8n, no menu Executions.
+- **A espera tem batimento:** uma linha a cada 30 s enquanto o AMP não responde. Assim se vê que o
+  SIG-FT não travou *(minha decisão)*.
+- **O começo diz o que vai e o que fica de fora:** as marcadas, as desmarcadas e onde está o log em
+  arquivo. O fim faz a conta e diz o tempo total.
+- **O Testar conexão** escreve o endereço, se a chave está posta, e o resultado do `ping` com o HTTP,
+  o tempo e a execução.
+- **Salvar o webhook** escreve `Webhook da Revisão no AMP salvo: <endereço> · chave posta`.
+- **A aba, ao se encher,** escreve quantas listas a conferência trouxe, quantas podem ir e quantas
+  têm falta.
+
+**Em arquivo:** cada rodada e cada teste de conexão gravam as mesmas linhas, com a hora, em
+`Documentos\SIG-FT\logs\amp\`. A gravação é a do `core/log_execucao.py` (`LogDeExecucao`), a mesma do
+robô de duplicadas: linha a linha, com flush, e sem nunca derrubar a rodada. O diagnóstico de cada
+falha continua num arquivo próprio, na mesma pasta, e o "Copiar diagnóstico" continua igual.
+
+**Nunca vão para o log:** a chave e o conteúdo dos documentos. O `html` não aparece; vai só o
+tamanho.
+
 ## 6. Documentação e textos
 
 - **`amp/revisao_de_listas/LEIA-ME.md`**, reescrito. Ele cobre:
   - criar o agente no AMP, com os campos da tela;
   - colar ou importar o workflow;
   - a credencial, o Timeout e a publicação;
-  - a URL e a chave no SIG-FT;
+  - a URL e a chave no SIG-FT, pelo botão **Webhook…** da aba;
   - testar pelo SIG-FT;
   - testar sem o SIG-FT, com o `curl.exe`, os comandos de 03/11;
   - melhorar o agente: no AMP, e depois atualizar o `agente.md`;
   - a tabela de sintomas, com o 400 de arquivos.
 - **`amp/revisao_de_listas/agente.md`** entra, e o `pedido.md` sai.
 - **Textos da tela:**
-  - a explicação da aba;
+  - a explicação da aba e o aviso de webhook não configurado, que passa a apontar para o botão
+    Webhook…;
+  - a janela do webhook;
   - o "Como funciona" (`PMIBManager.amp`);
   - as dicas dos botões (`textos_dicas.py`), com o "Testar conexão" sem o eco e os botões novos;
   - as traduções em `es.json` e `en.json`.
@@ -219,6 +307,16 @@ e o agente diz o que não conseguiu ler *(minha decisão)*.
 **pytest, sem rede:**
 - o cliente: os campos e os arquivos do multipart, os nomes dos arquivos, a chave no cabeçalho, uma
   tentativa só e o limite de tempo;
+- o webhook do módulo:
+  - a janela salva nos nomes do módulo;
+  - ela recusa endereço sem `https://` e avisa do `/webhook-test/`;
+  - os valores antigos são adotados uma vez;
+  - Configuração → Chaves de API não tem mais os campos do AMP;
+- os logs:
+  - as linhas de cada lista (o que vai, o que voltou, a execução);
+  - o batimento durante a espera;
+  - o arquivo em `logs\amp\`;
+  - a chave nunca aparece, nem no console nem no arquivo;
 - a mensagem, com e sem revisão em uso;
 - a conferência dos arquivos recebidos;
 - o diagnóstico, com os tamanhos e sem o `html`;
@@ -234,7 +332,7 @@ e o agente diz o que não conseguiu ler *(minha decisão)*.
 **O aplicativo:** `QT_QPA_PLATFORM=offscreen python frontend.py --smoke`.
 
 **Na GE** (etapa 5c do roteiro, reescrita):
-1. "Testar conexão com o AMP": o `ping` passa.
+1. Webhook… com a Production URL e a chave; "Testar conexão com o AMP": o `ping` passa.
 2. Uma lista marcada: o HTML aparece na pasta da lista.
 3. Uma rodada com duas ou três listas, uma desmarcada, que não vai.
 4. Um segundo clique depois da rodada manda só as que falharam.
