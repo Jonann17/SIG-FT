@@ -1,0 +1,362 @@
+"""DocPack (`services/docpack.py`): quais listas, o código PB021, o dossiê e a sugestão da IA.
+
+Os templates do `_STATUS_PMIB` e da lista com preço são as cópias do repositório
+(`gestao-sobressalentes/_gestao_v2/`); o da Aplicação LMR é sintético (não há cópia).
+"""
+from __future__ import annotations
+
+import zipfile
+from datetime import date
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from _openpyxl_de_verdade import openpyxl_de_verdade
+
+from sigft.services import conferencia_revisoes as cr
+from sigft.services import docpack, status_pmib_arquivos
+
+XL = None   # o openpyxl de verdade, durante cada teste (`_openpyxl`)
+
+
+@pytest.fixture(autouse=True)
+def _openpyxl():
+    global XL
+    with openpyxl_de_verdade(cr, docpack) as real:
+        XL = real
+        yield
+    XL = None
+
+
+def Workbook():  # noqa: N802 -- o nome do openpyxl
+    return XL.Workbook()
+
+
+def load_workbook(*args, **kw):
+    return XL.load_workbook(*args, **kw)
+
+RAIZ_REPO = Path(__file__).resolve().parents[1]
+TEMPLATE_STATUS = RAIZ_REPO / "gestao-sobressalentes/_gestao_v2/template/codigo_itaipu_STATUS_PMIB_v2.xlsx"
+TEMPLATE_PRECO = (RAIZ_REPO / "gestao-sobressalentes/_gestao_v2/fixtures/kit_lista_precos"
+                  / "Lista de Sobressalentes com preço.xlsm")
+CODIGO = "#ST00=M00MEU10&MPB020"
+HOJE = date(2026, 11, 3)
+
+CABECALHO = ["N° DOCUMENTO ITAIPU", "N° DOCUMENTO CMI", "ÚLTIMA REVISÃO EMITIDA", "STATUS DA REVISÃO",
+             "DATA DE ATUALIZAÇÃO", "STATUS REAL", "REVISÃO EM USO", "DESCRIÇÃO", "ESPECIFICAÇÃO TÉCNICA",
+             "CAPÍTULO", "RESPONSÁVEL", "PROCUREMENT", "ELABORADOR DO DOCUMENTO", "ORIGEM FORNECEDOR",
+             "ENTREGA", "OBSERVAÇÃO", "EVENTOS DE PAGAMENTOS\nRELACIONADOS", "SITUAÇÃO NO PMIB",
+             "LINK DA PLANILHA"]
+
+
+def _mapeadora(tmp_path, linhas) -> Path:
+    """Linhas: (código, título, revisão em uso, link ou None)."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Acompanhamento Sobressalente"
+    ws.append(["Mapeamento"])
+    ws.append(CABECALHO)
+    for codigo, titulo, revisao, link in linhas:
+        ws.append([codigo, "CMI-0001", "0B", "Em Processo", None, "Aprovado", revisao, titulo,
+                   "SERVICOS AUXILIARES ELETRICOS", "CAP 05", None, None, None, None, None, None,
+                   "EP-12", None, "Abrir Box" if link else None])
+        if link:
+            ws.cell(ws.max_row, len(CABECALHO)).hyperlink = link
+    caminho = tmp_path / "Mapeamento Listas de Sobressalentes.xlsx"
+    wb.save(caminho)
+    return caminho
+
+
+def _lista(**campos) -> cr.ListaNaMapeadora:
+    base = dict(codigo=CODIGO, ultima_revisao="0B", status_da_revisao="", status_real="", revisao_em_uso="0A",
+                link=None, codigo_cmi="CMI-0001", descricao="LISTA DE SOBRESSALENTES - GERADOR DIESEL",
+                especificacao="SERVICOS AUXILIARES ELETRICOS", capitulo="CAP 05", eventos="EP-12")
+    base.update(campos)
+    return cr.ListaNaMapeadora(**base)
+
+
+def _template_lmr(tmp_path) -> Path:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "DOCS DE REFERÊNCIA"
+    ws["A1"] = "LISTA DE SOBRESSALENTE:"
+    ws.merge_cells("A1:B1")
+    ws["A2"] = "Especificação técnica / capítulo:"
+    ws["A3"] = "SUBSISTEMA:"
+    caminho = tmp_path / "templates" / "Aplicação LMR - Sistema.xlsx"
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(caminho)
+    return caminho
+
+
+@pytest.fixture
+def templates(tmp_path):
+    return docpack.Templates(str(TEMPLATE_STATUS), str(TEMPLATE_PRECO), str(_template_lmr(tmp_path)))
+
+
+# -- quais listas --------------------------------------------------------------
+def test_listas_sem_status_pmib_pula_link_vivo_e_lista_de_preco(tmp_path):
+    raiz = tmp_path / "raiz"
+    (raiz / "05 - X").mkdir(parents=True)
+    (raiz / "05 - X" / "#ST00=VIVO&MPB020_STATUS_PMIB.xlsx").write_bytes(TEMPLATE_STATUS.read_bytes())
+    caminho = _mapeadora(tmp_path, [
+        (CODIGO, "LISTA DE SOBRESSALENTES - A", "0A", None),
+        ("#ST00=LINK&MPB020", "LISTA DE SOBRESSALENTES - B", "0A", "x/y_STATUS_PMIB.xlsx"),
+        ("#ST00=VIVO&MPB020", "LISTA DE SOBRESSALENTES - C", "0A", None),
+        ("#ST00=PRECO&MPB021", "LISTA COM PREÇO", "0A", None),
+        ("#ST00=COMP&MPB020", "LISTA DE PREÇOS DE SOBRESSALENTES", "0A", None),
+        ("#ITA0=A01AAM10&EPB020-01", "", "0A", None),
+    ])
+    mapeadora = cr.ler_mapeadora(caminho)
+    codigos = [lista.codigo for lista in docpack.listas_sem_status_pmib(mapeadora, raiz)]
+    assert codigos == [CODIGO, "#ITA0=A01AAM10&EPB020-01"]
+
+
+def test_a_mapeadora_traz_as_colunas_do_docpack(tmp_path):
+    lista = cr.ler_mapeadora(_mapeadora(tmp_path, [(CODIGO, "TITULO", "0A", None)])).listas[0]
+    assert (lista.codigo_cmi, lista.descricao, lista.especificacao, lista.capitulo, lista.eventos) == (
+        "CMI-0001", "TITULO", "SERVICOS AUXILIARES ELETRICOS", "CAP 05", "EP-12")
+
+
+def test_mapeadora_sem_as_colunas_opcionais_continua_lendo(tmp_path):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Acompanhamento Sobressalente"
+    ws.append([])
+    ws.append(list(cr.COLUNAS))
+    ws.append([CODIGO, "0B", "x", "y", "0A", None])
+    caminho = tmp_path / "m.xlsx"
+    wb.save(caminho)
+    lista = cr.ler_mapeadora(caminho).listas[0]
+    assert lista.descricao == "" and lista.codigo == CODIGO
+
+
+@pytest.mark.parametrize("codigo, esperado", [
+    ("#ST00=M00MEU10&MPB020", "#ST00=M00MEU10&MPB021"),
+    ("#ITA0=A01AAM10&EPB020-01", "#ITA0=A01AAM10&EPB021"),
+    (" #ST00=X&MPB020 ", "#ST00=X&MPB021"),
+])
+def test_codigo_da_lista_de_precos(codigo, esperado):
+    assert docpack.codigo_lista_de_precos(codigo) == esperado
+
+
+def test_codigo_sem_pb020_e_recusado():
+    with pytest.raises(docpack.ErroDocPack):
+        docpack.codigo_lista_de_precos("#ST00=X&MPB021")
+
+
+# -- textos ------------------------------------------------------------------------
+def test_titulo_no_formato_do_template():
+    assert docpack.texto_do_titulo(_lista(), "GERADOR DIESEL") == (
+        "SERVICOS AUXILIARES ELETRICOS / CAP 05 / GERADOR DIESEL | #ST00=M00MEU10&MPB020 / CMI-0001 | EP-12")
+    assert docpack.texto_do_titulo(_lista(eventos="", codigo_cmi=""), "X") == (
+        "SERVICOS AUXILIARES ELETRICOS / CAP 05 / X | #ST00=M00MEU10&MPB020")
+
+
+def test_linha_da_revisao_volta_pela_leitura_do_status_pmib():
+    texto = docpack.texto_da_revisao("0A", HOJE)
+    assert texto == "REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE ALTERAÇÃO: 03/11/2026"
+    assert status_pmib_arquivos.revisao_do_texto(texto) == "0A"
+
+
+# -- destino -----------------------------------------------------------------------
+def test_pasta_do_dossie_com_e_sem_sistema(tmp_path):
+    assert docpack.pasta_do_dossie(tmp_path, docpack.Destino("03 - EBOP", "", "GERADOR DIESEL")) == (
+        tmp_path / "03 - EBOP" / "GERADOR DIESEL")
+    assert docpack.pasta_do_dossie(tmp_path, docpack.Destino("03 - EBOP", " SIS ", "SUB")) == (
+        tmp_path / "03 - EBOP" / "SIS" / "SUB")
+
+
+@pytest.mark.parametrize("destino", [docpack.Destino("", "", "X"), docpack.Destino("A", "", ""),
+                                     docpack.Destino("A", "", "B/C"), docpack.Destino("..", "", "X"),
+                                     docpack.Destino("A", "S:", "X")])
+def test_destino_invalido(tmp_path, destino):
+    with pytest.raises(docpack.ErroDocPack):
+        docpack.pasta_do_dossie(tmp_path, destino)
+
+
+def test_pastas_existentes_dois_niveis_sem_as_ignoradas(tmp_path):
+    for p in ("03 - EBOP/GERADOR DIESEL", "03 - EBOP/DATASHEETS", "00 - OBSOLETO/X", ".oculta", "05 - UG"):
+        (tmp_path / p).mkdir(parents=True)
+    assert docpack.pastas_existentes(tmp_path) == {"03 - EBOP": ["GERADOR DIESEL"], "05 - UG": []}
+
+
+def test_achar_templates_pelos_nomes_conhecidos(tmp_path):
+    (tmp_path / "codigo_itaipu_STATUS_PMIB.xlsx").write_bytes(b"x")
+    (tmp_path / "APLICACAO LMR - SOBRESSALENTES_template.xlsx").write_bytes(b"x")
+    achados = docpack.achar_templates(tmp_path)
+    assert Path(achados.status_pmib).name == "codigo_itaipu_STATUS_PMIB.xlsx"
+    assert achados.lista_precos == ""
+    assert Path(achados.aplicacao_lmr).name == "APLICACAO LMR - SOBRESSALENTES_template.xlsx"
+
+
+# -- o dossiê ------------------------------------------------------------------------
+def _criar(tmp_path, templates, lista=None, destino=None, **kw):
+    raiz = tmp_path / "raiz"
+    raiz.mkdir(exist_ok=True)
+    destino = destino or docpack.Destino("03 - EBOP", "", "GERADOR DIESEL")
+    return raiz, docpack.criar_dossie(lista or _lista(), raiz, destino, templates, hoje=HOJE, **kw)
+
+
+def test_dossie_completo(tmp_path, templates):
+    raiz, resultado = _criar(tmp_path, templates)
+    pasta = raiz / "03 - EBOP" / "GERADOR DIESEL"
+    assert resultado.situacao == "criado", resultado
+    assert sorted(p.name for p in pasta.iterdir()) == sorted(
+        ["#ST00=M00MEU10&MPB020_STATUS_PMIB.xlsx", "#ST00=M00MEU10&MPB021.xlsm", "LMR", "IMAGENS", "DATASHEETS"])
+    assert [p.name for p in (pasta / "LMR").iterdir()] == ["Aplicação LMR - GERADOR DIESEL.xlsx"]
+    # O _STATUS_PMIB novo conta como vivo, com o código certo.
+    assert [c for c, _ in status_pmib_arquivos.listar(raiz).vivos] == [CODIGO]
+
+
+def test_status_pmib_tem_titulo_e_revisao_e_guarda_o_resto(tmp_path, templates):
+    raiz, _ = _criar(tmp_path, templates)
+    status = raiz / "03 - EBOP" / "GERADOR DIESEL" / f"{CODIGO}_STATUS_PMIB.xlsx"
+    wb = load_workbook(status)
+    ws = wb["Lista de Materiais"]
+    assert ws["A3"].value == docpack.texto_do_titulo(_lista(), "GERADOR DIESEL")
+    assert status_pmib_arquivos.revisao_do_texto(ws["A4"].value) == "0A"
+    assert ws["A5"].value == "ITEM"
+    original = load_workbook(TEMPLATE_STATUS)
+    assert set(wb.defined_names) == set(original.defined_names)
+    assert wb.sheetnames == original.sheetnames
+    # Só a aba editada mudou: o resto do pacote sai byte a byte.
+    with zipfile.ZipFile(status) as novo, zipfile.ZipFile(TEMPLATE_STATUS) as velho:
+        diferentes = {n for n in velho.namelist() if n in novo.namelist() and novo.read(n) != velho.read(n)}
+    assert diferentes <= {"xl/worksheets/sheet1.xml", "xl/calcChain.xml", "[Content_Types].xml",
+                          "xl/_rels/workbook.xml.rels"}
+
+
+def test_sem_revisao_fica_a_linha_do_template_e_avisa(tmp_path, templates):
+    raiz, resultado = _criar(tmp_path, templates, lista=_lista(revisao_em_uso="", ultima_revisao=""))
+    assert resultado.situacao == "aviso"
+    assert any("revisão" in a for a in resultado.avisos)
+    status = raiz / "03 - EBOP" / "GERADOR DIESEL" / f"{CODIGO}_STATUS_PMIB.xlsx"
+    assert load_workbook(status)["Lista de Materiais"]["A4"].value == (
+        load_workbook(TEMPLATE_STATUS)["Lista de Materiais"]["A4"].value)
+
+
+def test_lista_com_preco_mantem_o_vba_e_tem_o_codigo_pb021(tmp_path, templates):
+    raiz, _ = _criar(tmp_path, templates)
+    preco = raiz / "03 - EBOP" / "GERADOR DIESEL" / "#ST00=M00MEU10&MPB021.xlsm"
+    with zipfile.ZipFile(preco) as z, zipfile.ZipFile(TEMPLATE_PRECO) as t:
+        assert "xl/vbaProject.bin" in z.namelist()
+        assert z.read("xl/vbaProject.bin") == t.read("xl/vbaProject.bin")
+    capa = load_workbook(preco, keep_vba=True)["Capa"]
+    assert capa["F37"].value == "#ST00=M00MEU10&MPB021"
+    assert capa["E27"].value == "LISTA DE SOBRESSALENTES - GERADOR DIESEL - LISTA DE SOBRESSALENTE COM PREÇO"
+    assert capa["D37"].value == "CMI-XXXXXXXX"
+
+
+def test_aplicacao_lmr_preenche_os_rotulos(tmp_path, templates):
+    raiz, _ = _criar(tmp_path, templates)
+    lmr = raiz / "03 - EBOP" / "GERADOR DIESEL" / "LMR" / "Aplicação LMR - GERADOR DIESEL.xlsx"
+    ws = load_workbook(lmr).active
+    assert ws["C1"].value == CODIGO          # o rótulo é A1:B1 mesclado: o valor vai em C1
+    assert ws["B2"].value == "SERVICOS AUXILIARES ELETRICOS / CAP 05"
+    assert ws["B3"].value == "GERADOR DIESEL"
+
+
+def test_aplicacao_lmr_sem_rotulo_avisa(tmp_path, templates):
+    wb = Workbook()
+    wb.active.title = "DOCS DE REFERENCIA"
+    sem_rotulo = tmp_path / "lmr_vazio.xlsx"
+    wb.save(sem_rotulo)
+    templates.aplicacao_lmr = str(sem_rotulo)
+    _, resultado = _criar(tmp_path, templates)
+    assert resultado.situacao == "aviso"
+    assert any("LISTA DE SOBRESSALENTE:" in a for a in resultado.avisos)
+
+
+def test_nunca_sobrescreve(tmp_path, templates):
+    raiz, _ = _criar(tmp_path, templates)
+    status = raiz / "03 - EBOP" / "GERADOR DIESEL" / f"{CODIGO}_STATUS_PMIB.xlsx"
+    status.write_bytes(b"da pessoa")
+    _, resultado = _criar(tmp_path, templates)
+    assert status.read_bytes() == b"da pessoa"
+    assert resultado.situacao == "aviso"
+    assert sum("já existia" in a for a in resultado.avisos) == 3
+
+
+def test_codigo_vivo_na_raiz_pula_a_lista(tmp_path, templates):
+    raiz, resultado = _criar(tmp_path, templates, vivos={CODIGO.upper()})
+    assert resultado.situacao == "falhou"
+    assert not (raiz / "03 - EBOP").exists()
+
+
+def test_sem_template_do_status_pmib_falha_sem_criar_nada(tmp_path, templates):
+    templates.status_pmib = ""
+    raiz, resultado = _criar(tmp_path, templates)
+    assert resultado.situacao == "falhou"
+    assert not (raiz / "03 - EBOP").exists()
+
+
+def test_sem_os_outros_templates_cria_com_aviso(tmp_path, templates):
+    templates.lista_precos = templates.aplicacao_lmr = ""
+    raiz, resultado = _criar(tmp_path, templates)
+    pasta = raiz / "03 - EBOP" / "GERADOR DIESEL"
+    assert resultado.situacao == "aviso" and len(resultado.avisos) == 2
+    assert (pasta / f"{CODIGO}_STATUS_PMIB.xlsx").is_file() and (pasta / "LMR").is_dir()
+
+
+def test_pasta_obsoleta_avisa(tmp_path, templates):
+    _, resultado = _criar(tmp_path, templates, destino=docpack.Destino("00 - OBSOLETO", "", "X"))
+    assert any("não conta como vivo" in a for a in resultado.avisos)
+
+
+def test_planejar_diz_o_que_ja_existe(tmp_path, templates):
+    raiz = tmp_path / "raiz"
+    (raiz / "03 - EBOP").mkdir(parents=True)
+    passos = docpack.planejar(_lista(), raiz, docpack.Destino("03 - EBOP", "", "GD"), templates)
+    assert [(p.caminho.relative_to(raiz).as_posix(), p.tipo, p.existe) for p in passos][:2] == [
+        ("03 - EBOP", "pasta", True), ("03 - EBOP/GD", "pasta", False)]
+    assert sum(p.tipo == "arquivo" for p in passos) == 3
+    assert not (raiz / "03 - EBOP" / "GD").exists()
+
+
+def test_criar_dossies_loga_e_resume(tmp_path, templates):
+    raiz = tmp_path / "raiz"
+    raiz.mkdir()
+    linhas = []
+    pedidos = [(_lista(), docpack.Destino("03 - EBOP", "", "GD")),
+               (_lista(codigo="#ST00=B&MPB020"), docpack.Destino("", "", "GD"))]
+    resultados = docpack.criar_dossies(pedidos, raiz, templates, log_cb=linhas.append)
+    assert [r.situacao for r in resultados] == ["criado", "falhou"]
+    assert linhas[0].startswith("DocPack: 2 lista(s)")
+    assert any(linha.startswith("  ✅ " + CODIGO) for linha in linhas)
+    assert any(linha.startswith("  ❌ #ST00=B&MPB020") for linha in linhas)
+    assert "1 criado(s), 0 com aviso, 1 falha(s)" in linhas[-2]
+    assert "Gestão PMIB" in linhas[-1]
+
+
+# -- a IA -------------------------------------------------------------------------------
+class _LLM:
+    def __init__(self, resposta=None, erro=None):
+        self.resposta, self.erro, self.prompts = resposta, erro, []
+
+    def generate(self, prompt, **_kw):
+        self.prompts.append(prompt)
+        if self.erro:
+            raise self.erro
+        return self.resposta
+
+
+def test_sugestao_da_ia():
+    llm = _LLM(SimpleNamespace(parsed_json={"capitulo": "03 - EBOP", "sistema": "", "pasta": "GERADOR DIESEL",
+                                            "motivo": "o título fala do gerador"}, text=""))
+    destino, motivo = docpack.sugerir_destino(_lista(), {"03 - EBOP": ["GERADOR DIESEL"]}, llm)
+    assert destino == docpack.Destino("03 - EBOP", "", "GERADOR DIESEL")
+    assert motivo == "o título fala do gerador"
+    assert "GERADOR DIESEL" in llm.prompts[0] and CODIGO in llm.prompts[0]
+
+
+def test_sugestao_tolerante_ao_texto():
+    texto = 'Claro!\n```json\n{"capitulo": "05 - UG", "subsistema": "EXCITACAO",}\n```'
+    assert docpack.ler_sugestao(texto) == docpack.Destino("05 - UG", "", "EXCITACAO")
+
+
+@pytest.mark.parametrize("llm", [_LLM(erro=RuntimeError("sem rede")),
+                                 _LLM(SimpleNamespace(parsed_json={"capitulo": ""}, text=""))])
+def test_sugestao_que_falha_nao_levanta(llm):
+    destino, motivo = docpack.sugerir_destino(_lista(), {}, llm)
+    assert destino is None and motivo

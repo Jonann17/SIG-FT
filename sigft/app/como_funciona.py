@@ -232,6 +232,15 @@ TEXTOS: dict[str, Texto] = {
             marcar("Falhou? Copiar diagnóstico leva o detalhe técnico, sem o texto dos documentos."),
         ),
     ),
+    "PMIBManager.docpack": Texto(
+        marcar("Cria a pasta, com os templates, de cada lista que ainda não tem _STATUS_PMIB."),
+        (
+            marcar("Lê a mapeadora: entram as listas sem link e sem _STATUS_PMIB na pasta raiz."),
+            marcar("Capítulo, sistema e pasta final se editam com dois cliques; a IA pode sugerir."),
+            marcar("Cada pasta ganha o _STATUS_PMIB, a lista com preço (PB021) e LMR, IMAGENS e DATASHEETS."),
+            marcar("Nada é sobrescrito, e a mapeadora não muda: rode o Gestão PMIB depois para ligar."),
+        ),
+    ),
     "SearchPMIB": Texto(
         marcar("Procura um código ou descrição nos _STATUS_PMIB de uma pasta inteira, de uma vez."),
         (
@@ -249,7 +258,7 @@ TEXTOS: dict[str, Texto] = {
 # chaves das abas, na ordem delas. O bloco da seção mostra o texto da aba aberta.
 ABAS_DAS_SECOES: dict[str, tuple[str, ...]] = {
     "LMR": ("LMR.upload", "LMR.exclusao"),
-    "PMIBManager": ("PMIBManager.gestao", "PMIBManager.conferencia", "PMIBManager.amp"),
+    "PMIBManager": ("PMIBManager.gestao", "PMIBManager.conferencia", "PMIBManager.amp", "PMIBManager.docpack"),
 }
 
 

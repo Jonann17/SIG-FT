@@ -29,6 +29,7 @@ código e revisada. Um arquivo por módulo:
 | `10-apagar-lmr-backend.md` | `apagar_lmr_backend.py` |
 | `11-pmib-manager-backend.md` | `pmib_manager_backend.py` |
 | `12-search-pmib-backend.md` | `search_pmib_backend.py` |
+| `15-docpack.md` | `sigft/services/docpack.py` (aba DocPack do PMIB Manager) |
 
 ## Refatoração (`refatoracao/`)
 
