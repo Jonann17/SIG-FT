@@ -1,5 +1,10 @@
 # Peça 2 — Revisão das listas pelo AMP (n8n)
 
+> **Substituído em parte em 2026-11-03** por `2026-11-03-amp-revisao-com-arquivos-design.md`. O agente
+> passa a ser criado no AMP e chamado pelo nó AMP Agent, e o SIG-FT manda os arquivos em vez do texto
+> extraído. Ficam valendo daqui: o porquê, os antiobjetivos, quais listas e arquivos vão, a gravação do
+> HTML e o ritmo. O que foi substituído está listado no começo do desenho novo.
+
 **Data:** 2026-10-27. **Origem:** o rascunho "Workflow AMP" do Luan (25/10/2026) e a conversa de
 27/10, em que ele aprovou o fluxo da §3. **Peça anterior:** o Aconex ao vivo e a Conferência de
 Revisões (`docs/superpowers/specs/2026-10-26-aconex-ao-vivo-design.md`). A §5.6 de lá deixou para

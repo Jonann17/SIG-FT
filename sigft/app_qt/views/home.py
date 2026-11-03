@@ -89,9 +89,8 @@ CHAVES_API = (
     ("OPENROUTER", marcar("OpenRouter API Key:")),
     ("EMPRESA_LLM_BASE_URL", marcar("IA Empresa (Base URL):")),
     ("EMPRESA_LLM_API_KEY", marcar("IA Empresa (API Key):")),
-    # [2026-10-27] O webhook da Revisão no AMP (aba do PMIB Manager).
-    ("AMP_WEBHOOK_URL", marcar("AMP Webhook (URL):")),
-    ("AMP_WEBHOOK_CHAVE", marcar("AMP Webhook (chave):")),
+    # [2026-11-03] O webhook da Revisão no AMP saiu daqui: cada workflow do AMP tem o seu,
+    # configurado na própria aba (botão Webhook…, `widgets/webhook_amp.py`).
 )
 
 ROTULOS_TAREFA_IA = {
