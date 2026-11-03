@@ -80,6 +80,63 @@ INTERVALO_S = 0.5
 # Teto de exclusões por ficha: uma lixeira que não exclui não pode girar
 # para sempre.
 MAX_EXCLUSOES = 30
+# Tempos-base, em segundos, das esperas que não são em tentativas.
+MOTOR_S = 20          # cada clique/campo do motor (`criar_engine`)
+CONFIRMACAO_S = 20.0  # o aviso verde depois do CONFIRMAR (o portal usa 8 s)
+
+
+@dataclass(frozen=True)
+class Esperas:
+    """Quanto o robô espera em cada passo. `fator` é a "Velocidade do portal"
+    da tela (1, 2 ou 4) e multiplica TUDO de uma vez.
+
+    No caso bom não custa nada: cada espera termina assim que a condição
+    aparece. O fator só decide quanto se insiste antes de desistir.
+    """
+    fator: float = 1.0
+
+    def _vezes(self, base):
+        return max(1, round(base * self.fator))
+
+    @property
+    def tabela(self):
+        return self._vezes(TENTATIVAS_DA_TABELA)
+
+    @property
+    def exclusao(self):
+        return self._vezes(TENTATIVAS_DA_EXCLUSAO)
+
+    @property
+    def conferencia(self):
+        return self._vezes(TENTATIVAS_DA_CONFERENCIA)
+
+    @property
+    def revisao(self):
+        return self._vezes(TENTATIVAS_DA_REVISAO)
+
+    @property
+    def ficha(self):
+        return self._vezes(extrator.TENTATIVAS_DA_FICHA)
+
+    @property
+    def aba(self):
+        return self._vezes(extrator.TENTATIVAS_DA_ABA_ATIVA)
+
+    @property
+    def formulario(self):
+        return self._vezes(imagens.TENTATIVAS_DO_FORMULARIO)
+
+    @property
+    def motor_s(self):
+        return self._vezes(MOTOR_S)
+
+    @property
+    def confirmacao_s(self):
+        return CONFIRMACAO_S * self.fator
+
+    @property
+    def processamento_s(self):
+        return imagens.TIMEOUT_PROCESSAMENTO * self.fator
 
 
 # ===========================================================================
@@ -175,7 +232,7 @@ def fotos_na_ficha(portal):
     return _contar(portal, XPATH_LINHAS_DE_IMAGEM)
 
 
-def fotos_ao_abrir(portal):
+def fotos_ao_abrir(portal, esperas=None):
     """As fotos da ficha recém-aberta, esperando os DADOS e não o cabeçalho.
 
     O OutSystems desenha a tabela antes de as linhas chegarem: contar no
@@ -183,10 +240,11 @@ def fotos_ao_abrir(portal):
     antigas. Espera aparecer alguma linha (ficha sem foto gasta a espera
     inteira, ~10 s) e depois a contagem parar de mudar.
     """
-    if not _esperar(lambda: fotos_na_ficha(portal) > 0, TENTATIVAS_DA_TABELA):
+    tentativas = (esperas or Esperas()).tabela
+    if not _esperar(lambda: fotos_na_ficha(portal) > 0, tentativas):
         return 0
     anterior = fotos_na_ficha(portal)
-    for _ in range(TENTATIVAS_DA_TABELA):
+    for _ in range(tentativas):
         time.sleep(INTERVALO_S)
         agora = fotos_na_ficha(portal)
         if agora == anterior:
@@ -208,7 +266,7 @@ def foto_esta_na_tabela(portal, caminho):
 # ===========================================================================
 # 3. O que se faz na tela
 # ===========================================================================
-def excluir_uma(portal, callback_log=None):
+def excluir_uma(portal, callback_log=None, esperas=None):
     """Clica na lixeira da ÚLTIMA foto e confirma. `True` só quando a linha
     SAIU da tabela -- clicar não prova nada (§0, regra 6).
 
@@ -230,7 +288,7 @@ def excluir_uma(portal, callback_log=None):
     # A confirmação: a do diálogo primeiro (§3 -- "CONFIRMAR" solto casa outros
     # botões), a genérica do portal se o diálogo não tiver `role`.
     confirmou = False
-    for _ in range(TENTATIVAS_DA_EXCLUSAO):
+    for _ in range((esperas or Esperas()).exclusao):
         if fotos_na_ficha(portal) < antes:
             return True
         if not confirmou:
@@ -250,17 +308,17 @@ def excluir_uma(portal, callback_log=None):
     return False
 
 
-def excluir_todas(portal, callback_log=None):
+def excluir_todas(portal, callback_log=None, esperas=None):
     """Exclui as fotos da ficha aberta, uma a uma. `True` se a tabela esvaziou."""
     for _ in range(MAX_EXCLUSOES):
         if not fotos_na_ficha(portal):
             return True
-        if not excluir_uma(portal, callback_log):
+        if not excluir_uma(portal, callback_log, esperas):
             return False
     return not fotos_na_ficha(portal)
 
 
-def subir_fotos(portal, descricao, caminhos, callback_log=None):
+def subir_fotos(portal, descricao, caminhos, callback_log=None, esperas=None):
     """Sobe em envios de até 10 (o limite do diálogo). Envio que falha é
     refeito foto a foto, e SÓ das que não estão na tabela.
 
@@ -269,15 +327,18 @@ def subir_fotos(portal, descricao, caminhos, callback_log=None):
     autoconferência de `duplicadas_imagens.subir_arquivos`, que tenta de novo
     sem olhar a tabela.
     """
+    e = esperas or Esperas()
+    tempos = {"timeout_confirmacao": e.confirmacao_s, "timeout_processamento": e.processamento_s,
+              "tentativas_do_formulario": e.formulario}
     tamanho = imagens.MAX_ARQUIVOS_POR_ENVIO
     for inicio in range(0, len(caminhos), tamanho):
         lote = caminhos[inicio:inicio + tamanho]
-        if imagens.subir_juntas(portal, descricao, lote, callback_log):
+        if imagens.subir_juntas(portal, descricao, lote, callback_log, **tempos):
             continue
         imagens.fechar_formulario(portal, callback_log)
-        _esperar(lambda lote=lote: all(foto_esta_na_tabela(portal, c) for c in lote), TENTATIVAS_DA_REVISAO)
+        _esperar(lambda lote=lote: all(foto_esta_na_tabela(portal, c) for c in lote), e.revisao)
         for caminho in [c for c in lote if not foto_esta_na_tabela(portal, c)]:
-            if not imagens.subir_juntas(portal, descricao, [caminho], callback_log):
+            if not imagens.subir_juntas(portal, descricao, [caminho], callback_log, **tempos):
                 imagens.fechar_formulario(portal, callback_log)
 
 
@@ -292,19 +353,20 @@ class ResultadoDaFicha:
 
 
 def processar_ficha(portal, pmib, quatro, caminhos, modo=MODO_SUBSTITUIR,
-                    perguntar=None, callback_log=None):
+                    perguntar=None, callback_log=None, esperas=None):
     """Uma ficha, de ponta a ponta: abrir, limpar (se for o caso), subir,
     conferir e ver se tem documento."""
     _log = _log_de(callback_log)
     resultado = ResultadoDaFicha(pmib, quatro)
+    e = esperas or Esperas()
 
-    if not portal.pesquisar_e_abrir(pmib) or not extrator.esperar_a_ficha_abrir(portal):
+    if not portal.pesquisar_e_abrir(pmib) or not extrator.esperar_a_ficha_abrir(portal, espera=e.ficha):
         resultado.motivo = "ficha não encontrada ou não abriu em edição"
         return resultado
-    if not extrator.abrir_secao(portal, sel.ABA_DOCUMENTOS_EDICAO, callback_log):
+    if not extrator.abrir_secao(portal, sel.ABA_DOCUMENTOS_EDICAO, callback_log, tentativas=e.aba):
         resultado.motivo = "não abri a aba Documentos e imagens"
         return resultado
-    existentes = fotos_ao_abrir(portal)
+    existentes = fotos_ao_abrir(portal, e)
     if not existentes:
         _log("      Nenhuma foto na tabela de imagens: a ficha está sem fotos.")
     else:
@@ -317,25 +379,25 @@ def processar_ficha(portal, pmib, quatro, caminhos, modo=MODO_SUBSTITUIR,
             return resultado
         if decisao == SUBSTITUIR:
             _log(f"      A ficha já tem {existentes} foto(s): excluindo antes de subir.")
-            if not excluir_todas(portal, callback_log):
+            if not excluir_todas(portal, callback_log, e):
                 resultado.motivo = "não consegui excluir as fotos que já estavam na ficha"
                 return resultado
 
     descricao = descricao_das_fotos(quatro)
     antes = fotos_na_ficha(portal)
-    subir_fotos(portal, descricao, caminhos, callback_log)
+    subir_fotos(portal, descricao, caminhos, callback_log, e)
 
     # A PROVA é a tabela, não o toast de cada um: o NOME de cada arquivo E o
     # número de linhas -- no modo "adicionar" a foto antiga pode ter o mesmo
     # nome da nova, e só o nome passaria com a nova fora. UMA espera para
     # todas: esperar foto a foto somava 15 s por foto que faltasse.
-    _esperar(lambda: all(foto_esta_na_tabela(portal, c) for c in caminhos), TENTATIVAS_DA_CONFERENCIA)
+    _esperar(lambda: all(foto_esta_na_tabela(portal, c) for c in caminhos), e.conferencia)
     faltaram = [os.path.basename(c) for c in caminhos if not foto_esta_na_tabela(portal, c)]
     if faltaram:
         resultado.motivo = f"{len(faltaram)} de {len(caminhos)} foto(s) não apareceram na tabela: {', '.join(faltaram)}"
         return resultado
     esperado = antes + len(caminhos)
-    if not _esperar(lambda: fotos_na_ficha(portal) >= esperado, TENTATIVAS_DA_CONFERENCIA):
+    if not _esperar(lambda: fotos_na_ficha(portal) >= esperado, e.conferencia):
         resultado.motivo = (f"a tabela tem {fotos_na_ficha(portal)} foto(s), esperava {esperado}: "
                             f"alguma das novas não entrou")
         return resultado
@@ -348,12 +410,13 @@ def processar_ficha(portal, pmib, quatro, caminhos, modo=MODO_SUBSTITUIR,
 class UploadFotosAutomation:
     """O robô: um navegador, um login, várias fichas."""
 
-    def __init__(self):
+    def __init__(self, esperas=None):
         self.engine = None
         self.portal = None
+        self.esperas = esperas or Esperas()
 
     def iniciar_driver(self):
-        self.engine = criar_engine(NOME_DO_MODULO, wait_timeout=20)
+        self.engine = criar_engine(NOME_DO_MODULO, wait_timeout=self.esperas.motor_s)
         self.portal = PMIBPortal(self.engine)
         return self.engine
 
@@ -380,7 +443,7 @@ class UploadFotosAutomation:
             _log(f"[{indice}/{len(fichas)}] {pmib}: {len(caminhos)} foto(s)")
             try:
                 resultado = processar_ficha(self.portal, pmib, quatro, caminhos, modo,
-                                            perguntar, callback_log)
+                                            perguntar, callback_log, self.esperas)
             except Exception as erro:  # noqa: BLE001 -- uma ficha não derruba o lote
                 resultado = ResultadoDaFicha(pmib, quatro, motivo=f"{type(erro).__name__}: {erro}")
             if resultado.ok:

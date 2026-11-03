@@ -23,6 +23,17 @@ TEXTOS_DOS_MODOS = (
     marcar("Excluir as fotos que já estão na ficha e subir as da pasta"),
     marcar("Perguntar em cada ficha que já tiver fotos"),
 )
+# "Velocidade do portal" (2026-11-03, o PMIB lento estourando os tempos): o
+# fator multiplica todas as esperas do robô (`upload_fotos.Esperas`). No caso
+# bom não custa nada -- cada espera acaba quando a tela responde --, por isso
+# o padrão é "Lento".
+VELOCIDADES = (1, 2, 4)
+TEXTOS_DAS_VELOCIDADES = (
+    marcar("Normal: o portal responde rápido"),
+    marcar("Lento: espera até o dobro"),
+    marcar("Muito lento: espera até 4 vezes mais"),
+)
+VELOCIDADE_PADRAO = 1   # índice de "Lento"
 
 
 class ModuloUploadFotos(ComTravaDeRobo, ModuleFrame):
@@ -65,6 +76,12 @@ class ModuloUploadFotos(ComTravaDeRobo, ModuleFrame):
         self.menu_modo = controles.MenuDeOpcoes([t(texto) for texto in TEXTOS_DOS_MODOS])
         corpo.addWidget(self.menu_modo)
 
+        corpo.addSpacing(10)
+        corpo.addWidget(blocos.rotulo(t("4. Velocidade do portal"), negrito=True))
+        self.menu_velocidade = controles.MenuDeOpcoes([t(texto) for texto in TEXTOS_DAS_VELOCIDADES])
+        self.menu_velocidade.setCurrentIndex(VELOCIDADE_PADRAO)
+        corpo.addWidget(self.menu_velocidade)
+
         corpo.addSpacing(20)
         botoes = QHBoxLayout()
         botoes.addStretch()
@@ -96,7 +113,8 @@ class ModuloUploadFotos(ComTravaDeRobo, ModuleFrame):
             return
         # A leitura da pasta e do _STATUS_PMIB vai para o robô: feita aqui, na
         # thread da interface, congelava a janela com planilha grande.
-        self.iniciar_com_trava(self._worker, MODOS[self.menu_modo.currentIndex()], botao=self.btn_run)
+        self.iniciar_com_trava(self._worker, MODOS[self.menu_modo.currentIndex()],
+                               VELOCIDADES[self.menu_velocidade.currentIndex()], botao=self.btn_run)
 
     def _montar_lote(self, modo):
         """As fichas a subir, depois do "Começar?" da pessoa; `None` se não há o
@@ -146,11 +164,12 @@ class ModuloUploadFotos(ComTravaDeRobo, ModuleFrame):
         # Sem resposta (janela fechada à força): pular é o lado seguro.
         return self._na_interface_e_esperar(perguntar, aviso=t("Ficha com fotos: escolha o que fazer.")) or svc.PULAR
 
-    def _worker(self, modo) -> None:
+    def _worker(self, modo, fator) -> None:
         fichas = self._montar_lote(modo)
         if not fichas:
             return
-        self.automacao = auto = svc.UploadFotosAutomation()
+        self.automacao = auto = svc.UploadFotosAutomation(esperas=svc.Esperas(fator=fator))
+        self.log(f"Velocidade do portal: esperas x{fator}.")
         try:
             self.log("Iniciando navegador...")
             auto.iniciar_driver()

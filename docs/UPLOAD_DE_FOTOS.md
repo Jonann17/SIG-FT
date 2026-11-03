@@ -43,6 +43,21 @@ No fim, a coluna `DOCUMENTOS E IMAGENS` do `_STATUS_PMIB`:
   contato com o banco por fora da tela (regra do Luan, `core/rpa/respostas.py`).
 - **Home com 13 cards** (escolha do usuário, 2026-10-30): a Home passa a rolar.
 
+## Portal lento (2026-11-03)
+
+O campo **"Velocidade do portal"** (Normal / Lento / Muito lento) multiplica por
+1, 2 ou 4 todas as esperas do robô (`upload_fotos.Esperas`): o tempo do motor
+(20 s por clique/campo), abrir a ficha, a aba ativa, o diálogo, o FilePond, o
+aviso verde (20 s), a tabela de fotos, a exclusão e a conferência. O padrão é
+**Lento**: no caso bom não custa nada, porque cada espera termina assim que a
+tela responde. Três esperas eram defeito e viraram espera por condição:
+a aba ativa (conferida no instante do clique), o diálogo "Adicionar Imagens"
+(2 s fixos; o atraso deixava a descrição em branco) e o aviso verde (8 s).
+
+Fica de fora: `PMIBPortal.pesquisar_e_abrir`, compartilhado por todos os
+módulos, ainda tem 4 s fixos depois da pesquisa (o motor mais paciente cobre o
+lápis que demora a aparecer).
+
 ## O que falta (sessão LOCAL, `docs/OLHAR_O_PORTAL.md`)
 
 Os seletores abaixo saíram das capturas, não do DOM. Conferir numa ficha de

@@ -47,7 +47,12 @@ def tela(qt_interface, qtbot, monkeypatch):
         return ["4500063671.0071"]
     monkeypatch.setattr(svc, "ler_codigos", ler_codigos)
     monkeypatch.setattr(svc, "agrupar_fotos", lambda _p: ({"0071": ["/fotos/0071.jpg"]}, []))
-    monkeypatch.setattr(svc, "UploadFotosAutomation", lambda: t.robo)
+    t.esperas_do_robo = []
+
+    def criar_robo(esperas=None):
+        t.esperas_do_robo.append(esperas)
+        return t.robo
+    monkeypatch.setattr(svc, "UploadFotosAutomation", criar_robo)
     monkeypatch.setattr(svc, "marcar_status", lambda *_a, **_k: (1, "1 linha(s) marcada(s) no _STATUS_PMIB."))
     return t
 
@@ -69,3 +74,14 @@ def test_desistir_no_comecar_nao_abre_o_navegador(tela, qtbot):
     qtbot.waitUntil(tela.btn_run.isEnabled, timeout=3000)
 
     assert tela.perguntas and tela.robo.passos == []
+
+
+def test_a_velocidade_do_portal_chega_ao_robo(tela, qtbot):
+    # Portal lento (2026-11-03): "Lento" é o padrão, e "Muito lento" espera 4x.
+    assert tela.menu_velocidade.currentIndex() == 1
+    tela.menu_velocidade.setCurrentIndex(2)
+
+    tela.btn_run.click()
+    qtbot.waitUntil(lambda: "fechou" in tela.robo.passos, timeout=3000)
+
+    assert tela.esperas_do_robo == [svc.Esperas(fator=4)]

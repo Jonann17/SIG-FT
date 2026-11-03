@@ -92,7 +92,7 @@ def portal(monkeypatch):
     def _criar(fotos=(), documentos=0, sobe=True):
         engine = _Engine(fotos, documentos)
 
-        def _subir(_portal, descricao, caminhos, _log=None):
+        def _subir(_portal, descricao, caminhos, _log=None, **_tempos):
             engine.envios.append(list(caminhos))
             for caminho in caminhos:
                 engine.ordem.append(("subiu", caminho, descricao))
@@ -101,7 +101,7 @@ def portal(monkeypatch):
             return sobe
 
         engine.envios = []
-        monkeypatch.setattr(uf.extrator, "esperar_a_ficha_abrir", lambda _p: True)
+        monkeypatch.setattr(uf.extrator, "esperar_a_ficha_abrir", lambda *_a, **_k: True)
         monkeypatch.setattr(uf.extrator, "abrir_secao", lambda *_a, **_k: True)
         monkeypatch.setattr(uf.imagens, "subir_juntas", _subir)
         monkeypatch.setattr(uf.imagens, "fechar_formulario", lambda *_a, **_k: True)
@@ -293,7 +293,7 @@ def test_envio_que_falha_so_reenvia_as_que_nao_entraram(portal, monkeypatch):
     p = portal(fotos=[])
     envios = p.engine.envios
 
-    def _subir_falhando_na_primeira(_portal, descricao, caminhos, _log=None):
+    def _subir_falhando_na_primeira(_portal, descricao, caminhos, _log=None, **_tempos):
         envios.append(list(caminhos))
         if len(envios) == 1:                        # o envio grava só a 1ª e falha
             p.engine.fotos.append(caminhos[0].rsplit("/", 1)[-1])
@@ -330,3 +330,103 @@ def test_o_lote_nao_volta_para_a_lista_entre_fichas(monkeypatch):
     robo.processar([("4500063671.0071", "0071", ["a"]), ("4500063671.0072", "0072", ["b"])])
 
     assert robo.portal.voltas == 0
+
+
+# ===========================================================================
+# 5. Portal lento (2026-11-03): esperar pela CONDIÇÃO, e mais quando ele está lento
+# ===========================================================================
+def test_aba_que_o_portal_marca_como_ativa_com_atraso_ainda_abre(monkeypatch):
+    # Conferir o `aria-selected` no mesmo instante do clique dava "o portal não
+    # marcou a aba como ativa" assim que o portal demorava um pouco.
+    monkeypatch.setattr(uf.extrator.time, "sleep", lambda _s: None)
+    leituras = {"n": 0}
+
+    class _Engine:
+        def contar(self, seletor):
+            if "aria-selected" in seletor:
+                leituras["n"] += 1
+                return 1 if leituras["n"] >= 4 else 0
+            return 1
+
+        def atributo(self, *_a):
+            return ""
+
+    class _P:
+        engine = _Engine()
+
+        def safe_click(self, _s):
+            pass
+
+    assert uf.extrator.abrir_secao(_P(), "Documentos e imagens") is True
+
+
+def test_dialogo_que_demora_a_abrir_ainda_recebe_a_descricao(monkeypatch):
+    # Com 2 s fixos de espera, o diálogo lento ainda não tinha os campos e as
+    # descrições ficavam em branco em silêncio.
+    imgs = uf.imagens
+    monkeypatch.setattr(imgs.time, "sleep", lambda _s: None)
+
+    class _Engine:
+        def __init__(self):
+            self.leituras, self.enviados = 0, []
+
+        def contar(self, seletor):
+            if "Input_Description" in seletor:
+                self.leituras += 1
+                return 1 if self.leituras > 6 else 0
+            if "filepond--list" in seletor:
+                return 1 if self.enviados else 0
+            return 1 if "Adicionar imagens" in seletor else 0
+
+        def enviar_arquivo(self, _seletor, caminho):
+            self.enviados.append(caminho)
+
+    class _P:
+        def __init__(self):
+            self.engine, self.preenchidos, self.confirmacoes = _Engine(), [], []
+
+        def safe_click(self, _s):
+            pass
+
+        def safe_fill(self, _seletor, texto):
+            self.preenchidos.append(texto)
+
+        def clicar_e_confirmar(self, _botao, _nome, _log=None, **kwargs):
+            self.confirmacoes.append(kwargs)
+            return True
+
+    p = _P()
+    assert imgs.subir_juntas(p, "imagens - 0071", ["a.jpg"], timeout_confirmacao=40) is True
+    assert p.preenchidos == ["imagens - 0071", "imagens - 0071"]
+    assert p.confirmacoes == [{"timeout_s": 40}]
+
+
+def test_portal_lento_multiplica_as_esperas_e_o_tempo_do_motor(monkeypatch):
+    criados = []
+    monkeypatch.setattr(uf, "criar_engine", lambda _nome, wait_timeout: criados.append(wait_timeout))
+    monkeypatch.setattr(uf, "PMIBPortal", lambda engine: engine)
+
+    uf.UploadFotosAutomation(esperas=uf.Esperas(fator=2)).iniciar_driver()
+
+    assert criados == [2 * uf.Esperas().motor_s]
+    assert uf.Esperas(fator=2).tabela == 2 * uf.Esperas().tabela
+
+
+def test_portal_lento_espera_as_fotos_que_demoram_a_aparecer(portal):
+    # As linhas só chegam depois de 30 olhadas: no ritmo normal (20) a ficha
+    # pareceria vazia e as fotos novas subiriam por cima das antigas.
+    p = portal(fotos=["0071e.JPG"])
+    reais, leituras = p.engine.contar, {"n": 0}
+
+    def contar_lento(seletor):
+        if seletor == uf.XPATH_LINHAS_DE_IMAGEM and leituras["n"] < 30:
+            leituras["n"] += 1
+            return 0
+        return reais(seletor)
+    p.engine.contar = contar_lento
+
+    resultado = uf.processar_ficha(p, "4500063671.0071", "0071", NOVAS, uf.MODO_SUBSTITUIR,
+                                   esperas=uf.Esperas(fator=2))
+
+    assert resultado.ok
+    assert p.engine.fotos == ["0071.JPG", "0071a.JPG"]

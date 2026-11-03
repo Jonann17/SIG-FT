@@ -148,6 +148,7 @@ TEXTOS: dict[str, Texto] = {
             marcar("Na planilha: COMPLETO se a ficha tem documentos; senão INCOMPLETO, com a nota "
                    "\"Faltam documentos\"."),
             marcar("Parar no meio termina a ficha atual; as seguintes não são tocadas."),
+            marcar("Portal lento? Escolha Lento ou Muito lento: o robô espera mais antes de desistir."),
         ),
     ),
     "CopiaFichas": Texto(

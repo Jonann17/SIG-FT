@@ -34,7 +34,6 @@ import time
 from sigft.core.rpa import seletores_duplicada as sel
 from sigft.services.duplicadas_injetor import ResultadoDaSecao, _log_de
 
-PAUSA_ABERTURA_FORM = 2.0
 PAUSA_APOS_UPLOAD = 2.0
 
 # Teto da espera pelo processamento do FilePond, e o intervalo entre olhadas.
@@ -43,6 +42,8 @@ PAUSA_APOS_UPLOAD = 2.0
 # `esperar_processamento` para por que a espera é por ESTADO e não por relógio.
 TIMEOUT_PROCESSAMENTO = 60.0
 INTERVALO_DE_POLL = 0.5
+# Quanto se espera o diálogo "Adicionar Imagens" montar os campos (10 s).
+TENTATIVAS_DO_FORMULARIO = 20
 
 
 def esperar_processamento(portal, callback_log=None, timeout=TIMEOUT_PROCESSAMENTO):
@@ -153,12 +154,14 @@ def subir_uma(portal, legenda, caminho, callback_log=None):
 MAX_ARQUIVOS_POR_ENVIO = 10
 
 
-def subir_juntas(portal, legenda, caminhos, callback_log=None):
+def subir_juntas(portal, legenda, caminhos, callback_log=None, *, timeout_confirmacao=None,
+                 timeout_processamento=TIMEOUT_PROCESSAMENTO, tentativas_do_formulario=None):
     """Sobe até `MAX_ARQUIVOS_POR_ENVIO` imagens num só diálogo, todas com a
     mesma descrição, e confirma UMA vez. `True` se todas entraram.
 
     Com um arquivo é exatamente o `subir_uma` de sempre: o motor recebe o
-    caminho, não uma lista de um.
+    caminho, não uma lista de um. Os `timeout_*` e as `tentativas_*` são do
+    portal lento: o Upload de Fotos os multiplica (`upload_fotos.Esperas`).
     """
     _log = _log_de(callback_log)
     if not 1 <= len(caminhos) <= MAX_ARQUIVOS_POR_ENVIO:
@@ -168,7 +171,17 @@ def subir_juntas(portal, legenda, caminhos, callback_log=None):
     if not _abrir_formulario(portal):
         _log("      [Erro] Não achei 'Adicionar imagens' nesta tela.")
         return False
-    time.sleep(PAUSA_ABERTURA_FORM)
+    # ESPERA os campos do diálogo, e não 2 s fixos: com o portal lento o
+    # diálogo ainda não estava montado, e as descrições ficavam em branco em
+    # silêncio (2026-11-03). No caso bom sai na primeira olhada.
+    campos = (sel.XPATH_IMAGENS_DESCRICAO_ES, sel.XPATH_IMAGENS_DESCRICAO_PT)
+    for _ in range(tentativas_do_formulario or TENTATIVAS_DO_FORMULARIO):
+        if any(portal.engine.contar(seletor) for seletor in campos):
+            break
+        time.sleep(INTERVALO_DE_POLL)
+    else:
+        _log("      [Aviso] O diálogo 'Adicionar Imagens' não mostrou os campos de descrição: "
+             "a imagem pode subir sem descrição.")
 
     # A ficha é bilíngue e a legenda que veio da original serve para os dois
     # idiomas -- não temos a versão em espanhol dela, e traduzir seria inventar.
@@ -188,7 +201,7 @@ def subir_juntas(portal, legenda, caminhos, callback_log=None):
     # ESPERA PELO FIM DO UPLOAD, e não por um relógio. Ver
     # `esperar_processamento`: clicar em "Confirmar" no meio do processamento é
     # o que fazia o portal não devolver toast nenhum.
-    if not esperar_processamento(portal, callback_log):
+    if not esperar_processamento(portal, callback_log, timeout=timeout_processamento):
         return False
 
     # A PROVA de que o arquivo foi ACEITO: o FilePond cria um `<li>` na lista.
@@ -211,7 +224,8 @@ def subir_juntas(portal, legenda, caminhos, callback_log=None):
     # 2026-08-20). O portal responde com toast próprio: "A imagem foi
     # adicionada com sucesso!".
     return portal.clicar_e_confirmar(sel.XPATH_IMAGENS_CONFIRMAR,
-                                     sel.ABA_DOCUMENTOS_EDICAO, callback_log)
+                                     sel.ABA_DOCUMENTOS_EDICAO, callback_log,
+                                     timeout_s=timeout_confirmacao)
 
 
 TENTATIVAS_DE_FECHAR = 3
