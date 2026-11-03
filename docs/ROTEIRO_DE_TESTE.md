@@ -670,57 +670,83 @@ passos dele aqui.
 
 ---
 
-## Etapa 5c — Revisão das listas no AMP (2026-10-27, sem portal)
+## Etapa 5c — Revisão das listas no AMP (v2, 2026-11-03, sem portal)
 
-A partir da **1.3.1-rc.2**. É a validação na GE da peça 2
-(`docs/superpowers/specs/2026-10-27-amp-revisao-de-listas-design.md`, §9). O AMP só
-existe dentro da rede da GE: estes passos são no PC da GE. Nenhum arquivo é alterado:
-o resultado é um HTML novo na pasta de cada lista.
+A partir da versão de teste que levar a peça 2 v2. É a validação na GE de
+`docs/superpowers/specs/2026-11-03-amp-revisao-com-arquivos-design.md`. O AMP só existe dentro da
+rede da GE, então estes passos são no PC da GE. Nenhum arquivo é alterado: o resultado é um HTML
+novo na pasta de cada lista.
 
 **Antes de começar:**
 
-- o SIG-FT 1.3.1-rc.2 instalado;
-- o workflow `amp/revisao_de_listas/workflow_revisao_de_listas.json` importado e
-  **publicado** no n8n do AMP, com a credencial e o modelo ligados (passo a passo em
-  `amp/revisao_de_listas/LEIA-ME.md`);
-- em Configuração → Chaves de API: **AMP Webhook (URL)** com a *Production URL* do
-  webhook e **AMP Webhook (chave)** com o mesmo valor da credencial `X-SIGFT-Chave`;
+- a versão de teste instalada;
+- o agente *Spare Parts Document Reviewer* criado no AMP;
+- o workflow `amp/revisao_de_listas/workflow_revisao_de_listas.json` importado e **publicado** no
+  n8n, com a credencial, o agente e o Timeout no AMP Agent. O passo a passo está em
+  `amp/revisao_de_listas/LEIA-ME.md`;
 - a 5b.3 feita **nesta sessão do SIG-FT**: a Revisão no AMP parte da última conferência.
 
-**5c.1 — Testar conexão.** PMIB Manager → aba **Revisão no AMP** → **"Testar conexão com
-o AMP"**. O console escreve duas linhas:
+**5c.1 — Webhook e conexão.** No PMIB Manager → aba **Revisão no AMP** → **Webhook…**, ponha a
+*Production URL* e a chave da credencial `X-SIGFT-Chave` e salve. A linha do webhook passa a mostrar
+o endereço e "chave posta". Clique em **"Testar conexão com o AMP"**:
 
-| Linha | O que prova |
+| Linha no console | O que prova |
 |---|---|
-| `OK      Ping: workflow 2026-10-27 ...` | a rede, a chave e o workflow publicado |
-| `OK      Eco: os N códigos voltaram iguais` | o AMP não mascara os códigos das listas nem os CÓDIGOS DO MATERIAL |
+| `OK      Ping: workflow 2026-11-03 (HTTP 200, ...)` | a rede, a chave e o workflow publicado |
 
-`HTTP 401/403` é chave diferente da credencial; `HTTP 404`, workflow não publicado ou
-a URL de teste no lugar da *Production URL*. **`FALHOU  Eco: ... (mascarado pelo AMP?)`:
-pare aqui e mande as duas linhas**: com código mascarado, a tabela remontada não serve.
+`FALHOU ... HTTP 403` é a chave diferente da credencial. `HTTP 404` é o workflow não publicado ou a
+Test URL no lugar da *Production URL*. A janela já recusa a Test URL, mas um endereço errado ainda dá
+404.
 
-**5c.2 — Uma lista.** Clique em **"Revisar no AMP"**. A rodada manda as listas da
-conferência uma por vez (até 15 minutos cada); para o primeiro teste, clique em
-**"Parar"** logo que a primeira lista for ao AMP: as outras ficam "parado".
+**5c.2 — As listas.** A tabela vem cheia ao abrir a aba:
+- todas as listas aparecem marcadas;
+- a que tem falta fica sem caixa, com a falta na coluna AMP;
+- o console diz quantas podem ir.
 
-1. A coluna **AMP** da lista vira "HTML pronto: ...", e o arquivo
-   `<código>[<em uso>-<atual>] revisao AMP.html` aparece na pasta do `_STATUS_PMIB`.
-   Dois cliques na linha abrem o HTML.
-2. O HTML traz o resumo, o que mudou (com a página e o item de origem), as
-   divergências e o `_STATUS_PMIB` inteiro remontado.
-3. Anote o tempo: o console diz os segundos da lista.
+Clique em **Desmarcar todas** e marque **uma** lista.
 
-**5c.3 — Conferir o HTML.** Com os dois PDFs e o `_STATUS_PMIB` abertos, confira 5
-itens do "que mudou" contra as páginas citadas. Copie a tabela remontada e cole numa
-**cópia** do `_STATUS_PMIB` (nunca no original nesta fase): as colunas caem no lugar?
+**5c.3 — Uma lista.** Clique em **"Revisar no AMP"**. O console mostra:
+1. o começo, com a lista marcada, as que ficaram fora e onde está o log;
+2. o `Ping: workflow 2026-11-03`;
+3. `vai:`, com o nome e o tamanho de cada arquivo;
+4. uma linha `… esperando o AMP` a cada 30 s;
+5. `resposta: HTTP 200 em M:SS · execução N · o workflow recebeu 3 arquivo(s)`;
+6. `✓ HTML gravado: <código>[<em uso>-<atual>] revisao AMP.html`.
 
-**5c.4 — Se falhar.** A coluna AMP diz "falhou: ..." e o botão **"Copiar
-diagnóstico"** liga. Copie, abra uma conversa nova com o Claude (com o repositório
-luanccozer/SIG-FT) e cole: o texto traz os números do pedido, a resposta do n8n, o
-número da execução e onde está o código, sem texto de documento e sem a chave. O
-mesmo texto fica em `Documentos\SIG-FT\logs\amp\`, e a tabela de sintomas está no
-`amp/revisao_de_listas/LEIA-ME.md`. Com o número da execução, o n8n mostra (menu
-*Executions*) em que nó parou.
+Confira na tela e na pasta:
+- o HTML aparece na pasta do `_STATUS_PMIB`, e dois cliques na linha o abrem;
+- a lista **se desmarcou** sozinha;
+- o mesmo texto está em `Documentos\SIG-FT\logs\amp\amp_revisao_*.log`.
+
+Anote o tempo e o número da execução.
+
+**5c.4 — Duas ou três listas.** Marque duas ou três listas e deixe uma desmarcada.
+- A desmarcada não vai, e o começo do log diz isso.
+- Cada lista anda sozinha na coluna AMP.
+- Se uma falhar, clique em **Revisar no AMP** de novo: vão só as que continuaram marcadas, porque
+  as prontas se desmarcaram.
+
+**5c.5 — Conferir o HTML.** Com os dois PDFs e o `_STATUS_PMIB` abertos:
+- confira 5 mudanças contra as páginas citadas;
+- confira a tabela de ações (CRIAR, EXCLUIR, SUBSTITUIR) numa **cópia** do `_STATUS_PMIB`, nunca no
+  original nesta fase.
+
+O conteúdo depende do system prompt, que se melhora no AMP. O passo a passo está no LEIA-ME, em
+"Melhorar o agente".
+
+**5c.6 — Se falhar.** A coluna AMP diz "falhou: ...", e o botão **"Copiar diagnóstico"** liga.
+1. Copie o diagnóstico e abra uma conversa nova com o Claude, com o repositório luanccozer/SIG-FT.
+2. Cole o diagnóstico. O texto traz:
+   - os nomes e os tamanhos dos arquivos;
+   - a resposta do n8n;
+   - o número da execução;
+   - onde está o código.
+
+   Ele não leva conteúdo de documento nem a chave.
+3. Com o número da execução, o n8n mostra em que nó a execução parou (menu *Executions*).
+
+A tabela de sintomas está no `amp/revisao_de_listas/LEIA-ME.md`, que também ensina o mesmo teste
+pelo PowerShell, sem o SIG-FT.
 
 ---
 
@@ -813,14 +839,18 @@ ETAPA 5b — Aconex ao vivo e Conferência de Revisões
        2ª rodada não baixou nada? ......... [ sim / não ]
   5b.4 Sem cofre: avisou e não baixou? .... [ sim / não testei ]
 
-ETAPA 5c — Revisão das listas no AMP
-  5c.1 Ping .............................. [ OK / falhou: ______ ]
-       Eco: códigos voltaram iguais? ..... [ sim / mascarado: ______ ]
-  5c.2 HTML gravado na pasta? ............ [ sim / falhou: ______ ]
-       tempo da lista .................... [ ____ s ]
-  5c.3 5 itens conferem com os PDFs? ..... [ ___ de 5 ]
-       tabela colou no lugar? ............ [ sim / não: ______ ]
-  5c.4 Falhou? colei o diagnóstico ....... [ não falhou / colei na conversa ]
+ETAPA 5c — Revisão das listas no AMP (v2)
+  5c.1 Webhook salvo na aba? ............. [ sim / não: ______ ]
+       Ping ............................. [ OK / falhou: ______ ]
+  5c.2 Listas marcadas; falta sem caixa? . [ sim / não: ______ ]
+  5c.3 HTML gravado na pasta? ............ [ sim / falhou: ______ ]
+       tempo da lista e execução ......... [ ____ min · exec. ______ ]
+       batimento a cada 30 s no console? . [ sim / não ]
+       a lista se desmarcou? ............. [ sim / não ]
+  5c.4 A desmarcada ficou de fora? ....... [ sim / não: ______ ]
+  5c.5 5 mudanças conferem com os PDFs? .. [ ___ de 5 ]
+       ações aplicadas numa cópia? ....... [ sim / não: ______ ]
+  5c.6 Falhou? colei o diagnóstico ....... [ não falhou / colei na conversa ]
 ```
 
 ---

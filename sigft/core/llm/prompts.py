@@ -1447,3 +1447,34 @@ Responda APENAS com a lista JSON, um objeto por item, sem texto antes ou depois:
 ]
 O valor de "item" é o número do cabeçalho "### ITEM N" daquele item.
 """
+
+
+def montar_docpack_pasta(*, codigo, titulo, especificacao, capitulo, pastas_existentes):
+    """DocPack (2026-11-03): onde criar a pasta de uma lista de sobressalentes nova.
+
+    A pasta final tem o nome do subsistema, que a mapeadora não traz: é o palpite
+    que a pessoa mais erra digitando. A IA vê as pastas que já existem (dois níveis)
+    para preferir uma delas a inventar outra; a resposta só preenche os campos da
+    tela, e quem confirma é a pessoa (`services/docpack.sugerir_destino`).
+    """
+    return f"""Você organiza as pastas das listas de sobressalentes da modernização da usina de Itaipu.
+Cada lista fica em <capítulo>/<sistema, opcional>/<pasta final>, onde a pasta final tem o nome do SUBSISTEMA a que a lista se refere, em maiúsculas e sem acento (ex.: "SISTEMA DE EXCITACAO", "GERADOR DIESEL").
+
+Diga onde criar a pasta desta lista:
+- código: {codigo}
+- título: {titulo}
+- especificação técnica: {especificacao}
+- capítulo: {capitulo}
+
+As pastas que já existem (capítulo -> subpastas):
+{pastas_existentes}
+
+Regras:
+- "capitulo": use uma das pastas de primeiro nível acima, escrita igual. Só invente outra se nenhuma servir.
+- "sistema": uma subpasta existente do capítulo, quando a lista pertence a um sistema que já tem pasta; senão, string vazia.
+- "pasta": o nome do subsistema, tirado do título. Se já existe uma pasta com esse subsistema, use o mesmo nome.
+- Nenhum nome pode ter / \\ : * ? " < > |.
+
+Responda APENAS com o JSON, sem texto antes ou depois:
+{{"capitulo": "...", "sistema": "...", "pasta": "...", "motivo": "uma frase dizendo por quê"}}
+"""

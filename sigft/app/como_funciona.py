@@ -219,17 +219,28 @@ TEXTOS: dict[str, Texto] = {
         ),
     ),
     "PMIBManager.amp": Texto(
-        marcar("Manda ao AMP, uma por vez, as listas da última conferência e guarda o que mudou num HTML."),
+        marcar("Manda ao AMP, uma por vez, as listas marcadas da última conferência e guarda o que mudou "
+               "num HTML."),
         (
-            marcar("Pede uma conferência feita nesta sessão e o webhook do AMP em Configuração → "
-                   "Chaves de API."),
-            marcar("O AMP compara o PDF da revisão em uso com o da revisão atual e com o _STATUS_PMIB "
-                   "da lista."),
-            marcar("O HTML vai para a pasta da lista, sem sobrescrever. Nada muda no Excel: você "
-                   "confere e aplica."),
-            marcar("Lista sem algum dos arquivos fica de fora, com a falta na tabela. Parar deixa as "
-                   "que faltam para depois."),
+            marcar("Pede uma conferência feita nesta sessão e o webhook do workflow, no botão Webhook… "
+                   "desta aba."),
+            marcar("As listas vêm todas marcadas; a que tem falta fica sem caixa. As que voltam com HTML se "
+                   "desmarcam sozinhas."),
+            marcar("O agente do AMP recebe os dois PDFs e o _STATUS_PMIB como estão e devolve o que mudou e as "
+                   "ações no controle."),
+            marcar("O HTML vai para a pasta da lista, sem sobrescrever. Nada muda no Excel: você confere e "
+                   "aplica."),
+            marcar("O console mostra cada passo, e o log de cada rodada fica em Documentos\\SIG-FT\\logs\\amp."),
             marcar("Falhou? Copiar diagnóstico leva o detalhe técnico, sem o texto dos documentos."),
+        ),
+    ),
+    "PMIBManager.docpack": Texto(
+        marcar("Cria a pasta, com os templates, de cada lista que ainda não tem _STATUS_PMIB."),
+        (
+            marcar("Lê a mapeadora: entram as listas sem link e sem _STATUS_PMIB na pasta raiz."),
+            marcar("Capítulo, sistema e pasta final se editam com dois cliques; a IA pode sugerir."),
+            marcar("Cada pasta ganha o _STATUS_PMIB, a lista com preço (PB021) e LMR, IMAGENS e DATASHEETS."),
+            marcar("Nada é sobrescrito, e a mapeadora não muda: rode o Gestão PMIB depois para ligar."),
         ),
     ),
     "SearchPMIB": Texto(
@@ -249,7 +260,7 @@ TEXTOS: dict[str, Texto] = {
 # chaves das abas, na ordem delas. O bloco da seção mostra o texto da aba aberta.
 ABAS_DAS_SECOES: dict[str, tuple[str, ...]] = {
     "LMR": ("LMR.upload", "LMR.exclusao"),
-    "PMIBManager": ("PMIBManager.gestao", "PMIBManager.conferencia", "PMIBManager.amp"),
+    "PMIBManager": ("PMIBManager.gestao", "PMIBManager.conferencia", "PMIBManager.amp", "PMIBManager.docpack"),
 }
 
 

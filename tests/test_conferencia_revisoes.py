@@ -81,8 +81,9 @@ def test_ler_mapeadora_le_as_colunas_o_link_e_a_data(tmp_path):
     assert mapeadora.caminho == caminho
     assert mapeadora.salva_em == datetime.fromtimestamp(1_790_000_000)
     assert mapeadora.listas == [
-        cr.ListaNaMapeadora(CODIGO, "0B", "Em Processo", "Aprovado", "0", LINK),
-        cr.ListaNaMapeadora(OUTRO, "1", "", "Em Processo", "1", None),
+        # A DESCRIÇÃO é uma das colunas opcionais (DocPack, 2026-11-03).
+        cr.ListaNaMapeadora(CODIGO, "0B", "Em Processo", "Aprovado", "0", LINK, descricao="LISTA"),
+        cr.ListaNaMapeadora(OUTRO, "1", "", "Em Processo", "1", None, descricao="LISTA"),
     ]
 
 

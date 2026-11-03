@@ -111,8 +111,8 @@ def _autospec(parent, controller):
 
 
 def _pmib_manager(parent, controller):
-    # 2026-10-27: uma seção de abas (Gestão PMIB, Conferência de Revisões e
-    # Revisão no AMP), como a Aplicação LMR.
+    # 2026-10-27: uma seção de abas (Gestão PMIB, Conferência de Revisões,
+    # Revisão no AMP e, desde 2026-11-03, DocPack), como a Aplicação LMR.
     from sigft.app_qt.views.gestao_sobressalentes import ModuloGestaoSobressalentes
     return ModuloGestaoSobressalentes(parent, controller)
 

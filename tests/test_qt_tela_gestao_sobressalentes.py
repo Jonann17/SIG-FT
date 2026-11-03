@@ -6,16 +6,16 @@ from sigft.app_qt import catalogo
 from sigft.app_qt import main as qmain
 from sigft.app_qt.views.gestao_sobressalentes import ModuloGestaoSobressalentes
 
-ABAS = ["Gestão PMIB", "Conferência de Revisões", "Revisão no AMP"]
+ABAS = ["Gestão PMIB", "Conferência de Revisões", "Revisão no AMP", "DocPack"]
 
 
-def test_tres_abas_com_um_console_e_uma_barra(qt_interface, qtbot):
+def test_quatro_abas_com_um_console_e_uma_barra(qt_interface, qtbot):
     secao = ModuloGestaoSobressalentes()
     qtbot.addWidget(secao)
     assert secao.label_titulo.text() == "Gestão de Sobressalentes"
     assert list(secao.abas.abas) == ABAS
     assert secao.abas.get() == "Gestão PMIB"
-    telas = (secao.tela_gestao, secao.tela_conferencia, secao.tela_amp)
+    telas = (secao.tela_gestao, secao.tela_conferencia, secao.tela_amp, secao.tela_docpack)
     for nome, tela in zip(ABAS, telas):
         assert secao.abas.tab(nome).isAncestorOf(tela), nome
         assert tela.header is None, nome
@@ -44,7 +44,7 @@ def test_as_tabelas_cabem_na_aba(qt_interface, qtbot):
     secao.show()
     qtbot.waitExposed(secao)
     for nome, tabela in (("Conferência de Revisões", secao.tela_conferencia.tabelas["aprovada"]),
-                         ("Revisão no AMP", secao.tela_amp.tabela)):
+                         ("Revisão no AMP", secao.tela_amp.tabela), ("DocPack", secao.tela_docpack.tabela)):
         secao.abas.set(nome)
         qtbot.wait(20)
         soma = sum(tabela.columnWidth(i) for i in range(tabela.columnCount()))

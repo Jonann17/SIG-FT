@@ -312,6 +312,10 @@ LLM_TASKS: dict[str, dict[str, str]] = {
     # prompt e saida curta -- o modelo padrao da conta, e a falha so degrada
     # para a busca de hoje (spec 2026-10-08-escolha-de-pdm-em-duas-passadas).
     "interpretar_material": {"provider": PROVIDER_GEMINI, "model": "gemini-3-flash-preview"},
+    # [2026-11-03] DocPack: sugere o capitulo, o sistema e o nome da pasta de uma
+    # lista nova, vendo as pastas que ja existem. Uma chamada por lista, a pedido,
+    # saida curta: o modelo padrao da conta.
+    "docpack_pasta": {"provider": PROVIDER_GEMINI, "model": "gemini-3-flash-preview"},
 }
 
 # As tarefas que o painel "Modelos de IA" lista no modo avançado (2026-10-16):
@@ -536,10 +540,11 @@ ENV_VAR_POR_CHAVE: dict[str, str] = {
     "OPENROUTER": "OPENROUTER_API_KEY",
     "EMPRESA_LLM_BASE_URL": "EMPRESA_LLM_BASE_URL",
     "EMPRESA_LLM_API_KEY": "EMPRESA_LLM_API_KEY",
-    # 2026-10-27: o webhook do workflow "Revisão das listas" no n8n da GE (o AMP),
-    # `amp/revisao_de_listas/`. A chave vai no cabeçalho X-SIGFT-Chave, nunca no log.
-    "AMP_WEBHOOK_URL": "SIGFT_AMP_WEBHOOK_URL",
-    "AMP_WEBHOOK_CHAVE": "SIGFT_AMP_WEBHOOK_CHAVE",
+    # 2026-11-03: o webhook do workflow "Revisão das listas" no n8n da GE (o AMP),
+    # `amp/revisao_de_listas/`. Configura-se na própria aba (botão Webhook…): cada workflow
+    # do AMP tem os seus nomes. A chave vai no cabeçalho X-SIGFT-Chave, nunca no log.
+    "AMP_REVISAO_LISTAS_URL": "SIGFT_AMP_REVISAO_LISTAS_URL",
+    "AMP_REVISAO_LISTAS_CHAVE": "SIGFT_AMP_REVISAO_LISTAS_CHAVE",
 }
 
 # CP 3.2: mapa provider -> chave LÓGICA de `ENV_VAR_POR_CHAVE` (consumido por

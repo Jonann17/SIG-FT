@@ -112,9 +112,9 @@ def test_env_var_por_chave_usa_os_nomes_atuais_exatos():
         "OPENROUTER": "OPENROUTER_API_KEY",
         "EMPRESA_LLM_BASE_URL": "EMPRESA_LLM_BASE_URL",
         "EMPRESA_LLM_API_KEY": "EMPRESA_LLM_API_KEY",
-        # 2026-10-27: o webhook do workflow "Revisão das listas" no n8n da GE (o AMP).
-        "AMP_WEBHOOK_URL": "SIGFT_AMP_WEBHOOK_URL",
-        "AMP_WEBHOOK_CHAVE": "SIGFT_AMP_WEBHOOK_CHAVE",
+        # 2026-11-03: o webhook do workflow "Revisão das listas", configurado na aba.
+        "AMP_REVISAO_LISTAS_URL": "SIGFT_AMP_REVISAO_LISTAS_URL",
+        "AMP_REVISAO_LISTAS_CHAVE": "SIGFT_AMP_REVISAO_LISTAS_CHAVE",
     }
 
 
@@ -178,7 +178,8 @@ TAREFAS_DO_CP_3_1 = {
 #   Modificados, para a ficha em ingles.
 #   interpretar_material (2026-10-08): passada 1 da escolha de PDM do Cria
 #   Fichas -- diz o que o material E, antes da busca no catalogo.
-TAREFAS_ACRESCENTADAS_DEPOIS = {"traduzir_pdm", "interpretar_material"}
+#   docpack_pasta (2026-11-03): sugestao de pasta do DocPack.
+TAREFAS_ACRESCENTADAS_DEPOIS = {"traduzir_pdm", "interpretar_material", "docpack_pasta"}
 
 
 def test_llm_tasks_tem_exatamente_as_5_tarefas_do_cp_3_1():
@@ -199,6 +200,7 @@ def test_llm_tasks_provider_por_tarefa_segue_a_decisao():
         # acrescentadas depois do CP 3.1 -- ver TAREFAS_ACRESCENTADAS_DEPOIS
         "traduzir_pdm": sigft_config.PROVIDER_GEMINI,
         "interpretar_material": sigft_config.PROVIDER_GEMINI,
+        "docpack_pasta": sigft_config.PROVIDER_GEMINI,
     }
     assert sigft_config.PROVIDER_XAI == "xai"
     assert sigft_config.PROVIDER_GEMINI == "gemini"
@@ -436,8 +438,8 @@ def test_carregar_chaves_le_das_variaveis_de_ambiente(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "chave-openrouter-env")
     monkeypatch.setenv("EMPRESA_LLM_BASE_URL", "https://ia.empresa.exemplo/v1")
     monkeypatch.setenv("EMPRESA_LLM_API_KEY", "chave-empresa-env")
-    monkeypatch.setenv("SIGFT_AMP_WEBHOOK_URL", "https://ampworkflow.exemplo/webhook/sigft")
-    monkeypatch.setenv("SIGFT_AMP_WEBHOOK_CHAVE", "chave-amp-env")
+    monkeypatch.setenv("SIGFT_AMP_REVISAO_LISTAS_URL", "https://ampworkflow.exemplo/webhook/sigft")
+    monkeypatch.setenv("SIGFT_AMP_REVISAO_LISTAS_CHAVE", "chave-amp-env")
 
     chaves = sigft_config.carregar_chaves(CAMINHO_INEXISTENTE)
 
@@ -449,8 +451,8 @@ def test_carregar_chaves_le_das_variaveis_de_ambiente(monkeypatch):
         "OPENROUTER": "chave-openrouter-env",
         "EMPRESA_LLM_BASE_URL": "https://ia.empresa.exemplo/v1",
         "EMPRESA_LLM_API_KEY": "chave-empresa-env",
-        "AMP_WEBHOOK_URL": "https://ampworkflow.exemplo/webhook/sigft",
-        "AMP_WEBHOOK_CHAVE": "chave-amp-env",
+        "AMP_REVISAO_LISTAS_URL": "https://ampworkflow.exemplo/webhook/sigft",
+        "AMP_REVISAO_LISTAS_CHAVE": "chave-amp-env",
     }
 
 
@@ -467,8 +469,8 @@ def test_carregar_chaves_sem_env_e_sem_arquivo_retorna_none_em_todas():
         "OPENROUTER": None,
         "EMPRESA_LLM_BASE_URL": None,
         "EMPRESA_LLM_API_KEY": None,
-        "AMP_WEBHOOK_URL": None,
-        "AMP_WEBHOOK_CHAVE": None,
+        "AMP_REVISAO_LISTAS_URL": None,
+        "AMP_REVISAO_LISTAS_CHAVE": None,
     }
 
 
@@ -534,8 +536,8 @@ def test_json_corrompido_retorna_apenas_defaults_do_env(monkeypatch, tmp_path):
         "OPENROUTER": None,
         "EMPRESA_LLM_BASE_URL": None,
         "EMPRESA_LLM_API_KEY": None,
-        "AMP_WEBHOOK_URL": None,
-        "AMP_WEBHOOK_CHAVE": None,
+        "AMP_REVISAO_LISTAS_URL": None,
+        "AMP_REVISAO_LISTAS_CHAVE": None,
     }
 
 
@@ -560,8 +562,8 @@ def test_json_valido_mas_nao_e_objeto_tambem_cai_para_defaults(monkeypatch, tmp_
         "OPENROUTER": None,
         "EMPRESA_LLM_BASE_URL": None,
         "EMPRESA_LLM_API_KEY": None,
-        "AMP_WEBHOOK_URL": None,
-        "AMP_WEBHOOK_CHAVE": None,
+        "AMP_REVISAO_LISTAS_URL": None,
+        "AMP_REVISAO_LISTAS_CHAVE": None,
     }
 
 
@@ -580,8 +582,8 @@ def test_json_vazio_tambem_e_tratado_como_corrompido(tmp_path):
         "OPENROUTER": None,
         "EMPRESA_LLM_BASE_URL": None,
         "EMPRESA_LLM_API_KEY": None,
-        "AMP_WEBHOOK_URL": None,
-        "AMP_WEBHOOK_CHAVE": None,
+        "AMP_REVISAO_LISTAS_URL": None,
+        "AMP_REVISAO_LISTAS_CHAVE": None,
     }
 
 
