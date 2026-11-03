@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QHBoxLayout, QMessageBox
 
 from sigft.app.idioma import marcar, t
 from sigft.app.textos_dialogos import MSG_LOGIN_LOTE
-from sigft.app_qt.widgets import blocos, controles, pickers
+from sigft.app_qt.widgets import blocos, controles, dialogos_selecao, pickers
 from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.app_qt.widgets.trava_robo import ComTravaDeRobo
@@ -135,6 +135,10 @@ class ModuloUploadFotos(ComTravaDeRobo, ModuleFrame):
         if not fichas:
             self.avisar(t("Aviso"), t("Nenhuma foto da pasta corresponde a uma ficha do _STATUS_PMIB."), "aviso")
             return None
+        fichas = self._escolher_fichas(fichas)
+        if not fichas:
+            self.log("Nenhuma ficha escolhida: nada foi feito.")
+            return None
         resumo = t("{n} ficha(s) e {f} foto(s) para subir.", n=len(fichas),
                    f=sum(len(caminhos) for _p, _q, caminhos in fichas))
         if modo == svc.MODO_SUBSTITUIR:
@@ -142,6 +146,25 @@ class ModuloUploadFotos(ComTravaDeRobo, ModuleFrame):
         if not self.perguntar_sim_nao(t("Confirmar"), resumo + "\n\n" + t("Começar?")):
             return None
         return fichas
+
+    def _dialogo_de_fichas(self, fichas, ao_confirmar):
+        """A janela das fichas da pasta: marca uma a uma, ou "Selecionar Todos"."""
+        return dialogos_selecao.SelecaoMultiplaDialog(
+            self, itens=[t("{pmib}  ({n} foto(s))", pmib=pmib, n=len(caminhos)) for pmib, _q, caminhos in fichas],
+            titulo=t("Fichas para subir as fotos"),
+            instrucao=t("Marque as fichas que vão receber as fotos:"),
+            geometria="460x520", modal=True, com_selecionar_todos=True, devolver_indices=True,
+            texto_confirmar=t("Subir nas marcadas"), ao_confirmar=ao_confirmar)
+
+    def _escolher_fichas(self, fichas):
+        """As fichas que a pessoa marcou (`[]` se fechou a janela). Roda na
+        thread do robô; a janela abre na da interface."""
+        escolhidas = []
+
+        def abrir():
+            self._dialogo_de_fichas(fichas, escolhidas.extend).esperar()
+        self._na_interface_e_esperar(abrir, aviso=t("Marque as fichas na janela aberta."))
+        return [fichas[i] for i in escolhidas]
 
     def parar(self) -> None:
         if self.automacao is not None:

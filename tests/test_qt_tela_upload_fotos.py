@@ -54,6 +54,9 @@ def tela(qt_interface, qtbot, monkeypatch):
         return t.robo
     monkeypatch.setattr(svc, "UploadFotosAutomation", criar_robo)
     monkeypatch.setattr(svc, "marcar_status", lambda *_a, **_k: (1, "1 linha(s) marcada(s) no _STATUS_PMIB."))
+    # A janela de escolha das fichas: por padrão, a pessoa marca todas.
+    t.escolha = None
+    monkeypatch.setattr(t, "_escolher_fichas", lambda fichas: fichas if t.escolha is None else t.escolha(fichas))
     return t
 
 
@@ -85,3 +88,43 @@ def test_a_velocidade_do_portal_chega_ao_robo(tela, qtbot):
     qtbot.waitUntil(lambda: "fechou" in tela.robo.passos, timeout=3000)
 
     assert tela.esperas_do_robo == [svc.Esperas(fator=4)]
+
+
+# --- escolher as fichas (2026-11-03) ------------------------------------------
+def _duas_fichas(monkeypatch):
+    monkeypatch.setattr(svc, "agrupar_fotos", lambda _p: (
+        {"0071": ["/fotos/0071.jpg"], "0072": ["/fotos/0072.jpg", "/fotos/0072a.jpg"]}, []))
+    monkeypatch.setattr(svc, "ler_codigos", lambda _c: ["4500063671.0071", "4500063671.0072"])
+
+
+def test_so_as_fichas_escolhidas_vao_para_o_robo(tela, qtbot, monkeypatch):
+    _duas_fichas(monkeypatch)
+    tela.escolha = lambda fichas: [fichas[1]]
+
+    tela.btn_run.click()
+    qtbot.waitUntil(lambda: "fechou" in tela.robo.passos, timeout=3000)
+
+    assert ("processar", 1, svc.MODO_SUBSTITUIR) in tela.robo.passos
+    assert "1 ficha(s) e 2 foto(s)" in tela.perguntas[0]
+
+
+def test_nenhuma_ficha_escolhida_nao_abre_o_navegador(tela, qtbot, monkeypatch):
+    _duas_fichas(monkeypatch)
+    tela.escolha = lambda _fichas: []
+
+    tela.btn_run.click()
+    qtbot.waitUntil(tela.btn_run.isEnabled, timeout=3000)
+
+    assert tela.robo.passos == [] and tela.perguntas == []
+
+
+def test_a_janela_das_fichas_tem_selecionar_todos(tela):
+    fichas = [("4500063671.0071", "0071", ["a"]), ("4500063671.0072", "0072", ["b", "c"])]
+    escolhidas = []
+
+    dialogo = tela._dialogo_de_fichas(fichas, escolhidas.extend)
+    assert "4500063671.0072" in dialogo.listbox.item(1).text()
+    dialogo.botao_todos.click()
+    dialogo.botao_confirmar.click()
+
+    assert escolhidas == [0, 1]

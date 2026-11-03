@@ -139,8 +139,8 @@ TEXTOS: dict[str, Texto] = {
     "UploadFotos": Texto(
         marcar("Sobe as fotos de um subsistema nas fichas do portal e marca DOCUMENTOS E IMAGENS."),
         (
-            marcar("Recebe a pasta de fotos (0071.jpg, 0071a.jpg…) e o _STATUS_PMIB, que diz de qual "
-                   "ficha é cada final de 4 dígitos."),
+            marcar("Recebe a pasta de fotos (0071.jpg, 0071a.jpg…) e o _STATUS_PMIB; antes de começar, "
+                   "você marca as fichas ou Selecionar Todos."),
             marcar("Foto fora do padrão, sem ficha ou com final repetido em duas fichas não sobe: o "
                    "console lista cada uma."),
             marcar("Ficha que já tem fotos: o robô as exclui antes de subir, ou pergunta, conforme o "
