@@ -219,16 +219,18 @@ TEXTOS: dict[str, Texto] = {
         ),
     ),
     "PMIBManager.amp": Texto(
-        marcar("Manda ao AMP, uma por vez, as listas da última conferência e guarda o que mudou num HTML."),
+        marcar("Manda ao AMP, uma por vez, as listas marcadas da última conferência e guarda o que mudou "
+               "num HTML."),
         (
-            marcar("Pede uma conferência feita nesta sessão e o webhook do AMP em Configuração → "
-                   "Chaves de API."),
-            marcar("O AMP compara o PDF da revisão em uso com o da revisão atual e com o _STATUS_PMIB "
-                   "da lista."),
-            marcar("O HTML vai para a pasta da lista, sem sobrescrever. Nada muda no Excel: você "
-                   "confere e aplica."),
-            marcar("Lista sem algum dos arquivos fica de fora, com a falta na tabela. Parar deixa as "
-                   "que faltam para depois."),
+            marcar("Pede uma conferência feita nesta sessão e o webhook do workflow, no botão Webhook… "
+                   "desta aba."),
+            marcar("As listas vêm todas marcadas; a que tem falta fica sem caixa. As que voltam com HTML se "
+                   "desmarcam sozinhas."),
+            marcar("O agente do AMP recebe os dois PDFs e o _STATUS_PMIB como estão e devolve o que mudou e as "
+                   "ações no controle."),
+            marcar("O HTML vai para a pasta da lista, sem sobrescrever. Nada muda no Excel: você confere e "
+                   "aplica."),
+            marcar("O console mostra cada passo, e o log de cada rodada fica em Documentos\\SIG-FT\\logs\\amp."),
             marcar("Falhou? Copiar diagnóstico leva o detalhe técnico, sem o texto dos documentos."),
         ),
     ),
