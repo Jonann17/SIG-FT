@@ -442,8 +442,8 @@ class PlaywrightEngine(RPAEngine):
         except Exception:  # noqa: BLE001 -- ver docstring
             return b""
 
-    def enviar_arquivo(self, seletor: str, caminho: str) -> None:
-        """`set_input_files` -- ver `engine.py`."""
+    def enviar_arquivo(self, seletor: str, caminho: str | list[str]) -> None:
+        """`set_input_files`, que aceita um caminho ou uma lista -- ver `engine.py`."""
         self._executar(lambda: self._loc(seletor).set_input_files(caminho))
 
     def wait_present(self, seletor: str) -> None:

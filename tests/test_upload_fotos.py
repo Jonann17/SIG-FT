@@ -92,16 +92,19 @@ def portal(monkeypatch):
     def _criar(fotos=(), documentos=0, sobe=True):
         engine = _Engine(fotos, documentos)
 
-        def _subir(_portal, arquivos, _log=None):
-            for descricao, caminho in arquivos:
+        def _subir(_portal, descricao, caminhos, _log=None):
+            engine.envios.append(list(caminhos))
+            for caminho in caminhos:
                 engine.ordem.append(("subiu", caminho, descricao))
                 if sobe:
                     engine.fotos.append(caminho.rsplit("/", 1)[-1])
-            return len(arquivos) if sobe else 0
+            return sobe
 
+        engine.envios = []
         monkeypatch.setattr(uf.extrator, "esperar_a_ficha_abrir", lambda _p: True)
         monkeypatch.setattr(uf.extrator, "abrir_secao", lambda *_a, **_k: True)
-        monkeypatch.setattr(uf.imagens, "subir_arquivos", _subir)
+        monkeypatch.setattr(uf.imagens, "subir_juntas", _subir)
+        monkeypatch.setattr(uf.imagens, "fechar_formulario", lambda *_a, **_k: True)
         return _Portal(engine)
     return _criar
 
@@ -269,3 +272,61 @@ def test_ler_codigos_da_coluna_codigo_pmib(tmp_path):
         codigos = uf.ler_codigos(str(caminho))
 
     assert codigos == ["4500063671.0071", "4500063671.0072"]
+
+
+# ===========================================================================
+# 4. Até 10 fotos por envio, e sem foto repetida quando um envio falha
+# ===========================================================================
+def test_doze_fotos_sobem_em_dois_envios_de_10_e_2(portal):
+    p = portal(fotos=[])
+    doze = [f"/fotos/0071{letra}.JPG" for letra in ["", *"abcdefghijk"]]
+
+    resultado = uf.processar_ficha(p, "4500063671.0071", "0071", doze)
+
+    assert resultado.ok
+    assert [len(envio) for envio in p.engine.envios] == [10, 2]
+
+
+def test_envio_que_falha_so_reenvia_as_que_nao_entraram(portal, monkeypatch):
+    # O diálogo pode ter gravado parte do envio antes de falhar. Reenviar tudo
+    # era foto repetida na ficha (como as duas 0052.JPG da captura de 2026-11-03).
+    p = portal(fotos=[])
+    envios = p.engine.envios
+
+    def _subir_falhando_na_primeira(_portal, descricao, caminhos, _log=None):
+        envios.append(list(caminhos))
+        if len(envios) == 1:                        # o envio grava só a 1ª e falha
+            p.engine.fotos.append(caminhos[0].rsplit("/", 1)[-1])
+            return False
+        p.engine.fotos.extend(c.rsplit("/", 1)[-1] for c in caminhos)
+        return True
+    monkeypatch.setattr(uf.imagens, "subir_juntas", _subir_falhando_na_primeira)
+
+    resultado = uf.processar_ficha(p, "4500063671.0071", "0071",
+                                   ["/fotos/0071.JPG", "/fotos/0071a.JPG", "/fotos/0071b.JPG"])
+
+    assert resultado.ok
+    assert sorted(p.engine.fotos) == ["0071.JPG", "0071a.JPG", "0071b.JPG"]  # nenhuma duas vezes
+    assert envios[1:] == [["/fotos/0071a.JPG"], ["/fotos/0071b.JPG"]]
+
+
+def test_o_lote_nao_volta_para_a_lista_entre_fichas(monkeypatch):
+    # `pesquisar_e_abrir` já vai para a lista; voltar antes era uma carga de
+    # página a mais por ficha.
+    class _PortalDoLote:
+        voltas = 0
+
+        def deve_parar(self):
+            return False
+
+        def ir_para_lista(self):
+            self.voltas += 1
+
+    monkeypatch.setattr(uf, "processar_ficha",
+                        lambda _p, pmib, quatro, *_a, **_k: uf.ResultadoDaFicha(pmib, quatro, ok=True))
+    robo = uf.UploadFotosAutomation()
+    robo.portal = _PortalDoLote()
+
+    robo.processar([("4500063671.0071", "0071", ["a"]), ("4500063671.0072", "0072", ["b"])])
+
+    assert robo.portal.voltas == 0

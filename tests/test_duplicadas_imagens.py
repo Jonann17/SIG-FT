@@ -499,3 +499,56 @@ def test_formulario_que_nao_fecha_vira_erro_no_log():
     imgs.copiar(portal, lidas, "", linhas.append)
 
     assert "Feche à mão" in "\n".join(linhas)
+
+
+# =============================================================================
+# Várias imagens num só diálogo (Upload de Fotos, 2026-11-03): o "Adicionar
+# Imagens" aceita até 10 arquivos ("Máximo 10 arquivos").
+# =============================================================================
+class _EngineDeVarias(_EngineDeImagens):
+    def __init__(self, aceita=None):
+        super().__init__()
+        self.aceita = aceita        # quantos o FilePond lista; None = todos
+        self.na_lista = 0
+
+    def contar(self, seletor):
+        if "filepond--list" in seletor:
+            return self.na_lista
+        return super().contar(seletor)
+
+    def enviar_arquivo(self, _seletor, caminhos):
+        self.enviados.append(caminhos)
+        quantos = len(caminhos) if isinstance(caminhos, list) else 1
+        self.na_lista = quantos if self.aceita is None else self.aceita
+
+
+def test_subir_juntas_manda_todos_num_so_envio_e_confirma_uma_vez():
+    engine = _EngineDeVarias()
+    portal = _PortalDeImagens(engine)
+
+    entrou = imgs.subir_juntas(portal, "imagens - 0071", ["a.jpg", "b.jpg", "c.jpg"])
+
+    assert entrou is True
+    assert engine.enviados == [["a.jpg", "b.jpg", "c.jpg"]]
+    assert portal.salvos == ["Documentos e imagens"]
+    assert engine.preenchidos  # a descrição foi preenchida
+
+
+def test_subir_juntas_com_arquivo_que_o_filepond_nao_listou_nao_confirma():
+    engine = _EngineDeVarias(aceita=2)
+    portal = _PortalDeImagens(engine)
+    linhas = []
+
+    entrou = imgs.subir_juntas(portal, "imagens - 0071", ["a.jpg", "b.jpg", "c.jpg"], linhas.append)
+
+    assert entrou is False
+    assert portal.salvos == []      # não clicou em Confirmar com arquivo faltando
+    assert "2 de 3" in "\n".join(linhas)
+
+
+def test_subir_uma_continua_mandando_um_caminho_so():
+    engine = _EngineDeVarias()
+    portal = _PortalDeImagens(engine)
+
+    assert imgs.subir_uma(portal, "x", "a.jpg") is True
+    assert engine.enviados == ["a.jpg"]

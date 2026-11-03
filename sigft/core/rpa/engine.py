@@ -313,8 +313,9 @@ class RPAEngine(ABC):
         """
 
     @abstractmethod
-    def enviar_arquivo(self, seletor: str, caminho: str) -> None:
-        """Entrega `caminho` ao `<input type="file">` de `seletor`.
+    def enviar_arquivo(self, seletor: str, caminho: str | list[str]) -> None:
+        """Entrega `caminho` ao `<input type="file">` de `seletor`. Uma LISTA
+        entrega vários de uma vez (input com `multiple`, como o do FilePond).
 
         É o par de `bytes_da_imagem`: um lê a imagem da ficha original, o outro
         a sobe na ficha nova. Propaga falhas -- upload que não acontece tem de

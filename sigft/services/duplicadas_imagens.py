@@ -145,7 +145,25 @@ def gravar_temporarias(imagens, pasta):
 
 def subir_uma(portal, legenda, caminho, callback_log=None):
     """Sobe UMA imagem na ficha alvo (já aberta em edição). `True` se entrou."""
+    return subir_juntas(portal, legenda, [caminho], callback_log)
+
+
+# O diálogo "Adicionar Imagens" avisa "Máximo 10 arquivos" (captura de
+# 2026-10-30); o `<input>` do FilePond tem `multiple`.
+MAX_ARQUIVOS_POR_ENVIO = 10
+
+
+def subir_juntas(portal, legenda, caminhos, callback_log=None):
+    """Sobe até `MAX_ARQUIVOS_POR_ENVIO` imagens num só diálogo, todas com a
+    mesma descrição, e confirma UMA vez. `True` se todas entraram.
+
+    Com um arquivo é exatamente o `subir_uma` de sempre: o motor recebe o
+    caminho, não uma lista de um.
+    """
     _log = _log_de(callback_log)
+    if not 1 <= len(caminhos) <= MAX_ARQUIVOS_POR_ENVIO:
+        raise ValueError(f"de 1 a {MAX_ARQUIVOS_POR_ENVIO} arquivos por envio, vieram {len(caminhos)}")
+    nomes = ", ".join(os.path.basename(c) for c in caminhos)
 
     if not _abrir_formulario(portal):
         _log("      [Erro] Não achei 'Adicionar imagens' nesta tela.")
@@ -159,9 +177,10 @@ def subir_uma(portal, legenda, caminho, callback_log=None):
             portal.safe_fill(seletor, legenda)
 
     try:
-        portal.engine.enviar_arquivo(sel.XPATH_IMAGENS_INPUT_ARQUIVO, caminho)
+        portal.engine.enviar_arquivo(sel.XPATH_IMAGENS_INPUT_ARQUIVO,
+                                     caminhos[0] if len(caminhos) == 1 else list(caminhos))
     except Exception as erro:  # noqa: BLE001
-        _log(f"      [Erro] O upload de {os.path.basename(caminho)} falhou: "
+        _log(f"      [Erro] O upload de {nomes} falhou: "
              f"{type(erro).__name__}: {erro}")
         return False
     time.sleep(PAUSA_APOS_UPLOAD)
@@ -179,9 +198,12 @@ def subir_uma(portal, legenda, caminho, callback_log=None):
         na_lista = portal.engine.contar(sel.XPATH_IMAGENS_ITEM_NA_LISTA)
     except Exception:  # noqa: BLE001
         na_lista = 0
-    if not na_lista:
-        _log(f"      [Erro] O FilePond não listou {os.path.basename(caminho)} "
-             f"depois do envio. A imagem não entrou.")
+    if na_lista < len(caminhos):
+        if len(caminhos) == 1:
+            _log(f"      [Erro] O FilePond não listou {nomes} depois do envio. A imagem não entrou.")
+        else:
+            _log(f"      [Erro] O FilePond listou {na_lista} de {len(caminhos)} arquivos ({nomes}). "
+                 f"Não confirmei: confirmar pela metade deixaria a ficha sem saber quais entraram.")
         return False
 
     # ⚠️ "Confirmar", DENTRO do diálogo -- não o SALVAR da seção, que fica

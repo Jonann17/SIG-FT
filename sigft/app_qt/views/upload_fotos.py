@@ -94,12 +94,19 @@ class ModuloUploadFotos(ComTravaDeRobo, ModuleFrame):
         if not self.pasta or not self.caminho_status:
             QMessageBox.warning(self, t("Aviso"), t("Escolha a pasta de fotos e o _STATUS_PMIB."))
             return
+        # A leitura da pasta e do _STATUS_PMIB vai para o robô: feita aqui, na
+        # thread da interface, congelava a janela com planilha grande.
+        self.iniciar_com_trava(self._worker, MODOS[self.menu_modo.currentIndex()], botao=self.btn_run)
+
+    def _montar_lote(self, modo):
+        """As fichas a subir, depois do "Começar?" da pessoa; `None` se não há o
+        que fazer ou ela desistiu. Roda na thread do robô."""
         try:
             grupos, ignorados = svc.agrupar_fotos(self.pasta)
             fichas, sem_ficha, ambiguas = svc.ligar_as_fichas(grupos, svc.ler_codigos(self.caminho_status))
         except Exception as erro:  # noqa: BLE001 -- a pessoa precisa ver o motivo
-            QMessageBox.warning(self, t("Aviso"), str(erro))
-            return
+            self.avisar(t("Aviso"), str(erro), "aviso")
+            return None
 
         for nome in ignorados:
             self.log(f"   ⚠️ {nome}: fora do padrão 0071.jpg / 0071a.jpg, não sobe.")
@@ -108,16 +115,15 @@ class ModuloUploadFotos(ComTravaDeRobo, ModuleFrame):
         for quatro, codigos in ambiguas.items():
             self.log(f"   ⚠️ {quatro}: mais de uma ficha termina assim ({', '.join(codigos)}), não sobe.")
         if not fichas:
-            QMessageBox.warning(self, t("Aviso"), t("Nenhuma foto da pasta corresponde a uma ficha do _STATUS_PMIB."))
-            return
-        modo = MODOS[self.menu_modo.currentIndex()]
+            self.avisar(t("Aviso"), t("Nenhuma foto da pasta corresponde a uma ficha do _STATUS_PMIB."), "aviso")
+            return None
         resumo = t("{n} ficha(s) e {f} foto(s) para subir.", n=len(fichas),
                    f=sum(len(caminhos) for _p, _q, caminhos in fichas))
         if modo == svc.MODO_SUBSTITUIR:
             resumo += "\n\n" + t("As fotos que já estiverem nessas fichas serão EXCLUÍDAS antes.")
         if not self.perguntar_sim_nao(t("Confirmar"), resumo + "\n\n" + t("Começar?")):
-            return
-        self.iniciar_com_trava(self._worker, fichas, modo, botao=self.btn_run)
+            return None
+        return fichas
 
     def parar(self) -> None:
         if self.automacao is not None:
@@ -140,7 +146,10 @@ class ModuloUploadFotos(ComTravaDeRobo, ModuleFrame):
         # Sem resposta (janela fechada à força): pular é o lado seguro.
         return self._na_interface_e_esperar(perguntar, aviso=t("Ficha com fotos: escolha o que fazer.")) or svc.PULAR
 
-    def _worker(self, fichas, modo) -> None:
+    def _worker(self, modo) -> None:
+        fichas = self._montar_lote(modo)
+        if not fichas:
+            return
         self.automacao = auto = svc.UploadFotosAutomation()
         try:
             self.log("Iniciando navegador...")

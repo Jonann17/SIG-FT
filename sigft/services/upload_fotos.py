@@ -73,6 +73,9 @@ XPATH_IMAGEM_DE_NOME = XPATH_TABELA_DE_IMAGENS + "//tr[.//td[normalize-space()={
 TENTATIVAS_DA_TABELA = 20
 TENTATIVAS_DA_EXCLUSAO = 30
 TENTATIVAS_DA_CONFERENCIA = 30
+# Depois de um envio que falhou, quanto se espera a tabela mostrar o que ele
+# gravou antes de reenviar o resto (3 s).
+TENTATIVAS_DA_REVISAO = 6
 INTERVALO_S = 0.5
 # Teto de exclusões por ficha: uma lixeira que não exclui não pode girar
 # para sempre.
@@ -129,13 +132,16 @@ def ler_codigos(caminho_status):
     """Os códigos PMIB da coluna "CÓDIGO PMIB" do `_STATUS_PMIB`."""
     painel = StatusPMIB(caminho_status)
     try:
-        painel.abrir(keywords={config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB}, max_col=49)
+        # Só leitura, sem estilos, só a coluna do código: o `_STATUS_PMIB` de
+        # sistema grande levava segundos para abrir inteiro.
+        painel.abrir(keywords={config.COL_CODIGO_PMIB: config.COL_CODIGO_PMIB}, max_col=49,
+                     read_only=True, data_only=True)
         coluna = painel.col_map.get(config.COL_CODIGO_PMIB)
         if not coluna:
             raise ValueError(f"a coluna '{config.COL_CODIGO_PMIB}' não foi encontrada no _STATUS_PMIB")
-        inicio = (painel.header_row or 0) + 1
-        return [v for linha in range(inicio, painel.ws.max_row + 1)
-                if (v := painel.ws.cell(row=linha, column=coluna).value) not in (None, "")]
+        linhas = painel.ws.iter_rows(min_row=(painel.header_row or 0) + 1, min_col=coluna,
+                                     max_col=coluna, values_only=True)
+        return [linha[0] for linha in linhas if linha[0] not in (None, "")]
     finally:
         painel.fechar()
 
@@ -254,6 +260,27 @@ def excluir_todas(portal, callback_log=None):
     return not fotos_na_ficha(portal)
 
 
+def subir_fotos(portal, descricao, caminhos, callback_log=None):
+    """Sobe em envios de até 10 (o limite do diálogo). Envio que falha é
+    refeito foto a foto, e SÓ das que não estão na tabela.
+
+    O diálogo pode gravar parte do envio e mesmo assim não devolver o aviso
+    verde: reenviar tudo era foto repetida na ficha. Por isso NÃO se usa aqui a
+    autoconferência de `duplicadas_imagens.subir_arquivos`, que tenta de novo
+    sem olhar a tabela.
+    """
+    tamanho = imagens.MAX_ARQUIVOS_POR_ENVIO
+    for inicio in range(0, len(caminhos), tamanho):
+        lote = caminhos[inicio:inicio + tamanho]
+        if imagens.subir_juntas(portal, descricao, lote, callback_log):
+            continue
+        imagens.fechar_formulario(portal, callback_log)
+        _esperar(lambda lote=lote: all(foto_esta_na_tabela(portal, c) for c in lote), TENTATIVAS_DA_REVISAO)
+        for caminho in [c for c in lote if not foto_esta_na_tabela(portal, c)]:
+            if not imagens.subir_juntas(portal, descricao, [caminho], callback_log):
+                imagens.fechar_formulario(portal, callback_log)
+
+
 @dataclass
 class ResultadoDaFicha:
     pmib: str
@@ -296,13 +323,14 @@ def processar_ficha(portal, pmib, quatro, caminhos, modo=MODO_SUBSTITUIR,
 
     descricao = descricao_das_fotos(quatro)
     antes = fotos_na_ficha(portal)
-    imagens.subir_arquivos(portal, [(descricao, c) for c in caminhos], callback_log)
+    subir_fotos(portal, descricao, caminhos, callback_log)
 
     # A PROVA é a tabela, não o toast de cada um: o NOME de cada arquivo E o
     # número de linhas -- no modo "adicionar" a foto antiga pode ter o mesmo
-    # nome da nova, e só o nome passaria com a nova fora.
-    faltaram = [os.path.basename(c) for c in caminhos
-                if not _esperar(lambda c=c: foto_esta_na_tabela(portal, c), TENTATIVAS_DA_CONFERENCIA)]
+    # nome da nova, e só o nome passaria com a nova fora. UMA espera para
+    # todas: esperar foto a foto somava 15 s por foto que faltasse.
+    _esperar(lambda: all(foto_esta_na_tabela(portal, c) for c in caminhos), TENTATIVAS_DA_CONFERENCIA)
+    faltaram = [os.path.basename(c) for c in caminhos if not foto_esta_na_tabela(portal, c)]
     if faltaram:
         resultado.motivo = f"{len(faltaram)} de {len(caminhos)} foto(s) não apareceram na tabela: {', '.join(faltaram)}"
         return resultado
@@ -362,11 +390,9 @@ class UploadFotosAutomation:
                 _log(f"   ⏭️ {pmib}: {resultado.motivo}.")
             else:
                 _log(f"   ❌ {pmib}: {resultado.motivo}.")
+            # Sem `ir_para_lista` aqui: `pesquisar_e_abrir` da próxima ficha já
+            # vai para a lista, e voltar antes era uma carga de página a mais.
             resultados.append(resultado)
-            try:
-                self.portal.ir_para_lista()
-            except Exception:  # noqa: BLE001 -- a próxima pesquisa navega de novo
-                pass
         return resultados
 
 
