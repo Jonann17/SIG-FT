@@ -250,5 +250,6 @@ origem, a licença e o modo de atualizar estão em [`.claude/skills/VENDOR.md`](
 | `docs/ACONEX_API.md` | **a API do Aconex** (guia do Luan): credenciais, token, endpoints, limites, e o que o teste de conexão do SIG-FT aprendeu (sem coringa no `docno:`; o histórico segue o `TrackingId`) |
 | `docs/base-conhecimento/14-aconex-e-conferencia-de-revisoes.md` | o Aconex no SIG-FT (cofre do DocManager, cliente, STATUS REAL), a Conferência de Revisões e a Revisão no AMP |
 | `amp/revisao_de_listas/` | a Revisão no AMP: o agente mora no AMP (`agente.md` é a cópia; melhora-se lá), o gerador do workflow do n8n e o LEIA-ME (criar o agente, ligar o workflow, testar pelo PowerShell e o que fazer quando falha) |
+| `amp/criacao_status_pmib/` | a criação do `_STATUS_PMIB` do zero pelo AMP (lista nova, sem controle): o agente (`agente.md`), o gerador do workflow e o LEIA-ME; ainda sem tela no SIG-FT |
 | `docs/ROTEIRO_DE_TESTE.md` | roteiro de validação manual, do ZIP até o portal |
 | `docs/ROTEIRO_CORRECAO_PDM.md` | validação do módulo de correção de PDM (a etapa E6 dele) |
