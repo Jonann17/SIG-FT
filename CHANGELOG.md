@@ -14,6 +14,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
 ## 1.4.0 - 2026-11-04
 
+- Upload de Fotos: a tela foi reorganizada em duas colunas (**O que subir** e **Como subir**) e ganhou a **Prévia do lote**: assim que a pasta e o `_STATUS_PMIB` são escolhidos, mostra quantas fotos há, quantas fichas recebem fotos, os finais sem ficha certa e os arquivos fora do padrão, com a tabela de cada ficha e os nomes das fotos, antes de abrir o portal. O botão diz quantas fichas vão receber fotos.
 - Sugestões: a lâmpada ao lado da engrenagem, no alto da Home (e "Sugestões" no Ctrl+K), abre uma janela para escrever uma ideia ou algo que poderia funcionar melhor. O SIG-FT abre um rascunho de e-mail no Outlook com o texto, a versão e, se você deixar marcado, o log; quem escolhe para quem enviar, e envia, é você.
 - Aplicação LMR: o relatório dos códigos que falharam (`erros_lmr.csv`) passa a ficar sempre em Documentos\SIG-FT\logs, e o console diz onde. Antes ele ia para a pasta de onde o SIG-FT foi aberto, e no programa instalado podia nem ser gravado, sem aviso.
 - Estabilidade: uma tela solta passa a sumir na hora, sem esperar o coletor de lixo do Python, que podia destruí-la no meio da pintura de um menu e derrubar o programa. Era a queda que travava os testes do instalador da versão (o teste de medidas da Busca PMIB, que estava fora do Release, voltou). Vale para a Busca PMIB e, agora, também para a Home, o Analyzer, o Upload de Condições, o Upload de Características e a Correção de PDM.
