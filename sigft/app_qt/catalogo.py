@@ -26,6 +26,8 @@ MENU = [
     ("botao", marcar("7. Aplicação LMR"), "LMR"),
     ("secao", marcar("Gestão")),
     ("botao", marcar("8. PMIB Manager"), "PMIBManager"),
+    ("botao", marcar("8.1. Conferência de Listas"), "ConferenciaListas"),
+    ("botao", marcar("8.2. DocPack"), "DocPack"),
     ("botao", marcar("9. Search"), "SearchPMIB"),
 ]
 
@@ -45,6 +47,8 @@ ICONE_DA_TELA = {
     "AutoSpec": "sparkles",
     "LMR": "tag",
     "PMIBManager": "folder-kanban",
+    "ConferenciaListas": "list-checks",
+    "DocPack": "folder-plus",
     "SearchPMIB": "search",
 }
 
@@ -85,7 +89,13 @@ MODULOS = [
             "preciso. As duas coisas ficam em abas da mesma seção.")),
     ("PMIBManager", marcar("PMIB Manager"),
      marcar("Atualiza o mapeamento a partir do Aconex, renomeia pelo RDS-PP e calcula o "
-            "avanço. Em abas, confere as revisões das listas e as revisa no AMP.")),
+            "avanço de cada lista de sobressalentes.")),
+    ("ConferenciaListas", marcar("Conferência de Listas"),
+     marcar("Aponta as listas com revisão nova no Aconex, baixa os PDFs e manda cada uma ao "
+            "AMP, que devolve o que mudou. As duas coisas ficam em abas.")),
+    ("DocPack", marcar("DocPack"),
+     marcar("Cria a pasta, com os templates, de cada lista que ainda não tem _STATUS_PMIB, e "
+            "depois preenche o conteúdo dela. As duas etapas ficam em abas.")),
     ("SearchPMIB", marcar("Busca PMIB"),
      marcar("Procura um código ou descrição nas planilhas de uma pasta inteira, sem "
             "abrir arquivo por arquivo.")),

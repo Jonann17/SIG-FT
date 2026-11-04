@@ -243,15 +243,15 @@ def test_secao_de_abas_mostra_o_texto_da_aba_aberta(janela, alvo):
 
 
 def test_aba_lembra_o_proprio_estado(janela):
-    tela = _tela(janela, "PMIBManager")
+    tela = _tela(janela, "ConferenciaListas")
     bloco = _bloco(tela)
     assert not bloco.aberto()
-    bloco.botao.click()                                       # aberto na Gestão PMIB
+    bloco.botao.click()                                       # aberto na Conferência
     nomes = list(tela.abas.abas)
-    tela.abas.botoes[nomes[1]].click()                        # Conferência: nunca aberto
-    assert bloco.chave == "PMIBManager.conferencia" and not bloco.aberto()
+    tela.abas.botoes[nomes[1]].click()                        # Revisão no AMP: nunca aberto
+    assert bloco.chave == "ConferenciaListas.amp" and not bloco.aberto()
     tela.abas.botoes[nomes[0]].click()
-    assert bloco.chave == "PMIBManager.gestao" and bloco.aberto()
+    assert bloco.chave == "ConferenciaListas.conferencia" and bloco.aberto()
 
 
 def test_autospec_tem_o_bloco_com_o_texto_do_08b(janela):
