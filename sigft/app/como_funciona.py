@@ -258,6 +258,15 @@ TEXTOS: dict[str, Texto] = {
             marcar("Nada é sobrescrito, e a mapeadora não muda: rode o Gestão PMIB depois para ligar."),
         ),
     ),
+    "PMIBManager.docpack_conteudo": Texto(
+        marcar("Preenche a lista de materiais dos dossiês vazios a partir do PDF da lista, lido pelo AMP."),
+        (
+            marcar("Acha na pasta raiz os _STATUS_PMIB ainda sem material, com a lista com preço (PB021) ao lado."),
+            marcar("Consultar baixa do Aconex a revisão vigente (nunca sobrescreve) e manda o PDF ao AMP."),
+            marcar("Nada é escrito até você confirmar em Gravar; planilha que já tem material é recusada."),
+            marcar("O VALOR UNITÁRIO fica sempre vazio: preço não sai do PDF da lista de sobressalentes."),
+        ),
+    ),
     "SearchPMIB": Texto(
         marcar("Procura um código ou descrição nos _STATUS_PMIB de uma pasta inteira, de uma vez."),
         (
@@ -275,7 +284,8 @@ TEXTOS: dict[str, Texto] = {
 # chaves das abas, na ordem delas. O bloco da seção mostra o texto da aba aberta.
 ABAS_DAS_SECOES: dict[str, tuple[str, ...]] = {
     "LMR": ("LMR.upload", "LMR.exclusao"),
-    "PMIBManager": ("PMIBManager.gestao", "PMIBManager.conferencia", "PMIBManager.amp", "PMIBManager.docpack"),
+    "PMIBManager": ("PMIBManager.gestao", "PMIBManager.conferencia", "PMIBManager.amp", "PMIBManager.docpack",
+                    "PMIBManager.docpack_conteudo"),  # TEMPORARIO: sai na integracao do modulo DocPack
 }
 
 

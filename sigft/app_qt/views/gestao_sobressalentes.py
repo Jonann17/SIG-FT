@@ -18,6 +18,7 @@ from sigft.app.idioma import marcar, t
 from sigft.app_qt.views.aplicacao_lmr import MARGEM_DA_ROLAGEM, MARGEM_DIREITA_DA_ROLAGEM
 from sigft.app_qt.views.conferencia_revisoes import ModuloConferenciaRevisoes
 from sigft.app_qt.views.docpack import ModuloDocPack
+from sigft.app_qt.views.docpack_etapa2 import ModuloDocPackEtapa2
 from sigft.app_qt.views.pmib_manager import ModuloPMIBManager
 from sigft.app_qt.views.revisao_amp import ModuloRevisaoAmp
 from sigft.app_qt.widgets import blocos
@@ -30,6 +31,8 @@ ABA_GESTAO = marcar("Gestão PMIB")
 ABA_CONFERENCIA = marcar("Conferência de Revisões")
 ABA_AMP = marcar("Revisão no AMP")
 ABA_DOCPACK = marcar("DocPack")
+# TEMPORARIO: a Etapa 2 do DocPack como aba, ate o modulo DocPack proprio (sai na integracao).
+ABA_DOCPACK_ETAPA2 = marcar("DocPack · Etapa 2")
 
 
 class ModuloGestaoSobressalentes(ModuleFrame):
@@ -55,8 +58,10 @@ class ModuloGestaoSobressalentes(ModuleFrame):
         self.tela_conferencia = ModuloConferenciaRevisoes(**da_secao)
         self.tela_amp = ModuloRevisaoAmp(fonte=self.tela_conferencia, **da_secao)
         self.tela_docpack = ModuloDocPack(**da_secao)
+        self.tela_docpack_etapa2 = ModuloDocPackEtapa2(**da_secao)
         for nome, tela in ((ABA_GESTAO, self.tela_gestao), (ABA_CONFERENCIA, self.tela_conferencia),
-                           (ABA_AMP, self.tela_amp), (ABA_DOCPACK, self.tela_docpack)):
+                           (ABA_AMP, self.tela_amp), (ABA_DOCPACK, self.tela_docpack),
+                           (ABA_DOCPACK_ETAPA2, self.tela_docpack_etapa2)):
             tela.layout().setContentsMargins(MARGEM_DA_ROLAGEM, MARGEM_DA_ROLAGEM,
                                              MARGEM_DIREITA_DA_ROLAGEM, MARGEM_DA_ROLAGEM)
             self.abas.add(t(nome)).layout().addWidget(tela)
@@ -65,4 +70,5 @@ class ModuloGestaoSobressalentes(ModuleFrame):
         instalar_como_funciona(self, {t(ABA_GESTAO): "PMIBManager.gestao",
                                       t(ABA_CONFERENCIA): "PMIBManager.conferencia",
                                       t(ABA_AMP): "PMIBManager.amp",
-                                      t(ABA_DOCPACK): "PMIBManager.docpack"}, abas=self.abas)
+                                      t(ABA_DOCPACK): "PMIBManager.docpack",
+                                      t(ABA_DOCPACK_ETAPA2): "PMIBManager.docpack_conteudo"}, abas=self.abas)

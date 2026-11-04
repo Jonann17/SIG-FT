@@ -6,7 +6,7 @@ from sigft.app_qt import catalogo
 from sigft.app_qt import main as qmain
 from sigft.app_qt.views.gestao_sobressalentes import ModuloGestaoSobressalentes
 
-ABAS = ["Gestão PMIB", "Conferência de Revisões", "Revisão no AMP", "DocPack"]
+ABAS = ["Gestão PMIB", "Conferência de Revisões", "Revisão no AMP", "DocPack", "DocPack · Etapa 2"]  # TEMPORARIO: a Etapa 2 sai na integracao
 
 
 def test_quatro_abas_com_um_console_e_uma_barra(qt_interface, qtbot):
@@ -15,7 +15,8 @@ def test_quatro_abas_com_um_console_e_uma_barra(qt_interface, qtbot):
     assert secao.label_titulo.text() == "Gestão de Sobressalentes"
     assert list(secao.abas.abas) == ABAS
     assert secao.abas.get() == "Gestão PMIB"
-    telas = (secao.tela_gestao, secao.tela_conferencia, secao.tela_amp, secao.tela_docpack)
+    telas = (secao.tela_gestao, secao.tela_conferencia, secao.tela_amp, secao.tela_docpack,
+             secao.tela_docpack_etapa2)
     for nome, tela in zip(ABAS, telas):
         assert secao.abas.tab(nome).isAncestorOf(tela), nome
         assert tela.header is None, nome

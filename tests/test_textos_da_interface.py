@@ -268,6 +268,7 @@ CONVERTIDOS: tuple[str, ...] = (
     "sigft/app_qt/views/gestao_sobressalentes.py",
     "sigft/app_qt/views/revisao_amp.py",
     "sigft/app_qt/views/docpack.py",
+    "sigft/app_qt/views/docpack_etapa2.py",
     # Ajuda para quem começa (2026-10-28): o "Como funciona" de cada tela
     "sigft/app/como_funciona.py",
     "sigft/app_qt/widgets/como_funciona.py",
