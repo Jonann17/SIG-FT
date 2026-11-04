@@ -498,3 +498,61 @@ def test_envio_maior_ganha_mais_tempo_de_processamento(portal, monkeypatch):
 
     (n1, t1), (n2, t2) = tempos
     assert (n1, n2) == (10, 1) and t1 > t2
+
+
+
+# ===========================================================================
+# 7. Revisão de código de 2026-11-04
+# ===========================================================================
+def test_ler_codigos_de_planilha_sem_a_marca_de_dimensao(tmp_path):
+    # Em só-leitura, o openpyxl tira o tamanho da aba do <dimension>; sem ele,
+    # max_row é None e o cabeçalho "não existia".
+    import re
+    import zipfile
+    caminho = _status(tmp_path)
+    sem = tmp_path / "sem_dimension.xlsx"
+    with zipfile.ZipFile(caminho) as zin, zipfile.ZipFile(sem, "w") as zout:
+        for info in zin.infolist():
+            dados = zin.read(info.filename)
+            if info.filename.startswith("xl/worksheets/sheet"):
+                dados = re.sub(rb"<dimension[^>]*/>", b"", dados)
+            zout.writestr(info, dados)
+
+    with openpyxl_de_verdade():
+        codigos = uf.ler_codigos(str(sem))
+
+    assert codigos == ["4500063671.0071", "4500063671.0072"]
+
+
+def test_nota_que_nao_entrou_e_dita_no_console(tmp_path, monkeypatch):
+    # Célula com comentário de outra pessoa: a nota não entra, e o console não
+    # pode dizer que entrou.
+    pytest.importorskip("lxml")
+    from sigft.core.excel import cirurgico
+    caminho = _status(tmp_path)
+    reais = cirurgico.gravar_celulas
+    monkeypatch.setattr(cirurgico, "gravar_celulas", lambda *a, **k: (reais(*a, **k), ["C3"])[1])
+    linhas = []
+
+    with openpyxl_de_verdade():
+        uf.marcar_status(str(caminho), [uf.ResultadoDaFicha("4500063671.0072", "0072", ok=True)],
+                         callback_log=linhas.append)
+
+    assert any("C3" in linha and "nota" in linha.lower() for linha in linhas)
+
+
+def test_linhas_que_chegam_em_blocos_sao_contadas_inteiras(portal):
+    # Portal lento: 2 linhas, uma pausa, depois as 5. Duas leituras iguais
+    # seguidas paravam a contagem em 2.
+    p = portal(fotos=["a.JPG", "b.JPG", "c.JPG", "d.JPG", "e.JPG"])
+    leituras = {"n": 0}
+    reais = p.engine.contar
+
+    def contar(seletor):
+        if seletor == uf.XPATH_LINHAS_DE_IMAGEM:
+            leituras["n"] += 1
+            return 2 if leituras["n"] <= 3 else reais(seletor)
+        return reais(seletor)
+    p.engine.contar = contar
+
+    assert uf.fotos_ao_abrir(p) == 5

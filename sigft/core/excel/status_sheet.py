@@ -134,6 +134,9 @@ class StatusPMIB:
         self._nomes: dict[str, str] = {}
         self._formato_geral: set[tuple[int, int]] = set()
         self._notas: dict[tuple[int, int], str | None] = {}
+        # Depois do `salvar()`: as notas que o editor NÃO gravou (célula com nota
+        # ou comentário de outra pessoa), como "C3". Quem anotou avisa a pessoa.
+        self.notas_nao_gravadas: list[str] = []
 
     @property
     def escritas_pendentes(self) -> dict[tuple[int, int], Any]:
@@ -378,8 +381,11 @@ class StatusPMIB:
 
         # O `save(caminho)` que o `save_with_retry` chama a cada tentativa:
         # relê o arquivo e reaplica as células (ver o docstring do módulo).
-        gravacao = SimpleNamespace(
-            save=lambda caminho: gravar(caminho, aba, escritas, nomes=nomes, formato_geral=geral, **extras))
+        def _gravar(caminho):
+            self.notas_nao_gravadas = list(
+                gravar(caminho, aba, escritas, nomes=nomes, formato_geral=geral, **extras) or [])
+
+        gravacao = SimpleNamespace(save=_gravar)
         resultado = locking.save_with_retry(gravacao, self.caminho_excel, **kwargs)
         self._escritas.clear()
         self._nomes.clear()

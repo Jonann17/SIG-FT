@@ -196,7 +196,6 @@ def subir_juntas(portal, legenda, caminhos, callback_log=None, *, timeout_confir
         _log(f"      [Erro] O upload de {nomes} falhou: "
              f"{type(erro).__name__}: {erro}")
         return False
-    time.sleep(PAUSA_APOS_UPLOAD)
 
     # O FilePond LISTA os arquivos um por um: contar no primeiro instante dava
     # "listou 1 de 7" com os 7 entrando (lote de 2026-11-03).

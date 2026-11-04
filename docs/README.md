@@ -29,6 +29,9 @@ código e revisada. Um arquivo por módulo:
 | `10-apagar-lmr-backend.md` | `apagar_lmr_backend.py` |
 | `11-pmib-manager-backend.md` | `pmib_manager_backend.py` |
 | `12-search-pmib-backend.md` | `search_pmib_backend.py` |
+| `13-montagem-da-ficha-tecnica.md` | a ficha técnica do PMIB, seção a seção |
+| `14-aconex-e-conferencia-de-revisoes.md` | Aconex, Conferência de Revisões e Revisão no AMP |
+| `15-upload-fotos.md` | `sigft/services/upload_fotos.py` (Upload de Fotos) |
 
 ## Refatoração (`refatoracao/`)
 

@@ -74,6 +74,7 @@ TENTATIVAS_DA_TABELA = 20
 TENTATIVAS_DA_EXCLUSAO = 30
 TENTATIVAS_DA_CONFERENCIA = 30
 INTERVALO_S = 0.5
+LEITURAS_IGUAIS = 3
 # Teto de exclusões por ficha: uma lixeira que não exclui não pode girar
 # para sempre.
 MAX_EXCLUSOES = 30
@@ -239,11 +240,15 @@ def fotos_ao_abrir(portal, esperas=None):
     tentativas = (esperas or Esperas()).tabela
     if not _esperar(lambda: fotos_na_ficha(portal) > 0, tentativas):
         return 0
-    anterior = fotos_na_ficha(portal)
+    # "Parou de mudar" = LEITURAS_IGUAIS leituras seguidas iguais (1,5 s): com o
+    # portal lento as linhas chegam em blocos, e duas leituras iguais (0,5 s)
+    # paravam a contagem no meio (revisão de 2026-11-04).
+    anterior, iguais = fotos_na_ficha(portal), 0
     for _ in range(tentativas):
         time.sleep(INTERVALO_S)
         agora = fotos_na_ficha(portal)
-        if agora == anterior:
+        iguais = iguais + 1 if agora == anterior else 0
+        if iguais >= LEITURAS_IGUAIS:
             return agora
         anterior = agora
     return anterior
@@ -527,6 +532,9 @@ def marcar_status(caminho_status, resultados, *, retry_lock=None, callback_log=N
     finally:
         painel.fechar()
 
+    for referencia in painel.notas_nao_gravadas:
+        _log(f"   [!] A nota \"{NOTA_FALTAM_DOCUMENTOS}\" NÃO entrou em {referencia}: a célula já tem "
+             f"nota ou comentário de outra pessoa, que o SIG-FT não apaga.")
     recado = f"{marcadas} linha(s) marcada(s) no _STATUS_PMIB."
     if nao_achadas:
         recado += f" Não achei na planilha: {', '.join(nao_achadas)}."
