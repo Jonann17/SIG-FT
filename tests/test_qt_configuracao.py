@@ -177,7 +177,7 @@ def test_chaves_e_modelos_abrem_as_mesmas_janelas_da_home(home, monkeypatch):
     janela = home.abrir_configuracao()
     chamados = []
     monkeypatch.setattr(home, "abrir_janela_chaves_api", lambda: chamados.append("chaves"))
-    monkeypatch.setattr(home, "abrir_janela_modelos_ia", lambda: chamados.append("modelos"))
+    monkeypatch.setattr(home, "abrir_janela_ia_por_modulo", lambda: chamados.append("modelos"))
     janela.btn_chaves.click()
     janela.btn_modelos.click()
     assert chamados == ["chaves", "modelos"]

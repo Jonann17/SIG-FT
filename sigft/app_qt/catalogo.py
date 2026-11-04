@@ -144,7 +144,7 @@ ACAO_SUGESTOES = AcaoDaHome("sugestoes", marcar("Sugestões"), "lightbulb", "fan
 # Os botões que moram na janela Configuração: saíram da barra da Home em 2026-10-22.
 ACOES_DA_CONFIGURACAO = (
     AcaoDaHome("modelos", marcar("Modelos de IA"), "bot", "primario",
-               "abrir_janela_modelos_ia", marcar("ia llm provedor")),
+               "abrir_janela_ia_por_modulo", marcar("ia llm provedor modulo workflow amp openrouter")),
     AcaoDaHome("chaves", marcar("Chaves de API"), "key-round", "secundario",
                "abrir_janela_chaves_api", marcar("api key senha")),
     AcaoDaHome("atualizacoes", marcar("Procurar atualizações"), "refresh-cw", "secundario",

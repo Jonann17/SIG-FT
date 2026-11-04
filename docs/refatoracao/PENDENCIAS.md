@@ -935,3 +935,10 @@ duble. Depois, rodar a suite com a 9.2 e tirar o `<9.2`.~~
 |---|---|---|---|
 | 2026-11-04 | Lote real do Upload de Fotos (35 fichas, portal lento) | `duplicadas_imagens.subir_arquivos` (a cópia de imagens da ficha duplicada) refaz o upload quando não vê o aviso verde, sem conferir se a imagem já entrou: com o portal lento, a imagem fica duplicada na ficha alvo. O Upload de Fotos deixou de usá-lo (`upload_fotos.subir_fotos` espera o diálogo fechar e confere a tabela pelo nome antes de reenviar). | Levar a mesma conferência para a ficha duplicada, com uma rodada no portal real. |
 | 2026-11-04 | Revisão do Upload de Fotos | A conferência do upload procura cada nome só na página visível da tabela de imagens ("1 a 8 de 8 itens"); com mais fotos que a página, as da página 2 contariam como faltando. O tamanho da página e o seletor da paginação não foram vistos no DOM real. | Conferir numa sessão local (`docs/OLHAR_O_PORTAL.md`) com uma ficha de muitas fotos. |
+
+## 2026-11-04 — Aviso do mural que saiu (regra dos 5 avisos)
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-10-26 | Mural do CLAUDE.md | Aviso que saiu do mural para dar lugar ao da IA por módulo: 🔴 **Segurança das dependências:** o AutoSpec lê PDF de reserva com `pypdf` (era o `PyPDF2`, abandonado e com laço infinito em PDF montado); `certifi`, `setuptools` e `nltk` subiram, e o CI ganhou o job `auditoria` (pip-audit no `versoes-do-release.txt`).<br>Rafael: em `services/autospec.py` só o import e o nome mudaram (`autospec.pypdf`); `test_autospec_tempos`/`_leitura_pdf` acompanham. Aviso de segurança que não se aplica vai em `empacotamento/vulnerabilidades-aceitas.txt`, com o motivo. | Absorvido; fica como registro. |
+| 2026-11-04 | IA por módulo | O botão "Configurar IA" ainda não está em DocPack, Conferência de Revisões, Revisão no AMP e AutoSpec (as três primeiras estavam sendo reorganizadas em paralelo; o AutoSpec é do Rafael). O teste do webhook (ping) pela tela também ficou para depois. | Próxima frente da IA por módulo. |

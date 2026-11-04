@@ -36,6 +36,7 @@ from shiboken6 import isValid
 
 from sigft import config as sigft_config
 from sigft.app import textos_dicas
+from sigft.app import ia_por_modulo
 from sigft.app.idioma import marcar, t
 from sigft.app_qt import atualizacao, estilo, icones, interface, letra, nome, pasta_de_logs, propriedades, tema
 from sigft.app_qt.catalogo import ACAO_CONFIGURACAO, ACAO_SUGESTOES, ACOES_DA_CONFIGURACAO, ACOES_DA_HOME, ICONE_DA_TELA, MODULOS
@@ -93,16 +94,9 @@ CHAVES_API = (
     # configurado na própria aba (botão Webhook…, `widgets/webhook_amp.py`).
 )
 
-ROTULOS_TAREFA_IA = {
-    "categorizar_pdm": marcar("Categorizar PDM (Cria Fichas):"),
-    "validar_ficha": marcar("Validar ficha (Analyzer):"),
-    "condicoes": marcar("Condições (Upload Condições):"),
-    "tech_specs": marcar("Caract. Técnicas (Upload Specs):"),
-    "autospec": marcar("AutoSpec (RAG):"),
-    "interpretar_material": marcar("Interpretar material (Cria Fichas):"),
-    "traduzir_pdm": marcar("Traduzir PDM (Planilhas PMIB):"),
-    "docpack_pasta": marcar("Sugerir pasta (DocPack):"),
-}
+# Os nomes das tarefas moram em `sigft/app/ia_por_modulo.py` (2026-11-04): a central e o
+# "Configurar IA" de cada tela usam os mesmos.
+ROTULOS_TAREFA_IA = ia_por_modulo.ROTULOS
 
 DESCRICAO_MODELOS_IA = marcar(
     "Escolha primeiro COM QUAL CHAVE trabalhar; a lista de modelos passa a ser a daquele "
@@ -671,6 +665,32 @@ class HomeView(QScrollArea):
     def abrir_janela_modelos_ia(self):
         return self._abrir_painel("modelos", titulo=t("Modelos de IA"),
                                   montar=self.criar_painel_modelos_ia, geometria="900x680")
+
+    def abrir_janela_ia_por_modulo(self):
+        """[2026-11-04] A IA por módulo (IA Externa, IA Interna, Workflow AMP; pedido do
+        Luan): é a porta de "Modelos de IA" na Configuração. O painel de antes (o modelo
+        padrão de quem não escolheu por módulo) abre por um botão dela."""
+        return self._abrir_painel("ia_por_modulo", titulo=t("Modelos de IA"),
+                                  montar=self.criar_painel_ia_por_modulo, geometria="1000x600")
+
+    def criar_painel_ia_por_modulo(self, parent) -> None:
+        from sigft.app_qt.widgets import ia_do_modulo
+
+        casca, _quadro, coluna = _painel(parent)
+        self._casca_ia_por_modulo = casca
+        _empilhar(coluna, _titulo_painel(t(ia_do_modulo.TITULO_CENTRAL)), cima=10, baixo=6)
+        _empilhar_texto(coluna, _Texto(t(ia_do_modulo.EXPLICACAO_CENTRAL), papel="legenda",
+                                       altura_linha=LINHA_TK_ROBOTO_12), baixo=8)
+        self.painel_ia_por_modulo = ia_do_modulo.PainelIaDoModulo(
+            self.controller, sigft_config.TAREFAS_DO_PAINEL, abrir_chaves=self.abrir_janela_chaves_api)
+        self.painel_ia_por_modulo.setMinimumHeight(380)
+        coluna.addWidget(self.painel_ia_por_modulo)
+        linha = _linha(coluna, cima=10, baixo=12)
+        self.btn_modelo_padrao_ia = _botao_cinza(t(ia_do_modulo.TEXTO_MODELO_PADRAO))
+        self.btn_modelo_padrao_ia.setToolTip(t(ia_do_modulo.DICA_MODELO_PADRAO))
+        self.btn_modelo_padrao_ia.clicked.connect(self.abrir_janela_modelos_ia)
+        linha.addWidget(self.btn_modelo_padrao_ia)
+        linha.addStretch()
 
     def abrir_janela_gastos_ia(self):
         return self._abrir_painel("gastos", titulo=t("Gastos de IA"),

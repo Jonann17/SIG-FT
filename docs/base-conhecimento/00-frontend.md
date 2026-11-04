@@ -394,6 +394,10 @@ Automation (v1.4.0), adaptada.
   - Nos testes não abre sozinha (`SIGFT_SEM_BOAS_VINDAS`, no `conftest`); quem testa a página tira a
     variável. A varredura de corte (pt/es/en, letra Grande) passa por ela.
 
+### IA por módulo (2026-11-04)
+
+"Modelos de IA" (Configuração) abre a janela **IA por módulo** (`HomeView.abrir_janela_ia_por_modulo`): a lista dos módulos à esquerda e, à direita, os três modos (`widgets/ia_do_modulo.PainelIaDoModulo`): IA Externa (catálogo do OpenRouter com filtro, "Atualizar catálogo" numa thread e "Chave do OpenRouter..."), IA Interna (desligada) e Workflow AMP (endereço e chave do webhook do módulo). O painel de antes, do modelo padrão, abre pelo botão "Modelo padrão (avançado)...". Cria Fichas, Analyzer, Upload Condições, Upload Specs e Planilhas PMIB têm "Configurar IA" na linha do título (`instalar_configurar_ia`, sem somar altura), que abre o mesmo painel só com as tarefas da tela (`sigft/app/ia_por_modulo.TAREFAS_DA_TELA`). As duas portas gravam no mesmo lugar (`core/llm/modo.py` + as chaves) e se avisam (`ia_do_modulo.avisos().mudou`).
+
 ## Pontos de Atenção
 
 - **Threading + Tkinter**: Todos os atualizamentos de UI de threads secundárias usam `self.after(0, lambda: ...)`. Sem isso, causam travamentos ou crashes.

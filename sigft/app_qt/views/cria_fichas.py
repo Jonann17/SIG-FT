@@ -28,6 +28,7 @@ import pandas as pd
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMessageBox, QSizePolicy, QVBoxLayout, QWidget
 
+from sigft.app import ia_por_modulo
 from sigft.app.idioma import marcar, t
 from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA, MSG_LOGIN_PAGINA_PRINCIPAL
 from sigft.app_qt import estilo, file_dialogs, icones, interface
@@ -36,6 +37,7 @@ from sigft.app_qt.widgets import blocos, controles, revisao_portal
 from sigft.app_qt.widgets.abas import Abas
 from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
+from sigft.app_qt.widgets.ia_do_modulo import instalar_configurar_ia
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 # O catálogo de PDMs (2026-09-22): lê a planilha-mestra da Itaipu e faz o
 # pré-filtro de candidatos por item. `cria_fichas_svc` entra pelas
@@ -199,6 +201,7 @@ class ModuloCriaFichas(ModuleFrame):
     # --- montagem -------------------------------------------------------------
     def _build_ui(self) -> None:
         instalar_como_funciona(self, "CriaFichas")
+        instalar_configurar_ia(self, ia_por_modulo.TAREFAS_DA_TELA.get("ModuloCriaFichas", ()))
         # Tabview dentro de um CTkFrame de fundo padrão: o quadro é gray16.
         self.abas = Abas(interno=True)
         self.content_layout.addWidget(self.abas)

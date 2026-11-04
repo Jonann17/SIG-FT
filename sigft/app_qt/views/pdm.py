@@ -18,11 +18,13 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QLineEdit, QRadioButton, QVBoxLayout
 
+from sigft.app import ia_por_modulo
 from sigft.app.idioma import marcar, t
 from sigft.app_qt import estilo, file_dialogs
 from sigft.app_qt.widgets import blocos, dialogos_selecao
 from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
+from sigft.app_qt.widgets.ia_do_modulo import instalar_configurar_ia
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 from sigft.core import pdm_catalogo
 
@@ -125,6 +127,7 @@ class ModuloPDM(ModuleFrame):
     # --- montagem -------------------------------------------------------------
     def _build_ui(self) -> None:
         instalar_como_funciona(self, "PDM")
+        instalar_configurar_ia(self, ia_por_modulo.TAREFAS_DA_TELA.get("ModuloPDM", ()))
         self._rotulos = {}
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         # A barra de rolagem fica sempre à vista: a largura do formulário (900)
