@@ -1,22 +1,39 @@
-"""A seção do PMIB Manager (Qt): Gestão PMIB, Conferência de Revisões e Revisão no AMP em abas,
-com um console e uma barra de progresso. Correção do Luan (27/10): as duas telas novas são abas
-do PMIB Manager, não módulos novos no menu.
+"""As seções da Gestão (Qt), desde 2026-11-04 (pedido do Luan):
+
+- o PMIB Manager ficou só com a Gestão PMIB, com o console e a barra da seção;
+- a Conferência de Revisões e a Revisão no AMP são as abas do módulo "Conferência de Listas";
+- o DocPack é módulo próprio, em duas etapas (Estrutura e Conteúdo).
 """
+import threading
+
 from sigft.app_qt import catalogo
 from sigft.app_qt import main as qmain
+from sigft.app_qt.views.conferencia_listas import ModuloConferenciaListas
+from sigft.app_qt.views.docpack_secao import ModuloDocPackSecao
 from sigft.app_qt.views.gestao_sobressalentes import ModuloGestaoSobressalentes
 
-ABAS = ["Gestão PMIB", "Conferência de Revisões", "Revisão no AMP", "DocPack"]
+ABAS_CONFERENCIA = ["Conferência de Revisões", "Revisão no AMP"]
+ABAS_DOCPACK = ["Etapa 1: Estrutura", "Etapa 2: Conteúdo"]
 
 
-def test_quatro_abas_com_um_console_e_uma_barra(qt_interface, qtbot):
+def test_o_pmib_manager_ficou_so_com_a_gestao(qt_interface, qtbot):
     secao = ModuloGestaoSobressalentes()
     qtbot.addWidget(secao)
     assert secao.label_titulo.text() == "Gestão de Sobressalentes"
-    assert list(secao.abas.abas) == ABAS
-    assert secao.abas.get() == "Gestão PMIB"
-    telas = (secao.tela_gestao, secao.tela_conferencia, secao.tela_amp, secao.tela_docpack)
-    for nome, tela in zip(ABAS, telas):
+    assert not hasattr(secao, "abas")
+    assert secao.isAncestorOf(secao.tela_gestao)
+    assert secao.tela_gestao.header is None
+    assert secao.tela_gestao.console is secao.console
+    assert secao.tela_gestao.progress_bar is secao.progress_bar
+
+
+def test_conferencia_de_listas_duas_abas_um_console_e_uma_barra(qt_interface, qtbot):
+    secao = ModuloConferenciaListas()
+    qtbot.addWidget(secao)
+    assert secao.label_titulo.text() == "Conferência de Listas"
+    assert list(secao.abas.abas) == ABAS_CONFERENCIA
+    assert secao.abas.get() == "Conferência de Revisões"
+    for nome, tela in zip(ABAS_CONFERENCIA, (secao.tela_conferencia, secao.tela_amp)):
         assert secao.abas.tab(nome).isAncestorOf(tela), nome
         assert tela.header is None, nome
         assert tela.console is secao.console and tela.progress_bar is secao.progress_bar, nome
@@ -24,53 +41,74 @@ def test_quatro_abas_com_um_console_e_uma_barra(qt_interface, qtbot):
     assert secao.tela_amp.fonte is secao.tela_conferencia
 
 
-def test_as_abas_escrevem_no_mesmo_console(qt_interface, qtbot):
-    secao = ModuloGestaoSobressalentes()
+def test_docpack_duas_etapas_um_console_e_uma_barra(qt_interface, qtbot):
+    secao = ModuloDocPackSecao()
     qtbot.addWidget(secao)
-    secao.tela_gestao.log("vindo da gestão")
+    assert secao.label_titulo.text() == "DocPack"
+    assert list(secao.abas.abas) == ABAS_DOCPACK
+    assert secao.abas.get() == "Etapa 1: Estrutura"
+    for nome, tela in zip(ABAS_DOCPACK, (secao.tela_etapa1, secao.tela_etapa2)):
+        assert secao.abas.tab(nome).isAncestorOf(tela), nome
+        assert tela.header is None, nome
+        assert tela.console is secao.console and tela.progress_bar is secao.progress_bar, nome
+
+
+def test_as_abas_escrevem_no_mesmo_console(qt_interface, qtbot):
+    secao = ModuloConferenciaListas()
+    qtbot.addWidget(secao)
+    secao.tela_conferencia.log("vindo da conferência")
     secao.abas.botoes["Revisão no AMP"].click()
     secao.tela_amp.log("vindo do AMP")
     qtbot.waitUntil(lambda: "vindo do AMP" in secao.console.toPlainText(), timeout=2000)
     texto = secao.console.toPlainText()
-    assert texto.index("vindo da gestão") < texto.index("vindo do AMP")
+    assert texto.index("vindo da conferência") < texto.index("vindo do AMP")
 
 
 def test_as_tabelas_cabem_na_aba(qt_interface, qtbot):
     # As colunas esticam mas não encolhem, e as tabelas não têm barra de lado: o que passa
     # da largura some. A 1280x850 a tela tem 1003 de largura (sem o menu).
-    secao = ModuloGestaoSobressalentes()
-    qtbot.addWidget(secao)
-    secao.resize(1003, 850)
-    secao.show()
-    qtbot.waitExposed(secao)
-    for nome, tabela in (("Conferência de Revisões", secao.tela_conferencia.tabelas["aprovada"]),
-                         ("Revisão no AMP", secao.tela_amp.tabela), ("DocPack", secao.tela_docpack.tabela)):
-        secao.abas.set(nome)
-        qtbot.wait(20)
-        soma = sum(tabela.columnWidth(i) for i in range(tabela.columnCount()))
-        assert soma <= tabela.viewport().width(), nome
+    conferencia = ModuloConferenciaListas()
+    docpack = ModuloDocPackSecao()
+    for secao, abas in ((conferencia, (("Conferência de Revisões", conferencia.tela_conferencia.tabelas["aprovada"]),
+                                       ("Revisão no AMP", conferencia.tela_amp.tabela))),
+                        (docpack, (("Etapa 1: Estrutura", docpack.tela_etapa1.tabela),))):
+        qtbot.addWidget(secao)
+        secao.resize(1003, 850)
+        secao.show()
+        qtbot.waitExposed(secao)
+        for nome, tabela in abas:
+            secao.abas.set(nome)
+            qtbot.wait(20)
+            soma = sum(tabela.columnWidth(i) for i in range(tabela.columnCount()))
+            assert soma <= tabela.viewport().width(), nome
 
 
-def test_o_menu_pmib_manager_abre_a_secao(qt_interface, qtbot, tmp_path, monkeypatch):
+def test_o_menu_abre_cada_secao(qt_interface, qtbot, tmp_path, monkeypatch):
     monkeypatch.setattr(qmain, "_arquivo_de_chaves", lambda: str(tmp_path / "api_config.json"))
     janela = qmain.SIG_FT_App()
     qtbot.addWidget(janela)
-    janela.show_frame("PMIBManager")
-    assert isinstance(janela.pilha.currentWidget(), ModuloGestaoSobressalentes)
+    for chave, classe in (("PMIBManager", ModuloGestaoSobressalentes),
+                          ("ConferenciaListas", ModuloConferenciaListas),
+                          ("DocPack", ModuloDocPackSecao)):
+        janela.show_frame(chave)
+        assert isinstance(janela.pilha.currentWidget(), classe), chave
 
 
-def test_a_conferencia_saiu_do_menu_e_dos_cards():
+def test_os_modulos_novos_estao_no_menu_e_nos_cards():
     telas_do_menu = [item[2] for item in catalogo.MENU if item[0] == "botao"]
-    for lugar in (telas_do_menu, [m[0] for m in catalogo.MODULOS], catalogo.ICONE_DA_TELA, qmain.TELAS):
-        assert "ConferenciaRevisoes" not in lugar
-    assert len(catalogo.MODULOS) == 13  # 2026-10-30: + Upload de Fotos
+    for chave in ("ConferenciaListas", "DocPack"):
+        for lugar in (telas_do_menu, [m[0] for m in catalogo.MODULOS], catalogo.ICONE_DA_TELA, qmain.TELAS):
+            assert chave in lugar, chave
+    # Na Gestão, nesta ordem, logo depois do PMIB Manager.
+    i = telas_do_menu.index("PMIBManager")
+    assert telas_do_menu[i:i + 4] == ["PMIBManager", "ConferenciaListas", "DocPack", "SearchPMIB"]
+    assert "ConferenciaRevisoes" not in telas_do_menu
+    assert len(catalogo.MODULOS) == 15  # 2026-11-04: + Conferência de Listas e DocPack
 
 
 def test_a_tela_diz_se_tem_tarefa_rodando(qt_interface, qtbot):
     # A Revisão no AMP pergunta isso à Conferência antes de começar.
-    import threading
-
-    secao = ModuloGestaoSobressalentes()
+    secao = ModuloConferenciaListas()
     qtbot.addWidget(secao)
     conferencia = secao.tela_conferencia
     assert conferencia.rodando() is False

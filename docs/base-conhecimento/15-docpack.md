@@ -1,6 +1,6 @@
 # DocPack — a pasta de cada lista nova de sobressalentes
 
-Aba **DocPack** do PMIB Manager (`sigft/app_qt/views/docpack.py`), sobre o serviço
+Aba **Etapa 1 — Estrutura** do módulo DocPack (menu 8.2, `sigft/app_qt/views/docpack_secao.py`, desde 2026-11-04; antes era a aba DocPack do PMIB Manager). A tela é `sigft/app_qt/views/docpack.py`, sobre o serviço
 `sigft/services/docpack.py`. Pedido do Jonathan em 2026-11-03; desenho em
 `docs/superpowers/specs/2026-11-03-docpack-design.md`.
 

@@ -11,6 +11,11 @@
 >
 > A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
 
+> 🗂️ **A tela no menu (2026-11-04):** "8. PMIB Manager" abre só a Gestão PMIB, embutida na seção
+> `views/gestao_sobressalentes.py` (console e barra da seção). A Conferência de Revisões e a Revisão no
+> AMP, que foram abas daqui de 2026-10-27 a 2026-11-03, estão no módulo "8.1. Conferência de Listas"
+> (`views/conferencia_listas.py`); o DocPack, no módulo "8.2. DocPack" (`views/docpack_secao.py`).
+
 ## ⚠️ Tratamento v2 (desde 2026-10-05) — leia antes do resto
 
 O roteiro `gestao-sobressalentes/07 - Diagnostico/Tarefa SIG-FT - Calculo e Gravacao sem Perda.md`
