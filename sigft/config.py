@@ -242,6 +242,10 @@ PROVIDER_XAI = "xai"
 # para eles em produção ainda -- ver PENDENCIAS.md).
 PROVIDER_OPENROUTER = "openrouter"
 PROVIDER_OPENAI_COMPAT = "openai_compat"
+# 2026-11-04: o Workflow AMP de cada módulo (o n8n da GE), escolhido por tarefa em
+# "IA por módulo" (`core/llm/modo.py`, `providers/amp_workflow.py`). Não entra em
+# `CHAVE_POR_PROVIDER`: a "chave" dele é o webhook do módulo, não uma chave de API.
+PROVIDER_AMP_WORKFLOW = "amp_workflow"
 
 # Modelos que o código roda HOJE, por tarefa (caracterização — strings exatas
 # hardcoded em cada módulo, referências arquivo:linha abaixo). NÃO são o alvo;
