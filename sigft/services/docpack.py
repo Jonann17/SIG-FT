@@ -136,10 +136,29 @@ def texto_da_revisao(revisao: str, dia: date) -> str:
 # --------------------------------------------------------------------------
 @dataclass
 class Destino:
-    """Onde vai o dossiê: `<raiz>/<capitulo>/[<sistema>/]<pasta>`."""
+    """Onde vai o dossiê: `<raiz>/<ET>/<capítulo>/<sistema>/<subsistema>/<pasta final>`.
+
+    [2026-11-04, pedido do Luan] A hierarquia das pastas é a da ET: a primeira pasta é a
+    ET (`03 - EBOP`, `05 - UNIDADE GERADORA`), dentro dela o capítulo, e no capítulo o
+    sistema e o subsistema. Só a ET é obrigatória, e mais um nível qualquer abaixo
+    dela; nível vazio é pulado (nem toda ET tem sistema). Um nível pode levar MAIS UMA
+    pasta, separada por `/` (`MANCAIS/GUIA`): é a pasta extra que alguns passos pedem.
+    O dossiê é a última pasta do caminho."""
+    et: str = ""
     capitulo: str = ""
     sistema: str = ""
+    subsistema: str = ""
     pasta: str = ""
+
+    def niveis(self) -> list[tuple[str, str]]:
+        return [(nivel, getattr(self, nivel)) for nivel in NIVEIS]
+
+
+# A ordem dos níveis do caminho, e o nome de cada um nas mensagens.
+NIVEIS = ("et", "capitulo", "sistema", "subsistema", "pasta")
+NOMES_DOS_NIVEIS = {"et": "ET", "capitulo": "pasta do capítulo", "sistema": "pasta do sistema",
+                    "subsistema": "pasta do subsistema", "pasta": "pasta final"}
+_SEPARADOR_DE_PASTA = re.compile(r"\s*[/\\]\s*")
 
 
 def _nome_de_pasta(nome: str, campo: str, *, obrigatorio: bool) -> str:
@@ -153,30 +172,91 @@ def _nome_de_pasta(nome: str, campo: str, *, obrigatorio: bool) -> str:
     return nome
 
 
+def partes_do_nivel(valor: str, campo: str = "pasta") -> list[str]:
+    """As pastas de um nível: uma, ou mais separadas por `/` (a pasta extra daquele
+    passo). Cada uma conferida como nome de pasta do Windows."""
+    texto = " ".join(str(valor or "").split())
+    if not texto:
+        return []
+    return [_nome_de_pasta(parte, campo, obrigatorio=True)
+            for parte in _SEPARADOR_DE_PASTA.split(texto.strip("/\\ ")) if parte.strip()]
+
+
+def partes_do_caminho(destino: Destino) -> list[str]:
+    """As pastas, da ET ao dossiê; `ErroDocPack` se falta a ET ou um nível abaixo dela."""
+    partes = []
+    for nivel, valor in destino.niveis():
+        campo = NOMES_DOS_NIVEIS[nivel]
+        if nivel == "et" and not str(valor or "").strip():
+            raise ErroDocPack(f"falta a {campo}")
+        partes.extend(partes_do_nivel(valor, campo))
+    if len(partes) < 2:
+        raise ErroDocPack("falta a pasta do dossiê abaixo da ET (capítulo, sistema, subsistema ou pasta final)")
+    return partes
+
+
 def pasta_do_dossie(raiz: str | Path, destino: Destino) -> Path:
-    """O caminho do dossiê, ou `ErroDocPack` se falta o capítulo ou a pasta final."""
-    partes = [_nome_de_pasta(destino.capitulo, "pasta do capítulo", obrigatorio=True),
-              _nome_de_pasta(destino.sistema, "pasta do sistema", obrigatorio=False),
-              _nome_de_pasta(destino.pasta, "pasta final", obrigatorio=True)]
-    return Path(raiz).joinpath(*[p for p in partes if p])
+    """O caminho do dossiê, ou `ErroDocPack` se falta a ET ou o que vem abaixo dela."""
+    return Path(raiz).joinpath(*partes_do_caminho(destino))
 
 
-def pastas_existentes(raiz: str | Path | None) -> dict[str, list[str]]:
-    """As pastas de dois níveis da raiz: `{capítulo: [subpastas]}`, sem as escondidas
-    nem as que o levantamento ignora (obsoleto, testes, backup)."""
+def nome_do_subsistema(destino: Destino) -> str:
+    """O subsistema do dossiê, para a linha 3 do `_STATUS_PMIB` e a Aplicação LMR: a
+    pasta do subsistema; sem ela, a pasta final; sem as duas, a última pasta do caminho."""
+    for nivel in ("subsistema", "pasta"):
+        partes = partes_do_nivel(getattr(destino, nivel))
+        if partes:
+            return partes[-1]
+    partes = partes_do_caminho(destino)
+    return partes[-1]
+
+
+def arvore_existente(raiz: str | Path | None, profundidade: int = 4) -> dict:
+    """As pastas que já existem sob a raiz, até `profundidade` níveis:
+    `{nome: {subpasta: {...}}}`, sem as escondidas nem as que o levantamento ignora
+    (obsoleto, testes, backup, DATASHEETS)."""
     if not raiz or not os.path.isdir(raiz):
         return {}
 
-    def filhas(pasta: Path) -> list[str]:
+    def filhas(pasta: Path, nivel: int) -> dict:
+        if nivel >= profundidade:
+            return {}
         try:
-            return sorted(p.name for p in pasta.iterdir()
-                          if p.is_dir() and not p.name.startswith((".", "~"))
-                          and status_pmib_arquivos.motivo_para_ignorar(f"{p.name}\\x") is None)
+            nomes = sorted(p.name for p in pasta.iterdir()
+                           if p.is_dir() and not p.name.startswith((".", "~"))
+                           and p.name.upper() not in SUBPASTAS
+                           and status_pmib_arquivos.motivo_para_ignorar(f"{p.name}\\x") is None)
         except OSError:
-            return []
+            return {}
+        return {nome: filhas(pasta / nome, nivel + 1) for nome in nomes}
 
-    raiz = Path(raiz)
-    return {nome: filhas(raiz / nome) for nome in filhas(raiz)}
+    return filhas(Path(raiz), 0)
+
+
+def opcoes_do_nivel(arvore: dict, destino: Destino, nivel: str) -> list[str]:
+    """As pastas que já existem para `nivel`, dentro das pastas escolhidas nos níveis
+    de cima (os vazios abaixo da ET são pulados). Sem a ET, ou com pasta nova em cima,
+    não há sugestão embaixo."""
+    if nivel != "et" and not str(destino.et or "").strip():
+        return []   # sem a ET, não há onde procurar
+    galho = arvore
+    for acima, valor in destino.niveis():
+        if acima == nivel:
+            break
+        try:
+            partes = partes_do_nivel(valor)
+        except ErroDocPack:
+            return []
+        for parte in partes:
+            galho = next((filhos for nome, filhos in galho.items() if nome.upper() == parte.upper()), None)
+            if galho is None:
+                return []
+    return sorted(galho)
+
+
+def pastas_existentes(raiz: str | Path | None) -> dict:
+    """Compatibilidade: a árvore com os dois primeiros níveis, `{ET: {capítulo: {}}}`."""
+    return arvore_existente(raiz, profundidade=2)
 
 
 # --------------------------------------------------------------------------
@@ -243,7 +323,7 @@ def planejar(lista: ListaNaMapeadora, raiz: str | Path, destino: Destino, templa
     for sub in SUBPASTAS:
         passos.append(Passo(pasta / sub, "pasta", (pasta / sub).is_dir()))
     if templates.aplicacao_lmr:
-        arquivos.append(pasta / "LMR" / nome_da_aplicacao_lmr(templates.aplicacao_lmr, destino.pasta.strip()))
+        arquivos.append(pasta / "LMR" / nome_da_aplicacao_lmr(templates.aplicacao_lmr, nome_do_subsistema(destino)))
     for nome in arquivos:
         if _RESERVADOS.search(nome.name):
             raise ErroDocPack(f"o nome {nome.name!r} tem caractere que o Windows não aceita")
@@ -334,7 +414,7 @@ def criar_dossie(lista: ListaNaMapeadora, raiz: str | Path, destino: Destino, te
         status = arquivos[0]
         if _copiar(templates.status_pmib, status):
             revisao = revisao_da_lista(lista)
-            valores = {CELULA_TITULO_STATUS: texto_do_titulo(lista, destino.pasta.strip())}
+            valores = {CELULA_TITULO_STATUS: texto_do_titulo(lista, nome_do_subsistema(destino))}
             if revisao:
                 valores[CELULA_REVISAO_STATUS] = texto_da_revisao(revisao, hoje)
             else:
@@ -362,7 +442,7 @@ def criar_dossie(lista: ListaNaMapeadora, raiz: str | Path, destino: Destino, te
                 resultado.criados.append(lmr)
                 valores = {ROTULO_LISTA: codigo,
                            ROTULO_ET: " / ".join(p for p in (lista.especificacao, lista.capitulo) if p),
-                           ROTULO_SUBSISTEMA: destino.pasta.strip()}
+                           ROTULO_SUBSISTEMA: nome_do_subsistema(destino)}
                 aba, escritas, faltaram = _celulas_da_aplicacao_lmr(lmr, valores)
                 if escritas:
                     _escrever(lmr, aba, escritas)
@@ -420,8 +500,13 @@ TAREFA_IA = "docpack_pasta"
 
 
 def ler_sugestao(dados) -> Destino | None:
-    """O `{capitulo, sistema|subsistema, pasta}` que a IA devolveu, ou `None`. Aceita
-    texto (com prosa ou cerca de código em volta) ou o JSON já lido."""
+    """O `{et, capitulo, sistema, subsistema, pasta}` que a IA devolveu, ou `None`.
+    Aceita texto (com prosa ou cerca de código em volta) ou o JSON já lido.
+
+    Sem a chave `et` é a resposta do formato de antes (2026-11-03), em que a primeira
+    pasta se chamava "capitulo" e a final "pasta" (ou "subsistema"): ela é lida no
+    vocabulário novo (a primeira pasta é a ET, o "sistema" de antes é o capítulo, e a
+    pasta final de antes é o subsistema)."""
     if isinstance(dados, str):
         from sigft.core.llm.client import _NADA, _json_tolerante
         lido = _json_tolerante(dados)
@@ -430,18 +515,39 @@ def ler_sugestao(dados) -> Destino | None:
         dados = dados[0]
     if not isinstance(dados, dict):
         return None
-    destino = Destino(str(dados.get("capitulo") or "").strip(),
-                      str(dados.get("sistema") or dados.get("subsistema_intermediario") or "").strip(),
-                      str(dados.get("pasta") or dados.get("subsistema") or "").strip())
-    return destino if destino.capitulo and destino.pasta else None
+
+    def campo(*nomes) -> str:
+        return next((str(dados[n]).strip() for n in nomes if str(dados.get(n) or "").strip()), "")
+
+    if "et" in dados:
+        destino = Destino(campo("et"), campo("capitulo"), campo("sistema"), campo("subsistema"), campo("pasta"))
+    else:
+        destino = Destino(campo("capitulo"), campo("sistema", "subsistema_intermediario"), "",
+                          campo("pasta", "subsistema"), "")
+    try:
+        partes_do_caminho(destino)
+    except ErroDocPack:
+        return None
+    return destino
 
 
-def sugerir_destino(lista: ListaNaMapeadora, existentes: dict[str, list[str]], llm) -> tuple[Destino | None, str]:
+def _arvore_para_a_ia(arvore: dict) -> dict | list:
+    """A árvore em JSON curto: o galho sem filhos vira lista de nomes, para o prompt
+    não crescer à toa."""
+    if not isinstance(arvore, dict):
+        return arvore
+    if all(not filhos for filhos in arvore.values()):
+        return sorted(arvore)
+    return {nome: _arvore_para_a_ia(filhos) for nome, filhos in arvore.items()}
+
+
+def sugerir_destino(lista: ListaNaMapeadora, existentes: dict, llm) -> tuple[Destino | None, str]:
     """(sugestão, motivo) da IA para onde vai o dossiê. Nunca levanta: falha vira
     `(None, motivo da falha)`. A sugestão só preenche os campos; quem confirma é a pessoa."""
     prompt = prompts.montar_docpack_pasta(
         codigo=lista.codigo, titulo=lista.descricao, especificacao=lista.especificacao,
-        capitulo=lista.capitulo, pastas_existentes=json.dumps(existentes, ensure_ascii=False, indent=1))
+        capitulo=lista.capitulo, pastas_existentes=json.dumps(_arvore_para_a_ia(existentes), ensure_ascii=False,
+                                                              indent=1))
     try:
         resposta = llm.generate(prompt, json_mode=True, tags={"modulo": "docpack", "tarefa": TAREFA_IA})
     except Exception as erro:  # noqa: BLE001 -- a IA é um atalho; sem ela, digita-se
@@ -449,6 +555,6 @@ def sugerir_destino(lista: ListaNaMapeadora, existentes: dict[str, list[str]], l
     dados = getattr(resposta, "parsed_json", None)
     destino = ler_sugestao(dados if dados is not None else getattr(resposta, "text", ""))
     if destino is None:
-        return None, "a IA respondeu sem capítulo ou pasta"
+        return None, "a IA respondeu sem a ET ou sem uma pasta abaixo dela"
     motivo = dados.get("motivo", "") if isinstance(dados, dict) else ""
     return destino, str(motivo or "")
