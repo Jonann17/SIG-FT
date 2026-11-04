@@ -86,7 +86,7 @@ Cada módulo herda de `ctk.CTkFrame` e segue padrão: `__init__(parent, controll
 | 8 | `ModuloAutoSpec` | "6. AutoSpec AI (RAG)" | `autospec_backend` | Geração automática de specs via RAG (Retrieval-Augmented Generation) |
 | 9 | `ModuloLMR` | "7.1. LMR (Upload)" | `lmr_backend` | Upload e gestão de Lista de Materiais para Reposição (LMR) |
 | 10 | `ModuloApagarLMR` | "7.2. Apagar LMR" | `apagar_lmr_backend` | Limpeza/exclusão de entradas LMR |
-| 11 | `ModuloPMIBManager` | "8. PMIB Manager" | `pmib_manager_backend` | Gerenciamento geral de fichas PMIB (busca, edição em massa). Desde 2026-10-27 o menu abre a seção `ModuloGestaoSobressalentes` (`views/gestao_sobressalentes.py`), com as abas Gestão PMIB (esta tela), Conferência de Revisões e Revisão no AMP: ver `14-aconex-e-conferencia-de-revisoes.md` |
+| 11 | `ModuloPMIBManager` | "8. PMIB Manager" | `pmib_manager_backend` | Gerenciamento geral de fichas PMIB (busca, edição em massa). O menu abre a seção `ModuloGestaoSobressalentes` (`views/gestao_sobressalentes.py`), com esta tela embutida e o console da seção. Desde 2026-11-04 a Conferência de Revisões e a Revisão no AMP são as abas do módulo "8.1. Conferência de Listas" (`views/conferencia_listas.py`, ver `14-aconex-e-conferencia-de-revisoes.md`), e o DocPack é o módulo "8.2. DocPack" (`views/docpack_secao.py`, Etapa 1 e Etapa 2, ver `15-docpack.md`) |
 | 12 | `ModuloBuscaPMIB` | "9. Search" | `search_pmib_backend` | Busca avançada no portal PMIB |
 
 **Detalhes de ModuloCriaFichas** (principal):
@@ -360,7 +360,7 @@ Automation (v1.4.0), adaptada.
   abre de 3 a 6 itens: o que a tela espera receber, o que ela muda, o que acontece se parar no meio.
   Fechado na primeira vez; aberto ou fechado fica lembrado por tela (`prefs`,
   `como_funciona_aberto.<tela>`). A tela chama `instalar_como_funciona(self, "<chave>")` no fim do
-  `_build_ui`; nas seções de abas (Aplicação LMR, PMIB Manager) o bloco segue a aba aberta, e a tela
+  `_build_ui`; nas seções de abas (Aplicação LMR, Conferência de Listas, DocPack) o bloco segue a aba aberta, e a tela
   embutida numa aba não ganha bloco. Nos testes vem desligado (`SIGFT_SEM_COMO_FUNCIONA`): os testes de
   medida conferem cada pixel contra a interface antiga. A varredura de corte (`tests/_varredura.py`)
   tira a variável e mede cada tela e cada aba também com o bloco aberto.

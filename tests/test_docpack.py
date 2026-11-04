@@ -160,25 +160,53 @@ def test_linha_da_revisao_volta_pela_leitura_do_status_pmib():
 
 
 # -- destino -----------------------------------------------------------------------
-def test_pasta_do_dossie_com_e_sem_sistema(tmp_path):
-    assert docpack.pasta_do_dossie(tmp_path, docpack.Destino("03 - EBOP", "", "GERADOR DIESEL")) == (
+def test_pasta_do_dossie_segue_a_hierarquia_da_et_e_pula_o_vazio(tmp_path):
+    destino = docpack.Destino(et="05 - UNIDADE GERADORA", capitulo=" CAP 05 ", sistema="EXCITACAO",
+                              subsistema="REGULADOR", pasta="")
+    assert docpack.pasta_do_dossie(tmp_path, destino) == (
+        tmp_path / "05 - UNIDADE GERADORA" / "CAP 05" / "EXCITACAO" / "REGULADOR")
+    assert docpack.pasta_do_dossie(tmp_path, docpack.Destino(et="03 - EBOP", subsistema="GERADOR DIESEL")) == (
         tmp_path / "03 - EBOP" / "GERADOR DIESEL")
-    assert docpack.pasta_do_dossie(tmp_path, docpack.Destino("03 - EBOP", " SIS ", "SUB")) == (
-        tmp_path / "03 - EBOP" / "SIS" / "SUB")
+
+
+def test_barra_poe_mais_uma_pasta_naquele_passo(tmp_path):
+    destino = docpack.Destino(et="05 - UG", capitulo="CAP 05", sistema="MANCAIS / GUIA", subsistema="SUB")
+    assert docpack.partes_do_caminho(destino) == ["05 - UG", "CAP 05", "MANCAIS", "GUIA", "SUB"]
+
+
+def test_nome_do_subsistema_e_o_do_nivel_ou_a_ultima_pasta():
+    assert docpack.nome_do_subsistema(docpack.Destino(et="E", subsistema="SUB", pasta="FINAL")) == "SUB"
+    assert docpack.nome_do_subsistema(docpack.Destino(et="E", pasta="A/FINAL")) == "FINAL"
+    assert docpack.nome_do_subsistema(docpack.Destino(et="E", capitulo="CAP")) == "CAP"
 
 
 @pytest.mark.parametrize("destino", [docpack.Destino("", "", "X"), docpack.Destino("A", "", ""),
-                                     docpack.Destino("A", "", "B/C"), docpack.Destino("..", "", "X"),
-                                     docpack.Destino("A", "S:", "X")])
+                                     docpack.Destino("..", "", "X"), docpack.Destino("A", "S:", "X"),
+                                     docpack.Destino("A", "", "B/.."), docpack.Destino("A", "", "", "", "X*")])
 def test_destino_invalido(tmp_path, destino):
     with pytest.raises(docpack.ErroDocPack):
         docpack.pasta_do_dossie(tmp_path, destino)
 
 
-def test_pastas_existentes_dois_niveis_sem_as_ignoradas(tmp_path):
-    for p in ("03 - EBOP/GERADOR DIESEL", "03 - EBOP/DATASHEETS", "00 - OBSOLETO/X", ".oculta", "05 - UG"):
+def test_arvore_existente_sem_as_ignoradas_nem_as_do_dossie(tmp_path):
+    for p in ("03 - EBOP/CAP 03/GERADOR DIESEL/LMR", "03 - EBOP/DATASHEETS", "00 - OBSOLETO/X", ".oculta",
+              "05 - UG"):
         (tmp_path / p).mkdir(parents=True)
-    assert docpack.pastas_existentes(tmp_path) == {"03 - EBOP": ["GERADOR DIESEL"], "05 - UG": []}
+    assert docpack.arvore_existente(tmp_path) == {"03 - EBOP": {"CAP 03": {"GERADOR DIESEL": {}}}, "05 - UG": {}}
+    assert docpack.pastas_existentes(tmp_path) == {"03 - EBOP": {"CAP 03": {}}, "05 - UG": {}}
+
+
+def test_opcoes_do_nivel_dentro_das_pastas_de_cima():
+    arvore = {"05 - UG": {"CAP 05": {"EXCITACAO": {"REGULADOR": {}}, "MANCAIS": {"GUIA": {"SUB": {}}}}}, "03 - EBOP": {}}
+    assert docpack.opcoes_do_nivel(arvore, docpack.Destino(), "et") == ["03 - EBOP", "05 - UG"]
+    destino = docpack.Destino(et="05 - ug", capitulo="CAP 05")
+    assert docpack.opcoes_do_nivel(arvore, destino, "sistema") == ["EXCITACAO", "MANCAIS"]
+    # O sistema vazio é pulado: o subsistema vem das pastas do capítulo.
+    assert docpack.opcoes_do_nivel(arvore, destino, "subsistema") == ["EXCITACAO", "MANCAIS"]
+    destino.sistema = "MANCAIS/GUIA"
+    assert docpack.opcoes_do_nivel(arvore, destino, "subsistema") == ["SUB"]
+    destino.capitulo = "CAP NOVO"
+    assert docpack.opcoes_do_nivel(arvore, destino, "sistema") == []
 
 
 def test_achar_templates_pelos_nomes_conhecidos(tmp_path):
@@ -225,6 +253,17 @@ def test_status_pmib_tem_titulo_e_revisao_e_guarda_o_resto(tmp_path, templates):
         diferentes = {n for n in velho.namelist() if n in novo.namelist() and novo.read(n) != velho.read(n)}
     assert diferentes <= {"xl/worksheets/sheet1.xml", "xl/calcChain.xml", "[Content_Types].xml",
                           "xl/_rels/workbook.xml.rels"}
+
+
+def test_dossie_com_a_hierarquia_inteira_usa_o_subsistema(tmp_path, templates):
+    destino = docpack.Destino(et="05 - UNIDADE GERADORA", capitulo="CAP 05", sistema="EXCITACAO/AUX",
+                              subsistema="REGULADOR", pasta="LOTE 1")
+    raiz, resultado = _criar(tmp_path, templates, destino=destino)
+    pasta = raiz / "05 - UNIDADE GERADORA" / "CAP 05" / "EXCITACAO" / "AUX" / "REGULADOR" / "LOTE 1"
+    assert resultado.pasta == pasta and resultado.situacao == "criado"
+    ws = load_workbook(pasta / f"{CODIGO}_STATUS_PMIB.xlsx")["Lista de Materiais"]
+    assert ws["A3"].value == docpack.texto_do_titulo(_lista(), "REGULADOR")
+    assert (pasta / "LMR").is_dir() and any(p.name.endswith("REGULADOR.xlsx") for p in (pasta / "LMR").iterdir())
 
 
 def test_sem_revisao_fica_a_linha_do_template_e_avisa(tmp_path, templates):
@@ -341,22 +380,30 @@ class _LLM:
         return self.resposta
 
 
-def test_sugestao_da_ia():
-    llm = _LLM(SimpleNamespace(parsed_json={"capitulo": "03 - EBOP", "sistema": "", "pasta": "GERADOR DIESEL",
+def test_sugestao_da_ia_na_hierarquia_da_et():
+    llm = _LLM(SimpleNamespace(parsed_json={"et": "03 - EBOP", "capitulo": "CAP 03", "sistema": "",
+                                            "subsistema": "GERADOR DIESEL", "pasta": "",
                                             "motivo": "o título fala do gerador"}, text=""))
-    destino, motivo = docpack.sugerir_destino(_lista(), {"03 - EBOP": ["GERADOR DIESEL"]}, llm)
-    assert destino == docpack.Destino("03 - EBOP", "", "GERADOR DIESEL")
+    arvore = {"03 - EBOP": {"CAP 03": {"GERADOR DIESEL": {}}}, "05 - UG": {}}
+    destino, motivo = docpack.sugerir_destino(_lista(), arvore, llm)
+    assert destino == docpack.Destino(et="03 - EBOP", capitulo="CAP 03", subsistema="GERADOR DIESEL")
     assert motivo == "o título fala do gerador"
     assert "GERADOR DIESEL" in llm.prompts[0] and CODIGO in llm.prompts[0]
+    assert '"et"' in llm.prompts[0] and '"subsistema"' in llm.prompts[0]
 
 
-def test_sugestao_tolerante_ao_texto():
+def test_sugestao_tolerante_ao_texto_e_ao_formato_de_antes():
     texto = 'Claro!\n```json\n{"capitulo": "05 - UG", "subsistema": "EXCITACAO",}\n```'
-    assert docpack.ler_sugestao(texto) == docpack.Destino("05 - UG", "", "EXCITACAO")
+    # Sem "et": a resposta de antes, em que a primeira pasta se chamava "capitulo".
+    assert docpack.ler_sugestao(texto) == docpack.Destino(et="05 - UG", subsistema="EXCITACAO")
+    antigo = {"capitulo": "03 - EBOP", "sistema": "CAP 03", "pasta": "GERADOR DIESEL"}
+    assert docpack.ler_sugestao(antigo) == docpack.Destino(et="03 - EBOP", capitulo="CAP 03",
+                                                           subsistema="GERADOR DIESEL")
 
 
 @pytest.mark.parametrize("llm", [_LLM(erro=RuntimeError("sem rede")),
-                                 _LLM(SimpleNamespace(parsed_json={"capitulo": ""}, text=""))])
+                                 _LLM(SimpleNamespace(parsed_json={"capitulo": ""}, text="")),
+                                 _LLM(SimpleNamespace(parsed_json={"et": "03 - EBOP"}, text=""))])
 def test_sugestao_que_falha_nao_levanta(llm):
     destino, motivo = docpack.sugerir_destino(_lista(), {}, llm)
     assert destino is None and motivo

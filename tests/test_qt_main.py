@@ -56,7 +56,9 @@ def test_barra_lateral_tem_a_largura_total_da_do_interface_antiga(qt_interface, 
     anterior = qt_interface.styleSheet()
     qt_interface.setStyleSheet(estilo.folha_de_estilo())  # sem ela a área ganha moldura de 1 px
     try:
-        app_qt.resize(1280, 850)
+        # [2026-11-04] Alta o bastante para o menu (15 telas, 911 px) não rolar: com a
+        # rolagem, os botões perdem os 10 px da barra dela.
+        app_qt.resize(1280, 1000)
         app_qt.show()
         qtbot.waitExposed(app_qt)
         barra = app_qt.centralWidget().layout().itemAt(0).widget()

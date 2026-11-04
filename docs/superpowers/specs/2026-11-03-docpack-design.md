@@ -33,3 +33,20 @@ sobressalentes que ainda não têm `_STATUS_PMIB`. Descrição do comportamento 
    plano e pergunta Sim/Não antes de tocar no disco.
 8. **Fora do escopo** (futuro, com o workflow do AMP): baixar a última revisão e
    preencher o `_STATUS_PMIB` e a lista com preço pela análise da IA.
+
+## 2026-11-04 — a hierarquia da ET (pedido do Luan)
+
+O vocabulário do destino estava errado: o que a tela chamava de "capítulo" é a **ET**
+(a pasta de primeiro nível), e o que chamava de "sistema" é o **capítulo**. O caminho
+passa a ser `<raiz>/<ET>/<capítulo>/<sistema>/<subsistema>/[<pasta final>]`:
+
+- `Destino(et, capitulo, sistema, subsistema, pasta)`; só a ET é obrigatória, com mais
+  um nível qualquer abaixo; nível vazio é pulado.
+- **Uma pasta a mais em qualquer passo**: `/` dentro da célula (`MANCAIS/GUIA`), em vez
+  de colunas extras, que não caberiam a 1366x768.
+- Cada nível é uma lista editável com as pastas que já existem naquele nível, dentro
+  das escolhidas à esquerda (`arvore_existente`, quatro níveis, lida no worker do
+  "Listar"); o nome digitado vale (pasta nova).
+- A IA devolve os cinco níveis; a resposta antiga (sem `et`) é lida no vocabulário novo.
+- O SUBSISTEMA do A3 e da Aplicação LMR: a pasta do subsistema, senão a final, senão a
+  última pasta do caminho.

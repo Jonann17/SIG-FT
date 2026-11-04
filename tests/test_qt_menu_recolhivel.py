@@ -22,7 +22,8 @@ def montar(qt_interface, qtbot, tmp_path, monkeypatch):
         janela = qmain.SIG_FT_App()
         janela.fechar_sem_perguntar = True
         qtbot.addWidget(janela)
-        janela.resize(1280, 850)
+        # [2026-11-04] 1000 de altura: o menu (15 telas) pede 911 px e, mais baixo, rola.
+        janela.resize(1280, 1000)
         janela.show()
         qtbot.waitExposed(janela)
         return janela
