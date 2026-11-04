@@ -186,6 +186,7 @@ def test_textos_iguais_aos_da_home_antiga():
         "autospec": "AutoSpec (RAG):",
         "interpretar_material": "Interpretar material (Cria Fichas):",
         "traduzir_pdm": "Traduzir PDM (Planilhas PMIB):",
+        "docpack_pasta": "Sugerir pasta (DocPack):",
     }
 
 
@@ -973,11 +974,13 @@ def test_medidas_da_home(com_folha, qtbot, rede, mensagens):
     assert 46 <= engrenagem[1] and engrenagem[1] + engrenagem[3] <= 46 + 38
     cards = list(tela.cards.values())
     # 2026-10-27: a Conferência de Revisões virou aba do PMIB Manager (correção do
-    # Luan), e a Home voltou aos 12 cards.
-    assert _geo(cards[0], corpo)[:3] == (52, 247, 438)
-    assert _geo(cards[1], corpo)[:3] == (502, 247, 438)
+    # Luan), e a Home voltou aos 12 cards. 2026-10-30: o Upload de Fotos é o 13º, por
+    # decisão do usuário -- a Home passa a rolar, e a barra vertical tira 5 px da
+    # largura dos cards (438 -> 433).
+    assert _geo(cards[0], corpo)[:3] == (52, 247, 433)
+    assert _geo(cards[1], corpo)[:3] == (497, 247, 433)
     assert tela.horizontalScrollBar().maximum() == 0
-    assert tela.verticalScrollBar().maximum() == 0, "os 12 cards cabem sem rolar (decisão de 2026-10-07)"
+    assert tela.verticalScrollBar().maximum() > 0, "13 cards: a Home rola (decisão de 2026-10-30)"
 
 
 def test_medidas_do_painel_de_chaves(com_folha, qtbot, rede, mensagens):
@@ -1036,11 +1039,12 @@ def test_medidas_do_painel_de_modelos_no_modo_avancado(com_folha, qtbot, rede, m
         y = 294 + 36 * i
         assert _geo(tela.rotulos_modelo_ia_por_tarefa[tarefa], j)[:3] == (36, y, 220), tarefa
         assert _geo(tela.menus_modelo_ia_por_tarefa[tarefa], j) == (261, y, 420, 32), tarefa
-    # 7 tarefas desde 2026-10-16 (entraram a passada 1 do Cria Fichas e a
-    # tradução de PDM): duas linhas de 36 px (32 desde 2026-10-20 + 4) a mais que as 5 da tela antiga.
-    assert _geo(tela.entry_modelo_ia_livre, j)[1] == 492 + 2 * 36
+    # 8 tarefas desde 2026-11-03 (entraram a passada 1 do Cria Fichas, a
+    # tradução de PDM e a pasta do DocPack): três linhas de 36 px (32 desde 2026-10-20 + 4) a mais
+    # que as 5 da tela antiga.
+    assert _geo(tela.entry_modelo_ia_livre, j)[1] == 492 + 3 * 36
     resumo = _geo(tela.lbl_resumo_modelo_ia, j)
-    assert resumo[:2] == (36, 537 + 2 * 36)
+    assert resumo[:2] == (36, 537 + 3 * 36)
     assert _geo(tela.btn_aplicar_recomendados_ia, j)[1] == resumo[1] + resumo[3] + 10
 
 

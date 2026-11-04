@@ -136,6 +136,21 @@ TEXTOS: dict[str, Texto] = {
                    "pede o seu OK em cada uma."),
         ),
     ),
+    "UploadFotos": Texto(
+        marcar("Sobe as fotos de um subsistema nas fichas do portal e marca DOCUMENTOS E IMAGENS."),
+        (
+            marcar("Recebe a pasta de fotos (0071.jpg, 0071a.jpg…) e o _STATUS_PMIB; antes de começar, "
+                   "você marca as fichas ou Selecionar Todos."),
+            marcar("Foto fora do padrão, sem ficha ou com final repetido em duas fichas não sobe: o "
+                   "console lista cada uma."),
+            marcar("Ficha que já tem fotos: o robô as exclui antes de subir, ou pergunta, conforme o "
+                   "modo escolhido."),
+            marcar("Na planilha: COMPLETO se a ficha tem documentos; senão INCOMPLETO, com a nota "
+                   "\"Faltam documentos\"."),
+            marcar("Parar no meio termina a ficha atual; as seguintes não são tocadas."),
+            marcar("Portal lento? Escolha Lento ou Muito lento: o robô espera mais antes de desistir."),
+        ),
+    ),
     "CopiaFichas": Texto(
         marcar("Copia uma ficha que já está no portal para as fichas duplicadas dela."),
         (
@@ -234,6 +249,15 @@ TEXTOS: dict[str, Texto] = {
             marcar("Falhou? Copiar diagnóstico leva o detalhe técnico, sem o texto dos documentos."),
         ),
     ),
+    "PMIBManager.docpack": Texto(
+        marcar("Cria a pasta, com os templates, de cada lista que ainda não tem _STATUS_PMIB."),
+        (
+            marcar("Lê a mapeadora: entram as listas sem link e sem _STATUS_PMIB na pasta raiz."),
+            marcar("Capítulo, sistema e pasta final se editam com dois cliques; a IA pode sugerir."),
+            marcar("Cada pasta ganha o _STATUS_PMIB, a lista com preço (PB021) e LMR, IMAGENS e DATASHEETS."),
+            marcar("Nada é sobrescrito, e a mapeadora não muda: rode o Gestão PMIB depois para ligar."),
+        ),
+    ),
     "SearchPMIB": Texto(
         marcar("Procura um código ou descrição nos _STATUS_PMIB de uma pasta inteira, de uma vez."),
         (
@@ -251,7 +275,7 @@ TEXTOS: dict[str, Texto] = {
 # chaves das abas, na ordem delas. O bloco da seção mostra o texto da aba aberta.
 ABAS_DAS_SECOES: dict[str, tuple[str, ...]] = {
     "LMR": ("LMR.upload", "LMR.exclusao"),
-    "PMIBManager": ("PMIBManager.gestao", "PMIBManager.conferencia", "PMIBManager.amp"),
+    "PMIBManager": ("PMIBManager.gestao", "PMIBManager.conferencia", "PMIBManager.amp", "PMIBManager.docpack"),
 }
 
 

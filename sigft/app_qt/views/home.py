@@ -101,6 +101,7 @@ ROTULOS_TAREFA_IA = {
     "autospec": marcar("AutoSpec (RAG):"),
     "interpretar_material": marcar("Interpretar material (Cria Fichas):"),
     "traduzir_pdm": marcar("Traduzir PDM (Planilhas PMIB):"),
+    "docpack_pasta": marcar("Sugerir pasta (DocPack):"),
 }
 
 DESCRICAO_MODELOS_IA = marcar(

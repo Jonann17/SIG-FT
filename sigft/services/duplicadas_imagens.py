@@ -34,7 +34,6 @@ import time
 from sigft.core.rpa import seletores_duplicada as sel
 from sigft.services.duplicadas_injetor import ResultadoDaSecao, _log_de
 
-PAUSA_ABERTURA_FORM = 2.0
 PAUSA_APOS_UPLOAD = 2.0
 
 # Teto da espera pelo processamento do FilePond, e o intervalo entre olhadas.
@@ -43,6 +42,8 @@ PAUSA_APOS_UPLOAD = 2.0
 # `esperar_processamento` para por que a espera é por ESTADO e não por relógio.
 TIMEOUT_PROCESSAMENTO = 60.0
 INTERVALO_DE_POLL = 0.5
+# Quanto se espera o diálogo "Adicionar Imagens" montar os campos (10 s).
+TENTATIVAS_DO_FORMULARIO = 20
 
 
 def esperar_processamento(portal, callback_log=None, timeout=TIMEOUT_PROCESSAMENTO):
@@ -145,12 +146,42 @@ def gravar_temporarias(imagens, pasta):
 
 def subir_uma(portal, legenda, caminho, callback_log=None):
     """Sobe UMA imagem na ficha alvo (já aberta em edição). `True` se entrou."""
+    return subir_juntas(portal, legenda, [caminho], callback_log)
+
+
+# O diálogo "Adicionar Imagens" avisa "Máximo 10 arquivos" (captura de
+# 2026-10-30); o `<input>` do FilePond tem `multiple`.
+MAX_ARQUIVOS_POR_ENVIO = 10
+
+
+def subir_juntas(portal, legenda, caminhos, callback_log=None, *, timeout_confirmacao=None,
+                 timeout_processamento=TIMEOUT_PROCESSAMENTO, tentativas_do_formulario=None):
+    """Sobe até `MAX_ARQUIVOS_POR_ENVIO` imagens num só diálogo, todas com a
+    mesma descrição, e confirma UMA vez. `True` se todas entraram.
+
+    Com um arquivo é exatamente o `subir_uma` de sempre: o motor recebe o
+    caminho, não uma lista de um. Os `timeout_*` e as `tentativas_*` são do
+    portal lento: o Upload de Fotos os multiplica (`upload_fotos.Esperas`).
+    """
     _log = _log_de(callback_log)
+    if not 1 <= len(caminhos) <= MAX_ARQUIVOS_POR_ENVIO:
+        raise ValueError(f"de 1 a {MAX_ARQUIVOS_POR_ENVIO} arquivos por envio, vieram {len(caminhos)}")
+    nomes = ", ".join(os.path.basename(c) for c in caminhos)
 
     if not _abrir_formulario(portal):
         _log("      [Erro] Não achei 'Adicionar imagens' nesta tela.")
         return False
-    time.sleep(PAUSA_ABERTURA_FORM)
+    # ESPERA os campos do diálogo, e não 2 s fixos: com o portal lento o
+    # diálogo ainda não estava montado, e as descrições ficavam em branco em
+    # silêncio (2026-11-03). No caso bom sai na primeira olhada.
+    campos = (sel.XPATH_IMAGENS_DESCRICAO_ES, sel.XPATH_IMAGENS_DESCRICAO_PT)
+    for _ in range(tentativas_do_formulario or TENTATIVAS_DO_FORMULARIO):
+        if any(portal.engine.contar(seletor) for seletor in campos):
+            break
+        time.sleep(INTERVALO_DE_POLL)
+    else:
+        _log("      [Aviso] O diálogo 'Adicionar Imagens' não mostrou os campos de descrição: "
+             "a imagem pode subir sem descrição.")
 
     # A ficha é bilíngue e a legenda que veio da original serve para os dois
     # idiomas -- não temos a versão em espanhol dela, e traduzir seria inventar.
@@ -159,17 +190,24 @@ def subir_uma(portal, legenda, caminho, callback_log=None):
             portal.safe_fill(seletor, legenda)
 
     try:
-        portal.engine.enviar_arquivo(sel.XPATH_IMAGENS_INPUT_ARQUIVO, caminho)
+        portal.engine.enviar_arquivo(sel.XPATH_IMAGENS_INPUT_ARQUIVO,
+                                     caminhos[0] if len(caminhos) == 1 else list(caminhos))
     except Exception as erro:  # noqa: BLE001
-        _log(f"      [Erro] O upload de {os.path.basename(caminho)} falhou: "
+        _log(f"      [Erro] O upload de {nomes} falhou: "
              f"{type(erro).__name__}: {erro}")
         return False
-    time.sleep(PAUSA_APOS_UPLOAD)
+
+    # O FilePond LISTA os arquivos um por um: contar no primeiro instante dava
+    # "listou 1 de 7" com os 7 entrando (lote de 2026-11-03).
+    for _ in range(tentativas_do_formulario or TENTATIVAS_DO_FORMULARIO):
+        if portal.engine.contar(sel.XPATH_IMAGENS_ITEM_NA_LISTA) >= len(caminhos):
+            break
+        time.sleep(INTERVALO_DE_POLL)
 
     # ESPERA PELO FIM DO UPLOAD, e não por um relógio. Ver
     # `esperar_processamento`: clicar em "Confirmar" no meio do processamento é
     # o que fazia o portal não devolver toast nenhum.
-    if not esperar_processamento(portal, callback_log):
+    if not esperar_processamento(portal, callback_log, timeout=timeout_processamento):
         return False
 
     # A PROVA de que o arquivo foi ACEITO: o FilePond cria um `<li>` na lista.
@@ -179,9 +217,12 @@ def subir_uma(portal, legenda, caminho, callback_log=None):
         na_lista = portal.engine.contar(sel.XPATH_IMAGENS_ITEM_NA_LISTA)
     except Exception:  # noqa: BLE001
         na_lista = 0
-    if not na_lista:
-        _log(f"      [Erro] O FilePond não listou {os.path.basename(caminho)} "
-             f"depois do envio. A imagem não entrou.")
+    if na_lista < len(caminhos):
+        if len(caminhos) == 1:
+            _log(f"      [Erro] O FilePond não listou {nomes} depois do envio. A imagem não entrou.")
+        else:
+            _log(f"      [Erro] O FilePond listou {na_lista} de {len(caminhos)} arquivos ({nomes}). "
+                 f"Não confirmei: confirmar pela metade deixaria a ficha sem saber quais entraram.")
         return False
 
     # ⚠️ "Confirmar", DENTRO do diálogo -- não o SALVAR da seção, que fica
@@ -189,7 +230,8 @@ def subir_uma(portal, legenda, caminho, callback_log=None):
     # 2026-08-20). O portal responde com toast próprio: "A imagem foi
     # adicionada com sucesso!".
     return portal.clicar_e_confirmar(sel.XPATH_IMAGENS_CONFIRMAR,
-                                     sel.ABA_DOCUMENTOS_EDICAO, callback_log)
+                                     sel.ABA_DOCUMENTOS_EDICAO, callback_log,
+                                     timeout_s=timeout_confirmacao)
 
 
 TENTATIVAS_DE_FECHAR = 3
@@ -214,14 +256,21 @@ def fechar_formulario(portal, callback_log=None):
         except Exception:  # noqa: BLE001 -- sem foco; a próxima volta tenta
             pass
         time.sleep(PAUSA_APOS_UPLOAD / 2)
+    # O ESC nem sempre fecha (lote de 2026-11-03): o CANCELAR do próprio diálogo.
+    try:
+        if portal.engine.contar(sel.XPATH_IMAGENS_CONTAINER) and portal.engine.contar(sel.XPATH_IMAGENS_CANCELAR):
+            portal.safe_click(f"({sel.XPATH_IMAGENS_CANCELAR})[1]")
+            time.sleep(PAUSA_APOS_UPLOAD / 2)
+    except Exception:  # noqa: BLE001 -- a conferência abaixo diz se fechou
+        pass
     try:
         livre = not portal.engine.contar(sel.XPATH_IMAGENS_CONTAINER)
     except Exception:  # noqa: BLE001
         livre = False
     if not livre:
         _log("      [Erro] O formulário de imagens ficou aberto e não fechou "
-             "com ESC. Feche à mão: ele cobre a tela e trava o que vem "
-             "depois.")
+             "nem com ESC nem com CANCELAR. Feche à mão: ele cobre a tela e "
+             "trava o que vem depois.")
     return livre
 
 
@@ -237,6 +286,36 @@ def _abrir_formulario(portal):
         except Exception:  # noqa: BLE001
             continue
     return False
+
+
+def subir_arquivos(portal, arquivos, callback_log=None):
+    """Sobe `[(descricao, caminho), …]` na ficha aberta em edição, um por vez.
+    Devolve quantos entraram. Também usado pelo Upload de Fotos."""
+    _log = _log_de(callback_log)
+    subidas = 0
+    for descricao, caminho in arquivos:
+        entrou = subir_uma(portal, descricao, caminho, callback_log)
+        if not entrou:
+            # AUTOCONFERÊNCIA COM REPARO: o upload que falha deixa o
+            # formulário ABERTO, e ele cobre a tela. No log de 2026-10-19
+            # foi uma cadeia: o FilePond não apareceu, a imagem seguinte
+            # "não achou 'Adicionar imagens'" e as DUAS fichas seguintes
+            # não acharam nem a lista. Fechar e tentar de novo, uma vez.
+            fechar_formulario(portal, callback_log)
+            _log(f"      [Autoconferência] Imagens: "
+                 f"{os.path.basename(caminho)} não entrou -- fechei o "
+                 f"formulário e vou tentar de novo.")
+            entrou = subir_uma(portal, descricao, caminho, callback_log)
+            if not entrou:
+                fechar_formulario(portal, callback_log)
+        if entrou:
+            subidas += 1
+            _log(f"      Imagem enviada: {descricao[:50] or '(sem legenda)'}")
+
+    # Saída LIMPA, aconteça o que acontecer: a próxima seção (e a próxima
+    # ficha) não pode herdar um formulário aberto por cima da tela.
+    fechar_formulario(portal, callback_log)
+    return subidas
 
 
 def copiar(portal, imagens, pmib_alvo="", callback_log=None):
@@ -265,30 +344,9 @@ def copiar(portal, imagens, pmib_alvo="", callback_log=None):
             _log(f"      [Aviso] {recusadas} imagem(ns) não são JPEG nem PNG e "
                  f"o portal as recusaria. Copie à mão.")
 
-        subidas = 0
-        for legenda, caminho in arquivos:
-            descricao = legenda or pmib_alvo
-            entrou = subir_uma(portal, descricao, caminho, callback_log)
-            if not entrou:
-                # AUTOCONFERÊNCIA COM REPARO: o upload que falha deixa o
-                # formulário ABERTO, e ele cobre a tela. No log de 2026-10-19
-                # foi uma cadeia: o FilePond não apareceu, a imagem seguinte
-                # "não achou 'Adicionar imagens'" e as DUAS fichas seguintes
-                # não acharam nem a lista. Fechar e tentar de novo, uma vez.
-                fechar_formulario(portal, callback_log)
-                _log(f"      [Autoconferência] Imagens: "
-                     f"{os.path.basename(caminho)} não entrou -- fechei o "
-                     f"formulário e vou tentar de novo.")
-                entrou = subir_uma(portal, descricao, caminho, callback_log)
-                if not entrou:
-                    fechar_formulario(portal, callback_log)
-            if entrou:
-                subidas += 1
-                _log(f"      Imagem enviada: {descricao[:50] or '(sem legenda)'}")
-
-        # Saída LIMPA, aconteça o que acontecer: a próxima seção (e a próxima
-        # ficha) não pode herdar um formulário aberto por cima da tela.
-        fechar_formulario(portal, callback_log)
+        subidas = subir_arquivos(
+            portal, [(legenda or pmib_alvo, caminho) for legenda, caminho in arquivos],
+            callback_log)
 
         faltaram = len(imagens) - subidas
         if faltaram:

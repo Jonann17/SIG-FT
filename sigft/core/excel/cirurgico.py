@@ -52,6 +52,7 @@ import io
 import math
 import numbers
 import pathlib
+import posixpath
 import re
 import zipfile
 from typing import Any, Iterable, Mapping
@@ -81,6 +82,58 @@ ORDEM_WORKBOOK = ["fileVersion", "fileSharing", "workbookPr", "workbookProtectio
                   "functionGroups", "externalReferences", "definedNames", "calcPr", "oleSize",
                   "customWorkbookViews", "pivotCaches", "smartTagPr", "smartTagTypes", "webPublishing",
                   "fileRecoveryPr", "webPublishObjects", "extLst"]
+
+# Ordem dos filhos de <worksheet>: o <legacyDrawing> da nota nova entra aqui.
+ORDEM_WORKSHEET = ["sheetPr", "dimension", "sheetViews", "sheetFormatPr", "cols", "sheetData",
+                   "sheetCalcPr", "sheetProtection", "protectedRanges", "scenarios", "autoFilter",
+                   "sortState", "dataConsolidate", "customSheetViews", "mergeCells", "phoneticPr",
+                   "conditionalFormatting", "dataValidations", "hyperlinks", "printOptions",
+                   "pageMargins", "pageSetup", "headerFooter", "rowBreaks", "colBreaks",
+                   "customProperties", "cellWatches", "ignoredErrors", "smartTags", "drawing",
+                   "legacyDrawing", "legacyDrawingHF", "drawingHF", "picture", "oleObjects",
+                   "controls", "webPublishItems", "tableParts", "extLst"]
+
+# Nota de célula (o balão amarelo do Excel): o texto mora em `xl/commentsN.xml`
+# e o balão em `xl/drawings/vmlDrawingN.vml`, as duas partes ligadas à aba.
+REL_COMENTARIOS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
+REL_VML = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing"
+TIPO_COMENTARIOS = "application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml"
+TIPO_VML = "application/vnd.openxmlformats-officedocument.vmlDrawing"
+AUTOR_DAS_NOTAS = "SIG-FT"
+
+VML_NOVO = """<xml xmlns:v="urn:schemas-microsoft-com:vml"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel">
+ <o:shapelayout v:ext="edit">
+  <o:idmap v:ext="edit" data="{idmap}"/>
+ </o:shapelayout><v:shapetype id="_x0000_t202" coordsize="21600,21600" o:spt="202"
+  path="m,l,21600r21600,l21600,xe">
+  <v:stroke joinstyle="miter"/>
+  <v:path gradientshapeok="t" o:connecttype="rect"/>
+ </v:shapetype>
+</xml>"""
+
+# O balão de UMA nota. `x:Row`/`x:Column` começam em 0; a âncora o põe ao lado
+# da célula, como o Excel faz ao criar a nota à mão.
+VML_FORMA = """<v:shape id="_x0000_s{id}" type="#_x0000_t202" style='position:absolute;
+  margin-left:0;margin-top:0;width:108pt;height:59.25pt;z-index:{id};
+  visibility:hidden' fillcolor="#ffffe1" o:insetmode="auto">
+  <v:fill color2="#ffffe1"/>
+  <v:shadow on="t" color="black" obscured="t"/>
+  <v:path o:connecttype="none"/>
+  <v:textbox style='mso-direction-alt:auto'>
+   <div style='text-align:left'></div>
+  </v:textbox>
+  <x:ClientData ObjectType="Note">
+   <x:MoveWithCells/>
+   <x:SizeWithCells/>
+   <x:Anchor>
+    {c0}, 15, {r0}, 2, {c2}, 15, {r2}, 16</x:Anchor>
+   <x:AutoFill>False</x:AutoFill>
+   <x:Row>{linha0}</x:Row>
+   <x:Column>{coluna0}</x:Column>
+  </x:ClientData>
+ </v:shape>"""
 
 
 # --------------------------------------------------------------------------
@@ -418,6 +471,147 @@ class PlanilhaXlsx:
             self._cache_geral[s] = str(len(lista))
         return self._cache_geral[s]
 
+    # ---------------- notas de célula ----------------
+    def escrever_nota(self, parte: str, referencia: str, texto: str | None,
+                      autor: str = AUTOR_DAS_NOTAS) -> bool:
+        """Põe (ou troca) a nota da célula; `texto=None` a remove.
+
+        Só mexe em nota de `autor`. Devolve `False`, sem tocar em nada, quando a
+        célula já tem nota ou comentário de OUTRA pessoa -- o comentário em
+        thread deixa aqui só um marcador (autor "tc=…"), e trocá-lo apagaria a
+        conversa. As partes que a aba ainda não tinha (notas, balões, relações)
+        são criadas; as que já tinha recebem só o trecho novo."""
+        referencia = referencia.upper().replace("$", "")
+        coluna, linha = separar(referencia)
+        comentarios = self._alvo_da_relacao(parte, REL_COMENTARIOS)
+        if comentarios is None:
+            if texto is None:
+                return True
+            comentarios = self._nome_livre("xl/comments{}.xml")[0]
+            self._nova_parte(comentarios, f'<comments xmlns="{NS}"><authors/><commentList/></comments>')
+            self._relacionar(parte, REL_COMENTARIOS, comentarios)
+            self._declarar_tipo(TIPO_COMENTARIOS, parte=comentarios)
+
+        raiz = self.raiz(comentarios)
+        autores, lista = raiz.find(q("authors")), raiz.find(q("commentList"))
+        nomes = [a.text or "" for a in autores.iterchildren(q("author"))]
+        existente = next((c for c in lista.iterchildren(q("comment")) if c.get("ref") == referencia), None)
+        if existente is not None:
+            indice = int(existente.get("authorId", "0"))
+            if indice >= len(nomes) or nomes[indice] != autor:
+                return False
+            lista.remove(existente)
+            self._mudou(comentarios)
+            self._apagar_balao(parte, linha, coluna)
+        if texto is None:
+            return True
+
+        if autor not in nomes:
+            etree.SubElement(autores, q("author")).text = autor
+            nomes.append(autor)
+        nota = etree.SubElement(lista, q("comment"), ref=referencia,
+                                authorId=str(nomes.index(autor)), shapeId="0")
+        t = etree.SubElement(etree.SubElement(etree.SubElement(nota, q("text")), q("r")), q("t"))
+        t.text = texto
+        t.set(XML_SPACE, "preserve")
+        self._mudou(comentarios)
+        self._criar_balao(parte, linha, coluna)
+        return True
+
+    def _nova_parte(self, nome: str, conteudo: str) -> None:
+        """Parte que o pacote ainda não tinha: entra no fim do `.zip`."""
+        info = zipfile.ZipInfo(nome, date_time=dt.datetime.now().timetuple()[:6])
+        info.compress_type = zipfile.ZIP_DEFLATED
+        self._infos.append(info)
+        self._bytes[nome] = conteudo.encode("utf-8")
+
+    def _nome_livre(self, modelo: str) -> tuple[str, int]:
+        n = 1
+        while modelo.format(n) in self._bytes:
+            n += 1
+        return modelo.format(n), n
+
+    @staticmethod
+    def _rels_de(parte: str) -> str:
+        pasta, arquivo = parte.rsplit("/", 1)
+        return f"{pasta}/_rels/{arquivo}.rels"
+
+    def _alvo_da_relacao(self, parte: str, tipo: str) -> str | None:
+        rels = self._rels_de(parte)
+        if rels not in self._bytes:
+            return None
+        for rel in self.raiz(rels):
+            if rel.get("Type") == tipo:
+                alvo = rel.get("Target")
+                if alvo.startswith("/"):
+                    return alvo.lstrip("/")
+                return posixpath.normpath(f"{parte.rsplit('/', 1)[0]}/{alvo}")
+        return None
+
+    def _relacionar(self, parte: str, tipo: str, alvo: str) -> str:
+        rels = self._rels_de(parte)
+        if rels not in self._bytes:
+            self._nova_parte(rels, f'<Relationships xmlns="{NS_PKG_REL}"/>')
+        raiz = self.raiz(rels)
+        usados = {r.get("Id") for r in raiz}
+        n = 1
+        while f"rId{n}" in usados:
+            n += 1
+        etree.SubElement(raiz, f"{{{NS_PKG_REL}}}Relationship", Id=f"rId{n}", Type=tipo,
+                         Target=posixpath.relpath(alvo, parte.rsplit("/", 1)[0]))
+        self._mudou(rels)
+        return f"rId{n}"
+
+    def _declarar_tipo(self, tipo: str, *, parte: str | None = None, extensao: str | None = None) -> None:
+        raiz = self.raiz(PARTE_TIPOS)
+        if extensao is not None:
+            if any(d.get("Extension", "").lower() == extensao for d in raiz.iter(f"{{{NS_CT}}}Default")):
+                return
+            raiz.insert(0, etree.Element(f"{{{NS_CT}}}Default", Extension=extensao, ContentType=tipo))
+        else:
+            etree.SubElement(raiz, f"{{{NS_CT}}}Override", PartName="/" + parte, ContentType=tipo)
+        self._mudou(PARTE_TIPOS)
+
+    # O VML que o Excel grava nem sempre é XML válido (`<br>` sem fechar): é
+    # editado como TEXTO, e `surrogateescape` devolve intacto o byte que não
+    # for UTF-8.
+    def _vml_texto(self, vml: str) -> str:
+        return self._bytes[vml].decode("utf-8", "surrogateescape")
+
+    def _criar_balao(self, parte: str, linha: int, coluna: int) -> None:
+        vml = self._alvo_da_relacao(parte, REL_VML)
+        if vml is None:
+            vml, n = self._nome_livre("xl/drawings/vmlDrawing{}.vml")
+            self._nova_parte(vml, VML_NOVO.format(idmap=n))
+            rid = self._relacionar(parte, REL_VML, vml)
+            self._declarar_tipo(TIPO_VML, extensao="vml")
+            legado = etree.Element(q("legacyDrawing"))
+            legado.set(f"{{{NS_R}}}id", rid)
+            self._inserir_em_ordem(self.raiz(parte), legado, ORDEM_WORKSHEET)
+            self._mudou(parte)
+        texto = self._vml_texto(vml)
+        idmap = re.search(r'idmap[^>]*data="(\d+)', texto)
+        ids = [int(i) for i in re.findall(r"_x0000_s(\d+)", texto)]
+        novo_id = max(ids + [int(idmap.group(1)) * 1024 if idmap else 1024]) + 1
+        forma = VML_FORMA.format(id=novo_id, c0=coluna, r0=max(linha - 2, 0), c2=coluna + 2,
+                                 r2=linha + 3, linha0=linha - 1, coluna0=coluna - 1)
+        fim = texto.rfind("</xml>")
+        self._bytes[vml] = (texto[:fim] + forma + texto[fim:]).encode("utf-8", "surrogateescape")
+
+    def _apagar_balao(self, parte: str, linha: int, coluna: int) -> None:
+        vml = self._alvo_da_relacao(parte, REL_VML)
+        if vml is None:
+            return
+
+        def _sem_o_desta_celula(achado):
+            forma = achado.group(0)
+            desta = (re.search(rf"<x:Row>\s*{linha - 1}\s*</x:Row>", forma)
+                     and re.search(rf"<x:Column>\s*{coluna - 1}\s*</x:Column>", forma))
+            return "" if desta else forma
+
+        texto = re.sub(r"<v:shape\b.*?</v:shape>", _sem_o_desta_celula, self._vml_texto(vml), flags=re.S)
+        self._bytes[vml] = texto.encode("utf-8", "surrogateescape")
+
 
 # --------------------------------------------------------------------------
 def gravar_celulas(
@@ -427,15 +621,20 @@ def gravar_celulas(
     *,
     nomes: Mapping[str, str] | None = None,
     formato_geral: Iterable[tuple[int, int]] = (),
-) -> None:
+    notas: Mapping[tuple[int, int], str | None] | None = None,
+) -> list[str]:
     """Abre `caminho`, escreve `escritas` (`{(linha, coluna): valor}`, 1-based)
-    na `aba`, define os `nomes` e regrava por cima.
+    na `aba`, define os `nomes`, põe as `notas` (`None` remove) e regrava por
+    cima.
 
     Cada célula mantém o estilo que tinha; as de `formato_geral` ganham a
     versão do estilo com formato de número Geral (ver `estilo_formato_geral`).
     É o que `StatusPMIB.salvar()` chama a cada tentativa -- relendo o arquivo
     do disco, para não regravar por cima de algo que a pessoa salvou no Excel
-    entre uma tentativa e outra."""
+    entre uma tentativa e outra.
+
+    Devolve as referências das notas NÃO gravadas porque a célula já tem nota
+    ou comentário de outra pessoa (ver `PlanilhaXlsx.escrever_nota`)."""
     planilha = PlanilhaXlsx(caminho)
     parte = planilha.parte_da_aba(aba)
     geral = set(formato_geral)
@@ -447,4 +646,7 @@ def gravar_celulas(
         planilha.escrever(parte, alvo, valor, estilo=estilo)
     for nome, referencia in (nomes or {}).items():
         planilha.definir_nome(nome, referencia)
+    em_thread = [ref(linha, coluna) for (linha, coluna), texto in (notas or {}).items()
+                 if not planilha.escrever_nota(parte, ref(linha, coluna), texto)]
     planilha.salvar()
+    return em_thread

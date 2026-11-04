@@ -29,6 +29,10 @@ MODULOS_DA_HOME = [('CriaFichas',
   'Correção de PDM',
   'Troca ou atualiza o PDM das fichas no portal sem perder as características: fotografa antes, repõe o que '
   'o PDM novo também tem, e lista o que não voltou.'),
+ ('UploadFotos',
+  'Upload de Fotos',
+  'Sobe as fotos de uma pasta nas fichas pelo nome (0071, 0071a…), trocando as que já estão lá, e marca '
+  'DOCUMENTOS E IMAGENS no _STATUS_PMIB.'),
  ('Translator',
   'Tradutor Técnico',
   'Traduz as características das fichas de português para espanhol, no próprio computador, e grava numa aba '
@@ -120,6 +124,6 @@ def test_abertura_que_falha_mostra_o_motivo_e_sai_com_1(qt_interface, monkeypatc
 def test_menu_tem_as_telas_dos_cards_e_na_ordem_da_barra():
     telas_menu = [item[2] for item in catalogo.MENU if item[0] == "botao"]
     assert telas_menu == ["CriaFichas", "PDM", "Analyzer", "UploadConditions", "Translator",
-                          "UploadSpecs", "CorrecaoPDM", "CopiaFichas", "AutoSpec", "LMR",
+                          "UploadSpecs", "CorrecaoPDM", "UploadFotos", "CopiaFichas", "AutoSpec", "LMR",
                           "PMIBManager", "SearchPMIB"]
     assert {m[0] for m in catalogo.MODULOS} == set(telas_menu)

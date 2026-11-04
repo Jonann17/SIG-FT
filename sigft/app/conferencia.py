@@ -91,10 +91,11 @@ MODULOS_ESSENCIAIS = [
     "sigft.app_qt.views.upload_conditions",
     "sigft.app_qt.views.upload_tech_specs",
     "sigft.app_qt.views.correcao_pdm",
+    "sigft.app_qt.views.upload_fotos",
     "sigft.app_qt.views.copia_fichas",
     "sigft.app_qt.views.autospec",
     # O PMIB Manager é a seção de abas: ela importa a Gestão PMIB, a Conferência
-    # de Revisões e a Revisão no AMP (2026-10-27).
+    # de Revisões, a Revisão no AMP (2026-10-27) e o DocPack (2026-11-03).
     "sigft.app_qt.views.gestao_sobressalentes",
     "sigft.app_qt.views.busca_pmib",
     # A boas-vindas (2026-10-28): página da pilha, fora do menu.

@@ -111,10 +111,15 @@ def _autospec(parent, controller):
 
 
 def _pmib_manager(parent, controller):
-    # 2026-10-27: uma seção de abas (Gestão PMIB, Conferência de Revisões e
-    # Revisão no AMP), como a Aplicação LMR.
+    # 2026-10-27: uma seção de abas (Gestão PMIB, Conferência de Revisões,
+    # Revisão no AMP e, desde 2026-11-03, DocPack), como a Aplicação LMR.
     from sigft.app_qt.views.gestao_sobressalentes import ModuloGestaoSobressalentes
     return ModuloGestaoSobressalentes(parent, controller)
+
+
+def _upload_fotos(parent, controller):
+    from sigft.app_qt.views.upload_fotos import ModuloUploadFotos
+    return ModuloUploadFotos(parent, controller)
 
 
 def _busca_pmib(parent, controller):
@@ -150,6 +155,7 @@ TELAS = {
     "UploadConditions": _upload_conditions,
     "UploadSpecs": _upload_specs,
     "CorrecaoPDM": _correcao_pdm,
+    "UploadFotos": _upload_fotos,
     "CopiaFichas": _copia_fichas,
     "AutoSpec": _autospec,
     "PMIBManager": _pmib_manager,

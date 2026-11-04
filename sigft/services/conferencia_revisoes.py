@@ -27,6 +27,15 @@ COL_REVISAO_EM_USO = "REVISÃO EM USO"
 COL_LINK = "LINK DA PLANILHA"
 COLUNAS = (COLUNA_CHAVE_SOBRESSALENTES, COL_ULTIMA_REVISAO, COL_STATUS_DA_REVISAO,
            COL_STATUS_REAL, COL_REVISAO_EM_USO, COL_LINK)
+# [2026-11-03] As colunas que só o DocPack usa (`services/docpack.py`): lidas se a
+# mapeadora as tiver, vazias se não. O cabeçalho dos eventos tem quebra de linha
+# ("EVENTOS DE PAGAMENTOS\nRELACIONADOS"): a comparação junta os espaços.
+COL_CODIGO_CMI = "N° DOCUMENTO CMI"
+COL_DESCRICAO = "DESCRIÇÃO"
+COL_ESPECIFICACAO = "ESPECIFICAÇÃO TÉCNICA"
+COL_CAPITULO = "CAPÍTULO"
+COL_EVENTOS = "EVENTOS DE PAGAMENTOS RELACIONADOS"
+COLUNAS_OPCIONAIS = (COL_CODIGO_CMI, COL_DESCRICAO, COL_ESPECIFICACAO, COL_CAPITULO, COL_EVENTOS)
 
 MOTIVO_SEM_REVISAO = "sem revisão emitida no Aconex"
 MOTIVO_SEM_PASTA = "_STATUS_PMIB não encontrado"
@@ -41,6 +50,12 @@ class ListaNaMapeadora:
     status_real: str
     revisao_em_uso: str
     link: str | None   # o destino do hyperlink de LINK DA PLANILHA, relativo à pasta da mapeadora
+    # [2026-11-03] As colunas opcionais (`COLUNAS_OPCIONAIS`), para o DocPack.
+    codigo_cmi: str = ""
+    descricao: str = ""
+    especificacao: str = ""
+    capitulo: str = ""
+    eventos: str = ""
 
 
 @dataclass(frozen=True)
@@ -96,7 +111,7 @@ def ler_mapeadora(caminho: str | Path) -> Mapeadora:
         ws, motivo = achar_aba(wb, NOME_ABA_SOBRESSALENTES, COLUNA_CHAVE_SOBRESSALENTES)
         if ws is None:
             raise ValueError(f"A mapeadora não tem a aba de sobressalentes: {motivo}")
-        indices = {str(c.value).strip(): i for i, c in enumerate(ws[2]) if c.value}
+        indices = {" ".join(str(c.value).split()): i for i, c in enumerate(ws[2]) if c.value}
         faltam = [c for c in COLUNAS if c not in indices]
         if faltam:
             raise ValueError("A mapeadora não tem as colunas: " + ", ".join(faltam))
@@ -106,13 +121,15 @@ def ler_mapeadora(caminho: str | Path) -> Mapeadora:
             if not codigo:
                 continue
             hyperlink = linha[indices[COL_LINK]].hyperlink
+            opcionais = [_texto(linha[indices[c]].value) if c in indices else "" for c in COLUNAS_OPCIONAIS]
             listas.append(ListaNaMapeadora(
                 codigo,
                 _texto(linha[indices[COL_ULTIMA_REVISAO]].value),
                 _texto(linha[indices[COL_STATUS_DA_REVISAO]].value),
                 _texto(linha[indices[COL_STATUS_REAL]].value),
                 _texto(linha[indices[COL_REVISAO_EM_USO]].value),
-                (hyperlink.target or None) if hyperlink is not None else None))
+                (hyperlink.target or None) if hyperlink is not None else None,
+                *opcionais))
     finally:
         wb.close()
     return Mapeadora(caminho, datetime.fromtimestamp(caminho.stat().st_mtime), listas)
