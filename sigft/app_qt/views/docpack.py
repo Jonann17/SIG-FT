@@ -4,8 +4,11 @@ Aplicação LMR) e as subpastas LMR, IMAGENS e DATASHEETS.
 
 A tela é fina: quais listas, onde e o que vai em cada dossiê estão em
 `services/docpack.py`. A tabela mostra as listas da mapeadora sem `_STATUS_PMIB`;
-as três últimas colunas (capítulo, sistema, pasta final) se editam com dois cliques,
-com as pastas que já existem na raiz como sugestão, ou pelo "Sugerir com IA".
+as colunas de pasta (ET, capítulo, sistema, subsistema, pasta final -- a hierarquia
+da ET, corrigida pelo Luan em 2026-11-04) se editam com dois cliques, numa lista com
+as pastas que já existem naquele nível (dentro das escolhidas à esquerda) ou com um
+nome novo digitado, ou pelo "Sugerir com IA". `/` numa célula põe mais uma pasta
+naquele passo.
 Desenho: `docs/superpowers/specs/2026-11-03-docpack-design.md`.
 """
 from __future__ import annotations
@@ -16,7 +19,7 @@ import weakref
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QCompleter, QHBoxLayout, QLineEdit, QStyledItemDelegate
+from PySide6.QtWidgets import QComboBox, QCompleter, QHBoxLayout, QStyledItemDelegate
 
 from sigft.app.idioma import marcar, t
 from sigft.app_qt import file_dialogs, interface, propriedades
@@ -39,14 +42,20 @@ PERGUNTA_CRIAR = marcar("Criar {n} dossiê(s) em {raiz}?")
 # Os nomes vão em `marcar` e são traduzidos onde a tabela é montada (`t(c)`). As larguras
 # somam 850: cabem na aba a 1280x850 (as colunas esticam, mas não encolhem).
 COLUNAS = (
-    (marcar("Código"), 180),
-    (marcar("Título"), 230),
-    (marcar("Pasta do capítulo"), 150),
-    (marcar("Sistema (opcional)"), 120),
-    (marcar("Pasta final (subsistema)"), 170),
+    (marcar("Código"), 140),
+    (marcar("Título"), 170),
+    (marcar("ET"), 120),
+    (marcar("Capítulo"), 110),
+    (marcar("Sistema"), 100),
+    (marcar("Subsistema"), 110),
+    (marcar("Pasta final"), 100),
 )
-COL_CAPITULO, COL_SISTEMA, COL_PASTA = 2, 3, 4
-EDITAVEIS = (COL_CAPITULO, COL_SISTEMA, COL_PASTA)
+COL_ET, COL_CAPITULO, COL_SISTEMA, COL_SUBSISTEMA, COL_PASTA = 2, 3, 4, 5, 6
+# Coluna -> nível do `docpack_svc.Destino`, na ordem do caminho.
+NIVEL_DA_COLUNA = dict(zip((COL_ET, COL_CAPITULO, COL_SISTEMA, COL_SUBSISTEMA, COL_PASTA), docpack_svc.NIVEIS))
+EDITAVEIS = tuple(NIVEL_DA_COLUNA)
+LEGENDA = marcar("Dois cliques numa pasta: escolha uma que já existe ou digite outra. "
+                 "Mais uma pasta num passo: separe com / (ex.: MANCAIS/GUIA).")
 
 TEXTOS_TEMPLATE = {"status_pmib": marcar("_STATUS_PMIB..."), "lista_precos": marcar("Lista com preço..."),
                    "aplicacao_lmr": marcar("Aplicação LMR...")}
@@ -64,8 +73,9 @@ def _linha(*widgets) -> QHBoxLayout:
 
 
 class _EditorDePasta(QStyledItemDelegate):
-    """Só as colunas de pasta se editam, num campo que sugere as pastas que já existem
-    (as do primeiro nível no capítulo; as subpastas do capítulo da linha no resto)."""
+    """Só as colunas de pasta se editam, numa lista editável com as pastas que já
+    existem naquele nível, dentro das escolhidas nas colunas à esquerda; o nome
+    digitado vale do mesmo jeito (pasta nova)."""
 
     def __init__(self, tela) -> None:
         super().__init__(tela.tabela)
@@ -77,14 +87,22 @@ class _EditorDePasta(QStyledItemDelegate):
         tela = self._tela()
         if tela is None or indice.column() not in EDITAVEIS:
             return None
-        campo = QLineEdit(pai)
+        campo = QComboBox(pai)
+        campo.setEditable(True)
+        campo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         sugestoes = tela.sugestoes_para(indice.row(), indice.column())
-        if sugestoes:
-            completar = QCompleter(sugestoes, campo)
-            completar.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-            completar.setFilterMode(Qt.MatchFlag.MatchContains)
-            campo.setCompleter(completar)
+        campo.addItems(sugestoes)
+        completar = QCompleter(sugestoes, campo)
+        completar.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completar.setFilterMode(Qt.MatchFlag.MatchContains)
+        campo.setCompleter(completar)
         return campo
+
+    def setEditorData(self, campo, indice) -> None:  # noqa: N802 -- nome do Qt
+        campo.setEditText(str(indice.data(Qt.ItemDataRole.DisplayRole) or ""))
+
+    def setModelData(self, campo, modelo, indice) -> None:  # noqa: N802 -- nome do Qt
+        modelo.setData(indice, " ".join(campo.currentText().split()), Qt.ItemDataRole.EditRole)
 
 
 class ModuloDocPack(ModuleFrame):
@@ -95,7 +113,8 @@ class ModuloDocPack(ModuleFrame):
                            or "")
         self.templates = self._templates_lembrados()
         self.listas: list[conferencia_svc.ListaNaMapeadora] = []
-        self.existentes: dict[str, list[str]] = {}
+        # As pastas que já existem sob a raiz (`docpack_svc.arvore_existente`).
+        self.existentes: dict = {}
         self._cancelado = threading.Event()
         super().__init__(parent, controller, titulo=t(TITULO), com_progresso=True, embutida=embutida,
                          console_externo=console_externo, progresso_externo=progresso_externo)
@@ -155,7 +174,14 @@ class ModuloDocPack(ModuleFrame):
         cartao.addLayout(_linha(self.btn_listar, self.btn_ia, self.btn_previa, self.btn_criar, self.btn_parar))
 
         self.lbl_totais = blocos.rotulo("", alinhar="esquerda", negrito=True)
-        lay.addWidget(self.lbl_totais)
+        self.lbl_totais.setWordWrap(False)   # divide a linha com a legenda: não quebra
+        self.lbl_legenda = blocos.rotulo(t(LEGENDA), alinhar="esquerda", papel="legenda", elidir=True)
+        self.lbl_legenda.setToolTip(t(LEGENDA))
+        linha_ = QHBoxLayout()
+        linha_.setSpacing(10)
+        linha_.addWidget(self.lbl_totais)
+        linha_.addWidget(self.lbl_legenda, 1)
+        lay.addLayout(linha_)
         self.tabela = dialogos_selecao.tabela_ttk([(t(c), largura, "w") for c, largura in COLUNAS],
                                                   barra_horizontal=False)
         self.tabela.setEditTriggers(self.tabela.EditTrigger.DoubleClicked | self.tabela.EditTrigger.EditKeyPressed)
@@ -208,20 +234,23 @@ class ModuloDocPack(ModuleFrame):
         self._mostrar_arquivos()
 
     # -- a tabela ----------------------------------------------------------
+    def _destino_da_linha(self, item) -> docpack_svc.Destino:
+        return docpack_svc.Destino(**{nivel: item.text(coluna).strip() for coluna, nivel in NIVEL_DA_COLUNA.items()})
+
     def sugestoes_para(self, linha: int, coluna: int) -> list[str]:
-        """As pastas que já existem para a coluna: os capítulos, ou as subpastas do
-        capítulo daquela linha."""
-        if coluna == COL_CAPITULO:
-            return sorted(self.existentes)
+        """As pastas que já existem para a coluna, dentro das escolhidas nas colunas de
+        pasta à esquerda (as vazias são puladas)."""
         item = self.tabela.topLevelItem(linha)
-        capitulo = item.text(COL_CAPITULO).strip() if item is not None else ""
-        return list(self.existentes.get(capitulo, []))
+        if item is None or coluna not in NIVEL_DA_COLUNA:
+            return []
+        return docpack_svc.opcoes_do_nivel(self.existentes, self._destino_da_linha(item), NIVEL_DA_COLUNA[coluna])
 
     def _mostrar_listas(self, listas, existentes) -> None:
         self.listas, self.existentes = list(listas), dict(existentes)
         self.tabela.clear()
         for indice, lista in enumerate(self.listas):
-            item = dialogos_selecao.linha_ttk(self.tabela, (lista.codigo, lista.descricao, "", "", ""), chave=indice)
+            item = dialogos_selecao.linha_ttk(self.tabela, (lista.codigo, lista.descricao) + ("",) * len(EDITAVEIS),
+                                              chave=indice)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(0, Qt.CheckState.Unchecked)
             item.setToolTip(1, lista.descricao)
@@ -233,19 +262,18 @@ class ModuloDocPack(ModuleFrame):
         for linha in range(self.tabela.topLevelItemCount()):
             item = self.tabela.topLevelItem(linha)
             if item.checkState(0) == Qt.CheckState.Checked:
-                escolhidas.append((item.data(0, Qt.ItemDataRole.UserRole), docpack_svc.Destino(
-                    item.text(COL_CAPITULO), item.text(COL_SISTEMA), item.text(COL_PASTA))))
+                escolhidas.append((item.data(0, Qt.ItemDataRole.UserRole), self._destino_da_linha(item)))
         return escolhidas
 
     def _preencher(self, indice: int, destino: docpack_svc.Destino, motivo: str) -> None:
         item = self.tabela.topLevelItem(indice)
         if item is None:
             return
-        for coluna, valor in ((COL_CAPITULO, destino.capitulo), (COL_SISTEMA, destino.sistema),
-                              (COL_PASTA, destino.pasta)):
-            item.setText(coluna, valor)
+        for coluna, nivel in NIVEL_DA_COLUNA.items():
+            item.setText(coluna, getattr(destino, nivel))
         if motivo:
-            item.setToolTip(COL_PASTA, motivo)
+            for coluna in EDITAVEIS:
+                item.setToolTip(coluna, motivo)
 
     # -- listar ------------------------------------------------------------
     def _listar(self) -> None:
@@ -265,7 +293,7 @@ class ModuloDocPack(ModuleFrame):
             self.log(f"[ERRO] Não consegui ler a mapeadora: {erro}")
             return
         listas = docpack_svc.listas_sem_status_pmib(mapeadora, raiz)
-        existentes = docpack_svc.pastas_existentes(raiz)
+        existentes = docpack_svc.arvore_existente(raiz)
         self.log(f"{len(listas)} lista(s) sem _STATUS_PMIB, de {len(mapeadora.listas)} na mapeadora.")
         interface.na_interface(self._mostrar_listas, listas, existentes)
 
@@ -295,7 +323,8 @@ class ModuloDocPack(ModuleFrame):
             if destino is None:
                 self.log(f"  ⚠️ {lista.codigo}: {motivo}")
                 continue
-            self.log(f"  ✅ {lista.codigo}: {destino.capitulo} / {destino.sistema or '-'} / {destino.pasta}")
+            caminho = " / ".join(valor or "-" for _, valor in destino.niveis())
+            self.log(f"  ✅ {lista.codigo}: {caminho}")
             interface.na_interface(self._preencher, indice, destino, motivo)
 
     # -- prévia e criação ---------------------------------------------------

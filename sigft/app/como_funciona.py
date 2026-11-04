@@ -206,7 +206,7 @@ TEXTOS: dict[str, Texto] = {
                    "com sucesso."),
         ),
     ),
-    "PMIBManager.gestao": Texto(
+    "PMIBManager": Texto(
         marcar("Atualiza a mapeadora pelo Aconex e pelos _STATUS_PMIB, e calcula a situação de cada lista."),
         (
             marcar("Recebe o histórico do Aconex (DocManager), a pasta raiz dos _STATUS_PMIB e a "
@@ -221,7 +221,7 @@ TEXTOS: dict[str, Texto] = {
                    "navegador sem rede."),
         ),
     ),
-    "PMIBManager.conferencia": Texto(
+    "ConferenciaListas.conferencia": Texto(  # nao-e-interface
         marcar("Aponta as listas com a revisão em uso atrás da última emitida no Aconex e baixa os PDFs."),
         (
             marcar("Recebe a mapeadora e a pasta raiz dos _STATUS_PMIB, as mesmas da Gestão PMIB. A "
@@ -233,7 +233,7 @@ TEXTOS: dict[str, Texto] = {
             marcar("A aba Revisão no AMP parte da última conferência feita aqui."),
         ),
     ),
-    "PMIBManager.amp": Texto(
+    "ConferenciaListas.amp": Texto(  # nao-e-interface
         marcar("Manda ao AMP, uma por vez, as listas marcadas da última conferência e guarda o que mudou "
                "num HTML."),
         (
@@ -249,13 +249,22 @@ TEXTOS: dict[str, Texto] = {
             marcar("Falhou? Copiar diagnóstico leva o detalhe técnico, sem o texto dos documentos."),
         ),
     ),
-    "PMIBManager.docpack": Texto(
+    "DocPack.etapa1": Texto(  # nao-e-interface
         marcar("Cria a pasta, com os templates, de cada lista que ainda não tem _STATUS_PMIB."),
         (
             marcar("Lê a mapeadora: entram as listas sem link e sem _STATUS_PMIB na pasta raiz."),
-            marcar("Capítulo, sistema e pasta final se editam com dois cliques; a IA pode sugerir."),
+            marcar("ET, capítulo, sistema e subsistema se editam com dois cliques; a IA pode sugerir."),
             marcar("Cada pasta ganha o _STATUS_PMIB, a lista com preço (PB021) e LMR, IMAGENS e DATASHEETS."),
             marcar("Nada é sobrescrito, e a mapeadora não muda: rode o Gestão PMIB depois para ligar."),
+        ),
+    ),
+    "DocPack.etapa2": Texto(  # nao-e-interface
+        marcar("Preenche a lista de materiais dos dossiês vazios a partir do PDF da lista, lido pelo AMP."),
+        (
+            marcar("Acha na pasta raiz os _STATUS_PMIB ainda sem material, com a lista com preço (PB021) ao lado."),
+            marcar("Consultar baixa do Aconex a revisão vigente (nunca sobrescreve) e manda o PDF ao AMP."),
+            marcar("Nada é escrito até você confirmar em Gravar; planilha que já tem material é recusada."),
+            marcar("O VALOR UNITÁRIO fica sempre vazio: preço não sai do PDF da lista de sobressalentes."),
         ),
     ),
     "SearchPMIB": Texto(
@@ -275,7 +284,8 @@ TEXTOS: dict[str, Texto] = {
 # chaves das abas, na ordem delas. O bloco da seção mostra o texto da aba aberta.
 ABAS_DAS_SECOES: dict[str, tuple[str, ...]] = {
     "LMR": ("LMR.upload", "LMR.exclusao"),
-    "PMIBManager": ("PMIBManager.gestao", "PMIBManager.conferencia", "PMIBManager.amp", "PMIBManager.docpack"),
+    "ConferenciaListas": ("ConferenciaListas.conferencia", "ConferenciaListas.amp"),  # nao-e-interface
+    "DocPack": ("DocPack.etapa1", "DocPack.etapa2"),  # nao-e-interface
 }
 
 
