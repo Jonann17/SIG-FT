@@ -16,9 +16,11 @@ Nada é gravado no Excel.
 É o mesmo desenho da revisão das listas (`amp/revisao_de_listas/`), testado na GE em 2026-11-03.
 Ele tem webhook, chave e agente próprios.
 
-**Ainda não há tela no SIG-FT** que chame este workflow. Por enquanto ele se testa pelo
-PowerShell (abaixo). O lugar natural para a tela é o DocPack, que monta a pasta da lista nova com
-o template.
+**A tela do SIG-FT que chama este workflow é a Etapa 2 do DocPack** (2026-11-04,
+`sigft/services/docpack_etapa2.py`, `docs/base-conhecimento/15b-docpack-etapa2.md`). Ela manda o
+PDF vigente e o `_STATUS_PMIB` em branco do dossiê e lê a tabela do HTML para gravar o
+`_STATUS_PMIB` e a lista com preço (com o VALOR UNITÁRIO vazio). O webhook dela fica no botão
+Webhook… da aba (`AMP_CRIACAO_STATUS_PMIB_*`). O teste pelo PowerShell (abaixo) continua valendo.
 
 | Arquivo | O quê |
 |---|---|

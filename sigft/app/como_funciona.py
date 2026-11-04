@@ -259,11 +259,12 @@ TEXTOS: dict[str, Texto] = {
         ),
     ),
     "DocPack.etapa2": Texto(  # nao-e-interface
-        marcar("Preenche o conteúdo do dossiê que a Etapa 1 criou: o documento do Aconex, o _STATUS_PMIB e a lista de preço."),
+        marcar("Preenche a lista de materiais dos dossiês vazios a partir do PDF da lista, lido pelo AMP."),
         (
-            marcar("Parte das pastas criadas na Etapa 1, ou de qualquer pasta com o _STATUS_PMIB ainda vazio."),
-            marcar("Baixa do Aconex a revisão vigente da lista para a pasta dela. Nunca sobrescreve arquivo."),
-            marcar("Preenche o _STATUS_PMIB e a lista de preço a partir do documento, para você conferir antes de usar."),
+            marcar("Acha na pasta raiz os _STATUS_PMIB ainda sem material, com a lista com preço (PB021) ao lado."),
+            marcar("Consultar baixa do Aconex a revisão vigente (nunca sobrescreve) e manda o PDF ao AMP."),
+            marcar("Nada é escrito até você confirmar em Gravar; planilha que já tem material é recusada."),
+            marcar("O VALOR UNITÁRIO fica sempre vazio: preço não sai do PDF da lista de sobressalentes."),
         ),
     ),
     "SearchPMIB": Texto(
