@@ -97,6 +97,16 @@ comparam-se as raízes.
 #ITA0=C01CUC01&EPB020      (lista)   ->  raiz  #ITA0=C01CUC01&EPB020    ✓ par
 ```
 
+**[2026-11-04] Formato vigente, PB021.** A lista com preço de hoje não tem sequencial: é
+a de sobressalentes com o DCC PB021 no lugar do PB020. A raiz troca o `PB021` final por
+`PB020` (depois de tirar o sequencial, se houver). Sem isso a raiz dela era ela mesma, e
+toda lista PB021 saía "Sem lista correspondente".
+
+```
+#ST00=U01&MPB021           (preços)  ->  raiz  #ST00=U01&MPB020
+#ST00=U01&MPB020           (lista)   ->  raiz  #ST00=U01&MPB020         ✓ par
+```
+
 ### 4.1 Por que dos DOIS lados, e não só do lado dos preços
 
 A descrição inicial era "a lista de preços sempre termina com sequencial; sem o sequencial,

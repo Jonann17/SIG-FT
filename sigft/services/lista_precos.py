@@ -9,7 +9,8 @@ preços se refere, e o código dela ainda é o mesmo?**
 
 O algoritmo, e por que ele não olha o título para achar o par
 --------------------------------------------------------------
-1. da lista de preços, tira-se o sequencial final (`-01`, `-02`, …) → a RAIZ;
+1. da lista de preços, tira-se o sequencial final (`-01`, `-02`, …) e troca-se
+   o DCC PB021 final por PB020 → a RAIZ (`...MPB021` → `...MPB020`);
 2. procuram-se no histórico TODOS os documentos com aquela raiz, em qualquer
    revisão e com qualquer sequencial;
 3. descarta-se o `Tracking ID` da própria lista de preços; o que sobra é a
@@ -47,6 +48,10 @@ COL_CURRENT = "Current"
 # código. Um ou dois dígitos — no histórico real vai até `-02`.
 _SEQUENCIAL = re.compile(r"^(.*?)-(\d{1,2})$")
 
+# O DCC da lista com preço no formato vigente (ITAIPU-REF-0013): `...PB021`,
+# par da lista de sobressalentes `...PB020`. Só no FIM do código.
+_PB021 = re.compile(r"PB021$", re.IGNORECASE)
+
 # Desfechos do pareamento.
 PAR_ENCONTRADO = "par_encontrado"
 RDSPP_MUDOU = "rdspp_mudou"
@@ -68,10 +73,17 @@ def raiz(codigo: object) -> str:
     sobressalentes TAMBÉM tem sequencial (`-01`) e a de preços é `-02`. Tirar
     o sequencial só do lado dos preços perderia esse par — foi o que fez o
     pareamento subir de 10 para 11 nos dados reais.
+
+    [2026-11-04] A lista com preço do formato vigente não tem sequencial: é a
+    de sobressalentes com o DCC PB021 no lugar do PB020
+    (`#ST00=U01&MPB021` -> `#ST00=U01&MPB020`). Sem esta troca a raiz dela
+    era ela mesma, e toda lista PB021 saía órfã.
     """
     texto = str(codigo or "").strip()
     achado = _SEQUENCIAL.match(texto)
-    return achado.group(1) if achado else texto
+    if achado:
+        texto = achado.group(1)
+    return _PB021.sub("PB020", texto)
 
 
 def eh_lista_de_precos(titulo: object) -> bool:
