@@ -6,6 +6,8 @@ a lixeira abre o diálogo e o CONFIRMAR tira a primeira linha. Ele prova a
 ORDEM e as CONFERÊNCIAS do robô (excluir antes de subir, só dar ok com o nome
 na tabela), não os seletores -- esses só a primeira execução real prova.
 """
+import os
+
 import pytest
 
 from sigft.services import upload_fotos as uf
@@ -27,7 +29,7 @@ def test_agrupar_fotos_na_ordem_de_subida_e_lista_o_que_nao_segue_o_padrao(tmp_p
 
     grupos, ignorados = uf.agrupar_fotos(str(tmp_path))
 
-    assert {q: [p.rsplit("/", 1)[-1] for p in c] for q, c in grupos.items()} == {
+    assert {q: [os.path.basename(p) for p in c] for q, c in grupos.items()} == {
         "0071": ["0071.jpg", "0071a.png", "0071b.JPG"],
         "0072": ["0072.jpeg"],
     }
