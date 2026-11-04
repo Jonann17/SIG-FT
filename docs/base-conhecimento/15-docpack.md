@@ -10,14 +10,24 @@ Para cada lista de sobressalentes que ainda não tem `_STATUS_PMIB`, cria a past
 "dossiê") com os templates que ela vai precisar:
 
 ```
-<raiz>/<capítulo>/[<sistema>/]<pasta final>/
+<raiz>/<ET>/[<capítulo>/][<sistema>/][<subsistema>/][<pasta final>/]
     <código>_STATUS_PMIB.xlsx            A3 = ET / CAPÍTULO / SUBSISTEMA | CÓDIGO / CMI | EVENTOS
                                          A4 = linha da revisão em uso, com a data de hoje
     <código PB021>.xlsm                  Capa F37 = código PB021; E27 = título + " - LISTA DE SOBRESSALENTE COM PREÇO"
-    LMR/Aplicação LMR - <pasta>.xlsx     DOCS DE REFERENCIA: lista, ET / capítulo, subsistema
+    LMR/Aplicação LMR - <subsistema>.xlsx DOCS DE REFERENCIA: lista, ET / capítulo, subsistema
     IMAGENS/
     DATASHEETS/
 ```
+
+**A hierarquia das pastas** (corrigida pelo Luan em 2026-11-04): a primeira pasta da raiz
+é a **ET** (`03 - EBOP`, `05 - UNIDADE GERADORA`); dentro dela o **capítulo**; dentro do
+capítulo, o **sistema** e o **subsistema**; a pasta final é opcional. Só a ET é
+obrigatória, com mais uma pasta qualquer abaixo dela; nível vazio é pulado. `/` numa
+célula põe **mais uma pasta naquele passo** (`MANCAIS/GUIA`). O dossiê é a última pasta
+do caminho. O SUBSISTEMA do A3 e da Aplicação LMR é a pasta do subsistema; sem ela, a
+pasta final; sem as duas, a última pasta (`docpack.nome_do_subsistema`). A ET e o
+capítulo do A3 vêm da mapeadora (colunas I e J), que é a fonte de verdade: o nome da
+pasta nem sempre é o da ET.
 
 ## Entradas
 
@@ -48,9 +58,12 @@ Para cada lista de sobressalentes que ainda não tem `_STATUS_PMIB`, cria a past
 ## A tela
 
 Mapeadora e pasta raiz; os três templates; **Listar sem _STATUS_PMIB**; a tabela
-(marcar a lista; capítulo, sistema e pasta final com dois cliques, com as pastas que já
-existem como sugestão); **Sugerir com IA** (tarefa `docpack_pasta`, prompt
-`prompts.montar_docpack_pasta`: preenche os campos das linhas marcadas, nunca cria);
+(marcar a lista; ET, capítulo, sistema, subsistema e pasta final com dois cliques, numa
+lista editável com as pastas que já existem naquele nível, dentro das escolhidas à
+esquerda (`docpack.arvore_existente` + `opcoes_do_nivel`), ou com um nome novo); **Sugerir com IA** (tarefa `docpack_pasta`, prompt
+`prompts.montar_docpack_pasta`, que devolve `{et, capitulo, sistema, subsistema, pasta}`
+-- a resposta do formato de antes, sem `et`, ainda é lida -- e preenche os campos das
+linhas marcadas, nunca cria);
 **Pré-visualizar** (o plano no console, sem tocar no disco); **Criar dossiês** (o plano,
 a pergunta Sim/Não e a criação, com o log ✅/⚠️/❌ e o resumo); **Parar** (entre as listas).
 
