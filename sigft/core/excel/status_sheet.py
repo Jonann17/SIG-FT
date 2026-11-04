@@ -133,6 +133,10 @@ class StatusPMIB:
         self._escritas: dict[tuple[int, int], Any] = {}
         self._nomes: dict[str, str] = {}
         self._formato_geral: set[tuple[int, int]] = set()
+        self._notas: dict[tuple[int, int], str | None] = {}
+        # Depois do `salvar()`: as notas que o editor NÃO gravou (célula com nota
+        # ou comentário de outra pessoa), como "C3". Quem anotou avisa a pessoa.
+        self.notas_nao_gravadas: list[str] = []
 
     @property
     def escritas_pendentes(self) -> dict[tuple[int, int], Any]:
@@ -151,6 +155,12 @@ class StatusPMIB:
         self._escritas[(linha, coluna)] = valor
         if formato_geral:
             self._formato_geral.add((linha, coluna))
+
+    def anotar(self, linha: int, coluna: int, texto: str | None) -> None:
+        """Nota de célula (o balão do Excel) a gravar no próximo `salvar()`;
+        `texto=None` remove a que estiver lá. Célula com comentário em thread
+        não é tocada -- ver `cirurgico.PlanilhaXlsx.escrever_nota`."""
+        self._notas[(linha, coluna)] = texto
 
     def definir_nome(self, nome: str, referencia: str) -> None:
         """Nome definido GLOBAL a gravar no próximo `salvar()` -- ex.:
@@ -355,7 +365,7 @@ class StatusPMIB:
         Sem nada anotado, devolve `True` sem tocar no arquivo: regravá-lo igual
         só criaria uma versão vazia no Box.
         """
-        if not self._escritas and not self._nomes:
+        if not self._escritas and not self._nomes and not self._notas:
             return True
 
         gravar = self._gravar
@@ -365,15 +375,22 @@ class StatusPMIB:
             gravar = cirurgico.gravar_celulas
         aba = self._nome_da_aba()
         escritas, nomes, geral = dict(self._escritas), dict(self._nomes), set(self._formato_geral)
+        # Só quem anotou passa `notas`: os gravadores dublês dos testes antigos
+        # não conhecem o parâmetro.
+        extras = {"notas": dict(self._notas)} if self._notas else {}
 
         # O `save(caminho)` que o `save_with_retry` chama a cada tentativa:
         # relê o arquivo e reaplica as células (ver o docstring do módulo).
-        gravacao = SimpleNamespace(
-            save=lambda caminho: gravar(caminho, aba, escritas, nomes=nomes, formato_geral=geral))
+        def _gravar(caminho):
+            self.notas_nao_gravadas = list(
+                gravar(caminho, aba, escritas, nomes=nomes, formato_geral=geral, **extras) or [])
+
+        gravacao = SimpleNamespace(save=_gravar)
         resultado = locking.save_with_retry(gravacao, self.caminho_excel, **kwargs)
         self._escritas.clear()
         self._nomes.clear()
         self._formato_geral.clear()
+        self._notas.clear()
         return resultado
 
     def fechar(self) -> None:

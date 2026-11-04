@@ -602,3 +602,19 @@ def test_marcar_completo_fecha_mesmo_quando_salvar_levanta_permission_error():
         painel.marcar_completo("4500063671.1234", [config.COL_CONDICOES], max_attempts=1)
 
     assert wb.closed is True  # finally garantiu o fechar() mesmo com exceção
+
+
+def test_anotar_manda_a_nota_ao_gravador_e_limpa_depois():
+    # Upload de Fotos: "INCOMPLETO" + nota "Faltam documentos" na mesma célula.
+    wb, ws = _painel_status_pmib_padrao()
+    chamadas = []
+    painel = StatusPMIB("c.xlsx", gravar=lambda *a, **kw: chamadas.append(kw))
+    painel.abrir(wb=wb, ws=ws)
+
+    painel.escrever(4, 3, "INCOMPLETO")
+    painel.anotar(4, 3, "Faltam documentos")
+    painel.salvar()
+    painel.salvar()  # nada pendente: não grava de novo
+
+    assert len(chamadas) == 1
+    assert chamadas[0]["notas"] == {(4, 3): "Faltam documentos"}

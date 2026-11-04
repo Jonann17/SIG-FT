@@ -254,6 +254,8 @@ CONVERTIDOS: tuple[str, ...] = (
     "sigft/app_qt/views/autospec.py",
     "sigft/app_qt/views/copia_fichas.py",
     "sigft/app_qt/views/correcao_pdm.py",
+    # Upload de Fotos (2026-10-30)
+    "sigft/app_qt/views/upload_fotos.py",
     # Task 9: Aplicação LMR, PMIB Manager, Busca PMIB
     "sigft/app_qt/views/apagar_lmr.py",
     "sigft/app_qt/views/aplicacao_lmr.py",
@@ -363,6 +365,7 @@ NAO_E_INTERFACE: dict[str, set[str]] = {
     # (`ComTravaDeRobo.robo_ocupado`), que não muda de idioma.
     "sigft/app_qt/views/apagar_lmr.py": {"Exclusão de aplicações"},
     "sigft/app_qt/views/lmr.py": {"Upload de aplicações"},
+    "sigft/app_qt/views/upload_fotos.py": {"Upload de fotos"},
     # Busca PMIB: os nomes de coluna das planilhas pesquisadas (o menu "Coluna
     # Alvo" os mostra e o serviço procura por eles) são dado. "PMIB: {código}" é
     # o termo do glossário e o código achado: igual em todo idioma.

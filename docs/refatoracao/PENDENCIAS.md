@@ -923,3 +923,14 @@ duble. Depois, rodar a suite com a 9.2 e tirar o `<9.2`.~~
 |---|---|---|---|
 | 2026-11-03 | Pedido do DocPack | **Futuro:** ao criar o dossiê, baixar do Aconex a última revisão da lista (como a Conferência de Revisões) e preencher o `_STATUS_PMIB` e a lista com preço pela análise da IA (o workflow do AMP). Hoje o DocPack só cria a pasta com os templates. | Depois que a Revisão no AMP estiver validada pela GE |
 | 2026-11-03 | Templates do DocPack | O template da Aplicação LMR não tem cópia no repositório e aparece com dois nomes na documentação (`Aplicação LMR - Sistema.xlsx` e `APLICACAO LMR - SOBRESSALENTES_template.xlsx`); os rótulos da aba DOCS DE REFERENCIA que o DocPack preenche vêm de `Secao - Aplicacao LMR.md`. Rótulo que não existir no real vira aviso. Conferir com o template de verdade. | Primeiro uso real |
+
+## 2026-10-30 — saiu do mural do CLAUDE.md (regra 2: mais de 5 avisos)
+
+| 2026-10-22 | Jonathan | 🔴 **Engrenagem e idioma (es/pt/en):** tema, letra, aviso do Windows, chaves, modelos e atualizações saíram da Home para a janela Configuração (`views/configuracao.py`). Texto de interface agora é `t("texto em português")` (`sigft/app/idioma.py`; constante de módulo em `marcar()`), com tradução em `sigft/app/idiomas/es.json` e `en.json`; `tests/test_textos_da_interface.py` reprova literal de tela fora de `t()` e chave sem tradução.<br>Rafael: a tela do AutoSpec só trocou literal por `t()`; os teus testes de tela rodam em português e não mudaram. Texto novo na tela: `t()` + `python tools/textos_da_interface.py --faltando es` (e `en`); log de console continua em português. |
+
+## 2026-11-04 — revisão do Upload de Fotos
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-11-04 | Lote real do Upload de Fotos (35 fichas, portal lento) | `duplicadas_imagens.subir_arquivos` (a cópia de imagens da ficha duplicada) refaz o upload quando não vê o aviso verde, sem conferir se a imagem já entrou: com o portal lento, a imagem fica duplicada na ficha alvo. O Upload de Fotos deixou de usá-lo (`upload_fotos.subir_fotos` espera o diálogo fechar e confere a tabela pelo nome antes de reenviar). | Levar a mesma conferência para a ficha duplicada, com uma rodada no portal real. |
+| 2026-11-04 | Revisão do Upload de Fotos | A conferência do upload procura cada nome só na página visível da tabela de imagens ("1 a 8 de 8 itens"); com mais fotos que a página, as da página 2 contariam como faltando. O tamanho da página e o seletor da paginação não foram vistos no DOM real. | Conferir numa sessão local (`docs/OLHAR_O_PORTAL.md`) com uma ficha de muitas fotos. |

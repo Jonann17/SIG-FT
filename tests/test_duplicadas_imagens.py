@@ -422,11 +422,12 @@ def test_subir_uma_NAO_confirma_com_o_upload_em_andamento(monkeypatch, tmp_path)
 # 'Adicionar imagens'" → as duas fichas seguintes sem lista).
 # =============================================================================
 class _EngineComFormulario(_EngineDeImagens):
-    def __init__(self, *args, falhas_de_upload=0, esc_fecha=True, **kwargs):
+    def __init__(self, *args, falhas_de_upload=0, esc_fecha=True, cancelar_fecha=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.aberto = False
         self.falhas_de_upload = falhas_de_upload
         self.esc_fecha = esc_fecha
+        self.cancelar_fecha = cancelar_fecha
         self.teclas = []
 
     def contar(self, seletor):
@@ -434,12 +435,16 @@ class _EngineComFormulario(_EngineDeImagens):
             return int(self.aberto)
         if "Adicionar imagens" in seletor:
             return 0 if self.aberto else 1   # o formulário cobre o link
+        if "Cancelar" in seletor:
+            return int(self.aberto)
         return super().contar(seletor)
 
     def click(self, seletor):
         super().click(seletor)
         if "Adicionar imagens" in seletor:
             self.aberto = True
+        if "Cancelar" in seletor and self.cancelar_fecha:
+            self.aberto = False
 
     def enviar_arquivo(self, seletor, caminho):
         if self.falhas_de_upload:
@@ -499,3 +504,105 @@ def test_formulario_que_nao_fecha_vira_erro_no_log():
     imgs.copiar(portal, lidas, "", linhas.append)
 
     assert "Feche à mão" in "\n".join(linhas)
+
+
+# =============================================================================
+# Várias imagens num só diálogo (Upload de Fotos, 2026-11-03): o "Adicionar
+# Imagens" aceita até 10 arquivos ("Máximo 10 arquivos").
+# =============================================================================
+class _EngineDeVarias(_EngineDeImagens):
+    def __init__(self, aceita=None):
+        super().__init__()
+        self.aceita = aceita        # quantos o FilePond lista; None = todos
+        self.na_lista = 0
+
+    def contar(self, seletor):
+        if "filepond--list" in seletor:
+            return self.na_lista
+        return super().contar(seletor)
+
+    def enviar_arquivo(self, _seletor, caminhos):
+        self.enviados.append(caminhos)
+        quantos = len(caminhos) if isinstance(caminhos, list) else 1
+        self.na_lista = quantos if self.aceita is None else self.aceita
+
+
+def test_subir_juntas_manda_todos_num_so_envio_e_confirma_uma_vez():
+    engine = _EngineDeVarias()
+    portal = _PortalDeImagens(engine)
+
+    entrou = imgs.subir_juntas(portal, "imagens - 0071", ["a.jpg", "b.jpg", "c.jpg"])
+
+    assert entrou is True
+    assert engine.enviados == [["a.jpg", "b.jpg", "c.jpg"]]
+    assert portal.salvos == ["Documentos e imagens"]
+    assert engine.preenchidos  # a descrição foi preenchida
+
+
+def test_subir_juntas_com_arquivo_que_o_filepond_nao_listou_nao_confirma():
+    engine = _EngineDeVarias(aceita=2)
+    portal = _PortalDeImagens(engine)
+    linhas = []
+
+    entrou = imgs.subir_juntas(portal, "imagens - 0071", ["a.jpg", "b.jpg", "c.jpg"], linhas.append)
+
+    assert entrou is False
+    assert portal.salvos == []      # não clicou em Confirmar com arquivo faltando
+    assert "2 de 3" in "\n".join(linhas)
+
+
+def test_subir_uma_continua_mandando_um_caminho_so():
+    engine = _EngineDeVarias()
+    portal = _PortalDeImagens(engine)
+
+    assert imgs.subir_uma(portal, "x", "a.jpg") is True
+    assert engine.enviados == ["a.jpg"]
+
+
+
+# =============================================================================
+# O log do lote de 35 fichas (2026-11-03)
+# =============================================================================
+@pytest.mark.parametrize("mensagem", [
+    "A imagem foi adicionada com sucesso!",
+    "As imagens foram adicionadas com sucesso!",     # o envio de várias, no plural
+])
+def test_o_aviso_de_uma_e_de_varias_imagens_confirma_a_secao(mensagem):
+    from sigft.core.rpa.portal import mensagem_confirma_secao
+
+    assert mensagem_confirma_secao(mensagem, "Documentos e imagens")
+
+
+def test_aviso_de_outra_secao_continua_nao_confirmando_imagens():
+    from sigft.core.rpa.portal import mensagem_confirma_secao
+
+    assert not mensagem_confirma_secao("A Ficha Técnica 4500063671.0922 foi modificada com sucesso.",
+                                       "Documentos e imagens")
+
+
+def test_espera_o_filepond_listar_todos_antes_de_contar():
+    # "O FilePond listou 1 de 7 arquivos": ele lista um por um, e a contagem
+    # era feita no primeiro instante.
+    class _Engine(_EngineDeVarias):
+        def contar(self, seletor):
+            if "filepond--list" in seletor and self.enviados:
+                self.na_lista = min(self.na_lista + 1, 7)
+                return self.na_lista
+            return super().contar(seletor)
+
+        def enviar_arquivo(self, _seletor, caminhos):
+            self.enviados.append(caminhos)
+            self.na_lista = 0
+
+    engine = _Engine()
+    portal = _PortalDeImagens(engine)
+
+    assert imgs.subir_juntas(portal, "x", [f"{i}.jpg" for i in range(7)]) is True
+
+
+def test_formulario_que_o_esc_nao_fecha_e_fechado_pelo_cancelar():
+    portal, engine = _tela_com_formulario(esc_fecha=False, cancelar_fecha=True)
+    engine.aberto = True
+
+    assert imgs.fechar_formulario(portal) is True
+    assert any("Cancelar" in c for c in engine.cliques)

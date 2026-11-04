@@ -664,7 +664,11 @@ def id_do_painel(portal, nome):
         return ""
 
 
-def abrir_secao(portal, nome, callback_log=None, log_auditoria=None):
+TENTATIVAS_DA_ABA_ATIVA = 10    # x 0,5 s: até 5 s para o portal marcar a aba
+INTERVALO_DA_ABA_ATIVA = 0.5
+
+
+def abrir_secao(portal, nome, callback_log=None, log_auditoria=None, tentativas=None):
     """Abre uma das abas da ficha ("Fabricantes e fornecedores", "Documentos",
     "Condições"). Devolve `True` se o portal confirmou que ela ficou ativa.
 
@@ -680,7 +684,14 @@ def abrir_secao(portal, nome, callback_log=None, log_auditoria=None):
 
     portal.safe_click(f"({alvo})[1]")
 
+    # ESPERA o `aria-selected`, em vez de conferir no instante do clique: com
+    # o portal lento (2026-11-03) a aba vira ativa um pouco depois, e olhar uma
+    # vez só dava "não marcou a aba como ativa" com a aba abrindo na tela.
     ativa = sel.XPATH_ABA_DA_FICHA_ATIVA.format(texto=_literal_xpath(nome))
+    for _ in range(tentativas or TENTATIVAS_DA_ABA_ATIVA):
+        if portal.engine.contar(ativa):
+            break
+        time.sleep(INTERVALO_DA_ABA_ATIVA)
     if portal.engine.contar(ativa):
         _log(f"   Seção aberta: {nome}")
         # ⚠️ FOTOGRAFA O PAINEL, não a página. `//body` começa no topo, e a

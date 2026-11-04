@@ -63,7 +63,7 @@ def test_a_conferencia_saiu_do_menu_e_dos_cards():
     telas_do_menu = [item[2] for item in catalogo.MENU if item[0] == "botao"]
     for lugar in (telas_do_menu, [m[0] for m in catalogo.MODULOS], catalogo.ICONE_DA_TELA, qmain.TELAS):
         assert "ConferenciaRevisoes" not in lugar
-    assert len(catalogo.MODULOS) == 12
+    assert len(catalogo.MODULOS) == 13  # 2026-10-30: + Upload de Fotos
 
 
 def test_a_tela_diz_se_tem_tarefa_rodando(qt_interface, qtbot):

@@ -18,8 +18,9 @@ def _todas_as_chaves() -> list[str]:
     return [chave for tela in TELAS_DO_MENU for chave in como_funciona.chaves_da_tela(tela)]
 
 
-def test_as_12_telas_do_menu_tem_texto():
-    assert len(TELAS_DO_MENU) == 12
+def test_as_13_telas_do_menu_tem_texto():
+    # 2026-10-30: o Upload de Fotos é a 13ª.
+    assert len(TELAS_DO_MENU) == 13
     faltando = [chave for chave in _todas_as_chaves() if chave not in como_funciona.TEXTOS]
     assert faltando == []
 
