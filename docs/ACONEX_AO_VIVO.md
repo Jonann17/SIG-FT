@@ -14,6 +14,8 @@ desenho.
 | `docs/refatoracao/PENDENCIAS.md`, seções 2026-10-26 e 2026-10-27 | pendências desta frente |
 | `docs/superpowers/specs/2026-10-27-amp-revisao-de-listas-design.md` | o desenho da peça 2 (Revisão no AMP) |
 | `docs/superpowers/plans/2026-10-27-amp-revisao-de-listas.md` | o plano da peça 2: 6 tarefas |
+| `docs/superpowers/specs/2026-11-03-amp-revisao-com-arquivos-design.md` | o desenho da peça 2 v2 (o agente do AMP recebe os arquivos) |
+| `docs/superpowers/plans/2026-11-03-amp-revisao-com-arquivos.md` | o plano da peça 2 v2: 6 tarefas (a 7ª, a versão de teste, com o OK do Luan) |
 | `amp/revisao_de_listas/LEIA-ME.md` | ligar o workflow no n8n, e o que fazer quando ele falha |
 | `docs/ROTEIRO_DE_TESTE.md`, Etapa 5c | o teste da peça 2 na GE |
 
@@ -53,7 +55,41 @@ aprovada com divergência, 42 em dia e 48 sem `_STATUS_PMIB`.
   o bloco do CHANGELOG, a base de conhecimento e a Etapa 5b do roteiro.
 - A peça 2 (AMP): feita na 1.3.1-rc.2; falta a validação na GE (seção abaixo).
 
-## Onde parou a peça 2 (2026-10-27)
+## Onde parou a peça 2 (2026-11-03, v2)
+
+**v2, refeita em 2026-11-03.** O Luan corrigiu o desenho de 27/10:
+- o agente é criado no AMP (*Spare Parts Document Reviewer*) e chamado pelo nó AMP Agent;
+- o agente recebe os dois PDFs e o `_STATUS_PMIB` como estão, e não o texto extraído.
+
+**O que os testes na GE provaram (03/11):**
+- o AMP Agent lê os arquivos que chegam pelo webhook;
+- a resposta vem em `output`, e cada execução é uma conversa nova;
+- os códigos voltam intactos;
+- a rede da GE segura uma chamada de minutos.
+
+O detalhe está no desenho v2, §2.
+
+**Entregue pelo plano v2:**
+- o cliente genérico;
+- o serviço com os arquivos e o log de cada passo;
+- o webhook dentro da aba (Webhook…), com os nomes `AMP_REVISAO_LISTAS_*`;
+- as listas marcáveis;
+- o workflow igual ao colado na GE;
+- `amp/revisao_de_listas/agente.md`;
+- a documentação.
+
+**O que falta:**
+1. **A versão de teste** com a v2, que só sai com o OK do Luan, e a **Etapa 5c** do roteiro na GE.
+2. **Melhorar o system prompt no AMP:** o Luan não gostou do conteúdo do HTML de 03/11. É a próxima
+   frente, depois de a v2 rodar pelo SIG-FT. A cópia vai para o `agente.md`.
+3. **O tamanho máximo de arquivo:** o n8n aceita 16 MB no padrão, e o limite do agente não foi
+   medido (PENDENCIAS, 2026-11-03).
+4. **O Timeout do AMP Agent** entra no gerador quando se souber o nome e a unidade do parâmetro (o
+   Luan copia o nó).
+
+O que segue é da v1, de 27/10, e fica como histórico.
+
+### A v1 (2026-10-27)
 
 **Feito, no pré-lançamento 1.3.1-rc.2** (plano `2026-10-27-amp-revisao-de-listas.md`):
 

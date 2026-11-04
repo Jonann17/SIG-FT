@@ -37,11 +37,11 @@
   "EMPRESA_LLM_API_KEY": "",
   "_EMPRESA_LLM_API_KEY": "variavel EMPRESA_LLM_API_KEY -- par do anterior",
 
-  "AMP_WEBHOOK_URL": "",
-  "_AMP_WEBHOOK_URL": "variavel SIGFT_AMP_WEBHOOK_URL -- Production URL do webhook da Revisao das listas no n8n da GE (amp/revisao_de_listas)",
+  "AMP_REVISAO_LISTAS_URL": "",
+  "_AMP_REVISAO_LISTAS_URL": "variavel SIGFT_AMP_REVISAO_LISTAS_URL -- Production URL do webhook da Revisao das listas no n8n da GE (amp/revisao_de_listas); configura-se na aba Revisao no AMP, botao Webhook...",
 
-  "AMP_WEBHOOK_CHAVE": "",
-  "_AMP_WEBHOOK_CHAVE": "variavel SIGFT_AMP_WEBHOOK_CHAVE -- a chave do cabecalho X-SIGFT-Chave, a mesma da credencial Header Auth do workflow",
+  "AMP_REVISAO_LISTAS_CHAVE": "",
+  "_AMP_REVISAO_LISTAS_CHAVE": "variavel SIGFT_AMP_REVISAO_LISTAS_CHAVE -- a chave do cabecalho X-SIGFT-Chave, a mesma da credencial Header Auth do workflow",
 
   "_modelos_ia": {}
 }

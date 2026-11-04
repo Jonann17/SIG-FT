@@ -49,7 +49,13 @@ class TelaQueVaza(QWidget):
 
 def test_deixa_uma_tela_vazada(qapp):
     botao = TelaQueVaza().botao
-    assert Shiboken.ownedByPython(botao) and isinstance(botao.parent(), TelaQueVaza)
+    assert isinstance(botao.parent(), TelaQueVaza)
+    # No PySide6 6.12 o filho segue "do Python" (o caso perigoso que este teste
+    # monta); no 6.11 (o do Python < 3.12, ver o requirements.txt) o Qt fica
+    # com ele e o caso nem se forma. A saída tem de ser limpa nos dois.
+    import PySide6
+    if tuple(int(x) for x in PySide6.__version__.split(".")[:2]) >= (6, 12):
+        assert Shiboken.ownedByPython(botao)
 
     def apagar_o_filho_primeiro():
         if Shiboken.isValid(botao):

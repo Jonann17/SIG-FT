@@ -1,7 +1,8 @@
 # Aconex no SIG-FT, a Conferência de Revisões e a Revisão no AMP
 
 > Escrito em 2026-10-26, na 1.3.1-rc.1; a peça 2 (Revisão no AMP) entrou em
-> 2026-10-27, na 1.3.1-rc.2, e está na última seção. Desenho da peça 1:
+> 2026-10-27, na 1.3.1-rc.2, foi refeita em 2026-11-03 (v2: o agente do AMP recebe os
+> arquivos) e está na última seção. Desenho da peça 1:
 > `docs/superpowers/specs/2026-10-26-aconex-ao-vivo-design.md`. Plano e o que
 > falta: `docs/superpowers/plans/2026-10-26-aconex-ao-vivo.md` e
 > `docs/ACONEX_AO_VIVO.md`.
@@ -171,85 +172,146 @@ hyperlink relativo), `test_qt_tela_conferencia_revisoes.py`,
 
 ## Peça 2: revisão no AMP
 
-> Desde a 1.3.1-rc.2. Desenho: `docs/superpowers/specs/2026-10-27-amp-revisao-de-listas-design.md`;
-> plano: `docs/superpowers/plans/2026-10-27-amp-revisao-de-listas.md`. O AMP (a IA da GE) só
-> existe dentro da rede da GE: nenhum teste daqui chama a rede.
+> **v2 desde 2026-11-03:** o agente do AMP recebe os arquivos. Desenho:
+> `docs/superpowers/specs/2026-11-03-amp-revisao-com-arquivos-design.md`; plano:
+> `docs/superpowers/plans/2026-11-03-amp-revisao-com-arquivos.md`. A v1, de 2026-10-27, mandava o
+> texto extraído; o desenho dela (`2026-10-27-amp-revisao-de-listas-design.md`) ainda vale para o
+> porquê e para quais listas e arquivos vão. O AMP (a IA da GE) só existe dentro da rede da GE:
+> nenhum teste daqui chama a rede.
 
-Para cada lista com divergência da última conferência, o agente do AMP lê o PDF da revisão em uso,
-o da revisão atual e o `_STATUS_PMIB`, e devolve um HTML com o que mudou e o `_STATUS_PMIB`
-remontado. Ele roda num workflow do n8n do AMP; o SIG-FT manda **texto**: os arquivos não vão (o nó
-de modelo trabalha com texto, e o n8n não precisa ler o Box). Nada é aplicado no Excel: o Luan
-confere o HTML e cola.
+Para cada lista **marcada** na aba, o agente do AMP recebe três arquivos, como estão na pasta da
+lista:
+- o PDF da revisão em uso;
+- o PDF da revisão atual;
+- o `_STATUS_PMIB.xlsx`.
+
+O agente é o *Spare Parts Document Reviewer*, criado no AMP: as instruções moram lá, e
+`amp/revisao_de_listas/agente.md` é a cópia. Ele devolve um HTML com o que mudou entre as revisões e
+as ações no controle: criar, excluir (mover para a `SEM_LISTA_STATUS_PMIB`) e substituir. O SIG-FT
+**não lê o conteúdo** dos arquivos e não aplica nada no Excel: o Luan confere o HTML e aplica.
 
 | Camada | Arquivo | O quê |
 |---|---|---|
-| n8n | `amp/revisao_de_listas/` | o pedido ao agente (`pedido.md`, onde se melhora o agente), o gerador do `.json` e o `LEIA-ME.md` (ligar no n8n, sintomas de falha, o texto para a conversa nova) |
-| core | `sigft/core/amp/cliente.py` | `ClienteAmp` (`ping`, `eco`, `revisar`) e `RespostaAmp`; a chave vai no cabeçalho `X-SIGFT-Chave`, e nenhuma falha levanta |
-| serviço | `sigft/services/revisao_amp.py` | as listas e os arquivos (`listas_para_amp`), o texto do PDF e o `_STATUS_PMIB` em tabulação, o pedido, a rodada, o diagnóstico e o teste de conexão |
+| AMP + n8n | `amp/revisao_de_listas/` | `agente.md` (a cópia do agente), o gerador do workflow e o `LEIA-ME.md` (criar o agente, ligar o workflow, testar pelo PowerShell, sintomas) |
+| core | `sigft/core/amp/cliente.py` | `ClienteAmp` genérico (`ping` e `enviar(campos, arquivos)` em multipart) e `RespostaAmp` (`html`, `execucao`, `versao_workflow`, `arquivos`); a chave vai no cabeçalho `X-SIGFT-Chave`, e nenhuma falha levanta |
+| serviço | `sigft/services/revisao_amp.py` | as listas e os arquivos (`listas_para_amp`), a mensagem e o pedido (`PedidoAmp`), a rodada com o log, o diagnóstico e o teste de conexão |
+| widget | `sigft/app_qt/widgets/webhook_amp.py` | o webhook de um workflow dentro do módulo: `ChavesDoWebhook`, `ler`/`gravar` (com a adoção dos nomes antigos), `problema_do_endereco` e a `JanelaDoWebhook` |
 | tela | `sigft/app_qt/views/revisao_amp.py` | `ModuloRevisaoAmp`, a aba Revisão no AMP |
 
-**O contrato do webhook** (`POST` com JSON; a chave no cabeçalho):
+**O contrato do webhook** (`POST` para a Production URL, com a chave no cabeçalho):
+- **O ping:** `{"modo": "ping"}` em JSON (ou `modo=ping` no formulário). Volta
+  `{ok, modo, versao_workflow, execucao}` sem chamar o agente.
+- **A revisão:** multipart com os campos:
+  - `modo=revisar`;
+  - `mensagem`;
+  - `revisao_em_uso`, só quando há revisão em uso;
+  - `revisao_atual`;
+  - `status_pmib`.
 
-- `{"modo": "ping"}` → `{ok, modo, versao_workflow, execucao}`, sem chamar o modelo;
-- `{"modo": "eco", "codigos": [...]}` → `{ok, modo, texto, versao_workflow, execucao}`: o modelo
-  devolve os códigos, e o SIG-FT confere se voltaram iguais (mascaramento);
-- `{"modo": "revisar", "lista", "revisao_em_uso" (ou `null`), "revisao_atual", "status_pmib",
-  "origem"}` → `{ok, modo, html, versao_workflow, execucao}`. Cada revisão é `{arquivo, paginas,
-  texto}`; o `_STATUS_PMIB` é `{arquivo, aba, linha_de_revisao, linhas, tsv}`.
-- Falha do agente: HTTP 502 com `{ok: false, modo, etapa, erro, execucao}`.
+  Volta `{ok, modo, html, arquivos, versao_workflow, execucao}`. `arquivos` são os nomes dos
+  arquivos que chegaram ao agente.
+- **As falhas do workflow:**
+  - **400, etapa `arquivos`:** chegaram menos de 2 arquivos, e o agente não é chamado;
+  - **502, etapa `agente`:** o agente falhou;
+  - **`ok: false`:** o agente não devolveu HTML.
 
-A revisão vai **uma vez só**, pela rota que o `ping` achou (`ClienteAmp.revisar`; o ping vai antes
-na primeira lista). A cascata do `rede.abrir` manda de novo pela rota seguinte quando o tempo esgota
-ou a conexão cai, e na revisão cada repetição seria outra execução do agente; por isso o tempo
-esgotado ("o AMP não respondeu em 15 min") e a conexão cortada ("caiu depois de N s") viram erro.
+**A mensagem** (`mensagem_da_lista`), montada pelo SIG-FT com o que a conferência sabe:
+`Lista: <código>. Revisão em uso: <rev> (arquivo <nome>). Revisão atual: <rev> (arquivo <nome>).
+Controle: <nome>. Data de hoje: <dd/mm/aaaa>. Faça a revisão.` Sem revisão em uso, o trecho vira
+"nenhuma (a lista ainda não tem revisão em uso: compare só a revisão atual com o controle)", e vão
+dois arquivos. A data vai porque a linha de revisão nova leva a DATA DE ALTERAÇÃO, e o agente não
+sabe que dia é.
 
-O texto de cada PDF sai do PyMuPDF com `--- página N ---` antes de cada página (o agente cita a
-página). PDF sem texto em nenhuma página é "falta: PDF sem texto (só imagem)". O `_STATUS_PMIB` vai
-inteiro: a linha de revisão, o cabeçalho e as linhas, com as colunas separadas por tabulação. A
-`lista` leva a `data_de_hoje` (dd/mm/aaaa, do computador): a linha de revisão nova tem a DATA DE
-ALTERAÇÃO, e o modelo não sabe que dia é.
+O envio vai **uma vez só**, pela rota que o `ping` achou. A cascata do `rede.abrir` mandaria de novo
+pela rota seguinte quando o tempo esgota ou a conexão cai, e cada repetição seria outra execução do
+agente. Por isso o tempo esgotado ("o AMP não respondeu em 15 min") e a conexão cortada ("caiu
+depois de N s") viram erro. O teste de 03/11 mostrou que a rede da GE segura a chamada de minutos.
 
-A aba só começa com a Conferência parada (`ModuleFrame.rodando()`): no meio do download, a última
-conferência ainda está sem os PDFs, e um deles pode estar pela metade.
+**As listas** (`listas_para_amp`, sem mudança desde a v1):
+- são as da conferência que têm pasta, na ordem das categorias;
+- a revisão atual é a do download desta sessão (a que o Aconex devolveu); sem download, é a ÚLTIMA
+  REVISÃO EMITIDA, achada pelo nome do padrão na pasta;
+- sem o `_STATUS_PMIB`, sem o PDF da revisão atual ou sem o da revisão em uso (quando há revisão em
+  uso), a lista fica com a falta e não é mandada.
 
-**As listas** (`listas_para_amp`): as da conferência que têm pasta, na ordem das categorias. A
-revisão atual é a do download desta sessão (a que o Aconex devolveu); sem download, a ÚLTIMA
-REVISÃO EMITIDA, pelo nome do padrão na pasta. Faltando o `_STATUS_PMIB`, o PDF da revisão atual
-ou o da revisão em uso (quando há revisão em uso), a lista fica com a falta e não é chamada.
+**A rodada** (`revisar_listas`):
+1. **O ping antes.** Falhando, nada vai: as listas voltam "falhou" com o motivo, e o diagnóstico
+   vai só na primeira.
+2. **Uma lista por vez.** A lista com falta não é chamada.
+3. **Resposta boa:**
+   - o HTML vai para `<código>[<em uso>-<atual>] revisao AMP.html`, na pasta da lista;
+   - a gravação usa `open(..., "x")` e **nunca sobrescreve**: o nome que existe ganha " (2)",
+     " (3)"...
+4. **Também é falha:**
+   - a resposta sem HTML;
+   - o workflow dizer que recebeu menos arquivos do que os mandados ("o workflow recebeu N de M
+     arquivo(s)").
+5. **A falha de uma lista não para as outras.** O diagnóstico vai para
+   `Documentos\SIG-FT\logs\amp\<AAAAMMDD-HHMMSS> <código>.txt`.
+6. **O ritmo:**
+   - `cancelado_cb` é lido entre as listas, e as que sobram ficam "parado";
+   - `resultado_cb` recebe cada lista quando ela acaba, e a tabela da aba anda junto.
 
-**A rodada** (`revisar_listas`), uma lista por vez:
+**O log** (o Luan, em 03/11: "precisamos ver o que está acontecendo"):
+- **o começo:** as listas marcadas, as desmarcadas e as com falta que ficam fora, o webhook (e só se
+  a chave está posta) e o ping;
+- **cada lista:**
+  - `[n/N] <código> · em uso X → atual Y`;
+  - `vai:`, com o nome e o tamanho de cada arquivo;
+  - um batimento a cada 30 s enquanto o agente trabalha (`… 1:30 esperando o AMP`);
+  - `resposta:`, com o HTTP, o tempo, a execução do n8n e os arquivos recebidos;
+  - o `✓` com o HTML gravado, ou o `✗` com o motivo;
+- **o fim:** a contagem e o tempo total.
 
-1. falta, ou erro ao ler (`ValueError`, `OSError`, `BadZipFile`): "falta: <motivo>", sem chamar;
-2. outra exceção ao montar o pedido (PDF corrompido: o PyMuPDF levanta `RuntimeError`): "falhou",
-   com o traceback no diagnóstico;
-3. resposta boa: o HTML vai para `<código>[<em uso>-<atual>] revisao AMP.html`, na pasta da lista,
-   com `open(..., "x")`. **Nunca sobrescreve:** o nome que existe ganha " (2)", " (3)"...;
-4. resposta ruim: "falhou", e o diagnóstico vai para
-   `Documentos\SIG-FT\logs\amp\<AAAAMMDD-HHMMSS> <código>.txt`;
-5. `cancelado_cb` é lido entre as listas, e as que sobram ficam "parado". `resultado_cb` recebe
-   cada lista quando ela acaba: a tabela da aba anda junto.
+A aba grava as mesmas linhas, com a hora, em `Documentos\SIG-FT\logs\amp\amp_revisao_*.log`, e o
+teste de conexão em `amp_teste_*.log` (`core/log_execucao.py`). Nunca vão para o log a chave e o
+conteúdo dos documentos.
 
 **O diagnóstico** (`diagnostico`; o botão usa `diagnosticos_para_copiar`) é para colar numa conversa
-nova com o Claude, no PC da GE, com o repositório. Leva a versão e a hora, a lista e as revisões, o
-endereço (e só se a chave está posta), o que foi mandado **só em números** (páginas e caracteres de
-cada texto, linhas do `_STATUS_PMIB`, o tamanho do pedido), o HTTP, o tempo, o número da execução do
-n8n, o erro, o corpo da resposta (até 1500 caracteres: do JSON do workflow, só os campos dele, e do
-`html` e do `texto` só o tamanho) e os arquivos do repositório. **Nunca leva texto de documento:**
-além do filtro de campos, toda linha dos PDFs e célula do `_STATUS_PMIB` com 20 caracteres ou mais
-que volte no erro ou no corpo vira `<trecho do documento>`. A chave sai do corpo e do erro já no
-cliente.
+nova com o Claude, no PC da GE, com o repositório. Leva:
+- a versão e a hora, a lista e as revisões;
+- o endereço, e só se a chave está posta;
+- o que foi mandado: o nome e o tamanho de cada arquivo e o tamanho da mensagem;
+- o HTTP, o tempo, o número da execução do n8n e os arquivos que chegaram ao agente;
+- o erro, cortado em 300 caracteres;
+- o corpo da resposta, até 1500 caracteres: do JSON do workflow, só os campos dele, e do `html` só o
+  tamanho;
+- os arquivos do repositório.
 
-**O teste de conexão** (`testar_conexao`): o `ping`; passando, o `eco` com os códigos das listas e
-até 10 CÓDIGOS DO MATERIAL do primeiro `_STATUS_PMIB` que se lê. Sem conferência na sessão, só o
-ping (`--      Eco: não mandado`).
+**Nunca leva conteúdo de documento:** o SIG-FT não extrai texto, e o conteúdo só existe no `html`,
+que fica de fora. A chave sai do corpo e do erro já no cliente.
 
-**A aba:** o endereço e a chave saem de Configuração → Chaves de API (`AMP_WEBHOOK_URL` e
-`AMP_WEBHOOK_CHAVE`; variáveis `SIGFT_AMP_WEBHOOK_URL` e `SIGFT_AMP_WEBHOOK_CHAVE`). Sem os dois, um
-aviso, e nada é chamado; sem conferência, "Confira as revisões antes.". A tabela tem uma linha por
-lista e a coluna AMP ("na fila", "HTML pronto: ...", "falhou: ...", a falta, "parado"); dois
-cliques abrem o HTML. "Copiar diagnóstico" só liga com falha na rodada.
+**O teste de conexão** (`testar_conexao`) faz só o `ping`, que vê a rede, a chave e o workflow
+publicado, sem chamar o agente: `OK      Ping: workflow 2026-11-03 (HTTP 200, 0,8 s, execução N)`.
+O eco da v1 saiu: o agente lê o arquivo original, e os códigos voltaram intactos nos testes de 03/11.
 
-**Testes:** `test_amp_workflow.py` (o `.json` sai do pedido; os nós e o contrato),
-`test_amp_cliente.py`, `test_revisao_amp_pedido.py`, `test_revisao_amp_rodada.py`,
-`test_qt_tela_revisao_amp.py` e `test_qt_tela_gestao_sobressalentes.py`. O que só a GE prova (o
-modelo do AMP num workflow, PDF grande) está na Etapa 5c do roteiro.
+**A aba:**
+- **As listas.** Ao abrir a aba, se há uma conferência que a tabela não mostra, as listas aparecem
+  (`atualizar_listas`, numa tarefa). Elas vêm **todas marcadas**; a com falta fica sem caixa, com a
+  falta na coluna AMP. Há Marcar todas e Desmarcar todas.
+- **A rodada.**
+  - O **Revisar no AMP** manda só as marcadas, na ordem da tabela, e trava as caixas durante a
+    rodada.
+  - No fim, as que voltaram com HTML se desmarcam: um segundo clique manda só as que faltaram.
+  - Se a Conferência rodou de novo, o clique refaz a tabela e não manda nada até o próximo clique.
+  - Com a Conferência ainda rodando, aparece um aviso, e nada é chamado.
+- **O webhook.** O **Webhook…** abre a janela do endereço e da chave deste workflow, guardados no
+  `api_config.json` como `AMP_REVISAO_LISTAS_URL` e `AMP_REVISAO_LISTAS_CHAVE` (variáveis
+  `SIGFT_AMP_REVISAO_LISTAS_*`).
+  - A janela recusa endereço sem `https://` e o de teste (`/webhook-test/`).
+  - Os nomes antigos (`AMP_WEBHOOK_URL` e `AMP_WEBHOOK_CHAVE`, de Configuração → Chaves de API até
+    a v1) são adotados uma vez.
+  - Cada workflow do AMP tem o seu par: um módulo novo usa a mesma janela com outros nomes.
+- **Os botões e a tabela.** A coluna AMP diz "na fila", "HTML pronto: ...", "falhou: ...", a falta
+  ou "parado". Dois cliques abrem o HTML. "Copiar diagnóstico" só liga com falha na rodada.
+
+**Testes:**
+- `test_amp_workflow.py`: o `.json` sai do gerador; os nós e o contrato;
+- `test_amp_cliente.py`;
+- `test_revisao_amp_pedido.py`;
+- `test_revisao_amp_rodada.py`: inclui o log e o batimento;
+- `test_qt_webhook_amp.py`;
+- `test_qt_tela_revisao_amp.py`;
+- `test_qt_tela_gestao_sobressalentes.py`.
+
+O que só a GE prova está na Etapa 5c do roteiro: o agente de verdade e o tamanho máximo de arquivo.

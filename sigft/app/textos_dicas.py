@@ -97,13 +97,17 @@ DICAS: dict[str, dict[str, str]] = {
         "btn_conferir": marcar("Confere no próprio portal se as autorizações estão lá. {portal}"),
     },
     "ModuloRevisaoAmp": {
-        "btn_amp": marcar("Manda ao AMP, uma por vez, as listas da última conferência. Cada uma volta como "
-                          "um HTML na pasta dela; nada é aplicado no Excel."),
-        "btn_testar_amp": marcar("Confere a rede, a chave e o workflow publicado (ping) e se o AMP devolve os "
-                                 "códigos sem mascarar (eco). Não manda documento."),
+        "btn_amp": marcar("Manda ao AMP, uma por vez, as listas marcadas. Cada uma volta como um HTML na "
+                          "pasta dela; nada é aplicado no Excel."),
+        "btn_testar_amp": marcar("Confere a rede, a chave e o workflow publicado (ping). Não manda documento e "
+                                 "não chama o agente."),
+        "btn_webhook": marcar("O endereço e a chave do workflow da revisão de listas no AMP. A chave fica "
+                              "mascarada."),
         "btn_copiar_diag": marcar("Copia o diagnóstico das listas que falharam, sem texto de documento e sem a "
                                   "chave, para colar numa conversa nova com o Claude."),
         "btn_parar": marcar("Para depois da lista que está no AMP. As que já voltaram ficam."),
+        "btn_marcar": marcar("Marca todas as listas que podem ir ao AMP."),
+        "btn_desmarcar": marcar("Desmarca todas as listas."),
     },
     "ModuloTranslator": {
         "btn_run": marcar("Escolha as planilhas; a tradução para o espanhol roda no computador e vai "

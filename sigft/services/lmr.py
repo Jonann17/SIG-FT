@@ -2,6 +2,7 @@ import pandas as pd
 import unicodedata
 
 from sigft import config
+from sigft.core import dados_usuario
 from sigft.services import lmr_status
 import time
 
@@ -128,6 +129,32 @@ INTERVALO_DIALOGO_ABRIR_S = 0.5
 # pausa fixa de 0,5 s -- e prova que a tag entrou.
 TENTATIVAS_TAG_SAIR_DO_CAMPO = 20
 INTERVALO_TAG_SAIR_DO_CAMPO_S = 0.05
+
+
+ARQUIVO_ERROS_LMR = "erros_lmr.csv"
+
+
+def caminho_do_relatorio_de_erros():
+    """`Documentos\\SIG-FT\\logs\\erros_lmr.csv` (2026-10-30).
+
+    Era `to_csv("erros_lmr.csv")`, relativo ao cwd: no app instalado ele caía
+    onde o processo foi aberto (possivelmente `Program Files`, que não grava),
+    e o `except` engolia o erro calado."""
+    return dados_usuario.pasta_logs() / ARQUIVO_ERROS_LMR
+
+
+def salvar_relatorio_de_erros(erros, callbacks):
+    """Grava os erros do lote no `erros_lmr.csv` da pasta de logs e diz no
+    console onde ficou. Devolve o caminho, ou `None` se não deu para gravar
+    (o motivo vai ao console; nunca levanta: o lote já terminou)."""
+    destino = caminho_do_relatorio_de_erros()
+    callbacks.log(f"Salvando relatório de erros em {destino}...")
+    try:
+        pd.DataFrame(erros).to_csv(destino, index=False)
+    except Exception as erro:  # noqa: BLE001 -- o lote já terminou
+        callbacks.log(f"[!] Não foi possível gravar o relatório de erros ({destino}): {erro}")
+        return None
+    return destino
 
 
 class CodigoNaoConfirmado(RuntimeError):
@@ -839,10 +866,7 @@ class LMRAutomation:
 
         # Relatório Final
         if erros_totais:
-            callbacks.log("Salvando relatório de erros (erros_lmr.csv)...")
-            try:
-                pd.DataFrame(erros_totais).to_csv("erros_lmr.csv", index=False)
-            except Exception: pass
+            salvar_relatorio_de_erros(erros_totais, callbacks)
 
         lote.finalizar()
         callbacks.log("Processo Finalizado.")

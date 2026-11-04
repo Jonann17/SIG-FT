@@ -137,6 +137,10 @@ ACOES_DA_HOME = (
 # A engrenagem, à direita do título da Home, e o item do Ctrl+K que abre a janela.
 ACAO_CONFIGURACAO = AcaoDaHome("configuracao", marcar("Configuração"), "settings", "fantasma",
                                "abrir_configuracao", marcar("engrenagem opcoes preferencias ajustes"))
+# [2026-10-30] A lâmpada, ao lado da engrenagem: abre a janela Sugestões
+# (`views/sugestoes.py`), como no cabeçalho do CMI Suite.
+ACAO_SUGESTOES = AcaoDaHome("sugestoes", marcar("Sugestões"), "lightbulb", "fantasma",
+                            "abrir_sugestoes", marcar("sugestao ideia melhoria opiniao email feedback"))
 # Os botões que moram na janela Configuração: saíram da barra da Home em 2026-10-22.
 ACOES_DA_CONFIGURACAO = (
     AcaoDaHome("modelos", marcar("Modelos de IA"), "bot", "primario",
@@ -147,7 +151,7 @@ ACOES_DA_CONFIGURACAO = (
                "procurar_atualizacoes", marcar("procurar versao nova atualizar")),
 )
 # Tudo o que a Home faz pelo Ctrl+K, na ordem da caixa.
-ACOES_QUE_A_HOME_FAZ = (ACAO_CONFIGURACAO, *ACOES_DA_HOME, *ACOES_DA_CONFIGURACAO)
+ACOES_QUE_A_HOME_FAZ = (ACAO_CONFIGURACAO, ACAO_SUGESTOES, *ACOES_DA_HOME, *ACOES_DA_CONFIGURACAO)
 
 # As seções da janela Configuração, de cima para baixo: chave e título. A chave
 # é o método que monta a seção (`JanelaConfiguracao._secao_<chave>`).

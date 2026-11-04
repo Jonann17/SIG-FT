@@ -177,7 +177,6 @@ def test_textos_iguais_aos_da_home_antiga():
         ("GOOGLE_CSE", "Google CSE ID:"), ("LLAMA", "LlamaCloud API:"),
         ("OPENROUTER", "OpenRouter API Key:"), ("EMPRESA_LLM_BASE_URL", "IA Empresa (Base URL):"),
         ("EMPRESA_LLM_API_KEY", "IA Empresa (API Key):"),
-        ("AMP_WEBHOOK_URL", "AMP Webhook (URL):"), ("AMP_WEBHOOK_CHAVE", "AMP Webhook (chave):"),
     ]
     assert home_mod.ROTULOS_TAREFA_IA == {
         "categorizar_pdm": "Categorizar PDM (Cria Fichas):",
@@ -187,6 +186,7 @@ def test_textos_iguais_aos_da_home_antiga():
         "autospec": "AutoSpec (RAG):",
         "interpretar_material": "Interpretar material (Cria Fichas):",
         "traduzir_pdm": "Traduzir PDM (Planilhas PMIB):",
+        "docpack_pasta": "Sugerir pasta (DocPack):",
     }
 
 
@@ -988,15 +988,16 @@ def test_medidas_do_painel_de_chaves(com_folha, qtbot, rede, mensagens):
     tela = home_mod.HomeView(controller=Controller())
     qtbot.addWidget(tela)
     j = _exposta(qtbot, tela.abrir_janela_chaves_api())
-    # 2026-10-27: nove chaves (as duas do webhook do AMP), duas linhas de 36 a mais.
-    assert _geo(tela.frame_chaves_api, j) == (26, 26, 697, 420)
+    # 2026-11-03: sete chaves de novo: o webhook do AMP foi para a aba Revisão no AMP
+    # (cada workflow tem o seu), e o painel voltou às medidas de antes de 2026-10-27.
+    assert _geo(tela.frame_chaves_api, j) == (26, 26, 697, 348)
     assert _geo(tela.lbl_titulo_chaves_api, j)[:2] == (36, 36)
     for i, chave in enumerate(tela.entries):
         y = 76 + 36 * i
         assert _geo(tela.rotulos_chaves_api[chave], j) == (36, y, 140, 32), chave
         assert _geo(tela.entries[chave], j) == (181, y, 527, 32), chave
     x, y, w, h = _geo(tela.btn_salvar_chaves, j)
-    assert (y, w, h) == (408, 140, 28) and abs(x - 304) <= 1
+    assert (y, w, h) == (336, 140, 28) and abs(x - 304) <= 1
     assert _geo(j.botao_fechar, j) == (320, 480, 120, 28)
 
 
@@ -1038,11 +1039,12 @@ def test_medidas_do_painel_de_modelos_no_modo_avancado(com_folha, qtbot, rede, m
         y = 294 + 36 * i
         assert _geo(tela.rotulos_modelo_ia_por_tarefa[tarefa], j)[:3] == (36, y, 220), tarefa
         assert _geo(tela.menus_modelo_ia_por_tarefa[tarefa], j) == (261, y, 420, 32), tarefa
-    # 7 tarefas desde 2026-10-16 (entraram a passada 1 do Cria Fichas e a
-    # tradução de PDM): duas linhas de 36 px (32 desde 2026-10-20 + 4) a mais que as 5 da tela antiga.
-    assert _geo(tela.entry_modelo_ia_livre, j)[1] == 492 + 2 * 36
+    # 8 tarefas desde 2026-11-03 (entraram a passada 1 do Cria Fichas, a
+    # tradução de PDM e a pasta do DocPack): três linhas de 36 px (32 desde 2026-10-20 + 4) a mais
+    # que as 5 da tela antiga.
+    assert _geo(tela.entry_modelo_ia_livre, j)[1] == 492 + 3 * 36
     resumo = _geo(tela.lbl_resumo_modelo_ia, j)
-    assert resumo[:2] == (36, 537 + 2 * 36)
+    assert resumo[:2] == (36, 537 + 3 * 36)
     assert _geo(tela.btn_aplicar_recomendados_ia, j)[1] == resumo[1] + resumo[3] + 10
 
 

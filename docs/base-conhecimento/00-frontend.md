@@ -234,6 +234,9 @@ A interface Qt (`sigft/app_qt/`) tem um sistema visual próprio; a spec está em
   nada à vista não mexe na área de transferência). A altura do console e o começo do
   texto não mudaram, mas a barra ocupa ~28 px da área de texto (no AutoSpec sobram
   umas 5 linhas). O console continua escuro no tema claro, de propósito.
+  Em janela baixa (notebook 1366x768 maximizado, ~690 px úteis) o console de altura
+  fixa cede até o mínimo do puxador (barra + duas linhas) em vez de empurrar a janela
+  para fora da tela (2026-10-31, `tests/test_qt_tela_1366.py`).
 - **Resumo do lote** (`sigft/app/resumo_lote.py` + `widgets/resumo_lote.py`): no fim
   da última tarefa da tela (`ModuleFrame._fim_do_lote`), se houve erro ou aviso, a
   janela agrupada por código PMIB (regex própria, "Sem código PMIB" para o resto),
@@ -277,6 +280,12 @@ A interface Qt (`sigft/app_qt/`) tem um sistema visual próprio; a spec está em
   `catalogo.ACOES_DA_CONFIGURACAO`. Nenhuma regra nova: tema e letra pela Home
   (`escolher_tema`/`escolher_letra`), nome por `nome.guardar`, aviso por `aviso_windows.ligar`,
   canal de testes por `updater`, Chaves/Modelos/atualização pelos métodos da Home.
+- **Lâmpada** (2026-10-30; `views/sugestoes.py`, `JanelaSugestoes`, uma `JanelaPainel`): logo à
+  esquerda da engrenagem, igual a ela (`HomeView.btn_sugestoes`, `abrir_sugestoes`;
+  `catalogo.ACAO_SUGESTOES`, também no Ctrl+K). Uma só aberta; fechar só esconde, e o texto fica.
+  "Escrever o e-mail" chama `services/sugestoes.abrir_rascunho` numa thread: rascunho no Outlook
+  pelo COM (`Display`, nunca `Send`; "Para" vazio; com "Anexar o log", uma CÓPIA do `sigft.log` na
+  pasta temporária), e sem Outlook o `mailto:` (sem anexo: a janela mostra o caminho do log).
 - **Idioma** (`sigft/app/idioma.py`, sem Qt): `t("texto em português", **valores)`; a chave é o
   próprio texto; `es`/`en` em `sigft/app/idiomas/*.json`; sem tradução vale o português. Constante de
   módulo em `marcar(...)` e `t()` onde aparece. Só a interface muda; console, portal e planilhas não.

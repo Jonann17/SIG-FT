@@ -8,7 +8,12 @@
 # no Mac) reinstala sozinho na proxima abertura, porque o hash deste arquivo
 # mudou. E o maior download da lista: ~80 MB no Windows, ~120 MB no Mac (que
 # precisa do macOS 12 ou mais novo), so nessa primeira abertura.
-PySide6-Essentials>=6.9
+# <6.12 abaixo do Python 3.12: o 6.12.0 gasta uma referencia do `None` a cada
+# chamada que devolve None (QPainter.setPen...), e no 3.10/3.11 o processo cai
+# depois de alguns milhares de pinturas (tests/test_qt_pyside_refcount_none.py).
+# No 3.12+ o None e imortal: segue o mais novo (o .exe usa o 3.12).
+PySide6-Essentials>=6.9,<6.12 ; python_version < "3.12"
+PySide6-Essentials>=6.9 ; python_version >= "3.12"
 # pillow: o `Gerar-Executavel.bat` monta com ele o .ico de varios tamanhos (e o
 # llama-index o puxa de qualquer jeito). A interface antiga, que tambem o usava,
 # saiu em 2026-10-15 -- e com ela o customtkinter.

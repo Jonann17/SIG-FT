@@ -49,8 +49,11 @@ class ModuloUploadFotos(ComTravaDeRobo, ModuleFrame):
         instalar_como_funciona(self, "UploadFotos")  # nao-e-interface: a chave do texto
 
     def _build_ui(self) -> None:
-        self.content_layout.addSpacing(20)
-        corpo = blocos.cartao(self.content_layout)
+        # Rolável: com as quatro escolhas e os botões, a tela pedia 728 px e não
+        # cabia num notebook 1366x768 (tests/test_qt_tela_1366.py).
+        self.area, rolavel = blocos.area_rolavel(self.content_layout)
+        rolavel.addSpacing(20)
+        corpo = blocos.cartao(rolavel)
         corpo.setContentsMargins(20, 20, 20, 20)
 
         corpo.addWidget(blocos.rotulo(t("1. Pasta de fotos do subsistema"), negrito=True))
@@ -93,7 +96,7 @@ class ModuloUploadFotos(ComTravaDeRobo, ModuleFrame):
         botoes.addWidget(self.btn_parar)
         botoes.addStretch()
         corpo.addLayout(botoes)
-        self.content_layout.addStretch()
+        rolavel.addStretch()
 
     # --- seletores ------------------------------------------------------------
     def _ao_escolher_pasta(self, caminho) -> None:
