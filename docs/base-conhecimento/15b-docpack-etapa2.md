@@ -1,0 +1,63 @@
+# DocPack · Etapa 2 — o conteúdo do dossiê
+
+A Etapa 1 (`15-docpack.md`) cria a pasta da lista com os templates vazios. A Etapa 2 preenche a
+lista de materiais do `_STATUS_PMIB` e da lista com preço a partir do PDF da lista. Ela é feita
+pelo AMP.
+
+| Onde | O quê |
+|---|---|
+| `sigft/services/docpack_etapa2.py` | a varredura, o download, o pedido, a leitura do HTML e a gravação (sem Qt) |
+| `sigft/app_qt/views/docpack_etapa2.py` | `ModuloDocPackEtapa2(ModuleFrame)`, que também funciona embutida (`embutida=True`, `progresso_externo=`) |
+| `amp/criacao_status_pmib/` | o workflow e o agente **reusados** (do Luan): "Spare Parts Control Sheet Builder" |
+
+## O fluxo
+
+1. **Procurar dossiês vazios.**
+   - Os `_STATUS_PMIB` vivos da raiz (`status_pmib_arquivos.listar`) cuja aba "Lista de Materiais" não tem material.
+   - Cada um vem com a lista com preço `<código PB021>.xlsm` da mesma pasta, se houver.
+   - Os que já têm material ficam fora, e a contagem vai para o log.
+2. **Consultar no AMP.** Nada é escrito nas planilhas nesta etapa. Para cada lista marcada:
+   - O PDF da revisão vigente:
+     - vem do Aconex (perfil do DocManager, `perfil_do_aconex`), pela rotina da Conferência de Revisões (`conferencia_revisoes._gravar`), que nunca sobrescreve;
+     - sem Aconex, usa o `<código>[<rev>].pdf` mais novo da pasta.
+   - O `ping` do workflow vem antes. Se falhar, nada é mandado.
+   - O workflow recebe:
+     - `modo=criar`;
+     - a mensagem do LEIA-ME dele;
+     - `lista`, que é o PDF;
+     - `template`, que é o `_STATUS_PMIB` em branco do próprio dossiê.
+   - O HTML que o agente devolve fica na pasta como `<código>[<rev>] criacao AMP.html`, sem sobrescrever (`revisao_amp.gravar_html`).
+3. **Gravar nas planilhas.** Mostra o resumo (quantos materiais por lista, e os primeiros) e só grava com o "sim".
+   - Antes de escrever, cada planilha é conferida de novo para ver se continua vazia.
+   - A gravação é no XML (`core/excel/cirurgico.py`), e o VBA do `.xlsm` sai byte a byte.
+
+## Uma implementação por conceito
+
+- **Workflow da criação.** O `_STATUS_PMIB` de uma lista nova é o que o workflow da Criação do `_STATUS_PMIB` já faz. A Etapa 2 o chama e não tem workflow nem agente próprios.
+- **Webhook.** Fica na aba, no botão Webhook…, com os nomes `AMP_CRIACAO_STATUS_PMIB_URL` e `AMP_CRIACAO_STATUS_PMIB_CHAVE`.
+- **Peças reusadas da Revisão no AMP:**
+  - o cliente (`core/amp/cliente.py`);
+  - o batimento da espera;
+  - a gravação sem sobrescrever;
+  - o teste de conexão.
+- **A lista com preço** é a única parte nova. O agente não a conhece, então os materiais lidos da tabela do HTML vão para ela pelos nomes das colunas dela.
+
+## Regras
+
+- **Leitura do HTML.** A tabela do controle é a que tem ITEM e DESCRIÇÃO no cabeçalho (`ler_tabela`, com `html.parser`). A coluna da página fica de fora porque não tem nome do template.
+- **Colunas escritas.** Só as que vêm da lista (`COLUNAS_STATUS`):
+  - ITEM, QTD., UNID., DESCRIÇÃO;
+  - CÓDIGO DO MATERIAL, CÓDIGO CMI, MARCA/MODELO;
+  - TIPO DE ENTREGA.
+
+  As colunas de andamento da equipe e as fórmulas do template não são tocadas.
+- **Preço nunca se inventa.** Uma coluna com cara de preço na tabela do agente é ignorada, com aviso, e o VALOR UNITÁRIO fica vazio.
+- **Planilha já preenchida.** Se o `_STATUS_PMIB` já tem material, a gravação é recusada. Se só a lista com preço já tem material, o resultado é "parcial": o `_STATUS_PMIB` é preenchido e a lista com preço fica como estava.
+- **Cabeçalho.** É achado pelo texto, nas 15 primeiras linhas (o do `_STATUS_PMIB` está na linha 5, o da lista com preço na 4).
+
+## O que não foi provado aqui
+
+O Aconex e o AMP de verdade não foram testados: os testes usam dublês. Também não foi testado o
+HTML real do agente nem a abertura dos arquivos gravados no Excel (Windows).
+
+Até a integração do módulo DocPack próprio, a tela entra como 5ª aba **temporária** do PMIB Manager.
