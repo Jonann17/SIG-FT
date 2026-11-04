@@ -12,7 +12,7 @@ Escreva cada linha pensando em quem usa o SIG-FT, não em quem o programa:
 "a busca do AutoSpec passa a funcionar com a VPN ligada" é útil; "refatorado o
 cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
-## 1.3.3 - 2026-10-30
+## 1.4.0 - 2026-11-04
 
 - Sugestões: a lâmpada ao lado da engrenagem, no alto da Home (e "Sugestões" no Ctrl+K), abre uma janela para escrever uma ideia ou algo que poderia funcionar melhor. O SIG-FT abre um rascunho de e-mail no Outlook com o texto, a versão e, se você deixar marcado, o log; quem escolhe para quem enviar, e envia, é você.
 - Aplicação LMR: o relatório dos códigos que falharam (`erros_lmr.csv`) passa a ficar sempre em Documentos\SIG-FT\logs, e o console diz onde. Antes ele ia para a pasta de onde o SIG-FT foi aberto, e no programa instalado podia nem ser gravado, sem aviso.
