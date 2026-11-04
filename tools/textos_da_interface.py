@@ -47,6 +47,7 @@ ARQUIVOS_DE_TEXTO = (
     "sigft/app/atualizacao_textos.py",
     "sigft/app/resumo_lote.py",
     "sigft/app/como_funciona.py",
+    "sigft/app/ia_por_modulo.py",
 )
 FUNCOES_DE_TRADUCAO = frozenset({"t", "marcar"})
 # `t()`/`marcar()` contam chamados soltos ou pelo módulo (`idioma.t`): um método

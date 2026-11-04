@@ -28,11 +28,13 @@ from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QVBoxLayout,
 )
 
+from sigft.app import ia_por_modulo
 from sigft.app.idioma import t
 from sigft.app_qt import estilo, icones, interface
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets import pickers as app_pickers
 from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
+from sigft.app_qt.widgets.ia_do_modulo import instalar_configurar_ia
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.services import analyzer_relatorio
 
@@ -145,6 +147,7 @@ class ModuloAnalyzer(ModuleFrame):
 
     def _build_ui(self) -> None:
         instalar_como_funciona(self, "Analyzer")
+        instalar_configurar_ia(self, ia_por_modulo.TAREFAS_DA_TELA.get("ModuloAnalyzer", ()))
         # Lá o conteúdo é um CTkScrollableFrame transparente, com a barra SEMPRE
         # à vista: sem ela os cartões ficariam 11 px mais largos e o que é
         # centrado andaria 5 px.

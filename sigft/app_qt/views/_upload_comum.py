@@ -13,9 +13,11 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QMessageBox, QSizePolicy, QVBoxLayout
 
+from sigft.app import ia_por_modulo
 from sigft.app.idioma import marcar, t
 from sigft.app_qt.widgets import abas, blocos, controles, pickers, revisao_portal
 from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
+from sigft.app_qt.widgets.ia_do_modulo import instalar_configurar_ia
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 
 # O nome da aba é também a chave dela no `abas.Abas` (`add`, `set`): quem
@@ -100,6 +102,7 @@ class TelaDeUpload(ModuleFrame):
     # --- montagem -------------------------------------------------------------
     def _build_ui(self) -> None:
         instalar_como_funciona(self, self.COMO_FUNCIONA)
+        instalar_configurar_ia(self, ia_por_modulo.TAREFAS_DA_TELA.get(type(self).__name__, ()))
         # Espaços do `pack` de lá; o pady de dois vizinhos SOMA no Tk.
         self.content_layout.setSpacing(0)
         self.content_layout.addSpacing(10)              # quadro global: pady=10

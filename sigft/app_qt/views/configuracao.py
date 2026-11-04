@@ -256,7 +256,8 @@ class JanelaConfiguracao(JanelaPainel):
         return caixa
 
     def _abrir_modelos(self) -> None:
-        self.home.abrir_janela_modelos_ia()
+        # [2026-11-04] A IA por módulo; o painel de antes abre por um botão dela.
+        self.home.abrir_janela_ia_por_modulo()
 
     def _abrir_chaves(self) -> None:
         self.home.abrir_janela_chaves_api()

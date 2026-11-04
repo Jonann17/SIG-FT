@@ -1083,6 +1083,21 @@ def get_llm(
             **extras_do_provedor,
         )
 
+    elif provider_id == config.PROVIDER_AMP_WORKFLOW:
+        # 2026-11-04: o Workflow AMP do módulo ("IA por módulo"). O endereço e a
+        # chave do webhook são os da TAREFA (`modo.chaves_do_webhook`). Sem
+        # repetição: cada repetição seria uma execução nova do agente no AMP.
+        from sigft.core.llm import modo  # import local
+        from sigft.core.llm.providers.amp_workflow import AmpWorkflowProvider  # import local
+
+        chaves_resolvidas = chaves if chaves is not None else config.carregar_chaves()
+        nome_url, nome_chave = modo.chaves_do_webhook(tarefa)
+        provider = AmpWorkflowProvider(
+            str(chaves_resolvidas.get(nome_url) or ""), str(chaves_resolvidas.get(nome_chave) or ""),
+            tarefa=tarefa,
+        )
+        politica["max_retries"] = 0
+
     else:
         raise NotImplementedError(
             f"Provider {provider_id!r} ainda não implementado "

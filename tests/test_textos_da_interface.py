@@ -277,6 +277,9 @@ CONVERTIDOS: tuple[str, ...] = (
     "sigft/app_qt/widgets/como_funciona.py",
     # Ajuda para quem começa (2026-10-28): a boas-vindas
     "sigft/app_qt/views/boas_vindas.py",
+    # IA por módulo (2026-11-04): IA Externa, IA Interna e Workflow AMP
+    "sigft/app/ia_por_modulo.py",
+    "sigft/app_qt/widgets/ia_do_modulo.py",
 )
 
 # Literais que a varredura acusa e que ficam em português de propósito, por
