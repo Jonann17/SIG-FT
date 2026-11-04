@@ -254,6 +254,16 @@ def test_dois_cliques_abrem_o_html(qt_interface, qtbot, servico, ultima, monkeyp
     assert abertos == [servico.listas[0].item.pasta / "x.html"]
 
 
+def test_o_botao_da_pasta_abre_a_pasta_da_lista(qt_interface, qtbot, servico, ultima, monkeypatch):
+    abertos = []
+    monkeypatch.setattr(tela_mod.plataforma, "abrir_no_sistema", abertos.append)
+    tela = _carregada(_tela(qtbot, ultima=ultima), qtbot)
+    botoes = [tela.tabela.itemWidget(tela.tabela.topLevelItem(i), tela_mod.COLUNA_PASTA) for i in range(3)]
+    assert all(b is not None and b.text() == "Abrir Pasta" for b in botoes)
+    botoes[2].click()
+    assert abertos == [servico.listas[2].item.pasta]
+
+
 def test_conferencia_rodando_avisa_e_nao_chama(qt_interface, qtbot, servico, avisos, ultima):
     tela = _tela(qtbot, ultima=ultima, rodando=True)
     tela.btn_amp.click()

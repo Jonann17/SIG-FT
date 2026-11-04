@@ -22,7 +22,8 @@ from pathlib import Path
 from sigft.core import rede
 
 CABECALHO_CHAVE = "X-SIGFT-Chave"
-TEMPOS = {"ping": 30, "enviar": 900}   # segundos de limite por chamada
+# 45 min por envio (2026-11-04): uma lista levou 17 min no AMP, e o limite de 15 a cortava.
+TEMPOS = {"ping": 30, "enviar": 2700}   # segundos de limite por chamada
 TIPOS = {".pdf": "application/pdf",
          ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 

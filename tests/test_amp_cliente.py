@@ -199,7 +199,7 @@ def test_falha_de_rede_nao_levanta():
 def test_tempo_do_ping_e_do_envio():
     cliente, abrir = _enviando(_Resposta(200, {"ok": True, "html": HTML}))
     cliente.enviar(CAMPOS, {})
-    assert [c["timeout"] for c in abrir.chamadas] == [30, 900]
+    assert [c["timeout"] for c in abrir.chamadas] == [30, 2700]
 
 
 def test_erro_nao_mostra_a_chave():
@@ -218,7 +218,7 @@ def test_enviar_vai_uma_vez_so_pela_rota_do_ping():
     assert [c["via"] for c in abrir.chamadas] == ["abrir", "sessao"]
     assert abrir.chamadas[0]["json"] == {"modo": "ping"}
     envio = abrir.chamadas[1]
-    assert (envio["metodo"], envio["url"], envio["timeout"]) == ("POST", URL, 900)
+    assert (envio["metodo"], envio["url"], envio["timeout"]) == ("POST", URL, 2700)
     assert envio["headers"][am.CABECALHO_CHAVE] == CHAVE
 
 
@@ -234,7 +234,7 @@ def test_tempo_esgotado_no_envio_nao_repete():
                                relogio=_relogio(0.0, 0.1, 5.0, 905.0))
     resposta = cliente.enviar(CAMPOS, {})
     assert (resposta.ok, resposta.modo, resposta.http) == (False, "revisar", None)
-    assert resposta.erro.startswith("o AMP não respondeu em 15 min")
+    assert resposta.erro.startswith("o AMP não respondeu em 45 min")
     assert len(abrir.chamadas) == 2
 
 

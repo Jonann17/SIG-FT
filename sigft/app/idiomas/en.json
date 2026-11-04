@@ -638,6 +638,7 @@
   "Parou no meio? As fichas terminadas ficam marcadas; as outras ficam sem COMPLETO e podem rodar de novo.": "Stopped halfway? Finished sheets stay marked; the others stay without COMPLETO and can run again.",
   "Parou no meio? Ligue Começar de um código específico e informe a posição (0 = 1º código LMR da ficha); vale para todas as fichas.": "Stopped halfway? Turn on Start from a specific code and enter the position (0 = the sheet's 1st LMR code); it applies to every sheet.",
   "Parou no meio? O que já foi criado fica no portal. O _STATUS_PMIB só muda no passo 5, Salvar no Excel.": "Stopped halfway? What was created stays on the portal. The _STATUS_PMIB only changes in step 5, Save to Excel.",
+  "Pasta": "Folder",
   "Pasta Destino das Fichas:": "Sheets destination folder:",
   "Pasta Raiz da Busca:": "Root folder:",
   "Pasta de Saída": "Output folder",

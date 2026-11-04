@@ -638,6 +638,7 @@
   "Parou no meio? As fichas terminadas ficam marcadas; as outras ficam sem COMPLETO e podem rodar de novo.": "¿Se detuvo a mitad? Las fichas terminadas quedan marcadas; las otras quedan sin COMPLETO y pueden correr de nuevo.",
   "Parou no meio? Ligue Começar de um código específico e informe a posição (0 = 1º código LMR da ficha); vale para todas as fichas.": "¿Se detuvo a mitad? Active Empezar desde un código específico e indique la posición (0 = 1.er código LMR de la ficha); vale para todas.",
   "Parou no meio? O que já foi criado fica no portal. O _STATUS_PMIB só muda no passo 5, Salvar no Excel.": "¿Se detuvo a mitad? Lo ya creado queda en el portal. El _STATUS_PMIB solo cambia en el paso 5, Guardar en Excel.",
+  "Pasta": "Carpeta",
   "Pasta Destino das Fichas:": "Carpeta destino de las fichas:",
   "Pasta Raiz da Busca:": "Carpeta raíz:",
   "Pasta de Saída": "Carpeta de salida",

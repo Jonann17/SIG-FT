@@ -253,7 +253,7 @@ def test_cancelar_entre_as_listas(tmp_path):
 
 
 def test_cada_resultado_sai_antes_da_proxima_lista(tmp_path):
-    # A tela mostra cada lista quando ela volta: são até 15 minutos por lista.
+    # A tela mostra cada lista quando ela volta: são até 45 minutos por lista.
     vistos, ja_vistos_na_chamada = [], []
     cliente = _Cliente(_ok(), _falha())
     enviar = cliente.enviar

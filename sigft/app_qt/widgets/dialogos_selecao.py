@@ -389,6 +389,18 @@ def linha_ttk(tree: QTreeWidget, valores, chave=None) -> QTreeWidgetItem:
     return item
 
 
+
+def botao_de_pasta(tree: QTreeWidget, item: QTreeWidgetItem, coluna: int, pasta, abrir):
+    """Um botão "Abrir Pasta" na célula `coluna` da linha `item`; o clique chama `abrir(pasta)`.
+    Sem pasta, a célula fica vazia e nada é criado (devolve `None`). Pedido do Luan
+    (2026-11-04): da tabela, ir direto à pasta da lista, onde estão o HTML e os outros arquivos."""
+    if pasta is None:
+        return None
+    botao = blocos.botao(t("Abrir Pasta"), variante="cinza", altura=22, tamanho_fonte=11)
+    botao.clicked.connect(lambda _marcado=False: abrir(pasta))
+    tree.setItemWidget(item, coluna, botao)
+    return botao
+
 class ArquivosTravadosDialog(SoltaAoFechar, QDialog):
     """Arquivos que não puderam ser gravados, cada um com o motivo e o que fazer;
     Repetir x Seguir. A decisão volta em `resultado["repetir"]`.

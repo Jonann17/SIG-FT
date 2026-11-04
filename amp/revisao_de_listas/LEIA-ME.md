@@ -152,7 +152,7 @@ documentos: eles não podem sair da GE. O diagnóstico do SIG-FT está abaixo.
 | "o workflow recebeu N de M arquivo(s)" | algum arquivo se perdeu no caminho: veja a aba Binary do Webhook na execução |
 | "o AMP não respondeu JSON" | algo no caminho devolveu uma página (login, proxy): a resposta está no diagnóstico |
 | "a conexão com o AMP caiu depois de N s" | algo no caminho corta a chamada longa; o n8n pode ter seguido (veja a execução). Em 03/11 a rede segurou uma chamada de minutos |
-| "o AMP não respondeu em 15 min" | o agente demorou demais: veja a execução (arquivo muito grande?) |
+| "o AMP não respondeu em 45 min" | o agente demorou demais: veja a execução (arquivo muito grande?). O Timeout do AMP Agent no n8n precisa ser de 45 min ou mais |
 
 **A revisão de cada lista vai uma vez só.** O SIG-FT não repete a chamada sozinho, porque cada
 repetição seria outra execução do agente no AMP. Para tentar de novo, clique em **Revisar no AMP**

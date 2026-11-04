@@ -145,6 +145,9 @@ def test_mostra_os_totais_por_categoria(tela, qtbot, servico):
     assert aprovadas.topLevelItemCount() == 2
     assert [aprovadas.topLevelItem(0).text(i) for i in range(5)] == ["#A", "0", "0B", "Em Processo", "Aprovado"]
     assert tela.tabelas["outros"].topLevelItem(0).text(5) == "_STATUS_PMIB não encontrado"
+    # A lista com pasta tem o botão "Abrir Pasta"; a sem pasta, não (2026-11-04).
+    assert aprovadas.itemWidget(aprovadas.topLevelItem(0), tela_mod.COLUNA_PASTA).text() == "Abrir Pasta"
+    assert tela.tabelas["outros"].itemWidget(tela.tabelas["outros"].topLevelItem(0), tela_mod.COLUNA_PASTA) is None
 
 
 def test_com_perfil_baixa_e_mostra_o_pdf(tela, qtbot, servico):

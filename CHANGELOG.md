@@ -22,6 +22,8 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Revisão no AMP: as listas aparecem na aba assim que ela abre, **todas marcadas**; desmarque as que não quer, ou use "Marcar todas" e "Desmarcar todas". Só as marcadas vão ao AMP, e as que voltam com o HTML se desmarcam sozinhas: um segundo clique manda só as que faltaram.
 - Revisão no AMP: o **endereço e a chave do webhook** passam a ficar na própria aba, no botão **"Webhook…"**, porque cada workflow do AMP terá o seu. Os dois campos do AMP saem de Configuração → Chaves de API, e o que já estava neles é aproveitado na primeira vez.
 - Revisão no AMP: o console mostra **cada passo** de cada lista: o que vai (o nome e o tamanho dos arquivos), uma linha a cada 30 segundos enquanto o agente trabalha e o que voltou (o tempo, o número da execução no n8n e quantos arquivos chegaram ao agente). As mesmas linhas ficam gravadas em `Documentos\SIG-FT\logs\amp\`. O "Testar conexão com o AMP" passa a fazer só o ping.
+- Revisão no AMP: o SIG-FT espera até **45 minutos** por lista (eram 15). Uma lista grande levou 17 minutos no AMP e era dada como falha antes de voltar.
+- Conferência de Revisões e Revisão no AMP: cada lista ganha o botão **"Abrir Pasta"**, que abre a pasta do `_STATUS_PMIB` dela, onde ficam os PDFs e o HTML do AMP.
 
 ## 1.3.2 - 2026-10-30
 

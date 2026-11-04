@@ -26,7 +26,7 @@ from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.widgets import blocos, dialogos_selecao
 from sigft.app_qt.widgets.abas import Abas
 from sigft.app_qt.widgets.module_frame import ModuleFrame
-from sigft.core import prefs
+from sigft.core import plataforma, prefs
 from sigft.core.aconex.cliente import ClienteAconex, ErroAconex
 from sigft.core.aconex.credenciais import PREFERENCIA_PERFIL, PerfilAconex, escolher_perfil, ler_perfis
 from sigft.core.aconex.diagnostico import TENTATIVAS_DO_DIAGNOSTICO, linha, sondar
@@ -58,8 +58,10 @@ COLUNAS = (
     (marcar("Última revisão emitida"), 140),
     (marcar("Status da revisão"), 120),
     (marcar("STATUS REAL"), 100),
-    (marcar("PDF"), 210),
+    (marcar("PDF"), 120),
+    (marcar("Pasta"), 90),
 )
+COLUNA_PASTA = 6
 
 
 def perfil_do_aconex(pai) -> PerfilAconex | None:
@@ -272,9 +274,16 @@ class ModuloConferenciaRevisoes(ModuleFrame):
             tabela.clear()
             for item in itens:
                 lista = item.lista
-                dialogos_selecao.linha_ttk(tabela, (lista.codigo, lista.revisao_em_uso, lista.ultima_revisao,
-                                                    lista.status_da_revisao, lista.status_real,
-                                                    _texto_do_pdf(item, por_codigo.get(lista.codigo, []))))
+                linha = dialogos_selecao.linha_ttk(tabela, (lista.codigo, lista.revisao_em_uso, lista.ultima_revisao,
+                                                            lista.status_da_revisao, lista.status_real,
+                                                            _texto_do_pdf(item, por_codigo.get(lista.codigo, [])), ""))
+                dialogos_selecao.botao_de_pasta(tabela, linha, COLUNA_PASTA, item.pasta, self._abrir_pasta)
+
+    def _abrir_pasta(self, pasta) -> None:
+        try:
+            plataforma.abrir_no_sistema(pasta)
+        except OSError as erro:
+            self.log(f"[AVISO] Não consegui abrir a pasta {pasta}: {erro}")
 
     # -- o teste de conexão ------------------------------------------------
     def _testar_conexao(self) -> None:

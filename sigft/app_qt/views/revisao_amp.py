@@ -57,9 +57,11 @@ COLUNAS = (
     (marcar("Revisão em uso"), 100),
     (marcar("Revisão atual"), 100),
     (marcar("STATUS REAL"), 110),
-    (marcar("AMP"), 360),
+    (marcar("AMP"), 270),
+    (marcar("Pasta"), 90),
 )
-COLUNA_AMP = len(COLUNAS) - 1
+COLUNA_AMP = 4
+COLUNA_PASTA = 5
 
 
 def _linha(*widgets) -> QHBoxLayout:
@@ -128,7 +130,8 @@ class ModuloRevisaoAmp(ModuleFrame):
         self.btn_desmarcar.clicked.connect(lambda _marcado=False: self._marcar_todas(False))
         lay.addLayout(_linha(self.btn_marcar, self.btn_desmarcar))
 
-        # Sem barra de lado: as colunas esticam até a largura da tela (`EsticaColunas`).
+        # Sem barra de lado: as colunas esticam até a largura da tela (`EsticaColunas`), e as
+        # larguras somam 850, que cabem a 1280x850 (nenhuma tela rola de lado).
         self.tabela = dialogos_selecao.tabela_ttk([(t(c), largura, "w") for c, largura in COLUNAS],
                                                   barra_horizontal=False)
         self.tabela.itemDoubleClicked.connect(self._abrir_html)
@@ -226,7 +229,8 @@ class ModuloRevisaoAmp(ModuleFrame):
         for lista in listas:
             dados = lista.item.lista
             item = dialogos_selecao.linha_ttk(self.tabela, (dados.codigo, dados.revisao_em_uso, lista.revisao_atual,
-                                                            dados.status_real, lista.falta))
+                                                            dados.status_real, lista.falta, ""))
+            dialogos_selecao.botao_de_pasta(self.tabela, item, COLUNA_PASTA, lista.item.pasta, self._abrir_pasta)
             # O QTreeWidgetItem já nasce marcável: a lista com falta perde isso e fica sem caixa.
             if lista.falta:
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
@@ -337,6 +341,12 @@ class ModuloRevisaoAmp(ModuleFrame):
             return
         QApplication.clipboard().setText(texto)
         self.log("Diagnóstico copiado. Cole numa conversa nova com o Claude, com o repositório do SIG-FT.")
+
+    def _abrir_pasta(self, pasta) -> None:
+        try:
+            plataforma.abrir_no_sistema(pasta)
+        except OSError as erro:
+            self.log(f"[AVISO] Não consegui abrir a pasta {pasta}: {erro}")
 
     def _abrir_html(self, item, _coluna=0) -> None:
         indice = self.tabela.indexOfTopLevelItem(item)

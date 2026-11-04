@@ -224,7 +224,7 @@ sabe que dia é.
 
 O envio vai **uma vez só**, pela rota que o `ping` achou. A cascata do `rede.abrir` mandaria de novo
 pela rota seguinte quando o tempo esgota ou a conexão cai, e cada repetição seria outra execução do
-agente. Por isso o tempo esgotado ("o AMP não respondeu em 15 min") e a conexão cortada ("caiu
+agente. Por isso o tempo esgotado ("o AMP não respondeu em 45 min"; era 15 até 2026-11-04, quando uma lista levou 17) e a conexão cortada ("caiu
 depois de N s") viram erro. O teste de 03/11 mostrou que a rede da GE segura a chamada de minutos.
 
 **As listas** (`listas_para_amp`, sem mudança desde a v1):
