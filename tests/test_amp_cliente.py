@@ -251,3 +251,45 @@ def test_enviar_com_o_ping_recusado_nao_manda():
     resposta = cliente.enviar(CAMPOS, {})
     assert (resposta.ok, resposta.modo, resposta.erro) == (False, "revisar", "o AMP recusou a chave (HTTP 403)")
     assert len(abrir.chamadas) == 1
+
+
+# --- a resposta que chega depois (2026-11-04) ----------------------------------------------
+# O workflow responde na hora com o número do pedido (a execução do n8n) e guarda o HTML quando
+# o agente termina; o SIG-FT pergunta por ele com `buscar`.
+
+def test_envio_aceito_traz_o_pedido():
+    dados = {"ok": True, "modo": "revisar", "estado": "aceito", "pedido": "370100", "arquivos": ["a.pdf"]}
+    cliente, _abrir = _enviando(_Resposta(200, dados))
+    resposta = cliente.enviar(CAMPOS, {})
+    assert (resposta.ok, resposta.estado, resposta.pedido, resposta.arquivos) == (True, "aceito", "370100", ["a.pdf"])
+
+
+def test_buscar_pergunta_pelo_pedido_pela_rota_do_ping():
+    pronto = {"ok": True, "modo": "revisar", "estado": "pronto", "html": HTML, "execucao": "370100"}
+    cliente, abrir = _enviando(_Resposta(200, {"ok": True, "estado": "aceito", "pedido": "370100"}),
+                               _Resposta(200, pronto))
+    cliente.enviar(CAMPOS, {})
+    resposta = cliente.buscar("370100")
+    busca = abrir.chamadas[2]
+    assert (busca["via"], busca["json"], busca["timeout"]) == ("sessao", {"modo": "buscar", "pedido": "370100"}, 60)
+    assert busca["headers"][am.CABECALHO_CHAVE] == CHAVE
+    assert (resposta.ok, resposta.modo, resposta.estado, resposta.html) == (True, "buscar", "pronto", HTML)
+
+
+def test_buscar_sem_rota_faz_o_ping_antes():
+    cliente, abrir = _cliente(_Resposta(200, PING), _Resposta(200, {"ok": True, "estado": "pendente", "pedido": "7"}))
+    assert cliente.buscar("7").estado == "pendente"
+    assert [c["via"] for c in abrir.chamadas] == ["abrir", "sessao"]
+
+
+def test_buscar_com_erro_do_agente_e_falha():
+    erro = {"ok": False, "estado": "erro", "etapa": "agente", "erro": "model timeout", "execucao": "9"}
+    cliente, _abrir = _enviando(_Resposta(200, erro))
+    resposta = cliente.buscar("9")
+    assert (resposta.ok, resposta.estado, resposta.erro) == (False, "erro", "model timeout")
+
+
+def test_buscar_que_cai_nao_levanta():
+    cliente, _abrir = _enviando(requests.exceptions.ConnectionError("caiu"))
+    resposta = cliente.buscar("9")
+    assert not resposta.ok and resposta.erro.startswith("Falha ao perguntar ao AMP")

@@ -2,47 +2,65 @@
 
     python amp/revisao_de_listas/gerar_workflow.py
 
-Grava `workflow_revisao_de_listas.json` ao lado, para importar (ou colar) no n8n da GE. É o workflow
-colado e testado no n8n da GE em 2026-11-03. As instruções do agente moram no AMP (o "Spare Parts
-Document Reviewer"; a cópia está em `agente.md`), e o workflow só leva até ele a mensagem e os
-arquivos do SIG-FT. `tests/test_amp_workflow.py` trava que o `.json` versionado é o que este gerador
-produz. Os ids são fixos, para o arquivo só mudar quando o conteúdo muda. O `agentId` e a credencial
-do AMP Agent são os da instância da GE; noutra, escolha-os de novo no nó. Desenho:
-`docs/superpowers/specs/2026-11-03-amp-revisao-com-arquivos-design.md`, §4.
+Grava `workflow_revisao_de_listas.json` ao lado, para importar (ou colar) no n8n da GE. As
+instruções do agente moram no AMP (o "Spare Parts Document Reviewer"; a cópia está em
+`agente.md`), e o workflow só leva até ele a mensagem e os arquivos do SIG-FT.
+
+**A resposta chega depois** (2026-11-04: uma lista levou 17 min, e o SIG-FT não pode depender de
+ficar aberto). O envio responde na hora com o número do pedido (a execução do n8n), o agente roda
+em seguida, e o resultado fica guardado nos dados estáticos do workflow
+(`$getWorkflowStaticData`, que persistem entre as execuções de produção). O SIG-FT pergunta por
+ele com `modo=buscar`. Ficam os 30 mais novos, por até 7 dias.
+
+`montar_workflow` serve também ao workflow da criação do _STATUS_PMIB
+(`amp/criacao_status_pmib/gerar_workflow.py`), com outro webhook, outro agente, outro modo e outros
+ids. `tests/test_amp_workflow.py` trava que o `.json` versionado é o que este gerador produz. Os ids
+são fixos, para o arquivo só mudar quando o conteúdo muda. O `agentId` e a credencial do AMP Agent
+são os da instância da GE; noutra, escolha-os de novo no nó. Desenho:
+`docs/superpowers/specs/2026-11-03-amp-revisao-com-arquivos-design.md`, §4 e §9.
 """
 from __future__ import annotations
 
 import json
+import re
 import sys
+import uuid
 from pathlib import Path
 
 PASTA = Path(__file__).resolve().parent
 ARQUIVO = PASTA / "workflow_revisao_de_listas.json"
-VERSAO_WORKFLOW = "2026-11-03"
+VERSAO_WORKFLOW = "2026-11-04"
 CAMINHO_WEBHOOK = "sigft-revisao-listas"
 NOME_DO_AGENTE = "Spare Parts Document Reviewer"
 MODELO_DO_AGENTE = "bedrock-claude-sonnet-5.5"
 CREDENCIAL_DO_AMP = {"id": "2GcgH0WxCkNN6bg4", "name": "AMP account 1859"}
+GUARDADOS = 30        # quantos resultados o workflow guarda
+DIAS_GUARDADO = 7     # e por quantos dias
 
 WEBHOOK = "Webhook do SIG-FT"
 E_PING = "É ping?"
+E_BUSCA = "É busca?"
+BUSCA = "Busca o resultado"
 MONTA = "Monta a mensagem"
 CHEGARAM = "Chegaram os arquivos?"
+ACEITO = "Responde aceito"
 AGENTE = "AMP Agent"
 PREPARA = "Prepara a resposta"
+PREPARA_ERRO = "Prepara o erro"
+GUARDA = "Guarda o resultado"
 
 NOTA = """## SIG-FT · Revisão das listas (AMP)
 **Ligar (uma vez):**
 1. **Webhook do SIG-FT** → *Credential for Header Auth* → *Create new*: Name `X-SIGFT-Chave`, Value um valor longo e aleatório. O mesmo valor vai no SIG-FT: PMIB Manager → aba Revisão no AMP → **Webhook…** → Chave.
 2. **AMP Agent** → escolha o agente *Spare Parts Document Reviewer* → *Add option* → **Timeout**: o máximo.
-3. Salve e **publique**.
+3. Salve e **publique** (o resultado só fica guardado nas execuções de produção).
 4. Copie a **Production URL** do webhook para o SIG-FT: **Webhook…** → Endereço.
 
 As instruções do agente moram no AMP: melhore o agente lá, não aqui.
-O SIG-FT manda `modo`, `mensagem` e os arquivos `revisao_em_uso`, `revisao_atual` e `status_pmib`. O ping responde sem chamar o agente.
+Três modos: `ping` (responde sem chamar o agente); `revisar` (os arquivos `revisao_em_uso`, `revisao_atual` e `status_pmib` e a `mensagem`: responde na hora com o pedido, e o agente roda depois); `buscar` (o `pedido`: devolve o resultado guardado, ou `pendente`).
 Passo a passo: `amp/revisao_de_listas/LEIA-ME.md`, no repositório do SIG-FT."""
 
-# É o código do nó "Prepara a resposta" colado na GE em 03/11, sem mudança.
+# O código do nó "Prepara a resposta" colado na GE em 03/11, com o modo como parâmetro.
 JS_PREPARA = r"""// Prepara a resposta ao SIG-FT. As instrucoes do agente moram no AMP, nao aqui.
 const VERSAO = '__VERSAO__';
 const texto = String($input.first().json.output ?? '');
@@ -55,10 +73,42 @@ const fim = html.toLowerCase().lastIndexOf('</html>');
 if (fim >= 0) html = html.slice(0, fim + 7);      // e o que vier depois dele
 html = html.replace(/\\%/g, '%').trim();          // o agente escreve 100\% no CSS
 const ok = /<html|<table/i.test(html);
-const resposta = { ok, modo: 'revisar', html, arquivos, versao_workflow: VERSAO, execucao: $execution.id };
+const resposta = { ok, modo: '__MODO__', html, arquivos, versao_workflow: VERSAO, execucao: $execution.id };
 if (!ok) resposta.erro = 'o agente não devolveu HTML';
 return [{ json: { resposta } }];
 """
+
+JS_PREPARA_ERRO = r"""// O erro do agente, guardado para a busca do SIG-FT.
+const e = $input.first().json.error;
+const erro = String((e && (e.message || e)) || 'erro sem mensagem');
+return [{ json: { resposta: { ok: false, modo: '__MODO__', etapa: 'agente', erro, versao_workflow: '__VERSAO__', execucao: $execution.id } } }];
+"""
+
+JS_GUARDA = r"""// Guarda o resultado para a busca do SIG-FT (modo buscar), pelo numero do pedido: a execucao.
+// Os dados estaticos so persistem nas execucoes de producao (workflow publicado).
+const dados = $getWorkflowStaticData('global');
+dados.resultados = dados.resultados || {};
+const r = $input.first().json.resposta;
+const pedido = String($execution.id);
+dados.resultados[pedido] = { ...r, estado: r.ok ? 'pronto' : 'erro', pedido, guardado_em: Date.now() };
+const LIMITE = __GUARDADOS__, VIDA = __DIAS__ * 24 * 3600 * 1000;
+const ids = Object.keys(dados.resultados)
+  .sort((a, b) => dados.resultados[b].guardado_em - dados.resultados[a].guardado_em);
+ids.forEach((id, i) => {
+  if (i >= LIMITE || Date.now() - dados.resultados[id].guardado_em > VIDA) delete dados.resultados[id];
+});
+return [{ json: { guardado: pedido, estado: dados.resultados[pedido].estado } }];
+"""
+
+JS_BUSCA = r"""// Devolve o resultado guardado do pedido; ainda sem ele, 'pendente'.
+const dados = $getWorkflowStaticData('global');
+const pedido = String((($input.first().json.body) || {}).pedido || '');
+const guardado = (dados.resultados || {})[pedido];
+const resposta = guardado || { ok: true, modo: 'buscar', estado: 'pendente', pedido, versao_workflow: '__VERSAO__' };
+return [{ json: { resposta } }];
+"""
+
+_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 
 def _responde(nome: str, id_: str, corpo: str, posicao: list[int], codigo: int | None = None) -> dict:
@@ -78,19 +128,32 @@ def _se(nome: str, id_: str, id_condicao: str, esquerda: str, operador: dict, di
             "type": "n8n-nodes-base.if", "typeVersion": 2, "position": posicao, "id": id_, "name": nome}
 
 
+def _codigo(nome: str, id_: str, js: str, posicao: list[int]) -> dict:
+    return {"parameters": {"jsCode": js}, "type": "n8n-nodes-base.code", "typeVersion": 2, "position": posicao,
+            "id": id_, "name": nome}
+
+
 def _liga(*destinos: str) -> dict:
     return {"main": [[{"node": d, "type": "main", "index": 0}] for d in destinos]}
 
 
-def montar_workflow(versao: str) -> dict:
-    """O workflow pronto para importar: webhook → ping, ou mensagem → arquivos? → agente → resposta
-    (sem arquivos, 400; erro do agente, 502)."""
+def montar_workflow(versao: str, *, caminho: str = CAMINHO_WEBHOOK, agente: str = NOME_DO_AGENTE,
+                    modo: str = "revisar", nome: str = "SIG-FT · Revisão das listas (AMP)", nota: str = NOTA,
+                    semente_dos_ids: str | None = None) -> dict:
+    """O workflow pronto para importar: webhook → ping; busca → o resultado guardado; ou mensagem →
+    arquivos? (sem eles, 400) → responde aceito → agente → prepara (ou o erro) → guarda.
+    `semente_dos_ids` troca todos os ids por outros, fixos (o webhookId não repete na instância)."""
     v = f"'{versao}'"
+
+    def js(texto: str) -> str:
+        return (texto.replace("__VERSAO__", versao).replace("__MONTA__", MONTA).replace("__MODO__", modo)
+                .replace("__GUARDADOS__", str(GUARDADOS)).replace("__DIAS__", str(DIAS_GUARDADO)))
+
     nos = [
-        {"parameters": {"content": NOTA, "height": 330, "width": 640}, "type": "n8n-nodes-base.stickyNote",
-         "typeVersion": 1, "position": [-40, -300], "id": "a1c3e5f7-0b2d-4f61-9a83-c5e7091b3d01",
+        {"parameters": {"content": nota, "height": 360, "width": 680}, "type": "n8n-nodes-base.stickyNote",
+         "typeVersion": 1, "position": [-40, -340], "id": "a1c3e5f7-0b2d-4f61-9a83-c5e7091b3d01",
          "name": "Como ligar"},
-        {"parameters": {"httpMethod": "POST", "path": CAMINHO_WEBHOOK, "authentication": "headerAuth",
+        {"parameters": {"httpMethod": "POST", "path": caminho, "authentication": "headerAuth",
                         "responseMode": "responseNode", "options": {}},
          "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [0, 200],
          "id": "b2d4f608-1c3e-4072-ab94-d6f8102c4e02", "name": WEBHOOK,
@@ -100,46 +163,57 @@ def montar_workflow(versao: str) -> dict:
         _responde("Responde ping", "f6183b4c-5072-44b6-afd8-1b3c54608206",
                   "={{ JSON.stringify({ ok: true, modo: 'ping', versao_workflow: %s, execucao: $execution.id }) }}" % v,
                   [460, 40]),
+        _se(E_BUSCA, "0b1d2f3a-4c5e-4f60-8172-93a4b5c6d701", "1c2e3a4b-5d6f-4071-8283-a4b5c6d7e802",
+            "={{ $json.body.modo }}", {"type": "string", "operation": "equals"}, "buscar", [460, 260]),
+        _codigo(BUSCA, "2d3f4b5c-6e70-4182-9394-b5c6d7e8f903", js(JS_BUSCA), [700, 160]),
+        _responde("Responde a busca", "3e405c6d-7f81-4293-a4a5-c6d7e8f90a04", "={{ JSON.stringify($json.resposta) }}",
+                  [940, 160]),
         {"parameters": {"assignments": {"assignments": [{"id": "07294c5d-6183-45c7-b0e9-2c4d65719307",
                                                          "name": "chatInput", "value": "={{ $json.body.mensagem }}",
                                                          "type": "string"}]},
                         "includeOtherFields": True, "options": {}},
-         "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [460, 300],
+         "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [700, 360],
          "id": "183a5d6e-7294-46d8-81fa-3d5e76820408", "name": MONTA},
         _se(CHEGARAM, "294b6e7f-83a5-47e9-920b-4e6f87931509", "3a5c7f80-94b6-48fa-a31c-5f7098a4260a",
-            "={{ Object.keys($binary || {}).length }}", {"type": "number", "operation": "gte"}, 2, [700, 300]),
+            "={{ Object.keys($binary || {}).length }}", {"type": "number", "operation": "gte"}, 2, [940, 360]),
+        _responde(ACEITO, "4f516d7e-8092-43a4-b5b6-d7e8f90a1b05",
+                  "={{ JSON.stringify({ ok: true, modo: '%s', estado: 'aceito', pedido: $execution.id, arquivos: "
+                  "Object.values($binary || {}).map(b => b.fileName), versao_workflow: %s, execucao: $execution.id }) }}"
+                  % (modo, v), [1180, 300]),
+        _responde("Responde sem arquivos", "5c7e91a2-b6d8-4a1c-853e-7192bac6480c",
+                  "={{ JSON.stringify({ ok: false, modo: '%s', etapa: 'arquivos', erro: 'os arquivos não "
+                  "chegaram ao agente: o workflow recebeu ' + Object.keys($binary || {}).length + ' arquivo(s)', "
+                  "versao_workflow: %s, execucao: $execution.id }) }}" % (modo, v), [1180, 480], 400),
         {"parameters": {"agentId": {"__rl": True,
-                                    "value": json.dumps({"agentName": NOME_DO_AGENTE, "model": MODELO_DO_AGENTE},
+                                    "value": json.dumps({"agentName": agente, "model": MODELO_DO_AGENTE},
                                                         separators=(",", ":")),
-                                    "mode": "list", "cachedResultName": NOME_DO_AGENTE},
+                                    "mode": "list", "cachedResultName": agente},
                         "options": {}},
-         "type": "CUSTOM.amp", "typeVersion": 1, "position": [940, 200],
+         "type": "CUSTOM.amp", "typeVersion": 1, "position": [1420, 300],
          "id": "4b6d8091-a5c7-490b-b42d-6081a9b5370b", "name": AGENTE,
          "credentials": {"ampOAuth2Api": dict(CREDENCIAL_DO_AMP)}, "onError": "continueErrorOutput"},
-        _responde("Responde sem arquivos", "5c7e91a2-b6d8-4a1c-853e-7192bac6480c",
-                  "={{ JSON.stringify({ ok: false, modo: 'revisar', etapa: 'arquivos', erro: 'os arquivos não "
-                  "chegaram ao agente: o workflow recebeu ' + Object.keys($binary || {}).length + ' arquivo(s)', "
-                  "versao_workflow: %s, execucao: $execution.id }) }}" % v, [940, 440], 400),
-        {"parameters": {"jsCode": JS_PREPARA.replace("__VERSAO__", versao).replace("__MONTA__", MONTA)},
-         "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1180, 120],
-         "id": "6d8fa2b3-c7e9-4b2d-964f-82a3cbd7590d", "name": PREPARA},
-        _responde("Responde", "7e90b3c4-d8fa-4c3e-a750-93b4dce86a0e", "={{ JSON.stringify($json.resposta) }}",
-                  [1420, 120]),
-        _responde("Responde erro", "8fa1c4d5-e90b-4d4f-b861-a4c5edf97b0f",
-                  "={{ JSON.stringify({ ok: false, modo: 'revisar', etapa: 'agente', erro: String(($json.error && "
-                  "($json.error.message || $json.error)) || 'erro sem mensagem'), versao_workflow: %s, execucao: "
-                  "$execution.id }) }}" % v, [1180, 320], 502),
+        _codigo(PREPARA, "6d8fa2b3-c7e9-4b2d-964f-82a3cbd7590d", js(JS_PREPARA), [1660, 220]),
+        _codigo(PREPARA_ERRO, "8fa1c4d5-e90b-4d4f-b861-a4c5edf97b0f", js(JS_PREPARA_ERRO), [1660, 400]),
+        _codigo(GUARDA, "7e90b3c4-d8fa-4c3e-a750-93b4dce86a0e", js(JS_GUARDA), [1900, 300]),
     ]
     conexoes = {
         WEBHOOK: _liga(E_PING),
-        E_PING: _liga("Responde ping", MONTA),
+        E_PING: _liga("Responde ping", E_BUSCA),
+        E_BUSCA: _liga(BUSCA, MONTA),
+        BUSCA: _liga("Responde a busca"),
         MONTA: _liga(CHEGARAM),
-        CHEGARAM: _liga(AGENTE, "Responde sem arquivos"),
-        AGENTE: _liga(PREPARA, "Responde erro"),
-        PREPARA: _liga("Responde"),
+        CHEGARAM: _liga(ACEITO, "Responde sem arquivos"),
+        ACEITO: _liga(AGENTE),
+        AGENTE: _liga(PREPARA, PREPARA_ERRO),
+        PREPARA: _liga(GUARDA),
+        PREPARA_ERRO: _liga(GUARDA),
     }
-    return {"name": "SIG-FT · Revisão das listas (AMP)", "nodes": nos, "connections": conexoes,
-            "settings": {"executionOrder": "v1"}}
+    workflow = {"name": nome, "nodes": nos, "connections": conexoes, "settings": {"executionOrder": "v1"}}
+    if semente_dos_ids is None:
+        return workflow
+    texto = json.dumps(workflow, ensure_ascii=False)
+    texto = _UUID.sub(lambda m: str(uuid.uuid5(uuid.NAMESPACE_URL, f"{semente_dos_ids}/{m.group(0)}")), texto)
+    return json.loads(texto)
 
 
 def main(argv: list[str] | None = None) -> int:

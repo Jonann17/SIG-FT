@@ -23,7 +23,7 @@ from sigft.core import rede
 
 CABECALHO_CHAVE = "X-SIGFT-Chave"
 # 45 min por envio (2026-11-04): uma lista levou 17 min no AMP, e o limite de 15 a cortava.
-TEMPOS = {"ping": 30, "enviar": 2700}   # segundos de limite por chamada
+TEMPOS = {"ping": 30, "enviar": 2700, "buscar": 60}   # segundos de limite por chamada
 TIPOS = {".pdf": "application/pdf",
          ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
 
@@ -49,6 +49,17 @@ class RespostaAmp:
     @property
     def versao_workflow(self) -> str:
         return str(self.dados.get("versao_workflow") or "")
+
+    @property
+    def estado(self) -> str:
+        """`aceito` (o envio entrou e o agente começou), `pendente`, `pronto` ou `erro` (a
+        busca); vazio na resposta de um workflow que devolve o HTML na mesma chamada."""
+        return str(self.dados.get("estado") or "")
+
+    @property
+    def pedido(self) -> str:
+        """O número do pedido para a busca: a execução do n8n que roda o agente."""
+        return str(self.dados.get("pedido") or "")
 
     @property
     def arquivos(self) -> list[str]:
@@ -113,6 +124,22 @@ class ClienteAmp:
                 return RespostaAmp(False, modo, None, segundos, "",
                                    erro=self._sem_chave(_falha_do_envio(erro, segundos)))
         return self._interpretar(modo, resposta, self._relogio() - inicio)
+
+    def buscar(self, pedido: str) -> RespostaAmp:
+        """Pergunta pelo resultado do `pedido` (a busca não chama o agente: só lê o que o workflow
+        guardou). Pela rota do `ping`; sem rota ainda, o ping vai antes. Pode repetir à vontade."""
+        if self._sessao is None:
+            ping = self.ping()
+            if not ping.ok:
+                return replace(ping, modo="buscar")
+        inicio = self._relogio()
+        try:
+            resposta = self._sessao.request("POST", self._url, json={"modo": "buscar", "pedido": str(pedido)},
+                                            timeout=TEMPOS["buscar"], headers=self._cabecalhos())
+        except Exception as erro:  # noqa: BLE001 -- vira erro legível; a próxima busca tenta de novo
+            return RespostaAmp(False, "buscar", None, self._relogio() - inicio, "",
+                               erro=self._sem_chave(f"Falha ao perguntar ao AMP: {type(erro).__name__}: {erro}"))
+        return self._interpretar("buscar", resposta, self._relogio() - inicio)
 
     def _sem_chave(self, texto: str) -> str:
         return texto.replace(self._chave, "***") if self._chave else texto

@@ -227,6 +227,20 @@ pela rota seguinte quando o tempo esgota ou a conexão cai, e cada repetição s
 agente. Por isso o tempo esgotado ("o AMP não respondeu em 45 min"; era 15 até 2026-11-04, quando uma lista levou 17) e a conexão cortada ("caiu
 depois de N s") viram erro. O teste de 03/11 mostrou que a rede da GE segura a chamada de minutos.
 
+**A resposta chega depois** (desde 2026-11-04):
+- **O workflow responde ao envio na hora** com `{estado: "aceito", pedido, arquivos}` e roda o
+  agente em seguida.
+- **O resultado fica nos dados estáticos do workflow:** `estado` `pronto` ou `erro`, os 30 mais
+  novos, por 7 dias.
+- **A busca:** `modo=buscar` com o `pedido` devolve o resultado guardado, ou `pendente`
+  (`ClienteAmp.buscar`).
+- **A espera:** a rodada pergunta a cada 30 s, até 60 min (`_esperar_o_resultado`). O pedido fica
+  em `Documentos\SIG-FT\amp_pendentes.json` (`registrar_pendente`) até o HTML ser gravado.
+- **Parar ou passar do máximo** deixa a lista "no AMP", na situação `pendente`.
+- **Ao abrir, a aba chama o `buscar_pendentes`,** no máximo a cada 5 min. Ele grava o HTML pronto,
+  tira o erro e desiste do pedido com mais de 7 dias.
+- **O workflow antigo,** que devolve o HTML na mesma chamada, continua aceito.
+
 **As listas** (`listas_para_amp`, sem mudança desde a v1):
 - são as da conferência que têm pasta, na ordem das categorias;
 - a revisão atual é a do download desta sessão (a que o Aconex devolveu); sem download, é a ÚLTIMA

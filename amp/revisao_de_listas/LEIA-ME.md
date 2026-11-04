@@ -101,6 +101,25 @@ andamento da equipe apagado):
 
 Não precisa reimportar o workflow: ele só chama o agente.
 
+## A resposta chega depois (desde 2026-11-04)
+
+Uma lista levou 17 minutos no AMP. Por isso o workflow não segura a chamada até o agente terminar:
+1. **O envio responde na hora** com o número do pedido, que é a execução do n8n. O SIG-FT escreve
+   `aceito: o agente está lendo (pedido N)`.
+2. **O agente roda em seguida.** O resultado, HTML ou erro, fica guardado nos dados do próprio
+   workflow por 7 dias. Ficam os 30 mais novos.
+3. **O SIG-FT pergunta pelo resultado a cada 30 s** (`modo=buscar`), até 60 min. Cada pergunta é
+   uma execução curta no n8n, que não chama o agente.
+4. **Se o SIG-FT fechar, se você clicar em Parar ou se passar de 60 min,** a lista fica "no AMP". O
+   pedido fica anotado em `Documentos\SIG-FT\amp_pendentes.json`, e a aba **Revisão no AMP**, ao
+   abrir, pergunta pelos pendentes e grava cada HTML pronto na pasta da lista.
+
+**O resultado só fica guardado nas execuções de produção** (workflow publicado, Production URL).
+Pela Test URL, a busca devolve sempre `pendente`.
+
+**Para buscar à mão** um resultado que o SIG-FT não pegou: no n8n, menu **Executions**, abra a
+execução e veja o nó **Prepara a resposta**. No **Output**, o campo `html` tem o relatório.
+
 ## O que os testes de 03/11 ensinaram
 
 - **O AMP Agent lê a mensagem do campo `chatInput`** do item que chega. Sem ele, o erro é *"Prompt is
@@ -147,12 +166,12 @@ documentos: eles não podem sair da GE. O diagnóstico do SIG-FT está abaixo.
 | HTTP 401 ou 403 | a chave do **Webhook…** é diferente da credencial `X-SIGFT-Chave` do workflow |
 | HTTP 404 | o workflow não está publicado, ou o endereço é a Test URL (`/webhook-test/`) |
 | HTTP 400, etapa `arquivos` | os arquivos não chegaram ao agente: o **Monta a mensagem** precisa de *Include Other Input Fields = All* |
-| HTTP 502, etapa `agente` | o agente falhou: veja a execução no n8n e confira se o **AMP Agent** tem o agente e a credencial |
+| "falhou: ... (etapa agente)" | o agente falhou: veja a execução no n8n e confira se o **AMP Agent** tem o agente e a credencial |
 | "o agente não devolveu HTML" | o agente respondeu texto: melhore o system prompt no AMP |
 | "o workflow recebeu N de M arquivo(s)" | algum arquivo se perdeu no caminho: veja a aba Binary do Webhook na execução |
 | "o AMP não respondeu JSON" | algo no caminho devolveu uma página (login, proxy): a resposta está no diagnóstico |
 | "a conexão com o AMP caiu depois de N s" | algo no caminho corta a chamada longa; o n8n pode ter seguido (veja a execução). Em 03/11 a rede segurou uma chamada de minutos |
-| "o AMP não respondeu em 45 min" | o agente demorou demais: veja a execução (arquivo muito grande?). O Timeout do AMP Agent no n8n precisa ser de 45 min ou mais |
+| "no AMP: o HTML é buscado depois" | o agente passou de 60 min, ou você clicou em Parar: o resultado fica guardado no n8n por 7 dias, e a aba o busca sozinha ao abrir |
 
 **A revisão de cada lista vai uma vez só.** O SIG-FT não repete a chamada sozinho, porque cada
 repetição seria outra execução do agente no AMP. Para tentar de novo, clique em **Revisar no AMP**

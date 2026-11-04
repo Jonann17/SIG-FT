@@ -55,8 +55,17 @@ def test_ping_nao_passa_pelo_agente():
     workflow = _workflow()
     assert _destinos(workflow, "Webhook do SIG-FT") == ["É ping?"]
     assert _destinos(workflow, "É ping?", 0) == ["Responde ping"]
-    assert _destinos(workflow, "É ping?", 1) == ["Monta a mensagem"]
+    assert _destinos(workflow, "É ping?", 1) == ["É busca?"]
     assert "'ping'" in _no(workflow, "Responde ping")["parameters"]["responseBody"]
+
+
+def test_a_busca_devolve_o_resultado_guardado_sem_chamar_o_agente():
+    workflow = _workflow()
+    assert _destinos(workflow, "É busca?", 0) == ["Busca o resultado"]
+    assert _destinos(workflow, "É busca?", 1) == ["Monta a mensagem"]
+    assert _destinos(workflow, "Busca o resultado") == ["Responde a busca"]
+    codigo = _no(workflow, "Busca o resultado")["parameters"]["jsCode"]
+    assert "$getWorkflowStaticData('global')" in codigo and "estado: 'pendente'" in codigo
 
 
 def test_monta_a_mensagem_leva_os_arquivos():
@@ -68,26 +77,36 @@ def test_monta_a_mensagem_leva_os_arquivos():
 
 def test_sem_os_arquivos_o_agente_nao_e_chamado():
     workflow = _workflow()
-    assert _destinos(workflow, "Chegaram os arquivos?", 0) == ["AMP Agent"]
+    assert _destinos(workflow, "Chegaram os arquivos?", 0) == ["Responde aceito"]
     assert _destinos(workflow, "Chegaram os arquivos?", 1) == ["Responde sem arquivos"]
     assert _no(workflow, "Responde sem arquivos")["parameters"]["options"]["responseCode"] == 400
 
 
-def test_o_agente_e_o_da_revisao_e_o_erro_dele_e_502():
+def test_responde_na_hora_com_o_pedido_e_o_agente_roda_depois():
+    # 2026-11-04: uma lista levou 17 min; o SIG-FT busca o resultado depois.
+    workflow = _workflow()
+    corpo = _no(workflow, "Responde aceito")["parameters"]["responseBody"]
+    assert "estado: 'aceito'" in corpo and "pedido: $execution.id" in corpo and "arquivos:" in corpo
+    assert _destinos(workflow, "Responde aceito") == ["AMP Agent"]
+
+
+def test_o_agente_e_o_da_revisao_e_o_resultado_ou_o_erro_ficam_guardados():
     workflow = _workflow()
     agente = _no(workflow, "AMP Agent")
     assert agente["type"] == "CUSTOM.amp" and agente["onError"] == "continueErrorOutput"
     assert agente["parameters"]["agentId"]["cachedResultName"] == "Spare Parts Document Reviewer"
     assert _destinos(workflow, "AMP Agent", 0) == ["Prepara a resposta"]
-    assert _destinos(workflow, "AMP Agent", 1) == ["Responde erro"]
-    assert _no(workflow, "Responde erro")["parameters"]["options"]["responseCode"] == 502
-    assert _destinos(workflow, "Prepara a resposta") == ["Responde"]
+    assert _destinos(workflow, "AMP Agent", 1) == ["Prepara o erro"]
+    assert _destinos(workflow, "Prepara a resposta") == ["Guarda o resultado"]
+    assert _destinos(workflow, "Prepara o erro") == ["Guarda o resultado"]
+    guarda = _no(workflow, "Guarda o resultado")["parameters"]["jsCode"]
+    assert "$getWorkflowStaticData('global')" in guarda and "LIMITE = 30" in guarda and "VIDA = 7 *" in guarda
 
 
 def test_a_resposta_corta_a_narracao_e_lista_os_arquivos():
     codigo = _no(_workflow(), "Prepara a resposta")["parameters"]["jsCode"]
     for trecho in ("<!DOCTYPE html|<html", "</html>", "$('Monta a mensagem').first().binary", "arquivos",
-                   "o agente não devolveu HTML", "versao_workflow: VERSAO", "'2026-11-03'"):
+                   "o agente não devolveu HTML", "versao_workflow: VERSAO", "'2026-11-04'", "modo: 'revisar'"):
         assert trecho in codigo, trecho
 
 

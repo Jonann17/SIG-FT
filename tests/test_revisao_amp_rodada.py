@@ -49,6 +49,12 @@ class _Cliente:
         self.envios.append((dict(campos), dict(arquivos)))
         return self.respostas.pop(0)
 
+    buscas: list = []
+
+    def buscar(self, pedido):
+        self.perguntas = getattr(self, "perguntas", []) + [pedido]
+        return self.buscas.pop(0)
+
 
 def _ok(html=HTML, arquivos=None, execucao="101"):
     dados = {"ok": True, "modo": "revisar", "html": html, "execucao": execucao}
@@ -65,6 +71,8 @@ def _falha(erro="model timeout", http=502, dados=None):
 
 def _rodar(listas, cliente, linhas=None, **kw):
     kw.setdefault("batimento", 0)
+    kw.setdefault("espera", 0)
+    kw.setdefault("dormir", lambda _s: None)
     log = linhas.append if linhas is not None else (lambda _m: None)
     return ra.revisar_listas(listas, cliente, versao_sigft="1.3.3-rc.1", url=URL, chave_posta=True, log_cb=log, **kw)
 
@@ -289,3 +297,133 @@ def test_testar_conexao_ok():
 def test_testar_conexao_falha():
     falho = RespostaAmp(False, "ping", 403, 0.2, "", {}, "o AMP recusou a chave (HTTP 403)")
     assert ra.testar_conexao(_Cliente(ping=falho)) == ["FALHOU  Ping: o AMP recusou a chave (HTTP 403) (0,2 s)"]
+
+
+# ------------------------------------------------------------------ a resposta que chega depois
+# 2026-11-04: uma lista levou 17 min. O workflow responde na hora com o pedido (a execução do n8n)
+# e guarda o resultado; o SIG-FT pergunta até ficar pronto. O pedido fica anotado em
+# `amp_pendentes.json`, na pasta de dados, até o HTML ser gravado: com o SIG-FT fechado no meio,
+# a aba busca o resultado na próxima vez.
+
+def _aceito(pedido="700", arquivos=("a.pdf", "b.pdf", "s.xlsx")):
+    dados = {"ok": True, "modo": "revisar", "estado": "aceito", "pedido": pedido, "execucao": pedido,
+             "arquivos": list(arquivos)}
+    return RespostaAmp(True, "revisar", 200, 1.1, json.dumps(dados), dados)
+
+
+def _pendente(pedido="700"):
+    dados = {"ok": True, "modo": "buscar", "estado": "pendente", "pedido": pedido}
+    return RespostaAmp(True, "buscar", 200, 0.4, json.dumps(dados), dados)
+
+
+def _pronto(pedido="700", html=HTML):
+    dados = {"ok": True, "modo": "revisar", "estado": "pronto", "pedido": pedido, "execucao": pedido, "html": html,
+             "arquivos": ["a.pdf", "b.pdf", "s.xlsx"]}
+    return RespostaAmp(True, "buscar", 200, 0.5, json.dumps(dados), dados)
+
+
+def _erro_guardado(pedido="700"):
+    dados = {"ok": False, "modo": "revisar", "estado": "erro", "etapa": "agente", "erro": "model timeout",
+             "pedido": pedido, "execucao": pedido}
+    return RespostaAmp(False, "buscar", 200, 0.5, json.dumps(dados), dados, "model timeout")
+
+
+def _cliente_com_buscas(*buscas, envio=None):
+    cliente = _Cliente(envio or _aceito())
+    cliente.buscas = list(buscas)
+    return cliente
+
+
+def test_aceito_pergunta_ate_ficar_pronto_e_grava(tmp_path):
+    lista = _lista(tmp_path)
+    linhas = []
+    cliente = _cliente_com_buscas(_pendente(), _pendente(), _pronto())
+    [resultado] = _rodar([lista], cliente, linhas)
+    assert resultado.situacao == "pronto" and resultado.html.read_text(encoding="utf-8") == HTML
+    assert cliente.perguntas == ["700", "700", "700"]
+    assert "    aceito: o agente está lendo (pedido 700); pergunto pelo resultado a cada 0 s" in linhas
+    assert sum(1 for linha in linhas if linha.endswith("esperando o AMP (pedido 700)")) == 2
+    assert ra.ler_pendentes() == []
+
+
+def test_erro_do_agente_guardado_e_falha_e_sai_dos_pendentes(tmp_path):
+    [resultado] = _rodar([_lista(tmp_path)], _cliente_com_buscas(_erro_guardado()), gravar_diagnostico=False)
+    assert (resultado.situacao, resultado.detalhe) == ("falhou", "model timeout (etapa agente)")
+    assert ra.ler_pendentes() == []
+
+
+def test_pergunta_que_falha_tenta_de_novo(tmp_path):
+    caiu = RespostaAmp(False, "buscar", None, 1.0, "", {}, "Falha ao perguntar ao AMP: ConnectionError: caiu")
+    linhas = []
+    [resultado] = _rodar([_lista(tmp_path)], _cliente_com_buscas(caiu, _pronto()), linhas)
+    assert resultado.situacao == "pronto"
+    assert any("a pergunta ao AMP falhou" in linha for linha in linhas)
+
+
+def test_parar_na_espera_deixa_a_lista_no_amp(tmp_path):
+    lista = _lista(tmp_path)
+    pedidos = iter([False, True])
+    [resultado] = _rodar([lista], _cliente_com_buscas(_pendente()), cancelado_cb=lambda: next(pedidos, True))
+    assert resultado.situacao == "pendente"
+    assert resultado.detalhe == "no AMP: o HTML é buscado depois (pedido 700)"
+    [pendente] = ra.ler_pendentes()
+    assert (pendente["pedido"], pendente["url"], pendente["codigo"]) == ("700", URL, CODIGO)
+    assert pendente["pasta"] == str(lista.item.pasta)
+    assert pendente["nome"] == f"{CODIGO}[0A-0B] revisao AMP.html"
+
+
+def test_passou_do_maximo_fica_no_amp(tmp_path):
+    linhas = []
+    [resultado] = _rodar([_lista(tmp_path)], _cliente_com_buscas(_pendente()), linhas, espera_maxima=0)
+    assert resultado.situacao == "pendente"
+    assert linhas[-1].startswith("Fim: 0 HTML pronto(s), 0 falha(s), 0 com falta, 0 parada(s), 1 no AMP, em")
+    assert len(ra.ler_pendentes()) == 1
+
+
+def test_workflow_antigo_que_devolve_o_html_na_hora_continua_valendo(tmp_path):
+    cliente = _Cliente(_ok())
+    [resultado] = _rodar([_lista(tmp_path)], cliente)
+    assert resultado.situacao == "pronto" and getattr(cliente, "perguntas", []) == []
+
+
+def test_buscar_pendentes_recupera_o_html(tmp_path):
+    lista = _lista(tmp_path)
+    pedidos = iter([False, True])
+    _rodar([lista], _cliente_com_buscas(_pendente()), cancelado_cb=lambda: next(pedidos, True))
+    criados = []
+
+    def criar_cliente(url):
+        cliente = _cliente_com_buscas(_pronto())
+        criados.append(url)
+        return cliente
+
+    linhas = []
+    assert ra.buscar_pendentes(criar_cliente, linhas.append) == 1
+    assert criados == [URL]
+    html = lista.item.pasta / f"{CODIGO}[0A-0B] revisao AMP.html"
+    assert html.read_text(encoding="utf-8") == HTML
+    assert ra.ler_pendentes() == []
+    assert any(linha.startswith(f"  ✓ {CODIGO}: HTML recuperado") for linha in linhas)
+
+
+def test_buscar_pendentes_ainda_no_amp_fica_e_o_antigo_sai(tmp_path):
+    from datetime import datetime, timedelta
+
+    ra.registrar_pendente(_lista(tmp_path), "800", URL)
+    ra.registrar_pendente(_lista(tmp_path, OUTRO), "801", URL, agora=datetime.now() - timedelta(days=8))
+    respostas = {"800": _pendente("800"), "801": _pendente("801")}
+
+    class _Busca:
+        def buscar(self, pedido):
+            return respostas[pedido]
+
+    linhas = []
+    assert ra.buscar_pendentes(lambda _url: _Busca(), linhas.append) == 0
+    assert [p["pedido"] for p in ra.ler_pendentes()] == ["800"]
+    assert any("ainda no AMP" in linha for linha in linhas)
+    assert any("desisti" in linha for linha in linhas)
+
+
+def test_sem_pendentes_nao_pergunta_nada():
+    assert ra.buscar_pendentes(lambda _url: (_ for _ in ()).throw(AssertionError("não devia criar")),
+                               lambda _m: None) == 0

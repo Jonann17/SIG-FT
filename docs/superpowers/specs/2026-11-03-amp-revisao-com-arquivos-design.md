@@ -344,3 +344,37 @@ tamanho.
 - **Esperar a resposta por consulta** (o workflow responde na hora e o SIG-FT busca depois). Só se a
   rede passar a cortar chamadas longas, o que hoje não acontece (§2).
 - **Listas com arquivos grandes:** fica como pendência (§6).
+
+## 9. Atualização de 2026-11-04: a resposta chega depois
+
+**O que mudou.** No primeiro teste pelo SIG-FT, uma lista levou 17 minutos no AMP, e o SIG-FT
+desistia aos 15. O resultado também se perdia quando o SIG-FT era fechado no meio. O Luan aprovou:
+- o workflow responde na hora;
+- o SIG-FT busca o resultado depois.
+
+**No workflow:**
+- **O envio** responde `{estado: "aceito", pedido, arquivos}`. O pedido é a execução do n8n.
+- **O agente roda em seguida,** e o resultado fica nos dados estáticos do workflow
+  (`$getWorkflowStaticData`): `estado` `pronto` ou `erro`, os 30 mais novos, por 7 dias. Os dados
+  estáticos só persistem em produção.
+- **Sai o "Responde erro" (502).** O erro do agente vira um resultado guardado.
+- **`modo=buscar`** devolve o resultado guardado, ou `pendente`.
+
+**No SIG-FT:**
+- **`ClienteAmp.buscar(pedido)`.**
+- **A espera:** a rodada pergunta a cada 30 s, até 60 min, e o batimento passa a ser essas
+  perguntas. O pedido fica em `Documentos\SIG-FT\amp_pendentes.json` até o HTML ser gravado.
+- **Parar ou passar do máximo** deixa a lista "no AMP" (`pendente`), e ela se desmarca.
+- **Ao abrir, a aba busca os pendentes,** no máximo a cada 5 min, e grava cada HTML pronto na pasta
+  da lista.
+- **O limite de um envio** subiu para 45 min, para o caso do workflow antigo, que ainda devolve o
+  HTML na mesma chamada e continua aceito.
+
+**O que segue igual:**
+- o envio vai uma vez só, pela rota do ping;
+- a busca pode repetir à vontade, porque não chama o agente;
+- o workflow da criação do `_STATUS_PMIB` usa o mesmo gerador (`montar_workflow`).
+
+**Risco conhecido:** duas rodadas ao mesmo tempo, de dois SIG-FT, podem sobrescrever os dados
+estáticos uma da outra, porque o n8n grava esses dados no fim de cada execução. O SIG-FT manda uma
+lista por vez, então isso não acontece numa rodada só.

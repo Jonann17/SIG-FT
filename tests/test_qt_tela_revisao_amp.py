@@ -92,6 +92,16 @@ def servico(monkeypatch, tmp_path):
     monkeypatch.setattr(tela_mod.revisao_amp_svc, "listas_para_amp", listas_para_amp)
     monkeypatch.setattr(tela_mod.revisao_amp_svc, "revisar_listas", revisar_listas)
     monkeypatch.setattr(tela_mod.revisao_amp_svc, "testar_conexao", testar_conexao)
+    def buscar_pendentes(criar_cliente, log_cb):
+        cliente = criar_cliente(URL)
+        falso.pendentes_buscados.append((cliente.url, cliente.chave))
+        log_cb("pendentes buscados")
+        return 1
+
+    falso.pendentes = []
+    falso.pendentes_buscados = []
+    monkeypatch.setattr(tela_mod.revisao_amp_svc, "ler_pendentes", lambda: list(falso.pendentes))
+    monkeypatch.setattr(tela_mod.revisao_amp_svc, "buscar_pendentes", buscar_pendentes)
     monkeypatch.setattr(tela_mod, "ClienteAmp", _ClienteAmp)
     return falso
 
@@ -365,3 +375,31 @@ def test_testar_conexao_escreve_e_grava(qt_interface, qtbot, servico):
     [arquivo] = list((dados_usuario.pasta_logs() / "amp").glob("amp_teste_*.log"))
     texto = arquivo.read_text(encoding="utf-8")
     assert "OK      Ping" in texto and CHAVE not in texto
+
+
+# ------------------------------------------------------------------ os resultados que ficaram no AMP
+
+def test_a_aba_busca_os_pendentes_e_nao_repete_logo_em_seguida(qt_interface, qtbot, servico, ultima):
+    servico.pendentes = [{"pedido": "700"}]
+    tela = _tela(qtbot, ultima=ultima)
+    tela.buscar_pendentes()
+    qtbot.waitUntil(lambda: servico.pendentes_buscados and not tela.rodando(), timeout=5000)
+    assert servico.pendentes_buscados == [(URL, CHAVE)]
+    tela.buscar_pendentes()
+    assert servico.pendentes_buscados == [(URL, CHAVE)]
+
+
+def test_sem_pendentes_nao_pergunta(qt_interface, qtbot, servico, ultima):
+    tela = _tela(qtbot, ultima=ultima)
+    tela.buscar_pendentes()
+    assert servico.pendentes_buscados == [] and not tela.rodando()
+
+
+def test_a_que_ficou_no_amp_se_desmarca(qt_interface, qtbot, servico, ultima):
+    a, _b, c = servico.listas
+    servico.resultados = [ra.ResultadoAmp(a, "pendente", None, "no AMP: o HTML é buscado depois (pedido 700)"),
+                          ra.ResultadoAmp(c, "falhou", None, "model timeout", "D\n")]
+    tela = _carregada(_tela(qtbot, ultima=ultima), qtbot)
+    _revisar(tela, qtbot, 2)
+    assert _caixas(tela) == [False, None, True]
+    assert _coluna_amp(tela)[0] == "no AMP: o HTML é buscado depois (pedido 700)"
