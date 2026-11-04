@@ -34,11 +34,6 @@ from sigft.services.conferencia_revisoes import (
 CORPO_NO_DIAGNOSTICO = 1500   # caracteres do corpo da resposta que o diagnóstico mostra
 ERRO_NO_DIAGNOSTICO = 300     # o erro do workflow, cortado: ele pode repetir a saída do agente
 BATIMENTO = 30.0              # segundos entre as linhas de "esperando o AMP"
-# A resposta que chega depois (2026-11-04): o workflow responde com o pedido, e o SIG-FT pergunta.
-ESPERA_ENTRE_BUSCAS = 30.0    # segundos entre as perguntas ao AMP
-ESPERA_MAXIMA = 3600.0        # depois disso a lista fica "no AMP", e o HTML é buscado depois
-DIAS_PENDENTE = 7             # o workflow guarda o resultado por 7 dias; depois o pedido se perde
-ARQUIVO_PENDENTES = "amp_pendentes.json"
 CAMPOS_DO_WORKFLOW = ("ok", "modo", "etapa", "erro", "execucao", "versao_workflow", "arquivos")
 CAMPO_EM_USO, CAMPO_ATUAL, CAMPO_STATUS = "revisao_em_uso", "revisao_atual", "status_pmib"
 ARQUIVOS_DO_REPOSITORIO = (
@@ -74,7 +69,7 @@ class PedidoAmp:
 @dataclass(frozen=True)
 class ResultadoAmp:
     lista: ListaParaAmp
-    situacao: Literal["pronto", "falhou", "falta", "parado", "pendente"]
+    situacao: Literal["pronto", "falhou", "falta", "parado"]
     html: Path | None
     detalhe: str
     diagnostico: str = ""   # só na falha: o texto para colar numa conversa nova
@@ -193,94 +188,6 @@ def gravar_html(pasta: Path, nome: str, html: str) -> Path:
             return destino
         except FileExistsError:
             numero += 1
-
-
-# ------------------------------------------------------------------ os pendentes
-
-def _arquivo_de_pendentes() -> Path:
-    return dados_usuario.pasta_dados() / ARQUIVO_PENDENTES
-
-
-def ler_pendentes() -> list[dict]:
-    """Os pedidos que o AMP aceitou e cujo HTML ainda não foi gravado. Arquivo que não se lê é
-    lista vazia: perder um pendente custa buscar o HTML à mão no n8n, nunca derrubar a aba."""
-    try:
-        dados = json.loads(_arquivo_de_pendentes().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    return [p for p in dados if isinstance(p, dict) and p.get("pedido")] if isinstance(dados, list) else []
-
-
-def _gravar_pendentes(pendentes: list[dict]) -> None:
-    destino = _arquivo_de_pendentes()
-    try:
-        temporario = destino.with_suffix(".tmp")
-        temporario.write_text(json.dumps(pendentes, ensure_ascii=False, indent=2), encoding="utf-8")
-        temporario.replace(destino)
-    except OSError:
-        pass
-
-
-def registrar_pendente(lista: ListaParaAmp, pedido: str, url: str, *, agora: datetime | None = None) -> None:
-    """Anota o pedido aceito, com onde gravar o HTML quando ele ficar pronto."""
-    dados = lista.item.lista
-    pendentes = [p for p in ler_pendentes() if p.get("pedido") != pedido]
-    pendentes.append({"pedido": str(pedido), "url": url, "codigo": dados.codigo, "pasta": str(lista.item.pasta),
-                      "nome": nome_do_html(dados.codigo, dados.revisao_em_uso, lista.revisao_atual),
-                      "enviado_em": (agora or datetime.now()).isoformat(timespec="seconds")})
-    _gravar_pendentes(pendentes)
-
-
-def _tirar_pendente(pedido: str) -> None:
-    pendentes = ler_pendentes()
-    restantes = [p for p in pendentes if p.get("pedido") != str(pedido)]
-    if len(restantes) != len(pendentes):
-        _gravar_pendentes(restantes)
-
-
-def buscar_pendentes(criar_cliente, log_cb, *, agora: datetime | None = None) -> int:
-    """Pergunta ao AMP pelos pedidos que ficaram para depois (o SIG-FT fechou, ou a espera passou
-    do máximo) e grava cada HTML pronto na pasta da lista. `criar_cliente(url)` devolve o cliente
-    do webhook. Devolve quantos HTML foram gravados."""
-    pendentes = ler_pendentes()
-    if not pendentes:
-        return 0
-    agora = agora or datetime.now()
-    log_cb(f"Revisão no AMP: {len(pendentes)} resultado(s) pendente(s); perguntando ao AMP...")
-    clientes: dict = {}
-    gravados = 0
-    for pendente in pendentes:
-        codigo, pedido = pendente.get("codigo", "?"), str(pendente["pedido"])
-        if pendente["url"] not in clientes:
-            clientes[pendente["url"]] = criar_cliente(pendente["url"])
-        resposta = clientes[pendente["url"]].buscar(pedido)
-        if resposta.ok and resposta.estado == "pendente":
-            try:
-                idade = agora - datetime.fromisoformat(pendente.get("enviado_em", ""))
-            except ValueError:
-                idade = None
-            if idade is not None and idade.days >= DIAS_PENDENTE:
-                _tirar_pendente(pedido)
-                log_cb(f"  ✗ {codigo}: desisti do pedido {pedido}, de {idade.days} dias: o AMP não o tem mais")
-            else:
-                log_cb(f"  … {codigo}: ainda no AMP (pedido {pedido})")
-            continue
-        if not resposta.ok and resposta.estado != "erro":
-            log_cb(f"  ! {codigo}: não consegui perguntar ao AMP ({resposta.erro}); tento na próxima vez")
-            continue
-        if not resposta.ok or not _TEM_HTML.search(resposta.html):
-            _tirar_pendente(pedido)
-            log_cb(f"  ✗ {codigo}: o AMP terminou sem HTML (pedido {pedido}): {_detalhe(resposta) if not resposta.ok else 'o agente não devolveu HTML'}")
-            continue
-        try:
-            caminho = gravar_html(Path(pendente["pasta"]), pendente["nome"], resposta.html)
-        except OSError as erro:
-            log_cb(f"  ! {codigo}: o HTML não foi gravado ({erro}); tento na próxima vez")
-            continue
-        _tirar_pendente(pedido)
-        gravados += 1
-        log_cb(f"  ✓ {codigo}: HTML recuperado → {caminho.name} ({_tamanho(caminho)})")
-    return gravados
 
 
 # ------------------------------------------------------------------ o diagnóstico
@@ -411,31 +318,7 @@ def _falhou(lista: ListaParaAmp, pedido: PedidoAmp | None, resposta: RespostaAmp
     return ResultadoAmp(lista, "falhou", None, detalhe, diagnostico(lista, pedido, resposta, erro=erro, **contexto))
 
 
-def _esperar_o_resultado(cliente, pedido: str, log_cb, *, espera: float, maximo: float, cancelado_cb, dormir,
-                         relogio=time.monotonic):
-    """Pergunta pelo `pedido` até o resultado voltar. `None`: a pessoa parou, ou passou do
-    máximo; o pedido continua anotado, e o HTML é buscado depois (`buscar_pendentes`)."""
-    inicio = relogio()
-    while True:
-        if cancelado_cb is not None and cancelado_cb():
-            log_cb("    parada pedida: o agente segue no AMP; o HTML é buscado quando a aba abrir de novo")
-            return None
-        dormir(espera)
-        resposta = cliente.buscar(pedido)
-        decorrido = relogio() - inicio
-        if resposta.ok and resposta.estado == "pendente":
-            log_cb(f"    … {_mm_ss(decorrido)} esperando o AMP (pedido {pedido})")
-        elif not resposta.ok and resposta.estado != "erro":
-            log_cb(f"    ! a pergunta ao AMP falhou ({resposta.erro}); pergunto de novo")
-        else:
-            return resposta
-        if decorrido >= maximo:
-            log_cb(f"    o AMP passou de {_mm_ss(maximo)}: o HTML é buscado depois (pedido {pedido})")
-            return None
-
-
-def _revisar(lista: ListaParaAmp, cliente, montar, log_cb, batimento: float, *, espera: float,
-             espera_maxima: float, dormir, cancelado_cb=None, **contexto) -> ResultadoAmp:
+def _revisar(lista: ListaParaAmp, cliente, montar, log_cb, batimento: float, **contexto) -> ResultadoAmp:
     dados = lista.item.lista
     if lista.falta:
         log_cb(f"    - {lista.falta}")
@@ -451,26 +334,7 @@ def _revisar(lista: ListaParaAmp, cliente, montar, log_cb, batimento: float, *, 
     log_cb(_linha_da_resposta(resposta))
     if not resposta.ok:
         return _falhou(lista, pedido, resposta, _detalhe(resposta), log_cb, **contexto)
-    numero = ""
-    if resposta.estado == "aceito":
-        numero = resposta.pedido
-        if resposta.arquivos and len(resposta.arquivos) < len(pedido.arquivos):
-            return _falhou(lista, pedido, resposta,
-                           f"o workflow recebeu {len(resposta.arquivos)} de {len(pedido.arquivos)} arquivo(s)",
-                           log_cb, **contexto)
-        registrar_pendente(lista, numero, contexto["url"])
-        log_cb(f"    aceito: o agente está lendo (pedido {numero}); pergunto pelo resultado a cada {espera:.0f} s")
-        resposta = _esperar_o_resultado(cliente, numero, log_cb, espera=espera, maximo=espera_maxima,
-                                        cancelado_cb=cancelado_cb, dormir=dormir)
-        if resposta is None:
-            return ResultadoAmp(lista, "pendente", None, f"no AMP: o HTML é buscado depois (pedido {numero})")
-        log_cb(_linha_da_resposta(resposta))
-        if not resposta.ok:
-            _tirar_pendente(numero)
-            return _falhou(lista, pedido, resposta, _detalhe(resposta), log_cb, **contexto)
     if not _TEM_HTML.search(resposta.html):
-        if numero:
-            _tirar_pendente(numero)
         return _falhou(lista, pedido, resposta, "o agente não devolveu HTML", log_cb, **contexto)
     if resposta.arquivos and len(resposta.arquivos) < len(pedido.arquivos):
         return _falhou(lista, pedido, resposta,
@@ -482,8 +346,6 @@ def _revisar(lista: ListaParaAmp, cliente, montar, log_cb, batimento: float, *, 
     except OSError as erro:
         return _falhou(lista, pedido, resposta, f"o HTML não foi gravado: {erro}", log_cb,
                        erro=f"o HTML não foi gravado: {erro}", **contexto)
-    if numero:
-        _tirar_pendente(numero)
     log_cb(f"    ✓ HTML gravado: {caminho.name} ({_tamanho(caminho)})")
     return ResultadoAmp(lista, "pronto", caminho, caminho.name)
 
@@ -529,8 +391,7 @@ def _ping_falhou(listas, ping: RespostaAmp, log_cb, resultado_cb, gravar_diagnos
 
 def revisar_listas(listas: list[ListaParaAmp], cliente, *, versao_sigft: str, url: str, chave_posta: bool, log_cb,
                    progress_cb=None, cancelado_cb=None, resultado_cb=None, gravar_diagnostico: bool = True,
-                   montar=montar_pedido, desmarcadas=(), com_falta=(), batimento: float = BATIMENTO,
-                   espera: float = ESPERA_ENTRE_BUSCAS, espera_maxima: float = ESPERA_MAXIMA, dormir=time.sleep
+                   montar=montar_pedido, desmarcadas=(), com_falta=(), batimento: float = BATIMENTO
                    ) -> list[ResultadoAmp]:
     """Uma lista por vez (§5 do desenho). Antes, o `ping`: falhando, nada é mandado. A lista com
     falta não é chamada; a falha de uma não para as outras e deixa o diagnóstico em
@@ -561,8 +422,7 @@ def revisar_listas(listas: list[ListaParaAmp], cliente, *, versao_sigft: str, ur
             if progress_cb:
                 progress_cb(min(0.05 + n / len(listas) * 0.9, 0.95))
             log_cb(f"[{n + 1}/{len(listas)}] {lista.item.lista.codigo} · {_revisoes(lista)}")
-            resultado = _revisar(lista, cliente, montar, log_cb, batimento, espera=espera, espera_maxima=espera_maxima,
-                                 dormir=dormir, cancelado_cb=cancelado_cb, **contexto)
+            resultado = _revisar(lista, cliente, montar, log_cb, batimento, **contexto)
             if resultado.diagnostico and gravar_diagnostico:
                 _gravar_diagnostico(resultado, log_cb)
         resultados.append(resultado)
@@ -570,10 +430,9 @@ def revisar_listas(listas: list[ListaParaAmp], cliente, *, versao_sigft: str, ur
             resultado_cb(resultado)
     if progress_cb:
         progress_cb(1.0)
-    contagem = {s: sum(r.situacao == s for r in resultados) for s in ("pronto", "falhou", "falta", "parado", "pendente")}
-    no_amp = f", {contagem['pendente']} no AMP" if contagem["pendente"] else ""
+    contagem = {s: sum(r.situacao == s for r in resultados) for s in ("pronto", "falhou", "falta", "parado")}
     log_cb(f"Fim: {contagem['pronto']} HTML pronto(s), {contagem['falhou']} falha(s), {contagem['falta']} com falta, "
-           f"{contagem['parado']} parada(s){no_amp}, em {_mm_ss(time.monotonic() - inicio)}")
+           f"{contagem['parado']} parada(s), em {_mm_ss(time.monotonic() - inicio)}")
     return resultados
 
 

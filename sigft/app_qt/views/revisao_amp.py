@@ -13,7 +13,6 @@ Desenho: `docs/superpowers/specs/2026-11-03-amp-revisao-com-arquivos-design.md`,
 from __future__ import annotations
 
 import threading
-import time
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QDialog, QHBoxLayout
@@ -62,7 +61,6 @@ COLUNAS = (
     (marcar("Pasta"), 90),
 )
 COLUNA_AMP = 4
-INTERVALO_DOS_PENDENTES = 300   # segundos entre duas perguntas pelos pendentes ao abrir a aba
 COLUNA_PASTA = 5
 
 
@@ -97,7 +95,6 @@ class ModuloRevisaoAmp(ModuleFrame):
         self._listas_na_tabela: list = []           # uma ListaParaAmp por linha, na ordem da tabela
         self._conferencia_na_tabela = None          # a `UltimaConferencia` que a tabela mostra
         self._carregando = False
-        self._pendentes_em = None                   # quando a aba perguntou pelos pendentes (monotonic)
         self._linha_da_lista: dict[int, int] = {}   # id(ListaParaAmp) -> linha da tabela
         self._resultado_na_linha: list = []
         self._cancelado = threading.Event()
@@ -145,7 +142,6 @@ class ModuloRevisaoAmp(ModuleFrame):
         # O webhook pode ter mudado, e a Conferência pode ter rodado de novo, com a aba já montada.
         self._mostrar_webhook()
         self.atualizar_listas()
-        self.buscar_pendentes()
         super().showEvent(evento)
 
     # -- o webhook ---------------------------------------------------------
@@ -190,25 +186,6 @@ class ModuloRevisaoAmp(ModuleFrame):
         log = arquivo.envolver(self.log)
         log(f"Log em arquivo: {arquivo.caminho}")
         return arquivo, log
-
-    # -- os resultados que ficaram no AMP ----------------------------------
-    def buscar_pendentes(self) -> None:
-        """Pergunta ao AMP pelos HTML que ficaram para depois (o SIG-FT fechou no meio, ou a espera
-        passou do máximo) e grava cada um na pasta da lista. Ao abrir a aba, no máximo uma vez a
-        cada `INTERVALO_DOS_PENDENTES` segundos, e nunca no meio de outra tarefa da aba."""
-        agora = time.monotonic()
-        if self._pendentes_em is not None and agora - self._pendentes_em < INTERVALO_DOS_PENDENTES:
-            return
-        if self.rodando() or not revisao_amp_svc.ler_pendentes():
-            return
-        url, chave = self._webhook()
-        if not url or not chave:
-            return
-        self._pendentes_em = agora
-        self.iniciar_tarefa(self._worker_pendentes, chave, botao=self.btn_amp)
-
-    def _worker_pendentes(self, chave: str) -> None:
-        revisao_amp_svc.buscar_pendentes(lambda url: ClienteAmp(url, chave, log_cb=self.log), self.log)
 
     # -- as listas ---------------------------------------------------------
     def _listas(self, ultima) -> list:
@@ -339,11 +316,10 @@ class ModuloRevisaoAmp(ModuleFrame):
     def _terminar(self, resultados) -> None:
         self.resultados_amp = list(resultados)
         self._travar_caixas(False)
-        # A lista que voltou com HTML se desmarca, e a que ficou no AMP também (o HTML dela é
-        # buscado depois): um segundo clique manda só as que faltaram.
+        # A lista que voltou com HTML se desmarca: um segundo clique manda só as que faltaram.
         for resultado in self.resultados_amp:
             indice = self._linha_da_lista.get(id(resultado.lista))
-            if resultado.situacao in ("pronto", "pendente") and indice is not None:
+            if resultado.situacao == "pronto" and indice is not None:
                 self.tabela.topLevelItem(indice).setCheckState(0, Qt.CheckState.Unchecked)
         falhas = sum(1 for r in self.resultados_amp if r.situacao == "falhou")
         self.btn_copiar_diag.setEnabled(any(r.diagnostico for r in self.resultados_amp))

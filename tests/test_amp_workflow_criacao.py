@@ -57,7 +57,7 @@ def test_mesmo_contrato_da_revisao():
     criacao = _workflow()
     assert revisao["connections"] == criacao["connections"]
     assert _no(criacao, "Responde sem arquivos")["parameters"]["options"]["responseCode"] == 400
-    assert "estado: 'aceito'" in _no(criacao, "Responde aceito")["parameters"]["responseBody"]
+    assert _no(criacao, "Responde erro")["parameters"]["options"]["responseCode"] == 502
 
 
 def test_o_agente_tem_copia():
