@@ -1450,31 +1450,38 @@ O valor de "item" é o número do cabeçalho "### ITEM N" daquele item.
 
 
 def montar_docpack_pasta(*, codigo, titulo, especificacao, capitulo, pastas_existentes):
-    """DocPack (2026-11-03): onde criar a pasta de uma lista de sobressalentes nova.
+    """DocPack: onde criar a pasta de uma lista de sobressalentes nova.
 
-    A pasta final tem o nome do subsistema, que a mapeadora não traz: é o palpite
-    que a pessoa mais erra digitando. A IA vê as pastas que já existem (dois níveis)
-    para preferir uma delas a inventar outra; a resposta só preenche os campos da
-    tela, e quem confirma é a pessoa (`services/docpack.sugerir_destino`).
+    [2026-11-04, pedido do Luan] As pastas seguem a hierarquia da ET: a primeira é a
+    ET, dentro dela o capítulo, e no capítulo o sistema e o subsistema; a pasta final
+    é opcional. A IA vê as pastas que já existem (até quatro níveis) para preferir
+    uma delas a inventar outra; a resposta só preenche os campos da tela, e quem
+    confirma é a pessoa (`services/docpack.sugerir_destino`).
     """
     return f"""Você organiza as pastas das listas de sobressalentes da modernização da usina de Itaipu.
-Cada lista fica em <capítulo>/<sistema, opcional>/<pasta final>, onde a pasta final tem o nome do SUBSISTEMA a que a lista se refere, em maiúsculas e sem acento (ex.: "SISTEMA DE EXCITACAO", "GERADOR DIESEL").
+As pastas seguem a hierarquia da Especificação Técnica (ET):
+<ET>/<capítulo>/<sistema>/<subsistema>/<pasta final, opcional>
+- ET: a pasta de primeiro nível (ex.: "03 - EBOP", "05 - UNIDADE GERADORA").
+- capítulo: a pasta do capítulo da ET, dentro da ET.
+- sistema e subsistema: dentro do capítulo. Nem todo capítulo tem os dois níveis.
+- Os nomes vão em maiúsculas e sem acento (ex.: "SISTEMA DE EXCITACAO", "GERADOR DIESEL").
 
 Diga onde criar a pasta desta lista:
 - código: {codigo}
 - título: {titulo}
-- especificação técnica: {especificacao}
-- capítulo: {capitulo}
+- especificação técnica (na mapeadora): {especificacao}
+- capítulo (na mapeadora): {capitulo}
 
-As pastas que já existem (capítulo -> subpastas):
+As pastas que já existem (ET -> capítulo -> sistema -> subsistema):
 {pastas_existentes}
 
 Regras:
-- "capitulo": use uma das pastas de primeiro nível acima, escrita igual. Só invente outra se nenhuma servir.
-- "sistema": uma subpasta existente do capítulo, quando a lista pertence a um sistema que já tem pasta; senão, string vazia.
-- "pasta": o nome do subsistema, tirado do título. Se já existe uma pasta com esse subsistema, use o mesmo nome.
+- "et": uma das pastas de primeiro nível acima, escrita igual. Só invente outra se nenhuma servir.
+- "capitulo", "sistema", "subsistema": prefira as pastas que já existem no nível certo, escritas igual. Um nível que não existe para esta lista fica como string vazia.
+- "subsistema": o subsistema a que a lista se refere, tirado do título.
+- "pasta": string vazia, a não ser que a lista precise de uma pasta própria dentro do subsistema.
 - Nenhum nome pode ter / \\ : * ? " < > |.
 
 Responda APENAS com o JSON, sem texto antes ou depois:
-{{"capitulo": "...", "sistema": "...", "pasta": "...", "motivo": "uma frase dizendo por quê"}}
+{{"et": "...", "capitulo": "...", "sistema": "...", "subsistema": "...", "pasta": "", "motivo": "uma frase dizendo por quê"}}
 """
