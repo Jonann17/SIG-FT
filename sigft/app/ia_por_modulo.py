@@ -27,6 +27,8 @@ TAREFAS_DA_TELA = {
     "ModuloUploadConditions": ("condicoes",),
     "ModuloUploadTechSpecs": ("tech_specs",),
     "ModuloPDM": ("traduzir_pdm",),
+    # A seção DocPack (abas embutidas, sem cabeçalho): o botão fica no cabeçalho da seção.
+    "ModuloDocPackSecao": ("docpack_pasta",),
 }
 
 NOMES_DOS_MODOS = {

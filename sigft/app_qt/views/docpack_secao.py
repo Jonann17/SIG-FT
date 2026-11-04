@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 
+from sigft.app import ia_por_modulo
 from sigft.app.idioma import marcar, t
 from sigft.app_qt.views.aplicacao_lmr import MARGEM_DA_ROLAGEM, MARGEM_DIREITA_DA_ROLAGEM
 from sigft.app_qt.views.docpack import ModuloDocPack
@@ -18,6 +19,7 @@ from sigft.app_qt.views.docpack_etapa2 import ModuloDocPackEtapa2
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets.abas import Abas
 from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
+from sigft.app_qt.widgets.ia_do_modulo import instalar_configurar_ia
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 
 TITULO = marcar("DocPack")
@@ -50,3 +52,4 @@ class ModuloDocPackSecao(ModuleFrame):
         self.abas.set(t(ABA_ETAPA1))
         instalar_como_funciona(self, {t(ABA_ETAPA1): "DocPack.etapa1",  # nao-e-interface
                                       t(ABA_ETAPA2): "DocPack.etapa2"}, abas=self.abas)  # nao-e-interface
+        instalar_configurar_ia(self, ia_por_modulo.TAREFAS_DA_TELA.get("ModuloDocPackSecao", ()))

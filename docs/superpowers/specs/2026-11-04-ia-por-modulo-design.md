@@ -51,9 +51,11 @@ de `texto`). Falha vira erro legível, sem a chave.
 - Central: a janela "Modelos de IA" abre com a seção **"IA por módulo"** em cima: a
   lista dos módulos à esquerda; clicou, à direita os três modos e o conteúdo do modo.
 - Nas telas: "Configurar IA" no cabeçalho de Cria Fichas, Analyzer, Upload
-  Condições, Upload Specs e Planilhas PMIB (tradução do PDM). Ficam de fora, por ora:
-  AutoSpec (tela do Rafael; aviso no mural), DocPack, Conferência e Revisão no AMP
-  (estão sendo reorganizados em paralelo).
+  Condições, Upload Specs, Planilhas PMIB (tradução do PDM) e DocPack (a sugestão de
+  pasta da Etapa 1; o botão fica no cabeçalho da seção, porque as abas são telas
+  embutidas, sem cabeçalho). Fica de fora, por ora, o AutoSpec (tela do Rafael; aviso
+  no mural). A Conferência de Listas e a Etapa 2 do DocPack não passam pelo `get_llm`:
+  falam com o AMP pelo webhook da própria aba, e não ganham o botão.
 
 ## Fora do escopo
 

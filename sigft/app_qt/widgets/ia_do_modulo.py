@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 from sigft import config
 from sigft.app.ia_por_modulo import EXPLICACAO_DOS_MODOS, NOMES_DOS_MODOS, ROTULOS
 from sigft.app.idioma import marcar, t
-from sigft.app_qt import estilo, icones, interface
+from sigft.app_qt import estilo, icones, interface, propriedades
 from sigft.app_qt.widgets import blocos, dialogs
 from sigft.app_qt.widgets.webhook_amp import ROTULO_CHAVE, ROTULO_ENDERECO, problema_do_endereco
 from sigft.core.llm import catalogo, modo
@@ -231,7 +231,8 @@ class PainelIaDoModulo(QWidget):
         self.lbl_status.setText(self._valendo())
 
     def _clicou_modo(self) -> None:
-        escolha = self.sender().property("escolha") if self.sender() is not None else None
+        botao = self.sender()
+        escolha = propriedades.ler(botao, "escolha") if botao is not None else None
         if escolha in modo.SELECIONAVEIS:
             self._escolher_modo(escolha)
 

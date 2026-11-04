@@ -63,7 +63,8 @@ lista editável com as pastas que já existem naquele nível, dentro das escolhi
 esquerda (`docpack.arvore_existente` + `opcoes_do_nivel`), ou com um nome novo); **Sugerir com IA** (tarefa `docpack_pasta`, prompt
 `prompts.montar_docpack_pasta`, que devolve `{et, capitulo, sistema, subsistema, pasta}`
 -- a resposta do formato de antes, sem `et`, ainda é lida -- e preenche os campos das
-linhas marcadas, nunca cria);
+linhas marcadas, nunca cria; a IA dessa tarefa se escolhe no botão **Configurar IA** do
+cabeçalho do DocPack, o mesmo da janela "Modelos de IA": `sigft/app/ia_por_modulo.py`);
 **Pré-visualizar** (o plano no console, sem tocar no disco); **Criar dossiês** (o plano,
 a pergunta Sim/Não e a criação, com o log ✅/⚠️/❌ e o resumo); **Parar** (entre as listas).
 

@@ -132,3 +132,18 @@ def test_telas_com_ia_tem_o_botao():
     for tarefas in ia_por_modulo.TAREFAS_DA_TELA.values():
         assert tarefas and all(tarefa in config.TAREFAS_DO_PAINEL for tarefa in tarefas)
     assert "autospec" not in {t for ts in ia_por_modulo.TAREFAS_DA_TELA.values() for t in ts}
+
+
+def test_docpack_tem_o_botao_na_secao_e_configura_a_sugestao_de_pasta(qtbot, arquivo, qt_interface):
+    """O DocPack é uma seção de abas (telas embutidas, sem cabeçalho): o botão fica no
+    cabeçalho da seção e configura a tarefa da Etapa 1 (a sugestão de pasta)."""
+    from sigft.app_qt.views.docpack_secao import ModuloDocPackSecao
+
+    secao = ModuloDocPackSecao(None, _Controller())
+    qtbot.addWidget(secao)
+    assert secao.botao_configurar_ia.text() == "Configurar IA"
+    secao.botao_configurar_ia.click()
+    janela = secao.janela_configurar_ia
+    qtbot.addWidget(janela)
+    assert janela.painel.tarefas == ("docpack_pasta",)
+    janela.close()
