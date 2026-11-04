@@ -556,3 +556,28 @@ def test_linhas_que_chegam_em_blocos_sao_contadas_inteiras(portal):
     p.engine.contar = contar
 
     assert uf.fotos_ao_abrir(p) == 5
+
+
+def test_substituir_nao_sobe_por_cima_de_fotos_que_chegaram_depois_da_espera(portal):
+    # Revisao de 2026-11-04: com o portal mais lento que a espera, a tabela
+    # ainda vinha vazia quando `fotos_ao_abrir` desistia (ficha "sem fotos"), e
+    # as linhas antigas apareciam logo depois. Sem nova olhada antes de subir, o
+    # modo "substituir" punha as novas POR CIMA das antigas e o ✅ escondia: a
+    # contagem final soma `antes`. Melhor parar a ficha do que deixa-la errada.
+    p = portal(fotos=["0071e.JPG", "0071c.JPG"])
+    reais, leituras = p.engine.contar, {"n": 0}
+    vazias = uf.Esperas().tabela + 1  # a espera inteira de `fotos_ao_abrir`
+
+    def contar_atrasado_demais(seletor):
+        if seletor == uf.XPATH_LINHAS_DE_IMAGEM and leituras["n"] < vazias:
+            leituras["n"] += 1
+            return 0
+        return reais(seletor)
+    p.engine.contar = contar_atrasado_demais
+
+    resultado = uf.processar_ficha(p, "4500063671.0071", "0071", NOVAS, uf.MODO_SUBSTITUIR)
+
+    assert not resultado.ok
+    assert "2 foto(s)" in resultado.motivo
+    assert p.engine.envios == []
+    assert p.engine.fotos == ["0071e.JPG", "0071c.JPG"]

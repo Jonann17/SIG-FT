@@ -14,6 +14,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
 ## 1.3.3 - 2026-10-30
 
+- Upload de Fotos: módulo novo (4.5), que sobe na ficha do PMIB as fotos de um subsistema, pelo nome do arquivo (os 4 últimos dígitos do código PMIB, mais uma letra para a ordem: `0071.jpg`, `0071a.jpg`…), e marca a coluna DOCUMENTOS E IMAGENS do `_STATUS_PMIB`. No modo que exclui as fotos antigas, a ficha em que a tabela de imagens aparece só depois da espera (portal lento) é parada sem enviar nada, em vez de receber as novas por cima das antigas.
 - Sugestões: a lâmpada ao lado da engrenagem, no alto da Home (e "Sugestões" no Ctrl+K), abre uma janela para escrever uma ideia ou algo que poderia funcionar melhor. O SIG-FT abre um rascunho de e-mail no Outlook com o texto, a versão e, se você deixar marcado, o log; quem escolhe para quem enviar, e envia, é você.
 - Aplicação LMR: o relatório dos códigos que falharam (`erros_lmr.csv`) passa a ficar sempre em Documentos\SIG-FT\logs, e o console diz onde. Antes ele ia para a pasta de onde o SIG-FT foi aberto, e no programa instalado podia nem ser gravado, sem aviso.
 - Estabilidade: uma tela solta passa a sumir na hora, sem esperar o coletor de lixo do Python, que podia destruí-la no meio da pintura de um menu e derrubar o programa. Era a queda que travava os testes do instalador da versão (o teste de medidas da Busca PMIB, que estava fora do Release, voltou). Vale para a Busca PMIB e, agora, também para a Home, o Analyzer, o Upload de Condições, o Upload de Características e a Correção de PDM.

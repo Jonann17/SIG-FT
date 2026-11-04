@@ -378,6 +378,9 @@ def processar_ficha(portal, pmib, quatro, caminhos, modo=MODO_SUBSTITUIR,
         resultado.motivo = "não abri a aba Documentos e imagens"
         return resultado
     existentes = fotos_ao_abrir(portal, e)
+    # Sem fotos na hora de subir: a ficha estava vazia ou as antigas foram
+    # excluídas. Só "adicionar" sobe por cima do que já está lá.
+    deve_estar_vazia = True
     if not existentes:
         _log("      Nenhuma foto na tabela de imagens: a ficha está sem fotos.")
     else:
@@ -393,9 +396,19 @@ def processar_ficha(portal, pmib, quatro, caminhos, modo=MODO_SUBSTITUIR,
             if not excluir_todas(portal, callback_log, e):
                 resultado.motivo = "não consegui excluir as fotos que já estavam na ficha"
                 return resultado
+        else:
+            deve_estar_vazia = False
 
     descricao = descricao_das_fotos(quatro)
     antes = fotos_na_ficha(portal)
+    # [revisão de 2026-11-04] Portal mais lento que a espera de `fotos_ao_abrir`:
+    # a tabela ainda vinha vazia, a ficha passava por "sem fotos" e as linhas
+    # antigas chegavam logo depois. Subir assim punha as novas POR CIMA, e o ✅
+    # escondia (a contagem final soma `antes`). Parar a ficha é o lado seguro.
+    if deve_estar_vazia and antes:
+        resultado.motivo = (f"a tabela mostrou {antes} foto(s) depois de parecer vazia (portal lento): "
+                            f"nada foi enviado; rode de novo com a Velocidade do portal mais lenta")
+        return resultado
     subir_fotos(portal, descricao, caminhos, callback_log, e)
 
     # A PROVA é a tabela, não o toast de cada um: o NOME de cada arquivo E o
