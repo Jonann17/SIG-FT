@@ -83,6 +83,25 @@ execução do agente no AMP.
 O botão da IA faz duas passadas, uma depois da outra, e as duas vão ao mesmo workflow e ao mesmo
 agente. O campo `tarefa` diz qual é qual, e o prompt de cada uma traz as próprias instruções.
 
+**Por que um agente só:** o agente não guarda as instruções de nenhuma das passadas. Elas chegam no
+prompt de cada pedido. Se as instruções morassem no AMP, como na revisão das listas, seriam dois
+agentes, um por passada. Quem orquestra é o SIG-FT, e cada chamada é uma execução nova do mesmo
+workflow, como cada lista marcada na Revisão no AMP:
+
+```text
+SIG-FT                                                   workflow (n8n) -> agente (AMP)
+1. "o que é cada item?"  (interpretar_material, até 60 itens)   -> execução 1 -> JSON
+2. busca no catálogo de PDMs com essas palavras  (no SIG-FT, sem IA)
+3. "qual o PDM dos itens 1 a 15?"  (categorizar_pdm)           -> execução 2 -> JSON
+4. o passo 3 de novo, para os itens 16 a 30, 31 a 45...         -> execuções 3, 4...
+5. a janela de Revisão abre com tudo
+```
+
+Cada chamada espera a resposta da anterior e leva tudo de que o agente precisa: ele não depende de
+lembrar do pedido anterior. Dois agentes continuam possíveis (um modelo diferente em cada passada,
+ou o uso de cada uma separado no AMP): outro agente, outro workflow e outro endereço na tarefa, no
+**Configurar IA**. O SIG-FT já aceita um endereço por tarefa.
+
 | | 1ª: *Interpretar material* | 2ª: *Categorizar PDM* |
 |---|---|---|
 | O que pede | o que cada material É, em palavras de catálogo, sem código | o PDM de cada item, entre os candidatos |
