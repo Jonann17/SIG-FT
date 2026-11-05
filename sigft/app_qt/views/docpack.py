@@ -1,6 +1,6 @@
 """Aba "DocPack" do PMIB Manager: monta a pasta de cada lista de sobressalentes que ainda
-não tem `_STATUS_PMIB`, com os templates (o `_STATUS_PMIB`, a lista com preço e a
-Aplicação LMR) e as subpastas LMR, IMAGENS e DATASHEETS.
+não tem `_STATUS_PMIB`, com os templates (o `_STATUS_PMIB` e a Aplicação LMR) e as
+subpastas LMR, IMAGENS e DATASHEETS. A lista com preço é do módulo Lista de Preços.
 
 A tela é fina: quais listas, onde e o que vai em cada dossiê estão em
 `services/docpack.py`. A tabela mostra as listas da mapeadora sem `_STATUS_PMIB`;
@@ -31,8 +31,7 @@ from sigft.services import docpack as docpack_svc
 
 TITULO = marcar("DocPack")
 CHAVE_PASTA_RAIZ = "docpack.raiz"
-CHAVES_TEMPLATE = {"status_pmib": "docpack.template_status_pmib", "lista_precos": "docpack.template_lista_precos",
-                   "aplicacao_lmr": "docpack.template_aplicacao_lmr"}
+CHAVES_TEMPLATE = {"status_pmib": "docpack.template_status_pmib", "aplicacao_lmr": "docpack.template_aplicacao_lmr"}
 AVISO_SEM_MAPEADORA = marcar("Selecione a mapeadora antes.")
 AVISO_SEM_RAIZ = marcar("Selecione a pasta raiz antes.")
 AVISO_SEM_TEMPLATE = marcar("Selecione o template do _STATUS_PMIB antes.")
@@ -57,10 +56,8 @@ EDITAVEIS = tuple(NIVEL_DA_COLUNA)
 LEGENDA = marcar("Dois cliques numa pasta: escolha uma que já existe ou digite outra. "
                  "Mais uma pasta num passo: separe com / (ex.: MANCAIS/GUIA).")
 
-TEXTOS_TEMPLATE = {"status_pmib": marcar("_STATUS_PMIB..."), "lista_precos": marcar("Lista com preço..."),
-                   "aplicacao_lmr": marcar("Aplicação LMR...")}
-FILTROS_TEMPLATE = {"status_pmib": [("Excel", "*.xlsx")], "lista_precos": [("Excel", "*.xlsm *.xlsx")],
-                    "aplicacao_lmr": [("Excel", "*.xlsx *.xlsm")]}
+TEXTOS_TEMPLATE = {"status_pmib": marcar("_STATUS_PMIB..."), "aplicacao_lmr": marcar("Aplicação LMR...")}
+FILTROS_TEMPLATE = {"status_pmib": [("Excel", "*.xlsx")], "aplicacao_lmr": [("Excel", "*.xlsx *.xlsm")]}
 
 
 def _linha(*widgets) -> QHBoxLayout:

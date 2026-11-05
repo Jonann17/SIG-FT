@@ -13,7 +13,6 @@ Para cada lista de sobressalentes que ainda não tem `_STATUS_PMIB`, cria a past
 <raiz>/<ET>/[<capítulo>/][<sistema>/][<subsistema>/][<pasta final>/]
     <código>_STATUS_PMIB.xlsx            A3 = ET / CAPÍTULO / SUBSISTEMA | CÓDIGO / CMI | EVENTOS
                                          A4 = linha da revisão em uso, com a data de hoje
-    <código PB021>.xlsm                  Capa F37 = código PB021; E27 = título + " - LISTA DE SOBRESSALENTE COM PREÇO"
     LMR/Aplicação LMR - <subsistema>.xlsx DOCS DE REFERENCIA: lista, ET / capítulo, subsistema
     IMAGENS/
     DATASHEETS/
@@ -43,13 +42,13 @@ pasta nem sempre é o da ET.
 - **Quais listas** (`listas_sem_status_pmib`): PB020 no código (com ou sem o `-0x` do
   SMF), sem PREÇO no título, sem LINK DA PLANILHA e sem `_STATUS_PMIB` vivo com o mesmo
   código na raiz (`status_pmib_arquivos.listar`).
-- **Código da lista com preço** (`codigo_lista_de_precos`): o DCC PB020 do fim vira
-  PB021; o `-0x` antigo sai.
+- **A lista com preço não é do DocPack** (2026-11-05, pedido do Jonathan: o agente do
+  webhook não olha para ela). Ela é criada e preenchida pelo módulo **Lista de Preços**
+  (`16-lista-de-precos.md`), que também tem o `codigo_lista_de_precos`.
 - **Nunca sobrescreve**: arquivo que já existe fica (⚠️); lista com `_STATUS_PMIB` vivo
   é pulada (❌). Pasta com nome inválido no Windows é recusada antes de criar.
 - **Template copiado byte a byte e editado no XML** (`core/excel/cirurgico.py`): as
-  validações em extensão e os nomes definidos do `_STATUS_PMIB`, e o VBA da lista com
-  preço, saem intactos.
+  validações em extensão e os nomes definidos do `_STATUS_PMIB` saem intactos.
 - **Da mapeadora, só o LINK DA PLANILHA vazio** (2026-11-05, `docpack.gravar_links`): depois de criar, o
   DocPack grava o "Abrir Box" (relativo à pasta da mapeadora, como o Gestão PMIB) de cada dossiê novo, para a
   Conferência de Listas achá-lo já. Link que existe não é trocado; mapeadora aberta no Excel pede para fechar.
@@ -74,8 +73,8 @@ a pergunta Sim/Não e a criação, com o log ✅/⚠️/❌ e o resumo); **Parar
 
 ## O que vem depois
 
-Com o workflow do AMP ativo: baixar a última revisão da lista e preencher o
-`_STATUS_PMIB` e a lista com preço pela análise da IA (PENDENCIAS, 2026-11-03).
+A Etapa 2 (`15b-docpack-etapa2.md`) baixa a última revisão da lista e preenche o
+`_STATUS_PMIB` pela análise do AMP. A lista com preço vem depois, no módulo Lista de Preços.
 
 ## Não verificado aqui
 

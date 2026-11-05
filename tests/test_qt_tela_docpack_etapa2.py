@@ -36,15 +36,14 @@ class _Cliente:
         self.args = args
 
 
-def _dossie(tmp_path, codigo, *, com_precos=True):
+def _dossie(tmp_path, codigo):
     pasta = tmp_path / codigo[-6:]
-    precos = pasta / "p.xlsm" if com_precos else None
-    return e2.Dossie(codigo, pasta, pasta / "s.xlsx", precos)
+    return e2.Dossie(codigo, pasta, pasta / "s.xlsx")
 
 
 @pytest.fixture
 def servico(monkeypatch, tmp_path):
-    falso = SimpleNamespace(dossies=[_dossie(tmp_path, CODIGO), _dossie(tmp_path, OUTRO, com_precos=False)],
+    falso = SimpleNamespace(dossies=[_dossie(tmp_path, CODIGO), _dossie(tmp_path, OUTRO)],
                             consulta=None, gravados=None, aconex=None)
 
     def procurar_dossies(raiz):
@@ -93,7 +92,8 @@ def test_procurar_mostra_os_dossies_vazios_todos_marcados(qt_interface, qtbot, t
     tela = _procurada(_tela(qtbot, tmp_path), qtbot)
     assert tela.tabela.topLevelItemCount() == 2
     assert [d.codigo for d in tela.marcados()] == [CODIGO, OUTRO]
-    assert tela.tabela.topLevelItem(1).text(2) == "não está na pasta"
+    assert tela.tabela.columnCount() == 3   # sem a coluna da lista com preço (2026-11-05)
+    assert tela.tabela.topLevelItem(1).text(tela_mod.COL_SITUACAO) == "na fila"
     assert not tela.btn_gravar.isEnabled()
     qtbot.waitUntil(lambda: "aba faltando" in tela.console.toPlainText(), timeout=5000)
     assert "1 já com materiais" in tela.console.toPlainText()

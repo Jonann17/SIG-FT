@@ -1,4 +1,5 @@
-"""DocPack (`services/docpack.py`): quais listas, o código PB021, o dossiê e a sugestão da IA.
+"""DocPack (`services/docpack.py`): quais listas, o dossiê e a sugestão da IA (a lista com preço
+saiu daqui em 2026-11-05: `test_lista_precos_arquivo.py`).
 
 Os templates do `_STATUS_PMIB` e da lista com preço são as cópias do repositório
 (`gestao-sobressalentes/_gestao_v2/`); o da Aplicação LMR é sintético (não há cópia).
@@ -37,8 +38,6 @@ def load_workbook(*args, **kw):
 
 RAIZ_REPO = Path(__file__).resolve().parents[1]
 TEMPLATE_STATUS = RAIZ_REPO / "gestao-sobressalentes/_gestao_v2/template/codigo_itaipu_STATUS_PMIB_v2.xlsx"
-TEMPLATE_PRECO = (RAIZ_REPO / "gestao-sobressalentes/_gestao_v2/fixtures/kit_lista_precos"
-                  / "Lista de Sobressalentes com preço.xlsm")
 CODIGO = "#ST00=M00MEU10&MPB020"
 HOJE = date(2026, 11, 3)
 
@@ -91,7 +90,7 @@ def _template_lmr(tmp_path) -> Path:
 
 @pytest.fixture
 def templates(tmp_path):
-    return docpack.Templates(str(TEMPLATE_STATUS), str(TEMPLATE_PRECO), str(_template_lmr(tmp_path)))
+    return docpack.Templates(str(TEMPLATE_STATUS), str(_template_lmr(tmp_path)))
 
 
 # -- quais listas --------------------------------------------------------------
@@ -129,20 +128,6 @@ def test_mapeadora_sem_as_colunas_opcionais_continua_lendo(tmp_path):
     wb.save(caminho)
     lista = cr.ler_mapeadora(caminho).listas[0]
     assert lista.descricao == "" and lista.codigo == CODIGO
-
-
-@pytest.mark.parametrize("codigo, esperado", [
-    ("#ST00=M00MEU10&MPB020", "#ST00=M00MEU10&MPB021"),
-    ("#ITA0=A01AAM10&EPB020-01", "#ITA0=A01AAM10&EPB021"),
-    (" #ST00=X&MPB020 ", "#ST00=X&MPB021"),
-])
-def test_codigo_da_lista_de_precos(codigo, esperado):
-    assert docpack.codigo_lista_de_precos(codigo) == esperado
-
-
-def test_codigo_sem_pb020_e_recusado():
-    with pytest.raises(docpack.ErroDocPack):
-        docpack.codigo_lista_de_precos("#ST00=X&MPB021")
 
 
 # -- textos ------------------------------------------------------------------------
@@ -214,7 +199,6 @@ def test_achar_templates_pelos_nomes_conhecidos(tmp_path):
     (tmp_path / "APLICACAO LMR - SOBRESSALENTES_template.xlsx").write_bytes(b"x")
     achados = docpack.achar_templates(tmp_path)
     assert Path(achados.status_pmib).name == "codigo_itaipu_STATUS_PMIB.xlsx"
-    assert achados.lista_precos == ""
     assert Path(achados.aplicacao_lmr).name == "APLICACAO LMR - SOBRESSALENTES_template.xlsx"
 
 
@@ -231,7 +215,7 @@ def test_dossie_completo(tmp_path, templates):
     pasta = raiz / "03 - EBOP" / "GERADOR DIESEL"
     assert resultado.situacao == "criado", resultado
     assert sorted(p.name for p in pasta.iterdir()) == sorted(
-        ["#ST00=M00MEU10&MPB020_STATUS_PMIB.xlsx", "#ST00=M00MEU10&MPB021.xlsm", "LMR", "IMAGENS", "DATASHEETS"])
+        ["#ST00=M00MEU10&MPB020_STATUS_PMIB.xlsx", "LMR", "IMAGENS", "DATASHEETS"])
     assert [p.name for p in (pasta / "LMR").iterdir()] == ["Aplicação LMR - GERADOR DIESEL.xlsx"]
     # O _STATUS_PMIB novo conta como vivo, com o código certo.
     assert [c for c, _ in status_pmib_arquivos.listar(raiz).vivos] == [CODIGO]
@@ -275,16 +259,12 @@ def test_sem_revisao_fica_a_linha_do_template_e_avisa(tmp_path, templates):
         load_workbook(TEMPLATE_STATUS)["Lista de Materiais"]["A4"].value)
 
 
-def test_lista_com_preco_mantem_o_vba_e_tem_o_codigo_pb021(tmp_path, templates):
+def test_dossie_nao_tem_lista_com_preco(tmp_path, templates):
+    # 2026-11-05: a lista com preço é do módulo Lista de Preços, não do DocPack.
     raiz, _ = _criar(tmp_path, templates)
-    preco = raiz / "03 - EBOP" / "GERADOR DIESEL" / "#ST00=M00MEU10&MPB021.xlsm"
-    with zipfile.ZipFile(preco) as z, zipfile.ZipFile(TEMPLATE_PRECO) as t:
-        assert "xl/vbaProject.bin" in z.namelist()
-        assert z.read("xl/vbaProject.bin") == t.read("xl/vbaProject.bin")
-    capa = load_workbook(preco, keep_vba=True)["Capa"]
-    assert capa["F37"].value == "#ST00=M00MEU10&MPB021"
-    assert capa["E27"].value == "LISTA DE SOBRESSALENTES - GERADOR DIESEL - LISTA DE SOBRESSALENTE COM PREÇO"
-    assert capa["D37"].value == "CMI-XXXXXXXX"
+    pasta = raiz / "03 - EBOP" / "GERADOR DIESEL"
+    assert not any("PB021" in p.name for p in pasta.iterdir())
+    assert not hasattr(docpack.Templates(), "lista_precos")
 
 
 def test_aplicacao_lmr_preenche_os_rotulos(tmp_path, templates):
@@ -314,7 +294,7 @@ def test_nunca_sobrescreve(tmp_path, templates):
     _, resultado = _criar(tmp_path, templates)
     assert status.read_bytes() == b"da pessoa"
     assert resultado.situacao == "aviso"
-    assert sum("já existia" in a for a in resultado.avisos) == 3
+    assert sum("já existia" in a for a in resultado.avisos) == 2
 
 
 def test_codigo_vivo_na_raiz_pula_a_lista(tmp_path, templates):
@@ -331,10 +311,10 @@ def test_sem_template_do_status_pmib_falha_sem_criar_nada(tmp_path, templates):
 
 
 def test_sem_os_outros_templates_cria_com_aviso(tmp_path, templates):
-    templates.lista_precos = templates.aplicacao_lmr = ""
+    templates.aplicacao_lmr = ""
     raiz, resultado = _criar(tmp_path, templates)
     pasta = raiz / "03 - EBOP" / "GERADOR DIESEL"
-    assert resultado.situacao == "aviso" and len(resultado.avisos) == 2
+    assert resultado.situacao == "aviso" and len(resultado.avisos) == 1
     assert (pasta / f"{CODIGO}_STATUS_PMIB.xlsx").is_file() and (pasta / "LMR").is_dir()
 
 
@@ -349,7 +329,7 @@ def test_planejar_diz_o_que_ja_existe(tmp_path, templates):
     passos = docpack.planejar(_lista(), raiz, docpack.Destino("03 - EBOP", "", "GD"), templates)
     assert [(p.caminho.relative_to(raiz).as_posix(), p.tipo, p.existe) for p in passos][:2] == [
         ("03 - EBOP", "pasta", True), ("03 - EBOP/GD", "pasta", False)]
-    assert sum(p.tipo == "arquivo" for p in passos) == 3
+    assert sum(p.tipo == "arquivo" for p in passos) == 2
     assert not (raiz / "03 - EBOP" / "GD").exists()
 
 

@@ -8,7 +8,6 @@ digitado, com uma sugestão da IA a pedido). Cada dossiê:
 
     <raiz>/<capítulo>/[<sistema>/]<pasta>/
         <código>_STATUS_PMIB.xlsx            -- do template, com A3 e A4 preenchidos
-        <código PB021>.xlsm                  -- a lista com preço, Capa F37 e E27
         LMR/Aplicação LMR - <pasta>.xlsx     -- o template da Aplicação LMR
         IMAGENS/
         DATASHEETS/
@@ -18,8 +17,10 @@ Regras que não se negociam:
 * **Nunca sobrescreve.** Arquivo que já existe fica como está (aviso); lista com
   `_STATUS_PMIB` vivo em qualquer lugar da raiz é pulada.
 * **O template é copiado byte a byte e editado no XML** (`core/excel/cirurgico.py`):
-  o openpyxl apagaria as validações em extensão do `_STATUS_PMIB` e o VBA da lista
-  com preço.
+  o openpyxl apagaria as validações em extensão do `_STATUS_PMIB`.
+* **Lista com preço não é daqui** (2026-11-05): o agente do webhook não olha para ela,
+  e ela ganhou o módulo próprio (`services/lista_precos_arquivo.py`, tela Lista de
+  Preços).
 * **Da mapeadora, só o LINK DA PLANILHA vazio** (2026-11-05, `gravar_links`): o
   dossiê criado já entra com o "Abrir Box", para a Conferência de Listas achá-lo. O
   resto da mapeadora continua sendo do Gestão PMIB.
@@ -46,20 +47,15 @@ from sigft.services.conferencia_revisoes import ListaNaMapeadora, Mapeadora
 Log = Callable[[str], None]
 
 ABA_STATUS = "Lista de Materiais"
-ABA_CAPA = "Capa"
 ABA_LMR = "DOCS DE REFERENCIA"
 CELULA_TITULO_STATUS = "A3"
 CELULA_REVISAO_STATUS = "A4"
-CELULA_CODIGO_PRECO = "F37"
-CELULA_TITULO_PRECO = "E27"
-SUFIXO_TITULO_PRECO = " - LISTA DE SOBRESSALENTE COM PREÇO"
 SUBPASTAS = ("LMR", "IMAGENS", "DATASHEETS")
 
 # Os nomes dos templates na pasta Templates do Box (`prefs` "templates_ficha"). O da
 # Aplicação LMR aparece com dois nomes na documentação: vale o que existir.
 NOMES_TEMPLATE = {
     "status_pmib": ("codigo_itaipu_STATUS_PMIB.xlsx",),
-    "lista_precos": ("Lista de Sobressalentes com preço.xlsm",),
     "aplicacao_lmr": ("Aplicação LMR - Sistema.xlsx", "APLICACAO LMR - SOBRESSALENTES_template.xlsx"),
 }
 
@@ -100,16 +96,6 @@ def listas_sem_status_pmib(mapeadora: Mapeadora, raiz: str | Path | None) -> lis
         vivos = {codigo.strip().upper() for codigo, _ in status_pmib_arquivos.listar(raiz).vivos}
     return [lista for lista in mapeadora.listas
             if e_lista_sem_preco(lista) and not lista.link and lista.codigo.strip().upper() not in vivos]
-
-
-def codigo_lista_de_precos(codigo: str) -> str:
-    """O código da lista com preço: o mesmo, com o DCC PB021 no lugar do PB020. O `-0x`
-    do formato antigo (`...PB020-01`) sai: a lista com preço de hoje é `...PB021`
-    (`gestao-sobressalentes/03 - Processo/Lista de Precos.md`)."""
-    codigo = str(codigo or "").strip()
-    if not _PB020.search(codigo):
-        raise ErroDocPack(f"o código {codigo!r} não termina em PB020")
-    return _PB020.sub("PB021", codigo)
 
 
 def revisao_da_lista(lista: ListaNaMapeadora) -> str:
@@ -266,7 +252,6 @@ def pastas_existentes(raiz: str | Path | None) -> dict:
 @dataclass
 class Templates:
     status_pmib: str = ""
-    lista_precos: str = ""
     aplicacao_lmr: str = ""
 
 
@@ -319,8 +304,6 @@ def planejar(lista: ListaNaMapeadora, raiz: str | Path, destino: Destino, templa
         atual = atual / parte
         passos.append(Passo(atual, "pasta", atual.is_dir()))
     arquivos = [pasta / f"{lista.codigo.strip()}{status_pmib_arquivos.SUFIXO}.xlsx"]
-    if templates.lista_precos:
-        arquivos.append(pasta / f"{codigo_lista_de_precos(lista.codigo)}{Path(templates.lista_precos).suffix}")
     for sub in SUBPASTAS:
         passos.append(Passo(pasta / sub, "pasta", (pasta / sub).is_dir()))
     if templates.aplicacao_lmr:
@@ -424,19 +407,7 @@ def criar_dossie(lista: ListaNaMapeadora, raiz: str | Path, destino: Destino, te
             resultado.criados.append(status)
         else:
             resultado.avisos.append(f"{status.name} já existia: ficou como estava")
-        # 2. A lista com preço.
-        if templates.lista_precos:
-            preco = next(a for a in arquivos if a.name.startswith(codigo_lista_de_precos(codigo)))
-            if _copiar(templates.lista_precos, preco):
-                titulo = (lista.descricao or codigo) + SUFIXO_TITULO_PRECO
-                _escrever(preco, ABA_CAPA, {CELULA_CODIGO_PRECO: codigo_lista_de_precos(codigo),
-                                            CELULA_TITULO_PRECO: titulo})
-                resultado.criados.append(preco)
-            else:
-                resultado.avisos.append(f"{preco.name} já existia: ficou como estava")
-        else:
-            resultado.avisos.append("sem o template da lista com preço: ela não foi criada")
-        # 3. A Aplicação LMR.
+        # 2. A Aplicação LMR.
         if templates.aplicacao_lmr:
             lmr = arquivos[-1]
             if _copiar(templates.aplicacao_lmr, lmr):

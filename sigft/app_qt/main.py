@@ -129,6 +129,12 @@ def _docpack(parent, controller):
     return ModuloDocPackSecao(parent, controller)
 
 
+def _lista_precos(parent, controller):
+    # 2026-11-05: a lista com preço saiu do DocPack e virou módulo próprio, em abas.
+    from sigft.app_qt.views.lista_precos import ModuloListaPrecos
+    return ModuloListaPrecos(parent, controller)
+
+
 def _upload_fotos(parent, controller):
     from sigft.app_qt.views.upload_fotos import ModuloUploadFotos
     return ModuloUploadFotos(parent, controller)
@@ -173,6 +179,7 @@ TELAS = {
     "PMIBManager": _pmib_manager,
     "ConferenciaListas": _conferencia_listas,
     "DocPack": _docpack,
+    "ListaPrecos": _lista_precos,
     "SearchPMIB": _busca_pmib,
     # A boas-vindas (2026-10-28): página da pilha, fora do menu.
     CHAVE_BOAS_VINDAS: _boas_vindas,

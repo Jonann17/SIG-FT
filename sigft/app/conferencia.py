@@ -100,6 +100,7 @@ MODULOS_ESSENCIAIS = [
     "sigft.app_qt.views.gestao_sobressalentes",
     "sigft.app_qt.views.conferencia_listas",
     "sigft.app_qt.views.docpack_secao",
+    "sigft.app_qt.views.lista_precos",
     "sigft.app_qt.views.busca_pmib",
     # A boas-vindas (2026-10-28): página da pilha, fora do menu.
     "sigft.app_qt.views.boas_vindas",

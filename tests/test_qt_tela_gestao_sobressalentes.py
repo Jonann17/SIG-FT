@@ -96,14 +96,14 @@ def test_o_menu_abre_cada_secao(qt_interface, qtbot, tmp_path, monkeypatch):
 
 def test_os_modulos_novos_estao_no_menu_e_nos_cards():
     telas_do_menu = [item[2] for item in catalogo.MENU if item[0] == "botao"]
-    for chave in ("ConferenciaListas", "DocPack"):
+    for chave in ("ConferenciaListas", "DocPack", "ListaPrecos"):
         for lugar in (telas_do_menu, [m[0] for m in catalogo.MODULOS], catalogo.ICONE_DA_TELA, qmain.TELAS):
             assert chave in lugar, chave
     # Na Gestão, nesta ordem, logo depois do PMIB Manager.
     i = telas_do_menu.index("PMIBManager")
-    assert telas_do_menu[i:i + 4] == ["PMIBManager", "ConferenciaListas", "DocPack", "SearchPMIB"]
+    assert telas_do_menu[i:i + 5] == ["PMIBManager", "ConferenciaListas", "DocPack", "ListaPrecos", "SearchPMIB"]
     assert "ConferenciaRevisoes" not in telas_do_menu
-    assert len(catalogo.MODULOS) == 15  # 2026-11-04: + Conferência de Listas e DocPack
+    assert len(catalogo.MODULOS) == 16  # 2026-11-04: + Conferência de Listas e DocPack; 11-05: Lista de Preços
 
 
 def test_a_tela_diz_se_tem_tarefa_rodando(qt_interface, qtbot):

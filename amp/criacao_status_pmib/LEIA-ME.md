@@ -19,7 +19,8 @@ Ele tem webhook, chave e agente próprios.
 **A tela do SIG-FT que chama este workflow é a Etapa 2 do DocPack** (2026-11-04,
 `sigft/services/docpack_etapa2.py`, `docs/base-conhecimento/15b-docpack-etapa2.md`). Ela manda o
 PDF vigente e o `_STATUS_PMIB` em branco do dossiê e lê a tabela do HTML para gravar o
-`_STATUS_PMIB` e a lista com preço (com o VALOR UNITÁRIO vazio). O webhook dela fica no botão
+`_STATUS_PMIB` (a lista com preço saiu dela em 2026-11-05: é o módulo Lista de Preços, que a
+preenche a partir do `_STATUS_PMIB`). O webhook dela fica no botão
 Webhook… da aba (`AMP_CRIACAO_STATUS_PMIB_*`). O teste pelo PowerShell (abaixo) continua valendo.
 
 | Arquivo | O quê |
