@@ -28,6 +28,7 @@ import pandas as pd
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QMessageBox, QSizePolicy, QVBoxLayout, QWidget
 
+from sigft.app import ia_por_modulo
 from sigft.app.idioma import marcar, t
 from sigft.app.textos_dialogos import MSG_LOGIN_NOVA_FICHA, MSG_LOGIN_PAGINA_PRINCIPAL
 from sigft.app_qt import estilo, file_dialogs, icones, interface
@@ -36,6 +37,7 @@ from sigft.app_qt.widgets import blocos, controles, revisao_portal
 from sigft.app_qt.widgets.abas import Abas
 from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
+from sigft.app_qt.widgets.ia_do_modulo import instalar_configurar_ia
 from sigft.app_qt.widgets.module_frame import MARGEM_DA_TELA, ModuleFrame
 # O catálogo de PDMs (2026-09-22): lê a planilha-mestra da Itaipu e faz o
 # pré-filtro de candidatos por item. `cria_fichas_svc` entra pelas
@@ -199,6 +201,7 @@ class ModuloCriaFichas(ModuleFrame):
     # --- montagem -------------------------------------------------------------
     def _build_ui(self) -> None:
         instalar_como_funciona(self, "CriaFichas")
+        instalar_configurar_ia(self, ia_por_modulo.TAREFAS_DA_TELA.get("ModuloCriaFichas", ()))
         # Tabview dentro de um CTkFrame de fundo padrão: o quadro é gray16.
         self.abas = Abas(interno=True)
         self.content_layout.addWidget(self.abas)
@@ -1082,20 +1085,29 @@ class ModuloCriaFichas(ModuleFrame):
 
             self.log(f"Iniciando Edição em Massa de {len(lista_pmibs)} fichas...")
 
+            contagem = {"SUCESSO": 0, "JA_ESTAVA": 0, "ERRO": 0}
             for idx, pmib in enumerate(lista_pmibs):
                 interface.na_interface(self._definir_progresso, self.progress_edicao,
                                        (idx + 1) / len(lista_pmibs))
                 self.log(f"Editando PMIB [{idx + 1}/{len(lista_pmibs)}]: {pmib}...")
 
-                status, msg = bot.atualizar_projeto_em_massa(pmib, novo_projeto)
+                # [2026-11-04] Confere o que o portal guardou e tenta de novo do
+                # zero; cada ficha recomeça pela lista, então uma que falhou
+                # não arrasta as seguintes.
+                status, msg = bot.atualizar_projeto_conferido(pmib, novo_projeto, log=self.log)
+                contagem[status] = contagem.get(status, 0) + 1
 
                 if status == "SUCESSO":
-                    self.log(f" -> ✅ SUCESSO: Projeto do {pmib} atualizado.")
+                    self.log(f" -> ✅ SUCESSO: Projeto do {pmib} atualizado e conferido.")
+                elif status == "JA_ESTAVA":
+                    self.log(f" -> ⏭️ {pmib}: o código de projeto já era o novo.")
                 else:
                     # Registra e tenta o próximo, para não travar o lote
                     self.log(f" -> ❌ ERRO no {pmib}: {msg}")
 
             self.log("Edição em massa concluída!")
+            self.log(f"Resumo: {contagem['SUCESSO']} atualizada(s), "
+                     f"{contagem['JA_ESTAVA']} já estava(m) certa(s), {contagem['ERRO']} com erro.")
             # Espera o OK, como o showinfo de lá: o navegador fecha e o botão
             # volta depois que a pessoa leu.
             self.avisar(t("Concluído"), t("Processo de edição em massa finalizado. Verifique o log."), esperar=True)

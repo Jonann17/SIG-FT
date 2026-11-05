@@ -128,3 +128,33 @@ def test_a_janela_das_fichas_tem_selecionar_todos(tela):
     dialogo.botao_confirmar.click()
 
     assert escolhidas == [0, 1]
+
+
+# --- a prévia do lote (2026-11-04) ---------------------------------------------
+def test_previa_vazia_explica_o_que_fazer(qt_interface, qtbot):
+    t = tela_mod.ModuloUploadFotos()
+    qtbot.addWidget(t)
+    assert t.rotulo_previa.text() == tela_mod.TEXTO_PREVIA_VAZIA
+    assert not t.tabela_previa.isVisibleTo(t)
+
+
+def test_previa_mostra_as_fichas_e_os_problemas(tela, qtbot, monkeypatch):
+    monkeypatch.setattr(svc, "agrupar_fotos", lambda _p: (
+        {"0071": ["/fotos/0071.jpg", "/fotos/0071a.jpg"], "9999": ["/fotos/9999.jpg"]}, ["leia-me.txt"]))
+    tela.atualizar_previa()
+    qtbot.waitUntil(lambda: tela.numeros["fotos"].text() == "3", timeout=3000)
+    assert tela.numeros["fora"].text() == "1"
+    assert tela.numeros["fichas"].text() == "1"
+    assert tela.numeros["sem_ficha"].text() == "1"
+    assert tela.tabela_previa.topLevelItemCount() == 1
+    assert tela.tabela_previa.topLevelItem(0).text(2) == "0071.jpg, 0071a.jpg"
+    assert "9999" in tela.rotulo_previa.text() and "leia-me.txt" in tela.rotulo_previa.text()
+    assert "1" in tela.btn_run.text()
+
+
+def test_previa_com_erro_de_leitura_diz_o_motivo(tela, qtbot, monkeypatch):
+    def quebra(_c):
+        raise ValueError("a coluna 'CÓDIGO PMIB' não foi encontrada")
+    monkeypatch.setattr(svc, "ler_codigos", quebra)
+    tela.atualizar_previa()
+    qtbot.waitUntil(lambda: "não foi encontrada" in tela.rotulo_previa.text(), timeout=3000)

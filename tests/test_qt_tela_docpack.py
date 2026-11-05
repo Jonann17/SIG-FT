@@ -29,7 +29,8 @@ def _tela(qtbot, tmp_path, monkeypatch):
 
 
 def _mostrar(tela):
-    tela._mostrar_listas([_lista(CODIGO), _lista(OUTRO)], {"03 - EBOP": ["GERADOR DIESEL", "UPS"], "05 - UG": []})
+    tela._mostrar_listas([_lista(CODIGO), _lista(OUTRO)],
+                         {"03 - EBOP": {"CAP 03": {"GERADOR DIESEL": {}, "UPS": {}}}, "05 - UG": {}})
 
 
 def _rodar_no_mesmo_fio(tela, monkeypatch):
@@ -48,13 +49,24 @@ def test_tabela_mostra_as_listas_desmarcadas(qt_interface, qtbot, tmp_path, monk
     assert tela.marcadas() == []
 
 
-def test_sugestoes_de_pasta_seguem_o_capitulo_da_linha(qt_interface, qtbot, tmp_path, monkeypatch):
+def test_colunas_seguem_a_hierarquia_da_et():
+    nomes = [nome for nome, _ in tela_mod.COLUNAS]
+    assert nomes[2:] == ["ET", "Capítulo", "Sistema", "Subsistema", "Pasta final"]
+    assert sum(largura for _, largura in tela_mod.COLUNAS) == 850
+
+
+def test_sugestoes_de_pasta_seguem_as_pastas_da_esquerda(qt_interface, qtbot, tmp_path, monkeypatch):
     tela = _tela(qtbot, tmp_path, monkeypatch)
     _mostrar(tela)
-    assert tela.sugestoes_para(0, tela_mod.COL_CAPITULO) == ["03 - EBOP", "05 - UG"]
-    tela.tabela.topLevelItem(0).setText(tela_mod.COL_CAPITULO, "03 - EBOP")
-    assert tela.sugestoes_para(0, tela_mod.COL_PASTA) == ["GERADOR DIESEL", "UPS"]
-    assert tela.sugestoes_para(1, tela_mod.COL_PASTA) == []
+    assert tela.sugestoes_para(0, tela_mod.COL_ET) == ["03 - EBOP", "05 - UG"]
+    assert tela.sugestoes_para(0, tela_mod.COL_CAPITULO) == []
+    item = tela.tabela.topLevelItem(0)
+    item.setText(tela_mod.COL_ET, "03 - EBOP")
+    assert tela.sugestoes_para(0, tela_mod.COL_CAPITULO) == ["CAP 03"]
+    item.setText(tela_mod.COL_CAPITULO, "CAP 03")
+    # O sistema vazio é pulado: o subsistema vem das pastas do capítulo.
+    assert tela.sugestoes_para(0, tela_mod.COL_SUBSISTEMA) == ["GERADOR DIESEL", "UPS"]
+    assert tela.sugestoes_para(1, tela_mod.COL_SUBSISTEMA) == []
 
 
 def test_so_as_colunas_de_pasta_se_editam(qt_interface, qtbot, tmp_path, monkeypatch):
@@ -63,8 +75,15 @@ def test_so_as_colunas_de_pasta_se_editam(qt_interface, qtbot, tmp_path, monkeyp
     delegado = tela.tabela.itemDelegate()
     modelo = tela.tabela.model()
     assert delegado.createEditor(tela.tabela.viewport(), None, modelo.index(0, 0)) is None
-    campo = delegado.createEditor(tela.tabela.viewport(), None, modelo.index(0, tela_mod.COL_CAPITULO))
-    assert campo is not None and campo.completer() is not None
+    campo = delegado.createEditor(tela.tabela.viewport(), None, modelo.index(0, tela_mod.COL_ET))
+    assert campo is not None and campo.completer() is not None and campo.isEditable()
+    assert [campo.itemText(i) for i in range(campo.count())] == ["03 - EBOP", "05 - UG"]
+    # O nome digitado (pasta nova) vale, sem espaço sobrando.
+    campo.setEditText("  09 -  NOVA ")
+    delegado.setModelData(campo, modelo, modelo.index(0, tela_mod.COL_ET))
+    assert tela.tabela.topLevelItem(0).text(tela_mod.COL_ET) == "09 - NOVA"
+    delegado.setEditorData(campo, modelo.index(0, tela_mod.COL_ET))
+    assert campo.currentText() == "09 - NOVA"
 
 
 def test_marcadas_leva_o_destino_da_linha(qt_interface, qtbot, tmp_path, monkeypatch):
@@ -72,9 +91,9 @@ def test_marcadas_leva_o_destino_da_linha(qt_interface, qtbot, tmp_path, monkeyp
     _mostrar(tela)
     item = tela.tabela.topLevelItem(1)
     item.setCheckState(0, Qt.CheckState.Checked)
-    for coluna, valor in ((2, "03 - EBOP"), (3, ""), (4, "UPS")):
+    for coluna, valor in ((2, "03 - EBOP"), (3, "CAP 03"), (5, "UPS/BATERIAS")):
         item.setText(coluna, valor)
-    assert tela.marcadas() == [(1, svc.Destino("03 - EBOP", "", "UPS"))]
+    assert tela.marcadas() == [(1, svc.Destino(et="03 - EBOP", capitulo="CAP 03", subsistema="UPS/BATERIAS"))]
 
 
 def test_criar_sem_nada_marcado_avisa(qt_interface, qtbot, tmp_path, monkeypatch):
@@ -101,8 +120,8 @@ def test_criar_mostra_o_plano_pergunta_e_chama_o_servico(qt_interface, qtbot, tm
     _rodar_no_mesmo_fio(tela, monkeypatch)
     item = tela.tabela.topLevelItem(0)
     item.setCheckState(0, Qt.CheckState.Checked)
-    item.setText(2, "03 - EBOP")
-    item.setText(4, "GERADOR DIESEL")
+    item.setText(tela_mod.COL_ET, "03 - EBOP")
+    item.setText(tela_mod.COL_SUBSISTEMA, "GERADOR DIESEL")
     linhas, chamadas, perguntas = [], [], []
     monkeypatch.setattr(tela, "log", lambda msg, *a, **k: linhas.append(str(msg)))
     monkeypatch.setattr(tela, "perguntar_sim_nao", lambda titulo, msg, **_: perguntas.append(msg) or True)
@@ -112,7 +131,7 @@ def test_criar_mostra_o_plano_pergunta_e_chama_o_servico(qt_interface, qtbot, tm
     assert perguntas == [f"Criar 1 dossiê(s) em {tmp_path}?"]
     pedidos, raiz, templates = chamadas[0]
     assert [(lista.codigo, destino) for lista, destino in pedidos] == [
-        (CODIGO, svc.Destino("03 - EBOP", "", "GERADOR DIESEL"))]
+        (CODIGO, svc.Destino(et="03 - EBOP", subsistema="GERADOR DIESEL"))]
     assert str(raiz) == str(tmp_path) and templates.status_pmib.endswith("status.xlsx")
     assert any("+ 03 - EBOP/GERADOR DIESEL" in linha.replace("\\", "/") for linha in linhas)
     # A prévia não cria nada no disco.
@@ -152,11 +171,12 @@ def test_sugestao_da_ia_preenche_a_linha(qt_interface, qtbot, tmp_path, monkeypa
     tela.tabela.topLevelItem(1).setCheckState(0, Qt.CheckState.Checked)
     monkeypatch.setattr(tela, "_cliente_ia", lambda: object())
     monkeypatch.setattr(tela_mod.docpack_svc, "sugerir_destino",
-                        lambda lista, existentes, llm: (svc.Destino("03 - EBOP", "", "UPS"), "porque sim"))
+                        lambda lista, existentes, llm: (svc.Destino(et="03 - EBOP", capitulo="CAP 03",
+                                                                     subsistema="UPS"), "porque sim"))
     tela._sugerir()
     item = tela.tabela.topLevelItem(1)
-    assert (item.text(2), item.text(3), item.text(4)) == ("03 - EBOP", "", "UPS")
-    assert item.toolTip(4) == "porque sim"
+    assert [item.text(c) for c in tela_mod.EDITAVEIS] == ["03 - EBOP", "CAP 03", "", "UPS", ""]
+    assert item.toolTip(tela_mod.COL_SUBSISTEMA) == "porque sim"
     assert tela.tabela.topLevelItem(0).text(2) == ""
 
 
@@ -167,7 +187,7 @@ def test_listar_le_a_mapeadora_e_mostra(qt_interface, qtbot, tmp_path, monkeypat
     mapeadora = cr.Mapeadora(tmp_path / "m.xlsx", None, [_lista(CODIGO)])
     monkeypatch.setattr(tela_mod.conferencia_svc, "ler_mapeadora", lambda caminho: mapeadora)
     monkeypatch.setattr(tela_mod.docpack_svc, "listas_sem_status_pmib", lambda m, raiz: m.listas)
-    monkeypatch.setattr(tela_mod.docpack_svc, "pastas_existentes", lambda raiz: {"03 - EBOP": []})
+    monkeypatch.setattr(tela_mod.docpack_svc, "arvore_existente", lambda raiz: {"03 - EBOP": {}})
     tela._listar()
     assert tela.tabela.topLevelItemCount() == 1
-    assert tela.existentes == {"03 - EBOP": []}
+    assert tela.existentes == {"03 - EBOP": {}}
