@@ -254,17 +254,35 @@ TEXTOS: dict[str, Texto] = {
         (
             marcar("Lê a mapeadora: entram as listas sem link e sem _STATUS_PMIB na pasta raiz."),
             marcar("ET, capítulo, sistema e subsistema se editam com dois cliques; a IA pode sugerir."),
-            marcar("Cada pasta ganha o _STATUS_PMIB, a lista com preço (PB021) e LMR, IMAGENS e DATASHEETS."),
-            marcar("Nada é sobrescrito, e a mapeadora não muda: rode o Gestão PMIB depois para ligar."),
+            marcar("Cada pasta ganha o _STATUS_PMIB e LMR, IMAGENS e DATASHEETS. A lista com preço é do módulo Lista de Preços."),
+            marcar("Nada é sobrescrito. O link de cada dossiê novo vai para a mapeadora (só onde estava vazio)."),
         ),
     ),
     "DocPack.etapa2": Texto(  # nao-e-interface
         marcar("Preenche a lista de materiais dos dossiês vazios a partir do PDF da lista, lido pelo AMP."),
         (
-            marcar("Acha na pasta raiz os _STATUS_PMIB ainda sem material, com a lista com preço (PB021) ao lado."),
+            marcar("Acha na pasta raiz os _STATUS_PMIB ainda sem material."),
             marcar("Consultar baixa do Aconex a revisão vigente (nunca sobrescreve) e manda o PDF ao AMP."),
             marcar("Nada é escrito até você confirmar em Gravar; planilha que já tem material é recusada."),
-            marcar("O VALOR UNITÁRIO fica sempre vazio: preço não sai do PDF da lista de sobressalentes."),
+            marcar("A lista com preço não muda aqui: depois, o módulo Lista de Preços a preenche pelo _STATUS_PMIB."),
+        ),
+    ),
+    "ListaPrecos.criar": Texto(  # nao-e-interface
+        marcar("Cria a lista com preço dos sistemas que ainda não têm, com os materiais do _STATUS_PMIB."),
+        (
+            marcar("Varre a pasta raiz: cada pasta com _STATUS_PMIB vivo diz se já tem lista com preço (PB021)."),
+            marcar("A lista nova sai do template como <código PB021>.xlsm, com o código e o título na Capa."),
+            marcar("Os materiais do _STATUS_PMIB vão para a lista; o VALOR UNITÁRIO fica sempre vazio."),
+            marcar("Nada é sobrescrito: a pasta que já tem lista com preço fica como está."),
+        ),
+    ),
+    "ListaPrecos.conferir": Texto(  # nao-e-interface
+        marcar("Confere a lista com preço de UMA pasta com o _STATUS_PMIB dela e a atualiza."),
+        (
+            marcar("Escolha a pasta do sistema: os itens casam pelo código PMIB, código de material ou descrição."),
+            marcar("A tabela mostra o que falta, o que sobra e o que difere; o link abre a pasta para conferir."),
+            marcar("Lista já valorizada: a tela avisa, e Atualizar mantém o preço de cada item que continua."),
+            marcar("Item novo entra sem preço; o que saiu do _STATUS_PMIB sai da lista e vai para o log."),
         ),
     ),
     "SearchPMIB": Texto(
@@ -286,6 +304,7 @@ ABAS_DAS_SECOES: dict[str, tuple[str, ...]] = {
     "LMR": ("LMR.upload", "LMR.exclusao"),
     "ConferenciaListas": ("ConferenciaListas.conferencia", "ConferenciaListas.amp"),  # nao-e-interface
     "DocPack": ("DocPack.etapa1", "DocPack.etapa2"),  # nao-e-interface
+    "ListaPrecos": ("ListaPrecos.criar", "ListaPrecos.conferir"),  # nao-e-interface
 }
 
 

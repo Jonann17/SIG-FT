@@ -1,5 +1,5 @@
 """DocPack, Etapa 2 -- o conteúdo do dossiê: os materiais do PDF da lista de sobressalentes,
-lidos pelo AMP, no `_STATUS_PMIB` e na lista com preço.
+lidos pelo AMP, no `_STATUS_PMIB`.
 
 A Etapa 1 (`services/docpack.py`) monta a pasta com os templates vazios. Esta etapa, para
 cada dossiê que ainda está vazio:
@@ -13,9 +13,11 @@ cada dossiê que ainda está vazio:
    agente só para "criar o controle de uma lista nova", e não um paralelo. O agente devolve um
    HTML com a tabela no formato exato do template; o HTML fica na pasta, para conferir;
 3. lê a tabela do HTML (`ler_tabela`) e, com o "sim", grava as colunas que vêm da lista no
-   `_STATUS_PMIB` e, a partir delas, na lista com preço (a parte só desta etapa: o agente não
-   conhece a lista com preço), no XML (`core/excel/cirurgico.py`): o resto do pacote, o VBA do
-   `.xlsm` incluído, sai byte a byte.
+   `_STATUS_PMIB`, no XML (`core/excel/cirurgico.py`): o resto do pacote sai byte a byte.
+
+[2026-11-05] A lista com preço saiu daqui (pedido do Jonathan: o agente não olha para ela). É o
+módulo Lista de Preços (`services/lista_precos_arquivo.py`), que a cria e a preenche a partir
+do `_STATUS_PMIB` -- depois desta etapa, por exemplo.
 
 Regras que não se negociam (pedido do Luan, 04/11):
 
@@ -46,7 +48,6 @@ from sigft.core.aconex.cliente import ErroAconex
 from sigft.core.excel.cirurgico import PlanilhaXlsx, ref
 from sigft.services import status_pmib_arquivos
 from sigft.services.conferencia_revisoes import Download, _gravar, nome_do_pdf
-from sigft.services.docpack import codigo_lista_de_precos
 from sigft.services.revisao_amp import _TEM_HTML, BATIMENTO, PedidoAmp, _com_batimento, _duracao, gravar_html
 
 ABA = "Lista de Materiais"
@@ -63,11 +64,8 @@ _CABECALHOS_DE_PRECO = ("VALOR", "PRECO", "CUSTO")
 COLUNAS_STATUS = {"ITEM": "item", "QTD.": "qtd", "UNID.": "unid", "DESCRICAO": "descricao",
                   "CODIGO DO MATERIAL": "codigo_material", "CODIGO CMI": "codigo_cmi",
                   "MARCA/MODELO": "fabricante_modelo", "TIPO DE ENTREGA": "tipo_entrega"}
-COLUNAS_PRECOS = {"ITEM": "item", "QTD.": "qtd", "UNID.": "unid", "DESCRICAO": "descricao",
-                  "FABRICANTE / MODELO": "fabricante_modelo", "CODIGO DE MATERIAL": "codigo_material",
-                  "CODIGO GE": "codigo_ge", "TIPO DE ENTREGA": "tipo_entrega"}
 # As colunas que dizem "esta planilha já tem material": as escritas, menos ITEM (o template já
-# vem numerado) e TIPO DE ENTREGA (o da lista com preço traz exemplos), mais as que só a pessoa
+# vem numerado) e TIPO DE ENTREGA (o template traz exemplos), mais as que só a pessoa
 # preenche.
 _SO_DO_TEMPLATE = {"ITEM", "TIPO DE ENTREGA"}
 _DA_PESSOA = {"CODIGO PMIB", "VALOR UNITARIO"}
@@ -87,8 +85,6 @@ class Dossie:
     codigo: str
     pasta: Path
     status_pmib: Path
-    lista_precos: Path | None
-    precos_vazia: bool = True
 
 
 @dataclass(frozen=True)
@@ -143,8 +139,7 @@ def planilha_vazia(caminho: Path, mapa: dict[str, str]) -> bool:
 
 
 def procurar_dossies(raiz: str | Path) -> Varredura:
-    """Os `_STATUS_PMIB` vivos da raiz cuja lista de materiais está vazia (os da Etapa 1),
-    cada um com a lista com preço da mesma pasta (`<código PB021>.xlsm`), se houver."""
+    """Os `_STATUS_PMIB` vivos da raiz cuja lista de materiais está vazia (os da Etapa 1)."""
     vazios, com_materiais, ilegiveis = [], [], []
     for codigo, caminho in status_pmib_arquivos.listar(raiz).vivos:
         status = Path(caminho)
@@ -155,27 +150,8 @@ def procurar_dossies(raiz: str | Path) -> Varredura:
         except Exception as erro:  # noqa: BLE001 -- planilha do usuário: fica fora, com o motivo
             ilegiveis.append((codigo, str(erro)))
             continue
-        precos = _lista_de_precos(status.parent, codigo)
-        precos_vazia = True
-        if precos is not None:
-            try:
-                precos_vazia = planilha_vazia(precos, COLUNAS_PRECOS)
-            except Exception:  # noqa: BLE001 -- a lista com preço ilegível não entra
-                precos, precos_vazia = None, False
-        vazios.append(Dossie(codigo, status.parent, status, precos, precos_vazia))
+        vazios.append(Dossie(codigo, status.parent, status))
     return Varredura(vazios, com_materiais, ilegiveis)
-
-
-def _lista_de_precos(pasta: Path, codigo: str) -> Path | None:
-    try:
-        precos = codigo_lista_de_precos(codigo)
-    except Exception:  # noqa: BLE001 -- código sem PB020: não há lista com preço a achar
-        return None
-    for extensao in (".xlsm", ".xlsx"):
-        candidato = pasta / f"{precos}{extensao}"
-        if candidato.is_file():
-            return candidato
-    return None
 
 
 # ------------------------------------------------------------------ o Aconex
@@ -478,17 +454,7 @@ def _gravar_uma(proposta: Proposta, log_cb) -> Gravacao:
     except PermissionError:
         return Gravacao(dossie, "falhou", f"{dossie.status_pmib.name} está aberto no Excel: feche e tente de novo")
     log_cb(f"    ✅ {dossie.status_pmib.name}: {len(materiais)} linha(s)")
-    if dossie.lista_precos is None:
-        return Gravacao(dossie, "parcial", "_STATUS_PMIB preenchido; a lista com preço não está na pasta")
-    try:
-        gravar_planilha(dossie.lista_precos, materiais, COLUNAS_PRECOS)
-    except ErroEtapa2 as erro:
-        return Gravacao(dossie, "parcial", f"_STATUS_PMIB preenchido; lista com preço: {erro}")
-    except PermissionError:
-        return Gravacao(dossie, "parcial", f"_STATUS_PMIB preenchido; {dossie.lista_precos.name} está aberto no "
-                                           f"Excel")
-    log_cb(f"    ✅ {dossie.lista_precos.name}: {len(materiais)} linha(s), VALOR UNITÁRIO vazio")
-    return Gravacao(dossie, "gravado", f"{len(materiais)} material(is) nas duas planilhas")
+    return Gravacao(dossie, "gravado", f"{len(materiais)} material(is) no _STATUS_PMIB")
 
 
 def gravar(propostas: list[Proposta], *, log_cb, progress_cb=None) -> list[Gravacao]:
