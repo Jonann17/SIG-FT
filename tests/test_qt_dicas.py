@@ -28,7 +28,7 @@ def todas_as_telas(qt_interface, qtbot, tmp_path, monkeypatch):
     # Sem chave de API o painel de modelos só mostra o aviso, sem botões.
     monkeypatch.setattr(janela, "get_key", lambda _chave: "chave-de-teste")
     home.abrir_janela_chaves_api()
-    home.abrir_janela_modelos_ia()
+    home.abrir_janela_ia_por_modulo()
     home.abrir_janela_gastos_ia()
     config = home.abrir_configuracao()
     instancias = {type(home).__name__: home}
@@ -62,7 +62,6 @@ def test_painel_da_home_aberto_depois_tambem_ganha_dica(todas_as_telas):
     _janela, instancias = todas_as_telas
     home = instancias["HomeView"]
     assert home.btn_salvar_chaves.toolTip()
-    assert home.btn_salvar_selecao_ia.toolTip()
     assert all(b.toolTip() for b in home.botoes_barra.values())
     # 2026-10-22: a caixa de versões de teste foi para a janela Configuração.
     assert instancias["JanelaConfiguracao"].caixa_canal_testes.toolTip()

@@ -104,7 +104,7 @@ def test_menu_home_configuracao_e_ctrl_k(janela, codigo, monkeypatch):
         home = principal.telas["Home"]
         monkeypatch.setattr(principal, "get_key", lambda _chave: "chave-de-teste")
         abertas = [home.abrir_configuracao(), home.abrir_janela_chaves_api(),
-                   home.abrir_janela_modelos_ia(), home.abrir_janela_gastos_ia()]
+                   home.abrir_janela_ia_por_modulo(), home.abrir_janela_gastos_ia()]
         assert ainda_em_portugues(principal, codigo) == set()
         for aberta in abertas:
             assert ainda_em_portugues(aberta, codigo) == set(), aberta.windowTitle()

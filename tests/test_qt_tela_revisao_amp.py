@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from sigft.app_qt.views import revisao_amp as tela_mod
 from sigft.app_qt.views.conferencia_revisoes import UltimaConferencia
@@ -24,7 +24,7 @@ CODIGO = "#ITA0=Y01TF001&BPB020"
 OUTRO = "#ST00=X01MPB020&MPB020"
 TERCEIRO = "#ST00=Z01MPB020&MPB020"
 TITULO = "Revisão no AMP"
-AVISO_SEM_CHAVE = "Configure o endereço e a chave do webhook no botão Webhook…, nesta aba."
+AVISO_SEM_CHAVE = "Configure o endereço e a chave do webhook em Configurar IA, no alto da Conferência de Listas."
 AVISO_TABELA_REFEITA = ("A conferência mudou: a tabela foi refeita com as listas dela. Confira as marcas e "
                         "clique em Revisar no AMP de novo.")
 
@@ -299,58 +299,39 @@ def test_sem_webhook_avisa_e_nao_chama(qt_interface, qtbot, servico, avisos, ult
     assert servico.rodada is None and servico.testes == []
 
 
-def test_mostra_o_endereco_e_nunca_a_chave(qt_interface, qtbot, ultima):
+def test_mostra_o_estado_e_nunca_a_chave(qt_interface, qtbot, ultima):
     tela = _tela(qtbot, ultima=ultima)
-    assert URL in tela.lbl_webhook.text() and CHAVE not in tela.lbl_webhook.text()
+    assert tela.lbl_webhook.text() == "Workflow AMP configurado (em Configurar IA)."
+    assert CHAVE not in tela.lbl_webhook.text()
+    assert not hasattr(tela, "btn_webhook")   # 2026-11-05: o webhook mora no "Configurar IA"
     sem = _tela(qtbot, controller=_Controller("", ""), ultima=ultima)
-    assert sem.lbl_webhook.text() == "Webhook do AMP não configurado: clique em Webhook…, nesta aba."
+    assert sem.lbl_webhook.text() == ("Workflow AMP sem configurar: use Configurar IA, no alto da "
+                                      "Conferência de Listas.")
 
 
 def test_adota_o_webhook_de_antes(qt_interface, qtbot, ultima):
     controller = _Controller("", "", AMP_WEBHOOK_URL=URL, AMP_WEBHOOK_CHAVE=CHAVE)
     tela = _tela(qtbot, controller=controller, ultima=ultima)
-    assert URL in tela.lbl_webhook.text()
+    assert tela.lbl_webhook.text() == "Workflow AMP configurado (em Configurar IA)."
     assert controller.gravadas == [{"AMP_REVISAO_LISTAS_URL": URL, "AMP_REVISAO_LISTAS_CHAVE": CHAVE}]
 
 
-class _Janela:
-    """Dublê da `JanelaDoWebhook`: guarda como foi aberta e responde o que o teste pôs."""
-    resposta = QDialog.DialogCode.Accepted
-    valores_novos = ("https://ampworkflow.gevernova.net/webhook/outro", "nova-chave")
-    aberta = None
+def test_o_configurar_ia_grava_o_webhook_da_aba_e_a_linha_acompanha(qt_interface, qtbot, ultima):
+    """[2026-11-05] O webhook se configura no "Configurar IA" da seção, com os MESMOS
+    nomes que a aba usava; a linha de estado da aba acompanha na hora."""
+    from sigft.app_qt.widgets.ia_do_modulo import PainelIaDoModulo
 
-    def __init__(self, parent, *, titulo, url="", chave=""):
-        type(self).aberta = (titulo, url, chave)
-
-    def exec(self):
-        return type(self).resposta
-
-    def valores(self):
-        return type(self).valores_novos
-
-
-def test_janela_do_webhook_grava_no_modulo(qt_interface, qtbot, ultima, monkeypatch):
-    monkeypatch.setattr(tela_mod.webhook_amp, "JanelaDoWebhook", _Janela)
-    monkeypatch.setattr(_Janela, "resposta", QDialog.DialogCode.Accepted)
-    controller = _Controller()
+    controller = _Controller("", "")
     tela = _tela(qtbot, controller=controller, ultima=ultima)
-    tela.btn_webhook.click()
-    assert _Janela.aberta == ("Webhook da Revisão no AMP", URL, CHAVE)
-    assert controller.gravadas == [{"AMP_REVISAO_LISTAS_URL": "https://ampworkflow.gevernova.net/webhook/outro",
-                                    "AMP_REVISAO_LISTAS_CHAVE": "nova-chave"}]
-    assert "webhook/outro" in tela.lbl_webhook.text()
-    _no_console(tela, qtbot, "Webhook da Revisão no AMP salvo: https://ampworkflow.gevernova.net/webhook/outro "
-                             "· chave posta")
-    assert "nova-chave" not in tela.console.toPlainText()
-
-
-def test_janela_cancelada_nao_grava(qt_interface, qtbot, ultima, monkeypatch):
-    monkeypatch.setattr(tela_mod.webhook_amp, "JanelaDoWebhook", _Janela)
-    monkeypatch.setattr(_Janela, "resposta", QDialog.DialogCode.Rejected)
-    controller = _Controller()
-    tela = _tela(qtbot, controller=controller, ultima=ultima)
-    tela.btn_webhook.click()
-    assert controller.gravadas == []
+    assert "sem configurar" in tela.lbl_webhook.text()
+    painel = PainelIaDoModulo(controller, ("revisao_amp",))
+    qtbot.addWidget(painel)
+    painel.campo_url.setText("https://ampworkflow.gevernova.net/webhook/outro")
+    painel.campo_chave.setText("nova-chave")
+    assert painel.salvar()
+    assert controller.gravadas[-1] == {"AMP_REVISAO_LISTAS_URL": "https://ampworkflow.gevernova.net/webhook/outro",
+                                       "AMP_REVISAO_LISTAS_CHAVE": "nova-chave"}
+    assert tela.lbl_webhook.text() == "Workflow AMP configurado (em Configurar IA)."
 
 
 # ------------------------------------------------------------------ o teste de conexão

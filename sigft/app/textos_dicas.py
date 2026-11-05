@@ -101,8 +101,6 @@ DICAS: dict[str, dict[str, str]] = {
                           "pasta dela; nada é aplicado no Excel."),
         "btn_testar_amp": marcar("Confere a rede, a chave e o workflow publicado (ping). Não manda documento e "
                                  "não chama o agente."),
-        "btn_webhook": marcar("O endereço e a chave do workflow da revisão de listas no AMP. A chave fica "
-                              "mascarada."),
         "btn_copiar_diag": marcar("Copia o diagnóstico das listas que falharam, sem texto de documento e sem a "
                                   "chave, para colar numa conversa nova com o Claude."),
         "btn_parar": marcar("Para depois da lista que está no AMP. As que já voltaram ficam."),
@@ -117,9 +115,6 @@ DICAS: dict[str, dict[str, str]] = {
     },
     "HomeView": {
         "btn_salvar_chaves": marcar("Grava as chaves de API neste computador (Documentos\\SIG-FT)."),
-        "btn_atualizar_catalogo_ia": marcar("Baixa do provedor a lista atual de modelos e preços."),
-        "btn_aplicar_recomendados_ia": marcar("Escolhe para cada tarefa o modelo recomendado."),
-        "btn_salvar_selecao_ia": marcar("Grava os modelos escolhidos para cada tarefa."),
         "btn_atualizar_gastos_ia": marcar("Recalcula o gasto com IA a partir dos logs deste computador."),
         "btn_pasta_logs_ia": marcar("Abre a pasta de logs do SIG-FT no Explorador."),
     },

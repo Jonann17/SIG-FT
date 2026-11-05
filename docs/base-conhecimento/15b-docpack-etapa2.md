@@ -36,7 +36,7 @@ lista de materiais do `_STATUS_PMIB` a partir do PDF da lista. Ela é feita pelo
 ## Uma implementação por conceito
 
 - **Workflow da criação.** O `_STATUS_PMIB` de uma lista nova é o que o workflow da Criação do `_STATUS_PMIB` já faz. A Etapa 2 o chama e não tem workflow nem agente próprios.
-- **Webhook.** Fica na aba, no botão Webhook…, com os nomes `AMP_CRIACAO_STATUS_PMIB_URL` e `AMP_CRIACAO_STATUS_PMIB_CHAVE`.
+- **Webhook.** Desde 2026-11-05 fica no **Configurar IA** do DocPack, entrada "Etapa 2: Conteúdo" (só Workflow AMP; a aba mostra só se está configurado), com os nomes `AMP_CRIACAO_STATUS_PMIB_URL` e `AMP_CRIACAO_STATUS_PMIB_CHAVE`.
 - **Peças reusadas da Revisão no AMP:**
   - o cliente (`core/amp/cliente.py`);
   - o batimento da espera;

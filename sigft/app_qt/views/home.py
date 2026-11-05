@@ -24,7 +24,6 @@ Diferenças deliberadas (com o porquê no relatório da E5.1):
 from __future__ import annotations
 
 import html
-import threading
 from datetime import date, datetime
 
 from PySide6.QtCore import Qt
@@ -38,14 +37,13 @@ from sigft import config as sigft_config
 from sigft.app import textos_dicas
 from sigft.app import ia_por_modulo
 from sigft.app.idioma import marcar, t
-from sigft.app_qt import atualizacao, estilo, icones, interface, letra, nome, pasta_de_logs, propriedades, tema
+from sigft.app_qt import atualizacao, estilo, icones, letra, nome, pasta_de_logs, propriedades, tema
 from sigft.app_qt.catalogo import ACAO_CONFIGURACAO, ACAO_SUGESTOES, ACOES_DA_CONFIGURACAO, ACOES_DA_HOME, ICONE_DA_TELA, MODULOS
 from sigft.app_qt.widgets import blocos, controles, dialogs, mural
 from sigft.app_qt.widgets.fraco import chamada_fraca
 from sigft.app_qt.widgets.module_frame import aplicar_dicas
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
 from sigft.core import diario
-from sigft.core.llm import catalogo, selecao
 from sigft.core.llm import usage as llm_usage
 
 # A barra e a engrenagem saem de `catalogo` (2026-10-21; a engrenagem, 2026-10-22):
@@ -97,15 +95,6 @@ CHAVES_API = (
 # Os nomes das tarefas moram em `sigft/app/ia_por_modulo.py` (2026-11-04): a central e o
 # "Configurar IA" de cada tela usam os mesmos.
 ROTULOS_TAREFA_IA = ia_por_modulo.ROTULOS
-
-DESCRICAO_MODELOS_IA = marcar(
-    "Escolha primeiro COM QUAL CHAVE trabalhar; a lista de modelos passa a ser a daquele "
-    "provedor. \"Aplicar recomendados\" usa os modelos sugeridos em "
-    "docs/refatoracao/MODELOS_IA.md, que são mais econômicos. Valide a qualidade numa amostra "
-    "antes de rodar em lote.")
-SEM_PROVEDOR_IA = marcar(
-    "Nenhum provedor de IA tem chave configurada acima. Configure ao menos uma "
-    "chave (ex.: Gemini ou OpenRouter) para escolher o modelo aqui.")
 
 # --- aparência (as cores são da folha do tema, desde 2026-10-20) ---------------
 FONTE_CTK = ("Roboto", 13)                 # CTkFont() do tema
@@ -333,33 +322,12 @@ class _Card(QFrame):
 # A Home
 # =============================================================================
 class HomeView(QScrollArea):
-    # Redesenho de 2026-08-11 do painel de modelos -- PROVEDOR PRIMEIRO: uma
-    # pergunta de cada vez (com qual CHAVE trabalhar; depois, qual MODELO dela).
-    # (O comentário longo estava na Home da interface antiga, no histórico do
-    # repositório: `sigft/app/views/home.py`, removida em 2026-10-15.)
-    ROTULO_PROVIDER_IA = {
-        "gemini": marcar("Gemini (chave direta do Google)"),
-        "openrouter": marcar("OpenRouter (vários modelos, uma chave)"),
-        "openai_compat": marcar("AMP / IA da empresa"),
-    }
-
     def __init__(self, parent=None, controller=None) -> None:
         super().__init__(parent)
         self.controller = controller
         # Um painel de cada tipo por vez (chave -> JanelaPainel).
         self._janelas: dict[str, JanelaPainel] = {}
-        # Referências que os métodos do painel de modelos consultam antes de
-        # existir o painel (lá, zeradas em `criar_painel_modelos_ia`).
         self.entries: dict[str, QLineEdit] = {}
-        self.frame_modelos_ia = None
-        self._casca_modelos_ia = None
-        self._parent_modelos_ia = None
-        self.opt_provider_ia = None
-        self.lbl_resumo_modelo_ia = None
-        self.lbl_catalogo_ia = None
-        self.opts_modelo_ia: list = []
-        self.menus_modelo_ia_por_tarefa: dict = {}
-        self._pares_modelo_ia: list = []
 
         self.setWidgetResizable(True)
         self.setObjectName("conteudo")
@@ -662,14 +630,10 @@ class HomeView(QScrollArea):
         return self._abrir_painel("chaves", titulo=t("Chaves de API"),
                                   montar=self.criar_area_config_api, geometria="760x520")
 
-    def abrir_janela_modelos_ia(self):
-        return self._abrir_painel("modelos", titulo=t("Modelos de IA"),
-                                  montar=self.criar_painel_modelos_ia, geometria="900x680")
-
     def abrir_janela_ia_por_modulo(self):
         """[2026-11-04] A IA por módulo (IA Externa, IA Interna, Workflow AMP; pedido do
-        Luan): é a porta de "Modelos de IA" na Configuração. O painel de antes (o modelo
-        padrão de quem não escolheu por módulo) abre por um botão dela."""
+        Luan): é a porta de "Modelos de IA" na Configuração. [2026-11-05] O painel de
+        antes (provedor, modelo padrão, modo avançado) saiu: o novo basta."""
         return self._abrir_painel("ia_por_modulo", titulo=t("Modelos de IA"),
                                   montar=self.criar_painel_ia_por_modulo, geometria="1000x600")
 
@@ -682,15 +646,11 @@ class HomeView(QScrollArea):
         _empilhar_texto(coluna, _Texto(t(ia_do_modulo.EXPLICACAO_CENTRAL), papel="legenda",
                                        altura_linha=LINHA_TK_ROBOTO_12), baixo=8)
         self.painel_ia_por_modulo = ia_do_modulo.PainelIaDoModulo(
-            self.controller, sigft_config.TAREFAS_DO_PAINEL, abrir_chaves=self.abrir_janela_chaves_api)
+            self.controller, tuple(sigft_config.TAREFAS_DO_PAINEL) + tuple(ia_por_modulo.SO_WORKFLOW),
+            abrir_chaves=self.abrir_janela_chaves_api)
         self.painel_ia_por_modulo.setMinimumHeight(380)
         coluna.addWidget(self.painel_ia_por_modulo)
-        linha = _linha(coluna, cima=10, baixo=12)
-        self.btn_modelo_padrao_ia = _botao_cinza(t(ia_do_modulo.TEXTO_MODELO_PADRAO))
-        self.btn_modelo_padrao_ia.setToolTip(t(ia_do_modulo.DICA_MODELO_PADRAO))
-        self.btn_modelo_padrao_ia.clicked.connect(self.abrir_janela_modelos_ia)
-        linha.addWidget(self.btn_modelo_padrao_ia)
-        linha.addStretch()
+        coluna.addSpacing(12)
 
     def abrir_janela_gastos_ia(self):
         return self._abrir_painel("gastos", titulo=t("Gastos de IA"),
@@ -789,504 +749,9 @@ class HomeView(QScrollArea):
         new_keys = {k: e.text().strip() for k, e in self.entries.items()}
         self.controller.save_keys(new_keys)
 
-        # O painel "Modelos de IA" filtra os modelos pelos provedores que TÊM
-        # chave: se ele está aberto, é remontado para enxergar a chave nova na
-        # hora (fechado, a próxima abertura já a vê).
-        try:
-            if self._janela_aberta("modelos"):
-                self._recarregar_painel_modelos_ia()
-        except Exception:  # noqa: BLE001 -- a chave JÁ foi gravada
-            pass
-
         primeiro = next(iter(self.entries.values()), None)
         QMessageBox.information(self._janela_de(primeiro), t("Sucesso"),
                                 t("Chaves API salvas com sucesso!\nTodos os módulos usarão as novas chaves."))
-
-    # =====================================================================
-    # PAINEL "MODELOS DE IA" (Checkpoint 3.3 do plano de refatoração)
-    # =====================================================================
-    # Persistência via `sigft.core.llm.selecao` (o mesmo api_config.json das
-    # chaves, sob "_modelos_ia"): efeito imediato, sem reiniciar o app. A
-    # montagem lê SÓ o cache do catálogo (a Home não pode ficar pendurada em
-    # rede); "Atualizar lista de modelos" busca de fato, numa thread.
-    def criar_painel_modelos_ia(self, parent) -> None:
-        """Painel "Modelos de IA": provedor -> modelo, com filtro de texto,
-        override por tarefa e campo manual. Provedores sem chave não aparecem."""
-        # Zeradas antes de qualquer `return` curto: métodos disparados por
-        # widgets checam estas referências.
-        self.lbl_resumo_modelo_ia = None
-        self.lbl_catalogo_ia = None
-        self.opt_provider_ia = None
-        self.lbl_sem_provedor_ia = None
-        self.opts_modelo_ia = []
-        self.menus_modelo_ia_por_tarefa = {}
-        self.rotulos_modelo_ia_por_tarefa = {}
-
-        casca, quadro, coluna = _painel(parent)
-        self._casca_modelos_ia = casca
-        self.frame_modelos_ia = quadro
-        # Guardado para o painel se remontar ONDE estava (`_recarregar_painel_modelos_ia`).
-        self._parent_modelos_ia = parent
-
-        self.lbl_titulo_modelos_ia = _titulo_painel(t("Modelos de IA"))
-        _empilhar(coluna, self.lbl_titulo_modelos_ia, cima=10, baixo=10)
-        self.lbl_descricao_modelos_ia = _Texto(t(DESCRICAO_MODELOS_IA), papel="legenda",
-                                               altura_linha=LINHA_TK_ROBOTO_12)
-        _empilhar_texto(coluna, self.lbl_descricao_modelos_ia, baixo=10)
-
-        providers_com_chave = sorted(
-            provider_id
-            for provider_id, chave_id in sigft_config.CHAVE_POR_PROVIDER.items()
-            if self.controller.get_key(chave_id)
-        )
-        if not providers_com_chave:
-            self.lbl_sem_provedor_ia = _Texto(t(SEM_PROVEDOR_IA), papel="erro",
-                                              altura_linha=LINHA_TK_ROBOTO_12)
-            _empilhar_texto(coluna, self.lbl_sem_provedor_ia, baixo=15)
-            return
-
-        estado_atual = selecao.carregar(config_path=sigft_config.CONFIG_FILE)
-
-        # --- 1. PROVEDOR --- Pré-seleciona o da seleção já salva: reabrir tem
-        # de mostrar o que está valendo, não recomeçar do primeiro da lista.
-        provider_salvo = self._provider_ia_da_selecao(estado_atual)
-        if provider_salvo not in providers_com_chave:
-            provider_salvo = providers_com_chave[0]
-        self._provider_por_rotulo = {self._rotulo_provider_ia(p): p for p in providers_com_chave}
-
-        linha = _linha(coluna, baixo=5)
-        linha.addWidget(_rotulo(t("Provedor (chave a usar):"), largura_minima=LARGURA_ROTULO_IA))
-        linha.addSpacing(5)
-        self.opt_provider_ia = _menu(list(self._provider_por_rotulo), LARGURA_MENU_PROVEDOR)
-        self.opt_provider_ia.setCurrentText(self._rotulo_provider_ia(provider_salvo))
-        self.opt_provider_ia.activated.connect(
-            lambda _i: self._trocou_provider_ia(self.opt_provider_ia.currentText()))
-        linha.addWidget(self.opt_provider_ia)
-        linha.addSpacing(10)
-        self.btn_atualizar_catalogo_ia = _botao_cinza(t("Atualizar lista de modelos"))
-        self.btn_atualizar_catalogo_ia.clicked.connect(self._atualizar_catalogo_ia)
-        linha.addWidget(self.btn_atualizar_catalogo_ia)
-        linha.addStretch()
-
-        self.lbl_catalogo_ia = _Texto("", ("Roboto", 11), papel="legenda")
-        _empilhar_texto(coluna, self.lbl_catalogo_ia)
-
-        # --- 2. FILTRO --- (o OpenRouter tem centenas de modelos e o menu não
-        # tem busca)
-        linha = _linha(coluna, cima=5, baixo=5)
-        linha.addWidget(_rotulo(t("Filtrar modelos:"), largura_minima=LARGURA_ROTULO_IA))
-        linha.addSpacing(5)
-        self.entry_filtro_modelo_ia = QLineEdit()
-        self.entry_filtro_modelo_ia.setPlaceholderText(t("ex.: flash, haiku, minimax (vazio mostra todos)"))
-        self.entry_filtro_modelo_ia.setFixedWidth(LARGURA_CAMPO_IA)
-        self.entry_filtro_modelo_ia.textChanged.connect(lambda _t: self._refiltrar_modelos_ia())
-        linha.addWidget(self.entry_filtro_modelo_ia)
-        linha.addStretch()
-
-        # --- 3. MODELO PADRÃO ---
-        linha = _linha(coluna, baixo=5)
-        linha.addWidget(_rotulo(t("Modelo padrão (todas as tarefas):"), largura_minima=LARGURA_ROTULO_IA))
-        linha.addSpacing(5)
-        self.opt_modelo_ia_global = _menu([self._rotulo_padrao_sistema_ia()], LARGURA_MENU_MODELO)
-        self.opt_modelo_ia_global.activated.connect(
-            lambda _i: self._escolheu_favorito_global_ia(self.opt_modelo_ia_global.currentText()))
-        linha.addWidget(self.opt_modelo_ia_global)
-        linha.addStretch()
-        self.opts_modelo_ia.append((self.opt_modelo_ia_global, self._rotulo_padrao_sistema_ia()))
-
-        # --- 4. MODO AVANÇADO ---
-        self.caixa_modo_avancado_ia = controles.CaixaDeMarcar(
-            t("Configurar por tarefa (modo avançado)"))
-        self.caixa_modo_avancado_ia.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.caixa_modo_avancado_ia.setChecked(bool(estado_atual["por_tarefa"]))
-        self.caixa_modo_avancado_ia.toggled.connect(lambda _v: self._toggle_modelos_ia_modo_avancado())
-        _empilhar(coluna, self.caixa_modo_avancado_ia, cima=5, baixo=5)
-
-        # As tarefas, entre a caixa e o campo manual; o `pady=(0, 10)` de lá vai
-        # DENTRO do quadro, para sumir junto quando ele some.
-        self.frame_modelos_ia_avancado = QWidget()
-        avancado = QVBoxLayout(self.frame_modelos_ia_avancado)
-        avancado.setContentsMargins(0, 0, 0, 10)
-        avancado.setSpacing(0)
-        for tarefa in sigft_config.TAREFAS_DO_PAINEL:
-            linha = _linha(avancado, cima=2, baixo=2)
-            rotulo = _rotulo(t(ROTULOS_TAREFA_IA.get(tarefa, tarefa)), largura_minima=LARGURA_ROTULO_IA)
-            linha.addWidget(rotulo)
-            linha.addSpacing(5)
-            menu = _menu([t("Usar o global")], LARGURA_MENU_MODELO)
-            menu.activated.connect(lambda _i: self._atualizar_resumo_modelo_ia())
-            linha.addWidget(menu)
-            linha.addStretch()
-            self.menus_modelo_ia_por_tarefa[tarefa] = menu
-            self.rotulos_modelo_ia_por_tarefa[tarefa] = rotulo
-            self.opts_modelo_ia.append((menu, t("Usar o global")))
-        coluna.addWidget(self.frame_modelos_ia_avancado)
-        self.frame_modelos_ia_avancado.setVisible(self.caixa_modo_avancado_ia.isChecked())
-
-        # --- 5. MANUAL --- a saída para um id que não está na lista; o
-        # provedor dele é o escolhido lá em cima.
-        linha = _linha(coluna, cima=10, baixo=5)
-        linha.addWidget(_rotulo(t("Modelo manual (se não estiver na lista):"), largura_minima=LARGURA_ROTULO_IA))
-        linha.addSpacing(5)
-        self.entry_modelo_ia_livre = QLineEdit()
-        self.entry_modelo_ia_livre.setPlaceholderText(t("id exato, ex.: meta-llama/llama-4"))
-        self.entry_modelo_ia_livre.setFixedWidth(LARGURA_CAMPO_IA)
-        self.entry_modelo_ia_livre.textChanged.connect(lambda _t: self._atualizar_resumo_modelo_ia())
-        linha.addWidget(self.entry_modelo_ia_livre)
-        linha.addSpacing(5)
-        self.btn_limpar_modelo_ia = _botao_cinza(t("Limpar"), largura_minima=LARGURA_LIMPAR)
-        self.btn_limpar_modelo_ia.clicked.connect(self._limpar_modelo_ia_livre)
-        linha.addWidget(self.btn_limpar_modelo_ia)
-        linha.addStretch()
-
-        # --- 6. RESUMO ---
-        self.lbl_resumo_modelo_ia = _Texto("", papel="legenda", altura_linha=LINHA_TK_ROBOTO_12)
-        _empilhar_texto(coluna, self.lbl_resumo_modelo_ia, cima=8)
-
-        # Popula as listas a partir do cache e restaura a seleção salva.
-        self._recarregar_modelos_do_provider(estado_atual)
-
-        # --- 7. BOTÕES ---
-        linha = _linha(coluna, cima=10, baixo=15)
-        self.btn_aplicar_recomendados_ia = _botao(t("Aplicar recomendados"), variante="primario")
-        icones.aplicar(self.btn_aplicar_recomendados_ia, "sparkles")
-        self.btn_aplicar_recomendados_ia.clicked.connect(self._aplicar_recomendados_ia)
-        linha.addWidget(self.btn_aplicar_recomendados_ia)
-        linha.addSpacing(10)
-        self.btn_salvar_selecao_ia = _botao(t("Salvar seleção"), variante="primario")
-        self.btn_salvar_selecao_ia.clicked.connect(self._salvar_selecao_modelos_ia)
-        linha.addWidget(self.btn_salvar_selecao_ia)
-        linha.addStretch()
-
-    # ------------------------------------------------------------------
-    # Rótulos
-    # ------------------------------------------------------------------
-    def _rotulo_padrao_sistema_ia(self) -> str:
-        return t("Padrão do sistema (modelos atuais)")
-
-    def _rotulo_provider_ia(self, provider) -> str:
-        return t(self.ROTULO_PROVIDER_IA[provider]) if provider in self.ROTULO_PROVIDER_IA else provider
-
-    @staticmethod
-    def _provider_ia_da_selecao(estado_atual):
-        """Provedor que a seleção salva usa: o do global, ou -- se o global
-        estiver vazio -- o da maioria dos overrides por tarefa ("maioria", e
-        não "o primeiro": `aplicar_recomendados` grava provedores MISTOS)."""
-        if not estado_atual:
-            return None
-        global_salvo = estado_atual.get("global") or {}
-        if global_salvo.get("provider"):
-            return global_salvo["provider"]
-
-        contagem = {}
-        for cfg in (estado_atual.get("por_tarefa") or {}).values():
-            provider = (cfg or {}).get("provider")
-            if provider:
-                contagem[provider] = contagem.get(provider, 0) + 1
-        if not contagem:
-            return None
-        return max(sorted(contagem), key=contagem.get)
-
-    def _rotulo_modelo_ia(self, fav) -> str:
-        """Rótulo de um favorito curado -- com preço, que é o que ele acrescenta
-        sobre o id cru do catálogo."""
-        tier_legivel = {"padrao": t("Padrão"), "economia": t("Economia"), "poder": t("Poder")}.get(
-            fav["tier"], fav["tier"])
-        # O `rotulo` do favorito vem de `core/llm`: é nome de modelo, fica como veio.
-        return t("{rotulo} ({tier}, ${entrada} / ${saida} por 1M tokens)", rotulo=fav["rotulo"],
-                 tier=tier_legivel, entrada=f"{fav['preco_input']:.2f}",
-                 saida=f"{fav['preco_output']:.2f}")
-
-    # ------------------------------------------------------------------
-    # Lista de modelos do provedor escolhido
-    # ------------------------------------------------------------------
-    def _provider_ia_atual(self):
-        return self._provider_por_rotulo.get(self.opt_provider_ia.currentText(), "gemini")
-
-    def _modelos_do_provider_ia(self, provider, somente_cache=True, forcar=False):
-        """[(rótulo, id, provider)] do provedor: favoritos curados primeiro (com
-        preço), depois o catálogo ao vivo, sem repetir. O provider viaja JUNTO
-        de cada opção: uma seleção salva em outro provedor sobrevive a uma volta
-        ao painel sem ser regravada com o provedor errado."""
-        recomendados = catalogo.modelos_recomendados(provider)
-        pares = [(self._rotulo_modelo_ia(fav), fav["model"], provider) for fav in recomendados]
-        ja_listados = {fav["model"] for fav in recomendados}
-
-        self._catalogo_ia = catalogo.consultar(
-            provider, self.controller.api_keys, somente_cache=somente_cache, forcar=forcar,
-        )
-        for model_id in self._catalogo_ia.modelos:
-            if model_id not in ja_listados:
-                pares.append((model_id, model_id, provider))
-        return pares
-
-    def _acrescentar_selecoes_salvas_ia(self, estado_atual) -> None:
-        """Toda seleção já gravada aparece na lista ("(salvo) ..."), mesmo de
-        outro provedor: sem isto, o "Salvar seleção" seguinte a APAGARIA."""
-        if not estado_atual:
-            return
-        gravadas = [estado_atual.get("global")] + list(
-            (estado_atual.get("por_tarefa") or {}).values()
-        )
-        conhecidos = {model_id for _r, model_id, _p in self._pares_modelo_ia}
-        for entrada in gravadas:
-            if not entrada or entrada.get("model") in conhecidos:
-                continue
-            model_id = entrada["model"]
-            provider = entrada.get("provider") or self._provider_ia_atual()
-            self._pares_modelo_ia.append(
-                (t("(salvo) {provider} / {modelo}", provider=provider, modelo=model_id), model_id, provider))
-            conhecidos.add(model_id)
-
-    def _recarregar_modelos_do_provider(self, estado_atual=None, forcar=False,
-                                        erro_catalogo=None) -> None:
-        """Repopula TODOS os menus de modelo com os do provedor atual. Na
-        montagem (`estado_atual`), pré-seleciona o que já estava salvo.
-        `erro_catalogo` é o motivo de o "Atualizar lista" ter falhado: vira
-        aviso no rótulo do catálogo, e a lista que havia continua."""
-        provider = self._provider_ia_atual()
-        self._pares_modelo_ia = self._modelos_do_provider_ia(provider, forcar=forcar)
-        # As seleções gravadas entram SEMPRE, não só na montagem: trocar de
-        # provedor e voltar não pode fazer o que está valendo sumir.
-        self._acrescentar_selecoes_salvas_ia(
-            estado_atual if estado_atual is not None
-            else selecao.carregar(config_path=sigft_config.CONFIG_FILE)
-        )
-
-        if self.lbl_catalogo_ia is not None:
-            # Conta só as entradas VINDAS do catálogo: nelas o rótulo é o
-            # próprio id (recomendados trazem preço; as salvas, "(salvo)").
-            do_catalogo = sum(1 for r, m, _p in self._pares_modelo_ia if r == m)
-            # O serviço diz de quando a lista é; a tela só escreve a data.
-            baixado_em = self._catalogo_ia.baixado_em
-            de_quando = (datetime.fromtimestamp(baixado_em).strftime("%d/%m")
-                         if baixado_em is not None else None)
-            if erro_catalogo and de_quando:
-                texto = t("Não foi possível atualizar a lista de modelos ({erro}). "
-                          "Continua valendo a lista de {data}.", erro=erro_catalogo, data=de_quando)
-            elif erro_catalogo:
-                texto = t("Não foi possível baixar a lista de modelos ({erro}). "
-                          "Enquanto isso valem os recomendados e o campo manual.", erro=erro_catalogo)
-            elif do_catalogo > 0:
-                extra = (t(", lista de {data}", data=de_quando)
-                         if self._catalogo_ia.vencido and de_quando else "")
-                texto = t("{n} modelos disponíveis ({do_catalogo} do catálogo do provedor{extra}).",
-                          n=len(self._pares_modelo_ia), do_catalogo=do_catalogo, extra=extra)
-            else:
-                texto = t("Catálogo ainda não baixado para este provedor. Clique em "
-                          "\"Atualizar lista de modelos\". Enquanto isso valem os recomendados "
-                          "e o campo manual.")
-            self.lbl_catalogo_ia.definir(texto, papel="erro" if erro_catalogo else None)
-
-        salvo_global = (estado_atual or {}).get("global") if estado_atual else None
-        salvos_tarefa = (estado_atual or {}).get("por_tarefa", {}) if estado_atual else {}
-
-        for menu, rotulo_neutro in self.opts_modelo_ia:
-            _trocar_opcoes(menu, [rotulo_neutro] + [rotulo for rotulo, _m, _p in self._pares_modelo_ia])
-
-        if estado_atual is not None:
-            self._preselecionar_modelo_ia(self.opt_modelo_ia_global, salvo_global,
-                                          self._rotulo_padrao_sistema_ia())
-            for tarefa, menu in self.menus_modelo_ia_por_tarefa.items():
-                self._preselecionar_modelo_ia(menu, salvos_tarefa.get(tarefa), t("Usar o global"))
-
-        self._refiltrar_modelos_ia()
-        self._atualizar_resumo_modelo_ia()
-
-    def _preselecionar_modelo_ia(self, menu, salvo, rotulo_neutro) -> None:
-        """Deixa o menu mostrando o que está gravado no disco (sempre acha:
-        `_acrescentar_selecoes_salvas_ia` já pôs toda seleção gravada na lista)."""
-        if not salvo:
-            menu.setCurrentText(rotulo_neutro)
-            return
-        for rotulo, model_id, _provider in self._pares_modelo_ia:
-            if model_id == salvo.get("model"):
-                menu.setCurrentText(rotulo)
-                return
-        menu.setCurrentText(rotulo_neutro)
-
-    def _refiltrar_modelos_ia(self) -> None:
-        """Aplica o filtro de texto às listas. A opção escolhida NUNCA some por
-        causa do filtro: sumir mudaria a seleção sem o usuário pedir."""
-        termo = self.entry_filtro_modelo_ia.text().strip().lower()
-        for menu, rotulo_neutro in self.opts_modelo_ia:
-            casam = [
-                rotulo for rotulo, model_id, _provider in self._pares_modelo_ia
-                if not termo or termo in rotulo.lower() or termo in model_id.lower()
-            ]
-            escolhido = menu.currentText()
-            valores = [rotulo_neutro] + casam
-            if escolhido not in valores:
-                valores.append(escolhido)
-            _trocar_opcoes(menu, valores)
-
-    def _trocou_provider_ia(self, _escolha) -> None:
-        # Trocar de provedor troca a lista inteira -- e o modelo manual do
-        # provedor antigo não vale para o novo.
-        self.entry_modelo_ia_livre.clear()
-        self._recarregar_modelos_do_provider()
-
-    def _atualizar_catalogo_ia(self) -> None:
-        """Busca o catálogo do provedor atual (rede), numa thread `daemon`: não é
-        tarefa da pessoa, não segura o fechamento do app."""
-        provider = self._provider_ia_atual()
-        if self.lbl_catalogo_ia is not None:
-            self.lbl_catalogo_ia.definir(t("Buscando a lista de modelos do provedor..."))
-        # A thread recebe uma CÓPIA das chaves e não toca em nada da Home.
-        chaves = dict(self.controller.api_keys)
-        threading.Thread(target=self._worker_catalogo_ia, args=(provider, chaves),
-                         daemon=True, name="sigft-catalogo-ia").start()
-
-    def _worker_catalogo_ia(self, provider, chaves) -> None:
-        # `consultar` não levanta (o motivo de uma falha volta em `.erro`) e
-        # grava o cache; o desenho volta para a thread da interface por
-        # `na_interface`, e a resposta vai junto, guardada aqui.
-        resultado = None
-        try:
-            resultado = catalogo.consultar(provider, chaves, forcar=True)
-        finally:
-            self._catalogo_baixado_ia = (provider, resultado)
-            interface.na_interface(self._catalogo_chegou)
-
-    def _catalogo_chegou(self) -> None:
-        """Na thread da interface: redesenha com o cache novo -- se o painel
-        ainda existe (a janela pode ter sido fechada e destruída no meio). A
-        falha vira aviso só se o provedor ainda é o que foi buscado."""
-        if not _vivo(self.frame_modelos_ia) or self.opt_provider_ia is None:
-            return
-        provider, resultado = getattr(self, "_catalogo_baixado_ia", (None, None))
-        erro = resultado.erro if resultado is not None else None
-        if erro and provider == self._provider_ia_atual():
-            self._recarregar_modelos_do_provider(erro_catalogo=erro)
-        else:
-            self._recarregar_modelos_do_provider()
-
-    # ------------------------------------------------------------------
-    # Precedência e resumo
-    # ------------------------------------------------------------------
-    def _toggle_modelos_ia_modo_avancado(self) -> None:
-        self.frame_modelos_ia_avancado.setVisible(self.caixa_modo_avancado_ia.isChecked())
-        self._atualizar_resumo_modelo_ia()
-
-    def _recarregar_painel_modelos_ia(self) -> None:
-        """Remonta o painel ONDE ele estava (na janela dele)."""
-        casca, pai = self._casca_modelos_ia, self._parent_modelos_ia
-        if _vivo(casca):
-            casca.hide()
-            pai.layout().removeWidget(casca)
-            casca.deleteLater()
-        self.criar_painel_modelos_ia(pai)
-        self._aplicar_dicas()
-
-    def _escolheu_favorito_global_ia(self, _escolha) -> None:
-        """Escolher na lista DESISTE do modelo manual -- vale sempre o último
-        controle mexido (o manual vence na hora de salvar)."""
-        self._limpar_modelo_ia_livre()
-
-    def _limpar_modelo_ia_livre(self) -> None:
-        self.entry_modelo_ia_livre.clear()
-        self._atualizar_resumo_modelo_ia()
-
-    def _id_do_rotulo_modelo_ia(self, rotulo):
-        """(model_id, provider) da opção, ou `(None, None)` para a neutra. O
-        provider vem do PAR, nunca do menu de provedor."""
-        for texto, model_id, provider in self._pares_modelo_ia:
-            if texto == rotulo:
-                return model_id, provider
-        return None, None
-
-    def _modelo_ia_global_efetivo(self):
-        """(provider, model, origem) que "Salvar seleção" vai gravar como global.
-        Fonte ÚNICA -- o resumo e o salvamento leem daqui."""
-        provider = self._provider_ia_atual()
-        manual = self.entry_modelo_ia_livre.text().strip()
-        if manual:
-            return provider, manual, marcar("campo manual")
-        model_id, provider_do_modelo = self._id_do_rotulo_modelo_ia(self.opt_modelo_ia_global.currentText())
-        if model_id is None:
-            return None, None, marcar("padrão do sistema")
-        return provider_do_modelo, model_id, marcar("lista de modelos")
-
-    def _atualizar_resumo_modelo_ia(self) -> None:
-        if self.lbl_resumo_modelo_ia is None:
-            return
-
-        provider, model, origem = self._modelo_ia_global_efetivo()
-        if provider is None:
-            linha = t("Ao salvar: todas as tarefas voltam ao padrão do sistema (modelos atuais).")
-        else:
-            linha = t("Ao salvar: {provider} / {modelo}  (veio do {origem})", provider=provider,
-                      modelo=model, origem=t(origem))
-
-        if self.menus_modelo_ia_por_tarefa and self.caixa_modo_avancado_ia.isChecked():
-            com_override = [
-                tarefa for tarefa, menu in self.menus_modelo_ia_por_tarefa.items()
-                if self._id_do_rotulo_modelo_ia(menu.currentText())[0] is not None
-            ]
-            if com_override:
-                linha += t("  |  {n} tarefa(s) com modelo próprio ({tarefas}), que vence o padrão acima.",
-                           n=len(com_override), tarefas=", ".join(sorted(com_override)))
-
-        self.lbl_resumo_modelo_ia.definir(linha)
-
-    def _aplicar_recomendados_ia(self) -> None:
-        # Os recomendados podem levar alguma tarefa para um provider diferente
-        # do usado hoje (ex.: Grok 4.5 só via OpenRouter). Sem a chave dele, a
-        # troca só falharia no meio da próxima execução: avisa ANTES de gravar.
-        faltando = sorted(
-            provider
-            for provider in selecao.providers_exigidos_pelos_recomendados()
-            if not self.controller.get_key(sigft_config.CHAVE_POR_PROVIDER[provider])
-        )
-        if faltando:
-            chaves = ", ".join(sigft_config.CHAVE_POR_PROVIDER[p] for p in faltando)
-            # "Não" é o botão padrão: um Enter não aplica às cegas.
-            resposta = QMessageBox.question(
-                self._janela_de(self.frame_modelos_ia), t("Chave de API faltando"),
-                t("Os modelos recomendados exigem {chaves}, que ainda não está configurada "
-                  "no painel de chaves acima.\n\nSe aplicar assim, os módulos que dependem "
-                  "desse provedor vão falhar até a chave ser preenchida.\n\nAplicar mesmo assim?",
-                  chaves=chaves),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No)
-            if resposta != QMessageBox.StandardButton.Yes:
-                return
-
-        selecao.aplicar_recomendados(config_path=sigft_config.CONFIG_FILE)
-        self._recarregar_painel_modelos_ia()
-        QMessageBox.information(
-            self._janela_de(self.frame_modelos_ia), t("Recomendados aplicados"),
-            t("Os modelos recomendados (docs/refatoracao/MODELOS_IA.md) foram aplicados: Gemini 3 Flash "
-              "Preview como padrão global, com Grok 4.5 para a classificação de PDM.\n\n"
-              "São modelos mais econômicos que os usados até agora. Vale validar a qualidade "
-              "num punhado de fichas (comparando com o resultado anterior) antes de rodar em lote."),
-        )
-
-    def _salvar_selecao_modelos_ia(self) -> None:
-        # A precedência (campo manual > menu > padrão) vive em
-        # `_modelo_ia_global_efetivo`, a MESMA fonte do resumo na tela.
-        provider_global, model_global, _origem = self._modelo_ia_global_efetivo()
-        if provider_global is None:
-            selecao.limpar_global(config_path=sigft_config.CONFIG_FILE)
-        else:
-            selecao.definir_global(provider_global, model_global, config_path=sigft_config.CONFIG_FILE)
-
-        # Os overrides por tarefa: o provider vem do PAR de cada opção.
-        for tarefa, menu in self.menus_modelo_ia_por_tarefa.items():
-            model_id, provider_do_modelo = self._id_do_rotulo_modelo_ia(menu.currentText())
-            if model_id is None:
-                selecao.limpar_por_tarefa(tarefa, config_path=sigft_config.CONFIG_FILE)
-            else:
-                selecao.definir_por_tarefa(
-                    tarefa, provider_do_modelo, model_id, config_path=sigft_config.CONFIG_FILE,
-                )
-
-        self._recarregar_painel_modelos_ia()
-        QMessageBox.information(
-            self._janela_de(self.frame_modelos_ia), t("Seleção salva"),
-            t("Seleção de modelos de IA salva. A próxima execução de cada módulo já usa o modelo "
-              "escolhido. Não é preciso reiniciar o SIG-FT."),
-        )
 
     # =========================================================================
     # PAINEL "GASTOS DE IA" (Checkpoint 3.4 do plano de refatoração)

@@ -891,6 +891,26 @@ _POLITICA_RETRY_POR_TAREFA: dict[str, dict[str, Any]] = {
 }
 
 
+def _padrao_pela_chave(cfg: dict[str, str], api_key: str | None,
+                      chaves: dict[str, str | None] | None) -> dict[str, str]:
+    """[2026-11-05] O padrão de quem NÃO escolheu modelo é Gemini direto
+    (`LLM_MODELOS_HOJE`/`LLM_TASKS`), e sem a chave do Gemini o módulo morria
+    mesmo com a do OpenRouter posta (pedido do Luan: "tirar que dependa sim ou sim
+    da chave do Gemini"). Sem chave do Gemini e COM a do OpenRouter, o mesmo modelo
+    vai pelo OpenRouter (`google/<modelo>`). Com a chave do Gemini, nada muda:
+    ninguém troca de caminho por acidente."""
+    if cfg.get("provider") != config.PROVIDER_GEMINI or api_key:
+        return cfg
+    chaves_resolvidas = chaves if chaves is not None else config.carregar_chaves()
+    if chaves_resolvidas.get(config.CHAVE_POR_PROVIDER[config.PROVIDER_GEMINI]):
+        return cfg
+    if not chaves_resolvidas.get(config.CHAVE_POR_PROVIDER[config.PROVIDER_OPENROUTER]):
+        return cfg
+    modelo = cfg["model"]
+    return {"provider": config.PROVIDER_OPENROUTER,
+            "model": modelo if "/" in modelo else f"google/{modelo}"}
+
+
 def get_llm(
     tarefa: str,
     api_key: str | None = None,
@@ -998,6 +1018,8 @@ def get_llm(
 
         resolvido = selecao.resolver(tarefa, config_path=config.CONFIG_FILE)
     cfg = resolvido if resolvido is not None else cfg_hoje
+    if resolvido is None:
+        cfg = _padrao_pela_chave(cfg, api_key, chaves)
 
     provider_id = cfg["provider"]
     try:

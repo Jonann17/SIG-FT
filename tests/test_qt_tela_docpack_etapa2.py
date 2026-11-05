@@ -143,8 +143,8 @@ def test_gravar_so_com_o_sim(qt_interface, qtbot, tmp_path, servico, monkeypatch
 def test_sem_webhook_avisa_e_nao_consulta(qt_interface, qtbot, tmp_path, servico, avisos):
     tela = _procurada(_tela(qtbot, tmp_path, controller=_Controller(url="", chave="")), qtbot)
     tela._consultar()
-    assert servico.consulta is None and avisos and "Webhook" in avisos[0]
-    assert "não configurado" in tela.lbl_webhook.text()
+    assert servico.consulta is None and avisos and "Configurar IA" in avisos[0]
+    assert "sem configurar" in tela.lbl_webhook.text()
 
 
 def test_nada_marcado_avisa(qt_interface, qtbot, tmp_path, servico, avisos):
@@ -157,7 +157,8 @@ def test_nada_marcado_avisa(qt_interface, qtbot, tmp_path, servico, avisos):
 
 def test_a_chave_nao_aparece_na_tela(qt_interface, qtbot, tmp_path, servico):
     tela = _tela(qtbot, tmp_path)
-    assert CHAVE not in tela.lbl_webhook.text() and "chave posta" in tela.lbl_webhook.text()
+    assert CHAVE not in tela.lbl_webhook.text() and tela.lbl_webhook.text() == "Workflow AMP configurado (em Configurar IA)."
+    assert not hasattr(tela, "btn_webhook")   # 2026-11-05: o webhook mora no "Configurar IA"
 
 
 def test_embutida_usa_o_console_e_a_barra_da_secao(qt_interface, qtbot, tmp_path, servico):

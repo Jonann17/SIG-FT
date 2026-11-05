@@ -148,4 +148,13 @@ usuário. Preços de mercado cruzados com:
 
 ## 6. IA por módulo (2026-11-04)
 
-Pedido do Luan: a escolha é **por módulo**, com três modos. **IA Externa** é o OpenRouter (o que este documento descreve: catálogo, favoritos, custo real). **IA Interna (AMP)** aparece desligada até o AMP ter API. **Workflow AMP** manda o prompt ao webhook do n8n daquele módulo (`AMP_IA_<TAREFA>_URL`/`_CHAVE`) e devolve o texto, sem repetição. O modo é derivado da seleção por tarefa (`_modelos_ia.por_tarefa`): o provedor `amp_workflow` é o workflow, qualquer outro é a IA Externa. O seletor global continua como "Modelo padrão (avançado)", para a tarefa sem escolha por módulo. Contrato do workflow e telas: `docs/superpowers/specs/2026-11-04-ia-por-modulo-design.md`.
+Pedido do Luan: a escolha é **por módulo**, com três modos. **IA Externa** é o OpenRouter (o que este documento descreve: catálogo, favoritos, custo real). **IA Interna (AMP)** aparece desligada até o AMP ter API. **Workflow AMP** manda o prompt ao webhook do n8n daquele módulo (`AMP_IA_<TAREFA>_URL`/`_CHAVE`) e devolve o texto, sem repetição. O modo é derivado da seleção por tarefa (`_modelos_ia.por_tarefa`): o provedor `amp_workflow` é o workflow, qualquer outro é a IA Externa. O seletor global "Modelo padrão (avançado)" saiu em 2026-11-05 (o global que já estava salvo continua valendo para a tarefa sem escolha por módulo). Contrato do workflow e telas: `docs/superpowers/specs/2026-11-04-ia-por-modulo-design.md`.
+
+
+## 2026-11-05 — sem depender da chave do Gemini
+
+Pedido do Luan ("tirar que dependa sim ou sim da chave do Gemini"). Onde a chave era exigida à força:
+
+1. **Cria Fichas** (`services/cria_fichas.py`, `classificar_para_revisao` e `processar_lote`): `if not self.api_key: raise ValueError("API Key não configurada.")`, com `api_key` = chave do Gemini, em QUALQUER modo. Agora `_exigir_chave` só exige quando o provedor resolvido é o Gemini direto.
+2. **O padrão de quem nunca escolheu** (`LLM_MODELOS_HOJE`/`LLM_TASKS`) é Gemini direto. `get_llm` (`_padrao_pela_chave`), sem seleção salva, sem a chave do Gemini e COM a do OpenRouter, usa o mesmo modelo pelo OpenRouter (`google/<modelo>`). Com a chave do Gemini nada muda.
+3. **AutoSpec** (zona do Rafael, não alterado): resolve a seleção por conta própria e passa `selecao_resolvida` ao `get_llm`, então o item 2 não o alcança; sem escolha salva, ele ainda pede a chave do Gemini. Aviso no mural.

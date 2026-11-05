@@ -6,19 +6,20 @@ A tela é fina: o que é um dossiê vazio, o download, o pedido ao AMP e a grava
 `services/docpack_etapa2.py`. O fluxo tem duas metades, de propósito: "Consultar no AMP" só
 baixa e pergunta (nada é escrito nas planilhas), e "Gravar nas planilhas" mostra o que voltou
 e grava só com o "sim". O webhook é o do workflow da Criação do _STATUS_PMIB
-(`amp/criacao_status_pmib/`, `AMP_CRIACAO_STATUS_PMIB_*`), configurado aqui, no botão Webhook…
-(`widgets/webhook_amp.py`). Desenho: `docs/base-conhecimento/15b-docpack-etapa2.md`.
+(`amp/criacao_status_pmib/`, `AMP_CRIACAO_STATUS_PMIB_*`), configurado no "Configurar IA" do
+DocPack, entrada "Etapa 2: Conteúdo" (desde 2026-11-05; antes, um botão Webhook… nesta aba). Desenho: `docs/base-conhecimento/15b-docpack-etapa2.md`.
 """
 from __future__ import annotations
 
 import threading
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog, QHBoxLayout
+from PySide6.QtWidgets import QHBoxLayout
 
 from sigft.app.idioma import marcar, t
 from sigft.app_qt import file_dialogs, interface
 from sigft.app_qt.views.conferencia_revisoes import perfil_do_aconex
+from sigft.app_qt.widgets.ia_do_modulo import avisos as avisos_da_ia, chaves_do_webhook_so
 from sigft.app_qt.widgets import blocos, controles, dialogos_selecao, webhook_amp
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.core import prefs
@@ -29,17 +30,19 @@ from sigft.services import revisao_amp as revisao_amp_svc
 
 # O webhook do workflow da Criação do _STATUS_PMIB (`amp/criacao_status_pmib/`, do Luan), que esta
 # etapa reusa: o mesmo workflow e o mesmo agente, com nomes próprios no `api_config.json`.
-CHAVES_DO_WEBHOOK = webhook_amp.ChavesDoWebhook("AMP_CRIACAO_STATUS_PMIB_URL", "AMP_CRIACAO_STATUS_PMIB_CHAVE")
+# [2026-11-05] Os nomes vêm do "Configurar IA" (`ia_por_modulo.SO_WORKFLOW`): é lá que o
+# webhook se configura agora, e não mais num botão desta aba.
+CHAVES_DO_WEBHOOK = chaves_do_webhook_so("docpack_conteudo")
 CHAVE_PASTA_RAIZ = "docpack.raiz"   # a mesma raiz da Etapa 1
 
 TITULO = marcar("DocPack · Etapa 2")
-TITULO_DO_WEBHOOK = marcar("Webhook da Criação do _STATUS_PMIB")
 AVISO_SEM_RAIZ = marcar("Selecione a pasta raiz antes.")
-AVISO_SEM_CHAVE = marcar("Configure o endereço e a chave do webhook no botão Webhook…, nesta aba.")
+AVISO_SEM_CHAVE = marcar("Configure o endereço e a chave do webhook em Configurar IA, no alto do DocPack.")
 AVISO_NADA_MARCADO = marcar("Marque pelo menos uma lista.")
 AVISO_NADA_PRONTO = marcar("Nenhuma lista com materiais para gravar: consulte no AMP antes.")
 AVISO_SEM_PERFIL = marcar("Nenhum perfil do Aconex neste Windows: uso o PDF que já está na pasta de cada lista.")
-WEBHOOK_NAO_CONFIGURADO = marcar("Webhook da Criação do _STATUS_PMIB não configurado: clique em Webhook…, nesta aba.")
+WEBHOOK_NAO_CONFIGURADO = marcar("Workflow AMP sem configurar: use Configurar IA, no alto do DocPack.")
+WEBHOOK_CONFIGURADO = marcar("Workflow AMP configurado (em Configurar IA).")
 TEXTO_BAIXAR = marcar("Baixar do Aconex a revisão vigente (sem isso, vai o PDF que já está na pasta)")
 PERGUNTA_GRAVAR = marcar("Gravar estes materiais no _STATUS_PMIB? Planilha que já tiver material é "
                          "recusada.\n\n{resumo}")
@@ -95,13 +98,11 @@ class ModuloDocPackEtapa2(ModuleFrame):
         self.btn_pasta = blocos.botao(t("Pasta raiz..."), variante="cinza", largura_minima=140)
         self.btn_pasta.clicked.connect(self._sel_pasta)
         self.lbl_pasta = blocos.rotulo(t("Não selecionada"), alinhar="esquerda", elidir=True, papel="legenda")
-        self.btn_webhook = blocos.botao(t("Webhook…"), variante="cinza", largura_minima=110)
-        self.btn_webhook.clicked.connect(self._configurar_webhook)
         self.btn_testar_amp = blocos.botao(t("Testar conexão com o AMP"), variante="cinza", largura_minima=200)
         self.btn_testar_amp.clicked.connect(self._testar_conexao)
         linha_ = QHBoxLayout()
         linha_.setSpacing(10)
-        for widget, peso in ((self.btn_pasta, 0), (self.lbl_pasta, 1), (self.btn_webhook, 0),
+        for widget, peso in ((self.btn_pasta, 0), (self.lbl_pasta, 1),
                              (self.btn_testar_amp, 0)):
             linha_.addWidget(widget, peso)
         cartao.addLayout(linha_)
@@ -133,6 +134,11 @@ class ModuloDocPackEtapa2(ModuleFrame):
         lay.addWidget(self.tabela, 1)
         self._mostrar_pasta()
         self._mostrar_webhook()
+        # O "Configurar IA" grava o webhook: a linha de estado acompanha na hora.
+        avisos_da_ia().mudou.connect(self._ia_mudou)
+
+    def _ia_mudou(self, _tarefa: str) -> None:
+        self._mostrar_webhook()
 
     def showEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
         self._mostrar_webhook()
@@ -155,12 +161,7 @@ class ModuloDocPackEtapa2(ModuleFrame):
 
     def _mostrar_webhook(self) -> None:
         url, chave = self._webhook()
-        if not url:
-            self.lbl_webhook.setText(t(WEBHOOK_NAO_CONFIGURADO))
-        elif chave:
-            self.lbl_webhook.setText(t("Webhook do AMP: {url} · chave posta", url=url))
-        else:
-            self.lbl_webhook.setText(t("Webhook do AMP: {url} · sem chave", url=url))
+        self.lbl_webhook.setText(t(WEBHOOK_CONFIGURADO) if url and chave else t(WEBHOOK_NAO_CONFIGURADO))
 
     def _webhook_ou_aviso(self) -> tuple[str, str] | None:
         url, chave = self._webhook()
@@ -169,16 +170,6 @@ class ModuloDocPackEtapa2(ModuleFrame):
             return None
         return url, chave
 
-    def _configurar_webhook(self) -> None:
-        url, chave = self._webhook()
-        janela = webhook_amp.JanelaDoWebhook(self, titulo=t(TITULO_DO_WEBHOOK), url=url, chave=chave)
-        if janela.exec() != QDialog.DialogCode.Accepted:
-            return
-        novo_url, nova_chave = janela.valores()
-        if self.controller is not None:
-            webhook_amp.gravar(self.controller, CHAVES_DO_WEBHOOK, novo_url, nova_chave)
-        self._mostrar_webhook()
-        self.log(f"Webhook da Criação do _STATUS_PMIB salvo: {novo_url} · chave {'posta' if nova_chave else 'não posta'}")
 
     def _testar_conexao(self) -> None:
         webhook = self._webhook_ou_aviso()

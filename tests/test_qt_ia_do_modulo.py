@@ -130,7 +130,8 @@ def test_telas_com_ia_tem_o_botao():
     from sigft.app import ia_por_modulo
 
     for tarefas in ia_por_modulo.TAREFAS_DA_TELA.values():
-        assert tarefas and all(tarefa in config.TAREFAS_DO_PAINEL for tarefa in tarefas)
+        assert tarefas and all(tarefa in config.TAREFAS_DO_PAINEL or tarefa in ia_por_modulo.SO_WORKFLOW
+                               for tarefa in tarefas)
     assert ia_por_modulo.TAREFAS_DA_TELA["ModuloAutoSpec"] == ("autospec",)
 
 
@@ -148,9 +149,9 @@ def test_autospec_tem_o_botao_e_configura_a_tarefa_dele(qtbot, arquivo, qt_inter
     janela.close()
 
 
-def test_docpack_tem_o_botao_na_secao_e_configura_a_sugestao_de_pasta(qtbot, arquivo, qt_interface):
+def test_docpack_tem_o_botao_na_secao_e_configura_as_duas_etapas(qtbot, arquivo, qt_interface):
     """O DocPack é uma seção de abas (telas embutidas, sem cabeçalho): o botão fica no
-    cabeçalho da seção e configura a tarefa da Etapa 1 (a sugestão de pasta)."""
+    cabeçalho da seção e configura as duas etapas, como o Cria Fichas (2026-11-05)."""
     from sigft.app_qt.views.docpack_secao import ModuloDocPackSecao
 
     secao = ModuloDocPackSecao(None, _Controller())
@@ -159,5 +160,52 @@ def test_docpack_tem_o_botao_na_secao_e_configura_a_sugestao_de_pasta(qtbot, arq
     secao.botao_configurar_ia.click()
     janela = secao.janela_configurar_ia
     qtbot.addWidget(janela)
-    assert janela.painel.tarefas == ("docpack_pasta",)
+    assert janela.painel.tarefas == ("docpack_pasta", "docpack_conteudo")
+    assert janela.painel.lista_modulos.count() == 2
     janela.close()
+
+
+def test_modulo_so_de_workflow_desliga_a_externa_e_grava_o_webhook_da_aba(qtbot, arquivo):
+    """[2026-11-05] A Etapa 2 do DocPack e a Revisão no AMP só rodam pelo workflow: a IA
+    Externa fica desligada, e o webhook vai para os MESMOS nomes que a aba usava."""
+    controller = _Controller({"OPENROUTER": "sk"})
+    painel = _painel(qtbot, ("docpack_conteudo",), controller)
+    assert painel.modo == modo.WORKFLOW
+    assert not painel.botoes_modo[modo.EXTERNA].isEnabled()
+    assert not painel.botoes_modo[modo.INTERNA].isEnabled()
+    painel.campo_url.setText("https://ampworkflow.gevernova.net/webhook/sigft-criacao-status-pmib")
+    painel.campo_chave.setText("segredo")
+    assert painel.salvar()
+    assert controller.api_keys["AMP_CRIACAO_STATUS_PMIB_URL"].endswith("sigft-criacao-status-pmib")
+    assert controller.api_keys["AMP_CRIACAO_STATUS_PMIB_CHAVE"] == "segredo"
+    assert selecao.resolver("docpack_conteudo", config_path=arquivo) is None   # nada de seleção de LLM
+
+
+def test_trocar_de_modulo_so_de_workflow_para_um_de_llm_religa_a_externa(qtbot, arquivo):
+    painel = _painel(qtbot, ("docpack_pasta", "docpack_conteudo"))
+    painel.selecionar_tarefa("docpack_conteudo")
+    assert not painel.botoes_modo[modo.EXTERNA].isEnabled()
+    painel.selecionar_tarefa("docpack_pasta")
+    assert painel.botoes_modo[modo.EXTERNA].isEnabled()
+
+
+def test_conferencia_de_listas_tem_o_botao_da_revisao_no_amp(qtbot, arquivo, qt_interface):
+    from sigft.app_qt.views.conferencia_listas import ModuloConferenciaListas
+
+    secao = ModuloConferenciaListas(None, _Controller())
+    qtbot.addWidget(secao)
+    secao.botao_configurar_ia.click()
+    janela = secao.janela_configurar_ia
+    qtbot.addWidget(janela)
+    assert janela.painel.tarefas == ("revisao_amp",)
+    janela.close()
+
+
+def test_modelo_manual_vale_sobre_a_lista(qtbot, arquivo):
+    """[2026-11-05] O "Modelo manual" do painel de antes veio para a IA Externa."""
+    painel = _painel(qtbot, ("validar_ficha",))
+    painel.lista_modelos.setCurrentRow(0)
+    painel.campo_manual.setText("meta-llama/llama-4")
+    assert painel.salvar()
+    assert selecao.resolver("validar_ficha", config_path=arquivo) == {
+        "provider": config.PROVIDER_OPENROUTER, "model": "meta-llama/llama-4"}

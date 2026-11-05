@@ -56,7 +56,7 @@ Desenho: `docs/superpowers/specs/2026-11-03-amp-revisao-com-arquivos-design.md`.
 
 ### 3. No SIG-FT
 
-1. Vá em **PMIB Manager** → aba **Revisão no AMP** → **Webhook…**:
+1. Vá em **Conferência de Listas** → **Configurar IA** (no alto) → **Revisão no AMP**:
    - **Endereço:** a Production URL;
    - **Chave:** o valor da credencial.
 
@@ -130,7 +130,7 @@ Se a execução parou no **AMP Agent**, não há HTML: o motivo está na saída 
 - **O *Listen for test event* de dentro de um nó roda só aquele nó.** Para testar o workflow
   inteiro, use **Execute workflow**, no canvas.
 - **A Test URL (`/webhook-test/`) só responde enquanto o n8n está escutando.** Fora isso, ela dá
-  404. O SIG-FT usa a Production URL, e a janela do Webhook… recusa a de teste.
+  404. O SIG-FT usa a Production URL, e o Configurar IA recusa a de teste.
 - **O agente escreve uma frase antes do HTML** ("Vou carregar a planilha...") e `100\%` no CSS,
   mesmo instruído a não fazer. O nó **Prepara a resposta** corrige as duas coisas.
 
@@ -162,7 +162,7 @@ documentos: eles não podem sair da GE. O diagnóstico do SIG-FT está abaixo.
 | Sintoma | Onde olhar |
 |---|---|
 | "Sem conexão com o AMP" | a rede da máquina: ela precisa alcançar `ampworkflow.gevernova.net` |
-| HTTP 401 ou 403 | a chave do **Webhook…** é diferente da credencial `X-SIGFT-Chave` do workflow |
+| HTTP 401 ou 403 | a chave do **Configurar IA** (Revisão no AMP) é diferente da credencial `X-SIGFT-Chave` do workflow |
 | HTTP 404 | o workflow não está publicado, ou o endereço é a Test URL (`/webhook-test/`) |
 | HTTP 400, etapa `arquivos` | os arquivos não chegaram ao agente: o **Monta a mensagem** precisa de *Include Other Input Fields = All* |
 | HTTP 502, etapa `agente` | o agente falhou: veja a execução no n8n e confira se o **AMP Agent** tem o agente e a credencial |

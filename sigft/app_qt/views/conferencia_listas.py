@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 
+from sigft.app import ia_por_modulo
 from sigft.app.idioma import marcar, t
 from sigft.app_qt.views.aplicacao_lmr import MARGEM_DA_ROLAGEM, MARGEM_DIREITA_DA_ROLAGEM
 from sigft.app_qt.views.conferencia_revisoes import ModuloConferenciaRevisoes
@@ -18,6 +19,7 @@ from sigft.app_qt.views.revisao_amp import ModuloRevisaoAmp
 from sigft.app_qt.widgets import blocos
 from sigft.app_qt.widgets.abas import Abas
 from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
+from sigft.app_qt.widgets.ia_do_modulo import instalar_configurar_ia
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 
 TITULO = marcar("Conferência de Listas")
@@ -51,3 +53,5 @@ class ModuloConferenciaListas(ModuleFrame):
         # O "Como funciona" da seção segue a aba aberta: cada uma tem a sua regra.
         instalar_como_funciona(self, {t(ABA_CONFERENCIA): "ConferenciaListas.conferencia",  # nao-e-interface
                                       t(ABA_AMP): "ConferenciaListas.amp"}, abas=self.abas)  # nao-e-interface
+        # [2026-11-05] O webhook da Revisão no AMP no padrão dos outros módulos (pedido do Luan).
+        instalar_configurar_ia(self, ia_por_modulo.TAREFAS_DA_TELA.get("ModuloConferenciaListas", ()))
