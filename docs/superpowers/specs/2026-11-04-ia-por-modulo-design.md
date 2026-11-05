@@ -84,6 +84,7 @@ quem chama decide (o AutoSpec refaz a ficha com o texto extraído, como quando u
 PDF). `aceita_pdf` do provedor é verdadeiro: o agente do AMP lê o PDF anexado, como na revisão das
 listas. O `ClienteAmp.enviar` aceita arquivo em memória (`nome`, `dados`, `mime`) além do caminho.
 
-**O AutoSpec** se liga pela central ("Modelos de IA"), porque a tela dele (do Rafael) não tem o
-botão. O código do AutoSpec não mudou: ele já perguntava `aceita_pdf` e já caía para o texto.
+**O AutoSpec** ganhou o botão "Configurar IA" na tela em 2026-11-05 (pedido do Luan; a linha que o
+mural de 2026-11-04 descrevia), e continua também na central. O serviço do AutoSpec não mudou: ele
+já perguntava `aceita_pdf` e já caía para o texto.
 

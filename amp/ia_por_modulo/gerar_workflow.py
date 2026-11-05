@@ -51,9 +51,10 @@ MODULOS = {
         "sempre_json": True,
         "com_arquivos": False,
     },
-    # A tela do AutoSpec (do Rafael) não tem o botão "Configurar IA": o modo se escolhe na
-    # janela central. As duas chamadas (preencher a ficha e conferir o fornecedor) são a
-    # mesma tarefa, `autospec`, e levam os documentos.
+    # O "onde" é a janela central, que vale para todas as telas; o botão "Configurar IA" chegou
+    # à tela do AutoSpec depois (2026-11-05), e a nota não mudou para o .json importado continuar
+    # igual. As duas chamadas (preencher a ficha e conferir o fornecedor) são a mesma tarefa,
+    # `autospec`, e levam os documentos.
     "autospec": {
         "titulo": "AutoSpec",
         "caminho": "sigft-ia-autospec",

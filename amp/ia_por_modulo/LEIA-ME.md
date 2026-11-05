@@ -2,8 +2,8 @@
 
 O modo **Workflow AMP** de uma tela: em vez do OpenRouter, a IA daquela tela é um agente do AMP,
 chamado por um workflow do n8n. A escolha é por tarefa, no botão **Configurar IA** da tela (ou na
-janela **Modelos de IA**, na engrenagem da Home; o AutoSpec, que não tem o botão, só por ela). A IA
-Externa continua lá: trocar de modo é um clique, nos dois sentidos.
+janela **Modelos de IA**, na engrenagem da Home). A IA Externa continua lá: trocar de modo é um
+clique, nos dois sentidos.
 
 **Diferente da revisão das listas:** aqui o SIG-FT manda o **prompt inteiro**, o mesmo que vai ao
 OpenRouter (`sigft/core/llm/prompts.py`). O agente de cada módulo tem só um system prompt curto
@@ -137,9 +137,9 @@ no Workflow AMP mandaria só o texto e perderia as páginas escaneadas.
    Agent** com o **Timeout** no máximo (ele lê PDFs inteiros: pode levar minutos), publique e copie a
    **Production URL**, que termina em `/webhook/sigft-ia-autospec`. Não mexa no **Monta a mensagem**:
    ele já vem com *Include Other Input Fields* ligado, que é o que leva os arquivos ao agente.
-3. **No SIG-FT:** a tela do AutoSpec não tem o botão **Configurar IA**. Vá na engrenagem da Home →
-   **Modelos de IA** → na lista "IA por módulo", **AutoSpec (RAG)** → **Workflow AMP**, e preencha o
-   endereço e a chave.
+3. **No SIG-FT:** **AutoSpec** → **Configurar IA** (ou a engrenagem da Home → **Modelos de IA** →
+   **AutoSpec (RAG)**) → **Workflow AMP**, e preencha o endereço e a chave. O botão chegou à tela do
+   AutoSpec na mesma versão.
 
 ### Como o AutoSpec usa o workflow
 
