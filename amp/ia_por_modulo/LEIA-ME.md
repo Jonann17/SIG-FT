@@ -18,8 +18,8 @@ resposta é mudar o prompt no SIG-FT, e as duas IAs ganham juntas.
 
 Módulos prontos:
 - **Cria Fichas** (`cria_fichas/`): testado na GE em 2026-11-05, as duas passadas;
-- **AutoSpec** (`autospec/`): leva os documentos ao agente; precisa da versão **1.4.0-rc.2** ou mais
-  nova.
+- **AutoSpec** (`autospec/`): leva os documentos ao agente; precisa de uma versão **depois da
+  1.4.0-rc.2** (a que traz, nas novidades, "AutoSpec: pode rodar no Workflow AMP").
 
 Um módulo por vez, cada um testado antes do seguinte (decisão do Luan, 2026-11-05).
 
@@ -126,9 +126,9 @@ AMP: uma falha dela não derruba o lote.
 
 ## Ligar o AutoSpec (uma vez)
 
-Precisa da versão **1.4.0-rc.2** ou mais nova: é nela que o Workflow AMP passa a levar os documentos
-ao agente. Antes dela, o AutoSpec no Workflow AMP mandaria só o texto e perderia as páginas
-escaneadas.
+Precisa de uma versão **depois da 1.4.0-rc.2**, a que traz nas novidades "AutoSpec: pode rodar no
+Workflow AMP": é nela que o Workflow AMP passa a levar os documentos ao agente. Antes dela, o AutoSpec
+no Workflow AMP mandaria só o texto e perderia as páginas escaneadas.
 
 1. **O agente, no AMP:** crie o **Spare Parts Datasheet Reader** com o texto de `autospec/agente.md`,
    como o do Cria Fichas (sem data source e sem *Add Optimized Query*).
