@@ -145,3 +145,7 @@ usuário. Preços de mercado cruzados com:
 [BenchLM LLM pricing](https://benchlm.ai/llm-pricing) ·
 [Morph LLM API compare](https://www.morphllm.com/llm-api) ·
 [OpenRouter](https://openrouter.ai/models)
+
+## 6. IA por módulo (2026-11-04)
+
+Pedido do Luan: a escolha é **por módulo**, com três modos. **IA Externa** é o OpenRouter (o que este documento descreve: catálogo, favoritos, custo real). **IA Interna (AMP)** aparece desligada até o AMP ter API. **Workflow AMP** manda o prompt ao webhook do n8n daquele módulo (`AMP_IA_<TAREFA>_URL`/`_CHAVE`) e devolve o texto, sem repetição. O modo é derivado da seleção por tarefa (`_modelos_ia.por_tarefa`): o provedor `amp_workflow` é o workflow, qualquer outro é a IA Externa. O seletor global continua como "Modelo padrão (avançado)", para a tarefa sem escolha por módulo. Contrato do workflow e telas: `docs/superpowers/specs/2026-11-04-ia-por-modulo-design.md`.

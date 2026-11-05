@@ -26,7 +26,7 @@ from sigft.app_qt import main as qmain
 # de filho que aponta para a tela usa `widgets/fraco.chamada_fraca`.
 SEM_CICLO = ["Home", "Translator", "LMR", "CriaFichas", "PDM", "Analyzer", "UploadConditions",
              "UploadSpecs", "CorrecaoPDM", "CopiaFichas",
-             "PMIBManager", "SearchPMIB"]
+             "PMIBManager", "SearchPMIB", "ListaPrecos"]
 
 
 class _Controlador:

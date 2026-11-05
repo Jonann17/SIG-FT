@@ -26,6 +26,9 @@ MENU = [
     ("botao", marcar("7. Aplicação LMR"), "LMR"),
     ("secao", marcar("Gestão")),
     ("botao", marcar("8. PMIB Manager"), "PMIBManager"),
+    ("botao", marcar("8.1. Conferência de Listas"), "ConferenciaListas"),
+    ("botao", marcar("8.2. DocPack"), "DocPack"),
+    ("botao", marcar("8.3. Lista de Preços"), "ListaPrecos"),
     ("botao", marcar("9. Search"), "SearchPMIB"),
 ]
 
@@ -45,6 +48,9 @@ ICONE_DA_TELA = {
     "AutoSpec": "sparkles",
     "LMR": "tag",
     "PMIBManager": "folder-kanban",
+    "ConferenciaListas": "list-checks",
+    "DocPack": "folder-plus",
+    "ListaPrecos": "circle-dollar-sign",
     "SearchPMIB": "search",
 }
 
@@ -85,7 +91,16 @@ MODULOS = [
             "preciso. As duas coisas ficam em abas da mesma seção.")),
     ("PMIBManager", marcar("PMIB Manager"),
      marcar("Atualiza o mapeamento a partir do Aconex, renomeia pelo RDS-PP e calcula o "
-            "avanço. Em abas, confere as revisões das listas e as revisa no AMP.")),
+            "avanço de cada lista de sobressalentes.")),
+    ("ConferenciaListas", marcar("Conferência de Listas"),
+     marcar("Aponta as listas com revisão nova no Aconex, baixa os PDFs e manda cada uma ao "
+            "AMP, que devolve o que mudou. As duas coisas ficam em abas.")),
+    ("DocPack", marcar("DocPack"),
+     marcar("Cria a pasta, com os templates, de cada lista que ainda não tem _STATUS_PMIB, e "
+            "depois preenche o conteúdo dela. As duas etapas ficam em abas.")),
+    ("ListaPrecos", marcar("Lista de Preços"),
+     marcar("Cria a lista com preço dos sistemas que ainda não têm, com os materiais do _STATUS_PMIB, e "
+            "confere uma pasta contra o _STATUS_PMIB. As duas coisas ficam em abas.")),
     ("SearchPMIB", marcar("Busca PMIB"),
      marcar("Procura um código ou descrição nas planilhas de uma pasta inteira, sem "
             "abrir arquivo por arquivo.")),
@@ -144,7 +159,7 @@ ACAO_SUGESTOES = AcaoDaHome("sugestoes", marcar("Sugestões"), "lightbulb", "fan
 # Os botões que moram na janela Configuração: saíram da barra da Home em 2026-10-22.
 ACOES_DA_CONFIGURACAO = (
     AcaoDaHome("modelos", marcar("Modelos de IA"), "bot", "primario",
-               "abrir_janela_modelos_ia", marcar("ia llm provedor")),
+               "abrir_janela_ia_por_modulo", marcar("ia llm provedor modulo workflow amp openrouter")),
     AcaoDaHome("chaves", marcar("Chaves de API"), "key-round", "secundario",
                "abrir_janela_chaves_api", marcar("api key senha")),
     AcaoDaHome("atualizacoes", marcar("Procurar atualizações"), "refresh-cw", "secundario",

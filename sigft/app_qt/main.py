@@ -111,10 +111,28 @@ def _autospec(parent, controller):
 
 
 def _pmib_manager(parent, controller):
-    # 2026-10-27: uma seção de abas (Gestão PMIB, Conferência de Revisões,
-    # Revisão no AMP e, desde 2026-11-03, DocPack), como a Aplicação LMR.
+    # A Gestão PMIB, com o console da seção. [2026-11-04] A Conferência, a Revisão
+    # no AMP e o DocPack, que eram abas daqui, viraram os dois módulos abaixo.
     from sigft.app_qt.views.gestao_sobressalentes import ModuloGestaoSobressalentes
     return ModuloGestaoSobressalentes(parent, controller)
+
+
+def _conferencia_listas(parent, controller):
+    # 2026-11-04: Conferência de Revisões e Revisão no AMP, em abas.
+    from sigft.app_qt.views.conferencia_listas import ModuloConferenciaListas
+    return ModuloConferenciaListas(parent, controller)
+
+
+def _docpack(parent, controller):
+    # 2026-11-04: o DocPack em duas etapas (estrutura e conteúdo), em abas.
+    from sigft.app_qt.views.docpack_secao import ModuloDocPackSecao
+    return ModuloDocPackSecao(parent, controller)
+
+
+def _lista_precos(parent, controller):
+    # 2026-11-05: a lista com preço saiu do DocPack e virou módulo próprio, em abas.
+    from sigft.app_qt.views.lista_precos import ModuloListaPrecos
+    return ModuloListaPrecos(parent, controller)
 
 
 def _upload_fotos(parent, controller):
@@ -159,6 +177,9 @@ TELAS = {
     "CopiaFichas": _copia_fichas,
     "AutoSpec": _autospec,
     "PMIBManager": _pmib_manager,
+    "ConferenciaListas": _conferencia_listas,
+    "DocPack": _docpack,
+    "ListaPrecos": _lista_precos,
     "SearchPMIB": _busca_pmib,
     # A boas-vindas (2026-10-28): página da pilha, fora do menu.
     CHAVE_BOAS_VINDAS: _boas_vindas,

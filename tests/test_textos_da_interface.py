@@ -268,11 +268,19 @@ CONVERTIDOS: tuple[str, ...] = (
     "sigft/app_qt/views/gestao_sobressalentes.py",
     "sigft/app_qt/views/revisao_amp.py",
     "sigft/app_qt/views/docpack.py",
+    # As seções da Gestão (2026-11-04): Conferência de Listas e DocPack
+    "sigft/app_qt/views/conferencia_listas.py",
+    "sigft/app_qt/views/docpack_secao.py",
+    "sigft/app_qt/views/docpack_etapa2.py",
+    "sigft/app_qt/views/lista_precos.py",
     # Ajuda para quem começa (2026-10-28): o "Como funciona" de cada tela
     "sigft/app/como_funciona.py",
     "sigft/app_qt/widgets/como_funciona.py",
     # Ajuda para quem começa (2026-10-28): a boas-vindas
     "sigft/app_qt/views/boas_vindas.py",
+    # IA por módulo (2026-11-04): IA Externa, IA Interna e Workflow AMP
+    "sigft/app/ia_por_modulo.py",
+    "sigft/app_qt/widgets/ia_do_modulo.py",
 )
 
 # Literais que a varredura acusa e que ficam em português de propósito, por

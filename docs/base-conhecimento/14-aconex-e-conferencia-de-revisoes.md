@@ -33,8 +33,8 @@ AMP", no fim). Esta peça faz três coisas:
 | serviço | `sigft/services/conferencia_revisoes.py` | a mapeadora, a regra da conferência e os downloads |
 | serviço | `sigft/services/pmib_manager.py` | STATUS REAL e regra PB020 (ver `11-pmib-manager-backend.md`) |
 | serviço | `sigft/services/painel.py` | o painel marca `aprov` por lista com `eh_aprovacao` |
-| tela | `sigft/app_qt/views/conferencia_revisoes.py` | `ModuloConferenciaRevisoes` (a aba Conferência de Revisões do PMIB Manager), `UltimaConferencia` e `perfil_do_aconex` |
-| tela | `sigft/app_qt/views/gestao_sobressalentes.py` | a seção do PMIB Manager (menu 8): Gestão PMIB, Conferência de Revisões e Revisão no AMP em abas, com um console e uma barra |
+| tela | `sigft/app_qt/views/conferencia_revisoes.py` | `ModuloConferenciaRevisoes` (a aba Conferência de Revisões do módulo Conferência de Listas), `UltimaConferencia` e `perfil_do_aconex` |
+| tela | `sigft/app_qt/views/conferencia_listas.py` | a seção "Conferência de Listas" (menu 8.1, desde 2026-11-04): Conferência de Revisões e Revisão no AMP em abas, com um console e uma barra. Até 2026-11-03 eram abas do PMIB Manager (`gestao_sobressalentes.py`) |
 
 ## Credenciais
 
@@ -130,8 +130,8 @@ uma varredura por conferência, só no primeiro link quebrado).
 4. `ErroAconex`, código fora do Aconex ou erro ao gravar: linha "falhou", e o resto
    continua. `cancelado_cb` para o laço entre as listas.
 
-**A tela** é a aba Conferência de Revisões do PMIB Manager (era o item 10 do menu
-até a rc.1). Mapeadora e pasta raiz começam nas do Gestão PMIB; mostra quando a
+**A tela** é a aba Conferência de Revisões do módulo Conferência de Listas (menu 8.1,
+desde 2026-11-04; era aba do PMIB Manager e, até a rc.1, o item 10 do menu). Mapeadora e pasta raiz começam nas do Gestão PMIB; mostra quando a
 mapeadora foi salva e avisa se não foi hoje; totais por categoria, "Em dia" e
 "Sem `_STATUS_PMIB`"; uma aba por categoria, em `widgets/abas` (código, revisão em
 uso, última revisão emitida, status da revisão, STATUS REAL e PDF; as larguras somam

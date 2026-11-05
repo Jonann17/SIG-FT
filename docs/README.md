@@ -32,6 +32,7 @@ código e revisada. Um arquivo por módulo:
 | `13-montagem-da-ficha-tecnica.md` | a ficha técnica do PMIB, seção a seção |
 | `14-aconex-e-conferencia-de-revisoes.md` | Aconex, Conferência de Revisões e Revisão no AMP |
 | `15-docpack.md` | `sigft/services/docpack.py` (aba DocPack do PMIB Manager) |
+| `16-lista-de-precos.md` | `sigft/services/lista_precos_arquivo.py` (módulo Lista de Preços) |
 | `16-upload-fotos.md` | `sigft/services/upload_fotos.py` (Upload de Fotos) |
 
 ## Refatoração (`refatoracao/`)

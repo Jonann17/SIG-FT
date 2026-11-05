@@ -66,6 +66,21 @@ def test_raiz_tolera_vazio_e_none():
     assert lp.raiz("  ") == ""
 
 
+def test_raiz_da_lista_com_preco_PB021_e_a_da_lista_PB020():
+    """Formato vigente (ITAIPU-REF-0013): a lista com preço é a de
+    sobressalentes com o DCC PB021 no lugar do PB020, sem sequencial."""
+    assert lp.raiz("#ST00=U01&MPB021") == "#ST00=U01&MPB020"
+
+
+def test_raiz_PB021_com_sequencial_tambem_vira_PB020():
+    assert lp.raiz("#ST00=U01&MPB021-01") == "#ST00=U01&MPB020"
+
+
+def test_raiz_so_troca_PB021_no_fim_do_codigo():
+    codigo = "#ST00=PB021X&MPB020"
+    assert lp.raiz(codigo) == codigo
+
+
 # =============================================================================
 # B. Quem é lista de preços
 # =============================================================================
@@ -311,3 +326,34 @@ def test_o_modulo_nao_importa_pandas_nem_openpyxl():
 
     assert "pandas" not in importados
     assert "openpyxl" not in importados
+
+
+# =============================================================================
+# PB021 — a lista com preço do formato vigente
+# =============================================================================
+
+def test_lista_PB021_acha_a_lista_PB020_correspondente():
+    """O defeito relatado em 2026-11-04: a lista `...MPB021` saía órfã porque
+    a raiz dela era ela mesma -- não há sequencial a tirar. Trocando o 1 final
+    por 0 acha-se a lista de sobressalentes `...MPB020`."""
+    precos = doc("#ST00=U01&MPB021", TITULO_PRECOS, "T-PRECO")
+    historico = [
+        doc("#ST00=U01&MPB020", TITULO_LISTA, "T-LISTA"),
+        precos,
+    ]
+    par = lp.parear(precos, historico)
+    assert par["desfecho"] == lp.PAR_ENCONTRADO
+    assert par["lista"] == "#ST00=U01&MPB020"
+    assert par["alerta"] == lp.ALERTA_VAZIO
+
+
+def test_lista_PB021_com_rdspp_mudado_aponta_o_codigo_novo():
+    precos = doc("#ST00=U01&MPB021", TITULO_PRECOS, "T-PRECO")
+    historico = [
+        doc("#ST00=U01&MPB020", TITULO_LISTA, "T-LISTA", current=False),
+        doc("#ST00=U02&MPB020", TITULO_LISTA, "T-LISTA"),
+        precos,
+    ]
+    par = lp.parear(precos, historico)
+    assert par["desfecho"] == lp.RDSPP_MUDOU
+    assert par["lista"] == "#ST00=U02&MPB020"
