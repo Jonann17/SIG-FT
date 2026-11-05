@@ -50,8 +50,12 @@ pasta nem sempre é o da ET.
 - **Template copiado byte a byte e editado no XML** (`core/excel/cirurgico.py`): as
   validações em extensão e os nomes definidos do `_STATUS_PMIB`, e o VBA da lista com
   preço, saem intactos.
-- **A mapeadora não é gravada**: o log manda rodar o Gestão PMIB, que liga o
-  `_STATUS_PMIB` novo (LINK DA PLANILHA).
+- **Da mapeadora, só o LINK DA PLANILHA vazio** (2026-11-05, `docpack.gravar_links`): depois de criar, o
+  DocPack grava o "Abrir Box" (relativo à pasta da mapeadora, como o Gestão PMIB) de cada dossiê novo, para a
+  Conferência de Listas achá-lo já. Link que existe não é trocado; mapeadora aberta no Excel pede para fechar.
+  SITUAÇÃO NO PMIB e REVISÃO EM USO continuam com o Gestão PMIB.
+- **As tabelas das duas etapas rolam de lado** (2026-11-05): cada coluna cresce até caber o texto
+  (`dialogos_selecao.ajustar_ao_conteudo`), e o que não cabe na tela tem a barra horizontal.
 - Pasta dentro de `00 - OBSOLETO`, testes ou backup: cria, com o aviso de que ali o
   `_STATUS_PMIB` não conta como vivo.
 

@@ -14,6 +14,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
 ## 1.4.0 - 2026-11-04
 
+- DocPack: o dossiê criado já entra na mapeadora com o **link do Box** ("Abrir Box" no LINK DA PLANILHA, só onde estava vazio), e a Conferência de Listas o acha sem esperar o Gestão PMIB. As tabelas das duas etapas ganharam a **barra de rolagem horizontal**: cada coluna cresce até caber o texto, e o que não cabe na tela rola para o lado.
 - Sugestões: a lâmpada ao lado da engrenagem, no alto da Home (e "Sugestões" no Ctrl+K), abre uma janela para escrever uma ideia ou algo que poderia funcionar melhor. O SIG-FT abre um rascunho de e-mail no Outlook com o texto, a versão e, se você deixar marcado, o log; quem escolhe para quem enviar, e envia, é você.
 - Aplicação LMR: o relatório dos códigos que falharam (`erros_lmr.csv`) passa a ficar sempre em Documentos\SIG-FT\logs, e o console diz onde. Antes ele ia para a pasta de onde o SIG-FT foi aberto, e no programa instalado podia nem ser gravado, sem aviso.
 - Estabilidade: uma tela solta passa a sumir na hora, sem esperar o coletor de lixo do Python, que podia destruí-la no meio da pintura de um menu e derrubar o programa. Era a queda que travava os testes do instalador da versão (o teste de medidas da Busca PMIB, que estava fora do Release, voltou). Vale para a Busca PMIB e, agora, também para a Home, o Analyzer, o Upload de Condições, o Upload de Características e a Correção de PDM.

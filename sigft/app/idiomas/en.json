@@ -560,7 +560,7 @@
   "Nada com esse nome.": "Nothing with that name.",
   "Nada pendente para hoje nem para os próximos dias.": "Nothing pending for today or the next few days.",
   "Nada é escrito até você confirmar em Gravar; planilha que já tem material é recusada.": "Nothing is written until you confirm in Write; a sheet that already has materials is refused.",
-  "Nada é sobrescrito, e a mapeadora não muda: rode o Gestão PMIB depois para ligar.": "Nothing is overwritten, and the mapping does not change: run Gestão PMIB afterwards to link.",
+  "Nada é sobrescrito. O link de cada dossiê novo vai para a mapeadora (só onde estava vazio).": "Nothing is overwritten. Each new dossier's link goes into the mapping spreadsheet (only where it was empty).",
   "Nas fichas selecionadas:": "On the selected sheets:",
   "Nenhum (a planilha não será alterada)": "None (the spreadsheet will not be changed)",
   "Nenhum (o lote não será marcado na planilha)": "None (the batch will not be marked in the spreadsheet)",

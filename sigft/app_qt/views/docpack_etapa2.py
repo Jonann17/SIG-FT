@@ -128,8 +128,10 @@ class ModuloDocPackEtapa2(ModuleFrame):
 
         self.lbl_totais = blocos.rotulo("", alinhar="esquerda", negrito=True)
         lay.addWidget(self.lbl_totais)
-        self.tabela = dialogos_selecao.tabela_ttk([(t(c), largura, "w") for c, largura in COLUNAS],
-                                                  barra_horizontal=False)
+        self.tabela = dialogos_selecao.tabela_ttk([(t(c), largura, "w") for c, largura in COLUNAS])
+        # [2026-11-05] Barra de rolagem de lado (pedido do Jonathan): a coluna cresce
+        # até caber o texto (`ajustar_ao_conteudo`) e o que não cabe na tela rola.
+        self.tabela.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         lay.addWidget(self.tabela, 1)
         self._mostrar_pasta()
         self._mostrar_webhook()
@@ -217,6 +219,7 @@ class ModuloDocPackEtapa2(ModuleFrame):
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(0, Qt.CheckState.Checked)
             item.setToolTip(1, str(dossie.pasta))
+        dialogos_selecao.ajustar_ao_conteudo(self.tabela)
         self.lbl_totais.setText(t("{n} dossiê(s) vazio(s)", n=len(self.dossies)))
 
     def marcados(self) -> list[etapa2_svc.Dossie]:
@@ -263,6 +266,7 @@ class ModuloDocPackEtapa2(ModuleFrame):
             linha = self._linha_do(proposta.dossie)
             if linha is not None:
                 self.tabela.topLevelItem(linha).setText(COL_SITUACAO, _situacao(proposta))
+            dialogos_selecao.ajustar_ao_conteudo(self.tabela)
         self.btn_gravar.setEnabled(any(p.situacao == "pronta" for p in self.propostas))
 
     # -- gravar ------------------------------------------------------------
@@ -296,6 +300,7 @@ class ModuloDocPackEtapa2(ModuleFrame):
             texto = t(GRAVADO) if resultado.situacao == "gravado" else resultado.detalhe
             item = self.tabela.topLevelItem(linha)
             item.setText(COL_SITUACAO, texto)
+            dialogos_selecao.ajustar_ao_conteudo(self.tabela)
             if resultado.situacao == "gravado":
                 item.setCheckState(0, Qt.CheckState.Unchecked)
         gravados = {id(r.dossie) for r in resultados if r.situacao in ("gravado", "parcial")}

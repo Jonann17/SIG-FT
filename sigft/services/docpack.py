@@ -20,8 +20,9 @@ Regras que não se negociam:
 * **O template é copiado byte a byte e editado no XML** (`core/excel/cirurgico.py`):
   o openpyxl apagaria as validações em extensão do `_STATUS_PMIB` e o VBA da lista
   com preço.
-* **A mapeadora não é gravada.** Quem liga o `_STATUS_PMIB` novo a ela é o Gestão
-  PMIB, na rodada seguinte.
+* **Da mapeadora, só o LINK DA PLANILHA vazio** (2026-11-05, `gravar_links`): o
+  dossiê criado já entra com o "Abrir Box", para a Conferência de Listas achá-lo. O
+  resto da mapeadora continua sendo do Gestão PMIB.
 
 Desenho: `docs/superpowers/specs/2026-11-03-docpack-design.md`.
 """
@@ -489,8 +490,77 @@ def criar_dossies(pedidos: list[tuple[ListaNaMapeadora, Destino]], raiz: str | P
     falhas = sum(r.situacao == "falhou" for r in resultados)
     log_cb(f"DocPack: {feitos} criado(s), {com_aviso} com aviso, {falhas} falha(s).")
     if feitos or com_aviso:
-        log_cb("Rode o Gestão PMIB para ligar os _STATUS_PMIB novos à mapeadora (LINK DA PLANILHA).")
+        log_cb("O link de cada dossiê vai para a mapeadora agora (LINK DA PLANILHA vazio); SITUAÇÃO e "
+               "REVISÃO EM USO o Gestão PMIB atualiza na próxima rodada.")
     return resultados
+
+
+# --------------------------------------------------------------------------
+# O link na mapeadora (2026-11-05)
+# --------------------------------------------------------------------------
+TEXTO_DO_LINK = "Abrir Box"   # o mesmo do Gestão PMIB (`pmib_manager._gravar_na_mestra`)
+
+
+def arquivo_status_do_dossie(resultado: Resultado) -> Path | None:
+    """O `_STATUS_PMIB` que o dossiê tem, ou `None`."""
+    if resultado.situacao == "falhou" or resultado.pasta is None:
+        return None
+    caminho = Path(resultado.pasta) / f"{resultado.codigo}_STATUS_PMIB.xlsx"
+    return caminho if caminho.exists() else None
+
+
+def gravar_links(caminho_mapeadora: str | Path, resultados: list[Resultado], *,
+                 log_cb: Log = print, retry_lock: Callable[[object], bool] | None = None) -> int:
+    """[2026-11-05] Pedido do Jonathan: o dossiê novo já entra na mapeadora com o
+    LINK DA PLANILHA ("Abrir Box", relativo à pasta da mapeadora, como o Gestão
+    PMIB grava), para a Conferência de Listas achá-lo sem esperar o próximo Gestão
+    PMIB. **Só preenche link VAZIO**: link que já existe (de outro `_STATUS_PMIB`)
+    não é trocado. Devolve quantos links gravou."""
+    from openpyxl import load_workbook
+
+    from sigft.core.excel.locking import salvar_perguntando
+    from sigft.services.pmib_manager import COLUNA_CHAVE_SOBRESSALENTES, NOME_ABA_SOBRESSALENTES, achar_aba
+
+    alvos = {r.codigo.strip().upper(): a for r in resultados if (a := arquivo_status_do_dossie(r))}
+    if not alvos:
+        return 0
+    pasta_mapeadora = os.path.dirname(os.path.abspath(caminho_mapeadora))
+    wb = load_workbook(caminho_mapeadora)
+    try:
+        ws, motivo = achar_aba(wb, NOME_ABA_SOBRESSALENTES, COLUNA_CHAVE_SOBRESSALENTES)
+        if ws is None:
+            log_cb(f"⚠️ Link na mapeadora: não achei a aba de sobressalentes ({motivo}).")
+            return 0
+        colunas = {c.value: i + 1 for i, c in enumerate(ws[2]) if c.value}
+        col_doc, col_link = colunas.get(COLUNA_CHAVE_SOBRESSALENTES), colunas.get("LINK DA PLANILHA")
+        if not col_doc or not col_link:
+            log_cb("⚠️ Link na mapeadora: falta a coluna N° DOCUMENTO ITAIPU ou LINK DA PLANILHA.")
+            return 0
+        gravados = []
+        for linha in range(3, ws.max_row + 1):
+            codigo = str(ws.cell(row=linha, column=col_doc).value or "").strip().upper()
+            if codigo not in alvos:
+                continue
+            celula = ws.cell(row=linha, column=col_link)
+            if celula.hyperlink is not None and getattr(celula.hyperlink, "target", None):
+                log_cb(f"   ⏭️ {codigo}: a mapeadora já tem link, ficou o que estava.")
+                continue
+            celula.value = TEXTO_DO_LINK
+            celula.hyperlink = os.path.relpath(alvos[codigo], start=pasta_mapeadora)
+            gravados.append(codigo)
+        if not gravados:
+            return 0
+        try:
+            salvar_perguntando(wb, caminho_mapeadora, retry_lock=retry_lock)
+        except PermissionError:
+            log_cb("❌ Link na mapeadora: o arquivo está aberto no Excel; os links não foram gravados. "
+                   "Rode o Gestão PMIB depois para ligá-los.")
+            return 0
+        for codigo in gravados:
+            log_cb(f"   🔗 {codigo}: link gravado na mapeadora.")
+        return len(gravados)
+    finally:
+        wb.close()
 
 
 # --------------------------------------------------------------------------
