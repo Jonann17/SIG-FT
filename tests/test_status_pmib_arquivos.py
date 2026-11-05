@@ -148,3 +148,56 @@ def test_revisao_acima_do_cabecalho_procura_pelo_texto_e_nao_pela_coordenada():
     ]
     assert arquivos.revisao_acima_do_cabecalho(linhas, linha_cabecalho=4) == "0A"
     assert arquivos.revisao_acima_do_cabecalho(linhas, linha_cabecalho=3) is None
+
+
+# -- o código do projeto: a linha abaixo do título (2026-11-05) ------------------------
+
+TITULO = "GERENCIAMENTO DOS MATERIAS SOBRESSALENTES CADASTRADOS NO PMIB"   # a grafia do template
+PROJETO = "03 - EBOP / 09 / AR COMPRIMIDO | #ITA0=Y01TF001&BPB020 / 4500063671 | Evento 12"
+REVISAO = "REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: 0A - DATA DE ALTERAÇÃO: 03/09/2026"
+NAN = float("nan")
+
+
+def _layout_v2(titulo=TITULO, projeto=PROJETO):
+    """As linhas do template v2, como o pandas as lê (`header=None`): a célula mesclada traz o
+    valor só na primeira coluna, e o vazio é NaN."""
+    return [
+        [NAN, NAN, NAN],
+        [titulo, NAN, NAN],
+        [projeto, NAN, NAN],
+        [REVISAO, NAN, NAN],
+        ["ITEM", "QTD.", "DESCRIÇÃO"],
+        [1, 2, "BOMBA"],
+    ]
+
+
+def test_projeto_e_a_linha_abaixo_do_titulo_e_nao_a_da_revisao():
+    assert arquivos.projeto_abaixo_do_titulo(_layout_v2()) == PROJETO
+
+
+@pytest.mark.parametrize("titulo", [
+    "GERENCIAMENTO DOS MATERIAIS SOBRESSALENTES CADASTRADOS NO PMIB",
+    "  gerenciamento dos materias   sobressalentes cadastrados no PMIB ",
+])
+def test_titulo_com_outra_grafia_tambem_vale(titulo):
+    assert arquivos.projeto_abaixo_do_titulo(_layout_v2(titulo=titulo)) == PROJETO
+
+
+def test_sem_o_titulo_nao_ha_projeto():
+    linhas = [["OUTRO TÍTULO"], [PROJETO], ["ITEM", "DESCRIÇÃO"]]
+    assert arquivos.projeto_abaixo_do_titulo(linhas) is None
+
+
+@pytest.mark.parametrize("vazio", [NAN, None, "   "])
+def test_titulo_com_a_linha_de_baixo_vazia_devolve_vazio(vazio):
+    assert arquivos.projeto_abaixo_do_titulo(_layout_v2(projeto=vazio)) == ""
+
+
+def test_titulo_noutra_coluna_le_a_mesma_coluna_embaixo():
+    linhas = [[NAN, NAN, TITULO], ["lixo", NAN, PROJETO], ["ITEM", "QTD.", "DESCRIÇÃO"]]
+    assert arquivos.projeto_abaixo_do_titulo(linhas) == PROJETO
+
+
+def test_titulo_na_ultima_linha_lida_devolve_vazio():
+    assert arquivos.projeto_abaixo_do_titulo([[NAN], [TITULO]]) == ""
+

@@ -27,6 +27,12 @@ No layout v2, a linha acima do cabeçalho diz qual revisão da lista está em us
 Achada pelo TEXTO, nunca pela coordenada; sem a linha, ou sem revisão ("—"),
 a mapeadora não é tocada.
 
+O código do projeto (2026-11-05)
+--------------------------------
+É a linha logo ABAIXO do título "GERENCIAMENTO DOS MATERIAIS SOBRESSALENTES
+CADASTRADOS NO PMIB" (o Cria Fichas a sugere na tela). Achado também pelo texto:
+o Cria Fichas lia a linha acima do cabeçalho, e no v2 essa é a da revisão.
+
 Só stdlib.
 """
 from __future__ import annotations
@@ -126,11 +132,17 @@ _RE_REVISAO = re.compile(r"EM USO:\s*(.+?)\s*-\s*DATA DE ALTERA", re.IGNORECASE)
 _SEM_REVISAO = {"", "-", "—", "–"}
 
 
+def e_linha_da_revisao(texto) -> bool:
+    """A célula é a linha "REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO: ...",
+    com revisão ou sem ela?"""
+    return texto is not None and normalizar(texto).startswith(normalizar(config.TEXTO_LINHA_REVISAO))
+
+
 def revisao_do_texto(texto) -> str | None:
     """A revisão escrita na linha "REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM
     USO: <rev> - DATA DE ALTERAÇÃO: ...", ou `None` (outra linha, ou revisão em
     branco/"—"). Pode ser "SEM LISTA"."""
-    if texto is None or not normalizar(texto).startswith(normalizar(config.TEXTO_LINHA_REVISAO)):
+    if not e_linha_da_revisao(texto):
         return None
     # Sobre o texto ORIGINAL (só caixa e espaços): normalizar tiraria o "—",
     # que é justamente o que diz "sem revisão".
@@ -139,6 +151,25 @@ def revisao_do_texto(texto) -> str | None:
         return None
     revisao = m.group(1).strip()
     return None if revisao in _SEM_REVISAO else revisao
+
+
+# O título do `_STATUS_PMIB` (a linha 2 do template, mesclada). O template escreve "MATERIAS",
+# sem o I: as duas grafias valem, comparadas sem acento, sem caixa e com os espaços colapsados.
+_RE_TITULO = re.compile(r"GERENCIAMENTO DOS MATERIAI?S SOBRESSALENTES CADASTRADOS NO PMIB")
+
+
+def projeto_abaixo_do_titulo(linhas: Sequence[Sequence[object]]) -> str | None:
+    """O texto da célula logo abaixo do título, na mesma coluna: a linha do código do projeto.
+    `""` quando ela está vazia; `None` quando o título não está nas `linhas` (`linhas[0]` é a
+    linha 1 da planilha)."""
+    for numero, linha in enumerate(linhas):
+        for coluna, valor in enumerate(linha):
+            if not _RE_TITULO.search(normalizar(valor)):
+                continue
+            abaixo = linhas[numero + 1] if numero + 1 < len(linhas) else ()
+            valor_abaixo = abaixo[coluna] if coluna < len(abaixo) else None
+            return str(valor_abaixo).strip() if normalizar(valor_abaixo) else ""
+    return None
 
 
 def revisao_acima_do_cabecalho(linhas: Iterable[Sequence[object]], linha_cabecalho: int) -> str | None:
