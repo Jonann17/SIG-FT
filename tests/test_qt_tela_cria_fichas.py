@@ -717,6 +717,9 @@ class RoboFalso:
         self.itens.append((pmib, novo))
         return RoboFalso.roteiro.get(pmib, ("SUCESSO", ""))
 
+    def atualizar_projeto_conferido(self, pmib, novo, *, tentativas=2, log=None):
+        return self.atualizar_projeto_em_massa(pmib, novo)
+
 
 @pytest.fixture
 def robo(tela, monkeypatch, pd):
@@ -1147,7 +1150,8 @@ def test_robo_de_edicao(tela, robo, qtbot, pd, monkeypatch):
     texto = _texto(tela)
     assert "> Iniciando Edição em Massa de 2 fichas..." in texto
     assert "> Editando PMIB [1/2]: 4500.1..." in texto
-    assert ">  -> ✅ SUCESSO: Projeto do 4500.1 atualizado." in texto
+    assert ">  -> ✅ SUCESSO: Projeto do 4500.1 atualizado e conferido." in texto
+    assert "> Resumo: 1 atualizada(s), 0 já estava(m) certa(s), 1 com erro." in texto
     assert ">  -> ❌ ERRO no 4500.2: ficha travada" in texto
     assert avisos == [(("Concluído", "Processo de edição em massa finalizado. Verifique o log."),
                        {"esperar": True}, False, False)]
