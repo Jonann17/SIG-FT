@@ -75,7 +75,7 @@ execução do agente no AMP.
 2. Compare com a IA Externa: rode o mesmo lote nos dois modos e confira a revisão.
 3. Se algo falhar, o console mostra o erro do workflow; com o número da execução, o n8n mostra o
    que o agente respondeu (nó **Prepara a resposta**: o `texto` e o `json_valido`).
-4. Anote o tempo de cada chamada no console. Um lote de 63 itens são 2 chamadas de interpretação
+4. O tempo de cada chamada aparece no n8n, em **Executions** (o console não mostra). Um lote de 63 itens são 2 chamadas de interpretação
    (60 itens por chamada) e 5 de categorização (15 por bloco): 7 execuções no n8n.
 
 ### As duas chamadas do Cria Fichas
