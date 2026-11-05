@@ -402,3 +402,19 @@ def test_modelo_em_uso_sem_selecao_mostra_o_padrao_do_sistema(tmp_path, monkeypa
     cat = cria_fichas_no_pmib_v1_backend.GeminiCategorizer("uma-chave")
 
     assert cat.modelo_em_uso == "gemini/gemini-3.1-pro-preview"
+
+
+def test_processar_lote_sem_chave_do_gemini_roda_quando_o_modelo_nao_e_gemini():
+    """[2026-11-05] Com o OpenRouter (ou o Workflow AMP) escolhido, a falta da chave do
+    Gemini não barra o lote: a IA é chamada."""
+    cat = cria_fichas_no_pmib_v1_backend.GeminiCategorizer("")
+    cat._formatar_itens = lambda df, catalogo=None: "### ITEM 1 formatado"
+    fake_llm = _FakeLLM(retorno=_resposta_ok([{"pdm_escolhido": "PDM.4320.007"}]))
+    fake_llm.provider_name = "openrouter"
+    cat._llm = fake_llm
+
+    resultado = cat.processar_lote(df_itens=_DataFrameDeUmItem(),
+                                   catalogo=_CatalogoFalso(lista="PDM.4320.007 - BOMBA", manual="M"))
+
+    assert resultado == [{"pdm_escolhido": "PDM.4320.007"}]
+    assert len(fake_llm.chamadas) == 1

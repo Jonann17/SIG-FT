@@ -435,8 +435,17 @@ class GeminiCategorizer:
         # Os candidatos de cada item do último `processar_lote`, na ordem do
         # lote. É o que os sinais da revisão conferem ("estava na busca?").
         self.ultimos_candidatos = []
-        if not self.api_key:
+        if not self.api_key and getattr(self._llm, "provider_name", None) == config.PROVIDER_GEMINI:
             print("AVISO: Nenhuma API Key fornecida.")
+
+    def _exigir_chave(self) -> None:
+        """[2026-11-05] A chave do Gemini só é exigida quando o modelo resolvido É o
+        Gemini direto. Com o OpenRouter ou o Workflow AMP (o modo do módulo em
+        "Configurar IA"), quem precisa de chave é o provedor deles, que valida a
+        própria. Antes o lote recusava sem a chave do Gemini em qualquer modo."""
+        provider = getattr(self._llm, "provider_name", config.PROVIDER_GEMINI)
+        if provider == config.PROVIDER_GEMINI and not self.api_key:
+            raise ValueError("API Key não configurada.")
 
     @property
     def modelo_em_uso(self) -> str:
@@ -579,8 +588,7 @@ class GeminiCategorizer:
 
         Devolve `(linhas_da_revisao, contagem)` -- ver `preparar_para_revisao`.
         Spec: docs/superpowers/specs/2026-10-08-escolha-de-pdm-em-duas-passadas-design.md."""
-        if not self.api_key:
-            raise ValueError("API Key não configurada.")
+        self._exigir_chave()
         linhas = [linha for _indice, linha in df_itens.iterrows()]
 
         if callback_log:
@@ -619,7 +627,7 @@ class GeminiCategorizer:
         # CP 3.1: `model = genai.GenerativeModel(...)` sai daqui -- a
         # resolução de modelo/provider agora é responsabilidade de
         # `self._llm` (`get_llm("categorizar_pdm", ...)`, ver `__init__`).
-        if not self.api_key: raise ValueError("API Key não configurada.")
+        self._exigir_chave()
 
         pares = list(df_itens.iterrows())
         if interpretacoes is None:
