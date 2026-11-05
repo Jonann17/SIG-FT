@@ -75,8 +75,23 @@ execução do agente no AMP.
 2. Compare com a IA Externa: rode o mesmo lote nos dois modos e confira a revisão.
 3. Se algo falhar, o console mostra o erro do workflow; com o número da execução, o n8n mostra o
    que o agente respondeu (nó **Prepara a resposta**: o `texto` e o `json_valido`).
-4. Anote o tempo de cada chamada no console. Um lote de 63 itens são 1 chamada de interpretação
-   (até 60 itens) e 5 de categorização.
+4. Anote o tempo de cada chamada no console. Um lote de 63 itens são 2 chamadas de interpretação
+   (60 itens por chamada) e 5 de categorização (15 por bloco): 7 execuções no n8n.
+
+### As duas chamadas do Cria Fichas
+
+O botão da IA faz duas passadas, uma depois da outra, e as duas vão ao mesmo workflow e ao mesmo
+agente. O campo `tarefa` diz qual é qual, e o prompt de cada uma traz as próprias instruções.
+
+| | 1ª: *Interpretar material* | 2ª: *Categorizar PDM* |
+|---|---|---|
+| O que pede | o que cada material É, em palavras de catálogo, sem código | o PDM de cada item, entre os candidatos |
+| Itens por chamada | até 60 | 15 |
+| Tamanho | curto: só os itens | grande: os itens, os candidatos, a lista de ~1.200 PDMs e o manual |
+| Se falhar | o lote **segue**, só com a busca por palavras (o console avisa) | o lote **para** ("Erro no processamento: Erro na IA: ..."), e os blocos que já voltaram se perdem |
+
+Por isso, a ordem de teste mais segura é ligar primeiro só a *Interpretar material* no Workflow
+AMP: uma falha dela não derruba o lote.
 
 ## Se der errado
 
