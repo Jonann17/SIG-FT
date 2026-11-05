@@ -1,5 +1,6 @@
 """DocPack, Etapa 2 -- o conteúdo: a lista de materiais do PDF da lista (Aconex + AMP) no
-`_STATUS_PMIB` e na lista com preço dos dossiês que a Etapa 1 deixou vazios.
+`_STATUS_PMIB` dos dossiês que a Etapa 1 deixou vazios (a lista com preço é do módulo Lista de
+Preços desde 2026-11-05).
 
 A tela é fina: o que é um dossiê vazio, o download, o pedido ao AMP e a gravação estão em
 `services/docpack_etapa2.py`. O fluxo tem duas metades, de propósito: "Consultar no AMP" só
@@ -40,25 +41,22 @@ AVISO_NADA_PRONTO = marcar("Nenhuma lista com materiais para gravar: consulte no
 AVISO_SEM_PERFIL = marcar("Nenhum perfil do Aconex neste Windows: uso o PDF que já está na pasta de cada lista.")
 WEBHOOK_NAO_CONFIGURADO = marcar("Webhook da Criação do _STATUS_PMIB não configurado: clique em Webhook…, nesta aba.")
 TEXTO_BAIXAR = marcar("Baixar do Aconex a revisão vigente (sem isso, vai o PDF que já está na pasta)")
-PERGUNTA_GRAVAR = marcar("Gravar estes materiais no _STATUS_PMIB e na lista com preço? O VALOR UNITÁRIO fica "
-                         "vazio, e planilha que já tiver material é recusada.\n\n{resumo}")
+PERGUNTA_GRAVAR = marcar("Gravar estes materiais no _STATUS_PMIB? Planilha que já tiver material é "
+                         "recusada.\n\n{resumo}")
 
 NA_FILA = marcar("na fila")
 PRONTA = marcar("{n} material(is) do AMP")
 FALHOU = marcar("falhou: {erro}")
 PARADO = marcar("parado")
 GRAVADO = marcar("gravado")
-TEM = marcar("sim")
-NAO_TEM = marcar("não está na pasta")
 
 # Os nomes vão em `marcar` e são traduzidos onde a tabela é montada. As larguras somam 850.
 COLUNAS = (
-    (marcar("Código"), 200),
-    (marcar("Pasta"), 230),
-    (marcar("Lista com preço"), 140),
-    (marcar("Situação"), 280),
+    (marcar("Código"), 240),
+    (marcar("Pasta"), 290),
+    (marcar("Situação"), 320),
 )
-COL_SITUACAO = 3
+COL_SITUACAO = 2
 
 
 def _linha(*widgets) -> QHBoxLayout:
@@ -213,8 +211,7 @@ class ModuloDocPackEtapa2(ModuleFrame):
         self.btn_gravar.setEnabled(False)
         self.tabela.clear()
         for indice, dossie in enumerate(self.dossies):
-            precos = t(TEM) if dossie.lista_precos is not None else t(NAO_TEM)
-            item = dialogos_selecao.linha_ttk(self.tabela, (dossie.codigo, dossie.pasta.name, precos, t(NA_FILA)),
+            item = dialogos_selecao.linha_ttk(self.tabela, (dossie.codigo, dossie.pasta.name, t(NA_FILA)),
                                               chave=indice)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(0, Qt.CheckState.Checked)
