@@ -44,6 +44,8 @@ TAREFAS_DA_TELA = {
     # A seção DocPack (abas embutidas, sem cabeçalho): o botão fica no cabeçalho da seção.
     "ModuloDocPackSecao": ("docpack_pasta", "docpack_conteudo"),
     "ModuloConferenciaListas": ("revisao_amp",),
+    # 2026-11-05, pedido do Luan: o AutoSpec (tela do Rafael) ganha o botão como as outras.
+    "ModuloAutoSpec": ("autospec",),
 }
 
 NOMES_DOS_MODOS = {

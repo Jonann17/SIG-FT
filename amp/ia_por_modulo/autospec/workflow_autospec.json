@@ -1,0 +1,335 @@
+{
+  "name": "SIG-FT · IA do AutoSpec (AMP)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## SIG-FT · IA do AutoSpec (AMP)\n**Ligar (uma vez):**\n1. **Webhook do SIG-FT** → *Credential for Header Auth* → *Create new*: Name `X-SIGFT-Chave`, Value um valor longo e aleatório, **diferente** do dos outros workflows.\n2. **AMP Agent** → escolha o agente *Spare Parts Datasheet Reader* → *Add option* → **Timeout**: o máximo.\n3. Salve e **publique**.\n4. Copie a **Production URL** do webhook. No SIG-FT: engrenagem da Home → **Modelos de IA** → *AutoSpec (RAG)* → *Workflow AMP*, o endereço e a chave.\n\nO agente tem só um system prompt curto: as instruções da tarefa vêm do SIG-FT, no `prompt`.\nO pedido leva `modo` (`ia`), `tarefa`, `prompt`, `system` e `json`, e os documentos em `anexo_1`, `anexo_2`... (o campo `arquivos` diz quantos). O *Monta a mensagem* leva os arquivos ao agente (*Include Other Input Fields*), e o workflow confere que todos chegaram antes de chamá-lo. O ping responde sem chamar o agente.\nPasso a passo: `amp/ia_por_modulo/LEIA-ME.md`, no repositório do SIG-FT.",
+        "height": 360,
+        "width": 680
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -340
+      ],
+      "id": "7e1e8c60-6b32-589a-a7fd-6e10215d05cb",
+      "name": "Como ligar"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sigft-ia-autospec",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "id": "99e4403f-f172-5ae6-9aaf-126d9f8f9c99",
+      "name": "Webhook do SIG-FT",
+      "webhookId": "2d08db9d-a584-5afb-94ed-9f586c0865d8"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "5c026237-0836-5200-8c38-325fc977044e",
+              "leftValue": "={{ $json.body.modo }}",
+              "rightValue": "ping",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        220,
+        200
+      ],
+      "id": "554dd819-ceed-5e92-ad5b-aab11b3281d8",
+      "name": "É ping?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, modo: 'ping', versao_workflow: '2026-11-05', execucao: $execution.id }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        460,
+        40
+      ],
+      "id": "bc3f7084-0195-5668-bd0b-69046fc5aeb2",
+      "name": "Responde ping"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b38caf2f-02f0-5537-8bdc-f348009b0008",
+              "name": "chatInput",
+              "value": "={{ [$json.body.system, $json.body.prompt].filter(t => t && String(t).trim()).join('\\n\\n') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        300
+      ],
+      "id": "061431f5-69d5-55b3-b832-29e3b35a435d",
+      "name": "Monta a mensagem"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "831dd9dd-595c-5f28-acf7-252b804eb4ee",
+              "leftValue": "={{ $json.chatInput }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "33dff508-d954-5fa8-9739-b1db360d0e38",
+              "leftValue": "={{ Object.keys($binary || {}).length }}",
+              "rightValue": "={{ Number($json.body.arquivos || 0) }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ],
+      "id": "8af58190-5a9e-53fa-b36f-632b325ee22a",
+      "name": "Chegou o pedido?"
+    },
+    {
+      "parameters": {
+        "agentId": {
+          "__rl": true,
+          "value": "{\"agentName\":\"Spare Parts Datasheet Reader\",\"model\":\"bedrock-claude-sonnet-5.5\"}",
+          "mode": "list",
+          "cachedResultName": "Spare Parts Datasheet Reader"
+        },
+        "options": {}
+      },
+      "type": "CUSTOM.amp",
+      "typeVersion": 1,
+      "position": [
+        940,
+        200
+      ],
+      "id": "4c0d86d8-a7f7-544f-a31d-a9515fb2e8af",
+      "name": "AMP Agent",
+      "credentials": {
+        "ampOAuth2Api": {
+          "id": "2GcgH0WxCkNN6bg4",
+          "name": "AMP account 1859"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, modo: 'ia', etapa: $json.chatInput ? 'arquivos' : 'prompt', erro: $json.chatInput ? 'os arquivos não chegaram ao agente: o workflow recebeu ' + Object.keys($binary || {}).length + ' de ' + ($json.body.arquivos || 0) + ' arquivo(s)' : 'o pedido chegou sem prompt', versao_workflow: '2026-11-05', execucao: $execution.id }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        940,
+        440
+      ],
+      "id": "95e89fe2-8e04-556f-8d1a-b2a78d7fbf97",
+      "name": "Responde pedido incompleto"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepara a resposta ao SIG-FT. As instrucoes da tarefa vem do SIG-FT, no prompt.\nconst VERSAO = '2026-11-05';\nconst SEMPRE_JSON = true;\nconst pedido = $('Webhook do SIG-FT').first().json.body || {};\nconst tarefa = String(pedido.tarefa || '');\nconst querJson = SEMPRE_JSON || String(pedido.json || '') === 'sim';\nconst bruto = String($input.first().json.output ?? '').trim();\n\n// O primeiro trecho que e JSON valido: de um [ ou { ate o ] ou } que fecha. O agente\n// as vezes narra antes (\"Vou analisar os itens [1 a 15]...\") ou poe ```json em volta.\nfunction recortaJson(texto) {\n  const limpo = texto.replace(/```(?:json)?/gi, '');\n  let inicios = 0;\n  for (let i = 0; i < limpo.length && inicios < 200; i++) {\n    const c = limpo[i];\n    if (c !== '[' && c !== '{') continue;\n    inicios++;\n    const fecha = c === '[' ? ']' : '}';\n    let fim = limpo.lastIndexOf(fecha);\n    for (let tentativas = 0; fim > i && tentativas < 50; tentativas++) {\n      const trecho = limpo.slice(i, fim + 1);\n      try { JSON.parse(trecho); return trecho; } catch (e) { /* tenta um fecho antes */ }\n      fim = limpo.lastIndexOf(fecha, fim - 1);\n    }\n  }\n  return null;\n}\n\nlet texto = bruto;\nlet json_valido = null;\nif (querJson && bruto) {\n  const recorte = recortaJson(bruto);\n  json_valido = recorte !== null;\n  if (recorte !== null) texto = recorte;   // sem JSON valido, vai o texto todo: o SIG-FT tenta ler\n}\nconst ok = texto.length > 0;\nconst resposta = { ok, modo: 'ia', tarefa, texto, json_valido, caracteres_do_agente: bruto.length,\n                   versao_workflow: VERSAO, execucao: $execution.id };\nconst binarios = $('Monta a mensagem').first().binary || {};\nresposta.arquivos = Object.values(binarios).map(b => b.fileName || '?');\nresposta.arquivos_recebidos = resposta.arquivos.length;\nif (!ok) { resposta.etapa = 'agente'; resposta.erro = 'o agente respondeu vazio'; }\nreturn [{ json: { resposta } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        120
+      ],
+      "id": "f40f8c2c-3046-5b07-af51-607ee75f9507",
+      "name": "Prepara a resposta"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.resposta) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1420,
+        120
+      ],
+      "id": "b0c84937-79f3-5906-9e8c-0abf5e455378",
+      "name": "Responde"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, modo: 'ia', etapa: 'agente', erro: String(($json.error && ($json.error.message || $json.error)) || 'erro sem mensagem'), versao_workflow: '2026-11-05', execucao: $execution.id }) }}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1180,
+        320
+      ],
+      "id": "becb5dba-5d80-5e52-91fb-edc4c5982edf",
+      "name": "Responde erro"
+    }
+  ],
+  "connections": {
+    "Webhook do SIG-FT": {
+      "main": [
+        [
+          {
+            "node": "É ping?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "É ping?": {
+      "main": [
+        [
+          {
+            "node": "Responde ping",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Monta a mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Monta a mensagem": {
+      "main": [
+        [
+          {
+            "node": "Chegou o pedido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chegou o pedido?": {
+      "main": [
+        [
+          {
+            "node": "AMP Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responde pedido incompleto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AMP Agent": {
+      "main": [
+        [
+          {
+            "node": "Prepara a resposta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responde erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepara a resposta": {
+      "main": [
+        [
+          {
+            "node": "Responde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -42,12 +42,13 @@ import webbrowser
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QSizePolicy, QWidget
 
-from sigft.app import backends
+from sigft.app import backends, ia_por_modulo
 from sigft.app.idioma import t
 from sigft.app_qt import estilo, file_dialogs, icones, interface
 from sigft.app_qt.widgets import blocos, controles
 from sigft.app_qt.widgets.arrastar import Arrastavel
 from sigft.app_qt.widgets.como_funciona import instalar_como_funciona
+from sigft.app_qt.widgets.ia_do_modulo import instalar_configurar_ia
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.services import autospec_conferencia as conferencia_txt
 
@@ -239,6 +240,7 @@ class ModuloAutoSpec(ModuleFrame):
 
     def _build_ui(self) -> None:
         instalar_como_funciona(self, "AutoSpec")
+        instalar_configurar_ia(self, ia_por_modulo.TAREFAS_DA_TELA.get("ModuloAutoSpec", ()))
         # Content: CTkScrollableFrame transparente.
         self.area, corpo = blocos.area_rolavel(self.content_layout, margem=RECUO_ROLAGEM,
                                                barra_sempre_visivel=True)

@@ -132,7 +132,21 @@ def test_telas_com_ia_tem_o_botao():
     for tarefas in ia_por_modulo.TAREFAS_DA_TELA.values():
         assert tarefas and all(tarefa in config.TAREFAS_DO_PAINEL or tarefa in ia_por_modulo.SO_WORKFLOW
                                for tarefa in tarefas)
-    assert "autospec" not in {t for ts in ia_por_modulo.TAREFAS_DA_TELA.values() for t in ts}
+    assert ia_por_modulo.TAREFAS_DA_TELA["ModuloAutoSpec"] == ("autospec",)
+
+
+def test_autospec_tem_o_botao_e_configura_a_tarefa_dele(qtbot, arquivo, qt_interface):
+    """2026-11-05, pedido do Luan: a tela do AutoSpec tem o "Configurar IA" como as outras."""
+    from sigft.app_qt.views.autospec import ModuloAutoSpec
+
+    tela = ModuloAutoSpec(None, _Controller())
+    qtbot.addWidget(tela)
+    assert tela.botao_configurar_ia.text() == "Configurar IA"
+    tela.botao_configurar_ia.click()
+    janela = tela.janela_configurar_ia
+    qtbot.addWidget(janela)
+    assert janela.painel.tarefas == ("autospec",)
+    janela.close()
 
 
 def test_docpack_tem_o_botao_na_secao_e_configura_as_duas_etapas(qtbot, arquivo, qt_interface):
