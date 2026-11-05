@@ -39,11 +39,11 @@ DICA_BOTAO = marcar("Escolhe a IA deste módulo: IA Externa (OpenRouter) ou Work
 DICA_INTERNA = marcar("Em breve: o AMP ainda não tem API para escolher um modelo.")
 EXPLICACAO_CENTRAL = marcar("Clique num módulo e escolha a IA dele. O botão \"Configurar IA\" de cada "
                             "tela abre esta mesma escolha.")
-TEXTO_MODELO_PADRAO = marcar("Modelo padrão (avançado)...")
-DICA_MODELO_PADRAO = marcar("O modelo de quem não escolheu por módulo, e a escolha por provedor de antes.")
 TEXTO_FILTRO = marcar("Filtrar modelos:")
 DICA_FILTRO = marcar("ex.: flash, haiku, minimax (vazio mostra todos)")
 TEXTO_ATUALIZAR = marcar("Atualizar catálogo")
+TEXTO_MANUAL = marcar("Modelo manual:")
+DICA_MANUAL = marcar("id exato do OpenRouter, se não estiver na lista (ex.: meta-llama/llama-4)")
 TEXTO_CHAVE_OPENROUTER = marcar("Chave do OpenRouter...")
 TEXTO_SALVAR = marcar("Salvar")
 TEXTO_FECHAR = marcar("Fechar")
@@ -180,6 +180,14 @@ class PainelIaDoModulo(QWidget):
         lay.addWidget(self.lista_modelos, 1)
         self.lbl_catalogo = blocos.rotulo("", papel="legenda", alinhar="esquerda")
         lay.addWidget(self.lbl_catalogo)
+        # [2026-11-05] Veio do painel de antes (que saiu): um id do OpenRouter que ainda
+        # não está no catálogo baixado. Preenchido, vale ele, e não o da lista.
+        manual = QHBoxLayout()
+        manual.addWidget(blocos.rotulo(t(TEXTO_MANUAL), alinhar="esquerda"))
+        self.campo_manual = QLineEdit()
+        self.campo_manual.setPlaceholderText(t(DICA_MANUAL))
+        manual.addWidget(self.campo_manual, 1)
+        lay.addLayout(manual)
         return pagina
 
     def _montar_interna(self) -> QWidget:
@@ -223,6 +231,7 @@ class PainelIaDoModulo(QWidget):
         self.lbl_modulo.setText(t(ROTULOS.get(tarefa, tarefa)).rstrip(":"))
         caminho = _caminho_config()
         self._externo = modo.modelo_externo(tarefa, config_path=caminho)
+        self.campo_manual.clear()
         nome_url, nome_chave = modo.chaves_do_webhook(tarefa)
         self.campo_url.setText(self._chave(nome_url))
         self.campo_chave.setText(self._chave(nome_chave))
@@ -292,6 +301,9 @@ class PainelIaDoModulo(QWidget):
                 self.lista_modelos.setCurrentItem(item)
 
     def modelo_escolhido(self) -> str | None:
+        manual = self.campo_manual.text().strip() if hasattr(self, "campo_manual") else ""
+        if manual:
+            return manual
         item = self.lista_modelos.currentItem() if hasattr(self, "lista_modelos") else None
         return item.data(Qt.ItemDataRole.UserRole) if item is not None else None
 

@@ -147,3 +147,13 @@ def test_docpack_tem_o_botao_na_secao_e_configura_a_sugestao_de_pasta(qtbot, arq
     qtbot.addWidget(janela)
     assert janela.painel.tarefas == ("docpack_pasta",)
     janela.close()
+
+
+def test_modelo_manual_vale_sobre_a_lista(qtbot, arquivo):
+    """[2026-11-05] O "Modelo manual" do painel de antes veio para a IA Externa."""
+    painel = _painel(qtbot, ("validar_ficha",))
+    painel.lista_modelos.setCurrentRow(0)
+    painel.campo_manual.setText("meta-llama/llama-4")
+    assert painel.salvar()
+    assert selecao.resolver("validar_ficha", config_path=arquivo) == {
+        "provider": config.PROVIDER_OPENROUTER, "model": "meta-llama/llama-4"}

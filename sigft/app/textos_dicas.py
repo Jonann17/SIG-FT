@@ -117,9 +117,6 @@ DICAS: dict[str, dict[str, str]] = {
     },
     "HomeView": {
         "btn_salvar_chaves": marcar("Grava as chaves de API neste computador (Documentos\\SIG-FT)."),
-        "btn_atualizar_catalogo_ia": marcar("Baixa do provedor a lista atual de modelos e preços."),
-        "btn_aplicar_recomendados_ia": marcar("Escolhe para cada tarefa o modelo recomendado."),
-        "btn_salvar_selecao_ia": marcar("Grava os modelos escolhidos para cada tarefa."),
         "btn_atualizar_gastos_ia": marcar("Recalcula o gasto com IA a partir dos logs deste computador."),
         "btn_pasta_logs_ia": marcar("Abre a pasta de logs do SIG-FT no Explorador."),
     },

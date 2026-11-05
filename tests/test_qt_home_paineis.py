@@ -17,14 +17,13 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox, QStyle
 
-from sigft import config as sigft_config
 from sigft.app_qt import estilo
 from sigft.app_qt.views import configuracao as config_mod
 from sigft.app_qt.views import home as home_mod
 from sigft.app_qt.widgets import mural as mural_qt
 from sigft.app_qt.widgets.painel_janela import JanelaPainel
 from sigft.core import plataforma
-from sigft.core.llm import catalogo, selecao
+from sigft.core.llm import catalogo
 from sigft.services import atividades as at
 from sigft.services import updater
 
@@ -167,11 +166,6 @@ def test_textos_iguais_aos_da_home_antiga():
     # 2026-10-22: o botão e a caixa foram para a janela Configuração, com o texto da spec.
     assert config_mod.ACAO["atualizacoes"].texto == "Procurar atualizações"
     assert config_mod.TEXTO_CANAL_TESTES == "Receber versões de teste"
-    assert home_mod.HomeView.ROTULO_PROVIDER_IA == {
-        "gemini": "Gemini (chave direta do Google)",
-        "openrouter": "OpenRouter (vários modelos, uma chave)",
-        "openai_compat": "AMP / IA da empresa",
-    }
     assert list(home_mod.CHAVES_API) == [
         ("GEMINI", "Gemini API Key:"), ("GOOGLE_SEARCH", "Google Search API:"),
         ("GOOGLE_CSE", "Google CSE ID:"), ("LLAMA", "LlamaCloud API:"),
@@ -236,7 +230,7 @@ def test_barra_na_ordem_e_com_as_cores_da_tela_antiga(home):
 
 @pytest.mark.parametrize("abrir, titulo, tamanho", [
     ("abrir_janela_chaves_api", "Chaves de API", (760, 520)),
-    ("abrir_janela_modelos_ia", "Modelos de IA", (900, 680)),
+    ("abrir_janela_ia_por_modulo", "Modelos de IA", (1000, 600)),
     ("abrir_janela_gastos_ia", "Gastos de IA", (860, 600)),
     ("abrir_mural_atividades", "Atividades do dia", (820, 640)),
 ])
@@ -257,7 +251,7 @@ def test_os_botoes_da_barra_abrem_atividades_e_gastos(home, monkeypatch):
         assert titulo in [j.windowTitle() for j in _janelas_abertas(home)]
 
 
-@pytest.mark.parametrize("abrir", ["abrir_janela_chaves_api", "abrir_janela_modelos_ia",
+@pytest.mark.parametrize("abrir", ["abrir_janela_chaves_api", "abrir_janela_ia_por_modulo",
                                    "abrir_janela_gastos_ia", "abrir_mural_atividades"])
 def test_segundo_clique_traz_a_mesma_janela(home, monkeypatch, abrir):
     # Os painéis guardam os campos na Home (`entries`, os menus de modelo): uma
@@ -279,11 +273,11 @@ def test_segundo_clique_restaura_a_janela_minimizada(home, qtbot):
 def test_restaurar_nao_desmaximiza(home, qtbot):
     # Maximizada e depois minimizada: volta MAXIMIZADA (o `showNormal()` a
     # desmaximizava).
-    janela = home.abrir_janela_modelos_ia()
+    janela = home.abrir_janela_ia_por_modulo()
     janela.showMaximized()
     janela.showMinimized()
     assert janela.isMinimized() and janela.windowState() & Qt.WindowState.WindowMaximized
-    assert home.abrir_janela_modelos_ia() is janela
+    assert home.abrir_janela_ia_por_modulo() is janela
     assert not janela.isMinimized()
     assert janela.isMaximized()
 
@@ -351,100 +345,28 @@ def test_esc_e_enter_nao_fecham_nem_salvam_as_chaves(home, qtbot, mensagens):
     assert home.controller.salvas == [] and mensagens == []
 
 
-def test_salvar_chaves_remonta_o_painel_de_modelos_aberto(qt_interface, qtbot, rede, mensagens):
-    # Quem colava a chave do OpenRouter e salvava continuava vendo só o Gemini.
-    tela = home_mod.HomeView(controller=Controller({"GEMINI": "g"}))
-    qtbot.addWidget(tela)
-    tela.abrir_janela_modelos_ia()
-    assert _itens(tela.opt_provider_ia) == [ROTULO_GEMINI]
-    tela.abrir_janela_chaves_api()
-    tela.entries["OPENROUTER"].setText("sk-or")
-    tela.salvar_chaves_api()
-    assert _itens(tela.opt_provider_ia) == [ROTULO_GEMINI, ROTULO_OPENROUTER]
 
 
-def test_salvar_chaves_com_o_painel_de_modelos_fechado(qt_interface, qtbot, rede, mensagens):
-    tela = home_mod.HomeView(controller=Controller({"GEMINI": "g"}))
-    qtbot.addWidget(tela)
-    tela.abrir_janela_modelos_ia().close()
-    tela.abrir_janela_chaves_api()
-    tela.salvar_chaves_api()
-    assert [m[1] for m in mensagens] == ["Sucesso"]
 
 
 # =============================================================================
 # Modelos de IA
 # =============================================================================
 
-def test_sem_chave_nenhuma_o_painel_explica(qt_interface, qtbot, rede, mensagens):
-    tela = home_mod.HomeView(controller=Controller({}))
-    qtbot.addWidget(tela)
-    tela.abrir_janela_modelos_ia()
-    assert _texto(tela.lbl_sem_provedor_ia) == (
-        "Nenhum provedor de IA tem chave configurada acima. Configure ao menos uma "
-        "chave (ex.: Gemini ou OpenRouter) para escolher o modelo aqui.")
-    assert tela.opt_provider_ia is None and tela.lbl_resumo_modelo_ia is None
 
 
-def test_provedores_com_chave_e_o_primeiro_quando_nada_salvo(home, rede):
-    home.abrir_janela_modelos_ia()
-    assert home.lbl_titulo_modelos_ia.text() == "Modelos de IA"   # sem o emoji (2026-10-20)
-    assert _itens(home.opt_provider_ia) == [ROTULO_GEMINI, ROTULO_OPENROUTER]
-    assert home.opt_provider_ia.currentText() == ROTULO_GEMINI
-    favs = catalogo.modelos_recomendados("gemini")
-    extras = [m for m in CATALOGO["gemini"] if m not in {f["model"] for f in favs}]
-    esperado = [NEUTRO_GLOBAL] + [_rotulo_fav(f) for f in favs] + extras
-    assert _itens(home.opt_modelo_ia_global) == esperado
-    assert home.opt_modelo_ia_global.currentText() == NEUTRO_GLOBAL
-    # a montagem lê SÓ o cache: a Home não pode ficar pendurada em rede
-    assert rede and all(c["somente_cache"] and not c["forcar"] for c in rede)
 
 
-def test_reabre_no_provedor_e_no_modelo_salvos(home):
-    selecao.definir_global("openrouter", "x-ai/grok-4.5", config_path=sigft_config.CONFIG_FILE)
-    home.abrir_janela_modelos_ia()
-    assert home.opt_provider_ia.currentText() == ROTULO_OPENROUTER
-    [grok] = [f for f in catalogo.modelos_recomendados("openrouter") if f["model"] == "x-ai/grok-4.5"]
-    assert home.opt_modelo_ia_global.currentText() == _rotulo_fav(grok)
-    assert "︎" not in home.opt_modelo_ia_global.currentText()  # nome de modelo é dado
 
 
-def test_provedor_da_maioria_das_tarefas_quando_o_global_esta_vazio(home):
-    for tarefa, provider, modelo in (("condicoes", "openrouter", "x-ai/grok-4.5"),
-                                     ("tech_specs", "openrouter", "x-ai/grok-4.5"),
-                                     ("autospec", "gemini", "gemini-3.5-flash")):
-        selecao.definir_por_tarefa(tarefa, provider, modelo, config_path=sigft_config.CONFIG_FILE)
-    home.abrir_janela_modelos_ia()
-    assert home.opt_provider_ia.currentText() == ROTULO_OPENROUTER
-    assert home.caixa_modo_avancado_ia.isChecked()
-    assert home.frame_modelos_ia_avancado.isVisibleTo(home.frame_modelos_ia)
 
 
-def test_selecao_salva_fora_da_lista_aparece_como_salvo(home):
-    selecao.definir_global("openrouter", "vendor/modelo-antigo", config_path=sigft_config.CONFIG_FILE)
-    home.abrir_janela_modelos_ia()
-    rotulo = "(salvo) openrouter / vendor/modelo-antigo"
-    assert rotulo in _itens(home.opt_modelo_ia_global)
-    assert home.opt_modelo_ia_global.currentText() == rotulo
 
 
 NAO_BAIXADO = ("Catálogo ainda não baixado para este provedor. Clique em \"Atualizar lista de "
                "modelos\". Enquanto isso valem os recomendados e o campo manual.")
 
 
-def test_rotulo_do_catalogo(home, rede):
-    # Conta só o que VEIO do catálogo (rótulo == id). No Gemini os dois ids do
-    # catálogo dublado são favoritos (rótulo com preço): lá também diz "não baixado".
-    home.abrir_janela_modelos_ia()
-    assert _texto(home.lbl_catalogo_ia) == NAO_BAIXADO
-    _escolher(home.opt_provider_ia, ROTULO_OPENROUTER)
-    favs = catalogo.modelos_recomendados("openrouter")
-    do_catalogo = [m for m in CATALOGO["openrouter"] if m not in {f["model"] for f in favs}]
-    assert _texto(home.lbl_catalogo_ia) == (
-        f"{len(favs) + len(do_catalogo)} modelos disponíveis ({len(do_catalogo)} do catálogo do provedor).")
-    rede.catalogo = {}
-    _escolher(home.opt_provider_ia, ROTULO_OPENROUTER)
-    assert _texto(home.lbl_catalogo_ia) == NAO_BAIXADO
 
 
 def _epoch(dia, mes):
@@ -452,204 +374,30 @@ def _epoch(dia, mes):
     return datetime(2026, mes, dia, 9, 30).timestamp()
 
 
-def test_catalogo_vencido_continua_no_painel_e_diz_de_quando_e(home, rede):
-    # Pendência de 2026-09-25: um dia depois de baixado, o catálogo sumia.
-    rede.baixado_em, rede.vencido = _epoch(15, 10), True
-    home.abrir_janela_modelos_ia()
-    _escolher(home.opt_provider_ia, ROTULO_OPENROUTER)
-    favs = catalogo.modelos_recomendados("openrouter")
-    do_catalogo = [m for m in CATALOGO["openrouter"] if m not in {f["model"] for f in favs}]
-    assert do_catalogo[0] in _itens(home.opt_modelo_ia_global)
-    assert _texto(home.lbl_catalogo_ia) == (
-        f"{len(favs) + len(do_catalogo)} modelos disponíveis "
-        f"({len(do_catalogo)} do catálogo do provedor, lista de 15/10).")
-    assert not any(c["forcar"] for c in rede), "abrir o painel não vai à rede"
 
 
-def test_falha_ao_atualizar_vira_aviso_e_a_lista_que_havia_fica(home, qtbot, rede):
-    # Pendência de 2026-09-25: a falha era muda ("ainda não baixado", sem motivo).
-    rede.baixado_em, rede.vencido = _epoch(15, 10), True
-    home.abrir_janela_modelos_ia()
-    _escolher(home.opt_provider_ia, ROTULO_OPENROUTER)
-    itens_antes = _itens(home.opt_modelo_ia_global)
-    cor_normal = home.lbl_catalogo_ia.styleSheet()
-    rede.erro = "ProxyError: 407 Proxy Authentication Required"
-    home.btn_atualizar_catalogo_ia.click()
-    qtbot.waitUntil(lambda: "407" in _texto(home.lbl_catalogo_ia), timeout=3000)
-    assert _texto(home.lbl_catalogo_ia) == (
-        "Não foi possível atualizar a lista de modelos (ProxyError: 407 Proxy Authentication "
-        "Required). Continua valendo a lista de 15/10.")
-    assert _itens(home.opt_modelo_ia_global) == itens_antes
-    # 2026-10-20: a cor de alerta é o papel `erro` da folha (a folha local não muda).
-    assert home.lbl_catalogo_ia.property("papel") == "erro", "o aviso tem a cor de alerta"
-    assert home.lbl_catalogo_ia.styleSheet() == cor_normal
-    # Trocar de provedor (ou atualizar de novo com sucesso) tira o aviso.
-    _escolher(home.opt_provider_ia, ROTULO_GEMINI)
-    assert "Não foi possível" not in _texto(home.lbl_catalogo_ia)
-    assert home.lbl_catalogo_ia.property("papel") == "legenda"
 
 
-def test_falha_ao_atualizar_sem_lista_nenhuma_diz_o_motivo(home, qtbot, rede):
-    rede.catalogo = {}
-    rede.erro = "HTTPError: 401 Client Error: Unauthorized"
-    home.abrir_janela_modelos_ia()
-    _escolher(home.opt_provider_ia, ROTULO_OPENROUTER)
-    home.btn_atualizar_catalogo_ia.click()
-    qtbot.waitUntil(lambda: "401" in _texto(home.lbl_catalogo_ia), timeout=3000)
-    assert _texto(home.lbl_catalogo_ia) == (
-        "Não foi possível baixar a lista de modelos (HTTPError: 401 Client Error: Unauthorized). "
-        "Enquanto isso valem os recomendados e o campo manual.")
 
 
-def test_filtro_estreita_a_lista_sem_perder_a_escolha(home, qtbot):
-    home.abrir_janela_modelos_ia()
-    _escolher(home.opt_provider_ia, ROTULO_OPENROUTER)
-    [grok] = [f for f in catalogo.modelos_recomendados("openrouter") if f["model"] == "x-ai/grok-4.5"]
-    _escolher(home.opt_modelo_ia_global, _rotulo_fav(grok))
-    qtbot.keyClicks(home.entry_filtro_modelo_ia, "HAIKU")
-    assert _itens(home.opt_modelo_ia_global) == [NEUTRO_GLOBAL, "anthropic/claude-haiku-4.5",
-                                                 _rotulo_fav(grok)]
-    assert home.opt_modelo_ia_global.currentText() == _rotulo_fav(grok)
-    home.entry_filtro_modelo_ia.clear()
-    assert len(_itens(home.opt_modelo_ia_global)) > 3
 
 
-def test_resumo_segue_a_precedencia_manual_lista_padrao(home, qtbot):
-    home.abrir_janela_modelos_ia()
-    _escolher(home.opt_provider_ia, ROTULO_OPENROUTER)
-    assert _texto(home.lbl_resumo_modelo_ia) == (
-        "Ao salvar: todas as tarefas voltam ao padrão do sistema (modelos atuais).")
-    _escolher(home.opt_modelo_ia_global, "anthropic/claude-haiku-4.5")
-    assert _texto(home.lbl_resumo_modelo_ia) == (
-        "Ao salvar: openrouter / anthropic/claude-haiku-4.5  (veio do lista de modelos)")
-    qtbot.keyClicks(home.entry_modelo_ia_livre, "meta-llama/llama-4")
-    assert _texto(home.lbl_resumo_modelo_ia) == (
-        "Ao salvar: openrouter / meta-llama/llama-4  (veio do campo manual)")
-    # Escolher na lista desiste do manual: vale o último controle mexido.
-    _escolher(home.opt_modelo_ia_global, "minimax/minimax-m3" if "minimax/minimax-m3"
-              in _itens(home.opt_modelo_ia_global) else _itens(home.opt_modelo_ia_global)[1])
-    assert home.entry_modelo_ia_livre.text() == ""
-    assert "(veio do lista de modelos)" in _texto(home.lbl_resumo_modelo_ia)
-    qtbot.keyClicks(home.entry_modelo_ia_livre, "x/y")
-    home.btn_limpar_modelo_ia.click()
-    assert home.entry_modelo_ia_livre.text() == ""
-    assert "(veio do lista de modelos)" in _texto(home.lbl_resumo_modelo_ia)
 
 
-def test_modo_avancado_mostra_as_tarefas_e_conta_os_overrides(home):
-    home.abrir_janela_modelos_ia()
-    _escolher(home.opt_provider_ia, ROTULO_OPENROUTER)
-    assert not home.caixa_modo_avancado_ia.isChecked()
-    assert not home.frame_modelos_ia_avancado.isVisibleTo(home.frame_modelos_ia)
-    home.caixa_modo_avancado_ia.click()
-    assert home.frame_modelos_ia_avancado.isVisibleTo(home.frame_modelos_ia)
-    assert list(home.menus_modelo_ia_por_tarefa) == list(sigft_config.TAREFAS_DO_PAINEL)
-    assert [r.text() for r in home.rotulos_modelo_ia_por_tarefa.values()] == [
-        home_mod.ROTULOS_TAREFA_IA[t] for t in sigft_config.TAREFAS_DO_PAINEL]
-    menu = home.menus_modelo_ia_por_tarefa["categorizar_pdm"]
-    assert menu.currentText() == NEUTRO_TAREFA
-    _escolher(menu, "x-ai/grok-4.5" if "x-ai/grok-4.5" in _itens(menu) else _itens(menu)[1])
-    assert _texto(home.lbl_resumo_modelo_ia).endswith(
-        "  |  1 tarefa(s) com modelo próprio (categorizar_pdm), que vence o padrão acima.")
-    home.caixa_modo_avancado_ia.click()
-    assert not home.frame_modelos_ia_avancado.isVisibleTo(home.frame_modelos_ia)
-    assert "tarefa(s)" not in _texto(home.lbl_resumo_modelo_ia)
 
 
-def test_trocar_de_provedor_troca_a_lista_e_esquece_o_manual(home, qtbot):
-    selecao.definir_global("openrouter", "x-ai/grok-4.5", config_path=sigft_config.CONFIG_FILE)
-    home.abrir_janela_modelos_ia()
-    qtbot.keyClicks(home.entry_modelo_ia_livre, "algum/id")
-    _escolher(home.opt_provider_ia, ROTULO_GEMINI)
-    assert home.entry_modelo_ia_livre.text() == ""
-    itens = _itens(home.opt_modelo_ia_global)
-    [flash] = [f for f in catalogo.modelos_recomendados("gemini") if f["model"] == "gemini-3.5-flash"]
-    assert _rotulo_fav(flash) in itens
-    # o que está valendo no disco não some da lista (e não é apagado no Salvar)
-    assert "(salvo) openrouter / x-ai/grok-4.5" in itens
 
 
-def test_salvar_selecao_grava_global_e_tarefas_e_avisa(home, mensagens):
-    home.abrir_janela_modelos_ia()
-    _escolher(home.opt_provider_ia, ROTULO_OPENROUTER)
-    _escolher(home.opt_modelo_ia_global, "anthropic/claude-haiku-4.5")
-    home.caixa_modo_avancado_ia.click()
-    _escolher(home.menus_modelo_ia_por_tarefa["validar_ficha"], "minimax/minimax-m3"
-              if "minimax/minimax-m3" in _itens(home.menus_modelo_ia_por_tarefa["validar_ficha"])
-              else _itens(home.menus_modelo_ia_por_tarefa["validar_ficha"])[1])
-    antigo = home.frame_modelos_ia
-    home.btn_salvar_selecao_ia.click()
-
-    estado = selecao.carregar(config_path=sigft_config.CONFIG_FILE)
-    assert estado["global"] == {"provider": "openrouter", "model": "anthropic/claude-haiku-4.5"}
-    assert list(estado["por_tarefa"]) == ["validar_ficha"]
-    assert estado["por_tarefa"]["validar_ficha"]["provider"] == "openrouter"
-    [(tipo, titulo, texto, _pai)] = mensagens
-    assert (tipo, titulo) == ("information", "Seleção salva")
-    assert texto == ("Seleção de modelos de IA salva. A próxima execução de cada módulo já usa o "
-                     "modelo escolhido. Não é preciso reiniciar o SIG-FT.")
-    # remontado no mesmo lugar, mostrando o que acabou de ser salvo
-    assert home.frame_modelos_ia is not antigo
-    assert home.frame_modelos_ia.window() is antigo.window()
-    assert home.opt_modelo_ia_global.currentText() == "anthropic/claude-haiku-4.5"
-    assert home.opt_provider_ia.currentText() == ROTULO_OPENROUTER
 
 
-def test_salvar_com_o_padrao_limpa_o_global(home, mensagens):
-    selecao.definir_global("gemini", "gemini-3.5-flash", config_path=sigft_config.CONFIG_FILE)
-    home.abrir_janela_modelos_ia()
-    _escolher(home.opt_modelo_ia_global, NEUTRO_GLOBAL)
-    home.btn_salvar_selecao_ia.click()
-    assert selecao.carregar(config_path=sigft_config.CONFIG_FILE)["global"] is None
 
 
-def test_aplicar_recomendados_com_as_chaves(home, mensagens):
-    home.abrir_janela_modelos_ia()
-    home.btn_aplicar_recomendados_ia.click()
-    estado = selecao.carregar(config_path=sigft_config.CONFIG_FILE)
-    assert estado["global"]["model"] == sigft_config.LLM_DEFAULT["model"]
-    assert set(estado["por_tarefa"]) == set(sigft_config.LLM_TASKS)
-    [(tipo, titulo, _texto_msg, _pai)] = mensagens
-    assert (tipo, titulo) == ("information", "Recomendados aplicados")
 
 
-@pytest.mark.parametrize("resposta, aplicou", [
-    (QMessageBox.StandardButton.No, False), (QMessageBox.StandardButton.Yes, True)])
-def test_aplicar_recomendados_sem_a_chave_pergunta_antes(qt_interface, qtbot, rede, mensagens,
-                                                       resposta, aplicou):
-    tela = home_mod.HomeView(controller=Controller({"GEMINI": "g"}))
-    qtbot.addWidget(tela)
-    tela.abrir_janela_modelos_ia()
-    mensagens.respostas.append(resposta)
-    tela.btn_aplicar_recomendados_ia.click()
-    tipo, titulo, texto, _pai = mensagens[0]
-    assert (tipo, titulo) == ("question", "Chave de API faltando")
-    assert texto.startswith("Os modelos recomendados exigem OPENROUTER, que ainda não está configurada")
-    estado = selecao.carregar(config_path=sigft_config.CONFIG_FILE)
-    assert bool(estado["por_tarefa"]) is aplicou
 
 
-def test_aplicar_mesmo_assim_tem_nao_como_padrao(qt_interface, qtbot, rede, mensagens):
-    # Desvio deliberado: o askyesno do Tk tinha "Sim" como padrão; aqui um Enter
-    # na pergunta NÃO aplica os recomendados sem a chave.
-    tela = home_mod.HomeView(controller=Controller({"GEMINI": "g"}))
-    qtbot.addWidget(tela)
-    tela.abrir_janela_modelos_ia()
-    tela.btn_aplicar_recomendados_ia.click()
-    assert mensagens[0][:2] == ("question", "Chave de API faltando")
-    botoes, padrao = mensagens.extras[0][0]
-    assert botoes == QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-    assert padrao == QMessageBox.StandardButton.No
 
 
-def test_esc_e_enter_nao_salvam_a_selecao(home, qtbot, mensagens):
-    janela = home.abrir_janela_modelos_ia()
-    qtbot.keyClicks(home.entry_modelo_ia_livre, "meu/modelo")
-    qtbot.keyClick(home.entry_modelo_ia_livre, Qt.Key.Key_Return)
-    qtbot.keyClick(home.entry_filtro_modelo_ia, Qt.Key.Key_Return)
-    qtbot.keyClick(janela, Qt.Key.Key_Escape)
-    assert janela.isVisible() and mensagens == []
-    assert selecao.carregar(config_path=sigft_config.CONFIG_FILE)["global"] is None
 
 
 def _catalogo_que_espera(monkeypatch, rede, liberar, vistos, novos=None):
@@ -667,23 +415,6 @@ def _catalogo_que_espera(monkeypatch, rede, liberar, vistos, novos=None):
     monkeypatch.setattr(catalogo, "consultar", lento)
 
 
-def test_roda_do_mouse_em_cima_do_menu_nao_troca_o_modelo(home, qtbot):
-    # O CTkOptionMenu não escuta a roda; o QComboBox, sim -- e o painel rola:
-    # rolar a janela com o ponteiro em cima de um menu trocaria a escolha.
-    from PySide6.QtCore import QPoint, QPointF
-    from PySide6.QtGui import QWheelEvent
-    from PySide6.QtWidgets import QApplication
-
-    home.abrir_janela_modelos_ia()
-    menu = home.opt_modelo_ia_global
-    antes = menu.currentText()
-    for passo in (-120, 120, -120):
-        evento = QWheelEvent(QPointF(20, 10), QPointF(menu.mapToGlobal(QPoint(20, 10))), QPoint(0, 0),
-                             QPoint(0, passo), Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
-                             Qt.ScrollPhase.NoScrollPhase, False)
-        QApplication.sendEvent(menu, evento)
-        assert not evento.isAccepted(), "a roda segue para a área, que rola"
-    assert menu.currentText() == antes
 
 
 def test_nenhum_controle_dos_paineis_pega_o_foco(home, monkeypatch):
@@ -692,7 +423,7 @@ def test_nenhum_controle_dos_paineis_pega_o_foco(home, monkeypatch):
     from PySide6.QtWidgets import QCheckBox, QComboBox, QPushButton
 
     monkeypatch.setattr(home_mod.HomeView, "_ler_mural", lambda self: ({f: [] for f in at.FAIXAS}, None))
-    janelas = [home.abrir_janela_chaves_api(), home.abrir_janela_modelos_ia(),
+    janelas = [home.abrir_janela_chaves_api(), home.abrir_janela_ia_por_modulo(),
                home.abrir_janela_gastos_ia(), home.abrir_mural_atividades(),
                home.abrir_configuracao()]
     controles_ = [home.btn_configuracao, *home.botoes_barra.values()]
@@ -707,72 +438,10 @@ def test_nenhum_controle_dos_paineis_pega_o_foco(home, monkeypatch):
             assert not controle.autoDefault() and not controle.isDefault()
 
 
-def test_atualizar_catalogo_busca_numa_thread_de_fundo(home, qtbot, rede, monkeypatch):
-    home.abrir_janela_modelos_ia()
-    rede.catalogo = {"gemini": []}
-    _escolher(home.opt_provider_ia, ROTULO_GEMINI)
-    assert _texto(home.lbl_catalogo_ia) == NAO_BAIXADO
-    liberar, vistos = threading.Event(), []
-    _catalogo_que_espera(monkeypatch, rede, liberar, vistos, novos={"gemini": ["gemini-novo"]})
-    na_interface = []
-    recarregar = home._recarregar_modelos_do_provider
-
-    def espiao(*a, **k):
-        na_interface.append(threading.current_thread() is threading.main_thread())
-        return recarregar(*a, **k)
-
-    monkeypatch.setattr(home, "_recarregar_modelos_do_provider", espiao)
-    home.btn_atualizar_catalogo_ia.click()
-    assert _texto(home.lbl_catalogo_ia) == "Buscando a lista de modelos do provedor..."
-    liberar.set()
-    qtbot.waitUntil(lambda: "gemini-novo" in _itens(home.opt_modelo_ia_global), timeout=3000)
-    [(thread, chaves)] = vistos
-    assert thread is not threading.main_thread() and thread.daemon
-    assert chaves["GEMINI"] == CHAVES["GEMINI"]
-    assert na_interface == [True]
-    assert _texto(home.lbl_catalogo_ia).endswith("(1 do catálogo do provedor).")
 
 
-def test_catalogo_que_chega_depois_de_reabrir_vai_para_o_painel_novo(home, qtbot, rede, monkeypatch,
-                                                                     capsys):
-    primeira = home.abrir_janela_modelos_ia()
-    liberar, vistos = threading.Event(), []
-    _catalogo_que_espera(monkeypatch, rede, liberar, vistos,
-                         novos={**CATALOGO, "gemini": ["gemini-novo"]})
-    home.btn_atualizar_catalogo_ia.click()
-    primeira.close()
-    segunda = home.abrir_janela_modelos_ia()
-    assert segunda is not primeira
-    liberar.set()
-    qtbot.waitUntil(lambda: "gemini-novo" in _itens(home.opt_modelo_ia_global), timeout=3000)
-    assert home.opt_modelo_ia_global.window() is segunda
-    assert "Traceback" not in capsys.readouterr().err
 
 
-def test_catalogo_que_chega_depois_do_painel_destruido_e_descartado(home, qtbot, rede, monkeypatch,
-                                                                    capsys):
-    # A resposta chega (na thread da interface) e a GUARDA a descarta: o painel
-    # não é redesenhado sobre widgets destruídos.
-    from PySide6.QtCore import QCoreApplication, QEvent
-
-    janela = home.abrir_janela_modelos_ia()
-    liberar, vistos = threading.Event(), []
-    _catalogo_que_espera(monkeypatch, rede, liberar, vistos)
-    chegadas, redesenhos = [], []
-    chegou = home._catalogo_chegou
-    monkeypatch.setattr(home, "_catalogo_chegou", lambda: (
-        chegadas.append(threading.current_thread() is threading.main_thread()), chegou()))
-    monkeypatch.setattr(home, "_recarregar_modelos_do_provider", lambda *a, **k: redesenhos.append(a))
-    home.btn_atualizar_catalogo_ia.click()
-    janela.close()
-    janela.deleteLater()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    assert not _vivo(janela)
-    liberar.set()
-    qtbot.waitUntil(lambda: bool(chegadas), timeout=3000)
-    assert chegadas == [True], "a resposta veio pela thread da interface"
-    assert redesenhos == [], "a guarda descartou a resposta (painel destruído)"
-    assert "Traceback" not in capsys.readouterr().err
 
 
 def _vivo(widget):
@@ -1001,51 +670,8 @@ def test_medidas_do_painel_de_chaves(com_folha, qtbot, rede, mensagens):
     assert _geo(j.botao_fechar, j) == (320, 480, 120, 28)
 
 
-def test_medidas_do_painel_de_modelos(com_folha, qtbot, rede, mensagens):
-    # 2026-10-20: medida do sistema visual (botão/campo 32, título 22, borda 1); a CTk saiu em 2026-10-15.
-    selecao.definir_global("openrouter", "x-ai/grok-4.5", config_path=sigft_config.CONFIG_FILE)
-    tela = home_mod.HomeView(controller=Controller())
-    qtbot.addWidget(tela)
-    j = _exposta(qtbot, tela.abrir_janela_modelos_ia())
-    assert _geo(tela.frame_modelos_ia, j)[:3] == (26, 26, 837)
-    assert _geo(tela.lbl_titulo_modelos_ia, j)[:2] == (36, 36)
-    assert _geo(tela.lbl_descricao_modelos_ia, j)[:2] == (36, 74)
-    assert _geo(tela.lbl_descricao_modelos_ia, j)[3] == 30  # duas linhas de 15, como o Tk
-    assert _geo(tela.opt_provider_ia, j) == (261, 114, 300, 32)
-    assert _geo(tela.btn_atualizar_catalogo_ia, j)[:2] == (571, 116)
-    assert _geo(tela.lbl_catalogo_ia, j)[1::2] == (151, 28)
-    assert _geo(tela.entry_filtro_modelo_ia, j) == (261, 184, 300, 32)
-    assert _geo(tela.opt_modelo_ia_global, j) == (261, 221, 420, 32)
-    assert _geo(tela.caixa_modo_avancado_ia, j)[:2] == (36, 263)
-    assert _geo(tela.caixa_modo_avancado_ia, j)[3] == 24
-    x, y, w, h = _geo(tela.entry_modelo_ia_livre, j)
-    assert (y, w, h) == (302, 300, 32)
-    assert _geo(tela.btn_limpar_modelo_ia, j) == (x + 305, 304, 70, 28)
-    assert _geo(tela.lbl_resumo_modelo_ia, j)[:2] == (36, 347)
-    assert _geo(tela.btn_aplicar_recomendados_ia, j)[:2] == (36, 385)
-    ap = _geo(tela.btn_aplicar_recomendados_ia, j)
-    assert _geo(tela.btn_salvar_selecao_ia, j)[:2] == (ap[0] + ap[2] + 10, 385)
-    assert _geo(tela.frame_modelos_ia, j)[3] == 402
 
 
-def test_medidas_do_painel_de_modelos_no_modo_avancado(com_folha, qtbot, rede, mensagens):
-    selecao.definir_global("openrouter", "x-ai/grok-4.5", config_path=sigft_config.CONFIG_FILE)
-    selecao.definir_por_tarefa("categorizar_pdm", "openrouter", "x-ai/grok-4.5",
-                               config_path=sigft_config.CONFIG_FILE)
-    tela = home_mod.HomeView(controller=Controller())
-    qtbot.addWidget(tela)
-    j = _exposta(qtbot, tela.abrir_janela_modelos_ia())
-    for i, tarefa in enumerate(sigft_config.TAREFAS_DO_PAINEL):
-        y = 294 + 36 * i
-        assert _geo(tela.rotulos_modelo_ia_por_tarefa[tarefa], j)[:3] == (36, y, 220), tarefa
-        assert _geo(tela.menus_modelo_ia_por_tarefa[tarefa], j) == (261, y, 420, 32), tarefa
-    # 8 tarefas desde 2026-11-03 (entraram a passada 1 do Cria Fichas, a
-    # tradução de PDM e a pasta do DocPack): três linhas de 36 px (32 desde 2026-10-20 + 4) a mais
-    # que as 5 da tela antiga.
-    assert _geo(tela.entry_modelo_ia_livre, j)[1] == 492 + 3 * 36
-    resumo = _geo(tela.lbl_resumo_modelo_ia, j)
-    assert resumo[:2] == (36, 537 + 3 * 36)
-    assert _geo(tela.btn_aplicar_recomendados_ia, j)[1] == resumo[1] + resumo[3] + 10
 
 
 # O relatório e o mural das capturas (`scratchpad/e51/dados_e51.py`): 11 linhas de
