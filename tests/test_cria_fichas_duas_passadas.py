@@ -357,7 +357,10 @@ def test_classificar_para_revisao_de_ponta_a_ponta():
 
 
 def test_classificar_sem_chave_nao_chama_ia_nenhuma():
+    """No Gemini direto. Desde 2026-11-05, fora dele (OpenRouter, Workflow AMP) a chave do Gemini
+    não é cobrada: ver `test_cria_fichas_chave_e_projeto.py`."""
     llm1, llm2 = _LLMFalso([]), _LLMFalso([])
+    llm2.provider_name = "gemini"
     cat = cria_fichas.GeminiCategorizer("")
     cat._llm_interpretacao, cat._llm = llm1, llm2
     with pytest.raises(ValueError):

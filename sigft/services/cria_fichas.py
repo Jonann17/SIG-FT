@@ -18,6 +18,7 @@ from sigft.core.llm import prompts
 # 2026-10-08: as regras puras da escolha de PDM em duas passadas (a leitura
 # da passada 1, a confiança, os sinais, o que a revisão mostra).
 from sigft.services import cria_fichas_escolha as escolha
+from sigft.services import status_pmib_arquivos
 # CP 2.1 (docs/refatoracao/PLANO_REFATORACAO.md, Fase 2): fábrica única de
 # driver Chrome, substitui `webdriver.Chrome()` cru em
 # `AutomacaoPMIB.iniciar_driver` abaixo.
@@ -58,33 +59,53 @@ from sigft.core.rpa.portal import (
 )
 
 
+def codigo_do_projeto_sugerido(linhas, linha_cabecalho):
+    """O código do projeto que a tela preenche: a linha abaixo do título "GERENCIAMENTO DOS
+    MATERIAIS SOBRESSALENTES CADASTRADOS NO PMIB" (`status_pmib_arquivos.projeto_abaixo_do_titulo`).
+
+    [2026-11-05, pedido do Luan] Era a célula acima de "ITEM", na linha de cima do cabeçalho, e no
+    layout v2 essa linha é a da revisão em uso ("REVISÃO DA LISTA DE SOBRESSALENTES ATUAL EM USO:
+    ..."), que ia para o campo no lugar do projeto. Sem o título (planilha fora do template), fica
+    o jeito de antes, a célula acima de "ITEM", pulando a linha da revisão, que nunca é o
+    projeto. `linha_cabecalho` é 0-based, como em `headers.find_header_row`."""
+    projeto = status_pmib_arquivos.projeto_abaixo_do_titulo(linhas[:linha_cabecalho + 1])
+    if projeto is not None:
+        return projeto
+    for coluna, valor in enumerate(linhas[linha_cabecalho]):
+        if str(valor).strip().upper() != "ITEM":
+            continue
+        numero = linha_cabecalho - 1
+        if numero > 0 and status_pmib_arquivos.e_linha_da_revisao(_celula(linhas, numero, coluna)):
+            numero -= 1
+        valor_acima = _celula(linhas, numero, coluna) if numero >= 0 else None
+        # `valor != valor`: o NaN do pandas, que é a célula vazia.
+        return "" if valor_acima is None or valor_acima != valor_acima else str(valor_acima).strip()
+    return ""
+
+
+def _celula(linhas, numero, coluna):
+    linha = linhas[numero]
+    return linha[coluna] if coluna < len(linha) else None
+
+
 class DataManager:
     @staticmethod
     def carregar_planilha_inteligente(arquivo, nome_da_aba, colunas_desejadas):
         try:
             # Aumentado para 30 para maior segurança
             df_preview = pd.read_excel(arquivo, sheet_name=nome_da_aba, header=None, nrows=30)
+            linhas = df_preview.values.tolist()
 
             # CP 1.2: busca dinâmica da linha de cabeçalho via
             # core.excel.headers (mesmo alcance do original: até as 30
             # linhas de df_preview, exige TODAS as colunas_desejadas na
             # mesma linha).
-            header_row_index = headers.find_header_row(df_preview.values.tolist(), list(colunas_desejadas))
+            header_row_index = headers.find_header_row(linhas, list(colunas_desejadas))
             if header_row_index is None:
                 return None, "", "Colunas não encontradas."
 
-            codigo_projeto_sugerido = ""  # Variável para guardar o código
-
-            # --- Lógica de Auto-Preenchimento do Código do Projeto ---
-            if header_row_index > 0:  # Só podemos olhar pra cima se a linha do cabeçalho não for a primeiríssima (0)
-                for col_idx in range(len(df_preview.columns)):
-                    cell_value = str(df_preview.iloc[header_row_index, col_idx]).strip().upper()
-                    if cell_value == "ITEM":
-                        # Pega a célula da MESMA coluna, mas 1 linha acima
-                        valor_acima = df_preview.iloc[header_row_index - 1, col_idx]
-                        if pd.notna(valor_acima):
-                            codigo_projeto_sugerido = str(valor_acima).strip()
-                        break  # Achou a coluna ITEM, não precisa olhar o resto das colunas
+            # O código do projeto que a tela preenche sozinha (2026-11-05).
+            codigo_projeto_sugerido = codigo_do_projeto_sugerido(linhas, header_row_index)
 
             df_final = pd.read_excel(arquivo, sheet_name=nome_da_aba, header=header_row_index, dtype=str)
             # Garante que as colunas sejam strings (evita erro de .strip() em colunas sem nome)
@@ -435,8 +456,26 @@ class GeminiCategorizer:
         # Os candidatos de cada item do último `processar_lote`, na ordem do
         # lote. É o que os sinais da revisão conferem ("estava na busca?").
         self.ultimos_candidatos = []
-        if not self.api_key:
+        if self._falta_a_chave_do_gemini():
             print("AVISO: Nenhuma API Key fornecida.")
+
+    # [2026-11-05, pedido do Luan] A chave que a tela passa é a do Gemini
+    # (`get_key("GEMINI")`), e só o Gemini DIRETO a usa: o OpenRouter e o Workflow
+    # AMP têm a credencial deles, cobrada pelo próprio provedor. Antes, o lote
+    # parava com "API Key não configurada." mesmo sem usar o Gemini.
+    _SEM_CHAVE_DO_GEMINI = ("API Key não configurada: a IA do Cria Fichas está no Gemini direto, que usa a "
+                            "chave do Gemini. Preencha-a em Chaves de API, ou escolha outra IA no Configurar IA "
+                            "(OpenRouter ou Workflow AMP).")
+
+    def _falta_a_chave_do_gemini(self) -> bool:
+        """Sem a chave e no Gemini direto. Cliente sem `provider_name` (um dublê antigo) conta
+        como Gemini: é o comportamento de antes."""
+        provedor = getattr(self._llm, "provider_name", config.PROVIDER_GEMINI)
+        return not self.api_key and provedor == config.PROVIDER_GEMINI
+
+    def _exigir_chave_do_gemini(self) -> None:
+        if self._falta_a_chave_do_gemini():
+            raise ValueError(self._SEM_CHAVE_DO_GEMINI)
 
     @property
     def modelo_em_uso(self) -> str:
@@ -579,8 +618,7 @@ class GeminiCategorizer:
 
         Devolve `(linhas_da_revisao, contagem)` -- ver `preparar_para_revisao`.
         Spec: docs/superpowers/specs/2026-10-08-escolha-de-pdm-em-duas-passadas-design.md."""
-        if not self.api_key:
-            raise ValueError("API Key não configurada.")
+        self._exigir_chave_do_gemini()
         linhas = [linha for _indice, linha in df_itens.iterrows()]
 
         if callback_log:
@@ -619,7 +657,7 @@ class GeminiCategorizer:
         # CP 3.1: `model = genai.GenerativeModel(...)` sai daqui -- a
         # resolução de modelo/provider agora é responsabilidade de
         # `self._llm` (`get_llm("categorizar_pdm", ...)`, ver `__init__`).
-        if not self.api_key: raise ValueError("API Key não configurada.")
+        self._exigir_chave_do_gemini()
 
         pares = list(df_itens.iterrows())
         if interpretacoes is None:

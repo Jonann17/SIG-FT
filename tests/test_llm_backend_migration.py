@@ -216,7 +216,8 @@ def test_processar_lote_sem_api_key_levanta_value_error_antes_de_chamar_llm():
         cat.processar_lote(df_itens=None, catalogo=_CatalogoFalso())
         assert False, "deveria ter levantado ValueError"
     except ValueError as e:
-        assert str(e) == "API Key não configurada."
+        # 2026-11-05: a mensagem passou a dizer por quê (o Cria Fichas está no Gemini direto).
+        assert str(e).startswith("API Key não configurada")
 
     assert fake_llm.chamadas == []  # nunca chegou a chamar a IA
 

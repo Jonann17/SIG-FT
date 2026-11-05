@@ -128,6 +128,29 @@ def test_os_arquivos_ficam_fechados_depois(tmp_path):
     assert len(abertos) == 2 and all(arquivo.closed for arquivo in abertos)
 
 
+class _EmMemoria:
+    """O que a IA anexa (o `Anexo` de `core/llm/client.py`): nome, bytes e tipo, sem arquivo no disco."""
+
+    def __init__(self, nome, dados, mime):
+        self.nome, self.dados, self.mime = nome, dados, mime
+
+
+def test_enviar_manda_arquivo_em_memoria_com_o_proprio_tipo(tmp_path):
+    cliente, abrir = _enviando(_Resposta(200, {"ok": True, "texto": "{}"}))
+    pdf = _EmMemoria("Datasheet X - Fabricante.pdf", b"%PDF-1.7 web", "application/pdf")
+    pagina = _EmMemoria("manual.pdf - pagina 3.jpg", b"\xff\xd8jpeg", "image/jpeg")
+    resposta = cliente.enviar({"modo": "ia"}, {"anexo_1": pdf, "anexo_2": pagina,
+                                               "revisao_atual": _arquivos(tmp_path)["revisao_atual"]})
+    assert resposta.ok
+    envio = abrir.chamadas[1]
+    assert envio["files"] == {
+        "anexo_1": ("Datasheet X - Fabricante.pdf", b"%PDF-1.7 web", "application/pdf"),
+        "anexo_2": ("manual.pdf - pagina 3.jpg", b"\xff\xd8jpeg", "image/jpeg"),
+        "revisao_atual": ("#ITA0=Y01TF001&BPB020[0B].pdf", b"%PDF-1.7 atual", "application/pdf"),
+    }
+    assert all(aberto.closed for aberto in envio["abertos"])
+
+
 def test_arquivo_que_nao_abre_vira_erro_sem_mandar(tmp_path):
     cliente, abrir = _enviando()
     resposta = cliente.enviar(CAMPOS, {"revisao_atual": tmp_path / "nao-existe.pdf"})

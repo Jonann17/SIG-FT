@@ -14,6 +14,8 @@ seria uma execução nova do agente no AMP (revisão final do ramo, 2026-10-27).
 """
 from __future__ import annotations
 
+import io
+import os
 import time
 from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
@@ -91,7 +93,11 @@ class ClienteAmp:
         """Os `campos` e os `arquivos` (campo do formulário -> arquivo) num POST multipart, numa
         requisição só, pela rota do `ping` (na primeira vez, o ping vai antes). Cada arquivo vai com
         o próprio nome e é fechado logo depois. Tempo esgotado ou conexão cortada vira erro, e não
-        outra tentativa: o agente pode estar rodando no AMP."""
+        outra tentativa: o agente pode estar rodando no AMP.
+
+        Um arquivo é um caminho no disco ou, desde 2026-11-05, um arquivo EM MEMÓRIA: qualquer
+        objeto com `nome`, `dados` (bytes) e `mime`, como o `Anexo` que a IA manda (o PDF e as
+        páginas em imagem do AutoSpec). Vai com o nome e o tipo dele."""
         modo = str(campos.get("modo") or "enviar")
         if self._sessao is None:
             ping = self.ping()
@@ -100,8 +106,7 @@ class ClienteAmp:
         inicio = self._relogio()
         with ExitStack() as abertos:
             try:
-                partes = {campo: (caminho.name, abertos.enter_context(open(caminho, "rb")), tipo_do_arquivo(caminho))
-                          for campo, caminho in arquivos.items()}
+                partes = {campo: _parte(arquivo, abertos) for campo, arquivo in arquivos.items()}
             except OSError as erro:
                 return RespostaAmp(False, modo, None, 0.0, "",
                                    erro=f"não consegui abrir um arquivo para mandar: {erro}")
@@ -139,6 +144,16 @@ class ClienteAmp:
             erro = self._sem_chave(str(dados.get("erro") or f"HTTP {status}"))
             return RespostaAmp(False, modo, status, segundos, texto, dados, erro)
         return RespostaAmp(True, modo, status, segundos, texto, dados)
+
+
+def _parte(arquivo, abertos: ExitStack) -> tuple:
+    """`(nome, aberto, tipo)` de um arquivo do multipart: do disco (um caminho) ou da memória (um
+    objeto com `nome`, `dados` e `mime`). Os dois ficam abertos no `abertos` e se fecham com ele."""
+    if isinstance(arquivo, (str, os.PathLike)):
+        caminho = Path(arquivo)
+        return caminho.name, abertos.enter_context(open(caminho, "rb")), tipo_do_arquivo(caminho)
+    return (str(arquivo.nome), abertos.enter_context(io.BytesIO(arquivo.dados)),
+            str(getattr(arquivo, "mime", "") or "application/octet-stream"))
 
 
 def _falha_do_envio(erro: BaseException, segundos: float) -> str:

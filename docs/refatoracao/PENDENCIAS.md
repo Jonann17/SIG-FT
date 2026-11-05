@@ -942,4 +942,18 @@ duble. Depois, rodar a suite com a 9.2 e tirar o `<9.2`.~~
 | Data | Descoberto em | Descrição | Destino proposto |
 |---|---|---|---|
 | 2026-10-26 | Mural do CLAUDE.md | Aviso que saiu do mural para dar lugar ao da IA por módulo: 🔴 **Segurança das dependências:** o AutoSpec lê PDF de reserva com `pypdf` (era o `PyPDF2`, abandonado e com laço infinito em PDF montado); `certifi`, `setuptools` e `nltk` subiram, e o CI ganhou o job `auditoria` (pip-audit no `versoes-do-release.txt`).<br>Rafael: em `services/autospec.py` só o import e o nome mudaram (`autospec.pypdf`); `test_autospec_tempos`/`_leitura_pdf` acompanham. Aviso de segurança que não se aplica vai em `empacotamento/vulnerabilidades-aceitas.txt`, com o motivo. | Absorvido; fica como registro. |
-| 2026-11-04 | IA por módulo | O botão "Configurar IA" ainda não está no AutoSpec (a tela é do Rafael; aviso no mural). O DocPack ganhou o dele no cabeçalho da seção (a sugestão de pasta, `docpack_pasta`); a Conferência de Listas (Conferência de Revisões e Revisão no AMP) e a Etapa 2 do DocPack não passam pelo `get_llm`: falam com o AMP pelo webhook da própria aba (botão Webhook…), então não têm o que configurar aqui. O teste do webhook (ping) pela tela também ficou para depois. | Próxima frente da IA por módulo. |
+| 2026-11-04 | IA por módulo | **O botão do AutoSpec: RESOLVIDO em 2026-11-05** (pedido do Luan; o teste do webhook pela tela segue em aberto). O botão "Configurar IA" ainda não está no AutoSpec (a tela é do Rafael; aviso no mural). O DocPack ganhou o dele no cabeçalho da seção (a sugestão de pasta, `docpack_pasta`); a Conferência de Listas (Conferência de Revisões e Revisão no AMP) e a Etapa 2 do DocPack não passam pelo `get_llm`: falam com o AMP pelo webhook da própria aba (botão Webhook…), então não têm o que configurar aqui. O teste do webhook (ping) pela tela também ficou para depois. | Próxima frente da IA por módulo. |
+
+## 2026-11-05 — Workflow AMP: o que o teste do Cria Fichas mostrou
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-11-05 | Cria Fichas no Workflow AMP | **RESOLVIDO em 2026-11-05:** a guarda só cobra a chave no Gemini direto (`GeminiCategorizer._exigir_chave_do_gemini`). O Cria Fichas exige a chave `GEMINI` mesmo com as duas tarefas no Workflow AMP (`GeminiCategorizer.classificar_para_revisao` e `processar_lote`: `if not self.api_key`), e a tela passa `get_key("GEMINI")`. Quem não tem a chave da IA Externa não roda o módulo pelo AMP. | Melhoria do Cria Fichas: a guarda olha o modo das tarefas (`core/llm/modo.py`). |
+| 2026-11-05 | Cria Fichas no Workflow AMP | *Categorizar PDM*: um bloco que falha derruba o lote, e os blocos que já voltaram se perdem (`processar_lote` não trata a falha por bloco). Pesa mais no Workflow AMP, sem nova tentativa e com chamadas de minutos. | Melhoria do Cria Fichas, se aparecer no uso: guardar os blocos que voltaram e marcar os do bloco que falhou como SEM RESPOSTA. |
+
+## 2026-11-05 — Aviso do mural que saiu (regra dos 5 avisos)
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-10-28 | Mural do CLAUDE.md | Aviso que saiu do mural para dar lugar ao do AutoSpec no Workflow AMP: 🔴 **Como funciona e boas-vindas:** o `ModuloAutoSpec` ganhou o bloco "Como funciona" abaixo do título; o texto mora em `sigft/app/como_funciona.py`, chave `"AutoSpec"` (mudou o comportamento da tela? mude o texto junto).<br>Rafael: teus testes de tela não mudam, o `conftest` liga `SIGFT_SEM_COMO_FUNCIONA=1` (tire para testar com o bloco); a página de boas-vindas nova também nasce desligada (`SIGFT_SEM_BOAS_VINDAS`). | Absorvido; fica como registro. |
+

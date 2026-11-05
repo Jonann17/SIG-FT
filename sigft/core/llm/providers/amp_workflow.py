@@ -8,6 +8,13 @@ implementação só). Contrato com o workflow (formulário): `modo=ia`, `tarefa`
 
 Quem monta é `get_llm`, com `max_retries=0`: cada repetição seria uma execução nova do
 agente no AMP. Desenho: `docs/superpowers/specs/2026-11-04-ia-por-modulo-design.md`.
+
+Os ANEXOS (2026-11-05, para o AutoSpec): o PDF e as páginas em imagem vão como arquivos do
+formulário (`anexo_1`, `anexo_2`...), com o campo `arquivos` dizendo quantos. O agente do AMP lê
+o arquivo anexado, como na revisão das listas, então `aceita_pdf` é verdadeiro. O workflow tem
+de passar os arquivos ao agente e responder `arquivos_recebidos`; sem essa confirmação, ou com
+menos arquivos do que foram, a resposta não vale (o agente respondeu sem ver os documentos), e
+quem chama decide o que fazer: o AutoSpec refaz a ficha com o texto extraído.
 """
 from __future__ import annotations
 
@@ -30,6 +37,11 @@ class AmpWorkflowProvider:
             cliente = ClienteAmp(url.strip(), (chave or "").strip())
         self._cliente = cliente
 
+    def aceita_pdf(self) -> bool:
+        """O agente do AMP lê o PDF anexado (é o que a revisão das listas faz desde 2026-11-03).
+        É o `LLMClient.aceita_pdf` que o AutoSpec pergunta antes de anexar o documento."""
+        return True
+
     def generate_raw(self, prompt: str, *, system: str | None = None, json_mode: bool = False,
                      anexos: list[Any] | None = None) -> ProviderResult:
         campos = {"modo": "ia", "tarefa": self._tarefa, "prompt": prompt}
@@ -37,10 +49,27 @@ class AmpWorkflowProvider:
             campos["system"] = system
         if json_mode:
             campos["json"] = "sim"
-        resposta = self._cliente.enviar(campos, {})
+        arquivos = {f"anexo_{numero}": anexo for numero, anexo in enumerate(anexos or [], start=1)}
+        if arquivos:
+            campos["arquivos"] = str(len(arquivos))
+        resposta = self._cliente.enviar(campos, arquivos)
         if not resposta.ok:
             raise RuntimeError(f"Workflow AMP ({self._tarefa}): {resposta.erro or 'falhou'}")
+        if arquivos:
+            self._conferir_arquivos(resposta.dados.get("arquivos_recebidos"), len(arquivos))
         texto = resposta.dados.get("texto") or resposta.dados.get("resposta")
         if not isinstance(texto, str) or not texto.strip():
             raise RuntimeError(f"Workflow AMP ({self._tarefa}): a resposta veio sem o campo \"texto\".")
         return ProviderResult(texto)
+
+    def _conferir_arquivos(self, recebidos: Any, enviados: int) -> None:
+        """O workflow passou ao agente todos os arquivos? Sem confirmação, não dá para saber."""
+        try:
+            numero = int(recebidos)
+        except (TypeError, ValueError):
+            raise RuntimeError(
+                f"Workflow AMP ({self._tarefa}): o workflow não confirmou que recebeu os arquivos anexados ({enviados}). "
+                "Ele passa os arquivos ao agente? Use o workflow deste módulo, de amp/ia_por_modulo/.") from None
+        if numero != enviados:
+            raise RuntimeError(f"Workflow AMP ({self._tarefa}): o workflow recebeu {numero} de {enviados} "
+                               "arquivo(s) anexado(s); o agente não viu todos os documentos.")

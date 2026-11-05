@@ -166,7 +166,7 @@ Responsável por leitura/escrita de planilhas Excel com inteligência de localiz
 
 **`carregar_planilha_inteligente(arquivo, nome_da_aba, colunas_desejadas) → (DataFrame, str_codigo_projeto, str_erro)`**
 - Lê arquivo em chunks de 30 linhas (header=None) para encontrar linha com todas as `colunas_desejadas`
-- Ao localizar header row, extrai opcionalmente `codigo_projeto_sugerido`: procura coluna com valor "ITEM", depois pega célula uma linha acima (código presente antes da tabela)
+- Ao localizar header row, extrai opcionalmente `codigo_projeto_sugerido` (`codigo_do_projeto_sugerido`): a célula logo **abaixo** do título "GERENCIAMENTO DOS MATERIAIS SOBRESSALENTES CADASTRADOS NO PMIB" (o template escreve "MATERIAS"; as duas grafias valem), achada pelo texto em `status_pmib_arquivos.projeto_abaixo_do_titulo`. Sem o título, o jeito antigo: a célula acima de "ITEM", pulando a linha da revisão em uso. Desde 2026-11-05: a linha acima do cabeçalho, no layout v2, é a da revisão, que ia para o campo no lugar do projeto
 - Retorna tupla: (df_final com header correto, codigo_sugerido, None) ou (None, "", mensagem_erro)
 - Trata: arquivo não encontrado, aba não existe, colunas não encontradas
 
@@ -182,6 +182,8 @@ Responsável por leitura/escrita de planilhas Excel com inteligência de localiz
 Orquestra chamada à Gemini 3.1 Pro para classificação em lote.
 
 **`__init__(api_key)`** — Configura cliente Gemini com `genai.configure(api_key, transport='rest')`. Se api_key vazia, aviso em stdout.
+
+> **2026-11-05:** a `api_key` é a do Gemini (`get_key("GEMINI")`) e só é cobrada quando a IA do módulo é o **Gemini direto**: aí o aviso aparece, e `processar_lote`/`classificar_para_revisao` levantam `ValueError` ("API Key não configurada: ...") antes de chamar a IA. No OpenRouter e no Workflow AMP o lote roda sem ela; cada provedor cobra a própria credencial.
 
 **`_formatar_itens(df) → str_texto_formatado`** — Monta bloco de texto:
 ```
