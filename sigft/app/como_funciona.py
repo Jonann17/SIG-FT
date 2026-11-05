@@ -255,7 +255,7 @@ TEXTOS: dict[str, Texto] = {
             marcar("Lê a mapeadora: entram as listas sem link e sem _STATUS_PMIB na pasta raiz."),
             marcar("ET, capítulo, sistema e subsistema se editam com dois cliques; a IA pode sugerir."),
             marcar("Cada pasta ganha o _STATUS_PMIB, a lista com preço (PB021) e LMR, IMAGENS e DATASHEETS."),
-            marcar("Nada é sobrescrito, e a mapeadora não muda: rode o Gestão PMIB depois para ligar."),
+            marcar("Nada é sobrescrito. O link de cada dossiê novo vai para a mapeadora (só onde estava vazio)."),
         ),
     ),
     "DocPack.etapa2": Texto(  # nao-e-interface

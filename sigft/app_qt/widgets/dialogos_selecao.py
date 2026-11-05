@@ -377,6 +377,22 @@ def tabela_ttk(colunas, *, selecao: str = "extended", barra_horizontal: bool = T
     return tree
 
 
+def ajustar_ao_conteudo(tree: QTreeWidget, *, folga: int = 18, maximo: int = 900) -> None:
+    """[2026-11-05] Alarga cada coluna até caber o texto mais comprido (até `maximo`
+    px), sem nunca estreitar abaixo da largura pedida. Com a barra horizontal da
+    `tabela_ttk`, o que não cabe na tela passa a rolar de lado em vez de ser cortado.
+    Chamar depois de preencher as linhas."""
+    esticar = getattr(tree, "esticar_colunas", None)
+    for i in range(tree.columnCount()):
+        largura = min(maximo, max(tree.sizeHintForColumn(i), tree.header().sectionSizeHint(i)) + folga)
+        if esticar is not None and i < len(esticar._base):
+            esticar._base[i] = max(esticar._base[i], largura)
+            largura = esticar._base[i]
+        tree.setColumnWidth(i, largura)
+    if esticar is not None:
+        esticar.esticar()
+
+
 def linha_ttk(tree: QTreeWidget, valores, chave=None) -> QTreeWidgetItem:
     """`tree.insert("", "end", iid=chave, values=valores)`: a chave fica no
     `UserRole` da coluna 0; cada célula com o anchor da sua coluna."""

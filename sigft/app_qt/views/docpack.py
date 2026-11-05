@@ -182,8 +182,10 @@ class ModuloDocPack(ModuleFrame):
         linha_.addWidget(self.lbl_totais)
         linha_.addWidget(self.lbl_legenda, 1)
         lay.addLayout(linha_)
-        self.tabela = dialogos_selecao.tabela_ttk([(t(c), largura, "w") for c, largura in COLUNAS],
-                                                  barra_horizontal=False)
+        self.tabela = dialogos_selecao.tabela_ttk([(t(c), largura, "w") for c, largura in COLUNAS])
+        # [2026-11-05] Barra de rolagem de lado (pedido do Jonathan): a coluna cresce
+        # até caber o texto (`ajustar_ao_conteudo`) e o que não cabe na tela rola.
+        self.tabela.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.tabela.setEditTriggers(self.tabela.EditTrigger.DoubleClicked | self.tabela.EditTrigger.EditKeyPressed)
         self.tabela.setItemDelegate(_EditorDePasta(self))
         lay.addWidget(self.tabela, 1)
@@ -254,6 +256,7 @@ class ModuloDocPack(ModuleFrame):
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(0, Qt.CheckState.Unchecked)
             item.setToolTip(1, lista.descricao)
+        dialogos_selecao.ajustar_ao_conteudo(self.tabela)
         self.lbl_totais.setText(t("{n} lista(s) sem _STATUS_PMIB", n=len(self.listas)))
 
     def marcadas(self) -> list[tuple[int, docpack_svc.Destino]]:
@@ -271,6 +274,7 @@ class ModuloDocPack(ModuleFrame):
             return
         for coluna, nivel in NIVEL_DA_COLUNA.items():
             item.setText(coluna, getattr(destino, nivel))
+        dialogos_selecao.ajustar_ao_conteudo(self.tabela)
         if motivo:
             for coluna in EDITAVEIS:
                 item.setToolTip(coluna, motivo)
@@ -382,8 +386,13 @@ class ModuloDocPack(ModuleFrame):
         if not self.perguntar_sim_nao(t(TITULO), t(PERGUNTA_CRIAR, n=validas, raiz=raiz)):
             self.log("DocPack cancelado: nada foi criado.")
             return
-        docpack_svc.criar_dossies(pedidos, Path(raiz), templates, log_cb=self.log, progress_cb=self._progresso,
-                                  cancelado_cb=self._cancelado.is_set)
+        resultados = docpack_svc.criar_dossies(pedidos, Path(raiz), templates, log_cb=self.log,
+                                               progress_cb=self._progresso, cancelado_cb=self._cancelado.is_set)
+        # [2026-11-05] O link do Box na mapeadora, para a Conferência de Listas.
+        if self.caminho_mapeadora and resultados:
+            n = docpack_svc.gravar_links(self.caminho_mapeadora, resultados, log_cb=self.log,
+                                         retry_lock=self.perguntar_retry_excel)
+            self.log(f"DocPack: {n} link(s) gravado(s) na mapeadora (LINK DA PLANILHA).")
 
     def _progresso(self, fracao: float) -> None:
         if self.progress_bar is not None:
