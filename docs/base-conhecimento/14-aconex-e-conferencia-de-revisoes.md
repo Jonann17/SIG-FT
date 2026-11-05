@@ -295,7 +295,7 @@ O eco da v1 saiu: o agente lê o arquivo original, e os códigos voltaram intact
   - No fim, as que voltaram com HTML se desmarcam: um segundo clique manda só as que faltaram.
   - Se a Conferência rodou de novo, o clique refaz a tabela e não manda nada até o próximo clique.
   - Com a Conferência ainda rodando, aparece um aviso, e nada é chamado.
-- **O webhook.** O **Webhook…** abre a janela do endereço e da chave deste workflow, guardados no
+- **O webhook.** Desde 2026-11-05 fica no **Configurar IA** do alto da Conferência de Listas (entrada "Revisão no AMP", só Workflow AMP; a aba mostra só se está configurado). Endereço e chave guardados no
   `api_config.json` como `AMP_REVISAO_LISTAS_URL` e `AMP_REVISAO_LISTAS_CHAVE` (variáveis
   `SIGFT_AMP_REVISAO_LISTAS_*`).
   - A janela recusa endereço sem `https://` e o de teste (`/webhook-test/`).

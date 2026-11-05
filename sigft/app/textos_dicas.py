@@ -101,8 +101,6 @@ DICAS: dict[str, dict[str, str]] = {
                           "pasta dela; nada é aplicado no Excel."),
         "btn_testar_amp": marcar("Confere a rede, a chave e o workflow publicado (ping). Não manda documento e "
                                  "não chama o agente."),
-        "btn_webhook": marcar("O endereço e a chave do workflow da revisão de listas no AMP. A chave fica "
-                              "mascarada."),
         "btn_copiar_diag": marcar("Copia o diagnóstico das listas que falharam, sem texto de documento e sem a "
                                   "chave, para colar numa conversa nova com o Claude."),
         "btn_parar": marcar("Para depois da lista que está no AMP. As que já voltaram ficam."),

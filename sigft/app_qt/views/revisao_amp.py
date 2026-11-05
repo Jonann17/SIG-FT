@@ -5,7 +5,7 @@ A tela é fina: a rodada, o pedido e o diagnóstico estão em `services/revisao_
 chamada em `core/amp/cliente.py`. As listas saem da última conferência da aba ao lado
 (`fonte.ultima`, a `UltimaConferencia` da Conferência de Revisões) e aparecem assim que a aba
 abre, todas marcadas: o Luan desmarca as que não quer. O endereço e a chave do webhook moram
-nesta aba (botão Webhook…, `widgets/webhook_amp.py`), com nomes deste workflow; a chave nunca
+no "Configurar IA" da Conferência de Listas (desde 2026-11-05; antes, o botão Webhook… desta aba), com nomes deste workflow; a chave nunca
 aparece na tela nem no log. Cada rodada e cada teste de conexão gravam as linhas do console em
 `logs\\amp\\` (`core/log_execucao.py`).
 Desenho: `docs/superpowers/specs/2026-11-03-amp-revisao-com-arquivos-design.md`, §5.
@@ -15,11 +15,12 @@ from __future__ import annotations
 import threading
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QDialog, QHBoxLayout
+from PySide6.QtWidgets import QApplication, QHBoxLayout
 
 from sigft import __version__
 from sigft.app.idioma import marcar, t
 from sigft.app_qt import interface
+from sigft.app_qt.widgets.ia_do_modulo import avisos as avisos_da_ia, chaves_do_webhook_so
 from sigft.app_qt.widgets import blocos, dialogos_selecao, webhook_amp
 from sigft.app_qt.widgets.module_frame import ModuleFrame
 from sigft.core import dados_usuario, log_execucao, plataforma
@@ -28,18 +29,19 @@ from sigft.services import revisao_amp as revisao_amp_svc
 
 # Os nomes deste workflow no `api_config.json`. Os antigos (Configuração → Chaves de API, até
 # 2026-11-03) são adotados uma vez.
-CHAVES_DO_WEBHOOK = webhook_amp.ChavesDoWebhook("AMP_REVISAO_LISTAS_URL", "AMP_REVISAO_LISTAS_CHAVE",
-                                                antigas=("AMP_WEBHOOK_URL", "AMP_WEBHOOK_CHAVE"))
+# [2026-11-05] Os nomes vêm do "Configurar IA" (`ia_por_modulo.SO_WORKFLOW`): é lá que o
+# webhook se configura agora, e não mais num botão desta aba.
+CHAVES_DO_WEBHOOK = chaves_do_webhook_so("revisao_amp")
 
 TITULO = marcar("Revisão no AMP")
-TITULO_DO_WEBHOOK = marcar("Webhook da Revisão no AMP")
 AVISO_SEM_CONFERENCIA = marcar("Confira as revisões antes.")
 AVISO_CONFERENCIA_RODANDO = marcar("A conferência ainda está rodando: espere ela terminar.")
-AVISO_SEM_CHAVE = marcar("Configure o endereço e a chave do webhook no botão Webhook…, nesta aba.")
+AVISO_SEM_CHAVE = marcar("Configure o endereço e a chave do webhook em Configurar IA, no alto da Conferência de Listas.")
 AVISO_NENHUMA_MARCADA = marcar("Marque ao menos uma lista para mandar ao AMP.")
 AVISO_TABELA_REFEITA = marcar("A conferência mudou: a tabela foi refeita com as listas dela. Confira as "
                               "marcas e clique em Revisar no AMP de novo.")
-WEBHOOK_NAO_CONFIGURADO = marcar("Webhook do AMP não configurado: clique em Webhook…, nesta aba.")
+WEBHOOK_NAO_CONFIGURADO = marcar("Workflow AMP sem configurar: use Configurar IA, no alto da Conferência de Listas.")
+WEBHOOK_CONFIGURADO = marcar("Workflow AMP configurado (em Configurar IA).")
 EXPLICACAO = marcar("Manda ao AMP, uma por vez, as listas marcadas da última conferência (aba Conferência "
                     "de Revisões). Cada uma volta como um HTML na pasta do _STATUS_PMIB, com o que mudou e as "
                     "ações no controle: nada é aplicado no Excel. Dois cliques numa lista abrem o HTML.")
@@ -114,14 +116,12 @@ class ModuloRevisaoAmp(ModuleFrame):
         self.btn_amp.clicked.connect(self._revisar)
         self.btn_testar_amp = blocos.botao(t("Testar conexão com o AMP"), variante="cinza", largura_minima=200)
         self.btn_testar_amp.clicked.connect(self._testar_conexao)
-        self.btn_webhook = blocos.botao(t("Webhook…"), variante="cinza", largura_minima=110)
-        self.btn_webhook.clicked.connect(self._configurar_webhook)
         self.btn_copiar_diag = blocos.botao(t("Copiar diagnóstico"), variante="cinza", largura_minima=160)
         self.btn_copiar_diag.clicked.connect(self._copiar_diagnostico)
         self.btn_copiar_diag.setEnabled(False)      # só com alguma falha na rodada
         self.btn_parar = blocos.botao(t("Parar"), variante="perigo", largura_minima=90)
         self.btn_parar.clicked.connect(self._parar)
-        cartao.addLayout(_linha(self.btn_amp, self.btn_testar_amp, self.btn_webhook, self.btn_copiar_diag,
+        cartao.addLayout(_linha(self.btn_amp, self.btn_testar_amp, self.btn_copiar_diag,
                                 self.btn_parar))
 
         self.btn_marcar = blocos.botao(t("Marcar todas"), variante="cinza", largura_minima=140)
@@ -137,6 +137,11 @@ class ModuloRevisaoAmp(ModuleFrame):
         self.tabela.itemDoubleClicked.connect(self._abrir_html)
         lay.addWidget(self.tabela, 1)
         self._mostrar_webhook()
+        # O "Configurar IA" grava o webhook: a linha de estado acompanha na hora.
+        avisos_da_ia().mudou.connect(self._ia_mudou)
+
+    def _ia_mudou(self, _tarefa: str) -> None:
+        self._mostrar_webhook()
 
     def showEvent(self, evento) -> None:  # noqa: N802 -- nome do Qt
         # O webhook pode ter mudado, e a Conferência pode ter rodado de novo, com a aba já montada.
@@ -151,12 +156,7 @@ class ModuloRevisaoAmp(ModuleFrame):
 
     def _mostrar_webhook(self) -> None:
         url, chave = self._webhook()
-        if not url:
-            self.lbl_webhook.setText(t(WEBHOOK_NAO_CONFIGURADO))
-        elif chave:
-            self.lbl_webhook.setText(t("Webhook do AMP: {url} · chave posta", url=url))
-        else:
-            self.lbl_webhook.setText(t("Webhook do AMP: {url} · sem chave", url=url))
+        self.lbl_webhook.setText(t(WEBHOOK_CONFIGURADO) if url and chave else t(WEBHOOK_NAO_CONFIGURADO))
 
     def _webhook_ou_aviso(self) -> tuple[str, str] | None:
         """O endereço e a chave; faltando um deles, o aviso, e nada é chamado."""
@@ -166,16 +166,6 @@ class ModuloRevisaoAmp(ModuleFrame):
             return None
         return url, chave
 
-    def _configurar_webhook(self) -> None:
-        url, chave = self._webhook()
-        janela = webhook_amp.JanelaDoWebhook(self, titulo=t(TITULO_DO_WEBHOOK), url=url, chave=chave)
-        if janela.exec() != QDialog.DialogCode.Accepted:
-            return
-        novo_url, nova_chave = janela.valores()
-        if self.controller is not None:
-            webhook_amp.gravar(self.controller, CHAVES_DO_WEBHOOK, novo_url, nova_chave)
-        self._mostrar_webhook()
-        self.log(f"Webhook da Revisão no AMP salvo: {novo_url} · chave {_chave(nova_chave)}")
 
     def _log_em_arquivo(self, nome: str, url: str, chave: str):
         """O log em `logs\\amp\\` (as linhas do console, com a hora) e o callback que escreve nos

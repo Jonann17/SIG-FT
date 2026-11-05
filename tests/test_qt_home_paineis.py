@@ -180,7 +180,9 @@ def test_textos_iguais_aos_da_home_antiga():
         "autospec": "AutoSpec (RAG):",
         "interpretar_material": "Interpretar material (Cria Fichas):",
         "traduzir_pdm": "Traduzir PDM (Planilhas PMIB):",
-        "docpack_pasta": "Sugerir pasta (DocPack):",
+        "docpack_pasta": "Etapa 1: Estrutura (DocPack):",
+        "docpack_conteudo": "Etapa 2: Conteúdo (DocPack):",
+        "revisao_amp": "Revisão no AMP (Conferência de Listas):",
     }
 
 

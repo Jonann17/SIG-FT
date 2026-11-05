@@ -25,10 +25,11 @@ from PySide6.QtWidgets import (
 )
 
 from sigft import config
-from sigft.app.ia_por_modulo import EXPLICACAO_DOS_MODOS, NOMES_DOS_MODOS, ROTULOS
+from sigft.app.ia_por_modulo import DICA_SO_WORKFLOW, EXPLICACAO_DOS_MODOS, NOMES_DOS_MODOS, ROTULOS, SO_WORKFLOW
 from sigft.app.idioma import marcar, t
 from sigft.app_qt import estilo, icones, interface, propriedades
 from sigft.app_qt.widgets import blocos, dialogs
+from sigft.app_qt.widgets import webhook_amp
 from sigft.app_qt.widgets.webhook_amp import ROTULO_CHAVE, ROTULO_ENDERECO, problema_do_endereco
 from sigft.core.llm import catalogo, modo
 
@@ -57,6 +58,7 @@ SALVO_WORKFLOW = marcar("Salvo: {rotulo} usa o Workflow AMP.")
 VALENDO_EXTERNA = marcar("Valendo agora: IA Externa, {modelo}.")
 VALENDO_PADRAO = marcar("Valendo agora: o modelo padrão do sistema.")
 VALENDO_WORKFLOW = marcar("Valendo agora: Workflow AMP.")
+WORKFLOW_SEM_CONFIGURAR = marcar("Workflow AMP: sem configurar. Ponha o endereço e a chave do webhook e salve.")
 
 
 class _Avisos(QObject):
@@ -75,6 +77,16 @@ def avisos() -> _Avisos:
 
 def _caminho_config() -> str:
     return config.CONFIG_FILE
+
+
+def chaves_do_webhook_so(tarefa: str) -> webhook_amp.ChavesDoWebhook | None:
+    """As chaves do webhook de um módulo só de workflow (`ia_por_modulo.SO_WORKFLOW`), ou
+    `None` para uma tarefa de LLM. As abas que chamam o workflow leem por aqui também."""
+    nomes = SO_WORKFLOW.get(tarefa)
+    if nomes is None:
+        return None
+    url, chave, antigas = nomes
+    return webhook_amp.ChavesDoWebhook(url, chave, antigas=antigas)
 
 
 class PainelIaDoModulo(QWidget):
@@ -230,14 +242,35 @@ class PainelIaDoModulo(QWidget):
         self.tarefa = tarefa
         self.lbl_modulo.setText(t(ROTULOS.get(tarefa, tarefa)).rstrip(":"))
         caminho = _caminho_config()
-        self._externo = modo.modelo_externo(tarefa, config_path=caminho)
         self.campo_manual.clear()
+        webhook = chaves_do_webhook_so(tarefa)
+        self._ligar_modos(so_workflow=webhook is not None)
+        if webhook is not None:
+            # Só o workflow: o endereço e a chave que a aba usava (nada de seleção de LLM).
+            self._externo = None
+            url, chave = webhook_amp.ler(self.controller, webhook) if self.controller is not None else ("", "")
+            self.campo_url.setText(url)
+            self.campo_chave.setText(chave)
+            self._escolher_modo(modo.WORKFLOW)
+            self.lbl_status.setText(self._valendo())
+            return
+        self._externo = modo.modelo_externo(tarefa, config_path=caminho)
         nome_url, nome_chave = modo.chaves_do_webhook(tarefa)
         self.campo_url.setText(self._chave(nome_url))
         self.campo_chave.setText(self._chave(nome_chave))
         self._recarregar_modelos()
         self._escolher_modo(modo.modo_da_tarefa(tarefa, config_path=caminho))
         self.lbl_status.setText(self._valendo())
+
+    def _ligar_modos(self, *, so_workflow: bool) -> None:
+        """No módulo só de workflow, a IA Externa fica desligada (e a Interna, sempre)."""
+        for chave, botao in self.botoes_modo.items():
+            pode = chave in modo.SELECIONAVEIS and (not so_workflow or chave == modo.WORKFLOW)
+            botao.setEnabled(pode)
+            if chave == modo.INTERNA:
+                botao.setToolTip(t(DICA_INTERNA))
+            else:
+                botao.setToolTip("" if pode else t(DICA_SO_WORKFLOW))
 
     def _clicou_modo(self) -> None:
         botao = self.sender()
@@ -254,6 +287,8 @@ class PainelIaDoModulo(QWidget):
                                        modo.WORKFLOW: self.pagina_workflow}[escolha])
 
     def _valendo(self) -> str:
+        if chaves_do_webhook_so(self.tarefa) is not None:
+            return t(VALENDO_WORKFLOW) if self.campo_url.text().strip() else t(WORKFLOW_SEM_CONFIGURAR)
         if modo.modo_da_tarefa(self.tarefa, config_path=_caminho_config()) == modo.WORKFLOW:
             return t(VALENDO_WORKFLOW)
         if self._externo:
@@ -341,11 +376,16 @@ class PainelIaDoModulo(QWidget):
                 estilo.definir_papel(self.lbl_status, "erro")
                 self.lbl_status.setText(problema)
                 return False
-            nome_url, nome_chave = modo.chaves_do_webhook(self.tarefa)
-            if self.controller is not None:
-                self.controller.save_keys({nome_url: self.campo_url.text().strip(),
-                                           nome_chave: self.campo_chave.text().strip()})
-            modo.definir_workflow(self.tarefa, config_path=caminho)
+            webhook = chaves_do_webhook_so(self.tarefa)
+            if webhook is not None:
+                if self.controller is not None:
+                    webhook_amp.gravar(self.controller, webhook, self.campo_url.text(), self.campo_chave.text())
+            else:
+                nome_url, nome_chave = modo.chaves_do_webhook(self.tarefa)
+                if self.controller is not None:
+                    self.controller.save_keys({nome_url: self.campo_url.text().strip(),
+                                               nome_chave: self.campo_chave.text().strip()})
+                modo.definir_workflow(self.tarefa, config_path=caminho)
             texto = t(SALVO_WORKFLOW, rotulo=rotulo)
         else:
             modelo = self.modelo_escolhido()

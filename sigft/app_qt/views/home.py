@@ -646,7 +646,8 @@ class HomeView(QScrollArea):
         _empilhar_texto(coluna, _Texto(t(ia_do_modulo.EXPLICACAO_CENTRAL), papel="legenda",
                                        altura_linha=LINHA_TK_ROBOTO_12), baixo=8)
         self.painel_ia_por_modulo = ia_do_modulo.PainelIaDoModulo(
-            self.controller, sigft_config.TAREFAS_DO_PAINEL, abrir_chaves=self.abrir_janela_chaves_api)
+            self.controller, tuple(sigft_config.TAREFAS_DO_PAINEL) + tuple(ia_por_modulo.SO_WORKFLOW),
+            abrir_chaves=self.abrir_janela_chaves_api)
         self.painel_ia_por_modulo.setMinimumHeight(380)
         coluna.addWidget(self.painel_ia_por_modulo)
         coluna.addSpacing(12)

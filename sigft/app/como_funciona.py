@@ -237,8 +237,8 @@ TEXTOS: dict[str, Texto] = {
         marcar("Manda ao AMP, uma por vez, as listas marcadas da última conferência e guarda o que mudou "
                "num HTML."),
         (
-            marcar("Pede uma conferência feita nesta sessão e o webhook do workflow, no botão Webhook… "
-                   "desta aba."),
+            marcar("Pede uma conferência feita nesta sessão e o webhook do workflow, no Configurar IA, no "
+                   "alto da seção."),
             marcar("As listas vêm todas marcadas; a que tem falta fica sem caixa. As que voltam com HTML se "
                    "desmarcam sozinhas."),
             marcar("O agente do AMP recebe os dois PDFs e o _STATUS_PMIB como estão e devolve o que mudou e as "
