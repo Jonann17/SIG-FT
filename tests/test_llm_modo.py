@@ -117,6 +117,77 @@ def test_provedor_sem_texto_na_resposta_falha():
         provider.generate_raw("p")
 
 
+# -- os anexos (o AutoSpec manda o PDF e as páginas em imagem) -------------------------
+
+def _anexos():
+    from sigft.core.llm.client import Anexo
+
+    return [Anexo(nome="Datasheet X.pdf", mime="application/pdf", dados=b"%PDF-1.7"),
+            Anexo(nome="manual.pdf - pagina 3.jpg", mime="image/jpeg", dados=b"\xff\xd8")]
+
+
+def test_provedor_le_pdf():
+    """O agente do AMP lê o arquivo anexado, como na revisão das listas: o AutoSpec manda o PDF."""
+    provider = AmpWorkflowProvider("https://amp/webhook/x", "k", tarefa="autospec", cliente=_ClienteFalso(None))
+    assert provider.aceita_pdf() is True
+
+
+def test_provedor_manda_os_anexos_como_arquivos_e_diz_quantos():
+    cliente = _ClienteFalso(_resposta(dados={"ok": True, "texto": "{}", "arquivos_recebidos": 2}))
+    provider = AmpWorkflowProvider("https://amp/webhook/x", "k", tarefa="autospec", cliente=cliente)
+    anexos = _anexos()
+    assert provider.generate_raw("p", json_mode=True, anexos=anexos).text == "{}"
+    campos, arquivos = cliente.enviados[0]
+    assert campos == {"modo": "ia", "tarefa": "autospec", "prompt": "p", "json": "sim", "arquivos": "2"}
+    assert arquivos == {"anexo_1": anexos[0], "anexo_2": anexos[1]}
+
+
+def test_provedor_sem_anexo_nao_manda_o_campo_arquivos():
+    cliente = _ClienteFalso(_resposta(dados={"ok": True, "texto": "{}"}))
+    AmpWorkflowProvider("https://amp/webhook/x", "k", tarefa="t", cliente=cliente).generate_raw("p", anexos=[])
+    assert "arquivos" not in cliente.enviados[0][0] and cliente.enviados[0][1] == {}
+
+
+def test_provedor_falha_se_o_workflow_nao_confirma_os_arquivos():
+    """Um workflow que não passa os arquivos ao agente (o do Cria Fichas, por exemplo) não diz
+    quantos recebeu: a resposta não vale, porque o agente respondeu sem ver os documentos. O
+    AutoSpec refaz a ficha com o texto extraído."""
+    cliente = _ClienteFalso(_resposta(dados={"ok": True, "texto": "{}"}))
+    provider = AmpWorkflowProvider("https://amp/webhook/x", "k", tarefa="autospec", cliente=cliente)
+    with pytest.raises(RuntimeError, match=r"não confirmou que recebeu os arquivos anexados \(2\)"):
+        provider.generate_raw("p", anexos=_anexos())
+
+
+def test_provedor_falha_se_um_arquivo_se_perdeu():
+    cliente = _ClienteFalso(_resposta(dados={"ok": True, "texto": "{}", "arquivos_recebidos": 1}))
+    provider = AmpWorkflowProvider("https://amp/webhook/x", "k", tarefa="autospec", cliente=cliente)
+    with pytest.raises(RuntimeError, match="recebeu 1 de 2 arquivo"):
+        provider.generate_raw("p", anexos=_anexos())
+
+
+def test_o_llmclient_leva_os_anexos_ate_o_workflow_e_le_o_json():
+    """O caminho do AutoSpec: `generate(prompt, json_mode=True, anexos=...)` no `LLMClient`."""
+    from sigft.core.llm.client import LLMClient
+
+    cliente = _ClienteFalso(_resposta(dados={"ok": True, "texto": '{"ID1": {"valor": "24 V"}}',
+                                             "arquivos_recebidos": 2}))
+    llm = LLMClient(AmpWorkflowProvider("https://amp/webhook/a", "k", tarefa="autospec", cliente=cliente),
+                    provider_name=config.PROVIDER_AMP_WORKFLOW, model=modo.MODELO_WORKFLOW, max_retries=0)
+    resposta = llm.generate("o prompt", json_mode=True, anexos=_anexos(), tags={"tarefa": "autospec"})
+    assert resposta.parsed_json == {"ID1": {"valor": "24 V"}}
+    campos, arquivos = cliente.enviados[0]
+    assert campos["arquivos"] == "2" and campos["json"] == "sim"
+    assert [a.nome for a in arquivos.values()] == ["Datasheet X.pdf", "manual.pdf - pagina 3.jpg"]
+
+
+def test_get_llm_com_workflow_le_pdf():
+    """É o `LLMClient.aceita_pdf` que o AutoSpec pergunta antes de anexar o PDF."""
+    chaves = {"AMP_IA_AUTOSPEC_URL": "https://amp/webhook/a", "AMP_IA_AUTOSPEC_CHAVE": "k"}
+    cliente = get_llm("autospec", chaves=chaves,
+                      selecao_resolvida={"provider": config.PROVIDER_AMP_WORKFLOW, "model": modo.MODELO_WORKFLOW})
+    assert cliente.aceita_pdf is True
+
+
 def test_provedor_sem_endereco_falha_antes_de_chamar():
     with pytest.raises(ValueError, match="Workflow AMP"):
         AmpWorkflowProvider("", "k", tarefa="condicoes")

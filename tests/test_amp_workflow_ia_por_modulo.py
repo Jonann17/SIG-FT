@@ -59,17 +59,42 @@ def test_webhook_agente_e_contrato_do_provedor(modulo):
     assert "$json.body.prompt" in GERADOR.EXPR_CHAT and "$json.body.system" in GERADOR.EXPR_CHAT
     js = _no(workflow, "Prepara a resposta")["parameters"]["jsCode"]
     assert "modo: 'ia'" in js and "texto" in js
-    assert _no(workflow, "Responde sem prompt")["parameters"]["options"]["responseCode"] == 400
+    nomes = GERADOR.nomes_do_modulo(modulo)
+    assert workflow["connections"][nomes["checa"]] == {"main": [[{"node": "AMP Agent", "type": "main", "index": 0}],
+                                                                [{"node": nomes["recusa"], "type": "main", "index": 0}]]}
+    assert _no(workflow, nomes["recusa"])["parameters"]["options"]["responseCode"] == 400
     assert _no(workflow, "Responde erro")["parameters"]["options"]["responseCode"] == 502
 
 
+@pytest.mark.parametrize("modulo", MODULOS)
+def test_com_arquivos_o_workflow_leva_e_confere_os_documentos(modulo):
+    """Os arquivos só passam do Edit Fields com *Include Other Input Fields* (lição da revisão das
+    listas), e o pedido só vai ao agente quando chegaram tantos arquivos quantos o SIG-FT diz."""
+    workflow = _workflow(GERADOR.arquivo_do_modulo(modulo))
+    monta = _no(workflow, "Monta a mensagem")["parameters"]
+    condicoes = _no(workflow, GERADOR.nomes_do_modulo(modulo)["checa"])["parameters"]["conditions"]["conditions"]
+    js = _no(workflow, "Prepara a resposta")["parameters"]["jsCode"]
+    if GERADOR.MODULOS[modulo]["com_arquivos"]:
+        assert monta.get("includeOtherFields") is True
+        assert [c["leftValue"] for c in condicoes] == ["={{ $json.chatInput }}", "={{ Object.keys($binary || {}).length }}"]
+        assert condicoes[1]["rightValue"] == "={{ Number($json.body.arquivos || 0) }}"
+        assert "resposta.arquivos_recebidos" in js
+    else:
+        assert "includeOtherFields" not in monta
+        assert len(condicoes) == 1
+        assert "arquivos_recebidos" not in js
+
+
 def test_o_provedor_le_o_campo_que_o_workflow_devolve():
-    """O `AmpWorkflowProvider` lê `texto` (ou `resposta`); o workflow devolve `texto`."""
+    """O `AmpWorkflowProvider` lê `texto` (ou `resposta`) e, com anexos, `arquivos_recebidos`; manda
+    os anexos em `anexo_N` e o total em `arquivos`, que é o que o workflow confere."""
     from sigft.core.llm.providers import amp_workflow
 
     fonte = Path(amp_workflow.__file__).read_text(encoding="utf-8")
     assert 'dados.get("texto")' in fonte
     assert '"modo": "ia"' in fonte
+    assert 'dados.get("arquivos_recebidos")' in fonte
+    assert 'campos["arquivos"]' in fonte and 'f"anexo_{numero}"' in fonte
 
 
 def test_ids_nao_repetem_os_dos_outros_workflows():
@@ -104,12 +129,14 @@ def test_o_agente_tem_copia(modulo):
         assert termo in agente, termo
 
 
-def _prepara(saida: str, *, tarefa="categorizar_pdm", json_pedido="", tmp_path: Path) -> dict:
-    workflow = _workflow(GERADOR.arquivo_do_modulo("cria_fichas"))
+def _prepara(saida: str, *, tarefa="categorizar_pdm", json_pedido="", tmp_path: Path, modulo="cria_fichas",
+             binario=None) -> dict:
+    workflow = _workflow(GERADOR.arquivo_do_modulo(modulo))
     js = _no(workflow, "Prepara a resposta")["parameters"]["jsCode"]
     corpo = json.dumps({"tarefa": tarefa, "json": json_pedido})
+    binarios = json.dumps(binario or {})
     programa = (f"const $input={{first:()=>({{json:{{output:{json.dumps(saida)}}}}})}};\n"
-                f"const $=(_n)=>({{first:()=>({{json:{{body:{corpo}}}}})}});\n"
+                f"const $=(_n)=>({{first:()=>({{json:{{body:{corpo}}},binary:{binarios}}})}});\n"
                 "const $execution={id:'42'};\n"
                 f"const r=(function(){{\n{js}\n}})();\n"
                 "console.log(JSON.stringify(r[0].json.resposta));\n")
@@ -144,3 +171,19 @@ def test_prepara_sem_json_valido_manda_o_texto_todo(tmp_path):
 def test_prepara_resposta_vazia_e_erro(tmp_path):
     resposta = _prepara("", tmp_path=tmp_path)
     assert resposta["ok"] is False and resposta["etapa"] == "agente"
+
+
+@SEM_NODE
+def test_prepara_com_arquivos_conta_os_que_chegaram_ao_agente(tmp_path):
+    binario = {"anexo_1": {"fileName": "Datasheet X.pdf"}, "anexo_2": {"fileName": "manual.pdf - pagina 3.jpg"}}
+    resposta = _prepara('{"ID1": {"valor": "24 V"}}', tarefa="autospec", json_pedido="sim", tmp_path=tmp_path,
+                        modulo="autospec", binario=binario)
+    assert resposta["ok"] is True and json.loads(resposta["texto"]) == {"ID1": {"valor": "24 V"}}
+    assert resposta["arquivos"] == ["Datasheet X.pdf", "manual.pdf - pagina 3.jpg"]
+    assert resposta["arquivos_recebidos"] == 2
+
+
+@SEM_NODE
+def test_prepara_sem_arquivos_nao_fala_de_arquivos(tmp_path):
+    resposta = _prepara("[]", tmp_path=tmp_path, binario={"x": {"fileName": "a.pdf"}})
+    assert "arquivos_recebidos" not in resposta and "arquivos" not in resposta

@@ -30,6 +30,8 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Conferência de Revisões e Revisão no AMP: cada lista ganha o botão **"Abrir Pasta"**, que abre a pasta do `_STATUS_PMIB` dela, onde ficam os PDFs e o HTML do AMP.
 - PMIB Manager: na aba "Lista de preços Follow-up", a lista com preço do código novo (`...PB021`) passa a achar a lista de sobressalentes dela (o mesmo código com `PB020`). Antes toda lista PB021 saía como "Sem lista correspondente".
 - Modelos de IA: a escolha da IA passa a ser **por módulo**, com três opções: **IA Externa** (o OpenRouter, com o catálogo, "Atualizar catálogo", o filtro e o botão da chave), **IA Interna (AMP)**, que aparece desligada até o AMP ter API, e **Workflow AMP** (o endereço e a chave do webhook daquele módulo). Cria Fichas, Analyzer, Upload Condições, Upload Specs, Planilhas PMIB e DocPack (a sugestão de pasta) ganham o botão **"Configurar IA"**, que abre a mesma escolha, só do módulo; o que se muda num lugar vale no outro. O modelo que já estava escolhido continua valendo, como IA Externa.
+- Cria Fichas: o agente e o workflow do AMP para o **Workflow AMP** estão prontos no repositório, em `amp/ia_por_modulo/cria_fichas/`, com o passo a passo. As duas passadas (o que o material é e qual o PDM) vão ao mesmo agente.
+- AutoSpec: pode rodar no **Workflow AMP** (engrenagem → Modelos de IA → AutoSpec (RAG)). Os PDFs da ficha vão como estão ao agente do AMP, que os lê inteiros, com tabelas e desenhos, e as páginas escaneadas vão como imagem. O workflow confere que todos os arquivos chegaram; se faltar algum, a ficha é refeita com o texto extraído, como quando um provedor recusa o PDF. O agente e o workflow estão em `amp/ia_por_modulo/autospec/`.
 
 ## 1.3.2 - 2026-10-30
 

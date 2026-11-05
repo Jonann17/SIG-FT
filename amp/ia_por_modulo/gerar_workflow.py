@@ -14,6 +14,12 @@ O contrato é o do `core/llm/providers/amp_workflow.py`: o SIG-FT manda `modo` (
 workflow devolve `{"ok": true, "modo": "ia", "tarefa": ..., "texto": ...}`. Quando a resposta
 deve ser JSON, o nó "Prepara a resposta" recorta o JSON do meio da narração do agente.
 
+Módulo `com_arquivos` (o AutoSpec, 2026-11-05): o SIG-FT manda também os documentos, em
+`anexo_1`, `anexo_2`... e o campo `arquivos` diz quantos. O "Monta a mensagem" leva os arquivos
+adiante (*Include Other Input Fields*, a lição da revisão das listas), o workflow confere que
+todos chegaram antes de chamar o agente, e a resposta diz quantos ele recebeu
+(`arquivos_recebidos`): sem essa confirmação o SIG-FT não aceita a resposta.
+
 `tests/test_amp_workflow_ia_por_modulo.py` trava que o `.json` versionado é o que este gerador
 produz. Os ids saem de `uuid5` do módulo e do nó: fixos (o arquivo só muda quando o conteúdo
 muda) e diferentes entre módulos (o webhookId não pode repetir na instância). O agente e a
@@ -41,7 +47,21 @@ MODULOS = {
         "caminho": "sigft-ia-cria-fichas",
         "agente": "Spare Parts PDM Classifier",
         "tarefas": ("interpretar_material", "categorizar_pdm"),
+        "onde": "Cria Fichas → **Configurar IA**",
         "sempre_json": True,
+        "com_arquivos": False,
+    },
+    # A tela do AutoSpec (do Rafael) não tem o botão "Configurar IA": o modo se escolhe na
+    # janela central. As duas chamadas (preencher a ficha e conferir o fornecedor) são a
+    # mesma tarefa, `autospec`, e levam os documentos.
+    "autospec": {
+        "titulo": "AutoSpec",
+        "caminho": "sigft-ia-autospec",
+        "agente": "Spare Parts Datasheet Reader",
+        "tarefas": ("autospec",),
+        "onde": "engrenagem da Home → **Modelos de IA** → *AutoSpec (RAG)*",
+        "sempre_json": True,
+        "com_arquivos": True,
     },
 }
 
@@ -49,6 +69,9 @@ WEBHOOK = "Webhook do SIG-FT"
 E_PING = "É ping?"
 MONTA = "Monta a mensagem"
 TEM_PROMPT = "Chegou o prompt?"
+TEM_PEDIDO = "Chegou o pedido?"            # com arquivos: o prompt e todos os arquivos
+SEM_PROMPT = "Responde sem prompt"
+INCOMPLETO = "Responde pedido incompleto"   # com arquivos
 AGENTE = "AMP Agent"
 PREPARA = "Prepara a resposta"
 
@@ -57,10 +80,10 @@ NOTA = """## SIG-FT · IA do __TITULO__ (AMP)
 1. **Webhook do SIG-FT** → *Credential for Header Auth* → *Create new*: Name `X-SIGFT-Chave`, Value um valor longo e aleatório, **diferente** do dos outros workflows.
 2. **AMP Agent** → escolha o agente *__AGENTE__* → *Add option* → **Timeout**: o máximo.
 3. Salve e **publique**.
-4. Copie a **Production URL** do webhook. No SIG-FT: __TITULO__ → **Configurar IA** → *Workflow AMP*, em cada tarefa (__TAREFAS__): o mesmo endereço e a mesma chave.
+4. Copie a **Production URL** do webhook. No SIG-FT: __ONDE__ → *Workflow AMP*, __TAREFAS__.
 
 O agente tem só um system prompt curto: as instruções da tarefa vêm do SIG-FT, no `prompt`.
-O pedido leva `modo` (`ia`), `tarefa`, `prompt`, `system` e `json`. O ping responde sem chamar o agente.
+O pedido leva `modo` (`ia`), `tarefa`, `prompt`, `system` e `json`__ARQUIVOS_NOTA__. O ping responde sem chamar o agente.
 Passo a passo: `amp/ia_por_modulo/LEIA-ME.md`, no repositório do SIG-FT."""
 
 # O texto que vai ao agente: a instrução de sistema (quando há) antes do prompt.
@@ -105,9 +128,27 @@ if (querJson && bruto) {
 const ok = texto.length > 0;
 const resposta = { ok, modo: 'ia', tarefa, texto, json_valido, caracteres_do_agente: bruto.length,
                    versao_workflow: VERSAO, execucao: $execution.id };
-if (!ok) { resposta.etapa = 'agente'; resposta.erro = 'o agente respondeu vazio'; }
+__ARQUIVOS__if (!ok) { resposta.etapa = 'agente'; resposta.erro = 'o agente respondeu vazio'; }
 return [{ json: { resposta } }];
 """
+
+
+# Com arquivos: os que chegaram ao agente (o SIG-FT confere a conta, `arquivos_recebidos`).
+JS_ARQUIVOS = """const binarios = $('__MONTA__').first().binary || {};
+resposta.arquivos = Object.values(binarios).map(b => b.fileName || '?');
+resposta.arquivos_recebidos = resposta.arquivos.length;
+"""
+
+NOTA_ARQUIVOS = (", e os documentos em `anexo_1`, `anexo_2`... (o campo `arquivos` diz quantos). O *Monta a "
+                 "mensagem* leva os arquivos ao agente (*Include Other Input Fields*), e o workflow confere que "
+                 "todos chegaram antes de chamá-lo")
+
+
+def nomes_do_modulo(modulo: str) -> dict:
+    """Os nomes dos nós que mudam quando o módulo manda arquivos."""
+    if MODULOS[modulo]["com_arquivos"]:
+        return {"checa": TEM_PEDIDO, "recusa": INCOMPLETO}
+    return {"checa": TEM_PROMPT, "recusa": SEM_PROMPT}
 
 
 def _id(modulo: str, nome: str) -> str:
@@ -121,11 +162,16 @@ def _responde(modulo: str, nome: str, corpo: str, posicao: list[int], codigo: in
             "id": _id(modulo, nome), "name": nome}
 
 
-def _se(modulo: str, nome: str, esquerda: str, operador: dict, direita, posicao: list[int]) -> dict:
+def _se(modulo: str, nome: str, esquerda: str, operador: dict, direita, posicao: list[int],
+        extras: tuple = ()) -> dict:
+    """Um nó If; `extras` são outras condições `(esquerda, operador, direita)`, todas com "e"."""
+    condicoes = [{"id": _id(modulo, nome + "/condicao"), "leftValue": esquerda,
+                  "rightValue": direita, "operator": operador}]
+    condicoes += [{"id": _id(modulo, f"{nome}/condicao{numero}"), "leftValue": e, "rightValue": d, "operator": o}
+                  for numero, (e, o, d) in enumerate(extras, start=2)]
     return {"parameters": {"conditions": {
                 "options": {"caseSensitive": True, "leftValue": "", "typeValidation": "loose"},
-                "conditions": [{"id": _id(modulo, nome + "/condicao"), "leftValue": esquerda,
-                                "rightValue": direita, "operator": operador}],
+                "conditions": condicoes,
                 "combinator": "and"},
             "options": {"looseTypeValidation": True}},
             "type": "n8n-nodes-base.if", "typeVersion": 2, "position": posicao, "id": _id(modulo, nome),
@@ -141,10 +187,32 @@ def montar_workflow(modulo: str, versao: str) -> dict:
     (sem prompt, 400; erro do agente, 502)."""
     m = MODULOS[modulo]
     v = f"'{versao}'"
+    arquivos = m["com_arquivos"]
+    nomes = nomes_do_modulo(modulo)
+    tarefas = (f"em cada tarefa ({', '.join(f'`{t}`' for t in m['tarefas'])}): o mesmo endereço e a mesma chave"
+               if len(m["tarefas"]) > 1 else "o endereço e a chave")
     nota = (NOTA.replace("__TITULO__", m["titulo"]).replace("__AGENTE__", m["agente"])
-            .replace("__TAREFAS__", ", ".join(f"`{t}`" for t in m["tarefas"])))
+            .replace("__ONDE__", m["onde"]).replace("__TAREFAS__", tarefas)
+            .replace("__ARQUIVOS_NOTA__", NOTA_ARQUIVOS if arquivos else ""))
     js = (JS_PREPARA.replace("__VERSAO__", versao).replace("__WEBHOOK__", WEBHOOK)
-          .replace("__SEMPRE_JSON__", "true" if m["sempre_json"] else "false"))
+          .replace("__SEMPRE_JSON__", "true" if m["sempre_json"] else "false")
+          .replace("__ARQUIVOS__", JS_ARQUIVOS.replace("__MONTA__", MONTA) if arquivos else ""))
+    if arquivos:
+        recusa = ("={{ JSON.stringify({ ok: false, modo: 'ia', etapa: $json.chatInput ? 'arquivos' : 'prompt', "
+                  "erro: $json.chatInput ? 'os arquivos não chegaram ao agente: o workflow recebeu ' + "
+                  "Object.keys($binary || {}).length + ' de ' + ($json.body.arquivos || 0) + ' arquivo(s)' : "
+                  "'o pedido chegou sem prompt', versao_workflow: %s, execucao: $execution.id }) }}" % v)
+        todos_os_arquivos = (("={{ Object.keys($binary || {}).length }}", {"type": "number", "operation": "gte"},
+                              "={{ Number($json.body.arquivos || 0) }}"),)
+    else:
+        recusa = ("={{ JSON.stringify({ ok: false, modo: 'ia', etapa: 'prompt', erro: 'o pedido chegou sem "
+                  "prompt', versao_workflow: %s, execucao: $execution.id }) }}" % v)
+        todos_os_arquivos = ()
+    monta = {"assignments": {"assignments": [{"id": _id(modulo, MONTA + "/chatInput"), "name": "chatInput",
+                                              "value": EXPR_CHAT, "type": "string"}]}}
+    if arquivos:
+        monta["includeOtherFields"] = True
+    monta["options"] = {}
     nos = [
         {"parameters": {"content": nota, "height": 360, "width": 680}, "type": "n8n-nodes-base.stickyNote",
          "typeVersion": 1, "position": [-40, -340], "id": _id(modulo, "nota"), "name": "Como ligar"},
@@ -157,14 +225,12 @@ def montar_workflow(modulo: str, versao: str) -> dict:
         _responde(modulo, "Responde ping",
                   "={{ JSON.stringify({ ok: true, modo: 'ping', versao_workflow: %s, execucao: $execution.id }) }}" % v,
                   [460, 40]),
-        {"parameters": {"assignments": {"assignments": [{"id": _id(modulo, MONTA + "/chatInput"),
-                                                         "name": "chatInput", "value": EXPR_CHAT,
-                                                         "type": "string"}]},
-                        "options": {}},
+        {"parameters": monta,
          "type": "n8n-nodes-base.set", "typeVersion": 3.4, "position": [460, 300],
          "id": _id(modulo, MONTA), "name": MONTA},
-        _se(modulo, TEM_PROMPT, "={{ $json.chatInput }}",
-            {"type": "string", "operation": "notEmpty", "singleValue": True}, "", [700, 300]),
+        _se(modulo, nomes["checa"], "={{ $json.chatInput }}",
+            {"type": "string", "operation": "notEmpty", "singleValue": True}, "", [700, 300],
+            extras=todos_os_arquivos),
         {"parameters": {"agentId": {"__rl": True,
                                     "value": json.dumps({"agentName": m["agente"], "model": MODELO_DO_AGENTE},
                                                         separators=(",", ":")),
@@ -173,9 +239,7 @@ def montar_workflow(modulo: str, versao: str) -> dict:
          "type": "CUSTOM.amp", "typeVersion": 1, "position": [940, 200],
          "id": _id(modulo, AGENTE), "name": AGENTE,
          "credentials": {"ampOAuth2Api": dict(CREDENCIAL_DO_AMP)}, "onError": "continueErrorOutput"},
-        _responde(modulo, "Responde sem prompt",
-                  "={{ JSON.stringify({ ok: false, modo: 'ia', etapa: 'prompt', erro: 'o pedido chegou sem "
-                  "prompt', versao_workflow: %s, execucao: $execution.id }) }}" % v, [940, 440], 400),
+        _responde(modulo, nomes["recusa"], recusa, [940, 440], 400),
         {"parameters": {"jsCode": js},
          "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1180, 120],
          "id": _id(modulo, PREPARA), "name": PREPARA},
@@ -188,8 +252,8 @@ def montar_workflow(modulo: str, versao: str) -> dict:
     conexoes = {
         WEBHOOK: _liga(E_PING),
         E_PING: _liga("Responde ping", MONTA),
-        MONTA: _liga(TEM_PROMPT),
-        TEM_PROMPT: _liga(AGENTE, "Responde sem prompt"),
+        MONTA: _liga(nomes["checa"]),
+        nomes["checa"]: _liga(AGENTE, nomes["recusa"]),
         AGENTE: _liga(PREPARA, "Responde erro"),
         PREPARA: _liga("Responde"),
     }

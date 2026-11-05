@@ -2,7 +2,8 @@
 
 O modo **Workflow AMP** de uma tela: em vez do OpenRouter, a IA daquela tela é um agente do AMP,
 chamado por um workflow do n8n. A escolha é por tarefa, no botão **Configurar IA** da tela (ou na
-janela **Modelos de IA**). A IA Externa continua lá: trocar de modo é um clique, nos dois sentidos.
+janela **Modelos de IA**, na engrenagem da Home; o AutoSpec, que não tem o botão, só por ela). A IA
+Externa continua lá: trocar de modo é um clique, nos dois sentidos.
 
 **Diferente da revisão das listas:** aqui o SIG-FT manda o **prompt inteiro**, o mesmo que vai ao
 OpenRouter (`sigft/core/llm/prompts.py`). O agente de cada módulo tem só um system prompt curto
@@ -15,21 +16,31 @@ resposta é mudar o prompt no SIG-FT, e as duas IAs ganham juntas.
 | `<módulo>/agente.md` | a cópia do agente no AMP: nome, descrição, goal e system prompt |
 | `<módulo>/workflow_<módulo>.json` | o workflow para importar ou colar no n8n. Não edite à mão: rode o gerador |
 
-Módulos prontos: **Cria Fichas** (`cria_fichas/`). Os demais entram depois que este passar no teste
-real (decisão do Luan, 2026-11-05).
+Módulos prontos:
+- **Cria Fichas** (`cria_fichas/`): testado na GE em 2026-11-05, as duas passadas;
+- **AutoSpec** (`autospec/`): leva os documentos ao agente; precisa da versão **1.4.0-rc.2** ou mais
+  nova.
+
+Um módulo por vez, cada um testado antes do seguinte (decisão do Luan, 2026-11-05).
 
 ## Contrato (o que o SIG-FT manda e o que espera)
 
 O SIG-FT (`sigft/core/llm/providers/amp_workflow.py`) faz um POST com o cabeçalho `X-SIGFT-Chave`:
 - antes do primeiro pedido, o **ping**: `{"modo": "ping"}`, que responde sem chamar o agente;
 - cada pedido, em formulário: `modo=ia`, `tarefa` (ex.: `categorizar_pdm`), `prompt`, `system`
-  (quando há) e `json=sim` (quando a tarefa espera JSON).
+  (quando há) e `json=sim` (quando a tarefa espera JSON);
+- quando a tarefa leva documentos (o AutoSpec), também os arquivos `anexo_1`, `anexo_2`... e o
+  campo `arquivos`, com quantos são.
 
 O workflow junta `system` e `prompt` no `chatInput` (o AMP Agent só lê esse campo), chama o agente
 e devolve `{"ok": true, "modo": "ia", "tarefa": ..., "texto": "<a resposta>", "json_valido": ...,
 "execucao": ...}`. Se a resposta deve ser JSON, o nó **Prepara a resposta** recorta o JSON do meio da
 narração do agente (texto antes, ```json em volta). Sem JSON válido, vai o texto todo e
 `json_valido: false`: o SIG-FT ainda tenta a leitura tolerante.
+
+Com documentos, o workflow confere que todos chegaram antes de chamar o agente, e a resposta diz
+quantos ele recebeu (`arquivos_recebidos`). Sem essa conta, ou com menos arquivos do que foram, o
+SIG-FT não aceita a resposta: o agente respondeu sem ver os documentos.
 
 **Sem repetição:** o SIG-FT não repete um pedido que falhou, porque cada repetição seria outra
 execução do agente no AMP.
@@ -67,7 +78,7 @@ execução do agente no AMP.
    Dá para ligar só uma e deixar a outra na IA Externa (por exemplo, testar primeiro só a
    interpretação, que é mais curta).
 
-## Testar no SIG-FT
+## Testar o Cria Fichas
 
 1. Comece com um **lote pequeno** (3 a 5 itens). Cada bloco de 15 itens do *Categorizar PDM* leva
    a lista inteira de PDMs (cerca de 1.200) e o manual podado, ou seja, dezenas de milhares de
@@ -75,8 +86,9 @@ execução do agente no AMP.
 2. Compare com a IA Externa: rode o mesmo lote nos dois modos e confira a revisão.
 3. Se algo falhar, o console mostra o erro do workflow; com o número da execução, o n8n mostra o
    que o agente respondeu (nó **Prepara a resposta**: o `texto` e o `json_valido`).
-4. O tempo de cada chamada aparece no n8n, em **Executions** (o console não mostra). Um lote de 63 itens são 2 chamadas de interpretação
-   (60 itens por chamada) e 5 de categorização (15 por bloco): 7 execuções no n8n.
+4. O tempo de cada chamada aparece no n8n, em **Executions** (o console não mostra). Um lote de
+   63 itens são 2 chamadas de interpretação (60 itens por chamada) e 5 de categorização (15 por
+   bloco): 7 execuções no n8n.
 
 ### As duas chamadas do Cria Fichas
 
@@ -112,6 +124,46 @@ ou o uso de cada uma separado no AMP): outro agente, outro workflow e outro ende
 Por isso, a ordem de teste mais segura é ligar primeiro só a *Interpretar material* no Workflow
 AMP: uma falha dela não derruba o lote.
 
+## Ligar o AutoSpec (uma vez)
+
+Precisa da versão **1.4.0-rc.2** ou mais nova: é nela que o Workflow AMP passa a levar os documentos
+ao agente. Antes dela, o AutoSpec no Workflow AMP mandaria só o texto e perderia as páginas
+escaneadas.
+
+1. **O agente, no AMP:** crie o **Spare Parts Datasheet Reader** com o texto de `autospec/agente.md`,
+   como o do Cria Fichas (sem data source e sem *Add Optimized Query*).
+2. **O workflow, no n8n:** os mesmos passos do Cria Fichas, com `autospec/workflow_autospec.json`:
+   importe, crie a credencial `X-SIGFT-Chave` com um valor **novo**, escolha o agente no nó **AMP
+   Agent** com o **Timeout** no máximo (ele lê PDFs inteiros: pode levar minutos), publique e copie a
+   **Production URL**, que termina em `/webhook/sigft-ia-autospec`. Não mexa no **Monta a mensagem**:
+   ele já vem com *Include Other Input Fields* ligado, que é o que leva os arquivos ao agente.
+3. **No SIG-FT:** a tela do AutoSpec não tem o botão **Configurar IA**. Vá na engrenagem da Home →
+   **Modelos de IA** → na lista "IA por módulo", **AutoSpec (RAG)** → **Workflow AMP**, e preencha o
+   endereço e a chave.
+
+### Como o AutoSpec usa o workflow
+
+- Cada ficha faz uma chamada para **preencher** os campos vazios. Se a ficha tem respostas do
+  fornecedor e a opção "Conferir as respostas do fornecedor" está ligada, faz outra para
+  **conferi-las**. As duas vão ao mesmo workflow e ao mesmo agente.
+- Os PDFs da ficha vão **como arquivo**, até 15 MB e 500 páginas somados por chamada; o que passar
+  disso vai como texto. As páginas escaneadas vão como imagem (até 8 por ficha). O agente lê o PDF
+  inteiro, como no chat do AMP.
+- Se faltar arquivo no caminho, a ficha é refeita com o texto extraído dos documentos, o mesmo
+  caminho de quando um provedor recusa o PDF, e o console avisa ("O provedor recusou o(s) PDF(s)
+  anexado(s)...").
+- O AutoSpec guarda a resposta de cada ficha: rodar o mesmo lote de novo no mesmo modo não chama o
+  agente de novo. A IA Externa e o Workflow AMP guardam separado.
+
+### Testar o AutoSpec
+
+1. Uma ou duas fichas que tenham o PDF do fabricante na pasta.
+2. No console, a linha **"A IA vai ler N documento(s) no proprio PDF (...)"** mostra que o PDF foi
+   como arquivo.
+3. No n8n, em **Executions**, o nó **Prepara a resposta** mostra o `arquivos_recebidos` e o `texto`.
+4. Compare com as mesmas fichas pela IA Externa (se já rodaram nela, a resposta guardada volta sem
+   custo).
+
 ## Se der errado
 
 | Sintoma | Onde olhar |
@@ -124,13 +176,17 @@ AMP: uma falha dela não derruba o lote.
 | HTTP 400, etapa `prompt` | o pedido chegou sem prompt: veja o nó **Webhook do SIG-FT** na execução |
 | HTTP 502, etapa `agente` | o agente falhou (mensagem grande demais? timeout?): veja a execução no n8n |
 | "a resposta veio sem o campo texto" / JSON inválido | veja o `texto` da execução, no nó **Prepara a resposta**, e aperte o system prompt no AMP |
+| AutoSpec: "o workflow não confirmou que recebeu os arquivos anexados" | o endereço do AutoSpec é o de outro workflow (o do Cria Fichas não leva arquivos): use o que termina em `/webhook/sigft-ia-autospec` |
+| AutoSpec: "recebeu X de N arquivo(s)", ou HTTP 400, etapa `arquivos` | algum arquivo se perdeu: veja a aba Binary do **Webhook do SIG-FT** na execução, e se o **Monta a mensagem** tem *Include Other Input Fields* |
+| AutoSpec: HTTP 413 | os documentos passaram do limite de tamanho do n8n: a ficha é refeita com o texto, sozinha |
 
 Com o número da execução (`execucao`), o n8n mostra em que nó ela parou (menu **Executions**).
 
 ## Módulo novo
 
 1. Em `gerar_workflow.py`, acrescente o módulo em `MODULOS` (título, caminho do webhook, nome do
-   agente, tarefas da tela, `sempre_json`) e rode o gerador.
+   agente, tarefas da tela, onde se escolhe o modo, `sempre_json` e `com_arquivos`, se a tarefa
+   manda documentos) e rode o gerador.
 2. Crie `<módulo>/agente.md` no molde do `cria_fichas/agente.md`: o system prompt é curto, e as
    regras ficam no prompt do SIG-FT.
 3. `tests/test_amp_workflow_ia_por_modulo.py` já cobre o módulo novo: o `.json` igual ao gerador,
