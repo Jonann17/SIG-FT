@@ -1162,6 +1162,101 @@ class AutomacaoPMIB:
             # Deixa a tela parada no erro para o usuário inspecionar visualmente
             return "ERRO", str(e)
 
+    def _abrir_ficha_para_edicao(self, pmib):
+        """Lista -> busca `pmib` -> lápis da linha dele -> campo do projeto
+        pronto. Os mesmos seletores e a mesma ordem de sempre; serve tanto
+        para editar quanto para a conferência depois de salvar."""
+        # 1. Garante que está na tela inicial da lista
+        self.engine.goto(config.PORTAL_URL)
+        time.sleep(PAUSA_CARGA_LISTA)
+
+        # 2. Localiza a barra de pesquisa principal (usando contains para
+        #    ignorar prefixos dinâmicos do OutSystems).
+        #
+        #    A limpeza agressiva (Ctrl+A + apagar) que o original fazia à
+        #    mão é exatamente a mecânica de `fill_estrito` -- por isso
+        #    limpar e digitar viraram uma chamada só.
+        self.engine.wait_clickable(XPATH_BUSCA_MASSA)
+        self.engine.fill_estrito(XPATH_BUSCA_MASSA, pmib)
+        self.engine.press("ENTER")
+
+        # 3. Espera INTELIGENTE: aguarda até que uma linha da tabela
+        #    contenha o texto do PMIB pesquisado -- garante que a tabela
+        #    já filtrou antes de tentar clicar.
+        self.engine.wait_present(XPATH_LINHA_RESULTADO.format(pmib=pmib))
+
+        # Agora sim, procura o ícone de lápis DENTRO dessa linha
+        # específica e clica.
+        xpath_ficha = XPATH_LAPIS_MASSA.format(pmib=pmib)
+        self.engine.wait_clickable(xpath_ficha)
+        self.engine.click_raw(xpath_ficha)
+
+        # 4. A espera do motor já cobre o carregamento da nova página e o
+        # campo ficar disponível -- não precisamos de sleep(4).
+        self.engine.wait_clickable(XPATH_CAMPO_PROJETO)
+
+    def _salvar_projeto_na_ficha_aberta(self, novo_codigo_projeto):
+        """Escreve o código no campo da ficha já aberta e salva."""
+        # Micro-pausa mantida porque o OutSystems tem uma animação de
+        # "deslizar" a tela que às vezes rouba o foco do clique.
+        time.sleep(PAUSA_ANIMACAO)
+        self.engine.fill_estrito(XPATH_CAMPO_PROJETO, novo_codigo_projeto)
+
+        # 5. Clicar em Salvar (mesmo XPath do salvar final da criação)
+        time.sleep(PAUSA_FOCO)
+        self.engine.wait_clickable(XPATH_SALVAR_PROJETO)
+        self.engine.click_raw(XPATH_SALVAR_PROJETO)
+
+        # Aguarda a mensagem de sucesso ou salvamento processar
+        time.sleep(PAUSA_SALVAMENTO_FINAL)
+
+    def atualizar_projeto_conferido(self, pmib, novo_codigo_projeto, *, tentativas=2, log=None):
+        """[2026-11-04] A edição em massa que não engana e não arrasta.
+
+        Relato do Jonathan: a 1ª ficha não fez o que devia, a página não
+        carregou, e as seguintes falharam também. Três defesas, sem seletor
+        novo (só os de `atualizar_projeto_em_massa`):
+
+        - **Confere depois de salvar** (regra 6 do PORTAL_COMO_ELE_SE_COMPORTA:
+          recusa é muitas vezes silenciosa): reabre a ficha e lê o campo. Só é
+          SUCESSO se o portal guardou o código novo.
+        - **Tenta de novo do zero** (`tentativas`), recomeçando pela lista.
+          Trocar o código é idempotente: repetir não cria nada.
+        - **Cada ficha recomeça pela lista** (`_abrir_ficha_para_edicao` faz o
+          `goto`), então uma ficha que falhou não deixa a seguinte presa nela.
+
+        Devolve `("SUCESSO", msg)`, `("JA_ESTAVA", msg)` ou `("ERRO", msg)`.
+        """
+        log = log or (lambda _m: None)
+        ultimo = ""
+        for tentativa in range(1, tentativas + 1):
+            try:
+                self._abrir_ficha_para_edicao(pmib)
+                if self.engine.get_value(XPATH_CAMPO_PROJETO).strip() == novo_codigo_projeto.strip():
+                    return "JA_ESTAVA", "O código de projeto já era o novo; nada foi salvo."
+            except Exception as e:  # noqa: BLE001 -- vira nova tentativa
+                ultimo = f"não abriu a ficha: {e}"
+                log(f"    ⚠️ tentativa {tentativa}/{tentativas}: {ultimo}")
+                continue
+            try:
+                self._salvar_projeto_na_ficha_aberta(novo_codigo_projeto)
+            except Exception as e:  # noqa: BLE001 -- vira nova tentativa
+                ultimo = str(e)
+                log(f"    ⚠️ tentativa {tentativa}/{tentativas}: {ultimo}")
+                continue
+            try:
+                self._abrir_ficha_para_edicao(pmib)
+                gravado = self.engine.get_value(XPATH_CAMPO_PROJETO).strip()
+            except Exception as e:  # noqa: BLE001 -- sem conferir não é sucesso
+                ultimo = f"salvou, mas não deu para conferir: {e}"
+                log(f"    ⚠️ tentativa {tentativa}/{tentativas}: {ultimo}")
+                continue
+            if gravado == novo_codigo_projeto.strip():
+                return "SUCESSO", "Salvo e conferido."
+            ultimo = f"o portal não guardou o código novo (a ficha mostra {gravado!r})"
+            log(f"    ⚠️ tentativa {tentativa}/{tentativas}: {ultimo}")
+        return "ERRO", ultimo
+
     def atualizar_projeto_em_massa(self, pmib, novo_codigo_projeto):
         """Abre a ficha `pmib` e troca o Código do Projeto.
 
@@ -1188,48 +1283,9 @@ class AutomacaoPMIB:
         real.
         """
         try:
-            # 1. Garante que está na tela inicial da lista
-            self.engine.goto(config.PORTAL_URL)
-            time.sleep(PAUSA_CARGA_LISTA)
+            self._abrir_ficha_para_edicao(pmib)
 
-            # 2. Localiza a barra de pesquisa principal (usando contains para
-            #    ignorar prefixos dinâmicos do OutSystems).
-            #
-            #    A limpeza agressiva (Ctrl+A + apagar) que o original fazia à
-            #    mão é exatamente a mecânica de `fill_estrito` -- por isso
-            #    limpar e digitar viraram uma chamada só.
-            self.engine.wait_clickable(XPATH_BUSCA_MASSA)
-            self.engine.fill_estrito(XPATH_BUSCA_MASSA, pmib)
-            self.engine.press("ENTER")
-
-            # 3. Espera INTELIGENTE: aguarda até que uma linha da tabela
-            #    contenha o texto do PMIB pesquisado -- garante que a tabela
-            #    já filtrou antes de tentar clicar.
-            self.engine.wait_present(XPATH_LINHA_RESULTADO.format(pmib=pmib))
-
-            # Agora sim, procura o ícone de lápis DENTRO dessa linha
-            # específica e clica.
-            xpath_ficha = XPATH_LAPIS_MASSA.format(pmib=pmib)
-            self.engine.wait_clickable(xpath_ficha)
-            self.engine.click_raw(xpath_ficha)
-
-            # 4. Inserir o NOVO Código do Projeto.
-            # A espera do motor já cobre o carregamento da nova página e o
-            # campo ficar disponível -- não precisamos de sleep(4).
-            self.engine.wait_clickable(XPATH_CAMPO_PROJETO)
-
-            # Micro-pausa mantida porque o OutSystems tem uma animação de
-            # "deslizar" a tela que às vezes rouba o foco do clique.
-            time.sleep(PAUSA_ANIMACAO)
-            self.engine.fill_estrito(XPATH_CAMPO_PROJETO, novo_codigo_projeto)
-
-            # 5. Clicar em Salvar (mesmo XPath do salvar final da criação)
-            time.sleep(PAUSA_FOCO)
-            self.engine.wait_clickable(XPATH_SALVAR_PROJETO)
-            self.engine.click_raw(XPATH_SALVAR_PROJETO)
-
-            # Aguarda a mensagem de sucesso ou salvamento processar
-            time.sleep(PAUSA_SALVAMENTO_FINAL)
+            self._salvar_projeto_na_ficha_aberta(novo_codigo_projeto)
             return "SUCESSO", "Salvo."
 
         except Exception as e:

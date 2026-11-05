@@ -1,8 +1,11 @@
 # DocPack · Etapa 2 — o conteúdo do dossiê
 
 A Etapa 1 (`15-docpack.md`) cria a pasta da lista com os templates vazios. A Etapa 2 preenche a
-lista de materiais do `_STATUS_PMIB` e da lista com preço a partir do PDF da lista. Ela é feita
-pelo AMP.
+lista de materiais do `_STATUS_PMIB` a partir do PDF da lista. Ela é feita pelo AMP.
+
+> **2026-11-05:** a lista com preço saiu desta etapa (pedido do Jonathan: o agente não olha para
+> ela). Quem a cria e a preenche a partir do `_STATUS_PMIB` é o módulo **Lista de Preços**
+> (`16-lista-de-precos.md`).
 
 | Onde | O quê |
 |---|---|
@@ -14,7 +17,6 @@ pelo AMP.
 
 1. **Procurar dossiês vazios.**
    - Os `_STATUS_PMIB` vivos da raiz (`status_pmib_arquivos.listar`) cuja aba "Lista de Materiais" não tem material.
-   - Cada um vem com a lista com preço `<código PB021>.xlsm` da mesma pasta, se houver.
    - Os que já têm material ficam fora, e a contagem vai para o log.
 2. **Consultar no AMP.** Nada é escrito nas planilhas nesta etapa. Para cada lista marcada:
    - O PDF da revisão vigente:
@@ -29,7 +31,7 @@ pelo AMP.
    - O HTML que o agente devolve fica na pasta como `<código>[<rev>] criacao AMP.html`, sem sobrescrever (`revisao_amp.gravar_html`).
 3. **Gravar nas planilhas.** Mostra o resumo (quantos materiais por lista, e os primeiros) e só grava com o "sim".
    - Antes de escrever, cada planilha é conferida de novo para ver se continua vazia.
-   - A gravação é no XML (`core/excel/cirurgico.py`), e o VBA do `.xlsm` sai byte a byte.
+   - A gravação é no XML (`core/excel/cirurgico.py`): o resto do pacote sai byte a byte.
 
 ## Uma implementação por conceito
 
@@ -40,7 +42,6 @@ pelo AMP.
   - o batimento da espera;
   - a gravação sem sobrescrever;
   - o teste de conexão.
-- **A lista com preço** é a única parte nova. O agente não a conhece, então os materiais lidos da tabela do HTML vão para ela pelos nomes das colunas dela.
 
 ## Regras
 
@@ -52,8 +53,8 @@ pelo AMP.
 
   As colunas de andamento da equipe e as fórmulas do template não são tocadas.
 - **Preço nunca se inventa.** Uma coluna com cara de preço na tabela do agente é ignorada, com aviso, e o VALOR UNITÁRIO fica vazio.
-- **Planilha já preenchida.** Se o `_STATUS_PMIB` já tem material, a gravação é recusada. Se só a lista com preço já tem material, o resultado é "parcial": o `_STATUS_PMIB` é preenchido e a lista com preço fica como estava.
-- **Cabeçalho.** É achado pelo texto, nas 15 primeiras linhas (o do `_STATUS_PMIB` está na linha 5, o da lista com preço na 4).
+- **Planilha já preenchida.** Se o `_STATUS_PMIB` já tem material, a gravação é recusada.
+- **Cabeçalho.** É achado pelo texto, nas 15 primeiras linhas (o do `_STATUS_PMIB` está na linha 5).
 
 ## O que não foi provado aqui
 

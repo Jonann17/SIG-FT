@@ -1,5 +1,6 @@
 """DocPack, Etapa 2 -- o conteúdo: a lista de materiais do PDF da lista (Aconex + AMP) no
-`_STATUS_PMIB` e na lista com preço dos dossiês que a Etapa 1 deixou vazios.
+`_STATUS_PMIB` dos dossiês que a Etapa 1 deixou vazios (a lista com preço é do módulo Lista de
+Preços desde 2026-11-05).
 
 A tela é fina: o que é um dossiê vazio, o download, o pedido ao AMP e a gravação estão em
 `services/docpack_etapa2.py`. O fluxo tem duas metades, de propósito: "Consultar no AMP" só
@@ -40,25 +41,22 @@ AVISO_NADA_PRONTO = marcar("Nenhuma lista com materiais para gravar: consulte no
 AVISO_SEM_PERFIL = marcar("Nenhum perfil do Aconex neste Windows: uso o PDF que já está na pasta de cada lista.")
 WEBHOOK_NAO_CONFIGURADO = marcar("Webhook da Criação do _STATUS_PMIB não configurado: clique em Webhook…, nesta aba.")
 TEXTO_BAIXAR = marcar("Baixar do Aconex a revisão vigente (sem isso, vai o PDF que já está na pasta)")
-PERGUNTA_GRAVAR = marcar("Gravar estes materiais no _STATUS_PMIB e na lista com preço? O VALOR UNITÁRIO fica "
-                         "vazio, e planilha que já tiver material é recusada.\n\n{resumo}")
+PERGUNTA_GRAVAR = marcar("Gravar estes materiais no _STATUS_PMIB? Planilha que já tiver material é "
+                         "recusada.\n\n{resumo}")
 
 NA_FILA = marcar("na fila")
 PRONTA = marcar("{n} material(is) do AMP")
 FALHOU = marcar("falhou: {erro}")
 PARADO = marcar("parado")
 GRAVADO = marcar("gravado")
-TEM = marcar("sim")
-NAO_TEM = marcar("não está na pasta")
 
 # Os nomes vão em `marcar` e são traduzidos onde a tabela é montada. As larguras somam 850.
 COLUNAS = (
-    (marcar("Código"), 200),
-    (marcar("Pasta"), 230),
-    (marcar("Lista com preço"), 140),
-    (marcar("Situação"), 280),
+    (marcar("Código"), 240),
+    (marcar("Pasta"), 290),
+    (marcar("Situação"), 320),
 )
-COL_SITUACAO = 3
+COL_SITUACAO = 2
 
 
 def _linha(*widgets) -> QHBoxLayout:
@@ -128,8 +126,10 @@ class ModuloDocPackEtapa2(ModuleFrame):
 
         self.lbl_totais = blocos.rotulo("", alinhar="esquerda", negrito=True)
         lay.addWidget(self.lbl_totais)
-        self.tabela = dialogos_selecao.tabela_ttk([(t(c), largura, "w") for c, largura in COLUNAS],
-                                                  barra_horizontal=False)
+        self.tabela = dialogos_selecao.tabela_ttk([(t(c), largura, "w") for c, largura in COLUNAS])
+        # [2026-11-05] Barra de rolagem de lado (pedido do Jonathan): a coluna cresce
+        # até caber o texto (`ajustar_ao_conteudo`) e o que não cabe na tela rola.
+        self.tabela.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         lay.addWidget(self.tabela, 1)
         self._mostrar_pasta()
         self._mostrar_webhook()
@@ -211,12 +211,12 @@ class ModuloDocPackEtapa2(ModuleFrame):
         self.btn_gravar.setEnabled(False)
         self.tabela.clear()
         for indice, dossie in enumerate(self.dossies):
-            precos = t(TEM) if dossie.lista_precos is not None else t(NAO_TEM)
-            item = dialogos_selecao.linha_ttk(self.tabela, (dossie.codigo, dossie.pasta.name, precos, t(NA_FILA)),
+            item = dialogos_selecao.linha_ttk(self.tabela, (dossie.codigo, dossie.pasta.name, t(NA_FILA)),
                                               chave=indice)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(0, Qt.CheckState.Checked)
             item.setToolTip(1, str(dossie.pasta))
+        dialogos_selecao.ajustar_ao_conteudo(self.tabela)
         self.lbl_totais.setText(t("{n} dossiê(s) vazio(s)", n=len(self.dossies)))
 
     def marcados(self) -> list[etapa2_svc.Dossie]:
@@ -263,6 +263,7 @@ class ModuloDocPackEtapa2(ModuleFrame):
             linha = self._linha_do(proposta.dossie)
             if linha is not None:
                 self.tabela.topLevelItem(linha).setText(COL_SITUACAO, _situacao(proposta))
+            dialogos_selecao.ajustar_ao_conteudo(self.tabela)
         self.btn_gravar.setEnabled(any(p.situacao == "pronta" for p in self.propostas))
 
     # -- gravar ------------------------------------------------------------
@@ -296,6 +297,7 @@ class ModuloDocPackEtapa2(ModuleFrame):
             texto = t(GRAVADO) if resultado.situacao == "gravado" else resultado.detalhe
             item = self.tabela.topLevelItem(linha)
             item.setText(COL_SITUACAO, texto)
+            dialogos_selecao.ajustar_ao_conteudo(self.tabela)
             if resultado.situacao == "gravado":
                 item.setCheckState(0, Qt.CheckState.Unchecked)
         gravados = {id(r.dossie) for r in resultados if r.situacao in ("gravado", "parcial")}

@@ -1085,20 +1085,29 @@ class ModuloCriaFichas(ModuleFrame):
 
             self.log(f"Iniciando Edição em Massa de {len(lista_pmibs)} fichas...")
 
+            contagem = {"SUCESSO": 0, "JA_ESTAVA": 0, "ERRO": 0}
             for idx, pmib in enumerate(lista_pmibs):
                 interface.na_interface(self._definir_progresso, self.progress_edicao,
                                        (idx + 1) / len(lista_pmibs))
                 self.log(f"Editando PMIB [{idx + 1}/{len(lista_pmibs)}]: {pmib}...")
 
-                status, msg = bot.atualizar_projeto_em_massa(pmib, novo_projeto)
+                # [2026-11-04] Confere o que o portal guardou e tenta de novo do
+                # zero; cada ficha recomeça pela lista, então uma que falhou
+                # não arrasta as seguintes.
+                status, msg = bot.atualizar_projeto_conferido(pmib, novo_projeto, log=self.log)
+                contagem[status] = contagem.get(status, 0) + 1
 
                 if status == "SUCESSO":
-                    self.log(f" -> ✅ SUCESSO: Projeto do {pmib} atualizado.")
+                    self.log(f" -> ✅ SUCESSO: Projeto do {pmib} atualizado e conferido.")
+                elif status == "JA_ESTAVA":
+                    self.log(f" -> ⏭️ {pmib}: o código de projeto já era o novo.")
                 else:
                     # Registra e tenta o próximo, para não travar o lote
                     self.log(f" -> ❌ ERRO no {pmib}: {msg}")
 
             self.log("Edição em massa concluída!")
+            self.log(f"Resumo: {contagem['SUCESSO']} atualizada(s), "
+                     f"{contagem['JA_ESTAVA']} já estava(m) certa(s), {contagem['ERRO']} com erro.")
             # Espera o OK, como o showinfo de lá: o navegador fecha e o botão
             # volta depois que a pessoa leu.
             self.avisar(t("Concluído"), t("Processo de edição em massa finalizado. Verifique o log."), esperar=True)

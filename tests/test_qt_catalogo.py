@@ -61,6 +61,10 @@ MODULOS_DA_HOME = [('CriaFichas',
   'DocPack',
   'Cria a pasta, com os templates, de cada lista que ainda não tem _STATUS_PMIB, e depois preenche o '
   'conteúdo dela. As duas etapas ficam em abas.'),
+ ('ListaPrecos',
+  'Lista de Preços',
+  'Cria a lista com preço dos sistemas que ainda não têm, com os materiais do _STATUS_PMIB, e confere uma '
+  'pasta contra o _STATUS_PMIB. As duas coisas ficam em abas.'),
  ('SearchPMIB',
   'Busca PMIB',
   'Procura um código ou descrição nas planilhas de uma pasta inteira, sem abrir arquivo por arquivo.')]
@@ -133,5 +137,6 @@ def test_menu_tem_as_telas_dos_cards_e_na_ordem_da_barra():
     telas_menu = [item[2] for item in catalogo.MENU if item[0] == "botao"]
     assert telas_menu == ["CriaFichas", "PDM", "Analyzer", "UploadConditions", "Translator",
                           "UploadSpecs", "CorrecaoPDM", "UploadFotos", "CopiaFichas", "AutoSpec", "LMR",
-                          "PMIBManager", "ConferenciaListas", "DocPack", "SearchPMIB"]
+                          "PMIBManager", "ConferenciaListas", "DocPack", "ListaPrecos",
+                          "SearchPMIB"]
     assert {m[0] for m in catalogo.MODULOS} == set(telas_menu)

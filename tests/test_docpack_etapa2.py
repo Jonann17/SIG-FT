@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import zipfile
 from pathlib import Path
 
 import pytest
@@ -59,6 +58,7 @@ def _html(cabecalho=CABECALHO, linhas=LINHAS, extra=""):
 
 
 def _dossie(tmp_path, *, com_precos=True) -> Path:
+    # A lista com preço vai junto só para provar que esta etapa não a toca.
     pasta = tmp_path / "RAIZ" / "03 - EBOP" / "GERADOR DIESEL"
     pasta.mkdir(parents=True)
     shutil.copyfile(TEMPLATE_STATUS, pasta / f"{CODIGO}_STATUS_PMIB.xlsx")
@@ -113,12 +113,12 @@ def _versao(revisao="0C"):
 
 # ------------------------------------------------------------------ a varredura
 
-def test_acha_o_dossie_vazio_com_a_lista_com_preco(tmp_path):
+def test_acha_o_dossie_vazio(tmp_path):
     raiz = _dossie(tmp_path)
     varredura = e2.procurar_dossies(raiz)
     assert [d.codigo for d in varredura.vazios] == [CODIGO]
-    dossie = varredura.vazios[0]
-    assert dossie.lista_precos.name == f"{PRECOS}.xlsm" and dossie.precos_vazia
+    # 2026-11-05: a lista com preço não é desta etapa (módulo Lista de Preços).
+    assert not hasattr(varredura.vazios[0], "lista_precos")
     assert varredura.com_materiais == []
 
 
@@ -130,18 +130,11 @@ def test_status_com_material_fica_fora(tmp_path):
     assert varredura.vazios == [] and varredura.com_materiais == [CODIGO]
 
 
-def test_sem_lista_com_preco_o_dossie_entra_assim_mesmo(tmp_path):
-    dossie = e2.procurar_dossies(_dossie(tmp_path, com_precos=False)).vazios[0]
-    assert dossie.lista_precos is None
-
-
 def test_o_cabecalho_se_acha_pelo_texto(tmp_path):
     raiz = _dossie(tmp_path)
     dossie = e2.procurar_dossies(raiz).vazios[0]
     numero, colunas = e2.achar_cabecalho(e2._ler_aba(dossie.status_pmib), e2.COLUNAS_STATUS)
     assert numero == 5 and colunas["DESCRICAO"] == 4 and colunas["TIPO DE ENTREGA"] == 17
-    numero, colunas = e2.achar_cabecalho(e2._ler_aba(dossie.lista_precos), e2.COLUNAS_PRECOS)
-    assert numero == 4 and colunas["CODIGO GE"] == 7 and colunas["VALOR UNITARIO"] == 9
 
 
 # ------------------------------------------------------------------ a resposta do AMP
@@ -188,8 +181,10 @@ def test_o_gerador_do_workflow_da_criacao_pede_lista_e_template():
 
 # ------------------------------------------------------------------ a gravação
 
-def test_grava_no_status_e_na_lista_com_preco_sem_preco(tmp_path):
+def test_grava_no_status_e_nao_toca_a_lista_com_preco(tmp_path):
     dossie = e2.procurar_dossies(_dossie(tmp_path)).vazios[0]
+    precos = dossie.pasta / f"{PRECOS}.xlsm"
+    antes = precos.read_bytes()
     materiais, _ = e2.ler_materiais(_html())
     proposta = e2.Proposta(dossie, "pronta", "", None, "0C", tuple(materiais))
     [resultado] = e2.gravar([proposta], log_cb=lambda _m: None)
@@ -200,22 +195,7 @@ def test_grava_no_status_e_na_lista_com_preco_sem_preco(tmp_path):
     assert ws.cell(7, 10).value is None   # STATUS: da equipe, mesmo que o agente escreva
     assert ws.cell(7, 2).value == 1.5 and ws.cell(7, 4).value == "CABO 4MM"
     assert ws.cell(6, 8).value is None   # CÓDIGO PMIB: da pessoa
-    wp = load_workbook(dossie.lista_precos, keep_vba=True)["Lista de Materiais"]
-    assert [wp.cell(5, c).value for c in (4, 5, 6, 7, 10)] == [
-        "ROLAMENTO 6205", "SKF / 6205-2RS", "123", None, "FÍSICA E DOCUMENTAL"]
-    assert wp.cell(5, 9).value is None and wp.cell(6, 9).value is None   # VALOR UNITÁRIO nunca
-
-
-def test_o_vba_e_o_resto_do_pacote_saem_byte_a_byte(tmp_path):
-    dossie = e2.procurar_dossies(_dossie(tmp_path)).vazios[0]
-    with zipfile.ZipFile(dossie.lista_precos) as z:
-        antes = {n: z.read(n) for n in z.namelist()}
-    e2.gravar_planilha(dossie.lista_precos, [e2.Material(1, 1, "pç", "PECA")], e2.COLUNAS_PRECOS)
-    with zipfile.ZipFile(dossie.lista_precos) as z:
-        depois = {n: z.read(n) for n in z.namelist()}
-    assert "xl/vbaProject.bin" in antes and depois["xl/vbaProject.bin"] == antes["xl/vbaProject.bin"]
-    mudaram = {n for n in antes if depois.get(n) != antes[n]}
-    assert mudaram and all(n.startswith("xl/worksheets/") or n == "xl/workbook.xml" for n in mudaram), mudaram
+    assert precos.read_bytes() == antes   # a lista com preço é do módulo Lista de Preços
 
 
 def test_planilha_preenchida_entre_a_previa_e_o_sim_e_recusada(tmp_path):
@@ -225,14 +205,6 @@ def test_planilha_preenchida_entre_a_previa_e_o_sim_e_recusada(tmp_path):
     [resultado] = e2.gravar([proposta], log_cb=lambda _m: None)
     assert resultado.situacao == "recusado"
     assert load_workbook(dossie.status_pmib)["Lista de Materiais"].cell(6, 4).value == "DA PESSOA"
-
-
-def test_lista_com_preco_ja_preenchida_vira_parcial(tmp_path):
-    dossie = e2.procurar_dossies(_dossie(tmp_path)).vazios[0]
-    e2.gravar_planilha(dossie.lista_precos, [e2.Material(1, 1, "pç", "DA PESSOA")], e2.COLUNAS_PRECOS)
-    [resultado] = e2.gravar([e2.Proposta(dossie, "pronta", "", None, "0C", (e2.Material(1, 1, "pç", "X"),))],
-                            log_cb=lambda _m: None)
-    assert resultado.situacao == "parcial" and "já tem materiais" in resultado.detalhe
 
 
 def test_arquivo_aberto_no_excel_nao_derruba(tmp_path, monkeypatch):

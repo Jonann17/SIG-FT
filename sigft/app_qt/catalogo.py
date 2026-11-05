@@ -28,6 +28,7 @@ MENU = [
     ("botao", marcar("8. PMIB Manager"), "PMIBManager"),
     ("botao", marcar("8.1. Conferência de Listas"), "ConferenciaListas"),
     ("botao", marcar("8.2. DocPack"), "DocPack"),
+    ("botao", marcar("8.3. Lista de Preços"), "ListaPrecos"),
     ("botao", marcar("9. Search"), "SearchPMIB"),
 ]
 
@@ -49,6 +50,7 @@ ICONE_DA_TELA = {
     "PMIBManager": "folder-kanban",
     "ConferenciaListas": "list-checks",
     "DocPack": "folder-plus",
+    "ListaPrecos": "circle-dollar-sign",
     "SearchPMIB": "search",
 }
 
@@ -96,6 +98,9 @@ MODULOS = [
     ("DocPack", marcar("DocPack"),
      marcar("Cria a pasta, com os templates, de cada lista que ainda não tem _STATUS_PMIB, e "
             "depois preenche o conteúdo dela. As duas etapas ficam em abas.")),
+    ("ListaPrecos", marcar("Lista de Preços"),
+     marcar("Cria a lista com preço dos sistemas que ainda não têm, com os materiais do _STATUS_PMIB, e "
+            "confere uma pasta contra o _STATUS_PMIB. As duas coisas ficam em abas.")),
     ("SearchPMIB", marcar("Busca PMIB"),
      marcar("Procura um código ou descrição nas planilhas de uma pasta inteira, sem "
             "abrir arquivo por arquivo.")),
