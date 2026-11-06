@@ -3250,6 +3250,11 @@ class AutoSpecCore:
 
         for campo, valor in (valores or {}).items():
             descricao = str((missing.get(campo) or {}).get("desc") or campo)
+            if not str(valor if valor is not None else "").strip():
+                # [2026-11-06] Vazio não é dedução nem reprovação: é a IA dizendo que o documento
+                # não responde (`"valor": "", "tipo": "deducao"`). O console contava esses campos
+                # como "preenchidos por DEDUCAO"; `fill_save` já não grava vazio.
+                continue
             if not _exige_lastro(campo):
                 r.aprovados[campo] = valor
                 continue
