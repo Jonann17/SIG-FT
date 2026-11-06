@@ -34,7 +34,7 @@ import uuid
 from pathlib import Path
 
 PASTA = Path(__file__).resolve().parent
-VERSAO_WORKFLOW = "2026-11-05"
+VERSAO_WORKFLOW = "2026-11-06"
 MODELO_DO_AGENTE = "bedrock-claude-sonnet-5.5"
 CREDENCIAL_DO_AMP = {"id": "2GcgH0WxCkNN6bg4", "name": "AMP account 1859"}
 _ESPACO_DOS_IDS = uuid.UUID("5f1c2a9e-3b7d-4e8a-9c61-0d2e4f6a8b10")
@@ -99,22 +99,55 @@ const tarefa = String(pedido.tarefa || '');
 const querJson = SEMPRE_JSON || String(pedido.json || '') === 'sim';
 const bruto = String($input.first().json.output ?? '').trim();
 
-// O primeiro trecho que e JSON valido: de um [ ou { ate o ] ou } que fecha. O agente
-// as vezes narra antes ("Vou analisar os itens [1 a 15]...") ou poe ```json em volta.
-function recortaJson(texto) {
-  const limpo = texto.replace(/```(?:json)?/gi, '');
-  let inicios = 0;
-  for (let i = 0; i < limpo.length && inicios < 200; i++) {
-    const c = limpo[i];
-    if (c !== '[' && c !== '{') continue;
-    inicios++;
-    const fecha = c === '[' ? ']' : '}';
-    let fim = limpo.lastIndexOf(fecha);
-    for (let tentativas = 0; fim > i && tentativas < 50; tentativas++) {
-      const trecho = limpo.slice(i, fim + 1);
-      try { JSON.parse(trecho); return trecho; } catch (e) { /* tenta um fecho antes */ }
-      fim = limpo.lastIndexOf(fecha, fim - 1);
+// O agente escreve "\%" dentro do JSON (como no HTML da revisao das listas), e o JSON so
+// aceita \" \\ \/ \b \f \n \r \t \u: a barra antes de outro caractere sai.
+function consertaEscapes(trecho) {
+  return trecho.replace(/\\([\s\S])/g, (par, c) => ('"\\/bfnrtu'.includes(c) ? par : c));
+}
+
+// Onde fecha o bloco que abre em i ({ ou [), contando as chaves fora das strings; -1 se
+// ele nao fecha (resposta cortada) ou fecha com o sinal trocado.
+function fimDoBloco(t, i) {
+  const pilha = [];
+  let emString = false, escape = false;
+  for (let j = i; j < t.length; j++) {
+    const d = t[j];
+    if (emString) {
+      if (escape) escape = false;
+      else if (d === '\\') escape = true;
+      else if (d === '"') emString = false;
+      continue;
     }
+    if (d === '"') emString = true;
+    else if (d === '{' || d === '[') pilha.push(d === '{' ? '}' : ']');
+    else if (d === '}' || d === ']') {
+      if (pilha.pop() !== d) return -1;
+      if (pilha.length === 0) return j;
+    }
+  }
+  return -1;
+}
+
+function leJson(trecho) {
+  for (const versao of [trecho, consertaEscapes(trecho)]) {
+    try { JSON.parse(versao); return versao; } catch (e) { /* tenta o conserto */ }
+  }
+  return null;
+}
+
+// O JSON do meio da resposta: o primeiro bloco { } ou [ ] DE FORA que e JSON, inteiro. O
+// agente as vezes narra antes ("Vou analisar os itens [1 a 15]...") ou poe ```json em
+// volta. Um bloco que nao e JSON e pulado INTEIRO, sem olhar dentro: em 06/11 o objeto do
+// primeiro campo saiu no lugar da ficha. Um bloco que nao fecha encerra a busca.
+function recortaJson(texto) {
+  const t = texto.replace(/```(?:json)?/gi, '');
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] !== '{' && t[i] !== '[') continue;
+    const fim = fimDoBloco(t, i);
+    if (fim < 0) return null;
+    const lido = leJson(t.slice(i, fim + 1));
+    if (lido !== null) return lido;
+    i = fim;
   }
   return null;
 }
@@ -134,7 +167,9 @@ return [{ json: { resposta } }];
 """
 
 
-# Com arquivos: os que chegaram ao agente (o SIG-FT confere a conta, `arquivos_recebidos`).
+# Os arquivos que chegaram ao agente (o SIG-FT confere a conta, `arquivos_recebidos`, quando
+# mandou anexo). Vai em todos os módulos (sem arquivos, conta zero), para o código do nó ser um
+# só: é ele que se cola no "Prepara a resposta" de cada workflow (2026-11-06).
 JS_ARQUIVOS = """const binarios = $('__MONTA__').first().binary || {};
 resposta.arquivos = Object.values(binarios).map(b => b.fileName || '?');
 resposta.arquivos_recebidos = resposta.arquivos.length;
@@ -197,7 +232,7 @@ def montar_workflow(modulo: str, versao: str) -> dict:
             .replace("__ARQUIVOS_NOTA__", NOTA_ARQUIVOS if arquivos else ""))
     js = (JS_PREPARA.replace("__VERSAO__", versao).replace("__WEBHOOK__", WEBHOOK)
           .replace("__SEMPRE_JSON__", "true" if m["sempre_json"] else "false")
-          .replace("__ARQUIVOS__", JS_ARQUIVOS.replace("__MONTA__", MONTA) if arquivos else ""))
+          .replace("__ARQUIVOS__", JS_ARQUIVOS.replace("__MONTA__", MONTA)))
     if arquivos:
         recusa = ("={{ JSON.stringify({ ok: false, modo: 'ia', etapa: $json.chatInput ? 'arquivos' : 'prompt', "
                   "erro: $json.chatInput ? 'os arquivos não chegaram ao agente: o workflow recebeu ' + "

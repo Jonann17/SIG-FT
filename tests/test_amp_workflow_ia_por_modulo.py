@@ -78,11 +78,18 @@ def test_com_arquivos_o_workflow_leva_e_confere_os_documentos(modulo):
         assert monta.get("includeOtherFields") is True
         assert [c["leftValue"] for c in condicoes] == ["={{ $json.chatInput }}", "={{ Object.keys($binary || {}).length }}"]
         assert condicoes[1]["rightValue"] == "={{ Number($json.body.arquivos || 0) }}"
-        assert "resposta.arquivos_recebidos" in js
     else:
         assert "includeOtherFields" not in monta
         assert len(condicoes) == 1
-        assert "arquivos_recebidos" not in js
+    assert "resposta.arquivos_recebidos" in js
+
+
+def test_o_codigo_do_prepara_e_o_mesmo_em_todos_os_modulos():
+    """2026-11-06: um código só para colar no nó "Prepara a resposta" de cada workflow. Sem
+    arquivos, ele conta zero (o SIG-FT só confere a conta quando mandou anexo)."""
+    codigos = {m: _no(_workflow(GERADOR.arquivo_do_modulo(m)), "Prepara a resposta")["parameters"]["jsCode"]
+               for m in MODULOS if GERADOR.MODULOS[m]["sempre_json"]}
+    assert len(set(codigos.values())) == 1
 
 
 def test_o_provedor_le_o_campo_que_o_workflow_devolve():
@@ -184,6 +191,47 @@ def test_prepara_com_arquivos_conta_os_que_chegaram_ao_agente(tmp_path):
 
 
 @SEM_NODE
-def test_prepara_sem_arquivos_nao_fala_de_arquivos(tmp_path):
-    resposta = _prepara("[]", tmp_path=tmp_path, binario={"x": {"fileName": "a.pdf"}})
-    assert "arquivos_recebidos" not in resposta and "arquivos" not in resposta
+def test_prepara_sem_arquivos_conta_zero(tmp_path):
+    resposta = _prepara("[]", tmp_path=tmp_path)
+    assert (resposta["arquivos"], resposta["arquivos_recebidos"]) == ([], 0)
+
+
+# -- a execução 393441 (06/11): o "\%" do agente e o pedaço de dentro --------------------
+
+@SEM_NODE
+def test_prepara_conserta_a_barra_antes_do_porcento(tmp_path):
+    """O agente escreveu "95\\%" dentro do JSON, escape que o JSON não aceita: o objeto inteiro
+    não abria, e o nó devolvia o primeiro campo no lugar da ficha."""
+    saida = ('{"texto_breve_material":{"valor":"ACOPLADOR MODBUS TCP","tipo":"deducao"},\n'
+             '"controle_temp_umidade":{"valor":"até 95\\% sem condensação","trecho":"95 \\%"},\n'
+             '"var_row_97":{"valor":"IP20","trecho":"Protection type\\nIP20"}}')
+    resposta = _prepara(saida, tarefa="autospec", json_pedido="sim", tmp_path=tmp_path, modulo="autospec")
+    assert resposta["json_valido"] is True
+    assert json.loads(resposta["texto"]) == {
+        "texto_breve_material": {"valor": "ACOPLADOR MODBUS TCP", "tipo": "deducao"},
+        "controle_temp_umidade": {"valor": "até 95% sem condensação", "trecho": "95 %"},
+        "var_row_97": {"valor": "IP20", "trecho": "Protection type\nIP20"},
+    }
+
+
+@SEM_NODE
+def test_prepara_nunca_devolve_um_pedaco_de_dentro_do_json(tmp_path):
+    """Objeto quebrado sem conserto: vai o texto todo, com json_valido falso, e nunca um campo."""
+    saida = '{"a":{"valor":"x"},"b":{"valor":"y"} "c": sem aspas}'
+    resposta = _prepara(saida, tmp_path=tmp_path, modulo="autospec")
+    assert (resposta["json_valido"], resposta["texto"]) == (False, saida)
+
+
+@SEM_NODE
+def test_prepara_json_cortado_nao_vira_o_primeiro_campo(tmp_path):
+    saida = '{"a":{"valor":"x"},"b":{"valor":"y"},"c":{"val'
+    resposta = _prepara(saida, tmp_path=tmp_path, modulo="autospec")
+    assert (resposta["json_valido"], resposta["texto"]) == (False, saida)
+
+
+@SEM_NODE
+def test_prepara_nao_mexe_na_barra_valida(tmp_path):
+    """`\\\\` (a barra escrita) seguida de "%" continua uma barra; `\\n` continua a quebra."""
+    saida = '{"c":"C:\\\\%x%","p":"95\\%","n":"a\\nb"}'
+    resposta = _prepara(saida, tmp_path=tmp_path, modulo="autospec")
+    assert json.loads(resposta["texto"]) == {"c": "C:\\%x%", "p": "95%", "n": "a\nb"}
