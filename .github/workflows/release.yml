@@ -32,7 +32,7 @@ on:
         required: true
         type: string
       prerelease:
-        description: "Pre-lancamento (o app NAO oferece pre-lancamentos como atualizacao). Desmarque para publicar de verdade."
+        description: "Pre-lancamento (so chega pela atualizacao a quem ligou Receber versoes de teste na Configuracao). Desmarque para publicar de verdade."
         required: false
         default: true
         type: boolean

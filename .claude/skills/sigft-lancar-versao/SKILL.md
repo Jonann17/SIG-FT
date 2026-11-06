@@ -23,7 +23,7 @@ recebe a `1.1.1` nem a `1.1.2` pela atualização automática — medido em 2026
 
 ## Pré-lançamento
 
-`X.Y.Z-rc.N`: `X.Y.Z` é o bloco em aberto; `N` é a maior rc já existente dessa versão + 1. Ninguém recebe pré-lançamento como atualização. Release **normal** vira aviso na próxima abertura de todo app 1.1.1+: só com autorização explícita do Luan.
+`X.Y.Z-rc.N`: `X.Y.Z` é o bloco em aberto; `N` é a maior rc já existente dessa versão + 1. Pré-lançamento só chega pela atualização automática a quem ligou **"Receber versões de teste"** na Configuração (o canal de testes, desde 2026-10-07: `updater.canal_testes_ligado`); os demais não o recebem. Release **normal** vira aviso na próxima abertura de todo app 1.1.1+: só com autorização explícita do Luan.
 
 ## Passo a passo
 
