@@ -3389,6 +3389,9 @@ class AutoSpecCore:
         sem prova entra como DEDUÇÃO marcada.
         """
         texto = str(valor)
+        # O número do MODELO do item não é medida deduzida (2026-11-06): `sistema WAGO I/O 750`
+        # para o 750-362. Ver `autospec_evidencia._sem_o_modelo`.
+        modelo = getattr(self, "_modelo_do_item", "") or ""
 
         def _deduzir(justificativa):
             r.aprovados[campo] = valor
@@ -3398,7 +3401,7 @@ class AutoSpecCore:
             ).strip()
 
         if prova.tipo == "deducao":
-            if autospec_evidencia.deducao_permitida(texto):
+            if autospec_evidencia.deducao_permitida(texto, modelo):
                 _deduzir(prova.justificativa or "(a IA nao justificou)")
             else:
                 r.reprovados.append((descricao, texto, (
@@ -3410,7 +3413,7 @@ class AutoSpecCore:
             status, motivo = self._lastro_legado(campo, valor, descricao, contexto, r)
             if status != "reprovado":
                 return
-            if autospec_evidencia.deducao_permitida(texto):
+            if autospec_evidencia.deducao_permitida(texto, modelo):
                 _deduzir(prova.justificativa or
                          "a IA citou o documento sem copiar o trecho, e o texto nao aparece nele")
             else:
@@ -3443,7 +3446,7 @@ class AutoSpecCore:
             status, motivo = self._lastro_legado(campo, valor, descricao, contexto, r)
             if status != "reprovado":
                 return
-            if autospec_evidencia.deducao_permitida(texto):
+            if autospec_evidencia.deducao_permitida(texto, modelo):
                 _deduzir(f"o trecho citado pela IA nao foi achado no documento "
                          f"({faltando[:60]!r}). {prova.justificativa}".strip())
             elif not self._gravar_itens_provados(
